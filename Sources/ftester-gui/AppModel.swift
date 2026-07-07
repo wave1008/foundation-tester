@@ -14,13 +14,117 @@ import Observation
 @Observable
 final class AppModel {
 
-    // MARK: - ドライバ設定
+    // MARK: - 設定(設定ペインで編集、UserDefaults に永続化)
 
-    var platform = "ios"
-    var portText = "8123"
-    var serial = ""
+    /// ブリッジに割り当てるポートの開始番号(iOS ブリッジ専用)
+    var portRangeStartText: String {
+        didSet { UserDefaults.standard.set(portRangeStartText, forKey: "portRangeStart") }
+    }
+    /// 最大並列数 = 開始ポートから確保するポート数(スキャン・割り当ての上限)
+    var maxParallel: Int {
+        didSet { UserDefaults.standard.set(maxParallel, forKey: "maxParallel") }
+    }
+
+    /// スキャン対象のポート一覧: 開始ポートから最大並列数ぶん
+    /// (不正入力は既定 8123 に、並列数は 1〜32 に丸める)
+    var portRange: [UInt16] {
+        var start = Int(portRangeStartText.trimmingCharacters(in: .whitespaces)) ?? 8123
+        if !(1024...65535).contains(start) { start = 8123 }
+        let count = min(max(maxParallel, 1), 32)
+        let end = min(start + count - 1, 65535)
+        return (start...end).map { UInt16($0) }
+    }
+
+    // MARK: - 対象デバイス(iOS/Android を同時に扱う)
+
+    /// ライブ操作・FM探索の対象、および並列実行のワーカー元。refreshTargets() が発見する
+    struct DriveTarget: Identifiable, Hashable {
+        let id: String        // "ios:8123" / "android:emulator-5554"
+        let platform: String  // "ios" / "android"
+        let port: UInt16?     // iOS のみ(Android にポートの概念はない)
+        let serial: String?   // Android のみ(adb のシリアル名)
+        let name: String      // 表示名(デバイス名)
+        /// 表示用ラベル。Android の "emulator-5554" は adb のシリアル名であって
+        /// ftester が割り当てたポートではないため、ポート風に見えない表記にする
+        var label: String {
+            platform == "android"
+                ? "Android — \(name)(\(serial ?? "adb"))"
+                : "\(id) — \(name)"
+        }
+    }
+
+    var targets: [DriveTarget] = []
+    var selectedTargetID: String?
+    var selectedTarget: DriveTarget? {
+        targets.first { $0.id == selectedTargetID } ?? targets.first
+    }
+
     var connectionStatus = "未確認"
     var connected = false
+    /// ポート毎の /status 結果(スキャンで更新。モニターのウィンドウ照合にも使う)
+    var portStatuses: [UInt16: StatusResponse] = [:]
+
+    /// ポート範囲を並行スキャンして iOS ブリッジを、adb devices から Android デバイスを発見する
+    func refreshTargets() async {
+        // iOS: 範囲内の全ポートへ短タイムアウトで /status
+        let range = portRange
+        var statuses: [UInt16: StatusResponse] = [:]
+        await withTaskGroup(of: (UInt16, StatusResponse?).self) { group in
+            for port in range {
+                group.addTask {
+                    (port, try? await BridgeClient(port: port, timeoutSeconds: 3).status())
+                }
+            }
+            for await (port, status) in group {
+                if let status, status.ready { statuses[port] = status }
+            }
+        }
+        portStatuses = statuses
+
+        var found: [DriveTarget] = statuses.sorted { $0.key < $1.key }.map { port, status in
+            DriveTarget(id: "ios:\(port)", platform: "ios", port: port, serial: nil,
+                        name: status.device)
+        }
+        // Android: 接続中の全デバイス。名前は adb devices -l の model: から取る
+        // (デバイス個別の shell は ANR 中の端末で無期限にハングし得るため使わない)
+        for (serial, model) in Self.adbDevices() {
+            found.append(DriveTarget(id: "android:\(serial)", platform: "android",
+                                     port: nil, serial: serial, name: model ?? serial))
+        }
+        targets = found
+        // 選択が無効になったら先頭を自動選択(ピッカーの空欄防止)
+        if targets.first(where: { $0.id == selectedTargetID }) == nil {
+            selectedTargetID = targets.first?.id
+        }
+
+        let iosCount = statuses.count
+        let androidCount = found.count - iosCount
+        connected = !found.isEmpty
+        connectionStatus = found.isEmpty
+            ? "デバイスなし — 設定ペインからブリッジを起動"
+            : "iOS \(iosCount) 台 / Android \(androidCount) 台"
+    }
+
+    /// adb devices -l の (serial, model) 一覧。デバイス個別シェルを使わないため安全
+    static func adbDevices() -> [(serial: String, model: String?)] {
+        guard let driver = try? AndroidDriver(),
+              let result = try? Shell.run([driver.adbPath, "devices", "-l"]), result.status == 0 else {
+            return []
+        }
+        return result.output.split(separator: "\n").dropFirst().compactMap { line in
+            let fields = line.split(separator: " ", omittingEmptySubsequences: true)
+            guard fields.count >= 2, fields[1] == "device" else { return nil }
+            let model = fields.first { $0.hasPrefix("model:") }
+                .map { String($0.dropFirst("model:".count)) }
+            return (String(fields[0]), model)
+        }
+    }
+
+    struct NoTargetError: LocalizedError {
+        var errorDescription: String? {
+            "対象デバイスがありません(設定ペインからブリッジを起動するか、エミュレータを接続してください)"
+        }
+    }
 
     // MARK: - フロー実行
 
@@ -35,11 +139,19 @@ final class AppModel {
         case idle, running, passed, failed
     }
 
+    /// ワーカー毎のログレーン(並列実行時の混線防止。1ワーカーなら従来と同じ1列)
+    struct WorkerLane: Identifiable {
+        let id: String       // ワーカーラベル("ios:8123" / "android" / "system")
+        var title: String
+        var log: [String] = []
+        var running = false
+    }
+
     var flows: [FlowEntry] = []
     var selectedFlowID: URL?
     var heal = false
     var runningFlow = false
-    var runLog: [String] = []
+    var lanes: [WorkerLane] = []
 
     var selectedEntry: FlowEntry? {
         flows.first { $0.url == selectedFlowID }
@@ -65,25 +177,61 @@ final class AppModel {
 
     let fmReport = FMDoctor.check()
 
-    // MARK: - ドライバ
+    // MARK: - デバイスモニター(ScreenCaptureKit)/ ブリッジ管理
 
-    func makeDriver(overriding platformOverride: String? = nil) throws -> AppDriver {
-        switch platformOverride ?? platform {
-        case "android":
-            return try AndroidDriver(serial: serial.isEmpty ? nil : serial)
-        default:
-            return BridgeClient(port: UInt16(portText) ?? BridgeAPI.defaultPort)
+    let monitor = DeviceMonitorCenter()
+    let bridgeManager = BridgeManagerModel()
+
+    init() {
+        // FT_PORTS 環境変数("8123-8130" または "8123,8124")→ UserDefaults → 既定値 の順
+        let defaults = UserDefaults.standard
+        if let env = ProcessInfo.processInfo.environment["FT_PORTS"],
+           let (start, end) = Self.parseRange(env) {
+            portRangeStartText = String(start)
+            maxParallel = min(max(end - start + 1, 1), 32)
+        } else {
+            let startText = defaults.string(forKey: "portRangeStart") ?? "8123"
+            portRangeStartText = startText
+            if defaults.object(forKey: "maxParallel") != nil {
+                maxParallel = min(max(defaults.integer(forKey: "maxParallel"), 1), 32)
+            } else if let end = Int(defaults.string(forKey: "portRangeEnd") ?? ""),
+                      let start = Int(startText) {
+                // 旧「終了ポート」設定からの移行
+                maxParallel = min(max(end - start + 1, 1), 32)
+            } else {
+                maxParallel = 8
+            }
         }
+        monitor.statusProvider = { [weak self] in self?.portStatuses ?? [:] }
     }
 
-    func checkConnection() async {
-        do {
-            let status = try await makeDriver().status()
-            connectionStatus = "\(status.device)(\(status.osVersion))"
-            connected = status.ready
-        } catch {
-            connectionStatus = "接続できません — iOS: bridge up / Android: adb devices を確認"
-            connected = false
+    static func parseRange(_ text: String) -> (Int, Int)? {
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
+        if let dash = trimmed.firstIndex(of: "-") {
+            guard let start = Int(trimmed[..<dash]),
+                  let end = Int(trimmed[trimmed.index(after: dash)...]) else { return nil }
+            return (start, end)
+        }
+        let numbers = trimmed.split(separator: ",")
+            .compactMap { Int($0.trimmingCharacters(in: .whitespaces)) }
+        guard let minPort = numbers.min(), let maxPort = numbers.max() else { return nil }
+        return (minPort, maxPort)
+    }
+
+    // MARK: - ドライバ
+
+    /// ライブ操作・FM探索用: 選択中の対象デバイスのドライバ
+    func makeSelectedDriver() throws -> AppDriver {
+        guard let target = selectedTarget else { throw NoTargetError() }
+        return try makeDriver(for: target)
+    }
+
+    func makeDriver(for target: DriveTarget) throws -> AppDriver {
+        switch target.platform {
+        case "android":
+            return try AndroidDriver(serial: target.serial)
+        default:
+            return BridgeClient(port: target.port ?? BridgeAPI.defaultPort)
         }
     }
 
@@ -111,75 +259,112 @@ final class AppModel {
 
     func runSelected() async {
         guard let entry = selectedEntry else { return }
-        await run(entry: entry)
+        await runFlows([entry])
     }
 
     func runAll() async {
-        for entry in flows {
-            await run(entry: entry)
-        }
+        await runFlows(flows)
     }
 
-    func run(entry: FlowEntry) async {
-        guard !runningFlow else { return }
+    /// フロー群を実行する。複数ポート指定時は iOS フローをポート毎のワーカーで並列消化し、
+    /// Android フローは専用ワーカー1本で流す(CLI の run --ports と同じオーケストレータ)。
+    func runFlows(_ entries: [FlowEntry]) async {
+        guard !runningFlow, !entries.isEmpty else { return }
         runningFlow = true
-        setState(entry.url, .running)
-        runLog.append("▶ \(entry.url.lastPathComponent) [\(entry.flow.platform ?? platform)]")
-        if entry.flow.dirty == true {
-            runLog.append("  ⚠️ dirty(要レビュー)状態のフローです")
+
+        // 稼働中のブリッジ・デバイスを再スキャンして動的にワーカーを割り当てる
+        await refreshTargets()
+        monitor.rematch()
+
+        let items = entries.map { FlowRunItem(url: $0.url, flow: $0.flow) }
+        let iosItems = items.filter { ($0.flow.platform ?? "ios") == "ios" }
+        let androidItems = items.filter { ($0.flow.platform ?? "ios") == "android" }
+
+        var workers: [RunWorker] = []
+        if !iosItems.isEmpty {
+            let bridges = targets.filter { $0.platform == "ios" }
+            // フロー数を超えるワーカーは立てない(余分なウォームアップ回避)
+            for target in bridges.prefix(min(bridges.count, iosItems.count)) {
+                guard let port = target.port else { continue }
+                workers.append(RunWorker(label: target.id, platform: "ios",
+                                         driver: BridgeClient(port: port)))
+            }
+        }
+        if !androidItems.isEmpty {
+            // Android もデバイス(adb シリアル)毎にワーカーを立てて並列実行する
+            // (adb -s で分離され、AndroidDriver の状態ファイルもシリアル別)
+            let androidTargets = targets.filter { $0.platform == "android" }
+            for target in androidTargets.prefix(min(androidTargets.count, androidItems.count)) {
+                guard let driver = try? AndroidDriver(serial: target.serial) else { continue }
+                workers.append(RunWorker(label: target.id, platform: "android", driver: driver))
+            }
         }
 
-        do {
-            let driver = try makeDriver(overriding: entry.flow.platform)
-            let delegate: FMReplayDelegate? = fmReport.available ? FMReplayDelegate() : nil
-            let replayer = Replayer(driver: driver, delegate: delegate, healingEnabled: heal)
-            replayer.onStep = { [weak self] step in
-                Task { @MainActor in
-                    self?.runLog.append(Self.line(for: step))
-                }
-            }
-            let result = await replayer.run(flow: entry.flow)
-
-            if let healedFlow = result.healedFlow, heal {
-                try? FlowIO.save(healedFlow, to: entry.url)
-                runLog.append("  🔧 修復したロケータでフローを更新しました(dirty)")
-            }
-            if result.passed {
-                runLog.append("→ ✅ 成功")
-                setState(entry.url, .passed)
-            } else {
-                if let triage = result.triage {
-                    runLog.append("  🔍 [\(triage.failureClass)] \(triage.summary)")
-                }
-                if let report = try? ReportWriter.write(result: result,
-                                                        to: URL(fileURLWithPath: "reports")) {
-                    runLog.append("→ ❌ 失敗 — レポート: \(report.path)")
-                } else {
-                    runLog.append("→ ❌ 失敗")
-                }
-                setState(entry.url, .failed)
-            }
-        } catch {
-            runLog.append("→ ❌ エラー: \(error.localizedDescription)")
-            setState(entry.url, .failed)
+        lanes = workers.map { worker in
+            let target = targets.first { $0.id == worker.label }
+            return WorkerLane(id: worker.label, title: target?.label ?? worker.label)
         }
-        runLog.append("")
+
+        let delegate: FMReplayDelegate? = fmReport.available ? FMReplayDelegate() : nil
+        let orchestrator = RunOrchestrator(workers: workers, delegate: delegate,
+                                           healingEnabled: heal,
+                                           reportDir: URL(fileURLWithPath: "reports"))
+        // イベントは MainActor 上で順に消費する(レーン追記とフロー状態の更新)
+        let consumer = Task { @MainActor [weak self] in
+            for await event in orchestrator.events {
+                self?.handle(event)
+            }
+        }
+        _ = await orchestrator.run(items: items, defaultPlatform: "ios")
+        await consumer.value
         runningFlow = false
     }
 
-    static func line(for step: StepResult) -> String {
-        switch step.status {
-        case .passed:
-            return "  ✅ \(step.index). \(step.description)"
-        case .passedViaFallback(let locator):
-            return "  ✅ \(step.index). \(step.description)(フォールバック \(locator.summary))"
-        case .healed(let locator):
-            return "  🔧 \(step.index). \(step.description) → 自己修復: \(locator.summary)"
-        case .failed(let reason):
-            return "  ❌ \(step.index). \(step.description) — \(reason)"
-        case .skipped(let reason):
-            return "  ⚠️ \(step.index). \(step.description)(スキップ: \(reason))"
+    private func handle(_ event: RunEvent) {
+        let lines = RunLogFormatter.lines(for: event)
+        switch event {
+        case .runStarted, .runFinished:
+            break
+        case .workerReady(let worker):
+            appendLane(worker, ["🟢 ワーカー準備完了"])
+        case .workerFailed(let worker, _):
+            appendLane(worker, lines)
+            setLaneRunning(worker, false)
+        case .flowStarted(let worker, let url, _, _):
+            setState(url, .running)
+            setLaneRunning(worker, true)
+            appendLane(worker, lines)
+        case .step(let worker, _, _):
+            appendLane(worker, lines)
+        case .flowHealed(let worker, _):
+            appendLane(worker, lines)
+        case .flowFinished(let worker, let url, let passed, _, _):
+            setState(url, passed ? .passed : .failed)
+            setLaneRunning(worker, false)
+            appendLane(worker, lines)
+        case .flowSkipped(let url, _):
+            setState(url, .failed)
+            appendLane("system", lines)
         }
+    }
+
+    private func appendLane(_ worker: String, _ lines: [String]) {
+        guard !lines.isEmpty else { return }
+        if let index = lanes.firstIndex(where: { $0.id == worker }) {
+            lanes[index].log.append(contentsOf: lines)
+        } else {
+            // ワーカー不在のフロー通知など、行き先のない行のための予備レーン
+            lanes.append(WorkerLane(id: worker, title: "⚠️ 未実行", log: lines))
+        }
+    }
+
+    private func setLaneRunning(_ worker: String, _ running: Bool) {
+        guard let index = lanes.firstIndex(where: { $0.id == worker }) else { return }
+        lanes[index].running = running
+    }
+
+    func clearLanes() {
+        lanes = []
     }
 
     // MARK: - ライブ操作
@@ -188,7 +373,7 @@ final class AppModel {
         liveBusy = true
         liveError = nil
         do {
-            let driver = try makeDriver()
+            let driver = try makeSelectedDriver()
             let png = try await driver.screenshot()
             screenshot = NSImage(data: png)
             let snap = try await driver.snapshot()
@@ -204,7 +389,7 @@ final class AppModel {
         liveBusy = true
         liveError = nil
         do {
-            let driver = try makeDriver()
+            let driver = try makeSelectedDriver()
             try await body(driver)
             try? await Task.sleep(nanoseconds: 700_000_000)
         } catch {
@@ -245,12 +430,13 @@ final class AppModel {
         let goal = exploreGoal
         let bundle = exploreBundleID
         let maxSteps = exploreMaxSteps
-        let flowPlatform = platform
+        // 探索対象 = 選択中の対象デバイス(生成フローの platform にも反映)
+        let flowPlatform = selectedTarget?.platform ?? "ios"
 
         exploreTask = Task { @MainActor [weak self] in
             guard let self else { return }
             do {
-                let driver = try self.makeDriver()
+                let driver = try self.makeSelectedDriver()
                 let agent = ExplorerAgent(driver: driver, goal: goal, maxSteps: maxSteps)
                 agent.onStep = { [weak self] step, desc in
                     Task { @MainActor in

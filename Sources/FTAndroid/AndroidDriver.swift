@@ -104,9 +104,20 @@ public final class AndroidDriver: AppDriver {
         _ = try adb(["shell", "am", "force-stop", bundleID])
         let result = try adb(["shell", "monkey", "-p", bundleID,
                               "-c", "android.intent.category.LAUNCHER", "1"])
-        guard result.output.contains("Events injected: 1") else {
-            throw DriverError.badResponse(status: 1,
-                body: "アプリを起動できません: \(bundleID)(インストール済みか確認してください)\n\(result.tail)")
+        if !result.output.contains("Events injected: 1") {
+            // monkey はプロビジョニング直後の AVD などで理由なく失敗することがある(実測 exit 251)。
+            // LAUNCHER アクティビティを解決して am start で起動するフォールバック
+            let resolve = try adb(["shell", "cmd", "package", "resolve-activity", "--brief",
+                                   "-c", "android.intent.category.LAUNCHER", bundleID])
+            let component = resolve.output.split(separator: "\n")
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .last { $0.contains("/") } ?? ""
+            guard !component.isEmpty,
+                  let start = try? adb(["shell", "am", "start", "-n", component]),
+                  !start.output.contains("Error") else {
+                throw DriverError.badResponse(status: 1,
+                    body: "アプリを起動できません: \(bundleID)(インストール済みか確認してください)\n\(result.tail)")
+            }
         }
         currentPackage = bundleID
         try await Task.sleep(nanoseconds: 1_500_000_000)

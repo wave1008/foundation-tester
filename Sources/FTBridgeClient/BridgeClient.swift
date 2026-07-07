@@ -8,10 +8,12 @@ public final class BridgeClient: AppDriver {
     let baseURL: URL
     let session: URLSession
 
-    public init(port: UInt16 = BridgeAPI.defaultPort) {
+    /// timeoutSeconds: 既定 120 秒(launch や snapshot は数秒かかることがある)。
+    /// ポート範囲のスキャン(生存確認)には短い値を渡す
+    public init(port: UInt16 = BridgeAPI.defaultPort, timeoutSeconds: TimeInterval = 120) {
         self.baseURL = URL(string: "http://127.0.0.1:\(port)")!
         let config = URLSessionConfiguration.ephemeral
-        config.timeoutIntervalForRequest = 120  // launch や snapshot は数秒かかることがある
+        config.timeoutIntervalForRequest = timeoutSeconds
         self.session = URLSession(configuration: config)
     }
 

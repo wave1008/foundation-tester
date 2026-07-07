@@ -1,4 +1,4 @@
-name: メールアドレス test@example.com、パスワード password123 でログインし、ホーム画面に「ようこそ」が表示されることを確認する
+name: ログイン並列テスト 01
 app: com.example.sampleapp
 platform: ios
 goal: メールアドレス test@example.com、パスワード password123 でログインし、ホーム画面に「ようこそ」が表示されることを確認する

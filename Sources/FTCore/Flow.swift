@@ -5,7 +5,7 @@
 import Foundation
 import Yams
 
-public struct Flow: Codable {
+public struct Flow: Codable, Sendable {
     public var name: String
     public var app: String
     /// ios / android。省略時は実行時の --platform 指定に従う
@@ -30,7 +30,7 @@ public struct Flow: Codable {
 
 /// action(操作)か assert(検証)のどちらか一方を持つステップ。
 /// YAML の読みやすさを優先して enum ではなくフラットな構造にしている。
-public struct FlowStep: Codable {
+public struct FlowStep: Codable, Sendable {
     /// tap / type / swipe / press / scrollTo(要素が見つかるまでスクロール)
     public var action: String?
     /// exists / valueEquals / screenMatches
@@ -46,13 +46,16 @@ public struct FlowStep: Codable {
     public var timeout: Int?
     /// scrollTo のスクロール回数上限(省略時 8)
     public var maxSwipes: Int?
+    /// true のとき、ロケータが解決できなくても失敗にせずスキップする
+    /// (パスワード保存シート等、出るかどうか不定なシステムダイアログの処理用)
+    public var optional: Bool?
     /// 探索時に FM が述べた意図(リプレイでは使わないがレビューの助けになる)
     public var note: String?
 
     public init(action: String? = nil, assert: String? = nil, locator: FlowLocator? = nil,
                 fallbacks: [FlowLocator]? = nil, text: String? = nil, direction: String? = nil,
                 expected: String? = nil, timeout: Int? = nil, maxSwipes: Int? = nil,
-                note: String? = nil) {
+                optional: Bool? = nil, note: String? = nil) {
         self.action = action
         self.assert = assert
         self.locator = locator
@@ -62,11 +65,12 @@ public struct FlowStep: Codable {
         self.expected = expected
         self.timeout = timeout
         self.maxSwipes = maxSwipes
+        self.optional = optional
         self.note = note
     }
 }
 
-public struct FlowLocator: Codable, Equatable {
+public struct FlowLocator: Codable, Equatable, Sendable {
     public var id: String?
     public var label: String?
     public var type: String?

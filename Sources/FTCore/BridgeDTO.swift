@@ -12,7 +12,7 @@ public enum BridgeAPI {
 }
 
 /// CGRect の代わりに使うプラットフォーム非依存の矩形(エンコード形式を固定する)
-public struct FTRect: Codable, Equatable {
+public struct FTRect: Codable, Equatable, Sendable {
     public var x: Double
     public var y: Double
     public var width: Double
@@ -29,7 +29,7 @@ public struct FTRect: Codable, Equatable {
     public var centerY: Double { y + height / 2 }
 }
 
-public struct StatusResponse: Codable {
+public struct StatusResponse: Codable, Sendable {
     public var ready: Bool
     public var device: String
     public var osVersion: String
@@ -49,7 +49,7 @@ public struct LaunchRequest: Codable {
 }
 
 /// アクセシビリティツリーの1要素(ランナー側でフィルタ済み)
-public struct ElementInfo: Codable {
+public struct ElementInfo: Codable, Sendable {
     /// set-of-mark 参照番号(スナップショット毎に振り直す)
     public var ref: Int
     public var type: String
@@ -75,7 +75,7 @@ public struct ElementInfo: Codable {
     }
 }
 
-public struct SnapshotResponse: Codable {
+public struct SnapshotResponse: Codable, Sendable {
     public var sessionBundleID: String?
     public var screen: FTRect
     public var elements: [ElementInfo]
