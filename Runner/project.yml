@@ -1,0 +1,72 @@
+# xcodegen 定義。`cd Runner && xcodegen generate` で FTesterRunner.xcodeproj を生成する。
+# 生成物はコミットしない(.gitignore 済み)。
+name: FTesterRunner
+options:
+  bundleIdPrefix: com.example
+  deploymentTarget:
+    iOS: "18.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    GENERATE_INFOPLIST_FILE: YES
+    TARGETED_DEVICE_FAMILY: "1"
+targets:
+  # UIテストの器になる空のホストアプリ
+  FTesterRunnerApp:
+    type: application
+    platform: iOS
+    sources:
+      - path: FTesterRunnerApp
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.ftrunner
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+
+  # HTTPサーバ内蔵の常駐UIテスト(ブリッジ本体)
+  FTesterRunnerUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: FTesterRunnerUITests
+      # ホスト(macOS CLI)と共有するAPI型。Foundation のみに依存すること。
+      - path: ../Sources/FTCore/BridgeDTO.swift
+    dependencies:
+      - target: FTesterRunnerApp
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.ftrunner.uitests
+        TEST_TARGET_NAME: FTesterRunnerApp
+        SWIFT_OBJC_BRIDGING_HEADER: FTesterRunnerUITests/BridgingHeader.h
+
+  # 検証用のテスト対象アプリ
+  SampleApp:
+    type: application
+    platform: iOS
+    sources:
+      - path: ../SampleApp/Sources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.sampleapp
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+
+schemes:
+  FTesterRunner:
+    build:
+      targets:
+        FTesterRunnerApp: all
+        FTesterRunnerUITests: all
+    test:
+      targets:
+        - FTesterRunnerUITests
+      environmentVariables:
+        # build-for-testing 時に xctestrun へ焼き込まれる
+        - variable: FT_PORT
+          value: "8123"
+          isEnabled: true
+  SampleApp:
+    build:
+      targets:
+        SampleApp: all

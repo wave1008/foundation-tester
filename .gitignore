@@ -1,0 +1,11 @@
+.DS_Store
+.build/
+.ftester/
+.swiftpm/
+xcuserdata/
+DerivedData/
+# xcodegen が project.yml から生成する(コミットしない)
+Runner/FTesterRunner.xcodeproj
+reports/
+*.log
+.vscode/
