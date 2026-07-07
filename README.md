@@ -100,12 +100,35 @@ swift run ftester bridge down --all              # 全ブリッジ停止
 ### Android
 
 エミュレータ/実機を接続しておけば(`adb devices`)、同じコマンドに `--platform android` を
-付けるだけ。ブリッジは不要。
+付けるだけ。**セットアップ不要** — 初回操作時にデバイス常駐ブリッジ(AndroidRunner/、
+iOS ブリッジとプロトコル互換の instrumentation サーバ)が自動インストール・自動起動され、
+snapshot が uiautomator dump の約2秒からミリ秒オーダーになる。ブリッジに接続できない環境では
+adb 直叩き(uiautomator dump / input)へ自動フォールバックする。
+
+- 手動管理(任意): `ftester bridge up|down|status --platform android [--serial S]`
+  (`up` は接続中全デバイスへのプリウォームにも使える)。`doctor` が導入状況を表示
+- 緊急スイッチ: `FT_ANDROID_NO_BRIDGE=1` でブリッジを使わず従来経路に固定(A/B 計測にも使う)
+- 注意: ブリッジ稼働中は `uiautomator dump` を手で叩けない(a11y 接続の排他。ドライバは
+  フォールバック時に自動でブリッジを止めてから dump する)
 
 ```bash
 swift run ftester explore com.android.settings --platform android \
   --goal "「Network & internet」を開いて、「Internet」が表示されることを確認する"
 ```
+
+#### 日本語入力(非 ASCII テキスト)
+
+ブリッジ経由では `ACTION_SET_TEXT` で入力するため、日本語もそのまま入る(IME 切替なし)。
+
+ブリッジ不達のフォールバック時のみ、`adb input text` の ASCII 制限を回避するため
+Unicode 対応 IME([ADBKeyBoard](https://github.com/senzhk/ADBKeyBoard)、GPL-2.0)経由で入力する:
+
+- 初回の日本語入力時に APK を `~/.ftester/ADBKeyboard.apk` へダウンロードし、
+  対象デバイスへ自動インストール・IME 自動切替する(`doctor` で導入状況を確認可能)
+- 切り替え前の IME は保存され、`terminate` 時に自動復元される
+- ASCII のみのテキストは従来どおり `input text` 直接(IME 切替なしで速い)
+- オフライン環境では手動配置: `curl -fsSL https://github.com/senzhk/ADBKeyBoard/raw/master/ADBKeyboard.apk -o ~/.ftester/ADBKeyboard.apk`
+  (または環境変数 `FT_ADBKEYBOARD_APK=<APKパス>` で任意の場所を指定)
 
 ## フロー YAML
 
@@ -238,7 +261,8 @@ ftester CLI (macOS) ── FTAgent   (FoundationModels: 探索 / 視覚検証 / 
       │
       ├─ HTTP (localhost:8123) ──▶ iOS シミュレータ内の常駐 XCUITest
       │                            (WebDriverAgent 方式・依存ゼロの自作ブリッジ)
-      └─ adb ─────────────────────▶ Android エミュレータ / 実機
+      └─ adb forward ⇄ 常駐ブリッジ ──▶ Android エミュレータ / 実機
+         (AndroidRunner/。不達時は adb 直叩きへ自動フォールバック)
                                    (uiautomator dump / input / screencap)
 ```
 
@@ -272,7 +296,7 @@ docs/              設計書・実装知見
 |---|---|---|
 | ブリッジ `/status` | 13ms | HTTP サーバ自体のオーバーヘッドはほぼゼロ |
 | スナップショット(iOS) | 約 250ms | XCUITest のツリー取得コストが本体 |
-| スナップショット(Android) | 約 2.0秒 | `uiautomator dump` の既知の特性 |
+| スナップショット(Android) | 中央値 8.7ms | 常駐ブリッジ(AndroidRunner/)。フォールバックの `uiautomator dump` は約 2.0秒 |
 | MCP ツール呼び出し | +0ms 相当 | ブリッジ直叩きと差なし(常駐プロセス) |
 | フロー実行(4ステップ+スクロール6回) | 約 30秒 | 大半はステップ間の安定待ち(0.6〜0.8秒×N)と起動待ち |
 
@@ -287,4 +311,10 @@ docs/              設計書・実装知見
   Android: `adb devices` で接続確認
 - **explore が中断した** → 到達分のフローは `dirty: true` 付きで保存されるので、YAML を直接編集して
   仕上げられる(id ロケータ推奨)
-- **Android の日本語入力が入らない** → `adb input text` の既知の制限(ASCII 推奨)
+- **Android の snapshot が遅い(約2秒)** → ブリッジ不達で adb 直叩きにフォールバックしている。
+  stderr の警告と `ftester bridge status --platform android`・`doctor` を確認。
+  `ftester bridge up --platform android` で強制再セットアップできる
+- **Android の日本語入力が入らない** → 通常はブリッジが IME 不要で入力する。フォールバック時は
+  Unicode IME(ADBKeyBoard)を自動導入して入力する。失敗する場合はネットワーク
+  (初回の APK ダウンロード)と `doctor` の IME 導入状況を確認。
+  オフラインなら `~/.ftester/ADBKeyboard.apk` に手動配置(「Android > 日本語入力」参照)

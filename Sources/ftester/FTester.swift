@@ -92,6 +92,24 @@ struct Doctor: AsyncParsableCommand {
                 .filter { $0.contains("\tdevice") }
             print("✅ adb: \(android.adbPath)"
                   + (connected.isEmpty ? "(接続デバイスなし)" : "(\(connected.count) 台接続)"))
+            if let apk = try? AndroidDriver.locateBridgeAPK() {
+                print("   ✅ ブリッジAPK: \(apk.path)")
+            } else {
+                print("   ❌ ブリッジAPK が見つかりません(AndroidRunner/build.sh で生成)")
+            }
+            for line in connected {
+                guard let serial = line.split(separator: "\t").first.map(String.init) else { continue }
+                // 高速スナップショット用ブリッジ(未導入でも初回操作時に自動導入・起動される)
+                if let driver = try? AndroidDriver(serial: serial) {
+                    print("   ・ \(serial): \(driver.bridgeDoctorSummary())")
+                }
+                // 日本語入力用 Unicode IME(ブリッジ不達時のフォールバックでのみ使用)
+                let pm = try? Shell.run([android.adbPath, "-s", serial, "shell",
+                                         "pm", "list", "packages", AndroidDriver.unicodeIMEPackage])
+                let installed = pm?.output.contains("package:\(AndroidDriver.unicodeIMEPackage)") ?? false
+                print("   \(installed ? "✅" : "・") \(serial): 日本語入力IME(フォールバック用)"
+                      + (installed ? "導入済み" : "未導入(必要時に自動インストール)"))
+            }
         } else {
             print("⚠️ adb が見つかりません(Android を使う場合は ANDROID_HOME を設定)")
         }
@@ -107,20 +125,30 @@ struct Bridge: AsyncParsableCommand {
 
     struct Up: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "ランナーをビルドしてシミュレータに常駐させる")
+            abstract: "ブリッジを起動して常駐させる(iOS: シミュレータのランナー / Android: デバイス内サーバ)")
 
-        @Option(help: "シミュレータのデバイス名")
+        @Option(help: "シミュレータのデバイス名(iOS のみ)")
         var device: String = "iPhone 17 Pro"
 
-        @Flag(help: "build-for-testing をスキップ(ビルド済みの場合)")
+        @Flag(help: "build-for-testing をスキップ(ビルド済みの場合、iOS のみ)")
         var skipBuild = false
 
-        @Flag(help: "SampleApp のビルド・インストールもあわせて行う")
+        @Flag(help: "SampleApp のビルド・インストールもあわせて行う(iOS のみ)")
         var withSampleApp = false
 
         @OptionGroup var driverOptions: DriverOptions
 
         func run() async throws {
+            if driverOptions.platform == "android" {
+                // serial 省略時は接続中の全デバイス(8台並列前のプリウォーム用)
+                for serial in try AndroidBridgeCLI.serials(only: driverOptions.serial) {
+                    let driver = try AndroidDriver(serial: serial)
+                    print("→ Android ブリッジ起動: \(serial)")
+                    try await driver.resetAndEnsureBridge()
+                    print("✅ \(serial): \(driver.bridgeDoctorSummary())")
+                }
+                return
+            }
             let root = try RepoRoot.find()
             let launcher = BridgeLauncher(repoRoot: root, device: device, port: driverOptions.port)
 
@@ -144,15 +172,28 @@ struct Bridge: AsyncParsableCommand {
     }
 
     struct Down: AsyncParsableCommand {
-        static let configuration = CommandConfiguration(abstract: "ランナーを停止する")
+        static let configuration = CommandConfiguration(abstract: "ブリッジを停止する")
 
-        @Option(name: .long, help: "停止するブリッジのポート")
+        @Option(name: .long, help: "停止するブリッジのポート(iOS のみ)")
         var port: UInt16 = BridgeAPI.defaultPort
 
-        @Flag(help: "全ポートのブリッジを停止する")
+        @Flag(help: "全ポートのブリッジを停止する(iOS のみ)")
         var all = false
 
+        @Option(help: "対象プラットフォーム: ios / android")
+        var platform: String = "ios"
+
+        @Option(help: "Android デバイスのシリアル(省略時は接続中の全デバイス)")
+        var serial: String?
+
         func run() async throws {
+            if platform == "android" {
+                for serial in try AndroidBridgeCLI.serials(only: serial) {
+                    try AndroidDriver(serial: serial).stopBridge()
+                    print("✅ Android ブリッジを停止しました: \(serial)")
+                }
+                return
+            }
             let root = try RepoRoot.find()
             if all {
                 let stopped = BridgeLauncher.stopAll(repoRoot: root)
@@ -173,11 +214,35 @@ struct Bridge: AsyncParsableCommand {
         @OptionGroup var driverOptions: DriverOptions
 
         func run() async throws {
+            if driverOptions.platform == "android" {
+                for serial in try AndroidBridgeCLI.serials(only: driverOptions.serial) {
+                    let driver = try AndroidDriver(serial: serial)
+                    print("\(serial): \(driver.bridgeDoctorSummary())")
+                }
+                return
+            }
             let status = try await driverOptions.makeDriver().status()
             print("ready: \(status.ready)")
             print("device: \(status.device) (\(status.osVersion))")
             print("session: \(status.sessionBundleID ?? "なし")")
         }
+    }
+}
+
+/// Android ブリッジ用 CLI ヘルパー
+enum AndroidBridgeCLI {
+    /// 対象シリアル一覧(指定があればそれのみ、省略時は接続中の全デバイス)
+    static func serials(only serial: String?) throws -> [String] {
+        if let serial { return [serial] }
+        let adbPath = try AndroidDriver.findADB()
+        let devices = try Shell.run([adbPath, "devices"])
+        let serials = devices.output.split(separator: "\n").dropFirst()
+            .filter { $0.contains("\tdevice") }
+            .compactMap { $0.split(separator: "\t").first.map(String.init) }
+        guard !serials.isEmpty else {
+            throw ValidationError("接続中の Android デバイスがありません(adb devices を確認)")
+        }
+        return serials
     }
 }
 
