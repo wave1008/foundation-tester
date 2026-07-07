@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- versionCode は build.sh の VERSION_CODE で焼き込む(aapt2 link のオプション)。 -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.example.ftbridge">
+  <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="34"/>
+  <!-- ServerSocket の listen に必須 -->
+  <uses-permission android:name="android.permission.INTERNET"/>
+  <application android:label="ftester bridge"/>
+  <!-- targetPackage は自身。任意アプリを操作できるのは UiAutomation の権能による -->
+  <instrumentation
+      android:name="com.example.ftbridge.BridgeInstrumentation"
+      android:targetPackage="com.example.ftbridge"
+      android:label="ftester Android bridge"/>
+</manifest>

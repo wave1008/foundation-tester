@@ -31,10 +31,10 @@ let package = Package(
             dependencies: ["FTCore"],
             swiftSettings: swift5Mode
         ),
-        // Android ドライバ(adb 直叩き。AppDriver の別実装)
+        // Android ドライバ(常駐ブリッジ+adb 直叩きフォールバック。AppDriver の別実装)
         .target(
             name: "FTAndroid",
-            dependencies: ["FTCore"],
+            dependencies: ["FTCore", "FTBridgeClient"],
             swiftSettings: swift5Mode
         ),
         // GUI(SwiftUI macOS アプリ)。フロー実行とライブ操作

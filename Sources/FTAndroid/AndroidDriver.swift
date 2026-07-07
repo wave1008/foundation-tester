@@ -1,11 +1,17 @@
 // AndroidDriver.swift
-// M4: AppDriver の Android 実装。adb 直叩き(依存ゼロ)。
+// M4: AppDriver の Android 実装。
+// 高速経路: デバイス常駐ブリッジ(AndroidRunner/、iOS ブリッジとプロトコル互換)を自動起動して
+//           snapshot/tap/type/swipe/press/screenshot を HTTP で行う(AndroidBridge.swift)
+// フォールバック: adb 直叩き(依存ゼロ)
 // - スナップショット: uiautomator dump の XML を解析し、iOS と同じ圧縮形式に変換
 // - 操作: input tap / input text / input swipe
+//   (非 ASCII テキストのみ Unicode IME 経由 → UnicodeIME.swift)
 // - スクリーンショット: screencap -p
+// launch/terminate/status は常に adb 直(currentPackage 管理・IME 復元の意味論を維持)。
 // FTAgent(探索・修復・トリアージ)と FTCore(再生器)は無変更でそのまま動く。
 
 import Foundation
+import FTBridgeClient
 import FTCore
 
 public final class AndroidDriver: AppDriver {
@@ -19,11 +25,17 @@ public final class AndroidDriver: AppDriver {
     private var refCenters: [Int: (x: Double, y: Double)] = [:]
     private var screen: FTRect = FTRect(x: 0, y: 0, width: 0, height: 0)
     private var currentPackage: String?
+    /// Unicode IME(日本語入力)へ切り替える前の IME。terminate() で復元する
+    var originalIME: String?
+    /// show_ime_with_hard_keyboard の切り替え前の値("null" = 未設定)。terminate() で復元する
+    var originalShowIMEWithHardKeyboard: String?
 
     private struct PersistedState: Codable {
         var centers: [Int: [Double]]
         var screen: FTRect
         var package: String?
+        var originalIME: String?
+        var originalShowIME: String?
     }
 
     private var stateFileURL: URL {
@@ -31,10 +43,11 @@ public final class AndroidDriver: AppDriver {
             .appendingPathComponent("ftester-android-\(serial ?? "default").json")
     }
 
-    private func persistState() {
+    func persistState() {
         let state = PersistedState(
             centers: refCenters.mapValues { [$0.x, $0.y] },
-            screen: screen, package: currentPackage)
+            screen: screen, package: currentPackage, originalIME: originalIME,
+            originalShowIME: originalShowIMEWithHardKeyboard)
         if let data = try? JSONEncoder().encode(state) {
             try? data.write(to: stateFileURL)
         }
@@ -47,6 +60,8 @@ public final class AndroidDriver: AppDriver {
         refCenters = state.centers.compactMapValues { $0.count == 2 ? (x: $0[0], y: $0[1]) : nil }
         screen = state.screen
         if currentPackage == nil { currentPackage = state.package }
+        if originalIME == nil { originalIME = state.originalIME }
+        if originalShowIMEWithHardKeyboard == nil { originalShowIMEWithHardKeyboard = state.originalShowIME }
     }
 
     public init(serial: String? = nil) throws {
@@ -54,7 +69,7 @@ public final class AndroidDriver: AppDriver {
         self.serial = serial
     }
 
-    static func findADB() throws -> String {
+    public static func findADB() throws -> String {
         let candidates = [
             ProcessInfo.processInfo.environment["ANDROID_HOME"].map { $0 + "/platform-tools/adb" },
             NSHomeDirectory() + "/Library/Android/sdk/platform-tools/adb",
@@ -124,6 +139,17 @@ public final class AndroidDriver: AppDriver {
     }
 
     public func snapshot() async throws -> SnapshotResponse {
+        restoreStateIfNeeded()  // 別プロセス実行時に originalIME 等を引き継ぐ(persistState で消さないため)
+        if let client = await ensureBridge() {
+            do {
+                let snapshot = try await client.snapshot()
+                syncLocalState(from: snapshot)
+                return snapshot
+            } catch let error as DriverError {
+                guard case .bridgeUnreachable = error else { throw error }
+                markBridgeDead()  // 以降このプロセスは adb 直叩き
+            }
+        }
         let xml = try dumpHierarchy()
         let parser = UIAutomatorXMLParser()
         var nodes = try parser.parse(xml)
@@ -176,15 +202,56 @@ public final class AndroidDriver: AppDriver {
     }
 
     public func tap(x: Double, y: Double) async throws {
+        if let client = await ensureBridge() {
+            do {
+                try await client.tap(x: x, y: y)
+                return
+            } catch let error as DriverError {
+                guard case .bridgeUnreachable = error else { throw error }
+                markBridgeDead()
+            }
+        }
         _ = try adb(["shell", "input", "tap", String(Int(x)), String(Int(y))])
+    }
+
+    /// ブリッジ snapshot の結果をホスト側 ref テーブルにも写す。
+    /// ブリッジ即死時のフォールバック tap(ref) と、CLI プロセス跨ぎの手動駆動を守る保険
+    private func syncLocalState(from snapshot: SnapshotResponse) {
+        var centers: [Int: (x: Double, y: Double)] = [:]
+        for element in snapshot.elements {
+            centers[element.ref] = (x: element.frame.centerX, y: element.frame.centerY)
+        }
+        refCenters = centers
+        screen = snapshot.screen
+        persistState()
     }
 
     public func type(ref: Int?, text: String) async throws {
         if let ref {
-            try await tap(ref: ref)
+            try await tap(ref: ref)  // ref はホスト側で座標解決(ブリッジ/直叩きの履歴混在でも安全)
             try await Task.sleep(nanoseconds: 500_000_000)
         }
-        // adb input text の制約: 空白は %s、ASCII 以外は入らないことがある(既知の制限)
+        if let client = await ensureBridge() {
+            do {
+                try await client.type(ref: nil, text: text)  // ACTION_SET_TEXT(日本語も IME 不要)
+                return
+            } catch let error as DriverError {
+                switch error {
+                case .bridgeUnreachable:
+                    markBridgeDead()
+                case .badResponse(let status, _) where status == 500:
+                    break  // SET_TEXT を受けないフィールド(WebView 等)→ この呼び出しだけ直叩きへ
+                default:
+                    throw error
+                }
+            }
+        }
+        // 日本語などの非 ASCII は input text で入力できない → Unicode IME 経由(UnicodeIME.swift)
+        guard text.allSatisfy(\.isASCII) else {
+            try await typeViaUnicodeIME(text)
+            return
+        }
+        // ASCII は input text 直接(IME 切り替え不要で速い。空白は %s に置換)
         let escaped = text
             .replacingOccurrences(of: " ", with: "%s")
             .replacingOccurrences(of: "'", with: "\\'")
@@ -192,6 +259,15 @@ public final class AndroidDriver: AppDriver {
     }
 
     public func swipe(_ direction: FTSwipeDirection) async throws {
+        if let client = await ensureBridge() {
+            do {
+                try await client.swipe(direction)
+                return
+            } catch let error as DriverError {
+                guard case .bridgeUnreachable = error else { throw error }
+                markBridgeDead()
+            }
+        }
         let w = screen.width > 0 ? screen.width : 1080
         let h = screen.height > 0 ? screen.height : 2400
         let cx = w / 2, cy = h / 2
@@ -212,15 +288,40 @@ public final class AndroidDriver: AppDriver {
         guard let center = refCenters[ref] else {
             throw DriverError.badResponse(status: 404, body: "参照番号 [\(ref)] は未知です")
         }
+        if let client = await ensureBridge() {
+            do {
+                try await client.press(ref: ref, duration: duration)
+                return
+            } catch let error as DriverError {
+                switch error {
+                case .bridgeUnreachable:
+                    markBridgeDead()
+                case .badResponse(404, _):
+                    break  // ブリッジ再起動等で ref 表が飛んだ → ホスト座標で直叩きへ
+                default:
+                    throw error
+                }
+            }
+        }
         let x = String(Int(center.0)), y = String(Int(center.1))
         _ = try adb(["shell", "input", "swipe", x, y, x, y, String(Int(duration * 1000))])
     }
 
     public func screenshot() async throws -> Data {
-        try adbData(["exec-out", "screencap", "-p"])
+        if let client = await ensureBridge() {
+            do {
+                return try await client.screenshot()
+            } catch let error as DriverError {
+                guard case .bridgeUnreachable = error else { throw error }
+                markBridgeDead()
+            }
+        }
+        return try adbData(["exec-out", "screencap", "-p"])
     }
 
     public func terminate() async throws {
+        restoreStateIfNeeded()
+        restoreOriginalIMEIfNeeded()
         if let package = currentPackage {
             _ = try adb(["shell", "am", "force-stop", package])
             currentPackage = nil
@@ -230,6 +331,17 @@ public final class AndroidDriver: AppDriver {
     // MARK: - hierarchy dump
 
     func dumpHierarchy() throws -> String {
+        do {
+            return try dumpHierarchyOnce()
+        } catch {
+            // 別プロセスのブリッジが a11y 接続を握っていると dump が Killed される
+            // → ブリッジを止めて1回だけやり直す(ブリッジ側は次回 probe で自己修復する)
+            _ = try? adb(["shell", "am", "force-stop", Self.bridgePackage])
+            return try dumpHierarchyOnce()
+        }
+    }
+
+    private func dumpHierarchyOnce() throws -> String {
         // まず /dev/tty への直接ダンプ(1コマンドで速い)、だめならファイル経由
         if let direct = try? adb(["exec-out", "uiautomator", "dump", "/dev/tty"]),
            direct.output.contains("<hierarchy") {
@@ -300,7 +412,9 @@ public final class AndroidDriver: AppDriver {
         }
 
         return ElementInfo(ref: ref, type: type, identifier: identifier, label: label,
-                           value: value, placeholder: nil, enabled: node.enabled,
+                           value: value,
+                           placeholder: (isInput && !node.hint.isEmpty) ? node.hint : nil,
+                           enabled: node.enabled,
                            frame: node.frame, depth: node.depth)
     }
 }
@@ -312,6 +426,7 @@ struct UINode {
     var text = ""
     var contentDesc = ""
     var resourceID = ""
+    var hint = ""
     var clickable = false
     var checkable = false
     var checked = false
@@ -372,6 +487,9 @@ final class UIAutomatorXMLParser: NSObject, XMLParserDelegate {
         var node = UINode()
         node.className = attributes["class"] ?? ""
         node.text = attributes["text"] ?? ""
+        node.hint = attributes["hint"] ?? ""
+        // dump はヒント表示中の text にヒント文字列を漏らす → 値ではないので空扱いにする
+        if !node.hint.isEmpty, node.text == node.hint { node.text = "" }
         node.contentDesc = attributes["content-desc"] ?? ""
         node.resourceID = attributes["resource-id"] ?? ""
         node.clickable = attributes["clickable"] == "true"
