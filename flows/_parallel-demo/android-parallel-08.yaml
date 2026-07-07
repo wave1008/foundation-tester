@@ -1,0 +1,30 @@
+name: ネットワーク設定 並列テスト 08
+app: com.android.settings
+platform: android
+goal: 「Network & internet」を開いて、「Internet」が表示されることを確認する
+generatedBy: ftester explore v0.1 (apple-fm-on-device)
+steps:
+- action: tap
+  locator:
+    label: Network & internet
+  fallbacks:
+  - type: Cell
+    index: 2
+  note: 「Network & internet」に移動するステップ1を実行する
+- assert: exists
+  locator:
+    id: collapsing_toolbar
+  fallbacks:
+  - label: Network & internet
+  - type: Other
+    index: 1
+  timeout: 5
+  note: 目標から自動抽出した確認(探索終了時にコード側で検証済み)
+- assert: exists
+  locator:
+    label: Internet
+  fallbacks:
+  - type: Cell
+    index: 0
+  timeout: 5
+  note: 目標から自動抽出した確認(探索終了時にコード側で検証済み)

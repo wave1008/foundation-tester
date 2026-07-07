@@ -7,7 +7,7 @@
 
 import Foundation
 
-public struct TriageInfo {
+public struct TriageInfo: Sendable {
     /// appBug / flakiness / locatorDrift / envIssue
     public let failureClass: String
     public let summary: String
@@ -20,7 +20,7 @@ public struct TriageInfo {
     }
 }
 
-public struct HealProposal {
+public struct HealProposal: Sendable {
     public let element: ElementInfo
     /// high / medium / low
     public let confidence: String
@@ -41,8 +41,8 @@ public protocol ReplayDelegate: AnyObject {
                 snapshot: SnapshotResponse?, screenshotPNG: Data?) async -> TriageInfo?
 }
 
-public struct StepResult {
-    public enum Status {
+public struct StepResult: Sendable {
+    public enum Status: Sendable {
         case passed
         case passedViaFallback(FlowLocator)
         case healed(FlowLocator)
@@ -54,7 +54,7 @@ public struct StepResult {
     public let status: Status
 }
 
-public struct RunResult {
+public struct RunResult: Sendable {
     public let flow: Flow
     public var steps: [StepResult] = []
     /// 自己修復でロケータが書き換わったフロー(dirty: true 付き)。保存は呼び出し側の判断
@@ -200,6 +200,11 @@ public final class Replayer {
         if let (found, usedFallback) = resolved {
             element = found
             if let fallback = usedFallback { status = .passedViaFallback(fallback) }
+        } else if step.optional == true {
+            // 出るかどうか不定な要素(システムダイアログ等)。無ければ何もしないで先へ進む。
+            // 自己修復の対象にもしない(別要素への誤リダイレクトを防ぐ)
+            return StepResult(index: index, description: step.summary,
+                              status: .skipped("要素が見つからないため省略(optional)"))
         } else if healingEnabled, let delegate,
                   let proposal = await delegate.healLocator(step: step, snapshot: snapshot),
                   proposal.confidence == "high" {

@@ -6,10 +6,10 @@ import FTCore
 
 struct ContentView: View {
     @Environment(AppModel.self) private var model
-    @State private var tab = 0
+    // FT_TAB=3 などで初期タブを指定可(検証・デモ用)
+    @State private var tab = Int(ProcessInfo.processInfo.environment["FT_TAB"] ?? "0") ?? 0
 
     var body: some View {
-        @Bindable var model = model
         NavigationSplitView {
             sidebar
         } detail: {
@@ -18,6 +18,7 @@ struct ContentView: View {
                     Text("フロー実行").tag(0)
                     Text("ライブ操作").tag(1)
                     Text("FM探索").tag(2)
+                    Text("設定").tag(3)
                 }
                 .pickerStyle(.segmented)
                 .padding([.horizontal, .top])
@@ -25,14 +26,19 @@ struct ContentView: View {
                 switch tab {
                 case 0: RunView()
                 case 1: LiveView()
-                default: ExploreView()
+                case 2: ExploreView()
+                default: SettingsView()
                 }
             }
         }
         .toolbar { toolbarContent }
         .task {
             model.refreshFlows()
-            await model.checkConnection()
+            await model.refreshTargets()
+            // 起動時に全実行(スモークテスト・デモ用): FT_AUTORUN=1 swift run ftester-gui
+            if ProcessInfo.processInfo.environment["FT_AUTORUN"] == "1" {
+                await model.runAll()
+            }
         }
     }
 
@@ -78,24 +84,19 @@ struct ContentView: View {
     private var toolbarContent: some ToolbarContent {
         @Bindable var model = model
         ToolbarItemGroup {
-            Picker("Platform", selection: $model.platform) {
-                Text("iOS").tag("ios")
-                Text("Android").tag("android")
+            // ライブ操作・FM探索の対象デバイス(発見済みの iOS ブリッジ + Android デバイス)
+            Picker("対象", selection: $model.selectedTargetID) {
+                if model.targets.isEmpty {
+                    Text("デバイスなし").tag(String?.none)
+                }
+                ForEach(model.targets) { target in
+                    Text(target.label).tag(Optional(target.id))
+                }
             }
-            .pickerStyle(.segmented)
-
-            if model.platform == "ios" {
-                TextField("port", text: $model.portText)
-                    .frame(width: 56)
-                    .textFieldStyle(.roundedBorder)
-            } else {
-                TextField("serial(任意)", text: $model.serial)
-                    .frame(width: 120)
-                    .textFieldStyle(.roundedBorder)
-            }
+            .help("ライブ操作・FM探索の対象デバイス(全実行は稼働中の全デバイスを自動で使います)")
 
             Button {
-                Task { await model.checkConnection() }
+                Task { await model.refreshTargets() }
             } label: {
                 HStack(spacing: 5) {
                     Circle()
@@ -106,7 +107,7 @@ struct ContentView: View {
                         .lineLimit(1)
                 }
             }
-            .help("クリックで再確認")
+            .help("クリックで再スキャン(設定ペインのポート範囲 + adb devices)")
         }
     }
 
@@ -131,45 +132,54 @@ struct RunView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        @Bindable var model = model
         VSplitView {
-            VStack(alignment: .leading, spacing: 8) {
-                if let entry = model.selectedEntry {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(entry.flow.name).font(.headline).lineLimit(2)
-                            Text("\(entry.flow.app) [\(entry.flow.platform ?? "ios")]")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Toggle("自己修復(--heal)", isOn: $model.heal)
-                            .toggleStyle(.checkbox)
-                        Button {
-                            Task { await model.runSelected() }
-                        } label: {
-                            Label("実行", systemImage: "play.fill")
-                        }
-                        .keyboardShortcut("r")
-                        .disabled(model.runningFlow)
-                    }
-                    List(Array(entry.flow.steps.enumerated()), id: \.offset) { index, step in
-                        Text("\(index + 1). \(step.summary)")
-                            .font(.system(.body, design: .monospaced))
-                            .lineLimit(1)
-                    }
-                } else {
-                    ContentUnavailableView("フローを選択してください",
-                                           systemImage: "list.bullet.rectangle")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
+            HSplitView {
+                flowPane
+                    .frame(minWidth: 280)
+                DeviceMonitorGridView()
+                    .frame(minWidth: 220)
             }
-            .padding()
-            .frame(minHeight: 200)
+            .frame(minHeight: 220)
 
             logView
                 .frame(minHeight: 140)
         }
+    }
+
+    private var flowPane: some View {
+        @Bindable var model = model
+        return VStack(alignment: .leading, spacing: 8) {
+            if let entry = model.selectedEntry {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(entry.flow.name).font(.headline).lineLimit(2)
+                        Text("\(entry.flow.app) [\(entry.flow.platform ?? "ios")]")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Toggle("自己修復(--heal)", isOn: $model.heal)
+                        .toggleStyle(.checkbox)
+                    Button {
+                        Task { await model.runSelected() }
+                    } label: {
+                        Label("実行", systemImage: "play.fill")
+                    }
+                    .keyboardShortcut("r")
+                    .disabled(model.runningFlow)
+                }
+                List(Array(entry.flow.steps.enumerated()), id: \.offset) { index, step in
+                    Text("\(index + 1). \(step.summary)")
+                        .font(.system(.body, design: .monospaced))
+                        .lineLimit(1)
+                }
+            } else {
+                ContentUnavailableView("フローを選択してください",
+                                       systemImage: "list.bullet.rectangle")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .padding()
     }
 
     private var logView: some View {
@@ -177,25 +187,58 @@ struct RunView: View {
             HStack {
                 Text("実行ログ").font(.caption).foregroundStyle(.secondary)
                 Spacer()
-                Button("クリア") { model.runLog = [] }
+                Button("クリア") { model.clearLanes() }
                     .buttonStyle(.plain)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            if model.lanes.isEmpty {
+                ScrollView {
+                    Text("")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .background(.background.secondary)
+            } else {
+                // ワーカー毎のログレーン(並列実行時の混線防止。1ワーカーなら従来同様の1列)
+                HStack(alignment: .top, spacing: 8) {
+                    ForEach(model.lanes) { lane in
+                        LaneLogView(lane: lane)
+                    }
+                }
+            }
+        }
+        .padding([.horizontal, .bottom])
+    }
+}
+
+/// 1ワーカー分のログ列(自動スクロール付き)
+struct LaneLogView: View {
+    let lane: AppModel.WorkerLane
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 5) {
+                Circle()
+                    .fill(lane.running ? .blue : .secondary.opacity(0.4))
+                    .frame(width: 7, height: 7)
+                Text(lane.title)
+                    .font(.caption.bold())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
             ScrollViewReader { proxy in
                 ScrollView {
-                    Text(model.runLog.joined(separator: "\n"))
+                    Text(lane.log.joined(separator: "\n"))
                         .font(.system(size: 11, design: .monospaced))
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .textSelection(.enabled)
                     Color.clear.frame(height: 1).id("bottom")
                 }
                 .background(.background.secondary)
-                .onChange(of: model.runLog.count) {
+                .onChange(of: lane.log.count) {
                     proxy.scrollTo("bottom")
                 }
             }
         }
-        .padding([.horizontal, .bottom])
     }
 }

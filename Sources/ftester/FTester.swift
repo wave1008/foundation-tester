@@ -414,7 +414,7 @@ struct RunFlows: AsyncParsableCommand {
         guard !files.isEmpty else {
             throw ValidationError("フローファイル(.yaml)が見つかりません: \(path)")
         }
-        let flowItems: [FlowItem] = try files.map { FlowItem(url: $0, flow: try FlowIO.load(from: $0)) }
+        let flowItems: [FlowRunItem] = try files.map { FlowRunItem(url: $0, flow: try FlowIO.load(from: $0)) }
 
         // FM フック(利用不可でも再生自体は可能)
         var delegate: FMReplayDelegate?
@@ -446,7 +446,7 @@ struct RunFlows: AsyncParsableCommand {
 
     // MARK: - 逐次実行(ライブ出力)
 
-    private func runSequential(_ items: [FlowItem], port: UInt16,
+    private func runSequential(_ items: [FlowRunItem], port: UInt16,
                                delegate: FMReplayDelegate?) async throws -> Int {
         var failedCount = 0
         for item in items {
@@ -455,9 +455,12 @@ struct RunFlows: AsyncParsableCommand {
                 ? try AndroidDriver(serial: driverOptions.serial)
                 : BridgeClient(port: port)
             _ = try await driver.status()
-            let passed = await Self.runOne(item, driver: driver, delegate: delegate,
-                                           heal: heal, reportDir: reportDir,
-                                           label: platform, live: true)
+            let passed = await FlowRunner.runOne(
+                item: item, driver: driver, worker: platform,
+                delegate: delegate, healingEnabled: heal,
+                reportDir: URL(fileURLWithPath: reportDir)) { event in
+                for line in RunLogFormatter.lines(for: event) { print(line) }
+            }
             if !passed { failedCount += 1 }
         }
         return failedCount
@@ -465,119 +468,45 @@ struct RunFlows: AsyncParsableCommand {
 
     // MARK: - 並列実行(iOS はポート毎のワーカー、Android は専用ワーカー)
 
-    private func runParallel(_ items: [FlowItem], iosPorts: [UInt16],
+    private func runParallel(_ items: [FlowRunItem], iosPorts: [UInt16],
                              delegate: FMReplayDelegate?) async -> Int {
         let defaultPlatform = driverOptions.platform
-        let iosItems = items.filter { ($0.flow.platform ?? defaultPlatform) == "ios" }
         let androidItems = items.filter { ($0.flow.platform ?? defaultPlatform) == "android" }
-        let iosQueue = FlowQueue(iosItems)
-        let androidQueue = FlowQueue(androidItems)
         let portList = iosPorts.map(String.init).joined(separator: ", ")
         print("🚀 並列実行: iOS \(iosPorts.count) ワーカー(port: \(portList))"
               + (androidItems.isEmpty ? "" : " + Android 1 ワーカー") + "\n")
 
-        let heal = self.heal
-        let reportDir = self.reportDir
-        let serial = driverOptions.serial
-
-        return await withTaskGroup(of: Int.self, returning: Int.self) { group in
-            for port in iosPorts {
-                group.addTask {
-                    await Self.worker(queue: iosQueue, driver: BridgeClient(port: port),
-                                      label: "ios:\(port)", delegate: delegate,
-                                      heal: heal, reportDir: reportDir)
-                }
-            }
-            if !androidItems.isEmpty {
-                group.addTask {
-                    guard let driver = try? AndroidDriver(serial: serial) else {
-                        print("❌ Android ドライバを初期化できません(adb 未検出)")
-                        return androidItems.count
-                    }
-                    return await Self.worker(queue: androidQueue, driver: driver,
-                                             label: "android", delegate: delegate,
-                                             heal: heal, reportDir: reportDir)
-                }
-            }
-            var total = 0
-            for await failed in group { total += failed }
-            return total
+        var workers: [RunWorker] = iosPorts.map {
+            RunWorker(label: "ios:\($0)", platform: "ios", driver: BridgeClient(port: $0))
         }
-    }
-
-    static func worker(queue: FlowQueue, driver: AppDriver, label: String,
-                       delegate: FMReplayDelegate?, heal: Bool, reportDir: String) async -> Int {
-        var failed = 0
-        while let item = await queue.next() {
-            let passed = await runOne(item, driver: driver, delegate: delegate,
-                                      heal: heal, reportDir: reportDir, label: label, live: false)
-            if !passed { failed += 1 }
-        }
-        return failed
-    }
-
-    /// 1フローの実行。live=false の場合は出力をバッファして完了時にまとめて表示する
-    /// (並列時のステップ行の混線防止)
-    static func runOne(_ item: FlowItem, driver: AppDriver, delegate: FMReplayDelegate?,
-                       heal: Bool, reportDir: String, label: String, live: Bool) async -> Bool {
-        var buffer: [String] = []
-        func emit(_ line: String) {
-            if live { print(line) } else { buffer.append(line) }
-        }
-
-        emit("▶ \(item.url.lastPathComponent) [\(label)]")
-        if item.flow.dirty == true {
-            emit("  ⚠️ このフローは dirty(要レビュー)状態です")
-        }
-
-        let replayer = Replayer(driver: driver, delegate: delegate, healingEnabled: heal)
-        replayer.onStep = { step in
-            switch step.status {
-            case .passed:
-                emit("  ✅ \(step.index). \(step.description)")
-            case .passedViaFallback(let locator):
-                emit("  ✅ \(step.index). \(step.description)(フォールバック \(locator.summary))")
-            case .healed(let locator):
-                emit("  🔧 \(step.index). \(step.description) → 自己修復: \(locator.summary)")
-            case .failed(let reason):
-                emit("  ❌ \(step.index). \(step.description)")
-                emit("     \(reason)")
-            case .skipped(let reason):
-                emit("  ⚠️ \(step.index). \(step.description)(スキップ: \(reason))")
-            }
-        }
-        let result = await replayer.run(flow: item.flow)
-
-        if let healedFlow = result.healedFlow, heal {
-            try? FlowIO.save(healedFlow, to: item.url)
-            emit("  🔧 修復したロケータでフローを更新しました(dirty: true — 要レビュー)")
-        }
-        if result.passed {
-            emit("  → ✅ 成功\n")
-        } else {
-            if let triage = result.triage {
-                emit("  → 🔍 トリアージ: [\(triage.failureClass)] \(triage.summary)")
-            }
-            if let reportURL = try? ReportWriter.write(result: result,
-                                                       to: URL(fileURLWithPath: reportDir)) {
-                emit("  → ❌ 失敗 — レポート: \(reportURL.path)\n")
+        if !androidItems.isEmpty {
+            if let driver = try? AndroidDriver(serial: driverOptions.serial) {
+                workers.append(RunWorker(label: "android", platform: "android", driver: driver))
             } else {
-                emit("  → ❌ 失敗\n")
+                print("❌ Android ドライバを初期化できません(adb 未検出)")
+                // ワーカー不在の android フローは orchestrator が flowSkipped(失敗扱い)にする
             }
         }
-        if !live { print(buffer.joined(separator: "\n")) }
-        return result.passed
+
+        let orchestrator = RunOrchestrator(workers: workers, delegate: delegate,
+                                           healingEnabled: heal,
+                                           reportDir: URL(fileURLWithPath: reportDir))
+        async let summary = orchestrator.run(items: items, defaultPlatform: defaultPlatform)
+
+        // フロー毎にバッファして完了時に一括表示(並列時のステップ行の混線防止)
+        var buffers: [URL: [String]] = [:]
+        for await event in orchestrator.events {
+            let lines = RunLogFormatter.lines(for: event)
+            switch event {
+            case .flowStarted(_, let url, _, _), .step(_, let url, _), .flowHealed(_, let url):
+                buffers[url, default: []].append(contentsOf: lines)
+            case .flowFinished(_, let url, _, _, _):
+                let all = (buffers.removeValue(forKey: url) ?? []) + lines
+                print(all.joined(separator: "\n"))
+            default:
+                if !lines.isEmpty { print(lines.joined(separator: "\n")) }
+            }
+        }
+        return await summary.failed
     }
-}
-
-struct FlowItem {
-    let url: URL
-    let flow: Flow
-}
-
-/// 並列ワーカーへのフロー分配キュー(早い者勝ち)
-actor FlowQueue {
-    private var items: [FlowItem]
-    init(_ items: [FlowItem]) { self.items = items }
-    func next() -> FlowItem? { items.isEmpty ? nil : items.removeFirst() }
 }
