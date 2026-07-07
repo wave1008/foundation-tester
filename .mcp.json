@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "ftester": {
+      "command": "bash",
+      "args": [
+        "-c",
+        "swift build --product ftester-mcp > /dev/null 2>&1 && exec .build/debug/ftester-mcp"
+      ]
+    }
+  }
+}
