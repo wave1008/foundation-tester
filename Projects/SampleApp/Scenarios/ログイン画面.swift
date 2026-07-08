@@ -5,7 +5,7 @@
 import FTDSL
 
 @TestClass(app: "com.example.sampleapp", platform: "ios")
-class メールアドレス_test_example_com_パスワード_password1 {
+class ログイン画面 {
 
     @Test("メールアドレス test@example.com、パスワード password123 でログインし、ホーム画面に「ようこそ」が表示されることを確認する")
     func S0010() {

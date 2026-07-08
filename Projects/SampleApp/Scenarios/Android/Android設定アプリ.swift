@@ -5,7 +5,7 @@
 import FTDSL
 
 @TestClass(app: "com.android.settings", platform: "android")
-class Network_internet_を開いて_Internet_が表示されることを {
+class Android設定アプリ {
 
     @Test("「Network & internet」を開いて、「Internet」が表示されることを確認する")
     func S0010() {
