@@ -1,6 +1,6 @@
 // AppModel.swift
-// GUI の状態管理。実行・探索・ライブ操作のロジックは既存モジュール
-// (Replayer / ExplorerAgent / BridgeClient / AndroidDriver)をそのまま使う。
+// GUI の状態管理。シナリオ実行は ftester-scenarios サブプロセス(ScenarioHost)、
+// 探索・ライブ操作は既存モジュール(ExplorerAgent / BridgeClient / AndroidDriver)を使う。
 
 import AppKit
 import Foundation
@@ -8,6 +8,7 @@ import FTAgent
 import FTAndroid
 import FTBridgeClient
 import FTCore
+import FTDSL
 import Observation
 
 @MainActor
@@ -126,13 +127,12 @@ final class AppModel {
         }
     }
 
-    // MARK: - フロー実行
+    // MARK: - シナリオ実行
 
-    struct FlowEntry: Identifiable {
-        let url: URL
-        var flow: Flow
+    struct ScenarioEntry: Identifiable {
+        let info: ScenarioInfo
         var state: RunState = .idle
-        var id: URL { url }
+        var id: URL { ScenarioRunItem.url(for: info.id) }
     }
 
     enum RunState {
@@ -147,14 +147,16 @@ final class AppModel {
         var running = false
     }
 
-    var flows: [FlowEntry] = []
-    var selectedFlowID: URL?
+    var scenarios: [ScenarioEntry] = []
+    var selectedScenarioID: URL?
     var heal = false
     var runningFlow = false
     var lanes: [WorkerLane] = []
+    /// シナリオ一覧のビルド/読込状態(nil = 正常)
+    var scenarioListStatus: String?
 
-    var selectedEntry: FlowEntry? {
-        flows.first { $0.url == selectedFlowID }
+    var selectedEntry: ScenarioEntry? {
+        scenarios.first { $0.id == selectedScenarioID }
     }
 
     // MARK: - ライブ操作
@@ -235,59 +237,83 @@ final class AppModel {
         }
     }
 
-    // MARK: - フロー
+    // MARK: - シナリオ一覧
 
-    func refreshFlows() {
-        let dir = URL(fileURLWithPath: "flows")
-        let files = (try? FileManager.default.contentsOfDirectory(
-            at: dir, includingPropertiesForKeys: nil)) ?? []
-        let states = Dictionary(uniqueKeysWithValues: flows.map { ($0.url, $0.state) })
-        flows = files
-            .filter { $0.pathExtension == "yaml" || $0.pathExtension == "yml" }
-            .sorted { $0.lastPathComponent < $1.lastPathComponent }
-            .compactMap { url in
-                (try? FlowIO.load(from: url)).map {
-                    FlowEntry(url: url, flow: $0, state: states[url] ?? .idle)
-                }
+    /// シナリオをビルドして一覧を取得する(ftester-scenarios サブプロセス経由)
+    func refreshScenarios() async {
+        scenarioListStatus = "シナリオをビルド中..."
+        let result: Result<[ScenarioInfo], Error> = await Task.detached {
+            do {
+                try ScenarioHost.build()
+                return .success(try ScenarioHost.list())
+            } catch {
+                return .failure(error)
             }
+        }.value
+
+        switch result {
+        case .success(let infos):
+            let states = Dictionary(uniqueKeysWithValues: scenarios.map { ($0.id, $0.state) })
+            scenarios = infos.map { info in
+                ScenarioEntry(info: info,
+                              state: states[ScenarioRunItem.url(for: info.id)] ?? .idle)
+            }
+            scenarioListStatus = nil
+        case .failure(let error):
+            scenarioListStatus = "⚠️ \(error.localizedDescription)"
+        }
+        // 選択が無効になったら先頭を自動選択
+        if scenarios.first(where: { $0.id == selectedScenarioID }) == nil {
+            selectedScenarioID = scenarios.first?.id
+        }
     }
 
     private func setState(_ url: URL, _ state: RunState) {
-        guard let index = flows.firstIndex(where: { $0.url == url }) else { return }
-        flows[index].state = state
+        guard let index = scenarios.firstIndex(where: { $0.id == url }) else { return }
+        scenarios[index].state = state
     }
 
     func runSelected() async {
         guard let entry = selectedEntry else { return }
-        await runFlows([entry])
+        await runScenarios([entry])
     }
 
     func runAll() async {
-        await runFlows(flows)
+        await runScenarios(scenarios)
     }
 
-    /// フロー群を実行する。複数ポート指定時は iOS フローをポート毎のワーカーで並列消化し、
-    /// Android フローは専用ワーカー1本で流す(CLI の run --ports と同じオーケストレータ)。
-    func runFlows(_ entries: [FlowEntry]) async {
+    /// シナリオ群を実行する。iOS はブリッジ毎、Android はデバイス毎のワーカーで並列消化する
+    /// (CLI の run --ports と同じオーケストレータ。実行の実体はサブプロセス)。
+    func runScenarios(_ entries: [ScenarioEntry]) async {
         guard !runningFlow, !entries.isEmpty else { return }
         runningFlow = true
+
+        // 実行前にシナリオを最新化(ビルドはホスト側で1回だけ)
+        await refreshScenarios()
+        if scenarioListStatus != nil {
+            lanes = [WorkerLane(id: "system", title: "⚠️ ビルド失敗",
+                                log: [scenarioListStatus ?? ""])]
+            runningFlow = false
+            return
+        }
 
         // 稼働中のブリッジ・デバイスを再スキャンして動的にワーカーを割り当てる
         await refreshTargets()
         monitor.rematch()
 
-        let items = entries.map { FlowRunItem(url: $0.url, flow: $0.flow) }
-        let iosItems = items.filter { ($0.flow.platform ?? "ios") == "ios" }
-        let androidItems = items.filter { ($0.flow.platform ?? "ios") == "android" }
+        let items = entries.map { ScenarioRunItem(info: $0.info) }
+        let iosItems = items.filter { ($0.info.platform ?? "ios") == "ios" }
+        let androidItems = items.filter { ($0.info.platform ?? "ios") == "android" }
 
         var workers: [RunWorker] = []
         if !iosItems.isEmpty {
             let bridges = targets.filter { $0.platform == "ios" }
-            // フロー数を超えるワーカーは立てない(余分なウォームアップ回避)
+            // シナリオ数を超えるワーカーは立てない(余分なウォームアップ回避)
             for target in bridges.prefix(min(bridges.count, iosItems.count)) {
                 guard let port = target.port else { continue }
                 workers.append(RunWorker(label: target.id, platform: "ios",
-                                         driver: BridgeClient(port: port)))
+                                         driver: BridgeClient(port: port),
+                                         connection: DriverConnection(platform: "ios", port: port)))
             }
         }
         if !androidItems.isEmpty {
@@ -296,7 +322,9 @@ final class AppModel {
             let androidTargets = targets.filter { $0.platform == "android" }
             for target in androidTargets.prefix(min(androidTargets.count, androidItems.count)) {
                 guard let driver = try? AndroidDriver(serial: target.serial) else { continue }
-                workers.append(RunWorker(label: target.id, platform: "android", driver: driver))
+                workers.append(RunWorker(label: target.id, platform: "android", driver: driver,
+                                         connection: DriverConnection(platform: "android",
+                                                                      serial: target.serial)))
             }
         }
 
@@ -305,11 +333,9 @@ final class AppModel {
             return WorkerLane(id: worker.label, title: target?.label ?? worker.label)
         }
 
-        let delegate: FMReplayDelegate? = fmReport.available ? FMReplayDelegate() : nil
-        let orchestrator = RunOrchestrator(workers: workers, delegate: delegate,
-                                           healingEnabled: heal,
+        let orchestrator = RunOrchestrator(workers: workers, healingEnabled: heal,
                                            reportDir: URL(fileURLWithPath: "reports"))
-        // イベントは MainActor 上で順に消費する(レーン追記とフロー状態の更新)
+        // イベントは MainActor 上で順に消費する(レーン追記とシナリオ状態の更新)
         let consumer = Task { @MainActor [weak self] in
             for await event in orchestrator.events {
                 self?.handle(event)
@@ -447,22 +473,36 @@ final class AppModel {
 
                 var flow = result.flow
                 flow.platform = flowPlatform
-                let dir = URL(fileURLWithPath: "flows")
-                try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-                let url = dir.appendingPathComponent(FlowIO.suggestedFileName(for: flow))
-                try FlowIO.save(flow, to: url)
 
                 switch result.outcome {
                 case .completed(let desc):
                     self.exploreLog.append("✅ 目標達成(\(result.stepsTaken)ステップ)"
                                            + (desc.map { " — \($0)" } ?? ""))
                 case .gaveUp(let reason):
-                    self.exploreLog.append("⚠️ 中断: \(reason)(dirty 付きで保存)")
+                    self.exploreLog.append("⚠️ 中断: \(reason)(TODO コメント付きで生成)")
                 case .stepLimitReached:
-                    self.exploreLog.append("⚠️ ステップ上限に到達(dirty 付きで保存)")
+                    self.exploreLog.append("⚠️ ステップ上限に到達(TODO コメント付きで生成)")
                 }
-                self.exploreLog.append("📄 保存: \(url.lastPathComponent)")
-                self.refreshFlows()
+
+                // Swift シナリオとして生成 → ビルド検証(失敗時は _disabled/ に隔離)
+                let generatedDir = URL(fileURLWithPath: "Scenarios/Generated")
+                let quarantineDir = URL(fileURLWithPath: "Scenarios/_disabled")
+                let className = ScenarioCodeGen.suggestedClassName(
+                    for: flow,
+                    existing: ScenarioCodeGen.existingClassNames(
+                        in: [URL(fileURLWithPath: "Scenarios"), generatedDir, quarantineDir]))
+                let code = ScenarioCodeGen.render(
+                    flow: flow, className: className,
+                    generatedBy: "ftester explore v0.1 (apple-fm-on-device)")
+                self.exploreLog.append("→ 生成コードをビルド検証中...")
+                let url = try await Task.detached {
+                    try ScenarioCodeGen.writeValidated(code: code, className: className,
+                                                       dir: generatedDir,
+                                                       quarantineDir: quarantineDir)
+                }.value
+                self.exploreLog.append("📄 生成: \(url.path)")
+                self.exploreLog.append("   実行: ftester run --scenario \(className).\(ScenarioCodeGen.methodName(1))")
+                await self.refreshScenarios()
             } catch is CancellationError {
                 self.exploreLog.append("⛔️ キャンセルしました")
             } catch {

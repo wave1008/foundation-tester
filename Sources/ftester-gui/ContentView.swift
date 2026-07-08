@@ -33,7 +33,7 @@ struct ContentView: View {
         }
         .toolbar { toolbarContent }
         .task {
-            model.refreshFlows()
+            await model.refreshScenarios()
             await model.refreshTargets()
             // 起動時に全実行(スモークテスト・デモ用): FT_AUTORUN=1 swift run ftester-gui
             if ProcessInfo.processInfo.environment["FT_AUTORUN"] == "1" {
@@ -44,38 +44,45 @@ struct ContentView: View {
 
     private var sidebar: some View {
         @Bindable var model = model
-        return List(selection: $model.selectedFlowID) {
-            Section("フロー(flows/)") {
-                ForEach(model.flows) { entry in
+        return List(selection: $model.selectedScenarioID) {
+            Section("シナリオ(Scenarios/)") {
+                ForEach(model.scenarios) { entry in
                     HStack(spacing: 8) {
                         stateIcon(entry.state)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(entry.flow.name)
+                            Text(entry.info.id)
                                 .lineLimit(1)
-                            Text("\(entry.flow.platform ?? "ios") ・ \(entry.flow.steps.count) steps"
-                                 + (entry.flow.dirty == true ? " ・ dirty" : ""))
+                            Text("\(entry.info.platform ?? "ios/android")"
+                                 + (entry.info.title.isEmpty ? "" : " ・ \(entry.info.title)"))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
+                                .lineLimit(1)
                         }
                     }
-                    .tag(entry.url)
+                    .tag(entry.id)
                 }
+            }
+            if let status = model.scenarioListStatus {
+                Text(status)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
             }
         }
         .navigationSplitViewColumnWidth(min: 240, ideal: 300)
         .toolbar {
             ToolbarItemGroup {
                 Button {
-                    model.refreshFlows()
+                    Task { await model.refreshScenarios() }
                 } label: {
-                    Label("再読込", systemImage: "arrow.clockwise")
+                    Label("再読込(ビルド)", systemImage: "arrow.clockwise")
                 }
                 Button {
                     Task { await model.runAll() }
                 } label: {
                     Label("全実行", systemImage: "play.square.stack")
                 }
-                .disabled(model.runningFlow || model.flows.isEmpty)
+                .disabled(model.runningFlow || model.scenarios.isEmpty)
             }
         }
     }
@@ -152,8 +159,8 @@ struct RunView: View {
             if let entry = model.selectedEntry {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(entry.flow.name).font(.headline).lineLimit(2)
-                        Text("\(entry.flow.app) [\(entry.flow.platform ?? "ios")]")
+                        Text(entry.info.id).font(.headline).lineLimit(2)
+                        Text("\(entry.info.app) [\(entry.info.platform ?? "ios/android")]")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -168,13 +175,17 @@ struct RunView: View {
                     .keyboardShortcut("r")
                     .disabled(model.runningFlow)
                 }
-                List(Array(entry.flow.steps.enumerated()), id: \.offset) { index, step in
-                    Text("\(index + 1). \(step.summary)")
-                        .font(.system(.body, design: .monospaced))
-                        .lineLimit(1)
+                if !entry.info.title.isEmpty {
+                    Text(entry.info.title)
+                        .font(.system(.body))
+                        .foregroundStyle(.secondary)
                 }
+                Spacer()
+                Text("ステップの内容は Scenarios/ のソースと実行ログで確認できます")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
             } else {
-                ContentUnavailableView("フローを選択してください",
+                ContentUnavailableView("シナリオを選択してください",
                                        systemImage: "list.bullet.rectangle")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }

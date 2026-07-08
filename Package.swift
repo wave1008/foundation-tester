@@ -1,4 +1,5 @@
 // swift-tools-version: 6.0
+import CompilerPluginSupport
 import PackageDescription
 
 let swift5Mode: [SwiftSetting] = [.swiftLanguageMode(.v5)]
@@ -10,13 +11,14 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.5.0"),
-        .package(url: "https://github.com/jpsim/Yams", from: "5.1.0"),
+        // @TestClass/@Test マクロの実装(コンパイル時のみ。成果物にはリンクされない)
+        .package(url: "https://github.com/swiftlang/swift-syntax", "600.0.1"..<"700.0.0"),
     ],
     targets: [
-        // Flow DSL・AppDriverプロトコル・スナップショット描画などプラットフォーム非依存の中核
+        // ステップモデル・AppDriverプロトコル・StepExecutor・スナップショット描画など
+        // プラットフォーム非依存の中核(外部依存ゼロ)
         .target(
             name: "FTCore",
-            dependencies: ["Yams"],
             swiftSettings: swift5Mode
         ),
         // XCUITestランナー(ブリッジ)へのHTTPクライアントと起動管理
@@ -37,7 +39,7 @@ let package = Package(
             dependencies: ["FTCore", "FTBridgeClient"],
             swiftSettings: swift5Mode
         ),
-        // GUI(SwiftUI macOS アプリ)。フロー実行とライブ操作
+        // GUI(SwiftUI macOS アプリ)。シナリオ実行とライブ操作
         .executableTarget(
             name: "ftester-gui",
             dependencies: [
@@ -45,6 +47,7 @@ let package = Package(
                 "FTBridgeClient",
                 "FTAgent",
                 "FTAndroid",
+                "FTDSL",
             ],
             swiftSettings: swift5Mode
         ),
@@ -66,7 +69,53 @@ let package = Package(
                 "FTBridgeClient",
                 "FTAgent",
                 "FTAndroid",
+                "FTDSL",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
+            ],
+            swiftSettings: swift5Mode
+        ),
+        // @TestClass/@Test マクロ実装(swift-syntax はこのターゲットに閉じる)
+        .macro(
+            name: "FTDSLMacros",
+            dependencies: [
+                .product(name: "SwiftSyntaxMacros", package: "swift-syntax"),
+                .product(name: "SwiftCompilerPlugin", package: "swift-syntax"),
+            ],
+            swiftSettings: swift5Mode
+        ),
+        // Shirates 風 Swift テスト DSL(シナリオ記述用のユーザー向けライブラリ)
+        .target(
+            name: "FTDSL",
+            dependencies: ["FTCore", "FTDSLMacros"],
+            swiftSettings: swift5Mode
+        ),
+        // ftester-scenarios の CLI 実装(list/run・NDJSON イベント出力)
+        .target(
+            name: "FTScenarioRunner",
+            dependencies: [
+                "FTDSL",
+                "FTCore",
+                "FTBridgeClient",
+                "FTAgent",
+                "FTAndroid",
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+            ],
+            swiftSettings: swift5Mode
+        ),
+        // ユーザーのシナリオ置き場(リポジトリ直下 Scenarios/)をそのまま実行ターゲットにする。
+        // _disabled/ は退避場所(コンパイル対象外。並列デモ等をここに置く)
+        .executableTarget(
+            name: "ftester-scenarios",
+            dependencies: ["FTScenarioRunner", "FTDSL"],
+            path: "Scenarios",
+            exclude: ["_disabled"],
+            swiftSettings: swift5Mode
+        ),
+        .testTarget(
+            name: "FTDSLMacrosTests",
+            dependencies: [
+                "FTDSLMacros",
+                .product(name: "SwiftSyntaxMacrosTestSupport", package: "swift-syntax"),
             ],
             swiftSettings: swift5Mode
         ),

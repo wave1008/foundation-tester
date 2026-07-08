@@ -1,9 +1,8 @@
 // Flow.swift
-// テストフロー DSL。FM が探索時に生成し、M3 の再生器が LLM なしで決定的に実行する。
-// YAML で保存し、人間がレビュー・編集できることを重視する。
+// ステップのインメモリ内部モデル。FM 探索(Explorer)の出力・コード生成(ScenarioCodeGen)の入力・
+// StepExecutor の実行単位・ヒールキャッシュの JSON 型として使う(永続化フォーマットではない)。
 
 import Foundation
-import Yams
 
 public struct Flow: Codable, Sendable {
     public var name: String
@@ -86,7 +85,11 @@ public struct FlowLocator: Codable, Equatable, Sendable {
     public var summary: String {
         if let id { return "id=\(id)" }
         if let label { return "label=\(label)" }
-        if let type { return "\(type)[\(index ?? 0)]" }
+        // 表示は 1 オリジン、1番目は [1] を省略(セレクタ式の表記と揃える。内部 index は 0 オリジン)
+        if let type {
+            let ordinal = (index ?? 0) + 1
+            return ordinal > 1 ? "\(type)[\(ordinal)]" : type
+        }
         return "(空)"
     }
 }
@@ -115,35 +118,31 @@ public enum FlowLocatorBuilder {
     }
 }
 
-public enum FlowIO {
-    public static func save(_ flow: Flow, to url: URL) throws {
-        let encoder = YAMLEncoder()
-        encoder.options.allowUnicode = true
-        encoder.options.sortKeys = false
-        let yaml = try encoder.encode(flow)
-        try yaml.write(to: url, atomically: true, encoding: .utf8)
-    }
-
-    public static func load(from url: URL) throws -> Flow {
-        let yaml = try String(contentsOf: url, encoding: .utf8)
-        return try YAMLDecoder().decode(Flow.self, from: yaml)
-    }
-
-    /// ゴール文字列からファイル名を作る(日本語可、記号は _ に)
-    public static func suggestedFileName(for flow: Flow) -> String {
-        let base = flow.name.isEmpty ? "flow" : flow.name
-        var sanitized = ""
-        for scalar in base.unicodeScalars {
-            if CharacterSet.alphanumerics.contains(scalar) ||
-               scalar.properties.isIdeographic ||
-               (0x3040...0x30FF).contains(Int(scalar.value)) {  // ひらがな・カタカナ
-                sanitized.unicodeScalars.append(scalar)
-            } else {
-                sanitized.append("_")
+public extension FlowStep {
+    /// ステップの人間可読な1行表現(ヒールプロンプト・コード生成のフォールバック表示用)
+    var summary: String {
+        if let action {
+            switch action {
+            case "type": return "type \(locatorSummary) \"\(text ?? "")\""
+            case "swipe": return "swipe \(direction ?? "up")"
+            case "scrollTo": return "scrollTo \(locatorSummary)"
+            default: return "\(action) \(locatorSummary)"
             }
         }
-        while sanitized.contains("__") { sanitized = sanitized.replacingOccurrences(of: "__", with: "_") }
-        let trimmed = String(sanitized.trimmingCharacters(in: CharacterSet(charactersIn: "_")).prefix(40))
-        return (trimmed.isEmpty ? "flow" : trimmed) + ".yaml"
+        if let assert {
+            if assert == "screenMatches" { return "assert screenMatches \"\(expected ?? "")\"" }
+            if assert == "valueEquals" { return "assert valueEquals \(locatorSummary) == \"\(expected ?? "")\"" }
+            return "assert \(assert) \(locatorSummary)"
+        }
+        return "(空ステップ)"
+    }
+
+    var locatorSummary: String {
+        var parts: [String] = []
+        if let locator { parts.append(locator.summary) }
+        if let fallbacks, !fallbacks.isEmpty {
+            parts.append("(fallback: \(fallbacks.map(\.summary).joined(separator: " → ")))")
+        }
+        return parts.isEmpty ? "(ロケータなし)" : parts.joined(separator: " ")
     }
 }

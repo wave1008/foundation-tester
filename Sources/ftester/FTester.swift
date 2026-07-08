@@ -9,6 +9,7 @@ import FTAgent
 import FTAndroid
 import FTBridgeClient
 import FTCore
+import FTDSL
 
 @main
 struct FTester: AsyncParsableCommand {
@@ -27,7 +28,7 @@ struct FTester: AsyncParsableCommand {
             Screenshot.self,
             Terminate.self,
             Explore.self,
-            RunFlows.self,
+            RunScenarios.self,
         ]
     )
 }
@@ -393,7 +394,7 @@ struct Terminate: AsyncParsableCommand {
 
 struct Explore: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
-        abstract: "FM エージェントがアプリを探索してテストフローを生成する")
+        abstract: "FM エージェントがアプリを探索して Swift シナリオを生成する")
 
     @Argument(help: "対象アプリの bundle identifier")
     var bundleID: String
@@ -404,8 +405,8 @@ struct Explore: AsyncParsableCommand {
     @Option(name: .customLong("max-steps"), help: "探索ステップ数の上限")
     var maxSteps: Int = 25
 
-    @Option(help: "フローの出力先ディレクトリ")
-    var out: String = "flows"
+    @Option(help: "シナリオの生成先ディレクトリ")
+    var out: String = "Scenarios/Generated"
 
     @OptionGroup var driverOptions: DriverOptions
 
@@ -422,71 +423,73 @@ struct Explore: AsyncParsableCommand {
         let result = try await agent.explore(bundleID: bundleID)
 
         var flow = result.flow
-        flow.platform = driverOptions.platform  // 再生時のドライバ自動選択に使う
-        let dir = URL(fileURLWithPath: out)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let url = dir.appendingPathComponent(FlowIO.suggestedFileName(for: flow))
-        try FlowIO.save(flow, to: url)
+        flow.platform = driverOptions.platform  // 実行時のドライバ自動選択に使う
 
         switch result.outcome {
         case .completed(let desc):
             print("✅ 目標達成(\(result.stepsTaken)ステップ)")
             if let desc, !desc.isEmpty { print("   最終画面: \(desc)") }
         case .gaveUp(let reason):
-            print("⚠️ 中断: \(reason)(フローに dirty: true を付けました)")
+            print("⚠️ 中断: \(reason)(TODO コメント付きで生成します)")
         case .stepLimitReached:
-            print("⚠️ ステップ上限に達しました(フローに dirty: true を付けました)")
+            print("⚠️ ステップ上限に達しました(TODO コメント付きで生成します)")
         }
-        print("📄 フローを保存: \(url.path)")
+
+        // Swift シナリオとして生成 → ビルド検証(失敗時は _disabled/ に隔離)
+        let dir = URL(fileURLWithPath: out)
+        let quarantineDir = URL(fileURLWithPath: "Scenarios/_disabled")
+        let className = ScenarioCodeGen.suggestedClassName(
+            for: flow,
+            existing: ScenarioCodeGen.existingClassNames(
+                in: [URL(fileURLWithPath: "Scenarios"), dir, quarantineDir]))
+        let code = ScenarioCodeGen.render(flow: flow, className: className,
+                                          generatedBy: "ftester explore v0.1 (apple-fm-on-device)")
+        print("→ 生成コードをビルド検証中...")
+        let url = try ScenarioCodeGen.writeValidated(code: code, className: className,
+                                                     dir: dir, quarantineDir: quarantineDir)
+        print("📄 シナリオを生成: \(url.path)")
+        print("   実行: swift run ftester run --scenario \(className).\(ScenarioCodeGen.methodName(1))")
     }
 }
 
-struct RunFlows: AsyncParsableCommand {
+struct RunScenarios: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "run",
-        abstract: "保存済みフローを決定的に再生する(失敗時のみ FM が介入)")
+        abstract: "Swift DSL シナリオ(Scenarios/)を実行する(失敗時のみ FM が介入)")
 
-    @Argument(help: "フローファイル(.yaml)またはディレクトリ")
-    var path: String = "flows"
+    @Option(name: .customLong("scenario"), parsing: .upToNextOption,
+            help: "実行するシナリオ ID(クラス名.メソッド名。クラス名のみで全シナリオ。複数可。省略時は全件)")
+    var scenarios: [String] = []
 
-    @Flag(help: "ロケータ自己修復を許可する(修復されたフローは dirty 付きで上書き保存)")
+    @Flag(help: "FM によるロケータ自己修復を許可する")
     var heal = false
 
     @Option(name: .customLong("report-dir"), help: "レポート出力先ディレクトリ")
     var reportDir: String = "reports"
 
-    @Option(help: "iOS フローを並列実行するブリッジのポート一覧(カンマ区切り。例: 8123,8124。各ポートは別デバイスで bridge up 済みであること)")
+    @Option(help: "iOS シナリオを並列実行するブリッジのポート一覧(カンマ区切り。例: 8123,8124。各ポートは別デバイスで bridge up 済みであること)")
     var ports: String?
+
+    @Flag(name: .customLong("skip-build"), help: "実行前の swift build をスキップする")
+    var skipBuild = false
 
     @OptionGroup var driverOptions: DriverOptions
 
     func run() async throws {
-        // フローファイル収集
-        let fm = FileManager.default
-        var isDir: ObjCBool = false
-        guard fm.fileExists(atPath: path, isDirectory: &isDir) else {
-            throw ValidationError("パスが存在しません: \(path)")
+        // ビルドはホスト側で 1 回だけ(サブプロセスは自らビルドしない)
+        if !skipBuild {
+            print("→ シナリオをビルド...")
+            try ScenarioHost.build()
         }
-        let files: [URL]
-        if isDir.boolValue {
-            files = (try fm.contentsOfDirectory(at: URL(fileURLWithPath: path),
-                                                includingPropertiesForKeys: nil))
-                .filter { $0.pathExtension == "yaml" || $0.pathExtension == "yml" }
-                .sorted { $0.lastPathComponent < $1.lastPathComponent }
-        } else {
-            files = [URL(fileURLWithPath: path)]
+        let all = try ScenarioHost.list()
+        guard !all.isEmpty else {
+            throw ValidationError("シナリオがありません(Scenarios/ に @TestClass を追加してください)")
         }
-        guard !files.isEmpty else {
-            throw ValidationError("フローファイル(.yaml)が見つかりません: \(path)")
-        }
-        let flowItems: [FlowRunItem] = try files.map { FlowRunItem(url: $0, flow: try FlowIO.load(from: $0)) }
+        let selected = try Self.resolve(scenarios, from: all)
+        let items = selected.map { ScenarioRunItem(info: $0) }
 
-        // FM フック(利用不可でも再生自体は可能)
-        var delegate: FMReplayDelegate?
-        if FMDoctor.check().available {
-            delegate = FMReplayDelegate()
-        } else {
-            print("⚠️ Foundation Models 利用不可: 自己修復・screenMatches・トリアージは無効です")
+        if FMDoctor.check().available == false {
+            print("⚠️ Foundation Models 利用不可: 自己修復・screenIs・トリアージは無効です")
         }
 
         let iosPorts: [UInt16] = ports?
@@ -496,33 +499,58 @@ struct RunFlows: AsyncParsableCommand {
 
         let failedCount: Int
         if iosPorts.count <= 1 {
-            failedCount = try await runSequential(flowItems, port: iosPorts[0], delegate: delegate)
+            failedCount = try await runSequential(items, port: iosPorts[0])
         } else {
-            failedCount = await runParallel(flowItems, iosPorts: iosPorts, delegate: delegate)
+            failedCount = await runParallel(items, iosPorts: iosPorts)
         }
 
         print(failedCount == 0
-              ? "✅ 全 \(flowItems.count) フロー成功"
-              : "❌ \(flowItems.count) フロー中 \(failedCount) 件失敗")
+              ? "✅ 全 \(items.count) シナリオ成功"
+              : "❌ \(items.count) シナリオ中 \(failedCount) 件失敗")
         if failedCount > 0 {
             throw ExitCode(1)
         }
     }
 
+    /// ID 指定を ScenarioInfo に解決する(完全一致 → クラス名一致で全シナリオ)
+    static func resolve(_ ids: [String], from all: [ScenarioInfo]) throws -> [ScenarioInfo] {
+        guard !ids.isEmpty else { return all }
+        var result: [ScenarioInfo] = []
+        for id in ids {
+            if let exact = all.first(where: { $0.id == id }) {
+                result.append(exact)
+                continue
+            }
+            let classMatches = all.filter { $0.id.hasPrefix(id + ".") }
+            guard !classMatches.isEmpty else {
+                throw ValidationError(
+                    "シナリオが見つかりません: \(id)(利用可能: \(all.map(\.id).joined(separator: ", ")))")
+            }
+            result.append(contentsOf: classMatches)
+        }
+        return result
+    }
+
     // MARK: - 逐次実行(ライブ出力)
 
-    private func runSequential(_ items: [FlowRunItem], port: UInt16,
-                               delegate: FMReplayDelegate?) async throws -> Int {
+    private func runSequential(_ items: [ScenarioRunItem], port: UInt16) async throws -> Int {
         var failedCount = 0
         for item in items {
-            let platform = item.flow.platform ?? driverOptions.platform
-            let driver: AppDriver = platform == "android"
-                ? try AndroidDriver(serial: driverOptions.serial)
-                : BridgeClient(port: port)
+            let platform = item.info.platform ?? driverOptions.platform
+            let driver: AppDriver
+            let connection: DriverConnection
+            if platform == "android" {
+                driver = try AndroidDriver(serial: driverOptions.serial)
+                connection = DriverConnection(platform: "android", serial: driverOptions.serial)
+            } else {
+                driver = BridgeClient(port: port)
+                connection = DriverConnection(platform: "ios", port: port)
+            }
             _ = try await driver.status()
-            let passed = await FlowRunner.runOne(
-                item: item, driver: driver, worker: platform,
-                delegate: delegate, healingEnabled: heal,
+            let worker = RunWorker(label: platform, platform: platform,
+                                   driver: driver, connection: connection)
+            let passed = await ScenarioRunner.runOne(
+                item: item, worker: worker, healingEnabled: heal,
                 reportDir: URL(fileURLWithPath: reportDir)) { event in
                 for line in RunLogFormatter.lines(for: event) { print(line) }
             }
@@ -533,32 +561,33 @@ struct RunFlows: AsyncParsableCommand {
 
     // MARK: - 並列実行(iOS はポート毎のワーカー、Android は専用ワーカー)
 
-    private func runParallel(_ items: [FlowRunItem], iosPorts: [UInt16],
-                             delegate: FMReplayDelegate?) async -> Int {
+    private func runParallel(_ items: [ScenarioRunItem], iosPorts: [UInt16]) async -> Int {
         let defaultPlatform = driverOptions.platform
-        let androidItems = items.filter { ($0.flow.platform ?? defaultPlatform) == "android" }
+        let androidItems = items.filter { ($0.info.platform ?? defaultPlatform) == "android" }
         let portList = iosPorts.map(String.init).joined(separator: ", ")
         print("🚀 並列実行: iOS \(iosPorts.count) ワーカー(port: \(portList))"
               + (androidItems.isEmpty ? "" : " + Android 1 ワーカー") + "\n")
 
         var workers: [RunWorker] = iosPorts.map {
-            RunWorker(label: "ios:\($0)", platform: "ios", driver: BridgeClient(port: $0))
+            RunWorker(label: "ios:\($0)", platform: "ios", driver: BridgeClient(port: $0),
+                      connection: DriverConnection(platform: "ios", port: $0))
         }
         if !androidItems.isEmpty {
             if let driver = try? AndroidDriver(serial: driverOptions.serial) {
-                workers.append(RunWorker(label: "android", platform: "android", driver: driver))
+                workers.append(RunWorker(label: "android", platform: "android", driver: driver,
+                                         connection: DriverConnection(platform: "android",
+                                                                      serial: driverOptions.serial)))
             } else {
                 print("❌ Android ドライバを初期化できません(adb 未検出)")
-                // ワーカー不在の android フローは orchestrator が flowSkipped(失敗扱い)にする
+                // ワーカー不在の android シナリオは orchestrator が flowSkipped(失敗扱い)にする
             }
         }
 
-        let orchestrator = RunOrchestrator(workers: workers, delegate: delegate,
-                                           healingEnabled: heal,
+        let orchestrator = RunOrchestrator(workers: workers, healingEnabled: heal,
                                            reportDir: URL(fileURLWithPath: reportDir))
         async let summary = orchestrator.run(items: items, defaultPlatform: defaultPlatform)
 
-        // フロー毎にバッファして完了時に一括表示(並列時のステップ行の混線防止)
+        // シナリオ毎にバッファして完了時に一括表示(並列時のステップ行の混線防止)
         var buffers: [URL: [String]] = [:]
         for await event in orchestrator.events {
             let lines = RunLogFormatter.lines(for: event)
@@ -575,3 +604,4 @@ struct RunFlows: AsyncParsableCommand {
         return await summary.failed
     }
 }
+
