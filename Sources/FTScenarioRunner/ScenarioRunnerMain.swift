@@ -39,20 +39,21 @@ struct ListScenarios: AsyncParsableCommand {
     func run() async throws {
         let classes = ScenarioDiscovery.allTestClasses()
         if json {
-            var entries: [[String: String?]] = []
+            var entries: [ScenarioInfo] = []
             for testClass in classes {
                 for scenario in testClass.scenarios {
-                    entries.append([
-                        "id": "\(testClass.className).\(scenario.name)",
-                        "title": scenario.title,
-                        "app": testClass.app,
-                        "platform": testClass.platform,
-                    ])
+                    entries.append(ScenarioInfo(
+                        id: "\(testClass.className).\(scenario.name)",
+                        title: scenario.title,
+                        app: testClass.app,
+                        platform: testClass.platform,
+                        deleted: scenario.deleted))
                 }
             }
-            let data = try JSONSerialization.data(
-                withJSONObject: ["scenarios": entries.map { $0.mapValues { $0 ?? nil } }],
-                options: [.sortedKeys, .withoutEscapingSlashes])
+            struct ListResponse: Codable { let scenarios: [ScenarioInfo] }
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+            let data = try encoder.encode(ListResponse(scenarios: entries))
             print(String(data: data, encoding: .utf8)!)
         } else {
             guard !classes.isEmpty else {
@@ -64,7 +65,8 @@ struct ListScenarios: AsyncParsableCommand {
                 print("\(testClass.className) [\(platform)] app=\(testClass.app)")
                 for scenario in testClass.scenarios {
                     let title = scenario.title.isEmpty ? "" : " — \(scenario.title)"
-                    print("  ・ \(testClass.className).\(scenario.name)\(title)")
+                    let deleted = scenario.deleted ? "(削除済み)" : ""
+                    print("  ・ \(testClass.className).\(scenario.name)\(title)\(deleted)")
                 }
             }
         }

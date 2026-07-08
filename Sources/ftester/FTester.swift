@@ -493,7 +493,7 @@ struct RunScenarios: AsyncParsableCommand {
     var profile: String?
 
     @Option(name: .customLong("scenario"), parsing: .upToNextOption,
-            help: "実行するシナリオ ID(クラス名.メソッド名。クラス名のみで全シナリオ。複数可。省略時は全件)")
+            help: "実行するシナリオ ID(クラス名.メソッド名。クラス名のみで全シナリオ。複数可。省略時は全件。削除済み @Deleted は完全一致指定のときだけ実行)")
     var scenarios: [String] = []
 
     @Flag(help: "FM によるロケータ自己修復を許可する")
@@ -525,6 +525,16 @@ struct RunScenarios: AsyncParsableCommand {
                 "シナリオがありません(Projects/\(testProject.name)/Scenarios/ に @TestClass を追加してください)")
         }
         let selected = try Self.resolve(scenarios, from: all)
+        if scenarios.isEmpty {
+            let deletedCount = all.filter(\.deleted).count
+            if deletedCount > 0 {
+                print("→ 削除済み(@Deleted)のシナリオ \(deletedCount) 件を除外")
+            }
+        }
+        guard !selected.isEmpty else {
+            print("実行対象がありません(全シナリオが削除済み @Deleted)")
+            return
+        }
         let items = selected.map { ScenarioRunItem(info: $0) }
 
         if FMDoctor.check().available == false {
@@ -566,17 +576,23 @@ struct RunScenarios: AsyncParsableCommand {
         }
     }
 
-    /// ID 指定を ScenarioInfo に解決する(完全一致 → クラス名一致で全シナリオ)
+    /// ID 指定を ScenarioInfo に解決する(完全一致 → クラス名一致で全シナリオ)。
+    /// @Deleted(論理削除)は全件実行・クラス名展開から除外する(完全一致の明示指定のみ実行可)
     static func resolve(_ ids: [String], from all: [ScenarioInfo]) throws -> [ScenarioInfo] {
-        guard !ids.isEmpty else { return all }
+        guard !ids.isEmpty else { return all.filter { !$0.deleted } }
         var result: [ScenarioInfo] = []
         for id in ids {
             if let exact = all.first(where: { $0.id == id }) {
                 result.append(exact)
                 continue
             }
-            let classMatches = all.filter { $0.id.hasPrefix(id + ".") }
+            let classMatches = all.filter { $0.id.hasPrefix(id + ".") && !$0.deleted }
             guard !classMatches.isEmpty else {
+                if all.contains(where: { $0.id.hasPrefix(id + ".") }) {
+                    throw ValidationError(
+                        "\(id) のシナリオは全て削除済み(@Deleted)です"
+                        + "(クラス名.メソッド名 の完全指定なら実行できます)")
+                }
                 throw ValidationError(
                     "シナリオが見つかりません: \(id)(利用可能: \(all.map(\.id).joined(separator: ", ")))")
             }

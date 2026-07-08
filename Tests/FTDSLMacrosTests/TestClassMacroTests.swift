@@ -15,6 +15,7 @@ final class TestClassMacroTests: XCTestCase {
         "TestClass": MacroSpec(type: TestClassMacro.self,
                                conformances: ["FTDSL.FTTestClassDefinition"]),
         "Test": MacroSpec(type: TestMacro.self),
+        "Deleted": MacroSpec(type: DeletedMacro.self),
     ]
 
     func test日本語クラスとシナリオの展開() {
@@ -116,6 +117,128 @@ final class TestClassMacroTests: XCTestCase {
                 }
             }
             """,
+            macroSpecs: macros
+        )
+    }
+
+    func testDeletedクラスは全シナリオが削除済み() {
+        assertMacroExpansion(
+            """
+            @Deleted("旧UIのため")
+            @TestClass(app: "com.app")
+            class 旧テスト {
+                @Test
+                func S0010() {
+                }
+            }
+            """,
+            expandedSource:
+            """
+            class 旧テスト {
+                func S0010() {
+                }
+            }
+
+            final class __FTReg_旧テスト: FTDSL.FTScenarioRegistration {
+                override class var descriptor: FTDSL.FTTestClassDescriptor {
+                    旧テスト.ftDescriptor
+                }
+            }
+
+            extension 旧テスト: FTDSL.FTTestClassDefinition {
+                public static var ftDescriptor: FTDSL.FTTestClassDescriptor {
+                    FTDSL.FTTestClassDescriptor(
+                        className: "旧テスト",
+                        app: "com.app",
+                        platform: nil,
+                        scenarios: [
+                        FTDSL.FTScenarioDescriptor(
+                            name: "S0010",
+                            title: "",
+                            deleted: true,
+                            run: {
+                                旧テスト().S0010()
+                            }),
+                        ])
+                }
+            }
+            """,
+            macroSpecs: macros
+        )
+    }
+
+    func testDeletedメソッドは当該シナリオのみ削除済み() {
+        assertMacroExpansion(
+            """
+            @TestClass(app: "com.app")
+            class 混在 {
+                @Test
+                func S0010() {
+                }
+                @Deleted
+                @Test("古い")
+                func S0020() {
+                }
+            }
+            """,
+            expandedSource:
+            """
+            class 混在 {
+                func S0010() {
+                }
+                func S0020() {
+                }
+            }
+
+            final class __FTReg_混在: FTDSL.FTScenarioRegistration {
+                override class var descriptor: FTDSL.FTTestClassDescriptor {
+                    混在.ftDescriptor
+                }
+            }
+
+            extension 混在: FTDSL.FTTestClassDefinition {
+                public static var ftDescriptor: FTDSL.FTTestClassDescriptor {
+                    FTDSL.FTTestClassDescriptor(
+                        className: "混在",
+                        app: "com.app",
+                        platform: nil,
+                        scenarios: [
+                        FTDSL.FTScenarioDescriptor(
+                            name: "S0010",
+                            title: "",
+                            run: {
+                                混在().S0010()
+                            }),
+                        FTDSL.FTScenarioDescriptor(
+                            name: "S0020",
+                            title: "古い",
+                            deleted: true,
+                            run: {
+                                混在().S0020()
+                            }),
+                        ])
+                }
+            }
+            """,
+            macroSpecs: macros
+        )
+    }
+
+    func testDeletedをクラスとメソッド以外へ付与はエラー() {
+        assertMacroExpansion(
+            """
+            @Deleted
+            var x = 1
+            """,
+            expandedSource:
+            """
+            var x = 1
+            """,
+            diagnostics: [
+                DiagnosticSpec(
+                    message: "@Deleted はテストクラスまたは @Test メソッドにのみ付与できます",
+                    line: 1, column: 1),
+            ],
             macroSpecs: macros
         )
     }

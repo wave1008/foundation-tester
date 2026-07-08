@@ -410,6 +410,10 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
 
 - `@TestClass(app:platform:)` クラス + `@Test` メソッド + `scene(n)`(Shirates の case 相当)
   + `condition/action/expectation`(CAE)の3層構造
+- `@Deleted("コメント")` で論理削除(Shirates の @Deleted 相当)。テストクラスまたは
+  `@Test` メソッドに付与する。一覧には「削除済み」として残り(GUI は「削除済みを非表示にする」で
+  非表示切替可)、全実行・フォルダ実行・クラス名指定の一括実行から除外される。
+  完全一致 ID の明示指定でのみ実行可能。コードは残るため復活はアノテーションを外すだけ
 - コマンド(tap/type/exist/…)は**同期・非 throw のモジュールレベル自由関数**。
   `try await` も `{ it in }` も不要。カレント実行コンテキストを暗黙参照する
 - セレクタ式は文字列1本: `#id` / `ラベル` / `.Type[n]`(n は 1 オリジン。1番目は [1] 省略で `.Type`、明記も可)/ `.Type#id` / `.Type=ラベル`、`||` でフォールバック連鎖

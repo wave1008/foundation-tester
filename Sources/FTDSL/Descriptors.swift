@@ -14,12 +14,16 @@ public struct FTScenarioDescriptor {
     public let name: String
     /// @Test の引数タイトル
     public let title: String
+    /// @Deleted(クラスまたはメソッド)による論理削除。一括実行から除外される
+    public let deleted: Bool
     /// テストクラスの新規インスタンスを作ってメソッドを呼ぶクロージャ(マクロ生成)
     public let run: () -> Void
 
-    public init(name: String, title: String, run: @escaping () -> Void) {
+    public init(name: String, title: String, deleted: Bool = false,
+                run: @escaping () -> Void) {
         self.name = name
         self.title = title
+        self.deleted = deleted
         self.run = run
     }
 }

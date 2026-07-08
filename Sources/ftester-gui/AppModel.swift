@@ -537,6 +537,22 @@ final class AppModel {
     /// シナリオ一覧のビルド/読込状態(nil = 正常)
     var scenarioListStatus: String?
 
+    /// 「削除済みを非表示にする」: ON なら @Deleted のシナリオをペインから隠す(UserDefaults 永続化)
+    var hideDeleted: Bool {
+        didSet {
+            UserDefaults.standard.set(hideDeleted, forKey: "hideDeletedScenarios")
+            // 隠れたシナリオが選択に残ると見えないまま実行対象になるため外す
+            if hideDeleted {
+                selectedScenarioIDs.subtract(scenarios.filter { $0.info.deleted }.map(\.id))
+            }
+        }
+    }
+
+    /// シナリオペインに表示するシナリオ(非表示設定なら @Deleted を除く)
+    var visibleScenarios: [ScenarioEntry] {
+        hideDeleted ? scenarios.filter { !$0.info.deleted } : scenarios
+    }
+
     /// 選択中のシナリオを一覧順で返す(実行順もこの順)
     var selectedEntries: [ScenarioEntry] {
         scenarios.filter { selectedScenarioIDs.contains($0.id) }
@@ -580,6 +596,7 @@ final class AppModel {
         let defaults = UserDefaults.standard
         iosPackagePath = defaults.string(forKey: "iosPackagePath") ?? ""
         androidPackagePath = defaults.string(forKey: "androidPackagePath") ?? ""
+        hideDeleted = defaults.bool(forKey: "hideDeletedScenarios")
         if let env = ProcessInfo.processInfo.environment["FT_PORTS"],
            let (start, end) = Self.parseRange(env) {
             portRangeStartText = String(start)
@@ -718,9 +735,9 @@ final class AppModel {
         case .failure(let error):
             scenarioListStatus = "⚠️ \(error.localizedDescription)"
         }
-        // 消えたシナリオを選択から外し、空になったら先頭を自動選択
-        selectedScenarioIDs.formIntersection(scenarios.map(\.id))
-        if selectedScenarioIDs.isEmpty, let first = scenarios.first?.id {
+        // 消えたシナリオ(非表示の削除済み含む)を選択から外し、空になったら先頭を自動選択
+        selectedScenarioIDs.formIntersection(visibleScenarios.map(\.id))
+        if selectedScenarioIDs.isEmpty, let first = visibleScenarios.first?.id {
             selectedScenarioIDs = [first]
         }
     }
@@ -786,8 +803,9 @@ final class AppModel {
     // MARK: - シナリオのフォルダ操作(1 階層。実体は Scenarios/ のサブディレクトリ)
 
     /// フォルダ内(nil = Scenarios/ 直下)のシナリオを一覧順で返す
+    /// (「削除済みを非表示にする」ON なら @Deleted を除く。表示と一致させる)
     func scenarioEntries(inFolder folder: String?) -> [ScenarioEntry] {
-        scenarios.filter { $0.folder == folder }
+        visibleScenarios.filter { $0.folder == folder }
     }
 
     /// フォルダを作成する。戻り値: エラーメッセージ(nil = 成功)
@@ -886,8 +904,9 @@ final class AppModel {
         await runScenarios(selectedEntries)
     }
 
+    /// 全実行。削除済み(@Deleted)は除外する(明示選択すれば個別実行は可能)
     func runAll() async {
-        await runScenarios(scenarios)
+        await runScenarios(scenarios.filter { !$0.info.deleted })
     }
 
     /// シナリオ群を実行する。iOS はブリッジ毎、Android はデバイス毎のワーカーで並列消化する
