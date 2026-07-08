@@ -530,6 +530,18 @@ final class AppModel {
         selectionID(kind: "class", name: className)
     }
 
+    /// 擬似 URL(scenario://folder/<名前>)からフォルダ名を取り出す。フォルダ行以外は nil
+    static func folderName(fromSelectionID url: URL) -> String? {
+        guard url.scheme == "scenario", url.host == "folder" else { return nil }
+        return url.lastPathComponent
+    }
+
+    /// 擬似 URL(scenario://class/<名前>)からテストクラス名を取り出す。クラス行以外は nil
+    static func className(fromSelectionID url: URL) -> String? {
+        guard url.scheme == "scenario", url.host == "class" else { return nil }
+        return url.lastPathComponent
+    }
+
     private static func selectionID(kind: String, name: String) -> URL {
         let encoded = name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? kind
         return URL(string: "scenario://\(kind)/\(encoded)")
@@ -928,6 +940,94 @@ final class AppModel {
         }
         scenarioFolders = scenarioFolders.map { $0 == name ? trimmed : $0 }
             .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+        return nil
+    }
+
+    // MARK: - シナリオソースのリネーム(class 宣言・@Test メソッド・説明の書換)
+
+    /// テストクラス名を変更する(ソース書換。ファイル名がクラス名と一致していれば追従)。
+    /// シナリオ ID(クラス名.関数名)が変わるため再ビルド+一覧更新まで行う。
+    /// 戻り値: エラーメッセージ(nil = 成功)
+    func renameScenarioClass(_ className: String, to newName: String) async -> String? {
+        let trimmed = newName.trimmingCharacters(in: .whitespaces)
+        guard trimmed != className else { return nil }
+        guard let project = try? currentProject() else {
+            return "プロジェクトを選択してください"
+        }
+        guard let file = scenarios.first(where: { $0.className == className })?.fileURL else {
+            return "\(className) のソースファイルを特定できません(再読込してください)"
+        }
+        // クラス名はシナリオ ID の前半 = プロジェクト全体で一意でなければならない
+        if ScenarioFolders.classFileMap(scenariosDir: project.scenariosDir)[trimmed] != nil {
+            return "同名のテストクラスが既にあります: \(trimmed)"
+        }
+        do {
+            let source = try String(contentsOf: file, encoding: .utf8)
+            let updated = try ScenarioSourceEditor.renameClass(
+                inSource: source, from: className, to: trimmed)
+            try updated.write(to: file, atomically: true, encoding: .utf8)
+            // 生成ファイルはクラス名 = ファイル名の慣習なので一致していれば追従する
+            // (衝突したときはソースの変更だけ生かしてファイル名は据え置き)
+            if file.deletingPathExtension().lastPathComponent == className {
+                let dest = file.deletingLastPathComponent()
+                    .appendingPathComponent(trimmed + ".swift")
+                if !FileManager.default.fileExists(atPath: dest.path) {
+                    try? FileManager.default.moveItem(at: file, to: dest)
+                }
+            }
+        } catch {
+            return error.localizedDescription
+        }
+        noteOwnScenarioDirChange(project)
+        await refreshScenarios()
+        return nil
+    }
+
+    /// テスト関数(@Test メソッド)の名前を変更する。ID が変わるため一覧更新まで行う
+    func renameScenarioMethod(_ entry: ScenarioEntry, to newName: String) async -> String? {
+        let trimmed = newName.trimmingCharacters(in: .whitespaces)
+        guard trimmed != entry.methodName else { return nil }
+        guard let project = try? currentProject() else {
+            return "プロジェクトを選択してください"
+        }
+        guard let file = entry.fileURL else {
+            return "\(entry.info.id) のソースファイルを特定できません(再読込してください)"
+        }
+        do {
+            let source = try String(contentsOf: file, encoding: .utf8)
+            let updated = try ScenarioSourceEditor.renameMethod(
+                inSource: source, className: entry.className,
+                from: entry.methodName, to: trimmed)
+            try updated.write(to: file, atomically: true, encoding: .utf8)
+        } catch {
+            return error.localizedDescription
+        }
+        noteOwnScenarioDirChange(project)
+        await refreshScenarios()
+        return nil
+    }
+
+    /// テスト関数の説明(@Test の文字列)を変更する。空にすると引数なしの @Test になる
+    func updateScenarioTitle(_ entry: ScenarioEntry, to newTitle: String) async -> String? {
+        let trimmed = newTitle.trimmingCharacters(in: .whitespaces)
+        guard trimmed != entry.info.title else { return nil }
+        guard let project = try? currentProject() else {
+            return "プロジェクトを選択してください"
+        }
+        guard let file = entry.fileURL else {
+            return "\(entry.info.id) のソースファイルを特定できません(再読込してください)"
+        }
+        do {
+            let source = try String(contentsOf: file, encoding: .utf8)
+            let updated = try ScenarioSourceEditor.setTestTitle(
+                inSource: source, className: entry.className,
+                method: entry.methodName, title: trimmed)
+            try updated.write(to: file, atomically: true, encoding: .utf8)
+        } catch {
+            return error.localizedDescription
+        }
+        noteOwnScenarioDirChange(project)
+        await refreshScenarios()
         return nil
     }
 
