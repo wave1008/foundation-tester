@@ -19,6 +19,7 @@ struct FTester: AsyncParsableCommand {
         subcommands: [
             Doctor.self,
             Bridge.self,
+            Install.self,
             Launch.self,
             Snapshot.self,
             Tap.self,
@@ -248,6 +249,24 @@ enum AndroidBridgeCLI {
 }
 
 // MARK: - 手動駆動コマンド(M1 検証用)
+
+struct Install: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "パッケージファイルからアプリをインストールする(iOS: .app バンドル / Android: .apk)")
+
+    @Argument(help: "パッケージファイルのパス(iOS: .app バンドル / Android: .apk)")
+    var packagePath: String
+
+    @OptionGroup var driverOptions: DriverOptions
+
+    func run() async throws {
+        guard FileManager.default.fileExists(atPath: packagePath) else {
+            throw ValidationError("パッケージファイルが見つかりません: \(packagePath)")
+        }
+        try await driverOptions.makeDriver().install(packagePath: packagePath)
+        print("✅ インストール完了: \(packagePath)")
+    }
+}
 
 struct Launch: AsyncParsableCommand {
     static let configuration = CommandConfiguration(abstract: "対象アプリを起動する")

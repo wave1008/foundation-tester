@@ -168,6 +168,14 @@ final class AppModel {
     var liveError: String?
     var bundleID = "com.example.sampleapp"
 
+    /// インストールするパッケージファイルのパス(プラットフォーム別に保持、UserDefaults に永続化)
+    var iosPackagePath: String {
+        didSet { UserDefaults.standard.set(iosPackagePath, forKey: "iosPackagePath") }
+    }
+    var androidPackagePath: String {
+        didSet { UserDefaults.standard.set(androidPackagePath, forKey: "androidPackagePath") }
+    }
+
     // MARK: - FM 探索
 
     var exploreGoal = ""
@@ -187,6 +195,8 @@ final class AppModel {
     init() {
         // FT_PORTS 環境変数("8123-8130" または "8123,8124")→ UserDefaults → 既定値 の順
         let defaults = UserDefaults.standard
+        iosPackagePath = defaults.string(forKey: "iosPackagePath") ?? ""
+        androidPackagePath = defaults.string(forKey: "androidPackagePath") ?? ""
         if let env = ProcessInfo.processInfo.environment["FT_PORTS"],
            let (start, end) = Self.parseRange(env) {
             portRangeStartText = String(start)
@@ -435,6 +445,25 @@ final class AppModel {
 
     func swipe(_ direction: FTSwipeDirection) async {
         await liveAction { try await $0.swipe(direction) }
+    }
+
+    /// 選択中デバイスのプラットフォームに対応するパス欄のパッケージをインストールする
+    func installApp() async {
+        let isAndroid = selectedTarget?.platform == "android"
+        let path = (isAndroid ? androidPackagePath : iosPackagePath)
+            .trimmingCharacters(in: .whitespaces)
+        guard !path.isEmpty else {
+            liveError = isAndroid
+                ? "Android の .apk パスを入力してください"
+                : "iOS の .app パスを入力してください"
+            return
+        }
+        let expanded = (path as NSString).expandingTildeInPath
+        guard FileManager.default.fileExists(atPath: expanded) else {
+            liveError = "パッケージファイルが見つかりません: \(path)"
+            return
+        }
+        await liveAction { try await $0.install(packagePath: expanded) }
     }
 
     func launchApp() async {
