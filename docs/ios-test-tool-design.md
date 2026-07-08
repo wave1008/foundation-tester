@@ -389,3 +389,49 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
 4. M3: SampleApp の identifier を 1 つ改名 → `ftester run --heal` で修復・成功。
    意図的にログインを失敗させるビルド → TriageReport が `appBug` と分類する
 ```
+
+## 11. Swift DSL への全面移行(2026-07-08)
+
+テスト記述を YAML フローから **Shirates 風の Swift DSL** に全面移行した(YAML は廃止、Yams 依存も除去)。
+動機: イレギュラー処理(不定ダイアログ等)やデータセットアップを「コード」で書けるようにするため。
+
+### 記述形式
+
+- `@TestClass(app:platform:)` クラス + `@Test` メソッド + `scene(n)`(Shirates の case 相当)
+  + `condition/action/expectation`(CAE)の3層構造
+- コマンド(tap/type/exist/…)は**同期・非 throw のモジュールレベル自由関数**。
+  `try await` も `{ it in }` も不要。カレント実行コンテキストを暗黙参照する
+- セレクタ式は文字列1本: `#id` / `ラベル` / `.Type[n]`(n は 1 オリジン。1番目は [1] 省略で `.Type`、明記も可)/ `.Type#id` / `.Type=ラベル`、`||` でフォールバック連鎖
+
+### 実行アーキテクチャ
+
+- `Scenarios/` を SPM の実行ターゲット(ftester-scenarios)としてコンパイル。
+  マクロが生成する登録クラス(NSObject 派生)を objc ランタイム走査
+  (メッセージ送信なしの class_getSuperclass のみ)で自動発見する
+- **1 プロセス = 1 シナリオ実行**のサブプロセス方式。ホスト(CLI/GUI/MCP)は ScenarioHost 経由で
+  起動し、NDJSON イベント(FTCore/ScenarioEvent)を受信。ビルドはホスト側で1回だけ
+- シナリオ本体は**専用スレッドで同期実行**し、async の StepExecutor/AppDriver へは
+  セマフォで橋渡し(FTSync)。ブロックするのは専用スレッドのみで協調プールは塞がない
+- 失敗セマンティクス: コマンド NG → 同一 scene 内の以降のコマンドは自動スキップ → 次の scene へ
+  (throw を使わない Shirates 的中断)
+
+### 自己修復の再設計(ヒールキャッシュ)
+
+YAML 時代の healedFlow 書き戻しに代わり、解決順を
+**プライマリ → フォールバック → キャッシュ(.ftester/heal-cache.json)→ FM ヒール**とした。
+キー = シナリオID + file:line + 旧セレクタ文字列。2回目以降は FM なしで決定的に通過し、
+ソース位置付きの修正提案をレポートに出し続ける(ソース自動書換はしない。
+人がソースを直すとキー不一致でキャッシュは自然に無効化)。
+
+### 実装で得た知見
+
+- **swift-syntax 603 + prebuilts**: マクロ導入によるクリーンビルド増は SwiftPM の
+  prebuilt swift-syntax が効き、初回全体で +20 秒程度に収まった(増分ビルドへの影響なし)
+- **objc_copyClassList 走査**は Swift の日本語クラス名でも問題なし(String(describing:) で取得)
+- **extension マクロのテスト**は MacroSpec(conformances:) を渡さないと protocols が空になり
+  「conformance 済み」判定で extension が生成されない(assertMacroExpansion の仕様)
+- **`.macro` ターゲットには Package.swift 冒頭の `import CompilerPluginSupport` が必要**
+- iOS 27 のパスワード保存シートはタップ時にアニメーション中で座標がずれることがある →
+  シナリオ側で `wait(1)` を挟むのが確実(コードで書けるようになった利点)
+- 3B FM のヒールは誤要素(NavigationBar 等)を高確信で選ぶことがある。キャッシュは誤ヒールも
+  固定化するため、修正提案を人がレビューしてソースを直すループが前提

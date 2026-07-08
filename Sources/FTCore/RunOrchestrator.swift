@@ -1,36 +1,45 @@
 // RunOrchestrator.swift
-// フロー並列実行のオーケストレーション。CLI(ftester run --ports)と GUI の両方が使う。
-// FTCore は FoundationModels に依存しない(FM フックは ReplayDelegate 経由)。
-// ドライバはプラットフォーム非依存を保つため呼び出し側が構築して RunWorker で注入する。
+// シナリオ並列実行のオーケストレーション。CLI(ftester run --ports)と GUI の両方が使う。
+// シナリオ実行の実体は ftester-scenarios サブプロセス(ScenarioHost)で、
+// FM フックはサブプロセス側が持つ。ワーカーのドライバはウォームアップ・接続確認用。
 
 import Foundation
 
-/// 実行対象フロー。URL がフローの一意キー(GUI の FlowEntry.id とも一致)
-public struct FlowRunItem: Identifiable, Sendable {
+/// 実行対象シナリオ。URL(scenario:// スキーム)が一意キー(GUI のレーン機構と互換)
+public struct ScenarioRunItem: Identifiable, Sendable {
+    public let info: ScenarioInfo
     public let url: URL
-    public let flow: Flow
     public var id: URL { url }
 
-    public init(url: URL, flow: Flow) {
-        self.url = url
-        self.flow = flow
+    public init(info: ScenarioInfo) {
+        self.info = info
+        self.url = Self.url(for: info.id)
+    }
+
+    /// シナリオ ID(日本語可)→ 一意キー URL
+    public static func url(for scenarioID: String) -> URL {
+        let encoded = scenarioID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
+            ?? "scenario"
+        return URL(string: "scenario://run/\(encoded)") ?? URL(fileURLWithPath: "/scenario")
     }
 }
 
-/// 並列ワーカー定義。platform が一致するフローだけをキューから消化する
+/// 並列ワーカー定義。platform が一致するシナリオだけをキューから消化する
 public struct RunWorker {
-    public let label: String      // 例: "ios:8123" / "android"
-    public let platform: String   // "ios" / "android"
-    public let driver: AppDriver
+    public let label: String              // 例: "ios:8123" / "android:emulator-5554"
+    public let platform: String           // "ios" / "android"
+    public let driver: AppDriver          // ウォームアップ・接続確認用
+    public let connection: DriverConnection  // サブプロセスへ渡す接続情報
 
-    public init(label: String, platform: String, driver: AppDriver) {
+    public init(label: String, platform: String, driver: AppDriver, connection: DriverConnection) {
         self.label = label
         self.platform = platform
         self.driver = driver
+        self.connection = connection
     }
 }
 
-/// 実行の進捗イベント。flowURL でフローを識別する(GUI は URL で state を更新)
+/// 実行の進捗イベント。flowURL(scenario:// URL)でシナリオを識別する(GUI は URL で state を更新)
 public enum RunEvent: Sendable {
     case runStarted(total: Int, workerLabels: [String])
     /// ウォームアップ完了(コールドブート対策の snapshot 済み)
@@ -39,7 +48,7 @@ public enum RunEvent: Sendable {
     case workerFailed(worker: String, message: String)
     case flowStarted(worker: String, flowURL: URL, flowName: String, isDirty: Bool)
     case step(worker: String, flowURL: URL, result: StepResult)
-    /// 自己修復したロケータでフローを上書き保存した
+    /// 自己修復したロケータでフローを上書き保存した(YAML 時代の互換。シナリオでは未使用)
     case flowHealed(worker: String, flowURL: URL)
     case flowFinished(worker: String, flowURL: URL, passed: Bool,
                       triage: TriageInfo?, reportURL: URL?)
@@ -59,69 +68,95 @@ public struct RunSummary: Sendable {
     }
 }
 
-/// 並列ワーカーへのフロー分配キュー(早い者勝ち)
-actor FlowQueue {
-    private var items: [FlowRunItem]
-    init(_ items: [FlowRunItem]) { self.items = items }
-    func next() -> FlowRunItem? { items.isEmpty ? nil : items.removeFirst() }
+/// 並列ワーカーへのシナリオ分配キュー(早い者勝ち)
+actor ScenarioQueue {
+    private var items: [ScenarioRunItem]
+    init(_ items: [ScenarioRunItem]) { self.items = items }
+    func next() -> ScenarioRunItem? { items.isEmpty ? nil : items.removeFirst() }
 }
 
-/// 1フローの実行(heal 時のフロー上書き保存・失敗レポート出力込み)。
+/// 1 シナリオの実行(サブプロセス起動+イベント変換)。
 /// CLI の逐次実行と RunOrchestrator のワーカーの両方がここを通る。
-public enum FlowRunner {
-    /// 戻り値: passed。進捗は onEvent で同期通知される(Replayer.onStep は非 async クロージャ)
-    public static func runOne(item: FlowRunItem, driver: AppDriver, worker: String,
-                              delegate: ReplayDelegate?, healingEnabled: Bool, reportDir: URL,
+public enum ScenarioRunner {
+    /// 戻り値: passed。進捗は onEvent で通知される
+    public static func runOne(item: ScenarioRunItem, worker: RunWorker,
+                              healingEnabled: Bool, reportDir: URL,
                               onEvent: @escaping (RunEvent) -> Void) async -> Bool {
-        onEvent(.flowStarted(worker: worker, flowURL: item.url,
-                             flowName: item.url.lastPathComponent,
-                             isDirty: item.flow.dirty == true))
+        onEvent(.flowStarted(worker: worker.label, flowURL: item.url,
+                             flowName: item.info.id, isDirty: false))
 
-        let replayer = Replayer(driver: driver, delegate: delegate, healingEnabled: healingEnabled)
-        replayer.onStep = { step in
-            onEvent(.step(worker: worker, flowURL: item.url, result: step))
-        }
-        let result = await replayer.run(flow: item.flow)
-
-        if let healedFlow = result.healedFlow, healingEnabled {
-            try? FlowIO.save(healedFlow, to: item.url)
-            onEvent(.flowHealed(worker: worker, flowURL: item.url))
-        }
         var reportURL: URL?
-        if !result.passed {
-            reportURL = try? ReportWriter.write(result: result, to: reportDir)
+        let passed = await ScenarioHost.run(
+            scenarioID: item.info.id, connection: worker.connection,
+            heal: healingEnabled, reportDir: reportDir.path) { event in
+            switch event.kind {
+            case "step":
+                onEvent(.step(worker: worker.label, flowURL: item.url,
+                              result: stepResult(from: event)))
+            case "fixSuggestion":
+                onEvent(.step(worker: worker.label, flowURL: item.url,
+                              result: StepResult(index: event.index ?? 0,
+                                                 description: "💡 修正提案: \(event.detail ?? "")",
+                                                 status: .passed)))
+            case "scenarioFinished":
+                reportURL = event.reportPath.map { URL(fileURLWithPath: $0) }
+            case "log":
+                if let message = event.message, !message.isEmpty {
+                    onEvent(.step(worker: worker.label, flowURL: item.url,
+                                  result: StepResult(index: 0, description: message,
+                                                     status: .passed)))
+                }
+            default:
+                break
+            }
         }
-        onEvent(.flowFinished(worker: worker, flowURL: item.url, passed: result.passed,
-                              triage: result.triage, reportURL: reportURL))
-        return result.passed
+
+        onEvent(.flowFinished(worker: worker.label, flowURL: item.url, passed: passed,
+                              triage: nil, reportURL: reportURL))
+        return passed
+    }
+
+    /// ScenarioEvent(step)→ StepResult。フォールバック/自己修復の詳細は説明文に畳み込む
+    static func stepResult(from event: ScenarioEvent) -> StepResult {
+        var description = (event.section.map { "[\($0)] " } ?? "") + (event.description ?? "")
+        let status: StepResult.Status
+        switch event.status {
+        case "passed":
+            status = .passed
+        case "passedViaFallback", "healed":
+            if let detail = event.detail { description += "(\(detail))" }
+            status = .passed
+        case "failed":
+            status = .failed(event.detail ?? "")
+        default:
+            status = .skipped(event.detail ?? "")
+        }
+        return StepResult(index: event.index ?? 0, description: description, status: status)
     }
 }
 
-/// フロー群をワーカー群で並列消化する。進捗は events(AsyncStream)で配信され、
+/// シナリオ群をワーカー群で並列消化する。進捗は events(AsyncStream)で配信され、
 /// run() の完了時に finish する。イベントはバッファされるため消費開始が遅れても失われない。
 public final class RunOrchestrator {
     public let events: AsyncStream<RunEvent>
     private let continuation: AsyncStream<RunEvent>.Continuation
     private let workers: [RunWorker]
-    private let delegate: ReplayDelegate?
     private let healingEnabled: Bool
     private let reportDir: URL
 
-    public init(workers: [RunWorker], delegate: ReplayDelegate?,
-                healingEnabled: Bool, reportDir: URL) {
+    public init(workers: [RunWorker], healingEnabled: Bool, reportDir: URL) {
         (self.events, self.continuation) = AsyncStream.makeStream(of: RunEvent.self)
         self.workers = workers
-        self.delegate = delegate
         self.healingEnabled = healingEnabled
         self.reportDir = reportDir
     }
 
-    public func run(items: [FlowRunItem], defaultPlatform: String) async -> RunSummary {
-        let grouped = Dictionary(grouping: items) { $0.flow.platform ?? defaultPlatform }
+    public func run(items: [ScenarioRunItem], defaultPlatform: String) async -> RunSummary {
+        let grouped = Dictionary(grouping: items) { $0.info.platform ?? defaultPlatform }
         let workerPlatforms = Set(workers.map(\.platform))
         var failed = 0
 
-        // 担当ワーカーのない platform のフローは即スキップ(失敗扱い)
+        // 担当ワーカーのない platform のシナリオは即スキップ(失敗扱い)
         for (platform, list) in grouped where !workerPlatforms.contains(platform) {
             for item in list {
                 continuation.yield(.flowSkipped(
@@ -132,7 +167,7 @@ public final class RunOrchestrator {
         }
 
         let queues = grouped.filter { workerPlatforms.contains($0.key) }
-            .mapValues { FlowQueue($0) }
+            .mapValues { ScenarioQueue($0) }
 
         continuation.yield(.runStarted(total: items.count, workerLabels: workers.map(\.label)))
 
@@ -146,7 +181,7 @@ public final class RunOrchestrator {
             return total
         }
 
-        // ワーカー全滅でキューに残ったフローは失敗扱い
+        // ワーカー全滅でキューに残ったシナリオは失敗扱い
         for (_, queue) in queues {
             while let item = await queue.next() {
                 continuation.yield(.flowSkipped(flowURL: item.url,
@@ -161,7 +196,7 @@ public final class RunOrchestrator {
         return summary
     }
 
-    private func runWorker(_ worker: RunWorker, queue: FlowQueue) async -> Int {
+    private func runWorker(_ worker: RunWorker, queue: ScenarioQueue) async -> Int {
         do {
             _ = try await worker.driver.status()
         } catch {
@@ -178,9 +213,9 @@ public final class RunOrchestrator {
 
         var failed = 0
         while let item = await queue.next() {
-            let passed = await FlowRunner.runOne(
-                item: item, driver: worker.driver, worker: worker.label,
-                delegate: delegate, healingEnabled: healingEnabled, reportDir: reportDir,
+            let passed = await ScenarioRunner.runOne(
+                item: item, worker: worker,
+                healingEnabled: healingEnabled, reportDir: reportDir,
                 onEvent: { [continuation] in continuation.yield($0) })
             if !passed { failed += 1 }
         }
@@ -188,7 +223,7 @@ public final class RunOrchestrator {
     }
 }
 
-/// RunEvent → 表示行の共通整形(CLI の従来出力と同一文字列。GUI もこれを使う)
+/// RunEvent → 表示行の共通整形(CLI の出力と GUI のレーンが共用)
 public enum RunLogFormatter {
     public static func lines(for event: RunEvent) -> [String] {
         switch event {
@@ -221,13 +256,17 @@ public enum RunLogFormatter {
             lines.append("")
             return lines
         case .flowSkipped(let flowURL, let reason):
-            return ["⚠️ \(flowURL.lastPathComponent) を実行できません: \(reason)", ""]
+            let name = flowURL.lastPathComponent.removingPercentEncoding
+                ?? flowURL.lastPathComponent
+            return ["⚠️ \(name) を実行できません: \(reason)", ""]
         }
     }
 
     public static func lines(for step: StepResult) -> [String] {
         switch step.status {
         case .passed:
+            // index 0 = ステップ以外の情報行(修正提案・ユーザー print 等)
+            if step.index == 0 { return ["  \(step.description)"] }
             return ["  ✅ \(step.index). \(step.description)"]
         case .passedViaFallback(let locator):
             return ["  ✅ \(step.index). \(step.description)(フォールバック \(locator.summary))"]

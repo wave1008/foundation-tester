@@ -165,11 +165,11 @@ final class MCPServer {
             try await driver(args).terminate()
             return text("アプリを終了しました")
 
-        case "ft_list_flows":
-            return try listFlows(dir: args["dir"] as? String ?? "flows")
+        case "ft_list_scenarios":
+            return try listScenarios(args)
 
-        case "ft_run_flow":
-            return try await runFlow(args)
+        case "ft_run_scenario":
+            return try await runScenario(args)
 
         case "ft_doctor":
             let fm = FMDoctor.check()
@@ -184,63 +184,45 @@ final class MCPServer {
         [["type": "text", "text": string]]
     }
 
-    private func listFlows(dir: String) throws -> [[String: Any]] {
-        let url = URL(fileURLWithPath: dir)
-        let files = (try FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: nil))
-            .filter { $0.pathExtension == "yaml" || $0.pathExtension == "yml" }
-            .sorted { $0.lastPathComponent < $1.lastPathComponent }
-        var lines: [String] = []
-        for file in files {
-            if let flow = try? FlowIO.load(from: file) {
-                let dirty = flow.dirty == true ? " [dirty]" : ""
-                lines.append("\(file.path) — \(flow.name) (\(flow.platform ?? "?"), \(flow.steps.count) steps)\(dirty)")
-            } else {
-                lines.append("\(file.path) — (読み込み失敗)")
-            }
+    /// シナリオ一覧(自動ビルド込み。コンパイルエラーはそのまま返す=エージェントが直せる)
+    private func listScenarios(_ args: [String: Any]) throws -> [[String: Any]] {
+        if !(args["skipBuild"] as? Bool ?? false) {
+            try ScenarioHost.build()
         }
-        return text(lines.isEmpty ? "フローがありません: \(dir)" : lines.joined(separator: "\n"))
+        let scenarios = try ScenarioHost.list()
+        let lines = scenarios.map { info in
+            "\(info.id)"
+                + (info.title.isEmpty ? "" : " — \(info.title)")
+                + " (\(info.platform ?? "ios/android"), app: \(info.app))"
+        }
+        return text(lines.isEmpty
+                    ? "シナリオがありません(Scenarios/ に @TestClass を追加してください)"
+                    : lines.joined(separator: "\n"))
     }
 
-    private func runFlow(_ args: [String: Any]) async throws -> [[String: Any]] {
-        guard let path = args["path"] as? String else { throw MCPError("path が必要です") }
-        let heal = args["heal"] as? Bool ?? false
-        let url = URL(fileURLWithPath: path)
-        let flow = try FlowIO.load(from: url)
-        let flowDriver = try driver(["platform": flow.platform as Any])
-
-        let delegate: FMReplayDelegate? = FMDoctor.check().available ? FMReplayDelegate() : nil
-        let replayer = Replayer(driver: flowDriver, delegate: delegate, healingEnabled: heal)
-
-        var lines: [String] = ["▶ \(flow.name) [\(flow.platform ?? "ios")]"]
-        replayer.onStep = { step in
-            switch step.status {
-            case .passed:
-                lines.append("✅ \(step.index). \(step.description)")
-            case .passedViaFallback(let locator):
-                lines.append("✅ \(step.index). \(step.description)(フォールバック \(locator.summary))")
-            case .healed(let locator):
-                lines.append("🔧 \(step.index). \(step.description) → 自己修復: \(locator.summary)")
-            case .failed(let reason):
-                lines.append("❌ \(step.index). \(step.description) — \(reason)")
-            case .skipped(let reason):
-                lines.append("⚠️ \(step.index). \(step.description)(スキップ: \(reason))")
-            }
+    /// シナリオ実行(自動ビルド込み)。サブプロセス(ftester-scenarios)に委譲する
+    private func runScenario(_ args: [String: Any]) async throws -> [[String: Any]] {
+        guard let id = args["id"] as? String else { throw MCPError("id が必要です") }
+        if !(args["skipBuild"] as? Bool ?? false) {
+            try ScenarioHost.build()
+        }
+        let all = try ScenarioHost.list()
+        guard let info = all.first(where: { $0.id == id })
+            ?? all.first(where: { $0.id.hasPrefix(id + ".") }) else {
+            throw MCPError("シナリオが見つかりません: \(id)(利用可能: \(all.map(\.id).joined(separator: ", ")))")
         }
 
-        let result = await replayer.run(flow: flow)
+        let platform = info.platform ?? (args["platform"] as? String ?? "ios")
+        let connection = DriverConnection(
+            platform: platform,
+            port: (args["port"] as? Int).map(UInt16.init),
+            serial: args["serial"] as? String)
 
-        if let healedFlow = result.healedFlow, heal {
-            try FlowIO.save(healedFlow, to: url)
-            lines.append("🔧 修復したロケータでフローを更新(dirty: true — 要レビュー)")
-        }
-        if result.passed {
-            lines.append("結果: ✅ 成功")
-        } else {
-            if let triage = result.triage {
-                lines.append("トリアージ: [\(triage.failureClass)] \(triage.summary) / 修正案: \(triage.suggestedFix)")
-            }
-            let reportURL = try ReportWriter.write(result: result, to: URL(fileURLWithPath: "reports"))
-            lines.append("結果: ❌ 失敗 — レポート: \(reportURL.path)")
+        var lines: [String] = []
+        _ = await ScenarioHost.run(scenarioID: info.id, connection: connection,
+                                   heal: args["heal"] as? Bool ?? false,
+                                   reportDir: "reports") { event in
+            lines.append(contentsOf: ScenarioLogFormatter.lines(for: event))
         }
         return text(lines.joined(separator: "\n"))
     }
@@ -275,13 +257,15 @@ final class MCPServer {
         ], required: ["ref"]),
         tool("ft_screenshot", "スクリーンショットを撮る(画像を返す)。視覚検証に使う", [:]),
         tool("ft_terminate", "起動中のアプリを終了する", [:]),
-        tool("ft_list_flows", "保存済みテストフロー(YAML)の一覧を返す", [
-            "dir": ["type": "string", "description": "フローのディレクトリ(既定 flows)"],
+        tool("ft_list_scenarios", "Swift DSL シナリオ(Scenarios/)の一覧を返す(自動ビルド込み。コンパイルエラーはそのまま返る)", [
+            "skipBuild": ["type": "boolean", "description": "swift build をスキップ(既定 false)"],
         ]),
-        tool("ft_run_flow", "テストフローを決定的に再生する。失敗時はトリアージとレポートパスを返す", [
-            "path": ["type": "string", "description": "フローファイル(.yaml)のパス"],
+        tool("ft_run_scenario", "シナリオを決定的に実行する。失敗時はトリアージとレポートパスを返す(自動ビルド込み)", [
+            "id": ["type": "string", "description": "シナリオ ID(クラス名.メソッド名。ft_list_scenarios で確認)"],
             "heal": ["type": "boolean", "description": "ロケータ自己修復を許可(既定 false)"],
-        ], required: ["path"]),
+            "port": ["type": "integer", "description": "iOS ブリッジのポート(既定 8123)"],
+            "serial": ["type": "string", "description": "Android デバイスのシリアル"],
+        ], required: ["id"]),
         tool("ft_doctor", "Foundation Models の可用性を確認する", [:]),
     ]
 
