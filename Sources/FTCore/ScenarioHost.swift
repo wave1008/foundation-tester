@@ -14,12 +14,28 @@ public struct ScenarioInfo: Codable, Sendable, Hashable {
     public let app: String
     /// "ios" / "android" / nil(両OS対応)
     public let platform: String?
+    /// @Deleted(論理削除)。一覧に残るが一括実行から除外される
+    public let deleted: Bool
 
-    public init(id: String, title: String, app: String, platform: String?) {
+    public init(id: String, title: String, app: String, platform: String?,
+                deleted: Bool = false) {
         self.id = id
         self.title = title
         self.app = app
         self.platform = platform
+        self.deleted = deleted
+    }
+
+    // deleted キーを出さない旧ランナーの JSON も読めるようにしておく
+    private enum CodingKeys: String, CodingKey { case id, title, app, platform, deleted }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        title = try container.decode(String.self, forKey: .title)
+        app = try container.decode(String.self, forKey: .app)
+        platform = try container.decodeIfPresent(String.self, forKey: .platform)
+        deleted = try container.decodeIfPresent(Bool.self, forKey: .deleted) ?? false
     }
 }
 

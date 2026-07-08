@@ -28,6 +28,17 @@ public struct TestClassMacro {
         let name: String
         /// @Test の第1引数(文字列リテラル式をそのまま転写)。省略時は nil
         let titleExpr: String?
+        /// メソッドに @Deleted が付いている(クラス側の @Deleted は展開時に OR する)
+        let deleted: Bool
+    }
+
+    /// 属性リストに @Deleted(FTDSL.Deleted も可)が含まれるか
+    static func hasDeleted(_ attributes: AttributeListSyntax) -> Bool {
+        attributes.contains { attr in
+            guard let attrSyntax = attr.as(AttributeSyntax.self) else { return false }
+            let name = attrSyntax.attributeName.trimmedDescription
+            return name == "Deleted" || name.hasSuffix(".Deleted")
+        }
     }
 
     /// 型宣言のメンバーから @Test メソッドを収集する
@@ -62,7 +73,8 @@ public struct TestClassMacro {
                         id: "scenario-signature")))
                 continue
             }
-            result.append(ScenarioMethod(name: fn.name.text, titleExpr: titleExpr))
+            result.append(ScenarioMethod(name: fn.name.text, titleExpr: titleExpr,
+                                         deleted: hasDeleted(fn.attributes)))
         }
         return result
     }
@@ -113,12 +125,15 @@ extension TestClassMacro: ExtensionMacro {
         let className = cls.name.text
         let (app, platform) = arguments(of: node)
         let methods = scenarioMethods(in: declaration, context: context)
+        // クラスに @Deleted が付いていれば全シナリオが削除済み扱い
+        let classDeleted = hasDeleted(cls.attributes)
 
         let entries = methods.map { m in
-            """
+            let deletedArg = (classDeleted || m.deleted) ? "\n                deleted: true," : ""
+            return """
                         FTDSL.FTScenarioDescriptor(
                             name: \(literalString(m.name)),
-                            title: \(m.titleExpr ?? "\"\""),
+                            title: \(m.titleExpr ?? "\"\""),\(deletedArg)
                             run: { \(className)().\(m.name)() }),
             """
         }.joined(separator: "\n")
@@ -187,6 +202,26 @@ public struct TestMacro: PeerMacro {
             context.diagnose(Diagnostic(
                 node: Syntax(node),
                 message: FTDSLDiagnostic("@Test はメソッドにのみ付与できます", id: "not-a-function")))
+            return []
+        }
+        return []
+    }
+}
+
+// MARK: - @Deleted(論理削除マーカー。@TestClass 側が読むだけで何も生成しない)
+
+public struct DeletedMacro: PeerMacro {
+    public static func expansion(
+        of node: AttributeSyntax,
+        providingPeersOf declaration: some DeclSyntaxProtocol,
+        in context: some MacroExpansionContext
+    ) throws -> [DeclSyntax] {
+        guard declaration.is(ClassDeclSyntax.self) || declaration.is(FunctionDeclSyntax.self) else {
+            context.diagnose(Diagnostic(
+                node: Syntax(node),
+                message: FTDSLDiagnostic(
+                    "@Deleted はテストクラスまたは @Test メソッドにのみ付与できます",
+                    id: "deleted-target")))
             return []
         }
         return []

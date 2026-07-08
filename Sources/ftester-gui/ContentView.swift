@@ -95,6 +95,7 @@ struct ContentView: View {
                 }
             }
             Section {
+                hideDeletedRow
                 // フォルダ(Scenarios/ のサブディレクトリ、1 階層のみ)→ 直下のシナリオ の順
                 ForEach(model.scenarioFolders, id: \.self) { folder in
                     DisclosureGroup(isExpanded: folderExpansion(folder)) {
@@ -254,13 +255,45 @@ struct ContentView: View {
         }
     }
 
-    /// シナリオ 1 行(選択タグ+フォルダ移動用のドラッグ元。ペイロードはシナリオ ID)
+    /// 「シナリオ」ラベル直下の表示オプション行(Shirates の @Deleted = 論理削除の表示切替)
+    private var hideDeletedRow: some View {
+        @Bindable var model = model
+        let deletedCount = model.scenarios.filter { $0.info.deleted }.count
+        return HStack(spacing: 4) {
+            Toggle("削除済みを非表示にする", isOn: $model.hideDeleted)
+                .toggleStyle(.checkbox)
+                .font(.caption)
+            if model.hideDeleted, deletedCount > 0 {
+                Text("(\(deletedCount) 件)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+        .help("@Deleted を付与したシナリオ(削除済み)を一覧から隠します。"
+              + "削除済みは表示中でも全実行・フォルダ実行から除外されます(選択しての実行は可能)")
+    }
+
+    /// シナリオ 1 行(選択タグ+フォルダ移動用のドラッグ元。ペイロードはシナリオ ID)。
+    /// @Deleted(削除済み)は取り消し線+バッジ+淡色で示す
     private func scenarioRow(_ entry: AppModel.ScenarioEntry) -> some View {
-        HStack(spacing: 8) {
+        let deleted = entry.info.deleted
+        return HStack(spacing: 8) {
             stateIcon(entry.state)
             VStack(alignment: .leading, spacing: 2) {
-                Text(entry.info.id)
-                    .lineLimit(1)
+                HStack(spacing: 5) {
+                    Text(entry.info.id)
+                        .strikethrough(deleted)
+                        .lineLimit(1)
+                    if deleted {
+                        Text("削除済み")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(Color.secondary.opacity(0.18), in: Capsule())
+                    }
+                }
                 Text("\(entry.info.platform ?? "ios/android")"
                      + (entry.info.title.isEmpty ? "" : " ・ \(entry.info.title)"))
                     .font(.caption)
@@ -268,6 +301,7 @@ struct ContentView: View {
                     .lineLimit(1)
             }
         }
+        .opacity(deleted ? 0.55 : 1)
         .draggable(entry.info.id)
         .tag(entry.id)
     }
@@ -312,8 +346,8 @@ struct ContentView: View {
             } label: {
                 Label("全実行", systemImage: "play.square.stack")
             }
-            .disabled(model.runningFlow || model.scenarios.isEmpty)
-            .help("全シナリオを稼働中デバイスへ振り分けて並列実行")
+            .disabled(model.runningFlow || model.scenarios.allSatisfy { $0.info.deleted })
+            .help("全シナリオを稼働中デバイスへ振り分けて並列実行(削除済み @Deleted は除外)")
 
             Spacer()
 
@@ -411,7 +445,11 @@ private struct ScenarioFolderLabel: View {
         } isTargeted: { targeted = $0 }
         .contextMenu {
             Button("このフォルダを実行") {
-                Task { await model.runScenarios(model.scenarioEntries(inFolder: folder)) }
+                // フォルダ実行も一括実行の一種: 削除済み(@Deleted)は除外する
+                Task {
+                    await model.runScenarios(
+                        model.scenarioEntries(inFolder: folder).filter { !$0.info.deleted })
+                }
             }
             .disabled(count == 0 || model.runningFlow)
             Divider()
@@ -480,6 +518,13 @@ struct RunView: View {
                     .disabled(model.runningFlow)
                 }
                 if let entry = selected.first, selected.count == 1 {
+                    if entry.info.deleted {
+                        Label("@Deleted(削除済み)— 全実行・フォルダ実行からは除外されます。"
+                              + "ここからの実行は可能です",
+                              systemImage: "trash")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
                     if !entry.info.title.isEmpty {
                         Text(entry.info.title)
                             .font(.system(.body))

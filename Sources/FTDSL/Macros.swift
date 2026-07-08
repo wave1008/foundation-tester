@@ -23,3 +23,11 @@ public macro TestClass(app: String, platform: String? = nil) =
 @attached(peer)
 public macro Test(_ title: String = "") =
     #externalMacro(module: "FTDSLMacros", type: "TestMacro")
+
+/// 論理削除マーカー(Shirates の @Deleted 相当)。テストクラスまたは @Test メソッドに付与する。
+/// 削除済みシナリオは一覧に「削除済み」として残り(GUI は非表示切替可)、
+/// 全実行などの一括実行から除外される。ID を明示指定すれば実行は可能。
+/// コードを消さずに履歴として残せるため、復活はアノテーションを外すだけでよい。
+@attached(peer)
+public macro Deleted(_ comment: String = "") =
+    #externalMacro(module: "FTDSLMacros", type: "DeletedMacro")

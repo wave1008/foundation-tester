@@ -205,6 +205,7 @@ final class MCPServer {
             "\(info.id)"
                 + (info.title.isEmpty ? "" : " — \(info.title)")
                 + " (\(info.platform ?? "ios/android"), app: \(info.app))"
+                + (info.deleted ? "【削除済み @Deleted。一括実行から除外】" : "")
         }
         return text(lines.isEmpty
                     ? "シナリオがありません(Projects/\(project.name)/Scenarios/ に @TestClass を追加してください)"
