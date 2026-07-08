@@ -6,6 +6,8 @@ import Foundation
 
 public protocol AppDriver {
     func status() async throws -> StatusResponse
+    /// パッケージファイル(iOS: .app バンドル / Android: .apk)からアプリをインストールする
+    func install(packagePath: String) async throws
     func launch(bundleID: String) async throws
     func snapshot() async throws -> SnapshotResponse
     func tap(ref: Int) async throws

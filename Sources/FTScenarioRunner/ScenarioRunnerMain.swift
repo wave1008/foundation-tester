@@ -223,6 +223,7 @@ struct NullDriver: AppDriver {
     func status() async throws -> StatusResponse {
         StatusResponse(ready: true, device: "dry-run", osVersion: "-", sessionBundleID: nil)
     }
+    func install(packagePath: String) async throws { throw Unavailable() }
     func launch(bundleID: String) async throws { throw Unavailable() }
     func snapshot() async throws -> SnapshotResponse { throw Unavailable() }
     func tap(ref: Int) async throws { throw Unavailable() }

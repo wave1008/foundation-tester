@@ -114,6 +114,14 @@ public final class AndroidDriver: AppDriver {
                               sessionBundleID: currentPackage)
     }
 
+    public func install(packagePath: String) async throws {
+        let result = try adb(["install", "-r", packagePath])
+        guard result.output.contains("Success") else {
+            throw DriverError.badResponse(status: Int(result.status),
+                body: "アプリのインストールに失敗しました: \(result.tail)")
+        }
+    }
+
     public func launch(bundleID: String) async throws {
         // 起動中でも先頭画面に戻すため一度止めてから起動する(iOS launch() と同じ意味論)
         _ = try adb(["shell", "am", "force-stop", bundleID])

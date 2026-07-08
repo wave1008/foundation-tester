@@ -119,6 +119,13 @@ final class MCPServer {
             let status = try await driver(args).status()
             return text("ready: \(status.ready) / \(status.device) (\(status.osVersion)) / session: \(status.sessionBundleID ?? "なし")")
 
+        case "ft_install":
+            guard let packagePath = args["packagePath"] as? String else {
+                throw MCPError("packagePath が必要です")
+            }
+            try await driver(args).install(packagePath: packagePath)
+            return text("インストールしました: \(packagePath)")
+
         case "ft_launch":
             guard let bundleID = args["bundleId"] as? String else { throw MCPError("bundleId が必要です") }
             try await driver(args).launch(bundleID: bundleID)
@@ -236,6 +243,9 @@ final class MCPServer {
 
     static let toolDefinitions: [[String: Any]] = [
         tool("ft_status", "デバイス/ブリッジの接続状態を確認する", [:]),
+        tool("ft_install", "パッケージファイルからアプリをインストールする(iOS: .app バンドル / Android: .apk)", [
+            "packagePath": ["type": "string", "description": "パッケージファイルの絶対パス"],
+        ], required: ["packagePath"]),
         tool("ft_launch", "アプリを起動する(起動済みなら先頭画面から再起動)", [
             "bundleId": ["type": "string", "description": "bundle ID(iOS)/ パッケージ名(Android)"],
         ], required: ["bundleId"]),

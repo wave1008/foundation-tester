@@ -23,6 +23,17 @@ public final class BridgeClient: AppDriver {
         try await get("/status")
     }
 
+    /// インストール自体はブリッジ(XCUITest ランナー)ではなく simctl の役割のため、
+    /// このポートが繋がっているシミュレータを /status のデバイス名から特定して実行する
+    public func install(packagePath: String) async throws {
+        let current = try await status()
+        let result = try Shell.run(["xcrun", "simctl", "install", current.device, packagePath])
+        guard result.status == 0 else {
+            throw DriverError.badResponse(status: Int(result.status),
+                body: "simctl install に失敗しました: \(result.tail)")
+        }
+    }
+
     public func launch(bundleID: String) async throws {
         let _: OKResponse = try await post("/session", body: LaunchRequest(bundleID: bundleID))
     }

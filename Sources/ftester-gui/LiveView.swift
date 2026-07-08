@@ -4,9 +4,17 @@
 
 import SwiftUI
 import FTCore
+import UniformTypeIdentifiers
 
 struct LiveView: View {
     @Environment(AppModel.self) private var model
+    @State private var showingIOSPicker = false
+    @State private var showingAndroidPicker = false
+
+    private static let iosPackageTypes: [UTType] =
+        [UTType(filenameExtension: "app")].compactMap { $0 }
+    private static let androidPackageTypes: [UTType] =
+        [UTType(filenameExtension: "apk")].compactMap { $0 }
 
     var body: some View {
         HSplitView {
@@ -46,6 +54,34 @@ struct LiveView: View {
                     .textFieldStyle(.roundedBorder)
                 Button("起動") { Task { await model.launchApp() } }
                 Button("終了") { Task { await model.terminateApp() } }
+            }
+
+            // インストール: プラットフォーム別にパスを保持し、選択中デバイス側のパスを使う
+            HStack {
+                TextField("iOS: .app バンドルのパス", text: $model.iosPackagePath)
+                    .textFieldStyle(.roundedBorder)
+                Button("選択…") { showingIOSPicker = true }
+                    .fileImporter(isPresented: $showingIOSPicker,
+                                  allowedContentTypes: Self.iosPackageTypes) { result in
+                        if case .success(let url) = result { model.iosPackagePath = url.path }
+                    }
+            }
+            HStack {
+                TextField("Android: .apk のパス", text: $model.androidPackagePath)
+                    .textFieldStyle(.roundedBorder)
+                Button("選択…") { showingAndroidPicker = true }
+                    .fileImporter(isPresented: $showingAndroidPicker,
+                                  allowedContentTypes: Self.androidPackageTypes) { result in
+                        if case .success(let url) = result { model.androidPackagePath = url.path }
+                    }
+            }
+            HStack {
+                Button("インストール") { Task { await model.installApp() } }
+                Text(model.selectedTarget?.platform == "android"
+                     ? "→ Android(.apk)のパスを使用"
+                     : "→ iOS(.app)のパスを使用")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             HStack {
