@@ -1,6 +1,7 @@
 // ContentView.swift
 // メイン画面: サイドバー(フロー一覧)+ 3タブ(フロー実行 / ライブ操作 / FM探索)
 
+import AppKit
 import SwiftUI
 import FTCore
 
@@ -18,9 +19,22 @@ struct ContentView: View {
     @State private var newFolderName = ""
     @State private var folderToRename: String?
     @State private var renameFolderName = ""
+    // ソースリネーム(class 宣言・@Test メソッド名・説明)のダイアログ状態
+    @State private var classToRename: String?
+    @State private var renameClassName = ""
+    @State private var methodToRename: AppModel.ScenarioEntry?
+    @State private var renameMethodName = ""
+    @State private var titleToEdit: AppModel.ScenarioEntry?
+    @State private var editTitleText = ""
     @State private var folderErrorMessage: String?
     @State private var rootDropTargeted = false
     @State private var bottomAreaTargeted = false
+    // クラス行のダブルクリック(開閉トグル)検出用。行にタップジェスチャを付けると
+    // .draggable のドラッグが開始されなくなる(2026-07-09 実測)ため、ジェスチャを
+    // 使わず NSEvent のローカルモニタで検出する(1 クリック目のネイティブ選択を利用)
+    @State private var doubleClickMonitor: Any?
+    @State private var sidebarWindow: NSWindow?
+    @State private var sidebarFrame: CGRect = .zero
 
     var body: some View {
         // NavigationSplitView はウィンドウリサイズ時に列を勝手に畳む・幅を戻す挙動を
@@ -118,10 +132,7 @@ struct ContentView: View {
                                 model.selectedScenarioIDs = [AppModel.folderSelectionID(folder)]
                             },
                             onToggle: { folderExpansion(folder).wrappedValue.toggle() },
-                            onRename: {
-                                renameFolderName = folder
-                                folderToRename = folder
-                            },
+                            onRename: { beginRenameFolder(folder) },
                             onDelete: {
                                 folderErrorMessage = model.deleteScenarioFolder(folder)
                             })
@@ -186,19 +197,68 @@ struct ContentView: View {
                 } isTargeted: { bottomAreaTargeted = $0 }
         }
         .listStyle(.sidebar)
+        // クラス行のダブルクリック検出(NSEvent モニタ)用: リストの領域と属するウィンドウ
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { sidebarFrame = $0 }
+        .background(HostWindowReader { sidebarWindow = $0 })
+        .onAppear { installClassDoubleClickMonitor() }
+        .onDisappear { removeClassDoubleClickMonitor() }
         // (再読込・全実行ボタンは controlBar にある。プレーンウィンドウでは
         //  List への .toolbar がウィンドウツールバーに収集されないため置かないこと)
         // 空きエリアの右クリック(items が空)= フォルダ追加。
         // シナリオ行の右クリックにはフォルダへの移動も出す(ドラッグの代替)。
-        // フォルダ行は ScenarioFolderLabel 自身の contextMenu が優先される
+        // フォルダ行はラベル上なら ScenarioFolderLabel 自身の contextMenu が優先されるが、
+        // ラベル外(開閉 chevron・行の余白)はこちらに来るため、フォルダ操作をここにも出す
         .contextMenu(forSelectionType: URL.self) { items in
             let targets = model.scenarios.filter { items.contains($0.id) }
+            let folders = items.compactMap(AppModel.folderName(fromSelectionID:))
+            let classNames = items.compactMap(AppModel.className(fromSelectionID:))
+            // クラス行(ラベル外を右クリックしたときも同じ操作を出す。フォルダ行と同じ理由)
+            if targets.isEmpty, folders.isEmpty, classNames.count == 1,
+               let className = classNames.first {
+                let members = model.scenarios.filter { $0.className == className }
+                Button("このクラスを実行") {
+                    Task {
+                        await model.runScenarios(members.filter { !$0.info.deleted })
+                    }
+                }
+                .disabled(members.allSatisfy(\.info.deleted) || model.runningFlow)
+                Divider()
+                Button("クラス名を変更...") { beginRenameClass(className) }
+                    .disabled(model.runningFlow)
+                Divider()
+            }
+            if targets.isEmpty, folders.count == 1, let folder = folders.first {
+                let count = model.scenarioEntries(inFolder: folder).count
+                Button("このフォルダを実行") {
+                    Task {
+                        await model.runScenarios(
+                            model.scenarioEntries(inFolder: folder).filter { !$0.info.deleted })
+                    }
+                }
+                .disabled(count == 0 || model.runningFlow)
+                Divider()
+                Button("名前を変更...") { beginRenameFolder(folder) }
+                Divider()
+                Button("削除", role: .destructive) {
+                    folderErrorMessage = model.deleteScenarioFolder(folder)
+                }
+                .disabled(count > 0)
+                Divider()
+            }
             if !targets.isEmpty {
                 Button(targets.count == 1
                        ? "実行" : "選択した \(targets.count) 件を実行") {
                     Task { await model.runScenarios(targets) }
                 }
                 .disabled(model.runningFlow)
+                Divider()
+            }
+            // 単一のテスト関数行: ソースの func 宣言と @Test の説明のリネーム
+            if targets.count == 1, let target = targets.first {
+                Button("関数名を変更...") { beginRenameMethod(target) }
+                    .disabled(model.runningFlow)
+                Button("説明を変更...") { beginEditTitle(target) }
+                    .disabled(model.runningFlow)
                 Divider()
             }
             if !targets.isEmpty,
@@ -253,7 +313,54 @@ struct ContentView: View {
             }
             Button("キャンセル", role: .cancel) {}
         }
-        .alert("フォルダ操作を完了できません", isPresented: Binding(
+        .alert("クラス名を変更", isPresented: Binding(
+            get: { classToRename != nil },
+            set: { if !$0 { classToRename = nil } })) {
+            TextField("クラス名", text: $renameClassName)
+            Button("変更") {
+                guard let className = classToRename else { return }
+                Task {
+                    folderErrorMessage = await model.renameScenarioClass(
+                        className, to: renameClassName)
+                }
+            }
+            Button("キャンセル", role: .cancel) {}
+        } message: {
+            Text("ソースの class 宣言を書き換えます(ファイル名がクラス名と同じなら追従)。"
+                 + "シナリオ ID が変わるため再ビルドして一覧を更新します")
+        }
+        .alert("関数名を変更", isPresented: Binding(
+            get: { methodToRename != nil },
+            set: { if !$0 { methodToRename = nil } })) {
+            TextField("関数名", text: $renameMethodName)
+            Button("変更") {
+                guard let entry = methodToRename else { return }
+                Task {
+                    folderErrorMessage = await model.renameScenarioMethod(
+                        entry, to: renameMethodName)
+                }
+            }
+            Button("キャンセル", role: .cancel) {}
+        } message: {
+            Text("ソースの func 宣言を書き換えます。"
+                 + "シナリオ ID が変わるため再ビルドして一覧を更新します")
+        }
+        .alert("説明を変更", isPresented: Binding(
+            get: { titleToEdit != nil },
+            set: { if !$0 { titleToEdit = nil } })) {
+            TextField("説明", text: $editTitleText)
+            Button("変更") {
+                guard let entry = titleToEdit else { return }
+                Task {
+                    folderErrorMessage = await model.updateScenarioTitle(
+                        entry, to: editTitleText)
+                }
+            }
+            Button("キャンセル", role: .cancel) {}
+        } message: {
+            Text("@Test(\"説明\") の文字列を書き換えて再ビルドします(空にすると説明なし)")
+        }
+        .alert("操作を完了できません", isPresented: Binding(
             get: { folderErrorMessage != nil },
             set: { if !$0 { folderErrorMessage = nil } })) {
             Button("OK", role: .cancel) {}
@@ -291,8 +398,12 @@ struct ContentView: View {
         ScenarioClassLabel(
             group: group,
             collapsed: collapsed,
-            onFocus: { model.selectedScenarioIDs = [AppModel.classSelectionID(group.className)] },
-            onToggle: { toggleClass(group.className) })
+            onToggle: { toggleClass(group.className) },
+            onRename: { beginRenameClass(group.className) })
+        // .draggable はラベル内部ではなく行(.tag)の直下に置くこと。内側に置くと
+        // 「選択中の行」をドラッグしたときにセッションが開始されない(2026-07-09 実測。
+        // 関数行 scenarioRow と同じ構成 = draggable が最外周なら選択中でも動く)
+        .draggable(group.entries.first?.info.id ?? group.className)
         .tag(AppModel.classSelectionID(group.className))
         if !collapsed {
             ForEach(group.entries) { entry in
@@ -318,7 +429,6 @@ struct ContentView: View {
             if !entry.info.title.isEmpty {
                 Text(entry.info.title)
                     .strikethrough(deleted)
-                    .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
         }
@@ -327,12 +437,76 @@ struct ContentView: View {
         .tag(entry.id)
     }
 
+    /// フォルダ名変更ダイアログを開く。アラートの TextField は表示トランザクション時点の
+    /// 文字列を初期値として取り込むため、renameFolderName と folderToRename を同時に
+    /// セットすると空のまま表示されることがある(2026-07-09 ユーザー報告)。
+    /// 名前を先に確定し、表示トリガは次のランループで立てる
+    private func beginRenameFolder(_ folder: String) {
+        renameFolderName = folder
+        DispatchQueue.main.async { folderToRename = folder }
+    }
+
+    /// クラス名変更ダイアログを開く(遅延理由は beginRenameFolder と同じ)
+    private func beginRenameClass(_ className: String) {
+        renameClassName = className
+        DispatchQueue.main.async { classToRename = className }
+    }
+
+    /// 関数名変更ダイアログを開く
+    private func beginRenameMethod(_ entry: AppModel.ScenarioEntry) {
+        renameMethodName = entry.methodName
+        DispatchQueue.main.async { methodToRename = entry }
+    }
+
+    /// 説明(@Test の文字列)変更ダイアログを開く
+    private func beginEditTitle(_ entry: AppModel.ScenarioEntry) {
+        editTitleText = entry.info.title
+        DispatchQueue.main.async { titleToEdit = entry }
+    }
+
     /// テストクラスの開閉を切り替える(既定は開。閉じたものだけ記録する)
     private func toggleClass(_ className: String) {
         if collapsedClasses.contains(className) {
             collapsedClasses.remove(className)
         } else {
             collapsedClasses.insert(className)
+        }
+    }
+
+    /// クラス行のダブルクリック = 開閉トグル。行にタップジェスチャ
+    /// (.onTapGesture / .simultaneousGesture(TapGesture) / contextMenu(primaryAction:)
+    /// のいずれも)を付けると .draggable のドラッグセッションが開始されなくなる
+    /// (2026-07-09 実測)ため、ジェスチャを使わず NSEvent のローカルモニタで
+    /// ダブルクリックを検出する。1 クリック目で List のネイティブ選択が
+    /// クラス行(擬似 URL)に入るので、2 クリック目はサイドバー内のダブルクリック
+    /// かつ選択が単一クラス行のときにトグルする。イベントはそのまま流す
+    /// (選択・ドラッグ・chevron ボタンに干渉しない)。
+    /// フォルダ行は自前の TapGesture で開閉する(ドラッグ元でないため)ので対象外
+    private func installClassDoubleClickMonitor() {
+        guard doubleClickMonitor == nil else { return }
+        // List 行上の mouseUp は NSTableView のトラッキングループに消費されて
+        // ローカルモニタに届かない(2026-07-09 実測)ため、mouseDown 側で判定する
+        doubleClickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown]) { event in
+            guard event.clickCount == 2,
+                  let window = sidebarWindow, event.window === window,
+                  let contentView = window.contentView else { return event }
+            // NSHostingView は flipped なので convert 結果は SwiftUI の .global 座標と一致
+            let point = contentView.convert(event.locationInWindow, from: nil)
+            guard sidebarFrame.contains(point),
+                  model.selectedScenarioIDs.count == 1,
+                  let selected = model.selectedScenarioIDs.first,
+                  let className = AppModel.className(fromSelectionID: selected) else {
+                return event
+            }
+            toggleClass(className)
+            return event
+        }
+    }
+
+    private func removeClassDoubleClickMonitor() {
+        if let monitor = doubleClickMonitor {
+            NSEvent.removeMonitor(monitor)
+            doubleClickMonitor = nil
         }
     }
 
@@ -426,7 +600,7 @@ struct ContentView: View {
 
 }
 
-/// 実行状態のアイコン(テスト関数行とクラス行の集約表示で共用)
+/// 実行状態のアイコン(テスト関数行の先頭に表示)
 struct RunStateIcon: View {
     let state: AppModel.RunState
 
@@ -435,7 +609,11 @@ struct RunStateIcon: View {
         case .idle:
             Image(systemName: "circle.dashed").foregroundStyle(.secondary)
         case .running:
-            Image(systemName: "play.circle.fill").foregroundStyle(.blue)
+            // 実行中は静止アイコンだと idle と見分けづらいので、スピナー風の
+            // 可変カラーアニメーション(セグメントが順に点灯)で回転して見せる
+            Image(systemName: "progress.indicator")
+                .foregroundStyle(.green)
+                .symbolEffect(.variableColor.iterative, options: .repeat(.continuous))
         case .passed:
             Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
         case .failed:
@@ -456,29 +634,44 @@ struct DeletedBadge: View {
     }
 }
 
+/// ビューの属する NSWindow を捕捉する(NSEvent モニタのウィンドウ判定用)。
+/// makeNSView 時点では window 未接続のことがあるため viewDidMoveToWindow で解決する
+private struct HostWindowReader: NSViewRepresentable {
+    let onResolve: (NSWindow?) -> Void
+
+    func makeNSView(context: Context) -> WindowProbeView {
+        let view = WindowProbeView()
+        view.onWindowChange = onResolve
+        return view
+    }
+
+    func updateNSView(_ nsView: WindowProbeView, context: Context) {}
+
+    final class WindowProbeView: NSView {
+        var onWindowChange: ((NSWindow?) -> Void)?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            let window = self.window
+            // ビュー更新中の状態変更を避けるため次のランループで通知する
+            DispatchQueue.main.async { [weak self] in self?.onWindowChange?(window) }
+        }
+    }
+}
+
 /// テストクラスの行(配下のテスト関数の親。クリックで開閉、ドラッグ元+右クリックメニュー)。
 /// クラスの移動 = クラスを定義する .swift の移動なのでドラッグはクラス行が主
-/// (関数行のドラッグも同じファイル移動になる)。実行状態は配下の集約を出す
+/// (関数行のドラッグも同じファイル移動になる)。実行状態は関数行のみに出す
 private struct ScenarioClassLabel: View {
     @Environment(AppModel.self) private var model
     let group: AppModel.ScenarioClassGroup
     let collapsed: Bool
-    let onFocus: () -> Void
     let onToggle: () -> Void
+    let onRename: () -> Void
 
     /// 配下がすべて @Deleted(≒ クラスに @Deleted)なら行全体を削除済み表示にする
     private var allDeleted: Bool {
         group.entries.allSatisfy { $0.info.deleted }
-    }
-
-    /// 配下のテスト関数の集約状態(実行中 > 失敗あり > 全部成功 > 未実行)
-    private var aggregateState: AppModel.RunState {
-        if group.entries.contains(where: { $0.state == .running }) { return .running }
-        if group.entries.contains(where: { $0.state == .failed }) { return .failed }
-        if !group.entries.isEmpty, group.entries.allSatisfy({ $0.state == .passed }) {
-            return .passed
-        }
-        return .idle
     }
 
     var body: some View {
@@ -493,7 +686,7 @@ private struct ScenarioClassLabel: View {
             }
             .buttonStyle(.plain)
             Image(systemName: "curlybraces")
-                .foregroundStyle(.purple.gradient)
+                .foregroundStyle(.blue.gradient)  // フォルダアイコンと同じ青系統に揃える
                 .frame(width: 20, alignment: .leading)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 5) {
@@ -510,20 +703,24 @@ private struct ScenarioClassLabel: View {
                     .lineLimit(1)
             }
             Spacer()
-            if aggregateState != .idle {
-                RunStateIcon(state: aggregateState)
-            }
             Text("\(group.entries.count)")
                 .font(.caption)
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
         }
         .opacity(allDeleted ? 0.55 : 1)
+        .padding(.vertical, 3)
+        .padding(.horizontal, 5)
+        // クラス行はセクション見出しなので、ごく薄い明色バンドで配下の関数行と区別する
+        // (.primary ベース = ダークでは白っぽく、ライトでは黒っぽく、どちらでも一段浮く)
+        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 5))
         .contentShape(Rectangle())
-        // シングルクリック = フォーカス、ダブルクリック = 開閉トグル(フォルダ行と同じ)
-        .onTapGesture { onFocus() }
-        .simultaneousGesture(TapGesture(count: 2).onEnded { onToggle() })
-        .draggable(group.entries.first?.info.id ?? group.className)
+        // クラス行はドラッグ元(フォルダへの移動)だが、.draggable は呼び出し側
+        // (.tag の直下)に付ける。またタップジェスチャを行に付けると種類を問わず
+        // (.onTapGesture / simultaneousGesture(TapGesture) / contextMenu(primaryAction:))
+        // ドラッグセッションが開始されなくなる(2026-07-09 実測)ため、ここには置かない。
+        // シングルクリック = フォーカスは List のネイティブ選択(.tag)、
+        // ダブルクリック = 開閉トグルは NSEvent モニタ(installClassDoubleClickMonitor)が担う
         .contextMenu {
             Button("このクラスを実行") {
                 // クラス実行も一括実行の一種: 削除済み(@Deleted)は除外する
@@ -532,6 +729,9 @@ private struct ScenarioClassLabel: View {
                 }
             }
             .disabled(allDeleted || model.runningFlow)
+            Divider()
+            Button("クラス名を変更...") { onRename() }
+                .disabled(model.runningFlow)
             if !model.scenarioFolders.isEmpty || group.entries.first?.folder != nil {
                 Divider()
                 Menu("フォルダへ移動") {
@@ -575,7 +775,7 @@ private struct ScenarioFolderLabel: View {
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: targeted ? "folder.fill.badge.plus" : "folder.fill")
-                .foregroundStyle(.blue.gradient)
+                .foregroundStyle(.green.gradient)
                 .frame(width: 20, alignment: .leading)
             Text(folder)
                 .lineLimit(1)
