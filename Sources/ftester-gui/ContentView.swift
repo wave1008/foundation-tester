@@ -12,6 +12,8 @@ struct ContentView: View {
 
     // シナリオのフォルダ操作(閉じているフォルダ・各アラートの入力)
     @State private var collapsedFolders: Set<String> = []
+    // 閉じているテストクラス(既定は展開。クラス名はプロジェクト内で一意)
+    @State private var collapsedClasses: Set<String> = []
     @State private var showNewFolderAlert = false
     @State private var newFolderName = ""
     @State private var folderToRename: String?
@@ -99,19 +101,23 @@ struct ContentView: View {
                 // フォルダ(Scenarios/ のサブディレクトリ、1 階層のみ)→ 直下のシナリオ の順
                 ForEach(model.scenarioFolders, id: \.self) { folder in
                     DisclosureGroup(isExpanded: folderExpansion(folder)) {
-                        let entries = model.scenarioEntries(inFolder: folder)
-                        if entries.isEmpty {
+                        let groups = model.scenarioClassGroups(inFolder: folder)
+                        if groups.isEmpty {
                             Text("シナリオをここへドラッグ")
                                 .font(.caption)
                                 .foregroundStyle(.tertiary)
                         }
-                        ForEach(entries) { entry in
-                            scenarioRow(entry)
+                        ForEach(groups) { group in
+                            scenarioClassGroup(group)
                         }
                     } label: {
                         ScenarioFolderLabel(
                             folder: folder,
                             count: model.scenarioEntries(inFolder: folder).count,
+                            onFocus: {
+                                model.selectedScenarioIDs = [AppModel.folderSelectionID(folder)]
+                            },
+                            onToggle: { folderExpansion(folder).wrappedValue.toggle() },
                             onRename: {
                                 renameFolderName = folder
                                 folderToRename = folder
@@ -120,9 +126,10 @@ struct ContentView: View {
                                 folderErrorMessage = model.deleteScenarioFolder(folder)
                             })
                     }
+                    .tag(AppModel.folderSelectionID(folder))
                 }
-                ForEach(model.scenarioEntries(inFolder: nil)) { entry in
-                    scenarioRow(entry)
+                ForEach(model.scenarioClassGroups(inFolder: nil)) { group in
+                    scenarioClassGroup(group)
                 }
             } header: {
                 HStack {
@@ -274,29 +281,43 @@ struct ContentView: View {
               + "削除済みは表示中でも全実行・フォルダ実行から除外されます(選択しての実行は可能)")
     }
 
-    /// シナリオ 1 行(選択タグ+フォルダ移動用のドラッグ元。ペイロードはシナリオ ID)。
-    /// @Deleted(削除済み)は取り消し線+バッジ+淡色で示す
+    /// テストクラス 1 つ分(クラス行+展開時はその下の階層にテスト関数の行)。
+    /// DisclosureGroup の入れ子は初回挿入時に展開状態(binding = true)が反映されず
+    /// 閉じて描画されることがある(2026-07-08 実測: 最初のクラスだけ閉じた)ため、
+    /// クラスの開閉は自前の chevron+条件表示で決定的に描画する
+    @ViewBuilder
+    private func scenarioClassGroup(_ group: AppModel.ScenarioClassGroup) -> some View {
+        let collapsed = collapsedClasses.contains(group.className)
+        ScenarioClassLabel(
+            group: group,
+            collapsed: collapsed,
+            onFocus: { model.selectedScenarioIDs = [AppModel.classSelectionID(group.className)] },
+            onToggle: { toggleClass(group.className) })
+        .tag(AppModel.classSelectionID(group.className))
+        if !collapsed {
+            ForEach(group.entries) { entry in
+                scenarioRow(entry)
+                    .padding(.leading, 22)
+            }
+        }
+    }
+
+    /// テスト関数(@Test メソッド)1 行(選択タグ+フォルダ移動用のドラッグ元。
+    /// ペイロードはシナリオ ID)。@Deleted(削除済み)は取り消し線+バッジ+淡色で示す
     private func scenarioRow(_ entry: AppModel.ScenarioEntry) -> some View {
         let deleted = entry.info.deleted
         return HStack(spacing: 8) {
-            stateIcon(entry.state)
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 5) {
-                    Text(entry.info.id)
-                        .strikethrough(deleted)
-                        .lineLimit(1)
-                    if deleted {
-                        Text("削除済み")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1)
-                            .background(Color.secondary.opacity(0.18), in: Capsule())
-                    }
-                }
-                Text("\(entry.info.platform ?? "ios/android")"
-                     + (entry.info.title.isEmpty ? "" : " ・ \(entry.info.title)"))
-                    .font(.caption)
+            RunStateIcon(state: entry.state)
+            Text(entry.methodName)
+                .strikethrough(deleted)
+                .lineLimit(1)
+                .layoutPriority(1)  // タイトルが長くてもメソッド名は省略しない
+            if deleted {
+                DeletedBadge()
+            }
+            if !entry.info.title.isEmpty {
+                Text(entry.info.title)
+                    .strikethrough(deleted)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
@@ -304,6 +325,15 @@ struct ContentView: View {
         .opacity(deleted ? 0.55 : 1)
         .draggable(entry.info.id)
         .tag(entry.id)
+    }
+
+    /// テストクラスの開閉を切り替える(既定は開。閉じたものだけ記録する)
+    private func toggleClass(_ className: String) {
+        if collapsedClasses.contains(className) {
+            collapsedClasses.remove(className)
+        } else {
+            collapsedClasses.insert(className)
+        }
     }
 
     /// フォルダの開閉状態(既定は開。閉じたものだけ記録する)
@@ -394,8 +424,13 @@ struct ContentView: View {
         .padding(.vertical, 6)
     }
 
-    @ViewBuilder
-    func stateIcon(_ state: AppModel.RunState) -> some View {
+}
+
+/// 実行状態のアイコン(テスト関数行とクラス行の集約表示で共用)
+struct RunStateIcon: View {
+    let state: AppModel.RunState
+
+    var body: some View {
         switch state {
         case .idle:
             Image(systemName: "circle.dashed").foregroundStyle(.secondary)
@@ -409,12 +444,130 @@ struct ContentView: View {
     }
 }
 
+/// 「削除済み」カプセルバッジ(@Deleted の表示。クラス行・関数行で共用)
+struct DeletedBadge: View {
+    var body: some View {
+        Text("削除済み")
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1)
+            .background(Color.secondary.opacity(0.18), in: Capsule())
+    }
+}
+
+/// テストクラスの行(配下のテスト関数の親。クリックで開閉、ドラッグ元+右クリックメニュー)。
+/// クラスの移動 = クラスを定義する .swift の移動なのでドラッグはクラス行が主
+/// (関数行のドラッグも同じファイル移動になる)。実行状態は配下の集約を出す
+private struct ScenarioClassLabel: View {
+    @Environment(AppModel.self) private var model
+    let group: AppModel.ScenarioClassGroup
+    let collapsed: Bool
+    let onFocus: () -> Void
+    let onToggle: () -> Void
+
+    /// 配下がすべて @Deleted(≒ クラスに @Deleted)なら行全体を削除済み表示にする
+    private var allDeleted: Bool {
+        group.entries.allSatisfy { $0.info.deleted }
+    }
+
+    /// 配下のテスト関数の集約状態(実行中 > 失敗あり > 全部成功 > 未実行)
+    private var aggregateState: AppModel.RunState {
+        if group.entries.contains(where: { $0.state == .running }) { return .running }
+        if group.entries.contains(where: { $0.state == .failed }) { return .failed }
+        if !group.entries.isEmpty, group.entries.allSatisfy({ $0.state == .passed }) {
+            return .passed
+        }
+        return .idle
+    }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            // chevron はフォルダの開閉三角と同じくシングルクリックで開閉できるボタン
+            Button(action: onToggle) {
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .rotationEffect(.degrees(collapsed ? 0 : 90))
+                    .frame(width: 12)
+            }
+            .buttonStyle(.plain)
+            Image(systemName: "curlybraces")
+                .foregroundStyle(.purple.gradient)
+                .frame(width: 20, alignment: .leading)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 5) {
+                    Text(group.className)
+                        .strikethrough(allDeleted)
+                        .lineLimit(1)
+                    if allDeleted {
+                        DeletedBadge()
+                    }
+                }
+                Text(group.entries.first?.info.platform ?? "ios/android")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            Spacer()
+            if aggregateState != .idle {
+                RunStateIcon(state: aggregateState)
+            }
+            Text("\(group.entries.count)")
+                .font(.caption)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+        }
+        .opacity(allDeleted ? 0.55 : 1)
+        .contentShape(Rectangle())
+        // シングルクリック = フォーカス、ダブルクリック = 開閉トグル(フォルダ行と同じ)
+        .onTapGesture { onFocus() }
+        .simultaneousGesture(TapGesture(count: 2).onEnded { onToggle() })
+        .draggable(group.entries.first?.info.id ?? group.className)
+        .contextMenu {
+            Button("このクラスを実行") {
+                // クラス実行も一括実行の一種: 削除済み(@Deleted)は除外する
+                Task {
+                    await model.runScenarios(group.entries.filter { !$0.info.deleted })
+                }
+            }
+            .disabled(allDeleted || model.runningFlow)
+            if !model.scenarioFolders.isEmpty || group.entries.first?.folder != nil {
+                Divider()
+                Menu("フォルダへ移動") {
+                    ForEach(model.scenarioFolders, id: \.self) { folder in
+                        Button(folder) {
+                            if let id = group.entries.first?.info.id {
+                                model.moveScenario(id: id, toFolder: folder)
+                            }
+                        }
+                    }
+                    if group.entries.first?.folder != nil {
+                        if !model.scenarioFolders.isEmpty {
+                            Divider()
+                        }
+                        Button("Scenarios 直下へ戻す") {
+                            if let id = group.entries.first?.info.id {
+                                model.moveScenario(id: id, toFolder: nil)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .help("テストクラス(配下は @Test メソッド)。フォルダへドラッグで .swift ごと移動。"
+              + "右クリックでクラス単位の実行・フォルダ移動")
+    }
+}
+
 /// シナリオフォルダの行ラベル(ドロップ先+右クリックメニュー)。
 /// ドロップ中はハイライトして受け入れ可能なことを示す
 private struct ScenarioFolderLabel: View {
     @Environment(AppModel.self) private var model
     let folder: String
     let count: Int
+    let onFocus: () -> Void
+    let onToggle: () -> Void
     let onRename: () -> Void
     let onDelete: () -> Void
     @State private var targeted = false
@@ -433,6 +586,10 @@ private struct ScenarioFolderLabel: View {
                 .foregroundStyle(.secondary)
         }
         .contentShape(Rectangle())
+        // シングルクリック = フォーカス、ダブルクリック = 開閉トグル
+        // (simultaneousGesture なのでダブルクリック時は 1 クリック目のフォーカスも効く)
+        .onTapGesture { onFocus() }
+        .simultaneousGesture(TapGesture(count: 2).onEnded { onToggle() })
         .background(targeted ? Color.accentColor.opacity(0.15) : .clear,
                     in: RoundedRectangle(cornerRadius: 4))
         .dropDestination(for: String.self) { ids, _ in
