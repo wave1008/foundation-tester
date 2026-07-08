@@ -421,8 +421,9 @@ private struct ScenarioFolderLabel: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            Image(systemName: targeted ? "folder.fill" : "folder")
-                .foregroundStyle(targeted ? Color.accentColor : .secondary)
+            Image(systemName: targeted ? "folder.fill.badge.plus" : "folder.fill")
+                .foregroundStyle(.blue.gradient)
+                .frame(width: 20, alignment: .leading)
             Text(folder)
                 .lineLimit(1)
             Spacer()
