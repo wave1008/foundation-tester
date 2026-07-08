@@ -178,6 +178,9 @@ final class MCPServer {
         case "ft_run_scenario":
             return try await runScenario(args)
 
+        case "ft_list_projects":
+            return try listProjects()
+
         case "ft_doctor":
             let fm = FMDoctor.check()
             return text((fm.available ? "✅ " : "❌ ") + fm.detail)
@@ -193,45 +196,105 @@ final class MCPServer {
 
     /// シナリオ一覧(自動ビルド込み。コンパイルエラーはそのまま返す=エージェントが直せる)
     private func listScenarios(_ args: [String: Any]) throws -> [[String: Any]] {
+        let project = try ScenarioHost.project(named: args["project"] as? String)
         if !(args["skipBuild"] as? Bool ?? false) {
-            try ScenarioHost.build()
+            try ScenarioHost.build(project: project)
         }
-        let scenarios = try ScenarioHost.list()
+        let scenarios = try ScenarioHost.list(project: project)
         let lines = scenarios.map { info in
             "\(info.id)"
                 + (info.title.isEmpty ? "" : " — \(info.title)")
                 + " (\(info.platform ?? "ios/android"), app: \(info.app))"
         }
         return text(lines.isEmpty
-                    ? "シナリオがありません(Scenarios/ に @TestClass を追加してください)"
-                    : lines.joined(separator: "\n"))
+                    ? "シナリオがありません(Projects/\(project.name)/Scenarios/ に @TestClass を追加してください)"
+                    : "プロジェクト: \(project.name)\n" + lines.joined(separator: "\n"))
+    }
+
+    /// テストプロジェクト一覧(実行プロファイル・マシンプロファイル込み)
+    private func listProjects() throws -> [[String: Any]] {
+        guard let root = ScenarioHost.packageRoot() else {
+            throw MCPError("Package.swift が見つかりません(リポジトリ内で実行してください)")
+        }
+        let projects = ProjectStore.all(repoRoot: root)
+        guard !projects.isEmpty else {
+            return text("プロジェクトがありません(ftester project create <name> で作成)")
+        }
+        let machineName = LocalConfig.currentMachineName() ?? "未登録"
+        var lines = ["このマシン: \(machineName)"]
+        for project in projects {
+            let runs = ProfileResolver.runProfileNames(project: project)
+            let machines = ProfileResolver.machineNames(project: project)
+            lines.append("\(project.name)"
+                + " — 実行プロファイル: \(runs.isEmpty ? "なし" : runs.joined(separator: ", "))"
+                + " / マシン: \(machines.isEmpty ? "なし" : machines.joined(separator: ", "))")
+        }
+        return text(lines.joined(separator: "\n"))
     }
 
     /// シナリオ実行(自動ビルド込み)。サブプロセス(ftester-scenarios)に委譲する
     private func runScenario(_ args: [String: Any]) async throws -> [[String: Any]] {
         guard let id = args["id"] as? String else { throw MCPError("id が必要です") }
+        let project = try ScenarioHost.project(named: args["project"] as? String)
         if !(args["skipBuild"] as? Bool ?? false) {
-            try ScenarioHost.build()
+            try ScenarioHost.build(project: project)
         }
-        let all = try ScenarioHost.list()
+        let all = try ScenarioHost.list(project: project)
         guard let info = all.first(where: { $0.id == id })
             ?? all.first(where: { $0.id.hasPrefix(id + ".") }) else {
             throw MCPError("シナリオが見つかりません: \(id)(利用可能: \(all.map(\.id).joined(separator: ", ")))")
         }
 
-        let platform = info.platform ?? (args["platform"] as? String ?? "ios")
-        let connection = DriverConnection(
-            platform: platform,
-            port: (args["port"] as? Int).map(UInt16.init),
-            serial: args["serial"] as? String)
+        var heal = args["heal"] as? Bool ?? false
+        var reportDir = project.reportsDir.path
+        var defaultTimeout: Int?
+        var connection: DriverConnection
+        var prologue: [String] = []
 
-        var lines: [String] = []
-        _ = await ScenarioHost.run(scenarioID: info.id, connection: connection,
-                                   heal: args["heal"] as? Bool ?? false,
-                                   reportDir: "reports") { event in
+        if let profileName = args["profile"] as? String {
+            // 実行プロファイルから接続先(シナリオの platform に合う先頭デバイス)を解決する
+            let machine = try ProfileResolver.determineMachine(
+                project: project, registered: LocalConfig.currentMachineName())
+            let resolved = try ProfileResolver.resolve(
+                project: project, runName: profileName, machineName: machine.name)
+            prologue.append(contentsOf: resolved.warnings.map { "⚠️ \($0)" })
+            heal = args["heal"] as? Bool ?? resolved.heal
+            reportDir = resolved.reportDir.path
+            defaultTimeout = resolved.defaultTimeout
+            let platform = info.platform ?? resolved.devices.first?.platform ?? "ios"
+            guard let device = resolved.devices.first(where: { $0.platform == platform }) else {
+                throw MCPError("プロファイル \(profileName) に \(platform) のデバイスがありません")
+            }
+            if platform == "ios" {
+                let provisioner = BridgeProvisioner(repoRoot: root(of: project))
+                let provisioned = try await provisioner.provision(
+                    devices: [(device.name, device.spec)]) { prologue.append($0) }
+                connection = DriverConnection(platform: "ios", port: provisioned[0].port)
+            } else {
+                let serial = try AndroidDeviceCatalog.resolveSerial(spec: device.spec)
+                connection = DriverConnection(platform: "android", serial: serial)
+            }
+        } else {
+            let platform = info.platform ?? (args["platform"] as? String ?? "ios")
+            connection = DriverConnection(
+                platform: platform,
+                port: (args["port"] as? Int).map(UInt16.init),
+                serial: args["serial"] as? String)
+        }
+
+        var lines: [String] = prologue
+        _ = await ScenarioHost.run(project: project, scenarioID: info.id,
+                                   connection: connection,
+                                   heal: heal, reportDir: reportDir,
+                                   defaultTimeout: defaultTimeout) { event in
             lines.append(contentsOf: ScenarioLogFormatter.lines(for: event))
         }
         return text(lines.joined(separator: "\n"))
+    }
+
+    private func root(of project: TestProject) -> URL {
+        ScenarioHost.packageRoot() ?? project.rootURL
+            .deletingLastPathComponent().deletingLastPathComponent()
     }
 
     // MARK: - ツール定義
@@ -267,15 +330,19 @@ final class MCPServer {
         ], required: ["ref"]),
         tool("ft_screenshot", "スクリーンショットを撮る(画像を返す)。視覚検証に使う", [:]),
         tool("ft_terminate", "起動中のアプリを終了する", [:]),
-        tool("ft_list_scenarios", "Swift DSL シナリオ(Scenarios/)の一覧を返す(自動ビルド込み。コンパイルエラーはそのまま返る)", [
+        tool("ft_list_scenarios", "Swift DSL シナリオ(Projects/<name>/Scenarios/)の一覧を返す(自動ビルド込み。コンパイルエラーはそのまま返る)", [
+            "project": ["type": "string", "description": "テストプロジェクト名(省略時は既定プロジェクト)"],
             "skipBuild": ["type": "boolean", "description": "swift build をスキップ(既定 false)"],
         ]),
         tool("ft_run_scenario", "シナリオを決定的に実行する。失敗時はトリアージとレポートパスを返す(自動ビルド込み)", [
             "id": ["type": "string", "description": "シナリオ ID(クラス名.メソッド名。ft_list_scenarios で確認)"],
+            "project": ["type": "string", "description": "テストプロジェクト名(省略時は既定プロジェクト)"],
+            "profile": ["type": "string", "description": "実行プロファイル名(profiles/runs/。接続先・heal・レポート先を解決)"],
             "heal": ["type": "boolean", "description": "ロケータ自己修復を許可(既定 false)"],
             "port": ["type": "integer", "description": "iOS ブリッジのポート(既定 8123)"],
             "serial": ["type": "string", "description": "Android デバイスのシリアル"],
         ], required: ["id"]),
+        tool("ft_list_projects", "テストプロジェクト(Projects/)と実行プロファイルの一覧を返す", [:]),
         tool("ft_doctor", "Foundation Models の可用性を確認する", [:]),
     ]
 

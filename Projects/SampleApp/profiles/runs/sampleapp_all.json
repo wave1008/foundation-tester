@@ -1,0 +1,16 @@
+{
+  "app": "sampleapp",
+  "devices": [
+    {
+      "name": "シミュ1"
+    },
+    {
+      "name": "シミュ2"
+    },
+    {
+      "name": "エミュ1"
+    }
+  ],
+  "heal": false,
+  "reportDir": "reports"
+}

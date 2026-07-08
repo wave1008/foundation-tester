@@ -1,0 +1,15 @@
+{
+  "ios": {
+    "devices": [
+      { "name": "シミュ1", "simulator": "iPhone 17 Pro", "os": "27.0" },
+      { "name": "シミュ2", "simulator": "iPhone Air", "os": "27.0" }
+    ]
+  },
+  "android": {
+    "devices": [
+      { "name": "エミュ1", "avd": "Pixel 9(Android 16)" },
+      { "name": "エミュ2", "avd": "Pixel 9(Android 15)" },
+      { "name": "エミュ3", "avd": "Pixel 8(Android 14)" }
+    ]
+  }
+}

@@ -123,38 +123,39 @@ public func scrollTo(_ selector: String, direction: FTSwipeDirection = .up, maxS
 // MARK: - 検証コマンド
 
 /// 要素の存在検証。戻り値に .textIs / .valueIs をチェーンできる
+/// (timeout 省略時は実行プロファイルの defaultTimeout、それも無ければ 5 秒)
 @discardableResult
-public func exist(_ selector: String, timeout: Int = 5,
+public func exist(_ selector: String, timeout: Int? = nil,
                   file: StaticString = #filePath, line: UInt = #line) -> FTElement {
+    let core = FTRuntime.requireCore(command: "exist")
     let parsed = FTSelector.parse(selector)
     let step = FlowStep(assert: "exists", locator: parsed.primary,
                         fallbacks: parsed.fallbacks.isEmpty ? nil : parsed.fallbacks,
-                        timeout: timeout)
-    FTRuntime.requireCore(command: "exist")
-        .perform(step: step, description: "exist \"\(selector)\"",
+                        timeout: timeout ?? core.defaultTimeout)
+    core.perform(step: step, description: "exist \"\(selector)\"",
                  selectorText: selector, file: file, line: line)
     return FTElement(selector: selector)
 }
 
-public func textIs(_ selector: String, _ expected: String, timeout: Int = 5,
+public func textIs(_ selector: String, _ expected: String, timeout: Int? = nil,
                    file: StaticString = #filePath, line: UInt = #line) {
+    let core = FTRuntime.requireCore(command: "textIs")
     let parsed = FTSelector.parse(selector)
     let step = FlowStep(assert: "textEquals", locator: parsed.primary,
                         fallbacks: parsed.fallbacks.isEmpty ? nil : parsed.fallbacks,
-                        expected: expected, timeout: timeout)
-    FTRuntime.requireCore(command: "textIs")
-        .perform(step: step, description: "textIs \"\(selector)\" == \"\(expected)\"",
+                        expected: expected, timeout: timeout ?? core.defaultTimeout)
+    core.perform(step: step, description: "textIs \"\(selector)\" == \"\(expected)\"",
                  selectorText: selector, file: file, line: line)
 }
 
-public func valueIs(_ selector: String, _ expected: String, timeout: Int = 5,
+public func valueIs(_ selector: String, _ expected: String, timeout: Int? = nil,
                     file: StaticString = #filePath, line: UInt = #line) {
+    let core = FTRuntime.requireCore(command: "valueIs")
     let parsed = FTSelector.parse(selector)
     let step = FlowStep(assert: "valueEquals", locator: parsed.primary,
                         fallbacks: parsed.fallbacks.isEmpty ? nil : parsed.fallbacks,
-                        expected: expected, timeout: timeout)
-    FTRuntime.requireCore(command: "valueIs")
-        .perform(step: step, description: "valueIs \"\(selector)\" == \"\(expected)\"",
+                        expected: expected, timeout: timeout ?? core.defaultTimeout)
+    core.perform(step: step, description: "valueIs \"\(selector)\" == \"\(expected)\"",
                  selectorText: selector, file: file, line: line)
 }
 
@@ -171,14 +172,14 @@ public struct FTElement {
     let selector: String
 
     @discardableResult
-    public func textIs(_ expected: String, timeout: Int = 5,
+    public func textIs(_ expected: String, timeout: Int? = nil,
                        file: StaticString = #filePath, line: UInt = #line) -> FTElement {
         FTDSL.textIs(selector, expected, timeout: timeout, file: file, line: line)
         return self
     }
 
     @discardableResult
-    public func valueIs(_ expected: String, timeout: Int = 5,
+    public func valueIs(_ expected: String, timeout: Int? = nil,
                         file: StaticString = #filePath, line: UInt = #line) -> FTElement {
         FTDSL.valueIs(selector, expected, timeout: timeout, file: file, line: line)
         return self

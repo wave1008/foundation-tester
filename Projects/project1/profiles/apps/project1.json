@@ -1,0 +1,10 @@
+{
+  "common": {
+    "appName": "project1",
+    "app": "com.example.myapp"
+  },
+  "ios": {
+  },
+  "android": {
+  }
+}

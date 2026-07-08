@@ -56,7 +56,7 @@ struct ListScenarios: AsyncParsableCommand {
             print(String(data: data, encoding: .utf8)!)
         } else {
             guard !classes.isEmpty else {
-                print("シナリオがありません(Scenarios/ に @TestClass を追加してください)")
+                print("シナリオがありません(プロジェクトの Scenarios/ に @TestClass を追加してください)")
                 return
             }
             for testClass in classes {
@@ -94,6 +94,14 @@ struct RunScenario: AsyncParsableCommand {
 
     @Option(name: .customLong("report-dir"), help: "レポート出力先ディレクトリ")
     var reportDir: String = "reports"
+
+    @Option(name: .customLong("project-dir"),
+            help: "テストプロジェクトのルート(ヒールキャッシュ等の状態保存先。省略時はカレント)")
+    var projectDir: String?
+
+    @Option(name: .customLong("default-timeout"),
+            help: "検証コマンド(exist/textIs 等)の既定タイムアウト秒(省略時 5)")
+    var defaultTimeout: Int?
 
     @Flag(help: "NDJSON イベントを出力する(ホスト連携用)")
     var json = false
@@ -145,9 +153,13 @@ struct RunScenario: AsyncParsableCommand {
         started.title = descriptor.title
         emit(started)
 
+        let healCacheURL = projectDir.map {
+            URL(fileURLWithPath: $0).appendingPathComponent(".ftester/heal-cache.json")
+        }
         let core = FTDriveCore(driver: driver, platform: runPlatform, app: testClass.app,
                                scenarioID: scenarioID, scenarioTitle: descriptor.title,
                                delegate: delegate, healingEnabled: heal, dryRun: dryRun,
+                               healCacheURL: healCacheURL, defaultTimeout: defaultTimeout,
                                emit: emit)
 
         // シナリオ本体は専用スレッドで同期実行(協調スレッドプールを塞がない)
