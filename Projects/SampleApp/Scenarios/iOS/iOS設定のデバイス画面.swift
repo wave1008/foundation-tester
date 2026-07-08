@@ -8,7 +8,7 @@ import FTDSL
 // iPhone Air 等 OFF のデバイスに分配されると NG になる)。並列実行から外す場合は
 // Scenarios/_disabled/ へ移動する。
 @TestClass(app: "com.apple.Preferences", platform: "ios")
-class Resource_Upload_Test_Mode_が_ON_であること {
+class iOS設定のデバイス画面 {
 
     @Test("Resource Upload Test Mode が ON であること")
     func S0010() {
