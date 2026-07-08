@@ -25,4 +25,24 @@ class メールアドレス_test_example_com_パスワード_password1 {
             }
         }
     }
+
+    @Deleted
+    @Test("メールアドレス test@example.com、パスワード password123 でログインし、ホーム画面に「ようこそ」が表示されることを確認する2")
+    func S0020() {
+        scenario {
+            scene(1) {
+                condition {
+                    launchApp()
+                }.action {
+                    type("#email||.TextField", "test@example.com")  // メールアドレスを入力するステップ1を実行する
+                    type("#password||.SecureTextField", "password123")  // 2番目の入力欄にパスワードを入力する
+                    tap("#login_btn||ログイン||.Button")  // ログインボタンをタップしてログイン処理を開始する
+                    wait(1)  // iOS 27 のパスワード保存シートの出現アニメーション整定待ち
+                    tap("今はしない", optional: true)  // パスワード保存ダイアログが出た場合のみ閉じる(出なければスキップ)
+                }.expectation {
+                    exist("#welcome_text||ようこそ||.StaticText[2]")  // 目標から自動抽出した確認(探索終了時にコード側で検証済み)
+                }
+            }
+        }
+    }
 }
