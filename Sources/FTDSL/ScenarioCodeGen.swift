@@ -187,14 +187,24 @@ public enum ScenarioCodeGen {
         }
     }
 
-    /// 生成先の既存クラス名(.swift ベース名)を収集する(重複回避用)
+    /// 生成先の既存クラス名(.swift ベース名)を収集する(重複回避用)。
+    /// シナリオはフォルダ(Scenarios/ 直下 1 階層)にも置けるため、サブディレクトリも見る
     public static func existingClassNames(in dirs: [URL]) -> Set<String> {
         var names = Set<String>()
         for dir in dirs {
-            let files = (try? FileManager.default.contentsOfDirectory(
-                at: dir, includingPropertiesForKeys: nil)) ?? []
-            for file in files where file.pathExtension == "swift" {
-                names.insert(file.deletingPathExtension().lastPathComponent)
+            let entries = (try? FileManager.default.contentsOfDirectory(
+                at: dir, includingPropertiesForKeys: [.isDirectoryKey])) ?? []
+            for entry in entries {
+                if entry.pathExtension == "swift" {
+                    names.insert(entry.deletingPathExtension().lastPathComponent)
+                } else if (try? entry.resourceValues(forKeys: [.isDirectoryKey]).isDirectory)
+                    == true {
+                    let inner = (try? FileManager.default.contentsOfDirectory(
+                        at: entry, includingPropertiesForKeys: nil)) ?? []
+                    for file in inner where file.pathExtension == "swift" {
+                        names.insert(file.deletingPathExtension().lastPathComponent)
+                    }
+                }
             }
         }
         return names
