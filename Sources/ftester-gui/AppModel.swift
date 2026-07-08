@@ -498,6 +498,42 @@ final class AppModel {
         /// 所属フォルダ名(Scenarios/ 直下は nil)
         var folder: String?
         var id: URL { ScenarioRunItem.url(for: info.id) }
+
+        /// シナリオ ID(クラス名.メソッド名)のテストクラス部分
+        var className: String {
+            info.id.firstIndex(of: ".").map { String(info.id[..<$0]) } ?? info.id
+        }
+        /// テスト関数(@Test メソッド)部分
+        var methodName: String {
+            info.id.firstIndex(of: ".").map {
+                String(info.id[info.id.index(after: $0)...])
+            } ?? info.id
+        }
+    }
+
+    /// テストクラス 1 つ分のグループ(シナリオペインの階層表示用)。
+    /// クラス名は SPM ターゲット内で一意なのでそのまま ID になる
+    struct ScenarioClassGroup: Identifiable {
+        let className: String
+        let entries: [ScenarioEntry]
+        var id: String { className }
+    }
+
+    /// フォルダ行のフォーカス(List 選択)用の擬似 URL。
+    /// シナリオの scenario://run/ とは host で区別され衝突しない
+    static func folderSelectionID(_ name: String) -> URL {
+        selectionID(kind: "folder", name: name)
+    }
+
+    /// クラス行のフォーカス(List 選択)用の擬似 URL
+    static func classSelectionID(_ className: String) -> URL {
+        selectionID(kind: "class", name: className)
+    }
+
+    private static func selectionID(kind: String, name: String) -> URL {
+        let encoded = name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? kind
+        return URL(string: "scenario://\(kind)/\(encoded)")
+            ?? URL(fileURLWithPath: "/\(kind)")
     }
 
     enum RunState {
@@ -736,7 +772,11 @@ final class AppModel {
             scenarioListStatus = "⚠️ \(error.localizedDescription)"
         }
         // 消えたシナリオ(非表示の削除済み含む)を選択から外し、空になったら先頭を自動選択
-        selectedScenarioIDs.formIntersection(visibleScenarios.map(\.id))
+        // (フォルダ行・クラス行のフォーカスは実在する限り保持する)
+        var valid = Set(visibleScenarios.map(\.id))
+        valid.formUnion(scenarioFolders.map(Self.folderSelectionID))
+        valid.formUnion(visibleScenarios.map { Self.classSelectionID($0.className) })
+        selectedScenarioIDs.formIntersection(valid)
         if selectedScenarioIDs.isEmpty, let first = visibleScenarios.first?.id {
             selectedScenarioIDs = [first]
         }
@@ -806,6 +846,18 @@ final class AppModel {
     /// (「削除済みを非表示にする」ON なら @Deleted を除く。表示と一致させる)
     func scenarioEntries(inFolder folder: String?) -> [ScenarioEntry] {
         visibleScenarios.filter { $0.folder == folder }
+    }
+
+    /// フォルダ内のシナリオをテストクラス毎にまとめる(クラス・関数とも一覧順を保つ)
+    func scenarioClassGroups(inFolder folder: String?) -> [ScenarioClassGroup] {
+        var order: [String] = []
+        var grouped: [String: [ScenarioEntry]] = [:]
+        for entry in scenarioEntries(inFolder: folder) {
+            let name = entry.className
+            if grouped[name] == nil { order.append(name) }
+            grouped[name, default: []].append(entry)
+        }
+        return order.map { ScenarioClassGroup(className: $0, entries: grouped[$0] ?? []) }
     }
 
     /// フォルダを作成する。戻り値: エラーメッセージ(nil = 成功)
