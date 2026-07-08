@@ -493,6 +493,10 @@ final class AppModel {
     struct ScenarioEntry: Identifiable {
         let info: ScenarioInfo
         var state: RunState = .idle
+        /// クラスを定義する .swift(フォルダ移動用。ソース走査で特定できなければ nil)
+        var fileURL: URL?
+        /// 所属フォルダ名(Scenarios/ 直下は nil)
+        var folder: String?
         var id: URL { ScenarioRunItem.url(for: info.id) }
     }
 
@@ -509,15 +513,33 @@ final class AppModel {
     }
 
     var scenarios: [ScenarioEntry] = []
-    var selectedScenarioID: URL?
+    /// Scenarios/ 直下のフォルダ名一覧(1 階層のみ。空フォルダも含む、名前順)
+    var scenarioFolders: [String] = []
+    /// 選択中のシナリオ(複数可。Cmd/Shift+クリックで追加・範囲選択)
+    var selectedScenarioIDs: Set<URL> = []
+
+    // 外部変更の自動同期(FSEvents)。署名が変わったときだけ再読込する
+    private let scenarioWatcher = ScenarioDirectoryWatcher()
+    /// 最後に取り込んだ Scenarios/ の署名(自分の操作分はその場で更新して再ビルドを抑制)
+    private var scenarioDirSignature: [String]?
+    /// シナリオ実行中に外部変更が来た(実行終了後に同期する)
+    private var pendingScenarioSync = false
+    /// 再読込・署名検査中に外部変更が来た(完了後に署名を再確認する)
+    private var scenarioSyncQueued = false
+    private var refreshingScenarios = false
+    /// 署名検査の直列化(検査中の割り込みイベントは queued へ。二重ビルド防止)
+    private var syncCheckInProgress = false
+    /// FT_WATCH_DEBUG=1 で外部変更同期の判断を stderr に記録する(検証用)
+    private let watchDebug = ProcessInfo.processInfo.environment["FT_WATCH_DEBUG"] == "1"
     var heal = false
     var runningFlow = false
     var lanes: [WorkerLane] = []
     /// シナリオ一覧のビルド/読込状態(nil = 正常)
     var scenarioListStatus: String?
 
-    var selectedEntry: ScenarioEntry? {
-        scenarios.first { $0.id == selectedScenarioID }
+    /// 選択中のシナリオを一覧順で返す(実行順もこの順)
+    var selectedEntries: [ScenarioEntry] {
+        scenarios.filter { selectedScenarioIDs.contains($0.id) }
     }
 
     // MARK: - ライブ操作
@@ -596,6 +618,11 @@ final class AppModel {
         // プロジェクト/マシン名(~/.config/ftester/config.json = CLI と共有)
         machineName = LocalConfig.load().machineName ?? ""
         refreshProjects()
+
+        // Scenarios/ の外部変更(Finder・エディタ・CLI)を検知して自動同期する
+        scenarioWatcher.onChange = { [weak self] in
+            Task { @MainActor in await self?.scenarioDirectoryChanged() }
+        }
     }
 
     static func parseRange(_ text: String) -> (Int, Int)? {
@@ -630,41 +657,223 @@ final class AppModel {
 
     // MARK: - シナリオ一覧
 
-    /// シナリオをビルドして一覧を取得する(ftester-scenarios サブプロセス経由)
+    /// シナリオをビルドして一覧を取得する(ftester-scenarios サブプロセス経由)。
+    /// あわせて Scenarios/ を走査してフォルダ一覧とクラス → ファイル対応を更新する
     func refreshScenarios() async {
+        refreshingScenarios = true
+        defer {
+            refreshingScenarios = false
+            // 再読込中に届いた外部変更は完了後に署名を確認して取り込む
+            if scenarioSyncQueued {
+                scenarioSyncQueued = false
+                Task { @MainActor in await self.scenarioDirectoryChanged() }
+            }
+        }
         let project: TestProject
         do {
             project = try currentProject()
         } catch {
+            scenarioWatcher.stop()
             scenarios = []
+            scenarioFolders = []
             scenarioListStatus = "⚠️ \(error.localizedDescription)"
             return
         }
         scenarioListStatus = "シナリオをビルド中(\(project.name))..."
-        let result: Result<[ScenarioInfo], Error> = await Task.detached {
-            do {
-                try ScenarioHost.build(project: project)
-                return .success(try ScenarioHost.list(project: project))
-            } catch {
-                return .failure(error)
-            }
-        }.value
+        let scenariosDir = project.scenariosDir
+        scenarioWatcher.watch(path: scenariosDir.path)
+        let (result, folders, fileByClass, signature):
+            (Result<[ScenarioInfo], Error>, [String], [String: URL], [String])
+            = await Task.detached {
+                // 署名はビルド前に取る(ビルド中の変更は署名不一致となり次の同期で拾う)
+                let signature = ScenarioFolders.directorySignature(scenariosDir: scenariosDir)
+                let folders = ScenarioFolders.list(scenariosDir: scenariosDir)
+                let map = ScenarioFolders.classFileMap(scenariosDir: scenariosDir)
+                do {
+                    try ScenarioHost.build(project: project)
+                    return (.success(try ScenarioHost.list(project: project)), folders, map,
+                            signature)
+                } catch {
+                    return (.failure(error), folders, map, signature)
+                }
+            }.value
 
+        scenarioDirSignature = signature
+        scenarioFolders = folders
         switch result {
         case .success(let infos):
             let states = Dictionary(uniqueKeysWithValues: scenarios.map { ($0.id, $0.state) })
             scenarios = infos.map { info in
-                ScenarioEntry(info: info,
-                              state: states[ScenarioRunItem.url(for: info.id)] ?? .idle)
+                let className = info.id.split(separator: ".").first.map(String.init) ?? info.id
+                let file = fileByClass[className]
+                return ScenarioEntry(
+                    info: info,
+                    state: states[ScenarioRunItem.url(for: info.id)] ?? .idle,
+                    fileURL: file,
+                    folder: file.flatMap {
+                        ScenarioFolders.folderName(of: $0, scenariosDir: scenariosDir)
+                    })
             }
             scenarioListStatus = nil
         case .failure(let error):
             scenarioListStatus = "⚠️ \(error.localizedDescription)"
         }
-        // 選択が無効になったら先頭を自動選択
-        if scenarios.first(where: { $0.id == selectedScenarioID }) == nil {
-            selectedScenarioID = scenarios.first?.id
+        // 消えたシナリオを選択から外し、空になったら先頭を自動選択
+        selectedScenarioIDs.formIntersection(scenarios.map(\.id))
+        if selectedScenarioIDs.isEmpty, let first = scenarios.first?.id {
+            selectedScenarioIDs = [first]
         }
+    }
+
+    // MARK: - 外部変更の自動同期
+
+    /// FSEvents からの変更通知。署名(ファイル構成+更新時刻)が本当に変わったときだけ
+    /// 再読込する(エディタの一時ファイルや自分自身の操作では再ビルドしない)
+    private func scenarioDirectoryChanged() async {
+        if runningFlow {
+            // 実行中の再ビルドはランナーバイナリを差し替えてしまうため終了後に回す
+            pendingScenarioSync = true
+            watchLog("変更検知 → 実行中のため保留")
+            return
+        }
+        if refreshingScenarios || syncCheckInProgress {
+            scenarioSyncQueued = true
+            watchLog("変更検知 → 再読込/検査中のため完了後に確認")
+            return
+        }
+        guard let project = try? currentProject() else { return }
+        syncCheckInProgress = true
+        let scenariosDir = project.scenariosDir
+        let signature = await Task.detached {
+            ScenarioFolders.directorySignature(scenariosDir: scenariosDir)
+        }.value
+        if signature != scenarioDirSignature {
+            watchLog("変更検知 → 署名不一致、再読込します")
+            await refreshScenarios()
+        } else {
+            watchLog("変更検知 → 署名一致(同期不要)")
+        }
+        syncCheckInProgress = false
+        // 検査・再読込の最中に届いた変更をもう一巡確認する(署名一致で収束)
+        if scenarioSyncQueued {
+            scenarioSyncQueued = false
+            Task { @MainActor in await self.scenarioDirectoryChanged() }
+        }
+    }
+
+    /// シナリオ実行の終了処理。実行中に保留した外部変更があればここで同期する
+    private func endRunningFlow() {
+        runningFlow = false
+        if pendingScenarioSync {
+            pendingScenarioSync = false
+            watchLog("実行終了 → 保留していた外部変更を確認")
+            Task { @MainActor in await scenarioDirectoryChanged() }
+        }
+    }
+
+    /// 自前のファイル操作(フォルダ作成・移動等)の後に署名を控える
+    /// (自分の変更に watcher が反応して再ビルドしないように)
+    private func noteOwnScenarioDirChange(_ project: TestProject) {
+        scenarioDirSignature = ScenarioFolders.directorySignature(
+            scenariosDir: project.scenariosDir)
+    }
+
+    private func watchLog(_ message: String) {
+        guard watchDebug else { return }
+        FileHandle.standardError.write(Data("[watch] \(message)\n".utf8))
+    }
+
+    // MARK: - シナリオのフォルダ操作(1 階層。実体は Scenarios/ のサブディレクトリ)
+
+    /// フォルダ内(nil = Scenarios/ 直下)のシナリオを一覧順で返す
+    func scenarioEntries(inFolder folder: String?) -> [ScenarioEntry] {
+        scenarios.filter { $0.folder == folder }
+    }
+
+    /// フォルダを作成する。戻り値: エラーメッセージ(nil = 成功)
+    func createScenarioFolder(_ name: String) -> String? {
+        guard let project = try? currentProject() else {
+            return "プロジェクトを選択してください"
+        }
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        do {
+            try ScenarioFolders.create(name: trimmed, scenariosDir: project.scenariosDir)
+        } catch {
+            return error.localizedDescription
+        }
+        noteOwnScenarioDirChange(project)
+        if !scenarioFolders.contains(trimmed) {
+            scenarioFolders.append(trimmed)
+            scenarioFolders.sort { $0.localizedStandardCompare($1) == .orderedAscending }
+        }
+        return nil
+    }
+
+    /// シナリオをフォルダへ移動する(folder = nil は Scenarios/ 直下へ)。
+    /// 実体はクラスを定義する .swift の移動のため、同じファイルのシナリオはまとめて動く。
+    /// 戻り値: ドロップを受理したか(ID 不一致の外部テキスト等は false)
+    @discardableResult
+    func moveScenario(id: String, toFolder folder: String?) -> Bool {
+        guard let index = scenarios.firstIndex(where: { $0.info.id == id }) else {
+            return false
+        }
+        guard scenarios[index].folder != folder else { return true }
+        guard let project = try? currentProject(), let file = scenarios[index].fileURL else {
+            scenarioListStatus = "⚠️ \(id) のソースファイルを特定できません(再読込してください)"
+            return false
+        }
+        do {
+            let moved = try ScenarioFolders.move(file: file, toFolder: folder,
+                                                 scenariosDir: project.scenariosDir)
+            for i in scenarios.indices where scenarios[i].fileURL == file {
+                scenarios[i].fileURL = moved
+                scenarios[i].folder = folder
+            }
+        } catch {
+            scenarioListStatus = "⚠️ \(error.localizedDescription)"
+            return false
+        }
+        noteOwnScenarioDirChange(project)
+        return true
+    }
+
+    /// フォルダの名前を変更する。戻り値: エラーメッセージ(nil = 成功)
+    func renameScenarioFolder(_ name: String, to newName: String) -> String? {
+        guard let project = try? currentProject() else {
+            return "プロジェクトを選択してください"
+        }
+        let trimmed = newName.trimmingCharacters(in: .whitespaces)
+        guard trimmed != name else { return nil }
+        do {
+            try ScenarioFolders.rename(name, to: trimmed, scenariosDir: project.scenariosDir)
+        } catch {
+            return error.localizedDescription
+        }
+        noteOwnScenarioDirChange(project)
+        let newDir = project.scenariosDir.appendingPathComponent(trimmed, isDirectory: true)
+        for i in scenarios.indices where scenarios[i].folder == name {
+            scenarios[i].folder = trimmed
+            scenarios[i].fileURL = scenarios[i].fileURL
+                .map { newDir.appendingPathComponent($0.lastPathComponent) }
+        }
+        scenarioFolders = scenarioFolders.map { $0 == name ? trimmed : $0 }
+            .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+        return nil
+    }
+
+    /// 空のフォルダを削除する。戻り値: エラーメッセージ(nil = 成功)
+    func deleteScenarioFolder(_ name: String) -> String? {
+        guard let project = try? currentProject() else {
+            return "プロジェクトを選択してください"
+        }
+        do {
+            try ScenarioFolders.delete(name, scenariosDir: project.scenariosDir)
+        } catch {
+            return error.localizedDescription
+        }
+        noteOwnScenarioDirChange(project)
+        scenarioFolders.removeAll { $0 == name }
+        return nil
     }
 
     private func setState(_ url: URL, _ state: RunState) {
@@ -672,9 +881,9 @@ final class AppModel {
         scenarios[index].state = state
     }
 
+    /// 選択中のシナリオ(複数可)だけを実行する
     func runSelected() async {
-        guard let entry = selectedEntry else { return }
-        await runScenarios([entry])
+        await runScenarios(selectedEntries)
     }
 
     func runAll() async {
@@ -698,7 +907,7 @@ final class AppModel {
         if scenarioListStatus != nil {
             lanes = [WorkerLane(id: "system", title: "⚠️ ビルド失敗",
                                 log: [scenarioListStatus ?? ""])]
-            runningFlow = false
+            endRunningFlow()
             return
         }
 
@@ -706,7 +915,7 @@ final class AppModel {
         if let profileName = selectedRunProfile {
             await runScenariosWithProfile(profileName, project: project,
                                           items: entries.map { ScenarioRunItem(info: $0.info) })
-            runningFlow = false
+            endRunningFlow()
             return
         }
 
@@ -757,7 +966,7 @@ final class AppModel {
         }
         _ = await orchestrator.run(items: items, defaultPlatform: "ios")
         await consumer.value
-        runningFlow = false
+        endRunningFlow()
     }
 
     /// 実行プロファイルによる実行: 解決 → ワーカー構築(iOS ブリッジ供給 / Android 照合)→
