@@ -888,10 +888,7 @@ struct RunView: View {
                             .font(.system(.body))
                             .foregroundStyle(.secondary)
                     }
-                    Spacer()
-                    Text("ステップの内容は Projects/<プロジェクト>/Scenarios/ のソースと実行ログで確認できます")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
+                    ScenarioStepTable(entry: entry)
                 } else {
                     // 複数選択中: 実行対象の一覧(一覧順 = 実行順)
                     ScrollView {
@@ -1015,6 +1012,105 @@ struct NewProjectSheet: View {
         }
         .padding(20)
         .frame(width: 420)
+    }
+}
+
+/// 1 シナリオのステップ表(dry-run 列挙+ソースの行末コメント)。
+/// 選択の切替と一覧再読込(世代更新)に .task(id:) で追従する
+private struct ScenarioStepTable: View {
+    @Environment(AppModel.self) private var model
+    let entry: AppModel.ScenarioEntry
+    @State private var result: AppModel.StepLoadResult?
+
+    /// ロードのトリガ: シナリオが変わるか、一覧が再読込されたら取り直す
+    private struct LoadKey: Equatable {
+        let scenarioID: String
+        let generation: Int
+    }
+
+    var body: some View {
+        Group {
+            switch result {
+            case nil:
+                loadingLabel("ステップを取得中(dry-run)...")
+            case .building:
+                loadingLabel("シナリオ一覧を更新中...")
+            case .failed(let message):
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("⚠️ \(message)")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .textSelection(.enabled)
+                    Spacer()
+                    Text("ステップの内容は Projects/<プロジェクト>/Scenarios/ のソースと実行ログで確認できます")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+            case .steps(let rows) where rows.isEmpty:
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("ステップがありません(scenario { } にコマンドを追加してください)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
+            case .steps(let rows):
+                Table(rows) {
+                    TableColumn("#") { row in
+                        Text("\(row.index)").monospacedDigit()
+                    }
+                    .width(28)
+                    TableColumn("scene") { row in
+                        Text(row.scene.map(String.init) ?? "")
+                            .monospacedDigit()
+                            .help(row.sceneTitle ?? "")
+                    }
+                    .width(44)
+                    TableColumn("区分") { row in
+                        Text(row.sectionLabel)
+                            .foregroundStyle(.secondary)
+                    }
+                    .width(40)
+                    TableColumn("コマンド") { row in
+                        Text(row.command)
+                            .font(.system(.callout, design: .monospaced))
+                            .textSelection(.enabled)
+                            .help(row.command)
+                    }
+                    .width(min: 160, ideal: 280)
+                    TableColumn("説明") { row in
+                        Text(row.comment ?? "")
+                            .foregroundStyle(.secondary)
+                            .help(row.comment ?? "")
+                    }
+                    .width(min: 120, ideal: 240)
+                }
+                // idealWidth を固定しないと長いコマンド/コメントが Table の理想幅
+                // → ウィンドウの自動リサイズまで波及する(実測: 選択でウィンドウが画面幅まで拡大)
+                .frame(minWidth: 280, idealWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
+                Text("dry-run による列挙。procedure { } 内のステップは実行時のログで確認できます")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .task(id: LoadKey(scenarioID: entry.info.id,
+                          generation: model.scenarioListGeneration)) {
+            result = nil  // 前のシナリオの表を残さない
+            let loaded = await model.loadSteps(for: entry)
+            // 選択の高速切替で古いタスクの結果が新しい表を上書きしないように
+            if !Task.isCancelled { result = loaded }
+        }
+    }
+
+    private func loadingLabel(_ message: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.small)
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
     }
 }
 

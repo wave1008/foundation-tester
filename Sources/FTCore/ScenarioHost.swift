@@ -56,6 +56,7 @@ public enum ScenarioHostError: Error, LocalizedError {
     case runnerNotFound(product: String)
     case buildFailed(String)
     case listFailed(String)
+    case dryRunFailed(String)
 
     public var errorDescription: String? {
         switch self {
@@ -65,6 +66,8 @@ public enum ScenarioHostError: Error, LocalizedError {
             return "シナリオのビルドに失敗しました:\n\(log)"
         case .listFailed(let detail):
             return "シナリオ一覧を取得できません: \(detail)"
+        case .dryRunFailed(let detail):
+            return "ステップ一覧を取得できません: \(detail)"
         }
     }
 }
@@ -134,6 +137,7 @@ public enum ScenarioHost {
     public static func run(project: TestProject, scenarioID: String,
                            connection: DriverConnection,
                            heal: Bool, reportDir: String, defaultTimeout: Int? = nil,
+                           dryRun: Bool = false,
                            onEvent: @escaping (ScenarioEvent) -> Void) async -> Bool {
         let runner: URL
         do {
@@ -150,6 +154,7 @@ public enum ScenarioHost {
                     "--report-dir", reportDir, "--json",
                     "--project-dir", project.rootURL.path]
         if heal { args.append("--heal") }
+        if dryRun { args.append("--dry-run") }
         if let port = connection.port { args += ["--port", String(port)] }
         if let serial = connection.serial { args += ["--serial", serial] }
         if let defaultTimeout { args += ["--default-timeout", String(defaultTimeout)] }
@@ -197,6 +202,28 @@ public enum ScenarioHost {
         }
         // scenarioFinished が来なかった場合(クラッシュ等)は exit code で判定
         return passed ?? (process.terminationStatus == 0)
+    }
+
+    /// シナリオを dry-run(No-Load-Run)してイベント列を収集する。デバイス不要・FM 不使用で
+    /// 全コマンドが step イベントとして列挙される(GUI のステップ表示用)。
+    /// dry-run でもランナーはレポートを書くため、一時ディレクトリに書かせて後始末する
+    public static func dryRunSteps(project: TestProject,
+                                   scenarioID: String) async throws -> [ScenarioEvent] {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ftester-dryrun-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        var events: [ScenarioEvent] = []
+        // dry-run は NullDriver 固定のため接続情報は使われない(platform はダミー)
+        let passed = await run(project: project, scenarioID: scenarioID,
+                               connection: DriverConnection(platform: "ios"),
+                               heal: false, reportDir: tempDir.path,
+                               dryRun: true) { events.append($0) }
+        guard passed else {
+            let detail = events.compactMap(\.message).suffix(5).joined(separator: "\n")
+            throw ScenarioHostError.dryRunFailed(detail.isEmpty ? "dry-run が失敗しました" : detail)
+        }
+        return events
     }
 
     /// カレントディレクトリから上に辿って Package.swift を持つディレクトリを探す

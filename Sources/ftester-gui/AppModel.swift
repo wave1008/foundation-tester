@@ -519,6 +519,40 @@ final class AppModel {
         var id: String { className }
     }
 
+    /// フローペインのステップ表の 1 行(dry-run の step イベント+ソース行末コメント)
+    struct ScenarioStepRow: Identifiable, Sendable {
+        /// シナリオ内の通し番号(1 起点)
+        let index: Int
+        let scene: Int?
+        /// scene(n, "タイトル") のタイトル(ツールチップ用)
+        let sceneTitle: String?
+        /// condition / action / expectation / nil(CAE 外)
+        let section: String?
+        /// コマンドと引数(例: tap "#login_btn||ログイン")
+        let command: String
+        /// ソース行末の // コメント(無ければ nil)
+        let comment: String?
+        var id: Int { index }
+
+        /// 区分の表示名(condition=条件 / action=操作 / expectation=確認)
+        var sectionLabel: String {
+            switch section {
+            case "condition": return "条件"
+            case "action": return "操作"
+            case "expectation": return "確認"
+            default: return ""
+            }
+        }
+    }
+
+    /// ステップ表のロード結果
+    enum StepLoadResult: Sendable {
+        case steps([ScenarioStepRow])
+        /// シナリオ一覧の再読込(ビルド)中。完了時の世代更新で自動的に再取得される
+        case building
+        case failed(String)
+    }
+
     /// フォルダ行のフォーカス(List 選択)用の擬似 URL。
     /// シナリオの scenario://run/ とは host で区別され衝突しない
     static func folderSelectionID(_ name: String) -> URL {
@@ -584,6 +618,13 @@ final class AppModel {
     var lanes: [WorkerLane] = []
     /// シナリオ一覧のビルド/読込状態(nil = 正常)
     var scenarioListStatus: String?
+
+    /// シナリオ ID → ステップ表の行(dry-run 結果のキャッシュ)。一覧再読込で全クリア
+    private var stepRowsCache: [String: [ScenarioStepRow]] = [:]
+    /// 実行中の dry-run(キー: "世代|シナリオID")。同一シナリオへの二重起動防止
+    private var stepLoadTasks: [String: Task<StepLoadResult, Never>] = [:]
+    /// シナリオ一覧の世代。refreshScenarios 完了毎に +1(ステップ表の再取得トリガ)
+    private(set) var scenarioListGeneration = 0
 
     /// 「削除済みを非表示にする」: ON なら @Deleted のシナリオをペインから隠す(UserDefaults 永続化)
     var hideDeleted: Bool {
@@ -727,6 +768,11 @@ final class AppModel {
     func refreshScenarios() async {
         refreshingScenarios = true
         defer {
+            // ソース/ランナーバイナリが変わった可能性があるため dry-run 結果を捨て、
+            // 世代を進めて表示中のステップ表に再取得を促す(行番号ずれ=誤コメントの防止)
+            stepRowsCache.removeAll()
+            stepLoadTasks.removeAll()
+            scenarioListGeneration += 1
             refreshingScenarios = false
             // 再読込中に届いた外部変更は完了後に署名を確認して取り込む
             if scenarioSyncQueued {
@@ -791,6 +837,89 @@ final class AppModel {
         selectedScenarioIDs.formIntersection(valid)
         if selectedScenarioIDs.isEmpty, let first = visibleScenarios.first?.id {
             selectedScenarioIDs = [first]
+        }
+    }
+
+    // MARK: - ステップ表(dry-run 列挙)
+
+    /// 1 シナリオのステップ表を取得する(キャッシュ → dry-run サブプロセス)。
+    /// フローペインの 1 件選択表示用。デバイス不要・レポートは一時ディレクトリ
+    func loadSteps(for entry: ScenarioEntry) async -> StepLoadResult {
+        let id = entry.info.id
+        if let cached = stepRowsCache[id] { return .steps(cached) }
+        // ビルド中はランナーバイナリ差し替えの可能性があるため起動しない
+        // (完了時の世代更新で呼び出し側が自動的に再試行する)
+        if refreshingScenarios { return .building }
+        if let status = scenarioListStatus { return .failed(status) }
+        guard let project = try? currentProject() else {
+            return .failed("プロジェクトを選択してください")
+        }
+
+        let generation = scenarioListGeneration
+        let key = "\(generation)|\(id)"
+        let task: Task<StepLoadResult, Never>
+        if let existing = stepLoadTasks[key] {
+            task = existing
+        } else {
+            let packageRoot = ScenarioHost.packageRoot()
+            task = Task.detached {
+                do {
+                    let events = try await ScenarioHost.dryRunSteps(
+                        project: project, scenarioID: id)
+                    return .steps(Self.stepRows(from: events, packageRoot: packageRoot))
+                } catch {
+                    return .failed(error.localizedDescription)
+                }
+            }
+            stepLoadTasks[key] = task
+        }
+        let result = await task.value
+        stepLoadTasks[key] = nil
+        // dry-run 中に一覧が更新された場合は古い結果(行番号ずれの可能性)を残さない。
+        // 世代更新で .task(id:) が再実行されるため、この戻り値はすぐ上書きされる
+        if generation == scenarioListGeneration, case .steps(let rows) = result {
+            stepRowsCache[id] = rows
+        }
+        return result
+    }
+
+    /// dry-run のイベント列をステップ表の行に変換する。
+    /// コメントはソースをファイル毎に 1 回読んで行末 // を引く(読めなければ nil で続行)
+    nonisolated private static func stepRows(from events: [ScenarioEvent],
+                                             packageRoot: URL?) -> [ScenarioStepRow] {
+        var sceneTitles: [Int: String] = [:]
+        for event in events where event.kind == "sceneStarted" {
+            if let scene = event.scene { sceneTitles[scene] = event.sceneTitle }
+        }
+
+        let steps = events.filter { $0.kind == "step" }
+        // event.file はランナーの cwd で相対化された repo 相対パスか #file の絶対パス
+        var linesByFile: [String: Set<Int>] = [:]
+        for step in steps {
+            if let file = step.file, let line = step.line {
+                linesByFile[file, default: []].insert(line)
+            }
+        }
+        var commentsByFile: [String: [Int: String]] = [:]
+        for (file, lines) in linesByFile {
+            let url = file.hasPrefix("/")
+                ? URL(fileURLWithPath: file)
+                : (packageRoot?.appendingPathComponent(file) ?? URL(fileURLWithPath: file))
+            guard let source = try? String(contentsOf: url, encoding: .utf8) else { continue }
+            commentsByFile[file] = ScenarioSourceComments.trailingComments(
+                inSource: source, lines: lines)
+        }
+
+        return steps.map { step in
+            ScenarioStepRow(
+                index: step.index ?? 0,
+                scene: step.scene,
+                sceneTitle: step.scene.flatMap { sceneTitles[$0] },
+                section: step.section,
+                command: step.description ?? "",
+                comment: step.file.flatMap { file in
+                    step.line.flatMap { commentsByFile[file]?[$0] }
+                })
         }
     }
 
