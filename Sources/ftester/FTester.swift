@@ -30,6 +30,10 @@ struct FTester: AsyncParsableCommand {
             Terminate.self,
             Explore.self,
             RunScenarios.self,
+            ProjectCommand.self,
+            MachineCommand.self,
+            ProfileCommand.self,
+            DevicesCommand.self,
         ]
     )
 }
@@ -424,14 +428,18 @@ struct Explore: AsyncParsableCommand {
     @Option(name: .customLong("max-steps"), help: "探索ステップ数の上限")
     var maxSteps: Int = 25
 
-    @Option(help: "シナリオの生成先ディレクトリ")
-    var out: String = "Scenarios/Generated"
+    @Option(help: "テストプロジェクト名(省略時: Projects/ が 1 つならそれ / 既定プロジェクト)")
+    var project: String?
+
+    @Option(help: "シナリオの生成先ディレクトリ(省略時: Projects/<name>/Scenarios/Generated)")
+    var out: String?
 
     @OptionGroup var driverOptions: DriverOptions
 
     func run() async throws {
         let fm = FMDoctor.check()
         guard fm.available else { throw ValidationError(fm.detail) }
+        let testProject = try ScenarioHost.project(named: project)
         let driver = try driverOptions.makeDriver()
         _ = try await driver.status()  // 接続不能なら早期に分かりやすく失敗させる
 
@@ -455,26 +463,34 @@ struct Explore: AsyncParsableCommand {
         }
 
         // Swift シナリオとして生成 → ビルド検証(失敗時は _disabled/ に隔離)
-        let dir = URL(fileURLWithPath: out)
-        let quarantineDir = URL(fileURLWithPath: "Scenarios/_disabled")
+        let dir = out.map { URL(fileURLWithPath: $0) } ?? testProject.generatedDir
+        let quarantineDir = testProject.disabledDir
         let className = ScenarioCodeGen.suggestedClassName(
             for: flow,
             existing: ScenarioCodeGen.existingClassNames(
-                in: [URL(fileURLWithPath: "Scenarios"), dir, quarantineDir]))
+                in: [testProject.scenariosDir, dir, quarantineDir]))
         let code = ScenarioCodeGen.render(flow: flow, className: className,
                                           generatedBy: "ftester explore v0.1 (apple-fm-on-device)")
         print("→ 生成コードをビルド検証中...")
         let url = try ScenarioCodeGen.writeValidated(code: code, className: className,
-                                                     dir: dir, quarantineDir: quarantineDir)
+                                                     dir: dir, quarantineDir: quarantineDir,
+                                                     project: testProject)
         print("📄 シナリオを生成: \(url.path)")
-        print("   実行: swift run ftester run --scenario \(className).\(ScenarioCodeGen.methodName(1))")
+        print("   実行: swift run ftester run --project \(testProject.name)"
+              + " --scenario \(className).\(ScenarioCodeGen.methodName(1))")
     }
 }
 
 struct RunScenarios: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "run",
-        abstract: "Swift DSL シナリオ(Scenarios/)を実行する(失敗時のみ FM が介入)")
+        abstract: "Swift DSL シナリオ(Projects/<name>/Scenarios/)を実行する(失敗時のみ FM が介入)")
+
+    @Option(help: "テストプロジェクト名(省略時: Projects/ が 1 つならそれ / 既定プロジェクト)")
+    var project: String?
+
+    @Option(help: "実行プロファイル名(profiles/runs/<名前>.json。デバイス供給・自動インストール込みで実行)")
+    var profile: String?
 
     @Option(name: .customLong("scenario"), parsing: .upToNextOption,
             help: "実行するシナリオ ID(クラス名.メソッド名。クラス名のみで全シナリオ。複数可。省略時は全件)")
@@ -483,8 +499,9 @@ struct RunScenarios: AsyncParsableCommand {
     @Flag(help: "FM によるロケータ自己修復を許可する")
     var heal = false
 
-    @Option(name: .customLong("report-dir"), help: "レポート出力先ディレクトリ")
-    var reportDir: String = "reports"
+    @Option(name: .customLong("report-dir"),
+            help: "レポート出力先ディレクトリ(省略時: Projects/<name>/reports)")
+    var reportDir: String?
 
     @Option(help: "iOS シナリオを並列実行するブリッジのポート一覧(カンマ区切り。例: 8123,8124。各ポートは別デバイスで bridge up 済みであること)")
     var ports: String?
@@ -495,14 +512,17 @@ struct RunScenarios: AsyncParsableCommand {
     @OptionGroup var driverOptions: DriverOptions
 
     func run() async throws {
+        let testProject = try ScenarioHost.project(named: project)
+
         // ビルドはホスト側で 1 回だけ(サブプロセスは自らビルドしない)
         if !skipBuild {
-            print("→ シナリオをビルド...")
-            try ScenarioHost.build()
+            print("→ シナリオをビルド(\(testProject.name))...")
+            try ScenarioHost.build(project: testProject)
         }
-        let all = try ScenarioHost.list()
+        let all = try ScenarioHost.list(project: testProject)
         guard !all.isEmpty else {
-            throw ValidationError("シナリオがありません(Scenarios/ に @TestClass を追加してください)")
+            throw ValidationError(
+                "シナリオがありません(Projects/\(testProject.name)/Scenarios/ に @TestClass を追加してください)")
         }
         let selected = try Self.resolve(scenarios, from: all)
         let items = selected.map { ScenarioRunItem(info: $0) }
@@ -511,6 +531,19 @@ struct RunScenarios: AsyncParsableCommand {
             print("⚠️ Foundation Models 利用不可: 自己修復・screenIs・トリアージは無効です")
         }
 
+        // プロファイル実行(デバイス供給・自動インストール・両OS同時並列)
+        if let profile {
+            let failedCount = try await ProfileRunner.run(
+                project: testProject, profileName: profile, items: items,
+                healOverride: heal ? true : nil, reportDirOverride: reportDir)
+            print(failedCount == 0
+                  ? "✅ 全 \(items.count) シナリオ成功"
+                  : "❌ \(items.count) シナリオ中 \(failedCount) 件失敗")
+            if failedCount > 0 { throw ExitCode(1) }
+            return
+        }
+
+        let reportDirPath = reportDir ?? testProject.reportsDir.path
         let iosPorts: [UInt16] = ports?
             .split(separator: ",")
             .compactMap { UInt16($0.trimmingCharacters(in: .whitespaces)) }
@@ -518,9 +551,11 @@ struct RunScenarios: AsyncParsableCommand {
 
         let failedCount: Int
         if iosPorts.count <= 1 {
-            failedCount = try await runSequential(items, port: iosPorts[0])
+            failedCount = try await runSequential(items, project: testProject,
+                                                  port: iosPorts[0], reportDir: reportDirPath)
         } else {
-            failedCount = await runParallel(items, iosPorts: iosPorts)
+            failedCount = await runParallel(items, project: testProject,
+                                            iosPorts: iosPorts, reportDir: reportDirPath)
         }
 
         print(failedCount == 0
@@ -552,7 +587,8 @@ struct RunScenarios: AsyncParsableCommand {
 
     // MARK: - 逐次実行(ライブ出力)
 
-    private func runSequential(_ items: [ScenarioRunItem], port: UInt16) async throws -> Int {
+    private func runSequential(_ items: [ScenarioRunItem], project: TestProject,
+                               port: UInt16, reportDir: String) async throws -> Int {
         var failedCount = 0
         for item in items {
             let platform = item.info.platform ?? driverOptions.platform
@@ -569,7 +605,7 @@ struct RunScenarios: AsyncParsableCommand {
             let worker = RunWorker(label: platform, platform: platform,
                                    driver: driver, connection: connection)
             let passed = await ScenarioRunner.runOne(
-                item: item, worker: worker, healingEnabled: heal,
+                project: project, item: item, worker: worker, healingEnabled: heal,
                 reportDir: URL(fileURLWithPath: reportDir)) { event in
                 for line in RunLogFormatter.lines(for: event) { print(line) }
             }
@@ -580,7 +616,8 @@ struct RunScenarios: AsyncParsableCommand {
 
     // MARK: - 並列実行(iOS はポート毎のワーカー、Android は専用ワーカー)
 
-    private func runParallel(_ items: [ScenarioRunItem], iosPorts: [UInt16]) async -> Int {
+    private func runParallel(_ items: [ScenarioRunItem], project: TestProject,
+                             iosPorts: [UInt16], reportDir: String) async -> Int {
         let defaultPlatform = driverOptions.platform
         let androidItems = items.filter { ($0.info.platform ?? defaultPlatform) == "android" }
         let portList = iosPorts.map(String.init).joined(separator: ", ")
@@ -602,7 +639,8 @@ struct RunScenarios: AsyncParsableCommand {
             }
         }
 
-        let orchestrator = RunOrchestrator(workers: workers, healingEnabled: heal,
+        let orchestrator = RunOrchestrator(project: project, workers: workers,
+                                           healingEnabled: heal,
                                            reportDir: URL(fileURLWithPath: reportDir))
         async let summary = orchestrator.run(items: items, defaultPlatform: defaultPlatform)
 

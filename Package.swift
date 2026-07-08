@@ -102,13 +102,27 @@ let package = Package(
             ],
             swiftSettings: swift5Mode
         ),
-        // ユーザーのシナリオ置き場(リポジトリ直下 Scenarios/)をそのまま実行ターゲットにする。
+        // テストプロジェクト(Projects/<name>/Scenarios/)のシナリオ実行ターゲット。
         // _disabled/ は退避場所(コンパイル対象外。並列デモ等をここに置く)
+        // === ftester projects begin(ftester project create/sync が自動生成。手編集禁止)===
         .executableTarget(
-            name: "ftester-scenarios",
+            name: "ftester-scenarios-SampleApp",
             dependencies: ["FTScenarioRunner", "FTDSL"],
-            path: "Scenarios",
+            path: "Projects/SampleApp/Scenarios",
             exclude: ["_disabled"],
+            swiftSettings: swift5Mode
+        ),
+        .executableTarget(
+            name: "ftester-scenarios-project1",
+            dependencies: ["FTScenarioRunner", "FTDSL"],
+            path: "Projects/project1/Scenarios",
+            exclude: ["_disabled"],
+            swiftSettings: swift5Mode
+        ),
+        // === ftester projects end ===
+        .testTarget(
+            name: "FTCoreTests",
+            dependencies: ["FTCore"],
             swiftSettings: swift5Mode
         ),
         .testTarget(

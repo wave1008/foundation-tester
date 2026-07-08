@@ -127,6 +127,367 @@ final class AppModel {
         }
     }
 
+    // MARK: - テストプロジェクト / 実行プロファイル
+
+    var projects: [TestProject] = []
+    /// 選択中プロジェクト(LocalConfig.defaultProject に永続化 = CLI の既定とも共有)
+    var selectedProjectName: String? {
+        didSet {
+            guard oldValue != selectedProjectName else { return }
+            var config = LocalConfig.load()
+            config.defaultProject = selectedProjectName
+            try? config.save()
+            refreshRunProfiles()
+        }
+    }
+    /// 実行プロファイル名(nil = プロファイルなし: 稼働中デバイスへの自動割当)
+    var selectedRunProfile: String? {
+        didSet {
+            guard oldValue != selectedRunProfile, let name = selectedProjectName else { return }
+            var config = LocalConfig.load()
+            var last = config.lastRunProfile ?? [:]
+            last[name] = selectedRunProfile
+            config.lastRunProfile = last
+            try? config.save()
+        }
+    }
+    var runProfiles: [String] = []
+    /// このマシンの名前(~/.config/ftester/config.json に永続化 = CLI と共有)
+    var machineName: String = "" {
+        didSet {
+            guard oldValue != machineName else { return }
+            var config = LocalConfig.load()
+            config.machineName = machineName.isEmpty ? nil : machineName
+            try? config.save()
+        }
+    }
+
+    func currentProject() throws -> TestProject {
+        try ScenarioHost.project(named: selectedProjectName)
+    }
+
+    func refreshProjects() {
+        guard let root = ScenarioHost.packageRoot() else {
+            projects = []
+            return
+        }
+        projects = ProjectStore.all(repoRoot: root)
+        if selectedProjectName == nil
+            || !projects.contains(where: { $0.name == selectedProjectName }) {
+            selectedProjectName = (try? ScenarioHost.project())?.name ?? projects.first?.name
+        }
+        refreshRunProfiles()
+    }
+
+    var creatingProject = false
+    var shuttingDownSimulators = false
+    var bootingDevices = false
+
+    /// serial → AVD ID のキャッシュ。ブート/シャットダウン中は adb が一時的に offline になり
+    /// ライブ照会(runningAVDs)が空振りするため、一度解決した対応を保持して
+    /// タイル(targets 由来)とプレースホルダーの判定が食い違わないようにする
+    private var androidSerialAVDCache: [String: String] = [:]
+    /// serial → マシンプロファイルの論理名(エミュ1 等)。フォールバックタイルの表示に使う
+    private(set) var androidLogicalBySerial: [String: String] = [:]
+
+    /// モニターの 5 秒サイクルで読んだマシンプロファイルの控え。ライブタイルの右クリック解決
+    /// (machineDevice(forMonitorLabel:))が body 評価のたびにディスクを読まないようにする
+    private var cachedMachineProfile: MachineProfile?
+
+    /// プレースホルダー計算の材料を用意する。マシンプロファイルの全デバイス分の候補カードと
+    /// serial → AVD の対応(キャッシュ込み)を返す。どのカードを消すか(抑制)は
+    /// DeviceMonitorCenter がタイル更新と同一ターンで判定する(一瞬の重複表示防止)
+    func machineDeviceSnapshot() async -> PlaceholderSnapshot {
+        cachedMachineProfile = loadMachineProfile()
+        guard let profile = cachedMachineProfile else { return .empty }
+        let iosSpecs = profile.ios?.devices ?? []
+        let androidSpecs = profile.android?.devices ?? []
+        // タイルが出ている Android serial(androidDevicesProvider と同じ = targets)
+        let activeSerials = targets.filter { $0.platform == "android" }
+            .compactMap(\.serial)
+        let cache = androidSerialAVDCache
+
+        // serial → AVD の解決(adb)はバックグラウンドで
+        let outcome = await Task.detached {
+            () -> (snapshot: PlaceholderSnapshot, cache: [String: String],
+                   logical: [String: String]) in
+            let live = (try? AndroidDeviceCatalog.runningAVDs()) ?? [:]
+            // ライブ結果でキャッシュを更新し、現存する serial の分だけ残す
+            // (serial は再利用されるため、消えた serial の対応は捨てる。
+            //  ブート/シャットダウン中の adb offline で live が空振りしても
+            //  キャッシュがタイルとの対応を維持する)
+            var merged = cache.merging(live) { _, new in new }
+            merged = merged.filter { activeSerials.contains($0.key) || live.keys.contains($0.key) }
+
+            var candidates: [PlaceholderTile] = []
+            for spec in iosSpecs {
+                candidates.append(PlaceholderTile(
+                    name: spec.name, platform: "ios",
+                    detail: [spec.simulator, spec.os].compactMap { $0 }
+                        .joined(separator: " "),
+                    windowMatch: spec.simulator ?? "iPhone 17 Pro"))
+            }
+            var logical: [String: String] = [:]
+            for spec in androidSpecs {
+                guard let avd = spec.avd else { continue }
+                let avdID = AndroidDeviceCatalog.canonicalAVDID(avd)
+                for serial in activeSerials where merged[serial] == avdID {
+                    logical[serial] = spec.name
+                }
+                candidates.append(PlaceholderTile(
+                    name: spec.name, platform: "android",
+                    detail: avd, windowMatch: avdID))
+            }
+            return (PlaceholderSnapshot(candidates: candidates, serialToAVD: merged),
+                    merged, logical)
+        }.value
+
+        androidSerialAVDCache = outcome.cache
+        androidLogicalBySerial = outcome.logical
+        return outcome.snapshot
+    }
+
+    // MARK: - デバイス単体の起動・停止(モニターのプレースホルダー右クリック)
+
+    var deviceOpsInProgress: Set<String> = []
+    /// 起動処理中のデバイス(PlaceholderTile.id)。カードに「起動中」を表示する
+    var bootingDeviceIDs: Set<String> = []
+
+    /// 現在のプロジェクトと登録マシンのマシンプロファイルを読む
+    private func loadMachineProfile() -> MachineProfile? {
+        guard let project = try? currentProject(),
+              let machine = try? ProfileResolver.determineMachine(
+                  project: project, registered: LocalConfig.currentMachineName()),
+              let data = try? Data(contentsOf: project.machinesDir
+                  .appendingPathComponent("\(machine.name).json")) else {
+            return nil
+        }
+        return try? JSONDecoder().decode(MachineProfile.self, from: data)
+    }
+
+    /// マシンプロファイルからプレースホルダーに対応する DeviceSpec を引く
+    private func machineDeviceSpec(for tile: PlaceholderTile) -> DeviceSpec? {
+        guard let profile = loadMachineProfile() else { return nil }
+        let list = tile.platform == "ios" ? profile.ios?.devices : profile.android?.devices
+        return list?.first { $0.name == tile.name }
+    }
+
+    /// ライブタイルのラベル("ios:8123" / "android:emulator-5556")から
+    /// マシンプロファイル上のデバイスを引く(起動済みタイルの右クリック停止用)。
+    /// プロファイル外のデバイス(手動起動のシミュレータ等)は nil = メニューを出さない
+    func machineDevice(forMonitorLabel label: String?) -> PlaceholderTile? {
+        guard let label, let profile = cachedMachineProfile else { return nil }
+        if label.hasPrefix("ios:"), let port = UInt16(label.dropFirst("ios:".count)) {
+            guard let deviceName = portStatuses[port]?.device,
+                  let spec = (profile.ios?.devices ?? []).first(where: {
+                      ($0.simulator ?? "iPhone 17 Pro") == deviceName
+                  }) else { return nil }
+            return PlaceholderTile(
+                name: spec.name, platform: "ios",
+                detail: [spec.simulator, spec.os].compactMap { $0 }.joined(separator: " "),
+                windowMatch: spec.simulator ?? "iPhone 17 Pro")
+        }
+        if label.hasPrefix("android:") {
+            let serial = String(label.dropFirst("android:".count))
+            guard let name = androidLogicalBySerial[serial],
+                  let spec = (profile.android?.devices ?? []).first(where: { $0.name == name })
+            else { return nil }
+            return PlaceholderTile(name: spec.name, platform: "android",
+                                   detail: spec.avd ?? "", windowMatch: spec.avd)
+        }
+        return nil
+    }
+
+    func bootDevice(_ tile: PlaceholderTile) async {
+        bootingDeviceIDs.insert(tile.id)
+        defer { bootingDeviceIDs.remove(tile.id) }
+        await deviceOperation(tile) { spec, platform, log in
+            try await DeviceBooter.bootOne(spec: spec, platform: platform, log: log)
+            // iOS はブリッジも供給する(稼働中ブリッジがあれば再利用。
+            // 供給しないと画面が取れず「起動済み(ブリッジ未接続)」のままになる)
+            if platform == "ios" {
+                let root = try RepoRoot.find()
+                _ = try await BridgeProvisioner(repoRoot: root)
+                    .provision(devices: [(spec.name, spec)], log: log)
+            }
+        }
+    }
+
+    func shutdownDevice(_ tile: PlaceholderTile) async {
+        await deviceOperation(tile) { spec, platform, log in
+            try await DeviceBooter.shutdownOne(spec: spec, platform: platform, log: log)
+        }
+    }
+
+    private func deviceOperation(
+        _ tile: PlaceholderTile,
+        _ body: @escaping @Sendable (DeviceSpec, String, @escaping @Sendable (String) -> Void)
+            async throws -> Void
+    ) async {
+        guard deviceOpsInProgress.insert(tile.id).inserted else { return }
+        defer { deviceOpsInProgress.remove(tile.id) }
+        guard let spec = machineDeviceSpec(for: tile) else {
+            bridgeManager.log.append("❌ \(tile.name): マシンプロファイルに定義が見つかりません")
+            return
+        }
+        let log: @Sendable (String) -> Void = { [weak self] line in
+            Task { @MainActor in self?.bridgeManager.log.append(line) }
+        }
+        let platform = tile.platform
+        do {
+            try await Task.detached {
+                try await body(spec, platform, log)
+            }.value
+        } catch {
+            bridgeManager.log.append("❌ \(tile.name): \(error.localizedDescription)")
+        }
+        await refreshTargets()
+        monitor.rematch()
+    }
+
+    /// マシンプロファイルに定義された全デバイスを段階的に起動する
+    /// (一斉起動はマシンが固まるため、負荷を見ながら 1 台ずつ。起動済みはスキップ)
+    func bootAllDevices() async {
+        guard !bootingDevices else { return }
+        bootingDevices = true
+        defer { bootingDevices = false }
+
+        let machine: MachineProfile
+        let machineName: String
+        do {
+            let project = try currentProject()
+            let determined = try ProfileResolver.determineMachine(
+                project: project, registered: LocalConfig.currentMachineName())
+            machineName = determined.name
+            let url = project.machinesDir.appendingPathComponent("\(machineName).json")
+            machine = try JSONDecoder().decode(MachineProfile.self, from: Data(contentsOf: url))
+        } catch {
+            bridgeManager.log.append("❌ デバイス起動: \(error.localizedDescription)")
+            return
+        }
+        bridgeManager.log.append("→ マシンプロファイル \(machineName) の全デバイスを段階的に起動します")
+
+        let log: @Sendable (String) -> Void = { [weak self] line in
+            Task { @MainActor in self?.bridgeManager.log.append(line) }
+        }
+        // 起動処理中のデバイスは「起動中」表示、完了(成否問わず)で再スキャン
+        let starting: @Sendable (String, String) -> Void = { [weak self] name, platform in
+            Task { @MainActor in self?.bootingDeviceIDs.insert("\(platform):\(name)") }
+        }
+        let finished: @Sendable (String, String) -> Void = { [weak self] name, platform in
+            Task { @MainActor in
+                guard let self else { return }
+                self.bootingDeviceIDs.remove("\(platform):\(name)")
+                await self.refreshTargets()
+                self.monitor.rematch()
+            }
+        }
+        // iOS は起動直後にそのままブリッジ供給まで行う(1 台単位で完結)
+        let repoRoot = try? RepoRoot.find()
+        await Task.detached {
+            await DeviceBooter.bootAll(machine: machine, repoRoot: repoRoot, log: log,
+                                       deviceStarting: starting, deviceFinished: finished)
+        }.value
+        bootingDeviceIDs = []
+
+        bridgeManager.log.append("→ デバイス起動シーケンス完了")
+        await refreshTargets()
+        await bridgeManager.refresh(range: portRange, statuses: portStatuses)
+        monitor.rematch()
+    }
+
+    /// 全 iOS ブリッジを停止し、起動中のシミュレータと Android エミュレータをすべて終了する
+    /// (Android 実機は対象外)。ブリッジ(xcodebuild)を先に止めないと
+    /// シミュレータ終了でプロセスが不安定になるため順序固定
+    func shutdownAllSimulators() async {
+        guard !shuttingDownSimulators else { return }
+        shuttingDownSimulators = true
+        defer { shuttingDownSimulators = false }
+
+        let result = await Task.detached { () -> (bridges: [String], emulators: [String]) in
+            let root = try? RepoRoot.find()
+            let stopped = root.map { BridgeLauncher.stopAll(repoRoot: $0) } ?? []
+            _ = try? Shell.run(["xcrun", "simctl", "shutdown", "all"])
+            // Android エミュレータ(emulator-* のみ。実機は触らない)。
+            // offline のエミュレータには emu kill が届かないため、残った qemu を直接落とす
+            var killed: [String] = []
+            if let adb = try? AndroidDriver.findADB(),
+               let serials = try? AndroidDeviceCatalog.allEmulatorSerials() {
+                for serial in serials {
+                    _ = try? Shell.run([adb, "-s", serial, "emu", "kill"])
+                    killed.append(serial)
+                }
+                if !killed.isEmpty {
+                    try? await Task.sleep(nanoseconds: 3_000_000_000)
+                    _ = try? Shell.run(["pkill", "-9", "-f", "sdk/emulator/qemu"])
+                }
+            }
+            return (stopped, killed)
+        }.value
+
+        var parts: [String] = []
+        if !result.bridges.isEmpty {
+            parts.append("ブリッジ停止(port: \(result.bridges.joined(separator: ", ")))")
+        }
+        parts.append("シミュレータ全終了")
+        if !result.emulators.isEmpty {
+            parts.append("エミュレータ終了(\(result.emulators.joined(separator: ", ")))")
+        }
+        bridgeManager.log.append("✅ " + parts.joined(separator: " / "))
+
+        // SIGTERM 直後は /status がまだ応答することがあるため少し待ってから再スキャン
+        try? await Task.sleep(nanoseconds: 1_500_000_000)
+        await refreshTargets()
+        await bridgeManager.refresh(range: portRange, statuses: portStatuses)
+        monitor.rematch()
+    }
+
+    /// 新規テストプロジェクト作成(雛形生成+Package.swift 更新)。成功時は選択して一覧を更新。
+    /// 戻り値: エラーメッセージ(nil = 成功)
+    func createProject(name: String, app: String) async -> String? {
+        guard let root = ScenarioHost.packageRoot() else {
+            return "Package.swift が見つかりません(リポジトリ内で起動してください)"
+        }
+        creatingProject = true
+        defer { creatingProject = false }
+        let machineName = LocalConfig.currentMachineName()
+        // Package.swift 更新は dump-package 検証(swift 実行)を含むため背景スレッドで
+        let result: Result<TestProject, Error> = await Task.detached {
+            do {
+                return .success(try ProjectScaffold.createAndRegister(
+                    name: name, app: app, repoRoot: root, machineName: machineName))
+            } catch {
+                return .failure(error)
+            }
+        }.value
+        switch result {
+        case .success(let project):
+            refreshProjects()
+            selectedProjectName = project.name
+            await refreshScenarios()
+            return nil
+        case .failure(let error):
+            return error.localizedDescription
+        }
+    }
+
+    func refreshRunProfiles() {
+        guard let project = try? currentProject() else {
+            runProfiles = []
+            selectedRunProfile = nil
+            return
+        }
+        runProfiles = ProfileResolver.runProfileNames(project: project)
+        if let selected = selectedRunProfile, !runProfiles.contains(selected) {
+            selectedRunProfile = nil
+        }
+        if selectedRunProfile == nil,
+           let last = LocalConfig.load().lastRunProfile?[project.name],
+           runProfiles.contains(last) {
+            selectedRunProfile = last
+        }
+    }
+
     // MARK: - シナリオ実行
 
     struct ScenarioEntry: Identifiable {
@@ -215,6 +576,26 @@ final class AppModel {
             }
         }
         monitor.statusProvider = { [weak self] in self?.portStatuses ?? [:] }
+        monitor.androidDevicesProvider = { [weak self] in
+            guard let self else { return [] }
+            // 表示名はマシンプロファイルの論理名(エミュ1 等)を優先し、無ければ adb のモデル名
+            return self.targets.filter { $0.platform == "android" }
+                .compactMap { target in
+                    target.serial.map {
+                        ($0, self.androidLogicalBySerial[$0] ?? target.name)
+                    }
+                }
+        }
+        monitor.placeholderProvider = { [weak self] in
+            await self?.machineDeviceSnapshot() ?? .empty
+        }
+        monitor.targetsRefresher = { [weak self] in
+            await self?.refreshTargets()
+        }
+
+        // プロジェクト/マシン名(~/.config/ftester/config.json = CLI と共有)
+        machineName = LocalConfig.load().machineName ?? ""
+        refreshProjects()
     }
 
     static func parseRange(_ text: String) -> (Int, Int)? {
@@ -251,11 +632,19 @@ final class AppModel {
 
     /// シナリオをビルドして一覧を取得する(ftester-scenarios サブプロセス経由)
     func refreshScenarios() async {
-        scenarioListStatus = "シナリオをビルド中..."
+        let project: TestProject
+        do {
+            project = try currentProject()
+        } catch {
+            scenarios = []
+            scenarioListStatus = "⚠️ \(error.localizedDescription)"
+            return
+        }
+        scenarioListStatus = "シナリオをビルド中(\(project.name))..."
         let result: Result<[ScenarioInfo], Error> = await Task.detached {
             do {
-                try ScenarioHost.build()
-                return .success(try ScenarioHost.list())
+                try ScenarioHost.build(project: project)
+                return .success(try ScenarioHost.list(project: project))
             } catch {
                 return .failure(error)
             }
@@ -294,8 +683,14 @@ final class AppModel {
 
     /// シナリオ群を実行する。iOS はブリッジ毎、Android はデバイス毎のワーカーで並列消化する
     /// (CLI の run --ports と同じオーケストレータ。実行の実体はサブプロセス)。
+    /// 実行プロファイル選択時はデバイス供給(ブリッジ起動)・自動インストール込みで実行する。
     func runScenarios(_ entries: [ScenarioEntry]) async {
         guard !runningFlow, !entries.isEmpty else { return }
+        guard let project = try? currentProject() else {
+            lanes = [WorkerLane(id: "system", title: "⚠️ プロジェクト未選択",
+                                log: ["プロジェクトを選択してください"])]
+            return
+        }
         runningFlow = true
 
         // 実行前にシナリオを最新化(ビルドはホスト側で1回だけ)
@@ -303,6 +698,14 @@ final class AppModel {
         if scenarioListStatus != nil {
             lanes = [WorkerLane(id: "system", title: "⚠️ ビルド失敗",
                                 log: [scenarioListStatus ?? ""])]
+            runningFlow = false
+            return
+        }
+
+        // プロファイル実行(デバイス供給 → インストール → 両OS同時並列)
+        if let profileName = selectedRunProfile {
+            await runScenariosWithProfile(profileName, project: project,
+                                          items: entries.map { ScenarioRunItem(info: $0.info) })
             runningFlow = false
             return
         }
@@ -343,8 +746,9 @@ final class AppModel {
             return WorkerLane(id: worker.label, title: target?.label ?? worker.label)
         }
 
-        let orchestrator = RunOrchestrator(workers: workers, healingEnabled: heal,
-                                           reportDir: URL(fileURLWithPath: "reports"))
+        let orchestrator = RunOrchestrator(project: project, workers: workers,
+                                           healingEnabled: heal,
+                                           reportDir: project.reportsDir)
         // イベントは MainActor 上で順に消費する(レーン追記とシナリオ状態の更新)
         let consumer = Task { @MainActor [weak self] in
             for await event in orchestrator.events {
@@ -354,6 +758,57 @@ final class AppModel {
         _ = await orchestrator.run(items: items, defaultPlatform: "ios")
         await consumer.value
         runningFlow = false
+    }
+
+    /// 実行プロファイルによる実行: 解決 → ワーカー構築(iOS ブリッジ供給 / Android 照合)→
+    /// 自動インストール → 両OS同時並列実行。供給ログは system レーンに流す
+    private func runScenariosWithProfile(_ profileName: String, project: TestProject,
+                                         items: [ScenarioRunItem]) async {
+        lanes = [WorkerLane(id: "system", title: "🧩 プロファイル: \(profileName)")]
+        let sink: @Sendable (String) -> Void = { [weak self] line in
+            Task { @MainActor in self?.appendLane("system", [line]) }
+        }
+        do {
+            let machine = try ProfileResolver.determineMachine(
+                project: project, registered: LocalConfig.currentMachineName())
+            if machine.auto {
+                appendLane("system", ["→ マシンプロファイル自動採用: \(machine.name)"])
+            }
+            let resolved = try ProfileResolver.resolve(
+                project: project, runName: profileName, machineName: machine.name)
+            appendLane("system", resolved.warnings.map { "⚠️ \($0)" })
+            appendLane("system", ["\(resolved.appName) @ \(machine.name) — デバイス: "
+                + resolved.devices.map { "\($0.name)(\($0.platform))" }.joined(separator: ", ")])
+
+            guard let root = ScenarioHost.packageRoot() else {
+                throw AppModel.NoTargetError()
+            }
+            var workers = try await Task.detached {
+                try await ProfileWorkerFactory.buildWorkers(
+                    resolved: resolved, repoRoot: root, log: sink)
+            }.value
+            workers = try await ProfileWorkerFactory.installIfNeeded(
+                apps: resolved.apps, workers: workers, log: sink)
+
+            lanes += workers.map { WorkerLane(id: $0.label, title: $0.label) }
+            await refreshTargets()
+            monitor.rematch()
+
+            let orchestrator = RunOrchestrator(
+                project: project, workers: workers,
+                healingEnabled: heal || resolved.heal,
+                reportDir: resolved.reportDir, defaultTimeout: resolved.defaultTimeout)
+            let consumer = Task { @MainActor [weak self] in
+                for await event in orchestrator.events {
+                    self?.handle(event)
+                }
+            }
+            let defaultPlatform = workers.contains { $0.platform == "ios" } ? "ios" : "android"
+            _ = await orchestrator.run(items: items, defaultPlatform: defaultPlatform)
+            await consumer.value
+        } catch {
+            appendLane("system", ["❌ \(error.localizedDescription)"])
+        }
     }
 
     private func handle(_ event: RunEvent) {
@@ -401,6 +856,29 @@ final class AppModel {
 
     func clearLanes() {
         lanes = []
+    }
+
+    /// 実行ログに表示するレーン。デバイスモニターでデバイスを選択中は
+    /// その台数分だけ(1台=1列、選択順=グリッドの表示順)、未選択なら全ワーカー分。
+    /// まだログの無い選択デバイスにはタイトルだけの空レーンを出す
+    var displayedLanes: [WorkerLane] {
+        let selected = monitor.selectedEntries
+        guard !selected.isEmpty else { return lanes }
+        return selected.map { entry in
+            lane(for: entry)
+                ?? WorkerLane(id: "device:\(entry.deviceKey)", title: entry.deviceName)
+        }
+    }
+
+    /// モニターのデバイスを実行ログレーンへ対応付ける。レーン ID は
+    /// 非プロファイル実行が "ios:8123"、プロファイル実行が "シミュ1(ios:8123)" の形式
+    private func lane(for entry: MonitorEntry) -> WorkerLane? {
+        if let label = entry.workerLabel,
+           let lane = lanes.first(where: { $0.id == label || $0.id.hasSuffix("(\(label))") }) {
+            return lane
+        }
+        // ワーカーラベルで引けない場合(未起動カード等)は論理名で引く
+        return lanes.first { $0.id.hasPrefix("\(entry.deviceName)(") }
     }
 
     // MARK: - ライブ操作
@@ -514,12 +992,13 @@ final class AppModel {
                 }
 
                 // Swift シナリオとして生成 → ビルド検証(失敗時は _disabled/ に隔離)
-                let generatedDir = URL(fileURLWithPath: "Scenarios/Generated")
-                let quarantineDir = URL(fileURLWithPath: "Scenarios/_disabled")
+                let project = try self.currentProject()
+                let generatedDir = project.generatedDir
+                let quarantineDir = project.disabledDir
                 let className = ScenarioCodeGen.suggestedClassName(
                     for: flow,
                     existing: ScenarioCodeGen.existingClassNames(
-                        in: [URL(fileURLWithPath: "Scenarios"), generatedDir, quarantineDir]))
+                        in: [project.scenariosDir, generatedDir, quarantineDir]))
                 let code = ScenarioCodeGen.render(
                     flow: flow, className: className,
                     generatedBy: "ftester explore v0.1 (apple-fm-on-device)")
@@ -527,10 +1006,12 @@ final class AppModel {
                 let url = try await Task.detached {
                     try ScenarioCodeGen.writeValidated(code: code, className: className,
                                                        dir: generatedDir,
-                                                       quarantineDir: quarantineDir)
+                                                       quarantineDir: quarantineDir,
+                                                       project: project)
                 }.value
                 self.exploreLog.append("📄 生成: \(url.path)")
-                self.exploreLog.append("   実行: ftester run --scenario \(className).\(ScenarioCodeGen.methodName(1))")
+                self.exploreLog.append("   実行: ftester run --project \(project.name)"
+                                       + " --scenario \(className).\(ScenarioCodeGen.methodName(1))")
                 await self.refreshScenarios()
             } catch is CancellationError {
                 self.exploreLog.append("⛔️ キャンセルしました")

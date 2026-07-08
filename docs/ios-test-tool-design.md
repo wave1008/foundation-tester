@@ -84,19 +84,30 @@ protocol AppDriver {
 
 ```
 foundation-tester/
-├── Package.swift                  # CLI とライブラリ (macOS 27+)
+├── Package.swift                  # CLI とライブラリ (macOS 27+)。マーカー区間にプロジェクト毎の
+│                                  # executableTarget を自動生成(§12。ftester project create/sync)
 ├── Sources/
-│   ├── ftester/                   # CLI エントリポイント
-│   ├── FTCore/                    # Flow DSL, AppDriver, Replayer, ロケータ解決
+│   ├── ftester/                   # CLI エントリポイント(+ ProjectCommands / ProfileRunner)
+│   ├── FTCore/                    # AppDriver, StepExecutor, ScenarioHost, RunOrchestrator,
+│   │                              # TestProject / RunProfile / LocalConfig(§12)
 │   ├── FTAgent/                   # FoundationModels: プロファイル, @Generable 型, Tools
-│   └── FTBridgeClient/            # ランナー HTTP クライアント (URLSession)
+│   ├── FTBridgeClient/            # ランナー HTTP クライアント + SimulatorCatalog / BridgeProvisioner
+│   ├── FTAndroid/                 # AndroidDriver + AndroidDeviceCatalog / ProfileWorkerFactory
+│   ├── FTDSL / FTDSLMacros/       # Shirates 風 Swift DSL とマクロ(§11)
+│   ├── FTScenarioRunner/          # ftester-scenarios-<project> の CLI 実装
+│   ├── ftester-gui/               # SwiftUI macOS アプリ
+│   └── ftester-mcp/               # MCP サーバ(stdio)
 ├── Runner/
 │   └── FTesterRunner/             # Xcode プロジェクト
 │       ├── FTesterRunnerApp/      # 空のホストアプリ(UIテストの器)
 │       └── FTesterRunnerUITests/  # HTTP サーバ内蔵の常駐 UI テスト
+├── Projects/                      # テストプロジェクト(§12)
+│   └── SampleApp/
+│       ├── profiles/              # 実行プロファイル(apps / machines / runs)
+│       ├── Scenarios/             # Swift DSL シナリオ(SPM ターゲットの path)
+│       ├── reports/               # 実行レポート出力先(プロジェクト別)
+│       └── .ftester/              # ヒールキャッシュ等(プロジェクト別)
 ├── SampleApp/                     # 検証用の小さな SwiftUI デモアプリ(テスト対象)
-├── flows/                         # 生成されたテストフロー (YAML)
-├── reports/                       # 実行レポート・バグレポート出力先
 └── docs/ios-test-tool-design.md   # 本書
 ```
 
@@ -435,3 +446,118 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
   シナリオ側で `wait(1)` を挟むのが確実(コードで書けるようになった利点)
 - 3B FM のヒールは誤要素(NavigationBar 等)を高確信で選ぶことがある。キャッシュは誤ヒールも
   固定化するため、修正提案を人がレビューしてソースを直すループが前提
+
+---
+
+## 12. テストプロジェクトと実行プロファイル(2026-07-08)
+
+シナリオのフラット配置(リポジトリ直下 Scenarios/)と UserDefaults 頼みの実行設定を廃止し、
+**テストプロジェクト**(Projects/<name>/)と**組み合わせ型の実行プロファイル**(JSON)に移行した。
+
+### 12.1 テストプロジェクト
+
+`Projects/<name>/` = シナリオ+プロファイル+レポートを持つ器。プロジェクト毎に SPM の
+executableTarget `ftester-scenarios-<name>`(path: `Projects/<name>/Scenarios`)が対応する。
+
+- **Package.swift のマーカー区間自動生成**: `// === ftester projects begin/end ===` の区間を
+  `ftester project create/sync` が全置換で再生成する(手編集禁止)。書換後に
+  `swift package dump-package` で検証し、失敗時は元内容へロールバック(PackageManifestEditor)。
+  マニフェスト内容自体が変わるため SwiftPM のマニフェストキャッシュ stale が構造的に起きない
+  (Package.swift 内で FileManager 走査して動的生成する案はキャッシュ stale リスクで却下)
+- プロジェクト間はビルド隔離される(1 プロジェクトのコンパイルエラーが他を止めない)。
+  バイナリ毎に objc 走査が分かれるため、シナリオ一覧のプロジェクト別化は発見ロジック無変更で成立
+- プロジェクト名は SPM ターゲット名になるため `^[A-Za-z0-9_][A-Za-z0-9_-]*$`(日本語はクラス名側で使う)
+- `--project` 省略時の解決: Projects/ が 1 つならそれ → LocalConfig.defaultProject → 候補一覧付きエラー
+- CLI: `ftester project create <name> [--app <bundleID>]` / `project list` / `project sync`
+  (手動コピーや git pull 後の Projects/ ↔ マーカー区間の再整合)
+
+### 12.2 プロファイルは 3 種の組み合わせ
+
+`Projects/<name>/profiles/` 配下。共通設定の継承ではなく**部品の参照合成**で表現する。
+
+**アプリケーションプロファイル** `apps/<name>.json` — common(共通)→ ios/android の後勝ちマージ。
+`appName` はユーザーがアプリを識別する表示名。パッケージはフラットな `appPath`・`autoInstall`:
+
+```json
+{ "common":  { "appName": "サンプルアプリ", "app": "com.example.sampleapp" },
+  "ios":     { "appPath": "~/builds/SampleApp.app", "autoInstall": true },
+  "android": { "appPath": "builds/app-debug.apk" } }
+```
+
+**マシンプロファイル** `machines/<マシン名>.json` — ファイル名がマシン名(`M1 Max(64GB).json` 等)。
+1 ファイルに ios / android セクションを書き、そのマシンで使えるデバイスを `name` 付きで列挙。
+マシン別ファイルなので UDID / AVD などマシン固有の実体をそのまま書ける:
+
+```json
+{ "ios":     { "devices": [ { "name": "メイン機", "simulator": "iPhone 17 Pro", "os": "27.0" } ] },
+  "android": { "devices": [ { "name": "エミュ1", "avd": "Pixel_9" },
+                            { "name": "エミュ2", "avd": "Pixel 8(Android 14)" } ] } }
+```
+
+- デバイス名は 1 ファイル内(ios+android 横断)で一意(重複はロード時エラー)
+- iOS: `simulator` 名+`os`(または `udid` 直指定。`port` で固定も可)
+- Android: `avd`(AVD の ID と表示名(config.ini の avd.ini.displayname)のどちらでも可。
+  起動中エミュレータの AVD 名と照合して adb serial に解決。未起動はヒント付きエラー。
+  serial 直指定は廃止 — serial は起動順で変わるためプロファイルに書かない)
+
+**実行プロファイル** `runs/<name>.json` — アプリ+デバイス名リスト+実行時設定。
+platform フィールドは持たず、**iOS/Android のデバイス名を混在させれば両OS同時実行**になる:
+
+```json
+{ "app": "sampleapp",
+  "devices": [ { "name": "メイン機" }, { "name": "サブ機" }, { "name": "エミュ1" } ],
+  "heal": false, "reportDir": "reports", "defaultTimeout": 5 }
+```
+
+### 12.3 解決規則(ProfileResolver)
+
+1. **マシン決定**: `FT_MACHINE` 環境変数 > 登録名(`ftester machine set`、
+   `~/.config/ftester/config.json`)> machines/ が 1 ファイルならそれを自動採用 > エラー。
+   設定を UserDefaults にしないのは CLI/GUI/MCP の 3 プロセスでドメインを揃えて共有するため
+2. **デバイス解決**: 実行プロファイルの各 name を現在マシンのマシンプロファイル(ios→android の順)
+   から引く。このマシンに無い name は**スキップ+警告**(実行プロファイルをマシン非依存で使い回すため)。
+   1 台も解決できなければエラー
+3. **アプリ解決**: common → デバイスの platform セクションの後勝ちマージ。`app`(bundle ID)必須
+4. **並列数 = 解決後のデバイス数**(maxParallel は存在しない)。プラットフォーム毎にワーカーを立て、
+   RunOrchestrator の platform 別キューで両OS同時並列実行
+5. platform 未指定(@TestClass 両対応)のシナリオは iOS ワーカーがいれば ios キューへ
+6. 未知キーは警告(タイポ検出)。相対パスはプロジェクトルート基準、チルダ展開あり
+7. 合成後は必須検証済みの `ResolvedProfile` になり、実行コードはこれだけを見る
+
+### 12.4 実行フロー(ftester run --project P --profile ios)
+
+1. ProfileResolver で合成 → CLI 明示引数(--heal/--report-dir 等)が最終上書き
+2. `ScenarioHost.build(project:)`(ホスト 1 回)
+3. **デバイス供給**: iOS は BridgeProvisioner がポート範囲(8123〜)を短タイムアウトで並行スキャンし、
+   /status のデバイス名 × simctl の UDID 照合で**稼働中ブリッジを再利用**、不足分は空きポートを採番して
+   BridgeLauncher(xctestrun FT_PORT 注入)で起動・waitUntilReady。シミュレータの新規作成はしない
+   (同名複数の曖昧時は UDID 明記を推奨)。Android は AndroidDeviceCatalog で avd 照合
+4. **自動インストール**: `appPath` あり+`autoInstall`(既定 true)→ オーケストレータ投入前に
+   各ワーカーへ並行 install(失敗ワーカーは離脱、残ワーカーがキューを引き継ぐ)
+5. RunOrchestrator で並列実行。ワーカーラベル=デバイスの論理名。レポートは
+   `Projects/<P>/reports/`、ヒールキャッシュは `--project-dir` 経由で `Projects/<P>/.ftester/` に分離
+6. `defaultTimeout` はランナーの `--default-timeout` → FTDriveCore に渡り、
+   exist/textIs/valueIs の `timeout: Int? = nil` の既定値になる
+7. ワーカー構築(供給+インストール)は ProfileWorkerFactory(FTAndroid)に共通化され、
+   CLI(ProfileRunner)と GUI(AppModel)が共用する
+
+### 12.5 インターフェース
+
+- CLI: `ftester run [--project P] [--profile 名] [--scenario ...]`(profile 未指定時は従来どおり
+  手動 --ports/--serial)、`ftester profile list`(解決結果と整合チェック)、`ftester machine set/show`
+- GUI: サイドバーにプロジェクト Picker(+ ボタンで新規プロジェクト作成 =
+  ProjectScaffold.createAndRegister を CLI と共用)、ツールバーに実行プロファイル Picker
+  (「プロファイルなし」= 稼働中デバイスへの自動割当)。設定ペインに「このマシン」欄
+  (LocalConfig を CLI と共有)。プロファイル実行時は供給ログを system レーンに表示。
+  「プロファイル」タブで 3 種プロファイルの JSON を編集・保存・検証
+  (ProfileResolver.validate + 実行プロファイルは現在マシンでの解決チェック)
+- MCP: `ft_list_scenarios` / `ft_run_scenario` に `project` / `profile` 引数、`ft_list_projects` 追加。
+  ft_run_scenario は 1 シナリオ実行なので profile からはシナリオの platform に合う先頭デバイス・
+  heal・reportDir のみ利用
+
+### 12.6 移行と後方互換
+
+- 旧 `Scenarios/` は `Projects/SampleApp/Scenarios/` へ git mv(同一コミットでアトミック移行。
+  レガシーレイアウトのランタイムサポートは持たない)
+- ルート `reports/` の既存成果物は履歴として残置。旧 `.ftester/heal-cache.json` も放置で無害
+  (キー不一致なら FM が再ヒールするだけ)

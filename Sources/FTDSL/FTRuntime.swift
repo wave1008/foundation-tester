@@ -92,7 +92,9 @@ public final class FTDriveCore {
     let scenarioID: String
     let scenarioTitle: String
     let emit: (ScenarioEvent) -> Void
-    let healCache = HealCache()
+    let healCache: HealCache
+    /// 検証コマンド(exist/textIs 等)の既定タイムアウト秒(実行プロファイルで変更可)
+    public let defaultTimeout: Int
 
     private(set) var record: ScenarioRecordData
 
@@ -111,6 +113,8 @@ public final class FTDriveCore {
                 scenarioID: String, scenarioTitle: String,
                 delegate: ReplayDelegate?, healingEnabled: Bool,
                 dryRun: Bool = false,
+                healCacheURL: URL? = nil,
+                defaultTimeout: Int? = nil,
                 emit: @escaping (ScenarioEvent) -> Void) {
         self.driver = driver
         self.platform = platform
@@ -119,6 +123,9 @@ public final class FTDriveCore {
         self.scenarioID = scenarioID
         self.scenarioTitle = scenarioTitle
         self.dryRun = dryRun
+        self.healCache = HealCache(
+            url: healCacheURL ?? URL(fileURLWithPath: ".ftester/heal-cache.json"))
+        self.defaultTimeout = defaultTimeout ?? 5
         self.emit = emit
         self.record = ScenarioRecordData(id: scenarioID, title: scenarioTitle,
                                          app: app, platform: platform)

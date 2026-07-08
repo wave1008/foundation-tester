@@ -79,16 +79,18 @@ actor ScenarioQueue {
 /// CLI の逐次実行と RunOrchestrator のワーカーの両方がここを通る。
 public enum ScenarioRunner {
     /// 戻り値: passed。進捗は onEvent で通知される
-    public static func runOne(item: ScenarioRunItem, worker: RunWorker,
+    public static func runOne(project: TestProject, item: ScenarioRunItem, worker: RunWorker,
                               healingEnabled: Bool, reportDir: URL,
+                              defaultTimeout: Int? = nil,
                               onEvent: @escaping (RunEvent) -> Void) async -> Bool {
         onEvent(.flowStarted(worker: worker.label, flowURL: item.url,
                              flowName: item.info.id, isDirty: false))
 
         var reportURL: URL?
         let passed = await ScenarioHost.run(
-            scenarioID: item.info.id, connection: worker.connection,
-            heal: healingEnabled, reportDir: reportDir.path) { event in
+            project: project, scenarioID: item.info.id, connection: worker.connection,
+            heal: healingEnabled, reportDir: reportDir.path,
+            defaultTimeout: defaultTimeout) { event in
             switch event.kind {
             case "step":
                 onEvent(.step(worker: worker.label, flowURL: item.url,
@@ -143,12 +145,17 @@ public final class RunOrchestrator {
     private let workers: [RunWorker]
     private let healingEnabled: Bool
     private let reportDir: URL
+    private let project: TestProject
+    private let defaultTimeout: Int?
 
-    public init(workers: [RunWorker], healingEnabled: Bool, reportDir: URL) {
+    public init(project: TestProject, workers: [RunWorker], healingEnabled: Bool,
+                reportDir: URL, defaultTimeout: Int? = nil) {
         (self.events, self.continuation) = AsyncStream.makeStream(of: RunEvent.self)
         self.workers = workers
         self.healingEnabled = healingEnabled
         self.reportDir = reportDir
+        self.project = project
+        self.defaultTimeout = defaultTimeout
     }
 
     public func run(items: [ScenarioRunItem], defaultPlatform: String) async -> RunSummary {
@@ -214,8 +221,9 @@ public final class RunOrchestrator {
         var failed = 0
         while let item = await queue.next() {
             let passed = await ScenarioRunner.runOne(
-                item: item, worker: worker,
+                project: project, item: item, worker: worker,
                 healingEnabled: healingEnabled, reportDir: reportDir,
+                defaultTimeout: defaultTimeout,
                 onEvent: { [continuation] in continuation.yield($0) })
             if !passed { failed += 1 }
         }

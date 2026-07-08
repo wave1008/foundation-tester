@@ -14,6 +14,39 @@ struct SettingsView: View {
         Form {
             Section {
                 HStack(spacing: 8) {
+                    Text("マシン名")
+                    TextField("例: M1 Max(64GB)", text: $model.machineName)
+                        .labelsHidden()
+                        .frame(width: 220)
+                        .textFieldStyle(.roundedBorder)
+                    if let project = try? model.currentProject() {
+                        let machines = ProfileResolver.machineNames(project: project)
+                        if model.machineName.isEmpty {
+                            Text("未登録")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else if machines.contains(model.machineName) {
+                            Text("✅ \(project.name) にマシンプロファイルあり")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            Text("⚠️ profiles/machines/\(model.machineName).json がありません")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        }
+                    }
+                    Spacer()
+                }
+            } header: {
+                Text("このマシン")
+            } footer: {
+                Text("実行プロファイルのデバイス解決に使うマシン名(profiles/machines/<マシン名>.json の選択キー)。~/.config/ftester/config.json に保存され、CLI(ftester machine set/show)と共有されます。FT_MACHINE 環境変数が最優先です。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
+                HStack(spacing: 8) {
                     Text("開始ポート番号")
                     TextField("8123", text: $model.portRangeStartText)
                         .labelsHidden()

@@ -1,0 +1,12 @@
+{
+  "ios": {
+    "devices": [
+      { "name": "メイン機", "simulator": "iPhone 17 Pro", "os": "27.0" }
+    ]
+  },
+  "android": {
+    "devices": [
+      { "name": "エミュ1", "avd": "Pixel_9" }
+    ]
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "common": {
+    "appName": "サンプルアプリ",
+    "app": "com.example.sampleapp"
+  },
+  "ios": {
+  },
+  "android": {
+  }
+}

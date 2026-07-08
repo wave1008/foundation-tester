@@ -37,14 +37,14 @@ public struct DriverConnection: Sendable, Hashable {
 }
 
 public enum ScenarioHostError: Error, LocalizedError {
-    case runnerNotFound
+    case runnerNotFound(product: String)
     case buildFailed(String)
     case listFailed(String)
 
     public var errorDescription: String? {
         switch self {
-        case .runnerNotFound:
-            return "ftester-scenarios が見つかりません(swift build --product ftester-scenarios を実行してください)"
+        case .runnerNotFound(let product):
+            return "\(product) が見つかりません(swift build --product \(product) を実行してください)"
         case .buildFailed(let log):
             return "シナリオのビルドに失敗しました:\n\(log)"
         case .listFailed(let detail):
@@ -55,22 +55,33 @@ public enum ScenarioHostError: Error, LocalizedError {
 
 public enum ScenarioHost {
 
-    /// シナリオをビルドする。ホスト側で 1 回だけ呼び、サブプロセスは自らビルドしない
+    /// テストプロジェクトを解決する。name 省略時:
+    /// Projects/ が 1 つならそれ → LocalConfig.defaultProject → 候補一覧付きエラー
+    public static func project(named name: String? = nil) throws -> TestProject {
+        guard let root = packageRoot() else {
+            throw ScenarioHostError.buildFailed(
+                "Package.swift が見つかりません(リポジトリ内で実行してください)")
+        }
+        return try ProjectStore.find(name, repoRoot: root,
+                                     defaultProject: LocalConfig.load().defaultProject)
+    }
+
+    /// プロジェクトのシナリオをビルドする。ホスト側で 1 回だけ呼び、サブプロセスは自らビルドしない
     /// (並列ワーカーが同時に swift build して SPM ロック競合するのを防ぐ)
-    public static func build() throws {
+    public static func build(project: TestProject) throws {
         guard let root = packageRoot() else {
             throw ScenarioHostError.buildFailed("Package.swift が見つかりません(リポジトリ内で実行してください)")
         }
-        let result = try Shell.run(["swift", "build", "--product", "ftester-scenarios"], cwd: root)
+        let result = try Shell.run(["swift", "build", "--product", project.productName], cwd: root)
         guard result.status == 0 else {
             throw ScenarioHostError.buildFailed(result.tail)
         }
     }
 
     /// ランナー実行ファイルの場所: 自 executable と同ディレクトリ → swift build --show-bin-path
-    public static func runnerURL() throws -> URL {
+    public static func runnerURL(project: TestProject) throws -> URL {
         if let sibling = Bundle.main.executableURL?
-            .deletingLastPathComponent().appendingPathComponent("ftester-scenarios"),
+            .deletingLastPathComponent().appendingPathComponent(project.productName),
            FileManager.default.isExecutableFile(atPath: sibling.path) {
             return sibling
         }
@@ -79,15 +90,15 @@ public enum ScenarioHost {
            result.status == 0 {
             let binPath = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
                 .split(separator: "\n").last.map(String.init) ?? ""
-            let url = URL(fileURLWithPath: binPath).appendingPathComponent("ftester-scenarios")
+            let url = URL(fileURLWithPath: binPath).appendingPathComponent(project.productName)
             if FileManager.default.isExecutableFile(atPath: url.path) { return url }
         }
-        throw ScenarioHostError.runnerNotFound
+        throw ScenarioHostError.runnerNotFound(product: project.productName)
     }
 
     /// シナリオ一覧を取得する
-    public static func list() throws -> [ScenarioInfo] {
-        let runner = try runnerURL()
+    public static func list(project: TestProject) throws -> [ScenarioInfo] {
+        let runner = try runnerURL(project: project)
         let result = try Shell.run([runner.path, "list", "--json"])
         guard result.status == 0 else {
             throw ScenarioHostError.listFailed(result.tail)
@@ -104,12 +115,13 @@ public enum ScenarioHost {
 
     /// シナリオを 1 つ実行し、NDJSON イベントを onEvent へ流す。戻り値: passed
     @discardableResult
-    public static func run(scenarioID: String, connection: DriverConnection,
-                           heal: Bool, reportDir: String,
+    public static func run(project: TestProject, scenarioID: String,
+                           connection: DriverConnection,
+                           heal: Bool, reportDir: String, defaultTimeout: Int? = nil,
                            onEvent: @escaping (ScenarioEvent) -> Void) async -> Bool {
         let runner: URL
         do {
-            runner = try runnerURL()
+            runner = try runnerURL(project: project)
         } catch {
             onEvent(.log("❌ \(error.localizedDescription)"))
             return false
@@ -119,10 +131,12 @@ public enum ScenarioHost {
         process.executableURL = runner
         var args = ["run", "--scenario", scenarioID,
                     "--platform", connection.platform,
-                    "--report-dir", reportDir, "--json"]
+                    "--report-dir", reportDir, "--json",
+                    "--project-dir", project.rootURL.path]
         if heal { args.append("--heal") }
         if let port = connection.port { args += ["--port", String(port)] }
         if let serial = connection.serial { args += ["--serial", serial] }
+        if let defaultTimeout { args += ["--default-timeout", String(defaultTimeout)] }
         process.arguments = args
 
         let stdout = Pipe()
@@ -170,7 +184,7 @@ public enum ScenarioHost {
     }
 
     /// カレントディレクトリから上に辿って Package.swift を持つディレクトリを探す
-    static func packageRoot() -> URL? {
+    public static func packageRoot() -> URL? {
         var dir = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
         for _ in 0..<10 {
             if FileManager.default.fileExists(

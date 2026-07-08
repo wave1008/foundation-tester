@@ -157,18 +157,19 @@ public enum ScenarioCodeGen {
     /// (1 つの生成不良がシナリオスイート全体を道連れにしないため)
     @discardableResult
     public static func writeValidated(code: String, className: String,
-                                      dir: URL, quarantineDir: URL) throws -> URL {
+                                      dir: URL, quarantineDir: URL,
+                                      project: TestProject) throws -> URL {
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let url = dir.appendingPathComponent("\(className).swift")
         try code.write(to: url, atomically: true, encoding: .utf8)
         do {
-            try ScenarioHost.build()
+            try ScenarioHost.build(project: project)
         } catch {
             try? FileManager.default.createDirectory(at: quarantineDir, withIntermediateDirectories: true)
             let quarantined = quarantineDir.appendingPathComponent("\(className).swift")
             try? FileManager.default.moveItem(at: url, to: quarantined)
             // 隔離後はスイートが再びビルドできることを確認しておく(失敗しても実行時に分かる)
-            try? ScenarioHost.build()
+            try? ScenarioHost.build(project: project)
             throw CodeGenError.buildFailed(quarantined: quarantined,
                                            detail: error.localizedDescription)
         }
