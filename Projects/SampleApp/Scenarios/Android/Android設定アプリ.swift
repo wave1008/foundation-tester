@@ -14,7 +14,7 @@ class Android設定アプリ {
                 condition {
                     launchApp()
                 }.action {
-                    tap("Network & internet")  // 「Network & internet」に移動するステップ1を実行する
+                    tap("ネットワークとインターネット")  // 「Network & internet」に移動するステップ1を実行する
                 }.expectation {
                     exist("#collapsing_toolbar||Network & internet")  // 目標から自動抽出した確認(探索終了時にコード側で検証済み)
                     exist("Internet")  // 目標から自動抽出した確認(探索終了時にコード側で検証済み)

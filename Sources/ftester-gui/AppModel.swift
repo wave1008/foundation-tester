@@ -532,6 +532,8 @@ final class AppModel {
         let command: String
         /// ソース行末の // コメント(無ければ nil)
         let comment: String?
+        /// コメントが無い行の補完用に生成した自然言語の説明(StepDescription。無ければ nil)
+        let generatedComment: String?
         /// コマンド呼び出し元のソース位置(ブレークポイントのキー。dry-run イベント由来)
         let file: String?
         let line: Int?
@@ -603,6 +605,25 @@ final class AppModel {
         var running = false
     }
 
+    /// 自己修復ONの実行で見つかった修復候補 1 件(実行後の確認シートの表示・確定用)
+    struct HealFix: Identifiable, Equatable {
+        let scenarioID: String
+        /// リポジトリルート相対パス(イベントのまま)
+        let file: String
+        let line: Int
+        let oldSelector: String
+        let newSelector: String
+        /// 提案文(rationale入り)
+        let message: String
+        /// 対象コマンドの description(例: tap "旧セレクタ")。説明提案の生成に使う。
+        /// id には含めない(ヒールキャッシュ削除キーの形式を維持)
+        var command: String? = nil
+        /// 適用時に差し替える行末コメント(説明)。nil = 説明は変更しない、空 = コメント削除。
+        /// 確認シートが適用対象を組み立てるときだけ詰める(イベント収集時は常に nil)
+        var newComment: String? = nil
+        var id: String { "\(scenarioID)|\(file):\(line)|\(oldSelector)" }
+    }
+
     var scenarios: [ScenarioEntry] = []
     /// Scenarios/ 直下のフォルダ名一覧(1 階層のみ。空フォルダも含む、名前順)
     var scenarioFolders: [String] = []
@@ -628,12 +649,30 @@ final class AppModel {
     /// シナリオ一覧のビルド/読込状態(nil = 正常)
     var scenarioListStatus: String?
 
+    /// 直近の実行で見つかった自己修復の候補(実行終了後に確認シートで表示)
+    var pendingHealFixes: [HealFix] = []
+    /// 自己修復の確認シートを表示中か
+    var healReviewPresented = false
+    /// pendingHealFixes の元になった実行のプロジェクト(適用時のソース解決・ヒールキャッシュ削除に使う)
+    private var healReviewProject: TestProject?
+
     /// シナリオ ID → ステップ表の行(dry-run 結果のキャッシュ)。一覧再読込で全クリア
     private var stepRowsCache: [String: [ScenarioStepRow]] = [:]
     /// 実行中の dry-run(キー: "世代|シナリオID")。同一シナリオへの二重起動防止
     private var stepLoadTasks: [String: Task<StepLoadResult, Never>] = [:]
     /// シナリオ一覧の世代。refreshScenarios 完了毎に +1(ステップ表の再取得トリガ)
     private(set) var scenarioListGeneration = 0
+
+    // MARK: - ステップ表の選択・セル内編集の状態
+    // (Table のセルは親 View の @State 変更では再描画されないことがあるため、
+    //  Observable なモデルに置いてセルの追従を保証する。表は 1 画面に 1 つ)
+
+    /// ステップ表でクリック選択(ハイライト)された行。id は ScenarioStepRow.index
+    var stepTableSelection: ScenarioStepRow.ID?
+    /// コマンドセルのインライン編集中の行(選択済み行のセルクリックで開始)
+    var stepEditingRow: ScenarioStepRow?
+    /// インライン編集中のテキスト(表示表現のまま。例: tap "ラベル")
+    var stepEditText = ""
 
     // MARK: - デバッグ実行(ブレークポイント・ステップ実行)
 
@@ -1000,15 +1039,19 @@ final class AppModel {
         }
 
         return steps.map { step in
-            ScenarioStepRow(
+            let comment = step.file.flatMap { file in
+                step.line.flatMap { commentsByFile[file]?[$0] }
+            }
+            return ScenarioStepRow(
                 index: step.index ?? 0,
                 scene: step.scene,
                 sceneTitle: step.scene.flatMap { sceneTitles[$0] },
                 section: step.section,
                 command: step.description ?? "",
-                comment: step.file.flatMap { file in
-                    step.line.flatMap { commentsByFile[file]?[$0] }
-                },
+                comment: comment,
+                // コメントの無い行は自然言語の生成文で補完(淡色表示で区別)
+                generatedComment: comment == nil
+                    ? StepDescription.describe(command: step.description ?? "") : nil,
                 file: step.file,
                 line: step.line)
         }
@@ -1054,6 +1097,9 @@ final class AppModel {
     private func endRunningFlow() {
         runningFlow = false
         endDebugSession()
+        if !pendingHealFixes.isEmpty {
+            healReviewPresented = true
+        }
         if pendingScenarioSync {
             pendingScenarioSync = false
             watchLog("実行終了 → 保留していた外部変更を確認")
@@ -1252,6 +1298,143 @@ final class AppModel {
         return nil
     }
 
+    // MARK: - ステップ表のコマンド編集(選択行のセルクリックでインライン編集)
+
+    /// ステップ行のソース位置(repo 相対 or 絶対)をファイル URL に解決する
+    /// (dry-run イベントの file はどちらの形式もあり得る。applyHealFixes と同じ規則)
+    nonisolated private static func stepSourceURL(_ file: String) -> URL {
+        file.hasPrefix("/")
+            ? URL(fileURLWithPath: file)
+            : (ScenarioHost.packageRoot()?.appendingPathComponent(file)
+                ?? URL(fileURLWithPath: file))
+    }
+
+    /// この行のコマンドをセル内編集できるか(ソース位置があり、表示表現を解釈できる行のみ。
+    /// ifCanSelect 等の実行結果入り表示・未知コマンドは対象外)。実行中の判定は呼び出し側
+    nonisolated static func stepCommandEditable(_ row: ScenarioStepRow) -> Bool {
+        row.file != nil && row.line != nil && StepCommandText.parse(row.command) != nil
+    }
+
+    /// ステップ行のソース上のコード部分(インデント・行末コメント除く)
+    private func stepCommandCode(file: String, line: Int) throws -> String {
+        let source = try String(contentsOf: Self.stepSourceURL(file), encoding: .utf8)
+        return try ScenarioSourceEditor.commandCode(inSource: source, line: line)
+    }
+
+    /// ステップ行のソースを VSCode で開く(行ダブルクリック)。
+    /// プロジェクト(リポジトリルート)を開いていない VSCode でも文脈ごと開けるよう、
+    /// アプリ同梱の code CLI で「フォルダ + --goto ファイル:行」を渡す(フォルダを開いた
+    /// ウィンドウがあれば再利用、無ければフォルダごと開く = CLI の標準動作。確認ダイアログも
+    /// 出ない)。CLI が見つからないときは vscode:// スキームにフォールバックする。
+    /// 戻り値: エラーメッセージ(nil = 成功)
+    func openStepSourceInVSCode(_ row: ScenarioStepRow) -> String? {
+        guard let file = row.file else {
+            return "このステップはソース位置を特定できないため開けません"
+        }
+        let goto = Self.stepSourceURL(file).path + (row.line.map { ":\($0)" } ?? "")
+        let root = ScenarioHost.packageRoot()
+
+        if let cli = Self.vscodeCLI() {
+            let process = Process()
+            process.executableURL = cli
+            process.arguments = (root.map { [$0.path] } ?? []) + ["--goto", goto]
+            process.terminationHandler = { _ in }  // ゾンビ化防止(結果は使わない)
+            if (try? process.run()) != nil { return nil }
+            // CLI の起動に失敗したら URL スキームへフォールバック
+        }
+
+        // 「vscode://file/<パス>」はフォルダも開ける(既に開いていればフォーカスのみ)。
+        // フォルダ→ファイルの順に開くと、ファイルはそのウィンドウに開く
+        if let root, let folderURL = Self.vscodeURL(path: root.path),
+           NSWorkspace.shared.open(folderURL) {
+            let fileURL = Self.vscodeURL(path: goto)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                if let fileURL { NSWorkspace.shared.open(fileURL) }
+            }
+            return nil
+        }
+        guard let url = Self.vscodeURL(path: goto), NSWorkspace.shared.open(url) else {
+            return "VSCode を開けませんでした(vscode:// スキームを処理できるアプリがありません)"
+        }
+        return nil
+    }
+
+    /// vscode://file/<パス>(パスの日本語は URLComponents が自動でエンコードする)
+    nonisolated private static func vscodeURL(path: String) -> URL? {
+        var components = URLComponents()
+        components.scheme = "vscode"
+        components.host = "file"
+        components.path = path
+        return components.url
+    }
+
+    /// VSCode アプリ同梱の code CLI(/usr/local/bin へのリンクが無い環境でも使える)
+    nonisolated private static func vscodeCLI() -> URL? {
+        for id in ["com.microsoft.VSCode", "com.microsoft.VSCodeInsiders"] {
+            guard let app = NSWorkspace.shared.urlForApplication(
+                withBundleIdentifier: id) else { continue }
+            let cli = app.appendingPathComponent("Contents/Resources/app/bin/code")
+            if FileManager.default.isExecutableFile(atPath: cli.path) { return cli }
+        }
+        return nil
+    }
+
+    /// セル内編集の確定: コマンド列と同じ表示表現の編集をソースへ変換して反映する。
+    /// 動詞・引数構成が同じ編集は文字列リテラルだけ置換(timeout: 等を保存)。
+    /// 戻り値: エラーメッセージ(nil = 成功)
+    func updateStepCommand(row: ScenarioStepRow, display: String) async -> String? {
+        guard let file = row.file, let line = row.line else {
+            return "このステップはソース位置を特定できないため編集できません"
+        }
+        let trimmed = display.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return "コマンドを入力してください" }
+        guard trimmed != row.command else { return nil }  // 変更なし
+        do {
+            let code = try stepCommandCode(file: file, line: line)
+            let newCode = try StepCommandText.apply(display: trimmed, toCode: code)
+            return await updateStepCommand(file: file, line: line, code: newCode)
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
+    /// ステップ行のコマンド(コード部分)を書き換えて再ビルドする。
+    /// 編集でビルドが壊れると一覧・ステップ表ごと使えなくなるため、
+    /// ビルド失敗時は元のソースへ自動で戻す。戻り値: エラーメッセージ(nil = 成功)
+    private func updateStepCommand(file: String, line: Int, code: String) async -> String? {
+        guard !runningFlow else { return "シナリオの実行中は編集できません" }
+        guard let project = try? currentProject() else {
+            return "プロジェクトを選択してください"
+        }
+        let url = Self.stepSourceURL(file)
+        let original: String
+        let updated: String
+        do {
+            original = try String(contentsOf: url, encoding: .utf8)
+            updated = try ScenarioSourceEditor.setCommandCode(
+                inSource: original, line: line, code: code)
+        } catch {
+            return error.localizedDescription
+        }
+        guard updated != original else { return nil }  // 変更なし = 再ビルド不要
+        do {
+            try updated.write(to: url, atomically: true, encoding: .utf8)
+        } catch {
+            return error.localizedDescription
+        }
+        noteOwnScenarioDirChange(project)
+        await refreshScenarios()
+        guard let status = scenarioListStatus else { return nil }
+        do {
+            try original.write(to: url, atomically: true, encoding: .utf8)
+        } catch {
+            return "ビルドに失敗しました(元に戻せませんでした):\n\(status)"
+        }
+        noteOwnScenarioDirChange(project)
+        await refreshScenarios()
+        return "ビルドに失敗したため変更を取り消しました:\n\(status)"
+    }
+
     /// 空のフォルダを削除する。戻り値: エラーメッセージ(nil = 成功)
     func deleteScenarioFolder(_ name: String) -> String? {
         guard let project = try? currentProject() else {
@@ -1294,6 +1477,9 @@ final class AppModel {
                                 log: ["プロジェクトを選択してください"])]
             return
         }
+        pendingHealFixes = []
+        healReviewPresented = false
+        healReviewProject = project
         runningFlow = true
 
         // 実行前にシナリオを最新化(ビルドはホスト側で1回だけ)
@@ -1457,6 +1643,17 @@ final class AppModel {
             appendLane(worker, lines)
         case .flowHealed(let worker, _):
             appendLane(worker, lines)
+        case .fixSuggestion(_, _, let scenarioID, let command, let file, let line,
+                            let oldSelector, let newSelector, let message):
+            if let file, let line, let oldSelector, let newSelector {
+                let fix = HealFix(scenarioID: scenarioID, file: file, line: line,
+                                  oldSelector: oldSelector, newSelector: newSelector,
+                                  message: message, command: command)
+                // 同一ヒールはシーン跨ぎ・複数回実行で重複 emit され得る
+                if !pendingHealFixes.contains(where: { $0.id == fix.id }) {
+                    pendingHealFixes.append(fix)
+                }
+            }
         case .flowFinished(let worker, let url, let passed, _, _):
             setState(url, passed ? .passed : .failed)
             setLaneRunning(worker, false)
@@ -1484,6 +1681,161 @@ final class AppModel {
 
     func clearLanes() {
         lanes = []
+    }
+
+    // MARK: - 自己修復(heal)の確定
+
+    /// 確認シートで選択された修復候補をシナリオソースへ確定反映する。
+    /// ファイル毎にまとめて読み込み→順に置換→書き戻し、成功した分はヒールキャッシュ
+    /// (.ftester/heal-cache.json)からも削除する。戻り値: エラーメッセージ(nil = 全件成功)
+    func applyHealFixes(_ fixes: [HealFix]) async -> String? {
+        guard !fixes.isEmpty else { return nil }
+        guard let packageRoot = ScenarioHost.packageRoot() else {
+            return "リポジトリルートを特定できません"
+        }
+
+        var applied: [HealFix] = []
+        var failures: [String] = []
+        let byFile = Dictionary(grouping: fixes) { $0.file }
+
+        for (file, fileFixes) in byFile {
+            let url = file.hasPrefix("/") ? URL(fileURLWithPath: file)
+                : packageRoot.appendingPathComponent(file)
+            guard var source = try? String(contentsOf: url, encoding: .utf8) else {
+                for fix in fileFixes {
+                    failures.append("\(fix.scenarioID)(\(fix.file):\(fix.line)): ファイルを読み込めません")
+                }
+                continue
+            }
+            var appliedInFile: [HealFix] = []
+            for fix in fileFixes.sorted(by: { $0.line < $1.line }) {
+                do {
+                    source = try ScenarioSourceEditor.replaceSelector(
+                        inSource: source, line: fix.line,
+                        oldSelector: fix.oldSelector, newSelector: fix.newSelector)
+                    appliedInFile.append(fix)
+                } catch {
+                    failures.append(
+                        "\(fix.scenarioID)(\(fix.file):\(fix.line)): \(error.localizedDescription)")
+                    continue
+                }
+                // 説明(行末コメント)の見直し。失敗してもセレクタ置換は生かし、
+                // メッセージで分かるようにする
+                if let newComment = fix.newComment {
+                    do {
+                        source = try ScenarioSourceEditor.setTrailingComment(
+                            inSource: source, line: fix.line, comment: newComment)
+                    } catch {
+                        failures.append(
+                            "\(fix.scenarioID)(\(fix.file):\(fix.line)): "
+                                + "説明の更新に失敗しました(\(error.localizedDescription))")
+                    }
+                }
+            }
+            guard !appliedInFile.isEmpty else { continue }
+            do {
+                try source.write(to: url, atomically: true, encoding: .utf8)
+                applied += appliedInFile
+            } catch {
+                for fix in appliedInFile {
+                    failures.append(
+                        "\(fix.scenarioID)(\(fix.file):\(fix.line)): 書き込みに失敗しました"
+                            + "(\(error.localizedDescription))")
+                }
+            }
+        }
+
+        if let project = healReviewProject, !applied.isEmpty {
+            removeFromHealCache(applied, project: project)
+            noteOwnScenarioDirChange(project)
+            await refreshScenarios()
+        }
+
+        // 適用に成功した fix だけをシートから消す。失敗した fix は残す。
+        // 自動で閉じるのは失敗が 1 件も無いときだけ(説明の更新だけ失敗した場合等に
+        // シートがバインディング経由で閉じてエラーメッセージが見えなくなるのを防ぐ)
+        let appliedIDs = Set(applied.map(\.id))
+        pendingHealFixes.removeAll { appliedIDs.contains($0.id) }
+        if pendingHealFixes.isEmpty && failures.isEmpty { healReviewPresented = false }
+
+        return failures.isEmpty ? nil : failures.joined(separator: "\n")
+    }
+
+    /// 反映済みの fix をヒールキャッシュからも削除する(次回実行で再提案されないように)。
+    /// キャッシュ更新の失敗は実行を止めない(HealCache.save と同じ方針)
+    private func removeFromHealCache(_ fixes: [HealFix], project: TestProject) {
+        let cacheURL = project.stateDir.appendingPathComponent("heal-cache.json")
+        guard let data = try? Data(contentsOf: cacheURL),
+              var dict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+            return
+        }
+        var changed = false
+        for fix in fixes {
+            // HealFix.id はヒールキャッシュのキー(HealCache.key)と同一形式
+            if dict.removeValue(forKey: fix.id) != nil { changed = true }
+        }
+        guard changed,
+              let output = try? JSONSerialization.data(
+                withJSONObject: dict, options: [.prettyPrinted, .sortedKeys]) else {
+            return
+        }
+        try? output.write(to: cacheURL, options: .atomic)
+    }
+
+    /// FT_HEAL_REVIEW_DEMO=1 起動時のみ: 確認シートの表示検証用に、実在のシナリオソースから
+    /// クォート付きセレクタを含む行を拾ってサンプルの HealFix を表示する
+    /// (行末コメント有り・無しを 1 件ずつ = 説明の置換提案と追加提案の両方を確認できる)。
+    /// 見つからない場合は存在しない file:line のダミーで「適用できません」表示を確認する。
+    /// 環境変数が無ければ何もしない(プロダクション動作には影響しない)
+    func setupHealReviewDemoIfNeeded() {
+        guard ProcessInfo.processInfo.environment["FT_HEAL_REVIEW_DEMO"] == "1" else { return }
+        guard let root = ScenarioHost.packageRoot(),
+              let regex = try? NSRegularExpression(
+                pattern: #"(tap|exist)\(\s*"([^"]+)""#) else { return }
+
+        var withComment: HealFix?
+        var withoutComment: HealFix?
+        for entry in scenarios {
+            guard let fileURL = entry.fileURL,
+                  let source = try? String(contentsOf: fileURL, encoding: .utf8) else { continue }
+            let path = fileURL.path
+            let relativeFile = path.hasPrefix(root.path + "/")
+                ? String(path.dropFirst(root.path.count + 1)) : path
+            for (index, lineText) in source.components(separatedBy: "\n").enumerated() {
+                let range = NSRange(lineText.startIndex..., in: lineText)
+                guard let match = regex.firstMatch(in: lineText, range: range),
+                      let verbRange = Range(match.range(at: 1), in: lineText),
+                      let selectorRange = Range(match.range(at: 2), in: lineText) else {
+                    continue
+                }
+                let verb = String(lineText[verbRange])
+                let oldSelector = String(lineText[selectorRange])
+                let fix = HealFix(
+                    scenarioID: entry.info.id, file: relativeFile, line: index + 1,
+                    oldSelector: oldSelector, newSelector: oldSelector + "||.Cell[3]",
+                    message: "デモ: 自己修復サンプル(FT_HEAL_REVIEW_DEMO の表示検証用)",
+                    command: "\(verb) \"\(oldSelector)\"")
+                if ScenarioSourceComments.trailingComment(inLine: lineText) != nil {
+                    if withComment == nil { withComment = fix }
+                } else if withoutComment == nil {
+                    withoutComment = fix
+                }
+                if withComment != nil, withoutComment != nil { break }
+            }
+            if withComment != nil, withoutComment != nil { break }
+        }
+
+        var fixes = [withComment, withoutComment].compactMap { $0 }
+        if fixes.isEmpty {
+            // 拾えるセレクタが無いプロジェクト向け: 適用できないケースの表示確認用ダミー
+            fixes = [HealFix(
+                scenarioID: "デモ.S9999", file: "Projects/デモ/Scenarios/存在しない.swift",
+                line: 999,
+                oldSelector: "#dummy_selector", newSelector: "#dummy_selector||.Cell[3]",
+                message: "デモ: 適用できないケースの表示検証用(FT_HEAL_REVIEW_DEMO)")]
+        }
+        pendingHealFixes = fixes
+        healReviewPresented = true
     }
 
     /// 実行ログに表示するレーン。デバイスモニターでデバイスを選択中は

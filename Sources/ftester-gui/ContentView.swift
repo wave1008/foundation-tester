@@ -42,7 +42,8 @@ struct ContentView: View {
         // 決定的にレイアウトする。シナリオペインは 240〜600pt でリサイズでき、消えない。
         // ウィンドウツールバー(.toolbar)はプレーンウィンドウではアイテムが収集されない
         // ため使わず、コントロールバーを通常のビューとして最上段に置く
-        VStack(spacing: 0) {
+        @Bindable var model = model
+        return VStack(spacing: 0) {
             controlBar
             Divider()
             HSplitView {
@@ -74,6 +75,9 @@ struct ContentView: View {
         .sheet(isPresented: $showNewProjectSheet) {
             NewProjectSheet()
         }
+        .sheet(isPresented: $model.healReviewPresented) {
+            HealReviewSheet()
+        }
         .task {
             await model.refreshScenarios()
             await model.refreshTargets()
@@ -81,6 +85,8 @@ struct ContentView: View {
             if ProcessInfo.processInfo.environment["FT_AUTORUN"] == "1" {
                 await model.runAll()
             }
+            // 自己修復の確認シートの表示検証用: FT_HEAL_REVIEW_DEMO=1 swift run ftester-gui
+            model.setupHealReviewDemoIfNeeded()
         }
     }
 
@@ -1086,10 +1092,15 @@ private struct ScenarioStepTable: View {
     @Environment(AppModel.self) private var model
     let entry: AppModel.ScenarioEntry
     @State private var result: AppModel.StepLoadResult?
-    /// クリックで選択(ハイライト)された行。id は ScenarioStepRow.index
-    @State private var selection: AppModel.ScenarioStepRow.ID?
     /// テーブルへのキーフォーカス要求カウンタ(TableFocusRequester が変化を検知して実行)
     @State private var focusRequest = 0
+    /// セル編集の確定で出たエラー(表示表現の解釈・ビルド失敗)。表の下に表示
+    @State private var editError: String?
+    /// エラー表示を選択シナリオの切替でだけ消すための、最後に表示したシナリオ ID
+    @State private var lastScenarioID: String?
+    // 行選択と編集中の行は model(Observable)側に置く: Table のセルは親 View の
+    // @State 変更では再描画されないことがあり、セルの表示切替が追従しない(実測)
+    @FocusState private var commandEditorFocused: Bool
 
     /// ロードのトリガ: シナリオが変わるか、一覧が再読込されたら取り直す
     private struct LoadKey: Equatable {
@@ -1124,7 +1135,14 @@ private struct ScenarioStepTable: View {
                 }
             case .steps(let rows):
                 stepTable(rows)
+                if let editError {
+                    Text("⚠️ \(editError)")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .textSelection(.enabled)
+                }
                 Text("dry-run による列挙。行頭クリックでブレークポイント設定・解除。"
+                     + "選択中の行のコマンドはもう一度クリックすると編集できます。"
                      + "procedure { } 内のステップは実行時のログで確認できます")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
@@ -1135,10 +1153,70 @@ private struct ScenarioStepTable: View {
             result = nil  // 前のシナリオの表を残さない
             // id は行の通し番号(Int)にすぎず新シナリオでも再利用されるため、
             // 古いシナリオの選択が別の行を指したまま残らないようにリセットする
-            selection = nil
+            model.stepTableSelection = nil
+            model.stepEditingRow = nil
+            // 編集エラーはシナリオを切り替えたときだけ消す(編集失敗後の世代更新の
+            // 再読込で消えると、メッセージが読めないまま流れてしまう)
+            if lastScenarioID != entry.info.id {
+                lastScenarioID = entry.info.id
+                editError = nil
+            }
             let loaded = await model.loadSteps(for: entry)
             // 選択の高速切替で古いタスクの結果が新しい表を上書きしないように
             if !Task.isCancelled { result = loaded }
+        }
+        // フォーカスが外れたら確定(Finder のリネームと同じ。Esc は onExitCommand で
+        // 先に stepEditingRow が nil になるため確定されない)
+        .onChange(of: commandEditorFocused) { _, focused in
+            if !focused { commitEdit() }
+        }
+    }
+
+    /// 編集対象にできる行(単一選択・編集可能なコマンド・実行中でない)。nil = 編集不可
+    private func editableRow(_ ids: Set<AppModel.ScenarioStepRow.ID>,
+                             in rows: [AppModel.ScenarioStepRow])
+        -> AppModel.ScenarioStepRow? {
+        guard !model.runningFlow, ids.count == 1,
+              let row = rows.first(where: { $0.id == ids.first }),
+              AppModel.stepCommandEditable(row) else { return nil }
+        return row
+    }
+
+    /// ソース位置のある行(単一選択)。ダブルクリック・「VSCode で開く」の対象判定
+    private func sourceRow(_ ids: Set<AppModel.ScenarioStepRow.ID>,
+                           in rows: [AppModel.ScenarioStepRow])
+        -> AppModel.ScenarioStepRow? {
+        guard ids.count == 1,
+              let row = rows.first(where: { $0.id == ids.first }),
+              row.file != nil else { return nil }
+        return row
+    }
+
+    /// ステップのソース位置を VSCode で開く(失敗は表の下にエラー表示)
+    private func openInVSCode(_ row: AppModel.ScenarioStepRow) {
+        if let message = model.openStepSourceInVSCode(row) {
+            editError = message
+        }
+    }
+
+    /// コマンドセルのインライン編集を開始する(選択済み行のセルクリック・右クリックメニュー)
+    private func beginEdit(_ row: AppModel.ScenarioStepRow) {
+        editError = nil
+        model.stepEditText = row.command
+        model.stepTableSelection = row.id
+        model.stepEditingRow = row
+    }
+
+    /// インライン編集の確定。変更があればソースへ反映(失敗は表の下にエラー表示)
+    private func commitEdit() {
+        guard let row = model.stepEditingRow else { return }
+        model.stepEditingRow = nil
+        let text = model.stepEditText
+        guard text.trimmingCharacters(in: .whitespaces) != row.command else { return }
+        Task {
+            if let message = await model.updateStepCommand(row: row, display: text) {
+                editError = message
+            }
         }
     }
 
@@ -1149,9 +1227,12 @@ private struct ScenarioStepTable: View {
             ofSize: NSFont.preferredFont(forTextStyle: .callout).pointSize, weight: .regular)
         let commentFont = NSFont.preferredFont(forTextStyle: .body)
         let commandWidth = Self.fittingWidth(rows.map(\.command), font: commandFont, atLeast: 160)
-        let commentWidth = Self.fittingWidth(rows.compactMap(\.comment), font: commentFont, atLeast: 120)
+        let commentWidth = Self.fittingWidth(
+            rows.compactMap { $0.comment ?? $0.generatedComment },
+            font: commentFont, atLeast: 120)
         // selection を渡すことでクリックした行がハイライトされる(既定では選択が効かない)
-        return Table(rows, selection: $selection) {
+        @Bindable var model = model
+        return Table(rows, selection: $model.stepTableSelection) {
             TableColumn("") { row in
                 breakpointCell(row)
             }
@@ -1172,19 +1253,26 @@ private struct ScenarioStepTable: View {
             }
             .width(40)
             TableColumn("コマンド") { row in
-                // textSelection は付けない: テキスト上のクリックを奪って
-                // NSTableView の行選択が効かなくなる(全文はツールチップで見られる)
-                Text(row.command)
-                    .font(.system(.callout, design: .monospaced))
-                    .help(row.command)
+                commandCell(row)
             }
             .width(min: 160, ideal: commandWidth)
             TableColumn("説明") { row in
-                Text(row.comment ?? "")
-                    .foregroundStyle(.secondary)
-                    .help(row.comment ?? "")
+                // ソースの行末コメントを優先、無い行は生成文で補完(淡色で区別)
+                Text(row.comment ?? row.generatedComment ?? "")
+                    .foregroundStyle(row.comment != nil ? AnyShapeStyle(.secondary)
+                                                        : AnyShapeStyle(.tertiary))
+                    .help(row.comment ?? row.generatedComment ?? "")
             }
             .width(min: 120, ideal: commentWidth)
+        }
+        // 右クリック=インライン編集(セルクリックと同じ)+ ソース位置を VSCode で開く
+        .contextMenu(forSelectionType: AppModel.ScenarioStepRow.ID.self) { ids in
+            if let row = editableRow(ids, in: rows) {
+                Button("コマンドを編集") { beginEdit(row) }
+            }
+            if let row = sourceRow(ids, in: rows) {
+                Button("Visual Studio Codeで開く") { openInVSCode(row) }
+            }
         }
         // idealWidth を固定しないと長いコマンド/コメントが Table の理想幅
         // → ウィンドウの自動リサイズまで波及する(実測: 選択でウィンドウが画面幅まで拡大)
@@ -1192,6 +1280,42 @@ private struct ScenarioStepTable: View {
         .background(LegacyScrollerEnforcer())
         .background(TableRowHoverHighlighter())
         .background(TableFocusRequester(request: focusRequest))
+    }
+
+    /// コマンド列のセル。選択済みの行はもう一度のクリックでその場で編集モードになる
+    /// (Finder のリネームと同じ操作感)。編集は表示表現のまま行い、確定でソースへ反映する。
+    /// タップジェスチャは選択済み行だけに付ける(未選択行に付けるとクリックを消費して
+    /// NSTableView ネイティブの行選択が効かなくなる)
+    @ViewBuilder
+    private func commandCell(_ row: AppModel.ScenarioStepRow) -> some View {
+        @Bindable var model = model
+        if model.stepEditingRow?.id == row.id {
+            TextField("", text: $model.stepEditText)
+                .textFieldStyle(.plain)
+                .font(.system(.callout, design: .monospaced))
+                .padding(.horizontal, 2)
+                .background(Color(nsColor: .textBackgroundColor),
+                            in: RoundedRectangle(cornerRadius: 3))
+                .focused($commandEditorFocused)
+                .onSubmit { commitEdit() }
+                .onExitCommand { model.stepEditingRow = nil }  // Esc = 変更を破棄
+                .onAppear { commandEditorFocused = true }
+        } else if model.stepTableSelection == row.id, !model.runningFlow,
+                  AppModel.stepCommandEditable(row) {
+            commandLabel(row)
+                .onTapGesture { beginEdit(row) }
+        } else {
+            commandLabel(row)
+        }
+    }
+
+    private func commandLabel(_ row: AppModel.ScenarioStepRow) -> some View {
+        Text(row.command)
+            .font(.system(.callout, design: .monospaced))
+            .help(row.command)
+            // クリック領域をセル全体に広げる(テキストの右の余白でも編集に入れる)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
     }
 
     /// 行頭のブレークポイントセル。クリックで設定・解除(赤丸 = 設定済み)。
@@ -1206,7 +1330,7 @@ private struct ScenarioStepTable: View {
             // 届かないため、ブレークポイント操作でもここで行を選択状態にする。
             // さらにテーブルが一度もファーストレスポンダになっていないと選択の
             // プログラム設定が視覚的に反映されない(実測)ため、フォーカスも要求する
-            selection = row.id
+            model.stepTableSelection = row.id
             focusRequest += 1
         } label: {
             ZStack {

@@ -13,9 +13,18 @@ public enum ScenarioSourceComments {
 
     /// 1 行から行末コメントの本文を取り出す(前後空白除去。コメントが無い・空なら nil)
     public static func trailingComment(inLine line: String) -> String? {
+        guard let start = trailingCommentStart(inLine: line) else { return nil }
+        let body = line[line.index(start, offsetBy: 2)...]
+            .trimmingCharacters(in: .whitespaces)
+        return body.isEmpty ? nil : body
+    }
+
+    /// 行末コメントの「//」の開始位置(文字列リテラル内の // は無視)。無ければ nil。
+    /// コメントの書換(ScenarioSourceEditor.setTrailingComment)が位置を必要とするため公開
+    public static func trailingCommentStart(inLine line: String) -> String.Index? {
         var inString = false
         var escaped = false
-        var previousWasSlash = false
+        var previousSlashIndex: String.Index?
         var index = line.startIndex
         while index < line.endIndex {
             let char = line[index]
@@ -27,19 +36,15 @@ public enum ScenarioSourceComments {
                 } else if char == "\"" {
                     inString = false
                 }
-                previousWasSlash = false
+                previousSlashIndex = nil
             } else if char == "\"" {
                 inString = true
-                previousWasSlash = false
+                previousSlashIndex = nil
             } else if char == "/" {
-                if previousWasSlash {
-                    let body = line[line.index(after: index)...]
-                        .trimmingCharacters(in: .whitespaces)
-                    return body.isEmpty ? nil : body
-                }
-                previousWasSlash = true
+                if let first = previousSlashIndex { return first }
+                previousSlashIndex = index
             } else {
-                previousWasSlash = false
+                previousSlashIndex = nil
             }
             index = line.index(after: index)
         }

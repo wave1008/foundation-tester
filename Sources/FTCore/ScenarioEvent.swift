@@ -27,6 +27,9 @@ public struct ScenarioEvent: Codable, Sendable {
     /// コマンド呼び出し元のソース位置(修正提案用)
     public var file: String?
     public var line: Int?
+    /// kind == fixSuggestion(強い提案)の旧セレクタ・新セレクタ(GUI の確認シート用)
+    public var oldSelector: String?
+    public var newSelector: String?
     /// scenarioFinished / sceneFinished 用
     public var passed: Bool?
     public var reportPath: String?

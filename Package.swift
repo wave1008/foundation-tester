@@ -126,6 +126,11 @@ let package = Package(
             swiftSettings: swift5Mode
         ),
         .testTarget(
+            name: "FTDSLTests",
+            dependencies: ["FTDSL"],
+            swiftSettings: swift5Mode
+        ),
+        .testTarget(
             name: "FTDSLMacrosTests",
             dependencies: [
                 "FTDSLMacros",
