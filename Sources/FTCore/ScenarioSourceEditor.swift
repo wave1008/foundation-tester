@@ -263,6 +263,32 @@ public enum ScenarioSourceEditor {
         return lines.joined(separator: "\n")
     }
 
+    // MARK: - ソース位置(VSCode拡張等の外部ツール向け)
+
+    /// class 宣言の行番号(1 起点)。見つからなければ nil
+    public static func classDeclarationLine(inSource source: String, className: String) -> Int? {
+        guard let decl = classDeclRange(of: className, in: source) else { return nil }
+        return lineNumber(of: decl.declRange.lowerBound, in: source)
+    }
+
+    /// クラス内のテスト関数(func 宣言)の行番号(1 起点)。memberRange/funcDeclRange と同じ仕組みで
+    /// クラス範囲内のみを探索するため、別クラスにある同名 func は拾わない。見つからなければ nil
+    public static func methodDeclarationLine(inSource source: String, className: String,
+                                              method: String) -> Int? {
+        guard let classRange = try? memberRange(ofClass: className, in: source),
+              let decl = funcDeclRange(of: method, in: source, within: classRange) else {
+            return nil
+        }
+        return lineNumber(of: decl.declRange.lowerBound, in: source)
+    }
+
+    /// String.Index → 1 起点の行番号(index までの改行数 + 1)
+    private static func lineNumber(of index: String.Index, in source: String) -> Int {
+        source[source.startIndex..<index].reduce(1) { count, char in
+            char == "\n" ? count + 1 : count
+        }
+    }
+
     // MARK: - 内部
 
     /// 予約語(リネーム先に指定するとビルドが壊れるため拒否する。実用的な範囲のみ)

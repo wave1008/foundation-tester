@@ -35,6 +35,7 @@ struct FTester: AsyncParsableCommand {
             ProfileCommand.self,
             DevicesCommand.self,
             Gui.self,
+            ApiCommand.self,
         ]
     )
 }

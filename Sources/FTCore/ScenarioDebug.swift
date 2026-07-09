@@ -144,6 +144,14 @@ public final class ScenarioRunControl: @unchecked Sendable {
         send(["cmd": "breakpoints", "locations": locations])
     }
 
+    /// 制御コマンドの生の NDJSON 行をそのまま書き込む(CLI がホスト自身の stdin を
+    /// 素通しする用途。呼び出し側は改行を含めない 1 コマンド分の行を渡す)
+    public func sendLine(_ line: String) {
+        guard var data = line.data(using: .utf8) else { return }
+        data.append(Data("\n".utf8))
+        try? handle.write(contentsOf: data)
+    }
+
     private func send(_ command: [String: Any]) {
         guard var data = try? JSONSerialization.data(withJSONObject: command) else { return }
         data.append(Data("\n".utf8))
