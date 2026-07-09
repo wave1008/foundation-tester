@@ -48,6 +48,9 @@ public enum RunEvent: Sendable {
     case workerFailed(worker: String, message: String)
     case flowStarted(worker: String, flowURL: URL, flowName: String, isDirty: Bool)
     case step(worker: String, flowURL: URL, result: StepResult)
+    /// デバッグ実行で一時停止した(index = 次に実行するステップ番号、file/line = その位置)
+    case flowPaused(worker: String, flowURL: URL, index: Int, description: String,
+                    file: String?, line: Int?)
     /// 自己修復したロケータでフローを上書き保存した(YAML 時代の互換。シナリオでは未使用)
     case flowHealed(worker: String, flowURL: URL)
     case flowFinished(worker: String, flowURL: URL, passed: Bool,
@@ -82,6 +85,7 @@ public enum ScenarioRunner {
     public static func runOne(project: TestProject, item: ScenarioRunItem, worker: RunWorker,
                               healingEnabled: Bool, reportDir: URL,
                               defaultTimeout: Int? = nil,
+                              debug: ScenarioDebugOptions? = nil,
                               onEvent: @escaping (RunEvent) -> Void) async -> Bool {
         onEvent(.flowStarted(worker: worker.label, flowURL: item.url,
                              flowName: item.info.id, isDirty: false))
@@ -90,11 +94,16 @@ public enum ScenarioRunner {
         let passed = await ScenarioHost.run(
             project: project, scenarioID: item.info.id, connection: worker.connection,
             heal: healingEnabled, reportDir: reportDir.path,
-            defaultTimeout: defaultTimeout) { event in
+            defaultTimeout: defaultTimeout, debug: debug) { event in
             switch event.kind {
             case "step":
                 onEvent(.step(worker: worker.label, flowURL: item.url,
                               result: stepResult(from: event)))
+            case "paused":
+                onEvent(.flowPaused(worker: worker.label, flowURL: item.url,
+                                    index: event.index ?? 0,
+                                    description: event.description ?? "",
+                                    file: event.file, line: event.line))
             case "fixSuggestion":
                 onEvent(.step(worker: worker.label, flowURL: item.url,
                               result: StepResult(index: event.index ?? 0,
@@ -147,15 +156,19 @@ public final class RunOrchestrator {
     private let reportDir: URL
     private let project: TestProject
     private let defaultTimeout: Int?
+    /// デバッグ実行(ブレークポイント・ステップ実行)。GUI が単一シナリオ実行時のみ指定する
+    private let debug: ScenarioDebugOptions?
 
     public init(project: TestProject, workers: [RunWorker], healingEnabled: Bool,
-                reportDir: URL, defaultTimeout: Int? = nil) {
+                reportDir: URL, defaultTimeout: Int? = nil,
+                debug: ScenarioDebugOptions? = nil) {
         (self.events, self.continuation) = AsyncStream.makeStream(of: RunEvent.self)
         self.workers = workers
         self.healingEnabled = healingEnabled
         self.reportDir = reportDir
         self.project = project
         self.defaultTimeout = defaultTimeout
+        self.debug = debug
     }
 
     public func run(items: [ScenarioRunItem], defaultPlatform: String) async -> RunSummary {
@@ -223,7 +236,7 @@ public final class RunOrchestrator {
             let passed = await ScenarioRunner.runOne(
                 project: project, item: item, worker: worker,
                 healingEnabled: healingEnabled, reportDir: reportDir,
-                defaultTimeout: defaultTimeout,
+                defaultTimeout: defaultTimeout, debug: debug,
                 onEvent: { [continuation] in continuation.yield($0) })
             if !passed { failed += 1 }
         }
@@ -245,6 +258,8 @@ public enum RunLogFormatter {
             return lines
         case .step(_, _, let result):
             return lines(for: result)
+        case .flowPaused(_, _, let index, let description, _, _):
+            return ["  ⏸ \(index). \(description) の手前で一時停止中"]
         case .flowHealed:
             return ["  🔧 修復したロケータでフローを更新しました(dirty: true — 要レビュー)"]
         case .flowFinished(_, _, let passed, let triage, let reportURL):

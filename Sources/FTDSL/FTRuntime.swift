@@ -109,6 +109,13 @@ public final class FTDriveCore {
     /// (デバイス無しでのステップ列挙・コード生成の検証・レビュー用)
     let dryRun: Bool
 
+    /// デバッグ制御(--debug)。ステップ実行の手前でブレークポイント・ステップ実行の
+    /// 一時停止を判定する。nil なら通常実行。dry-run でも有効(デバイス無しの動作確認用)
+    public var debugControl: ScenarioDebugControl?
+    /// デバッグの stop コマンドで中断した。スキップ理由の表示と最終判定に使う
+    /// (中断したシナリオは確認(expectation)まで到達していないため成功扱いにしない)
+    public private(set) var stoppedByUser = false
+
     public init(driver: AppDriver, platform: String, app: String,
                 scenarioID: String, scenarioTitle: String,
                 delegate: ReplayDelegate?, healingEnabled: Bool,
@@ -179,14 +186,15 @@ public final class FTDriveCore {
     func perform(step: FlowStep, description: String, selectorText: String? = nil,
                  file: StaticString, line: UInt) -> StepResult.Status {
         let filePath = relativePath("\(file)")
+        debugCheckpoint(description: description, file: filePath, line: Int(line))
+        if sceneAborted || scenarioAborted {
+            let status = StepResult.Status.skipped(skipReason)
+            recordStep(description: description, status: status, file: filePath, line: Int(line))
+            return status
+        }
         if dryRun {
             recordStep(description: description, status: .passed, file: filePath, line: Int(line))
             return .passed
-        }
-        if sceneAborted || scenarioAborted {
-            let status = StepResult.Status.skipped("scene NG のため未実行")
-            recordStep(description: description, status: status, file: filePath, line: Int(line))
-            return status
         }
 
         // 解決順: プライマリ → フォールバック → キャッシュ → FM ヒール(StepExecutor 内)
@@ -264,15 +272,17 @@ public final class FTDriveCore {
     func performCustom(description: String, file: StaticString, line: UInt,
                        abortsScenario: Bool = false,
                        _ body: @escaping () async throws -> Void) -> StepResult.Status {
+        let filePath = relativePath("\(file)")
+        debugCheckpoint(description: description, file: filePath, line: Int(line))
+        if sceneAborted || scenarioAborted {
+            let status = StepResult.Status.skipped(skipReason)
+            recordStep(description: description, status: status, file: filePath, line: Int(line))
+            return status
+        }
         if dryRun {
             recordStep(description: description, status: .passed,
-                       file: relativePath("\(file)"), line: Int(line))
+                       file: filePath, line: Int(line))
             return .passed
-        }
-        if sceneAborted || scenarioAborted {
-            let status = StepResult.Status.skipped("scene NG のため未実行")
-            recordStep(description: description, status: status, file: "\(file)", line: Int(line))
-            return status
         }
 
         let result = FTSync.runThrowing { try await body() }
@@ -292,6 +302,34 @@ public final class FTDriveCore {
             handleFailure(stepDescription: description, reason: reason)
         }
         return status
+    }
+
+    /// ステップ実行前のデバッグチェックポイント。ブレークポイント・ステップ実行の
+    /// 停止条件に合致したら paused イベントを流してブロックし、再開コマンドを待つ。
+    /// stop コマンドはシナリオ中断(以降のステップは skipped)として扱う
+    private func debugCheckpoint(description: String, file: String, line: Int) {
+        guard let debug = debugControl, !sceneAborted, !scenarioAborted else { return }
+        let result = debug.checkpoint(file: file, line: line) {
+            var event = ScenarioEvent(kind: "paused")
+            event.scenario = scenarioID
+            event.scene = record.scenes.last?.number
+            event.section = currentSection
+            event.index = stepCounter + 1
+            event.description = description
+            event.file = file.isEmpty ? nil : file
+            event.line = line == 0 ? nil : line
+            emit(event)
+        }
+        if result == .abort {
+            scenarioAborted = true
+            stoppedByUser = true
+            emit(.log("⏹ ユーザー操作でシナリオを中断しました"))
+        }
+    }
+
+    /// スキップ記録の理由(デバッグの stop による中断は表示を分ける)
+    private var skipReason: String {
+        stoppedByUser ? "ユーザー操作で中断" : "scene NG のため未実行"
     }
 
     /// 分岐評価(記録のみ、実行はしない): セレクタが現在画面で解決できるか
