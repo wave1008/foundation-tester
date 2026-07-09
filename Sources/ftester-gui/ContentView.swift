@@ -1094,7 +1094,7 @@ private struct ScenarioStepTable: View {
     @State private var result: AppModel.StepLoadResult?
     /// テーブルへのキーフォーカス要求カウンタ(TableFocusRequester が変化を検知して実行)
     @State private var focusRequest = 0
-    /// セル編集の確定で出たエラー(表示表現の解釈・ビルド失敗)。表の下に表示
+    /// セル編集・ペイン編集で出たエラー(表示表現の解釈・ビルド失敗)。編集ペイン内に表示
     @State private var editError: String?
     /// エラー表示を選択シナリオの切替でだけ消すための、最後に表示したシナリオ ID
     @State private var lastScenarioID: String?
@@ -1134,16 +1134,12 @@ private struct ScenarioStepTable: View {
                     Spacer()
                 }
             case .steps(let rows):
+                StepEditPane(entry: entry, rows: rows, editError: $editError)
                 stepTable(rows)
-                if let editError {
-                    Text("⚠️ \(editError)")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                        .textSelection(.enabled)
-                }
                 Text("dry-run による列挙。行頭クリックでブレークポイント設定・解除。"
                      + "選択中の行のコマンドはもう一度クリックすると編集できます。"
-                     + "procedure { } 内のステップは実行時のログで確認できます")
+                     + "procedure { } 内のステップは実行時のログで確認できます。"
+                     + "行を選択すると上の編集ペインでパラメーターの確認・編集ができます")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
@@ -1163,7 +1159,19 @@ private struct ScenarioStepTable: View {
             }
             let loaded = await model.loadSteps(for: entry)
             // 選択の高速切替で古いタスクの結果が新しい表を上書きしないように
-            if !Task.isCancelled { result = loaded }
+            if !Task.isCancelled {
+                result = loaded
+                // 編集ペインの適用・行移動で再読込した後、選択していた行を復元する
+                // (再読込直後は行番号が変わりうるため、存在確認してから選択する)
+                if case .steps(let rows) = loaded, let pending = model.pendingStepReselection {
+                    model.pendingStepReselection = nil
+                    if pending.scenarioID == entry.info.id,
+                       rows.contains(where: { $0.index == pending.index }) {
+                        model.stepTableSelection = pending.index
+                        focusRequest += 1
+                    }
+                }
+            }
         }
         // フォーカスが外れたら確定(Finder のリネームと同じ。Esc は onExitCommand で
         // 先に stepEditingRow が nil になるため確定されない)

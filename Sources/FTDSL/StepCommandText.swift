@@ -33,7 +33,7 @@ public enum StepCommandText {
         public let verb: String
         /// クォート付き引数(セレクタ・入力値・期待値。launch/relaunch のバンドルも含む)
         public let strings: [String]
-        /// 末尾の「 (optional)」(tap / type / press / scrollTo のみ受け付ける)
+        /// 末尾の「 (optional)」(tap / type / press のみ受け付ける)
         public let optionalFlag: Bool
         /// 非クォートの単語引数(swipe の方向 / wait の秒数)
         public let word: String?
@@ -66,9 +66,13 @@ public enum StepCommandText {
             .trimmingCharacters(in: .whitespaces)
 
         switch verb {
-        case "tap", "press", "scrollTo":
+        case "tap", "press":
             guard let selector = unquote(rest) else { return nil }
             return Parsed(verb: verb, strings: [selector], optionalFlag: optionalFlag, word: nil)
+        case "scrollTo":
+            // scrollTo に optional 引数は無い(付けるとコンパイル不能コードを生むため拒否)
+            guard !optionalFlag, let selector = unquote(rest) else { return nil }
+            return Parsed(verb: verb, strings: [selector], optionalFlag: false, word: nil)
         case "exist", "screenIs", "procedure":
             guard !optionalFlag, let value = unquote(rest) else { return nil }
             return Parsed(verb: verb, strings: [value], optionalFlag: false, word: nil)
@@ -143,7 +147,7 @@ public enum StepCommandText {
     }
 
     /// 表示の動詞 → ソースの関数名
-    private static func funcName(forVerb verb: String) -> String {
+    internal static func funcName(forVerb verb: String) -> String {
         switch verb {
         case "launch": return "launchApp"
         case "relaunch": return "relaunchApp"
@@ -154,7 +158,7 @@ public enum StepCommandText {
 
     /// 呼び出し全体の生成し直しを許すソース関数(これ以外は生 Swift とみなして触らない。
     /// procedure はブロックを伴うため文字列リテラル置換のみ=ここに含めない)
-    private static let renewableFuncs: Set<String> = [
+    internal static let renewableFuncs: Set<String> = [
         "tap", "type", "press", "swipe", "scrollTo", "exist", "textIs", "valueIs",
         "screenIs", "launchApp", "relaunchApp", "terminateApp", "wait",
     ]
@@ -163,8 +167,11 @@ public enum StepCommandText {
     private static func render(_ parsed: Parsed) throws -> String {
         let optionalArg = parsed.optionalFlag ? ", optional: true" : ""
         switch parsed.verb {
-        case "tap", "press", "scrollTo":
+        case "tap", "press":
             return "\(parsed.verb)(\(literal(parsed.strings[0]))\(optionalArg))"
+        case "scrollTo":
+            // scrollTo に optional 引数は無い(parse も optionalFlag 付きを受理しない)
+            return "scrollTo(\(literal(parsed.strings[0])))"
         case "exist", "screenIs":
             return "\(parsed.verb)(\(literal(parsed.strings[0])))"
         case "type", "textIs", "valueIs":
@@ -187,14 +194,14 @@ public enum StepCommandText {
     }
 
     /// コード部分の呼び出し構造(動詞・文字列リテラルの中身の範囲・ブロック { の有無)
-    private struct Call {
+    internal struct Call {
         let verb: String
         let literalRanges: [Range<String.Index>]
         let hasTrailingBrace: Bool
         let hasOptionalTrue: Bool
     }
 
-    private static func scanCall(_ code: String) -> Call? {
+    internal static func scanCall(_ code: String) -> Call? {
         guard let verbRange = code.range(
             of: #"^[A-Za-z_][A-Za-z0-9_]*"#, options: .regularExpression) else {
             return nil
@@ -234,12 +241,12 @@ public enum StepCommandText {
     }
 
     /// Swift 文字列リテラルの中身へのエスケープ(ScenarioCodeGen.literal と同方針)
-    private static func escaped(_ text: String) -> String {
+    internal static func escaped(_ text: String) -> String {
         text.replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
     }
 
-    private static func literal(_ text: String) -> String {
+    internal static func literal(_ text: String) -> String {
         "\"\(escaped(text))\""
     }
 
@@ -257,7 +264,7 @@ public enum StepCommandText {
     }
 
     /// 2.0 → "2"、0.5 → "0.5"(wait の生成用。StepDescription.formatSeconds と同じ)
-    private static func formatSeconds(_ seconds: Double) -> String {
+    internal static func formatSeconds(_ seconds: Double) -> String {
         if seconds == seconds.rounded(), abs(seconds) < 1e15 {
             return String(Int(seconds))
         }

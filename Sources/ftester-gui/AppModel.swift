@@ -673,6 +673,9 @@ final class AppModel {
     var stepEditingRow: ScenarioStepRow?
     /// インライン編集中のテキスト(表示表現のまま。例: tap "ラベル")
     var stepEditText = ""
+    /// 適用・行移動後の再読込で復元するステップ表の選択(scenarioID, ステップ番号)。
+    /// ScenarioStepTable の .task がロード完了時に 1 回だけ消費する
+    var pendingStepReselection: (scenarioID: String, index: Int)?
 
     // MARK: - デバッグ実行(ブレークポイント・ステップ実行)
 
@@ -1315,12 +1318,6 @@ final class AppModel {
         row.file != nil && row.line != nil && StepCommandText.parse(row.command) != nil
     }
 
-    /// ステップ行のソース上のコード部分(インデント・行末コメント除く)
-    private func stepCommandCode(file: String, line: Int) throws -> String {
-        let source = try String(contentsOf: Self.stepSourceURL(file), encoding: .utf8)
-        return try ScenarioSourceEditor.commandCode(inSource: source, line: line)
-    }
-
     /// ステップ行のソースを VSCode で開く(行ダブルクリック)。
     /// プロジェクト(リポジトリルート)を開いていない VSCode でも文脈ごと開けるよう、
     /// アプリ同梱の code CLI で「フォルダ + --goto ファイル:行」を渡す(フォルダを開いた
@@ -1379,6 +1376,42 @@ final class AppModel {
         return nil
     }
 
+    /// ステップ表発の 1 ファイル書換の共通処理。編集でビルドが壊れると一覧・ステップ表ごと
+    /// 使えなくなるため、ビルド失敗時は元のソースへ自動で戻す。reselectOnSuccess/
+    /// reselectOnRollback は各 refreshScenarios の前に pendingStepReselection へ積む
+    /// ステップ番号(再読込後、ScenarioStepTable の .task が選択を復元する)。
+    /// updated == original なら書換・再ビルドとも行わない。戻り値: エラーメッセージ(nil = 成功)
+    private func rewriteStepSource(url: URL, project: TestProject, original: String,
+                                   updated: String, scenarioID: String,
+                                   reselectOnSuccess: Int, reselectOnRollback: Int) async -> String? {
+        guard updated != original else { return nil }  // 変更なし = 再ビルド不要
+        do {
+            try updated.write(to: url, atomically: true, encoding: .utf8)
+        } catch {
+            return error.localizedDescription
+        }
+        noteOwnScenarioDirChange(project)
+        pendingStepReselection = (scenarioID: scenarioID, index: reselectOnSuccess)
+        await refreshScenarios()
+        guard let status = scenarioListStatus else { return nil }
+        do {
+            try original.write(to: url, atomically: true, encoding: .utf8)
+        } catch {
+            return "ビルドに失敗しました(元に戻せませんでした):\n\(status)"
+        }
+        noteOwnScenarioDirChange(project)
+        pendingStepReselection = (scenarioID: scenarioID, index: reselectOnRollback)
+        await refreshScenarios()
+        return "ビルドに失敗したため変更を取り消しました:\n\(status)"
+    }
+
+    /// 編集ペイン・セル編集が対象にする行の属するシナリオ ID。ステップ表は選択中の
+    /// シナリオが単一のときしか表示されないため、選択そのものを情報源にする
+    /// (ScenarioStepRow はどのシナリオの行かを保持しない)。単一選択でなければ nil
+    private func currentStepScenarioID() -> String? {
+        selectedEntries.count == 1 ? selectedEntries.first?.info.id : nil
+    }
+
     /// セル内編集の確定: コマンド列と同じ表示表現の編集をソースへ変換して反映する。
     /// 動詞・引数構成が同じ編集は文字列リテラルだけ置換(timeout: 等を保存)。
     /// 戻り値: エラーメッセージ(nil = 成功)
@@ -1389,50 +1422,85 @@ final class AppModel {
         let trimmed = display.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return "コマンドを入力してください" }
         guard trimmed != row.command else { return nil }  // 変更なし
+        guard !runningFlow else { return "シナリオの実行中は編集できません" }
+        guard let scenarioID = currentStepScenarioID() else {
+            return "シナリオを選択してください"
+        }
+        guard let project = try? currentProject() else {
+            return "プロジェクトを選択してください"
+        }
+        let url = Self.stepSourceURL(file)
         do {
-            let code = try stepCommandCode(file: file, line: line)
+            let original = try String(contentsOf: url, encoding: .utf8)
+            let code = try ScenarioSourceEditor.commandCode(inSource: original, line: line)
             let newCode = try StepCommandText.apply(display: trimmed, toCode: code)
-            return await updateStepCommand(file: file, line: line, code: newCode)
+            let updated = try ScenarioSourceEditor.setCommandCode(
+                inSource: original, line: line, code: newCode)
+            return await rewriteStepSource(
+                url: url, project: project, original: original, updated: updated,
+                scenarioID: scenarioID, reselectOnSuccess: row.index, reselectOnRollback: row.index)
         } catch {
             return error.localizedDescription
         }
     }
 
-    /// ステップ行のコマンド(コード部分)を書き換えて再ビルドする。
-    /// 編集でビルドが壊れると一覧・ステップ表ごと使えなくなるため、
-    /// ビルド失敗時は元のソースへ自動で戻す。戻り値: エラーメッセージ(nil = 成功)
-    private func updateStepCommand(file: String, line: Int, code: String) async -> String? {
+    /// 編集ペインのプリフィル: ステップ行のキーワード引数の現在値をソースから読み取る
+    /// (スキーマ name → UI 値。省略された引数は既定値で埋まる)。
+    /// ソース位置が無い・表示表現を解釈できない・コード部分を解釈できない行は
+    /// nil(= パラメーター編集不可)
+    func stepEditParams(row: ScenarioStepRow) -> [String: String]? {
+        guard let file = row.file, let line = row.line,
+              let parsed = StepCommandText.parse(row.command),
+              let source = try? String(contentsOf: Self.stepSourceURL(file), encoding: .utf8),
+              let code = try? ScenarioSourceEditor.commandCode(inSource: source, line: line) else {
+            return nil
+        }
+        return StepCommandParams.parse(code: code, verb: parsed.verb)
+    }
+
+    /// 編集ペインの「適用」: コマンド(表示表現+パラメーター)と説明(行末コメント)を
+    /// 1 回の書換・1 回の再ビルドで反映する。params nil = パラメーター変更なし
+    /// (リテラル置換パス=書式保存)。comment nil = 変更なし、"" = コメント削除。
+    /// 戻り値: エラーメッセージ(nil = 成功)
+    func applyStepEdit(row: ScenarioStepRow, display: String,
+                       params: [String: String]?, comment: String?) async -> String? {
         guard !runningFlow else { return "シナリオの実行中は編集できません" }
+        guard let file = row.file, let line = row.line else {
+            return "このステップはソース位置を特定できないため編集できません"
+        }
+        guard let scenarioID = currentStepScenarioID() else {
+            return "シナリオを選択してください"
+        }
         guard let project = try? currentProject() else {
             return "プロジェクトを選択してください"
         }
+        let trimmed = display.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return "コマンドを入力してください" }
         let url = Self.stepSourceURL(file)
-        let original: String
-        let updated: String
         do {
-            original = try String(contentsOf: url, encoding: .utf8)
-            updated = try ScenarioSourceEditor.setCommandCode(
-                inSource: original, line: line, code: code)
+            let original = try String(contentsOf: url, encoding: .utf8)
+            var updated = original
+            // ifCanSelect 等の編集不可コマンド行でも説明だけは編集できるように、
+            // コマンドに変更が無く params も無指定のときはコード書換自体をスキップする
+            if trimmed != row.command || params != nil {
+                let code = try ScenarioSourceEditor.commandCode(inSource: updated, line: line)
+                let newCode = try StepCommandParams.apply(
+                    display: trimmed, params: params, toCode: code)
+                if newCode != code {
+                    updated = try ScenarioSourceEditor.setCommandCode(
+                        inSource: updated, line: line, code: newCode)
+                }
+            }
+            if let comment {
+                updated = try ScenarioSourceEditor.setTrailingComment(
+                    inSource: updated, line: line, comment: comment)
+            }
+            return await rewriteStepSource(
+                url: url, project: project, original: original, updated: updated,
+                scenarioID: scenarioID, reselectOnSuccess: row.index, reselectOnRollback: row.index)
         } catch {
             return error.localizedDescription
         }
-        guard updated != original else { return nil }  // 変更なし = 再ビルド不要
-        do {
-            try updated.write(to: url, atomically: true, encoding: .utf8)
-        } catch {
-            return error.localizedDescription
-        }
-        noteOwnScenarioDirChange(project)
-        await refreshScenarios()
-        guard let status = scenarioListStatus else { return nil }
-        do {
-            try original.write(to: url, atomically: true, encoding: .utf8)
-        } catch {
-            return "ビルドに失敗しました(元に戻せませんでした):\n\(status)"
-        }
-        noteOwnScenarioDirChange(project)
-        await refreshScenarios()
-        return "ビルドに失敗したため変更を取り消しました:\n\(status)"
     }
 
     /// 空のフォルダを削除する。戻り値: エラーメッセージ(nil = 成功)
