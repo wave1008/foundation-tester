@@ -28,7 +28,8 @@ public enum ProfileWorkerFactory {
                 workers.append(RunWorker(
                     label: "\(device.name)(ios:\(device.port))", platform: "ios",
                     driver: BridgeClient(port: device.port),
-                    connection: DriverConnection(platform: "ios", port: device.port)))
+                    connection: DriverConnection(platform: "ios", port: device.port),
+                    logicalName: device.name))
             }
         }
 
@@ -38,7 +39,8 @@ public enum ProfileWorkerFactory {
             workers.append(RunWorker(
                 label: "\(device.name)(android:\(serial))", platform: "android",
                 driver: driver,
-                connection: DriverConnection(platform: "android", serial: serial)))
+                connection: DriverConnection(platform: "android", serial: serial),
+                logicalName: device.name))
         }
         return workers
     }

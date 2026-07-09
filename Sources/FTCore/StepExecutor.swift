@@ -56,11 +56,29 @@ public struct StepResult: Sendable {
     public let index: Int
     public let description: String
     public let status: Status
+    /// scene 番号(ScenarioEvent.scene 由来)。RunOrchestrator 経由(並列実行)でのみ設定され、
+    /// StepExecutor が直接組み立てる場合は scene の概念を知らないため常に nil
+    public let scene: Int?
+    /// scene タイトル(ScenarioEvent.sceneTitle 由来)
+    public let sceneTitle: String?
+    /// condition / action / expectation(ScenarioEvent.section 由来。CAE ブロック外や
+    /// scene の外で発生した情報行は nil)
+    public let section: String?
+    /// true = fixSuggestion に伴う合成行(「💡 修正提案: …」固定文言。ScenarioRunner.runOne
+    /// 参照)。実際のコマンド実行結果ではないため、機械可読 NDJSON(ftester api run)では
+    /// 除外する目印として使う(CLI/GUI の表示は従来どおり残す)
+    public let synthetic: Bool
 
-    public init(index: Int, description: String, status: Status) {
+    public init(index: Int, description: String, status: Status,
+                scene: Int? = nil, sceneTitle: String? = nil, section: String? = nil,
+                synthetic: Bool = false) {
         self.index = index
         self.description = description
         self.status = status
+        self.scene = scene
+        self.sceneTitle = sceneTitle
+        self.section = section
+        self.synthetic = synthetic
     }
 }
 

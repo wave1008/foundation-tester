@@ -8,6 +8,12 @@ import Foundation
 
 public struct ScenarioEvent: Codable, Sendable {
     public var kind: String
+    /// このイベントを処理したワーカーの識別子("<platform>:<デバイス論理名>"。
+    /// ftester api monitor の monitorDevices の id と同一規則)。
+    /// --profile 指定時のワーカー並列実行(ftester api run)でのみ設定され、
+    /// 逐次実行では nil のまま(nil はエンコード時にキーごと省略されるため既存の NDJSON
+    /// 契約は変わらない)
+    public var worker: String?
     /// シナリオ ID(クラス名.メソッド名)
     public var scenario: String?
     /// シナリオのタイトル(@Test の引数)
