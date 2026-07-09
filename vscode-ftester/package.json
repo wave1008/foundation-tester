@@ -1,0 +1,204 @@
+{
+  "name": "vscode-ftester",
+  "displayName": "ftester",
+  "description": "ftester (Swift 製モバイル UI テストツール) のシナリオをツリー表示・実行するための VS Code 拡張",
+  "version": "0.0.1",
+  "private": true,
+  "publisher": "wave1008",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Testing"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "workspaceContains:Package.swift"
+  ],
+  "contributes": {
+    "configuration": {
+      "title": "ftester",
+      "properties": {
+        "ftester.binaryPath": {
+          "type": "string",
+          "default": ".build/debug/ftester",
+          "description": "ftester CLI バイナリのパス。相対パスはワークスペースルート基準で解決されます。"
+        },
+        "ftester.project": {
+          "type": "string",
+          "default": "",
+          "description": "対象のテストプロジェクト名(Projects/<name> の <name>)。空の場合は自動判定します(Projects/ 直下がプロジェクト1つならそれを使用、複数ある場合は選択を促します)。"
+        },
+        "ftester.profile": {
+          "type": "string",
+          "default": "",
+          "description": "使用する実行プロファイル名(Projects/<project>/profiles/runs/<name>.json の <name>)。空の場合は指定しません。非空の場合、実行・デバッグ実行では platform/port/serial の代わりにこちらが使われます(デバイス供給・自動インストール込みで実行。対象デバイスは事前に ftester devices up 等で起動しておく必要があります)。"
+        },
+        "ftester.platform": {
+          "type": "string",
+          "enum": [
+            "ios",
+            "android"
+          ],
+          "default": "ios",
+          "description": "対象プラットフォーム(ftester.profile が空の場合のみ使用)。"
+        },
+        "ftester.port": {
+          "type": "number",
+          "default": 0,
+          "description": "ブリッジ接続ポート。0 の場合は指定しません(既定値を使用。ftester.profile が空の場合のみ使用)。"
+        },
+        "ftester.serial": {
+          "type": "string",
+          "default": "",
+          "description": "Android デバイスのシリアル番号。空の場合は指定しません(ftester.profile が空の場合のみ使用)。"
+        },
+        "ftester.buildBeforeRun": {
+          "type": "boolean",
+          "default": true,
+          "description": "CLI 呼び出し前に Swift ビルドを行うかどうか。false の場合は CLI 呼び出しに --skip-build を付与します。"
+        }
+      }
+    },
+    "debuggers": [
+      {
+        "type": "ftester",
+        "label": "ftester scenario",
+        "languages": [
+          "swift"
+        ],
+        "configurationAttributes": {
+          "launch": {
+            "required": [
+              "project",
+              "scenario"
+            ],
+            "properties": {
+              "project": {
+                "type": "string",
+                "description": "対象のテストプロジェクト名(Projects/<name> の <name>)。省略時は ftester.project 設定や自動判定で補完されます。"
+              },
+              "scenario": {
+                "type": "string",
+                "description": "デバッグ実行するシナリオ ID(クラス名.メソッド名)。1件のみ指定できます。"
+              },
+              "dryRun": {
+                "type": "boolean",
+                "default": false,
+                "description": "デバイスに触れず全コマンドを記録のみで通過させる(dry-run)。"
+              },
+              "stopOnEntry": {
+                "type": "boolean",
+                "default": false,
+                "description": "最初のステップの手前で一時停止して開始する。"
+              },
+              "skipBuild": {
+                "type": "boolean",
+                "default": false,
+                "description": "実行前の swift build をスキップする。"
+              },
+              "profile": {
+                "type": "string",
+                "description": "使用する実行プロファイル名(Projects/<project>/profiles/runs/<name>.json の <name>。省略時は ftester.profile 設定を使用)。指定時は platform/port/serial は無視されます。"
+              },
+              "platform": {
+                "type": "string",
+                "enum": [
+                  "ios",
+                  "android"
+                ],
+                "description": "対象プラットフォーム(省略時は ftester.platform 設定を使用。profile 指定時は無視されます)。"
+              },
+              "port": {
+                "type": "number",
+                "description": "ブリッジ接続ポート(省略時は ftester.port 設定を使用)。"
+              },
+              "serial": {
+                "type": "string",
+                "description": "Android デバイスのシリアル番号(省略時は ftester.serial 設定を使用)。"
+              }
+            }
+          }
+        },
+        "initialConfigurations": [
+          {
+            "type": "ftester",
+            "request": "launch",
+            "name": "ftester: シナリオをデバッグ",
+            "project": "",
+            "scenario": ""
+          }
+        ]
+      }
+    ],
+    "breakpoints": [
+      {
+        "language": "swift"
+      }
+    ],
+    "views": {
+      "test": [
+        {
+          "id": "ftesterSteps",
+          "name": "ftester ステップ"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "ftester.refreshScenarios",
+        "title": "ftester: シナリオを再読込",
+        "category": "ftester"
+      },
+      {
+        "command": "ftester.selectProject",
+        "title": "ftester: プロジェクトを選択",
+        "category": "ftester"
+      },
+      {
+        "command": "ftester.showSteps",
+        "title": "ftester: ステップ一覧を表示",
+        "category": "ftester"
+      },
+      {
+        "command": "ftester.refreshSteps",
+        "title": "ftester: ステップ一覧を再取得",
+        "category": "ftester",
+        "icon": "$(refresh)"
+      }
+    ],
+    "menus": {
+      "testing/item/context": [
+        {
+          "command": "ftester.showSteps",
+          "group": "navigation"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "ftester.refreshSteps",
+          "when": "view == ftesterSteps",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "compile": "node esbuild.mjs && tsc --noEmit",
+    "watch": "node esbuild.mjs --watch",
+    "test": "node esbuild.mjs --tests && node --test out-test/*.test.mjs",
+    "package": "vsce package --allow-missing-repository"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^3.9.2",
+    "esbuild": "^0.28.1",
+    "typescript": "^6.0.3"
+  },
+  "dependencies": {
+    "@vscode/debugadapter": "^1.65.0",
+    "@vscode/debugprotocol": "^1.65.0"
+  }
+}
