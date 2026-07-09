@@ -1054,39 +1054,7 @@ private struct ScenarioStepTable: View {
                     Spacer()
                 }
             case .steps(let rows):
-                Table(rows) {
-                    TableColumn("#") { row in
-                        Text("\(row.index)").monospacedDigit()
-                    }
-                    .width(28)
-                    TableColumn("scene") { row in
-                        Text(row.scene.map(String.init) ?? "")
-                            .monospacedDigit()
-                            .help(row.sceneTitle ?? "")
-                    }
-                    .width(44)
-                    TableColumn("区分") { row in
-                        Text(row.sectionLabel)
-                            .foregroundStyle(.secondary)
-                    }
-                    .width(40)
-                    TableColumn("コマンド") { row in
-                        Text(row.command)
-                            .font(.system(.callout, design: .monospaced))
-                            .textSelection(.enabled)
-                            .help(row.command)
-                    }
-                    .width(min: 160, ideal: 280)
-                    TableColumn("説明") { row in
-                        Text(row.comment ?? "")
-                            .foregroundStyle(.secondary)
-                            .help(row.comment ?? "")
-                    }
-                    .width(min: 120, ideal: 240)
-                }
-                // idealWidth を固定しないと長いコマンド/コメントが Table の理想幅
-                // → ウィンドウの自動リサイズまで波及する(実測: 選択でウィンドウが画面幅まで拡大)
-                .frame(minWidth: 280, idealWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
+                stepTable(rows)
                 Text("dry-run による列挙。procedure { } 内のステップは実行時のログで確認できます")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
@@ -1101,6 +1069,58 @@ private struct ScenarioStepTable: View {
         }
     }
 
+    private func stepTable(_ rows: [AppModel.ScenarioStepRow]) -> some View {
+        // 列幅は内容の最大幅に合わせる(省略「…」を出さない)。
+        // 表示幅を超えた分は横スクロール(常時バー+中ボタンパン)で見る
+        let commandFont = NSFont.monospacedSystemFont(
+            ofSize: NSFont.preferredFont(forTextStyle: .callout).pointSize, weight: .regular)
+        let commentFont = NSFont.preferredFont(forTextStyle: .body)
+        let commandWidth = Self.fittingWidth(rows.map(\.command), font: commandFont, atLeast: 160)
+        let commentWidth = Self.fittingWidth(rows.compactMap(\.comment), font: commentFont, atLeast: 120)
+        return Table(rows) {
+            TableColumn("#") { row in
+                Text("\(row.index)").monospacedDigit()
+            }
+            .width(28)
+            TableColumn("scene") { row in
+                Text(row.scene.map(String.init) ?? "")
+                    .monospacedDigit()
+                    .help(row.sceneTitle ?? "")
+            }
+            .width(44)
+            TableColumn("区分") { row in
+                Text(row.sectionLabel)
+                    .foregroundStyle(.secondary)
+            }
+            .width(40)
+            TableColumn("コマンド") { row in
+                Text(row.command)
+                    .font(.system(.callout, design: .monospaced))
+                    .textSelection(.enabled)
+                    .help(row.command)
+            }
+            .width(min: 160, ideal: commandWidth)
+            TableColumn("説明") { row in
+                Text(row.comment ?? "")
+                    .foregroundStyle(.secondary)
+                    .help(row.comment ?? "")
+            }
+            .width(min: 120, ideal: commentWidth)
+        }
+        // idealWidth を固定しないと長いコマンド/コメントが Table の理想幅
+        // → ウィンドウの自動リサイズまで波及する(実測: 選択でウィンドウが画面幅まで拡大)
+        .frame(minWidth: 280, idealWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
+        .background(LegacyScrollerEnforcer())
+    }
+
+    /// 文字列群を font で描いたときの最大幅(+セル内余白)。列の ideal 幅に使う
+    private static func fittingWidth(_ strings: [String], font: NSFont, atLeast: CGFloat) -> CGFloat {
+        let textWidth = strings
+            .map { ($0 as NSString).size(withAttributes: [.font: font]).width }
+            .max() ?? 0
+        return max(atLeast, ceil(textWidth) + 16)
+    }
+
     private func loadingLabel(_ message: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
@@ -1110,6 +1130,154 @@ private struct ScenarioStepTable: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
+        }
+    }
+}
+
+/// Table 内部の NSScrollView をレガシースクローラーに切り替えて
+/// スクロールバーを常時表示にする(オーバーレイだとスクロール中しか出ず掴めない)。
+/// あわせて中ボタンドラッグでのパンスクロール(掴んで動かす)も提供する。
+/// .background に置くと Table の NSScrollView は兄弟側の階層にあるため、
+/// 祖先を数段のぼりながら子孫から探す
+private struct LegacyScrollerEnforcer: NSViewRepresentable {
+    func makeNSView(context: Context) -> ProbeView { ProbeView() }
+
+    func updateNSView(_ nsView: ProbeView, context: Context) {
+        // SwiftUI の更新でスクロールビューが差し替わることがあるため毎回適用し直す
+        DispatchQueue.main.async { nsView.applyToNearbyScrollView() }
+    }
+
+    final class ProbeView: NSView {
+        private var styleObserver: NSObjectProtocol?
+        private var retriesLeft = 0
+        private var panMonitors: [Any] = []
+        private weak var panScrollView: NSScrollView?
+        private var panning = false
+        private var panLastLocation: NSPoint = .zero
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard window != nil else {
+                removePanMonitors()
+                return
+            }
+            // 初回表示では Table の NSScrollView 生成がプローブの window 接続より
+            // 遅れることがあるため、見つかるまで短い間隔でリトライする
+            retriesLeft = 40  // 50ms × 40 = 最大 2 秒
+            DispatchQueue.main.async { [weak self] in self?.applyToNearbyScrollView() }
+            // システム設定変更(マウス接続など)で preferredScrollerStyle に戻されるため再適用する
+            if styleObserver == nil {
+                styleObserver = NotificationCenter.default.addObserver(
+                    forName: NSScroller.preferredScrollerStyleDidChangeNotification,
+                    object: nil, queue: .main
+                ) { [weak self] _ in
+                    self?.applyToNearbyScrollView()
+                }
+            }
+            installPanMonitors()
+        }
+
+        override func layout() {
+            super.layout()
+            // レイアウトのたびに再適用(スクロールビュー差し替えへの保険。適用済みなら実質 no-op)
+            applyToNearbyScrollView()
+        }
+
+        deinit {
+            if let styleObserver { NotificationCenter.default.removeObserver(styleObserver) }
+            removePanMonitors()
+        }
+
+        /// 中ボタン(buttonNumber == 2)ドラッグで Table をパンスクロールする。
+        /// NSTableView は otherMouse 系を扱わないため、ローカルモニタで
+        /// 表の上のイベントだけ拾って消費する(他のビューには影響しない)
+        private func installPanMonitors() {
+            guard panMonitors.isEmpty else { return }
+            let down = NSEvent.addLocalMonitorForEvents(matching: [.otherMouseDown]) { [weak self] event in
+                guard let self, event.buttonNumber == 2, event.window === self.window,
+                      let scrollView = self.findNearbyTableScrollView(),
+                      scrollView.bounds.contains(scrollView.convert(event.locationInWindow, from: nil))
+                else { return event }
+                self.panScrollView = scrollView
+                self.panning = true
+                self.panLastLocation = event.locationInWindow
+                NSCursor.closedHand.push()
+                return nil
+            }
+            let dragged = NSEvent.addLocalMonitorForEvents(matching: [.otherMouseDragged]) { [weak self] event in
+                guard let self, self.panning else { return event }
+                let location = event.locationInWindow
+                let dx = location.x - self.panLastLocation.x
+                let dy = location.y - self.panLastLocation.y
+                self.panLastLocation = location
+                if let scrollView = self.panScrollView { self.pan(scrollView, dx: dx, dy: dy) }
+                return nil
+            }
+            let up = NSEvent.addLocalMonitorForEvents(matching: [.otherMouseUp]) { [weak self] event in
+                guard let self, self.panning else { return event }
+                self.panning = false
+                self.panScrollView = nil
+                NSCursor.pop()
+                return nil
+            }
+            panMonitors = [down, dragged, up].compactMap { $0 }
+        }
+
+        private func removePanMonitors() {
+            for monitor in panMonitors { NSEvent.removeMonitor(monitor) }
+            panMonitors.removeAll()
+        }
+
+        /// ドラッグ量を「内容を掴んで動かす」向きのスクロールホイールイベントに変換して
+        /// NSScrollView に通常スクロールとして処理させる。クリップビューの bounds を
+        /// 直接動かすと浮動ヘッダと SwiftUI 側のスクロール位置追跡が同期しない
+        /// (実測: 列だけ動いてヘッダが残る・コンテンツインセット分の縦ずれ)
+        private func pan(_ scrollView: NSScrollView, dx: CGFloat, dy: CGFloat) {
+            guard let cgEvent = CGEvent(scrollWheelEvent2Source: nil, units: .pixel,
+                                        wheelCount: 2,
+                                        wheel1: Int32(-dy), wheel2: Int32(dx), wheel3: 0),
+                  let event = NSEvent(cgEvent: cgEvent) else { return }
+            scrollView.scrollWheel(with: event)
+        }
+
+        func applyToNearbyScrollView() {
+            // キャッシュせず毎回探し直す。Table 生成前に別ペインのスクロールビューを
+            // 拾って固定してしまわないように、documentView が NSTableView(SwiftUI の
+            // Table/List の実体)のものだけを対象にする(Table 生成後は level=1 で即ヒット)
+            guard let scrollView = findNearbyTableScrollView() else {
+                if retriesLeft > 0, window != nil {
+                    retriesLeft -= 1
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+                        self?.applyToNearbyScrollView()
+                    }
+                }
+                return
+            }
+            // 同値でも代入すると再タイルが走るため変更時のみ設定する
+            if scrollView.scrollerStyle != .legacy { scrollView.scrollerStyle = .legacy }
+            if scrollView.autohidesScrollers { scrollView.autohidesScrollers = false }
+            if !scrollView.hasHorizontalScroller { scrollView.hasHorizontalScroller = true }
+            if !scrollView.hasVerticalScroller { scrollView.hasVerticalScroller = true }
+        }
+
+        private func findNearbyTableScrollView() -> NSScrollView? {
+            var ancestor = superview
+            for _ in 0..<4 {
+                guard let root = ancestor else { return nil }
+                if let found = Self.firstTableScrollView(in: root) { return found }
+                ancestor = root.superview
+            }
+            return nil
+        }
+
+        private static func firstTableScrollView(in view: NSView) -> NSScrollView? {
+            if let scrollView = view as? NSScrollView, scrollView.documentView is NSTableView {
+                return scrollView
+            }
+            for subview in view.subviews {
+                if let found = firstTableScrollView(in: subview) { return found }
+            }
+            return nil
         }
     }
 }
