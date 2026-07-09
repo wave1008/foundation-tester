@@ -19,6 +19,10 @@ export interface FtesterConfig {
   serial: string;
   /** false の場合、CLI 呼び出しに --skip-build を付与する。 */
   buildBeforeRun: boolean;
+  /** デバイスモニターの更新間隔(秒)。0.5 未満は 0.5 に切り上げる(`ftester api monitor --interval`)。 */
+  monitorInterval: number;
+  /** モニターのフレーム画像の長辺px(240〜1600にクランプ。`ftester api monitor --max-width`)。 */
+  monitorMaxWidth: number;
 }
 
 /** ワークスペースルート(Package.swift のあるフォルダ)を解決する。開いていなければ undefined。 */
@@ -47,6 +51,8 @@ export function readConfig(workspaceRoot: string): FtesterConfig {
     port: configuration.get<number>("port", 0),
     serial: configuration.get<string>("serial", ""),
     buildBeforeRun: configuration.get<boolean>("buildBeforeRun", true),
+    monitorInterval: Math.max(0.5, configuration.get<number>("monitorInterval", 2)),
+    monitorMaxWidth: Math.min(1600, Math.max(240, configuration.get<number>("monitorMaxWidth", 960))),
   };
 }
 

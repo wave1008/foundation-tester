@@ -49,6 +49,7 @@ export interface StepRow {
 /** `ftester api run ...` が1行ずつ出力するイベントの kind。 */
 export type RunEventKind =
   | "runStarted"
+  | "workersReady"
   | "scenarioStarted"
   | "sceneStarted"
   | "step"
@@ -61,6 +62,7 @@ export type RunEventKind =
 
 const RUN_EVENT_KINDS: ReadonlySet<string> = new Set<RunEventKind>([
   "runStarted",
+  "workersReady",
   "scenarioStarted",
   "sceneStarted",
   "step",
@@ -71,6 +73,24 @@ const RUN_EVENT_KINDS: ReadonlySet<string> = new Set<RunEventKind>([
   "log",
   "runFinished",
 ]);
+
+/** 並列実行(`--profile` 指定時)のワーカー(デバイス)1台分の情報。 */
+export interface WorkerInfo {
+  /** モニタータイルの device id と同一規則("ios:シミュ1" / "android:エミュ1")。 */
+  id: string;
+  name: string;
+  platform: "ios" | "android";
+  detail: string;
+}
+
+/**
+ * `runStarted` 直後、並列実行(`--profile` 指定・非dry-run・非debug)のときだけ出力される。
+ * 以降の全イベントに `worker` フィールド(この workers[].id のいずれか)が付く合図。
+ */
+export interface WorkersReadyEvent {
+  kind: "workersReady";
+  workers: WorkerInfo[];
+}
 
 /** ScenarioEvent.swift の StepResult.Status.eventStatus が返す status 文字列。 */
 export type StepStatus = "passed" | "passedViaFallback" | "healed" | "failed" | "skipped";
@@ -89,6 +109,8 @@ export interface ScenarioStartedEvent {
   kind: "scenarioStarted";
   scenario: string;
   title?: string;
+  /** 並列実行時のみ付与される担当ワーカー id(WorkersReadyEvent.workers[].id と同一規則)。 */
+  worker?: string;
 }
 
 /** ScenarioEvent(kind: "sceneStarted")。 */
@@ -97,6 +119,7 @@ export interface SceneStartedEvent {
   scenario: string;
   scene?: number;
   sceneTitle?: string;
+  worker?: string;
 }
 
 /** ScenarioEvent(kind: "step")。tap/exist 等 1 操作分の結果。 */
@@ -115,6 +138,7 @@ export interface StepEvent {
   file?: string;
   /** 1 起点の行番号。 */
   line?: number;
+  worker?: string;
 }
 
 /** ScenarioEvent(kind: "sceneFinished")。 */
@@ -124,6 +148,7 @@ export interface SceneFinishedEvent {
   scene?: number;
   sceneTitle?: string;
   passed: boolean;
+  worker?: string;
 }
 
 /** ScenarioEvent(kind: "fixSuggestion")。GUI の確認シート用の旧セレクタ・新セレクタを含む。 */
@@ -136,6 +161,7 @@ export interface FixSuggestionEvent {
   line?: number;
   oldSelector?: string;
   newSelector?: string;
+  worker?: string;
 }
 
 /** ScenarioEvent(kind: "paused")。--debug 実行時のみ発生する(debugAdapter.ts が処理する)。 */
@@ -158,6 +184,7 @@ export interface ScenarioFinishedEvent {
   scenario: string;
   passed: boolean;
   reportPath?: string;
+  worker?: string;
 }
 
 /** ScenarioEvent(kind: "log")。ユーザー print の混入行などホスト側の付随情報。 */
@@ -165,6 +192,7 @@ export interface LogEvent {
   kind: "log";
   scenario?: string;
   message?: string;
+  worker?: string;
 }
 
 /** ApiRunCommand.swift の ApiRunFinishedEvent。 */
@@ -177,6 +205,7 @@ export interface RunFinishedEvent {
 /** NDJSON の1行分のイベント(kind で判別する共用体)。 */
 export type RunEvent =
   | RunStartedEvent
+  | WorkersReadyEvent
   | ScenarioStartedEvent
   | SceneStartedEvent
   | StepEvent

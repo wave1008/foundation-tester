@@ -13,6 +13,11 @@
 //     nonjson  : 有効な NDJSON 行の間に非JSON行(壊れた print 混入など)を挟む
 //     crash    : runFinished(・scenarioFinished)を出さないまま異常終了する(exit code 1)。
 //                --debug 併用時は scenarioStarted 直後に突然死する(paused は一切出さない)。
+//     parallel : 並列実行(`--profile` 指定時)の契約を模す。runStarted 直後に
+//                workersReady(2ワーカー: "ios:シミュ1"/"ios:シミュ2")を出し、以降の全イベントに
+//                "worker" フィールドを付ける。--scenario を2件指定すると、それぞれ別ワーカーに
+//                割り当てられたシナリオのイベントが1件ずつ交互に(ラウンドロビンで)混在して
+//                出力される(2件目のシナリオは失敗させる)。
 //
 //   --debug 指定時、シナリオ ID が「クラッシュ.T1」のときも --pattern crash と同じ扱いにする
 //   (debugAdapter.ts 経由では launch 引数に任意の CLI フラグを追加できないため、
@@ -121,6 +126,84 @@ function runScenario(id, { fail = false, skip = false, withLog = false } = {}) {
     reportPath: `/tmp/mock-reports/${encodeURIComponent(id)}.md`,
   });
   return fail;
+}
+
+/** 1シナリオ分の NDJSON イベント配列を組み立てる(runScenario と違い、即emitせず配列で返す)。 */
+function buildScenarioEvents(id, workerId, { fail = false } = {}) {
+  const file = "Projects/Mock/Scenarios/Mock.swift";
+  return [
+    { kind: "scenarioStarted", scenario: id, title: `${id} のタイトル`, worker: workerId },
+    { kind: "sceneStarted", scenario: id, scene: 1, sceneTitle: "シーン1", worker: workerId },
+    {
+      kind: "step",
+      scenario: id,
+      scene: 1,
+      section: "condition",
+      index: 1,
+      description: "launch com.example.mock",
+      status: "passed",
+      file,
+      line: 10,
+      worker: workerId,
+    },
+    {
+      kind: "step",
+      scenario: id,
+      scene: 1,
+      section: "expectation",
+      index: 2,
+      description: 'exist "#welcome_text"',
+      status: fail ? "failed" : "passed",
+      detail: fail ? "要素が見つかりません: #welcome_text" : undefined,
+      file,
+      line: 14,
+      worker: workerId,
+    },
+    { kind: "sceneFinished", scenario: id, scene: 1, sceneTitle: "シーン1", passed: !fail, worker: workerId },
+    {
+      kind: "scenarioFinished",
+      scenario: id,
+      passed: !fail,
+      reportPath: `/tmp/mock-reports/${encodeURIComponent(id)}.md`,
+      worker: workerId,
+    },
+  ];
+}
+
+/**
+ * 並列実行(--profile 指定時)の契約を模す: runStarted → workersReady → 複数シナリオの
+ * イベントをラウンドロビンで1件ずつ交互に出力 → runFinished。2件目以降のシナリオは失敗させる
+ * (worker プレフィックス・複数シナリオ独立集計の両方をテストで検証できるようにするため)。
+ */
+function runParallel() {
+  const workers = [
+    { id: "ios:シミュ1", name: "シミュ1", platform: "ios", detail: "port 8127" },
+    { id: "ios:シミュ2", name: "シミュ2", platform: "ios", detail: "port 8128" },
+  ];
+  emit({ kind: "runStarted", total: scenarios.length });
+  emit({ kind: "workersReady", workers });
+
+  const queues = scenarios.map((id, i) =>
+    buildScenarioEvents(id, workers[i % workers.length].id, { fail: i === 1 }),
+  );
+
+  let failedCount = 0;
+  // 各シナリオのキューから1件ずつ交互に取り出して出力する(実行が interleave する状況を模す)。
+  while (queues.some((queue) => queue.length > 0)) {
+    for (const queue of queues) {
+      if (queue.length === 0) {
+        continue;
+      }
+      const event = queue.shift();
+      emit(event);
+      if (event.kind === "scenarioFinished" && !event.passed) {
+        failedCount += 1;
+      }
+    }
+  }
+
+  emit({ kind: "runFinished", passed: scenarios.length - failedCount, failed: failedCount });
+  process.exitCode = failedCount > 0 ? 1 : 0;
 }
 
 function runAllAndFinish(options) {
@@ -314,6 +397,10 @@ if (debugMode) {
         }
         emit({ kind: "runFinished", passed: scenarios.length - failedCount, failed: failedCount });
       }
+      break;
+
+    case "parallel":
+      runParallel();
       break;
 
     case "crash": {

@@ -12,7 +12,7 @@
 // アイコンは Sources/FTCore/RunOrchestrator.swift の RunLogFormatter と揃えている
 // (✅ 成功 / ❌ 失敗 / ⚠️ スキップ / 🔧 自己修復 / 💡 修正提案 / ▶ 開始 / ⏸ 一時停止)。
 
-import { isRunEvent, type RunEvent } from "./model";
+import { isRunEvent, type RunEvent, type WorkerInfo } from "./model";
 
 /** 出力・失敗メッセージに添えるソース位置。file はリポジトリルート相対、line は1起点。 */
 export interface RunLocation {
@@ -29,10 +29,12 @@ export interface RunFailureMessage {
 /** runHandler.ts が vscode API へ適用するアクション。 */
 export type RunAction =
   | { type: "started"; scenario: string }
-  | { type: "output"; text: string; scenario?: string; location?: RunLocation }
+  | { type: "output"; text: string; scenario?: string; location?: RunLocation; worker?: string }
   | { type: "passed"; scenario: string; durationMs: number }
   | { type: "failed"; scenario: string; messages: RunFailureMessage[]; durationMs: number }
-  | { type: "end"; passed: number; failed: number };
+  | { type: "end"; passed: number; failed: number }
+  /** 並列実行(--profile)時、runStarted 直後の workersReady から発生する。 */
+  | { type: "workers"; workers: WorkerInfo[] };
 
 interface ScenarioProgress {
   startedAtMs: number;
@@ -48,7 +50,11 @@ export function createRunReducerState(): RunReducerState {
   return { scenarios: new Map() };
 }
 
-const STATUS_MARK: Record<string, string> = {
+/**
+ * ステップの status → アイコンの対応。runLaneModel.ts(デバイスモニターのログレーン)からも
+ * 同じアイコンを再利用する(見た目の一貫性のため)。
+ */
+export const STATUS_MARK: Record<string, string> = {
   passed: "✅",
   passedViaFallback: "✅",
   healed: "🔧",
@@ -78,19 +84,30 @@ function actionsFor(state: RunReducerState, event: RunEvent, nowMs: number): Run
     case "runStarted":
       return [{ type: "output", text: `▶ 実行開始(${String(event.total)}件)` }];
 
+    case "workersReady":
+      // 並列実行(--profile)時のみ発生。以降の全イベントに worker が付く合図。
+      return [{ type: "workers", workers: event.workers }];
+
     case "scenarioStarted": {
       state.scenarios.set(event.scenario, { startedAtMs: nowMs, messages: [] });
       const label = event.title ? `${event.title} [${event.scenario}]` : event.scenario;
       return [
         { type: "started", scenario: event.scenario },
-        { type: "output", scenario: event.scenario, text: `▶ ${label}` },
+        { type: "output", scenario: event.scenario, text: `▶ ${label}`, worker: event.worker },
       ];
     }
 
     case "sceneStarted": {
       const scene = event.scene ?? 0;
       const title = event.sceneTitle ?? "";
-      return [{ type: "output", scenario: event.scenario, text: `  シーン${String(scene)}: ${title}` }];
+      return [
+        {
+          type: "output",
+          scenario: event.scenario,
+          text: `  シーン${String(scene)}: ${title}`,
+          worker: event.worker,
+        },
+      ];
     }
 
     case "step":
@@ -105,6 +122,7 @@ function actionsFor(state: RunReducerState, event: RunEvent, nowMs: number): Run
           type: "output",
           scenario: event.scenario,
           text: `  ${mark} シーン${String(scene)} ${label}`,
+          worker: event.worker,
         },
       ];
     }
@@ -112,13 +130,16 @@ function actionsFor(state: RunReducerState, event: RunEvent, nowMs: number): Run
     case "fixSuggestion": {
       const text = `  💡 修正提案: ${event.detail ?? event.description ?? ""}`;
       const location = toLocation(event.file, event.line);
-      const actions: RunAction[] = [{ type: "output", scenario: event.scenario, text, location }];
+      const actions: RunAction[] = [
+        { type: "output", scenario: event.scenario, text, location, worker: event.worker },
+      ];
       if (event.oldSelector && event.newSelector) {
         actions.push({
           type: "output",
           scenario: event.scenario,
           text: `     ${event.oldSelector} → ${event.newSelector}`,
           location,
+          worker: event.worker,
         });
       }
       return actions;
@@ -127,6 +148,7 @@ function actionsFor(state: RunReducerState, event: RunEvent, nowMs: number): Run
     case "paused":
       // --debug 実行専用のイベント。このリポジトリの実行プロファイルは --debug を付与しないため
       // 通常は発生しないが、念のため出力だけして無視する(デバッグアダプタは後続フェーズで対応)。
+      // --debug は並列実行(--profile 非dry-run)と排他のため worker は付与されない。
       return [
         {
           type: "output",
@@ -144,7 +166,7 @@ function actionsFor(state: RunReducerState, event: RunEvent, nowMs: number): Run
       if (message.length === 0) {
         return [];
       }
-      return [{ type: "output", scenario: event.scenario, text: `  ${message}` }];
+      return [{ type: "output", scenario: event.scenario, text: `  ${message}`, worker: event.worker }];
     }
 
     case "runFinished":
@@ -171,6 +193,7 @@ function stepActions(
       scenario: event.scenario,
       text: `  ${mark} ${index}${event.description ?? ""}`,
       location,
+      worker: event.worker,
     },
   ];
 
@@ -189,7 +212,13 @@ function stepActions(
       default:
         detailLine = `     ${event.detail}`;
     }
-    actions.push({ type: "output", scenario: event.scenario, text: detailLine, location });
+    actions.push({
+      type: "output",
+      scenario: event.scenario,
+      text: detailLine,
+      location,
+      worker: event.worker,
+    });
   }
 
   if (event.status === "failed") {
@@ -223,6 +252,7 @@ function scenarioFinishedActions(
         type: "output",
         scenario: event.scenario,
         text: `  ✅ 成功 (${String(durationMs)}ms)`,
+        worker: event.worker,
       },
       { type: "passed", scenario: event.scenario, durationMs },
     ];
@@ -235,7 +265,7 @@ function scenarioFinishedActions(
       : [{ text: `シナリオが失敗しました${event.reportPath ? `(レポート: ${event.reportPath})` : ""}` }];
 
   return [
-    { type: "output", scenario: event.scenario, text: `  ❌ 失敗${reportSuffix}` },
+    { type: "output", scenario: event.scenario, text: `  ❌ 失敗${reportSuffix}`, worker: event.worker },
     { type: "failed", scenario: event.scenario, messages, durationMs },
   ];
 }
