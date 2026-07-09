@@ -200,6 +200,8 @@ struct ContentView: View {
         // クラス行のダブルクリック検出(NSEvent モニタ)用: リストの領域と属するウィンドウ
         .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { sidebarFrame = $0 }
         .background(HostWindowReader { sidebarWindow = $0 })
+        // ステップ表と同じホバー行ハイライト(List も NSTableView バックエンドなので共用できる)
+        .background(TableRowHoverHighlighter())
         .onAppear { installClassDoubleClickMonitor() }
         .onDisappear { removeClassDoubleClickMonitor() }
         // (再読込・全実行ボタンは controlBar にある。プレーンウィンドウでは
@@ -864,16 +866,34 @@ struct RunView: View {
                         }
                     }
                     Spacer()
-                    Toggle("自己修復(--heal)", isOn: $model.heal)
-                        .toggleStyle(.checkbox)
-                    Button {
-                        Task { await model.runSelected() }
-                    } label: {
-                        Label(selected.count == 1 ? "実行" : "選択した \(selected.count) 件を実行",
-                              systemImage: "play.fill")
+                    if let entry = selected.first, selected.count == 1,
+                       model.runningFlow, model.debugScenarioID == entry.info.id {
+                        // デバッグ実行中(単一シナリオ): 一時停止・続行・ステップ・停止
+                        debugControls
+                    } else {
+                        Toggle("自己修復(--heal)", isOn: $model.heal)
+                            .toggleStyle(.checkbox)
+                        if selected.count == 1 {
+                            Button {
+                                Task { await model.runSelectedStepwise() }
+                            } label: {
+                                Label("ステップ実行", systemImage: "arrow.right.to.line")
+                            }
+                            .help("最初のステップの手前で一時停止して開始します"
+                                  + "(ブレークポイントはステップ表の行頭クリックで設定・解除)")
+                            .disabled(model.runningFlow)
+                        }
+                        Button {
+                            Task { await model.runSelected() }
+                        } label: {
+                            Label(selected.count == 1 ? "実行" : "選択した \(selected.count) 件を実行",
+                                  systemImage: "play.fill")
+                        }
+                        .keyboardShortcut("r")
+                        .help(selected.count == 1
+                              ? "実行(ブレークポイントがあればその手前で一時停止します)" : "")
+                        .disabled(model.runningFlow)
                     }
-                    .keyboardShortcut("r")
-                    .disabled(model.runningFlow)
                 }
                 if let entry = selected.first, selected.count == 1 {
                     if entry.info.deleted {
@@ -907,6 +927,51 @@ struct RunView: View {
             }
         }
         .padding()
+    }
+
+    /// デバッグ実行中の操作ボタン群。一時停止中は 続行 / ステップ / 停止、
+    /// 実行中は 一時停止 / 停止(停止条件は paused イベントで反映される)
+    @ViewBuilder private var debugControls: some View {
+        if model.debugPaused {
+            Text("⏸ ステップ \(model.debugPausedIndex ?? 0) の手前で停止中")
+                .font(.caption)
+                .foregroundStyle(.orange)
+                .help(model.debugPausedDescription ?? "")
+            Button {
+                model.debugContinue()
+            } label: {
+                Label("続行", systemImage: "play.fill")
+            }
+            .help("次のブレークポイント(なければ最後)まで実行")
+            Button {
+                model.debugStepOver()
+            } label: {
+                Label("ステップ", systemImage: "arrow.right.to.line")
+            }
+            .help("1 ステップだけ実行して次のステップの手前で停止")
+            Button {
+                model.debugStop()
+            } label: {
+                Label("停止", systemImage: "stop.fill")
+            }
+            .help("シナリオを中断(残りのステップはスキップ)")
+        } else {
+            Text("▶ デバッグ実行中")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Button {
+                model.debugPauseRequest()
+            } label: {
+                Label("一時停止", systemImage: "pause.fill")
+            }
+            .help("次のステップの手前で一時停止")
+            Button {
+                model.debugStop()
+            } label: {
+                Label("停止", systemImage: "stop.fill")
+            }
+            .help("シナリオを中断(残りのステップはスキップ)")
+        }
     }
 
     private var logView: some View {
@@ -1021,6 +1086,10 @@ private struct ScenarioStepTable: View {
     @Environment(AppModel.self) private var model
     let entry: AppModel.ScenarioEntry
     @State private var result: AppModel.StepLoadResult?
+    /// クリックで選択(ハイライト)された行。id は ScenarioStepRow.index
+    @State private var selection: AppModel.ScenarioStepRow.ID?
+    /// テーブルへのキーフォーカス要求カウンタ(TableFocusRequester が変化を検知して実行)
+    @State private var focusRequest = 0
 
     /// ロードのトリガ: シナリオが変わるか、一覧が再読込されたら取り直す
     private struct LoadKey: Equatable {
@@ -1055,7 +1124,8 @@ private struct ScenarioStepTable: View {
                 }
             case .steps(let rows):
                 stepTable(rows)
-                Text("dry-run による列挙。procedure { } 内のステップは実行時のログで確認できます")
+                Text("dry-run による列挙。行頭クリックでブレークポイント設定・解除。"
+                     + "procedure { } 内のステップは実行時のログで確認できます")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
@@ -1063,6 +1133,9 @@ private struct ScenarioStepTable: View {
         .task(id: LoadKey(scenarioID: entry.info.id,
                           generation: model.scenarioListGeneration)) {
             result = nil  // 前のシナリオの表を残さない
+            // id は行の通し番号(Int)にすぎず新シナリオでも再利用されるため、
+            // 古いシナリオの選択が別の行を指したまま残らないようにリセットする
+            selection = nil
             let loaded = await model.loadSteps(for: entry)
             // 選択の高速切替で古いタスクの結果が新しい表を上書きしないように
             if !Task.isCancelled { result = loaded }
@@ -1077,7 +1150,12 @@ private struct ScenarioStepTable: View {
         let commentFont = NSFont.preferredFont(forTextStyle: .body)
         let commandWidth = Self.fittingWidth(rows.map(\.command), font: commandFont, atLeast: 160)
         let commentWidth = Self.fittingWidth(rows.compactMap(\.comment), font: commentFont, atLeast: 120)
-        return Table(rows) {
+        // selection を渡すことでクリックした行がハイライトされる(既定では選択が効かない)
+        return Table(rows, selection: $selection) {
+            TableColumn("") { row in
+                breakpointCell(row)
+            }
+            .width(20)
             TableColumn("#") { row in
                 Text("\(row.index)").monospacedDigit()
             }
@@ -1094,9 +1172,10 @@ private struct ScenarioStepTable: View {
             }
             .width(40)
             TableColumn("コマンド") { row in
+                // textSelection は付けない: テキスト上のクリックを奪って
+                // NSTableView の行選択が効かなくなる(全文はツールチップで見られる)
                 Text(row.command)
                     .font(.system(.callout, design: .monospaced))
-                    .textSelection(.enabled)
                     .help(row.command)
             }
             .width(min: 160, ideal: commandWidth)
@@ -1111,6 +1190,43 @@ private struct ScenarioStepTable: View {
         // → ウィンドウの自動リサイズまで波及する(実測: 選択でウィンドウが画面幅まで拡大)
         .frame(minWidth: 280, idealWidth: 480, maxWidth: .infinity, maxHeight: .infinity)
         .background(LegacyScrollerEnforcer())
+        .background(TableRowHoverHighlighter())
+        .background(TableFocusRequester(request: focusRequest))
+    }
+
+    /// 行頭のブレークポイントセル。クリックで設定・解除(赤丸 = 設定済み)。
+    /// デバッグ実行の一時停止中は「次に実行するステップ」に緑の矢印を重ねる
+    private func breakpointCell(_ row: AppModel.ScenarioStepRow) -> some View {
+        let isSet = model.hasBreakpoint(scenarioID: entry.info.id, row: row)
+        let isCurrent = model.debugPaused && model.debugScenarioID == entry.info.id
+            && model.debugPausedIndex == row.index
+        return Button {
+            model.toggleBreakpoint(scenarioID: entry.info.id, row: row)
+            // Button がクリックを消費して NSTableView ネイティブの行選択まで
+            // 届かないため、ブレークポイント操作でもここで行を選択状態にする。
+            // さらにテーブルが一度もファーストレスポンダになっていないと選択の
+            // プログラム設定が視覚的に反映されない(実測)ため、フォーカスも要求する
+            selection = row.id
+            focusRequest += 1
+        } label: {
+            ZStack {
+                Image(systemName: isSet ? "circle.fill" : "circle")
+                    .font(.system(size: 10))
+                    .foregroundStyle(isSet ? AnyShapeStyle(.red) : AnyShapeStyle(.quaternary))
+                if isCurrent {
+                    Image(systemName: "arrowtriangle.right.fill")
+                        .font(.system(size: 8))
+                        .foregroundStyle(.green)
+                }
+            }
+            // クリック領域をセル全体に広げる(丸だけだと当てにくい)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(row.breakpointKey == nil)
+        .opacity(row.breakpointKey == nil ? 0 : 1)
+        .help(isSet ? "クリックでブレークポイントを解除" : "クリックでブレークポイントを設定")
     }
 
     /// 文字列群を font で描いたときの最大幅(+セル内余白)。列の ideal 幅に使う
@@ -1258,6 +1374,229 @@ private struct LegacyScrollerEnforcer: NSViewRepresentable {
             if scrollView.autohidesScrollers { scrollView.autohidesScrollers = false }
             if !scrollView.hasHorizontalScroller { scrollView.hasHorizontalScroller = true }
             if !scrollView.hasVerticalScroller { scrollView.hasVerticalScroller = true }
+        }
+
+        private func findNearbyTableScrollView() -> NSScrollView? {
+            var ancestor = superview
+            for _ in 0..<4 {
+                guard let root = ancestor else { return nil }
+                if let found = Self.firstTableScrollView(in: root) { return found }
+                ancestor = root.superview
+            }
+            return nil
+        }
+
+        private static func firstTableScrollView(in view: NSView) -> NSScrollView? {
+            if let scrollView = view as? NSScrollView, scrollView.documentView is NSTableView {
+                return scrollView
+            }
+            for subview in view.subviews {
+                if let found = firstTableScrollView(in: subview) { return found }
+            }
+            return nil
+        }
+    }
+}
+
+/// NSTableView バックエンドの Table/List のホバー行に薄い背景ハイライトを塗る
+/// (ステップ表とシナリオペインのサイドバーで共用)。
+/// SwiftUI の onHover + 親 View の @State では NSTableView バックエンドのセルが
+/// state 変更で再描画されず影も背景色も反映されない(実測)。さらにセル側で
+/// ヒット領域を広げるとクリックを SwiftUI が飲み込んで行選択まで壊れたため、
+/// SwiftUI 側での表現は諦めて AppKit 層(NSTrackingArea +
+/// NSTableRowView.backgroundColor)で直接塗る。
+/// NSTableView の探索は LegacyScrollerEnforcer と同じ方式(.background に置き、
+/// 祖先を数段のぼりながら子孫から documentView が NSTableView のものを探す)
+private struct TableRowHoverHighlighter: NSViewRepresentable {
+    func makeNSView(context: Context) -> ProbeView { ProbeView() }
+
+    func updateNSView(_ nsView: ProbeView, context: Context) {
+        // SwiftUI の更新でテーブルが差し替わることがあるため毎回適用し直す
+        // (attach 側で適用済みなら no-op)
+        DispatchQueue.main.async { nsView.attachToNearbyTableView() }
+    }
+
+    final class ProbeView: NSView {
+        private var retriesLeft = 0
+        private let helper = HoverHelper()
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            guard window != nil else {
+                // ウィンドウから外れたら tracking area と通知監視を残さない
+                helper.detach()
+                return
+            }
+            // 初回表示では Table の NSTableView 生成がプローブの window 接続より
+            // 遅れることがあるため、見つかるまで短い間隔でリトライする
+            retriesLeft = 40  // 50ms × 40 = 最大 2 秒
+            DispatchQueue.main.async { [weak self] in self?.attachToNearbyTableView() }
+        }
+
+        override func layout() {
+            super.layout()
+            // レイアウトのたびに再適用(テーブル差し替えへの保険。適用済みなら no-op)
+            attachToNearbyTableView()
+        }
+
+        deinit {
+            helper.detach()
+        }
+
+        func attachToNearbyTableView() {
+            guard let scrollView = findNearbyTableScrollView(),
+                  let tableView = scrollView.documentView as? NSTableView else {
+                if retriesLeft > 0, window != nil {
+                    retriesLeft -= 1
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+                        self?.attachToNearbyTableView()
+                    }
+                }
+                return
+            }
+            helper.attach(to: tableView)
+        }
+
+        private func findNearbyTableScrollView() -> NSScrollView? {
+            var ancestor = superview
+            for _ in 0..<4 {
+                guard let root = ancestor else { return nil }
+                if let found = Self.firstTableScrollView(in: root) { return found }
+                ancestor = root.superview
+            }
+            return nil
+        }
+
+        private static func firstTableScrollView(in view: NSView) -> NSScrollView? {
+            if let scrollView = view as? NSScrollView, scrollView.documentView is NSTableView {
+                return scrollView
+            }
+            for subview in view.subviews {
+                if let found = firstTableScrollView(in: subview) { return found }
+            }
+            return nil
+        }
+    }
+
+    /// NSTrackingArea の owner としてマウス移動を受け、ホバー行の
+    /// NSTableRowView.backgroundColor を塗り替えるヘルパー
+    final class HoverHelper: NSResponder {
+        private weak var tableView: NSTableView?
+        private var trackingArea: NSTrackingArea?
+        private var boundsObserver: NSObjectProtocol?
+        private var hoveredRow = -1
+
+        /// tracking area とスクロール監視を張る。同じテーブルに適用済みなら no-op
+        /// (updateNSView / layout から繰り返し呼ばれるため、重複追加をここで防ぐ)
+        func attach(to tableView: NSTableView) {
+            if self.tableView === tableView, trackingArea != nil { return }
+            detach()  // テーブルが差し替わった場合は古い方から確実に外す
+            self.tableView = tableView
+            // .inVisibleRect で rect 指定不要のまま可視領域全体を追跡する
+            let area = NSTrackingArea(
+                rect: .zero,
+                options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
+                owner: self, userInfo: nil)
+            tableView.addTrackingArea(area)
+            trackingArea = area
+            // NSTableRowView は再利用されるため、ホバー中にスクロールすると
+            // 別の行に色が残り得る。スクロール(クリップビューの bounds 変化)で
+            // ハイライトを消して事故を防ぐ
+            if let clipView = tableView.enclosingScrollView?.contentView {
+                clipView.postsBoundsChangedNotifications = true
+                boundsObserver = NotificationCenter.default.addObserver(
+                    forName: NSView.boundsDidChangeNotification,
+                    object: clipView, queue: .main
+                ) { [weak self] _ in
+                    self?.clearHighlight()
+                }
+            }
+        }
+
+        func detach() {
+            clearHighlight()
+            if let trackingArea, let tableView { tableView.removeTrackingArea(trackingArea) }
+            trackingArea = nil
+            if let boundsObserver { NotificationCenter.default.removeObserver(boundsObserver) }
+            boundsObserver = nil
+            tableView = nil
+        }
+
+        deinit {
+            detach()
+        }
+
+        override func mouseMoved(with event: NSEvent) {
+            guard let tableView else { return }
+            let point = tableView.convert(event.locationInWindow, from: nil)
+            let row = tableView.row(at: point)
+            guard row != hoveredRow else { return }
+            clearHighlight()
+            guard row >= 0,
+                  let rowView = tableView.rowView(atRow: row, makeIfNecessary: false),
+                  // 選択中の行はシステムの選択ハイライトに任せる(重ねて濁らせない)
+                  !rowView.isSelected,
+                  // セクションヘッダ(サイドバーの「プロジェクト」「シナリオ」等)は
+                  // アイテムではないので光らせない
+                  !rowView.isGroupRowStyle,
+                  // サイドバー最下段の透明な「余白」行(右クリック受け付け用、
+                  // minHeight 240)を除外する。行の中身(SwiftUI ホスティングビュー)
+                  // からは種別を判定できないため、通常行ではあり得ない高さ(100pt 超)
+                  // をスペーサー行とみなすヒューリスティックで弾く
+                  rowView.bounds.height <= 100
+            else { return }
+            // labelColor ベースなのでダークでは白系・ライトでは黒系の淡いハイライトになる
+            rowView.backgroundColor = NSColor.labelColor.withAlphaComponent(0.07)
+            hoveredRow = row
+        }
+
+        override func mouseExited(with event: NSEvent) {
+            clearHighlight()
+        }
+
+        private func clearHighlight() {
+            guard hoveredRow >= 0 else { return }
+            if let tableView,
+               let rowView = tableView.rowView(atRow: hoveredRow, makeIfNecessary: false) {
+                rowView.backgroundColor = .clear
+            }
+            hoveredRow = -1
+        }
+    }
+}
+
+/// 近傍の NSTableView(Table/List の実体)へキーフォーカスを移す(要求カウンタ方式)。
+/// ステップ表のブレークポイント Button はクリックを消費するためテーブルにキー
+/// フォーカスが移らず、テーブルが一度もファーストレスポンダになっていない状態では
+/// selection バインディングをプログラムから設定しても選択の強調表示が視覚的に
+/// 反映されない(実測)。そこで Button アクションで request を進めてもらい、
+/// 変化を検知したときだけ makeFirstResponder でフォーカスを移す。
+/// NSTableView の探索は TableRowHoverHighlighter と同じ方式(.background に置き、
+/// 祖先を数段のぼりながら子孫から documentView が NSTableView のものを探す)
+private struct TableFocusRequester: NSViewRepresentable {
+    /// フォーカス要求カウンタ。呼び出し側がインクリメントするたびに 1 回だけ実行する
+    let request: Int
+
+    func makeNSView(context: Context) -> ProbeView { ProbeView() }
+
+    func updateNSView(_ nsView: ProbeView, context: Context) {
+        // SwiftUI の更新サイクル中にレスポンダを動かさないよう次のループで実行する
+        DispatchQueue.main.async { nsView.apply(request: request) }
+    }
+
+    final class ProbeView: NSView {
+        /// 適用済みの request 値。初期値 0 と一致する間(=まだ要求されていない)は
+        /// 何もしない(表示直後の update で勝手にフォーカスを奪わないため)
+        private var appliedRequest = 0
+
+        func apply(request: Int) {
+            guard request != appliedRequest else { return }
+            appliedRequest = request
+            // ユーザーのクリック起点で呼ばれるのでテーブルは生成済みのはず。
+            // 万一見つからなければ何もしない(リトライ不要)
+            guard let scrollView = findNearbyTableScrollView(),
+                  let tableView = scrollView.documentView as? NSTableView else { return }
+            tableView.window?.makeFirstResponder(tableView)
         }
 
         private func findNearbyTableScrollView() -> NSScrollView? {
