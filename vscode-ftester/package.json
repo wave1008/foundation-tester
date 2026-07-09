@@ -58,6 +58,19 @@
           "type": "boolean",
           "default": true,
           "description": "CLI 呼び出し前に Swift ビルドを行うかどうか。false の場合は CLI 呼び出しに --skip-build を付与します。"
+        },
+        "ftester.monitorInterval": {
+          "type": "number",
+          "default": 2,
+          "minimum": 0.5,
+          "description": "デバイスモニター(ftester: デバイスモニターを表示)の更新間隔(秒)。0.5 未満は 0.5 として扱われます。"
+        },
+        "ftester.monitorMaxWidth": {
+          "type": "number",
+          "default": 960,
+          "minimum": 240,
+          "maximum": 1600,
+          "description": "デバイスモニターのフレーム画像の長辺ピクセル数。大きいほど鮮明になりますが転送量が増えます(240〜1600)。"
         }
       }
     },
@@ -166,6 +179,11 @@
         "title": "ftester: ステップ一覧を再取得",
         "category": "ftester",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "ftester.showDeviceMonitor",
+        "title": "ftester: デバイスモニターを表示",
+        "category": "ftester"
       }
     ],
     "menus": {

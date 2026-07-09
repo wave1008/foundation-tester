@@ -10,6 +10,8 @@ import * as vscode from "vscode";
 import { FtesterCli } from "./cli";
 import { type FtesterConfig, listProjectCandidates, readConfig, resolveWorkspaceRoot } from "./config";
 import { registerDebugAdapter } from "./debugConfig";
+import { registerMonitorPanel } from "./monitorPanel";
+import { RunEventBus } from "./runEventBus";
 import { registerRunHandler } from "./runHandler";
 import { registerStepsView } from "./stepsView";
 import { FtesterTestTree } from "./testTree";
@@ -45,12 +47,17 @@ export function activate(context: vscode.ExtensionContext): void {
   const cli = new FtesterCli(outputChannel);
   const getConfig = (): FtesterConfig => readConfig(workspaceRoot);
 
+  // 実行イベント(RunEvent)を runHandler(TestRun への反映)とデバイスモニターの
+  // ログレーン表示の両方へ配信する共有インスタンス(src/runEventBus.ts 参照)。
+  const runEventBus = new RunEventBus();
+
   const testTree = registerTestTree(context, cli, workspaceRoot, getConfig, outputChannel);
   const watcher = registerWatcher(context, workspaceRoot, testTree);
   registerCommands(context, workspaceRoot, testTree, outputChannel);
-  registerRunHandler(context, cli, workspaceRoot, getConfig, testTree, watcher, outputChannel);
+  registerRunHandler(context, cli, workspaceRoot, getConfig, testTree, watcher, outputChannel, runEventBus);
   registerDebugAdapter(context, workspaceRoot, getConfig, outputChannel);
   registerStepsView(context, cli, workspaceRoot, getConfig, testTree, watcher, outputChannel);
+  registerMonitorPanel(context, workspaceRoot, getConfig, outputChannel, runEventBus);
 
   void testTree.refresh();
 }

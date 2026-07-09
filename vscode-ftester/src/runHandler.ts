@@ -17,6 +17,8 @@ import * as vscode from "vscode";
 import { type FtesterCli } from "./cli";
 import { type FtesterConfig, resolveProjectName } from "./config";
 import type { ScenarioFinishedEventBody } from "./debugAdapter";
+import { isRunEvent } from "./model";
+import { type RunEventBus } from "./runEventBus";
 import {
   createRunReducerState,
   reduceRunEvent,
@@ -34,12 +36,13 @@ export function registerRunHandler(
   testTree: FtesterTestTree,
   watcher: ScenarioFileWatcher,
   outputChannel: vscode.OutputChannel,
+  eventBus: RunEventBus,
 ): void {
   const controller = testTree.controller;
 
   const makeHandler = (dryRun: boolean) =>
     (request: vscode.TestRunRequest, token: vscode.CancellationToken): Thenable<void> =>
-      executeRun(controller, cli, workspaceRoot, getConfig, watcher, outputChannel, request, token, dryRun);
+      executeRun(controller, cli, workspaceRoot, getConfig, watcher, outputChannel, eventBus, request, token, dryRun);
 
   context.subscriptions.push(
     controller.createRunProfile("実行", vscode.TestRunProfileKind.Run, makeHandler(false), true),
@@ -121,6 +124,7 @@ async function executeRun(
   getConfig: () => FtesterConfig,
   watcher: ScenarioFileWatcher,
   outputChannel: vscode.OutputChannel,
+  eventBus: RunEventBus,
   request: vscode.TestRunRequest,
   token: vscode.CancellationToken,
   dryRun: boolean,
@@ -176,6 +180,8 @@ async function executeRun(
   const finished = new Set<string>();
   let sawEnd = false;
   let reducerState = createRunReducerState();
+  // workersReady(並列実行時のみ)で埋まる worker id → デバイス名。output のプレフィックスに使う。
+  const workerNames = new Map<string, string>();
 
   const toLocation = (location: RunLocation | undefined): vscode.Location | undefined => {
     if (!location) {
@@ -199,7 +205,8 @@ async function executeRun(
       }
       case "output": {
         const item = action.scenario ? targets.get(action.scenario) : undefined;
-        run.appendOutput(`${action.text}\r\n`, toLocation(action.location), item);
+        const prefix = action.worker ? `[${workerNames.get(action.worker) ?? action.worker}] ` : "";
+        run.appendOutput(`${prefix}${action.text}\r\n`, toLocation(action.location), item);
         break;
       }
       case "passed": {
@@ -226,6 +233,11 @@ async function executeRun(
       case "end":
         sawEnd = true;
         break;
+      case "workers":
+        for (const worker of action.workers) {
+          workerNames.set(worker.id, worker.name);
+        }
+        break;
     }
   };
 
@@ -233,10 +245,15 @@ async function executeRun(
     cli.cancelCurrent();
   });
 
+  const runId = eventBus.beginRun();
+
   try {
     const result = await cli.invoke(config.binaryPath, workspaceRoot, {
       args,
       onNdjsonValue: (value) => {
+        if (isRunEvent(value)) {
+          eventBus.publish(runId, value);
+        }
         const { state, actions } = reduceRunEvent(reducerState, value, Date.now());
         reducerState = state;
         for (const action of actions) {
@@ -262,6 +279,7 @@ async function executeRun(
     );
     markRemainingErrored(run, targets, finished, message);
   } finally {
+    eventBus.endRun(runId);
     cancelListener.dispose();
     watcher.setSuspended(false);
     run.end();
