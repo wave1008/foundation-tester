@@ -74,15 +74,25 @@ public struct FlowLocator: Codable, Equatable, Sendable {
     public var label: String?
     public var type: String?
     public var index: Int?
+    /// ScenarioEvent(サブプロセス発の NDJSON)から復元する際の生テキスト
+    /// (例: "フォールバック label=... で解決" / "自己修復: ...")。
+    /// サブプロセス境界を跨ぐと構造化ロケータ(id/label/type/index)は失われ、
+    /// 人間可読テキストしか残らないため、その場合はこのフィールドのみ設定し
+    /// summary でそのまま返す(RunOrchestrator.ScenarioRunner.stepResult(from:) 参照)。
+    /// 通常の(プロセス内で解決した)ロケータでは nil のまま
+    public var raw: String?
 
-    public init(id: String? = nil, label: String? = nil, type: String? = nil, index: Int? = nil) {
+    public init(id: String? = nil, label: String? = nil, type: String? = nil, index: Int? = nil,
+                raw: String? = nil) {
         self.id = id
         self.label = label
         self.type = type
         self.index = index
+        self.raw = raw
     }
 
     public var summary: String {
+        if let raw { return raw }
         if let id { return "id=\(id)" }
         if let label { return "label=\(label)" }
         // 表示は 1 オリジン、1番目は [1] を省略(セレクタ式の表記と揃える。内部 index は 0 オリジン)

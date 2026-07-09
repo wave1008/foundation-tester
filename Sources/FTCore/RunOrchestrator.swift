@@ -30,12 +30,18 @@ public struct RunWorker {
     public let platform: String           // "ios" / "android"
     public let driver: AppDriver          // ウォームアップ・接続確認用
     public let connection: DriverConnection  // サブプロセスへ渡す接続情報
+    /// 実行プロファイル上のデバイス論理名(profiles/machines/ の name)。
+    /// ProfileWorkerFactory 経由で構築されたワーカーのみ設定される(ftester api run の
+    /// workersReady イベントの id 構築に使う。--ports 等の非プロファイル経路では nil)
+    public let logicalName: String?
 
-    public init(label: String, platform: String, driver: AppDriver, connection: DriverConnection) {
+    public init(label: String, platform: String, driver: AppDriver, connection: DriverConnection,
+                logicalName: String? = nil) {
         self.label = label
         self.platform = platform
         self.driver = driver
         self.connection = connection
+        self.logicalName = logicalName
     }
 }
 
@@ -47,7 +53,11 @@ public enum RunEvent: Sendable {
     /// 接続不能などでワーカーが離脱した(他ワーカーが残キューを引き継ぐ)
     case workerFailed(worker: String, message: String)
     case flowStarted(worker: String, flowURL: URL, flowName: String, isDirty: Bool)
+    /// scene 開始(ScenarioEvent kind "sceneStarted" 相当)
+    case sceneStarted(worker: String, flowURL: URL, scene: Int, sceneTitle: String)
     case step(worker: String, flowURL: URL, result: StepResult)
+    /// scene 終了(ScenarioEvent kind "sceneFinished" 相当)。passed = その scene の合否
+    case sceneFinished(worker: String, flowURL: URL, scene: Int, sceneTitle: String, passed: Bool)
     /// デバッグ実行で一時停止した(index = 次に実行するステップ番号、file/line = その位置)
     case flowPaused(worker: String, flowURL: URL, index: Int, description: String,
                     file: String?, line: Int?)
@@ -261,6 +271,11 @@ public enum RunLogFormatter {
     public static func lines(for event: RunEvent) -> [String] {
         switch event {
         case .runStarted, .workerReady, .runFinished:
+            return []
+        case .sceneStarted, .sceneFinished:
+            // RunEvent拡張(並列実行のscene忠実度)の途上で追加されたケース。
+            // 生成側(ScenarioRunner.runOne)が未実装のため現状は発生しない。
+            // 表示対応はRunEvent拡張の完成時に行う(CLI表示互換を保つこと)
             return []
         case .workerFailed(let worker, let message):
             return ["❌ ワーカー \(worker) が離脱しました: \(message)"]

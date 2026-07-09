@@ -12,7 +12,8 @@ struct ApiCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "api",
         abstract: "VSCode拡張等の外部ツール向け機械可読 API(stdout に JSON を出力)",
-        subcommands: [ApiListScenarios.self, ApiSteps.self, ApiRunCommand.self])
+        subcommands: [ApiListScenarios.self, ApiSteps.self, ApiRunCommand.self,
+                      ApiMonitorCommand.self])
 }
 
 struct ApiListScenarios: AsyncParsableCommand {
