@@ -13,11 +13,20 @@ public enum ScenarioSourceEditError: Error, LocalizedError {
     case methodNotFound(String)
     case duplicate(String)
     case testAttributeNotFound(String)
+    case lineOutOfRange(Int)
+    case selectorNotFound(String)
+    case selectorAmbiguous(String)
+    case invalidCommand(String)
+    case commandNotFound(Int)
 
     public var errorDescription: String? {
         switch self {
         case .invalidName(let reason):
             return "名前が不正です: \(reason)"
+        case .invalidCommand(let reason):
+            return "コマンドが不正です: \(reason)"
+        case .commandNotFound(let line):
+            return "\(line) 行目にコマンドがありません(ソースが変更された可能性があります)"
         case .classNotFound(let name):
             return "class \(name) の宣言が見つかりません(再読込してください)"
         case .methodNotFound(let name):
@@ -26,6 +35,12 @@ public enum ScenarioSourceEditError: Error, LocalizedError {
             return "同名の宣言が既にあります: \(name)"
         case .testAttributeNotFound(let method):
             return "func \(method) の @Test 属性が見つかりません"
+        case .lineOutOfRange(let line):
+            return "行番号が範囲外です: \(line) 行目(ソースが変更された可能性があります)"
+        case .selectorNotFound(let selector):
+            return "セレクタが見つかりません(ソースが変更された可能性があります): \"\(selector)\""
+        case .selectorAmbiguous(let selector):
+            return "セレクタが同じ行に複数回出現するため、置換対象を一意に決定できません: \"\(selector)\""
         }
     }
 }
@@ -115,6 +130,137 @@ public enum ScenarioSourceEditor {
             .replacingOccurrences(of: "\"", with: "\\\"")
         let newAttr = title.isEmpty ? "\(indent)@Test" : "\(indent)@Test(\"\(escaped)\")"
         return source.replacingCharacters(in: attrRange, with: newAttr)
+    }
+
+    /// 指定行(1 起点)にあるクォート付きセレクタ文字列を書き換える(自己修復の確定反映用)。
+    /// 対象行に `"<oldSelector>"` がちょうど 1 回出現することを要求する(0 回 = ソース変更の
+    /// 可能性、2 回以上 = 曖昧で自動判定できない)。対象行以外・改行・インデントは完全保存する
+    public static func replaceSelector(inSource source: String, line: Int,
+                                       oldSelector: String, newSelector: String) throws -> String {
+        var lines = source.components(separatedBy: "\n")
+        guard line >= 1, line <= lines.count else {
+            throw ScenarioSourceEditError.lineOutOfRange(line)
+        }
+        let target = lines[line - 1]
+        let quotedOld = "\"\(oldSelector)\""
+        let occurrences = target.components(separatedBy: quotedOld).count - 1
+        if occurrences == 0 {
+            throw ScenarioSourceEditError.selectorNotFound(oldSelector)
+        }
+        if occurrences > 1 {
+            throw ScenarioSourceEditError.selectorAmbiguous(oldSelector)
+        }
+        lines[line - 1] = target.replacingOccurrences(of: quotedOld, with: "\"\(newSelector)\"")
+        return lines.joined(separator: "\n")
+    }
+
+    /// 指定行(1 起点)の行末コメント(// ...)を書き換える(自己修復の説明見直し用)。
+    /// コメントが有る行: comment 非空なら本文だけ差し替え(「//」前の空白と「//」直後の
+    /// スペーシングは元の形を保つ)、空(空白のみ含む)ならコメント前の空白ごと削除する。
+    /// コメントが無い行: comment 非空なら行末に「  // comment」を追記(スペース 2 個 =
+    /// 既存生成コードの慣習)、空なら何もしない(そのまま返す)。
+    /// 文字列リテラル内の // はコメントと誤認しない(ScenarioSourceComments と同じ認識)
+    public static func setTrailingComment(inSource source: String, line: Int,
+                                          comment: String) throws -> String {
+        if comment.contains("\n") || comment.contains("\r") {
+            throw ScenarioSourceEditError.invalidName("説明は 1 行で入力してください")
+        }
+        var lines = source.components(separatedBy: "\n")
+        guard line >= 1, line <= lines.count else {
+            throw ScenarioSourceEditError.lineOutOfRange(line)
+        }
+        let target = lines[line - 1]
+        let newComment = comment.trimmingCharacters(in: .whitespaces)
+
+        guard let commentStart = ScenarioSourceComments.trailingCommentStart(inLine: target) else {
+            // コメントの無い行: 追記(空なら no-op)
+            guard !newComment.isEmpty else { return source }
+            var end = target.endIndex
+            while end > target.startIndex {
+                let previous = target.index(before: end)
+                guard target[previous] == " " || target[previous] == "\t" else { break }
+                end = previous
+            }
+            lines[line - 1] = String(target[..<end]) + "  // " + newComment
+            return lines.joined(separator: "\n")
+        }
+
+        if newComment.isEmpty {
+            // コメント削除(コメント前の空白も除去して行末に余分な空白を残さない)
+            var end = commentStart
+            while end > target.startIndex {
+                let previous = target.index(before: end)
+                guard target[previous] == " " || target[previous] == "\t" else { break }
+                end = previous
+            }
+            lines[line - 1] = String(target[..<end])
+        } else {
+            // 「//」直後の空白は元の形のまま、本文以降を置換
+            var textStart = target.index(commentStart, offsetBy: 2)
+            while textStart < target.endIndex,
+                  target[textStart] == " " || target[textStart] == "\t" {
+                textStart = target.index(after: textStart)
+            }
+            lines[line - 1] = String(target[..<textStart]) + newComment
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    /// 指定行(1 起点)のコード部分(インデントと行末 // コメントを除いた部分)を取り出す
+    /// (ステップ表のコマンド編集のプリフィル用)。コードの無い行(空行・コメントのみ)はエラー
+    public static func commandCode(inSource source: String, line: Int) throws -> String {
+        let lines = source.components(separatedBy: "\n")
+        guard line >= 1, line <= lines.count else {
+            throw ScenarioSourceEditError.lineOutOfRange(line)
+        }
+        let target = lines[line - 1]
+        let codeEnd = ScenarioSourceComments.trailingCommentStart(inLine: target)
+            ?? target.endIndex
+        let code = target[..<codeEnd].trimmingCharacters(in: .whitespaces)
+        guard !code.isEmpty else {
+            throw ScenarioSourceEditError.commandNotFound(line)
+        }
+        return code
+    }
+
+    /// 指定行(1 起点)のコード部分を書き換える(ステップ表のコマンド編集の確定反映用)。
+    /// インデント・「//」前の空白・行末コメントは元の形を保つ。
+    /// code は 1 行・非空・// コメントを含まないこと(説明列の対応関係を壊さないため)
+    public static func setCommandCode(inSource source: String, line: Int,
+                                      code: String) throws -> String {
+        if code.contains("\n") || code.contains("\r") {
+            throw ScenarioSourceEditError.invalidCommand("コマンドは 1 行で入力してください")
+        }
+        let newCode = code.trimmingCharacters(in: .whitespaces)
+        if newCode.isEmpty {
+            throw ScenarioSourceEditError.invalidCommand("コマンドを入力してください")
+        }
+        if ScenarioSourceComments.trailingCommentStart(inLine: newCode) != nil {
+            throw ScenarioSourceEditError.invalidCommand(
+                "// コメントは含められません(説明は説明列のソースコメントで編集してください)")
+        }
+        var lines = source.components(separatedBy: "\n")
+        guard line >= 1, line <= lines.count else {
+            throw ScenarioSourceEditError.lineOutOfRange(line)
+        }
+        let target = lines[line - 1]
+        let codeEnd = ScenarioSourceComments.trailingCommentStart(inLine: target)
+            ?? target.endIndex
+        let codePart = target[..<codeEnd]
+        let indentEnd = codePart.firstIndex { $0 != " " && $0 != "\t" } ?? codePart.endIndex
+        guard indentEnd < codePart.endIndex else {
+            throw ScenarioSourceEditError.commandNotFound(line)
+        }
+        // コード末尾〜コメント間の空白は元の形のまま残す
+        var trailingStart = codePart.endIndex
+        while trailingStart > indentEnd {
+            let previous = target.index(before: trailingStart)
+            guard target[previous] == " " || target[previous] == "\t" else { break }
+            trailingStart = previous
+        }
+        lines[line - 1] = String(target[..<indentEnd]) + newCode
+            + String(target[trailingStart...])
+        return lines.joined(separator: "\n")
     }
 
     // MARK: - 内部

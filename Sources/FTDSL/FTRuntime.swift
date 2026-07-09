@@ -232,12 +232,15 @@ public final class FTDriveCore {
                     }
                 }
                 let via = outcome.healedByCache ? "ヒールキャッシュで通過" : "FM 自己修復で通過"
+                let resolvedNewSelector = cachedEntry?.newSelector ?? newSelector
                 addSuggestion(FixSuggestion(
                     isStrong: true,
                     message: "\(filePath):\(line) — セレクタ \"\(selectorText)\" を "
-                        + "\"\(cachedEntry?.newSelector ?? newSelector)\" に変更してください"
+                        + "\"\(resolvedNewSelector)\" に変更してください"
                         + "(\(via)。理由: \(rationale))"),
-                    emitEvent: true, file: filePath, line: Int(line))
+                    emitEvent: true, description: description,
+                    file: filePath, line: Int(line),
+                    oldSelector: selectorText, newSelector: resolvedNewSelector)
             } else if case .passedViaFallback(let locator) = status {
                 // 弱い提案(フォールバックは設計上の通常経路なのでレポートのみ)
                 addSuggestion(FixSuggestion(
@@ -255,15 +258,21 @@ public final class FTDriveCore {
     }
 
     private func addSuggestion(_ suggestion: FixSuggestion, emitEvent: Bool,
-                               file: String, line: Int) {
+                               description: String? = nil,
+                               file: String, line: Int,
+                               oldSelector: String? = nil, newSelector: String? = nil) {
         record.fixSuggestions.append(suggestion)
         guard emitEvent else { return }
         var event = ScenarioEvent(kind: "fixSuggestion")
         event.scenario = scenarioID
         event.scene = record.scenes.last?.number
+        // 対象コマンドの description(例: tap "旧セレクタ")。GUI の説明提案の生成に使う
+        event.description = description
         event.detail = suggestion.message
         event.file = file
         event.line = line
+        event.oldSelector = oldSelector
+        event.newSelector = newSelector
         emit(event)
     }
 

@@ -65,13 +65,15 @@ public enum ScenarioCodeGen {
         return lines.joined(separator: "\n")
     }
 
-    /// FlowStep 1 つを DSL コマンド行(+note コメント)に変換する
+    /// FlowStep 1 つを DSL コマンド行(+行末コメント)に変換する。
+    /// コメントは自然言語の生成文(StepDescription)を優先し、
+    /// 生成できないステップは FM の意図メモ(note)へフォールバックする
     static func render(step: FlowStep, indent: String) -> [String] {
         guard var line = command(for: step) else {
             return [indent + "// (未対応ステップ: \(step.summary))"]
         }
-        if let note = step.note, !note.isEmpty {
-            line += "  // \(note.replacingOccurrences(of: "\n", with: " "))"
+        if let comment = StepDescription.describe(step: step) ?? step.note, !comment.isEmpty {
+            line += "  // \(comment.replacingOccurrences(of: "\n", with: " "))"
         }
         return [indent + line]
     }

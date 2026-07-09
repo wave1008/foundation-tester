@@ -53,6 +53,11 @@ public enum RunEvent: Sendable {
                     file: String?, line: Int?)
     /// 自己修復したロケータでフローを上書き保存した(YAML 時代の互換。シナリオでは未使用)
     case flowHealed(worker: String, flowURL: URL)
+    /// 自己修復の構造化提案(GUI の確認シート用)。ログ表示は既存の .step 側で行う。
+    /// command = 対象コマンドの description(例: tap "旧セレクタ"。説明提案の生成に使う)
+    case fixSuggestion(worker: String, flowURL: URL, scenarioID: String,
+                       command: String?, file: String?, line: Int?,
+                       oldSelector: String?, newSelector: String?, message: String)
     case flowFinished(worker: String, flowURL: URL, passed: Bool,
                       triage: TriageInfo?, reportURL: URL?)
     /// 担当ワーカー不在などで実行できなかった(失敗として数える)
@@ -109,6 +114,13 @@ public enum ScenarioRunner {
                               result: StepResult(index: event.index ?? 0,
                                                  description: "💡 修正提案: \(event.detail ?? "")",
                                                  status: .passed)))
+                onEvent(.fixSuggestion(worker: worker.label, flowURL: item.url,
+                                       scenarioID: event.scenario ?? item.info.id,
+                                       command: event.description,
+                                       file: event.file, line: event.line,
+                                       oldSelector: event.oldSelector,
+                                       newSelector: event.newSelector,
+                                       message: event.detail ?? ""))
             case "scenarioFinished":
                 reportURL = event.reportPath.map { URL(fileURLWithPath: $0) }
             case "log":
@@ -262,6 +274,8 @@ public enum RunLogFormatter {
             return ["  ⏸ \(index). \(description) の手前で一時停止中"]
         case .flowHealed:
             return ["  🔧 修復したロケータでフローを更新しました(dirty: true — 要レビュー)"]
+        case .fixSuggestion:
+            return []
         case .flowFinished(_, _, let passed, let triage, let reportURL):
             var lines: [String] = []
             if passed {
