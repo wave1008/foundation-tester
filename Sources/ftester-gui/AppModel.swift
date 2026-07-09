@@ -532,7 +532,16 @@ final class AppModel {
         let command: String
         /// ソース行末の // コメント(無ければ nil)
         let comment: String?
+        /// コマンド呼び出し元のソース位置(ブレークポイントのキー。dry-run イベント由来)
+        let file: String?
+        let line: Int?
         var id: Int { index }
+
+        /// ブレークポイントの識別子("<file>:<line>"。ランナーへそのまま渡す)
+        var breakpointKey: String? {
+            guard let file, let line else { return nil }
+            return "\(file):\(line)"
+        }
 
         /// 区分の表示名(condition=条件 / action=操作 / expectation=確認)
         var sectionLabel: String {
@@ -625,6 +634,20 @@ final class AppModel {
     private var stepLoadTasks: [String: Task<StepLoadResult, Never>] = [:]
     /// シナリオ一覧の世代。refreshScenarios 完了毎に +1(ステップ表の再取得トリガ)
     private(set) var scenarioListGeneration = 0
+
+    // MARK: - デバッグ実行(ブレークポイント・ステップ実行)
+
+    /// シナリオ ID → ブレークポイント("<file>:<line>")。ステップ表の行頭クリックで設定・解除
+    var scenarioBreakpoints: [String: Set<String>] = [:]
+    /// デバッグ実行中のランナーへの制御チャネル(nil = デバッグ実行なし)
+    private var debugControl: ScenarioRunControl?
+    /// デバッグ実行中のシナリオ ID(実行終了で nil)
+    private(set) var debugScenarioID: String?
+    /// 一時停止中か(paused イベントで true、再開・停止ボタンで false)
+    private(set) var debugPaused = false
+    /// 一時停止中の「次に実行するステップ」(ステップ表のハイライトと表示用)
+    private(set) var debugPausedIndex: Int?
+    private(set) var debugPausedDescription: String?
 
     /// 「削除済みを非表示にする」: ON なら @Deleted のシナリオをペインから隠す(UserDefaults 永続化)
     var hideDeleted: Bool {
@@ -879,8 +902,74 @@ final class AppModel {
         // 世代更新で .task(id:) が再実行されるため、この戻り値はすぐ上書きされる
         if generation == scenarioListGeneration, case .steps(let rows) = result {
             stepRowsCache[id] = rows
+            // ソース変更で行番号がずれた古いブレークポイントを掃除
+            // (現在のステップ表のどの行にも一致しないものは残さない)
+            if let breakpoints = scenarioBreakpoints[id] {
+                let valid = breakpoints.intersection(rows.compactMap(\.breakpointKey))
+                if valid != breakpoints { scenarioBreakpoints[id] = valid }
+            }
         }
         return result
+    }
+
+    // MARK: - デバッグ実行の操作(ブレークポイント・ステップ実行ボタン)
+
+    /// ステップ表の行頭クリック: ブレークポイントの設定・解除。
+    /// デバッグ実行中のシナリオならランナーへも即時反映する
+    func toggleBreakpoint(scenarioID: String, row: ScenarioStepRow) {
+        guard let key = row.breakpointKey else { return }
+        var set = scenarioBreakpoints[scenarioID] ?? []
+        if set.remove(key) == nil { set.insert(key) }
+        scenarioBreakpoints[scenarioID] = set
+        if debugScenarioID == scenarioID {
+            debugControl?.setBreakpoints(Array(set))
+        }
+    }
+
+    func hasBreakpoint(scenarioID: String, row: ScenarioStepRow) -> Bool {
+        guard let key = row.breakpointKey else { return false }
+        return scenarioBreakpoints[scenarioID]?.contains(key) ?? false
+    }
+
+    /// ステップ実行: 最初のステップの手前で一時停止して開始する(単一選択時のみ)
+    func runSelectedStepwise() async {
+        guard selectedEntries.count == 1 else { return }
+        await runScenarios(selectedEntries, stepwise: true)
+    }
+
+    /// 続行: 次のブレークポイント(なければ最後)まで実行する
+    func debugContinue() {
+        clearPausedMarker()
+        debugControl?.continueRun()
+    }
+
+    /// ステップ: 1 ステップ実行して次のステップの手前で再停止する
+    func debugStepOver() {
+        clearPausedMarker()
+        debugControl?.stepOver()
+    }
+
+    /// 一時停止: 実行中のシナリオを次のステップの手前で停止させる
+    func debugPauseRequest() {
+        debugControl?.pause()
+    }
+
+    /// 停止: シナリオを中断する(残りのステップは skipped、レポートは書かれる)
+    func debugStop() {
+        clearPausedMarker()
+        debugControl?.stop()
+    }
+
+    private func clearPausedMarker() {
+        debugPaused = false
+        debugPausedIndex = nil
+        debugPausedDescription = nil
+    }
+
+    private func endDebugSession() {
+        debugControl = nil
+        debugScenarioID = nil
+        clearPausedMarker()
     }
 
     /// dry-run のイベント列をステップ表の行に変換する。
@@ -919,7 +1008,9 @@ final class AppModel {
                 command: step.description ?? "",
                 comment: step.file.flatMap { file in
                     step.line.flatMap { commentsByFile[file]?[$0] }
-                })
+                },
+                file: step.file,
+                line: step.line)
         }
     }
 
@@ -962,6 +1053,7 @@ final class AppModel {
     /// シナリオ実行の終了処理。実行中に保留した外部変更があればここで同期する
     private func endRunningFlow() {
         runningFlow = false
+        endDebugSession()
         if pendingScenarioSync {
             pendingScenarioSync = false
             watchLog("実行終了 → 保留していた外部変更を確認")
@@ -1193,7 +1285,9 @@ final class AppModel {
     /// シナリオ群を実行する。iOS はブリッジ毎、Android はデバイス毎のワーカーで並列消化する
     /// (CLI の run --ports と同じオーケストレータ。実行の実体はサブプロセス)。
     /// 実行プロファイル選択時はデバイス供給(ブリッジ起動)・自動インストール込みで実行する。
-    func runScenarios(_ entries: [ScenarioEntry]) async {
+    /// 単一シナリオで stepwise またはブレークポイントありならデバッグ実行になる
+    /// (一時停止・続行・ステップ・停止はフローペインのボタンで操作)
+    func runScenarios(_ entries: [ScenarioEntry], stepwise: Bool = false) async {
         guard !runningFlow, !entries.isEmpty else { return }
         guard let project = try? currentProject() else {
             lanes = [WorkerLane(id: "system", title: "⚠️ プロジェクト未選択",
@@ -1211,10 +1305,27 @@ final class AppModel {
             return
         }
 
+        // デバッグ実行は単一シナリオのみ(並列実行との一時停止の混線を避ける)
+        var debugOptions: ScenarioDebugOptions?
+        if entries.count == 1 {
+            let id = entries[0].info.id
+            let breakpoints = scenarioBreakpoints[id] ?? []
+            if stepwise || !breakpoints.isEmpty {
+                debugScenarioID = id
+                debugOptions = ScenarioDebugOptions(
+                    breakpoints: Array(breakpoints),
+                    pauseOnStart: stepwise
+                ) { [weak self] control in
+                    Task { @MainActor in self?.debugControl = control }
+                }
+            }
+        }
+
         // プロファイル実行(デバイス供給 → インストール → 両OS同時並列)
         if let profileName = selectedRunProfile {
             await runScenariosWithProfile(profileName, project: project,
-                                          items: entries.map { ScenarioRunItem(info: $0.info) })
+                                          items: entries.map { ScenarioRunItem(info: $0.info) },
+                                          debug: debugOptions)
             endRunningFlow()
             return
         }
@@ -1257,7 +1368,8 @@ final class AppModel {
 
         let orchestrator = RunOrchestrator(project: project, workers: workers,
                                            healingEnabled: heal,
-                                           reportDir: project.reportsDir)
+                                           reportDir: project.reportsDir,
+                                           debug: debugOptions)
         // イベントは MainActor 上で順に消費する(レーン追記とシナリオ状態の更新)
         let consumer = Task { @MainActor [weak self] in
             for await event in orchestrator.events {
@@ -1272,7 +1384,8 @@ final class AppModel {
     /// 実行プロファイルによる実行: 解決 → ワーカー構築(iOS ブリッジ供給 / Android 照合)→
     /// 自動インストール → 両OS同時並列実行。供給ログは system レーンに流す
     private func runScenariosWithProfile(_ profileName: String, project: TestProject,
-                                         items: [ScenarioRunItem]) async {
+                                         items: [ScenarioRunItem],
+                                         debug: ScenarioDebugOptions? = nil) async {
         lanes = [WorkerLane(id: "system", title: "🧩 プロファイル: \(profileName)")]
         let sink: @Sendable (String) -> Void = { [weak self] line in
             Task { @MainActor in self?.appendLane("system", [line]) }
@@ -1306,7 +1419,8 @@ final class AppModel {
             let orchestrator = RunOrchestrator(
                 project: project, workers: workers,
                 healingEnabled: heal || resolved.heal,
-                reportDir: resolved.reportDir, defaultTimeout: resolved.defaultTimeout)
+                reportDir: resolved.reportDir, defaultTimeout: resolved.defaultTimeout,
+                debug: debug)
             let consumer = Task { @MainActor [weak self] in
                 for await event in orchestrator.events {
                     self?.handle(event)
@@ -1335,6 +1449,11 @@ final class AppModel {
             setLaneRunning(worker, true)
             appendLane(worker, lines)
         case .step(let worker, _, _):
+            appendLane(worker, lines)
+        case .flowPaused(let worker, _, let index, let description, _, _):
+            debugPaused = true
+            debugPausedIndex = index
+            debugPausedDescription = description
             appendLane(worker, lines)
         case .flowHealed(let worker, _):
             appendLane(worker, lines)
