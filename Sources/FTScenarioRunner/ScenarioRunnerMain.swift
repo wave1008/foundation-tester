@@ -112,7 +112,23 @@ struct RunScenario: AsyncParsableCommand {
           help: "デバイスに触れず全コマンドを記録のみで通過させる(ステップ列挙・レビュー用)")
     var dryRun = false
 
+    @Flag(help: "stdin から一時停止・再開の制御コマンド(NDJSON)を受け付ける(デバッグ実行用)")
+    var debug = false
+
+    @Option(name: .customLong("breakpoint"),
+            help: "ブレークポイント(<file>:<line>。--debug 時のみ有効、複数指定可)")
+    var breakpoint: [String] = []
+
+    @Flag(name: .customLong("pause-on-start"),
+          help: "最初のステップの手前で一時停止して開始する(--debug 時のみ有効)")
+    var pauseOnStart = false
+
     func run() async throws {
+        if debug {
+            // paused イベントがパイプのバッファに滞留するとホストと相互待ちで
+            // デッドロックするため、stdout を行バッファにする(パイプ既定は全バッファ)
+            setvbuf(stdout, nil, _IOLBF, 0)
+        }
         guard let (testClass, descriptor) = ScenarioDiscovery.find(id: scenario) else {
             let available = ScenarioDiscovery.allTestClasses()
                 .flatMap { c in c.scenarios.map { "\(c.className).\($0.name)" } }
@@ -164,6 +180,21 @@ struct RunScenario: AsyncParsableCommand {
                                healCacheURL: healCacheURL, defaultTimeout: defaultTimeout,
                                emit: emit)
 
+        if debug {
+            let control = ScenarioDebugControl(breakpoints: breakpoint,
+                                               pauseOnStart: pauseOnStart)
+            core.debugControl = control
+            // stdin の制御コマンドは専用スレッドで読む(DSL スレッドは停止中ブロックする)。
+            // EOF(ホスト終了)で読み終わり、プロセス終了とともに消える
+            let reader = Thread {
+                while let line = readLine(strippingNewline: true) {
+                    control.apply(line: line)
+                }
+            }
+            reader.name = "ftester-debug-control"
+            reader.start()
+        }
+
         // シナリオ本体は専用スレッドで同期実行(協調スレッドプールを塞がない)
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             let thread = Thread {
@@ -181,13 +212,15 @@ struct RunScenario: AsyncParsableCommand {
         let reportURL = try? ScenarioReportWriter.write(
             record: record, to: URL(fileURLWithPath: reportDir))
 
+        // デバッグの stop で中断した場合は成功扱いにしない(確認まで到達していない)
+        let passed = record.passed && !core.stoppedByUser
         var finished = ScenarioEvent(kind: "scenarioFinished")
         finished.scenario = scenarioID
-        finished.passed = record.passed
+        finished.passed = passed
         finished.reportPath = reportURL?.path
         emit(finished)
 
-        if !record.passed {
+        if !passed {
             throw ExitCode(1)
         }
     }

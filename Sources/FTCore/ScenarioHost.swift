@@ -97,20 +97,30 @@ public enum ScenarioHost {
         }
     }
 
-    /// ランナー実行ファイルの場所: 自 executable と同ディレクトリ → swift build --show-bin-path
+    /// ランナー実行ファイルの場所: 自 executable と同ディレクトリ → .build/debug →
+    /// swift build --show-bin-path。
+    /// .build/debug の直接参照は swift build の子プロセス起動を省く近道であると同時に、
+    /// swift test 実行中(SPM のビルドロック保持中)に swift build がブロックして
+    /// デッドロックするのを避けるため(XCTest からも ScenarioHost.run を使えるように)
     public static func runnerURL(project: TestProject) throws -> URL {
         if let sibling = Bundle.main.executableURL?
             .deletingLastPathComponent().appendingPathComponent(project.productName),
            FileManager.default.isExecutableFile(atPath: sibling.path) {
             return sibling
         }
-        if let root = packageRoot(),
-           let result = try? Shell.run(["swift", "build", "--show-bin-path"], cwd: root),
-           result.status == 0 {
-            let binPath = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
-                .split(separator: "\n").last.map(String.init) ?? ""
-            let url = URL(fileURLWithPath: binPath).appendingPathComponent(project.productName)
-            if FileManager.default.isExecutableFile(atPath: url.path) { return url }
+        if let root = packageRoot() {
+            let debugBinary = root.appendingPathComponent(".build/debug")
+                .appendingPathComponent(project.productName)
+            if FileManager.default.isExecutableFile(atPath: debugBinary.path) {
+                return debugBinary
+            }
+            if let result = try? Shell.run(["swift", "build", "--show-bin-path"], cwd: root),
+               result.status == 0 {
+                let binPath = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
+                    .split(separator: "\n").last.map(String.init) ?? ""
+                let url = URL(fileURLWithPath: binPath).appendingPathComponent(project.productName)
+                if FileManager.default.isExecutableFile(atPath: url.path) { return url }
+            }
         }
         throw ScenarioHostError.runnerNotFound(product: project.productName)
     }
@@ -132,12 +142,15 @@ public enum ScenarioHost {
         return try JSONDecoder().decode(ListResponse.self, from: data).scenarios
     }
 
-    /// シナリオを 1 つ実行し、NDJSON イベントを onEvent へ流す。戻り値: passed
+    /// シナリオを 1 つ実行し、NDJSON イベントを onEvent へ流す。戻り値: passed。
+    /// debug 指定時はランナーを制御チャネル付き(--debug)で起動し、
+    /// 起動直後に onControl で続行・ステップ・停止の送り口を渡す
     @discardableResult
     public static func run(project: TestProject, scenarioID: String,
                            connection: DriverConnection,
                            heal: Bool, reportDir: String, defaultTimeout: Int? = nil,
                            dryRun: Bool = false,
+                           debug: ScenarioDebugOptions? = nil,
                            onEvent: @escaping (ScenarioEvent) -> Void) async -> Bool {
         let runner: URL
         do {
@@ -158,12 +171,23 @@ public enum ScenarioHost {
         if let port = connection.port { args += ["--port", String(port)] }
         if let serial = connection.serial { args += ["--serial", serial] }
         if let defaultTimeout { args += ["--default-timeout", String(defaultTimeout)] }
+        if let debug {
+            args.append("--debug")
+            if debug.pauseOnStart { args.append("--pause-on-start") }
+            for location in debug.breakpoints { args += ["--breakpoint", location] }
+        }
         process.arguments = args
 
         let stdout = Pipe()
         let stderr = Pipe()
         process.standardOutput = stdout
         process.standardError = stderr
+        var stdinPipe: Pipe?
+        if debug != nil {
+            let pipe = Pipe()
+            process.standardInput = pipe
+            stdinPipe = pipe
+        }
 
         do {
             try process.run()
@@ -171,35 +195,37 @@ public enum ScenarioHost {
             onEvent(.log("❌ ランナーを起動できません: \(error.localizedDescription)"))
             return false
         }
+        if let debug, let stdinPipe {
+            debug.onControl(ScenarioRunControl(handle: stdinPipe.fileHandleForWriting))
+        }
 
         // stderr は並行して読む(パイプ詰まりによるサブプロセスのブロック防止)
         let stderrTask = Task.detached { () -> [String] in
             var lines: [String] = []
-            for try await line in stderr.fileHandleForReading.bytes.lines {
+            for await line in lineStream(stderr.fileHandleForReading) {
                 lines.append(line)
             }
             return lines
         }
 
+        // 注意: FileHandle.bytes.lines は使わない。パイプではプロセス終了(EOF)まで
+        // 行がまとめて届くことがあり、一時停止中の paused イベントがホストへ届かず
+        // デバッグ実行が相互待ちになる(ScenarioHostDebugTests で回帰検知)
         var passed: Bool?
-        do {
-            for try await line in stdout.fileHandleForReading.bytes.lines {
-                if let event = ScenarioEvent.decode(line: line) {
-                    if event.kind == "scenarioFinished" { passed = event.passed }
-                    onEvent(event)
-                } else if !line.isEmpty {
-                    // ユーザーコードの print 等、JSON でない行はログとして取り込む
-                    onEvent(.log(line))
-                }
+        for await line in lineStream(stdout.fileHandleForReading) {
+            if let event = ScenarioEvent.decode(line: line) {
+                if event.kind == "scenarioFinished" { passed = event.passed }
+                onEvent(event)
+            } else if !line.isEmpty {
+                // ユーザーコードの print 等、JSON でない行はログとして取り込む
+                onEvent(.log(line))
             }
-        } catch {
-            onEvent(.log("⚠️ 出力の読み取りエラー: \(error.localizedDescription)"))
         }
 
         process.waitUntilExit()
-        if let errLines = try? await stderrTask.value, !errLines.isEmpty {
-            for line in errLines where !line.isEmpty { onEvent(.log("⚠️ \(line)")) }
-        }
+        try? stdinPipe?.fileHandleForWriting.close()
+        let errLines = await stderrTask.value
+        for line in errLines where !line.isEmpty { onEvent(.log("⚠️ \(line)")) }
         // scenarioFinished が来なかった場合(クラッシュ等)は exit code で判定
         return passed ?? (process.terminationStatus == 0)
     }
@@ -224,6 +250,38 @@ public enum ScenarioHost {
             throw ScenarioHostError.dryRunFailed(detail.isEmpty ? "dry-run が失敗しました" : detail)
         }
         return events
+    }
+
+    /// FileHandle を行単位の AsyncStream にする。readabilityHandler ベースで
+    /// データ到着ごとに行を切り出して即時配信する(改行が来るまでの端数はバッファ)。
+    /// EOF(空 Data)で残りを流して終了する
+    static func lineStream(_ handle: FileHandle) -> AsyncStream<String> {
+        AsyncStream { continuation in
+            // readabilityHandler は FileHandle 内部のキューで直列に呼ばれる
+            var buffer = Data()
+            handle.readabilityHandler = { handle in
+                let chunk = handle.availableData
+                if chunk.isEmpty {  // EOF
+                    handle.readabilityHandler = nil
+                    if !buffer.isEmpty {
+                        continuation.yield(String(decoding: buffer, as: UTF8.self))
+                        buffer.removeAll()
+                    }
+                    continuation.finish()
+                    return
+                }
+                buffer.append(chunk)
+                while let newline = buffer.firstIndex(of: UInt8(ascii: "\n")) {
+                    let line = String(decoding: buffer[buffer.startIndex..<newline],
+                                      as: UTF8.self)
+                    buffer.removeSubrange(buffer.startIndex...newline)
+                    continuation.yield(line)
+                }
+            }
+            continuation.onTermination = { _ in
+                handle.readabilityHandler = nil
+            }
+        }
     }
 
     /// カレントディレクトリから上に辿って Package.swift を持つディレクトリを探す
@@ -281,6 +339,8 @@ public enum ScenarioLogFormatter {
             return []
         case "fixSuggestion":
             return ["    💡 修正提案: \(event.detail ?? "")"]
+        case "paused":
+            return ["    ⏸ \(event.index ?? 0). \(event.description ?? "") の手前で一時停止中"]
         case "scenarioFinished":
             var lines = [event.passed == true ? "  → ✅ 成功" : "  → ❌ 失敗"]
             if let report = event.reportPath { lines.append("  → レポート: \(report)") }
