@@ -1,7 +1,7 @@
 // BridgeProvisioner.swift
 // 実行プロファイルの iOS デバイス指定 → 稼働ブリッジの照合・不足分の起動。
 // 稼働中ブリッジのスキャン(/status)と .ftester/bridge-<port>.pid を唯一の状態源として、
-// GUI のブリッジ管理と競合しないポート割当を行う。
+// 同時に動く他プロセスのブリッジ管理と競合しないポート割当を行う。
 
 import Foundation
 import FTCore

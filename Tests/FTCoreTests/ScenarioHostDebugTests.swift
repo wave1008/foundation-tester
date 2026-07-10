@@ -3,7 +3,7 @@
 // 実際に ftester-scenarios-SampleApp サブプロセスを dry-run で起動し、
 // 「paused イベントがプロセス存命中に届く」ことを検証する
 // (FileHandle.bytes.lines はパイプで EOF まで行を溜めることがあり、
-//  一時停止イベントが届かず GUI と相互待ちになる回帰を防ぐ)。
+//  一時停止イベントが届かず呼び出し側と相互待ちになる回帰を防ぐ)。
 
 import XCTest
 @testable import FTCore

@@ -1,7 +1,7 @@
 // ApiApplyHealCommand.swift
 // VSCode拡張向け: 自己修復の修復候補を stdin から受け取り、ソースへ確定反映する
-// (ftester api apply-heal)。ftester-gui/AppModel.applyHealFixes / removeFromHealCache と
-// 同じロジック(FTCore.HealFixApplier に切り出し済み)を使う。
+// (ftester api apply-heal)。確定反映のロジックは FTCore.HealFixApplier に切り出し済みで、
+// このコマンドは stdin/stdout の橋渡しとヒールキャッシュ更新のみを担う。
 // stdout には結果 1 行の JSON だけを出す(診断は stderr のみ。ApiCommands.swift と同じ流儀)。
 
 import ArgumentParser
@@ -79,7 +79,7 @@ struct ApiApplyHeal: AsyncParsableCommand {
     }
 
     /// 反映済みの fix をヒールキャッシュ(.ftester/heal-cache.json)からも削除する。
-    /// ファイル・キーが無ければ黙ってスキップ(GUI の AppModel.removeFromHealCache と同方針)
+    /// ファイル・キーが無ければ黙ってスキップする(取りこぼしがあっても後続の反映を妨げない方針)
     private func removeFromHealCache(_ ids: [String], project: TestProject) {
         let cacheURL = project.stateDir.appendingPathComponent("heal-cache.json")
         guard let data = try? Data(contentsOf: cacheURL),

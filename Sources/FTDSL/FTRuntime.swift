@@ -266,7 +266,7 @@ public final class FTDriveCore {
         var event = ScenarioEvent(kind: "fixSuggestion")
         event.scenario = scenarioID
         event.scene = record.scenes.last?.number
-        // 対象コマンドの description(例: tap "旧セレクタ")。GUI の説明提案の生成に使う
+        // 対象コマンドの description(例: tap "旧セレクタ")。修復候補の説明生成に使う
         event.description = description
         event.detail = suggestion.message
         event.file = file

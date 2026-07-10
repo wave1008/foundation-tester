@@ -112,7 +112,7 @@ final class ScenarioFoldersTests: XCTestCase {
         let afterMove = ScenarioFolders.directorySignature(scenariosDir: scenariosDir)
         XCTAssertNotEqual(afterMove, base)
 
-        // 空フォルダの作成でも変わる(GUI にフォルダとして出るため)
+        // 空フォルダの作成でも変わる(シナリオ一覧にフォルダとして出るため)
         try FileManager.default.createDirectory(
             at: scenariosDir.appendingPathComponent("新規"), withIntermediateDirectories: true)
         XCTAssertNotEqual(ScenarioFolders.directorySignature(scenariosDir: scenariosDir),

@@ -39,18 +39,6 @@ let package = Package(
             dependencies: ["FTCore", "FTBridgeClient"],
             swiftSettings: swift5Mode
         ),
-        // GUI(SwiftUI macOS アプリ)。シナリオ実行とライブ操作
-        .executableTarget(
-            name: "ftester-gui",
-            dependencies: [
-                "FTCore",
-                "FTBridgeClient",
-                "FTAgent",
-                "FTAndroid",
-                "FTDSL",
-            ],
-            swiftSettings: swift5Mode
-        ),
         // MCP サーバ(stdio)。Claude Code 等のエージェントからブリッジ操作・フロー実行を使えるようにする
         .executableTarget(
             name: "ftester-mcp",

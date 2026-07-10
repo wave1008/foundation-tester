@@ -2,7 +2,7 @@
 // マシンプロファイルに定義されたデバイス群の起動・停止 CLI。
 //   ftester devices up   … 段階的起動(負荷ゲート付き・起動済みスキップ・iOS はブリッジ供給まで)
 //   ftester devices down … 全ブリッジ停止+シミュレータ/エミュレータ全終了
-// GUI の「デバイスを全て起動 / 終了」と同じ実装(DeviceBooter / BridgeProvisioner)を使う。
+// DeviceBooter / BridgeProvisioner を直接使う(ftester api device-up/device-down と共通の実装)。
 
 import ArgumentParser
 import Foundation

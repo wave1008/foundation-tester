@@ -1,6 +1,6 @@
 // ScenarioHost.swift
 // ftester-scenarios(シナリオランナー)をサブプロセスとして起動するホスト側クライアント。
-// CLI / GUI / MCP はこれを通してシナリオの一覧取得・実行を行う。
+// CLI / MCP はこれを通してシナリオの一覧取得・実行を行う。
 // サブプロセス方式の利点: シナリオのコンパイルエラー/クラッシュがホストを巻き添えにしない、
 // ホスト常駐中も再ビルドだけで反映、1シナリオ1プロセスの分離。
 
@@ -231,7 +231,7 @@ public enum ScenarioHost {
     }
 
     /// シナリオを dry-run(No-Load-Run)してイベント列を収集する。デバイス不要・FM 不使用で
-    /// 全コマンドが step イベントとして列挙される(GUI のステップ表示用)。
+    /// 全コマンドが step イベントとして列挙される(ステップ一覧表示用)。
     /// dry-run でもランナーはレポートを書くため、一時ディレクトリに書かせて後始末する
     public static func dryRunSteps(project: TestProject,
                                    scenarioID: String) async throws -> [ScenarioEvent] {

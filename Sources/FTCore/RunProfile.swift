@@ -4,7 +4,7 @@
 //   machines/<マシン名>.json … マシンプロファイル(ios/android セクションに name 付きデバイス)
 //   runs/<name>.json     … 実行プロファイル(app 参照+デバイス name リスト+実行時設定)
 // ProfileResolver が 3 つを合成して ResolvedProfile(検証済み)を作る。
-// 実行コード(CLI/GUI/MCP)は ResolvedProfile のみを参照する。
+// 実行コード(CLI/MCP)は ResolvedProfile のみを参照する。
 
 import Foundation
 
@@ -12,7 +12,7 @@ import Foundation
 
 /// アプリケーションプロファイルの 1 セクション。common → ios/android の順で後勝ちマージされる
 public struct AppProfileSection: Codable, Sendable, Equatable {
-    /// ユーザーがアプリを識別するための表示名(レポート/GUI/ログで使用)
+    /// ユーザーがアプリを識別するための表示名(レポート/ログで使用)
     public var appName: String?
     /// bundle identifier / パッケージ名
     public var app: String?
@@ -418,7 +418,7 @@ public enum ProfileResolver {
         return base.appendingPathComponent(expanded).standardizedFileURL.path
     }
 
-    // MARK: - 単一ファイル検証(GUI エディタ用)
+    // MARK: - 単一ファイル検証(プロファイルエディタ用)
 
     /// プロファイルファイル 1 つの検証。戻り値: (エラー, 警告)。
     /// エラー = デコード不能・必須欠落・name 重複、警告 = 未知キー(タイポ検出)

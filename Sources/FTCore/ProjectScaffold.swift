@@ -18,7 +18,7 @@ public enum ProjectScaffoldError: Error, LocalizedError {
 public enum ProjectScaffold {
 
     /// 名前検証 → 雛形生成 → Package.swift マーカー区間更新までを一括で行う
-    /// (CLI の project create と GUI の新規プロジェクト作成が共用する)
+    /// (ftester project create から使う)
     @discardableResult
     public static func createAndRegister(name: String, app: String, repoRoot: URL,
                                          machineName: String? = nil) throws -> TestProject {

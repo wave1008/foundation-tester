@@ -34,7 +34,7 @@ public enum DeviceBooter {
     /// repoRoot 指定時は iOS シミュレータの起動直後にそのままブリッジを供給する
     /// (「起動済み(ブリッジ未接続)」の中間状態をユーザーに見せないため、1 台単位で完結させる)。
     /// deviceStarting / deviceFinished は (論理名, platform) 付きで呼ばれる
-    /// (GUI の「起動中」表示と再スキャン用。finished は成否問わず必ず呼ばれる)
+    /// (呼び出し側の「起動中」表示や再スキャン通知用。finished は成否問わず必ず呼ばれる)
     public static func bootAll(
         machine: MachineProfile,
         repoRoot: URL? = nil,
@@ -167,7 +167,7 @@ public enum DeviceBooter {
 
     /// 1 台停止(未起動なら何もしない)。
     /// repoRoot 指定時(iOS のみ)は、simctl shutdown の前にそのシミュレータに接続している
-    /// 稼働ブリッジを探して停止する(GUI の個別停止と同じパリティ。停止しないとブリッジプロセスと
+    /// 稼働ブリッジを探して停止する(停止しないとブリッジプロセスと
     /// pid ファイルがゾンビとして残り、以後のポート採番がずれていく)。
     public static func shutdownOne(spec: DeviceSpec, platform: String,
                                    repoRoot: URL? = nil,

@@ -17,7 +17,7 @@ public enum AndroidDeviceCatalogError: Error, LocalizedError {
             let list = running.isEmpty ? "なし"
                 : running.map { "\($0.value)(\($0.key))" }.sorted().joined(separator: ", ")
             return "AVD \"\(avd)\" のエミュレータが起動していません(起動中: \(list))。"
-                + "起動: GUI の「デバイスを全て起動」または emulator -avd <ID>"
+                + "起動: ftester devices up または emulator -avd <ID>"
         case .noIdentifier(let name):
             return "デバイス \"\(name)\" に avd がありません(マシンプロファイルに記述してください)"
         }

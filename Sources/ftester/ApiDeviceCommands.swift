@@ -1,8 +1,8 @@
 // ApiDeviceCommands.swift
 // VSCode拡張のライブ操作パネル向け: マシンプロファイル記載のデバイス1台の起動・停止
 // (ftester api device-up / ftester api device-down)。
-// ftester-gui/AppModel.bootDevice / shutdownDevice と同じ実装(DeviceBooter / BridgeProvisioner)を
-// 使う。stdout には NDJSON(log* → finished)だけを出す(診断は stderr のみ。
+// 起動・停止の実装(DeviceBooter / BridgeProvisioner)は DevicesCommand(ftester devices)と
+// 共通。stdout には NDJSON(log* → finished)だけを出す(診断は stderr のみ。
 // ApiCommands.swift と同じ流儀。ok:false のときは exit code 1)。
 
 import ArgumentParser

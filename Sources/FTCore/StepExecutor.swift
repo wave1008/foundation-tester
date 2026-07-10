@@ -66,7 +66,7 @@ public struct StepResult: Sendable {
     public let section: String?
     /// true = fixSuggestion に伴う合成行(「💡 修正提案: …」固定文言。ScenarioRunner.runOne
     /// 参照)。実際のコマンド実行結果ではないため、機械可読 NDJSON(ftester api run)では
-    /// 除外する目印として使う(CLI/GUI の表示は従来どおり残す)
+    /// 除外する目印として使う(人間向けの表示では従来どおり残す)
     public let synthetic: Bool
 
     public init(index: Int, description: String, status: Status,

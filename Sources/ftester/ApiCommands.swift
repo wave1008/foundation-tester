@@ -199,7 +199,7 @@ struct ApiSteps: AsyncParsableCommand {
         print(String(data: data, encoding: .utf8)!)
     }
 
-    /// dry-run のイベント列をステップ表相当の行に変換する(ftester-gui/AppModel.stepRows の移植)。
+    /// dry-run のイベント列をステップ表相当の行に変換する。
     /// コメントはソースをファイル毎に 1 回読んで行末 // を引く(読めなければ nil で続行)。
     /// file はイベントに載っているランナー相対パスをそのまま出す(変換しない。
     /// ブレークポイントキー "file:line" としてそのまま使う契約)

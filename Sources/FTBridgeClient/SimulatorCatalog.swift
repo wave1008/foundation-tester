@@ -1,7 +1,7 @@
 // SimulatorCatalog.swift
 // simctl list devices -j のパースと、マシンプロファイルのデバイス指定
 // (simulator 名+OS / UDID)→ シミュレータ実体(UDID)の解決。
-// GUI(BridgeManagerModel)と CLI(BridgeProvisioner)が共用する。
+// CLI(BridgeProvisioner)から使う。
 
 import Foundation
 import FTCore
