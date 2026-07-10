@@ -24,8 +24,22 @@ import type { Readable, Writable } from "node:stream";
 import * as vscode from "vscode";
 import { type FtesterConfig, resolveProjectName } from "./config";
 import {
+  createDeviceLifecycleQueueState,
+  dequeueDeviceLifecycleJob,
+  type DeviceLifecycleJob,
+  type DeviceLifecycleQueueState,
+  deviceLifecycleJobNeedsMonitorPause,
+  deviceLifecycleQueueHead,
+  deviceLifecycleStatusFor,
+  type DeviceOpKind,
+  enqueueDeviceLifecycleJob,
+  hasDeviceLifecycleJobFor,
+  isDeviceLifecycleQueueBusy,
+  isDeviceOpEvent,
   isMonitorEvent,
   isMonitorFromWebviewMessage,
+  type MonitorControlCommand,
+  monitorControlLine,
   toWebviewMessage,
   type MonitorToWebviewMessage,
 } from "./monitorModel";
@@ -74,7 +88,13 @@ class MonitorPanelController implements vscode.Disposable {
   private monitorProcess: MonitorProcess | undefined;
   /** stopMonitorProcess() 経由(dispose/再起動)による意図した終了かどうか。 */
   private stoppingMonitor = false;
-  private bootBusy = false;
+  /**
+   * デバイスライフサイクル操作(「デバイスを全て起動/終了」とタイル個別の device-up/device-down)の
+   * 直列キュー。ブリッジ供給・simctl・adb が競合しないよう、必ず1件ずつ実行する(実機ログ解析:
+   * 並行実行がブリッジ供給の waitUntilReady 失敗・ゾンビブリッジ蓄積を誘発していた)。
+   * 状態遷移(queued/running)の純粋ロジックは monitorModel.ts 側(vscode 非依存・単体テスト対象)。
+   */
+  private lifecycleQueue: DeviceLifecycleQueueState = createDeviceLifecycleQueueState();
 
   /** ログレーンの純粋な状態(実行を跨いで保持し、パネル再作成時のハイドレーションに使う)。 */
   private readonly laneState = createRunLaneState();
@@ -166,13 +186,16 @@ class MonitorPanelController implements vscode.Disposable {
     }
     switch (message.type) {
       case "devicesUp":
-        this.runDevicesCommand("up");
+        this.enqueueLifecycleJob({ kind: "bulk", op: "up" });
         break;
       case "devicesDown":
-        this.runDevicesCommand("down");
+        this.enqueueLifecycleJob({ kind: "bulk", op: "down" });
         break;
       case "restartMonitor":
         this.restartMonitorProcess();
+        break;
+      case "deviceOp":
+        this.enqueueLifecycleJob({ kind: "device", name: message.name, op: message.op });
         break;
     }
   }
@@ -300,17 +323,115 @@ class MonitorPanelController implements vscode.Disposable {
     proc.once("close", () => this.startMonitorProcess());
   }
 
-  /** `ftester devices up`/`devices down` を短命プロセスとして実行する(多重起動ガード付き)。 */
-  private runDevicesCommand(kind: "up" | "down"): void {
-    if (this.bootBusy) {
+  /**
+   * デバイスライフサイクル操作(devicesUp/devicesDown/deviceOp)をキューに積む。
+   * キューが空(何も実行中でない)ならそのまま実行を開始し、そうでなければ先に積まれている
+   * ジョブの完了後に順番に実行される。同じデバイスへの deviceOp が既にキュー内(実行中または
+   * 待機中)にある場合は連打とみなして無視する(グローバルボタン側は呼び出し元
+   * (handleWebviewMessage 経由)では素通しだが、`isDeviceLifecycleQueueBusy` を見て webview 側の
+   * ボタンが disabled になっているため、通常はここに届く前に抑止される)。
+   */
+  private enqueueLifecycleJob(job: DeviceLifecycleJob): void {
+    if (job.kind === "device" && hasDeviceLifecycleJobFor(this.lifecycleQueue, job.name)) {
       return;
     }
+    const wasBusy = isDeviceLifecycleQueueBusy(this.lifecycleQueue);
+    this.lifecycleQueue = enqueueDeviceLifecycleJob(this.lifecycleQueue, job);
+    if (!wasBusy) {
+      // キューが空だったので、このジョブがそのまま先頭になり即実行される。
+      this.post({ type: "bootBusy", busy: true });
+      this.runLifecycleQueueHead();
+    } else if (job.kind === "device") {
+      // 何か実行中/待機中なので、このジョブは順番待ち(「待機中...」バッジ)になる。
+      this.postDeviceLifecycleStatus(job.name);
+    }
+  }
+
+  /** 指定デバイスの現在のキュー状態(実行中/待機中/なし)を deviceOpBusy として webview に送る。 */
+  private postDeviceLifecycleStatus(name: string): void {
+    const status = deviceLifecycleStatusFor(this.lifecycleQueue, name);
+    this.post({ type: "deviceOpBusy", name, op: status?.op ?? null, status: status?.status ?? null });
+  }
+
+  /** キュー先頭のジョブを実行する(devices up/down の一括実行、または device-up/down の個別実行)。 */
+  private runLifecycleQueueHead(): void {
+    const job = deviceLifecycleQueueHead(this.lifecycleQueue);
+    if (!job) {
+      return;
+    }
+    // down 系ジョブ(bulk down / device-down)は実行直前にモニターへ pause を送り、片付け中の
+    // デバイスへポーリングがスクショ取得に行って過渡的な警告を吐くのを防ぐ。up 系は起動進行を
+    // タイルで見たいので pause しない。
+    if (deviceLifecycleJobNeedsMonitorPause(job)) {
+      this.writeMonitorControl("pause");
+    }
+    if (job.kind === "bulk") {
+      this.executeBulkJob(job.op);
+    } else {
+      // 待機中だったジョブがここで先頭に回ってきた場合も含め、「実行中」バッジに更新する。
+      this.postDeviceLifecycleStatus(job.name);
+      this.executeDeviceOpJob(job.name, job.op);
+    }
+  }
+
+  /**
+   * 先頭ジョブの完了後始末。キューから取り除き、残りがあれば続けて次を実行し、
+   * 空になったらグローバルボタンの busy 状態を解除する。
+   */
+  private finishLifecycleQueueHead(): void {
+    const finished = deviceLifecycleQueueHead(this.lifecycleQueue);
+    // pause した down 系ジョブは、成功・失敗を問わずここ(finally 相当)でモニターを resume する。
+    if (finished && deviceLifecycleJobNeedsMonitorPause(finished)) {
+      this.writeMonitorControl("resume");
+    }
+    this.lifecycleQueue = dequeueDeviceLifecycleJob(this.lifecycleQueue);
+    if (finished?.kind === "device") {
+      this.post({ type: "deviceOpBusy", name: finished.name, op: null, status: null });
+    }
+    if (isDeviceLifecycleQueueBusy(this.lifecycleQueue)) {
+      this.runLifecycleQueueHead();
+    } else {
+      this.post({ type: "bootBusy", busy: false });
+    }
+  }
+
+  /**
+   * モニタープロセスの stdin に pause/resume の制御コマンドを書き込む(NDJSON 1行)。
+   * モニターが未起動・終了済みのときは黙ってスキップする(エラーにしない)。書き込み自体が
+   * 失敗した場合も握りつぶし、呼び出し元のジョブ実行は継続させる(stdin の "error" ハンドラは
+   * startMonitorProcess() 側で既に no-op 登録済み)。
+   */
+  private writeMonitorControl(cmd: MonitorControlCommand): void {
+    const proc = this.monitorProcess;
+    if (!proc || proc.exitCode !== null || proc.signalCode !== null) {
+      return;
+    }
+    try {
+      proc.stdin.write(monitorControlLine(cmd));
+    } catch {
+      // 書き込み失敗は無視する(ジョブ自体は続行する)。
+    }
+  }
+
+  /** `ftester devices up`/`devices down` を短命プロセスとして実行する(bulk ジョブの実処理)。 */
+  private executeBulkJob(kind: "up" | "down"): void {
     const config = this.getConfig();
     const resolution = resolveProjectName(this.workspaceRoot, config);
     const args: string[] = ["devices", kind];
     if (kind === "up" && resolution.kind === "resolved") {
       args.push("--project", resolution.project);
     }
+
+    // spawn 失敗時(ENOENT 等)は 'error' の後に 'close' も発火することがある(Node の既知の挙動)。
+    // finishLifecycleQueueHead() はキュー先頭を1回だけ取り除く前提なので、二重呼び出しを防ぐ。
+    let jobFinished = false;
+    const finishOnce = (): void => {
+      if (jobFinished) {
+        return;
+      }
+      jobFinished = true;
+      this.finishLifecycleQueueHead();
+    };
 
     let proc: PipeProcess;
     try {
@@ -321,11 +442,9 @@ class MonitorPanelController implements vscode.Disposable {
       });
     } catch (error) {
       this.outputChannel.appendLine(`[ftester] devices ${kind} の起動に失敗しました: ${String(error)}`);
+      finishOnce();
       return;
     }
-
-    this.bootBusy = true;
-    this.post({ type: "bootBusy", busy: true });
 
     const appendLines = (stream: "stdout" | "stderr", chunk: Buffer): void => {
       for (const rawLine of chunk.toString("utf8").split("\n")) {
@@ -338,21 +457,109 @@ class MonitorPanelController implements vscode.Disposable {
     proc.stdout.on("data", (chunk: Buffer) => appendLines("stdout", chunk));
     proc.stderr.on("data", (chunk: Buffer) => appendLines("stderr", chunk));
 
-    const finish = (): void => {
-      this.bootBusy = false;
-      this.post({ type: "bootBusy", busy: false });
-    };
     proc.on("error", (error) => {
       this.outputChannel.appendLine(
         `[ftester] devices ${kind} の実行でエラーが発生しました: ${error.message}`,
       );
-      finish();
+      finishOnce();
     });
     proc.on("close", (exitCode) => {
       this.outputChannel.appendLine(
         `[ftester] devices ${kind} が終了しました(exit code: ${String(exitCode)})`,
       );
-      finish();
+      finishOnce();
+    });
+  }
+
+  /**
+   * タイル右クリックメニューの起動/停止項目から、デバイス1台だけを
+   * `ftester api device-up`/`device-down` で起動/停止する(device ジョブの実処理)。
+   * finished イベントが ok:false のとき、およびプロセスが異常終了したとき(finished を出せずに
+   * 落ちた場合を含む)は、webview のエラーバナーに加えて出力チャネルにも必ずログを残す
+   * (バナーはパネルを閉じると消えるため、事後診断できるよう出力チャネル側にも記録する)。
+   */
+  private executeDeviceOpJob(name: string, op: DeviceOpKind): void {
+    const config = this.getConfig();
+    const resolution = resolveProjectName(this.workspaceRoot, config);
+    const args: string[] = ["api", op === "up" ? "device-up" : "device-down", "--name", name];
+    if (resolution.kind === "resolved") {
+      args.push("--project", resolution.project);
+    }
+
+    let failureLogged = false;
+    const logFailure = (message: string): void => {
+      failureLogged = true;
+      this.outputChannel.appendLine(`[ftester] device-${op}(${name})が失敗しました: ${message}`);
+    };
+
+    // spawn 失敗時(ENOENT 等)は 'error' の後に 'close' も発火することがある(Node の既知の挙動)。
+    // finishLifecycleQueueHead() はキュー先頭を1回だけ取り除く前提なので、二重呼び出しを防ぐ。
+    let jobFinished = false;
+    const finishOnce = (): void => {
+      if (jobFinished) {
+        return;
+      }
+      jobFinished = true;
+      this.finishLifecycleQueueHead();
+    };
+
+    let proc: PipeProcess;
+    try {
+      proc = spawn(config.binaryPath, args, {
+        cwd: this.workspaceRoot,
+        shell: false,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+    } catch (error) {
+      logFailure(String(error));
+      this.post({ type: "deviceOpFailed", name, message: String(error) });
+      finishOnce();
+      return;
+    }
+
+    const stdoutParser = new NdjsonParser(
+      (value) => {
+        if (!isDeviceOpEvent(value)) {
+          this.outputChannel.appendLine(
+            `[device-${op} ${name}] 未知の形式の行を無視しました: ${JSON.stringify(value)}`,
+          );
+          return;
+        }
+        if (value.kind === "log") {
+          this.outputChannel.appendLine(`[device-${op} ${name}] ${value.message}`);
+        } else if (!value.ok) {
+          const message = value.error ?? `device-${op} に失敗しました。`;
+          logFailure(message);
+          this.post({ type: "deviceOpFailed", name, message });
+        }
+      },
+      (line) => this.outputChannel.appendLine(`[device-${op} ${name} stdout] ${line}`),
+    );
+    const stderrParser = new NdjsonParser(
+      (value) => this.outputChannel.appendLine(`[device-${op} ${name} stderr] ${JSON.stringify(value)}`),
+      (line) => this.outputChannel.appendLine(`[device-${op} ${name} stderr] ${line}`),
+    );
+
+    proc.stdout.on("data", (chunk: Buffer) => stdoutParser.push(chunk));
+    proc.stderr.on("data", (chunk: Buffer) => stderrParser.push(chunk));
+
+    proc.on("error", (error) => {
+      logFailure(error.message);
+      this.post({ type: "deviceOpFailed", name, message: error.message });
+      finishOnce();
+    });
+    proc.on("close", (exitCode) => {
+      stdoutParser.end();
+      stderrParser.end();
+      this.outputChannel.appendLine(
+        `[ftester] device-${op}(${name})が終了しました(exit code: ${String(exitCode)})`,
+      );
+      // finished(ok:false)を経由せずに落ちたケース(クラッシュ・kill 等)を捕捉する。
+      // finished 経由で既にログ済みの場合は二重に出さない。
+      if (!failureLogged && exitCode !== 0) {
+        logFailure(`プロセスが exit code ${String(exitCode)} で終了しました`);
+      }
+      finishOnce();
     });
   }
 }
@@ -596,7 +803,50 @@ function renderHtml(): string {
     font-size: 12px;
     text-align: center;
     padding: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
   }
+  /* プレースホルダー左側の状態アイコン(未起動=電源アイコン / 起動中=スピナー) */
+  .placeholder-icon {
+    width: 14px;
+    height: 14px;
+    flex: none;
+    display: block;
+  }
+  .placeholder-icon.offline {
+    color: var(--vscode-descriptionForeground);
+  }
+  .placeholder-icon.booting {
+    box-sizing: border-box;
+    border-radius: 50%;
+    border: 2px solid rgba(226, 185, 61, 0.25);
+    border-top-color: var(--vscode-charts-yellow, #e2b93d);
+    animation: ft-placeholder-spin 1s linear infinite;
+  }
+  @keyframes ft-placeholder-spin {
+    to { transform: rotate(360deg); }
+  }
+  /* タイル右クリックメニューでの起動/停止操作中バッジ(画像左上に重ねる)。
+     ボタンを廃止した代わりの実行中表示(要件3)。frame-wrap は renderFrame() が
+     textContent='' で中身を作り直すため、このバッジも毎回末尾に再アペンドされる
+     (表示可否はこの要素の 'visible' クラスで独立して管理する)。 */
+  .tile-op-badge {
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    z-index: 1;
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 10px;
+    background-color: var(--vscode-badge-background, #6e6e6e);
+    color: var(--vscode-badge-foreground, #ffffff);
+    white-space: nowrap;
+    display: none;
+    pointer-events: none;
+  }
+  .tile-op-badge.visible { display: inline-block; }
   /* フッター(1行固定): [状態バッジ] [HH:MM:SS] [⚠エラー(あれば、省略表示)] */
   .tile-footer {
     display: flex;
@@ -736,6 +986,40 @@ function renderHtml(): string {
     overflow-wrap: anywhere;
     line-height: 1.4;
   }
+  /* タイル右クリックの起動/停止メニュー(VS Code Webview は native メニューを使えないため
+     div で自作する)。1タイルにつき1項目(起動 or 停止)のみ。マウス位置に表示し、
+     JS(openDeviceOpMenu)が画面端で座標をクランプする。 */
+  .device-op-menu {
+    position: fixed;
+    z-index: 1000;
+    display: none;
+    min-width: 140px;
+    padding: 4px;
+    border-radius: 4px;
+    background-color: var(--vscode-menu-background, var(--vscode-dropdown-background, #252526));
+    color: var(--vscode-menu-foreground, var(--vscode-foreground));
+    border: 1px solid var(--vscode-menu-border, var(--vscode-widget-border, var(--vscode-panel-border)));
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  }
+  .device-op-menu.visible { display: block; }
+  .device-op-menu-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    font-family: inherit;
+    font-size: inherit;
+    padding: 5px 10px;
+    border: none;
+    border-radius: 3px;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+  }
+  .device-op-menu-item:hover:not(:disabled) {
+    background-color: var(--vscode-menu-selectionBackground, var(--vscode-list-hoverBackground));
+    color: var(--vscode-menu-selectionForeground, inherit);
+  }
+  .device-op-menu-item:disabled { opacity: 0.6; cursor: default; }
 </style>
 </head>
 <body>
@@ -750,6 +1034,10 @@ function renderHtml(): string {
   <div id="tile-pane" class="tile-pane">
     <div id="grid" class="grid"></div>
     <div id="empty" class="empty">デバイス情報を待機しています(ポーリング形式のため反映まで数秒かかることがあります)...</div>
+  </div>
+
+  <div id="device-op-menu" class="device-op-menu" role="menu">
+    <button id="device-op-menu-item" class="device-op-menu-item" type="button" role="menuitem"></button>
   </div>
 
   <div id="splitter" class="splitter" role="separator" aria-orientation="horizontal" aria-label="タイルと出力の分割境界線"></div>
@@ -788,11 +1076,27 @@ function renderHtml(): string {
     const lanesSelectionStatus = document.getElementById('lanes-selection-status');
     const lanesRunStatus = document.getElementById('lanes-run-status');
 
+    const deviceOpMenu = document.getElementById('device-op-menu');
+    const deviceOpMenuItemBtn = document.getElementById('device-op-menu-item');
+
     const STATE_LABEL = {
       connected: '接続済み',
-      booted: '起動中(ブリッジ未接続)',
+      booted: '起動中',
       offline: '未起動',
     };
+
+    // 複製元: src/monitorModel.ts の deviceOpMenuItem。webview は CSP により import 不可のため
+    // 複製する(healReviewPanel.ts が healModel.ts の一部ロジックを複製しているのと同じ方針)。
+    // タイル右クリックメニューの項目ラベル・実行する操作と、実行中/待機中バッジの表示にも共用する。
+    // busy は { op, status } の形('queued'=順番待ち／'running'=実行中)。無ければ undefined。
+    function deviceOpMenuItem(state, busy) {
+      if (busy && busy.status === 'queued') { return { label: '待機中...', op: busy.op, disabled: true }; }
+      if (busy && busy.op === 'up') { return { label: '起動中...', op: 'up', disabled: true }; }
+      if (busy && busy.op === 'down') { return { label: '停止中...', op: 'down', disabled: true }; }
+      return state === 'offline'
+        ? { label: '起動', op: 'up', disabled: false }
+        : { label: '停止', op: 'down', disabled: false };
+    }
 
     // device id -> タイルの DOM 要素・最新フレーム(1枚のみ保持。履歴は溜めない)
     const tiles = new Map();
@@ -899,9 +1203,21 @@ function renderHtml(): string {
     function createTile(device) {
       const tile = document.createElement('div');
       tile.className = 'tile';
+      // ボタン廃止(要件1)によりヒントが無くなるため、ツールチップで操作方法を示す
+      // (macOS GUI 版のタイルの .help() と同じ趣旨)。
+      tile.title = 'クリックで選択 / 右クリックで起動・停止';
       tile.addEventListener('click', () => toggleDeviceSelection(device.id));
+      tile.addEventListener('contextmenu', (event) => {
+        // 既定の(OS/ブラウザの)コンテキストメニューを抑止し、タイル本体のクリック
+        // (レーン絞り込みの選択トグル)にも波及させない。
+        event.preventDefault();
+        event.stopPropagation();
+        openDeviceOpMenu(entry, event.clientX, event.clientY);
+      });
 
       // ヘッダー: 左からプラットフォーム色で装飾したデバイス名、右端に「実行中」
+      // (個別起動/停止は右クリックメニューに移動した。ボタンが無くなった分、名前表示が
+      // フル幅を使える)
       const header = document.createElement('div');
       header.className = 'tile-header';
       const name = document.createElement('span');
@@ -916,6 +1232,10 @@ function renderHtml(): string {
       const img = document.createElement('img');
       const placeholder = document.createElement('div');
       placeholder.className = 'frame-placeholder';
+      // 起動/停止操作中バッジ(画像左上に重ねる。要件3)。renderFrame() が
+      // frame-wrap の中身を作り直すたびに末尾へ再アペンドする。
+      const opBadge = document.createElement('span');
+      opBadge.className = 'tile-op-badge';
 
       // フッター: [状態テキスト] [⚠エラー(あれば、中間で省略)] [HH:MM:SS(右寄せ)]
       const footer = document.createElement('div');
@@ -935,6 +1255,10 @@ function renderHtml(): string {
         device,
         tile,
         nameEl: name,
+        // そのデバイスの直列キュー上の状態({ op: 'up'|'down', status: 'queued'|'running' })。
+        // キューに入っていなければ undefined。
+        opBusy: undefined,
+        opBadgeEl: opBadge,
         stateBadgeEl: stateBadge,
         runningBadgeEl: runningBadge,
         frameWrapEl: frameWrap,
@@ -956,17 +1280,137 @@ function renderHtml(): string {
         entry.imgEl.alt = entry.device.name;
         entry.frameWrapEl.appendChild(entry.imgEl);
       } else {
-        entry.placeholderEl.textContent = entry.device.state === 'offline' ? '未起動' : '未受信';
+        // フレーム未受信のプレースホルダーはデバイス状態で出し分ける
+        // (offline=未起動+電源アイコン / それ以外(booted・接続直後でフレーム未着)=起動中+スピナー)
+        const offline = entry.device.state === 'offline';
+        entry.placeholderEl.textContent = '';
+        const icon = document.createElement('span');
+        if (offline) {
+          icon.className = 'placeholder-icon offline';
+          icon.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"'
+            + ' stroke="currentColor" stroke-width="1.6" stroke-linecap="round">'
+            + '<path d="M8 1.8v5.4"/><path d="M4.4 3.9a5.4 5.4 0 1 0 7.2 0"/></svg>';
+        } else {
+          icon.className = 'placeholder-icon booting';
+        }
+        const labelSpan = document.createElement('span');
+        labelSpan.textContent = offline ? '未起動' : '起動中';
+        entry.placeholderEl.append(icon, labelSpan);
         entry.frameWrapEl.appendChild(entry.placeholderEl);
       }
+      entry.frameWrapEl.appendChild(entry.opBadgeEl);
     }
 
     function renderMeta(entry) {
       entry.nameEl.textContent = entry.device.name;
       entry.nameEl.className = 'tile-name tile-name-' + entry.device.platform;
       entry.nameEl.title = entry.device.name + ' (' + entry.device.platform + ')';
-      entry.stateBadgeEl.textContent = STATE_LABEL[entry.device.state] || entry.device.state;
+      // フッター左下の表示ルール:
+      //   connected(フレーム表示中) → 「接続済み」
+      //   booted(iOSブリッジ未接続 / Androidブート完了待ち) → 「接続中」
+      //   それ以外(未起動・フレーム未着) → 空(要素は固定高レイアウトのため残す)
+      let footerText = '';
+      if (entry.device.state === 'connected' && entry.frameSrc) {
+        footerText = STATE_LABEL.connected;
+      } else if (entry.device.state === 'booted') {
+        footerText = '接続中';
+      }
+      entry.stateBadgeEl.textContent = footerText;
       entry.updatedEl.textContent = entry.lastUpdated ? formatTime(entry.lastUpdated) : '';
+      renderOpBadge(entry);
+      // 右クリックメニューがこのタイルに対して開いていれば、内容(ラベル/disabled)も
+      // 最新の state/opBusy で更新する。
+      if (deviceOpMenuEntry === entry) {
+        renderDeviceOpMenuItem();
+      }
+    }
+
+    // 起動/停止操作中バッジの表示可否・文言を、デバイスの現在状態(state)とそのデバイスで
+    // 実行中の操作(opBusy)から再計算する。devices サイクル毎(renderMeta 経由)と
+    // deviceOpBusy 受信時の両方から呼ぶ(モニターの既存ポーリングで状態変化が反映される)。
+    function renderOpBadge(entry) {
+      const item = deviceOpMenuItem(entry.device.state, entry.opBusy);
+      entry.opBadgeEl.textContent = item.label;
+      entry.opBadgeEl.classList.toggle('visible', item.disabled);
+    }
+
+    // ---- タイル右クリックメニュー ---------------------------------------------
+
+    // 現在メニューを開いている対象のタイル entry(未オープンなら null)。
+    let deviceOpMenuEntry = null;
+
+    function renderDeviceOpMenuItem() {
+      if (!deviceOpMenuEntry) {
+        return;
+      }
+      const item = deviceOpMenuItem(deviceOpMenuEntry.device.state, deviceOpMenuEntry.opBusy);
+      deviceOpMenuItemBtn.textContent = item.label;
+      deviceOpMenuItemBtn.disabled = item.disabled;
+      deviceOpMenuItemBtn.dataset.op = item.op;
+    }
+
+    function closeDeviceOpMenu() {
+      if (!deviceOpMenuEntry) {
+        return;
+      }
+      deviceOpMenuEntry = null;
+      deviceOpMenu.classList.remove('visible');
+    }
+
+    // マウス位置にメニューを開く。画面端でははみ出さないよう、実測サイズで座標をクランプする。
+    function openDeviceOpMenu(entry, clientX, clientY) {
+      deviceOpMenuEntry = entry;
+      renderDeviceOpMenuItem();
+      deviceOpMenu.classList.add('visible');
+      const rect = deviceOpMenu.getBoundingClientRect();
+      const maxX = Math.max(4, window.innerWidth - rect.width - 4);
+      const maxY = Math.max(4, window.innerHeight - rect.height - 4);
+      deviceOpMenu.style.left = Math.min(Math.max(clientX, 4), maxX) + 'px';
+      deviceOpMenu.style.top = Math.min(Math.max(clientY, 4), maxY) + 'px';
+    }
+
+    deviceOpMenuItemBtn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      if (!deviceOpMenuEntry || deviceOpMenuItemBtn.disabled) {
+        return;
+      }
+      vscode.postMessage({
+        type: 'deviceOp',
+        name: deviceOpMenuEntry.device.name,
+        op: deviceOpMenuItemBtn.dataset.op,
+      });
+      closeDeviceOpMenu();
+    });
+
+    // メニュー外クリック・Esc・スクロールで閉じる(要件2)。
+    document.addEventListener('click', (event) => {
+      if (deviceOpMenuEntry && !deviceOpMenu.contains(event.target)) {
+        closeDeviceOpMenu();
+      }
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        closeDeviceOpMenu();
+      }
+    });
+    // capture:true で登録することで、スクロール可能な子要素(grid の横スクロール・
+    // lane-body 等)で発生した(バブリングしない)scroll イベントも document 側で拾える。
+    document.addEventListener('scroll', () => closeDeviceOpMenu(), true);
+    window.addEventListener('resize', () => closeDeviceOpMenu());
+    // タイル上での contextmenu は stopPropagation 済みなのでここには来ない。
+    // タイル外(空きエリア等)で右クリックし、既定のコンテキストメニューが別途開く場合に
+    // こちらのメニューを残さないようにする。
+    document.addEventListener('contextmenu', () => closeDeviceOpMenu());
+
+    // デバイス名から対応するタイルを探す(deviceOp は --name(論理名)だけを host に渡すため、
+    // host からの deviceOpBusy/deviceOpFailed 応答も name で返ってくる)。
+    function findTileByName(name) {
+      for (const entry of tiles.values()) {
+        if (entry.device.name === name) {
+          return entry;
+        }
+      }
+      return undefined;
     }
 
     function touch(entry) {
@@ -1003,6 +1447,9 @@ function renderHtml(): string {
       }
       for (const [id, entry] of tiles) {
         if (!seen.has(id)) {
+          if (deviceOpMenuEntry === entry) {
+            closeDeviceOpMenu();
+          }
           entry.tile.remove();
           tiles.delete(id);
           selectedDeviceIds.delete(id);
@@ -1327,6 +1774,20 @@ function renderHtml(): string {
           statusEl.textContent = '停止中';
           showBanner(message.message);
           break;
+        case 'deviceOpBusy': {
+          const entry = findTileByName(message.name);
+          if (entry) {
+            entry.opBusy = message.op ? { op: message.op, status: message.status || 'running' } : undefined;
+            renderOpBadge(entry);
+            if (deviceOpMenuEntry === entry) {
+              renderDeviceOpMenuItem();
+            }
+          }
+          break;
+        }
+        case 'deviceOpFailed':
+          showBanner(message.name + ': ' + message.message);
+          break;
         case 'laneSectionVisible':
           // レーンは常時表示になったため何もしない(TS側からのメッセージ自体は互換のため残る)
           break;
@@ -1346,6 +1807,7 @@ function renderHtml(): string {
     btnRestart.addEventListener('click', () => {
       hideBanner();
       statusEl.textContent = '再起動中...';
+      closeDeviceOpMenu();
       for (const entry of tiles.values()) {
         entry.tile.remove();
       }

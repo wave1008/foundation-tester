@@ -101,7 +101,15 @@ export type MonitorToWebviewMessage =
     }
   | { readonly type: "deviceError"; readonly device?: string; readonly message: string }
   | { readonly type: "bootBusy"; readonly busy: boolean }
-  | { readonly type: "processDown"; readonly message: string };
+  | { readonly type: "processDown"; readonly message: string }
+  | {
+      readonly type: "deviceOpBusy";
+      readonly name: string;
+      readonly op: DeviceOpKind | null;
+      /** キュー内での状態("running"=実行中／"queued"=順番待ち)。op が null のときは null。 */
+      readonly status: DeviceOpQueueStatus | null;
+    }
+  | { readonly type: "deviceOpFailed"; readonly name: string; readonly message: string };
 
 /** 検証済みの MonitorEvent を、webview へそのまま postMessage できる形に変換する。 */
 export function toWebviewMessage(event: MonitorEvent): MonitorToWebviewMessage {
@@ -125,12 +133,202 @@ export function toWebviewMessage(event: MonitorEvent): MonitorToWebviewMessage {
 export type MonitorFromWebviewMessage =
   | { readonly type: "devicesUp" }
   | { readonly type: "devicesDown" }
-  | { readonly type: "restartMonitor" };
+  | { readonly type: "restartMonitor" }
+  | { readonly type: "deviceOp"; readonly name: string; readonly op: DeviceOpKind };
 
 /** webview からの postMessage 値を MonitorFromWebviewMessage として扱ってよいか判定する。 */
 export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFromWebviewMessage {
   if (!isRecord(value) || typeof value.type !== "string") {
     return false;
   }
-  return value.type === "devicesUp" || value.type === "devicesDown" || value.type === "restartMonitor";
+  switch (value.type) {
+    case "devicesUp":
+    case "devicesDown":
+    case "restartMonitor":
+      return true;
+    case "deviceOp":
+      return typeof value.name === "string" && (value.op === "up" || value.op === "down");
+    default:
+      return false;
+  }
+}
+
+// ---- デバイス個別起動/停止(ftester api device-up / device-down) ------------------------
+// 契約(Sources/ftester/ApiDeviceCommands.swift): `ftester api device-up --name <論理名>
+// [--project <p>]` / `ftester api device-down --name <論理名> [--project <p>]` の stdout NDJSON:
+//   {"kind":"log","message":".."} × n → {"kind":"finished","ok":bool,"error":string|null}
+// (ok:false のときは exit code 1。診断は stderr のみ)。
+
+export type DeviceOpKind = "up" | "down";
+
+export interface DeviceOpLogEvent {
+  readonly kind: "log";
+  readonly message: string;
+}
+
+export interface DeviceOpFinishedEvent {
+  readonly kind: "finished";
+  readonly ok: boolean;
+  readonly error: string | null;
+}
+
+export type DeviceOpEvent = DeviceOpLogEvent | DeviceOpFinishedEvent;
+
+/** value が DeviceOpEvent として扱ってよいか判定する(isMonitorEvent と同じ方針)。 */
+export function isDeviceOpEvent(value: unknown): value is DeviceOpEvent {
+  if (!isRecord(value) || typeof value.kind !== "string") {
+    return false;
+  }
+  switch (value.kind) {
+    case "log":
+      return typeof value.message === "string";
+    case "finished":
+      return typeof value.ok === "boolean" && (value.error === null || typeof value.error === "string");
+    default:
+      return false;
+  }
+}
+
+/**
+ * タイル右クリックメニューの唯一の項目(起動/停止)の表示状態。
+ * op は実際にクリックした際に実行する操作(disabled:true の間はクリック不可)。
+ */
+export interface DeviceOpMenuItem {
+  readonly label: string;
+  readonly op: DeviceOpKind;
+  readonly disabled: boolean;
+}
+
+/** タイルで実行中/待機中の操作(deviceOpBusy メッセージ・DeviceLifecycleQueue の状態から作る)。 */
+export interface DeviceOpBusyState {
+  readonly op: DeviceOpKind;
+  readonly status: DeviceOpQueueStatus;
+}
+
+/**
+ * モニターの devices サイクルで届く state と、そのデバイスの現在のキュー状態(busy。無ければ
+ * undefined)から、タイル右クリックメニューに表示する唯一の項目を決める
+ * (monitorPanel.ts のコンテキストメニュー・実行中バッジ・webview 複製が使う)。
+ * busy が無い場合、offline なら「起動」(op:"up")、connected/booted なら「停止」(op:"down")。
+ * busy.status が "queued"(直列キューの順番待ち)なら「待機中...」、"running"(実行中)なら
+ * その操作に応じた「起動中...」/「停止中...」になる(どちらも disabled:true)。
+ * MonitorDeviceState の全パターンをカバーするため null にはならない。
+ */
+export function deviceOpMenuItem(
+  state: MonitorDeviceState,
+  busy: DeviceOpBusyState | undefined,
+): DeviceOpMenuItem {
+  if (busy?.status === "queued") {
+    return { label: "待機中...", op: busy.op, disabled: true };
+  }
+  if (busy?.op === "up") {
+    return { label: "起動中...", op: "up", disabled: true };
+  }
+  if (busy?.op === "down") {
+    return { label: "停止中...", op: "down", disabled: true };
+  }
+  return state === "offline"
+    ? { label: "起動", op: "up", disabled: false }
+    : { label: "停止", op: "down", disabled: false };
+}
+
+// ---- デバイスライフサイクル操作の直列キュー ------------------------------------------------
+// 「デバイスを全て起動/終了」(bulk)とタイル個別の起動/停止(device)は、ブリッジ供給・simctl・adb
+// が競合しないよう単一の直列キューで1件ずつ実行する(FTAndroid の DeviceBooter.bootAll が
+// 負荷ゲート+直列ブリッジ供給で並行起動時の競合を避けているのと同じ思想。実機ログ解析で、
+// 「デバイスを全て起動」とタイル右クリックの個別起動が並行実行されるとブリッジ供給の
+// waitUntilReady が失敗し、ゾンビブリッジが蓄積することが分かっている)。
+//
+// ここでは実際のプロセス起動(spawn)は行わない、vscode 非依存の純粋な状態管理だけを持つ。
+// monitorPanel.ts が enqueueDeviceLifecycleJob で積んだジョブを deviceLifecycleQueueHead() で
+// 取り出して実行し、完了したら dequeueDeviceLifecycleJob() で先頭を取り除いて次を実行する
+// (常に entries[0] が「現在実行中のジョブ」という不変条件を保つ FIFO)。
+
+export type DeviceOpQueueStatus = "queued" | "running";
+
+/** キューに積む1件のデバイスライフサイクル操作。全台(bulk)/1台(device)の2種別。 */
+export type DeviceLifecycleJob =
+  | { readonly kind: "bulk"; readonly op: "up" | "down" }
+  | { readonly kind: "device"; readonly name: string; readonly op: DeviceOpKind };
+
+/** 直列キューの状態(不変)。jobs[0] が実行中、それ以降が待機中。 */
+export interface DeviceLifecycleQueueState {
+  readonly jobs: readonly DeviceLifecycleJob[];
+}
+
+export function createDeviceLifecycleQueueState(): DeviceLifecycleQueueState {
+  return { jobs: [] };
+}
+
+/** ジョブをキュー末尾に積む(新しい state を返す。呼び出し側は戻り値で置き換えること)。 */
+export function enqueueDeviceLifecycleJob(
+  state: DeviceLifecycleQueueState,
+  job: DeviceLifecycleJob,
+): DeviceLifecycleQueueState {
+  return { jobs: [...state.jobs, job] };
+}
+
+/** 実行完了したジョブ(先頭)をキューから取り除く。空のキューに対して呼ぶのはバグなので例外を投げる。 */
+export function dequeueDeviceLifecycleJob(state: DeviceLifecycleQueueState): DeviceLifecycleQueueState {
+  if (state.jobs.length === 0) {
+    throw new Error("dequeueDeviceLifecycleJob: キューが空です(先頭ジョブの完了通知が重複した可能性)");
+  }
+  return { jobs: state.jobs.slice(1) };
+}
+
+/** キューに何か(実行中含む)積まれているか。true の間はグローバルボタン(全て起動/終了)を無効化する。 */
+export function isDeviceLifecycleQueueBusy(state: DeviceLifecycleQueueState): boolean {
+  return state.jobs.length > 0;
+}
+
+/** 先頭(=現在実行すべき/実行中の)ジョブ。キューが空なら undefined。 */
+export function deviceLifecycleQueueHead(state: DeviceLifecycleQueueState): DeviceLifecycleJob | undefined {
+  return state.jobs[0];
+}
+
+/** 指定デバイス名を対象にした device ジョブが既にキュー内(実行中含む)にあるか(連打防止に使う)。 */
+export function hasDeviceLifecycleJobFor(state: DeviceLifecycleQueueState, name: string): boolean {
+  return state.jobs.some((job) => job.kind === "device" && job.name === name);
+}
+
+/**
+ * 指定デバイス名の現在のキュー状態(実行中/待機中)を返す。対象ジョブが無ければ undefined。
+ * 先頭(index 0)なら "running"、それ以外(まだ順番が回ってきていない)なら "queued"。
+ */
+export function deviceLifecycleStatusFor(
+  state: DeviceLifecycleQueueState,
+  name: string,
+): DeviceOpBusyState | undefined {
+  const index = state.jobs.findIndex((job) => job.kind === "device" && job.name === name);
+  if (index === -1) {
+    return undefined;
+  }
+  const job = state.jobs[index];
+  if (!job || job.kind !== "device") {
+    return undefined;
+  }
+  return { op: job.op, status: index === 0 ? "running" : "queued" };
+}
+
+// ---- モニターの pause/resume 制御(パネル発の「全て終了」「停止」実行中に使う) ---------------
+// `ftester api monitor` は stdin から NDJSON 1行で {"cmd":"pause"} / {"cmd":"resume"} を
+// 受け付ける(Sources/ftester/ApiMonitorCommand.swift 参照)。down 系ジョブ(bulk down /
+// device-down)の実行直前に pause、完了時(成功・失敗問わず)に resume を送ることで、片付け中の
+// デバイスへモニターがスクショ取得に行って過渡的な警告を吐くのを防ぐ。up 系ジョブ(bulk up /
+// device-up)では pause しない(起動進行をタイルで見たいため)。
+
+export type MonitorControlCommand = "pause" | "resume";
+
+/**
+ * ジョブの実行前後でモニターの pause/resume が必要かどうか(down 系のみ true)。
+ * bulk/device いずれのジョブも op フィールドが "up" | "down" で共通なので、job.kind に
+ * 関わらず単純に op で判定できる。
+ */
+export function deviceLifecycleJobNeedsMonitorPause(job: DeviceLifecycleJob): boolean {
+  return job.op === "down";
+}
+
+/** モニターの stdin に書き込む制御コマンドの NDJSON 1行(末尾に改行を含む)。 */
+export function monitorControlLine(cmd: MonitorControlCommand): string {
+  return `${JSON.stringify({ cmd })}\n`;
 }

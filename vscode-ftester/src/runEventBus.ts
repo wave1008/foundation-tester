@@ -13,7 +13,7 @@
 import type { RunEvent } from "./model";
 
 export type RunBusMessage =
-  | { readonly type: "runStarted"; readonly runId: number }
+  | { readonly type: "runStarted"; readonly runId: number; readonly isDryRun: boolean }
   | { readonly type: "event"; readonly runId: number; readonly event: RunEvent }
   | { readonly type: "runEnded"; readonly runId: number };
 
@@ -31,11 +31,15 @@ export class RunEventBus {
     };
   }
 
-  /** 新しい実行の開始を全購読者に通知し、以後の publish/endRun に使う runId を返す。 */
-  beginRun(): number {
+  /**
+   * 新しい実行の開始を全購読者に通知し、以後の publish/endRun に使う runId を返す。
+   * isDryRun は healReviewPanel.ts の HealFixCollector が「dry-run 実行では収集しない」判定に使う
+   * (省略時は false。既存呼び出し側との互換のためデフォルト値を持たせている)。
+   */
+  beginRun(isDryRun = false): number {
     const runId = this.nextRunId;
     this.nextRunId += 1;
-    this.emit({ type: "runStarted", runId });
+    this.emit({ type: "runStarted", runId, isDryRun });
     return runId;
   }
 

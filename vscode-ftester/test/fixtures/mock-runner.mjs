@@ -18,6 +18,9 @@
 //                "worker" フィールドを付ける。--scenario を2件指定すると、それぞれ別ワーカーに
 //                割り当てられたシナリオのイベントが1件ずつ交互に(ラウンドロビンで)混在して
 //                出力される(2件目のシナリオは失敗させる)。
+//     heal     : 成功実行の途中で fixSuggestion イベントを2件(うち1件は scenario/file/line/
+//                oldSelector が同一 = 同一id の重複)流してから成功で終わる
+//                (healModel.ts の HealFixCollector・healReviewPanel.ts のテスト用)。
 //
 //   --debug 指定時、シナリオ ID が「クラッシュ.T1」のときも --pattern crash と同じ扱いにする
 //   (debugAdapter.ts 経由では launch 引数に任意の CLI フラグを追加できないため、
@@ -204,6 +207,72 @@ function runParallel() {
 
   emit({ kind: "runFinished", passed: scenarios.length - failedCount, failed: failedCount });
   process.exitCode = failedCount > 0 ? 1 : 0;
+}
+
+/**
+ * 成功実行の途中で fixSuggestion を2件流す(scenario/file/line/oldSelector が同一 = 同一id の
+ * 重複。detail だけ変えて「後勝ち」で上書きされることも確認できるようにする)。
+ * healModel.ts の HealFixCollector・healReviewPanel.ts の統合テスト用。
+ */
+function runHeal() {
+  const file = "Projects/Mock/Scenarios/Mock.swift";
+  const id = scenarios[0];
+  emit({ kind: "runStarted", total: 1 });
+  emit({ kind: "scenarioStarted", scenario: id, title: `${id} のタイトル` });
+  emit({ kind: "sceneStarted", scenario: id, scene: 1, sceneTitle: "シーン1" });
+  emit({
+    kind: "step",
+    scenario: id,
+    scene: 1,
+    section: "action",
+    index: 1,
+    description: 'tap "#old_id"',
+    status: "healed",
+    detail: "ロケータを自動修復しました: #old_id → #new_id",
+    file,
+    line: 12,
+  });
+  emit({
+    kind: "fixSuggestion",
+    scenario: id,
+    description: 'tap "#old_id"',
+    detail: "ロケータが変化した可能性があります(1回目)",
+    file,
+    line: 12,
+    oldSelector: "#old_id",
+    newSelector: "#new_id",
+  });
+  // 同一id(scenario/file/line/oldSelector が同一)の重複。detail だけ違う(後勝ちの確認用)
+  emit({
+    kind: "fixSuggestion",
+    scenario: id,
+    description: 'tap "#old_id"',
+    detail: "ロケータが変化した可能性があります(2回目)",
+    file,
+    line: 12,
+    oldSelector: "#old_id",
+    newSelector: "#new_id",
+  });
+  emit({
+    kind: "step",
+    scenario: id,
+    scene: 1,
+    section: "expectation",
+    index: 2,
+    description: 'exist "#welcome_text"',
+    status: "passed",
+    file,
+    line: 14,
+  });
+  emit({ kind: "sceneFinished", scenario: id, scene: 1, sceneTitle: "シーン1", passed: true });
+  emit({
+    kind: "scenarioFinished",
+    scenario: id,
+    passed: true,
+    reportPath: `/tmp/mock-reports/${encodeURIComponent(id)}.md`,
+  });
+  emit({ kind: "runFinished", passed: 1, failed: 0 });
+  process.exitCode = 0;
 }
 
 function runAllAndFinish(options) {
@@ -401,6 +470,10 @@ if (debugMode) {
 
     case "parallel":
       runParallel();
+      break;
+
+    case "heal":
+      runHeal();
       break;
 
     case "crash": {

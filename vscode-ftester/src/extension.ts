@@ -8,9 +8,20 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { FtesterCli } from "./cli";
-import { type FtesterConfig, listProjectCandidates, readConfig, resolveWorkspaceRoot } from "./config";
+import {
+  type FtesterConfig,
+  listProjectCandidates,
+  listRunProfileNames,
+  readConfig,
+  resolveProjectName,
+  resolveWorkspaceRoot,
+} from "./config";
 import { registerDebugAdapter } from "./debugConfig";
+import { registerExploreCommand } from "./exploreCommand";
+import { registerHealReviewPanel } from "./healReviewPanel";
+import { registerLivePanel } from "./livePanel";
 import { registerMonitorPanel } from "./monitorPanel";
+import { registerProfileDiagnostics } from "./profileDiagnostics";
 import { RunEventBus } from "./runEventBus";
 import { registerRunHandler } from "./runHandler";
 import { registerStepsView } from "./stepsView";
@@ -53,11 +64,15 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const testTree = registerTestTree(context, cli, workspaceRoot, getConfig, outputChannel);
   const watcher = registerWatcher(context, workspaceRoot, testTree);
-  registerCommands(context, workspaceRoot, testTree, outputChannel);
+  registerCommands(context, workspaceRoot, testTree, getConfig, outputChannel);
   registerRunHandler(context, cli, workspaceRoot, getConfig, testTree, watcher, outputChannel, runEventBus);
   registerDebugAdapter(context, workspaceRoot, getConfig, outputChannel);
   registerStepsView(context, cli, workspaceRoot, getConfig, testTree, watcher, outputChannel);
   registerMonitorPanel(context, workspaceRoot, getConfig, outputChannel, runEventBus);
+  registerHealReviewPanel(context, workspaceRoot, getConfig, outputChannel, runEventBus, cli);
+  registerLivePanel(context, workspaceRoot, getConfig, outputChannel);
+  registerProfileDiagnostics(context, cli, workspaceRoot, getConfig, outputChannel);
+  registerExploreCommand(context, cli, workspaceRoot, getConfig, testTree, outputChannel);
 
   void testTree.refresh();
 }
@@ -100,6 +115,7 @@ function registerCommands(
   context: vscode.ExtensionContext,
   workspaceRoot: string,
   testTree: FtesterTestTree,
+  getConfig: () => FtesterConfig,
   outputChannel: vscode.OutputChannel,
 ): void {
   context.subscriptions.push(
@@ -125,6 +141,44 @@ function registerCommands(
         .update("project", picked, vscode.ConfigurationTarget.Workspace);
       outputChannel.appendLine(`[ftester] プロジェクトを「${picked}」に設定しました。`);
       void testTree.refresh();
+    }),
+    vscode.commands.registerCommand("ftester.selectProfile", async () => {
+      const config = getConfig();
+      const resolution = resolveProjectName(workspaceRoot, config);
+      if (resolution.kind !== "resolved") {
+        void vscode.window.showWarningMessage(
+          "ftester: 対象のテストプロジェクトを解決できませんでした。ftester.project 設定を確認してください。",
+        );
+        return;
+      }
+      const names = listRunProfileNames(workspaceRoot, resolution.project);
+      const NONE_LABEL = "(プロファイルなし)";
+      const items: vscode.QuickPickItem[] = [
+        {
+          label: config.profile === "" ? `$(check) ${NONE_LABEL}` : NONE_LABEL,
+          description: config.profile === "" ? "現在の設定" : undefined,
+        },
+        ...names.map((name) => ({
+          label: config.profile === name ? `$(check) ${name}` : name,
+          description: config.profile === name ? "現在の設定" : undefined,
+        })),
+      ];
+      const picked = await vscode.window.showQuickPick(items, {
+        placeHolder:
+          `使用する実行プロファイルを選択してください` +
+          `(Projects/${resolution.project}/profiles/runs/ の一覧)`,
+      });
+      if (!picked) {
+        return;
+      }
+      const rawLabel = picked.label.startsWith("$(check) ") ? picked.label.slice("$(check) ".length) : picked.label;
+      const value = rawLabel === NONE_LABEL ? "" : rawLabel;
+      await vscode.workspace
+        .getConfiguration("ftester")
+        .update("profile", value, vscode.ConfigurationTarget.Workspace);
+      const displayValue = value === "" ? NONE_LABEL : value;
+      outputChannel.appendLine(`[ftester] 実行プロファイルを「${displayValue}」に設定しました。`);
+      void vscode.window.showInformationMessage(`ftester: 実行プロファイルを「${displayValue}」に設定しました。`);
     }),
   );
 }
