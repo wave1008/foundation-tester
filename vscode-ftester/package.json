@@ -2,7 +2,7 @@
   "name": "vscode-ftester",
   "displayName": "ftester",
   "description": "ftester (Swift 製モバイル UI テストツール) のシナリオをツリー表示・実行するための VS Code 拡張",
-  "version": "0.0.12",
+  "version": "0.0.18",
   "private": true,
   "publisher": "wave1008",
   "license": "MIT",
@@ -33,7 +33,7 @@
         "ftester.profile": {
           "type": "string",
           "default": "",
-          "description": "使用する実行プロファイル名(Projects/<project>/profiles/runs/<name>.json の <name>)。空の場合は指定しません。非空の場合、実行・デバッグ実行では platform/port/serial の代わりにこちらが使われます(デバイス供給・自動インストール込みで実行。対象デバイスは事前に ftester devices up 等で起動しておく必要があります)。"
+          "description": "使用する実行プロファイル名(Projects/<project>/profiles/runs/<name>.json の <name>)。空の場合は指定しません。非空の場合、実行・デバッグ実行では platform/port/serial の代わりにこちらが使われます(デバイス供給・自動インストール込みで実行。対象デバイスは事前に ftester devices up 等で起動しておく必要があります)。デバイスモニターの監視対象もこのプロファイルが参照するデバイスに絞られます(空の場合は全デバイス)。デバイスモニターの「デバイスを全て起動」「全て終了」もこのプロファイルのデバイスのみが対象になります(空の場合はマシンプロファイルの全デバイス)。この設定を切り替えると、新しいプロファイルに含まれない稼働中デバイスは自動的に停止されます(含まれるデバイスは稼働中でもそのまま。自動起動はしません)。"
         },
         "ftester.platform": {
           "type": "string",
@@ -193,7 +193,8 @@
       {
         "command": "ftester.showDeviceMonitor",
         "title": "ftester: デバイスモニターを表示",
-        "category": "ftester"
+        "category": "ftester",
+        "icon": "$(device-mobile)"
       },
       {
         "command": "ftester.showLiveControl",
@@ -227,6 +228,11 @@
         {
           "command": "ftester.refreshSteps",
           "when": "view == ftesterSteps",
+          "group": "navigation"
+        },
+        {
+          "command": "ftester.showDeviceMonitor",
+          "when": "view == workbench.view.testing",
           "group": "navigation"
         }
       ]

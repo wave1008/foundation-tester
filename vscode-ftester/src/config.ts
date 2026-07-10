@@ -87,6 +87,108 @@ export function listRunProfileNames(workspaceRoot: string, project: string): str
   }
 }
 
+/**
+ * Projects/<project>/profiles/runs/<profileName>.json の devices[].name をそのまま返す。
+ * 読めない・JSON として解析できない・devices が無い/空の場合は null(listRunProfileNames と同じ
+ * 「読めなければ空扱い」の流儀だが、こちらは「絞り込み対象なし(=null)」と「絞り込んでも空配列」を
+ * 区別する必要がある呼び出し側(monitorPanel.ts の devicesToShutdownOnScopeChange)のために
+ * null を返す)。
+ */
+export function readRunProfileDeviceNames(
+  workspaceRoot: string,
+  project: string,
+  profileName: string,
+): string[] | null {
+  const runProfilePath = path.join(workspaceRoot, "Projects", project, "profiles", "runs", `${profileName}.json`);
+  try {
+    const raw = fs.readFileSync(runProfilePath, "utf8");
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null || !("devices" in parsed)) {
+      return null;
+    }
+    const devices = (parsed as { devices: unknown }).devices;
+    if (!Array.isArray(devices) || devices.length === 0) {
+      return null;
+    }
+    const names = devices
+      .map((device) => (typeof device === "object" && device !== null ? (device as { name: unknown }).name : undefined))
+      .filter((name): name is string => typeof name === "string");
+    return names.length > 0 ? names : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Projects/<project>/profiles/apps/ にあるアプリプロファイル名(拡張子なし)の一覧を返す。 */
+export function listAppProfileNames(workspaceRoot: string, project: string): string[] {
+  const appsDir = path.join(workspaceRoot, "Projects", project, "profiles", "apps");
+  try {
+    return fs
+      .readdirSync(appsDir, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
+      .map((entry) => entry.name.slice(0, -".json".length))
+      .sort((a, b) => a.localeCompare(b));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Projects/<project>/profiles/machines/ 直下の .json が**ちょうど1つ**のときに限り、そのファイルの
+ * ios→android の順で devices[].name を返す(新規実行プロファイルのテンプレートに埋め込む
+ * デバイス候補として使う。monitorPanel.ts の profileAdd ハンドラ)。
+ * 実際にどのマシンプロファイルを使うか(登録名 / FT_MACHINE 環境変数による選択)を決めるロジックは
+ * CLI 側(Sources/ftester)にしかなく、この拡張から複数マシンプロファイルのうちどれが「使われる」
+ * ものかは判定できない。そのため、あいまいさが無い(ファイルが1つしか無い)場合に限って賢く
+ * 埋める、という方針にする。0個・複数・読み取り/解析に失敗した場合は空配列(listRunProfileNames
+ * と同じ「読めなければ空扱い」の流儀。呼び出し側は空配列を「候補なし、空文字1件で埋める」の
+ * シグナルとして扱う)。
+ */
+export function readMachineDeviceNames(workspaceRoot: string, project: string): string[] {
+  const machinesDir = path.join(workspaceRoot, "Projects", project, "profiles", "machines");
+  let entries: fs.Dirent[];
+  try {
+    entries = fs
+      .readdirSync(machinesDir, { withFileTypes: true })
+      .filter((entry) => entry.isFile() && entry.name.endsWith(".json"));
+  } catch {
+    return [];
+  }
+  if (entries.length !== 1) {
+    return [];
+  }
+  try {
+    const raw = fs.readFileSync(path.join(machinesDir, entries[0]!.name), "utf8");
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null) {
+      return [];
+    }
+    const names: string[] = [];
+    for (const platform of ["ios", "android"] as const) {
+      const section = (parsed as Record<string, unknown>)[platform];
+      if (typeof section !== "object" || section === null) {
+        continue;
+      }
+      const devices = (section as Record<string, unknown>).devices;
+      if (!Array.isArray(devices)) {
+        continue;
+      }
+      for (const device of devices) {
+        const name =
+          typeof device === "object" && device !== null
+            ? (device as Record<string, unknown>).name
+            : undefined;
+        if (typeof name === "string") {
+          names.push(name);
+        }
+      }
+    }
+    return names;
+  } catch {
+    return [];
+  }
+}
+
 export type ProjectResolution =
   | { kind: "resolved"; project: string }
   | { kind: "none" }
