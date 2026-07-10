@@ -16,11 +16,15 @@ public struct ProvisionedIOSDevice: Sendable {
 
 public enum BridgeProvisionerError: Error, LocalizedError {
     case noFreePort(scanned: ClosedRange<UInt16>)
+    /// waitUntilReady() が失敗した場合(後始末として起動済みプロセス/pidファイルは停止済み)
+    case notReady(port: UInt16, underlying: Error)
 
     public var errorDescription: String? {
         switch self {
         case .noFreePort(let scanned):
             return "空きポートがありません(走査範囲: \(scanned.lowerBound)〜\(scanned.upperBound))"
+        case .notReady(let port, let underlying):
+            return "ブリッジが時間内に準備できませんでした(port \(port)): \(underlying)"
         }
     }
 }
@@ -85,7 +89,15 @@ public struct BridgeProvisioner {
                     try launcher.startDetached()
                 }
             }.value
-            try await launcher.waitUntilReady()
+            do {
+                try await launcher.waitUntilReady()
+            } catch {
+                // ゾンビ化防止: 起動済みプロセスと pid ファイルを後始末してから、ポート番号入りの
+                // 分かりやすいメッセージで rethrow する(そのままだと以後の assignPort が
+                // このポートを「使用中」とみなし続け、ポート採番が右にずれていく)。
+                try? launcher.stop()
+                throw BridgeProvisionerError.notReady(port: port, underlying: error)
+            }
             log("✅ \(name): ブリッジ準備完了(port \(port))")
             provisioned.append(ProvisionedIOSDevice(
                 name: name, udid: sim.udid, simulatorName: sim.name, port: port))
@@ -94,7 +106,8 @@ public struct BridgeProvisioner {
     }
 
     /// portRange を短タイムアウトで並行スキャンし、応答したポート → シミュレータ UDID を返す
-    func scanRunningBridges(catalog: [SimDeviceInfo]) async -> [UInt16: String?] {
+    /// (DeviceBooter.shutdownOne が停止対象ブリッジの特定に使うため public)
+    public func scanRunningBridges(catalog: [SimDeviceInfo]) async -> [UInt16: String?] {
         await withTaskGroup(of: (UInt16, String?)?.self,
                             returning: [UInt16: String?].self) { group in
             for port in portRange {

@@ -109,6 +109,18 @@ public enum AndroidDeviceCatalog {
         return serial
     }
 
+    /// serial のブート完了確認(`adb shell getprop sys.boot_completed` が "1" か)。
+    /// adb 自体が不安定/未応答等で取得できない場合は安全側(未完了 = false)を返す
+    /// (呼び出し元はこれを「ブリッジ APK インストールを試みてよいか」の判定に使うため)
+    public static func bootCompleted(serial: String) -> Bool {
+        guard let adbPath = try? AndroidDriver.findADB() else { return false }
+        guard let result = try? Shell.run(
+            [adbPath, "-s", serial, "shell", "getprop", "sys.boot_completed"]) else {
+            return false
+        }
+        return result.output.trimmingCharacters(in: .whitespacesAndNewlines) == "1"
+    }
+
     /// AVD ID の取得: `adb emu avd name`(出力 "<AVD名>\nOK")→ 空なら
     /// getprop ro.boot.qemu.avd_name / ro.kernel.qemu.avd_name にフォールバック
     /// (環境によって emu コンソールが名前を返さないことがある)

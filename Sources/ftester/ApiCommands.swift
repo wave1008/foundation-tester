@@ -13,7 +13,9 @@ struct ApiCommand: AsyncParsableCommand {
         commandName: "api",
         abstract: "VSCode拡張等の外部ツール向け機械可読 API(stdout に JSON を出力)",
         subcommands: [ApiListScenarios.self, ApiSteps.self, ApiRunCommand.self,
-                      ApiMonitorCommand.self])
+                      ApiMonitorCommand.self, ApiApplyHeal.self, ApiListDevices.self,
+                      ApiDeviceUp.self, ApiDeviceDown.self, ApiValidateProfile.self,
+                      ApiLiveCommand.self, ApiExploreCommand.self])
 }
 
 struct ApiListScenarios: AsyncParsableCommand {

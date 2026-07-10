@@ -165,14 +165,26 @@ public enum DeviceBooter {
         }
     }
 
-    /// 1 台停止(未起動なら何もしない)
+    /// 1 台停止(未起動なら何もしない)。
+    /// repoRoot 指定時(iOS のみ)は、simctl shutdown の前にそのシミュレータに接続している
+    /// 稼働ブリッジを探して停止する(GUI の個別停止と同じパリティ。停止しないとブリッジプロセスと
+    /// pid ファイルがゾンビとして残り、以後のポート採番がずれていく)。
     public static func shutdownOne(spec: DeviceSpec, platform: String,
+                                   repoRoot: URL? = nil,
                                    log: @escaping @Sendable (String) -> Void) async throws {
         if platform == "ios" {
-            let sim = try SimulatorCatalog.resolve(spec: spec, in: SimulatorCatalog.devices())
+            let catalog = try SimulatorCatalog.devices()
+            let sim = try SimulatorCatalog.resolve(spec: spec, in: catalog)
             guard sim.booted else {
                 log("✔ \(spec.name): 既に停止しています")
                 return
+            }
+            if let repoRoot {
+                let running = await BridgeProvisioner(repoRoot: repoRoot).scanRunningBridges(catalog: catalog)
+                if let port = running.first(where: { $0.value == sim.udid })?.key {
+                    try? BridgeLauncher(repoRoot: repoRoot, device: sim.udid, port: port).stop()
+                    log("→ \(spec.name): ブリッジ停止(port \(port))")
+                }
             }
             let result = try Shell.run(["xcrun", "simctl", "shutdown", sim.udid])
             guard result.status == 0 else {
