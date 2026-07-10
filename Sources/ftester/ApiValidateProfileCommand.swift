@@ -1,9 +1,8 @@
 // ApiValidateProfileCommand.swift
 // VSCode拡張向け: プロファイルJSON(profiles/apps・machines・runs)を検証し、結果をJSONで
 // stdoutに出力する(ftester api validate-profile)。
-// 検証は GUI の保存時チェック(ftester-gui/ProfilesView.swift の validate(_:))と同じ基準:
-// ProfileResolver.validate(kind:data:context:) に加え、runs は現在マシンでの参照解決チェック
-// (ProfileResolver.resolve)も行う。検証エラーがあっても結果は JSON で運ぶため exit 0。
+// 検証基準: ProfileResolver.validate(kind:data:context:) に加え、runs は現在マシンでの参照解決
+// チェック(ProfileResolver.resolve)も行う。検証エラーがあっても結果は JSON で運ぶため exit 0。
 // ファイル I/O 等の運用エラーのみ非 0(診断は stderr のみ。ApiCommands.swift と同じ流儀)。
 
 import ArgumentParser

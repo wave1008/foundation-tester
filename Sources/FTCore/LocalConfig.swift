@@ -1,7 +1,7 @@
 // LocalConfig.swift
 // マシンローカル設定(~/.config/ftester/config.json)。
 // マシン名(machines/<マシン名>.json の選択キー)とデフォルトプロジェクトを保持する。
-// UserDefaults ではなくファイルにするのは、CLI / GUI / MCP の 3 プロセスで
+// UserDefaults ではなくファイルにするのは、CLI / MCP の複数プロセスで
 // ドメインを揃えて共有するため。リポジトリ内 .ftester/(実行時状態)とも役割を分離する。
 
 import Foundation
@@ -11,7 +11,7 @@ public struct LocalConfig: Codable, Sendable, Equatable {
     public var machineName: String?
     /// --project 省略時に使うプロジェクト名
     public var defaultProject: String?
-    /// GUI が最後に選択した実行プロファイル名(プロジェクト毎)
+    /// 呼び出し側が最後に選択した実行プロファイル名(プロジェクト毎)
     public var lastRunProfile: [String: String]?
 
     public init(machineName: String? = nil, defaultProject: String? = nil,

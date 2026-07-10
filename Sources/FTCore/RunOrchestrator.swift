@@ -1,11 +1,11 @@
 // RunOrchestrator.swift
-// シナリオ並列実行のオーケストレーション。CLI(ftester run --ports)と GUI の両方が使う。
+// シナリオ並列実行のオーケストレーション。CLI(ftester run --ports / ftester api run)が使う。
 // シナリオ実行の実体は ftester-scenarios サブプロセス(ScenarioHost)で、
 // FM フックはサブプロセス側が持つ。ワーカーのドライバはウォームアップ・接続確認用。
 
 import Foundation
 
-/// 実行対象シナリオ。URL(scenario:// スキーム)が一意キー(GUI のレーン機構と互換)
+/// 実行対象シナリオ。URL(scenario:// スキーム)が一意キー(呼び出し側の実行レーン管理と互換)
 public struct ScenarioRunItem: Identifiable, Sendable {
     public let info: ScenarioInfo
     public let url: URL
@@ -45,7 +45,8 @@ public struct RunWorker {
     }
 }
 
-/// 実行の進捗イベント。flowURL(scenario:// URL)でシナリオを識別する(GUI は URL で state を更新)
+/// 実行の進捗イベント。flowURL(scenario:// URL)でシナリオを識別する(呼び出し側はこの URL を
+/// キーに実行状態を更新する)
 public enum RunEvent: Sendable {
     case runStarted(total: Int, workerLabels: [String])
     /// ウォームアップ完了(コールドブート対策の snapshot 済み)
@@ -63,7 +64,7 @@ public enum RunEvent: Sendable {
                     file: String?, line: Int?)
     /// 自己修復したロケータでフローを上書き保存した(YAML 時代の互換。シナリオでは未使用)
     case flowHealed(worker: String, flowURL: URL)
-    /// 自己修復の構造化提案(GUI の確認シート用)。ログ表示は既存の .step 側で行う。
+    /// 自己修復の構造化提案(修復候補の確認 UI 向け)。ログ表示は既存の .step 側で行う。
     /// command = 対象コマンドの description(例: tap "旧セレクタ"。説明提案の生成に使う)
     case fixSuggestion(worker: String, flowURL: URL, scenarioID: String,
                        command: String?, file: String?, line: Int?,
@@ -130,7 +131,7 @@ public enum ScenarioRunner {
                                     file: event.file, line: event.line))
             case "fixSuggestion":
                 // 「💡 修正提案: …」合成 step 行(実際のコマンド結果ではない)。
-                // synthetic: true を立てて出す(CLI/GUI 表示は従来どおり残し、
+                // synthetic: true を立てて出す(人間向け表示は従来どおり残し、
                 // 機械可読 NDJSON 側だけがこのフラグで除外する)
                 onEvent(.step(worker: worker.label, flowURL: item.url,
                               result: StepResult(index: event.index ?? 0,
@@ -194,7 +195,7 @@ public final class RunOrchestrator {
     private let reportDir: URL
     private let project: TestProject
     private let defaultTimeout: Int?
-    /// デバッグ実行(ブレークポイント・ステップ実行)。GUI が単一シナリオ実行時のみ指定する
+    /// デバッグ実行(ブレークポイント・ステップ実行)。呼び出し側が単一シナリオ実行時のみ指定する
     private let debug: ScenarioDebugOptions?
 
     public init(project: TestProject, workers: [RunWorker], healingEnabled: Bool,
@@ -282,14 +283,14 @@ public final class RunOrchestrator {
     }
 }
 
-/// RunEvent → 表示行の共通整形(CLI の出力と GUI のレーンが共用)
+/// RunEvent → 表示行の共通整形(CLI の出力と呼び出し側の実行レーン表示が共用)
 public enum RunLogFormatter {
     public static func lines(for event: RunEvent) -> [String] {
         switch event {
         case .runStarted, .workerReady, .runFinished:
             return []
         case .sceneStarted, .sceneFinished:
-            // scene の開始・終了(ScenarioRunner.runOne が emit する)。CLI/GUI の表示は
+            // scene の開始・終了(ScenarioRunner.runOne が emit する)。CLI や拡張側の表示は
             // 従来 flowStarted〜flowFinished の間の step 行だけで完結しており、
             // scene 区切りの専用行は無かったため、互換を保つためここでは意図的に空配列のまま
             // (scene/sceneTitle は各 step 行の構造化フィールドとして参照できる)

@@ -1,7 +1,7 @@
 // ProfileWorkerFactory.swift
 // 解決済み実行プロファイル(ResolvedProfile)→ RunWorker 群の構築。
 // iOS はブリッジ供給(BridgeProvisioner)、Android は serial/avd 照合(AndroidDeviceCatalog)。
-// CLI(ProfileRunner)と GUI(AppModel)が共用する。
+// CLI(ProfileRunner)から使う。
 // ※ FTBridgeClient と FTAndroid の両方に依存するため、このモジュールに置く。
 
 import Foundation

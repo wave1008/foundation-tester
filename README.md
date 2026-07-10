@@ -16,16 +16,18 @@ iOS / Android アプリの E2E テストツール。
 ## 4つのインターフェース
 
 同じコア(Swift DSL + AppDriver + StepExecutor + FM エージェント)の上に、用途別の入口が4つある。
+UI は VSCode 拡張(`vscode-ftester/`)に一本化している(セットアップ・機能の詳細は
+[vscode-ftester/README.md](vscode-ftester/README.md))。
 
 | 入口 | 起動 | 向いている用途 |
 |---|---|---|
 | **CLI** `ftester` | `swift run ftester ...` | CI・回帰テストの定期実行(決定的・無料・exit code) |
-| **GUI** ftester Studio | `swift run ftester-gui` | 人間の対話操作: シナリオ実行・ライブ操作・FM探索 |
+| **VSCode 拡張** | [vscode-ftester/](vscode-ftester/README.md)(F5 起動 または .vsix インストール) | 人間の対話操作: シナリオ実行・デバッグ実行・ライブ操作・デバイスモニター・FM探索 |
 | **MCP** サーバ | Claude Code が自動起動([.mcp.json](.mcp.json)) | エージェント連携: AIによるテスト作成・デバッグ・探索的テスト |
 | **Swift DSL** | `Projects/<name>/Scenarios/*.swift` | テスト資産。どの入口で作っても同じ形式で保存・実行される |
 
 役割分担の原則: **探索・判断(知能)はエージェント、操作・実行・検証(決定性)は ftester**。
-テスト作成は GUI の FM 探索(オンデバイス・無料)か、複雑なものは Claude Code(MCP 経由)で行い、
+テスト作成は VSCode 拡張の FM 探索(オンデバイス・無料)か、複雑なものは Claude Code(MCP 経由)で行い、
 できた Swift シナリオを CLI/CI で決定的に回す。
 
 ## 必要環境
@@ -144,8 +146,8 @@ swift run ftester bridge down --all              # 全ブリッジ停止
 - 注意: **コールドブート直後のシミュレータはアクセシビリティ IPC がタイムアウトしやすい**
   (kAXErrorIPCTimeout でランナーが落ちる)。ワーカーは開始時に snapshot ウォームアップを
   自動で行うが、それでも落ちる場合は `bridge up` 後に一度 `launch`+`snapshot` してから実行する
-- GUI(ftester Studio)でも同じ並列実行ができる — 設定のポート範囲内で稼働中のブリッジへ
-  「全実行」が自動分配する
+- VSCode 拡張(`vscode-ftester/`)でも実行プロファイル(`ftester.profile`)経由で同じ並列実行が
+  できる(詳細は [vscode-ftester/README.md](vscode-ftester/README.md) の「並列実行とログレーン」)
 - 決定的再生は FM を呼ばないため並列スケールする。screenMatches・トリアージは
   オンデバイス FM(マシンに1本)に律速される点に注意
 
@@ -266,84 +268,15 @@ condition {
 - **dry-run**: `swift run ftester-scenarios-<プロジェクト名> run --scenario <id> --dry-run` で
   デバイスに触れずステップ列挙だけ行える(Shirates の No-Load-Run 相当。レビュー・生成コードの確認用)
 
-## GUI(ftester Studio)
+## UI(VSCode 拡張)
 
-```bash
-swift run ftester-gui                       # リポジトリルートから起動
-FT_PORTS=8123-8130 swift run ftester-gui    # ポート範囲を指定して起動(設定より優先)
-FT_AUTORUN=1 swift run ftester-gui          # 起動と同時に全実行(スモークテスト・デモ用)
-FT_TAB=3 swift run ftester-gui              # 初期タブ指定(0:実行 1:ライブ 2:探索 3:設定)
-```
+シナリオ実行・デバッグ実行(ブレークポイント/ステップ実行)・ライブ操作・デバイスモニター・
+FM探索・自己修復候補の確認・プロファイル編集支援といった対話的な UI は、VSCode 拡張
+(`vscode-ftester/`)に一本化している。CLI と同じ `ftester api ...` サブコマンド経由で
+ftester 本体を呼び出すため、挙動は CLI・MCP と共通のモジュールに基づく。
 
-SwiftUI 製の macOS アプリ。**iOS と Android は切替なしで同時に扱う** — 起動時に設定の
-ポート範囲をスキャンして稼働中の iOS ブリッジを、`adb devices` から Android デバイスを
-自動発見し、ツールバーの「対象デバイス」ピッカーに並ぶ。4タブ構成:
-
-- **シナリオ実行** — サイドバー上部の**プロジェクト Picker** で切替(**+ ボタンで新規プロジェクト作成** —
-  CLI の `project create` と同じ雛形生成+Package.swift 登録)、選択プロジェクトの
-  シナリオ一覧(platform・実行状態バッジ)、実行+自己修復トグル、ライブ実行ログ、失敗時トリアージ表示。
-  「再読込」でシナリオをビルドして一覧を更新(コンパイルエラーはそのまま表示)。
-  ツールバーの**実行プロファイル Picker** でプロファイルを選ぶと、実行時にデバイス供給
-  (ブリッジ自動起動)・自動インストール込みで走る(供給ログは system レーンに表示)。
-  「プロファイルなし」では従来どおり**稼働中の全デバイスへシナリオを動的に分配して並列実行**
-  (iOS ブリッジ毎のワーカー + Android も adb デバイス毎のワーカー、CLI の `run --ports`
-  と同じオーケストレータ。実行は 1 シナリオ = 1 サブプロセスで分離)。
-  ログはワーカー毎のレーンに分かれて流れる。
-  Android は複数エミュレータを起動しておくだけで並列対象になる
-- **ライブ操作** — 対象デバイスのスクリーンショットを**クリックした位置をそのままタップ**
-  (デバイス座標へ自動変換)、要素一覧(行クリックで tap)、スワイプ・起動・終了
-- **FM探索** — ゴールを書いて探索開始 → ExplorerAgent の進捗をライブ表示 →
-  Swift シナリオが選択プロジェクトの Scenarios/Generated/ に生成・ビルド検証され、
-  一覧からそのまま実行できる(対象デバイスの platform がシナリオに記録される)
-- **プロファイル** — 選択プロジェクトの profiles/(アプリ / マシン / 実行)を一覧して編集する。
-  **実行プロファイル(runs/)はフォーム UI** — アプリを Picker で選び、現在マシンの
-  マシンプロファイルに定義されたデバイスをチェックで選択(iOS/Android 混在可)、
-  heal・レポート先・既定タイムアウトを設定(「JSONで編集」で生 JSON にも切替可)。
-  アプリ / マシンプロファイルは JSON をその場で編集。保存時の検証は実行時と同じ
-  Codable モデルで行われ、型エラー・必須欠落・デバイス名重複・未知キー(タイポ)を表示。
-  実行プロファイルは現在マシンでの解決チェック(参照切れ・スキップされるデバイス)まで行う。
-  各セクションの + で雛形から新規作成、右クリックで削除・Finder 表示
-- **設定** — 下記
-
-CLI・MCP と同じモジュールを使うため挙動は完全に同一。
-
-### 設定ペイン(ポート範囲とブリッジ管理)
-
-設定は今後の拡張を見込んで独立タブに集約している。
-
-- **このマシン** — マシン名(`profiles/machines/<マシン名>.json` の選択キー)。
-  `~/.config/ftester/config.json` に保存され、CLI の `machine set/show` と共有される
-- **並列実行** — **開始ポート番号と最大並列数**を設定(既定 8123 / 8、UserDefaults に
-  永続化)。開始ポートから並列数ぶんのポートをスキャンして稼働中のブリッジへフローを
-  動的に分配する。ポートを個別に指定する必要はない。**ポートは iOS ブリッジ専用の
-  概念**で、Android には適用されない(adb 接続デバイスを自動検出して直接駆動する)
-- **ブリッジ管理** — 稼働中/起動中のブリッジが自動で並ぶ。「ブリッジを追加」で
-  **範囲内の空きポートが自動で割り当てられ**、シミュレータを選んで起動・停止できる
-  (CLI の `bridge up` と同じ `BridgeLauncher`。ビルド済みなら数十秒、初回のみ数分)。
-  起動完了後は自動でスナップショットのウォームアップを行う(コールドブート対策)。
-  行末のゴミ箱ボタンで**削除**(稼働中なら停止してから一覧から除去)できる
-
-### デバイスモニター(ScreenCaptureKit)
-
-フロー実行タブの右ペインに、**実行中のシミュレータ/エミュレータの画面を並べてライブ表示**する。
-
-- シミュレータ(Xcode 27 の Device Hub / 旧 Simulator.app)と Android エミュレータ(qemu)の
-  ウィンドウを ScreenCaptureKit で ~10fps ストリーム。ポートの `/status` のデバイス名と
-  ウィンドウタイトルを照合し、タイルに `ios:8123` などのワーカーバッジを付ける
-- **ウィンドウが見つからないデバイス(ヘッドレス起動など)は黄色バッジのフォールバックタイル**になり、
-  ブリッジの `/screenshot` を2秒間隔でポーリング表示する
-- 新しいウィンドウは5秒毎の再列挙で自動検出。タブ切替中はストリームを停止して CPU を節約
-
-**画面収録の権限が必要。** `swift run` で起動した場合、権限は親のターミナル
-(Terminal / VS Code)に付与される。初回はシステム設定 > プライバシーとセキュリティ >
-画面収録でターミナルを許可し、**ターミナルを再起動**してから GUI を起動し直すこと。
-
-### ブリッジ管理パネル
-
-ツールバーの「ブリッジ管理」(iOS 時のみ表示)から、ポート欄の各ポートについて
-シミュレータを選んで **bridge up / down を GUI から実行**できる(CLI の `bridge up` と同じ
-`BridgeLauncher` を使用)。ビルド済みなら数十秒、初回のみ build-for-testing で数分かかる。
-起動完了後は自動でスナップショットのウォームアップを行う(コールドブート対策)。
+セットアップ手順・各機能の詳細・設定一覧(`ftester.*`)は
+[vscode-ftester/README.md](vscode-ftester/README.md) を参照。
 
 ## MCP サーバ(エージェント連携)
 
@@ -368,7 +301,7 @@ CLI・MCP と同じモジュールを使うため挙動は完全に同一。
 ## アーキテクチャ
 
 ```
-ftester CLI / GUI / MCP ──(サブプロセス)──▶ ftester-scenarios-<project>(プロジェクトのシナリオを発見・実行)
+ftester CLI / MCP ──(サブプロセス)──▶ ftester-scenarios-<project>(プロジェクトのシナリオを発見・実行)
       │                                        │  FTDSL   (Swift DSL: @TestClass/@Test マクロ・コマンド・レポート)
       │                                        │  FTAgent (FoundationModels: 探索 / 視覚検証 / 修復 / トリアージ)
       │                                        │  FTCore  (ステップモデル / AppDriver 抽象 / StepExecutor)
@@ -401,7 +334,6 @@ Projects/          テストプロジェクト(コミットして資産化する
     .ftester/        ヒールキャッシュ等(プロジェクト別)
 Sources/
   ftester/         CLI(swift-argument-parser。project/machine/profile コマンド含む)
-  ftester-gui/     GUI「ftester Studio」(SwiftUI macOS アプリ)
   ftester-mcp/     MCP サーバ(stdio / JSON-RPC、自前実装)
   FTDSL/           Swift DSL 本体(コマンド・セレクタ式・発見・レポート・コード生成・ヒールキャッシュ)
   FTDSLMacros/     @TestClass / @Test マクロ実装(swift-syntax はここに閉じる)
@@ -412,6 +344,7 @@ Sources/
   FTAndroid/       Android ドライバ(adb 直叩き)・AndroidDeviceCatalog・ProfileWorkerFactory
 Runner/            xcodegen 定義 + ブリッジ本体(HTTP サーバ内蔵 UI テスト)
 SampleApp/         検証用 SwiftUI デモアプリ(test@example.com / password123)
+vscode-ftester/    VSCode 拡張(UI 入口。詳細は vscode-ftester/README.md)
 docs/              設計書・実装知見
 ```
 
@@ -426,7 +359,7 @@ docs/              設計書・実装知見
 | フロー実行(4ステップ+スクロール6回) | 約 30秒 | 大半はステップ間の安定待ち(0.6〜0.8秒×N)と起動待ち |
 
 - `swift run ftester ...` は毎回 SwiftPM のチェックで **約1.6秒** 上乗せされる。
-  連続実行するときは `.build/debug/ftester ...` を直接叩くと速い(GUI/MCP は常駐なので無関係)
+  連続実行するときは `.build/debug/ftester ...` を直接叩くと速い(MCP は常駐なので無関係)
 - FM の応答時間: 探索1ステップ数秒、screenMatches 数秒(すべてオンデバイス・無料)
 
 ## トラブルシューティング

@@ -4,9 +4,9 @@
 // 機械可読ワンショットCLI(ftester api live <sub>)。常駐しない(1回の呼び出しにつき1回の
 // 操作を行い、結果を1行 JSON で出して終了する)。
 //
-// 座標契約: snapshot の screen / elements[].frame はポイント座標(ftester-gui/LiveView.swift の
-// ScreenshotView と同じ)。スクリーンショット画像上のクリック位置→ポイント座標への比例変換は
-// 呼び出し側(拡張)が行い、このコマンドへは変換済みのポイント座標をそのまま渡す契約。
+// 座標契約: snapshot の screen / elements[].frame はポイント座標。スクリーンショット画像上の
+// クリック位置→ポイント座標への比例変換は呼び出し側(拡張)が行い、このコマンドへは
+// 変換済みのポイント座標をそのまま渡す契約。
 //
 // 出力方針: stdout には 1 行の JSON だけを出力する(診断は stderr のみ。ApiCommands.swift と
 // 同じ流儀)。snapshot はスクリーンショットのダウンスケール+JPEG化に ApiMonitorCommand.swift の

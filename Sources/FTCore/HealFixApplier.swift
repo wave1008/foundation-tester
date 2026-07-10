@@ -1,13 +1,13 @@
 // HealFixApplier.swift
-// 自己修復(FM ロケータ自己修復)の確定反映ロジック。GUI(ftester-gui/AppModel.applyHealFixes /
-// removeFromHealCache)と CLI(ftester api apply-heal)の両方が同じ意味で使う共通の純粋ロジック。
+// 自己修復(FM ロケータ自己修復)の確定反映ロジック。CLI(ftester api apply-heal)が使う
+// 副作用を持たない純粋ロジック。
 // ファイル I/O(ソースの読み書き・ヒールキャッシュファイルの読み書き)は呼び出し側の責務とし、
 // ここではソース文字列の変換とヒールキャッシュ(JSONSerialization の辞書)のキー削除だけを扱う
-// (テスト容易性のため。GUI 側の既存実装はこの切り出しに合わせて変更していない)。
+// (テスト容易性のため)。
 
 import Foundation
 
-/// 修復候補 1 件。id はヒールキャッシュのキー形式(HealCache.key / GUI の AppModel.HealFix.id)と
+/// 修復候補 1 件。id はヒールキャッシュのキー形式(HealCache.key)と
 /// 同一("scenarioID|file:line|oldSelector")
 public struct HealFixInput: Sendable, Equatable {
     public let scenarioID: String
@@ -30,7 +30,7 @@ public struct HealFixInput: Sendable, Equatable {
         self.newComment = newComment
     }
 
-    /// ヒールキャッシュのキー形式(HealCache.key / GUI の AppModel.HealFix.id と同一)
+    /// ヒールキャッシュのキー形式(HealCache.key と同一)
     public var id: String { "\(scenarioID)|\(file):\(line)|\(oldSelector)" }
 }
 
@@ -52,7 +52,7 @@ public enum HealFixApplier {
     /// セレクタ置換(replaceSelector)が成功した fix は続けて説明(setTrailingComment)の
     /// 更新も試みるが、説明の更新失敗はセレクタ置換の成功を無効にしない
     /// (置換結果は source / applied に残し、failures に追記するだけ。
-    /// GUI の AppModel.applyHealFixes と同じ方針)
+    /// 置換成功分のみ確定させ、説明更新の失敗でセレクタ置換自体は無効にしない設計)
     public static func apply(
         fixes: [HealFixInput], toSource source: String
     ) -> (source: String, applied: [HealFixInput], failures: [HealFixFailure]) {

@@ -1,7 +1,7 @@
 // StepCommandParams.swift
 // ステップ表の「コマンド」列の表示表現には現れないキーワード引数
 // (timeout: / duration: / optional: / direction: / maxSwipes:)を構造化して確認・編集する
-// ための API。GUI のステップ表「編集用ペイン」が使う。
+// ための API。呼び出し側(ステップ編集 UI)の「編集用ペイン」が使う。
 // 方針: StepCommandText(表示表現↔ソースの変換)が保存するだけの非表示引数を、ソースの
 // コード部分から直接解釈して現在値として取り出し(parse)、編集後の値で呼び出し全体を
 // 正規形に生成し直す(apply。defaultValue と等しい引数は出力しない)。値として認めるのは

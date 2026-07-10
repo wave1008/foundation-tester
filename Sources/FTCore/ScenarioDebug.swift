@@ -1,6 +1,6 @@
 // ScenarioDebug.swift
 // シナリオ実行のデバッグ制御(ブレークポイント・ステップ実行)。
-// ホスト(GUI/CLI)⇔ ランナー(ftester-scenarios --debug)の制御プロトコルと、
+// ホスト(CLI)⇔ ランナー(ftester-scenarios --debug)の制御プロトコルと、
 // ランナー側の一時停止機構をここに集約する。
 //
 // プロトコル(ホスト → ランナー stdin、NDJSON 1 行 1 コマンド):

@@ -34,7 +34,6 @@ struct FTester: AsyncParsableCommand {
             MachineCommand.self,
             ProfileCommand.self,
             DevicesCommand.self,
-            Gui.self,
             ApiCommand.self,
         ]
     )
@@ -412,51 +411,6 @@ struct Terminate: AsyncParsableCommand {
     func run() async throws {
         try await driverOptions.makeDriver().terminate()
         print("✅ 終了しました")
-    }
-}
-
-// MARK: - gui
-
-struct Gui: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(
-        commandName: "gui",
-        abstract: "GUI(ftester-gui)をビルドして起動する")
-
-    @Flag(name: .customLong("skip-build"), help: "実行前の swift build をスキップする")
-    var skipBuild = false
-
-    func run() async throws {
-        let root = try RepoRoot.find()
-        if !skipBuild {
-            // --target はリンクされないため --product 必須(旧バイナリ起動事故の防止)
-            print("→ GUI をビルド(初回は時間がかかります)...")
-            let build = try Shell.run(["swift", "build", "--product", "ftester-gui"], cwd: root)
-            guard build.status == 0 else {
-                throw ValidationError("GUI のビルドに失敗しました:\n\(build.tail)")
-            }
-        }
-        let binary = root.appendingPathComponent(".build/debug/ftester-gui")
-        guard FileManager.default.fileExists(atPath: binary.path) else {
-            throw ValidationError(
-                "GUI バイナリが見つかりません: \(binary.path)(--skip-build なしで実行してください)")
-        }
-
-        if let pgrep = try? Shell.run(["pgrep", "-x", "ftester-gui"]), pgrep.status == 0 {
-            let pids = pgrep.output.split(separator: "\n").joined(separator: ", ")
-            print("⚠️ ftester-gui は既に起動中です(PID: \(pids))。追加で起動します")
-        }
-
-        let logPath = root.appendingPathComponent(".build/ftester-gui.log")
-        FileManager.default.createFile(atPath: logPath.path, contents: nil)
-        let logHandle = try FileHandle(forWritingTo: logPath)
-
-        let process = Process()
-        process.executableURL = binary
-        process.currentDirectoryURL = root  // GUI は cwd からリポジトリルートを検出する
-        process.standardOutput = logHandle
-        process.standardError = logHandle
-        try process.run()
-        print("✅ GUI を起動しました(PID: \(process.processIdentifier)、ログ: .build/ftester-gui.log)")
     }
 }
 

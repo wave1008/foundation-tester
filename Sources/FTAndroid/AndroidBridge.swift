@@ -26,7 +26,7 @@ extension AndroidDriver {
         case unavailable
     }
 
-    /// serial → ブリッジ状態。GUI/MCP がドライバを都度生成してもプローブを繰り返さないための
+    /// serial → ブリッジ状態。呼び出し側(MCP 等)がドライバを都度生成してもプローブを繰り返さないための
     /// プロセス共有レジストリ。`.unavailable` はプロセス終了まで再試行しない(再試行の嵐防止)
     static let bridgeLock = NSLock()
     nonisolated(unsafe) static var bridgeRegistry: [String: BridgeState] = [:]
@@ -220,7 +220,7 @@ extension AndroidDriver {
         if let root = try? RepoRoot.find() {
             let repoAPK = root.appendingPathComponent("AndroidRunner/prebuilt/ftbridge.apk")
             if fm.isReadableFile(atPath: repoAPK.path) {
-                // GUI などリポジトリ外 cwd の将来の起動用にキャッシュしておく
+                // リポジトリ外 cwd からの将来の起動用にキャッシュしておく
                 try? fm.createDirectory(at: cache.deletingLastPathComponent(),
                                         withIntermediateDirectories: true)
                 try? fm.removeItem(at: cache)

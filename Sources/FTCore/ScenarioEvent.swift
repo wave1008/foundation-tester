@@ -1,5 +1,5 @@
 // ScenarioEvent.swift
-// ftester-scenarios(サブプロセス)とホスト(CLI/GUI/MCP)の間で交わす NDJSON イベントの DTO。
+// ftester-scenarios(サブプロセス)とホスト(CLI/MCP)の間で交わす NDJSON イベントの DTO。
 // Foundation 以外に依存しないこと(ホスト側の軽量パースを保つ)。
 // kind: scenarioStarted / sceneStarted / step / sceneFinished / fixSuggestion / scenarioFinished / log
 // step は tap/exist 等 1 操作の結果(既存 StepResult と同語彙)。
@@ -33,7 +33,7 @@ public struct ScenarioEvent: Codable, Sendable {
     /// コマンド呼び出し元のソース位置(修正提案用)
     public var file: String?
     public var line: Int?
-    /// kind == fixSuggestion(強い提案)の旧セレクタ・新セレクタ(GUI の確認シート用)
+    /// kind == fixSuggestion(強い提案)の旧セレクタ・新セレクタ(修復候補の確認 UI 向け)
     public var oldSelector: String?
     public var newSelector: String?
     /// scenarioFinished / sceneFinished 用

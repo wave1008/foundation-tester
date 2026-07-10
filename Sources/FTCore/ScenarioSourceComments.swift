@@ -1,8 +1,8 @@
 // ScenarioSourceComments.swift
 // シナリオソース(Swift DSL)の行末コメント(// ...)抽出。
-// GUI のステップ表の「説明」列が、dry-run の step イベント(file/line)から
-// コマンド行のコメントを引くために使う。ソース文字列の走査だけを行い、
-// ファイル I/O は呼び出し側が担う(ScenarioSourceEditor と同方針)。
+// ステップ一覧の「説明」列を、dry-run の step イベント(file/line)から
+// コマンド行のコメントを引いて埋めるために使う(例: ApiCommands.stepRows)。
+// ソース文字列の走査だけを行い、ファイル I/O は呼び出し側が担う(ScenarioSourceEditor と同方針)。
 // 文字列リテラル内の //(URL 等)は簡易クォート認識で無視する。
 // 非対応: raw string(#"..."#)・複数行文字列(""")・ブロックコメント(/* */)。
 // 生成コード(ScenarioCodeGen)と手書きシナリオの実態では通常文字列+// で十分

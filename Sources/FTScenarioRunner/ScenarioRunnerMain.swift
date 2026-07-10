@@ -3,7 +3,7 @@
 //   list [--json]                       … シナリオ一覧
 //   run --scenario <クラス名.メソッド名>  … 1 シナリオを実行(1 プロセス = 1 シナリオ)
 // --json 指定時は NDJSON イベント(FTCore/ScenarioEvent)を stdout に流す。
-// ホスト(CLI/GUI/MCP)は ScenarioHost 経由でサブプロセスとして起動する。
+// ホスト(CLI/MCP)は ScenarioHost 経由でサブプロセスとして起動する。
 
 import ArgumentParser
 import Foundation
