@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ftester 実行プロファイル",
+  "description": "実行プロファイル(profiles/runs/<name>.json)。apps/<app>.json への参照(name)とデバイス(machines/<マシン名>.json の name 参照)の組み合わせ、実行時設定を定義する。構造の正は Sources/FTCore/RunProfile.swift の RunProfileDocument / ProfileResolver.validate。",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["app", "devices"],
+  "properties": {
+    "app": {
+      "type": "string",
+      "description": "apps/<name>.json への参照(拡張子なし)。必須。",
+      "minLength": 1
+    },
+    "devices": {
+      "type": "array",
+      "description": "実行に使うデバイス(マシンプロファイルの name 参照)。iOS/Android混在可(両OSを同時実行する)。1件以上必須。",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "description": "デバイス参照(RunDeviceRef)。マシンプロファイル(profiles/machines/<マシン名>.json)側の name とちょうど一致する必要がある。",
+        "additionalProperties": true,
+        "required": ["name"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "profiles/machines/<マシン名>.json 内のデバイス name(ios/android横断で一意にすること)。",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "heal": {
+      "type": "boolean",
+      "description": "FM によるロケータ自己修復を許可するか(既定 false)。",
+      "default": false
+    },
+    "reportDir": {
+      "type": "string",
+      "description": "レポート出力先(プロジェクトルート相対 or 絶対。既定 \"reports\")。",
+      "default": "reports"
+    },
+    "defaultTimeout": {
+      "type": "integer",
+      "description": "DSL コマンドの既定タイムアウト秒(省略時は DSL 側の既定値)。",
+      "minimum": 0
+    }
+  }
+}

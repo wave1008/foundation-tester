@@ -13,8 +13,19 @@ import path from "node:path";
 import { test } from "node:test";
 import { NdjsonParser } from "../src/ndjson";
 import {
+  createDeviceLifecycleQueueState,
+  dequeueDeviceLifecycleJob,
+  deviceLifecycleJobNeedsMonitorPause,
+  deviceLifecycleQueueHead,
+  deviceLifecycleStatusFor,
+  deviceOpMenuItem,
+  enqueueDeviceLifecycleJob,
+  hasDeviceLifecycleJobFor,
+  isDeviceLifecycleQueueBusy,
+  isDeviceOpEvent,
   isMonitorEvent,
   isMonitorFromWebviewMessage,
+  monitorControlLine,
   toWebviewMessage,
 } from "../src/monitorModel";
 
@@ -22,6 +33,7 @@ import {
 // 場所を指す。npm test は常に vscode-ftester/ を cwd として実行されるので、
 // process.cwd() を基準に test/fixtures/ を解決する(runReducer.test.mjs と同じ理由)。
 const MOCK_MONITOR = path.resolve(process.cwd(), "test", "fixtures", "mock-monitor.mjs");
+const MOCK_DEVICE_OP = path.resolve(process.cwd(), "test", "fixtures", "mock-device-op.mjs");
 
 // ---- isMonitorEvent: 正常3種 ----
 
@@ -175,6 +187,226 @@ test("isMonitorFromWebviewMessage: 未知の type や不正値は false", () => 
   assert.equal(isMonitorFromWebviewMessage(null), false);
   assert.equal(isMonitorFromWebviewMessage("devicesUp"), false);
 });
+
+test("isMonitorFromWebviewMessage: deviceOp は name(string)+op(up/down)が揃っていれば true", () => {
+  assert.equal(isMonitorFromWebviewMessage({ type: "deviceOp", name: "シミュ1", op: "up" }), true);
+  assert.equal(isMonitorFromWebviewMessage({ type: "deviceOp", name: "シミュ1", op: "down" }), true);
+});
+
+test("isMonitorFromWebviewMessage: deviceOp は name欠落/opが不正語彙なら false", () => {
+  assert.equal(isMonitorFromWebviewMessage({ type: "deviceOp", op: "up" }), false);
+  assert.equal(isMonitorFromWebviewMessage({ type: "deviceOp", name: "シミュ1", op: "boot" }), false);
+  assert.equal(isMonitorFromWebviewMessage({ type: "deviceOp", name: 1, op: "up" }), false);
+});
+
+// ---- isDeviceOpEvent ----
+
+test("isDeviceOpEvent: log/finished(ok:true/false)の正常な値を true と判定する", () => {
+  assert.equal(isDeviceOpEvent({ kind: "log", message: "起動しています..." }), true);
+  assert.equal(isDeviceOpEvent({ kind: "finished", ok: true, error: null }), true);
+  assert.equal(isDeviceOpEvent({ kind: "finished", ok: false, error: "失敗しました" }), true);
+});
+
+test("isDeviceOpEvent: 未知のkind・フィールド欠落/型不一致は false", () => {
+  assert.equal(isDeviceOpEvent({ kind: "unknown" }), false);
+  assert.equal(isDeviceOpEvent({ kind: "log" }), false);
+  assert.equal(isDeviceOpEvent({ kind: "log", message: 123 }), false);
+  assert.equal(isDeviceOpEvent({ kind: "finished", ok: "true", error: null }), false);
+  assert.equal(isDeviceOpEvent({ kind: "finished", ok: false, error: 123 }), false);
+  assert.equal(isDeviceOpEvent(null), false);
+});
+
+// ---- deviceOpMenuItem ----
+
+test("deviceOpMenuItem: busy 無し・offline は「起動」(op:up)、connected/booted は「停止」(op:down)", () => {
+  assert.deepEqual(deviceOpMenuItem("offline", undefined), { label: "起動", op: "up", disabled: false });
+  assert.deepEqual(deviceOpMenuItem("connected", undefined), { label: "停止", op: "down", disabled: false });
+  assert.deepEqual(deviceOpMenuItem("booted", undefined), { label: "停止", op: "down", disabled: false });
+});
+
+test("deviceOpMenuItem: busy.status='running' なら state に関わらず実行中表示(disabled:true)", () => {
+  assert.deepEqual(deviceOpMenuItem("offline", { op: "up", status: "running" }), {
+    label: "起動中...",
+    op: "up",
+    disabled: true,
+  });
+  assert.deepEqual(deviceOpMenuItem("connected", { op: "up", status: "running" }), {
+    label: "起動中...",
+    op: "up",
+    disabled: true,
+  });
+  assert.deepEqual(deviceOpMenuItem("offline", { op: "down", status: "running" }), {
+    label: "停止中...",
+    op: "down",
+    disabled: true,
+  });
+  assert.deepEqual(deviceOpMenuItem("connected", { op: "down", status: "running" }), {
+    label: "停止中...",
+    op: "down",
+    disabled: true,
+  });
+});
+
+test("deviceOpMenuItem: busy.status='queued' なら op に関わらず「待機中...」(disabled:true)", () => {
+  assert.deepEqual(deviceOpMenuItem("offline", { op: "up", status: "queued" }), {
+    label: "待機中...",
+    op: "up",
+    disabled: true,
+  });
+  assert.deepEqual(deviceOpMenuItem("connected", { op: "down", status: "queued" }), {
+    label: "待機中...",
+    op: "down",
+    disabled: true,
+  });
+});
+
+// ---- DeviceLifecycleQueue: 逐次キューの純粋ロジック(queued→running状態遷移) ----
+
+test("DeviceLifecycleQueue: 空のキューは busy:false、head:undefined", () => {
+  const state = createDeviceLifecycleQueueState();
+  assert.equal(isDeviceLifecycleQueueBusy(state), false);
+  assert.equal(deviceLifecycleQueueHead(state), undefined);
+});
+
+test("DeviceLifecycleQueue: 1件積むと即座に先頭(running)になる", () => {
+  let state = createDeviceLifecycleQueueState();
+  state = enqueueDeviceLifecycleJob(state, { kind: "device", name: "シミュ1", op: "up" });
+  assert.equal(isDeviceLifecycleQueueBusy(state), true);
+  assert.deepEqual(deviceLifecycleQueueHead(state), { kind: "device", name: "シミュ1", op: "up" });
+  assert.deepEqual(deviceLifecycleStatusFor(state, "シミュ1"), { op: "up", status: "running" });
+});
+
+test("DeviceLifecycleQueue: 2件目は先頭の後ろに積まれ、queued として扱われる", () => {
+  let state = createDeviceLifecycleQueueState();
+  state = enqueueDeviceLifecycleJob(state, { kind: "device", name: "シミュ1", op: "up" });
+  state = enqueueDeviceLifecycleJob(state, { kind: "device", name: "シミュ2", op: "down" });
+  assert.deepEqual(deviceLifecycleStatusFor(state, "シミュ1"), { op: "up", status: "running" });
+  assert.deepEqual(deviceLifecycleStatusFor(state, "シミュ2"), { op: "down", status: "queued" });
+});
+
+test("DeviceLifecycleQueue: 先頭が完了(dequeue)すると、次のジョブが先頭(running)に繰り上がる", () => {
+  let state = createDeviceLifecycleQueueState();
+  state = enqueueDeviceLifecycleJob(state, { kind: "device", name: "シミュ1", op: "up" });
+  state = enqueueDeviceLifecycleJob(state, { kind: "device", name: "シミュ2", op: "down" });
+  state = dequeueDeviceLifecycleJob(state);
+  assert.deepEqual(deviceLifecycleQueueHead(state), { kind: "device", name: "シミュ2", op: "down" });
+  assert.deepEqual(deviceLifecycleStatusFor(state, "シミュ2"), { op: "down", status: "running" });
+  assert.equal(deviceLifecycleStatusFor(state, "シミュ1"), undefined);
+});
+
+test("DeviceLifecycleQueue: 全件処理し終えると busy:false に戻る", () => {
+  let state = createDeviceLifecycleQueueState();
+  state = enqueueDeviceLifecycleJob(state, { kind: "bulk", op: "up" });
+  state = dequeueDeviceLifecycleJob(state);
+  assert.equal(isDeviceLifecycleQueueBusy(state), false);
+});
+
+test("DeviceLifecycleQueue: 空のキューへの dequeue は例外を投げる(先頭完了通知の重複バグ検出用)", () => {
+  const state = createDeviceLifecycleQueueState();
+  assert.throws(() => dequeueDeviceLifecycleJob(state));
+});
+
+test("DeviceLifecycleQueue: bulk(全台)ジョブは deviceLifecycleStatusFor の対象にならない", () => {
+  let state = createDeviceLifecycleQueueState();
+  state = enqueueDeviceLifecycleJob(state, { kind: "bulk", op: "up" });
+  state = enqueueDeviceLifecycleJob(state, { kind: "device", name: "シミュ1", op: "up" });
+  // bulk ジョブが先頭で実行中なので、後ろに積まれた device ジョブは queued
+  assert.deepEqual(deviceLifecycleStatusFor(state, "シミュ1"), { op: "up", status: "queued" });
+});
+
+test("hasDeviceLifecycleJobFor: 同じデバイス名のジョブがキュー内(実行中/待機中問わず)にあれば true", () => {
+  let state = createDeviceLifecycleQueueState();
+  state = enqueueDeviceLifecycleJob(state, { kind: "device", name: "シミュ1", op: "up" });
+  assert.equal(hasDeviceLifecycleJobFor(state, "シミュ1"), true);
+  assert.equal(hasDeviceLifecycleJobFor(state, "シミュ2"), false);
+  state = enqueueDeviceLifecycleJob(state, { kind: "device", name: "シミュ2", op: "up" });
+  assert.equal(hasDeviceLifecycleJobFor(state, "シミュ2"), true);
+});
+
+// ---- deviceLifecycleJobNeedsMonitorPause / monitorControlLine(モニターの pause/resume 制御) ----
+
+test("deviceLifecycleJobNeedsMonitorPause: bulk down / device down は true", () => {
+  assert.equal(deviceLifecycleJobNeedsMonitorPause({ kind: "bulk", op: "down" }), true);
+  assert.equal(
+    deviceLifecycleJobNeedsMonitorPause({ kind: "device", name: "シミュ1", op: "down" }),
+    true,
+  );
+});
+
+test("deviceLifecycleJobNeedsMonitorPause: bulk up / device up は false(起動進行はタイルで見たいため)", () => {
+  assert.equal(deviceLifecycleJobNeedsMonitorPause({ kind: "bulk", op: "up" }), false);
+  assert.equal(
+    deviceLifecycleJobNeedsMonitorPause({ kind: "device", name: "シミュ1", op: "up" }),
+    false,
+  );
+});
+
+test("monitorControlLine: pause/resume を末尾改行付きの NDJSON 1行にする", () => {
+  assert.equal(monitorControlLine("pause"), '{"cmd":"pause"}\n');
+  assert.equal(monitorControlLine("resume"), '{"cmd":"resume"}\n');
+});
+
+// ---- 統合: mock-device-op.mjs → NdjsonParser → isDeviceOpEvent ----
+
+test("統合: mock-device-op.mjs device-up(成功)は log→log→finished(ok:true) の順で exit 0", async () => {
+  const { events, exitCode } = await runMockDeviceOp(["device-up", "--name", "シミュ1"]);
+  assert.equal(exitCode, 0);
+  assert.deepEqual(
+    events.map((e) => e.kind),
+    ["log", "log", "finished"],
+  );
+  assert.equal(events[2].ok, true);
+  assert.equal(events[2].error, null);
+});
+
+test("統合: mock-device-op.mjs device-down --fail は log→finished(ok:false) の順で exit 1", async () => {
+  const { events, exitCode } = await runMockDeviceOp(["device-down", "--name", "シミュ2", "--fail"]);
+  assert.equal(exitCode, 1);
+  assert.deepEqual(
+    events.map((e) => e.kind),
+    ["log", "finished"],
+  );
+  assert.equal(events[1].ok, false);
+  assert.ok(events[1].error && events[1].error.length > 0);
+});
+
+/** mock-device-op.mjs を spawn し、stdout を NdjsonParser → isDeviceOpEvent に通して収集したイベント配列を返す。 */
+function runMockDeviceOp(mockArgs) {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(process.execPath, [MOCK_DEVICE_OP, ...mockArgs], {
+      cwd: path.dirname(MOCK_DEVICE_OP),
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    const events = [];
+    const parser = new NdjsonParser(
+      (value) => {
+        if (isDeviceOpEvent(value)) {
+          events.push(value);
+        }
+      },
+      () => {
+        // 非JSON行は無視する(このテストでは検証対象外)
+      },
+    );
+
+    const timer = setTimeout(() => {
+      proc.kill("SIGKILL");
+      reject(new Error("mock-device-op.mjs からの応答がタイムアウトしました"));
+    }, 5000);
+
+    proc.stdout.on("data", (chunk) => parser.push(chunk));
+    proc.on("error", (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    proc.on("close", (exitCode) => {
+      clearTimeout(timer);
+      parser.end();
+      resolve({ events, exitCode });
+    });
+  });
+}
 
 // ---- 統合: mock-monitor.mjs → NdjsonParser → monitorModel ----
 

@@ -171,6 +171,11 @@ async function executeRun(
   if (!config.buildBeforeRun) {
     args.push("--skip-build");
   }
+  // --heal は dry-run には付与しない(dry-run はワーカー構築自体を省略するデバイス不要の
+  // 検証実行であり、自己修復の対象になる実機動作が発生しないため)。
+  if (config.heal && !dryRun) {
+    args.push("--heal");
+  }
   if (dryRun) {
     args.push("--dry-run");
   }
@@ -245,7 +250,7 @@ async function executeRun(
     cli.cancelCurrent();
   });
 
-  const runId = eventBus.beginRun();
+  const runId = eventBus.beginRun(dryRun);
 
   try {
     const result = await cli.invoke(config.binaryPath, workspaceRoot, {
@@ -343,6 +348,7 @@ async function executeDebugRun(
     project: resolution.project,
     scenario: id,
     skipBuild: !config.buildBeforeRun,
+    heal: config.heal,
   };
   // --profile と --platform/--port/--serial は ftester api run 側で同時指定不可なので、
   // profile が非空のときはそちらだけを渡す(空なら従来通り platform/port/serial を渡す)。

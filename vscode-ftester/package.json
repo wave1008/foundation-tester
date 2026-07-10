@@ -2,7 +2,7 @@
   "name": "vscode-ftester",
   "displayName": "ftester",
   "description": "ftester (Swift 製モバイル UI テストツール) のシナリオをツリー表示・実行するための VS Code 拡張",
-  "version": "0.0.1",
+  "version": "0.0.12",
   "private": true,
   "publisher": "wave1008",
   "license": "MIT",
@@ -59,6 +59,11 @@
           "default": true,
           "description": "CLI 呼び出し前に Swift ビルドを行うかどうか。false の場合は CLI 呼び出しに --skip-build を付与します。"
         },
+        "ftester.heal": {
+          "type": "boolean",
+          "default": false,
+          "description": "実行時に FM によるロケータ自己修復(--heal)を有効にします。実行完了後、修復候補があれば確認パネルが開き、承認するとソースに反映されます。"
+        },
         "ftester.monitorInterval": {
           "type": "number",
           "default": 2,
@@ -110,6 +115,11 @@
                 "type": "boolean",
                 "default": false,
                 "description": "実行前の swift build をスキップする。"
+              },
+              "heal": {
+                "type": "boolean",
+                "default": false,
+                "description": "FM によるロケータ自己修復(--heal)を有効にする(dryRun 指定時は付与されない)。"
               },
               "profile": {
                 "type": "string",
@@ -184,6 +194,26 @@
         "command": "ftester.showDeviceMonitor",
         "title": "ftester: デバイスモニターを表示",
         "category": "ftester"
+      },
+      {
+        "command": "ftester.showLiveControl",
+        "title": "ftester: ライブ操作を表示",
+        "category": "ftester"
+      },
+      {
+        "command": "ftester.explore",
+        "title": "ftester: FM探索でシナリオを生成",
+        "category": "ftester"
+      },
+      {
+        "command": "ftester.selectProfile",
+        "title": "ftester: 実行プロファイルを選択",
+        "category": "ftester"
+      },
+      {
+        "command": "ftester.validateProfiles",
+        "title": "ftester: プロファイルを検証",
+        "category": "ftester"
       }
     ],
     "menus": {
@@ -200,7 +230,21 @@
           "group": "navigation"
         }
       ]
-    }
+    },
+    "jsonValidation": [
+      {
+        "fileMatch": "**/Projects/*/profiles/runs/*.json",
+        "url": "./schemas/run-profile.schema.json"
+      },
+      {
+        "fileMatch": "**/Projects/*/profiles/apps/*.json",
+        "url": "./schemas/app-profile.schema.json"
+      },
+      {
+        "fileMatch": "**/Projects/*/profiles/machines/*.json",
+        "url": "./schemas/machine-profile.schema.json"
+      }
+    ]
   },
   "scripts": {
     "compile": "node esbuild.mjs && tsc --noEmit",

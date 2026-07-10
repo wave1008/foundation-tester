@@ -1,0 +1,65 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ftester マシンプロファイル",
+  "description": "マシンプロファイル(profiles/machines/<マシン名>.json。ファイル名がそのままマシン名になる)。ios/android セクションにデバイス定義の配列を持つ。構造の正は Sources/FTCore/RunProfile.swift の MachineProfile / DeviceSpec / ProfileResolver.validate。",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "ios": {
+      "$ref": "#/definitions/deviceList",
+      "description": "iOS デバイス一覧。"
+    },
+    "android": {
+      "$ref": "#/definitions/deviceList",
+      "description": "Android デバイス一覧。"
+    }
+  },
+  "definitions": {
+    "deviceList": {
+      "type": "object",
+      "description": "MachineDeviceList。",
+      "additionalProperties": true,
+      "properties": {
+        "devices": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/device" }
+        }
+      }
+    },
+    "device": {
+      "type": "object",
+      "description": "1デバイス分の定義(DeviceSpec)。name は ios/android 横断で一意にすること(重複は検証エラーになる)。",
+      "additionalProperties": true,
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "デバイス識別名(実行プロファイルの devices[].name から参照されるキー)。ios/android 横断で一意にすること。",
+          "minLength": 1
+        },
+        "simulator": {
+          "type": "string",
+          "description": "iOS: シミュレータのデバイス名(例 \"iPhone 17 Pro\")。"
+        },
+        "os": {
+          "type": "string",
+          "description": "iOS: OS バージョン(例 \"27.0\"。省略時は名前一致の最新)。"
+        },
+        "udid": {
+          "type": "string",
+          "description": "iOS: シミュレータ UDID(指定時は simulator/os より優先される)。"
+        },
+        "port": {
+          "type": "integer",
+          "description": "iOS: ブリッジポートの固定(省略時は自動採番)。",
+          "minimum": 0,
+          "maximum": 65535
+        },
+        "avd": {
+          "type": "string",
+          "description": "Android: AVD(ID または表示名。起動中エミュレータとの照合で adb シリアルに解決される)。"
+        }
+      }
+    }
+  }
+}

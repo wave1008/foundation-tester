@@ -21,20 +21,28 @@ import {
   Event,
   InitializedEvent,
   OutputEvent,
+  Scope,
   Source,
   StackFrame,
   StoppedEvent,
   TerminatedEvent,
   ExitedEvent,
   Thread,
+  Variable,
 } from "@vscode/debugadapter";
 import type { DebugProtocol } from "@vscode/debugprotocol";
-import { isRunEvent } from "./model";
+import { isRunEvent, type RunStepSection } from "./model";
 import { NdjsonParser } from "./ndjson";
 import { createRunReducerState, reduceRunEvent, type RunReducerState } from "./runReducer";
 
 /** このアダプタが公開する唯一のスレッド ID。 */
 const THREAD_ID = 1;
+
+/**
+ * scopesRequest が返す唯一のスコープ「ステップ」の variablesReference。
+ * スコープは常にこの1つだけなので、Handles を使わず固定値でよい。
+ */
+const STEP_SCOPE_VARIABLES_REFERENCE = 1;
 
 /** stdin=pipe, stdout/stderr=pipe で spawn したプロセスの型。 */
 type FtesterProcess = ChildProcessByStdio<Writable, Readable, Readable>;
@@ -55,6 +63,8 @@ export interface FtesterLaunchRequestArguments extends DebugProtocol.LaunchReque
   dryRun?: boolean;
   stopOnEntry?: boolean;
   skipBuild?: boolean;
+  /** FM によるロケータ自己修復(--heal)を有効にする(dryRun 指定時は付与されない)。 */
+  heal?: boolean;
   /** 実行プロファイル名。非空なら --profile を渡し、platform/port/serial は渡さない。 */
   profile?: string;
   platform?: "ios" | "android";
@@ -72,6 +82,8 @@ interface PausedInfo {
   /** リポジトリルート相対パス。 */
   file?: string;
   line?: number;
+  scene?: number;
+  section?: RunStepSection;
 }
 
 /** kind: "ftester.scenarioFinished" のカスタムイベント本体(runHandler.ts のデバッグプロファイルが購読する)。 */
@@ -245,8 +257,50 @@ export class FtesterDebugSession extends DebugSession {
     response: DebugProtocol.ScopesResponse,
     _args: DebugProtocol.ScopesArguments,
   ): void {
-    response.body = { scopes: [] };
+    // 停止中(lastPaused あり)のときだけ、スコープ「ステップ」を1つ返す。
+    // 変数はステップ情報のみのフラットな一覧なので expensive: false。
+    const scopes = this.lastPaused
+      ? [new Scope("ステップ", STEP_SCOPE_VARIABLES_REFERENCE, false)]
+      : [];
+    response.body = { scopes };
     this.sendResponse(response);
+  }
+
+  protected override variablesRequest(
+    response: DebugProtocol.VariablesResponse,
+    args: DebugProtocol.VariablesArguments,
+  ): void {
+    const variables =
+      args.variablesReference === STEP_SCOPE_VARIABLES_REFERENCE
+        ? this.buildPausedVariables()
+        : [];
+    response.body = { variables };
+    this.sendResponse(response);
+  }
+
+  /** lastPaused の内容を「ステップ」スコープの変数一覧に変換する。値が undefined の項目は出さない。 */
+  private buildPausedVariables(): DebugProtocol.Variable[] {
+    const paused = this.lastPaused;
+    if (!paused) {
+      return [];
+    }
+    const variables: DebugProtocol.Variable[] = [];
+    const push = (name: string, value: unknown): void => {
+      if (value === undefined) {
+        return;
+      }
+      variables.push(new Variable(name, String(value)));
+    };
+    push("シナリオ", paused.scenario);
+    push("ステップ番号", paused.index);
+    push("コマンド", paused.description);
+    push("scene", paused.scene);
+    push("区分", paused.section);
+    push(
+      "位置",
+      paused.file !== undefined && paused.line != null ? `${paused.file}:${paused.line}` : undefined,
+    );
+    return variables;
   }
 
   protected override threadsRequest(response: DebugProtocol.ThreadsResponse): void {
@@ -307,6 +361,10 @@ export class FtesterDebugSession extends DebugSession {
     }
     if (args.skipBuild) {
       cliArgs.push("--skip-build");
+    }
+    // --heal は dry-run には付与しない(runHandler.ts の executeRun と同じ方針)。
+    if (args.heal && !args.dryRun) {
+      cliArgs.push("--heal");
     }
     if (args.stopOnEntry) {
       cliArgs.push("--pause-on-start");
@@ -438,6 +496,8 @@ export class FtesterDebugSession extends DebugSession {
         description: value.description,
         file: value.file,
         line: value.line,
+        scene: value.scene,
+        section: value.section,
       };
       this.sendEvent(new StoppedEvent(this.nextStopReason, THREAD_ID));
       return;
