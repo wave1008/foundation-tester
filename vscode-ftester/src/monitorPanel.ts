@@ -1,29 +1,47 @@
 // monitorPanel.ts
 // デバイスモニターの WebviewPanel(コマンド `ftester.showDeviceMonitor`)。
 //
-// - `ftester api monitor --project <P> --interval <秒> --max-width <px>` を自前で spawn し、
-//   NdjsonParser(vscode 非依存)でパース → monitorModel.ts(同じく vscode 非依存)で
-//   検証・変換した上で webview.postMessage する。cli.ts の FtesterCli(直列実行キュー)は
-//   使わない — monitor は接続中ずっと動き続けるプロセスなので、キューに載せると
-//   以後の実行・ステップ取得等の CLI 呼び出しが永久にブロックされてしまうため。
+// - `ftester api monitor --project <P> --interval <秒> --max-width <px> [--profile <run>]` を
+//   自前で spawn し(--profile は ftester.profile 設定が非空のときのみ付与。指定時はそのプロファイルが
+//   参照するデバイスのみに監視対象を絞り込む)、NdjsonParser(vscode 非依存)でパース →
+//   monitorModel.ts(同じく vscode 非依存)で検証・変換した上で webview.postMessage する。
+//   cli.ts の FtesterCli(直列実行キュー)は使わない — monitor は接続中ずっと動き続けるプロセスなので、
+//   キューに載せると以後の実行・ステップ取得等の CLI 呼び出しが永久にブロックされてしまうため。
 // - パネルはシングルトン(既に開いていれば reveal するだけ)。
 // - パネル破棄・拡張 deactivate 時は子プロセスに SIGTERM を送り、2秒後もまだ生きていれば
 //   SIGKILL する(cli.ts の cancelCurrent() と同じ方針)。
 // - webview からの devicesUp/devicesDown も cli.ts のキューは使わず、ここで直接
-//   短命プロセス(`ftester devices up`/`devices down`)を spawn する。多重起動ガードのため
+//   短命プロセス(`ftester devices up`/`devices down`)を spawn する。ftester.profile が非空なら
+//   --project/--profile を付与し、「デバイスを全て起動/終了」の対象をそのプロファイルが参照する
+//   デバイスのみに限定する(空ならマシンプロファイルの全デバイス。要件1)。多重起動ガードのため
 //   実行中は bootBusy:true を webview に送ってボタンを無効化させる。
+// - プロファイル切り替え時の自動シャットダウン(要件2): restartMonitorIfScopeChanged() が
+//   ftester.profile / ftester.project の変更でスコープが変わったことを検知すると、モニター再起動の
+//   前に、直近の観測(lastKnownDevices)から「切り替え先プロファイルに定義されていない稼働中
+//   デバイス」を割り出し(monitorModel.ts の devicesToShutdownOnScopeChange)、device-down ジョブを
+//   キューに積む。定義されているデバイスは稼働中でもそのまま(自動起動はしない)。
 // - ログレーン表示: RunEventBus(runHandler.ts の実行と同じインスタンスを extension.ts から
 //   注入される)を購読し、`ftester api run` の生イベントを runLaneModel.ts(vscode/webview
 //   非依存の純粋関数)でレーン用アクションに変換して webview へ転送する。デバイスタイルと
 //   ログレーンは device id / worker id が同一規則なので、そのまま突合できる
 //   (タイルの「実行中」バッジ・タイル選択によるレーン絞り込み)。
 
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { randomBytes } from "node:crypto";
 import { type ChildProcessByStdio, spawn } from "node:child_process";
 import type { Readable, Writable } from "node:stream";
 import * as vscode from "vscode";
-import { type FtesterConfig, resolveProjectName } from "./config";
 import {
+  type FtesterConfig,
+  listAppProfileNames,
+  listRunProfileNames,
+  readMachineDeviceNames,
+  readRunProfileDeviceNames,
+  resolveProjectName,
+} from "./config";
+import {
+  buildRunProfileTemplate,
   createDeviceLifecycleQueueState,
   dequeueDeviceLifecycleJob,
   type DeviceLifecycleJob,
@@ -32,6 +50,7 @@ import {
   deviceLifecycleQueueHead,
   deviceLifecycleStatusFor,
   type DeviceOpKind,
+  devicesToShutdownOnScopeChange,
   enqueueDeviceLifecycleJob,
   hasDeviceLifecycleJobFor,
   isDeviceLifecycleQueueBusy,
@@ -40,8 +59,10 @@ import {
   isMonitorFromWebviewMessage,
   type MonitorControlCommand,
   monitorControlLine,
+  type MonitorDevice,
   toWebviewMessage,
   type MonitorToWebviewMessage,
+  validateNewRunProfileName,
 } from "./monitorModel";
 import { NdjsonParser } from "./ndjson";
 import type { RunBusMessage, RunEventBus } from "./runEventBus";
@@ -89,6 +110,26 @@ class MonitorPanelController implements vscode.Disposable {
   /** stopMonitorProcess() 経由(dispose/再起動)による意図した終了かどうか。 */
   private stoppingMonitor = false;
   /**
+   * 現在の monitor プロセスが実際に使っている監視スコープ("<project> <profile>" 形式。
+   * profile が空なら "<project> ")。ftester.profile / ftester.project の変更を検知したときに、
+   * 監視対象を変えるべきかどうか(=再起動が必要かどうか)を判定するために保持する。
+   */
+  private monitorScope: string | undefined;
+  /**
+   * restartMonitorProcess() の多重起動ガード。true の間は追加の再起動要求を無視する。
+   * 連続したプロファイル変更や「モニター再起動」ボタン連打で stopMonitorProcess() →
+   * startMonitorProcess() が重なり、monitor プロセスが二重起動するのを防ぐ。
+   */
+  private restartPending = false;
+  /**
+   * 直近の monitorDevices イベントで観測したデバイス一覧(state 込み)。モニタープロセスの再起動
+   * (プロファイル切り替え含む)を跨いで保持し、リセットしない — restartMonitorIfScopeChanged() が
+   * 「切り替え直前(旧スコープ)の最終観測」を元に、新スコープ外の稼働中デバイスを判定する
+   * (devicesToShutdownOnScopeChange)ために必要なため。新しい monitor プロセスが起動して
+   * 最初の monitorDevices を出すまでの間も、直前の観測を保持し続ける。
+   */
+  private lastKnownDevices: readonly MonitorDevice[] = [];
+  /**
    * デバイスライフサイクル操作(「デバイスを全て起動/終了」とタイル個別の device-up/device-down)の
    * 直列キュー。ブリッジ供給・simctl・adb が競合しないよう、必ず1件ずつ実行する(実機ログ解析:
    * 並行実行がブリッジ供給の waitUntilReady 失敗・ゾンビブリッジ蓄積を誘発していた)。
@@ -101,6 +142,19 @@ class MonitorPanelController implements vscode.Disposable {
   /** 一度でも実行が始まった(=レーンセクションを表示すべき)かどうか。 */
   private laneSectionVisible = false;
   private readonly unsubscribeBus: () => void;
+  /**
+   * ftester.profile / ftester.project の変更を監視し、実行プロファイル選択ドロップダウンを
+   * 最新化する(モニタープロセス自体は再起動不要。以後のテスト実行・デバッグ実行にのみ効く)。
+   */
+  private readonly configChangeSubscription: vscode.Disposable;
+  /**
+   * Projects 配下の各プロジェクトの profiles/runs ディレクトリにある .json ファイルの作成・削除を
+   * 監視し、実行プロファイル選択ドロップダウンを最新化する(拡張内の追加/コピー/削除ボタン経由に
+   * 限らず、エクスプローラーでの手動削除や他ツールでの追加もドロップダウンへ自動反映されるように
+   * する目的)。Change は一覧にも選択名にも影響しないため購読しない(内容編集のたびに再描画する
+   * 必要はない)。
+   */
+  private readonly profileFileWatcher: vscode.FileSystemWatcher;
 
   constructor(
     private readonly workspaceRoot: string,
@@ -109,6 +163,65 @@ class MonitorPanelController implements vscode.Disposable {
     eventBus: RunEventBus,
   ) {
     this.unsubscribeBus = eventBus.subscribe((message) => this.handleBusMessage(message));
+    this.configChangeSubscription = vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration("ftester.profile") || event.affectsConfiguration("ftester.project")) {
+        this.postProfileInfo();
+        this.restartMonitorIfScopeChanged();
+      }
+    });
+    this.profileFileWatcher = vscode.workspace.createFileSystemWatcher(
+      new vscode.RelativePattern(workspaceRoot, "Projects/*/profiles/runs/*.json"),
+    );
+    this.profileFileWatcher.onDidCreate(() => this.postProfileInfo());
+    this.profileFileWatcher.onDidDelete(() => this.postProfileInfo());
+  }
+
+  /**
+   * ftester.profile / ftester.project の変更で、モニターの監視対象デバイス(--profile が絞り込む
+   * スコープ)が実際に変わった場合に限り、モニタープロセスを再起動して追随させる。パネル未表示、
+   * またはプロジェクトが解決できない(既存のエラーバナー表示に任せる)場合は何もしない。
+   * 再起動の前に、切り替え先プロファイルに定義されていない稼働中デバイスの自動シャットダウンを
+   * キューに積む(要件2)。
+   */
+  private restartMonitorIfScopeChanged(): void {
+    if (!this.panel) {
+      return;
+    }
+    const config = this.getConfig();
+    const resolution = resolveProjectName(this.workspaceRoot, config);
+    if (resolution.kind !== "resolved") {
+      return;
+    }
+    const scope = `${resolution.project} ${config.profile}`;
+    if (scope === this.monitorScope) {
+      return;
+    }
+    this.enqueueShutdownOutsideNewScope(resolution.project, config.profile);
+    this.restartMonitorProcess();
+  }
+
+  /**
+   * プロファイル切り替え時、切り替え先プロファイルに定義されていない稼働中デバイスを
+   * シャットダウンする(定義されているデバイスは稼働中でもそのまま — 自動起動はしない方針と対)。
+   * newProfile が空文字なら「プロファイルなし」= 全デバイスが対象なので何もしない。
+   * newProfile が非空で readRunProfileDeviceNames が null を返した場合(プロファイルが読めない)も、
+   * devicesToShutdownOnScopeChange(devices, null) は空配列を返す(=絞り込みなし扱い)ため、
+   * 結果として自動的にシャットダウンをスキップできる(モニター再起動側の既存のエラー表示で
+   * ユーザーが気付ける)。
+   */
+  private enqueueShutdownOutsideNewScope(project: string, newProfile: string): void {
+    const newScopeNames =
+      newProfile === "" ? null : readRunProfileDeviceNames(this.workspaceRoot, project, newProfile);
+    const targets = devicesToShutdownOnScopeChange(this.lastKnownDevices, newScopeNames);
+    if (targets.length === 0) {
+      return;
+    }
+    this.outputChannel.appendLine(
+      `[ftester] プロファイル切り替えに伴い監視対象外のデバイスを停止します: ${targets.join(", ")}`,
+    );
+    for (const name of targets) {
+      this.enqueueLifecycleJob({ kind: "device", name, op: "down" });
+    }
   }
 
   /** コマンド `ftester.showDeviceMonitor` のハンドラ。既に開いていれば reveal するだけ。 */
@@ -132,11 +245,17 @@ class MonitorPanelController implements vscode.Disposable {
     });
 
     this.startMonitorProcess();
-    this.hydrateLaneUi();
+    // 初期状態(laneHydrate/profileInfo等)の送信はここでは行わない。html設定直後の
+    // postMessage は webview 側スクリプトの message リスナー登録前に届き、VS Code webview の
+    // 既知のレースで握りつぶされる(タイル/フレームはモニタープロセスが継続的に流すので
+    // 自然回復するが、一度きりの送信であるこれらは落ちたら復旧しない)。webview からの
+    // "ready"(初期化完了通知)を受けてから sendInitialState() で送る(ready ハンドシェイク)。
   }
 
   dispose(): void {
     this.unsubscribeBus();
+    this.configChangeSubscription.dispose();
+    this.profileFileWatcher.dispose();
     this.stopMonitorProcess();
     const panel = this.panel;
     this.panel = undefined;
@@ -156,6 +275,19 @@ class MonitorPanelController implements vscode.Disposable {
     if (snapshot.lanes.length > 0 || Object.keys(snapshot.linesByLane).length > 0) {
       this.post({ type: "laneHydrate", snapshot });
     }
+  }
+
+  /**
+   * 実行プロファイル選択ドロップダウンの内容(一覧+現在値)を webview へ送る。
+   * 対象プロジェクトが解決できない場合は一覧を空にする(current はそのまま送る。設定に
+   * 手書きされた値の表示自体は webview 側で保つ方針のため)。
+   */
+  private postProfileInfo(): void {
+    const config = this.getConfig();
+    const resolution = resolveProjectName(this.workspaceRoot, config);
+    const profiles =
+      resolution.kind === "resolved" ? listRunProfileNames(this.workspaceRoot, resolution.project) : [];
+    this.post({ type: "profileInfo", profiles, current: config.profile });
   }
 
   /** RunEventBus からのメッセージ(runHandler.ts の実行と同じインスタンス)をレーン更新に反映する。 */
@@ -185,6 +317,9 @@ class MonitorPanelController implements vscode.Disposable {
       return;
     }
     switch (message.type) {
+      case "ready":
+        this.sendInitialState();
+        break;
       case "devicesUp":
         this.enqueueLifecycleJob({ kind: "bulk", op: "up" });
         break;
@@ -197,13 +332,205 @@ class MonitorPanelController implements vscode.Disposable {
       case "deviceOp":
         this.enqueueLifecycleJob({ kind: "device", name: message.name, op: message.op });
         break;
+      case "selectProfile":
+        this.selectProfile(message.profile);
+        break;
+      case "profileAdd":
+        void this.handleProfileAdd();
+        break;
+      case "profileCopy":
+        void this.handleProfileCopy(message.profile);
+        break;
+      case "profileEdit":
+        void this.handleProfileEdit(message.profile);
+        break;
+      case "profileDelete":
+        void this.handleProfileDelete(message.profile);
+        break;
     }
+  }
+
+  /**
+   * webview のドロップダウン操作を ftester.profile 設定へ反映する
+   * (extension.ts の ftester.selectProfile コマンドと同じログ形式で出力チャネルに記録する)。
+   * 設定更新に成功すると onDidChangeConfiguration 経由で postProfileInfo() が呼ばれ、
+   * webview のドロップダウンが最新化されるので、ここから直接 post する必要はない。
+   */
+  private selectProfile(profile: string): void {
+    const NONE_LABEL = "(プロファイルなし)";
+    const displayValue = profile === "" ? NONE_LABEL : profile;
+    vscode.workspace
+      .getConfiguration("ftester")
+      .update("profile", profile, vscode.ConfigurationTarget.Workspace)
+      .then(
+        () => {
+          this.outputChannel.appendLine(`[ftester] 実行プロファイルを「${displayValue}」に設定しました。`);
+        },
+        (error: unknown) => {
+          this.outputChannel.appendLine(
+            `[ftester] 実行プロファイルの設定に失敗しました(${displayValue}): ${String(error)}`,
+          );
+        },
+      );
+  }
+
+  // ---- 実行プロファイルの追加/コピー/編集/削除(ツールバーのボタン) -------------------------
+  // ドロップダウンの選択自体(selectProfile)の挙動は変えない。追加・コピー・削除の後、新しい/
+  // コピー先のプロファイルを自動で選択状態にはしない — 選択するとモニター再起動+対象外デバイスの
+  // 自動停止が走るため(restartMonitorIfScopeChanged)、ユーザーの明示操作(ドロップダウン選択)に
+  // 任せる。
+
+  /** Projects/<project>/profiles/runs ディレクトリの絶対パス。 */
+  private runsDir(project: string): string {
+    return path.join(this.workspaceRoot, "Projects", project, "profiles", "runs");
+  }
+
+  /**
+   * 実行プロファイル操作(追加/コピー/編集/削除)共通の前提チェック。対象プロジェクトが
+   * 解決できない場合は警告して undefined を返す(呼び出し側はここで処理を中断する)。
+   */
+  private resolveProjectOrWarn(): string | undefined {
+    const resolution = resolveProjectName(this.workspaceRoot, this.getConfig());
+    if (resolution.kind !== "resolved") {
+      void vscode.window.showWarningMessage(
+        "ftester: 対象のテストプロジェクトを解決できませんでした。ftester.project 設定を確認してください。",
+      );
+      return undefined;
+    }
+    return resolution.project;
+  }
+
+  /** 実行プロファイル(<name>.json)をエディタで開く(プレビューではなく通常タブとして)。 */
+  private async openRunProfileDocument(project: string, name: string): Promise<void> {
+    const document = await vscode.workspace.openTextDocument(path.join(this.runsDir(project), `${name}.json`));
+    await vscode.window.showTextDocument(document, { preview: false });
+  }
+
+  /** 「追加」ボタン: 新しいプロファイル名を入力させ、テンプレート内容で作成してエディタで開く。 */
+  private async handleProfileAdd(): Promise<void> {
+    const project = this.resolveProjectOrWarn();
+    if (!project) {
+      return;
+    }
+    const existing = listRunProfileNames(this.workspaceRoot, project);
+    const input = await vscode.window.showInputBox({
+      prompt: "新しい実行プロファイル名",
+      validateInput: (value) => validateNewRunProfileName(value.trim(), existing),
+    });
+    if (input === undefined) {
+      return; // キャンセル
+    }
+    const name = input.trim();
+    const runsDir = this.runsDir(project);
+    try {
+      fs.mkdirSync(runsDir, { recursive: true });
+      const template = buildRunProfileTemplate(
+        listAppProfileNames(this.workspaceRoot, project),
+        readMachineDeviceNames(this.workspaceRoot, project),
+      );
+      fs.writeFileSync(path.join(runsDir, `${name}.json`), template, "utf8");
+      this.outputChannel.appendLine(`[ftester] 実行プロファイル「${name}」を追加しました。`);
+      await this.openRunProfileDocument(project, name);
+    } catch (error) {
+      this.outputChannel.appendLine(`[ftester] 実行プロファイル「${name}」の追加に失敗しました: ${String(error)}`);
+      void vscode.window.showErrorMessage(`ftester: 実行プロファイル「${name}」の追加に失敗しました。`);
+    }
+    this.postProfileInfo();
+  }
+
+  /** 「コピー」ボタン: コピー元の内容をそのまま新しい名前で複製してエディタで開く。 */
+  private async handleProfileCopy(source: string): Promise<void> {
+    const project = this.resolveProjectOrWarn();
+    if (!project) {
+      return;
+    }
+    const runsDir = this.runsDir(project);
+    const sourcePath = path.join(runsDir, `${source}.json`);
+    if (!fs.existsSync(sourcePath)) {
+      void vscode.window.showWarningMessage(`ftester: 実行プロファイル「${source}」が見つかりません。`);
+      this.postProfileInfo();
+      return;
+    }
+    const existing = listRunProfileNames(this.workspaceRoot, project);
+    const input = await vscode.window.showInputBox({
+      prompt: `「${source}」のコピー先の実行プロファイル名`,
+      value: `${source}-copy`,
+      validateInput: (value) => validateNewRunProfileName(value.trim(), existing),
+    });
+    if (input === undefined) {
+      return; // キャンセル
+    }
+    const name = input.trim();
+    try {
+      const content = fs.readFileSync(sourcePath, "utf8");
+      fs.mkdirSync(runsDir, { recursive: true });
+      fs.writeFileSync(path.join(runsDir, `${name}.json`), content, "utf8");
+      this.outputChannel.appendLine(`[ftester] 実行プロファイル「${source}」を「${name}」としてコピーしました。`);
+      await this.openRunProfileDocument(project, name);
+    } catch (error) {
+      this.outputChannel.appendLine(`[ftester] 実行プロファイル「${name}」のコピーに失敗しました: ${String(error)}`);
+      void vscode.window.showErrorMessage(`ftester: 実行プロファイル「${name}」のコピーに失敗しました。`);
+    }
+    this.postProfileInfo();
+  }
+
+  /** 「編集」ボタン: 存在すればエディタで開く。存在しなければ警告し、一覧を再送する(古い可能性があるため)。 */
+  private async handleProfileEdit(name: string): Promise<void> {
+    const project = this.resolveProjectOrWarn();
+    if (!project) {
+      return;
+    }
+    if (!fs.existsSync(path.join(this.runsDir(project), `${name}.json`))) {
+      void vscode.window.showWarningMessage(`ftester: 実行プロファイル「${name}」が見つかりません。`);
+      this.postProfileInfo();
+      return;
+    }
+    try {
+      await this.openRunProfileDocument(project, name);
+    } catch (error) {
+      this.outputChannel.appendLine(`[ftester] 実行プロファイル「${name}」を開けませんでした: ${String(error)}`);
+      void vscode.window.showErrorMessage(`ftester: 実行プロファイル「${name}」を開けませんでした。`);
+    }
+  }
+
+  /**
+   * 「削除」ボタン: モーダル確認で「削除」が選ばれたときのみ削除する。削除したのが現在選択中の
+   * プロファイル(ftester.profile)であれば selectProfile("") で「プロファイルなし」に戻す
+   * (onDidChangeConfiguration 経由でモニターは全デバイス監視に切り替わる。新スコープが null に
+   * なるだけで、devicesToShutdownOnScopeChange(devices, null) は常に空を返すため、この切り替え
+   * 自体による自動シャットダウンは発生しない)。
+   */
+  private async handleProfileDelete(name: string): Promise<void> {
+    const project = this.resolveProjectOrWarn();
+    if (!project) {
+      return;
+    }
+    const choice = await vscode.window.showWarningMessage(
+      `実行プロファイル「${name}」を削除しますか?この操作は元に戻せません。`,
+      { modal: true },
+      "削除",
+    );
+    if (choice !== "削除") {
+      return;
+    }
+    try {
+      fs.unlinkSync(path.join(this.runsDir(project), `${name}.json`));
+      this.outputChannel.appendLine(`[ftester] 実行プロファイル「${name}」を削除しました。`);
+      if (this.getConfig().profile === name) {
+        this.selectProfile("");
+      }
+    } catch (error) {
+      this.outputChannel.appendLine(`[ftester] 実行プロファイル「${name}」の削除に失敗しました: ${String(error)}`);
+      void vscode.window.showErrorMessage(`ftester: 実行プロファイル「${name}」の削除に失敗しました。`);
+    }
+    this.postProfileInfo();
   }
 
   private startMonitorProcess(): void {
     const config = this.getConfig();
     const resolution = resolveProjectName(this.workspaceRoot, config);
     if (resolution.kind !== "resolved") {
+      this.monitorScope = undefined;
       this.post({
         type: "processDown",
         message:
@@ -223,6 +550,12 @@ class MonitorPanelController implements vscode.Disposable {
       "--max-width",
       String(config.monitorMaxWidth),
     ];
+    if (config.profile) {
+      // 実行プロファイルが参照するデバイスのみに監視対象を絞り込む(空なら全デバイス。CLI 側の既定)。
+      args.push("--profile", config.profile);
+    }
+    // 実際に使った監視スコープを記録する(restartMonitorIfScopeChanged() が変化検知に使う)。
+    this.monitorScope = `${resolution.project} ${config.profile}`;
 
     let proc: MonitorProcess;
     try {
@@ -254,6 +587,10 @@ class MonitorPanelController implements vscode.Disposable {
             `[monitor] 未知の形式の行を無視しました: ${JSON.stringify(value)}`,
           );
           return;
+        }
+        if (value.kind === "monitorDevices") {
+          // モニター再起動(プロファイル切り替え含む)を跨いで保持する(lastKnownDevices 宣言部参照)。
+          this.lastKnownDevices = value.devices;
         }
         this.post(toWebviewMessage(value));
       },
@@ -313,14 +650,31 @@ class MonitorPanelController implements vscode.Disposable {
     }, 2000);
   }
 
+  /**
+   * monitor プロセスを止めてから起動し直す(「モニター再起動」ボタン、および
+   * restartMonitorIfScopeChanged() による監視対象追随の両方から呼ばれる)。
+   * 多重起動ガード: restartPending が true の間は追加の呼び出しを無視する(連続したプロファイル
+   * 変更やボタン連打で stopMonitorProcess()/startMonitorProcess() が重なり、monitor プロセスが
+   * 二重起動するのを防ぐ)。ガードで潰された再起動要求があっても実害はない — 実際に走る
+   * startMonitorProcess() は呼び出し時点の getConfig() を読むので、最終的に反映されるのは
+   * 常に最新の設定であるため。
+   */
   private restartMonitorProcess(): void {
+    if (this.restartPending) {
+      return;
+    }
+    this.restartPending = true;
     const proc = this.monitorProcess;
     this.stopMonitorProcess();
     if (!proc) {
+      this.restartPending = false;
       this.startMonitorProcess();
       return;
     }
-    proc.once("close", () => this.startMonitorProcess());
+    proc.once("close", () => {
+      this.restartPending = false;
+      this.startMonitorProcess();
+    });
   }
 
   /**
@@ -351,6 +705,28 @@ class MonitorPanelController implements vscode.Disposable {
   private postDeviceLifecycleStatus(name: string): void {
     const status = deviceLifecycleStatusFor(this.lifecycleQueue, name);
     this.post({ type: "deviceOpBusy", name, op: status?.op ?? null, status: status?.status ?? null });
+  }
+
+  /**
+   * webview からの "ready"(初期化完了通知)を受けて、初期状態をまとめて送る(ready ハンドシェイク)。
+   * ready は webview 再読込(タブのエディタグループ移動等)のたびに再送されうるので、ここで行う
+   * 各処理が冪等であることが前提になる(hydrateLaneUi はスナップショットの一括送信、
+   * profileInfo・以下のライフサイクル状態の再送はいずれも webview 側で上書き描画するだけなので
+   * 何度呼んでも問題ない)。
+   */
+  private sendInitialState(): void {
+    this.hydrateLaneUi();
+    this.postProfileInfo();
+    // デバイスライフサイクルキューの状態も再送する(webview 再読込がジョブ実行中に起きた場合に、
+    // ボタンの無効状態・タイルのバッジを復元するため)。
+    if (isDeviceLifecycleQueueBusy(this.lifecycleQueue)) {
+      this.post({ type: "bootBusy", busy: true });
+    }
+    for (const job of this.lifecycleQueue.jobs) {
+      if (job.kind === "device") {
+        this.postDeviceLifecycleStatus(job.name);
+      }
+    }
   }
 
   /** キュー先頭のジョブを実行する(devices up/down の一括実行、または device-up/down の個別実行)。 */
@@ -413,13 +789,21 @@ class MonitorPanelController implements vscode.Disposable {
     }
   }
 
-  /** `ftester devices up`/`devices down` を短命プロセスとして実行する(bulk ジョブの実処理)。 */
+  /**
+   * `ftester devices up`/`devices down` を短命プロセスとして実行する(bulk ジョブの実処理)。
+   * 選択中の実行プロファイル(ftester.profile)が非空なら --profile を付与し、対象を
+   * そのプロファイルが参照するデバイスのみに限定する(要件1。空ならマシンプロファイルの全デバイス。
+   * down は元々引数なしの全体停止だったが、--profile 対応により --project/--profile を渡せるようにした)。
+   */
   private executeBulkJob(kind: "up" | "down"): void {
     const config = this.getConfig();
     const resolution = resolveProjectName(this.workspaceRoot, config);
     const args: string[] = ["devices", kind];
-    if (kind === "up" && resolution.kind === "resolved") {
+    if (resolution.kind === "resolved") {
       args.push("--project", resolution.project);
+    }
+    if (config.profile) {
+      args.push("--profile", config.profile);
     }
 
     // spawn 失敗時(ENOENT 等)は 'error' の後に 'close' も発火することがある(Node の既知の挙動)。
@@ -631,6 +1015,23 @@ function renderHtml(): string {
   button.secondary:hover:not(:disabled) {
     background-color: var(--vscode-button-secondaryHoverBackground, var(--vscode-toolbar-hoverBackground));
   }
+  .profile-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+  }
+  select {
+    font-family: inherit;
+    font-size: inherit;
+    padding: 2px 6px;
+    border-radius: 2px;
+    background-color: var(--vscode-dropdown-background);
+    color: var(--vscode-dropdown-foreground);
+    border: 1px solid var(--vscode-dropdown-border);
+  }
+  select:disabled { opacity: 0.5; cursor: default; }
   .status {
     margin-left: auto;
     font-size: 12px;
@@ -1027,6 +1428,13 @@ function renderHtml(): string {
     <button id="btn-devices-up">デバイスを全て起動</button>
     <button id="btn-devices-down" class="secondary">全て終了</button>
     <button id="btn-restart" class="secondary">モニター再起動</button>
+    <label class="profile-label">実行プロファイル
+      <select id="profile-select" title="以後のテスト実行・デバッグ実行と、このモニターの監視対象デバイスに使う実行プロファイル(ftester.profile 設定)" disabled></select>
+    </label>
+    <button id="btn-profile-add" class="secondary" disabled>追加</button>
+    <button id="btn-profile-copy" class="secondary" disabled>コピー</button>
+    <button id="btn-profile-edit" class="secondary" disabled>編集</button>
+    <button id="btn-profile-delete" class="secondary" disabled>削除</button>
     <span id="status" class="status">接続中...</span>
   </div>
   <div id="banner" class="banner"></div>
@@ -1068,6 +1476,11 @@ function renderHtml(): string {
     const btnUp = document.getElementById('btn-devices-up');
     const btnDown = document.getElementById('btn-devices-down');
     const btnRestart = document.getElementById('btn-restart');
+    const profileSelect = document.getElementById('profile-select');
+    const btnProfileAdd = document.getElementById('btn-profile-add');
+    const btnProfileCopy = document.getElementById('btn-profile-copy');
+    const btnProfileEdit = document.getElementById('btn-profile-edit');
+    const btnProfileDelete = document.getElementById('btn-profile-delete');
 
     const tilePane = document.getElementById('tile-pane');
     const splitter = document.getElementById('splitter');
@@ -1501,6 +1914,70 @@ function renderHtml(): string {
       statusEl.textContent = busy ? '操作を実行中...' : 'モニタリング中';
     }
 
+    // ---- 実行プロファイル選択 ---------------------------------------------------
+
+    const PROFILE_NONE_LABEL = '(プロファイルなし)';
+
+    // profileInfo 受信のたびに select の中身を作り直す(現在値が profiles に無い場合も、
+    // 設定に手書きされた未知の名前として option を補い選択状態を保つ)。
+    function applyProfileInfo(message) {
+      const profiles = Array.isArray(message.profiles) ? message.profiles : [];
+      const current = typeof message.current === 'string' ? message.current : '';
+      profileSelect.textContent = '';
+
+      const noneOption = document.createElement('option');
+      noneOption.value = '';
+      noneOption.textContent = PROFILE_NONE_LABEL;
+      profileSelect.appendChild(noneOption);
+
+      let matched = current === '';
+      for (const name of profiles) {
+        const option = document.createElement('option');
+        option.value = name;
+        option.textContent = name;
+        profileSelect.appendChild(option);
+        if (name === current) {
+          matched = true;
+        }
+      }
+      if (!matched) {
+        const unknownOption = document.createElement('option');
+        unknownOption.value = current;
+        unknownOption.textContent = current;
+        profileSelect.appendChild(unknownOption);
+      }
+      profileSelect.value = current;
+      profileSelect.disabled = false;
+      updateProfileButtonsEnabled();
+    }
+
+    // 追加はドロップダウンが有効な間はいつでも押せる。コピー/編集/削除は「プロファイルなし」
+    // (select.value === '')の間は対象が無いので無効化する。初期状態(profileInfo未着)は
+    // select 自体が disabled なので4つとも無効。
+    function updateProfileButtonsEnabled() {
+      btnProfileAdd.disabled = profileSelect.disabled;
+      const hasSelection = !profileSelect.disabled && profileSelect.value !== '';
+      btnProfileCopy.disabled = !hasSelection;
+      btnProfileEdit.disabled = !hasSelection;
+      btnProfileDelete.disabled = !hasSelection;
+    }
+
+    profileSelect.addEventListener('change', () => {
+      vscode.postMessage({ type: 'selectProfile', profile: profileSelect.value });
+      updateProfileButtonsEnabled();
+    });
+
+    btnProfileAdd.addEventListener('click', () => vscode.postMessage({ type: 'profileAdd' }));
+    btnProfileCopy.addEventListener('click', () =>
+      vscode.postMessage({ type: 'profileCopy', profile: profileSelect.value }),
+    );
+    btnProfileEdit.addEventListener('click', () =>
+      vscode.postMessage({ type: 'profileEdit', profile: profileSelect.value }),
+    );
+    btnProfileDelete.addEventListener('click', () =>
+      vscode.postMessage({ type: 'profileDelete', profile: profileSelect.value }),
+    );
+
     function toggleDeviceSelection(id) {
       if (selectedDeviceIds.has(id)) {
         selectedDeviceIds.delete(id);
@@ -1797,6 +2274,9 @@ function renderHtml(): string {
         case 'laneHydrate':
           applyLaneHydrate(message.snapshot);
           break;
+        case 'profileInfo':
+          applyProfileInfo(message);
+          break;
         default:
           break;
       }
@@ -1819,6 +2299,10 @@ function renderHtml(): string {
 
     updateLaneVisibility();
     updateLanesPlaceholder();
+
+    // 初期化完了(全リスナー登録済み)を拡張側へ通知する(ready ハンドシェイク)。
+    // 拡張側はこれを受けて初期状態(laneHydrate/profileInfo等)を送る。
+    vscode.postMessage({ type: 'ready' });
   })();
   </script>
 </body>

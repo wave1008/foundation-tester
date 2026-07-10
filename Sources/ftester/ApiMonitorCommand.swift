@@ -4,6 +4,8 @@
 // 一定間隔でポーリングし、状態とスクリーンショット(ダウンスケール済み JPEG)を NDJSON で
 // stdout に流し続ける。stdout には monitorDevices/monitorFrame/monitorError の3種類の
 // イベントのみ(診断は stderr のみ。ApiCommands.swift と同じ流儀)。
+// --profile(実行プロファイル名)を指定すると、そのプロファイルが devices で参照する
+// デバイスのみに監視対象を絞り込む(省略時はマシンプロファイルの全デバイスを監視する)。
 // デバイスの起動・終了はこのコマンドの責務外(拡張側が ftester devices up/down を別途呼ぶ)。
 // 終了条件: stdin が EOF(親プロセスが閉じた)、または SIGTERM/SIGINT。
 //
@@ -38,7 +40,8 @@ import UniformTypeIdentifiers
 struct ApiMonitorCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "monitor",
-        abstract: "マシンプロファイルの全デバイスを一定間隔で監視し、状態とスクリーンショットを"
+        abstract: "マシンプロファイルの全デバイス(--profile 指定時はそのプロファイルが参照する"
+            + "デバイスのみ)を一定間隔で監視し、状態とスクリーンショットを"
             + "NDJSON(monitorDevices/monitorFrame/monitorError)で stdout に流し続ける"
             + "(診断は stderr のみ。stdin の EOF または SIGTERM/SIGINT で終了)")
 
@@ -50,6 +53,9 @@ struct ApiMonitorCommand: AsyncParsableCommand {
 
     @Option(name: .customLong("max-width"), help: "スクリーンショットの長辺の最大幅(px。既定 480)")
     var maxWidth: Int = 480
+
+    @Option(help: "実行プロファイル名(指定時はそのプロファイルが参照するデバイスのみ監視する。省略時は マシンプロファイルの全デバイス)")
+    var profile: String?
 
     func run() async throws {
         // ストリーミング読み取りが前提のため常に行バッファにする(ApiRunCommand.swift と同じ理由)
@@ -83,6 +89,16 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         }
         guard !targets.isEmpty else {
             throw ValidationError("マシンプロファイル \(machine.name) にデバイスが定義されていません")
+        }
+
+        // --profile 指定時は、実行プロファイルが参照するデバイスのみに監視対象を絞り込む
+        // (RunProfileScope.swift。ftester devices up/down --profile と共通のロジック)
+        if let profile {
+            let filtered = try RunProfileScope.filteredMachineProfile(
+                project: testProject, machineName: machine.name, machineProfile: machineProfile,
+                runProfileName: profile, warn: logStderr)
+            targets = (filtered.ios?.devices ?? []).map { MonitorTarget(platform: "ios", spec: $0) }
+            targets += (filtered.android?.devices ?? []).map { MonitorTarget(platform: "android", spec: $0) }
         }
 
         let stop = StopFlag()

@@ -5,7 +5,7 @@
 // 同じロジックを使えるようにするため。ndjson.ts/stepsModel.ts と同じ方針)。
 //
 // 契約(別エージェント実装中の `ftester api monitor --project <P> [--interval <秒>]
-// [--max-width <px>]` の stdout NDJSON):
+// [--max-width <px>] [--profile <run>]` の stdout NDJSON):
 //   {"kind":"monitorDevices","devices":[{"id":..,"name":..,"platform":"ios"|"android",
 //     "state":"connected"|"booted"|"offline","detail":".."}]}   … サイクル毎
 //   {"kind":"monitorFrame","device":"..","jpegBase64":"..","width":480,"height":1040}
@@ -109,7 +109,14 @@ export type MonitorToWebviewMessage =
       /** キュー内での状態("running"=実行中／"queued"=順番待ち)。op が null のときは null。 */
       readonly status: DeviceOpQueueStatus | null;
     }
-  | { readonly type: "deviceOpFailed"; readonly name: string; readonly message: string };
+  | { readonly type: "deviceOpFailed"; readonly name: string; readonly message: string }
+  | {
+      readonly type: "profileInfo";
+      /** 対象プロジェクトの実行プロファイル名一覧(Projects/<project>/profiles/runs/ 直下)。 */
+      readonly profiles: readonly string[];
+      /** 現在の ftester.profile 設定値。"" はプロファイルなし。 */
+      readonly current: string;
+    };
 
 /** 検証済みの MonitorEvent を、webview へそのまま postMessage できる形に変換する。 */
 export function toWebviewMessage(event: MonitorEvent): MonitorToWebviewMessage {
@@ -131,10 +138,21 @@ export function toWebviewMessage(event: MonitorEvent): MonitorToWebviewMessage {
 
 /** webview → extension へ送るメッセージ(ボタン操作)。 */
 export type MonitorFromWebviewMessage =
+  // webview スクリプトの初期化完了(全リスナー登録済み)を拡張側へ通知する。これを受けてから
+  // 拡張側は初期状態(laneHydrate/profileInfo等)を送る(ready ハンドシェイク。html設定直後の
+  // postMessage はリスナー登録前のレースで捨てられるため、一度きりの送信はこの通知を待つ)。
+  | { readonly type: "ready" }
   | { readonly type: "devicesUp" }
   | { readonly type: "devicesDown" }
   | { readonly type: "restartMonitor" }
-  | { readonly type: "deviceOp"; readonly name: string; readonly op: DeviceOpKind };
+  | { readonly type: "deviceOp"; readonly name: string; readonly op: DeviceOpKind }
+  | { readonly type: "selectProfile"; readonly profile: string }
+  // 実行プロファイルの追加/コピー/編集/削除(ツールバーの各ボタン)。コピー/編集/削除の対象は
+  // profile(空文字は「対象なし」= 不正入力として扱うため、検証で弾く)。
+  | { readonly type: "profileAdd" }
+  | { readonly type: "profileCopy"; readonly profile: string }
+  | { readonly type: "profileEdit"; readonly profile: string }
+  | { readonly type: "profileDelete"; readonly profile: string };
 
 /** webview からの postMessage 値を MonitorFromWebviewMessage として扱ってよいか判定する。 */
 export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFromWebviewMessage {
@@ -142,12 +160,22 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
     return false;
   }
   switch (value.type) {
+    case "ready":
     case "devicesUp":
     case "devicesDown":
     case "restartMonitor":
+    case "profileAdd":
       return true;
     case "deviceOp":
       return typeof value.name === "string" && (value.op === "up" || value.op === "down");
+    case "selectProfile":
+      return typeof value.profile === "string";
+    case "profileCopy":
+    case "profileEdit":
+    case "profileDelete":
+      // 空文字は「対象プロファイルなし」なので不正入力として弾く(selectProfile と違い、
+      // これら3種は必ず既存プロファイルを1件指すため)。
+      return typeof value.profile === "string" && value.profile !== "";
     default:
       return false;
   }
@@ -331,4 +359,87 @@ export function deviceLifecycleJobNeedsMonitorPause(job: DeviceLifecycleJob): bo
 /** モニターの stdin に書き込む制御コマンドの NDJSON 1行(末尾に改行を含む)。 */
 export function monitorControlLine(cmd: MonitorControlCommand): string {
   return `${JSON.stringify({ cmd })}\n`;
+}
+
+// ---- 実行プロファイル切り替え時の自動シャットダウン対象算出 ------------------------------------
+// 要件: プロファイル切り替え(ftester.profile 変更)で「デバイスを全て起動/終了」ボタンの対象が
+// 新プロファイルのデバイスに変わるのに合わせて、切り替え先プロファイルに定義されていない
+// 稼働中デバイスはシャットダウンする。逆に、切り替え先プロファイルに定義されているデバイスは
+// (稼働中でも offline でも)一切触らない — 自動起動はしない。稼働中ならそのまま利用を続けられる
+// ようにする(monitorPanel.ts の restartMonitorIfScopeChanged がこの結果を down ジョブとしてキューに積む)。
+
+/**
+ * 直近に観測されたデバイス一覧(旧スコープの最終観測)と、切り替え先プロファイルのデバイス名一覧
+ * (null = プロファイルなし = 全デバイスが対象なので何も止めない)から、シャットダウンすべき
+ * デバイス名を返す(元の順序を保つ)。
+ * - newScopeNames が null: [](絞り込みが無くなる=全デバイスが対象内なので停止対象なし)。
+ * - それ以外: state が "offline" でない(=稼働中の) かつ newScopeNames に含まれない name。
+ *   ("offline" のデバイスは既に停止しているので対象外。newScopeNames に含まれるデバイスは
+ *   稼働中でもそのまま — 自動起動しないのと対で、自動停止もしない。)
+ */
+export function devicesToShutdownOnScopeChange(
+  devices: readonly MonitorDevice[],
+  newScopeNames: readonly string[] | null,
+): string[] {
+  if (newScopeNames === null) {
+    return [];
+  }
+  const keep = new Set(newScopeNames);
+  return devices.filter((device) => device.state !== "offline" && !keep.has(device.name)).map((device) => device.name);
+}
+
+// ---- 実行プロファイルの追加/コピー(名前検証・テンプレート生成) ------------------------------
+// monitorPanel.ts の profileAdd/profileCopy ハンドラが使う純粋ロジック。ファイルI/O自体は
+// vscode 依存(fs)なので monitorPanel.ts 側で行い、ここでは「名前が妥当か」「初期内容は何か」
+// だけを扱う(config.ts の listRunProfileNames 等と同じ、vscode 非依存の方針)。
+
+/**
+ * 新規/コピー先の実行プロファイル名(runs/<name>.json の <name>)として妥当かどうかを検証する。
+ * showInputBox の validateInput にそのまま渡せる形(問題なければ null、そうでなければ表示用の
+ * 日本語エラーメッセージ)。呼び出し側は trim 済みの値を渡すこと(このためnameがtrim結果と
+ * 一致しない=前後に空白を含む入力も、それ自体を不正として弾く。呼び出し側の trim 有無に
+ * 依存しない防御的な検証にするため)。
+ * 不正となる条件(優先順に判定):
+ * - 前後に空白を含む(=trim済みでない)
+ * - 空文字
+ * - "/" または "\" を含む(runs/<name>.json のファイル名になるため、パス区切りは使えない)
+ * - "." で始まる(隠しファイル的な名前を避ける)
+ * - existing(既存プロファイル名一覧)に含まれる(重複)
+ */
+export function validateNewRunProfileName(name: string, existing: readonly string[]): string | null {
+  if (name !== name.trim()) {
+    return "プロファイル名の前後に空白を含めることはできません。";
+  }
+  if (name.length === 0) {
+    return "プロファイル名を入力してください。";
+  }
+  if (name.includes("/") || name.includes("\\")) {
+    return 'プロファイル名に "/" や "\\" は使えません。';
+  }
+  if (name.startsWith(".")) {
+    return 'プロファイル名を "." で始めることはできません。';
+  }
+  if (existing.includes(name)) {
+    return `実行プロファイル「${name}」は既に存在します。`;
+  }
+  return null;
+}
+
+/**
+ * 新規実行プロファイル(runs/<name>.json)の初期内容(整形済みJSON文字列、末尾改行あり)を作る。
+ * app は appNames の先頭(候補が無ければ空文字。ユーザーが編集画面で埋める前提)、devices は
+ * machineDeviceNames から `{"name": ...}` の配列を作る(候補が無ければ空文字1件のプレースホルダー)。
+ * heal/reportDir はスキーマの既定値をそのまま書き出す。
+ */
+export function buildRunProfileTemplate(
+  appNames: readonly string[],
+  machineDeviceNames: readonly string[],
+): string {
+  const app = appNames[0] ?? "";
+  const devices =
+    machineDeviceNames.length > 0
+      ? machineDeviceNames.map((name) => ({ name }))
+      : [{ name: "" }];
+  const template = { app, devices, heal: false, reportDir: "reports" };
+  return `${JSON.stringify(template, null, 2)}\n`;
 }
