@@ -7,6 +7,13 @@
 // デバイスの起動・終了はこのコマンドの責務外(拡張側が ftester devices up/down を別途呼ぶ)。
 // 終了条件: stdin が EOF(親プロセスが閉じた)、または SIGTERM/SIGINT。
 //
+// pause/resume プロトコル(拡張側のパネル発「全て終了」「停止」実行中に使う):
+// stdin から NDJSON 1行で {"cmd":"pause"} / {"cmd":"resume"} を受け付ける(不明な行は無視)。
+// pause 中は監視サイクルに入らない(実行中のサイクルは完走する)。resume すると降格デバウンスの
+// 記憶(confirmed/lastErrorMessage/loggedFetchFailure)をクリアしてから即座に1サイクル実行する
+// (これにより、デバイス操作直後の最初の観測がそのまま採用され、3ストライク分の持ち越しによる
+// 見せかけの警告が出なくなる)。pause したまま120秒経過したら安全弁として自動的に resume する。
+//
 // 過渡的エラーの抑制方針(テスト実行中の iOS ブリッジ/adb 競合対策):
 // iOS ブリッジ(XCUITestランナー内 HTTP サーバ)はリクエストを直列処理するため、テスト実行中は
 // /status・/screenshot がタイムアウトしやすい。これは異常ではなく想定内の一時的な競合なので、
@@ -79,7 +86,8 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         }
 
         let stop = StopFlag()
-        startStdinEOFWatcher(stop: stop)
+        let control = MonitorControl()
+        startStdinWatcher(stop: stop, control: control)
         // ループを抜けるまでシグナルソースを保持する(解放されるとハンドラが外れる)
         let signalSources = installSignalHandlers(stop: stop)
         defer { for source in signalSources { source.cancel() } }
@@ -96,6 +104,26 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         var confirmed: [String: ConfirmedDeviceState] = [:]
 
         while !stop.isSet {
+            // 安全弁: pause が長時間(既定120秒)続いたら自動的に resume 扱いにする
+            // (パネルのクラッシュ等で resume コマンドが届かないケースの保険)
+            if control.autoResumeIfStale(limit: Self.pauseSafetyValveSeconds) {
+                logStderr(
+                    "[monitor] 一時停止から\(Int(Self.pauseSafetyValveSeconds))秒経過したため" +
+                    "自動的に再開しました(デバイス操作パネル側の resume 未着信の可能性)")
+            }
+            // resume(手動・安全弁いずれも)直後は降格デバウンスの記憶をクリアし、
+            // 直後の観測をそのまま採用できるようにする
+            if control.takeResetRequest() {
+                confirmed.removeAll()
+                lastErrorMessage.removeAll()
+                loggedFetchFailure.removeAll()
+            }
+            if control.isPaused {
+                // 次サイクルには入らない。実行中のサイクルは既にここまで来ていないので影響しない
+                await Self.sleepInterruptible(seconds: Self.pausedPollSeconds, stop: stop)
+                continue
+            }
+
             let observed = await Self.determineStates(targets: targets)
             let states = Self.debounce(observed, confirmed: &confirmed) { message in
                 self.logStderr(message)
@@ -156,22 +184,41 @@ struct ApiMonitorCommand: AsyncParsableCommand {
     /// iOS は simctl 一覧+ブリッジ /status の一括スキャン、Android は起動中 AVD 一覧の一括取得を
     /// それぞれ 1 回だけ行い、各デバイスへ振り分ける(デバイス毎に simctl/adb を叩くと
     /// デバイス数に比例して遅くなるため)。ブリッジスキャンは短タイムアウトの並列実行なので
-    /// シミュレータ一覧・AVD 一覧の取得(同期呼び出し)と並行して走らせる
-    private static func determineStates(targets: [MonitorTarget]) async -> [DeviceRuntimeState] {
+    /// シミュレータ一覧・AVD 一覧の取得(同期呼び出し)と並行して走らせる。
+    /// internal(private を外している): ftester api list-devices(ApiListDevicesCommand.swift)が
+    /// 1 回だけの状態判定に同じロジックを再利用するため
+    static func determineStates(targets: [MonitorTarget]) async -> [DeviceRuntimeState] {
         async let bridgeStatusesTask = scanBridgeStatuses()
         let simCatalog = (try? SimulatorCatalog.devices()) ?? []
         let runningAVDs = (try? AndroidDeviceCatalog.runningAVDs()) ?? [:]
+        // adb 上は device として見えている(=runningAVDs に載っている)Android 対象の serial だけ、
+        // ブート完了(sys.boot_completed)を一括で(デバイス毎に並列)確認する。ブート未完了なのに
+        // connected と判定してスクショ取得(=ブリッジ APK 自動インストール)を試みると、
+        // パッケージマネージャ未起動で失敗するため(ユーザー報告の根本原因)
+        let androidCandidateSerials = Set(targets.compactMap { target -> String? in
+            guard target.platform == "android", let avd = target.spec.avd else { return nil }
+            let canonical = AndroidDeviceCatalog.canonicalAVDID(avd)
+            return runningAVDs.first(where: { $0.value == canonical })?.key
+        })
+        async let bootCompletedTask = scanBootCompleted(serials: androidCandidateSerials)
+
         let bridgeStatuses = await bridgeStatusesTask
+        let bootCompleted = await bootCompletedTask
 
         return targets.map { target in
             target.platform == "ios"
                 ? iosState(target: target, catalog: simCatalog, bridgeStatuses: bridgeStatuses)
-                : androidState(target: target, runningAVDs: runningAVDs)
+                : androidState(target: target, runningAVDs: runningAVDs, bootCompleted: bootCompleted)
         }
     }
 
     /// connected からの降格を確定させるまでに要する連続失敗回数(1回の失敗では降格しない)
     private static let connectedDowngradeMissThreshold = 3
+
+    /// pause したまま resume が来ない場合に自動的に resume 扱いにするまでの秒数(安全弁)
+    private static let pauseSafetyValveSeconds: TimeInterval = 120
+    /// pause 中、resume(または安全弁)を検知するためのポーリング間隔(秒)
+    private static let pausedPollSeconds: TimeInterval = 0.2
 
     /// 1 サイクル分の生の判定結果(observed)に、状態のばたつき抑制(debounce)を適用する。
     /// - connected への昇格(observed が connected)は即時反映する。
@@ -247,10 +294,12 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                                   iosPort: nil, androidSerial: nil)
     }
 
-    /// Android: AVD が起動済み(AndroidDeviceCatalog で serial 解決可能)→ connected。
-    /// それ以外 → offline(iOS と違い中間状態は無い)
+    /// Android: AVD が起動済み(AndroidDeviceCatalog で serial 解決可能)かつブート完了
+    /// (sys.boot_completed == "1")→ connected。AVD 起動済みだがブート未完了 → booted
+    /// (ブリッジ APK インストールを試みさせないため。connected と booted の間に限り中間状態がある)。
+    /// AVD 未起動 → offline
     private static func androidState(
-        target: MonitorTarget, runningAVDs: [String: String]
+        target: MonitorTarget, runningAVDs: [String: String], bootCompleted: [String: Bool]
     ) -> DeviceRuntimeState {
         guard let avd = target.spec.avd else {
             return DeviceRuntimeState(target: target, state: "offline",
@@ -262,8 +311,28 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             return DeviceRuntimeState(target: target, state: "offline", detail: "",
                                       iosPort: nil, androidSerial: nil)
         }
+        guard bootCompleted[serial] == true else {
+            return DeviceRuntimeState(target: target, state: "booted",
+                                      detail: "ブート完了待ち(\(serial))",
+                                      iosPort: nil, androidSerial: nil)
+        }
         return DeviceRuntimeState(target: target, state: "connected", detail: serial,
                                   iosPort: nil, androidSerial: serial)
+    }
+
+    /// 起動中(adb 上で device 表示されている)Android 対象の sys.boot_completed を一括スキャンする。
+    /// serial 毎に並列で `adb shell getprop` を叩く(scanBridgeStatuses と同じ並行化方針)
+    private static func scanBootCompleted(serials: Set<String>) async -> [String: Bool] {
+        await withTaskGroup(of: (String, Bool).self, returning: [String: Bool].self) { group in
+            for serial in serials {
+                group.addTask { (serial, AndroidDeviceCatalog.bootCompleted(serial: serial)) }
+            }
+            var result: [String: Bool] = [:]
+            for await (serial, completed) in group {
+                result[serial] = completed
+            }
+            return result
+        }
     }
 
     /// 起動中ブリッジの一括スキャン。ポート毎に短いタイムアウトで並列に /status を叩く
@@ -310,14 +379,29 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         }
     }
 
-    // MARK: - 終了検知(stdin EOF / シグナル)
+    // MARK: - 終了検知・制御コマンド受信(stdin / シグナル)
 
-    /// stdin の EOF(親プロセスがパイプを閉じた)を検知して停止フラグを立てる。
-    /// このコマンドは制御コマンドを受け付けないが、EOF 検知のためだけに専用スレッドで
-    /// 読み続ける必要がある(readLine はブロッキングなのでメインループとは別スレッドにする)
-    private func startStdinEOFWatcher(stop: StopFlag) {
+    /// stdin を行単位で読み、NDJSON の制御コマンド({"cmd":"pause"} / {"cmd":"resume"})を処理する。
+    /// 不明な行(パース失敗・未知の cmd 値)は無視する。EOF(親プロセスがパイプを閉じた)を検知したら
+    /// 停止フラグを立てる。readLine はブロッキングなのでメインループとは別スレッドで読み続ける
+    /// (ApiRunCommand.swift の --debug stdin 制御読み取りと同じ方式)
+    private func startStdinWatcher(stop: StopFlag, control: MonitorControl) {
         let thread = Thread {
-            while readLine(strippingNewline: true) != nil {}
+            while let line = readLine(strippingNewline: true) {
+                guard let data = line.data(using: .utf8),
+                      let command = try? JSONDecoder().decode(MonitorControlCommand.self, from: data)
+                else { continue }
+                switch command.cmd {
+                case "pause":
+                    control.pause()
+                    self.logStderr("[monitor] ポーリングを一時停止しました(デバイス操作中)")
+                case "resume":
+                    control.resume()
+                    self.logStderr("[monitor] ポーリングを再開しました")
+                default:
+                    break
+                }
+            }
             stop.set()
         }
         thread.name = "ftester-api-monitor-stdin"
@@ -354,8 +438,9 @@ struct ApiMonitorCommand: AsyncParsableCommand {
 
 // MARK: - 監視対象・判定結果
 
-/// マシンプロファイルの 1 デバイス(監視対象)
-private struct MonitorTarget {
+/// マシンプロファイルの 1 デバイス(監視対象)。internal: ApiListDevicesCommand.swift でも
+/// 同じ構造体を使ってマシンプロファイルのデバイスを表す(determineStates と対で共有)
+struct MonitorTarget {
     let platform: String  // "ios" / "android"
     let spec: DeviceSpec
 
@@ -365,8 +450,8 @@ private struct MonitorTarget {
     var id: String { "\(platform):\(spec.name)" }
 }
 
-/// 1 サイクル分のデバイス判定結果
-private struct DeviceRuntimeState {
+/// 1 サイクル分のデバイス判定結果。internal: determineStates と一緒に list-devices へ共有
+struct DeviceRuntimeState {
     let target: MonitorTarget
     let state: String  // connected / booted / offline
     /// 補足(ポートや serial 等)。無ければ空文字列("")— VSCode 拡張側の契約が
@@ -377,7 +462,10 @@ private struct DeviceRuntimeState {
     /// state == connected(Android)のときだけ設定。スクリーンショット取得に使う
     let androidSerial: String?
 
-    var info: ApiMonitorDeviceInfo {
+    /// fileprivate: 戻り値の型(ApiMonitorDeviceInfo)がこのファイル限定の private 型のため、
+    /// DeviceRuntimeState 自体は internal でもこのプロパティはファイル外に公開できない
+    /// (list-devices は同じ情報を ApiDeviceEntry として別途組み立てる)
+    fileprivate var info: ApiMonitorDeviceInfo {
         ApiMonitorDeviceInfo(id: target.id, name: target.name,
                              platform: target.platform, state: state, detail: detail)
     }
@@ -407,6 +495,63 @@ private final class StopFlag: @unchecked Sendable {
 
     func set() {
         lock.lock(); flag = true; lock.unlock()
+    }
+}
+
+/// stdin から受け取る制御コマンド(NDJSON 1行)。cmd 以外のフィールドは無視する
+private struct MonitorControlCommand: Decodable {
+    let cmd: String
+}
+
+/// pause/resume コマンド(stdin 経由)の状態。stdin 読み取りスレッドとメインループの間で共有する
+/// (StopFlag と同様 NSLock で保護する)
+private final class MonitorControl: @unchecked Sendable {
+    private let lock = NSLock()
+    private var paused = false
+    private var pausedAt: Date?
+    /// resume(手動 or 安全弁)後、次のメインループ周回でデバウンス記憶をクリアすべきという指示。
+    /// takeResetRequest() で取り出すと同時にクリアされる(単純さ優先: pause していなかった場合の
+    /// resume でも一律クリアする)
+    private var resetRequested = false
+
+    var isPaused: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return paused
+    }
+
+    func pause() {
+        lock.lock()
+        paused = true
+        pausedAt = Date()
+        lock.unlock()
+    }
+
+    func resume() {
+        lock.lock()
+        paused = false
+        pausedAt = nil
+        resetRequested = true
+        lock.unlock()
+    }
+
+    /// pause 継続時間が limit 秒以上なら自動的に resume 状態にする(安全弁)。実際に発火したら true
+    func autoResumeIfStale(limit: TimeInterval) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard paused, let pausedAt, Date().timeIntervalSince(pausedAt) >= limit else { return false }
+        paused = false
+        self.pausedAt = nil
+        resetRequested = true
+        return true
+    }
+
+    /// 保留中のデバウンスリセット要求を取り出す(取り出すと同時にクリアする)
+    func takeResetRequest() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        let value = resetRequested
+        resetRequested = false
+        return value
     }
 }
 
@@ -457,8 +602,10 @@ private struct ApiMonitorErrorEvent: Encodable {
 
 /// PNG のスクリーンショットを長辺 maxWidth px にダウンスケールして JPEG に変換する。
 /// 生 PNG の base64 は 1 フレームあたり数 MB になり Webview に流せないため必須の変換
-/// (ImageIO のサムネイル生成を使うのでデコード→リサイズ→再エンコードを 1 回で済ませられる)
-private enum MonitorImage {
+/// (ImageIO のサムネイル生成を使うのでデコード→リサイズ→再エンコードを 1 回で済ませられる)。
+/// private を外して ApiLiveCommand.swift(ftester api live snapshot)にも共有する
+/// (ApiListDevicesCommand.swift が MonitorTarget/DeviceRuntimeState を共有するのと同方針)
+enum MonitorImage {
     struct Result {
         let data: Data
         let width: Int
