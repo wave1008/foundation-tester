@@ -353,17 +353,15 @@ struct ApiRunCommand: AsyncParsableCommand {
     /// RunEvent 1 件 → NDJSON 行(0〜複数行)。逐次実行時に ScenarioHost.run から届く
     /// ScenarioEvent と同じ kind・フィールド名を保ち、"worker" フィールドを追加する。
     ///
-    /// RunEvent は ScenarioRunner.runOne が元の ScenarioEvent から変換したものなので、
-    /// 変換時点で失われている情報はここでも復元できない:
-    /// - kind "sceneStarted"/"sceneFinished" に対応する RunEvent が無いため、scene の
-    ///   開始・終了イベントそのものが丸ごと落ちる(FTDSL/FTRuntime.swift が emit している)
-    /// - "step" イベントの scene/sceneTitle(どの scene に属すステップかの情報)も
-    ///   StepResult に運ばれないため落ちる
-    /// - status "passedViaFallback"/"healed" は StepResult.status .passed に畳み込まれ、
-    ///   詳細(旧セレクタ等)は description 末尾の "(...)" に文字列として埋め込まれる形でしか
-    ///   残らない(status 文字列としては "passed" になる)
-    /// - section("condition"/"action"/"expectation")も description 先頭の "[section] "
-    ///   という文字列プレフィックスに畳み込まれ、独立した section フィールドとしては残らない
+    /// RunEvent は ScenarioRunner.runOne が元の ScenarioEvent から変換したものだが、
+    /// scene/sceneTitle/section/status(passedViaFallback・healed含む)は構造化フィールド
+    /// のまま StepResult に運ばれてくるため、ここでそのまま復元できる:
+    /// - kind "sceneStarted"/"sceneFinished" は RunEvent の同名ケースからそのまま合成する
+    /// - "step" イベントの scene/sceneTitle/section は StepResult の同名フィールドから写す
+    /// - status "passedViaFallback"/"healed" は丸めず同名の status 文字列のまま出し、
+    ///   detail には FlowLocator.summary(= サブプロセス発の raw テキスト)を入れる
+    /// - fixSuggestion に伴う合成 step 行(StepResult.synthetic == true)は、次に来る
+    ///   .fixSuggestion で kind:"fixSuggestion" として別途出すため、ここでは除外する
     private func ndjsonLines(
         for event: RunEvent, itemByURL: [URL: ScenarioRunItem], workerID: [String: String]
     ) -> [String] {
@@ -374,11 +372,22 @@ struct ApiRunCommand: AsyncParsableCommand {
             // (--debug のときは常に逐次経路)には来ない
             return []
 
-        case .sceneStarted, .sceneFinished:
-            // RunEvent拡張(並列実行のscene忠実度)の途上で追加されたケース。
-            // 生成側(ScenarioRunner.runOne)が未実装のため現状は発生しない。
-            // 完成時に sceneStarted/sceneFinished の NDJSON(worker付き)へ変換する
-            return []
+        case .sceneStarted(let worker, let flowURL, let scene, let sceneTitle):
+            var started = ScenarioEvent(kind: "sceneStarted")
+            started.worker = workerID[worker] ?? worker
+            started.scenario = itemByURL[flowURL]?.info.id
+            started.scene = scene
+            started.sceneTitle = sceneTitle
+            return [started.encodedLine()]
+
+        case .sceneFinished(let worker, let flowURL, let scene, let sceneTitle, let passed):
+            var finished = ScenarioEvent(kind: "sceneFinished")
+            finished.worker = workerID[worker] ?? worker
+            finished.scenario = itemByURL[flowURL]?.info.id
+            finished.scene = scene
+            finished.sceneTitle = sceneTitle
+            finished.passed = passed
+            return [finished.encodedLine()]
 
         case .workerFailed(let worker, let message):
             var log = ScenarioEvent(kind: "log")
@@ -396,8 +405,9 @@ struct ApiRunCommand: AsyncParsableCommand {
         case .step(let worker, let flowURL, let result):
             // fixSuggestion に付随する合成 step("💡 修正提案: ..." 固定文言。
             // ScenarioRunner.runOne 参照)は次に来る .fixSuggestion で kind:"fixSuggestion"
-            // として出すため、ここでは重複emitを避けて捨てる
-            if result.description.hasPrefix("💡 修正提案: ") { return [] }
+            // として出すため、ここでは重複emitを避けて捨てる(構造化フラグで判定する。
+            // 文字列プレフィックス照合はしない)
+            if result.synthetic { return [] }
 
             let workerIDValue = workerID[worker] ?? worker
             let scenario = itemByURL[flowURL]?.info.id
@@ -415,20 +425,27 @@ struct ApiRunCommand: AsyncParsableCommand {
             step.worker = workerIDValue
             step.scenario = scenario
             step.index = result.index
+            step.scene = result.scene
+            step.sceneTitle = result.sceneTitle
+            step.section = result.section
+            // description はプレフィックス無しの素の表現("[section] " 等は section
+            // フィールド側にあるため埋め込まない)
             step.description = result.description
             switch result.status {
             case .passed:
                 step.status = "passed"
+            case .passedViaFallback(let locator):
+                step.status = "passedViaFallback"
+                step.detail = locator.summary
+            case .healed(let locator):
+                step.status = "healed"
+                step.detail = locator.summary
             case .failed(let reason):
                 step.status = "failed"
                 step.detail = reason
             case .skipped(let reason):
                 step.status = "skipped"
                 step.detail = reason
-            case .passedViaFallback(let locator), .healed(let locator):
-                // stepResult(from:) は常に .passed に畳み込むため実際には到達しない防御的分岐
-                step.status = "passed"
-                step.detail = locator.summary
             }
             return [step.encodedLine()]
 

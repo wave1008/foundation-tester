@@ -1730,8 +1730,8 @@ final class AppModel {
             setState(url, .failed)
             appendLane("system", lines)
         case .sceneStarted, .sceneFinished:
-            // RunEvent拡張(並列実行のscene忠実度)の途上で追加されたケース。
-            // 生成側が未実装のため現状は発生しない。GUI表示対応は拡張の完成時に検討
+            // scene の開始・終了。RunLogFormatter.lines(for:) が空配列を返す(CLI互換維持)ため
+            // レーン表示への影響はない。GUI 表示対応が必要になったら改めて検討
             break
         }
     }
