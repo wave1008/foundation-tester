@@ -111,19 +111,31 @@ public enum ScenarioRunner {
             heal: healingEnabled, reportDir: reportDir.path,
             defaultTimeout: defaultTimeout, debug: debug) { event in
             switch event.kind {
+            case "sceneStarted":
+                onEvent(.sceneStarted(worker: worker.label, flowURL: item.url,
+                                      scene: event.scene ?? 0,
+                                      sceneTitle: event.sceneTitle ?? ""))
             case "step":
                 onEvent(.step(worker: worker.label, flowURL: item.url,
                               result: stepResult(from: event)))
+            case "sceneFinished":
+                onEvent(.sceneFinished(worker: worker.label, flowURL: item.url,
+                                       scene: event.scene ?? 0,
+                                       sceneTitle: event.sceneTitle ?? "",
+                                       passed: event.passed ?? false))
             case "paused":
                 onEvent(.flowPaused(worker: worker.label, flowURL: item.url,
                                     index: event.index ?? 0,
                                     description: event.description ?? "",
                                     file: event.file, line: event.line))
             case "fixSuggestion":
+                // 「💡 修正提案: …」合成 step 行(実際のコマンド結果ではない)。
+                // synthetic: true を立てて出す(CLI/GUI 表示は従来どおり残し、
+                // 機械可読 NDJSON 側だけがこのフラグで除外する)
                 onEvent(.step(worker: worker.label, flowURL: item.url,
                               result: StepResult(index: event.index ?? 0,
                                                  description: "💡 修正提案: \(event.detail ?? "")",
-                                                 status: .passed)))
+                                                 status: .passed, synthetic: true)))
                 onEvent(.fixSuggestion(worker: worker.label, flowURL: item.url,
                                        scenarioID: event.scenario ?? item.info.id,
                                        command: event.description,
@@ -149,22 +161,26 @@ public enum ScenarioRunner {
         return passed
     }
 
-    /// ScenarioEvent(step)→ StepResult。フォールバック/自己修復の詳細は説明文に畳み込む
+    /// ScenarioEvent(step)→ StepResult。scene/sceneTitle/section は構造化フィールドのまま写し、
+    /// status も丸めずそのまま(passedViaFallback/healed の詳細は FlowLocator.raw に保持する。
+    /// サブプロセス境界を跨ぐと構造化ロケータは失われ人間可読テキストしか残らないため)
     static func stepResult(from event: ScenarioEvent) -> StepResult {
-        var description = (event.section.map { "[\($0)] " } ?? "") + (event.description ?? "")
         let status: StepResult.Status
         switch event.status {
         case "passed":
             status = .passed
-        case "passedViaFallback", "healed":
-            if let detail = event.detail { description += "(\(detail))" }
-            status = .passed
+        case "passedViaFallback":
+            status = .passedViaFallback(FlowLocator(raw: event.detail ?? ""))
+        case "healed":
+            status = .healed(FlowLocator(raw: event.detail ?? ""))
         case "failed":
             status = .failed(event.detail ?? "")
         default:
             status = .skipped(event.detail ?? "")
         }
-        return StepResult(index: event.index ?? 0, description: description, status: status)
+        return StepResult(index: event.index ?? 0, description: event.description ?? "",
+                          status: status, scene: event.scene, sceneTitle: event.sceneTitle,
+                          section: event.section)
     }
 }
 
@@ -273,9 +289,10 @@ public enum RunLogFormatter {
         case .runStarted, .workerReady, .runFinished:
             return []
         case .sceneStarted, .sceneFinished:
-            // RunEvent拡張(並列実行のscene忠実度)の途上で追加されたケース。
-            // 生成側(ScenarioRunner.runOne)が未実装のため現状は発生しない。
-            // 表示対応はRunEvent拡張の完成時に行う(CLI表示互換を保つこと)
+            // scene の開始・終了(ScenarioRunner.runOne が emit する)。CLI/GUI の表示は
+            // 従来 flowStarted〜flowFinished の間の step 行だけで完結しており、
+            // scene 区切りの専用行は無かったため、互換を保つためここでは意図的に空配列のまま
+            // (scene/sceneTitle は各 step 行の構造化フィールドとして参照できる)
             return []
         case .workerFailed(let worker, let message):
             return ["❌ ワーカー \(worker) が離脱しました: \(message)"]
@@ -315,19 +332,24 @@ public enum RunLogFormatter {
     }
 
     public static func lines(for step: StepResult) -> [String] {
+        // section("condition"/"action"/"expectation")は従来 description 先頭への
+        // "[section] " プレフィックス折り込みだった見た目をここで再現する(section は
+        // stepResult(from:) 以降は構造化フィールドとして独立して保持されている)
+        let description = (step.section.map { "[\($0)] " } ?? "") + step.description
         switch step.status {
         case .passed:
             // index 0 = ステップ以外の情報行(修正提案・ユーザー print 等)
-            if step.index == 0 { return ["  \(step.description)"] }
-            return ["  ✅ \(step.index). \(step.description)"]
-        case .passedViaFallback(let locator):
-            return ["  ✅ \(step.index). \(step.description)(フォールバック \(locator.summary))"]
-        case .healed(let locator):
-            return ["  🔧 \(step.index). \(step.description) → 自己修復: \(locator.summary)"]
+            if step.index == 0 { return ["  \(description)"] }
+            return ["  ✅ \(step.index). \(description)"]
+        case .passedViaFallback(let locator), .healed(let locator):
+            // 従来 stepResult(from:) が passedViaFallback/healed を "passed" に丸め、
+            // description 末尾へ "(detail)" を畳み込んでいたときと同じ見た目にする
+            // (locator.summary は FlowLocator.raw = ScenarioEvent.detail そのもの)
+            return ["  ✅ \(step.index). \(description)(\(locator.summary))"]
         case .failed(let reason):
-            return ["  ❌ \(step.index). \(step.description)", "     \(reason)"]
+            return ["  ❌ \(step.index). \(description)", "     \(reason)"]
         case .skipped(let reason):
-            return ["  ⚠️ \(step.index). \(step.description)(スキップ: \(reason))"]
+            return ["  ⚠️ \(step.index). \(description)(スキップ: \(reason))"]
         }
     }
 }
