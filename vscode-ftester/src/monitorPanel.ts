@@ -120,6 +120,25 @@
 //   直接参照されないため、削除・名前変更時に追随させる設定は無い(実行プロファイルの app 参照が
 //   古い名前を指したままになりうるが、そちらは CLI 側の validate-profile が検出する領分とし、
 //   この拡張からは追随しない)。appsFileWatcher(今回追加)の onDidChange で外部編集も検知する。
+// - ホストMacのメトリクスグラフ(CPU/GPU/ANE/MEM。デバイスタブの #toolbar、実行プロファイル選択
+//   [.profile-label]の直後に4つ横並びで表示): `ftester api host-metrics --interval 1` を monitor
+//   プロセスとは別に常駐 spawn し(startHostMetricsProcess/stopHostMetricsProcess。stdin をパイプで
+//   保持したまま EOF で終了させる・SIGTERM 送信後2秒待って SIGKILL、という流儀は monitor プロセスの
+//   管理[startMonitorProcess/stopMonitorProcess]と同じ)、NdjsonParser(monitor と共用)で受けた
+//   `{"kind":"hostMetrics", ...}` 行を isHostMetricsEvent で検証してから webview へ `hostMetrics`
+//   メッセージとして転送する。host-metrics はプロファイル/プロジェクトに依存しない(ホストMac自体の
+//   値なので、restartMonitorIfScopeChanged 等の監視対象切り替えでは再起動しない)。予期しない終了時は
+//   パネルが生きていれば5秒後に自動再起動するが(scheduleHostMetricsRestart)、起動後10秒未満での
+//   異常終了が3回連続したら諦めて outputChannel に1回だけログし、以後は自動再起動を止める
+//   (hostMetricsGaveUp。旧バイナリに host-metrics サブコマンドが無い環境で無限に再起動ループしない
+//   ようにするための安全弁)。「モニター再起動」ボタン(handleWebviewMessage の "restartMonitor")は
+//   この失敗カウンタもリセットして再起動を試みるので、バイナリ更新後はボタン一つで復帰できる
+//   (パネルを開き直したとき[show()]も同様にリセットする)。webview 側はグラフ描画用の独自タイマーを
+//   持たず、host-metrics プロセスの1秒 interval で届く hostMetrics メッセージ受信のたびに直近60
+//   サンプルのローリングバッファへ追加して canvas に再描画するだけ(CPU/GPU/ANE は 0..1 の負荷率、
+//   MEM は memUsedBytes/memTotalBytes の比率。いずれも null は欠測として線を途切れさせる)。系列色は
+//   ライト/ダークテーマで切り替える固定パレットを使い、body の class(vscode-light 等)の変化を
+//   MutationObserver で監視して即座に全グラフを再描画する。
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -220,6 +239,52 @@ type AppProfileSaveMessage = Extract<MonitorFromWebviewMessage, { type: "appProf
  */
 type MonitorProcess = ChildProcessByStdio<Writable, Readable, Readable>;
 
+/**
+ * host-metrics プロセス(`ftester api host-metrics --interval 1`)が stdout に流す1行の形。
+ * monitor とは別プロセス・別スキーマなので monitorModel.ts の MonitorEvent 側には混ぜず、ここで
+ * 直接定義・検証する(isMonitorEvent と同じ「壊れた行は安全側で無視する」方針)。
+ */
+type HostMetricsRawEvent = {
+  readonly kind: "hostMetrics";
+  readonly ts: number;
+  readonly cpu: number | null;
+  readonly gpu: number | null;
+  readonly ane: number | null;
+  readonly aneWatts: number | null;
+  readonly memUsedBytes: number | null;
+  readonly memTotalBytes: number | null;
+};
+
+/** value が HostMetricsRawEvent として扱ってよいか判定する(isMonitorEvent と同じ方針)。 */
+function isHostMetricsEvent(value: unknown): value is HostMetricsRawEvent {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  const numberOrNull = (field: unknown): boolean => field === null || typeof field === "number";
+  return (
+    record.kind === "hostMetrics" &&
+    typeof record.ts === "number" &&
+    numberOrNull(record.cpu) &&
+    numberOrNull(record.gpu) &&
+    numberOrNull(record.ane) &&
+    numberOrNull(record.aneWatts) &&
+    numberOrNull(record.memUsedBytes) &&
+    numberOrNull(record.memTotalBytes)
+  );
+}
+
+/** host-metrics プロセスの1サンプルを webview へ送るメッセージの形(post() 経由)。 */
+type HostMetricsToWebviewMessage = {
+  readonly type: "hostMetrics";
+  readonly cpu: number | null;
+  readonly gpu: number | null;
+  readonly ane: number | null;
+  readonly aneWatts: number | null;
+  readonly memUsedBytes: number | null;
+  readonly memTotalBytes: number | null;
+};
+
 export function registerMonitorPanel(
   context: vscode.ExtensionContext,
   workspaceRoot: string,
@@ -260,6 +325,28 @@ class MonitorPanelController implements vscode.Disposable {
    * startMonitorProcess() が重なり、monitor プロセスが二重起動するのを防ぐ。
    */
   private restartPending = false;
+  /** host-metrics プロセス(常駐。monitor プロセスとは独立に管理する)。 */
+  private hostMetricsProcess: MonitorProcess | undefined;
+  /** stopHostMetricsProcess() 経由による意図した終了かどうか(stoppingMonitor と同じ役割)。 */
+  private stoppingHostMetrics = false;
+  /** restartHostMetricsProcess() の多重起動ガード(restartPending と同じ役割)。 */
+  private hostMetricsRestartPending = false;
+  /** 予期しない終了後の自動再起動タイマー(5秒後)。dispose/stop 時に必ずクリアする。 */
+  private hostMetricsRestartTimer: ReturnType<typeof setTimeout> | undefined;
+  /** 直近の起動時刻(ms)。close イベントでの経過時間から「起動後10秒未満での異常終了」を判定する。 */
+  private hostMetricsStartedAt: number | undefined;
+  /**
+   * 「起動後10秒未満での異常終了」が連続した回数。3回連続したら諦めて自動再起動を止める
+   * (旧バイナリに host-metrics サブコマンドが無い環境で無限に再起動ループしないための安全弁)。
+   * 10秒以上動いてからの終了は正常運転とみなして 0 にリセットする。
+   */
+  private hostMetricsFailureStreak = 0;
+  /**
+   * 自動再起動を諦めた状態かどうか。true の間は close イベントで再起動をスケジュールしない。
+   * 「モニター再起動」ボタン(handleWebviewMessage の "restartMonitor")でリセットして再挑戦できる
+   * (バイナリ更新後の復帰経路)。パネルを開き直したとき(show())も同様にリセットする。
+   */
+  private hostMetricsGaveUp = false;
   /**
    * 直近の monitorDevices イベントで観測したデバイス一覧(state 込み)。モニタープロセスの再起動
    * (プロファイル切り替え含む)を跨いで保持し、リセットしない — restartMonitorIfScopeChanged() が
@@ -427,9 +514,15 @@ class MonitorPanelController implements vscode.Disposable {
     panel.onDidDispose(() => {
       this.panel = undefined;
       this.stopMonitorProcess();
+      this.stopHostMetricsProcess();
     });
 
     this.startMonitorProcess();
+    // host-metrics の失敗カウンタは新しいパネルごとにリセットする(前回セッションで諦めていても、
+    // 開き直したときは素直に起動を試みる。hostMetricsGaveUp 宣言部参照)。
+    this.hostMetricsFailureStreak = 0;
+    this.hostMetricsGaveUp = false;
+    this.startHostMetricsProcess();
     // 初期状態(laneHydrate/profileInfo等)の送信はここでは行わない。html設定直後の
     // postMessage は webview 側スクリプトの message リスナー登録前に届き、VS Code webview の
     // 既知のレースで握りつぶされる(タイル/フレームはモニタープロセスが継続的に流すので
@@ -449,12 +542,15 @@ class MonitorPanelController implements vscode.Disposable {
     this.machineFileWatcher.dispose();
     this.appsFileWatcher.dispose();
     this.stopMonitorProcess();
+    this.stopHostMetricsProcess();
     const panel = this.panel;
     this.panel = undefined;
     panel?.dispose();
   }
 
-  private post(message: MonitorToWebviewMessage | RunLaneToWebviewMessage): void {
+  private post(
+    message: MonitorToWebviewMessage | RunLaneToWebviewMessage | HostMetricsToWebviewMessage,
+  ): void {
     void this.panel?.webview.postMessage(message);
   }
 
@@ -576,6 +672,11 @@ class MonitorPanelController implements vscode.Disposable {
         break;
       case "restartMonitor":
         this.restartMonitorProcess();
+        // host-metrics の失敗カウンタもリセットして再挑戦する(バイナリ更新後の復帰経路。
+        // hostMetricsGaveUp 宣言部参照)。
+        this.hostMetricsFailureStreak = 0;
+        this.hostMetricsGaveUp = false;
+        this.restartHostMetricsProcess();
         break;
       case "deviceOp":
         this.enqueueLifecycleJob({ kind: "device", name: message.name, op: message.op });
@@ -1831,6 +1932,163 @@ class MonitorPanelController implements vscode.Disposable {
   }
 
   /**
+   * host-metrics プロセス(`ftester api host-metrics --interval 1`)を spawn する。monitor プロセスと
+   * 同じく stdin をパイプで保持したまま何も書かない(EOF が終了指示)。--project/--profile は
+   * 付けない — ホストMac自体の値であり監視対象デバイスに依存しないため(プロファイル/プロジェクト
+   * 切り替えでの再起動は不要。restartMonitorIfScopeChanged() からは呼ばない)。
+   */
+  private startHostMetricsProcess(): void {
+    // 予約済みの自動再起動があれば無効化する。「プロセス終了→close 未配送」の隙間で
+    // restartHostMetricsProcess()(モニター再起動ボタン)が走ると、close ハンドラが積んだ
+    // 5秒後の自動再起動と本起動の両方が生きて host-metrics が二重起動し得るため、
+    // どの経路から起動する場合も先にタイマーを消す。
+    if (this.hostMetricsRestartTimer) {
+      clearTimeout(this.hostMetricsRestartTimer);
+      this.hostMetricsRestartTimer = undefined;
+    }
+    const config = this.getConfig();
+    let proc: MonitorProcess;
+    try {
+      proc = spawn(config.binaryPath, ["api", "host-metrics", "--interval", "1"], {
+        cwd: this.workspaceRoot,
+        shell: false,
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+    } catch (error) {
+      this.outputChannel.appendLine(`[host-metrics] プロセスの起動に失敗しました: ${String(error)}`);
+      return;
+    }
+
+    // stdin は EOF が終了指示なので、こちらからは何も書かず開いたまま保持する(monitor と同じ)。
+    proc.stdin.on("error", () => undefined);
+
+    this.stoppingHostMetrics = false;
+    this.hostMetricsProcess = proc;
+    this.hostMetricsStartedAt = Date.now();
+
+    const stdoutParser = new NdjsonParser(
+      (value) => {
+        if (!isHostMetricsEvent(value)) {
+          this.outputChannel.appendLine(`[host-metrics] 未知の形式の行を無視しました: ${JSON.stringify(value)}`);
+          return;
+        }
+        this.post({
+          type: "hostMetrics",
+          cpu: value.cpu,
+          gpu: value.gpu,
+          ane: value.ane,
+          aneWatts: value.aneWatts,
+          memUsedBytes: value.memUsedBytes,
+          memTotalBytes: value.memTotalBytes,
+        });
+      },
+      (line) => this.outputChannel.appendLine(`[host-metrics stdout] ${line}`),
+    );
+    const stderrParser = new NdjsonParser(
+      (value) => this.outputChannel.appendLine(`[host-metrics stderr] ${JSON.stringify(value)}`),
+      (line) => this.outputChannel.appendLine(`[host-metrics stderr] ${line}`),
+    );
+
+    proc.stdout.on("data", (chunk: Buffer) => stdoutParser.push(chunk));
+    proc.stderr.on("data", (chunk: Buffer) => stderrParser.push(chunk));
+
+    proc.on("error", (error) => {
+      this.outputChannel.appendLine(`[host-metrics] プロセスでエラーが発生しました: ${error.message}`);
+    });
+
+    proc.on("close", () => {
+      stdoutParser.end();
+      stderrParser.end();
+      if (this.hostMetricsProcess === proc) {
+        this.hostMetricsProcess = undefined;
+      }
+      // 意図した停止(dispose/再起動)かどうかはフラグだけで判定する(monitor と同じ理由)。
+      const selfInitiated = this.stoppingHostMetrics;
+      this.stoppingHostMetrics = false;
+      if (selfInitiated) {
+        return;
+      }
+      this.scheduleHostMetricsRestart();
+    });
+  }
+
+  /**
+   * host-metrics プロセスの予期しない終了を受けて、再起動するか諦めるかを決める(startHostMetricsProcess
+   * の close ハンドラから呼ばれる)。起動後10秒未満での異常終了が3回連続したら諦めて outputChannel に
+   * 1回だけログし、以後 hostMetricsGaveUp が true の間は再起動をスケジュールしない(旧バイナリに
+   * host-metrics サブコマンドが無い環境で無限に再起動ループしないための安全弁)。10秒以上動いてからの
+   * 終了は正常運転とみなして連続回数をリセットする。
+   */
+  private scheduleHostMetricsRestart(): void {
+    const elapsedMs = Date.now() - (this.hostMetricsStartedAt ?? Date.now());
+    if (elapsedMs < 10000) {
+      this.hostMetricsFailureStreak += 1;
+    } else {
+      this.hostMetricsFailureStreak = 0;
+    }
+    if (this.hostMetricsFailureStreak >= 3) {
+      if (!this.hostMetricsGaveUp) {
+        this.hostMetricsGaveUp = true;
+        this.outputChannel.appendLine(
+          "[host-metrics] 起動直後の異常終了が続いたため自動再起動を停止しました。" +
+            "バイナリが `api host-metrics` に対応しているか確認してください" +
+            "(対応後は「モニター再起動」ボタンで復帰できます)。",
+        );
+      }
+      return;
+    }
+    this.hostMetricsRestartTimer = setTimeout(() => {
+      this.hostMetricsRestartTimer = undefined;
+      // 5秒待つ間にパネルが閉じられていたら何もしない。
+      if (this.panel) {
+        this.startHostMetricsProcess();
+      }
+    }, 5000);
+  }
+
+  /** 実行中の host-metrics プロセスがあれば SIGTERM(2秒後 SIGKILL)で止める(stopMonitorProcess と同じ方針)。 */
+  private stopHostMetricsProcess(): void {
+    if (this.hostMetricsRestartTimer) {
+      clearTimeout(this.hostMetricsRestartTimer);
+      this.hostMetricsRestartTimer = undefined;
+    }
+    const proc = this.hostMetricsProcess;
+    if (!proc || proc.exitCode !== null || proc.signalCode !== null) {
+      return;
+    }
+    this.stoppingHostMetrics = true;
+    proc.stdin.end();
+    proc.kill("SIGTERM");
+    setTimeout(() => {
+      if (proc.exitCode === null && proc.signalCode === null) {
+        proc.kill("SIGKILL");
+      }
+    }, 2000);
+  }
+
+  /**
+   * host-metrics プロセスを止めてから起動し直す(「モニター再起動」ボタンから呼ばれる)。
+   * 多重起動ガードは restartMonitorProcess と同じ理由(連打で二重起動しないようにする)。
+   */
+  private restartHostMetricsProcess(): void {
+    if (this.hostMetricsRestartPending) {
+      return;
+    }
+    this.hostMetricsRestartPending = true;
+    const proc = this.hostMetricsProcess;
+    this.stopHostMetricsProcess();
+    if (!proc) {
+      this.hostMetricsRestartPending = false;
+      this.startHostMetricsProcess();
+      return;
+    }
+    proc.once("close", () => {
+      this.hostMetricsRestartPending = false;
+      this.startHostMetricsProcess();
+    });
+  }
+
+  /**
    * デバイスライフサイクル操作(devicesUp/devicesDown/deviceOp)をキューに積む。
    * キューが空(何も実行中でない)ならそのまま実行を開始し、そうでなければ先に積まれている
    * ジョブの完了後に順番に実行される。同じデバイスへの deviceOp が既にキュー内(実行中または
@@ -2586,6 +2844,39 @@ function renderHtml(): string {
     gap: 6px;
     font-size: 12px;
     color: var(--vscode-descriptionForeground);
+  }
+  /* ホストMacのメトリクスグラフ(CPU/GPU/ANE/MEM)。ツールバー内、実行プロファイル選択の直後に
+     4つ横並びで置く(.toolbar 自体は flex wrap gap:8px なので、ここでは中の4項目の間隔だけ足す)。 */
+  .host-metrics {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .host-metric {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .hm-label {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+  }
+  .hm-canvas {
+    /* 実ピクセル数(width/height 属性)は devicePixelRatio に合わせて JS 側で上書きするが、
+       CSS 上の表示サイズは常にこの 72x22px に固定する(hmSetupCanvas 参照)。 */
+    display: block;
+    width: 72px;
+    height: 22px;
+    border: 1px solid var(--vscode-widget-border, rgba(127, 127, 127, 0.35));
+    border-radius: 2px;
+  }
+  .hm-value {
+    /* 系列色ではなく通常の前景トークンで塗る(グラフの線色と値テキストの役割を分ける)。 */
+    font-size: 11px;
+    color: var(--vscode-foreground);
+    min-width: 32px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
   }
   select {
     font-family: inherit;
@@ -3677,6 +3968,15 @@ function renderHtml(): string {
       <label class="profile-label">実行プロファイル
         <select id="profile-select" title="以後のテスト実行・デバッグ実行と、このモニターの監視対象デバイスに使う実行プロファイル(ftester.profile 設定)" disabled></select>
       </label>
+      <!-- ホストMacのメトリクスグラフ(CPU/GPU/ANE/MEM)。host-metrics プロセス(拡張側が1秒間隔で
+           常駐 spawn)からの hostMetrics メッセージ受信のたびに再描画する(webview 側は独自タイマーを
+           持たない)。データ未着時はグラフ空+値「–」のまま(プレースホルダ不要)。 -->
+      <div id="host-metrics" class="host-metrics">
+        <span class="host-metric" id="hm-cpu" title="CPU負荷"><span class="hm-label">CPU</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
+        <span class="host-metric" id="hm-gpu" title="GPU負荷"><span class="hm-label">GPU</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
+        <span class="host-metric" id="hm-ane" title="ANE負荷"><span class="hm-label">ANE</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
+        <span class="host-metric" id="hm-mem" title="メモリ使用量"><span class="hm-label">MEM</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
+      </div>
     </div>
     <div id="banner" class="banner"></div>
 
@@ -4757,6 +5057,169 @@ function renderHtml(): string {
       }
     }
 
+    // ---- ホストメトリクス(ツールバーのミニグラフ) -------------------------------
+    // host-metrics プロセス(拡張側が1秒間隔で常駐 spawn)からの hostMetrics メッセージ受信の
+    // たびに、直近60サンプルのローリングバッファへ追加して canvas に再描画する。webview 側は
+    // 独自のタイマーを持たない(更新頻度は完全に CLI 側の --interval 1 に駆動される)。
+
+    const HM_MAX_SAMPLES = 60;
+    // バリデータ検証済みパレット(ダーク/ライトで系列色を切り替える。グリッド・軸は描かない)。
+    const HM_COLORS = {
+      dark: { cpu: '#f2555a', gpu: '#b8891f', ane: '#a06be0', mem: '#2f9e63' },
+      light: { cpu: '#e5484d', gpu: '#e6a700', ane: '#8e4ec6', mem: '#30a46c' },
+    };
+
+    function hmIsLightTheme() {
+      return document.body.classList.contains('vscode-light') ||
+        document.body.classList.contains('vscode-high-contrast-light');
+    }
+
+    function hmMakeEntry(id, colorKey) {
+      const el = document.getElementById(id);
+      return {
+        el,
+        canvas: el.querySelector('.hm-canvas'),
+        value: el.querySelector('.hm-value'),
+        colorKey,
+        samples: [], // 直近 HM_MAX_SAMPLES 件。要素は 0..1 の比率、または欠測を表す null。
+      };
+    }
+
+    const hmEntries = {
+      cpu: hmMakeEntry('hm-cpu', 'cpu'),
+      gpu: hmMakeEntry('hm-gpu', 'gpu'),
+      ane: hmMakeEntry('hm-ane', 'ane'),
+      mem: hmMakeEntry('hm-mem', 'mem'),
+    };
+    const HM_ALL_ENTRIES = [hmEntries.cpu, hmEntries.gpu, hmEntries.ane, hmEntries.mem];
+
+    function hmPushSample(entry, ratio) {
+      entry.samples.push(ratio);
+      if (entry.samples.length > HM_MAX_SAMPLES) {
+        entry.samples.shift();
+      }
+    }
+
+    // canvas は CSS 上 72x22px 固定。devicePixelRatio に合わせて実ピクセル数(width/height 属性)を
+    // 上げてから ctx.scale で以後の描画を CSS ピクセル座標系のまま書けるようにする(にじみ防止)。
+    // width/height 属性への代入は毎回キャンバスの内容をクリアするので、呼び出し側は直後に
+    // 全内容を描き直すこと。
+    function hmSetupCanvas(canvas) {
+      const dpr = window.devicePixelRatio || 1;
+      const width = 72;
+      const height = 22;
+      canvas.width = Math.round(width * dpr);
+      canvas.height = Math.round(height * dpr);
+      const ctx = canvas.getContext('2d');
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      return ctx;
+    }
+
+    function hmDraw(entry) {
+      const width = 72;
+      const height = 22;
+      const ctx = hmSetupCanvas(entry.canvas);
+      ctx.clearRect(0, 0, width, height);
+      const samples = entry.samples;
+      if (samples.length < 2) {
+        return;
+      }
+      const color = HM_COLORS[hmIsLightTheme() ? 'light' : 'dark'][entry.colorKey];
+      const stepX = width / (HM_MAX_SAMPLES - 1);
+      // samples は「直近 N 件」なので、まだ60件溜まっていない間は右詰めで配置する
+      // (新しいサンプルは常に右端、満杯になった後は左へスクロールしていく見た目になる)。
+      const startIndex = HM_MAX_SAMPLES - samples.length;
+      const points = samples.map((ratio, i) => ({
+        x: (startIndex + i) * stepX,
+        y: ratio === null ? null : height - ratio * height,
+      }));
+
+      // null(欠測)のところで線を分割し、区間ごとに個別のパスとして描く。
+      let segment = [];
+      const flushSegment = () => {
+        if (segment.length >= 2) {
+          ctx.beginPath();
+          ctx.moveTo(segment[0].x, segment[0].y);
+          for (let i = 1; i < segment.length; i++) {
+            ctx.lineTo(segment[i].x, segment[i].y);
+          }
+          ctx.lineWidth = 2;
+          ctx.lineJoin = 'round';
+          ctx.lineCap = 'round';
+          ctx.strokeStyle = color;
+          ctx.stroke();
+
+          // 下側の面塗り(線と同色、不透明度 0.18)。
+          ctx.beginPath();
+          ctx.moveTo(segment[0].x, segment[0].y);
+          for (let i = 1; i < segment.length; i++) {
+            ctx.lineTo(segment[i].x, segment[i].y);
+          }
+          ctx.lineTo(segment[segment.length - 1].x, height);
+          ctx.lineTo(segment[0].x, height);
+          ctx.closePath();
+          ctx.globalAlpha = 0.18;
+          ctx.fillStyle = color;
+          ctx.fill();
+          ctx.globalAlpha = 1;
+        }
+        segment = [];
+      };
+      for (const point of points) {
+        if (point.y === null) {
+          flushSegment();
+          continue;
+        }
+        segment.push(point);
+      }
+      flushSegment();
+    }
+
+    function hmFormatPercent(ratio) {
+      return ratio === null || ratio === undefined ? '–' : Math.round(ratio * 100) + '%';
+    }
+
+    function hmFormatGb(bytes) {
+      return bytes === null || bytes === undefined ? '–' : (bytes / (1024 * 1024 * 1024)).toFixed(1);
+    }
+
+    function applyHostMetrics(message) {
+      const memRatio =
+        typeof message.memUsedBytes === 'number' &&
+        typeof message.memTotalBytes === 'number' &&
+        message.memTotalBytes > 0
+          ? message.memUsedBytes / message.memTotalBytes
+          : null;
+
+      hmPushSample(hmEntries.cpu, typeof message.cpu === 'number' ? message.cpu : null);
+      hmPushSample(hmEntries.gpu, typeof message.gpu === 'number' ? message.gpu : null);
+      hmPushSample(hmEntries.ane, typeof message.ane === 'number' ? message.ane : null);
+      hmPushSample(hmEntries.mem, memRatio);
+
+      hmEntries.cpu.value.textContent = hmFormatPercent(message.cpu);
+      hmEntries.gpu.value.textContent = hmFormatPercent(message.gpu);
+      hmEntries.ane.value.textContent = hmFormatPercent(message.ane);
+      hmEntries.mem.value.textContent = hmFormatPercent(memRatio);
+
+      hmEntries.cpu.el.title = 'CPU負荷 ' + hmFormatPercent(message.cpu);
+      hmEntries.gpu.el.title = 'GPU負荷 ' + hmFormatPercent(message.gpu);
+      hmEntries.ane.el.title = 'ANE負荷 ' + hmFormatPercent(message.ane) +
+        (typeof message.aneWatts === 'number' ? '(' + message.aneWatts.toFixed(1) + 'W)' : '');
+      hmEntries.mem.el.title = 'メモリ使用量 ' + hmFormatGb(message.memUsedBytes) + ' / ' +
+        hmFormatGb(message.memTotalBytes) + ' GB(' + hmFormatPercent(memRatio) + ')';
+
+      for (const entry of HM_ALL_ENTRIES) {
+        hmDraw(entry);
+      }
+    }
+
+    // テーマ切替(body の class に vscode-light 等が付け外しされる)を検知して全グラフを再描画する。
+    new MutationObserver(() => {
+      for (const entry of HM_ALL_ENTRIES) {
+        hmDraw(entry);
+      }
+    }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+
     // ---- メッセージ受信 ---------------------------------------------------------
 
     window.addEventListener('message', (event) => {
@@ -4780,6 +5243,9 @@ function renderHtml(): string {
           break;
         case 'processDown':
           showBanner(message.message);
+          break;
+        case 'hostMetrics':
+          applyHostMetrics(message);
           break;
         case 'deviceOpBusy': {
           const entry = findTileByName(message.name);
