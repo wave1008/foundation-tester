@@ -32,6 +32,15 @@
 //   frameToDisplayRect と同じ計算だけを手書きで複製している(healReviewPanel.ts の healModel.ts
 //   複製と同じ方針)。要素一覧の表示テキストは host 側で liveModel.formatElementLine
 //   (toSnapshotMessage 経由)を使って事前整形して送るため、webview 側での複製は不要。
+// - webview 資産(スタイル・スクリプト)は src/webview/live/{style.css,main.js} に分離されている
+//   (Phase 4: webview 資産の実ファイル化。monitorPanel.ts の Phase 1 と同じ方針。以前は
+//   renderHtml() のテンプレート文字列に CSS/JS を直接内蔵していた)。テンプレート補間は
+//   元々皆無だった(monitorPanel.ts と異なり定数注入も無い)ため逐語移動のみで済み、JS は
+//   約240行と小さいため機能別モジュール分割はせず単一ファイル(main.js)のままにしている。
+//   esbuild(esbuild.mjs の buildWebview())がこれらを media/live/ にバンドルし、renderHtml() は
+//   webview.asWebviewUri で変換した URI を使って <link rel="stylesheet">/<script src> から
+//   外部リソースとして読み込む。HTML 本文はこれまでどおり renderHtml() 内にインライン生成する
+//   (コントローラ自体が小さいため monitorHtml.ts のような別ファイルへの分離はしない)。
 
 import { randomBytes } from "node:crypto";
 import { type ChildProcessByStdio, spawn } from "node:child_process";
@@ -89,7 +98,7 @@ export function registerLivePanel(
   getConfig: () => FtesterConfig,
   outputChannel: vscode.OutputChannel,
 ): void {
-  const controller = new LiveController(workspaceRoot, getConfig, outputChannel);
+  const controller = new LiveController(workspaceRoot, getConfig, outputChannel, context.extensionUri);
   context.subscriptions.push(
     controller,
     vscode.commands.registerCommand("ftester.showLiveControl", () => controller.show()),
@@ -226,6 +235,7 @@ class LiveController implements vscode.Disposable {
     private readonly workspaceRoot: string,
     private readonly getConfig: () => FtesterConfig,
     private readonly outputChannel: vscode.OutputChannel,
+    private readonly extensionUri: vscode.Uri,
   ) {}
 
   /** コマンド `ftester.showLiveControl` のハンドラ。既に開いていれば reveal するだけ。 */
@@ -238,9 +248,10 @@ class LiveController implements vscode.Disposable {
     const panel = vscode.window.createWebviewPanel(VIEW_TYPE, PANEL_TITLE, vscode.ViewColumn.Beside, {
       enableScripts: true,
       retainContextWhenHidden: true,
+      localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, "media")],
     });
     this.panel = panel;
-    panel.webview.html = renderHtml();
+    panel.webview.html = renderHtml(panel.webview, this.extensionUri);
 
     panel.webview.onDidReceiveMessage((message: unknown) => this.handleWebviewMessage(message));
     panel.onDidDispose(() => {
@@ -761,13 +772,20 @@ function generateNonce(): string {
   return randomBytes(16).toString("hex");
 }
 
-/** webview の HTML をインライン生成する。外部リソースは一切読み込まない(CSP: default-src 'none')。 */
-function renderHtml(): string {
+/**
+ * webview の HTML を生成する。CSS/JS は src/webview/live/ から esbuild が media/live/ に
+ * バンドルした外部ファイル(style.css/main.js)を読み込む(webview.asWebviewUri で変換した URI。
+ * monitorHtml.ts の renderHtml() と同じ方針)。HTML 本文はこれまでどおりこの関数内に
+ * インライン生成する。
+ */
+function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
   const nonce = generateNonce();
+  const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, "media", "live", "style.css"));
+  const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, "media", "live", "main.js"));
   const csp = [
     "default-src 'none'",
     "img-src data:",
-    "style-src 'unsafe-inline'",
+    `style-src ${webview.cspSource} 'unsafe-inline'`,
     `script-src 'nonce-${nonce}'`,
   ].join("; ");
 
@@ -777,192 +795,7 @@ function renderHtml(): string {
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="${csp}">
 <title>${PANEL_TITLE}</title>
-<style>
-  :root { color-scheme: light dark; }
-  * { box-sizing: border-box; }
-  html, body { height: 100%; }
-  body {
-    margin: 0;
-    padding: 0;
-    font-family: var(--vscode-font-family, sans-serif);
-    font-size: var(--vscode-font-size, 13px);
-    color: var(--vscode-foreground);
-    background-color: var(--vscode-editor-background);
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
-    overflow: hidden;
-  }
-  .toolbar {
-    flex: 0 0 auto;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px;
-    padding: 12px 12px 0 12px;
-  }
-  select, input[type="text"] {
-    font-family: inherit;
-    font-size: inherit;
-    padding: 3px 6px;
-    background-color: var(--vscode-input-background);
-    color: var(--vscode-input-foreground);
-    border: 1px solid var(--vscode-input-border, transparent);
-    border-radius: 2px;
-  }
-  button {
-    font-family: inherit;
-    font-size: inherit;
-    padding: 4px 10px;
-    border: 1px solid var(--vscode-button-border, transparent);
-    border-radius: 2px;
-    background-color: var(--vscode-button-background);
-    color: var(--vscode-button-foreground);
-    cursor: pointer;
-  }
-  button:hover:not(:disabled) { background-color: var(--vscode-button-hoverBackground); }
-  button:disabled { opacity: 0.5; cursor: default; }
-  button.secondary {
-    background-color: var(--vscode-button-secondaryBackground, transparent);
-    color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
-  }
-  button.secondary:hover:not(:disabled) {
-    background-color: var(--vscode-button-secondaryHoverBackground, var(--vscode-toolbar-hoverBackground));
-  }
-  #device-warning {
-    font-size: 12px;
-    color: var(--vscode-editorWarning-foreground, #cca700);
-  }
-  #busy-label {
-    margin-left: auto;
-    font-size: 12px;
-    color: var(--vscode-descriptionForeground);
-  }
-  .banner {
-    flex: 0 0 auto;
-    display: none;
-    padding: 8px 10px;
-    margin: 12px 12px 0 12px;
-    border-radius: 3px;
-    background-color: var(--vscode-inputValidation-errorBackground, #5a1d1d);
-    border: 1px solid var(--vscode-inputValidation-errorBorder, #be1100);
-    color: var(--vscode-foreground);
-    white-space: pre-wrap;
-    font-size: 12px;
-  }
-  .banner.visible { display: block; }
-  .content {
-    flex: 1 1 auto;
-    min-height: 0;
-    display: flex;
-    gap: 12px;
-    padding: 12px;
-    overflow: hidden;
-  }
-  .screenshot-pane {
-    flex: 1 1 auto;
-    min-width: 280px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
-    overflow: auto;
-  }
-  .screenshot-wrap {
-    position: relative;
-    display: inline-block;
-    max-width: 100%;
-    border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
-    border-radius: 3px;
-    background-color: var(--vscode-input-background, #1e1e1e);
-  }
-  #screenshot {
-    display: none;
-    max-width: 100%;
-    max-height: calc(100vh - 140px);
-    cursor: crosshair;
-  }
-  #screenshot.visible { display: block; }
-  #hover-box {
-    position: absolute;
-    display: none;
-    border: 2px solid var(--vscode-focusBorder, #007acc);
-    background-color: rgba(0, 122, 204, 0.15);
-    pointer-events: none;
-  }
-  #screenshot-placeholder {
-    padding: 60px 30px;
-    text-align: center;
-    color: var(--vscode-descriptionForeground);
-    font-size: 13px;
-    max-width: 320px;
-  }
-  .hint {
-    font-size: 12px;
-    color: var(--vscode-descriptionForeground);
-  }
-  .control-pane {
-    flex: 0 0 380px;
-    min-width: 280px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    overflow-y: auto;
-    padding-right: 4px;
-  }
-  .row {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .row input[type="text"] { flex: 1 1 auto; min-width: 0; }
-  .controls-row .spacer { flex: 1 1 auto; }
-  .hint-inline {
-    font-size: 12px;
-    color: var(--vscode-descriptionForeground);
-    white-space: nowrap;
-  }
-  #action-error {
-    display: none;
-    font-size: 12px;
-    color: var(--vscode-errorForeground, #f14c4c);
-    white-space: pre-wrap;
-  }
-  #action-error.visible { display: block; }
-  .elements-header {
-    font-size: 12px;
-    color: var(--vscode-descriptionForeground);
-  }
-  #type-ref-hint {
-    font-size: 11px;
-    color: var(--vscode-descriptionForeground);
-  }
-  .elements-list {
-    flex: 1 1 auto;
-    min-height: 80px;
-    overflow-y: auto;
-    border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
-    border-radius: 3px;
-  }
-  .element-row {
-    padding: 3px 6px;
-    font-family: var(--vscode-editor-font-family, monospace);
-    font-size: 11px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    cursor: pointer;
-  }
-  /* ホバー色はテーマ値そのままだと濃い(2026-07-11 ユーザー指摘)ため、モニターパネルの
-     行ホバー(.machine-device-row/.device-pick-row)と同じ式で50%透過に薄める。 */
-  .element-row:hover { background-color: color-mix(in srgb, var(--vscode-list-hoverBackground) 50%, transparent); }
-  /* 選択色は拡張内で統一(2026-07-11 ユーザー指示): モニターパネルのプロファイルタブの
-     ヘッダーバー・デバイス行選択・デバイス選択モーダルのチェック行と同じ
-     editorGroupHeader-tabsBackground。薄い背景のため前景色の上書きは不要。 */
-  .element-row.selected {
-    background-color: var(--vscode-editorGroupHeader-tabsBackground, rgba(128, 128, 128, 0.15));
-  }
-</style>
+<link rel="stylesheet" href="${styleUri}">
 </head>
 <body>
   <div class="toolbar">
@@ -1025,246 +858,7 @@ function renderHtml(): string {
     </div>
   </div>
 
-  <script nonce="${nonce}">
-  (function () {
-    const vscode = acquireVsCodeApi();
-
-    const deviceSelect = document.getElementById('device-select');
-    const deviceWarning = document.getElementById('device-warning');
-    const busyLabel = document.getElementById('busy-label');
-    const banner = document.getElementById('banner');
-
-    const screenshotWrap = document.getElementById('screenshot-wrap');
-    const screenshot = document.getElementById('screenshot');
-    const hoverBox = document.getElementById('hover-box');
-    const screenshotPlaceholder = document.getElementById('screenshot-placeholder');
-
-    const bundleIdInput = document.getElementById('bundle-id');
-    const iosPathInput = document.getElementById('ios-path');
-    const androidPathInput = document.getElementById('android-path');
-    const installHint = document.getElementById('install-hint');
-    const typeTextInput = document.getElementById('type-text');
-    const typeRefHint = document.getElementById('type-ref-hint');
-    const actionError = document.getElementById('action-error');
-    const elementsList = document.getElementById('elements-list');
-
-    const STATE_LABEL = {
-      connected: '接続済み',
-      booted: '起動中',
-      offline: '未起動',
-      unknown: '状態不明(未確認)',
-    };
-
-    let currentDevices = [];
-    let lastScreen = null;
-    let lastElements = [];
-    let selectedRef = null;
-    let busy = false;
-
-    const busyButtons = [
-      'btn-refresh-devices', 'btn-launch', 'btn-terminate', 'btn-pick-ios', 'btn-pick-android',
-      'btn-install', 'btn-refresh-snapshot', 'btn-swipe-up', 'btn-swipe-down', 'btn-swipe-left',
-      'btn-swipe-right', 'btn-type',
-    ].map((id) => document.getElementById(id));
-
-    function setBusy(value) {
-      busy = value;
-      for (const b of busyButtons) { b.disabled = value; }
-      deviceSelect.disabled = value;
-      busyLabel.textContent = value ? '処理中...' : '';
-    }
-
-    function showBanner(text) {
-      if (!text) { banner.classList.remove('visible'); banner.textContent = ''; return; }
-      banner.textContent = text;
-      banner.classList.add('visible');
-    }
-
-    function showActionError(text) {
-      if (!text) { actionError.classList.remove('visible'); actionError.textContent = ''; return; }
-      actionError.textContent = text;
-      actionError.classList.add('visible');
-    }
-
-    // ---- デバイス選択 ---------------------------------------------------------------
-
-    function updateDeviceWarning() {
-      const selected = currentDevices.find((d) => d.id === deviceSelect.value);
-      deviceWarning.textContent = selected && selected.state !== 'connected' ? '⚠ 接続されていません' : '';
-    }
-
-    function updateInstallHint() {
-      const selected = currentDevices.find((d) => d.id === deviceSelect.value);
-      const isAndroid = !!selected && selected.platform === 'android';
-      installHint.textContent = isAndroid ? '→ Android(.apk)のパスを使用' : '→ iOS(.app)のパスを使用';
-    }
-
-    function applyDevices(devices, selectedId) {
-      currentDevices = devices;
-      deviceSelect.innerHTML = '';
-      for (const d of devices) {
-        const opt = document.createElement('option');
-        opt.value = d.id;
-        opt.textContent = d.name + '(' + d.platform + ') - ' + (STATE_LABEL[d.state] || d.state);
-        deviceSelect.appendChild(opt);
-      }
-      if (selectedId) { deviceSelect.value = selectedId; }
-      updateDeviceWarning();
-      updateInstallHint();
-    }
-
-    deviceSelect.addEventListener('change', () => {
-      updateDeviceWarning();
-      updateInstallHint();
-      vscode.postMessage({ type: 'selectDevice', id: deviceSelect.value });
-    });
-
-    // ---- スクリーンショット(クリック=タップ、要素ホバー=枠オーバーレイ) -----------------
-
-    // liveModel.ts の frameToDisplayRect と同じ計算(webview は CSP により import 不可のため複製)。
-    function frameToDisplayRect(frame, screen, display) {
-      if (screen.width <= 0 || screen.height <= 0) {
-        return { x: 0, y: 0, width: 0, height: 0 };
-      }
-      const scaleX = display.width / screen.width;
-      const scaleY = display.height / screen.height;
-      return {
-        x: frame.x * scaleX, y: frame.y * scaleY,
-        width: frame.width * scaleX, height: frame.height * scaleY,
-      };
-    }
-
-    function applySnapshot(message) {
-      lastScreen = message.screen;
-      lastElements = message.elements;
-      selectedRef = null;
-      typeRefHint.textContent = '→ フォーカス中の要素に入力';
-      screenshot.src = 'data:image/jpeg;base64,' + message.image;
-      screenshot.classList.add('visible');
-      screenshotPlaceholder.style.display = 'none';
-      hoverBox.style.display = 'none';
-      renderElements();
-    }
-
-    screenshot.addEventListener('click', (event) => {
-      if (busy || !lastScreen) { return; }
-      const rect = screenshot.getBoundingClientRect();
-      vscode.postMessage({
-        type: 'tapPoint',
-        clickX: event.clientX - rect.left,
-        clickY: event.clientY - rect.top,
-        displayWidth: rect.width,
-        displayHeight: rect.height,
-      });
-    });
-
-    function showHover(element) {
-      if (!lastScreen) { return; }
-      const rect = screenshot.getBoundingClientRect();
-      const box = frameToDisplayRect(element.frame, lastScreen, { width: rect.width, height: rect.height });
-      hoverBox.style.left = box.x + 'px';
-      hoverBox.style.top = box.y + 'px';
-      hoverBox.style.width = box.width + 'px';
-      hoverBox.style.height = box.height + 'px';
-      hoverBox.style.display = 'block';
-    }
-
-    function hideHover() {
-      hoverBox.style.display = 'none';
-    }
-
-    function renderElements() {
-      elementsList.innerHTML = '';
-      for (const element of lastElements) {
-        const row = document.createElement('div');
-        row.className = 'element-row';
-        row.textContent = element.line;
-        row.addEventListener('click', () => {
-          if (busy) { return; }
-          for (const r of elementsList.querySelectorAll('.element-row')) { r.classList.remove('selected'); }
-          row.classList.add('selected');
-          selectedRef = element.ref;
-          typeRefHint.textContent = '→ ref ' + element.ref + ' に入力';
-          vscode.postMessage({ type: 'tapRef', ref: element.ref });
-        });
-        row.addEventListener('mouseenter', () => showHover(element));
-        row.addEventListener('mouseleave', hideHover);
-        elementsList.appendChild(row);
-      }
-    }
-
-    // ---- 操作ボタン ------------------------------------------------------------------
-
-    document.getElementById('btn-refresh-devices').addEventListener('click', () => {
-      vscode.postMessage({ type: 'refreshDevices' });
-    });
-    document.getElementById('btn-refresh-snapshot').addEventListener('click', () => {
-      showActionError('');
-      vscode.postMessage({ type: 'refreshSnapshot' });
-    });
-    document.getElementById('btn-launch').addEventListener('click', () => {
-      showActionError('');
-      vscode.postMessage({ type: 'launch', bundleId: bundleIdInput.value });
-    });
-    document.getElementById('btn-terminate').addEventListener('click', () => {
-      showActionError('');
-      vscode.postMessage({ type: 'terminate' });
-    });
-    document.getElementById('btn-pick-ios').addEventListener('click', () => {
-      vscode.postMessage({ type: 'pickInstallFile', platform: 'ios' });
-    });
-    document.getElementById('btn-pick-android').addEventListener('click', () => {
-      vscode.postMessage({ type: 'pickInstallFile', platform: 'android' });
-    });
-    document.getElementById('btn-install').addEventListener('click', () => {
-      showActionError('');
-      const selected = currentDevices.find((d) => d.id === deviceSelect.value);
-      const isAndroid = !!selected && selected.platform === 'android';
-      const path = isAndroid ? androidPathInput.value : iosPathInput.value;
-      vscode.postMessage({ type: 'install', path: path });
-    });
-    for (const dir of ['up', 'down', 'left', 'right']) {
-      document.getElementById('btn-swipe-' + dir).addEventListener('click', () => {
-        showActionError('');
-        vscode.postMessage({ type: 'swipe', direction: dir });
-      });
-    }
-    document.getElementById('btn-type').addEventListener('click', () => {
-      showActionError('');
-      vscode.postMessage({ type: 'typeText', text: typeTextInput.value, ref: selectedRef });
-    });
-
-    // ---- メッセージ受信 ---------------------------------------------------------------
-
-    window.addEventListener('message', (event) => {
-      const message = event.data;
-      if (!message || typeof message.type !== 'string') { return; }
-      switch (message.type) {
-        case 'devices':
-          applyDevices(message.devices, message.selectedId);
-          break;
-        case 'banner':
-          showBanner(message.message);
-          break;
-        case 'snapshot':
-          applySnapshot(message);
-          break;
-        case 'actionError':
-          showActionError(message.message);
-          break;
-        case 'busy':
-          setBusy(!!message.busy);
-          break;
-        case 'installPathPicked':
-          if (message.platform === 'android') { androidPathInput.value = message.path; }
-          else { iosPathInput.value = message.path; }
-          break;
-        default:
-          break;
-      }
-    });
-  })();
-  </script>
+  <script nonce="${nonce}" src="${scriptUri}"></script>
 </body>
 </html>`;
 }

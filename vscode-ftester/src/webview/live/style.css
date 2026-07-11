@@ -1,0 +1,192 @@
+/* style.css
+ * ライブ操作パネル webview のスタイル。livePanel.ts の renderHtml() が生成する
+ * <style> ブロック(テンプレート文字列に内蔵されていた CSS)から逐語抽出したもの
+ * (Phase 4: webview 資産の実ファイル化。テンプレート補間は元々皆無だったため、
+ * このファイルは通常の CSS としてそのまま成立する)。esbuild が media/live/style.css に
+ * バンドルし、renderHtml() が <link rel="stylesheet"> で読み込む。
+ */
+
+:root { color-scheme: light dark; }
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--vscode-font-family, sans-serif);
+  font-size: var(--vscode-font-size, 13px);
+  color: var(--vscode-foreground);
+  background-color: var(--vscode-editor-background);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+.toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 12px 0 12px;
+}
+select, input[type="text"] {
+  font-family: inherit;
+  font-size: inherit;
+  padding: 3px 6px;
+  background-color: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: 2px;
+}
+button {
+  font-family: inherit;
+  font-size: inherit;
+  padding: 4px 10px;
+  border: 1px solid var(--vscode-button-border, transparent);
+  border-radius: 2px;
+  background-color: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  cursor: pointer;
+}
+button:hover:not(:disabled) { background-color: var(--vscode-button-hoverBackground); }
+button:disabled { opacity: 0.5; cursor: default; }
+button.secondary {
+  background-color: var(--vscode-button-secondaryBackground, transparent);
+  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+}
+button.secondary:hover:not(:disabled) {
+  background-color: var(--vscode-button-secondaryHoverBackground, var(--vscode-toolbar-hoverBackground));
+}
+#device-warning {
+  font-size: 12px;
+  color: var(--vscode-editorWarning-foreground, #cca700);
+}
+#busy-label {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+}
+.banner {
+  flex: 0 0 auto;
+  display: none;
+  padding: 8px 10px;
+  margin: 12px 12px 0 12px;
+  border-radius: 3px;
+  background-color: var(--vscode-inputValidation-errorBackground, #5a1d1d);
+  border: 1px solid var(--vscode-inputValidation-errorBorder, #be1100);
+  color: var(--vscode-foreground);
+  white-space: pre-wrap;
+  font-size: 12px;
+}
+.banner.visible { display: block; }
+.content {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  overflow: hidden;
+}
+.screenshot-pane {
+  flex: 1 1 auto;
+  min-width: 280px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  overflow: auto;
+}
+.screenshot-wrap {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+  border-radius: 3px;
+  background-color: var(--vscode-input-background, #1e1e1e);
+}
+#screenshot {
+  display: none;
+  max-width: 100%;
+  max-height: calc(100vh - 140px);
+  cursor: crosshair;
+}
+#screenshot.visible { display: block; }
+#hover-box {
+  position: absolute;
+  display: none;
+  border: 2px solid var(--vscode-focusBorder, #007acc);
+  background-color: rgba(0, 122, 204, 0.15);
+  pointer-events: none;
+}
+#screenshot-placeholder {
+  padding: 60px 30px;
+  text-align: center;
+  color: var(--vscode-descriptionForeground);
+  font-size: 13px;
+  max-width: 320px;
+}
+.hint {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+}
+.control-pane {
+  flex: 0 0 380px;
+  min-width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.row input[type="text"] { flex: 1 1 auto; min-width: 0; }
+.controls-row .spacer { flex: 1 1 auto; }
+.hint-inline {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  white-space: nowrap;
+}
+#action-error {
+  display: none;
+  font-size: 12px;
+  color: var(--vscode-errorForeground, #f14c4c);
+  white-space: pre-wrap;
+}
+#action-error.visible { display: block; }
+.elements-header {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+}
+#type-ref-hint {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+.elements-list {
+  flex: 1 1 auto;
+  min-height: 80px;
+  overflow-y: auto;
+  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+  border-radius: 3px;
+}
+.element-row {
+  padding: 3px 6px;
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+/* ホバー色はテーマ値そのままだと濃い(2026-07-11 ユーザー指摘)ため、モニターパネルの
+   行ホバー(.machine-device-row/.device-pick-row)と同じ式で50%透過に薄める。 */
+.element-row:hover { background-color: color-mix(in srgb, var(--vscode-list-hoverBackground) 50%, transparent); }
+/* 選択色は拡張内で統一(2026-07-11 ユーザー指示): モニターパネルのプロファイルタブの
+   ヘッダーバー・デバイス行選択・デバイス選択モーダルのチェック行と同じ
+   editorGroupHeader-tabsBackground。薄い背景のため前景色の上書きは不要。 */
+.element-row.selected {
+  background-color: var(--vscode-editorGroupHeader-tabsBackground, rgba(128, 128, 128, 0.15));
+}
