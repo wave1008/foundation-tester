@@ -448,6 +448,12 @@ struct ApiRunCommand: AsyncParsableCommand {
                 step.status = "skipped"
                 step.detail = reason
             }
+            // 時間内訳(Phase 0 計測基盤)。サブプロセスの ScenarioEvent から復元済み
+            // (RunOrchestrator.swift の ScenarioRunner.stepResult(from:) 参照)
+            step.durationMs = result.timing?.durationMs
+            step.snapshotMs = result.timing?.snapshotMs
+            step.actionMs = result.timing?.actionMs
+            step.waitMs = result.timing?.waitMs
             return [step.encodedLine()]
 
         case .fixSuggestion(let worker, _, let scenarioID, let command, let file, let line,

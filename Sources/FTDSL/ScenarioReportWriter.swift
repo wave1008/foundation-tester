@@ -76,18 +76,26 @@ public enum ScenarioReportWriter {
 
     static func line(for step: DSLStepRecord) -> String {
         let location = step.file.isEmpty ? "" : "(\(URL(fileURLWithPath: step.file).lastPathComponent):\(step.line))"
+        // 時間列(Phase 0 計測基盤)。durationMs 欠測(dry-run・スキップ等)時は空欄
+        let duration = durationText(step.durationMs)
         switch step.status {
         case .passed:
-            return "- ✅ \(step.index). \(step.description)\n"
+            return "- ✅ \(step.index). \(step.description)\(duration)\n"
         case .passedViaFallback(let locator):
-            return "- ✅ \(step.index). \(step.description)(フォールバック \(locator.summary) で解決)\n"
+            return "- ✅ \(step.index). \(step.description)(フォールバック \(locator.summary) で解決)\(duration)\n"
         case .healed(let locator):
-            return "- 🔧 \(step.index). \(step.description) → 自己修復: \(locator.summary) \(location)\n"
+            return "- 🔧 \(step.index). \(step.description) → 自己修復: \(locator.summary) \(location)\(duration)\n"
         case .failed(let reason):
-            return "- ❌ \(step.index). \(step.description) \(location)\n  - \(reason)\n"
+            return "- ❌ \(step.index). \(step.description) \(location)\(duration)\n  - \(reason)\n"
         case .skipped(let reason):
-            return "- ⚠️ \(step.index). \(step.description)(スキップ: \(reason))\n"
+            return "- ⚠️ \(step.index). \(step.description)(スキップ: \(reason))\(duration)\n"
         }
+    }
+
+    /// durationMs → 表示用の時間列テキスト(例: " — 0.83s"。欠測時は空文字)
+    static func durationText(_ durationMs: Int?) -> String {
+        guard let durationMs else { return "" }
+        return String(format: " — %.2fs", Double(durationMs) / 1000)
     }
 
     /// シナリオ ID からファイル名用スラッグを作る(日本語可、記号は _ に)

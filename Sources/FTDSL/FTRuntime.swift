@@ -16,6 +16,9 @@ public struct DSLStepRecord: Sendable {
     public let status: StepResult.Status
     public let file: String
     public let line: Int
+    /// ステップ全体の所要時間(ミリ秒。Phase 0 計測基盤)。レポートの時間列に使う。
+    /// StepExecutor を通らないステップ(scene 外の受け皿等)や dry-run では nil
+    public let durationMs: Int?
 }
 
 /// セレクタの修正提案(自己修復・キャッシュ命中・フォールバック通過から導出)
@@ -193,7 +196,12 @@ public final class FTDriveCore {
             return status
         }
         if dryRun {
-            recordStep(description: description, status: .passed, file: filePath, line: Int(line))
+            // 実機に触れないため計測はほぼ 0ms だが、durationMs は必ず付与する
+            // (デバイス無しで NDJSON への配線を検証できるようにするため。Phase 0 計測基盤)
+            let clock = ContinuousClock()
+            let start = clock.now
+            recordStep(description: description, status: .passed, file: filePath, line: Int(line),
+                       durationMs: continuousClockMilliseconds(clock.now - start))
             return .passed
         }
 
@@ -212,7 +220,11 @@ public final class FTDriveCore {
         let outcome = FTSync.run { await executor.execute(step, cached: cachedLocators) }
         let status = outcome?.status
             ?? .failed("コマンドがタイムアウトしました(\(Int(FTSync.commandTimeout))s)")
-        recordStep(description: description, status: status, file: filePath, line: Int(line))
+        recordStep(description: description, status: status, file: filePath, line: Int(line),
+                   durationMs: outcome?.timing?.durationMs,
+                   snapshotMs: outcome?.timing?.snapshotMs,
+                   actionMs: outcome?.timing?.actionMs,
+                   waitMs: outcome?.timing?.waitMs)
 
         // 修正提案とヒールキャッシュの更新
         if let outcome, let selectorText {
@@ -289,12 +301,20 @@ public final class FTDriveCore {
             return status
         }
         if dryRun {
+            // 実機に触れないため計測はほぼ 0ms だが、durationMs は必ず付与する
+            // (デバイス無しで NDJSON への配線を検証できるようにするため。Phase 0 計測基盤)
+            let clock = ContinuousClock()
+            let start = clock.now
             recordStep(description: description, status: .passed,
-                       file: filePath, line: Int(line))
+                       file: filePath, line: Int(line),
+                       durationMs: continuousClockMilliseconds(clock.now - start))
             return .passed
         }
 
+        let clock = ContinuousClock()
+        let start = clock.now
         let result = FTSync.runThrowing { try await body() }
+        let elapsedMs = continuousClockMilliseconds(clock.now - start)
         let status: StepResult.Status
         switch result {
         case .success:
@@ -304,7 +324,8 @@ public final class FTDriveCore {
         case nil:
             status = .failed("処理がタイムアウトしました(\(Int(FTSync.commandTimeout))s)")
         }
-        recordStep(description: description, status: status, file: "\(file)", line: Int(line))
+        recordStep(description: description, status: status, file: "\(file)", line: Int(line),
+                   durationMs: elapsedMs)
 
         if case .failed(let reason) = status {
             if abortsScenario { scenarioAborted = true }
@@ -364,11 +385,17 @@ public final class FTDriveCore {
 
     // MARK: - 記録
 
-    func recordStep(description: String, status: StepResult.Status, file: String, line: Int) {
+    /// durationMs/snapshotMs/actionMs/waitMs: ステップの時間内訳(Phase 0 計測基盤。単位ミリ秒)。
+    /// StepExecutor 経由のステップ(tap/exist 等)は 4 つとも渡され、performCustom 経由
+    /// (launchApp/wait/procedure 等)は durationMs のみ、それ以外(skip・dry-run 等)は
+    /// 全て nil のまま(=計測なし)になる
+    func recordStep(description: String, status: StepResult.Status, file: String, line: Int,
+                    durationMs: Int? = nil, snapshotMs: Int? = nil,
+                    actionMs: Int? = nil, waitMs: Int? = nil) {
         stepCounter += 1
         let record = DSLStepRecord(index: stepCounter, section: currentSection,
                                    description: description, status: status,
-                                   file: relativePath(file), line: line)
+                                   file: relativePath(file), line: line, durationMs: durationMs)
         appendToCurrentScene(record)
 
         var event = ScenarioEvent(kind: "step")
@@ -382,6 +409,10 @@ public final class FTDriveCore {
         event.detail = detail
         event.file = record.file.isEmpty ? nil : record.file
         event.line = line == 0 ? nil : line
+        event.durationMs = durationMs
+        event.snapshotMs = snapshotMs
+        event.actionMs = actionMs
+        event.waitMs = waitMs
         emit(event)
     }
 
@@ -421,4 +452,12 @@ public final class FTDriveCore {
         let cwd = FileManager.default.currentDirectoryPath + "/"
         return path.hasPrefix(cwd) ? String(path.dropFirst(cwd.count)) : path
     }
+}
+
+/// ContinuousClock の Duration → 整数ミリ秒(秒成分×1000 + attoseconds成分から算出。
+/// 1ms = 1e15 attoseconds。StepExecutor.ms と同じ計算式だが FTCore 側の private ヘルパーは
+/// モジュールを跨いで参照できないためこちらにも複製する。Phase 0 計測基盤)
+func continuousClockMilliseconds(_ duration: Duration) -> Int {
+    let (seconds, attoseconds) = duration.components
+    return Int(seconds) * 1000 + Int(attoseconds / 1_000_000_000_000_000)
 }

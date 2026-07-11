@@ -97,6 +97,9 @@ public final class BridgeClient: AppDriver {
         do {
             return try await session.data(for: req)
         } catch {
+            if DriverError.isDefiniteDeliveryFailure(error) {
+                throw DriverError.bridgeConnectionRefused(error.localizedDescription)
+            }
             throw DriverError.bridgeUnreachable(error.localizedDescription)
         }
     }

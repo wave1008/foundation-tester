@@ -3,10 +3,7 @@
 // プロトコルは iOS ブリッジと完全互換なので、通信は FTBridgeClient.BridgeClient をそのまま使う。
 // - 初回操作時に APK を自動インストールし `am instrument -w`(デバイス内バックグラウンド)で常駐させる
 // - ホストへは `adb forward tcp:0 tcp:8123` (空きポート自動割当)で到達する
-// - 失敗したら adb 直叩き(uiautomator dump / input / ADBKeyboard)へ自動フォールバック
-//
-// 注意: ブリッジ稼働中は uiautomator dump が使えない(a11y 接続は実質1本、dump 側が Killed される)。
-// フォールバックへ落ちるときは必ず markBridgeDead() で force-stop してから落ちること。
+// - ブリッジに接続できない場合は DriverError.bridgeUnreachable を投げる(フォールバックなし)
 
 import Foundation
 import FTBridgeClient
@@ -19,7 +16,7 @@ extension AndroidDriver {
     /// デバイス側の listen ポート(全デバイス共通。デバイス毎に独立 loopback なので衝突しない)
     static let bridgeDevicePort: UInt16 = 8123
     /// AndroidRunner/build.sh の VERSION_CODE と同期(不一致なら自動で再インストール)
-    public static let expectedBridgeVersionCode = 1
+    public static let expectedBridgeVersionCode = 2
 
     enum BridgeState {
         case active(BridgeClient)
@@ -35,53 +32,54 @@ extension AndroidDriver {
 
     // MARK: - 状態機械
 
-    /// 使えるブリッジがあれば BridgeClient を返す。nil = adb 直叩きへフォールバック
-    func ensureBridge() async -> BridgeClient? {
-        let key = bridgeKey
-        if ProcessInfo.processInfo.environment["FT_ANDROID_NO_BRIDGE"] == "1" {
-            // 常駐ブリッジが a11y 接続を握ったままだと uiautomator dump が Killed される
-            // → 直叩き経路を使う前に止める(レジストリ経由で1プロセス1回だけ)
-            if case .unavailable? = Self.getRegistry(key) {} else { markBridgeDead() }
-            return nil
-        }
-
-        switch Self.getRegistry(key) {
-        case .unavailable:
-            return nil
+    /// 使えるブリッジの BridgeClient を返す。.active なら(操作毎の /status 往復はせず)そのまま返す。
+    /// 初回・無効化後は forward 確認 → probe → 必要なら起動、を行う。全て失敗したらこのプロセスでは
+    /// 以降 .unavailable にキャッシュし(再試行の嵐防止)、案内メッセージ付きで投げる
+    func ensureBridge() async throws -> BridgeClient {
+        switch Self.getRegistry(bridgeKey) {
         case .active(let client):
-            if (try? await client.status())?.ready == true { return client }
-            // 死んでいた(adb server 再起動・LMK 等)→ 一度だけ張り直しを試みる
-            Self.setRegistry(key, nil)
+            return client
+        case .unavailable:
+            throw Self.unreachableError(detail: nil)
         case nil:
             break
         }
 
         do {
             let client = try await startBridge()
-            Self.setRegistry(key, .active(client))
+            Self.setRegistry(bridgeKey, .active(client))
             return client
         } catch {
+            Self.setRegistry(bridgeKey, .unavailable)
             let message = (error as? LocalizedError)?.errorDescription ?? "\(error)"
-            FileHandle.standardError.write(Data(
-                "⚠️ Android ブリッジを使えません(adb 直叩きへフォールバック): \(message)\n".utf8))
-            markBridgeDead()
-            return nil
+            throw Self.unreachableError(detail: message)
         }
     }
 
-    /// ブリッジを諦めて adb 直叩きに切り替える。半死にのブリッジが a11y 接続を握ったままだと
-    /// uiautomator dump が Killed されるため、必ず force-stop してから落とす
-    func markBridgeDead() {
-        Self.setRegistry(bridgeKey, .unavailable)
-        _ = try? adb(["shell", "am", "force-stop", Self.bridgePackage])
+    private static func unreachableError(detail: String?) -> DriverError {
+        let base = "Android ブリッジに接続できません。`ftester doctor` で環境を確認するか、"
+            + "`ftester bridge up --platform android` を試してください"
+        return .bridgeUnreachable(detail.map { "\(base)(\($0))" } ?? base)
+    }
+
+    /// ブリッジ操作の共通実行ヘルパ。接続拒否系エラー(リクエストがブリッジに届いていないことが
+    /// 確実な場合)だけレジストリを無効化して1回だけ再プロビジョン+リトライする。
+    /// それ以外のエラー(HTTP エラー応答等)はそのまま投げる
+    func withBridge<T>(_ operation: (BridgeClient) async throws -> T) async throws -> T {
+        let client = try await ensureBridge()
+        do {
+            return try await operation(client)
+        } catch DriverError.bridgeConnectionRefused {
+            Self.setRegistry(bridgeKey, nil)
+            let retried = try await ensureBridge()
+            return try await operation(retried)
+        }
     }
 
     /// bridge up --platform android 用: `.unavailable` を破棄して強制再セットアップ
     public func resetAndEnsureBridge() async throws {
         Self.setRegistry(bridgeKey, nil)
-        guard await ensureBridge() != nil else {
-            throw DriverError.bridgeUnreachable("Android ブリッジを起動できません(直前の警告を確認してください)")
-        }
+        _ = try await ensureBridge()
     }
 
     private static func setRegistry(_ key: String, _ state: BridgeState?) {

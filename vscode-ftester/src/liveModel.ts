@@ -1,11 +1,12 @@
 // liveModel.ts
 // ライブ操作パネル(livePanel.ts)向けの vscode 非依存ロジック:
-//   - `ftester api list-devices` / `ftester api live <sub>` の stdout JSON の検証・型定義
+//   - `ftester api list-devices` の stdout JSON の検証・型定義
+//   - `ftester api live serve`(常駐プロセス)の NDJSON コマンド組み立て・イベント検証・型定義
 //   - スクリーンショットのクリック位置 → デバイスのポイント座標への変換
 //     (ftester-gui/LiveView.swift の ScreenshotView と同じ比例変換)
 //   - snapshot 要素の frame(ポイント座標)→ 画面上の表示pxでの矩形への変換(ホバー枠オーバーレイ用)
 //   - 要素一覧の1行表示フォーマット(ftester-gui/LiveView.swift の elementLine と同じ)
-//   - デバイス選択 → `--platform`/`--port`/`--serial` の CLI 引数組み立て
+//   - デバイス選択 → `--platform`/`--port`/`--serial` の CLI 引数組み立て・デバイス同一性判定
 //   - webview との postMessage プロトコル型・検証(monitorModel.ts と同じ方針でここにまとめる)
 //
 // 契約(Sources/ftester/ApiListDevicesCommand.swift・ApiLiveCommand.swift):
@@ -16,13 +17,26 @@
 //     失敗(マシンプロファイル未設定等): stdout 出力なし・非0終了(診断は stderr のみ)。
 //     state の語彙は ApiMonitorCommand.determineStates が使う実際の3値
 //     (monitorModel.ts の MonitorDeviceState と同一)。
-//   `ftester api live snapshot --platform <p> [--port <n>|--serial <s>] [--max-width <px>]`:
-//     成功: {"ok":true,"platform":"..","screen":{"width":..,"height":..},"image":"<base64 JPEG>",
-//            "elements":[{"ref":1,"type":"..","label":..|null,"identifier":..|null,"value":..|null,
-//                          "frame":{"x":..,"y":..,"width":..,"height":..}}, ...]}
-//     失敗: {"ok":false,"error":".."} + exit code 1
-//   `ftester api live (tap|type|swipe|press|launch|terminate|install) ...`:
-//     成功: {"ok":true} / 失敗: {"ok":false,"error":".."} + exit code 1
+//   `ftester api live serve --platform <p> [--port <n>|--serial <s>]`(常駐。stdin から NDJSON で
+//   コマンドを1行ずつ受け、逐次処理する。Phase 4 高速化: 旧ワンショット版
+//   (snapshot/tap/type/swipe/press/launch/terminate/install の各サブコマンド)は単一実装原則により
+//   削除済み):
+//     コマンド(host → serve、stdin 1行1コマンド): buildServeCommand 系の各関数を参照。
+//       {"cmd":"tap","ref":<Int>} / {"cmd":"tap","x":<Double>,"y":<Double>} /
+//       {"cmd":"type","text":<String>,"ref":<Int|null>} /
+//       {"cmd":"swipe","direction":"up"|"down"|"left"|"right"} / {"cmd":"launch","bundle":<String>} /
+//       {"cmd":"terminate"} / {"cmd":"install","path":<String>} / {"cmd":"refresh"}
+//     イベント(serve → stdout、NDJSON。refresh 以外はまず actionResult、続けて snapshot の2行。
+//     refresh は snapshot の1行だけ):
+//       {"kind":"actionResult","ok":true|false,"error":".."|null}
+//       {"kind":"snapshot","ok":true,"error":null,"platform":"..","screen":{"width":..,"height":..},
+//        "image":"<base64 JPEG>","elements":[{"ref":1,"type":"..","label":..|null,
+//        "identifier":..|null,"value":..|null,"frame":{"x":..,"y":..,"width":..,"height":..}}, ...]}
+//       {"kind":"snapshot","ok":false,"error":"..","platform":null,"screen":null,"image":null,
+//        "elements":null}
+//     parseLiveServeEvent が "kind" で判別して actionResult/snapshot それぞれの形を返す
+//     (中身の検証は既存の isLiveOkResult/isLiveErrorResult/isLiveSnapshot を再利用。これらは
+//     構造的な検証のため "kind" フィールドの有無に関わらずそのまま使える)。
 
 import type { MonitorDeviceState, MonitorPlatform } from "./monitorModel";
 
@@ -210,6 +224,72 @@ export function parseLiveActionResult(value: unknown): LiveActionResult | undefi
   return undefined;
 }
 
+// ---- live serve(常駐プロセス)のコマンド組み立て・イベント検証 -------------------------------------
+// Phase 4 高速化: 1操作ごとにワンショット spawn していた `ftester api live <sub>` を廃止し、
+// パネル(デバイス)ごとに常駐させる `ftester api live serve` の stdin に NDJSON でコマンドを
+// 送り、stdout の NDJSON イベントを受ける方式に置き換えた。ファイル冒頭のプロトコル参照。
+
+export type LiveServeCommand =
+  | { readonly cmd: "tap"; readonly ref: number }
+  | { readonly cmd: "tap"; readonly x: number; readonly y: number }
+  | { readonly cmd: "type"; readonly text: string; readonly ref: number | null }
+  | { readonly cmd: "swipe"; readonly direction: "up" | "down" | "left" | "right" }
+  | { readonly cmd: "launch"; readonly bundle: string }
+  | { readonly cmd: "terminate" }
+  | { readonly cmd: "install"; readonly path: string }
+  | { readonly cmd: "refresh" };
+
+/** serve の stdin へ書き込む1行(末尾改行付き)を組み立てる。 */
+export function serializeLiveServeCommand(command: LiveServeCommand): string {
+  return `${JSON.stringify(command)}\n`;
+}
+
+export type LiveServeEvent =
+  | { readonly kind: "actionResult"; readonly result: LiveActionResult }
+  | { readonly kind: "snapshot"; readonly result: LiveSnapshot | LiveErrorResult };
+
+/**
+ * serve の stdout から届いた NDJSON 1行(JSON.parse 済みの unknown)を "kind" で判別し、
+ * actionResult/snapshot のどちらかとして検証する。中身の検証は既存の
+ * parseLiveActionResult/parseLiveSnapshotResult(内部で isLiveOkResult/isLiveErrorResult/
+ * isLiveSnapshot を使う)をそのまま再利用するが、それらは検証対象をそのまま返す(=入力に
+ * 含まれる "kind" フィールドが LiveActionResult/LiveSnapshot 側にも残ってしまう)ため、
+ * ここで ok/error(/platform/screen/image/elements)だけを持つ形に正規化して詰め直す
+ * ("kind" は envelope 側の情報であり、中身の型に漏れ出すべきではないため)。
+ * "kind" が無い/未知、または中身が期待した形でなければ undefined。
+ */
+export function parseLiveServeEvent(value: unknown): LiveServeEvent | undefined {
+  if (!isRecord(value) || typeof value.kind !== "string") {
+    return undefined;
+  }
+  if (value.kind === "actionResult") {
+    const result = parseLiveActionResult(value);
+    if (!result) {
+      return undefined;
+    }
+    return { kind: "actionResult", result: result.ok ? { ok: true } : { ok: false, error: result.error } };
+  }
+  if (value.kind === "snapshot") {
+    const result = parseLiveSnapshotResult(value);
+    if (!result) {
+      return undefined;
+    }
+    return {
+      kind: "snapshot",
+      result: result.ok
+        ? {
+            ok: true,
+            platform: result.platform,
+            screen: result.screen,
+            image: result.image,
+            elements: result.elements,
+          }
+        : { ok: false, error: result.error },
+    };
+  }
+  return undefined;
+}
+
 // ---- 座標変換 ---------------------------------------------------------------------------
 // 契約: snapshot の screen / elements[].frame はポイント座標。スクリーンショット画像は
 // screen のアスペクト比のまま(レターボックス無く)表示される前提(ftester-gui/LiveView.swift の
@@ -291,6 +371,14 @@ export function buildDeviceArgs(device: LiveDeviceRef): string[] {
     args.push("--serial", device.serial.trim());
   }
   return args;
+}
+
+/**
+ * 2つのデバイス参照が同一デバイスを指すかどうかを判定する(livePanel.ts が serve プロセスを
+ * 再バインドすべきかどうか[選択デバイスが実際に変わったか]の判定に使う)。
+ */
+export function sameLiveDeviceRef(a: LiveDeviceRef, b: LiveDeviceRef): boolean {
+  return a.platform === b.platform && a.port === b.port && a.serial === b.serial;
 }
 
 /** ftester.platform/port/serial 設定から作る「設定のデバイス」フォールバックの元データ。 */

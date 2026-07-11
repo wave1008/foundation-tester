@@ -11,6 +11,7 @@ import android.graphics.Rect;
 import android.os.Build;
 import android.os.ParcelFileDescriptor;
 import android.os.SystemClock;
+import android.view.accessibility.AccessibilityNodeInfo;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -23,6 +24,12 @@ import java.util.Map;
 
 final class BridgeRouter implements BridgeHttpServer.Handler {
 
+    /** /session の起動待ち上限(ms)。root ウィンドウが対象パッケージに切り替わるまでの上限。
+     *  超過は 500 エラー(黙って成功にしない) */
+    private static final long LAUNCH_CAP_MS = 10_000;
+    /** stableActivePackage() の安定待ち上限(ms)。クロスパッケージ遷移の検知用 */
+    private static final long STABLE_PACKAGE_BUDGET_MS = 100;
+
     static final class BridgeException extends RuntimeException {
         final int status;
         BridgeException(int status, String message) {
@@ -32,6 +39,8 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
     }
 
     private final Instrumentation instrumentation;
+    /** UI 整定検知(操作後の固定 sleep の代替)。構築時に UiAutomation へ1回だけ登録する */
+    private final QuietWaiter quietWaiter = new QuietWaiter();
     /** 直近スナップショットの ref → 中心座標(iOS ランナーの refFrames と同じ役割) */
     private Map<Integer, double[]> refCenters = new HashMap<>();
     private Rect lastScreen = new Rect();
@@ -39,6 +48,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
 
     BridgeRouter(Instrumentation instrumentation) {
         this.instrumentation = instrumentation;
+        ua().setOnAccessibilityEventListener(quietWaiter.listener());
     }
 
     @Override
@@ -91,7 +101,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         boolean ready;
         String pkg = null;
         try {
-            android.view.accessibility.AccessibilityNodeInfo root = ua().getRootInActiveWindow();
+            AccessibilityNodeInfo root = ua().getRootInActiveWindow();
             ready = true;
             if (root != null && root.getPackageName() != null) {
                 pkg = root.getPackageName().toString();
@@ -118,6 +128,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
     private BridgeHttpServer.Response handleTap(JSONObject body) {
         double[] point = resolvePoint(body);
         InputInjector.tap(ua(), point[0], point[1]);
+        settle();
         return ok();
     }
 
@@ -129,9 +140,12 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         if (body.has("ref")) {
             double[] center = centerOf(body.optInt("ref"));
             InputInjector.tap(ua(), center[0], center[1]);
-            SystemClock.sleep(500);
+            // フォーカス反映のラグ対策(固定 sleep(500) の代替)。in-process の短間隔
+            // チェックのみ(50ms 粒度以下。HTTP/snapshot ポーリングではない)
+            InputInjector.waitForFocusInput(ua(), 2000);
         }
         InputInjector.setTextAppending(ua(), text);
+        settle();
         return ok();
     }
 
@@ -150,6 +164,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
                 throw new BridgeException(400, "direction は up/down/left/right のいずれかです");
         }
         InputInjector.swipe(ua(), from[0], from[1], to[0], to[1], 300);
+        settle();
         return ok();
     }
 
@@ -160,6 +175,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         double[] center = centerOf(body.optInt("ref"));
         double duration = body.optDouble("duration", 1.0);
         InputInjector.press(ua(), center[0], center[1], duration);
+        settle();
         return ok();
     }
 
@@ -174,7 +190,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         return BridgeHttpServer.Response.png(out.toByteArray());
     }
 
-    /** 互換実装(ホストの AndroidDriver は launch/terminate を adb 直で行う) */
+    /** アプリ起動(ホストの AndroidDriver.launch() はこのエンドポイントに一本化されている) */
     private BridgeHttpServer.Response handleLaunch(JSONObject body) {
         String bundleID = body.optString("bundleID");
         if (bundleID.isEmpty()) {
@@ -183,10 +199,39 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         shell("am force-stop " + bundleID);
         String output = shell("monkey -p " + bundleID + " -c android.intent.category.LAUNCHER 1");
         if (!output.contains("Events injected: 1")) {
-            throw new BridgeException(500, "アプリを起動できません: " + bundleID);
+            // monkey はプロビジョニング直後の AVD などで理由なく失敗することがある(実測 exit 251。
+            // ホスト側 AndroidDriver.launch() に同じロジックがあった=移植して一本化)。
+            // LAUNCHER アクティビティを解決して am start で起動するフォールバック
+            String resolve = shell("cmd package resolve-activity --brief "
+                    + "-c android.intent.category.LAUNCHER " + bundleID);
+            String component = null;
+            for (String line : resolve.split("\n")) {
+                line = line.trim();
+                if (line.contains("/")) component = line;
+            }
+            String start = component == null ? null : shell("am start -n " + component);
+            if (component == null || start == null || start.contains("Error")) {
+                throw new BridgeException(500,
+                        "アプリを起動できません: " + bundleID + "(インストール済みか確認してください)");
+            }
         }
         sessionBundleID = bundleID;
-        SystemClock.sleep(1500);
+
+        // root ウィンドウが対象パッケージに切り替わるまで待つ(in-process の短間隔チェック。
+        // 50ms 粒度以下。HTTP/snapshot ポーリングではない)。上限超過は黙って進まずエラーにする
+        long deadline = SystemClock.uptimeMillis() + LAUNCH_CAP_MS;
+        while (true) {
+            AccessibilityNodeInfo root = ua().getRootInActiveWindow();
+            String pkg = root != null && root.getPackageName() != null
+                    ? root.getPackageName().toString() : null;
+            if (bundleID.equals(pkg)) break;
+            if (SystemClock.uptimeMillis() >= deadline) {
+                throw new BridgeException(500, "アプリの画面が表示されませんでした: " + bundleID);
+            }
+            SystemClock.sleep(50);
+        }
+        long remaining = Math.max(0, deadline - SystemClock.uptimeMillis());
+        quietWaiter.quietWait(bundleID, QuietWaiter.QUIET_MS, remaining);
         return ok();
     }
 
@@ -199,6 +244,43 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
     }
 
     // MARK: - Helpers
+
+    /** 静穏待ちの対象パッケージ(操作時点のアクティブウィンドウ優先、無ければ現在セッション) */
+    private String activePackage() {
+        AccessibilityNodeInfo root = ua().getRootInActiveWindow();
+        String pkg = root != null && root.getPackageName() != null
+                ? root.getPackageName().toString() : null;
+        return pkg != null ? pkg : sessionBundleID;
+    }
+
+    /** /tap /type /swipe /press 共通の整定待ち(操作後の固定 sleep の代替) */
+    private void settle() {
+        quietWaiter.quietWait(stableActivePackage(STABLE_PACKAGE_BUDGET_MS),
+                QuietWaiter.QUIET_MS, QuietWaiter.ACTION_CAP_MS);
+    }
+
+    /**
+     * activePackage() が安定するまで待ってから返す(最大 budgetMs)。タップ直後はアクティブ
+     * ウィンドウのパッケージがまだ遷移中のことがある(例: 検索のハンドオフ・外部アプリ起動で
+     * 別パッケージへ切り替わる)。その瞬間を静穏待ちの対象に選ぶと遷移元パッケージの静穏を
+     * 見てしまい、遷移先の描画完了を待たずに早期リターンする。短い間隔で2回連続同じ値を
+     * 観測できたら確定させる(in-process の短間隔チェックのみ。50ms 粒度以下。
+     * HTTP/snapshot ポーリングではない)。
+     */
+    private String stableActivePackage(long budgetMs) {
+        long deadline = SystemClock.uptimeMillis() + budgetMs;
+        String previous = activePackage();
+        String current = activePackage();
+        // 大半(同一パッケージ内タップ)はここで即確定(sleep なし)。2 回連続で違う場合だけ
+        // 遷移中とみなし、間隔を空けて再確認する
+        while (!(current == null ? previous == null : current.equals(previous))
+                && SystemClock.uptimeMillis() < deadline) {
+            previous = current;
+            SystemClock.sleep(30);
+            current = activePackage();
+        }
+        return current;
+    }
 
     private double[] resolvePoint(JSONObject body) {
         if (body.has("ref")) {
