@@ -1,5 +1,18 @@
 # foundation-tester
 
+## ビルド・検証
+
+- 拡張: `cd vscode-ftester && npm run compile`(esbuild+tsc)/ `npm test`
+- Swift: `swift build --build-tests` / `swift test`
+- 拡張の挙動を変えたら: package.json の version を上げて `npm run install-local`(パッケージ+インストール+到達確認まで一括。code CLI は PATH に無い)。反映には VSCode の Reload Window+パネル開き直しが必要。コメント整理など挙動不変の変更では vsix 更新不要
+- 再ビルド後の検証前に旧バイナリの常駐プロセス(monitor/host-metrics)を kill(生き残って検証を汚す。docs/performance-tuning.md §7)
+
+## 並列一括作業(サブエージェント委譲)
+
+- 全域一括の機械的変更は、ファイル集合が互いに素になるようバッチ分割して並列委譲する(コメント量・行数で均等化)
+- サブエージェントに swift build / npm build を実行させない(SPM ビルドロック・出力の競合)。ビルド・テストはメインで全バッチ完了後に一括実行。軽量な per-file チェック(node --check 等)は各エージェントで可
+- 「コメントのみ」「移動のみ」を謳う変更は、diff の全変更行を機械検証(全 +/- 行がコメント/空行か、末尾コメント編集はコード部分が同一か)してからコミットする
+
 ## コメント規約
 
 コメントの読者は人間ではなく Claude Code。目的は「編集時の事故を防ぐ」「再調査を不要にする」の2つだけ。それに寄与しないコメントはトークンの無駄なので書かない・見つけたら消す。
