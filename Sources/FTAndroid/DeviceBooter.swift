@@ -169,6 +169,9 @@ public enum DeviceBooter {
     /// repoRoot 指定時(iOS のみ)は、simctl shutdown の前にそのシミュレータに接続している
     /// 稼働ブリッジを探して停止する(停止しないとブリッジプロセスと
     /// pid ファイルがゾンビとして残り、以後のポート採番がずれていく)。
+    /// iOS 側は simctl shutdown の exit code を信用せず、実際に Booted が
+    /// 解消するまで最大 3 回リトライする(macOS 27 beta 3 で exit code は
+    /// 正常でも実際には停止していないレースがあるため)。
     public static func shutdownOne(spec: DeviceSpec, platform: String,
                                    repoRoot: URL? = nil,
                                    log: @escaping @Sendable (String) -> Void) async throws {
@@ -186,11 +189,25 @@ public enum DeviceBooter {
                     log("→ \(spec.name): ブリッジ停止(port \(port))")
                 }
             }
-            let result = try Shell.run(["xcrun", "simctl", "shutdown", sim.udid])
-            guard result.status == 0 else {
-                throw DeviceBooterError.commandFailed("simctl shutdown: \(result.tail)")
+            // beta 3 の CoreSimulator は「Unable to shutdown device in current
+            // state: Shutdown」(405)を返しつつ実際には Booted のまま残る
+            // レースがあるため、exit code でなくカタログの実状態で成否判定する。
+            var lastResult: Shell.Result?
+            for attempt in 1...3 {
+                lastResult = try Shell.run(["xcrun", "simctl", "shutdown", sim.udid])
+                let stillBooted = (try? SimulatorCatalog.devices())?
+                    .first(where: { $0.udid == sim.udid })?.booted ?? false
+                if !stillBooted {
+                    log("✅ \(spec.name): シミュレータを停止しました(\(sim.name))")
+                    return
+                }
+                if attempt < 3 {
+                    log("→ \(spec.name): 停止が反映されないため再試行(\(attempt)/3)...")
+                    try await Task.sleep(nanoseconds: 2_000_000_000)
+                }
             }
-            log("✅ \(spec.name): シミュレータを停止しました(\(sim.name))")
+            throw DeviceBooterError.commandFailed(
+                "simctl shutdown: 3回試行してもシミュレータが停止しません(最後の出力: \(lastResult?.tail ?? ""))")
         } else {
             let serial = try AndroidDeviceCatalog.resolveSerial(spec: spec)
             let adb = try AndroidDriver.findADB()
