@@ -160,6 +160,8 @@ snapshot が uiautomator dump の約2秒からミリ秒オーダーになる。
 
 - 手動管理(任意): `ftester bridge up|down|status --platform android [--serial S]`
   (`up` は接続中全デバイスへのプリウォームにも使える)。`doctor` が導入状況を表示
+- ブリッジ起動時に window/transition/animator アニメーションを自動で無効化する
+  (screenshot が静穏判定後も古い絵を掴む問題の回避)
 - 注意: ブリッジ稼働中は `uiautomator dump` を手で叩けない(a11y 接続は実質1本の排他)
 
 ```bash
@@ -304,7 +306,7 @@ ftester CLI / MCP ──(サブプロセス)──▶ ftester-scenarios-<project
 - スナップショットはドライバ側でフィルタし、`[3] Button "ログイン" id=login_btn` 形式の
   圧縮テキストに変換(オンデバイスモデルの 4K トークン制約対策)
 - 3B モデルの弱点(数値参照の束縛ミス・反復癖など)は、テキスト参照+コード側ガードレールで補う。
-  実測に基づく設計知見は[設計書 9.5〜9.7 節](docs/ios-test-tool-design.md)を参照
+  実測に基づく設計知見は[設計書 8.5〜8.8 節](docs/design.md)を参照
 
 ## プロジェクト構成
 
