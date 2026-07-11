@@ -109,6 +109,9 @@ struct Doctor: AsyncParsableCommand {
                 // 高速スナップショット用ブリッジ(未導入でも初回操作時に自動導入・起動される)
                 if let driver = try? AndroidDriver(serial: serial) {
                     print("   ・ \(serial): \(driver.bridgeDoctorSummary())")
+                    if let warning = driver.animationScaleWarning() {
+                        print("     ⚠️ \(warning)")
+                    }
                 }
             }
         } else {
