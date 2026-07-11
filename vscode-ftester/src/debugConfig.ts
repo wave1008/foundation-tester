@@ -1,13 +1,6 @@
 // debugConfig.ts
-// ftester デバッグの vscode 側配線を担当する。
-//
-// - FtesterDebugAdapterDescriptorFactory: vscode.DebugAdapterInlineImplementation で
-//   debugAdapter.ts の FtesterDebugSession(vscode 非依存)を包んで登録する。
-// - FtesterDebugConfigurationProvider: launch 設定の project 未指定時の補完・
-//   scenario 必須チェックを行う。
-//
-// プロトコル本体(DAP のリクエスト/イベント変換)は debugAdapter.ts 側にあり、
-// このファイルは vscode API との接続だけを担当する。
+// ftester デバッグの vscode 側配線(DebugAdapterDescriptorFactory / ConfigurationProvider)。
+// DAP のリクエスト/イベント変換は debugAdapter.ts(vscode 非依存)側にある。
 
 import * as vscode from "vscode";
 import { type FtesterConfig, resolveProjectName } from "./config";

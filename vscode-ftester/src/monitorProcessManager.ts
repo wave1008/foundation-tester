@@ -1,10 +1,7 @@
 // monitorProcessManager.ts
 // デバイスモニターパネル(monitorPanel.ts)の常駐子プロセス管理部分。
-// MonitorProcessManager クラスは、monitor プロセス(`ftester api monitor`)・host-metrics
-// プロセス(`ftester api host-metrics`)の起動・停止・再起動・pause/resume 制御を担う。
-// monitorPanel.ts の MonitorPanelController はこのクラスのインスタンスを1つ保持し、
-// show()/dispose()/restartMonitorIfScopeChanged() 等から公開メソッドを呼び出す
-// (webview へのメッセージ送信・設定取得・出力チャネルは MonitorPanelDeps 経由)。
+// monitor プロセス(`ftester api monitor`)・host-metrics プロセス(`ftester api host-metrics`)の
+// 起動・停止・再起動・pause/resume 制御を担う。
 
 import { type ChildProcessByStdio, spawn } from "node:child_process";
 import type { Readable, Writable } from "node:stream";
@@ -20,16 +17,14 @@ import { NdjsonParser } from "./ndjson";
 import type { MonitorPanelDeps } from "./monitorPanel";
 
 /**
- * monitor プロセス用: stdin もパイプで保持する。
  * `ftester api monitor` は stdin の EOF を終了指示として扱うため、stdio を "ignore"(=/dev/null)
- * にすると起動直後に EOF を検知して即終了してしまう(タイルが一切表示されない症状の原因)。
+ * にすると起動直後に EOF を検知して即終了する(タイルが一切表示されない症状の原因)。stdin もパイプで保持する。
  */
 type MonitorProcess = ChildProcessByStdio<Writable, Readable, Readable>;
 
 /**
  * host-metrics プロセス(`ftester api host-metrics --interval 1`)が stdout に流す1行の形。
- * monitor とは別プロセス・別スキーマなので monitorModel.ts の MonitorEvent 側には混ぜず、ここで
- * 直接定義・検証する(isMonitorEvent と同じ「壊れた行は安全側で無視する」方針)。
+ * monitor とは別スキーマなので monitorModel.ts の MonitorEvent には混ぜず、ここで直接定義・検証する。
  */
 type HostMetricsRawEvent = {
   readonly kind: "hostMetrics";
@@ -74,9 +69,7 @@ export type HostMetricsToWebviewMessage = {
 
 /**
  * monitor / host-metrics の2つの常駐子プロセスの起動・停止・再起動・pause/resume 制御を担う。
- * MonitorPanelController が1つ保持し、show()/dispose()/restartMonitorIfScopeChanged()・
- * handleWebviewMessage の "restartMonitor" ケースから呼ばれる。デバイスライフサイクルキュー
- * (monitorDeviceOps.ts の MonitorDeviceOps)からは直接参照せず、MonitorPanelDeps の
+ * デバイスライフサイクルキュー(monitorDeviceOps.ts)からは直接参照せず、MonitorPanelDeps の
  * writeMonitorControl コールバック経由で pause/resume を依頼する(サブコントローラ間の直接参照禁止)。
  */
 export class MonitorProcessManager {
@@ -84,16 +77,14 @@ export class MonitorProcessManager {
   /** stopMonitorProcess() 経由(dispose/再起動)による意図した終了かどうか。 */
   private stoppingMonitor = false;
   /**
-   * 現在の monitor プロセスが実際に使っている監視スコープ("<project> <profile>" 形式。
-   * profile が空なら "<project> ")。ftester.profile / ftester.project の変更を検知したときに、
-   * 監視対象を変えるべきかどうか(=再起動が必要かどうか)を判定するために保持する。
-   * MonitorPanelController.restartMonitorIfScopeChanged() が変化検知のために読むので公開する。
+   * 現在の monitor プロセスが実際に使っている監視スコープ("<project> <profile>" 形式。profile が
+   * 空なら "<project> ")。ftester.profile/project の変更で再起動が必要かどうかの判定に使う。
+   * restartMonitorIfScopeChanged() が変化検知のために読むので公開する。
    */
   monitorScope: string | undefined;
   /**
-   * restartMonitorProcess() の多重起動ガード。true の間は追加の再起動要求を無視する。
-   * 連続したプロファイル変更や「モニター再起動」ボタン連打で stopMonitorProcess() →
-   * startMonitorProcess() が重なり、monitor プロセスが二重起動するのを防ぐ。
+   * restartMonitorProcess() の多重起動ガード。連続したプロファイル変更やボタン連打で
+   * stopMonitorProcess()→startMonitorProcess() が重なり二重起動するのを防ぐ。
    */
   private restartPending = false;
   /** host-metrics プロセス(常駐。monitor プロセスとは独立に管理する)。 */
@@ -107,24 +98,21 @@ export class MonitorProcessManager {
   /** 直近の起動時刻(ms)。close イベントでの経過時間から「起動後10秒未満での異常終了」を判定する。 */
   private hostMetricsStartedAt: number | undefined;
   /**
-   * 「起動後10秒未満での異常終了」が連続した回数。3回連続したら諦めて自動再起動を止める
-   * (旧バイナリに host-metrics サブコマンドが無い環境で無限に再起動ループしないための安全弁)。
-   * 10秒以上動いてからの終了は正常運転とみなして 0 にリセットする。
+   * 「起動後10秒未満での異常終了」の連続回数。3回連続で諦めて自動再起動を止める(旧バイナリに
+   * host-metrics サブコマンドが無い環境で無限ループしないための安全弁)。10秒以上動いてからの
+   * 終了は正常運転とみなして 0 にリセットする。
    */
   private hostMetricsFailureStreak = 0;
   /**
    * 自動再起動を諦めた状態かどうか。true の間は close イベントで再起動をスケジュールしない。
-   * 「モニター再起動」ボタン(handleWebviewMessage の "restartMonitor")でリセットして再挑戦できる
-   * (バイナリ更新後の復帰経路)。パネルを開き直したとき(show())も同様にリセットする。
+   * 「モニター再起動」ボタンと show() の両方でリセットして再挑戦できる(バイナリ更新後の復帰経路)。
    */
   private hostMetricsGaveUp = false;
   /**
-   * 直近の monitorDevices イベントで観測したデバイス一覧(state 込み)。モニタープロセスの再起動
-   * (プロファイル切り替え含む)を跨いで保持し、リセットしない — restartMonitorIfScopeChanged() が
-   * 「切り替え直前(旧スコープ)の最終観測」を元に、新スコープ外の稼働中デバイスを判定する
-   * (devicesToShutdownOnScopeChange)ために必要なため。新しい monitor プロセスが起動して
-   * 最初の monitorDevices を出すまでの間も、直前の観測を保持し続ける。
-   * MonitorPanelController.enqueueShutdownOutsideNewScope() が読むので公開する。
+   * 直近の monitorDevices イベントで観測したデバイス一覧。モニタープロセスの再起動(プロファイル
+   * 切り替え含む)を跨いで保持し、リセットしない — restartMonitorIfScopeChanged() が切り替え直前
+   * (旧スコープ)の最終観測を元に、新スコープ外の稼働中デバイスを判定する
+   * (devicesToShutdownOnScopeChange)ために必要。enqueueShutdownOutsideNewScope() が読むので公開する。
    */
   lastKnownDevices: readonly MonitorDevice[] = [];
 
@@ -182,7 +170,6 @@ export class MonitorProcessManager {
       // 実行プロファイルが参照するデバイスのみに監視対象を絞り込む(空なら全デバイス。CLI 側の既定)。
       args.push("--profile", config.profile);
     }
-    // 実際に使った監視スコープを記録する(restartMonitorIfScopeChanged() が変化検知に使う)。
     this.monitorScope = `${resolution.project} ${config.profile}`;
 
     let proc: MonitorProcess;
@@ -280,12 +267,9 @@ export class MonitorProcessManager {
 
   /**
    * monitor プロセスを止めてから起動し直す(「モニター再起動」ボタン、および
-   * restartMonitorIfScopeChanged() による監視対象追随の両方から呼ばれる)。
-   * 多重起動ガード: restartPending が true の間は追加の呼び出しを無視する(連続したプロファイル
-   * 変更やボタン連打で stopMonitorProcess()/startMonitorProcess() が重なり、monitor プロセスが
-   * 二重起動するのを防ぐ)。ガードで潰された再起動要求があっても実害はない — 実際に走る
-   * startMonitorProcess() は呼び出し時点の getConfig() を読むので、最終的に反映されるのは
-   * 常に最新の設定であるため。
+   * restartMonitorIfScopeChanged() の両方から呼ばれる)。多重起動ガードで潰された再起動要求が
+   * あっても実害はない — 実際に走る startMonitorProcess() は呼び出し時点の getConfig() を読むため、
+   * 最終的に反映されるのは常に最新の設定である。
    */
   restartMonitorProcess(): void {
     if (this.restartPending) {
@@ -306,16 +290,14 @@ export class MonitorProcessManager {
   }
 
   /**
-   * host-metrics プロセス(`ftester api host-metrics --interval 1`)を spawn する。monitor プロセスと
-   * 同じく stdin をパイプで保持したまま何も書かない(EOF が終了指示)。--project/--profile は
-   * 付けない — ホストMac自体の値であり監視対象デバイスに依存しないため(プロファイル/プロジェクト
-   * 切り替えでの再起動は不要。restartMonitorIfScopeChanged() からは呼ばない)。
+   * host-metrics プロセス(`ftester api host-metrics --interval 1`)を spawn する。--project/--profile は
+   * 付けない — ホストMac自体の値であり監視対象デバイスに依存しないため(restartMonitorIfScopeChanged()
+   * からは呼ばない)。
    */
   startHostMetricsProcess(): void {
-    // 予約済みの自動再起動があれば無効化する。「プロセス終了→close 未配送」の隙間で
-    // restartHostMetricsProcess()(モニター再起動ボタン)が走ると、close ハンドラが積んだ
-    // 5秒後の自動再起動と本起動の両方が生きて host-metrics が二重起動し得るため、
-    // どの経路から起動する場合も先にタイマーを消す。
+    // 予約済みの自動再起動があれば無効化する。「プロセス終了→close未配送」の隙間で
+    // restartHostMetricsProcess() が走ると、close ハンドラが積んだ自動再起動と本起動の両方が
+    // 生きて二重起動し得るため、どの経路から起動する場合も先にタイマーを消す。
     if (this.hostMetricsRestartTimer) {
       clearTimeout(this.hostMetricsRestartTimer);
       this.hostMetricsRestartTimer = undefined;
@@ -387,11 +369,8 @@ export class MonitorProcessManager {
   }
 
   /**
-   * host-metrics プロセスの予期しない終了を受けて、再起動するか諦めるかを決める(startHostMetricsProcess
-   * の close ハンドラから呼ばれる)。起動後10秒未満での異常終了が3回連続したら諦めて outputChannel に
-   * 1回だけログし、以後 hostMetricsGaveUp が true の間は再起動をスケジュールしない(旧バイナリに
-   * host-metrics サブコマンドが無い環境で無限に再起動ループしないための安全弁)。10秒以上動いてからの
-   * 終了は正常運転とみなして連続回数をリセットする。
+   * host-metrics プロセスの予期しない終了を受けて、再起動するか諦めるかを決める。3回連続で
+   * 諦めたら outputChannel に1回だけログする(カウンタの意味は hostMetricsFailureStreak 参照)。
    */
   private scheduleHostMetricsRestart(): void {
     const elapsedMs = Date.now() - (this.hostMetricsStartedAt ?? Date.now());
@@ -463,12 +442,9 @@ export class MonitorProcessManager {
   }
 
   /**
-   * モニタープロセスの stdin に pause/resume の制御コマンドを書き込む(NDJSON 1行)。
-   * モニターが未起動・終了済みのときは黙ってスキップする(エラーにしない)。書き込み自体が
-   * 失敗した場合も握りつぶし、呼び出し元のジョブ実行は継続させる(stdin の "error" ハンドラは
-   * startMonitorProcess() 側で既に no-op 登録済み)。monitorDeviceOps.ts の MonitorDeviceOps
-   * からは直接呼ばず、MonitorPanelDeps.writeMonitorControl 経由で呼ばれる
-   * (サブコントローラ間の直接参照禁止のため monitorPanel.ts が仲介する)。
+   * モニタープロセスの stdin に pause/resume の制御コマンドを書き込む(NDJSON 1行)。モニターが
+   * 未起動・終了済みのとき、および書き込み失敗はいずれも黙ってスキップし、呼び出し元のジョブ実行は
+   * 継続させる。MonitorPanelDeps.writeMonitorControl 経由で呼ばれる(サブコントローラ間の直接参照禁止)。
    */
   writeMonitorControl(cmd: MonitorControlCommand): void {
     const proc = this.monitorProcess;
@@ -478,7 +454,7 @@ export class MonitorProcessManager {
     try {
       proc.stdin.write(monitorControlLine(cmd));
     } catch {
-      // 書き込み失敗は無視する(ジョブ自体は続行する)。
+      // 無視する(呼び出し元は継続させる)。
     }
   }
 }

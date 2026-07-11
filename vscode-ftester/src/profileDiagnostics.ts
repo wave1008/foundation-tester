@@ -1,15 +1,6 @@
 // profileDiagnostics.ts
-// プロファイルJSON(Projects/<project>/profiles/{apps,machines,runs}/*.json)の検証結果を
-// 問題パネル(Diagnostics)へ反映する。
-//
-// - CLI `ftester api validate-profile --project <p> [--kind ...] [--name ...]`
-//   (Sources/ftester/ApiValidateProfileCommand.swift)を叩き、profileModel.ts(vscode 非依存)で
-//   検証・変換した結果を DiagnosticCollection("ftester-profile") に設定する。位置情報は無いため
-//   Diagnostic の range は各ファイルの先頭行に固定する。
-// - 保存時(onDidSaveTextDocument): 保存されたファイルが上記パターンに一致する場合だけ、
-//   そのファイル1件を --kind/--name で絞り込んで検証し、該当ファイルの診断だけ更新する。
-// - コマンド `ftester.validateProfiles`(ftester: プロファイルを検証): 対象プロジェクトの
-//   全プロファイルファイルを一括検証して DiagnosticCollection を丸ごと入れ替え、結果件数を通知する。
+// `ftester api validate-profile`(Sources/ftester/ApiValidateProfileCommand.swift)の検証結果を
+// 問題パネル(DiagnosticCollection "ftester-profile")へ反映する。
 
 import * as vscode from "vscode";
 import { type CliInvocation, type FtesterCli } from "./cli";
@@ -113,8 +104,7 @@ export function registerProfileDiagnostics(
         return;
       }
       if (output.results.length === 0) {
-        // 対象プロジェクトに同名のファイルが見つからなかった(削除・リネーム直後等)。
-        // 保存したファイル自身の既存診断は消しておく。
+        // 同名ファイルが見つからない(削除・リネーム直後等)場合は既存診断を消す。
         collection.delete(document.uri);
         return;
       }

@@ -1,21 +1,18 @@
 // healReviewPanel.ts
 // 自己修復(--heal)の確認パネル。GUI 版 HealReviewSheet.swift + AppModel.applyHealFixes 相当。
 //
-// - RunEventBus(runHandler.ts の実行と同じインスタンス)を購読し、HealFixCollector
-//   (healModel.ts、vscode 非依存)で fixSuggestion を収集する。実行終了時に候補が1件以上
-//   あれば WebviewPanel を開く(monitorPanel.ts と同じシングルトンパターン)。
-//   ftester.heal 設定に関わらず「fixSuggestion が届いたら」動く(profile 側の heal 設定で
-//   ヒールされた場合にも確認できるようにするため)。dry-run 実行では HealFixCollector が
-//   収集自体を行わないため、このパネルが開くことはない。
-// - パネルを開く際、各候補の対象ソース行を拡張ホスト側で1回だけ読み、「適用可能か」
-//   (旧セレクタの引用符付き文字列がちょうど1回)・行末コメント(説明欄の初期値)を判定して
-//   webview へ渡す。以降の編集・diffプレビューは webview 内(素の JS。CSP により
-//   healModel.ts を import できないため、同じロジックを手書きで複製している)で完結し、
-//   拡張ホストとの往復は「適用」ボタン押下時だけ発生する。
-// - 「適用」ボタンで `ftester api apply-heal --project <project>` を stdin 経由の JSON で
-//   叩く(cli.ts の stdin 対応 spawn(CliInvocation.stdin)を使う)。適用成功分はパネルから
-//   消し、失敗分は残してエラーメッセージを表示する。失敗が0件かつ残り0件のときだけ
-//   パネルを自動的に閉じる(GUI の AppModel.applyHealFixes と同じ「レビュー済み」判定)。
+// RunEventBus(runHandler.ts と同じインスタンス)を購読し、HealFixCollector(healModel.ts)で
+// fixSuggestion を収集する。実行終了時に候補が1件以上あれば WebviewPanel を開く
+// (monitorPanel.ts と同じシングルトンパターン)。ftester.heal 設定に関わらず「fixSuggestion が
+// 届いたら」動く(profile 側の heal 設定でヒールされた場合にも確認できるようにするため)。
+// dry-run 実行では HealFixCollector が収集自体を行わないためパネルは開かない。
+//
+// webview 内の編集・diffプレビュー用 JS は、CSP により healModel.ts を import できないため
+// 同じロジックを手書きで複製している(healModel.ts を変更したらここも合わせて直すこと)。
+//
+// 「適用」は `ftester api apply-heal --project <project>` を stdin 経由の JSON で叩く
+// (cli.ts の CliInvocation.stdin)。失敗が0件かつ残り0件のときだけパネルを自動的に閉じる
+// (GUI の AppModel.applyHealFixes と同じ判定)。
 
 import { randomBytes } from "node:crypto";
 import * as fs from "node:fs";
@@ -115,7 +112,6 @@ class HealReviewController implements vscode.Disposable {
     this.panel = undefined;
   }
 
-  /** RunEventBus からのメッセージ(runHandler.ts の実行と同じインスタンス)。 */
   handleBusMessage(message: RunBusMessage): void {
     switch (message.type) {
       case "runStarted":

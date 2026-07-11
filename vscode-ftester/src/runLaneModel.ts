@@ -1,12 +1,9 @@
 // runLaneModel.ts
-// デバイスモニターの「ログレーン」表示用の純粋なロジック。RunEventBus 経由で届く生の
-// RunEvent 列を、レーン構成(workersReady → タイル単位のレーン)・レーン本文の行・
-// ワーカーの実行中状態(タイルの「実行中」バッジ)に変換する。
+// デバイスモニターの「ログレーン」表示用の純粋なロジック。RunEventBus 経由の RunEvent 列を
+// レーン構成(workersReady → タイル単位)・レーン本文の行・ワーカー実行中状態に変換する。
 //
-// vscode/webview に一切依存しない(monitorPanel.ts からも test/runLaneModel.test.mjs からも
-// 同じロジックを使えるようにするため。runReducer.ts と同じ方針)。
-// runReducer.ts(TestRun への反映)とは別の状態・関心事を持つ独立したモジュールだが、
-// アイコン表現(✅❌⚠️💡▶等)は STATUS_MARK を再利用して見た目を揃える。
+// vscode/webview に依存しない(monitorPanel.ts と test/runLaneModel.test.mjs の両方から使うため)。
+// runReducer.ts とは別の状態を持つ独立モジュールだが、アイコンは STATUS_MARK を再利用して揃える。
 
 import { STATUS_MARK } from "./runReducer";
 import type { RunEvent, WorkerInfo } from "./model";
@@ -129,7 +126,7 @@ function pushLine(state: RunLaneState, laneId: string, text: string): LaneAction
   return [{ type: "line", laneId, text }];
 }
 
-/** runStarted 受信時にレーン状態を全クリアする(新しい実行の開始)。 */
+/** runStarted 受信時に呼ぶ。 */
 export function resetRunLaneState(state: RunLaneState): LaneAction[] {
   state.lanes.clear();
   state.runningWorkers.clear();
@@ -154,10 +151,7 @@ function applyWorkers(state: RunLaneState, workers: readonly WorkerInfo[]): Lane
   return [{ type: "lanesConfigured", lanes }];
 }
 
-/**
- * プロセス終了(runEnded)時、runFinished を受信しないまま終わった場合の後始末。
- * まだ「実行中」のワーカーが残っていれば強制的に解除する(runFinished 済みなら何もしない)。
- */
+/** runFinished を受信しないままプロセスが終わった場合、残っている「実行中」を強制解除する。 */
 export function forceEndRunLaneState(state: RunLaneState): LaneAction[] {
   const actions: LaneAction[] = [];
   for (const workerId of state.runningWorkers) {
@@ -167,7 +161,6 @@ export function forceEndRunLaneState(state: RunLaneState): LaneAction[] {
   return actions;
 }
 
-/** RunEvent 1件をレーン用アクション列に変換する(runReducer.reduceRunEvent とは別系統の状態)。 */
 export function reduceLaneEvent(state: RunLaneState, event: RunEvent, nowMs: number): LaneAction[] {
   switch (event.kind) {
     case "runStarted":

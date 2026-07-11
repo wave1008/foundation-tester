@@ -1,20 +1,13 @@
-// runProfilesTab.js
-// 「プロファイル」タブ上段の「実行プロファイル」設定フォームを担う。マシンプロファイルの
-// 一覧(machineProfiles)・検索(findMachine)は machineProfilesTab.js の状態を読み取り専用で
-// 参照する(このモジュール側では書き換えない)。
+// machineProfiles/findMachine(machineProfilesTab.js の状態)はここでは読み取り専用。
 
 import { vscode } from './vscodeApi.js';
 import { machineProfiles, findMachine } from './machineProfilesTab.js';
 
-// ---- プロファイルタブ上段: 実行プロファイルの設定フォーム -----------------------
-// 一覧・初期選択は既存 profileInfo(applyProfileInfo とは独立に applyRunProfileInfo で受ける)。
-// この選択は「編集対象」であり ftester.profile 設定には触れない(デバイスタブのドロップダウン
-// とは独立)。dirty 管理はマシンプロファイルのデバイス編集フォームと同じ方針:
-// - フォーム値と runProfileOriginalFields の比較で「確定」を有効化。
-// - 選択変更(明示操作)で編集破棄して再ロード。
-// - profileInfo/machineProfileInfo 再受信時、編集中(dirty/送信中)ならフォーム値保持、
-//   未編集なら再ロード/再描画。編集対象が一覧から消えたらフォールバック(current→先頭)。
-// - runProfileFileChanged(外部編集)は編集対象と同名 && 未編集のときのみ再ロード。
+// 選択は「編集対象」であり、デバイスタブの実行プロファイル選択(ftester.profile)とは独立。
+// dirty管理: フォーム値と runProfileOriginalFields の比較で「確定」を有効化。
+// - 選択変更(明示操作)は編集破棄して再ロード。
+// - profileInfo/machineProfileInfo 再受信時: 編集中なら保持、未編集なら再ロード(消失時はcurrent→先頭)。
+// - runProfileFileChanged(外部編集)は同名 && 未編集のときのみ再ロード。
 
 const runProfileSelect = document.getElementById('run-profile-select');
 const runProfileNameStatic = document.getElementById('run-profile-name-static');
@@ -50,8 +43,6 @@ function runProfileEditing() {
   return runProfileDirty || runProfileSubmitting;
 }
 
-// dirty(=確定ボタン有効)と、それに連動する確定/キャンセルボタンの見た目をまとめて更新する
-// (editorForm の refreshEditorButtonsUi/setEditorDirty と同じ方針)。
 function refreshRunProfileButtonsUi() {
   runProfileConfirm.disabled = runProfileSubmitting || !runProfileDirty;
   runProfileCancel.style.display = runProfileDirty ? '' : 'none';
@@ -76,8 +67,7 @@ function requestRunProfileLoad() {
     showRunProfilePlaceholder('実行プロファイルがありません。');
     return;
   }
-  // 応答(runProfileData)が来るまで編集させない(応答前の編集がロード結果に上書きされる
-  // レースを避ける。ローカルファイル読みなので一瞬で置き換わる)。
+  // 応答(runProfileData)が来るまで編集させない(レース防止。ローカル読みなので一瞬で置き換わる)。
   showRunProfilePlaceholder('読み込み中...');
   vscode.postMessage({ type: 'runProfileLoad', profile: selectedRunProfile });
 }
@@ -91,7 +81,6 @@ export function applyRunProfileInfo(message) {
 
   const previous = selectedRunProfile;
   if (selectedRunProfile === null || !runProfileNames.includes(selectedRunProfile)) {
-    // 編集対象が未定/一覧から消えた: current→先頭の順でフォールバック(編集破棄)。
     if (current !== '' && runProfileNames.includes(current)) {
       selectedRunProfile = current;
     } else {
@@ -99,9 +88,7 @@ export function applyRunProfileInfo(message) {
     }
   }
   renderRunProfileSelect();
-  // [+] は profileInfo を受信できた時点で追加先(プロジェクト)があるので常に有効。
-  // コピー/−/✏ は対象(選択中の実行プロファイル)が要るので、一覧0件のときは無効化する
-  // (マシンプロファイルの btnMachineCopy/Remove/Rename と同じ方針)。
+  // [+]は常に有効(追加先は常にある)。コピー/−/✏は対象が要るため一覧0件時は無効化。
   btnRunProfileAdd.disabled = false;
   btnRunProfileCopy.disabled = runProfileNames.length === 0;
   btnRunProfileRemove.disabled = runProfileNames.length === 0;
@@ -111,8 +98,7 @@ export function applyRunProfileInfo(message) {
     requestRunProfileLoad();
     return;
   }
-  // 選択が変わらない場合: 編集中ならフォーム値を保持し、未編集なら再ロードして最新化する
-  // (apps 一覧の変化もロード後の再描画で反映される)。
+  // 未編集なら再ロードして最新化(apps一覧の変化もここで反映される)。
   if (selectedRunProfile !== null && !runProfileEditing()) {
     requestRunProfileLoad();
   } else if (selectedRunProfile === null) {
@@ -139,7 +125,6 @@ function renderRunProfileSelect() {
 }
 
 runProfileSelect.addEventListener('change', () => {
-  // 選択変更は明示操作なので、編集途中の値を破棄して選択先を再ロードする。
   selectedRunProfile = runProfileSelect.value;
   requestRunProfileLoad();
 });
@@ -161,10 +146,8 @@ btnRunProfileRename.addEventListener('click', () => {
   }
 });
 
-// 追加/コピー/名前変更の直後にホストから届く、選択(編集対象)を新プロファイルへ移す通知
-// (machineProfileSelected と同じ趣旨)。直前の profileInfo とは順序が前後しない
-// (postMessage は順序保証)ため単純に上書きでよいが、念のため一覧に無い名前は無視するガードを
-// 入れる(applyRunProfileInfo のフォールバック判定と同じ runProfileNames.includes を使う)。
+// 追加/コピー/名前変更直後にhostから届く選択切替通知。postMessageは順序保証されるため単純に
+// 上書きでよいが、一覧に無い名前は無視するガードを入れる。
 export function applyRunProfileSelected(message) {
   if (!runProfileNames.includes(message.name)) {
     return;
@@ -174,16 +157,14 @@ export function applyRunProfileSelected(message) {
   requestRunProfileLoad();
 }
 
-// machineProfileInfo 再受信時(メッセージスイッチから呼ばれる): 未編集ならロード済みの値で
-// フォームを作り直す(マシン一覧・デバイス一覧の変化を反映)。編集中なら入力値を保持する。
+// main.js の machineProfileInfo 受信時に呼ばれる。未編集ならマシン/デバイス一覧の変化を反映して再描画。
 export function rerenderRunProfileFormIfClean() {
   if (runProfileOriginalFields !== null && !runProfileEditing()) {
     renderRunProfileEditor(runProfileOriginalFields);
   }
 }
 
-// runProfileData 受信: 編集対象と同じプロファイルの応答のみ反映する(選択変更直後に届く
-// 前の選択への応答を無視するガード)。
+// 選択変更直後に届く「前の選択」への応答を無視するガード(profile一致チェック)。
 export function applyRunProfileData(message) {
   if (message.profile !== selectedRunProfile) {
     return;
@@ -220,9 +201,8 @@ function renderRunProfileEditor(fields) {
   setRunProfileDirty(false);
 }
 
-// 「使用するマシンプロファイル」select。選択肢 = machineProfiles(machineProfileInfo 由来)の
-// 名前。value が未指定("")/一覧に無い場合は先頭に「(未指定)」(value="")を付け、一覧に無い
-// 非空値はオプション補完で表示する(デバイスタブの applyProfileInfo の unknownOption と同じ方針)。
+// 選択肢=machineProfilesの名前。未指定("")/一覧に無い値は「(未指定)」を先頭に、非空の未知値は
+// オプション補完で表示する(unknownOptionパターン、deviceTiles.applyProfileInfoと同じ)。
 function renderRunProfileMachineSelect(value) {
   runProfileMachine.textContent = '';
   const names = machineProfiles.map((m) => m.name);
@@ -251,8 +231,7 @@ function renderRunProfileMachineSelect(value) {
 function renderRunProfileAppSelect(value) {
   runProfileApp.textContent = '';
   let matched = value === '';
-  // 空文字(未指定)の option を常に先頭に置く(app 欠落プロファイルの現在値を表せるように。
-  // 空のまま確定しようとするとクライアント検証で弾かれる)。
+  // 空文字(未指定)を常に先頭に置く(app欠落プロファイルの現在値を表す。空のまま確定は検証で弾かれる)。
   const emptyOption = document.createElement('option');
   emptyOption.value = '';
   emptyOption.textContent = '(未指定)';
@@ -275,10 +254,8 @@ function renderRunProfileAppSelect(value) {
   runProfileApp.value = value;
 }
 
-// デバイスのチェックボックス一覧。選択肢 = フォームで選択中のマシンプロファイルのデバイス。
-// runProfileCheckedNames に含まれる名前はチェック済み。チェック済みだがマシンに存在しない
-// 名前は末尾に注記付きで表示する(チェックを外して確定すれば取り除ける)。マシン未指定("")の
-// 間は案内のみ表示する。
+// 選択肢=フォーム内選択中マシンのデバイス。checkedNamesにあるがマシンに無い名前は注記付きで
+// 末尾表示(チェックを外せば確定時に除去される)。マシン未指定("")の間は案内のみ表示。
 function renderRunProfileDevices() {
   runProfileDevices.textContent = '';
   const machineName = runProfileMachine.value;
@@ -301,8 +278,7 @@ function renderRunProfileDevices() {
     checkbox.dataset.deviceName = name;
     checkbox.addEventListener('change', onRunProfileDeviceToggle);
     const pill = document.createElement('span');
-    // タイル/レーンと同じ配色ピル(.tile-name-ios/-android)。マシンに存在しない名前は
-    // プラットフォームが分からないので中立色(.tile-name-unknown)にする。
+    // タイル/レーンと同じ配色ピル。マシンに無い名前は不明色(tile-name-unknown)。
     pill.className = 'tile-name ' + (platform ? 'tile-name-' + platform : 'tile-name-unknown');
     pill.textContent = name;
     row.append(checkbox, pill);
@@ -346,8 +322,8 @@ runProfileHeal.addEventListener('change', onRunProfileFormInput);
 runProfileReportDir.addEventListener('input', onRunProfileFormInput);
 runProfileDefaultTimeout.addEventListener('input', onRunProfileFormInput);
 
-// devices は「同じ集合なら並び順が違っても未変更」とみなす(マシンのデバイス順とプロファイル
-// の記載順は独立で、チェック操作をしていないのに dirty になるのを避けるため)。
+// devicesは集合比較(順序無視)。マシンのデバイス順とプロファイル記載順は独立なため、配列比較だと
+// チェック操作なしでdirtyになってしまう。
 function runProfileDevicesEqual(a, b) {
   if (a.length !== b.length) {
     return false;
@@ -372,7 +348,7 @@ function onRunProfileFormInput() {
     return;
   }
   setRunProfileDirty(!runProfileValuesEqual(runProfileOriginalFields));
-  // 入力を変えたら前回のエラー表示は古くなるので消す(editorError と同じ方針)。
+  // 入力を変えたら前回のエラー表示は古くなるので消す。
   runProfileError.textContent = '';
 }
 
@@ -437,10 +413,8 @@ runProfileConfirm.addEventListener('click', () => {
   });
 });
 
-// キャンセル: dirty/送信中フラグを先に解除してから runProfileLoad を再送する
-// (applyRunProfileData は runProfileEditing() の間は応答を無視するガードがあるため、
-// 先に解除しておかないと再ロード結果が反映されない)。requestRunProfileLoad は内部で
-// showRunProfilePlaceholder→setRunProfileDirty(false) を呼ぶため、この順序を満たす。
+// requestRunProfileLoad内部でshowRunProfilePlaceholder→setRunProfileDirty(false)の順に呼ばれるため、
+// dirty解除→再ロードの順序が保たれる(順序を崩すとapplyRunProfileDataの編集中ガードに阻まれる)。
 runProfileCancel.addEventListener('click', () => {
   if (runProfileCancel.disabled) {
     return;
@@ -449,8 +423,7 @@ runProfileCancel.addEventListener('click', () => {
   requestRunProfileLoad();
 });
 
-// runProfileSave の結果。ok なら dirty 解除(ホストが続けて runProfileData を送るので、
-// フォームはそこで最新値に作り直される)。ok:false ならエラー表示のみで入力値は残す。
+// ok:trueなら続けてhostからrunProfileDataが来てフォームが最新化される。ok:falseはエラー表示のみ。
 export function applyRunProfileSaveResult(message) {
   if (message.profile !== selectedRunProfile) {
     return;
@@ -467,8 +440,7 @@ export function applyRunProfileSaveResult(message) {
   }
 }
 
-// runs/<name>.json の外部編集(watcher onDidChange)。編集対象と同名 && 未編集のときのみ
-// 再ロードして自動反映する(自分の保存直後の通知も来るが、その再ロードは冪等)。
+// runs/<name>.json の外部編集(watcher onDidChange)。自分の保存直後の通知も来るが再ロードは冪等。
 export function applyRunProfileFileChanged(message) {
   if (message.name === selectedRunProfile && !runProfileEditing()) {
     vscode.postMessage({ type: 'runProfileLoad', profile: selectedRunProfile });

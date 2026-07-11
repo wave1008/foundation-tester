@@ -1,13 +1,9 @@
 // runReducer.ts
-// ftester api run の NDJSON イベント(RunEvent)を、vscode.TestRun に反映すべき
-// アクション列(RunAction[])に変換する。vscode モジュールに一切依存しない純粋なロジックで、
-// runHandler.ts がこのアクション列を vscode API(run.started/appendOutput/failed/passed/end)へ
-// 適用する。
+// ftester api run の NDJSON イベント(RunEvent)を vscode.TestRun 用アクション列(RunAction[])に
+// 変換する純粋ロジック。runHandler.ts がこれを vscode API へ適用する。
 //
-// 状態(RunReducerState)は呼び出し側が createRunReducerState() で生成し、
-// reduceRunEvent() の呼び出しごとに使い回す(内部で書き換える)。時刻は呼び出し側から
-// nowMs として注入する(scenarioStarted〜scenarioFinished の実測に使うだけで、
-// このモジュール自身は Date.now() 等を呼ばない)。
+// RunReducerState は createRunReducerState() で生成し reduceRunEvent() のたびに使い回す
+// (内部で書き換える)。時刻は呼び出し側が nowMs として注入する(このモジュールは Date.now() を呼ばない)。
 //
 // アイコンは Sources/FTCore/RunOrchestrator.swift の RunLogFormatter と揃えている
 // (✅ 成功 / ❌ 失敗 / ⚠️ スキップ / 🔧 自己修復 / 💡 修正提案 / ▶ 開始 / ⏸ 一時停止)。
@@ -26,14 +22,13 @@ export interface RunFailureMessage {
   location?: RunLocation;
 }
 
-/** runHandler.ts が vscode API へ適用するアクション。 */
 export type RunAction =
   | { type: "started"; scenario: string }
   | { type: "output"; text: string; scenario?: string; location?: RunLocation; worker?: string }
   | { type: "passed"; scenario: string; durationMs: number }
   | { type: "failed"; scenario: string; messages: RunFailureMessage[]; durationMs: number }
   | { type: "end"; passed: number; failed: number }
-  /** 並列実行(--profile)時、runStarted 直後の workersReady から発生する。 */
+  /** workersReady から発生(--profile 並列実行時のみ)。 */
   | { type: "workers"; workers: WorkerInfo[] };
 
 interface ScenarioProgress {
@@ -50,10 +45,7 @@ export function createRunReducerState(): RunReducerState {
   return { scenarios: new Map() };
 }
 
-/**
- * ステップの status → アイコンの対応。runLaneModel.ts(デバイスモニターのログレーン)からも
- * 同じアイコンを再利用する(見た目の一貫性のため)。
- */
+/** ステップの status → アイコン。runLaneModel.ts(ログレーン)も同じアイコンを使う。 */
 export const STATUS_MARK: Record<string, string> = {
   passed: "✅",
   passedViaFallback: "✅",
@@ -62,12 +54,7 @@ export const STATUS_MARK: Record<string, string> = {
   skipped: "⚠️",
 };
 
-/**
- * RunReducerState を1イベント分進め、適用すべきアクション列を返す。
- * value は NdjsonParser が JSON.parse しただけの unknown 値(非JSON行はそもそも
- * onNonJson 側に回るためここには来ないが、壊れた/未知の kind の JSON が来ても
- * isRunEvent が false を返すのでアクション無しで安全に無視する)。
- */
+/** value は NdjsonParser の onValue が渡す unknown。isRunEvent が false なら安全に無視する。 */
 export function reduceRunEvent(
   state: RunReducerState,
   value: unknown,
@@ -85,7 +72,7 @@ function actionsFor(state: RunReducerState, event: RunEvent, nowMs: number): Run
       return [{ type: "output", text: `▶ 実行開始(${String(event.total)}件)` }];
 
     case "workersReady":
-      // 並列実行(--profile)時のみ発生。以降の全イベントに worker が付く合図。
+      // 以降の全イベントに worker が付く合図。
       return [{ type: "workers", workers: event.workers }];
 
     case "scenarioStarted": {
@@ -146,8 +133,8 @@ function actionsFor(state: RunReducerState, event: RunEvent, nowMs: number): Run
     }
 
     case "paused":
-      // --debug 実行専用のイベント。このリポジトリの実行プロファイルは --debug を付与しないため
-      // 通常は発生しないが、念のため出力だけして無視する(デバッグアダプタは後続フェーズで対応)。
+      // --debug 実行専用。このリポジトリの実行プロファイルは --debug を付与しないため通常は
+      // 発生しないが、念のため出力だけして無視する(デバッグセッションは debugAdapter.ts が処理する)。
       // --debug は並列実行(--profile 非dry-run)と排他のため worker は付与されない。
       return [
         {

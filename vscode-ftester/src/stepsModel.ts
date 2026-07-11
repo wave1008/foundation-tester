@@ -1,37 +1,29 @@
 // stepsModel.ts
-// `ftester api steps` の出力(StepRow[])を、ステップ一覧 TreeView 用のノードモデルに変換する
-// 純粋関数群。vscode モジュールに一切依存しない(stepsView.ts からも test/stepsModel.test.mjs
-// からも同じロジックを使えるようにするため)。
+// `ftester api steps` の出力を TreeView 用ノードモデルに変換する純粋関数群。
+// vscode モジュールに依存しない(stepsView.ts と test/stepsModel.test.mjs の両方から使うため)。
 //
-// 変換規則:
-//   - scene(シーン番号)ごとにグループ化する。グループの並び順は「最初にそのシーン番号が
-//     出現した順」を保持する(シーン番号でソートし直したりはしない)。
-//   - グループ内のステップの並び順は入力(StepRow[])の並び順をそのまま保持する。
-//   - ステップの description は comment を優先し、無ければ generatedComment、
-//     どちらも無ければ空文字列にフォールバックする。
+// scene グループの並び順は最初にそのシーン番号が出現した順(ソートし直さない)。
 
 import type { StepRow, StepSection } from "./model";
 
-/** scene グループ1件分のノード。 */
 export interface StepTreeSceneNode {
   readonly kind: "scene";
   readonly scene: number;
   readonly sceneTitle: string;
-  /** 表示ラベル(`scene <N>: <sceneTitle>`)。 */
+  /** TreeItem.label 相当。 */
   readonly label: string;
   readonly steps: readonly StepTreeStepNode[];
 }
 
-/** ステップ1件分のノード。 */
 export interface StepTreeStepNode {
   readonly kind: "step";
   readonly index: number;
   readonly scene: number;
   readonly section: StepSection;
   readonly command: string;
-  /** 表示ラベル(`<index>. <command>`)。 */
+  /** TreeItem.label 相当。 */
   readonly label: string;
-  /** TreeItem.description 相当(comment ?? generatedComment ?? ""）。 */
+  /** TreeItem.description 相当(comment ?? generatedComment ?? "")。 */
   readonly description: string;
   /** TreeItem.tooltip 相当(区分 + コメント全文)。 */
   readonly tooltip: string;
@@ -40,7 +32,6 @@ export interface StepTreeStepNode {
   readonly line: number;
 }
 
-/** StepRow[] を scene グループのノード配列に変換する。 */
 export function buildStepTree(steps: readonly StepRow[]): StepTreeSceneNode[] {
   const sceneOrder: number[] = [];
   const groups = new Map<number, { sceneTitle: string; steps: StepTreeStepNode[] }>();

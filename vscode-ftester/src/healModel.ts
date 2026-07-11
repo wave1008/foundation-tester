@@ -1,19 +1,13 @@
 // healModel.ts
-// 自己修復(--heal)確認フローの vscode 非依存ロジック。
-//
-// - HealFix / HealFixCollector: RunEventBus(runEventBus.ts)経由で届く RunEvent 列から
-//   kind:"fixSuggestion" を収集する。実行開始(isDryRun 込み)でクリアし、dry-run 実行中は
-//   収集自体を行わない(healReviewPanel.ts が「実行終了時に1件以上あればパネルを開く」
-//   判定に使う)。
+// vscode 非依存。以下の対応関係を維持すること:
+// - HealFixCollector: healReviewPanel.ts が「実行終了時に1件以上あればパネルを開く」判定に使う。
 // - selectorOccursOnce/isValidSelector/isValidComment/trailingComment/computeNewComment/
-//   buildPreviewAfterLine: healReviewPanel.ts(拡張ホスト側の初期判定)と、その webview
-//   (CSP により本モジュールを import できないため、同じロジックを手書きで複製している)の
-//   両方が必要とする検証・diffプレビューの純粋ロジック。GUI 版 HealReviewSheet.swift /
+//   buildPreviewAfterLine: healReviewPanel.ts の webview は CSP で本モジュールを import できず
+//   同じロジックを手書き複製している。GUI 版 HealReviewSheet.swift /
 //   Sources/FTCore/ScenarioSourceComments.swift / ScenarioSourceEditor.swift の
 //   isValidSelector/isValidComment/trailingCommentStart/setTrailingComment と同じ規則。
 // - buildApplyHealRequest/parseApplyHealResponse/toApplyHealFix: `ftester api apply-heal`
-//   (stdin/stdout の JSON 契約。Sources/ftester/ApiApplyHealCommand.swift 参照)の
-//   TypeScript 側の純粋な変換。
+//   (stdin/stdout の JSON 契約。Sources/ftester/ApiApplyHealCommand.swift 参照)の変換。
 
 import type { FixSuggestionEvent, RunEvent } from "./model";
 
@@ -62,10 +56,8 @@ function fixFromFixSuggestion(event: FixSuggestionEvent): HealFix | undefined {
 }
 
 /**
- * fixSuggestion イベントを収集する小さな状態クラス。
- * - begin(isDryRun): 実行開始(runStarted 相当)で候補をクリアする。isDryRun なら以降 collect() は無視する。
- * - collect(event): fixSuggestion 以外・必須フィールド欠落は無視する。id(healFixId)で重複排除する
- *   (同一 id は後勝ちで上書き。実態としてはほぼ同一内容のはず)。
+ * fixSuggestion イベントを収集する状態クラス。begin(isDryRun) で実行開始ごとにクリアし、
+ * isDryRun なら以降 collect() は無視する。collect() は id(healFixId)で重複排除(後勝ち)。
  */
 export class HealFixCollector {
   private readonly collected = new Map<string, HealFix>();
@@ -230,9 +222,8 @@ export function buildPreviewAfterLine(
 }
 
 /**
- * 説明編集値から newComment(適用リクエストの契約値)を決める。
- * プリフィル(originalComment ?? "")から変更が無ければ null(コメントは変更しない)、
- * 変更されていればトリム後の値(空文字列 = コメント削除)を返す。
+ * 説明編集値から newComment を決める。プリフィル(originalComment ?? "")と同じなら null
+ * (変更なし)、異なればトリム後の値を返す(意味は HealApplyFix.newComment 参照)。
  */
 export function computeNewComment(originalComment: string | undefined, editedComment: string): string | null {
   const trimmed = editedComment.trim();
@@ -301,8 +292,7 @@ export function parseApplyHealResponse(value: unknown): ApplyHealResponse | unde
 
 /**
  * チェック済み1件を適用リクエストの1件に変換する(GUI の HealReviewSheet.checkedFixes 相当)。
- * セレクタ・コメントが不正なら undefined(二重の安全のため、呼び出し側の UI 状態が
- * 壊れていても不正なリクエストを組み立てない)。
+ * セレクタ・コメント不正なら undefined(UI 側の検証が壊れていても不正リクエストを組み立てない防御)。
  */
 export function toApplyHealFix(
   fix: Pick<HealFix, "scenarioID" | "file" | "line" | "oldSelector">,

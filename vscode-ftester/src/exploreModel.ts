@@ -1,8 +1,6 @@
 // exploreModel.ts
 // `ftester api explore` の NDJSON イベント検証・進捗文言組み立て・入力値検証・完了通知文言・
-// デバイス選択 QuickPick アイテム組み立て(vscode 非依存)。ftester.explore コマンド
-// (src/exploreCommand.ts)から使う。monitorModel.ts/liveModel.ts と同じ方針で、
-// ロジックをここに切り出すことで test/exploreModel.test.mjs から vscode 無しで検証できる。
+// デバイス選択 QuickPick アイテム組み立て(vscode 非依存)。exploreCommand.ts から使う。
 //
 // 契約(Sources/ftester/ApiExploreCommand.swift):
 //   {"kind":"exploreStarted","project","bundleID","goal","maxSteps","platform"}
@@ -68,11 +66,6 @@ export type ExploreEvent =
   | ExploreFinishedEvent
   | ExploreErrorEvent;
 
-/**
- * value が ExploreEvent として扱ってよいか判定する。既知の kind 以外(将来の追加や壊れた行)や
- * 必須フィールドの欠落・型不一致は false を返すので、呼び出し側は安全に無視できる
- * (monitorModel.isMonitorEvent と同じ方針)。
- */
 export function isExploreEvent(value: unknown): value is ExploreEvent {
   if (!isRecord(value) || typeof value.kind !== "string") {
     return false;
@@ -113,7 +106,7 @@ export function isExploreEvent(value: unknown): value is ExploreEvent {
 
 // ---- 進捗文言組み立て -----------------------------------------------------------------
 
-/** exploreStep の Progress.report 用文言(withProgress のメッセージ): "[n/N] description"。 */
+/** exploreCommand.ts の withProgress で使う。 */
 export function formatStepProgressMessage(event: ExploreStepEvent): string {
   return `[${event.step}/${event.maxSteps}] ${event.description}`;
 }
@@ -221,10 +214,7 @@ export interface ExploreDeviceQuickPickItem {
   readonly device: LiveDeviceOption;
 }
 
-/**
- * `api list-devices` の結果を QuickPick 用アイテムに変換する。探索はデバイスへの実操作を
- * 伴うため、connected 以外のデバイスには detail に注意書きを付ける。
- */
+/** 探索はデバイスへの実操作を伴うため、connected 以外のデバイスには detail に注意書きを付ける。 */
 export function buildDeviceQuickPickItems(
   devices: readonly LiveDeviceOption[],
 ): ExploreDeviceQuickPickItem[] {

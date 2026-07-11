@@ -1,20 +1,12 @@
 // machineProfilesTab.js
-// 「プロファイル」タブの「マシンプロファイル」節(machines/*.json の一覧・選択・
-// デバイス一覧・右ペインの編集フォーム・デバイス行の右クリックメニュー[除去])を担う。
-// これらは相互に選択状態・DOM を参照し合うため一体のモジュールにまとめている。
-// machineProfiles・selectedMachine・selectedDeviceNames 等は再代入される状態のため、
-// 書き込み箇所をすべてこのモジュールに置く。runProfilesTab.js・modals.js からは
-// machineProfiles/findMachine/selectedMachine を読み取り専用で参照する。
+// 「プロファイル」タブの「マシンプロファイル」節を担う。
+// machineProfiles・selectedMachine・selectedDeviceNames の書き込みはこのモジュールのみで行う。
+// runProfilesTab.js・modals.js からは machineProfiles/findMachine/selectedMachine を読み取り専用で参照する。
 
 import { vscode } from './vscodeApi.js';
 import { clampMenuPosition } from './deviceTiles.js';
 
 // ---- プロファイルタブ: マシンプロファイル ---------------------------------------
-// machines/*.json の内容(machineProfileInfo)を一覧表示し、「+新規作成」/「+既存から選択」
-// からそれぞれのデバイス追加モーダルを開く。ホストとの往復が要るのは
-// deviceCatalogRequest/createDevice/installedDevicesRequest/machineDevicesSync/
-// machineDeviceRemove のみで、マシン選択(select の change)自体は受信済みデータの
-// 再描画だけで完結する。
 
 const machineSelect = document.getElementById('machine-select');
 const machineNameStatic = document.getElementById('machine-name-static');
@@ -44,52 +36,38 @@ const editorCancel = document.getElementById('editor-cancel');
 const machineDeviceMenu = document.getElementById('machine-device-menu');
 const machineDeviceMenuItemBtn = document.getElementById('machine-device-menu-item');
 
-// 直近受信の machines 配列(machineProfileInfo)。空なら「マシンプロファイルなし」。
+// machineProfileInfo 受信で更新。空なら「マシンプロファイルなし」。
 export let machineProfiles = [];
 let machineProfileHasError = false;
-// 現在選択中とみなすマシン名(select の値。machines が0件なら null)。
+// select の値。machines が0件なら null。
 export let selectedMachine = null;
-// 選択中デバイス名の集合(複数選択に対応するため Set)。通常クリックは「その1台だけを
-// 選択」(既にその1台だけの選択状態なら解除)、Shift+クリックはアンカー
-// (deviceSelectionAnchor)からの範囲選択、Cmd/Ctrl+クリックは個別の追加/除外トグル
-// (Finder/VSCode のリストと同じ標準セマンティクス)。マシン切替・一覧再描画で一覧から
-// 消えた名前は Set から取り除く(validateSelectedDeviceName)。右ペインの編集フォームは
-// ちょうど1台(size===1)のときだけ表示する。
+// 選択中デバイス名(Set、複数選択、Finder/VSCode 標準セマンティクス)。
+// マシン切替・一覧再描画時は validateSelectedDeviceName で存在しない名前を除去する。
+// 右ペインの編集フォームは size===1 のときだけ表示する。
 let selectedDeviceNames = new Set();
-// 範囲選択(Shift+クリック)の起点=直近に通常/Cmd(Ctrl)クリックした行の名前。Shift+クリック
-// 自体ではアンカーを動かさない(連続 Shift+クリックで同じ起点から範囲を伸縮できる)。
-// 一覧から消えたら validateSelectedDeviceName で null に戻す。
+// 範囲選択(Shift+クリック)の起点。Shift+クリック自体ではアンカーを動かさない
+// (連続 Shift+クリックで同じ起点から範囲を伸縮できる)。一覧から消えたら null に戻す。
 let deviceSelectionAnchor = null;
-// macOS 判定(行の contextmenu リスナーで Ctrl+クリックを選択トグルへ振り分けるのに使う。
-// 下の toggleDeviceRowSelection まわりのコメント参照)。
+// macOS 判定(行の contextmenu で Ctrl+クリックを選択トグルへ振り分けるのに使う)。
 const isMacPlatform = /^Mac/.test(navigator.platform || '');
-// 直近描画したデバイス行の DOM 要素(name -> row)。トグル選択・右クリックメニューの
-// 対象存在チェックで、一覧全体を再描画せずに済ませるために使う。
+// 直近描画したデバイス行(name -> row)。挿入順=表示順で、範囲選択(Shift+クリック)の
+// 順序計算に使う。
 let deviceRowElements = new Map();
 // 右クリックメニュー(#machine-device-menu)を開いている対象(未オープンなら null)。
-// { machine, name } の形(deviceOpMenuEntry がタイル entry を保持するのと対応)。
+// { machine, names } の形。
 let machineDeviceMenuEntry = null;
 // 右ペインの編集フォームの対象({ machine, platform, originalName }。未選択なら null)。
 let editorTarget = null;
-// フォームを最後に作り直した(＝選択・machineProfileInfo再プリフィル)時点の6フィールド値。
-// dirty 判定(現在値との比較)・machineProfileInfo 再受信時の再プリフィル可否判定に使う。
+// フォーム再構築時点の6フィールド値。dirty 判定と再プリフィル可否判定に使う。
 let editorOriginalValues = null;
-// いずれかのフィールドが元の値(editorOriginalValues)から変わっているか。
 let editorDirty = false;
-// machineDeviceUpdate の応答待ち中か(二重送信防止・machineProfileInfo 再受信時の
-// 再プリフィル抑止に使う)。
+// machineDeviceUpdate 応答待ち中か(二重送信防止・再プリフィル抑止に使う)。
 let editorSubmitting = false;
 
 export function findMachine(name) {
   return machineProfiles.find((m) => m.name === name);
 }
 
-// (デバイス一覧と右ペインの間にスプリッターは無い。一覧幅は .machine-device-list の
-// width: max-content で内容に自動フィットする。)
-
-// selectedDeviceNames のうち、現在の selectedMachine の一覧に存在しない名前を取り除く
-// (要件: マシン切替・一覧更新で選択中デバイスが消えた場合)。存在するものは維持する
-// (machineProfileInfo 再受信後も選択を名前で照合して引き継ぐ)。
 function validateSelectedDeviceName() {
   const machine = findMachine(selectedMachine);
   const names = new Set(machine ? machine.devices.map((d) => d.name) : []);
@@ -98,15 +76,12 @@ function validateSelectedDeviceName() {
       selectedDeviceNames.delete(name);
     }
   }
-  // 範囲選択(Shift+クリック)の起点も同様に照合し、一覧から消えていたら捨てる
-  // (アンカー不在時の Shift+クリックは通常クリック扱いになる)。
+  // アンカーが消えていれば null に戻す(不在時の Shift+クリックは通常クリック扱いになる)。
   if (deviceSelectionAnchor !== null && !names.has(deviceSelectionAnchor)) {
     deviceSelectionAnchor = null;
   }
 }
 
-// machineProfileInfo 受信のたびに selectedMachine を検証し、無効なら current→先頭の順で
-// フォールバックする(要件: 選択中マシンが一覧から消えた場合の復帰先)。
 export function applyMachineProfileInfo(message) {
   machineProfiles = Array.isArray(message.machines) ? message.machines : [];
   const error = typeof message.error === 'string' ? message.error : null;
@@ -125,20 +100,16 @@ export function applyMachineProfileInfo(message) {
   renderMachineSelect();
   renderMachineProfileBody(error);
   refreshEditorAfterProfileInfo();
-  // 「+新規作成」「+既存から選択」は同一条件で有効/無効を切り替える。
   btnDeviceAddExisting.disabled = machineProfileHasError || machineProfiles.length === 0;
-  // [+] はプロジェクトさえ解決できれば追加先があるので machines 件数は問わない。
-  // [−]/[✏] は対象(selectedMachine)が要るので、machines が0件のときも無効化する。
+  // btnMachineAdd だけ machines.length を見ない([+]は対象マシン不要、[−]/[✏]は対象が要る)。
   btnMachineAdd.disabled = machineProfileHasError;
   btnMachineCopy.disabled = machineProfileHasError || machineProfiles.length === 0;
   btnMachineRemove.disabled = machineProfileHasError || machineProfiles.length === 0;
   btnMachineRename.disabled = machineProfileHasError || machineProfiles.length === 0;
 }
 
-// 追加/名前変更の直後にホストから届く、選択を新プロファイルへ移す通知。直前の
-// machineProfileInfo とは順序が前後しない(postMessage は順序保証)ため、単純に上書きでよい。
-// エラー時(machineProfileHasError)にホストがこのメッセージを送ってくることは無い前提だが、
-// 念のため無視するガードを入れる。
+// 追加/名前変更直後にホストが送る選択移動通知。postMessage は順序保証されるため単純に上書きでよい。
+// エラー時にホストが送ってこない前提だが念のためガードする。
 export function applyMachineProfileSelected(message) {
   if (machineProfileHasError) {
     return;
@@ -193,16 +164,8 @@ btnMachineRename.addEventListener('click', () => {
   }
 });
 
-// 行クリックの選択(Finder/VSCode のリストと同じ標準セマンティクス)。判定順は
+// 行クリックの選択(Finder/VSCode 標準セマンティクス)。判定順は
 // shiftKey → metaKey/ctrlKey → 通常(Shift+Cmd 同時は Shift 扱い)。
-// - Shift+クリック: 表示順(deviceRowElements の挿入順=renderMachineProfileBody の描画順)で
-//   アンカー〜クリック行の間(両端含む)を選択に「置き換える」。アンカーは動かさない
-//   (連続 Shift+クリックで同じ起点から範囲を伸縮できる)。アンカーが無効(null/一覧に不在)
-//   なら通常クリックと同じ扱いにフォールバックする。
-// - Cmd(metaKey)/Ctrl(ctrlKey)+クリック: クリック行を個別に追加/除外するトグル。
-//   クリック行をアンカーに設定する。
-// - 通常クリック: その1台だけを選択(既存の選択を置き換える)+クリック行をアンカーに設定。
-//   既に「その1台だけが選択」状態なら解除する(解除時はアンカーも null)。
 function toggleDeviceRowSelection(name, event) {
   const anchorValid = deviceSelectionAnchor !== null && deviceRowElements.has(deviceSelectionAnchor);
   if (event.shiftKey && anchorValid) {
@@ -275,21 +238,13 @@ function renderMachineProfileBody(error) {
       row.addEventListener('contextmenu', (event) => {
         event.preventDefault();
         event.stopPropagation();
-        // macOS では Ctrl+クリックが OS レベルで右クリック扱いになり click イベントは発生せず
-        // contextmenu として届くため、ここで選択トグルへ振り分ける(Cmd と同様に Ctrl でも
-        // 追加選択できるようにするため)。contextmenu イベントにも shiftKey/ctrlKey/metaKey は
-        // 載っているので event をそのまま渡せば既存の判定(Shift優先→Ctrl/Cmdで個別トグル)が
-        // そのまま効く。mac では物理右クリック+Ctrl 押下も選択トグルになるが、メニューは素の
-        // 右クリックで開けるため許容している。
-        // Windows/Linux の Ctrl+クリックは通常の click イベントで既に対応済みなので、
-        // この振り分けは mac のみ。
+        // mac は Ctrl+クリックが click ではなく contextmenu として届くため、ここで選択トグルへ
+        // 振り分ける(Win/Linux は通常の click で対応済み)。
         if (isMacPlatform && event.ctrlKey) {
           toggleDeviceRowSelection(device.name, event);
           return;
         }
-        // クリックした行が現在の複数選択(2台以上)に含まれる場合は選択中全台を対象にする。
-        // それ以外はクリックした行単体を対象にする。選択状態自体は
-        // 右クリックでは変更しない。
+        // 複数選択(2台以上)に含まれる行なら選択中全台、それ以外はクリックした行単体を対象にする。
         const names =
           selectedDeviceNames.size >= 2 && selectedDeviceNames.has(device.name)
             ? [...selectedDeviceNames]
@@ -318,18 +273,14 @@ export function allDeviceNamesForSelectedMachine() {
 }
 
 // ---- 右ペインの編集フォーム ---------------------------------------------
-// 行選択中は #machine-device-editor を表示し、machineDeviceUpdate で machines/*.json を
-// 更新する。dirty(未確定の編集があるか)は6フィールドの現在値と、フォームを最後に作り直した
-// 時点の値(editorOriginalValues)を素の文字列比較するだけで判定する(trim はしない。
-// 「元の値から変わったか」という見た目上の判定であり、送信直前の検証・整形とは別の関心事)。
+// dirty 判定は現在値と editorOriginalValues の素の文字列比較(trim しない。見た目上の
+// 変化判定であり、送信前の検証・整形とは別の関心事)。
 
 const EDITOR_PLATFORM_LABEL = { ios: 'iOS', android: 'Android' };
-// input イベントを購読するのは編集可のフィールドだけ(機種/OS/UDID/AVD は選択・コピー可能な
-// ラベル表示(span)であり、値が変わることはない)。
+// input を購読するのは編集可フィールドのみ(機種/OS/UDID/AVD は読み取り専用のラベル表示)。
 const editorFieldInputs = [editorName, editorPort];
 
-// machines/*.json のデバイス1件(machineProfileInfo の生フィールド付き)から、フォームの
-// 6フィールド分の文字列を組み立てる(undefined は空文字扱い。port は文字列化する)。
+// undefined は空文字扱い、port は文字列化してフォーム6フィールド分を組み立てる。
 function deviceFieldValues(device) {
   return {
     name: device.name,
@@ -342,8 +293,7 @@ function deviceFieldValues(device) {
 }
 
 function currentEditorValues() {
-  // 機種/OS/UDID/AVD はラベル表示(span)なので textContent から読む(変わることはないが、
-  // dirty 判定の比較対象として editorOriginalValues と同じ6フィールドの形を保つ)。
+  // 機種/OS/UDID/AVD はラベル表示なので textContent から読む(editorOriginalValues と同じ形にする)。
   return {
     name: editorName.value,
     simulator: editorSimulator.textContent,
@@ -365,9 +315,7 @@ function valuesEqual(a, b) {
   );
 }
 
-// dirty(=確定ボタン有効)と、それに連動する確定/キャンセルボタンの見た目をまとめて更新する。
-// キャンセルは dirty の間だけ表示し、送信中(editorSubmitting)は確定・キャンセルとも
-// 無効化する(確定は「確定中...」表示、キャンセルは表示は保ったまま押せなくする)。
+// キャンセルは dirty の間だけ表示。送信中は確定・キャンセルとも無効化する。
 function refreshEditorButtonsUi() {
   editorConfirm.disabled = editorSubmitting || !editorDirty;
   editorCancel.style.display = editorDirty ? '' : 'none';
@@ -415,8 +363,7 @@ function clearDeviceEditor(text) {
   setEditorDirty(false);
 }
 
-// 右ペインの編集フォームは「ちょうど1台選択」のときだけ表示する。0台は既定の
-// プレースホルダー、2台以上は「<N>台選択中(右クリックで一括除去できます)」を表示する。
+// 選択中デバイスがちょうど1台なら返す(それ以外は null)。
 function singleSelectedDevice() {
   if (selectedDeviceNames.size !== 1) {
     return null;
@@ -429,8 +376,7 @@ function singleSelectedDevice() {
   return machine.devices.find((d) => d.name === name) || null;
 }
 
-// 選択変更・マシン切替(明示操作)用: ちょうど1台選択中ならその値でフォームを作り直し、
-// それ以外(0台/2台以上)はプレースホルダーに戻す。編集途中の値は常に破棄する。
+// 選択変更・マシン切替用。1台選択ならフォームを作り直し、それ以外はプレースホルダーに戻す。
 function rebuildEditorForSelection() {
   if (selectedDeviceNames.size >= 2) {
     clearDeviceEditor(selectedDeviceNames.size + '台選択中(右クリックで一括除去できます)');
@@ -444,9 +390,7 @@ function rebuildEditorForSelection() {
   }
 }
 
-// machineProfileInfo 再受信用: 選択中デバイスが消えていれば選択解除、存在してかつ未編集
-// (dirty でない・送信中でない)なら新データで再プリフィルする。編集中(dirty)なら入力値を
-// 保持する(watcher 経由の再送で入力が消えるのを防ぐ)。
+// machineProfileInfo 再受信用。dirty または送信中なら再プリフィルしない(入力中の値を保持)。
 function refreshEditorAfterProfileInfo() {
   if (machineProfileHasError) {
     clearDeviceEditor();
@@ -475,17 +419,15 @@ function onEditorFieldInput() {
     return;
   }
   setEditorDirty(!valuesEqual(currentEditorValues(), editorOriginalValues));
-  // 入力を変えたら前回のエラー表示は古くなるので消す(次の「確定」クリックで再検証される)。
+  // 入力変更で前回のエラー表示は古くなるので消す。
   editorError.textContent = '';
 }
 for (const input of editorFieldInputs) {
   input.addEventListener('input', onEditorFieldInput);
 }
 
-// キャンセル: 編集を破棄して選択中デバイスの最新値でフォームを作り直す。machineProfiles は
-// 常に最新(watcher経由で追従)なので、rebuildEditorForSelection がそのまま
-// 「現在のファイル状態に戻す」動作になる(エラー表示のクリアも rebuildEditorForSelection
-// →renderDeviceEditor/clearDeviceEditor 内で行われる)。
+// キャンセル: machineProfiles は watcher 経由で常に最新のため、rebuildEditorForSelection が
+// そのまま「ファイルの現在値に戻す」動作になる。
 editorCancel.addEventListener('click', () => {
   if (editorCancel.disabled) {
     return;
@@ -493,9 +435,8 @@ editorCancel.addEventListener('click', () => {
   rebuildEditorForSelection();
 });
 
-// 複製元: src/monitorModel.ts の updateDeviceInMachineProfile の検証部分。webview は CSP により
-// import 不可のため複製する(validateNewDeviceName の複製と同じ方針。ロジックを変更したら
-// 両方に反映すること)。
+// 複製元: src/monitorModel.ts の updateDeviceInMachineProfile の検証部分(CSP により import 不可
+// のため複製。ロジック変更時は両方に反映すること)。
 function validateDeviceEditorFields(name) {
   if (name.length === 0) {
     return 'デバイス名を入力してください。';
@@ -544,9 +485,8 @@ editorConfirm.addEventListener('click', () => {
   });
 });
 
-// machineDeviceUpdate の結果(ok:true ならリネーム追従+一覧/フォームは直後の
-// machineProfileInfo 再送(refreshEditorAfterProfileInfo)で最新化される。ok:false なら
-// エラー表示のみで、入力値はそのまま残す=再操作可能)。
+// ok:true なら直後の machineProfileInfo 再送で一覧/フォームが最新化される。ok:false なら
+// エラー表示のみで入力値は保持する。
 export function applyMachineDeviceUpdateResult(message) {
   editorSubmitting = false;
   editorConfirm.textContent = '確定';
@@ -561,8 +501,7 @@ export function applyMachineDeviceUpdateResult(message) {
 }
 
 // ---- デバイス行の右クリックメニュー(除去) -------------------------------------
-// 見た目・挙動はタイルの #device-op-menu(openDeviceOpMenu/closeDeviceOpMenu)を踏襲するが、
-// 状態(machineDeviceMenuEntry)・DOM要素は独立させる(タイルメニューの挙動に影響しないため)。
+// タイルの #device-op-menu と見た目・挙動は同じだが、状態・DOM要素は独立させている。
 
 export function closeMachineDeviceMenu() {
   if (!machineDeviceMenuEntry) {
@@ -572,8 +511,7 @@ export function closeMachineDeviceMenu() {
   machineDeviceMenu.classList.remove('visible');
 }
 
-// entry は { machine, names }(names は1件以上)。複数選択(2台以上)を対象にする場合は
-// メニュー項目のラベルを「選択した<N>台を除去」に変える。
+// entry は { machine, names }(1件以上)。2台以上なら項目ラベルを「選択した<N>台を除去」に変える。
 function openMachineDeviceMenu(entry, clientX, clientY) {
   machineDeviceMenuEntry = entry;
   machineDeviceMenuItemBtn.textContent =
@@ -595,8 +533,7 @@ machineDeviceMenuItemBtn.addEventListener('click', (event) => {
   closeMachineDeviceMenu();
 });
 
-// 外クリック・Esc・スクロール・リサイズで閉じる(#device-op-menu と同じ方針だが、
-// 独立したリスナーとして登録する)。
+// 外クリック・Esc・スクロール・リサイズで閉じる(#device-op-menu と同じ方針、独立リスナー)。
 document.addEventListener('click', (event) => {
   if (machineDeviceMenuEntry && !machineDeviceMenu.contains(event.target)) {
     closeMachineDeviceMenu();
@@ -609,6 +546,5 @@ document.addEventListener('keydown', (event) => {
 });
 document.addEventListener('scroll', () => closeMachineDeviceMenu(), true);
 window.addEventListener('resize', () => closeMachineDeviceMenu());
-// 行上の contextmenu は stopPropagation 済みなのでここには来ない(行外で右クリックした
-// 場合に残さないためのガード。#device-op-menu の同種ハンドラと同じ理由)。
+// 行上の contextmenu は stopPropagation 済み。行外で右クリックした場合に残さないためのガード。
 document.addEventListener('contextmenu', () => closeMachineDeviceMenu());

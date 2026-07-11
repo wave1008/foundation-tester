@@ -1,20 +1,12 @@
 // exploreCommand.ts
-// コマンド `ftester.explore`(「ftester: FM探索でシナリオを生成」)。macOS GUI 版(`ftester-gui`)の
-// 「FM探索」タブに相当する機能で、FM エージェントによるアプリ探索 → Swift シナリオ生成
+// コマンド `ftester.explore`。FM エージェントによるアプリ探索 → Swift シナリオ生成
 // (`ftester api explore`)を実行する。
 //
-// - デバイス選択は `ftester api list-devices` の結果を liveModel.ts の既存ヘルパー
-//   (devicesToOptions/buildDeviceArgs)で処理する(livePanel.ts と同じ変換ロジックを再利用)。
-// - `ftester api explore` は内部で `swift build`(生成コードのビルド検証)を行うため、
-//   livePanel.ts の runOneShot(専用 spawn。FtesterCli のキューを使わない)ではなく、
-//   cli.ts の FtesterCli(直列実行キュー)経由で実行する。これにより SPM のビルドロックが
-//   `ftester api run` 等の他の CLI 呼び出しと衝突しない(キューが同時に1プロセックスしか
-//   走らせない仕様に自然に乗る)。ストリーミング(NDJSON 1行ごとのコールバック)とキャンセル
-//   (SIGTERM → 2秒後 SIGKILL)はいずれも cli.ts の invoke()/cancelCurrent() が既に提供している。
-// - 実行中は `vscode.window.withProgress`(Notification、cancellable)で進捗を表示し、
-//   exploreStep イベント毎に「[n/N] description」へ更新する。全イベント + stderr は出力チャネル
-//   「ftester」にも流す(exploreModel.formatExploreLogLine で整形)。
-// - bundle ID は前回入力値を `context.workspaceState` に記憶し、次回起動時にプリフィルする。
+// デバイス選択は liveModel.ts の devicesToOptions/buildDeviceArgs を livePanel.ts と共用する。
+//
+// `ftester api explore` は内部で swift build(生成コードのビルド検証)を行うため、livePanel.ts の
+// runOneShot(専用 spawn)ではなく cli.ts の FtesterCli(直列実行キュー)経由で実行する。SPM の
+// ビルドロックが `ftester api run` 等の他の CLI 呼び出しと衝突しないようにするため。
 
 import * as vscode from "vscode";
 import { type FtesterCli } from "./cli";
@@ -110,7 +102,7 @@ async function runExplore(
   await executeExplore(cli, workspaceRoot, config, args, testTree, outputChannel);
 }
 
-/** `api list-devices` を FtesterCli のキュー経由で実行し、QuickPick でデバイスを選ばせる。 */
+/** cli.ts の直列キュー経由で list-devices を実行し、QuickPick でデバイスを選ばせる。 */
 async function pickDevice(
   cli: FtesterCli,
   workspaceRoot: string,
@@ -183,7 +175,7 @@ async function promptMaxSteps(): Promise<number | undefined> {
   return input === undefined ? undefined : parseMaxSteps(input);
 }
 
-/** `api explore` を FtesterCli のキュー経由で実行し、進捗表示・キャンセル・完了通知を行う。 */
+/** cli.ts の直列キュー経由で `api explore` を実行し、進捗表示・キャンセル・完了通知を行う。 */
 async function executeExplore(
   cli: FtesterCli,
   workspaceRoot: string,
@@ -247,8 +239,7 @@ async function executeExplore(
   } else if (errorEvent) {
     void vscode.window.showErrorMessage(`ftester: FM探索に失敗しました: ${errorEvent.message}`);
   }
-  // どちらも無い場合(finishedEvent/errorEvent とも undefined)はユーザーによるキャンセル
-  // (result.cancelled)。通知は不要(withProgress の Notification が消えるだけで十分)。
+  // どちらも無い場合はユーザーによるキャンセル。通知は不要(Notification が消えるだけで十分)。
 }
 
 async function notifyFinished(event: ExploreFinishedEvent): Promise<void> {

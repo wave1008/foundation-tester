@@ -1,19 +1,15 @@
 // monitorModel.ts
-// `ftester api monitor` が1行ずつ出力する NDJSON の生値(unknown)を、デバイスモニターの
-// webview へ postMessage する型付きメッセージへ変換・検証する純粋関数群。
-// vscode モジュールに一切依存しない(monitorPanel.ts からも test/monitorModel.test.mjs からも
-// 同じロジックを使えるようにするため。ndjson.ts/stepsModel.ts と同じ方針)。
+// `ftester api monitor` の NDJSON stdout(unknown)を webview 向け型付きメッセージへ変換・検証する
+// 純粋関数群。vscode に依存しない(monitorPanel.ts と test/monitorModel.test.mjs の両方から
+// 同じロジックを使うため。ndjson.ts/stepsModel.ts と同じ方針)。
 //
-// 契約(別エージェント実装中の `ftester api monitor --project <P> [--interval <秒>]
-// [--max-width <px>] [--profile <run>]` の stdout NDJSON):
+// 契約: `ftester api monitor --project <P> [--interval <秒>] [--max-width <px>] [--profile <run>]`
+// の stdout NDJSON:
 //   {"kind":"monitorDevices","devices":[{"id":..,"name":..,"platform":"ios"|"android",
 //     "state":"connected"|"booted"|"offline","detail":".."}]}   … サイクル毎
 //   {"kind":"monitorFrame","device":"..","jpegBase64":"..","width":480,"height":1040}
 //     … connected デバイスのみ、約interval秒毎
 //   {"kind":"monitorError","device":"..","message":".."}         … device は省略されうる
-//
-// webview 側との通信は postMessage/onDidReceiveMessage の JSON なので、双方向のメッセージ型と
-// 検証関数もここにまとめる。
 
 export type MonitorPlatform = "ios" | "android";
 export type MonitorDeviceState = "connected" | "booted" | "offline";
@@ -60,11 +56,7 @@ function isMonitorDevice(value: unknown): value is MonitorDevice {
   );
 }
 
-/**
- * value が MonitorEvent として扱ってよいか判定する。既知の kind 以外(将来の追加や壊れた行)や
- * 必須フィールドの欠落・型不一致は false を返すので、呼び出し側は安全に無視できる。
- * (device 等、契約上省略されうるフィールドは undefined を許容する。)
- */
+/** 未知の kind・型不一致は false(呼び出し側は安全に無視できる)。device 等の省略可フィールドは undefined を許容。 */
 export function isMonitorEvent(value: unknown): value is MonitorEvent {
   if (!isRecord(value) || typeof value.kind !== "string") {
     return false;
@@ -116,11 +108,8 @@ export type MonitorToWebviewMessage =
       readonly profiles: readonly string[];
       /** 現在の ftester.profile 設定値。"" はプロファイルなし。 */
       readonly current: string;
-      /**
-       * 対象プロジェクトのアプリプロファイル名一覧(Projects/<project>/profiles/apps/ 直下)。
-       * 「プロファイル」タブ下半分の実行プロファイル設定フォーム(アプリ選択)が使う。
-       * 既存の(デバイスタブの)applyProfileInfo はこのフィールドを無視するだけなので後方互換。
-       */
+      /** 対象プロジェクトのアプリプロファイル名一覧(profiles/apps/ 直下)。既存の applyProfileInfo は
+       * このフィールドを無視するだけなので後方互換。 */
       readonly apps: readonly string[];
     }
   | {
@@ -133,8 +122,8 @@ export type MonitorToWebviewMessage =
           readonly platform: MonitorPlatform;
           /** 一覧2行目の表示文字列(machineDeviceDetail で組み立て済み)。 */
           readonly detail: string;
-          // 右ペインの編集フォームを組み立てるための生フィールド(MachineDeviceEntry と同じ形)。
-          // undefined のフィールドは webview へは省略されうる(postMessage の JSON 化で自然に落ちる)。
+          // 右ペインの編集フォーム用の生フィールド(MachineDeviceEntry と同形)。undefined は
+          // postMessage の JSON 化で自然に省略される。
           readonly simulator?: string;
           readonly os?: string;
           readonly udid?: string;
@@ -158,10 +147,9 @@ export type MonitorToWebviewMessage =
       readonly ok: boolean;
       readonly name: string;
       readonly error: string | null;
-      // finished イベントの device(avd/udid のみ。name は上の name フィールドと役割が重複するため
-      // 含めない)。ok:false、または finished に device が無かった場合は null(ピッカーの「+」から
-      // register:false で作成した場合、webview 側がここの udid/avd を使って
-      // installedDevices 再読込後に該当行を自動チェックする[pendingAutoCheck]ために必要)。
+      // finished イベントの device(avd/udid のみ、name は上の name フィールドと重複するため除外)。
+      // ok:false または finished.device 無しなら null。webview は register:false 作成時、これを
+      // installedDevices 再読込後の該当行自動チェック(pendingAutoCheck)に使う。
       readonly device: { readonly avd: string | null; readonly udid: string | null } | null;
     }
   // 「+既存から選択」モーダル(#device-pick-overlay)が開いた直後に送る installedDevicesRequest
@@ -172,11 +160,9 @@ export type MonitorToWebviewMessage =
       readonly data: InstalledDevices | null;
       readonly error: string | null;
     }
-  // 同モーダルの OK(machineDevicesSync)への応答(handleMachineDevicesSync)。ok:true のときの
-  // added は新たに追記できた件数(名前衝突の自動サフィックス適用後)、removed は実際に登録解除
-  // できた件数(プロファイルに存在しなかった名前は黙ってスキップされ、この数には含まれない)。
-  // ok:true ならモーダルは閉じ、一覧は直後の machineProfileInfo 再送(postMachineProfileInfo)で
-  // 最新化される(machineDeviceUpdateResult と同じ方針)。
+  // 同モーダルの OK(machineDevicesSync)への応答。added は追記できた件数(サフィックス適用後)、
+  // removed は実際に登録解除できた件数(存在しない名前は黙ってスキップし数に含めない)。
+  // ok:true ならモーダルは閉じ、一覧は直後の machineProfileInfo 再送で最新化される。
   | {
       readonly type: "machineDevicesSyncResult";
       readonly ok: boolean;
@@ -191,16 +177,12 @@ export type MonitorToWebviewMessage =
       readonly name: string;
       readonly error: string | null;
     }
-  // マシンプロファイル自体の追加(machineProfileAdd)/名前変更(machineProfileRename)の直後に、
-  // webview 側の選択(selectedMachine)を新プロファイルへ移すための通知。削除(machineProfileDelete)
-  // 後の選択の付け替えは webview 側の既存フォールバック(machineProfileInfo受信時の current→先頭)
-  // に任せるため、こちらは送らない。
+  // machineProfileAdd/Rename 直後に webview の選択を新プロファイルへ移す通知。
+  // machineProfileDelete 後は webview 既存フォールバック(current→先頭)任せなので送らない。
   | { readonly type: "machineProfileSelected"; readonly name: string }
   // ---- プロファイルタブ下半分: 実行プロファイルの設定フォーム ---------------------------
-  // 実行プロファイル自体の追加(profileAdd)/コピー(profileCopy)/名前変更(profileRename)の直後に、
-  // webview 側の選択(実行プロファイルセクションの編集対象)を新プロファイルへ移すための通知
-  // (machineProfileSelected と同じ趣旨)。削除(profileDelete)後の選択の付け替えは webview 側の
-  // 既存フォールバック(profileInfo受信時の current→先頭)に任せるため、こちらは送らない。
+  // profileAdd/Copy/Rename 直後に選択を新プロファイルへ移す通知(machineProfileSelected と同趣旨)。
+  // profileDelete 後は既存フォールバック(current→先頭)任せなので送らない。
   | { readonly type: "runProfileSelected"; readonly name: string }
   // runProfileLoad(webview→host)への応答。fields は ok:true のときのみ非 null
   // (parseRunProfileForForm の戻り値そのもの)。
@@ -219,16 +201,12 @@ export type MonitorToWebviewMessage =
       readonly ok: boolean;
       readonly error: string | null;
     }
-  // runs/<name>.json の FileSystemWatcher(onDidChange)による外部編集の通知。name は拡張子なしの
-  // basename(Create/Delete は既存の profileInfo 再送のみで足りるため、Change だけこの専用通知を
-  // 追加する)。
+  // runs/<name>.json の外部編集通知(FileSystemWatcher onDidChange)。name は拡張子なし basename。
+  // Create/Delete は profileInfo 再送のみで足りるため、Change だけ専用通知を追加する。
   | { readonly type: "runProfileFileChanged"; readonly name: string }
   // ---- プロファイルタブ中段: アプリプロファイルの設定フォーム -----------------------------
-  // 実行プロファイルセクション(runProfileSelected/runProfileData/runProfileSaveResult/
-  // runProfileFileChanged)と同一設計。アプリプロファイル自体の追加(appProfileAdd)/コピー
-  // (appProfileCopy)/名前変更(appProfileRename)の直後に、webview 側の選択(編集対象)を新プロファイル
-  // へ移すための通知(runProfileSelected と同じ趣旨。削除後の選択の付け替えは webview 側の既存
-  // フォールバックに任せるため、こちらは送らない)。
+  // 以下4メッセージは実行プロファイルセクション(runProfileSelected〜runProfileFileChanged)と
+  // 同一設計。appProfileAdd/Copy/Rename 直後に選択を新プロファイルへ移す通知(削除後は送らない)。
   | { readonly type: "appProfileSelected"; readonly name: string }
   // appProfileLoad(webview→host)への応答。fields は ok:true のときのみ非 null
   // (parseAppProfileForForm の戻り値そのもの)。
@@ -250,9 +228,8 @@ export type MonitorToWebviewMessage =
   // apps/<name>.json の FileSystemWatcher(onDidChange)による外部編集の通知(runProfileFileChanged
   // と同じ方針)。
   | { readonly type: "appProfileFileChanged"; readonly name: string }
-  // 名前入力モーダル(#name-input-overlay)を開く。実行/アプリ/マシンプロファイルの追加・コピー・
-  // 名前変更(9箇所、monitorPanel.ts の promptName)に共通で使う。id は拡張側(nameInputSeq)で
-  // 採番する使い捨てトークンで、webview からの nameInputConfirm/nameInputCancel と対応付ける。
+  // 名前入力モーダル(#name-input-overlay)を開く。プロファイル追加/コピー/名前変更(monitorPanel.ts
+  // の promptName)に共通で使う。id は拡張側の使い捨てトークンで nameInputConfirm/Cancel と対応付ける。
   | {
       readonly type: "nameInputOpen";
       readonly id: number;
@@ -284,37 +261,32 @@ export function toWebviewMessage(event: MonitorEvent): MonitorToWebviewMessage {
 
 /** webview → extension へ送るメッセージ(ボタン操作)。 */
 export type MonitorFromWebviewMessage =
-  // webview スクリプトの初期化完了(全リスナー登録済み)を拡張側へ通知する。これを受けてから
-  // 拡張側は初期状態(laneHydrate/profileInfo等)を送る(ready ハンドシェイク。html設定直後の
-  // postMessage はリスナー登録前のレースで捨てられるため、一度きりの送信はこの通知を待つ)。
+  // webview の初期化完了通知。拡張側はこれを受けてから初期状態を送る(html設定直後の postMessage は
+  // リスナー登録前のレースで捨てられるため、一度きりの送信はこの通知を待つ)。
   | { readonly type: "ready" }
   | { readonly type: "devicesUp" }
   | { readonly type: "devicesDown" }
   | { readonly type: "restartMonitor" }
   | { readonly type: "deviceOp"; readonly name: string; readonly op: DeviceOpKind }
   | { readonly type: "selectProfile"; readonly profile: string }
-  // 実行プロファイルの追加/コピー/名前変更/削除(プロファイルタブ下半分の実行プロファイル
-  // セクションのアイコンボタン。マシンプロファイルの追加/コピー/削除/名前変更と同じ構成)。
-  // コピー/名前変更/削除の対象は profile(空文字は「対象なし」= 不正入力として扱うため、検証で弾く)。
+  // 実行プロファイルの追加/コピー/名前変更/削除(マシンプロファイルの追加/コピー/削除/名前変更と
+  // 同じ構成)。コピー/名前変更/削除の対象 profile の空文字は「対象なし」として検証で弾く。
   | { readonly type: "profileAdd" }
   | { readonly type: "profileCopy"; readonly profile: string }
   | { readonly type: "profileRename"; readonly profile: string }
   | { readonly type: "profileDelete"; readonly profile: string }
-  // マシンプロファイル(プロファイルタブ)。machines/*.json の FileSystemWatcher とは別に、
-  // webview 側から明示的に再取得したい場合のための手動リクエスト。
+  // マシンプロファイルの手動再取得リクエスト(machines/*.json の FileSystemWatcher とは別経路)。
   | { readonly type: "machineProfileRefresh" }
-  // マシンプロファイル自体の追加/コピー/削除/名前変更(マシン名横のアイコンボタン)。追加は対象を
-  // 指さないため引数なし。コピー/削除/名前変更は machine(対象マシン名)を1件指すため、
-  // profileCopy/profileRename/profileDelete と同じ理由で空文字は不正として弾く。
+  // マシンプロファイル自体の追加/コピー/削除/名前変更。追加は対象を指さないため引数なし。
+  // コピー/削除/名前変更の machine の空文字は profileCopy 等と同じ理由で不正として弾く。
   | { readonly type: "machineProfileAdd" }
   | { readonly type: "machineProfileCopy"; readonly machine: string }
   | { readonly type: "machineProfileDelete"; readonly machine: string }
   | { readonly type: "machineProfileRename"; readonly machine: string }
   // デバイス追加モーダルを開いた直後に送る、`ftester api device-catalog` の再取得リクエスト。
   | { readonly type: "deviceCatalogRequest" }
-  // デバイス追加モーダルの OK クリック。全フィールド非空文字列であることを検証する
-  // (空文字は「未選択/未入力」を意味しうるため不正として弾く。selectProfile と違い、
-  // これらは必ず有効な値を指すため)。
+  // デバイス追加モーダルの OK クリック。全フィールドは空文字だと「未選択/未入力」を意味するため、
+  // selectProfile と違い非空文字列を必須として検証する。
   | {
       readonly type: "createDevice";
       readonly machine: string;
@@ -322,36 +294,29 @@ export type MonitorFromWebviewMessage =
       readonly name: string;
       readonly model: string;
       readonly os: string;
-      // true: 物理作成(simctl/avdmanager)+マシンプロファイルへの即登録を行う。
-      // false: 物理作成のみ(ホストが `--no-register` を付与)。マシンプロファイルへの登録は
-      // 呼び出し側(#device-pick-overlay の「+」から開いた場合)が別途 machineDevicesSync で行う
-      // (ピッカー経由の新規作成は「作成直後に登録」ではなく「OK で登録」にするため。
-      // .profile-actions の「+新規作成」から直接開いた場合は register:true を送る)。
+      // true: 物理作成+即登録。false: 物理作成のみ(ホストが --no-register 付与)、登録は
+      // #device-pick-overlay の「+」経由なら呼び出し側が machineDevicesSync で別途行う(OK 押下時に
+      // 登録するため)。.profile-actions の「+新規作成」なら register:true を送る。
       readonly register: boolean;
     }
   // 「+既存から選択」モーダル(#device-pick-overlay)が開いた直後に送る、
   // `ftester api installed-devices` の再取得リクエスト(deviceCatalogRequest と同じ趣旨)。
   | { readonly type: "installedDevicesRequest" }
-  // 同モーダルの OK クリック。チェックボックスの意味を「登録状態そのもの」に変更したため、
-  // 送るのは全チェック済み一覧ではなく行ごとの初期状態からの差分のみ: add は新たにチェックした
-  // (未登録だった)デバイスへ追記するエントリ、remove は逆にチェックを外した(登録済みだった)
-  // デバイスの、マシンプロファイル上の名前(削除対象)。machine は対象を1件指すため createDevice
-  // と同じ理由で空文字を弾く。add/remove はそれぞれ単独では空配列でもよい(片方だけの差分もある)が、
-  // 両方空はあり得ない(webview 側は差分が無ければ OK ボタン自体を無効化して送らせない設計のため。
-  // それでも防御的に、ここでの検証では両方空を不正として弾く)。
+  // 同モーダルの OK クリック。チェックボックスは「登録状態そのもの」を表すため、送るのは全件では
+  // なく初期状態からの差分のみ: add は新たにチェックした(未登録だった)デバイス、remove は
+  // チェックを外した(登録済みだった)デバイスのマシンプロファイル上の名前。add/remove は片方が
+  // 空配列でもよいが、両方空は不正として弾く(webview は差分無しで OK を無効化する設計だが防御的に検証)。
   | {
       readonly type: "machineDevicesSync";
       readonly machine: string;
       readonly add: readonly MachineDeviceAddEntry[];
       readonly remove: readonly string[];
     }
-  // デバイス行の右クリックメニュー「削除」。machine は「対象を1件指す」ため createDevice と同じ
-  // 理由で空文字を弾く。names は複数選択時の一括削除に対応するため配列(単一削除も要素数1の配列
-  // として送る)。空配列は「対象なし」を意味するため不正として弾く。
+  // デバイス行の右クリック「削除」。names は複数選択の一括削除に対応する配列(単一削除も1件配列)。
+  // 空配列は「対象なし」として不正扱い。
   | { readonly type: "machineDeviceRemove"; readonly machine: string; readonly names: readonly string[] }
-  // プロファイルタブ右ペインの編集フォーム「確定」。fields は全てクライアント側で trim 済みの
-  // string(空文字は「未入力/対象プラットフォーム外」を意味する。createDevice と違い、name 以外は
-  // 空文字を許容する必要があるため、machine/originalName のみ非空文字列を要求する)。
+  // プロファイルタブ右ペインの編集フォーム「確定」。fields はクライアント側で trim 済み(空文字=
+  // 未入力/対象外)。createDevice と違い machine/originalName 以外は空文字を許容する。
   | {
       readonly type: "machineDeviceUpdate";
       readonly machine: string;
@@ -366,13 +331,11 @@ export type MonitorFromWebviewMessage =
         readonly avd: string;
       };
     }
-  // プロファイルタブ下半分: 実行プロファイル設定フォームの選択変更・初回表示時のロード要求。
-  // profile は「対象なし」を表せない(runs/<name>.json を1件指す必要がある)ため、
-  // profileCopy 等と同じ理由で空文字は不正として弾く。
+  // 実行プロファイル設定フォームの選択変更・初回表示時のロード要求。profile の空文字は
+  // profileCopy 等と同じ理由で不正として弾く。
   | { readonly type: "runProfileLoad"; readonly profile: string }
-  // 同フォームの「確定」。fields は全てクライアント側で trim 済み(machineDeviceUpdate と同じ方針。
-  // ただし machine/app は必須項目なので空文字はクライアント側検証で弾かれた上で送られてくる想定。
-  // それでも防御的に、ここでの型検証自体は空文字を許容する)。
+  // 同フォームの「確定」。fields はクライアント側 trim 済み(machineDeviceUpdate と同じ方針)。
+  // machine/app はクライアント側で必須検証済みの想定だが、型検証自体は空文字も許容する。
   | {
       readonly type: "runProfileSave";
       readonly profile: string;
@@ -384,11 +347,10 @@ export type MonitorFromWebviewMessage =
   | { readonly type: "appProfileCopy"; readonly profile: string }
   | { readonly type: "appProfileRename"; readonly profile: string }
   | { readonly type: "appProfileDelete"; readonly profile: string }
-  // アプリプロファイル設定フォームの選択変更・初回表示時のロード要求(runProfileLoad と同じ方針。
-  // profile は「対象なし」を表せないため空文字は不正入力として弾く)。
+  // アプリプロファイル設定フォームのロード要求(runProfileLoad と同じ方針。profile の空文字は不正)。
   | { readonly type: "appProfileLoad"; readonly profile: string }
-  // 同フォームの「確定」。fields は全てクライアント側で trim 済み(runProfileSave と同じ方針。
-  // ただしアプリプロファイルは全フィールド省略可のため、機械的な必須検証は無い)。
+  // 同フォームの「確定」(runProfileSave と同じ方針)。アプリプロファイルは全フィールド省略可のため
+  // 機械的な必須検証は無い。
   | {
       readonly type: "appProfileSave";
       readonly profile: string;
@@ -400,11 +362,9 @@ export type MonitorFromWebviewMessage =
   | { readonly type: "nameInputCancel"; readonly id: number };
 
 /**
- * value が machineDevicesSync メッセージの add[] 1件分(MachineDeviceAddEntry)として扱って
- * よいか判定する。name は「対象を1件指す」ため空文字を弾く(createDevice と同じ理由)。
- * simulator/os/udid/avd は省略されうるオプショナルフィールドなので、値がある場合のみ string
- * 検証する(machineDeviceUpdate の fields とは違い、こちらは空文字を許容する意味を持たない
- * ため undefined か非空 string のみ許容する)。
+ * machineDevicesSync の add[] 1件(MachineDeviceAddEntry)の検証。name の空文字は不正。
+ * simulator/os/udid/avd は省略可(machineDeviceUpdate の fields と違い空文字は無意味なため
+ * undefined か非空 string のみ許容)。
  */
 function isMachineDeviceAddEntryLike(value: unknown): value is MachineDeviceAddEntry {
   return (
@@ -419,11 +379,8 @@ function isMachineDeviceAddEntryLike(value: unknown): value is MachineDeviceAddE
   );
 }
 
-/**
- * value がアプリプロファイル「共通」セクション分のフォームフィールド(表示名+自動インストール)
- * として扱ってよいか判定する。自動インストールの設定場所は common に一本化されているため、
- * ここで autoInstall も検証する。2値("true"/"false")のみ受理する。
- */
+/** アプリプロファイル common セクション(表示名+自動インストール)の検証。autoInstall は
+ * common に一本化されているため "true"/"false" の2値のみ受理する。 */
 function isAppProfileCommonFieldsLike(value: unknown): value is AppProfileCommonFields {
   return (
     isRecord(value) &&
@@ -432,11 +389,7 @@ function isAppProfileCommonFieldsLike(value: unknown): value is AppProfileCommon
   );
 }
 
-/**
- * value がアプリプロファイル「ios」「android」セクション分のフォームフィールド(3項目)として
- * 扱ってよいか判定する。autoInstall は common に一本化されたため、ここでは検証しない
- * (isAppProfileCommonFieldsLike 側で検証する)。
- */
+/** アプリプロファイル ios/android セクション(3項目)の検証。autoInstall は common 側で検証する。 */
 function isAppProfilePlatformFieldsLike(value: unknown): value is AppProfilePlatformFields {
   return (
     isRecord(value) &&
@@ -465,8 +418,6 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
     case "profileCopy":
     case "profileRename":
     case "profileDelete":
-      // 空文字は「対象プロファイルなし」なので不正入力として弾く(selectProfile と違い、
-      // これら3種は必ず既存プロファイルを1件指すため)。
       return typeof value.profile === "string" && value.profile !== "";
     case "machineProfileRefresh":
     case "deviceCatalogRequest":
@@ -476,7 +427,6 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
     case "machineProfileCopy":
     case "machineProfileDelete":
     case "machineProfileRename":
-      // 空文字は「対象マシンなし」なので不正入力として弾く(profileCopy 等と同じ方針)。
       return typeof value.machine === "string" && value.machine !== "";
     case "createDevice":
       return (
@@ -525,7 +475,6 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
         typeof value.fields.avd === "string"
       );
     case "runProfileLoad":
-      // 空文字は「対象プロファイルなし」なので不正入力として弾く(profileCopy 等と同じ方針)。
       return typeof value.profile === "string" && value.profile !== "";
     case "runProfileSave":
       return (
@@ -545,7 +494,6 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
     case "appProfileCopy":
     case "appProfileRename":
     case "appProfileDelete":
-      // 空文字は「対象アプリプロファイルなし」なので不正入力として弾く(profileCopy 等と同じ方針)。
       return typeof value.profile === "string" && value.profile !== "";
     case "appProfileLoad":
       return typeof value.profile === "string" && value.profile !== "";
@@ -603,10 +551,7 @@ export function isDeviceOpEvent(value: unknown): value is DeviceOpEvent {
   }
 }
 
-/**
- * タイル右クリックメニューの唯一の項目(起動/停止)の表示状態。
- * op は実際にクリックした際に実行する操作(disabled:true の間はクリック不可)。
- */
+/** タイル右クリックメニューの唯一の項目の表示状態。op はクリック時に実行する操作(disabled:true の間はクリック不可)。 */
 export interface DeviceOpMenuItem {
   readonly label: string;
   readonly op: DeviceOpKind;
@@ -620,13 +565,8 @@ export interface DeviceOpBusyState {
 }
 
 /**
- * モニターの devices サイクルで届く state と、そのデバイスの現在のキュー状態(busy。無ければ
- * undefined)から、タイル右クリックメニューに表示する唯一の項目を決める
- * (monitorPanel.ts のコンテキストメニュー・実行中バッジ・webview 複製が使う)。
- * busy が無い場合、offline なら「起動」(op:"up")、connected/booted なら「停止」(op:"down")。
- * busy.status が "queued"(直列キューの順番待ち)なら「待機中...」、"running"(実行中)なら
- * その操作に応じた「起動中...」/「停止中...」になる(どちらも disabled:true)。
- * MonitorDeviceState の全パターンをカバーするため null にはならない。
+ * タイル右クリックメニュー項目を決める(monitorPanel.ts 本体・webview 複製で使用)。
+ * MonitorDeviceState の全パターンをカバーするため戻り値は null にならない。
  */
 export function deviceOpMenuItem(
   state: MonitorDeviceState,
@@ -647,16 +587,13 @@ export function deviceOpMenuItem(
 }
 
 // ---- デバイスライフサイクル操作の直列キュー ------------------------------------------------
-// 「デバイスを全て起動/終了」(bulk)とタイル個別の起動/停止(device)は、ブリッジ供給・simctl・adb
-// が競合しないよう単一の直列キューで1件ずつ実行する(FTAndroid の DeviceBooter.bootAll が
-// 負荷ゲート+直列ブリッジ供給で並行起動時の競合を避けているのと同じ思想。実機ログ解析で、
-// 「デバイスを全て起動」とタイル右クリックの個別起動が並行実行されるとブリッジ供給の
-// waitUntilReady が失敗し、ゾンビブリッジが蓄積することが分かっている)。
+// 「全て起動/終了」(bulk)とタイル個別操作(device)は、ブリッジ供給・simctl・adb の競合を避けるため
+// 単一の直列キューで1件ずつ実行する(実機ログ解析で、全起動とタイル個別起動の並行実行により
+// ブリッジ供給の waitUntilReady が失敗しゾンビブリッジが蓄積することが判明済み)。
 //
-// ここでは実際のプロセス起動(spawn)は行わない、vscode 非依存の純粋な状態管理だけを持つ。
-// monitorPanel.ts が enqueueDeviceLifecycleJob で積んだジョブを deviceLifecycleQueueHead() で
-// 取り出して実行し、完了したら dequeueDeviceLifecycleJob() で先頭を取り除いて次を実行する
-// (常に entries[0] が「現在実行中のジョブ」という不変条件を保つ FIFO)。
+// ここは vscode 非依存の純粋な状態管理のみ(spawn 自体は monitorPanel.ts 側)。常に entries[0] が
+// 「現在実行中のジョブ」という不変条件を保つ FIFO(enqueueDeviceLifecycleJob で積み、完了後
+// dequeueDeviceLifecycleJob で先頭を取り除いて次を実行)。
 
 export type DeviceOpQueueStatus = "queued" | "running";
 
@@ -705,10 +642,7 @@ export function hasDeviceLifecycleJobFor(state: DeviceLifecycleQueueState, name:
   return state.jobs.some((job) => job.kind === "device" && job.name === name);
 }
 
-/**
- * 指定デバイス名の現在のキュー状態(実行中/待機中)を返す。対象ジョブが無ければ undefined。
- * 先頭(index 0)なら "running"、それ以外(まだ順番が回ってきていない)なら "queued"。
- */
+/** 指定デバイス名の現在のキュー状態を返す(対象ジョブが無ければ undefined)。 */
 export function deviceLifecycleStatusFor(
   state: DeviceLifecycleQueueState,
   name: string,
@@ -724,20 +658,14 @@ export function deviceLifecycleStatusFor(
   return { op: job.op, status: index === 0 ? "running" : "queued" };
 }
 
-// ---- モニターの pause/resume 制御(パネル発の「全て終了」「停止」実行中に使う) ---------------
-// `ftester api monitor` は stdin から NDJSON 1行で {"cmd":"pause"} / {"cmd":"resume"} を
-// 受け付ける(Sources/ftester/ApiMonitorCommand.swift 参照)。down 系ジョブ(bulk down /
-// device-down)の実行直前に pause、完了時(成功・失敗問わず)に resume を送ることで、片付け中の
-// デバイスへモニターがスクショ取得に行って過渡的な警告を吐くのを防ぐ。up 系ジョブ(bulk up /
-// device-up)では pause しない(起動進行をタイルで見たいため)。
+// ---- モニターの pause/resume 制御(「全て終了」「停止」実行中に使う) -----------------------
+// `ftester api monitor` は stdin から NDJSON 1行 {"cmd":"pause"} / {"cmd":"resume"} を受け付ける
+// (Sources/ftester/ApiMonitorCommand.swift)。down 系ジョブの実行直前に pause・完了時に resume を
+// 送り、片付け中のデバイスへスクショ取得に行くのを防ぐ。up 系は起動進行を見せるため pause しない。
 
 export type MonitorControlCommand = "pause" | "resume";
 
-/**
- * ジョブの実行前後でモニターの pause/resume が必要かどうか(down 系のみ true)。
- * bulk/device いずれのジョブも op フィールドが "up" | "down" で共通なので、job.kind に
- * 関わらず単純に op で判定できる。
- */
+/** down 系ジョブのみ true(bulk/device いずれも op フィールドで判定可能)。 */
 export function deviceLifecycleJobNeedsMonitorPause(job: DeviceLifecycleJob): boolean {
   return job.op === "down";
 }
@@ -748,20 +676,13 @@ export function monitorControlLine(cmd: MonitorControlCommand): string {
 }
 
 // ---- 実行プロファイル切り替え時の自動シャットダウン対象算出 ------------------------------------
-// 要件: プロファイル切り替え(ftester.profile 変更)で「デバイスを全て起動/終了」ボタンの対象が
-// 新プロファイルのデバイスに変わるのに合わせて、切り替え先プロファイルに定義されていない
-// 稼働中デバイスはシャットダウンする。逆に、切り替え先プロファイルに定義されているデバイスは
-// (稼働中でも offline でも)一切触らない — 自動起動はしない。稼働中ならそのまま利用を続けられる
-// ようにする(monitorPanel.ts の restartMonitorIfScopeChanged がこの結果を down ジョブとしてキューに積む)。
+// プロファイル切り替え時、新プロファイルに含まれない稼働中デバイスはシャットダウンするが、
+// 含まれるデバイスは稼働中でも offline でも一切触らない(自動起動はしない)。
+// monitorPanel.ts の restartMonitorIfScopeChanged がこの結果を down ジョブとしてキューに積む。
 
 /**
- * 直近に観測されたデバイス一覧(旧スコープの最終観測)と、切り替え先プロファイルのデバイス名一覧
- * (null = プロファイルなし = 全デバイスが対象なので何も止めない)から、シャットダウンすべき
- * デバイス名を返す(元の順序を保つ)。
- * - newScopeNames が null: [](絞り込みが無くなる=全デバイスが対象内なので停止対象なし)。
- * - それ以外: state が "offline" でない(=稼働中の) かつ newScopeNames に含まれない name。
- *   ("offline" のデバイスは既に停止しているので対象外。newScopeNames に含まれるデバイスは
- *   稼働中でもそのまま — 自動起動しないのと対で、自動停止もしない。)
+ * シャットダウン対象デバイス名を返す(元の順序を保つ)。newScopeNames が null(プロファイルなし)
+ * なら [](全デバイスが対象なので停止しない)。
  */
 export function devicesToShutdownOnScopeChange(
   devices: readonly MonitorDevice[],
@@ -775,22 +696,12 @@ export function devicesToShutdownOnScopeChange(
 }
 
 // ---- 実行プロファイルの追加/コピー(名前検証・テンプレート生成) ------------------------------
-// monitorPanel.ts の profileAdd/profileCopy ハンドラが使う純粋ロジック。ファイルI/O自体は
-// vscode 依存(fs)なので monitorPanel.ts 側で行い、ここでは「名前が妥当か」「初期内容は何か」
-// だけを扱う(config.ts の listRunProfileNames 等と同じ、vscode 非依存の方針)。
+// monitorPanel.ts の profileAdd/profileCopy ハンドラが使う純粋ロジック(ファイル I/O は呼び出し側)。
 
 /**
- * 新規/コピー先の実行プロファイル名(runs/<name>.json の <name>)として妥当かどうかを検証する。
- * showInputBox の validateInput にそのまま渡せる形(問題なければ null、そうでなければ表示用の
- * 日本語エラーメッセージ)。呼び出し側は trim 済みの値を渡すこと(このためnameがtrim結果と
- * 一致しない=前後に空白を含む入力も、それ自体を不正として弾く。呼び出し側の trim 有無に
- * 依存しない防御的な検証にするため)。
- * 不正となる条件(優先順に判定):
- * - 前後に空白を含む(=trim済みでない)
- * - 空文字
- * - "/" または "\" を含む(runs/<name>.json のファイル名になるため、パス区切りは使えない)
- * - "." で始まる(隠しファイル的な名前を避ける)
- * - existing(既存プロファイル名一覧)に含まれる(重複)
+ * 実行プロファイル名(runs/<name>.json の <name>)の妥当性検証。showInputBox の validateInput 形式
+ * (問題なければ null)。呼び出し側は trim 済みの値を渡すこと(前後空白があれば防御的に弾く)。
+ * 判定順は下の if 列挙順に依存する。
  */
 export function validateNewRunProfileName(name: string, existing: readonly string[]): string | null {
   if (name !== name.trim()) {
@@ -812,13 +723,8 @@ export function validateNewRunProfileName(name: string, existing: readonly strin
 }
 
 /**
- * 新規実行プロファイル(runs/<name>.json)の初期内容(整形済みJSON文字列、末尾改行あり)を作る。
- * machine が非空なら先頭に `machine` キーを含める(空文字は「使用するマシンプロファイルが
- * 決まらなかった」を意味するため、キー自体を省略する。既存プロファイルに machine が無いことがある
- * 後方互換の方針とも合わせ、必須項目だが自動生成時点では埋められないこともあるため)。
- * app は appNames の先頭(候補が無ければ空文字。ユーザーが編集画面で埋める前提)、devices は
- * machineDeviceNames から `{"name": ...}` の配列を作る(候補が無ければ空文字1件のプレースホルダー)。
- * heal/reportDir はスキーマの既定値をそのまま書き出す。
+ * 新規実行プロファイル(runs/<name>.json)の初期内容(整形済みJSON、末尾改行あり)を作る。
+ * machine が空文字ならキー自体を省略する(必須項目だが自動生成時点では決まらないことがあるため)。
  */
 export function buildRunProfileTemplate(
   machine: string,
@@ -842,18 +748,13 @@ export function buildRunProfileTemplate(
 }
 
 // ---- アプリプロファイル自体の追加/コピー/名前変更(名前検証) -------------------------------
-// monitorPanel.ts の handleAppProfileAdd/Copy/Rename ハンドラが使う純粋ロジック。ファイルI/O自体は
-// vscode 依存(fs)なので monitorPanel.ts 側で行う(validateNewRunProfileName と同じ方針)。
+// monitorPanel.ts の handleAppProfileAdd/Copy/Rename が使う純粋ロジック(ファイル I/O は呼び出し側)。
 
 /**
- * 新規/コピー先/リネーム後のアプリプロファイル名(apps/<name>.json の <name>)として妥当かどうかを
- * 検証する。showInputBox の validateInput にそのまま渡せる形(問題なければ null、そうでなければ
- * 表示用の日本語エラーメッセージ)。呼び出し側は trim 済みの値を渡すこと(validateNewRunProfileName
- * と同じ防御的な検証方針)。
- * 検証項目は validateNewRunProfileName と同一(前後空白・空文字・"/" "\" ・"." 始まり・重複、
- * いずれも大文字小文字を区別する。マシンプロファイルと違い、apps/*.json はローカルマシン登録名
- * との整合を取る必要が無いため validateNewMachineProfileName のような大文字小文字無視の重複判定は
- * 不要)。
+ * アプリプロファイル名(apps/<name>.json の <name>)の妥当性検証。validateNewRunProfileName と
+ * 同一ロジック(前後空白・空文字・"/" "\" ・"." 始まり・重複、大文字小文字を区別)。
+ * マシンプロファイルと違いローカルマシン登録名との整合が不要なため、大文字小文字無視の重複判定
+ * (validateNewMachineProfileName)は行わない。
  */
 export function validateNewAppProfileName(name: string, existing: readonly string[]): string | null {
   if (name !== name.trim()) {
@@ -875,10 +776,8 @@ export function validateNewAppProfileName(name: string, existing: readonly strin
 }
 
 // ---- プロファイルタブ下半分: 実行プロファイルの設定フォーム -----------------------------
-// runProfileLoad/runProfileSave(monitorPanel.ts の handleRunProfileLoad/handleRunProfileSave)が
-// 使う純粋関数。ファイルI/O自体は vscode 依存(fs)なので monitorPanel.ts 側で行い、ここでは
-// 「JSON オブジェクト ⇔ フォームの6フィールド」の変換ロジックだけを扱う(updateDeviceInMachineProfile
-// と同じ、未知キー保持のイミュータブルな方針)。
+// handleRunProfileLoad/Save(monitorPanel.ts)が使う、JSON⇔フォーム6フィールド変換の純粋関数
+// (未知キー保持のイミュータブルな方針。updateDeviceInMachineProfile と同じ)。
 
 /** 実行プロファイル設定フォームの6フィールド(全て文字列/配列/真偽値化済み。空文字は未設定)。 */
 export interface RunProfileFormFields {
@@ -891,22 +790,14 @@ export interface RunProfileFormFields {
 }
 
 /**
- * runs/<name>.json のトップレベルオブジェクトから、実行プロファイル設定フォームの6フィールド分の
- * 値を許容的に読み取る。トップレベルが非オブジェクトなら null(呼び出し側は「不正なファイル」として
- * 扱う)。各キーは欠落・型不正を許容し、以下のように緩く読む(スキーマとしての妥当性検証は
- * 保存時(updateRunProfileInObject)・CLI 側(ProfileResolver.validate)が行うため、ここは
- * 「フォームに表示するための最善の解釈」を返すだけでよい)。
- * - machine/app/reportDir: string ならそのまま、それ以外(欠落・型不正)は ""。
- * - devices: 配列なら各要素から `{ name: string }` の name を抽出する(オブジェクトでない/name が
- *   非文字列の要素はスキップする)。devices 自体が配列でなければ []。
- * - heal: boolean ならそのまま、それ以外(欠落・型不正)は false。
- * - defaultTimeout: number ならそのまま文字列化(String(value)。整数化はしない — 0.5 のような
- *   スキーマ違反の値もそのまま表示し、保存時の検証に委ねる)。string ならそのまま。それ以外
- *   (欠落・他の型)は ""。
+ * runs/<name>.json のトップレベルから、フォームの6フィールドを許容的に読み取る(トップレベルが
+ * 非オブジェクトなら null)。各キーは欠落・型不正を「読めなければ空/既定値」で許容し、スキーマ
+ * 妥当性検証はしない(保存時 updateRunProfileInObject・CLI 側 ProfileResolver.validate に委ねる)。
+ * defaultTimeout は number ならそのまま String() 化する(0.5 のようなスキーマ違反値もそのまま
+ * 表示し、整数化はしない)。
  */
 export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFields | null {
-  // 配列も typeof は "object" だが、実行プロファイルのトップレベルとしては不正なので弾く
-  // (updateRunProfileInObject・removeDeviceFromMachineProfile と同じ判定)。
+  // 配列も typeof "object" だが、トップレベルとしては不正なので弾く(他の同様関数と同じ判定)。
   if (typeof profileObject !== "object" || profileObject === null || Array.isArray(profileObject)) {
     return null;
   }
@@ -931,18 +822,11 @@ export type RunProfileUpdateResult =
   | { readonly ok: false; readonly error: string };
 
 /**
- * runs/<name>.json のトップレベルオブジェクトを、フォームの6フィールドの内容で更新した新オブジェクト
- * を組み立てる(updateDeviceInMachineProfile と同じ、未知キー保持のイミュータブルな方針。
- * トップレベルの未知キーはスプレッドでそのまま保持し、対象6キーだけ差し替える)。
- * - profileObject がオブジェクト(配列を含まない)でなければ ok:false。
- * - machine/app/reportDir: trim 値をセットする。空はキー削除する(machine はフォーム側で必須検証
- *   済みの想定だが、防御的に空文字も許容してキー削除する)。
- * - heal: そのままセットする(常にキーを持たせる。boolean はどんな値でも有効なため空判定は無い)。
- * - defaultTimeout: 空文字ならキー削除、正の整数の文字列なら number でセット、それ以外はエラー。
- * - devices: fields.devices(名前の配列。表示順=フォームでのチェック順)の順で `{ name }` の配列を
- *   再構成する。既存の devices 配列に同名エントリがあれば、そのエントリ(未知キー込み)をそのまま
- *   再利用する(名前を書き換える必要が無いため)。新規名(既存に無い名前)は `{ name }` だけの
- *   エントリを追加する。既存 devices に同名エントリが複数あった場合は最初の1件を採用する。
+ * runs/<name>.json を、フォームの6フィールドの内容で更新した新オブジェクトを組み立てる
+ * (未知キー保持のイミュータブルな方針。profileObject が非オブジェクトなら ok:false)。
+ * defaultTimeout は空文字ならキー削除、正の整数文字列以外はエラー。
+ * devices は fields.devices の順に並べ直し、既存 devices 配列の同名エントリ(未知キー込み)を
+ * 再利用する(新規名は { name } のみ追加。同名重複があれば最初の1件を採用)。
  */
 export function updateRunProfileInObject(
   profileObject: unknown,
@@ -987,30 +871,19 @@ export function updateRunProfileInObject(
 }
 
 // ---- プロファイルタブ中段: アプリプロファイルの設定フォーム -------------------------------
-// appProfileLoad/appProfileSave(monitorPanel.ts の handleAppProfileLoad/handleAppProfileSave)が
-// 使う純粋関数。ファイルI/O自体は vscode 依存(fs)なので monitorPanel.ts 側で行い、ここでは
-// 「JSON オブジェクト ⇔ フォームの common(表示名+自動インストール)/ios/android(表示名・
-// アプリID・パッケージパス)3グループ」の変換ロジックだけを扱う(parseRunProfileForForm/
-// updateRunProfileInObject と同じ、未知キー保持のイミュータブルな方針)。
-// 自動インストール(autoInstall)は common でのみ設定できる仕様に一本化されている
-// (ios/android に残存していても Swift 側の validate が警告する)。common に appName 以外の
-// フィールドを持たせるのはこれが唯一で、AppProfileCommonFields/AppProfilePlatformFields の
-// 型を分けているのは、ランタイムが参照するセクションが異なるため。
+// handleAppProfileLoad/Save(monitorPanel.ts)が使う、JSON⇔フォーム common/ios/android 3グループ
+// 変換の純粋関数(parseRunProfileForForm/updateRunProfileInObject と同じ方針)。
+// autoInstall は common に一本化済み(ios/android に残存していると Swift 側 validate が警告する)。
 
-/**
- * アプリプロファイル「共通」セクション分のフィールド。表示名(appName)+自動インストール
- * (autoInstall)を持つ。app/appPath は新仕様(ランタイムは common のこれらを無視する)で廃止済み
- * のため、ios/android(AppProfilePlatformFields)と型を分離している。
- */
+/** アプリプロファイル common セクション。app/appPath は廃止済み(ランタイムは common のこれらを
+ * 無視する)のため ios/android(AppProfilePlatformFields)と型を分離。 */
 export interface AppProfileCommonFields {
   readonly appName: string;
   readonly autoInstall: "true" | "false";
 }
 
-/**
- * アプリプロファイル「ios」「android」セクション分の3フィールド。
- * autoInstall は common に一本化されたため、ここには持たない(共通セクションでのみ設定する)。
- */
+/** アプリプロファイル ios/android セクションの3フィールド。autoInstall は common に一本化済みの
+ * ためここには持たない。 */
 export interface AppProfilePlatformFields {
   readonly appName: string;
   readonly app: string;
@@ -1035,15 +908,8 @@ const EMPTY_APP_PROFILE_PLATFORM_FIELDS: AppProfilePlatformFields = {
   appPath: "",
 };
 
-/**
- * apps/<name>.json の common セクションの値から表示名(appName)+自動インストール(autoInstall)を
- * 許容的に読み取る。セクション自体が非オブジェクト(欠落・型不正・配列含む)なら空セクション扱い
- * (parseRunProfileForForm の devices 欠落時の扱いと同じ「読めなければ空」の流儀)。
- * - appName: string ならそのまま、それ以外(欠落・型不正)は "".
- * - autoInstall: true のときだけ "true"。それ以外(false・欠落・型不正)は "false"。
- * - app/appPath は common では廃止のため読み取らない(残っていても無視する。フォームにも
- *   フィールド自体が無い)。
- */
+/** apps/<name>.json の common セクションを許容的に読み取る(非オブジェクトなら空セクション扱い)。
+ * app/appPath は common では廃止のため読み取らない(残っていても無視)。 */
 function parseAppProfileCommonSection(value: unknown): AppProfileCommonFields {
   if (!isRecord(value)) {
     return EMPTY_APP_PROFILE_COMMON_FIELDS;
@@ -1053,12 +919,8 @@ function parseAppProfileCommonSection(value: unknown): AppProfileCommonFields {
   return { appName, autoInstall };
 }
 
-/**
- * apps/<name>.json の ios/android セクションの値から3フィールド分を許容的に読み取る
- * (parseAppProfileCommonSection と同じ「読めなければ空」の流儀)。
- * - appName/app/appPath: string ならそのまま、それ以外(欠落・型不正)は "".
- * - autoInstall は common に一本化されたため、ここでは読み取らない(残っていても無視する)。
- */
+/** apps/<name>.json の ios/android セクションを許容的に読み取る(非オブジェクトなら空セクション扱い)。
+ * autoInstall は common 側で読むためここでは読まない。 */
 function parseAppProfilePlatformSection(value: unknown): AppProfilePlatformFields {
   if (!isRecord(value)) {
     return EMPTY_APP_PROFILE_PLATFORM_FIELDS;
@@ -1069,11 +931,7 @@ function parseAppProfilePlatformSection(value: unknown): AppProfilePlatformField
   return { appName, app, appPath };
 }
 
-/**
- * apps/<name>.json のトップレベルオブジェクトから、アプリプロファイル設定フォームの
- * common/ios/android 3グループ分の値を許容的に読み取る。トップレベルが非オブジェクト(配列含む)
- * なら null(呼び出し側は「不正なファイル」として扱う。parseRunProfileForForm と同じ方針)。
- */
+/** apps/<name>.json のトップレベルから common/ios/android 3グループを読み取る(非オブジェクトなら null)。 */
 export function parseAppProfileForForm(profileObject: unknown): AppProfileFormFields | null {
   if (typeof profileObject !== "object" || profileObject === null || Array.isArray(profileObject)) {
     return null;
@@ -1091,19 +949,11 @@ export type AppProfileUpdateResult =
   | { readonly ok: false; readonly error: string };
 
 /**
- * common セクション分のフィールドから、既存セクションオブジェクト(未知キー保持)を更新した
- * 新セクションオブジェクトを組み立てる(updateRunProfileInObject と同じイミュータブルな方針)。
- * - appName: trim 値をセットする。空はキー削除する。
- * - autoInstall: "true" は boolean true をセット、"false" はキー削除する(既定=無効と同値なので
- *   書かずにファイルを最小に保つ)。
- * - app/appPath: 廃止に伴いフォームにフィールド自体が無い(=書き込みようがない)ため常に削除する。
- *   既存ファイルに残っていると「common でも効く」と読み手を誤解させるため、掃除も兼ねて
- *   無条件で削除する。
- * - existing が undefined(セクション自体が元に無かった)場合、appName が空("")かつ autoInstall
- *   が "false"(既定と同値)なら undefined を返す(=セクション自体を作らない。値が1つでもあれば
- *   新規セクションを作る。updateAppProfilePlatformSection の hasAnyValue 判定と同じ方針)。
- *   existing が定義済み(空オブジェクトを含む)なら、値が既定のままでもセクション自体は
- *   (空のまま)保持する。
+ * common セクションを fields で更新した新オブジェクトを組み立てる(未知キー保持)。
+ * autoInstall は "false" ならキー削除(既定と同値のため書かない)。app/appPath は廃止済みのため
+ * 値に関わらず常に削除する(残存が「common でも効く」と読み手を誤解させるため)。
+ * existing が undefined かつ appName空/autoInstall=false(値が何も無い)なら undefined を返し
+ * セクション自体を作らない。existing が定義済み(空オブジェクト含む)ならセクションは保持する。
  */
 function updateAppProfileCommonSection(
   existing: Record<string, unknown> | undefined,
@@ -1131,15 +981,9 @@ function updateAppProfileCommonSection(
 }
 
 /**
- * ios/android セクション分のフィールドから、既存セクションオブジェクト(未知キー保持)を更新した
- * 新セクションオブジェクトを組み立てる(updateAppProfileCommonSection と同じイミュータブルな方針)。
- * - appName/app/appPath: trim 値をセットする。空はキー削除する。
- * - autoInstall: common に一本化されたため、フォームにフィールド自体が無い(=書き込みようがない)。
- *   既存ファイルに残っていると「platform 側の値が効く」と読み手を誤解させるため、
- *   updateAppProfileCommonSection の app/appPath 常時削除と同じ方針で無条件に削除する
- *   (廃止に伴う掃除)。
- * - existing が undefined の場合の新規セクション作成判定(hasAnyValue)は appName/app/appPath の
- *   3項目のみで判定する(autoInstall は common 側で判定するため、ここには含めない)。
+ * ios/android セクションを fields で更新した新オブジェクトを組み立てる(updateAppProfileCommonSection
+ * と同じ方針)。autoInstall は common に一本化済みのため値に関わらず常に削除する(廃止分の掃除)。
+ * 新規セクション作成の要否(hasAnyValue)は appName/app/appPath の3項目のみで判定する。
  */
 function updateAppProfilePlatformSection(
   existing: Record<string, unknown> | undefined,
@@ -1163,13 +1007,9 @@ function updateAppProfilePlatformSection(
 }
 
 /**
- * apps/<name>.json のトップレベルオブジェクトを、フォームの common/ios/android 3グループの内容で
- * 更新した新オブジェクトを組み立てる(updateRunProfileInObject と同じ、未知キー保持のイミュータブル
- * な方針。トップレベルの未知キーはスプレッドでそのまま保持し、対象3キーだけ差し替える)。
- * - profileObject がオブジェクト(配列を含まない)でなければ ok:false。
- * - common は updateAppProfileCommonSection、ios/android は updateAppProfilePlatformSection を
- *   参照(未知キー保持・空セクション保持・新セクションは値がある時だけ作成、の各方針はそちらに
- *   集約する)。
+ * apps/<name>.json を common/ios/android 3グループの内容で更新した新オブジェクトを組み立てる
+ * (未知キー保持。profileObject が非オブジェクトなら ok:false)。各セクションの構築は
+ * updateAppProfileCommonSection/updateAppProfilePlatformSection を参照。
  */
 export function updateAppProfileInObject(
   profileObject: unknown,
@@ -1203,26 +1043,20 @@ export function updateAppProfileInObject(
 }
 
 // ---- マシンプロファイル(プロファイルタブ): 一覧表示・デバイスカタログ・デバイス追加 ------------------
-// 契約(別エージェント実装中):
+// 契約:
 //   `ftester api device-catalog`(引数なし): stdout に単発 JSON 1行(DeviceCatalog の形。各配列は
-//   表示順=先頭がドロップダウンの既定値)。「+新規作成」(新規シミュレータ/AVDの作成)が使う。
+//   表示順=先頭がドロップダウンの既定値)。「+新規作成」が使う。
 //   `ftester api create-device --project <P> --machine <M> --platform ios|android --name <名>
 //   --model <id> --os <id> [--no-register]`: stdout に NDJSON({"kind":"log",...} × n →
 //   {"kind":"finished","ok":bool,"error":string|null,"device":{...}|null})。--no-register は
-//   物理作成(simctl/avdmanager)のみ行い、マシンプロファイルへの追記をスキップする
-//   (#device-pick-overlay の「+」から開いた新規作成モーダルが使う)。
+//   物理作成のみ行いマシンプロファイルへの追記をスキップする(#device-pick-overlay の「+」から
+//   開いた新規作成モーダルが使う)。
 //   `ftester api installed-devices`(引数なし): stdout に単発 JSON 1行(InstalledDevices の形。
-//   インストール済みの iOS シミュレータ実機一覧・Android AVD 一覧)。「+既存から選択」(#device-pick-
-//   overlay)がマシンプロファイルへの追加候補として使う。device-catalog(新規作成用のモデル/OS
+//   インストール済み実機一覧)。「+既存から選択」が追加候補として使う。device-catalog(新規作成用
 //   カタログ)とは別物 — こちらは「既に作成済みの実体」の一覧。
 
-/**
- * machines/<name>.json の devices[] 1件分。config.ts の MachineDeviceEntry と同じ形だが、
- * vscode 非依存を保つためここでも独立して定義する(型のためだけに config.ts を import
- * させない方針。webview 側が monitorModel.ts の関数を複製しているのと同じ理由)。
- * 呼び出し側(monitorPanel.ts)は config.ts の MachineDeviceEntry をそのまま渡せる
- * (構造的に同一の形のため)。
- */
+/** machines/<name>.json の devices[] 1件分。config.ts の MachineDeviceEntry と構造的に同一だが、
+ * vscode 非依存を保つため独立定義する(型のためだけに config.ts を import させない方針)。 */
 export interface MachineDeviceEntry {
   readonly name: string;
   readonly platform: MonitorPlatform;
@@ -1351,18 +1185,15 @@ function isIosCatalog(value: unknown): value is IosCatalog {
   );
 }
 
-/**
- * `ftester api device-catalog` の stdout 1行が DeviceCatalog として扱ってよいか判定する。
- * android/ios いずれかの内部要素が不正なら全体を不合格(false)にする
- * (isMonitorEvent 等と同じ、部分的に壊れた値は安全側で丸ごと無視する方針)。
- */
+/** device-catalog の stdout が DeviceCatalog として妥当か判定(内部要素が1つでも不正なら false、
+ * isMonitorEvent と同じ安全側の方針)。 */
 export function isDeviceCatalogJson(value: unknown): value is DeviceCatalog {
   return isRecord(value) && isAndroidCatalog(value.android) && isIosCatalog(value.ios);
 }
 
 // ---- 「+既存から選択」モーダル(#device-pick-overlay): インストール済みデバイス一覧 --------------
-// `ftester api installed-devices` の stdout 1行(単発 JSON)の形。DeviceCatalog(新規作成用の
-// モデル/OS カタログ)とは別の契約 — こちらは「既にローカルに作成済み」の実体一覧を返す。
+// `ftester api installed-devices` の stdout 1行(単発 JSON)。DeviceCatalog とは別契約(既に
+// ローカル作成済みの実体一覧)。
 
 export interface InstalledAndroidAvd {
   readonly displayName: string;
@@ -1426,10 +1257,7 @@ function isInstalledIosDevices(value: unknown): value is InstalledIosDevices {
   );
 }
 
-/**
- * `ftester api installed-devices` の stdout 1行が InstalledDevices として扱ってよいか判定する
- * (isDeviceCatalogJson と同じ、部分的に壊れた値は安全側で丸ごと無視する方針)。
- */
+/** installed-devices の stdout が InstalledDevices として妥当か判定(isDeviceCatalogJson と同じ方針)。 */
 export function isInstalledDevicesJson(value: unknown): value is InstalledDevices {
   return isRecord(value) && isInstalledAndroidDevices(value.android) && isInstalledIosDevices(value.ios);
 }
@@ -1465,11 +1293,8 @@ function isCreateDeviceResultDevice(value: unknown): value is CreateDeviceResult
   );
 }
 
-/**
- * value が CreateDeviceEvent として扱ってよいか判定する(isDeviceOpEvent と同じ方針)。
- * finished の device フィールドは、失敗時(ok:false)は省略されうる契約のため
- * null/undefined のどちらも許容する。
- */
+/** CreateDeviceEvent の判定(isDeviceOpEvent と同じ方針)。finished.device は失敗時省略されうるため
+ * null/undefined 両方許容する。 */
 export function isCreateDeviceEvent(value: unknown): value is CreateDeviceEvent {
   if (!isRecord(value) || typeof value.kind !== "string") {
     return false;
@@ -1489,10 +1314,8 @@ export function isCreateDeviceEvent(value: unknown): value is CreateDeviceEvent 
 }
 
 /**
- * マシンプロファイルのデバイス一覧(プロファイルタブ左側)の2行目に表示する詳細文字列。
- * - iOS: simulator があれば simulator( + os があれば " / iOS " + os を続ける)。
- *   simulator が無ければ udid の先頭8文字、それも無ければ "iOS"。
- * - Android: avd があれば "AVD: " + avd、無ければ "Android"。
+ * マシンプロファイルのデバイス一覧2行目の詳細文字列。iOS: simulator優先(os があれば併記)、
+ * 無ければ udid 先頭8文字、それも無ければ "iOS"。Android: avd があれば "AVD: "+avd、無ければ "Android"。
  */
 export function machineDeviceDetail(entry: MachineDeviceEntry): string {
   if (entry.platform === "ios") {
@@ -1507,11 +1330,7 @@ export function machineDeviceDetail(entry: MachineDeviceEntry): string {
   return entry.avd ? `AVD: ${entry.avd}` : "Android";
 }
 
-/**
- * デバイス追加モーダルの新規デバイス名として妥当かどうかを検証する(webview 内の複製版が
- * 入力中の検証にも使う)。trim 後空ならエラー、選択中マシンの全デバイス名(ios/android 横断)
- * と重複するならエラー、それ以外は null。
- */
+/** デバイス追加モーダルの新規デバイス名検証(webview 内の複製版が入力中の検証にも使う)。 */
 export function validateNewDeviceName(name: string, existing: readonly string[]): string | null {
   const trimmed = name.trim();
   if (trimmed.length === 0) {
@@ -1524,19 +1343,13 @@ export function validateNewDeviceName(name: string, existing: readonly string[])
 }
 
 // ---- マシンプロファイル自体の追加/名前変更(マシン名横の [+]/[✏] アイコンボタン) ----------------
-// monitorPanel.ts の handleMachineProfileAdd/handleMachineProfileRename が使う純粋ロジック。
-// ファイルI/O自体は vscode 依存(fs)なので monitorPanel.ts 側で行う(validateNewRunProfileName と
-// 同じ方針)。
+// monitorPanel.ts の handleMachineProfileAdd/handleMachineProfileRename が使う純粋ロジック
+// (ファイル I/O は呼び出し側)。
 
 /**
- * 新規/リネーム後のマシンプロファイル名(machines/<name>.json の <name>)として妥当かどうかを
- * 検証する。showInputBox の validateInput にそのまま渡せる形(問題なければ null、そうでなければ
- * 表示用の日本語エラーメッセージ)。呼び出し側は trim 済みの値を渡すこと(validateNewRunProfileName
- * と同じ防御的な検証方針)。
- * 検証項目は validateNewRunProfileName と揃える(前後空白・空文字・"/" "\" ・"." 始まり)が、
- * 重複チェックだけは大文字小文字を無視する(macOS の既定ファイルシステムは大文字小文字を
- * 区別しないため、"m1 max" のような大文字違いの名前を許すと同一ファイルを指す2つのプロファイルが
- * できてしまう)。
+ * マシンプロファイル名(machines/<name>.json の <name>)の妥当性検証(validateNewRunProfileName と
+ * 同様の検証項目)。ただし重複チェックは大文字小文字を無視する(macOS の既定ファイルシステムは
+ * 大文字小文字を区別しないため、大文字違いの名前が同一ファイルを指してしまうのを防ぐ)。
  */
 export function validateNewMachineProfileName(name: string, existing: readonly string[]): string | null {
   if (name !== name.trim()) {
@@ -1559,23 +1372,13 @@ export function validateNewMachineProfileName(name: string, existing: readonly s
 }
 
 // ---- デバイス行の右クリックメニュー「削除」(プロファイルタブ) -----------------------------
-// machineDeviceRemove メッセージのホスト側処理(monitorPanel.ts の handleMachineDeviceRemove)が
-// 使う純粋関数。ファイルI/O自体は vscode 依存(fs)なので monitorPanel.ts 側で行い、ここでは
-// 「JSON オブジェクトから該当デバイスを取り除いた新オブジェクトを組み立てる」ロジックだけを扱う
-// (config.ts の各 list*/read* 関数と同じ、vscode 非依存の方針)。
+// handleMachineDeviceRemove(monitorPanel.ts)が使う純粋関数(ファイル I/O は呼び出し側)。
 
 /**
- * machines/<name>.json のトップレベルオブジェクトから、ios/android 両セクションの devices[] を
- * 走査し、name に完全一致するエントリを全て取り除いた新オブジェクトを組み立てる。
- * - profileObject がオブジェクト(配列を含まない)でなければ null(呼び出し側は「不正なファイル」
- *   として扱う)。
- * - トップレベル・各セクション内・保持されるデバイスエントリの未知キーはすべてそのまま保持する
- *   (スプレッドで複製し、変更したセクションだけ差し替えるため)。
- * - セクションが無い/オブジェクトでない、または devices が配列でない場合はそのセクションに
- *   一切手を加えない(listMachineProfiles・readMachineDeviceNames と同じ「読めなければそのまま」
- *   の流儀)。
- * - removed は ios/android いずれかで1件以上取り除けたら true(name が一致するエントリが
- *   一つも無かった場合は false。呼び出し側はこれを「対象が見つからなかった」の判定に使う)。
+ * machines/<name>.json から ios/android 両セクションの devices[] を走査し、name に一致するエントリを
+ * 全て取り除いた新オブジェクトを返す(未知キー保持)。profileObject が非オブジェクトなら null
+ * (「不正なファイル」)。removed は1件も取り除けなければ false(「対象が見つからなかった」の判定に使う。
+ * null とは別のケースなので注意)。
  */
 export function removeDeviceFromMachineProfile(
   profileObject: unknown,
@@ -1614,9 +1417,7 @@ export function removeDeviceFromMachineProfile(
 }
 
 // ---- プロファイルタブ右ペインの編集フォーム「確定」(machineDeviceUpdate) -----------------------
-// handleMachineDeviceUpdate(monitorPanel.ts)が使う純粋関数。ファイルI/O自体は vscode 依存(fs)
-// なので monitorPanel.ts 側で行い、ここでは「JSON オブジェクトの対象デバイスを更新した新オブジェクト
-// を組み立てる」ロジックだけを扱う(removeDeviceFromMachineProfile と同じ、イミュータブルな方針)。
+// handleMachineDeviceUpdate(monitorPanel.ts)が使う純粋関数(ファイル I/O は呼び出し側)。
 
 /** 編集フォームから送られる、trim 済み文字列のみのフィールド一式(空文字は「未入力/対象外」)。 */
 export interface MachineDeviceUpdateFields {
@@ -1638,19 +1439,11 @@ function isDeviceEntryLike(value: unknown): value is Record<string, unknown> {
 }
 
 /**
- * machines/<name>.json のトップレベルオブジェクトから、platform セクションの devices[] 内で
- * name===originalName の最初のエントリを見つけ、fields の内容で更新した新オブジェクトを返す。
- * - profileObject がオブジェクト(配列を含まない)でなければ ok:false(「形式が不正」)。
- * - platform セクション/devices[] が無い、または originalName に一致するエントリが無ければ
- *   ok:false(「見つからない」。removeDeviceFromMachineProfile と違い、こちらは対象が1件に
- *   定まらないと更新しようがないため null ではなくエラーとして扱う)。
- * - 新しい name(trim 済みで渡される想定。念のためここでも trim する)が空、または他のデバイス
- *   (ios/android 横断、対象エントリ自身を除く)と重複するなら ok:false。
- * - port は空文字ならキーを削除、非空なら 0〜65535 の整数でなければ ok:false、妥当なら number で
- *   セットする。iOS の simulator/os/udid、Android の avd も同様に空文字ならキー削除・非空なら
- *   trim 済み文字列をセットする(反対プラットフォームのフィールドには一切触れない)。
- * - トップレベル・セクション内・対象エントリ内の未知キーは全て保持する(スプレッドで複製し、
- *   変更したセクション/エントリだけ差し替えるため。removeDeviceFromMachineProfile と同じ方針)。
+ * machines/<name>.json の platform セクション内 name===originalName の最初のエントリを fields で
+ * 更新した新オブジェクトを返す(未知キー保持)。profileObject 非オブジェクト、対象セクション/
+ * devices[]/該当エントリ無し、新名が空、新名が他デバイス(対象自身除く)と重複、のいずれかで ok:false。
+ * port は 0〜65535 の整数文字列以外はエラー。反対プラットフォームのフィールドには触れない(理由は
+ * 下の port 処理コメント参照)。
  */
 export function updateDeviceInMachineProfile(
   profileObject: unknown,
@@ -1699,10 +1492,8 @@ export function updateDeviceInMachineProfile(
 
   const newEntry: Record<string, unknown> = { ...target, name: newName };
   if (platform === "ios") {
-    // port を含む iOS 用フィールドの設定/削除は iOS 分岐の中だけで行う — Android エントリに
-    // 手書きの port キー等が万一あっても「反対プラットフォームのフィールドは触らない」方針で保持する
-    // (Android のフォームは port を持たず常に空文字を送ってくるため、分岐の外で処理すると
-    // avd 編集のついでに port キーが黙って消えてしまう)。
+    // port は iOS 分岐内でのみ設定/削除する(反対プラットフォームには触れない方針)。Android は
+    // port を持たず常に空文字を送るため、分岐の外で処理すると avd 編集で port キーが黙って消える。
     const portTrimmed = fields.port.trim();
     if (portTrimmed.length === 0) {
       delete newEntry.port;
@@ -1739,34 +1530,20 @@ export function updateDeviceInMachineProfile(
 }
 
 // ---- 「+既存から選択」モーダル(#device-pick-overlay)の OK(machineDevicesSync) -----------------
-// handleMachineDevicesSync(monitorPanel.ts)が使う純粋関数。ファイルI/O自体は vscode 依存(fs)
-// なので monitorPanel.ts 側で行い、ここでは「JSON オブジェクトへ複数デバイスを追記/除去した新
-// オブジェクトを組み立てる」ロジックだけを扱う(removeDeviceFromMachineProfile/
-// updateDeviceInMachineProfile と同じ、未知キー保持のイミュータブルな方針)。チェックボックスが
-// 「登録状態そのもの」を表す設計になったため、OK 押下時は行ごとの初期状態からの差分(新たに
-// チェック=追加/外した=登録解除)だけを add/remove として送ってもらい、ここではその両方を
-// 一つのプロファイル更新にまとめる(syncDevicesInMachineProfile が addDevicesToMachineProfile と
-// removeDeviceFromMachineProfile を合成する)。
+// handleMachineDevicesSync(monitorPanel.ts)が使う純粋関数(ファイル I/O は呼び出し側)。
+// syncDevicesInMachineProfile が addDevicesToMachineProfile と removeDeviceFromMachineProfile を
+// 合成し、add/remove(差分)を1つのプロファイル更新にまとめる。
 
 export type AddDevicesToMachineProfileResult =
   | { readonly ok: true; readonly object: Record<string, unknown>; readonly added: readonly string[] }
   | { readonly ok: false; readonly error: string };
 
 /**
- * machines/<name>.json のトップレベルオブジェクトへ、entries(machineDevicesSync の add)を
- * ios/android 両セクションの devices[] 末尾に追記した新オブジェクトを組み立てる。
- * - profileObject がオブジェクト(配列を含まない)でなければ ok:false(「形式が不正」。
- *   removeDeviceFromMachineProfile が null を返すのと違い、こちらは syncDevicesInMachineProfile
- *   がそのまま ok:false 形で呼び出し元へ伝播できるよう、この形にしている)。
- * - 各エントリは name + 値が非空の(simulator/os/udid/avd のうち該当プラットフォームの)
- *   オプショナルフィールドのみをキーとして構築する(空文字・undefined のフィールドは持たせない)。
- * - 名前の一意化: 既存デバイス名(ios/android 横断)、および同一バッチ内で先に確定した名前と
- *   衝突する場合、"名前 (2)"、"名前 (3)" ... と衝突しなくなるまでサフィックスを付け直す
- *   (validateNewDeviceName のような「エラーにして弾く」ではなく、モーダルでチェックした時点では
- *   衝突が無くても、追加までの間に他の操作でファイルが変わりうるため自動採番で救済する方針)。
- *   added にはこの最終的に使われた名前を、entries と同じ順序で返す。
- * - トップレベル・既存セクション・既存デバイスエントリの未知キーは全て保持する(スプレッドで
- *   複製し、新規デバイスを追記したセクションだけ差し替えるため)。
+ * machines/<name>.json へ entries(machineDevicesSync の add)を ios/android 両セクション末尾に
+ * 追記した新オブジェクトを返す(未知キー保持)。profileObject 非オブジェクトなら ok:false。
+ * 名前衝突(既存デバイス名 or 同一バッチ内)は "名前 (2)"、"名前 (3)" ... と自動採番で解決する
+ * (チェック時点では衝突が無くても追加までの間にファイルが変わりうるため、エラーにせず救済する)。
+ * added は entries と同じ順序で最終的に使われた名前を返す。
  */
 export function addDevicesToMachineProfile(
   profileObject: unknown,
@@ -1778,8 +1555,8 @@ export function addDevicesToMachineProfile(
   const source = profileObject as Record<string, unknown>;
   const result: Record<string, unknown> = { ...source };
 
-  // ios/android 横断で既存デバイス名を集める(名前の一意化の判定材料。同一バッチ内で確定した
-  // 名前もこの Set に随時追加していくことで、バッチ内衝突も検出できる)。
+  // ios/android 横断で既存デバイス名を集める(同一バッチ内で確定した名前も随時追加し、
+  // バッチ内衝突も検出する)。
   const existingNames = new Set<string>();
   for (const platform of ["ios", "android"] as const) {
     const section = source[platform];
@@ -1845,12 +1622,10 @@ export type SyncDevicesInMachineProfileResult =
   | { readonly ok: false; readonly error: string };
 
 /**
- * 「+既存から選択」モーダル(#device-pick-overlay)の OK(machineDevicesSync)が使う純粋関数。
- * remove の各名前を removeDeviceFromMachineProfile で順次除去(見つからない名前はスキップし、
- * removed には実際に除去できた数のみ数える)し、その結果へ addDevicesToMachineProfile で
- * add を追記する(名前衝突の自動サフィックスは除去後の状態を基準に判定されるため、外して
- * 同名で付け直すケースが自然に成立する — 先に削除してから追加する順序が重要)。
- * profileObject がオブジェクト(配列を含まない)でなければ ok:false。
+ * remove の各名前を順次除去(見つからない名前はスキップ、removed は実際に除去できた数のみ)し、
+ * その結果へ add を追記する。削除→追加の順序が重要(名前衝突の自動サフィックスは除去後の状態を
+ * 基準に判定されるため、外して同名で付け直すケースが成立する)。profileObject 非オブジェクトなら
+ * ok:false。
  */
 export function syncDevicesInMachineProfile(
   profileObject: unknown,
@@ -1865,8 +1640,8 @@ export function syncDevicesInMachineProfile(
   for (const name of remove) {
     const result = removeDeviceFromMachineProfile(current, name);
     if (!result) {
-      // profileObject は関数冒頭で検証済みで、removeDeviceFromMachineProfile は object の
-      // 入力に対して常に非null を返すため実際には到達しないが、型上 null を返しうるための防御。
+      // removeDeviceFromMachineProfile は object 入力に対し常に非null を返すため実際には到達しないが、
+      // 型上 null を返しうるための防御(削除しない)。
       return { ok: false, error: "マシンプロファイルの形式が不正です。" };
     }
     current = result.object;

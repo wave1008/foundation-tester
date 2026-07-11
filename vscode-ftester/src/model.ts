@@ -1,9 +1,8 @@
 // model.ts
-// ftester CLI (`ftester api ...`) が入出力する JSON/NDJSON の型定義。
-// run 系(RunEvent)は Sources/FTCore/ScenarioEvent.swift(ScenarioEvent)と
-// Sources/ftester/ApiRunCommand.swift(runStarted/runFinished)の実装に合わせた
-// kind 判別の共用体。フィールドは概ね optional(Swift 側は同じ struct を全 kind で
-// 使い回しており、kind ごとに使うフィールドだけを埋めるため)。
+// ftester CLI (`ftester api ...`) の JSON/NDJSON 型定義。
+// RunEvent は Sources/FTCore/ScenarioEvent.swift(ScenarioEvent)と
+// Sources/ftester/ApiRunCommand.swift(runStarted/runFinished)に合わせた kind 判別の共用体。
+// フィールドは概ね optional(Swift 側は同じ struct を全 kind で使い回すため)。
 
 /** `ftester api list-scenarios --project <P>` の出力(1行JSON)。 */
 export interface ListScenariosResult {
@@ -25,7 +24,7 @@ export interface ScenarioInfo {
   folder: string | null;
 }
 
-/** `ftester api steps --project P --scenario ID` の出力(1行JSON)。後続フェーズで使用。 */
+/** `ftester api steps --project P --scenario ID` の出力(1行JSON)。 */
 export interface StepsResult {
   scenario: string;
   steps: StepRow[];
@@ -217,9 +216,8 @@ export type RunEvent =
   | RunFinishedEvent;
 
 /**
- * cli.ts の onNdjsonValue から渡される unknown(NdjsonParser が JSON.parse しただけの値)を
- * RunEvent として扱ってよいか判定する。既知の kind 以外(将来の追加や壊れた行)は false を返す
- * ので、呼び出し側は安全に無視できる。
+ * unknown 値(NdjsonParser が JSON.parse しただけの値。cli.ts の onNdjsonValue 経由)が
+ * RunEvent か判定する。未知の kind(将来追加/壊れた行)は false で、呼び出し側は安全に無視できる。
  */
 export function isRunEvent(value: unknown): value is RunEvent {
   if (typeof value !== "object" || value === null) {

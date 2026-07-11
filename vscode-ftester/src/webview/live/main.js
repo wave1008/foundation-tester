@@ -1,8 +1,6 @@
 // main.js
-// ライブ操作パネル webview のロジック。JS 本体は約240行と小さいため、モニターパネルのような
-// 機能別モジュール分割は行わず、単一ファイルのまま据え置く。
-// esbuild が media/live/main.js に iife 形式でバンドルし、renderHtml() が
-// <script src="..."> で読み込む。
+// ライブ操作パネル webview のロジック。esbuild が media/live/main.js に iife 形式で
+// バンドルし、renderHtml() が <script src="..."> で読み込む。
 
   (function () {
 const vscode = acquireVsCodeApi();

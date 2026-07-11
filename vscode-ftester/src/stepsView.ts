@@ -1,15 +1,12 @@
 // stepsView.ts
 // 読み取り専用の「ステップ一覧」TreeView(ビュー id: ftesterSteps)。
 //
-// - `ftester api steps --project <P> --scenario <ID>` を叩いて dry-run 相当のステップ表を
-//   取得し、stepsModel.buildStepTree() (vscode 非依存の純関数) でノードモデルに変換して表示する。
-// - 表示対象シナリオは2経路で決まる:
-//     a. アクティブエディタ追従(既定): カーソル位置のファイル・行から、同ファイル内で
-//        カーソル行以下の最も近い methodLine を持つシナリオを testTree.scenarios から逆引きする。
-//     b. 明示コマンド `ftester.showSteps`(Test Explorer のシナリオ右クリックから呼べる)。
-// - シナリオID+project をキーにキャッシュし、watcher の変更通知(addChangeListener)で
-//   キャッシュを破棄して再取得する。表示対象が切り替わった後に届いた古い応答は
-//   世代番号(generation)で破棄する。
+// `ftester api steps --project <P> --scenario <ID>` を叩いて dry-run 相当のステップ表を取得し、
+// stepsModel.buildStepTree()(vscode 非依存)でノードモデルに変換して表示する。
+// 表示対象シナリオはアクティブエディタ追従(既定)またはコマンド `ftester.showSteps` で決まる。
+//
+// シナリオID+project をキーにキャッシュし、watcher の変更通知でキャッシュを破棄して再取得する。
+// 表示対象切替後に届いた古い応答は世代番号(generation)で破棄する。
 
 import * as path from "node:path";
 import * as vscode from "vscode";
@@ -153,7 +150,6 @@ function findScenarioForPosition(
   return best;
 }
 
-/** ツリーに表示する1ノード分(scene/step/状態メッセージ)。 */
 type ViewNode =
   | { readonly type: "empty"; readonly message?: string }
   | { readonly type: "loading" }
@@ -255,7 +251,7 @@ class StepsTreeDataProvider implements vscode.TreeDataProvider<ViewNode>, vscode
     this.fetchSteps(current).then(
       (steps) => {
         if (generation !== this.generation) {
-          return; // 表示対象が切り替わった後に届いた古い応答は破棄する
+          return; // 古い応答は破棄する
         }
         this.cache.set(current.id, steps);
         this.status = { state: "loaded", steps };
