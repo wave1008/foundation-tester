@@ -2372,6 +2372,17 @@ function renderHtml(): string {
   }
   button:hover:not(:disabled) { background-color: var(--vscode-button-hoverBackground); }
   button:disabled { opacity: 0.5; cursor: default; }
+  /* 非活性の primary ボタン(確定/OK 等)は、既定だと青背景が opacity 0.5 で半透明になるだけで
+     「押せそう」に見えるため、背景を薄いグレーにする(2026-07-11 ユーザー指示)。セレクタを
+     :not([class]) にするのは、確定/OK 等の primary ボタンはいずれも class 無しで、
+     .icon-button/.secondary/.tab-button/.device-op-menu-item 等 class 付きボタンは各自の
+     disabled 表現を持つため巻き込まないようにするため。button:disabled(0,1,1)より
+     詳細度が高い(0,2,1)ので背景・文字色だけ確実に上書きされ、opacity: 0.5 は上の
+     button:disabled から引き続き適用される。 */
+  button:not([class]):disabled {
+    background-color: var(--vscode-button-secondaryBackground, rgba(128, 128, 128, 0.3));
+    color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+  }
   button.secondary {
     background-color: var(--vscode-button-secondaryBackground, transparent);
     color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
@@ -2821,8 +2832,8 @@ function renderHtml(): string {
      分け合い、各セクションが個別にスクロールしていたが、内容が少ないセクションでも常に
      スクロール領域だけ確保されてしまい不格好だった(ユーザー報告)。#panel-profiles 自体を
      縦スクロールコンテナにし、アプリ/実行プロファイルセクションは内容の自然高さのまま積む。
-     マシンプロファイルセクションだけは左右2ペイン(デバイス一覧の縦スクロール+スプリッター)
-     という構造上、自然高さにはできないため固定高さ(340px)のまま内部で個別にスクロール
+     マシンプロファイルセクションだけは左右2ペイン(デバイス一覧+詳細。スプリッターは廃止し
+     一覧幅は内容に自動フィット)という構造上、自然高さにはできないため固定高さ(340px)のまま内部で個別にスクロール
      させる(machine-profile-body・machine-device-editor は従来どおり individually
      overflow-y: auto)。DOM順は上から実行/アプリ/マシンプロファイル(ユーザー報告により、
      使用頻度が高い実行プロファイルを先頭に変更)。 */
@@ -2936,8 +2947,8 @@ function renderHtml(): string {
     flex: 1 1 auto;
     display: flex;
     min-height: 0;
-    /* 一覧とスプリッターの間に隙間を入れない(サッシ領域=4pxだけがセパレーターになるように。
-       右ペイン側の余白は .machine-device-detail-pane の padding-left で確保する)。 */
+    /* 一覧と右ペインの間の余白は gap ではなく .machine-device-detail-pane の padding-left で
+       確保する(スプリッター廃止(2026-07-11)後も方針は同じ)。 */
     gap: 0;
     padding: 0 12px 12px 12px;
   }
@@ -2952,25 +2963,19 @@ function renderHtml(): string {
     padding: 12px;
   }
   .machine-device-list {
-    /* 幅は JS(#profile-splitter のドラッグ/初期化/復元)が inline style で設定する(要件4。
-       .tile-pane の高さと同じ方針)。高さはデバイス数に応じて自然に伸びる
+    /* 2026-07-11 ユーザー指示で幅は内容に自動フィット(max-content)。長いデバイス名/詳細行
+       (ピル)がはみ出さないよう最長行に合わせて伸び、右ペインの最小幅240pxを侵さないよう
+       max-width でクランプする(min-width は以前のJSクランプ下限と同じ180px。ペインが狭い
+       ときは flex: 0 1 auto の縮小側で譲る)。以前の #profile-splitter ドラッグによる
+       手動幅調整+setState 永続化は自動フィットと両立しないため廃止した。
+       高さはデバイス数に応じて自然に伸びる
        (内部スクロールは廃止=ペイン全体の単一スクロールで全デバイスを確認する。ユーザー指定)。 */
-    flex: 0 0 auto;
+    flex: 0 1 auto;
+    width: max-content;
+    min-width: 180px;
+    max-width: calc(100% - 240px);
     border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
     border-radius: 4px;
-  }
-  /* デバイス一覧と右ペインの間の縦スプリッター。VS Code のビュー間サッシと同じ寸法・挙動
-     (静止時は透明な4pxのドラッグ領域だけ。見える線は一覧自身の1pxボーダー。
-     ホバー/ドラッグでサッシ色にハイライト)。ユーザー指定で常時表示の太い帯は廃止。 */
-  .profile-splitter {
-    flex: 0 0 4px;
-    width: 4px;
-    cursor: col-resize;
-    background-color: transparent;
-  }
-  .profile-splitter:hover,
-  .profile-splitter.dragging {
-    background-color: var(--vscode-sash-hoverBorder, var(--vscode-focusBorder, #007acc));
   }
   .machine-device-row {
     padding: 8px 10px;
@@ -3010,15 +3015,16 @@ function renderHtml(): string {
     padding: 32px 12px;
   }
   /* 右ペイン全体のコンテナ(プレースホルダー/編集フォームのどちらか一方だけを表示する)。
-     最小幅は JS のクランプ(#profile-splitter ドラッグ時)で確保する。 */
+     最小幅(240px)は .machine-device-list 側の max-width クランプで確保する。 */
   .machine-device-detail-pane {
     flex: 1 1 auto;
     min-width: 0;
     min-height: 0;
     display: flex;
     flex-direction: column;
-    /* .profile-body の gap を 0 にした分の、サッシと右ペイン内容の間の余白。 */
-    padding-left: 8px;
+    /* 一覧と右ペイン内容の間の余白。スプリッター廃止(2026-07-11)で旧サッシ領域の4pxが
+       なくなった分を従来の 8px に足し、見た目の間隔を保つ。 */
+    padding-left: 12px;
   }
   .profile-detail-placeholder {
     flex: 1 1 auto;
@@ -3160,9 +3166,46 @@ function renderHtml(): string {
   #app-profile-editor .profile-checkbox-row > label {
     flex: 1 1 auto;
   }
+  /* チェックボックスは VSCode の設定画面(Settings)のチェックボックスと同じ見た目に統一する
+     (2026-07-11 ユーザー指示。settings.checkboxBackground/Border/Foreground のテーマ変数を使う)。
+     以前のネイティブ描画+accent-color は OS 依存の見た目になるため appearance: none で無効化して
+     カスタム描画する。チェックマークは codicon フォントや画像が CSP(外部リソース不可)で
+     使えない可能性があるため、::after の回転ボーダー(L字を45度回転)で描く。静的2箇所
+     (heal・自動インストール)+動的生成3箇所(実行プロファイルのデバイスチェック一覧・
+     デバイス選択ダイアログの iOS/Android 行)すべてに共通で効く。 */
   input[type="checkbox"] {
-    accent-color: var(--vscode-focusBorder, #007acc);
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    box-sizing: border-box;
+    border: 1px solid var(--vscode-settings-checkboxBorder, var(--vscode-widget-border, #919191));
+    border-radius: 3px;
+    background-color: var(--vscode-settings-checkboxBackground, var(--vscode-input-background));
+    position: relative;
+    flex: 0 0 auto;
+    cursor: pointer;
+    vertical-align: middle;
   }
+  /* チェックマーク(✓)。::after は content-box のままなので実寸は幅4+右枠2=6px、
+     高さ8+下枠2=10px。left/top はこの実寸が18px箱(枠1px)の中で視覚的に中央に
+     バランスする位置。 */
+  input[type="checkbox"]:checked::after {
+    content: '';
+    position: absolute;
+    left: 5px;
+    top: 2px;
+    width: 4px;
+    height: 8px;
+    border: solid var(--vscode-settings-checkboxForeground, var(--vscode-foreground));
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+  }
+  input[type="checkbox"]:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder, #007acc);
+    outline-offset: 1px;
+  }
+  input[type="checkbox"]:disabled { opacity: 0.5; cursor: default; }
 
   /* ---- デバイス追加モーダル ---------------------------------------------------------- */
   input[type="text"] {
@@ -3234,14 +3277,13 @@ function renderHtml(): string {
   }
   /* heal チェックボックス(#run-profile-heal)等、.modal-row 直下のチェックボックスは
      上のルールの flex: 1 1 auto が効いて行いっぱいに引き伸ばされてしまう(ユーザー報告)。
-     本来のサイズで左寄せし、margin-right: auto で行の残り幅を右側の余白にする。 */
+     flex を打ち消して左寄せし、margin-right: auto で行の残り幅を右側の余白にする。
+     寸法・配色はグローバルの input[type="checkbox"] ルール(VSCode設定画面風のカスタム描画。
+     2026-07-11)に任せるため、ここでは width/height/accent-color を持たない。 */
   .modal-row > input[type="checkbox"] {
     flex: 0 0 auto;
-    width: 16px;
-    height: 16px;
     margin: 0;
     margin-right: auto;
-    accent-color: var(--vscode-focusBorder, #007acc);
   }
   .modal-radio-group {
     flex: 1 1 auto;
@@ -3329,12 +3371,11 @@ function renderHtml(): string {
   .device-pick-row:hover {
     background-color: var(--vscode-list-hoverBackground);
   }
+  /* 寸法・配色はグローバルの input[type="checkbox"] ルール(VSCode設定画面風のカスタム描画。
+     2026-07-11)に任せる。UA既定margin だけ打ち消し、行内の間隔は .device-pick-row の
+     gap: 8px で確保する。 */
   .device-pick-row input[type="checkbox"] {
-    flex: 0 0 auto;
-    width: 16px;
-    height: 16px;
     margin: 0;
-    accent-color: var(--vscode-focusBorder, #007acc);
   }
   .device-pick-row-text {
     flex: 1 1 auto;
@@ -3571,7 +3612,6 @@ function renderHtml(): string {
       <div id="machine-profile-error" class="profile-error" style="display: none;"></div>
       <div id="machine-profile-body" class="profile-body">
         <div id="machine-device-list" class="machine-device-list"></div>
-        <div id="profile-splitter" class="profile-splitter" role="separator" aria-orientation="vertical" aria-label="デバイス一覧と詳細の分割境界線"></div>
         <div id="machine-device-detail-pane" class="machine-device-detail-pane">
           <div id="profile-detail-placeholder" class="profile-detail-placeholder">デバイスを選択すると内容を表示します</div>
           <div id="machine-device-editor" class="machine-device-editor" style="display: none;">
@@ -4596,7 +4636,6 @@ function renderHtml(): string {
     const machineProfileError = document.getElementById('machine-profile-error');
     const machineProfileBody = document.getElementById('machine-profile-body');
     const machineDeviceList = document.getElementById('machine-device-list');
-    const profileSplitter = document.getElementById('profile-splitter');
     const profileDetailPlaceholder = document.getElementById('profile-detail-placeholder');
     const machineDeviceEditor = document.getElementById('machine-device-editor');
     const editorDeviceName = document.getElementById('editor-device-name');
@@ -4655,71 +4694,9 @@ function renderHtml(): string {
       return machineProfiles.find((m) => m.name === name);
     }
 
-    // ---- デバイス一覧と右ペインの分割(要件4。上下ペインの #splitter と同じ Pointer Events 方針) ----
-
-    const MIN_MACHINE_LIST_WIDTH = 180;
-    const MIN_DETAIL_PANE_WIDTH = 240;
-    let machineListWidth =
-      typeof persistedState.machineListWidth === 'number' && persistedState.machineListWidth > 0
-        ? persistedState.machineListWidth
-        : 280;
-
-    function clampMachineListWidth(width) {
-      const maxWidth = Math.max(MIN_MACHINE_LIST_WIDTH, machineProfileBody.clientWidth - MIN_DETAIL_PANE_WIDTH);
-      return Math.min(Math.max(width, MIN_MACHINE_LIST_WIDTH), maxWidth);
-    }
-
-    function applyMachineListWidth(width) {
-      // 「プロファイル」タブが非表示の間は machineProfileBody.clientWidth が 0 になり、
-      // clampMachineListWidth が誤って最小値に丸めてしまう(applyTilePaneHeight と同じ理由)。
-      // 何もせず抜け、タブ表示時(switchTab)に呼び直して再クランプする。
-      if (machineProfileBody.clientWidth === 0 || machineProfileBody.offsetParent === null) {
-        return;
-      }
-      machineListWidth = clampMachineListWidth(width);
-      machineDeviceList.style.flexBasis = machineListWidth + 'px';
-      machineDeviceList.style.width = machineListWidth + 'px';
-    }
-
-    function persistMachineListWidth() {
-      vscode.setState(Object.assign({}, vscode.getState(), { machineListWidth }));
-    }
-
-    applyMachineListWidth(machineListWidth);
-    window.addEventListener('resize', () => applyMachineListWidth(machineListWidth));
-
-    let profileSplitterPointerId = null;
-    let profileSplitterStartX = 0;
-    let profileSplitterStartWidth = 0;
-
-    profileSplitter.addEventListener('pointerdown', (event) => {
-      if (event.button !== 0) {
-        return;
-      }
-      profileSplitterPointerId = event.pointerId;
-      profileSplitterStartX = event.clientX;
-      profileSplitterStartWidth = machineListWidth;
-      profileSplitter.setPointerCapture(event.pointerId);
-      profileSplitter.classList.add('dragging');
-      event.preventDefault();
-    });
-    profileSplitter.addEventListener('pointermove', (event) => {
-      if (profileSplitterPointerId !== event.pointerId) {
-        return;
-      }
-      applyMachineListWidth(profileSplitterStartWidth + (event.clientX - profileSplitterStartX));
-    });
-    const endProfileSplitterDrag = (event) => {
-      if (profileSplitterPointerId !== event.pointerId) {
-        return;
-      }
-      profileSplitterPointerId = null;
-      profileSplitter.classList.remove('dragging');
-      profileSplitter.releasePointerCapture(event.pointerId);
-      persistMachineListWidth();
-    };
-    profileSplitter.addEventListener('pointerup', endProfileSplitterDrag);
-    profileSplitter.addEventListener('pointercancel', endProfileSplitterDrag);
+    // (デバイス一覧と右ペインの分割スプリッター(#profile-splitter)は 2026-07-11 ユーザー指示で
+    // 廃止した。一覧幅は .machine-device-list の width: max-content で内容に自動フィットする。
+    // 旧実装の persistedState.machineListWidth は読まなくなるだけで無害なので放置する。)
 
     // selectedDeviceNames のうち、現在の selectedMachine の一覧に存在しない名前を取り除く
     // (要件: マシン切替・一覧更新で選択中デバイスが消えた場合)。存在するものは維持する
@@ -6747,9 +6724,6 @@ function renderHtml(): string {
         // ガードで何もせず抜けていた(誤クランプ防止)。再表示直後に呼び直して再クランプ+
         // relayoutTiles() する(applyTilePaneHeight が内部で relayoutTiles() まで行う)。
         applyTilePaneHeight(tilePaneHeight);
-      } else if (tab === 'profiles') {
-        // 同じ理由(非表示中は machineProfileBody.clientWidth が 0)で再表示直後に再クランプする。
-        applyMachineListWidth(machineListWidth);
       }
     }
 
