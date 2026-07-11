@@ -131,16 +131,19 @@ public enum ProjectScaffold {
     ```
     """
 
+    // common で有効なのは appName(表示名)のみ。app/appPath/autoInstall は廃止済みのため
+    // platform(ios/android)セクションに書く(AppProfileSection.merging 参照)
     public static func appProfileTemplate(appName: String, app: String) -> String {
         """
         {
           "common": {
-            "appName": "\(appName)",
-            "app": "\(app)"
+            "appName": "\(appName)"
           },
           "ios": {
+            "app": "\(app)"
           },
           "android": {
+            "app": "\(app)"
           }
         }
         """

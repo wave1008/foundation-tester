@@ -139,7 +139,8 @@ struct ApiRunCommand: AsyncParsableCommand {
         var resolvedProfile: ResolvedProfile?
         if let profile {
             let machine = try ProfileResolver.determineMachine(
-                project: testProject, registered: LocalConfig.currentMachineName())
+                project: testProject, registered: LocalConfig.currentMachineName(),
+                runProfileName: profile)
             if machine.auto {
                 logStderr("→ マシンプロファイル自動採用: \(machine.name)(machines/ が 1 つのため)")
             }

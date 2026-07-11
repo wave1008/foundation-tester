@@ -1,10 +1,11 @@
 {
   "common": {
-    "appName": "サンプルアプリ",
-    "app": "com.example.sampleapp"
+    "appName": "サンプルアプリ"
   },
   "ios": {
+    "app": "com.example.sampleapp"
   },
   "android": {
+    "app": "com.example.sampleapp"
   }
 }

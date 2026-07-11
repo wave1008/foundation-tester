@@ -1,0 +1,33 @@
+{
+  "android": {
+    "devices": [
+      {
+        "avd": "Pixel 9(Android 16)",
+        "name": "エミュ1"
+      },
+      {
+        "avd": "Pixel 8(Android 14)",
+        "name": "エミュ3"
+      },
+      {
+        "avd": "Pixel_10_Android_16_API_36_google_apis_playstore_arm64-v8a",
+        "name": "Pixel 10(Android 16(API 36) google_apis_playstore / arm64-v8a)"
+      }
+    ]
+  },
+  "ios": {
+    "devices": [
+      {
+        "name": "シミュ2",
+        "os": "27.0",
+        "simulator": "iPhone Air"
+      },
+      {
+        "name": "iPhone 17 Pro(iOS 27.0)",
+        "os": "27.0",
+        "simulator": "iPhone 17 Pro",
+        "udid": "42D525B9-8FAD-4CFB-8B8E-3AF61EBB0A35"
+      }
+    ]
+  }
+}

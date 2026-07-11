@@ -1,8 +1,9 @@
 // ApiValidateProfileCommand.swift
 // VSCode拡張向け: プロファイルJSON(profiles/apps・machines・runs)を検証し、結果をJSONで
 // stdoutに出力する(ftester api validate-profile)。
-// 検証基準: ProfileResolver.validate(kind:data:context:) に加え、runs は現在マシンでの参照解決
-// チェック(ProfileResolver.resolve)も行う。検証エラーがあっても結果は JSON で運ぶため exit 0。
+// 検証基準: ProfileResolver.validate(kind:data:context:project:) に加え、runs は machine 指定
+// (無ければ現在マシン)での参照解決チェック(ProfileResolver.resolve)も行う。
+// 検証エラーがあっても結果は JSON で運ぶため exit 0。
 // ファイル I/O 等の運用エラーのみ非 0(診断は stderr のみ。ApiCommands.swift と同じ流儀)。
 
 import ArgumentParser
@@ -38,14 +39,16 @@ struct ApiValidateProfile: AsyncParsableCommand {
             kinds = ProfileFileKind.allCases
         }
 
-        // runs の参照解決チェックに使う現在マシン名(未決定でも致命的エラーにはしない。
-        // 該当ファイルの warnings にその旨を積むだけ)
+        // 出力の "machine" フィールド(参考情報)に使う現在マシン名。runs 個々の参照解決チェックは
+        // determineMachine(runProfileName:) で各ファイル自身の machine 指定を優先するため、
+        // ここで未決定でも各ファイルのチェックには影響しない(machine 未指定のファイルだけ
+        // このマシン決定に相当する処理へフォールバックする)
         var machineName: String?
         do {
             machineName = try ProfileResolver.determineMachine(
                 project: testProject, registered: LocalConfig.currentMachineName()).name
         } catch {
-            logStderr("⚠️ マシン名を決定できません(runs の参照解決チェックをスキップします): "
+            logStderr("⚠️ マシン名を決定できません(出力の machine フィールドは null になります): "
                 + error.localizedDescription)
         }
 
@@ -56,8 +59,7 @@ struct ApiValidateProfile: AsyncParsableCommand {
                 let fileName = file.deletingPathExtension().lastPathComponent
                 if let name, fileName != name { continue }
                 results.append(Self.validate(
-                    file: file, fileName: fileName, kind: fileKind,
-                    project: testProject, machineName: machineName))
+                    file: file, fileName: fileName, kind: fileKind, project: testProject))
             }
         }
 
@@ -76,8 +78,7 @@ struct ApiValidateProfile: AsyncParsableCommand {
 
     /// 1 ファイル分の検証(ProfilesView.validate(_:) と同じ基準)
     private static func validate(
-        file: URL, fileName: String, kind: ProfileFileKind,
-        project: TestProject, machineName: String?
+        file: URL, fileName: String, kind: ProfileFileKind, project: TestProject
     ) -> ApiValidateProfileResult {
         guard let data = try? Data(contentsOf: file) else {
             return ApiValidateProfileResult(
@@ -86,21 +87,27 @@ struct ApiValidateProfile: AsyncParsableCommand {
         }
 
         var (errors, warnings) = ProfileResolver.validate(
-            kind: kind, data: data, context: "\(kind.directoryName)/\(fileName).json")
+            kind: kind, data: data, context: "\(kind.directoryName)/\(fileName).json",
+            project: project)
 
-        // 実行プロファイルは参照(app / デバイス name)も現在マシンで解決チェックする
-        // (ProfilesView.validate(_:) と同方針。他の検証エラーがある場合は解決を試みない)
+        // 実行プロファイルは参照(app / デバイス name)も解決チェックする(ProfilesView.validate(_:)
+        // と同方針。他の検証エラーがある場合は解決を試みない)。マシン決定は
+        // determineMachine(runProfileName:) に委ねる: このファイル自身が machine を明示指定して
+        // いればそれを最優先するため、FT_MACHINE/登録名が未設定・machines/ が複数ある環境でも
+        // 参照チェックが行える(machineUndetermined だけは既存プロファイルとの後方互換のため
+        // 警告に留めてスキップする。それ以外の解決失敗は通常どおりエラーにする)
         if kind == .run, errors.isEmpty {
-            if let machineName {
-                do {
-                    let resolved = try ProfileResolver.resolve(
-                        project: project, runName: fileName, machineName: machineName)
-                    warnings += resolved.warnings
-                } catch {
-                    errors.append(error.localizedDescription)
-                }
-            } else {
+            do {
+                let machine = try ProfileResolver.determineMachine(
+                    project: project, registered: LocalConfig.currentMachineName(),
+                    runProfileName: fileName)
+                let resolved = try ProfileResolver.resolve(
+                    project: project, runName: fileName, machineName: machine.name)
+                warnings += resolved.warnings
+            } catch ProfileError.machineUndetermined {
                 warnings.append("マシン名が未決定のため参照チェックをスキップしました")
+            } catch {
+                errors.append(error.localizedDescription)
             }
         }
 

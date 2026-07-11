@@ -254,8 +254,10 @@ final class MCPServer {
 
         if let profileName = args["profile"] as? String {
             // 実行プロファイルから接続先(シナリオの platform に合う先頭デバイス)を解決する
+            // (実行プロファイル自身の machine 指定があれば最優先)
             let machine = try ProfileResolver.determineMachine(
-                project: project, registered: LocalConfig.currentMachineName())
+                project: project, registered: LocalConfig.currentMachineName(),
+                runProfileName: profileName)
             let resolved = try ProfileResolver.resolve(
                 project: project, runName: profileName, machineName: machine.name)
             prologue.append(contentsOf: resolved.warnings.map { "⚠️ \($0)" })
