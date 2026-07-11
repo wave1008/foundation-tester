@@ -76,8 +76,13 @@ swift Scripts/bench.swift --project SampleApp --profile ios --iterations 3 \
 | `ACTION_CAP_MS` | 同上 | 2000ms | 静穏しないときの上限(スピナー等の常時アニメ画面で必ず抜けるための安全弁)。整定判定の失敗ではなく打ち切り |
 | `LAUNCH_CAP_MS` | AndroidRunner/…/BridgeRouter.java | 10000ms | /session のウィンドウ出現+静穏の上限。超過は 500 エラー(黙って進まない) |
 | `STABLE_PACKAGE_BUDGET_MS` | 同上 | 100ms | クロスパッケージ遷移(例: 設定→検索インテリジェンス)で遷移前パッケージを掴む誤整定の防止予算 |
+| `RETARGET_EXCLUDED_PACKAGES` | AndroidRunner/…/QuietWaiter.java | {com.android.systemui} | クロスパッケージ遷移時、静穏対象パッケージの追従(TYPE_WINDOW_STATE_CHANGED 検知時に静穏対象を送信元パッケージへ切替)から除外するパッケージ。追従してしまうと遷移先アプリ本体ではなく付随ウィンドウの静穏を待つことになるため |
 | `PollBackoff` | Sources/FTCore/PollBackoff.swift | 100→200→400→800→上限1000ms | exist/textIs/ロケータ解決リトライの共通バックオフ。5s timeout での snapshot 回数は旧5回→新8回(許容済み) |
 | `defaultTimeout` | FTRuntime(runs プロファイルで上書き可) | 5s | 検証系の待ち上限。失敗するテストの所要を支配 |
+
+window/transition/animator の `*_scale` はチューニングノブではなく常時 0 固定で、
+`Sources/FTAndroid/AndroidBridge.swift` の `startBridge()` 内(ブリッジのコールド起動時)で
+自動設定される(§7 参照)。
 
 **ブリッジ(APK)を変えたら `AndroidRunner/build.sh` の VERSION_CODE と
 `Sources/FTAndroid/AndroidBridge.swift` の `expectedBridgeVersionCode` を必ず同時に上げる**
@@ -112,6 +117,10 @@ swift Scripts/bench.swift --project SampleApp --profile ios --iterations 3 \
 - `UiAutomation.setOnAccessibilityEventListener` は**1 枠しかない**。QuietWaiter が
   使用中なので、別用途でリスナが必要になったら QuietWaiter 経由で多重化すること
 - 長時間ベンチ中の画面ロックに注意(GUI E2E 全般の既知問題)
+- **アニメーション有効デバイスでは静穏判定後もアニメが画面を動かすため画像が stale になる**
+  (a11y要素はFRESHだがscreenshotだけSTALE、という形で顕在化)。ブリッジ起動時に
+  window/transition/animator の `*_scale` を自動で無効化する(2026-07-12組込み)。
+  実機を追加したときも同様に自動適用される
 
 ## 8. 今後の改善候補(価値が出たら)
 

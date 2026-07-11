@@ -16,7 +16,7 @@ extension AndroidDriver {
     /// デバイス側の listen ポート(全デバイス共通。デバイス毎に独立 loopback なので衝突しない)
     static let bridgeDevicePort: UInt16 = 8123
     /// AndroidRunner/build.sh の VERSION_CODE と同期(不一致なら自動で再インストール)
-    public static let expectedBridgeVersionCode = 2
+    public static let expectedBridgeVersionCode = 4
 
     enum BridgeState {
         case active(BridgeClient)
@@ -101,6 +101,7 @@ extension AndroidDriver {
         // 既に稼働中ならそのまま使う(CLI の別プロセスが起動済みのケース)
         if let client = await probeBridge(hostPort: hostPort) { return client }
 
+        disableAnimations()
         try installBridgeIfNeeded()
         _ = try? adb(["shell", "am", "force-stop", Self.bridgePackage])
         // -w 必須(UiAutomationConnection は am プロセス側に生成される)。
@@ -116,6 +117,22 @@ extension AndroidDriver {
         }
         throw DriverError.bridgeUnreachable(
             "Android ブリッジが起動しません(adb logcat -s FTBridge を確認してください)")
+    }
+
+    /// アニメーション設定(window/transition/animator の *_scale)を無効化する。
+    /// アニメーションは a11y イベントを発しないため、QuietWaiter の静穏判定後もアニメが
+    /// 表示を動かし続け、screenshot が古い/遷移途中の絵を掴むことがある
+    /// (a11y要素はFRESHだが画像だけSTALE、という形で顕在化した)。
+    /// ブリッジのコールド起動時(=毎操作ではない)だけ3回 adb spawn するので負荷原則には抵触しない。
+    /// 既に 0 でも冪等に put するだけでよい(get で確認してから put する節約はしない)。
+    /// 失敗しても致命にはしない(警告を1回だけ stderr へ)
+    private func disableAnimations() {
+        let keys = ["window_animation_scale", "transition_animation_scale", "animator_duration_scale"]
+        let failed = keys.filter { (try? adb(["shell", "settings", "put", "global", $0, "0"]))?.status != 0 }
+        guard !failed.isEmpty else { return }
+        let message = "⚠️ Android アニメーション設定の無効化に失敗しました(\(failed.joined(separator: ", ")))。"
+            + "有効なままだと静穏判定後に screenshot が古い絵を掴むことがあります\n"
+        FileHandle.standardError.write(Data(message.utf8))
     }
 
     private func probeBridge(hostPort: UInt16) async -> BridgeClient? {
@@ -182,6 +199,20 @@ extension AndroidDriver {
                 + (findExistingForward().map { ", forward tcp:\($0)" } ?? "") + ")"
         }
         return summary
+    }
+
+    /// doctor 用: window/transition/animator の *_scale のいずれかが 0 でなければ注意文言を返す(全て0ならnil)。
+    /// 未設定(get が "null" を返す)は Android の既定値である 1.0 相当として扱い、警告対象に含める
+    public func animationScaleWarning() -> String? {
+        let keys = ["window_animation_scale", "transition_animation_scale", "animator_duration_scale"]
+        let nonZero = keys.filter { key in
+            let value = (try? adb(["shell", "settings", "get", "global", key]))?
+                .output.trimmingCharacters(in: .whitespacesAndNewlines)
+            return !(Double(value ?? "") == 0)
+        }
+        guard !nonZero.isEmpty else { return nil }
+        return "アニメーション設定が有効です(\(nonZero.joined(separator: ", ")))。"
+            + "screenshot が静穏判定後も古い絵を掴むことがあります(次回ブリッジ起動時に自動で0になります)"
     }
 
     /// versionCode(dumpsys)を照合し、未導入・不一致なら prebuilt APK をインストール

@@ -253,10 +253,18 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         return pkg != null ? pkg : sessionBundleID;
     }
 
-    /** /tap /type /swipe /press 共通の整定待ち(操作後の固定 sleep の代替) */
+    /**
+     * /tap /type /swipe /press 共通の整定待ち(操作後の固定 sleep の代替)。
+     * 操作直後のアクティブパッケージ(stableActivePackage())を初期の静穏対象として
+     * quietWaiter.quietWait() を1回呼ぶ。クロスパッケージ遷移(例: 設定→Google サービス
+     * のような別パッケージへのハンドオフ)は、QuietWaiter がウィンドウ切替イベント
+     * (TYPE_WINDOW_STATE_CHANGED)を検知した瞬間に静穏対象を遷移先パッケージへ追従させる
+     * ため、この1回の呼び出しの中で自然に扱われる(多段遷移にも追従する。詳細は
+     * QuietWaiter.java 参照)
+     */
     private void settle() {
-        quietWaiter.quietWait(stableActivePackage(STABLE_PACKAGE_BUDGET_MS),
-                QuietWaiter.QUIET_MS, QuietWaiter.ACTION_CAP_MS);
+        String startPackage = stableActivePackage(STABLE_PACKAGE_BUDGET_MS);
+        quietWaiter.quietWait(startPackage, QuietWaiter.QUIET_MS, QuietWaiter.ACTION_CAP_MS);
     }
 
     /**
