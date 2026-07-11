@@ -2383,6 +2383,16 @@ function renderHtml(): string {
     background-color: var(--vscode-button-secondaryBackground, rgba(128, 128, 128, 0.3));
     color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
   }
+  /* プロファイルタブの確定ボタンは非活性時は完全に透明にする(2026-07-11 ユーザー指示。
+     要素は残してレイアウト(操作行の高さ・キャンセルボタンの位置)を確保する。
+     モーダルの OK(#dlg-ok/#device-pick-ok)は消えると存在に気づけないため上のグレー表現のまま)。 */
+  #run-profile-confirm:disabled,
+  #app-profile-confirm:disabled,
+  #editor-confirm:disabled {
+    background-color: transparent;
+    border-color: transparent;
+    color: transparent;
+  }
   button.secondary {
     background-color: var(--vscode-button-secondaryBackground, transparent);
     color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));

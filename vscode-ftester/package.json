@@ -2,7 +2,7 @@
   "name": "vscode-ftester",
   "displayName": "ftester",
   "description": "ftester (Swift 製モバイル UI テストツール) のシナリオをツリー表示・実行するための VS Code 拡張",
-  "version": "0.0.50",
+  "version": "0.0.51",
   "private": true,
   "publisher": "wave1008",
   "license": "MIT",
@@ -253,6 +253,7 @@
     ]
   },
   "scripts": {
+    "vscode:prepublish": "npm run compile",
     "compile": "node esbuild.mjs && tsc --noEmit",
     "watch": "node esbuild.mjs --watch",
     "test": "node esbuild.mjs --tests && node --test out-test/*.test.mjs",
