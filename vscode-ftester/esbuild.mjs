@@ -1,8 +1,10 @@
 // esbuild.mjs
 // vscode-ftester のビルドスクリプト。
 //
-//   node esbuild.mjs          : src/extension.ts -> dist/extension.js (1回ビルド)
-//   node esbuild.mjs --watch  : 上記をウォッチモードで実行
+//   node esbuild.mjs          : src/extension.ts -> dist/extension.js と
+//                                src/webview/monitor/{main.js,style.css} -> media/monitor/
+//                                の両方を1回ビルド
+//   node esbuild.mjs --watch  : 上記をどちらもウォッチモードで実行
 //   node esbuild.mjs --tests  : test/*.test.mjs を out-test/ にバンドルする(node:test 用。
 //                                src/*.ts を直接 import しているテストを Node がそのまま
 //                                実行できるようにする)
@@ -34,6 +36,30 @@ async function buildExtension() {
     const ctx = await esbuild.context(options);
     await ctx.watch();
     console.log("[esbuild] watching src/ for changes...");
+  } else {
+    await esbuild.build(options);
+  }
+}
+
+async function buildWebview() {
+  const options = {
+    entryPoints: [
+      path.join(rootDir, "src/webview/monitor/main.js"),
+      path.join(rootDir, "src/webview/monitor/style.css"),
+    ],
+    bundle: true,
+    platform: "browser",
+    format: "iife",
+    target: "es2022",
+    outdir: path.join(rootDir, "media/monitor"),
+    sourcemap: true,
+    logLevel: "info",
+  };
+
+  if (watch) {
+    const ctx = await esbuild.context(options);
+    await ctx.watch();
+    console.log("[esbuild] watching src/webview/ for changes...");
   } else {
     await esbuild.build(options);
   }
@@ -72,4 +98,5 @@ if (tests) {
   await buildTests();
 } else {
   await buildExtension();
+  await buildWebview();
 }
