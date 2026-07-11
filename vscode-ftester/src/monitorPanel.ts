@@ -13,9 +13,9 @@
 // - webview からの devicesUp/devicesDown も cli.ts のキューは使わず、ここで直接
 //   短命プロセス(`ftester devices up`/`devices down`)を spawn する。ftester.profile が非空なら
 //   --project/--profile を付与し、「デバイスを全て起動/終了」の対象をそのプロファイルが参照する
-//   デバイスのみに限定する(空ならマシンプロファイルの全デバイス。要件1)。多重起動ガードのため
+//   デバイスのみに限定する(空ならマシンプロファイルの全デバイス)。多重起動ガードのため
 //   実行中は bootBusy:true を webview に送ってボタンを無効化させる。
-// - プロファイル切り替え時の自動シャットダウン(要件2): restartMonitorIfScopeChanged() が
+// - プロファイル切り替え時の自動シャットダウン: restartMonitorIfScopeChanged() が
 //   ftester.profile / ftester.project の変更でスコープが変わったことを検知すると、モニター再起動の
 //   前に、直近の観測(lastKnownDevices)から「切り替え先プロファイルに定義されていない稼働中
 //   デバイス」を割り出し(monitorModel.ts の devicesToShutdownOnScopeChange)、device-down ジョブを
@@ -25,12 +25,11 @@
 //   非依存の純粋関数)でレーン用アクションに変換して webview へ転送する。デバイスタイルと
 //   ログレーンは device id / worker id が同一規則なので、そのまま突合できる
 //   (タイルの「実行中」バッジ・タイル選択によるレーン絞り込み)。
-// - webview はマルチタブ構成(「デバイス」「プロファイル」「設定」)。既存のデバイスモニターUI
-//   一式(トップの操作)はそのまま「デバイス」タブのパネル内に移動しただけで、TypeScript 側の
-//   ロジックは変わらない。「設定」は現状プレースホルダーのみで、今後の機能追加先。
+// - webview はマルチタブ構成(「デバイス」「プロファイル」「設定」)。デバイスモニターUI
+//   一式(トップの操作)は「デバイス」タブのパネル内にある。「設定」は現状プレースホルダーのみで、
+//   今後の機能追加先。
 // - 「プロファイル」タブの3セクションは DOM 順で上から実行/アプリ/マシンプロファイル(使用
-//   頻度が高い実行プロファイルを先頭にしてほしいというユーザー報告により、以前のマシン/アプリ/
-//   実行の順から並べ替えた。各セクションの内部構造・JS ロジックは不変)。#panel-profiles の
+//   頻度が高い実行プロファイルを先頭に表示するため)。#panel-profiles の
 //   先頭(全セクションの前)には position: sticky なジャンプヘッダー(#profile-jump-header)を
 //   常設し、3セクションへのテキストリンク(button 要素)から scrollIntoView({behavior:'smooth'})
 //   で各セクションへ飛べるようにする(単一の縦スクロールになったことで下のセクションまで
@@ -38,8 +37,8 @@
 //   .profile-section に scroll-margin-top を設定する。
 // - 「プロファイル」タブの「マシンプロファイル」セクション: Projects/<project>/profiles/machines/
 //   直下の *.json(config.ts の listMachineProfiles)を一覧表示する。デバイス追加の入口は
-//   「デバイス」ラベル横の「+」(#btn-device-add-existing)の1つだけ(2026-07-11 指示で
-//   「+新規作成」ボタンは廃止。新規作成は選択画面内の「+」から行う。`ftester api device-catalog`
+//   「デバイス」ラベル横の「+」(#btn-device-add-existing)の1つだけ(「+新規作成」ボタンは
+//   廃止済みで、新規作成は選択画面内の「+」から行う。`ftester api device-catalog`
 //   (単発 JSON)/`ftester api create-device`(NDJSON)は新規作成モーダルが引き続き使う)。「+」は
 //   #device-pick-overlay モーダルを開き、`ftester api installed-devices`(単発 JSON。runInstalledDevices)
 //   でインストール済みの実体一覧を取得して2列(iOS/Android)で一覧表示する。各行のチェックボックスは
@@ -60,7 +59,7 @@
 //   判定できる。この経路(deviceAddFromPicker=true)では createDevice に register:false を送り、
 //   ホストは `--no-register` を付けて物理作成のみ行う(マシンプロファイルへは追記しない。
 //   register:true の即登録経路はメッセージ契約として残っているが、「+新規作成」ボタン廃止後は
-//   UI からの送り手がいない。2026-07-11 指示)。register:false の作成が成功したら、
+//   UI からの送り手がいない)。register:false の作成が成功したら、
 //   installedDevicesRequest を再送して一覧を作り直す前に pendingAutoCheck へ作成された実体の
 //   識別子(iOS=udid/Android=avd の id。createDeviceResult の device フィールドから取る)を保持し、
 //   再描画時に一致する行を「チェックON」(初期状態[registered]は false のままなので差分扱い)にする。
@@ -69,10 +68,10 @@
 //   一致する行が見つからない場合は pendingAutoCheck を静かに捨てて何もしない。他行で操作中だった
 //   未確定の差分は(register:true 経路と同じく)この再読込で破棄されるが、シンプルさを優先した
 //   設計判断。いずれも他の短命 CLI 実行(executeBulkJob 等)と同じく直接 spawn する方針
-//   (FtesterCli の直列キューは使わない)。デバイス一覧は複数選択に対応する(要件5。
-//   selectedDeviceNames が Set。通常クリックは単一選択への置き換え[トグル]、Shift+クリックは
+//   (FtesterCli の直列キューは使わない)。デバイス一覧は複数選択に対応する
+//   (selectedDeviceNames が Set。通常クリックは単一選択への置き換え[トグル]、Shift+クリックは
 //   アンカー(直近に通常/Cmdクリックした行)からの範囲選択、Cmd/Ctrl+クリックは個別の追加/除外
-//   トグル。Finder/VSCode のリストと同じ標準セマンティクス。2026-07-11 ユーザー指示)。
+//   トグル。Finder/VSCode のリストと同じ標準セマンティクス)。
 //   右ペインの編集フォームは「ちょうど1台選択」のときだけ表示する。
 //   デバイス行の右クリック「除去」/「選択した<N>台を除去」(handleMachineDeviceRemove。複数選択に
 //   対応するため machineDeviceRemove の対象は names 配列)・行選択時に右ペインに表示する編集フォーム
@@ -96,8 +95,7 @@
 //   (セクションヘッダーのアイコンボタン。handleProfileAdd/Copy/Delete/Rename)も、マシンプロファイル
 //   の [+][コピー][−][✏] と同一デザイン・同じ対話形式(名前入力はwebview内モーダル
 //   [#name-input-overlay]、削除確認はshowWarningMessageのモーダル確認)で行う
-//   (以前はデバイスタブのツールバーに置いていたが、下半分のフォームが編集手段になったのに合わせて
-//   ここへ移設し、デバイスタブは実行プロファイルの選択のみに絞った)。追加・コピー直後は
+//   (デバイスタブは実行プロファイルの選択のみに絞り、編集はこのフォームで行う)。追加・コピー直後は
 //   runProfileSelected で編集対象を新プロファイルへ移す(machineProfileSelected と同じ方式。
 //   削除は webview 側の既存フォールバックに任せるので送らない)。名前変更時、ftester.profile が
 //   旧名を指していたら selectProfile で追随させる(handleMachineProfileRename の
@@ -107,8 +105,8 @@
 //   チェックボックス1つで有効/無効の2値、既定=無効[チェックOFF])の2フィールド、ios/android は
 //   表示名/アプリID(app)/パッケージパス(appPath)の3フィールド(common の app/appPath は廃止済み
 //   でランタイムはこれらの値を無視するためフォーム自体に入力欄を持たない。自動インストールは
-//   元々 ios/android セクション別だったが、common でのみ設定できる仕様に一本化した
-//   [2026-07-11 指示。Swift 側も common 採用+platform 残存は validate 警告に変更中])。設計は
+//   common でのみ設定できる仕様に一本化されている[ios/android に残存していても Swift 側の
+//   validate が警告する])。設計は
 //   実行プロファイルセクションの複製(選択は webview 内だけで完結する独立状態。ただし「現在値」に
 //   相当する設定が無いため、選択のフォールバックは常に一覧の先頭)。
 //   ロード(appProfileLoad)/保存(appProfileSave)は monitorModel.ts の
@@ -139,17 +137,16 @@
 //   MEM は memUsedBytes/memTotalBytes の比率。いずれも null は欠測として線を途切れさせる)。系列色は
 //   ライト/ダークテーマで切り替える固定パレットを使い、body の class(vscode-light 等)の変化を
 //   MutationObserver で監視して即座に全グラフを再描画する。
-// - webview 資産(スタイル・スクリプト)は src/webview/monitor/{style.css,main.js} に分離されている
-//   (Phase 1: webview 資産の実ファイル化。以前は renderHtml() のテンプレート文字列に CSS/JS を
-//   直接内蔵していた)。esbuild(esbuild.mjs の buildWebview())がこれらを media/monitor/ に
+// - webview 資産(スタイル・スクリプト)は src/webview/monitor/{style.css,main.js} に分離されている。
+//   esbuild(esbuild.mjs の buildWebview())がこれらを media/monitor/ に
 //   バンドルし、renderHtml() は webview.asWebviewUri で変換した URI を使って
 //   <link rel="stylesheet">/<script src> から外部リソースとして読み込む。
-// - Phase 2(monitorPanel.ts の分割、本ファイルの現在の構成): HTML 本文(renderHtml()/generateNonce()/
-//   PANEL_TITLE)は monitorHtml.ts へ、常駐子プロセス(monitor/host-metrics)の起動・停止・再起動は
-//   monitorProcessManager.ts の MonitorProcessManager へ、「プロファイル」タブの一覧post・CRUD・
-//   フォームのロード/保存は monitorProfilesController.ts の MonitorProfilesController へ、
+// - MonitorPanelController の構成: HTML 本文(renderHtml()/generateNonce()/
+//   PANEL_TITLE)は monitorHtml.ts、常駐子プロセス(monitor/host-metrics)の起動・停止・再起動は
+//   monitorProcessManager.ts の MonitorProcessManager、「プロファイル」タブの一覧post・CRUD・
+//   フォームのロード/保存は monitorProfilesController.ts の MonitorProfilesController、
 //   デバイスライフサイクルキュー・device-catalog/installed-devices/create-device は
-//   monitorDeviceOps.ts の MonitorDeviceOps へ、それぞれ移動した。MonitorPanelController は
+//   monitorDeviceOps.ts の MonitorDeviceOps がそれぞれ担う。MonitorPanelController は
 //   これら3つのサブコントローラのインスタンスを保持するオーケストレーターで、show()/dispose()/
 //   handleBusMessage()/handleWebviewMessage()(switch からの委譲のみ)/sendInitialState()/
 //   restartMonitorIfScopeChanged()(プロファイル切り替え時のモニター再起動要否判定)/
@@ -187,7 +184,7 @@ const VIEW_TYPE = "ftesterMonitor";
  * MonitorProcessManager / MonitorProfilesController / MonitorDeviceOps の3サブコントローラが
  * 共通で依存する狭いインターフェース。サブコントローラ同士は互いを直接参照せず、必要な相互作用は
  * ここに定義したコールバック(isPanelActive/writeMonitorControl/notifyMachineProfilesChanged)経由で
- * MonitorPanelController が仲介する。メンバーは実際に各サブコントローラの移動元コードが参照していた
+ * MonitorPanelController が仲介する。メンバーは各サブコントローラが実際に必要とする
  * this.* を洗い出して決めた最小集合(workspaceRoot/getConfig/outputChannel/post は3者共通、
  * 残り3つは特定のサブコントローラ間の連携専用)。
  */
@@ -290,7 +287,7 @@ class MonitorPanelController implements vscode.Disposable {
    * スコープ)が実際に変わった場合に限り、モニタープロセスを再起動して追随させる。パネル未表示、
    * またはプロジェクトが解決できない(既存のエラーバナー表示に任せる)場合は何もしない。
    * 再起動の前に、切り替え先プロファイルに定義されていない稼働中デバイスの自動シャットダウンを
-   * キューに積む(要件2)。
+   * キューに積む。
    */
   private restartMonitorIfScopeChanged(): void {
     if (!this.panel) {

@@ -1,8 +1,5 @@
 /* style.css
- * ライブ操作パネル webview のスタイル。livePanel.ts の renderHtml() が生成する
- * <style> ブロック(テンプレート文字列に内蔵されていた CSS)から逐語抽出したもの
- * (Phase 4: webview 資産の実ファイル化。テンプレート補間は元々皆無だったため、
- * このファイルは通常の CSS としてそのまま成立する)。esbuild が media/live/style.css に
+ * ライブ操作パネル webview のスタイル。esbuild が media/live/style.css に
  * バンドルし、renderHtml() が <link rel="stylesheet"> で読み込む。
  */
 
@@ -181,10 +178,10 @@ button.secondary:hover:not(:disabled) {
   text-overflow: ellipsis;
   cursor: pointer;
 }
-/* ホバー色はテーマ値そのままだと濃い(2026-07-11 ユーザー指摘)ため、モニターパネルの
+/* ホバー色はテーマ値そのままだと濃いため、モニターパネルの
    行ホバー(.machine-device-row/.device-pick-row)と同じ式で50%透過に薄める。 */
 .element-row:hover { background-color: color-mix(in srgb, var(--vscode-list-hoverBackground) 50%, transparent); }
-/* 選択色は拡張内で統一(2026-07-11 ユーザー指示): モニターパネルのプロファイルタブの
+/* 選択色は拡張内で統一: モニターパネルのプロファイルタブの
    ヘッダーバー・デバイス行選択・デバイス選択モーダルのチェック行と同じ
    editorGroupHeader-tabsBackground。薄い背景のため前景色の上書きは不要。 */
 .element-row.selected {

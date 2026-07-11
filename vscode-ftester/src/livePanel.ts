@@ -12,19 +12,17 @@
 //   待たされずに応答する必要がある。そのため monitorPanel.ts の devicesUp/devicesDown と同じ方針で、
 //   専用に spawn する(runOneShot。SPM ビルドロックへの影響は無い: list-devices はビルドを一切
 //   行わないドライバ直叩きの操作なので、run 側の swift build と競合しない)。
-// - タップ/入力/スワイプ/起動/終了/インストール/スナップショット取得(Phase 4 高速化、旧実装は
-//   これらも `ftester api live <sub>` を毎回ワンショット spawn し、操作後に固定700ms待ってから
-//   別プロセスで snapshot を取り直していた=1操作あたりプロセス起動2回+700ms)は、選択デバイスごとに
+// - タップ/入力/スワイプ/起動/終了/インストール/スナップショット取得は、選択デバイスごとに
 //   `ftester api live serve` を常駐 spawn し(startServeProcess/stopServeProcess)、stdin へ
-//   NDJSON でコマンドを送って stdout の NDJSON イベント(NdjsonParser で受ける)を待つ方式に
-//   置き換えた。プロセス管理は monitorPanel.ts の host-metrics プロセス管理パターン
-//   (startHostMetricsProcess/stopHostMetricsProcess。v0.0.65)をそのまま踏襲する: stdin パイプ保持
+//   NDJSON でコマンドを送って stdout の NDJSON イベント(NdjsonParser で受ける)を待つ方式で行う。
+//   プロセス管理は monitorPanel.ts の host-metrics プロセス管理パターン
+//   (startHostMetricsProcess/stopHostMetricsProcess)を踏襲する: stdin パイプ保持
 //   (EOF が終了指示)・SIGTERM 送信後2秒で SIGKILL・予期しない終了は5秒後に自動再起動・起動10秒未満の
 //   異常終了が3連続したら諦める(serveGaveUp)。ただし host-metrics と違い serve はデバイスごとの
 //   状態を持つプロセスなので、デバイス選択が変わったら明示的に再バインド(停止→新デバイスで起動)し、
 //   その際は諦め状態もリセットする(=「デバイスを選び直す」操作そのものが host-metrics の
 //   「パネル開き直し/再起動ボタン」に相当する回復経路になる。この設計だと専用の再起動ボタンは不要)。
-//   操作後の追加待ちは行わない(Phase 2でブリッジの操作応答=UI整定済みになったため)。
+//   操作後の追加待ちは行わない(ブリッジの操作応答時点で UI が整定済みのため)。
 // - パネルはシングルトン(monitorPanel.ts / healReviewPanel.ts と同じ)。
 // - 座標変換(クリック→ポイント座標、frame→表示px)・レスポンス検証・CLI引数組み立て・NDJSON
 //   コマンド組み立て/イベント検証は liveModel.ts(vscode 非依存)に切り出してある。webview 側
@@ -32,14 +30,12 @@
 //   frameToDisplayRect と同じ計算だけを手書きで複製している(healReviewPanel.ts の healModel.ts
 //   複製と同じ方針)。要素一覧の表示テキストは host 側で liveModel.formatElementLine
 //   (toSnapshotMessage 経由)を使って事前整形して送るため、webview 側での複製は不要。
-// - webview 資産(スタイル・スクリプト)は src/webview/live/{style.css,main.js} に分離されている
-//   (Phase 4: webview 資産の実ファイル化。monitorPanel.ts の Phase 1 と同じ方針。以前は
-//   renderHtml() のテンプレート文字列に CSS/JS を直接内蔵していた)。テンプレート補間は
-//   元々皆無だった(monitorPanel.ts と異なり定数注入も無い)ため逐語移動のみで済み、JS は
+// - webview 資産(スタイル・スクリプト)は src/webview/live/{style.css,main.js} に分離されている。
+//   テンプレート補間はここには無く(monitorPanel.ts と異なり定数注入も無い)、JS は
 //   約240行と小さいため機能別モジュール分割はせず単一ファイル(main.js)のままにしている。
 //   esbuild(esbuild.mjs の buildWebview())がこれらを media/live/ にバンドルし、renderHtml() は
 //   webview.asWebviewUri で変換した URI を使って <link rel="stylesheet">/<script src> から
-//   外部リソースとして読み込む。HTML 本文はこれまでどおり renderHtml() 内にインライン生成する
+//   外部リソースとして読み込む。HTML 本文は renderHtml() 内にインライン生成する
 //   (コントローラ自体が小さいため monitorHtml.ts のような別ファイルへの分離はしない)。
 
 import { randomBytes } from "node:crypto";
@@ -645,8 +641,7 @@ class LiveController implements vscode.Disposable {
 
   /** serve へ1コマンド送って結果を反映する。成功時は serve が続けて返す観測イベント(操作後の
    * 追加待ちなしで届く。ブリッジ応答=UI整定済みのため)をそのまま画面へ反映する。失敗時は
-   * 旧ワンショット版と同じく画面を再取得しない(観測イベント自体は届くが反映せず、直近のエラーを
-   * 表示する)。 */
+   * 画面を再取得しない(観測イベント自体は届くが反映せず、直近のエラーを表示する)。 */
   private async runAction(command: LiveServeCommand): Promise<void> {
     if (this.busy) {
       return;
@@ -775,7 +770,7 @@ function generateNonce(): string {
 /**
  * webview の HTML を生成する。CSS/JS は src/webview/live/ から esbuild が media/live/ に
  * バンドルした外部ファイル(style.css/main.js)を読み込む(webview.asWebviewUri で変換した URI。
- * monitorHtml.ts の renderHtml() と同じ方針)。HTML 本文はこれまでどおりこの関数内に
+ * monitorHtml.ts の renderHtml() と同じ方針)。HTML 本文はこの関数内に
  * インライン生成する。
  */
 function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {

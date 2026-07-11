@@ -1,10 +1,6 @@
 // main.js
-// ライブ操作パネル webview のロジック。livePanel.ts の renderHtml() が生成する
-// <script nonce="${nonce}"> ブロック(テンプレート文字列に内蔵されていた JS)から逐語抽出
-// したもの(Phase 4: webview 資産の実ファイル化)。デバイスモニター(src/webview/monitor/)と
-// 異なりテンプレート補間は元々皆無だった(定数注入なし)ため、import 追加等の変更は無い。
-// JS 本体は約240行と小さいため、モニターパネルのような機能別モジュール分割(Phase 3。
-// main.js から11個の ES モジュールへ分割)は行わず、単一ファイルのまま据え置く。
+// ライブ操作パネル webview のロジック。JS 本体は約240行と小さいため、モニターパネルのような
+// 機能別モジュール分割は行わず、単一ファイルのまま据え置く。
 // esbuild が media/live/main.js に iife 形式でバンドルし、renderHtml() が
 // <script src="..."> で読み込む。
 

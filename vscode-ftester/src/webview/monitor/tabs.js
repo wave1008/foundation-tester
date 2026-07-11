@@ -1,6 +1,5 @@
 // tabs.js
-// 「デバイス/プロファイル/設定」の3タブ切り替えを担う。Phase 3(main.js のモジュール分割)で
-// main.js の「---- タブ切り替え(デバイス/プロファイル/設定) ----」節から抽出した。
+// 「デバイス/プロファイル/設定」の3タブ切り替えを担う。
 // 「設定」タブは現状プレースホルダーのみ(将来の機能追加先)。closeDeviceOpMenu(deviceTiles.js)・
 // closeMachineDeviceMenu(machineProfilesTab.js)・applyTilePaneHeight/tilePaneHeight
 // (splitter.js)のいずれも import 済みであることに依存する。

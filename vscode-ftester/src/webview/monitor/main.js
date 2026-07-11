@@ -1,8 +1,5 @@
 // main.js
-// デバイスモニター webview のエントリポイント。monitorPanel.ts の renderHtml() が生成する
-// <script nonce="${nonce}"> ブロック(テンプレート文字列に内蔵されていた JS)から Phase 1
-// (webview 資産の実ファイル化)で逐語抽出した単一ファイルだったものを、Phase 3(2026-07-12)で
-// 機能別 ES モジュールへ分割した:
+// デバイスモニター webview のエントリポイント。機能別 ES モジュールへ分割されている:
 //   vscodeApi.js        acquireVsCodeApi()(1回のみ呼べる)と起動時の persistedState
 //   domRefs.js          ツールバー・タイル/出力ペイン・レーン等、複数モジュールが参照する DOM 定数
 //   splitter.js         タイルペイン/出力ペインの上下スプリッター
@@ -14,12 +11,11 @@
 //   runProfilesTab.js   プロファイルタブ: 実行プロファイルの設定フォーム
 //   modals.js           デバイス追加/名前入力/既存デバイスから選択 の3モーダル
 //   tabs.js             デバイス/プロファイル/設定タブの切り替え
-// このファイル自体はエントリポイントとして残し、各モジュールの import(モジュール本体の
+// このファイル自体はエントリポイントとして、各モジュールの import(モジュール本体の
 // トップレベル文=イベント登録がその場で実行される)と、複数モジュールにまたがる
 // 「メッセージ受信ディスパッチャ」「ツールバーの起動/停止/再起動ボタン」「起動時の
-// ブートストラップ呼び出し」だけをここに置く。手書きの外側 IIFE ラッパー(Phase 1 の名残)は
-// 撤去した(esbuild の iife 形式バンドル出力が同じ役割を果たすため)。
-// postMessage の型・ペイロード、DOM 構築順、イベント登録順、初期化順はいずれも変更していない。
+// ブートストラップ呼び出し」だけを置く。手書きの外側 IIFE ラッパーは無い(esbuild の iife
+// 形式バンドル出力が同じ役割を果たすため)。
 
 import { vscode, persistedState } from './vscodeApi.js';
 import { btnUp, btnDown, btnRestart, emptyMessage } from './domRefs.js';
@@ -112,7 +108,7 @@ window.addEventListener('message', (event) => {
       showBanner(message.name + ': ' + message.message);
       break;
     case 'laneSectionVisible':
-      // レーンは常時表示になったため何もしない(TS側からのメッセージ自体は互換のため残る)
+      // レーンは常時表示のため何もしない(TS側からのメッセージ自体は互換のため残る)
       break;
     case 'runEvent':
       applyLaneAction(message.action);

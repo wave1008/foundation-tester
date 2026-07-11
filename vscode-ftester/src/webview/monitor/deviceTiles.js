@@ -1,13 +1,10 @@
 // deviceTiles.js
 // 「デバイス」タブのタイルグリッド(生成・フレーム/状態描画)・タイル右クリックメニュー・
 // タイル選択・グリッドのホイール横スクロール/中クリックパン・実行プロファイル選択(select)を
-// 担う。Phase 3(main.js のモジュール分割)で main.js の「---- デバイスタイル ----」
-// 「---- タイル右クリックメニュー ----」「---- 実行プロファイル選択 ----」節と、
-// それらに挟まれた無題のヘルパー群(findTileByName 等)・グリッド操作(トグル選択/ホイール/パン)
-// をまとめて抽出した。
+// 担う。
 // tiles(device id -> タイル状態)・selectedDeviceIds(選択中 device id 集合)・
 // deviceOpMenuEntry は再代入・変更される状態のため、書き込み箇所をすべてこのモジュールに
-// 置く。laneLog.js(旧ログレーン節)からは tiles/selectedDeviceIds を読み取り専用で参照する。
+// 置く。laneLog.js からは tiles/selectedDeviceIds を読み取り専用で参照する。
 
 import { vscode } from './vscodeApi.js';
 import { grid, emptyMessage, banner, btnUp, btnDown, deviceOpMenu, deviceOpMenuItemBtn, profileSelect } from './domRefs.js';
@@ -63,7 +60,7 @@ export function relayoutTiles() {
 function createTile(device) {
   const tile = document.createElement('div');
   tile.className = 'tile';
-  // ボタン廃止(要件1)によりヒントが無くなるため、ツールチップで操作方法を示す
+  // タイル上に操作ボタンが無いため、ツールチップで操作方法を示す
   // (macOS GUI 版のタイルの .help() と同じ趣旨)。
   tile.title = 'クリックで選択 / 右クリックで起動・停止';
   tile.addEventListener('click', () => toggleDeviceSelection(device.id));
@@ -76,8 +73,7 @@ function createTile(device) {
   });
 
   // ヘッダー: 左からプラットフォーム色で装飾したデバイス名、右端に「実行中」
-  // (個別起動/停止は右クリックメニューに移動した。ボタンが無くなった分、名前表示が
-  // フル幅を使える)
+  // (個別起動/停止は右クリックメニューから行う。ボタンが無い分、名前表示がフル幅を使える)
   const header = document.createElement('div');
   header.className = 'tile-header';
   const name = document.createElement('span');
@@ -92,7 +88,7 @@ function createTile(device) {
   const img = document.createElement('img');
   const placeholder = document.createElement('div');
   placeholder.className = 'frame-placeholder';
-  // 起動/停止操作中バッジ(画像左上に重ねる。要件3)。renderFrame() が
+  // 起動/停止操作中バッジ(画像左上に重ねる)。renderFrame() が
   // frame-wrap の中身を作り直すたびに末尾へ再アペンドする。
   const opBadge = document.createElement('span');
   opBadge.className = 'tile-op-badge';
@@ -249,7 +245,7 @@ deviceOpMenuItemBtn.addEventListener('click', (event) => {
   closeDeviceOpMenu();
 });
 
-// メニュー外クリック・Esc・スクロールで閉じる(要件2)。
+// メニュー外クリック・Esc・スクロールで閉じる。
 document.addEventListener('click', (event) => {
   if (deviceOpMenuEntry && !deviceOpMenu.contains(event.target)) {
     closeDeviceOpMenu();
@@ -368,7 +364,7 @@ export function setBusy(busy) {
 }
 
 // ---- 実行プロファイル選択 ---------------------------------------------------
-// 追加/コピー/削除/名前変更はプロファイルタブ下半分の実行プロファイルセクションに移設した
+// 追加/コピー/削除/名前変更はプロファイルタブ下半分の実行プロファイルセクションで行う
 // (btn-run-profile-*)。ここでは「使用する実行プロファイルを指定するだけ」の select のみを扱う。
 
 const PROFILE_NONE_LABEL = '(プロファイルなし)';

@@ -1,9 +1,7 @@
 // monitorProcessManager.ts
 // デバイスモニターパネル(monitorPanel.ts)の常駐子プロセス管理部分。
-// Phase 2(monitorPanel.ts 分割): 元々 MonitorPanelController が直接持っていた
-// monitor プロセス(`ftester api monitor`)・host-metrics プロセス(`ftester api host-metrics`)の
-// 起動・停止・再起動・pause/resume 制御をそのまま MonitorProcessManager クラスへ移動した。
-// ロジック・spawn の引数・タイマー時間・エラーハンドリングの分岐はいずれも変更していない。
+// MonitorProcessManager クラスは、monitor プロセス(`ftester api monitor`)・host-metrics
+// プロセス(`ftester api host-metrics`)の起動・停止・再起動・pause/resume 制御を担う。
 // monitorPanel.ts の MonitorPanelController はこのクラスのインスタンスを1つ保持し、
 // show()/dispose()/restartMonitorIfScopeChanged() 等から公開メソッドを呼び出す
 // (webview へのメッセージ送信・設定取得・出力チャネルは MonitorPanelDeps 経由)。

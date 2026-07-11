@@ -1,9 +1,7 @@
 // laneLog.js
-// 出力ペインの「ログレーン」(worker/デバイスごとの実行ログ表示欄)を担う。Phase 3
-// (main.js のモジュール分割)で main.js の「---- ログレーン ----」節から抽出した。
-// lanes(レーン id -> DOM/自動スクロール状態)は元は tiles/selectedDeviceIds と並んで
-// main.js の冒頭(IIFE 直下)にまとめて宣言されていたが、実際に読み書きするのはこのモジュールの
-// 関数群だけなので、このファイルへ移した(deviceTiles.js とは selectedDeviceIds/tiles/
+// 出力ペインの「ログレーン」(worker/デバイスごとの実行ログ表示欄)を担う。
+// lanes(レーン id -> DOM/自動スクロール状態)は実際に読み書きするのはこのモジュールの関数群
+// だけなので、このファイルに閉じている(deviceTiles.js とは selectedDeviceIds/tiles/
 // runningWorkers を介して相互に参照し合う。いずれも再代入されない Map/Set の中身を
 // 変更するだけなので import 境界をまたいでも問題ない)。
 
@@ -41,7 +39,7 @@ function setLaneHeader(headerEl, name, platform) {
 
 // updateLabel=true は workersReady/hydrate/デバイス同期によるレーン構成時のみ。
 // 行追加(appendLaneLine)からの呼び出しで true にすると、フォールバック名(生の worker id)で
-// 構成済みの表示名を上書きしてしまう(過去に実際に起きた表記崩れ)。
+// 構成済みの表示名を上書きしてしまう。
 function ensureLane(id, name, platform, updateLabel) {
   let lane = lanes.get(id);
   if (lane) {
@@ -131,8 +129,8 @@ export function updateLaneVisibility() {
     : '全ワーカー';
 }
 
-// 出力ペインは常設で、実行前でもデバイス毎の空レーンを表示する(ユーザー指定で
-// プレースホルダー文言は廃止)。レーンはモニターの devices サイクルから常時同期する。
+// 出力ペインは常設で、実行前でもデバイス毎の空レーンを表示する(プレースホルダー文言は
+// 表示しない)。レーンはモニターの devices サイクルから常時同期する。
 export function updateLanesPlaceholder() {
   lanesPlaceholder.style.display = 'none';
   lanesGrid.style.display = 'grid';

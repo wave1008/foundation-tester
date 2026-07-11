@@ -1,8 +1,5 @@
 /* style.css
- * デバイスモニター webview のスタイル。monitorPanel.ts の renderHtml() が生成する
- * <style> ブロック(テンプレート文字列に内蔵されていた CSS)から逐語抽出したもの
- * (Phase 1: webview 資産の実ファイル化。テンプレート補間は元々皆無だったため、
- * このファイルは通常の CSS としてそのまま成立する)。esbuild が media/monitor/style.css に
+ * デバイスモニター webview のスタイル。esbuild が media/monitor/style.css に
  * バンドルし、renderHtml() が <link rel="stylesheet"> で読み込む。
  */
 
@@ -26,9 +23,7 @@ body {
   overflow: hidden;
 }
 /* タブバー(VS Code のエディタタブ風)。body 直下、タブパネル群の手前に置く。
-   以前は「背景透明+文字色+1px下線」のパネルタイトル風デザインだったが視認性が低かった
-   (ユーザー報告)ため、エディタタブと同じくアクティブ/非アクティブを背景色の差で
-   区別するデザインに変更する。 */
+   エディタタブと同じくアクティブ/非アクティブを背景色の差で区別するデザインにする。 */
 #tabbar {
   flex: 0 0 auto;
   display: flex;
@@ -105,7 +100,7 @@ button {
 button:hover:not(:disabled) { background-color: var(--vscode-button-hoverBackground); }
 button:disabled { opacity: 0.5; cursor: default; }
 /* 非活性の primary ボタン(確定/OK 等)は、既定だと青背景が opacity 0.5 で半透明になるだけで
-   「押せそう」に見えるため、背景を薄いグレーにする(2026-07-11 ユーザー指示)。セレクタを
+   「押せそう」に見えるため、背景を薄いグレーにする。セレクタを
    :not([class]) にするのは、確定/OK 等の primary ボタンはいずれも class 無しで、
    .icon-button/.secondary/.tab-button/.device-op-menu-item 等 class 付きボタンは各自の
    disabled 表現を持つため巻き込まないようにするため。button:disabled(0,1,1)より
@@ -115,9 +110,9 @@ button:not([class]):disabled {
   background-color: var(--vscode-button-secondaryBackground, rgba(128, 128, 128, 0.3));
   color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
 }
-/* プロファイルタブの確定ボタンは非活性時は完全に透明にする(2026-07-11 ユーザー指示。
-   要素は残してレイアウト(操作行の高さ・キャンセルボタンの位置)を確保する。
-   モーダルの OK(#dlg-ok/#device-pick-ok)は消えると存在に気づけないため上のグレー表現のまま)。 */
+/* プロファイルタブの確定ボタンは非活性時は完全に透明にする(要素は残してレイアウト
+   (操作行の高さ・キャンセルボタンの位置)を確保する。モーダルの OK(#dlg-ok/#device-pick-ok)は
+   消えると存在に気づけないため上のグレー表現のまま)。 */
 #run-profile-confirm:disabled,
 #app-profile-confirm:disabled,
 #editor-confirm:disabled {
@@ -152,7 +147,7 @@ button.secondary:hover:not(:disabled) {
   background-color: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
 }
 /* .icon-button の亜種: アイコン(codicon add の SVG)+テキストラベルの横並びボタン
-   (「+新規作成」「+既存から選択」の2ボタン。要件1)。.icon-button の正方形寸法(22px)は
+   (「+新規作成」「+既存から選択」の2ボタン)。.icon-button の正方形寸法(22px)は
    ラベル文字が入らないため、幅だけ auto にして左右 padding・アイコンとラベルの gap を足す
    (高さ・角丸・背景・hover 色は .icon-button の寸法感をそのまま維持する)。 */
 .icon-button.with-label {
@@ -269,7 +264,7 @@ select:disabled { opacity: 0.5; cursor: default; }
   background-color: var(--vscode-scrollbarSlider-activeBackground, rgba(191, 191, 191, 0.4));
 }
 .tile {
-  /* 固定幅は廃止。高さ = グリッド(上ペイン)の高さいっぱいに stretch し、
+  /* 高さ = グリッド(上ペイン)の高さいっぱいに stretch し、
      幅はフレーム画像のアスペクト比(frame-wrap 側)に応じて内容が決める(fit-content)。 */
   flex: 0 0 auto;
   border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
@@ -279,7 +274,7 @@ select:disabled { opacity: 0.5; cursor: default; }
   display: flex;
   flex-direction: column;
   gap: 6px;
-  /* クリックでレーン絞り込みの選択ができるが、カーソルは通常のまま(ユーザー指定) */
+  /* クリックでレーン絞り込みの選択ができるが、カーソルは通常のまま */
 }
 .tile.selected {
   border-color: var(--vscode-focusBorder, #007acc);
@@ -289,13 +284,13 @@ select:disabled { opacity: 0.5; cursor: default; }
 /* ヘッダー・フッターのテキスト行はタイルの幅の決定に寄与させない
    (width:0 + min-width:100% で「フレーム画像が決めた幅」に従わせる)。
    これが無いとバッジ列や省略前のエラーテキストの固有幅でタイルが画像より
-   広がり、左右に大きな余白ができて一列に並ぶ台数が減る(ユーザー報告)。 */
+   広がり、左右に大きな余白ができて一列に並ぶ台数が減る。 */
 .tile-header,
 .tile-footer {
   width: 0;
   min-width: 100%;
 }
-/* ヘッダーは固定高(スプリッター位置に関わらず文字が潰れない。ユーザー指定)。
+/* ヘッダーは固定高(スプリッター位置に関わらず文字が潰れない)。
    detail/updated/error も固定高で常時スロットを確保し、タイルの「画像以外の高さ」を
    定数化する(JS の relayoutTiles() の TILE_CHROME_HEIGHT と一致させること)。 */
 .tile-header {
@@ -307,8 +302,8 @@ select:disabled { opacity: 0.5; cursor: default; }
   flex: 0 0 20px;
   height: 20px;
 }
-/* デバイス名: プラットフォームバッジは廃止し、名前自体を同じスタイルで装飾する
-   (iOS=水色/Android=Androidブランド緑、文字は白。ユーザー指定) */
+/* デバイス名: 名前自体をプラットフォーム色で装飾する
+   (iOS=水色/Android=Androidブランド緑、文字は白) */
 .tile-name {
   font-weight: 600;
   font-size: 12px;
@@ -329,7 +324,7 @@ select:disabled { opacity: 0.5; cursor: default; }
   border-radius: 10px;
   white-space: nowrap;
 }
-/* 状態表示は装飾なしのプレーンテキスト(ユーザー指定) */
+/* 状態表示は装飾なしのプレーンテキスト */
 .tile-state {
   font-size: 11px;
   color: var(--vscode-descriptionForeground);
@@ -348,14 +343,14 @@ select:disabled { opacity: 0.5; cursor: default; }
      (--tile-aspect、フレーム受信時にタイルへ設定。既定は 9/19.5)から計算する。
      これにより「タイル幅 = 画像幅 + 固定マージン(padding)」になり、
      画像の自然サイズ(960px配信で幅442px等)が固有幅としてタイルを
-     押し広げることがない(横に並ぶ台数を最大化する。ユーザー指定)。 */
+     押し広げることがない(横に並ぶ台数を最大化する)。 */
   flex: 0 0 auto;
   align-self: center;
   position: relative;
   height: var(--tile-image-h, 240px);
   width: calc(var(--tile-image-h, 240px) * var(--tile-aspect, 0.4615));
   background-color: var(--vscode-input-background, #1e1e1e);
-  /* 画像の輪郭が分かるよう、細くて濃いめのグレーの実線(ユーザー指定) */
+  /* 画像の輪郭が分かるよう、細くて濃いめのグレーの実線 */
   border: 1px solid #757575;
   border-radius: 3px;
   display: flex;
@@ -402,8 +397,8 @@ select:disabled { opacity: 0.5; cursor: default; }
 @keyframes ft-placeholder-spin {
   to { transform: rotate(360deg); }
 }
-/* タイル右クリックメニューでの起動/停止操作中バッジ(画像左上に重ねる)。
-   ボタンを廃止した代わりの実行中表示(要件3)。frame-wrap は renderFrame() が
+/* タイル右クリックメニューでの起動/停止操作中バッジ(画像左上に重ねる。実行中表示)。
+   frame-wrap は renderFrame() が
    textContent='' で中身を作り直すため、このバッジも毎回末尾に再アペンドされる
    (表示可否はこの要素の 'visible' クラスで独立して管理する)。 */
 .tile-op-badge {
@@ -434,7 +429,7 @@ select:disabled { opacity: 0.5; cursor: default; }
   font-size: 11px;
   color: var(--vscode-descriptionForeground);
   white-space: nowrap;
-  /* 時刻は右寄せ(ユーザー指定)。中間のエラー要素が空でも右端に寄るように */
+  /* 時刻は右寄せ。中間のエラー要素が空でも右端に寄るように */
   margin-left: auto;
 }
 .tile-error {
@@ -457,8 +452,8 @@ select:disabled { opacity: 0.5; cursor: default; }
   font-size: 13px;
   padding: 12px;
 }
-/* 上下ペインの分割境界線。ドラッグで .tile-pane の高さを調整する(要件2)。
-   常時視認できる色を付ける(ユーザー指定。ホバー/ドラッグでアクセント色に変化)。 */
+/* 上下ペインの分割境界線。ドラッグで .tile-pane の高さを調整する。
+   常時視認できる色を付ける(ホバー/ドラッグでアクセント色に変化)。 */
 .splitter {
   flex: 0 0 6px;
   height: 6px;
@@ -598,15 +593,11 @@ select:disabled { opacity: 0.5; cursor: default; }
 .device-op-menu-item:disabled { opacity: 0.6; cursor: default; }
 
 /* ---- プロファイルタブ: ペイン全体を1つの縦スクロールにする ----------------------------
-   以前はマシン/アプリ/実行プロファイルの3セクションを .tab-panel の高さで均等(3等分)に
-   分け合い、各セクションが個別にスクロールしていたが、内容が少ないセクションでも常に
-   スクロール領域だけ確保されてしまい不格好だった(ユーザー報告)。#panel-profiles 自体を
-   縦スクロールコンテナにし、アプリ/実行プロファイルセクションは内容の自然高さのまま積む。
-   マシンプロファイルセクションだけは左右2ペイン(デバイス一覧+詳細。スプリッターは廃止し
-   一覧幅は内容に自動フィット)という構造上、自然高さにはできないため固定高さ(340px)のまま内部で個別にスクロール
-   させる(machine-profile-body・machine-device-editor は従来どおり individually
-   overflow-y: auto)。DOM順は上から実行/アプリ/マシンプロファイル(ユーザー報告により、
-   使用頻度が高い実行プロファイルを先頭に変更)。 */
+   #panel-profiles 自体を縦スクロールコンテナにし、アプリ/実行プロファイルセクションは
+   内容の自然高さのまま積む。マシンプロファイルセクションだけは左右2ペイン(デバイス一覧+
+   詳細。一覧幅は内容に自動フィット)という構造上、自然高さにはできないため固定高さ(340px)の
+   まま内部で個別にスクロールさせる(machine-profile-body・machine-device-editor は
+   individually overflow-y: auto)。DOM順は上から実行/アプリ/マシンプロファイル。 */
 #panel-profiles {
   overflow-y: auto;
 }
@@ -621,8 +612,7 @@ select:disabled { opacity: 0.5; cursor: default; }
   scroll-margin-top: 40px;
 }
 /* 先頭(実行プロファイル)には border-top を付けない。アプリ/マシンプロファイルは前の
-   セクションとの区切り線として付ける(セクション順の変更に伴い、以前は
-   マシンプロファイル=先頭でborder無し・アプリ/実行=borderありだったのを反転)。 */
+   セクションとの区切り線として付ける。 */
 .run-profile-section {
   flex: 0 0 auto;
 }
@@ -633,17 +623,16 @@ select:disabled { opacity: 0.5; cursor: default; }
 #machine-profile-section {
   flex: 0 0 auto;
   border-top: 1px solid var(--vscode-panel-border, transparent);
-  /* 高さはコンテンツ(デバイス一覧)に応じて伸びる(一覧の内部スクロールは廃止し、
-     ペイン全体の単一スクロールで全デバイスを確認できるようにする。ユーザー指定)。
-     デバイス0件・フォーム非表示時に潰れないよう最小高さだけ確保する。 */
+  /* 高さはコンテンツ(デバイス一覧)に応じて伸びる(内部スクロールは持たず、ペイン全体の
+     単一スクロールで全デバイスを確認できるようにする)。デバイス0件・フォーム非表示時に
+     潰れないよう最小高さだけ確保する。 */
   min-height: 180px;
 }
 
 /* ---- プロファイルタブ: 固定ヘッダ(セクションへのジャンプリンク) ---------------------
-   #panel-profiles が単一の縦スクロールになったことで、下にスクロールすると目的のセクション
-   まで長くスクロールする必要があった(ユーザー報告)。position: sticky で常に上部に
-   貼り付くヘッダを置き、3セクションへのテキストリンクを常設する(全セクションの前=
-   スクロールコンテナ直下)。 */
+   #panel-profiles は単一の縦スクロールのため、下にスクロールすると目的のセクションまで
+   長くスクロールする必要がある。position: sticky で常に上部に貼り付くヘッダを置き、
+   3セクションへのテキストリンクを常設する(全セクションの前=スクロールコンテナ直下)。 */
 .profile-jump-header {
   position: sticky;
   top: 0;
@@ -674,13 +663,10 @@ button.profile-jump-link:hover:not(:disabled) {
 }
 
 /* ---- プロファイルタブ: マシンプロファイルセクション ---------------------------------- */
-/* 2026-07-11 ユーザー指示で薄いグレー背景のヘッダーバーに変更(実行/アプリ/マシン
-   プロファイルの3ヘッダー共通)。当初 sideBarSectionHeader-background を使ったが、
-   Light Modern 等のライトテーマでは #F8F8F8(ほぼ白)でパネル背景と区別できなかった
-   (2026-07-11 ユーザー報告)ため、タブバー(#tabbar)と同じ
-   editorGroupHeader-tabsBackground に変更(どのテーマでもパネル背景よりワントーン濃く、
-   拡張内のタブバーと配色が揃う)。背景がバー状に見えるよう padding も
-   12px 12px 6px(下だけ元々6pxだった)から上下対称の 6px 12px に変更。 */
+/* 薄いグレー背景のヘッダーバー(実行/アプリ/マシンプロファイルの3ヘッダー共通)。色は
+   タブバー(#tabbar)と同じ editorGroupHeader-tabsBackground を使う(どのテーマでもパネル
+   背景よりワントーン濃く、拡張内のタブバーと配色が揃う)。背景がバー状に見えるよう
+   padding は上下対称の 6px 12px にする。 */
 .profile-toolbar {
   flex: 0 0 auto;
   display: flex;
@@ -700,7 +686,7 @@ button.profile-jump-link:hover:not(:disabled) {
   gap: 8px;
   padding: 0 12px 6px;
 }
-/* 「+」の左のラベル(この「+」が何の追加かを示す。2026-07-11 指示で「デバイス」)。 */
+/* 「+」の左のラベル(この「+」が「デバイス」の追加であることを示す)。 */
 .profile-actions-label {
   font-weight: 600;
 }
@@ -718,7 +704,7 @@ button.profile-jump-link:hover:not(:disabled) {
   display: flex;
   min-height: 0;
   /* 一覧と右ペインの間の余白は gap ではなく .machine-device-detail-pane の padding-left で
-     確保する(スプリッター廃止(2026-07-11)後も方針は同じ)。 */
+     確保する。 */
   gap: 0;
   padding: 0 12px 12px 12px;
 }
@@ -733,13 +719,11 @@ button.profile-jump-link:hover:not(:disabled) {
   padding: 12px;
 }
 .machine-device-list {
-  /* 2026-07-11 ユーザー指示で幅は内容に自動フィット(max-content)。長いデバイス名/詳細行
-     (ピル)がはみ出さないよう最長行に合わせて伸び、右ペインの最小幅240pxを侵さないよう
-     max-width でクランプする(min-width は以前のJSクランプ下限と同じ180px。ペインが狭い
-     ときは flex: 0 1 auto の縮小側で譲る)。以前の #profile-splitter ドラッグによる
-     手動幅調整+setState 永続化は自動フィットと両立しないため廃止した。
-     高さはデバイス数に応じて自然に伸びる
-     (内部スクロールは廃止=ペイン全体の単一スクロールで全デバイスを確認する。ユーザー指定)。 */
+  /* 幅は内容に自動フィットする(max-content)。長いデバイス名/詳細行(ピル)がはみ出さない
+     よう最長行に合わせて伸び、右ペインの最小幅240pxを侵さないよう max-width でクランプする
+     (min-width は180px。ペインが狭いときは flex: 0 1 auto の縮小側で譲る)。
+     高さはデバイス数に応じて自然に伸びる(内部スクロールは持たず、ペイン全体の単一
+     スクロールで全デバイスを確認できるようにする)。 */
   flex: 0 1 auto;
   width: max-content;
   min-width: 180px;
@@ -750,26 +734,24 @@ button.profile-jump-link:hover:not(:disabled) {
 .machine-device-row {
   padding: 8px 10px;
   border-bottom: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
-  /* Shift+クリックの範囲選択(2026-07-11)時にブラウザのテキスト範囲選択が同時に走って
+  /* Shift+クリックの範囲選択時にブラウザのテキスト範囲選択が同時に走って
      表示が乱れるのを防ぐ。 */
   user-select: none;
 }
 .machine-device-row:last-child { border-bottom: none; }
-/* テーマのアイテムホバー色(list-hoverBackground)そのままでは濃い、というユーザー指摘
-   (2026-07-11)により、50%透過に薄めて敷く(color-mix。テーマ変数由来なのでライト/ダーク
-   両対応のまま)。device-pick-row のホバー・livePanel の element-row ホバーも同じ式で
-   揃えている。選択中の行にホバーしても選択色を上書きしないよう :not(.selected) を付ける。
-   カーソルは通常のまま(クリックで選択できるが、ポインタ形状での操作誘導はしない。ユーザー指定)。 */
+/* テーマのアイテムホバー色(list-hoverBackground)そのままでは濃いため、50%透過に薄めて
+   敷く(color-mix。テーマ変数由来なのでライト/ダーク両対応のまま)。device-pick-row の
+   ホバー・livePanel の element-row ホバーも同じ式で揃えている。選択中の行にホバーしても
+   選択色を上書きしないよう :not(.selected) を付ける。カーソルは通常のまま(クリックで
+   選択できるが、ポインタ形状での操作誘導はしない)。 */
 .machine-device-row:not(.selected):hover {
   background-color: color-mix(in srgb, var(--vscode-list-hoverBackground) 50%, transparent);
   color: var(--vscode-list-hoverForeground, inherit);
 }
 /* アイテム選択色は拡張内で統一して、プロファイルタブのヘッダーバー(.profile-toolbar)と
-   同じ editorGroupHeader-tabsBackground にする(2026-07-11 ユーザー指示。経緯:
-   activeSelection の濃い青→inactiveSelection の薄いグレー→ヘッダと同色、の順で確定)。
-   「既存のデバイスから選択」のチェック行・ライブ操作パネルの要素行も同じ値。薄い背景
-   なので詳細行(.machine-device-detail)の前景色は上書き不要(descriptionForeground の
-   ままで読める)。 */
+   同じ editorGroupHeader-tabsBackground にする。「既存のデバイスから選択」のチェック行・
+   ライブ操作パネルの要素行も同じ値。薄い背景なので詳細行(.machine-device-detail)の
+   前景色は上書き不要(descriptionForeground のままで読める)。 */
 .machine-device-row.selected {
   background-color: var(--vscode-editorGroupHeader-tabsBackground, rgba(128, 128, 128, 0.15));
 }
@@ -797,8 +779,7 @@ button.profile-jump-link:hover:not(:disabled) {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  /* 一覧と右ペイン内容の間の余白。スプリッター廃止(2026-07-11)で旧サッシ領域の4pxが
-     なくなった分を従来の 8px に足し、見た目の間隔を保つ。 */
+  /* 一覧と右ペイン内容の間の余白。 */
   padding-left: 12px;
 }
 .profile-detail-placeholder {
@@ -811,7 +792,7 @@ button.profile-jump-link:hover:not(:disabled) {
   font-size: 13px;
   padding: 12px;
 }
-/* 選択中デバイスの編集フォーム(要件2)。フォーム行自体は .modal-row を再利用する。 */
+/* 選択中デバイスの編集フォーム。フォーム行自体は .modal-row を再利用する。 */
 .machine-device-editor {
   flex: 1 1 auto;
   min-height: 0;
@@ -824,7 +805,7 @@ button.profile-jump-link:hover:not(:disabled) {
   gap: 8px;
   margin-bottom: 14px;
 }
-/* 編集不可フィールドのラベル表示(テキストボックスではない。ユーザー指定)。
+/* 編集不可フィールドのラベル表示(テキストボックスではない)。
    テキストは選択してコピーできるようにする(user-select: text + cursor: text)。
    編集可の input(高さ約22px)と行の高さを揃え、長い値(UDID等)は省略表示にする
    (DOM には全文があるのでトリプルクリック選択→コピーで全文取得できる)。 */
@@ -942,9 +923,9 @@ button.profile-jump-link:hover:not(:disabled) {
   flex: 1 1 auto;
 }
 /* チェックボックスは VSCode の設定画面(Settings)のチェックボックスと同じ見た目に統一する
-   (2026-07-11 ユーザー指示。settings.checkboxBackground/Border/Foreground のテーマ変数を使う)。
-   以前のネイティブ描画+accent-color は OS 依存の見た目になるため appearance: none で無効化して
-   カスタム描画する。チェックマークは codicon フォントや画像が CSP(外部リソース不可)で
+   (settings.checkboxBackground/Border/Foreground のテーマ変数を使う)。ネイティブ描画+
+   accent-color は OS 依存の見た目になるため appearance: none で無効化してカスタム描画する。
+   チェックマークは codicon フォントや画像が CSP(外部リソース不可)で
    使えない可能性があるため、::after の回転ボーダー(L字を45度回転)で描く。静的2箇所
    (heal・自動インストール)+動的生成3箇所(実行プロファイルのデバイスチェック一覧・
    デバイス選択ダイアログの iOS/Android 行)すべてに共通で効く。 */
@@ -997,7 +978,7 @@ input[type="text"]:disabled { opacity: 0.5; }
    区別できるよう、淡色+イタリックにする(reportDir の "reports" やアプリID欄の
    "bundle id"/"パッケージ名" 等、全 text input のプレースホルダーに共通で効かせる)。 */
 input[type="text"]::placeholder {
-  /* 淡色すぎて目立たなかった(ユーザー報告)ため、ライト/ダーク両テーマで「薄い青」に
+  /* 淡色すぎて目立たないため、ライト/ダーク両テーマで「薄い青」に
      見える vscode-charts-blue を使う(イタリックは維持)。 */
   color: var(--vscode-charts-blue, #3794ff);
   opacity: 0.6;
@@ -1014,14 +995,14 @@ input[type="text"]::placeholder {
 }
 .modal-overlay.visible { display: flex; }
 /* #device-pick-overlay のタイトル行にある「+新規作成」ボタンは、そのモーダルを閉じずに
-   #device-add-overlay を上に重ねて開く(要件6)。ID セレクタなので .modal-overlay の
+   #device-add-overlay を上に重ねて開く。ID セレクタなので .modal-overlay の
    z-index:2000 より詳細度が高く、!important なしで両方 visible のときに手前へ出せる。 */
 #device-add-overlay {
   z-index: 2010;
 }
 /* デバイス追加モーダルは Android のモデル/OSバージョンの選択肢が長く、既定の
-   min-width(400px)だと iOS⇄Android 切替のたびにダイアログ幅が伸縮して見た目が暴れる
-   (2026-07-11 ユーザー報告)。最小幅を広げて通常の選択肢なら幅が変わらないようにし、
+   min-width(400px)だと iOS⇄Android 切替のたびにダイアログ幅が伸縮して見た目が暴れる。
+   最小幅を広げて通常の選択肢なら幅が変わらないようにし、
    それでも収まらない長い選択肢のときだけコンテンツに合わせて広がる。max-width で
    ウィンドウ(webview)内には必ず収める(.modal-row > select は min-width: 0 なので
    上限に達したら select 側が縮んで選択肢テキストが省略される)。 */
@@ -1061,10 +1042,10 @@ input[type="text"]::placeholder {
   min-width: 0;
 }
 /* heal チェックボックス(#run-profile-heal)等、.modal-row 直下のチェックボックスは
-   上のルールの flex: 1 1 auto が効いて行いっぱいに引き伸ばされてしまう(ユーザー報告)。
+   上のルールの flex: 1 1 auto が効いて行いっぱいに引き伸ばされてしまう。
    flex を打ち消して左寄せし、margin-right: auto で行の残り幅を右側の余白にする。
-   寸法・配色はグローバルの input[type="checkbox"] ルール(VSCode設定画面風のカスタム描画。
-   2026-07-11)に任せるため、ここでは width/height/accent-color を持たない。 */
+   寸法・配色はグローバルの input[type="checkbox"] ルール(VSCode設定画面風のカスタム描画)に
+   任せるため、ここでは width/height/accent-color を持たない。 */
 .modal-row > input[type="checkbox"] {
   flex: 0 0 auto;
   margin: 0;
@@ -1082,12 +1063,11 @@ input[type="text"]::placeholder {
   cursor: pointer;
 }
 /* ラジオはチェックボックス(グローバルの input[type="checkbox"] ルール=VSCode設定画面風の
-   カスタム描画)とスタイルを揃える(2026-07-11 ユーザー指示)。同じ寸法(18px)・同じ
-   テーマ変数(settings.checkbox 系)で、形だけ円形(border-radius: 50%)にし、チェック
-   状態は ::after の中央ドットで描く。appearance: none にするのはチェックボックスと同じ
-   理由(OS依存の見た目を避ける)に加え、ネイティブ描画時代に VSCode webview の既定
-   スタイル input:focus { outline: 1px solid ...; outline-offset: -1px } がクリックしただけで
-   円形ラジオに四角い枠を描いてしまう問題(同日ユーザー報告)があったため。outline: none
+   カスタム描画)とスタイルを揃える。同じ寸法(18px)・同じテーマ変数(settings.checkbox 系)で、
+   形だけ円形(border-radius: 50%)にし、チェック状態は ::after の中央ドットで描く。
+   appearance: none にするのはチェックボックスと同じ理由(OS依存の見た目を避ける)に加え、
+   VSCode webview の既定スタイル input:focus { outline: 1px solid ...; outline-offset: -1px }
+   がクリックしただけで円形ラジオに四角い枠を描いてしまう問題があったため。outline: none
    (詳細度21)は既定スタイル(input:focus=11)に常に勝ち、マウスクリックでは枠が出ない。 */
 .modal-radio input[type="radio"] {
   -webkit-appearance: none;
@@ -1124,7 +1104,7 @@ input[type="text"]::placeholder {
 /* disabled の淡色化は .modal-radio:has(input:disabled) がラベルごと行うため、ここでは
    カーソルだけ戻す(opacity を重ねると二重に薄くなる)。 */
 .modal-radio input[type="radio"]:disabled { cursor: default; }
-/* OS種別ラジオの選択ドットはプラットフォームの色にする(2026-07-11 ユーザー指示)。
+/* OS種別ラジオの選択ドットはプラットフォームの色にする。
    色はデバイス名ピル(.tile-name-ios / .tile-name-android)と同じ値。 */
 #dlg-platform-ios:checked::after {
   background-color: #29b6f6;
@@ -1161,11 +1141,10 @@ input[type="text"]::placeholder {
 
 /* ---- 「+既存から選択」モーダル(#device-pick-overlay) ------------------------------------
    実機で iOS シミュレータ62台・Android AVD24個などインストール済みデバイスが大量にある
-   前提の設計(コーディネーター指示)。iOS/Android を同時に見比べられるよう左右2カラムに分割し、
-   各カラムを独立に固定上限(50vh)でスクロールさせる(従来の一覧全体1本のスクロールは廃止)。
-   タイトル・エラー行・OK/キャンセルは常に画面内に収める。2カラムでも名前+詳細が読める幅を
-   確保するため、通常の .modal-dialog(400px)よりかなり広い min-width にする(狭い画面では
-   max-width で画面内に収める)。 */
+   前提の設計。iOS/Android を同時に見比べられるよう左右2カラムに分割し、各カラムを独立に
+   固定上限(50vh)でスクロールさせる。タイトル・エラー行・OK/キャンセルは常に画面内に収める。
+   2カラムでも名前+詳細が読める幅を確保するため、通常の .modal-dialog(400px)よりかなり広い
+   min-width にする(狭い画面では max-width で画面内に収める)。 */
 #device-pick-overlay .modal-dialog {
   min-width: 640px;
   max-width: calc(100vw - 48px);
@@ -1176,11 +1155,10 @@ input[type="text"]::placeholder {
   margin-bottom: 8px;
 }
 /* グループ=見出し+スクロール本体の縦flex。スクロールは本体(.device-pick-group-body)だけに
-   持たせ、見出しはスクロール領域の外で常に固定表示にする(2026-07-11 ユーザー指示)。
-   以前は カラム全体をスクロールコンテナにして見出しを position: sticky にしていたが、
+   持たせ、見出しはスクロール領域の外で常に固定表示にする。position: sticky にすると、
    行のチェックボックスがカスタム描画で position: relative(=位置指定要素)のため、
-   z-index の無い sticky 見出しより上に描画されてしまい、スクロールすると見出しに
-   チェックボックスが被る問題があった。 */
+   z-index の無い sticky 見出しより上に描画されてしまい、スクロール時に見出しへチェック
+   ボックスが被ってしまう。 */
 .device-pick-group {
   flex: 1 1 0;
   min-width: 0;
@@ -1212,21 +1190,20 @@ input[type="text"]::placeholder {
 }
 /* 選択中(登録される)行にホバーしても選択色を上書きしないよう :not(.checked) を付ける
    (.machine-device-row の :not(.selected):hover と同じ方針)。ホバー色を50%透過に薄める
-   理由も .machine-device-row 側のコメント参照(2026-07-11 ユーザー指摘)。 */
+   理由も .machine-device-row 側のコメント参照。 */
 .device-pick-row:not(.checked):hover {
   background-color: color-mix(in srgb, var(--vscode-list-hoverBackground) 50%, transparent);
 }
 /* チェックON=登録される行に背景を敷き、チェックボックス以外でも選択状態が一目で分かる
-   ようにする(2026-07-11 ユーザー指示)。色は薄いグレーの非フォーカス選択色
-   (inactiveSelectionBackground)。一時、他の選択色と同じヘッダー色
-   (editorGroupHeader-tabsBackground)に統一したが、このモーダルだけは元に戻す指示があった
-   (同日)=マシンプロファイルのデバイス行・ライブ操作パネルの選択色とは意図的に別の値。
-   前景色は上書きしない(薄い背景なら詳細行の descriptionForeground のままで読める)。 */
+   ようにする。色は薄いグレーの非フォーカス選択色(inactiveSelectionBackground)で、
+   マシンプロファイルのデバイス行・ライブ操作パネルの選択色(editorGroupHeader-
+   tabsBackground)とは意図的に別の値にしている。前景色は上書きしない(薄い背景なら
+   詳細行の descriptionForeground のままで読める)。 */
 .device-pick-row.checked {
   background-color: var(--vscode-list-inactiveSelectionBackground, rgba(128, 128, 128, 0.18));
 }
-/* 寸法・配色はグローバルの input[type="checkbox"] ルール(VSCode設定画面風のカスタム描画。
-   2026-07-11)に任せる。UA既定margin だけ打ち消し、行内の間隔は .device-pick-row の
+/* 寸法・配色はグローバルの input[type="checkbox"] ルール(VSCode設定画面風のカスタム描画)に
+   任せる。UA既定margin だけ打ち消し、行内の間隔は .device-pick-row の
    gap: 8px で確保する。 */
 .device-pick-row input[type="checkbox"] {
   margin: 0;
@@ -1239,7 +1216,7 @@ input[type="text"]::placeholder {
   gap: 2px;
 }
 /* デバイス名は他画面(タイル/レーン/マシンプロファイル一覧)と同じ配色ピル(.tile-name /
-   .tile-name-ios / .tile-name-android)を共用する(要件2。色分けで統一感を出す)。
+   .tile-name-ios / .tile-name-android)を共用する(色分けで統一感を出す)。
    縦積み(flex-direction: column)の中では align-items の既定 stretch でピルが行幅いっぱいに
    伸びてしまうため、align-self: flex-start でテキスト幅にフィットさせる。 */
 .device-pick-row-name {
@@ -1265,7 +1242,7 @@ input[type="text"]::placeholder {
   align-items: center;
   justify-content: space-between;
 }
-/* チェックを外すと登録解除される旨の常設注記(要件5)。誤操作への注意喚起だが、常時
+/* チェックを外すと登録解除される旨の常設注記。誤操作への注意喚起だが、常時
    目に入ると煩わしいため小さく・淡色にする(.modal-error より優先度が低い情報のため)。 */
 .device-pick-note {
   font-size: 11px;

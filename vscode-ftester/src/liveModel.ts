@@ -18,9 +18,7 @@
 //     state の語彙は ApiMonitorCommand.determineStates が使う実際の3値
 //     (monitorModel.ts の MonitorDeviceState と同一)。
 //   `ftester api live serve --platform <p> [--port <n>|--serial <s>]`(常駐。stdin から NDJSON で
-//   コマンドを1行ずつ受け、逐次処理する。Phase 4 高速化: 旧ワンショット版
-//   (snapshot/tap/type/swipe/press/launch/terminate/install の各サブコマンド)は単一実装原則により
-//   削除済み):
+//   コマンドを1行ずつ受け、逐次処理する):
 //     コマンド(host → serve、stdin 1行1コマンド): buildServeCommand 系の各関数を参照。
 //       {"cmd":"tap","ref":<Int>} / {"cmd":"tap","x":<Double>,"y":<Double>} /
 //       {"cmd":"type","text":<String>,"ref":<Int|null>} /
@@ -225,9 +223,8 @@ export function parseLiveActionResult(value: unknown): LiveActionResult | undefi
 }
 
 // ---- live serve(常駐プロセス)のコマンド組み立て・イベント検証 -------------------------------------
-// Phase 4 高速化: 1操作ごとにワンショット spawn していた `ftester api live <sub>` を廃止し、
-// パネル(デバイス)ごとに常駐させる `ftester api live serve` の stdin に NDJSON でコマンドを
-// 送り、stdout の NDJSON イベントを受ける方式に置き換えた。ファイル冒頭のプロトコル参照。
+// パネル(デバイス)ごとに常駐する `ftester api live serve` の stdin に NDJSON でコマンドを
+// 送り、stdout の NDJSON イベントを受ける方式で操作する。ファイル冒頭のプロトコル参照。
 
 export type LiveServeCommand =
   | { readonly cmd: "tap"; readonly ref: number }

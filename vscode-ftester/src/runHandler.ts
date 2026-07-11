@@ -155,7 +155,7 @@ async function executeRun(
     args.push("--scenario", id);
   }
   // --profile と --platform/--port/--serial は ftester api run 側で同時指定不可なので、
-  // profile が非空のときはそちらだけを渡す(空なら従来通り platform/port/serial を渡す)。
+  // profile が非空のときはそちらだけを渡す(空なら platform/port/serial を渡す)。
   const profile = config.profile.trim();
   if (profile.length > 0) {
     args.push("--profile", profile);
@@ -351,7 +351,7 @@ async function executeDebugRun(
     heal: config.heal,
   };
   // --profile と --platform/--port/--serial は ftester api run 側で同時指定不可なので、
-  // profile が非空のときはそちらだけを渡す(空なら従来通り platform/port/serial を渡す)。
+  // profile が非空のときはそちらだけを渡す(空なら platform/port/serial を渡す)。
   const profile = config.profile.trim();
   if (profile.length > 0) {
     debugConfig.profile = profile;

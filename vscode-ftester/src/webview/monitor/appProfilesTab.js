@@ -1,8 +1,6 @@
 // appProfilesTab.js
-// 「プロファイル」タブ中段の「アプリプロファイル」設定フォームを担う。Phase 3(main.js の
-// モジュール分割)で main.js の「---- プロファイルタブ中段: アプリプロファイルの設定フォーム
-// ----」節から抽出した。他モジュールの状態には依存せず、vscode の postMessage/受信ハンドラの
-// みで完結する。
+// 「プロファイル」タブ中段の「アプリプロファイル」設定フォームを担う。他モジュールの状態には
+// 依存せず、vscode の postMessage/受信ハンドラのみで完結する。
 
 import { vscode } from './vscodeApi.js';
 
@@ -35,9 +33,8 @@ const appProfileCancel = document.getElementById('app-profile-cancel');
 // common/ios/android それぞれの DOM 参照をまとめて持つ(renderAppProfileEditor・
 // collectAppProfileFields・appProfileValuesEqual・setAppProfileControlsEnabled が使う)。
 // common は表示名(appName)+自動インストールのチェックボックス(heal と同じマークアップ。
-// 既定=チェックOFF=無効)、ios/android は app/appPath が廃止されフォーム自体に無いため
-// 表示名/アプリID/パッケージパスの3項目のみ(自動インストールを common に一本化した
-// 2026-07-11 指示に伴い、以前ここにあった autoInstall チェックボックスは common へ移設)。
+// 既定=チェックOFF=無効)を持ち、ios/android は自動インストールを持たず表示名/アプリID/
+// パッケージパスの3項目のみ(自動インストールは common に一本化されている)。
 const appProfileGroups = {
   common: {
     appName: document.getElementById('app-profile-common-app-name'),
@@ -59,11 +56,8 @@ const APP_PROFILE_GROUP_NAMES = ['common', 'ios', 'android'];
 const APP_PROFILE_PLATFORM_GROUP_NAMES = ['ios', 'android'];
 
 // 自動インストールはチェックボックス1つで内部表現("true"/"false")の読み書きを行う
-// (monitorModel.ts の AppProfileCommonFields.autoInstall と同じ2値の文字列。common に
-// 一本化される前は AppProfilePlatformFields.autoInstall として ios/android 別に持っていたが、
-// dom.autoInstall を読み書きする形自体は変わらないため、呼び出し側を
-// appProfileGroups.common に変えるだけで済んだ。保存意味論(true→autoInstall:trueをセット、
-// false→キー削除)も不変)。
+// (monitorModel.ts の AppProfileCommonFields.autoInstall と同じ2値の文字列)。保存意味論:
+// true→autoInstall:true をセット、false→キー削除。
 function getAppProfileAutoInstall(dom) {
   return dom.autoInstall.checked ? 'true' : 'false';
 }
@@ -236,7 +230,7 @@ function renderAppProfileEditor(fields) {
   for (const group of APP_PROFILE_GROUP_NAMES) {
     appProfileGroups[group].appName.value = fields[group].appName;
   }
-  // 自動インストールは common に一本化されている(2026-07-11 指示)。
+  // 自動インストールは common に一本化されている。
   setAppProfileAutoInstall(appProfileGroups.common, fields.common.autoInstall);
   // アプリID・パッケージパスは ios/android のみ(common には無い)。
   for (const group of APP_PROFILE_PLATFORM_GROUP_NAMES) {
