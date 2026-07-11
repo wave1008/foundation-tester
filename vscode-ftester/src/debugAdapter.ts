@@ -1,10 +1,9 @@
 // debugAdapter.ts
-// ftester シナリオ用の Debug Adapter Protocol (DAP) 実装本体。
+// ftester シナリオ用の Debug Adapter Protocol (DAP) 実装。
 //
-// 依存は @vscode/debugadapter / @vscode/debugprotocol / node:child_process 等のみで、
-// "vscode" モジュールには一切依存しない(vscode API 側の配線は debugConfig.ts に寄せる)。
-// これにより test/dap.test.mjs は実エディタ無しでこのクラスを直接 new して
-// handleMessage()/onDidSendMessage() だけでプロトコルを駆動し、単体テストできる。
+// "vscode" モジュールに依存しない(配線は debugConfig.ts に寄せる)。これにより
+// test/dap.test.mjs は実エディタ無しでこのクラスを直接 new し handleMessage()/
+// onDidSendMessage() だけでプロトコルを駆動して単体テストできる。
 //
 // スレッドは常に1本(THREAD_ID)。`ftester api run --debug` は --scenario を1件だけ
 // 受け付ける前提に合わせている(Sources/ftester/ApiRunCommand.swift)。
@@ -63,9 +62,9 @@ export interface FtesterLaunchRequestArguments extends DebugProtocol.LaunchReque
   dryRun?: boolean;
   stopOnEntry?: boolean;
   skipBuild?: boolean;
-  /** FM によるロケータ自己修復(--heal)を有効にする(dryRun 指定時は付与されない)。 */
+  /** FM によるロケータ自己修復(--heal)を有効にする。 */
   heal?: boolean;
-  /** 実行プロファイル名。非空なら --profile を渡し、platform/port/serial は渡さない。 */
+  /** 実行プロファイル名。platform/port/serial との組合せ規則は startDebuggee 参照。 */
   profile?: string;
   platform?: "ios" | "android";
   port?: number;
@@ -401,9 +400,8 @@ export class FtesterDebugSession extends DebugSession {
       return;
     }
     this.child = child;
-    // プロセス終了直後に writeCommand() が stdin へ書き込むと EPIPE が非同期の 'error' として
-    // 発火し、リスナーが無いと Node プロセスごと落ちる。ScenarioRunControl.send() 側の
-    // 「broken pipe は無視する」というコメントと同じ理由で、ここでも無視してよい。
+    // プロセス終了直後の writeCommand() で EPIPE が非同期 'error' として発火し、リスナーが
+    // 無いと Node プロセスごと落ちる。ScenarioRunControl.send() と同じ理由で無視してよい。
     child.stdin.on("error", () => undefined);
 
     const stdoutParser = new NdjsonParser(

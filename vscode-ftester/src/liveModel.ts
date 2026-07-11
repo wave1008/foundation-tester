@@ -1,40 +1,14 @@
 // liveModel.ts
-// ライブ操作パネル(livePanel.ts)向けの vscode 非依存ロジック:
-//   - `ftester api list-devices` の stdout JSON の検証・型定義
-//   - `ftester api live serve`(常駐プロセス)の NDJSON コマンド組み立て・イベント検証・型定義
-//   - スクリーンショットのクリック位置 → デバイスのポイント座標への変換
-//     (ftester-gui/LiveView.swift の ScreenshotView と同じ比例変換)
-//   - snapshot 要素の frame(ポイント座標)→ 画面上の表示pxでの矩形への変換(ホバー枠オーバーレイ用)
-//   - 要素一覧の1行表示フォーマット(ftester-gui/LiveView.swift の elementLine と同じ)
-//   - デバイス選択 → `--platform`/`--port`/`--serial` の CLI 引数組み立て・デバイス同一性判定
-//   - webview との postMessage プロトコル型・検証(monitorModel.ts と同じ方針でここにまとめる)
+// ライブ操作パネル(livePanel.ts)向けの vscode 非依存ロジック(検証・型定義・座標変換・
+// webview プロトコル)。
 //
 // 契約(Sources/ftester/ApiListDevicesCommand.swift・ApiLiveCommand.swift):
-//   `ftester api list-devices --project <p>`:
-//     成功: stdout 1行JSON {"project":"..","machine":"..","devices":[
-//       {"name":"..","platform":"ios"|"android","state":"connected"|"booted"|"offline",
-//        "detail":"..","port":<port>|null,"serial":<serial>|null}, ...]}
-//     失敗(マシンプロファイル未設定等): stdout 出力なし・非0終了(診断は stderr のみ)。
-//     state の語彙は ApiMonitorCommand.determineStates が使う実際の3値
-//     (monitorModel.ts の MonitorDeviceState と同一)。
+//   `ftester api list-devices --project <p>`: 成功時は stdout 1行JSON、失敗時
+//   (マシンプロファイル未設定等)は stdout 出力なし・非0終了(診断は stderr のみ)。
 //   `ftester api live serve --platform <p> [--port <n>|--serial <s>]`(常駐。stdin から NDJSON で
-//   コマンドを1行ずつ受け、逐次処理する):
-//     コマンド(host → serve、stdin 1行1コマンド): buildServeCommand 系の各関数を参照。
-//       {"cmd":"tap","ref":<Int>} / {"cmd":"tap","x":<Double>,"y":<Double>} /
-//       {"cmd":"type","text":<String>,"ref":<Int|null>} /
-//       {"cmd":"swipe","direction":"up"|"down"|"left"|"right"} / {"cmd":"launch","bundle":<String>} /
-//       {"cmd":"terminate"} / {"cmd":"install","path":<String>} / {"cmd":"refresh"}
-//     イベント(serve → stdout、NDJSON。refresh 以外はまず actionResult、続けて snapshot の2行。
-//     refresh は snapshot の1行だけ):
-//       {"kind":"actionResult","ok":true|false,"error":".."|null}
-//       {"kind":"snapshot","ok":true,"error":null,"platform":"..","screen":{"width":..,"height":..},
-//        "image":"<base64 JPEG>","elements":[{"ref":1,"type":"..","label":..|null,
-//        "identifier":..|null,"value":..|null,"frame":{"x":..,"y":..,"width":..,"height":..}}, ...]}
-//       {"kind":"snapshot","ok":false,"error":"..","platform":null,"screen":null,"image":null,
-//        "elements":null}
-//     parseLiveServeEvent が "kind" で判別して actionResult/snapshot それぞれの形を返す
-//     (中身の検証は既存の isLiveOkResult/isLiveErrorResult/isLiveSnapshot を再利用。これらは
-//     構造的な検証のため "kind" フィールドの有無に関わらずそのまま使える)。
+//   コマンドを1行ずつ受け、逐次処理する。コマンド/イベントの形は LiveServeCommand/LiveServeEvent
+//   型を参照): イベントは refresh 以外は actionResult→snapshot の順で2行、refresh は snapshot の
+//   1行のみ(parseLiveServeEvent が "kind" で判別)。
 
 import type { MonitorDeviceState, MonitorPlatform } from "./monitorModel";
 
@@ -94,7 +68,6 @@ export function isListDevicesResult(value: unknown): value is ListDevicesResult 
   );
 }
 
-/** `ftester api list-devices` の stdout JSON を検証し、妥当な形なら返す(不正/未出力なら undefined)。 */
 export function parseListDevicesResult(value: unknown): ListDevicesResult | undefined {
   return isListDevicesResult(value) ? value : undefined;
 }
@@ -172,7 +145,6 @@ function isLiveElement(value: unknown): value is LiveElement {
   );
 }
 
-/** `ftester api live snapshot` の成功時出力として妥当かどうかを判定する(失敗形は別途 isLiveErrorResult)。 */
 export function isLiveSnapshot(value: unknown): value is LiveSnapshot {
   if (!isRecord(value) || value.ok !== true) {
     return false;
@@ -200,7 +172,6 @@ export function isLiveOkResult(value: unknown): value is LiveOkResult {
   return isRecord(value) && value.ok === true;
 }
 
-/** snapshot の応答(成功=LiveSnapshot / 失敗=LiveErrorResult)を検証する。どちらの形でもなければ undefined。 */
 export function parseLiveSnapshotResult(value: unknown): LiveSnapshot | LiveErrorResult | undefined {
   if (isLiveSnapshot(value)) {
     return value;
@@ -211,7 +182,6 @@ export function parseLiveSnapshotResult(value: unknown): LiveSnapshot | LiveErro
   return undefined;
 }
 
-/** tap/type/swipe/press/launch/terminate/install の応答を検証する。どちらの形でもなければ undefined。 */
 export function parseLiveActionResult(value: unknown): LiveActionResult | undefined {
   if (isLiveOkResult(value)) {
     return { ok: true };
@@ -222,9 +192,7 @@ export function parseLiveActionResult(value: unknown): LiveActionResult | undefi
   return undefined;
 }
 
-// ---- live serve(常駐プロセス)のコマンド組み立て・イベント検証 -------------------------------------
-// パネル(デバイス)ごとに常駐する `ftester api live serve` の stdin に NDJSON でコマンドを
-// 送り、stdout の NDJSON イベントを受ける方式で操作する。ファイル冒頭のプロトコル参照。
+// ---- live serve(常駐プロセス)のコマンド組み立て・イベント検証(契約はファイル冒頭参照) -----------
 
 export type LiveServeCommand =
   | { readonly cmd: "tap"; readonly ref: number }
@@ -246,14 +214,9 @@ export type LiveServeEvent =
   | { readonly kind: "snapshot"; readonly result: LiveSnapshot | LiveErrorResult };
 
 /**
- * serve の stdout から届いた NDJSON 1行(JSON.parse 済みの unknown)を "kind" で判別し、
- * actionResult/snapshot のどちらかとして検証する。中身の検証は既存の
- * parseLiveActionResult/parseLiveSnapshotResult(内部で isLiveOkResult/isLiveErrorResult/
- * isLiveSnapshot を使う)をそのまま再利用するが、それらは検証対象をそのまま返す(=入力に
- * 含まれる "kind" フィールドが LiveActionResult/LiveSnapshot 側にも残ってしまう)ため、
- * ここで ok/error(/platform/screen/image/elements)だけを持つ形に正規化して詰め直す
- * ("kind" は envelope 側の情報であり、中身の型に漏れ出すべきではないため)。
- * "kind" が無い/未知、または中身が期待した形でなければ undefined。
+ * NDJSON 1行を "kind" で actionResult/snapshot に振り分ける。中身の検証は
+ * parseLiveActionResult/parseLiveSnapshotResult に委ねるが、それらの戻り値には envelope 側の
+ * "kind" が残らないため、ここで詰め直す。判別不能なら undefined。
  */
 export function parseLiveServeEvent(value: unknown): LiveServeEvent | undefined {
   if (!isRecord(value) || typeof value.kind !== "string") {
@@ -288,16 +251,12 @@ export function parseLiveServeEvent(value: unknown): LiveServeEvent | undefined 
 }
 
 // ---- 座標変換 ---------------------------------------------------------------------------
-// 契約: snapshot の screen / elements[].frame はポイント座標。スクリーンショット画像は
-// screen のアスペクト比のまま(レターボックス無く)表示される前提(ftester-gui/LiveView.swift の
-// ScreenshotView と同じ)。表示側の座標系は画像左上を原点とする表示px。
+// 契約: screen/frame はポイント座標、表示側は画像左上を原点とする表示px。画像は screen の
+// アスペクト比のままレターボックス無しで表示される前提(ftester-gui/LiveView.swift の
+// ScreenshotView と同じ)。
 
-/**
- * 画像の表示pxでのクリック位置 → デバイスのポイント座標に変換する
- * (GUI版 ScreenshotView.gesture の比例変換と同じ計算: local / fit * screen)。
- * 表示サイズ・screen サイズのいずれかが未確定(0以下)の場合は (0, 0) を返す。
- * 変換結果は screen の範囲にクランプする(表示要素の端ぎりぎりのクリックで範囲外にならないため)。
- */
+/** クリック位置(表示px)→ ポイント座標(GUI版 ScreenshotView.gesture と同じ比例変換)。
+ * 範囲外クリックでも screen の範囲にクランプする。 */
 export function pointFromClick(click: LivePoint, display: LiveSize, screen: LiveSize): LivePoint {
   if (display.width <= 0 || display.height <= 0 || screen.width <= 0 || screen.height <= 0) {
     return { x: 0, y: 0 };
@@ -310,11 +269,7 @@ export function pointFromClick(click: LivePoint, display: LiveSize, screen: Live
   };
 }
 
-/**
- * snapshot 要素の frame(ポイント座標)→ 画像の表示pxでの矩形に変換する(要素一覧のホバー時、
- * 画像上に枠をオーバーレイ表示するために使う)。pointFromClick と対になる変換。
- * screen サイズが未確定(0以下)の場合は全て0の矩形を返す。
- */
+/** ポイント座標→表示pxの矩形(pointFromClick の逆変換)。要素一覧ホバー時の枠オーバーレイに使う。 */
 export function frameToDisplayRect(frame: LiveRect, screen: LiveSize, display: LiveSize): LiveRect {
   if (screen.width <= 0 || screen.height <= 0) {
     return { x: 0, y: 0, width: 0, height: 0 };
@@ -357,7 +312,6 @@ export interface LiveDeviceRef {
   readonly serial: string | null;
 }
 
-/** デバイス参照から `--platform`/`--port`/`--serial` の CLI 引数配列を組み立てる。 */
 export function buildDeviceArgs(device: LiveDeviceRef): string[] {
   const args = ["--platform", device.platform];
   if (device.platform === "ios") {
@@ -370,10 +324,7 @@ export function buildDeviceArgs(device: LiveDeviceRef): string[] {
   return args;
 }
 
-/**
- * 2つのデバイス参照が同一デバイスを指すかどうかを判定する(livePanel.ts が serve プロセスを
- * 再バインドすべきかどうか[選択デバイスが実際に変わったか]の判定に使う)。
- */
+/** デバイス参照の同一性判定(livePanel.ts の serve 再バインド要否判定に使う)。 */
 export function sameLiveDeviceRef(a: LiveDeviceRef, b: LiveDeviceRef): boolean {
   return a.platform === b.platform && a.port === b.port && a.serial === b.serial;
 }
@@ -410,11 +361,8 @@ export interface LiveDeviceOption {
   readonly serial: string | null;
 }
 
-/**
- * list-devices の結果をセレクタ用のオプション列に変換する。id はデバイス名(machines プロファイルの
- * 検証で ios/android 横断で一意であることが保証されている)を使うので、一覧の並び替え・再取得を
- * 挟んでも選択状態を維持できる。
- */
+/** id はデバイス名(machines プロファイル検証で ios/android 横断の一意性が保証済み)を使うため、
+ * 一覧の並び替え・再取得を挟んでも選択状態を維持できる。 */
 export function devicesToOptions(devices: readonly LiveDevice[]): LiveDeviceOption[] {
   return devices.map((device) => ({
     id: `${device.platform}:${device.name}`,
@@ -429,7 +377,6 @@ export function devicesToOptions(devices: readonly LiveDevice[]): LiveDeviceOpti
 
 export const FALLBACK_DEVICE_ID = "config-fallback";
 
-/** list-devices が失敗した場合の「設定のデバイス」1件フォールバック。 */
 export function fallbackDeviceOption(source: FallbackDeviceSource): LiveDeviceOption {
   const ref = buildFallbackDevice(source);
   return {
@@ -468,7 +415,6 @@ export type LiveToWebviewMessage =
   | { readonly type: "busy"; readonly busy: boolean }
   | { readonly type: "installPathPicked"; readonly platform: LivePlatform; readonly path: string };
 
-/** LiveSnapshot → { type: "snapshot", ... } メッセージへの変換(elements に line を付与する)。 */
 export function toSnapshotMessage(snapshot: LiveSnapshot): LiveToWebviewMessage {
   return {
     type: "snapshot",
@@ -500,7 +446,6 @@ export type LiveFromWebviewMessage =
 
 const SWIPE_DIRECTIONS: ReadonlySet<string> = new Set(["up", "down", "left", "right"]);
 
-/** webview からの postMessage 値を LiveFromWebviewMessage として扱ってよいか判定する。 */
 export function isLiveFromWebviewMessage(value: unknown): value is LiveFromWebviewMessage {
   if (!isRecord(value) || typeof value.type !== "string") {
     return false;

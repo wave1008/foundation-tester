@@ -1,10 +1,7 @@
 // monitorProfilesController.ts
 // デバイスモニターパネル(monitorPanel.ts)の「プロファイル」タブ関連ロジック。
-// MonitorProfilesController クラスは、実行プロファイル・アプリプロファイル・マシンプロファイルの
-// 一覧post/CRUD(追加・コピー・削除・名前変更)・フォームのロード/保存・名前入力モーダル
-// (promptName)を担う。モニタープロセスの再起動判定(restartMonitorIfScopeChanged)・
-// デバイスライフサイクルキューへの投入は monitorPanel.ts のメインコントローラが仲介するため、
-// このクラスからは直接呼ばない(サブコントローラ間の直接参照禁止)。
+// モニター再起動判定・デバイスライフサイクルキューへの投入は monitorPanel.ts が仲介するため、
+// このクラスから直接呼ばない(サブコントローラ間の直接参照禁止)。
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -39,58 +36,40 @@ import {
 import { summarizeDeviceNames } from "./monitorDeviceOps";
 import type { MonitorPanelDeps } from "./monitorPanel";
 
-/** webview からの "machineDeviceUpdate" メッセージの形(handleMachineDeviceUpdate で使う)。 */
 type MachineDeviceUpdateMessage = Extract<MonitorFromWebviewMessage, { type: "machineDeviceUpdate" }>;
-
-/** webview からの "machineDevicesSync" メッセージの形(handleMachineDevicesSync で使う)。 */
 type MachineDevicesSyncMessage = Extract<MonitorFromWebviewMessage, { type: "machineDevicesSync" }>;
-
-/** webview からの "runProfileSave" メッセージの形(handleRunProfileSave で使う)。 */
 type RunProfileSaveMessage = Extract<MonitorFromWebviewMessage, { type: "runProfileSave" }>;
-
-/** webview からの "appProfileSave" メッセージの形(handleAppProfileSave で使う)。 */
 type AppProfileSaveMessage = Extract<MonitorFromWebviewMessage, { type: "appProfileSave" }>;
 
 /**
- * 「プロファイル」タブ(実行/アプリ/マシンプロファイル)の一覧post・CRUD・フォームのロード/保存・
- * 名前入力モーダルを担う。MonitorPanelController が1つ保持し、handleWebviewMessage の各ケースから
- * 公開メソッドを呼び出す。ftester.profile 設定の更新(selectProfile)・onDidChangeConfiguration
- * への追随(postProfileInfo/postMachineProfileInfo の再送)もここが担当する
- * (モニター再起動の要否判定自体は monitorPanel.ts 側)。
+ * 「プロファイル」タブ(実行/アプリ/マシンプロファイル)のCRUD・フォーム・名前入力モーダルを担う。
+ * モニター再起動の要否判定は monitorPanel.ts 側が行う。
  */
 export class MonitorProfilesController {
   /**
-   * Projects 配下の各プロジェクトの profiles/runs ディレクトリにある .json ファイルの作成・削除・
-   * 変更を監視する。作成・削除は実行プロファイル選択ドロップダウンを最新化する(拡張内の追加/
-   * コピー/削除ボタン経由に限らず、エクスプローラーでの手動削除や他ツールでの追加もドロップダウンへ
-   * 自動反映されるようにする目的)。変更(Change)は一覧にも選択名にも影響しないため
-   * postProfileInfo() は呼ばない代わりに、「プロファイル」タブ下半分の実行プロファイル設定
-   * フォームの編集対象と同名であれば runProfileFileChanged を webview へ送り、外部編集(手動編集や
-   * 他ツール)をフォームへ自動反映させる(編集中でなければ、の判定は webview 側が行う)。
+   * profiles/runs/*.json の作成・削除・変更を監視する。作成・削除は postProfileInfo() で
+   * ドロップダウンを最新化する(手動削除や他ツールでの追加も反映するため)。変更(Change)は
+   * 一覧・選択名に影響しないため postProfileInfo() は呼ばず、編集対象と同名であれば
+   * runProfileFileChanged を送って外部編集をフォームへ反映させる(編集中かの判定は webview 側)。
    */
   private readonly profileFileWatcher: vscode.FileSystemWatcher;
   /**
-   * Projects 配下の各プロジェクトの profiles/machines ディレクトリにある .json ファイルの
-   * 作成・削除・変更を監視し、「プロファイル」タブのマシンプロファイル一覧を最新化する。
-   * profileFileWatcher と違い Change も購読する — マシンプロファイルへのデバイス追記
-   * (create-device 成功後や手動編集)は既存ファイルの内容変更として届くため。
+   * profiles/machines/*.json を監視し、マシンプロファイル一覧を最新化する。profileFileWatcher と
+   * 異なり Change も購読する — デバイス追記(create-device 成功後や手動編集)が既存ファイルの
+   * 内容変更として届くため。
    */
   private readonly machineFileWatcher: vscode.FileSystemWatcher;
   /**
-   * Projects 配下の各プロジェクトの profiles/apps ディレクトリにある .json ファイルの作成・削除・
-   * 変更を監視する(profileFileWatcher と同じ方針)。作成・削除は profileInfo(apps 一覧を含む)を
-   * 最新化する postProfileInfo() を呼ぶ。変更(Change)は一覧・選択名には影響しないため、
-   * 「プロファイル」タブ中段のアプリプロファイル設定フォームの編集対象と同名であれば
-   * appProfileFileChanged を webview へ送り、外部編集を自動反映させる。
+   * profiles/apps/*.json を監視する(profileFileWatcher と同方針)。作成・削除は postProfileInfo()、
+   * 変更は編集対象と同名であれば appProfileFileChanged を送り外部編集を反映させる。
    */
   private readonly appsFileWatcher: vscode.FileSystemWatcher;
   /**
-   * 名前入力モーダル(#name-input-overlay)の応答待ち状態。promptName() の呼び出しごとに
-   * id を払い出し、webview からの nameInputConfirm/nameInputCancel の id と突き合わせて
-   * resolve する(showInputBox 相当の Promise ベースの対話を webview 側モーダルで再現する)。
+   * 名前入力モーダル(#name-input-overlay)の応答待ち状態。promptName() 呼び出しごとに id を払い出し、
+   * webview からの nameInputConfirm/Cancel の id と突き合わせて resolve する。
    */
   private pendingNameInput: { id: number; resolve: (value: string | undefined) => void } | undefined;
-  /** promptName() の呼び出しごとに採番する使い捨てID(nameInputConfirm/Cancel との対応付け)。 */
+  /** promptName() 呼び出しごとに採番するID(nameInputConfirm/Cancel との対応付け)。 */
   private nameInputSeq = 0;
 
   constructor(private readonly deps: MonitorPanelDeps) {
@@ -127,7 +106,7 @@ export class MonitorProfilesController {
     }
   }
 
-  /** dispose() から呼ばれる: プロファイル関連のファイルウォッチャーを破棄する(元の dispose() と同じ順序)。 */
+  /** dispose() から呼ばれる: プロファイル関連のファイルウォッチャーを破棄する。 */
   disposeWatchers(): void {
     this.profileFileWatcher.dispose();
     this.machineFileWatcher.dispose();
@@ -135,11 +114,9 @@ export class MonitorProfilesController {
   }
 
   /**
-   * 実行プロファイル選択ドロップダウンの内容(一覧+現在値)を webview へ送る。
-   * 対象プロジェクトが解決できない場合は一覧を空にする(current はそのまま送る。設定に
-   * 手書きされた値の表示自体は webview 側で保つ方針のため)。
-   * apps(アプリプロファイル名一覧)は「プロファイル」タブ下半分の実行プロファイル設定フォームの
-   * アプリ選択が使う(プロファイル一覧と同じプロジェクトに属するため、ここでまとめて送る)。
+   * 実行プロファイル選択ドロップダウン(一覧+現在値)を webview へ送る。対象プロジェクトが
+   * 解決できない場合は一覧のみ空にする(current は設定の生値をそのまま送る)。
+   * apps(アプリプロファイル名一覧)は実行プロファイル設定フォームのアプリ選択が使う。
    */
   postProfileInfo(): void {
     const config = this.deps.getConfig();
@@ -153,9 +130,8 @@ export class MonitorProfilesController {
 
   /**
    * 現在使うべきマシンプロファイル名を決める(postMachineProfileInfo・handleProfileAdd 共通)。
-   * readLocalMachineName() の値が summaries に存在すればそれを採用し、無ければ summaries が
-   * ちょうど1件のときに限りその名前を採用する(あいまいさが無い場合のみ賢く選ぶ、
-   * readMachineDeviceNames と同じ方針)。それ以外(0件/複数件で未登録)は null。
+   * readLocalMachineName() の値が summaries に存在すればそれを、無ければ summaries が1件のときに
+   * 限り採用する(あいまいな場合は選ばない。readMachineDeviceNames と同じ方針 — 変更時は両方揃える)。
    */
   private resolveCurrentMachineName(summaries: readonly MachineProfileSummary[]): string | null {
     const machineName = readLocalMachineName();
@@ -166,9 +142,8 @@ export class MonitorProfilesController {
   }
 
   /**
-   * 「プロファイル」タブのマシンプロファイル一覧(+現在のマシン)を webview へ送る。
-   * 対象プロジェクトが解決できない場合は machines を空にしてエラーメッセージを添える
-   * (webview 側はこのとき本体の代わりにエラー表示に切り替える)。
+   * マシンプロファイル一覧(+現在のマシン)を webview へ送る。対象プロジェクトが解決できない場合は
+   * machines を空にしエラーメッセージを添える(webview はエラー表示に切り替える)。
    * 現在のマシンの決定は resolveCurrentMachineName を参照。
    */
   postMachineProfileInfo(): void {
@@ -204,11 +179,9 @@ export class MonitorProfilesController {
   }
 
   /**
-   * 名前入力モーダル(#name-input-overlay)を開き、確定/キャンセルされるまで待つ。
-   * showInputBox と同じ契約(キャンセル時 undefined、確定時は入力文字列[未trim])にすることで、
-   * 呼び出し側(実行/アプリ/マシンプロファイルの追加・コピー・名前変更、計9箇所)の変更を
-   * 最小にする。名前の検証(空/"/""\""/"."始まり/重複)は webview 側で行う(呼び出し側は
-   * confirm 後に trim して各自の validateNewXxxName で防御的に再検証する)。
+   * 名前入力モーダルを開き、確定/キャンセルされるまで待つ。showInputBox と同じ契約
+   * (キャンセル時 undefined、確定時は未trimの入力文字列)。名前検証は webview 側で行うが、
+   * 呼び出し側は confirm 後に trim して各自の validateNewXxxName で再検証する。
    */
   private promptName(options: {
     readonly title: string;
@@ -218,8 +191,7 @@ export class MonitorProfilesController {
     readonly existing: readonly string[];
     readonly caseInsensitiveDup: boolean;
   }): Promise<string | undefined> {
-    // 多重オープンの防御: 既に応答待ちがあれば、上書きする前にキャンセル扱いで解決しておく
-    // (通常は9箇所とも同時に開かれることはないが、念のため)。
+    // 多重オープンの防御: 既に応答待ちがあれば、上書きする前にキャンセル扱いで解決しておく。
     if (this.pendingNameInput) {
       const previous = this.pendingNameInput;
       this.pendingNameInput = undefined;
@@ -261,10 +233,8 @@ export class MonitorProfilesController {
   }
 
   /**
-   * webview のドロップダウン操作を ftester.profile 設定へ反映する
-   * (extension.ts の ftester.selectProfile コマンドと同じログ形式で出力チャネルに記録する)。
-   * 設定更新に成功すると onDidChangeConfiguration 経由で postProfileInfo() が呼ばれ、
-   * webview のドロップダウンが最新化されるので、ここから直接 post する必要はない。
+   * webview のドロップダウン操作を ftester.profile 設定へ反映する。成功時は
+   * onDidChangeConfiguration 経由で postProfileInfo() が呼ばれるため、ここから直接 post しない。
    */
   selectProfile(profile: string): void {
     const NONE_LABEL = "(プロファイルなし)";
@@ -285,22 +255,15 @@ export class MonitorProfilesController {
   }
 
   // ---- 実行プロファイルの追加/コピー/名前変更/削除(プロファイルタブ下半分のアイコンボタン) ------
-  // デバイスタブの #profile-select(ftester.profile 設定に連動する選択)自体の挙動は変えない。
-  // ここでの追加・コピー・名前変更・削除はいずれも実行プロファイルセクション(編集フォーム)の
-  // 編集対象を操作するだけで、ftester.profile 設定(selectProfile)には触れない
-  // (名前変更で ftester.profile が対象を指していた場合の追随を除く。handleProfileRename 参照)。
-  // 追加・コピーの直後は runProfileSelected で新プロファイルを編集対象として選択する
-  // (machineProfileAdd/Copy と同じ方式)。
+  // ftester.profile 設定(selectProfile)には触れない(名前変更で対象を指していた場合の追随を除く。
+  // handleProfileRename 参照)。
 
   /** Projects/<project>/profiles/runs ディレクトリの絶対パス。 */
   private runsDir(project: string): string {
     return path.join(this.deps.workspaceRoot, "Projects", project, "profiles", "runs");
   }
 
-  /**
-   * 実行プロファイル操作(追加/コピー/名前変更/削除)共通の前提チェック。対象プロジェクトが
-   * 解決できない場合は警告して undefined を返す(呼び出し側はここで処理を中断する)。
-   */
+  /** 対象プロジェクトが解決できない場合は警告して undefined を返す(呼び出し側はここで中断)。 */
   private resolveProjectOrWarn(): string | undefined {
     const resolution = resolveProjectName(this.deps.workspaceRoot, this.deps.getConfig());
     if (resolution.kind !== "resolved") {
@@ -328,10 +291,10 @@ export class MonitorProfilesController {
       caseInsensitiveDup: false,
     });
     if (input === undefined) {
-      return; // キャンセル
+      return;
     }
     const name = input.trim();
-    // webview 側検証をすり抜けた場合(レースや古いwebview)の防御的な再検証。
+    // webview側検証をすり抜けた場合の防御的な再検証。
     const nameError = validateNewRunProfileName(name, existing);
     if (nameError) {
       void vscode.window.showWarningMessage(`ftester: ${nameError}`);
@@ -340,8 +303,6 @@ export class MonitorProfilesController {
     const runsDir = this.runsDir(project);
     try {
       fs.mkdirSync(runsDir, { recursive: true });
-      // 現在のマシンの決定は postMachineProfileInfo の current 決定と同じロジックを使う
-      // (あいまいさが無い場合のみ賢く埋める、readMachineDeviceNames と同じ方針)。
       const machine = this.resolveCurrentMachineName(listMachineProfiles(this.deps.workspaceRoot, project)) ?? "";
       const template = buildRunProfileTemplate(
         machine,
@@ -381,10 +342,10 @@ export class MonitorProfilesController {
       caseInsensitiveDup: false,
     });
     if (input === undefined) {
-      return; // キャンセル
+      return;
     }
     const name = input.trim();
-    // webview 側検証をすり抜けた場合(レースや古いwebview)の防御的な再検証。
+    // webview側検証をすり抜けた場合の防御的な再検証。
     const nameError = validateNewRunProfileName(name, existing);
     if (nameError) {
       void vscode.window.showWarningMessage(`ftester: ${nameError}`);
@@ -404,11 +365,10 @@ export class MonitorProfilesController {
   }
 
   /**
-   * 「削除」ボタン: モーダル確認で「削除」が選ばれたときのみ削除する。削除したのが現在選択中の
-   * プロファイル(ftester.profile)であれば selectProfile("") で「プロファイルなし」に戻す
-   * (onDidChangeConfiguration 経由でモニターは全デバイス監視に切り替わる。新スコープが null に
-   * なるだけで、devicesToShutdownOnScopeChange(devices, null) は常に空を返すため、この切り替え
-   * 自体による自動シャットダウンは発生しない)。
+   * 「削除」ボタン: モーダル確認で「削除」が選ばれたときのみ削除する。削除対象が現在選択中の
+   * プロファイル(ftester.profile)であれば selectProfile("") で戻す(新スコープが null になると
+   * devicesToShutdownOnScopeChange は常に空を返すため、この切り替えによる自動シャットダウンは
+   * 発生しない)。
    */
   async handleProfileDelete(name: string): Promise<void> {
     const project = this.resolveProjectOrWarn();
@@ -437,10 +397,8 @@ export class MonitorProfilesController {
   }
 
   /**
-   * 「✏」ボタン: 新しい名前を入力させ、runs/<name>.json をリネームする(handleMachineProfileRename
-   * を手本にした対話形式)。ftester.profile が旧名を指していた場合は selectProfile(新名) で
-   * 追随させる(そうしないとアクティブなプロファイルの解決が壊れる。updateLocalMachineName による
-   * 登録マシン名の追随と同じ理由)。
+   * 「✏」ボタン: runs/<name>.json をリネームする。ftester.profile が旧名を指していた場合は
+   * selectProfile(新名) で追随させる(しないとアクティブなプロファイルの解決が壊れる)。
    */
   async handleProfileRename(profile: string): Promise<void> {
     const project = this.resolveProjectOrWarn();
@@ -454,9 +412,8 @@ export class MonitorProfilesController {
       this.postProfileInfo();
       return;
     }
-    // 重複チェックは自分自身(現在の名前)を除いた一覧に対して行う(自分自身への「変更なし」は
-    // 別途 newName === profile のチェックで許容するため、existing に含めると常にエラーになってしまう。
-    // handleMachineProfileRename と同じ方針)。
+    // 重複チェックは自分自身(現在の名前)を除いた一覧に対して行う
+    // (含めると「変更なし」のリネームも常に重複エラーになるため)。
     const existing = listRunProfileNames(this.deps.workspaceRoot, project).filter((name) => name !== profile);
     const input = await this.promptName({
       title: `「${profile}」の新しい実行プロファイル名`,
@@ -467,17 +424,17 @@ export class MonitorProfilesController {
       caseInsensitiveDup: false,
     });
     if (input === undefined) {
-      return; // キャンセル
+      return;
     }
     const newName = input.trim();
-    // webview 側検証をすり抜けた場合(レースや古いwebview)の防御的な再検証。
+    // webview側検証をすり抜けた場合の防御的な再検証。
     const nameError = validateNewRunProfileName(newName, existing);
     if (nameError) {
       void vscode.window.showWarningMessage(`ftester: ${nameError}`);
       return;
     }
     if (newName === profile) {
-      return; // 変更なし
+      return;
     }
     try {
       fs.renameSync(oldPath, path.join(runsDir, `${newName}.json`));
@@ -496,10 +453,8 @@ export class MonitorProfilesController {
   }
 
   // ---- アプリプロファイルの追加/コピー/名前変更/削除(プロファイルタブ中段のアイコンボタン) --------
-  // handleProfileAdd/Copy/Delete/Rename(実行プロファイル)の複製。アプリプロファイルは
-  // ftester.* のどの設定からも直接参照されないため、selectProfile 相当の追随処理は無い
-  // (削除・名前変更どちらも、実行プロファイルの app 参照が古い名前を指したままになりうるが、
-  // それは CLI 側の validate-profile が検出する領分としてこの拡張からは追随しない)。
+  // ftester.* から直接参照されないため selectProfile 相当の追随は無い(壊れた参照の検出は
+  // CLI 側の validate-profile に委ねる)。
 
   /** Projects/<project>/profiles/apps ディレクトリの絶対パス。 */
   private appsDir(project: string): string {
@@ -522,10 +477,10 @@ export class MonitorProfilesController {
       caseInsensitiveDup: false,
     });
     if (input === undefined) {
-      return; // キャンセル
+      return;
     }
     const name = input.trim();
-    // webview 側検証をすり抜けた場合(レースや古いwebview)の防御的な再検証。
+    // webview側検証をすり抜けた場合の防御的な再検証。
     const nameError = validateNewAppProfileName(name, existing);
     if (nameError) {
       void vscode.window.showWarningMessage(`ftester: ${nameError}`);
@@ -534,8 +489,7 @@ export class MonitorProfilesController {
     const appsDir = this.appsDir(project);
     try {
       fs.mkdirSync(appsDir, { recursive: true });
-      // app はフォームでユーザーが埋める前提のため、テンプレートには appName のみ入れる
-      // (buildRunProfileTemplate と違い、埋めるべき候補一覧がここには無いため)。
+      // テンプレートは appName のみ(埋めるべき候補一覧が無く buildRunProfileTemplate とは異なる)。
       const template = { android: {}, common: { appName: name }, ios: {} };
       fs.writeFileSync(path.join(appsDir, `${name}.json`), `${JSON.stringify(template, null, 2)}\n`, "utf8");
       this.deps.outputChannel.appendLine(`[ftester] アプリプロファイル「${name}」を追加しました。`);
@@ -570,10 +524,10 @@ export class MonitorProfilesController {
       caseInsensitiveDup: false,
     });
     if (input === undefined) {
-      return; // キャンセル
+      return;
     }
     const name = input.trim();
-    // webview 側検証をすり抜けた場合(レースや古いwebview)の防御的な再検証。
+    // webview側検証をすり抜けた場合の防御的な再検証。
     const nameError = validateNewAppProfileName(name, existing);
     if (nameError) {
       void vscode.window.showWarningMessage(`ftester: ${nameError}`);
@@ -592,10 +546,7 @@ export class MonitorProfilesController {
     }
   }
 
-  /**
-   * 「削除」ボタン: モーダル確認で「削除」が選ばれたときのみ削除する。実行プロファイルと異なり
-   * ftester.* 設定への追従は不要(アプリプロファイルを直接指す設定が無いため)。
-   */
+  /** 「削除」ボタン: モーダル確認で「削除」が選ばれたときのみ削除する(ftester.* 設定への追従は不要)。 */
   async handleAppProfileDelete(name: string): Promise<void> {
     const project = this.resolveProjectOrWarn();
     if (!project) {
@@ -620,9 +571,8 @@ export class MonitorProfilesController {
   }
 
   /**
-   * 「✏」ボタン: 新しい名前を入力させ、apps/<name>.json をリネームする(handleProfileRename を
-   * 手本にした対話形式)。実行プロファイルの runs/*.json の app フィールドが旧名を指していても、
-   * この拡張からは追随しない(壊れた参照は CLI 側の validate-profile が検出する)。
+   * 「✏」ボタン: apps/<name>.json をリネームする。実行プロファイルの app フィールドが旧名を
+   * 指していても追随しない(壊れた参照は CLI 側の validate-profile が検出する)。
    */
   async handleAppProfileRename(profile: string): Promise<void> {
     const project = this.resolveProjectOrWarn();
@@ -647,17 +597,17 @@ export class MonitorProfilesController {
       caseInsensitiveDup: false,
     });
     if (input === undefined) {
-      return; // キャンセル
+      return;
     }
     const newName = input.trim();
-    // webview 側検証をすり抜けた場合(レースや古いwebview)の防御的な再検証。
+    // webview側検証をすり抜けた場合の防御的な再検証。
     const nameError = validateNewAppProfileName(newName, existing);
     if (nameError) {
       void vscode.window.showWarningMessage(`ftester: ${nameError}`);
       return;
     }
     if (newName === profile) {
-      return; // 変更なし
+      return;
     }
     try {
       fs.renameSync(oldPath, path.join(appsDir, `${newName}.json`));
@@ -678,10 +628,7 @@ export class MonitorProfilesController {
   }
 
   // ---- マシンプロファイル自体の追加/削除/名前変更(マシン名横の [+][−][✏] ボタン) -----------------
-  // handleProfileAdd/handleProfileDelete(実行プロファイル)と同じ、名前入力はwebview内モーダル
-  // (#name-input-overlay)、削除確認はshowWarningMessageを使った対話形式。
-  // ただしマシンプロファイルは「今使うマシン」という選択状態を伴うため、
-  // 追加/名前変更の直後は machineProfileSelected で webview 側の選択を新プロファイルへ移す
+  // 追加/名前変更の直後は machineProfileSelected で選択を新プロファイルへ移す
   // (削除後の選択の付け替えは webview 側の既存フォールバックに任せるので送らない)。
 
   /** マシン名横「+」ボタン: 新しい名前を入力させ、空のスケルトンで machines/<name>.json を作る。 */
@@ -700,10 +647,10 @@ export class MonitorProfilesController {
       caseInsensitiveDup: true,
     });
     if (input === undefined) {
-      return; // キャンセル
+      return;
     }
     const name = input.trim();
-    // webview 側検証をすり抜けた場合(レースや古いwebview)の防御的な再検証。
+    // webview側検証をすり抜けた場合の防御的な再検証。
     const nameError = validateNewMachineProfileName(name, existing);
     if (nameError) {
       void vscode.window.showWarningMessage(`ftester: ${nameError}`);
@@ -723,10 +670,7 @@ export class MonitorProfilesController {
     }
   }
 
-  /**
-   * マシン名横「コピー」ボタン: コピー元の内容をそのまま新しい名前で複製する
-   * (handleProfileCopy(実行プロファイル)と同じフロー。複製後は新プロファイルを選択状態にする)。
-   */
+  /** マシン名横「コピー」ボタン: コピー元の内容をそのまま新しい名前で複製し、選択状態にする。 */
   async handleMachineProfileCopy(machine: string): Promise<void> {
     const project = this.resolveProjectOrWarn();
     if (!project) {
@@ -749,10 +693,10 @@ export class MonitorProfilesController {
       caseInsensitiveDup: true,
     });
     if (input === undefined) {
-      return; // キャンセル
+      return;
     }
     const name = input.trim();
-    // webview 側検証をすり抜けた場合(レースや古いwebview)の防御的な再検証。
+    // webview側検証をすり抜けた場合の防御的な再検証。
     const nameError = validateNewMachineProfileName(name, existing);
     if (nameError) {
       void vscode.window.showWarningMessage(`ftester: ${nameError}`);
@@ -770,10 +714,9 @@ export class MonitorProfilesController {
   }
 
   /**
-   * マシン名横「✏」ボタン: 新しい名前を入力させ、machines/<machine>.json をリネームする。
-   * CLI 側の登録名(`ftester machine set` が書く ~/.config/ftester/config.json の machineName)が
-   * 旧名のままだと、リネーム後は一覧に存在しなくなり postMachineProfileInfo の current 決定が
-   * 崩れる(登録名を頼りに現在のマシンを選ぶ解決が壊れる)ため、一致していれば追随して書き換える。
+   * マシン名横「✏」ボタン: machines/<machine>.json をリネームする。CLI 側の登録名
+   * (`ftester machine set` が書く ~/.config/ftester/config.json の machineName)が旧名と一致していれば
+   * 追随して書き換える(一致させないと postMachineProfileInfo の current 決定が崩れる)。
    */
   async handleMachineProfileRename(machine: string): Promise<void> {
     const project = this.resolveProjectOrWarn();
@@ -787,8 +730,7 @@ export class MonitorProfilesController {
       this.postMachineProfileInfo();
       return;
     }
-    // 重複チェックは自分自身(現在の名前)を除いた一覧に対して行う(自分自身への「変更」は
-    // 別途 newName === machine のチェックで許容するため、existing に含めると常にエラーになってしまう)。
+    // 重複チェックは自分自身を除いた一覧に対して行う(handleProfileRename と同じ方針)。
     const existing = listMachineProfiles(this.deps.workspaceRoot, project)
       .map((summary) => summary.name)
       .filter((name) => name !== machine);
@@ -801,17 +743,17 @@ export class MonitorProfilesController {
       caseInsensitiveDup: true,
     });
     if (input === undefined) {
-      return; // キャンセル
+      return;
     }
     const newName = input.trim();
-    // webview 側検証をすり抜けた場合(レースや古いwebview)の防御的な再検証。
+    // webview側検証をすり抜けた場合の防御的な再検証。
     const nameError = validateNewMachineProfileName(newName, existing);
     if (nameError) {
       void vscode.window.showWarningMessage(`ftester: ${nameError}`);
       return;
     }
     if (newName === machine) {
-      return; // 変更なし
+      return;
     }
     try {
       fs.renameSync(oldPath, path.join(machinesDir, `${newName}.json`));
@@ -831,8 +773,7 @@ export class MonitorProfilesController {
 
   /**
    * マシン名横「−」ボタン: モーダル確認の上、machines/<machine>.json を削除する
-   * (シミュレータ/AVD 本体はここでは一切操作しない。handleProfileDelete と同じ方針)。
-   * 選択の付け替えは webview 側の既存フォールバック(machineProfileInfo 受信時の current→先頭)に
+   * (シミュレータ/AVD 本体は操作しない)。選択の付け替えは webview 側の既存フォールバックに
    * 任せるので、ここから machineProfileSelected は送らない。
    */
   async handleMachineProfileDelete(machine: string): Promise<void> {
@@ -859,16 +800,11 @@ export class MonitorProfilesController {
   }
 
   /**
-   * プロファイルタブのデバイス行右クリックメニュー「除去」/「選択した<N>台を除去」:
-   * machines/<machine>.json から names に一致するデバイスをプロファイル上だけ取り除く
-   * (シミュレータ/AVD本体はここでは一切操作しない。handleProfileDelete と同じくモーダル確認を
-   * 経てから実行する)。ユーザー可視文言はこの操作に限り「削除」ではなく「除去」を使う
-   * (プロファイルから外すだけなのに、仮想マシン本体を消す「削除」と
-   * 紛らわしいため。本体を本当に消す操作・プロファイル自体の削除は「削除」のままとする)。
-   * 複数選択に対応するため names は配列(単一除去も要素数1の配列)。
-   * removeDeviceFromMachineProfile を名前ごとに順次適用する(1回のファイル読み書きで済ませる —
-   * 各適用結果の object を次の入力にすることで、まとめて1回の書き戻しにできる)。1件も除去
-   * できなければ(全名前が見つからなければ)警告して書き戻さない。
+   * デバイス行右クリック「除去」: machines/<machine>.json から names に一致するデバイスを
+   * プロファイル上だけ取り除く(シミュレータ/AVD 本体は操作しない)。ユーザー可視文言は
+   * この操作に限り「削除」ではなく「除去」を使う(仮想マシン本体を消す「削除」と紛らわしいため)。
+   * removeDeviceFromMachineProfile を names へ順次適用し1回の書き戻しにまとめる。1件も除去
+   * できなければ書き戻さない。
    */
   async handleMachineDeviceRemove(machine: string, names: readonly string[]): Promise<void> {
     const project = this.resolveProjectOrWarn();
@@ -925,7 +861,7 @@ export class MonitorProfilesController {
         `[ftester] マシンプロファイル「${machine}」から${removedCount}台のデバイスを除去しました(${names.join("、")})。`,
       );
       // FileSystemWatcher(onDidChange)経由でも postMachineProfileInfo() が呼ばれるが、
-      // runCreateDevice と同じく反映を待たせないようここでも明示的に呼ぶ(冪等)。
+      // 反映を待たせないようここでも明示的に呼ぶ(冪等)。
       this.postMachineProfileInfo();
     } catch (error) {
       this.deps.outputChannel.appendLine(
@@ -936,12 +872,10 @@ export class MonitorProfilesController {
   }
 
   /**
-   * プロファイルタブ右ペインの編集フォーム「確定」: machines/<machine>.json の対象デバイスを
-   * 更新する。結果はモーダル確認なしに machineDeviceUpdateResult で即座に webview へ返す
-   * (フォーム自体がクライアント側検証を経ているため、handleMachineDeviceRemove と違い確認
-   * ダイアログは不要)。対象プロジェクトが解決できない場合も(resolveProjectOrWarn の
-   * vscode.window 警告ではなく)結果メッセージのエラーとしてフォームに表示させたいので、
-   * ここでは resolveProjectName を直接呼ぶ。
+   * 右ペイン編集フォーム「確定」: machines/<machine>.json の対象デバイスを更新する。フォームが
+   * クライアント側検証済みのため確認ダイアログは無く、結果は machineDeviceUpdateResult で即返す。
+   * プロジェクト未解決時もフォームのエラー表示に載せたいため resolveProjectName を直接呼ぶ
+   * (resolveProjectOrWarn の vscode.window 警告は使わない)。
    */
   handleMachineDeviceUpdate(message: MachineDeviceUpdateMessage): void {
     const sendResult = (ok: boolean, name: string, error: string | null) => {
@@ -996,12 +930,9 @@ export class MonitorProfilesController {
   }
 
   /**
-   * 「+既存から選択」モーダル(#device-pick-overlay)の OK: machines/<machine>.json へ、
-   * チェックの差分(新たにチェックした未登録デバイスの追加/外した登録済みデバイスの登録解除)を
-   * まとめて適用する。handleMachineDeviceUpdate と同じく、モーダル確認なしに
-   * machineDevicesSyncResult で即座に webview へ返す(モーダル自体がチェックボックス操作という
-   * 明示操作を経ているため)。対象プロジェクトが解決できない場合も結果メッセージのエラーとして
-   * 返す(handleMachineDeviceUpdate と同じ理由で resolveProjectName を直接呼ぶ)。
+   * 「+既存から選択」モーダルの OK: チェックの差分(追加/登録解除)をまとめて
+   * machines/<machine>.json へ適用する。handleMachineDeviceUpdate と同じ理由でモーダル確認なし・
+   * resolveProjectName 直接呼びとする。
    */
   handleMachineDevicesSync(message: MachineDevicesSyncMessage): void {
     const sendResult = (ok: boolean, added: number, removed: number, error: string | null) => {
@@ -1048,20 +979,18 @@ export class MonitorProfilesController {
         `登録解除: ${message.remove.length > 0 ? message.remove.join("、") : "なし"})。`,
     );
     sendResult(true, result.added.length, result.removed, null);
-    // FileSystemWatcher(onDidChange)経由でも postMachineProfileInfo() が呼ばれるが、
-    // handleMachineDeviceUpdate と同じく反映を待たせないようここでも明示的に呼ぶ(冪等)。
+    // FileSystemWatcher 経由でも呼ばれるが、反映を待たせないようここでも明示的に呼ぶ
+    // (handleMachineDeviceRemove と同じ理由)。
     this.postMachineProfileInfo();
   }
 
   // ---- プロファイルタブ下半分: 実行プロファイルの設定フォーム(runProfileLoad/runProfileSave) ----
-  // フォーム自体の検証は webview 側(クライアント検証)で完結させているが、updateRunProfileInObject
-  // 側の防御的な検証(defaultTimeout の型)にも引っかかりうるため、結果は machineDeviceUpdate と同じく
-  // モーダル確認なしに即座に webview へ返す。
+  // クライアント検証済みでも updateRunProfileInObject 側の防御的検証(defaultTimeout の型)に
+  // 引っかかりうるため、結果は machineDeviceUpdate と同じくモーダル確認なしに即座に返す。
 
   /**
-   * 選択変更・初回表示時のロード要求への応答。対象プロジェクトが解決できない/ファイルが
-   * 読めない/JSON として解析できない/トップレベルが非オブジェクトのいずれも ok:false + fields:null
-   * で返す(フォーム側はこれを「表示できない」として扱う)。
+   * ロード要求への応答。対象プロジェクトが解決できない/読み込み失敗/JSON解析失敗/非オブジェクトの
+   * いずれも ok:false + fields:null で返す(フォーム側はこれを「表示できない」として扱う)。
    */
   handleRunProfileLoad(profile: string): void {
     const sendResult = (ok: boolean, error: string | null, fields: RunProfileFormFields | null) => {
@@ -1097,9 +1026,8 @@ export class MonitorProfilesController {
   }
 
   /**
-   * 「確定」への応答。書き込み成功後、続けて handleRunProfileLoad を呼び直し、最新の fields を
-   * 再送する(保存直後にフォームを最新化させるため。machineDeviceUpdate 系が
-   * postMachineProfileInfo() を明示的に呼び直しているのと同じ理由)。
+   * 「確定」への応答。書き込み成功後、handleRunProfileLoad を呼び直して最新の fields を再送する
+   * (保存直後にフォームを最新化するため)。
    */
   handleRunProfileSave(message: RunProfileSaveMessage): void {
     const { profile, fields } = message;
@@ -1143,15 +1071,10 @@ export class MonitorProfilesController {
   }
 
   // ---- プロファイルタブ中段: アプリプロファイルの設定フォーム(appProfileLoad/appProfileSave) ----
-  // handleRunProfileLoad/handleRunProfileSave の複製。フォーム自体の必須検証は無い(全フィールド
-  // 省略可)ため、updateAppProfileInObject が ok:false を返すことは実質無い想定だが、念のため
-  // 同じ形で結果を返す。
+  // handleRunProfileLoad/handleRunProfileSave と同じ形(全フィールド省略可のため ok:false は
+  // 実質発生しない想定)。
 
-  /**
-   * 選択変更・初回表示時のロード要求への応答。対象プロジェクトが解決できない/ファイルが
-   * 読めない/JSON として解析できない/トップレベルが非オブジェクトのいずれも ok:false + fields:null
-   * で返す(handleRunProfileLoad と同じ方針)。
-   */
+  /** ロード要求への応答(handleRunProfileLoad と同じ契約: ok:false + fields:null で失敗を返す)。 */
   handleAppProfileLoad(profile: string): void {
     const sendResult = (ok: boolean, error: string | null, fields: AppProfileFormFields | null) => {
       this.deps.post({ type: "appProfileData", profile, ok, error, fields });
@@ -1185,10 +1108,7 @@ export class MonitorProfilesController {
     sendResult(true, null, fields);
   }
 
-  /**
-   * 「確定」への応答。書き込み成功後、続けて handleAppProfileLoad を呼び直し、最新の fields を
-   * 再送する(handleRunProfileSave と同じ理由)。
-   */
+  /** 「確定」への応答(handleRunProfileSave と同じく handleAppProfileLoad 再呼び出しでフォームを最新化)。 */
   handleAppProfileSave(message: AppProfileSaveMessage): void {
     const { profile, fields } = message;
     const sendResult = (ok: boolean, error: string | null) => {

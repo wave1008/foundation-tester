@@ -1,16 +1,13 @@
 // runHandler.ts
 // Test Explorer の Run プロファイル(「実行」「実行 (dry-run)」「デバッグ」)を登録する。
 //
-// 「実行」系は1回の `ftester api run` に対象シナリオ ID を全て --scenario で渡し
-// (CLI 側が逐次実行する)、stdout の NDJSON イベントを runReducer.reduceRunEvent で
-// アクション列に変換して vscode.TestRun(run.started/appendOutput/passed/failed/errored/end)へ
-// 適用する。runReducer.ts は vscode に依存しない純粋なロジックなので、ここでは
-// アクション → vscode API 呼び出しの変換だけを担当する。
+// 「実行」系は1回の `ftester api run` に対象シナリオ ID を全て --scenario で渡す
+// (CLI 側が逐次実行する)。runReducer.ts(vscode 非依存の純粋ロジック)が NDJSON イベントを
+// アクション列に変換し、ここではそれを vscode.TestRun API 呼び出しへ適用するだけを担当する。
 //
-// 「デバッグ」プロファイルは対象を1件(leaf)だけ受け付け、vscode.debug.startDebugging で
-// debugConfig.ts/debugAdapter.ts のデバッグアダプタに実行を委譲する。結果は
-// カスタムイベント `ftester.scenarioFinished`(debugAdapter.ts が scenarioFinished を
-// 中継したもの)を購読して run.passed/failed に反映し、セッション終了で run.end() する。
+// 「デバッグ」プロファイルは vscode.debug.startDebugging で debugConfig.ts/debugAdapter.ts に
+// 委譲する(詳細は executeDebugRun 参照)。結果はカスタムイベント `ftester.scenarioFinished`
+// (debugAdapter.ts が中継)を購読して run.passed/failed に反映する。
 
 import * as path from "node:path";
 import * as vscode from "vscode";
@@ -62,16 +59,11 @@ export function registerRunHandler(
 }
 
 /**
- * request.include/exclude を、実行対象のシナリオ leaf(TestItem。id = シナリオID生文字列)の
- * Map<id, TestItem> に解決する。
- *
- * - include 未指定: ツリー全体の leaf(@Deleted は除外)。
- * - folder/class ノードが include されている場合: 配下の leaf に展開する(@Deleted は除外。
- *   CLI 側の「クラス名指定では削除済みを実行しない」規則と一致させるため)。
- * - leaf 自体が明示的に include されている場合: @Deleted でもそのまま対象にする
- *   (CLI 側の「完全一致指定のときだけ削除済みを実行する」規則と一致させるため)。
- * - exclude は上記の結果から leaf 単位で取り除く(folder/class が exclude された場合は
- *   配下の leaf を丸ごと除外する)。
+ * request.include/exclude を対象シナリオ leaf(TestItem、id=シナリオID)の Map<id, TestItem> に解決する。
+ * include 未指定なら全 leaf(@Deleted 除外)。folder/class の include は配下 leaf に展開(@Deleted 除外、
+ * CLI の「クラス名指定では削除済みを実行しない」規則と一致)。leaf 自体が明示 include されたときは
+ * @Deleted でも対象にする(CLI の「完全一致指定のときだけ削除済みを実行する」規則と一致)。
+ * exclude は leaf 単位で除去(folder/class の exclude は配下 leaf を丸ごと除外)。
  */
 function resolveTargets(
   controller: vscode.TestController,
@@ -81,8 +73,7 @@ function resolveTargets(
 
   const addSubtree = (item: vscode.TestItem, explicit: boolean): void => {
     if (item.children.size === 0) {
-      // leaf(シナリオ)。explicit(この item 自体が include に指定された)のときだけ
-      // @Deleted でも対象に含める
+      // explicit(この item 自体が include 指定)のときのみ @Deleted でも対象にする。
       if (explicit || !isDeleted(item)) {
         result.set(item.id, item);
       }
@@ -350,8 +341,7 @@ async function executeDebugRun(
     skipBuild: !config.buildBeforeRun,
     heal: config.heal,
   };
-  // --profile と --platform/--port/--serial は ftester api run 側で同時指定不可なので、
-  // profile が非空のときはそちらだけを渡す(空なら platform/port/serial を渡す)。
+  // --profile と --platform/--port/--serial の組合せ規則は executeRun 参照。
   const profile = config.profile.trim();
   if (profile.length > 0) {
     debugConfig.profile = profile;

@@ -1,16 +1,11 @@
-// tabs.js
-// 「デバイス/プロファイル/設定」の3タブ切り替えを担う。
-// 「設定」タブは現状プレースホルダーのみ(将来の機能追加先)。closeDeviceOpMenu(deviceTiles.js)・
-// closeMachineDeviceMenu(machineProfilesTab.js)・applyTilePaneHeight/tilePaneHeight
-// (splitter.js)のいずれも import 済みであることに依存する。
+// switchTabはcloseDeviceOpMenu(deviceTiles.js)・closeMachineDeviceMenu(machineProfilesTab.js)・
+// applyTilePaneHeight/tilePaneHeight(splitter.js)のimportに依存する。
 
 import { vscode } from './vscodeApi.js';
 import { devicesPanel } from './domRefs.js';
 import { closeDeviceOpMenu } from './deviceTiles.js';
 import { closeMachineDeviceMenu } from './machineProfilesTab.js';
 import { applyTilePaneHeight, tilePaneHeight } from './splitter.js';
-
-// ---- タブ切り替え(デバイス/プロファイル/設定) -----------------------------
 
 export const TAB_IDS = ['devices', 'profiles', 'settings'];
 const tabButtons = {
@@ -39,9 +34,7 @@ export function switchTab(tab) {
     tabPanels[id].style.display = isActive ? 'flex' : 'none';
   }
   if (tab === 'devices') {
-    // 非表示だった間 devicesPanel.clientHeight が 0 になり、applyTilePaneHeight が
-    // ガードで何もせず抜けていた(誤クランプ防止)。再表示直後に呼び直して再クランプ+
-    // relayoutTiles() する(applyTilePaneHeight が内部で relayoutTiles() まで行う)。
+    // 非表示中はclientHeight=0のガードで何もしなかった分を再クランプする(splitter.js参照)。
     applyTilePaneHeight(tilePaneHeight);
   }
 }
@@ -56,9 +49,8 @@ for (const id of TAB_IDS) {
   });
 }
 
-// プロファイルタブ先頭の sticky ジャンプヘッダー(#profile-jump-header)から各セクションへ
-// スクロールする(data-target=セクションの id)。scroll-margin-top(.profile-section)で
-// sticky ヘッダーの裏に見出しが隠れないようにしてある。
+// data-target先へスクロール。scroll-margin-top(.profile-section、CSS側)でsticky見出しの
+// 裏に隠れないようにしてある。
 for (const link of document.querySelectorAll('.profile-jump-link')) {
   link.addEventListener('click', () => {
     const target = document.getElementById(link.dataset.target);

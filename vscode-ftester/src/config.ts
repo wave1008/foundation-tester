@@ -1,6 +1,3 @@
-// config.ts
-// ftester.* 設定の読み取りとワークスペースルート/対象プロジェクトの解決。
-
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -38,7 +35,6 @@ export function resolveWorkspaceRoot(): string | undefined {
   return folders[0]!.uri.fsPath;
 }
 
-/** ftester.* 設定を読み取る。binaryPath は workspaceRoot 基準の絶対パスに解決する。 */
 export function readConfig(workspaceRoot: string): FtesterConfig {
   const configuration = vscode.workspace.getConfiguration("ftester");
   const rawBinaryPath = configuration.get<string>("binaryPath", ".build/debug/ftester");
@@ -89,11 +85,9 @@ export function listRunProfileNames(workspaceRoot: string, project: string): str
 }
 
 /**
- * Projects/<project>/profiles/runs/<profileName>.json の devices[].name をそのまま返す。
- * 読めない・JSON として解析できない・devices が無い/空の場合は null(listRunProfileNames と同じ
- * 「読めなければ空扱い」の流儀だが、こちらは「絞り込み対象なし(=null)」と「絞り込んでも空配列」を
- * 区別する必要がある呼び出し側(monitorPanel.ts の devicesToShutdownOnScopeChange)のために
- * null を返す)。
+ * Projects/<project>/profiles/runs/<profileName>.json の devices[].name。
+ * 読めない/解析不可/devices無しは null(空配列と区別: monitorPanel.ts の
+ * devicesToShutdownOnScopeChange が「絞り込みなし」と「絞り込んだ結果0件」を区別するため)。
  */
 export function readRunProfileDeviceNames(
   workspaceRoot: string,
@@ -135,15 +129,11 @@ export function listAppProfileNames(workspaceRoot: string, project: string): str
 }
 
 /**
- * Projects/<project>/profiles/machines/ 直下の .json が**ちょうど1つ**のときに限り、そのファイルの
- * ios→android の順で devices[].name を返す(新規実行プロファイルのテンプレートに埋め込む
- * デバイス候補として使う。monitorPanel.ts の profileAdd ハンドラ)。
- * 実際にどのマシンプロファイルを使うか(登録名 / FT_MACHINE 環境変数による選択)を決めるロジックは
- * CLI 側(Sources/ftester)にしかなく、この拡張から複数マシンプロファイルのうちどれが「使われる」
- * ものかは判定できない。そのため、あいまいさが無い(ファイルが1つしか無い)場合に限って賢く
- * 埋める、という方針にする。0個・複数・読み取り/解析に失敗した場合は空配列(listRunProfileNames
- * と同じ「読めなければ空扱い」の流儀。呼び出し側は空配列を「候補なし、空文字1件で埋める」の
- * シグナルとして扱う)。
+ * profiles/machines/ 直下の .json が**ちょうど1つ**のときのみ、その ios→android 順の
+ * devices[].name を返す(monitorPanel.ts の profileAdd が新規実行プロファイルの
+ * デバイス候補に使う)。実際に「使われる」マシンプロファイルの判定(登録名/FT_MACHINE)は
+ * CLI 側にしか無く、この拡張からは複数存在時にどれを使うか判定できないため、あいまいさが
+ * 無い場合に限って埋める。0個・複数・読み取り/解析失敗は空配列。
  */
 export function readMachineDeviceNames(workspaceRoot: string, project: string): string[] {
   const machinesDir = path.join(workspaceRoot, "Projects", project, "profiles", "machines");
@@ -191,11 +181,9 @@ export function readMachineDeviceNames(workspaceRoot: string, project: string): 
 }
 
 /**
- * Projects/<project>/profiles/machines/<マシン名>.json の devices[] 1件分。
- * name のみ必須(simulator/os/udid/port は iOS 用、avd は Android 用。ファイル自体に他の未知
- * キーがあってもここでは無視する)。monitorModel.ts にも同じ形の型を独立して定義している
- * (vscode 非依存を保つため、型のためだけに config.ts を import させない方針。webview 側が
- * monitorModel.ts の関数を複製しているのと同じ理由)。
+ * profiles/machines/<マシン名>.json の devices[] 1件分。name のみ必須(simulator/os/udid は
+ * iOS 用、avd は Android 用。未知キーは無視)。monitorModel.ts にも同じ形の型を独立定義している
+ * (vscode 非依存を保つため、型のためだけに config.ts を import させない方針)。
  */
 export interface MachineDeviceEntry {
   readonly name: string;
@@ -213,11 +201,7 @@ export interface MachineProfileSummary {
   readonly devices: readonly MachineDeviceEntry[];
 }
 
-/**
- * machines/<name>.json の ios/android セクション内の devices[] の1要素を検証して
- * MachineDeviceEntry に変換する。name が無い、または宣言済みフィールドの型が不正な要素は
- * undefined(呼び出し側でスキップする)。
- */
+/** machines/<name>.json の devices[] 1要素を検証・変換する。name欠落/型不正は undefined(呼び出し側でスキップ)。 */
 function toMachineDeviceEntry(value: unknown, platform: Platform): MachineDeviceEntry | undefined {
   if (typeof value !== "object" || value === null) {
     return undefined;
@@ -254,12 +238,10 @@ function toMachineDeviceEntry(value: unknown, platform: Platform): MachineDevice
 }
 
 /**
- * Projects/<project>/profiles/machines/ 直下の .json をファイル名昇順で読み、各ファイル(=マシン)
- * ごとに ios→android の順で devices を一覧化する(webview の「プロファイル」タブ用)。
- * 型不正の要素は個別にスキップする(readMachineDeviceNames と違い、こちらは複数マシンプロファイル
- * を許容し UI に出す用途のため、1マシンにつき1ファイルという制約は課さない)。
- * ファイル自体が読めない/JSONとして解析できない場合は、そのマシンは devices:[] として名前だけ
- * 返す(1ファイルの不備で一覧全体が空になるのを避ける)。ディレクトリが無ければ空配列。
+ * profiles/machines/ 直下の .json をファイル名順に読み、ios→android順で devices を一覧化する
+ * (webview「プロファイル」タブ用)。要素単位の型不正はスキップ、ファイル自体が読めなければ
+ * そのマシンは devices:[] のみ返す(1件の不備で一覧全体を空にしないため)。readMachineDeviceNames
+ * と異なり複数ファイルを許容する(UI表示用のため「1マシン1ファイル」制約は課さない)。
  */
 export function listMachineProfiles(workspaceRoot: string, project: string): MachineProfileSummary[] {
   const machinesDir = path.join(workspaceRoot, "Projects", project, "profiles", "machines");
@@ -308,9 +290,8 @@ export function listMachineProfiles(workspaceRoot: string, project: string): Mac
 /**
  * マシンローカル設定($XDG_CONFIG_HOME/ftester/config.json、既定 ~/.config/ftester/config.json。
  * Sources/FTCore/LocalConfig.swift と同じファイル場所・スキーマ)の machineName を読む。
- * ファイルが無い・JSONとして解析できない・machineName が string でない場合は null。
- * (LocalConfig.swift は FT_MACHINE 環境変数を machineName より優先するが、この拡張は
- * webview へファイルの状態のみを反映する方針のため環境変数は見ない。)
+ * 読めない/解析不可/machineName が string でなければ null。
+ * (LocalConfig.swift は FT_MACHINE 環境変数を優先するが、この拡張はファイルの状態のみ反映する)。
  */
 export function readLocalMachineName(): string | null {
   const xdg = process.env.XDG_CONFIG_HOME;
@@ -330,14 +311,10 @@ export function readLocalMachineName(): string | null {
 }
 
 /**
- * readLocalMachineName と同じ config.json の machineName を書き換える(マシンプロファイルの
- * 名前変更(handleMachineProfileRename)で、CLI 側 `ftester machine set` が書いた登録名が旧名の
- * ままだと一覧に存在しなくなり解決が壊れるため、追随して更新するために使う)。
- * machineName === oldName のときのみ newName に書き換えて保存し true を返す
- * (machineName 以外の defaultProject / lastRunProfile 等のキーはそのまま保持する)。
- * ファイルが無い・読めない・JSON として解析できない・オブジェクトでない・machineName が
- * oldName と一致しない場合は false(例外は握りつぶす。readLocalMachineName と同じ
- * 「読めなければ何もしない」の流儀)。
+ * readLocalMachineName と同じ config.json の machineName を書き換える(マシンプロファイル名変更時、
+ * CLI `ftester machine set` が書いた登録名が旧名のままだと解決が壊れるため追随させる)。
+ * machineName === oldName のときのみ newName に更新して true を返す(他キーは保持)。
+ * 読み取り/解析失敗・オブジェクトでない・不一致なら false(例外は握りつぶす)。
  */
 export function updateLocalMachineName(oldName: string, newName: string): boolean {
   const xdg = process.env.XDG_CONFIG_HOME;
@@ -367,9 +344,8 @@ export type ProjectResolution =
   | { kind: "ambiguous"; candidates: string[] };
 
 /**
- * 対象テストプロジェクト名を解決する。
- * ftester.project が設定されていればそれを優先し、空の場合は Projects/ 直下から自動判定する
- * (1つだけなら採用、0または複数なら呼び出し側で誘導が必要)。
+ * ftester.project が設定されていればそれを優先。空なら Projects/ 直下から自動判定
+ * (1つだけなら採用、0/複数は呼び出し側で誘導が必要)。
  */
 export function resolveProjectName(
   workspaceRoot: string,

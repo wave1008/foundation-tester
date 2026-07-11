@@ -1,14 +1,10 @@
 // runEventBus.ts
-// 実行(`ftester api run`)の生 NDJSON イベント(検証済み RunEvent)と、実行自体の開始/終了を
-// 複数の購読者へ配信するための小さな pub/sub。vscode モジュールに一切依存しない。
+// `ftester api run` の NDJSON イベントを runHandler.ts(Test Explorer反映)と
+// monitorPanel.ts(ログレーン表示)の両方へ配信する pub/sub。vscode モジュールに依存しない。
+// extension.ts で1つだけ生成し両方に注入することで両者を疎結合にする。
 //
-// runHandler.ts(Test Explorer への反映)と monitorPanel.ts(ログレーン表示)は、
-// どちらも同じ `ftester api run` の出力を別の目的で消費する。この2つを直接結合させず、
-// extension.ts で生成した1つの RunEventBus インスタンスを両方に注入することで疎結合にする。
-//
-// runId は beginRun() のたびに採番される(同時に2つ以上の実行は無い前提。cli.ts の
-// 直列実行キューにより `ftester api run` は同時に1本しか動かないため、判別自体は不要だが、
-// 将来的な多重実行や取り違え防止のため念のため付与しておく)。
+// runId は beginRun() ごとに採番。cli.ts の直列キューにより同時実行は1本のみで判別は不要だが、
+// 将来の多重実行対策として残している(削除しないこと)。
 
 import type { RunEvent } from "./model";
 
@@ -23,7 +19,6 @@ export class RunEventBus {
   private readonly listeners = new Set<RunBusListener>();
   private nextRunId = 1;
 
-  /** 購読を開始する。戻り値の関数を呼ぶと購読解除できる。 */
   subscribe(listener: RunBusListener): () => void {
     this.listeners.add(listener);
     return () => {
@@ -31,11 +26,7 @@ export class RunEventBus {
     };
   }
 
-  /**
-   * 新しい実行の開始を全購読者に通知し、以後の publish/endRun に使う runId を返す。
-   * isDryRun は healReviewPanel.ts の HealFixCollector が「dry-run 実行では収集しない」判定に使う
-   * (省略時は false。既存呼び出し側との互換のためデフォルト値を持たせている)。
-   */
+  /** isDryRun は healReviewPanel.ts の HealFixCollector が dry-run 実行を除外する判定に使う。 */
   beginRun(isDryRun = false): number {
     const runId = this.nextRunId;
     this.nextRunId += 1;
@@ -43,12 +34,10 @@ export class RunEventBus {
     return runId;
   }
 
-  /** 検証済みの RunEvent(生イベント)を配信する。 */
   publish(runId: number, event: RunEvent): void {
     this.emit({ type: "event", runId, event });
   }
 
-  /** 実行の終了(正常/異常問わず)を全購読者に通知する。 */
   endRun(runId: number): void {
     this.emit({ type: "runEnded", runId });
   }

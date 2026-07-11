@@ -1,42 +1,25 @@
 // livePanel.ts
 // ライブ操作パネルの WebviewPanel(コマンド `ftester.showLiveControl`)。
-// macOS GUI 版(Sources/ftester-gui/LiveView.swift + AppModel.swift の refreshLive/liveAction)の
-// VSCode 版: スクリーンショットをクリック/要素一覧クリックでタップ、スワイプ、テキスト入力、
-// アプリの起動/終了/インストールを行う。
+// macOS GUI 版(Sources/ftester-gui/LiveView.swift + AppModel.swift)の VSCode 版。
 //
-// - `ftester api list-devices` はワンショット(即座に1行JSONを出して終了する)コマンドで、
-//   cli.ts の FtesterCli(直列実行キュー)には乗せない。FtesterCli のキューは `ftester api run`
-//   (シナリオ実行。内部で `swift build` を伴い得るため同時に2プロセス走らせない SPM ビルドロック
-//   対策)と共有されており、実行が長時間(数分)続いている間はキューに積んだ要求が実行終了まで
-//   ブロックされる。ライブ操作パネルは「今の画面を見ながらすぐ触る」ためのものなので、実行中でも
-//   待たされずに応答する必要がある。そのため monitorPanel.ts の devicesUp/devicesDown と同じ方針で、
-//   専用に spawn する(runOneShot。SPM ビルドロックへの影響は無い: list-devices はビルドを一切
-//   行わないドライバ直叩きの操作なので、run 側の swift build と競合しない)。
+// - `ftester api list-devices` は FtesterCli の直列キュー(`ftester api run` と共有。シナリオ実行が
+//   `swift build` を伴い得るため同時2プロセスを防ぐ SPM ビルドロック対策)には乗せず、専用 spawn
+//   する(runOneShot)。ライブ操作パネルは実行中でも待たされず応答する必要があり、list-devices は
+//   ビルドを伴わないので run 側と競合しないため問題ない。
 // - タップ/入力/スワイプ/起動/終了/インストール/スナップショット取得は、選択デバイスごとに
-//   `ftester api live serve` を常駐 spawn し(startServeProcess/stopServeProcess)、stdin へ
-//   NDJSON でコマンドを送って stdout の NDJSON イベント(NdjsonParser で受ける)を待つ方式で行う。
-//   プロセス管理は monitorPanel.ts の host-metrics プロセス管理パターン
-//   (startHostMetricsProcess/stopHostMetricsProcess)を踏襲する: stdin パイプ保持
-//   (EOF が終了指示)・SIGTERM 送信後2秒で SIGKILL・予期しない終了は5秒後に自動再起動・起動10秒未満の
-//   異常終了が3連続したら諦める(serveGaveUp)。ただし host-metrics と違い serve はデバイスごとの
-//   状態を持つプロセスなので、デバイス選択が変わったら明示的に再バインド(停止→新デバイスで起動)し、
-//   その際は諦め状態もリセットする(=「デバイスを選び直す」操作そのものが host-metrics の
-//   「パネル開き直し/再起動ボタン」に相当する回復経路になる。この設計だと専用の再起動ボタンは不要)。
-//   操作後の追加待ちは行わない(ブリッジの操作応答時点で UI が整定済みのため)。
+//   `ftester api live serve` を常駐 spawn し、stdin へ NDJSON でコマンドを送って stdout の NDJSON
+//   イベント(NdjsonParser)を待つ方式で行う。プロセス管理は monitorPanel.ts の host-metrics
+//   パターンを踏襲: stdin パイプ保持(EOF が終了指示)・SIGTERM 送信後2秒で SIGKILL・予期しない
+//   終了は5秒後に自動再起動・起動10秒未満の異常終了が3連続したら諦める(serveGaveUp)。ただし
+//   serve はデバイスごとの状態を持つプロセスなので、デバイス選択が変わったら明示的に再バインド
+//   (停止→新デバイスで起動)し諦め状態もリセットする(=デバイスを選び直す操作が host-metrics の
+//   「再起動ボタン」に相当する回復経路。専用ボタンは無い)。
 // - パネルはシングルトン(monitorPanel.ts / healReviewPanel.ts と同じ)。
-// - 座標変換(クリック→ポイント座標、frame→表示px)・レスポンス検証・CLI引数組み立て・NDJSON
-//   コマンド組み立て/イベント検証は liveModel.ts(vscode 非依存)に切り出してある。webview 側
-//   (CSP により liveModel.ts を import できない)では、ホバー枠オーバーレイ用に
-//   frameToDisplayRect と同じ計算だけを手書きで複製している(healReviewPanel.ts の healModel.ts
-//   複製と同じ方針)。要素一覧の表示テキストは host 側で liveModel.formatElementLine
-//   (toSnapshotMessage 経由)を使って事前整形して送るため、webview 側での複製は不要。
-// - webview 資産(スタイル・スクリプト)は src/webview/live/{style.css,main.js} に分離されている。
-//   テンプレート補間はここには無く(monitorPanel.ts と異なり定数注入も無い)、JS は
-//   約240行と小さいため機能別モジュール分割はせず単一ファイル(main.js)のままにしている。
-//   esbuild(esbuild.mjs の buildWebview())がこれらを media/live/ にバンドルし、renderHtml() は
-//   webview.asWebviewUri で変換した URI を使って <link rel="stylesheet">/<script src> から
-//   外部リソースとして読み込む。HTML 本文は renderHtml() 内にインライン生成する
-//   (コントローラ自体が小さいため monitorHtml.ts のような別ファイルへの分離はしない)。
+// - 座標変換・レスポンス検証・CLI引数組み立て・NDJSON コマンド組み立て/イベント検証は
+//   liveModel.ts(vscode 非依存)に切り出してある。webview 側(CSP により import 不可)は
+//   frameToDisplayRect の計算だけを手書きで複製している(要素一覧の表示テキストは host 側で
+//   事前整形して送るため複製不要)。frameToDisplayRect を変更したら main.js 側も追随させること。
+// - webview 資産は src/webview/live/{style.css,main.js}(esbuild が media/live/ にバンドル)。
 
 import { randomBytes } from "node:crypto";
 import { type ChildProcessByStdio, spawn } from "node:child_process";
@@ -220,9 +203,8 @@ class LiveController implements vscode.Disposable {
   private serveStartedAt: number | undefined;
   /** 「起動後10秒未満での異常終了」が連続した回数。3回連続したら諦めて自動再起動を止める。 */
   private serveFailureStreak = 0;
-  /** 自動再起動を諦めた状態かどうか。true の間は close イベントで再起動をスケジュールしない。
-   * デバイスを選び直す(rebindServeProcess が走る)と giveUp を無視して仕切り直すため、専用の
-   * 「再起動」ボタンは不要(ファイル冒頭のコメント参照)。 */
+  /** 自動再起動を諦めた状態。true の間は close イベントで再起動をスケジュールしない
+   * (rebindServeProcess でリセットされる。詳細はファイル冒頭のコメント参照)。 */
   private serveGaveUp = false;
   /** 送信中(応答待ち)の serve リクエスト。同時に1件のみ(busy フラグで直列化されるため)。 */
   private pendingServeRequest: PendingServeRequest | undefined;
@@ -383,12 +365,10 @@ class LiveController implements vscode.Disposable {
   }
 
   /**
-   * 現在の serve プロセス(あれば)を止めてから device 向けに起動し直す。デバイス選択操作
-   * (selectDevice/デバイス一覧の再取得)起点の明示的な再バインドなので、直前の giveUp 状態は
-   * 無視して仕切り直す(giveUp が抑止するのは scheduleServeRestart() の無人5秒後リトライだけ)。
-   * 多重起動ガードは restartMonitorProcess/restartHostMetricsProcess と同じ理由
-   * (デバイスの連続切り替えで stop/start が重なるのを防ぐ。ガード中の呼び出しは serveDevice の
-   * 更新だけ行い、進行中の切り替え完了後は常に最新の serveDevice へ起動する)。
+   * 現在の serve(あれば)を止めて device 向けに起動し直す。明示的な再バインドなので直前の giveUp
+   * (抑止対象は scheduleServeRestart の無人5秒後リトライのみ)は無視して仕切り直す。多重起動ガードは
+   * デバイス連続切り替えでの stop/start 重複を防ぐ(ガード中は serveDevice 更新のみ行い、進行中の
+   * 切り替え完了後は最新の serveDevice へ起動する)。
    */
   private rebindServeProcess(device: LiveDeviceRef): void {
     this.serveFailureStreak = 0;
@@ -399,10 +379,9 @@ class LiveController implements vscode.Disposable {
     }
     this.serveRestartPending = true;
     const proc = this.serveProcess;
-    // 停止処理(SIGTERM→close)が終わるまでの間、旧プロセスへの参照を残さない。sendServeCommand は
-    // serveProcess が未設定の間「常駐プロセスが起動していません」を返すので、切り替え中に
-    // (busy ガードをすり抜けて)コマンドが送られても、停止処理中の旧プロセス[=旧デバイス宛]に
-    // 誤って届くことは無い。
+    // 停止処理(SIGTERM→close)完了前に旧プロセスへの参照を消す: sendServeCommand は serveProcess
+    // 未設定なら即座にエラーを返すため、切り替え中に送られたコマンドが停止中の旧プロセス
+    // (旧デバイス宛)に届くことは無い。
     this.serveProcess = undefined;
     this.killServeProcess(proc);
     const startLatest = (): void => {
@@ -419,8 +398,6 @@ class LiveController implements vscode.Disposable {
     proc.once("close", startLatest);
   }
 
-  /** `ftester api live serve` を device 向けに spawn する。stdin はパイプで保持したまま何も
-   * 書かない箇所を除き、コマンド送信にも使う(EOF が終了指示なのは monitor/host-metrics と同じ)。 */
   private startServeProcess(device: LiveDeviceRef): void {
     if (this.serveRestartTimer) {
       clearTimeout(this.serveRestartTimer);
@@ -622,7 +599,6 @@ class LiveController implements vscode.Disposable {
     this.applySnapshotResult(snapshot);
   }
 
-  /** 「更新」ボタンのハンドラ。 */
   private async refreshSnapshot(): Promise<void> {
     if (this.busy) {
       return;
@@ -767,12 +743,7 @@ function generateNonce(): string {
   return randomBytes(16).toString("hex");
 }
 
-/**
- * webview の HTML を生成する。CSS/JS は src/webview/live/ から esbuild が media/live/ に
- * バンドルした外部ファイル(style.css/main.js)を読み込む(webview.asWebviewUri で変換した URI。
- * monitorHtml.ts の renderHtml() と同じ方針)。HTML 本文はこの関数内に
- * インライン生成する。
- */
+/** CSS/JS は esbuild が media/live/ にバンドルした外部ファイルを webview.asWebviewUri で読み込む。 */
 function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
   const nonce = generateNonce();
   const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, "media", "live", "style.css"));

@@ -1,9 +1,5 @@
-// laneLog.js
-// 出力ペインの「ログレーン」(worker/デバイスごとの実行ログ表示欄)を担う。
-// lanes(レーン id -> DOM/自動スクロール状態)は実際に読み書きするのはこのモジュールの関数群
-// だけなので、このファイルに閉じている(deviceTiles.js とは selectedDeviceIds/tiles/
-// runningWorkers を介して相互に参照し合う。いずれも再代入されない Map/Set の中身を
-// 変更するだけなので import 境界をまたいでも問題ない)。
+// lanesの読み書きはこのモジュールに閉じる。deviceTiles.jsとはselectedDeviceIds/tiles/
+// runningWorkers(いずれも再代入されないMap/Set)を介して相互参照する。
 
 import { MAX_LANE_LINES, OVERALL_LANE_ID, OVERALL_LANE_NAME } from "../../runLaneModel";
 import { lanesPlaceholder, lanesGrid, lanesSelectionStatus, lanesRunStatus } from './domRefs.js';
@@ -27,8 +23,7 @@ function setTileRunning(id, running) {
   }
 }
 
-// レーン名はデバイスタイルのタイトルと同じテキスト・同じ装飾(色付きピル)にする。
-// platform 不明(全体レーンやフォールバック)は中立色のピル。
+// platform不明(全体レーンやフォールバック)は中立色のピル。
 function setLaneHeader(headerEl, name, platform) {
   headerEl.textContent = '';
   const pill = document.createElement('span');
@@ -37,9 +32,8 @@ function setLaneHeader(headerEl, name, platform) {
   headerEl.appendChild(pill);
 }
 
-// updateLabel=true は workersReady/hydrate/デバイス同期によるレーン構成時のみ。
-// 行追加(appendLaneLine)からの呼び出しで true にすると、フォールバック名(生の worker id)で
-// 構成済みの表示名を上書きしてしまう。
+// updateLabel=trueはdevices同期等のレーン構成時のみ。appendLaneLineから呼ぶ時にtrueにすると、
+// フォールバック名(生のworker id)で構成済み表示名を上書きしてしまう。
 function ensureLane(id, name, platform, updateLabel) {
   let lane = lanes.get(id);
   if (lane) {
@@ -129,16 +123,14 @@ export function updateLaneVisibility() {
     : '全ワーカー';
 }
 
-// 出力ペインは常設で、実行前でもデバイス毎の空レーンを表示する(プレースホルダー文言は
-// 表示しない)。レーンはモニターの devices サイクルから常時同期する。
+// 出力ペインは常設(実行前もデバイス毎の空レーンを表示)。レーンはdevicesサイクルから常時同期。
 export function updateLanesPlaceholder() {
   lanesPlaceholder.style.display = 'none';
   lanesGrid.style.display = 'grid';
 }
 updateLanesPlaceholder();
 
-// モニターのデバイス一覧に合わせて空レーンを用意する(既存レーンはそのまま。
-// 実行開始(cleared)で一旦消えても、次の devices サイクル(interval秒毎)で復元される)。
+// 実行開始(cleared)で一旦消えても、次のdevicesサイクルで復元される。
 export function syncLanesToDevices(devices) {
   for (const device of devices) {
     ensureLane(device.id, device.name, device.platform, true);

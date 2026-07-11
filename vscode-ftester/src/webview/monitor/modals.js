@@ -1,17 +1,15 @@
 // modals.js
-// 「プロファイル」タブから開く3つのオーバーレイモーダル(デバイス追加/名前入力/既存デバイスから
-// 選択)をまとめたモジュール。
-// デバイス追加モーダルの作成結果(applyCreateDeviceResult)が、既存から選択モーダルの状態
-// (pendingAutoCheck)を書き換える(register:false で作成した直後、次の一覧再描画でその行を
-// 自動チェックONにする)ため、setter を挟まず同一モジュールにまとめて置いている。
+// 「プロファイル」タブの3モーダル(デバイス追加/名前入力/既存デバイスから選択)をまとめる。
+// applyCreateDeviceResult が既存選択モーダルの pendingAutoCheck を直接書き換えるため、
+// setter を挟まず同一モジュールに置いている。
 
 import { vscode } from './vscodeApi.js';
 import { selectedMachine, findMachine, allDeviceNamesForSelectedMachine, btnDeviceAddExisting } from './machineProfilesTab.js';
 
 // ---- デバイス追加モーダル ---------------------------------------------------
 
-// 複製元: src/monitorModel.ts の validateNewDeviceName。webview は CSP により import 不可のため
-// 複製する(deviceOpMenuItem の複製と同じ方針。ロジックを変更したら両方に反映すること)。
+// 複製元: src/monitorModel.ts の validateNewDeviceName(CSP により import 不可のため複製。
+// ロジック変更時は両方に反映すること)。
 function validateNewDeviceName(name, existing) {
   const trimmed = name.trim();
   if (trimmed.length === 0) {
@@ -39,15 +37,11 @@ let deviceAddCreating = false;
 let deviceCatalog = null;
 // デバイス名をユーザーが手で編集したか(true の間は自動生成に追従しない)。
 let dlgNameDirty = false;
-// このモーダルを #device-pick-overlay の「+」(device-pick-add-new)から開いたか。
-// #device-pick-overlay はフルスクリーンのオーバーレイなので、openDeviceAddModal() 呼び出し時点の
-// devicePickOpen がそのまま「ピッカー経由かどうか」の判定になる(下の openDeviceAddModal 参照)。
-// true の間は createDevice に register:false を送り(物理作成のみ)、成功時は pendingAutoCheck を
-// 使って一覧再描画時に該当行をチェックONにする。
+// #device-pick-overlay の「+」から開いたか(devicePickOpen をそのまま流用して判定)。
+// true なら createDevice は register:false(物理作成のみ)、成功時 pendingAutoCheck で自動チェック。
 let deviceAddFromPicker = false;
 
-// OS種別はラジオボタン2つ(dlg-platform-ios/-android、name="dlg-platform")で1つの select 相当を
-// 表す。読み書きをここに集約し、他の場所は単一選択値として扱えるようにする。
+// ラジオ2つ(dlg-platform-ios/-android)で1つの select 相当を表す。読み書きをここに集約する。
 function getDialogPlatform() {
   return dlgPlatformIos.checked ? 'ios' : 'android';
 }
@@ -117,11 +111,9 @@ function refreshAutoName() {
   }
 }
 
-// カタログの available:false 側はラジオ自体を disabled にし、現在の選択がその側だった場合は
-// 利用可能な側へ寄せる(両方 available:false の場合は変更しない = OK 側で弾かれる想定)。
-// setDialogControlsEnabled(true) の直後にも呼び直すことで、いったん disabled にした
-// ラジオを一律 enabled に戻す際、available:false 側を誤って有効に戻さないようにする
-// (ラジオは disabled が1階層しかないため、有効化のたびに可用性を再適用する必要がある)。
+// available:false 側のラジオを disabled にし、選択がそちら側なら利用可能な側へ寄せる
+// (両方不可なら変更しない)。setDialogControlsEnabled(true) 直後にも呼び直すこと
+// (一律 enabled 化で available:false 側まで有効に戻ってしまうため)。
 function applyPlatformAvailability() {
   dlgPlatformIos.disabled = !deviceCatalog.ios.available;
   dlgPlatformAndroid.disabled = !deviceCatalog.android.available;
@@ -156,8 +148,6 @@ function openDeviceAddModal() {
   if (!selectedMachine) {
     return;
   }
-  // devicePickOpen は #device-pick-overlay がフルスクリーンのオーバーレイであるため、
-  // ここで呼ばれた時点の値がそのまま「ピッカーの「+」から開いたか」の判定になる。
   deviceAddFromPicker = devicePickOpen;
   deviceAddOpen = true;
   deviceAddCreating = false;
@@ -212,8 +202,7 @@ export function applyCreateDeviceResult(message) {
   dlgOk.textContent = 'OK';
   if (message.ok) {
     closeDeviceAddModal();
-    // register:false(ピッカー経由)で作成できた場合、次の一覧再読込でその行を自動チェックONに
-    // するための識別子を保持しておく(pendingAutoCheck。renderDevicePickGroups 参照)。
+    // pendingAutoCheck に識別子を保持(次の一覧再描画で自動チェックON。詳細は宣言箇所参照)。
     if (deviceAddFromPicker) {
       pendingAutoCheck = message.device ? { udid: message.device.udid, avd: message.device.avd } : null;
     }
@@ -222,15 +211,14 @@ export function applyCreateDeviceResult(message) {
   }
   dlgOk.disabled = false;
   setDialogControlsEnabled(true);
-  // setDialogControlsEnabled(true) は両ラジオを一律 enabled にするため、available:false 側を
-  // 再度 disabled に戻す(applyPlatformAvailability 冒頭のコメント参照)。
+  // setDialogControlsEnabled(true) は両ラジオを一律 enabled にするため、applyPlatformAvailability で
+  // available:false 側を戻す。
   applyPlatformAvailability();
   dlgError.classList.remove('info');
   dlgError.textContent = message.error || 'デバイスの作成に失敗しました。';
 }
 
-// 「+新規作成」ボタンは無い。新規作成モーダル(openDeviceAddModal)は
-// 「+」で開く選択画面(#device-pick-overlay)内の「+」からのみ開く(=常に register:false 経路)。
+// 「+新規作成」ボタンは無く、openDeviceAddModal は #device-pick-overlay 内の「+」からのみ開く。
 dlgCancel.addEventListener('click', () => closeDeviceAddModal());
 deviceAddOverlay.addEventListener('click', (event) => {
   if (event.target === deviceAddOverlay) {
@@ -261,13 +249,11 @@ dlgOk.addEventListener('click', () => {
     name: name,
     model: dlgModel.value,
     os: dlgOs.value,
-    // ピッカー経由(deviceAddFromPicker)なら物理作成のみ(register:false)。登録はピッカーの
-    // OK(machineDevicesSync)で行う。ピッカー経由でなければ即登録する(register:true)。
+    // ピッカー経由なら register:false(登録はピッカー側 OK の machineDevicesSync で行う)。
     register: !deviceAddFromPicker,
   });
 });
-// 既存の Esc ハンドラ(closeDeviceOpMenu)とは別のリスナーとして追加する(closeDeviceAddModal
-// は自分の状態(deviceAddOpen/deviceAddCreating)だけを見るので、両者は独立して安全に共存する)。
+// closeDeviceAddModal は自分の状態のみ見るため、他の Esc ハンドラと独立して共存できる。
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
     closeDeviceAddModal();
@@ -275,11 +261,8 @@ document.addEventListener('keydown', (event) => {
 });
 
 // ---- 名前入力モーダル(#name-input-overlay) ----------------------------------------
-// 実行/アプリ/マシンプロファイルの追加・コピー・名前変更(9箇所)を担う、showInputBox 相当の
-// 置き換え。拡張側の nameInputOpen で開き、OK/キャンセルは nameInputConfirm/nameInputCancel を
-// id 付きで返す(拡張側の pendingNameInput と突き合わせる)。検証ルールは拡張側の
-// validateNewRunProfileName/validateNewAppProfileName/validateNewMachineProfileName と同一
-// (空/"/""\""/"."始まり/重複)。バックスラッシュ文字は String.fromCharCode(92) で組み立てる。
+// 実行/アプリ/マシンプロファイルの追加・コピー・名前変更用 showInputBox 相当。id で拡張側の
+// pendingNameInput と突き合わせる。検証ルールは拡張側の validateNew*ProfileName と同一に保つこと。
 
 const nameInputOverlay = document.getElementById('name-input-overlay');
 const nameInputTitleEl = document.getElementById('name-input-title');
@@ -312,9 +295,8 @@ function validateNameInputValue(raw, state) {
   return null;
 }
 
-// エラー文言の表示・OKボタンの disabled 状態を、現在の入力値で更新する。開いた直後の空欄に
-// いきなり「入力してください」を出さないよう、value が非空 or 一度でも入力があった(touched)
-// 場合のみエラー文言を表示する(disabled の切替自体は常に行う)。
+// touched か value 非空のときだけエラー文言を表示する(開いた直後に空欄でエラー表示するのを
+// 防ぐ)。OK の disabled 切替は常に行う。
 function refreshNameInputValidation() {
   if (!nameInputState) {
     return;
@@ -388,9 +370,7 @@ nameInputOverlay.addEventListener('click', (event) => {
     cancelNameInput();
   }
 });
-// 名前入力モーダルは他のモーダル(デバイス追加/デバイス選択)と同時には開かないため、
-// device-add-overlay の Esc ハンドラ(上記)と同じ独立した専用リスナーとして追加する
-// (deviceAddOpen 等の他モーダルの状態は見なくてよい)。
+// 他モーダルと同時には開かないため、独立した専用 Esc リスナーでよい。
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && nameInputState) {
     cancelNameInput();
@@ -398,10 +378,8 @@ document.addEventListener('keydown', (event) => {
 });
 
 // ---- 「+既存から選択」モーダル(#device-pick-overlay) -----------------------
-// インストール済みの iOS シミュレータ/Android AVD を一覧表示する。チェックボックスは
-// 「選択」ではなく「マシンプロファイルへの登録状態そのもの」を表す(初期値=現在の登録有無)。
-// OK は行ごとの初期状態からの差分をまとめて machineDevicesSync(add/remove)で送る。
-// 実機で数十件規模になりうる前提。
+// チェックボックスは「選択」ではなく「マシンプロファイルへの登録状態そのもの」を表す
+// (初期値=現在の登録有無)。OK は初期状態からの差分を machineDevicesSync(add/remove)で送る。
 
 const devicePickOverlay = document.getElementById('device-pick-overlay');
 const devicePickIosTitle = document.getElementById('device-pick-ios-title');
@@ -415,22 +393,16 @@ const devicePickAddNewBtn = document.getElementById('device-pick-add-new');
 
 let devicePickOpen = false;
 let devicePickAdding = false;
-// 直近描画した行(チェックボックス+対応データ+初期状態)。チェックボックスは「選択」ではなく
-// 「登録状態そのもの」を表すので、initialChecked(=描画時点の登録有無)を保持しておき、OK
-// クリック時にそこからの差分(行ごとの checkbox.checked !== initialChecked)だけを
-// machineDevicesSync の add/remove として組み立てる。registeredName は登録済みだった行を
-// 未チェックにした場合の削除対象(マシンプロファイル上の name)。
+// 直近描画した行。initialChecked は描画時点の登録有無(OK 時に checkbox.checked との差分を
+// add/remove として組み立てる)。registeredName は未チェックにした場合の削除対象(name)。
 let devicePickIosRows = [];
 let devicePickAndroidRows = [];
-// register:false で新規作成した直後、次の installedDevices 再描画で自動チェックONにしたい行の
-// 識別子(iOS=udid/Android=avd の id)。作成に成功していない/一致する行が無い場合はどちらも
-// null のままでよい(applyPendingAutoCheck が静かに諦める)。適用後は必ず null に戻す
-// (一度きりの適用)。
+// register:false で作成した直後、次の installedDevices 再描画で自動チェックONにしたい行の
+// 識別子(iOS=udid/Android=avd の id)。適用後は必ず null に戻す(一度きりの適用)。
 let pendingAutoCheck = null;
 
-// 選択中マシンの既存デバイスから、識別値→マシンプロファイル上の name への対応表を作る
-// (初期チェック状態の判定と、登録解除[remove]時にどの name を消せばよいかの両方に使う)。
-// iOS は udid 一致、Android は avd が id または displayName に一致するものを登録済みとみなす。
+// 識別値→マシンプロファイル上の name の対応表(初期チェック判定・remove 対象名の特定に使う)。
+// Android は avd の id/displayName どちらの一致も登録済みとみなす。
 function registeredIosNameByUdid() {
   const machine = findMachine(selectedMachine);
   const map = new Map();
@@ -456,8 +428,7 @@ function registeredAndroidNameByAvd() {
   return map;
 }
 
-// OK は「行ごとの初期状態(登録有無)からの差分が1件以上ある」ときだけ有効にする
-// (チェックボックス=登録状態の設計上、単に何かがチェックされているかどうかでは判定できない)。
+// OK は初期状態からの差分が1件以上あるときだけ有効(チェック済み数では判定できない)。
 function updateDevicePickOkState() {
   if (devicePickAdding) {
     return;
@@ -475,16 +446,14 @@ function buildDevicePickEmptyRow(container, text) {
   container.appendChild(empty);
 }
 
-// checked クラス(選択配色。CSS側 .device-pick-row.checked)を checkbox.checked に同期する。
-// checkbox.checked のプログラム的変更は change イベントを発火しないため、変更経路
-// (初期描画/行クリック/自動チェック)ごとに明示的に呼ぶ。
+// checkbox.checked → .checked クラス(CSS 配色)に同期する。プログラム的な checked 変更は
+// change イベントを発火しないため、変更経路ごとに明示的に呼ぶこと。
 function syncDevicePickRowChecked(row, checkbox) {
   row.classList.toggle('checked', checkbox.checked);
 }
 
-// 行のどこをクリックしてもチェックが切り替わるようにする。チェックボックス
-// 自体のクリックはネイティブのトグルに任せる(row の click でも拾ってしまうと二重トグルで
-// 元に戻ってしまうため除外する)。適用中等で checkbox が disabled の間は何もしない。
+// 行クリックでチェックを切り替える。checkbox 自体のクリックはネイティブトグルに任せ、row 側で
+// 拾うと二重トグルで元に戻るため除外する。disabled 中は何もしない。
 function attachDevicePickRowToggle(row, checkbox) {
   row.addEventListener('click', (event) => {
     if (event.target === checkbox || checkbox.disabled) {
@@ -492,7 +461,6 @@ function attachDevicePickRowToggle(row, checkbox) {
     }
     checkbox.checked = !checkbox.checked;
     syncDevicePickRowChecked(row, checkbox);
-    // プログラム的な .checked 変更は change イベントを発火しないため、明示的に更新する。
     updateDevicePickOkState();
   });
 }
@@ -526,7 +494,7 @@ function renderDevicePickGroups(data) {
       });
       const textWrap = document.createElement('div');
       textWrap.className = 'device-pick-row-text';
-      // タイル/レーン/マシンプロファイル一覧と同じ配色ピル(.tile-name/-ios)を共用する。
+      // タイル配色ピル(.tile-name/-ios)を共用。
       const nameEl = document.createElement('span');
       nameEl.className = 'device-pick-row-name tile-name tile-name-ios';
       nameEl.textContent = device.name;
@@ -564,7 +532,7 @@ function renderDevicePickGroups(data) {
       });
       const textWrap = document.createElement('div');
       textWrap.className = 'device-pick-row-text';
-      // タイル/レーン/マシンプロファイル一覧と同じ配色ピル(.tile-name/-android)を共用する。
+      // タイル配色ピル(.tile-name/-android)を共用。
       const nameEl = document.createElement('span');
       nameEl.className = 'device-pick-row-name tile-name tile-name-android';
       nameEl.textContent = avd.displayName;
@@ -585,12 +553,8 @@ function renderDevicePickGroups(data) {
   }
 }
 
-// pendingAutoCheck(register:false で新規作成した直後の識別子)が指す行があれば、その行の
-// チェックボックスだけを ON にする(initialChecked は renderDevicePickGroups が判定した
-// 「登録済みかどうか」のまま false なので、ここで checked を true にすれば差分[ユーザー操作扱い]
-// として OK ボタンが有効になる)。一致する行が無ければ何もしない(静かに諦める)。
-// renderDevicePickGroups の直後(devicePickIosRows/devicePickAndroidRows が最新化された後)に
-// 呼ぶこと。呼んだら pendingAutoCheck は必ずクリアする(一度きりの適用)。
+// pendingAutoCheck が指す行の checkbox だけ ON にする(initialChecked は false のままなので
+// 差分としてカウントされ OK が有効になる)。renderDevicePickGroups 直後に呼ぶこと。
 function applyPendingAutoCheck() {
   if (!pendingAutoCheck) {
     return;
@@ -613,18 +577,14 @@ function applyPendingAutoCheck() {
   }
 }
 
-// 同期リクエスト送信中(devicePickAdding)はチェックボックスも含めて全コントロールを disabled
-// にする。チェックボックスは「登録状態そのもの」で常に操作可能な設計のため、再度有効化する
-// 際も一律 enabled に戻せばよい。
+// 送信中は checkbox も含め全コントロールを disabled にする。再有効化時は一律 enabled でよい。
 function setDevicePickControlsEnabled(enabled) {
   for (const row of devicePickIosRows.concat(devicePickAndroidRows)) {
     row.checkbox.disabled = !enabled;
   }
 }
 
-// #device-add-overlay(「+新規作成」)での作成が成功した後、このモーダルがまだ開いていれば
-// 一覧を再取得して作り直す。全行が installedDevicesRequest の新しい応答から再描画されるため、
-// 登録状態は最新値に自然と揃う(=他行の未確定の差分は破棄される。単純さを優先した設計判断)。
+// 作成成功後、モーダルが開いていれば一覧を再取得する(他行の未確定差分は破棄される。単純さ優先)。
 function reloadDevicePickIfOpen() {
   if (!devicePickOpen) {
     return;
@@ -746,12 +706,8 @@ devicePickOk.addEventListener('click', () => {
   devicePickError.textContent = '';
   vscode.postMessage({ type: 'machineDevicesSync', machine: selectedMachine, add: add, remove: remove });
 });
-// 既存の Esc ハンドラとは別のリスナーとして追加する(closeDeviceAddModal の Esc ハンドラと
-// 同じ方針。closeDevicePickModal は自分の状態[devicePickOpen/devicePickAdding]だけを見るので
-// 独立して安全に共存する)。「+」ボタンでこのモーダルの上に #device-add-overlay を重ねて
-// 開けるため、その間は Esc で奥のこのモーダルまで一緒に閉じないよう deviceAddOpen を先に
-// チェックする(手前の device-add-overlay 自身の Esc ハンドラは deviceAddOpen だけを見るので、
-// そちらは自分自身を閉じる)。
+// #device-add-overlay をこのモーダルの上に重ねて開けるため、deviceAddOpen 中は Esc で奥の
+// このモーダルまで閉じないよう先にチェックする(手前側は自身の Esc ハンドラで閉じる)。
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
     if (deviceAddOpen) {

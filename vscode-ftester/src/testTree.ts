@@ -1,11 +1,9 @@
 // testTree.ts
-// ftester のシナリオを VS Code の TestController ツリーとして表示する。
-// 階層は folder → class → @Test メソッド(leaf) の3階層(folder が無いシナリオは
-// class ノードを直接ルート直下に置く)。
+// ftester のシナリオを VS Code TestController ツリーとして表示する。
+// 階層は folder → class → @Test メソッド(leaf)。folder が無いシナリオは class をルート直下に置く。
 //
-// refresh() は `ftester api list-scenarios --project <P>` を実行してツリーを全再構築する。
-// 実行中に別の refresh 要求が来ても構わないよう、世代番号(generation)で古い応答の
-// 反映を破棄する。
+// refresh() は list-scenarios を叩いてツリーを全再構築する。並行 refresh 時は世代番号
+// (generation)で古い応答の反映を破棄する。
 
 import * as vscode from "vscode";
 import { type CliResult, CliSupersededError, type FtesterCli } from "./cli";
@@ -48,7 +46,6 @@ export class FtesterTestTree implements vscode.Disposable {
     return this.lastScenarios;
   }
 
-  /** `api list-scenarios` を実行してツリーを再構築する。 */
   async refresh(): Promise<void> {
     const workspaceRoot = this.getWorkspaceRoot();
     if (!workspaceRoot) {

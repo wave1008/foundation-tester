@@ -1,10 +1,7 @@
 // monitorDeviceOps.ts
 // デバイスモニターパネル(monitorPanel.ts)のデバイスライフサイクル操作(起動/終了/新規作成)部分。
-// MonitorDeviceOps クラスは、デバイスの起動/終了の直列キュー(devicesUp/devicesDown/deviceOp)・
-// デバイスカタログ取得・インストール済みデバイス一覧取得・新規デバイス作成(いずれも短命プロセスの
-// spawn)を担う。モニタープロセスの pause/resume(writeMonitorControl)・マシンプロファイル最新化の
-// 通知は、このクラスからは monitorProcessManager.ts / monitorProfilesController.ts を直接参照せず、
-// MonitorPanelDeps 経由のコールバックで依頼する(サブコントローラ間の直接参照禁止のため)。
+// pause/resume・マシンプロファイル最新化の通知は monitorProcessManager.ts/monitorProfilesController.ts
+// を直接参照せず、MonitorPanelDeps 経由のコールバックで依頼する(サブコントローラ間の直接参照禁止)。
 
 import { type ChildProcessByStdio, spawn } from "node:child_process";
 import type { Readable } from "node:stream";
@@ -37,26 +34,20 @@ type PipeProcess = ChildProcessByStdio<null, Readable, Readable>;
 /** webview からの "createDevice" メッセージの形(runCreateDevice で使う)。 */
 export type CreateDeviceMessage = Extract<MonitorFromWebviewMessage, { type: "createDevice" }>;
 
-/**
- * 確認モーダルに列挙する対象デバイス名の文字列(「、」区切りで最大3件+超過分は「 ほか」)。
- * monitorProfilesController.ts の handleMachineDeviceRemove の複数選択一括除去の確認文言で使う。
- */
+/** monitorProfilesController.ts の handleMachineDeviceRemove(複数選択一括除去の確認文言)で使う。 */
 export function summarizeDeviceNames(names: readonly string[]): string {
   const shown = names.slice(0, 3).join("、");
   return names.length > 3 ? `${shown} ほか` : shown;
 }
 
-/**
- * デバイスライフサイクル操作(「デバイスを全て起動/終了」とタイル個別の device-up/device-down)の
- * 直列キュー、および device-catalog/installed-devices/create-device の短命プロセス実行を担う。
- * MonitorPanelController が1つ保持し、handleWebviewMessage の各ケースから公開メソッドを呼び出す。
- */
+/** デバイスライフサイクルの直列キューおよび device-catalog/installed-devices/create-device の
+ * 短命プロセス実行を担う。MonitorPanelController が1つ保持する。 */
 export class MonitorDeviceOps {
   /**
-   * デバイスライフサイクル操作(「デバイスを全て起動/終了」とタイル個別の device-up/device-down)の
-   * 直列キュー。ブリッジ供給・simctl・adb が競合しないよう、必ず1件ずつ実行する(実機ログ解析:
-   * 並行実行がブリッジ供給の waitUntilReady 失敗・ゾンビブリッジ蓄積を誘発していた)。
-   * 状態遷移(queued/running)の純粋ロジックは monitorModel.ts 側(vscode 非依存・単体テスト対象)。
+   * デバイスライフサイクル操作(全起動/終了・個別 device-up/down)の直列キュー。ブリッジ供給・
+   * simctl・adb が競合しないよう必ず1件ずつ実行する(実機ログ解析: 並行実行がブリッジ供給の
+   * waitUntilReady 失敗・ゾンビブリッジ蓄積を誘発していた)。状態遷移(queued/running)の純粋
+   * ロジックは monitorModel.ts 側(vscode 非依存・単体テスト対象)。
    */
   private lifecycleQueue: DeviceLifecycleQueueState = createDeviceLifecycleQueueState();
   /** create-device の多重実行ガード。true の間に来た createDevice リクエストは即座に失敗を返す。 */
@@ -65,12 +56,10 @@ export class MonitorDeviceOps {
   constructor(private readonly deps: MonitorPanelDeps) {}
 
   /**
-   * デバイスライフサイクル操作(devicesUp/devicesDown/deviceOp)をキューに積む。
-   * キューが空(何も実行中でない)ならそのまま実行を開始し、そうでなければ先に積まれている
-   * ジョブの完了後に順番に実行される。同じデバイスへの deviceOp が既にキュー内(実行中または
-   * 待機中)にある場合は連打とみなして無視する(グローバルボタン側は呼び出し元
-   * (handleWebviewMessage 経由)では素通しだが、`isDeviceLifecycleQueueBusy` を見て webview 側の
-   * ボタンが disabled になっているため、通常はここに届く前に抑止される)。
+   * デバイスライフサイクル操作をキューに積む。空なら即実行、そうでなければ先行ジョブの完了後に
+   * 実行される。同じデバイスへの deviceOp が既にキュー内(実行中/待機中)にあれば連打とみなして
+   * 無視する(webview 側は `isDeviceLifecycleQueueBusy` でボタンを disabled にするため、通常は
+   * ここに届く前に抑止される)。
    */
   enqueueLifecycleJob(job: DeviceLifecycleJob): void {
     if (job.kind === "device" && hasDeviceLifecycleJobFor(this.lifecycleQueue, job.name)) {
@@ -79,11 +68,9 @@ export class MonitorDeviceOps {
     const wasBusy = isDeviceLifecycleQueueBusy(this.lifecycleQueue);
     this.lifecycleQueue = enqueueDeviceLifecycleJob(this.lifecycleQueue, job);
     if (!wasBusy) {
-      // キューが空だったので、このジョブがそのまま先頭になり即実行される。
       this.deps.post({ type: "bootBusy", busy: true });
       this.runLifecycleQueueHead();
     } else if (job.kind === "device") {
-      // 何か実行中/待機中なので、このジョブは順番待ち(「待機中...」バッジ)になる。
       this.postDeviceLifecycleStatus(job.name);
     }
   }
@@ -95,11 +82,9 @@ export class MonitorDeviceOps {
   }
 
   /**
-   * webview からの "ready"(初期化完了通知)を受けた MonitorPanelController.sendInitialState() から
-   * 呼ばれる: デバイスライフサイクルキューの状態を再送する(webview 再読込がジョブ実行中に起きた
-   * 場合に、ボタンの無効状態・タイルのバッジを復元するため)。ready は webview 再読込のたびに
-   * 再送されうるので、ここで行う処理が冪等であることが前提になる(webview 側で上書き描画するだけ
-   * なので何度呼んでも問題ない)。
+   * MonitorPanelController.sendInitialState() から呼ばれる: キュー状態を再送し、webview 再読込が
+   * ジョブ実行中に起きた場合でもボタン無効化・タイルのバッジを復元する。ready は再読込のたびに
+   * 再送されうるため、この処理は冪等でなければならない(webview 側は上書き描画のみなので問題ない)。
    */
   resendQueueStatus(): void {
     if (isDeviceLifecycleQueueBusy(this.lifecycleQueue)) {
@@ -223,9 +208,8 @@ export class MonitorDeviceOps {
   /**
    * タイル右クリックメニューの起動/停止項目から、デバイス1台だけを
    * `ftester api device-up`/`device-down` で起動/停止する(device ジョブの実処理)。
-   * finished イベントが ok:false のとき、およびプロセスが異常終了したとき(finished を出せずに
-   * 落ちた場合を含む)は、webview のエラーバナーに加えて出力チャネルにも必ずログを残す
-   * (バナーはパネルを閉じると消えるため、事後診断できるよう出力チャネル側にも記録する)。
+   * 失敗時(finished ok:false、または finished を出せずに落ちた場合を含む)は、バナーがパネルを
+   * 閉じると消えるため、事後診断できるよう出力チャネルにも必ずログを残す。
    */
   private executeDeviceOpJob(name: string, op: DeviceOpKind): void {
     const config = this.deps.getConfig();
@@ -241,8 +225,7 @@ export class MonitorDeviceOps {
       this.deps.outputChannel.appendLine(`[ftester] device-${op}(${name})が失敗しました: ${message}`);
     };
 
-    // spawn 失敗時(ENOENT 等)は 'error' の後に 'close' も発火することがある(Node の既知の挙動)。
-    // finishLifecycleQueueHead() はキュー先頭を1回だけ取り除く前提なので、二重呼び出しを防ぐ。
+    // spawn 失敗時の 'error'+'close' 二重発火対策(executeBulkJob と同じ理由)。
     let jobFinished = false;
     const finishOnce = (): void => {
       if (jobFinished) {
@@ -349,8 +332,7 @@ export class MonitorDeviceOps {
       stderr += chunk.toString("utf8");
     });
 
-    // spawn 失敗時(ENOENT 等)は 'error' の後に 'close' も発火することがある(Node の既知の挙動)。
-    // 二重に post しないようにガードする(executeDeviceOpJob の finishOnce パターンと同じ)。
+    // spawn 失敗時の 'error'+'close' 二重発火対策(executeBulkJob 参照)。二重 post を防ぐ。
     let responded = false;
     const respond = (message: MonitorToWebviewMessage): void => {
       if (responded) {
@@ -481,18 +463,12 @@ export class MonitorDeviceOps {
 
   /**
    * `ftester api create-device` を短命プロセスとして実行する(デバイス追加モーダルの OK)。
-   * creatingDevice フラグによる単一実行ガード(実行中に来たリクエストは即座に失敗を返す。
-   * モーダル側も自身の作成中状態でボタンを無効化するが、二重の安全策として host 側でも弾く)。
-   * finished イベントが来る前にプロセスが終了した場合(クラッシュ等)は合成の失敗結果を送る
-   * (executeDeviceOpJob の finishOnce パターンと同じ)。成功時は、machines/*.json の
-   * FileSystemWatcher(onDidChange)経由でも postMachineProfileInfo() が呼ばれるが、
-   * 反映を待たせないようここでも明示的に呼ぶ(冪等なので二重呼び出しは無害。
-   * monitorProfilesController.ts の MonitorProfilesController を直接参照せず、
-   * MonitorPanelDeps.notifyMachineProfilesChanged 経由で依頼する)。
-   * msg.register が false の場合は `--no-register` を付与し、物理作成のみ行う(マシンプロファイルへの
-   * 追記はしない。#device-pick-overlay の「+」から開いた新規作成モーダルが使う)。
-   * この場合 postMachineProfileInfo() を呼んでも(何も追記されていないため)実質的に無意味だが、
-   * register:true と分岐を分けるほどの理由が無いため呼び出し自体は共通のままにしている。
+   * creatingDevice による多重実行防止(モーダル側のボタン無効化に加えた保険)。finished が来る前に
+   * プロセスが落ちた場合は合成の失敗結果を送る(executeDeviceOpJob と同じパターン)。成功時は
+   * FileSystemWatcher 経由でも postMachineProfileInfo() が呼ばれるが、反映を待たせないようここでも
+   * MonitorPanelDeps.notifyMachineProfilesChanged 経由で明示的に呼ぶ(冪等なので二重呼び出しは無害)。
+   * msg.register が false のときは `--no-register` を付与し物理作成のみ行う(マシンプロファイルには
+   * 追記しない。#device-pick-overlay の「+」新規作成モーダルが使う)。
    */
   runCreateDevice(msg: CreateDeviceMessage): void {
     if (this.creatingDevice) {
@@ -611,8 +587,7 @@ export class MonitorDeviceOps {
       this.deps.outputChannel.appendLine(
         `[ftester] create-device(${msg.name})が終了しました(exit code: ${String(exitCode)})`,
       );
-      // finished を経由せずに落ちたケース(クラッシュ・kill 等)を合成の失敗として扱う。
-      // finished 経由で既に respond 済みの場合は no-op(responded ガード)。
+      // finished を経由せず落ちた場合の合成失敗(executeDeviceOpJob と同じパターン。responded ガードで二重防止)。
       respond(false, `プロセスが exit code ${String(exitCode)} で終了しました`, null);
     });
   }

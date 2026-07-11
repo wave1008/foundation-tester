@@ -1,10 +1,5 @@
-// deviceTiles.js
-// 「デバイス」タブのタイルグリッド(生成・フレーム/状態描画)・タイル右クリックメニュー・
-// タイル選択・グリッドのホイール横スクロール/中クリックパン・実行プロファイル選択(select)を
-// 担う。
-// tiles(device id -> タイル状態)・selectedDeviceIds(選択中 device id 集合)・
-// deviceOpMenuEntry は再代入・変更される状態のため、書き込み箇所をすべてこのモジュールに
-// 置く。laneLog.js からは tiles/selectedDeviceIds を読み取り専用で参照する。
+// tiles/selectedDeviceIds/deviceOpMenuEntry の書き込みはこのモジュールに限定する。
+// laneLog.js は tiles/selectedDeviceIds を読み取り専用で参照する。
 
 import { vscode } from './vscodeApi.js';
 import { grid, emptyMessage, banner, btnUp, btnDown, deviceOpMenu, deviceOpMenuItemBtn, profileSelect } from './domRefs.js';
@@ -16,10 +11,8 @@ const STATE_LABEL = {
   offline: '未起動',
 };
 
-// 複製元: src/monitorModel.ts の deviceOpMenuItem。webview は CSP により import 不可のため
-// 複製する(healReviewPanel.ts が healModel.ts の一部ロジックを複製しているのと同じ方針)。
-// タイル右クリックメニューの項目ラベル・実行する操作と、実行中/待機中バッジの表示にも共用する。
-// busy は { op, status } の形('queued'=順番待ち／'running'=実行中)。無ければ undefined。
+// src/monitorModel.ts の deviceOpMenuItem の複製(webview は CSP で import 不可のため)。変更時は
+// 両方を同期すること。busy は { op, status }('queued'|'running')または undefined。
 function deviceOpMenuItem(state, busy) {
   if (busy && busy.status === 'queued') { return { label: '待機中...', op: busy.op, disabled: true }; }
   if (busy && busy.op === 'up') { return { label: '起動中...', op: 'up', disabled: true }; }
@@ -29,9 +22,9 @@ function deviceOpMenuItem(state, busy) {
     : { label: '停止', op: 'down', disabled: false };
 }
 
-// device id -> タイルの DOM 要素・最新フレーム(1枚のみ保持。履歴は溜めない)
+// device id -> タイルDOM要素・最新フレーム(1枚のみ保持、履歴は溜めない)
 export const tiles = new Map();
-// タイルクリックで選択された device id 集合(空 = 全ワーカー表示)
+// 空 = 全ワーカー表示(絞り込みなし)
 export const selectedDeviceIds = new Set();
 
 function formatTime(date) {
@@ -39,15 +32,12 @@ function formatTime(date) {
   return pad(date.getHours()) + ':' + pad(date.getMinutes()) + ':' + pad(date.getSeconds());
 }
 
-// ---- デバイスタイル -----------------------------------------------------
-
 // タイル内の「画像以外」の高さの合計(px)。CSS の固定高と一致させること:
 // padding 上下 8+8 + header 20 + footer 18 + gap 6×2 = 66
 const TILE_CHROME_HEIGHT = 66;
 
-// タイルの実測高さ(グリッドの stretch 結果)から画像に使える高さを算出し、
-// CSS 変数 --tile-image-h として grid に設定する(タイル幅はこの高さ×アスペクト比で決まる)。
-// スプリッター移動・リサイズ・タイル生成のたびに呼ぶ。
+// タイル実測高さから --tile-image-h を算出(タイル幅はこの高さ×アスペクト比で決まる)。
+// スプリッター移動・リサイズ・タイル生成のたびに呼び直す必要がある。
 export function relayoutTiles() {
   const probe = grid.querySelector('.tile');
   if (!probe) {
@@ -60,20 +50,15 @@ export function relayoutTiles() {
 function createTile(device) {
   const tile = document.createElement('div');
   tile.className = 'tile';
-  // タイル上に操作ボタンが無いため、ツールチップで操作方法を示す
-  // (macOS GUI 版のタイルの .help() と同じ趣旨)。
   tile.title = 'クリックで選択 / 右クリックで起動・停止';
   tile.addEventListener('click', () => toggleDeviceSelection(device.id));
   tile.addEventListener('contextmenu', (event) => {
-    // 既定の(OS/ブラウザの)コンテキストメニューを抑止し、タイル本体のクリック
-    // (レーン絞り込みの選択トグル)にも波及させない。
+    // 既定メニュー抑止+タイルクリック(選択トグル)への波及防止。
     event.preventDefault();
     event.stopPropagation();
     openDeviceOpMenu(entry, event.clientX, event.clientY);
   });
 
-  // ヘッダー: 左からプラットフォーム色で装飾したデバイス名、右端に「実行中」
-  // (個別起動/停止は右クリックメニューから行う。ボタンが無い分、名前表示がフル幅を使える)
   const header = document.createElement('div');
   header.className = 'tile-header';
   const name = document.createElement('span');
@@ -88,12 +73,10 @@ function createTile(device) {
   const img = document.createElement('img');
   const placeholder = document.createElement('div');
   placeholder.className = 'frame-placeholder';
-  // 起動/停止操作中バッジ(画像左上に重ねる)。renderFrame() が
-  // frame-wrap の中身を作り直すたびに末尾へ再アペンドする。
+  // renderFrame() が frame-wrap を作り直す際に毎回末尾へ再アペンドする(忘れると消える)。
   const opBadge = document.createElement('span');
   opBadge.className = 'tile-op-badge';
 
-  // フッター: [状態テキスト] [⚠エラー(あれば、中間で省略)] [HH:MM:SS(右寄せ)]
   const footer = document.createElement('div');
   footer.className = 'tile-footer';
   const stateBadge = document.createElement('span');
@@ -136,8 +119,7 @@ function renderFrame(entry) {
     entry.imgEl.alt = entry.device.name;
     entry.frameWrapEl.appendChild(entry.imgEl);
   } else {
-    // フレーム未受信のプレースホルダーはデバイス状態で出し分ける
-    // (offline=未起動+電源アイコン / それ以外(booted・接続直後でフレーム未着)=起動中+スピナー)
+    // offline→未起動+電源アイコン、それ以外(booted/フレーム未着)→起動中+スピナー。
     const offline = entry.device.state === 'offline';
     entry.placeholderEl.textContent = '';
     const icon = document.createElement('span');
@@ -161,10 +143,7 @@ function renderMeta(entry) {
   entry.nameEl.textContent = entry.device.name;
   entry.nameEl.className = 'tile-name tile-name-' + entry.device.platform;
   entry.nameEl.title = entry.device.name + ' (' + entry.device.platform + ')';
-  // フッター左下の表示ルール:
-  //   connected(フレーム表示中) → 「接続済み」
-  //   booted(iOSブリッジ未接続 / Androidブート完了待ち) → 「接続中」
-  //   それ以外(未起動・フレーム未着) → 空(要素は固定高レイアウトのため残す)
+  // connected+フレーム有→「接続済み」、booted→「接続中」、それ以外→空(要素は固定高のため残す)。
   let footerText = '';
   if (entry.device.state === 'connected' && entry.frameSrc) {
     footerText = STATE_LABEL.connected;
@@ -174,23 +153,17 @@ function renderMeta(entry) {
   entry.stateBadgeEl.textContent = footerText;
   entry.updatedEl.textContent = entry.lastUpdated ? formatTime(entry.lastUpdated) : '';
   renderOpBadge(entry);
-  // 右クリックメニューがこのタイルに対して開いていれば、内容(ラベル/disabled)も
-  // 最新の state/opBusy で更新する。
   if (deviceOpMenuEntry === entry) {
     renderDeviceOpMenuItem();
   }
 }
 
-// 起動/停止操作中バッジの表示可否・文言を、デバイスの現在状態(state)とそのデバイスで
-// 実行中の操作(opBusy)から再計算する。devices サイクル毎(renderMeta 経由)と
-// deviceOpBusy 受信時の両方から呼ぶ(モニターの既存ポーリングで状態変化が反映される)。
+// devices サイクル(renderMeta 経由)と deviceOpBusy 受信(main.js)の両方から呼ばれる。
 export function renderOpBadge(entry) {
   const item = deviceOpMenuItem(entry.device.state, entry.opBusy);
   entry.opBadgeEl.textContent = item.label;
   entry.opBadgeEl.classList.toggle('visible', item.disabled);
 }
-
-// ---- タイル右クリックメニュー ---------------------------------------------
 
 // 現在メニューを開いている対象のタイル entry(未オープンなら null)。
 export let deviceOpMenuEntry = null;
@@ -213,9 +186,7 @@ export function closeDeviceOpMenu() {
   deviceOpMenu.classList.remove('visible');
 }
 
-// 自作の右クリックメニュー(fixed div)をマウス位置に開く際、画面端でははみ出さないよう
-// 実測サイズで座標をクランプする。タイル右クリックメニュー・プロファイルタブのデバイス行
-// 右クリックメニュー(machine-device-menu)で共用する。
+// 画面端クランプ。タイル右クリックメニューとプロファイルタブの行メニュー(machineProfilesTab.js)で共用。
 export function clampMenuPosition(menuEl, clientX, clientY) {
   const rect = menuEl.getBoundingClientRect();
   const maxX = Math.max(4, window.innerWidth - rect.width - 4);
@@ -224,7 +195,6 @@ export function clampMenuPosition(menuEl, clientX, clientY) {
   menuEl.style.top = Math.min(Math.max(clientY, 4), maxY) + 'px';
 }
 
-// マウス位置にメニューを開く。
 function openDeviceOpMenu(entry, clientX, clientY) {
   deviceOpMenuEntry = entry;
   renderDeviceOpMenuItem();
@@ -245,7 +215,6 @@ deviceOpMenuItemBtn.addEventListener('click', (event) => {
   closeDeviceOpMenu();
 });
 
-// メニュー外クリック・Esc・スクロールで閉じる。
 document.addEventListener('click', (event) => {
   if (deviceOpMenuEntry && !deviceOpMenu.contains(event.target)) {
     closeDeviceOpMenu();
@@ -256,17 +225,13 @@ document.addEventListener('keydown', (event) => {
     closeDeviceOpMenu();
   }
 });
-// capture:true で登録することで、スクロール可能な子要素(grid の横スクロール・
-// lane-body 等)で発生した(バブリングしない)scroll イベントも document 側で拾える。
+// capture:true: scroll はバブリングしないため、子要素(grid横スクロール等)のscrollも拾うために必要。
 document.addEventListener('scroll', () => closeDeviceOpMenu(), true);
 window.addEventListener('resize', () => closeDeviceOpMenu());
-// タイル上での contextmenu は stopPropagation 済みなのでここには来ない。
-// タイル外(空きエリア等)で右クリックし、既定のコンテキストメニューが別途開く場合に
-// こちらのメニューを残さないようにする。
+// タイル外の右クリック(OS既定メニューが開く場合)用。タイル上はstopPropagation済みで来ない。
 document.addEventListener('contextmenu', () => closeDeviceOpMenu());
 
-// デバイス名から対応するタイルを探す(deviceOp は --name(論理名)だけを host に渡すため、
-// host からの deviceOpBusy/deviceOpFailed 応答も name で返ってくる)。
+// deviceOp は device.name(論理名)だけをhostに渡すため、host応答(deviceOpBusy等)もnameで来る。
 export function findTileByName(name) {
   for (const entry of tiles.values()) {
     if (entry.device.name === name) {
@@ -281,8 +246,7 @@ function touch(entry) {
   renderMeta(entry);
 }
 
-// monitorError はタイルに表示したままにせず、そのデバイスの monitorFrame か state 更新
-// (devices サイクル)を受信した時点で消す(過渡的なエラーが赤字のまま残り続けないように)。
+// 次の frame/devices 受信で自動的にクリアされる(表示し続けない設計)。
 function setTileError(entry, message) {
   entry.errorEl.textContent = '⚠ ' + message;
   entry.errorEl.title = message;
@@ -330,8 +294,7 @@ export function applyFrame(message) {
     return; // devices サイクルより先に届いた場合は無視する(次の devices で改めて反映される)
   }
   entry.frameSrc = 'data:image/jpeg;base64,' + message.jpegBase64;
-  // 実フレームのアスペクト比でタイル幅を決める(縦横比の異なるデバイスが混在しても
-  // それぞれの画像幅ちょうどに締まる)
+  // --tile-aspect は CSS 側でタイル幅の計算に使われる。
   if (message.width > 0 && message.height > 0) {
     entry.tile.style.setProperty('--tile-aspect', (message.width / message.height).toFixed(4));
   }
@@ -363,14 +326,11 @@ export function setBusy(busy) {
   btnDown.disabled = busy;
 }
 
-// ---- 実行プロファイル選択 ---------------------------------------------------
-// 追加/コピー/削除/名前変更はプロファイルタブ下半分の実行プロファイルセクションで行う
-// (btn-run-profile-*)。ここでは「使用する実行プロファイルを指定するだけ」の select のみを扱う。
+// この select は「使用する実行プロファイルの指定」のみ。追加/編集は runProfilesTab.js が担当。
 
 const PROFILE_NONE_LABEL = '(プロファイルなし)';
 
-// profileInfo 受信のたびに select の中身を作り直す(現在値が profiles に無い場合も、
-// 設定に手書きされた未知の名前として option を補い選択状態を保つ)。
+// 現在値が profiles に無ければ(手書き設定等)unknownOption で補い選択状態を保つ。
 export function applyProfileInfo(message) {
   const profiles = Array.isArray(message.profiles) ? message.profiles : [];
   const current = typeof message.current === 'string' ? message.current : '';
@@ -421,7 +381,7 @@ function updateSelectionUi() {
   updateLaneVisibility();
 }
 
-// 空きエリア(タイルの外、横スクロールコンテナ内の余白を含む)をクリックしたら選択を全解除する。
+// event.target===grid は「タイル自体ではなく空きエリア」をクリックした場合の判定。
 grid.addEventListener('click', (event) => {
   if (event.target === grid && selectedDeviceIds.size > 0) {
     selectedDeviceIds.clear();
@@ -429,9 +389,7 @@ grid.addEventListener('click', (event) => {
   }
 });
 
-// ホイール操作を横スクロールに変換する(下回転→右スクロール、上回転→左スクロール)。
-// トラックパッドの横方向(deltaX)はそのまま加算し、縦回転(deltaY)も横スクロールに合算する。
-// ページ側の縦スクロールに奪われないよう preventDefault() するため passive:false で登録する。
+// deltaX(トラックパッド横)+deltaY(ホイール縦)を横スクロールに変換。preventDefault に passive:false が必須。
 grid.addEventListener(
   'wheel',
   (event) => {
@@ -441,9 +399,8 @@ grid.addEventListener(
   { passive: false },
 );
 
-// 中ボタン(ホイールボタン)ドラッグでパンスクロール(GUI版のステップ表と同じ操作感)。
-// 「掴んで動かす」向き = ポインタを右へ動かすとコンテンツが右へ付いてくる(scrollLeft は減る)。
-// Pointer Events + setPointerCapture でグリッド外へ出てもドラッグを継続する。
+// 「掴んで動かす」向き: ポインタ右へ動くとcontentも右へ(scrollLeft -= dx)。
+// setPointerCapture によりグリッド外へ出てもドラッグを継続できる。
 let panPointerId = null;
 let panLastX = 0;
 grid.addEventListener('pointerdown', (event) => {
@@ -473,7 +430,7 @@ const endPan = (event) => {
 };
 grid.addEventListener('pointerup', endPan);
 grid.addEventListener('pointercancel', endPan);
-// Chromium の中クリック既定動作(オートスクロール等)を抑止する
+// Chromium の中クリック既定動作(オートスクロール等)を抑止する。
 grid.addEventListener('auxclick', (event) => {
   if (event.button === 1) {
     event.preventDefault();

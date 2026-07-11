@@ -1,9 +1,5 @@
-// domRefs.js
-// 複数モジュールから参照される DOM 要素参照(ツールバー・タイルペイン/出力ペイン・レーン関連・
-// タイル右クリックメニュー)をまとめたモジュール。
-// getElementById は何度呼んでも同じ要素を返す(acquireVsCodeApi のような一度きり制約は無い)が、
-// ここで1箇所にまとめておくことで「どの要素がどのモジュールから使われているか」を
-// 見通しやすくする。
+// getElementByIdは何度呼んでも同じ要素を返す(acquireVsCodeApiのような一度きり制約は無い)。
+// 複数モジュール共有のDOM参照をここに集約する。
 
 export const toolbar = document.getElementById('toolbar');
 export const grid = document.getElementById('grid');

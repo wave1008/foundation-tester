@@ -1,8 +1,5 @@
 // extension.ts
 // 拡張のエントリポイント。activate() で各コンポーネントを組み立てて登録する。
-//
-// 後続フェーズ(runHandler/debugAdapter/stepsView)は、下の activate() 内のコメントの位置に
-// 1〜2行で登録関数を追加できる構造にしてある。
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -34,8 +31,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const workspaceRoot = resolveWorkspaceRoot();
   if (!workspaceRoot) {
-    // Extension Development Host がフォルダー無しで開いた等。無言で終わると
-    // 「ビューに provider が無い」という分かりにくい表示になるため理由を明示する。
+    // 無言で終わると「ビューに provider が無い」という分かりにくい表示になるため理由を明示する。
     outputChannel.appendLine(
       "[ftester] フォルダーが開かれていないため初期化を中止しました。" +
         "foundation-tester リポジトリのフォルダーを開いてから再読み込みしてください。",
@@ -46,8 +42,7 @@ export function activate(context: vscode.ExtensionContext): void {
     return;
   }
   if (!hasProjectsDirectory(workspaceRoot)) {
-    // Package.swift はあっても Projects/ が無い(ftester のテストプロジェクトを持たない)
-    // リポジトリでは登録しない(ログにだけ理由を残す)。
+    // ftester のテストプロジェクトを持たないリポジトリでは登録しない。
     outputChannel.appendLine(
       `[ftester] ${workspaceRoot} に Projects/ が見つからないため初期化しません。`,
     );
@@ -58,8 +53,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const cli = new FtesterCli(outputChannel);
   const getConfig = (): FtesterConfig => readConfig(workspaceRoot);
 
-  // 実行イベント(RunEvent)を runHandler(TestRun への反映)とデバイスモニターの
-  // ログレーン表示の両方へ配信する共有インスタンス(src/runEventBus.ts 参照)。
+  // runHandler と monitorPanel へ配信する共有インスタンス(runEventBus.ts 参照)。
   const runEventBus = new RunEventBus();
 
   const testTree = registerTestTree(context, cli, workspaceRoot, getConfig, outputChannel);

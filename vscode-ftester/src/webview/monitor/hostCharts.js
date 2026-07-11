@@ -1,9 +1,5 @@
-// hostCharts.js
-// ツールバーのミニグラフ(CPU/GPU/ANE/メモリ)を担う。
-// host-metrics プロセス(拡張側が1秒間隔で常駐 spawn)からの hostMetrics メッセージ受信の
-// たびに、直近60サンプルのローリングバッファへ追加して canvas に再描画する。webview 側は
-// 独自のタイマーを持たない(更新頻度は完全に CLI 側の --interval 1 に駆動される)。
-// 他モジュールとの状態共有は無く、DOM 参照(#hm-cpu 等)もこのモジュール内で完結する。
+// hostMetrics受信毎に直近60サンプルのローリングバッファへ追加しcanvas再描画。webview側は
+// 独自タイマーを持たない(更新頻度はCLI側 --interval 1 に完全依存)。他モジュールとの状態共有は無い。
 
 const HM_MAX_SAMPLES = 60;
 // バリデータ検証済みパレット(ダーク/ライトで系列色を切り替える。グリッド・軸は描かない)。
@@ -43,10 +39,8 @@ function hmPushSample(entry, ratio) {
   }
 }
 
-// canvas は CSS 上 72x22px 固定。devicePixelRatio に合わせて実ピクセル数(width/height 属性)を
-// 上げてから ctx.scale で以後の描画を CSS ピクセル座標系のまま書けるようにする(にじみ防止)。
-// width/height 属性への代入は毎回キャンバスの内容をクリアするので、呼び出し側は直後に
-// 全内容を描き直すこと。
+// devicePixelRatioに合わせ実ピクセル数を上げ、ctx.scaleでCSS座標系のまま描画(にじみ防止)。
+// width/height代入は毎回キャンバスをクリアするため、呼び出し側は直後に全内容を描き直すこと。
 function hmSetupCanvas(canvas) {
   const dpr = window.devicePixelRatio || 1;
   const width = 72;
@@ -69,8 +63,7 @@ function hmDraw(entry) {
   }
   const color = HM_COLORS[hmIsLightTheme() ? 'light' : 'dark'][entry.colorKey];
   const stepX = width / (HM_MAX_SAMPLES - 1);
-  // samples は「直近 N 件」なので、まだ60件溜まっていない間は右詰めで配置する
-  // (新しいサンプルは常に右端、満杯になった後は左へスクロールしていく見た目になる)。
+  // samplesは「直近N件」なので、60件溜まるまでは右詰めで配置する(新サンプルは常に右端)。
   const startIndex = HM_MAX_SAMPLES - samples.length;
   const points = samples.map((ratio, i) => ({
     x: (startIndex + i) * stepX,
@@ -92,7 +85,7 @@ function hmDraw(entry) {
       ctx.strokeStyle = color;
       ctx.stroke();
 
-      // 下側の面塗り(線と同色、不透明度 0.18)。
+      // 面塗り(線と同色、不透明度0.18)。線のstrokeとは別パスで塗りつぶす2パス目。
       ctx.beginPath();
       ctx.moveTo(segment[0].x, segment[0].y);
       for (let i = 1; i < segment.length; i++) {

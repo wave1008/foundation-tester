@@ -1,8 +1,7 @@
 // watcher.ts
 // Projects/*/Scenarios/**/*.swift の変更を監視し、デバウンスしてから onChanged を呼ぶ。
-// TestRun/デバッグ実行中は setSuspended(true) で refresh を保留できるようにしておく
-// (実行結果と入れ替わりでツリーが再構築されるのを防ぐため。実際に suspend するかどうかの
-// 判断は後続フェーズの runHandler/debugAdapter が行う)。
+// setSuspended(true) 中は refresh を保留する(runHandler/debugAdapter がテスト実行結果と
+// ツリー再構築の競合を避けるために使う)。
 
 import * as vscode from "vscode";
 
@@ -32,10 +31,7 @@ export class ScenarioFileWatcher implements vscode.Disposable {
     );
   }
 
-  /**
-   * true にすると以後の変更検知で refresh をスケジュールせず保留する。
-   * false に戻した時点で保留分があれば、まとめて1回だけ refresh をスケジュールする。
-   */
+  /** false に戻した時点で保留分があれば、まとめて1回だけ refresh をスケジュールする。 */
   setSuspended(suspended: boolean): void {
     this.suspended = suspended;
     if (!suspended && this.pendingWhileSuspended) {
@@ -44,10 +40,7 @@ export class ScenarioFileWatcher implements vscode.Disposable {
     }
   }
 
-  /**
-   * onChanged に加えて変更通知を受け取りたい場合に登録する(ステップ一覧のキャッシュ invalidate 等)。
-   * onChanged と同じタイミング(デバウンス後)で呼ばれる。
-   */
+  /** onChanged と同じタイミング(デバウンス後)で呼ばれる追加リスナー(ステップ一覧キャッシュ invalidate 等)。 */
   addChangeListener(listener: () => void): vscode.Disposable {
     this.changeListeners.push(listener);
     return {
