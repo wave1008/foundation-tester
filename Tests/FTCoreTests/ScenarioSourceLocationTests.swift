@@ -1,14 +1,10 @@
-// ScenarioSourceLocationTests.swift
-// ScenarioSourceEditor.classDeclarationLine / methodDeclarationLine のテスト
-// (VSCode拡張向け API `ftester api list-scenarios` のソース位置解決に使う)。
-
+// VSCode拡張向け API `ftester api list-scenarios` のソース位置解決に使われる
 import XCTest
 @testable import FTCore
 
 final class ScenarioSourceLocationTests: XCTestCase {
 
-    /// 日本語クラス名・メソッド名、@TestClass・@Test・@Deleted 属性、修飾子付き(public final)
-    /// クラス宣言、同名 func(S0010)が別クラスに存在するケースを一通り含む
+    /// 日本語名・@TestClass/@Test/@Deleted 属性・修飾子付き宣言・同名func(S0010)の別クラス重複を一通り含む
     private let source = """
     import FTDSL
 
@@ -57,7 +53,6 @@ final class ScenarioSourceLocationTests: XCTestCase {
     }
 
     func testClassDeclarationLineWithModifiersAndJapaneseName() {
-        // public final 修飾子付きでも宣言行を検出できる
         let expected = lineNumber(
             containing: "public final class Network_internet_を開いて {", in: source)
         XCTAssertEqual(
@@ -82,7 +77,6 @@ final class ScenarioSourceLocationTests: XCTestCase {
     }
 
     func testMethodDeclarationLineWithDeletedAndBareTestAttribute() {
-        // @Deleted + 引数なし @Test が前置されていても func 宣言行を検出できる
         let expected = lineNumber(containing: "func S0020() {", in: source)
         XCTAssertEqual(
             ScenarioSourceEditor.methodDeclarationLine(
@@ -91,7 +85,6 @@ final class ScenarioSourceLocationTests: XCTestCase {
     }
 
     func testMethodDeclarationLineScopedToClassDoesNotMatchOtherClass() {
-        // 両クラスに同名 func(S0010)がある: それぞれ自クラス内の宣言行を返し、取り違えない
         let matches = lineNumbers(containing: "func S0010() {", in: source)
         XCTAssertEqual(matches.count, 2, "テストソースの前提が崩れていないか確認")
         XCTAssertEqual(
@@ -115,7 +108,6 @@ final class ScenarioSourceLocationTests: XCTestCase {
     }
 
     func testMethodDeclarationLineWithModifiers() {
-        // public final 等の修飾子付き func 宣言も検出できる(declPrefix の対応範囲)
         let modifierSource = """
         class C {
             public final func run() {

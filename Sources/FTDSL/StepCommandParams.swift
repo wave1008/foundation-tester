@@ -1,12 +1,9 @@
-// StepCommandParams.swift
 // ステップ表の「コマンド」列の表示表現には現れないキーワード引数
-// (timeout: / duration: / optional: / direction: / maxSwipes:)を構造化して確認・編集する
-// ための API。呼び出し側(ステップ編集 UI)の「編集用ペイン」が使う。
-// 方針: StepCommandText(表示表現↔ソースの変換)が保存するだけの非表示引数を、ソースの
-// コード部分から直接解釈して現在値として取り出し(parse)、編集後の値で呼び出し全体を
-// 正規形に生成し直す(apply。defaultValue と等しい引数は出力しない)。値として認めるのは
-// 文字列リテラル・enum ケース・整数・小数・真偽値のみで、変数・式・文字列補間を含む行は
-// 編集不可(nil)として安全側に倒す。
+// (timeout: / duration: / optional: / direction: / maxSwipes:)を構造化編集する API。
+// StepCommandText(表示表現↔ソースの変換)が保存するだけの非表示引数を、ソースのコード部分
+// から解釈して現在値を取り出し(parse)、編集後の値で呼び出し全体を正規形に生成し直す
+// (apply。defaultValue と等しい引数は出力しない)。値は文字列リテラル・enum ケース・
+// 整数・小数・真偽値のみ許容し、変数・式・文字列補間を含む行は編集不可(nil)とする。
 
 import Foundation
 
@@ -63,9 +60,8 @@ public enum StepCommandParams {
         name: "timeout", label: "タイムアウト(秒)", kind: .int, defaultValue: "",
         help: "要素の出現を待つ秒数。空欄 = 実行プロファイルの既定値を使う")
 
-    /// 動詞(表示表現側)ごとの編集できるキーワード引数(シグネチャ順)。
-    /// tap の optional は表示表現の「 (optional)」サフィックスで編集するため含めない
-    /// (二重管理を避ける)。パラメーターの無い動詞は空
+    /// 動詞ごとの編集できるキーワード引数(シグネチャ順)。tap の optional は表示表現の
+    /// 「 (optional)」サフィックス側で編集するため含めない(二重管理回避)
     public static func specs(forVerb verb: String) -> [StepParamSpec] {
         switch verb {
         case "type": return [optionalSpec]
@@ -113,10 +109,9 @@ public enum StepCommandParams {
 
     // MARK: - apply(編集の適用)
 
-    /// 表示表現の編集とパラメーター編集をまとめてソースのコード部分へ適用する。
-    /// params == nil はパラメーター編集なし = StepCommandText.apply を使う
-    /// (文字列リテラル置換で非表示引数を保存)。params != nil は呼び出し全体を
-    /// 正規形で生成し直す(defaultValue と等しい引数は出力しない)
+    /// params == nil はパラメーター編集なし = StepCommandText.apply(文字列リテラル置換で
+    /// 非表示引数を保存)を使う。params != nil は呼び出し全体を正規形で生成し直す
+    /// (defaultValue と等しい引数は出力しない)
     public static func apply(display: String, params: [String: String]?,
                              toCode code: String) throws -> String {
         guard let params else {

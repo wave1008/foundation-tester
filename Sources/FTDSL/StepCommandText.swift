@@ -1,11 +1,8 @@
-// StepCommandText.swift
 // ステップ表の「コマンド」列の表示表現(実行時 description。例: tap "ラベル")と
-// シナリオソースのコマンド呼び出しコードの相互変換。呼び出し側(ステップ編集 UI)の
-// セル内インライン編集が使う。
-// 方針: 動詞と文字列引数の構成が変わらない編集(セレクタ・入力値・期待値の変更)は
-// ソース行の文字列リテラルだけを置換し、表示に現れない引数(timeout: / duration: 等)を
-// 完全保存する。動詞や構成が変わったときだけ呼び出し全体を生成し直す
-// (procedure のようにブロック { を伴う行の種類変更は不可)。
+// シナリオソースのコマンド呼び出しコードの相互変換。
+// 動詞と文字列引数の構成が変わらない編集(セレクタ・入力値・期待値の変更)はソース行の
+// 文字列リテラルだけを置換し、表示に現れない引数(timeout: / duration: 等)を完全保存する。
+// 動詞や構成が変わったときだけ呼び出し全体を生成し直す(procedure 等のブロック行の種類変更は不可)。
 
 import Foundation
 
@@ -40,8 +37,8 @@ public enum StepCommandText {
         public let word: String?
     }
 
-    /// コマンド列の表示表現を解釈する。編集対象にできない表現(ifCanSelect・scene 系・
-    /// 未知コマンド)は nil(セル編集の可否判定にも使う)
+    /// 編集対象にできない表現(ifCanSelect・scene 系・未知コマンド)は nil
+    /// (セル編集の可否判定にも使う)
     public static func parse(_ display: String) -> Parsed? {
         var text = display.trimmingCharacters(in: .whitespaces)
         var optionalFlag = false
@@ -108,9 +105,8 @@ public enum StepCommandText {
         }
     }
 
-    /// 表示表現の編集をソースのコード部分(ScenarioSourceEditor.commandCode の戻り値)へ
-    /// 適用した新しいコードを返す。動詞・文字列引数の構成・optional が変わらなければ
-    /// 文字列リテラルの置換のみ(その他の引数を保存)、変わったときは呼び出し全体を再生成
+    /// 動詞・文字列引数の構成・optional が変わらなければ文字列リテラルの置換のみ
+    /// (その他の引数を保存)、変わったときは呼び出し全体を再生成する
     public static func apply(display: String, toCode code: String) throws -> String {
         guard let parsed = parse(display) else {
             throw StepCommandTextError.unrecognized
@@ -139,9 +135,8 @@ public enum StepCommandText {
 
     // MARK: - 内部
 
-    /// リテラル置換だけで済むかの optional 判定。表示に optional が現れるのは tap のみ
-    /// なので tap は厳密比較、他の動詞はサフィックス無し = 意思表示なし(ソースの
-    /// optional: true を保存)、有り = ソースにも必要(無ければ再生成で付ける)
+    /// 表示に optional が現れるのは tap のみなので tap は厳密比較、他の動詞は
+    /// サフィックス無し = 意思表示なし(ソースの optional: true を保存)、有り = 必須
     private static func optionalCompatible(_ parsed: Parsed, _ call: Call) -> Bool {
         if parsed.verb == "tap" { return parsed.optionalFlag == call.hasOptionalTrue }
         return parsed.optionalFlag ? call.hasOptionalTrue : true

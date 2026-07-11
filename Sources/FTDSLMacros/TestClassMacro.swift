@@ -1,4 +1,3 @@
-// TestClassMacro.swift
 // @TestClass(app:platform:) の実装。
 // - extension ロール: FTTestClassDefinition conformance と ftDescriptor(@Test メソッドの一覧)を生成
 // - peer ロール: objc ランタイム発見用の登録クラス __FTReg_<クラス名> を生成

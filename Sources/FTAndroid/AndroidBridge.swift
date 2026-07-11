@@ -1,4 +1,3 @@
-// AndroidBridge.swift
 // デバイス常駐ブリッジ(AndroidRunner/、instrumentation APK 内蔵 HTTP サーバ)の起動管理。
 // プロトコルは iOS ブリッジと完全互換なので、通信は FTBridgeClient.BridgeClient をそのまま使う。
 // - 初回操作時に APK を自動インストールし `am instrument -w`(デバイス内バックグラウンド)で常駐させる
@@ -23,8 +22,8 @@ extension AndroidDriver {
         case unavailable
     }
 
-    /// serial → ブリッジ状態。呼び出し側(MCP 等)がドライバを都度生成してもプローブを繰り返さないための
-    /// プロセス共有レジストリ。`.unavailable` はプロセス終了まで再試行しない(再試行の嵐防止)
+    /// serial → ブリッジ状態。ドライバを都度生成してもプローブを繰り返さないプロセス共有レジストリ。
+    /// `.unavailable` はプロセス終了まで再試行しない(再試行の嵐防止)
     static let bridgeLock = NSLock()
     nonisolated(unsafe) static var bridgeRegistry: [String: BridgeState] = [:]
 
@@ -32,9 +31,8 @@ extension AndroidDriver {
 
     // MARK: - 状態機械
 
-    /// 使えるブリッジの BridgeClient を返す。.active なら(操作毎の /status 往復はせず)そのまま返す。
-    /// 初回・無効化後は forward 確認 → probe → 必要なら起動、を行う。全て失敗したらこのプロセスでは
-    /// 以降 .unavailable にキャッシュし(再試行の嵐防止)、案内メッセージ付きで投げる
+    /// .active なら(/status 往復せず)即返す。初回・無効化後は forward確認→probe→必要なら起動。
+    /// 全て失敗したら .unavailable にキャッシュ(再試行の嵐防止)し案内メッセージ付きで投げる
     func ensureBridge() async throws -> BridgeClient {
         switch Self.getRegistry(bridgeKey) {
         case .active(let client):
@@ -62,9 +60,8 @@ extension AndroidDriver {
         return .bridgeUnreachable(detail.map { "\(base)(\($0))" } ?? base)
     }
 
-    /// ブリッジ操作の共通実行ヘルパ。接続拒否系エラー(リクエストがブリッジに届いていないことが
-    /// 確実な場合)だけレジストリを無効化して1回だけ再プロビジョン+リトライする。
-    /// それ以外のエラー(HTTP エラー応答等)はそのまま投げる
+    /// bridgeConnectionRefused(リクエストが届いていないと確実な場合)だけレジストリを無効化して
+    /// 1回だけ再プロビジョン+リトライする。それ以外のエラー(HTTPエラー応答等)はそのまま投げる
     func withBridge<T>(_ operation: (BridgeClient) async throws -> T) async throws -> T {
         let client = try await ensureBridge()
         do {
@@ -119,13 +116,9 @@ extension AndroidDriver {
             "Android ブリッジが起動しません(adb logcat -s FTBridge を確認してください)")
     }
 
-    /// アニメーション設定(window/transition/animator の *_scale)を無効化する。
-    /// アニメーションは a11y イベントを発しないため、QuietWaiter の静穏判定後もアニメが
-    /// 表示を動かし続け、screenshot が古い/遷移途中の絵を掴むことがある
-    /// (a11y要素はFRESHだが画像だけSTALE、という形で顕在化した)。
-    /// ブリッジのコールド起動時(=毎操作ではない)だけ3回 adb spawn するので負荷原則には抵触しない。
-    /// 既に 0 でも冪等に put するだけでよい(get で確認してから put する節約はしない)。
-    /// 失敗しても致命にはしない(警告を1回だけ stderr へ)
+    /// アニメーションは a11y イベントを発しないため、QuietWaiter の静穏判定後もアニメが表示を
+    /// 動かし続け screenshot が古い/遷移途中の絵を掴むことがある(a11y要素はFRESHだが画像だけSTALE)。
+    /// ブリッジのコールド起動時のみ実行(毎操作ではないため3回のadb spawnは許容)。失敗は非致命。
     private func disableAnimations() {
         let keys = ["window_animation_scale", "transition_animation_scale", "animator_duration_scale"]
         let failed = keys.filter { (try? adb(["shell", "settings", "put", "global", $0, "0"]))?.status != 0 }
@@ -142,7 +135,6 @@ extension AndroidDriver {
         return BridgeClient(port: hostPort)
     }
 
-    /// 既存の forward を再利用、無ければ tcp:0(空きポート自動割当)で張る
     private func ensureForward() throws -> UInt16 {
         if let existing = findExistingForward() { return existing }
         let created = try adb(["forward", "tcp:0", "tcp:\(Self.bridgeDevicePort)"])
@@ -215,7 +207,6 @@ extension AndroidDriver {
             + "screenshot が静穏判定後も古い絵を掴むことがあります(次回ブリッジ起動時に自動で0になります)"
     }
 
-    /// versionCode(dumpsys)を照合し、未導入・不一致なら prebuilt APK をインストール
     func installBridgeIfNeeded() throws {
         if installedBridgeVersionCode() == Self.expectedBridgeVersionCode { return }
         let apk = try Self.locateBridgeAPK()

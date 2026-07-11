@@ -1,16 +1,12 @@
-// AndroidSDKLocator.swift
-// Android SDK ルート・avdmanager の場所解決。ftester api device-catalog / create-device が使う。
-// AndroidDriver.findADB / DeviceBooter.findEmulatorBinary と同じ探索方針
-// ($ANDROID_HOME → $ANDROID_SDK_ROOT → 既定パス → adb からの相対推定)を SDK ルート単位でまとめる。
+// Android SDK ルート・avdmanager の場所解決。
+// AndroidDriver.findADB / DeviceBooter.findEmulatorBinary と同じ探索方針を SDK ルート単位でまとめる
+// (探索順を変えるときはそちらとの整合も確認する)。
 
 import Foundation
 
 public enum AndroidSDKLocator {
 
-    /// Android SDK ルートの解決:
-    /// $ANDROID_HOME → $ANDROID_SDK_ROOT → ~/Library/Android/sdk の順で
-    /// 存在するディレクトリ。どれも無ければ AndroidDriver.findADB() が見つかればその 2 つ上
-    /// (<sdk>/platform-tools/adb → <sdk>)。それも無ければ nil
+    /// $ANDROID_HOME → $ANDROID_SDK_ROOT → 既定パス → adb からの相対推定の順。全て失敗で nil
     public static func findSDKRoot() -> URL? {
         let fm = FileManager.default
 
@@ -40,10 +36,7 @@ public enum AndroidSDKLocator {
         return nil
     }
 
-    /// avdmanager の場所解決:
-    /// <sdk>/cmdline-tools/latest/bin/avdmanager →
-    /// <sdk>/cmdline-tools/*/bin/avdmanager(ディレクトリ名でソートして最初に見つかったもの)→
-    /// <sdk>/tools/bin/avdmanager(旧レイアウト)の順。SDK ルート自体が無ければ nil
+    /// cmdline-tools/latest → cmdline-tools/*(名前順)→ tools(旧レイアウト)の順
     public static func findAVDManager() -> URL? {
         guard let sdkRoot = findSDKRoot() else { return nil }
         let fm = FileManager.default

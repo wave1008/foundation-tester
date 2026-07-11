@@ -1,8 +1,4 @@
-// ReplayAssist.swift
-// 再生失敗時のみ呼ばれる FM フック群。
-// - Healer   : 壊れたロケータの修復案(elementText 方式)
-// - Verifier : screenMatches のマルチモーダル画面検証(スクリーンショット + 期待状態)
-// - Triager  : 失敗の分類と修正案(可能ならスクリーンショットも見る)
+// 再生失敗時のみ呼ばれる FM フック群(Healer/Verifier/Triager、各セクションは下記 MARK 参照)。
 
 import CoreGraphics
 import Foundation
@@ -152,7 +148,7 @@ public final class FMReplayDelegate: ReplayDelegate {
 
         この失敗を分析してください。
         """
-        // まずスクリーンショット付きで試み、マルチモーダル不可ならテキストのみで再試行
+        // マルチモーダル失敗時のフォールバックとしてテキストのみでも再試行する
         if let png = screenshotPNG, let cgImage = Self.cgImage(fromPNG: png) {
             let response = try? await LanguageModelSession(instructions: instructions).respond(
                 generating: TriageSuggestion.self,
@@ -198,7 +194,7 @@ public final class FMReplayDelegate: ReplayDelegate {
         return parts.prefix(count).joined(separator: "。") + "。"
     }
 
-    /// Explorer と同じ思想のテキスト→要素解決(修復用の簡易版)
+    /// Explorer.resolveElement の簡易版(elementText→要素解決)。変更時は両者の整合を確認
     static func resolveByText(_ text: String, in snapshot: SnapshotResponse) -> ElementInfo? {
         var raw = text.trimmingCharacters(in: .whitespacesAndNewlines)
         raw = raw.replacingOccurrences(of: "「", with: "")

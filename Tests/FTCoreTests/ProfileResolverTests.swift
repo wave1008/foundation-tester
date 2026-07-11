@@ -1,6 +1,3 @@
-// ProfileResolverTests.swift
-// 実行プロファイル(組み合わせ型)の合成・検証ロジックのテスト。
-
 import XCTest
 @testable import FTCore
 
@@ -48,8 +45,6 @@ final class ProfileResolverTests: XCTestCase {
         """, to: project.runsDir, name: "all")
     }
 
-    // MARK: - 正常系
-
     func testResolveMixedPlatforms() throws {
         try writeStandardFixture()
         let resolved = try ProfileResolver.resolve(
@@ -64,7 +59,6 @@ final class ProfileResolverTests: XCTestCase {
         XCTAssertEqual(resolved.defaultTimeout, 8)
         XCTAssertTrue(resolved.warnings.isEmpty, "警告なしのはず: \(resolved.warnings)")
 
-        // アプリ解決: appName/autoInstall は common、app/appPath は platform セクションから
         let ios = try XCTUnwrap(resolved.apps["ios"])
         XCTAssertEqual(ios.bundleID, "com.example.sampleapp")
         XCTAssertEqual(ios.appPath, project.rootURL.appendingPathComponent("builds/SampleApp.app").path)
@@ -73,18 +67,15 @@ final class ProfileResolverTests: XCTestCase {
         XCTAssertEqual(android.bundleID, "com.example.sampleapp")
         XCTAssertTrue(android.autoInstall, "common の autoInstall: true が両 platform に効く")
 
-        // reportDir はプロジェクトルート基準の絶対パス
         XCTAssertEqual(resolved.reportDir.path,
                        project.rootURL.appendingPathComponent("reports").path)
 
-        // UDID / avd がそのまま引き継がれる
         XCTAssertEqual(resolved.devices[0].spec.udid, "AAAA-1111")
         XCTAssertEqual(resolved.devices[2].spec.avd, "Pixel_9")
     }
 
     func testAppSectionOverridesCommon() throws {
-        // common.app は廃止済みで無視されるため、platform セクションの値だけが使われる
-        // (common.app が残っていても validate 警告のみで resolve は platform 値で成立する)
+        // common.app は廃止済みで resolve では無視される(validate は警告のみ)
         try write("""
         { "common":  { "appName": "A", "app": "com.example.common" },
           "android": { "app": "com.example.android" } }
@@ -106,8 +97,6 @@ final class ProfileResolverTests: XCTestCase {
     // MARK: - common セクションの app / appPath 廃止
 
     func testCommonAppNotInheritedFailsWithMissingBundleID() throws {
-        // common.app があっても platform セクションに app が無ければ引き継がれず、
-        // missingBundleID で解決エラーになるはず
         try write("""
         { "common": { "app": "com.example.common" },
           "ios":    { "appPath": "a.app" } }
@@ -128,7 +117,6 @@ final class ProfileResolverTests: XCTestCase {
     }
 
     func testCommonAppNotInheritedWhenPlatformSectionMissing() throws {
-        // platform セクション自体が無いケースでも common.app は引き継がれないはず
         try write("""
         { "common": { "app": "com.example.common" } }
         """, to: project.appsDir, name: "app2")
@@ -147,8 +135,6 @@ final class ProfileResolverTests: XCTestCase {
     }
 
     func testCommonAppPathNotInherited() throws {
-        // common.appPath があっても platform セクションに appPath が無ければ引き継がれず、
-        // 解決結果の appPath は nil(インストール対象なし)になるはず
         try write("""
         { "common": { "appPath": "common/x.app" },
           "ios":    { "app": "com.example.app" } }
@@ -241,8 +227,6 @@ final class ProfileResolverTests: XCTestCase {
     }
 
     func testAutoInstallInPlatformSectionIsIgnored() throws {
-        // ios セクションの autoInstall は廃止済みで無視される。common に無ければ
-        // platform 側に true と書いてあっても既定の false(無効)になるはず
         try write("""
         { "ios": { "app": "com.example.app", "appPath": "a.app", "autoInstall": true } }
         """, to: project.appsDir, name: "app3")
@@ -258,7 +242,6 @@ final class ProfileResolverTests: XCTestCase {
     }
 
     func testAutoInstallPlatformValueDoesNotOverrideCommon() throws {
-        // common: false + ios: true のとき common が勝つ(platform 側は無視)はず
         try write("""
         { "common": { "autoInstall": false },
           "ios":    { "app": "com.example.app", "appPath": "a.app", "autoInstall": true } }
@@ -275,8 +258,7 @@ final class ProfileResolverTests: XCTestCase {
     }
 
     func testSectionMergingFieldSources() throws {
-        // platform セクション自体が無いケースのマージ結果を section(for:) で直接検証する
-        // (appName と autoInstall は common から引き継ぎ、app/appPath は漏れないこと)
+        // resolve() を経由せず section(for:) を直接検証(platform セクション欠落ケース)
         let profile = AppProfile(common: AppProfileSection(
             appName: "A", app: "com.example.app", appPath: "x.app", autoInstall: true))
         let section = profile.section(for: "ios")
@@ -353,8 +335,6 @@ final class ProfileResolverTests: XCTestCase {
                       "未知キー警告が出るはず: \(resolved.warnings)")
     }
 
-    // MARK: - マシン決定
-
     func testDetermineMachinePriority() throws {
         try writeStandardFixture()
         // FT_MACHINE が最優先
@@ -384,8 +364,7 @@ final class ProfileResolverTests: XCTestCase {
 
     // MARK: - 実行プロファイルの machine フィールド
 
-    /// writeStandardFixture() に加え、別マシン "B" と、そこだけに定義されたデバイス "B専用機" を
-    /// 用意する(machine 指定が別マシンへ正しく切り替わることを確認するためのフィクスチャ)
+    /// machine 指定による切り替えを確認するため、B 専用デバイスを持つ別マシンを追加する
     private func writeSecondMachineFixture() throws {
         try write("""
         { "ios": { "devices": [ { "name": "B専用機", "simulator": "iPad Pro" } ] } }
@@ -399,8 +378,7 @@ final class ProfileResolverTests: XCTestCase {
         { "app": "sampleapp", "devices": [ { "name": "B専用機" } ], "machine": "B" }
         """, to: project.runsDir, name: "withMachine")
 
-        // 呼び出し側は "M1 Max(64GB)" を渡すが、実行プロファイルの machine 指定("B")が
-        // 最優先されるはず
+        // 渡した "M1 Max(64GB)" より実行プロファイルの machine 指定("B")が優先される
         let resolved = try ProfileResolver.resolve(
             project: project, runName: "withMachine", machineName: "M1 Max(64GB)")
         XCTAssertEqual(resolved.machineName, "B")
@@ -424,8 +402,8 @@ final class ProfileResolverTests: XCTestCase {
     }
 
     func testResolveWithoutMachineFieldUsesPassedMachineName() throws {
-        // machine 未指定の既存プロファイル("all")は渡された machineName で解決される
-        // (testResolveMixedPlatforms 等、既存テスト全体が回帰検知を兼ねる)
+        // machine 未指定時に渡された machineName で解決されることの回帰検知
+        // (testResolveMixedPlatforms 等、他の既存テストもこれを暗黙に前提としている)
         try writeStandardFixture()
         let resolved = try ProfileResolver.resolve(
             project: project, runName: "all", machineName: "M1 Max(64GB)")
@@ -439,7 +417,7 @@ final class ProfileResolverTests: XCTestCase {
         { "app": "sampleapp", "devices": [ { "name": "B専用機" } ], "machine": "B" }
         """, to: project.runsDir, name: "withMachine")
 
-        // FT_MACHINE/登録名があっても、実行プロファイルの machine 指定が最優先される
+        // FT_MACHINE/登録名より実行プロファイルの machine 指定が優先される
         let result = try ProfileResolver.determineMachine(
             project: project, environment: ["FT_MACHINE": "EnvMachine"], registered: "Reg",
             runProfileName: "withMachine")
@@ -513,8 +491,6 @@ final class ProfileResolverTests: XCTestCase {
         XCTAssertFalse(warnings.contains { $0.contains("未指定") },
                        "machine 指定済みなら未指定警告は出ないはず: \(warnings)")
     }
-
-    // MARK: - 異常系
 
     func testDuplicateDeviceNameAcrossPlatformsFails() throws {
         try writeStandardFixture()

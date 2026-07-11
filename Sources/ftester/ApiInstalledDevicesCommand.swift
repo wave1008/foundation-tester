@@ -1,4 +1,3 @@
-// ApiInstalledDevicesCommand.swift
 // VSCode拡張の「既存のデバイスから選択」UI 向け: マシンにインストール済みの iOS シミュレータと
 // Android AVD を1回取得しJSONで stdout に出力する(ftester api installed-devices)。
 // プロジェクト/マシンプロファイルに依存しないため引数は無い。

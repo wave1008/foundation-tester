@@ -81,7 +81,6 @@ public enum ScenarioSourceEditor {
         return source.replacingCharacters(in: decl.nameRange, with: newName)
     }
 
-    /// クラス内のテスト関数(func 宣言)の名前を変更する
     public static func renameMethod(inSource source: String, className: String,
                                     from oldName: String, to newName: String) throws -> String {
         if let reason = validateIdentifier(newName) {
@@ -133,8 +132,8 @@ public enum ScenarioSourceEditor {
     }
 
     /// 指定行(1 起点)にあるクォート付きセレクタ文字列を書き換える(自己修復の確定反映用)。
-    /// 対象行に `"<oldSelector>"` がちょうど 1 回出現することを要求する(0 回 = ソース変更の
-    /// 可能性、2 回以上 = 曖昧で自動判定できない)。対象行以外・改行・インデントは完全保存する
+    /// 対象行に `"<oldSelector>"` がちょうど 1 回出現することを要求(0 回 = ソース変更の可能性、
+    /// 2 回以上 = 曖昧で自動判定できない)。対象行以外・改行・インデントは完全保存する
     public static func replaceSelector(inSource source: String, line: Int,
                                        oldSelector: String, newSelector: String) throws -> String {
         var lines = source.components(separatedBy: "\n")
@@ -333,7 +332,6 @@ public enum ScenarioSourceEditor {
         return DeclMatch(declRange: declRange, nameRange: nameRange)
     }
 
-    /// クラスのメンバー探索範囲 = 宣言の直後から次の class 宣言(なければ末尾)まで
     private static func memberRange(ofClass className: String,
                                     in source: String) throws -> Range<String.Index> {
         guard let decl = classDeclRange(of: className, in: source) else {

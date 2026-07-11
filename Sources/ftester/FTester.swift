@@ -1,7 +1,3 @@
-// FTester.swift
-// CLI エントリポイント。サブコマンドの登録と、doctor / bridge / 手動駆動 /
-// explore(FM探索→シナリオ生成)/ run(決定的再生)の各コマンド本体の定義を持つ。
-
 import ArgumentParser
 import Foundation
 import FTAgent
@@ -48,8 +44,7 @@ struct DriverOptions: ParsableArguments {
     @Option(help: "Android デバイスのシリアル(adb -s。省略時は唯一の接続デバイス)")
     var serial: String?
 
-    /// プラットフォームに応じた AppDriver を返す。FTAgent/FTCore はこの抽象しか見ない。
-    /// フローファイル側の platform 指定があればそちらを優先する
+    /// FTAgent/FTCore はこの抽象のみに依存(BridgeClient/AndroidDriver を直接見ない)
     func makeDriver(overriding platformOverride: String? = nil) throws -> AppDriver {
         switch platformOverride ?? platform {
         case "ios":
@@ -91,7 +86,6 @@ struct Doctor: AsyncParsableCommand {
               ? "✅ xcodegen: \(xcodegen.output.trimmingCharacters(in: .whitespacesAndNewlines))"
               : "❌ xcodegen が必要です: brew install xcodegen")
 
-        // Android(任意): adb と接続デバイス
         if let android = try? AndroidDriver() {
             let devices = try Shell.run([android.adbPath, "devices"])
             let connected = devices.output.split(separator: "\n").dropFirst()
@@ -232,9 +226,7 @@ struct Bridge: AsyncParsableCommand {
     }
 }
 
-/// Android ブリッジ用 CLI ヘルパー
 enum AndroidBridgeCLI {
-    /// 対象シリアル一覧(指定があればそれのみ、省略時は接続中の全デバイス)
     static func serials(only serial: String?) throws -> [String] {
         if let serial { return [serial] }
         let adbPath = try AndroidDriver.findADB()
@@ -459,7 +451,7 @@ struct Explore: AsyncParsableCommand {
             print("⚠️ ステップ上限に達しました(TODO コメント付きで生成します)")
         }
 
-        // Swift シナリオとして生成 → ビルド検証(失敗時は _disabled/ に隔離)
+        // ビルド検証に失敗したシナリオは quarantineDir(_disabled/)に隔離される
         let dir = out.map { URL(fileURLWithPath: $0) } ?? testProject.generatedDir
         let quarantineDir = testProject.disabledDir
         let className = ScenarioCodeGen.suggestedClassName(
@@ -538,7 +530,6 @@ struct RunScenarios: AsyncParsableCommand {
             print("⚠️ Foundation Models 利用不可: 自己修復・screenIs・トリアージは無効です")
         }
 
-        // プロファイル実行(デバイス供給・自動インストール・両OS同時並列)
         if let profile {
             let failedCount = try await ProfileRunner.run(
                 project: testProject, profileName: profile, items: items,
@@ -573,8 +564,7 @@ struct RunScenarios: AsyncParsableCommand {
         }
     }
 
-    /// ID 指定を ScenarioInfo に解決する(完全一致 → クラス名一致で全シナリオ)。
-    /// @Deleted(論理削除)は全件実行・クラス名展開から除外する(完全一致の明示指定のみ実行可)
+    /// @Deleted(論理削除)は全件実行・クラス名展開から除外(完全一致の明示指定のみ実行可)
     static func resolve(_ ids: [String], from all: [ScenarioInfo]) throws -> [ScenarioInfo] {
         guard !ids.isEmpty else { return all.filter { !$0.deleted } }
         var result: [ScenarioInfo] = []

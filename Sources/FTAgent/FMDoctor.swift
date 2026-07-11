@@ -1,6 +1,3 @@
-// FMDoctor.swift
-// Foundation Models の可用性診断。`ftester doctor` から使用する。
-
 import Foundation
 import FoundationModels
 

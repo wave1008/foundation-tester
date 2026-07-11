@@ -1,4 +1,3 @@
-// ApiCommands.swift
 // VSCode拡張等の外部ツール向け機械可読 CLI(ftester api ...)。
 // stdout には 1 行の JSON だけを出力し、進捗・警告等の診断メッセージは stderr に出す
 // (stdout をパースする外部ツールを汚さないため)。
@@ -105,12 +104,10 @@ struct ApiListScenarios: AsyncParsableCommand {
         print(String(data: data, encoding: .utf8)!)
     }
 
-    /// id(クラス名.メソッド名)からクラス名部分を取り出す("." が無ければ id 全体)
     private static func className(of id: String) -> String {
         id.firstIndex(of: ".").map { String(id[..<$0]) } ?? id
     }
 
-    /// id(クラス名.メソッド名)からメソッド名部分を取り出す("." が無ければ id 全体)
     private static func methodName(of id: String) -> String {
         id.firstIndex(of: ".").map { String(id[id.index(after: $0)...]) } ?? id
     }
@@ -241,7 +238,6 @@ struct ApiSteps: AsyncParsableCommand {
                 section: step.section,
                 command: step.description ?? "",
                 comment: comment,
-                // コメントの無い行は自然言語の生成文で補完(生成不能なら nil)
                 generatedComment: comment == nil
                     ? StepDescription.describe(command: step.description ?? "") : nil,
                 file: step.file,

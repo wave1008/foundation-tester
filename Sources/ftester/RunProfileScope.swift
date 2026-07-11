@@ -1,4 +1,3 @@
-// RunProfileScope.swift
 // 実行プロファイル(profiles/runs/<name>.json)によるマシンプロファイルの絞り込み(共通ヘルパー)。
 // `ftester api monitor --profile`・`ftester devices up/down --profile` が共通で使う。
 // ProfileResolver.resolve() は app 参照の解決・bundle ID 検証まで行い、監視・起動制御には

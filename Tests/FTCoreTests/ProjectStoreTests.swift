@@ -1,5 +1,3 @@
-// ProjectStoreTests.swift
-
 import XCTest
 @testable import FTCore
 
@@ -35,16 +33,13 @@ final class ProjectStoreTests: XCTestCase {
         let all = ProjectStore.all(repoRoot: repoRoot)
         XCTAssertEqual(all.map(\.name), ["Alpha", "Beta"], "名前順")
 
-        // 名前指定
         let beta = try ProjectStore.find("Beta", repoRoot: repoRoot)
         XCTAssertEqual(beta.productName, "ftester-scenarios-Beta")
         XCTAssertEqual(beta.scenariosDir.lastPathComponent, "Scenarios")
 
-        // 未指定+複数 → defaultProject で解決
         let picked = try ProjectStore.find(nil, repoRoot: repoRoot, defaultProject: "Alpha")
         XCTAssertEqual(picked.name, "Alpha")
 
-        // 未指定+複数+default なし → エラー
         XCTAssertThrowsError(try ProjectStore.find(nil, repoRoot: repoRoot)) { error in
             guard case ProjectStoreError.ambiguous(let available) = error else {
                 return XCTFail("ambiguous のはず: \(error)")
@@ -52,7 +47,6 @@ final class ProjectStoreTests: XCTestCase {
             XCTAssertEqual(available, ["Alpha", "Beta"])
         }
 
-        // 存在しない名前
         XCTAssertThrowsError(try ProjectStore.find("Ghost", repoRoot: repoRoot)) { error in
             guard case ProjectStoreError.notFound = error else {
                 return XCTFail("notFound のはず: \(error)")
@@ -89,7 +83,6 @@ final class LocalConfigTests: XCTestCase {
         try config.save(to: url)
         XCTAssertEqual(LocalConfig.load(from: url), config)
 
-        // 壊れたファイル → 空設定
         try "not json".data(using: .utf8)!.write(to: url)
         XCTAssertEqual(LocalConfig.load(from: url), LocalConfig())
     }

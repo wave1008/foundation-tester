@@ -1,18 +1,13 @@
-// ApiExploreCommand.swift
-// VSCode拡張等の外部ツール向け機械可読 CLI(ftester api explore)。
-// FM エージェントによるアプリ探索 → Swift シナリオ生成(FTester.swift の Explore コマンドの
-// 人間向け処理フロー)を NDJSON(1 行 1 イベント)で stdout に流す。
-// stdout には exploreStarted / exploreStep / exploreValidating / exploreFinished / error
-// 以外は出さない(診断は stderr のみ。ApiRunCommand.swift・ApiMonitorCommand.swift と同じ流儀)。
+// VSCode拡張等向け機械可読CLI(ftester api explore)。FMエージェントによるアプリ探索→Swift
+// シナリオ生成(FTester.swift の Explore コマンドと同フロー)を NDJSON(1行1イベント)で
+// stdout に流す: exploreStarted/exploreStep/exploreValidating/exploreFinished/error 以外は
+// 出さない(診断は stderr)。
 //
-// エラー方針: FM 利用不可・ドライバ接続不可・シナリオ書き込みの予期しない失敗(I/O 等)は
-// {"kind":"error","message":"..."} を stdout に出して exit code 1 で終える。
-// 一方、ScenarioCodeGen.writeValidated がビルド検証失敗で Scenarios/_disabled/ へ隔離した場合
-// (ScenarioCodeGen.CodeGenError.buildFailed)は致命的エラーではなく「シナリオは生成されたが
-// 隔離された」という探索の一結果として扱い、exploreFinished の quarantined:true として
-// 通常終了(exit 0)する(file には隔離先パスを入れる)。
-// 探索そのものの outcome(completed/gaveUp/stepLimitReached)はどれも「シナリオは生成される」
-// ため、exploreFinished を出して正常終了する(FTester.swift の Explore と同じ方針)。
+// エラー方針: FM利用不可・ドライバ接続不可・書き込みの予期しない失敗は {"kind":"error",...} を
+// 出し exit 1。ScenarioCodeGen.writeValidated がビルド検証失敗で _disabled/ へ隔離した場合は
+// 致命的扱いにせず exploreFinished(quarantined:true, file に隔離先パス)で exit 0 とする。
+// 探索の outcome(completed/gaveUp/stepLimitReached)はいずれもシナリオ生成に至るため
+// exploreFinished で正常終了する。
 
 import ArgumentParser
 import Foundation
@@ -92,7 +87,6 @@ struct ApiExploreCommand: AsyncParsableCommand {
         var flow = result.flow
         flow.platform = driverOptions.platform  // 実行時のドライバ自動選択に使う
 
-        // Swift シナリオとして生成 → ビルド検証(失敗時は _disabled/ に隔離)
         let dir = out.map { URL(fileURLWithPath: $0) } ?? testProject.generatedDir
         let quarantineDir = testProject.disabledDir
         let className = ScenarioCodeGen.suggestedClassName(
@@ -112,8 +106,7 @@ struct ApiExploreCommand: AsyncParsableCommand {
                 code: code, className: className, dir: dir,
                 quarantineDir: quarantineDir, project: testProject)
         } catch ScenarioCodeGen.CodeGenError.buildFailed(let quarantinedURL, let detail) {
-            // ビルド検証失敗は致命的エラーではない。隔離先パスを使って exploreFinished
-            // を通常どおり出す(quarantined:true。exit code は 0 のまま)
+            // 致命的扱いにせず quarantined:true で exploreFinished を通常どおり出す(ヘッダ参照)
             fileURL = quarantinedURL
             quarantined = true
             logStderr("⚠️ 生成コードのビルド検証に失敗したため隔離しました: \(detail)")

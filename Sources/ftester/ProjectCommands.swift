@@ -1,4 +1,3 @@
-// ProjectCommands.swift
 // テストプロジェクト・マシン名・実行プロファイルの管理 CLI。
 //   ftester project create/list/sync … Projects/<name>/ と Package.swift マーカー区間の管理
 //   ftester machine set/show         … このマシンの名前(~/.config/ftester/config.json)

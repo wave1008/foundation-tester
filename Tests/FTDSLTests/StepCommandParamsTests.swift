@@ -1,13 +1,7 @@
-// StepCommandParamsTests.swift
-// 表示表現に現れないキーワード引数(timeout: / duration: / optional: / direction: /
-// maxSwipes:)の構造化編集(スキーマ・現在値の取得・適用)のテスト
-
 import XCTest
 @testable import FTDSL
 
 final class StepCommandParamsTests: XCTestCase {
-
-    // MARK: - specs(スキーマ)
 
     func testSpecsForVerbs() {
         XCTAssertEqual(StepCommandParams.specs(forVerb: "exist").map(\.name), ["timeout"])
@@ -27,8 +21,6 @@ final class StepCommandParamsTests: XCTestCase {
         XCTAssertEqual(StepCommandParams.specs(forVerb: "wait"), [])
         XCTAssertEqual(StepCommandParams.specs(forVerb: "procedure"), [])
     }
-
-    // MARK: - parse(ソースからの現在値の取得)
 
     func testParseKeywordArgument() {
         XCTAssertEqual(StepCommandParams.parse(code: "exist(\"WiFi\", timeout: 15)",
@@ -101,8 +93,6 @@ final class StepCommandParamsTests: XCTestCase {
         XCTAssertNil(StepCommandParams.parse(code: "exist(\"x\")", verb: "tap"))
     }
 
-    // MARK: - apply(再生成)
-
     func testApplyAddsTimeout() throws {
         XCTAssertEqual(
             try StepCommandParams.apply(display: "exist \"WiFi\"", params: ["timeout": "15"],
@@ -170,8 +160,6 @@ final class StepCommandParamsTests: XCTestCase {
             #"exist("引用\"符", timeout: 15)"#)
     }
 
-    // MARK: - apply(params nil = StepCommandText.apply への委譲)
-
     func testApplyWithNilParamsDelegatesToLiteralPatch() throws {
         // StepCommandText.apply のリテラル置換パス(書式・非表示引数を保存)と同一結果になる
         XCTAssertEqual(
@@ -184,8 +172,6 @@ final class StepCommandParamsTests: XCTestCase {
                                         toCode: "exist(\"WiFi\", timeout: 15)"),
             "exist(\"Internet\", timeout: 15)")
     }
-
-    // MARK: - apply(エラー)
 
     func testApplyThrowsInvalidValue() {
         XCTAssertThrowsError(try StepCommandParams.apply(

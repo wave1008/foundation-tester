@@ -1,4 +1,3 @@
-// ScenarioReportWriter.swift
 // シナリオ実行結果の Markdown レポート(成否問わず常に出力)。
 // 階層: シナリオ → scene → CAE セクション → ステップ。
 

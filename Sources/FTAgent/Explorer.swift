@@ -1,16 +1,12 @@
-// Explorer.swift
-// FM エージェントによるアプリ探索とテストフロー生成。
+// FMエージェントの探索。4Kトークン運用の原則(設計書5.1):
+// - 1ステップ=1セッション。履歴は圧縮した旅程ログのみ持ち回る(マルチターン会話にしない)
+// - 画面はset-of-mark圧縮テキストで渡し、出力は@Generableで構造化する
 //
-// 4K トークン運用の原則(設計書 5.1):
-// - 1 ステップ = 1 セッション(履歴は圧縮した旅程ログのみ持ち回る)
-// - 画面は set-of-mark 圧縮テキストで渡す
-// - 出力は @Generable による構造化(自由文を返させない)
-//
-// 3B モデルの弱点への対策(実測に基づく):
-// - 数値参照(elementRef)の束縛ミスが頻発するため、要素指定は elementText
-//   (label/id のテキストコピー)+コード側のあいまい解決にする
-// - 無効な操作(入力欄への tap、非対話要素への tap、入力済み欄への再入力)は
-//   コード側ガードレールで実行前に拒否し、旅程ログで正しい手を教える
+// 3Bモデルの弱点への対策(実測知見。単純化すると壊れる):
+// - elementRef(数値参照)は束縛ミスが頻発するため使わず、elementText(label/idコピー)
+//   +コード側あいまい解決にする
+// - 無効操作(入力欄へのtap、非対話要素へのtap、入力済み欄への再入力)はコード側
+//   ガードレールで実行前に拒否し、旅程ログで正しい手を教える
 // - 探索開始時に一度だけテスト計画を生成し、毎ステップの足場にする
 
 import Foundation
@@ -94,7 +90,6 @@ public final class ExplorerAgent {
     let goal: String
     let maxSteps: Int
 
-    /// 進捗コールバック(step番号, 説明)
     public var onStep: ((Int, String) -> Void)?
 
     private var journey: [String] = []
@@ -108,7 +103,6 @@ public final class ExplorerAgent {
     }
 
     public func explore(bundleID: String) async throws -> Result {
-        // 探索開始時に一度だけテスト計画を生成し、毎ステップの足場にする
         plan = (try? await makePlan()) ?? []
         if !plan.isEmpty {
             onStep?(0, "計画: " + plan.joined(separator: " / "))
@@ -123,18 +117,16 @@ public final class ExplorerAgent {
         var consecutiveNoProgress = 0
         var lastActionWasTap = false
         var lastActionSignature: String?
-        // 「同じ画面で効果がなかった操作」の署名。再提案されたらコード側で拒否する
+        // 同一画面で効果がなかった操作の署名。再提案されたら実行前に拒否する
         var ineffectiveSignatures: Set<String> = []
 
         for step in 1...maxSteps {
             let snap = try await driver.snapshot()
             let rendered = SnapshotRenderer.render(snap)
 
-            // 同一画面ループ検出(コード側の強制ガード)
             let hash = rendered.hashValue
             if hash == lastRenderedHash {
                 sameScreenCount += 1
-                // 直前の操作が無効だったことを旅程ログに明示し、
                 // 効果のなかった tap はフローから巻き戻す(ゴミステップを残さない)
                 if let last = journey.last, !last.hasSuffix("→ 画面変化なし"), lastActionWasTap {
                     journey[journey.count - 1] = last + " → 画面変化なし"
@@ -146,8 +138,7 @@ public final class ExplorerAgent {
             }
             lastRenderedHash = hash
             if sameScreenCount >= 4 {
-                // モデルが停滞しても、目標の確認要素が画面に揃っていればコード側で
-                // 検証してフローを完成させる(ナビゲーションはモデル、検証はコード)
+                // モデル停滞時も目標の確認要素が画面に揃っていればコード側で検証して完成扱いにする
                 if let salvaged = salvageGoalAssertions(in: snap, steps: step - 1, bundleID: bundleID) {
                     return salvaged
                 }
@@ -156,17 +147,16 @@ public final class ExplorerAgent {
 
             let action: NextAction
             do {
-                // 進捗なしが続いたら greedy をやめて温度サンプリングで轍から脱出する
                 action = try await decide(rendered: rendered,
                                           screenUnchanged: sameScreenCount > 0,
                                           escapeRut: consecutiveNoProgress >= 2)
             } catch {
-                // モデル応答の失敗で探索全体を落とさない。部分フローを保存して中断
+                // モデル応答失敗で探索全体を落とさず、部分フローを保存して中断する
                 return finish(.gaveUp("モデル応答エラー: \(error.localizedDescription)"), step - 1, bundleID)
             }
             onStep?(step, describe(action))
             lastActionWasTap = false
-            consecutiveNoProgress += 1  // 実行に成功した分岐でリセットする
+            consecutiveNoProgress += 1  // 各アクション成功時に 0 へリセットされる(下記 continue/break 分岐)
 
             switch action.kind {
             case .done:
@@ -187,13 +177,11 @@ public final class ExplorerAgent {
                     journey.append("\(step). tap「\(action.elementText ?? "")」は失敗(一致する要素なし)。要素一覧の label か id をそのまま使うこと")
                     continue
                 }
-                // 入力欄への tap は実行しない。正しい呼び方を旅程ログで教える
                 if SnapshotRenderer.textInputTypes.contains(element.type) {
                     journey.append("\(step). \(describeElement(element)) への tap は不要。文字を入れるには typeText を使うこと")
                     continue
                 }
-                // タップ可能型のホワイトリスト。NavigationBar や StaticText への
-                // 無意味なタップ連打をコード側で止める
+                // tappableTypes 以外(NavigationBar, StaticText 等)への無意味な連打を防ぐホワイトリスト
                 guard Self.tappableTypes.contains(element.type) else {
                     let assertables = snap.elements
                         .filter { $0.type == "StaticText" && !($0.label ?? "").isEmpty }
@@ -204,7 +192,6 @@ public final class ExplorerAgent {
                                    + (assertables.isEmpty ? "" : "(この画面で確認できるテキスト: \(assertables))"))
                     continue
                 }
-                // 同じ画面で前回効果がなかった tap は実行前に拒否
                 let signature = "\(hash)|tap|\(element.type)|\(element.label ?? "")|\(element.identifier ?? "")"
                 if ineffectiveSignatures.contains(signature) {
                     journey.append("\(step). \(describeElement(element)) への tap は拒否(前回効果がなかった)。別の要素を選ぶこと")
@@ -231,8 +218,7 @@ public final class ExplorerAgent {
                     journey.append("\(step). \(describeElement(element)) は入力欄ではないため typeText は失敗。入力欄を指定すること")
                     continue
                 }
-                // 入力済みの欄が指定され、未入力の欄が残っている場合の扱い:
-                // ちょうど1つなら自動修正でそちらへ、複数あれば候補を提示して拒否
+                // 入力済み欄が指定され未入力欄が残る場合: 未入力欄が1つのみなら自動修正、複数なら拒否
                 var autoCorrected = false
                 if let existing = element.value, !existing.isEmpty {
                     let empties = snap.elements.filter {
@@ -286,8 +272,7 @@ public final class ExplorerAgent {
         return finish(.stepLimitReached, maxSteps, bundleID)
     }
 
-    /// 目標文中の「」内の文字列を現在の画面で照合し、全て見つかれば
-    /// assert ステップとして記録してフローを完成扱いにする。
+    /// 目標文中の「」内の文字列を画面と照合し、全て見つかれば assert として記録し完成扱いにする。
     private func salvageGoalAssertions(in snap: SnapshotResponse, steps: Int, bundleID: String) -> Result? {
         let quoted = Self.quotedStrings(in: goal)
         guard !quoted.isEmpty else { return nil }
@@ -297,11 +282,10 @@ public final class ExplorerAgent {
             guard let element = snap.elements.first(where: {
                 ($0.label ?? "").contains(text) || ($0.identifier ?? "").contains(text)
             }) else {
-                return nil  // 1つでも見つからなければサルベージしない(誤検証を避ける)
+                return nil  // 1つでも未検出ならサルベージしない(誤検証防止)
             }
             found.append(element)
         }
-        // 既に同じ locator の assert が記録済みなら重複追加しない
         for element in found {
             let (primary, _) = FlowLocatorBuilder.chain(for: element, in: snap.elements)
             if !flowSteps.contains(where: { $0.assert == "exists" && $0.locator == primary }) {
@@ -327,10 +311,8 @@ public final class ExplorerAgent {
         return results
     }
 
-    // MARK: - 要素解決(テキスト→要素のあいまいマッチ)
+    // MARK: - 要素解決(elementText → 要素のあいまいマッチ、スコアリング)
 
-    /// elementText(label/id のコピー)をスコアリングで要素に解決する。
-    /// 数値参照より 3B モデルが安定して扱えることが実測で分かっている。
     private func resolveElement(_ text: String?, in snap: SnapshotResponse,
                                 forTap: Bool = false, forInput: Bool = false) -> ElementInfo? {
         guard var raw = text?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else {
@@ -370,8 +352,8 @@ public final class ExplorerAgent {
         guard let best = scored.max(by: { $0.1 == $1.1 ? $0.0.ref > $1.0.ref : $0.1 < $1.1 })?.0 else {
             return nil
         }
-        // tap 意図でテキスト要素に解決された場合、それを包含する最小のタップ可能
-        // 要素へリダイレクトする(リスト行のテキストは非クリック子であることが多い)
+        // tap 意図でテキスト要素に解決された場合、それを包含する最小のタップ可能要素へリダイレクト
+        // (リスト行のテキストは非クリック子であることが多い)
         if forTap, !Self.tappableTypes.contains(best.type),
            !SnapshotRenderer.textInputTypes.contains(best.type) {
             let cx = best.frame.centerX, cy = best.frame.centerY
@@ -408,8 +390,7 @@ public final class ExplorerAgent {
 
     private func decide(rendered: String, screenUnchanged: Bool, escapeRut: Bool = false) async throws -> NextAction {
         do {
-            // 通常は greedy(再現性重視)。進捗なしが続いたら温度サンプリングで
-            // greedy の轍(毎回同じ誤答)から脱出する
+            // greedy は再現性重視。進捗なしが続いたら温度サンプリングで greedy の轍(毎回同じ誤答)から脱出する
             let options = escapeRut
                 ? GenerationOptions(temperature: 0.9, maximumResponseTokens: 350)
                 : GenerationOptions(sampling: .greedy, maximumResponseTokens: 350)
@@ -417,8 +398,7 @@ public final class ExplorerAgent {
                 prompt: makePrompt(rendered: rendered, screenUnchanged: screenUnchanged),
                 options: options)
         } catch {
-            // 縮退ループやコンテキスト超過に備え、要素一覧を切り詰めた上で
-            // サンプリングを変えて再試行(greedy のままでは同じ失敗を繰り返す)
+            // 縮退ループ/コンテキスト超過対策: 要素一覧を切り詰めsamplingも変えて再試行
             let lines = rendered.split(separator: "\n")
             let truncated = lines.prefix(40).joined(separator: "\n")
                 + (lines.count > 40 ? "\n(+\(lines.count - 40) 行省略)" : "")
@@ -459,7 +439,6 @@ public final class ExplorerAgent {
 
     // MARK: - 記録
 
-    /// 旅程ログ用の要素表記(型+ラベル/ID)
     private func describeElement(_ element: ElementInfo) -> String {
         var name = element.type
         if let label = element.label, !label.isEmpty {

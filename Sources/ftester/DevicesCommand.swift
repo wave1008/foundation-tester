@@ -1,4 +1,3 @@
-// DevicesCommand.swift
 // マシンプロファイルに定義されたデバイス群の起動・停止 CLI。
 //   ftester devices up   … 段階的起動(負荷ゲート付き・起動済みスキップ・iOS はブリッジ供給まで)
 //   ftester devices down … 全ブリッジ停止+シミュレータ/エミュレータ全終了
@@ -34,8 +33,7 @@ struct DevicesCommand: AsyncParsableCommand {
 
         func run() async throws {
             let testProject = try ScenarioHost.project(named: project)
-            // --profile が machine を明示指定していれば最優先する(RunProfileScope による絞り込み
-            // と対のマシン決定。ProfileResolver.resolve() 内部の上書きと同じ優先順位)
+            // --profile の machine 明示指定を最優先(ProfileResolver.resolve() と同じ優先順位)
             let machine = try ProfileResolver.determineMachine(
                 project: testProject, registered: LocalConfig.currentMachineName(),
                 runProfileName: profile)
@@ -98,11 +96,9 @@ struct DevicesCommand: AsyncParsableCommand {
             }
         }
 
-        /// --profile 指定時: そのプロファイルが参照するデバイスのみを ios→android の順で
-        /// `DeviceBooter.shutdownOne` により個別停止する(ApiDeviceDown と同じ流儀。iOS は
-        /// repoRoot を渡してブリッジも停止する)。既存 Down の try? ベストエフォート方針に合わせ、
-        /// マシン解決・プロファイル読み込み・個々のデバイス停止のいずれの失敗も警告に留めて続行し
-        /// (1台の失敗で全体を止めない)、exit 0 で完走する。
+        /// 対象デバイスのみ ios→android の順で shutdownOne により個別停止する(ApiDeviceDown と
+        /// 同じ流儀)。マシン解決・読み込み・個々の停止いずれの失敗も警告に留めて続行し
+        /// (1台の失敗で全体を止めない)、exit 0 で完走する
         private func shutdownProfile(_ profile: String) async {
             do {
                 let testProject = try ScenarioHost.project(named: project)
@@ -120,9 +116,8 @@ struct DevicesCommand: AsyncParsableCommand {
                     project: testProject, machineName: machine.name, machineProfile: machineProfile,
                     runProfileName: profile, warn: { print($0) })
 
-                // iOS はシミュレータ停止前に、接続している稼働ブリッジも探して停止する(ゾンビ化防止)。
-                // repoRoot が見つからない場合(通常起こらない)はブリッジ停止をスキップして
-                // simctl shutdown のみ行う(ApiDeviceDown と同じフォールバック)
+                // iOS はシミュレータ停止前に稼働ブリッジも探して停止する(ゾンビ化防止)。repoRoot
+                // 未検出時はブリッジ停止をスキップし simctl shutdown のみ行う(ApiDeviceDown と同じ)
                 let repoRoot = try? RepoRoot.find()
                 for spec in filtered.ios?.devices ?? [] {
                     do {

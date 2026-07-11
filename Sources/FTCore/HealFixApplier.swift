@@ -11,8 +11,7 @@ import Foundation
 /// 同一("scenarioID|file:line|oldSelector")
 public struct HealFixInput: Sendable, Equatable {
     public let scenarioID: String
-    /// ファイルパス(絶対または Package ルート相対。どちらであるかの解決・実際の読み書きは
-    /// 呼び出し側の責務。id / キャッシュキーにはこの値をそのまま使う)
+    /// ファイルパス(絶対 or 相対。解決・実際の読み書きは呼び出し側の責務。id にはそのまま使う)
     public let file: String
     public let line: Int
     public let oldSelector: String
@@ -30,7 +29,6 @@ public struct HealFixInput: Sendable, Equatable {
         self.newComment = newComment
     }
 
-    /// ヒールキャッシュのキー形式(HealCache.key と同一)
     public var id: String { "\(scenarioID)|\(file):\(line)|\(oldSelector)" }
 }
 
@@ -51,8 +49,7 @@ public enum HealFixApplier {
     /// (呼び出し側は事前に fix.file でグループ化してから、ファイル毎にこれを呼ぶこと)。
     /// セレクタ置換(replaceSelector)が成功した fix は続けて説明(setTrailingComment)の
     /// 更新も試みるが、説明の更新失敗はセレクタ置換の成功を無効にしない
-    /// (置換結果は source / applied に残し、failures に追記するだけ。
-    /// 置換成功分のみ確定させ、説明更新の失敗でセレクタ置換自体は無効にしない設計)
+    /// (置換結果は source / applied に残し、failures に追記するだけ)
     public static func apply(
         fixes: [HealFixInput], toSource source: String
     ) -> (source: String, applied: [HealFixInput], failures: [HealFixFailure]) {

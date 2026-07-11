@@ -16,7 +16,6 @@ public struct TestProject: Sendable, Hashable, Identifiable {
         self.rootURL = rootURL
     }
 
-    /// SPM ターゲット/プロダクト名
     public var productName: String { "ftester-scenarios-\(name)" }
 
     public var scenariosDir: URL { rootURL.appendingPathComponent("Scenarios") }
@@ -58,7 +57,6 @@ public enum ProjectStoreError: Error, LocalizedError {
 }
 
 public enum ProjectStore {
-    /// リポジトリ直下の Projects/
     public static func projectsDir(repoRoot: URL) -> URL {
         repoRoot.appendingPathComponent("Projects")
     }

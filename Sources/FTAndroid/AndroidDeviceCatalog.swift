@@ -1,8 +1,6 @@
-// AndroidDeviceCatalog.swift
 // マシンプロファイルの Android デバイス指定(avd)→ adb シリアルの解決。
-// avd は AVD の ID("Pixel_9_Android_16")と表示名("Pixel 9(Android 16)"、
-// config.ini の avd.ini.displayname)のどちらでも書ける。
-// 起動中エミュレータの AVD ID(adb emu avd name / getprop)と照合して serial に解決する。
+// avd は AVD の ID("Pixel_9_Android_16")と表示名("Pixel 9(Android 16)"、config.ini の
+// avd.ini.displayname)のどちらでも書け、起動中エミュレータの AVD ID と照合して serial に解決する。
 
 import Foundation
 import FTCore
@@ -57,8 +55,6 @@ public enum AndroidDeviceCatalog {
         return result
     }
 
-    /// インストール済み AVD の (ID, 表示名) 一覧
-    /// ($ANDROID_AVD_HOME または ~/.android/avd の *.avd/config.ini を走査)
     public static func installedAVDs() -> [(id: String, displayName: String?)] {
         let home = ProcessInfo.processInfo.environment["ANDROID_AVD_HOME"]
             .map { URL(fileURLWithPath: $0) }
@@ -86,8 +82,7 @@ public enum AndroidDeviceCatalog {
             .sorted { $0.0 < $1.0 }
     }
 
-    /// プロファイルの avd 指定(ID または表示名)→ AVD ID。
-    /// どちらにも一致しなければ入力をそのまま返す(後段の照合エラーで内容が分かる)
+    /// 一致しなければ入力をそのまま返す(後段の照合エラーメッセージで内容が分かるようにするため)
     public static func canonicalAVDID(_ name: String) -> String {
         let installed = installedAVDs()
         if installed.contains(where: { $0.id == name }) { return name }
@@ -95,7 +90,6 @@ public enum AndroidDeviceCatalog {
         return name
     }
 
-    /// DeviceSpec(Android)→ adb シリアル。avd(ID/表示名)を起動中エミュレータと照合
     public static func resolveSerial(spec: DeviceSpec) throws -> String {
         guard let avd = spec.avd else {
             throw AndroidDeviceCatalogError.noIdentifier(name: spec.name)
@@ -109,9 +103,8 @@ public enum AndroidDeviceCatalog {
         return serial
     }
 
-    /// serial のブート完了確認(`adb shell getprop sys.boot_completed` が "1" か)。
-    /// adb 自体が不安定/未応答等で取得できない場合は安全側(未完了 = false)を返す
-    /// (呼び出し元はこれを「ブリッジ APK インストールを試みてよいか」の判定に使うため)
+    /// adb 不安定等で取得できない場合は安全側(未完了=false)を返す
+    /// (呼び出し元は「ブリッジ APK インストールを試みてよいか」の判定にこれを使う)
     public static func bootCompleted(serial: String) -> Bool {
         guard let adbPath = try? AndroidDriver.findADB() else { return false }
         guard let result = try? Shell.run(
@@ -121,9 +114,8 @@ public enum AndroidDeviceCatalog {
         return result.output.trimmingCharacters(in: .whitespacesAndNewlines) == "1"
     }
 
-    /// AVD ID の取得: `adb emu avd name`(出力 "<AVD名>\nOK")→ 空なら
-    /// getprop ro.boot.qemu.avd_name / ro.kernel.qemu.avd_name にフォールバック
-    /// (環境によって emu コンソールが名前を返さないことがある)
+    /// `adb emu avd name`(出力 "<AVD名>\nOK")が空/失敗の場合は getprop の
+    /// ro.boot.qemu.avd_name / ro.kernel.qemu.avd_name にフォールバック(環境依存で emu が返さない)
     static func avdName(adbPath: String, serial: String) -> String? {
         if let output = try? Shell.run([adbPath, "-s", serial, "emu", "avd", "name"]).output,
            let first = output.split(separator: "\n").first

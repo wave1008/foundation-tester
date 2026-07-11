@@ -9,10 +9,8 @@ import Foundation
 public struct ScenarioEvent: Codable, Sendable {
     public var kind: String
     /// このイベントを処理したワーカーの識別子("<platform>:<デバイス論理名>"。
-    /// ftester api monitor の monitorDevices の id と同一規則)。
-    /// --profile 指定時のワーカー並列実行(ftester api run)でのみ設定され、
-    /// 逐次実行では nil のまま(nil はエンコード時にキーごと省略されるため既存の NDJSON
-    /// 契約は変わらない)
+    /// ftester api monitor の monitorDevices の id と同一規則)。--profile 指定時の並列実行
+    /// (ftester api run)でのみ設定、逐次実行では nil(エンコード時にキーごと省略)
     public var worker: String?
     /// シナリオ ID(クラス名.メソッド名)
     public var scenario: String?
@@ -24,7 +22,7 @@ public struct ScenarioEvent: Codable, Sendable {
     public var section: String?
     /// ステップの通し番号(シナリオ内)
     public var index: Int?
-    /// ステップの人間可読な説明(例: tap "#login_btn||ログイン")
+    /// ステップの人間可読な説明
     public var description: String?
     /// passed / passedViaFallback / healed / failed / skipped
     public var status: String?
@@ -42,8 +40,8 @@ public struct ScenarioEvent: Codable, Sendable {
     /// kind == log(ユーザー print の混入行など)
     public var message: String?
     /// kind == step のステップ全体の所要時間(ミリ秒。計測は ContinuousClock)。
-    /// 追加フィールドのため decodeIfPresent 相当(Optional プロパティは Swift の Codable 合成が
-    /// 欠損キーを自動で nil にする)で旧クライアントとの互換を保つ
+    /// 後発の追加フィールド: Optional なので Codable 合成が欠損キーを自動で nil にし
+    /// (decodeIfPresent 相当)、旧クライアントとの互換を保つ
     public var durationMs: Int?
     /// durationMs の内訳: セレクタ解決のための snapshot 取得合計(ミリ秒)
     public var snapshotMs: Int?

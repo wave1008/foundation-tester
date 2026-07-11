@@ -1,4 +1,3 @@
-// Commands.swift
 // ユーザーが書く DSL コマンド(モジュールレベル自由関数)。
 // 全て同期・非 throw。カレント実行コンテキスト(FTRuntime)を暗黙参照するので
 // レシーバも `try await` も不要:
@@ -19,13 +18,12 @@ import FTCore
 
 // MARK: - 構造(scenario / scene / CAE)
 
-/// シナリオ本体のルートブロック(Shirates の scenario { } 相当)
 public func scenario(_ body: () -> Void) {
     _ = FTRuntime.requireCore(command: "scenario")
     body()
 }
 
-/// ケースブロック(Shirates の case(n) 相当。case は Swift 予約語のため scene)
+/// case は Swift 予約語のため scene と命名
 public func scene(_ number: Int, _ title: String = "", _ body: () -> Void) {
     FTRuntime.requireCore(command: "scene").runScene(number, title, body)
 }

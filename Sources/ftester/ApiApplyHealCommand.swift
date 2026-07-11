@@ -1,4 +1,3 @@
-// ApiApplyHealCommand.swift
 // VSCode拡張向け: 自己修復の修復候補を stdin から受け取り、ソースへ確定反映する
 // (ftester api apply-heal)。確定反映のロジックは FTCore.HealFixApplier に切り出し済みで、
 // このコマンドは stdin/stdout の橋渡しとヒールキャッシュ更新のみを担う。

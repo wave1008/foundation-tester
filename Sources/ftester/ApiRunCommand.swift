@@ -1,19 +1,14 @@
-// ApiRunCommand.swift
-// VSCode拡張等の外部ツール向け機械可読 CLI(ftester api run)。
-// シナリオを実行し、NDJSON(1 行 1 イベント)を stdout に流す。
-// stdout には runStarted / (workersReady) / ScenarioEvent 相当の各種イベント / runFinished
-// 以外は出さない(診断は stderr のみ。ApiCommands.swift と同じ流儀)。
+// VSCode拡張等向け機械可読 CLI(ftester api run)。シナリオを実行し NDJSON(1行1イベント)を
+// stdout に流す: runStarted/(workersReady)/ScenarioEvent相当の各種イベント/runFinished 以外は
+// 出さない(診断は stderr のみ)。
 //
-// --profile 指定時は実行プロファイル(profiles/runs/<name>.json)を解決してワーカー
-// (iOS ブリッジ供給+Android 照合。実体は ProfileWorkerFactory)を構築する。
-// --dry-run/--debug 以外はここからさらに RunOrchestrator(FTCore)へワーカー全部を渡して
-// 並列実行する(ftester run --profile の ProfileRunner と同じ並列度・セマンティクス)。
-// この並列経路では runStarted 直後に workersReady を 1 回 emit し、以降の各イベントに
-// どのワーカーが処理したかを示す worker フィールド("<platform>:<デバイス論理名>"。
-// api monitor の monitorDevices の id と同一規則)を付ける。
-// --dry-run --profile / --debug のときは、その platform に合う最初のワーカー
-// (またはワーカー無しの --dry-run)で逐次実行する(worker フィールドは付けない)。
-// --dry-run 時はデバイス不要なため、ワーカー構築(実機・シミュレータ照合)を丸ごと省略する。
+// --profile 指定時はプロファイルを解決してワーカー(iOSブリッジ供給+Android照合。実体は
+// ProfileWorkerFactory)を構築する。--dry-run/--debug 以外は RunOrchestrator(FTCore)へ全
+// ワーカーを渡し並列実行(ftester run --profile の ProfileRunner と同じ並列度)。この経路では
+// runStarted 直後に workersReady を1回 emit し、各イベントに worker フィールド
+// ("<platform>:<デバイス論理名>"。api monitor の monitorDevices.id と同一規則)を付ける。
+// --dry-run --profile / --debug は platform に合う最初のワーカー(単体 --dry-run はワーカー
+// 無し)で逐次実行し worker フィールドは付けない。--dry-run はワーカー構築自体を省略する。
 
 import ArgumentParser
 import Foundation
@@ -78,9 +73,8 @@ struct ApiRunCommand: AsyncParsableCommand {
     var serial: String?
 
     func run() async throws {
-        // paused 等のイベントがパイプ既定の全バッファに滞留すると、読み手(VSCode 拡張)と
-        // 相互待ちになる(ScenarioRunnerMain.swift の --debug 実装と同じ理由)。
-        // --debug でなくてもストリーミング読み取りが前提なので常に行バッファにする
+        // pause等のイベントが既定の全バッファに滞留すると読み手(VSCode拡張)と相互待ちになる
+        // (ScenarioRunnerMain.swift の --debug 実装と同じ理由)。--debug 以外も常に行バッファにする
         setvbuf(stdout, nil, _IOLBF, 0)
 
         guard !scenarios.isEmpty else {
@@ -111,9 +105,8 @@ struct ApiRunCommand: AsyncParsableCommand {
             throw ValidationError("実行対象がありません(全シナリオが削除済み @Deleted)")
         }
 
-        // --debug: 自プロセスの stdin を専用スレッドで読み、行をそのままランナーへ渡す。
-        // ScenarioHost.run が起動直後に onControl で渡す ScenarioRunControl を待つ必要が
-        // あるため、書き込み先は小箱(ロック付き)経由で受け渡す
+        // --debug: stdin を専用スレッドで読み行をそのままランナーへ渡す。ScenarioHost.run が
+        // 起動直後に onControl で渡す ScenarioRunControl を待つ必要があるため小箱経由で受け渡す
         var debugOptions: ScenarioDebugOptions?
         if debug {
             let controlBox = DebugControlBox()
@@ -130,12 +123,10 @@ struct ApiRunCommand: AsyncParsableCommand {
             }
         }
 
-        // --profile の解決(マシン決定+プロファイル合成)は runStarted を出す前に済ませる。
-        // 単なるタイポ等の検証エラーは、他の事前検証(プロジェクト解決・ビルド失敗等)と同様に
-        // NDJSON を1行も出さないまま失敗させたい(runStarted だけ出て runFinished が来ない
-        // 尻切れの NDJSON を避ける)。デバイス接続等、実行途中でしか分からない失敗は
-        // runWithProfile 側で扱う(VSCode 拡張は runFinished 無しの異常終了を exit code で検知する
-        // 設計になっているため、そちらは許容する)
+        // --profile の解決は runStarted 送出前に済ませる: タイポ等の検証エラーは他の事前検証と
+        // 同様 NDJSON を1行も出さず失敗させたい(runStarted だけ出て runFinished が来ない尻切れを
+        // 避ける)。デバイス接続等の実行時失敗は runWithProfile 側で扱う(VSCode拡張は
+        // runFinished 無しの異常終了を exit code で検知するため許容される)
         var resolvedProfile: ResolvedProfile?
         if let profile {
             let machine = try ProfileResolver.determineMachine(
@@ -155,9 +146,8 @@ struct ApiRunCommand: AsyncParsableCommand {
         let passedCount: Int
         let failedCount: Int
         if let resolvedProfile {
-            // --dry-run/--debug はワーカー選択方針が単純な逐次実行のままにする(仕様上、
-            // 出力形式も worker フィールド無しのまま保つ)。それ以外は
-            // RunOrchestrator によるワーカー並列実行(ftester run --profile と同じ並列度)
+            // --dry-run/--debug は単純な逐次実行のまま(worker フィールド無し)。それ以外は
+            // RunOrchestrator による並列実行
             if dryRun || debugOptions != nil {
                 (passedCount, failedCount) = try await runWithProfile(
                     resolved: resolvedProfile, project: testProject, selected: selected,
@@ -210,10 +200,8 @@ struct ApiRunCommand: AsyncParsableCommand {
 
     // MARK: - --profile 指定
 
-    /// resolved(呼び出し側で解決済み)のワーカーを構築し、各シナリオをその platform に合う
-    /// 最初のワーカーで逐次実行する(ftester run --profile の ProfileRunner と違い並列化しない。
-    /// ワーカー構築の実体は ProfileWorkerFactory を共用する)。
-    /// --dry-run 時はワーカー構築(実機・シミュレータ照合)自体を省略し、profile の解決検証と
+    /// resolved のワーカーを構築し、各シナリオを platform に合う最初のワーカーで逐次実行する
+    /// (ProfileRunner と違い並列化しない)。--dry-run はワーカー構築自体を省略し、
     /// defaultTimeout/heal の反映だけ行って NullDriver で流す
     private func runWithProfile(
         resolved: ResolvedProfile, project: TestProject,
@@ -278,11 +266,9 @@ struct ApiRunCommand: AsyncParsableCommand {
 
     // MARK: - --profile 指定(ワーカー並列実行。--dry-run/--debug 以外)
 
-    /// ProfileWorkerFactory で構築した全ワーカーを RunOrchestrator(FTCore)に渡し、
-    /// ftester run --profile(ProfileRunner)と同じ並列度(ワーカー数)で実行する。
-    /// RunOrchestrator の進捗は RunEvent(enum。Codable ではない)で届くため、
-    /// 逐次実行時と同じ ScenarioEvent 相当の NDJSON 行に変換して emit する
-    /// (変換の詳細は ndjsonLines(for:itemByURL:workerID:) 参照。失われる情報がある点に注意)
+    /// 全ワーカーを RunOrchestrator(FTCore)に渡し ProfileRunner と同じ並列度で実行する。
+    /// 進捗は RunEvent(Codable ではない)で届くため ndjsonLines(for:itemByURL:workerID:) で
+    /// ScenarioEvent 相当の NDJSON 行に変換する(失われる情報がある点に注意)
     private func runWithProfileParallel(
         resolved: ResolvedProfile, project: TestProject, selected: [ScenarioInfo]
     ) async throws -> (passed: Int, failed: Int) {
@@ -300,8 +286,6 @@ struct ApiRunCommand: AsyncParsableCommand {
             apps: resolved.apps, workers: workers) { logStderr($0) }
         logStderr("🚀 実行: \(workers.count) ワーカー(\(workers.map(\.label).joined(separator: " / ")))")
 
-        // runStarted 直後に 1 回だけ(VSCode 拡張のモニタータイルと突合するための id は
-        // api monitor の monitorDevices と同一規則の "<platform>:<デバイス論理名>")
         emitLine(ApiWorkersReadyEvent(workers: workersReadyInfo(workers)))
 
         // シナリオが platform 未指定のときの既定 platform(既存の runWithProfile と同じ方針)
@@ -331,9 +315,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         return (result.passed, result.failed)
     }
 
-    /// workersReady イベントの devices 配列を組み立てる(id は必ず
-    /// "<platform>:<デバイス論理名>"。ApiMonitorCommand.swift の MonitorTarget.id と
-    /// 同一規則にすることでモニタータイルと突合できるようにする)
+    /// workersReady の devices 配列を組み立てる(id 形式は ApiWorkersReadyEvent 参照)
     private func workersReadyInfo(_ workers: [RunWorker]) -> [ApiWorkerInfo] {
         workers.map { worker in
             let name = worker.logicalName ?? worker.label
@@ -351,26 +333,23 @@ struct ApiRunCommand: AsyncParsableCommand {
         }
     }
 
-    /// RunEvent 1 件 → NDJSON 行(0〜複数行)。逐次実行時に ScenarioHost.run から届く
-    /// ScenarioEvent と同じ kind・フィールド名を保ち、"worker" フィールドを追加する。
-    ///
-    /// RunEvent は ScenarioRunner.runOne が元の ScenarioEvent から変換したものだが、
-    /// scene/sceneTitle/section/status(passedViaFallback・healed含む)は構造化フィールド
-    /// のまま StepResult に運ばれてくるため、ここでそのまま復元できる:
-    /// - kind "sceneStarted"/"sceneFinished" は RunEvent の同名ケースからそのまま合成する
-    /// - "step" イベントの scene/sceneTitle/section は StepResult の同名フィールドから写す
-    /// - status "passedViaFallback"/"healed" は丸めず同名の status 文字列のまま出し、
-    ///   detail には FlowLocator.summary(= サブプロセス発の raw テキスト)を入れる
-    /// - fixSuggestion に伴う合成 step 行(StepResult.synthetic == true)は、次に来る
-    ///   .fixSuggestion で kind:"fixSuggestion" として別途出すため、ここでは除外する
+    /// RunEvent 1件 → NDJSON 行(0〜複数行)。逐次実行時の ScenarioEvent と同じ kind・
+    /// フィールド名を保ち "worker" を追加する。RunEvent の scene/sceneTitle/section/status
+    /// (passedViaFallback・healed含む)は StepResult の構造化フィールドのまま運ばれるため
+    /// そのまま復元できる:
+    /// - "sceneStarted"/"sceneFinished" は RunEvent の同名ケースから合成
+    /// - "step" の scene/sceneTitle/section は StepResult の同名フィールドから写す
+    /// - status "passedViaFallback"/"healed" は丸めず同名文字列のまま出し、detail に
+    ///   FlowLocator.summary(サブプロセス発の raw テキスト)を入れる
+    /// - fixSuggestion に伴う合成 step(StepResult.synthetic == true)は次の .fixSuggestion で
+    ///   kind:"fixSuggestion" として別途出すためここでは除外する
     private func ndjsonLines(
         for event: RunEvent, itemByURL: [URL: ScenarioRunItem], workerID: [String: String]
     ) -> [String] {
         switch event {
         case .runStarted, .workerReady, .runFinished, .flowHealed, .flowPaused:
-            // runStarted/runFinished は呼び出し側で別途 emit 済み。flowHealed は YAML 時代の
-            // 互換で現行シナリオでは発生しない。flowPaused はデバッグ実行専用でこの並列経路
-            // (--debug のときは常に逐次経路)には来ない
+            // runStarted/runFinished は呼び出し側で emit 済み。flowHealed は現行シナリオでは
+            // 発生しない旧互換。flowPaused はデバッグ専用でこの並列経路には来ない
             return []
 
         case .sceneStarted(let worker, let flowURL, let scene, let sceneTitle):
@@ -404,16 +383,13 @@ struct ApiRunCommand: AsyncParsableCommand {
             return [started.encodedLine()]
 
         case .step(let worker, let flowURL, let result):
-            // fixSuggestion に付随する合成 step("💡 修正提案: ..." 固定文言。
-            // ScenarioRunner.runOne 参照)は次に来る .fixSuggestion で kind:"fixSuggestion"
-            // として出すため、ここでは重複emitを避けて捨てる(構造化フラグで判定する。
-            // 文字列プレフィックス照合はしない)
+            // fixSuggestion に付随する合成 step(ScenarioRunner.runOne 参照)は次の
+            // .fixSuggestion で kind:"fixSuggestion" として出すため重複emitを避けて捨てる
             if result.synthetic { return [] }
 
             let workerIDValue = workerID[worker] ?? worker
             let scenario = itemByURL[flowURL]?.info.id
-            // index 0 は「log イベント由来のステップ以外の情報行」の目印
-            // (ScenarioRunner.runOne の case "log" 参照)。kind "log" として復元する
+            // index 0 は log イベント由来の情報行の目印(ScenarioRunner.runOne の case "log" 参照)
             if result.index == 0 {
                 var log = ScenarioEvent(kind: "log")
                 log.worker = workerIDValue
@@ -429,8 +405,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             step.scene = result.scene
             step.sceneTitle = result.sceneTitle
             step.section = result.section
-            // description はプレフィックス無しの素の表現("[section] " 等は section
-            // フィールド側にあるため埋め込まない)
+            // "[section] " 等は section フィールド側にあるため description には埋め込まない
             step.description = result.description
             switch result.status {
             case .passed:
@@ -448,8 +423,7 @@ struct ApiRunCommand: AsyncParsableCommand {
                 step.status = "skipped"
                 step.detail = reason
             }
-            // 時間内訳。サブプロセスの ScenarioEvent から復元済み
-            // (RunOrchestrator.swift の ScenarioRunner.stepResult(from:) 参照)
+            // 時間内訳(RunOrchestrator.swift の ScenarioRunner.stepResult(from:) から復元済み)
             step.durationMs = result.timing?.durationMs
             step.snapshotMs = result.timing?.snapshotMs
             step.actionMs = result.timing?.actionMs
@@ -478,9 +452,8 @@ struct ApiRunCommand: AsyncParsableCommand {
             return [finished.encodedLine()]
 
         case .flowSkipped(let flowURL, let reason):
-            // 担当ワーカーが無い/全滅したシナリオ。emitMissingWorkerFailure と同じ形の
-            // scenarioStarted → step(failed) → scenarioFinished(passed:false) を合成する。
-            // どのワーカーも処理していないため worker フィールドは付けない
+            // 担当ワーカーが無い/全滅したシナリオ。emitMissingWorkerFailure と同形のイベント列を
+            // 合成する(worker フィールドは付けない)
             let info = itemByURL[flowURL]?.info
             var started = ScenarioEvent(kind: "scenarioStarted")
             started.scenario = info?.id

@@ -1,6 +1,4 @@
-// ScenarioCodeGen.swift
-// Flow(インメモリの内部モデル)→ Swift DSL シナリオコードの生成。
-// explore(FM 探索)が使う。
+// Flow(インメモリの内部モデル)→ Swift DSL シナリオコードの生成。explore(FM 探索)が使う。
 // 生成コードは人が追記編集する前提の素直な直列コードにする。
 
 import Foundation
@@ -65,9 +63,8 @@ public enum ScenarioCodeGen {
         return lines.joined(separator: "\n")
     }
 
-    /// FlowStep 1 つを DSL コマンド行(+行末コメント)に変換する。
-    /// コメントは自然言語の生成文(StepDescription)を優先し、
-    /// 生成できないステップは FM の意図メモ(note)へフォールバックする
+    /// FlowStep → DSL コマンド行(+行末コメント)。コメントは自然言語の生成文
+    /// (StepDescription)を優先し、無ければ FM の意図メモ(note)へフォールバックする
     static func render(step: FlowStep, indent: String) -> [String] {
         guard var line = command(for: step) else {
             return [indent + "// (未対応ステップ: \(step.summary))"]
@@ -150,12 +147,12 @@ public enum ScenarioCodeGen {
         return "\"\(escaped)\""
     }
 
-    /// 生成メソッド名(Shirates 慣習の連番: S0010, S0020, …)
+    /// 生成メソッド名(連番: S0010, S0020, …)
     public static func methodName(_ ordinal: Int) -> String {
         String(format: "S%04d", ordinal * 10)
     }
 
-    /// 生成コードを書き込んでビルド検証する。コンパイル失敗時は quarantineDir へ隔離して throw する
+    /// 書き込んでビルド検証し、失敗時は quarantineDir へ隔離して throw する
     /// (1 つの生成不良がシナリオスイート全体を道連れにしないため)
     @discardableResult
     public static func writeValidated(code: String, className: String,

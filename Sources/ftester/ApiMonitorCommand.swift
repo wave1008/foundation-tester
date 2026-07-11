@@ -1,32 +1,19 @@
-// ApiMonitorCommand.swift
-// VSCode拡張のデバイスモニター向け常駐 CLI(ftester api monitor)。
-// マシンプロファイル(profiles/machines/<マシン名>.json)に定義された全デバイス(ios/android)を
-// 一定間隔でポーリングし、状態とスクリーンショット(ダウンスケール済み JPEG)を NDJSON で
-// stdout に流し続ける。stdout には monitorDevices/monitorFrame/monitorError の3種類の
-// イベントのみ(診断は stderr のみ。ApiCommands.swift と同じ流儀)。
-// --profile(実行プロファイル名)を指定すると、そのプロファイルが devices で参照する
-// デバイスのみに監視対象を絞り込む(省略時はマシンプロファイルの全デバイスを監視する)。
-// デバイスの起動・終了はこのコマンドの責務外(拡張側が ftester devices up/down を別途呼ぶ)。
-// 終了条件: stdin が EOF(親プロセスが閉じた)、または SIGTERM/SIGINT。
+// VSCode拡張向け常駐 CLI(ftester api monitor)。マシンプロファイルのデバイスを一定間隔で
+// ポーリングし、状態+スクリーンショット(JPEG)を NDJSON で stdout に流す(monitorDevices/
+// monitorFrame/monitorError の3種のみ。診断は stderr)。デバイス起動・終了はこのコマンドの
+// 責務外。終了条件: stdin EOF または SIGTERM/SIGINT。
 //
-// pause/resume プロトコル(拡張側のパネル発「全て終了」「停止」実行中に使う):
-// stdin から NDJSON 1行で {"cmd":"pause"} / {"cmd":"resume"} を受け付ける(不明な行は無視)。
-// pause 中は監視サイクルに入らない(実行中のサイクルは完走する)。resume すると降格デバウンスの
-// 記憶(confirmed/lastErrorMessage/loggedFetchFailure)をクリアしてから即座に1サイクル実行する
-// (これにより、デバイス操作直後の最初の観測がそのまま採用され、3ストライク分の持ち越しによる
-// 見せかけの警告が出なくなる)。pause したまま120秒経過したら安全弁として自動的に resume する。
+// pause/resume プロトコル(拡張のパネル操作中に使用): stdin に NDJSON 1行で
+// {"cmd":"pause"}/{"cmd":"resume"}(不明な行は無視)。pause 中は次サイクルに入らない
+// (実行中のサイクルは完走)。resume 時は降格デバウンスの記憶をクリアしてから即座に1サイクル
+// 実行し、操作直後の観測をそのまま採用する(3ストライク持ち越しによる見せかけの警告を防止)。
+// pause が120秒続いたら安全弁として自動 resume する。
 //
-// 過渡的エラーの抑制方針(テスト実行中の iOS ブリッジ/adb 競合対策):
-// iOS ブリッジ(XCUITestランナー内 HTTP サーバ)はリクエストを直列処理するため、テスト実行中は
-// /status・/screenshot がタイムアウトしやすい。これは異常ではなく想定内の一時的な競合なので、
-// 以下の2段構えで「見せかけの障害」を消す。
-//   1) 状態判定のばたつき抑制(debounce): connected からの降格は連続3回の /status 失敗
-//      (Android は AVD 消失)まで保留し、connected を維持する(昇格は即時)。
-//   2) スクリーンショット取得失敗の扱い: 状態が connected(維持中含む)のデバイスで
-//      スクショ取得(ネットワーク起因)が失敗しても monitorError は出さず、フレームを
-//      skip して stderr に1行ログするのみ。monitorError は JPEG 変換失敗など
-//      「状態では説明できない異常」に限定する。
-// この結果、テスト実行中はフレーム更新が間欠的になるが、それは正しい挙動(仕様)である。
+// 過渡的エラーの抑制: iOS ブリッジ/adb はテスト実行中 /status・/screenshot がタイムアウト
+// しやすい(想定内の一時的競合)。1) connected からの降格は連続3回の失敗まで保留(昇格は即時)。
+// 2) connected 中のスクショ取得失敗は monitorError にせず stderr ログ+フレーム skip のみ
+// (monitorError は JPEG変換失敗など状態で説明できない異常に限定)。
+// → テスト実行中のフレーム更新間欠化は仕様(異常ではない)。
 
 import ArgumentParser
 import CoreGraphics
@@ -62,8 +49,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         setvbuf(stdout, nil, _IOLBF, 0)
 
         let testProject = try ScenarioHost.project(named: project)
-        // --profile が machine を明示指定していれば最優先する(絞り込み(RunProfileScope)と
-        // 対のマシン決定。ProfileResolver.resolve() 内部の上書きと同じ優先順位)
+        // --profile の machine 明示指定を最優先(ProfileResolver.resolve() と同じ優先順位)
         let machine = try ProfileResolver.determineMachine(
             project: testProject, registered: LocalConfig.currentMachineName(),
             runProfileName: profile)
@@ -111,34 +97,26 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         let signalSources = installSignalHandlers(stop: stop)
         defer { for source in signalSources { source.cancel() } }
 
-        // 直近の monitorError メッセージ(デバイス毎)。同一メッセージの連続 emit を抑制する記憶
-        // (JPEG 変換失敗など「状態では説明できない異常」のみが対象。ネットワーク起因の
-        // スクショ取得失敗はここでは扱わない → loggedFetchFailure 側)
+        // 直近の monitorError メッセージ(デバイス毎、同一メッセージの連続 emit 抑制用。
+        // JPEG変換失敗など状態で説明できない異常のみ対象。スクショ取得失敗は loggedFetchFailure 側)
         var lastErrorMessage: [String: String] = [:]
-        // ネットワーク起因のスクショ取得失敗を stderr に既にログ済みかどうか(デバイス毎)。
-        // connected 維持中の一時的な競合は毎サイクルログすると流れすぎるため、状態が
-        // 変わるまで(=このセットから外れるまで)再ログしない
+        // ネットワーク起因のスクショ取得失敗を stderr ログ済みか(デバイス毎。状態が変わるまで再ログしない)
         var loggedFetchFailure: Set<String> = []
-        // 「直近の確定状態」(デバイス毎)。connected からの降格を連続失敗3回まで保留するための記憶
+        // 直近の確定状態(デバイス毎、debounce 用)
         var confirmed: [String: ConfirmedDeviceState] = [:]
 
         while !stop.isSet {
-            // 安全弁: pause が長時間(既定120秒)続いたら自動的に resume 扱いにする
-            // (パネルのクラッシュ等で resume コマンドが届かないケースの保険)
             if control.autoResumeIfStale(limit: Self.pauseSafetyValveSeconds) {
                 logStderr(
                     "[monitor] 一時停止から\(Int(Self.pauseSafetyValveSeconds))秒経過したため" +
                     "自動的に再開しました(デバイス操作パネル側の resume 未着信の可能性)")
             }
-            // resume(手動・安全弁いずれも)直後は降格デバウンスの記憶をクリアし、
-            // 直後の観測をそのまま採用できるようにする
             if control.takeResetRequest() {
                 confirmed.removeAll()
                 lastErrorMessage.removeAll()
                 loggedFetchFailure.removeAll()
             }
             if control.isPaused {
-                // 次サイクルには入らない。実行中のサイクルは既にここまで来ていないので影響しない
                 await Self.sleepInterruptible(seconds: Self.pausedPollSeconds, stop: stop)
                 continue
             }
@@ -162,10 +140,8 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                 do {
                     png = try await Self.fetchScreenshot(state: state)
                 } catch {
-                    // connected(維持中含む)デバイスのスクショ取得失敗はテスト実行中の
-                    // ブリッジ/adb 競合による過渡的なものとして扱う。monitorError は出さず
-                    // stderr に1行ログするのみ(同一デバイスで連続する間は再ログしない)。
-                    // フレームは skip する(前回フレームが Webview 側に残る)。
+                    // 過渡的競合として扱う: monitorError は出さず stderr ログのみ(同一デバイスで
+                    // 連続する間は再ログしない)、フレームは skip(前回フレームが Webview に残る)
                     if !loggedFetchFailure.contains(state.target.id) {
                         logStderr(
                             "[monitor] \(state.target.id) のスクリーンショット取得に失敗しました" +
@@ -199,21 +175,15 @@ struct ApiMonitorCommand: AsyncParsableCommand {
 
     // MARK: - デバイス状態判定
 
-    /// 1 サイクル分の全デバイス状態を判定する。
-    /// iOS は simctl 一覧+ブリッジ /status の一括スキャン、Android は起動中 AVD 一覧の一括取得を
-    /// それぞれ 1 回だけ行い、各デバイスへ振り分ける(デバイス毎に simctl/adb を叩くと
-    /// デバイス数に比例して遅くなるため)。ブリッジスキャンは短タイムアウトの並列実行なので
-    /// シミュレータ一覧・AVD 一覧の取得(同期呼び出し)と並行して走らせる。
-    /// internal(private を外している): ftester api list-devices(ApiListDevicesCommand.swift)が
-    /// 1 回だけの状態判定に同じロジックを再利用するため
+    /// iOS は simctl 一覧+ブリッジ /status、Android は起動中 AVD 一覧をそれぞれ一括取得して
+    /// 各デバイスへ振り分ける(デバイス毎に simctl/adb を叩くと台数に比例して遅くなるため)。
+    /// internal: ApiListDevicesCommand.swift が単発の状態判定にも同じロジックを再利用する
     static func determineStates(targets: [MonitorTarget]) async -> [DeviceRuntimeState] {
         async let bridgeStatusesTask = scanBridgeStatuses()
         let simCatalog = (try? SimulatorCatalog.devices()) ?? []
         let runningAVDs = (try? AndroidDeviceCatalog.runningAVDs()) ?? [:]
-        // adb 上は device として見えている(=runningAVDs に載っている)Android 対象の serial だけ、
-        // ブート完了(sys.boot_completed)を一括で(デバイス毎に並列)確認する。ブート未完了なのに
-        // connected と判定してスクショ取得(=ブリッジ APK 自動インストール)を試みると、
-        // パッケージマネージャ未起動で失敗するため
+        // ブート未完了なのに connected 扱いでスクショ取得(=ブリッジAPK自動インストール)を
+        // 試みるとパッケージマネージャ未起動で失敗するため、起動中の対象のみブート完了を確認する
         let androidCandidateSerials = Set(targets.compactMap { target -> String? in
             guard target.platform == "android", let avd = target.spec.avd else { return nil }
             let canonical = AndroidDeviceCatalog.canonicalAVDID(avd)
@@ -239,14 +209,10 @@ struct ApiMonitorCommand: AsyncParsableCommand {
     /// pause 中、resume(または安全弁)を検知するためのポーリング間隔(秒)
     private static let pausedPollSeconds: TimeInterval = 0.2
 
-    /// 1 サイクル分の生の判定結果(observed)に、状態のばたつき抑制(debounce)を適用する。
-    /// - connected への昇格(observed が connected)は即時反映する。
-    /// - 直前まで confirmed が connected だったデバイスが今回 connected でなくなった場合、
-    ///   即座には降格させず、connectedDowngradeMissThreshold 回連続で observed が
-    ///   connected でなくなるまで connected を維持する(接続情報も直前の値を保持し、
-    ///   維持中もスクリーンショット取得を試み続けられるようにする)。
-    /// - それ以外(元々 connected でない/未登録)の状態遷移は即時反映する(booted/offline 間には
-    ///   降格判定の対象になるような「良い状態」が無いため debounce は不要)。
+    /// observed に debounce を適用する。connected への昇格は即時反映。confirmed が connected
+    /// だったデバイスが今回そうでない場合は即降格させず、connectedDowngradeMissThreshold 回連続
+    /// するまで connected 維持(接続情報も直前値を保持しスクショ取得を試み続ける)。
+    /// それ以外の遷移(booted/offline 間)は debounce 不要のため即時反映。
     private static func debounce(
         _ observed: [DeviceRuntimeState],
         confirmed: inout [String: ConfirmedDeviceState],
@@ -313,10 +279,8 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                                   iosPort: nil, androidSerial: nil)
     }
 
-    /// Android: AVD が起動済み(AndroidDeviceCatalog で serial 解決可能)かつブート完了
-    /// (sys.boot_completed == "1")→ connected。AVD 起動済みだがブート未完了 → booted
-    /// (ブリッジ APK インストールを試みさせないため。connected と booted の間に限り中間状態がある)。
-    /// AVD 未起動 → offline
+    /// Android: AVD起動+ブート完了 → connected。AVD起動のみ(ブート未完了)→ booted
+    /// (ブリッジAPKインストールを試みさせないため)。AVD未起動 → offline
     private static func androidState(
         target: MonitorTarget, runningAVDs: [String: String], bootCompleted: [String: Bool]
     ) -> DeviceRuntimeState {
@@ -400,9 +364,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
 
     // MARK: - 終了検知・制御コマンド受信(stdin / シグナル)
 
-    /// stdin を行単位で読み、NDJSON の制御コマンド({"cmd":"pause"} / {"cmd":"resume"})を処理する。
-    /// 不明な行(パース失敗・未知の cmd 値)は無視する。EOF(親プロセスがパイプを閉じた)を検知したら
-    /// 停止フラグを立てる。readLine はブロッキングなのでメインループとは別スレッドで読み続ける
+    /// EOF検知で停止フラグを立てる。readLine はブロッキングなので別スレッドで読み続ける
     /// (ApiRunCommand.swift の --debug stdin 制御読み取りと同じ方式)
     private func startStdinWatcher(stop: StopFlag, control: MonitorControl) {
         let thread = Thread {
@@ -481,8 +443,7 @@ struct DeviceRuntimeState {
     /// state == connected(Android)のときだけ設定。スクリーンショット取得に使う
     let androidSerial: String?
 
-    /// fileprivate: 戻り値の型(ApiMonitorDeviceInfo)がこのファイル限定の private 型のため、
-    /// DeviceRuntimeState 自体は internal でもこのプロパティはファイル外に公開できない
+    /// fileprivate: 戻り値の型 ApiMonitorDeviceInfo がファイル限定の private 型のため
     /// (list-devices は同じ情報を ApiDeviceEntry として別途組み立てる)
     fileprivate var info: ApiMonitorDeviceInfo {
         ApiMonitorDeviceInfo(id: target.id, name: target.name,
@@ -517,7 +478,6 @@ private final class StopFlag: @unchecked Sendable {
     }
 }
 
-/// stdin から受け取る制御コマンド(NDJSON 1行)。cmd 以外のフィールドは無視する
 private struct MonitorControlCommand: Decodable {
     let cmd: String
 }
@@ -528,9 +488,8 @@ private final class MonitorControl: @unchecked Sendable {
     private let lock = NSLock()
     private var paused = false
     private var pausedAt: Date?
-    /// resume(手動 or 安全弁)後、次のメインループ周回でデバウンス記憶をクリアすべきという指示。
-    /// takeResetRequest() で取り出すと同時にクリアされる(単純さ優先: pause していなかった場合の
-    /// resume でも一律クリアする)
+    /// resume後、次周回でデバウンス記憶をクリアすべきという指示(単純さ優先で
+    /// pause していなかった場合の resume でも一律クリアする)
     private var resetRequested = false
 
     var isPaused: Bool {
@@ -619,11 +578,8 @@ private struct ApiMonitorErrorEvent: Encodable {
 
 // MARK: - 画像変換
 
-/// PNG のスクリーンショットを長辺 maxWidth px にダウンスケールして JPEG に変換する。
-/// 生 PNG の base64 は 1 フレームあたり数 MB になり Webview に流せないため必須の変換
-/// (ImageIO のサムネイル生成を使うのでデコード→リサイズ→再エンコードを 1 回で済ませられる)。
-/// private を外して ApiLiveCommand.swift(ftester api live serve)にも共有する
-/// (ApiListDevicesCommand.swift が MonitorTarget/DeviceRuntimeState を共有するのと同方針)
+/// 生PNGの base64 は1フレーム数MBになり Webview に流せないため maxWidth px にダウンスケールして
+/// JPEG化する。private を外して ApiLiveCommand.swift にも共有する
 enum MonitorImage {
     struct Result {
         let data: Data

@@ -1,6 +1,3 @@
-// Plugin.swift
-// コンパイラプラグインのエントリポイント。
-
 import SwiftCompilerPlugin
 import SwiftSyntaxMacros
 

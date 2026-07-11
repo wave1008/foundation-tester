@@ -1,36 +1,9 @@
-// ApiHostMetricsCommand.swift
-// VSCode拡張のデバイスモニターパネル向け常駐 CLI(ftester api host-metrics)。
-// ホストMac自体のCPU/GPU/ANE負荷とメモリ使用量を一定間隔でサンプリングし、
-// NDJSON(hostMetrics)で stdout に流し続ける。stdout にはこのイベントのみ(診断は stderr のみ。
-// ApiCommands.swift / ApiMonitorCommand.swift と同じ流儀)。
-// ホストメトリクスはテストプロジェクトに依存しないため --project は持たない
-// (ScenarioHost.project は呼ばない)。
-// 終了条件: stdin が EOF(親プロセスが閉じた)、または SIGTERM/SIGINT
-// (ApiMonitorCommand.swift と同じ方式)。
-//
-// 各サンプラーの実装方針(いずれも失敗時はクラッシュさせずそのフィールドを null にし、
-// stderr へのログはサンプラー毎に初回の1回だけに抑える。毎秒スパムしないため):
-// - CPU: host_processor_info(PROCESSOR_CPU_LOAD_INFO) で全コア分の累積 tick を取得し、
-//   前回サンプルとの差分から busy/(busy+idle) を求める。初回は差分が無いため、起動直後に
-//   1 回「捨てサンプル」を取ってから通常ループに入る(1 行目から値が出るようにするため)。
-//   返却された配列は vm_deallocate で解放する(呼び出し側の責務)。
-// - GPU: IOKit で IOServiceMatching("IOAccelerator") にマッチする全サービスを列挙し、
-//   プロパティ "PerformanceStatistics" 辞書の "Device Utilization %"(0..100 の整数)の
-//   最大値を採用する(複数エンジンがある場合を考慮。キーが無ければ null)。
-// - ANE: IOReport 私有API(dlopen、sudo 不要)。"SoC Stats" グループのチャネルを
-//   サブスクライブし、tick 毎に IOReportCreateSamplesDelta で区間デルタを取り、state 形式の
-//   residency チャネル SOCn_ANE_Fn(サブグループ "Events"。単位 24Mticks)の
-//   ACT residency 合算 / 総 ticks(ACT+INACT)を負荷率(0..1)とする。
-//   "Energy Model" グループの ANE0 エネルギーチャネルは使わない(macOS 27 beta では
-//   ANE が活発に動いていても常に 0 mJ を返す実測。residency 方式は PMP の FMAX residency
-//   とも整合することを確認済み)。エネルギーが取れないため aneWatts は常に null
-//   (JSON 契約上フィールド自体は残す。拡張側 webview は null なら W 表記を省く)。
-//   dlopen/dlsym や IOReport の初期化に失敗した環境、residency チャネルが見つからない環境
-//   (将来の OS でチャネル名が変わった等)では ane を null にする(失敗は 1 回だけ
-//   stderr へログし、クラッシュはさせない)。
-//
-// メモリ: host_statistics64(HOST_VM_INFO64) の active+wire+compressor ページ数 × ページサイズ
-// (host_page_size で取得)を使用中とみなす。合計は ProcessInfo.physicalMemory。
+// VSCode拡張のデバイスモニターパネル向け常駐CLI(ftester api host-metrics)。ホストMacの
+// CPU/GPU/ANE負荷とメモリ使用量を一定間隔でサンプリングし NDJSON(hostMetrics)で stdout に
+// 流す(このイベントのみ。診断は stderr)。テストプロジェクトに依存しないため --project は無い。
+// 終了条件: stdin EOF または SIGTERM/SIGINT。各サンプラーの実装方針・実測知見は各クラスの
+// doc コメント参照(失敗時はクラッシュさせず該当フィールドを null にし、stderr ログは
+// サンプラー毎に初回1回だけ)。
 
 import ArgumentParser
 import Foundation
@@ -77,8 +50,7 @@ struct ApiHostMetricsCommand: AsyncParsableCommand {
 
             emitLine(ApiHostMetricsEvent(
                 ts: Date().timeIntervalSince1970,
-                // aneWatts: residency 方式ではエネルギーが取れないため常に null
-                // (フィールド自体は拡張側との JSON 契約のため残す)
+                // aneWatts: 常に null(理由は ANESampler のdocコメント参照)
                 cpu: cpu, gpu: gpu, ane: ane, aneWatts: nil,
                 memUsedBytes: mem?.used, memTotalBytes: mem?.total))
         }

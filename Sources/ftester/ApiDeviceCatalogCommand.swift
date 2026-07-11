@@ -1,11 +1,7 @@
-// ApiDeviceCatalogCommand.swift
-// VSCode拡張の新規デバイス作成 UI 向け: iOS のシミュレータ機種/ランタイム一覧と
-// Android の AVD デバイス定義/システムイメージ一覧を1回取得しJSONで stdout に出力する
-// (ftester api device-catalog)。プロジェクト/マシンプロファイルに依存しないため引数は無い。
-// stdout には結果 1 行の JSON だけを出す(診断は stderr のみ。ApiCommands.swift と同じ流儀)。
-//
-// iOS/Android いずれかの取得に失敗しても、そちら側だけ available:false + error を立てて
-// もう一方は正常に返す(実機に片方の SDK しか無い環境でも使えるようにするため)。
+// VSCode拡張の新規デバイス作成UI向け: iOS機種/ランタイム一覧とAndroid AVD定義/システム
+// イメージ一覧を1回取得しJSON1行で stdout に出す(ftester api device-catalog。診断は stderr)。
+// iOS/Androidいずれかの取得失敗はそちら側だけ available:false+error にしもう一方は正常に返す
+// (片方のSDKしか無い環境でも使えるようにするため)。
 
 import ArgumentParser
 import Foundation
@@ -70,9 +66,8 @@ struct ApiDeviceCatalogCommand: AsyncParsableCommand {
                 deviceTypes: [], runtimes: [])
         }
 
-        // productFamily が iPhone/iPad のみ対象。この Xcode(実機確認済み)では devicetypes は
-        // 既に「新しい世代が先頭」の順で返る(iPhone 17 Pro が先頭〜iPhone 6s Plus が末尾、
-        // iPad も同様)ため反転しない。runtimes とは出力順の向きが逆であることに注意
+        // productFamily が iPhone/iPad のみ対象。devicetypes は実機確認済みで既に
+        // 「新しい世代が先頭」順に返るため反転しない(runtimes とは出力順の向きが逆)
         let deviceTypes = rawDeviceTypes.compactMap { dict -> ApiIOSDeviceType? in
             guard let identifier = dict["identifier"] as? String,
                   let name = dict["name"] as? String,
@@ -81,8 +76,8 @@ struct ApiDeviceCatalogCommand: AsyncParsableCommand {
             return ApiIOSDeviceType(identifier: identifier, name: name, productFamily: productFamily)
         }
 
-        // runtimes は platform "iOS" かつ isAvailable のみ。この Xcode(実機確認済み)では
-        // 出力順が「古いバージョンが先頭」(iOS 18.5 → 27.0 の昇順)のため反転して新しい順にする
+        // runtimes は platform "iOS" かつ isAvailable のみ。実機確認済みで出力順が
+        // 「古いバージョンが先頭」の昇順のため反転して新しい順にする
         let runtimes = rawRuntimes.compactMap { dict -> ApiIOSRuntime? in
             guard let identifier = dict["identifier"] as? String,
                   let name = dict["name"] as? String,
@@ -92,9 +87,8 @@ struct ApiDeviceCatalogCommand: AsyncParsableCommand {
             return ApiIOSRuntime(identifier: identifier, name: name, version: version)
         }
 
-        // 同一バージョンのランタイムボリュームが複数ある環境(beta 更新を重ねたマシン等)では
-        // simctl が同じ identifier を複数返すため、identifier で重複排除する(新しい順に並べた後の
-        // 先勝ち。UI のドロップダウンに同名項目が並ぶのを防ぐ)。deviceTypes も保険で同様にする
+        // beta更新を重ねた環境では simctl が同じ identifier を複数返すため重複排除する
+        // (新しい順に並べた後の先勝ち。UI に同名項目が並ぶのを防ぐ)。deviceTypes も保険で同様
         return ApiIOSCatalog(
             available: true, error: nil,
             deviceTypes: uniqued(deviceTypes, by: \.identifier),

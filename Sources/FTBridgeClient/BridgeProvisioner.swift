@@ -1,4 +1,3 @@
-// BridgeProvisioner.swift
 // 実行プロファイルの iOS デバイス指定 → 稼働ブリッジの照合・不足分の起動。
 // 稼働中ブリッジのスキャン(/status)と .ftester/bridge-<port>.pid を唯一の状態源として、
 // 同時に動く他プロセスのブリッジ管理と競合しないポート割当を行う。
@@ -41,8 +40,7 @@ public struct BridgeProvisioner {
         self.portRange = portRange
     }
 
-    /// デバイス指定(論理名+DeviceSpec)ごとにブリッジを供給する。
-    /// 稼働中ブリッジ(シミュレータ UDID が一致)は再利用し、不足分は空きポートで起動する。
+    /// 稼働中ブリッジ(シミュレータ UDID が一致)は再利用し、不足分は空きポートで起動する
     public func provision(devices: [(name: String, spec: DeviceSpec)],
                           log: @escaping (String) -> Void) async throws -> [ProvisionedIOSDevice] {
         let catalog = try SimulatorCatalog.devices()
@@ -54,9 +52,7 @@ public struct BridgeProvisioner {
             targets.append((name, spec, sim))
         }
 
-        // 2. 稼働中ブリッジのスキャン(ポート → 接続先シミュレータ UDID)
-        //    /status はデバイス名しか返さないため、起動中シミュレータの名前で UDID に引き直す。
-        //    同名の起動中シミュレータが複数ある場合は特定できない(nil)ので再利用しない
+        // 2. 稼働中ブリッジのスキャン(ポート → 接続先シミュレータ UDID。詳細は scanRunningBridges 参照)
         let running = await scanRunningBridges(catalog: catalog)
         if !running.isEmpty {
             let summary = running.keys.sorted().map(String.init).joined(separator: ", ")
@@ -92,9 +88,7 @@ public struct BridgeProvisioner {
             do {
                 try await launcher.waitUntilReady()
             } catch {
-                // ゾンビ化防止: 起動済みプロセスと pid ファイルを後始末してから、ポート番号入りの
-                // 分かりやすいメッセージで rethrow する(そのままだと以後の assignPort が
-                // このポートを「使用中」とみなし続け、ポート採番が右にずれていく)。
+                // 後始末せずに投げると assignPort がこのポートを使用中とみなし続け採番がずれていく
                 try? launcher.stop()
                 throw BridgeProvisionerError.notReady(port: port, underlying: error)
             }
@@ -105,8 +99,7 @@ public struct BridgeProvisioner {
         return provisioned
     }
 
-    /// portRange を短タイムアウトで並行スキャンし、応答したポート → シミュレータ UDID を返す
-    /// (DeviceBooter.shutdownOne が停止対象ブリッジの特定に使うため public)
+    /// DeviceBooter.shutdownOne が停止対象ブリッジの特定に使うため public
     public func scanRunningBridges(catalog: [SimDeviceInfo]) async -> [UInt16: String?] {
         await withTaskGroup(of: (UInt16, String?)?.self,
                             returning: [UInt16: String?].self) { group in

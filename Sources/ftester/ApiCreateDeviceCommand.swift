@@ -1,9 +1,7 @@
-// ApiCreateDeviceCommand.swift
-// VSCode拡張の新規デバイス作成 UI 向け: シミュレータ/AVD を新規作成し、マシンプロファイルへ
-// デバイスを追記する(ftester api create-device)。カタログ(機種/ランタイム/システムイメージ)は
-// ftester api device-catalog、追記の純粋ロジックは FTCore.MachineProfileEditor を使う。
-// stdout には NDJSON(log* → finished)だけを出す(診断は stderr のみ。ApiDeviceCommands.swift と
-// 同じ流儀。ok:false のときは exit code 1)。
+// VSCode拡張の新規デバイス作成UI向け: シミュレータ/AVDを新規作成しマシンプロファイルへ
+// デバイスを追記する(ftester api create-device)。カタログは ftester api device-catalog、
+// 追記ロジックは FTCore.MachineProfileEditor を使う。stdout には NDJSON(log* → finished)
+// だけを出す(診断は stderr のみ。ok:false のときは exit code 1)。
 
 import ArgumentParser
 import Foundation
@@ -66,10 +64,8 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
             throw CreateDeviceError("platform は ios または android を指定してください: \(platform)")
         }
 
-        // --no-register: シミュレータ/AVD の物理作成のみ行い、マシンプロファイルの解決・読み込み・
-        // 名前重複チェック・追記・書き戻しは一切行わない(--machine/--project も無視してよく、
-        // マシンが未決定でもエラーにしない。プロファイルへの登録は VSCode 拡張の選択画面の OK で
-        // 別途 addingDevice 相当の処理が行われる想定)
+        // --no-register: 物理作成のみ行い、プロファイルの解決・重複チェック・追記・書き戻しは
+        // 一切行わない(--machine/--project も無視可。登録は拡張の選択画面 OK で別途行われる想定)
         if noRegister {
             let resultEntry: ApiCreateDeviceEntry
             switch platform {
@@ -95,9 +91,8 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
             throw CreateDeviceError("マシンプロファイル \(machineName).json を JSON として解析できません")
         }
 
-        // 名前重複はシミュレータ/AVD を物理作成する前に検証する(作成後に addingDevice で発覚すると、
-        // プロファイルに載らない孤児シミュレータ/AVD が残ってしまうため)。
-        // addingDevice 内の重複チェックは防御として残している
+        // 名前重複は物理作成前に検証する(作成後に addingDevice で発覚すると孤児シミュレータ/AVDが
+        // 残るため)。addingDevice 内の重複チェックは防御として残している
         guard !MachineProfileEditor.deviceNames(inProfileObject: profileObject)
             .contains(trimmedName) else {
             throw CreateDeviceError("デバイス名が重複しています: \(trimmedName)"
@@ -113,8 +108,8 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
             (deviceEntry, resultEntry) = try createAVD(name: trimmedName)
         }
 
-        // シミュレータ/AVD 自体の作成はここまでで完了している。以降(プロファイルへの追記・書き戻し)が
-        // 失敗しても実体は残るため、エラーメッセージにその旨を含める(呼び出し側が後始末できるように)
+        // ここまでで実体の作成は完了。以降(追記・書き戻し)が失敗しても実体は残るため
+        // エラーメッセージにその旨を含める(呼び出し側が後始末できるように)
         let updated: [String: Any]
         do {
             updated = try MachineProfileEditor.addingDevice(

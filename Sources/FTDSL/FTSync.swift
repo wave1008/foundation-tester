@@ -1,9 +1,6 @@
-// FTSync.swift
-// 同期ファサードの心臓部。DSL コマンドは専用スレッド(協調スレッドプール外)で同期実行され、
-// async の StepExecutor/AppDriver へはここで橋渡しする。
-// ブロックするのは DSL 専用スレッドのみで、async 側(URLSession/Process/FoundationModels)は
-// このスレッドを必要としないためデッドロックしない。
-// 万一のハングに備え、待機には上限タイムアウトを設ける。
+// DSL 専用スレッド(協調スレッドプール外)から async の StepExecutor/AppDriver へ橋渡しする同期ファサード。
+// ブロックするのは DSL スレッドのみで、async 側(URLSession/Process/FoundationModels)は
+// このスレッドを必要としないためデッドロックしない。万一のハングに備え待機に上限タイムアウトを設ける。
 
 import Foundation
 
@@ -15,7 +12,7 @@ enum FTSync {
         var value: T?
     }
 
-    /// async 処理を実行して完了まで現在スレッドをブロックする。タイムアウト時は nil
+    /// タイムアウト時は nil
     static func run<T>(timeout: TimeInterval = FTSync.commandTimeout,
                        _ op: @escaping () async -> T) -> T? {
         let semaphore = DispatchSemaphore(value: 0)
@@ -28,7 +25,7 @@ enum FTSync {
         return box.value
     }
 
-    /// throwing 版。タイムアウト時は nil、それ以外は Result
+    /// throwing 版(タイムアウト時は nil)
     static func runThrowing<T>(timeout: TimeInterval = FTSync.commandTimeout,
                                _ op: @escaping () async throws -> T) -> Result<T, Error>? {
         run(timeout: timeout) {

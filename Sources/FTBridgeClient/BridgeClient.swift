@@ -1,4 +1,3 @@
-// BridgeClient.swift
 // XCUITestランナー内蔵HTTPサーバへのクライアント。AppDriver の iOS 実装。
 
 import Foundation
@@ -23,8 +22,7 @@ public final class BridgeClient: AppDriver {
         try await get("/status")
     }
 
-    /// インストール自体はブリッジ(XCUITest ランナー)ではなく simctl の役割のため、
-    /// このポートが繋がっているシミュレータを /status のデバイス名から特定して実行する
+    /// install は HTTP エンドポイントを持たず simctl の役割。/status のデバイス名から対象シミュレータを特定する
     public func install(packagePath: String) async throws {
         let current = try await status()
         let result = try Shell.run(["xcrun", "simctl", "install", current.device, packagePath])

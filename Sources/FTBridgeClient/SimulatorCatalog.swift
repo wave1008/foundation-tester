@@ -1,4 +1,3 @@
-// SimulatorCatalog.swift
 // simctl list devices -j のパースと、マシンプロファイルのデバイス指定
 // (simulator 名+OS / UDID)→ シミュレータ実体(UDID)の解決。
 // CLI(BridgeProvisioner)から使う。
@@ -75,8 +74,7 @@ public enum SimulatorCatalog {
         }
     }
 
-    /// DeviceSpec(iOS)→ シミュレータ実体。UDID 指定が最優先、
-    /// 次に simulator 名+OS(候補が複数なら起動中 → OS 降順の先頭)
+    /// UDID 指定が最優先、次に simulator 名+OS(候補複数なら起動中→OS降順の先頭)
     public static func resolve(spec: DeviceSpec,
                                in devices: [SimDeviceInfo]) throws -> SimDeviceInfo {
         if let udid = spec.udid {

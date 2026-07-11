@@ -1,4 +1,3 @@
-// Descriptors.swift
 // テストクラス/シナリオのメタデータと、objc ランタイムによるシナリオ自動発見。
 // @TestClass マクロがこれらへの conformance・登録クラスを生成する(手書きも可能)。
 

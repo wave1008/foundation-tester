@@ -1,6 +1,4 @@
-// PackageManifestEditorTests.swift
-// マーカー区間の全置換・抽出のテスト(dump-package 検証はスキップ: verify=false)。
-
+// verify=false: dump-package 検証(遅い)を全テストでスキップ
 import XCTest
 @testable import FTCore
 
@@ -41,20 +39,17 @@ final class PackageManifestEditorTests: XCTestCase {
         XCTAssertTrue(content.contains(#"name: "ftester-scenarios-SampleApp""#))
         XCTAssertTrue(content.contains(#"path: "Projects/Demo/Scenarios""#))
         XCTAssertTrue(content.contains(#"exclude: ["_disabled"]"#))
-        // マーカー外は無傷
         XCTAssertTrue(content.contains(".target(name: \"Core\"),"))
         XCTAssertTrue(content.contains(".testTarget(name: \"CoreTests\"),"))
 
         XCTAssertEqual(try PackageManifestEditor.registeredProjects(manifestURL: manifestURL),
                        ["Demo", "SampleApp"], "名前順で抽出")
 
-        // 冪等: 同じ内容で再実行しても変化しない
         let before = try String(contentsOf: manifestURL, encoding: .utf8)
         try PackageManifestEditor.updateProjects(
             manifestURL: manifestURL, projectNames: ["Demo", "SampleApp"], verify: false)
         XCTAssertEqual(try String(contentsOf: manifestURL, encoding: .utf8), before)
 
-        // 削除(空リスト)
         try PackageManifestEditor.updateProjects(
             manifestURL: manifestURL, projectNames: [], verify: false)
         XCTAssertEqual(try PackageManifestEditor.registeredProjects(manifestURL: manifestURL), [])
