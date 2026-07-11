@@ -2,15 +2,14 @@
 // 単一 FlowStep の決定的実行エンジン(Swift DSL のコマンドは全てここを通る)。
 // 実証済みのセマンティクス:
 // - ロケータ解決失敗は指数バックオフ(100→200→400ms、計3回)で再試行してからヒールへ
-//   (UI 遷移直後対策。ヒール発動までの総待機は計700msで、Phase 2 以前の1000ms台から
-//   大きく変えていない)
+//   (UI 遷移直後対策。ヒール発動までの総待機は計700ms)
 // - アサーションでは type+index のみのフォールバックを使わない(別画面要素への偽陽性防止)
 // - optional ステップは要素未発見でも失敗にせずスキップ(自己修復の対象外)
 // - 自己修復は delegate 提案の confidence == "high" のみ採用
 // - 操作後の整定待ちはドライバ側に委譲(Android: ブリッジの a11y 静穏検知 / iOS: XCUITest の
-//   暗黙 quiescence)。Phase 2 でホスト側の固定 sleep は撤廃した。
+//   暗黙 quiescence)。
 //   exists/valueEquals/textEquals はタイムアウトまでポーリング(間隔は PollBackoff の
-//   指数バックオフ = 100→200→400→800→1000ms 以降頭打ち。Phase 3 でポーリング間隔を統一)
+//   指数バックオフ = 100→200→400→800→1000ms 以降頭打ち)
 
 import Foundation
 
@@ -71,9 +70,9 @@ public struct StepResult: Sendable {
     public let section: String?
     /// true = fixSuggestion に伴う合成行(「💡 修正提案: …」固定文言。ScenarioRunner.runOne
     /// 参照)。実際のコマンド実行結果ではないため、機械可読 NDJSON(ftester api run)では
-    /// 除外する目印として使う(人間向けの表示では従来どおり残す)
+    /// 除外する目印として使う(人間向けの表示には含める)
     public let synthetic: Bool
-    /// ステップの所要時間内訳(Phase 0 計測基盤)。--profile 並列実行ではサブプロセスの
+    /// ステップの所要時間内訳。--profile 並列実行ではサブプロセスの
     /// ScenarioEvent から復元される(ScenarioRunner.stepResult(from:) 参照)。合成行は nil
     public let timing: StepTiming?
 
@@ -91,7 +90,7 @@ public struct StepResult: Sendable {
     }
 }
 
-/// ステップ 1 回分の時間内訳(計測は ContinuousClock。単位はミリ秒。Phase 0 計測基盤)。
+/// ステップ 1 回分の時間内訳(計測は ContinuousClock。単位はミリ秒)。
 /// durationMs はステップ全体の所要。snapshotMs/actionMs/waitMs は StepExecutor が計測できた
 /// 場合のみ値が入る(launchApp/wait/procedure 等 performCustom 経由のステップは durationMs のみ)
 public struct StepTiming: Sendable, Equatable {
@@ -114,7 +113,7 @@ public struct StepOutcome: Sendable {
     public let healedStep: FlowStep?
     /// true = ヒールキャッシュで解決(FM 不使用)。false で healedStep あり = FM 自己修復
     public let healedByCache: Bool
-    /// ステップの所要時間内訳(Phase 0 計測基盤)。実行エラー等で計測できなかった場合のみ nil
+    /// ステップの所要時間内訳。実行エラー等で計測できなかった場合のみ nil
     public let timing: StepTiming?
 
     public init(status: StepResult.Status, healedStep: FlowStep? = nil, healedByCache: Bool = false,
@@ -224,8 +223,7 @@ public final class StepExecutor {
         }
 
         // ロケータ解決(指数バックオフで最大3回再試行 — UI 遷移直後対策。
-        // 100→200→400ms で計700ms、ヒール発動までの総待機は Phase 2 以前(1000ms台)から
-        // 大きく変えていない)
+        // 100→200→400ms で、ヒール発動までの総待機は計700ms)
         var start = clock.now
         var snapshot = try await driver.snapshot()
         phase.snapshotMs += Self.ms(clock.now - start)

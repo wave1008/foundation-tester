@@ -424,7 +424,7 @@ final class ProfileResolverTests: XCTestCase {
     }
 
     func testResolveWithoutMachineFieldUsesPassedMachineName() throws {
-        // machine 未指定の既存プロファイル("all")は従来どおり渡された machineName で解決される
+        // machine 未指定の既存プロファイル("all")は渡された machineName で解決される
         // (testResolveMixedPlatforms 等、既存テスト全体が回帰検知を兼ねる)
         try writeStandardFixture()
         let resolved = try ProfileResolver.resolve(

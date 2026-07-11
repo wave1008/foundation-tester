@@ -1,17 +1,14 @@
 // ApiLiveCommand.swift
 // VSCode拡張のライブ操作パネル向け常駐 CLI(ftester api live serve)。
 //
-// 高速化計画 Phase 4: 旧実装は1操作ごとに `ftester api live tap` 等をワンショットspawnし、
-// 操作後に固定700ms待ってから `api live snapshot` を別プロセスでspawnしていた(1タップあたり
-// プロセス起動2回+700ms)。Phase 2でブリッジの操作応答=UI整定済みになったため、待ちは不要になった。
-// serve はドライバを起動時に1回だけ生成して使い回し(これが高速化の本体)、以降は stdin から
-// NDJSON でコマンドを1行ずつ受けて逐次処理する(1リクエストにつきプロセス起動ゼロ・追加待ちゼロ)。
+// serve はドライバを起動時に1回だけ生成して使い回し(操作ごとのプロセス起動を避けるため)、
+// 以降は stdin から NDJSON でコマンドを1行ずつ受けて逐次処理する(1リクエストにつき
+// プロセス起動ゼロ・追加待ちゼロ)。
 //
-// 単一実装原則により、旧ワンショットサブコマンド(snapshot/tap/type/swipe/press/launch/terminate/
-// install)は削除した(livePanel.ts が唯一の利用元で、置き換え後は他に使用箇所が無いことを確認済み。
-// press はそもそも livePanel.ts の UI に長押し操作が無く、旧実装時点から未使用だった)。
+// snapshot/tap/type/swipe/launch/terminate/install はこの serve コマンドに統合されている。
+// press はそもそも livePanel.ts の UI に長押し操作が無いため実装していない。
 //
-// プロトコル(stdin → serve、1行1コマンドの NDJSON。引数の意味論は旧ワンショット版を踏襲):
+// プロトコル(stdin → serve、1行1コマンドの NDJSON):
 //   {"cmd":"tap","ref":<Int>}                           snapshot の参照番号をタップ
 //   {"cmd":"tap","x":<Double>,"y":<Double>}             座標(pt)をタップ
 //   {"cmd":"type","text":<String>,"ref":<Int省略可>}     テキスト入力(ref省略時はフォーカス中の要素)
@@ -35,12 +32,12 @@
 //                    "frame":{"x":..,"y":..,"width":..,"height":..}}, ...]}
 //     {"kind":"snapshot","ok":false,"error":"<説明>","platform":null,"screen":null,"image":null,
 //      "elements":null}
-//   を出す(操作後の追加waitは無し。Phase 2でブリッジ応答=UI整定済みのため)。
+//   を出す(操作後の追加waitは無し。ブリッジの操作応答=UI整定済みのため)。
 //   refresh はこの観測イベント1行だけを出す(actionResult は出さない)。
 //   拡張側は actionResult が ok:false のとき、続く snapshot イベントは画面へ反映しない
-//   (直前の表示を保持したままエラーを表示する。旧ワンショット版の挙動を踏襲)。
+//   (直前の表示を保持したままエラーを表示する)。
 //
-// 座標契約: snapshot の screen / elements[].frame はポイント座標(旧ワンショット版と同じ)。
+// 座標契約: snapshot の screen / elements[].frame はポイント座標。
 //
 // 終了: stdin EOF、または SIGTERM/SIGINT(ApiMonitorCommand/ApiHostMetricsCommand と同じ流儀。
 // setvbuf での行バッファ化も同じ)。stdin 監視は他の常駐 api コマンドと同じく専用スレッドで
@@ -76,8 +73,8 @@ struct ApiLiveServe: AsyncParsableCommand {
         // ストリーミング読み取りが前提のため常に行バッファにする(他の常駐 api コマンドと同じ理由)
         setvbuf(stdout, nil, _IOLBF, 0)
 
-        // ドライバは起動時に1回だけ生成し、以降の全コマンドで使い回す(常駐化の本体。旧実装は
-        // ワンショット呼び出し毎に makeDriver() していた)
+        // ドライバは起動時に1回だけ生成し、以降の全コマンドで使い回す(操作ごとのプロセス起動を
+        // 避けるため)
         let driver = try driverOptions.makeDriver()
 
         let (lines, continuation) = AsyncStream<String>.makeStream(of: String.self)
@@ -174,7 +171,7 @@ struct ApiLiveServe: AsyncParsableCommand {
     }
 
     /// スクリーンショット(ダウンスケール済み JPEG)とアクセシビリティツリーを観測イベントとして出す
-    /// (旧 api live snapshot と同じ処理。ApiMonitorCommand.swift の MonitorImage を共有利用する)
+    /// (ApiMonitorCommand.swift の MonitorImage を共有利用する)
     private func emitObservation(driver: AppDriver) async {
         do {
             let png = try await driver.screenshot()
@@ -259,7 +256,7 @@ private struct ApiLiveActionResultEvent: Encodable {
 }
 
 /// snapshot(観測)イベント。ok:true 時は platform/screen/image/elements が必ず埋まり、ok:false 時は
-/// それらが null になる(旧 ApiLiveSnapshotResult/ApiLiveErrorResult を1つに統合した形)
+/// それらが null になる
 private struct ApiLiveSnapshotEvent: Encodable {
     let kind = "snapshot"
     let ok: Bool

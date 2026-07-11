@@ -3,7 +3,7 @@
 //   ftester devices up   … 段階的起動(負荷ゲート付き・起動済みスキップ・iOS はブリッジ供給まで)
 //   ftester devices down … 全ブリッジ停止+シミュレータ/エミュレータ全終了
 // どちらも --profile(実行プロファイル名)指定時は、そのプロファイルが参照するデバイスのみを
-// 対象にする(RunProfileScope.swift。省略時は従来どおりマシンプロファイルの全デバイス)。
+// 対象にする(RunProfileScope.swift。省略時はマシンプロファイルの全デバイス)。
 // DeviceBooter / BridgeProvisioner を直接使う(ftester api device-up/device-down と共通の実装)。
 
 import ArgumentParser

@@ -1,5 +1,5 @@
 // PollBackoffTests.swift
-// PollBackoff(高速化計画 Phase 3: ポーリング間隔の指数バックオフ統一)の単体テスト。
+// PollBackoff(ポーリング間隔の指数バックオフ)の単体テスト。
 // バックオフ列の値と上限クランプを検証する
 
 import XCTest

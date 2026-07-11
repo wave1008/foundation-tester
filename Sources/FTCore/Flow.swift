@@ -28,7 +28,7 @@ public struct Flow: Codable, Sendable {
 }
 
 /// action(操作)か assert(検証)のどちらか一方を持つステップ。
-/// YAML の読みやすさを優先して enum ではなくフラットな構造にしている。
+/// enum ではなくフラットな構造(片方だけが非 nil)にしている。
 public struct FlowStep: Codable, Sendable {
     /// tap / type / swipe / press / scrollTo(要素が見つかるまでスクロール)
     public var action: String?
@@ -39,9 +39,9 @@ public struct FlowStep: Codable, Sendable {
     public var fallbacks: [FlowLocator]?
     public var text: String?
     public var direction: String?
-    /// screenMatches 用の期待状態(自然言語、M3 でマルチモーダル検証)
+    /// screenMatches 用の期待状態(自然言語。マルチモーダル画面検証に使う)
     public var expected: String?
-    /// 秒。YAML の読みやすさのため整数(Yams は Double を指数表記にする)
+    /// 秒(整数)
     public var timeout: Int?
     /// scrollTo のスクロール回数上限(省略時 8)
     public var maxSwipes: Int?

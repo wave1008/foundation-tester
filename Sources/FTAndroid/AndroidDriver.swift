@@ -1,11 +1,11 @@
 // AndroidDriver.swift
-// M4: AppDriver の Android 実装。
+// AppDriver の Android 実装。
 // snapshot/tap/type/swipe/press/screenshot/launch/status はデバイス常駐ブリッジ
 // (AndroidRunner/、iOS ブリッジとプロトコル互換)を自動起動して HTTP で行う(AndroidBridge.swift)。
 // ブリッジに接続できない場合は DriverError.bridgeUnreachable を投げる(フォールバックなし)。
-// 操作後の整定待ちはブリッジ側の a11y 静穏検知に委譲(Phase 2でホスト側固定 sleep は撤廃)。
+// 操作後の整定待ちはブリッジ側の a11y 静穏検知に委譲する。
 // terminate のみ adb 直(currentPackage 管理の意味論を維持)。
-// FTAgent(探索・修復・トリアージ)と FTCore(再生器)は無変更でそのまま動く。
+// FTAgent(探索・修復・トリアージ)と FTCore(再生器)はドライバ実装に依存しない。
 
 import Foundation
 import FTBridgeClient
@@ -91,8 +91,8 @@ public final class AndroidDriver: AppDriver {
     // MARK: - AppDriver
 
     public func status() async throws -> StatusResponse {
-        // ブリッジの /status に一本化(以前は getprop×3。ready 判定がブリッジ疎通を伴わず
-        // 「接続不能なら早期に失敗させる」呼び出し元の意図を満たしていなかった)
+        // ブリッジの /status に一本化する(ready 判定にブリッジ疎通を伴わせることで、
+        // 「接続不能なら早期に失敗させる」呼び出し元の意図を満たす)
         try await withBridge { try await $0.status() }
     }
 
@@ -105,9 +105,9 @@ public final class AndroidDriver: AppDriver {
     }
 
     public func launch(bundleID: String) async throws {
-        // ブリッジの POST /session に一本化(以前は adb 直叩きの二重実装。force-stop+monkey+
-        // am start フォールバックはブリッジ側 handleLaunch() へ移植済み。整定待ちもブリッジ側で
-        // 完結するのでここでの追加 sleep は不要)
+        // ブリッジの POST /session に一本化する(force-stop+monkey+am start フォールバックは
+        // ブリッジ側 handleLaunch() が持つ。整定待ちもブリッジ側で完結するので
+        // ここでの追加 sleep は不要)
         try await withBridge { try await $0.launch(bundleID: bundleID) }
         currentPackage = bundleID
     }
