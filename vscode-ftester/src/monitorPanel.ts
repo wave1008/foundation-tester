@@ -4473,7 +4473,7 @@ function renderHtml(): string {
     function setBusy(busy) {
       btnUp.disabled = busy;
       btnDown.disabled = busy;
-      statusEl.textContent = busy ? '操作を実行中...' : 'モニタリング中';
+      statusEl.textContent = busy ? '操作を実行中...' : '';
     }
 
     // ---- 実行プロファイル選択 ---------------------------------------------------
@@ -4775,7 +4775,7 @@ function renderHtml(): string {
       switch (message.type) {
         case 'devices':
           hideBanner();
-          statusEl.textContent = 'モニタリング中';
+          statusEl.textContent = '';
           applyDevices(message.devices);
           break;
         case 'frame':
