@@ -2995,18 +2995,23 @@ function renderHtml(): string {
     user-select: none;
   }
   .machine-device-row:last-child { border-bottom: none; }
-  /* Test Explorer(VS Code のツリー/リスト)のアイテムホバーと同じ配色にする。
-     選択中の行にホバーしても選択色を上書きしないよう :not(.selected) を付ける。
+  /* テーマのアイテムホバー色(list-hoverBackground)そのままでは濃い、というユーザー指摘
+     (2026-07-11)により、50%透過に薄めて敷く(color-mix。テーマ変数由来なのでライト/ダーク
+     両対応のまま)。device-pick-row のホバー・livePanel の element-row ホバーも同じ式で
+     揃えている。選択中の行にホバーしても選択色を上書きしないよう :not(.selected) を付ける。
      カーソルは通常のまま(クリックで選択できるが、ポインタ形状での操作誘導はしない。ユーザー指定)。 */
   .machine-device-row:not(.selected):hover {
-    background-color: var(--vscode-list-hoverBackground);
+    background-color: color-mix(in srgb, var(--vscode-list-hoverBackground) 50%, transparent);
     color: var(--vscode-list-hoverForeground, inherit);
   }
+  /* アイテム選択色は拡張内で統一して、プロファイルタブのヘッダーバー(.profile-toolbar)と
+     同じ editorGroupHeader-tabsBackground にする(2026-07-11 ユーザー指示。経緯:
+     activeSelection の濃い青→inactiveSelection の薄いグレー→ヘッダと同色、の順で確定)。
+     「既存のデバイスから選択」のチェック行・ライブ操作パネルの要素行も同じ値。薄い背景
+     なので詳細行(.machine-device-detail)の前景色は上書き不要(descriptionForeground の
+     ままで読める)。 */
   .machine-device-row.selected {
-    background-color: var(--vscode-list-activeSelectionBackground, rgba(0, 120, 212, 0.3));
-  }
-  .machine-device-row.selected .machine-device-detail {
-    color: var(--vscode-list-activeSelectionForeground, inherit);
+    background-color: var(--vscode-editorGroupHeader-tabsBackground, rgba(128, 128, 128, 0.15));
   }
   .machine-device-detail {
     margin-top: 4px;
@@ -3254,6 +3259,16 @@ function renderHtml(): string {
   #device-add-overlay {
     z-index: 2010;
   }
+  /* デバイス追加モーダルは Android のモデル/OSバージョンの選択肢が長く、既定の
+     min-width(400px)だと iOS⇄Android 切替のたびにダイアログ幅が伸縮して見た目が暴れる
+     (2026-07-11 ユーザー報告)。最小幅を広げて通常の選択肢なら幅が変わらないようにし、
+     それでも収まらない長い選択肢のときだけコンテンツに合わせて広がる。max-width で
+     ウィンドウ(webview)内には必ず収める(.modal-row > select は min-width: 0 なので
+     上限に達したら select 側が縮んで選択肢テキストが省略される)。 */
+  #device-add-overlay .modal-dialog {
+    min-width: 640px;
+    max-width: calc(100vw - 48px);
+  }
   .modal-dialog {
     min-width: 400px;
     padding: 16px;
@@ -3306,8 +3321,56 @@ function renderHtml(): string {
     gap: 4px;
     cursor: pointer;
   }
+  /* ラジオはチェックボックス(グローバルの input[type="checkbox"] ルール=VSCode設定画面風の
+     カスタム描画)とスタイルを揃える(2026-07-11 ユーザー指示)。同じ寸法(18px)・同じ
+     テーマ変数(settings.checkbox 系)で、形だけ円形(border-radius: 50%)にし、チェック
+     状態は ::after の中央ドットで描く。appearance: none にするのはチェックボックスと同じ
+     理由(OS依存の見た目を避ける)に加え、ネイティブ描画時代に VSCode webview の既定
+     スタイル input:focus { outline: 1px solid ...; outline-offset: -1px } がクリックしただけで
+     円形ラジオに四角い枠を描いてしまう問題(同日ユーザー報告)があったため。outline: none
+     (詳細度21)は既定スタイル(input:focus=11)に常に勝ち、マウスクリックでは枠が出ない。 */
   .modal-radio input[type="radio"] {
-    accent-color: var(--vscode-focusBorder, #007acc);
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    box-sizing: border-box;
+    border: 1px solid var(--vscode-settings-checkboxBorder, var(--vscode-widget-border, #919191));
+    border-radius: 50%;
+    background-color: var(--vscode-settings-checkboxBackground, var(--vscode-input-background));
+    position: relative;
+    flex: 0 0 auto;
+    cursor: pointer;
+    outline: none;
+  }
+  /* 中央ドット(選択マーク)。18px箱−枠1px=内側16pxの中央に8pxの円(4+8+4)。
+     色はチェックボックスのチェックマークと同じ settings.checkboxForeground。 */
+  .modal-radio input[type="radio"]:checked::after {
+    content: '';
+    position: absolute;
+    left: 4px;
+    top: 4px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: var(--vscode-settings-checkboxForeground, var(--vscode-foreground));
+  }
+  /* キーボードフォーカスの可視化はチェックボックス(input[type="checkbox"]:focus-visible)と
+     同じ形式で維持する(リングは border-radius: 50% に沿って円形に描かれる)。 */
+  .modal-radio input[type="radio"]:focus-visible {
+    outline: 1px solid var(--vscode-focusBorder, #007acc);
+    outline-offset: 1px;
+  }
+  /* disabled の淡色化は .modal-radio:has(input:disabled) がラベルごと行うため、ここでは
+     カーソルだけ戻す(opacity を重ねると二重に薄くなる)。 */
+  .modal-radio input[type="radio"]:disabled { cursor: default; }
+  /* OS種別ラジオの選択ドットはプラットフォームの色にする(2026-07-11 ユーザー指示)。
+     色はデバイス名ピル(.tile-name-ios / .tile-name-android)と同じ値。 */
+  #dlg-platform-ios:checked::after {
+    background-color: #29b6f6;
+  }
+  #dlg-platform-android:checked::after {
+    background-color: #3ddc84;
   }
   /* ラジオが disabled の間はラベル文字も含めて淡色化する(select の disabled 見た目に相当)。 */
   .modal-radio:has(input:disabled) {
@@ -3352,25 +3415,34 @@ function renderHtml(): string {
     gap: 12px;
     margin-bottom: 8px;
   }
+  /* グループ=見出し+スクロール本体の縦flex。スクロールは本体(.device-pick-group-body)だけに
+     持たせ、見出しはスクロール領域の外で常に固定表示にする(2026-07-11 ユーザー指示)。
+     以前は カラム全体をスクロールコンテナにして見出しを position: sticky にしていたが、
+     行のチェックボックスがカスタム描画で position: relative(=位置指定要素)のため、
+     z-index の無い sticky 見出しより上に描画されてしまい、スクロールすると見出しに
+     チェックボックスが被る問題があった。 */
   .device-pick-group {
     flex: 1 1 0;
     min-width: 0;
     max-height: 50vh;
-    overflow-y: auto;
     border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
     border-radius: 4px;
+    display: flex;
+    flex-direction: column;
   }
   /* グループ見出しに件数を出す(「iOS シミュレータ (62)」のように、探しやすくするための要件)。
-     件数は JS 側で textContent に埋め込む(このセレクタ自体は見た目のみを担う)。カラム自体が
-     スクロールコンテナになったので、position: sticky はそのカラム内で効く(カラム先頭に固定表示)。 */
+     件数は JS 側で textContent に埋め込む(このセレクタ自体は見た目のみを担う)。 */
   .device-pick-group-title {
+    flex: none;
     padding: 6px 10px;
     font-size: 12px;
     font-weight: 600;
     color: var(--vscode-descriptionForeground);
-    background-color: var(--vscode-editor-background);
-    position: sticky;
-    top: 0;
+  }
+  .device-pick-group-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
   }
   .device-pick-row {
     display: flex;
@@ -3378,8 +3450,20 @@ function renderHtml(): string {
     gap: 8px;
     padding: 6px 10px;
   }
-  .device-pick-row:hover {
-    background-color: var(--vscode-list-hoverBackground);
+  /* 選択中(登録される)行にホバーしても選択色を上書きしないよう :not(.checked) を付ける
+     (.machine-device-row の :not(.selected):hover と同じ方針)。ホバー色を50%透過に薄める
+     理由も .machine-device-row 側のコメント参照(2026-07-11 ユーザー指摘)。 */
+  .device-pick-row:not(.checked):hover {
+    background-color: color-mix(in srgb, var(--vscode-list-hoverBackground) 50%, transparent);
+  }
+  /* チェックON=登録される行に背景を敷き、チェックボックス以外でも選択状態が一目で分かる
+     ようにする(2026-07-11 ユーザー指示)。色は薄いグレーの非フォーカス選択色
+     (inactiveSelectionBackground)。一時、他の選択色と同じヘッダー色
+     (editorGroupHeader-tabsBackground)に統一したが、このモーダルだけは元に戻す指示があった
+     (同日)=マシンプロファイルのデバイス行・ライブ操作パネルの選択色とは意図的に別の値。
+     前景色は上書きしない(薄い背景なら詳細行の descriptionForeground のままで読める)。 */
+  .device-pick-row.checked {
+    background-color: var(--vscode-list-inactiveSelectionBackground, rgba(128, 128, 128, 0.18));
   }
   /* 寸法・配色はグローバルの input[type="checkbox"] ルール(VSCode設定画面風のカスタム描画。
      2026-07-11)に任せる。UA既定margin だけ打ち消し、行内の間隔は .device-pick-row の
@@ -3738,11 +3822,11 @@ function renderHtml(): string {
       <div id="device-pick-list" class="device-pick-list">
         <div id="device-pick-ios-group" class="device-pick-group">
           <div class="device-pick-group-title" id="device-pick-ios-title">iOS シミュレータ</div>
-          <div id="device-pick-ios-body"></div>
+          <div id="device-pick-ios-body" class="device-pick-group-body"></div>
         </div>
         <div id="device-pick-android-group" class="device-pick-group">
           <div class="device-pick-group-title" id="device-pick-android-title">Android AVD</div>
-          <div id="device-pick-android-body"></div>
+          <div id="device-pick-android-body" class="device-pick-group-body"></div>
         </div>
       </div>
       <div id="device-pick-error" class="modal-error"></div>
@@ -6427,6 +6511,13 @@ function renderHtml(): string {
       container.appendChild(empty);
     }
 
+    // checked クラス(選択配色。CSS側 .device-pick-row.checked)を checkbox.checked に同期する。
+    // checkbox.checked のプログラム的変更は change イベントを発火しないため、変更経路
+    // (初期描画/行クリック/自動チェック)ごとに明示的に呼ぶ。
+    function syncDevicePickRowChecked(row, checkbox) {
+      row.classList.toggle('checked', checkbox.checked);
+    }
+
     // 行のどこをクリックしてもチェックが切り替わるようにする(ユーザー指定)。チェックボックス
     // 自体のクリックはネイティブのトグルに任せる(row の click でも拾ってしまうと二重トグルで
     // 元に戻ってしまうため除外する)。適用中等で checkbox が disabled の間は何もしない。
@@ -6436,6 +6527,7 @@ function renderHtml(): string {
           return;
         }
         checkbox.checked = !checkbox.checked;
+        syncDevicePickRowChecked(row, checkbox);
         // プログラム的な .checked 変更は change イベントを発火しないため、明示的に更新する。
         updateDevicePickOkState();
       });
@@ -6464,7 +6556,10 @@ function renderHtml(): string {
           const checkbox = document.createElement('input');
           checkbox.type = 'checkbox';
           checkbox.checked = registered;
-          checkbox.addEventListener('change', updateDevicePickOkState);
+          checkbox.addEventListener('change', () => {
+            syncDevicePickRowChecked(row, checkbox);
+            updateDevicePickOkState();
+          });
           const textWrap = document.createElement('div');
           textWrap.className = 'device-pick-row-text';
           // タイル/レーン/マシンプロファイル一覧と同じ配色ピル(.tile-name/-ios)を共用する(要件2)。
@@ -6477,8 +6572,9 @@ function renderHtml(): string {
           textWrap.append(nameEl, detailEl);
           row.append(checkbox, textWrap);
           attachDevicePickRowToggle(row, checkbox);
+          syncDevicePickRowChecked(row, checkbox);
           devicePickIosBody.appendChild(row);
-          devicePickIosRows.push({ checkbox: checkbox, device: device, initialChecked: registered, registeredName: registeredName });
+          devicePickIosRows.push({ checkbox: checkbox, device: device, initialChecked: registered, registeredName: registeredName, rowEl: row });
         }
       }
 
@@ -6498,7 +6594,10 @@ function renderHtml(): string {
           const checkbox = document.createElement('input');
           checkbox.type = 'checkbox';
           checkbox.checked = registered;
-          checkbox.addEventListener('change', updateDevicePickOkState);
+          checkbox.addEventListener('change', () => {
+            syncDevicePickRowChecked(row, checkbox);
+            updateDevicePickOkState();
+          });
           const textWrap = document.createElement('div');
           textWrap.className = 'device-pick-row-text';
           // タイル/レーン/マシンプロファイル一覧と同じ配色ピル(.tile-name/-android)を共用する(要件2)。
@@ -6515,8 +6614,9 @@ function renderHtml(): string {
           textWrap.append(nameEl, detailEl);
           row.append(checkbox, textWrap);
           attachDevicePickRowToggle(row, checkbox);
+          syncDevicePickRowChecked(row, checkbox);
           devicePickAndroidBody.appendChild(row);
-          devicePickAndroidRows.push({ checkbox: checkbox, avd: avd, initialChecked: registered, registeredName: registeredName });
+          devicePickAndroidRows.push({ checkbox: checkbox, avd: avd, initialChecked: registered, registeredName: registeredName, rowEl: row });
         }
       }
     }
@@ -6537,12 +6637,14 @@ function renderHtml(): string {
         const row = devicePickIosRows.find((r) => r.device.udid === target.udid);
         if (row) {
           row.checkbox.checked = true;
+          syncDevicePickRowChecked(row.rowEl, row.checkbox);
         }
       }
       if (target.avd) {
         const row = devicePickAndroidRows.find((r) => r.avd.id === target.avd);
         if (row) {
           row.checkbox.checked = true;
+          syncDevicePickRowChecked(row.rowEl, row.checkbox);
         }
       }
     }
