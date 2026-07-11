@@ -2597,11 +2597,6 @@ function renderHtml(): string {
     border: 1px solid var(--vscode-dropdown-border);
   }
   select:disabled { opacity: 0.5; cursor: default; }
-  .status {
-    margin-left: auto;
-    font-size: 12px;
-    color: var(--vscode-descriptionForeground);
-  }
   .banner {
     flex: 0 0 auto;
     display: none;
@@ -3682,7 +3677,6 @@ function renderHtml(): string {
       <label class="profile-label">実行プロファイル
         <select id="profile-select" title="以後のテスト実行・デバッグ実行と、このモニターの監視対象デバイスに使う実行プロファイル(ftester.profile 設定)" disabled></select>
       </label>
-      <span id="status" class="status">接続中...</span>
     </div>
     <div id="banner" class="banner"></div>
 
@@ -4022,7 +4016,6 @@ function renderHtml(): string {
     const grid = document.getElementById('grid');
     const emptyMessage = document.getElementById('empty');
     const banner = document.getElementById('banner');
-    const statusEl = document.getElementById('status');
     const btnUp = document.getElementById('btn-devices-up');
     const btnDown = document.getElementById('btn-devices-down');
     const btnRestart = document.getElementById('btn-restart');
@@ -4473,7 +4466,6 @@ function renderHtml(): string {
     function setBusy(busy) {
       btnUp.disabled = busy;
       btnDown.disabled = busy;
-      statusEl.textContent = busy ? '操作を実行中...' : '';
     }
 
     // ---- 実行プロファイル選択 ---------------------------------------------------
@@ -4775,7 +4767,6 @@ function renderHtml(): string {
       switch (message.type) {
         case 'devices':
           hideBanner();
-          statusEl.textContent = '';
           applyDevices(message.devices);
           break;
         case 'frame':
@@ -4788,7 +4779,6 @@ function renderHtml(): string {
           setBusy(!!message.busy);
           break;
         case 'processDown':
-          statusEl.textContent = '停止中';
           showBanner(message.message);
           break;
         case 'deviceOpBusy': {
@@ -4877,7 +4867,6 @@ function renderHtml(): string {
     btnDown.addEventListener('click', () => vscode.postMessage({ type: 'devicesDown' }));
     btnRestart.addEventListener('click', () => {
       hideBanner();
-      statusEl.textContent = '再起動中...';
       closeDeviceOpMenu();
       for (const entry of tiles.values()) {
         entry.tile.remove();
