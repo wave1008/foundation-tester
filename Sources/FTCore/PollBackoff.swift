@@ -1,5 +1,5 @@
 // PollBackoff.swift
-// ポーリング待機の指数バックオフ(高速化計画 Phase 3)。
+// ポーリング待機の指数バックオフ。
 // ロケータ再試行(StepExecutor.executeAction)・exists/valueEquals/textEquals の
 // ポーリング間隔(StepExecutor.executeAssert)をこのヘルパに統一する(コピペ禁止)。
 // 乱数を使わない決定的な列: 100, 200, 400, 800, 1000, 1000, …(既定で上限 1000ms)

@@ -1,7 +1,6 @@
 // ScenarioReportWriter.swift
 // シナリオ実行結果の Markdown レポート(成否問わず常に出力)。
 // 階層: シナリオ → scene → CAE セクション → ステップ。
-// 命名規則・様式は旧 ReportWriter(フロー用)を踏襲する。
 
 import Foundation
 import FTCore
@@ -76,7 +75,7 @@ public enum ScenarioReportWriter {
 
     static func line(for step: DSLStepRecord) -> String {
         let location = step.file.isEmpty ? "" : "(\(URL(fileURLWithPath: step.file).lastPathComponent):\(step.line))"
-        // 時間列(Phase 0 計測基盤)。durationMs 欠測(dry-run・スキップ等)時は空欄
+        // 時間列。durationMs 欠測(dry-run・スキップ等)時は空欄
         let duration = durationText(step.durationMs)
         switch step.status {
         case .passed:

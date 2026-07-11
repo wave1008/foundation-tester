@@ -1,6 +1,6 @@
 // ScenarioCodeGen.swift
 // Flow(インメモリの内部モデル)→ Swift DSL シナリオコードの生成。
-// explore(FM 探索)と convert(旧 YAML の移行)の両方が使う。
+// explore(FM 探索)が使う。
 // 生成コードは人が追記編集する前提の素直な直列コードにする。
 
 import Foundation

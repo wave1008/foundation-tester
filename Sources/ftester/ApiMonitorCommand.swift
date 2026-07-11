@@ -213,7 +213,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         // adb 上は device として見えている(=runningAVDs に載っている)Android 対象の serial だけ、
         // ブート完了(sys.boot_completed)を一括で(デバイス毎に並列)確認する。ブート未完了なのに
         // connected と判定してスクショ取得(=ブリッジ APK 自動インストール)を試みると、
-        // パッケージマネージャ未起動で失敗するため(ユーザー報告の根本原因)
+        // パッケージマネージャ未起動で失敗するため
         let androidCandidateSerials = Set(targets.compactMap { target -> String? in
             guard target.platform == "android", let avd = target.spec.avd else { return nil }
             let canonical = AndroidDeviceCatalog.canonicalAVDID(avd)
@@ -622,7 +622,7 @@ private struct ApiMonitorErrorEvent: Encodable {
 /// PNG のスクリーンショットを長辺 maxWidth px にダウンスケールして JPEG に変換する。
 /// 生 PNG の base64 は 1 フレームあたり数 MB になり Webview に流せないため必須の変換
 /// (ImageIO のサムネイル生成を使うのでデコード→リサイズ→再エンコードを 1 回で済ませられる)。
-/// private を外して ApiLiveCommand.swift(ftester api live snapshot)にも共有する
+/// private を外して ApiLiveCommand.swift(ftester api live serve)にも共有する
 /// (ApiListDevicesCommand.swift が MonitorTarget/DeviceRuntimeState を共有するのと同方針)
 enum MonitorImage {
     struct Result {

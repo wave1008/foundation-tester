@@ -173,7 +173,7 @@ final class StepCommandParamsTests: XCTestCase {
     // MARK: - apply(params nil = StepCommandText.apply への委譲)
 
     func testApplyWithNilParamsDelegatesToLiteralPatch() throws {
-        // 従来のリテラル置換パス(書式・非表示引数を保存)と同一結果になる
+        // StepCommandText.apply のリテラル置換パス(書式・非表示引数を保存)と同一結果になる
         XCTAssertEqual(
             try StepCommandParams.apply(display: "exist \"Internet\"", params: nil,
                                         toCode: "exist(\"WiFi\", timeout: 15)"),

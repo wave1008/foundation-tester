@@ -1,6 +1,6 @@
 // ReplayAssist.swift
-// M3: 再生失敗時のみ呼ばれる FM フック群。
-// - Healer   : 壊れたロケータの修復案(elementText 方式 — M2 の知見を踏襲)
+// 再生失敗時のみ呼ばれる FM フック群。
+// - Healer   : 壊れたロケータの修復案(elementText 方式)
 // - Verifier : screenMatches のマルチモーダル画面検証(スクリーンショット + 期待状態)
 // - Triager  : 失敗の分類と修正案(可能ならスクリーンショットも見る)
 

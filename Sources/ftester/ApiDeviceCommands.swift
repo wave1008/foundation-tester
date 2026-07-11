@@ -54,7 +54,7 @@ struct ApiDeviceDown: AsyncParsableCommand {
             // iOS はシミュレータ停止前に、接続している稼働ブリッジも探して停止する
             // (ゾンビ化防止。BridgeProvisioner.provision の失敗時後始末と対の修正)。
             // repoRoot が見つからない場合(通常起こらない)は nil のまま渡し、ブリッジ停止を
-            // スキップして simctl shutdown のみ行う(従来動作へのフォールバック)。
+            // スキップして simctl shutdown のみ行う。
             let repoRoot = platform == "ios" ? try? RepoRoot.find() : nil
             try await DeviceBooter.shutdownOne(
                 spec: spec, platform: platform, repoRoot: repoRoot, log: log)

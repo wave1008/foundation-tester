@@ -131,7 +131,7 @@ public enum ScenarioRunner {
                                     file: event.file, line: event.line))
             case "fixSuggestion":
                 // 「💡 修正提案: …」合成 step 行(実際のコマンド結果ではない)。
-                // synthetic: true を立てて出す(人間向け表示は従来どおり残し、
+                // synthetic: true を立てて出す(人間向け表示には含め、
                 // 機械可読 NDJSON 側だけがこのフラグで除外する)
                 onEvent(.step(worker: worker.label, flowURL: item.url,
                               result: StepResult(index: event.index ?? 0,
@@ -179,7 +179,7 @@ public enum ScenarioRunner {
         default:
             status = .skipped(event.detail ?? "")
         }
-        // 時間内訳(Phase 0 計測基盤)。サブプロセスの ScenarioEvent に durationMs が無ければ
+        // 時間内訳。サブプロセスの ScenarioEvent に durationMs が無ければ
         // 未計測のステップ(dry-run・スキップ等)なので timing 自体を nil のままにする
         let timing = event.durationMs.map {
             StepTiming(durationMs: $0, snapshotMs: event.snapshotMs,
@@ -297,8 +297,8 @@ public enum RunLogFormatter {
             return []
         case .sceneStarted, .sceneFinished:
             // scene の開始・終了(ScenarioRunner.runOne が emit する)。CLI や拡張側の表示は
-            // 従来 flowStarted〜flowFinished の間の step 行だけで完結しており、
-            // scene 区切りの専用行は無かったため、互換を保つためここでは意図的に空配列のまま
+            // flowStarted〜flowFinished の間の step 行だけで完結し、scene 区切り用の専用行は
+            // 出さないため、ここでは意図的に空配列のまま
             // (scene/sceneTitle は各 step 行の構造化フィールドとして参照できる)
             return []
         case .workerFailed(let worker, let message):
@@ -339,9 +339,9 @@ public enum RunLogFormatter {
     }
 
     public static func lines(for step: StepResult) -> [String] {
-        // section("condition"/"action"/"expectation")は従来 description 先頭への
-        // "[section] " プレフィックス折り込みだった見た目をここで再現する(section は
-        // stepResult(from:) 以降は構造化フィールドとして独立して保持されている)
+        // 表示では section("condition"/"action"/"expectation")を description 先頭に
+        // "[section] " プレフィックスとして折り込む(section は stepResult(from:) 以降、
+        // 構造化フィールドとして独立して保持されている)
         let description = (step.section.map { "[\($0)] " } ?? "") + step.description
         switch step.status {
         case .passed:
@@ -349,8 +349,8 @@ public enum RunLogFormatter {
             if step.index == 0 { return ["  \(description)"] }
             return ["  ✅ \(step.index). \(description)"]
         case .passedViaFallback(let locator), .healed(let locator):
-            // 従来 stepResult(from:) が passedViaFallback/healed を "passed" に丸め、
-            // description 末尾へ "(detail)" を畳み込んでいたときと同じ見た目にする
+            // passedViaFallback/healed も表示上は passed と同じ ✅ とし、末尾に
+            // "(detail)" として畳み込む
             // (locator.summary は FlowLocator.raw = ScenarioEvent.detail そのもの)
             return ["  ✅ \(step.index). \(description)(\(locator.summary))"]
         case .failed(let reason):

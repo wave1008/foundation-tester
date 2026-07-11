@@ -114,7 +114,7 @@ public enum StepCommandParams {
     // MARK: - apply(編集の適用)
 
     /// 表示表現の編集とパラメーター編集をまとめてソースのコード部分へ適用する。
-    /// params == nil はパラメーター編集なし = StepCommandText.apply の従来パス
+    /// params == nil はパラメーター編集なし = StepCommandText.apply を使う
     /// (文字列リテラル置換で非表示引数を保存)。params != nil は呼び出し全体を
     /// 正規形で生成し直す(defaultValue と等しい引数は出力しない)
     public static func apply(display: String, params: [String: String]?,
@@ -176,7 +176,7 @@ public enum StepCommandParams {
                 + "\(StepCommandText.literal(parsed.strings[1]))\(timeout))"
         default:
             // specs が空の動詞(tap / swipe / wait / launch / relaunch / terminate /
-            // screenIs)にパラメーターは無い。従来の変換(リテラル置換 or 再生成)に委ねる
+            // screenIs)にパラメーターは無い。StepCommandText.apply(リテラル置換 or 再生成)に委ねる
             return try StepCommandText.apply(display: display, toCode: code)
         }
     }

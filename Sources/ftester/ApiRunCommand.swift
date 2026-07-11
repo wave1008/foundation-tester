@@ -11,7 +11,7 @@
 // この並列経路では runStarted 直後に workersReady を 1 回 emit し、以降の各イベントに
 // どのワーカーが処理したかを示す worker フィールド("<platform>:<デバイス論理名>"。
 // api monitor の monitorDevices の id と同一規則)を付ける。
-// --dry-run --profile / --debug のときは従来どおり、その platform に合う最初のワーカー
+// --dry-run --profile / --debug のときは、その platform に合う最初のワーカー
 // (またはワーカー無しの --dry-run)で逐次実行する(worker フィールドは付けない)。
 // --dry-run 時はデバイス不要なため、ワーカー構築(実機・シミュレータ照合)を丸ごと省略する。
 
@@ -156,7 +156,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         let failedCount: Int
         if let resolvedProfile {
             // --dry-run/--debug はワーカー選択方針が単純な逐次実行のままにする(仕様上、
-            // 出力形式も worker フィールド無しの従来どおりに保つ)。それ以外は
+            // 出力形式も worker フィールド無しのまま保つ)。それ以外は
             // RunOrchestrator によるワーカー並列実行(ftester run --profile と同じ並列度)
             if dryRun || debugOptions != nil {
                 (passedCount, failedCount) = try await runWithProfile(
@@ -448,7 +448,7 @@ struct ApiRunCommand: AsyncParsableCommand {
                 step.status = "skipped"
                 step.detail = reason
             }
-            // 時間内訳(Phase 0 計測基盤)。サブプロセスの ScenarioEvent から復元済み
+            // 時間内訳。サブプロセスの ScenarioEvent から復元済み
             // (RunOrchestrator.swift の ScenarioRunner.stepResult(from:) 参照)
             step.durationMs = result.timing?.durationMs
             step.snapshotMs = result.timing?.snapshotMs

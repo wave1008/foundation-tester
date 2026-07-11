@@ -1,7 +1,6 @@
 // FTester.swift
-// CLI エントリポイント。
-// M1: doctor / bridge / launch / snapshot / tap / type / swipe / screenshot / terminate
-// M2 以降: explore(FM探索→フロー生成)、run(決定的再生)
+// CLI エントリポイント。サブコマンドの登録と、doctor / bridge / 手動駆動 /
+// explore(FM探索→シナリオ生成)/ run(決定的再生)の各コマンド本体の定義を持つ。
 
 import ArgumentParser
 import Foundation
@@ -250,7 +249,7 @@ enum AndroidBridgeCLI {
     }
 }
 
-// MARK: - 手動駆動コマンド(M1 検証用)
+// MARK: - 手動駆動コマンド
 
 struct Install: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
@@ -411,7 +410,7 @@ struct Terminate: AsyncParsableCommand {
     }
 }
 
-// MARK: - M2/M3 スタブ
+// MARK: - 探索・実行コマンド
 
 struct Explore: AsyncParsableCommand {
     static let configuration = CommandConfiguration(

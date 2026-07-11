@@ -16,7 +16,7 @@ public struct DSLStepRecord: Sendable {
     public let status: StepResult.Status
     public let file: String
     public let line: Int
-    /// ステップ全体の所要時間(ミリ秒。Phase 0 計測基盤)。レポートの時間列に使う。
+    /// ステップ全体の所要時間(ミリ秒)。レポートの時間列に使う。
     /// StepExecutor を通らないステップ(scene 外の受け皿等)や dry-run では nil
     public let durationMs: Int?
 }
@@ -197,7 +197,7 @@ public final class FTDriveCore {
         }
         if dryRun {
             // 実機に触れないため計測はほぼ 0ms だが、durationMs は必ず付与する
-            // (デバイス無しで NDJSON への配線を検証できるようにするため。Phase 0 計測基盤)
+            // (デバイス無しで NDJSON への配線を検証できるようにするため)
             let clock = ContinuousClock()
             let start = clock.now
             recordStep(description: description, status: .passed, file: filePath, line: Int(line),
@@ -302,7 +302,7 @@ public final class FTDriveCore {
         }
         if dryRun {
             // 実機に触れないため計測はほぼ 0ms だが、durationMs は必ず付与する
-            // (デバイス無しで NDJSON への配線を検証できるようにするため。Phase 0 計測基盤)
+            // (デバイス無しで NDJSON への配線を検証できるようにするため)
             let clock = ContinuousClock()
             let start = clock.now
             recordStep(description: description, status: .passed,
@@ -385,7 +385,7 @@ public final class FTDriveCore {
 
     // MARK: - 記録
 
-    /// durationMs/snapshotMs/actionMs/waitMs: ステップの時間内訳(Phase 0 計測基盤。単位ミリ秒)。
+    /// durationMs/snapshotMs/actionMs/waitMs: ステップの時間内訳(単位ミリ秒)。
     /// StepExecutor 経由のステップ(tap/exist 等)は 4 つとも渡され、performCustom 経由
     /// (launchApp/wait/procedure 等)は durationMs のみ、それ以外(skip・dry-run 等)は
     /// 全て nil のまま(=計測なし)になる
@@ -456,7 +456,7 @@ public final class FTDriveCore {
 
 /// ContinuousClock の Duration → 整数ミリ秒(秒成分×1000 + attoseconds成分から算出。
 /// 1ms = 1e15 attoseconds。StepExecutor.ms と同じ計算式だが FTCore 側の private ヘルパーは
-/// モジュールを跨いで参照できないためこちらにも複製する。Phase 0 計測基盤)
+/// モジュールを跨いで参照できないためこちらにも複製する)
 func continuousClockMilliseconds(_ duration: Duration) -> Int {
     let (seconds, attoseconds) = duration.components
     return Int(seconds) * 1000 + Int(attoseconds / 1_000_000_000_000_000)
