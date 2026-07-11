@@ -650,10 +650,14 @@ function renderHtml(): string {
     text-overflow: ellipsis;
     cursor: pointer;
   }
-  .element-row:hover { background-color: var(--vscode-list-hoverBackground); }
+  /* ホバー色はテーマ値そのままだと濃い(2026-07-11 ユーザー指摘)ため、モニターパネルの
+     行ホバー(.machine-device-row/.device-pick-row)と同じ式で50%透過に薄める。 */
+  .element-row:hover { background-color: color-mix(in srgb, var(--vscode-list-hoverBackground) 50%, transparent); }
+  /* 選択色は拡張内で統一(2026-07-11 ユーザー指示): モニターパネルのプロファイルタブの
+     ヘッダーバー・デバイス行選択・デバイス選択モーダルのチェック行と同じ
+     editorGroupHeader-tabsBackground。薄い背景のため前景色の上書きは不要。 */
   .element-row.selected {
-    background-color: var(--vscode-list-activeSelectionBackground, #094771);
-    color: var(--vscode-list-activeSelectionForeground, #ffffff);
+    background-color: var(--vscode-editorGroupHeader-tabsBackground, rgba(128, 128, 128, 0.15));
   }
 </style>
 </head>
