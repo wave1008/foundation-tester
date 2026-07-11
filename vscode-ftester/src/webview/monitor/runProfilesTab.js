@@ -403,7 +403,7 @@ function validateRunProfileFields() {
     return 'デバイスを1台以上選択してください。';
   }
   const timeout = runProfileDefaultTimeout.value.trim();
-  if (timeout !== '' && (!/^\\d+$/.test(timeout) || Number(timeout) <= 0)) {
+  if (timeout !== '' && (!/^\d+$/.test(timeout) || Number(timeout) <= 0)) {
     return 'defaultTimeout は正の整数で入力してください。';
   }
   return null;
