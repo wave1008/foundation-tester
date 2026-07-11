@@ -179,9 +179,15 @@ public enum ScenarioRunner {
         default:
             status = .skipped(event.detail ?? "")
         }
+        // 時間内訳(Phase 0 計測基盤)。サブプロセスの ScenarioEvent に durationMs が無ければ
+        // 未計測のステップ(dry-run・スキップ等)なので timing 自体を nil のままにする
+        let timing = event.durationMs.map {
+            StepTiming(durationMs: $0, snapshotMs: event.snapshotMs,
+                      actionMs: event.actionMs, waitMs: event.waitMs)
+        }
         return StepResult(index: event.index ?? 0, description: event.description ?? "",
                           status: status, scene: event.scene, sceneTitle: event.sceneTitle,
-                          section: event.section)
+                          section: event.section, timing: timing)
     }
 }
 

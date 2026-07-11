@@ -1,11 +1,16 @@
 // StepExecutor.swift
 // 単一 FlowStep の決定的実行エンジン(Swift DSL のコマンドは全てここを通る)。
 // 実証済みのセマンティクス:
-// - ロケータ解決失敗は 1 秒後に 1 回だけ再試行(UI 遷移直後対策)
+// - ロケータ解決失敗は指数バックオフ(100→200→400ms、計3回)で再試行してからヒールへ
+//   (UI 遷移直後対策。ヒール発動までの総待機は計700msで、Phase 2 以前の1000ms台から
+//   大きく変えていない)
 // - アサーションでは type+index のみのフォールバックを使わない(別画面要素への偽陽性防止)
 // - optional ステップは要素未発見でも失敗にせずスキップ(自己修復の対象外)
 // - 自己修復は delegate 提案の confidence == "high" のみ採用
-// - 操作後 800ms 待機、exists/valueEquals/textEquals はタイムアウトまでポーリング
+// - 操作後の整定待ちはドライバ側に委譲(Android: ブリッジの a11y 静穏検知 / iOS: XCUITest の
+//   暗黙 quiescence)。Phase 2 でホスト側の固定 sleep は撤廃した。
+//   exists/valueEquals/textEquals はタイムアウトまでポーリング(間隔は PollBackoff の
+//   指数バックオフ = 100→200→400→800→1000ms 以降頭打ち。Phase 3 でポーリング間隔を統一)
 
 import Foundation
 
@@ -68,10 +73,13 @@ public struct StepResult: Sendable {
     /// 参照)。実際のコマンド実行結果ではないため、機械可読 NDJSON(ftester api run)では
     /// 除外する目印として使う(人間向けの表示では従来どおり残す)
     public let synthetic: Bool
+    /// ステップの所要時間内訳(Phase 0 計測基盤)。--profile 並列実行ではサブプロセスの
+    /// ScenarioEvent から復元される(ScenarioRunner.stepResult(from:) 参照)。合成行は nil
+    public let timing: StepTiming?
 
     public init(index: Int, description: String, status: Status,
                 scene: Int? = nil, sceneTitle: String? = nil, section: String? = nil,
-                synthetic: Bool = false) {
+                synthetic: Bool = false, timing: StepTiming? = nil) {
         self.index = index
         self.description = description
         self.status = status
@@ -79,6 +87,24 @@ public struct StepResult: Sendable {
         self.sceneTitle = sceneTitle
         self.section = section
         self.synthetic = synthetic
+        self.timing = timing
+    }
+}
+
+/// ステップ 1 回分の時間内訳(計測は ContinuousClock。単位はミリ秒。Phase 0 計測基盤)。
+/// durationMs はステップ全体の所要。snapshotMs/actionMs/waitMs は StepExecutor が計測できた
+/// 場合のみ値が入る(launchApp/wait/procedure 等 performCustom 経由のステップは durationMs のみ)
+public struct StepTiming: Sendable, Equatable {
+    public var durationMs: Int
+    public var snapshotMs: Int?
+    public var actionMs: Int?
+    public var waitMs: Int?
+
+    public init(durationMs: Int, snapshotMs: Int? = nil, actionMs: Int? = nil, waitMs: Int? = nil) {
+        self.durationMs = durationMs
+        self.snapshotMs = snapshotMs
+        self.actionMs = actionMs
+        self.waitMs = waitMs
     }
 }
 
@@ -88,11 +114,15 @@ public struct StepOutcome: Sendable {
     public let healedStep: FlowStep?
     /// true = ヒールキャッシュで解決(FM 不使用)。false で healedStep あり = FM 自己修復
     public let healedByCache: Bool
+    /// ステップの所要時間内訳(Phase 0 計測基盤)。実行エラー等で計測できなかった場合のみ nil
+    public let timing: StepTiming?
 
-    public init(status: StepResult.Status, healedStep: FlowStep? = nil, healedByCache: Bool = false) {
+    public init(status: StepResult.Status, healedStep: FlowStep? = nil, healedByCache: Bool = false,
+               timing: StepTiming? = nil) {
         self.status = status
         self.healedStep = healedStep
         self.healedByCache = healedByCache
+        self.timing = timing
     }
 }
 
@@ -110,28 +140,61 @@ public final class StepExecutor {
     /// cached: ヒールキャッシュ由来のロケータ連鎖。解決順は
     /// プライマリ → フォールバック → キャッシュ → FM ヒール(アクションのみ)
     public func execute(_ step: FlowStep, cached: [FlowLocator] = []) async -> StepOutcome {
+        let clock = ContinuousClock()
+        let start = clock.now
+        var phase = PhaseAccumulator()
         do {
             if let action = step.action {
-                return try await executeAction(action, step: step, cached: cached)
+                let outcome = try await executeAction(action, step: step, cached: cached, phase: &phase)
+                return StepOutcome(status: outcome.status, healedStep: outcome.healedStep,
+                                   healedByCache: outcome.healedByCache,
+                                   timing: StepTiming(durationMs: Self.ms(clock.now - start),
+                                                      snapshotMs: phase.snapshotMs,
+                                                      actionMs: phase.actionMs, waitMs: phase.waitMs))
             }
             if let assert = step.assert {
-                return StepOutcome(status: try await executeAssert(assert, step: step))
+                let status = try await executeAssert(assert, step: step, phase: &phase)
+                return StepOutcome(status: status,
+                                   timing: StepTiming(durationMs: Self.ms(clock.now - start),
+                                                      snapshotMs: phase.snapshotMs,
+                                                      actionMs: phase.actionMs, waitMs: phase.waitMs))
             }
             return StepOutcome(status: .skipped("action も assert もないステップ"))
         } catch {
-            return StepOutcome(status: .failed("実行エラー: \(error.localizedDescription)"))
+            return StepOutcome(status: .failed("実行エラー: \(error.localizedDescription)"),
+                               timing: StepTiming(durationMs: Self.ms(clock.now - start),
+                                                  snapshotMs: phase.snapshotMs,
+                                                  actionMs: phase.actionMs, waitMs: phase.waitMs))
         }
+    }
+
+    /// execute(_:cached:) 1 回分の snapshot/action/wait 所要時間(ミリ秒)の積算値。
+    /// 呼び出しの中だけで閉じるローカル値のため、並行アクセスの心配はない
+    private struct PhaseAccumulator {
+        var snapshotMs = 0
+        var actionMs = 0
+        var waitMs = 0
+    }
+
+    /// ContinuousClock の Duration → 整数ミリ秒(秒成分×1000 + attoseconds成分。
+    /// 1ms = 1e15 attoseconds)
+    private static func ms(_ duration: Duration) -> Int {
+        let (seconds, attoseconds) = duration.components
+        return Int(seconds) * 1000 + Int(attoseconds / 1_000_000_000_000_000)
     }
 
     // MARK: - アクション
 
     private func executeAction(_ action: String, step: FlowStep,
-                               cached: [FlowLocator] = []) async throws -> StepOutcome {
+                               cached: [FlowLocator] = [],
+                               phase: inout PhaseAccumulator) async throws -> StepOutcome {
+        let clock = ContinuousClock()
         // ロケータ不要のアクション
         if action == "swipe" {
             let direction = FTSwipeDirection(rawValue: step.direction ?? "") ?? .up
+            let start = clock.now
             try await driver.swipe(direction)
-            try await Task.sleep(nanoseconds: 800_000_000)
+            phase.actionMs += Self.ms(clock.now - start)
             return StepOutcome(status: .passed)
         }
 
@@ -140,7 +203,9 @@ public final class StepExecutor {
             let direction = FTSwipeDirection(rawValue: step.direction ?? "") ?? .up
             let maxSwipes = step.maxSwipes ?? 8
             for attempt in 0...maxSwipes {
+                var start = clock.now
                 let snapshot = try await driver.snapshot()
+                phase.snapshotMs += Self.ms(clock.now - start)
                 // スクロール探索でも type+index フォールバックは偽陽性のもとなので使わない
                 if let (_, fallback) = Self.resolve(step: step, in: snapshot, strictForAssert: true) {
                     if let fallback {
@@ -149,21 +214,34 @@ public final class StepExecutor {
                     return StepOutcome(status: .passed)
                 }
                 if attempt < maxSwipes {
+                    start = clock.now
                     try await driver.swipe(direction)
-                    try await Task.sleep(nanoseconds: 600_000_000)
+                    phase.actionMs += Self.ms(clock.now - start)
                 }
             }
             return StepOutcome(status: .failed(
                 "\(maxSwipes) 回スクロールしても要素が見つかりません: \(step.locatorSummary)"))
         }
 
-        // ロケータ解決(1秒待って1回だけ再試行 — UI 遷移直後対策)
+        // ロケータ解決(指数バックオフで最大3回再試行 — UI 遷移直後対策。
+        // 100→200→400ms で計700ms、ヒール発動までの総待機は Phase 2 以前(1000ms台)から
+        // 大きく変えていない)
+        var start = clock.now
         var snapshot = try await driver.snapshot()
+        phase.snapshotMs += Self.ms(clock.now - start)
         var resolved = Self.resolve(step: step, in: snapshot)
         if resolved == nil {
-            try await Task.sleep(nanoseconds: 1_000_000_000)
-            snapshot = try await driver.snapshot()
-            resolved = Self.resolve(step: step, in: snapshot)
+            var backoff = PollBackoff()
+            for _ in 0..<3 {
+                start = clock.now
+                try await Task.sleep(for: backoff.nextDelay())
+                phase.waitMs += Self.ms(clock.now - start)
+                start = clock.now
+                snapshot = try await driver.snapshot()
+                phase.snapshotMs += Self.ms(clock.now - start)
+                resolved = Self.resolve(step: step, in: snapshot)
+                if resolved != nil { break }
+            }
         }
 
         var status: StepResult.Status = .passed
@@ -205,15 +283,20 @@ public final class StepExecutor {
 
         switch action {
         case "tap":
+            start = clock.now
             try await driver.tap(ref: element.ref)
+            phase.actionMs += Self.ms(clock.now - start)
         case "type":
+            start = clock.now
             try await driver.type(ref: element.ref, text: step.text ?? "")
+            phase.actionMs += Self.ms(clock.now - start)
         case "press":
+            start = clock.now
             try await driver.press(ref: element.ref, duration: 1.0)
+            phase.actionMs += Self.ms(clock.now - start)
         default:
             return StepOutcome(status: .skipped("未知のアクション: \(action)"))
         }
-        try await Task.sleep(nanoseconds: 800_000_000)
         return StepOutcome(status: status, healedStep: healedStep, healedByCache: healedByCache)
     }
 
@@ -230,19 +313,26 @@ public final class StepExecutor {
 
     // MARK: - アサーション
 
-    private func executeAssert(_ assert: String, step: FlowStep) async throws -> StepResult.Status {
+    private func executeAssert(_ assert: String, step: FlowStep,
+                               phase: inout PhaseAccumulator) async throws -> StepResult.Status {
+        let clock = ContinuousClock()
         switch assert {
         case "exists":
             let deadline = Date().addingTimeInterval(TimeInterval(step.timeout ?? 5))
+            var backoff = PollBackoff()
             while Date() < deadline {
+                var start = clock.now
                 let snapshot = try await driver.snapshot()
+                phase.snapshotMs += Self.ms(clock.now - start)
                 // アサーションでは type+index のみのフォールバックを使わない。
                 // 別画面の無関係な要素にマッチして偽陽性になる(実測済み)
                 if let (_, fallback) = Self.resolve(step: step, in: snapshot, strictForAssert: true) {
                     if let fallback { return .passedViaFallback(fallback) }
                     return .passed
                 }
-                try await Task.sleep(nanoseconds: 1_000_000_000)
+                start = clock.now
+                try await Task.sleep(for: backoff.nextDelay())
+                phase.waitMs += Self.ms(clock.now - start)
             }
             return .failed("要素が見つかりません: \(step.locatorSummary)(timeout \(step.timeout ?? 5)s)")
 
@@ -253,8 +343,11 @@ public final class StepExecutor {
             let deadline = Date().addingTimeInterval(TimeInterval(step.timeout ?? 5))
             var lastActual: String?
             var found = false
+            var backoff = PollBackoff()
             while Date() < deadline {
+                var start = clock.now
                 let snapshot = try await driver.snapshot()
+                phase.snapshotMs += Self.ms(clock.now - start)
                 if let (element, fallback) = Self.resolve(step: step, in: snapshot, strictForAssert: true) {
                     found = true
                     let actual = assert == "textEquals" ? element.label : element.value
@@ -264,7 +357,9 @@ public final class StepExecutor {
                         return .passed
                     }
                 }
-                try await Task.sleep(nanoseconds: 1_000_000_000)
+                start = clock.now
+                try await Task.sleep(for: backoff.nextDelay())
+                phase.waitMs += Self.ms(clock.now - start)
             }
             let subject = assert == "textEquals" ? "テキスト" : "値"
             return found
@@ -278,7 +373,9 @@ public final class StepExecutor {
             guard let delegate else {
                 return .skipped("FM 検証が無効(Foundation Models 利用不可)")
             }
+            let start = clock.now
             let screenshot = try await driver.screenshot()
+            phase.actionMs += Self.ms(clock.now - start)
             guard let verdict = await delegate.verifyScreen(expected: expected, screenshotPNG: screenshot) else {
                 return .skipped("画面検証を実行できませんでした")
             }

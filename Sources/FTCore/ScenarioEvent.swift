@@ -41,6 +41,16 @@ public struct ScenarioEvent: Codable, Sendable {
     public var reportPath: String?
     /// kind == log(ユーザー print の混入行など)
     public var message: String?
+    /// kind == step のステップ全体の所要時間(ミリ秒。計測は ContinuousClock。Phase 0 計測基盤)。
+    /// 追加フィールドのため decodeIfPresent 相当(Optional プロパティは Swift の Codable 合成が
+    /// 欠損キーを自動で nil にする)で旧クライアントとの互換を保つ
+    public var durationMs: Int?
+    /// durationMs の内訳: セレクタ解決のための snapshot 取得合計(ミリ秒)
+    public var snapshotMs: Int?
+    /// durationMs の内訳: driver 操作呼び出し(tap/type/press/swipe/screenshot)の合計(ミリ秒)
+    public var actionMs: Int?
+    /// durationMs の内訳: 固定 sleep・ポーリング待ちの合計(ミリ秒)
+    public var waitMs: Int?
 
     public init(kind: String) {
         self.kind = kind

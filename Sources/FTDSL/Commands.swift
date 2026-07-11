@@ -197,7 +197,6 @@ public func launchApp(_ bundleID: String? = nil,
     core.performCustom(description: "launch \(bundle)", file: file, line: line,
                        abortsScenario: true) {
         try await driver.launch(bundleID: bundle)
-        try await Task.sleep(nanoseconds: 1_200_000_000)
     }
 }
 
@@ -210,9 +209,7 @@ public func relaunchApp(_ bundleID: String? = nil,
     core.performCustom(description: "relaunch \(bundle)", file: file, line: line,
                        abortsScenario: true) {
         try? await driver.terminate()
-        try await Task.sleep(nanoseconds: 500_000_000)
         try await driver.launch(bundleID: bundle)
-        try await Task.sleep(nanoseconds: 1_200_000_000)
     }
 }
 

@@ -1,22 +1,52 @@
 // ApiLiveCommand.swift
-// VSCode拡張のライブ操作パネル向け: 手動駆動コマンド(FTester.swift の Snapshot/Tap/
-// TypeCommand/Swipe/Press/Install/Launch/Terminate)と同じ AppDriver 呼び出しを流用した
-// 機械可読ワンショットCLI(ftester api live <sub>)。常駐しない(1回の呼び出しにつき1回の
-// 操作を行い、結果を1行 JSON で出して終了する)。
+// VSCode拡張のライブ操作パネル向け常駐 CLI(ftester api live serve)。
 //
-// 座標契約: snapshot の screen / elements[].frame はポイント座標。スクリーンショット画像上の
-// クリック位置→ポイント座標への比例変換は呼び出し側(拡張)が行い、このコマンドへは
-// 変換済みのポイント座標をそのまま渡す契約。
+// 高速化計画 Phase 4: 旧実装は1操作ごとに `ftester api live tap` 等をワンショットspawnし、
+// 操作後に固定700ms待ってから `api live snapshot` を別プロセスでspawnしていた(1タップあたり
+// プロセス起動2回+700ms)。Phase 2でブリッジの操作応答=UI整定済みになったため、待ちは不要になった。
+// serve はドライバを起動時に1回だけ生成して使い回し(これが高速化の本体)、以降は stdin から
+// NDJSON でコマンドを1行ずつ受けて逐次処理する(1リクエストにつきプロセス起動ゼロ・追加待ちゼロ)。
 //
-// 出力方針: stdout には 1 行の JSON だけを出力する(診断は stderr のみ。ApiCommands.swift と
-// 同じ流儀)。snapshot はスクリーンショットのダウンスケール+JPEG化に ApiMonitorCommand.swift の
-// MonitorImage(private を外して共有)を再利用する。
+// 単一実装原則により、旧ワンショットサブコマンド(snapshot/tap/type/swipe/press/launch/terminate/
+// install)は削除した(livePanel.ts が唯一の利用元で、置き換え後は他に使用箇所が無いことを確認済み。
+// press はそもそも livePanel.ts の UI に長押し操作が無く、旧実装時点から未使用だった)。
 //
-// エラー方針: ドライバ操作(ブリッジ/adb 通信等)の失敗は throw で落とさず
-// {"ok":false,"error":"<localizedDescription>"} を stdout に出して exit code 1 で終える
-// (拡張がパースしてエラー表示する。ApiDeviceCommands.swift の ok:false 方針と同じ)。
-// 一方、引数不正(--platform の値が不正、--ref/--x/--y の指定不足等)は ValidationError を
-// そのまま throw し、従来どおり ArgumentParser にフォーマットさせる。
+// プロトコル(stdin → serve、1行1コマンドの NDJSON。引数の意味論は旧ワンショット版を踏襲):
+//   {"cmd":"tap","ref":<Int>}                           snapshot の参照番号をタップ
+//   {"cmd":"tap","x":<Double>,"y":<Double>}             座標(pt)をタップ
+//   {"cmd":"type","text":<String>,"ref":<Int省略可>}     テキスト入力(ref省略時はフォーカス中の要素)
+//   {"cmd":"swipe","direction":"up"|"down"|"left"|"right"}
+//   {"cmd":"launch","bundle":<String>}                  bundle ID / パッケージ名を起動
+//   {"cmd":"terminate"}                                 対象アプリを終了
+//   {"cmd":"install","path":<String>}                   パッケージファイル(iOS: .app / Android: .apk)
+//                                                        からインストール
+//   {"cmd":"refresh"}                                   操作は行わず観測のみ
+// 壊れた行(JSON でない、cmd が無い)は stderr に1行ログして無視する(他の常駐 api コマンドと同じ
+// 「安全側で無視する」方針)。
+//
+// イベント(serve → stdout、1行1JSON。診断は stderr のみ):
+//   refresh 以外のコマンドはまず
+//     {"kind":"actionResult","ok":true,"error":null}
+//     {"kind":"actionResult","ok":false,"error":"<説明>"}
+//   のどちらかを出し、続けて(操作の成否を問わず)観測イベント
+//     {"kind":"snapshot","ok":true,"error":null,"platform":"ios"|"android",
+//      "screen":{"width":..,"height":..},"image":"<base64 JPEG>",
+//      "elements":[{"ref":..,"type":"..","label":..|null,"identifier":..|null,"value":..|null,
+//                    "frame":{"x":..,"y":..,"width":..,"height":..}}, ...]}
+//     {"kind":"snapshot","ok":false,"error":"<説明>","platform":null,"screen":null,"image":null,
+//      "elements":null}
+//   を出す(操作後の追加waitは無し。Phase 2でブリッジ応答=UI整定済みのため)。
+//   refresh はこの観測イベント1行だけを出す(actionResult は出さない)。
+//   拡張側は actionResult が ok:false のとき、続く snapshot イベントは画面へ反映しない
+//   (直前の表示を保持したままエラーを表示する。旧ワンショット版の挙動を踏襲)。
+//
+// 座標契約: snapshot の screen / elements[].frame はポイント座標(旧ワンショット版と同じ)。
+//
+// 終了: stdin EOF、または SIGTERM/SIGINT(ApiMonitorCommand/ApiHostMetricsCommand と同じ流儀。
+// setvbuf での行バッファ化も同じ)。stdin 監視は他の常駐 api コマンドと同じく専用スレッドで
+// 行うが、こちらは周期処理を持たない(コマンド駆動のみ)ため StopFlag+ポーリングではなく
+// AsyncStream で橋渡しし、SIGTERM/SIGINT はそのまま continuation.finish() を呼んで
+// for-await ループを抜けさせる(イベント駆動なのでポーリング不要)。
 
 import ArgumentParser
 import Foundation
@@ -25,21 +55,17 @@ import FTCore
 struct ApiLiveCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "live",
-        abstract: "VSCode拡張のライブ操作パネル向け機械可読ワンショットCLI"
-            + "(snapshot/tap/type/swipe/press/launch/terminate/install。"
-            + "stdout に結果1行のJSON。診断は stderr のみ)",
-        subcommands: [ApiLiveSnapshot.self, ApiLiveTap.self, ApiLiveType.self,
-                      ApiLiveSwipe.self, ApiLivePress.self, ApiLiveLaunch.self,
-                      ApiLiveTerminate.self, ApiLiveInstall.self])
+        abstract: "VSCode拡張のライブ操作パネル向け常駐 CLI(serve のみ。ファイル冒頭のプロトコル参照)",
+        subcommands: [ApiLiveServe.self])
 }
 
-// MARK: - api live snapshot
+// MARK: - api live serve
 
-struct ApiLiveSnapshot: AsyncParsableCommand {
+struct ApiLiveServe: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
-        commandName: "snapshot",
-        abstract: "スクリーンショット(ダウンスケール済み JPEG)とアクセシビリティツリーを"
-            + "1行のJSONで出力する(失敗時: ok:false + exit code 1)")
+        commandName: "serve",
+        abstract: "ライブ操作パネル向けに常駐し、stdin の NDJSON コマンドを逐次処理する"
+            + "(ApiLiveCommand.swift 冒頭のプロトコル参照。診断は stderr のみ)")
 
     @Option(name: .customLong("max-width"), help: "スクリーンショットの長辺の最大幅(px。既定 640)")
     var maxWidth: Int = 640
@@ -47,7 +73,109 @@ struct ApiLiveSnapshot: AsyncParsableCommand {
     @OptionGroup var driverOptions: DriverOptions
 
     func run() async throws {
+        // ストリーミング読み取りが前提のため常に行バッファにする(他の常駐 api コマンドと同じ理由)
+        setvbuf(stdout, nil, _IOLBF, 0)
+
+        // ドライバは起動時に1回だけ生成し、以降の全コマンドで使い回す(常駐化の本体。旧実装は
+        // ワンショット呼び出し毎に makeDriver() していた)
         let driver = try driverOptions.makeDriver()
+
+        let (lines, continuation) = AsyncStream<String>.makeStream(of: String.self)
+        let reader = Thread {
+            while let line = readLine(strippingNewline: true) {
+                continuation.yield(line)
+            }
+            continuation.finish()
+        }
+        reader.name = "ftester-api-live-serve-stdin"
+        reader.start()
+
+        // SIGTERM/SIGINT は既定の即時終了を上書きし、AsyncStream を finish して下の
+        // for-await ループを抜けさせる。ApiMonitorCommand/ApiHostMetricsCommand の
+        // StopFlag+sleepInterruptible(周期ポーリング)と違い、serve はコマンド駆動のイベントループ
+        // なのでポーリングは不要
+        signal(SIGTERM, SIG_IGN)
+        signal(SIGINT, SIG_IGN)
+        let signalQueue = DispatchQueue(label: "ftester-api-live-serve-signal")
+        // ループを抜けるまでシグナルソースを保持する(解放されるとハンドラが外れる)
+        let signalSources = [SIGTERM, SIGINT].map { sig -> DispatchSourceSignal in
+            let source = DispatchSource.makeSignalSource(signal: sig, queue: signalQueue)
+            source.setEventHandler { continuation.finish() }
+            source.resume()
+            return source
+        }
+        defer { for source in signalSources { source.cancel() } }
+
+        for await line in lines {
+            guard let data = line.data(using: .utf8),
+                  let command = try? JSONDecoder().decode(ApiLiveServeCommand.self, from: data) else {
+                logStderr("未知の形式の行を無視しました: \(line)")
+                continue
+            }
+            await handle(command: command, driver: driver)
+        }
+    }
+
+    /// 1コマンドを処理する: refresh 以外はまずアクションを実行して actionResult を出し、
+    /// 続けて(操作の成否を問わず)観測イベントを出す。refresh は観測イベントのみ
+    private func handle(command: ApiLiveServeCommand, driver: AppDriver) async {
+        if command.cmd != "refresh" {
+            do {
+                try await perform(command: command, driver: driver)
+                emitLine(ApiLiveActionResultEvent(ok: true, error: nil))
+            } catch {
+                emitLine(ApiLiveActionResultEvent(ok: false, error: error.localizedDescription))
+            }
+        }
+        await emitObservation(driver: driver)
+    }
+
+    /// コマンドに応じたドライバ操作を実行する。引数不足・未知の cmd は ServeCommandError を投げる
+    /// (呼び出し元 handle が actionResult の ok:false として拾う)
+    private func perform(command: ApiLiveServeCommand, driver: AppDriver) async throws {
+        switch command.cmd {
+        case "tap":
+            if let ref = command.ref {
+                try await driver.tap(ref: ref)
+            } else if let x = command.x, let y = command.y {
+                try await driver.tap(x: x, y: y)
+            } else {
+                throw ServeCommandError.invalidArguments("tap には ref か x/y のどちらかが必要です")
+            }
+        case "type":
+            guard let text = command.text else {
+                throw ServeCommandError.invalidArguments("type には text が必要です")
+            }
+            try await driver.type(ref: command.ref, text: text)
+        case "swipe":
+            guard let raw = command.direction, let direction = FTSwipeDirection(rawValue: raw) else {
+                throw ServeCommandError.invalidArguments(
+                    "swipe の direction は up/down/left/right のいずれかです")
+            }
+            try await driver.swipe(direction)
+        case "launch":
+            guard let bundle = command.bundle else {
+                throw ServeCommandError.invalidArguments("launch には bundle が必要です")
+            }
+            try await driver.launch(bundleID: bundle)
+        case "terminate":
+            try await driver.terminate()
+        case "install":
+            guard let path = command.path else {
+                throw ServeCommandError.invalidArguments("install には path が必要です")
+            }
+            guard FileManager.default.fileExists(atPath: path) else {
+                throw ServeCommandError.invalidArguments("パッケージファイルが見つかりません: \(path)")
+            }
+            try await driver.install(packagePath: path)
+        default:
+            throw ServeCommandError.invalidArguments("未知の cmd です: \(command.cmd)")
+        }
+    }
+
+    /// スクリーンショット(ダウンスケール済み JPEG)とアクセシビリティツリーを観測イベントとして出す
+    /// (旧 api live snapshot と同じ処理。ApiMonitorCommand.swift の MonitorImage を共有利用する)
+    private func emitObservation(driver: AppDriver) async {
         do {
             let png = try await driver.screenshot()
             let jpeg = try MonitorImage.downscaledJPEG(pngData: png, maxWidth: maxWidth)
@@ -56,186 +184,37 @@ struct ApiLiveSnapshot: AsyncParsableCommand {
                 ApiLiveElement(ref: $0.ref, type: $0.type, label: $0.label,
                                identifier: $0.identifier, value: $0.value, frame: $0.frame)
             }
-            emitLiveJSON(ApiLiveSnapshotResult(
+            emitLine(ApiLiveSnapshotEvent(
+                ok: true, error: nil,
                 platform: driverOptions.platform,
                 screen: ApiLiveScreenSize(width: snap.screen.width, height: snap.screen.height),
-                image: jpeg.data.base64EncodedString(),
-                elements: elements))
+                image: jpeg.data.base64EncodedString(), elements: elements))
         } catch {
-            emitLiveJSON(ApiLiveErrorResult(error: error.localizedDescription))
-            throw ExitCode(1)
+            emitLine(ApiLiveSnapshotEvent(
+                ok: false, error: error.localizedDescription,
+                platform: nil, screen: nil, image: nil, elements: nil))
         }
     }
+
+    private func logStderr(_ message: String) {
+        FileHandle.standardError.write(Data(("[live serve] " + message + "\n").utf8))
+    }
 }
 
-// MARK: - api live tap
+/// 引数不足・未知の cmd 等、コマンドの中身が不正なときのエラー(JSON 自体は壊れていない場合)
+private enum ServeCommandError: Error, LocalizedError {
+    case invalidArguments(String)
 
-struct ApiLiveTap: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(
-        commandName: "tap",
-        abstract: "要素または座標(pt)をタップする(失敗時: ok:false + exit code 1)")
-
-    @Option(help: "snapshot の参照番号")
-    var ref: Int?
-
-    @Option(help: "X座標(pt)")
-    var x: Double?
-
-    @Option(help: "Y座標(pt)")
-    var y: Double?
-
-    @OptionGroup var driverOptions: DriverOptions
-
-    func run() async throws {
-        let driver = try driverOptions.makeDriver()
-        if let ref {
-            try await runLiveAction { try await driver.tap(ref: ref) }
-        } else if let x, let y {
-            try await runLiveAction { try await driver.tap(x: x, y: y) }
-        } else {
-            throw ValidationError("--ref か --x/--y のどちらかを指定してください")
+    var errorDescription: String? {
+        switch self {
+        case .invalidArguments(let message): return message
         }
-    }
-}
-
-// MARK: - api live type
-
-struct ApiLiveType: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(
-        commandName: "type",
-        abstract: "テキストを入力する(--ref 指定時はタップしてから入力。"
-            + "失敗時: ok:false + exit code 1)")
-
-    @Option(help: "入力する文字列")
-    var text: String
-
-    @Option(help: "入力先要素の参照番号(省略時はフォーカス中の要素)")
-    var ref: Int?
-
-    @OptionGroup var driverOptions: DriverOptions
-
-    func run() async throws {
-        let driver = try driverOptions.makeDriver()
-        try await runLiveAction { try await driver.type(ref: ref, text: text) }
-    }
-}
-
-// MARK: - api live swipe
-
-struct ApiLiveSwipe: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(
-        commandName: "swipe",
-        abstract: "スワイプする(失敗時: ok:false + exit code 1)")
-
-    @Option(help: "方向: up / down / left / right")
-    var direction: String
-
-    @OptionGroup var driverOptions: DriverOptions
-
-    func run() async throws {
-        guard let dir = FTSwipeDirection(rawValue: direction) else {
-            throw ValidationError("方向は up / down / left / right のいずれかです")
-        }
-        let driver = try driverOptions.makeDriver()
-        try await runLiveAction { try await driver.swipe(dir) }
-    }
-}
-
-// MARK: - api live press
-
-struct ApiLivePress: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(
-        commandName: "press",
-        abstract: "要素を長押しする(失敗時: ok:false + exit code 1)")
-
-    @Option(help: "snapshot の参照番号")
-    var ref: Int
-
-    @Option(help: "長押し秒数")
-    var duration: Double = 1.0
-
-    @OptionGroup var driverOptions: DriverOptions
-
-    func run() async throws {
-        let driver = try driverOptions.makeDriver()
-        try await runLiveAction { try await driver.press(ref: ref, duration: duration) }
-    }
-}
-
-// MARK: - api live launch
-
-struct ApiLiveLaunch: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(
-        commandName: "launch",
-        abstract: "対象アプリを起動する(失敗時: ok:false + exit code 1)")
-
-    @Option(help: "アプリの bundle identifier(例: com.example.sampleapp)")
-    var bundle: String
-
-    @OptionGroup var driverOptions: DriverOptions
-
-    func run() async throws {
-        let driver = try driverOptions.makeDriver()
-        try await runLiveAction { try await driver.launch(bundleID: bundle) }
-    }
-}
-
-// MARK: - api live terminate
-
-struct ApiLiveTerminate: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(
-        commandName: "terminate",
-        abstract: "対象アプリを終了する(失敗時: ok:false + exit code 1)")
-
-    @OptionGroup var driverOptions: DriverOptions
-
-    func run() async throws {
-        let driver = try driverOptions.makeDriver()
-        try await runLiveAction { try await driver.terminate() }
-    }
-}
-
-// MARK: - api live install
-
-struct ApiLiveInstall: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(
-        commandName: "install",
-        abstract: "パッケージファイルからアプリをインストールする"
-            + "(iOS: .app バンドル / Android: .apk。失敗時: ok:false + exit code 1)")
-
-    @Option(help: "パッケージファイルのパス(iOS: .app バンドル / Android: .apk)")
-    var path: String
-
-    @OptionGroup var driverOptions: DriverOptions
-
-    func run() async throws {
-        guard FileManager.default.fileExists(atPath: path) else {
-            throw ValidationError("パッケージファイルが見つかりません: \(path)")
-        }
-        let driver = try driverOptions.makeDriver()
-        try await runLiveAction { try await driver.install(packagePath: path) }
-    }
-}
-
-// MARK: - 共通ヘルパー
-
-/// ドライバ操作を実行し、成功時は {"ok":true}、失敗時は {"ok":false,"error":...} を出力して
-/// exit code 1 で終える。makeDriver() 自体の ValidationError(--platform 不正)はこのヘルパーの
-/// 外側(呼び出し元の run() 冒頭)で発生させ、ここには渡さない契約(ArgumentParser にそのまま
-/// 処理させるため)。ApiDeviceCommands.swift の ok:false 方針と同じ
-private func runLiveAction(_ body: () async throws -> Void) async throws {
-    do {
-        try await body()
-        emitLiveJSON(ApiLiveOkResult())
-    } catch {
-        emitLiveJSON(ApiLiveErrorResult(error: error.localizedDescription))
-        throw ExitCode(1)
     }
 }
 
 /// 1行 JSON を stdout に出力する(ApiMonitorCommand.emitLine と同方針。withoutEscapingSlashes は
 /// snapshot の image(base64。"/" を含みうる)向け)
-private func emitLiveJSON<T: Encodable>(_ value: T) {
+private func emitLine<T: Encodable>(_ value: T) {
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
     guard let data = try? encoder.encode(value),
@@ -243,15 +222,67 @@ private func emitLiveJSON<T: Encodable>(_ value: T) {
     print(line)
 }
 
-// MARK: - JSON 出力
+// MARK: - stdin コマンド
 
-/// ftester api live snapshot の成功時出力
-private struct ApiLiveSnapshotResult: Encodable {
-    let ok = true
-    let platform: String
-    let screen: ApiLiveScreenSize
-    let image: String
-    let elements: [ApiLiveElement]
+/// stdin から受け取る1コマンド分(NDJSON 1行)。cmd 以外は全コマンド共通のオプショナルとし、
+/// 必須引数の欠落はコマンド種別ごとに perform(command:driver:) が判定する(JSON 自体が壊れている
+/// 行だけを「無視」の対象にし、フィールド欠落は actionResult の ok:false として応答できるようにする
+/// ため。ArgumentParser の ValidationError と違い、こちらはリクエスト毎の実行時データなので
+/// プロセスを落とさず1件だけ失敗させる)
+private struct ApiLiveServeCommand: Decodable {
+    let cmd: String
+    let ref: Int?
+    let x: Double?
+    let y: Double?
+    let text: String?
+    let direction: String?
+    let bundle: String?
+    let path: String?
+}
+
+// MARK: - JSON 出力(イベント)
+
+/// actionResult イベント(refresh 以外の全コマンド共通)
+private struct ApiLiveActionResultEvent: Encodable {
+    let kind = "actionResult"
+    let ok: Bool
+    let error: String?
+
+    private enum CodingKeys: String, CodingKey { case kind, ok, error }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(kind, forKey: .kind)
+        try container.encode(ok, forKey: .ok)
+        try container.encode(error, forKey: .error)
+    }
+}
+
+/// snapshot(観測)イベント。ok:true 時は platform/screen/image/elements が必ず埋まり、ok:false 時は
+/// それらが null になる(旧 ApiLiveSnapshotResult/ApiLiveErrorResult を1つに統合した形)
+private struct ApiLiveSnapshotEvent: Encodable {
+    let kind = "snapshot"
+    let ok: Bool
+    let error: String?
+    let platform: String?
+    let screen: ApiLiveScreenSize?
+    let image: String?
+    let elements: [ApiLiveElement]?
+
+    private enum CodingKeys: String, CodingKey {
+        case kind, ok, error, platform, screen, image, elements
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(kind, forKey: .kind)
+        try container.encode(ok, forKey: .ok)
+        try container.encode(error, forKey: .error)
+        try container.encode(platform, forKey: .platform)
+        try container.encode(screen, forKey: .screen)
+        try container.encode(image, forKey: .image)
+        try container.encode(elements, forKey: .elements)
+    }
 }
 
 /// screen はポイント座標のサイズのみ(位置は常に (0,0) 起点のため x/y は出さない)
@@ -284,15 +315,4 @@ private struct ApiLiveElement: Encodable {
         try container.encode(value, forKey: .value)
         try container.encode(frame, forKey: .frame)
     }
-}
-
-/// snapshot 以外の全サブコマンド共通の成功時出力
-private struct ApiLiveOkResult: Encodable {
-    let ok = true
-}
-
-/// 全サブコマンド共通の失敗時出力(ドライバ操作の失敗のみ。引数不正はここを通らない)
-private struct ApiLiveErrorResult: Encodable {
-    let ok = false
-    let error: String
 }

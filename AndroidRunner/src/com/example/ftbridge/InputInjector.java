@@ -42,6 +42,24 @@ final class InputInjector {
     }
 
     /**
+     * フォーカス中の入力要素(FOCUS_INPUT)が現れるまで待つ(ref タップ直後、フォーカス反映の
+     * ラグ対策。固定 sleep(500) の代替)。in-process の短間隔チェックのみ(50ms 粒度以下。
+     * HTTP/snapshot ポーリングではない)。見つからないまま timeoutMs 経過しても例外は投げない
+     * (最終判定は setTextAppending 側の findFocus に委ねる)。
+     */
+    static void waitForFocusInput(UiAutomation ua, long timeoutMs) {
+        long deadline = SystemClock.uptimeMillis() + timeoutMs;
+        while (true) {
+            AccessibilityNodeInfo root = ua.getRootInActiveWindow();
+            AccessibilityNodeInfo focus = root == null ? null
+                    : root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
+            if (focus != null) return;
+            if (SystemClock.uptimeMillis() >= deadline) return;
+            SystemClock.sleep(20);
+        }
+    }
+
+    /**
      * フォーカス中の入力フィールドへ追記する(iOS の typeText / adb input text と同じ追記意味論)。
      * ACTION_SET_TEXT は全置換なので既存テキストと連結して渡す。日本語などの非 ASCII も入る。
      */

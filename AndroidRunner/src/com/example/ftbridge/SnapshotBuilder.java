@@ -1,7 +1,8 @@
 // SnapshotBuilder.java
 // AccessibilityNodeInfo ツリー → BridgeDTO.SnapshotResponse 互換 JSON。
-// フィルタ・型語彙マップ・テキスト昇格・ref 採番は Sources/FTAndroid/AndroidDriver.swift の
-// uiautomator dump 版と同一仕様(FM プロンプトの一貫性のため。変更時は両方を揃えること)。
+// フィルタ・型語彙マップ・テキスト昇格・ref 採番の唯一の実装(Phase 1 で
+// Sources/FTAndroid/AndroidDriver.swift 側の uiautomator dump フォールバックは削除済み。
+// 揃えるべき相方はもう存在しない。iOS 側との型語彙の対応は Runner/FTesterRunnerUITests を参照)。
 package com.example.ftbridge;
 
 import android.app.UiAutomation;

@@ -110,12 +110,6 @@ struct Doctor: AsyncParsableCommand {
                 if let driver = try? AndroidDriver(serial: serial) {
                     print("   ・ \(serial): \(driver.bridgeDoctorSummary())")
                 }
-                // 日本語入力用 Unicode IME(ブリッジ不達時のフォールバックでのみ使用)
-                let pm = try? Shell.run([android.adbPath, "-s", serial, "shell",
-                                         "pm", "list", "packages", AndroidDriver.unicodeIMEPackage])
-                let installed = pm?.output.contains("package:\(AndroidDriver.unicodeIMEPackage)") ?? false
-                print("   \(installed ? "✅" : "・") \(serial): 日本語入力IME(フォールバック用)"
-                      + (installed ? "導入済み" : "未導入(必要時に自動インストール)"))
             }
         } else {
             print("⚠️ adb が見つかりません(Android を使う場合は ANDROID_HOME を設定)")
