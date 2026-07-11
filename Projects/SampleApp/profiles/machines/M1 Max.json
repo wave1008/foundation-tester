@@ -1,15 +1,48 @@
 {
-  "ios": {
-    "devices": [
-      { "name": "シミュ1", "simulator": "iPhone 17 Pro", "os": "27.0" },
-      { "name": "シミュ2", "simulator": "iPhone Air", "os": "27.0" }
-    ]
-  },
   "android": {
     "devices": [
-      { "name": "エミュ1", "avd": "Pixel 9(Android 16)" },
-      { "name": "エミュ2", "avd": "Pixel 9(Android 15)" },
-      { "name": "エミュ3", "avd": "Pixel 8(Android 14)" }
+      {
+        "avd": "Pixel 9(Android 16)",
+        "name": "エミュ1"
+      },
+      {
+        "avd": "Pixel 9(Android 15)",
+        "name": "エミュ2"
+      },
+      {
+        "avd": "Pixel 8(Android 14)",
+        "name": "エミュ3"
+      },
+      {
+        "avd": "Pixel_10_Pro_XL_Android_16_API_36_google_apis_playstore_arm64-v8a",
+        "name": "Pixel 10 Pro XL(Android 16(API 36) google_apis_playstore / arm64-v8a)"
+      }
+    ]
+  },
+  "ios": {
+    "devices": [
+      {
+        "name": "シミュ1",
+        "os": "27.0",
+        "simulator": "iPhone 17 Pro"
+      },
+      {
+        "name": "シミュ2",
+        "os": "27.0",
+        "simulator": "iPhone Air"
+      },
+      {
+        "name": "iPhone 17 Pro(iOS 27.0)",
+        "os": "27.0",
+        "simulator": "iPhone 17 Pro",
+        "udid": "42D525B9-8FAD-4CFB-8B8E-3AF61EBB0A35"
+      },
+      {
+        "name": "iPhone 17 Pro(iOS 27.0)-a",
+        "simulator": "iPhone 17 Pro(iOS 27.0)-a",
+        "os": "27.0",
+        "udid": "3EDCE6A7-375E-4216-9C61-97AB387D39A4"
+      }
     ]
   }
 }

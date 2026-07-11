@@ -6,6 +6,10 @@
   "additionalProperties": true,
   "required": ["app", "devices"],
   "properties": {
+    "machine": {
+      "type": "string",
+      "description": "使用するマシンプロファイル名(profiles/machines/<名前>.json)。この指定が最優先で、未指定時は登録マシン(machine set)等から自動解決される。"
+    },
     "app": {
       "type": "string",
       "description": "apps/<name>.json への参照(拡張子なし)。必須。",

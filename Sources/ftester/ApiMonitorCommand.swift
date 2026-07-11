@@ -62,8 +62,11 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         setvbuf(stdout, nil, _IOLBF, 0)
 
         let testProject = try ScenarioHost.project(named: project)
+        // --profile が machine を明示指定していれば最優先する(絞り込み(RunProfileScope)と
+        // 対のマシン決定。ProfileResolver.resolve() 内部の上書きと同じ優先順位)
         let machine = try ProfileResolver.determineMachine(
-            project: testProject, registered: LocalConfig.currentMachineName())
+            project: testProject, registered: LocalConfig.currentMachineName(),
+            runProfileName: profile)
         if machine.auto {
             logStderr("→ マシンプロファイル自動採用: \(machine.name)(machines/ が 1 つのため)")
         }

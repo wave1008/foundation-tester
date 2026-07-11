@@ -34,8 +34,11 @@ struct DevicesCommand: AsyncParsableCommand {
 
         func run() async throws {
             let testProject = try ScenarioHost.project(named: project)
+            // --profile が machine を明示指定していれば最優先する(RunProfileScope による絞り込み
+            // と対のマシン決定。ProfileResolver.resolve() 内部の上書きと同じ優先順位)
             let machine = try ProfileResolver.determineMachine(
-                project: testProject, registered: LocalConfig.currentMachineName())
+                project: testProject, registered: LocalConfig.currentMachineName(),
+                runProfileName: profile)
             if machine.auto {
                 print("→ マシンプロファイル自動採用: \(machine.name)")
             }
@@ -103,8 +106,10 @@ struct DevicesCommand: AsyncParsableCommand {
         private func shutdownProfile(_ profile: String) async {
             do {
                 let testProject = try ScenarioHost.project(named: project)
+                // Up と同じ優先順位: プロファイルが machine を明示指定していれば最優先
                 let machine = try ProfileResolver.determineMachine(
-                    project: testProject, registered: LocalConfig.currentMachineName())
+                    project: testProject, registered: LocalConfig.currentMachineName(),
+                    runProfileName: profile)
                 if machine.auto {
                     print("→ マシンプロファイル自動採用: \(machine.name)")
                 }

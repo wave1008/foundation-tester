@@ -14,9 +14,10 @@ enum ProfileRunner {
     /// 戻り値: 失敗シナリオ数
     static func run(project: TestProject, profileName: String, items: [ScenarioRunItem],
                     healOverride: Bool?, reportDirOverride: String?) async throws -> Int {
-        // 1. マシン決定 → プロファイル合成
+        // 1. マシン決定 → プロファイル合成(実行プロファイル自身の machine 指定があれば最優先)
         let machine = try ProfileResolver.determineMachine(
-            project: project, registered: LocalConfig.currentMachineName())
+            project: project, registered: LocalConfig.currentMachineName(),
+            runProfileName: profileName)
         if machine.auto {
             print("→ マシンプロファイル自動採用: \(machine.name)(machines/ が 1 つのため)")
         }
@@ -28,7 +29,7 @@ enum ProfileRunner {
         let reportDir = reportDirOverride.map { URL(fileURLWithPath: $0) } ?? resolved.reportDir
         let deviceList = resolved.devices
             .map { "\($0.name)(\($0.platform))" }.joined(separator: ", ")
-        print("🧩 プロファイル \(profileName): \(resolved.appName) @ \(machine.name)")
+        print("🧩 プロファイル \(profileName): \(resolved.appName) @ \(resolved.machineName)")
         print("   デバイス: \(deviceList)")
 
         // 2. ワーカー構築(iOS 供給+Android 照合)→ 自動インストール

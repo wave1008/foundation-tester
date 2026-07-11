@@ -6,22 +6,38 @@
   "additionalProperties": true,
   "properties": {
     "common": {
-      "$ref": "#/definitions/section",
+      "$ref": "#/definitions/commonSection",
       "description": "全プラットフォーム共通の既定値。"
     },
     "ios": {
-      "$ref": "#/definitions/section",
+      "$ref": "#/definitions/platformSection",
       "description": "iOS 用の上書き値(common の値より優先される)。"
     },
     "android": {
-      "$ref": "#/definitions/section",
+      "$ref": "#/definitions/platformSection",
       "description": "Android 用の上書き値(common の値より優先される)。"
     }
   },
   "definitions": {
-    "section": {
+    "commonSection": {
       "type": "object",
-      "description": "アプリケーションプロファイルの1セクション(AppProfileSection)。",
+      "description": "アプリケーションプロファイルの共通セクション(AppProfileSection)。app/appPath は廃止(ios/android 側で指定する。common に書いても実行時は無視される)。",
+      "additionalProperties": true,
+      "properties": {
+        "appName": {
+          "type": "string",
+          "description": "ユーザーがアプリを識別するための表示名(レポート/GUI/ログで使用)。"
+        },
+        "autoInstall": {
+          "type": "boolean",
+          "description": "実行前に appPath を自動インストールするか(既定 false=無効)。common でのみ指定可(ios/android 側の autoInstall は廃止)。",
+          "default": false
+        }
+      }
+    },
+    "platformSection": {
+      "type": "object",
+      "description": "アプリケーションプロファイルのプラットフォーム別セクション(AppProfileSection)。autoInstall は common に一本化されたためここには無い。",
       "additionalProperties": true,
       "properties": {
         "appName": {
@@ -38,8 +54,7 @@
         },
         "autoInstall": {
           "type": "boolean",
-          "description": "実行前に appPath を自動インストールするか(既定 true)。",
-          "default": true
+          "description": "廃止(common.autoInstall に一本化された)。残存していても実行時は無視される。"
         }
       }
     }

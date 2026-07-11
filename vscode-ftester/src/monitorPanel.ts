@@ -25,6 +25,98 @@
 //   非依存の純粋関数)でレーン用アクションに変換して webview へ転送する。デバイスタイルと
 //   ログレーンは device id / worker id が同一規則なので、そのまま突合できる
 //   (タイルの「実行中」バッジ・タイル選択によるレーン絞り込み)。
+// - webview はマルチタブ構成(「デバイス」「プロファイル」「設定」)。既存のデバイスモニターUI
+//   一式(トップの操作)はそのまま「デバイス」タブのパネル内に移動しただけで、TypeScript 側の
+//   ロジックは変わらない。「設定」は現状プレースホルダーのみで、今後の機能追加先。
+// - 「プロファイル」タブの3セクションは DOM 順で上から実行/アプリ/マシンプロファイル(使用
+//   頻度が高い実行プロファイルを先頭にしてほしいというユーザー報告により、以前のマシン/アプリ/
+//   実行の順から並べ替えた。各セクションの内部構造・JS ロジックは不変)。#panel-profiles の
+//   先頭(全セクションの前)には position: sticky なジャンプヘッダー(#profile-jump-header)を
+//   常設し、3セクションへのテキストリンク(button 要素)から scrollIntoView({behavior:'smooth'})
+//   で各セクションへ飛べるようにする(単一の縦スクロールになったことで下のセクションまで
+//   長くスクロールする必要が出たため)。sticky ヘッダーの裏に見出しが隠れないよう、各
+//   .profile-section に scroll-margin-top を設定する。
+// - 「プロファイル」タブの「マシンプロファイル」セクション: Projects/<project>/profiles/machines/
+//   直下の *.json(config.ts の listMachineProfiles)を一覧表示する。デバイス追加の入口は
+//   「デバイス」ラベル横の「+」(#btn-device-add-existing)の1つだけ(2026-07-11 指示で
+//   「+新規作成」ボタンは廃止。新規作成は選択画面内の「+」から行う。`ftester api device-catalog`
+//   (単発 JSON)/`ftester api create-device`(NDJSON)は新規作成モーダルが引き続き使う)。「+」は
+//   #device-pick-overlay モーダルを開き、`ftester api installed-devices`(単発 JSON。runInstalledDevices)
+//   でインストール済みの実体一覧を取得して2列(iOS/Android)で一覧表示する。各行のチェックボックスは
+//   「選択」ではなく「マシンプロファイルへの登録状態そのもの」を表す設計(disabled/淡色化は廃止)。
+//   初期状態は udid(iOS)/avd の id または displayName(Android)で現在の登録済みデバイスと突合し、
+//   登録済みなら初期チェック、未登録なら初期未チェックにする。OK は行ごとの初期状態からの差分が
+//   1件以上あるときだけ有効になり、押下時に差分(新たにチェック=追加/外した=登録解除)だけを
+//   machineDevicesSync(add/remove)としてまとめて送る(モーダル確認は挟まず、チェック操作自体を
+//   確定操作として扱う。ホスト側の syncDevicesInMachineProfile が
+//   removeDeviceFromMachineProfile→addDevicesToMachineProfile の順で合成する純粋関数部分を担当。
+//   削除を先に行うのは、外して同名で付け直すケースで名前衝突の自動サフィックスが誤発動しない
+//   ようにするため)。モーダル下部には「チェックを外して OK すると登録解除されます(シミュレータ/
+//   AVD 本体は削除されません)」という常設の注記を置き、誤操作への注意を促す。タイトル行右端の
+//   「+」ボタン(#device-pick-add-new)は #device-pick-overlay を閉じずに #device-add-overlay
+//   (「+新規作成」モーダル)をその上に重ねて開く(z-index を #device-pick-overlay より高くして
+//   スタック表示)。#device-add-overlay はフルスクリーンのオーバーレイなので、ピッカーから開いたか
+//   どうかは openDeviceAddModal() 呼び出し時点の devicePickOpen(deviceAddFromPicker に記録)で
+//   判定できる。この経路(deviceAddFromPicker=true)では createDevice に register:false を送り、
+//   ホストは `--no-register` を付けて物理作成のみ行う(マシンプロファイルへは追記しない。
+//   register:true の即登録経路はメッセージ契約として残っているが、「+新規作成」ボタン廃止後は
+//   UI からの送り手がいない。2026-07-11 指示)。register:false の作成が成功したら、
+//   installedDevicesRequest を再送して一覧を作り直す前に pendingAutoCheck へ作成された実体の
+//   識別子(iOS=udid/Android=avd の id。createDeviceResult の device フィールドから取る)を保持し、
+//   再描画時に一致する行を「チェックON」(初期状態[registered]は false のままなので差分扱い)にする。
+//   これにより新規デバイスは「未登録+チェックON」の状態で現れ、OK ボタンが有効になり、押下すると
+//   machineDevicesSync の add 経由でマシンプロファイルへ登録される(=「OK で登録」を実現する)。
+//   一致する行が見つからない場合は pendingAutoCheck を静かに捨てて何もしない。他行で操作中だった
+//   未確定の差分は(register:true 経路と同じく)この再読込で破棄されるが、シンプルさを優先した
+//   設計判断。いずれも他の短命 CLI 実行(executeBulkJob 等)と同じく直接 spawn する方針
+//   (FtesterCli の直列キューは使わない)。デバイス一覧は複数選択に対応する(要件5。
+//   selectedDeviceNames が Set。通常クリックは単一選択への置き換え[トグル]、Shift+クリックは
+//   追加/除外のトグル)。右ペインの編集フォームは「ちょうど1台選択」のときだけ表示する。
+//   デバイス行の右クリック「削除」/「選択した<N>台を削除」(handleMachineDeviceRemove。複数選択に
+//   対応するため machineDeviceRemove の対象は names 配列)・行選択時に右ペインに表示する編集フォーム
+//   の「確定」(handleMachineDeviceUpdate)はいずれも CLI を呼ばず、machines/<machine>.json を
+//   直接読み書きする(monitorModel.ts の removeDeviceFromMachineProfile / updateDeviceInMachineProfile
+//   が純粋関数部分を担当)。マシンプロファイル自体の追加/コピー/削除/名前変更(マシン名横の
+//   アイコンボタン。handleMachineProfileAdd/Copy/Delete/Rename)も同様に CLI を呼ばず
+//   machines/*.json を直接読み書きする。名前変更時は CLI 登録名(~/.config/ftester/config.json の
+//   machineName)が旧名のままだと解決が壊れるため、config.ts の updateLocalMachineName で追随させる。
+// - 「プロファイル」タブ上段の「実行プロファイル」セクション: runs/<name>.json の内容を編集する
+//   フォーム。一覧・初期選択は既存の profileInfo(デバイスタブのドロップダウンと共用。apps を
+//   追加しただけ)を流用するが、この選択(編集対象)は ftester.profile 設定とは独立
+//   (selectProfile とは別に webview 内だけで完結する)。ロード(runProfileLoad)/保存
+//   (runProfileSave)はいずれも CLI を呼ばず、runs/<name>.json を直接読み書きする
+//   (monitorModel.ts の parseRunProfileForForm/updateRunProfileInObject が純粋関数部分を担当。
+//   removeDeviceFromMachineProfile/updateDeviceInMachineProfile と同じ、未知キー保持の
+//   イミュータブル更新の方針)。dirty 管理・machineProfileInfo/profileInfo 再受信時の再プリフィル
+//   可否も、右ペインのデバイス編集フォーム(machineDeviceUpdate)と同じ方針(dirty/送信中は保持、
+//   そうでなければ再描画)。profileFileWatcher の onDidChange(今回追加)で外部編集も検知し、
+//   編集中でなければ自動的に再ロードする。実行プロファイル自体の追加/コピー/削除/名前変更
+//   (セクションヘッダーのアイコンボタン。handleProfileAdd/Copy/Delete/Rename)も、マシンプロファイル
+//   の [+][コピー][−][✏] と同一デザイン・同じ対話形式(showInputBox/モーダル確認)で行う
+//   (以前はデバイスタブのツールバーに置いていたが、下半分のフォームが編集手段になったのに合わせて
+//   ここへ移設し、デバイスタブは実行プロファイルの選択のみに絞った)。追加・コピー直後は
+//   runProfileSelected で編集対象を新プロファイルへ移す(machineProfileSelected と同じ方式。
+//   削除は webview 側の既存フォールバックに任せるので送らない)。名前変更時、ftester.profile が
+//   旧名を指していたら selectProfile で追随させる(handleMachineProfileRename の
+//   updateLocalMachineName 追随と同じ理由)。
+// - 「プロファイル」タブ中段の「アプリプロファイル」セクション: apps/<name>.json(common/ios/android
+//   の3セクション)を編集するフォーム。common は表示名(appName)+自動インストール(autoInstall。
+//   チェックボックス1つで有効/無効の2値、既定=無効[チェックOFF])の2フィールド、ios/android は
+//   表示名/アプリID(app)/パッケージパス(appPath)の3フィールド(common の app/appPath は廃止済み
+//   でランタイムはこれらの値を無視するためフォーム自体に入力欄を持たない。自動インストールは
+//   元々 ios/android セクション別だったが、common でのみ設定できる仕様に一本化した
+//   [2026-07-11 指示。Swift 側も common 採用+platform 残存は validate 警告に変更中])。設計は
+//   実行プロファイルセクションの複製(選択は webview 内だけで完結する独立状態。ただし「現在値」に
+//   相当する設定が無いため、選択のフォールバックは常に一覧の先頭)。
+//   ロード(appProfileLoad)/保存(appProfileSave)は monitorModel.ts の
+//   parseAppProfileForForm/updateAppProfileInObject が純粋関数部分を担当する(未知キー保持の
+//   イミュータブル更新。既存の空セクションはそのまま保持し、元に無いセクションは値が1つでも
+//   入力されない限り作らない。autoInstall は既定=無効[false]なので「無効」を選んだだけでは
+//   「値あり」に数えない)。追加/コピー/削除/名前変更(handleAppProfileAdd/Copy/
+//   Delete/Rename)も実行プロファイル版の複製だが、アプリプロファイルは ftester.* のどの設定からも
+//   直接参照されないため、削除・名前変更時に追随させる設定は無い(実行プロファイルの app 参照が
+//   古い名前を指したままになりうるが、そちらは CLI 側の validate-profile が検出する領分とし、
+//   この拡張からは追随しない)。appsFileWatcher(今回追加)の onDidChange で外部編集も検知する。
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -35,12 +127,17 @@ import * as vscode from "vscode";
 import {
   type FtesterConfig,
   listAppProfileNames,
+  listMachineProfiles,
   listRunProfileNames,
+  type MachineProfileSummary,
+  readLocalMachineName,
   readMachineDeviceNames,
   readRunProfileDeviceNames,
   resolveProjectName,
+  updateLocalMachineName,
 } from "./config";
 import {
+  type AppProfileFormFields,
   buildRunProfileTemplate,
   createDeviceLifecycleQueueState,
   dequeueDeviceLifecycleJob,
@@ -53,15 +150,30 @@ import {
   devicesToShutdownOnScopeChange,
   enqueueDeviceLifecycleJob,
   hasDeviceLifecycleJobFor,
+  isCreateDeviceEvent,
+  isDeviceCatalogJson,
   isDeviceLifecycleQueueBusy,
   isDeviceOpEvent,
+  isInstalledDevicesJson,
   isMonitorEvent,
   isMonitorFromWebviewMessage,
+  machineDeviceDetail,
   type MonitorControlCommand,
   monitorControlLine,
   type MonitorDevice,
+  type MonitorFromWebviewMessage,
+  parseAppProfileForForm,
+  parseRunProfileForForm,
+  removeDeviceFromMachineProfile,
+  syncDevicesInMachineProfile,
   toWebviewMessage,
   type MonitorToWebviewMessage,
+  type RunProfileFormFields,
+  updateAppProfileInObject,
+  updateDeviceInMachineProfile,
+  updateRunProfileInObject,
+  validateNewAppProfileName,
+  validateNewMachineProfileName,
   validateNewRunProfileName,
 } from "./monitorModel";
 import { NdjsonParser } from "./ndjson";
@@ -83,6 +195,21 @@ const PANEL_TITLE = "ftester デバイスモニター";
 /** stdin=ignore, stdout/stderr=pipe で spawn したプロセスの型(cli.ts の FtesterProcess と同じ形)。 */
 type PipeProcess = ChildProcessByStdio<null, Readable, Readable>;
 
+/** webview からの "createDevice" メッセージの形(handleWebviewMessage/runCreateDevice で使う)。 */
+type CreateDeviceMessage = Extract<MonitorFromWebviewMessage, { type: "createDevice" }>;
+
+/** webview からの "machineDeviceUpdate" メッセージの形(handleMachineDeviceUpdate で使う)。 */
+type MachineDeviceUpdateMessage = Extract<MonitorFromWebviewMessage, { type: "machineDeviceUpdate" }>;
+
+/** webview からの "machineDevicesSync" メッセージの形(handleMachineDevicesSync で使う)。 */
+type MachineDevicesSyncMessage = Extract<MonitorFromWebviewMessage, { type: "machineDevicesSync" }>;
+
+/** webview からの "runProfileSave" メッセージの形(handleRunProfileSave で使う)。 */
+type RunProfileSaveMessage = Extract<MonitorFromWebviewMessage, { type: "runProfileSave" }>;
+
+/** webview からの "appProfileSave" メッセージの形(handleAppProfileSave で使う)。 */
+type AppProfileSaveMessage = Extract<MonitorFromWebviewMessage, { type: "appProfileSave" }>;
+
 /**
  * monitor プロセス用: stdin もパイプで保持する。
  * `ftester api monitor` は stdin の EOF を終了指示として扱うため、stdio を "ignore"(=/dev/null)
@@ -102,6 +229,15 @@ export function registerMonitorPanel(
     controller,
     vscode.commands.registerCommand("ftester.showDeviceMonitor", () => controller.show()),
   );
+}
+
+/**
+ * 確認モーダルに列挙する対象デバイス名の文字列(「、」区切りで最大3件+超過分は「 ほか」)。
+ * handleMachineDeviceRemove の複数選択一括削除の確認文言で使う。
+ */
+function summarizeDeviceNames(names: readonly string[]): string {
+  const shown = names.slice(0, 3).join("、");
+  return names.length > 3 ? `${shown} ほか` : shown;
 }
 
 class MonitorPanelController implements vscode.Disposable {
@@ -148,13 +284,32 @@ class MonitorPanelController implements vscode.Disposable {
    */
   private readonly configChangeSubscription: vscode.Disposable;
   /**
-   * Projects 配下の各プロジェクトの profiles/runs ディレクトリにある .json ファイルの作成・削除を
-   * 監視し、実行プロファイル選択ドロップダウンを最新化する(拡張内の追加/コピー/削除ボタン経由に
-   * 限らず、エクスプローラーでの手動削除や他ツールでの追加もドロップダウンへ自動反映されるように
-   * する目的)。Change は一覧にも選択名にも影響しないため購読しない(内容編集のたびに再描画する
-   * 必要はない)。
+   * Projects 配下の各プロジェクトの profiles/runs ディレクトリにある .json ファイルの作成・削除・
+   * 変更を監視する。作成・削除は実行プロファイル選択ドロップダウンを最新化する(拡張内の追加/
+   * コピー/削除ボタン経由に限らず、エクスプローラーでの手動削除や他ツールでの追加もドロップダウンへ
+   * 自動反映されるようにする目的)。変更(Change)は一覧にも選択名にも影響しないため
+   * postProfileInfo() は呼ばない代わりに、「プロファイル」タブ下半分の実行プロファイル設定
+   * フォームの編集対象と同名であれば runProfileFileChanged を webview へ送り、外部編集(手動編集や
+   * 他ツール)をフォームへ自動反映させる(編集中でなければ、の判定は webview 側が行う)。
    */
   private readonly profileFileWatcher: vscode.FileSystemWatcher;
+  /**
+   * Projects 配下の各プロジェクトの profiles/machines ディレクトリにある .json ファイルの
+   * 作成・削除・変更を監視し、「プロファイル」タブのマシンプロファイル一覧を最新化する。
+   * profileFileWatcher と違い Change も購読する — マシンプロファイルへのデバイス追記
+   * (create-device 成功後や手動編集)は既存ファイルの内容変更として届くため。
+   */
+  private readonly machineFileWatcher: vscode.FileSystemWatcher;
+  /**
+   * Projects 配下の各プロジェクトの profiles/apps ディレクトリにある .json ファイルの作成・削除・
+   * 変更を監視する(profileFileWatcher と同じ方針)。作成・削除は profileInfo(apps 一覧を含む)を
+   * 最新化する postProfileInfo() を呼ぶ。変更(Change)は一覧・選択名には影響しないため、
+   * 「プロファイル」タブ中段のアプリプロファイル設定フォームの編集対象と同名であれば
+   * appProfileFileChanged を webview へ送り、外部編集を自動反映させる。
+   */
+  private readonly appsFileWatcher: vscode.FileSystemWatcher;
+  /** create-device の多重実行ガード。true の間に来た createDevice リクエストは即座に失敗を返す。 */
+  private creatingDevice = false;
 
   constructor(
     private readonly workspaceRoot: string,
@@ -167,6 +322,8 @@ class MonitorPanelController implements vscode.Disposable {
       if (event.affectsConfiguration("ftester.profile") || event.affectsConfiguration("ftester.project")) {
         this.postProfileInfo();
         this.restartMonitorIfScopeChanged();
+        // ftester.project の変更は対象マシンプロファイル一覧にも影響するため、こちらも最新化する。
+        this.postMachineProfileInfo();
       }
     });
     this.profileFileWatcher = vscode.workspace.createFileSystemWatcher(
@@ -174,6 +331,23 @@ class MonitorPanelController implements vscode.Disposable {
     );
     this.profileFileWatcher.onDidCreate(() => this.postProfileInfo());
     this.profileFileWatcher.onDidDelete(() => this.postProfileInfo());
+    this.profileFileWatcher.onDidChange((uri) => {
+      this.post({ type: "runProfileFileChanged", name: path.basename(uri.fsPath, ".json") });
+    });
+    this.machineFileWatcher = vscode.workspace.createFileSystemWatcher(
+      new vscode.RelativePattern(workspaceRoot, "Projects/*/profiles/machines/*.json"),
+    );
+    this.machineFileWatcher.onDidCreate(() => this.postMachineProfileInfo());
+    this.machineFileWatcher.onDidDelete(() => this.postMachineProfileInfo());
+    this.machineFileWatcher.onDidChange(() => this.postMachineProfileInfo());
+    this.appsFileWatcher = vscode.workspace.createFileSystemWatcher(
+      new vscode.RelativePattern(workspaceRoot, "Projects/*/profiles/apps/*.json"),
+    );
+    this.appsFileWatcher.onDidCreate(() => this.postProfileInfo());
+    this.appsFileWatcher.onDidDelete(() => this.postProfileInfo());
+    this.appsFileWatcher.onDidChange((uri) => {
+      this.post({ type: "appProfileFileChanged", name: path.basename(uri.fsPath, ".json") });
+    });
   }
 
   /**
@@ -256,6 +430,8 @@ class MonitorPanelController implements vscode.Disposable {
     this.unsubscribeBus();
     this.configChangeSubscription.dispose();
     this.profileFileWatcher.dispose();
+    this.machineFileWatcher.dispose();
+    this.appsFileWatcher.dispose();
     this.stopMonitorProcess();
     const panel = this.panel;
     this.panel = undefined;
@@ -281,13 +457,69 @@ class MonitorPanelController implements vscode.Disposable {
    * 実行プロファイル選択ドロップダウンの内容(一覧+現在値)を webview へ送る。
    * 対象プロジェクトが解決できない場合は一覧を空にする(current はそのまま送る。設定に
    * 手書きされた値の表示自体は webview 側で保つ方針のため)。
+   * apps(アプリプロファイル名一覧)は「プロファイル」タブ下半分の実行プロファイル設定フォームの
+   * アプリ選択が使う(プロファイル一覧と同じプロジェクトに属するため、ここでまとめて送る)。
    */
   private postProfileInfo(): void {
     const config = this.getConfig();
     const resolution = resolveProjectName(this.workspaceRoot, config);
     const profiles =
       resolution.kind === "resolved" ? listRunProfileNames(this.workspaceRoot, resolution.project) : [];
-    this.post({ type: "profileInfo", profiles, current: config.profile });
+    const apps =
+      resolution.kind === "resolved" ? listAppProfileNames(this.workspaceRoot, resolution.project) : [];
+    this.post({ type: "profileInfo", profiles, current: config.profile, apps });
+  }
+
+  /**
+   * 現在使うべきマシンプロファイル名を決める(postMachineProfileInfo・handleProfileAdd 共通)。
+   * readLocalMachineName() の値が summaries に存在すればそれを採用し、無ければ summaries が
+   * ちょうど1件のときに限りその名前を採用する(あいまいさが無い場合のみ賢く選ぶ、
+   * readMachineDeviceNames と同じ方針)。それ以外(0件/複数件で未登録)は null。
+   */
+  private resolveCurrentMachineName(summaries: readonly MachineProfileSummary[]): string | null {
+    const machineName = readLocalMachineName();
+    if (machineName !== null && summaries.some((summary) => summary.name === machineName)) {
+      return machineName;
+    }
+    return summaries.length === 1 ? summaries[0]!.name : null;
+  }
+
+  /**
+   * 「プロファイル」タブのマシンプロファイル一覧(+現在のマシン)を webview へ送る。
+   * 対象プロジェクトが解決できない場合は machines を空にしてエラーメッセージを添える
+   * (webview 側はこのとき本体の代わりにエラー表示に切り替える)。
+   * 現在のマシンの決定は resolveCurrentMachineName を参照。
+   */
+  private postMachineProfileInfo(): void {
+    const config = this.getConfig();
+    const resolution = resolveProjectName(this.workspaceRoot, config);
+    if (resolution.kind !== "resolved") {
+      this.post({
+        type: "machineProfileInfo",
+        machines: [],
+        current: null,
+        error: "対象のテストプロジェクトを解決できませんでした。ftester.project 設定を確認してください。",
+      });
+      return;
+    }
+    const summaries = listMachineProfiles(this.workspaceRoot, resolution.project);
+    const current = this.resolveCurrentMachineName(summaries);
+    const machines = summaries.map((summary) => ({
+      name: summary.name,
+      devices: summary.devices.map((device) => ({
+        name: device.name,
+        platform: device.platform,
+        detail: machineDeviceDetail(device),
+        // 右ペインの編集フォーム用の生フィールド(要件2)。undefined は postMessage の JSON化で
+        // 自然に省略される。
+        simulator: device.simulator,
+        os: device.os,
+        udid: device.udid,
+        port: device.port,
+        avd: device.avd,
+      })),
+    }));
+    this.post({ type: "machineProfileInfo", machines, current, error: null });
   }
 
   /** RunEventBus からのメッセージ(runHandler.ts の実行と同じインスタンス)をレーン更新に反映する。 */
@@ -341,11 +573,68 @@ class MonitorPanelController implements vscode.Disposable {
       case "profileCopy":
         void this.handleProfileCopy(message.profile);
         break;
-      case "profileEdit":
-        void this.handleProfileEdit(message.profile);
-        break;
       case "profileDelete":
         void this.handleProfileDelete(message.profile);
+        break;
+      case "profileRename":
+        void this.handleProfileRename(message.profile);
+        break;
+      case "machineProfileRefresh":
+        this.postMachineProfileInfo();
+        break;
+      case "machineProfileAdd":
+        void this.handleMachineProfileAdd();
+        break;
+      case "machineProfileCopy":
+        void this.handleMachineProfileCopy(message.machine);
+        break;
+      case "machineProfileDelete":
+        void this.handleMachineProfileDelete(message.machine);
+        break;
+      case "machineProfileRename":
+        void this.handleMachineProfileRename(message.machine);
+        break;
+      case "deviceCatalogRequest":
+        this.runDeviceCatalog();
+        break;
+      case "createDevice":
+        this.runCreateDevice(message);
+        break;
+      case "installedDevicesRequest":
+        this.runInstalledDevices();
+        break;
+      case "machineDevicesSync":
+        this.handleMachineDevicesSync(message);
+        break;
+      case "machineDeviceRemove":
+        void this.handleMachineDeviceRemove(message.machine, message.names);
+        break;
+      case "machineDeviceUpdate":
+        this.handleMachineDeviceUpdate(message);
+        break;
+      case "runProfileLoad":
+        this.handleRunProfileLoad(message.profile);
+        break;
+      case "runProfileSave":
+        this.handleRunProfileSave(message);
+        break;
+      case "appProfileAdd":
+        void this.handleAppProfileAdd();
+        break;
+      case "appProfileCopy":
+        void this.handleAppProfileCopy(message.profile);
+        break;
+      case "appProfileDelete":
+        void this.handleAppProfileDelete(message.profile);
+        break;
+      case "appProfileRename":
+        void this.handleAppProfileRename(message.profile);
+        break;
+      case "appProfileLoad":
+        this.handleAppProfileLoad(message.profile);
+        break;
+      case "appProfileSave":
+        this.handleAppProfileSave(message);
         break;
     }
   }
@@ -374,11 +663,14 @@ class MonitorPanelController implements vscode.Disposable {
       );
   }
 
-  // ---- 実行プロファイルの追加/コピー/編集/削除(ツールバーのボタン) -------------------------
-  // ドロップダウンの選択自体(selectProfile)の挙動は変えない。追加・コピー・削除の後、新しい/
-  // コピー先のプロファイルを自動で選択状態にはしない — 選択するとモニター再起動+対象外デバイスの
-  // 自動停止が走るため(restartMonitorIfScopeChanged)、ユーザーの明示操作(ドロップダウン選択)に
-  // 任せる。
+  // ---- 実行プロファイルの追加/コピー/名前変更/削除(プロファイルタブ下半分のアイコンボタン) ------
+  // デバイスタブの #profile-select(ftester.profile 設定に連動する選択)自体の挙動は変えない。
+  // ここでの追加・コピー・名前変更・削除はいずれも実行プロファイルセクション(編集フォーム)の
+  // 編集対象を操作するだけで、ftester.profile 設定(selectProfile)には触れない
+  // (名前変更で ftester.profile が対象を指していた場合の追随を除く。handleProfileRename 参照)。
+  // 追加・コピーの直後は runProfileSelected で新プロファイルを編集対象として選択する
+  // (machineProfileAdd/Copy と同じ方式。以前は生成した JSON をエディタで開いていたが、
+  // 下半分のフォームが編集手段になったため廃止した)。
 
   /** Projects/<project>/profiles/runs ディレクトリの絶対パス。 */
   private runsDir(project: string): string {
@@ -386,7 +678,7 @@ class MonitorPanelController implements vscode.Disposable {
   }
 
   /**
-   * 実行プロファイル操作(追加/コピー/編集/削除)共通の前提チェック。対象プロジェクトが
+   * 実行プロファイル操作(追加/コピー/名前変更/削除)共通の前提チェック。対象プロジェクトが
    * 解決できない場合は警告して undefined を返す(呼び出し側はここで処理を中断する)。
    */
   private resolveProjectOrWarn(): string | undefined {
@@ -400,13 +692,7 @@ class MonitorPanelController implements vscode.Disposable {
     return resolution.project;
   }
 
-  /** 実行プロファイル(<name>.json)をエディタで開く(プレビューではなく通常タブとして)。 */
-  private async openRunProfileDocument(project: string, name: string): Promise<void> {
-    const document = await vscode.workspace.openTextDocument(path.join(this.runsDir(project), `${name}.json`));
-    await vscode.window.showTextDocument(document, { preview: false });
-  }
-
-  /** 「追加」ボタン: 新しいプロファイル名を入力させ、テンプレート内容で作成してエディタで開く。 */
+  /** 「+」ボタン: 新しいプロファイル名を入力させ、テンプレート内容で作成して編集対象に選択する。 */
   private async handleProfileAdd(): Promise<void> {
     const project = this.resolveProjectOrWarn();
     if (!project) {
@@ -424,21 +710,25 @@ class MonitorPanelController implements vscode.Disposable {
     const runsDir = this.runsDir(project);
     try {
       fs.mkdirSync(runsDir, { recursive: true });
+      // 現在のマシンの決定は postMachineProfileInfo の current 決定と同じロジックを使う
+      // (あいまいさが無い場合のみ賢く埋める、readMachineDeviceNames と同じ方針)。
+      const machine = this.resolveCurrentMachineName(listMachineProfiles(this.workspaceRoot, project)) ?? "";
       const template = buildRunProfileTemplate(
+        machine,
         listAppProfileNames(this.workspaceRoot, project),
         readMachineDeviceNames(this.workspaceRoot, project),
       );
       fs.writeFileSync(path.join(runsDir, `${name}.json`), template, "utf8");
       this.outputChannel.appendLine(`[ftester] 実行プロファイル「${name}」を追加しました。`);
-      await this.openRunProfileDocument(project, name);
+      this.postProfileInfo();
+      this.post({ type: "runProfileSelected", name });
     } catch (error) {
       this.outputChannel.appendLine(`[ftester] 実行プロファイル「${name}」の追加に失敗しました: ${String(error)}`);
       void vscode.window.showErrorMessage(`ftester: 実行プロファイル「${name}」の追加に失敗しました。`);
     }
-    this.postProfileInfo();
   }
 
-  /** 「コピー」ボタン: コピー元の内容をそのまま新しい名前で複製してエディタで開く。 */
+  /** 「コピー」ボタン: コピー元の内容をそのまま新しい名前で複製し、複製先を編集対象に選択する。 */
   private async handleProfileCopy(source: string): Promise<void> {
     const project = this.resolveProjectOrWarn();
     if (!project) {
@@ -466,30 +756,11 @@ class MonitorPanelController implements vscode.Disposable {
       fs.mkdirSync(runsDir, { recursive: true });
       fs.writeFileSync(path.join(runsDir, `${name}.json`), content, "utf8");
       this.outputChannel.appendLine(`[ftester] 実行プロファイル「${source}」を「${name}」としてコピーしました。`);
-      await this.openRunProfileDocument(project, name);
+      this.postProfileInfo();
+      this.post({ type: "runProfileSelected", name });
     } catch (error) {
       this.outputChannel.appendLine(`[ftester] 実行プロファイル「${name}」のコピーに失敗しました: ${String(error)}`);
       void vscode.window.showErrorMessage(`ftester: 実行プロファイル「${name}」のコピーに失敗しました。`);
-    }
-    this.postProfileInfo();
-  }
-
-  /** 「編集」ボタン: 存在すればエディタで開く。存在しなければ警告し、一覧を再送する(古い可能性があるため)。 */
-  private async handleProfileEdit(name: string): Promise<void> {
-    const project = this.resolveProjectOrWarn();
-    if (!project) {
-      return;
-    }
-    if (!fs.existsSync(path.join(this.runsDir(project), `${name}.json`))) {
-      void vscode.window.showWarningMessage(`ftester: 実行プロファイル「${name}」が見つかりません。`);
-      this.postProfileInfo();
-      return;
-    }
-    try {
-      await this.openRunProfileDocument(project, name);
-    } catch (error) {
-      this.outputChannel.appendLine(`[ftester] 実行プロファイル「${name}」を開けませんでした: ${String(error)}`);
-      void vscode.window.showErrorMessage(`ftester: 実行プロファイル「${name}」を開けませんでした。`);
     }
   }
 
@@ -524,6 +795,731 @@ class MonitorPanelController implements vscode.Disposable {
       void vscode.window.showErrorMessage(`ftester: 実行プロファイル「${name}」の削除に失敗しました。`);
     }
     this.postProfileInfo();
+  }
+
+  /**
+   * 「✏」ボタン: 新しい名前を入力させ、runs/<name>.json をリネームする(handleMachineProfileRename
+   * を手本にした対話形式)。ftester.profile が旧名を指していた場合は selectProfile(新名) で
+   * 追随させる(そうしないとアクティブなプロファイルの解決が壊れる。updateLocalMachineName による
+   * 登録マシン名の追随と同じ理由)。
+   */
+  private async handleProfileRename(profile: string): Promise<void> {
+    const project = this.resolveProjectOrWarn();
+    if (!project) {
+      return;
+    }
+    const runsDir = this.runsDir(project);
+    const oldPath = path.join(runsDir, `${profile}.json`);
+    if (!fs.existsSync(oldPath)) {
+      void vscode.window.showWarningMessage(`ftester: 実行プロファイル「${profile}」が見つかりません。`);
+      this.postProfileInfo();
+      return;
+    }
+    // 重複チェックは自分自身(現在の名前)を除いた一覧に対して行う(自分自身への「変更なし」は
+    // 別途 newName === profile のチェックで許容するため、existing に含めると常にエラーになってしまう。
+    // handleMachineProfileRename と同じ方針)。
+    const existing = listRunProfileNames(this.workspaceRoot, project).filter((name) => name !== profile);
+    const input = await vscode.window.showInputBox({
+      prompt: `「${profile}」の新しい実行プロファイル名`,
+      value: profile,
+      validateInput: (value) => validateNewRunProfileName(value.trim(), existing),
+    });
+    if (input === undefined) {
+      return; // キャンセル
+    }
+    const newName = input.trim();
+    if (newName === profile) {
+      return; // 変更なし
+    }
+    try {
+      fs.renameSync(oldPath, path.join(runsDir, `${newName}.json`));
+      if (this.getConfig().profile === profile) {
+        this.selectProfile(newName);
+      }
+      this.outputChannel.appendLine(`[ftester] 実行プロファイル「${profile}」を「${newName}」に変更しました。`);
+      this.postProfileInfo();
+      this.post({ type: "runProfileSelected", name: newName });
+    } catch (error) {
+      this.outputChannel.appendLine(
+        `[ftester] 実行プロファイル「${profile}」の名前変更に失敗しました: ${String(error)}`,
+      );
+      void vscode.window.showErrorMessage(`ftester: 実行プロファイル「${profile}」の名前変更に失敗しました。`);
+    }
+  }
+
+  // ---- アプリプロファイルの追加/コピー/名前変更/削除(プロファイルタブ中段のアイコンボタン) --------
+  // handleProfileAdd/Copy/Delete/Rename(実行プロファイル)の複製。アプリプロファイルは
+  // ftester.* のどの設定からも直接参照されないため、selectProfile 相当の追随処理は無い
+  // (削除・名前変更どちらも、実行プロファイルの app 参照が古い名前を指したままになりうるが、
+  // それは CLI 側の validate-profile が検出する領分としてこの拡張からは追随しない)。
+
+  /** Projects/<project>/profiles/apps ディレクトリの絶対パス。 */
+  private appsDir(project: string): string {
+    return path.join(this.workspaceRoot, "Projects", project, "profiles", "apps");
+  }
+
+  /** 「+」ボタン: 新しいアプリプロファイル名を入力させ、テンプレート内容で作成して編集対象に選択する。 */
+  private async handleAppProfileAdd(): Promise<void> {
+    const project = this.resolveProjectOrWarn();
+    if (!project) {
+      return;
+    }
+    const existing = listAppProfileNames(this.workspaceRoot, project);
+    const input = await vscode.window.showInputBox({
+      prompt: "新しいアプリプロファイル名",
+      validateInput: (value) => validateNewAppProfileName(value.trim(), existing),
+    });
+    if (input === undefined) {
+      return; // キャンセル
+    }
+    const name = input.trim();
+    const appsDir = this.appsDir(project);
+    try {
+      fs.mkdirSync(appsDir, { recursive: true });
+      // app はフォームでユーザーが埋める前提のため、テンプレートには appName のみ入れる
+      // (buildRunProfileTemplate と違い、埋めるべき候補一覧がここには無いため)。
+      const template = { android: {}, common: { appName: name }, ios: {} };
+      fs.writeFileSync(path.join(appsDir, `${name}.json`), `${JSON.stringify(template, null, 2)}\n`, "utf8");
+      this.outputChannel.appendLine(`[ftester] アプリプロファイル「${name}」を追加しました。`);
+      this.postProfileInfo();
+      this.post({ type: "appProfileSelected", name });
+    } catch (error) {
+      this.outputChannel.appendLine(`[ftester] アプリプロファイル「${name}」の追加に失敗しました: ${String(error)}`);
+      void vscode.window.showErrorMessage(`ftester: アプリプロファイル「${name}」の追加に失敗しました。`);
+    }
+  }
+
+  /** 「コピー」ボタン: コピー元の内容をそのまま新しい名前で複製し、複製先を編集対象に選択する。 */
+  private async handleAppProfileCopy(source: string): Promise<void> {
+    const project = this.resolveProjectOrWarn();
+    if (!project) {
+      return;
+    }
+    const appsDir = this.appsDir(project);
+    const sourcePath = path.join(appsDir, `${source}.json`);
+    if (!fs.existsSync(sourcePath)) {
+      void vscode.window.showWarningMessage(`ftester: アプリプロファイル「${source}」が見つかりません。`);
+      this.postProfileInfo();
+      return;
+    }
+    const existing = listAppProfileNames(this.workspaceRoot, project);
+    const input = await vscode.window.showInputBox({
+      prompt: `「${source}」のコピー先のアプリプロファイル名`,
+      value: `${source}-copy`,
+      validateInput: (value) => validateNewAppProfileName(value.trim(), existing),
+    });
+    if (input === undefined) {
+      return; // キャンセル
+    }
+    const name = input.trim();
+    try {
+      const content = fs.readFileSync(sourcePath, "utf8");
+      fs.mkdirSync(appsDir, { recursive: true });
+      fs.writeFileSync(path.join(appsDir, `${name}.json`), content, "utf8");
+      this.outputChannel.appendLine(`[ftester] アプリプロファイル「${source}」を「${name}」としてコピーしました。`);
+      this.postProfileInfo();
+      this.post({ type: "appProfileSelected", name });
+    } catch (error) {
+      this.outputChannel.appendLine(`[ftester] アプリプロファイル「${name}」のコピーに失敗しました: ${String(error)}`);
+      void vscode.window.showErrorMessage(`ftester: アプリプロファイル「${name}」のコピーに失敗しました。`);
+    }
+  }
+
+  /**
+   * 「削除」ボタン: モーダル確認で「削除」が選ばれたときのみ削除する。実行プロファイルと異なり
+   * ftester.* 設定への追従は不要(アプリプロファイルを直接指す設定が無いため)。
+   */
+  private async handleAppProfileDelete(name: string): Promise<void> {
+    const project = this.resolveProjectOrWarn();
+    if (!project) {
+      return;
+    }
+    const choice = await vscode.window.showWarningMessage(
+      `アプリプロファイル「${name}」を削除しますか?この操作は元に戻せません。`,
+      { modal: true },
+      "削除",
+    );
+    if (choice !== "削除") {
+      return;
+    }
+    try {
+      fs.unlinkSync(path.join(this.appsDir(project), `${name}.json`));
+      this.outputChannel.appendLine(`[ftester] アプリプロファイル「${name}」を削除しました。`);
+    } catch (error) {
+      this.outputChannel.appendLine(`[ftester] アプリプロファイル「${name}」の削除に失敗しました: ${String(error)}`);
+      void vscode.window.showErrorMessage(`ftester: アプリプロファイル「${name}」の削除に失敗しました。`);
+    }
+    this.postProfileInfo();
+  }
+
+  /**
+   * 「✏」ボタン: 新しい名前を入力させ、apps/<name>.json をリネームする(handleProfileRename を
+   * 手本にした対話形式)。実行プロファイルの runs/*.json の app フィールドが旧名を指していても、
+   * この拡張からは追随しない(壊れた参照は CLI 側の validate-profile が検出する)。
+   */
+  private async handleAppProfileRename(profile: string): Promise<void> {
+    const project = this.resolveProjectOrWarn();
+    if (!project) {
+      return;
+    }
+    const appsDir = this.appsDir(project);
+    const oldPath = path.join(appsDir, `${profile}.json`);
+    if (!fs.existsSync(oldPath)) {
+      void vscode.window.showWarningMessage(`ftester: アプリプロファイル「${profile}」が見つかりません。`);
+      this.postProfileInfo();
+      return;
+    }
+    // 重複チェックは自分自身(現在の名前)を除いた一覧に対して行う(handleProfileRename と同じ方針)。
+    const existing = listAppProfileNames(this.workspaceRoot, project).filter((name) => name !== profile);
+    const input = await vscode.window.showInputBox({
+      prompt: `「${profile}」の新しいアプリプロファイル名`,
+      value: profile,
+      validateInput: (value) => validateNewAppProfileName(value.trim(), existing),
+    });
+    if (input === undefined) {
+      return; // キャンセル
+    }
+    const newName = input.trim();
+    if (newName === profile) {
+      return; // 変更なし
+    }
+    try {
+      fs.renameSync(oldPath, path.join(appsDir, `${newName}.json`));
+      this.outputChannel.appendLine(`[ftester] アプリプロファイル「${profile}」を「${newName}」に変更しました。`);
+      this.postProfileInfo();
+      this.post({ type: "appProfileSelected", name: newName });
+    } catch (error) {
+      this.outputChannel.appendLine(
+        `[ftester] アプリプロファイル「${profile}」の名前変更に失敗しました: ${String(error)}`,
+      );
+      void vscode.window.showErrorMessage(`ftester: アプリプロファイル「${profile}」の名前変更に失敗しました。`);
+    }
+  }
+
+  /** Projects/<project>/profiles/machines ディレクトリの絶対パス。 */
+  private machinesDir(project: string): string {
+    return path.join(this.workspaceRoot, "Projects", project, "profiles", "machines");
+  }
+
+  // ---- マシンプロファイル自体の追加/削除/名前変更(マシン名横の [+][−][✏] ボタン) -----------------
+  // handleProfileAdd/handleProfileDelete(実行プロファイル)と同じ、showInputBox/showWarningMessage
+  // を使った対話形式。ただしマシンプロファイルは「今使うマシン」という選択状態を伴うため、
+  // 追加/名前変更の直後は machineProfileSelected で webview 側の選択を新プロファイルへ移す
+  // (削除後の選択の付け替えは webview 側の既存フォールバックに任せるので送らない)。
+
+  /** マシン名横「+」ボタン: 新しい名前を入力させ、空のスケルトンで machines/<name>.json を作る。 */
+  private async handleMachineProfileAdd(): Promise<void> {
+    const project = this.resolveProjectOrWarn();
+    if (!project) {
+      return;
+    }
+    const existing = listMachineProfiles(this.workspaceRoot, project).map((summary) => summary.name);
+    const input = await vscode.window.showInputBox({
+      prompt: "新しいマシンプロファイル名",
+      validateInput: (value) => validateNewMachineProfileName(value.trim(), existing),
+    });
+    if (input === undefined) {
+      return; // キャンセル
+    }
+    const name = input.trim();
+    const machinesDir = this.machinesDir(project);
+    try {
+      fs.mkdirSync(machinesDir, { recursive: true });
+      const skeleton = { android: { devices: [] }, ios: { devices: [] } };
+      fs.writeFileSync(path.join(machinesDir, `${name}.json`), `${JSON.stringify(skeleton, null, 2)}\n`, "utf8");
+      this.outputChannel.appendLine(`[ftester] マシンプロファイル「${name}」を追加しました。`);
+      this.postMachineProfileInfo();
+      this.post({ type: "machineProfileSelected", name });
+    } catch (error) {
+      this.outputChannel.appendLine(`[ftester] マシンプロファイル「${name}」の追加に失敗しました: ${String(error)}`);
+      void vscode.window.showErrorMessage(`ftester: マシンプロファイル「${name}」の追加に失敗しました。`);
+    }
+  }
+
+  /**
+   * マシン名横「コピー」ボタン: コピー元の内容をそのまま新しい名前で複製する
+   * (handleProfileCopy(実行プロファイル)と同じフロー。複製後は新プロファイルを選択状態にする)。
+   */
+  private async handleMachineProfileCopy(machine: string): Promise<void> {
+    const project = this.resolveProjectOrWarn();
+    if (!project) {
+      return;
+    }
+    const machinesDir = this.machinesDir(project);
+    const sourcePath = path.join(machinesDir, `${machine}.json`);
+    if (!fs.existsSync(sourcePath)) {
+      void vscode.window.showWarningMessage(`ftester: マシンプロファイル「${machine}」が見つかりません。`);
+      this.postMachineProfileInfo();
+      return;
+    }
+    const existing = listMachineProfiles(this.workspaceRoot, project).map((summary) => summary.name);
+    const input = await vscode.window.showInputBox({
+      prompt: `「${machine}」のコピー先のマシンプロファイル名`,
+      value: `${machine}-copy`,
+      validateInput: (value) => validateNewMachineProfileName(value.trim(), existing),
+    });
+    if (input === undefined) {
+      return; // キャンセル
+    }
+    const name = input.trim();
+    try {
+      fs.copyFileSync(sourcePath, path.join(machinesDir, `${name}.json`));
+      this.outputChannel.appendLine(`[ftester] マシンプロファイル「${machine}」を「${name}」としてコピーしました。`);
+      this.postMachineProfileInfo();
+      this.post({ type: "machineProfileSelected", name });
+    } catch (error) {
+      this.outputChannel.appendLine(`[ftester] マシンプロファイル「${name}」のコピーに失敗しました: ${String(error)}`);
+      void vscode.window.showErrorMessage(`ftester: マシンプロファイル「${name}」のコピーに失敗しました。`);
+    }
+  }
+
+  /**
+   * マシン名横「✏」ボタン: 新しい名前を入力させ、machines/<machine>.json をリネームする。
+   * CLI 側の登録名(`ftester machine set` が書く ~/.config/ftester/config.json の machineName)が
+   * 旧名のままだと、リネーム後は一覧に存在しなくなり postMachineProfileInfo の current 決定が
+   * 崩れる(登録名を頼りに現在のマシンを選ぶ解決が壊れる)ため、一致していれば追随して書き換える。
+   */
+  private async handleMachineProfileRename(machine: string): Promise<void> {
+    const project = this.resolveProjectOrWarn();
+    if (!project) {
+      return;
+    }
+    const machinesDir = this.machinesDir(project);
+    const oldPath = path.join(machinesDir, `${machine}.json`);
+    if (!fs.existsSync(oldPath)) {
+      void vscode.window.showWarningMessage(`ftester: マシンプロファイル「${machine}」が見つかりません。`);
+      this.postMachineProfileInfo();
+      return;
+    }
+    // 重複チェックは自分自身(現在の名前)を除いた一覧に対して行う(自分自身への「変更」は
+    // 別途 newName === machine のチェックで許容するため、existing に含めると常にエラーになってしまう)。
+    const existing = listMachineProfiles(this.workspaceRoot, project)
+      .map((summary) => summary.name)
+      .filter((name) => name !== machine);
+    const input = await vscode.window.showInputBox({
+      prompt: `「${machine}」の新しいマシンプロファイル名`,
+      value: machine,
+      validateInput: (value) => validateNewMachineProfileName(value.trim(), existing),
+    });
+    if (input === undefined) {
+      return; // キャンセル
+    }
+    const newName = input.trim();
+    if (newName === machine) {
+      return; // 変更なし
+    }
+    try {
+      fs.renameSync(oldPath, path.join(machinesDir, `${newName}.json`));
+      if (updateLocalMachineName(machine, newName)) {
+        this.outputChannel.appendLine(`[ftester] 登録マシン名(machine set)も「${newName}」に更新しました。`);
+      }
+      this.outputChannel.appendLine(`[ftester] マシンプロファイル「${machine}」を「${newName}」に変更しました。`);
+      this.postMachineProfileInfo();
+      this.post({ type: "machineProfileSelected", name: newName });
+    } catch (error) {
+      this.outputChannel.appendLine(
+        `[ftester] マシンプロファイル「${machine}」の名前変更に失敗しました: ${String(error)}`,
+      );
+      void vscode.window.showErrorMessage(`ftester: マシンプロファイル「${machine}」の名前変更に失敗しました。`);
+    }
+  }
+
+  /**
+   * マシン名横「−」ボタン: モーダル確認の上、machines/<machine>.json を削除する
+   * (シミュレータ/AVD 本体はここでは一切操作しない。handleProfileDelete と同じ方針)。
+   * 選択の付け替えは webview 側の既存フォールバック(machineProfileInfo 受信時の current→先頭)に
+   * 任せるので、ここから machineProfileSelected は送らない。
+   */
+  private async handleMachineProfileDelete(machine: string): Promise<void> {
+    const project = this.resolveProjectOrWarn();
+    if (!project) {
+      return;
+    }
+    const choice = await vscode.window.showWarningMessage(
+      `マシンプロファイル「${machine}」を削除しますか?この操作は元に戻せません(プロファイルファイルのみ削除され、シミュレータ/AVD 本体は削除されません)。`,
+      { modal: true },
+      "削除",
+    );
+    if (choice !== "削除") {
+      return;
+    }
+    try {
+      fs.unlinkSync(path.join(this.machinesDir(project), `${machine}.json`));
+      this.outputChannel.appendLine(`[ftester] マシンプロファイル「${machine}」を削除しました。`);
+      this.postMachineProfileInfo();
+    } catch (error) {
+      this.outputChannel.appendLine(`[ftester] マシンプロファイル「${machine}」の削除に失敗しました: ${String(error)}`);
+      void vscode.window.showErrorMessage(`ftester: マシンプロファイル「${machine}」の削除に失敗しました。`);
+    }
+  }
+
+  /**
+   * プロファイルタブのデバイス行右クリックメニュー「削除」/「選択した<N>台を削除」:
+   * machines/<machine>.json から names に一致するデバイスをプロファイル上だけ取り除く
+   * (シミュレータ/AVD本体はここでは一切操作しない。handleProfileDelete と同じくモーダル確認を
+   * 経てから実行する)。複数選択(要件5)に対応するため names は配列(単一削除も要素数1の配列)。
+   * removeDeviceFromMachineProfile を名前ごとに順次適用する(1回のファイル読み書きで済ませる —
+   * 各適用結果の object を次の入力にすることで、まとめて1回の書き戻しにできる)。1件も削除
+   * できなければ(全名前が見つからなければ)警告して書き戻さない。
+   */
+  private async handleMachineDeviceRemove(machine: string, names: readonly string[]): Promise<void> {
+    const project = this.resolveProjectOrWarn();
+    if (!project) {
+      return;
+    }
+    const confirmMessage =
+      names.length === 1
+        ? `マシンプロファイル「${machine}」からデバイス「${names[0]}」を削除しますか?プロファイルからの削除のみで、シミュレータ/AVD 本体は削除されません。`
+        : `マシンプロファイル「${machine}」から${names.length}台のデバイス(${summarizeDeviceNames(names)})を削除しますか?プロファイルからの削除のみで、シミュレータ/AVD 本体は削除されません。`;
+    const choice = await vscode.window.showWarningMessage(confirmMessage, { modal: true }, "削除");
+    if (choice !== "削除") {
+      return;
+    }
+    const machinePath = path.join(this.machinesDir(project), `${machine}.json`);
+    try {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(fs.readFileSync(machinePath, "utf8"));
+      } catch (error) {
+        this.outputChannel.appendLine(
+          `[ftester] マシンプロファイル「${machine}」の読み込みに失敗しました: ${String(error)}`,
+        );
+        void vscode.window.showWarningMessage(`ftester: マシンプロファイル「${machine}」を読み込めませんでした。`);
+        return;
+      }
+      let current: unknown = parsed;
+      let removedCount = 0;
+      for (const name of names) {
+        const result = removeDeviceFromMachineProfile(current, name);
+        if (!result) {
+          this.outputChannel.appendLine(
+            `[ftester] マシンプロファイル「${machine}」の形式が不正なため、デバイスの削除を中断しました。`,
+          );
+          void vscode.window.showWarningMessage(`ftester: マシンプロファイル「${machine}」を読み込めませんでした。`);
+          return;
+        }
+        current = result.object;
+        if (result.removed) {
+          removedCount += 1;
+        }
+      }
+      if (removedCount === 0) {
+        this.outputChannel.appendLine(
+          `[ftester] マシンプロファイル「${machine}」に指定のデバイスが見つからず、削除できませんでした。`,
+        );
+        void vscode.window.showWarningMessage(
+          `ftester: マシンプロファイル「${machine}」に指定のデバイスが見つかりませんでした。`,
+        );
+        return;
+      }
+      fs.writeFileSync(machinePath, `${JSON.stringify(current, null, 2)}\n`, "utf8");
+      this.outputChannel.appendLine(
+        `[ftester] マシンプロファイル「${machine}」から${removedCount}台のデバイスを削除しました(${names.join("、")})。`,
+      );
+      // FileSystemWatcher(onDidChange)経由でも postMachineProfileInfo() が呼ばれるが、
+      // runCreateDevice と同じく反映を待たせないようここでも明示的に呼ぶ(冪等)。
+      this.postMachineProfileInfo();
+    } catch (error) {
+      this.outputChannel.appendLine(
+        `[ftester] マシンプロファイル「${machine}」からのデバイス削除に失敗しました: ${String(error)}`,
+      );
+      void vscode.window.showErrorMessage(`ftester: マシンプロファイル「${machine}」からのデバイス削除に失敗しました。`);
+    }
+  }
+
+  /**
+   * プロファイルタブ右ペインの編集フォーム「確定」: machines/<machine>.json の対象デバイスを
+   * 更新する。結果はモーダル確認なしに machineDeviceUpdateResult で即座に webview へ返す
+   * (フォーム自体がクライアント側検証を経ているため、handleMachineDeviceRemove と違い確認
+   * ダイアログは不要)。対象プロジェクトが解決できない場合も(resolveProjectOrWarn の
+   * vscode.window 警告ではなく)結果メッセージのエラーとしてフォームに表示させたいので、
+   * ここでは resolveProjectName を直接呼ぶ。
+   */
+  private handleMachineDeviceUpdate(message: MachineDeviceUpdateMessage): void {
+    const sendResult = (ok: boolean, name: string, error: string | null) => {
+      this.post({ type: "machineDeviceUpdateResult", ok, name, error });
+    };
+
+    const resolution = resolveProjectName(this.workspaceRoot, this.getConfig());
+    if (resolution.kind !== "resolved") {
+      sendResult(
+        false,
+        message.originalName,
+        "対象のテストプロジェクトを解決できませんでした。ftester.project 設定を確認してください。",
+      );
+      return;
+    }
+
+    const machinePath = path.join(this.machinesDir(resolution.project), `${message.machine}.json`);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(fs.readFileSync(machinePath, "utf8"));
+    } catch (error) {
+      this.outputChannel.appendLine(
+        `[ftester] マシンプロファイル「${message.machine}」の読み込みに失敗しました: ${String(error)}`,
+      );
+      sendResult(false, message.originalName, `マシンプロファイル「${message.machine}」を読み込めませんでした。`);
+      return;
+    }
+
+    const result = updateDeviceInMachineProfile(parsed, message.platform, message.originalName, message.fields);
+    if (!result.ok) {
+      sendResult(false, message.originalName, result.error);
+      return;
+    }
+
+    try {
+      fs.writeFileSync(machinePath, `${JSON.stringify(result.object, null, 2)}\n`, "utf8");
+    } catch (error) {
+      this.outputChannel.appendLine(
+        `[ftester] マシンプロファイル「${message.machine}」のデバイス「${message.originalName}」の更新に失敗しました: ${String(error)}`,
+      );
+      sendResult(false, message.originalName, `マシンプロファイル「${message.machine}」への書き込みに失敗しました。`);
+      return;
+    }
+
+    this.outputChannel.appendLine(
+      `[ftester] マシンプロファイル「${message.machine}」のデバイス「${message.originalName}」を更新しました。`,
+    );
+    sendResult(true, result.name, null);
+    // FileSystemWatcher(onDidChange)経由でも postMachineProfileInfo() が呼ばれるが、
+    // handleMachineDeviceRemove と同じく反映を待たせないようここでも明示的に呼ぶ(冪等)。
+    this.postMachineProfileInfo();
+  }
+
+  /**
+   * 「+既存から選択」モーダル(#device-pick-overlay)の OK: machines/<machine>.json へ、
+   * チェックの差分(新たにチェックした未登録デバイスの追加/外した登録済みデバイスの登録解除)を
+   * まとめて適用する。handleMachineDeviceUpdate と同じく、モーダル確認なしに
+   * machineDevicesSyncResult で即座に webview へ返す(モーダル自体がチェックボックス操作という
+   * 明示操作を経ているため)。対象プロジェクトが解決できない場合も結果メッセージのエラーとして
+   * 返す(handleMachineDeviceUpdate と同じ理由で resolveProjectName を直接呼ぶ)。
+   */
+  private handleMachineDevicesSync(message: MachineDevicesSyncMessage): void {
+    const sendResult = (ok: boolean, added: number, removed: number, error: string | null) => {
+      this.post({ type: "machineDevicesSyncResult", ok, added, removed, error });
+    };
+
+    const resolution = resolveProjectName(this.workspaceRoot, this.getConfig());
+    if (resolution.kind !== "resolved") {
+      sendResult(false, 0, 0, "対象のテストプロジェクトを解決できませんでした。ftester.project 設定を確認してください。");
+      return;
+    }
+
+    const machinePath = path.join(this.machinesDir(resolution.project), `${message.machine}.json`);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(fs.readFileSync(machinePath, "utf8"));
+    } catch (error) {
+      this.outputChannel.appendLine(
+        `[ftester] マシンプロファイル「${message.machine}」の読み込みに失敗しました: ${String(error)}`,
+      );
+      sendResult(false, 0, 0, `マシンプロファイル「${message.machine}」を読み込めませんでした。`);
+      return;
+    }
+
+    const result = syncDevicesInMachineProfile(parsed, message.add, message.remove);
+    if (!result.ok) {
+      sendResult(false, 0, 0, result.error);
+      return;
+    }
+
+    try {
+      fs.writeFileSync(machinePath, `${JSON.stringify(result.object, null, 2)}\n`, "utf8");
+    } catch (error) {
+      this.outputChannel.appendLine(
+        `[ftester] マシンプロファイル「${message.machine}」へのデバイス同期の書き込みに失敗しました: ${String(error)}`,
+      );
+      sendResult(false, 0, 0, `マシンプロファイル「${message.machine}」への書き込みに失敗しました。`);
+      return;
+    }
+
+    this.outputChannel.appendLine(
+      `[ftester] マシンプロファイル「${message.machine}」に追加${result.added.length}台・登録解除${result.removed}台を適用しました` +
+        `(追加: ${result.added.length > 0 ? result.added.join("、") : "なし"}、` +
+        `登録解除: ${message.remove.length > 0 ? message.remove.join("、") : "なし"})。`,
+    );
+    sendResult(true, result.added.length, result.removed, null);
+    // FileSystemWatcher(onDidChange)経由でも postMachineProfileInfo() が呼ばれるが、
+    // handleMachineDeviceUpdate と同じく反映を待たせないようここでも明示的に呼ぶ(冪等)。
+    this.postMachineProfileInfo();
+  }
+
+  // ---- プロファイルタブ下半分: 実行プロファイルの設定フォーム(runProfileLoad/runProfileSave) ----
+  // フォーム自体の検証は webview 側(クライアント検証)で完結させているが、updateRunProfileInObject
+  // 側の防御的な検証(defaultTimeout の型)にも引っかかりうるため、結果は machineDeviceUpdate と同じく
+  // モーダル確認なしに即座に webview へ返す。
+
+  /**
+   * 選択変更・初回表示時のロード要求への応答。対象プロジェクトが解決できない/ファイルが
+   * 読めない/JSON として解析できない/トップレベルが非オブジェクトのいずれも ok:false + fields:null
+   * で返す(フォーム側はこれを「表示できない」として扱う)。
+   */
+  private handleRunProfileLoad(profile: string): void {
+    const sendResult = (ok: boolean, error: string | null, fields: RunProfileFormFields | null) => {
+      this.post({ type: "runProfileData", profile, ok, error, fields });
+    };
+
+    const resolution = resolveProjectName(this.workspaceRoot, this.getConfig());
+    if (resolution.kind !== "resolved") {
+      sendResult(
+        false,
+        "対象のテストプロジェクトを解決できませんでした。ftester.project 設定を確認してください。",
+        null,
+      );
+      return;
+    }
+
+    const runPath = path.join(this.runsDir(resolution.project), `${profile}.json`);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(fs.readFileSync(runPath, "utf8"));
+    } catch (error) {
+      this.outputChannel.appendLine(`[ftester] 実行プロファイル「${profile}」の読み込みに失敗しました: ${String(error)}`);
+      sendResult(false, `実行プロファイル「${profile}」を読み込めませんでした。`, null);
+      return;
+    }
+
+    const fields = parseRunProfileForForm(parsed);
+    if (!fields) {
+      sendResult(false, `実行プロファイル「${profile}」の形式が不正です。`, null);
+      return;
+    }
+    sendResult(true, null, fields);
+  }
+
+  /**
+   * 「確定」への応答。書き込み成功後、続けて handleRunProfileLoad を呼び直し、最新の fields を
+   * 再送する(保存直後にフォームを最新化させるため。machineDeviceUpdate 系が
+   * postMachineProfileInfo() を明示的に呼び直しているのと同じ理由)。
+   */
+  private handleRunProfileSave(message: RunProfileSaveMessage): void {
+    const { profile, fields } = message;
+    const sendResult = (ok: boolean, error: string | null) => {
+      this.post({ type: "runProfileSaveResult", profile, ok, error });
+    };
+
+    const resolution = resolveProjectName(this.workspaceRoot, this.getConfig());
+    if (resolution.kind !== "resolved") {
+      sendResult(false, "対象のテストプロジェクトを解決できませんでした。ftester.project 設定を確認してください。");
+      return;
+    }
+
+    const runPath = path.join(this.runsDir(resolution.project), `${profile}.json`);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(fs.readFileSync(runPath, "utf8"));
+    } catch (error) {
+      this.outputChannel.appendLine(`[ftester] 実行プロファイル「${profile}」の読み込みに失敗しました: ${String(error)}`);
+      sendResult(false, `実行プロファイル「${profile}」を読み込めませんでした。`);
+      return;
+    }
+
+    const result = updateRunProfileInObject(parsed, fields);
+    if (!result.ok) {
+      sendResult(false, result.error);
+      return;
+    }
+
+    try {
+      fs.writeFileSync(runPath, `${JSON.stringify(result.object, null, 2)}\n`, "utf8");
+    } catch (error) {
+      this.outputChannel.appendLine(`[ftester] 実行プロファイル「${profile}」の書き込みに失敗しました: ${String(error)}`);
+      sendResult(false, `実行プロファイル「${profile}」への書き込みに失敗しました。`);
+      return;
+    }
+
+    this.outputChannel.appendLine(`[ftester] 実行プロファイル「${profile}」を更新しました。`);
+    sendResult(true, null);
+    this.handleRunProfileLoad(profile);
+  }
+
+  // ---- プロファイルタブ中段: アプリプロファイルの設定フォーム(appProfileLoad/appProfileSave) ----
+  // handleRunProfileLoad/handleRunProfileSave の複製。フォーム自体の必須検証は無い(全フィールド
+  // 省略可)ため、updateAppProfileInObject が ok:false を返すことは実質無い想定だが、念のため
+  // 同じ形で結果を返す。
+
+  /**
+   * 選択変更・初回表示時のロード要求への応答。対象プロジェクトが解決できない/ファイルが
+   * 読めない/JSON として解析できない/トップレベルが非オブジェクトのいずれも ok:false + fields:null
+   * で返す(handleRunProfileLoad と同じ方針)。
+   */
+  private handleAppProfileLoad(profile: string): void {
+    const sendResult = (ok: boolean, error: string | null, fields: AppProfileFormFields | null) => {
+      this.post({ type: "appProfileData", profile, ok, error, fields });
+    };
+
+    const resolution = resolveProjectName(this.workspaceRoot, this.getConfig());
+    if (resolution.kind !== "resolved") {
+      sendResult(
+        false,
+        "対象のテストプロジェクトを解決できませんでした。ftester.project 設定を確認してください。",
+        null,
+      );
+      return;
+    }
+
+    const appPath = path.join(this.appsDir(resolution.project), `${profile}.json`);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(fs.readFileSync(appPath, "utf8"));
+    } catch (error) {
+      this.outputChannel.appendLine(`[ftester] アプリプロファイル「${profile}」の読み込みに失敗しました: ${String(error)}`);
+      sendResult(false, `アプリプロファイル「${profile}」を読み込めませんでした。`, null);
+      return;
+    }
+
+    const fields = parseAppProfileForForm(parsed);
+    if (!fields) {
+      sendResult(false, `アプリプロファイル「${profile}」の形式が不正です。`, null);
+      return;
+    }
+    sendResult(true, null, fields);
+  }
+
+  /**
+   * 「確定」への応答。書き込み成功後、続けて handleAppProfileLoad を呼び直し、最新の fields を
+   * 再送する(handleRunProfileSave と同じ理由)。
+   */
+  private handleAppProfileSave(message: AppProfileSaveMessage): void {
+    const { profile, fields } = message;
+    const sendResult = (ok: boolean, error: string | null) => {
+      this.post({ type: "appProfileSaveResult", profile, ok, error });
+    };
+
+    const resolution = resolveProjectName(this.workspaceRoot, this.getConfig());
+    if (resolution.kind !== "resolved") {
+      sendResult(false, "対象のテストプロジェクトを解決できませんでした。ftester.project 設定を確認してください。");
+      return;
+    }
+
+    const appPath = path.join(this.appsDir(resolution.project), `${profile}.json`);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(fs.readFileSync(appPath, "utf8"));
+    } catch (error) {
+      this.outputChannel.appendLine(`[ftester] アプリプロファイル「${profile}」の読み込みに失敗しました: ${String(error)}`);
+      sendResult(false, `アプリプロファイル「${profile}」を読み込めませんでした。`);
+      return;
+    }
+
+    const result = updateAppProfileInObject(parsed, fields);
+    if (!result.ok) {
+      sendResult(false, result.error);
+      return;
+    }
+
+    try {
+      fs.writeFileSync(appPath, `${JSON.stringify(result.object, null, 2)}\n`, "utf8");
+    } catch (error) {
+      this.outputChannel.appendLine(`[ftester] アプリプロファイル「${profile}」の書き込みに失敗しました: ${String(error)}`);
+      sendResult(false, `アプリプロファイル「${profile}」への書き込みに失敗しました。`);
+      return;
+    }
+
+    this.outputChannel.appendLine(`[ftester] アプリプロファイル「${profile}」を更新しました。`);
+    sendResult(true, null);
+    this.handleAppProfileLoad(profile);
   }
 
   private startMonitorProcess(): void {
@@ -717,6 +1713,7 @@ class MonitorPanelController implements vscode.Disposable {
   private sendInitialState(): void {
     this.hydrateLaneUi();
     this.postProfileInfo();
+    this.postMachineProfileInfo();
     // デバイスライフサイクルキューの状態も再送する(webview 再読込がジョブ実行中に起きた場合に、
     // ボタンの無効状態・タイルのバッジを復元するため)。
     if (isDeviceLifecycleQueueBusy(this.lifecycleQueue)) {
@@ -946,6 +1943,309 @@ class MonitorPanelController implements vscode.Disposable {
       finishOnce();
     });
   }
+
+  // ---- マシンプロファイル(プロファイルタブ): デバイスカタログ取得・デバイス追加 -----------------
+  // いずれもデバイスライフサイクルの直列キュー(lifecycleQueue)には載せない —
+  // device-catalog は単なる参照系の単発コマンド、create-device もモーダル側の1件実行ガード
+  // (creatingDevice)で十分であり、simctl/adb 起動系のキューと競合する処理ではないため。
+
+  /**
+   * `ftester api device-catalog` を短命プロセスとして実行し、結果を webview へ返す。
+   * 多重リクエストはボタン側(モーダルは開いた直後に1回だけ送る)で抑止する前提のため、
+   * ここでは単純に都度実行する。stdout を全量蓄積し、close 時にまとめて JSON.parse する
+   * (単発 JSON 1行の出力なので NDJSON パーサは不要)。
+   */
+  private runDeviceCatalog(): void {
+    const config = this.getConfig();
+
+    let proc: PipeProcess;
+    try {
+      proc = spawn(config.binaryPath, ["api", "device-catalog"], {
+        cwd: this.workspaceRoot,
+        shell: false,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+    } catch (error) {
+      const message = `device-catalog の起動に失敗しました: ${String(error)}`;
+      this.outputChannel.appendLine(`[ftester] ${message}`);
+      this.post({ type: "deviceCatalog", ok: false, catalog: null, error: message });
+      return;
+    }
+
+    let stdout = "";
+    let stderr = "";
+    proc.stdout.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString("utf8");
+    });
+    proc.stderr.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString("utf8");
+    });
+
+    // spawn 失敗時(ENOENT 等)は 'error' の後に 'close' も発火することがある(Node の既知の挙動)。
+    // 二重に post しないようにガードする(executeDeviceOpJob の finishOnce パターンと同じ)。
+    let responded = false;
+    const respond = (message: MonitorToWebviewMessage): void => {
+      if (responded) {
+        return;
+      }
+      responded = true;
+      this.post(message);
+    };
+    const flushStderr = (): void => {
+      const trimmed = stderr.trim();
+      if (trimmed.length > 0) {
+        this.outputChannel.appendLine(`[device-catalog stderr] ${trimmed}`);
+      }
+    };
+
+    proc.on("error", (error) => {
+      const message = `device-catalog の実行でエラーが発生しました: ${error.message}`;
+      this.outputChannel.appendLine(`[ftester] ${message}`);
+      flushStderr();
+      respond({ type: "deviceCatalog", ok: false, catalog: null, error: message });
+    });
+    proc.on("close", (exitCode) => {
+      flushStderr();
+      if (exitCode !== 0) {
+        const message = `device-catalog が失敗しました(exit code: ${String(exitCode)})`;
+        this.outputChannel.appendLine(`[ftester] ${message}`);
+        respond({ type: "deviceCatalog", ok: false, catalog: null, error: message });
+        return;
+      }
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(stdout);
+      } catch (error) {
+        const message = `device-catalog の出力を解析できませんでした: ${String(error)}`;
+        this.outputChannel.appendLine(`[ftester] ${message}`);
+        respond({ type: "deviceCatalog", ok: false, catalog: null, error: message });
+        return;
+      }
+      if (!isDeviceCatalogJson(parsed)) {
+        const message = "device-catalog の出力形式が不正です。";
+        this.outputChannel.appendLine(`[ftester] ${message}`);
+        respond({ type: "deviceCatalog", ok: false, catalog: null, error: message });
+        return;
+      }
+      respond({ type: "deviceCatalog", ok: true, catalog: parsed, error: null });
+    });
+  }
+
+  /**
+   * `ftester api installed-devices` を短命プロセスとして実行し、結果を webview へ返す
+   * (「+既存から選択」モーダルが開いた直後の installedDevicesRequest への応答。runDeviceCatalog と
+   * 全く同じ短命 spawn パターン — 単発 JSON 1行の出力を全量蓄積して close 時にまとめて
+   * JSON.parse する)。
+   */
+  private runInstalledDevices(): void {
+    const config = this.getConfig();
+
+    let proc: PipeProcess;
+    try {
+      proc = spawn(config.binaryPath, ["api", "installed-devices"], {
+        cwd: this.workspaceRoot,
+        shell: false,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+    } catch (error) {
+      const message = `installed-devices の起動に失敗しました: ${String(error)}`;
+      this.outputChannel.appendLine(`[ftester] ${message}`);
+      this.post({ type: "installedDevices", ok: false, data: null, error: message });
+      return;
+    }
+
+    let stdout = "";
+    let stderr = "";
+    proc.stdout.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString("utf8");
+    });
+    proc.stderr.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString("utf8");
+    });
+
+    let responded = false;
+    const respond = (message: MonitorToWebviewMessage): void => {
+      if (responded) {
+        return;
+      }
+      responded = true;
+      this.post(message);
+    };
+    const flushStderr = (): void => {
+      const trimmed = stderr.trim();
+      if (trimmed.length > 0) {
+        this.outputChannel.appendLine(`[installed-devices stderr] ${trimmed}`);
+      }
+    };
+
+    proc.on("error", (error) => {
+      const message = `installed-devices の実行でエラーが発生しました: ${error.message}`;
+      this.outputChannel.appendLine(`[ftester] ${message}`);
+      flushStderr();
+      respond({ type: "installedDevices", ok: false, data: null, error: message });
+    });
+    proc.on("close", (exitCode) => {
+      flushStderr();
+      if (exitCode !== 0) {
+        const message = `installed-devices が失敗しました(exit code: ${String(exitCode)})`;
+        this.outputChannel.appendLine(`[ftester] ${message}`);
+        respond({ type: "installedDevices", ok: false, data: null, error: message });
+        return;
+      }
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(stdout);
+      } catch (error) {
+        const message = `installed-devices の出力を解析できませんでした: ${String(error)}`;
+        this.outputChannel.appendLine(`[ftester] ${message}`);
+        respond({ type: "installedDevices", ok: false, data: null, error: message });
+        return;
+      }
+      if (!isInstalledDevicesJson(parsed)) {
+        const message = "installed-devices の出力形式が不正です。";
+        this.outputChannel.appendLine(`[ftester] ${message}`);
+        respond({ type: "installedDevices", ok: false, data: null, error: message });
+        return;
+      }
+      respond({ type: "installedDevices", ok: true, data: parsed, error: null });
+    });
+  }
+
+  /**
+   * `ftester api create-device` を短命プロセスとして実行する(デバイス追加モーダルの OK)。
+   * creatingDevice フラグによる単一実行ガード(実行中に来たリクエストは即座に失敗を返す。
+   * モーダル側も自身の作成中状態でボタンを無効化するが、二重の安全策として host 側でも弾く)。
+   * finished イベントが来る前にプロセスが終了した場合(クラッシュ等)は合成の失敗結果を送る
+   * (executeDeviceOpJob の finishOnce パターンと同じ)。成功時は、machines/*.json の
+   * FileSystemWatcher(onDidChange)経由でも postMachineProfileInfo() が呼ばれるが、
+   * 反映を待たせないようここでも明示的に呼ぶ(冪等なので二重呼び出しは無害)。
+   * msg.register が false の場合は `--no-register` を付与し、物理作成のみ行う(マシンプロファイルへの
+   * 追記はしない。#device-pick-overlay の「+」から開いた新規作成モーダルが使う。2026-07-11 指示)。
+   * この場合 postMachineProfileInfo() を呼んでも(何も追記されていないため)実質的に無意味だが、
+   * register:true と分岐を分けるほどの理由が無いため呼び出し自体は共通のままにしている。
+   */
+  private runCreateDevice(msg: CreateDeviceMessage): void {
+    if (this.creatingDevice) {
+      this.post({
+        type: "createDeviceResult",
+        ok: false,
+        name: msg.name,
+        error: "作成処理が既に実行中です。",
+        device: null,
+      });
+      return;
+    }
+    const config = this.getConfig();
+    const resolution = resolveProjectName(this.workspaceRoot, config);
+    if (resolution.kind !== "resolved") {
+      this.post({
+        type: "createDeviceResult",
+        ok: false,
+        name: msg.name,
+        error: "対象のテストプロジェクトを解決できませんでした。ftester.project 設定を確認してください。",
+        device: null,
+      });
+      return;
+    }
+    const args = [
+      "api",
+      "create-device",
+      "--project",
+      resolution.project,
+      "--machine",
+      msg.machine,
+      "--platform",
+      msg.platform,
+      "--name",
+      msg.name,
+      "--model",
+      msg.model,
+      "--os",
+      msg.os,
+    ];
+    if (!msg.register) {
+      args.push("--no-register");
+    }
+
+    this.creatingDevice = true;
+    let responded = false;
+    const respond = (
+      ok: boolean,
+      error: string | null,
+      device: { avd: string | null; udid: string | null } | null,
+    ): void => {
+      if (responded) {
+        return;
+      }
+      responded = true;
+      this.creatingDevice = false;
+      this.post({ type: "createDeviceResult", ok, name: msg.name, error, device });
+      if (ok) {
+        this.postMachineProfileInfo();
+      }
+    };
+
+    let proc: PipeProcess;
+    try {
+      proc = spawn(config.binaryPath, args, {
+        cwd: this.workspaceRoot,
+        shell: false,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+    } catch (error) {
+      this.outputChannel.appendLine(
+        `[ftester] create-device(${msg.name})の起動に失敗しました: ${String(error)}`,
+      );
+      respond(false, String(error), null);
+      return;
+    }
+
+    const stdoutParser = new NdjsonParser(
+      (value) => {
+        if (!isCreateDeviceEvent(value)) {
+          this.outputChannel.appendLine(
+            `[create-device ${msg.name}] 未知の形式の行を無視しました: ${JSON.stringify(value)}`,
+          );
+          return;
+        }
+        if (value.kind === "log") {
+          this.outputChannel.appendLine(`[create-device ${msg.name}] ${value.message}`);
+        } else {
+          if (!value.ok) {
+            this.outputChannel.appendLine(
+              `[ftester] create-device(${msg.name})が失敗しました: ${value.error ?? "(詳細不明)"}`,
+            );
+          }
+          respond(value.ok, value.error, value.device ? { avd: value.device.avd, udid: value.device.udid } : null);
+        }
+      },
+      (line) => this.outputChannel.appendLine(`[create-device ${msg.name} stdout] ${line}`),
+    );
+    const stderrParser = new NdjsonParser(
+      (value) => this.outputChannel.appendLine(`[create-device ${msg.name} stderr] ${JSON.stringify(value)}`),
+      (line) => this.outputChannel.appendLine(`[create-device ${msg.name} stderr] ${line}`),
+    );
+
+    proc.stdout.on("data", (chunk: Buffer) => stdoutParser.push(chunk));
+    proc.stderr.on("data", (chunk: Buffer) => stderrParser.push(chunk));
+
+    proc.on("error", (error) => {
+      this.outputChannel.appendLine(
+        `[ftester] create-device(${msg.name})の実行でエラーが発生しました: ${error.message}`,
+      );
+      respond(false, error.message, null);
+    });
+    proc.on("close", (exitCode) => {
+      stdoutParser.end();
+      stderrParser.end();
+      this.outputChannel.appendLine(
+        `[ftester] create-device(${msg.name})が終了しました(exit code: ${String(exitCode)})`,
+      );
+      // finished を経由せずに落ちたケース(クラッシュ・kill 等)を合成の失敗として扱う。
+      // finished 経由で既に respond 済みの場合は no-op(responded ガード)。
+      respond(false, `プロセスが exit code ${String(exitCode)} で終了しました`, null);
+    });
+  }
 }
 
 function generateNonce(): string {
@@ -988,6 +2288,65 @@ function renderHtml(): string {
     height: 100vh;
     overflow: hidden;
   }
+  /* タブバー(VS Code のエディタタブ風)。body 直下、タブパネル群の手前に置く。
+     以前は「背景透明+文字色+1px下線」のパネルタイトル風デザインだったが視認性が低かった
+     (ユーザー報告)ため、エディタタブと同じくアクティブ/非アクティブを背景色の差で
+     区別するデザインに変更する。 */
+  #tabbar {
+    flex: 0 0 auto;
+    display: flex;
+    gap: 0;
+    padding: 0;
+    background-color: var(--vscode-editorGroupHeader-tabsBackground, transparent);
+    border-bottom: 1px solid var(--vscode-tab-border, var(--vscode-panel-border, transparent));
+  }
+  /* 既存の button {...} グローバルスタイル(背景色・ボーダー・padding)の影響を受けないよう、
+     #tabbar 配下限定のセレクタで明示的に上書きする(具体度をグローバル規則より高くする狙い)。 */
+  #tabbar .tab-button {
+    font-family: inherit;
+    font-size: inherit;
+    padding: 8px 18px;
+    margin: 0;
+    border: none;
+    border-right: 1px solid var(--vscode-tab-border, transparent);
+    border-top: 1px solid transparent;
+    border-radius: 0;
+    background-color: var(--vscode-tab-inactiveBackground, transparent);
+    color: var(--vscode-tab-inactiveForeground, var(--vscode-descriptionForeground));
+    cursor: pointer;
+  }
+  #tabbar .tab-button:hover:not(.active) {
+    background-color: var(--vscode-tab-hoverBackground, var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31)));
+    color: var(--vscode-tab-activeForeground, var(--vscode-foreground));
+  }
+  #tabbar .tab-button.active {
+    background-color: var(--vscode-tab-activeBackground, var(--vscode-editor-background));
+    color: var(--vscode-tab-activeForeground, var(--vscode-foreground));
+    /* アクティブは上端の1本線(エディタタブと同じ)で示す。 */
+    border-top-color: var(--vscode-tab-activeBorderTop, var(--vscode-focusBorder, #007acc));
+  }
+  /* デバイス/プロファイル/設定の各タブパネルの共通コンテナ。非アクティブなものは JS が
+     inline style で display:none にする(タブ切替直後にスプリッター高さの再計算が同期的に
+     必要なため、クラス経由ではなく inline style で即座に反映させる)。 */
+  .tab-panel {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  /* プロファイル/設定タブの準備中プレースホルダー。.empty と同じ配色・文字サイズで中央寄せ
+     (タブパネル内で唯一の子要素なので、.empty のような absolute inset は不要)。 */
+  .tab-placeholder {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    color: var(--vscode-descriptionForeground);
+    font-size: 13px;
+    padding: 12px;
+  }
   .toolbar {
     flex: 0 0 auto;
     display: flex;
@@ -1014,6 +2373,34 @@ function renderHtml(): string {
   }
   button.secondary:hover:not(:disabled) {
     background-color: var(--vscode-button-secondaryHoverBackground, var(--vscode-toolbar-hoverBackground));
+  }
+  /* VS Code のツールバーアイコンボタン(エディタタブ横の「+」等)と同じ見た目にする。
+     グローバルな button/.secondary のスタイルより優先させるためクラスセレクタで上書きする
+     (デバイス追加+マシンプロファイル追加/コピー/削除/名前変更+アプリプロファイル追加/コピー/
+     削除/名前変更+実行プロファイル追加/コピー/削除/名前変更の計13ボタン共通)。 */
+  .icon-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: none;
+    border-radius: 5px;
+    background-color: transparent;
+    color: var(--vscode-icon-foreground, var(--vscode-foreground));
+  }
+  .icon-button:hover:not(:disabled) {
+    background-color: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
+  }
+  /* .icon-button の亜種: アイコン(codicon add の SVG)+テキストラベルの横並びボタン
+     (「+新規作成」「+既存から選択」の2ボタン。要件1)。.icon-button の正方形寸法(22px)は
+     ラベル文字が入らないため、幅だけ auto にして左右 padding・アイコンとラベルの gap を足す
+     (高さ・角丸・背景・hover 色は .icon-button の寸法感をそのまま維持する)。 */
+  .icon-button.with-label {
+    width: auto;
+    padding: 0 8px;
+    gap: 4px;
   }
   .profile-label {
     display: flex;
@@ -1389,7 +2776,9 @@ function renderHtml(): string {
   }
   /* タイル右クリックの起動/停止メニュー(VS Code Webview は native メニューを使えないため
      div で自作する)。1タイルにつき1項目(起動 or 停止)のみ。マウス位置に表示し、
-     JS(openDeviceOpMenu)が画面端で座標をクランプする。 */
+     JS(openDeviceOpMenu)が画面端で座標をクランプする。
+     同じ見た目・挙動をプロファイルタブのデバイス行右クリックメニュー(#machine-device-menu)
+     にも流用する(クラスを共用し、要素・状態(表示中エントリ)は独立させる)。 */
   .device-op-menu {
     position: fixed;
     z-index: 1000;
@@ -1421,43 +2810,881 @@ function renderHtml(): string {
     color: var(--vscode-menu-selectionForeground, inherit);
   }
   .device-op-menu-item:disabled { opacity: 0.6; cursor: default; }
+
+  /* ---- プロファイルタブ: ペイン全体を1つの縦スクロールにする ----------------------------
+     以前はマシン/アプリ/実行プロファイルの3セクションを .tab-panel の高さで均等(3等分)に
+     分け合い、各セクションが個別にスクロールしていたが、内容が少ないセクションでも常に
+     スクロール領域だけ確保されてしまい不格好だった(ユーザー報告)。#panel-profiles 自体を
+     縦スクロールコンテナにし、アプリ/実行プロファイルセクションは内容の自然高さのまま積む。
+     マシンプロファイルセクションだけは左右2ペイン(デバイス一覧の縦スクロール+スプリッター)
+     という構造上、自然高さにはできないため固定高さ(340px)のまま内部で個別にスクロール
+     させる(machine-profile-body・machine-device-editor は従来どおり individually
+     overflow-y: auto)。DOM順は上から実行/アプリ/マシンプロファイル(ユーザー報告により、
+     使用頻度が高い実行プロファイルを先頭に変更)。 */
+  #panel-profiles {
+    overflow-y: auto;
+  }
+  .profile-section {
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    /* sticky な .profile-jump-header の高さ分だけジャンプ時のスクロール位置がめり込むのを
+       防ぐ(scrollIntoView はデフォルトで要素の上端をビューポート上端に合わせるため、sticky
+       ヘッダの裏に隠れてしまう)。ヘッダの実高さ(padding 6px×2+1行+border 1px)より
+       余裕を持たせた値。 */
+    scroll-margin-top: 40px;
+  }
+  /* 先頭(実行プロファイル)には border-top を付けない。アプリ/マシンプロファイルは前の
+     セクションとの区切り線として付ける(セクション順の変更に伴い、以前は
+     マシンプロファイル=先頭でborder無し・アプリ/実行=borderありだったのを反転)。 */
+  .run-profile-section {
+    flex: 0 0 auto;
+  }
+  .app-profile-section {
+    flex: 0 0 auto;
+    border-top: 1px solid var(--vscode-panel-border, transparent);
+  }
+  #machine-profile-section {
+    flex: 0 0 auto;
+    border-top: 1px solid var(--vscode-panel-border, transparent);
+    /* 高さはコンテンツ(デバイス一覧)に応じて伸びる(一覧の内部スクロールは廃止し、
+       ペイン全体の単一スクロールで全デバイスを確認できるようにする。ユーザー指定)。
+       デバイス0件・フォーム非表示時に潰れないよう最小高さだけ確保する。 */
+    min-height: 180px;
+  }
+
+  /* ---- プロファイルタブ: 固定ヘッダ(セクションへのジャンプリンク) ---------------------
+     #panel-profiles が単一の縦スクロールになったことで、下にスクロールすると目的のセクション
+     まで長くスクロールする必要があった(ユーザー報告)。position: sticky で常に上部に
+     貼り付くヘッダを置き、3セクションへのテキストリンクを常設する(全セクションの前=
+     スクロールコンテナ直下)。 */
+  .profile-jump-header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background-color: var(--vscode-editor-background);
+    border-bottom: 1px solid var(--vscode-panel-border, transparent);
+    padding: 6px 12px;
+    display: flex;
+    gap: 16px;
+    flex: 0 0 auto;
+  }
+  /* テキストリンク風の見た目にする。button 要素で実装しているため、グローバルな button
+     スタイル(背景色・枠線・padding。上の button ルール群)を打ち消す必要がある。hover 時の
+     背景色は button:hover:not(:disabled) の specificity(要素+2擬似クラス)に勝つよう、
+     こちらも要素セレクタ button を含めて specificity を揃える。 */
+  button.profile-jump-link {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    color: var(--vscode-textLink-foreground, #3794ff);
+    font-size: inherit;
+  }
+  button.profile-jump-link:hover:not(:disabled) {
+    background-color: transparent;
+    text-decoration: underline;
+    color: var(--vscode-textLink-activeForeground, var(--vscode-textLink-foreground, #3794ff));
+  }
+
+  /* ---- プロファイルタブ: マシンプロファイルセクション ---------------------------------- */
+  .profile-toolbar {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 12px 6px;
+  }
+  .profile-toolbar-title {
+    font-weight: 600;
+  }
+  /* タイトル行の下の操作行(「+」=デバイスの追加)。デバイス一覧の左端に揃える。 */
+  .profile-actions {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 12px 6px;
+  }
+  /* 「+」の左のラベル(この「+」が何の追加かを示す。2026-07-11 指示で「デバイス」)。 */
+  .profile-actions-label {
+    font-weight: 600;
+  }
+  /* machines が1件以上のときは常に表示する(1件でも切替可能なドロップダウンにする。
+     0件のときだけ machine-name-static「(マシンプロファイルなし)」を使う)。 */
+  #machine-select {
+    max-width: 220px;
+  }
+  .machine-name-static {
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+  }
+  .profile-body {
+    flex: 1 1 auto;
+    display: flex;
+    min-height: 0;
+    /* 一覧とスプリッターの間に隙間を入れない(サッシ領域=4pxだけがセパレーターになるように。
+       右ペイン側の余白は .machine-device-detail-pane の padding-left で確保する)。 */
+    gap: 0;
+    padding: 0 12px 12px 12px;
+  }
+  .profile-error {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    color: var(--vscode-descriptionForeground);
+    font-size: 13px;
+    padding: 12px;
+  }
+  .machine-device-list {
+    /* 幅は JS(#profile-splitter のドラッグ/初期化/復元)が inline style で設定する(要件4。
+       .tile-pane の高さと同じ方針)。高さはデバイス数に応じて自然に伸びる
+       (内部スクロールは廃止=ペイン全体の単一スクロールで全デバイスを確認する。ユーザー指定)。 */
+    flex: 0 0 auto;
+    border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+    border-radius: 4px;
+  }
+  /* デバイス一覧と右ペインの間の縦スプリッター。VS Code のビュー間サッシと同じ寸法・挙動
+     (静止時は透明な4pxのドラッグ領域だけ。見える線は一覧自身の1pxボーダー。
+     ホバー/ドラッグでサッシ色にハイライト)。ユーザー指定で常時表示の太い帯は廃止。 */
+  .profile-splitter {
+    flex: 0 0 4px;
+    width: 4px;
+    cursor: col-resize;
+    background-color: transparent;
+  }
+  .profile-splitter:hover,
+  .profile-splitter.dragging {
+    background-color: var(--vscode-sash-hoverBorder, var(--vscode-focusBorder, #007acc));
+  }
+  .machine-device-row {
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+  }
+  .machine-device-row:last-child { border-bottom: none; }
+  /* Test Explorer(VS Code のツリー/リスト)のアイテムホバーと同じ配色にする。
+     選択中の行にホバーしても選択色を上書きしないよう :not(.selected) を付ける。
+     カーソルは通常のまま(クリックで選択できるが、ポインタ形状での操作誘導はしない。ユーザー指定)。 */
+  .machine-device-row:not(.selected):hover {
+    background-color: var(--vscode-list-hoverBackground);
+    color: var(--vscode-list-hoverForeground, inherit);
+  }
+  .machine-device-row.selected {
+    background-color: var(--vscode-list-activeSelectionBackground, rgba(0, 120, 212, 0.3));
+  }
+  .machine-device-row.selected .machine-device-detail {
+    color: var(--vscode-list-activeSelectionForeground, inherit);
+  }
+  .machine-device-detail {
+    margin-top: 4px;
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+  }
+  .machine-device-empty {
+    /* 一覧が自然高さになったため height:100% は使えない(親が auto 高さだと解決しない)。
+       余白で最低限の見た目を確保する。 */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    color: var(--vscode-descriptionForeground);
+    font-size: 12px;
+    padding: 32px 12px;
+  }
+  /* 右ペイン全体のコンテナ(プレースホルダー/編集フォームのどちらか一方だけを表示する)。
+     最小幅は JS のクランプ(#profile-splitter ドラッグ時)で確保する。 */
+  .machine-device-detail-pane {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    /* .profile-body の gap を 0 にした分の、サッシと右ペイン内容の間の余白。 */
+    padding-left: 8px;
+  }
+  .profile-detail-placeholder {
+    flex: 1 1 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    color: var(--vscode-descriptionForeground);
+    font-size: 13px;
+    padding: 12px;
+  }
+  /* 選択中デバイスの編集フォーム(要件2)。フォーム行自体は .modal-row を再利用する。 */
+  .machine-device-editor {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 4px 4px 4px 0;
+  }
+  .machine-device-editor-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  /* 編集不可フィールドのラベル表示(テキストボックスではない。ユーザー指定)。
+     テキストは選択してコピーできるようにする(user-select: text + cursor: text)。
+     編集可の input(高さ約22px)と行の高さを揃え、長い値(UDID等)は省略表示にする
+     (DOM には全文があるのでトリプルクリック選択→コピーで全文取得できる)。 */
+  .editor-readonly-value {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: block;
+    line-height: 22px;
+    user-select: text;
+    cursor: text;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .editor-platform-label {
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+  }
+
+  /* ---- プロファイルタブ: アプリプロファイルセクション(中段) ---------------------------- */
+  /* 本体は #panel-profiles 側の縦スクロールに乗るため、自身では高さ制約・スクロールを持たず
+     内容の自然高さのまま伸びる(実行プロファイルセクションと同じ方針)。「共通」「iOS」
+     「Android」の3グループを縦に並べる(グループ見出しは太字。iOS/Android はタイル/レーンの
+     デバイス名ピルと同色(.tile-name-ios/-android)のアクセント線を左端に付け、控えめに区別する)。 */
+  .app-profile-body {
+    padding: 12px;
+  }
+  .app-profile-editor {
+    display: flex;
+    flex-direction: column;
+  }
+  .app-profile-group-title {
+    font-weight: 600;
+    margin: 14px 0 6px;
+  }
+  .app-profile-group-title:first-child {
+    margin-top: 0;
+  }
+  .app-profile-group-title-ios {
+    border-left: 3px solid #29b6f6;
+    padding-left: 6px;
+  }
+  .app-profile-group-title-android {
+    border-left: 3px solid #3ddc84;
+    padding-left: 6px;
+  }
+  /* このフォームも実行プロファイルセクション同様ラベルが長い("自動インストール"等)ため、
+     #run-profile-editor と同じ理由で #id で上書きする。 */
+  #app-profile-editor .modal-row > label {
+    flex: 0 0 170px;
+  }
+
+  /* ---- プロファイルタブ: 実行プロファイルセクション(上段) ------------------------------ */
+  /* 本体はアプリプロファイルセクションと同様、自身では高さ制約・スクロールを持たず内容の
+     自然高さのまま伸びる(#panel-profiles 側の縦スクロールに乗る)。フォームが無い間(0件/
+     読み込み失敗)は .profile-detail-placeholder を再利用してプレースホルダー/エラー
+     メッセージを表示する。 */
+  .run-profile-body {
+    padding: 12px;
+  }
+  .run-profile-editor {
+    display: flex;
+    flex-direction: column;
+  }
+  /* 「使用するマシンプロファイル」ラベル横の必須バッジ。 */
+  .required-badge {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 1px 5px;
+    font-size: 10px;
+    border-radius: 3px;
+    vertical-align: middle;
+    background-color: var(--vscode-inputValidation-errorBackground, rgba(241, 76, 76, 0.15));
+    color: var(--vscode-errorForeground, #f14c4c);
+  }
+  /* このフォームは他の .modal-row 利用箇所(デバイス追加モーダル・デバイス編集フォーム)より
+     ラベルが長い(「使用するマシンプロファイル」等)ため、#id で安全に .modal-row > label の
+     flex:0 0 90px を上書きする(ソース順に依存しないよう、具体度をID分だけ上げる)。 */
+  #run-profile-editor .modal-row > label {
+    flex: 0 0 170px;
+  }
+  /* デバイス一覧は複数行になりうるため、ラベルを上端に揃える。 */
+  .run-profile-devices-row {
+    align-items: flex-start;
+  }
+  .run-profile-devices {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .run-profile-device-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+  }
+  .run-profile-device-note {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+  }
+  /* マシンプロファイルに存在しないデバイス名のピル(プラットフォーム不明のため中立色。
+     .tile-name の白文字が背景無しで見えなくならないようにする)。 */
+  .tile-name-unknown {
+    background-color: var(--vscode-descriptionForeground, #8a8a8a);
+  }
+  /* チェックボックス行(heal・自動インストール)は「ラベル+コントロール」の2カラムではなく、
+     チェックボックスと文言が横並びの1行なので、.modal-row > label の幅固定指定を打ち消す
+     (#run-profile-editor/#app-profile-editor それぞれの170px上書きより後に定義し、こちらは
+     .profile-checkbox-row 限定でさらに上書きする。run-profile-heal と app-profile の
+     自動インストールで共用するクラス)。 */
+  #run-profile-editor .profile-checkbox-row > label,
+  #app-profile-editor .profile-checkbox-row > label {
+    flex: 1 1 auto;
+  }
+  input[type="checkbox"] {
+    accent-color: var(--vscode-focusBorder, #007acc);
+  }
+
+  /* ---- デバイス追加モーダル ---------------------------------------------------------- */
+  input[type="text"] {
+    font-family: inherit;
+    font-size: inherit;
+    padding: 2px 6px;
+    border-radius: 2px;
+    background-color: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    border: 1px solid var(--vscode-input-border, var(--vscode-dropdown-border));
+  }
+  input[type="text"]:disabled { opacity: 0.5; }
+  /* 入力済みテキスト(--vscode-input-foreground)とプレースホルダー(ウォーターマーク)がひと目で
+     区別できるよう、淡色+イタリックにする(reportDir の "reports" やアプリID欄の
+     "bundle id"/"パッケージ名" 等、全 text input のプレースホルダーに共通で効かせる)。 */
+  input[type="text"]::placeholder {
+    /* 淡色すぎて目立たなかった(ユーザー報告)ため、ライト/ダーク両テーマで「薄い青」に
+       見える vscode-charts-blue を使う(イタリックは維持)。 */
+    color: var(--vscode-charts-blue, #3794ff);
+    opacity: 0.6;
+    font-style: italic;
+  }
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(0, 0, 0, 0.35);
+  }
+  .modal-overlay.visible { display: flex; }
+  /* #device-pick-overlay のタイトル行にある「+新規作成」ボタンは、そのモーダルを閉じずに
+     #device-add-overlay を上に重ねて開く(要件6)。ID セレクタなので .modal-overlay の
+     z-index:2000 より詳細度が高く、!important なしで両方 visible のときに手前へ出せる。 */
+  #device-add-overlay {
+    z-index: 2010;
+  }
+  .modal-dialog {
+    min-width: 400px;
+    padding: 16px;
+    border-radius: 6px;
+    background-color: var(--vscode-editor-background);
+    border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  }
+  .modal-title {
+    font-weight: 600;
+    margin-bottom: 12px;
+  }
+  .modal-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  /* label・select・input はいずれも直下の要素のみを対象にする(子孫セレクタだと
+     .modal-radio-group 内のラジオ用 label/input まで拾ってしまい、幅固定・淡色化や
+     flex:1 1 auto によるラジオボタン自体の間延びが意図せず起きるため)。 */
+  .modal-row > label {
+    flex: 0 0 90px;
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+  }
+  .modal-row > select,
+  .modal-row > input {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  /* heal チェックボックス(#run-profile-heal)等、.modal-row 直下のチェックボックスは
+     上のルールの flex: 1 1 auto が効いて行いっぱいに引き伸ばされてしまう(ユーザー報告)。
+     本来のサイズで左寄せし、margin-right: auto で行の残り幅を右側の余白にする。 */
+  .modal-row > input[type="checkbox"] {
+    flex: 0 0 auto;
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    margin-right: auto;
+    accent-color: var(--vscode-focusBorder, #007acc);
+  }
+  .modal-radio-group {
+    flex: 1 1 auto;
+    display: flex;
+    gap: 16px;
+  }
+  .modal-radio {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+  }
+  .modal-radio input[type="radio"] {
+    accent-color: var(--vscode-focusBorder, #007acc);
+  }
+  /* ラジオが disabled の間はラベル文字も含めて淡色化する(select の disabled 見た目に相当)。 */
+  .modal-radio:has(input:disabled) {
+    opacity: 0.5;
+    cursor: default;
+  }
+  .modal-error {
+    min-height: 16px;
+    margin-bottom: 8px;
+    font-size: 12px;
+    color: var(--vscode-errorForeground, #f14c4c);
+  }
+  /* カタログ読み込み中等の非エラー案内はエラー色ではなく淡色にする。 */
+  .modal-error.info {
+    color: var(--vscode-descriptionForeground);
+  }
+  .modal-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+  /* プロファイルタブの3編集フォーム(デバイス/アプリ/実行プロファイル)は、モーダルの
+     OK/キャンセルと違いページ内に常駐するボタン行のため、確定ボタンを左寄せにする。
+     .modal-buttons 自体はデバイス追加モーダル(右寄せのまま)が使うため変更しない。 */
+  .modal-buttons.form-buttons {
+    justify-content: flex-start;
+  }
+
+  /* ---- 「+既存から選択」モーダル(#device-pick-overlay) ------------------------------------
+     実機で iOS シミュレータ62台・Android AVD24個などインストール済みデバイスが大量にある
+     前提の設計(コーディネーター指示)。iOS/Android を同時に見比べられるよう左右2カラムに分割し、
+     各カラムを独立に固定上限(50vh)でスクロールさせる(従来の一覧全体1本のスクロールは廃止)。
+     タイトル・エラー行・OK/キャンセルは常に画面内に収める。2カラムでも名前+詳細が読める幅を
+     確保するため、通常の .modal-dialog(400px)よりかなり広い min-width にする(狭い画面では
+     max-width で画面内に収める)。 */
+  #device-pick-overlay .modal-dialog {
+    min-width: 640px;
+    max-width: calc(100vw - 48px);
+  }
+  .device-pick-list {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 8px;
+  }
+  .device-pick-group {
+    flex: 1 1 0;
+    min-width: 0;
+    max-height: 50vh;
+    overflow-y: auto;
+    border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+    border-radius: 4px;
+  }
+  /* グループ見出しに件数を出す(「iOS シミュレータ (62)」のように、探しやすくするための要件)。
+     件数は JS 側で textContent に埋め込む(このセレクタ自体は見た目のみを担う)。カラム自体が
+     スクロールコンテナになったので、position: sticky はそのカラム内で効く(カラム先頭に固定表示)。 */
+  .device-pick-group-title {
+    padding: 6px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--vscode-descriptionForeground);
+    background-color: var(--vscode-editor-background);
+    position: sticky;
+    top: 0;
+  }
+  .device-pick-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+  }
+  .device-pick-row:hover {
+    background-color: var(--vscode-list-hoverBackground);
+  }
+  .device-pick-row input[type="checkbox"] {
+    flex: 0 0 auto;
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    accent-color: var(--vscode-focusBorder, #007acc);
+  }
+  .device-pick-row-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  /* デバイス名は他画面(タイル/レーン/マシンプロファイル一覧)と同じ配色ピル(.tile-name /
+     .tile-name-ios / .tile-name-android)を共用する(要件2。色分けで統一感を出す)。
+     縦積み(flex-direction: column)の中では align-items の既定 stretch でピルが行幅いっぱいに
+     伸びてしまうため、align-self: flex-start でテキスト幅にフィットさせる。 */
+  .device-pick-row-name {
+    align-self: flex-start;
+    max-width: 100%;
+  }
+  .device-pick-row-detail {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .device-pick-empty {
+    padding: 10px;
+    font-size: 12px;
+    color: var(--vscode-descriptionForeground);
+  }
+  /* タイトル文字列+右端の「+」新規作成ボタン(#device-pick-add-new)を横並びにする行。
+     .modal-title のマージンはそのまま流用しつつ、ボタンを右端へ寄せる。 */
+  .device-pick-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  /* チェックを外すと登録解除される旨の常設注記(要件5)。誤操作への注意喚起だが、常時
+     目に入ると煩わしいため小さく・淡色にする(.modal-error より優先度が低い情報のため)。 */
+  .device-pick-note {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    opacity: 0.8;
+    margin-bottom: 8px;
+  }
 </style>
 </head>
 <body>
-  <div id="toolbar" class="toolbar">
-    <button id="btn-devices-up">デバイスを全て起動</button>
-    <button id="btn-devices-down" class="secondary">全て終了</button>
-    <button id="btn-restart" class="secondary">モニター再起動</button>
-    <label class="profile-label">実行プロファイル
-      <select id="profile-select" title="以後のテスト実行・デバッグ実行と、このモニターの監視対象デバイスに使う実行プロファイル(ftester.profile 設定)" disabled></select>
-    </label>
-    <button id="btn-profile-add" class="secondary" disabled>追加</button>
-    <button id="btn-profile-copy" class="secondary" disabled>コピー</button>
-    <button id="btn-profile-edit" class="secondary" disabled>編集</button>
-    <button id="btn-profile-delete" class="secondary" disabled>削除</button>
-    <span id="status" class="status">接続中...</span>
+  <div id="tabbar" role="tablist">
+    <button id="tab-devices" class="tab-button active" type="button" role="tab" aria-selected="true" aria-controls="panel-devices">デバイス</button>
+    <button id="tab-profiles" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-profiles">プロファイル</button>
+    <button id="tab-settings" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-settings">設定</button>
   </div>
-  <div id="banner" class="banner"></div>
 
-  <div id="tile-pane" class="tile-pane">
-    <div id="grid" class="grid"></div>
-    <div id="empty" class="empty">デバイス情報を待機しています(ポーリング形式のため反映まで数秒かかることがあります)...</div>
+  <div id="panel-devices" class="tab-panel" role="tabpanel" aria-labelledby="tab-devices">
+    <div id="toolbar" class="toolbar">
+      <button id="btn-devices-up">デバイスを全て起動</button>
+      <button id="btn-devices-down" class="secondary">全て終了</button>
+      <button id="btn-restart" class="secondary">モニター再起動</button>
+      <label class="profile-label">実行プロファイル
+        <select id="profile-select" title="以後のテスト実行・デバッグ実行と、このモニターの監視対象デバイスに使う実行プロファイル(ftester.profile 設定)" disabled></select>
+      </label>
+      <span id="status" class="status">接続中...</span>
+    </div>
+    <div id="banner" class="banner"></div>
+
+    <div id="tile-pane" class="tile-pane">
+      <div id="grid" class="grid"></div>
+      <div id="empty" class="empty">デバイス情報を待機しています(ポーリング形式のため反映まで数秒かかることがあります)...</div>
+    </div>
+
+    <div id="splitter" class="splitter" role="separator" aria-orientation="horizontal" aria-label="タイルと出力の分割境界線"></div>
+
+    <div id="output-pane" class="output-pane">
+      <div class="lanes-header">
+        <span class="lanes-title">実行ログ</span>
+        <span id="lanes-selection-status"></span>
+        <span id="lanes-run-status"></span>
+      </div>
+      <div id="lanes-placeholder" class="lanes-placeholder">テストを実行するとデバイス毎の出力がここに表示されます</div>
+      <div id="lanes-grid" class="lanes-grid" style="display: none;"></div>
+    </div>
+  </div>
+
+  <div id="panel-profiles" class="tab-panel" role="tabpanel" aria-labelledby="tab-profiles" style="display: none;">
+    <!-- 単一の縦スクロール(#panel-profiles)になったことで下のセクションまで長くスクロール
+         する必要が出たため、常に見えるジャンプリンクを sticky ヘッダとして先頭に置く
+         (セクション順=実行/アプリ/マシンプロファイルに合わせた並び)。 -->
+    <div id="profile-jump-header" class="profile-jump-header">
+      <button type="button" class="profile-jump-link" data-target="run-profile-section">実行プロファイル</button>
+      <button type="button" class="profile-jump-link" data-target="app-profile-section">アプリプロファイル</button>
+      <button type="button" class="profile-jump-link" data-target="machine-profile-section">マシンプロファイル</button>
+    </div>
+
+    <div id="run-profile-section" class="profile-section run-profile-section">
+      <div class="profile-toolbar">
+        <span class="profile-toolbar-title">実行プロファイル</span>
+        <select id="run-profile-select" style="display: none;"></select>
+        <span id="run-profile-name-static" class="machine-name-static" style="display: none;">(実行プロファイルなし)</span>
+        <!-- 実行プロファイル自体の追加/コピー/削除/名前変更。マシンプロファイルセクション
+             (btn-machine-add 等)と同一デザインのインライン SVG アイコンボタン(codicon
+             "add"/"copy"/"remove"/"edit" と同一パス)。 -->
+        <button id="btn-run-profile-add" class="icon-button" title="実行プロファイルの追加" disabled><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M14 7v1H8v6H7V8H1V7h6V1h1v6h6z"/></svg></button>
+        <button id="btn-run-profile-copy" class="icon-button" title="実行プロファイルのコピー" disabled><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 4l1-1h5.414L14 6.586V14l-1 1H5l-1-1V4zm9 3l-3-3H5v10h8V7zM3 1L2 2v10l1 1V2h6.414l-1-1H3z"/></svg></button>
+        <button id="btn-run-profile-remove" class="icon-button" title="実行プロファイルの削除" disabled><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M15 8H1V7h14v1z"/></svg></button>
+        <button id="btn-run-profile-rename" class="icon-button" title="実行プロファイル名の変更" disabled><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M13.23 1h-1.46L3.52 9.25l-.16.22L1 13.59 2.41 15l4.12-2.36.22-.16L15 4.23V2.77L13.23 1zM2.41 13.59l1.51-3 1.45 1.45-2.96 1.55zm3.83-2.06L4.47 9.76l8-8 1.77 1.77-8 8z"/></svg></button>
+      </div>
+      <div id="run-profile-body" class="run-profile-body">
+        <div id="run-profile-placeholder" class="profile-detail-placeholder" style="display: none;"></div>
+        <div id="run-profile-editor" class="run-profile-editor" style="display: none;">
+          <div class="modal-row">
+            <label for="run-profile-machine">使用するマシンプロファイル<span class="required-badge">必須</span></label>
+            <select id="run-profile-machine"></select>
+          </div>
+          <div class="modal-row">
+            <label for="run-profile-app">アプリ</label>
+            <select id="run-profile-app"></select>
+          </div>
+          <div class="modal-row run-profile-devices-row">
+            <label>デバイス</label>
+            <div id="run-profile-devices" class="run-profile-devices"></div>
+          </div>
+          <div class="modal-row profile-checkbox-row">
+            <input type="checkbox" id="run-profile-heal">
+            <label for="run-profile-heal">自己修復(heal)を有効にする</label>
+          </div>
+          <div class="modal-row">
+            <label for="run-profile-report-dir">reportDir</label>
+            <input type="text" id="run-profile-report-dir" placeholder="reports">
+          </div>
+          <div class="modal-row">
+            <label for="run-profile-default-timeout">defaultTimeout</label>
+            <input type="text" id="run-profile-default-timeout">
+          </div>
+          <div id="run-profile-error" class="modal-error"></div>
+          <div class="modal-buttons form-buttons">
+            <button id="run-profile-confirm" type="button" disabled>確定</button>
+            <button id="run-profile-cancel" class="secondary" type="button" style="display: none;">キャンセル</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="app-profile-section" class="profile-section app-profile-section">
+      <div class="profile-toolbar">
+        <span class="profile-toolbar-title">アプリプロファイル</span>
+        <select id="app-profile-select" style="display: none;"></select>
+        <span id="app-profile-name-static" class="machine-name-static" style="display: none;">(アプリプロファイルなし)</span>
+        <!-- アプリプロファイル自体の追加/コピー/削除/名前変更。マシン/実行プロファイルセクション
+             と同一デザインのインライン SVG アイコンボタン(codicon "add"/"copy"/"remove"/"edit" と
+             同一パス)。 -->
+        <button id="btn-app-profile-add" class="icon-button" title="アプリプロファイルの追加" disabled><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M14 7v1H8v6H7V8H1V7h6V1h1v6h6z"/></svg></button>
+        <button id="btn-app-profile-copy" class="icon-button" title="アプリプロファイルのコピー" disabled><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 4l1-1h5.414L14 6.586V14l-1 1H5l-1-1V4zm9 3l-3-3H5v10h8V7zM3 1L2 2v10l1 1V2h6.414l-1-1H3z"/></svg></button>
+        <button id="btn-app-profile-remove" class="icon-button" title="アプリプロファイルの削除" disabled><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M15 8H1V7h14v1z"/></svg></button>
+        <button id="btn-app-profile-rename" class="icon-button" title="アプリプロファイル名の変更" disabled><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M13.23 1h-1.46L3.52 9.25l-.16.22L1 13.59 2.41 15l4.12-2.36.22-.16L15 4.23V2.77L13.23 1zM2.41 13.59l1.51-3 1.45 1.45-2.96 1.55zm3.83-2.06L4.47 9.76l8-8 1.77 1.77-8 8z"/></svg></button>
+      </div>
+      <div id="app-profile-body" class="app-profile-body">
+        <div id="app-profile-placeholder" class="profile-detail-placeholder" style="display: none;"></div>
+        <div id="app-profile-editor" class="app-profile-editor" style="display: none;">
+          <!-- 共通グループは表示名(appName)+自動インストール(autoInstall)。app/appPath は廃止済み
+               (ランタイムは common の app/appPath を無視し、ios/android 側でのみ指定できる新仕様の
+               ため。フォームにも入力欄自体を置かない)。自動インストールは以前 ios/android
+               セクション別だったが、共通でのみ設定できる仕様に一本化した(2026-07-11 指示)ため、
+               チェックボックスはこの共通グループにのみ置く。既定OFF(無効)。heal 行と同じ
+               マークアップ・スタイル([チェックボックス]+[ラベル]の横並び1行)。 -->
+          <div class="app-profile-group-title">共通</div>
+          <div class="modal-row">
+            <label for="app-profile-common-app-name">表示名</label>
+            <input type="text" id="app-profile-common-app-name">
+          </div>
+          <div class="modal-row profile-checkbox-row">
+            <input type="checkbox" id="app-profile-common-auto-install">
+            <label for="app-profile-common-auto-install">自動インストールを有効にする</label>
+          </div>
+
+          <div class="app-profile-group-title app-profile-group-title-ios">iOS</div>
+          <div class="modal-row">
+            <label for="app-profile-ios-app-name">表示名</label>
+            <input type="text" id="app-profile-ios-app-name">
+          </div>
+          <div class="modal-row">
+            <label for="app-profile-ios-app">アプリID</label>
+            <input type="text" id="app-profile-ios-app" placeholder="bundle id">
+          </div>
+          <div class="modal-row">
+            <label for="app-profile-ios-app-path">パッケージパス</label>
+            <input type="text" id="app-profile-ios-app-path">
+          </div>
+
+          <div class="app-profile-group-title app-profile-group-title-android">Android</div>
+          <div class="modal-row">
+            <label for="app-profile-android-app-name">表示名</label>
+            <input type="text" id="app-profile-android-app-name">
+          </div>
+          <div class="modal-row">
+            <label for="app-profile-android-app">アプリID</label>
+            <input type="text" id="app-profile-android-app" placeholder="パッケージ名">
+          </div>
+          <div class="modal-row">
+            <label for="app-profile-android-app-path">パッケージパス</label>
+            <input type="text" id="app-profile-android-app-path">
+          </div>
+
+          <div id="app-profile-error" class="modal-error"></div>
+          <div class="modal-buttons form-buttons">
+            <button id="app-profile-confirm" type="button" disabled>確定</button>
+            <button id="app-profile-cancel" class="secondary" type="button" style="display: none;">キャンセル</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="machine-profile-section" class="profile-section">
+      <div class="profile-toolbar">
+        <span class="profile-toolbar-title">マシンプロファイル</span>
+        <select id="machine-select" style="display: none;"></select>
+        <span id="machine-name-static" class="machine-name-static" style="display: none;"></span>
+        <!-- マシンプロファイル自体の追加/削除/名前変更。codicon フォントは CSP(外部リソース不可)で
+             読み込めないため、codicon "add"/"remove"/"edit" と同一パスのインライン SVG を使う
+             (btn-device-add と同じ方針)。 -->
+        <button id="btn-machine-add" class="icon-button" title="マシンプロファイルの追加" disabled><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M14 7v1H8v6H7V8H1V7h6V1h1v6h6z"/></svg></button>
+        <button id="btn-machine-copy" class="icon-button" title="マシンプロファイルのコピー" disabled><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4 4l1-1h5.414L14 6.586V14l-1 1H5l-1-1V4zm9 3l-3-3H5v10h8V7zM3 1L2 2v10l1 1V2h6.414l-1-1H3z"/></svg></button>
+        <button id="btn-machine-remove" class="icon-button" title="マシンプロファイルの削除" disabled><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M15 8H1V7h14v1z"/></svg></button>
+        <button id="btn-machine-rename" class="icon-button" title="マシンプロファイル名の変更" disabled><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M13.23 1h-1.46L3.52 9.25l-.16.22L1 13.59 2.41 15l4.12-2.36.22-.16L15 4.23V2.77L13.23 1zM2.41 13.59l1.51-3 1.45 1.45-2.96 1.55zm3.83-2.06L4.47 9.76l8-8 1.77 1.77-8 8z"/></svg></button>
+      </div>
+      <div class="profile-actions">
+        <!-- デバイス追加ボタンは2種類(要件1): 新規シミュレータ/AVDを作成して追加(従来の
+             #device-add-overlay を開く)と、既にローカルにインストール済みのシミュレータ/AVDから
+             選んで追加(新設の #device-pick-overlay を開く)。見た目は .icon-button の亜種
+             (.with-label。アイコン=codicon add の SVG+テキストラベルの横並び)。 -->
+        <!-- 「+新規作成」ボタンは廃止(2026-07-11 指示)。新規作成は「+」で開く選択画面内の
+             「+」から行う。ラベル「デバイス」で「+」が何の追加かを示す。 -->
+        <span class="profile-actions-label">デバイス</span>
+        <button id="btn-device-add-existing" class="icon-button" title="インストール済みのシミュレータ/AVDからマシンプロファイルに追加" disabled><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M14 7v1H8v6H7V8H1V7h6V1h1v6h6z"/></svg></button>
+      </div>
+      <div id="machine-profile-error" class="profile-error" style="display: none;"></div>
+      <div id="machine-profile-body" class="profile-body">
+        <div id="machine-device-list" class="machine-device-list"></div>
+        <div id="profile-splitter" class="profile-splitter" role="separator" aria-orientation="vertical" aria-label="デバイス一覧と詳細の分割境界線"></div>
+        <div id="machine-device-detail-pane" class="machine-device-detail-pane">
+          <div id="profile-detail-placeholder" class="profile-detail-placeholder">デバイスを選択すると内容を表示します</div>
+          <div id="machine-device-editor" class="machine-device-editor" style="display: none;">
+            <div class="machine-device-editor-header">
+              <span id="editor-device-name" class="tile-name"></span>
+              <span id="editor-device-platform" class="editor-platform-label"></span>
+            </div>
+            <!-- 編集可否の制御(ユーザー指定): 機種/OS/UDID/AVD は作成済みデバイスの実体を指す
+                 属性で API では変更できない(変更にはデバイスの削除→作り直しが必要)ため、
+                 テキストボックスではなくラベル(選択・コピー可能なテキスト)で表示する。
+                 名前(プロファイル上の論理名)とポート(ブリッジポート設定)はプロファイル側の
+                 設定値なので編集可。ラベルは input イベントを発火しないので dirty 判定にも入らず、
+                 確定時は元の値がそのまま往復する。 -->
+            <div class="modal-row">
+              <label for="editor-name">名前</label>
+              <input type="text" id="editor-name">
+            </div>
+            <div id="editor-ios-fields">
+              <div class="modal-row">
+                <label>機種</label>
+                <span id="editor-simulator" class="editor-readonly-value" title="機種は変更できません(変更するにはデバイスを削除して作り直してください)"></span>
+              </div>
+              <div class="modal-row">
+                <label>OS</label>
+                <span id="editor-os" class="editor-readonly-value" title="OSは変更できません(変更するにはデバイスを削除して作り直してください)"></span>
+              </div>
+              <div class="modal-row">
+                <label>UDID</label>
+                <span id="editor-udid" class="editor-readonly-value" title="UDIDは作成時に決まる識別子のため変更できません"></span>
+              </div>
+              <div class="modal-row">
+                <label for="editor-port">ポート</label>
+                <input type="text" id="editor-port">
+              </div>
+            </div>
+            <div id="editor-android-fields">
+              <div class="modal-row">
+                <label>AVD</label>
+                <span id="editor-avd" class="editor-readonly-value" title="AVDは変更できません(変更するにはデバイスを削除して作り直してください)"></span>
+              </div>
+            </div>
+            <div id="editor-error" class="modal-error"></div>
+            <div class="modal-buttons form-buttons">
+              <button id="editor-confirm" type="button" disabled>確定</button>
+              <button id="editor-cancel" class="secondary" type="button" style="display: none;">キャンセル</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="panel-settings" class="tab-panel" role="tabpanel" aria-labelledby="tab-settings" style="display: none;">
+    <div class="tab-placeholder">このタブは準備中です(設定機能を今後追加予定)</div>
   </div>
 
   <div id="device-op-menu" class="device-op-menu" role="menu">
     <button id="device-op-menu-item" class="device-op-menu-item" type="button" role="menuitem"></button>
   </div>
 
-  <div id="splitter" class="splitter" role="separator" aria-orientation="horizontal" aria-label="タイルと出力の分割境界線"></div>
+  <!-- プロファイルタブのデバイス行右クリックメニュー(削除のみ)。見た目・挙動は #device-op-menu と
+       同じクラスを共用する(独立した表示状態・DOM要素)。 -->
+  <div id="machine-device-menu" class="device-op-menu" role="menu">
+    <button id="machine-device-menu-item" class="device-op-menu-item" type="button" role="menuitem">削除</button>
+  </div>
 
-  <div id="output-pane" class="output-pane">
-    <div class="lanes-header">
-      <span class="lanes-title">実行ログ</span>
-      <span id="lanes-selection-status"></span>
-      <span id="lanes-run-status"></span>
+  <div id="device-add-overlay" class="modal-overlay">
+    <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="device-add-title">
+      <div id="device-add-title" class="modal-title">デバイスを追加</div>
+      <div class="modal-row">
+        <label>OS種別</label>
+        <div class="modal-radio-group">
+          <label class="modal-radio"><input type="radio" id="dlg-platform-ios" name="dlg-platform" value="ios" checked>iOS</label>
+          <label class="modal-radio"><input type="radio" id="dlg-platform-android" name="dlg-platform" value="android">Android</label>
+        </div>
+      </div>
+      <div class="modal-row">
+        <label for="dlg-model">モデル</label>
+        <select id="dlg-model"></select>
+      </div>
+      <div class="modal-row">
+        <label for="dlg-os">OSバージョン</label>
+        <select id="dlg-os"></select>
+      </div>
+      <div class="modal-row">
+        <label for="dlg-name">デバイス名</label>
+        <input type="text" id="dlg-name">
+      </div>
+      <div id="dlg-error" class="modal-error"></div>
+      <div class="modal-buttons">
+        <button id="dlg-cancel" class="secondary" type="button">キャンセル</button>
+        <button id="dlg-ok" type="button">OK</button>
+      </div>
     </div>
-    <div id="lanes-placeholder" class="lanes-placeholder">テストを実行するとデバイス毎の出力がここに表示されます</div>
-    <div id="lanes-grid" class="lanes-grid" style="display: none;"></div>
+  </div>
+
+  <!-- 「+既存から選択」モーダル(要件2)。#device-add-overlay と同じオーバーレイ/ダイアログ様式。
+       中身は iOS シミュレータ/Android AVD の2グループ(#device-pick-ios-group/-android-group。
+       中身は JS が installedDevices 受信時に組み立てる)。実機で数十件規模になる前提のため
+       一覧領域(.device-pick-list)だけを固定上限でスクロールさせる(コーディネーター指示)。
+       各行のチェックボックスは「選択」ではなく「マシンプロファイルへの登録状態そのもの」を表し、
+       登録済みなら初期チェック(disabled/淡色化はしない。常に操作可能)。OK は初期状態からの
+       差分がある間だけ有効になる(devicePickOk の disabled 切り替えは JS 側)。タイトル行右端の
+       「+」ボタン(#device-pick-add-new)はこのモーダルを閉じずに #device-add-overlay を上に
+       重ねて開く(z-index は上の #device-add-overlay ルールを参照)。フッターの注記は、チェックを
+       外すことが「登録解除」であって実体(シミュレータ/AVD 本体)の削除ではないことを常時明示する。 -->
+  <div id="device-pick-overlay" class="modal-overlay">
+    <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="device-pick-title">
+      <div class="modal-title device-pick-title-row">
+        <span id="device-pick-title">既存のデバイスから選択</span>
+        <button id="device-pick-add-new" class="icon-button" type="button" title="デバイスを新規作成"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M14 7v1H8v6H7V8H1V7h6V1h1v6h6z"/></svg></button>
+      </div>
+      <div id="device-pick-list" class="device-pick-list">
+        <div id="device-pick-ios-group" class="device-pick-group">
+          <div class="device-pick-group-title" id="device-pick-ios-title">iOS シミュレータ</div>
+          <div id="device-pick-ios-body"></div>
+        </div>
+        <div id="device-pick-android-group" class="device-pick-group">
+          <div class="device-pick-group-title" id="device-pick-android-title">Android AVD</div>
+          <div id="device-pick-android-body"></div>
+        </div>
+      </div>
+      <div id="device-pick-error" class="modal-error"></div>
+      <div class="device-pick-note">チェックを外して OK すると登録解除されます(シミュレータ/AVD 本体は削除されません)</div>
+      <div class="modal-buttons">
+        <button id="device-pick-cancel" class="secondary" type="button">キャンセル</button>
+        <button id="device-pick-ok" type="button" disabled>OK</button>
+      </div>
+    </div>
   </div>
 
   <script nonce="${nonce}">
@@ -1477,11 +3704,8 @@ function renderHtml(): string {
     const btnDown = document.getElementById('btn-devices-down');
     const btnRestart = document.getElementById('btn-restart');
     const profileSelect = document.getElementById('profile-select');
-    const btnProfileAdd = document.getElementById('btn-profile-add');
-    const btnProfileCopy = document.getElementById('btn-profile-copy');
-    const btnProfileEdit = document.getElementById('btn-profile-edit');
-    const btnProfileDelete = document.getElementById('btn-profile-delete');
 
+    const devicesPanel = document.getElementById('panel-devices');
     const tilePane = document.getElementById('tile-pane');
     const splitter = document.getElementById('splitter');
     const lanesPlaceholder = document.getElementById('lanes-placeholder');
@@ -1536,9 +3760,11 @@ function renderHtml(): string {
         : Math.round(window.innerHeight * 0.45);
 
     // タイルペイン+出力ペインに配分できる合計の高さ(ツールバー・バナー・スプリッター分を除く)。
+    // タブ導入前は document.body.clientHeight を基準にしていたが、タブバー分の高さがずれるため、
+    // 「デバイス」タブのパネル(既存要素一式を包むコンテナ)自身の clientHeight を基準にする。
     function availableSplitHeight() {
       const bannerHeight = banner.classList.contains('visible') ? banner.offsetHeight : 0;
-      return document.body.clientHeight - toolbar.offsetHeight - bannerHeight - splitter.offsetHeight;
+      return devicesPanel.clientHeight - toolbar.offsetHeight - bannerHeight - splitter.offsetHeight;
     }
 
     // 上下それぞれ最小 MIN_PANE_HEIGHT を確保するようにクランプする。
@@ -1549,6 +3775,12 @@ function renderHtml(): string {
     }
 
     function applyTilePaneHeight(height) {
+      // 「デバイス」タブが非表示(display:none)の間は devicesPanel.clientHeight が 0 になり、
+      // clampTilePaneHeight が誤って最小値 120px に丸めてしまう。何もせず抜け、タブが
+      // 「デバイス」に戻った直後(switchTab)に呼び直して再クランプする。
+      if (devicesPanel.clientHeight === 0 || devicesPanel.offsetParent === null) {
+        return;
+      }
       tilePaneHeight = clampTilePaneHeight(height);
       tilePane.style.height = tilePaneHeight + 'px';
       relayoutTiles();
@@ -1770,16 +4002,23 @@ function renderHtml(): string {
       deviceOpMenu.classList.remove('visible');
     }
 
-    // マウス位置にメニューを開く。画面端でははみ出さないよう、実測サイズで座標をクランプする。
+    // 自作の右クリックメニュー(fixed div)をマウス位置に開く際、画面端でははみ出さないよう
+    // 実測サイズで座標をクランプする。タイル右クリックメニュー・プロファイルタブのデバイス行
+    // 右クリックメニュー(machine-device-menu)で共用する。
+    function clampMenuPosition(menuEl, clientX, clientY) {
+      const rect = menuEl.getBoundingClientRect();
+      const maxX = Math.max(4, window.innerWidth - rect.width - 4);
+      const maxY = Math.max(4, window.innerHeight - rect.height - 4);
+      menuEl.style.left = Math.min(Math.max(clientX, 4), maxX) + 'px';
+      menuEl.style.top = Math.min(Math.max(clientY, 4), maxY) + 'px';
+    }
+
+    // マウス位置にメニューを開く。
     function openDeviceOpMenu(entry, clientX, clientY) {
       deviceOpMenuEntry = entry;
       renderDeviceOpMenuItem();
       deviceOpMenu.classList.add('visible');
-      const rect = deviceOpMenu.getBoundingClientRect();
-      const maxX = Math.max(4, window.innerWidth - rect.width - 4);
-      const maxY = Math.max(4, window.innerHeight - rect.height - 4);
-      deviceOpMenu.style.left = Math.min(Math.max(clientX, 4), maxX) + 'px';
-      deviceOpMenu.style.top = Math.min(Math.max(clientY, 4), maxY) + 'px';
+      clampMenuPosition(deviceOpMenu, clientX, clientY);
     }
 
     deviceOpMenuItemBtn.addEventListener('click', (event) => {
@@ -1915,6 +4154,8 @@ function renderHtml(): string {
     }
 
     // ---- 実行プロファイル選択 ---------------------------------------------------
+    // 追加/コピー/削除/名前変更はプロファイルタブ下半分の実行プロファイルセクションに移設した
+    // (btn-run-profile-*)。ここでは「使用する実行プロファイルを指定するだけ」の select のみを扱う。
 
     const PROFILE_NONE_LABEL = '(プロファイルなし)';
 
@@ -1948,35 +4189,11 @@ function renderHtml(): string {
       }
       profileSelect.value = current;
       profileSelect.disabled = false;
-      updateProfileButtonsEnabled();
-    }
-
-    // 追加はドロップダウンが有効な間はいつでも押せる。コピー/編集/削除は「プロファイルなし」
-    // (select.value === '')の間は対象が無いので無効化する。初期状態(profileInfo未着)は
-    // select 自体が disabled なので4つとも無効。
-    function updateProfileButtonsEnabled() {
-      btnProfileAdd.disabled = profileSelect.disabled;
-      const hasSelection = !profileSelect.disabled && profileSelect.value !== '';
-      btnProfileCopy.disabled = !hasSelection;
-      btnProfileEdit.disabled = !hasSelection;
-      btnProfileDelete.disabled = !hasSelection;
     }
 
     profileSelect.addEventListener('change', () => {
       vscode.postMessage({ type: 'selectProfile', profile: profileSelect.value });
-      updateProfileButtonsEnabled();
     });
-
-    btnProfileAdd.addEventListener('click', () => vscode.postMessage({ type: 'profileAdd' }));
-    btnProfileCopy.addEventListener('click', () =>
-      vscode.postMessage({ type: 'profileCopy', profile: profileSelect.value }),
-    );
-    btnProfileEdit.addEventListener('click', () =>
-      vscode.postMessage({ type: 'profileEdit', profile: profileSelect.value }),
-    );
-    btnProfileDelete.addEventListener('click', () =>
-      vscode.postMessage({ type: 'profileDelete', profile: profileSelect.value }),
-    );
 
     function toggleDeviceSelection(id) {
       if (selectedDeviceIds.has(id)) {
@@ -2276,6 +4493,54 @@ function renderHtml(): string {
           break;
         case 'profileInfo':
           applyProfileInfo(message);
+          applyAppProfileInfo(message);
+          applyRunProfileInfo(message);
+          break;
+        case 'machineProfileInfo':
+          applyMachineProfileInfo(message);
+          rerenderRunProfileFormIfClean();
+          break;
+        case 'machineProfileSelected':
+          applyMachineProfileSelected(message);
+          break;
+        case 'deviceCatalog':
+          applyDeviceCatalog(message);
+          break;
+        case 'createDeviceResult':
+          applyCreateDeviceResult(message);
+          break;
+        case 'installedDevices':
+          applyInstalledDevices(message);
+          break;
+        case 'machineDevicesSyncResult':
+          applyMachineDevicesSyncResult(message);
+          break;
+        case 'machineDeviceUpdateResult':
+          applyMachineDeviceUpdateResult(message);
+          break;
+        case 'runProfileSelected':
+          applyRunProfileSelected(message);
+          break;
+        case 'runProfileData':
+          applyRunProfileData(message);
+          break;
+        case 'runProfileSaveResult':
+          applyRunProfileSaveResult(message);
+          break;
+        case 'runProfileFileChanged':
+          applyRunProfileFileChanged(message);
+          break;
+        case 'appProfileSelected':
+          applyAppProfileSelected(message);
+          break;
+        case 'appProfileData':
+          applyAppProfileData(message);
+          break;
+        case 'appProfileSaveResult':
+          applyAppProfileSaveResult(message);
+          break;
+        case 'appProfileFileChanged':
+          applyAppProfileFileChanged(message);
           break;
         default:
           break;
@@ -2296,6 +4561,2163 @@ function renderHtml(): string {
       emptyMessage.style.display = 'flex';
       vscode.postMessage({ type: 'restartMonitor' });
     });
+
+    // ---- プロファイルタブ: マシンプロファイル ---------------------------------------
+    // machines/*.json の内容(machineProfileInfo)を一覧表示し、「+新規作成」/「+既存から選択」
+    // からそれぞれのデバイス追加モーダルを開く。ホストとの往復が要るのは
+    // deviceCatalogRequest/createDevice/installedDevicesRequest/machineDevicesSync/
+    // machineDeviceRemove のみで、マシン選択(select の change)自体は受信済みデータの
+    // 再描画だけで完結する。
+
+    const machineSelect = document.getElementById('machine-select');
+    const machineNameStatic = document.getElementById('machine-name-static');
+    const btnMachineAdd = document.getElementById('btn-machine-add');
+    const btnMachineCopy = document.getElementById('btn-machine-copy');
+    const btnMachineRemove = document.getElementById('btn-machine-remove');
+    const btnMachineRename = document.getElementById('btn-machine-rename');
+    const btnDeviceAddExisting = document.getElementById('btn-device-add-existing');
+    const machineProfileError = document.getElementById('machine-profile-error');
+    const machineProfileBody = document.getElementById('machine-profile-body');
+    const machineDeviceList = document.getElementById('machine-device-list');
+    const profileSplitter = document.getElementById('profile-splitter');
+    const profileDetailPlaceholder = document.getElementById('profile-detail-placeholder');
+    const machineDeviceEditor = document.getElementById('machine-device-editor');
+    const editorDeviceName = document.getElementById('editor-device-name');
+    const editorDevicePlatform = document.getElementById('editor-device-platform');
+    const editorIosFields = document.getElementById('editor-ios-fields');
+    const editorAndroidFields = document.getElementById('editor-android-fields');
+    const editorName = document.getElementById('editor-name');
+    const editorSimulator = document.getElementById('editor-simulator');
+    const editorOs = document.getElementById('editor-os');
+    const editorUdid = document.getElementById('editor-udid');
+    const editorPort = document.getElementById('editor-port');
+    const editorAvd = document.getElementById('editor-avd');
+    const editorError = document.getElementById('editor-error');
+    const editorConfirm = document.getElementById('editor-confirm');
+    const editorCancel = document.getElementById('editor-cancel');
+    const machineDeviceMenu = document.getElementById('machine-device-menu');
+    const machineDeviceMenuItemBtn = document.getElementById('machine-device-menu-item');
+
+    // 直近受信の machines 配列(machineProfileInfo)。空なら「マシンプロファイルなし」。
+    let machineProfiles = [];
+    let machineProfileHasError = false;
+    // 現在選択中とみなすマシン名(select の値。machines が0件なら null)。
+    let selectedMachine = null;
+    // 選択中デバイス名の集合(要件5: 複数選択に対応するため Set)。通常クリックは「その1台だけを
+    // 選択」(既にその1台だけの選択状態なら解除。従来のトグル感を維持)、Shift+クリックは
+    // クリックした行を追加/除外するトグル。マシン切替・一覧再描画で一覧から消えた名前は
+    // Set から取り除く(validateSelectedDeviceName)。右ペインの編集フォームは
+    // ちょうど1台(size===1)のときだけ表示する。
+    let selectedDeviceNames = new Set();
+    // 直近描画したデバイス行の DOM 要素(name -> row)。トグル選択・右クリックメニューの
+    // 対象存在チェックで、一覧全体を再描画せずに済ませるために使う。
+    let deviceRowElements = new Map();
+    // 右クリックメニュー(#machine-device-menu)を開いている対象(未オープンなら null)。
+    // { machine, name } の形(deviceOpMenuEntry がタイル entry を保持するのと対応)。
+    let machineDeviceMenuEntry = null;
+    // 右ペインの編集フォームの対象({ machine, platform, originalName }。未選択なら null)。
+    let editorTarget = null;
+    // フォームを最後に作り直した(＝選択・machineProfileInfo再プリフィル)時点の6フィールド値。
+    // dirty 判定(現在値との比較)・machineProfileInfo 再受信時の再プリフィル可否判定に使う。
+    let editorOriginalValues = null;
+    // いずれかのフィールドが元の値(editorOriginalValues)から変わっているか。
+    let editorDirty = false;
+    // machineDeviceUpdate の応答待ち中か(二重送信防止・machineProfileInfo 再受信時の
+    // 再プリフィル抑止に使う)。
+    let editorSubmitting = false;
+
+    function findMachine(name) {
+      return machineProfiles.find((m) => m.name === name);
+    }
+
+    // ---- デバイス一覧と右ペインの分割(要件4。上下ペインの #splitter と同じ Pointer Events 方針) ----
+
+    const MIN_MACHINE_LIST_WIDTH = 180;
+    const MIN_DETAIL_PANE_WIDTH = 240;
+    let machineListWidth =
+      typeof persistedState.machineListWidth === 'number' && persistedState.machineListWidth > 0
+        ? persistedState.machineListWidth
+        : 280;
+
+    function clampMachineListWidth(width) {
+      const maxWidth = Math.max(MIN_MACHINE_LIST_WIDTH, machineProfileBody.clientWidth - MIN_DETAIL_PANE_WIDTH);
+      return Math.min(Math.max(width, MIN_MACHINE_LIST_WIDTH), maxWidth);
+    }
+
+    function applyMachineListWidth(width) {
+      // 「プロファイル」タブが非表示の間は machineProfileBody.clientWidth が 0 になり、
+      // clampMachineListWidth が誤って最小値に丸めてしまう(applyTilePaneHeight と同じ理由)。
+      // 何もせず抜け、タブ表示時(switchTab)に呼び直して再クランプする。
+      if (machineProfileBody.clientWidth === 0 || machineProfileBody.offsetParent === null) {
+        return;
+      }
+      machineListWidth = clampMachineListWidth(width);
+      machineDeviceList.style.flexBasis = machineListWidth + 'px';
+      machineDeviceList.style.width = machineListWidth + 'px';
+    }
+
+    function persistMachineListWidth() {
+      vscode.setState(Object.assign({}, vscode.getState(), { machineListWidth }));
+    }
+
+    applyMachineListWidth(machineListWidth);
+    window.addEventListener('resize', () => applyMachineListWidth(machineListWidth));
+
+    let profileSplitterPointerId = null;
+    let profileSplitterStartX = 0;
+    let profileSplitterStartWidth = 0;
+
+    profileSplitter.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0) {
+        return;
+      }
+      profileSplitterPointerId = event.pointerId;
+      profileSplitterStartX = event.clientX;
+      profileSplitterStartWidth = machineListWidth;
+      profileSplitter.setPointerCapture(event.pointerId);
+      profileSplitter.classList.add('dragging');
+      event.preventDefault();
+    });
+    profileSplitter.addEventListener('pointermove', (event) => {
+      if (profileSplitterPointerId !== event.pointerId) {
+        return;
+      }
+      applyMachineListWidth(profileSplitterStartWidth + (event.clientX - profileSplitterStartX));
+    });
+    const endProfileSplitterDrag = (event) => {
+      if (profileSplitterPointerId !== event.pointerId) {
+        return;
+      }
+      profileSplitterPointerId = null;
+      profileSplitter.classList.remove('dragging');
+      profileSplitter.releasePointerCapture(event.pointerId);
+      persistMachineListWidth();
+    };
+    profileSplitter.addEventListener('pointerup', endProfileSplitterDrag);
+    profileSplitter.addEventListener('pointercancel', endProfileSplitterDrag);
+
+    // selectedDeviceNames のうち、現在の selectedMachine の一覧に存在しない名前を取り除く
+    // (要件: マシン切替・一覧更新で選択中デバイスが消えた場合)。存在するものは維持する
+    // (machineProfileInfo 再受信後も選択を名前で照合して引き継ぐ)。
+    function validateSelectedDeviceName() {
+      const machine = findMachine(selectedMachine);
+      const names = new Set(machine ? machine.devices.map((d) => d.name) : []);
+      for (const name of selectedDeviceNames) {
+        if (!names.has(name)) {
+          selectedDeviceNames.delete(name);
+        }
+      }
+    }
+
+    // machineProfileInfo 受信のたびに selectedMachine を検証し、無効なら current→先頭の順で
+    // フォールバックする(要件: 選択中マシンが一覧から消えた場合の復帰先)。
+    function applyMachineProfileInfo(message) {
+      machineProfiles = Array.isArray(message.machines) ? message.machines : [];
+      const error = typeof message.error === 'string' ? message.error : null;
+      const current = typeof message.current === 'string' ? message.current : null;
+      machineProfileHasError = !!error;
+
+      if (!findMachine(selectedMachine)) {
+        if (current !== null && findMachine(current)) {
+          selectedMachine = current;
+        } else {
+          selectedMachine = machineProfiles.length > 0 ? machineProfiles[0].name : null;
+        }
+      }
+
+      validateSelectedDeviceName();
+      renderMachineSelect();
+      renderMachineProfileBody(error);
+      refreshEditorAfterProfileInfo();
+      // 「+新規作成」「+既存から選択」は同一条件で有効/無効を切り替える(要件1)。
+      btnDeviceAddExisting.disabled = machineProfileHasError || machineProfiles.length === 0;
+      // [+] はプロジェクトさえ解決できれば追加先があるので machines 件数は問わない。
+      // [−]/[✏] は対象(selectedMachine)が要るので、machines が0件のときも無効化する。
+      btnMachineAdd.disabled = machineProfileHasError;
+      btnMachineCopy.disabled = machineProfileHasError || machineProfiles.length === 0;
+      btnMachineRemove.disabled = machineProfileHasError || machineProfiles.length === 0;
+      btnMachineRename.disabled = machineProfileHasError || machineProfiles.length === 0;
+    }
+
+    // 追加/名前変更の直後にホストから届く、選択を新プロファイルへ移す通知。直前の
+    // machineProfileInfo とは順序が前後しない(postMessage は順序保証)ため、単純に上書きでよい。
+    // エラー時(machineProfileHasError)にホストがこのメッセージを送ってくることは無い前提だが、
+    // 念のため無視するガードを入れる。
+    function applyMachineProfileSelected(message) {
+      if (machineProfileHasError) {
+        return;
+      }
+      selectedMachine = message.name;
+      validateSelectedDeviceName();
+      renderMachineSelect();
+      renderMachineProfileBody(null);
+    }
+
+    function renderMachineSelect() {
+      if (machineProfiles.length >= 1) {
+        machineSelect.style.display = '';
+        machineNameStatic.style.display = 'none';
+        machineSelect.textContent = '';
+        for (const machine of machineProfiles) {
+          const option = document.createElement('option');
+          option.value = machine.name;
+          option.textContent = machine.name;
+          machineSelect.appendChild(option);
+        }
+        machineSelect.value = selectedMachine || '';
+      } else {
+        machineSelect.style.display = 'none';
+        machineNameStatic.style.display = '';
+        machineNameStatic.textContent = '(マシンプロファイルなし)';
+      }
+    }
+
+    machineSelect.addEventListener('change', () => {
+      selectedMachine = machineSelect.value;
+      validateSelectedDeviceName();
+      renderMachineProfileBody(machineProfileHasError ? machineProfileError.textContent : null);
+      // マシン切替は明示操作なので、編集途中の値を破棄してフォームを作り直す(要件2)。
+      rebuildEditorForSelection();
+    });
+
+    btnMachineAdd.addEventListener('click', () => vscode.postMessage({ type: 'machineProfileAdd' }));
+    btnMachineCopy.addEventListener('click', () => {
+      if (selectedMachine) {
+        vscode.postMessage({ type: 'machineProfileCopy', machine: selectedMachine });
+      }
+    });
+    btnMachineRemove.addEventListener('click', () => {
+      if (selectedMachine) {
+        vscode.postMessage({ type: 'machineProfileDelete', machine: selectedMachine });
+      }
+    });
+    btnMachineRename.addEventListener('click', () => {
+      if (selectedMachine) {
+        vscode.postMessage({ type: 'machineProfileRename', machine: selectedMachine });
+      }
+    });
+
+    // 行クリックの選択(要件5)。
+    // - 通常クリック: その1台だけを選択(既存の選択を置き換える)。既に「その1台だけが選択」
+    //   状態なら解除する(従来のトグル感を維持)。
+    // - Shift+クリック: クリックした行を現在の選択に追加/除外する(追加式トグル)。
+    function toggleDeviceRowSelection(name, shiftKey) {
+      if (shiftKey) {
+        if (selectedDeviceNames.has(name)) {
+          selectedDeviceNames.delete(name);
+        } else {
+          selectedDeviceNames.add(name);
+        }
+      } else if (selectedDeviceNames.size === 1 && selectedDeviceNames.has(name)) {
+        selectedDeviceNames.clear();
+      } else {
+        selectedDeviceNames = new Set([name]);
+      }
+      updateDeviceSelectionUi();
+      // 選択変更は明示操作なので、編集途中の値を破棄してフォームを作り直す(要件2)。
+      rebuildEditorForSelection();
+    }
+
+    function updateDeviceSelectionUi() {
+      for (const [name, row] of deviceRowElements) {
+        row.classList.toggle('selected', selectedDeviceNames.has(name));
+      }
+    }
+
+    function renderMachineProfileBody(error) {
+      if (error) {
+        machineProfileBody.style.display = 'none';
+        machineProfileError.style.display = 'flex';
+        machineProfileError.textContent = error;
+        machineDeviceList.textContent = '';
+        deviceRowElements = new Map();
+        closeMachineDeviceMenu();
+        return;
+      }
+      machineProfileError.style.display = 'none';
+      machineProfileBody.style.display = 'flex';
+
+      const machine = findMachine(selectedMachine);
+      const devices = machine ? machine.devices : [];
+      machineDeviceList.textContent = '';
+      deviceRowElements = new Map();
+      if (devices.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'machine-device-empty';
+        empty.textContent = 'デバイスがありません。上のボタンから追加できます。';
+        machineDeviceList.appendChild(empty);
+      } else {
+        for (const device of devices) {
+          const row = document.createElement('div');
+          row.className = 'machine-device-row';
+          const name = document.createElement('span');
+          // タイル/レーンのデバイス名ピルと同じ配色クラスを再利用する(tile-name-ios/-android)。
+          name.className = 'tile-name tile-name-' + device.platform;
+          name.textContent = device.name;
+          const detail = document.createElement('div');
+          detail.className = 'machine-device-detail';
+          detail.textContent = device.detail;
+          row.append(name, detail);
+          row.addEventListener('click', (event) => toggleDeviceRowSelection(device.name, event.shiftKey));
+          row.addEventListener('contextmenu', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            // クリックした行が現在の複数選択(2台以上)に含まれる場合は選択中全台を対象にする。
+            // それ以外は従来どおりクリックした行単体を対象にする(要件5)。選択状態自体は
+            // 右クリックでは変更しない。
+            const names =
+              selectedDeviceNames.size >= 2 && selectedDeviceNames.has(device.name)
+                ? [...selectedDeviceNames]
+                : [device.name];
+            openMachineDeviceMenu({ machine: selectedMachine, names }, event.clientX, event.clientY);
+          });
+          deviceRowElements.set(device.name, row);
+          machineDeviceList.appendChild(row);
+        }
+      }
+      // 一覧再描画で対象デバイス/マシンが変わった場合、開いたままの右クリックメニューを残さない。
+      if (
+        machineDeviceMenuEntry &&
+        (machineDeviceMenuEntry.machine !== selectedMachine ||
+          !machineDeviceMenuEntry.names.every((name) => deviceRowElements.has(name)))
+      ) {
+        closeMachineDeviceMenu();
+      }
+      updateDeviceSelectionUi();
+    }
+
+    // 選択中マシンの全デバイス名(ios/android 横断。デバイス追加モーダルの重複検証に使う)。
+    function allDeviceNamesForSelectedMachine() {
+      const machine = findMachine(selectedMachine);
+      return machine ? machine.devices.map((d) => d.name) : [];
+    }
+
+    // ---- 右ペインの編集フォーム(要件2) ---------------------------------------------
+    // 行選択中は #machine-device-editor を表示し、machineDeviceUpdate で machines/*.json を
+    // 更新する。dirty(未確定の編集があるか)は6フィールドの現在値と、フォームを最後に作り直した
+    // 時点の値(editorOriginalValues)を素の文字列比較するだけで判定する(trim はしない。
+    // 「元の値から変わったか」という見た目上の判定であり、送信直前の検証・整形とは別の関心事)。
+
+    const EDITOR_PLATFORM_LABEL = { ios: 'iOS', android: 'Android' };
+    // input イベントを購読するのは編集可のフィールドだけ(機種/OS/UDID/AVD は選択・コピー可能な
+    // ラベル表示(span)であり、値が変わることはない)。
+    const editorFieldInputs = [editorName, editorPort];
+
+    // machines/*.json のデバイス1件(machineProfileInfo の生フィールド付き)から、フォームの
+    // 6フィールド分の文字列を組み立てる(undefined は空文字扱い。port は文字列化する)。
+    function deviceFieldValues(device) {
+      return {
+        name: device.name,
+        simulator: device.simulator || '',
+        os: device.os || '',
+        udid: device.udid || '',
+        port: device.port === undefined || device.port === null ? '' : String(device.port),
+        avd: device.avd || '',
+      };
+    }
+
+    function currentEditorValues() {
+      // 機種/OS/UDID/AVD はラベル表示(span)なので textContent から読む(変わることはないが、
+      // dirty 判定の比較対象として editorOriginalValues と同じ6フィールドの形を保つ)。
+      return {
+        name: editorName.value,
+        simulator: editorSimulator.textContent,
+        os: editorOs.textContent,
+        udid: editorUdid.textContent,
+        port: editorPort.value,
+        avd: editorAvd.textContent,
+      };
+    }
+
+    function valuesEqual(a, b) {
+      return (
+        a.name === b.name &&
+        a.simulator === b.simulator &&
+        a.os === b.os &&
+        a.udid === b.udid &&
+        a.port === b.port &&
+        a.avd === b.avd
+      );
+    }
+
+    // dirty(=確定ボタン有効)と、それに連動する確定/キャンセルボタンの見た目をまとめて更新する。
+    // キャンセルは dirty の間だけ表示し(要件2)、送信中(editorSubmitting)は確定・キャンセルとも
+    // 無効化する(確定は「確定中...」表示、キャンセルは表示は保ったまま押せなくする)。
+    function refreshEditorButtonsUi() {
+      editorConfirm.disabled = editorSubmitting || !editorDirty;
+      editorCancel.style.display = editorDirty ? '' : 'none';
+      editorCancel.disabled = editorSubmitting;
+    }
+    function setEditorDirty(dirty) {
+      editorDirty = dirty;
+      refreshEditorButtonsUi();
+    }
+
+    // 選択中デバイスの値でフォームを作り直す(編集途中の値は破棄する)。
+    function renderDeviceEditor(machine, device) {
+      editorTarget = { machine: machine, platform: device.platform, originalName: device.name };
+      editorOriginalValues = deviceFieldValues(device);
+      editorSubmitting = false;
+      editorError.textContent = '';
+      editorDeviceName.className = 'tile-name tile-name-' + device.platform;
+      editorDeviceName.textContent = device.name;
+      editorDevicePlatform.textContent = EDITOR_PLATFORM_LABEL[device.platform] || device.platform;
+      editorName.value = editorOriginalValues.name;
+      editorSimulator.textContent = editorOriginalValues.simulator;
+      editorOs.textContent = editorOriginalValues.os;
+      editorUdid.textContent = editorOriginalValues.udid;
+      editorPort.value = editorOriginalValues.port;
+      editorAvd.textContent = editorOriginalValues.avd;
+      editorIosFields.style.display = device.platform === 'ios' ? '' : 'none';
+      editorAndroidFields.style.display = device.platform === 'android' ? '' : 'none';
+      editorConfirm.textContent = '確定';
+      profileDetailPlaceholder.style.display = 'none';
+      machineDeviceEditor.style.display = '';
+      setEditorDirty(false);
+    }
+
+    // プレースホルダーの既定文言(HTML の初期テキストをそのまま使い回す。0台選択時に表示する)。
+    const DEVICE_PLACEHOLDER_DEFAULT_TEXT = profileDetailPlaceholder.textContent;
+
+    // text 省略時は既定文言(0台選択)。2台以上選択時は呼び出し側が件数入りの文言を渡す(要件5)。
+    function clearDeviceEditor(text) {
+      editorTarget = null;
+      editorOriginalValues = null;
+      editorSubmitting = false;
+      machineDeviceEditor.style.display = 'none';
+      profileDetailPlaceholder.style.display = '';
+      profileDetailPlaceholder.textContent = text !== undefined ? text : DEVICE_PLACEHOLDER_DEFAULT_TEXT;
+      setEditorDirty(false);
+    }
+
+    // 右ペインの編集フォームは「ちょうど1台選択」のときだけ表示する(要件5)。0台は既定の
+    // プレースホルダー、2台以上は「<N>台選択中(右クリックで一括削除できます)」を表示する。
+    function singleSelectedDevice() {
+      if (selectedDeviceNames.size !== 1) {
+        return null;
+      }
+      const machine = findMachine(selectedMachine);
+      if (!machine) {
+        return null;
+      }
+      const [name] = selectedDeviceNames;
+      return machine.devices.find((d) => d.name === name) || null;
+    }
+
+    // 選択変更・マシン切替(明示操作)用: ちょうど1台選択中ならその値でフォームを作り直し、
+    // それ以外(0台/2台以上)はプレースホルダーに戻す。編集途中の値は常に破棄する。
+    function rebuildEditorForSelection() {
+      if (selectedDeviceNames.size >= 2) {
+        clearDeviceEditor(selectedDeviceNames.size + '台選択中(右クリックで一括削除できます)');
+        return;
+      }
+      const device = singleSelectedDevice();
+      if (device) {
+        renderDeviceEditor(selectedMachine, device);
+      } else {
+        clearDeviceEditor();
+      }
+    }
+
+    // machineProfileInfo 再受信用: 選択中デバイスが消えていれば選択解除、存在してかつ未編集
+    // (dirty でない・送信中でない)なら新データで再プリフィルする。編集中(dirty)なら入力値を
+    // 保持する(watcher 経由の再送で入力が消えるのを防ぐ。要件2)。
+    function refreshEditorAfterProfileInfo() {
+      if (machineProfileHasError) {
+        clearDeviceEditor();
+        return;
+      }
+      if (selectedDeviceNames.size >= 2) {
+        clearDeviceEditor(selectedDeviceNames.size + '台選択中(右クリックで一括削除できます)');
+        return;
+      }
+      if (selectedDeviceNames.size === 0) {
+        clearDeviceEditor();
+        return;
+      }
+      const device = singleSelectedDevice();
+      if (!device) {
+        clearDeviceEditor();
+        return;
+      }
+      if (!editorDirty && !editorSubmitting) {
+        renderDeviceEditor(selectedMachine, device);
+      }
+    }
+
+    function onEditorFieldInput() {
+      if (!editorTarget || editorSubmitting) {
+        return;
+      }
+      setEditorDirty(!valuesEqual(currentEditorValues(), editorOriginalValues));
+      // 入力を変えたら前回のエラー表示は古くなるので消す(次の「確定」クリックで再検証される)。
+      editorError.textContent = '';
+    }
+    for (const input of editorFieldInputs) {
+      input.addEventListener('input', onEditorFieldInput);
+    }
+
+    // キャンセル: 編集を破棄して選択中デバイスの最新値でフォームを作り直す。machineProfiles は
+    // 常に最新(watcher経由で追従)なので、rebuildEditorForSelection がそのまま
+    // 「現在のファイル状態に戻す」動作になる(エラー表示のクリアも rebuildEditorForSelection
+    // →renderDeviceEditor/clearDeviceEditor 内で行われる)。
+    editorCancel.addEventListener('click', () => {
+      if (editorCancel.disabled) {
+        return;
+      }
+      rebuildEditorForSelection();
+    });
+
+    // 複製元: src/monitorModel.ts の updateDeviceInMachineProfile の検証部分。webview は CSP により
+    // import 不可のため複製する(validateNewDeviceName の複製と同じ方針。ロジックを変更したら
+    // 両方に反映すること)。
+    function validateDeviceEditorFields(name) {
+      if (name.length === 0) {
+        return 'デバイス名を入力してください。';
+      }
+      const others = allDeviceNamesForSelectedMachine().filter((n) => n !== editorTarget.originalName);
+      if (others.includes(name)) {
+        return '「' + name + '」は既に存在します。';
+      }
+      if (editorTarget.platform === 'ios') {
+        const portValue = editorPort.value.trim();
+        // 注意: この関数は renderHtml のテンプレートリテラル内なので、正規表現の \d は \\d と
+        // 書く必要がある(\d のままだと生成される webview JS では /^d+$/ になり、正しい数値入力を
+        // 誤って弾くバグになる。v0.0.30 までの回帰)。
+        if (portValue.length > 0 && (!/^\\d+$/.test(portValue) || Number(portValue) > 65535)) {
+          return 'port は 0〜65535 の整数で入力してください。';
+        }
+      }
+      return null;
+    }
+
+    editorConfirm.addEventListener('click', () => {
+      if (editorConfirm.disabled || editorSubmitting || !editorTarget) {
+        return;
+      }
+      const name = editorName.value.trim();
+      const validationError = validateDeviceEditorFields(name);
+      if (validationError) {
+        editorError.textContent = validationError;
+        return;
+      }
+      editorSubmitting = true;
+      editorConfirm.textContent = '確定中...';
+      editorError.textContent = '';
+      refreshEditorButtonsUi();
+      vscode.postMessage({
+        type: 'machineDeviceUpdate',
+        machine: editorTarget.machine,
+        platform: editorTarget.platform,
+        originalName: editorTarget.originalName,
+        fields: {
+          name: name,
+          // 編集不可フィールドはラベル表示(span)の textContent = 元の値をそのまま往復させる。
+          simulator: editorTarget.platform === 'ios' ? editorSimulator.textContent.trim() : '',
+          os: editorTarget.platform === 'ios' ? editorOs.textContent.trim() : '',
+          udid: editorTarget.platform === 'ios' ? editorUdid.textContent.trim() : '',
+          port: editorTarget.platform === 'ios' ? editorPort.value.trim() : '',
+          avd: editorTarget.platform === 'android' ? editorAvd.textContent.trim() : '',
+        },
+      });
+    });
+
+    // machineDeviceUpdate の結果(ok:true ならリネーム追従+一覧/フォームは直後の
+    // machineProfileInfo 再送(refreshEditorAfterProfileInfo)で最新化される。ok:false なら
+    // エラー表示のみで、入力値はそのまま残す=再操作可能)。
+    function applyMachineDeviceUpdateResult(message) {
+      editorSubmitting = false;
+      editorConfirm.textContent = '確定';
+      if (message.ok) {
+        selectedDeviceNames = new Set([message.name]);
+        editorError.textContent = '';
+        setEditorDirty(false);
+      } else {
+        refreshEditorButtonsUi();
+        editorError.textContent = message.error || 'デバイスの更新に失敗しました。';
+      }
+    }
+
+    // ---- デバイス行の右クリックメニュー(削除) -------------------------------------
+    // 見た目・挙動はタイルの #device-op-menu(openDeviceOpMenu/closeDeviceOpMenu)を踏襲するが、
+    // 状態(machineDeviceMenuEntry)・DOM要素は独立させる(タイルメニューの挙動に影響しないため)。
+
+    function closeMachineDeviceMenu() {
+      if (!machineDeviceMenuEntry) {
+        return;
+      }
+      machineDeviceMenuEntry = null;
+      machineDeviceMenu.classList.remove('visible');
+    }
+
+    // entry は { machine, names }(names は1件以上)。複数選択(2台以上)を対象にする場合は
+    // メニュー項目のラベルを「選択した<N>台を削除」に変える(要件5)。
+    function openMachineDeviceMenu(entry, clientX, clientY) {
+      machineDeviceMenuEntry = entry;
+      machineDeviceMenuItemBtn.textContent =
+        entry.names.length >= 2 ? '選択した' + entry.names.length + '台を削除' : '削除';
+      machineDeviceMenu.classList.add('visible');
+      clampMenuPosition(machineDeviceMenu, clientX, clientY);
+    }
+
+    machineDeviceMenuItemBtn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      if (!machineDeviceMenuEntry) {
+        return;
+      }
+      vscode.postMessage({
+        type: 'machineDeviceRemove',
+        machine: machineDeviceMenuEntry.machine,
+        names: machineDeviceMenuEntry.names,
+      });
+      closeMachineDeviceMenu();
+    });
+
+    // 外クリック・Esc・スクロール・リサイズで閉じる(#device-op-menu と同じ方針だが、
+    // 独立したリスナーとして登録する)。
+    document.addEventListener('click', (event) => {
+      if (machineDeviceMenuEntry && !machineDeviceMenu.contains(event.target)) {
+        closeMachineDeviceMenu();
+      }
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        closeMachineDeviceMenu();
+      }
+    });
+    document.addEventListener('scroll', () => closeMachineDeviceMenu(), true);
+    window.addEventListener('resize', () => closeMachineDeviceMenu());
+    // 行上の contextmenu は stopPropagation 済みなのでここには来ない(行外で右クリックした
+    // 場合に残さないためのガード。#device-op-menu の同種ハンドラと同じ理由)。
+    document.addEventListener('contextmenu', () => closeMachineDeviceMenu());
+
+    // ---- プロファイルタブ中段: アプリプロファイルの設定フォーム -----------------------
+    // 一覧・初期選択は既存 profileInfo(applyProfileInfo/applyRunProfileInfo とは独立に
+    // applyAppProfileInfo で受ける。message.apps を使う)。この選択は webview 内だけで完結し、
+    // 他のどの設定にも連動しない(実行プロファイルセクションと違い「現在値」に相当する設定が
+    // 無いため、フォールバックは常に一覧の先頭)。dirty 管理・再ロードの方針は実行プロファイル
+    // セクション(下記)と同じ:
+    // - フォーム値と appProfileOriginalFields の比較で「確定」を有効化。
+    // - 選択変更(明示操作)で編集破棄して再ロード。
+    // - profileInfo 再受信時、編集中(dirty/送信中)ならフォーム値保持、未編集なら再ロード。
+    //   編集対象が一覧から消えたらフォールバック(先頭)。
+    // - appProfileFileChanged(外部編集)は編集対象と同名 && 未編集のときのみ再ロード。
+    // クライアント側の必須検証は無い(common/ios/android の全フィールドが省略可のため。
+    // Swift 側 validate-profile の役割)。
+
+    const appProfileSelect = document.getElementById('app-profile-select');
+    const appProfileNameStatic = document.getElementById('app-profile-name-static');
+    const btnAppProfileAdd = document.getElementById('btn-app-profile-add');
+    const btnAppProfileCopy = document.getElementById('btn-app-profile-copy');
+    const btnAppProfileRemove = document.getElementById('btn-app-profile-remove');
+    const btnAppProfileRename = document.getElementById('btn-app-profile-rename');
+    const appProfilePlaceholder = document.getElementById('app-profile-placeholder');
+    const appProfileEditor = document.getElementById('app-profile-editor');
+    const appProfileError = document.getElementById('app-profile-error');
+    const appProfileConfirm = document.getElementById('app-profile-confirm');
+    const appProfileCancel = document.getElementById('app-profile-cancel');
+
+    // common/ios/android それぞれの DOM 参照をまとめて持つ(renderAppProfileEditor・
+    // collectAppProfileFields・appProfileValuesEqual・setAppProfileControlsEnabled が使う)。
+    // common は表示名(appName)+自動インストールのチェックボックス(heal と同じマークアップ。
+    // 既定=チェックOFF=無効)、ios/android は app/appPath が廃止されフォーム自体に無いため
+    // 表示名/アプリID/パッケージパスの3項目のみ(自動インストールを common に一本化した
+    // 2026-07-11 指示に伴い、以前ここにあった autoInstall チェックボックスは common へ移設)。
+    const appProfileGroups = {
+      common: {
+        appName: document.getElementById('app-profile-common-app-name'),
+        autoInstall: document.getElementById('app-profile-common-auto-install'),
+      },
+      ios: {
+        appName: document.getElementById('app-profile-ios-app-name'),
+        app: document.getElementById('app-profile-ios-app'),
+        appPath: document.getElementById('app-profile-ios-app-path'),
+      },
+      android: {
+        appName: document.getElementById('app-profile-android-app-name'),
+        app: document.getElementById('app-profile-android-app'),
+        appPath: document.getElementById('app-profile-android-app-path'),
+      },
+    };
+    const APP_PROFILE_GROUP_NAMES = ['common', 'ios', 'android'];
+    // app/appPath を持つのは ios/android のみ(common には無い)。
+    const APP_PROFILE_PLATFORM_GROUP_NAMES = ['ios', 'android'];
+
+    // 自動インストールはチェックボックス1つで内部表現("true"/"false")の読み書きを行う
+    // (monitorModel.ts の AppProfileCommonFields.autoInstall と同じ2値の文字列。common に
+    // 一本化される前は AppProfilePlatformFields.autoInstall として ios/android 別に持っていたが、
+    // dom.autoInstall を読み書きする形自体は変わらないため、呼び出し側を
+    // appProfileGroups.common に変えるだけで済んだ。保存意味論(true→autoInstall:trueをセット、
+    // false→キー削除)も不変)。
+    function getAppProfileAutoInstall(dom) {
+      return dom.autoInstall.checked ? 'true' : 'false';
+    }
+    function setAppProfileAutoInstall(dom, value) {
+      dom.autoInstall.checked = value === 'true';
+    }
+
+    // 直近受信の一覧(profileInfo.apps 由来)。
+    let appProfileNames = [];
+    // 編集対象のアプリプロファイル名(一覧が0件なら null)。
+    let selectedAppProfile = null;
+    // 直近ロード(appProfileData ok:true)時点のフィールド値。null の間はフォーム非表示。
+    let appProfileOriginalFields = null;
+    let appProfileDirty = false;
+    let appProfileSubmitting = false;
+
+    function appProfileEditing() {
+      return appProfileDirty || appProfileSubmitting;
+    }
+
+    // dirty(=確定ボタン有効)と、それに連動する確定/キャンセルボタンの見た目をまとめて更新する
+    // (editorForm の refreshEditorButtonsUi/setEditorDirty と同じ方針)。
+    function refreshAppProfileButtonsUi() {
+      appProfileConfirm.disabled = appProfileSubmitting || !appProfileDirty;
+      appProfileCancel.style.display = appProfileDirty ? '' : 'none';
+      appProfileCancel.disabled = appProfileSubmitting;
+    }
+    function setAppProfileDirty(dirty) {
+      appProfileDirty = dirty;
+      refreshAppProfileButtonsUi();
+    }
+
+    function showAppProfilePlaceholder(text) {
+      appProfileOriginalFields = null;
+      appProfileSubmitting = false;
+      appProfileEditor.style.display = 'none';
+      appProfilePlaceholder.style.display = '';
+      appProfilePlaceholder.textContent = text;
+      setAppProfileDirty(false);
+    }
+
+    function requestAppProfileLoad() {
+      if (!selectedAppProfile) {
+        showAppProfilePlaceholder('アプリプロファイルがありません。');
+        return;
+      }
+      // 応答(appProfileData)が来るまで編集させない(requestRunProfileLoad と同じ理由)。
+      showAppProfilePlaceholder('読み込み中...');
+      vscode.postMessage({ type: 'appProfileLoad', profile: selectedAppProfile });
+    }
+
+    // profileInfo 受信(applyProfileInfo/applyRunProfileInfo と独立)。選択の維持/フォールバックと
+    // 再ロードを行う。「現在値」に相当する設定が無いため、applyRunProfileInfo と違い先頭への
+    // フォールバックのみ。
+    function applyAppProfileInfo(message) {
+      appProfileNames = Array.isArray(message.apps) ? message.apps : [];
+
+      const previous = selectedAppProfile;
+      if (selectedAppProfile === null || !appProfileNames.includes(selectedAppProfile)) {
+        selectedAppProfile = appProfileNames.length > 0 ? appProfileNames[0] : null;
+      }
+      renderAppProfileSelect();
+      // [+] は profileInfo を受信できた時点で追加先(プロジェクト)があるので常に有効。
+      // コピー/−/✏ は対象(選択中のアプリプロファイル)が要るので、一覧0件のときは無効化する
+      // (applyRunProfileInfo と同じ方針)。
+      btnAppProfileAdd.disabled = false;
+      btnAppProfileCopy.disabled = appProfileNames.length === 0;
+      btnAppProfileRemove.disabled = appProfileNames.length === 0;
+      btnAppProfileRename.disabled = appProfileNames.length === 0;
+
+      if (selectedAppProfile !== previous) {
+        requestAppProfileLoad();
+        return;
+      }
+      if (selectedAppProfile !== null && !appProfileEditing()) {
+        requestAppProfileLoad();
+      } else if (selectedAppProfile === null) {
+        showAppProfilePlaceholder('アプリプロファイルがありません。');
+      }
+    }
+
+    function renderAppProfileSelect() {
+      if (appProfileNames.length >= 1) {
+        appProfileSelect.style.display = '';
+        appProfileNameStatic.style.display = 'none';
+        appProfileSelect.textContent = '';
+        for (const name of appProfileNames) {
+          const option = document.createElement('option');
+          option.value = name;
+          option.textContent = name;
+          appProfileSelect.appendChild(option);
+        }
+        appProfileSelect.value = selectedAppProfile || '';
+      } else {
+        appProfileSelect.style.display = 'none';
+        appProfileNameStatic.style.display = '';
+      }
+    }
+
+    appProfileSelect.addEventListener('change', () => {
+      // 選択変更は明示操作なので、編集途中の値を破棄して選択先を再ロードする。
+      selectedAppProfile = appProfileSelect.value;
+      requestAppProfileLoad();
+    });
+
+    btnAppProfileAdd.addEventListener('click', () => vscode.postMessage({ type: 'appProfileAdd' }));
+    btnAppProfileCopy.addEventListener('click', () => {
+      if (selectedAppProfile) {
+        vscode.postMessage({ type: 'appProfileCopy', profile: selectedAppProfile });
+      }
+    });
+    btnAppProfileRemove.addEventListener('click', () => {
+      if (selectedAppProfile) {
+        vscode.postMessage({ type: 'appProfileDelete', profile: selectedAppProfile });
+      }
+    });
+    btnAppProfileRename.addEventListener('click', () => {
+      if (selectedAppProfile) {
+        vscode.postMessage({ type: 'appProfileRename', profile: selectedAppProfile });
+      }
+    });
+
+    // 追加/コピー/名前変更の直後にホストから届く、選択(編集対象)を新プロファイルへ移す通知
+    // (applyRunProfileSelected と同じ趣旨)。
+    function applyAppProfileSelected(message) {
+      if (!appProfileNames.includes(message.name)) {
+        return;
+      }
+      selectedAppProfile = message.name;
+      renderAppProfileSelect();
+      requestAppProfileLoad();
+    }
+
+    // appProfileData 受信: 編集対象と同じプロファイルの応答のみ反映する(applyRunProfileData と
+    // 同じガード)。
+    function applyAppProfileData(message) {
+      if (message.profile !== selectedAppProfile) {
+        return;
+      }
+      if (appProfileEditing()) {
+        return;
+      }
+      if (!message.ok || !message.fields) {
+        showAppProfilePlaceholder(message.error || 'アプリプロファイルを読み込めませんでした。');
+        return;
+      }
+      renderAppProfileEditor(message.fields);
+    }
+
+    // iOS/Android の表示名(appName)入力欄のプレースホルダーに、共通(common)の表示名フィールドの
+    // 現在の入力値を表示する。appName は common → platform の順で後勝ちマージされるため、platform
+    // 側が空欄のときの実効値は common の値になる — その「継承される値」をウォーターマークとして
+    // 見せることで、空欄の意味(未入力=common の値がそのまま使われる)を一目で分かるようにする。
+    // 共通の表示名が空ならプレースホルダーも空でよい(素の value をそのまま使う)。
+    function updateAppProfileNamePlaceholders() {
+      const inherited = appProfileGroups.common.appName.value;
+      for (const group of APP_PROFILE_PLATFORM_GROUP_NAMES) {
+        appProfileGroups[group].appName.placeholder = inherited;
+      }
+    }
+
+    // ロード済みの値でフォームを作り直す(編集途中の値は破棄する)。
+    function renderAppProfileEditor(fields) {
+      appProfileOriginalFields = fields;
+      appProfileSubmitting = false;
+      appProfileError.textContent = '';
+
+      // 表示名(appName)は common/ios/android 共通で持つ唯一のフィールドなので3グループまとめて
+      // 設定する。
+      for (const group of APP_PROFILE_GROUP_NAMES) {
+        appProfileGroups[group].appName.value = fields[group].appName;
+      }
+      // 自動インストールは common に一本化されている(2026-07-11 指示)。
+      setAppProfileAutoInstall(appProfileGroups.common, fields.common.autoInstall);
+      // アプリID・パッケージパスは ios/android のみ(common には無い)。
+      for (const group of APP_PROFILE_PLATFORM_GROUP_NAMES) {
+        const dom = appProfileGroups[group];
+        const values = fields[group];
+        dom.app.value = values.app;
+        dom.appPath.value = values.appPath;
+      }
+      // プリフィル直後の共通表示名を反映してプレースホルダーを初期化する。
+      updateAppProfileNamePlaceholders();
+
+      setAppProfileControlsEnabled(true);
+      appProfileConfirm.textContent = '確定';
+      appProfilePlaceholder.style.display = 'none';
+      appProfileEditor.style.display = '';
+      setAppProfileDirty(false);
+    }
+
+    // 現在のフォーム入力値を、appProfileSave の fields と同じ形(common は表示名+自動インストールの
+    // 2項目、ios/android は表示名/アプリID/パッケージパスの3項目。text 系は trim 済み)で集める。
+    function collectAppProfileFields() {
+      const fields = {
+        common: {
+          appName: appProfileGroups.common.appName.value.trim(),
+          autoInstall: getAppProfileAutoInstall(appProfileGroups.common),
+        },
+      };
+      for (const group of APP_PROFILE_PLATFORM_GROUP_NAMES) {
+        const dom = appProfileGroups[group];
+        fields[group] = {
+          appName: dom.appName.value.trim(),
+          app: dom.app.value.trim(),
+          appPath: dom.appPath.value.trim(),
+        };
+      }
+      return fields;
+    }
+
+    function appProfileValuesEqual(fields) {
+      const current = collectAppProfileFields();
+      if (
+        current.common.appName !== fields.common.appName ||
+        current.common.autoInstall !== fields.common.autoInstall
+      ) {
+        return false;
+      }
+      return APP_PROFILE_PLATFORM_GROUP_NAMES.every((group) => {
+        const a = current[group];
+        const b = fields[group];
+        return a.appName === b.appName && a.app === b.app && a.appPath === b.appPath;
+      });
+    }
+
+    function onAppProfileFormInput() {
+      if (appProfileOriginalFields === null || appProfileSubmitting) {
+        return;
+      }
+      setAppProfileDirty(!appProfileValuesEqual(appProfileOriginalFields));
+      // 入力を変えたら前回のエラー表示は古くなるので消す(runProfileError と同じ方針)。
+      appProfileError.textContent = '';
+    }
+
+    for (const group of APP_PROFILE_GROUP_NAMES) {
+      appProfileGroups[group].appName.addEventListener('input', onAppProfileFormInput);
+    }
+    appProfileGroups.common.autoInstall.addEventListener('change', onAppProfileFormInput);
+    // 共通の表示名を編集するたび、iOS/Android のプレースホルダー(継承値のライブプレビュー)を
+    // 更新する。
+    appProfileGroups.common.appName.addEventListener('input', updateAppProfileNamePlaceholders);
+    for (const group of APP_PROFILE_PLATFORM_GROUP_NAMES) {
+      const dom = appProfileGroups[group];
+      dom.app.addEventListener('input', onAppProfileFormInput);
+      dom.appPath.addEventListener('input', onAppProfileFormInput);
+    }
+
+    function setAppProfileControlsEnabled(enabled) {
+      for (const group of APP_PROFILE_GROUP_NAMES) {
+        appProfileGroups[group].appName.disabled = !enabled;
+      }
+      appProfileGroups.common.autoInstall.disabled = !enabled;
+      for (const group of APP_PROFILE_PLATFORM_GROUP_NAMES) {
+        const dom = appProfileGroups[group];
+        dom.app.disabled = !enabled;
+        dom.appPath.disabled = !enabled;
+      }
+    }
+
+    appProfileConfirm.addEventListener('click', () => {
+      if (appProfileConfirm.disabled || appProfileSubmitting || !selectedAppProfile) {
+        return;
+      }
+      appProfileSubmitting = true;
+      setAppProfileControlsEnabled(false);
+      appProfileConfirm.textContent = '確定中...';
+      appProfileError.textContent = '';
+      refreshAppProfileButtonsUi();
+      vscode.postMessage({
+        type: 'appProfileSave',
+        profile: selectedAppProfile,
+        fields: collectAppProfileFields(),
+      });
+    });
+
+    // キャンセル: dirty/送信中フラグを先に解除してから appProfileLoad を再送する
+    // (applyAppProfileData は appProfileEditing() の間は応答を無視するガードがあるため、
+    // 先に解除しておかないと再ロード結果が反映されない)。requestAppProfileLoad は内部で
+    // showAppProfilePlaceholder→setAppProfileDirty(false) を呼ぶため、この順序を満たす。
+    appProfileCancel.addEventListener('click', () => {
+      if (appProfileCancel.disabled) {
+        return;
+      }
+      appProfileError.textContent = '';
+      requestAppProfileLoad();
+    });
+
+    // appProfileSave の結果。ok なら dirty 解除(ホストが続けて appProfileData を送るので、
+    // フォームはそこで最新値に作り直される)。ok:false ならエラー表示のみで入力値は残す。
+    function applyAppProfileSaveResult(message) {
+      if (message.profile !== selectedAppProfile) {
+        return;
+      }
+      appProfileSubmitting = false;
+      appProfileConfirm.textContent = '確定';
+      setAppProfileControlsEnabled(true);
+      if (message.ok) {
+        appProfileError.textContent = '';
+        setAppProfileDirty(false);
+      } else {
+        refreshAppProfileButtonsUi();
+        appProfileError.textContent = message.error || 'アプリプロファイルの更新に失敗しました。';
+      }
+    }
+
+    // apps/<name>.json の外部編集(watcher onDidChange)。編集対象と同名 && 未編集のときのみ
+    // 再ロードして自動反映する(applyRunProfileFileChanged と同じ方針)。
+    function applyAppProfileFileChanged(message) {
+      if (message.name === selectedAppProfile && !appProfileEditing()) {
+        vscode.postMessage({ type: 'appProfileLoad', profile: selectedAppProfile });
+      }
+    }
+
+    // ---- プロファイルタブ上段: 実行プロファイルの設定フォーム -----------------------
+    // 一覧・初期選択は既存 profileInfo(applyProfileInfo とは独立に applyRunProfileInfo で受ける)。
+    // この選択は「編集対象」であり ftester.profile 設定には触れない(デバイスタブのドロップダウン
+    // とは独立)。dirty 管理はマシンプロファイルのデバイス編集フォームと同じ方針:
+    // - フォーム値と runProfileOriginalFields の比較で「確定」を有効化。
+    // - 選択変更(明示操作)で編集破棄して再ロード。
+    // - profileInfo/machineProfileInfo 再受信時、編集中(dirty/送信中)ならフォーム値保持、
+    //   未編集なら再ロード/再描画。編集対象が一覧から消えたらフォールバック(current→先頭)。
+    // - runProfileFileChanged(外部編集)は編集対象と同名 && 未編集のときのみ再ロード。
+
+    const runProfileSelect = document.getElementById('run-profile-select');
+    const runProfileNameStatic = document.getElementById('run-profile-name-static');
+    const btnRunProfileAdd = document.getElementById('btn-run-profile-add');
+    const btnRunProfileCopy = document.getElementById('btn-run-profile-copy');
+    const btnRunProfileRemove = document.getElementById('btn-run-profile-remove');
+    const btnRunProfileRename = document.getElementById('btn-run-profile-rename');
+    const runProfilePlaceholder = document.getElementById('run-profile-placeholder');
+    const runProfileEditor = document.getElementById('run-profile-editor');
+    const runProfileMachine = document.getElementById('run-profile-machine');
+    const runProfileApp = document.getElementById('run-profile-app');
+    const runProfileDevices = document.getElementById('run-profile-devices');
+    const runProfileHeal = document.getElementById('run-profile-heal');
+    const runProfileReportDir = document.getElementById('run-profile-report-dir');
+    const runProfileDefaultTimeout = document.getElementById('run-profile-default-timeout');
+    const runProfileError = document.getElementById('run-profile-error');
+    const runProfileConfirm = document.getElementById('run-profile-confirm');
+    const runProfileCancel = document.getElementById('run-profile-cancel');
+
+    // 直近受信の一覧(profileInfo 由来)。
+    let runProfileNames = [];
+    let runProfileApps = [];
+    // 編集対象の実行プロファイル名(一覧が0件なら null)。
+    let selectedRunProfile = null;
+    // 直近ロード(runProfileData ok:true)時点の6フィールド値。null の間はフォーム非表示。
+    let runProfileOriginalFields = null;
+    // 現在チェック済みのデバイス名(表示順。チェックボックス操作・machine切替の引き継ぎの正)。
+    let runProfileCheckedNames = [];
+    let runProfileDirty = false;
+    let runProfileSubmitting = false;
+
+    function runProfileEditing() {
+      return runProfileDirty || runProfileSubmitting;
+    }
+
+    // dirty(=確定ボタン有効)と、それに連動する確定/キャンセルボタンの見た目をまとめて更新する
+    // (editorForm の refreshEditorButtonsUi/setEditorDirty と同じ方針)。
+    function refreshRunProfileButtonsUi() {
+      runProfileConfirm.disabled = runProfileSubmitting || !runProfileDirty;
+      runProfileCancel.style.display = runProfileDirty ? '' : 'none';
+      runProfileCancel.disabled = runProfileSubmitting;
+    }
+    function setRunProfileDirty(dirty) {
+      runProfileDirty = dirty;
+      refreshRunProfileButtonsUi();
+    }
+
+    function showRunProfilePlaceholder(text) {
+      runProfileOriginalFields = null;
+      runProfileSubmitting = false;
+      runProfileEditor.style.display = 'none';
+      runProfilePlaceholder.style.display = '';
+      runProfilePlaceholder.textContent = text;
+      setRunProfileDirty(false);
+    }
+
+    function requestRunProfileLoad() {
+      if (!selectedRunProfile) {
+        showRunProfilePlaceholder('実行プロファイルがありません。');
+        return;
+      }
+      // 応答(runProfileData)が来るまで編集させない(応答前の編集がロード結果に上書きされる
+      // レースを避ける。ローカルファイル読みなので一瞬で置き換わる)。
+      showRunProfilePlaceholder('読み込み中...');
+      vscode.postMessage({ type: 'runProfileLoad', profile: selectedRunProfile });
+    }
+
+    // profileInfo 受信(applyProfileInfo と独立)。選択の維持/フォールバックと再ロードを行う。
+    function applyRunProfileInfo(message) {
+      runProfileNames = Array.isArray(message.profiles) ? message.profiles : [];
+      // apps は後方互換(古いホストからは届かない)のため配列でなければ空扱い。
+      runProfileApps = Array.isArray(message.apps) ? message.apps : [];
+      const current = typeof message.current === 'string' ? message.current : '';
+
+      const previous = selectedRunProfile;
+      if (selectedRunProfile === null || !runProfileNames.includes(selectedRunProfile)) {
+        // 編集対象が未定/一覧から消えた: current→先頭の順でフォールバック(編集破棄)。
+        if (current !== '' && runProfileNames.includes(current)) {
+          selectedRunProfile = current;
+        } else {
+          selectedRunProfile = runProfileNames.length > 0 ? runProfileNames[0] : null;
+        }
+      }
+      renderRunProfileSelect();
+      // [+] は profileInfo を受信できた時点で追加先(プロジェクト)があるので常に有効。
+      // コピー/−/✏ は対象(選択中の実行プロファイル)が要るので、一覧0件のときは無効化する
+      // (マシンプロファイルの btnMachineCopy/Remove/Rename と同じ方針)。
+      btnRunProfileAdd.disabled = false;
+      btnRunProfileCopy.disabled = runProfileNames.length === 0;
+      btnRunProfileRemove.disabled = runProfileNames.length === 0;
+      btnRunProfileRename.disabled = runProfileNames.length === 0;
+
+      if (selectedRunProfile !== previous) {
+        requestRunProfileLoad();
+        return;
+      }
+      // 選択が変わらない場合: 編集中ならフォーム値を保持し、未編集なら再ロードして最新化する
+      // (apps 一覧の変化もロード後の再描画で反映される)。
+      if (selectedRunProfile !== null && !runProfileEditing()) {
+        requestRunProfileLoad();
+      } else if (selectedRunProfile === null) {
+        showRunProfilePlaceholder('実行プロファイルがありません。');
+      }
+    }
+
+    function renderRunProfileSelect() {
+      if (runProfileNames.length >= 1) {
+        runProfileSelect.style.display = '';
+        runProfileNameStatic.style.display = 'none';
+        runProfileSelect.textContent = '';
+        for (const name of runProfileNames) {
+          const option = document.createElement('option');
+          option.value = name;
+          option.textContent = name;
+          runProfileSelect.appendChild(option);
+        }
+        runProfileSelect.value = selectedRunProfile || '';
+      } else {
+        runProfileSelect.style.display = 'none';
+        runProfileNameStatic.style.display = '';
+      }
+    }
+
+    runProfileSelect.addEventListener('change', () => {
+      // 選択変更は明示操作なので、編集途中の値を破棄して選択先を再ロードする。
+      selectedRunProfile = runProfileSelect.value;
+      requestRunProfileLoad();
+    });
+
+    btnRunProfileAdd.addEventListener('click', () => vscode.postMessage({ type: 'profileAdd' }));
+    btnRunProfileCopy.addEventListener('click', () => {
+      if (selectedRunProfile) {
+        vscode.postMessage({ type: 'profileCopy', profile: selectedRunProfile });
+      }
+    });
+    btnRunProfileRemove.addEventListener('click', () => {
+      if (selectedRunProfile) {
+        vscode.postMessage({ type: 'profileDelete', profile: selectedRunProfile });
+      }
+    });
+    btnRunProfileRename.addEventListener('click', () => {
+      if (selectedRunProfile) {
+        vscode.postMessage({ type: 'profileRename', profile: selectedRunProfile });
+      }
+    });
+
+    // 追加/コピー/名前変更の直後にホストから届く、選択(編集対象)を新プロファイルへ移す通知
+    // (machineProfileSelected と同じ趣旨)。直前の profileInfo とは順序が前後しない
+    // (postMessage は順序保証)ため単純に上書きでよいが、念のため一覧に無い名前は無視するガードを
+    // 入れる(applyRunProfileInfo のフォールバック判定と同じ runProfileNames.includes を使う)。
+    function applyRunProfileSelected(message) {
+      if (!runProfileNames.includes(message.name)) {
+        return;
+      }
+      selectedRunProfile = message.name;
+      renderRunProfileSelect();
+      requestRunProfileLoad();
+    }
+
+    // machineProfileInfo 再受信時(メッセージスイッチから呼ばれる): 未編集ならロード済みの値で
+    // フォームを作り直す(マシン一覧・デバイス一覧の変化を反映)。編集中なら入力値を保持する。
+    function rerenderRunProfileFormIfClean() {
+      if (runProfileOriginalFields !== null && !runProfileEditing()) {
+        renderRunProfileEditor(runProfileOriginalFields);
+      }
+    }
+
+    // runProfileData 受信: 編集対象と同じプロファイルの応答のみ反映する(選択変更直後に届く
+    // 前の選択への応答を無視するガード)。
+    function applyRunProfileData(message) {
+      if (message.profile !== selectedRunProfile) {
+        return;
+      }
+      // 編集中(dirty/送信中)は反映しない(保存成功直後の再送は dirty 解除済みなので反映される)。
+      if (runProfileEditing()) {
+        return;
+      }
+      if (!message.ok || !message.fields) {
+        showRunProfilePlaceholder(message.error || '実行プロファイルを読み込めませんでした。');
+        return;
+      }
+      renderRunProfileEditor(message.fields);
+    }
+
+    // ロード済みの6フィールド値でフォームを作り直す(編集途中の値は破棄する)。
+    function renderRunProfileEditor(fields) {
+      runProfileOriginalFields = fields;
+      runProfileSubmitting = false;
+      runProfileError.textContent = '';
+
+      renderRunProfileMachineSelect(fields.machine);
+      renderRunProfileAppSelect(fields.app);
+      runProfileCheckedNames = fields.devices.slice();
+      renderRunProfileDevices();
+      runProfileHeal.checked = fields.heal;
+      runProfileReportDir.value = fields.reportDir;
+      runProfileDefaultTimeout.value = fields.defaultTimeout;
+
+      setRunProfileControlsEnabled(true);
+      runProfileConfirm.textContent = '確定';
+      runProfilePlaceholder.style.display = 'none';
+      runProfileEditor.style.display = '';
+      setRunProfileDirty(false);
+    }
+
+    // 「使用するマシンプロファイル」select。選択肢 = machineProfiles(machineProfileInfo 由来)の
+    // 名前。value が未指定("")/一覧に無い場合は先頭に「(未指定)」(value="")を付け、一覧に無い
+    // 非空値はオプション補完で表示する(デバイスタブの applyProfileInfo の unknownOption と同じ方針)。
+    function renderRunProfileMachineSelect(value) {
+      runProfileMachine.textContent = '';
+      const names = machineProfiles.map((m) => m.name);
+      if (value === '' || !names.includes(value)) {
+        const unspecified = document.createElement('option');
+        unspecified.value = '';
+        unspecified.textContent = '(未指定)';
+        runProfileMachine.appendChild(unspecified);
+      }
+      for (const name of names) {
+        const option = document.createElement('option');
+        option.value = name;
+        option.textContent = name;
+        runProfileMachine.appendChild(option);
+      }
+      if (value !== '' && !names.includes(value)) {
+        const unknown = document.createElement('option');
+        unknown.value = value;
+        unknown.textContent = value;
+        runProfileMachine.appendChild(unknown);
+      }
+      runProfileMachine.value = value;
+    }
+
+    // 「アプリ」select。選択肢 = profileInfo.apps。現在値が一覧に無ければオプション補完する。
+    function renderRunProfileAppSelect(value) {
+      runProfileApp.textContent = '';
+      let matched = value === '';
+      // 空文字(未指定)の option を常に先頭に置く(app 欠落プロファイルの現在値を表せるように。
+      // 空のまま確定しようとするとクライアント検証で弾かれる)。
+      const emptyOption = document.createElement('option');
+      emptyOption.value = '';
+      emptyOption.textContent = '(未指定)';
+      runProfileApp.appendChild(emptyOption);
+      for (const name of runProfileApps) {
+        const option = document.createElement('option');
+        option.value = name;
+        option.textContent = name;
+        runProfileApp.appendChild(option);
+        if (name === value) {
+          matched = true;
+        }
+      }
+      if (!matched) {
+        const unknown = document.createElement('option');
+        unknown.value = value;
+        unknown.textContent = value;
+        runProfileApp.appendChild(unknown);
+      }
+      runProfileApp.value = value;
+    }
+
+    // デバイスのチェックボックス一覧。選択肢 = フォームで選択中のマシンプロファイルのデバイス。
+    // runProfileCheckedNames に含まれる名前はチェック済み。チェック済みだがマシンに存在しない
+    // 名前は末尾に注記付きで表示する(チェックを外して確定すれば取り除ける)。マシン未指定("")の
+    // 間は案内のみ表示する。
+    function renderRunProfileDevices() {
+      runProfileDevices.textContent = '';
+      const machineName = runProfileMachine.value;
+      if (machineName === '') {
+        const note = document.createElement('div');
+        note.className = 'run-profile-device-note';
+        note.textContent = 'マシンプロファイルを指定するとデバイスを選択できます';
+        runProfileDevices.appendChild(note);
+        return;
+      }
+      const machine = findMachine(machineName);
+      const machineDevices = machine ? machine.devices : [];
+      const machineDeviceNames = machineDevices.map((d) => d.name);
+      const appendRow = (name, platform, missing) => {
+        const row = document.createElement('label');
+        row.className = 'run-profile-device-row';
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = runProfileCheckedNames.includes(name);
+        checkbox.dataset.deviceName = name;
+        checkbox.addEventListener('change', onRunProfileDeviceToggle);
+        const pill = document.createElement('span');
+        // タイル/レーンと同じ配色ピル(.tile-name-ios/-android)。マシンに存在しない名前は
+        // プラットフォームが分からないので中立色(.tile-name-unknown)にする。
+        pill.className = 'tile-name ' + (platform ? 'tile-name-' + platform : 'tile-name-unknown');
+        pill.textContent = name;
+        row.append(checkbox, pill);
+        if (missing) {
+          const note = document.createElement('span');
+          note.className = 'run-profile-device-note';
+          note.textContent = '(マシンプロファイルにありません)';
+          row.appendChild(note);
+        }
+        runProfileDevices.appendChild(row);
+      };
+      for (const device of machineDevices) {
+        appendRow(device.name, device.platform, false);
+      }
+      for (const name of runProfileCheckedNames) {
+        if (!machineDeviceNames.includes(name)) {
+          appendRow(name, null, true);
+        }
+      }
+    }
+
+    // チェックボックス操作: DOM の表示順(マシンのデバイス順+欠落分)で checked を集め直す。
+    function onRunProfileDeviceToggle() {
+      const checked = [];
+      for (const checkbox of runProfileDevices.querySelectorAll('input[type="checkbox"]')) {
+        if (checkbox.checked) {
+          checked.push(checkbox.dataset.deviceName);
+        }
+      }
+      runProfileCheckedNames = checked;
+      onRunProfileFormInput();
+    }
+
+    // マシン切替: チェック状態(runProfileCheckedNames)は名前で引き継いだまま一覧を作り直す。
+    runProfileMachine.addEventListener('change', () => {
+      renderRunProfileDevices();
+      onRunProfileFormInput();
+    });
+    runProfileApp.addEventListener('change', onRunProfileFormInput);
+    runProfileHeal.addEventListener('change', onRunProfileFormInput);
+    runProfileReportDir.addEventListener('input', onRunProfileFormInput);
+    runProfileDefaultTimeout.addEventListener('input', onRunProfileFormInput);
+
+    // devices は「同じ集合なら並び順が違っても未変更」とみなす(マシンのデバイス順とプロファイル
+    // の記載順は独立で、チェック操作をしていないのに dirty になるのを避けるため)。
+    function runProfileDevicesEqual(a, b) {
+      if (a.length !== b.length) {
+        return false;
+      }
+      const setB = new Set(b);
+      return a.every((name) => setB.has(name));
+    }
+
+    function runProfileValuesEqual(fields) {
+      return (
+        runProfileMachine.value === fields.machine &&
+        runProfileApp.value === fields.app &&
+        runProfileDevicesEqual(runProfileCheckedNames, fields.devices) &&
+        runProfileHeal.checked === fields.heal &&
+        runProfileReportDir.value === fields.reportDir &&
+        runProfileDefaultTimeout.value === fields.defaultTimeout
+      );
+    }
+
+    function onRunProfileFormInput() {
+      if (runProfileOriginalFields === null || runProfileSubmitting) {
+        return;
+      }
+      setRunProfileDirty(!runProfileValuesEqual(runProfileOriginalFields));
+      // 入力を変えたら前回のエラー表示は古くなるので消す(editorError と同じ方針)。
+      runProfileError.textContent = '';
+    }
+
+    function setRunProfileControlsEnabled(enabled) {
+      runProfileMachine.disabled = !enabled;
+      runProfileApp.disabled = !enabled;
+      runProfileHeal.disabled = !enabled;
+      runProfileReportDir.disabled = !enabled;
+      runProfileDefaultTimeout.disabled = !enabled;
+      for (const checkbox of runProfileDevices.querySelectorAll('input[type="checkbox"]')) {
+        checkbox.disabled = !enabled;
+      }
+    }
+
+    // クライアント検証(確定時)。問題なければ null。
+    function validateRunProfileFields() {
+      const machine = runProfileMachine.value.trim();
+      if (machine === '') {
+        return '使用するマシンプロファイルを指定してください。';
+      }
+      if (!findMachine(machine)) {
+        return 'マシンプロファイル「' + machine + '」が見つかりません。';
+      }
+      if (runProfileApp.value.trim() === '') {
+        return 'アプリを指定してください。';
+      }
+      if (runProfileCheckedNames.length === 0) {
+        return 'デバイスを1台以上選択してください。';
+      }
+      const timeout = runProfileDefaultTimeout.value.trim();
+      if (timeout !== '' && (!/^\\d+$/.test(timeout) || Number(timeout) <= 0)) {
+        return 'defaultTimeout は正の整数で入力してください。';
+      }
+      return null;
+    }
+
+    runProfileConfirm.addEventListener('click', () => {
+      if (runProfileConfirm.disabled || runProfileSubmitting || !selectedRunProfile) {
+        return;
+      }
+      const validationError = validateRunProfileFields();
+      if (validationError) {
+        runProfileError.textContent = validationError;
+        return;
+      }
+      runProfileSubmitting = true;
+      setRunProfileControlsEnabled(false);
+      runProfileConfirm.textContent = '確定中...';
+      runProfileError.textContent = '';
+      refreshRunProfileButtonsUi();
+      vscode.postMessage({
+        type: 'runProfileSave',
+        profile: selectedRunProfile,
+        fields: {
+          machine: runProfileMachine.value.trim(),
+          app: runProfileApp.value.trim(),
+          devices: runProfileCheckedNames.slice(),
+          heal: runProfileHeal.checked,
+          reportDir: runProfileReportDir.value.trim(),
+          defaultTimeout: runProfileDefaultTimeout.value.trim(),
+        },
+      });
+    });
+
+    // キャンセル: dirty/送信中フラグを先に解除してから runProfileLoad を再送する
+    // (applyRunProfileData は runProfileEditing() の間は応答を無視するガードがあるため、
+    // 先に解除しておかないと再ロード結果が反映されない)。requestRunProfileLoad は内部で
+    // showRunProfilePlaceholder→setRunProfileDirty(false) を呼ぶため、この順序を満たす。
+    runProfileCancel.addEventListener('click', () => {
+      if (runProfileCancel.disabled) {
+        return;
+      }
+      runProfileError.textContent = '';
+      requestRunProfileLoad();
+    });
+
+    // runProfileSave の結果。ok なら dirty 解除(ホストが続けて runProfileData を送るので、
+    // フォームはそこで最新値に作り直される)。ok:false ならエラー表示のみで入力値は残す。
+    function applyRunProfileSaveResult(message) {
+      if (message.profile !== selectedRunProfile) {
+        return;
+      }
+      runProfileSubmitting = false;
+      runProfileConfirm.textContent = '確定';
+      setRunProfileControlsEnabled(true);
+      if (message.ok) {
+        runProfileError.textContent = '';
+        setRunProfileDirty(false);
+      } else {
+        refreshRunProfileButtonsUi();
+        runProfileError.textContent = message.error || '実行プロファイルの更新に失敗しました。';
+      }
+    }
+
+    // runs/<name>.json の外部編集(watcher onDidChange)。編集対象と同名 && 未編集のときのみ
+    // 再ロードして自動反映する(自分の保存直後の通知も来るが、その再ロードは冪等)。
+    function applyRunProfileFileChanged(message) {
+      if (message.name === selectedRunProfile && !runProfileEditing()) {
+        vscode.postMessage({ type: 'runProfileLoad', profile: selectedRunProfile });
+      }
+    }
+
+    // ---- デバイス追加モーダル ---------------------------------------------------
+
+    // 複製元: src/monitorModel.ts の validateNewDeviceName。webview は CSP により import 不可のため
+    // 複製する(deviceOpMenuItem の複製と同じ方針。ロジックを変更したら両方に反映すること)。
+    function validateNewDeviceName(name, existing) {
+      const trimmed = name.trim();
+      if (trimmed.length === 0) {
+        return 'デバイス名を入力してください。';
+      }
+      if (existing.includes(trimmed)) {
+        return '「' + trimmed + '」は既に存在します。';
+      }
+      return null;
+    }
+
+    const deviceAddOverlay = document.getElementById('device-add-overlay');
+    const dlgPlatformIos = document.getElementById('dlg-platform-ios');
+    const dlgPlatformAndroid = document.getElementById('dlg-platform-android');
+    const dlgModel = document.getElementById('dlg-model');
+    const dlgOs = document.getElementById('dlg-os');
+    const dlgName = document.getElementById('dlg-name');
+    const dlgError = document.getElementById('dlg-error');
+    const dlgCancel = document.getElementById('dlg-cancel');
+    const dlgOk = document.getElementById('dlg-ok');
+
+    let deviceAddOpen = false;
+    let deviceAddCreating = false;
+    // deviceCatalogRequest の応答(deviceCatalog.ok:true の catalog)。未着/失敗中は null。
+    let deviceCatalog = null;
+    // デバイス名をユーザーが手で編集したか(true の間は自動生成に追従しない)。
+    let dlgNameDirty = false;
+    // このモーダルを #device-pick-overlay の「+」(device-pick-add-new)から開いたか。
+    // #device-pick-overlay はフルスクリーンのオーバーレイなので、openDeviceAddModal() 呼び出し時点の
+    // devicePickOpen がそのまま「ピッカー経由かどうか」の判定になる(下の openDeviceAddModal 参照)。
+    // true の間は createDevice に register:false を送り(物理作成のみ)、成功時は pendingAutoCheck を
+    // 使って一覧再描画時に該当行をチェックONにする(2026-07-11 指示)。
+    let deviceAddFromPicker = false;
+
+    // OS種別はラジオボタン2つ(dlg-platform-ios/-android、name="dlg-platform")で1つの select 相当を
+    // 表す。読み書きをここに集約し、他の場所は select だった頃と同じ感覚で扱えるようにする。
+    function getDialogPlatform() {
+      return dlgPlatformIos.checked ? 'ios' : 'android';
+    }
+    function setDialogPlatform(value) {
+      dlgPlatformIos.checked = value === 'ios';
+      dlgPlatformAndroid.checked = value === 'android';
+    }
+
+    function setDialogControlsEnabled(enabled) {
+      dlgPlatformIos.disabled = !enabled;
+      dlgPlatformAndroid.disabled = !enabled;
+      dlgModel.disabled = !enabled;
+      dlgOs.disabled = !enabled;
+      dlgName.disabled = !enabled;
+    }
+
+    function fillSelect(select, options) {
+      select.textContent = '';
+      for (const opt of options) {
+        const el = document.createElement('option');
+        el.value = opt.value;
+        el.textContent = opt.label;
+        select.appendChild(el);
+      }
+    }
+
+    function modelOptionsFor(platform) {
+      if (!deviceCatalog) {
+        return [];
+      }
+      return platform === 'ios'
+        ? deviceCatalog.ios.deviceTypes.map((d) => ({ value: d.identifier, label: d.name }))
+        : deviceCatalog.android.models.map((m) => ({ value: m.id, label: m.name }));
+    }
+
+    function osOptionsFor(platform) {
+      if (!deviceCatalog) {
+        return [];
+      }
+      if (platform === 'ios') {
+        return deviceCatalog.ios.runtimes.map((r) => ({ value: r.identifier, label: r.name }));
+      }
+      return deviceCatalog.android.systemImages.map((s) => ({
+        value: s.package,
+        label: s.versionName + '(API ' + s.apiLevel + ') ' + s.tag + ' / ' + s.abi,
+      }));
+    }
+
+    function selectedOptionLabel(select) {
+      const opt = select.options[select.selectedIndex];
+      return opt ? opt.textContent : '';
+    }
+
+    // iOS = "モデル名(ランタイム名)"、Android = "モデル名(versionName)"(モデル未選択なら空文字)。
+    function autoDeviceName() {
+      const modelLabel = selectedOptionLabel(dlgModel);
+      if (!modelLabel) {
+        return '';
+      }
+      const osLabel = selectedOptionLabel(dlgOs);
+      return osLabel ? modelLabel + '(' + osLabel + ')' : modelLabel;
+    }
+
+    function refreshAutoName() {
+      if (!dlgNameDirty) {
+        dlgName.value = autoDeviceName();
+      }
+    }
+
+    // カタログの available:false 側はラジオ自体を disabled にし、現在の選択がその側だった場合は
+    // 利用可能な側へ寄せる(両方 available:false の場合は変更しない = OK 側で弾かれる想定)。
+    // setDialogControlsEnabled(true) の直後にも呼び直すことで、いったん disabled にした
+    // ラジオを一律 enabled に戻す際、available:false 側を誤って有効に戻さないようにする
+    // (select だった頃は select 自体の disabled と option 個別の disabled が独立していたが、
+    // ラジオは disabled が1階層しかないため、有効化のたびに可用性を再適用する必要がある)。
+    function applyPlatformAvailability() {
+      dlgPlatformIos.disabled = !deviceCatalog.ios.available;
+      dlgPlatformAndroid.disabled = !deviceCatalog.android.available;
+      if (getDialogPlatform() === 'ios' && !deviceCatalog.ios.available && deviceCatalog.android.available) {
+        setDialogPlatform('android');
+      } else if (getDialogPlatform() === 'android' && !deviceCatalog.android.available && deviceCatalog.ios.available) {
+        setDialogPlatform('ios');
+      }
+    }
+
+    function refreshModelAndOsOptions() {
+      fillSelect(dlgModel, modelOptionsFor(getDialogPlatform()));
+      fillSelect(dlgOs, osOptionsFor(getDialogPlatform()));
+      refreshAutoName();
+    }
+
+    dlgPlatformIos.addEventListener('change', () => refreshModelAndOsOptions());
+    dlgPlatformAndroid.addEventListener('change', () => refreshModelAndOsOptions());
+    dlgModel.addEventListener('change', () => refreshAutoName());
+    dlgOs.addEventListener('change', () => refreshAutoName());
+    dlgName.addEventListener('input', () => {
+      if (dlgName.value.trim().length === 0) {
+        // 空にした = 自動生成への追従を再開する
+        dlgNameDirty = false;
+        dlgName.value = autoDeviceName();
+      } else {
+        dlgNameDirty = true;
+      }
+    });
+
+    function openDeviceAddModal() {
+      if (!selectedMachine) {
+        return;
+      }
+      // devicePickOpen は #device-pick-overlay がフルスクリーンのオーバーレイであるため、
+      // ここで呼ばれた時点の値がそのまま「ピッカーの「+」から開いたか」の判定になる
+      // (btn-device-add はピッカー表示中はオーバーレイに隠れてクリックできない)。
+      deviceAddFromPicker = devicePickOpen;
+      deviceAddOpen = true;
+      deviceAddCreating = false;
+      deviceCatalog = null;
+      dlgNameDirty = false;
+      dlgName.value = '';
+      dlgModel.textContent = '';
+      dlgOs.textContent = '';
+      dlgError.classList.add('info');
+      dlgError.textContent = 'カタログを読み込み中...';
+      setDialogControlsEnabled(false);
+      dlgOk.disabled = true;
+      dlgOk.textContent = 'OK';
+      dlgCancel.disabled = false;
+      deviceAddOverlay.classList.add('visible');
+      vscode.postMessage({ type: 'deviceCatalogRequest' });
+    }
+
+    function closeDeviceAddModal() {
+      if (!deviceAddOpen || deviceAddCreating) {
+        return;
+      }
+      deviceAddOpen = false;
+      deviceAddOverlay.classList.remove('visible');
+    }
+
+    function applyDeviceCatalog(message) {
+      if (!deviceAddOpen) {
+        return; // モーダルを閉じた後に届いた応答は無視する
+      }
+      if (!message.ok || !message.catalog) {
+        dlgError.classList.remove('info');
+        dlgError.textContent = message.error || 'カタログの取得に失敗しました。';
+        dlgOk.disabled = true;
+        return;
+      }
+      deviceCatalog = message.catalog;
+      dlgError.classList.remove('info');
+      dlgError.textContent = '';
+      setDialogControlsEnabled(true);
+      applyPlatformAvailability();
+      refreshModelAndOsOptions();
+      dlgOk.disabled = false;
+    }
+
+    function applyCreateDeviceResult(message) {
+      if (!deviceAddOpen) {
+        return;
+      }
+      deviceAddCreating = false;
+      dlgCancel.disabled = false;
+      dlgOk.textContent = 'OK';
+      if (message.ok) {
+        closeDeviceAddModal();
+        // register:false(ピッカー経由)で作成できた場合、次の一覧再読込でその行を自動チェックONに
+        // するための識別子を保持しておく(pendingAutoCheck。renderDevicePickGroups 参照)。
+        if (deviceAddFromPicker) {
+          pendingAutoCheck = message.device ? { udid: message.device.udid, avd: message.device.avd } : null;
+        }
+        reloadDevicePickIfOpen();
+        return;
+      }
+      dlgOk.disabled = false;
+      setDialogControlsEnabled(true);
+      // setDialogControlsEnabled(true) は両ラジオを一律 enabled にするため、available:false 側を
+      // 再度 disabled に戻す(applyPlatformAvailability 冒頭のコメント参照)。
+      applyPlatformAvailability();
+      dlgError.classList.remove('info');
+      dlgError.textContent = message.error || 'デバイスの作成に失敗しました。';
+    }
+
+    // 「+新規作成」ボタンは廃止(2026-07-11 指示)。新規作成モーダル(openDeviceAddModal)は
+    // 「+」で開く選択画面(#device-pick-overlay)内の「+」からのみ開く(=常に register:false 経路)。
+    dlgCancel.addEventListener('click', () => closeDeviceAddModal());
+    deviceAddOverlay.addEventListener('click', (event) => {
+      if (event.target === deviceAddOverlay) {
+        closeDeviceAddModal();
+      }
+    });
+    dlgOk.addEventListener('click', () => {
+      if (dlgOk.disabled || deviceAddCreating || !deviceCatalog) {
+        return;
+      }
+      const name = dlgName.value.trim();
+      const error = validateNewDeviceName(name, allDeviceNamesForSelectedMachine());
+      if (error) {
+        dlgError.classList.remove('info');
+        dlgError.textContent = error;
+        return;
+      }
+      deviceAddCreating = true;
+      setDialogControlsEnabled(false);
+      dlgOk.disabled = true;
+      dlgCancel.disabled = true;
+      dlgOk.textContent = '作成中...';
+      dlgError.textContent = '';
+      vscode.postMessage({
+        type: 'createDevice',
+        machine: selectedMachine,
+        platform: getDialogPlatform(),
+        name: name,
+        model: dlgModel.value,
+        os: dlgOs.value,
+        // ピッカー経由(deviceAddFromPicker)なら物理作成のみ(register:false)。登録はピッカーの
+        // OK(machineDevicesSync)で行う。.profile-actions の「+新規作成」から直接開いた場合は
+        // 従来どおり即登録する。
+        register: !deviceAddFromPicker,
+      });
+    });
+    // 既存の Esc ハンドラ(closeDeviceOpMenu)とは別のリスナーとして追加する(closeDeviceAddModal
+    // は自分の状態(deviceAddOpen/deviceAddCreating)だけを見るので、両者は独立して安全に共存する)。
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        closeDeviceAddModal();
+      }
+    });
+
+    // ---- 「+既存から選択」モーダル(#device-pick-overlay。要件2) -----------------------
+    // インストール済みの iOS シミュレータ/Android AVD を一覧表示する。チェックボックスは
+    // 「選択」ではなく「マシンプロファイルへの登録状態そのもの」を表す(初期値=現在の登録有無)。
+    // OK は行ごとの初期状態からの差分をまとめて machineDevicesSync(add/remove)で送る。
+    // 実機で数十件規模になりうる前提(コーディネーター指示)。
+
+    const devicePickOverlay = document.getElementById('device-pick-overlay');
+    const devicePickIosTitle = document.getElementById('device-pick-ios-title');
+    const devicePickIosBody = document.getElementById('device-pick-ios-body');
+    const devicePickAndroidTitle = document.getElementById('device-pick-android-title');
+    const devicePickAndroidBody = document.getElementById('device-pick-android-body');
+    const devicePickError = document.getElementById('device-pick-error');
+    const devicePickCancel = document.getElementById('device-pick-cancel');
+    const devicePickOk = document.getElementById('device-pick-ok');
+    const devicePickAddNewBtn = document.getElementById('device-pick-add-new');
+
+    let devicePickOpen = false;
+    let devicePickAdding = false;
+    // 直近描画した行(チェックボックス+対応データ+初期状態)。チェックボックスは「選択」ではなく
+    // 「登録状態そのもの」を表すので、initialChecked(=描画時点の登録有無)を保持しておき、OK
+    // クリック時にそこからの差分(行ごとの checkbox.checked !== initialChecked)だけを
+    // machineDevicesSync の add/remove として組み立てる。registeredName は登録済みだった行を
+    // 未チェックにした場合の削除対象(マシンプロファイル上の name)。
+    let devicePickIosRows = [];
+    let devicePickAndroidRows = [];
+    // register:false で新規作成した直後、次の installedDevices 再描画で自動チェックONにしたい行の
+    // 識別子(iOS=udid/Android=avd の id)。作成に成功していない/一致する行が無い場合はどちらも
+    // null のままでよい(applyPendingAutoCheck が静かに諦める)。適用後は必ず null に戻す
+    // (一度きりの適用。2026-07-11 指示)。
+    let pendingAutoCheck = null;
+
+    // 選択中マシンの既存デバイスから、識別値→マシンプロファイル上の name への対応表を作る
+    // (初期チェック状態の判定と、登録解除[remove]時にどの name を消せばよいかの両方に使う)。
+    // iOS は udid 一致、Android は avd が id または displayName に一致するものを登録済みとみなす
+    // (要件2)。
+    function registeredIosNameByUdid() {
+      const machine = findMachine(selectedMachine);
+      const map = new Map();
+      if (machine) {
+        for (const d of machine.devices) {
+          if (d.platform === 'ios' && d.udid) {
+            map.set(d.udid, d.name);
+          }
+        }
+      }
+      return map;
+    }
+    function registeredAndroidNameByAvd() {
+      const machine = findMachine(selectedMachine);
+      const map = new Map();
+      if (machine) {
+        for (const d of machine.devices) {
+          if (d.platform === 'android' && d.avd) {
+            map.set(d.avd, d.name);
+          }
+        }
+      }
+      return map;
+    }
+
+    // OK は「行ごとの初期状態(登録有無)からの差分が1件以上ある」ときだけ有効にする
+    // (チェックボックス=登録状態の設計上、単に何かがチェックされているかどうかでは判定できない)。
+    function updateDevicePickOkState() {
+      if (devicePickAdding) {
+        return;
+      }
+      const anyDiff =
+        devicePickIosRows.some((row) => row.checkbox.checked !== row.initialChecked) ||
+        devicePickAndroidRows.some((row) => row.checkbox.checked !== row.initialChecked);
+      devicePickOk.disabled = !anyDiff;
+    }
+
+    function buildDevicePickEmptyRow(container, text) {
+      const empty = document.createElement('div');
+      empty.className = 'device-pick-empty';
+      empty.textContent = text;
+      container.appendChild(empty);
+    }
+
+    // 行のどこをクリックしてもチェックが切り替わるようにする(ユーザー指定)。チェックボックス
+    // 自体のクリックはネイティブのトグルに任せる(row の click でも拾ってしまうと二重トグルで
+    // 元に戻ってしまうため除外する)。適用中等で checkbox が disabled の間は何もしない。
+    function attachDevicePickRowToggle(row, checkbox) {
+      row.addEventListener('click', (event) => {
+        if (event.target === checkbox || checkbox.disabled) {
+          return;
+        }
+        checkbox.checked = !checkbox.checked;
+        // プログラム的な .checked 変更は change イベントを発火しないため、明示的に更新する。
+        updateDevicePickOkState();
+      });
+    }
+
+    // installedDevices(InstalledDevices の形)から2グループ分の行を組み立てる。
+    function renderDevicePickGroups(data) {
+      devicePickIosRows = [];
+      devicePickAndroidRows = [];
+      devicePickIosBody.textContent = '';
+      devicePickAndroidBody.textContent = '';
+
+      const iosNameByUdid = registeredIosNameByUdid();
+      const iosData = data.ios;
+      devicePickIosTitle.textContent = 'iOS シミュレータ (' + iosData.devices.length + ')';
+      if (!iosData.available) {
+        buildDevicePickEmptyRow(devicePickIosBody, iosData.error || 'iOS シミュレータを取得できませんでした。');
+      } else if (iosData.devices.length === 0) {
+        buildDevicePickEmptyRow(devicePickIosBody, 'iOS シミュレータがありません。');
+      } else {
+        for (const device of iosData.devices) {
+          const registeredName = iosNameByUdid.get(device.udid);
+          const registered = registeredName !== undefined;
+          const row = document.createElement('div');
+          row.className = 'device-pick-row';
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.checked = registered;
+          checkbox.addEventListener('change', updateDevicePickOkState);
+          const textWrap = document.createElement('div');
+          textWrap.className = 'device-pick-row-text';
+          // タイル/レーン/マシンプロファイル一覧と同じ配色ピル(.tile-name/-ios)を共用する(要件2)。
+          const nameEl = document.createElement('span');
+          nameEl.className = 'device-pick-row-name tile-name tile-name-ios';
+          nameEl.textContent = device.name;
+          const detailEl = document.createElement('div');
+          detailEl.className = 'device-pick-row-detail';
+          detailEl.textContent = 'iOS ' + device.os + ' / ' + device.udid.slice(0, 8);
+          textWrap.append(nameEl, detailEl);
+          row.append(checkbox, textWrap);
+          attachDevicePickRowToggle(row, checkbox);
+          devicePickIosBody.appendChild(row);
+          devicePickIosRows.push({ checkbox: checkbox, device: device, initialChecked: registered, registeredName: registeredName });
+        }
+      }
+
+      const androidNameByAvd = registeredAndroidNameByAvd();
+      const androidData = data.android;
+      devicePickAndroidTitle.textContent = 'Android AVD (' + androidData.avds.length + ')';
+      if (!androidData.available) {
+        buildDevicePickEmptyRow(devicePickAndroidBody, androidData.error || 'Android AVD を取得できませんでした。');
+      } else if (androidData.avds.length === 0) {
+        buildDevicePickEmptyRow(devicePickAndroidBody, 'Android AVD がありません。');
+      } else {
+        for (const avd of androidData.avds) {
+          const registeredName = androidNameByAvd.get(avd.id) ?? androidNameByAvd.get(avd.displayName);
+          const registered = registeredName !== undefined;
+          const row = document.createElement('div');
+          row.className = 'device-pick-row';
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.checked = registered;
+          checkbox.addEventListener('change', updateDevicePickOkState);
+          const textWrap = document.createElement('div');
+          textWrap.className = 'device-pick-row-text';
+          // タイル/レーン/マシンプロファイル一覧と同じ配色ピル(.tile-name/-android)を共用する(要件2)。
+          const nameEl = document.createElement('span');
+          nameEl.className = 'device-pick-row-name tile-name tile-name-android';
+          nameEl.textContent = avd.displayName;
+          const detailEl = document.createElement('div');
+          detailEl.className = 'device-pick-row-detail';
+          const detailParts = [];
+          if (avd.id !== avd.displayName) {
+            detailParts.push(avd.id);
+          }
+          detailEl.textContent = detailParts.join('・');
+          textWrap.append(nameEl, detailEl);
+          row.append(checkbox, textWrap);
+          attachDevicePickRowToggle(row, checkbox);
+          devicePickAndroidBody.appendChild(row);
+          devicePickAndroidRows.push({ checkbox: checkbox, avd: avd, initialChecked: registered, registeredName: registeredName });
+        }
+      }
+    }
+
+    // pendingAutoCheck(register:false で新規作成した直後の識別子)が指す行があれば、その行の
+    // チェックボックスだけを ON にする(initialChecked は renderDevicePickGroups が判定した
+    // 「登録済みかどうか」のまま false なので、ここで checked を true にすれば差分[ユーザー操作扱い]
+    // として OK ボタンが有効になる)。一致する行が無ければ何もしない(静かに諦める。2026-07-11 指示)。
+    // renderDevicePickGroups の直後(devicePickIosRows/devicePickAndroidRows が最新化された後)に
+    // 呼ぶこと。呼んだら pendingAutoCheck は必ずクリアする(一度きりの適用)。
+    function applyPendingAutoCheck() {
+      if (!pendingAutoCheck) {
+        return;
+      }
+      const target = pendingAutoCheck;
+      pendingAutoCheck = null;
+      if (target.udid) {
+        const row = devicePickIosRows.find((r) => r.device.udid === target.udid);
+        if (row) {
+          row.checkbox.checked = true;
+        }
+      }
+      if (target.avd) {
+        const row = devicePickAndroidRows.find((r) => r.avd.id === target.avd);
+        if (row) {
+          row.checkbox.checked = true;
+        }
+      }
+    }
+
+    // 同期リクエスト送信中(devicePickAdding)はチェックボックスも含めて全コントロールを disabled
+    // にする。チェックボックスは「登録状態そのもの」で常に操作可能な設計になったため、再度
+    // 有効化する際も一律 enabled に戻せばよい(以前のような「登録済み行だけ disabled のまま戻す」
+    // 例外はもう無い)。
+    function setDevicePickControlsEnabled(enabled) {
+      for (const row of devicePickIosRows.concat(devicePickAndroidRows)) {
+        row.checkbox.disabled = !enabled;
+      }
+    }
+
+    // #device-add-overlay(「+新規作成」)での作成が成功した後、このモーダルがまだ開いていれば
+    // 一覧を再取得して作り直す。全行が installedDevicesRequest の新しい応答から再描画されるため、
+    // 登録状態は最新値に自然と揃う(=他行の未確定の差分は破棄される。単純さを優先した設計判断)。
+    function reloadDevicePickIfOpen() {
+      if (!devicePickOpen) {
+        return;
+      }
+      devicePickError.classList.add('info');
+      devicePickError.textContent = '一覧を読み込み中...';
+      devicePickOk.disabled = true;
+      vscode.postMessage({ type: 'installedDevicesRequest' });
+    }
+
+    function openDevicePickModal() {
+      if (!selectedMachine) {
+        return;
+      }
+      devicePickOpen = true;
+      devicePickAdding = false;
+      pendingAutoCheck = null; // 前回開いた際の残留分があれば捨てて、新規セッションはクリーンに始める
+      devicePickIosRows = [];
+      devicePickAndroidRows = [];
+      devicePickIosBody.textContent = '';
+      devicePickAndroidBody.textContent = '';
+      devicePickIosTitle.textContent = 'iOS シミュレータ';
+      devicePickAndroidTitle.textContent = 'Android AVD';
+      devicePickError.classList.add('info');
+      devicePickError.textContent = '一覧を読み込み中...';
+      devicePickOk.disabled = true;
+      devicePickOk.textContent = 'OK';
+      devicePickCancel.disabled = false;
+      devicePickOverlay.classList.add('visible');
+      vscode.postMessage({ type: 'installedDevicesRequest' });
+    }
+
+    function closeDevicePickModal() {
+      if (!devicePickOpen || devicePickAdding) {
+        return;
+      }
+      devicePickOpen = false;
+      pendingAutoCheck = null; // 閉じた後に届く installedDevices 応答で誤適用しないようクリアする
+      devicePickOverlay.classList.remove('visible');
+    }
+
+    function applyInstalledDevices(message) {
+      if (!devicePickOpen) {
+        return; // モーダルを閉じた後に届いた応答は無視する(applyDeviceCatalog と同じ方針)
+      }
+      if (!message.ok || !message.data) {
+        devicePickError.classList.remove('info');
+        devicePickError.textContent = message.error || '一覧の取得に失敗しました。';
+        devicePickOk.disabled = true;
+        return;
+      }
+      devicePickError.classList.remove('info');
+      devicePickError.textContent = '';
+      renderDevicePickGroups(message.data);
+      applyPendingAutoCheck();
+      updateDevicePickOkState();
+    }
+
+    function applyMachineDevicesSyncResult(message) {
+      if (!devicePickOpen) {
+        return;
+      }
+      devicePickAdding = false;
+      devicePickCancel.disabled = false;
+      devicePickOk.textContent = 'OK';
+      if (message.ok) {
+        closeDevicePickModal();
+        return;
+      }
+      setDevicePickControlsEnabled(true);
+      updateDevicePickOkState();
+      devicePickError.classList.remove('info');
+      devicePickError.textContent = message.error || 'デバイスの同期に失敗しました。';
+    }
+
+    btnDeviceAddExisting.addEventListener('click', () => openDevicePickModal());
+    devicePickAddNewBtn.addEventListener('click', () => openDeviceAddModal());
+    devicePickCancel.addEventListener('click', () => closeDevicePickModal());
+    devicePickOverlay.addEventListener('click', (event) => {
+      if (event.target === devicePickOverlay) {
+        closeDevicePickModal();
+      }
+    });
+    devicePickOk.addEventListener('click', () => {
+      if (devicePickOk.disabled || devicePickAdding) {
+        return;
+      }
+      const add = [];
+      const remove = [];
+      for (const row of devicePickIosRows) {
+        if (row.checkbox.checked && !row.initialChecked) {
+          add.push({
+            platform: 'ios',
+            name: row.device.name,
+            simulator: row.device.name,
+            os: row.device.os,
+            udid: row.device.udid,
+          });
+        } else if (!row.checkbox.checked && row.initialChecked) {
+          remove.push(row.registeredName);
+        }
+      }
+      for (const row of devicePickAndroidRows) {
+        if (row.checkbox.checked && !row.initialChecked) {
+          add.push({ platform: 'android', name: row.avd.displayName, avd: row.avd.id });
+        } else if (!row.checkbox.checked && row.initialChecked) {
+          remove.push(row.registeredName);
+        }
+      }
+      if (add.length === 0 && remove.length === 0) {
+        return; // OK は差分がある間だけ有効なので通常ここには来ない(防御的ガード)
+      }
+      devicePickAdding = true;
+      setDevicePickControlsEnabled(false);
+      devicePickOk.disabled = true;
+      devicePickCancel.disabled = true;
+      devicePickOk.textContent = '適用中...';
+      devicePickError.classList.remove('info');
+      devicePickError.textContent = '';
+      vscode.postMessage({ type: 'machineDevicesSync', machine: selectedMachine, add: add, remove: remove });
+    });
+    // 既存の Esc ハンドラとは別のリスナーとして追加する(closeDeviceAddModal の Esc ハンドラと
+    // 同じ方針。closeDevicePickModal は自分の状態[devicePickOpen/devicePickAdding]だけを見るので
+    // 独立して安全に共存する)。ただし今回から「+」ボタンでこのモーダルの上に #device-add-overlay を
+    // 重ねて開けるようになったため、その間は Esc で奥のこのモーダルまで一緒に閉じないよう
+    // deviceAddOpen を先にチェックする(手前の device-add-overlay 自身の Esc ハンドラは
+    // deviceAddOpen だけを見るので、そちらは今まで通り自分自身を閉じる)。
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        if (deviceAddOpen) {
+          return;
+        }
+        closeDevicePickModal();
+      }
+    });
+
+    // ---- タブ切り替え(デバイス/プロファイル/設定) -----------------------------
+    // 「設定」タブは現状プレースホルダーのみ(将来の機能追加先)。ここは
+    // closeDeviceOpMenu・closeMachineDeviceMenu・applyTilePaneHeight・tilePaneHeight・
+    // persistedState のいずれもが既に定義済みであることに依存するため、
+    // スクリプトの最後(呼び出し側)にまとめて置く(関数宣言のホイスティングにより、
+    // ソース上の定義順に関わらず参照できる)。
+
+    const TAB_IDS = ['devices', 'profiles', 'settings'];
+    const tabButtons = {
+      devices: document.getElementById('tab-devices'),
+      profiles: document.getElementById('tab-profiles'),
+      settings: document.getElementById('tab-settings'),
+    };
+    const tabPanels = {
+      devices: devicesPanel,
+      profiles: document.getElementById('panel-profiles'),
+      settings: document.getElementById('panel-settings'),
+    };
+
+    function persistActiveTab(tab) {
+      vscode.setState(Object.assign({}, vscode.getState(), { activeTab: tab }));
+    }
+
+    function switchTab(tab) {
+      // タブ切替中に前のタブで開いていた右クリックメニューを残さない。
+      closeDeviceOpMenu();
+      closeMachineDeviceMenu();
+      for (const id of TAB_IDS) {
+        const isActive = id === tab;
+        tabButtons[id].classList.toggle('active', isActive);
+        tabButtons[id].setAttribute('aria-selected', String(isActive));
+        tabPanels[id].style.display = isActive ? 'flex' : 'none';
+      }
+      if (tab === 'devices') {
+        // 非表示だった間 devicesPanel.clientHeight が 0 になり、applyTilePaneHeight が
+        // ガードで何もせず抜けていた(誤クランプ防止)。再表示直後に呼び直して再クランプ+
+        // relayoutTiles() する(applyTilePaneHeight が内部で relayoutTiles() まで行う)。
+        applyTilePaneHeight(tilePaneHeight);
+      } else if (tab === 'profiles') {
+        // 同じ理由(非表示中は machineProfileBody.clientWidth が 0)で再表示直後に再クランプする。
+        applyMachineListWidth(machineListWidth);
+      }
+    }
+
+    for (const id of TAB_IDS) {
+      tabButtons[id].addEventListener('click', () => {
+        if (tabButtons[id].classList.contains('active')) {
+          return;
+        }
+        switchTab(id);
+        persistActiveTab(id);
+      });
+    }
+
+    // プロファイルタブ先頭の sticky ジャンプヘッダー(#profile-jump-header)から各セクションへ
+    // スクロールする(data-target=セクションの id)。scroll-margin-top(.profile-section)で
+    // sticky ヘッダーの裏に見出しが隠れないようにしてある。
+    for (const link of document.querySelectorAll('.profile-jump-link')) {
+      link.addEventListener('click', () => {
+        const target = document.getElementById(link.dataset.target);
+        if (target) {
+          target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      });
+    }
+
+    // 選択タブの永続化(vscode.getState())から復元する。不正値・未設定は 'devices'。
+    const initialTab = TAB_IDS.includes(persistedState.activeTab) ? persistedState.activeTab : 'devices';
+    switchTab(initialTab);
 
     updateLaneVisibility();
     updateLanesPlaceholder();

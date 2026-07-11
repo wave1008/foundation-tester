@@ -196,28 +196,33 @@ struct ProfileCommand: AsyncParsableCommand {
                 return
             }
 
-            let machine = try? ProfileResolver.determineMachine(
+            let ambientMachine = try? ProfileResolver.determineMachine(
                 project: testProject, registered: LocalConfig.currentMachineName())
-            if let machine {
-                print("マシン名: \(machine.name)\(machine.auto ? "(自動採用)" : "")")
+            if let ambientMachine {
+                print("マシン名: \(ambientMachine.name)\(ambientMachine.auto ? "(自動採用)" : "")")
             } else {
-                print("マシン名: 未決定(解決チェックはスキップ。ftester machine set で登録)")
+                print("マシン名: 未決定(machine を明示指定していない実行プロファイルは解決チェック"
+                    + "をスキップ。ftester machine set で登録するか、実行プロファイルに machine "
+                    + "を指定してください)")
             }
 
             print("実行プロファイル:")
             for run in runs {
-                guard let machine else {
-                    print("・ \(run)")
-                    continue
-                }
                 do {
+                    // 実行プロファイル自身の machine 指定があれば最優先する(determineMachine の
+                    // runProfileName 引数。ambientMachine が未決定でもこちらは解決できることがある)
+                    let machine = try ProfileResolver.determineMachine(
+                        project: testProject, registered: LocalConfig.currentMachineName(),
+                        runProfileName: run)
                     let resolved = try ProfileResolver.resolve(
                         project: testProject, runName: run, machineName: machine.name)
                     let devices = resolved.devices
                         .map { "\($0.name)(\($0.platform))" }
                         .joined(separator: ", ")
-                    print("・ \(run) — \(resolved.appName) / \(devices)")
+                    print("・ \(run) — \(resolved.appName) / \(devices) @ \(resolved.machineName)")
                     for warning in resolved.warnings { print("    ⚠️ \(warning)") }
+                } catch ProfileError.machineUndetermined {
+                    print("・ \(run) — マシン名が未決定のため解決チェックをスキップしました")
                 } catch {
                     print("・ \(run) — ❌ \(error.localizedDescription)")
                 }
