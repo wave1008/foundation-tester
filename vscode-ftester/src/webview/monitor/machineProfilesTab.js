@@ -506,7 +506,7 @@ function validateDeviceEditorFields(name) {
   }
   if (editorTarget.platform === 'ios') {
     const portValue = editorPort.value.trim();
-    if (portValue.length > 0 && (!/^\\d+$/.test(portValue) || Number(portValue) > 65535)) {
+    if (portValue.length > 0 && (!/^\d+$/.test(portValue) || Number(portValue) > 65535)) {
       return 'port は 0〜65535 の整数で入力してください。';
     }
   }
