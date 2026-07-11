@@ -71,8 +71,10 @@
 //   設計判断。いずれも他の短命 CLI 実行(executeBulkJob 等)と同じく直接 spawn する方針
 //   (FtesterCli の直列キューは使わない)。デバイス一覧は複数選択に対応する(要件5。
 //   selectedDeviceNames が Set。通常クリックは単一選択への置き換え[トグル]、Shift+クリックは
-//   追加/除外のトグル)。右ペインの編集フォームは「ちょうど1台選択」のときだけ表示する。
-//   デバイス行の右クリック「削除」/「選択した<N>台を削除」(handleMachineDeviceRemove。複数選択に
+//   アンカー(直近に通常/Cmdクリックした行)からの範囲選択、Cmd/Ctrl+クリックは個別の追加/除外
+//   トグル。Finder/VSCode のリストと同じ標準セマンティクス。2026-07-11 ユーザー指示)。
+//   右ペインの編集フォームは「ちょうど1台選択」のときだけ表示する。
+//   デバイス行の右クリック「除去」/「選択した<N>台を除去」(handleMachineDeviceRemove。複数選択に
 //   対応するため machineDeviceRemove の対象は names 配列)・行選択時に右ペインに表示する編集フォーム
 //   の「確定」(handleMachineDeviceUpdate)はいずれも CLI を呼ばず、machines/<machine>.json を
 //   直接読み書きする(monitorModel.ts の removeDeviceFromMachineProfile / updateDeviceInMachineProfile
@@ -233,7 +235,7 @@ export function registerMonitorPanel(
 
 /**
  * 確認モーダルに列挙する対象デバイス名の文字列(「、」区切りで最大3件+超過分は「 ほか」)。
- * handleMachineDeviceRemove の複数選択一括削除の確認文言で使う。
+ * handleMachineDeviceRemove の複数選択一括除去の確認文言で使う。
  */
 function summarizeDeviceNames(names: readonly string[]): string {
   const shown = names.slice(0, 3).join("、");
@@ -1154,12 +1156,15 @@ class MonitorPanelController implements vscode.Disposable {
   }
 
   /**
-   * プロファイルタブのデバイス行右クリックメニュー「削除」/「選択した<N>台を削除」:
+   * プロファイルタブのデバイス行右クリックメニュー「除去」/「選択した<N>台を除去」:
    * machines/<machine>.json から names に一致するデバイスをプロファイル上だけ取り除く
    * (シミュレータ/AVD本体はここでは一切操作しない。handleProfileDelete と同じくモーダル確認を
-   * 経てから実行する)。複数選択(要件5)に対応するため names は配列(単一削除も要素数1の配列)。
+   * 経てから実行する)。ユーザー可視文言はこの操作に限り「削除」ではなく「除去」を使う
+   * (2026-07-11 ユーザー指示: プロファイルから外すだけなのに、仮想マシン本体を消す「削除」と
+   * 紛らわしいため。本体を本当に消す操作・プロファイル自体の削除は従来どおり「削除」)。
+   * 複数選択(要件5)に対応するため names は配列(単一除去も要素数1の配列)。
    * removeDeviceFromMachineProfile を名前ごとに順次適用する(1回のファイル読み書きで済ませる —
-   * 各適用結果の object を次の入力にすることで、まとめて1回の書き戻しにできる)。1件も削除
+   * 各適用結果の object を次の入力にすることで、まとめて1回の書き戻しにできる)。1件も除去
    * できなければ(全名前が見つからなければ)警告して書き戻さない。
    */
   private async handleMachineDeviceRemove(machine: string, names: readonly string[]): Promise<void> {
@@ -1169,10 +1174,10 @@ class MonitorPanelController implements vscode.Disposable {
     }
     const confirmMessage =
       names.length === 1
-        ? `マシンプロファイル「${machine}」からデバイス「${names[0]}」を削除しますか?プロファイルからの削除のみで、シミュレータ/AVD 本体は削除されません。`
-        : `マシンプロファイル「${machine}」から${names.length}台のデバイス(${summarizeDeviceNames(names)})を削除しますか?プロファイルからの削除のみで、シミュレータ/AVD 本体は削除されません。`;
-    const choice = await vscode.window.showWarningMessage(confirmMessage, { modal: true }, "削除");
-    if (choice !== "削除") {
+        ? `マシンプロファイル「${machine}」からデバイス「${names[0]}」を除去しますか?プロファイルからの除去のみで、シミュレータ/AVD 本体は削除されません。`
+        : `マシンプロファイル「${machine}」から${names.length}台のデバイス(${summarizeDeviceNames(names)})を除去しますか?プロファイルからの除去のみで、シミュレータ/AVD 本体は削除されません。`;
+    const choice = await vscode.window.showWarningMessage(confirmMessage, { modal: true }, "除去");
+    if (choice !== "除去") {
       return;
     }
     const machinePath = path.join(this.machinesDir(project), `${machine}.json`);
@@ -1193,7 +1198,7 @@ class MonitorPanelController implements vscode.Disposable {
         const result = removeDeviceFromMachineProfile(current, name);
         if (!result) {
           this.outputChannel.appendLine(
-            `[ftester] マシンプロファイル「${machine}」の形式が不正なため、デバイスの削除を中断しました。`,
+            `[ftester] マシンプロファイル「${machine}」の形式が不正なため、デバイスの除去を中断しました。`,
           );
           void vscode.window.showWarningMessage(`ftester: マシンプロファイル「${machine}」を読み込めませんでした。`);
           return;
@@ -1205,7 +1210,7 @@ class MonitorPanelController implements vscode.Disposable {
       }
       if (removedCount === 0) {
         this.outputChannel.appendLine(
-          `[ftester] マシンプロファイル「${machine}」に指定のデバイスが見つからず、削除できませんでした。`,
+          `[ftester] マシンプロファイル「${machine}」に指定のデバイスが見つからず、除去できませんでした。`,
         );
         void vscode.window.showWarningMessage(
           `ftester: マシンプロファイル「${machine}」に指定のデバイスが見つかりませんでした。`,
@@ -1214,16 +1219,16 @@ class MonitorPanelController implements vscode.Disposable {
       }
       fs.writeFileSync(machinePath, `${JSON.stringify(current, null, 2)}\n`, "utf8");
       this.outputChannel.appendLine(
-        `[ftester] マシンプロファイル「${machine}」から${removedCount}台のデバイスを削除しました(${names.join("、")})。`,
+        `[ftester] マシンプロファイル「${machine}」から${removedCount}台のデバイスを除去しました(${names.join("、")})。`,
       );
       // FileSystemWatcher(onDidChange)経由でも postMachineProfileInfo() が呼ばれるが、
       // runCreateDevice と同じく反映を待たせないようここでも明示的に呼ぶ(冪等)。
       this.postMachineProfileInfo();
     } catch (error) {
       this.outputChannel.appendLine(
-        `[ftester] マシンプロファイル「${machine}」からのデバイス削除に失敗しました: ${String(error)}`,
+        `[ftester] マシンプロファイル「${machine}」からのデバイス除去に失敗しました: ${String(error)}`,
       );
-      void vscode.window.showErrorMessage(`ftester: マシンプロファイル「${machine}」からのデバイス削除に失敗しました。`);
+      void vscode.window.showErrorMessage(`ftester: マシンプロファイル「${machine}」からのデバイス除去に失敗しました。`);
     }
   }
 
@@ -2888,12 +2893,20 @@ function renderHtml(): string {
   }
 
   /* ---- プロファイルタブ: マシンプロファイルセクション ---------------------------------- */
+  /* 2026-07-11 ユーザー指示で薄いグレー背景のヘッダーバーに変更(実行/アプリ/マシン
+     プロファイルの3ヘッダー共通)。当初 sideBarSectionHeader-background を使ったが、
+     Light Modern 等のライトテーマでは #F8F8F8(ほぼ白)でパネル背景と区別できなかった
+     (2026-07-11 ユーザー報告)ため、タブバー(#tabbar)と同じ
+     editorGroupHeader-tabsBackground に変更(どのテーマでもパネル背景よりワントーン濃く、
+     拡張内のタブバーと配色が揃う)。背景がバー状に見えるよう padding も
+     12px 12px 6px(下だけ元々6pxだった)から上下対称の 6px 12px に変更。 */
   .profile-toolbar {
     flex: 0 0 auto;
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 12px 12px 6px;
+    padding: 6px 12px;
+    background-color: var(--vscode-editorGroupHeader-tabsBackground, rgba(128, 128, 128, 0.15));
   }
   .profile-toolbar-title {
     font-weight: 600;
@@ -2962,6 +2975,9 @@ function renderHtml(): string {
   .machine-device-row {
     padding: 8px 10px;
     border-bottom: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+    /* Shift+クリックの範囲選択(2026-07-11)時にブラウザのテキスト範囲選択が同時に走って
+       表示が乱れるのを防ぐ。 */
+    user-select: none;
   }
   .machine-device-row:last-child { border-bottom: none; }
   /* Test Explorer(VS Code のツリー/リスト)のアイテムホバーと同じ配色にする。
@@ -3564,7 +3580,7 @@ function renderHtml(): string {
               <span id="editor-device-platform" class="editor-platform-label"></span>
             </div>
             <!-- 編集可否の制御(ユーザー指定): 機種/OS/UDID/AVD は作成済みデバイスの実体を指す
-                 属性で API では変更できない(変更にはデバイスの削除→作り直しが必要)ため、
+                 属性で API では変更できない(変更にはデバイスの除去→作り直しが必要)ため、
                  テキストボックスではなくラベル(選択・コピー可能なテキスト)で表示する。
                  名前(プロファイル上の論理名)とポート(ブリッジポート設定)はプロファイル側の
                  設定値なので編集可。ラベルは input イベントを発火しないので dirty 判定にも入らず、
@@ -3576,11 +3592,11 @@ function renderHtml(): string {
             <div id="editor-ios-fields">
               <div class="modal-row">
                 <label>機種</label>
-                <span id="editor-simulator" class="editor-readonly-value" title="機種は変更できません(変更するにはデバイスを削除して作り直してください)"></span>
+                <span id="editor-simulator" class="editor-readonly-value" title="機種は変更できません(変更するにはデバイスを除去して作り直してください)"></span>
               </div>
               <div class="modal-row">
                 <label>OS</label>
-                <span id="editor-os" class="editor-readonly-value" title="OSは変更できません(変更するにはデバイスを削除して作り直してください)"></span>
+                <span id="editor-os" class="editor-readonly-value" title="OSは変更できません(変更するにはデバイスを除去して作り直してください)"></span>
               </div>
               <div class="modal-row">
                 <label>UDID</label>
@@ -3594,7 +3610,7 @@ function renderHtml(): string {
             <div id="editor-android-fields">
               <div class="modal-row">
                 <label>AVD</label>
-                <span id="editor-avd" class="editor-readonly-value" title="AVDは変更できません(変更するにはデバイスを削除して作り直してください)"></span>
+                <span id="editor-avd" class="editor-readonly-value" title="AVDは変更できません(変更するにはデバイスを除去して作り直してください)"></span>
               </div>
             </div>
             <div id="editor-error" class="modal-error"></div>
@@ -3616,10 +3632,11 @@ function renderHtml(): string {
     <button id="device-op-menu-item" class="device-op-menu-item" type="button" role="menuitem"></button>
   </div>
 
-  <!-- プロファイルタブのデバイス行右クリックメニュー(削除のみ)。見た目・挙動は #device-op-menu と
-       同じクラスを共用する(独立した表示状態・DOM要素)。 -->
+  <!-- プロファイルタブのデバイス行右クリックメニュー(除去のみ。プロファイルから外すだけで本体は
+       消さないため、文言は「削除」ではなく「除去」。2026-07-11 ユーザー指示)。見た目・挙動は
+       #device-op-menu と同じクラスを共用する(独立した表示状態・DOM要素)。 -->
   <div id="machine-device-menu" class="device-op-menu" role="menu">
-    <button id="machine-device-menu-item" class="device-op-menu-item" type="button" role="menuitem">削除</button>
+    <button id="machine-device-menu-item" class="device-op-menu-item" type="button" role="menuitem">除去</button>
   </div>
 
   <div id="device-add-overlay" class="modal-overlay">
@@ -4605,10 +4622,18 @@ function renderHtml(): string {
     let selectedMachine = null;
     // 選択中デバイス名の集合(要件5: 複数選択に対応するため Set)。通常クリックは「その1台だけを
     // 選択」(既にその1台だけの選択状態なら解除。従来のトグル感を維持)、Shift+クリックは
-    // クリックした行を追加/除外するトグル。マシン切替・一覧再描画で一覧から消えた名前は
-    // Set から取り除く(validateSelectedDeviceName)。右ペインの編集フォームは
-    // ちょうど1台(size===1)のときだけ表示する。
+    // アンカー(deviceSelectionAnchor)からの範囲選択、Cmd/Ctrl+クリックは個別の追加/除外トグル
+    // (Finder/VSCode のリストと同じ標準セマンティクス。2026-07-11 ユーザー指示)。マシン切替・
+    // 一覧再描画で一覧から消えた名前は Set から取り除く(validateSelectedDeviceName)。
+    // 右ペインの編集フォームはちょうど1台(size===1)のときだけ表示する。
     let selectedDeviceNames = new Set();
+    // 範囲選択(Shift+クリック)の起点=直近に通常/Cmd(Ctrl)クリックした行の名前。Shift+クリック
+    // 自体ではアンカーを動かさない(連続 Shift+クリックで同じ起点から範囲を伸縮できる)。
+    // 一覧から消えたら validateSelectedDeviceName で null に戻す。
+    let deviceSelectionAnchor = null;
+    // macOS 判定(行の contextmenu リスナーで Ctrl+クリックを選択トグルへ振り分けるのに使う。
+    // 下の toggleDeviceRowSelection まわりのコメント参照)。
+    const isMacPlatform = /^Mac/.test(navigator.platform || '');
     // 直近描画したデバイス行の DOM 要素(name -> row)。トグル選択・右クリックメニューの
     // 対象存在チェックで、一覧全体を再描画せずに済ませるために使う。
     let deviceRowElements = new Map();
@@ -4707,6 +4732,11 @@ function renderHtml(): string {
           selectedDeviceNames.delete(name);
         }
       }
+      // 範囲選択(Shift+クリック)の起点も同様に照合し、一覧から消えていたら捨てる
+      // (アンカー不在時の Shift+クリックは通常クリック扱いになる)。
+      if (deviceSelectionAnchor !== null && !names.has(deviceSelectionAnchor)) {
+        deviceSelectionAnchor = null;
+      }
     }
 
     // machineProfileInfo 受信のたびに selectedMachine を検証し、無効なら current→先頭の順で
@@ -4797,21 +4827,39 @@ function renderHtml(): string {
       }
     });
 
-    // 行クリックの選択(要件5)。
-    // - 通常クリック: その1台だけを選択(既存の選択を置き換える)。既に「その1台だけが選択」
-    //   状態なら解除する(従来のトグル感を維持)。
-    // - Shift+クリック: クリックした行を現在の選択に追加/除外する(追加式トグル)。
-    function toggleDeviceRowSelection(name, shiftKey) {
-      if (shiftKey) {
+    // 行クリックの選択(要件5。2026-07-11 ユーザー指示で Finder/VSCode のリストと同じ標準
+    // セマンティクスに変更)。判定順は shiftKey → metaKey/ctrlKey → 通常(Shift+Cmd 同時は
+    // Shift 扱い)。
+    // - Shift+クリック: 表示順(deviceRowElements の挿入順=renderMachineProfileBody の描画順)で
+    //   アンカー〜クリック行の間(両端含む)を選択に「置き換える」。アンカーは動かさない
+    //   (連続 Shift+クリックで同じ起点から範囲を伸縮できる)。アンカーが無効(null/一覧に不在)
+    //   なら通常クリックと同じ扱いにフォールバックする。
+    // - Cmd(metaKey)/Ctrl(ctrlKey)+クリック: クリック行を個別に追加/除外するトグル(従来の
+    //   Shift の挙動)。クリック行をアンカーに設定する。
+    // - 通常クリック: その1台だけを選択(既存の選択を置き換える)+クリック行をアンカーに設定。
+    //   既に「その1台だけが選択」状態なら解除する(従来のトグル感を維持。解除時はアンカーも null)。
+    function toggleDeviceRowSelection(name, event) {
+      const anchorValid = deviceSelectionAnchor !== null && deviceRowElements.has(deviceSelectionAnchor);
+      if (event.shiftKey && anchorValid) {
+        const order = [...deviceRowElements.keys()];
+        const anchorIndex = order.indexOf(deviceSelectionAnchor);
+        const clickedIndex = order.indexOf(name);
+        const start = Math.min(anchorIndex, clickedIndex);
+        const end = Math.max(anchorIndex, clickedIndex);
+        selectedDeviceNames = new Set(order.slice(start, end + 1));
+      } else if (!event.shiftKey && (event.metaKey || event.ctrlKey)) {
         if (selectedDeviceNames.has(name)) {
           selectedDeviceNames.delete(name);
         } else {
           selectedDeviceNames.add(name);
         }
+        deviceSelectionAnchor = name;
       } else if (selectedDeviceNames.size === 1 && selectedDeviceNames.has(name)) {
         selectedDeviceNames.clear();
+        deviceSelectionAnchor = null;
       } else {
         selectedDeviceNames = new Set([name]);
+        deviceSelectionAnchor = name;
       }
       updateDeviceSelectionUi();
       // 選択変更は明示操作なので、編集途中の値を破棄してフォームを作り直す(要件2)。
@@ -4858,10 +4906,22 @@ function renderHtml(): string {
           detail.className = 'machine-device-detail';
           detail.textContent = device.detail;
           row.append(name, detail);
-          row.addEventListener('click', (event) => toggleDeviceRowSelection(device.name, event.shiftKey));
+          row.addEventListener('click', (event) => toggleDeviceRowSelection(device.name, event));
           row.addEventListener('contextmenu', (event) => {
             event.preventDefault();
             event.stopPropagation();
+            // macOS では Ctrl+クリックが OS レベルで右クリック扱いになり click イベントは発生せず
+            // contextmenu として届くため、ここで選択トグルへ振り分ける(2026-07-11 ユーザー要望:
+            // Cmd と同様に Ctrl でも追加選択したい)。contextmenu イベントにも
+            // shiftKey/ctrlKey/metaKey は載っているので event をそのまま渡せば既存の判定
+            // (Shift優先→Ctrl/Cmdで個別トグル)がそのまま効く。mac では物理右クリック+Ctrl
+            // 押下も選択トグルになるが、メニューは素の右クリックで開けるため許容。
+            // Windows/Linux の Ctrl+クリックは通常の click イベントで既に対応済みなので、
+            // この振り分けは mac のみ。
+            if (isMacPlatform && event.ctrlKey) {
+              toggleDeviceRowSelection(device.name, event);
+              return;
+            }
             // クリックした行が現在の複数選択(2台以上)に含まれる場合は選択中全台を対象にする。
             // それ以外は従来どおりクリックした行単体を対象にする(要件5)。選択状態自体は
             // 右クリックでは変更しない。
@@ -4991,7 +5051,7 @@ function renderHtml(): string {
     }
 
     // 右ペインの編集フォームは「ちょうど1台選択」のときだけ表示する(要件5)。0台は既定の
-    // プレースホルダー、2台以上は「<N>台選択中(右クリックで一括削除できます)」を表示する。
+    // プレースホルダー、2台以上は「<N>台選択中(右クリックで一括除去できます)」を表示する。
     function singleSelectedDevice() {
       if (selectedDeviceNames.size !== 1) {
         return null;
@@ -5008,7 +5068,7 @@ function renderHtml(): string {
     // それ以外(0台/2台以上)はプレースホルダーに戻す。編集途中の値は常に破棄する。
     function rebuildEditorForSelection() {
       if (selectedDeviceNames.size >= 2) {
-        clearDeviceEditor(selectedDeviceNames.size + '台選択中(右クリックで一括削除できます)');
+        clearDeviceEditor(selectedDeviceNames.size + '台選択中(右クリックで一括除去できます)');
         return;
       }
       const device = singleSelectedDevice();
@@ -5028,7 +5088,7 @@ function renderHtml(): string {
         return;
       }
       if (selectedDeviceNames.size >= 2) {
-        clearDeviceEditor(selectedDeviceNames.size + '台選択中(右クリックで一括削除できます)');
+        clearDeviceEditor(selectedDeviceNames.size + '台選択中(右クリックで一括除去できます)');
         return;
       }
       if (selectedDeviceNames.size === 0) {
@@ -5138,7 +5198,7 @@ function renderHtml(): string {
       }
     }
 
-    // ---- デバイス行の右クリックメニュー(削除) -------------------------------------
+    // ---- デバイス行の右クリックメニュー(除去) -------------------------------------
     // 見た目・挙動はタイルの #device-op-menu(openDeviceOpMenu/closeDeviceOpMenu)を踏襲するが、
     // 状態(machineDeviceMenuEntry)・DOM要素は独立させる(タイルメニューの挙動に影響しないため)。
 
@@ -5151,11 +5211,11 @@ function renderHtml(): string {
     }
 
     // entry は { machine, names }(names は1件以上)。複数選択(2台以上)を対象にする場合は
-    // メニュー項目のラベルを「選択した<N>台を削除」に変える(要件5)。
+    // メニュー項目のラベルを「選択した<N>台を除去」に変える(要件5)。
     function openMachineDeviceMenu(entry, clientX, clientY) {
       machineDeviceMenuEntry = entry;
       machineDeviceMenuItemBtn.textContent =
-        entry.names.length >= 2 ? '選択した' + entry.names.length + '台を削除' : '削除';
+        entry.names.length >= 2 ? '選択した' + entry.names.length + '台を除去' : '除去';
       machineDeviceMenu.classList.add('visible');
       clampMenuPosition(machineDeviceMenu, clientX, clientY);
     }
