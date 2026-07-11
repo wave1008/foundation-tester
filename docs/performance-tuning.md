@@ -106,6 +106,7 @@ window/transition/animator の `*_scale` はチューニングノブではなく
 | adb forward ポートのファイルキャッシュ | MCP/serve/monitor が常駐でレジストリが効く。残るは稀な CLI 一発のみ | なし |
 | 拡張既定バイナリの release 化 | 常駐化でプロセス起動が初回 1 回になり意味消失 | なし |
 | capability 交渉・旧タイミング互換モード | バージョン整合は人間担保(ユーザー決定)・単一実装 | なし |
+| iOS のシミュレータ私有 IF 直叩き(idb 方式: AXRuntime ツリー+IndigoHID 入力) | snapshot は速くなるが**整定のイベント源が無い**(Android の a11y リスナ相当が無い)ためポーリングに回帰=負荷原則違反。Xcode ベータ毎に壊れるリスクも高い | プッシュ型のアイドル信号を得られる経路が見つかったら |
 
 ## 7. 既知の落とし穴(ベンチ・検証時)
 
@@ -131,7 +132,25 @@ window/transition/animator の `*_scale` はチューニングノブではなく
 
 - **失敗パスの高速化**: 落ちるテストは timeout(5s×箇所)が支配。画面不一致の早期検知や
   タイムアウト時の最終 snapshot 添付(調査 1 往復化)は未実装
-- **iOS の明示的整定**: 現在は XCUITest の暗黙 quiescence に依存。iOS 側のフレークが
-  実測で増えたら、iOS ランナーにも静穏応答を検討(Android と同じ思想で)
+- **iOS の高速化ロードマップ(2026-07-12 検討)**: iOS の残り時間は「XCUITest 税」
+  = snapshot が毎回 testmanagerd 経由 IPC で全属性取得(~250ms)+イベント合成前の
+  暗黙 quiescence 待ち。段階は 2 つ:
+  1. **短期(税の減額)**: ① Reduce Motion の自動設定
+     (`simctl spawn <udid> defaults write com.apple.Accessibility ReduceMotionEnabled 1`。
+     Android のアニメーション無効化の対称。iOS ブリッジ起動時に自動化)
+     ② snapshot の取得属性・深さの絞り込み(XCUITest 私有パラメータだが
+     WebDriverAgent/Appium で長年の実績。250ms→100ms 級が相場)
+  2. **本命(税の撤廃)**: **アプリ内常駐ブリッジ**(EarlGrey/Espresso と同クラス)。
+     シミュレータは `simctl launch` の `DYLD_INSERT_LIBRARIES` で任意アプリに
+     リビルドなしで注入できる(シミュレータプロセスは SIP/hardened runtime 非適用)。
+     UIKit ビュー階層の直接走査(ms 級・IPC ゼロ)+ランループオブザーバと
+     CATransaction/CADisplayLink による**真のイベント駆動整定**+プロセス内タッチ合成。
+     既存 9 エンドポイントの HTTP 互換にすればホスト側は無変更(単一実装原則と整合)。
+     見込みは Android 並み(シナリオ ~2s 級)。制約: 実機は注入不可
+     (自ビルドアプリへのリンク方式のみ)、タッチ合成に私有 API を使う。
+     **進め方**: 1 を実施・計測 → 不足が残る場合のみ 2 を snapshot/tap/整定の
+     3 点プロトタイプで実測してから本実装を判断(Phase 2 級の大工事のため)。
+     なお XCUITest の quiescence 自体を私有 API で無効化する案(WDA 方式)は、
+     代替の整定信号がプロセス外から得られないため 2 とセットでない限り採らない
 - **シナリオ設計の見直し**: 上記 iPhone Air フレークのようなデバイス依存アサーションの排除は、
   どんなエンジン改善より成功率に効く
