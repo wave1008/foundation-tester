@@ -113,7 +113,8 @@ public struct StepOutcome: Sendable {
     public let healedStep: FlowStep?
     /// true = ヒールキャッシュで解決(FM 不使用)。false で healedStep あり = FM 自己修復
     public let healedByCache: Bool
-    /// ステップの所要時間内訳。実行エラー等で計測できなかった場合のみ nil
+    /// ステップの所要時間内訳。action も assert もない(空)ステップの場合のみ nil
+    /// (実行エラー時も catch 節でこの時点までの計測値を積んで返す)
     public let timing: StepTiming?
 
     public init(status: StepResult.Status, healedStep: FlowStep? = nil, healedByCache: Bool = false,
@@ -222,8 +223,7 @@ public final class StepExecutor {
                 "\(maxSwipes) 回スクロールしても要素が見つかりません: \(step.locatorSummary)"))
         }
 
-        // ロケータ解決(指数バックオフで最大3回再試行 — UI 遷移直後対策。
-        // 100→200→400ms で、ヒール発動までの総待機は計700ms)
+        // ロケータ解決の再試行(ファイル冒頭のセマンティクス参照: 最大3回、計700ms)
         var start = clock.now
         var snapshot = try await driver.snapshot()
         phase.snapshotMs += Self.ms(clock.now - start)

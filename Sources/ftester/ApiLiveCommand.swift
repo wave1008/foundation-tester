@@ -1,12 +1,9 @@
-// ApiLiveCommand.swift
-// VSCode拡張のライブ操作パネル向け常駐 CLI(ftester api live serve)。
-//
-// serve はドライバを起動時に1回だけ生成して使い回し(操作ごとのプロセス起動を避けるため)、
-// 以降は stdin から NDJSON でコマンドを1行ずつ受けて逐次処理する(1リクエストにつき
-// プロセス起動ゼロ・追加待ちゼロ)。
+// VSCode拡張のライブ操作パネル向け常駐 CLI(ftester api live serve)。ドライバを起動時に
+// 1回だけ生成して使い回し(操作ごとのプロセス起動を避ける)、stdin から NDJSON でコマンドを
+// 1行ずつ受けて逐次処理する。
 //
 // snapshot/tap/type/swipe/launch/terminate/install はこの serve コマンドに統合されている。
-// press はそもそも livePanel.ts の UI に長押し操作が無いため実装していない。
+// press は livePanel.ts の UI に長押し操作が無いため未実装。
 //
 // プロトコル(stdin → serve、1行1コマンドの NDJSON):
 //   {"cmd":"tap","ref":<Int>}                           snapshot の参照番号をタップ
@@ -39,11 +36,9 @@
 //
 // 座標契約: snapshot の screen / elements[].frame はポイント座標。
 //
-// 終了: stdin EOF、または SIGTERM/SIGINT(ApiMonitorCommand/ApiHostMetricsCommand と同じ流儀。
-// setvbuf での行バッファ化も同じ)。stdin 監視は他の常駐 api コマンドと同じく専用スレッドで
-// 行うが、こちらは周期処理を持たない(コマンド駆動のみ)ため StopFlag+ポーリングではなく
-// AsyncStream で橋渡しし、SIGTERM/SIGINT はそのまま continuation.finish() を呼んで
-// for-await ループを抜けさせる(イベント駆動なのでポーリング不要)。
+// 終了: stdin EOF、または SIGTERM/SIGINT(setvbuf の行バッファ化含め他の常駐 api コマンドと同じ
+// 流儀)。ただしこちらは周期処理を持たないコマンド駆動のため、StopFlag+ポーリングではなく
+// AsyncStream で橋渡しし SIGTERM/SIGINT は continuation.finish() で for-await を抜けさせる。
 
 import ArgumentParser
 import Foundation
@@ -73,8 +68,6 @@ struct ApiLiveServe: AsyncParsableCommand {
         // ストリーミング読み取りが前提のため常に行バッファにする(他の常駐 api コマンドと同じ理由)
         setvbuf(stdout, nil, _IOLBF, 0)
 
-        // ドライバは起動時に1回だけ生成し、以降の全コマンドで使い回す(操作ごとのプロセス起動を
-        // 避けるため)
         let driver = try driverOptions.makeDriver()
 
         let (lines, continuation) = AsyncStream<String>.makeStream(of: String.self)
@@ -87,10 +80,6 @@ struct ApiLiveServe: AsyncParsableCommand {
         reader.name = "ftester-api-live-serve-stdin"
         reader.start()
 
-        // SIGTERM/SIGINT は既定の即時終了を上書きし、AsyncStream を finish して下の
-        // for-await ループを抜けさせる。ApiMonitorCommand/ApiHostMetricsCommand の
-        // StopFlag+sleepInterruptible(周期ポーリング)と違い、serve はコマンド駆動のイベントループ
-        // なのでポーリングは不要
         signal(SIGTERM, SIG_IGN)
         signal(SIGINT, SIG_IGN)
         let signalQueue = DispatchQueue(label: "ftester-api-live-serve-signal")
@@ -222,10 +211,8 @@ private func emitLine<T: Encodable>(_ value: T) {
 // MARK: - stdin コマンド
 
 /// stdin から受け取る1コマンド分(NDJSON 1行)。cmd 以外は全コマンド共通のオプショナルとし、
-/// 必須引数の欠落はコマンド種別ごとに perform(command:driver:) が判定する(JSON 自体が壊れている
-/// 行だけを「無視」の対象にし、フィールド欠落は actionResult の ok:false として応答できるようにする
-/// ため。ArgumentParser の ValidationError と違い、こちらはリクエスト毎の実行時データなので
-/// プロセスを落とさず1件だけ失敗させる)
+/// 必須引数の欠落は perform(command:driver:) がコマンド種別毎に判定する(JSON自体が壊れている
+/// 行だけを無視し、フィールド欠落は actionResult の ok:false として1件だけ失敗させるため)
 private struct ApiLiveServeCommand: Decodable {
     let cmd: String
     let ref: Int?

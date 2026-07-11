@@ -1,4 +1,3 @@
-// ProfileRunner.swift
 // ftester run --profile の実行パス:
 //   実行プロファイル解決 → ワーカー構築(iOS ブリッジ供給 / Android 照合)→
 //   自動インストール → RunOrchestrator で両OS同時並列実行。

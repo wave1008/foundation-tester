@@ -1,11 +1,7 @@
-// MachineProfileEditorTests.swift
-
 import XCTest
 @testable import FTCore
 
 final class MachineProfileEditorTests: XCTestCase {
-
-    // MARK: - addingDevice: 基本追加
 
     func testAddingDeviceBasicAddition() throws {
         let object: [String: Any] = [
@@ -21,8 +17,6 @@ final class MachineProfileEditorTests: XCTestCase {
         XCTAssertEqual(devices[1]["name"] as? String, "シミュ2")
         XCTAssertEqual(devices[1]["simulator"] as? String, "iPhone 16")
     }
-
-    // MARK: - addingDevice: セクション/devices 配列欠落時の生成
 
     func testAddingDeviceCreatesSectionWhenMissing() throws {
         let object: [String: Any] = [:]
@@ -40,7 +34,6 @@ final class MachineProfileEditorTests: XCTestCase {
     }
 
     func testAddingDeviceCreatesDevicesArrayWhenSectionExistsButEmpty() throws {
-        // ios セクション自体は存在するが devices キーが無いケース
         let object: [String: Any] = ["ios": [String: Any]()]
         let updated = try MachineProfileEditor.addingDevice(
             toProfileObject: object, platform: "ios",
@@ -50,8 +43,6 @@ final class MachineProfileEditorTests: XCTestCase {
         XCTAssertEqual(devices.count, 1)
         XCTAssertEqual(devices[0]["name"] as? String, "シミュ1")
     }
-
-    // MARK: - addingDevice: 未知キー保持
 
     func testAddingDevicePreservesUnknownKeys() throws {
         let object: [String: Any] = [
@@ -65,11 +56,9 @@ final class MachineProfileEditorTests: XCTestCase {
             toProfileObject: object, platform: "ios",
             device: ["name": "シミュ2", "simulator": "iPhone 16", "os": "26.0"])
 
-        // トップレベルの未知キー
         XCTAssertEqual(updated["notes"] as? String, "手動メモ")
 
         let ios = try XCTUnwrap(updated["ios"] as? [String: Any])
-        // ios セクション内の未知キー
         XCTAssertEqual(ios["extra"] as? String, "維持されるはず")
 
         let devices = try XCTUnwrap(ios["devices"] as? [[String: Any]])
@@ -77,8 +66,6 @@ final class MachineProfileEditorTests: XCTestCase {
         XCTAssertEqual(devices[0]["name"] as? String, "シミュ1")
         XCTAssertEqual(devices[1]["name"] as? String, "シミュ2")
     }
-
-    // MARK: - addingDevice: 名前重複エラー(ios↔android 横断)
 
     func testAddingDeviceDuplicateNameAcrossPlatforms() {
         let object: [String: Any] = [
@@ -104,8 +91,6 @@ final class MachineProfileEditorTests: XCTestCase {
             device: ["name": "重複", "avd": "Pixel_10"]))
     }
 
-    // MARK: - deviceNames
-
     func testDeviceNames() {
         let object: [String: Any] = [
             "ios": ["devices": [
@@ -123,8 +108,6 @@ final class MachineProfileEditorTests: XCTestCase {
     func testDeviceNamesEmptyObject() {
         XCTAssertEqual(MachineProfileEditor.deviceNames(inProfileObject: [:]), [])
     }
-
-    // MARK: - sanitizedAVDID
 
     func testSanitizedAVDIDReplacesSpacesAndParentheses() {
         XCTAssertEqual(
@@ -152,8 +135,6 @@ final class MachineProfileEditorTests: XCTestCase {
         XCTAssertEqual(MachineProfileEditor.sanitizedAVDID(from: "   "), "avd")
         XCTAssertEqual(MachineProfileEditor.sanitizedAVDID(from: ""), "avd")
     }
-
-    // MARK: - androidVersionName
 
     func testAndroidVersionNameBelowTable() {
         XCTAssertEqual(MachineProfileEditor.androidVersionName(apiLevel: 19), "API 19")

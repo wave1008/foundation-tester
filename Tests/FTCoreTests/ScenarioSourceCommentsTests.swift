@@ -1,5 +1,3 @@
-// ScenarioSourceCommentsTests.swift
-
 import XCTest
 @testable import FTCore
 
@@ -20,7 +18,6 @@ final class ScenarioSourceCommentsTests: XCTestCase {
     }
 
     func testSlashesInsideStringIgnored() {
-        // URL の // は文字列リテラル内なのでコメントではない
         XCTAssertNil(ScenarioSourceComments.trailingComment(
             inLine: "    launchApp(\"https://example.com//path\")"))
     }
@@ -33,8 +30,7 @@ final class ScenarioSourceCommentsTests: XCTestCase {
     }
 
     func testEscapedQuoteInsideString() {
-        // ソース上の type("#memo", "say \"//not comment\"") 相当。
-        // \" で文字列は閉じない → その後の // も文字列内
+        // \" は文字列を閉じない(エスケープ)ため後続の // もコメントにならない
         XCTAssertNil(ScenarioSourceComments.trailingComment(
             inLine: "    type(\"#memo\", \"say \\\"//not comment\\\"\")"))
     }

@@ -1,8 +1,5 @@
-// ProfileWorkerFactory.swift
-// 解決済み実行プロファイル(ResolvedProfile)→ RunWorker 群の構築。
-// iOS はブリッジ供給(BridgeProvisioner)、Android は serial/avd 照合(AndroidDeviceCatalog)。
-// CLI(ProfileRunner)から使う。
-// ※ FTBridgeClient と FTAndroid の両方に依存するため、このモジュールに置く。
+// 解決済み実行プロファイル(ResolvedProfile)→ RunWorker 群の構築。CLI(ProfileRunner)から使う。
+// FTBridgeClient と FTAndroid の両方に依存するため、このモジュール(FTAndroid)に置く。
 
 import Foundation
 import FTBridgeClient
@@ -15,7 +12,6 @@ public enum ProfileWorkerFactory {
         public var errorDescription: String? { message }
     }
 
-    /// ResolvedProfile のデバイス群からワーカーを構築する(ラベル = デバイスの論理名)
     public static func buildWorkers(resolved: ResolvedProfile, repoRoot: URL,
                                     log: @escaping (String) -> Void) async throws -> [RunWorker] {
         var workers: [RunWorker] = []
@@ -45,8 +41,7 @@ public enum ProfileWorkerFactory {
         return workers
     }
 
-    /// appPath 指定+autoInstall のプラットフォームのワーカーへ並行インストールする。
-    /// 失敗したワーカーは離脱(残ワーカーがキューを引き継ぐ)。全滅ならエラー
+    /// インストール失敗ワーカーは離脱し残りが続行する(全滅時のみエラー)
     public static func installIfNeeded(apps: [String: ResolvedAppTarget],
                                        workers: [RunWorker],
                                        log: @escaping (String) -> Void) async throws -> [RunWorker] {

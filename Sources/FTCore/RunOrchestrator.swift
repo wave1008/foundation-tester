@@ -62,7 +62,7 @@ public enum RunEvent: Sendable {
     /// デバッグ実行で一時停止した(index = 次に実行するステップ番号、file/line = その位置)
     case flowPaused(worker: String, flowURL: URL, index: Int, description: String,
                     file: String?, line: Int?)
-    /// 自己修復したロケータでフローを上書き保存した(YAML 時代の互換。シナリオでは未使用)
+    /// 自己修復でフロー上書き保存(旧 YAML 方式の名残。現行シナリオでは未発行)
     case flowHealed(worker: String, flowURL: URL)
     /// 自己修復の構造化提案(修復候補の確認 UI 向け)。ログ表示は既存の .step 側で行う。
     /// command = 対象コマンドの description(例: tap "旧セレクタ"。説明提案の生成に使う)
@@ -130,9 +130,8 @@ public enum ScenarioRunner {
                                     description: event.description ?? "",
                                     file: event.file, line: event.line))
             case "fixSuggestion":
-                // 「💡 修正提案: …」合成 step 行(実際のコマンド結果ではない)。
-                // synthetic: true を立てて出す(人間向け表示には含め、
-                // 機械可読 NDJSON 側だけがこのフラグで除外する)
+                // 「💡 修正提案: …」合成 step 行(実際のコマンド結果ではない。synthetic: true の
+                // 意味は StepResult.synthetic 参照)
                 onEvent(.step(worker: worker.label, flowURL: item.url,
                               result: StepResult(index: event.index ?? 0,
                                                  description: "💡 修正提案: \(event.detail ?? "")",
@@ -162,9 +161,8 @@ public enum ScenarioRunner {
         return passed
     }
 
-    /// ScenarioEvent(step)→ StepResult。scene/sceneTitle/section は構造化フィールドのまま写し、
-    /// status も丸めずそのまま(passedViaFallback/healed の詳細は FlowLocator.raw に保持する。
-    /// サブプロセス境界を跨ぐと構造化ロケータは失われ人間可読テキストしか残らないため)
+    /// ScenarioEvent(step)→ StepResult。scene/sceneTitle/section は構造化フィールドのまま写す。
+    /// passedViaFallback/healed の detail の扱いは FlowLocator.raw(Flow.swift)参照
     static func stepResult(from event: ScenarioEvent) -> StepResult {
         let status: StepResult.Status
         switch event.status {
@@ -296,10 +294,9 @@ public enum RunLogFormatter {
         case .runStarted, .workerReady, .runFinished:
             return []
         case .sceneStarted, .sceneFinished:
-            // scene の開始・終了(ScenarioRunner.runOne が emit する)。CLI や拡張側の表示は
-            // flowStarted〜flowFinished の間の step 行だけで完結し、scene 区切り用の専用行は
-            // 出さないため、ここでは意図的に空配列のまま
-            // (scene/sceneTitle は各 step 行の構造化フィールドとして参照できる)
+            // 表示は flowStarted〜flowFinished 間の step 行だけで完結させる方針のため、
+            // scene 区切り用の専用行は意図的に出さない(scene/sceneTitle は各 step 行の
+            // 構造化フィールドとして参照できる)
             return []
         case .workerFailed(let worker, let message):
             return ["❌ ワーカー \(worker) が離脱しました: \(message)"]
@@ -339,9 +336,7 @@ public enum RunLogFormatter {
     }
 
     public static func lines(for step: StepResult) -> [String] {
-        // 表示では section("condition"/"action"/"expectation")を description 先頭に
-        // "[section] " プレフィックスとして折り込む(section は stepResult(from:) 以降、
-        // 構造化フィールドとして独立して保持されている)
+        // section("condition"/"action"/"expectation")を description 先頭に "[section] " として折り込む
         let description = (step.section.map { "[\($0)] " } ?? "") + step.description
         switch step.status {
         case .passed:
@@ -349,9 +344,7 @@ public enum RunLogFormatter {
             if step.index == 0 { return ["  \(description)"] }
             return ["  ✅ \(step.index). \(description)"]
         case .passedViaFallback(let locator), .healed(let locator):
-            // passedViaFallback/healed も表示上は passed と同じ ✅ とし、末尾に
-            // "(detail)" として畳み込む
-            // (locator.summary は FlowLocator.raw = ScenarioEvent.detail そのもの)
+            // 表示上は passed と同じ ✅ とし、末尾に "(detail)" を畳み込む
             return ["  ✅ \(step.index). \(description)(\(locator.summary))"]
         case .failed(let reason):
             return ["  ❌ \(step.index). \(description)", "     \(reason)"]

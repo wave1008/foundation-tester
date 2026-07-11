@@ -1,4 +1,3 @@
-// ScenarioRunnerMain.swift
 // ftester-scenarios(Scenarios/ ターゲット)の CLI 実装。
 //   list [--json]                       … シナリオ一覧
 //   run --scenario <クラス名.メソッド名>  … 1 シナリオを実行(1 プロセス = 1 シナリオ)
@@ -157,8 +156,7 @@ struct RunScenario: AsyncParsableCommand {
             _ = try await driver.status()  // 接続不能なら早期に分かりやすく失敗させる
         }
 
-        // FM フックはサブプロセス毎の起動コスト回避のため初回必要時に遅延初期化
-        let delegate = LazyFMDelegate()
+        let delegate = LazyFMDelegate()  // 遅延初期化の理由は class doc 参照
 
         let emit: (ScenarioEvent) -> Void = json
             ? { print($0.encodedLine()) }

@@ -1,5 +1,3 @@
-// ScenarioFoldersTests.swift
-
 import XCTest
 @testable import FTCore
 
@@ -97,7 +95,6 @@ final class ScenarioFoldersTests: XCTestCase {
         let base = ScenarioFolders.directorySignature(scenariosDir: scenariosDir)
         XCTAssertFalse(base.isEmpty)
 
-        // 変更なし → 署名は同じ
         XCTAssertEqual(ScenarioFolders.directorySignature(scenariosDir: scenariosDir), base)
 
         // 署名対象外の変更(_disabled/ の中身、.md)では変わらない

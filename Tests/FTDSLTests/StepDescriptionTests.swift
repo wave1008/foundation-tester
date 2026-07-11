@@ -1,5 +1,3 @@
-// StepDescriptionTests.swift
-
 import XCTest
 @testable import FTDSL
 import FTCore
@@ -18,8 +16,6 @@ final class StepDescriptionTests: XCTestCase {
                 command: "exist \"#collapsing_toolbar||ネットワークとインターネット\""),
             "\"ネットワークとインターネット\"が表示されること")
     }
-
-    // MARK: - 変換表(全コマンド)
 
     func testTap() {
         XCTAssertEqual(StepDescription.describe(command: "tap \"ログイン\""),
@@ -91,8 +87,6 @@ final class StepDescriptionTests: XCTestCase {
         XCTAssertEqual(StepDescription.describe(command: "wait 3.0s"), "3秒待機する")
     }
 
-    // MARK: - 生成対象外(nil)
-
     func testNonTargetCommandsReturnNil() {
         XCTAssertNil(StepDescription.describe(command: "ifCanSelect \"今はしない\" → 実行"))
         XCTAssertNil(StepDescription.describe(command: "procedure \"テストデータを投入\""))
@@ -100,8 +94,6 @@ final class StepDescriptionTests: XCTestCase {
         XCTAssertNil(StepDescription.describe(command: ""))
         XCTAssertNil(StepDescription.describe(command: "tap 引用符なし"))
     }
-
-    // MARK: - 目的語規則
 
     func testObjectPhraseUsesFirstLabelClause() {
         // id 節 + label 節 → ラベルを目的語に
@@ -118,8 +110,6 @@ final class StepDescriptionTests: XCTestCase {
         // ラベル無しの連鎖 → セレクタ文字列そのまま
         XCTAssertEqual(StepDescription.objectPhrase(ofSelector: "#a||.Cell[3]"), "#a||.Cell[3]")
     }
-
-    // MARK: - (optional) サフィックスと selectorOverride
 
     func testOptionalSuffixIsIgnored() {
         XCTAssertEqual(StepDescription.describe(command: "tap \"今はしない\" (optional)"),

@@ -1,4 +1,3 @@
-// ApiValidateProfileCommand.swift
 // VSCode拡張向け: プロファイルJSON(profiles/apps・machines・runs)を検証し、結果をJSONで
 // stdoutに出力する(ftester api validate-profile)。
 // 検証基準: ProfileResolver.validate(kind:data:context:project:) に加え、runs は machine 指定
@@ -76,7 +75,6 @@ struct ApiValidateProfile: AsyncParsableCommand {
         print(String(data: data, encoding: .utf8)!)
     }
 
-    /// 1 ファイル分の検証(ProfilesView.validate(_:) と同じ基準)
     private static func validate(
         file: URL, fileName: String, kind: ProfileFileKind, project: TestProject
     ) -> ApiValidateProfileResult {
@@ -90,12 +88,11 @@ struct ApiValidateProfile: AsyncParsableCommand {
             kind: kind, data: data, context: "\(kind.directoryName)/\(fileName).json",
             project: project)
 
-        // 実行プロファイルは参照(app / デバイス name)も解決チェックする(ProfilesView.validate(_:)
-        // と同方針。他の検証エラーがある場合は解決を試みない)。マシン決定は
-        // determineMachine(runProfileName:) に委ねる: このファイル自身が machine を明示指定して
-        // いればそれを最優先するため、FT_MACHINE/登録名が未設定・machines/ が複数ある環境でも
-        // 参照チェックが行える(machineUndetermined だけは既存プロファイルとの後方互換のため
-        // 警告に留めてスキップする。それ以外の解決失敗は通常どおりエラーにする)
+        // 実行プロファイルは参照(app / デバイス name)も解決チェックする(他の検証エラーがある
+        // 場合は解決を試みない)。マシン決定は determineMachine(runProfileName:) に委ねる:
+        // このファイル自身が machine を明示指定していればそれを最優先するため、FT_MACHINE/登録名が
+        // 未設定・machines/ が複数ある環境でも参照チェックが行える(machineUndetermined だけは
+        // 既存プロファイルとの後方互換のため警告に留めてスキップする)
         if kind == .run, errors.isEmpty {
             do {
                 let machine = try ProfileResolver.determineMachine(

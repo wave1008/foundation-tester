@@ -1,4 +1,3 @@
-// AndroidDriver.swift
 // AppDriver の Android 実装。
 // snapshot/tap/type/swipe/press/screenshot/launch/status はデバイス常駐ブリッジ
 // (AndroidRunner/、iOS ブリッジとプロトコル互換)を自動起動して HTTP で行う(AndroidBridge.swift)。
@@ -16,9 +15,8 @@ public final class AndroidDriver: AppDriver {
     public let adbPath: String
     let serial: String?
 
-    // 直近スナップショットの ref → 中心座標(iOS ランナーと同じ方式)。
-    // iOS と違い CLI プロセス内に住むため、呼び出しをまたぐ手動駆動用に
-    // 一時ファイルへも永続化する(explore/run は単一プロセスなので不要だが無害)
+    // 直近スナップショットの ref → 中心座標(iOS ランナーと同じ方式)。iOS と違い CLI プロセス内に
+    // 住むため、呼び出しをまたぐ手動駆動用に一時ファイルへも永続化する(explore/run は単一プロセスで不要だが無害)
     private var refCenters: [Int: (x: Double, y: Double)] = [:]
     private var screen: FTRect = FTRect(x: 0, y: 0, width: 0, height: 0)
     private var currentPackage: String?
@@ -91,8 +89,7 @@ public final class AndroidDriver: AppDriver {
     // MARK: - AppDriver
 
     public func status() async throws -> StatusResponse {
-        // ブリッジの /status に一本化する(ready 判定にブリッジ疎通を伴わせることで、
-        // 「接続不能なら早期に失敗させる」呼び出し元の意図を満たす)
+        // ブリッジの /status に一本化(ready判定にブリッジ疎通を伴わせ、接続不能なら早期に失敗させる)
         try await withBridge { try await $0.status() }
     }
 
@@ -105,9 +102,8 @@ public final class AndroidDriver: AppDriver {
     }
 
     public func launch(bundleID: String) async throws {
-        // ブリッジの POST /session に一本化する(force-stop+monkey+am start フォールバックは
-        // ブリッジ側 handleLaunch() が持つ。整定待ちもブリッジ側で完結するので
-        // ここでの追加 sleep は不要)
+        // force-stop+monkey+am start フォールバックと整定待ちはブリッジ側 handleLaunch() が持つ
+        // (ここでの追加 sleep は不要)
         try await withBridge { try await $0.launch(bundleID: bundleID) }
         currentPackage = bundleID
     }
@@ -131,8 +127,7 @@ public final class AndroidDriver: AppDriver {
         try await withBridge { try await $0.tap(x: x, y: y) }
     }
 
-    /// ブリッジ snapshot の結果をホスト側 ref テーブルにも写す。CLI プロセス跨ぎの手動駆動
-    /// (persistState 経由)を守る保険
+    /// ブリッジ snapshot の結果をホスト側 ref テーブルにも写す(CLI プロセス跨ぎの手動駆動を保つ)
     private func syncLocalState(from snapshot: SnapshotResponse) {
         var centers: [Int: (x: Double, y: Double)] = [:]
         for element in snapshot.elements {

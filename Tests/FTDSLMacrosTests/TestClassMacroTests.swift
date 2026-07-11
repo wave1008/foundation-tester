@@ -1,6 +1,3 @@
-// TestClassMacroTests.swift
-// @TestClass / @Test の展開検証(実機不要のマクロ単体テスト)。
-
 import SwiftSyntax
 import SwiftSyntaxMacroExpansion
 import SwiftSyntaxMacros

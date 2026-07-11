@@ -1,4 +1,3 @@
-// MCPServer.swift
 // ftester の MCP サーバ(stdio / JSON-RPC 2.0、依存ゼロの自前実装)。
 // Claude Code などの MCP クライアントに、シミュレータ/エミュレータの操作と
 // フロー実行をツールとして公開する。
@@ -212,7 +211,6 @@ final class MCPServer {
                     : "プロジェクト: \(project.name)\n" + lines.joined(separator: "\n"))
     }
 
-    /// テストプロジェクト一覧(実行プロファイル・マシンプロファイル込み)
     private func listProjects() throws -> [[String: Any]] {
         guard let root = ScenarioHost.packageRoot() else {
             throw MCPError("Package.swift が見つかりません(リポジトリ内で実行してください)")
@@ -253,8 +251,7 @@ final class MCPServer {
         var prologue: [String] = []
 
         if let profileName = args["profile"] as? String {
-            // 実行プロファイルから接続先(シナリオの platform に合う先頭デバイス)を解決する
-            // (実行プロファイル自身の machine 指定があれば最優先)
+            // 接続先はシナリオの platform に合う先頭デバイス。プロファイル自身の machine 指定が最優先
             let machine = try ProfileResolver.determineMachine(
                 project: project, registered: LocalConfig.currentMachineName(),
                 runProfileName: profileName)

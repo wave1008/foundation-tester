@@ -1,12 +1,7 @@
-// StepCommandTextTests.swift
-// コマンド列の表示表現 ↔ ソースコードの変換(セル内インライン編集)のテスト
-
 import XCTest
 @testable import FTDSL
 
 final class StepCommandTextTests: XCTestCase {
-
-    // MARK: - parse(表示表現の解釈)
 
     func testParseSingleStringVerbs() {
         XCTAssertEqual(StepCommandText.parse("tap \"ログイン\""),
@@ -131,8 +126,6 @@ final class StepCommandTextTests: XCTestCase {
                                       toCode: "type(\"欄\", \"旧値\", optional: true)"),
             "type(\"欄\", \"新値\", optional: true)")
     }
-
-    // MARK: - apply: エラー
 
     func testApplyRejectsUnrecognizedDisplay() {
         XCTAssertThrowsError(try StepCommandText.apply(display: "なにか",

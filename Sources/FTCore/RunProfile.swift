@@ -5,6 +5,8 @@
 //   runs/<name>.json     … 実行プロファイル(app 参照+デバイス name リスト+実行時設定)
 // ProfileResolver が 3 つを合成して ResolvedProfile(検証済み)を作る。
 // 実行コード(CLI/MCP)は ResolvedProfile のみを参照する。
+// JSON 形式は vscode-ftester/schemas/{app,machine,run}-profile.schema.json と同期を要する
+// (knownKeys・必須/任意フィールドを変更したらスキーマ側も更新する)。
 
 import Foundation
 
@@ -14,16 +16,13 @@ import Foundation
 /// (対応表は merging 参照): appName = common→platform マージ / app・appPath = platform のみ /
 /// autoInstall = common のみ
 public struct AppProfileSection: Codable, Sendable, Equatable {
-    /// ユーザーがアプリを識別するための表示名(レポート/ログで使用)。
-    /// 唯一 common → platform の後勝ちマージが残るフィールド(表示名は共通定義が自然なため)
+    /// ユーザーがアプリを識別するための表示名(レポート/ログで使用)
     public var appName: String?
-    /// bundle identifier / パッケージ名。common セクションでの指定は廃止(platform セクションのみ)
+    /// bundle identifier / パッケージ名
     public var app: String?
-    /// パッケージファイル(.app / .apk)のパス。プロジェクトルート相対 or 絶対 or ~。
-    /// common セクションでの指定は廃止(platform セクションのみ)
+    /// パッケージファイル(.app / .apk)のパス。プロジェクトルート相対 or 絶対 or ~
     public var appPath: String?
-    /// 実行前に appPath を自動インストールするか(既定 false = 無効)。
-    /// common セクションでのみ指定可(ios/android セクションでの指定は廃止)
+    /// 実行前に appPath を自動インストールするか(既定 false = 無効)
     public var autoInstall: Bool?
 
     public init(appName: String? = nil, app: String? = nil,
@@ -36,19 +35,12 @@ public struct AppProfileSection: Codable, Sendable, Equatable {
 
     static let knownKeys: Set<String> = ["appName", "app", "appPath", "autoInstall"]
 
-    /// common(self)と platform セクション(other)の合成(section(for:)専用)。
-    /// フィールドごとに採用元が異なる:
-    ///
-    ///   フィールド    | 採用元
-    ///   ------------ | -------------------------------------------------
-    ///   appName      | common → platform の後勝ちマージ(表示名は共通定義が自然なため)
-    ///   app          | platform のみ(OS ごとに実体が異なるため。common での指定は廃止)
-    ///   appPath      | platform のみ(同上)
-    ///   autoInstall  | common のみ(インストール可否は OS 間で揃えるべき運用設定のため。
-    ///                | platform での指定は廃止)
-    ///
+    /// common(self)と platform セクション(other)の合成(section(for:)専用)。フィールドごとに
+    /// 採用元が異なる: appName = common→platform 後勝ち(表示名は共通定義が自然なため) /
+    /// app・appPath = platform のみ(OS ごとに実体が異なるため) /
+    /// autoInstall = common のみ(インストール可否は OS 間で揃えるべき運用設定のため)。
     /// 廃止側のセクションに書かれた値はここで黙って無視される(validate が警告を出す)。
-    /// other が nil = platform セクション自体が無い場合も同じ規則で合成するため、
+    /// other が nil(platform セクション自体が無い)場合も同じ規則で合成するため、
     /// early return せず常に other?.field / self.field を明示的に選ぶ
     func merging(_ other: AppProfileSection?) -> AppProfileSection {
         AppProfileSection(
@@ -73,8 +65,7 @@ public struct AppProfile: Codable, Sendable, Equatable {
 
     static let knownKeys: Set<String> = ["common", "ios", "android"]
 
-    /// common と platform セクションを合成した実効セクション(appName は common→platform
-    /// マージ、app/appPath は platform のみ、autoInstall は common のみ。merging の対応表参照)
+    /// common と platform セクションを合成した実効セクション(規則は merging 参照)
     public func section(for platform: String) -> AppProfileSection {
         let base = common ?? AppProfileSection()
         switch platform {
@@ -160,9 +151,9 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     public var reportDir: String?
     /// DSL コマンドの既定タイムアウト秒(省略時は DSL 側の既定値)
     public var defaultTimeout: Int?
-    /// devices(name 参照)を解決するマシンプロファイル(machines/<machine>.json)の明示指定。
-    /// 指定時は determineMachine(FT_MACHINE/登録名/自動採用)の結果より優先する。
-    /// 省略可(オプショナル)。既存プロファイルとの後方互換のため必須にはしない
+    /// devices を解決するマシンプロファイル名の明示指定(machines/<machine>.json)。
+    /// 省略可(既存プロファイルとの後方互換のため必須にしない)。優先順位は
+    /// ProfileResolver.determineMachine 参照
     public var machine: String?
 
     public init(app: String? = nil, devices: [RunDeviceRef]? = nil, heal: Bool? = nil,
@@ -412,8 +403,7 @@ public enum ProfileResolver {
         }
 
         // 3. マシンプロファイル → name → デバイスのカタログ
-        // 実行プロファイル自身の machine 指定(trim 後非空)があれば、呼び出し側が渡した
-        // machineName(determineMachine の結果)より優先する。resolve に渡る machineName と
+        // runDoc.machine の明示指定は引数 machineName(determineMachine の結果)より優先。
         // 食い違っていても警告は出さない(明示指定が勝つ、で一貫させる)
         var machineName = machineName
         let explicitMachine = runDoc.machine?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -461,8 +451,7 @@ public enum ProfileResolver {
                 requested: deviceRefs.map(\.name), available: catalogOrder)
         }
 
-        // 5. アプリ解決(デバイスのある platform ごと。appName は common→platform マージ、
-        //    app/appPath は platform のみ、autoInstall は common のみ。merging の対応表参照)
+        // 5. アプリ解決(デバイスのある platform ごと。合成規則は AppProfileSection.merging 参照)
         var apps: [String: ResolvedAppTarget] = [:]
         for platform in Set(devices.map(\.platform)) {
             let section = appProfile.section(for: platform)
@@ -623,9 +612,7 @@ public enum ProfileResolver {
         return ([], [])
     }
 
-    /// セクション別に廃止されたキーの検査(AppProfileSection.merging の対応表と対)。
-    /// common の app/appPath は OS ごとに実体が異なるため platform セクション限定に、
-    /// ios/android の autoInstall はインストール可否を OS 間で揃えるため common 限定にした。
+    /// セクション別に廃止されたキーの検査(廃止の理由は AppProfileSection.merging 参照)。
     /// 存在すれば警告のみ(値自体は merging で無視されるだけなので後方互換上エラーにはしない)
     private static func checkDeprecatedSectionKeys(_ json: [String: Any],
                                                    context: String) -> [String] {

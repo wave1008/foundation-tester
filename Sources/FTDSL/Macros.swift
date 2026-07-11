@@ -1,4 +1,3 @@
-// Macros.swift
 // ユーザー向けアノテーション(マクロ)の宣言。実装は FTDSLMacros ターゲット。
 //
 // @TestClass(app: "com.example.sampleapp")
@@ -18,16 +17,15 @@
 public macro TestClass(app: String, platform: String? = nil) =
     #externalMacro(module: "FTDSLMacros", type: "TestClassMacro")
 
-/// シナリオメソッドに付与するマーカー(Shirates の @Test 相当)。
+/// シナリオメソッドに付与するマーカー。
 /// メソッドは引数なし・非async・非throws で宣言する(命名慣習: S0010, S0020, …)。
 @attached(peer)
 public macro Test(_ title: String = "") =
     #externalMacro(module: "FTDSLMacros", type: "TestMacro")
 
-/// 論理削除マーカー(Shirates の @Deleted 相当)。テストクラスまたは @Test メソッドに付与する。
-/// 削除済みシナリオは一覧に「削除済み」として残り(呼び出し側で非表示切替可)、
-/// 全実行などの一括実行から除外される。ID を明示指定すれば実行は可能。
-/// コードを消さずに履歴として残せるため、復活はアノテーションを外すだけでよい。
+/// 論理削除マーカー。テストクラスまたは @Test メソッドに付与する。
+/// 削除済みシナリオは一覧に残るが一括実行からは除外される(ID 明示指定なら実行可)。
+/// 復活はアノテーションを外すだけでよい。
 @attached(peer)
 public macro Deleted(_ comment: String = "") =
     #externalMacro(module: "FTDSLMacros", type: "DeletedMacro")

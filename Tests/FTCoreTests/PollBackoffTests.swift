@@ -1,7 +1,3 @@
-// PollBackoffTests.swift
-// PollBackoff(ポーリング間隔の指数バックオフ)の単体テスト。
-// バックオフ列の値と上限クランプを検証する
-
 import XCTest
 @testable import FTCore
 
@@ -28,7 +24,7 @@ final class PollBackoffTests: XCTestCase {
         XCTAssertEqual(backoff.nextDelay(), .milliseconds(1000))
     }
 
-    /// 独立したインスタンスは互いに影響しない(値型・呼び出し毎にローカル生成される想定)
+    /// 値型前提の回帰検知(参照型化すると状態共有してしまう)
     func testIndependentInstancesDoNotShareState() {
         var a = PollBackoff()
         _ = a.nextDelay()

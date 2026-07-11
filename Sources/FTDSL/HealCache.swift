@@ -1,8 +1,6 @@
-// HealCache.swift
-// ヒールキャッシュ: シナリオソース(Swift DSL)は自動書き換えしない方針のため、
-// FM 自己修復の結果を .ftester/heal-cache.json に永続化し、
-// 2 回目以降は FM なしで決定的に解決する。
-// キー = シナリオID + file:line + 旧セレクタ文字列。人がソースを直せばキー不一致で自然に無効化される。
+// シナリオソースは自動書換しない方針のため、FM 自己修復の結果を
+// .ftester/heal-cache.json に永続化し、2 回目以降は FM なしで解決する。
+// キー = シナリオID+file:line+旧セレクタ文字列。ソースを直すとキー不一致で自然に無効化される。
 
 import Foundation
 import FTCore

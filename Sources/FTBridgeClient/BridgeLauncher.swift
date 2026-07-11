@@ -1,4 +1,3 @@
-// BridgeLauncher.swift
 // xcodebuild build-for-testing / test-without-building によるランナーの起動・停止管理。
 // ランナーは「終わらないUIテスト」なので test-without-building は常駐プロセスになる。
 
@@ -30,7 +29,7 @@ public struct BridgeLauncher {
         self.port = port
     }
 
-    /// Runner/project.yml から .xcodeproj を生成(xcodegen)。生成物はコミットしない方針。
+    /// 生成物(.xcodeproj)はコミットしない方針
     public func generateProjectIfNeeded() throws {
         if FileManager.default.fileExists(atPath: projectPath.path) { return }
         let result = try Shell.run(
@@ -76,9 +75,8 @@ public struct BridgeLauncher {
         }
     }
 
-    /// ランナーをバックグラウンドで常駐起動する。
-    /// FT_PORT はビルド時に 8123 で焼き込まれるため、xctestrun のコピーに
-    /// 指定ポートを注入してから起動する(ビルド1回で任意ポート数のブリッジを起動できる)。
+    /// FT_PORT はビルド時に 8123 で焼き込まれるため、xctestrun のコピーに指定ポートを注入してから
+    /// 起動する(ビルド1回で任意ポート数のブリッジを起動できる)
     public func startDetached() throws {
         guard let original = try findXCTestRun() else {
             throw LauncherError.xctestrunNotFound(derivedDataPath.path)
@@ -103,7 +101,6 @@ public struct BridgeLauncher {
         try String(process.processIdentifier).write(to: pidPath, atomically: true, encoding: .utf8)
     }
 
-    /// xctestrun のコピーを作り、全テストターゲットの EnvironmentVariables に FT_PORT を設定する
     func injectPort(into xctestrun: URL) throws -> URL {
         let data = try Data(contentsOf: xctestrun)
         guard var plist = try PropertyListSerialization.propertyList(from: data, format: nil)
@@ -171,7 +168,6 @@ public struct BridgeLauncher {
         return stopped
     }
 
-    /// /status が返るまでポーリング
     public func waitUntilReady(timeout: TimeInterval = 180) async throws {
         let client = BridgeClient(port: port)
         let deadline = Date().addingTimeInterval(timeout)

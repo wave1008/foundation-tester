@@ -1,5 +1,3 @@
-// ScenarioSourceEditorTests.swift
-
 import XCTest
 @testable import FTCore
 
@@ -40,8 +38,6 @@ final class ScenarioSourceEditorTests: XCTestCase {
     }
     """
 
-    // MARK: - クラス名
-
     func testRenameClass() throws {
         let result = try ScenarioSourceEditor.renameClass(
             inSource: source, from: "ログインテスト", to: "ログインテスト2")
@@ -69,8 +65,6 @@ final class ScenarioSourceEditorTests: XCTestCase {
         XCTAssertThrowsError(try ScenarioSourceEditor.renameClass(
             inSource: source, from: "ログインテスト", to: "class"))
     }
-
-    // MARK: - 関数名
 
     func testRenameMethodScopedToClass() throws {
         // 両クラスに S0010 がある: 2 番目のクラスの方だけを変更する
@@ -100,8 +94,6 @@ final class ScenarioSourceEditorTests: XCTestCase {
         XCTAssertTrue(result.contains("func S0010x()"))
     }
 
-    // MARK: - @Test の説明
-
     func testSetTestTitle() throws {
         let result = try ScenarioSourceEditor.setTestTitle(
             inSource: source, className: "ログインテスト", method: "S0010",
@@ -114,7 +106,6 @@ final class ScenarioSourceEditorTests: XCTestCase {
     }
 
     func testSetTestTitleOnBareTestAttribute() throws {
-        // 引数なしの @Test にも説明を付けられる
         let result = try ScenarioSourceEditor.setTestTitle(
             inSource: source, className: "ログインテスト", method: "S0020",
             title: "追加した説明")
@@ -315,7 +306,6 @@ final class ScenarioSourceEditorTests: XCTestCase {
         let line = lineNumber(containing: "#toolbar||設定", in: commentSource)
         let result = try ScenarioSourceEditor.setTrailingComment(
             inSource: commentSource, line: line, comment: "")
-        // コメントの無い行に空文字 = 変更なし(エラーにしない)
         XCTAssertEqual(result, commentSource)
     }
 

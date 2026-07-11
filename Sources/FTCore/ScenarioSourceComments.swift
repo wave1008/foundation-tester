@@ -1,11 +1,9 @@
 // ScenarioSourceComments.swift
-// シナリオソース(Swift DSL)の行末コメント(// ...)抽出。
-// ステップ一覧の「説明」列を、dry-run の step イベント(file/line)から
-// コマンド行のコメントを引いて埋めるために使う(例: ApiCommands.stepRows)。
-// ソース文字列の走査だけを行い、ファイル I/O は呼び出し側が担う(ScenarioSourceEditor と同方針)。
+// シナリオソース(Swift DSL)の行末コメント(// ...)抽出。dry-run の step イベント(file/line)から
+// ステップ一覧の「説明」列を埋めるのに使う。ソース文字列の走査のみ行い、ファイル I/O は呼び出し側の責務。
 // 文字列リテラル内の //(URL 等)は簡易クォート認識で無視する。
-// 非対応: raw string(#"..."#)・複数行文字列(""")・ブロックコメント(/* */)。
-// 生成コード(ScenarioCodeGen)と手書きシナリオの実態では通常文字列+// で十分
+// 非対応: raw string(#"..."#)・複数行文字列(""")・ブロックコメント(/* */)
+// (生成コード・手書きシナリオの実態では通常文字列+// で十分なため)
 
 import Foundation
 
@@ -20,7 +18,7 @@ public enum ScenarioSourceComments {
     }
 
     /// 行末コメントの「//」の開始位置(文字列リテラル内の // は無視)。無ければ nil。
-    /// コメントの書換(ScenarioSourceEditor.setTrailingComment)が位置を必要とするため公開
+    /// ScenarioSourceEditor.setTrailingComment が位置を必要とするため公開
     public static func trailingCommentStart(inLine line: String) -> String.Index? {
         var inString = false
         var escaped = false
@@ -52,8 +50,7 @@ public enum ScenarioSourceComments {
     }
 
     /// ソース全体から指定した行番号(1 起点)の行末コメントをまとめて引く
-    /// (1 シナリオ分をファイル 1 回の分割で処理するための便宜 API。
-    ///  範囲外の行番号・コメントの無い行は結果に含めない)
+    /// (範囲外の行番号・コメントの無い行は結果に含めない)
     public static func trailingComments(inSource source: String,
                                         lines: Set<Int>) -> [Int: String] {
         guard let maxLine = lines.max() else { return [:] }

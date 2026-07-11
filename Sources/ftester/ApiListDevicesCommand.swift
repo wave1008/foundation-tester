@@ -1,4 +1,3 @@
-// ApiListDevicesCommand.swift
 // VSCode拡張のライブ操作パネル(デバイス選択)向け: マシンプロファイルの全デバイスと
 // 現在状態を 1 回だけ判定して JSON で stdout に出力する(ftester api list-devices)。
 // 状態判定は ApiMonitorCommand.determineStates(常駐監視のポーリングロジック)をそのまま
@@ -59,9 +58,8 @@ struct ApiListDevices: AsyncParsableCommand {
                 platform: state.target.platform,
                 state: state.state,
                 detail: state.detail,
-                // iOS: 接続中ブリッジの実効ポート(determineStates が /status 照合で解決した
-                // DeviceRuntimeState.iosPort。ライブ操作パネルが --port 付きで api live 系を
-                // 呼ぶために必要)。未接続なら DeviceSpec.port(固定指定があれば)、それも無ければ null。
+                // iOS: 接続中ブリッジの実効ポート(ライブ操作パネルが --port 付きで api live を
+                // 呼ぶために必要)。未接続なら DeviceSpec.port(固定指定があれば)、無ければ null。
                 // Android: 実行時解決した serial(未起動なら null)
                 port: state.target.platform == "ios"
                     ? (state.iosPort ?? state.target.spec.port) : nil,

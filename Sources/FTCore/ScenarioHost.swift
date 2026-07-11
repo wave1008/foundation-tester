@@ -98,10 +98,9 @@ public enum ScenarioHost {
     }
 
     /// ランナー実行ファイルの場所: 自 executable と同ディレクトリ → .build/debug →
-    /// swift build --show-bin-path。
-    /// .build/debug の直接参照は swift build の子プロセス起動を省く近道であると同時に、
-    /// swift test 実行中(SPM のビルドロック保持中)に swift build がブロックして
-    /// デッドロックするのを避けるため(XCTest からも ScenarioHost.run を使えるように)
+    /// swift build --show-bin-path。.build/debug の直接参照は近道であると同時に、
+    /// swift test 実行中(SPM ビルドロック保持中)に swift build を呼んでデッドロックするのを
+    /// 避けるため(XCTest からも ScenarioHost.run を使えるように)
     public static func runnerURL(project: TestProject) throws -> URL {
         if let sibling = Bundle.main.executableURL?
             .deletingLastPathComponent().appendingPathComponent(project.productName),

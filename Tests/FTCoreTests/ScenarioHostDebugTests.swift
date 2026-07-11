@@ -1,10 +1,5 @@
-// ScenarioHostDebugTests.swift
-// ScenarioHost.run のデバッグ実行(制御チャネル)の統合テスト。
-// 実際に ftester-scenarios-SampleApp サブプロセスを dry-run で起動し、
-// 「paused イベントがプロセス存命中に届く」ことを検証する
-// (FileHandle.bytes.lines はパイプで EOF まで行を溜めることがあり、
-//  一時停止イベントが届かず呼び出し側と相互待ちになる回帰を防ぐ)。
-
+// FileHandle.bytes.lines はパイプで EOF まで行を溜めることがあり、paused イベントが
+// プロセス存命中に届かず呼び出し側と相互待ちになる回帰を防ぐための統合テスト。
 import XCTest
 @testable import FTCore
 
@@ -75,11 +70,9 @@ final class ScenarioHostDebugTests: XCTestCase {
             }
         }
 
-        // ランナーは最初のステップの手前で停止したまま(プロセスは終了しない)。
-        // ここで paused が届かなければ「EOF まで溜まる」バグの再発
+        // ここで届かなければ「EOF まで溜まる」バグの再発
         await fulfillment(of: [paused1], timeout: 30)
 
-        // step → 2 ステップ目の手前で再停止 → continue で完走
         probe.control?.stepOver()
         await fulfillment(of: [paused2], timeout: 15)
         probe.control?.continueRun()

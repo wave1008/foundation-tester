@@ -1,4 +1,3 @@
-// FTRuntime.swift
 // DSL のプロセスグローバル実行状態。ftester-scenarios は 1 プロセス = 1 シナリオ実行なので
 // カレントコンテキストは 1 個でよい。シナリオ本体は専用スレッド上で同期実行され、
 // コマンドはこのスレッド以外から呼べない(Task 内等からの誤用は明示エラー)。
@@ -16,8 +15,7 @@ public struct DSLStepRecord: Sendable {
     public let status: StepResult.Status
     public let file: String
     public let line: Int
-    /// ステップ全体の所要時間(ミリ秒)。レポートの時間列に使う。
-    /// StepExecutor を通らないステップ(scene 外の受け皿等)や dry-run では nil
+    /// レポートの時間列に使う。欠測条件は recordStep のコメント参照
     public let durationMs: Int?
 }
 
@@ -108,15 +106,12 @@ public final class FTDriveCore {
     var abortScenarioOnSceneFailure = false
     var stepCounter = 0
 
-    /// true = No-Load-Run 相当。デバイスに触れず全コマンドを記録のみで通過させる
-    /// (デバイス無しでのステップ列挙・コード生成の検証・レビュー用)
+    /// true = デバイスに触れず全コマンドを記録のみで通過させる(ステップ列挙・コード生成の検証用)
     let dryRun: Bool
 
-    /// デバッグ制御(--debug)。ステップ実行の手前でブレークポイント・ステップ実行の
-    /// 一時停止を判定する。nil なら通常実行。dry-run でも有効(デバイス無しの動作確認用)
+    /// --debug 時のブレークポイント/一時停止制御。nil なら通常実行(dry-run でも有効)
     public var debugControl: ScenarioDebugControl?
-    /// デバッグの stop コマンドで中断した。スキップ理由の表示と最終判定に使う
-    /// (中断したシナリオは確認(expectation)まで到達していないため成功扱いにしない)
+    /// stop コマンドで中断した場合 true。expectation 未到達なので成功扱いにしない
     public private(set) var stoppedByUser = false
 
     public init(driver: AppDriver, platform: String, app: String,
@@ -141,7 +136,6 @@ public final class FTDriveCore {
                                          app: app, platform: platform)
     }
 
-    /// シナリオ実行後の最終記録(レポート出力用)
     public var finalRecord: ScenarioRecordData { record }
 
     // MARK: - scene / CAE ブロック
@@ -183,8 +177,7 @@ public final class FTDriveCore {
 
     // MARK: - ステップ実行
 
-    /// FlowStep を実行して記録する(コマンドの共通経路)。
-    /// selectorText はヒールキャッシュのキーと修正提案の表示に使う
+    /// コマンドの共通実行経路。selectorText はヒールキャッシュのキーと修正提案の表示に使う
     @discardableResult
     func perform(step: FlowStep, description: String, selectorText: String? = nil,
                  file: StaticString, line: UInt) -> StepResult.Status {
@@ -196,8 +189,7 @@ public final class FTDriveCore {
             return status
         }
         if dryRun {
-            // 実機に触れないため計測はほぼ 0ms だが、durationMs は必ず付与する
-            // (デバイス無しで NDJSON への配線を検証できるようにするため)
+            // 実機に触れず計測はほぼ 0ms だが、NDJSON 配線を検証できるよう durationMs は必ず付与する
             let clock = ContinuousClock()
             let start = clock.now
             recordStep(description: description, status: .passed, file: filePath, line: Int(line),
@@ -301,8 +293,7 @@ public final class FTDriveCore {
             return status
         }
         if dryRun {
-            // 実機に触れないため計測はほぼ 0ms だが、durationMs は必ず付与する
-            // (デバイス無しで NDJSON への配線を検証できるようにするため)
+            // durationMs を必ず付与する理由は perform() 内の同種コメント参照
             let clock = ContinuousClock()
             let start = clock.now
             recordStep(description: description, status: .passed,
@@ -334,7 +325,6 @@ public final class FTDriveCore {
         return status
     }
 
-    /// ステップ実行前のデバッグチェックポイント。ブレークポイント・ステップ実行の
     /// 停止条件に合致したら paused イベントを流してブロックし、再開コマンドを待つ。
     /// stop コマンドはシナリオ中断(以降のステップは skipped)として扱う
     private func debugCheckpoint(description: String, file: String, line: Int) {
@@ -364,7 +354,7 @@ public final class FTDriveCore {
 
     /// 分岐評価(記録のみ、実行はしない): セレクタが現在画面で解決できるか
     func canSelect(_ selector: FTSelector, waitSeconds: Int) -> Bool {
-        if dryRun { return true }  // No-Load-Run では分岐内側も記録する(Shirates と同様)
+        if dryRun { return true }  // dry-run では分岐内側も記録するため常に成立扱い
         if sceneAborted || scenarioAborted { return false }
         let step = FlowStep(locator: selector.primary,
                             fallbacks: selector.fallbacks.isEmpty ? nil : selector.fallbacks)
@@ -454,9 +444,8 @@ public final class FTDriveCore {
     }
 }
 
-/// ContinuousClock の Duration → 整数ミリ秒(秒成分×1000 + attoseconds成分から算出。
-/// 1ms = 1e15 attoseconds。StepExecutor.ms と同じ計算式だが FTCore 側の private ヘルパーは
-/// モジュールを跨いで参照できないためこちらにも複製する)
+/// Duration → 整数ミリ秒(1ms = 1e15 attoseconds)。StepExecutor.ms と同じ計算式だが、
+/// FTCore 側は private でモジュールを跨いで参照できないためここに複製している(要同期)
 func continuousClockMilliseconds(_ duration: Duration) -> Int {
     let (seconds, attoseconds) = duration.components
     return Int(seconds) * 1000 + Int(attoseconds / 1_000_000_000_000_000)

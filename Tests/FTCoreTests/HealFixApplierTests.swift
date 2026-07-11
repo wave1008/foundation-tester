@@ -1,5 +1,3 @@
-// HealFixApplierTests.swift
-
 import XCTest
 @testable import FTCore
 
@@ -35,8 +33,6 @@ final class HealFixApplierTests: XCTestCase {
                     oldSelector: old, newSelector: new, newComment: newComment)
     }
 
-    // MARK: - 正常適用
-
     func testApplySuccess() {
         let fixes = [fix(line: 14, old: "#old_login_btn", new: "#new_login_btn")]
         let result = HealFixApplier.apply(fixes: fixes, toSource: source)
@@ -47,8 +43,6 @@ final class HealFixApplierTests: XCTestCase {
         XCTAssertTrue(result.failures.isEmpty)
     }
 
-    // MARK: - oldSelector 不一致
-
     func testApplyOldSelectorMismatch() {
         let fixes = [fix(line: 14, old: "#does_not_exist", new: "#new_login_btn")]
         let result = HealFixApplier.apply(fixes: fixes, toSource: source)
@@ -58,8 +52,6 @@ final class HealFixApplierTests: XCTestCase {
         XCTAssertEqual(result.failures.count, 1)
         XCTAssertEqual(result.failures.first?.id, fixes[0].id)
     }
-
-    // MARK: - newComment: コメント削除
 
     func testApplyCommentRemoval() {
         let fixes = [fix(line: 14, old: "#old_login_btn", new: "#new_login_btn", newComment: "")]
@@ -72,8 +64,6 @@ final class HealFixApplierTests: XCTestCase {
         XCTAssertTrue(result.failures.isEmpty)
     }
 
-    // MARK: - newComment: コメント無し行への追記
-
     func testApplyCommentAddition() {
         let fixes = [fix(line: 15, old: "#old_submit_btn", new: "#new_submit_btn",
                          newComment: "送信ボタンをタップ")]
@@ -84,8 +74,6 @@ final class HealFixApplierTests: XCTestCase {
         XCTAssertEqual(result.applied.map(\.id), fixes.map(\.id))
         XCTAssertTrue(result.failures.isEmpty)
     }
-
-    // MARK: - newComment の更新が失敗してもセレクタ置換は生かす
 
     func testApplyCommentUpdateFailureKeepsSelectorReplacement() {
         // setTrailingComment は複数行の comment を invalidName エラーにする
@@ -100,9 +88,8 @@ final class HealFixApplierTests: XCTestCase {
         XCTAssertEqual(result.failures.first?.id, fixes[0].id)
     }
 
-    // MARK: - 複数 fix 同一ファイル(行番号順に適用)
-
     func testApplyMultipleFixesSameFile() {
+        // 入力順(15→14)と異なる行番号順で適用されても両方成功する
         let fixes = [
             fix(line: 15, old: "#old_submit_btn", new: "#new_submit_btn"),
             fix(line: 14, old: "#old_login_btn", new: "#new_login_btn"),
@@ -114,8 +101,6 @@ final class HealFixApplierTests: XCTestCase {
         XCTAssertEqual(result.applied.count, 2)
         XCTAssertTrue(result.failures.isEmpty)
     }
-
-    // MARK: - キャッシュキー削除
 
     func testRemovingAppliedKeysFromCache() {
         let dict: [String: Any] = [

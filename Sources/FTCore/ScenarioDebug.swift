@@ -21,7 +21,6 @@ import Foundation
 /// DSL スレッドは専用スレッド(協調プールの外)なのでブロックしてよい
 public final class ScenarioDebugControl: @unchecked Sendable {
 
-    /// checkpoint() の結果: そのまま実行を続けるか、シナリオを中断するか
     public enum CheckpointResult: Sendable {
         case proceed
         case abort
@@ -53,8 +52,8 @@ public final class ScenarioDebugControl: @unchecked Sendable {
         return file.isEmpty ? nil : (file, line)
     }
 
-    /// ステップ実行の手前で呼ぶ。停止条件に合致したら onPause(paused イベントの emit)を
-    /// 呼んでからブロックし、再開コマンドを待つ。合致しなければ即 .proceed
+    /// ステップ実行の手前で呼ぶ。停止条件に合致しなければ即 .proceed。合致したら onPause
+    /// (paused イベントの emit)を呼んでからブロックし、再開コマンドを待つ
     public func checkpoint(file: String, line: Int, onPause: () -> Void) -> CheckpointResult {
         condition.lock()
         if stopRequested {

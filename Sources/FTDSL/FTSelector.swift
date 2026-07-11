@@ -1,4 +1,3 @@
-// FTSelector.swift
 // セレクタ式のパース。文字列 1 本を `||` で分割し、各節を FlowLocator に写像する。
 //   #login_btn                       → id
 //   ログイン                          → label(完全一致→部分一致は StepExecutor.match の挙動)
@@ -57,7 +56,7 @@ public struct FTSelector {
                 let type = String(body[body.startIndex..<bracketIndex])
                 let indexText = String(body[body.index(after: bracketIndex)..<body.index(before: body.endIndex)])
                 if let ordinal = Int(indexText) {
-                    // 表記は 1 オリジン、内部 index は 0 オリジン
+                    // 表記 1 オリジン → 内部 0 オリジン
                     return FlowLocator(type: type, index: max(0, ordinal - 1))
                 }
             }

@@ -1,4 +1,3 @@
-// DeviceBooter.swift
 // マシンプロファイルに定義されたデバイスの起動・停止。
 // - bootAll: 全デバイスの段階的起動。一斉起動はマシンが固まるため、
 //   1 台ずつ「負荷ゲート(loadavg)→ 起動 → ブート完了待ち」を繰り返す
@@ -28,13 +27,10 @@ public enum DeviceBooterError: Error, LocalizedError {
 
 public enum DeviceBooter {
 
-    /// マシンプロファイルの全デバイスを段階的に起動する(起動済みはスキップ)。
-    /// 完全な逐次だと負荷が下がった後に無駄な待ちが出るため、**最大 maxConcurrent(既定 2)台まで
-    /// 同時に起動**する(それぞれが負荷ゲートを通ってから起動するのでブートストームにはならない)。
-    /// repoRoot 指定時は iOS シミュレータの起動直後にそのままブリッジを供給する
-    /// (「起動済み(ブリッジ未接続)」の中間状態をユーザーに見せないため、1 台単位で完結させる)。
-    /// deviceStarting / deviceFinished は (論理名, platform) 付きで呼ばれる
-    /// (呼び出し側の「起動中」表示や再スキャン通知用。finished は成否問わず必ず呼ばれる)
+    /// 起動済みはスキップ。完全逐次だと負荷低下後も無駄に待つため、最大 maxConcurrent(既定2)台まで
+    /// 同時起動する(各自が負荷ゲートを通ってから起動するのでブートストームにはならない)。
+    /// repoRoot 指定時は iOS シミュレータ起動直後にブリッジも供給し、「起動済みだがブリッジ未接続」の
+    /// 中間状態を見せない。deviceFinished は成否問わず必ず呼ばれる(呼び出し側の再スキャン契約)。
     public static func bootAll(
         machine: MachineProfile,
         repoRoot: URL? = nil,
@@ -165,13 +161,9 @@ public enum DeviceBooter {
         }
     }
 
-    /// 1 台停止(未起動なら何もしない)。
-    /// repoRoot 指定時(iOS のみ)は、simctl shutdown の前にそのシミュレータに接続している
-    /// 稼働ブリッジを探して停止する(停止しないとブリッジプロセスと
-    /// pid ファイルがゾンビとして残り、以後のポート採番がずれていく)。
-    /// iOS 側は simctl shutdown の exit code を信用せず、実際に Booted が
-    /// 解消するまで最大 3 回リトライする(macOS 27 beta 3 で exit code は
-    /// 正常でも実際には停止していないレースがあるため)。
+    /// 未起動なら何もしない。repoRoot 指定時(iOSのみ)は simctl shutdown 前に稼働ブリッジを探して
+    /// 停止する(放置するとブリッジプロセス/pidファイルがゾンビ化しポート採番がずれていく)。
+    /// iOS の exit code 不信任リトライの理由は下記コメント参照。
     public static func shutdownOne(spec: DeviceSpec, platform: String,
                                    repoRoot: URL? = nil,
                                    log: @escaping @Sendable (String) -> Void) async throws {
@@ -189,9 +181,8 @@ public enum DeviceBooter {
                     log("→ \(spec.name): ブリッジ停止(port \(port))")
                 }
             }
-            // beta 3 の CoreSimulator は「Unable to shutdown device in current
-            // state: Shutdown」(405)を返しつつ実際には Booted のまま残る
-            // レースがあるため、exit code でなくカタログの実状態で成否判定する。
+            // macOS 27 beta 3: simctl shutdown は「Unable to shutdown...」(405)を返しつつ実際には
+            // Booted のまま残るレースがあるため、exit code でなくカタログの実状態で成否判定する
             var lastResult: Shell.Result?
             for attempt in 1...3 {
                 lastResult = try Shell.run(["xcrun", "simctl", "shutdown", sim.udid])
@@ -231,9 +222,8 @@ public enum DeviceBooter {
 
     // MARK: - 負荷ゲート
 
-    /// 直近 5 秒間の CPU 使用率が 90% を下回るまで待つ(上限 90 秒。超えたら続行)。
-    /// 1 分間ロードアベレージは反応が遅く、直前のブートの余波を引きずるため
-    /// 5 秒窓の実測 CPU 使用率(host_statistics の tick 差分)で判定する
+    /// CPU使用率が90%を下回るまで待つ(上限90秒、超えたら続行)。1分間ロードアベレージは
+    /// 反応が遅く直前ブートの余波を引きずるため、5秒窓の実測値(host_statisticsのtick差分)で判定する
     static func waitForLoadSettle(name: String = "", timeout: TimeInterval = 90,
                                   log: @escaping @Sendable (String) -> Void) async {
         let limit = 0.9
@@ -252,7 +242,6 @@ public enum DeviceBooter {
         log("⚠️ \(prefix)負荷が高いままですが起動を続行します")
     }
 
-    /// 指定秒数の窓で全コア合計の CPU 使用率(0.0〜1.0)を実測する
     static func cpuUsage(over seconds: TimeInterval) async -> Double {
         guard let start = cpuTicks() else { return 0 }
         try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
@@ -300,7 +289,7 @@ public enum DeviceBooter {
         throw DeviceBooterError.emulatorBinaryNotFound
     }
 
-    /// エミュレータ(AVD ID)をヘッドレスでデタッチ起動し、serial(自動採番)を検出して返す。
+    /// エミュレータをヘッドレスでデタッチ起動し、serial(自動採番)を検出して返す(検出待ち上限60秒)。
     /// 並行起動時に他デバイスの serial を拾わないよう、新規 serial の AVD 名を照合する
     static func startEmulator(avd: String) async throws -> String {
         let binary = try findEmulatorBinary()
@@ -315,7 +304,6 @@ public enum DeviceBooter {
         process.standardError = FileHandle.nullDevice
         try process.run()
 
-        // 新しく現れた emulator-* serial のうち、AVD 名が一致するものを待つ(60 秒)
         let deadline = Date().addingTimeInterval(60)
         while Date() < deadline {
             let now = Set((try? AndroidDeviceCatalog.connectedSerials()) ?? [])

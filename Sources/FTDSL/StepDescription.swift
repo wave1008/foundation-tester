@@ -1,5 +1,4 @@
-// StepDescription.swift
-// DSL コマンド → 自然言語(日本語)の説明文生成(Shirates のログ出力仕様準拠)。
+// DSL コマンド → 自然言語(日本語)の説明文生成。
 // ヒール確認 UI の説明提案・ステップ一覧「説明」列の補完・コード生成の行末コメントが使う。
 // 操作は「〜する」、検証は「〜こと」。目的語はセレクタ式のラベル成分
 // (最初の label 節)を優先し、無ければセレクタ文字列をそのまま使う。
@@ -70,9 +69,7 @@ public enum StepDescription {
             guard rest.hasSuffix("s"), let seconds = Double(rest.dropLast()) else { return nil }
             return "\(formatSeconds(seconds))秒待機する"
         default:
-            // ifCanSelect / procedure / 未知コマンドは生成対象外
-            // (procedure のタイトルは既に自然言語のため変換不要)
-            return nil
+            return nil  // ifCanSelect / procedure(タイトルが既に自然言語) / 未知コマンドは対象外
         }
     }
 

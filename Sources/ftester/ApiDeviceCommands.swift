@@ -1,9 +1,7 @@
-// ApiDeviceCommands.swift
 // VSCode拡張のライブ操作パネル向け: マシンプロファイル記載のデバイス1台の起動・停止
-// (ftester api device-up / ftester api device-down)。
-// 起動・停止の実装(DeviceBooter / BridgeProvisioner)は DevicesCommand(ftester devices)と
-// 共通。stdout には NDJSON(log* → finished)だけを出す(診断は stderr のみ。
-// ApiCommands.swift と同じ流儀。ok:false のときは exit code 1)。
+// (ftester api device-up / device-down)。起動・停止の実装(DeviceBooter/BridgeProvisioner)は
+// DevicesCommand(ftester devices)と共通。stdout には NDJSON(log* → finished)だけを出す
+// (診断は stderr のみ。ok:false のときは exit code 1)。
 
 import ArgumentParser
 import Foundation
@@ -27,7 +25,7 @@ struct ApiDeviceUp: AsyncParsableCommand {
         try await ApiDeviceOperation.run(name: name, project: project) { spec, platform, log in
             try await DeviceBooter.bootOne(spec: spec, platform: platform, log: log)
             // iOS はブリッジも供給する(稼働中ブリッジがあれば再利用。供給しないと画面が取れず
-            // 「起動済み(ブリッジ未接続)」のままになる。AppModel.bootDevice と同じ)
+            // 「起動済み(ブリッジ未接続)」のままになる)
             if platform == "ios" {
                 let root = try RepoRoot.find()
                 _ = try await BridgeProvisioner(repoRoot: root)
@@ -51,10 +49,9 @@ struct ApiDeviceDown: AsyncParsableCommand {
 
     func run() async throws {
         try await ApiDeviceOperation.run(name: name, project: project) { spec, platform, log in
-            // iOS はシミュレータ停止前に、接続している稼働ブリッジも探して停止する
-            // (ゾンビ化防止。BridgeProvisioner.provision の失敗時後始末と対の修正)。
-            // repoRoot が見つからない場合(通常起こらない)は nil のまま渡し、ブリッジ停止を
-            // スキップして simctl shutdown のみ行う。
+            // iOS はシミュレータ停止前に稼働ブリッジも探して停止する(ゾンビ化防止。
+            // BridgeProvisioner.provision の失敗時後始末と対)。repoRoot 未検出時は nil のまま
+            // 渡しブリッジ停止をスキップして simctl shutdown のみ行う
             let repoRoot = platform == "ios" ? try? RepoRoot.find() : nil
             try await DeviceBooter.shutdownOne(
                 spec: spec, platform: platform, repoRoot: repoRoot, log: log)

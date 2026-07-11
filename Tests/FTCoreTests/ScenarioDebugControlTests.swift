@@ -1,7 +1,4 @@
-// ScenarioDebugControlTests.swift
-// デバッグ制御(ブレークポイント・ステップ実行)の一時停止機構のテスト。
-// checkpoint はブロックするため、DSL スレッド相当を別スレッドで模して検証する。
-
+// checkpoint はブロックするため、DSL 実行スレッド相当を別スレッドで模して検証する
 import XCTest
 @testable import FTCore
 
@@ -56,7 +53,6 @@ final class ScenarioDebugControlTests: XCTestCase {
                        .proceed)
         XCTAssertFalse(paused)
 
-        // 該当行で停止 → continue で再開し、次の該当行でまた停止する
         let run = CheckpointRun(self, control: control, file: "Scenarios/a.swift", line: 10)
         wait(for: [run.pausedExpectation], timeout: 5)
         control.apply(line: #"{"cmd":"continue"}"#)
@@ -81,7 +77,6 @@ final class ScenarioDebugControlTests: XCTestCase {
     func testPauseOnStartThenStepOver() {
         let control = ScenarioDebugControl(pauseOnStart: true)
 
-        // 最初のステップで停止 → step で再開
         let first = CheckpointRun(self, control: control, file: "a.swift", line: 1)
         wait(for: [first.pausedExpectation], timeout: 5)
         control.apply(line: #"{"cmd":"step"}"#)
@@ -94,7 +89,6 @@ final class ScenarioDebugControlTests: XCTestCase {
         control.apply(line: #"{"cmd":"continue"}"#)
         wait(for: [second.finishedExpectation], timeout: 5)
 
-        // continue 後は停止しない
         var paused = false
         XCTAssertEqual(control.checkpoint(file: "a.swift", line: 3) { paused = true }, .proceed)
         XCTAssertFalse(paused)
