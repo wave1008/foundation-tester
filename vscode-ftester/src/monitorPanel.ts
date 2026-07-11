@@ -94,7 +94,8 @@
 //   そうでなければ再描画)。profileFileWatcher の onDidChange(今回追加)で外部編集も検知し、
 //   編集中でなければ自動的に再ロードする。実行プロファイル自体の追加/コピー/削除/名前変更
 //   (セクションヘッダーのアイコンボタン。handleProfileAdd/Copy/Delete/Rename)も、マシンプロファイル
-//   の [+][コピー][−][✏] と同一デザイン・同じ対話形式(showInputBox/モーダル確認)で行う
+//   の [+][コピー][−][✏] と同一デザイン・同じ対話形式(名前入力はwebview内モーダル
+//   [#name-input-overlay]、削除確認はshowWarningMessageのモーダル確認)で行う
 //   (以前はデバイスタブのツールバーに置いていたが、下半分のフォームが編集手段になったのに合わせて
 //   ここへ移設し、デバイスタブは実行プロファイルの選択のみに絞った)。追加・コピー直後は
 //   runProfileSelected で編集対象を新プロファイルへ移す(machineProfileSelected と同じ方式。
@@ -312,6 +313,14 @@ class MonitorPanelController implements vscode.Disposable {
   private readonly appsFileWatcher: vscode.FileSystemWatcher;
   /** create-device の多重実行ガード。true の間に来た createDevice リクエストは即座に失敗を返す。 */
   private creatingDevice = false;
+  /**
+   * 名前入力モーダル(#name-input-overlay)の応答待ち状態。promptName() の呼び出しごとに
+   * id を払い出し、webview からの nameInputConfirm/nameInputCancel の id と突き合わせて
+   * resolve する(showInputBox 相当の Promise ベースの対話を webview 側モーダルで再現する)。
+   */
+  private pendingNameInput: { id: number; resolve: (value: string | undefined) => void } | undefined;
+  /** promptName() の呼び出しごとに採番する使い捨てID(nameInputConfirm/Cancel との対応付け)。 */
+  private nameInputSeq = 0;
 
   constructor(
     private readonly workspaceRoot: string,
@@ -429,6 +438,11 @@ class MonitorPanelController implements vscode.Disposable {
   }
 
   dispose(): void {
+    if (this.pendingNameInput) {
+      const resolve = this.pendingNameInput.resolve;
+      this.pendingNameInput = undefined;
+      resolve(undefined);
+    }
     this.unsubscribeBus();
     this.configChangeSubscription.dispose();
     this.profileFileWatcher.dispose();
@@ -638,7 +652,60 @@ class MonitorPanelController implements vscode.Disposable {
       case "appProfileSave":
         this.handleAppProfileSave(message);
         break;
+      case "nameInputConfirm":
+        if (this.pendingNameInput && this.pendingNameInput.id === message.id) {
+          const resolve = this.pendingNameInput.resolve;
+          this.pendingNameInput = undefined;
+          resolve(message.name);
+        }
+        break;
+      case "nameInputCancel":
+        if (this.pendingNameInput && this.pendingNameInput.id === message.id) {
+          const resolve = this.pendingNameInput.resolve;
+          this.pendingNameInput = undefined;
+          resolve(undefined);
+        }
+        break;
     }
+  }
+
+  /**
+   * 名前入力モーダル(#name-input-overlay)を開き、確定/キャンセルされるまで待つ。
+   * showInputBox と同じ契約(キャンセル時 undefined、確定時は入力文字列[未trim])にすることで、
+   * 呼び出し側(実行/アプリ/マシンプロファイルの追加・コピー・名前変更、計9箇所)の変更を
+   * 最小にする。名前の検証(空/"/""\""/"."始まり/重複)は webview 側で行う(呼び出し側は
+   * confirm 後に trim して各自の validateNewXxxName で防御的に再検証する)。
+   */
+  private promptName(options: {
+    readonly title: string;
+    readonly value: string;
+    readonly noun: string;
+    readonly dupLabel: string;
+    readonly existing: readonly string[];
+    readonly caseInsensitiveDup: boolean;
+  }): Promise<string | undefined> {
+    // 多重オープンの防御: 既に応答待ちがあれば、上書きする前にキャンセル扱いで解決しておく
+    // (通常は9箇所とも同時に開かれることはないが、念のため)。
+    if (this.pendingNameInput) {
+      const previous = this.pendingNameInput;
+      this.pendingNameInput = undefined;
+      previous.resolve(undefined);
+    }
+    this.nameInputSeq += 1;
+    const id = this.nameInputSeq;
+    return new Promise((resolve) => {
+      this.pendingNameInput = { id, resolve };
+      this.post({
+        type: "nameInputOpen",
+        id,
+        title: options.title,
+        value: options.value,
+        noun: options.noun,
+        dupLabel: options.dupLabel,
+        existing: options.existing,
+        caseInsensitiveDup: options.caseInsensitiveDup,
+      });
+    });
   }
 
   /**
@@ -701,14 +768,24 @@ class MonitorPanelController implements vscode.Disposable {
       return;
     }
     const existing = listRunProfileNames(this.workspaceRoot, project);
-    const input = await vscode.window.showInputBox({
-      prompt: "新しい実行プロファイル名",
-      validateInput: (value) => validateNewRunProfileName(value.trim(), existing),
+    const input = await this.promptName({
+      title: "新しい実行プロファイル名",
+      value: "",
+      noun: "プロファイル名",
+      dupLabel: "実行プロファイル",
+      existing,
+      caseInsensitiveDup: false,
     });
     if (input === undefined) {
       return; // キャンセル
     }
     const name = input.trim();
+    // webview 側検証をすり抜けた場合(レースや古いwebview)の防御的な再検証。
+    const nameError = validateNewRunProfileName(name, existing);
+    if (nameError) {
+      void vscode.window.showWarningMessage(`ftester: ${nameError}`);
+      return;
+    }
     const runsDir = this.runsDir(project);
     try {
       fs.mkdirSync(runsDir, { recursive: true });
@@ -744,15 +821,24 @@ class MonitorPanelController implements vscode.Disposable {
       return;
     }
     const existing = listRunProfileNames(this.workspaceRoot, project);
-    const input = await vscode.window.showInputBox({
-      prompt: `「${source}」のコピー先の実行プロファイル名`,
+    const input = await this.promptName({
+      title: `「${source}」のコピー先の実行プロファイル名`,
       value: `${source}-copy`,
-      validateInput: (value) => validateNewRunProfileName(value.trim(), existing),
+      noun: "プロファイル名",
+      dupLabel: "実行プロファイル",
+      existing,
+      caseInsensitiveDup: false,
     });
     if (input === undefined) {
       return; // キャンセル
     }
     const name = input.trim();
+    // webview 側検証をすり抜けた場合(レースや古いwebview)の防御的な再検証。
+    const nameError = validateNewRunProfileName(name, existing);
+    if (nameError) {
+      void vscode.window.showWarningMessage(`ftester: ${nameError}`);
+      return;
+    }
     try {
       const content = fs.readFileSync(sourcePath, "utf8");
       fs.mkdirSync(runsDir, { recursive: true });
@@ -821,15 +907,24 @@ class MonitorPanelController implements vscode.Disposable {
     // 別途 newName === profile のチェックで許容するため、existing に含めると常にエラーになってしまう。
     // handleMachineProfileRename と同じ方針)。
     const existing = listRunProfileNames(this.workspaceRoot, project).filter((name) => name !== profile);
-    const input = await vscode.window.showInputBox({
-      prompt: `「${profile}」の新しい実行プロファイル名`,
+    const input = await this.promptName({
+      title: `「${profile}」の新しい実行プロファイル名`,
       value: profile,
-      validateInput: (value) => validateNewRunProfileName(value.trim(), existing),
+      noun: "プロファイル名",
+      dupLabel: "実行プロファイル",
+      existing,
+      caseInsensitiveDup: false,
     });
     if (input === undefined) {
       return; // キャンセル
     }
     const newName = input.trim();
+    // webview 側検証をすり抜けた場合(レースや古いwebview)の防御的な再検証。
+    const nameError = validateNewRunProfileName(newName, existing);
+    if (nameError) {
+      void vscode.window.showWarningMessage(`ftester: ${nameError}`);
+      return;
+    }
     if (newName === profile) {
       return; // 変更なし
     }
@@ -867,14 +962,24 @@ class MonitorPanelController implements vscode.Disposable {
       return;
     }
     const existing = listAppProfileNames(this.workspaceRoot, project);
-    const input = await vscode.window.showInputBox({
-      prompt: "新しいアプリプロファイル名",
-      validateInput: (value) => validateNewAppProfileName(value.trim(), existing),
+    const input = await this.promptName({
+      title: "新しいアプリプロファイル名",
+      value: "",
+      noun: "アプリプロファイル名",
+      dupLabel: "アプリプロファイル",
+      existing,
+      caseInsensitiveDup: false,
     });
     if (input === undefined) {
       return; // キャンセル
     }
     const name = input.trim();
+    // webview 側検証をすり抜けた場合(レースや古いwebview)の防御的な再検証。
+    const nameError = validateNewAppProfileName(name, existing);
+    if (nameError) {
+      void vscode.window.showWarningMessage(`ftester: ${nameError}`);
+      return;
+    }
     const appsDir = this.appsDir(project);
     try {
       fs.mkdirSync(appsDir, { recursive: true });
@@ -905,15 +1010,24 @@ class MonitorPanelController implements vscode.Disposable {
       return;
     }
     const existing = listAppProfileNames(this.workspaceRoot, project);
-    const input = await vscode.window.showInputBox({
-      prompt: `「${source}」のコピー先のアプリプロファイル名`,
+    const input = await this.promptName({
+      title: `「${source}」のコピー先のアプリプロファイル名`,
       value: `${source}-copy`,
-      validateInput: (value) => validateNewAppProfileName(value.trim(), existing),
+      noun: "アプリプロファイル名",
+      dupLabel: "アプリプロファイル",
+      existing,
+      caseInsensitiveDup: false,
     });
     if (input === undefined) {
       return; // キャンセル
     }
     const name = input.trim();
+    // webview 側検証をすり抜けた場合(レースや古いwebview)の防御的な再検証。
+    const nameError = validateNewAppProfileName(name, existing);
+    if (nameError) {
+      void vscode.window.showWarningMessage(`ftester: ${nameError}`);
+      return;
+    }
     try {
       const content = fs.readFileSync(sourcePath, "utf8");
       fs.mkdirSync(appsDir, { recursive: true });
@@ -973,15 +1087,24 @@ class MonitorPanelController implements vscode.Disposable {
     }
     // 重複チェックは自分自身(現在の名前)を除いた一覧に対して行う(handleProfileRename と同じ方針)。
     const existing = listAppProfileNames(this.workspaceRoot, project).filter((name) => name !== profile);
-    const input = await vscode.window.showInputBox({
-      prompt: `「${profile}」の新しいアプリプロファイル名`,
+    const input = await this.promptName({
+      title: `「${profile}」の新しいアプリプロファイル名`,
       value: profile,
-      validateInput: (value) => validateNewAppProfileName(value.trim(), existing),
+      noun: "アプリプロファイル名",
+      dupLabel: "アプリプロファイル",
+      existing,
+      caseInsensitiveDup: false,
     });
     if (input === undefined) {
       return; // キャンセル
     }
     const newName = input.trim();
+    // webview 側検証をすり抜けた場合(レースや古いwebview)の防御的な再検証。
+    const nameError = validateNewAppProfileName(newName, existing);
+    if (nameError) {
+      void vscode.window.showWarningMessage(`ftester: ${nameError}`);
+      return;
+    }
     if (newName === profile) {
       return; // 変更なし
     }
@@ -1004,8 +1127,9 @@ class MonitorPanelController implements vscode.Disposable {
   }
 
   // ---- マシンプロファイル自体の追加/削除/名前変更(マシン名横の [+][−][✏] ボタン) -----------------
-  // handleProfileAdd/handleProfileDelete(実行プロファイル)と同じ、showInputBox/showWarningMessage
-  // を使った対話形式。ただしマシンプロファイルは「今使うマシン」という選択状態を伴うため、
+  // handleProfileAdd/handleProfileDelete(実行プロファイル)と同じ、名前入力はwebview内モーダル
+  // (#name-input-overlay)、削除確認はshowWarningMessageを使った対話形式。
+  // ただしマシンプロファイルは「今使うマシン」という選択状態を伴うため、
   // 追加/名前変更の直後は machineProfileSelected で webview 側の選択を新プロファイルへ移す
   // (削除後の選択の付け替えは webview 側の既存フォールバックに任せるので送らない)。
 
@@ -1016,14 +1140,24 @@ class MonitorPanelController implements vscode.Disposable {
       return;
     }
     const existing = listMachineProfiles(this.workspaceRoot, project).map((summary) => summary.name);
-    const input = await vscode.window.showInputBox({
-      prompt: "新しいマシンプロファイル名",
-      validateInput: (value) => validateNewMachineProfileName(value.trim(), existing),
+    const input = await this.promptName({
+      title: "新しいマシンプロファイル名",
+      value: "",
+      noun: "マシンプロファイル名",
+      dupLabel: "マシンプロファイル",
+      existing,
+      caseInsensitiveDup: true,
     });
     if (input === undefined) {
       return; // キャンセル
     }
     const name = input.trim();
+    // webview 側検証をすり抜けた場合(レースや古いwebview)の防御的な再検証。
+    const nameError = validateNewMachineProfileName(name, existing);
+    if (nameError) {
+      void vscode.window.showWarningMessage(`ftester: ${nameError}`);
+      return;
+    }
     const machinesDir = this.machinesDir(project);
     try {
       fs.mkdirSync(machinesDir, { recursive: true });
@@ -1055,15 +1189,24 @@ class MonitorPanelController implements vscode.Disposable {
       return;
     }
     const existing = listMachineProfiles(this.workspaceRoot, project).map((summary) => summary.name);
-    const input = await vscode.window.showInputBox({
-      prompt: `「${machine}」のコピー先のマシンプロファイル名`,
+    const input = await this.promptName({
+      title: `「${machine}」のコピー先のマシンプロファイル名`,
       value: `${machine}-copy`,
-      validateInput: (value) => validateNewMachineProfileName(value.trim(), existing),
+      noun: "マシンプロファイル名",
+      dupLabel: "マシンプロファイル",
+      existing,
+      caseInsensitiveDup: true,
     });
     if (input === undefined) {
       return; // キャンセル
     }
     const name = input.trim();
+    // webview 側検証をすり抜けた場合(レースや古いwebview)の防御的な再検証。
+    const nameError = validateNewMachineProfileName(name, existing);
+    if (nameError) {
+      void vscode.window.showWarningMessage(`ftester: ${nameError}`);
+      return;
+    }
     try {
       fs.copyFileSync(sourcePath, path.join(machinesDir, `${name}.json`));
       this.outputChannel.appendLine(`[ftester] マシンプロファイル「${machine}」を「${name}」としてコピーしました。`);
@@ -1098,15 +1241,24 @@ class MonitorPanelController implements vscode.Disposable {
     const existing = listMachineProfiles(this.workspaceRoot, project)
       .map((summary) => summary.name)
       .filter((name) => name !== machine);
-    const input = await vscode.window.showInputBox({
-      prompt: `「${machine}」の新しいマシンプロファイル名`,
+    const input = await this.promptName({
+      title: `「${machine}」の新しいマシンプロファイル名`,
       value: machine,
-      validateInput: (value) => validateNewMachineProfileName(value.trim(), existing),
+      noun: "マシンプロファイル名",
+      dupLabel: "マシンプロファイル",
+      existing,
+      caseInsensitiveDup: true,
     });
     if (input === undefined) {
       return; // キャンセル
     }
     const newName = input.trim();
+    // webview 側検証をすり抜けた場合(レースや古いwebview)の防御的な再検証。
+    const nameError = validateNewMachineProfileName(newName, existing);
+    if (nameError) {
+      void vscode.window.showWarningMessage(`ftester: ${nameError}`);
+      return;
+    }
     if (newName === machine) {
       return; // 変更なし
     }
@@ -3803,6 +3955,26 @@ function renderHtml(): string {
     </div>
   </div>
 
+  <!-- 名前入力モーダル(#name-input-overlay)。実行/アプリ/マシンプロファイルの追加・コピー・
+       名前変更(9箇所、拡張側 promptName)を共通で担う、showInputBox 相当の置き換え。
+       #device-add-overlay と同じオーバーレイ/ダイアログ様式。拡張側からの nameInputOpen で
+       タイトル・初期値・検証パラメータ(noun/dupLabel/existing/caseInsensitiveDup)を受け取り、
+       OK/キャンセルはそれぞれ nameInputConfirm/nameInputCancel を id 付きで返す(拡張側の
+       pendingNameInput と突き合わせる)。 -->
+  <div id="name-input-overlay" class="modal-overlay">
+    <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="name-input-title">
+      <div id="name-input-title" class="modal-title"></div>
+      <div class="modal-row">
+        <input type="text" id="name-input-field">
+      </div>
+      <div id="name-input-error" class="modal-error"></div>
+      <div class="modal-buttons">
+        <button id="name-input-cancel" class="secondary" type="button">キャンセル</button>
+        <button id="name-input-ok" type="button">OK</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 「+既存から選択」モーダル(要件2)。#device-add-overlay と同じオーバーレイ/ダイアログ様式。
        中身は iOS シミュレータ/Android AVD の2グループ(#device-pick-ios-group/-android-group。
        中身は JS が installedDevices 受信時に組み立てる)。実機で数十件規模になる前提のため
@@ -4692,6 +4864,9 @@ function renderHtml(): string {
           break;
         case 'appProfileFileChanged':
           applyAppProfileFileChanged(message);
+          break;
+        case 'nameInputOpen':
+          applyNameInputOpen(message);
           break;
         default:
           break;
@@ -6429,6 +6604,131 @@ function renderHtml(): string {
     document.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') {
         closeDeviceAddModal();
+      }
+    });
+
+    // ---- 名前入力モーダル(#name-input-overlay) ----------------------------------------
+    // 実行/アプリ/マシンプロファイルの追加・コピー・名前変更(9箇所)を担う、showInputBox 相当の
+    // 置き換え。拡張側の nameInputOpen で開き、OK/キャンセルは nameInputConfirm/nameInputCancel を
+    // id 付きで返す(拡張側の pendingNameInput と突き合わせる)。検証ルールは拡張側の
+    // validateNewRunProfileName/validateNewAppProfileName/validateNewMachineProfileName と同一
+    // (空/"/""\""/"."始まり/重複)。renderHtml() の巨大テンプレートリテラル内でバックスラッシュ文字を
+    // 直に書くと二重エスケープが必要になり事故りやすいため(#run-profile-devices-row 付近の \\d の
+    // 教訓と同じ理由)、String.fromCharCode(92) で組み立てて回避する。
+
+    const nameInputOverlay = document.getElementById('name-input-overlay');
+    const nameInputTitleEl = document.getElementById('name-input-title');
+    const nameInputField = document.getElementById('name-input-field');
+    const nameInputErrorEl = document.getElementById('name-input-error');
+    const nameInputCancelBtn = document.getElementById('name-input-cancel');
+    const nameInputOkBtn = document.getElementById('name-input-ok');
+
+    const NAME_INPUT_BACKSLASH = String.fromCharCode(92);
+
+    // { id, noun, dupLabel, existing, caseInsensitiveDup, touched } | null
+    let nameInputState = null;
+
+    function validateNameInputValue(raw, state) {
+      const trimmed = raw.trim();
+      if (trimmed.length === 0) {
+        return state.noun + 'を入力してください。';
+      }
+      if (trimmed.indexOf('/') !== -1 || trimmed.indexOf(NAME_INPUT_BACKSLASH) !== -1) {
+        return state.noun + 'に "/" や "' + NAME_INPUT_BACKSLASH + '" は使えません。';
+      }
+      if (trimmed.charAt(0) === '.') {
+        return state.noun + 'を "." で始めることはできません。';
+      }
+      const compareName = state.caseInsensitiveDup ? trimmed.toLowerCase() : trimmed;
+      const isDup = state.existing.some((item) => (state.caseInsensitiveDup ? item.toLowerCase() : item) === compareName);
+      if (isDup) {
+        return state.dupLabel + '「' + trimmed + '」は既に存在します。';
+      }
+      return null;
+    }
+
+    // エラー文言の表示・OKボタンの disabled 状態を、現在の入力値で更新する。開いた直後の空欄に
+    // いきなり「入力してください」を出さないよう、value が非空 or 一度でも入力があった(touched)
+    // 場合のみエラー文言を表示する(disabled の切替自体は常に行う)。
+    function refreshNameInputValidation() {
+      if (!nameInputState) {
+        return;
+      }
+      const raw = nameInputField.value;
+      const error = validateNameInputValue(raw, nameInputState);
+      const shouldShowError = raw.trim().length > 0 || nameInputState.touched;
+      nameInputErrorEl.textContent = shouldShowError && error ? error : '';
+      nameInputOkBtn.disabled = !!error;
+    }
+
+    function closeNameInputModal() {
+      nameInputOverlay.classList.remove('visible');
+      nameInputState = null;
+    }
+
+    function confirmNameInput() {
+      if (!nameInputState || nameInputOkBtn.disabled) {
+        return;
+      }
+      vscode.postMessage({ type: 'nameInputConfirm', id: nameInputState.id, name: nameInputField.value });
+      closeNameInputModal();
+    }
+
+    function cancelNameInput() {
+      if (!nameInputState) {
+        return;
+      }
+      vscode.postMessage({ type: 'nameInputCancel', id: nameInputState.id });
+      closeNameInputModal();
+    }
+
+    function applyNameInputOpen(message) {
+      // 二重 nameInputOpen 受信時は単に上書き再初期化する(通常は起こらないが念のため)。
+      nameInputState = {
+        id: message.id,
+        noun: message.noun,
+        dupLabel: message.dupLabel,
+        existing: message.existing,
+        caseInsensitiveDup: message.caseInsensitiveDup,
+        touched: false,
+      };
+      nameInputTitleEl.textContent = message.title;
+      nameInputField.value = message.value;
+      nameInputErrorEl.textContent = '';
+      nameInputOverlay.classList.add('visible');
+      nameInputField.focus();
+      if (message.value.length > 0) {
+        nameInputField.select();
+      }
+      refreshNameInputValidation();
+    }
+
+    nameInputField.addEventListener('input', () => {
+      if (!nameInputState) {
+        return;
+      }
+      nameInputState.touched = true;
+      refreshNameInputValidation();
+    });
+    nameInputField.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        confirmNameInput();
+      }
+    });
+    nameInputOkBtn.addEventListener('click', () => confirmNameInput());
+    nameInputCancelBtn.addEventListener('click', () => cancelNameInput());
+    nameInputOverlay.addEventListener('click', (event) => {
+      if (event.target === nameInputOverlay) {
+        cancelNameInput();
+      }
+    });
+    // 名前入力モーダルは他のモーダル(デバイス追加/デバイス選択)と同時には開かないため、
+    // device-add-overlay の Esc ハンドラ(上記)と同じ独立した専用リスナーとして追加する
+    // (deviceAddOpen 等の他モーダルの状態は見なくてよい)。
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && nameInputState) {
+        cancelNameInput();
       }
     });
 

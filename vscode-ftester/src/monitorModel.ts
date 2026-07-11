@@ -249,7 +249,20 @@ export type MonitorToWebviewMessage =
     }
   // apps/<name>.json の FileSystemWatcher(onDidChange)による外部編集の通知(runProfileFileChanged
   // と同じ方針)。
-  | { readonly type: "appProfileFileChanged"; readonly name: string };
+  | { readonly type: "appProfileFileChanged"; readonly name: string }
+  // 名前入力モーダル(#name-input-overlay)を開く。実行/アプリ/マシンプロファイルの追加・コピー・
+  // 名前変更(9箇所、monitorPanel.ts の promptName)に共通で使う。id は拡張側(nameInputSeq)で
+  // 採番する使い捨てトークンで、webview からの nameInputConfirm/nameInputCancel と対応付ける。
+  | {
+      readonly type: "nameInputOpen";
+      readonly id: number;
+      readonly title: string;
+      readonly value: string;
+      readonly noun: string;
+      readonly dupLabel: string;
+      readonly existing: readonly string[];
+      readonly caseInsensitiveDup: boolean;
+    };
 
 /** 検証済みの MonitorEvent を、webview へそのまま postMessage できる形に変換する。 */
 export function toWebviewMessage(event: MonitorEvent): MonitorToWebviewMessage {
@@ -380,7 +393,11 @@ export type MonitorFromWebviewMessage =
       readonly type: "appProfileSave";
       readonly profile: string;
       readonly fields: AppProfileFormFields;
-    };
+    }
+  // 名前入力モーダル(#name-input-overlay)の OK/キャンセル。id は nameInputOpen で払い出したものを
+  // そのまま返す(拡張側が pendingNameInput.id と突き合わせ、一致しなければ無視する)。
+  | { readonly type: "nameInputConfirm"; readonly id: number; readonly name: string }
+  | { readonly type: "nameInputCancel"; readonly id: number };
 
 /**
  * value が machineDevicesSync メッセージの add[] 1件分(MachineDeviceAddEntry)として扱って
@@ -542,6 +559,10 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
         isAppProfilePlatformFieldsLike(value.fields.ios) &&
         isAppProfilePlatformFieldsLike(value.fields.android)
       );
+    case "nameInputConfirm":
+      return typeof value.id === "number" && typeof value.name === "string";
+    case "nameInputCancel":
+      return typeof value.id === "number";
     default:
       return false;
   }
