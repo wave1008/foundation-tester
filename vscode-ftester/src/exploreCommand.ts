@@ -10,8 +10,7 @@
 //   cli.ts の FtesterCli(直列実行キュー)経由で実行する。これにより SPM のビルドロックが
 //   `ftester api run` 等の他の CLI 呼び出しと衝突しない(キューが同時に1プロセックスしか
 //   走らせない仕様に自然に乗る)。ストリーミング(NDJSON 1行ごとのコールバック)とキャンセル
-//   (SIGTERM → 2秒後 SIGKILL)はいずれも cli.ts の invoke()/cancelCurrent() が既に提供している
-//   ため、cli.ts 自体への変更は不要だった。
+//   (SIGTERM → 2秒後 SIGKILL)はいずれも cli.ts の invoke()/cancelCurrent() が既に提供している。
 // - 実行中は `vscode.window.withProgress`(Notification、cancellable)で進捗を表示し、
 //   exploreStep イベント毎に「[n/N] description」へ更新する。全イベント + stderr は出力チャネル
 //   「ftester」にも流す(exploreModel.formatExploreLogLine で整形)。

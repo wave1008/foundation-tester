@@ -1,12 +1,9 @@
 // modals.js
 // 「プロファイル」タブから開く3つのオーバーレイモーダル(デバイス追加/名前入力/既存デバイスから
-// 選択)をまとめたモジュール。Phase 3(main.js のモジュール分割)で main.js の
-// 「---- デバイス追加モーダル ----」「---- 名前入力モーダル(#name-input-overlay) ----」
-// 「---- 「+既存から選択」モーダル(#device-pick-overlay。要件2) ----」の3節を抽出した。
+// 選択)をまとめたモジュール。
 // デバイス追加モーダルの作成結果(applyCreateDeviceResult)が、既存から選択モーダルの状態
 // (pendingAutoCheck)を書き換える(register:false で作成した直後、次の一覧再描画でその行を
-// 自動チェックONにする)ため、setter を挟まず同一モジュールにまとめて置いた
-// (元のファイルでも同じスコープに同居していたのと同じ形)。
+// 自動チェックONにする)ため、setter を挟まず同一モジュールにまとめて置いている。
 
 import { vscode } from './vscodeApi.js';
 import { selectedMachine, findMachine, allDeviceNamesForSelectedMachine, btnDeviceAddExisting } from './machineProfilesTab.js';
@@ -46,11 +43,11 @@ let dlgNameDirty = false;
 // #device-pick-overlay はフルスクリーンのオーバーレイなので、openDeviceAddModal() 呼び出し時点の
 // devicePickOpen がそのまま「ピッカー経由かどうか」の判定になる(下の openDeviceAddModal 参照)。
 // true の間は createDevice に register:false を送り(物理作成のみ)、成功時は pendingAutoCheck を
-// 使って一覧再描画時に該当行をチェックONにする(2026-07-11 指示)。
+// 使って一覧再描画時に該当行をチェックONにする。
 let deviceAddFromPicker = false;
 
 // OS種別はラジオボタン2つ(dlg-platform-ios/-android、name="dlg-platform")で1つの select 相当を
-// 表す。読み書きをここに集約し、他の場所は select だった頃と同じ感覚で扱えるようにする。
+// 表す。読み書きをここに集約し、他の場所は単一選択値として扱えるようにする。
 function getDialogPlatform() {
   return dlgPlatformIos.checked ? 'ios' : 'android';
 }
@@ -124,8 +121,7 @@ function refreshAutoName() {
 // 利用可能な側へ寄せる(両方 available:false の場合は変更しない = OK 側で弾かれる想定)。
 // setDialogControlsEnabled(true) の直後にも呼び直すことで、いったん disabled にした
 // ラジオを一律 enabled に戻す際、available:false 側を誤って有効に戻さないようにする
-// (select だった頃は select 自体の disabled と option 個別の disabled が独立していたが、
-// ラジオは disabled が1階層しかないため、有効化のたびに可用性を再適用する必要がある)。
+// (ラジオは disabled が1階層しかないため、有効化のたびに可用性を再適用する必要がある)。
 function applyPlatformAvailability() {
   dlgPlatformIos.disabled = !deviceCatalog.ios.available;
   dlgPlatformAndroid.disabled = !deviceCatalog.android.available;
@@ -161,8 +157,7 @@ function openDeviceAddModal() {
     return;
   }
   // devicePickOpen は #device-pick-overlay がフルスクリーンのオーバーレイであるため、
-  // ここで呼ばれた時点の値がそのまま「ピッカーの「+」から開いたか」の判定になる
-  // (btn-device-add はピッカー表示中はオーバーレイに隠れてクリックできない)。
+  // ここで呼ばれた時点の値がそのまま「ピッカーの「+」から開いたか」の判定になる。
   deviceAddFromPicker = devicePickOpen;
   deviceAddOpen = true;
   deviceAddCreating = false;
@@ -234,7 +229,7 @@ export function applyCreateDeviceResult(message) {
   dlgError.textContent = message.error || 'デバイスの作成に失敗しました。';
 }
 
-// 「+新規作成」ボタンは廃止(2026-07-11 指示)。新規作成モーダル(openDeviceAddModal)は
+// 「+新規作成」ボタンは無い。新規作成モーダル(openDeviceAddModal)は
 // 「+」で開く選択画面(#device-pick-overlay)内の「+」からのみ開く(=常に register:false 経路)。
 dlgCancel.addEventListener('click', () => closeDeviceAddModal());
 deviceAddOverlay.addEventListener('click', (event) => {
@@ -267,8 +262,7 @@ dlgOk.addEventListener('click', () => {
     model: dlgModel.value,
     os: dlgOs.value,
     // ピッカー経由(deviceAddFromPicker)なら物理作成のみ(register:false)。登録はピッカーの
-    // OK(machineDevicesSync)で行う。.profile-actions の「+新規作成」から直接開いた場合は
-    // 従来どおり即登録する。
+    // OK(machineDevicesSync)で行う。ピッカー経由でなければ即登録する(register:true)。
     register: !deviceAddFromPicker,
   });
 });
@@ -285,11 +279,7 @@ document.addEventListener('keydown', (event) => {
 // 置き換え。拡張側の nameInputOpen で開き、OK/キャンセルは nameInputConfirm/nameInputCancel を
 // id 付きで返す(拡張側の pendingNameInput と突き合わせる)。検証ルールは拡張側の
 // validateNewRunProfileName/validateNewAppProfileName/validateNewMachineProfileName と同一
-// (空/"/""\""/"."始まり/重複)。renderHtml() の巨大テンプレートリテラル内でバックスラッシュ文字を
-// 直に書くと二重エスケープが必要になり事故りやすいため(#run-profile-devices-row 付近の \\d の
-// 教訓と同じ理由。Phase 1 で main.js を実ファイル化した後は通常の JS ファイルなので直書きでも
-// 問題ないが、既存コードのまま String.fromCharCode(92) を使い続けている)、
-// String.fromCharCode(92) で組み立てて回避する。
+// (空/"/""\""/"."始まり/重複)。バックスラッシュ文字は String.fromCharCode(92) で組み立てる。
 
 const nameInputOverlay = document.getElementById('name-input-overlay');
 const nameInputTitleEl = document.getElementById('name-input-title');
@@ -407,11 +397,11 @@ document.addEventListener('keydown', (event) => {
   }
 });
 
-// ---- 「+既存から選択」モーダル(#device-pick-overlay。要件2) -----------------------
+// ---- 「+既存から選択」モーダル(#device-pick-overlay) -----------------------
 // インストール済みの iOS シミュレータ/Android AVD を一覧表示する。チェックボックスは
 // 「選択」ではなく「マシンプロファイルへの登録状態そのもの」を表す(初期値=現在の登録有無)。
 // OK は行ごとの初期状態からの差分をまとめて machineDevicesSync(add/remove)で送る。
-// 実機で数十件規模になりうる前提(コーディネーター指示)。
+// 実機で数十件規模になりうる前提。
 
 const devicePickOverlay = document.getElementById('device-pick-overlay');
 const devicePickIosTitle = document.getElementById('device-pick-ios-title');
@@ -435,13 +425,12 @@ let devicePickAndroidRows = [];
 // register:false で新規作成した直後、次の installedDevices 再描画で自動チェックONにしたい行の
 // 識別子(iOS=udid/Android=avd の id)。作成に成功していない/一致する行が無い場合はどちらも
 // null のままでよい(applyPendingAutoCheck が静かに諦める)。適用後は必ず null に戻す
-// (一度きりの適用。2026-07-11 指示)。
+// (一度きりの適用)。
 let pendingAutoCheck = null;
 
 // 選択中マシンの既存デバイスから、識別値→マシンプロファイル上の name への対応表を作る
 // (初期チェック状態の判定と、登録解除[remove]時にどの name を消せばよいかの両方に使う)。
-// iOS は udid 一致、Android は avd が id または displayName に一致するものを登録済みとみなす
-// (要件2)。
+// iOS は udid 一致、Android は avd が id または displayName に一致するものを登録済みとみなす。
 function registeredIosNameByUdid() {
   const machine = findMachine(selectedMachine);
   const map = new Map();
@@ -493,7 +482,7 @@ function syncDevicePickRowChecked(row, checkbox) {
   row.classList.toggle('checked', checkbox.checked);
 }
 
-// 行のどこをクリックしてもチェックが切り替わるようにする(ユーザー指定)。チェックボックス
+// 行のどこをクリックしてもチェックが切り替わるようにする。チェックボックス
 // 自体のクリックはネイティブのトグルに任せる(row の click でも拾ってしまうと二重トグルで
 // 元に戻ってしまうため除外する)。適用中等で checkbox が disabled の間は何もしない。
 function attachDevicePickRowToggle(row, checkbox) {
@@ -537,7 +526,7 @@ function renderDevicePickGroups(data) {
       });
       const textWrap = document.createElement('div');
       textWrap.className = 'device-pick-row-text';
-      // タイル/レーン/マシンプロファイル一覧と同じ配色ピル(.tile-name/-ios)を共用する(要件2)。
+      // タイル/レーン/マシンプロファイル一覧と同じ配色ピル(.tile-name/-ios)を共用する。
       const nameEl = document.createElement('span');
       nameEl.className = 'device-pick-row-name tile-name tile-name-ios';
       nameEl.textContent = device.name;
@@ -575,7 +564,7 @@ function renderDevicePickGroups(data) {
       });
       const textWrap = document.createElement('div');
       textWrap.className = 'device-pick-row-text';
-      // タイル/レーン/マシンプロファイル一覧と同じ配色ピル(.tile-name/-android)を共用する(要件2)。
+      // タイル/レーン/マシンプロファイル一覧と同じ配色ピル(.tile-name/-android)を共用する。
       const nameEl = document.createElement('span');
       nameEl.className = 'device-pick-row-name tile-name tile-name-android';
       nameEl.textContent = avd.displayName;
@@ -599,7 +588,7 @@ function renderDevicePickGroups(data) {
 // pendingAutoCheck(register:false で新規作成した直後の識別子)が指す行があれば、その行の
 // チェックボックスだけを ON にする(initialChecked は renderDevicePickGroups が判定した
 // 「登録済みかどうか」のまま false なので、ここで checked を true にすれば差分[ユーザー操作扱い]
-// として OK ボタンが有効になる)。一致する行が無ければ何もしない(静かに諦める。2026-07-11 指示)。
+// として OK ボタンが有効になる)。一致する行が無ければ何もしない(静かに諦める)。
 // renderDevicePickGroups の直後(devicePickIosRows/devicePickAndroidRows が最新化された後)に
 // 呼ぶこと。呼んだら pendingAutoCheck は必ずクリアする(一度きりの適用)。
 function applyPendingAutoCheck() {
@@ -625,9 +614,8 @@ function applyPendingAutoCheck() {
 }
 
 // 同期リクエスト送信中(devicePickAdding)はチェックボックスも含めて全コントロールを disabled
-// にする。チェックボックスは「登録状態そのもの」で常に操作可能な設計になったため、再度
-// 有効化する際も一律 enabled に戻せばよい(以前のような「登録済み行だけ disabled のまま戻す」
-// 例外はもう無い)。
+// にする。チェックボックスは「登録状態そのもの」で常に操作可能な設計のため、再度有効化する
+// 際も一律 enabled に戻せばよい。
 function setDevicePickControlsEnabled(enabled) {
   for (const row of devicePickIosRows.concat(devicePickAndroidRows)) {
     row.checkbox.disabled = !enabled;
@@ -760,10 +748,10 @@ devicePickOk.addEventListener('click', () => {
 });
 // 既存の Esc ハンドラとは別のリスナーとして追加する(closeDeviceAddModal の Esc ハンドラと
 // 同じ方針。closeDevicePickModal は自分の状態[devicePickOpen/devicePickAdding]だけを見るので
-// 独立して安全に共存する)。ただし今回から「+」ボタンでこのモーダルの上に #device-add-overlay を
-// 重ねて開けるようになったため、その間は Esc で奥のこのモーダルまで一緒に閉じないよう
-// deviceAddOpen を先にチェックする(手前の device-add-overlay 自身の Esc ハンドラは
-// deviceAddOpen だけを見るので、そちらは今まで通り自分自身を閉じる)。
+// 独立して安全に共存する)。「+」ボタンでこのモーダルの上に #device-add-overlay を重ねて
+// 開けるため、その間は Esc で奥のこのモーダルまで一緒に閉じないよう deviceAddOpen を先に
+// チェックする(手前の device-add-overlay 自身の Esc ハンドラは deviceAddOpen だけを見るので、
+// そちらは自分自身を閉じる)。
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
     if (deviceAddOpen) {

@@ -1,7 +1,6 @@
 // splitter.js
 // デバイスタブの上下ペイン(タイル/出力ログ)を分けるスプリッターのドラッグ操作と、
-// タイルペイン高さの計算・永続化(setState/getState)を担う。Phase 3(main.js のモジュール分割)
-// で main.js の「---- 上下ペインのスプリッター ----」節から抽出した。
+// タイルペイン高さの計算・永続化(setState/getState)を担う。
 // tilePaneHeight は再代入される状態のため、書き込み箇所(applyTilePaneHeight)も含めて
 // このモジュールに置く。他モジュール(tabs.js の switchTab)からは読み取り専用で参照する。
 
@@ -21,8 +20,8 @@ export let tilePaneHeight =
     : Math.round(window.innerHeight * 0.45);
 
 // タイルペイン+出力ペインに配分できる合計の高さ(ツールバー・バナー・スプリッター分を除く)。
-// タブ導入前は document.body.clientHeight を基準にしていたが、タブバー分の高さがずれるため、
-// 「デバイス」タブのパネル(既存要素一式を包むコンテナ)自身の clientHeight を基準にする。
+// document.body.clientHeight を基準にするとタブバー分の高さがずれるため、「デバイス」タブの
+// パネル(既存要素一式を包むコンテナ)自身の clientHeight を基準にする。
 function availableSplitHeight() {
   const bannerHeight = banner.classList.contains('visible') ? banner.offsetHeight : 0;
   return devicesPanel.clientHeight - toolbar.offsetHeight - bannerHeight - splitter.offsetHeight;

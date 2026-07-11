@@ -1,11 +1,9 @@
 // monitorDeviceOps.ts
 // デバイスモニターパネル(monitorPanel.ts)のデバイスライフサイクル操作(起動/終了/新規作成)部分。
-// Phase 2(monitorPanel.ts 分割): 元々 MonitorPanelController が直接持っていた、デバイスの
-// 起動/終了の直列キュー(devicesUp/devicesDown/deviceOp)・デバイスカタログ取得・インストール済み
-// デバイス一覧取得・新規デバイス作成(いずれも短命プロセスの spawn)を MonitorDeviceOps クラスへ
-// そのまま移動した。ロジック・spawn の引数・イベント処理の分岐はいずれも変更していない。
-// モニタープロセスの pause/resume(writeMonitorControl)・マシンプロファイル最新化の通知は、
-// このクラスからは monitorProcessManager.ts / monitorProfilesController.ts を直接参照せず、
+// MonitorDeviceOps クラスは、デバイスの起動/終了の直列キュー(devicesUp/devicesDown/deviceOp)・
+// デバイスカタログ取得・インストール済みデバイス一覧取得・新規デバイス作成(いずれも短命プロセスの
+// spawn)を担う。モニタープロセスの pause/resume(writeMonitorControl)・マシンプロファイル最新化の
+// 通知は、このクラスからは monitorProcessManager.ts / monitorProfilesController.ts を直接参照せず、
 // MonitorPanelDeps 経由のコールバックで依頼する(サブコントローラ間の直接参照禁止のため)。
 
 import { type ChildProcessByStdio, spawn } from "node:child_process";
@@ -159,8 +157,8 @@ export class MonitorDeviceOps {
   /**
    * `ftester devices up`/`devices down` を短命プロセスとして実行する(bulk ジョブの実処理)。
    * 選択中の実行プロファイル(ftester.profile)が非空なら --profile を付与し、対象を
-   * そのプロファイルが参照するデバイスのみに限定する(要件1。空ならマシンプロファイルの全デバイス。
-   * down は元々引数なしの全体停止だったが、--profile 対応により --project/--profile を渡せるようにした)。
+   * そのプロファイルが参照するデバイスのみに限定する(空ならマシンプロファイルの全デバイス。
+   * down も同様に --project/--profile を渡せる)。
    */
   private executeBulkJob(kind: "up" | "down"): void {
     const config = this.deps.getConfig();
@@ -492,7 +490,7 @@ export class MonitorDeviceOps {
    * monitorProfilesController.ts の MonitorProfilesController を直接参照せず、
    * MonitorPanelDeps.notifyMachineProfilesChanged 経由で依頼する)。
    * msg.register が false の場合は `--no-register` を付与し、物理作成のみ行う(マシンプロファイルへの
-   * 追記はしない。#device-pick-overlay の「+」から開いた新規作成モーダルが使う。2026-07-11 指示)。
+   * 追記はしない。#device-pick-overlay の「+」から開いた新規作成モーダルが使う)。
    * この場合 postMachineProfileInfo() を呼んでも(何も追記されていないため)実質的に無意味だが、
    * register:true と分岐を分けるほどの理由が無いため呼び出し自体は共通のままにしている。
    */

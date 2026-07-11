@@ -1,11 +1,9 @@
 // monitorHtml.ts
-// デバイスモニターパネル(monitorPanel.ts)の webview HTML 生成部分。
-// Phase 2(monitorPanel.ts 分割): 元々 monitorPanel.ts 末尾にあった generateNonce()/renderHtml()
-// (+ その中で参照する PANEL_TITLE)をそのまま移動しただけで、ロジック・生成される HTML・
-// CSP・URI 変換方法はいずれも変更していない。webview 資産(スタイル・スクリプト)自体は
-// 既に src/webview/monitor/{style.css,main.js} に分離済み(Phase 1)で、esbuild が
+// デバイスモニターパネル(monitorPanel.ts)の webview HTML 生成部分。generateNonce()/renderHtml()
+// (+ その中で参照する PANEL_TITLE)を持つ。webview 資産(スタイル・スクリプト)自体は
+// src/webview/monitor/{style.css,main.js} に分離されており、esbuild が
 // media/monitor/ にバンドルしたものを renderHtml() が webview.asWebviewUri で読み込む。
-// HTML 本文は今回のフェーズでも引き続き renderHtml() 内にインライン生成する。
+// HTML 本文は renderHtml() 内にインライン生成する。
 
 import { randomBytes } from "node:crypto";
 import * as vscode from "vscode";
@@ -20,7 +18,7 @@ function generateNonce(): string {
 /**
  * webview の HTML を生成する。CSS/JS は src/webview/monitor/ から esbuild が media/monitor/ に
  * バンドルした外部ファイル(style.css/main.js)を読み込む(webview.asWebviewUri で変換した URI)。
- * HTML 本文はこれまでどおりこの関数内にインライン生成する。
+ * HTML 本文はこの関数内にインライン生成する。
  */
 export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
   const nonce = generateNonce();
@@ -163,10 +161,9 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
         <div id="app-profile-editor" class="app-profile-editor" style="display: none;">
           <!-- 共通グループは表示名(appName)+自動インストール(autoInstall)。app/appPath は廃止済み
                (ランタイムは common の app/appPath を無視し、ios/android 側でのみ指定できる新仕様の
-               ため。フォームにも入力欄自体を置かない)。自動インストールは以前 ios/android
-               セクション別だったが、共通でのみ設定できる仕様に一本化した(2026-07-11 指示)ため、
-               チェックボックスはこの共通グループにのみ置く。既定OFF(無効)。heal 行と同じ
-               マークアップ・スタイル([チェックボックス]+[ラベル]の横並び1行)。 -->
+               ため。フォームにも入力欄自体を置かない)。自動インストールは共通でのみ設定できる
+               仕様に一本化されているため、チェックボックスはこの共通グループにのみ置く。既定OFF(無効)。
+               heal 行と同じマークアップ・スタイル([チェックボックス]+[ラベル]の横並び1行)。 -->
           <div class="app-profile-group-title">共通</div>
           <div class="modal-row">
             <label for="app-profile-common-app-name">表示名</label>
@@ -228,11 +225,11 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
         <button id="btn-machine-rename" class="icon-button" title="マシンプロファイル名の変更" disabled><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M13.23 1h-1.46L3.52 9.25l-.16.22L1 13.59 2.41 15l4.12-2.36.22-.16L15 4.23V2.77L13.23 1zM2.41 13.59l1.51-3 1.45 1.45-2.96 1.55zm3.83-2.06L4.47 9.76l8-8 1.77 1.77-8 8z"/></svg></button>
       </div>
       <div class="profile-actions">
-        <!-- デバイス追加ボタンは2種類(要件1): 新規シミュレータ/AVDを作成して追加(従来の
-             #device-add-overlay を開く)と、既にローカルにインストール済みのシミュレータ/AVDから
-             選んで追加(新設の #device-pick-overlay を開く)。見た目は .icon-button の亜種
+        <!-- デバイス追加ボタンは2種類: 新規シミュレータ/AVDを作成して追加
+             (#device-add-overlay を開く)と、既にローカルにインストール済みのシミュレータ/AVDから
+             選んで追加(#device-pick-overlay を開く)。見た目は .icon-button の亜種
              (.with-label。アイコン=codicon add の SVG+テキストラベルの横並び)。 -->
-        <!-- 「+新規作成」ボタンは廃止(2026-07-11 指示)。新規作成は「+」で開く選択画面内の
+        <!-- 「+新規作成」ボタンは廃止済み。新規作成は「+」で開く選択画面内の
              「+」から行う。ラベル「デバイス」で「+」が何の追加かを示す。 -->
         <span class="profile-actions-label">デバイス</span>
         <button id="btn-device-add-existing" class="icon-button" title="インストール済みのシミュレータ/AVDからマシンプロファイルに追加" disabled><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M14 7v1H8v6H7V8H1V7h6V1h1v6h6z"/></svg></button>
@@ -247,7 +244,7 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
               <span id="editor-device-name" class="tile-name"></span>
               <span id="editor-device-platform" class="editor-platform-label"></span>
             </div>
-            <!-- 編集可否の制御(ユーザー指定): 機種/OS/UDID/AVD は作成済みデバイスの実体を指す
+            <!-- 編集可否の制御: 機種/OS/UDID/AVD は作成済みデバイスの実体を指す
                  属性で API では変更できない(変更にはデバイスの除去→作り直しが必要)ため、
                  テキストボックスではなくラベル(選択・コピー可能なテキスト)で表示する。
                  名前(プロファイル上の論理名)とポート(ブリッジポート設定)はプロファイル側の
@@ -301,7 +298,7 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
   </div>
 
   <!-- プロファイルタブのデバイス行右クリックメニュー(除去のみ。プロファイルから外すだけで本体は
-       消さないため、文言は「削除」ではなく「除去」。2026-07-11 ユーザー指示)。見た目・挙動は
+       消さないため、文言は「削除」ではなく「除去」)。見た目・挙動は
        #device-op-menu と同じクラスを共用する(独立した表示状態・DOM要素)。 -->
   <div id="machine-device-menu" class="device-op-menu" role="menu">
     <button id="machine-device-menu-item" class="device-op-menu-item" type="button" role="menuitem">除去</button>
@@ -357,10 +354,10 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
     </div>
   </div>
 
-  <!-- 「+既存から選択」モーダル(要件2)。#device-add-overlay と同じオーバーレイ/ダイアログ様式。
+  <!-- 「+既存から選択」モーダル。#device-add-overlay と同じオーバーレイ/ダイアログ様式。
        中身は iOS シミュレータ/Android AVD の2グループ(#device-pick-ios-group/-android-group。
        中身は JS が installedDevices 受信時に組み立てる)。実機で数十件規模になる前提のため
-       一覧領域(.device-pick-list)だけを固定上限でスクロールさせる(コーディネーター指示)。
+       一覧領域(.device-pick-list)だけを固定上限でスクロールさせる。
        各行のチェックボックスは「選択」ではなく「マシンプロファイルへの登録状態そのもの」を表し、
        登録済みなら初期チェック(disabled/淡色化はしない。常に操作可能)。OK は初期状態からの
        差分がある間だけ有効になる(devicePickOk の disabled 切り替えは JS 側)。タイトル行右端の

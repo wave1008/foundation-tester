@@ -1,8 +1,7 @@
 // runProfilesTab.js
-// 「プロファイル」タブ上段の「実行プロファイル」設定フォームを担う。Phase 3(main.js の
-// モジュール分割)で main.js の「---- プロファイルタブ上段: 実行プロファイルの設定フォーム
-// ----」節から抽出した。マシンプロファイルの一覧(machineProfiles)・検索(findMachine)は
-// machineProfilesTab.js の状態を読み取り専用で参照する(このモジュール側では書き換えない)。
+// 「プロファイル」タブ上段の「実行プロファイル」設定フォームを担う。マシンプロファイルの
+// 一覧(machineProfiles)・検索(findMachine)は machineProfilesTab.js の状態を読み取り専用で
+// 参照する(このモジュール側では書き換えない)。
 
 import { vscode } from './vscodeApi.js';
 import { machineProfiles, findMachine } from './machineProfilesTab.js';

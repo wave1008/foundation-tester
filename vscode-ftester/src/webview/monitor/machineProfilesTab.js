@@ -1,10 +1,7 @@
 // machineProfilesTab.js
 // 「プロファイル」タブの「マシンプロファイル」節(machines/*.json の一覧・選択・
 // デバイス一覧・右ペインの編集フォーム・デバイス行の右クリックメニュー[除去])を担う。
-// Phase 3(main.js のモジュール分割)で main.js の「---- プロファイルタブ: マシンプロファイル
-// ----」「---- 右ペインの編集フォーム(要件2) ----」「---- デバイス行の右クリックメニュー
-// (除去) ----」の3節をまとめて抽出した(相互に選択状態・DOM を参照し合うため一体の
-// モジュールとした)。
+// これらは相互に選択状態・DOM を参照し合うため一体のモジュールにまとめている。
 // machineProfiles・selectedMachine・selectedDeviceNames 等は再代入される状態のため、
 // 書き込み箇所をすべてこのモジュールに置く。runProfilesTab.js・modals.js からは
 // machineProfiles/findMachine/selectedMachine を読み取り専用で参照する。
@@ -52,12 +49,12 @@ export let machineProfiles = [];
 let machineProfileHasError = false;
 // 現在選択中とみなすマシン名(select の値。machines が0件なら null)。
 export let selectedMachine = null;
-// 選択中デバイス名の集合(要件5: 複数選択に対応するため Set)。通常クリックは「その1台だけを
-// 選択」(既にその1台だけの選択状態なら解除。従来のトグル感を維持)、Shift+クリックは
-// アンカー(deviceSelectionAnchor)からの範囲選択、Cmd/Ctrl+クリックは個別の追加/除外トグル
-// (Finder/VSCode のリストと同じ標準セマンティクス。2026-07-11 ユーザー指示)。マシン切替・
-// 一覧再描画で一覧から消えた名前は Set から取り除く(validateSelectedDeviceName)。
-// 右ペインの編集フォームはちょうど1台(size===1)のときだけ表示する。
+// 選択中デバイス名の集合(複数選択に対応するため Set)。通常クリックは「その1台だけを
+// 選択」(既にその1台だけの選択状態なら解除)、Shift+クリックはアンカー
+// (deviceSelectionAnchor)からの範囲選択、Cmd/Ctrl+クリックは個別の追加/除外トグル
+// (Finder/VSCode のリストと同じ標準セマンティクス)。マシン切替・一覧再描画で一覧から
+// 消えた名前は Set から取り除く(validateSelectedDeviceName)。右ペインの編集フォームは
+// ちょうど1台(size===1)のときだけ表示する。
 let selectedDeviceNames = new Set();
 // 範囲選択(Shift+クリック)の起点=直近に通常/Cmd(Ctrl)クリックした行の名前。Shift+クリック
 // 自体ではアンカーを動かさない(連続 Shift+クリックで同じ起点から範囲を伸縮できる)。
@@ -87,9 +84,8 @@ export function findMachine(name) {
   return machineProfiles.find((m) => m.name === name);
 }
 
-// (デバイス一覧と右ペインの分割スプリッター(#profile-splitter)は 2026-07-11 ユーザー指示で
-// 廃止した。一覧幅は .machine-device-list の width: max-content で内容に自動フィットする。
-// 旧実装の persistedState.machineListWidth は読まなくなるだけで無害なので放置する。)
+// (デバイス一覧と右ペインの間にスプリッターは無い。一覧幅は .machine-device-list の
+// width: max-content で内容に自動フィットする。)
 
 // selectedDeviceNames のうち、現在の selectedMachine の一覧に存在しない名前を取り除く
 // (要件: マシン切替・一覧更新で選択中デバイスが消えた場合)。存在するものは維持する
@@ -129,7 +125,7 @@ export function applyMachineProfileInfo(message) {
   renderMachineSelect();
   renderMachineProfileBody(error);
   refreshEditorAfterProfileInfo();
-  // 「+新規作成」「+既存から選択」は同一条件で有効/無効を切り替える(要件1)。
+  // 「+新規作成」「+既存から選択」は同一条件で有効/無効を切り替える。
   btnDeviceAddExisting.disabled = machineProfileHasError || machineProfiles.length === 0;
   // [+] はプロジェクトさえ解決できれば追加先があるので machines 件数は問わない。
   // [−]/[✏] は対象(selectedMachine)が要るので、machines が0件のときも無効化する。
@@ -176,7 +172,7 @@ machineSelect.addEventListener('change', () => {
   selectedMachine = machineSelect.value;
   validateSelectedDeviceName();
   renderMachineProfileBody(machineProfileHasError ? machineProfileError.textContent : null);
-  // マシン切替は明示操作なので、編集途中の値を破棄してフォームを作り直す(要件2)。
+  // マシン切替は明示操作なので、編集途中の値を破棄してフォームを作り直す。
   rebuildEditorForSelection();
 });
 
@@ -197,17 +193,16 @@ btnMachineRename.addEventListener('click', () => {
   }
 });
 
-// 行クリックの選択(要件5。2026-07-11 ユーザー指示で Finder/VSCode のリストと同じ標準
-// セマンティクスに変更)。判定順は shiftKey → metaKey/ctrlKey → 通常(Shift+Cmd 同時は
-// Shift 扱い)。
+// 行クリックの選択(Finder/VSCode のリストと同じ標準セマンティクス)。判定順は
+// shiftKey → metaKey/ctrlKey → 通常(Shift+Cmd 同時は Shift 扱い)。
 // - Shift+クリック: 表示順(deviceRowElements の挿入順=renderMachineProfileBody の描画順)で
 //   アンカー〜クリック行の間(両端含む)を選択に「置き換える」。アンカーは動かさない
 //   (連続 Shift+クリックで同じ起点から範囲を伸縮できる)。アンカーが無効(null/一覧に不在)
 //   なら通常クリックと同じ扱いにフォールバックする。
-// - Cmd(metaKey)/Ctrl(ctrlKey)+クリック: クリック行を個別に追加/除外するトグル(従来の
-//   Shift の挙動)。クリック行をアンカーに設定する。
+// - Cmd(metaKey)/Ctrl(ctrlKey)+クリック: クリック行を個別に追加/除外するトグル。
+//   クリック行をアンカーに設定する。
 // - 通常クリック: その1台だけを選択(既存の選択を置き換える)+クリック行をアンカーに設定。
-//   既に「その1台だけが選択」状態なら解除する(従来のトグル感を維持。解除時はアンカーも null)。
+//   既に「その1台だけが選択」状態なら解除する(解除時はアンカーも null)。
 function toggleDeviceRowSelection(name, event) {
   const anchorValid = deviceSelectionAnchor !== null && deviceRowElements.has(deviceSelectionAnchor);
   if (event.shiftKey && anchorValid) {
@@ -232,7 +227,7 @@ function toggleDeviceRowSelection(name, event) {
     deviceSelectionAnchor = name;
   }
   updateDeviceSelectionUi();
-  // 選択変更は明示操作なので、編集途中の値を破棄してフォームを作り直す(要件2)。
+  // 選択変更は明示操作なので、編集途中の値を破棄してフォームを作り直す。
   rebuildEditorForSelection();
 }
 
@@ -281,11 +276,11 @@ function renderMachineProfileBody(error) {
         event.preventDefault();
         event.stopPropagation();
         // macOS では Ctrl+クリックが OS レベルで右クリック扱いになり click イベントは発生せず
-        // contextmenu として届くため、ここで選択トグルへ振り分ける(2026-07-11 ユーザー要望:
-        // Cmd と同様に Ctrl でも追加選択したい)。contextmenu イベントにも
-        // shiftKey/ctrlKey/metaKey は載っているので event をそのまま渡せば既存の判定
-        // (Shift優先→Ctrl/Cmdで個別トグル)がそのまま効く。mac では物理右クリック+Ctrl
-        // 押下も選択トグルになるが、メニューは素の右クリックで開けるため許容。
+        // contextmenu として届くため、ここで選択トグルへ振り分ける(Cmd と同様に Ctrl でも
+        // 追加選択できるようにするため)。contextmenu イベントにも shiftKey/ctrlKey/metaKey は
+        // 載っているので event をそのまま渡せば既存の判定(Shift優先→Ctrl/Cmdで個別トグル)が
+        // そのまま効く。mac では物理右クリック+Ctrl 押下も選択トグルになるが、メニューは素の
+        // 右クリックで開けるため許容している。
         // Windows/Linux の Ctrl+クリックは通常の click イベントで既に対応済みなので、
         // この振り分けは mac のみ。
         if (isMacPlatform && event.ctrlKey) {
@@ -293,7 +288,7 @@ function renderMachineProfileBody(error) {
           return;
         }
         // クリックした行が現在の複数選択(2台以上)に含まれる場合は選択中全台を対象にする。
-        // それ以外は従来どおりクリックした行単体を対象にする(要件5)。選択状態自体は
+        // それ以外はクリックした行単体を対象にする。選択状態自体は
         // 右クリックでは変更しない。
         const names =
           selectedDeviceNames.size >= 2 && selectedDeviceNames.has(device.name)
@@ -322,7 +317,7 @@ export function allDeviceNamesForSelectedMachine() {
   return machine ? machine.devices.map((d) => d.name) : [];
 }
 
-// ---- 右ペインの編集フォーム(要件2) ---------------------------------------------
+// ---- 右ペインの編集フォーム ---------------------------------------------
 // 行選択中は #machine-device-editor を表示し、machineDeviceUpdate で machines/*.json を
 // 更新する。dirty(未確定の編集があるか)は6フィールドの現在値と、フォームを最後に作り直した
 // 時点の値(editorOriginalValues)を素の文字列比較するだけで判定する(trim はしない。
@@ -371,7 +366,7 @@ function valuesEqual(a, b) {
 }
 
 // dirty(=確定ボタン有効)と、それに連動する確定/キャンセルボタンの見た目をまとめて更新する。
-// キャンセルは dirty の間だけ表示し(要件2)、送信中(editorSubmitting)は確定・キャンセルとも
+// キャンセルは dirty の間だけ表示し、送信中(editorSubmitting)は確定・キャンセルとも
 // 無効化する(確定は「確定中...」表示、キャンセルは表示は保ったまま押せなくする)。
 function refreshEditorButtonsUi() {
   editorConfirm.disabled = editorSubmitting || !editorDirty;
@@ -409,7 +404,7 @@ function renderDeviceEditor(machine, device) {
 // プレースホルダーの既定文言(HTML の初期テキストをそのまま使い回す。0台選択時に表示する)。
 const DEVICE_PLACEHOLDER_DEFAULT_TEXT = profileDetailPlaceholder.textContent;
 
-// text 省略時は既定文言(0台選択)。2台以上選択時は呼び出し側が件数入りの文言を渡す(要件5)。
+// text 省略時は既定文言(0台選択)。2台以上選択時は呼び出し側が件数入りの文言を渡す。
 function clearDeviceEditor(text) {
   editorTarget = null;
   editorOriginalValues = null;
@@ -420,7 +415,7 @@ function clearDeviceEditor(text) {
   setEditorDirty(false);
 }
 
-// 右ペインの編集フォームは「ちょうど1台選択」のときだけ表示する(要件5)。0台は既定の
+// 右ペインの編集フォームは「ちょうど1台選択」のときだけ表示する。0台は既定の
 // プレースホルダー、2台以上は「<N>台選択中(右クリックで一括除去できます)」を表示する。
 function singleSelectedDevice() {
   if (selectedDeviceNames.size !== 1) {
@@ -451,7 +446,7 @@ function rebuildEditorForSelection() {
 
 // machineProfileInfo 再受信用: 選択中デバイスが消えていれば選択解除、存在してかつ未編集
 // (dirty でない・送信中でない)なら新データで再プリフィルする。編集中(dirty)なら入力値を
-// 保持する(watcher 経由の再送で入力が消えるのを防ぐ。要件2)。
+// 保持する(watcher 経由の再送で入力が消えるのを防ぐ)。
 function refreshEditorAfterProfileInfo() {
   if (machineProfileHasError) {
     clearDeviceEditor();
@@ -511,9 +506,6 @@ function validateDeviceEditorFields(name) {
   }
   if (editorTarget.platform === 'ios') {
     const portValue = editorPort.value.trim();
-    // 注意: この関数は renderHtml のテンプレートリテラル内なので、正規表現の \d は \\d と
-    // 書く必要がある(\d のままだと生成される webview JS では /^d+$/ になり、正しい数値入力を
-    // 誤って弾くバグになる。v0.0.30 までの回帰)。
     if (portValue.length > 0 && (!/^\\d+$/.test(portValue) || Number(portValue) > 65535)) {
       return 'port は 0〜65535 の整数で入力してください。';
     }
@@ -581,7 +573,7 @@ export function closeMachineDeviceMenu() {
 }
 
 // entry は { machine, names }(names は1件以上)。複数選択(2台以上)を対象にする場合は
-// メニュー項目のラベルを「選択した<N>台を除去」に変える(要件5)。
+// メニュー項目のラベルを「選択した<N>台を除去」に変える。
 function openMachineDeviceMenu(entry, clientX, clientY) {
   machineDeviceMenuEntry = entry;
   machineDeviceMenuItemBtn.textContent =

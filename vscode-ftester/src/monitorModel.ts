@@ -159,9 +159,9 @@ export type MonitorToWebviewMessage =
       readonly name: string;
       readonly error: string | null;
       // finished イベントの device(avd/udid のみ。name は上の name フィールドと役割が重複するため
-      // 含めない)。ok:false、または finished に device が無かった場合は null(2026-07-11 指示:
-      // ピッカーの「+」から register:false で作成した場合、webview 側がここの udid/avd を使って
-      // installedDevices 再読込後に該当行を自動チェックする[pendingAutoCheck]ため必要になった)。
+      // 含めない)。ok:false、または finished に device が無かった場合は null(ピッカーの「+」から
+      // register:false で作成した場合、webview 側がここの udid/avd を使って
+      // installedDevices 再読込後に該当行を自動チェックする[pendingAutoCheck]ために必要)。
       readonly device: { readonly avd: string | null; readonly udid: string | null } | null;
     }
   // 「+既存から選択」モーダル(#device-pick-overlay)が開いた直後に送る installedDevicesRequest
@@ -322,11 +322,11 @@ export type MonitorFromWebviewMessage =
       readonly name: string;
       readonly model: string;
       readonly os: string;
-      // true: 従来どおり物理作成(simctl/avdmanager)+マシンプロファイルへの即登録を行う。
+      // true: 物理作成(simctl/avdmanager)+マシンプロファイルへの即登録を行う。
       // false: 物理作成のみ(ホストが `--no-register` を付与)。マシンプロファイルへの登録は
       // 呼び出し側(#device-pick-overlay の「+」から開いた場合)が別途 machineDevicesSync で行う
-      // (2026-07-11 指示: ピッカー経由の新規作成は「作成直後に登録」ではなく「OK で登録」にするため。
-      // .profile-actions の「+新規作成」から直接開いた場合は従来どおり register:true を送る)。
+      // (ピッカー経由の新規作成は「作成直後に登録」ではなく「OK で登録」にするため。
+      // .profile-actions の「+新規作成」から直接開いた場合は register:true を送る)。
       readonly register: boolean;
     }
   // 「+既存から選択」モーダル(#device-pick-overlay)が開いた直後に送る、
@@ -347,7 +347,7 @@ export type MonitorFromWebviewMessage =
     }
   // デバイス行の右クリックメニュー「削除」。machine は「対象を1件指す」ため createDevice と同じ
   // 理由で空文字を弾く。names は複数選択時の一括削除に対応するため配列(単一削除も要素数1の配列
-  // として送る。要件5)。空配列は「対象なし」を意味するため不正として弾く。
+  // として送る)。空配列は「対象なし」を意味するため不正として弾く。
   | { readonly type: "machineDeviceRemove"; readonly machine: string; readonly names: readonly string[] }
   // プロファイルタブ右ペインの編集フォーム「確定」。fields は全てクライアント側で trim 済みの
   // string(空文字は「未入力/対象プラットフォーム外」を意味する。createDevice と違い、name 以外は
@@ -421,9 +421,8 @@ function isMachineDeviceAddEntryLike(value: unknown): value is MachineDeviceAddE
 
 /**
  * value がアプリプロファイル「共通」セクション分のフォームフィールド(表示名+自動インストール)
- * として扱ってよいか判定する。自動インストールの設定場所を common に一本化した(2026-07-11
- * 指示)ため、ここで autoInstall も検証する。2値("true"/"false")のみ受理する
- * (isAppProfilePlatformFieldsLike が以前 autoInstall を検証していたのと同じ方針)。
+ * として扱ってよいか判定する。自動インストールの設定場所は common に一本化されているため、
+ * ここで autoInstall も検証する。2値("true"/"false")のみ受理する。
  */
 function isAppProfileCommonFieldsLike(value: unknown): value is AppProfileCommonFields {
   return (
@@ -993,11 +992,10 @@ export function updateRunProfileInObject(
 // 「JSON オブジェクト ⇔ フォームの common(表示名+自動インストール)/ios/android(表示名・
 // アプリID・パッケージパス)3グループ」の変換ロジックだけを扱う(parseRunProfileForForm/
 // updateRunProfileInObject と同じ、未知キー保持のイミュータブルな方針)。
-// 自動インストール(autoInstall)は元々 ios/android セクション別だったが、common でのみ設定できる
-// 仕様に一本化した(2026-07-11 指示。Swift 側も同時に common 採用+platform 残存は validate 警告に
-// 変更中)。common に appName 以外のフィールドを持たせるのはこれが初めてだが、
-// AppProfileCommonFields/AppProfilePlatformFields の型を分けている理由(ランタイムが参照する
-// セクションが異なる)自体は変わらない。
+// 自動インストール(autoInstall)は common でのみ設定できる仕様に一本化されている
+// (ios/android に残存していても Swift 側の validate が警告する)。common に appName 以外の
+// フィールドを持たせるのはこれが唯一で、AppProfileCommonFields/AppProfilePlatformFields の
+// 型を分けているのは、ランタイムが参照するセクションが異なるため。
 
 /**
  * アプリプロファイル「共通」セクション分のフィールド。表示名(appName)+自動インストール
@@ -1042,9 +1040,7 @@ const EMPTY_APP_PROFILE_PLATFORM_FIELDS: AppProfilePlatformFields = {
  * 許容的に読み取る。セクション自体が非オブジェクト(欠落・型不正・配列含む)なら空セクション扱い
  * (parseRunProfileForForm の devices 欠落時の扱いと同じ「読めなければ空」の流儀)。
  * - appName: string ならそのまま、それ以外(欠落・型不正)は "".
- * - autoInstall: true のときだけ "true"。それ以外(false・欠落・型不正)は "false"
- *   (自動インストールを common に一本化したことに伴い、旧 parseAppProfilePlatformSection の
- *   autoInstall 読み取りロジックをそのままこちらへ移した)。
+ * - autoInstall: true のときだけ "true"。それ以外(false・欠落・型不正)は "false"。
  * - app/appPath は common では廃止のため読み取らない(残っていても無視する。フォームにも
  *   フィールド自体が無い)。
  */
@@ -1099,8 +1095,7 @@ export type AppProfileUpdateResult =
  * 新セクションオブジェクトを組み立てる(updateRunProfileInObject と同じイミュータブルな方針)。
  * - appName: trim 値をセットする。空はキー削除する。
  * - autoInstall: "true" は boolean true をセット、"false" はキー削除する(既定=無効と同値なので
- *   書かずにファイルを最小に保つ。自動インストールを common に一本化したことに伴い、旧
- *   updateAppProfilePlatformSection の autoInstall 書き込みロジックをそのままこちらへ移した)。
+ *   書かずにファイルを最小に保つ)。
  * - app/appPath: 廃止に伴いフォームにフィールド自体が無い(=書き込みようがない)ため常に削除する。
  *   既存ファイルに残っていると「common でも効く」と読み手を誤解させるため、掃除も兼ねて
  *   無条件で削除する。
@@ -1214,8 +1209,8 @@ export function updateAppProfileInObject(
 //   `ftester api create-device --project <P> --machine <M> --platform ios|android --name <名>
 //   --model <id> --os <id> [--no-register]`: stdout に NDJSON({"kind":"log",...} × n →
 //   {"kind":"finished","ok":bool,"error":string|null,"device":{...}|null})。--no-register は
-//   物理作成(simctl/avdmanager)のみ行い、マシンプロファイルへの追記をスキップする(2026-07-11
-//   指示。#device-pick-overlay の「+」から開いた新規作成モーダルが使う。finished の形は不変)。
+//   物理作成(simctl/avdmanager)のみ行い、マシンプロファイルへの追記をスキップする
+//   (#device-pick-overlay の「+」から開いた新規作成モーダルが使う)。
 //   `ftester api installed-devices`(引数なし): stdout に単発 JSON 1行(InstalledDevices の形。
 //   インストール済みの iOS シミュレータ実機一覧・Android AVD 一覧)。「+既存から選択」(#device-pick-
 //   overlay)がマシンプロファイルへの追加候補として使う。device-catalog(新規作成用のモデル/OS

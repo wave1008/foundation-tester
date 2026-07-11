@@ -1,10 +1,8 @@
 // monitorProfilesController.ts
 // デバイスモニターパネル(monitorPanel.ts)の「プロファイル」タブ関連ロジック。
-// Phase 2(monitorPanel.ts 分割): 元々 MonitorPanelController が直接持っていた、実行プロファイル・
-// アプリプロファイル・マシンプロファイルの一覧post/CRUD(追加・コピー・削除・名前変更)・
-// フォームのロード/保存・名前入力モーダル(promptName)を MonitorProfilesController クラスへ
-// そのまま移動した。ロジック・ファイル入出力・エラーメッセージ・postMessage の型やペイロードは
-// いずれも変更していない。モニタープロセスの再起動判定(restartMonitorIfScopeChanged)・
+// MonitorProfilesController クラスは、実行プロファイル・アプリプロファイル・マシンプロファイルの
+// 一覧post/CRUD(追加・コピー・削除・名前変更)・フォームのロード/保存・名前入力モーダル
+// (promptName)を担う。モニタープロセスの再起動判定(restartMonitorIfScopeChanged)・
 // デバイスライフサイクルキューへの投入は monitorPanel.ts のメインコントローラが仲介するため、
 // このクラスからは直接呼ばない(サブコントローラ間の直接参照禁止)。
 
@@ -193,7 +191,7 @@ export class MonitorProfilesController {
         name: device.name,
         platform: device.platform,
         detail: machineDeviceDetail(device),
-        // 右ペインの編集フォーム用の生フィールド(要件2)。undefined は postMessage の JSON化で
+        // 右ペインの編集フォーム用の生フィールド。undefined は postMessage の JSON化で
         // 自然に省略される。
         simulator: device.simulator,
         os: device.os,
@@ -292,8 +290,7 @@ export class MonitorProfilesController {
   // 編集対象を操作するだけで、ftester.profile 設定(selectProfile)には触れない
   // (名前変更で ftester.profile が対象を指していた場合の追随を除く。handleProfileRename 参照)。
   // 追加・コピーの直後は runProfileSelected で新プロファイルを編集対象として選択する
-  // (machineProfileAdd/Copy と同じ方式。以前は生成した JSON をエディタで開いていたが、
-  // 下半分のフォームが編集手段になったため廃止した)。
+  // (machineProfileAdd/Copy と同じ方式)。
 
   /** Projects/<project>/profiles/runs ディレクトリの絶対パス。 */
   private runsDir(project: string): string {
@@ -866,9 +863,9 @@ export class MonitorProfilesController {
    * machines/<machine>.json から names に一致するデバイスをプロファイル上だけ取り除く
    * (シミュレータ/AVD本体はここでは一切操作しない。handleProfileDelete と同じくモーダル確認を
    * 経てから実行する)。ユーザー可視文言はこの操作に限り「削除」ではなく「除去」を使う
-   * (2026-07-11 ユーザー指示: プロファイルから外すだけなのに、仮想マシン本体を消す「削除」と
-   * 紛らわしいため。本体を本当に消す操作・プロファイル自体の削除は従来どおり「削除」)。
-   * 複数選択(要件5)に対応するため names は配列(単一除去も要素数1の配列)。
+   * (プロファイルから外すだけなのに、仮想マシン本体を消す「削除」と
+   * 紛らわしいため。本体を本当に消す操作・プロファイル自体の削除は「削除」のままとする)。
+   * 複数選択に対応するため names は配列(単一除去も要素数1の配列)。
    * removeDeviceFromMachineProfile を名前ごとに順次適用する(1回のファイル読み書きで済ませる —
    * 各適用結果の object を次の入力にすることで、まとめて1回の書き戻しにできる)。1件も除去
    * できなければ(全名前が見つからなければ)警告して書き戻さない。
