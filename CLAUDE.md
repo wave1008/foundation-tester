@@ -1,17 +1,25 @@
 # foundation-tester
 
+## ドキュメント
+
+- 設計書(アーキテクチャ・Swift DSL 仕様・セレクタ記法・プロファイル): docs/design.md
+- 性能チューニング(調整ノブ・不採用施策と再検討条件・計測手順): docs/performance-tuning.md
+
 ## ビルド・検証
 
 - 拡張: `cd vscode-ftester && npm run compile`(esbuild+tsc)/ `npm test`
 - Swift: `swift build --build-tests` / `swift test`
 - 拡張の挙動を変えたら: package.json の version を上げて `npm run install-local`(パッケージ+インストール+到達確認まで一括。code CLI は PATH に無い)。反映には VSCode の Reload Window+パネル開き直しが必要。コメント整理など挙動不変の変更では vsix 更新不要
 - 再ビルド後の検証前に旧バイナリの常駐プロセス(monitor/host-metrics)を kill(生き残って検証を汚す。docs/performance-tuning.md §7)
+- 実行ファイルを差し替えるビルドは `swift build --product <名>`。`--target` はコンパイルのみでリンクしない(旧バイナリをそのまま実行する事故が実際に起きた)
+- macOS ベータを更新したら Xcode も同じベータへ揃えてフルリビルド。FoundationModels の ABI 不整合で全バイナリが dyld クラッシュする(swift build は SDKROOT/--sdk を無視するため Xcode 側を揃えるしかない)
 
 ## 並列一括作業(サブエージェント委譲)
 
 - 全域一括の機械的変更は、ファイル集合が互いに素になるようバッチ分割して並列委譲する(コメント量・行数で均等化)
 - サブエージェントに swift build / npm build を実行させない(SPM ビルドロック・出力の競合)。ビルド・テストはメインで全バッチ完了後に一括実行。軽量な per-file チェック(node --check 等)は各エージェントで可
 - 「コメントのみ」「移動のみ」を謳う変更は、diff の全変更行を機械検証(全 +/- 行がコメント/空行か、末尾コメント編集はコード部分が同一か)してからコミットする
+- Projects/ 配下のシナリオ(.swift)はユーザー資産(一部は explore 生成)。リポジトリ全域の一括整形・コメント編集の対象に含めない
 
 ## ソース分割の方針
 
