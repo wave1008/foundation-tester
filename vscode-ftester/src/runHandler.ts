@@ -178,6 +178,7 @@ async function executeRun(
   let reducerState = createRunReducerState();
   // workersReady(並列実行時のみ)で埋まる worker id → デバイス名。output のプレフィックスに使う。
   const workerNames = new Map<string, string>();
+  const stderrTail: string[] = [];
 
   const toLocation = (location: RunLocation | undefined): vscode.Location | undefined => {
     if (!location) {
@@ -256,15 +257,25 @@ async function executeRun(
           applyAction(action);
         }
       },
-      onLog: (line, stream) => outputChannel.appendLine(`[${stream}] ${line}`),
+      onLog: (line, stream) => {
+        outputChannel.appendLine(`[${stream}] ${line}`);
+        if (stream === "stderr") {
+          stderrTail.push(line);
+          if (stderrTail.length > 8) {
+            stderrTail.shift();
+          }
+        }
+      },
     });
 
     if (!sawEnd && result.exitCode !== 0) {
       // runFinished を受信しないまま(異常終了 / デバイス切断など)プロセスが終了した。
       // まだ完了していない対象は errored にして、実行結果が不明のまま放置しないようにする
+      const tail = stderrTail.length > 0 ? `\n--- stderr 末尾 ---\n${stderrTail.join("\n")}` : "";
       const message = result.cancelled
         ? "実行がキャンセルされました。"
-        : `ftester プロセスが異常終了しました(exit code: ${String(result.exitCode)})。出力パネル「ftester」を確認してください。`;
+        : `ftester プロセスが異常終了しました(exit code: ${String(result.exitCode)})。` +
+          `出力パネル「ftester」を確認してください。${tail}`;
       markRemainingErrored(run, targets, finished, message);
     }
   } catch (error) {
