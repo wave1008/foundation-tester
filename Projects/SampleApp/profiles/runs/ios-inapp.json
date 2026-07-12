@@ -1,0 +1,6 @@
+{
+  "app": "sampleapp",
+  "devices": [ { "name": "シミュ1" } ],
+  "heal": false,
+  "reportDir": "reports"
+}
