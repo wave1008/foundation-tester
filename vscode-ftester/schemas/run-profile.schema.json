@@ -47,6 +47,11 @@
       "type": "integer",
       "description": "DSL コマンドの既定タイムアウト秒(省略時は DSL 側の既定値)。",
       "minimum": 0
+    },
+    "iosInappEngine": {
+      "type": "boolean",
+      "description": "iOS の高速な in-app エンジン(ハイブリッド)を使うか(既定 true=ON)。ON → iOS デバイスを hybrid(in-app 主+XCUITest フォールバック)、OFF → xcuitest で駆動する。マシンプロファイルでデバイスに engine を明示している場合はそちらが優先。Android には影響しない。",
+      "default": true
     }
   }
 }

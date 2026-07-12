@@ -115,6 +115,10 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
             <input type="checkbox" id="run-profile-heal">
             <label for="run-profile-heal">自己修復(heal)を有効にする</label>
           </div>
+          <div class="modal-row profile-checkbox-row">
+            <input type="checkbox" id="run-profile-ios-inapp-engine">
+            <label for="run-profile-ios-inapp-engine">高速なinappエンジンを使用する(iOS)</label>
+          </div>
           <div class="modal-row">
             <label for="run-profile-report-dir">reportDir</label>
             <input type="text" id="run-profile-report-dir" placeholder="reports">

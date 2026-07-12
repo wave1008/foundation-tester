@@ -591,4 +591,46 @@ final class ProfileResolverTests: XCTestCase {
             }
         }
     }
+
+    // MARK: - iosInappEngine(iOS 実効エンジンの選択)
+
+    func testIosInappEngineDefaultsToHybrid() throws {
+        // iosInappEngine 未指定(既定 true)→ engine 未指定の iOS デバイスは hybrid。Android は不変。
+        try writeStandardFixture()  // "all" は iosInappEngine 未指定
+        let resolved = try ProfileResolver.resolve(
+            project: project, runName: "all", machineName: "M1 Max(64GB)")
+        XCTAssertEqual(resolved.iosDevices.map { $0.spec.engine }, ["hybrid", "hybrid"])
+        XCTAssertNil(resolved.androidDevices.first?.spec.engine, "Android には影響しないはず")
+    }
+
+    func testIosInappEngineFalseUsesXcuitest() throws {
+        try writeStandardFixture()
+        try write("""
+        { "app": "sampleapp", "devices": [ { "name": "メイン機" }, { "name": "サブ機" } ],
+          "iosInappEngine": false }
+        """, to: project.runsDir, name: "xc")
+        let resolved = try ProfileResolver.resolve(
+            project: project, runName: "xc", machineName: "M1 Max(64GB)")
+        XCTAssertEqual(resolved.iosDevices.map { $0.spec.engine }, ["xcuitest", "xcuitest"])
+    }
+
+    func testExplicitDeviceEngineOverridesFlag() throws {
+        // マシンでデバイスに engine を明示している場合はフラグより優先(上書きしない)。
+        try write("""
+        { "ios": { "app": "com.example.app" } }
+        """, to: project.appsDir, name: "app4")
+        try write("""
+        { "ios": { "devices": [
+              { "name": "注入機", "simulator": "iPhone 17 Pro", "engine": "inapp" },
+              { "name": "素機", "simulator": "iPhone Air" } ] } }
+        """, to: project.machinesDir, name: "m")
+        // フラグ OFF(xcuitest 既定)でも engine 明示の "注入機" は inapp のまま、
+        // 明示なしの "素機" はフラグどおり xcuitest。
+        try write("""
+        { "app": "app4", "devices": [ { "name": "注入機" }, { "name": "素機" } ],
+          "iosInappEngine": false }
+        """, to: project.runsDir, name: "r")
+        let resolved = try ProfileResolver.resolve(project: project, runName: "r", machineName: "m")
+        XCTAssertEqual(resolved.iosDevices.map { $0.spec.engine }, ["inapp", "xcuitest"])
+    }
 }

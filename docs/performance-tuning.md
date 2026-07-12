@@ -290,8 +290,11 @@ window/transition/animator の `*_scale` はチューニングノブではなく
        リッチシートや確実性重視は `simctl privacy grant`/`defaults write` でダイアログを最初から出さない
        方が安価・確実。**deliberate フルアプリ切替(設定アプリへ遷移して操作等)は本実装の対象外**
        (フォールバックは「アプリ前面のまま出るシステム UI」向け。フルアプリ切替は別途 stateful フロー)。
-     - 使い方: マシンプロファイルの device に `"engine": "hybrid"`(例 `シミュ1-hybrid`)、
-       run プロファイルはそれを指す(`profiles/runs/ios-hybrid.json`)。`engine=inapp` 同様 bundleID 必須
-       (新規 in-app 起動に要る。`inAppNeedsBundleID`)。
+     - 使い方(推奨): **run プロファイルの `iosInappEngine`(既定 true=ON。GUI「高速なinappエンジンを
+       使用する(iOS)」チェックボックス)で選ぶ**。ON → iOS デバイスの実効エンジンを "hybrid"、OFF →
+       "xcuitest"(`ProfileResolver.resolve`)。マシンプロファイルの device に `engine` を明示していれば
+       そちらが優先(上書きしない=pure "inapp" 固定などの逃げ道)。`engine=inapp` 同様 bundleID 必須
+       (新規 in-app 起動に要る。`inAppNeedsBundleID`)。**既定 ON なので engine 無指定の iOS デバイスは
+       ハイブリッドで走る**(従来 XCUITest だった `ios.json` 等も高速化。XCUITest に戻すには OFF)。
 - **シナリオ設計の見直し**: 上記 iPhone Air フレークのようなデバイス依存アサーションの排除は、
   どんなエンジン改善より成功率に効く
