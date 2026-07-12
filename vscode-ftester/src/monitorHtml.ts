@@ -7,6 +7,7 @@
 
 import { randomBytes } from "node:crypto";
 import * as vscode from "vscode";
+import { DEFAULT_MAX_STEPS } from "./exploreModel";
 
 /** デバイスモニターパネルのタイトル(VS Code タブ表示・HTML の <title> の両方で使う)。 */
 export const PANEL_TITLE = "ftester デバイスモニター";
@@ -38,6 +39,8 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
   <div id="tabbar" role="tablist">
     <button id="tab-devices" class="tab-button active" type="button" role="tab" aria-selected="true" aria-controls="panel-devices">デバイス</button>
     <button id="tab-profiles" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-profiles">プロファイル</button>
+    <button id="tab-live" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-live">ライブ操作</button>
+    <button id="tab-explore" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-explore">FM探索</button>
     <button id="tab-settings" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-settings">設定</button>
   </div>
 
@@ -262,6 +265,106 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
           </div>
         </div>
       </div>
+    </div>
+  </div>
+
+  <div id="panel-live" class="tab-panel" role="tabpanel" aria-labelledby="tab-live" style="display: none;">
+    <div class="toolbar">
+      <label for="live-device-select">デバイス:</label>
+      <select id="live-device-select"></select>
+      <button id="live-btn-refresh-devices" class="secondary">デバイス一覧を更新</button>
+      <span id="live-device-warning"></span>
+      <span id="live-busy-label"></span>
+    </div>
+    <div id="live-banner" class="banner"></div>
+
+    <div class="content">
+      <div class="screenshot-pane">
+        <div class="screenshot-wrap" id="live-screenshot-wrap">
+          <img id="live-screenshot" alt="スクリーンショット">
+          <div id="live-hover-box"></div>
+          <div id="live-screenshot-placeholder">「更新」ボタンで画面を取得してください</div>
+        </div>
+        <div class="hint">画像をクリックするとその位置をタップします</div>
+      </div>
+
+      <div class="control-pane">
+        <div class="row">
+          <input id="live-bundle-id" type="text" placeholder="bundle ID / パッケージ名" value="com.example.sampleapp">
+          <button id="live-btn-launch">起動</button>
+          <button id="live-btn-terminate">終了</button>
+        </div>
+        <div class="row">
+          <input id="live-ios-path" type="text" placeholder="iOS: .app バンドルのパス">
+          <button id="live-btn-pick-ios" class="secondary">選択...</button>
+        </div>
+        <div class="row">
+          <input id="live-android-path" type="text" placeholder="Android: .apk のパス">
+          <button id="live-btn-pick-android" class="secondary">選択...</button>
+        </div>
+        <div class="row">
+          <button id="live-btn-install">インストール</button>
+          <span id="live-install-hint" class="hint-inline"></span>
+        </div>
+
+        <div class="row controls-row">
+          <button id="live-btn-refresh-snapshot">更新</button>
+          <span class="spacer"></span>
+          <button id="live-btn-swipe-up" class="secondary" title="スワイプ(↑=下へスクロール)">↑</button>
+          <button id="live-btn-swipe-down" class="secondary">↓</button>
+          <button id="live-btn-swipe-left" class="secondary">←</button>
+          <button id="live-btn-swipe-right" class="secondary">→</button>
+        </div>
+
+        <div class="row">
+          <input id="live-type-text" type="text" placeholder="入力するテキスト">
+          <button id="live-btn-type">入力</button>
+        </div>
+        <span id="live-type-ref-hint">→ フォーカス中の要素に入力</span>
+
+        <div id="live-action-error"></div>
+
+        <div class="elements-header">要素一覧(クリックでタップ)</div>
+        <div id="live-elements-list" class="elements-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="panel-explore" class="tab-panel" role="tabpanel" aria-labelledby="tab-explore" style="display: none;">
+    <div class="toolbar">
+      <label for="explore-device-select">デバイス:</label>
+      <select id="explore-device-select"></select>
+      <button id="explore-btn-refresh-devices" class="secondary">デバイス一覧を更新</button>
+    </div>
+    <div id="explore-banner" class="banner"></div>
+
+    <div class="explore-body">
+      <div class="explore-form">
+        <div class="explore-form-row">
+          <label for="explore-bundle-id">対象アプリの bundle ID / パッケージ名</label>
+          <input type="text" id="explore-bundle-id">
+        </div>
+        <div class="explore-form-row">
+          <label for="explore-goal">テストの目標(自然言語)</label>
+          <textarea id="explore-goal" placeholder="例: ログインしてホーム画面が表示されることを確認する"></textarea>
+        </div>
+        <div class="explore-form-row">
+          <label for="explore-max-steps">最大ステップ数(1〜50)</label>
+          <input type="text" id="explore-max-steps" value="${DEFAULT_MAX_STEPS}">
+        </div>
+        <div class="explore-form-row explore-form-buttons">
+          <button id="explore-btn-start">探索を開始</button>
+          <button id="explore-btn-cancel" class="secondary" disabled>キャンセル</button>
+          <span id="explore-running-label"></span>
+        </div>
+        <div id="explore-form-error" class="explore-form-error"></div>
+      </div>
+
+      <div class="explore-log-header">実行ログ</div>
+      <div id="explore-log" class="explore-log"></div>
+
+      <div id="explore-result" class="explore-result"></div>
+      <button id="explore-btn-open-file" class="secondary explore-open-file-btn" style="display: none;">ファイルを開く</button>
     </div>
   </div>
 

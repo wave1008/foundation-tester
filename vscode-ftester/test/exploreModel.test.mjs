@@ -18,6 +18,7 @@ import {
   formatExploreLogLine,
   formatStepProgressMessage,
   isExploreEvent,
+  isExploreWebviewEnvelope,
   parseMaxSteps,
   validateBundleIdInput,
   validateGoalInput,
@@ -315,6 +316,47 @@ test("buildDeviceQuickPickItems: connected 以外(booted/offline/unknown)は det
   for (const item of items) {
     assert.ok(item.detail && item.detail.includes("⚠"), JSON.stringify(item));
   }
+});
+
+// ---- isExploreWebviewEnvelope ----
+
+test("isExploreWebviewEnvelope: type:'explore' + 正常な ExploreFromWebviewMessage を true と判定する", () => {
+  assert.equal(isExploreWebviewEnvelope({ type: "explore", message: { type: "refreshDevices" } }), true);
+  assert.equal(isExploreWebviewEnvelope({ type: "explore", message: { type: "cancel" } }), true);
+  assert.equal(isExploreWebviewEnvelope({ type: "explore", message: { type: "openFile" } }), true);
+  assert.equal(isExploreWebviewEnvelope({ type: "explore", message: { type: "selectDevice", id: "ios:x" } }), true);
+  assert.equal(
+    isExploreWebviewEnvelope({
+      type: "explore",
+      message: { type: "start", bundleId: "com.example.app", goal: "ログインする", maxSteps: "25" },
+    }),
+    true,
+  );
+});
+
+test("isExploreWebviewEnvelope: type が 'explore' 以外、または message が不正なら false", () => {
+  assert.equal(isExploreWebviewEnvelope({ type: "live", message: { type: "refreshDevices" } }), false);
+  assert.equal(isExploreWebviewEnvelope({ type: "explore", message: { type: "unknown" } }), false);
+  assert.equal(isExploreWebviewEnvelope({ type: "explore" }), false);
+  assert.equal(isExploreWebviewEnvelope(null), false);
+  assert.equal(isExploreWebviewEnvelope({}), false);
+});
+
+test("isExploreWebviewEnvelope: start はフィールド欠落/型不一致で false(maxSteps は文字列のまま検証前)", () => {
+  assert.equal(
+    isExploreWebviewEnvelope({
+      type: "explore",
+      message: { type: "start", bundleId: "com.example.app", goal: "ログインする" },
+    }),
+    false,
+  );
+  assert.equal(
+    isExploreWebviewEnvelope({
+      type: "explore",
+      message: { type: "start", bundleId: "com.example.app", goal: "ログインする", maxSteps: 25 },
+    }),
+    false,
+  );
 });
 
 // ---- 統合: mock-explore.mjs → NdjsonParser → isExploreEvent ----

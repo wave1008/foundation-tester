@@ -1,28 +1,30 @@
-// main.js
-// ライブ操作パネル webview のロジック。esbuild が media/live/main.js に iife 形式で
-// バンドルし、renderHtml() が <script src="..."> で読み込む。
+// モニターパネル「ライブ操作」タブ(#panel-live)。main.js が applyLiveMessage を message
+// ディスパッチャに組み込む。host への送信は type:'live' の封筒で包む(対向: src/liveModel.ts の
+// LiveWebviewEnvelope、処理は src/monitorLiveController.ts)。
 
-  (function () {
-const vscode = acquireVsCodeApi();
+import { vscode } from './vscodeApi.js';
 
-const deviceSelect = document.getElementById('device-select');
-const deviceWarning = document.getElementById('device-warning');
-const busyLabel = document.getElementById('busy-label');
-const banner = document.getElementById('banner');
+function post(message) {
+  vscode.postMessage({ type: 'live', message });
+}
 
-const screenshotWrap = document.getElementById('screenshot-wrap');
-const screenshot = document.getElementById('screenshot');
-const hoverBox = document.getElementById('hover-box');
-const screenshotPlaceholder = document.getElementById('screenshot-placeholder');
+const deviceSelect = document.getElementById('live-device-select');
+const deviceWarning = document.getElementById('live-device-warning');
+const busyLabel = document.getElementById('live-busy-label');
+const banner = document.getElementById('live-banner');
 
-const bundleIdInput = document.getElementById('bundle-id');
-const iosPathInput = document.getElementById('ios-path');
-const androidPathInput = document.getElementById('android-path');
-const installHint = document.getElementById('install-hint');
-const typeTextInput = document.getElementById('type-text');
-const typeRefHint = document.getElementById('type-ref-hint');
-const actionError = document.getElementById('action-error');
-const elementsList = document.getElementById('elements-list');
+const screenshot = document.getElementById('live-screenshot');
+const hoverBox = document.getElementById('live-hover-box');
+const screenshotPlaceholder = document.getElementById('live-screenshot-placeholder');
+
+const bundleIdInput = document.getElementById('live-bundle-id');
+const iosPathInput = document.getElementById('live-ios-path');
+const androidPathInput = document.getElementById('live-android-path');
+const installHint = document.getElementById('live-install-hint');
+const typeTextInput = document.getElementById('live-type-text');
+const typeRefHint = document.getElementById('live-type-ref-hint');
+const actionError = document.getElementById('live-action-error');
+const elementsList = document.getElementById('live-elements-list');
 
 const STATE_LABEL = {
   connected: '接続済み',
@@ -38,9 +40,9 @@ let selectedRef = null;
 let busy = false;
 
 const busyButtons = [
-  'btn-refresh-devices', 'btn-launch', 'btn-terminate', 'btn-pick-ios', 'btn-pick-android',
-  'btn-install', 'btn-refresh-snapshot', 'btn-swipe-up', 'btn-swipe-down', 'btn-swipe-left',
-  'btn-swipe-right', 'btn-type',
+  'live-btn-refresh-devices', 'live-btn-launch', 'live-btn-terminate', 'live-btn-pick-ios',
+  'live-btn-pick-android', 'live-btn-install', 'live-btn-refresh-snapshot', 'live-btn-swipe-up',
+  'live-btn-swipe-down', 'live-btn-swipe-left', 'live-btn-swipe-right', 'live-btn-type',
 ].map((id) => document.getElementById(id));
 
 function setBusy(value) {
@@ -92,12 +94,13 @@ function applyDevices(devices, selectedId) {
 deviceSelect.addEventListener('change', () => {
   updateDeviceWarning();
   updateInstallHint();
-  vscode.postMessage({ type: 'selectDevice', id: deviceSelect.value });
+  post({ type: 'selectDevice', id: deviceSelect.value });
 });
 
 // ---- スクリーンショット(クリック=タップ、要素ホバー=枠オーバーレイ) -----------------
 
-// liveModel.ts の frameToDisplayRect と同じ計算(webview は CSP により import 不可のため複製)。
+// liveModel.ts の frameToDisplayRect と同じ計算(webview は CSP により import 不可のため複製。
+// liveModel.ts 側を変更したらここも追随させること)。
 function frameToDisplayRect(frame, screen, display) {
   if (screen.width <= 0 || screen.height <= 0) {
     return { x: 0, y: 0, width: 0, height: 0 };
@@ -125,7 +128,7 @@ function applySnapshot(message) {
 screenshot.addEventListener('click', (event) => {
   if (busy || !lastScreen) { return; }
   const rect = screenshot.getBoundingClientRect();
-  vscode.postMessage({
+  post({
     type: 'tapPoint',
     clickX: event.clientX - rect.left,
     clickY: event.clientY - rect.top,
@@ -161,7 +164,7 @@ function renderElements() {
       row.classList.add('selected');
       selectedRef = element.ref;
       typeRefHint.textContent = '→ ref ' + element.ref + ' に入力';
-      vscode.postMessage({ type: 'tapRef', ref: element.ref });
+      post({ type: 'tapRef', ref: element.ref });
     });
     row.addEventListener('mouseenter', () => showHover(element));
     row.addEventListener('mouseleave', hideHover);
@@ -171,50 +174,48 @@ function renderElements() {
 
 // ---- 操作ボタン ------------------------------------------------------------------
 
-document.getElementById('btn-refresh-devices').addEventListener('click', () => {
-  vscode.postMessage({ type: 'refreshDevices' });
+document.getElementById('live-btn-refresh-devices').addEventListener('click', () => {
+  post({ type: 'refreshDevices' });
 });
-document.getElementById('btn-refresh-snapshot').addEventListener('click', () => {
+document.getElementById('live-btn-refresh-snapshot').addEventListener('click', () => {
   showActionError('');
-  vscode.postMessage({ type: 'refreshSnapshot' });
+  post({ type: 'refreshSnapshot' });
 });
-document.getElementById('btn-launch').addEventListener('click', () => {
+document.getElementById('live-btn-launch').addEventListener('click', () => {
   showActionError('');
-  vscode.postMessage({ type: 'launch', bundleId: bundleIdInput.value });
+  post({ type: 'launch', bundleId: bundleIdInput.value });
 });
-document.getElementById('btn-terminate').addEventListener('click', () => {
+document.getElementById('live-btn-terminate').addEventListener('click', () => {
   showActionError('');
-  vscode.postMessage({ type: 'terminate' });
+  post({ type: 'terminate' });
 });
-document.getElementById('btn-pick-ios').addEventListener('click', () => {
-  vscode.postMessage({ type: 'pickInstallFile', platform: 'ios' });
+document.getElementById('live-btn-pick-ios').addEventListener('click', () => {
+  post({ type: 'pickInstallFile', platform: 'ios' });
 });
-document.getElementById('btn-pick-android').addEventListener('click', () => {
-  vscode.postMessage({ type: 'pickInstallFile', platform: 'android' });
+document.getElementById('live-btn-pick-android').addEventListener('click', () => {
+  post({ type: 'pickInstallFile', platform: 'android' });
 });
-document.getElementById('btn-install').addEventListener('click', () => {
+document.getElementById('live-btn-install').addEventListener('click', () => {
   showActionError('');
   const selected = currentDevices.find((d) => d.id === deviceSelect.value);
   const isAndroid = !!selected && selected.platform === 'android';
   const path = isAndroid ? androidPathInput.value : iosPathInput.value;
-  vscode.postMessage({ type: 'install', path: path });
+  post({ type: 'install', path: path });
 });
 for (const dir of ['up', 'down', 'left', 'right']) {
-  document.getElementById('btn-swipe-' + dir).addEventListener('click', () => {
+  document.getElementById('live-btn-swipe-' + dir).addEventListener('click', () => {
     showActionError('');
-    vscode.postMessage({ type: 'swipe', direction: dir });
+    post({ type: 'swipe', direction: dir });
   });
 }
-document.getElementById('btn-type').addEventListener('click', () => {
+document.getElementById('live-btn-type').addEventListener('click', () => {
   showActionError('');
-  vscode.postMessage({ type: 'typeText', text: typeTextInput.value, ref: selectedRef });
+  post({ type: 'typeText', text: typeTextInput.value, ref: selectedRef });
 });
 
-// ---- メッセージ受信 ---------------------------------------------------------------
+// ---- host からのメッセージ(type:'live' 封筒の中身。main.js のディスパッチャから呼ばれる) --------
 
-window.addEventListener('message', (event) => {
-  const message = event.data;
-  if (!message || typeof message.type !== 'string') { return; }
+export function applyLiveMessage(message) {
   switch (message.type) {
     case 'devices':
       applyDevices(message.devices, message.selectedId);
@@ -238,5 +239,14 @@ window.addEventListener('message', (event) => {
     default:
       break;
   }
+}
+
+// 初回タブ活性化時にデバイス一覧を自動取得する(旧ライブ操作パネルの show()→refreshDevices相当。
+// tabs.js の switchTab が発火する ft-tab-activated に依存)。
+let initialized = false;
+document.addEventListener('ft-tab-activated', (event) => {
+  if (event.detail.tab === 'live' && !initialized) {
+    initialized = true;
+    post({ type: 'refreshDevices' });
+  }
 });
-  })();

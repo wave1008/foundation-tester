@@ -239,7 +239,10 @@ export type MonitorToWebviewMessage =
       readonly dupLabel: string;
       readonly existing: readonly string[];
       readonly caseInsensitiveDup: boolean;
-    };
+    }
+  // ホスト駆動のタブ切替(例: ftester.showLiveControl でパネルを開き直さず「ライブ操作」タブへ
+  // 直接切り替える)。webview 側は tabs.js の activateTab へそのまま渡す。
+  | { readonly type: "switchTab"; readonly tab: string };
 
 /** 検証済みの MonitorEvent を、webview へそのまま postMessage できる形に変換する。 */
 export function toWebviewMessage(event: MonitorEvent): MonitorToWebviewMessage {
