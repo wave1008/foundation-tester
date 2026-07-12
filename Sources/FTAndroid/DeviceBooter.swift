@@ -170,16 +170,18 @@ public enum DeviceBooter {
         if platform == "ios" {
             let catalog = try SimulatorCatalog.devices()
             let sim = try SimulatorCatalog.resolve(spec: spec, in: catalog)
+            // ブリッジ停止は booted ガードより先に、pid ファイル+プロセス引数の UDID 照合で行う
+            // (stopMatching 参照)。①hybrid は同一シミュに複数ブリッジ ②/status 無応答のゾンビ
+            // xcodebuild は HTTP スキャン不可視 ③シミュ停止済みでもゾンビが残っていると生きた
+            // XCUITest セッションがシミュレータを再ブートさせ「停止したのに起動中に戻る」症状になる
+            if let repoRoot {
+                for port in BridgeLauncher.stopMatching(udid: sim.udid, repoRoot: repoRoot) {
+                    log("→ \(spec.name): ブリッジ停止(port \(port))")
+                }
+            }
             guard sim.booted else {
                 log("✔ \(spec.name): 既に停止しています")
                 return
-            }
-            if let repoRoot {
-                let running = await BridgeProvisioner(repoRoot: repoRoot).scanRunningBridges(catalog: catalog)
-                if let port = running.first(where: { $0.value.udid == sim.udid })?.key {
-                    try? BridgeLauncher(repoRoot: repoRoot, device: sim.udid, port: port).stop()
-                    log("→ \(spec.name): ブリッジ停止(port \(port))")
-                }
             }
             // macOS 27 beta 3: simctl shutdown は「Unable to shutdown...」(405)を返しつつ実際には
             // Booted のまま残るレースがあるため、exit code でなくカタログの実状態で成否判定する
