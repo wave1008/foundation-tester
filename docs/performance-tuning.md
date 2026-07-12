@@ -208,19 +208,31 @@ window/transition/animator の `*_scale` はチューニングノブではなく
        display-integration メタデータを完全再現できず。focus は効くが gesture 不発)。
        snapshot が ref→AX 要素を保持し、tap(ref) はその要素を activate する。座標/活性化不能な
        要素は合成タッチにフォールバック。XCUITest 比 767→~280ms。
-     - **ホスト統合: `FTBridgeClient` 無改変**。注入起動済みブリッジを provisioner が
-       /status ポートスキャンで発見・再利用し、実シナリオを in-app 経由で駆動できる(keystone)。
+     - **swipe: `accessibilityScroll()`**(tap と同じくスクロールのジェスチャ認識器も合成タッチで
+       駆動できないため。面積最大の可視 `UIScrollView` を探して呼ぶ。合成スワイプにフォールバック)。
      - screenshot: `drawHierarchy` → PNG、45ms。
-     **実シナリオ実証(ログイン画面.S0010、実機3/3合格)**: `FTBridgeClient` 無改変で
-     in-app 経由駆動、**step 合計 ~11.0s(XCUITest)→ ~3.0s(3.7倍速)**。in-app の残り時間は
-     ほぼシナリオ自身の明示 wait(1s)と、別プロセスのシステム UI(パスワード保存シート「今はしない」)
-     への optional タップ空振り(~750ms)で、エンジンの実操作(type/tap/exist)は合計 ~1.1s。
-     **残り(未完)**: (a) **/session の状態リセット**(in-app は自己再起動不可=ホスト側
-     `BridgeProvisioner` が simctl launch+注入を担う必要。現状は手動注入起動で単一シナリオのみ。
-     複数シナリオ/反復には未対応)。(b) **ホスト統合の恒久化**(シミュ=in-app / 実機=XCUITest の
-     選択、provisioner に launch モード追加)。(c) swipe/press の実機確認(tap 同様 gesture 系は
-     accessibilityScroll 等の検討要)。(d) AX 忠実度(accessibilityIdentifier が取れない
-     =SwiftUI の id は合成 AX 要素側、空 TextField の value に placeholder が乗る等の微差)。
+     - **ホスト統合(engine 選択+lifecycle)= 完成**: machine プロファイルのデバイスに
+       `engine`("xcuitest" 既定 / "inapp")を持たせ、`engine=inapp` のときサブプロセスが
+       `InAppDriver`(launch=simctl 再起動+dylib 注入、他は HTTP で `BridgeClient` へ委譲)を使う。
+       provisioner は注入起動済みブリッジを /status スキャンで発見・再利用、不足分は
+       `InAppLauncher`(注入起動)で起動。**ホスト実行系(`FTBridgeClient`/RunOrchestrator/
+       ScenarioHost)は engine フィールドを通すだけで概ね無改変**。
+     **実シナリオ実証(ログイン画面.S0010、実機)**:
+     - 単発(warm・状態リセット無し): step 合計 ~11.0s(XCUITest)→ **~3.0s(3.7倍速)**。
+     - **プロファイル経由 3 イテレーション: 全 passed=True**(以前は 2 回目以降ログイン済みで失敗)。
+       各イテレーションの launch = `InAppDriver` の simctl 再起動+注入 **~2900ms**(fresh 状態確保。
+       XCUITest の launch 4200〜5400ms より速い)。step 合計 ~6.2s(XCUITest ~11s の 1.6倍速)。
+       **XCUITest 経路(engine 既定)は回帰なし・FTCore 143 テスト全パス**。
+     残り時間の内訳: launch(fresh 起動)2.9s + シナリオ自身の明示 wait(1s)+ 別プロセスの
+     システム UI(パスワード保存シート「今はしない」)への optional タップ空振り(~750ms)。
+     エンジンの実操作(type/tap/exist)は合計 ~1.1s。
+     **残り(未完・refinement)**: (a) **AX 忠実度**: SwiftUI の `.accessibilityIdentifier` を
+     プロセス内走査で拾えない(SwiftUI は id を `AccessibilityNode` の標準 `accessibilityIdentifier`
+     プロパティに露出せず。XCUITest は testmanagerd 深部で読む)。`#email` 等の **id 単独セレクタは
+     解決不能**(`#email||.TextField` 等フォールバック付きは可)。空 TextField の value に
+     placeholder が乗る微差も。(b) **swipe/press の実スクロール検証**(SampleApp に注入可能な
+     スクロール画面が無く未実施。実装パターンは tap と対で正しい)。(c) install 前注入起動の順序、
+     並列複数 in-app デバイスの検証。
      なお XCUITest の quiescence 自体を私有 API で無効化する案(WDA 方式)は、
      代替の整定信号がプロセス外から得られないため 2 とセットでない限り採らない
 - **シナリオ設計の見直し**: 上記 iPhone Air フレークのようなデバイス依存アサーションの排除は、
