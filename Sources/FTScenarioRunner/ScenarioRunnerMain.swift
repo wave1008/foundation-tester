@@ -159,11 +159,26 @@ struct RunScenario: AsyncParsableCommand {
             switch runPlatform {
             case "ios":
                 if engine == "inapp" || engine == "hybrid" {
-                    // in-app は launch=simctl 再起動+dylib 注入(自己再起動できないため)
-                    let repoRoot = try RepoRoot.find()
-                    driver = InAppDriver(repoRoot: repoRoot, udid: udid ?? "booted", port: port)
-                    if engine == "hybrid", let xcuiPort {
-                        fallbackDriver = SystemUIDriver(port: xcuiPort)
+                    // in-app は注入先アプリのプロセスしか駆動できない。シナリオの対象アプリが
+                    // 注入先(/status の sessionBundleID)と異なる場合、別アプリを注入起動すると
+                    // ポート衝突で旧ブリッジが偽成功応答し「裏のアプリを操作して失敗」する。
+                    // hybrid はそのシナリオを丸ごと XCUITest ブリッジで駆動、inapp は明示エラー。
+                    let injected = try await BridgeClient(port: port).status().sessionBundleID
+                    if let injected, injected != testClass.app {
+                        guard engine == "hybrid", let xcuiPort else {
+                            throw ValidationError(
+                                "シナリオ \(scenarioID) の対象アプリ \(testClass.app) は in-app ブリッジの"
+                                + "注入先 \(injected) と異なるため engine=inapp では実行できません"
+                                + "(engine=hybrid なら XCUITest 経由で自動駆動されます)")
+                        }
+                        driver = BridgeClient(port: xcuiPort)
+                    } else {
+                        // in-app は launch=simctl 再起動+dylib 注入(自己再起動できないため)
+                        let repoRoot = try RepoRoot.find()
+                        driver = InAppDriver(repoRoot: repoRoot, udid: udid ?? "booted", port: port)
+                        if engine == "hybrid", let xcuiPort {
+                            fallbackDriver = SystemUIDriver(port: xcuiPort)
+                        }
                     }
                 } else {
                     driver = BridgeClient(port: port)
