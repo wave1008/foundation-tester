@@ -264,9 +264,21 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                                       detail: error.localizedDescription,
                                       iosPort: nil, androidSerial: nil)
         }
-        // 同名の起動中シミュレータが複数あると特定できないため、一意に決まるときだけ connected とする
-        let matches = bridgeStatuses.filter { $0.value.device == sim.name }
-        if matches.count == 1, let port = matches.first?.key {
+        // /status には UDID が無いため、ブリッジの帰属はデバイス名でしか判定できない。
+        // hybrid は同一シミュレータに inapp+xcuitest の2ブリッジが並ぶため、複数一致でも
+        // 同名の起動中シミュレータが1台なら全ブリッジがそのシミュレータ帰属と確定できる。
+        // その場合は全画面スクショが取れる xcuitest を優先する(in-app はアプリ外を撮れず、
+        // アプリ終了で消える)。同名の起動中シミュレータが複数のときは特定不能 = connected にしない
+        let matches = bridgeStatuses
+            .filter { $0.value.device == sim.name }
+            .sorted { $0.key < $1.key }
+        let port: UInt16? = {
+            if matches.count == 1 { return matches[0].key }
+            guard !matches.isEmpty,
+                  catalog.filter({ $0.booted && $0.name == sim.name }).count == 1 else { return nil }
+            return (matches.first { ($0.value.engine ?? "xcuitest") == "xcuitest" } ?? matches[0]).key
+        }()
+        if let port {
             return DeviceRuntimeState(target: target, state: "connected",
                                       detail: "port \(port)", iosPort: port, androidSerial: nil)
         }
