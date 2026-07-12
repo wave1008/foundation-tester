@@ -212,6 +212,10 @@ window/transition/animator の `*_scale` はチューニングノブではなく
        駆動できないため。面積最大の可視 `UIScrollView` を探し contentOffset を ±可視領域 85% 動かす。
        `accessibilityScroll` は SwiftUI List で片方向しか効かず不安定だったので不採用。双方向スクロール
        を実機確認済み)。無い場合は合成スワイプにフォールバック。
+     - **press: 合成タッチ(down→ランループ保持→up)で動作**(意外にも tap/swipe と違い長押し
+       ジェスチャは発火する。保持中に gesture 認識器が touch を処理するため)。コンテキストメニュー
+       (SwiftUI `.contextMenu`)を開き、メニュー項目を accessibilityActivate でタップする完全フローを
+       実機確認済み。
      - screenshot: `drawHierarchy` → PNG、45ms。
      - **ホスト統合(engine 選択+lifecycle)= 完成**: machine プロファイルのデバイスに
        `engine`("xcuitest" 既定 / "inapp")を持たせ、`engine=inapp` のときサブプロセスが
@@ -234,10 +238,12 @@ window/transition/animator の `*_scale` はチューニングノブではなく
      **セレクタ直接呼び出し(`FTAccessibilityIdentifier`)に修正して解決**。`ログインテスト.S0010`
      (`#email`/`#password`/`#login_error` 等の id 単独セレクタ+relaunchApp+エラーパス+textIs)が
      in-app 経由で passed=True。
-     **残り(未完・軽微)**: (a) 空 TextField の value に placeholder 文字が乗る微差(XCUITest 版との
-     わずかな差)。(b) press の実機確認(長押しを要するシナリオが SampleApp に無い。tap/swipe の
-     パターンが対で正しいので accessibilityActivate/長押し系 AX action を検討)。(c) 並列複数
-     in-app デバイス・install 前注入起動の順序。
+     **軽微項目=すべて解決**: (a) 空 TextField の value に placeholder が乗る微差 → 実テキスト(.text)が
+     空なら value=nil に修正(非空 SecureTextField は accessibilityValue のマスクを維持し実パスワードは
+     晒さない)。(b) press → 実機確認済み(上記)。(c) 並列複数 in-app デバイス → シミュ1-inapp(8123)+
+     シミュ2-inapp(8124)で 2 シナリオ並列全 passed(port/udid 配線が並列で正しい)。install 前注入起動の
+     順序は engine=inapp+autoInstall のとき注入起動が install より先に走る(現状はアプリ事前 install が
+     必要=エラーメッセージで案内)。
      なお XCUITest の quiescence 自体を私有 API で無効化する案(WDA 方式)は、
      代替の整定信号がプロセス外から得られないため 2 とセットでない限り採らない
 - **シナリオ設計の見直し**: 上記 iPhone Air フレークのようなデバイス依存アサーションの排除は、
