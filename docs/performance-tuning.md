@@ -174,19 +174,32 @@ window/transition/animator の `*_scale` はチューニングノブではなく
        全レイヤ `animationKeys` 空」を整定判定。300ms アニメを **319ms・ポーリング 5 回**で
        検知(ビジーループなし=Android QuietWaiter の iOS 版)。XCUITest の保守的な
        暗黙 quiescence(~1s/action)を置換できる。
-     - タッチ: `hitTest:` が対象 UITextField に解決、`becomeFirstResponder` 成功、
-       `IOHIDEventCreateDigitizerFingerEvent`(IOKit)がプロセス内で dlsym 可能。
-       完全なダウン→ムーブ→アップ合成は Phase 3 の実装本体だが、**API 経路は到達確認済み**
-       (EarlGrey/KIF がシミュレータで長年使う経路)。
+     - タッチ: 合成タップ(`UITouch` + `[app _touchesEvent]` + `sendEvent:`。`setWindow:`
+       `_setLocationInWindow:resetPrevious:` `setPhase:` 等の private セレクタは Xcode 27
+       beta 3 に実在)だけで、`becomeFirstResponder` を呼ばずに対象 UITextField が
+       first responder 化(実イベントパイプラインが駆動)。`IOHIDEventCreateDigitizerFingerEvent`
+       も dlsym 可能で代替経路として使える(EarlGrey/KIF がシミュレータで長年使う経路)。
+     - Swift dylib: 単一 dylib に Swift `.o` + ObjC 構成子(`@_cdecl` を呼ぶ)を
+       リンクすれば Swift でも注入可・UIKit アクセス可。→ リポジトリの `BridgeHTTPServer`/
+       `BridgeDTO`(Foundation 依存のみ)を再利用できる。
      見込みは Android 並み(シナリオ ~2s 級)。制約: 実機は注入不可
      (自ビルドアプリへのリンク方式のみ)、タッチ合成に私有 API を使う。
      **XCUITest ランナー(Runner/)は実機用として残す**(ユーザー決定 2026-07-12)=
      単一実装原則の明示的な例外として「シミュレータ=in-app / 実機=XCUITest」の 2 経路を許容。
-     **Phase 3(本実装)の設計課題**: (a) `/session` はアプリ再起動でブリッジ自身が死ぬため、
-     起動だけはホスト側(`BridgeClient.launch` → simctl launch+注入)が担う=「HTTP 互換なら
-     ホスト無変更」は session/ライフサイクルだけ例外。(b) `/type` の方式(first responder への
-     直接挿入 vs キーボードイベント合成)。(c) HTTP サーバを dylib 内に持たせる(現行
-     `BridgeHTTPServer` は BSD ソケット直書きで移植容易)。
+  3. **Phase 3 着手済み(2026-07-12、branch ios-speedup / コミット「足場」)= `InAppBridge/`**:
+     DYLD 注入で対象アプリに常駐し HTTP 応答する in-app ブリッジ。既存 XCUITest 経路
+     (`Runner/`)には未接続=**追加のみ**。`build.sh` が `BridgeDTO`(共有)+ in-app 実装 +
+     ObjC 構成子を単一 dylib(`InAppBridge/build/libFTInAppBridge.dylib`)にリンク
+     (`swiftc -c -wmo` で複数ソースを1オブジェクト化)。`InAppSnapshot.swift` は
+     `UIAccessibility` API で AX ツリーを走査し `ElementInfo` を生成(フィルタ規則は
+     `BridgeRouter` の shouldInclude/makeInfo と対応)。**実機疎通済**(SampleApp 注入・
+     `SIMCTL_CHILD_DYLD_INSERT_LIBRARIES`+`SIMCTL_CHILD_FT_PORT`): `/status` 6ms・
+     `/snapshot` 35ms・6 要素を DTO 完全互換で返却し、**ホスト `FTBridgeClient` は無改変で疎通**
+     (keystone 実証)。**残りの実装**: ① アクション tap/type/swipe/press(合成タッチ+整定は
+     実証済、InAppRouter に統合)② `/session`(アプリ再起動でブリッジ自身が死ぬため起動は
+     ホスト側 `BridgeProvisioner` が simctl launch+注入で担う=HTTP 互換でも lifecycle だけ例外)
+     ③ `/screenshot` ④ ホスト統合(シミュ=in-app / 実機=XCUITest の選択、provisioner 改修)
+     ⑤ AX 忠実度の詰め(空 TextField の value に placeholder 文字が乗る等、XCUITest 版との微差)。
      なお XCUITest の quiescence 自体を私有 API で無効化する案(WDA 方式)は、
      代替の整定信号がプロセス外から得られないため 2 とセットでない限り採らない
 - **シナリオ設計の見直し**: 上記 iPhone Air フレークのようなデバイス依存アサーションの排除は、
