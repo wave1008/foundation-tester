@@ -196,26 +196,31 @@ window/transition/animator の `*_scale` はチューニングノブではなく
        起動時に **`_AXSSetAutomationEnabled(YES)`** で AX を活性化(XCUITest 相当。しないと
        `accessibilityFrame` が zero・label 空で全要素が落ちる)。フレームは `view.convert
        (bounds, to: nil)` で堅牢化。0.03〜0.06ms/回。
-     - 整定: `CFRunLoopObserver` + 16ms ハートビート。**無限反復アニメ(カーソル点滅等)は
-       除外**(数えると settle が cap に張り付く=重要な罠)。
-     - **type(テキスト入力): XCUITest 比 1616→~110ms(~15 倍)**。合成タップで対象へフォーカス
-       → 現 first responder(UIKeyInput)へ `insertText:`。
+     - 整定: `CFRunLoopObserver` + 16ms ハートビート(キーウィンドウのみ対象)。**除外必須の
+       アニメ2種**: ①無限反復(カーソル点滅・スピナー)②**iOS27 Liquid Glass の装飾モーフ**
+       (`CASDFElementLayer`/`_UILiquidLensView` の `match-*`/`punchout`。タブバー等が常時走らせる)。
+       いずれも数えると settle が cap(2500ms)に張り付く=**重要な罠**。除外後は遷移も 100〜250ms で収束。
+     - **type(テキスト入力): XCUITest 比 1482→~500ms**(合成タップでフォーカス→ first responder
+       (UIKeyInput)へ `insertText:`。合成タップの focus は view の touchesBegan/Ended に直接届く)。
+     - **tap: `accessibilityActivate()`(VoiceOver ダブルタップ相当=要素のデフォルトアクション発火)**。
+       これが決定打。**合成タッチ(UITouch+sendEvent / `_setHIDEvent:` / `_enqueueHIDEvent:` の
+       5方式)はいずれも SwiftUI Button 等のジェスチャ認識器を発火できなかった**(HID の
+       display-integration メタデータを完全再現できず。focus は効くが gesture 不発)。
+       snapshot が ref→AX 要素を保持し、tap(ref) はその要素を activate する。座標/活性化不能な
+       要素は合成タッチにフォールバック。XCUITest 比 767→~280ms。
      - **ホスト統合: `FTBridgeClient` 無改変**。注入起動済みブリッジを provisioner が
        /status ポートスキャンで発見・再利用し、実シナリオを in-app 経由で駆動できる(keystone)。
      - screenshot: `drawHierarchy` → PNG、45ms。
-     **未解決の課題(Phase 3 の残り本丸)**: **合成タップが SwiftUI Button 等の
-     ジェスチャ認識器ベースのコントロールを発火できない**。UITextField のフォーカスは
-     手動 UITouch+`sendEvent:` で効く(view の touchesBegan/Ended に直接届くため)が、
-     gesture 認識器は HID バックのイベントを要求する。試した 3 方式はいずれも不十分:
-     ① 手動 UITouch+sendEvent(focus は効くが gesture 不発)② `_setHIDEvent:`+UITouch
-     (同上)③ `_enqueueHIDEvent:`(focus すら不発=HID イベントに display-integration
-     メタデータが無いと UIKit が破棄)。**次段**: `IOHIDEventSetIntegerValue` で
-     `kIOHIDEventFieldDigitizerIsDisplayIntegrated` 等を設定した正しい IOHIDEvent を
-     `_enqueueHIDEvent:` に流す(WDA/EarlGrey/KIF の HID 手順を参照)。**これが解ければ
-     tap/swipe/press が完成し、シナリオ全体が Android 並み(~2-3s)になる見込み**。
-     - 他の残り: ホスト統合の恒久化(シミュ=in-app / 実機=XCUITest の選択、provisioner に
-       simctl launch+注入の launch モード追加)、AX 忠実度の詰め(空 TextField の value に
-       placeholder が乗る等、XCUITest 版との微差)。
+     **実シナリオ実証(ログイン画面.S0010、実機3/3合格)**: `FTBridgeClient` 無改変で
+     in-app 経由駆動、**step 合計 ~11.0s(XCUITest)→ ~3.0s(3.7倍速)**。in-app の残り時間は
+     ほぼシナリオ自身の明示 wait(1s)と、別プロセスのシステム UI(パスワード保存シート「今はしない」)
+     への optional タップ空振り(~750ms)で、エンジンの実操作(type/tap/exist)は合計 ~1.1s。
+     **残り(未完)**: (a) **/session の状態リセット**(in-app は自己再起動不可=ホスト側
+     `BridgeProvisioner` が simctl launch+注入を担う必要。現状は手動注入起動で単一シナリオのみ。
+     複数シナリオ/反復には未対応)。(b) **ホスト統合の恒久化**(シミュ=in-app / 実機=XCUITest の
+     選択、provisioner に launch モード追加)。(c) swipe/press の実機確認(tap 同様 gesture 系は
+     accessibilityScroll 等の検討要)。(d) AX 忠実度(accessibilityIdentifier が取れない
+     =SwiftUI の id は合成 AX 要素側、空 TextField の value に placeholder が乗る等の微差)。
      なお XCUITest の quiescence 自体を私有 API で無効化する案(WDA 方式)は、
      代替の整定信号がプロセス外から得られないため 2 とセットでない限り採らない
 - **シナリオ設計の見直し**: 上記 iPhone Air フレークのようなデバイス依存アサーションの排除は、
