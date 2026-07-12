@@ -10,3 +10,6 @@ reports/
 bench-results/
 *.log
 .vscode/
+
+# in-app bridge のビルド生成物
+InAppBridge/build/
