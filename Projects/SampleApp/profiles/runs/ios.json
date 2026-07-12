@@ -1,9 +1,15 @@
 {
   "app": "sampleapp",
   "devices": [
-    { "name": "シミュ1" },
-    { "name": "シミュ2" }
+    {
+      "name": "シミュ1"
+    },
+    {
+      "name": "シミュ2"
+    }
   ],
-  "heal": false,
-  "reportDir": "reports"
+  "heal": true,
+  "reportDir": "reports",
+  "machine": "M1 Max",
+  "iosInappEngine": true
 }

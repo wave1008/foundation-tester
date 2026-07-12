@@ -1,6 +1,12 @@
 {
   "app": "sampleapp",
-  "devices": [ { "name": "シミュ1-hybrid" } ],
+  "devices": [
+    {
+      "name": "シミュ1-hybrid"
+    }
+  ],
   "heal": false,
-  "reportDir": "reports"
+  "reportDir": "reports",
+  "machine": "M1 Max",
+  "iosInappEngine": false
 }

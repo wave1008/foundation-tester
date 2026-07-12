@@ -12,12 +12,10 @@
     },
     {
       "name": "エミュ2"
-    },
-    {
-      "name": "エミュ3"
     }
   ],
   "heal": true,
   "reportDir": "reports",
-  "machine": "M1 Max"
+  "machine": "M1 Max",
+  "iosInappEngine": true
 }
