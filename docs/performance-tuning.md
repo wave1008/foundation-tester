@@ -123,6 +123,15 @@ window/transition/animator の `*_scale` はチューニングノブではなく
 - `UiAutomation.setOnAccessibilityEventListener` は**1 枠しかない**。QuietWaiter が
   使用中なので、別用途でリスナが必要になったら QuietWaiter 経由で多重化すること
 - 長時間ベンチ中の画面ロックに注意(GUI E2E 全般の既知問題)
+- **フォールバック検証の偽陽性**: hybrid でシステム UI を tap できたか検証するとき、
+  セレクタの label が in-app の要素 label の**部分文字列**だと primary(in-app)が `contains`
+  で誤解決し、フォールバックが走らないのに tap が成功=**偽陽性**(label マッチは完全一致→
+  部分一致の順。§design)。検証は「in-app に部分一致すら無い label」で行う。さらに確実には
+  **同一シナリオを engine=inapp(フォールバック無)でも走らせ、当該 tap が失敗することを確認**
+  (negative control。engine 有無だけが差=フォールバック経路が働いた確証になる)
+- **通知許可ダイアログのリセットは `simctl privacy` では効かない**(あれは TCC=写真/連絡先等)。
+  通知権限は**アプリ再インストール(uninstall→install)でのみ未決定に戻る**。ダイアログ系の
+  fixture を繰り返し検証するときは各回 reinstall する
 - **アニメーション有効デバイスでは静穏判定後もアニメが画面を動かすため画像が stale になる**
   (a11y要素はFRESHだがscreenshotだけSTALE、という形で顕在化)。ブリッジ起動時に
   window/transition/animator の `*_scale` を自動で無効化する(2026-07-12組込み)。
