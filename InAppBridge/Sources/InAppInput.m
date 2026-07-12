@@ -63,11 +63,15 @@ static UITouch *ftMakeTouch(UIWindow *window, UIView *view, CGPoint p, NSTimeInt
     return t;
 }
 
-// point(window≒screen 座標)を正規化した display-integrated な HID デジタイザイベントを作る。
-static IOHIDEventRef ftMakeHIDEvent(CGPoint point, UITouchPhase phase) {
-    CGSize screen = UIScreen.mainScreen.bounds.size;
-    IOHIDFloat nx = screen.width > 0 ? point.x / screen.width : 0;
-    IOHIDFloat ny = screen.height > 0 ? point.y / screen.height : 0;
+// HID デジタイザの座標は「画面」正規化(0..1)。point は window 座標で来るため、window の
+// スクリーン座標へ変換してから screen サイズで割る(window が全画面でない場合=iPad Split View 等の
+// ずれ防止。UIScreen.main は非推奨なので window.screen を使う)。
+static IOHIDEventRef ftMakeHIDEvent(UIWindow *window, CGPoint point, UITouchPhase phase) {
+    UIScreen *scr = window.screen ?: UIScreen.mainScreen;
+    CGPoint sp = [window convertPoint:point toCoordinateSpace:scr.coordinateSpace];
+    CGSize screen = scr.bounds.size;
+    IOHIDFloat nx = screen.width > 0 ? sp.x / screen.width : 0;
+    IOHIDFloat ny = screen.height > 0 ? sp.y / screen.height : 0;
     uint64_t ts = mach_absolute_time();
     boolean_t touching = (phase != UITouchPhaseEnded && phase != UITouchPhaseCancelled);
     uint32_t mask = (phase == UITouchPhaseMoved) ? FT_HID_POSITION : (FT_HID_RANGE | FT_HID_TOUCH);
@@ -83,8 +87,8 @@ static IOHIDEventRef ftMakeHIDEvent(CGPoint point, UITouchPhase phase) {
 
 // UITouch(ヒットテスト・first responder 用)と HID イベント(gesture 認識用)を同じ
 // UITouchesEvent に載せて送る。
-static void ftDispatch(UITouch *t, CGPoint point, UITouchPhase phase) {
-    IOHIDEventRef hid = ftMakeHIDEvent(point, phase);
+static void ftDispatch(UIWindow *window, UITouch *t, CGPoint point, UITouchPhase phase) {
+    IOHIDEventRef hid = ftMakeHIDEvent(window, point, phase);
     UIApplication *app = UIApplication.sharedApplication;
     UIEvent *ev = [app _touchesEvent];
     [ev _clearTouches];
@@ -98,13 +102,13 @@ void FTSynthTap(UIWindow *window, CGPoint point) {
     UIView *hit = [window hitTest:point withEvent:nil] ?: window;
     NSTimeInterval ts = NSProcessInfo.processInfo.systemUptime;
     UITouch *t = ftMakeTouch(window, hit, point, ts);
-    ftDispatch(t, point, UITouchPhaseBegan);
+    ftDispatch(window, t, point, UITouchPhaseBegan);
     // タップジェスチャ認識器が began を処理する猶予(同一ランループで ended まで送ると遷移不能)
     [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.03]];
     [t setPhase:UITouchPhaseEnded];
     [t _setLocationInWindow:point resetPrevious:NO];
     [t setTimestamp:NSProcessInfo.processInfo.systemUptime];
-    ftDispatch(t, point, UITouchPhaseEnded);
+    ftDispatch(window, t, point, UITouchPhaseEnded);
 }
 
 void FTSynthSwipe(UIWindow *window, CGPoint from, CGPoint to, int steps) {
@@ -112,7 +116,7 @@ void FTSynthSwipe(UIWindow *window, CGPoint from, CGPoint to, int steps) {
     UIView *hit = [window hitTest:from withEvent:nil] ?: window;
     NSTimeInterval ts = NSProcessInfo.processInfo.systemUptime;
     UITouch *t = ftMakeTouch(window, hit, from, ts);
-    ftDispatch(t, from, UITouchPhaseBegan);
+    ftDispatch(window, t, from, UITouchPhaseBegan);
     for (int i = 1; i <= steps; i++) {
         CGFloat f = (CGFloat)i / (CGFloat)steps;
         CGPoint p = CGPointMake(from.x + (to.x - from.x) * f, from.y + (to.y - from.y) * f);
@@ -120,25 +124,25 @@ void FTSynthSwipe(UIWindow *window, CGPoint from, CGPoint to, int steps) {
         [t _setLocationInWindow:p resetPrevious:NO];
         [t setPhase:UITouchPhaseMoved];
         [t setTimestamp:ts];
-        ftDispatch(t, p, UITouchPhaseMoved);
+        ftDispatch(window, t, p, UITouchPhaseMoved);
     }
     ts += 0.01;
     [t setPhase:UITouchPhaseEnded];
     [t setTimestamp:ts];
-    ftDispatch(t, to, UITouchPhaseEnded);
+    ftDispatch(window, t, to, UITouchPhaseEnded);
 }
 
 void FTSynthPress(UIWindow *window, CGPoint point, double duration) {
     UIView *hit = [window hitTest:point withEvent:nil] ?: window;
     NSTimeInterval ts = NSProcessInfo.processInfo.systemUptime;
     UITouch *t = ftMakeTouch(window, hit, point, ts);
-    ftDispatch(t, point, UITouchPhaseBegan);
+    ftDispatch(window, t, point, UITouchPhaseBegan);
     // 長押しの認識にはタイマ発火が要るため、押下を保持したままランループを回す
     [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:duration]];
     [t setPhase:UITouchPhaseEnded];
     [t _setLocationInWindow:point resetPrevious:NO];
     [t setTimestamp:NSProcessInfo.processInfo.systemUptime];
-    ftDispatch(t, point, UITouchPhaseEnded);
+    ftDispatch(window, t, point, UITouchPhaseEnded);
 }
 
 // first responder 探索: nil ターゲットの sendAction は first responder に届く(公開APIの定番手法)
