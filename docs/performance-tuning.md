@@ -285,11 +285,17 @@ window/transition/animator の `*_scale` はチューニングノブではなく
        解決不可)**。同一アプリ・同一手順・唯一の差はフォールバック driver の有無 → フォールバック経路が
        働いた確証。既存 `ログインテスト.S0010` も hybrid で全 passed(通常シナリオに非回帰)。
        **アラート文言はロケール依存**(この個体は英語 "Allow"/"Don't Allow")。
+     - **シナリオ単位の自動ルーティング**(ScenarioRunnerMain のドライバ構築): シナリオの対象アプリ
+       (`@TestClass(app:)`)が in-app 注入先(in-app /status の sessionBundleID)と**異なる**とき、
+       hybrid はそのシナリオを**丸ごと XCUITest ブリッジで駆動**(iOS設定アプリ等のシナリオが既定 ON でも
+       動く)。engine=inapp(明示)は明示エラー。**この分岐が無いと別アプリの注入起動がポート衝突で
+       旧ブリッジの偽成功応答になり「裏のアプリを操作して失敗」する**(E2E で実際に発生)。
      - **未達**: リッチなサービス所有シート(iOS27 写真限定ライブラリ=com.apple.PhotosViewService)は
        app.snapshot() の1アプリツリーモデルでは掴めない。**推奨運用**: 単純アラートはハイブリッド、
        リッチシートや確実性重視は `simctl privacy grant`/`defaults write` でダイアログを最初から出さない
-       方が安価・確実。**deliberate フルアプリ切替(設定アプリへ遷移して操作等)は本実装の対象外**
-       (フォールバックは「アプリ前面のまま出るシステム UI」向け。フルアプリ切替は別途 stateful フロー)。
+       方が安価・確実。**シナリオ途中の deliberate フルアプリ切替(sampleapp 操作中に設定アプリへ遷移等)
+       は対象外**(フォールバックは「アプリ前面のまま出るシステム UI」向け。シナリオ丸ごと別アプリは
+       上記ルーティングで XCUITest が担う)。
      - 使い方(推奨): **run プロファイルの `iosInappEngine`(既定 true=ON。GUI「高速なinappエンジンを
        使用する(iOS)」チェックボックス)で選ぶ**。ON → iOS デバイスの実効エンジンを "hybrid"、OFF →
        "xcuitest"(`ProfileResolver.resolve`)。マシンプロファイルの device に `engine` を明示していれば
