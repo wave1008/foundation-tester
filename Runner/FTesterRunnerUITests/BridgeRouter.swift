@@ -104,8 +104,9 @@ final class BridgeRouter {
         let req = try decode(TypeRequest.self, body)
         let app = try requireApp()
         if let ref = req.ref {
+            // tap() が quiescence まで待つため追加待ちは不要(旧: 固定400ms・keyboards クエリは
+            // キーボードが別プロセス扱いのため常にタイムアウトし逆効果だった。2026-07-12実測)
             coordinate(app, try resolvePoint(ref: ref, x: nil, y: nil)).tap()
-            usleep(400_000)  // フォーカスとキーボード表示を待つ
         }
         app.typeText(req.text)
         return .json(OKResponse())

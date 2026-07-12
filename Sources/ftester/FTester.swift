@@ -81,6 +81,22 @@ struct Doctor: AsyncParsableCommand {
             print("✅ 起動中のシミュレータ: \(booted.joined(separator: ", "))")
         }
 
+        if let bootedDevices = try? SimulatorCatalog.devices().filter(\.booted) {
+            for device in bootedDevices {
+                // 未設定キーは defaults read が非0で終了する(未設定 = 無効相当として扱う)
+                let read = try? Shell.run([
+                    "xcrun", "simctl", "spawn", device.udid,
+                    "defaults", "read", "com.apple.Accessibility", "ReduceMotionEnabled",
+                ])
+                let enabled = read?.status == 0
+                    && read?.output.trimmingCharacters(in: .whitespacesAndNewlines) == "1"
+                if !enabled {
+                    print("     ⚠️ \(device.name): Reduce Motion が無効です。"
+                          + "アニメーション待ちで遅くなります(次回ブリッジ起動時に自動で有効になります)")
+                }
+            }
+        }
+
         let xcodegen = try Shell.run(["which", "xcodegen"])
         print(xcodegen.status == 0
               ? "✅ xcodegen: \(xcodegen.output.trimmingCharacters(in: .whitespacesAndNewlines))"
