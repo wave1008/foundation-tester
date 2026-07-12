@@ -114,18 +114,26 @@ enum InAppSnapshot {
         let enabled = !traits.contains(.notEnabled)
         let id = axIdentifier(node)
         let label = node.accessibilityLabel
-        let value = node.accessibilityValue
         return ElementInfo(
             ref: ref,
             type: typeName(type),
             identifier: (id?.isEmpty ?? true) ? nil : id,
             label: (label?.isEmpty ?? true) ? nil : label,
-            value: (value?.isEmpty ?? true) ? nil : value,
+            value: valueString(node),
             placeholder: (node as? UITextField)?.placeholder,
             enabled: enabled,
             frame: FTRect(x: frame.origin.x, y: frame.origin.y,
                           width: frame.width, height: frame.height),
             depth: depth)
+    }
+
+    // 空の UITextField は accessibilityValue が placeholder を返すため value に漏れる。
+    // 実テキストが空なら value なし(placeholder は placeholder フィールドで返す)。
+    // 非空の SecureTextField は accessibilityValue がマスク(•••)を返すので実テキストは晒さない。
+    private static func valueString(_ node: NSObject) -> String? {
+        if let tf = node as? UITextField, (tf.text ?? "").isEmpty { return nil }
+        let value = node.accessibilityValue
+        return (value?.isEmpty ?? true) ? nil : value
     }
 
     private static func axFrame(_ node: NSObject) -> CGRect {
