@@ -159,19 +159,26 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     /// 省略可(既存プロファイルとの後方互換のため必須にしない)。優先順位は
     /// ProfileResolver.determineMachine 参照
     public var machine: String?
+    /// iOS の高速な in-app エンジン(ハイブリッド)を使うか(既定 true=ON)。
+    /// true → iOS デバイスの実効エンジンを "hybrid"(in-app 主+XCUITest フォールバック)、
+    /// false → "xcuitest" にする。マシンプロファイルでデバイスに engine を明示している場合は
+    /// そちらが優先(resolve 参照)。Android には影響しない。
+    public var iosInappEngine: Bool?
 
     public init(app: String? = nil, devices: [RunDeviceRef]? = nil, heal: Bool? = nil,
-                reportDir: String? = nil, defaultTimeout: Int? = nil, machine: String? = nil) {
+                reportDir: String? = nil, defaultTimeout: Int? = nil, machine: String? = nil,
+                iosInappEngine: Bool? = nil) {
         self.app = app
         self.devices = devices
         self.heal = heal
         self.reportDir = reportDir
         self.defaultTimeout = defaultTimeout
         self.machine = machine
+        self.iosInappEngine = iosInappEngine
     }
 
     static let knownKeys: Set<String> = [
-        "app", "devices", "heal", "reportDir", "defaultTimeout", "machine",
+        "app", "devices", "heal", "reportDir", "defaultTimeout", "machine", "iosInappEngine",
     ]
 }
 
@@ -439,11 +446,21 @@ public enum ProfileResolver {
             }
         }
 
-        // 4. デバイス解決(このマシンに無い name はスキップ+警告)
+        // 4. デバイス解決(このマシンに無い name はスキップ+警告)。
+        // iOS 実効エンジン: 実行プロファイルの iosInappEngine(既定 true)で決める。
+        // true → "hybrid"(高速な in-app 主+XCUITest フォールバック)、false → "xcuitest"。
+        // ただしマシンプロファイルでデバイスに engine を明示していればそちらが優先(上書きしない)。
+        let iosEngine = (runDoc.iosInappEngine ?? true) ? "hybrid" : "xcuitest"
         var devices: [ResolvedDevice] = []
         for ref in deviceRefs {
             if let device = catalog[ref.name] {
-                devices.append(device)
+                if device.platform == "ios", device.spec.engine == nil {
+                    var spec = device.spec
+                    spec.engine = iosEngine
+                    devices.append(ResolvedDevice(platform: "ios", spec: spec))
+                } else {
+                    devices.append(device)
+                }
             } else {
                 warnings.append(
                     "デバイス \"\(ref.name)\" はマシン \(machineName) に定義がないためスキップします")

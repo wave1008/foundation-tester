@@ -21,6 +21,7 @@ const runProfileMachine = document.getElementById('run-profile-machine');
 const runProfileApp = document.getElementById('run-profile-app');
 const runProfileDevices = document.getElementById('run-profile-devices');
 const runProfileHeal = document.getElementById('run-profile-heal');
+const runProfileIosInappEngine = document.getElementById('run-profile-ios-inapp-engine');
 const runProfileReportDir = document.getElementById('run-profile-report-dir');
 const runProfileDefaultTimeout = document.getElementById('run-profile-default-timeout');
 const runProfileError = document.getElementById('run-profile-error');
@@ -32,7 +33,7 @@ let runProfileNames = [];
 let runProfileApps = [];
 // 編集対象の実行プロファイル名(一覧が0件なら null)。
 let selectedRunProfile = null;
-// 直近ロード(runProfileData ok:true)時点の6フィールド値。null の間はフォーム非表示。
+// 直近ロード(runProfileData ok:true)時点の7フィールド値。null の間はフォーム非表示。
 let runProfileOriginalFields = null;
 // 現在チェック済みのデバイス名(表示順。チェックボックス操作・machine切替の引き継ぎの正)。
 let runProfileCheckedNames = [];
@@ -180,7 +181,7 @@ export function applyRunProfileData(message) {
   renderRunProfileEditor(message.fields);
 }
 
-// ロード済みの6フィールド値でフォームを作り直す(編集途中の値は破棄する)。
+// ロード済みの7フィールド値でフォームを作り直す(編集途中の値は破棄する)。
 function renderRunProfileEditor(fields) {
   runProfileOriginalFields = fields;
   runProfileSubmitting = false;
@@ -191,6 +192,7 @@ function renderRunProfileEditor(fields) {
   runProfileCheckedNames = fields.devices.slice();
   renderRunProfileDevices();
   runProfileHeal.checked = fields.heal;
+  runProfileIosInappEngine.checked = fields.iosInappEngine;
   runProfileReportDir.value = fields.reportDir;
   runProfileDefaultTimeout.value = fields.defaultTimeout;
 
@@ -319,6 +321,7 @@ runProfileMachine.addEventListener('change', () => {
 });
 runProfileApp.addEventListener('change', onRunProfileFormInput);
 runProfileHeal.addEventListener('change', onRunProfileFormInput);
+runProfileIosInappEngine.addEventListener('change', onRunProfileFormInput);
 runProfileReportDir.addEventListener('input', onRunProfileFormInput);
 runProfileDefaultTimeout.addEventListener('input', onRunProfileFormInput);
 
@@ -338,6 +341,7 @@ function runProfileValuesEqual(fields) {
     runProfileApp.value === fields.app &&
     runProfileDevicesEqual(runProfileCheckedNames, fields.devices) &&
     runProfileHeal.checked === fields.heal &&
+    runProfileIosInappEngine.checked === fields.iosInappEngine &&
     runProfileReportDir.value === fields.reportDir &&
     runProfileDefaultTimeout.value === fields.defaultTimeout
   );
@@ -356,6 +360,7 @@ function setRunProfileControlsEnabled(enabled) {
   runProfileMachine.disabled = !enabled;
   runProfileApp.disabled = !enabled;
   runProfileHeal.disabled = !enabled;
+  runProfileIosInappEngine.disabled = !enabled;
   runProfileReportDir.disabled = !enabled;
   runProfileDefaultTimeout.disabled = !enabled;
   for (const checkbox of runProfileDevices.querySelectorAll('input[type="checkbox"]')) {
@@ -407,6 +412,7 @@ runProfileConfirm.addEventListener('click', () => {
       app: runProfileApp.value.trim(),
       devices: runProfileCheckedNames.slice(),
       heal: runProfileHeal.checked,
+      iosInappEngine: runProfileIosInappEngine.checked,
       reportDir: runProfileReportDir.value.trim(),
       defaultTimeout: runProfileDefaultTimeout.value.trim(),
     },

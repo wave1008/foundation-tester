@@ -486,6 +486,7 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
         Array.isArray(value.fields.devices) &&
         value.fields.devices.every((name) => typeof name === "string") &&
         typeof value.fields.heal === "boolean" &&
+        typeof value.fields.iosInappEngine === "boolean" &&
         typeof value.fields.reportDir === "string" &&
         typeof value.fields.defaultTimeout === "string"
       );
@@ -743,6 +744,7 @@ export function buildRunProfileTemplate(
   template.app = app;
   template.devices = devices;
   template.heal = false;
+  template.iosInappEngine = true;
   template.reportDir = "reports";
   return `${JSON.stringify(template, null, 2)}\n`;
 }
@@ -776,21 +778,22 @@ export function validateNewAppProfileName(name: string, existing: readonly strin
 }
 
 // ---- プロファイルタブ下半分: 実行プロファイルの設定フォーム -----------------------------
-// handleRunProfileLoad/Save(monitorPanel.ts)が使う、JSON⇔フォーム6フィールド変換の純粋関数
+// handleRunProfileLoad/Save(monitorPanel.ts)が使う、JSON⇔フォーム7フィールド変換の純粋関数
 // (未知キー保持のイミュータブルな方針。updateDeviceInMachineProfile と同じ)。
 
-/** 実行プロファイル設定フォームの6フィールド(全て文字列/配列/真偽値化済み。空文字は未設定)。 */
+/** 実行プロファイル設定フォームの7フィールド(全て文字列/配列/真偽値化済み。空文字は未設定)。 */
 export interface RunProfileFormFields {
   readonly machine: string;
   readonly app: string;
   readonly devices: readonly string[];
   readonly heal: boolean;
+  readonly iosInappEngine: boolean;
   readonly reportDir: string;
   readonly defaultTimeout: string;
 }
 
 /**
- * runs/<name>.json のトップレベルから、フォームの6フィールドを許容的に読み取る(トップレベルが
+ * runs/<name>.json のトップレベルから、フォームの7フィールドを許容的に読み取る(トップレベルが
  * 非オブジェクトなら null)。各キーは欠落・型不正を「読めなければ空/既定値」で許容し、スキーマ
  * 妥当性検証はしない(保存時 updateRunProfileInObject・CLI 側 ProfileResolver.validate に委ねる)。
  * defaultTimeout は number ならそのまま String() 化する(0.5 のようなスキーマ違反値もそのまま
@@ -806,6 +809,7 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
   const app = typeof source.app === "string" ? source.app : "";
   const reportDir = typeof source.reportDir === "string" ? source.reportDir : "";
   const heal = typeof source.heal === "boolean" ? source.heal : false;
+  const iosInappEngine = typeof source.iosInappEngine === "boolean" ? source.iosInappEngine : true;
   const devices: string[] = Array.isArray(source.devices)
     ? source.devices
         .map((device) => (isRecord(device) && typeof device.name === "string" ? device.name : undefined))
@@ -814,7 +818,7 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
   const rawTimeout = source.defaultTimeout;
   const defaultTimeout =
     typeof rawTimeout === "number" ? String(rawTimeout) : typeof rawTimeout === "string" ? rawTimeout : "";
-  return { machine, app, devices, heal, reportDir, defaultTimeout };
+  return { machine, app, devices, heal, iosInappEngine, reportDir, defaultTimeout };
 }
 
 export type RunProfileUpdateResult =
@@ -822,7 +826,7 @@ export type RunProfileUpdateResult =
   | { readonly ok: false; readonly error: string };
 
 /**
- * runs/<name>.json を、フォームの6フィールドの内容で更新した新オブジェクトを組み立てる
+ * runs/<name>.json を、フォームの7フィールドの内容で更新した新オブジェクトを組み立てる
  * (未知キー保持のイミュータブルな方針。profileObject が非オブジェクトなら ok:false)。
  * defaultTimeout は空文字ならキー削除、正の整数文字列以外はエラー。
  * devices は fields.devices の順に並べ直し、既存 devices 配列の同名エントリ(未知キー込み)を
@@ -848,6 +852,7 @@ export function updateRunProfileInObject(
   }
 
   result.heal = fields.heal;
+  result.iosInappEngine = fields.iosInappEngine;
 
   const timeoutTrimmed = fields.defaultTimeout.trim();
   if (timeoutTrimmed.length === 0) {
