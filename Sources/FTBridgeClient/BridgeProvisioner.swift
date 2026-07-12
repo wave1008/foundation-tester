@@ -11,12 +11,16 @@ public struct ProvisionedIOSDevice: Sendable {
     public let udid: String
     public let simulatorName: String
     public let port: UInt16
+    /// 駆動エンジン("xcuitest" / "inapp")。DriverConnection 経由でサブプロセスへ伝える
+    public let engine: String
 }
 
 public enum BridgeProvisionerError: Error, LocalizedError {
     case noFreePort(scanned: ClosedRange<UInt16>)
     /// waitUntilReady() が失敗した場合(後始末として起動済みプロセス/pidファイルは停止済み)
     case notReady(port: UInt16, underlying: Error)
+    /// engine="inapp" だがアプリの bundleID が解決できなかった
+    case inAppNeedsBundleID(name: String)
 
     public var errorDescription: String? {
         switch self {
@@ -24,6 +28,8 @@ public enum BridgeProvisionerError: Error, LocalizedError {
             return "空きポートがありません(走査範囲: \(scanned.lowerBound)〜\(scanned.upperBound))"
         case .notReady(let port, let underlying):
             return "ブリッジが時間内に準備できませんでした(port \(port)): \(underlying)"
+        case .inAppNeedsBundleID(let name):
+            return "\(name): engine=inapp には注入起動するアプリの bundleID が必要です(apps プロファイルの ios.app を設定してください)"
         }
     }
 }
@@ -40,8 +46,10 @@ public struct BridgeProvisioner {
         self.portRange = portRange
     }
 
-    /// 稼働中ブリッジ(シミュレータ UDID が一致)は再利用し、不足分は空きポートで起動する
+    /// 稼働中ブリッジ(シミュレータ UDID が一致)は再利用し、不足分は空きポートで起動する。
+    /// engine="inapp" のデバイスは XCUITest ではなく dylib 注入で起動する(bundleID が必要)。
     public func provision(devices: [(name: String, spec: DeviceSpec)],
+                          bundleID: String? = nil,
                           log: @escaping (String) -> Void) async throws -> [ProvisionedIOSDevice] {
         let catalog = try SimulatorCatalog.devices()
 
@@ -63,38 +71,48 @@ public struct BridgeProvisioner {
         var provisioned: [ProvisionedIOSDevice] = []
         var usedPorts = Set(running.keys)
         for (name, spec, sim) in targets {
+            let engine = spec.engine ?? "xcuitest"
             if let port = running.first(where: { $0.value == sim.udid })?.key,
                !provisioned.contains(where: { $0.port == port }) {
-                log("✅ \(name): 稼働中ブリッジを再利用(port \(port), \(sim.name))")
+                log("✅ \(name): 稼働中ブリッジを再利用(port \(port), \(sim.name), engine=\(engine))")
                 provisioned.append(ProvisionedIOSDevice(
-                    name: name, udid: sim.udid, simulatorName: sim.name, port: port))
+                    name: name, udid: sim.udid, simulatorName: sim.name, port: port, engine: engine))
                 continue
             }
 
             let port = try assignPort(preferred: spec.port, used: &usedPorts)
-            log("→ \(name): ブリッジ起動(port \(port), \(sim.name) \(sim.os))...")
-            let launcher = BridgeLauncher(repoRoot: repoRoot, device: sim.udid, port: port)
-            try await Task.detached(priority: .userInitiated) {
-                try launcher.generateProjectIfNeeded()
-                do {
-                    try launcher.startDetached()
-                } catch LauncherError.xctestrunNotFound {
-                    // ビルド未実施の場合のみ build-for-testing(初回は数分かかる)
-                    log("→ build-for-testing(初回は数分かかります)...")
-                    try launcher.buildForTesting()
-                    try launcher.startDetached()
+            log("→ \(name): ブリッジ起動(port \(port), \(sim.name) \(sim.os), engine=\(engine))...")
+            if engine == "inapp" {
+                guard let bundleID else {
+                    throw BridgeProvisionerError.inAppNeedsBundleID(name: name)
                 }
-            }.value
-            do {
-                try await launcher.waitUntilReady()
-            } catch {
-                // 後始末せずに投げると assignPort がこのポートを使用中とみなし続け採番がずれていく
-                try? launcher.stop()
-                throw BridgeProvisionerError.notReady(port: port, underlying: error)
+                let launcher = InAppLauncher(repoRoot: repoRoot, udid: sim.udid, port: port)
+                try launcher.buildIfNeeded()
+                try await launcher.relaunch(bundleID: bundleID)
+            } else {
+                let launcher = BridgeLauncher(repoRoot: repoRoot, device: sim.udid, port: port)
+                try await Task.detached(priority: .userInitiated) {
+                    try launcher.generateProjectIfNeeded()
+                    do {
+                        try launcher.startDetached()
+                    } catch LauncherError.xctestrunNotFound {
+                        // ビルド未実施の場合のみ build-for-testing(初回は数分かかる)
+                        log("→ build-for-testing(初回は数分かかります)...")
+                        try launcher.buildForTesting()
+                        try launcher.startDetached()
+                    }
+                }.value
+                do {
+                    try await launcher.waitUntilReady()
+                } catch {
+                    // 後始末せずに投げると assignPort がこのポートを使用中とみなし続け採番がずれていく
+                    try? launcher.stop()
+                    throw BridgeProvisionerError.notReady(port: port, underlying: error)
+                }
             }
             log("✅ \(name): ブリッジ準備完了(port \(port))")
             provisioned.append(ProvisionedIOSDevice(
-                name: name, udid: sim.udid, simulatorName: sim.name, port: port))
+                name: name, udid: sim.udid, simulatorName: sim.name, port: port, engine: engine))
         }
         return provisioned
     }

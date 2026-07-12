@@ -55,6 +55,11 @@
           "minimum": 0,
           "maximum": 65535
         },
+        "engine": {
+          "type": "string",
+          "enum": ["xcuitest", "inapp"],
+          "description": "iOS: 駆動エンジン。xcuitest(既定)= XCUITest ブリッジ / inapp = シミュレータのアプリに dylib 注入する in-app ブリッジ(実機不可・高速)。"
+        },
         "avd": {
           "type": "string",
           "description": "Android: AVD(ID または表示名。起動中エミュレータとの照合で adb シリアルに解決される)。"

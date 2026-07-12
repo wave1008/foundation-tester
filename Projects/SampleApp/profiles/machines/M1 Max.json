@@ -27,6 +27,12 @@
         "simulator": "iPhone 17 Pro"
       },
       {
+        "name": "シミュ1-inapp",
+        "os": "27.0",
+        "simulator": "iPhone 17 Pro",
+        "engine": "inapp"
+      },
+      {
         "name": "シミュ2",
         "os": "27.0",
         "simulator": "iPhone Air"
