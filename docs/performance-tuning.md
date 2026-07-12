@@ -135,21 +135,58 @@ window/transition/animator の `*_scale` はチューニングノブではなく
 - **iOS の高速化ロードマップ(2026-07-12 検討)**: iOS の残り時間は「XCUITest 税」
   = snapshot が毎回 testmanagerd 経由 IPC で全属性取得(~250ms)+イベント合成前の
   暗黙 quiescence 待ち。段階は 2 つ:
-  1. **短期(税の減額)**: ① Reduce Motion の自動設定
-     (`simctl spawn <udid> defaults write com.apple.Accessibility ReduceMotionEnabled 1`。
-     Android のアニメーション無効化の対称。iOS ブリッジ起動時に自動化)
-     ② snapshot の取得属性・深さの絞り込み(XCUITest 私有パラメータだが
-     WebDriverAgent/Appium で長年の実績。250ms→100ms 級が相場)
-  2. **本命(税の撤廃)**: **アプリ内常駐ブリッジ**(EarlGrey/Espresso と同クラス)。
-     シミュレータは `simctl launch` の `DYLD_INSERT_LIBRARIES` で任意アプリに
+  1. **短期(税の減額)= Phase 1 実施済み(2026-07-12)**。3 施策のうち採否が分かれた:
+     - ✅ **Reduce Motion 自動設定**(採用): `BridgeLauncher.enableReduceMotion()` が
+       コールド起動時のみ `simctl spawn <device> defaults write com.apple.Accessibility
+       ReduceMotionEnabled -bool true` を実行(Android の `disableAnimations()` の対称)。
+       doctor に警告も追加(`animationScaleWarning` の iOS 版)。設定は以後起動される
+       アプリに効くため /session がシナリオ毎に再起動する前提で有効。リスクゼロ・原則整合。
+     - ✅ **/type の固定待ち削除**(採用): 旧 `usleep(400_000)`。当初 `keyboards.firstMatch.
+       waitForExistence(timeout:1)` に置換したが**逆効果で不採用**(シミュレータのキーボードは
+       別プロセス扱いで `app.keyboards` クエリが常にタイムアウト = type 中央値 1616→2248ms に
+       悪化。2026-07-12 実測)。**最終解は待ちを完全削除**(`coordinate.tap()` が既に
+       quiescence まで待つため後続 `typeText` は安定)。type 中央値 1616→1387ms(−230ms)・
+       5 連続入力成功・成功率 100%。
+     - ❌ **snapshot の私有パラメータ絞り込み**(不採用): `snapshotWithParameters:error:`
+       (maxDepth 等)は Xcode 27 beta 3 に実在し呼び出しも成功したが、**速度改善が実測ゼロ**。
+       設定アプリのルート画面で有効要素が深さ 21 前後に集中しており、取りこぼさない安全な
+       深さ上限(≥32)では削れるノードが無い。warm snapshot は元々 80〜90ms で
+       ボトルネックでもない(遅く見えた 250ms 平均は初回/画面遷移直後の一過性)。
+       私有 API 依存 + Xcode ベータ毎に壊れるリスクだけが残るため採用ゲート不通過。
+       **再検討条件**: 要素数が数百規模の巨大画面が現れ、warm snapshot が実測で
+       ボトルネックになったら(そのとき maxChildren/maxArrayCount の方が効く可能性)。
+     Phase 1 全体の効果は限定的(action 支配項の quiescence ~1s/step は XCUITest 継続の限り残る)。
+     **iOS の真のボトルネックは scrollTo(action 中央値 ~7.6s/回。swipe+再 snapshot ループ)と
+     tap/type の quiescence 床**であり、大幅短縮には段階 2 が必要と確認された。
+  2. **本命(税の撤廃)= Phase 2 プロトタイプで成立を実証済み(2026-07-12)**:
+     **アプリ内常駐ブリッジ**(EarlGrey/Espresso と同クラス)。シミュレータは
+     `SIMCTL_CHILD_DYLD_INSERT_LIBRARIES=<dylib> simctl launch` で任意アプリに
      リビルドなしで注入できる(シミュレータプロセスは SIP/hardened runtime 非適用)。
      UIKit ビュー階層の直接走査(ms 級・IPC ゼロ)+ランループオブザーバと
      CATransaction/CADisplayLink による**真のイベント駆動整定**+プロセス内タッチ合成。
-     既存 9 エンドポイントの HTTP 互換にすればホスト側は無変更(単一実装原則と整合)。
+     既存 9 エンドポイントの HTTP 互換にすればホスト側は概ね無変更(単一実装原則と整合)。
+     **3 点プロトタイプの実測結果**(SampleApp・iPhone 17 Pro シミュレータ、Xcode 27 beta 3):
+     - 注入: `__attribute__((constructor))` の dylib が確実にロード、`connectedScenes`→
+       `windows` から UIKit 階層を走査可能(accessibility ラベルも取得可)。
+     - snapshot: プロセス内フル走査(ラベル/フレーム/enabled 収集込み)が **0.058ms/回**
+       (XCUITest の warm 80〜90ms・cold 250ms に対し 3〜4 桁高速)。IPC 撤廃の効果。
+     - 整定: `CFRunLoopObserver`(kCFRunLoopBeforeWaiting)で「アイドル 2 連続 かつ
+       全レイヤ `animationKeys` 空」を整定判定。300ms アニメを **319ms・ポーリング 5 回**で
+       検知(ビジーループなし=Android QuietWaiter の iOS 版)。XCUITest の保守的な
+       暗黙 quiescence(~1s/action)を置換できる。
+     - タッチ: `hitTest:` が対象 UITextField に解決、`becomeFirstResponder` 成功、
+       `IOHIDEventCreateDigitizerFingerEvent`(IOKit)がプロセス内で dlsym 可能。
+       完全なダウン→ムーブ→アップ合成は Phase 3 の実装本体だが、**API 経路は到達確認済み**
+       (EarlGrey/KIF がシミュレータで長年使う経路)。
      見込みは Android 並み(シナリオ ~2s 級)。制約: 実機は注入不可
      (自ビルドアプリへのリンク方式のみ)、タッチ合成に私有 API を使う。
-     **進め方**: 1 を実施・計測 → 不足が残る場合のみ 2 を snapshot/tap/整定の
-     3 点プロトタイプで実測してから本実装を判断(Phase 2 級の大工事のため)。
+     **XCUITest ランナー(Runner/)は実機用として残す**(ユーザー決定 2026-07-12)=
+     単一実装原則の明示的な例外として「シミュレータ=in-app / 実機=XCUITest」の 2 経路を許容。
+     **Phase 3(本実装)の設計課題**: (a) `/session` はアプリ再起動でブリッジ自身が死ぬため、
+     起動だけはホスト側(`BridgeClient.launch` → simctl launch+注入)が担う=「HTTP 互換なら
+     ホスト無変更」は session/ライフサイクルだけ例外。(b) `/type` の方式(first responder への
+     直接挿入 vs キーボードイベント合成)。(c) HTTP サーバを dylib 内に持たせる(現行
+     `BridgeHTTPServer` は BSD ソケット直書きで移植容易)。
      なお XCUITest の quiescence 自体を私有 API で無効化する案(WDA 方式)は、
      代替の整定信号がプロセス外から得られないため 2 とセットでない限り採らない
 - **シナリオ設計の見直し**: 上記 iPhone Air フレークのようなデバイス依存アサーションの排除は、

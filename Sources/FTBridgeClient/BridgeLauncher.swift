@@ -175,13 +175,31 @@ public struct BridgeLauncher {
         while Date() < deadline {
             do {
                 let status = try await client.status()
-                if status.ready { return }
+                if status.ready {
+                    enableReduceMotion()
+                    return
+                }
             } catch {
                 lastError = error
             }
             try await Task.sleep(nanoseconds: 2_000_000_000)
         }
         throw LauncherError.timedOut(lastError.map { "\($0)" } ?? "no response", logPath.path)
+    }
+
+    /// コールド起動時のみ実行(稼働中ブリッジの再利用時はここを通らない)。設定は以後起動される
+    /// アプリに効く(実行中アプリには効かない。/session がシナリオ毎に再起動するので問題ない)。失敗は非致命。
+    private func enableReduceMotion() {
+        let result = try? Shell.run([
+            "xcrun", "simctl", "spawn", device,
+            "defaults", "write", "com.apple.Accessibility", "ReduceMotionEnabled", "-bool", "true",
+        ])
+        guard result?.status == 0 else {
+            let message = "⚠️ Reduce Motion の有効化に失敗しました(\(device))。"
+                + "アニメーションが有効なままだとアクションの整定待ちが遅くなります\n"
+            FileHandle.standardError.write(Data(message.utf8))
+            return
+        }
     }
 
     func findXCTestRun() throws -> URL? {
