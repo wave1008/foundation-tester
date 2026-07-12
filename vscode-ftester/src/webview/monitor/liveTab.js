@@ -20,12 +20,9 @@ const screenshotPlaceholder = document.getElementById('live-screenshot-placehold
 const dragOverlay = document.getElementById('live-drag-overlay');
 const dragLine = document.getElementById('live-drag-line');
 const dragStartDot = document.getElementById('live-drag-start');
+const connOverlay = document.getElementById('live-conn-overlay');
+const connDetail = document.getElementById('live-conn-detail');
 
-const appSelect = document.getElementById('live-app-select');
-const bundleIdInput = document.getElementById('live-bundle-id');
-const iosPathInput = document.getElementById('live-ios-path');
-const androidPathInput = document.getElementById('live-android-path');
-const installHint = document.getElementById('live-install-hint');
 const typeTextInput = document.getElementById('live-type-text');
 const typeRefHint = document.getElementById('live-type-ref-hint');
 const actionError = document.getElementById('live-action-error');
@@ -47,10 +44,8 @@ let busy = false;
 let autoSnapshotRequested = false;
 
 const busyButtons = [
-  'live-btn-refresh-devices', 'live-btn-refresh-apps', 'live-btn-launch', 'live-btn-terminate',
-  'live-btn-pick-ios', 'live-btn-pick-android', 'live-btn-install', 'live-btn-refresh-snapshot',
-  'live-btn-app-switcher',
-  'live-btn-swipe-up', 'live-btn-swipe-down', 'live-btn-swipe-left', 'live-btn-swipe-right',
+  'live-btn-refresh-devices', 'live-btn-terminate', 'live-btn-refresh-snapshot',
+  'live-btn-app-switcher', 'live-btn-home',
   'live-btn-type',
 ].map((id) => document.getElementById(id));
 
@@ -58,7 +53,6 @@ function setBusy(value) {
   busy = value;
   for (const b of busyButtons) { b.disabled = value; }
   deviceSelect.disabled = value;
-  appSelect.disabled = value;
   busyLabel.textContent = value ? '処理中...' : '';
 }
 
@@ -81,12 +75,6 @@ function updateDeviceWarning() {
   deviceWarning.textContent = selected && selected.state !== 'connected' ? '⚠ 接続されていません' : '';
 }
 
-function updateInstallHint() {
-  const selected = currentDevices.find((d) => d.id === deviceSelect.value);
-  const isAndroid = !!selected && selected.platform === 'android';
-  installHint.textContent = isAndroid ? '→ Android(.apk)のパスを使用' : '→ iOS(.app)のパスを使用';
-}
-
 function applyDevices(devices, selectedId) {
   currentDevices = devices;
   deviceSelect.innerHTML = '';
@@ -98,61 +86,11 @@ function applyDevices(devices, selectedId) {
   }
   if (selectedId) { deviceSelect.value = selectedId; }
   updateDeviceWarning();
-  updateInstallHint();
 }
 
 deviceSelect.addEventListener('change', () => {
   updateDeviceWarning();
-  updateInstallHint();
-  resetAppSelect('(取得中...)');
   post({ type: 'selectDevice', id: deviceSelect.value });
-});
-
-// ---- アプリ選択(選ぶと launch でアプリを切り替える) --------------------------------
-
-function resetAppSelect(placeholder) {
-  appSelect.innerHTML = '';
-  const opt = document.createElement('option');
-  opt.value = '';
-  opt.textContent = placeholder;
-  appSelect.appendChild(opt);
-}
-resetAppSelect('(アプリ一覧 未取得)');
-
-function appendAppGroup(label, apps) {
-  if (apps.length === 0) { return; }
-  const group = document.createElement('optgroup');
-  group.label = label;
-  for (const app of apps) {
-    const opt = document.createElement('option');
-    opt.value = app.id;
-    opt.textContent = app.name === app.id ? app.id : app.name + '(' + app.id + ')';
-    group.appendChild(opt);
-  }
-  appSelect.appendChild(group);
-}
-
-function applyAppList(message) {
-  if (message.message) {
-    resetAppSelect('(アプリ一覧を取得できません)');
-    showBanner(message.message);
-    return;
-  }
-  resetAppSelect('アプリを選んで切替...');
-  appendAppGroup('ユーザーアプリ', message.apps.filter((a) => a.type === 'user'));
-  appendAppGroup('システムアプリ', message.apps.filter((a) => a.type === 'system'));
-}
-
-appSelect.addEventListener('change', () => {
-  if (busy || !appSelect.value) { return; }
-  showActionError('');
-  bundleIdInput.value = appSelect.value;
-  post({ type: 'activate', bundleId: appSelect.value });
-  appSelect.value = '';
-});
-
-document.getElementById('live-btn-refresh-apps').addEventListener('click', () => {
-  post({ type: 'refreshApps' });
 });
 
 // ---- スクリーンショット(クリック=タップ、ドラッグ=スワイプ、要素ホバー=枠オーバーレイ) ------
@@ -330,37 +268,18 @@ document.getElementById('live-btn-refresh-snapshot').addEventListener('click', (
   showActionError('');
   post({ type: 'refreshSnapshot' });
 });
+document.getElementById('live-btn-home').addEventListener('click', () => {
+  showActionError('');
+  post({ type: 'home' });
+});
 document.getElementById('live-btn-app-switcher').addEventListener('click', () => {
   showActionError('');
   post({ type: 'appSwitcher' });
-});
-document.getElementById('live-btn-launch').addEventListener('click', () => {
-  showActionError('');
-  post({ type: 'launch', bundleId: bundleIdInput.value });
 });
 document.getElementById('live-btn-terminate').addEventListener('click', () => {
   showActionError('');
   post({ type: 'terminate' });
 });
-document.getElementById('live-btn-pick-ios').addEventListener('click', () => {
-  post({ type: 'pickInstallFile', platform: 'ios' });
-});
-document.getElementById('live-btn-pick-android').addEventListener('click', () => {
-  post({ type: 'pickInstallFile', platform: 'android' });
-});
-document.getElementById('live-btn-install').addEventListener('click', () => {
-  showActionError('');
-  const selected = currentDevices.find((d) => d.id === deviceSelect.value);
-  const isAndroid = !!selected && selected.platform === 'android';
-  const path = isAndroid ? androidPathInput.value : iosPathInput.value;
-  post({ type: 'install', path: path });
-});
-for (const dir of ['up', 'down', 'left', 'right']) {
-  document.getElementById('live-btn-swipe-' + dir).addEventListener('click', () => {
-    showActionError('');
-    post({ type: 'swipe', direction: dir });
-  });
-}
 document.getElementById('live-btn-type').addEventListener('click', () => {
   showActionError('');
   post({ type: 'typeText', text: typeTextInput.value, ref: selectedRef });
@@ -397,12 +316,16 @@ export function applyLiveMessage(message) {
     case 'busy':
       setBusy(!!message.busy);
       break;
-    case 'installPathPicked':
-      if (message.platform === 'android') { androidPathInput.value = message.path; }
-      else { iosPathInput.value = message.path; }
-      break;
-    case 'appList':
-      applyAppList(message);
+    case 'connection':
+      if (message.connected === false) {
+        connOverlay.classList.add('visible');
+        connDetail.textContent = message.message ?? '';
+        screenshot.classList.add('disconnected');
+      } else {
+        connOverlay.classList.remove('visible');
+        connDetail.textContent = '';
+        screenshot.classList.remove('disconnected');
+      }
       break;
     default:
       break;

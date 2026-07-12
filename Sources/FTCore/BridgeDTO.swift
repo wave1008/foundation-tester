@@ -9,6 +9,10 @@ public enum BridgeAPI {
     public static let defaultPort: UInt16 = 8123
     /// 1回のスナップショットで返す要素数の上限(4Kトークン対策の第一段)
     public static let maxSnapshotElements = 120
+    /// ブリッジ HTTP API のプロトコルバージョン。エンドポイントやリクエスト/レスポンスの形を
+    /// 変えたら必ず +1 する。/status で返され、旧ビルドのランナーの自動再起動判定に使う
+    /// (nil = この定数導入前のビルド = 旧版扱い)。
+    public static let bridgeProtocolVersion = 1
 }
 
 /// CGRect の代わりに使うプラットフォーム非依存の矩形(エンコード形式を固定する)
@@ -38,14 +42,17 @@ public struct StatusResponse: Codable, Sendable {
     /// 共存するハイブリッド時、ホストがどのブリッジかを /status で区別するために使う。
     /// 旧ブリッジは返さない → decodeIfPresent で nil 許容(=不明)。
     public var engine: String?
+    /// BridgeAPI.bridgeProtocolVersion。旧ブリッジは返さない → nil 許容(=旧版扱い)。
+    public var protocolVersion: Int?
 
     public init(ready: Bool, device: String, osVersion: String, sessionBundleID: String?,
-                engine: String? = nil) {
+                engine: String? = nil, protocolVersion: Int? = nil) {
         self.ready = ready
         self.device = device
         self.osVersion = osVersion
         self.sessionBundleID = sessionBundleID
         self.engine = engine
+        self.protocolVersion = protocolVersion
     }
 }
 

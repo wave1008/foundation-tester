@@ -15,6 +15,7 @@
 //   {"cmd":"launch","bundle":<String>}                  bundle ID / パッケージ名を起動
 //   {"cmd":"activate","bundle":<String>}               状態を保持したまま前面切替(未起動なら起動)
 //   {"cmd":"appSwitcher"}                               アプリスイッチャー(タスク一覧)を開く
+//   {"cmd":"home"}                                       ホーム画面に戻る
 //   {"cmd":"terminate"}                                 対象アプリを終了
 //   {"cmd":"install","path":<String>}                   パッケージファイル(iOS: .app / Android: .apk)
 //                                                        からインストール
@@ -46,8 +47,15 @@
 // 終了: stdin EOF、または SIGTERM/SIGINT(setvbuf の行バッファ化含め他の常駐 api コマンドと同じ
 // 流儀)。ただしこちらは周期処理を持たないコマンド駆動のため、StopFlag+ポーリングではなく
 // AsyncStream で橋渡しし SIGTERM/SIGINT は continuation.finish() で for-await を抜けさせる。
+//
+// --udid(iOS のみ): 指定時、DriverError.bridgeConnectionRefused を tap 等の実行時・観測
+// (emitObservation)時に検知すると LiveBridgeAutoStarter がブリッジを自動起動し、起動状況を
+// エラー文言に付記する(詳細は LiveBridgeAutoStarter.swift)。自動フレーム(emitFrame)は状況
+// 付記のみで起動はトリガーしない。serve 起動時に /status の protocolVersion を確認し、
+// 旧ビルドのブリッジは自動で再起動する。
 
 import ArgumentParser
+import FTBridgeClient
 import Foundation
 import FTCore
 
@@ -69,13 +77,21 @@ struct ApiLiveServe: AsyncParsableCommand {
     @Option(name: .customLong("max-width"), help: "スクリーンショットの長辺の最大幅(px。0以下=原寸。既定 0)")
     var maxWidth: Int = 0
 
+    @Option(help: "接続失敗時に XCUITest ブリッジを自動起動するためのシミュレータ UDID(iOS のみ。省略時は自動起動しない)")
+    var udid: String?
+
     @OptionGroup var driverOptions: DriverOptions
 
     func run() async throws {
         // ストリーミング読み取りが前提のため常に行バッファにする(他の常駐 api コマンドと同じ理由)
         setvbuf(stdout, nil, _IOLBF, 0)
+        ResidentProcessGuard.startOrphanWatchdog(logLabel: "live serve")
 
         let driver = try driverOptions.makeDriver()
+        let starter = makeAutoStarter()
+        if let starter {
+            Task { await starter.checkAndRestartIfStale() }
+        }
 
         let (lines, continuation) = AsyncStream<String>.makeStream(of: String.self)
         let reader = Thread {
@@ -83,6 +99,7 @@ struct ApiLiveServe: AsyncParsableCommand {
                 continuation.yield(line)
             }
             continuation.finish()
+            ResidentProcessGuard.scheduleForcedExit(logLabel: "live serve")
         }
         reader.name = "ftester-api-live-serve-stdin"
         reader.start()
@@ -93,7 +110,10 @@ struct ApiLiveServe: AsyncParsableCommand {
         // ループを抜けるまでシグナルソースを保持する(解放されるとハンドラが外れる)
         let signalSources = [SIGTERM, SIGINT].map { sig -> DispatchSourceSignal in
             let source = DispatchSource.makeSignalSource(signal: sig, queue: signalQueue)
-            source.setEventHandler { continuation.finish() }
+            source.setEventHandler {
+                continuation.finish()
+                ResidentProcessGuard.scheduleForcedExit(logLabel: "live serve")
+            }
             source.resume()
             return source
         }
@@ -105,15 +125,31 @@ struct ApiLiveServe: AsyncParsableCommand {
                 logStderr("未知の形式の行を無視しました: \(line)")
                 continue
             }
-            await handle(command: command, driver: driver)
+            await handle(command: command, driver: driver, starter: starter)
+        }
+    }
+
+    /// platform=ios かつ --udid 指定時のみ自動起動を有効化する。RepoRoot.find() の失敗は
+    /// serve 自体を止めず自動起動なしで続行する(--udid 未指定時と同じ扱いに落とす)
+    private func makeAutoStarter() -> LiveBridgeAutoStarter? {
+        guard driverOptions.platform == "ios", let udid else { return nil }
+        do {
+            let repoRoot = try RepoRoot.find()
+            return LiveBridgeAutoStarter(repoRoot: repoRoot, udid: udid, port: driverOptions.port)
+        } catch {
+            logStderr("リポジトリルートが見つからないためブリッジ自動起動を無効化します: " +
+                error.localizedDescription)
+            return nil
         }
     }
 
     /// 1コマンドを処理する: refresh 以外はまずアクションを実行して actionResult を出し、
     /// 続けて(操作の成否を問わず)観測イベントを出す。refresh は観測イベントのみ
-    private func handle(command: ApiLiveServeCommand, driver: AppDriver) async {
+    private func handle(
+        command: ApiLiveServeCommand, driver: AppDriver, starter: LiveBridgeAutoStarter?
+    ) async {
         if command.cmd == "frame" {
-            await emitFrame(driver: driver)
+            await emitFrame(driver: driver, starter: starter)
             return
         }
         if command.cmd != "refresh" {
@@ -121,10 +157,24 @@ struct ApiLiveServe: AsyncParsableCommand {
                 try await perform(command: command, driver: driver)
                 emitLine(ApiLiveActionResultEvent(ok: true, error: nil))
             } catch {
-                emitLine(ApiLiveActionResultEvent(ok: false, error: error.localizedDescription))
+                let message = await annotated(error, starter: starter, triggering: true)
+                emitLine(ApiLiveActionResultEvent(ok: false, error: message))
             }
         }
-        await emitObservation(driver: driver)
+        await emitObservation(driver: driver, starter: starter)
+    }
+
+    /// error が DriverError.bridgeConnectionRefused のときだけ starter のサフィックスを連結する
+    /// (bridgeUnreachable やタイムアウトでは連結しない=生きているブリッジとの二重起動を防ぐ)。
+    /// triggering: true なら noteConnectionRefused(起動トリガーあり)、false なら
+    /// statusSuffix(起動トリガーなし。emitFrame は受動的観測のため)
+    private func annotated(
+        _ error: Error, starter: LiveBridgeAutoStarter?, triggering: Bool
+    ) async -> String {
+        var message = error.localizedDescription
+        guard let starter, case DriverError.bridgeConnectionRefused = error else { return message }
+        message += triggering ? await starter.noteConnectionRefused() : await starter.statusSuffix()
+        return message
     }
 
     /// コマンドに応じたドライバ操作を実行する。引数不足・未知の cmd は ServeCommandError を投げる
@@ -175,6 +225,8 @@ struct ApiLiveServe: AsyncParsableCommand {
             try await driver.activate(bundleID: bundle)
         case "appSwitcher":
             try await driver.openAppSwitcher()
+        case "home":
+            try await driver.home()
         case "terminate":
             try await driver.terminate()
         case "install":
@@ -191,8 +243,9 @@ struct ApiLiveServe: AsyncParsableCommand {
     }
 
     /// スクリーンショット(ダウンスケール済み JPEG)とアクセシビリティツリーを観測イベントとして出す
-    /// (ApiMonitorCommand.swift の MonitorImage を共有利用する)
-    private func emitObservation(driver: AppDriver) async {
+    /// (ApiMonitorCommand.swift の MonitorImage を共有利用する)。refresh(ユーザーの「更新」
+    /// ボタン)はこの経路しか通らないため、ここでの自動起動トリガーは必須
+    private func emitObservation(driver: AppDriver, starter: LiveBridgeAutoStarter?) async {
         do {
             let png = try await driver.screenshot()
             let jpeg = try MonitorImage.downscaledJPEG(pngData: png, maxWidth: maxWidth)
@@ -207,21 +260,24 @@ struct ApiLiveServe: AsyncParsableCommand {
                 screen: ApiLiveScreenSize(width: snap.screen.width, height: snap.screen.height),
                 image: jpeg.data.base64EncodedString(), elements: elements))
         } catch {
+            let message = await annotated(error, starter: starter, triggering: true)
             emitLine(ApiLiveSnapshotEvent(
-                ok: false, error: error.localizedDescription,
+                ok: false, error: message,
                 platform: nil, screen: nil, image: nil, elements: nil))
         }
     }
 
     /// スクリーンショットのみの観測イベント(kind:"frame")。自動画面更新用に AX スナップショット
-    /// を省いて軽量化している(要素一覧は更新されない)
-    private func emitFrame(driver: AppDriver) async {
+    /// を省いて軽量化している(要素一覧は更新されない)。自動フレームは受動的観測のため起動は
+    /// トリガーせず、既知の状態(starting/failed)があれば付記するだけ
+    private func emitFrame(driver: AppDriver, starter: LiveBridgeAutoStarter?) async {
         do {
             let png = try await driver.screenshot()
             let jpeg = try MonitorImage.downscaledJPEG(pngData: png, maxWidth: maxWidth)
             emitLine(ApiLiveFrameEvent(ok: true, error: nil, image: jpeg.data.base64EncodedString()))
         } catch {
-            emitLine(ApiLiveFrameEvent(ok: false, error: error.localizedDescription, image: nil))
+            let message = await annotated(error, starter: starter, triggering: false)
+            emitLine(ApiLiveFrameEvent(ok: false, error: message, image: nil))
         }
     }
 

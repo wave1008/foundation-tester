@@ -54,10 +54,10 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
       </label>
       <!-- hostMetricsメッセージ受信のたびにmain.js側で再描画(独自タイマーなし)。 -->
       <div id="host-metrics" class="host-metrics">
+        <span class="host-metric" id="hm-mem" title="メモリ使用量"><span class="hm-label">MEM</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
         <span class="host-metric" id="hm-cpu" title="CPU負荷"><span class="hm-label">CPU</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
         <span class="host-metric" id="hm-gpu" title="GPU負荷"><span class="hm-label">GPU</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
         <span class="host-metric" id="hm-ane" title="ANE負荷"><span class="hm-label">ANE</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
-        <span class="host-metric" id="hm-mem" title="メモリ使用量"><span class="hm-label">MEM</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
       </div>
     </div>
     <div id="banner" class="banner"></div>
@@ -285,41 +285,22 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
           <div id="live-hover-box"></div>
           <svg id="live-drag-overlay" aria-hidden="true"><line id="live-drag-line"/><circle id="live-drag-start" r="6"/></svg>
           <div id="live-screenshot-placeholder">「更新」ボタンで画面を取得してください</div>
+          <div id="live-conn-overlay">
+            <div class="conn-title">⚠ デバイスに接続できません</div>
+            <div class="conn-note">表示中の画面は最後に取得した状態です</div>
+            <div id="live-conn-detail"></div>
+          </div>
         </div>
-        <div class="hint">クリック=タップ / 長押し=ロングプレス / ドラッグ=スワイプ</div>
+        <div class="screenshot-actions">
+          <button id="live-btn-home" class="secondary" title="ホーム画面に戻ります">ホーム</button>
+          <button id="live-btn-app-switcher" class="secondary" title="アプリスイッチャー(タスク一覧)を開きます">タスク切替</button>
+        </div>
       </div>
 
       <div class="control-pane">
-        <div class="row">
-          <select id="live-app-select" title="選択したアプリへ状態を保持したまま切り替えます(未起動なら起動)"></select>
-          <button id="live-btn-refresh-apps" class="secondary">一覧更新</button>
-        </div>
-        <div class="row">
-          <input id="live-bundle-id" type="text" placeholder="bundle ID / パッケージ名" value="com.example.sampleapp">
-          <button id="live-btn-launch">起動</button>
-          <button id="live-btn-terminate">終了</button>
-        </div>
-        <div class="row">
-          <input id="live-ios-path" type="text" placeholder="iOS: .app バンドルのパス">
-          <button id="live-btn-pick-ios" class="secondary">選択...</button>
-        </div>
-        <div class="row">
-          <input id="live-android-path" type="text" placeholder="Android: .apk のパス">
-          <button id="live-btn-pick-android" class="secondary">選択...</button>
-        </div>
-        <div class="row">
-          <button id="live-btn-install">インストール</button>
-          <span id="live-install-hint" class="hint-inline"></span>
-        </div>
-
         <div class="row controls-row">
           <button id="live-btn-refresh-snapshot">更新</button>
-          <button id="live-btn-app-switcher" class="secondary" title="アプリスイッチャー(タスク一覧)を開きます">タスク切替</button>
-          <span class="spacer"></span>
-          <button id="live-btn-swipe-up" class="secondary" title="スワイプ(↑=下へスクロール)">↑</button>
-          <button id="live-btn-swipe-down" class="secondary">↓</button>
-          <button id="live-btn-swipe-left" class="secondary">←</button>
-          <button id="live-btn-swipe-right" class="secondary">→</button>
+          <button id="live-btn-terminate" class="secondary" title="フォアグラウンドのアプリを終了します">終了</button>
         </div>
 
         <div class="row">
@@ -378,9 +359,11 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
     <div class="tab-placeholder">このタブは準備中です(設定機能を今後追加予定)</div>
   </div>
 
+  <!-- アイコンはcodicon "vm-running"/"play"/"debug-stop"のインラインSVG。
+       #device-op-menu-itemはup/down両方のアイコンを持ち、data-op(deviceTiles.jsが設定)でCSS表示切替。 -->
   <div id="device-op-menu" class="device-op-menu" role="menu">
-    <button id="device-op-menu-live" class="device-op-menu-item" type="button" role="menuitem">ライブ操作</button>
-    <button id="device-op-menu-item" class="device-op-menu-item" type="button" role="menuitem"></button>
+    <button id="device-op-menu-live" class="device-op-menu-item" type="button" role="menuitem"><svg class="op-icon" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="M6.607 14C6.79 14.357 7.017 14.689 7.275 15H3.5C3.224 15 3 14.776 3 14.5C3 14.224 3.224 14 3.5 14H5V12H3C1.895 12 1 11.105 1 10V3C1 1.895 1.895 1 3 1H13C14.105 1 15 1.895 15 3V7.293C14.69 7.036 14.357 6.816 14 6.633V3C14 2.448 13.552 2 13 2H3C2.448 2 2 2.448 2 3V10C2 10.552 2.448 11 3 11H6.024C5.994 11.332 6.004 11.666 6.034 12H6V14H6.607ZM16 11.5C16 12.39 15.736 13.26 15.242 14C14.748 14.74 14.045 15.317 13.222 15.657C12.4 15.998 11.495 16.087 10.622 15.913C9.749 15.739 8.947 15.311 8.318 14.681C7.689 14.052 7.26 13.25 7.086 12.377C6.912 11.504 7.001 10.599 7.342 9.777C7.683 8.955 8.259 8.252 8.999 7.757C9.739 7.264 10.609 7 11.499 7C12.692 7 13.837 7.474 14.681 8.318C15.525 9.162 16 10.307 16 11.5ZM13.97 11.499C13.97 11.41 13.946 11.323 13.901 11.246C13.856 11.17 13.791 11.106 13.713 11.063L10.743 9.413C10.667 9.371 10.581 9.349 10.494 9.35C10.407 9.351 10.322 9.375 10.247 9.419C10.171 9.463 10.109 9.526 10.066 9.602C10.023 9.677 10 9.763 10 9.85V13.15C10 13.237 10.023 13.322 10.066 13.398C10.11 13.474 10.172 13.537 10.247 13.581C10.322 13.625 10.407 13.649 10.494 13.65C10.581 13.65 10.667 13.629 10.743 13.587L13.713 11.937C13.791 11.892 13.856 11.829 13.901 11.752C13.946 11.676 13.97 11.588 13.97 11.499Z"/></svg><span>ライブ操作</span></button>
+    <button id="device-op-menu-item" class="device-op-menu-item" type="button" role="menuitem"><svg class="op-icon op-icon-up" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4.74514 3.06414C4.41183 2.87665 4 3.11751 4 3.49993V12.5002C4 12.8826 4.41182 13.1235 4.74512 12.936L12.7454 8.43601C13.0852 8.24486 13.0852 7.75559 12.7454 7.56443L4.74514 3.06414ZM3 3.49993C3 2.35268 4.2355 1.63011 5.23541 2.19257L13.2357 6.69286C14.2551 7.26633 14.2551 8.73415 13.2356 9.30759L5.23537 13.8076C4.23546 14.37 3 13.6474 3 12.5002V3.49993Z"/></svg><svg class="op-icon op-icon-down" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M12.5 3.5V12.5H3.5V3.5H12.5ZM12.5 2H3.5C2.672 2 2 2.672 2 3.5V12.5C2 13.328 2.672 14 3.5 14H12.5C13.328 14 14 13.328 14 12.5V3.5C14 2.672 13.328 2 12.5 2Z"/></svg><span id="device-op-menu-item-label"></span></button>
   </div>
 
   <!-- #device-op-menuとスタイルのみ共用する別要素。「除去」はプロファイルから外すだけで本体は削除しない。 -->
