@@ -39,23 +39,34 @@ enum InAppSettle {
     }
 
     private static func anyLayerAnimating() -> Bool {
+        // アプリのキーウィンドウのみを対象にする。キーボード/システムウィンドウは
+        // 予測変換バー等の永続アニメを持つことがあり、含めると settle が cap に張り付く。
         for scene in UIApplication.shared.connectedScenes {
             guard let windowScene = scene as? UIWindowScene else { continue }
-            for window in windowScene.windows where layerAnimating(window.layer) { return true }
+            guard let key = windowScene.windows.first(where: { $0.isKeyWindow }) else { continue }
+            return layerAnimating(key.layer)
         }
         return false
     }
 
     private static func layerAnimating(_ layer: CALayer) -> Bool {
+        let chrome = isDecorativeChrome(layer)
         for key in layer.animationKeys() ?? [] {
+            // 無限反復(カーソル点滅・スピナー)と iOS27 Liquid Glass のモーフ(match-*/punchout。
+            // タブバー等が常時走らせる装飾で UI 整定信号ではない)は無視。数えると必ず cap 張り付き。
+            if chrome || key.contains("match") || key.contains("punchout") { continue }
             guard let anim = layer.animation(forKey: key) else { continue }
-            // 無限反復アニメ(テキストカーソル点滅・アクティビティインジケータ等)は永久に
-            // 「整定しない」ので無視する。これを数えると settle が必ず cap に張り付く。
             if anim.repeatCount.isInfinite || anim.repeatCount > 100 { continue }
             if anim.repeatDuration > 1_000_000 { continue }
             return true
         }
         for sub in layer.sublayers ?? [] where layerAnimating(sub) { return true }
         return false
+    }
+
+    // iOS27 Liquid Glass の SDF/レンズ系レイヤは常時モーフィングして settle しない
+    private static func isDecorativeChrome(_ layer: CALayer) -> Bool {
+        let name = String(describing: type(of: layer))
+        return name.contains("SDF") || name.contains("LiquidLens")
     }
 }
