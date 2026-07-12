@@ -25,6 +25,7 @@ import {
   isLiveFromWebviewMessage,
   isLiveWebviewEnvelope,
   isListDevicesResult,
+  parseListAppsResult,
   parseLiveActionResult,
   parseLiveServeEvent,
   parseLiveSnapshotResult,
@@ -92,6 +93,34 @@ test("isListDevicesResult: devices 要素の platform/state が不正なら fals
 
 test("parseListDevicesResult: 不正値は undefined を返す", () => {
   assert.equal(parseListDevicesResult({ foo: "bar" }), undefined);
+});
+
+// ---- parseListAppsResult ----
+
+test("parseListAppsResult: 正常な値(user/system混在)を apps 配列として返す", () => {
+  const value = {
+    platform: "ios",
+    apps: [
+      { id: "com.example.sampleapp", name: "SampleApp", type: "user" },
+      { id: "com.apple.springboard", name: "SpringBoard", type: "system" },
+    ],
+  };
+  assert.deepEqual(parseListAppsResult(value), value.apps);
+});
+
+test("parseListAppsResult: apps が配列でない、または要素が不正なら undefined", () => {
+  assert.equal(parseListAppsResult({ platform: "ios", apps: "not-array" }), undefined);
+  assert.equal(
+    parseListAppsResult({ platform: "ios", apps: [{ id: "com.example.app", name: "App", type: "other" }] }),
+    undefined,
+  );
+  assert.equal(
+    parseListAppsResult({ platform: "ios", apps: [{ id: "com.example.app", type: "user" }] }),
+    undefined,
+    "name 欠落は不正",
+  );
+  assert.equal(parseListAppsResult({ apps: [] }), undefined, "platform 欠落は不正");
+  assert.equal(parseListAppsResult(null), undefined);
 });
 
 // ---- parseLiveSnapshotResult ----
@@ -211,6 +240,22 @@ test("parseLiveServeEvent: kind=snapshot の成功/失敗を判別する", () =>
     kind: "snapshot",
     result: { ok: false, error: "接続できません" },
   });
+});
+
+test("parseLiveServeEvent: kind=frame の成功/失敗/欠落を判別する", () => {
+  assert.deepEqual(parseLiveServeEvent({ kind: "frame", ok: true, image: "abc" }), {
+    kind: "frame",
+    result: { ok: true, image: "abc" },
+  });
+  assert.deepEqual(parseLiveServeEvent({ kind: "frame", ok: false, error: "x" }), {
+    kind: "frame",
+    result: { ok: false, error: "x" },
+  });
+  assert.equal(
+    parseLiveServeEvent({ kind: "frame", ok: true }),
+    undefined,
+    "image 欠落は frame として不正",
+  );
 });
 
 test("parseLiveServeEvent: kind が無い/未知、または中身が不正なら undefined", () => {
@@ -459,8 +504,34 @@ test("isLiveFromWebviewMessage: 各メッセージ種別の正常な値を true 
   assert.equal(isLiveFromWebviewMessage({ type: "refreshSnapshot" }), true);
   assert.equal(isLiveFromWebviewMessage({ type: "terminate" }), true);
   assert.equal(isLiveFromWebviewMessage({ type: "selectDevice", id: "ios:シミュ1" }), true);
+  assert.equal(isLiveFromWebviewMessage({ type: "openDevice", id: "ios:iPhone 17 Pro" }), true);
   assert.equal(
     isLiveFromWebviewMessage({ type: "tapPoint", clickX: 1, clickY: 2, displayWidth: 3, displayHeight: 4 }),
+    true,
+  );
+  assert.equal(
+    isLiveFromWebviewMessage({
+      type: "pressPoint",
+      clickX: 1,
+      clickY: 2,
+      displayWidth: 3,
+      displayHeight: 4,
+      holdMs: 500,
+    }),
+    true,
+  );
+  assert.equal(
+    isLiveFromWebviewMessage({
+      type: "dragPoints",
+      fromX: 1,
+      fromY: 2,
+      toX: 3,
+      toY: 4,
+      displayWidth: 5,
+      displayHeight: 6,
+      pressMs: 50,
+      dragMs: 200,
+    }),
     true,
   );
   assert.equal(isLiveFromWebviewMessage({ type: "tapRef", ref: 1 }), true);
@@ -468,9 +539,13 @@ test("isLiveFromWebviewMessage: 各メッセージ種別の正常な値を true 
   assert.equal(isLiveFromWebviewMessage({ type: "typeText", text: "hello", ref: null }), true);
   assert.equal(isLiveFromWebviewMessage({ type: "typeText", text: "hello", ref: 2 }), true);
   assert.equal(isLiveFromWebviewMessage({ type: "launch", bundleId: "com.example.app" }), true);
+  assert.equal(isLiveFromWebviewMessage({ type: "activate", bundleId: "com.example.sampleapp" }), true);
+  assert.equal(isLiveFromWebviewMessage({ type: "appSwitcher" }), true);
   assert.equal(isLiveFromWebviewMessage({ type: "install", path: "/tmp/x.app" }), true);
   assert.equal(isLiveFromWebviewMessage({ type: "pickInstallFile", platform: "ios" }), true);
   assert.equal(isLiveFromWebviewMessage({ type: "pickInstallFile", platform: "android" }), true);
+  assert.equal(isLiveFromWebviewMessage({ type: "refreshApps" }), true);
+  assert.equal(isLiveFromWebviewMessage({ type: "visibility", visible: true }), true);
 });
 
 test("isLiveFromWebviewMessage: 未知の type・型不一致・フィールド欠落は false", () => {
@@ -479,10 +554,37 @@ test("isLiveFromWebviewMessage: 未知の type・型不一致・フィールド�
   assert.equal(isLiveFromWebviewMessage({}), false);
   assert.equal(isLiveFromWebviewMessage({ type: "unknown" }), false);
   assert.equal(isLiveFromWebviewMessage({ type: "selectDevice" }), false);
+  assert.equal(isLiveFromWebviewMessage({ type: "openDevice" }), false);
   assert.equal(isLiveFromWebviewMessage({ type: "swipe", direction: "diagonal" }), false);
+  assert.equal(
+    isLiveFromWebviewMessage({ type: "dragPoints", fromX: 1, fromY: 2, toX: 3, displayWidth: 5, displayHeight: 6 }),
+    false,
+    "toY 欠落は不正",
+  );
+  assert.equal(
+    isLiveFromWebviewMessage({
+      type: "dragPoints",
+      fromX: 1,
+      fromY: 2,
+      toX: 3,
+      toY: 4,
+      displayWidth: 5,
+      displayHeight: 6,
+      pressMs: 50,
+    }),
+    false,
+    "dragMs 欠落は不正",
+  );
+  assert.equal(
+    isLiveFromWebviewMessage({ type: "pressPoint", clickX: 1, clickY: 2, displayWidth: 3, displayHeight: 4 }),
+    false,
+    "holdMs 欠落は不正",
+  );
   assert.equal(isLiveFromWebviewMessage({ type: "tapRef", ref: "1" }), false);
   assert.equal(isLiveFromWebviewMessage({ type: "typeText", text: 1, ref: null }), false);
+  assert.equal(isLiveFromWebviewMessage({ type: "activate" }), false);
   assert.equal(isLiveFromWebviewMessage({ type: "pickInstallFile", platform: "windows" }), false);
+  assert.equal(isLiveFromWebviewMessage({ type: "visibility" }), false);
 });
 
 // ---- isLiveWebviewEnvelope ----

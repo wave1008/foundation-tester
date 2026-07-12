@@ -36,8 +36,10 @@ final class BridgeRouter {
             case ("POST", "/tap"): return try handleTap(request.body)
             case ("POST", "/type"): return try handleType(request.body)
             case ("POST", "/swipe"): return try handleSwipe(request.body)
+            case ("POST", "/drag"): return try handleDrag(request.body)
             case ("POST", "/press"): return try handlePress(request.body)
             case ("GET", "/screenshot"): return handleScreenshot()
+            case ("POST", "/appswitcher"): return try handleAppSwitcher()
             case ("POST", "/terminate"): return try handleTerminate()
             default:
                 return .error("not found: \(request.method) \(request.path)", status: 404)
@@ -72,7 +74,11 @@ final class BridgeRouter {
             refFrames = [:]
             return .json(OKResponse())
         }
-        target.launch()
+        if req.activate == true {
+            target.activate()
+        } else {
+            target.launch()
+        }
         guard target.state == .runningForeground || target.wait(for: .runningForeground, timeout: 10) else {
             throw BridgeError(500, "アプリを起動できませんでした: \(req.bundleID)(インストール済みか確認してください)")
         }
@@ -133,16 +139,49 @@ final class BridgeRouter {
         return .json(OKResponse())
     }
 
+    /// 2点間ドラッグ(座標は tap と同じポイント座標)。press=静止時間で長押し→ドラッグを再現し、
+    /// velocity=距離÷移動時間で「ゆっくりドラッグ(慣性なし)〜フリック」を再現する
+    private func handleDrag(_ body: Data) throws -> BridgeHTTPServer.Response {
+        let req = try decode(DragRequest.self, body)
+        let app = try requireApp()
+        let from = coordinate(app, CGPoint(x: req.fromX, y: req.fromY))
+        let to = coordinate(app, CGPoint(x: req.toX, y: req.toY))
+        let press = max(req.press ?? 0.05, 0.05)
+        guard let requestedDuration = req.duration else {
+            from.press(forDuration: press, thenDragTo: to)
+            return .json(OKResponse())
+        }
+        let distance = hypot(req.toX - req.fromX, req.toY - req.fromY)
+        let duration = max(requestedDuration, 0.05)
+        // velocity の単位は pt/秒。極端値はクランプ(0除算・非現実的な速度の防止)
+        let velocity = max(10.0, min(distance / duration, 5000.0))
+        from.press(forDuration: press, thenDragTo: to,
+                   withVelocity: XCUIGestureVelocity(velocity), thenHoldForDuration: 0)
+        return .json(OKResponse())
+    }
+
     private func handlePress(_ body: Data) throws -> BridgeHTTPServer.Response {
         let req = try decode(PressRequest.self, body)
         let app = try requireApp()
-        coordinate(app, try resolvePoint(ref: req.ref, x: nil, y: nil))
+        coordinate(app, try resolvePoint(ref: req.ref, x: req.x, y: req.y))
             .press(forDuration: req.duration)
         return .json(OKResponse())
     }
 
     private func handleScreenshot() -> BridgeHTTPServer.Response {
         .png(XCUIScreen.main.screenshot().pngRepresentation)
+    }
+
+    /// 画面下端からのスワイプ上げ+ホールドでアプリスイッチャーを開く(Face ID 機にはホームボタン
+    /// APIが無いためジェスチャで行う)。座標は springboard 参照(セッション不要・HID合成なので
+    /// 前面アプリに関係なく効く)。velocity/hold はシミュレータ実機で調整済みの値。
+    private func handleAppSwitcher() throws -> BridgeHTTPServer.Response {
+        let sb = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let start = sb.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.999))
+        let end = sb.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.48))
+        start.press(forDuration: 0.1, thenDragTo: end,
+                    withVelocity: XCUIGestureVelocity(500), thenHoldForDuration: 1.0)
+        return .json(OKResponse())
     }
 
     private func handleTerminate() throws -> BridgeHTTPServer.Response {

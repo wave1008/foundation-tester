@@ -2,7 +2,7 @@
 // laneLog.js は tiles/selectedDeviceIds を読み取り専用で参照する。
 
 import { vscode } from './vscodeApi.js';
-import { grid, emptyMessage, banner, btnUp, btnDown, deviceOpMenu, deviceOpMenuItemBtn, profileSelect } from './domRefs.js';
+import { grid, emptyMessage, banner, btnUp, btnDown, deviceOpMenu, deviceOpMenuItemBtn, deviceOpMenuLiveBtn, profileSelect } from './domRefs.js';
 import { updateLaneVisibility, syncLanesToDevices, runningWorkers } from './laneLog.js';
 
 const STATE_LABEL = {
@@ -50,7 +50,7 @@ export function relayoutTiles() {
 function createTile(device) {
   const tile = document.createElement('div');
   tile.className = 'tile';
-  tile.title = 'クリックで選択 / 右クリックで起動・停止';
+  tile.title = 'クリックで選択 / 右クリックで起動・停止・ライブ操作';
   tile.addEventListener('click', () => toggleDeviceSelection(device.id));
   tile.addEventListener('contextmenu', (event) => {
     // 既定メニュー抑止+タイルクリック(選択トグル)への波及防止。
@@ -212,6 +212,16 @@ deviceOpMenuItemBtn.addEventListener('click', (event) => {
     name: deviceOpMenuEntry.device.name,
     op: deviceOpMenuItemBtn.dataset.op,
   });
+  closeDeviceOpMenu();
+});
+
+// 受け手は liveTab.js(タブ切替+host への openDevice 送信)。
+deviceOpMenuLiveBtn.addEventListener('click', (event) => {
+  event.stopPropagation();
+  if (!deviceOpMenuEntry) {
+    return;
+  }
+  document.dispatchEvent(new CustomEvent('ft-live-open-device', { detail: { id: deviceOpMenuEntry.device.id } }));
   closeDeviceOpMenu();
 });
 

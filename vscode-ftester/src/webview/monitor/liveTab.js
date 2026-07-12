@@ -3,6 +3,7 @@
 // LiveWebviewEnvelope、処理は src/monitorLiveController.ts)。
 
 import { vscode } from './vscodeApi.js';
+import { activateTab } from './tabs.js';
 
 function post(message) {
   vscode.postMessage({ type: 'live', message });
@@ -16,7 +17,11 @@ const banner = document.getElementById('live-banner');
 const screenshot = document.getElementById('live-screenshot');
 const hoverBox = document.getElementById('live-hover-box');
 const screenshotPlaceholder = document.getElementById('live-screenshot-placeholder');
+const dragOverlay = document.getElementById('live-drag-overlay');
+const dragLine = document.getElementById('live-drag-line');
+const dragStartDot = document.getElementById('live-drag-start');
 
+const appSelect = document.getElementById('live-app-select');
 const bundleIdInput = document.getElementById('live-bundle-id');
 const iosPathInput = document.getElementById('live-ios-path');
 const androidPathInput = document.getElementById('live-android-path');
@@ -38,17 +43,22 @@ let lastScreen = null;
 let lastElements = [];
 let selectedRef = null;
 let busy = false;
+// frame 受信時の自動全量更新(refreshSnapshot)の一回制御。applySnapshot で false に戻す。
+let autoSnapshotRequested = false;
 
 const busyButtons = [
-  'live-btn-refresh-devices', 'live-btn-launch', 'live-btn-terminate', 'live-btn-pick-ios',
-  'live-btn-pick-android', 'live-btn-install', 'live-btn-refresh-snapshot', 'live-btn-swipe-up',
-  'live-btn-swipe-down', 'live-btn-swipe-left', 'live-btn-swipe-right', 'live-btn-type',
+  'live-btn-refresh-devices', 'live-btn-refresh-apps', 'live-btn-launch', 'live-btn-terminate',
+  'live-btn-pick-ios', 'live-btn-pick-android', 'live-btn-install', 'live-btn-refresh-snapshot',
+  'live-btn-app-switcher',
+  'live-btn-swipe-up', 'live-btn-swipe-down', 'live-btn-swipe-left', 'live-btn-swipe-right',
+  'live-btn-type',
 ].map((id) => document.getElementById(id));
 
 function setBusy(value) {
   busy = value;
   for (const b of busyButtons) { b.disabled = value; }
   deviceSelect.disabled = value;
+  appSelect.disabled = value;
   busyLabel.textContent = value ? '処理中...' : '';
 }
 
@@ -94,10 +104,58 @@ function applyDevices(devices, selectedId) {
 deviceSelect.addEventListener('change', () => {
   updateDeviceWarning();
   updateInstallHint();
+  resetAppSelect('(取得中...)');
   post({ type: 'selectDevice', id: deviceSelect.value });
 });
 
-// ---- スクリーンショット(クリック=タップ、要素ホバー=枠オーバーレイ) -----------------
+// ---- アプリ選択(選ぶと launch でアプリを切り替える) --------------------------------
+
+function resetAppSelect(placeholder) {
+  appSelect.innerHTML = '';
+  const opt = document.createElement('option');
+  opt.value = '';
+  opt.textContent = placeholder;
+  appSelect.appendChild(opt);
+}
+resetAppSelect('(アプリ一覧 未取得)');
+
+function appendAppGroup(label, apps) {
+  if (apps.length === 0) { return; }
+  const group = document.createElement('optgroup');
+  group.label = label;
+  for (const app of apps) {
+    const opt = document.createElement('option');
+    opt.value = app.id;
+    opt.textContent = app.name === app.id ? app.id : app.name + '(' + app.id + ')';
+    group.appendChild(opt);
+  }
+  appSelect.appendChild(group);
+}
+
+function applyAppList(message) {
+  if (message.message) {
+    resetAppSelect('(アプリ一覧を取得できません)');
+    showBanner(message.message);
+    return;
+  }
+  resetAppSelect('アプリを選んで切替...');
+  appendAppGroup('ユーザーアプリ', message.apps.filter((a) => a.type === 'user'));
+  appendAppGroup('システムアプリ', message.apps.filter((a) => a.type === 'system'));
+}
+
+appSelect.addEventListener('change', () => {
+  if (busy || !appSelect.value) { return; }
+  showActionError('');
+  bundleIdInput.value = appSelect.value;
+  post({ type: 'activate', bundleId: appSelect.value });
+  appSelect.value = '';
+});
+
+document.getElementById('live-btn-refresh-apps').addEventListener('click', () => {
+  post({ type: 'refreshApps' });
+});
+
+// ---- スクリーンショット(クリック=タップ、ドラッグ=スワイプ、要素ホバー=枠オーバーレイ) ------
 
 // liveModel.ts の frameToDisplayRect と同じ計算(webview は CSP により import 不可のため複製。
 // liveModel.ts 側を変更したらここも追随させること)。
@@ -116,6 +174,7 @@ function frameToDisplayRect(frame, screen, display) {
 function applySnapshot(message) {
   lastScreen = message.screen;
   lastElements = message.elements;
+  autoSnapshotRequested = false;
   selectedRef = null;
   typeRefHint.textContent = '→ フォーカス中の要素に入力';
   screenshot.src = 'data:image/jpeg;base64,' + message.image;
@@ -125,16 +184,106 @@ function applySnapshot(message) {
   renderElements();
 }
 
-screenshot.addEventListener('click', (event) => {
+// 押下→ほぼ動かさず離す=タップ、動かして離す=ドラッグ(スワイプ)。click は使わない
+// (ドラッグ後にも click が発火してタップが重複するため)。座標は画像表示座標のまま送り、
+// ポイント座標への変換は host 側(monitorLiveController.ts の pointFromClick)が行う。
+// <img> 既定の HTML5 ドラッグ&ドロップ(緑の+コピーカーソル)が pointer イベントを乗っ取るため
+// 無効化必須(style.css の -webkit-user-drag: none と対)。
+screenshot.draggable = false;
+screenshot.addEventListener('dragstart', (event) => event.preventDefault());
+const DRAG_MIN_PX = 5;
+const LONG_PRESS_MS = 500;
+let dragStart = null;
+
+// デバイス側のスワイプは pointerup 時に1回で実行される(XCUITest にタッチ逐次移動 API が無く
+// リアルタイム追従は不可)ため、ドラッグ中は構成中のジェスチャを軌跡オーバーレイで見せる。
+function updateDragOverlay(start, x, y) {
+  dragStartDot.setAttribute('cx', start.x);
+  dragStartDot.setAttribute('cy', start.y);
+  dragLine.setAttribute('x1', start.x);
+  dragLine.setAttribute('y1', start.y);
+  dragLine.setAttribute('x2', x);
+  dragLine.setAttribute('y2', y);
+  dragOverlay.classList.add('visible');
+}
+function hideDragOverlay() {
+  dragOverlay.classList.remove('visible');
+}
+
+screenshot.addEventListener('pointerdown', (event) => {
+  if (busy || !lastScreen || event.button !== 0) { return; }
+  // 既定動作(画像ドラッグ・テキスト選択の開始)の抑止。dragstart 抑止だけでは環境により
+  // ネイティブドラッグが始まることがあるため両方必要。
+  event.preventDefault();
+  const rect = screenshot.getBoundingClientRect();
+  dragStart = {
+    x: event.clientX - rect.left, y: event.clientY - rect.top, pointerId: event.pointerId,
+    downAt: performance.now(), moveAt: null,
+  };
+  updateDragOverlay(dragStart, dragStart.x, dragStart.y);
+  try {
+    screenshot.setPointerCapture(event.pointerId);
+  } catch {
+    // capture 不可でも window 側の pointerup で拾えるため無視してよい
+  }
+});
+window.addEventListener('pointermove', (event) => {
+  if (!dragStart || event.pointerId !== dragStart.pointerId) { return; }
+  const rect = screenshot.getBoundingClientRect();
+  const x = Math.min(Math.max(event.clientX - rect.left, 0), rect.width);
+  const y = Math.min(Math.max(event.clientY - rect.top, 0), rect.height);
+  updateDragOverlay(dragStart, x, y);
+  if (dragStart.moveAt === null && Math.hypot(x - dragStart.x, y - dragStart.y) >= DRAG_MIN_PX) {
+    dragStart.moveAt = performance.now();
+  }
+});
+// pointerup は window で拾う(capture が効かない環境・画像外で離した場合も取りこぼさない)。
+window.addEventListener('pointerup', (event) => {
+  if (!dragStart || event.pointerId !== dragStart.pointerId) { return; }
+  hideDragOverlay();
+  const start = dragStart;
+  dragStart = null;
+  try {
+    screenshot.releasePointerCapture(event.pointerId);
+  } catch {
+    // 未 capture なら何もしない
+  }
   if (busy || !lastScreen) { return; }
   const rect = screenshot.getBoundingClientRect();
-  post({
-    type: 'tapPoint',
-    clickX: event.clientX - rect.left,
-    clickY: event.clientY - rect.top,
-    displayWidth: rect.width,
-    displayHeight: rect.height,
-  });
+  // キャプチャ中は画像外で離せるため表示範囲にクランプする
+  const endX = Math.min(Math.max(event.clientX - rect.left, 0), rect.width);
+  const endY = Math.min(Math.max(event.clientY - rect.top, 0), rect.height);
+  const upAt = performance.now();
+  if (Math.hypot(endX - start.x, endY - start.y) < DRAG_MIN_PX) {
+    const holdMs = Math.max(0, Math.round(upAt - start.downAt));
+    if (holdMs >= LONG_PRESS_MS) {
+      post({
+        type: 'pressPoint',
+        clickX: endX, clickY: endY,
+        displayWidth: rect.width, displayHeight: rect.height,
+        holdMs: holdMs,
+      });
+    } else {
+      post({
+        type: 'tapPoint',
+        clickX: endX, clickY: endY,
+        displayWidth: rect.width, displayHeight: rect.height,
+      });
+    }
+  } else {
+    const moveAt = start.moveAt ?? upAt;
+    post({
+      type: 'dragPoints',
+      fromX: start.x, fromY: start.y, toX: endX, toY: endY,
+      displayWidth: rect.width, displayHeight: rect.height,
+      pressMs: Math.max(0, Math.round(moveAt - start.downAt)),
+      dragMs: Math.max(1, Math.round(upAt - moveAt)),
+    });
+  }
+});
+window.addEventListener('pointercancel', () => {
+  dragStart = null;
+  hideDragOverlay();
 });
 
 function showHover(element) {
@@ -181,6 +330,10 @@ document.getElementById('live-btn-refresh-snapshot').addEventListener('click', (
   showActionError('');
   post({ type: 'refreshSnapshot' });
 });
+document.getElementById('live-btn-app-switcher').addEventListener('click', () => {
+  showActionError('');
+  post({ type: 'appSwitcher' });
+});
 document.getElementById('live-btn-launch').addEventListener('click', () => {
   showActionError('');
   post({ type: 'launch', bundleId: bundleIdInput.value });
@@ -226,6 +379,18 @@ export function applyLiveMessage(message) {
     case 'snapshot':
       applySnapshot(message);
       break;
+    case 'frame':
+      screenshot.src = 'data:image/jpeg;base64,' + message.image;
+      screenshot.classList.add('visible');
+      screenshotPlaceholder.style.display = 'none';
+      // frame は screen(タップ/ドラッグ座標変換の基準)を持たない。snapshot 未取得のまま frame
+      // だけが流れているとポインタ操作が無反応になるため、一度だけ全量更新を要求する
+      // (パネル開き直しでライブタブが復元された直後に起きる)。フラグは applySnapshot で戻す。
+      if (!lastScreen && !autoSnapshotRequested && !busy) {
+        autoSnapshotRequested = true;
+        post({ type: 'refreshSnapshot' });
+      }
+      break;
     case 'actionError':
       showActionError(message.message);
       break;
@@ -235,6 +400,9 @@ export function applyLiveMessage(message) {
     case 'installPathPicked':
       if (message.platform === 'android') { androidPathInput.value = message.path; }
       else { iosPathInput.value = message.path; }
+      break;
+    case 'appList':
+      applyAppList(message);
       break;
     default:
       break;
@@ -249,4 +417,17 @@ document.addEventListener('ft-tab-activated', (event) => {
     initialized = true;
     post({ type: 'refreshDevices' });
   }
+});
+
+// デバイスタブの右クリック「ライブ操作」(deviceTiles.js が dispatch)。初回自動 refreshDevices は
+// 抑止し、host 側 openDevice が一覧取得と選択をまとめて行う。
+document.addEventListener('ft-live-open-device', (event) => {
+  initialized = true;
+  activateTab('live');
+  post({ type: 'openDevice', id: event.detail.id });
+});
+
+// タブ表示状態を host へ通知(自動フレーム更新のオンオフ。監視元: monitorLiveController.ts)
+document.addEventListener('ft-tab-activated', (event) => {
+  post({ type: 'visibility', visible: event.detail.tab === 'live' });
 });

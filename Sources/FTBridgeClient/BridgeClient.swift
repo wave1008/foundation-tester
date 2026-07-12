@@ -22,10 +22,14 @@ public final class BridgeClient: AppDriver {
         try await get("/status")
     }
 
-    /// install は HTTP エンドポイントを持たず simctl の役割。/status のデバイス名から対象シミュレータを特定する
+    /// install は HTTP エンドポイントを持たず simctl の役割。/status のデバイス名から対象シミュレータを
+    /// 特定する。同名デバイス(Shutdown の複製等)があると名前指定 simctl は失敗するため、
+    /// Booted かつ同名の UDID に解決してから実行する(解決不能時は名前のまま試す)。
     public func install(packagePath: String) async throws {
         let current = try await status()
-        let result = try Shell.run(["xcrun", "simctl", "install", current.device, packagePath])
+        let target = (try? SimulatorCatalog.devices())?
+            .first(where: { $0.booted && $0.name == current.device })?.udid ?? current.device
+        let result = try Shell.run(["xcrun", "simctl", "install", target, packagePath])
         guard result.status == 0 else {
             throw DriverError.badResponse(status: Int(result.status),
                 body: "simctl install に失敗しました: \(result.tail)")
@@ -34,6 +38,14 @@ public final class BridgeClient: AppDriver {
 
     public func launch(bundleID: String) async throws {
         let _: OKResponse = try await post("/session", body: LaunchRequest(bundleID: bundleID))
+    }
+
+    public func activate(bundleID: String) async throws {
+        let _: OKResponse = try await post("/session", body: LaunchRequest(bundleID: bundleID, activate: true))
+    }
+
+    public func openAppSwitcher() async throws {
+        let _: OKResponse = try await post("/appswitcher", body: OKResponse())
     }
 
     public func snapshot() async throws -> SnapshotResponse {
@@ -56,8 +68,19 @@ public final class BridgeClient: AppDriver {
         let _: OKResponse = try await post("/swipe", body: SwipeRequest(direction: direction))
     }
 
+    public func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
+                     pressSeconds: Double, durationSeconds: Double) async throws {
+        let _: OKResponse = try await post("/drag", body: DragRequest(
+            fromX: fromX, fromY: fromY, toX: toX, toY: toY,
+            press: pressSeconds, duration: durationSeconds))
+    }
+
     public func press(ref: Int, duration: Double) async throws {
         let _: OKResponse = try await post("/press", body: PressRequest(ref: ref, duration: duration))
+    }
+
+    public func press(x: Double, y: Double, duration: Double) async throws {
+        let _: OKResponse = try await post("/press", body: PressRequest(x: x, y: y, duration: duration))
     }
 
     public func screenshot() async throws -> Data {

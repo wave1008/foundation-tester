@@ -33,12 +33,14 @@ import {
   type LiveDeviceOption,
   type LiveDeviceRef,
   type LiveErrorResult,
+  type LiveFrameResult,
   type LiveFromWebviewMessage,
   type LivePlatform,
   type LiveServeCommand,
   type LiveSize,
   type LiveSnapshot,
   type LiveToWebviewMessage,
+  parseListAppsResult,
   parseListDevicesResult,
   parseLiveServeEvent,
   pointFromClick,
@@ -62,6 +64,10 @@ type ServeProcess = ChildProcessByStdio<Writable, Readable, Readable>;
  * 応答が無いまま常駐プロセスが停止したり壊れたりしても busy 状態のまま固まらないようにする。 */
 const SERVE_REQUEST_TIMEOUT_MS = 20000;
 
+/** 自動フレームを実行できなかった回(busy・パネル非表示・serve 不在)と失敗時の再試行間隔(ms)。
+ * 成功時は待ちなしで次フレームを送る(ホットループ防止のため失敗系のみ間隔を空ける)。 */
+const FRAME_IDLE_RETRY_MS = 500;
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -84,25 +90,40 @@ interface ServeRequestOutcome {
   readonly snapshot: LiveSnapshot | LiveErrorResult;
 }
 
-/** 送信中(応答待ち)の serve リクエスト1件分。同時に2件以上送らない(busy フラグで直列化)ため
- * キューではなく単一スロットで管理する(activeChild と同じ「一度に1つだけ」の設計)。 */
+/** sendServeCommand/sendServeFrame の resolve に渡す払い出し。resolvesOn で使うフィールドが決まる
+ * (snapshot: action?+snapshot、frame: frame のみ)。 */
+interface PendingServeOutcome {
+  readonly action?: LiveActionResult;
+  readonly snapshot?: LiveSnapshot | LiveErrorResult;
+  readonly frame?: LiveFrameResult;
+}
+
+/** 送信中(応答待ち)の serve リクエスト1件分。自動フレームとユーザー操作が enqueueServeSend で
+ * 直列化されるため同時に2件以上送らない(単一スロットで管理。activeChild と同じ「一度に1つだけ」の設計)。 */
 interface PendingServeRequest {
-  /** refresh は actionResult を出さないため false。 */
+  /** refresh/frame は actionResult を出さないため false。 */
   readonly expectsAction: boolean;
+  /** どちらの観測イベントで resolve するか。handleServeEvent が届いた kind と照合し、不一致なら
+   * 「対応しないイベント」として無視する(自動フレームとユーザー操作の取り違え防止)。 */
+  readonly resolvesOn: "snapshot" | "frame";
   /** actionResult イベントが先に届いたら保持し、snapshot イベント到着時にまとめて resolve する。 */
   action: LiveActionResult | undefined;
-  readonly resolve: (outcome: ServeRequestOutcome) => void;
+  readonly resolve: (outcome: PendingServeOutcome) => void;
   readonly timeout: ReturnType<typeof setTimeout>;
 }
 
 export class MonitorLiveController implements vscode.Disposable {
   private devices: LiveDeviceOption[] = [];
   private selectedDeviceId: string | undefined;
+  /** openDevice 用: 次の applyDevices で優先選択する id(消費したら undefined に戻す)。 */
+  private pendingSelectId: string | undefined;
   /** 直近の snapshot の screen(ポイント座標のサイズ)。クリック→タップ座標変換に使う。 */
   private lastScreen: LiveSize | undefined;
   private busy = false;
   /** list-devices のワンショット spawn(専用。runOneShot 経由)。 */
   private activeChild: PipeProcess | undefined;
+  /** アプリ一覧を取得済みのデバイス id(refreshAppsIfNeeded の再取得判定)。 */
+  private lastAppsDeviceId: string | undefined;
 
   // ---- live serve(常駐プロセス。デバイス選択ごとに1つ)。ファイル冒頭のコメント参照 ----
   private serveProcess: ServeProcess | undefined;
@@ -126,8 +147,15 @@ export class MonitorLiveController implements vscode.Disposable {
   /** 自動再起動を諦めた状態。true の間は close イベントで再起動をスケジュールしない
    * (rebindServeProcess でリセットされる。詳細はファイル冒頭のコメント参照)。 */
   private serveGaveUp = false;
-  /** 送信中(応答待ち)の serve リクエスト。同時に1件のみ(busy フラグで直列化されるため)。 */
+  /** 送信中(応答待ち)の serve リクエスト。同時に1件のみ(enqueueServeSend で直列化されるため)。 */
   private pendingServeRequest: PendingServeRequest | undefined;
+  /** serve への送信を直列化するチェーン(自動フレームとユーザー操作の pending 競合を防ぐ)。 */
+  private serveSendChain: Promise<unknown> = Promise.resolve();
+  /** ライブタブ表示中かどうか(webview からの visibility メッセージで更新)。自動フレームの実行可否
+   * (パネル非表示時はスキップ)に使う。 */
+  private liveTabVisible = false;
+  /** 自動フレームの次回 tick タイマー。 */
+  private frameTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(private readonly deps: MonitorPanelDeps) {}
 
@@ -136,6 +164,7 @@ export class MonitorLiveController implements vscode.Disposable {
   stopProcesses(): void {
     this.killActiveChild();
     this.stopServeProcess();
+    this.clearFrameTimer();
   }
 
   dispose(): void {
@@ -218,11 +247,53 @@ export class MonitorLiveController implements vscode.Disposable {
     }
   }
 
-  /** 直前の選択が新しい一覧にも存在すれば維持し、無ければ先頭を選択する。 */
+  // ---- アプリ一覧 -----------------------------------------------------------------
+
+  private async refreshApps(): Promise<void> {
+    if (this.busy) {
+      return;
+    }
+    const device = this.currentDeviceRef();
+    if (!device) {
+      this.post({ type: "appList", apps: [], message: "デバイスが選択されていません。" });
+      return;
+    }
+    const requestedId = this.selectedDeviceId;
+    this.setBusy(true);
+    try {
+      const result = await this.runCli(["api", "list-apps", ...buildDeviceArgs(device)]);
+      const apps = parseListAppsResult(result.json);
+      if (!apps) {
+        const detail = result.stderrTail.length > 0 ? result.stderrTail : `exit code: ${String(result.exitCode)}`;
+        this.post({ type: "appList", apps: [], message: `アプリ一覧の取得に失敗しました(${detail})` });
+        return;
+      }
+      this.lastAppsDeviceId = requestedId;
+      this.post({ type: "appList", apps, message: null });
+    } catch (error) {
+      this.post({ type: "appList", apps: [], message: `アプリ一覧の取得に失敗しました: ${errorMessage(error)}` });
+    } finally {
+      this.setBusy(false);
+    }
+  }
+
+  /** 選択デバイスのアプリ一覧が未取得のときだけ取得する(デバイス選択の変化に追随する経路)。 */
+  private async refreshAppsIfNeeded(): Promise<void> {
+    if (this.selectedDeviceId !== undefined && this.lastAppsDeviceId === this.selectedDeviceId) {
+      return;
+    }
+    await this.refreshApps();
+  }
+
+  /** pendingSelectId(openDevice 由来)があればそれを優先選択する。無ければ直前の選択が新しい
+   * 一覧にも存在するとき維持し、それ以外は先頭を選択する。 */
   private applyDevices(options: LiveDeviceOption[], bannerMessage: string | undefined): void {
     this.devices = options;
+    const pending = this.pendingSelectId;
+    this.pendingSelectId = undefined;
+    const preferred = pending !== undefined && options.some((o) => o.id === pending) ? pending : undefined;
     const stillExists = this.selectedDeviceId !== undefined && options.some((o) => o.id === this.selectedDeviceId);
-    this.selectedDeviceId = stillExists ? this.selectedDeviceId : options[0]?.id;
+    this.selectedDeviceId = preferred ?? (stillExists ? this.selectedDeviceId : options[0]?.id);
     this.post({ type: "devices", devices: options, selectedId: this.selectedDeviceId });
     this.post({ type: "banner", message: bannerMessage ?? null });
     this.ensureServeProcessForSelection();
@@ -231,6 +302,33 @@ export class MonitorLiveController implements vscode.Disposable {
   private applyFallback(config: FtesterConfig, bannerMessage: string): void {
     const option = fallbackDeviceOption({ platform: config.platform, port: config.port, serial: config.serial });
     this.applyDevices([option], bannerMessage);
+  }
+
+  /** デバイスタブの右クリック「ライブ操作」から(webview: deviceTiles.js→liveTab.js)。
+   * id はモニターと共通の `platform:name`(Swift 側 MonitorTarget.id と devicesToOptions が同形式)。
+   * 一覧に無ければ取得し直してから選択し、接続済みなら snapshot まで自動取得する。 */
+  private async openDevice(id: string): Promise<void> {
+    if (this.busy) {
+      // 進行中の refreshDevices があれば、その applyDevices がこの id を優先選択する。
+      this.pendingSelectId = id;
+      return;
+    }
+    if (this.devices.some((device) => device.id === id)) {
+      this.selectedDeviceId = id;
+      this.post({ type: "devices", devices: this.devices, selectedId: id });
+      this.ensureServeProcessForSelection();
+    } else {
+      this.pendingSelectId = id;
+      await this.refreshDevices();
+    }
+    if (this.selectedDeviceId !== id) {
+      return; // 一覧取得失敗(フォールバック)や消えたデバイス。banner は refreshDevices 側で表示済み。
+    }
+    const selected = this.devices.find((device) => device.id === id);
+    if (selected?.state === "connected") {
+      await this.refreshSnapshot();
+    }
+    await this.refreshAppsIfNeeded();
   }
 
   // ---- live serve(常駐プロセス)の起動・停止・再バインド ------------------------------------
@@ -408,7 +506,8 @@ export class MonitorLiveController implements vscode.Disposable {
   }
 
   /** serve の stdout から届いた NDJSON 1行を pendingServeRequest に配る。actionResult は
-   * 保持だけして、続く snapshot イベントで両方まとめて resolve する(ファイル冒頭プロトコル参照)。 */
+   * 保持だけして、続く snapshot/frame イベントで resolve する(ファイル冒頭プロトコル参照)。
+   * pending.resolvesOn と一致しない kind(自動フレームとユーザー操作の取り違え)は無視する。 */
   private handleServeEvent(value: unknown): void {
     const event = parseLiveServeEvent(value);
     if (!event) {
@@ -426,10 +525,20 @@ export class MonitorLiveController implements vscode.Disposable {
       pending.action = event.result;
       return;
     }
-    this.settlePendingServeRequest({ action: pending.action, snapshot: event.result });
+    if (event.kind !== pending.resolvesOn) {
+      this.deps.outputChannel.appendLine(
+        `[live serve] 対応しないイベントを受信しました(期待: ${pending.resolvesOn}、実際: ${event.kind})`,
+      );
+      return;
+    }
+    if (event.kind === "snapshot") {
+      this.settlePendingServeRequest({ action: pending.action, snapshot: event.result });
+    } else {
+      this.settlePendingServeRequest({ frame: event.result });
+    }
   }
 
-  private settlePendingServeRequest(outcome: ServeRequestOutcome): void {
+  private settlePendingServeRequest(outcome: PendingServeOutcome): void {
     const pending = this.pendingServeRequest;
     if (!pending) {
       return;
@@ -440,10 +549,15 @@ export class MonitorLiveController implements vscode.Disposable {
   }
 
   /** 応答を受け取れなくなった(プロセス終了・タイムアウト)ときに、待たせている呼び出し元を
-   * エラー結果で解放する(busy 状態のまま固まらないようにする安全弁)。 */
+   * エラー結果で解放する(busy 状態のまま固まらないようにする安全弁)。resolvesOn に応じて
+   * snapshot/frame のどちらか一方だけを埋める。 */
   private failPendingServeRequest(message: string): void {
     const pending = this.pendingServeRequest;
     if (!pending) {
+      return;
+    }
+    if (pending.resolvesOn === "frame") {
+      this.settlePendingServeRequest({ frame: { ok: false, error: message } });
       return;
     }
     this.settlePendingServeRequest({
@@ -452,9 +566,25 @@ export class MonitorLiveController implements vscode.Disposable {
     });
   }
 
+  /** serve への送信を直列化するチェーン内で run を実行する(自動フレームとユーザー操作の pending
+   * スロット競合を防ぐ)。チェーン自体は常に成功状態を維持する(run の失敗を次回以降へ持ち越さない)。 */
+  private enqueueServeSend<T>(run: () => Promise<T>): Promise<T> {
+    const result = this.serveSendChain.then(run, run);
+    this.serveSendChain = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }
+
   /** command を serve の stdin へ送り、対応する応答(actionResult[refresh以外]+snapshot)が
-   * 揃うまで待つ。serve が起動していなければ CLI を呼ばずに即座にエラー結果を返す。 */
+   * 揃うまで待つ。serve が起動していなければ CLI を呼ばずに即座にエラー結果を返す。
+   * enqueueServeSend で直列化する(実体は sendServeCommandNow)。 */
   private sendServeCommand(command: LiveServeCommand): Promise<ServeRequestOutcome> {
+    return this.enqueueServeSend(() => this.sendServeCommandNow(command));
+  }
+
+  private sendServeCommandNow(command: LiveServeCommand): Promise<ServeRequestOutcome> {
     const proc = this.serveProcess;
     if (!proc || proc.exitCode !== null || proc.signalCode !== null) {
       const message = "ライブ操作の常駐プロセスが起動していません。デバイスを選び直してください。";
@@ -467,8 +597,48 @@ export class MonitorLiveController implements vscode.Disposable {
       const timeout = setTimeout(() => {
         this.failPendingServeRequest("ライブ操作の応答がタイムアウトしました(常駐プロセスが応答していません)。");
       }, SERVE_REQUEST_TIMEOUT_MS);
-      this.pendingServeRequest = { expectsAction: command.cmd !== "refresh", action: undefined, resolve, timeout };
+      this.pendingServeRequest = {
+        expectsAction: command.cmd !== "refresh",
+        resolvesOn: "snapshot",
+        action: undefined,
+        resolve: (outcome) =>
+          resolve({
+            action: outcome.action,
+            snapshot: outcome.snapshot ?? { ok: false, error: "内部エラー: snapshot が届きませんでした。" },
+          }),
+        timeout,
+      };
       proc.stdin.write(serializeLiveServeCommand(command));
+    });
+  }
+
+  /** 画像のみの frame コマンドを送る(自動リフレッシュ用)。serve が起動していなければ CLI を呼ばずに
+   * 即座にエラー結果を返す(sendServeCommandNow と同じ文言)。enqueueServeSend で直列化する。 */
+  private sendServeFrame(): Promise<LiveFrameResult> {
+    return this.enqueueServeSend(() => this.sendServeFrameNow());
+  }
+
+  private sendServeFrameNow(): Promise<LiveFrameResult> {
+    const proc = this.serveProcess;
+    if (!proc || proc.exitCode !== null || proc.signalCode !== null) {
+      return Promise.resolve({
+        ok: false,
+        error: "ライブ操作の常駐プロセスが起動していません。デバイスを選び直してください。",
+      });
+    }
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        this.failPendingServeRequest("ライブ操作の応答がタイムアウトしました(常駐プロセスが応答していません)。");
+      }, SERVE_REQUEST_TIMEOUT_MS);
+      this.pendingServeRequest = {
+        expectsAction: false,
+        resolvesOn: "frame",
+        action: undefined,
+        resolve: (outcome) =>
+          resolve(outcome.frame ?? { ok: false, error: "内部エラー: frame が届きませんでした。" }),
+        timeout,
+      };
+      proc.stdin.write(serializeLiveServeCommand({ cmd: "frame" }));
     });
   }
 
@@ -508,6 +678,45 @@ export class MonitorLiveController implements vscode.Disposable {
     }
   }
 
+  // ---- 自動フレーム(ライブタブ表示中、画像のみの定期更新) ------------------------------
+
+  private clearFrameTimer(): void {
+    if (this.frameTimer) {
+      clearTimeout(this.frameTimer);
+      this.frameTimer = undefined;
+    }
+  }
+
+  private scheduleFrameTick(delayMs: number): void {
+    if (this.frameTimer) {
+      return;
+    }
+    this.frameTimer = setTimeout(() => {
+      this.frameTimer = undefined;
+      void this.frameTick();
+    }, delayMs);
+  }
+
+  /** 表示中のみ回る自動フレーム。busy(ユーザー操作中)・パネル非表示・serve 不在の回はスキップ。
+   * 失敗は表示しない(次tickで再試行。serve 死は既存の自動再起動が回復する)。
+   * 成功時は待ちなしで次フレームへ(スキップ・失敗時のみ FRAME_IDLE_RETRY_MS 空ける)。 */
+  private async frameTick(): Promise<void> {
+    if (!this.liveTabVisible) {
+      return;
+    }
+    let delayMs = FRAME_IDLE_RETRY_MS;
+    if (this.deps.isPanelActive() && !this.busy && this.serveProcess && this.currentDeviceRef()) {
+      const frame = await this.sendServeFrame();
+      if (frame.ok) {
+        this.post({ type: "frame", image: frame.image });
+        delayMs = 0;
+      }
+    }
+    if (this.liveTabVisible) {
+      this.scheduleFrameTick(delayMs);
+    }
+  }
+
   // ---- tap/type/swipe/launch/terminate/install -------------------------------------
 
   /** serve へ1コマンド送って結果を反映する。成功時は serve が続けて返す観測イベント(操作後の
@@ -538,6 +747,11 @@ export class MonitorLiveController implements vscode.Disposable {
     }
   }
 
+  private async refreshDevicesThenApps(): Promise<void> {
+    await this.refreshDevices();
+    await this.refreshAppsIfNeeded();
+  }
+
   // ---- webview からのメッセージ -----------------------------------------------------
   // isLiveFromWebviewMessage による型ガードは呼び出し元(monitorPanel.ts の isLiveWebviewEnvelope)
   // 側で済んでいるためここでは行わない。
@@ -545,13 +759,20 @@ export class MonitorLiveController implements vscode.Disposable {
   handleWebviewMessage(message: LiveFromWebviewMessage): void {
     switch (message.type) {
       case "refreshDevices":
-        void this.refreshDevices();
+        void this.refreshDevicesThenApps();
         break;
       case "selectDevice":
         if (this.devices.some((device) => device.id === message.id)) {
           this.selectedDeviceId = message.id;
           this.ensureServeProcessForSelection();
+          void this.refreshAppsIfNeeded();
         }
+        break;
+      case "refreshApps":
+        void this.refreshApps();
+        break;
+      case "openDevice":
+        void this.openDevice(message.id);
         break;
       case "refreshSnapshot":
         void this.refreshSnapshot();
@@ -567,6 +788,39 @@ export class MonitorLiveController implements vscode.Disposable {
           this.lastScreen,
         );
         void this.runAction({ cmd: "tap", x: point.x, y: point.y });
+        break;
+      }
+      case "dragPoints": {
+        if (!this.lastScreen) {
+          this.post({ type: "actionError", message: "先に「更新」で画面を取得してください。" });
+          break;
+        }
+        const display = { width: message.displayWidth, height: message.displayHeight };
+        const from = pointFromClick({ x: message.fromX, y: message.fromY }, display, this.lastScreen);
+        const to = pointFromClick({ x: message.toX, y: message.toY }, display, this.lastScreen);
+        // 実測時間をそのまま実機に流すと serve タイムアウト(20秒)に触れるためクランプする
+        const pressSeconds = Math.min(Math.max(message.pressMs / 1000, 0), 3);
+        const durationSeconds = Math.min(Math.max(message.dragMs / 1000, 0.05), 8);
+        void this.runAction({
+          cmd: "drag",
+          fromX: from.x, fromY: from.y, toX: to.x, toY: to.y,
+          press: pressSeconds, duration: durationSeconds,
+        });
+        break;
+      }
+      case "pressPoint": {
+        if (!this.lastScreen) {
+          this.post({ type: "actionError", message: "先に「更新」で画面を取得してください。" });
+          break;
+        }
+        const point = pointFromClick(
+          { x: message.clickX, y: message.clickY },
+          { width: message.displayWidth, height: message.displayHeight },
+          this.lastScreen,
+        );
+        // 実測ホールド時間をそのまま流す(serve タイムアウト対策で 0.5〜5 秒にクランプ)
+        const duration = Math.min(Math.max(message.holdMs / 1000, 0.5), 5);
+        void this.runAction({ cmd: "press", x: point.x, y: point.y, duration });
         break;
       }
       case "tapRef":
@@ -592,6 +846,18 @@ export class MonitorLiveController implements vscode.Disposable {
         void this.runAction({ cmd: "launch", bundle: bundleId });
         break;
       }
+      case "activate": {
+        const bundleId = message.bundleId.trim();
+        if (bundleId.length === 0) {
+          this.post({ type: "actionError", message: "bundle ID / パッケージ名を入力してください。" });
+          break;
+        }
+        void this.runAction({ cmd: "activate", bundle: bundleId });
+        break;
+      }
+      case "appSwitcher":
+        void this.runAction({ cmd: "appSwitcher" });
+        break;
       case "terminate":
         void this.runAction({ cmd: "terminate" });
         break;
@@ -611,6 +877,14 @@ export class MonitorLiveController implements vscode.Disposable {
       }
       case "pickInstallFile":
         void this.pickInstallFile(message.platform);
+        break;
+      case "visibility":
+        this.liveTabVisible = message.visible;
+        if (message.visible) {
+          this.scheduleFrameTick(0);
+        } else {
+          this.clearFrameTimer();
+        }
         break;
     }
   }
