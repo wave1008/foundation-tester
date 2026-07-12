@@ -137,26 +137,37 @@ final class FTInAppBridge {
     private func handleSwipe(_ body: Data) throws -> InAppHTTPServer.Response {
         let req = try decode(SwipeRequest.self, body)
         try performWithSettle { window in
-            // スクロールのジェスチャ認識器も合成タッチでは駆動できない(tap と同じ)。
-            // スクロール可能要素の accessibilityScroll(VoiceOver 3本指スワイプ相当)を使う。
-            let axDir = Self.axScrollDirection(req.direction)
-            if let scrollView = Self.findScrollView(in: window), scrollView.accessibilityScroll(axDir) {
-                return
+            // スクロールのジェスチャ認識器は合成タッチでは駆動できない(tap と同じ)。
+            // スクロール可能要素の contentOffset を直接動かす(accessibilityScroll は SwiftUI List で
+            // 片方向しか効かず不安定だった。setContentOffset は決定的・双方向)。
+            if let scrollView = Self.findScrollView(in: window) {
+                Self.scrollByPage(scrollView, direction: req.direction)
+            } else {
+                let (from, to) = Self.swipeVector(req.direction, in: window.bounds)
+                FTSynthSwipe(window, from, to, 12)
             }
-            let (from, to) = Self.swipeVector(req.direction, in: window.bounds)
-            FTSynthSwipe(window, from, to, 12)
         }
         return .json(OKResponse())
     }
 
-    // 指の移動方向 → accessibilityScroll の向き(指を上に払う=コンテンツ下方を出す=.down)
-    private static func axScrollDirection(_ d: FTSwipeDirection) -> UIAccessibilityScrollDirection {
-        switch d {
-        case .up: return .down
-        case .down: return .up
-        case .left: return .right
-        case .right: return .left
+    /// スワイプ1回 = 可視領域の ~85% 分だけ contentOffset を動かす(実機スワイプの体感に合わせる)。
+    /// 指の向き=コンテンツと逆(上スワイプ=下方向へスクロール=offset.y 増)。範囲外はクランプ。
+    private static func scrollByPage(_ sv: UIScrollView, direction: FTSwipeDirection) {
+        let inset = sv.adjustedContentInset
+        let stepY = (sv.bounds.height - inset.top - inset.bottom) * 0.85
+        let stepX = (sv.bounds.width - inset.left - inset.right) * 0.85
+        var offset = sv.contentOffset
+        switch direction {
+        case .up:    offset.y += stepY
+        case .down:  offset.y -= stepY
+        case .left:  offset.x += stepX
+        case .right: offset.x -= stepX
         }
+        let minY = -inset.top, maxY = max(-inset.top, sv.contentSize.height + inset.bottom - sv.bounds.height)
+        let minX = -inset.left, maxX = max(-inset.left, sv.contentSize.width + inset.right - sv.bounds.width)
+        offset.y = min(max(offset.y, minY), maxY)
+        offset.x = min(max(offset.x, minX), maxX)
+        sv.setContentOffset(offset, animated: false)
     }
 
     /// 面積最大の可視スクロールビューを返す(メインのリスト/スクロール領域)
