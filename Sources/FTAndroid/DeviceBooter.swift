@@ -176,7 +176,7 @@ public enum DeviceBooter {
             }
             if let repoRoot {
                 let running = await BridgeProvisioner(repoRoot: repoRoot).scanRunningBridges(catalog: catalog)
-                if let port = running.first(where: { $0.value == sim.udid })?.key {
+                if let port = running.first(where: { $0.value.udid == sim.udid })?.key {
                     try? BridgeLauncher(repoRoot: repoRoot, device: sim.udid, port: port).stop()
                     log("→ \(spec.name): ブリッジ停止(port \(port))")
                 }

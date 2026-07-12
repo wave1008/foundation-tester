@@ -120,11 +120,13 @@ public final class FTDriveCore {
                 dryRun: Bool = false,
                 healCacheURL: URL? = nil,
                 defaultTimeout: Int? = nil,
+                fallbackDriver: AppDriver? = nil,
                 emit: @escaping (ScenarioEvent) -> Void) {
         self.driver = driver
         self.platform = platform
         self.appBundleID = app
-        self.executor = StepExecutor(driver: driver, delegate: delegate, healingEnabled: healingEnabled)
+        self.executor = StepExecutor(driver: driver, fallbackDriver: fallbackDriver,
+                                     delegate: delegate, healingEnabled: healingEnabled)
         self.scenarioID = scenarioID
         self.scenarioTitle = scenarioTitle
         self.dryRun = dryRun

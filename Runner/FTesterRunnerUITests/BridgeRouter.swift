@@ -57,12 +57,21 @@ final class BridgeRouter {
             ready: true,
             device: device.name,
             osVersion: "\(device.systemName) \(device.systemVersion)",
-            sessionBundleID: sessionBundleID))
+            sessionBundleID: sessionBundleID,
+            engine: "xcuitest"))
     }
 
     private func handleLaunch(_ body: Data) throws -> BridgeHTTPServer.Response {
         let req = try decode(LaunchRequest.self, body)
         let target = XCUIApplication(bundleIdentifier: req.bundleID)
+        // springboard は起動せず参照のみ(launch するとホームに飛びシステムアラートを消す。
+        // ハイブリッドのフォールバックで、アプリ上に載ったシステム UI を非破壊で走査/操作するため)。
+        if req.bundleID == "com.apple.springboard" {
+            app = target
+            sessionBundleID = req.bundleID
+            refFrames = [:]
+            return .json(OKResponse())
+        }
         target.launch()
         guard target.state == .runningForeground || target.wait(for: .runningForeground, timeout: 10) else {
             throw BridgeError(500, "アプリを起動できませんでした: \(req.bundleID)(インストール済みか確認してください)")

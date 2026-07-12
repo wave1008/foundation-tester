@@ -252,30 +252,37 @@ window/transition/animator の `*_scale` はチューニングノブではなく
      必要=エラーメッセージで案内)。
      なお XCUITest の quiescence 自体を私有 API で無効化する案(WDA 方式)は、
      代替の整定信号がプロセス外から得られないため 2 とセットでない限り採らない
-  4. **cross-app ハイブリッド(in-app + XCUITest 併存)= feasibility プロト実証済み(2026-07-12、
-     プロトコードは未コミット)**: in-app は同一プロセスしか操作できない(=速さの源泉と表裏)ため、
-     「主として sampleapp を in-app で駆動、必要に応じて他アプリ(iOS設定等)やシステム UI も操作」
-     には cross-process な XCUITest を**必要な時だけ**併用する。**起動と sampleapp 駆動は in-app のまま
-     速く**、XCUITest は既に前面にある画面の操作だけに使う(以前検討した「XCUITest が in-app を起動」
-     案とは別。あちらは launch が 4200-5400ms と遅い)。プロトで確認できたこと:
-     - **共存**: XCUITest ブリッジ(port A)+ in-app ブリッジ(port B)が同一シミュレータで両方
-       /status 応答。**別ポート必須**(同一ポートは bind 衝突)。ただし現行 `scanRunningBridges` は
-       port→UDID のみで、同一 UDID に2ブリッジがあると reuse が非決定的 → **/status に `engine` 追加
-       →(UDID, engine)で発見**が要る。ハイブリッドデバイスは2ポート消費(8123-8154 で最大16台並列)。
-     - **XCUITest cross-app(別フルアプリ)**: `/session com.apple.Preferences` で Settings を
-       snapshot/操作可(236ms)。別フルアプリ前面化で sampleapp はサスペンド→in-app 無応答。**復帰は
-       `simctl launch <bundleID>`(--terminate 無し)で同一プロセス復帰=注入・状態保持**(XCUITest の
-       /session で戻すと再起動され注入が消える)。
-     - **ダイアログ・オーバー・アプリ**: sampleapp は前面のまま(in-app 生存)だが in-app からは
-       ダイアログ不可視(別プロセス)。**単純な springboard アラート(権限 Allow/Don't Allow 等)は
-       XCUITest が「springboard を launch せず参照のみ」の非破壊モードで snapshot+タップ可**(現行の
-       /session=launch は springboard を起動しホームに飛んでアラートを消すので不可)。**リッチな
-       サービス所有シート(iOS27 写真限定ライブラリ=com.apple.PhotosViewService)は app.snapshot()
-       の1アプリツリーモデルでは掴めず未達**。アラート文言はロケール依存なのでセレクタは型(Alert/Button)で。
-     **本実装ピース**: ①/status に engine 追加+(UDID,engine)発見 ②2ポート起動 ③XCUITest ブリッジに
-     「springboard 非破壊参照」モード ④ルーティング(自動フォールバック=対象が in-app snapshot に
-     無ければ XCUITest 経由)。**推奨運用**: フルアプリ切替と単純アラートはハイブリッド、リッチシートや
-     確実性重視は `simctl privacy grant`/`defaults write` でダイアログを最初から出さない(Reduce Motion
-     自動化と同じ発想)方が安価・確実。
+  4. **cross-app ハイブリッド(in-app 主 + XCUITest フォールバック)= 本実装済み(2026-07-12、
+     branch ios-speedup)。** `engine=hybrid` を指定すると in-app(主・高速)で駆動し、対象要素が
+     in-app snapshot に無いとき **XCUITest(システム UI)へ自動フォールバック**する。in-app は
+     同一プロセスしか見えない(=速さの源泉と表裏)ので、既に前面にあるシステム UI(権限ダイアログ等)
+     だけ XCUITest に委ねる。「XCUITest が in-app を起動」案とは別(あちらは launch 4200-5400ms と遅い)。
+     - **配線経路(同期が必要)**: `BridgeProvisioner`(hybrid は in-app + xcuitest の2ブリッジを起動、
+       `ProvisionedIOSDevice.xcuiPort`)→ `DriverConnection.xcuiPort` → `ScenarioHost` が `--xcui-port`
+       で伝搬 → `ScenarioRunnerMain` が `SystemUIDriver(port:)` を構築 → `StepExecutor.fallbackDriver`。
+     - **フォールバック解決**(`StepExecutor.executeAction`/`executeAssert`): 主 driver(in-app)の
+       poll(最大3回)で解決できないとき **fallbackDriver.snapshot() で1回だけ**解決を試し、当たれば
+       以降の act をその driver で行う。**注意: フォールバックは snapshot 1回のみ(poll しない)**。
+       遅延して出るダイアログはシナリオ側で `wait` を入れる(通知許可等は `.action` に `wait(2)`)。
+     - **ブリッジ発見**: `/status` に `engine`("inapp"/"xcuitest")を追加し、`scanRunningBridges` は
+       (UDID, engine) で照合(同一 UDID に2ブリッジが共存するため port→UDID だけでは reuse が非決定的)。
+       ハイブリッドデバイスは2ポート消費(8123-8154 で最大16台並列)。旧ブリッジは engine=nil→"xcuitest" 扱い。
+     - **springboard 非破壊参照モード**(`BridgeRouter.handleLaunch`): bundleID=com.apple.springboard の
+       とき `target.launch()` せず参照だけ張って snapshot/tap 可。**launch すると springboard がホームに
+       飛びアラートを消す**ので不可。`SystemUIDriver.snapshot()` は毎回 springboard を再 session(refs を
+       張り直す)が、tap/press は再 session しない(refs が消える)。
+     - **実機 A/B 検証済み**: 通知許可ダイアログ(springboard 別プロセス、in-app 不可視)に対し
+       `tap("許可||Allow")` が **hybrid=passed(fallback label=Allow で解決)/ inapp=failed(ロケータ
+       解決不可)**。同一アプリ・同一手順・唯一の差はフォールバック driver の有無 → フォールバック経路が
+       働いた確証。既存 `ログインテスト.S0010` も hybrid で全 passed(通常シナリオに非回帰)。
+       **アラート文言はロケール依存**(この個体は英語 "Allow"/"Don't Allow")。
+     - **未達**: リッチなサービス所有シート(iOS27 写真限定ライブラリ=com.apple.PhotosViewService)は
+       app.snapshot() の1アプリツリーモデルでは掴めない。**推奨運用**: 単純アラートはハイブリッド、
+       リッチシートや確実性重視は `simctl privacy grant`/`defaults write` でダイアログを最初から出さない
+       方が安価・確実。**deliberate フルアプリ切替(設定アプリへ遷移して操作等)は本実装の対象外**
+       (フォールバックは「アプリ前面のまま出るシステム UI」向け。フルアプリ切替は別途 stateful フロー)。
+     - 使い方: マシンプロファイルの device に `"engine": "hybrid"`(例 `シミュ1-hybrid`)、
+       run プロファイルはそれを指す(`profiles/runs/ios-hybrid.json`)。`engine=inapp` 同様 bundleID 必須
+       (新規 in-app 起動に要る。`inAppNeedsBundleID`)。
 - **シナリオ設計の見直し**: 上記 iPhone Air フレークのようなデバイス依存アサーションの排除は、
   どんなエンジン改善より成功率に効く

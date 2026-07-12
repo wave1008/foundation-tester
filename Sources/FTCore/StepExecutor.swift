@@ -128,11 +128,17 @@ public struct StepOutcome: Sendable {
 
 public final class StepExecutor {
     public let driver: AppDriver
+    /// ハイブリッド用: primary(driver=in-app)で要素が解決できないとき、この driver の snapshot でも
+    /// 解決を試す(アプリ上に載ったシステム UI=別プロセスのダイアログ等を XCUITest で拾う)。
+    /// 解決に使った driver でそのまま act するので ref 名前空間の混同はない。
+    public let fallbackDriver: AppDriver?
     public var delegate: ReplayDelegate?
     public var healingEnabled: Bool
 
-    public init(driver: AppDriver, delegate: ReplayDelegate? = nil, healingEnabled: Bool = false) {
+    public init(driver: AppDriver, fallbackDriver: AppDriver? = nil,
+                delegate: ReplayDelegate? = nil, healingEnabled: Bool = false) {
         self.driver = driver
+        self.fallbackDriver = fallbackDriver
         self.delegate = delegate
         self.healingEnabled = healingEnabled
     }
@@ -242,6 +248,20 @@ public final class StepExecutor {
             }
         }
 
+        // driver フォールバック(ハイブリッド): primary(in-app)で解決できないとき、fallbackDriver
+        // (XCUITest=システム UI)の snapshot でも解決を試す。act は解決した driver で行う。
+        var actingDriver: AppDriver = driver
+        if resolved == nil, let fb = fallbackDriver {
+            start = clock.now
+            let fsnap = try await fb.snapshot()
+            phase.snapshotMs += Self.ms(clock.now - start)
+            if let r = Self.resolve(step: step, in: fsnap) {
+                resolved = r
+                snapshot = fsnap
+                actingDriver = fb
+            }
+        }
+
         var status: StepResult.Status = .passed
         var healedStep: FlowStep?
         var healedByCache = false
@@ -282,15 +302,15 @@ public final class StepExecutor {
         switch action {
         case "tap":
             start = clock.now
-            try await driver.tap(ref: element.ref)
+            try await actingDriver.tap(ref: element.ref)
             phase.actionMs += Self.ms(clock.now - start)
         case "type":
             start = clock.now
-            try await driver.type(ref: element.ref, text: step.text ?? "")
+            try await actingDriver.type(ref: element.ref, text: step.text ?? "")
             phase.actionMs += Self.ms(clock.now - start)
         case "press":
             start = clock.now
-            try await driver.press(ref: element.ref, duration: 1.0)
+            try await actingDriver.press(ref: element.ref, duration: 1.0)
             phase.actionMs += Self.ms(clock.now - start)
         default:
             return StepOutcome(status: .skipped("未知のアクション: \(action)"))
@@ -328,6 +348,16 @@ public final class StepExecutor {
                     if let fallback { return .passedViaFallback(fallback) }
                     return .passed
                 }
+                // driver フォールバック(ハイブリッド): システム UI 上の要素を XCUITest で確認
+                if let fb = fallbackDriver {
+                    start = clock.now
+                    let fsnap = try await fb.snapshot()
+                    phase.snapshotMs += Self.ms(clock.now - start)
+                    if let (_, fallback) = Self.resolve(step: step, in: fsnap, strictForAssert: true) {
+                        if let fallback { return .passedViaFallback(fallback) }
+                        return .passed
+                    }
+                }
                 start = clock.now
                 try await Task.sleep(for: backoff.nextDelay())
                 phase.waitMs += Self.ms(clock.now - start)
@@ -346,7 +376,15 @@ public final class StepExecutor {
                 var start = clock.now
                 let snapshot = try await driver.snapshot()
                 phase.snapshotMs += Self.ms(clock.now - start)
-                if let (element, fallback) = Self.resolve(step: step, in: snapshot, strictForAssert: true) {
+                var candidate = Self.resolve(step: step, in: snapshot, strictForAssert: true)
+                // driver フォールバック(ハイブリッド): primary で見つからなければシステム UI を確認
+                if candidate == nil, let fb = fallbackDriver {
+                    start = clock.now
+                    let fsnap = try await fb.snapshot()
+                    phase.snapshotMs += Self.ms(clock.now - start)
+                    candidate = Self.resolve(step: step, in: fsnap, strictForAssert: true)
+                }
+                if let (element, fallback) = candidate {
                     found = true
                     let actual = assert == "textEquals" ? element.label : element.value
                     lastActual = actual

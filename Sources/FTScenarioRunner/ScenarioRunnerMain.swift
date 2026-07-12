@@ -90,11 +90,14 @@ struct RunScenario: AsyncParsableCommand {
     @Option(help: "Android デバイスのシリアル(adb -s。省略時は唯一の接続デバイス)")
     var serial: String?
 
-    @Option(help: "iOS 駆動エンジン: xcuitest(既定)/ inapp(dylib 注入)")
+    @Option(help: "iOS 駆動エンジン: xcuitest(既定)/ inapp(dylib 注入)/ hybrid(in-app+XCUITest)")
     var engine: String?
 
-    @Option(help: "iOS: in-app 再起動用のシミュレータ UDID(engine=inapp のみ)")
+    @Option(help: "iOS: in-app 再起動用のシミュレータ UDID(engine=inapp/hybrid のみ)")
     var udid: String?
+
+    @Option(name: .customLong("xcui-port"), help: "iOS: hybrid のフォールバック用 XCUITest ブリッジのポート")
+    var xcuiPort: UInt16?
 
     @Flag(help: "FM によるロケータ自己修復を許可する")
     var heal = false
@@ -146,17 +149,22 @@ struct RunScenario: AsyncParsableCommand {
         let scenarioID = "\(testClass.className).\(descriptor.name)"
         let runPlatform = testClass.platform ?? platform
 
-        // ドライバ構築(FTester.swift の DriverOptions と同じパターン)
+        // ドライバ構築(FTester.swift の DriverOptions と同じパターン)。
+        // hybrid: primary=in-app、fallback=XCUITest ブリッジ(springboard 参照)を StepExecutor へ。
         let driver: AppDriver
+        var fallbackDriver: AppDriver?
         if dryRun {
             driver = NullDriver()  // dry-run はデバイスに触れない
         } else {
             switch runPlatform {
             case "ios":
-                if engine == "inapp" {
+                if engine == "inapp" || engine == "hybrid" {
                     // in-app は launch=simctl 再起動+dylib 注入(自己再起動できないため)
                     let repoRoot = try RepoRoot.find()
                     driver = InAppDriver(repoRoot: repoRoot, udid: udid ?? "booted", port: port)
+                    if engine == "hybrid", let xcuiPort {
+                        fallbackDriver = SystemUIDriver(port: xcuiPort)
+                    }
                 } else {
                     driver = BridgeClient(port: port)
                 }
@@ -188,6 +196,7 @@ struct RunScenario: AsyncParsableCommand {
                                scenarioID: scenarioID, scenarioTitle: descriptor.title,
                                delegate: delegate, healingEnabled: heal, dryRun: dryRun,
                                healCacheURL: healCacheURL, defaultTimeout: defaultTimeout,
+                               fallbackDriver: fallbackDriver,
                                emit: emit)
 
         if debug {
