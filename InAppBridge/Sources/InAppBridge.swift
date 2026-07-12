@@ -84,7 +84,8 @@ final class FTInAppBridge {
                 ready: true,
                 device: device.name,
                 osVersion: "\(device.systemName) \(device.systemVersion)",
-                sessionBundleID: Bundle.main.bundleIdentifier))
+                sessionBundleID: Bundle.main.bundleIdentifier,
+                engine: "inapp"))
         }
     }
 

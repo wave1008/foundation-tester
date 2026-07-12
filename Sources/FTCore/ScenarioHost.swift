@@ -44,18 +44,21 @@ public struct DriverConnection: Sendable, Hashable {
     public let platform: String
     public let port: UInt16?
     public let serial: String?
-    /// iOS 駆動エンジン("inapp" のときサブプロセスは InAppDriver を使う)
+    /// iOS 駆動エンジン("inapp"/"hybrid" のときサブプロセスは InAppDriver / Hybrid を使う)
     public let engine: String?
     /// iOS: in-app の simctl 再起動に使うシミュレータ UDID
     public let udid: String?
+    /// iOS: engine=hybrid のフォールバック用 XCUITest ブリッジのポート
+    public let xcuiPort: UInt16?
 
     public init(platform: String, port: UInt16? = nil, serial: String? = nil,
-                engine: String? = nil, udid: String? = nil) {
+                engine: String? = nil, udid: String? = nil, xcuiPort: UInt16? = nil) {
         self.platform = platform
         self.port = port
         self.serial = serial
         self.engine = engine
         self.udid = udid
+        self.xcuiPort = xcuiPort
     }
 }
 
@@ -178,6 +181,7 @@ public enum ScenarioHost {
         if let serial = connection.serial { args += ["--serial", serial] }
         if let engine = connection.engine { args += ["--engine", engine] }
         if let udid = connection.udid { args += ["--udid", udid] }
+        if let xcuiPort = connection.xcuiPort { args += ["--xcui-port", String(xcuiPort)] }
         if let defaultTimeout { args += ["--default-timeout", String(defaultTimeout)] }
         if let debug {
             args.append("--debug")

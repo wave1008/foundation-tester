@@ -34,12 +34,18 @@ public struct StatusResponse: Codable, Sendable {
     public var device: String
     public var osVersion: String
     public var sessionBundleID: String?
+    /// 駆動エンジン種別("inapp" / "xcuitest")。同一シミュレータ(UDID)に複数ブリッジが
+    /// 共存するハイブリッド時、ホストがどのブリッジかを /status で区別するために使う。
+    /// 旧ブリッジは返さない → decodeIfPresent で nil 許容(=不明)。
+    public var engine: String?
 
-    public init(ready: Bool, device: String, osVersion: String, sessionBundleID: String?) {
+    public init(ready: Bool, device: String, osVersion: String, sessionBundleID: String?,
+                engine: String? = nil) {
         self.ready = ready
         self.device = device
         self.osVersion = osVersion
         self.sessionBundleID = sessionBundleID
+        self.engine = engine
     }
 }
 
