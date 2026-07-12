@@ -31,6 +31,8 @@ final class FTInAppBridge {
         let server = InAppHTTPServer(port: port) { [weak self] req in
             self?.handle(req) ?? .error("bridge gone", status: 500)
         }
+        // AX ツリーを materialize させる(XCUITest 相当。未活性だと label/frame が取れない)
+        DispatchQueue.main.async { FTActivateAccessibility() }
         do {
             try server.start()
             self.server = server
@@ -51,8 +53,14 @@ final class FTInAppBridge {
             case ("POST", "/press"): return try handlePress(req.body)
             case ("GET", "/screenshot"): return try handleScreenshot()
             case ("POST", "/session"):
-                return .error("/session はホスト側が simctl launch+注入で担う(in-app では未対応)",
-                              status: 501)
+                // in-app ブリッジは注入先アプリそのものに常駐している。ホストの launch(bundleID) は
+                // 既に起動済みの当該アプリを指すので OK を返す(状態リセットが要る場合は
+                // ホスト側がプロセス再起動+再注入で行う=lifecycle だけホスト責務)。
+                let req = try decode(LaunchRequest.self, req.body)
+                guard req.bundleID == Bundle.main.bundleIdentifier else {
+                    throw InAppError(409, "in-app ブリッジは注入先アプリ(\(Bundle.main.bundleIdentifier ?? "?"))専用です(要求: \(req.bundleID))")
+                }
+                return .json(OKResponse())
             case ("POST", "/terminate"):
                 return .error("/terminate は in-app では未対応(ホスト側でプロセス制御)", status: 501)
             default:

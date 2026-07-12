@@ -1,4 +1,5 @@
 #import "InAppInput.h"
+#import <dlfcn.h>
 
 // UITouch/UIApplication/UITouchesEvent の合成 private セレクタ(実在確認済み: Xcode 27 beta 3)。
 // これらが消えたら合成が黙って効かなくなるので、壊れたら InAppInput の再調査が必要。
@@ -45,11 +46,15 @@ void FTSynthTap(UIWindow *window, CGPoint point) {
     UIView *hit = [window hitTest:point withEvent:nil] ?: window;
     NSTimeInterval ts = NSProcessInfo.processInfo.systemUptime;
     UITouch *t = ftMakeTouch(window, hit, point, ts);
-    ftSend(t);
+    ftSend(t);  // began
+    // タップジェスチャ認識器が began を処理する猶予(同一ランループで ended まで送ると
+    // SwiftUI ボタン等の gesture が発火しない。UITextField のフォーカスは猶予無しでも効くが
+    // gesture ベースのコントロールは要猶予)
+    [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.03]];
     [t setPhase:UITouchPhaseEnded];
     [t _setLocationInWindow:point resetPrevious:NO];
-    [t setTimestamp:ts + 0.02];
-    ftSend(t);
+    [t setTimestamp:NSProcessInfo.processInfo.systemUptime];
+    ftSend(t);  // ended
 }
 
 void FTSynthSwipe(UIWindow *window, CGPoint from, CGPoint to, int steps) {
@@ -105,4 +110,13 @@ BOOL FTInsertTextIntoFirstResponder(NSString *text) {
         return YES;
     }
     return NO;
+}
+
+void FTActivateAccessibility(void) {
+    void (*setAutomationEnabled)(BOOL) = dlsym(RTLD_DEFAULT, "_AXSSetAutomationEnabled");
+    if (!setAutomationEnabled) {
+        void *h = dlopen("/usr/lib/libAccessibility.dylib", RTLD_NOW);
+        if (h) setAutomationEnabled = dlsym(h, "_AXSSetAutomationEnabled");
+    }
+    if (setAutomationEnabled) setAutomationEnabled(YES);
 }

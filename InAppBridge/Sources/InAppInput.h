@@ -18,4 +18,9 @@ void FTSynthPress(UIWindow *window, CGPoint point, double duration);
 /// 現在の first responder が UIKeyInput なら text を挿入する。挿入できたら YES。
 BOOL FTInsertTextIntoFirstResponder(NSString *text);
 
+/// アクセシビリティを自動化用に活性化する(_AXSSetAutomationEnabled)。これをしないと
+/// SwiftUI の AX ツリーが materialize されず、accessibilityFrame が zero・label が空になる
+/// (XCUITest は起動時にこれを行っている)。起動時に1回呼ぶ。失敗は非致命。
+void FTActivateAccessibility(void);
+
 NS_ASSUME_NONNULL_END

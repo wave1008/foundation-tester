@@ -124,8 +124,12 @@ enum InAppSnapshot {
     }
 
     private static func axFrame(_ node: NSObject) -> CGRect {
-        // accessibilityFrame は画面(window)座標。UIView・UIAccessibilityElement 双方で有効。
-        node.accessibilityFrame
+        // UIView は view ジオメトリを window 座標へ変換する(accessibilityFrame は AX 未活性時に
+        // zero を返すことがあり、フィルタで全要素が落ちる)。合成 AX 要素は accessibilityFrame。
+        if let view = node as? UIView {
+            return view.convert(view.bounds, to: nil)
+        }
+        return node.accessibilityFrame
     }
 
     // MARK: - 型判定(UIAccessibilityTraits + クラス → BridgeDTO の型名)
