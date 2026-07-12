@@ -206,8 +206,10 @@ window/transition/animator の `*_scale` はチューニングノブではなく
        これが決定打。**合成タッチ(UITouch+sendEvent / `_setHIDEvent:` / `_enqueueHIDEvent:` の
        5方式)はいずれも SwiftUI Button 等のジェスチャ認識器を発火できなかった**(HID の
        display-integration メタデータを完全再現できず。focus は効くが gesture 不発)。
-       snapshot が ref→AX 要素を保持し、tap(ref) はその要素を activate する。座標/活性化不能な
-       要素は合成タッチにフォールバック。XCUITest 比 767→~280ms。
+       snapshot が ref→AX 要素を保持し、tap(ref) はその要素を activate する。座標指定(x/y)も
+       直近 snapshot の point を含む最小要素を activate(SwiftUI の活性化要素は合成 AX ノードで
+       hitTest の view 階層に無いため、hitTest+祖先 activate では発火しない)。活性化不能な要素は
+       合成タッチにフォールバック。XCUITest 比 767→~280ms。
      - **swipe: `UIScrollView.setContentOffset` 直接操作**(スクロールのジェスチャ認識器も合成タッチで
        駆動できないため。面積最大の可視 `UIScrollView` を探し contentOffset を ±可視領域 85% 動かす。
        `accessibilityScroll` は SwiftUI List で片方向しか効かず不安定だったので不採用。双方向スクロール
@@ -223,6 +225,10 @@ window/transition/animator の `*_scale` はチューニングノブではなく
        provisioner は注入起動済みブリッジを /status スキャンで発見・再利用、不足分は
        `InAppLauncher`(注入起動)で起動。**ホスト実行系(`FTBridgeClient`/RunOrchestrator/
        ScenarioHost)は engine フィールドを通すだけで概ね無改変**。
+       **engine=inapp の新規ブリッジ起動には注入対象アプリの bundleID が要る**(run プロファイルの
+       apps.ios.app 経由でのみ得られる)。無い場合は XCUITest にフォールバックせず**明示エラー**
+       (`inAppNeedsBundleID`。単一実装・フォールバックを作らない方針。device/live 等 bundleID を
+       渡さない経路は engine=inapp 非対応)。稼働中ブリッジ再利用時は launch しないので bundleID 不要。
      **実シナリオ実証(ログイン画面.S0010、実機)**:
      - 単発(warm・状態リセット無し): step 合計 ~11.0s(XCUITest)→ **~3.0s(3.7倍速)**。
      - **プロファイル経由 3 イテレーション: 全 passed=True**(以前は 2 回目以降ログイン済みで失敗)。
@@ -246,5 +252,30 @@ window/transition/animator の `*_scale` はチューニングノブではなく
      必要=エラーメッセージで案内)。
      なお XCUITest の quiescence 自体を私有 API で無効化する案(WDA 方式)は、
      代替の整定信号がプロセス外から得られないため 2 とセットでない限り採らない
+  4. **cross-app ハイブリッド(in-app + XCUITest 併存)= feasibility プロト実証済み(2026-07-12、
+     プロトコードは未コミット)**: in-app は同一プロセスしか操作できない(=速さの源泉と表裏)ため、
+     「主として sampleapp を in-app で駆動、必要に応じて他アプリ(iOS設定等)やシステム UI も操作」
+     には cross-process な XCUITest を**必要な時だけ**併用する。**起動と sampleapp 駆動は in-app のまま
+     速く**、XCUITest は既に前面にある画面の操作だけに使う(以前検討した「XCUITest が in-app を起動」
+     案とは別。あちらは launch が 4200-5400ms と遅い)。プロトで確認できたこと:
+     - **共存**: XCUITest ブリッジ(port A)+ in-app ブリッジ(port B)が同一シミュレータで両方
+       /status 応答。**別ポート必須**(同一ポートは bind 衝突)。ただし現行 `scanRunningBridges` は
+       port→UDID のみで、同一 UDID に2ブリッジがあると reuse が非決定的 → **/status に `engine` 追加
+       →(UDID, engine)で発見**が要る。ハイブリッドデバイスは2ポート消費(8123-8154 で最大16台並列)。
+     - **XCUITest cross-app(別フルアプリ)**: `/session com.apple.Preferences` で Settings を
+       snapshot/操作可(236ms)。別フルアプリ前面化で sampleapp はサスペンド→in-app 無応答。**復帰は
+       `simctl launch <bundleID>`(--terminate 無し)で同一プロセス復帰=注入・状態保持**(XCUITest の
+       /session で戻すと再起動され注入が消える)。
+     - **ダイアログ・オーバー・アプリ**: sampleapp は前面のまま(in-app 生存)だが in-app からは
+       ダイアログ不可視(別プロセス)。**単純な springboard アラート(権限 Allow/Don't Allow 等)は
+       XCUITest が「springboard を launch せず参照のみ」の非破壊モードで snapshot+タップ可**(現行の
+       /session=launch は springboard を起動しホームに飛んでアラートを消すので不可)。**リッチな
+       サービス所有シート(iOS27 写真限定ライブラリ=com.apple.PhotosViewService)は app.snapshot()
+       の1アプリツリーモデルでは掴めず未達**。アラート文言はロケール依存なのでセレクタは型(Alert/Button)で。
+     **本実装ピース**: ①/status に engine 追加+(UDID,engine)発見 ②2ポート起動 ③XCUITest ブリッジに
+     「springboard 非破壊参照」モード ④ルーティング(自動フォールバック=対象が in-app snapshot に
+     無ければ XCUITest 経由)。**推奨運用**: フルアプリ切替と単純アラートはハイブリッド、リッチシートや
+     確実性重視は `simctl privacy grant`/`defaults write` でダイアログを最初から出さない(Reduce Motion
+     自動化と同じ発想)方が安価・確実。
 - **シナリオ設計の見直し**: 上記 iPhone Air フレークのようなデバイス依存アサーションの排除は、
   どんなエンジン改善より成功率に効く
