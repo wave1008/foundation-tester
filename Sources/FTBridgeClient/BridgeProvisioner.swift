@@ -161,14 +161,15 @@ public struct BridgeProvisioner {
     }
 
     /// 稼働中ブリッジ 1 つの識別情報(接続先 UDID・engine 種別)
-    public struct RunningBridge: Sendable {
-        public let udid: String?
-        public let engine: String
+    struct RunningBridge: Sendable {
+        let udid: String?
+        let engine: String
     }
 
-    /// DeviceBooter.shutdownOne が停止対象ブリッジの特定に使うため public。
-    /// engine は /status の engine(旧ブリッジで nil なら "xcuitest" とみなす)。
-    public func scanRunningBridges(catalog: [SimDeviceInfo]) async -> [UInt16: RunningBridge] {
+    /// provision の再利用判定用。engine は /status の engine(旧ブリッジで nil なら "xcuitest")。
+    /// 注意: /status 無応答のゾンビは映らない。停止用途には BridgeLauncher.stopMatching を使う
+    /// (HTTP でなく pid ファイル+プロセス引数の UDID 照合)。
+    func scanRunningBridges(catalog: [SimDeviceInfo]) async -> [UInt16: RunningBridge] {
         await withTaskGroup(of: (UInt16, RunningBridge)?.self,
                             returning: [UInt16: RunningBridge].self) { group in
             for port in portRange {

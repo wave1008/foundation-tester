@@ -149,6 +149,37 @@ public struct BridgeLauncher {
         try? FileManager.default.removeItem(at: pidPath)
     }
 
+    /// 指定シミュレータ(UDID)を対象にするブリッジプロセスを pid ファイルから探して全て停止する。
+    /// 特定はプロセスの起動引数(-destination ... id=<UDID>)照合。/status 無応答のゾンビ
+    /// xcodebuild は HTTP スキャンに映らないがこれなら殺せる(生きた XCUITest セッションを残すと
+    /// シミュレータが再ブートされ「停止したのに起動中に戻る」症状になる)。戻り値=停止ポート一覧
+    public static func stopMatching(udid: String, repoRoot: URL) -> [String] {
+        let stateDir = repoRoot.appendingPathComponent(".ftester")
+        guard let entries = try? FileManager.default.contentsOfDirectory(
+            at: stateDir, includingPropertiesForKeys: nil) else { return [] }
+        var stopped: [String] = []
+        for entry in entries where entry.lastPathComponent.hasPrefix("bridge-")
+            && entry.pathExtension == "pid" {
+            guard let pidString = try? String(contentsOf: entry, encoding: .utf8),
+                  let pid = Int32(pidString.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+                continue
+            }
+            let ps = try? Shell.run(["ps", "-p", String(pid), "-o", "command="])
+            guard let ps, ps.status == 0 else {
+                // プロセスが既に死んでいる stale ファイル。残すと assignPort がそのポートを
+                // 使用中とみなし続け採番がずれていくため、UDID に関係なくここで掃除する
+                try? FileManager.default.removeItem(at: entry)
+                continue
+            }
+            guard ps.output.contains(udid) else { continue }
+            kill(pid, SIGTERM)
+            try? FileManager.default.removeItem(at: entry)
+            stopped.append(entry.deletingPathExtension().lastPathComponent
+                .replacingOccurrences(of: "bridge-", with: ""))
+        }
+        return stopped.sorted()
+    }
+
     /// .ftester/bridge-*.pid を走査して全ブリッジを停止する。戻り値は停止したポート一覧
     public static func stopAll(repoRoot: URL) -> [String] {
         let stateDir = repoRoot.appendingPathComponent(".ftester")
