@@ -20,3 +20,4 @@ export const lanesRunStatus = document.getElementById('lanes-run-status');
 
 export const deviceOpMenu = document.getElementById('device-op-menu');
 export const deviceOpMenuItemBtn = document.getElementById('device-op-menu-item');
+export const deviceOpMenuLiveBtn = document.getElementById('device-op-menu-live');

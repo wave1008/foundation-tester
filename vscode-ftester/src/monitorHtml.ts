@@ -283,12 +283,17 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
         <div class="screenshot-wrap" id="live-screenshot-wrap">
           <img id="live-screenshot" alt="スクリーンショット">
           <div id="live-hover-box"></div>
+          <svg id="live-drag-overlay" aria-hidden="true"><line id="live-drag-line"/><circle id="live-drag-start" r="6"/></svg>
           <div id="live-screenshot-placeholder">「更新」ボタンで画面を取得してください</div>
         </div>
-        <div class="hint">画像をクリックするとその位置をタップします</div>
+        <div class="hint">クリック=タップ / 長押し=ロングプレス / ドラッグ=スワイプ</div>
       </div>
 
       <div class="control-pane">
+        <div class="row">
+          <select id="live-app-select" title="選択したアプリへ状態を保持したまま切り替えます(未起動なら起動)"></select>
+          <button id="live-btn-refresh-apps" class="secondary">一覧更新</button>
+        </div>
         <div class="row">
           <input id="live-bundle-id" type="text" placeholder="bundle ID / パッケージ名" value="com.example.sampleapp">
           <button id="live-btn-launch">起動</button>
@@ -309,6 +314,7 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
 
         <div class="row controls-row">
           <button id="live-btn-refresh-snapshot">更新</button>
+          <button id="live-btn-app-switcher" class="secondary" title="アプリスイッチャー(タスク一覧)を開きます">タスク切替</button>
           <span class="spacer"></span>
           <button id="live-btn-swipe-up" class="secondary" title="スワイプ(↑=下へスクロール)">↑</button>
           <button id="live-btn-swipe-down" class="secondary">↓</button>
@@ -373,6 +379,7 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
   </div>
 
   <div id="device-op-menu" class="device-op-menu" role="menu">
+    <button id="device-op-menu-live" class="device-op-menu-item" type="button" role="menuitem">ライブ操作</button>
     <button id="device-op-menu-item" class="device-op-menu-item" type="button" role="menuitem"></button>
   </div>
 

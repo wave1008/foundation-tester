@@ -94,7 +94,8 @@ async function buildTests() {
     // esbuild の CJS→ESM 変換シムが Node 組み込みモジュールの動的 require に対応できず
     // 実行時エラーになる。node_modules から素の bare import として解決させる(dap.test.mjs は
     // out-test/ 配下からでも Node の ESM 解決が親ディレクトリの node_modules を辿るため解決できる)。
-    external: ["@vscode/debugadapter", "@vscode/debugprotocol"],
+    // jsdom/esbuild も同様(webviewLiveDrag.test.mjs が実行時に使う。どちらも CJS/動的 require 持ち)。
+    external: ["@vscode/debugadapter", "@vscode/debugprotocol", "jsdom", "esbuild"],
   });
 }
 

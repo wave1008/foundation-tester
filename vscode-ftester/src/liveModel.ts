@@ -2,13 +2,16 @@
 // ライブ操作パネル(livePanel.ts)向けの vscode 非依存ロジック(検証・型定義・座標変換・
 // webview プロトコル)。
 //
-// 契約(Sources/ftester/ApiListDevicesCommand.swift・ApiLiveCommand.swift):
+// 契約(Sources/ftester/ApiListDevicesCommand.swift・ApiListAppsCommand.swift・ApiLiveCommand.swift):
 //   `ftester api list-devices --project <p>`: 成功時は stdout 1行JSON、失敗時
 //   (マシンプロファイル未設定等)は stdout 出力なし・非0終了(診断は stderr のみ)。
+//   `ftester api list-apps --platform <p> [--port <n>|--serial <s>]`: 成功時は stdout 1行JSON
+//   ({apps:[{id,name,type}],platform})、失敗時は stdout 出力なし・非0終了。
 //   `ftester api live serve --platform <p> [--port <n>|--serial <s>]`(常駐。stdin から NDJSON で
 //   コマンドを1行ずつ受け、逐次処理する。コマンド/イベントの形は LiveServeCommand/LiveServeEvent
 //   型を参照): イベントは refresh 以外は actionResult→snapshot の順で2行、refresh は snapshot の
 //   1行のみ(parseLiveServeEvent が "kind" で判別)。
+//   frame は画像のみの frame イベント1行(AXツリーは取らない。自動画面更新用)。
 
 import type { MonitorDeviceState, MonitorPlatform } from "./monitorModel";
 
@@ -70,6 +73,32 @@ export function isListDevicesResult(value: unknown): value is ListDevicesResult 
 
 export function parseListDevicesResult(value: unknown): ListDevicesResult | undefined {
   return isListDevicesResult(value) ? value : undefined;
+}
+
+// ---- list-apps -----------------------------------------------------------------------
+
+export interface LiveAppOption {
+  readonly id: string;
+  readonly name: string;
+  readonly type: "user" | "system";
+}
+
+function isLiveAppOption(value: unknown): value is LiveAppOption {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return (
+    typeof value.id === "string" &&
+    typeof value.name === "string" &&
+    (value.type === "user" || value.type === "system")
+  );
+}
+
+export function parseListAppsResult(value: unknown): readonly LiveAppOption[] | undefined {
+  if (!isRecord(value) || typeof value.platform !== "string" || !Array.isArray(value.apps)) {
+    return undefined;
+  }
+  return value.apps.every(isLiveAppOption) ? (value.apps as LiveAppOption[]) : undefined;
 }
 
 // ---- live snapshot / アクション共通 ----------------------------------------------------
@@ -182,6 +211,22 @@ export function parseLiveSnapshotResult(value: unknown): LiveSnapshot | LiveErro
   return undefined;
 }
 
+export interface LiveFrame {
+  readonly ok: true;
+  readonly image: string;
+}
+export type LiveFrameResult = LiveFrame | LiveErrorResult;
+
+export function parseLiveFrameResult(value: unknown): LiveFrameResult | undefined {
+  if (isRecord(value) && value.ok === true && typeof value.image === "string") {
+    return { ok: true, image: value.image };
+  }
+  if (isLiveErrorResult(value)) {
+    return value;
+  }
+  return undefined;
+}
+
 export function parseLiveActionResult(value: unknown): LiveActionResult | undefined {
   if (isLiveOkResult(value)) {
     return { ok: true };
@@ -199,10 +244,23 @@ export type LiveServeCommand =
   | { readonly cmd: "tap"; readonly x: number; readonly y: number }
   | { readonly cmd: "type"; readonly text: string; readonly ref: number | null }
   | { readonly cmd: "swipe"; readonly direction: "up" | "down" | "left" | "right" }
+  | {
+      readonly cmd: "drag";
+      readonly fromX: number;
+      readonly fromY: number;
+      readonly toX: number;
+      readonly toY: number;
+      readonly press: number;
+      readonly duration: number;
+    }
+  | { readonly cmd: "press"; readonly x: number; readonly y: number; readonly duration: number }
   | { readonly cmd: "launch"; readonly bundle: string }
+  | { readonly cmd: "activate"; readonly bundle: string }
+  | { readonly cmd: "appSwitcher" }
   | { readonly cmd: "terminate" }
   | { readonly cmd: "install"; readonly path: string }
-  | { readonly cmd: "refresh" };
+  | { readonly cmd: "refresh" }
+  | { readonly cmd: "frame" };
 
 /** serve の stdin へ書き込む1行(末尾改行付き)を組み立てる。 */
 export function serializeLiveServeCommand(command: LiveServeCommand): string {
@@ -211,7 +269,8 @@ export function serializeLiveServeCommand(command: LiveServeCommand): string {
 
 export type LiveServeEvent =
   | { readonly kind: "actionResult"; readonly result: LiveActionResult }
-  | { readonly kind: "snapshot"; readonly result: LiveSnapshot | LiveErrorResult };
+  | { readonly kind: "snapshot"; readonly result: LiveSnapshot | LiveErrorResult }
+  | { readonly kind: "frame"; readonly result: LiveFrameResult };
 
 /**
  * NDJSON 1行を "kind" で actionResult/snapshot に振り分ける。中身の検証は
@@ -244,6 +303,18 @@ export function parseLiveServeEvent(value: unknown): LiveServeEvent | undefined 
             image: result.image,
             elements: result.elements,
           }
+        : { ok: false, error: result.error },
+    };
+  }
+  if (value.kind === "frame") {
+    const result = parseLiveFrameResult(value);
+    if (!result) {
+      return undefined;
+    }
+    return {
+      kind: "frame",
+      result: result.ok
+        ? { ok: true, image: result.image }
         : { ok: false, error: result.error },
     };
   }
@@ -411,9 +482,11 @@ export type LiveToWebviewMessage =
       readonly image: string;
       readonly elements: readonly LiveElementView[];
     }
+  | { readonly type: "frame"; readonly image: string }
   | { readonly type: "actionError"; readonly message: string }
   | { readonly type: "busy"; readonly busy: boolean }
-  | { readonly type: "installPathPicked"; readonly platform: LivePlatform; readonly path: string };
+  | { readonly type: "installPathPicked"; readonly platform: LivePlatform; readonly path: string }
+  | { readonly type: "appList"; readonly apps: readonly LiveAppOption[]; readonly message: string | null };
 
 export function toSnapshotMessage(snapshot: LiveSnapshot): LiveToWebviewMessage {
   return {
@@ -428,6 +501,7 @@ export function toSnapshotMessage(snapshot: LiveSnapshot): LiveToWebviewMessage 
 export type LiveFromWebviewMessage =
   | { readonly type: "refreshDevices" }
   | { readonly type: "selectDevice"; readonly id: string }
+  | { readonly type: "openDevice"; readonly id: string }
   | { readonly type: "refreshSnapshot" }
   | {
       readonly type: "tapPoint";
@@ -436,13 +510,36 @@ export type LiveFromWebviewMessage =
       readonly displayWidth: number;
       readonly displayHeight: number;
     }
+  | {
+      readonly type: "pressPoint";
+      readonly clickX: number;
+      readonly clickY: number;
+      readonly displayWidth: number;
+      readonly displayHeight: number;
+      readonly holdMs: number;
+    }
+  | {
+      readonly type: "dragPoints";
+      readonly fromX: number;
+      readonly fromY: number;
+      readonly toX: number;
+      readonly toY: number;
+      readonly displayWidth: number;
+      readonly displayHeight: number;
+      readonly pressMs: number;
+      readonly dragMs: number;
+    }
   | { readonly type: "tapRef"; readonly ref: number }
   | { readonly type: "swipe"; readonly direction: "up" | "down" | "left" | "right" }
   | { readonly type: "typeText"; readonly text: string; readonly ref: number | null }
   | { readonly type: "launch"; readonly bundleId: string }
+  | { readonly type: "activate"; readonly bundleId: string }
+  | { readonly type: "appSwitcher" }
   | { readonly type: "terminate" }
   | { readonly type: "install"; readonly path: string }
-  | { readonly type: "pickInstallFile"; readonly platform: LivePlatform };
+  | { readonly type: "pickInstallFile"; readonly platform: LivePlatform }
+  | { readonly type: "refreshApps" }
+  | { readonly type: "visibility"; readonly visible: boolean };
 
 const SWIPE_DIRECTIONS: ReadonlySet<string> = new Set(["up", "down", "left", "right"]);
 
@@ -454,8 +551,11 @@ export function isLiveFromWebviewMessage(value: unknown): value is LiveFromWebvi
     case "refreshDevices":
     case "refreshSnapshot":
     case "terminate":
+    case "refreshApps":
+    case "appSwitcher":
       return true;
     case "selectDevice":
+    case "openDevice":
       return typeof value.id === "string";
     case "tapPoint":
       return (
@@ -464,6 +564,25 @@ export function isLiveFromWebviewMessage(value: unknown): value is LiveFromWebvi
         typeof value.displayWidth === "number" &&
         typeof value.displayHeight === "number"
       );
+    case "pressPoint":
+      return (
+        typeof value.clickX === "number" &&
+        typeof value.clickY === "number" &&
+        typeof value.displayWidth === "number" &&
+        typeof value.displayHeight === "number" &&
+        typeof value.holdMs === "number"
+      );
+    case "dragPoints":
+      return (
+        typeof value.fromX === "number" &&
+        typeof value.fromY === "number" &&
+        typeof value.toX === "number" &&
+        typeof value.toY === "number" &&
+        typeof value.displayWidth === "number" &&
+        typeof value.displayHeight === "number" &&
+        typeof value.pressMs === "number" &&
+        typeof value.dragMs === "number"
+      );
     case "tapRef":
       return typeof value.ref === "number";
     case "swipe":
@@ -471,11 +590,14 @@ export function isLiveFromWebviewMessage(value: unknown): value is LiveFromWebvi
     case "typeText":
       return typeof value.text === "string" && (value.ref === null || typeof value.ref === "number");
     case "launch":
+    case "activate":
       return typeof value.bundleId === "string";
     case "install":
       return typeof value.path === "string";
     case "pickInstallFile":
       return value.platform === "ios" || value.platform === "android";
+    case "visibility":
+      return typeof value.visible === "boolean";
     default:
       return false;
   }

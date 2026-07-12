@@ -51,7 +51,13 @@ public struct StatusResponse: Codable, Sendable {
 
 public struct LaunchRequest: Codable {
     public var bundleID: String
-    public init(bundleID: String) { self.bundleID = bundleID }
+    /// true なら XCUIApplication.activate()(起動中は状態保持で前面化、未起動なら起動)。
+    /// nil/false は従来どおり launch(再起動)。旧ランナーは本フィールドを無視して launch する。
+    public var activate: Bool?
+    public init(bundleID: String, activate: Bool? = nil) {
+        self.bundleID = bundleID
+        self.activate = activate
+    }
 }
 
 /// アクセシビリティツリーの1要素(ランナー側でフィルタ済み)
@@ -107,6 +113,26 @@ public struct TapRequest: Codable {
     }
 }
 
+public struct DragRequest: Codable {
+    public var fromX: Double
+    public var fromY: Double
+    public var toX: Double
+    public var toY: Double
+    /// 押下から移動開始までの静止時間(秒)。nil は最小値(0.05)扱い
+    public var press: Double?
+    /// 移動開始から離すまでの時間(秒)。nil は既定速度
+    public var duration: Double?
+    public init(fromX: Double, fromY: Double, toX: Double, toY: Double,
+                press: Double? = nil, duration: Double? = nil) {
+        self.fromX = fromX
+        self.fromY = fromY
+        self.toX = toX
+        self.toY = toY
+        self.press = press
+        self.duration = duration
+    }
+}
+
 public struct TypeRequest: Codable {
     public var ref: Int?
     public var text: String
@@ -126,10 +152,14 @@ public struct SwipeRequest: Codable {
 }
 
 public struct PressRequest: Codable {
-    public var ref: Int
+    public var ref: Int?
+    public var x: Double?
+    public var y: Double?
     public var duration: Double
-    public init(ref: Int, duration: Double) {
+    public init(ref: Int? = nil, x: Double? = nil, y: Double? = nil, duration: Double) {
         self.ref = ref
+        self.x = x
+        self.y = y
         self.duration = duration
     }
 }

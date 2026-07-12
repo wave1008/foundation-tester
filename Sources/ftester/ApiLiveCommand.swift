@@ -3,18 +3,23 @@
 // 1行ずつ受けて逐次処理する。
 //
 // snapshot/tap/type/swipe/launch/terminate/install はこの serve コマンドに統合されている。
-// press は livePanel.ts の UI に長押し操作が無いため未実装。
 //
 // プロトコル(stdin → serve、1行1コマンドの NDJSON):
 //   {"cmd":"tap","ref":<Int>}                           snapshot の参照番号をタップ
 //   {"cmd":"tap","x":<Double>,"y":<Double>}             座標(pt)をタップ
 //   {"cmd":"type","text":<String>,"ref":<Int省略可>}     テキスト入力(ref省略時はフォーカス中の要素)
 //   {"cmd":"swipe","direction":"up"|"down"|"left"|"right"}
+//   {"cmd":"drag","fromX":..,"fromY":..,"toX":..,"toY":..,"press":<秒省略可>,"duration":<秒省略可>}
+//                                                        2点間ドラッグ(座標はpt。press=押下静止時間、duration=移動時間)
+//   {"cmd":"press","x":<Double>,"y":<Double>,"duration":<秒>}  座標ロングプレス
 //   {"cmd":"launch","bundle":<String>}                  bundle ID / パッケージ名を起動
+//   {"cmd":"activate","bundle":<String>}               状態を保持したまま前面切替(未起動なら起動)
+//   {"cmd":"appSwitcher"}                               アプリスイッチャー(タスク一覧)を開く
 //   {"cmd":"terminate"}                                 対象アプリを終了
 //   {"cmd":"install","path":<String>}                   パッケージファイル(iOS: .app / Android: .apk)
 //                                                        からインストール
 //   {"cmd":"refresh"}                                   操作は行わず観測のみ
+//   {"cmd":"frame"}                                     スクリーンショットのみ取得(AXツリーは取らない)
 // 壊れた行(JSON でない、cmd が無い)は stderr に1行ログして無視する(他の常駐 api コマンドと同じ
 // 「安全側で無視する」方針)。
 //
@@ -31,6 +36,8 @@
 //      "elements":null}
 //   を出す(操作後の追加waitは無し。ブリッジの操作応答=UI整定済みのため)。
 //   refresh はこの観測イベント1行だけを出す(actionResult は出さない)。
+//   frame は {"kind":"frame","ok":..,"error":..,"image":"<base64 JPEG>"|null} の1行だけを出す
+//   (actionResult・snapshot は出さない。ライブ操作パネルの自動画面更新用)。
 //   拡張側は actionResult が ok:false のとき、続く snapshot イベントは画面へ反映しない
 //   (直前の表示を保持したままエラーを表示する)。
 //
@@ -59,8 +66,8 @@ struct ApiLiveServe: AsyncParsableCommand {
         abstract: "ライブ操作パネル向けに常駐し、stdin の NDJSON コマンドを逐次処理する"
             + "(ApiLiveCommand.swift 冒頭のプロトコル参照。診断は stderr のみ)")
 
-    @Option(name: .customLong("max-width"), help: "スクリーンショットの長辺の最大幅(px。既定 640)")
-    var maxWidth: Int = 640
+    @Option(name: .customLong("max-width"), help: "スクリーンショットの長辺の最大幅(px。0以下=原寸。既定 0)")
+    var maxWidth: Int = 0
 
     @OptionGroup var driverOptions: DriverOptions
 
@@ -105,6 +112,10 @@ struct ApiLiveServe: AsyncParsableCommand {
     /// 1コマンドを処理する: refresh 以外はまずアクションを実行して actionResult を出し、
     /// 続けて(操作の成否を問わず)観測イベントを出す。refresh は観測イベントのみ
     private func handle(command: ApiLiveServeCommand, driver: AppDriver) async {
+        if command.cmd == "frame" {
+            await emitFrame(driver: driver)
+            return
+        }
         if command.cmd != "refresh" {
             do {
                 try await perform(command: command, driver: driver)
@@ -139,11 +150,31 @@ struct ApiLiveServe: AsyncParsableCommand {
                     "swipe の direction は up/down/left/right のいずれかです")
             }
             try await driver.swipe(direction)
+        case "drag":
+            guard let fromX = command.fromX, let fromY = command.fromY,
+                  let toX = command.toX, let toY = command.toY else {
+                throw ServeCommandError.invalidArguments("drag には fromX/fromY/toX/toY が必要です")
+            }
+            try await driver.drag(fromX: fromX, fromY: fromY, toX: toX, toY: toY,
+                                  pressSeconds: command.press ?? 0.05,
+                                  durationSeconds: command.duration ?? 0.3)
+        case "press":
+            guard let x = command.x, let y = command.y, let duration = command.duration else {
+                throw ServeCommandError.invalidArguments("press には x/y/duration が必要です")
+            }
+            try await driver.press(x: x, y: y, duration: duration)
         case "launch":
             guard let bundle = command.bundle else {
                 throw ServeCommandError.invalidArguments("launch には bundle が必要です")
             }
             try await driver.launch(bundleID: bundle)
+        case "activate":
+            guard let bundle = command.bundle else {
+                throw ServeCommandError.invalidArguments("activate には bundle が必要です")
+            }
+            try await driver.activate(bundleID: bundle)
+        case "appSwitcher":
+            try await driver.openAppSwitcher()
         case "terminate":
             try await driver.terminate()
         case "install":
@@ -165,7 +196,7 @@ struct ApiLiveServe: AsyncParsableCommand {
         do {
             let png = try await driver.screenshot()
             let jpeg = try MonitorImage.downscaledJPEG(pngData: png, maxWidth: maxWidth)
-            let snap = try await driver.snapshot()
+            let snap = try await snapshotWithSessionFallback(driver: driver)
             let elements = snap.elements.map {
                 ApiLiveElement(ref: $0.ref, type: $0.type, label: $0.label,
                                identifier: $0.identifier, value: $0.value, frame: $0.frame)
@@ -179,6 +210,32 @@ struct ApiLiveServe: AsyncParsableCommand {
             emitLine(ApiLiveSnapshotEvent(
                 ok: false, error: error.localizedDescription,
                 platform: nil, screen: nil, image: nil, elements: nil))
+        }
+    }
+
+    /// スクリーンショットのみの観測イベント(kind:"frame")。自動画面更新用に AX スナップショット
+    /// を省いて軽量化している(要素一覧は更新されない)
+    private func emitFrame(driver: AppDriver) async {
+        do {
+            let png = try await driver.screenshot()
+            let jpeg = try MonitorImage.downscaledJPEG(pngData: png, maxWidth: maxWidth)
+            emitLine(ApiLiveFrameEvent(ok: true, error: nil, image: jpeg.data.base64EncodedString()))
+        } catch {
+            emitLine(ApiLiveFrameEvent(ok: false, error: error.localizedDescription, image: nil))
+        }
+    }
+
+    /// xcuitest ブリッジはセッション未作成だと /snapshot が 409 を返す(ライブ操作はデバイス選択
+    /// 直後などアプリ未起動のまま観測しうる)。409 のときだけ springboard 参照セッション
+    /// (起動せず・非破壊。SystemUIDriver.swift と同じ経路)を張って1回だけ再試行する。
+    /// 409 以外(タイムアウト等)で再試行しないのは、生きている既存アプリセッションを
+    /// springboard で上書きしないため。
+    private func snapshotWithSessionFallback(driver: AppDriver) async throws -> SnapshotResponse {
+        do {
+            return try await driver.snapshot()
+        } catch DriverError.badResponse(let status, _) where status == 409 {
+            try await driver.launch(bundleID: "com.apple.springboard")
+            return try await driver.snapshot()
         }
     }
 
@@ -222,6 +279,12 @@ private struct ApiLiveServeCommand: Decodable {
     let direction: String?
     let bundle: String?
     let path: String?
+    let fromX: Double?
+    let fromY: Double?
+    let toX: Double?
+    let toY: Double?
+    let press: Double?
+    let duration: Double?
 }
 
 // MARK: - JSON 出力(イベント)
@@ -266,6 +329,24 @@ private struct ApiLiveSnapshotEvent: Encodable {
         try container.encode(screen, forKey: .screen)
         try container.encode(image, forKey: .image)
         try container.encode(elements, forKey: .elements)
+    }
+}
+
+/// frame(画像のみ観測)イベント。ok:true 時は image が必ず埋まる
+private struct ApiLiveFrameEvent: Encodable {
+    let kind = "frame"
+    let ok: Bool
+    let error: String?
+    let image: String?
+
+    private enum CodingKeys: String, CodingKey { case kind, ok, error, image }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(kind, forKey: .kind)
+        try container.encode(ok, forKey: .ok)
+        try container.encode(error, forKey: .error)
+        try container.encode(image, forKey: .image)
     }
 }
 
