@@ -632,5 +632,26 @@ final class ProfileResolverTests: XCTestCase {
         """, to: project.runsDir, name: "r")
         let resolved = try ProfileResolver.resolve(project: project, runName: "r", machineName: "m")
         XCTAssertEqual(resolved.iosDevices.map { $0.spec.engine }, ["inapp", "xcuitest"])
+        // フラグ明示 × デバイス engine 明示 → 「適用されません」警告(GUI チェックボックスの空振り検知)
+        XCTAssertTrue(resolved.warnings.contains { $0.contains("注入機") && $0.contains("適用されません") },
+                      "engine 明示デバイスへのフラグ空振り警告が出るはず: \(resolved.warnings)")
+        XCTAssertFalse(resolved.warnings.contains { $0.contains("素機") },
+                       "engine 無指定デバイスには警告を出さないはず: \(resolved.warnings)")
+    }
+
+    func testNoWarningWhenFlagUnspecifiedWithExplicitDeviceEngine() throws {
+        // フラグ未指定(既定)なら engine 明示デバイスがあっても警告しない(従来プロファイルを騒がせない)
+        try write("""
+        { "ios": { "app": "com.example.app" } }
+        """, to: project.appsDir, name: "app5")
+        try write("""
+        { "ios": { "devices": [ { "name": "注入機", "simulator": "iPhone 17 Pro", "engine": "inapp" } ] } }
+        """, to: project.machinesDir, name: "m")
+        try write("""
+        { "app": "app5", "devices": [ { "name": "注入機" } ] }
+        """, to: project.runsDir, name: "r")
+        let resolved = try ProfileResolver.resolve(project: project, runName: "r", machineName: "m")
+        XCTAssertFalse(resolved.warnings.contains { $0.contains("適用されません") },
+                       "フラグ未指定では警告しないはず: \(resolved.warnings)")
     }
 }

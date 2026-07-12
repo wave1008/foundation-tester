@@ -168,8 +168,10 @@ struct RunScenario: AsyncParsableCommand {
                         guard engine == "hybrid", let xcuiPort else {
                             throw ValidationError(
                                 "シナリオ \(scenarioID) の対象アプリ \(testClass.app) は in-app ブリッジの"
-                                + "注入先 \(injected) と異なるため engine=inapp では実行できません"
-                                + "(engine=hybrid なら XCUITest 経由で自動駆動されます)")
+                                + "注入先 \(injected) と異なるため engine=inapp では実行できません。"
+                                + "engine 明示のないデバイス(実行プロファイルの iosInappEngine 既定ON="
+                                + "hybrid)で実行すると XCUITest 経由で自動駆動されます"
+                                + "(engine=inapp 明示デバイスには iosInappEngine は適用されません)")
                         }
                         driver = BridgeClient(port: xcuiPort)
                     } else {

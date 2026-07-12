@@ -459,6 +459,14 @@ public enum ProfileResolver {
                     spec.engine = iosEngine
                     devices.append(ResolvedDevice(platform: "ios", spec: spec))
                 } else {
+                    // フラグを明示指定したのにデバイス側 engine が勝つ組み合わせは
+                    // GUI のチェックボックスが「効かない」ように見えるため警告で知らせる
+                    if device.platform == "ios", runDoc.iosInappEngine != nil,
+                       let explicit = device.spec.engine {
+                        warnings.append(
+                            "デバイス \"\(ref.name)\" はマシンプロファイルで engine=\(explicit) を"
+                            + "明示しているため iosInappEngine の指定は適用されません")
+                    }
                     devices.append(device)
                 }
             } else {
