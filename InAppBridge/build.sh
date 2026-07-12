@@ -47,6 +47,6 @@ echo "→ link dylib..."
 xcrun --sdk iphonesimulator clang -dynamiclib -o "$DYLIB" \
   "$OUT/ftinapp.o" "$OUT/boot.o" "$OUT/InAppInput.o" \
   -isysroot "$SDK" -target "$TARGET" \
-  -framework UIKit -framework Foundation
+  -framework UIKit -framework Foundation -framework IOKit
 
 echo "✅ $DYLIB"

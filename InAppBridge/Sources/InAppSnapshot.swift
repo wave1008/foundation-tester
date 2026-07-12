@@ -8,11 +8,13 @@ import UIKit
 
 enum InAppSnapshot {
 
-    /// 収集結果。frames は ref → 画面座標フレーム(tap のヒットテスト用)。
+    /// 収集結果。frames は ref → 画面座標フレーム(tap の座標解決用)、
+    /// nodes は ref → 走査した AX 要素/ビュー(accessibilityActivate 等の直接操作用)。
     struct Result {
         var screen: FTRect
         var elements: [ElementInfo]
         var frames: [Int: CGRect]
+        var nodes: [Int: NSObject]
         var truncated: Int
     }
 
@@ -20,18 +22,19 @@ enum InAppSnapshot {
         let screen = window.bounds
         var elements: [ElementInfo] = []
         var frames: [Int: CGRect] = [:]
+        var nodes: [Int: NSObject] = [:]
         var truncated = 0
         collect(window, depth: 0, screen: screen,
-                elements: &elements, frames: &frames, truncated: &truncated)
+                elements: &elements, frames: &frames, nodes: &nodes, truncated: &truncated)
         return Result(
             screen: FTRect(x: screen.origin.x, y: screen.origin.y,
                            width: screen.width, height: screen.height),
-            elements: elements, frames: frames, truncated: truncated)
+            elements: elements, frames: frames, nodes: nodes, truncated: truncated)
     }
 
     private static func collect(_ node: NSObject, depth: Int, screen: CGRect,
                                 elements: inout [ElementInfo], frames: inout [Int: CGRect],
-                                truncated: inout Int) {
+                                nodes: inout [Int: NSObject], truncated: inout Int) {
         // 非表示サブツリーは丸ごと除外
         if let view = node as? UIView, view.isHidden || view.alpha < 0.01
             || view.accessibilityElementsHidden { return }
@@ -44,6 +47,7 @@ enum InAppSnapshot {
             if elements.count < BridgeAPI.maxSnapshotElements {
                 let ref = elements.count + 1
                 frames[ref] = info.frame
+                nodes[ref] = node
                 elements.append(makeInfo(node, type: type, ref: ref, depth: depth, frame: info.frame))
             } else {
                 truncated += 1
@@ -56,7 +60,7 @@ enum InAppSnapshot {
         let children = axChildren(node)
         for child in children {
             collect(child, depth: depth + 1, screen: screen,
-                    elements: &elements, frames: &frames, truncated: &truncated)
+                    elements: &elements, frames: &frames, nodes: &nodes, truncated: &truncated)
         }
     }
 

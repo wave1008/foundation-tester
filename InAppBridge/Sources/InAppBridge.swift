@@ -21,9 +21,10 @@ final class FTInAppBridge {
     static let shared = FTInAppBridge()
 
     private var server: InAppHTTPServer?
-    // 直近スナップショットの ref → window 座標フレーム。tap/press の座標解決に使う。
+    // 直近スナップショットの ref → window 座標フレーム / AX 要素。tap/press の解決に使う。
     // accept ループは1本ずつ処理するので単純プロパティで足りる(同時アクセスなし)。
     private var frames: [Int: CGRect] = [:]
+    private var nodes: [Int: NSObject] = [:]
 
     func start() {
         let port = UInt16(ProcessInfo.processInfo.environment["FT_PORT"] ?? "")
@@ -93,6 +94,7 @@ final class FTInAppBridge {
             }
             let result = InAppSnapshot.capture(window: window)
             self.frames = result.frames
+            self.nodes = result.nodes
             return .json(SnapshotResponse(
                 sessionBundleID: Bundle.main.bundleIdentifier,
                 screen: result.screen,
@@ -104,6 +106,12 @@ final class FTInAppBridge {
     private func handleTap(_ body: Data) throws -> InAppHTTPServer.Response {
         let req = try decode(TapRequest.self, body)
         try performWithSettle { window in
+            // ref 指定はまず accessibilityActivate(要素のデフォルトアクション=ボタン発火・
+            // セル選択等を確実に起こす。合成タッチはジェスチャ認識器を発火できないため)。
+            // 活性化できない要素・座標指定は合成タッチにフォールバック。
+            if let ref = req.ref, let node = self.nodes[ref], node.accessibilityActivate() {
+                return
+            }
             let p = try self.resolvePoint(ref: req.ref, x: req.x, y: req.y)
             FTSynthTap(window, p)
         }
