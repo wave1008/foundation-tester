@@ -19,6 +19,8 @@ public enum BridgeProvisionerError: Error, LocalizedError {
     case noFreePort(scanned: ClosedRange<UInt16>)
     /// waitUntilReady() が失敗した場合(後始末として起動済みプロセス/pidファイルは停止済み)
     case notReady(port: UInt16, underlying: Error)
+    /// engine="inapp" のブリッジを新規起動するのに bundleID が無い(フォールバックしない=単一実装)
+    case inAppNeedsBundleID(name: String)
 
     public var errorDescription: String? {
         switch self {
@@ -26,6 +28,10 @@ public enum BridgeProvisionerError: Error, LocalizedError {
             return "空きポートがありません(走査範囲: \(scanned.lowerBound)〜\(scanned.upperBound))"
         case .notReady(let port, let underlying):
             return "ブリッジが時間内に準備できませんでした(port \(port)): \(underlying)"
+        case .inAppNeedsBundleID(let name):
+            return "\(name): engine=inapp のブリッジ起動にはアプリの bundleID が必要です。"
+                + "apps プロファイルの ios.app を設定してください"
+                + "(device/live 等 bundleID を渡さない経路は engine=inapp 非対応です)"
         }
     }
 }
@@ -67,14 +73,8 @@ public struct BridgeProvisioner {
         var provisioned: [ProvisionedIOSDevice] = []
         var usedPorts = Set(running.keys)
         for (name, spec, sim) in targets {
-            // in-app 注入起動には bundleID が要る。device 管理/live 等 bundleID を渡さない経路では
-            // 従来どおり XCUITest で起動する(engine=inapp は ftester run=bundleID あり経路専用)。
-            var engine = spec.engine ?? "xcuitest"
-            if engine == "inapp", bundleID == nil {
-                log("⚠️ \(name): engine=inapp ですが bundleID がないため XCUITest で起動します"
-                    + "(ftester run 以外の経路、または apps の ios.app 未設定)")
-                engine = "xcuitest"
-            }
+            let engine = spec.engine ?? "xcuitest"
+            // 稼働中ブリッジの再利用は launch しないので bundleID 不要
             if let port = running.first(where: { $0.value == sim.udid })?.key,
                !provisioned.contains(where: { $0.port == port }) {
                 log("✅ \(name): 稼働中ブリッジを再利用(port \(port), \(sim.name), engine=\(engine))")
@@ -85,7 +85,12 @@ public struct BridgeProvisioner {
 
             let port = try assignPort(preferred: spec.port, used: &usedPorts)
             log("→ \(name): ブリッジ起動(port \(port), \(sim.name) \(sim.os), engine=\(engine))...")
-            if engine == "inapp", let bundleID {
+            if engine == "inapp" {
+                // in-app の新規起動には注入対象アプリの bundleID が要る。無ければ XCUITest に
+                // フォールバックせず明示エラー(単一実装。device/live 等は engine=inapp 非対応)。
+                guard let bundleID else {
+                    throw BridgeProvisionerError.inAppNeedsBundleID(name: name)
+                }
                 let launcher = InAppLauncher(repoRoot: repoRoot, udid: sim.udid, port: port)
                 try launcher.buildIfNeeded()
                 try await launcher.relaunch(bundleID: bundleID)
