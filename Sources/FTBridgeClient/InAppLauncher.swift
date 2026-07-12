@@ -84,7 +84,9 @@ public enum InAppLauncherError: Error, LocalizedError {
         case .buildFailed(let tail):
             return "InAppBridge/build.sh が失敗しました:\n\(tail)"
         case .launchFailed(let tail):
-            return "アプリの注入起動(simctl launch)に失敗しました:\n\(tail)"
+            return "アプリの注入起動(simctl launch)に失敗しました"
+                + "(アプリが対象シミュレータにインストール済みか確認してください。"
+                + "engine=inapp は現状アプリの事前インストールが必要=autoInstall と併用時は先に手動 install):\n\(tail)"
         case .notReady(let detail):
             return "in-app ブリッジが時間内に応答しませんでした: \(detail)"
         }

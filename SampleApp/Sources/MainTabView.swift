@@ -17,6 +17,7 @@ struct MainTabView: View {
 }
 
 struct HomeView: View {
+    @State private var longPressed: String?
     private let items = ["りんご", "バナナ", "オレンジ", "ぶどう", "メロン", "いちご", "キウイ", "マンゴー",
                          "もも", "なし", "かき", "すいか", "レモン", "ライム", "さくらんぼ", "ブルーベリー",
                          "パイナップル", "ざくろ", "いちじく", "アボカド", "グレープフルーツ", "ドリアン",
@@ -34,10 +35,13 @@ struct HomeView: View {
                     HStack {
                         Text(item)
                         Spacer()
-                        Text("¥100")
+                        Text(longPressed == item ? "選択済み" : "¥100")
                             .foregroundStyle(.secondary)
                     }
                     .accessibilityIdentifier("item_\(item)")
+                    .contextMenu {
+                        Button("お気に入り") { longPressed = item }
+                    }
                 }
                 .accessibilityIdentifier("item_list")
             }

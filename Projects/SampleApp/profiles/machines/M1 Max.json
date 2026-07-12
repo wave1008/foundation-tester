@@ -38,6 +38,12 @@
         "simulator": "iPhone Air"
       },
       {
+        "name": "シミュ2-inapp",
+        "os": "27.0",
+        "simulator": "iPhone Air",
+        "engine": "inapp"
+      },
+      {
         "name": "iPhone 17 Pro(iOS 27.0)",
         "os": "27.0",
         "simulator": "iPhone 17 Pro",
