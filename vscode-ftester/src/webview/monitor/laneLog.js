@@ -131,10 +131,20 @@ export function updateLanesPlaceholder() {
 updateLanesPlaceholder();
 
 // 実行開始(cleared)で一旦消えても、次のdevicesサイクルで復元される。
+// タイル側(deviceTiles.js applyDevices)と対で、devicesに無いレーンは削除して数を同期する。
+// 全体レーン(__overall__)はworker無しイベントの受け皿でdevicesに現れないため削除しない。
 export function syncLanesToDevices(devices) {
+  const deviceIds = new Set(devices.map((device) => device.id));
+  for (const [id, lane] of [...lanes]) {
+    if (id !== OVERALL_LANE_ID && !deviceIds.has(id)) {
+      lane.el.remove();
+      lanes.delete(id);
+    }
+  }
   for (const device of devices) {
     ensureLane(device.id, device.name, device.platform, true);
   }
+  updateLaneVisibility();
 }
 
 export function applyLaneAction(action) {
