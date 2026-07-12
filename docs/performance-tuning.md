@@ -208,8 +208,10 @@ window/transition/animator の `*_scale` はチューニングノブではなく
        display-integration メタデータを完全再現できず。focus は効くが gesture 不発)。
        snapshot が ref→AX 要素を保持し、tap(ref) はその要素を activate する。座標/活性化不能な
        要素は合成タッチにフォールバック。XCUITest 比 767→~280ms。
-     - **swipe: `accessibilityScroll()`**(tap と同じくスクロールのジェスチャ認識器も合成タッチで
-       駆動できないため。面積最大の可視 `UIScrollView` を探して呼ぶ。合成スワイプにフォールバック)。
+     - **swipe: `UIScrollView.setContentOffset` 直接操作**(スクロールのジェスチャ認識器も合成タッチで
+       駆動できないため。面積最大の可視 `UIScrollView` を探し contentOffset を ±可視領域 85% 動かす。
+       `accessibilityScroll` は SwiftUI List で片方向しか効かず不安定だったので不採用。双方向スクロール
+       を実機確認済み)。無い場合は合成スワイプにフォールバック。
      - screenshot: `drawHierarchy` → PNG、45ms。
      - **ホスト統合(engine 選択+lifecycle)= 完成**: machine プロファイルのデバイスに
        `engine`("xcuitest" 既定 / "inapp")を持たせ、`engine=inapp` のときサブプロセスが
@@ -226,13 +228,16 @@ window/transition/animator の `*_scale` はチューニングノブではなく
      残り時間の内訳: launch(fresh 起動)2.9s + シナリオ自身の明示 wait(1s)+ 別プロセスの
      システム UI(パスワード保存シート「今はしない」)への optional タップ空振り(~750ms)。
      エンジンの実操作(type/tap/exist)は合計 ~1.1s。
-     **残り(未完・refinement)**: (a) **AX 忠実度**: SwiftUI の `.accessibilityIdentifier` を
-     プロセス内走査で拾えない(SwiftUI は id を `AccessibilityNode` の標準 `accessibilityIdentifier`
-     プロパティに露出せず。XCUITest は testmanagerd 深部で読む)。`#email` 等の **id 単独セレクタは
-     解決不能**(`#email||.TextField` 等フォールバック付きは可)。空 TextField の value に
-     placeholder が乗る微差も。(b) **swipe/press の実スクロール検証**(SampleApp に注入可能な
-     スクロール画面が無く未実施。実装パターンは tap と対で正しい)。(c) install 前注入起動の順序、
-     並列複数 in-app デバイスの検証。
+     **AX id 忠実度=解決済み**: 当初 `.accessibilityIdentifier` を拾えず id 単独セレクタが
+     解決不能だったが、原因は `as? UIAccessibilityIdentification` キャスト(SwiftUI の
+     `AccessibilityNode`/`UIKitTextField` はセレクタに応答するがプロトコル準拠を宣言しない)。
+     **セレクタ直接呼び出し(`FTAccessibilityIdentifier`)に修正して解決**。`ログインテスト.S0010`
+     (`#email`/`#password`/`#login_error` 等の id 単独セレクタ+relaunchApp+エラーパス+textIs)が
+     in-app 経由で passed=True。
+     **残り(未完・軽微)**: (a) 空 TextField の value に placeholder 文字が乗る微差(XCUITest 版との
+     わずかな差)。(b) press の実機確認(長押しを要するシナリオが SampleApp に無い。tap/swipe の
+     パターンが対で正しいので accessibilityActivate/長押し系 AX action を検討)。(c) 並列複数
+     in-app デバイス・install 前注入起動の順序。
      なお XCUITest の quiescence 自体を私有 API で無効化する案(WDA 方式)は、
      代替の整定信号がプロセス外から得られないため 2 とセットでない限り採らない
 - **シナリオ設計の見直し**: 上記 iPhone Air フレークのようなデバイス依存アサーションの排除は、
