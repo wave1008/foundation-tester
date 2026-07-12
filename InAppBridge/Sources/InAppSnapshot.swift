@@ -102,9 +102,10 @@ enum InAppSnapshot {
         }
     }
 
-    // accessibilityIdentifier は UIAccessibilityIdentification プロトコル側(NSObject には無い)
+    // SwiftUI の AccessibilityNode/UIKitTextField は UIAccessibilityIdentification 準拠を
+    // 宣言しないため as? では取れない。セレクタ直接呼び出し(FTAccessibilityIdentifier)で取る。
     private static func axIdentifier(_ node: NSObject) -> String? {
-        (node as? UIAccessibilityIdentification)?.accessibilityIdentifier
+        FTAccessibilityIdentifier(node)
     }
 
     private static func makeInfo(_ node: NSObject, type: UIKitType, ref: Int, depth: Int,

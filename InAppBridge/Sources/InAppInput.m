@@ -1,6 +1,7 @@
 #import "InAppInput.h"
 #import <dlfcn.h>
 #import <mach/mach_time.h>
+#import <objc/message.h>
 
 // UITouch/UIApplication/UITouchesEvent の合成 private セレクタ(実在確認済み: Xcode 27 beta 3)。
 // これらが消えたら合成が黙って効かなくなるので、壊れたら InAppInput の再調査が必要。
@@ -168,4 +169,11 @@ void FTActivateAccessibility(void) {
         if (h) setAutomationEnabled = dlsym(h, "_AXSSetAutomationEnabled");
     }
     if (setAutomationEnabled) setAutomationEnabled(YES);
+}
+
+NSString *FTAccessibilityIdentifier(id node) {
+    SEL s = @selector(accessibilityIdentifier);
+    if (![node respondsToSelector:s]) return nil;
+    id v = ((id (*)(id, SEL))objc_msgSend)(node, s);
+    return [v isKindOfClass:[NSString class]] && [v length] ? v : nil;
 }

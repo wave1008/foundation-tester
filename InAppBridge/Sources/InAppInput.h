@@ -23,4 +23,9 @@ BOOL FTInsertTextIntoFirstResponder(NSString *text);
 /// (XCUITest は起動時にこれを行っている)。起動時に1回呼ぶ。失敗は非致命。
 void FTActivateAccessibility(void);
 
+/// node の accessibilityIdentifier を返す(セレクタ応答時のみ)。SwiftUI の AccessibilityNode /
+/// UIKitTextField は UIAccessibilityIdentification 準拠を宣言しないため Swift の as? では取れず、
+/// セレクタ直接呼び出しが要る。空文字は nil を返す。
+NSString * _Nullable FTAccessibilityIdentifier(id node);
+
 NS_ASSUME_NONNULL_END
