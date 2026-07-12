@@ -90,6 +90,12 @@ struct RunScenario: AsyncParsableCommand {
     @Option(help: "Android デバイスのシリアル(adb -s。省略時は唯一の接続デバイス)")
     var serial: String?
 
+    @Option(help: "iOS 駆動エンジン: xcuitest(既定)/ inapp(dylib 注入)")
+    var engine: String?
+
+    @Option(help: "iOS: in-app 再起動用のシミュレータ UDID(engine=inapp のみ)")
+    var udid: String?
+
     @Flag(help: "FM によるロケータ自己修復を許可する")
     var heal = false
 
@@ -147,7 +153,13 @@ struct RunScenario: AsyncParsableCommand {
         } else {
             switch runPlatform {
             case "ios":
-                driver = BridgeClient(port: port)
+                if engine == "inapp" {
+                    // in-app は launch=simctl 再起動+dylib 注入(自己再起動できないため)
+                    let repoRoot = try RepoRoot.find()
+                    driver = InAppDriver(repoRoot: repoRoot, udid: udid ?? "booted", port: port)
+                } else {
+                    driver = BridgeClient(port: port)
+                }
             case "android":
                 driver = try AndroidDriver(serial: serial)
             default:

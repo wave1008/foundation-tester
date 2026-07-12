@@ -93,20 +93,24 @@ public struct DeviceSpec: Codable, Sendable, Hashable {
     public var udid: String?
     /// iOS: ブリッジポートの固定(省略時は自動採番)
     public var port: UInt16?
+    /// iOS: 駆動エンジン。"xcuitest"(既定)= Runner/ の XCUITest ブリッジ、
+    /// "inapp" = シミュレータのアプリに dylib 注入する in-app ブリッジ(実機不可)
+    public var engine: String?
     /// Android: AVD(ID または表示名。起動中エミュレータとの照合で adb シリアルに解決)
     public var avd: String?
 
     public init(name: String, simulator: String? = nil, os: String? = nil,
-                udid: String? = nil, port: UInt16? = nil, avd: String? = nil) {
+                udid: String? = nil, port: UInt16? = nil, engine: String? = nil, avd: String? = nil) {
         self.name = name
         self.simulator = simulator
         self.os = os
         self.udid = udid
         self.port = port
+        self.engine = engine
         self.avd = avd
     }
 
-    static let knownKeys: Set<String> = ["name", "simulator", "os", "udid", "port", "avd"]
+    static let knownKeys: Set<String> = ["name", "simulator", "os", "udid", "port", "engine", "avd"]
 }
 
 public struct MachineDeviceList: Codable, Sendable, Equatable {

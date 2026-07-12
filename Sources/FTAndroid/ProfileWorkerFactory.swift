@@ -19,12 +19,17 @@ public enum ProfileWorkerFactory {
         if !resolved.iosDevices.isEmpty {
             let provisioner = BridgeProvisioner(repoRoot: repoRoot)
             let provisioned = try await provisioner.provision(
-                devices: resolved.iosDevices.map { ($0.name, $0.spec) }, log: log)
+                devices: resolved.iosDevices.map { ($0.name, $0.spec) },
+                bundleID: resolved.apps["ios"]?.bundleID, log: log)
             for device in provisioned {
+                // engine=inapp のときサブプロセスは InAppDriver(launch=simctl 再起動+注入)を使う。
+                // ホスト warmup 用 driver は BridgeClient のままでよい(in-app も HTTP 応答するため)。
+                let engine = device.engine == "inapp" ? "inapp" : nil
                 workers.append(RunWorker(
                     label: "\(device.name)(ios:\(device.port))", platform: "ios",
                     driver: BridgeClient(port: device.port),
-                    connection: DriverConnection(platform: "ios", port: device.port),
+                    connection: DriverConnection(platform: "ios", port: device.port,
+                                                 engine: engine, udid: device.udid),
                     logicalName: device.name))
             }
         }
