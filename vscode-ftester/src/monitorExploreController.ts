@@ -196,7 +196,7 @@ export class MonitorExploreController implements vscode.Disposable {
       goal,
       "--max-steps",
       String(parseMaxSteps(maxStepsRaw)),
-      ...buildDeviceArgs({ platform: device.platform, port: device.port, serial: device.serial }),
+      ...buildDeviceArgs({ platform: device.platform, port: device.port, serial: device.serial, udid: device.udid }),
     ];
 
     let finishedEvent: ExploreFinishedEvent | undefined;

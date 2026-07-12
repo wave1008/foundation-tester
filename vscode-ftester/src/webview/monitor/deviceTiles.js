@@ -2,7 +2,7 @@
 // laneLog.js は tiles/selectedDeviceIds を読み取り専用で参照する。
 
 import { vscode } from './vscodeApi.js';
-import { grid, emptyMessage, banner, btnUp, btnDown, deviceOpMenu, deviceOpMenuItemBtn, deviceOpMenuLiveBtn, profileSelect } from './domRefs.js';
+import { grid, emptyMessage, banner, btnUp, btnDown, deviceOpMenu, deviceOpMenuItemBtn, deviceOpMenuItemLabel, deviceOpMenuLiveBtn, profileSelect } from './domRefs.js';
 import { updateLaneVisibility, syncLanesToDevices, runningWorkers } from './laneLog.js';
 
 const STATE_LABEL = {
@@ -173,7 +173,8 @@ export function renderDeviceOpMenuItem() {
     return;
   }
   const item = deviceOpMenuItem(deviceOpMenuEntry.device.state, deviceOpMenuEntry.opBusy);
-  deviceOpMenuItemBtn.textContent = item.label;
+  // ラベルはspanに書く(ボタン直のtextContent代入はアイコンSVGを消す)。data-opはCSSのアイコン切替も担う。
+  deviceOpMenuItemLabel.textContent = item.label;
   deviceOpMenuItemBtn.disabled = item.disabled;
   deviceOpMenuItemBtn.dataset.op = item.op;
 }

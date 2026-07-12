@@ -47,6 +47,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
     func run() async throws {
         // ストリーミング読み取りが前提のため常に行バッファにする(ApiRunCommand.swift と同じ理由)
         setvbuf(stdout, nil, _IOLBF, 0)
+        ResidentProcessGuard.startOrphanWatchdog(logLabel: "monitor")
 
         let testProject = try ScenarioHost.project(named: project)
         // --profile の machine 明示指定を最優先(ProfileResolver.resolve() と同じ優先順位)
@@ -280,15 +281,16 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         }()
         if let port {
             return DeviceRuntimeState(target: target, state: "connected",
-                                      detail: "port \(port)", iosPort: port, androidSerial: nil)
+                                      detail: "port \(port)", iosPort: port, androidSerial: nil,
+                                      iosUdid: sim.udid)
         }
         if sim.booted {
             return DeviceRuntimeState(target: target, state: "booted",
                                       detail: "\(sim.name) \(sim.os)",
-                                      iosPort: nil, androidSerial: nil)
+                                      iosPort: nil, androidSerial: nil, iosUdid: sim.udid)
         }
         return DeviceRuntimeState(target: target, state: "offline", detail: "",
-                                  iosPort: nil, androidSerial: nil)
+                                  iosPort: nil, androidSerial: nil, iosUdid: sim.udid)
     }
 
     /// Android: AVD起動+ブート完了 → connected。AVD起動のみ(ブート未完了)→ booted
@@ -396,6 +398,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                 }
             }
             stop.set()
+            ResidentProcessGuard.scheduleForcedExit(logLabel: "monitor")
         }
         thread.name = "ftester-api-monitor-stdin"
         thread.start()
@@ -410,7 +413,10 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         let queue = DispatchQueue(label: "ftester-api-monitor-signal")
         return [SIGTERM, SIGINT].map { sig in
             let source = DispatchSource.makeSignalSource(signal: sig, queue: queue)
-            source.setEventHandler { stop.set() }
+            source.setEventHandler {
+                stop.set()
+                ResidentProcessGuard.scheduleForcedExit(logLabel: "monitor")
+            }
             source.resume()
             return source
         }
@@ -454,6 +460,19 @@ struct DeviceRuntimeState {
     let iosPort: UInt16?
     /// state == connected(Android)のときだけ設定。スクリーンショット取得に使う
     let androidSerial: String?
+    /// iOS で SimulatorCatalog.resolve が成功した場合(state に関わらず)設定。list-devices が
+    /// ブリッジ自動起動(ApiLiveCommand --udid)のために公開する。resolve 失敗時は nil のまま
+    let iosUdid: String?
+
+    init(target: MonitorTarget, state: String, detail: String,
+        iosPort: UInt16?, androidSerial: String?, iosUdid: String? = nil) {
+        self.target = target
+        self.state = state
+        self.detail = detail
+        self.iosPort = iosPort
+        self.androidSerial = androidSerial
+        self.iosUdid = iosUdid
+    }
 
     /// fileprivate: 戻り値の型 ApiMonitorDeviceInfo がファイル限定の private 型のため
     /// (list-devices は同じ情報を ApiDeviceEntry として別途組み立てる)

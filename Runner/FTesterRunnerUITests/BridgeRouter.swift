@@ -40,6 +40,7 @@ final class BridgeRouter {
             case ("POST", "/press"): return try handlePress(request.body)
             case ("GET", "/screenshot"): return handleScreenshot()
             case ("POST", "/appswitcher"): return try handleAppSwitcher()
+            case ("POST", "/home"): return try handleHome()
             case ("POST", "/terminate"): return try handleTerminate()
             default:
                 return .error("not found: \(request.method) \(request.path)", status: 404)
@@ -60,7 +61,8 @@ final class BridgeRouter {
             device: device.name,
             osVersion: "\(device.systemName) \(device.systemVersion)",
             sessionBundleID: sessionBundleID,
-            engine: "xcuitest"))
+            engine: "xcuitest",
+            protocolVersion: BridgeAPI.bridgeProtocolVersion))
     }
 
     private func handleLaunch(_ body: Data) throws -> BridgeHTTPServer.Response {
@@ -184,6 +186,12 @@ final class BridgeRouter {
         return .json(OKResponse())
     }
 
+    /// ホーム画面に戻る(セッション不要。XCUIDevice のホームボタン押下=前面アプリに関係なく効く)
+    private func handleHome() throws -> BridgeHTTPServer.Response {
+        XCUIDevice.shared.press(.home)
+        return .json(OKResponse())
+    }
+
     private func handleTerminate() throws -> BridgeHTTPServer.Response {
         let app = try requireApp()
         app.terminate()
@@ -285,6 +293,7 @@ final class BridgeRouter {
         case .cell: return "Cell"
         case .link: return "Link"
         case .image: return "Image"
+        case .icon: return "Icon"
         case .searchField: return "SearchField"
         case .segmentedControl: return "SegmentedControl"
         case .picker: return "Picker"

@@ -16,6 +16,7 @@ import {
 import { registerDebugAdapter } from "./debugConfig";
 import { registerHealReviewPanel } from "./healReviewPanel";
 import { registerMonitorPanel } from "./monitorPanel";
+import { sweepOrphans } from "./orphanSweep";
 import { registerProfileDiagnostics } from "./profileDiagnostics";
 import { RunEventBus } from "./runEventBus";
 import { registerRunHandler } from "./runHandler";
@@ -26,6 +27,10 @@ import { ScenarioFileWatcher } from "./watcher";
 export function activate(context: vscode.ExtensionContext): void {
   const outputChannel = vscode.window.createOutputChannel("ftester");
   context.subscriptions.push(outputChannel);
+
+  // 孤児化した常駐プロセス(reload window 等で拡張ホストが即死し PPID=1 になったもの)の掃除。
+  // best-effort・fire-and-forget(失敗しても activate を止めない。orphanSweep.ts 参照)。
+  void sweepOrphans((message) => outputChannel.appendLine(message));
 
   const workspaceRoot = resolveWorkspaceRoot();
   if (!workspaceRoot) {

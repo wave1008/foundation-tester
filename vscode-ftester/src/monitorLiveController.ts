@@ -5,7 +5,7 @@
 //   `swift build` を伴い得るため同時2プロセスを防ぐ SPM ビルドロック対策)には乗せず、oneShotCli.ts の
 //   runOneShot() で専用 spawn する。ライブ操作は実行中でも待たされず応答する必要があり、
 //   list-devices はビルドを伴わないので run 側と競合しないため問題ない。
-// - タップ/入力/スワイプ/起動/終了/インストール/スナップショット取得は、選択デバイスごとに
+// - タップ/入力/スワイプ/終了/スナップショット取得は、選択デバイスごとに
 //   `ftester api live serve` を常駐 spawn し、stdin へ NDJSON でコマンドを送って stdout の NDJSON
 //   イベント(NdjsonParser)を待つ方式で行う。プロセス管理は monitorProcessManager.ts の host-metrics
 //   パターンを踏襲: stdin パイプ保持(EOF が終了指示)・SIGTERM 送信後2秒で SIGKILL・予期しない
@@ -19,9 +19,6 @@
 //   liveTab.js 側も追随させること。
 
 import { type ChildProcessByStdio, spawn } from "node:child_process";
-import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
 import type { Readable, Writable } from "node:stream";
 import * as vscode from "vscode";
 import { type FtesterConfig, resolveProjectName } from "./config";
@@ -35,12 +32,10 @@ import {
   type LiveErrorResult,
   type LiveFrameResult,
   type LiveFromWebviewMessage,
-  type LivePlatform,
   type LiveServeCommand,
   type LiveSize,
   type LiveSnapshot,
   type LiveToWebviewMessage,
-  parseListAppsResult,
   parseListDevicesResult,
   parseLiveServeEvent,
   pointFromClick,
@@ -70,17 +65,6 @@ const FRAME_IDLE_RETRY_MS = 500;
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-/** "~"/"~/..." だけを展開する(GUI 版 installApp() の expandingTildeInPath と同程度の簡易版)。 */
-function expandTilde(rawPath: string): string {
-  if (rawPath === "~") {
-    return os.homedir();
-  }
-  if (rawPath.startsWith("~/")) {
-    return path.join(os.homedir(), rawPath.slice(2));
-  }
-  return rawPath;
 }
 
 /** sendServeCommand() が返す1リクエスト分の結果。action は refresh(アクション無し)のときのみ
@@ -120,10 +104,16 @@ export class MonitorLiveController implements vscode.Disposable {
   /** 直近の snapshot の screen(ポイント座標のサイズ)。クリック→タップ座標変換に使う。 */
   private lastScreen: LiveSize | undefined;
   private busy = false;
+  /** 自動フレームの連続失敗回数(スキップ回はカウントしない)。3で connectionLost に切り替える
+   * (単発の取りこぼしで誤検知しないためのデバウンス)。 */
+  private frameFailureStreak = 0;
+  /** webview へ connection:false を post 済みかどうか(復帰時の connection:true post 要否判定)。 */
+  private connectionLost = false;
+  /** 直近 post した connection:false の message。Swift 側の自動起動サフィックスの進捗更新
+   * (「自動起動しています…」→「失敗しました…」)を検知して再 post するための比較用。 */
+  private lastConnectionMessage: string | undefined;
   /** list-devices のワンショット spawn(専用。runOneShot 経由)。 */
   private activeChild: PipeProcess | undefined;
-  /** アプリ一覧を取得済みのデバイス id(refreshAppsIfNeeded の再取得判定)。 */
-  private lastAppsDeviceId: string | undefined;
 
   // ---- live serve(常駐プロセス。デバイス選択ごとに1つ)。ファイル冒頭のコメント参照 ----
   private serveProcess: ServeProcess | undefined;
@@ -180,6 +170,39 @@ export class MonitorLiveController implements vscode.Disposable {
     this.post({ type: "busy", busy });
   }
 
+  // ---- 接続断の可視化(自動フレームは失敗を無表示で再試行するため、connectionLost の間は
+  // webview 側にオーバーレイを出し続けて「最後に取得した静止画」を生きた画面と誤認させない。
+  // 受け手: src/webview/monitor/liveTab.js) ----
+
+  /** 接続成功を反映する(streak リセット+connectionLost なら connection:true を post して解除)。
+   * 自動フレーム成功・snapshot 成功・デバイス切り替えの起点(古いデバイスのオーバーレイを
+   * 新デバイスへ持ち越さないため)から呼ぶ。 */
+  private handleConnectionOk(): void {
+    this.frameFailureStreak = 0;
+    if (!this.connectionLost) {
+      return;
+    }
+    this.connectionLost = false;
+    this.lastConnectionMessage = undefined;
+    this.post({ type: "connection", connected: true, message: null });
+  }
+
+  /** 自動フレーム失敗を反映する(streak が3に達したら connectionLost にして post。既に
+   * connectionLost でも message が前回と異なれば再 post する: Swift 側の自動起動サフィックスの
+   * 進捗更新「自動起動しています…」→「失敗しました…」を画面に反映するため)。 */
+  private handleFrameFailure(message: string): void {
+    this.frameFailureStreak += 1;
+    if (this.frameFailureStreak < 3) {
+      return;
+    }
+    if (this.connectionLost && this.lastConnectionMessage === message) {
+      return;
+    }
+    this.connectionLost = true;
+    this.lastConnectionMessage = message;
+    this.post({ type: "connection", connected: false, message });
+  }
+
   /** 実行中の live CLI プロセスがあれば SIGTERM(2秒後 SIGKILL)で止める(cli.ts と同じ方針)。 */
   private killActiveChild(): void {
     const proc = this.activeChild;
@@ -208,7 +231,9 @@ export class MonitorLiveController implements vscode.Disposable {
 
   private currentDeviceRef(): LiveDeviceRef | undefined {
     const option = this.devices.find((device) => device.id === this.selectedDeviceId);
-    return option ? { platform: option.platform, port: option.port, serial: option.serial } : undefined;
+    return option
+      ? { platform: option.platform, port: option.port, serial: option.serial, udid: option.udid }
+      : undefined;
   }
 
   // ---- デバイス一覧 ---------------------------------------------------------------
@@ -247,47 +272,10 @@ export class MonitorLiveController implements vscode.Disposable {
     }
   }
 
-  // ---- アプリ一覧 -----------------------------------------------------------------
-
-  private async refreshApps(): Promise<void> {
-    if (this.busy) {
-      return;
-    }
-    const device = this.currentDeviceRef();
-    if (!device) {
-      this.post({ type: "appList", apps: [], message: "デバイスが選択されていません。" });
-      return;
-    }
-    const requestedId = this.selectedDeviceId;
-    this.setBusy(true);
-    try {
-      const result = await this.runCli(["api", "list-apps", ...buildDeviceArgs(device)]);
-      const apps = parseListAppsResult(result.json);
-      if (!apps) {
-        const detail = result.stderrTail.length > 0 ? result.stderrTail : `exit code: ${String(result.exitCode)}`;
-        this.post({ type: "appList", apps: [], message: `アプリ一覧の取得に失敗しました(${detail})` });
-        return;
-      }
-      this.lastAppsDeviceId = requestedId;
-      this.post({ type: "appList", apps, message: null });
-    } catch (error) {
-      this.post({ type: "appList", apps: [], message: `アプリ一覧の取得に失敗しました: ${errorMessage(error)}` });
-    } finally {
-      this.setBusy(false);
-    }
-  }
-
-  /** 選択デバイスのアプリ一覧が未取得のときだけ取得する(デバイス選択の変化に追随する経路)。 */
-  private async refreshAppsIfNeeded(): Promise<void> {
-    if (this.selectedDeviceId !== undefined && this.lastAppsDeviceId === this.selectedDeviceId) {
-      return;
-    }
-    await this.refreshApps();
-  }
-
   /** pendingSelectId(openDevice 由来)があればそれを優先選択する。無ければ直前の選択が新しい
    * 一覧にも存在するとき維持し、それ以外は先頭を選択する。 */
   private applyDevices(options: LiveDeviceOption[], bannerMessage: string | undefined): void {
+    this.handleConnectionOk();
     this.devices = options;
     const pending = this.pendingSelectId;
     this.pendingSelectId = undefined;
@@ -328,7 +316,6 @@ export class MonitorLiveController implements vscode.Disposable {
     if (selected?.state === "connected") {
       await this.refreshSnapshot();
     }
-    await this.refreshAppsIfNeeded();
   }
 
   // ---- live serve(常駐プロセス)の起動・停止・再バインド ------------------------------------
@@ -395,9 +382,13 @@ export class MonitorLiveController implements vscode.Disposable {
       this.serveRestartTimer = undefined;
     }
     const config = this.deps.getConfig();
+    const args = ["api", "live", "serve", ...buildDeviceArgs(device)];
+    if (device.platform === "ios" && device.udid) {
+      args.push("--udid", device.udid);
+    }
     let proc: ServeProcess;
     try {
-      proc = spawn(config.binaryPath, ["api", "live", "serve", ...buildDeviceArgs(device)], {
+      proc = spawn(config.binaryPath, args, {
         cwd: this.deps.workspaceRoot,
         shell: false,
         stdio: ["pipe", "pipe", "pipe"],
@@ -649,6 +640,7 @@ export class MonitorLiveController implements vscode.Disposable {
       this.post({ type: "actionError", message: result.error });
       return;
     }
+    this.handleConnectionOk();
     this.lastScreen = result.screen;
     this.post(toSnapshotMessage(result));
   }
@@ -697,8 +689,9 @@ export class MonitorLiveController implements vscode.Disposable {
     }, delayMs);
   }
 
-  /** 表示中のみ回る自動フレーム。busy(ユーザー操作中)・パネル非表示・serve 不在の回はスキップ。
-   * 失敗は表示しない(次tickで再試行。serve 死は既存の自動再起動が回復する)。
+  /** 表示中のみ回る自動フレーム。busy(ユーザー操作中)・パネル非表示・serve 不在の回はスキップ
+   * (このスキップ回は handleFrameFailure の streak に数えない)。失敗3回連続で接続断オーバーレイに
+   * 切り替わる(handleFrameFailure)。serve 死は既存の自動再起動が回復する。
    * 成功時は待ちなしで次フレームへ(スキップ・失敗時のみ FRAME_IDLE_RETRY_MS 空ける)。 */
   private async frameTick(): Promise<void> {
     if (!this.liveTabVisible) {
@@ -708,8 +701,11 @@ export class MonitorLiveController implements vscode.Disposable {
     if (this.deps.isPanelActive() && !this.busy && this.serveProcess && this.currentDeviceRef()) {
       const frame = await this.sendServeFrame();
       if (frame.ok) {
+        this.handleConnectionOk();
         this.post({ type: "frame", image: frame.image });
         delayMs = 0;
+      } else {
+        this.handleFrameFailure(frame.error);
       }
     }
     if (this.liveTabVisible) {
@@ -717,7 +713,7 @@ export class MonitorLiveController implements vscode.Disposable {
     }
   }
 
-  // ---- tap/type/swipe/launch/terminate/install -------------------------------------
+  // ---- tap/type/drag/press/terminate/appSwitcher/home ---------------------------
 
   /** serve へ1コマンド送って結果を反映する。成功時は serve が続けて返す観測イベント(操作後の
    * 追加待ちなしで届く。ブリッジ応答=UI整定済みのため)をそのまま画面へ反映する。失敗時は
@@ -747,11 +743,6 @@ export class MonitorLiveController implements vscode.Disposable {
     }
   }
 
-  private async refreshDevicesThenApps(): Promise<void> {
-    await this.refreshDevices();
-    await this.refreshAppsIfNeeded();
-  }
-
   // ---- webview からのメッセージ -----------------------------------------------------
   // isLiveFromWebviewMessage による型ガードは呼び出し元(monitorPanel.ts の isLiveWebviewEnvelope)
   // 側で済んでいるためここでは行わない。
@@ -759,17 +750,14 @@ export class MonitorLiveController implements vscode.Disposable {
   handleWebviewMessage(message: LiveFromWebviewMessage): void {
     switch (message.type) {
       case "refreshDevices":
-        void this.refreshDevicesThenApps();
+        void this.refreshDevices();
         break;
       case "selectDevice":
         if (this.devices.some((device) => device.id === message.id)) {
+          this.handleConnectionOk();
           this.selectedDeviceId = message.id;
           this.ensureServeProcessForSelection();
-          void this.refreshAppsIfNeeded();
         }
-        break;
-      case "refreshApps":
-        void this.refreshApps();
         break;
       case "openDevice":
         void this.openDevice(message.id);
@@ -826,9 +814,6 @@ export class MonitorLiveController implements vscode.Disposable {
       case "tapRef":
         void this.runAction({ cmd: "tap", ref: message.ref });
         break;
-      case "swipe":
-        void this.runAction({ cmd: "swipe", direction: message.direction });
-        break;
       case "typeText": {
         if (message.text.trim().length === 0) {
           this.post({ type: "actionError", message: "入力するテキストを入力してください。" });
@@ -837,46 +822,14 @@ export class MonitorLiveController implements vscode.Disposable {
         void this.runAction({ cmd: "type", text: message.text, ref: message.ref });
         break;
       }
-      case "launch": {
-        const bundleId = message.bundleId.trim();
-        if (bundleId.length === 0) {
-          this.post({ type: "actionError", message: "bundle ID / パッケージ名を入力してください。" });
-          break;
-        }
-        void this.runAction({ cmd: "launch", bundle: bundleId });
+      case "home":
+        void this.runAction({ cmd: "home" });
         break;
-      }
-      case "activate": {
-        const bundleId = message.bundleId.trim();
-        if (bundleId.length === 0) {
-          this.post({ type: "actionError", message: "bundle ID / パッケージ名を入力してください。" });
-          break;
-        }
-        void this.runAction({ cmd: "activate", bundle: bundleId });
-        break;
-      }
       case "appSwitcher":
         void this.runAction({ cmd: "appSwitcher" });
         break;
       case "terminate":
         void this.runAction({ cmd: "terminate" });
-        break;
-      case "install": {
-        const trimmed = message.path.trim();
-        if (trimmed.length === 0) {
-          this.post({ type: "actionError", message: "パッケージファイルのパスを入力してください。" });
-          break;
-        }
-        const expanded = expandTilde(trimmed);
-        if (!fs.existsSync(expanded)) {
-          this.post({ type: "actionError", message: `パッケージファイルが見つかりません: ${trimmed}` });
-          break;
-        }
-        void this.runAction({ cmd: "install", path: expanded });
-        break;
-      }
-      case "pickInstallFile":
-        void this.pickInstallFile(message.platform);
         break;
       case "visibility":
         this.liveTabVisible = message.visible;
@@ -887,22 +840,5 @@ export class MonitorLiveController implements vscode.Disposable {
         }
         break;
     }
-  }
-
-  private async pickInstallFile(platform: LivePlatform): Promise<void> {
-    const isAndroid = platform === "android";
-    const uris = await vscode.window.showOpenDialog({
-      canSelectMany: false,
-      canSelectFiles: true,
-      // iOS の .app はディレクトリバンドルなので、ファイルとしてもフォルダとしても選択できるようにする。
-      canSelectFolders: !isAndroid,
-      openLabel: "選択",
-      filters: isAndroid ? { "Android パッケージ": ["apk"] } : { "iOS アプリ": ["app"] },
-    });
-    const uri = uris?.[0];
-    if (!uri) {
-      return;
-    }
-    this.post({ type: "installPathPicked", platform, path: uri.fsPath });
   }
 }

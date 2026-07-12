@@ -48,6 +48,10 @@ public final class BridgeClient: AppDriver {
         let _: OKResponse = try await post("/appswitcher", body: OKResponse())
     }
 
+    public func home() async throws {
+        let _: OKResponse = try await post("/home", body: OKResponse())
+    }
+
     public func snapshot() async throws -> SnapshotResponse {
         try await get("/snapshot")
     }

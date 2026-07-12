@@ -135,6 +135,17 @@ public final class AndroidDriver: AppDriver {
         try await Task.sleep(nanoseconds: 800_000_000)
     }
 
+    /// ホーム画面に戻る。
+    public func home() async throws {
+        let result = try adb(["shell", "input", "keyevent", "KEYCODE_HOME"])
+        guard result.status == 0 else {
+            throw DriverError.badResponse(status: Int(result.status),
+                body: "ホーム画面に戻れませんでした: \(result.tail)")
+        }
+        // keyevent は遷移完了を待たないため、直後の snapshot 用の整定待ち(openAppSwitcher と同様)
+        try await Task.sleep(nanoseconds: 800_000_000)
+    }
+
     public func snapshot() async throws -> SnapshotResponse {
         restoreStateIfNeeded()  // 別プロセス実行時に refCenters 等を引き継ぐ(persistState で消さないため)
         let snapshot = try await withBridge { try await $0.snapshot() }

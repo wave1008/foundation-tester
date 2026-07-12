@@ -149,6 +149,27 @@ public struct BridgeLauncher {
         try? FileManager.default.removeItem(at: pidPath)
     }
 
+    /// 同一ポートで起動し直す前に旧プロセスの消滅を待つ(stop() は待たないため、直後の
+    /// startDetached が旧ブリッジの /status を拾って偽の起動成功になる)
+    public func stopAndWait(timeout: TimeInterval = 10) async throws {
+        guard let pidString = try? String(contentsOf: pidPath, encoding: .utf8),
+              let pid = Int32(pidString.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+            throw LauncherError.notRunning
+        }
+        kill(pid, SIGTERM)
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if kill(pid, 0) != 0 {
+                try? FileManager.default.removeItem(at: pidPath)
+                return
+            }
+            try await Task.sleep(nanoseconds: 200_000_000)
+        }
+        kill(pid, SIGKILL)
+        try await Task.sleep(nanoseconds: 2_000_000_000)
+        try? FileManager.default.removeItem(at: pidPath)
+    }
+
     /// 指定シミュレータ(UDID)を対象にするブリッジプロセスを pid ファイルから探して全て停止する。
     /// 特定はプロセスの起動引数(-destination ... id=<UDID>)照合。/status 無応答のゾンビ
     /// xcodebuild は HTTP スキャンに映らないがこれなら殺せる(生きた XCUITest セッションを残すと

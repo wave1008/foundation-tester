@@ -22,6 +22,7 @@ struct ApiHostMetricsCommand: AsyncParsableCommand {
     func run() async throws {
         // ストリーミング読み取りが前提のため常に行バッファにする(ApiMonitorCommand.swift と同じ理由)
         setvbuf(stdout, nil, _IOLBF, 0)
+        ResidentProcessGuard.startOrphanWatchdog(logLabel: "host-metrics")
 
         let stop = StopFlag()
         startStdinWatcher(stop: stop)
@@ -75,6 +76,7 @@ struct ApiHostMetricsCommand: AsyncParsableCommand {
         let thread = Thread {
             while readLine(strippingNewline: true) != nil {}
             stop.set()
+            ResidentProcessGuard.scheduleForcedExit(logLabel: "host-metrics")
         }
         thread.name = "ftester-api-host-metrics-stdin"
         thread.start()
@@ -90,7 +92,10 @@ struct ApiHostMetricsCommand: AsyncParsableCommand {
         let queue = DispatchQueue(label: "ftester-api-host-metrics-signal")
         return [SIGTERM, SIGINT].map { sig in
             let source = DispatchSource.makeSignalSource(signal: sig, queue: queue)
-            source.setEventHandler { stop.set() }
+            source.setEventHandler {
+                stop.set()
+                ResidentProcessGuard.scheduleForcedExit(logLabel: "host-metrics")
+            }
             source.resume()
             return source
         }

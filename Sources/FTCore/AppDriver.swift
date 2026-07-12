@@ -13,6 +13,8 @@ public protocol AppDriver {
     func activate(bundleID: String) async throws
     /// アプリスイッチャー(タスク一覧)を開く。
     func openAppSwitcher() async throws
+    /// ホーム画面に戻る。
+    func home() async throws
     func snapshot() async throws -> SnapshotResponse
     func tap(ref: Int) async throws
     func tap(x: Double, y: Double) async throws
@@ -66,6 +68,10 @@ public extension AppDriver {
 
     func openAppSwitcher() async throws {
         throw DriverError.badResponse(status: 501, body: "このドライバはアプリスイッチャーに対応していません")
+    }
+
+    func home() async throws {
+        throw DriverError.badResponse(status: 501, body: "このドライバはホームボタンに対応していません")
     }
 
     func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,

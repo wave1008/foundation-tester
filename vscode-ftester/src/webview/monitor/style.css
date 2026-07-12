@@ -112,8 +112,13 @@ button.secondary {
   background-color: var(--vscode-button-secondaryBackground, transparent);
   color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
 }
+/* --vscode-button-secondaryHoverBackground は使わない: ライトテーマの既定値が
+   secondaryBackground(=list.hoverBackground #F0F0F0)の20%明色≈純白で、白背景に埋没する。
+   通常色を前景色へ20%寄せた派生色なら、ライトでは必ず暗く・ダークでは必ず明るくなる。 */
 button.secondary:hover:not(:disabled) {
-  background-color: var(--vscode-button-secondaryHoverBackground, var(--vscode-toolbar-hoverBackground));
+  background-color: color-mix(in srgb,
+    var(--vscode-button-secondaryBackground, transparent) 80%,
+    var(--vscode-foreground) 20%);
 }
 /* button のグローバルスタイルより優先させるためクラスセレクタで明示的に上書きする。 */
 .icon-button {
@@ -518,7 +523,9 @@ select:disabled { opacity: 0.5; cursor: default; }
 }
 .device-op-menu.visible { display: block; }
 .device-op-menu-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   width: 100%;
   text-align: left;
   font-family: inherit;
@@ -530,6 +537,11 @@ select:disabled { opacity: 0.5; cursor: default; }
   color: inherit;
   cursor: pointer;
 }
+.device-op-menu-item .op-icon { flex: none; }
+/* up/downアイコンはdata-op(deviceTiles.jsが設定)で切替 */
+#device-op-menu-item .op-icon { display: none; }
+#device-op-menu-item[data-op='up'] .op-icon-up { display: block; }
+#device-op-menu-item[data-op='down'] .op-icon-down { display: block; }
 .device-op-menu-item:hover:not(:disabled) {
   background-color: var(--vscode-menu-selectionBackground, var(--vscode-list-hoverBackground));
   color: var(--vscode-menu-selectionForeground, inherit);
@@ -1126,6 +1138,7 @@ input[type="text"]::placeholder {
   gap: 6px;
   overflow: auto;
 }
+.screenshot-actions { display: flex; gap: 6px; }
 #panel-live .screenshot-wrap {
   position: relative;
   display: inline-block;
@@ -1148,6 +1161,26 @@ input[type="text"]::placeholder {
     crosshair;
 }
 #live-screenshot.visible { display: block; }
+#live-screenshot.disconnected { filter: grayscale(1) brightness(0.75); }
+#live-conn-overlay {
+  position: absolute;
+  inset: 0;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 16px;
+  text-align: center;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 12px;
+  /* タップを透過させる(host 側の操作エラー→ブリッジ自動起動のトリガーを塞がない) */
+  pointer-events: none;
+}
+#live-conn-overlay.visible { display: flex; }
+#live-conn-overlay .conn-title { font-size: 13px; font-weight: 600; }
+#live-conn-overlay #live-conn-detail { white-space: pre-wrap; opacity: 0.85; max-width: 320px; }
 #live-hover-box {
   position: absolute;
   display: none;
@@ -1183,10 +1216,6 @@ input[type="text"]::placeholder {
   font-size: 13px;
   max-width: 320px;
 }
-#panel-live .hint {
-  font-size: 12px;
-  color: var(--vscode-descriptionForeground);
-}
 #panel-live .control-pane {
   flex: 0 0 380px;
   min-width: 280px;
@@ -1203,11 +1232,11 @@ input[type="text"]::placeholder {
 }
 #panel-live .row input[type="text"] { flex: 1 1 auto; min-width: 0; }
 #panel-live .row select { flex: 1 1 auto; min-width: 0; }
-#panel-live .controls-row .spacer { flex: 1 1 auto; }
-#panel-live .hint-inline {
-  font-size: 12px;
-  color: var(--vscode-descriptionForeground);
-  white-space: nowrap;
+/* --vscode-dropdown-border は背景と同色のテーマがあり枠が見えないため明示。
+   `#panel-live select`(border: var(--vscode-input-border, transparent))より詳細度を上げる必要がある
+   ため #panel-live を重ねる(ID単体では type+ID の方が詳細度が高く負ける)。 */
+#panel-live #live-device-select {
+  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border, rgba(127, 127, 127, 0.5)));
 }
 #live-action-error {
   display: none;

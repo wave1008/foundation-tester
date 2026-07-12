@@ -3,6 +3,9 @@
 // 状態判定は ApiMonitorCommand.determineStates(常駐監視のポーリングロジック)をそのまま
 // 再利用する(挙動を分岐させないため。private を外して共有した MonitorTarget /
 // DeviceRuntimeState も同様)。stdout には結果 1 行の JSON だけを出す(診断は stderr のみ)。
+//
+// udid: iOS は解決済みシミュレータ UDID(ApiLiveCommand --udid のブリッジ自動起動に使う)。
+// resolve 失敗・Android は null。対向: vscode-ftester/src/liveModel.ts
 
 import ArgumentParser
 import Foundation
@@ -63,7 +66,8 @@ struct ApiListDevices: AsyncParsableCommand {
                 // Android: 実行時解決した serial(未起動なら null)
                 port: state.target.platform == "ios"
                     ? (state.iosPort ?? state.target.spec.port) : nil,
-                serial: state.target.platform == "android" ? state.androidSerial : nil)
+                serial: state.target.platform == "android" ? state.androidSerial : nil,
+                udid: state.target.platform == "ios" ? state.iosUdid : nil)
         }
 
         let output = ApiListDevicesOutput(
@@ -88,9 +92,10 @@ private struct ApiDeviceEntry: Encodable {
     let detail: String
     let port: UInt16?
     let serial: String?
+    let udid: String?
 
     private enum CodingKeys: String, CodingKey {
-        case name, platform, state, detail, port, serial
+        case name, platform, state, detail, port, serial, udid
     }
 
     func encode(to encoder: Encoder) throws {
@@ -101,6 +106,7 @@ private struct ApiDeviceEntry: Encodable {
         try container.encode(detail, forKey: .detail)
         try container.encode(port, forKey: .port)
         try container.encode(serial, forKey: .serial)
+        try container.encode(udid, forKey: .udid)
     }
 }
 

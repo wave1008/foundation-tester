@@ -2,11 +2,11 @@
 // ライブ操作パネル(livePanel.ts)向けの vscode 非依存ロジック(検証・型定義・座標変換・
 // webview プロトコル)。
 //
-// 契約(Sources/ftester/ApiListDevicesCommand.swift・ApiListAppsCommand.swift・ApiLiveCommand.swift):
+// 契約(Sources/ftester/ApiListDevicesCommand.swift・ApiLiveCommand.swift):
 //   `ftester api list-devices --project <p>`: 成功時は stdout 1行JSON、失敗時
 //   (マシンプロファイル未設定等)は stdout 出力なし・非0終了(診断は stderr のみ)。
-//   `ftester api list-apps --platform <p> [--port <n>|--serial <s>]`: 成功時は stdout 1行JSON
-//   ({apps:[{id,name,type}],platform})、失敗時は stdout 出力なし・非0終了。
+//   各デバイスの udid: iOS は解決済みシミュレータ UDID、Android・解決失敗は null
+//   (ApiListDevicesCommand.swift 参照。live serve --udid の自動起動判定に使う)。
 //   `ftester api live serve --platform <p> [--port <n>|--serial <s>]`(常駐。stdin から NDJSON で
 //   コマンドを1行ずつ受け、逐次処理する。コマンド/イベントの形は LiveServeCommand/LiveServeEvent
 //   型を参照): イベントは refresh 以外は actionResult→snapshot の順で2行、refresh は snapshot の
@@ -35,6 +35,7 @@ export interface LiveDevice {
   readonly detail: string;
   readonly port: number | null;
   readonly serial: string | null;
+  readonly udid: string | null;
 }
 
 export interface ListDevicesResult {
@@ -55,7 +56,8 @@ function isLiveDevice(value: unknown): value is LiveDevice {
     DEVICE_STATES.has(value.state) &&
     typeof value.detail === "string" &&
     (value.port === null || typeof value.port === "number") &&
-    (value.serial === null || typeof value.serial === "string")
+    (value.serial === null || typeof value.serial === "string") &&
+    (value.udid === null || typeof value.udid === "string")
   );
 }
 
@@ -73,32 +75,6 @@ export function isListDevicesResult(value: unknown): value is ListDevicesResult 
 
 export function parseListDevicesResult(value: unknown): ListDevicesResult | undefined {
   return isListDevicesResult(value) ? value : undefined;
-}
-
-// ---- list-apps -----------------------------------------------------------------------
-
-export interface LiveAppOption {
-  readonly id: string;
-  readonly name: string;
-  readonly type: "user" | "system";
-}
-
-function isLiveAppOption(value: unknown): value is LiveAppOption {
-  if (!isRecord(value)) {
-    return false;
-  }
-  return (
-    typeof value.id === "string" &&
-    typeof value.name === "string" &&
-    (value.type === "user" || value.type === "system")
-  );
-}
-
-export function parseListAppsResult(value: unknown): readonly LiveAppOption[] | undefined {
-  if (!isRecord(value) || typeof value.platform !== "string" || !Array.isArray(value.apps)) {
-    return undefined;
-  }
-  return value.apps.every(isLiveAppOption) ? (value.apps as LiveAppOption[]) : undefined;
 }
 
 // ---- live snapshot / アクション共通 ----------------------------------------------------
@@ -243,7 +219,6 @@ export type LiveServeCommand =
   | { readonly cmd: "tap"; readonly ref: number }
   | { readonly cmd: "tap"; readonly x: number; readonly y: number }
   | { readonly cmd: "type"; readonly text: string; readonly ref: number | null }
-  | { readonly cmd: "swipe"; readonly direction: "up" | "down" | "left" | "right" }
   | {
       readonly cmd: "drag";
       readonly fromX: number;
@@ -254,11 +229,9 @@ export type LiveServeCommand =
       readonly duration: number;
     }
   | { readonly cmd: "press"; readonly x: number; readonly y: number; readonly duration: number }
-  | { readonly cmd: "launch"; readonly bundle: string }
-  | { readonly cmd: "activate"; readonly bundle: string }
   | { readonly cmd: "appSwitcher" }
+  | { readonly cmd: "home" }
   | { readonly cmd: "terminate" }
-  | { readonly cmd: "install"; readonly path: string }
   | { readonly cmd: "refresh" }
   | { readonly cmd: "frame" };
 
@@ -381,8 +354,11 @@ export interface LiveDeviceRef {
   readonly platform: LivePlatform;
   readonly port: number | null;
   readonly serial: string | null;
+  readonly udid: string | null;
 }
 
+/** udid は含めない: monitorExploreController も共用しており `api explore` 系は --udid を
+ * 受け付けない(--udid は monitorLiveController.ts が `api live serve` 呼び出し時に個別に付与する)。 */
 export function buildDeviceArgs(device: LiveDeviceRef): string[] {
   const args = ["--platform", device.platform];
   if (device.platform === "ios") {
@@ -397,7 +373,7 @@ export function buildDeviceArgs(device: LiveDeviceRef): string[] {
 
 /** デバイス参照の同一性判定(livePanel.ts の serve 再バインド要否判定に使う)。 */
 export function sameLiveDeviceRef(a: LiveDeviceRef, b: LiveDeviceRef): boolean {
-  return a.platform === b.platform && a.port === b.port && a.serial === b.serial;
+  return a.platform === b.platform && a.port === b.port && a.serial === b.serial && a.udid === b.udid;
 }
 
 /** ftester.platform/port/serial 設定から作る「設定のデバイス」フォールバックの元データ。 */
@@ -414,6 +390,7 @@ export function buildFallbackDevice(source: FallbackDeviceSource): LiveDeviceRef
     platform: source.platform,
     port: source.port > 0 ? source.port : null,
     serial: source.serial.trim().length > 0 ? source.serial.trim() : null,
+    udid: null,
   };
 }
 
@@ -430,6 +407,7 @@ export interface LiveDeviceOption {
   readonly detail: string;
   readonly port: number | null;
   readonly serial: string | null;
+  readonly udid: string | null;
 }
 
 /** id はデバイス名(machines プロファイル検証で ios/android 横断の一意性が保証済み)を使うため、
@@ -443,6 +421,7 @@ export function devicesToOptions(devices: readonly LiveDevice[]): LiveDeviceOpti
     detail: device.detail,
     port: device.port,
     serial: device.serial,
+    udid: device.udid,
   }));
 }
 
@@ -458,6 +437,7 @@ export function fallbackDeviceOption(source: FallbackDeviceSource): LiveDeviceOp
     detail: "ftester.platform/port/serial 設定から作成",
     port: ref.port,
     serial: ref.serial,
+    udid: ref.udid,
   };
 }
 
@@ -485,8 +465,7 @@ export type LiveToWebviewMessage =
   | { readonly type: "frame"; readonly image: string }
   | { readonly type: "actionError"; readonly message: string }
   | { readonly type: "busy"; readonly busy: boolean }
-  | { readonly type: "installPathPicked"; readonly platform: LivePlatform; readonly path: string }
-  | { readonly type: "appList"; readonly apps: readonly LiveAppOption[]; readonly message: string | null };
+  | { readonly type: "connection"; readonly connected: boolean; readonly message: string | null };
 
 export function toSnapshotMessage(snapshot: LiveSnapshot): LiveToWebviewMessage {
   return {
@@ -530,18 +509,11 @@ export type LiveFromWebviewMessage =
       readonly dragMs: number;
     }
   | { readonly type: "tapRef"; readonly ref: number }
-  | { readonly type: "swipe"; readonly direction: "up" | "down" | "left" | "right" }
   | { readonly type: "typeText"; readonly text: string; readonly ref: number | null }
-  | { readonly type: "launch"; readonly bundleId: string }
-  | { readonly type: "activate"; readonly bundleId: string }
   | { readonly type: "appSwitcher" }
+  | { readonly type: "home" }
   | { readonly type: "terminate" }
-  | { readonly type: "install"; readonly path: string }
-  | { readonly type: "pickInstallFile"; readonly platform: LivePlatform }
-  | { readonly type: "refreshApps" }
   | { readonly type: "visibility"; readonly visible: boolean };
-
-const SWIPE_DIRECTIONS: ReadonlySet<string> = new Set(["up", "down", "left", "right"]);
 
 export function isLiveFromWebviewMessage(value: unknown): value is LiveFromWebviewMessage {
   if (!isRecord(value) || typeof value.type !== "string") {
@@ -551,8 +523,8 @@ export function isLiveFromWebviewMessage(value: unknown): value is LiveFromWebvi
     case "refreshDevices":
     case "refreshSnapshot":
     case "terminate":
-    case "refreshApps":
     case "appSwitcher":
+    case "home":
       return true;
     case "selectDevice":
     case "openDevice":
@@ -585,17 +557,8 @@ export function isLiveFromWebviewMessage(value: unknown): value is LiveFromWebvi
       );
     case "tapRef":
       return typeof value.ref === "number";
-    case "swipe":
-      return typeof value.direction === "string" && SWIPE_DIRECTIONS.has(value.direction);
     case "typeText":
       return typeof value.text === "string" && (value.ref === null || typeof value.ref === "number");
-    case "launch":
-    case "activate":
-      return typeof value.bundleId === "string";
-    case "install":
-      return typeof value.path === "string";
-    case "pickInstallFile":
-      return value.platform === "ios" || value.platform === "android";
     case "visibility":
       return typeof value.visible === "boolean";
     default:
