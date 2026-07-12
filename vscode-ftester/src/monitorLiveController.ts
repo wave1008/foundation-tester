@@ -1,27 +1,23 @@
-// livePanel.ts
-// ライブ操作パネルの WebviewPanel(コマンド `ftester.showLiveControl`)。
-// macOS GUI 版(Sources/ftester-gui/LiveView.swift + AppModel.swift)の VSCode 版。
+// monitorLiveController.ts
+// デバイスモニターパネル(monitorPanel.ts)の「ライブ操作」タブ担当サブコントローラ。
 //
 // - `ftester api list-devices` は FtesterCli の直列キュー(`ftester api run` と共有。シナリオ実行が
-//   `swift build` を伴い得るため同時2プロセスを防ぐ SPM ビルドロック対策)には乗せず、専用 spawn
-//   する(runOneShot)。ライブ操作パネルは実行中でも待たされず応答する必要があり、list-devices は
-//   ビルドを伴わないので run 側と競合しないため問題ない。
+//   `swift build` を伴い得るため同時2プロセスを防ぐ SPM ビルドロック対策)には乗せず、oneShotCli.ts の
+//   runOneShot() で専用 spawn する。ライブ操作は実行中でも待たされず応答する必要があり、
+//   list-devices はビルドを伴わないので run 側と競合しないため問題ない。
 // - タップ/入力/スワイプ/起動/終了/インストール/スナップショット取得は、選択デバイスごとに
 //   `ftester api live serve` を常駐 spawn し、stdin へ NDJSON でコマンドを送って stdout の NDJSON
-//   イベント(NdjsonParser)を待つ方式で行う。プロセス管理は monitorPanel.ts の host-metrics
+//   イベント(NdjsonParser)を待つ方式で行う。プロセス管理は monitorProcessManager.ts の host-metrics
 //   パターンを踏襲: stdin パイプ保持(EOF が終了指示)・SIGTERM 送信後2秒で SIGKILL・予期しない
 //   終了は5秒後に自動再起動・起動10秒未満の異常終了が3連続したら諦める(serveGaveUp)。ただし
 //   serve はデバイスごとの状態を持つプロセスなので、デバイス選択が変わったら明示的に再バインド
 //   (停止→新デバイスで起動)し諦め状態もリセットする(=デバイスを選び直す操作が host-metrics の
 //   「再起動ボタン」に相当する回復経路。専用ボタンは無い)。
-// - パネルはシングルトン(monitorPanel.ts / healReviewPanel.ts と同じ)。
-// - 座標変換・レスポンス検証・CLI引数組み立て・NDJSON コマンド組み立て/イベント検証は
-//   liveModel.ts(vscode 非依存)に切り出してある。webview 側(CSP により import 不可)は
+// - webview 資産は src/webview/monitor/liveTab.js(main.js から applyLiveMessage を import)。
 //   frameToDisplayRect の計算だけを手書きで複製している(要素一覧の表示テキストは host 側で
-//   事前整形して送るため複製不要)。frameToDisplayRect を変更したら main.js 側も追随させること。
-// - webview 資産は src/webview/live/{style.css,main.js}(esbuild が media/live/ にバンドル)。
+//   事前整形して送るため複製不要)。liveModel.ts の frameToDisplayRect を変更したら
+//   liveTab.js 側も追随させること。
 
-import { randomBytes } from "node:crypto";
 import { type ChildProcessByStdio, spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -33,11 +29,11 @@ import {
   buildDeviceArgs,
   devicesToOptions,
   fallbackDeviceOption,
-  isLiveFromWebviewMessage,
   type LiveActionResult,
   type LiveDeviceOption,
   type LiveDeviceRef,
   type LiveErrorResult,
+  type LiveFromWebviewMessage,
   type LivePlatform,
   type LiveServeCommand,
   type LiveSize,
@@ -50,17 +46,12 @@ import {
   serializeLiveServeCommand,
   toSnapshotMessage,
 } from "./liveModel";
+import type { MonitorPanelDeps } from "./monitorPanel";
 import { NdjsonParser } from "./ndjson";
-
-const VIEW_TYPE = "ftesterLiveControl";
-const PANEL_TITLE = "ftester ライブ操作";
-
-/** stdin=ignore, stdout/stderr=pipe で spawn したプロセスの型(cli.ts/monitorPanel.ts と同じ形。
- * list-devices のワンショット spawn 専用)。 */
-type PipeProcess = ChildProcessByStdio<null, Readable, Readable>;
+import { type OneShotResult, type PipeProcess, runOneShot } from "./oneShotCli";
 
 /**
- * serve プロセス用: stdin もパイプで保持する(monitorPanel.ts の MonitorProcess/host-metrics
+ * serve プロセス用: stdin もパイプで保持する(monitorProcessManager.ts の MonitorProcess/host-metrics
  * プロセスと同じ形。`ftester api live serve` は stdin へのコマンド送信と EOF 終了指示の両方に
  * stdin パイプを使うため、stdio を "ignore" にはできない)。
  */
@@ -70,77 +61,6 @@ type ServeProcess = ChildProcessByStdio<Writable, Readable, Readable>;
  * 返るが、アプリ起動(ブリッジ側の静止待ち上限10秒)等を考慮して余裕を持たせた安全弁。
  * 応答が無いまま常駐プロセスが停止したり壊れたりしても busy 状態のまま固まらないようにする。 */
 const SERVE_REQUEST_TIMEOUT_MS = 20000;
-
-export function registerLivePanel(
-  context: vscode.ExtensionContext,
-  workspaceRoot: string,
-  getConfig: () => FtesterConfig,
-  outputChannel: vscode.OutputChannel,
-): void {
-  const controller = new LiveController(workspaceRoot, getConfig, outputChannel, context.extensionUri);
-  context.subscriptions.push(
-    controller,
-    vscode.commands.registerCommand("ftester.showLiveControl", () => controller.show()),
-  );
-}
-
-interface OneShotResult {
-  readonly json: unknown;
-  readonly exitCode: number | null;
-  /** 直近数行の stderr(解析失敗時のエラーメッセージ用)。 */
-  readonly stderrTail: string;
-}
-
-/**
- * `binaryPath` を FtesterCli のキューに乗せず単発 spawn し、stdout 全体を JSON.parse して返す
- * (契約上どの api live/list-devices コマンドも stdout は1行JSONだけなので、NdjsonParser は使わない)。
- */
-function runOneShot(
-  binaryPath: string,
-  cwd: string,
-  args: string[],
-  outputChannel: vscode.OutputChannel,
-  registerChild: (proc: PipeProcess) => void,
-): Promise<OneShotResult> {
-  return new Promise((resolve, reject) => {
-    let proc: PipeProcess;
-    try {
-      proc = spawn(binaryPath, args, { cwd, shell: false, stdio: ["ignore", "pipe", "pipe"] });
-    } catch (error) {
-      reject(new Error(`ftester CLI の起動に失敗しました: ${String(error)}`));
-      return;
-    }
-    registerChild(proc);
-
-    const stdoutChunks: Buffer[] = [];
-    const stderrLines: string[] = [];
-    proc.stdout.on("data", (chunk: Buffer) => stdoutChunks.push(chunk));
-    proc.stderr.on("data", (chunk: Buffer) => {
-      for (const rawLine of chunk.toString("utf8").split("\n")) {
-        const line = rawLine.trim();
-        if (line.length > 0) {
-          stderrLines.push(line);
-          outputChannel.appendLine(`[live stderr] ${line}`);
-        }
-      }
-    });
-    proc.on("error", (error) => {
-      reject(new Error(`ftester CLI の実行でエラーが発生しました: ${error.message}`));
-    });
-    proc.on("close", (exitCode) => {
-      const text = Buffer.concat(stdoutChunks).toString("utf8").trim();
-      let json: unknown;
-      if (text.length > 0) {
-        try {
-          json = JSON.parse(text);
-        } catch {
-          outputChannel.appendLine(`[ftester] live: stdout を JSON として解析できませんでした: ${text}`);
-        }
-      }
-      resolve({ json, exitCode, stderrTail: stderrLines.slice(-5).join("\n") });
-    });
-  });
-}
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -175,8 +95,7 @@ interface PendingServeRequest {
   readonly timeout: ReturnType<typeof setTimeout>;
 }
 
-class LiveController implements vscode.Disposable {
-  private panel: vscode.WebviewPanel | undefined;
+export class MonitorLiveController implements vscode.Disposable {
   private devices: LiveDeviceOption[] = [];
   private selectedDeviceId: string | undefined;
   /** 直近の snapshot の screen(ポイント座標のサイズ)。クリック→タップ座標変換に使う。 */
@@ -191,11 +110,12 @@ class LiveController implements vscode.Disposable {
    * 「デバイスが変わったか」判定、および再起動時に同じデバイスへ再バインドするために保持する。 */
   private serveDevice: LiveDeviceRef | undefined;
   /** stopServeProcess() 経由(dispose/再バインド)による意図した終了かどうか
-   * (monitorPanel.ts の stoppingHostMetrics と同じ役割)。 */
+   * (monitorProcessManager.ts の stoppingHostMetrics と同じ役割)。 */
   private stoppingServe = false;
-  /** rebindServeProcess() の多重起動ガード(monitorPanel.ts の hostMetricsRestartPending と同じ役割)。
-   * true の間に来た再バインド要求は serveDevice の更新だけ行い、進行中の切り替えが完了した時点の
-   * 最新の serveDevice を使って起動する(restartMonitorProcess と同じ「最終的に最新設定が勝つ」方式)。 */
+  /** rebindServeProcess() の多重起動ガード(monitorProcessManager.ts の hostMetricsRestartPending と
+   * 同じ役割)。true の間に来た再バインド要求は serveDevice の更新だけ行い、進行中の切り替えが
+   * 完了した時点の最新の serveDevice を使って起動する(restartMonitorProcess と同じ
+   * 「最終的に最新設定が勝つ」方式)。 */
   private serveRestartPending = false;
   /** 予期しない終了後の自動再起動タイマー(5秒後)。dispose/停止時に必ずクリアする。 */
   private serveRestartTimer: ReturnType<typeof setTimeout> | undefined;
@@ -209,48 +129,21 @@ class LiveController implements vscode.Disposable {
   /** 送信中(応答待ち)の serve リクエスト。同時に1件のみ(busy フラグで直列化されるため)。 */
   private pendingServeRequest: PendingServeRequest | undefined;
 
-  constructor(
-    private readonly workspaceRoot: string,
-    private readonly getConfig: () => FtesterConfig,
-    private readonly outputChannel: vscode.OutputChannel,
-    private readonly extensionUri: vscode.Uri,
-  ) {}
+  constructor(private readonly deps: MonitorPanelDeps) {}
 
-  /** コマンド `ftester.showLiveControl` のハンドラ。既に開いていれば reveal するだけ。 */
-  show(): void {
-    if (this.panel) {
-      this.panel.reveal(vscode.ViewColumn.Beside);
-      return;
-    }
-
-    const panel = vscode.window.createWebviewPanel(VIEW_TYPE, PANEL_TITLE, vscode.ViewColumn.Beside, {
-      enableScripts: true,
-      retainContextWhenHidden: true,
-      localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, "media")],
-    });
-    this.panel = panel;
-    panel.webview.html = renderHtml(panel.webview, this.extensionUri);
-
-    panel.webview.onDidReceiveMessage((message: unknown) => this.handleWebviewMessage(message));
-    panel.onDidDispose(() => {
-      this.panel = undefined;
-      this.killActiveChild();
-      this.stopServeProcess();
-    });
-
-    void this.refreshDevices();
+  /** パネル close 時・dispose 時の両方から呼ばれる。パネル再オープン後は webview からの
+   * refreshDevices→applyDevices→ensureServeProcessForSelection で serve が再起動される。 */
+  stopProcesses(): void {
+    this.killActiveChild();
+    this.stopServeProcess();
   }
 
   dispose(): void {
-    this.killActiveChild();
-    this.stopServeProcess();
-    const panel = this.panel;
-    this.panel = undefined;
-    panel?.dispose();
+    this.stopProcesses();
   }
 
   private post(message: LiveToWebviewMessage): void {
-    void this.panel?.webview.postMessage(message);
+    this.deps.post({ type: "live", message });
   }
 
   private setBusy(busy: boolean): void {
@@ -274,9 +167,9 @@ class LiveController implements vscode.Disposable {
 
   /** FtesterCli のキューは使わず専用 spawn する(理由はファイル冒頭のコメント参照)。 */
   private async runCli(args: string[]): Promise<OneShotResult> {
-    const config = this.getConfig();
+    const config = this.deps.getConfig();
     try {
-      return await runOneShot(config.binaryPath, this.workspaceRoot, args, this.outputChannel, (proc) => {
+      return await runOneShot(config.binaryPath, this.deps.workspaceRoot, args, this.deps.outputChannel, (proc) => {
         this.activeChild = proc;
       });
     } finally {
@@ -295,8 +188,8 @@ class LiveController implements vscode.Disposable {
     if (this.busy) {
       return;
     }
-    const config = this.getConfig();
-    const resolution = resolveProjectName(this.workspaceRoot, config);
+    const config = this.deps.getConfig();
+    const resolution = resolveProjectName(this.deps.workspaceRoot, config);
     if (resolution.kind !== "resolved") {
       this.applyFallback(
         config,
@@ -341,7 +234,7 @@ class LiveController implements vscode.Disposable {
   }
 
   // ---- live serve(常駐プロセス)の起動・停止・再バインド ------------------------------------
-  // ファイル冒頭のコメント参照(monitorPanel.ts の host-metrics プロセス管理パターンを踏襲)。
+  // ファイル冒頭のコメント参照(monitorProcessManager.ts の host-metrics プロセス管理パターンを踏襲)。
 
   /** 現在選択中のデバイスに serve プロセスをバインドする(未選択なら止める)。デバイス一覧の
    * 取得・切り替えのたびに呼ぶ(applyDevices 経由)。 */
@@ -403,16 +296,16 @@ class LiveController implements vscode.Disposable {
       clearTimeout(this.serveRestartTimer);
       this.serveRestartTimer = undefined;
     }
-    const config = this.getConfig();
+    const config = this.deps.getConfig();
     let proc: ServeProcess;
     try {
       proc = spawn(config.binaryPath, ["api", "live", "serve", ...buildDeviceArgs(device)], {
-        cwd: this.workspaceRoot,
+        cwd: this.deps.workspaceRoot,
         shell: false,
         stdio: ["pipe", "pipe", "pipe"],
       });
     } catch (error) {
-      this.outputChannel.appendLine(`[live serve] プロセスの起動に失敗しました: ${String(error)}`);
+      this.deps.outputChannel.appendLine(`[live serve] プロセスの起動に失敗しました: ${String(error)}`);
       return;
     }
     proc.stdin.on("error", () => undefined);
@@ -423,17 +316,17 @@ class LiveController implements vscode.Disposable {
 
     const stdoutParser = new NdjsonParser(
       (value) => this.handleServeEvent(value),
-      (line) => this.outputChannel.appendLine(`[live serve stdout] ${line}`),
+      (line) => this.deps.outputChannel.appendLine(`[live serve stdout] ${line}`),
     );
     const stderrParser = new NdjsonParser(
-      (value) => this.outputChannel.appendLine(`[live serve stderr] ${JSON.stringify(value)}`),
-      (line) => this.outputChannel.appendLine(`[live serve stderr] ${line}`),
+      (value) => this.deps.outputChannel.appendLine(`[live serve stderr] ${JSON.stringify(value)}`),
+      (line) => this.deps.outputChannel.appendLine(`[live serve stderr] ${line}`),
     );
     proc.stdout.on("data", (chunk: Buffer) => stdoutParser.push(chunk));
     proc.stderr.on("data", (chunk: Buffer) => stderrParser.push(chunk));
 
     proc.on("error", (error) => {
-      this.outputChannel.appendLine(`[live serve] プロセスでエラーが発生しました: ${error.message}`);
+      this.deps.outputChannel.appendLine(`[live serve] プロセスでエラーが発生しました: ${error.message}`);
     });
 
     proc.on("close", () => {
@@ -443,7 +336,7 @@ class LiveController implements vscode.Disposable {
         this.serveProcess = undefined;
       }
       this.failPendingServeRequest("ライブ操作の常駐プロセスが終了しました。");
-      // 意図した停止(dispose/再バインド)かどうかはフラグだけで判定する(monitorPanel.ts と同じ理由)。
+      // 意図した停止(dispose/再バインド)かどうかはフラグだけで判定する(monitorProcessManager.ts と同じ理由)。
       const selfInitiated = this.stoppingServe;
       this.stoppingServe = false;
       if (selfInitiated) {
@@ -455,9 +348,9 @@ class LiveController implements vscode.Disposable {
 
   /**
    * serve プロセスの予期しない終了を受けて、5秒後に再起動するか諦めるかを決める
-   * (monitorPanel.ts の scheduleHostMetricsRestart と同じロジック)。起動後10秒未満での異常終了が
-   * 3回連続したら諦める(旧バイナリに `api live serve` が無い環境等で無限に再起動ループしないための
-   * 安全弁)。10秒以上動いてからの終了は正常運転とみなして連続回数をリセットする。
+   * (monitorProcessManager.ts の scheduleHostMetricsRestart と同じロジック)。起動後10秒未満での
+   * 異常終了が3回連続したら諦める(旧バイナリに `api live serve` が無い環境等で無限に再起動
+   * ループしないための安全弁)。10秒以上動いてからの終了は正常運転とみなして連続回数をリセットする。
    */
   private scheduleServeRestart(): void {
     const elapsedMs = Date.now() - (this.serveStartedAt ?? Date.now());
@@ -469,7 +362,7 @@ class LiveController implements vscode.Disposable {
     if (this.serveFailureStreak >= 3) {
       if (!this.serveGaveUp) {
         this.serveGaveUp = true;
-        this.outputChannel.appendLine(
+        this.deps.outputChannel.appendLine(
           "[live serve] 起動直後の異常終了が続いたため自動再起動を停止しました。" +
             "デバイスを選び直すか、パネルを開き直すと再試行します。",
         );
@@ -478,7 +371,7 @@ class LiveController implements vscode.Disposable {
     }
     this.serveRestartTimer = setTimeout(() => {
       this.serveRestartTimer = undefined;
-      if (this.panel && this.serveDevice) {
+      if (this.deps.isPanelActive() && this.serveDevice) {
         this.startServeProcess(this.serveDevice);
       }
     }, 5000);
@@ -519,12 +412,14 @@ class LiveController implements vscode.Disposable {
   private handleServeEvent(value: unknown): void {
     const event = parseLiveServeEvent(value);
     if (!event) {
-      this.outputChannel.appendLine(`[live serve] 未知の形式の行を無視しました: ${JSON.stringify(value)}`);
+      this.deps.outputChannel.appendLine(`[live serve] 未知の形式の行を無視しました: ${JSON.stringify(value)}`);
       return;
     }
     const pending = this.pendingServeRequest;
     if (!pending) {
-      this.outputChannel.appendLine(`[live serve] 対応するリクエストが無いイベントを受信しました(${event.kind})`);
+      this.deps.outputChannel.appendLine(
+        `[live serve] 対応するリクエストが無いイベントを受信しました(${event.kind})`,
+      );
       return;
     }
     if (event.kind === "actionResult") {
@@ -644,11 +539,10 @@ class LiveController implements vscode.Disposable {
   }
 
   // ---- webview からのメッセージ -----------------------------------------------------
+  // isLiveFromWebviewMessage による型ガードは呼び出し元(monitorPanel.ts の isLiveWebviewEnvelope)
+  // 側で済んでいるためここでは行わない。
 
-  private handleWebviewMessage(message: unknown): void {
-    if (!isLiveFromWebviewMessage(message)) {
-      return;
-    }
+  handleWebviewMessage(message: LiveFromWebviewMessage): void {
     switch (message.type) {
       case "refreshDevices":
         void this.refreshDevices();
@@ -737,94 +631,4 @@ class LiveController implements vscode.Disposable {
     }
     this.post({ type: "installPathPicked", platform, path: uri.fsPath });
   }
-}
-
-function generateNonce(): string {
-  return randomBytes(16).toString("hex");
-}
-
-/** CSS/JS は esbuild が media/live/ にバンドルした外部ファイルを webview.asWebviewUri で読み込む。 */
-function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
-  const nonce = generateNonce();
-  const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, "media", "live", "style.css"));
-  const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, "media", "live", "main.js"));
-  const csp = [
-    "default-src 'none'",
-    "img-src data:",
-    `style-src ${webview.cspSource} 'unsafe-inline'`,
-    `script-src 'nonce-${nonce}'`,
-  ].join("; ");
-
-  return `<!doctype html>
-<html lang="ja">
-<head>
-<meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="${csp}">
-<title>${PANEL_TITLE}</title>
-<link rel="stylesheet" href="${styleUri}">
-</head>
-<body>
-  <div class="toolbar">
-    <label for="device-select">デバイス:</label>
-    <select id="device-select"></select>
-    <button id="btn-refresh-devices" class="secondary">デバイス一覧を更新</button>
-    <span id="device-warning"></span>
-    <span id="busy-label"></span>
-  </div>
-  <div id="banner" class="banner"></div>
-
-  <div class="content">
-    <div class="screenshot-pane">
-      <div class="screenshot-wrap" id="screenshot-wrap">
-        <img id="screenshot" alt="スクリーンショット">
-        <div id="hover-box"></div>
-        <div id="screenshot-placeholder">「更新」ボタンで画面を取得してください</div>
-      </div>
-      <div class="hint">画像をクリックするとその位置をタップします</div>
-    </div>
-
-    <div class="control-pane">
-      <div class="row">
-        <input id="bundle-id" type="text" placeholder="bundle ID / パッケージ名" value="com.example.sampleapp">
-        <button id="btn-launch">起動</button>
-        <button id="btn-terminate">終了</button>
-      </div>
-      <div class="row">
-        <input id="ios-path" type="text" placeholder="iOS: .app バンドルのパス">
-        <button id="btn-pick-ios" class="secondary">選択...</button>
-      </div>
-      <div class="row">
-        <input id="android-path" type="text" placeholder="Android: .apk のパス">
-        <button id="btn-pick-android" class="secondary">選択...</button>
-      </div>
-      <div class="row">
-        <button id="btn-install">インストール</button>
-        <span id="install-hint" class="hint-inline"></span>
-      </div>
-
-      <div class="row controls-row">
-        <button id="btn-refresh-snapshot">更新</button>
-        <span class="spacer"></span>
-        <button id="btn-swipe-up" class="secondary" title="スワイプ(↑=下へスクロール)">↑</button>
-        <button id="btn-swipe-down" class="secondary">↓</button>
-        <button id="btn-swipe-left" class="secondary">←</button>
-        <button id="btn-swipe-right" class="secondary">→</button>
-      </div>
-
-      <div class="row">
-        <input id="type-text" type="text" placeholder="入力するテキスト">
-        <button id="btn-type">入力</button>
-      </div>
-      <span id="type-ref-hint">→ フォーカス中の要素に入力</span>
-
-      <div id="action-error"></div>
-
-      <div class="elements-header">要素一覧(クリックでタップ)</div>
-      <div id="elements-list" class="elements-list"></div>
-    </div>
-  </div>
-
-  <script nonce="${nonce}" src="${scriptUri}"></script>
-</body>
-</html>`;
 }

@@ -23,6 +23,7 @@ import {
   formatElementLine,
   frameToDisplayRect,
   isLiveFromWebviewMessage,
+  isLiveWebviewEnvelope,
   isListDevicesResult,
   parseLiveActionResult,
   parseLiveServeEvent,
@@ -482,6 +483,24 @@ test("isLiveFromWebviewMessage: 未知の type・型不一致・フィールド�
   assert.equal(isLiveFromWebviewMessage({ type: "tapRef", ref: "1" }), false);
   assert.equal(isLiveFromWebviewMessage({ type: "typeText", text: 1, ref: null }), false);
   assert.equal(isLiveFromWebviewMessage({ type: "pickInstallFile", platform: "windows" }), false);
+});
+
+// ---- isLiveWebviewEnvelope ----
+
+test("isLiveWebviewEnvelope: type:'live' + 正常な LiveFromWebviewMessage を true と判定する", () => {
+  assert.equal(isLiveWebviewEnvelope({ type: "live", message: { type: "refreshDevices" } }), true);
+  assert.equal(
+    isLiveWebviewEnvelope({ type: "live", message: { type: "tapRef", ref: 3 } }),
+    true,
+  );
+});
+
+test("isLiveWebviewEnvelope: type が 'live' 以外、または message が不正なら false", () => {
+  assert.equal(isLiveWebviewEnvelope({ type: "monitor", message: { type: "refreshDevices" } }), false);
+  assert.equal(isLiveWebviewEnvelope({ type: "live", message: { type: "unknown" } }), false);
+  assert.equal(isLiveWebviewEnvelope({ type: "live" }), false);
+  assert.equal(isLiveWebviewEnvelope(null), false);
+  assert.equal(isLiveWebviewEnvelope({}), false);
 });
 
 // ---- 統合: mock-live.mjs を実際に spawn して liveModel の解析関数に通す ----

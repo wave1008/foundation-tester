@@ -1,12 +1,14 @@
 // monitorPanel.ts
-// デバイスモニターの WebviewPanel(コマンド `ftester.showDeviceMonitor`)。MonitorPanelController は
-// 以下のサブコントローラを束ねるオーケストレーターで、各サブコントローラは互いを直接参照せず
-// MonitorPanelDeps 経由でのみ連携する:
+// デバイスモニターの WebviewPanel(コマンド `ftester.showDeviceMonitor`/`ftester.showLiveControl`)。
+// MonitorPanelController は以下のサブコントローラを束ねるオーケストレーターで、各サブコントローラは
+// 互いを直接参照せず MonitorPanelDeps 経由でのみ連携する:
 // - monitorProcessManager.ts の MonitorProcessManager: monitor/host-metrics 常駐子プロセスの起動・停止・再起動
 // - monitorProfilesController.ts の MonitorProfilesController: 「プロファイル」タブの一覧post・CRUD・フォームのロード/保存
 // - monitorDeviceOps.ts の MonitorDeviceOps: デバイスライフサイクルキュー・device-catalog/installed-devices/create-device
+// - monitorLiveController.ts の MonitorLiveController: 「ライブ操作」タブの list-devices・live serve プロセス管理
+// - monitorExploreController.ts の MonitorExploreController: 「FM探索」タブの list-devices・`api explore` 実行
 // - monitorHtml.ts: webview の HTML 本文(renderHtml/generateNonce/PANEL_TITLE)
-// - monitorModel.ts / runLaneModel.ts: vscode 非依存の純粋関数(検証・変換・状態遷移)
+// - monitorModel.ts / runLaneModel.ts / liveModel.ts: vscode 非依存の純粋関数(検証・変換・状態遷移)
 //
 // 契約・不変条件:
 // - monitor プロセス、および devicesUp/devicesDown・device-catalog 等の短命 CLI 呼び出しは
@@ -19,7 +21,10 @@
 //   (restartMonitorIfScopeChanged 等)では再起動しない。
 
 import * as vscode from "vscode";
+import type { FtesterCli } from "./cli";
 import { type FtesterConfig, readRunProfileDeviceNames, resolveProjectName } from "./config";
+import { isExploreWebviewEnvelope, type ExploreToWebviewEnvelope } from "./exploreModel";
+import { isLiveWebviewEnvelope, type LiveToWebviewEnvelope } from "./liveModel";
 import {
   devicesToShutdownOnScopeChange,
   isMonitorFromWebviewMessage,
@@ -27,7 +32,9 @@ import {
   type MonitorToWebviewMessage,
 } from "./monitorModel";
 import { MonitorDeviceOps } from "./monitorDeviceOps";
+import { MonitorExploreController } from "./monitorExploreController";
 import { PANEL_TITLE, renderHtml } from "./monitorHtml";
+import { MonitorLiveController } from "./monitorLiveController";
 import { type HostMetricsToWebviewMessage, MonitorProcessManager } from "./monitorProcessManager";
 import { MonitorProfilesController } from "./monitorProfilesController";
 import type { RunBusMessage, RunEventBus } from "./runEventBus";
@@ -38,15 +45,23 @@ import {
   snapshotRunLaneState,
   type RunLaneToWebviewMessage,
 } from "./runLaneModel";
+import type { FtesterTestTree } from "./testTree";
 
 const VIEW_TYPE = "ftesterMonitor";
 
-/** 3サブコントローラ間連携の唯一の窓口(サブコントローラ同士は互いを直接参照しない)。 */
+/** サブコントローラ間連携の唯一の窓口(サブコントローラ同士は互いを直接参照しない)。 */
 export interface MonitorPanelDeps {
   readonly workspaceRoot: string;
   getConfig(): FtesterConfig;
   readonly outputChannel: vscode.OutputChannel;
-  post(message: MonitorToWebviewMessage | RunLaneToWebviewMessage | HostMetricsToWebviewMessage): void;
+  post(
+    message:
+      | MonitorToWebviewMessage
+      | RunLaneToWebviewMessage
+      | HostMetricsToWebviewMessage
+      | LiveToWebviewEnvelope
+      | ExploreToWebviewEnvelope,
+  ): void;
   /** パネル表示中か。MonitorProcessManager.scheduleHostMetricsRestart()の5秒後再起動タイマーが使う。 */
   isPanelActive(): boolean;
   /** MonitorProcessManager.writeMonitorControlへの委譲。MonitorDeviceOpsのdown系ジョブ前後で呼ぶ。 */
@@ -61,6 +76,8 @@ export function registerMonitorPanel(
   getConfig: () => FtesterConfig,
   outputChannel: vscode.OutputChannel,
   eventBus: RunEventBus,
+  cli: FtesterCli,
+  testTree: FtesterTestTree,
 ): void {
   const controller = new MonitorPanelController(
     workspaceRoot,
@@ -68,10 +85,15 @@ export function registerMonitorPanel(
     outputChannel,
     eventBus,
     context.extensionUri,
+    context.workspaceState,
+    cli,
+    testTree,
   );
   context.subscriptions.push(
     controller,
     vscode.commands.registerCommand("ftester.showDeviceMonitor", () => controller.show()),
+    vscode.commands.registerCommand("ftester.showLiveControl", () => controller.show("live")),
+    vscode.commands.registerCommand("ftester.explore", () => controller.show("explore")),
   );
 }
 
@@ -81,12 +103,17 @@ class MonitorPanelController implements vscode.Disposable {
   private readonly processManager: MonitorProcessManager;
   private readonly profiles: MonitorProfilesController;
   private readonly deviceOps: MonitorDeviceOps;
+  private readonly live: MonitorLiveController;
+  private readonly explore: MonitorExploreController;
 
   /** パネル再作成時にhydrateLaneUi()で流し込むため、実行を跨いで保持する。 */
   private readonly laneState = createRunLaneState();
   private laneSectionVisible = false;
   private readonly unsubscribeBus: () => void;
   private readonly configChangeSubscription: vscode.Disposable;
+  /** show(tab) が新規作成時に指定したタブ。sendInitialState() で switchTab を post した後クリアする
+   * (html設定直後の postMessage は webview 側リスナー登録前に届き握りつぶされるため。show() 参照)。 */
+  private pendingInitialTab: string | undefined;
 
   constructor(
     private readonly workspaceRoot: string,
@@ -94,6 +121,9 @@ class MonitorPanelController implements vscode.Disposable {
     private readonly outputChannel: vscode.OutputChannel,
     eventBus: RunEventBus,
     private readonly extensionUri: vscode.Uri,
+    workspaceState: vscode.Memento,
+    cli: FtesterCli,
+    testTree: FtesterTestTree,
   ) {
     this.deps = {
       workspaceRoot: this.workspaceRoot,
@@ -107,6 +137,8 @@ class MonitorPanelController implements vscode.Disposable {
     this.processManager = new MonitorProcessManager(this.deps);
     this.profiles = new MonitorProfilesController(this.deps);
     this.deviceOps = new MonitorDeviceOps(this.deps);
+    this.live = new MonitorLiveController(this.deps);
+    this.explore = new MonitorExploreController(this.deps, cli, workspaceState, () => void testTree.refresh());
 
     this.unsubscribeBus = eventBus.subscribe((message) => this.handleBusMessage(message));
     this.configChangeSubscription = vscode.workspace.onDidChangeConfiguration((event) => {
@@ -160,9 +192,14 @@ class MonitorPanelController implements vscode.Disposable {
     }
   }
 
-  show(): void {
+  /** initialTab を指定すると、パネルが既に開いている場合は reveal 後にそのタブへ切り替える。
+   * 新規作成の場合は pendingInitialTab に保持し sendInitialState() で送る。 */
+  show(initialTab?: string): void {
     if (this.panel) {
       this.panel.reveal(vscode.ViewColumn.Beside);
+      if (initialTab) {
+        this.post({ type: "switchTab", tab: initialTab });
+      }
       return;
     }
 
@@ -179,8 +216,10 @@ class MonitorPanelController implements vscode.Disposable {
       this.panel = undefined;
       this.processManager.stopMonitorProcess();
       this.processManager.stopHostMetricsProcess();
+      this.live.stopProcesses();
     });
 
+    this.pendingInitialTab = initialTab;
     this.processManager.startAll();
     // 初期状態はここで送らない: html設定直後のpostMessageはwebview側のmessageリスナー登録前に
     // 届き握りつぶされる(VS Code既知のレース)。webviewからの"ready"を受けてsendInitialState()で送る。
@@ -193,13 +232,20 @@ class MonitorPanelController implements vscode.Disposable {
     this.profiles.disposeWatchers();
     this.processManager.stopMonitorProcess();
     this.processManager.stopHostMetricsProcess();
+    this.live.dispose();
+    this.explore.dispose();
     const panel = this.panel;
     this.panel = undefined;
     panel?.dispose();
   }
 
   private post(
-    message: MonitorToWebviewMessage | RunLaneToWebviewMessage | HostMetricsToWebviewMessage,
+    message:
+      | MonitorToWebviewMessage
+      | RunLaneToWebviewMessage
+      | HostMetricsToWebviewMessage
+      | LiveToWebviewEnvelope
+      | ExploreToWebviewEnvelope,
   ): void {
     void this.panel?.webview.postMessage(message);
   }
@@ -235,6 +281,14 @@ class MonitorPanelController implements vscode.Disposable {
   }
 
   private handleWebviewMessage(message: unknown): void {
+    if (isLiveWebviewEnvelope(message)) {
+      this.live.handleWebviewMessage(message.message);
+      return;
+    }
+    if (isExploreWebviewEnvelope(message)) {
+      this.explore.handleWebviewMessage(message.message);
+      return;
+    }
     if (!isMonitorFromWebviewMessage(message)) {
       return;
     }
@@ -345,5 +399,10 @@ class MonitorPanelController implements vscode.Disposable {
     this.profiles.postMachineProfileInfo();
     // webview再読込がジョブ実行中に起きた場合にボタン無効状態・タイルのバッジを復元するため。
     this.deviceOps.resendQueueStatus();
+    this.explore.sendInitialState();
+    if (this.pendingInitialTab) {
+      this.post({ type: "switchTab", tab: this.pendingInitialTab });
+      this.pendingInitialTab = undefined;
+    }
   }
 }

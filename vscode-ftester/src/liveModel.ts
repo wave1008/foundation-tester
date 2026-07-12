@@ -480,3 +480,24 @@ export function isLiveFromWebviewMessage(value: unknown): value is LiveFromWebvi
       return false;
   }
 }
+
+// ---- モニターwebviewとの多重化封筒 --------------------------------------------------------
+// モニターパネル(monitorPanel.ts)は1つのwebviewに複数機能のメッセージが行き交うため、live系は
+// type:"live" で包んで monitor系メッセージ型(monitorModel.ts)との衝突を避ける。
+// 対向: src/webview/monitor/liveTab.js
+
+/** webview → host。 */
+export interface LiveWebviewEnvelope {
+  readonly type: "live";
+  readonly message: LiveFromWebviewMessage;
+}
+
+export function isLiveWebviewEnvelope(value: unknown): value is LiveWebviewEnvelope {
+  return isRecord(value) && value.type === "live" && isLiveFromWebviewMessage(value.message);
+}
+
+/** host → webview。 */
+export interface LiveToWebviewEnvelope {
+  readonly type: "live";
+  readonly message: LiveToWebviewMessage;
+}

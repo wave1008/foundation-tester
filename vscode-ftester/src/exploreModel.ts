@@ -1,6 +1,6 @@
 // exploreModel.ts
 // `ftester api explore` の NDJSON イベント検証・進捗文言組み立て・入力値検証・完了通知文言・
-// デバイス選択 QuickPick アイテム組み立て(vscode 非依存)。exploreCommand.ts から使う。
+// デバイス選択アイテム組み立て(vscode 非依存)。monitorExploreController.ts から使う。
 //
 // 契約(Sources/ftester/ApiExploreCommand.swift):
 //   {"kind":"exploreStarted","project","bundleID","goal","maxSteps","platform"}
@@ -106,7 +106,6 @@ export function isExploreEvent(value: unknown): value is ExploreEvent {
 
 // ---- 進捗文言組み立て -----------------------------------------------------------------
 
-/** exploreCommand.ts の withProgress で使う。 */
 export function formatStepProgressMessage(event: ExploreStepEvent): string {
   return `[${event.step}/${event.maxSteps}] ${event.description}`;
 }
@@ -227,4 +226,79 @@ export function buildDeviceQuickPickItems(
         : "⚠ 接続されていません。探索が失敗する可能性があります。",
     device,
   }));
+}
+
+// ---- モニターパネル「FM探索」タブ webview プロトコル ------------------------------------
+// モニターパネル(monitorPanel.ts)は1つのwebviewに複数機能のメッセージが行き交うため、explore系は
+// type:"explore" で包んで monitor/live 系メッセージ型との衝突を避ける(liveModel.ts の
+// LiveWebviewEnvelope と同じ方式)。対向: src/webview/monitor/exploreTab.js、処理:
+// src/monitorExploreController.ts
+
+export type ExploreFromWebviewMessage =
+  | { readonly type: "refreshDevices" }
+  | { readonly type: "selectDevice"; readonly id: string }
+  | { readonly type: "start"; readonly bundleId: string; readonly goal: string; readonly maxSteps: string }
+  | { readonly type: "cancel" }
+  | { readonly type: "openFile" };
+
+function isExploreFromWebviewMessage(value: unknown): value is ExploreFromWebviewMessage {
+  if (!isRecord(value) || typeof value.type !== "string") {
+    return false;
+  }
+  switch (value.type) {
+    case "refreshDevices":
+    case "cancel":
+    case "openFile":
+      return true;
+    case "selectDevice":
+      return typeof value.id === "string";
+    case "start":
+      return (
+        typeof value.bundleId === "string" && typeof value.goal === "string" && typeof value.maxSteps === "string"
+      );
+    default:
+      return false;
+  }
+}
+
+export type ExploreResultSeverity = "info" | "warning" | "error";
+
+/** "result"/"hydrate" の完了通知表示(hasFile は「ファイルを開く」ボタンの表示要否)。 */
+export interface ExploreResultView {
+  readonly message: string;
+  readonly severity: ExploreResultSeverity;
+  readonly hasFile: boolean;
+}
+
+export type ExploreToWebviewMessage =
+  | { readonly type: "devices"; readonly devices: readonly LiveDeviceOption[]; readonly selectedId: string | undefined }
+  | { readonly type: "banner"; readonly message: string | null }
+  | { readonly type: "formError"; readonly message: string | null }
+  | { readonly type: "running"; readonly running: boolean }
+  | { readonly type: "log"; readonly line: string }
+  | ({ readonly type: "result" } & ExploreResultView)
+  | {
+      readonly type: "hydrate";
+      readonly running: boolean;
+      readonly logLines: readonly string[];
+      readonly lastBundleId: string;
+      readonly result: ExploreResultView | null;
+      readonly devices: readonly LiveDeviceOption[];
+      readonly selectedId: string | undefined;
+    };
+
+/** webview → host。 */
+export interface ExploreWebviewEnvelope {
+  readonly type: "explore";
+  readonly message: ExploreFromWebviewMessage;
+}
+
+export function isExploreWebviewEnvelope(value: unknown): value is ExploreWebviewEnvelope {
+  return isRecord(value) && value.type === "explore" && isExploreFromWebviewMessage(value.message);
+}
+
+/** host → webview。 */
+export interface ExploreToWebviewEnvelope {
+  readonly type: "explore";
+  readonly message: ExploreToWebviewMessage;
 }

@@ -14,9 +14,7 @@ import {
   resolveWorkspaceRoot,
 } from "./config";
 import { registerDebugAdapter } from "./debugConfig";
-import { registerExploreCommand } from "./exploreCommand";
 import { registerHealReviewPanel } from "./healReviewPanel";
-import { registerLivePanel } from "./livePanel";
 import { registerMonitorPanel } from "./monitorPanel";
 import { registerProfileDiagnostics } from "./profileDiagnostics";
 import { RunEventBus } from "./runEventBus";
@@ -62,11 +60,9 @@ export function activate(context: vscode.ExtensionContext): void {
   registerRunHandler(context, cli, workspaceRoot, getConfig, testTree, watcher, outputChannel, runEventBus);
   registerDebugAdapter(context, workspaceRoot, getConfig, outputChannel);
   registerStepsView(context, cli, workspaceRoot, getConfig, testTree, watcher, outputChannel);
-  registerMonitorPanel(context, workspaceRoot, getConfig, outputChannel, runEventBus);
+  registerMonitorPanel(context, workspaceRoot, getConfig, outputChannel, runEventBus, cli, testTree);
   registerHealReviewPanel(context, workspaceRoot, getConfig, outputChannel, runEventBus, cli);
-  registerLivePanel(context, workspaceRoot, getConfig, outputChannel);
   registerProfileDiagnostics(context, cli, workspaceRoot, getConfig, outputChannel);
-  registerExploreCommand(context, cli, workspaceRoot, getConfig, testTree, outputChannel);
 
   void testTree.refresh();
 }

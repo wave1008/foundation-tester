@@ -2,7 +2,7 @@
 // vscode-ftester のビルドスクリプト。
 //
 //   node esbuild.mjs          : src/extension.ts -> dist/extension.js と
-//                                src/webview/{monitor,live}/{main.js,style.css} -> media/{monitor,live}/
+//                                src/webview/monitor/{main.js,style.css} -> media/monitor/
 //                                の両方を1回ビルド
 //   node esbuild.mjs --watch  : 上記をどちらもウォッチモードで実行
 //   node esbuild.mjs --tests  : test/*.test.mjs を out-test/ にバンドルする(node:test 用。
@@ -43,15 +43,12 @@ async function buildExtension() {
 
 async function buildWebview() {
   const options = {
-    // outdir を media/(monitor・live 共通の親)にし、outbase を src/webview/ に固定することで、
+    // outdir を media/(将来複数パネル分の親)にし、outbase を src/webview/ に固定することで、
     // 各エントリの src/webview/<パネル名>/ 以下の相対パスをそのまま media/<パネル名>/ 配下へ
-    // 振り分ける(monitor 用の main.js/style.css は従来どおり media/monitor/、Phase 4 で追加した
-    // live 用は media/live/ に出力される)。
+    // 振り分ける(monitor 用の main.js/style.css は media/monitor/ に出力される)。
     entryPoints: [
       path.join(rootDir, "src/webview/monitor/main.js"),
       path.join(rootDir, "src/webview/monitor/style.css"),
-      path.join(rootDir, "src/webview/live/main.js"),
-      path.join(rootDir, "src/webview/live/style.css"),
     ],
     bundle: true,
     platform: "browser",
