@@ -35,16 +35,21 @@ enum InAppSettle {
         observer = CFRunLoopObserverCreateWithHandler(
             nil, CFRunLoopActivity.beforeWaiting.rawValue, true, 0) { _, _ in evaluate() }
         if let observer { CFRunLoopAddObserver(CFRunLoopGetMain(), observer, .commonModes) }
-        heartbeat = Timer.scheduledTimer(withTimeInterval: 0.016, repeats: true) { _ in evaluate() }
+        // Timer.scheduledTimer は default モードのみ。トラッキングモード(スクロール等)でも
+        // ハートビートが止まらないよう commonModes で追加する。
+        let timer = Timer(timeInterval: 0.016, repeats: true) { _ in evaluate() }
+        RunLoop.main.add(timer, forMode: .common)
+        heartbeat = timer
     }
 
     private static func anyLayerAnimating() -> Bool {
-        // アプリのキーウィンドウのみを対象にする。キーボード/システムウィンドウは
-        // 予測変換バー等の永続アニメを持つことがあり、含めると settle が cap に張り付く。
+        // 各シーンのキーウィンドウを対象にする(キーボード/システムウィンドウは予測変換バー等の
+        // 永続アニメを持つことがあり、含めると settle が cap に張り付く)。複数シーンのいずれかが
+        // アニメ中なら整定していないとみなす。
         for scene in UIApplication.shared.connectedScenes {
             guard let windowScene = scene as? UIWindowScene else { continue }
             guard let key = windowScene.windows.first(where: { $0.isKeyWindow }) else { continue }
-            return layerAnimating(key.layer)
+            if layerAnimating(key.layer) { return true }
         }
         return false
     }

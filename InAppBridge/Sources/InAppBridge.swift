@@ -23,8 +23,9 @@ final class FTInAppBridge {
     private var server: InAppHTTPServer?
     // 直近スナップショットの ref → window 座標フレーム / AX 要素。tap/press の解決に使う。
     // accept ループは1本ずつ処理するので単純プロパティで足りる(同時アクセスなし)。
+    // nodes は弱参照テーブル(画面遷移後に旧ビュー階層を snapshot 更新まで抱え込まないため)。
     private var frames: [Int: CGRect] = [:]
-    private var nodes: [Int: NSObject] = [:]
+    private let nodes = NSMapTable<NSNumber, AnyObject>(keyOptions: .strongMemory, valueOptions: .weakMemory)
 
     func start() {
         let port = UInt16(ProcessInfo.processInfo.environment["FT_PORT"] ?? "")
@@ -94,7 +95,8 @@ final class FTInAppBridge {
             }
             let result = InAppSnapshot.capture(window: window)
             self.frames = result.frames
-            self.nodes = result.nodes
+            self.nodes.removeAllObjects()
+            for (ref, node) in result.nodes { self.nodes.setObject(node, forKey: NSNumber(value: ref)) }
             return .json(SnapshotResponse(
                 sessionBundleID: Bundle.main.bundleIdentifier,
                 screen: result.screen,
@@ -106,16 +108,34 @@ final class FTInAppBridge {
     private func handleTap(_ body: Data) throws -> InAppHTTPServer.Response {
         let req = try decode(TapRequest.self, body)
         try performWithSettle { window in
-            // ref 指定はまず accessibilityActivate(要素のデフォルトアクション=ボタン発火・
+            // ref 指定はまず保持要素を accessibilityActivate(要素のデフォルトアクション=ボタン発火・
             // セル選択等を確実に起こす。合成タッチはジェスチャ認識器を発火できないため)。
-            // 活性化できない要素・座標指定は合成タッチにフォールバック。
-            if let ref = req.ref, let node = self.nodes[ref], node.accessibilityActivate() {
+            if let ref = req.ref,
+               let node = self.nodes.object(forKey: NSNumber(value: ref)) as? NSObject,
+               node.accessibilityActivate() {
                 return
             }
             let p = try self.resolvePoint(ref: req.ref, x: req.x, y: req.y)
+            // 座標指定は直近 snapshot で point を含む最小要素を activate(SwiftUI の活性化要素は
+            // 合成 AX ノードで hitTest の view 階層には無いため、snapshot 要素から解決する)。
+            // 合成タッチはジェスチャを発火しないので座標タップが無言 no-op になるのを防ぐ。無ければ合成タッチ。
+            if req.ref == nil, self.activateSnapshotNode(containing: p) { return }
             FTSynthTap(window, p)
         }
         return .json(OKResponse())
+    }
+
+    /// point を含む最小フレームの snapshot 要素を accessibilityActivate する(座標→要素解決)。
+    private func activateSnapshotNode(containing point: CGPoint) -> Bool {
+        var bestRef: Int?
+        var bestArea = CGFloat.greatestFiniteMagnitude
+        for (ref, frame) in frames where frame.contains(point) {
+            let area = frame.width * frame.height
+            if area < bestArea { bestArea = area; bestRef = ref }
+        }
+        guard let ref = bestRef,
+              let node = nodes.object(forKey: NSNumber(value: ref)) as? NSObject else { return false }
+        return node.accessibilityActivate()
     }
 
     private func handleType(_ body: Data) throws -> InAppHTTPServer.Response {
@@ -187,8 +207,10 @@ final class FTInAppBridge {
 
     private func handlePress(_ body: Data) throws -> InAppHTTPServer.Response {
         let req = try decode(PressRequest.self, body)
-        // press は押下保持中にランループを回すため cap を duration 分広げる
-        try performWithSettle(capMs: 2500 + Int(req.duration * 1000)) { window in
+        // press は block 内で duration 秒メインを保持する。settle cap(2500)とは別に、その保持分を
+        // blockBudgetMs として semaphore タイムアウトに足す(足さないと長い duration で settle 完了前に
+        // タイムアウトが発火し、実行中に OK を返してしまう)。
+        try performWithSettle(blockBudgetMs: Int(req.duration * 1000) + 500) { window in
             let p = try self.resolvePoint(ref: req.ref, x: nil, y: nil)
             FTSynthPress(window, p, req.duration)
         }
@@ -221,7 +243,9 @@ final class FTInAppBridge {
 
     /// メインでアクションを実行し、整定(または cap)まで待ってから返る。
     /// block 内の throw はバックグラウンド側へ伝播する。
-    private func performWithSettle(capMs: Int = 2500,
+    /// blockBudgetMs = block 自体がメインを保持する見込み時間(press の押下保持等)。
+    /// semaphore タイムアウト = blockBudgetMs + capMs + 余裕 とし、settle 完了前の早期打ち切りを防ぐ。
+    private func performWithSettle(capMs: Int = 2500, blockBudgetMs: Int = 0,
                                    _ block: @escaping (UIWindow) throws -> Void) throws {
         let sem = DispatchSemaphore(value: 0)
         var thrown: Error?
@@ -240,7 +264,7 @@ final class FTInAppBridge {
             }
             InAppSettle.waitOnMain(capMs: capMs) { sem.signal() }
         }
-        _ = sem.wait(timeout: .now() + .milliseconds(capMs + 1500))
+        _ = sem.wait(timeout: .now() + .milliseconds(blockBudgetMs + capMs + 1500))
         if let thrown { throw thrown }
     }
 
