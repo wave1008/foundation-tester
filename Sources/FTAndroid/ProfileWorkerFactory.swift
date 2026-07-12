@@ -18,9 +18,12 @@ public enum ProfileWorkerFactory {
 
         if !resolved.iosDevices.isEmpty {
             let provisioner = BridgeProvisioner(repoRoot: repoRoot)
+            let iosApp = resolved.apps["ios"]
             let provisioned = try await provisioner.provision(
                 devices: resolved.iosDevices.map { ($0.name, $0.spec) },
-                bundleID: resolved.apps["ios"]?.bundleID, log: log)
+                bundleID: iosApp?.bundleID,
+                preinstallAppPath: iosApp?.autoInstall == true ? iosApp?.appPath : nil,
+                log: log)
             for device in provisioned {
                 // engine=inapp/hybrid のときサブプロセスは InAppDriver(+hybrid は SystemUIDriver
                 // フォールバック)を使う。ホスト warmup 用 driver は in-app ブリッジへの BridgeClient
@@ -45,7 +48,23 @@ public enum ProfileWorkerFactory {
                 connection: DriverConnection(platform: "android", serial: serial),
                 logicalName: device.name))
         }
+        guard !workers.isEmpty else {
+            throw InstallError(message: "実行可能なワーカーがありません(全デバイスが離脱しました)")
+        }
         return workers
+    }
+
+    /// autoInstall の差分スキップ判定(iOS: バンドル深比較 / Android: APK md5)。
+    /// 判定不能は false(=インストールする)の安全側。
+    private static func installedIsCurrent(worker: RunWorker, app: ResolvedAppTarget,
+                                           appPath: String) -> Bool {
+        if worker.platform == "ios" {
+            guard let udid = worker.connection.udid else { return false }
+            return InstalledAppCheck.simulatorAppIsCurrent(
+                udid: udid, bundleID: app.bundleID, appPath: appPath)
+        }
+        guard let android = worker.driver as? AndroidDriver else { return false }
+        return android.installedPackageIsCurrent(packageID: app.bundleID, apkPath: appPath)
     }
 
     /// インストール失敗ワーカーは離脱し残りが続行する(全滅時のみエラー)
@@ -55,11 +74,24 @@ public enum ProfileWorkerFactory {
         var pending: [(worker: RunWorker, appPath: String)] = []
         var passthrough: [RunWorker] = []
         for worker in workers {
+            // inapp/hybrid の iOS はプロビジョニング時にインストール済み。ここで入れ直すと
+            // 起動中の in-app ブリッジ(アプリ内常駐)が simctl install で終了してしまうため必ずスキップ
+            if worker.platform == "ios", let engine = worker.connection.engine,
+               engine == "inapp" || engine == "hybrid" {
+                passthrough.append(worker)
+                continue
+            }
             if let app = apps[worker.platform], let appPath = app.appPath, app.autoInstall {
                 guard FileManager.default.fileExists(atPath: appPath) else {
                     throw InstallError(message: "パッケージファイルが見つかりません: \(appPath)")
                 }
-                pending.append((worker, appPath))
+                // 差分スキップ: インストール済み内容がパッケージファイルと同一なら入れ直さない
+                if installedIsCurrent(worker: worker, app: app, appPath: appPath) {
+                    log("→ \(worker.label): インストール済みアプリが最新のためスキップ(autoInstall)")
+                    passthrough.append(worker)
+                } else {
+                    pending.append((worker, appPath))
+                }
             } else {
                 passthrough.append(worker)
             }

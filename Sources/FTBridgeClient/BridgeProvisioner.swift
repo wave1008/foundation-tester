@@ -34,6 +34,10 @@ public enum BridgeProvisionerError: Error, LocalizedError {
     case notReady(port: UInt16, underlying: Error)
     /// engine="inapp" のブリッジを新規起動するのに bundleID が無い(フォールバックしない=単一実装)
     case inAppNeedsBundleID(name: String)
+    /// engine=inapp でアプリ未インストール・preinstallAppPath も無い(provision() が該当デバイスのみ離脱)
+    case appNotInstalled(device: String, bundleID: String, udid: String)
+    /// preinstallAppPath 指定時の simctl install 自体が失敗した
+    case preinstallFailed(device: String, detail: String)
 
     public var errorDescription: String? {
         switch self {
@@ -45,6 +49,13 @@ public enum BridgeProvisionerError: Error, LocalizedError {
             return "\(name): engine=inapp のブリッジ起動にはアプリの bundleID が必要です。"
                 + "apps プロファイルの ios.app を設定してください"
                 + "(device/live 等 bundleID を渡さない経路は engine=inapp 非対応です)"
+        case .appNotInstalled(_, let bundleID, let udid):
+            // device 名は provision() の離脱ログが行頭に付けるためここには含めない
+            return "\(bundleID) が未インストールのため離脱します(engine=inapp は事前インストール必須)。"
+                + "`xcrun simctl install \(udid) <app>` で導入するか、"
+                + "apps プロファイルに appPath+autoInstall を設定してください"
+        case .preinstallFailed(let device, let detail):
+            return "\(device): アプリの自動インストールに失敗しました:\n\(detail)"
         }
     }
 }
@@ -63,8 +74,12 @@ public struct BridgeProvisioner {
 
     /// 稼働中ブリッジ(シミュレータ UDID が一致)は再利用し、不足分は空きポートで起動する。
     /// engine="inapp" のデバイスは XCUITest ではなく dylib 注入で起動する(bundleID が必要)。
+    /// preinstallAppPath: apps プロファイルの appPath+autoInstall が有効なときのアプリパス。
+    /// inapp 起動時に未インストールを検出したらその場で simctl install する
+    /// (ProfileWorkerFactory.installIfNeeded は provision の後段のため、それより前にここで埋める)。
     public func provision(devices: [(name: String, spec: DeviceSpec)],
                           bundleID: String? = nil,
+                          preinstallAppPath: String? = nil,
                           log: @escaping (String) -> Void) async throws -> [ProvisionedIOSDevice] {
         let catalog = try SimulatorCatalog.devices()
 
@@ -88,23 +103,33 @@ public struct BridgeProvisioner {
         var usedPorts = Set(running.keys)
         var claimed = Set<UInt16>()  // 1回の provision 内で同じ稼働ブリッジを二重占有しないため
         for (name, spec, sim) in targets {
-            let engine = spec.engine ?? "xcuitest"
-            if engine == "hybrid" {
-                let inappPort = try await provisionBridge(
-                    engine: "inapp", preferred: spec.port, name: name, sim: sim, bundleID: bundleID,
-                    running: running, claimed: &claimed, usedPorts: &usedPorts, log: log)
-                let xcuiPort = try await provisionBridge(
-                    engine: "xcuitest", preferred: nil, name: name, sim: sim, bundleID: bundleID,
-                    running: running, claimed: &claimed, usedPorts: &usedPorts, log: log)
-                provisioned.append(ProvisionedIOSDevice(
-                    name: name, udid: sim.udid, simulatorName: sim.name, port: inappPort,
-                    engine: "hybrid", xcuiPort: xcuiPort))
-            } else {
-                let port = try await provisionBridge(
-                    engine: engine, preferred: spec.port, name: name, sim: sim, bundleID: bundleID,
-                    running: running, claimed: &claimed, usedPorts: &usedPorts, log: log)
-                provisioned.append(ProvisionedIOSDevice(
-                    name: name, udid: sim.udid, simulatorName: sim.name, port: port, engine: engine))
+            do {
+                let engine = spec.engine ?? "xcuitest"
+                if engine == "hybrid" {
+                    let inappPort = try await provisionBridge(
+                        engine: "inapp", preferred: spec.port, name: name, sim: sim, bundleID: bundleID,
+                        preinstallAppPath: preinstallAppPath,
+                        running: running, claimed: &claimed, usedPorts: &usedPorts, log: log)
+                    let xcuiPort = try await provisionBridge(
+                        engine: "xcuitest", preferred: nil, name: name, sim: sim, bundleID: bundleID,
+                        preinstallAppPath: preinstallAppPath,
+                        running: running, claimed: &claimed, usedPorts: &usedPorts, log: log)
+                    provisioned.append(ProvisionedIOSDevice(
+                        name: name, udid: sim.udid, simulatorName: sim.name, port: inappPort,
+                        engine: "hybrid", xcuiPort: xcuiPort))
+                } else {
+                    let port = try await provisionBridge(
+                        engine: engine, preferred: spec.port, name: name, sim: sim, bundleID: bundleID,
+                        preinstallAppPath: preinstallAppPath,
+                        running: running, claimed: &claimed, usedPorts: &usedPorts, log: log)
+                    provisioned.append(ProvisionedIOSDevice(
+                        name: name, udid: sim.udid, simulatorName: sim.name, port: port, engine: engine))
+                }
+            } catch let error as BridgeProvisionerError {
+                guard case .appNotInstalled = error else { throw error }
+                // installIfNeeded の「失敗ワーカーは離脱し残りが続行」と同じ思想
+                log("❌ \(name): \(error.localizedDescription)")
+                continue
             }
         }
         return provisioned
@@ -113,10 +138,21 @@ public struct BridgeProvisioner {
     /// 1 デバイス・1 エンジンのブリッジを供給する。同一 UDID・同一 engine の稼働中ブリッジ(未占有)は
     /// 再利用(launch しないので bundleID 不要)、無ければ空きポートで起動する。
     private func provisionBridge(engine: String, preferred: UInt16?, name: String, sim: SimDeviceInfo,
-                                 bundleID: String?, running: [UInt16: RunningBridge],
+                                 bundleID: String?, preinstallAppPath: String?,
+                                 running: [UInt16: RunningBridge],
                                  claimed: inout Set<UInt16>, usedPorts: inout Set<UInt16>,
                                  log: @escaping (String) -> Void) async throws -> UInt16 {
-        if let port = running.first(where: {
+        // autoInstall(preinstallAppPath)付き inapp は「インストールファイルが更新されているとき
+        // だけ」install+注入起動で差し替える(install は起動中アプリ=in-app ブリッジを終了させる
+        // ため、後段の installIfNeeded で入れ直す順序は不可=あちらは inapp/hybrid をスキップする)。
+        // 最新なら稼働中ブリッジを再利用して install も relaunch も省く。
+        var inappNeedsInstall = false
+        if engine == "inapp", let preinstallAppPath, let bundleID {
+            inappNeedsInstall = !installedAppIsCurrent(
+                sim: sim, bundleID: bundleID, appPath: preinstallAppPath)
+        }
+        if !(engine == "inapp" && inappNeedsInstall),
+           let port = running.first(where: {
             $0.value.udid == sim.udid && $0.value.engine == engine && !claimed.contains($0.key)
         })?.key {
             claimed.insert(port)
@@ -134,7 +170,10 @@ public struct BridgeProvisioner {
             }
             let launcher = InAppLauncher(repoRoot: repoRoot, udid: sim.udid, port: port)
             try launcher.buildIfNeeded()
-            try launcher.ensureBooted()  // simctl launch はブート済み前提(XCUITest は xcodebuild が自動ブート)
+            try launcher.ensureBooted()  // simctl launch はブート済み前提(install も同様)
+            try ensureAppInstalled(deviceName: name, sim: sim, bundleID: bundleID,
+                                   preinstallAppPath: preinstallAppPath,
+                                   needsInstall: inappNeedsInstall, log: log)
             try await launcher.relaunch(bundleID: bundleID)
         } else {
             let launcher = BridgeLauncher(repoRoot: repoRoot, device: sim.udid, port: port)
@@ -158,6 +197,38 @@ public struct BridgeProvisioner {
         }
         log("✅ \(name): \(engine) ブリッジ準備完了(port \(port))")
         return port
+    }
+
+    /// inapp の注入起動(simctl launch)はアプリのインストールが前提。未インストールなら
+    /// preinstallAppPath(= apps プロファイルの appPath+autoInstall)があればその場で install、
+    /// 無ければ appNotInstalled を投げる(provision() が該当デバイスだけ離脱させて続行する)。
+    /// inapp の注入起動(simctl launch)はアプリのインストールが前提。autoInstall
+    /// (preinstallAppPath)有りなら needsInstall(=installedAppIsCurrent の否定)のときだけ
+    /// インストールする。無しなら存在確認のみ行い、未インストールは appNotInstalled を投げる
+    /// (provision() が該当デバイスだけ離脱させて続行する)。
+    private func ensureAppInstalled(deviceName: String, sim: SimDeviceInfo, bundleID: String,
+                                    preinstallAppPath: String?, needsInstall: Bool,
+                                    log: @escaping (String) -> Void) throws {
+        if let preinstallAppPath {
+            guard needsInstall else { return }
+            log("→ \(deviceName): \(bundleID) をインストールします(autoInstall: 内容が更新されています)...")
+            let install = try Shell.run(["xcrun", "simctl", "install", sim.udid, preinstallAppPath])
+            guard install.status == 0 else {
+                throw BridgeProvisionerError.preinstallFailed(device: deviceName, detail: install.tail)
+            }
+            log("✅ \(deviceName): インストール完了")
+            return
+        }
+        let check = try Shell.run(["xcrun", "simctl", "get_app_container", sim.udid, bundleID])
+        guard check.status == 0 else {
+            throw BridgeProvisionerError.appNotInstalled(
+                device: deviceName, bundleID: bundleID, udid: sim.udid)
+        }
+    }
+
+    /// InstalledAppCheck.swift 参照(installIfNeeded の差分スキップと共用)。
+    private func installedAppIsCurrent(sim: SimDeviceInfo, bundleID: String, appPath: String) -> Bool {
+        InstalledAppCheck.simulatorAppIsCurrent(udid: sim.udid, bundleID: bundleID, appPath: appPath)
     }
 
     /// 稼働中ブリッジ 1 つの識別情報(接続先 UDID・engine 種別)
