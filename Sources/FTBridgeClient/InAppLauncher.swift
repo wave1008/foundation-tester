@@ -31,6 +31,16 @@ public struct InAppLauncher {
         }
     }
 
+    /// シミュレータが Shutdown なら boot して待つ(ブート済みなら即返るが ~200ms かかるため
+    /// プロビジョニング時のみ呼ぶ。relaunch には入れない=シナリオ毎の launch を遅くしない)。
+    /// XCUITest 経路は xcodebuild が自動ブートするが、simctl launch はブート済みが前提。
+    public func ensureBooted() throws {
+        let result = try Shell.run(["xcrun", "simctl", "bootstatus", udid, "-b"])
+        guard result.status == 0 else {
+            throw InAppLauncherError.bootFailed(result.tail)
+        }
+    }
+
     /// アプリを dylib 注入付きで再起動 → /status 到達待ち。
     /// シナリオ開始時の fresh 状態確保(launchApp/relaunchApp)に使う。
     public func relaunch(bundleID: String) async throws {
@@ -74,6 +84,7 @@ public struct InAppLauncher {
 public enum InAppLauncherError: Error, LocalizedError {
     case dylibMissing(String)
     case buildFailed(String)
+    case bootFailed(String)
     case launchFailed(String)
     case notReady(String)
 
@@ -83,6 +94,8 @@ public enum InAppLauncherError: Error, LocalizedError {
             return "in-app ブリッジの dylib が見つかりません(InAppBridge/build.sh でビルド): \(path)"
         case .buildFailed(let tail):
             return "InAppBridge/build.sh が失敗しました:\n\(tail)"
+        case .bootFailed(let tail):
+            return "シミュレータをブートできませんでした(simctl bootstatus -b):\n\(tail)"
         case .launchFailed(let tail):
             return "アプリの注入起動(simctl launch)に失敗しました"
                 + "(アプリが対象シミュレータにインストール済みか確認してください。"

@@ -134,6 +134,7 @@ public struct BridgeProvisioner {
             }
             let launcher = InAppLauncher(repoRoot: repoRoot, udid: sim.udid, port: port)
             try launcher.buildIfNeeded()
+            try launcher.ensureBooted()  // simctl launch はブート済み前提(XCUITest は xcodebuild が自動ブート)
             try await launcher.relaunch(bundleID: bundleID)
         } else {
             let launcher = BridgeLauncher(repoRoot: repoRoot, device: sim.udid, port: port)
