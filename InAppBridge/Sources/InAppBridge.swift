@@ -137,10 +137,41 @@ final class FTInAppBridge {
     private func handleSwipe(_ body: Data) throws -> InAppHTTPServer.Response {
         let req = try decode(SwipeRequest.self, body)
         try performWithSettle { window in
+            // スクロールのジェスチャ認識器も合成タッチでは駆動できない(tap と同じ)。
+            // スクロール可能要素の accessibilityScroll(VoiceOver 3本指スワイプ相当)を使う。
+            let axDir = Self.axScrollDirection(req.direction)
+            if let scrollView = Self.findScrollView(in: window), scrollView.accessibilityScroll(axDir) {
+                return
+            }
             let (from, to) = Self.swipeVector(req.direction, in: window.bounds)
             FTSynthSwipe(window, from, to, 12)
         }
         return .json(OKResponse())
+    }
+
+    // 指の移動方向 → accessibilityScroll の向き(指を上に払う=コンテンツ下方を出す=.down)
+    private static func axScrollDirection(_ d: FTSwipeDirection) -> UIAccessibilityScrollDirection {
+        switch d {
+        case .up: return .down
+        case .down: return .up
+        case .left: return .right
+        case .right: return .left
+        }
+    }
+
+    /// 面積最大の可視スクロールビューを返す(メインのリスト/スクロール領域)
+    private static func findScrollView(in window: UIWindow) -> UIScrollView? {
+        var best: UIScrollView?
+        var bestArea: CGFloat = 0
+        var stack: [UIView] = [window]
+        while let v = stack.popLast() {
+            if let sv = v as? UIScrollView, !sv.isHidden, sv.alpha > 0.01 {
+                let area = sv.bounds.width * sv.bounds.height
+                if area > bestArea { best = sv; bestArea = area }
+            }
+            stack.append(contentsOf: v.subviews)
+        }
+        return best
     }
 
     private func handlePress(_ body: Data) throws -> InAppHTTPServer.Response {
