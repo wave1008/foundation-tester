@@ -31,20 +31,20 @@ public struct InAppLauncher {
         }
     }
 
-    /// アプリを terminate → dylib 注入付きで launch → /status 到達待ち。
+    /// アプリを dylib 注入付きで再起動 → /status 到達待ち。
     /// シナリオ開始時の fresh 状態確保(launchApp/relaunchApp)に使う。
     public func relaunch(bundleID: String) async throws {
         let dylib = Self.dylibPath(repoRoot: repoRoot)
         guard FileManager.default.fileExists(atPath: dylib.path) else {
             throw InAppLauncherError.dylibMissing(dylib.path)
         }
-        _ = try? Shell.run(["xcrun", "simctl", "terminate", udid, bundleID])
+        // --terminate-running-process で terminate+launch を1コールに(simctl 往復を2→1)。
         // Shell.run は /usr/bin/env 経由なので、先頭に NAME=VALUE を置けば launch されるアプリへ
         // SIMCTL_CHILD_* が伝わる(dylib 注入とブリッジポートの指定)。
         let result = try Shell.run([
             "SIMCTL_CHILD_DYLD_INSERT_LIBRARIES=\(dylib.path)",
             "SIMCTL_CHILD_FT_PORT=\(port)",
-            "xcrun", "simctl", "launch", udid, bundleID,
+            "xcrun", "simctl", "launch", "--terminate-running-process", udid, bundleID,
         ])
         guard result.status == 0 else {
             throw InAppLauncherError.launchFailed(result.tail)
@@ -64,7 +64,8 @@ public struct InAppLauncher {
             do {
                 if try await client.status().ready { return }
             } catch { lastError = error }
-            try await Task.sleep(nanoseconds: 300_000_000)
+            // 80ms 間隔(ready 検知の遅れは平均でこの半分。300ms だと最大 +300ms 遅れる)
+            try await Task.sleep(nanoseconds: 80_000_000)
         }
         throw InAppLauncherError.notReady(lastError.map { "\($0)" } ?? "no response")
     }
