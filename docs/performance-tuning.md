@@ -186,20 +186,36 @@ window/transition/animator の `*_scale` はチューニングノブではなく
      (自ビルドアプリへのリンク方式のみ)、タッチ合成に私有 API を使う。
      **XCUITest ランナー(Runner/)は実機用として残す**(ユーザー決定 2026-07-12)=
      単一実装原則の明示的な例外として「シミュレータ=in-app / 実機=XCUITest」の 2 経路を許容。
-  3. **Phase 3 着手済み(2026-07-12、branch ios-speedup / コミット「足場」)= `InAppBridge/`**:
+  3. **Phase 3 着手済み(2026-07-12、branch ios-speedup)= `InAppBridge/`**:
      DYLD 注入で対象アプリに常駐し HTTP 応答する in-app ブリッジ。既存 XCUITest 経路
      (`Runner/`)には未接続=**追加のみ**。`build.sh` が `BridgeDTO`(共有)+ in-app 実装 +
      ObjC 構成子を単一 dylib(`InAppBridge/build/libFTInAppBridge.dylib`)にリンク
-     (`swiftc -c -wmo` で複数ソースを1オブジェクト化)。`InAppSnapshot.swift` は
-     `UIAccessibility` API で AX ツリーを走査し `ElementInfo` を生成(フィルタ規則は
-     `BridgeRouter` の shouldInclude/makeInfo と対応)。**実機疎通済**(SampleApp 注入・
-     `SIMCTL_CHILD_DYLD_INSERT_LIBRARIES`+`SIMCTL_CHILD_FT_PORT`): `/status` 6ms・
-     `/snapshot` 35ms・6 要素を DTO 完全互換で返却し、**ホスト `FTBridgeClient` は無改変で疎通**
-     (keystone 実証)。**残りの実装**: ① アクション tap/type/swipe/press(合成タッチ+整定は
-     実証済、InAppRouter に統合)② `/session`(アプリ再起動でブリッジ自身が死ぬため起動は
-     ホスト側 `BridgeProvisioner` が simctl launch+注入で担う=HTTP 互換でも lifecycle だけ例外)
-     ③ `/screenshot` ④ ホスト統合(シミュ=in-app / 実機=XCUITest の選択、provisioner 改修)
-     ⑤ AX 忠実度の詰め(空 TextField の value に placeholder 文字が乗る等、XCUITest 版との微差)。
+     (`swiftc -c -wmo`)。9 エンドポイント実装済み(/session は「注入先アプリ一致で OK」、
+     lifecycle リセットはホスト再起動が担う)。**動いているもの(実機実証)**:
+     - snapshot: `UIAccessibility` API で AX ツリー走査 → `ElementInfo`(DTO 完全互換)。
+       起動時に **`_AXSSetAutomationEnabled(YES)`** で AX を活性化(XCUITest 相当。しないと
+       `accessibilityFrame` が zero・label 空で全要素が落ちる)。フレームは `view.convert
+       (bounds, to: nil)` で堅牢化。0.03〜0.06ms/回。
+     - 整定: `CFRunLoopObserver` + 16ms ハートビート。**無限反復アニメ(カーソル点滅等)は
+       除外**(数えると settle が cap に張り付く=重要な罠)。
+     - **type(テキスト入力): XCUITest 比 1616→~110ms(~15 倍)**。合成タップで対象へフォーカス
+       → 現 first responder(UIKeyInput)へ `insertText:`。
+     - **ホスト統合: `FTBridgeClient` 無改変**。注入起動済みブリッジを provisioner が
+       /status ポートスキャンで発見・再利用し、実シナリオを in-app 経由で駆動できる(keystone)。
+     - screenshot: `drawHierarchy` → PNG、45ms。
+     **未解決の課題(Phase 3 の残り本丸)**: **合成タップが SwiftUI Button 等の
+     ジェスチャ認識器ベースのコントロールを発火できない**。UITextField のフォーカスは
+     手動 UITouch+`sendEvent:` で効く(view の touchesBegan/Ended に直接届くため)が、
+     gesture 認識器は HID バックのイベントを要求する。試した 3 方式はいずれも不十分:
+     ① 手動 UITouch+sendEvent(focus は効くが gesture 不発)② `_setHIDEvent:`+UITouch
+     (同上)③ `_enqueueHIDEvent:`(focus すら不発=HID イベントに display-integration
+     メタデータが無いと UIKit が破棄)。**次段**: `IOHIDEventSetIntegerValue` で
+     `kIOHIDEventFieldDigitizerIsDisplayIntegrated` 等を設定した正しい IOHIDEvent を
+     `_enqueueHIDEvent:` に流す(WDA/EarlGrey/KIF の HID 手順を参照)。**これが解ければ
+     tap/swipe/press が完成し、シナリオ全体が Android 並み(~2-3s)になる見込み**。
+     - 他の残り: ホスト統合の恒久化(シミュ=in-app / 実機=XCUITest の選択、provisioner に
+       simctl launch+注入の launch モード追加)、AX 忠実度の詰め(空 TextField の value に
+       placeholder が乗る等、XCUITest 版との微差)。
      なお XCUITest の quiescence 自体を私有 API で無効化する案(WDA 方式)は、
      代替の整定信号がプロセス外から得られないため 2 とセットでない限り採らない
 - **シナリオ設計の見直し**: 上記 iPhone Air フレークのようなデバイス依存アサーションの排除は、
