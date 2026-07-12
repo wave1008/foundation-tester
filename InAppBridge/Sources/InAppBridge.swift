@@ -3,8 +3,11 @@
 // (既定 8123=BridgeAPI.defaultPort)。エンドポイントは Runner/BridgeRouter と HTTP 互換にし、
 // ホスト側(FTBridgeClient)を無改変で使えるようにする(単一実装原則)。
 //
-// 現状(Phase 3 足場): /status と /snapshot のみ実装。tap/type/swipe/press/session/screenshot は
-// 501(未実装)。整定待ちとタッチ合成は後続で追加する。
+// ハンドラは InAppHTTPServer の accept ループ(バックグラウンド)で呼ばれる。UIKit 参照や
+// タッチ合成はメインへホップし、アクションは実行後に整定(InAppSettle)を待ってから応答する。
+//
+// 現状(Phase 3): /status /snapshot /tap /type /swipe /press /screenshot 実装。
+// /session はアプリ再起動を伴うためホスト側(BridgeProvisioner)が simctl launch+注入で担う。
 
 import Foundation
 import UIKit
@@ -18,6 +21,8 @@ final class FTInAppBridge {
     static let shared = FTInAppBridge()
 
     private var server: InAppHTTPServer?
+    // 直近スナップショットの ref → window 座標フレーム。tap/press の座標解決に使う。
+    // accept ループは1本ずつ処理するので単純プロパティで足りる(同時アクセスなし)。
     private var frames: [Int: CGRect] = [:]
 
     func start() {
@@ -36,38 +41,180 @@ final class FTInAppBridge {
     }
 
     private func handle(_ req: InAppHTTPServer.Request) -> InAppHTTPServer.Response {
-        switch (req.method, req.path) {
-        case ("GET", "/status"): return handleStatus()
-        case ("GET", "/snapshot"): return handleSnapshot()
-        case ("POST", "/session"), ("POST", "/tap"), ("POST", "/type"),
-             ("POST", "/swipe"), ("POST", "/press"), ("GET", "/screenshot"),
-             ("POST", "/terminate"):
-            return .error("未実装(Phase 3 足場): \(req.method) \(req.path)", status: 501)
-        default:
-            return .error("not found: \(req.method) \(req.path)", status: 404)
+        do {
+            switch (req.method, req.path) {
+            case ("GET", "/status"): return handleStatus()
+            case ("GET", "/snapshot"): return try handleSnapshot()
+            case ("POST", "/tap"): return try handleTap(req.body)
+            case ("POST", "/type"): return try handleType(req.body)
+            case ("POST", "/swipe"): return try handleSwipe(req.body)
+            case ("POST", "/press"): return try handlePress(req.body)
+            case ("GET", "/screenshot"): return try handleScreenshot()
+            case ("POST", "/session"):
+                return .error("/session はホスト側が simctl launch+注入で担う(in-app では未対応)",
+                              status: 501)
+            case ("POST", "/terminate"):
+                return .error("/terminate は in-app では未対応(ホスト側でプロセス制御)", status: 501)
+            default:
+                return .error("not found: \(req.method) \(req.path)", status: 404)
+            }
+        } catch let e as InAppError {
+            return .error(e.message, status: e.status)
+        } catch {
+            return .error("\(error)", status: 500)
         }
     }
+
+    // MARK: - Handlers
 
     private func handleStatus() -> InAppHTTPServer.Response {
-        let device = UIDevice.current
-        return .json(StatusResponse(
-            ready: true,
-            device: device.name,
-            osVersion: "\(device.systemName) \(device.systemVersion)",
-            sessionBundleID: Bundle.main.bundleIdentifier))
+        mainSync {
+            let device = UIDevice.current
+            return .json(StatusResponse(
+                ready: true,
+                device: device.name,
+                osVersion: "\(device.systemName) \(device.systemVersion)",
+                sessionBundleID: Bundle.main.bundleIdentifier))
+        }
     }
 
-    private func handleSnapshot() -> InAppHTTPServer.Response {
-        guard let window = keyWindow() else {
-            return .error("キーウィンドウがありません", status: 409)
+    private func handleSnapshot() throws -> InAppHTTPServer.Response {
+        try mainSync {
+            guard let window = self.keyWindow() else {
+                throw InAppError(409, "キーウィンドウがありません")
+            }
+            let result = InAppSnapshot.capture(window: window)
+            self.frames = result.frames
+            return .json(SnapshotResponse(
+                sessionBundleID: Bundle.main.bundleIdentifier,
+                screen: result.screen,
+                elements: result.elements,
+                truncatedCount: result.truncated))
         }
-        let result = InAppSnapshot.capture(window: window)
-        frames = result.frames
-        return .json(SnapshotResponse(
-            sessionBundleID: Bundle.main.bundleIdentifier,
-            screen: result.screen,
-            elements: result.elements,
-            truncatedCount: result.truncated))
+    }
+
+    private func handleTap(_ body: Data) throws -> InAppHTTPServer.Response {
+        let req = try decode(TapRequest.self, body)
+        try performWithSettle { window in
+            let p = try self.resolvePoint(ref: req.ref, x: req.x, y: req.y)
+            FTSynthTap(window, p)
+        }
+        return .json(OKResponse())
+    }
+
+    private func handleType(_ body: Data) throws -> InAppHTTPServer.Response {
+        let req = try decode(TypeRequest.self, body)
+        if req.ref != nil {
+            try performWithSettle { window in
+                let p = try self.resolvePoint(ref: req.ref, x: nil, y: nil)
+                FTSynthTap(window, p)
+            }
+        }
+        var inserted = false
+        try performWithSettle { _ in inserted = FTInsertTextIntoFirstResponder(req.text) }
+        guard inserted else {
+            throw InAppError(409, "フォーカスされた入力欄がありません(先に対象を tap してください)")
+        }
+        return .json(OKResponse())
+    }
+
+    private func handleSwipe(_ body: Data) throws -> InAppHTTPServer.Response {
+        let req = try decode(SwipeRequest.self, body)
+        try performWithSettle { window in
+            let (from, to) = Self.swipeVector(req.direction, in: window.bounds)
+            FTSynthSwipe(window, from, to, 12)
+        }
+        return .json(OKResponse())
+    }
+
+    private func handlePress(_ body: Data) throws -> InAppHTTPServer.Response {
+        let req = try decode(PressRequest.self, body)
+        // press は押下保持中にランループを回すため cap を duration 分広げる
+        try performWithSettle(capMs: 2500 + Int(req.duration * 1000)) { window in
+            let p = try self.resolvePoint(ref: req.ref, x: nil, y: nil)
+            FTSynthPress(window, p, req.duration)
+        }
+        return .json(OKResponse())
+    }
+
+    private func handleScreenshot() throws -> InAppHTTPServer.Response {
+        try mainSync {
+            guard let window = self.keyWindow() else {
+                throw InAppError(409, "キーウィンドウがありません")
+            }
+            let renderer = UIGraphicsImageRenderer(bounds: window.bounds)
+            let image = renderer.image { _ in
+                window.drawHierarchy(in: window.bounds, afterScreenUpdates: false)
+            }
+            guard let png = image.pngData() else {
+                throw InAppError(500, "PNG エンコードに失敗しました")
+            }
+            return .png(png)
+        }
+    }
+
+    // MARK: - 実行ヘルパ
+
+    /// バックグラウンドのハンドラからメインで同期実行する。UIKit 参照用。
+    private func mainSync<T>(_ block: @escaping () throws -> T) rethrows -> T {
+        if Thread.isMainThread { return try block() }
+        return try DispatchQueue.main.sync { try block() }
+    }
+
+    /// メインでアクションを実行し、整定(または cap)まで待ってから返る。
+    /// block 内の throw はバックグラウンド側へ伝播する。
+    private func performWithSettle(capMs: Int = 2500,
+                                   _ block: @escaping (UIWindow) throws -> Void) throws {
+        let sem = DispatchSemaphore(value: 0)
+        var thrown: Error?
+        DispatchQueue.main.async {
+            guard let window = self.keyWindow() else {
+                thrown = InAppError(409, "キーウィンドウがありません")
+                sem.signal()
+                return
+            }
+            do {
+                try block(window)
+            } catch {
+                thrown = error
+                sem.signal()
+                return
+            }
+            InAppSettle.waitOnMain(capMs: capMs) { sem.signal() }
+        }
+        _ = sem.wait(timeout: .now() + .milliseconds(capMs + 1500))
+        if let thrown { throw thrown }
+    }
+
+    private func resolvePoint(ref: Int?, x: Double?, y: Double?) throws -> CGPoint {
+        if let ref {
+            guard let frame = frames[ref] else {
+                throw InAppError(404, "参照番号 [\(ref)] は未知です。先に GET /snapshot を実行してください")
+            }
+            return CGPoint(x: frame.midX, y: frame.midY)
+        }
+        if let x, let y { return CGPoint(x: x, y: y) }
+        throw InAppError(400, "ref または x/y が必要です")
+    }
+
+    private func decode<T: Decodable>(_ type: T.Type, _ body: Data) throws -> T {
+        do {
+            return try JSONDecoder().decode(type, from: body)
+        } catch {
+            throw InAppError(400, "リクエストボディの JSON が不正です: \(error)")
+        }
+    }
+
+    private static func swipeVector(_ direction: FTSwipeDirection, in bounds: CGRect) -> (CGPoint, CGPoint) {
+        let cx = bounds.midX, cy = bounds.midY
+        let dx = bounds.width * 0.35, dy = bounds.height * 0.35
+        switch direction {
+        // スワイプの向き = 指の動く向き(上スワイプ=下から上へ=コンテンツは上へスクロール)
+        case .up:    return (CGPoint(x: cx, y: cy + dy), CGPoint(x: cx, y: cy - dy))
+        case .down:  return (CGPoint(x: cx, y: cy - dy), CGPoint(x: cx, y: cy + dy))
+        case .left:  return (CGPoint(x: cx + dx, y: cy), CGPoint(x: cx - dx, y: cy))
+        case .right: return (CGPoint(x: cx - dx, y: cy), CGPoint(x: cx + dx, y: cy))
+        }
     }
 
     private func keyWindow() -> UIWindow? {
@@ -77,5 +224,14 @@ final class FTInAppBridge {
             if let first = windowScene.windows.first { return first }
         }
         return nil
+    }
+}
+
+struct InAppError: Error {
+    let status: Int
+    let message: String
+    init(_ status: Int, _ message: String) {
+        self.status = status
+        self.message = message
     }
 }

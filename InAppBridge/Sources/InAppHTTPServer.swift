@@ -81,19 +81,17 @@ final class InAppHTTPServer {
             }
             autoreleasepool {
                 if let request = readRequest(clientFD) {
-                    writeResponse(clientFD, dispatchToMain(request))
+                    // accept ループ(バックグラウンド)上でハンドラを呼ぶ。整定待ちはメインの
+                    // ランループを回す必要があるため、ここでメインを main.sync でブロックしない
+                    // (ブロックするとオブザーバが発火せずデッドロック)。UIKit へのアクセスは
+                    // 各ハンドラが必要な範囲だけメインへホップする。
+                    writeResponse(clientFD, handler(request))
                 } else {
                     writeResponse(clientFD, .error("bad request", status: 400))
                 }
             }
             close(clientFD)
         }
-    }
-
-    // UIKit はメインスレッド必須。ハンドラをメインで同期実行する。
-    private func dispatchToMain(_ request: Request) -> Response {
-        if Thread.isMainThread { return handler(request) }
-        return DispatchQueue.main.sync { handler(request) }
     }
 
     private func readRequest(_ fd: Int32) -> Request? {

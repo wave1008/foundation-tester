@@ -23,25 +23,29 @@ SWIFT_SOURCES=(
   "$ROOT/Sources/FTCore/BridgeDTO.swift"
   Sources/InAppHTTPServer.swift
   Sources/InAppSnapshot.swift
+  Sources/InAppSettle.swift
   Sources/InAppBridge.swift
 )
 
 echo "→ swiftc(${#SWIFT_SOURCES[@]} sources)..."
-# -wmo で全ソースを1オブジェクトに(-c 複数ソース+-o の制約回避)
+# -wmo で全ソースを1オブジェクトに(-c 複数ソース+-o の制約回避)。
+# -import-objc-header で InAppInput.h の C 関数(タッチ合成)を Swift から呼べるようにする。
 xcrun --sdk iphonesimulator swiftc -c -wmo -parse-as-library -O \
   "${SWIFT_SOURCES[@]}" \
+  -import-objc-header Sources/Bridging.h \
   -module-name FTInAppBridge \
   -target "$TARGET" -sdk "$SDK" \
   -o "$OUT/ftinapp.o"
 
-echo "→ clang(boot.m)..."
-xcrun --sdk iphonesimulator clang -c Sources/boot.m \
-  -isysroot "$SDK" -target "$TARGET" \
-  -o "$OUT/boot.o"
+echo "→ clang(boot.m, InAppInput.m)..."
+xcrun --sdk iphonesimulator clang -c -fobjc-arc Sources/boot.m \
+  -isysroot "$SDK" -target "$TARGET" -o "$OUT/boot.o"
+xcrun --sdk iphonesimulator clang -c -fobjc-arc Sources/InAppInput.m \
+  -isysroot "$SDK" -target "$TARGET" -o "$OUT/InAppInput.o"
 
 echo "→ link dylib..."
 xcrun --sdk iphonesimulator clang -dynamiclib -o "$DYLIB" \
-  "$OUT/ftinapp.o" "$OUT/boot.o" \
+  "$OUT/ftinapp.o" "$OUT/boot.o" "$OUT/InAppInput.o" \
   -isysroot "$SDK" -target "$TARGET" \
   -framework UIKit -framework Foundation
 
