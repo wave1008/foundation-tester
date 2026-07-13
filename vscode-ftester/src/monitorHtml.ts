@@ -369,7 +369,10 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
   </div>
 
   <div id="panel-settings" class="tab-panel" role="tabpanel" aria-labelledby="tab-settings" style="display: none;">
-    <div class="tab-placeholder">このタブは準備中です(設定機能を今後追加予定)</div>
+    <div class="settings-body">
+      <label class="settings-item"><input type="checkbox" id="settings-polling-mode"> ポーリングモードを使用する</label>
+      <div class="settings-hint">オンにすると画面を映像ストリーミングせず、従来のポーリング(定期スクリーンショット)で更新します。ストリーミングが不安定なときの回避用です。</div>
+    </div>
   </div>
 
   <!-- アイコンはcodicon "vm-running"/"play"/"debug-stop"のインラインSVG。

@@ -30,6 +30,9 @@ export interface FtesterConfig {
   /** iOS シミュレータのライブ映像ストリーミング(ftester-simstream)を使うか。true でも helper が
    * 未ビルド(resolveSimStream が undefined)なら自動でポーリングにフォールバックする。 */
   iosStreamEnabled: boolean;
+  /** Android 実機/エミュレータのライブ映像ストリーミング(ftester-androidstream)を使うか。
+   * iosStreamEnabled と同じ方針(helper 未ビルド・adb 未検出なら自動でポーリングにフォールバック)。 */
+  androidStreamEnabled: boolean;
 }
 
 /** ワークスペースルート(Package.swift のあるフォルダ)を解決する。開いていなければ undefined。 */
@@ -62,6 +65,7 @@ export function readConfig(workspaceRoot: string): FtesterConfig {
     monitorMaxWidth: Math.min(1600, Math.max(240, configuration.get<number>("monitorMaxWidth", 960))),
     liveFps: Math.min(30, Math.max(3, configuration.get<number>("liveFps", 12))),
     iosStreamEnabled: configuration.get<boolean>("iosStreamEnabled", true),
+    androidStreamEnabled: configuration.get<boolean>("androidStreamEnabled", true),
   };
 }
 
@@ -95,6 +99,61 @@ export function resolveSimStream(config: FtesterConfig): string | undefined {
   if (isExecutableFile(candidate)) {
     simStreamCache.set(config.binaryPath, candidate);
     return candidate;
+  }
+  return undefined;
+}
+
+/** binaryPath を見つけた ftester-androidstream のパスをキーにキャッシュ(resolveSimStream と同じ方針)。 */
+const androidStreamCache = new Map<string, string>();
+
+/**
+ * ftester バイナリと同じディレクトリにある ftester-androidstream(Android ライブ映像 helper)の絶対パス。
+ * resolveSimStream と同じ方針(実行可能ファイルが無ければ undefined、正の結果のみキャッシュ)。
+ */
+export function resolveAndroidStream(config: FtesterConfig): string | undefined {
+  const cached = androidStreamCache.get(config.binaryPath);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const candidate = path.join(path.dirname(config.binaryPath), "ftester-androidstream");
+  if (isExecutableFile(candidate)) {
+    androidStreamCache.set(config.binaryPath, candidate);
+    return candidate;
+  }
+  return undefined;
+}
+
+/** resolveAdb が見つけた adb の絶対パス(config に依存しないため単一キャッシュ。正の結果のみ)。 */
+let adbPathCache: string | undefined;
+
+/**
+ * adb 実行ファイルの絶対パス。候補順は ANDROID_HOME→$HOME/Library/Android/sdk→$PATH 各ディレクトリ→
+ * /opt/homebrew/bin→/usr/local/bin(Sources/ftester-androidstream/main.m・FTAndroid/AndroidDriver.swift の
+ * 解決順と揃えること。ただし当拡張は対話シェルの PATH を素直に使えるため $PATH 探索を追加している)。
+ * 見つからなければ undefined(呼び出し側はポーリングにフォールバック)。正の結果のみキャッシュする
+ * (resolveSimStream と同じ理由: 後から adb を導入すれば Reload 無しで有効化される)。
+ */
+export function resolveAdb(): string | undefined {
+  if (adbPathCache !== undefined) {
+    return adbPathCache;
+  }
+  const candidates: string[] = [];
+  const androidHome = process.env.ANDROID_HOME;
+  if (androidHome) {
+    candidates.push(path.join(androidHome, "platform-tools", "adb"));
+  }
+  candidates.push(path.join(os.homedir(), "Library", "Android", "sdk", "platform-tools", "adb"));
+  for (const dir of (process.env.PATH ?? "").split(path.delimiter)) {
+    if (dir.length > 0) {
+      candidates.push(path.join(dir, "adb"));
+    }
+  }
+  candidates.push("/opt/homebrew/bin/adb", "/usr/local/bin/adb");
+  for (const candidate of candidates) {
+    if (isExecutableFile(candidate)) {
+      adbPathCache = candidate;
+      return candidate;
+    }
   }
   return undefined;
 }
