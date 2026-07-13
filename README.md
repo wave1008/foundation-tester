@@ -264,6 +264,14 @@ FM探索・自己修復候補の確認・プロファイル編集支援といっ
 (`vscode-ftester/`)に一本化している。CLI と同じ `ftester api ...` サブコマンド経由で
 ftester 本体を呼び出すため、挙動は CLI・MCP と共通のモジュールに基づく。
 
+**デバイス画面はヘッドレス映像ストリーミングで表示する**: デバイスモニター・ライブ操作の
+画面は、変化駆動でフレーム(JPEG)を配信する常駐ヘルパー(iOS: `ftester-simstream` /
+Android: `ftester-androidstream`)経由でほぼリアルタイムに更新する。ScreenCaptureKit を
+使わずシミュレータ/エミュレータの画面を低負荷で流すヘッドレス方式で、静止画面では
+フレームをほぼ出さない。設定タブのトグル(`monitor.pollingMode`)で従来のポーリング
+(一定間隔の静止画取得)方式にも切り替えられる(ヘルパー未ビルド時は自動でポーリングに
+フォールバック)。
+
 セットアップ手順・各機能の詳細・設定一覧(`ftester.*`)は
 [vscode-ftester/README.md](vscode-ftester/README.md) を参照。
 
@@ -323,6 +331,8 @@ Projects/          テストプロジェクト(コミットして資産化する
 Sources/
   ftester/         CLI(swift-argument-parser。project/machine/profile コマンド含む)
   ftester-mcp/     MCP サーバ(stdio / JSON-RPC、自前実装)
+  ftester-simstream/     iOS シミュレータ画面のヘッドレス映像ストリーミング(変化駆動で JPEG を stdout 配信)
+  ftester-androidstream/ Android 画面のヘッドレス映像ストリーミング(iOS 版とフレームプロトコル互換)
   FTDSL/           Swift DSL 本体(コマンド・セレクタ式・発見・レポート・コード生成・ヒールキャッシュ)
   FTDSLMacros/     @TestClass / @Test マクロ実装(swift-syntax はここに閉じる)
   FTScenarioRunner/ ftester-scenarios-<project> の CLI 実装(list / run・NDJSON イベント)
