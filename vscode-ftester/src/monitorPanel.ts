@@ -137,7 +137,7 @@ class MonitorPanelController implements vscode.Disposable {
     this.processManager = new MonitorProcessManager(this.deps);
     this.profiles = new MonitorProfilesController(this.deps);
     this.deviceOps = new MonitorDeviceOps(this.deps);
-    this.live = new MonitorLiveController(this.deps);
+    this.live = new MonitorLiveController(this.deps, cli, () => void testTree.refresh());
     this.explore = new MonitorExploreController(this.deps, cli, workspaceState, () => void testTree.refresh());
 
     this.unsubscribeBus = eventBus.subscribe((message) => this.handleBusMessage(message));

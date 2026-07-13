@@ -149,19 +149,20 @@ final class StepDescriptionTests: XCTestCase {
         XCTAssertNil(StepDescription.describe(step: FlowStep(action: "unknown")))
     }
 
-    // MARK: - codegen の行末コメント(生成文優先、note フォールバック)
+    // MARK: - codegen の行末コメント(FM の note のみ。機械的な説明=StepDescription は付けない)
 
-    func testCodeGenUsesGeneratedDescription() {
+    func testCodeGenUsesNoteAsComment() {
+        // note があればそれを行末コメントにする(explore は FM がここに理由を入れる)
         let step = FlowStep(action: "tap", locator: FlowLocator(label: "設定"),
                             note: "FM の理由文")
         let lines = ScenarioCodeGen.render(step: step, indent: "")
-        XCTAssertEqual(lines, ["tap(\"設定\")  // \"設定\"をタップする"])
+        XCTAssertEqual(lines, ["tap(\"設定\")  // FM の理由文"])
     }
 
-    func testCodeGenFallsBackToNote() {
-        // describe が nil になるステップ(swipe の未知方向)では note へフォールバック
-        let step = FlowStep(action: "swipe", direction: "diagonal", note: "FM の理由文")
+    func testCodeGenOmitsCommentWhenNoNote() {
+        // note が無いステップ(記録機能の生成物)は行末コメントを付けない
+        let step = FlowStep(action: "tap", locator: FlowLocator(label: "設定"))
         let lines = ScenarioCodeGen.render(step: step, indent: "")
-        XCTAssertEqual(lines, ["swipe(.diagonal)  // FM の理由文"])
+        XCTAssertEqual(lines, ["tap(\"設定\")"])
     }
 }

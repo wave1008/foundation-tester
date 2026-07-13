@@ -16,7 +16,8 @@ struct ApiCommand: AsyncParsableCommand {
                       ApiListApps.self, ApiDeviceUp.self, ApiDeviceDown.self, ApiValidateProfile.self,
                       ApiLiveCommand.self, ApiExploreCommand.self,
                       ApiDeviceCatalogCommand.self, ApiCreateDeviceCommand.self,
-                      ApiInstalledDevicesCommand.self, ApiHostMetricsCommand.self])
+                      ApiInstalledDevicesCommand.self, ApiHostMetricsCommand.self,
+                      ApiGenScenarioCommand.self, ApiDeleteScenarioCommand.self])
 }
 
 struct ApiListScenarios: AsyncParsableCommand {
@@ -94,9 +95,35 @@ struct ApiListScenarios: AsyncParsableCommand {
                 methodLine: methodLine, folder: folder))
         }
 
+        // 空クラス(@Test を1件も持たない @TestClass)もツリーに残す。classFileMap(ソース走査)に
+        // ありシナリオが1件も無いものが対象。非 @TestClass のヘルパ class は isTestClass で除外する。
+        let classesWithScenarios = Set(infos.map { Self.className(of: $0.id) })
+        var emptyClassOutputs: [ApiEmptyClassInfo] = []
+        for (className, sourceURL) in classFileMap where !classesWithScenarios.contains(className) {
+            let source: String?
+            if let cached = sourceCache[sourceURL] {
+                source = cached
+            } else if let loaded = try? String(contentsOf: sourceURL, encoding: .utf8) {
+                sourceCache[sourceURL] = loaded
+                source = loaded
+            } else {
+                source = nil
+            }
+            guard let source,
+                  ScenarioSourceEditor.isTestClass(inSource: source, className: className) else {
+                continue
+            }
+            emptyClassOutputs.append(ApiEmptyClassInfo(
+                className: className, file: sourceURL.path,
+                classLine: ScenarioSourceEditor.classDeclarationLine(inSource: source, className: className),
+                folder: ScenarioFolders.folderName(of: sourceURL, scenariosDir: scenariosDir)))
+        }
+        emptyClassOutputs.sort { $0.className.localizedStandardCompare($1.className) == .orderedAscending }
+
         let output = ApiListScenariosOutput(
             project: testProject.name, repoRoot: repoRoot.path,
-            scenariosDir: scenariosDir.path, folders: folders, scenarios: scenarioOutputs)
+            scenariosDir: scenariosDir.path, folders: folders, scenarios: scenarioOutputs,
+            emptyClasses: emptyClassOutputs)
 
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
@@ -153,6 +180,25 @@ private struct ApiScenarioInfo: Encodable {
     }
 }
 
+/// @Test を1件も持たない @TestClass(空クラス)。ツリーに class ノードだけ残すため出力する。
+/// 対向: vscode-ftester/src/model.ts EmptyClassInfo、testTree.ts。
+private struct ApiEmptyClassInfo: Encodable {
+    let className: String
+    let file: String
+    let classLine: Int?
+    let folder: String?
+
+    private enum CodingKeys: String, CodingKey { case className, file, classLine, folder }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(className, forKey: .className)
+        try container.encode(file, forKey: .file)
+        try container.encode(classLine, forKey: .classLine)  // null 明示(ApiScenarioInfo と同方針)
+        try container.encode(folder, forKey: .folder)
+    }
+}
+
 /// ftester api list-scenarios の出力全体
 private struct ApiListScenariosOutput: Encodable {
     let project: String
@@ -160,6 +206,7 @@ private struct ApiListScenariosOutput: Encodable {
     let scenariosDir: String
     let folders: [String]
     let scenarios: [ApiScenarioInfo]
+    let emptyClasses: [ApiEmptyClassInfo]
 }
 
 // MARK: - api steps

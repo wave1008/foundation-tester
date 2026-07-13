@@ -156,27 +156,32 @@ export class FtesterTestTree implements vscode.Disposable {
       return node;
     };
 
-    const getClassNode = (scenario: ScenarioInfo, className: string): vscode.TestItem => {
-      const key = classId(scenario.folder, className);
+    const getClassNode = (
+      folder: string | null,
+      className: string,
+      file: string | null | undefined,
+      classLine: number | null,
+    ): vscode.TestItem => {
+      const key = classId(folder, className);
       const existing = classNodes.get(key);
       if (existing) {
         return existing;
       }
-      const uri = scenario.file ? vscode.Uri.file(scenario.file) : undefined;
+      const uri = file ? vscode.Uri.file(file) : undefined;
       const node = this.controller.createTestItem(key, className, uri);
-      if (scenario.classLine !== null) {
-        const line = Math.max(0, scenario.classLine - 1); // 1起点 → 0起点
+      if (classLine !== null) {
+        const line = Math.max(0, classLine - 1); // 1起点 → 0起点
         node.range = new vscode.Range(line, 0, line, 0);
       }
       classNodes.set(key, node);
-      const folderNode = getFolderNode(scenario.folder);
+      const folderNode = getFolderNode(folder);
       (folderNode ? folderNode.children : this.controller.items).add(node);
       return node;
     };
 
     for (const scenario of data.scenarios) {
       const className = scenario.id.split(".")[0] ?? scenario.id;
-      const classNode = getClassNode(scenario, className);
+      const classNode = getClassNode(scenario.folder, className, scenario.file, scenario.classLine);
 
       const uri = scenario.file ? vscode.Uri.file(scenario.file) : undefined;
       const leaf = this.controller.createTestItem(scenario.id, scenario.title, uri);
@@ -189,6 +194,12 @@ export class FtesterTestTree implements vscode.Disposable {
         leaf.tags = [DELETED_TAG];
       }
       classNode.children.add(leaf);
+    }
+
+    // 空クラス(@Test なし)は class ノードだけ作る(子リーフ無し)。唯一の関数を消しても
+    // ファイルが残っていることをツリーで示すため(対向: list-scenarios の emptyClasses)。
+    for (const empty of data.emptyClasses ?? []) {
+      getClassNode(empty.folder, empty.className, empty.file, empty.classLine);
     }
   }
 }

@@ -11,6 +11,16 @@ export interface ListScenariosResult {
   scenariosDir: string;
   folders: string[];
   scenarios: ScenarioInfo[];
+  /** @Test を1件も持たない @TestClass(空クラス)。class ノードだけツリーに残す。 */
+  emptyClasses?: EmptyClassInfo[];
+}
+
+/** 空クラス(@Test なし)1件分。対向: Sources/ftester/ApiCommands.swift ApiEmptyClassInfo。 */
+export interface EmptyClassInfo {
+  className: string;
+  file: string;
+  classLine: number | null;
+  folder: string | null;
 }
 
 export interface ScenarioInfo {

@@ -27,6 +27,7 @@ public enum ScenarioCodeGen {
         lines.append(attr)
         lines.append("class \(className) {")
         lines.append("")
+        // @Test の説明文は flow.name を使う(record 経路=FM 操作要約 / explore 経路=シナリオ名)
         lines.append("    @Test(\(literal(flow.name)))")
         lines.append("    func \(methodName(1))() {")
         lines.append("        scenario {")
@@ -63,13 +64,14 @@ public enum ScenarioCodeGen {
         return lines.joined(separator: "\n")
     }
 
-    /// FlowStep → DSL コマンド行(+行末コメント)。コメントは自然言語の生成文
-    /// (StepDescription)を優先し、無ければ FM の意図メモ(note)へフォールバックする
+    /// FlowStep → DSL コマンド行(+行末コメント)。コメントは FM の意図メモ(note)のみ。
+    /// 機械的な操作説明(StepDescription)は付けない(記録機能では note が無く、識別子から
+    /// 自明な説明はコメント規約で不可のため。explore は FM が note を入れるので残る)
     static func render(step: FlowStep, indent: String) -> [String] {
         guard var line = command(for: step) else {
             return [indent + "// (未対応ステップ: \(step.summary))"]
         }
-        if let comment = StepDescription.describe(step: step) ?? step.note, !comment.isEmpty {
+        if let comment = step.note, !comment.isEmpty {
             line += "  // \(comment.replacingOccurrences(of: "\n", with: " "))"
         }
         return [indent + line]
@@ -88,6 +90,12 @@ public enum ScenarioCodeGen {
                 return "press(\(literal(selector)))"
             case "swipe":
                 return "swipe(.\(step.direction ?? "up"))"
+            case "home":
+                return "home()"
+            case "appSwitcher":
+                return "appSwitcher()"
+            case "terminate":
+                return "terminateApp()"
             case "scrollTo":
                 var args = [literal(selector)]
                 if let direction = step.direction, direction != "up" {
@@ -211,8 +219,13 @@ public enum ScenarioCodeGen {
 
     /// フロー名から Swift クラス名を作る(日本語可・数字始まり回避・重複時 _2)
     public static func suggestedClassName(for flow: Flow, existing: Set<String> = []) -> String {
+        suggestedClassName(fromName: flow.name, existing: existing)
+    }
+
+    /// 生の名前文字列から Swift クラス名を作る(record 経路は FM のシンプル名を直接渡す)
+    public static func suggestedClassName(fromName rawName: String, existing: Set<String> = []) -> String {
         var sanitized = ""
-        for scalar in flow.name.unicodeScalars {
+        for scalar in rawName.unicodeScalars {
             if CharacterSet.alphanumerics.contains(scalar) ||
                scalar.properties.isIdeographic ||
                (0x3040...0x30FF).contains(Int(scalar.value)) {  // ひらがな・カタカナ

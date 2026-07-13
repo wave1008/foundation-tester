@@ -233,7 +233,9 @@ export type LiveServeCommand =
   | { readonly cmd: "home" }
   | { readonly cmd: "terminate" }
   | { readonly cmd: "refresh" }
-  | { readonly cmd: "frame" };
+  | { readonly cmd: "frame" }
+  | { readonly cmd: "launch"; readonly bundle: string }
+  | { readonly cmd: "install"; readonly path: string };
 
 /** serve の stdin へ書き込む1行(末尾改行付き)を組み立てる。 */
 export function serializeLiveServeCommand(command: LiveServeCommand): string {
@@ -326,6 +328,92 @@ export function frameToDisplayRect(frame: LiveRect, screen: LiveSize, display: L
     width: frame.width * scaleX,
     height: frame.height * scaleY,
   };
+}
+
+/** click の変換先ポイント座標を含む要素のうち、面積最小のもの(=重なりの中で最も具体的なもの)を返す。
+ * 一致なしは undefined(レコーディング時、対象要素が無いタップ・長押しは記録しない判定に使う)。 */
+export function hitTestElement(point: LivePoint, elements: readonly LiveElement[]): LiveElement | undefined {
+  let best: LiveElement | undefined;
+  let bestArea = Infinity;
+  for (const element of elements) {
+    const { frame } = element;
+    if (point.x < frame.x || point.x > frame.x + frame.width || point.y < frame.y || point.y > frame.y + frame.height) {
+      continue;
+    }
+    const area = frame.width * frame.height;
+    if (area < bestArea) {
+      bestArea = area;
+      best = element;
+    }
+  }
+  return best;
+}
+
+// ---- レコーディング → FlowStep 変換(契約: Sources/FTCore/Flow.swift。gen-scenario --steps の入力) ----
+
+/** Flow.swift FlowLocator の使用フィールドのみ(raw は生成側では使わない)。 */
+export interface FlowLocatorShape {
+  readonly id?: string;
+  readonly label?: string;
+  readonly type?: string;
+  readonly index?: number;
+}
+
+/** Flow.swift FlowStep の使用フィールドのみ。gen-scenario --steps に渡す JSON 配列の要素形。
+ * home/appSwitcher/terminate はロケータ無し(ScenarioCodeGen が home()/appSwitcher()/terminateApp() に写像)。 */
+export interface RecordedStep {
+  readonly action: "tap" | "type" | "press" | "swipe" | "home" | "appSwitcher" | "terminate";
+  readonly locator?: FlowLocatorShape;
+  readonly fallbacks?: readonly FlowLocatorShape[];
+  readonly text?: string;
+  readonly direction?: "up" | "down" | "left" | "right";
+}
+
+/**
+ * 契約: Sources/FTCore/Flow.swift FlowLocatorBuilder.chain と同じ優先度(同期対象):
+ * identifier > label > (同じ type 内での位置)index。全て無ければ type+index:0 のみを返す。
+ */
+export function locatorChainForElement(
+  element: LiveElement,
+  elements: readonly LiveElement[],
+): { locator: FlowLocatorShape; fallbacks: FlowLocatorShape[] } {
+  const locators: FlowLocatorShape[] = [];
+  if (element.identifier !== null && element.identifier.length > 0) {
+    locators.push({ id: element.identifier });
+  }
+  if (element.label !== null && element.label.length > 0) {
+    locators.push({ label: element.label });
+  }
+  const sameType = elements.filter((e) => e.type === element.type);
+  const index = sameType.findIndex((e) => e.ref === element.ref);
+  if (index !== -1) {
+    locators.push({ type: element.type, index });
+  }
+  if (locators.length === 0) {
+    locators.push({ type: element.type, index: 0 });
+  }
+  return { locator: locators[0]!, fallbacks: locators.slice(1) };
+}
+
+// ---- gen-scenario(レコーディング→シナリオ生成)NDJSON イベント ---------------------------------
+// 契約: `ftester api gen-scenario --project <p> --steps <path>` の stdout NDJSON。
+
+export type GenScenarioEvent =
+  | { readonly event: "scenarioGenerated"; readonly file: string; readonly className: string }
+  | { readonly event: "error"; readonly message: string };
+
+/** "genStarted" 等の未知イベントは undefined(呼び出し側で無視する)。 */
+export function parseGenScenarioEvent(value: unknown): GenScenarioEvent | undefined {
+  if (!isRecord(value) || typeof value.event !== "string") {
+    return undefined;
+  }
+  if (value.event === "scenarioGenerated" && typeof value.file === "string" && typeof value.className === "string") {
+    return { event: "scenarioGenerated", file: value.file, className: value.className };
+  }
+  if (value.event === "error" && typeof value.message === "string") {
+    return { event: "error", message: value.message };
+  }
+  return undefined;
 }
 
 // ---- 要素一覧の1行表示フォーマット --------------------------------------------------------
@@ -465,7 +553,14 @@ export type LiveToWebviewMessage =
   | { readonly type: "frame"; readonly image: string }
   | { readonly type: "actionError"; readonly message: string }
   | { readonly type: "busy"; readonly busy: boolean }
-  | { readonly type: "connection"; readonly connected: boolean; readonly message: string | null };
+  | { readonly type: "connection"; readonly connected: boolean; readonly message: string | null }
+  | {
+      readonly type: "appProfiles";
+      readonly profiles: readonly string[];
+      readonly selectedId: string | undefined;
+    }
+  | { readonly type: "recording"; readonly active: boolean }
+  | { readonly type: "recordStatus"; readonly message: string; readonly file: string | null };
 
 export function toSnapshotMessage(snapshot: LiveSnapshot): LiveToWebviewMessage {
   return {
@@ -513,7 +608,10 @@ export type LiveFromWebviewMessage =
   | { readonly type: "appSwitcher" }
   | { readonly type: "home" }
   | { readonly type: "terminate" }
-  | { readonly type: "visibility"; readonly visible: boolean };
+  | { readonly type: "visibility"; readonly visible: boolean }
+  | { readonly type: "refreshAppProfiles" }
+  | { readonly type: "startRecord"; readonly appProfile: string; readonly autoInstall: boolean }
+  | { readonly type: "stopRecord" };
 
 export function isLiveFromWebviewMessage(value: unknown): value is LiveFromWebviewMessage {
   if (!isRecord(value) || typeof value.type !== "string") {
@@ -525,6 +623,8 @@ export function isLiveFromWebviewMessage(value: unknown): value is LiveFromWebvi
     case "terminate":
     case "appSwitcher":
     case "home":
+    case "refreshAppProfiles":
+    case "stopRecord":
       return true;
     case "selectDevice":
     case "openDevice":
@@ -561,6 +661,8 @@ export function isLiveFromWebviewMessage(value: unknown): value is LiveFromWebvi
       return typeof value.text === "string" && (value.ref === null || typeof value.ref === "number");
     case "visibility":
       return typeof value.visible === "boolean";
+    case "startRecord":
+      return typeof value.appProfile === "string" && typeof value.autoInstall === "boolean";
     default:
       return false;
   }
