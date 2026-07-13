@@ -29,10 +29,12 @@ import {
   type FtesterConfig,
   listAppProfileNames,
   readAppProfileTarget,
+  resolveAdb,
+  resolveAndroidStream,
   resolveProjectName,
   resolveSimStream,
 } from "./config";
-import { IosStreamPipeline, type LiveStreamPipeline } from "./deviceStream";
+import { StreamPipeline, type LiveStreamPipeline } from "./deviceStream";
 import {
   buildDeviceArgs,
   devicesToOptions,
@@ -84,10 +86,10 @@ const MAX_CONSECUTIVE_TIMEOUT_KILLS = 3;
  * 成功時は待ちなしで次フレームを送る(ホットループ防止のため失敗系のみ間隔を空ける)。 */
 const FRAME_IDLE_RETRY_MS = 500;
 
-/** iOS ストリーミング helper へ渡すフレーム長辺px。ネイティブのシミュレータフレームは ~1206x2622・
- * JPEG ~300KB と重いため既定 900px 幅へ縮めて転送量を抑える(config に専用ノブは無い)。
- * アスペクト比は helper 側で保たれるため、serve snapshot 基準のタップ座標変換は崩れない。 */
-const IOS_STREAM_MAX_WIDTH = 900;
+/** ライブ映像ストリーミング helper(iOS/Android共通)へ渡すフレーム長辺px。ネイティブのシミュレータ
+ * フレームは ~1206x2622・JPEG ~300KB と重いため既定 900px 幅へ縮めて転送量を抑える(config に専用
+ * ノブは無い)。アスペクト比は helper 側で保たれるため、serve snapshot 基準のタップ座標変換は崩れない。 */
+const LIVE_STREAM_MAX_WIDTH = 900;
 
 /** serve 常駐プロセスの不在・応答不能・終了を表す文言。これらは個々の操作失敗(タップ失敗・
  * 未入力など)とは違い「接続状態」の問題で、serve が復帰すれば自動で解消する。postActionError が
@@ -195,11 +197,13 @@ export class MonitorLiveController implements vscode.Disposable {
   /** 自動フレームの次回 tick タイマー。 */
   private frameTimer: ReturnType<typeof setTimeout> | undefined;
 
-  // ---- iOS 画面ストリーミング(ftester-simstream。ポーリング frameTick の低負荷な代替) ----
-  /** 稼働中のストリーミング helper(将来 Android 用が増えても LiveStreamPipeline で1本化)。 */
+  // ---- 画面ストリーミング(iOS: ftester-simstream / Android: ftester-androidstream。
+  // ポーリング frameTick の低負荷な代替) ----
+  /** 稼働中のストリーミング helper(iOS/Android共通の StreamPipeline で1本化)。 */
   private streamPipeline: LiveStreamPipeline | undefined;
-  /** streamPipeline がバインドされているシミュレータ UDID(デバイス切り替え時の張り替え要否判定)。 */
-  private streamUdid: string | undefined;
+  /** streamPipeline がバインドされているデバイスキー(iOS: シミュレータ UDID、Android: adb serial)。
+   * デバイス切り替え時の張り替え要否判定に使う。 */
+  private streamKey: string | undefined;
 
   // ---- レコーディング(操作→FlowStep記録→gen-scenario) -----------------------------------
   private recording = false;
@@ -803,25 +807,59 @@ export class MonitorLiveController implements vscode.Disposable {
 
   // ---- ライブ映像の供給元切り替え(ストリーミング ⇄ ポーリング) --------------------------
 
+  /** 設定タブの「ポーリングモードを使用する」トグル直後に monitorPanel.ts から呼ぶ
+   * (updateLiveFrameSource は private なため公開する窓口)。 */
+  refreshFrameSource(): void {
+    this.updateLiveFrameSource();
+  }
+
   /**
-   * ライブフレームの供給元を「iOS 画面ストリーミング(ftester-simstream helper)」と
-   * 「serve ポーリング(frameTick)」の間で切り替える唯一の分岐点。デバイス選択・表示状態が
-   * 変わるたびに呼ぶ。ストリーミング条件を満たせば frameTick を止めて helper を起動し、
-   * 満たさなければ helper を止めて(表示中なら)ポーリングへ戻す。ポーリングはヘッドレスでも
-   * 動くフォールバックなので、ストリーミング不可・helper 未ビルドでもライブ操作は成立する。
+   * ライブフレームの供給元を「画面ストリーミング(iOS: ftester-simstream / Android:
+   * ftester-androidstream)」と「serve ポーリング(frameTick)」の間で切り替える唯一の分岐点。
+   * デバイス選択・表示状態が変わるたびに呼ぶ。ストリーミング条件を満たせば frameTick を止めて
+   * helper を起動し、満たさなければ helper を止めて(表示中なら)ポーリングへ戻す。ポーリングは
+   * ヘッドレスでも動くフォールバックなので、ストリーミング不可・helper 未ビルドでもライブ操作は成立する。
+   * isPollingMode() が true の間は両プラットフォームともストリーミング条件を無条件に不成立とする。
    */
   private updateLiveFrameSource(): void {
     const config = this.deps.getConfig();
     const device = this.currentDeviceRef();
-    // udid があるのは iOS(解決済みシミュレータ UDID)のときのみ。Android は常にポーリング。
-    const udid = device?.platform === "ios" ? device.udid : null;
-    const simStreamPath =
-      this.liveTabVisible && config.iosStreamEnabled && udid ? resolveSimStream(config) : undefined;
-    if (simStreamPath && udid) {
-      this.clearFrameTimer();
-      this.startIosStreamPipeline(udid, simStreamPath, config.liveFps);
-      return;
+    const pollingForced = this.deps.isPollingMode();
+
+    if (!pollingForced && this.liveTabVisible && config.iosStreamEnabled && device?.platform === "ios" && device.udid) {
+      const simStreamPath = resolveSimStream(config);
+      if (simStreamPath) {
+        this.clearFrameTimer();
+        this.startStreamPipeline(device.udid, {
+          command: simStreamPath,
+          args: ["--udid", device.udid, "--fps", String(config.liveFps), "--max-width", String(LIVE_STREAM_MAX_WIDTH)],
+          logPrefix: "ios-stream",
+        });
+        return;
+      }
+    } else if (
+      !pollingForced &&
+      this.liveTabVisible &&
+      config.androidStreamEnabled &&
+      device?.platform === "android" &&
+      device.serial
+    ) {
+      const androidStreamPath = resolveAndroidStream(config);
+      const adbPath = androidStreamPath ? resolveAdb() : undefined;
+      if (androidStreamPath && adbPath) {
+        this.clearFrameTimer();
+        this.startStreamPipeline(device.serial, {
+          command: androidStreamPath,
+          args: [
+            "--serial", device.serial, "--adb", adbPath,
+            "--fps", String(config.liveFps), "--max-width", String(LIVE_STREAM_MAX_WIDTH),
+          ],
+          logPrefix: "android-stream",
+        });
+        return;
+      }
     }
+
     this.stopStreamPipeline();
     if (this.liveTabVisible) {
       this.scheduleFrameTick(0);
@@ -830,19 +868,21 @@ export class MonitorLiveController implements vscode.Disposable {
     }
   }
 
-  /** udid(iOS)向けの ftester-simstream を起動する。同じ UDID で既に稼働中なら何もしない
-   * (張り替えでフレームが途切れないように)。別 UDID なら旧 helper を止めて張り替える。 */
-  private startIosStreamPipeline(udid: string, simStreamPath: string, fps: number): void {
-    if (this.streamPipeline && this.streamPipeline.isRunning() && this.streamUdid === udid) {
+  /** key(iOS: UDID、Android: adb serial)向けの StreamPipeline を起動する。同じ key で既に稼働中
+   * なら何もしない(張り替えでフレームが途切れないように)。別 key なら旧 helper を止めて張り替える。 */
+  private startStreamPipeline(
+    key: string,
+    spec: { readonly command: string; readonly args: readonly string[]; readonly logPrefix: string },
+  ): void {
+    if (this.streamPipeline && this.streamPipeline.isRunning() && this.streamKey === key) {
       return;
     }
     this.stopStreamPipeline();
-    this.streamUdid = udid;
-    const pipeline = new IosStreamPipeline({
-      udid,
-      fps,
-      maxWidth: IOS_STREAM_MAX_WIDTH,
-      simStreamPath,
+    this.streamKey = key;
+    const pipeline = new StreamPipeline({
+      command: spec.command,
+      args: spec.args,
+      logPrefix: spec.logPrefix,
       outputChannel: this.deps.outputChannel,
       onFrame: (image) => {
         // ライブタブの frame メッセージは w/h を持たない(deviceStream.ts 冒頭コメント参照)ため無視する。
@@ -862,13 +902,13 @@ export class MonitorLiveController implements vscode.Disposable {
       this.streamPipeline.dispose();
       this.streamPipeline = undefined;
     }
-    this.streamUdid = undefined;
+    this.streamKey = undefined;
   }
 
   /** ストリーミングが継続不能になったときのフォールバック。helper を止め、接続断は出さずに
    * ポーリング(frameTick)へ戻す(ポーリングはヘッドレスでも動く既存経路)。 */
   private handleStreamGiveUp(message: string): void {
-    this.deps.outputChannel.appendLine(`[ios-stream] ${message} ポーリングに切り替えます。`);
+    this.deps.outputChannel.appendLine(`[live-stream] ${message} ポーリングに切り替えます。`);
     this.stopStreamPipeline();
     if (this.liveTabVisible) {
       this.scheduleFrameTick(0);

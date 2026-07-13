@@ -1,11 +1,14 @@
 // deviceStream.ts
-// ライブ操作タブ向けの、デバイス画面を映像ストリーミングする常駐 helper のプロセス管理。
-// 現状は iOS シミュレータ専用(ftester-simstream)。ポーリング(monitorLiveController.ts の
-// frameTick)に対する低負荷な代替として、helper が JPEG フレームを stdout へ流し続けるのを
-// 逐次パースして onFrame へ渡す。プロセス管理は monitorLiveController.ts の serve と同じ思想:
-// SIGTERM→2秒後 SIGKILL・予期しない終了は一定間隔で自動再起動・起動直後の異常終了が連続したら諦める。
+// ライブ操作タブ・デバイスモニタータイル向けの、デバイス画面を映像ストリーミングする常駐 helper の
+// プロセス管理。iOS(ftester-simstream)・Android(ftester-androidstream)共通。両者の違いは
+// spawn する command/args のみ(呼び出し側が組み立てる。StreamPipeline 自体はどちらのプラット
+// フォームかを知らない)。ポーリング(monitorLiveController.ts の frameTick)に対する低負荷な代替
+// として、helper が JPEG フレームを stdout へ流し続けるのを逐次パースして onFrame へ渡す。
+// プロセス管理は monitorLiveController.ts の serve と同じ思想: SIGTERM→2秒後 SIGKILL・
+// 予期しない終了は一定間隔で自動再起動・起動直後の異常終了が連続したら諦める。
 //
-// stdout フレームフォーマット(契約。対向: Sources/ftester-simstream/main.m。片方を変えたら両方直す):
+// stdout フレームフォーマット(契約。対向: Sources/ftester-simstream/main.m(iOS)・
+// Sources/ftester-androidstream/main.m(Android)。片方を変えたら両方直す):
 //   フレームを次の順で繰り返す(テキストは一切混ざらない。ログ・エラーは stderr へ):
 //     WIDTH : uint16 big-endian(エンコード済み画像の幅px)
 //     HEIGHT: uint16 big-endian(エンコード済み画像の高さpx)
@@ -29,7 +32,7 @@ const KILL_GRACE_MS = 2000;
 /** 予期しない終了後、自動再起動するまでの待ち(ms)。 */
 const RESTART_DELAY_MS = 1000;
 /** 無フレーム監視(wedge)の上限(ms)。これを超えて1フレームも届かなければ helper が固まったとみなし
- * 再起動する。iOS の静止画面は正当に長時間ほぼ0フレームになり得るため、短くすると健全な待機を
+ * 再起動する。静止画面は正当に長時間ほぼ0フレームになり得るため、短くすると健全な待機を
  * 誤検知する。15秒は「本当に固まった」場合だけを拾うための余裕。wedge 由来の kill は起動から
  * 15秒後=HEALTHY_WINDOW_MS 超なので、下の連続失敗カウントには載らず give-up を誘発しない。 */
 const WEDGE_TIMEOUT_MS = 15000;
@@ -38,19 +41,21 @@ const HEALTHY_WINDOW_MS = 10000;
 /** HEALTHY_WINDOW_MS 内の連続異常終了がこの回数に達したら諦めて onFailure(→ポーリングへ)。 */
 const MAX_QUICK_FAILURES = 3;
 
-/** AndroidStreamPipeline 等が将来追加されても monitorLiveController.ts が両者を1つのフィールドで
- * 持てるようにする共通インターフェース(現状の実装は IosStreamPipeline のみ)。 */
+/** iOS/Android 共通のストリーミング helper 制御インターフェース(monitorLiveController.ts・
+ * monitorDeviceStreamController.ts が両プラットフォームを1つのフィールド/Mapで扱えるようにする)。 */
 export interface LiveStreamPipeline {
   start(): void;
   isRunning(): boolean;
   dispose(): void;
 }
 
-export interface IosStreamPipelineOptions {
-  readonly udid: string;
-  readonly fps: number;
-  readonly maxWidth: number;
-  readonly simStreamPath: string;
+export interface StreamPipelineOptions {
+  /** helper 実行ファイルの絶対パス(iOS: ftester-simstream、Android: ftester-androidstream)。 */
+  readonly command: string;
+  /** helper へ渡す引数(--udid/--serial 等のプラットフォーム差分は呼び出し側が組み立て済み)。 */
+  readonly args: readonly string[];
+  /** outputChannel のログ行プレフィックス(例: "ios-stream"/"android-stream")。 */
+  readonly logPrefix: string;
   readonly outputChannel: OutputChannel;
   /** 完成した1フレームを base64 エンコード済み JPEG(+エンコード済み画像の幅高さpx)で渡す。 */
   onFrame(jpegBase64: string, width: number, height: number): void;
@@ -77,7 +82,7 @@ function killWithGrace(proc: StreamProcess, graceMs: number): void {
   }, graceMs);
 }
 
-export class IosStreamPipeline implements LiveStreamPipeline {
+export class StreamPipeline implements LiveStreamPipeline {
   private process: StreamProcess | undefined;
   /** stdout の未処理バイト(フレーム境界をまたぐ端数を次チャンクへ持ち越す)。 */
   private buffer: Buffer = Buffer.alloc(0);
@@ -92,7 +97,7 @@ export class IosStreamPipeline implements LiveStreamPipeline {
   /** 連続失敗で諦めた状態。以後 start()/再起動は行わない。 */
   private gaveUp = false;
 
-  constructor(private readonly options: IosStreamPipelineOptions) {}
+  constructor(private readonly options: StreamPipelineOptions) {}
 
   start(): void {
     if (this.disposed || this.gaveUp || this.isRunning()) {
@@ -130,18 +135,10 @@ export class IosStreamPipeline implements LiveStreamPipeline {
     if (this.disposed) {
       return;
     }
-    const args = [
-      "--udid",
-      this.options.udid,
-      "--fps",
-      String(this.options.fps),
-      "--max-width",
-      String(this.options.maxWidth),
-    ];
     this.startedAt = Date.now();
     let proc: StreamProcess;
     try {
-      proc = spawn(this.options.simStreamPath, args, { shell: false, stdio: ["pipe", "pipe", "pipe"] });
+      proc = spawn(this.options.command, this.options.args, { shell: false, stdio: ["pipe", "pipe", "pipe"] });
     } catch (error) {
       // spawn 失敗も「起動直後の異常終了」として連続失敗にカウントする(3連続で諦める)。
       this.handleUnexpectedExit(`起動に失敗しました: ${errorMessage(error)}`);
@@ -161,12 +158,12 @@ export class IosStreamPipeline implements LiveStreamPipeline {
       const lines = stderrTail.split("\n");
       stderrTail = lines.pop() ?? "";
       for (const line of lines) {
-        this.options.outputChannel.appendLine(`[ios-stream] ${line}`);
+        this.options.outputChannel.appendLine(`[${this.options.logPrefix}] ${line}`);
       }
     });
 
     proc.on("error", (error) => {
-      this.options.outputChannel.appendLine(`[ios-stream] プロセスエラー: ${error.message}`);
+      this.options.outputChannel.appendLine(`[${this.options.logPrefix}] プロセスエラー: ${error.message}`);
     });
 
     proc.on("close", (code, signal) => {
@@ -174,7 +171,7 @@ export class IosStreamPipeline implements LiveStreamPipeline {
         return; // 既に別プロセスへ張り替え済み(通常起きない)
       }
       if (stderrTail.length > 0) {
-        this.options.outputChannel.appendLine(`[ios-stream] ${stderrTail}`);
+        this.options.outputChannel.appendLine(`[${this.options.logPrefix}] ${stderrTail}`);
         stderrTail = "";
       }
       this.process = undefined;
@@ -230,12 +227,14 @@ export class IosStreamPipeline implements LiveStreamPipeline {
     if (this.failureStreak >= MAX_QUICK_FAILURES) {
       this.gaveUp = true;
       this.options.outputChannel.appendLine(
-        `[ios-stream] 起動直後の異常終了が続いたため画面ストリーミングを停止します(${reason})。`,
+        `[${this.options.logPrefix}] 起動直後の異常終了が続いたため画面ストリーミングを停止します(${reason})。`,
       );
-      this.options.onFailure(`iOS 画面ストリーミングを継続できませんでした(${reason})。`);
+      this.options.onFailure(`画面ストリーミングを継続できませんでした(${reason})。`);
       return;
     }
-    this.options.outputChannel.appendLine(`[ios-stream] 予期しない終了(${reason})。${RESTART_DELAY_MS}ms 後に再起動します。`);
+    this.options.outputChannel.appendLine(
+      `[${this.options.logPrefix}] 予期しない終了(${reason})。${RESTART_DELAY_MS}ms 後に再起動します。`,
+    );
     this.scheduleRestart();
   }
 
@@ -266,7 +265,7 @@ export class IosStreamPipeline implements LiveStreamPipeline {
       return;
     }
     this.options.outputChannel.appendLine(
-      `[ios-stream] ${WEDGE_TIMEOUT_MS / 1000}秒フレームが届かないため helper を再起動します。`,
+      `[${this.options.logPrefix}] ${WEDGE_TIMEOUT_MS / 1000}秒フレームが届かないため helper を再起動します。`,
     );
     proc.stdin.end();
     killWithGrace(proc, KILL_GRACE_MS);

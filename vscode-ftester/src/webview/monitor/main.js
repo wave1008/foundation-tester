@@ -2,7 +2,8 @@
 //   vscodeApi.js  acquireVsCodeApi(1回のみ)+persistedState / domRefs.js  共有DOM定数
 //   splitter.js/deviceTiles.js/laneLog.js/hostCharts.js  デバイスタブ
 //   machineProfilesTab.js/appProfilesTab.js/runProfilesTab.js  プロファイルタブ
-//   liveTab.js  ライブ操作タブ / exploreTab.js  FM探索タブ / modals.js  3モーダル / tabs.js  タブ切替
+//   liveTab.js  ライブ操作タブ / exploreTab.js  FM探索タブ / settingsTab.js  設定タブ
+//   modals.js  3モーダル / tabs.js  タブ切替
 // 各モジュールの import はトップレベルのイベント登録実行に必要(未使用に見えても消さない)。
 // 外側IIFEは無い(esbuildのiife出力が同役割)。ここにはメッセージディスパッチャ・ツールバー
 // ボタン・起動時ブートストラップのみを置く。
@@ -56,6 +57,7 @@ import {
 } from './modals.js';
 import { applyLiveMessage } from './liveTab.js';
 import { applyExploreMessage } from './exploreTab.js';
+import { applySettings } from './settingsTab.js';
 import { activateTab, TAB_IDS, switchTab } from './tabs.js';
 
 window.addEventListener('message', (event) => {
@@ -168,6 +170,9 @@ window.addEventListener('message', (event) => {
       break;
     case 'switchTab':
       activateTab(message.tab);
+      break;
+    case 'pollingMode':
+      applySettings(message);
       break;
     default:
       break;

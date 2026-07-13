@@ -1,7 +1,8 @@
 // monitorDeviceStreamController.ts
-// デバイスモニタータイル(deviceTiles.js)向け iOS 画面ストリーミング制御。ライブ操作タブと同じ
-// IosStreamPipeline(deviceStream.ts)を、connected な iOS タイルの数だけ束ねて使い回す
-// (供給・再起動ロジックはそちらに一本化されているため複製しない)。
+// デバイスモニタータイル(deviceTiles.js)向け画面ストリーミング制御(iOS: ftester-simstream /
+// Android: ftester-androidstream)。ライブ操作タブと同じ StreamPipeline(deviceStream.ts)を、
+// connected な対象タイルの数だけ束ねて使い回す(供給・再起動ロジックはそちらに一本化されているため
+// 複製しない)。
 //
 // ストリーミング中は monitorProcessManager.ts が2秒間隔で送るポーリングフレームを間引く
 // (isStreaming で判定。両方を同時にタイルへ描画すると解像度(width/height)が行き来してチラつく)。
@@ -10,14 +11,24 @@
 // ストリーミングが継続不能(onFailure)になった場合も同様にポーリングへ戻すだけで、明示的な
 // フォールバック処理は不要(ポーリングは止めていないため)。
 
-import { resolveSimStream } from "./config";
-import { IosStreamPipeline } from "./deviceStream";
-import type { MonitorDevice } from "./monitorModel";
+import { resolveAdb, resolveAndroidStream, resolveSimStream } from "./config";
+import { StreamPipeline } from "./deviceStream";
+import type { MonitorDevice, MonitorPlatform } from "./monitorModel";
 import type { MonitorPanelDeps } from "./monitorPanel";
 
+/** applyDevices が1サイクル分の qualifying 判定と同時に組み立てる、起動に必要な情報一式。 */
+interface QualifyingTarget {
+  readonly platform: MonitorPlatform;
+  /** iOS: シミュレータ UDID、Android: adb serial(disposeDevice の張り替え要否判定に使う)。 */
+  readonly key: string;
+  readonly command: string;
+  readonly args: readonly string[];
+}
+
 interface StreamEntry {
-  readonly udid: string;
-  readonly pipeline: IosStreamPipeline;
+  readonly platform: MonitorPlatform;
+  readonly key: string;
+  readonly pipeline: StreamPipeline;
 }
 
 export class MonitorDeviceStreamController {
@@ -29,6 +40,9 @@ export class MonitorDeviceStreamController {
    * リセット条件は「デバイス切断=対象から外れる」か「パネル再表示(setVisible(true))」のみ。 */
   private readonly gaveUpDeviceIds = new Set<string>();
   private visible = true;
+  /** 直近の applyDevices 呼び出し引数。reapply() がポーリングモードのトグル直後に同じ入力で
+   * 再判定するために保持する(次の monitorDevices イベント[最大 monitorInterval 秒後]を待たない)。 */
+  private lastDevices: readonly MonitorDevice[] | undefined;
 
   constructor(private readonly deps: MonitorPanelDeps) {}
 
@@ -39,27 +53,56 @@ export class MonitorDeviceStreamController {
   /** monitorDevices イベントのたびに呼ぶ(monitorProcessManager.ts 参照)。対象外になったデバイスは
    * 破棄し、新たに対象になったデバイスはパイプラインを起動する。 */
   applyDevices(devices: readonly MonitorDevice[]): void {
+    this.lastDevices = devices;
     if (!this.visible) {
       return; // 非表示中は setVisible(false) で全破棄済み。再開は次の setVisible(true) 後の呼び出しに任せる。
     }
+    if (this.deps.isPollingMode()) {
+      // 全破棄のみでポーリングへ委ねる(disposeAll が streamingDeviceIds もクリアするため、
+      // monitorProcessManager.ts の間引き判定[isStreaming]が false に戻りタイルはポーリングで更新される)。
+      this.disposeAll();
+      return;
+    }
     const config = this.deps.getConfig();
+    // helper・adb の解決は1サイクルにつき1回(resolveSimStream/resolveAndroidStream/resolveAdb は
+    // いずれもキャッシュ済みだが、config.*StreamEnabled による無効化判定はここでまとめて行う)。
     const simStreamPath = config.iosStreamEnabled ? resolveSimStream(config) : undefined;
-    if (!simStreamPath) {
+    const androidStreamPath = config.androidStreamEnabled ? resolveAndroidStream(config) : undefined;
+    const adbPath = androidStreamPath ? resolveAdb() : undefined;
+    if (!simStreamPath && !(androidStreamPath && adbPath)) {
       this.disposeAll();
       return;
     }
 
-    const qualifying = new Map<string, string>(); // deviceId -> udid
+    const qualifying = new Map<string, QualifyingTarget>();
     for (const device of devices) {
-      if (device.platform === "ios" && device.state === "connected" && device.udid) {
-        qualifying.set(device.id, device.udid);
+      if (device.state !== "connected") {
+        continue;
+      }
+      if (simStreamPath && device.platform === "ios" && device.udid) {
+        qualifying.set(device.id, {
+          platform: "ios",
+          key: device.udid,
+          command: simStreamPath,
+          args: ["--udid", device.udid, "--fps", String(config.liveFps), "--max-width", String(config.monitorMaxWidth)],
+        });
+      } else if (androidStreamPath && adbPath && device.platform === "android" && device.serial) {
+        qualifying.set(device.id, {
+          platform: "android",
+          key: device.serial,
+          command: androidStreamPath,
+          args: [
+            "--serial", device.serial, "--adb", adbPath,
+            "--fps", String(config.liveFps), "--max-width", String(config.monitorMaxWidth),
+          ],
+        });
       }
     }
 
-    // 対象から外れた(切断・Android化・一覧から消えた)、または udid が変わったデバイスを破棄する。
+    // 対象から外れた(切断・一覧から消えた)、またはプラットフォーム/key が変わったデバイスを破棄する。
     for (const [deviceId, entry] of this.pipelines) {
-      const udid = qualifying.get(deviceId);
-      if (udid === undefined || udid !== entry.udid) {
+      const target = qualifying.get(deviceId);
+      if (!target || target.platform !== entry.platform || target.key !== entry.key) {
         this.disposeDevice(deviceId);
       }
     }
@@ -69,25 +112,26 @@ export class MonitorDeviceStreamController {
         this.gaveUpDeviceIds.delete(deviceId);
       }
     }
-    for (const [deviceId, udid] of qualifying) {
+    for (const [deviceId, target] of qualifying) {
       if (!this.pipelines.has(deviceId) && !this.gaveUpDeviceIds.has(deviceId)) {
-        this.startPipeline(deviceId, udid, simStreamPath, config.liveFps, config.monitorMaxWidth);
+        this.startPipeline(deviceId, target);
       }
     }
   }
 
-  private startPipeline(
-    deviceId: string,
-    udid: string,
-    simStreamPath: string,
-    fps: number,
-    maxWidth: number,
-  ): void {
-    const pipeline = new IosStreamPipeline({
-      udid,
-      fps,
-      maxWidth,
-      simStreamPath,
+  /** 設定タブの「ポーリングモードを使用する」トグル直後に monitorPanel.ts から呼ぶ。直近の
+   * applyDevices 引数で再判定する(未呼び出しなら何もしない)。 */
+  reapply(): void {
+    if (this.lastDevices) {
+      this.applyDevices(this.lastDevices);
+    }
+  }
+
+  private startPipeline(deviceId: string, target: QualifyingTarget): void {
+    const pipeline = new StreamPipeline({
+      command: target.command,
+      args: target.args,
+      logPrefix: target.platform === "ios" ? "ios-stream" : "android-stream",
       outputChannel: this.deps.outputChannel,
       onFrame: (jpegBase64, width, height) => {
         this.streamingDeviceIds.add(deviceId);
@@ -102,7 +146,7 @@ export class MonitorDeviceStreamController {
         this.gaveUpDeviceIds.add(deviceId); // 2秒毎の applyDevices による再生成スパムを止める
       },
     });
-    this.pipelines.set(deviceId, { udid, pipeline });
+    this.pipelines.set(deviceId, { platform: target.platform, key: target.key, pipeline });
     pipeline.start();
   }
 

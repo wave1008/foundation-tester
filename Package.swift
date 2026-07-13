@@ -117,6 +117,16 @@ let package = Package(
                 .linkedFramework("QuartzCore"), .linkedFramework("CoreGraphics"),
             ]
         ),
+        // Android実機/エミュレータ画面ストリーミング(adb screenrecord H.264 -> VideoToolboxデコード)
+        .executableTarget(
+            name: "ftester-androidstream",
+            linkerSettings: [
+                .linkedFramework("Foundation"), .linkedFramework("CoreImage"),
+                .linkedFramework("CoreVideo"), .linkedFramework("CoreMedia"),
+                .linkedFramework("VideoToolbox"), .linkedFramework("QuartzCore"),
+                .linkedFramework("CoreGraphics"),
+            ]
+        ),
         .testTarget(
             name: "FTCoreTests",
             dependencies: ["FTCore"],

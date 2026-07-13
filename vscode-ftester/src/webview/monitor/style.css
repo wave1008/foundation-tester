@@ -1459,3 +1459,20 @@ input[type="text"]::placeholder {
 .explore-open-file-btn {
   align-self: flex-start;
 }
+
+/* ---- #panel-settings(設定タブ) ------------------------------------------------------- */
+.settings-body {
+  padding: 12px;
+}
+.settings-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+.settings-hint {
+  margin-top: 6px;
+  margin-left: 24px;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}

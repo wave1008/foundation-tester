@@ -23,6 +23,9 @@ export interface MonitorDevice {
   /** iOS: 解決済みシミュレータ UDID。Android: undefined(Swift 側は null を送るがここで正規化する)。
    * monitorDeviceStreamController.ts が iOS ストリーミング helper の起動先として使う。 */
   readonly udid?: string;
+  /** Android: 解決済み adb serial。iOS: undefined(Swift 側は null を送るがここで正規化する)。
+   * monitorDeviceStreamController.ts が Android ストリーミング helper の起動先として使う。 */
+  readonly serial?: string;
 }
 
 /** `ftester api monitor` の NDJSON 1行分のイベント(kind で判別)。 */
@@ -52,6 +55,9 @@ function isMonitorDevice(value: unknown): value is MonitorDevice {
     // JSON の null を undefined に正規化する(以後 string | undefined 前提で扱えるようにする)。
     value.udid = undefined;
   }
+  if (value.serial === null) {
+    value.serial = undefined;
+  }
   return (
     typeof value.id === "string" &&
     typeof value.name === "string" &&
@@ -60,7 +66,8 @@ function isMonitorDevice(value: unknown): value is MonitorDevice {
     typeof value.state === "string" &&
     STATES.has(value.state) &&
     typeof value.detail === "string" &&
-    (value.udid === undefined || typeof value.udid === "string")
+    (value.udid === undefined || typeof value.udid === "string") &&
+    (value.serial === undefined || typeof value.serial === "string")
   );
 }
 
@@ -250,7 +257,11 @@ export type MonitorToWebviewMessage =
     }
   // ホスト駆動のタブ切替(例: ftester.showLiveControl でパネルを開き直さず「ライブ操作」タブへ
   // 直接切り替える)。webview 側は tabs.js の activateTab へそのまま渡す。
-  | { readonly type: "switchTab"; readonly tab: string };
+  | { readonly type: "switchTab"; readonly tab: string }
+  // 設定タブの「ポーリングモードを使用する」チェックボックスの現在値。ready 直後(永続状態の反映)と
+  // setPollingMode 受信直後(monitorPanel.ts)の両方で送る。webview 側は settingsTab.js の
+  // applySettings へそのまま渡す(setPollingMode と対の契約)。
+  | { readonly type: "pollingMode"; readonly value: boolean };
 
 /** 検証済みの MonitorEvent を、webview へそのまま postMessage できる形に変換する。 */
 export function toWebviewMessage(event: MonitorEvent): MonitorToWebviewMessage {
@@ -370,7 +381,11 @@ export type MonitorFromWebviewMessage =
   // 名前入力モーダル(#name-input-overlay)の OK/キャンセル。id は nameInputOpen で払い出したものを
   // そのまま返す(拡張側が pendingNameInput.id と突き合わせ、一致しなければ無視する)。
   | { readonly type: "nameInputConfirm"; readonly id: number; readonly name: string }
-  | { readonly type: "nameInputCancel"; readonly id: number };
+  | { readonly type: "nameInputCancel"; readonly id: number }
+  // 設定タブの「ポーリングモードを使用する」チェックボックス変更(settingsTab.js)。true でストリーミングを
+  // 止めてポーリングへ強制する(iOS/Android・ライブ操作タブ/デバイスタイル共通)。monitorPanel.ts が
+  // workspaceState へ永続化し、対の "pollingMode" メッセージで即時反映する。
+  | { readonly type: "setPollingMode"; readonly value: boolean };
 
 /**
  * machineDevicesSync の add[] 1件(MachineDeviceAddEntry)の検証。name の空文字は不正。
@@ -522,6 +537,8 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
       return typeof value.id === "number" && typeof value.name === "string";
     case "nameInputCancel":
       return typeof value.id === "number";
+    case "setPollingMode":
+      return typeof value.value === "boolean";
     default:
       return false;
   }

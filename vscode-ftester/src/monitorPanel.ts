@@ -7,8 +7,9 @@
 // - monitorDeviceOps.ts の MonitorDeviceOps: デバイスライフサイクルキュー・device-catalog/installed-devices/create-device
 // - monitorLiveController.ts の MonitorLiveController: 「ライブ操作」タブの list-devices・live serve プロセス管理
 // - monitorExploreController.ts の MonitorExploreController: 「FM探索」タブの list-devices・`api explore` 実行
-// - monitorDeviceStreamController.ts の MonitorDeviceStreamController: デバイスタイルの iOS 画面ストリーミング
-//   (IosStreamPipeline)管理。connected な monitorFrame ポーリングとの間引き調停は MonitorProcessManager 側。
+// - monitorDeviceStreamController.ts の MonitorDeviceStreamController: デバイスタイルの画面ストリーミング
+//   (iOS/Android共通の StreamPipeline)管理。connected な monitorFrame ポーリングとの間引き調停は
+//   MonitorProcessManager 側。
 // - monitorHtml.ts: webview の HTML 本文(renderHtml/generateNonce/PANEL_TITLE)
 // - monitorModel.ts / runLaneModel.ts / liveModel.ts: vscode 非依存の純粋関数(検証・変換・状態遷移)
 //
@@ -76,6 +77,10 @@ export interface MonitorPanelDeps {
   /** monitorDevicesイベントをMonitorDeviceStreamControllerへ渡す(パイプラインの張り替え判定に使う。
    * monitorProcessManager.tsのmonitorDevices処理から呼ぶ)。 */
   notifyMonitorDevices(devices: readonly MonitorDevice[]): void;
+  /** 設定タブの「ポーリングモードを使用する」チェックボックスの現在値。true の間は
+   * monitorLiveController.ts/monitorDeviceStreamController.ts の両方がストリーミング開始を
+   * 抑止しポーリングへフォールバックする(iOS/Android・ライブ操作タブ/デバイスタイル共通)。 */
+  isPollingMode(): boolean;
   /** MonitorProfilesController.postMachineProfileInfoへの委譲。MonitorDeviceOps.runCreateDevice成功時に呼ぶ。 */
   notifyMachineProfilesChanged(): void;
   /** 生成したソース(絶対パス)を、デバイスモニターの列を避けた列に開く(モニター表示を覆わないため)。
@@ -128,6 +133,8 @@ class MonitorPanelController implements vscode.Disposable {
   /** show(tab) が新規作成時に指定したタブ。sendInitialState() で switchTab を post した後クリアする
    * (html設定直後の postMessage は webview 側リスナー登録前に届き握りつぶされるため。show() 参照)。 */
   private pendingInitialTab: string | undefined;
+  /** 設定タブ「ポーリングモードを使用する」の現在値(ワークスペース単位で永続化)。 */
+  private pollingMode: boolean;
 
   constructor(
     private readonly workspaceRoot: string,
@@ -135,10 +142,11 @@ class MonitorPanelController implements vscode.Disposable {
     private readonly outputChannel: vscode.OutputChannel,
     eventBus: RunEventBus,
     private readonly extensionUri: vscode.Uri,
-    workspaceState: vscode.Memento,
+    private readonly workspaceState: vscode.Memento,
     cli: FtesterCli,
     testTree: FtesterTestTree,
   ) {
+    this.pollingMode = workspaceState.get<boolean>("monitor.pollingMode", false);
     this.deps = {
       workspaceRoot: this.workspaceRoot,
       getConfig: this.getConfig,
@@ -150,6 +158,7 @@ class MonitorPanelController implements vscode.Disposable {
       openGeneratedDocument: (filePath) => this.openGeneratedDocument(filePath),
       isDeviceStreaming: (deviceId) => this.deviceStream.isStreaming(deviceId),
       notifyMonitorDevices: (devices) => this.deviceStream.applyDevices(devices),
+      isPollingMode: () => this.pollingMode,
     };
     this.deviceStream = new MonitorDeviceStreamController(this.deps);
     this.processManager = new MonitorProcessManager(this.deps);
@@ -419,6 +428,13 @@ class MonitorPanelController implements vscode.Disposable {
       case "nameInputCancel":
         this.profiles.cancelNameInput(message.id);
         break;
+      case "setPollingMode":
+        this.pollingMode = message.value;
+        void this.workspaceState.update("monitor.pollingMode", message.value);
+        // トグル直後に両供給元へ即時反映する(次のデバイス選択/monitorDevicesイベント待ちにしない)。
+        this.live.refreshFrameSource();
+        this.deviceStream.reapply();
+        break;
     }
   }
 
@@ -433,6 +449,7 @@ class MonitorPanelController implements vscode.Disposable {
     // webview再読込がジョブ実行中に起きた場合にボタン無効状態・タイルのバッジを復元するため。
     this.deviceOps.resendQueueStatus();
     this.explore.sendInitialState();
+    this.post({ type: "pollingMode", value: this.pollingMode });
     if (this.pendingInitialTab) {
       this.post({ type: "switchTab", tab: this.pendingInitialTab });
       this.pendingInitialTab = undefined;

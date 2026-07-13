@@ -479,7 +479,7 @@ struct DeviceRuntimeState {
     fileprivate var info: ApiMonitorDeviceInfo {
         ApiMonitorDeviceInfo(id: target.id, name: target.name,
                              platform: target.platform, state: state, detail: detail,
-                             udid: iosUdid)
+                             udid: iosUdid, serial: androidSerial)
     }
 }
 
@@ -592,6 +592,8 @@ private struct ApiMonitorDeviceInfo: Encodable {
     let detail: String
     /// iOS の解決済みシミュレータ UDID(デバイスタブの ftester-simstream 画面ストリーミングに使う)。Android は nil。
     let udid: String?
+    /// Android の adb serial(デバイスタブの ftester-androidstream 画面ストリーミングに使う)。iOS は nil。
+    let serial: String?
 }
 
 /// monitorFrame イベント: state == connected のデバイスのみ、スクリーンショットを添えて出す

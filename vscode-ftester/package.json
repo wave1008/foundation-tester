@@ -2,7 +2,7 @@
   "name": "vscode-ftester",
   "displayName": "ftester",
   "description": "ftester (Swift 製モバイル UI テストツール) のシナリオをツリー表示・実行するための VS Code 拡張",
-  "version": "0.0.136",
+  "version": "0.0.138",
   "private": true,
   "publisher": "wave1008",
   "license": "MIT",
@@ -88,6 +88,11 @@
           "type": "boolean",
           "default": true,
           "description": "iOS シミュレータのライブ操作で画面を映像ストリーミング(ftester-simstream)で更新します。無効の場合やヘルパー未ビルドの場合はポーリングにフォールバックします。"
+        },
+        "ftester.androidStreamEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Android 実機/エミュレータのライブ操作で画面を映像ストリーミング(ftester-androidstream)で更新します。無効の場合やヘルパー未ビルド・adb 未検出の場合はポーリングにフォールバックします。"
         }
       }
     },
