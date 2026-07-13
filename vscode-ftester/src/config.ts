@@ -27,6 +27,9 @@ export interface FtesterConfig {
    * ホットループでデバイスが返す限り最速で /screenshot を叩き負荷源だった。目標fpsで頭打ちにする
    * (monitorLiveController.ts frameTick)。 */
   liveFps: number;
+  /** iOS シミュレータのライブ映像ストリーミング(ftester-simstream)を使うか。true でも helper が
+   * 未ビルド(resolveSimStream が undefined)なら自動でポーリングにフォールバックする。 */
+  iosStreamEnabled: boolean;
 }
 
 /** ワークスペースルート(Package.swift のあるフォルダ)を解決する。開いていなければ undefined。 */
@@ -58,7 +61,42 @@ export function readConfig(workspaceRoot: string): FtesterConfig {
     monitorInterval: Math.max(0.5, configuration.get<number>("monitorInterval", 2)),
     monitorMaxWidth: Math.min(1600, Math.max(240, configuration.get<number>("monitorMaxWidth", 960))),
     liveFps: Math.min(30, Math.max(3, configuration.get<number>("liveFps", 12))),
+    iosStreamEnabled: configuration.get<boolean>("iosStreamEnabled", true),
   };
+}
+
+/** X_OK で実行可能な通常ファイルか(ディレクトリや非実行ファイルは false)。存在しない・アクセス不可は false。 */
+function isExecutableFile(candidate: string): boolean {
+  try {
+    if (!fs.statSync(candidate).isFile()) {
+      return false;
+    }
+    fs.accessSync(candidate, fs.constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** binaryPath を見つけた ftester-simstream のパスをキーにキャッシュ(見つかった正の結果のみ)。 */
+const simStreamCache = new Map<string, string>();
+
+/**
+ * ftester バイナリと同じディレクトリにある ftester-simstream(iOS ライブ映像 helper)の絶対パス。
+ * 実行可能ファイルが無ければ undefined(呼び出し側はポーリングにフォールバック)。
+ * 正の結果だけキャッシュする(未検出はキャッシュしない=後から helper をビルドすれば Reload 無しで有効化される)。
+ */
+export function resolveSimStream(config: FtesterConfig): string | undefined {
+  const cached = simStreamCache.get(config.binaryPath);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const candidate = path.join(path.dirname(config.binaryPath), "ftester-simstream");
+  if (isExecutableFile(candidate)) {
+    simStreamCache.set(config.binaryPath, candidate);
+    return candidate;
+  }
+  return undefined;
 }
 
 /** Projects/ 直下にあるテストプロジェクト名(ディレクトリ名)の一覧を返す。 */

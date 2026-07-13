@@ -20,6 +20,9 @@ export interface MonitorDevice {
   readonly platform: MonitorPlatform;
   readonly state: MonitorDeviceState;
   readonly detail: string;
+  /** iOS: 解決済みシミュレータ UDID。Android: undefined(Swift 側は null を送るがここで正規化する)。
+   * monitorDeviceStreamController.ts が iOS ストリーミング helper の起動先として使う。 */
+  readonly udid?: string;
 }
 
 /** `ftester api monitor` の NDJSON 1行分のイベント(kind で判別)。 */
@@ -45,6 +48,10 @@ function isMonitorDevice(value: unknown): value is MonitorDevice {
   if (!isRecord(value)) {
     return false;
   }
+  if (value.udid === null) {
+    // JSON の null を undefined に正規化する(以後 string | undefined 前提で扱えるようにする)。
+    value.udid = undefined;
+  }
   return (
     typeof value.id === "string" &&
     typeof value.name === "string" &&
@@ -52,7 +59,8 @@ function isMonitorDevice(value: unknown): value is MonitorDevice {
     PLATFORMS.has(value.platform) &&
     typeof value.state === "string" &&
     STATES.has(value.state) &&
-    typeof value.detail === "string"
+    typeof value.detail === "string" &&
+    (value.udid === undefined || typeof value.udid === "string")
   );
 }
 

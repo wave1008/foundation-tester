@@ -206,6 +206,13 @@ export class MonitorProcessManager {
         if (value.kind === "monitorDevices") {
           // モニター再起動(プロファイル切り替え含む)を跨いで保持する(lastKnownDevices 宣言部参照)。
           this.lastKnownDevices = value.devices;
+          // MonitorDeviceStreamController のパイプライン張り替え判定に使う(monitorPanel.ts で配線)。
+          this.deps.notifyMonitorDevices(value.devices);
+        }
+        if (value.kind === "monitorFrame" && this.deps.isDeviceStreaming(value.device)) {
+          // iOS ストリーミング中のデバイスはポーリングフレームを間引く(二重供給による解像度の
+          // チラつき防止。monitorDeviceStreamController.ts 冒頭コメント参照)。
+          return;
         }
         this.deps.post(toWebviewMessage(value));
       },
