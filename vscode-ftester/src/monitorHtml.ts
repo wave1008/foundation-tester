@@ -277,6 +277,7 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
       <span id="live-busy-label"></span>
     </div>
     <div id="live-banner" class="banner"></div>
+    <div id="live-action-error"></div>
 
     <div class="content">
       <div class="screenshot-pane">
@@ -308,8 +309,6 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
           <button id="live-btn-type">入力</button>
         </div>
         <span id="live-type-ref-hint">→ フォーカス中の要素に入力</span>
-
-        <div id="live-action-error"></div>
 
         <div class="elements-header">要素一覧(クリックでタップ)</div>
         <div id="live-elements-list" class="elements-list"></div>
