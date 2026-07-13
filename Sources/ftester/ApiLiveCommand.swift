@@ -86,6 +86,9 @@ struct ApiLiveServe: AsyncParsableCommand {
         // ストリーミング読み取りが前提のため常に行バッファにする(他の常駐 api コマンドと同じ理由)
         setvbuf(stdout, nil, _IOLBF, 0)
         ResidentProcessGuard.startOrphanWatchdog(logLabel: "live serve")
+        // 1コマンドが wedge(CPU spin 等)しても自死できる最終安全弁。30秒 > 拡張の
+        // SERVE_REQUEST_TIMEOUT_MS(20秒)にして、通常は拡張の kill→respawn を先に効かせる。
+        ResidentProcessGuard.startCommandWatchdog(maxSeconds: 30, logLabel: "live serve")
 
         let driver = try driverOptions.makeDriver()
         let starter = makeAutoStarter()
@@ -125,7 +128,9 @@ struct ApiLiveServe: AsyncParsableCommand {
                 logStderr("未知の形式の行を無視しました: \(line)")
                 continue
             }
+            ResidentProcessGuard.noteCommandStart()
             await handle(command: command, driver: driver, starter: starter)
+            ResidentProcessGuard.noteCommandEnd()
         }
     }
 
