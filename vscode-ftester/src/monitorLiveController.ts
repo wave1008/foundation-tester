@@ -69,6 +69,10 @@ type ServeProcess = ChildProcessByStdio<Writable, Readable, Readable>;
  * 応答が無いまま常駐プロセスが停止したり壊れたりしても busy 状態のまま固まらないようにする。 */
 const SERVE_REQUEST_TIMEOUT_MS = 20000;
 
+/** 応答タイムアウトによる wedge 復旧(serve の kill→自動 respawn)を連続で試みる上限。これを
+ * 超えたら自動再起動を止め、SERVE_UNAVAILABLE_MESSAGE を出す(デバイス選び直し=rebind で解除)。 */
+const MAX_CONSECUTIVE_TIMEOUT_KILLS = 3;
+
 /** 自動フレームを実行できなかった回(busy・パネル非表示・serve 不在)と失敗時の再試行間隔(ms)。
  * 成功時は待ちなしで次フレームを送る(ホットループ防止のため失敗系のみ間隔を空ける)。 */
 const FRAME_IDLE_RETRY_MS = 500;
@@ -163,6 +167,9 @@ export class MonitorLiveController implements vscode.Disposable {
   private serveStartedAt: number | undefined;
   /** 「起動後10秒未満での異常終了」が連続した回数。3回連続したら諦めて自動再起動を止める。 */
   private serveFailureStreak = 0;
+  /** 応答タイムアウトで serve を kill→respawn した連続回数。成功応答(handleConnectionOk)と
+   * 明示的な再バインドでリセットする。MAX_CONSECUTIVE_TIMEOUT_KILLS で諦める。 */
+  private serveTimeoutKillStreak = 0;
   /** 自動再起動を諦めた状態。true の間は close イベントで再起動をスケジュールしない
    * (rebindServeProcess でリセットされる。詳細はファイル冒頭のコメント参照)。 */
   private serveGaveUp = false;
@@ -236,6 +243,7 @@ export class MonitorLiveController implements vscode.Disposable {
    * 新デバイスへ持ち越さないため)から呼ぶ。 */
   private handleConnectionOk(): void {
     this.frameFailureStreak = 0;
+    this.serveTimeoutKillStreak = 0;
     // serve が復帰したので接続系 actionError バナー(常駐プロセス不在・タイムアウト・終了)が
     // 残っていれば消す。connectionLost の早期 return より前に行う: デバイス切り替えの再バインド中は
     // 自動フレームが serve 不在でスキップして回るため connectionLost が立たず、serve が
@@ -416,6 +424,7 @@ export class MonitorLiveController implements vscode.Disposable {
   private rebindServeProcess(device: LiveDeviceRef): void {
     this.serveFailureStreak = 0;
     this.serveGaveUp = false;
+    this.serveTimeoutKillStreak = 0;
     this.serveDevice = device;
     if (this.serveRestartPending) {
       return;
@@ -561,6 +570,38 @@ export class MonitorLiveController implements vscode.Disposable {
     }, 2000);
   }
 
+  /** 応答タイムアウト時に、生きたまま無応答になった(wedge した)serve を止める。serve 側は
+   * SIGTERM を SIG_IGN で無視するため、実際の停止は stdin EOF(serve の ResidentProcessGuard による
+   * 2秒強制終了)か2秒後の SIGKILL による。killServeProcess とは違い stoppingServe を立てないので、
+   * close ハンドラが scheduleServeRestart で現デバイスへ自動 respawn する(=wedge からの自動復帰)。
+   * 連続 MAX_CONSECUTIVE_TIMEOUT_KILLS 回で諦め、再起動させず SERVE_UNAVAILABLE_MESSAGE を出す。 */
+  private restartWedgedServe(proc: ServeProcess): void {
+    if (this.serveProcess !== proc || proc.exitCode !== null || proc.signalCode !== null) {
+      return;
+    }
+    this.serveTimeoutKillStreak += 1;
+    if (this.serveTimeoutKillStreak >= MAX_CONSECUTIVE_TIMEOUT_KILLS) {
+      this.serveGaveUp = true;
+      this.stoppingServe = true; // close ハンドラに自己終了とみなさせ、再起動を抑止する
+      this.deps.outputChannel.appendLine(
+        "[live serve] 応答タイムアウトによる再起動が連続したため自動再起動を停止しました。" +
+          "デバイスを選び直すか、パネルを開き直してください。",
+      );
+      this.postActionError(SERVE_UNAVAILABLE_MESSAGE);
+    } else {
+      this.deps.outputChannel.appendLine(
+        `[live serve] 応答が${SERVE_REQUEST_TIMEOUT_MS / 1000}秒返らないため常駐プロセスを再起動します。`,
+      );
+    }
+    proc.stdin.end();
+    proc.kill("SIGTERM");
+    setTimeout(() => {
+      if (proc.exitCode === null && proc.signalCode === null) {
+        proc.kill("SIGKILL");
+      }
+    }, 2000);
+  }
+
   /** serve の stdout から届いた NDJSON 1行を pendingServeRequest に配る。actionResult は
    * 保持だけして、続く snapshot/frame イベントで resolve する(ファイル冒頭プロトコル参照)。
    * pending.resolvesOn と一致しない kind(自動フレームとユーザー操作の取り違え)は無視する。 */
@@ -652,6 +693,7 @@ export class MonitorLiveController implements vscode.Disposable {
     return new Promise((resolve) => {
       const timeout = setTimeout(() => {
         this.failPendingServeRequest(SERVE_TIMEOUT_MESSAGE);
+        this.restartWedgedServe(proc);
       }, SERVE_REQUEST_TIMEOUT_MS);
       this.pendingServeRequest = {
         expectsAction: command.cmd !== "refresh",
@@ -685,6 +727,7 @@ export class MonitorLiveController implements vscode.Disposable {
     return new Promise((resolve) => {
       const timeout = setTimeout(() => {
         this.failPendingServeRequest(SERVE_TIMEOUT_MESSAGE);
+        this.restartWedgedServe(proc);
       }, SERVE_REQUEST_TIMEOUT_MS);
       this.pendingServeRequest = {
         expectsAction: false,
