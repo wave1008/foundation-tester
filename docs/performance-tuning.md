@@ -73,6 +73,39 @@ swift Scripts/bench.swift --project SampleApp --profile ios --iterations 3 \
   として流れるので、レポート/拡張からも参照できる
 - `bench-results/` は .gitignore 済み。比較対象のベースラインは削除しないこと
 
+### 4.1 ストリーミング vs ポーリングのキャプチャ負荷ベンチ
+
+`Scripts/stream_vs_poll_bench.py`(依存: python3 + 起動中の sim/emu)。デバイス画面配信の2方式
+(ストリーミング=`ftester-simstream`/`ftester-androidstream`、ポーリング=`ftester api live serve` へ
+`{"cmd":"frame"}` を fps 間隔で送る経路。`monitor.pollingMode` トグルの2方式に対応)のキャプチャ負荷を
+静止/モーション × 隣接ベースラインで比較する。
+
+```bash
+# 起動中の sim/emu を自動検出、両OS・静止+モーション
+python3 Scripts/stream_vs_poll_bench.py
+# 片OS・静止のみ・計測窓を延ばして JSON 出力先指定
+python3 Scripts/stream_vs_poll_bench.py --platform ios --conditions static --meas 20 --out /tmp/r.json
+# 未起動なら device-up して計測(プロファイル名指定)
+python3 Scripts/stream_vs_poll_bench.py --boot-ios-name シミュ1 --boot-android-name エミュ1 --project SampleApp
+```
+
+- **主指標=キャプチャプロセスの CPU(proc%/core、cputime デルタ/実時間、1コア=100%)**。ホスト差分
+  (`host-metrics`、Mac 全体)は 10 コア分母で小信号が ambient 揺らぎ(±3pt)に埋もれるため補助。fps と
+  stream_kbps も出す。出力は `bench-results/stream-vs-poll/`(.gitignore 済み)+ 表を stdout。
+- 実測(M1 Max / iPhone17Pro sim / Pixel9 emu / fps12・max-width900):静止 proc → ストリーミング **0.2%** /
+  ポーリング **~23-26%**、モーション proc → ストリーミング **~5%** / ポーリング **~24%**。fps → ストリーミング
+  **~12**(滑らか) / ポーリング **5-8**(スクショ同期往復に律速)。静止でもポーリングは device 側込みで
+  host **+14pt**(Android≈1.4コア)を消費。**→ ストリーミングはキャプチャがほぼ無料、特に静止画面
+  (モニタの支配的状態)で圧倒的。**
+- **計測の罠(スクリプト冒頭 docstring に全掲)**:
+  - `host-metrics`/`simstream`/`androidstream` は **stdin EOF で即終了**する常駐 CLI。Popen は
+    `stdin=PIPE` を開いたまま保持必須(未保持=/dev/null 継承で即死→0 サンプル/0 フレーム。静止 0 と誤診しやすい)
+  - ストリーミングは変化駆動で静止は≈0fps(仕様)。負荷はモーション条件でしか見えない
+  - ストリーミング helper が 0 フレームでも「壊れた/表示合成が要る」と即断しないこと。simstream は
+    **Simulator.app 無し・ヘッドレスでも動く**(実測: 静止≈0fps・モーション≈10fps)。0 フレームの第一容疑は
+    上の stdin=PIPE 未保持による即死、次いで静止で変化が無いだけ(モーションを与えて切り分ける)
+  - `serve`/`host-metrics` は **cwd=リポジトリルート**で起動(iOS ブリッジ自動起動の repo-root 検出のため)
+
 ## 5. チューニングノブ(値を変える場所)
 
 | 定数 | 場所 | 現在値 | 意味・トレードオフ |
@@ -138,6 +171,11 @@ window/transition/animator の `*_scale` はチューニングノブではなく
   (a11y要素はFRESHだがscreenshotだけSTALE、という形で顕在化)。ブリッジ起動時に
   window/transition/animator の `*_scale` を自動で無効化する(2026-07-12組込み)。
   実機を追加したときも同様に自動適用される
+- **常駐 CLI は stdin EOF で即終了する**(`ftester api {host-metrics,live serve,monitor}`、
+  `ftester-simstream`、`ftester-androidstream`。拡張は stdin パイプを開いたまま保持している)。
+  アドホックに spawn して計測・検証するとき、stdin を /dev/null 継承のまま渡すと即座に EOF を検知して
+  終了し、0 サンプル/0 フレームになる(静止時の 0 と区別がつかず「helper が壊れた」と誤診しやすい)。
+  子プロセスの stdin は開いたまま保持すること(`subprocess.Popen(..., stdin=PIPE)` で閉じない等)
 
 ## 8. 今後の改善候補(価値が出たら)
 
