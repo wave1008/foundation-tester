@@ -4,6 +4,7 @@
 
 import { vscode } from './vscodeApi.js';
 import { activateTab } from './tabs.js';
+import { clampMenuPosition } from './deviceTiles.js';
 
 function post(message) {
   vscode.postMessage({ type: 'live', message });
@@ -15,6 +16,8 @@ const busyLabel = document.getElementById('live-busy-label');
 const banner = document.getElementById('live-banner');
 
 const screenshot = document.getElementById('live-screenshot');
+const screenshotFrame = document.getElementById('live-screenshot-frame');
+const screenshotWrap = document.getElementById('live-screenshot-wrap');
 const hoverBox = document.getElementById('live-hover-box');
 const screenshotPlaceholder = document.getElementById('live-screenshot-placeholder');
 const dragOverlay = document.getElementById('live-drag-overlay');
@@ -34,6 +37,11 @@ const appProfileSelect = document.getElementById('live-app-profile-select');
 const autoInstallCheckbox = document.getElementById('live-record-autoinstall');
 const recordBtn = document.getElementById('live-btn-record');
 const recordStatus = document.getElementById('live-record-status');
+// 画像右クリックの開始/終了メニュー(#live-btn-record と同じ start/stop フローを流す)。
+const recordMenu = document.getElementById('live-record-menu');
+const recordMenuStart = document.getElementById('live-record-menu-start');
+const recordMenuStop = document.getElementById('live-record-menu-stop');
+let recordMenuOpen = false;
 
 const STATE_LABEL = {
   connected: '接続済み',
@@ -148,6 +156,15 @@ function updateRecordButton() {
   recordBtn.disabled = generating || (!recording && !hasAppProfile);
   appProfileSelect.disabled = recording || generating;
   autoInstallCheckbox.disabled = recording || generating;
+  updateRecordMenuItems();
+}
+
+// 画像右クリックメニューの開始/終了の活性を updateRecordButton と同条件で同期(開いている間に
+// 状態が変わっても追随する)。開始=停止中かつ生成中でなくプロファイル有り、終了=録画中かつ生成中でない。
+function updateRecordMenuItems() {
+  recordMenuStart.disabled = recording || generating || !hasAppProfile;
+  recordMenuStop.disabled = !recording || generating;
+  recordMenuStart.title = (!recording && !generating && !hasAppProfile) ? 'アプリプロファイルが必要です' : '';
 }
 
 recordBtn.addEventListener('click', () => {
@@ -159,7 +176,59 @@ recordBtn.addEventListener('click', () => {
   }
 });
 
+// 画像上で右クリック → 開始/終了メニュー。stopPropagation で document の contextmenu→閉じるを抑止
+// (このメニュー自身は即閉じない)。start/stop は recordBtn と同一フロー。
+screenshotWrap.addEventListener('contextmenu', (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  updateRecordMenuItems();
+  recordMenu.classList.add('visible');
+  clampMenuPosition(recordMenu, event.clientX, event.clientY);
+  recordMenuOpen = true;
+});
+function closeLiveRecordMenu() {
+  if (!recordMenuOpen) { return; }
+  recordMenuOpen = false;
+  recordMenu.classList.remove('visible');
+}
+recordMenuStart.addEventListener('click', (event) => {
+  event.stopPropagation();
+  if (recordMenuStart.disabled) { return; }
+  post({ type: 'startRecord', appProfile: appProfileSelect.value, autoInstall: autoInstallCheckbox.checked });
+  closeLiveRecordMenu();
+});
+recordMenuStop.addEventListener('click', (event) => {
+  event.stopPropagation();
+  if (recordMenuStop.disabled) { return; }
+  post({ type: 'stopRecord' });
+  closeLiveRecordMenu();
+});
+// 閉じる契機(deviceTiles.js の device-op-menu と同じ組。scroll は capture で子要素のスクロールも拾う)。
+document.addEventListener('click', (event) => {
+  if (recordMenuOpen && !recordMenu.contains(event.target)) { closeLiveRecordMenu(); }
+});
+document.addEventListener('keydown', (event) => { if (event.key === 'Escape') { closeLiveRecordMenu(); } });
+document.addEventListener('scroll', () => closeLiveRecordMenu(), true);
+window.addEventListener('resize', () => closeLiveRecordMenu());
+document.addEventListener('contextmenu', () => closeLiveRecordMenu());
+
 // ---- スクリーンショット(クリック=タップ、ドラッグ=スワイプ、要素ホバー=枠オーバーレイ) ------
+
+// 画像をスクロールさせず可変スロット(#live-screenshot-frame)に収める。frame は flex で高さが確定
+// するので、その実測高を画像の max-height に反映する。object-fit は使えない(overlay が inset:0 で
+// wrap に貼り付き、タップ座標も img.getBoundingClientRect() 前提のため、要素ボックスを実画像サイズ
+// に保つ必要がある)。deviceTiles.js の relayoutTiles と同じ「実測 clientHeight で画像高を決める」方式。
+const SCREENSHOT_WRAP_BORDER = 2; // .screenshot-wrap の上下ボーダー合計(px)。CSS と一致させること
+function fitScreenshot() {
+  const h = screenshotFrame.clientHeight;
+  if (h === 0) { return; } // タブ非表示中(display:none)は測れないので触らない
+  screenshot.style.maxHeight = Math.max(40, h - SCREENSHOT_WRAP_BORDER) + 'px';
+}
+// frame の高さは flex で決まり画像内容に依存しない(=maxHeight 変更で再発火しない)ため無限ループ無し。
+if (typeof ResizeObserver !== 'undefined') {
+  new ResizeObserver(fitScreenshot).observe(screenshotFrame);
+}
+window.addEventListener('resize', fitScreenshot);
 
 // liveModel.ts の frameToDisplayRect と同じ計算(webview は CSP により import 不可のため複製。
 // liveModel.ts 側を変更したらここも追随させること)。
@@ -186,6 +255,7 @@ function applySnapshot(message) {
   screenshotPlaceholder.style.display = 'none';
   hoverBox.style.display = 'none';
   renderElements();
+  fitScreenshot();
 }
 
 // 押下→ほぼ動かさず離す=タップ、動かして離す=ドラッグ(スワイプ)。click は使わない
