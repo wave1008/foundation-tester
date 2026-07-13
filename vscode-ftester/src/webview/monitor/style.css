@@ -1121,6 +1121,22 @@ input[type="text"]::placeholder {
   font-size: 12px;
   color: var(--vscode-descriptionForeground);
 }
+.live-record-row {
+  margin-top: 8px;
+  padding-top: 0;
+}
+.live-record-row #live-app-profile-select {
+  max-width: 220px;
+}
+#live-btn-record.recording {
+  background-color: var(--vscode-inputValidation-errorBackground, rgba(241, 76, 76, 0.15));
+  color: var(--vscode-errorForeground, #f14c4c);
+  border-color: var(--vscode-errorForeground, #f14c4c);
+}
+.live-record-status {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+}
 #panel-live .content {
   flex: 1 1 auto;
   min-height: 0;
@@ -1235,7 +1251,8 @@ input[type="text"]::placeholder {
 /* --vscode-dropdown-border は背景と同色のテーマがあり枠が見えないため明示。
    `#panel-live select`(border: var(--vscode-input-border, transparent))より詳細度を上げる必要がある
    ため #panel-live を重ねる(ID単体では type+ID の方が詳細度が高く負ける)。 */
-#panel-live #live-device-select {
+#panel-live #live-device-select,
+#panel-live #live-app-profile-select {
   border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border, rgba(127, 127, 127, 0.5)));
 }
 /* #panel-live(縦 flex)の直下に置き .content の上に独立した行として表示。
@@ -1272,7 +1289,7 @@ input[type="text"]::placeholder {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  cursor: pointer;
+  /* クリックで選択可能だが cursor は変えない(.machine-device-row/.tile と同方針) */
 }
 /* .machine-device-row/.device-pick-row と同じ式(50%透過)。 */
 #panel-live .element-row:hover { background-color: color-mix(in srgb, var(--vscode-list-hoverBackground) 50%, transparent); }

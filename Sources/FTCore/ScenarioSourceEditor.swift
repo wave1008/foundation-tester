@@ -270,6 +270,24 @@ public enum ScenarioSourceEditor {
         return lineNumber(of: decl.declRange.lowerBound, in: source)
     }
 
+    /// className の class 宣言が @TestClass を持つか(@Test を1件も持たない空クラスも
+    /// テストクラスとしてツリー表示するための判定。宣言直上の属性行群に @TestClass があれば true)。
+    public static func isTestClass(inSource source: String, className: String) -> Bool {
+        guard let declLine = classDeclarationLine(inSource: source, className: className) else {
+            return false
+        }
+        let lines = source.components(separatedBy: "\n")
+        var idx = declLine - 2  // class 宣言行(1起点)の直上(0起点)
+        while idx >= 0 {
+            let trimmed = lines[idx].trimmingCharacters(in: CharacterSet(charactersIn: " \t"))
+            if trimmed.isEmpty { idx -= 1; continue }
+            if trimmed.hasPrefix("@TestClass") { return true }
+            if trimmed.hasPrefix("@") { idx -= 1; continue }  // @Deleted 等を挟んでもよい
+            return false  // 属性でない行に到達
+        }
+        return false
+    }
+
     /// クラス内のテスト関数(func 宣言)の行番号(1 起点)。memberRange/funcDeclRange と同じ仕組みで
     /// クラス範囲内のみを探索するため、別クラスにある同名 func は拾わない。見つからなければ nil
     public static func methodDeclarationLine(inSource source: String, className: String,
@@ -279,6 +297,59 @@ public enum ScenarioSourceEditor {
             return nil
         }
         return lineNumber(of: decl.declRange.lowerBound, in: source)
+    }
+
+    // MARK: - 削除(TEST EXPLORER の右クリック「削除」= 物理削除)
+
+    /// テスト関数を、直前の属性行(@Test / @Deleted 等)から func 本体の閉じ波括弧までまとめて除去する。
+    /// 本体末尾は「func 宣言と同じインデントの `}` 行」で判定する(DSL は固定インデント整形前提。
+    /// 文字列リテラル内の波括弧を数えないための割り切り。ファイル冒頭の方針と同じ)。
+    /// 属性・func・末尾波括弧のいずれかを特定できないときは throw する(壊すより安全側で中断)。
+    public static func removeMethod(inSource source: String, className: String,
+                                    method: String) throws -> String {
+        let classRange = try memberRange(ofClass: className, in: source)
+        guard let decl = funcDeclRange(of: method, in: source, within: classRange) else {
+            throw ScenarioSourceEditError.methodNotFound(method)
+        }
+        let funcLine = lineNumber(of: decl.declRange.lowerBound, in: source)  // 1 起点
+        var lines = source.components(separatedBy: "\n")
+        let funcIdx = funcLine - 1
+        guard funcIdx >= 0, funcIdx < lines.count else {
+            throw ScenarioSourceEditError.methodNotFound(method)
+        }
+        let indent = String(lines[funcIdx].prefix { $0 == " " || $0 == "\t" })
+        let closer = indent + "}"
+
+        // 本体末尾: func 行より後で、末尾空白を除いてちょうど `<indent>}` になる最初の行。
+        // 本体・ネストしたブロックの閉じ波括弧はより深いインデントなので、これが func 自身の閉じになる
+        var closeIdx: Int?
+        var i = funcIdx + 1
+        while i < lines.count {
+            let stripped = lines[i].replacingOccurrences(of: #"[ \t]+$"#, with: "",
+                                                         options: .regularExpression)
+            if stripped == closer { closeIdx = i; break }
+            i += 1
+        }
+        guard let endIdx = closeIdx else {
+            throw ScenarioSourceEditError.methodNotFound(method)
+        }
+
+        // 属性ブロック先頭: func 行の直上から、@ で始まる行(@Test / @Deleted 等)を遡って含める
+        var startIdx = funcIdx
+        var j = funcIdx - 1
+        while j >= 0 {
+            let trimmed = lines[j].trimmingCharacters(in: CharacterSet(charactersIn: " \t"))
+            if trimmed.hasPrefix("@") { startIdx = j; j -= 1 } else { break }
+        }
+
+        // メソッド間の区切り空行が二重に残らないよう、直後の空行を1行だけ巻き込む
+        var removeEnd = endIdx
+        if removeEnd + 1 < lines.count,
+           lines[removeEnd + 1].trimmingCharacters(in: CharacterSet(charactersIn: " \t")).isEmpty {
+            removeEnd += 1
+        }
+        lines.removeSubrange(startIdx...removeEnd)
+        return lines.joined(separator: "\n")
     }
 
     /// String.Index → 1 起点の行番号(index までの改行数 + 1)

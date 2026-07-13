@@ -219,6 +219,24 @@ public func terminateApp(file: StaticString = #filePath, line: UInt = #line) {
     }
 }
 
+/// ホーム画面へ戻る
+public func home(file: StaticString = #filePath, line: UInt = #line) {
+    let core = FTRuntime.requireCore(command: "home")
+    let driver = core.driver
+    core.performCustom(description: "home", file: file, line: line) {
+        try await driver.home()
+    }
+}
+
+/// アプリスイッチャー(タスク一覧)を開く
+public func appSwitcher(file: StaticString = #filePath, line: UInt = #line) {
+    let core = FTRuntime.requireCore(command: "appSwitcher")
+    let driver = core.driver
+    core.performCustom(description: "appSwitcher", file: file, line: line) {
+        try await driver.openAppSwitcher()
+    }
+}
+
 /// 固定秒数待つ(記録に残る)
 public func wait(_ seconds: Double,
                  file: StaticString = #filePath, line: UInt = #line) {

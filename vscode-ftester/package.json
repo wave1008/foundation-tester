@@ -2,7 +2,7 @@
   "name": "vscode-ftester",
   "displayName": "ftester",
   "description": "ftester (Swift 製モバイル UI テストツール) のシナリオをツリー表示・実行するための VS Code 拡張",
-  "version": "0.0.103",
+  "version": "0.0.114",
   "private": true,
   "publisher": "wave1008",
   "license": "MIT",
@@ -215,6 +215,11 @@
         "command": "ftester.validateProfiles",
         "title": "ftester: プロファイルを検証",
         "category": "ftester"
+      },
+      {
+        "command": "ftester.deleteScenario",
+        "title": "削除",
+        "category": "ftester"
       }
     ],
     "menus": {
@@ -222,6 +227,11 @@
         {
           "command": "ftester.showSteps",
           "group": "navigation"
+        },
+        {
+          "command": "ftester.deleteScenario",
+          "when": "controllerId == 'ftester' && !(testId =~ /^folder:/)",
+          "group": "z_delete"
         }
       ],
       "view/title": [

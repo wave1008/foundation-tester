@@ -19,16 +19,22 @@
 //   liveTab.js 側も追随させること。
 
 import { type ChildProcessByStdio, spawn } from "node:child_process";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import type { Readable, Writable } from "node:stream";
 import * as vscode from "vscode";
-import { type FtesterConfig, resolveProjectName } from "./config";
+import type { FtesterCli } from "./cli";
+import { type FtesterConfig, listAppProfileNames, readAppProfileTarget, resolveProjectName } from "./config";
 import {
   buildDeviceArgs,
   devicesToOptions,
   fallbackDeviceOption,
+  hitTestElement,
   type LiveActionResult,
   type LiveDeviceOption,
   type LiveDeviceRef,
+  type LiveElement,
   type LiveErrorResult,
   type LiveFrameResult,
   type LiveFromWebviewMessage,
@@ -36,9 +42,12 @@ import {
   type LiveSize,
   type LiveSnapshot,
   type LiveToWebviewMessage,
+  locatorChainForElement,
+  parseGenScenarioEvent,
   parseListDevicesResult,
   parseLiveServeEvent,
   pointFromClick,
+  type RecordedStep,
   sameLiveDeviceRef,
   serializeLiveServeCommand,
   toSnapshotMessage,
@@ -103,6 +112,8 @@ export class MonitorLiveController implements vscode.Disposable {
   private pendingSelectId: string | undefined;
   /** 直近の snapshot の screen(ポイント座標のサイズ)。クリック→タップ座標変換に使う。 */
   private lastScreen: LiveSize | undefined;
+  /** 直近の snapshot の要素一覧。レコーディング中のヒットテスト・ref 解決に使う。 */
+  private lastElements: readonly LiveElement[] = [];
   private busy = false;
   /** 自動フレームの連続失敗回数(スキップ回はカウントしない)。3で connectionLost に切り替える
    * (単発の取りこぼしで誤検知しないためのデバウンス)。 */
@@ -147,7 +158,21 @@ export class MonitorLiveController implements vscode.Disposable {
   /** 自動フレームの次回 tick タイマー。 */
   private frameTimer: ReturnType<typeof setTimeout> | undefined;
 
-  constructor(private readonly deps: MonitorPanelDeps) {}
+  // ---- レコーディング(操作→FlowStep記録→gen-scenario) -----------------------------------
+  private recording = false;
+  private recordedSteps: RecordedStep[] = [];
+  private recordApp: { bundle: string; platform: string } | null = null;
+  /** refreshAppProfiles の選択維持用(applyDevices の selectedDeviceId と同じ役割)。 */
+  private selectedAppProfileId: string | undefined;
+  /** generateScenario 実行中かどうか。dispose 時に cli.ts の直列キュー(explore と共有)から
+   * 自分のタスクを止めるか判定するのに使う(monitorExploreController.ts の running と同じ役割)。 */
+  private generating = false;
+
+  constructor(
+    private readonly deps: MonitorPanelDeps,
+    private readonly cli: FtesterCli,
+    private readonly refreshTestTree: () => void,
+  ) {}
 
   /** パネル close 時・dispose 時の両方から呼ばれる。パネル再オープン後は webview からの
    * refreshDevices→applyDevices→ensureServeProcessForSelection で serve が再起動される。 */
@@ -158,6 +183,9 @@ export class MonitorLiveController implements vscode.Disposable {
   }
 
   dispose(): void {
+    if (this.generating) {
+      this.cli.cancelCurrent();
+    }
     this.stopProcesses();
   }
 
@@ -642,6 +670,7 @@ export class MonitorLiveController implements vscode.Disposable {
     }
     this.handleConnectionOk();
     this.lastScreen = result.screen;
+    this.lastElements = result.elements;
     this.post(toSnapshotMessage(result));
   }
 
@@ -717,15 +746,26 @@ export class MonitorLiveController implements vscode.Disposable {
 
   /** serve へ1コマンド送って結果を反映する。成功時は serve が続けて返す観測イベント(操作後の
    * 追加待ちなしで届く。ブリッジ応答=UI整定済みのため)をそのまま画面へ反映する。失敗時は
-   * 画面を再取得しない(観測イベント自体は届くが反映せず、直近のエラーを表示する)。 */
-  private async runAction(command: LiveServeCommand): Promise<void> {
+   * 画面を再取得しない(観測イベント自体は届くが反映せず、直近のエラーを表示する)。
+   * recordStep はレコーディング中(this.recording)かつ action 成功時に記録する(busy中スキップ・
+   * デバイス未選択・action失敗では記録しない)。snapshot 失敗では記録を止めない: home/appSwitcher/
+   * terminate は対象アプリを離れ直後の観測が失敗し得るが、操作自体は成立しているため。
+   * silentObservation: 直後に別コマンドが続くとき観測を反映・表示せず action 成否だけ返す。
+   * install(=simctl 再インストール)はアプリを終了させるため直後の snapshot は必ず失敗する(正常)。
+   * これを表示・中断に使わないための逃げ道(録画開始の install→launch で使う)。
+   * 戻り値は呼び出し元(startRecord)が install/launch の成否判定に使う。 */
+  private async runAction(
+    command: LiveServeCommand,
+    recordStep?: RecordedStep,
+    options?: { readonly silentObservation?: boolean },
+  ): Promise<boolean> {
     if (this.busy) {
-      return;
+      return false;
     }
     const device = this.currentDeviceRef();
     if (!device) {
       this.post({ type: "actionError", message: "デバイスが選択されていません。" });
-      return;
+      return false;
     }
     this.setBusy(true);
     try {
@@ -733,13 +773,157 @@ export class MonitorLiveController implements vscode.Disposable {
       const { action, snapshot } = await this.sendServeCommand(command);
       if (action && !action.ok) {
         this.post({ type: "actionError", message: action.error });
-        return;
+        return false;
+      }
+      if (this.recording && recordStep) {
+        this.recordedSteps.push(recordStep);
+      }
+      if (options?.silentObservation) {
+        return true;  // action は成功。観測は反映も表示もしない(直後の launch が画面を出す)
       }
       this.applySnapshotResult(snapshot);
+      return snapshot.ok;
     } catch (error) {
       this.post({ type: "actionError", message: `操作の実行に失敗しました: ${errorMessage(error)}` });
+      return false;
     } finally {
       this.setBusy(false);
+    }
+  }
+
+  // ---- レコーディング ---------------------------------------------------------------
+
+  /** 直前の選択が新しい一覧にも存在すれば維持し、無ければ先頭を選択する(applyDevices と同じ方針)。 */
+  private refreshAppProfiles(): void {
+    const config = this.deps.getConfig();
+    const resolution = resolveProjectName(this.deps.workspaceRoot, config);
+    if (resolution.kind !== "resolved") {
+      this.selectedAppProfileId = undefined;
+      this.post({ type: "appProfiles", profiles: [], selectedId: undefined });
+      return;
+    }
+    const profiles = listAppProfileNames(this.deps.workspaceRoot, resolution.project);
+    const stillExists = this.selectedAppProfileId !== undefined && profiles.includes(this.selectedAppProfileId);
+    this.selectedAppProfileId = stillExists ? this.selectedAppProfileId : profiles[0];
+    this.post({ type: "appProfiles", profiles, selectedId: this.selectedAppProfileId });
+  }
+
+  /** アプリ起動(必要なら事前インストール)まで完了させてから記録状態に入る。起動失敗時は
+   * 記録を開始しない(runAction が既に actionError を post 済み)。 */
+  private async startRecord(appProfile: string, autoInstall: boolean): Promise<void> {
+    if (this.recording) {
+      return;
+    }
+    const device = this.currentDeviceRef();
+    if (!device) {
+      this.post({ type: "actionError", message: "デバイスが選択されていません。" });
+      return;
+    }
+    const config = this.deps.getConfig();
+    const resolution = resolveProjectName(this.deps.workspaceRoot, config);
+    if (resolution.kind !== "resolved") {
+      this.post({
+        type: "actionError",
+        message: "対象のテストプロジェクトを解決できませんでした。ftester.project 設定を確認してください。",
+      });
+      return;
+    }
+    const target = readAppProfileTarget(this.deps.workspaceRoot, resolution.project, appProfile, device.platform);
+    if (!target) {
+      this.post({ type: "actionError", message: "アプリプロファイルを解決できません" });
+      return;
+    }
+    this.selectedAppProfileId = appProfile;
+    if (autoInstall && target.appPath) {
+      // 再インストールはアプリを終了させ、install 直後の観測は必ず「not running」で失敗する。
+      // それを表示・中断に使わないよう silentObservation。画面はこの後の launch が出す。
+      const installed = await this.runAction(
+        { cmd: "install", path: target.appPath }, undefined, { silentObservation: true });
+      if (!installed) {
+        return;
+      }
+    }
+    const launched = await this.runAction({ cmd: "launch", bundle: target.bundle });
+    if (!launched) {
+      return;
+    }
+    this.recording = true;
+    this.recordedSteps = [];
+    this.recordApp = { bundle: target.bundle, platform: device.platform };
+    this.post({ type: "recording", active: true });
+  }
+
+  private stopRecord(): void {
+    this.recording = false;
+    this.post({ type: "recording", active: false });
+    if (this.recordedSteps.length === 0) {
+      this.post({ type: "recordStatus", message: "操作が記録されていません", file: null });
+      return;
+    }
+    void this.generateScenario();
+  }
+
+  /** 記録済みステップを一時JSONに書き出し `ftester api gen-scenario` を(cli.ts の直列キュー経由で)
+   * 実行する。成功時は生成ファイルを開いてテストツリーを更新する。一時ファイルはベストエフォートで削除する。 */
+  private async generateScenario(): Promise<void> {
+    const app = this.recordApp;
+    const config = this.deps.getConfig();
+    const resolution = resolveProjectName(this.deps.workspaceRoot, config);
+    if (!app || resolution.kind !== "resolved") {
+      this.post({ type: "recordStatus", message: "対象のテストプロジェクトを解決できませんでした。", file: null });
+      return;
+    }
+
+    const payload = { app: app.bundle, platform: app.platform, steps: this.recordedSteps };
+    const tmpPath = path.join(os.tmpdir(), `ftester-record-${Date.now()}-${process.pid}.json`);
+    try {
+      fs.writeFileSync(tmpPath, JSON.stringify(payload), "utf8");
+    } catch (error) {
+      this.post({
+        type: "recordStatus",
+        message: `一時ファイルの書き込みに失敗しました: ${errorMessage(error)}`,
+        file: null,
+      });
+      return;
+    }
+    this.post({ type: "recordStatus", message: "テストコードを生成中…", file: null });
+
+    let generatedFile: string | undefined;
+    let errorMsg: string | undefined;
+    this.generating = true;
+    try {
+      await this.cli.invoke(config.binaryPath, this.deps.workspaceRoot, {
+        args: ["api", "gen-scenario", "--project", resolution.project, "--steps", tmpPath],
+        onNdjsonValue: (value) => {
+          const event = parseGenScenarioEvent(value);
+          if (!event) {
+            return;
+          }
+          if (event.event === "scenarioGenerated") {
+            generatedFile = event.file;
+          } else {
+            errorMsg = event.message;
+          }
+        },
+        onLog: (line, stream) => this.deps.outputChannel.appendLine(`[gen-scenario ${stream}] ${line}`),
+      });
+    } catch (error) {
+      errorMsg = errorMessage(error);
+    } finally {
+      this.generating = false;
+      try {
+        fs.unlinkSync(tmpPath);
+      } catch {
+        // 生成完了後の一時ファイルなので削除失敗は無視してよい(ベストエフォート)。
+      }
+    }
+
+    if (generatedFile) {
+      this.post({ type: "recordStatus", message: "生成しました", file: generatedFile });
+      void vscode.window.showTextDocument(vscode.Uri.file(generatedFile));
+      this.refreshTestTree();
+    } else {
+      this.post({ type: "recordStatus", message: errorMsg ?? "テストコードの生成に失敗しました。", file: null });
     }
   }
 
@@ -761,6 +945,9 @@ export class MonitorLiveController implements vscode.Disposable {
         break;
       case "openDevice":
         void this.openDevice(message.id);
+        // 右クリック起動(ft-live-open-device)は webview 側で refreshAppProfiles を送らない
+        // (初回自動 refresh を抑止する経路)ため、ここでアプリプロファイル一覧を補充する。
+        this.refreshAppProfiles();
         break;
       case "refreshSnapshot":
         void this.refreshSnapshot();
@@ -775,7 +962,11 @@ export class MonitorLiveController implements vscode.Disposable {
           { width: message.displayWidth, height: message.displayHeight },
           this.lastScreen,
         );
-        void this.runAction({ cmd: "tap", x: point.x, y: point.y });
+        const tapHit = hitTestElement(point, this.lastElements);
+        const tapStep: RecordedStep | undefined = tapHit
+          ? { action: "tap", ...locatorChainForElement(tapHit, this.lastElements) }
+          : undefined;
+        void this.runAction({ cmd: "tap", x: point.x, y: point.y }, tapStep);
         break;
       }
       case "dragPoints": {
@@ -789,11 +980,18 @@ export class MonitorLiveController implements vscode.Disposable {
         // 実測時間をそのまま実機に流すと serve タイムアウト(20秒)に触れるためクランプする
         const pressSeconds = Math.min(Math.max(message.pressMs / 1000, 0), 3);
         const durationSeconds = Math.min(Math.max(message.dragMs / 1000, 0.05), 8);
-        void this.runAction({
-          cmd: "drag",
-          fromX: from.x, fromY: from.y, toX: to.x, toY: to.y,
-          press: pressSeconds, duration: durationSeconds,
-        });
+        const dx = message.toX - message.fromX;
+        const dy = message.toY - message.fromY;
+        const direction: "up" | "down" | "left" | "right" =
+          Math.abs(dx) >= Math.abs(dy) ? (dx >= 0 ? "right" : "left") : dy < 0 ? "up" : "down";
+        void this.runAction(
+          {
+            cmd: "drag",
+            fromX: from.x, fromY: from.y, toX: to.x, toY: to.y,
+            press: pressSeconds, duration: durationSeconds,
+          },
+          { action: "swipe", direction },
+        );
         break;
       }
       case "pressPoint": {
@@ -808,28 +1006,42 @@ export class MonitorLiveController implements vscode.Disposable {
         );
         // 実測ホールド時間をそのまま流す(serve タイムアウト対策で 0.5〜5 秒にクランプ)
         const duration = Math.min(Math.max(message.holdMs / 1000, 0.5), 5);
-        void this.runAction({ cmd: "press", x: point.x, y: point.y, duration });
+        const pressHit = hitTestElement(point, this.lastElements);
+        const pressStep: RecordedStep | undefined = pressHit
+          ? { action: "press", ...locatorChainForElement(pressHit, this.lastElements) }
+          : undefined;
+        void this.runAction({ cmd: "press", x: point.x, y: point.y, duration }, pressStep);
         break;
       }
-      case "tapRef":
-        void this.runAction({ cmd: "tap", ref: message.ref });
+      case "tapRef": {
+        const refHit = this.lastElements.find((element) => element.ref === message.ref);
+        const tapRefStep: RecordedStep | undefined = refHit
+          ? { action: "tap", ...locatorChainForElement(refHit, this.lastElements) }
+          : undefined;
+        void this.runAction({ cmd: "tap", ref: message.ref }, tapRefStep);
         break;
+      }
       case "typeText": {
         if (message.text.trim().length === 0) {
           this.post({ type: "actionError", message: "入力するテキストを入力してください。" });
           break;
         }
-        void this.runAction({ cmd: "type", text: message.text, ref: message.ref });
+        const typeHit =
+          message.ref !== null ? this.lastElements.find((element) => element.ref === message.ref) : undefined;
+        const typeStep: RecordedStep | undefined = typeHit
+          ? { action: "type", text: message.text, ...locatorChainForElement(typeHit, this.lastElements) }
+          : undefined;
+        void this.runAction({ cmd: "type", text: message.text, ref: message.ref }, typeStep);
         break;
       }
       case "home":
-        void this.runAction({ cmd: "home" });
+        void this.runAction({ cmd: "home" }, { action: "home" });
         break;
       case "appSwitcher":
-        void this.runAction({ cmd: "appSwitcher" });
+        void this.runAction({ cmd: "appSwitcher" }, { action: "appSwitcher" });
         break;
       case "terminate":
-        void this.runAction({ cmd: "terminate" });
+        void this.runAction({ cmd: "terminate" }, { action: "terminate" });
         break;
       case "visibility":
         this.liveTabVisible = message.visible;
@@ -838,6 +1050,15 @@ export class MonitorLiveController implements vscode.Disposable {
         } else {
           this.clearFrameTimer();
         }
+        break;
+      case "refreshAppProfiles":
+        this.refreshAppProfiles();
+        break;
+      case "startRecord":
+        void this.startRecord(message.appProfile, message.autoInstall);
+        break;
+      case "stopRecord":
+        this.stopRecord();
         break;
     }
   }

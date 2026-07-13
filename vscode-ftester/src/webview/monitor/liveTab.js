@@ -28,6 +28,11 @@ const typeRefHint = document.getElementById('live-type-ref-hint');
 const actionError = document.getElementById('live-action-error');
 const elementsList = document.getElementById('live-elements-list');
 
+const appProfileSelect = document.getElementById('live-app-profile-select');
+const autoInstallCheckbox = document.getElementById('live-record-autoinstall');
+const recordBtn = document.getElementById('live-btn-record');
+const recordStatus = document.getElementById('live-record-status');
+
 const STATE_LABEL = {
   connected: '接続済み',
   booted: '起動中',
@@ -42,6 +47,8 @@ let selectedRef = null;
 let busy = false;
 // frame 受信時の自動全量更新(refreshSnapshot)の一回制御。applySnapshot で false に戻す。
 let autoSnapshotRequested = false;
+// host からの 'recording' メッセージのみが更新する(host が唯一の真実。ボタン押下では変えない)。
+let recording = false;
 
 const busyButtons = [
   'live-btn-refresh-devices', 'live-btn-terminate', 'live-btn-refresh-snapshot',
@@ -91,6 +98,47 @@ function applyDevices(devices, selectedId) {
 deviceSelect.addEventListener('change', () => {
   updateDeviceWarning();
   post({ type: 'selectDevice', id: deviceSelect.value });
+});
+
+// ---- レコーディング(対向: monitorLiveController.ts / liveModel.ts) --------------
+
+function applyAppProfiles(profiles, selectedId) {
+  appProfileSelect.innerHTML = '';
+  if (profiles.length === 0) {
+    const opt = document.createElement('option');
+    opt.value = '';
+    opt.textContent = '(アプリプロファイルなし)';
+    opt.disabled = true;
+    opt.selected = true;
+    appProfileSelect.appendChild(opt);
+    // 選択可能なプロファイルが無い間はレコーディング開始不可(録画中の終了操作は妨げない)。
+    recordBtn.disabled = !recording;
+    return;
+  }
+  for (const profile of profiles) {
+    const opt = document.createElement('option');
+    opt.value = profile;
+    opt.textContent = profile;
+    appProfileSelect.appendChild(opt);
+  }
+  appProfileSelect.value = selectedId && profiles.includes(selectedId) ? selectedId : profiles[0];
+  recordBtn.disabled = false;
+}
+
+function applyRecording(active) {
+  recording = active;
+  recordBtn.textContent = active ? 'レコーディング終了' : 'レコーディング開始';
+  recordBtn.classList.toggle('recording', active);
+  appProfileSelect.disabled = active;
+  autoInstallCheckbox.disabled = active;
+}
+
+recordBtn.addEventListener('click', () => {
+  if (recording) {
+    post({ type: 'stopRecord' });
+  } else {
+    post({ type: 'startRecord', appProfile: appProfileSelect.value, autoInstall: autoInstallCheckbox.checked });
+  }
 });
 
 // ---- スクリーンショット(クリック=タップ、ドラッグ=スワイプ、要素ホバー=枠オーバーレイ) ------
@@ -327,6 +375,15 @@ export function applyLiveMessage(message) {
         screenshot.classList.remove('disconnected');
       }
       break;
+    case 'appProfiles':
+      applyAppProfiles(message.profiles, message.selectedId);
+      break;
+    case 'recording':
+      applyRecording(!!message.active);
+      break;
+    case 'recordStatus':
+      recordStatus.textContent = message.message;
+      break;
     default:
       break;
   }
@@ -339,6 +396,7 @@ document.addEventListener('ft-tab-activated', (event) => {
   if (event.detail.tab === 'live' && !initialized) {
     initialized = true;
     post({ type: 'refreshDevices' });
+    post({ type: 'refreshAppProfiles' });
   }
 });
 

@@ -129,6 +129,47 @@ export function listAppProfileNames(workspaceRoot: string, project: string): str
 }
 
 /**
+ * Projects/<project>/profiles/apps/<name>.json から platform 向けの起動対象を読む。
+ * app/appPath は platform セクションのみ参照する(RunProfile.swift AppProfileSection.merging:
+ * common へのフォールバックは無い。common.app は非推奨)。bundle が無ければ null。
+ */
+export function readAppProfileTarget(
+  workspaceRoot: string,
+  project: string,
+  name: string,
+  platform: Platform,
+): { bundle: string; appPath: string | null } | null {
+  const profilePath = path.join(workspaceRoot, "Projects", project, "profiles", "apps", `${name}.json`);
+  try {
+    const raw = fs.readFileSync(profilePath, "utf8");
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null) {
+      return null;
+    }
+    const section = (parsed as Record<string, unknown>)[platform];
+    if (typeof section !== "object" || section === null) {
+      return null;
+    }
+    const { app, appPath: rawAppPath } = section as Record<string, unknown>;
+    if (typeof app !== "string") {
+      return null;
+    }
+    let appPath: string | null = null;
+    if (typeof rawAppPath === "string") {
+      // ベースディレクトリ・~展開の契約: RunProfile.swift:492 resolvePath(_, base: project.rootURL)
+      // (rootURL = Projects/<project>/)。
+      const expanded = rawAppPath.startsWith("~") ? path.join(os.homedir(), rawAppPath.slice(1)) : rawAppPath;
+      appPath = path.isAbsolute(expanded)
+        ? expanded
+        : path.resolve(path.join(workspaceRoot, "Projects", project), expanded);
+    }
+    return { bundle: app, appPath };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * profiles/machines/ 直下の .json が**ちょうど1つ**のときのみ、その ios→android 順の
  * devices[].name を返す(monitorPanel.ts の profileAdd が新規実行プロファイルの
  * デバイス候補に使う)。実際に「使われる」マシンプロファイルの判定(登録名/FT_MACHINE)は

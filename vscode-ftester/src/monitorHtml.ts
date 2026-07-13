@@ -276,6 +276,13 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
       <span id="live-device-warning"></span>
       <span id="live-busy-label"></span>
     </div>
+    <div class="toolbar live-record-row">
+      <label for="live-app-profile-select">アプリプロファイル:</label>
+      <select id="live-app-profile-select" title="アプリプロファイル"></select>
+      <label><input type="checkbox" id="live-record-autoinstall" checked> 自動インストール</label>
+      <button id="live-btn-record">レコーディング開始</button>
+      <span id="live-record-status" class="live-record-status"></span>
+    </div>
     <div id="live-banner" class="banner"></div>
     <div id="live-action-error"></div>
 

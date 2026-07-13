@@ -423,4 +423,53 @@ final class ScenarioSourceEditorTests: XCTestCase {
             XCTAssertEqual(resultLines[index], original, "行 \(index + 1) は変更されないはず")
         }
     }
+
+    // MARK: - removeMethod(TEST EXPLORER の関数削除。ファイルは残す)
+
+    func testRemoveMethodKeepsSiblingAndOtherClass() throws {
+        let result = try ScenarioSourceEditor.removeMethod(
+            inSource: source, className: "ログインテスト", method: "S0020")
+        XCTAssertFalse(result.contains("func S0020"))
+        XCTAssertFalse(result.contains("@Test\n"))  // S0020 の裸 @Test 属性も除去
+        // 残すメソッドと本体は保持
+        XCTAssertTrue(result.contains("func S0010() {"))
+        XCTAssertTrue(result.contains(#"@Test("ログインとエラー表示")"#))
+        // クラス宣言・別クラスは無関係
+        XCTAssertTrue(result.contains("class ログインテスト {"))
+        XCTAssertTrue(result.contains("class Network_internet_を開いて {"))
+        // ログインテスト側の S0010 だけ残り、別クラスの S0010 も残る(func S0010 は2箇所)
+        XCTAssertEqual(result.components(separatedBy: "func S0010").count - 1, 2)
+    }
+
+    func testRemoveMethodStripsMultipleAttributeLines() throws {
+        // @Deleted + @Test の複数属性行をまとめて除去する
+        let result = try ScenarioSourceEditor.removeMethod(
+            inSource: source, className: "Network_internet_を開いて", method: "S0010")
+        XCTAssertFalse(result.contains("@Deleted(\"旧仕様\")"))
+        XCTAssertFalse(result.contains("「Network & internet」を開いて"))
+        // このクラスの S0010 は消え、ログインテスト側の S0010 は残る
+        XCTAssertEqual(result.components(separatedBy: "func S0010").count - 1, 1)
+        // 唯一のメソッドを消してもクラス宣言は残す(関数削除はファイル/クラスを消さない)
+        XCTAssertTrue(result.contains("class Network_internet_を開いて {"))
+    }
+
+    func testRemoveMethodNotFound() {
+        XCTAssertThrowsError(try ScenarioSourceEditor.removeMethod(
+            inSource: source, className: "ログインテスト", method: "S9999"))
+    }
+
+    // MARK: - isTestClass(空クラスをツリーに残す判定)
+
+    func testIsTestClass() {
+        XCTAssertTrue(ScenarioSourceEditor.isTestClass(inSource: source, className: "ログインテスト"))
+        XCTAssertTrue(ScenarioSourceEditor.isTestClass(
+            inSource: source, className: "Network_internet_を開いて"))
+        XCTAssertFalse(ScenarioSourceEditor.isTestClass(inSource: source, className: "存在しない"))
+        // @TestClass の無い素の class は false
+        XCTAssertFalse(ScenarioSourceEditor.isTestClass(
+            inSource: "class ただのクラス {\n}\n", className: "ただのクラス"))
+        // メソッドが無い空クラスでも @TestClass があれば true(本機能の対象)
+        XCTAssertTrue(ScenarioSourceEditor.isTestClass(
+            inSource: "@TestClass(app: \"a\")\nclass 空 {\n\n}\n", className: "空"))
+    }
 }
