@@ -68,6 +68,9 @@ export interface MonitorPanelDeps {
   writeMonitorControl(cmd: MonitorControlCommand): void;
   /** MonitorProfilesController.postMachineProfileInfoへの委譲。MonitorDeviceOps.runCreateDevice成功時に呼ぶ。 */
   notifyMachineProfilesChanged(): void;
+  /** 生成したソース(絶対パス)を、デバイスモニターの列を避けた列に開く(モニター表示を覆わないため)。
+   * live/explore 両コントローラの生成完了時に使う。 */
+  openGeneratedDocument(filePath: string): void;
 }
 
 export function registerMonitorPanel(
@@ -133,6 +136,7 @@ class MonitorPanelController implements vscode.Disposable {
       isPanelActive: () => this.panel !== undefined,
       writeMonitorControl: (cmd) => this.processManager.writeMonitorControl(cmd),
       notifyMachineProfilesChanged: () => this.profiles.postMachineProfileInfo(),
+      openGeneratedDocument: (filePath) => this.openGeneratedDocument(filePath),
     };
     this.processManager = new MonitorProcessManager(this.deps);
     this.profiles = new MonitorProfilesController(this.deps);
@@ -190,6 +194,16 @@ class MonitorPanelController implements vscode.Disposable {
     for (const name of targets) {
       this.deviceOps.enqueueLifecycleJob({ kind: "device", name, op: "down" });
     }
+  }
+
+  /** モニターは ViewColumn.Beside(通常2列目以降)に開く。生成ソースはその1つ左(モニターが
+   * 最左なら右隣)の列に開き、モニター表示を覆わないようにする。panel非表示時(viewColumn
+   * undefined)は Two とみなし1列目に開く。 */
+  private openGeneratedDocument(filePath: string): void {
+    const monitorColumn = this.panel?.viewColumn ?? vscode.ViewColumn.Two;
+    const target: vscode.ViewColumn =
+      monitorColumn > vscode.ViewColumn.One ? monitorColumn - 1 : monitorColumn + 1;
+    void vscode.window.showTextDocument(vscode.Uri.file(filePath), { viewColumn: target });
   }
 
   /** initialTab を指定すると、パネルが既に開いている場合は reveal 後にそのタブへ切り替える。
