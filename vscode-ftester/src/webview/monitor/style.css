@@ -471,7 +471,13 @@ select:disabled { opacity: 0.5; cursor: default; }
   min-width: 0;
 }
 .lane-header {
-  padding: 4px 8px;
+  /* 固定高。ワーカー列(レーン)のヘッダをラベル文字列に依らず揃える(content 高だとまちまちになる) */
+  display: flex;
+  align-items: center;
+  flex: 0 0 26px;
+  height: 26px;
+  box-sizing: border-box;
+  padding: 0 8px;
   background-color: var(--vscode-sideBar-background, var(--vscode-editor-background));
   border-bottom: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
   white-space: nowrap;
@@ -1150,14 +1156,27 @@ input[type="text"]::placeholder {
   min-width: 280px;
   display: flex;
   flex-direction: column;
-  align-items: center;
   gap: 6px;
-  overflow: auto;
+  /* スクロール廃止。画像は fitScreenshot が可変スロットに収め、actions は下に固定表示する */
+  min-height: 0;
+  overflow: hidden;
 }
-.screenshot-actions { display: flex; gap: 6px; }
+/* 画像の可変スロット。縦の余りを全部取り(flex:1 1 0=content 非依存)、内側 wrap を中央寄せ。
+   高さは actions を差し引いた確定値になり、liveTab.js の fitScreenshot が実測して画像に反映する。 */
+#panel-live .screenshot-frame {
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* flex:0 で常にスロット外の下端に確保 → ホーム/タスク切替は常に押せる */
+.screenshot-actions { flex: 0 0 auto; display: flex; justify-content: center; gap: 6px; }
 #panel-live .screenshot-wrap {
   position: relative;
-  display: inline-block;
+  /* img と同寸(overlay が inset:0 で貼り付くため wrap==img を維持)。frame の flex 子。 */
+  display: block;
   max-width: 100%;
   border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
   border-radius: 3px;

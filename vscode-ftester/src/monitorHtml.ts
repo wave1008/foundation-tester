@@ -287,23 +287,27 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
     <div id="live-action-error"></div>
 
     <div class="content">
-      <div class="screenshot-pane">
-        <div class="screenshot-wrap" id="live-screenshot-wrap">
-          <img id="live-screenshot" alt="スクリーンショット">
-          <div id="live-hover-box"></div>
-          <svg id="live-drag-overlay" aria-hidden="true"><line id="live-drag-line"/><circle id="live-drag-start" r="6"/></svg>
-          <div id="live-screenshot-placeholder">「更新」ボタンで画面を取得してください</div>
-          <div id="live-conn-overlay">
-            <div class="conn-title">⚠ デバイスに接続できません</div>
-            <div class="conn-note">表示中の画面は最後に取得した状態です</div>
-            <div id="live-conn-detail"></div>
-          </div>
-          <div id="live-busy-overlay">
-            <div id="live-busy-spinner"></div>
-            <div id="live-busy-message"></div>
+      <div class="screenshot-pane" id="live-screenshot-pane">
+        <!-- 画像の可変スロット。flex で高さが確定し、liveTab.js の fitScreenshot がこの実測高を
+             #live-screenshot の max-height に反映する(スクロールさせずフィット)。 -->
+        <div class="screenshot-frame" id="live-screenshot-frame">
+          <div class="screenshot-wrap" id="live-screenshot-wrap">
+            <img id="live-screenshot" alt="スクリーンショット">
+            <div id="live-hover-box"></div>
+            <svg id="live-drag-overlay" aria-hidden="true"><line id="live-drag-line"/><circle id="live-drag-start" r="6"/></svg>
+            <div id="live-screenshot-placeholder">「更新」ボタンで画面を取得してください</div>
+            <div id="live-conn-overlay">
+              <div class="conn-title">⚠ デバイスに接続できません</div>
+              <div class="conn-note">表示中の画面は最後に取得した状態です</div>
+              <div id="live-conn-detail"></div>
+            </div>
+            <div id="live-busy-overlay">
+              <div id="live-busy-spinner"></div>
+              <div id="live-busy-message"></div>
+            </div>
           </div>
         </div>
-        <div class="screenshot-actions">
+        <div class="screenshot-actions" id="live-screenshot-actions">
           <button id="live-btn-home" class="secondary" title="ホーム画面に戻ります">ホーム</button>
           <button id="live-btn-app-switcher" class="secondary" title="アプリスイッチャー(タスク一覧)を開きます">タスク切替</button>
         </div>
@@ -378,6 +382,12 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
   <!-- #device-op-menuとスタイルのみ共用する別要素。「除去」はプロファイルから外すだけで本体は削除しない。 -->
   <div id="machine-device-menu" class="device-op-menu" role="menu">
     <button id="machine-device-menu-item" class="device-op-menu-item" type="button" role="menuitem">除去</button>
+  </div>
+
+  <!-- ライブ操作の画像上で右クリック。開始/終了の活性は liveTab.js が録画状態に応じて切替(#live-btn-record と同ロジック)。 -->
+  <div id="live-record-menu" class="device-op-menu" role="menu">
+    <button id="live-record-menu-start" class="device-op-menu-item" type="button" role="menuitem">レコーディング開始</button>
+    <button id="live-record-menu-stop" class="device-op-menu-item" type="button" role="menuitem">レコーディング終了</button>
   </div>
 
   <div id="device-add-overlay" class="modal-overlay">
