@@ -1238,8 +1238,13 @@ input[type="text"]::placeholder {
 #panel-live #live-device-select {
   border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border, rgba(127, 127, 127, 0.5)));
 }
+/* #panel-live(縦 flex)の直下に置き .content の上に独立した行として表示。
+   タブ横幅いっぱいに広がり(既定 align: stretch)、表示時は .content ごと下へ押し下げる
+   (更新ボタンが下がるのは許容)。非表示時は display:none で行を畳む。左寄せは既定。 */
 #live-action-error {
+  flex: 0 0 auto;
   display: none;
+  padding: 4px 12px;
   font-size: 12px;
   color: var(--vscode-errorForeground, #f14c4c);
   white-space: pre-wrap;

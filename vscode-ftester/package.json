@@ -2,7 +2,7 @@
   "name": "vscode-ftester",
   "displayName": "ftester",
   "description": "ftester (Swift 製モバイル UI テストツール) のシナリオをツリー表示・実行するための VS Code 拡張",
-  "version": "0.0.100",
+  "version": "0.0.103",
   "private": true,
   "publisher": "wave1008",
   "license": "MIT",
