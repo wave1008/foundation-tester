@@ -27,6 +27,12 @@ final class StepDescriptionTests: XCTestCase {
                        "\"#email\"に\"a@b.c\"を入力する")
     }
 
+    func testTypeFocusedElementForm() {
+        // ロケータなしの type "text"(直前の tap でフォーカスした要素へ入力)
+        XCTAssertEqual(StepDescription.describe(command: "type \"あいう\""),
+                       "フォーカス中の要素に\"あいう\"を入力する")
+    }
+
     func testTypeWithSpaceInText() {
         // テキストに空白があっても最初の「" "」で区切る(セレクタに " は含まれない前提)
         XCTAssertEqual(StepDescription.describe(command: "type \"#q\" \"hello world\""),
@@ -141,6 +147,10 @@ final class StepDescriptionTests: XCTestCase {
 
         let type = FlowStep(action: "type", locator: FlowLocator(id: "email"), text: "a@b.c")
         XCTAssertEqual(StepDescription.describe(step: type), "\"#email\"に\"a@b.c\"を入力する")
+
+        // ロケータなし = フォーカス中の要素へ入力
+        XCTAssertEqual(StepDescription.describe(step: FlowStep(action: "type", text: "あいう")),
+                       "フォーカス中の要素に\"あいう\"を入力する")
 
         let screen = FlowStep(assert: "screenMatches", expected: "設定画面")
         XCTAssertEqual(StepDescription.describe(step: screen), "画面が\"設定画面\"であること")

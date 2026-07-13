@@ -298,6 +298,10 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
             <div class="conn-note">表示中の画面は最後に取得した状態です</div>
             <div id="live-conn-detail"></div>
           </div>
+          <div id="live-busy-overlay">
+            <div id="live-busy-spinner"></div>
+            <div id="live-busy-message"></div>
+          </div>
         </div>
         <div class="screenshot-actions">
           <button id="live-btn-home" class="secondary" title="ホーム画面に戻ります">ホーム</button>
@@ -308,7 +312,6 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
       <div class="control-pane">
         <div class="row controls-row">
           <button id="live-btn-refresh-snapshot">更新</button>
-          <button id="live-btn-terminate" class="secondary" title="フォアグラウンドのアプリを終了します">終了</button>
         </div>
 
         <div class="row">

@@ -105,18 +105,25 @@ public struct FlowLocator: Codable, Equatable, Sendable {
 public enum FlowLocatorBuilder {
     /// スナップショット中の要素から、優先ロケータ+フォールバック連鎖を導出する。
     /// 優先度: accessibility id > label > type+index
+    /// 同期対象: vscode-ftester/src/liveModel.ts locatorChainForElement。
+    /// id があるときは位置依存の type+index フォールバックは足さない(id は安定なので `.TextField` 等は
+    /// 冗長・ノイズ。生成コードの `#id||.Type` を `#id` にする)。
     public static func chain(for element: ElementInfo, in elements: [ElementInfo])
         -> (primary: FlowLocator, fallbacks: [FlowLocator]) {
         var locators: [FlowLocator] = []
+        var hasId = false
         if let id = element.identifier {
             locators.append(FlowLocator(id: id))
+            hasId = true
         }
         if let label = element.label {
             locators.append(FlowLocator(label: label))
         }
-        let sameType = elements.filter { $0.type == element.type }
-        if let index = sameType.firstIndex(where: { $0.ref == element.ref }) {
-            locators.append(FlowLocator(type: element.type, index: index))
+        if !hasId {
+            let sameType = elements.filter { $0.type == element.type }
+            if let index = sameType.firstIndex(where: { $0.ref == element.ref }) {
+                locators.append(FlowLocator(type: element.type, index: index))
+            }
         }
         if locators.isEmpty {
             // 最後の砦: 座標も何もない場合は type だけでも残す
@@ -131,7 +138,10 @@ public extension FlowStep {
     var summary: String {
         if let action {
             switch action {
-            case "type": return "type \(locatorSummary) \"\(text ?? "")\""
+            case "type":
+                return locator == nil
+                    ? "type \"\(text ?? "")\""
+                    : "type \(locatorSummary) \"\(text ?? "")\""
             case "swipe": return "swipe \(direction ?? "up")"
             case "scrollTo": return "scrollTo \(locatorSummary)"
             default: return "\(action) \(locatorSummary)"

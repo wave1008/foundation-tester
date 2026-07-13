@@ -330,6 +330,16 @@ export function frameToDisplayRect(frame: LiveRect, screen: LiveSize, display: L
   };
 }
 
+/** テキスト入力系の型語彙(タップ→入力欄フォーカス判定に使う)。契約: Sources/FTCore/
+ * SnapshotRendering.swift の textInputTypes と同一(iOS の BridgeRouter/InAppSnapshot と
+ * Android の SnapshotBuilder が同じ語彙へ正規化する)。変更したら Swift 側も追随させること。 */
+const TEXT_INPUT_TYPES: ReadonlySet<string> = new Set(["TextField", "SecureTextField", "TextView", "SearchField"]);
+
+/** 要素がテキスト入力欄(タップするとキーボード入力対象になる)かどうか。 */
+export function isTextInputElement(element: LiveElement): boolean {
+  return TEXT_INPUT_TYPES.has(element.type);
+}
+
 /** click の変換先ポイント座標を含む要素のうち、面積最小のもの(=重なりの中で最も具体的なもの)を返す。
  * 一致なしは undefined(レコーディング時、対象要素が無いタップ・長押しは記録しない判定に使う)。 */
 export function hitTestElement(point: LivePoint, elements: readonly LiveElement[]): LiveElement | undefined {
@@ -372,22 +382,28 @@ export interface RecordedStep {
 /**
  * 契約: Sources/FTCore/Flow.swift FlowLocatorBuilder.chain と同じ優先度(同期対象):
  * identifier > label > (同じ type 内での位置)index。全て無ければ type+index:0 のみを返す。
+ * ただし id があるときは位置依存の type+index フォールバックは足さない(id は安定なので
+ * `.TextField` 等は冗長・ノイズ。生成コードの `#id||.Type` を `#id` にする)。
  */
 export function locatorChainForElement(
   element: LiveElement,
   elements: readonly LiveElement[],
 ): { locator: FlowLocatorShape; fallbacks: FlowLocatorShape[] } {
   const locators: FlowLocatorShape[] = [];
+  let hasId = false;
   if (element.identifier !== null && element.identifier.length > 0) {
     locators.push({ id: element.identifier });
+    hasId = true;
   }
   if (element.label !== null && element.label.length > 0) {
     locators.push({ label: element.label });
   }
-  const sameType = elements.filter((e) => e.type === element.type);
-  const index = sameType.findIndex((e) => e.ref === element.ref);
-  if (index !== -1) {
-    locators.push({ type: element.type, index });
+  if (!hasId) {
+    const sameType = elements.filter((e) => e.type === element.type);
+    const index = sameType.findIndex((e) => e.ref === element.ref);
+    if (index !== -1) {
+      locators.push({ type: element.type, index });
+    }
   }
   if (locators.length === 0) {
     locators.push({ type: element.type, index: 0 });
@@ -554,13 +570,16 @@ export type LiveToWebviewMessage =
   | { readonly type: "actionError"; readonly message: string }
   | { readonly type: "busy"; readonly busy: boolean }
   | { readonly type: "connection"; readonly connected: boolean; readonly message: string | null }
+  | { readonly type: "busyOverlay"; readonly message: string | null }
   | {
       readonly type: "appProfiles";
       readonly profiles: readonly string[];
       readonly selectedId: string | undefined;
     }
-  | { readonly type: "recording"; readonly active: boolean }
-  | { readonly type: "recordStatus"; readonly message: string; readonly file: string | null };
+  | { readonly type: "recording"; readonly active: boolean; readonly generating?: boolean }
+  | { readonly type: "recordStatus"; readonly message: string; readonly file: string | null }
+  // テキスト入力欄をタップした直後に「入力するテキスト」欄へフォーカスを移す指示(受け手: liveTab.js)。
+  | { readonly type: "focusTypeInput" };
 
 export function toSnapshotMessage(snapshot: LiveSnapshot): LiveToWebviewMessage {
   return {
@@ -607,7 +626,6 @@ export type LiveFromWebviewMessage =
   | { readonly type: "typeText"; readonly text: string; readonly ref: number | null }
   | { readonly type: "appSwitcher" }
   | { readonly type: "home" }
-  | { readonly type: "terminate" }
   | { readonly type: "visibility"; readonly visible: boolean }
   | { readonly type: "refreshAppProfiles" }
   | { readonly type: "startRecord"; readonly appProfile: string; readonly autoInstall: boolean }
@@ -620,7 +638,6 @@ export function isLiveFromWebviewMessage(value: unknown): value is LiveFromWebvi
   switch (value.type) {
     case "refreshDevices":
     case "refreshSnapshot":
-    case "terminate":
     case "appSwitcher":
     case "home":
     case "refreshAppProfiles":

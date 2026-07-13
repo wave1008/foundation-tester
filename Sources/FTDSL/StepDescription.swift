@@ -41,9 +41,12 @@ public enum StepDescription {
             guard let selector = unquote(rest) else { return nil }
             return "\"\(objectPhrase(ofSelector: selectorOverride ?? selector))\"が表示されること"
         case "type":
-            guard let (selector, input) = unquotePair(rest, separator: "\" \"") else { return nil }
-            return "\"\(objectPhrase(ofSelector: selectorOverride ?? selector))\""
-                + "に\"\(input)\"を入力する"
+            if let (selector, input) = unquotePair(rest, separator: "\" \"") {
+                return "\"\(objectPhrase(ofSelector: selectorOverride ?? selector))\""
+                    + "に\"\(input)\"を入力する"
+            }
+            guard let input = unquote(rest) else { return nil }
+            return "フォーカス中の要素に\"\(input)\"を入力する"
         case "textIs":
             guard let (selector, expected) = unquotePair(rest, separator: "\" == \"") else {
                 return nil
@@ -84,6 +87,9 @@ public enum StepDescription {
             case "scrollTo":
                 return "\"\(objectPhrase(ofStep: step))\"が表示されるまでスクロールする"
             case "type":
+                if step.locator == nil {
+                    return "フォーカス中の要素に\"\(step.text ?? "")\"を入力する"
+                }
                 return "\"\(objectPhrase(ofStep: step))\"に\"\(step.text ?? "")\"を入力する"
             case "swipe":
                 return swipePhrase(direction: step.direction ?? "up")

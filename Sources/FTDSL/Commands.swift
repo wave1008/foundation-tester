@@ -77,6 +77,15 @@ public func tap(_ selector: String, optional: Bool = false,
                  selectorText: selector, file: file, line: line)
 }
 
+/// フォーカス中の要素にテキストを送信する(直前の tap でフォーカスした欄など。ロケータ指定なし)。
+/// ref なし = ブリッジがフォーカス中要素へ入力する(StepExecutor がロケータ解決を挟まず driver.type(ref: nil) を呼ぶ)。
+public func type(_ text: String, optional: Bool = false,
+                 file: StaticString = #filePath, line: UInt = #line) {
+    let step = FlowStep(action: "type", text: text, optional: optional ? true : nil)
+    FTRuntime.requireCore(command: "type")
+        .perform(step: step, description: "type \"\(text)\"", file: file, line: line)
+}
+
 public func type(_ selector: String, _ text: String, optional: Bool = false,
                  file: StaticString = #filePath, line: UInt = #line) {
     let parsed = FTSelector.parse(selector)

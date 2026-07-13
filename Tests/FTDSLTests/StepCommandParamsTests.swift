@@ -145,6 +145,18 @@ final class StepCommandParamsTests: XCTestCase {
             "type(\"欄\", \"値\", optional: true)")
     }
 
+    func testApplyRendersTypeFocusedElementForm() throws {
+        // ロケータなしの type「フォーカス中要素へ入力」の optional 反映
+        XCTAssertEqual(
+            try StepCommandParams.apply(display: "type \"text\"", params: ["optional": "false"],
+                                        toCode: "type(\"text\")"),
+            "type(\"text\")")
+        XCTAssertEqual(
+            try StepCommandParams.apply(display: "type \"text\"", params: ["optional": "true"],
+                                        toCode: "type(\"text\")"),
+            "type(\"text\", optional: true)")
+    }
+
     func testApplyRegeneratesOnVerbChangeWithParams() throws {
         XCTAssertEqual(
             try StepCommandParams.apply(display: "exist \"設定\"", params: ["timeout": "20"],

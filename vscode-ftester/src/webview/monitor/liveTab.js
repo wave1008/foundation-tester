@@ -22,6 +22,8 @@ const dragLine = document.getElementById('live-drag-line');
 const dragStartDot = document.getElementById('live-drag-start');
 const connOverlay = document.getElementById('live-conn-overlay');
 const connDetail = document.getElementById('live-conn-detail');
+const busyOverlay = document.getElementById('live-busy-overlay');
+const busyMessage = document.getElementById('live-busy-message');
 
 const typeTextInput = document.getElementById('live-type-text');
 const typeRefHint = document.getElementById('live-type-ref-hint');
@@ -49,9 +51,13 @@ let busy = false;
 let autoSnapshotRequested = false;
 // host からの 'recording' メッセージのみが更新する(host が唯一の真実。ボタン押下では変えない)。
 let recording = false;
+// テストコード生成中(stopRecord→gen-scenario 完了まで)。この間は「レコーディング終了」を非活性表示。
+let generating = false;
+// 選択可能なアプリプロファイルの有無(applyAppProfiles が更新)。無い間は開始不可。
+let hasAppProfile = false;
 
 const busyButtons = [
-  'live-btn-refresh-devices', 'live-btn-terminate', 'live-btn-refresh-snapshot',
+  'live-btn-refresh-devices', 'live-btn-refresh-snapshot',
   'live-btn-app-switcher', 'live-btn-home',
   'live-btn-type',
 ].map((id) => document.getElementById(id));
@@ -104,15 +110,15 @@ deviceSelect.addEventListener('change', () => {
 
 function applyAppProfiles(profiles, selectedId) {
   appProfileSelect.innerHTML = '';
-  if (profiles.length === 0) {
+  hasAppProfile = profiles.length > 0;
+  if (!hasAppProfile) {
     const opt = document.createElement('option');
     opt.value = '';
     opt.textContent = '(アプリプロファイルなし)';
     opt.disabled = true;
     opt.selected = true;
     appProfileSelect.appendChild(opt);
-    // 選択可能なプロファイルが無い間はレコーディング開始不可(録画中の終了操作は妨げない)。
-    recordBtn.disabled = !recording;
+    updateRecordButton();
     return;
   }
   for (const profile of profiles) {
@@ -122,18 +128,30 @@ function applyAppProfiles(profiles, selectedId) {
     appProfileSelect.appendChild(opt);
   }
   appProfileSelect.value = selectedId && profiles.includes(selectedId) ? selectedId : profiles[0];
-  recordBtn.disabled = false;
+  updateRecordButton();
 }
 
-function applyRecording(active) {
+function applyRecording(active, isGenerating) {
   recording = active;
-  recordBtn.textContent = active ? 'レコーディング終了' : 'レコーディング開始';
-  recordBtn.classList.toggle('recording', active);
-  appProfileSelect.disabled = active;
-  autoInstallCheckbox.disabled = active;
+  generating = !!isGenerating;
+  updateRecordButton();
+}
+
+// ボタンの文言・活性を recording/generating/hasAppProfile から一元的に決める。
+// - 生成中(generating): 「レコーディング終了」を非活性で表示(gen-scenario 完了まで)。
+// - 録画中(recording): 「レコーディング終了」を活性(終了操作を妨げない)。
+// - 停止中: 「レコーディング開始」。選択可能なプロファイルが無ければ非活性。
+function updateRecordButton() {
+  const showStop = recording || generating;
+  recordBtn.textContent = showStop ? 'レコーディング終了' : 'レコーディング開始';
+  recordBtn.classList.toggle('recording', showStop);
+  recordBtn.disabled = generating || (!recording && !hasAppProfile);
+  appProfileSelect.disabled = recording || generating;
+  autoInstallCheckbox.disabled = recording || generating;
 }
 
 recordBtn.addEventListener('click', () => {
+  if (generating) { return; } // 生成中は非活性だが二重防御(押下しても何もしない)
   if (recording) {
     post({ type: 'stopRecord' });
   } else {
@@ -324,13 +342,21 @@ document.getElementById('live-btn-app-switcher').addEventListener('click', () =>
   showActionError('');
   post({ type: 'appSwitcher' });
 });
-document.getElementById('live-btn-terminate').addEventListener('click', () => {
-  showActionError('');
-  post({ type: 'terminate' });
-});
-document.getElementById('live-btn-type').addEventListener('click', () => {
+function submitTypeText() {
   showActionError('');
   post({ type: 'typeText', text: typeTextInput.value, ref: selectedRef });
+  // 送信したら入力欄をクリアする(post は value を同期読みするので後でクリアしてよい)。
+  typeTextInput.value = '';
+}
+document.getElementById('live-btn-type').addEventListener('click', submitTypeText);
+// Enter で送信。IME変換中(日本語変換の確定)の Enter は送信しない: isComposing が true、
+// 環境により keyDown が keyCode 229(IME処理中)で届くため両方を除外する。busy 中は
+// 「入力」ボタンが非活性なので Enter でも送らない(挙動をボタンと揃える)。
+typeTextInput.addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter' || event.isComposing || event.keyCode === 229) { return; }
+  if (busy) { return; }
+  event.preventDefault();
+  submitTypeText();
 });
 
 // ---- host からのメッセージ(type:'live' 封筒の中身。main.js のディスパッチャから呼ばれる) --------
@@ -379,10 +405,25 @@ export function applyLiveMessage(message) {
       applyAppProfiles(message.profiles, message.selectedId);
       break;
     case 'recording':
-      applyRecording(!!message.active);
+      applyRecording(!!message.active, !!message.generating);
       break;
     case 'recordStatus':
       recordStatus.textContent = message.message;
+      break;
+    case 'busyOverlay':
+      if (message.message) {
+        busyMessage.textContent = message.message;
+        busyOverlay.classList.add('visible');
+      } else {
+        busyOverlay.classList.remove('visible');
+        busyMessage.textContent = '';
+      }
+      break;
+    case 'focusTypeInput':
+      // 画像上のテキスト入力欄をタップした直後(host が判定して送る)。既存テキストは選択し、
+      // そのまま打鍵で置き換えられるようにする。
+      typeTextInput.focus();
+      typeTextInput.select();
       break;
     default:
       break;
