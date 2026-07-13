@@ -2,7 +2,7 @@
   "name": "vscode-ftester",
   "displayName": "ftester",
   "description": "ftester (Swift 製モバイル UI テストツール) のシナリオをツリー表示・実行するための VS Code 拡張",
-  "version": "0.0.134",
+  "version": "0.0.136",
   "private": true,
   "publisher": "wave1008",
   "license": "MIT",
@@ -83,6 +83,11 @@
           "minimum": 3,
           "maximum": 30,
           "description": "ライブ操作タブの自動フレーム更新レート上限(fps)。大きいほど滑らかですがホスト負荷が増えます(3〜30)。"
+        },
+        "ftester.iosStreamEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "iOS シミュレータのライブ操作で画面を映像ストリーミング(ftester-simstream)で更新します。無効の場合やヘルパー未ビルドの場合はポーリングにフォールバックします。"
         }
       }
     },

@@ -7,6 +7,8 @@
 // - monitorDeviceOps.ts の MonitorDeviceOps: デバイスライフサイクルキュー・device-catalog/installed-devices/create-device
 // - monitorLiveController.ts の MonitorLiveController: 「ライブ操作」タブの list-devices・live serve プロセス管理
 // - monitorExploreController.ts の MonitorExploreController: 「FM探索」タブの list-devices・`api explore` 実行
+// - monitorDeviceStreamController.ts の MonitorDeviceStreamController: デバイスタイルの iOS 画面ストリーミング
+//   (IosStreamPipeline)管理。connected な monitorFrame ポーリングとの間引き調停は MonitorProcessManager 側。
 // - monitorHtml.ts: webview の HTML 本文(renderHtml/generateNonce/PANEL_TITLE)
 // - monitorModel.ts / runLaneModel.ts / liveModel.ts: vscode 非依存の純粋関数(検証・変換・状態遷移)
 //
@@ -29,9 +31,11 @@ import {
   devicesToShutdownOnScopeChange,
   isMonitorFromWebviewMessage,
   type MonitorControlCommand,
+  type MonitorDevice,
   type MonitorToWebviewMessage,
 } from "./monitorModel";
 import { MonitorDeviceOps } from "./monitorDeviceOps";
+import { MonitorDeviceStreamController } from "./monitorDeviceStreamController";
 import { MonitorExploreController } from "./monitorExploreController";
 import { PANEL_TITLE, renderHtml } from "./monitorHtml";
 import { MonitorLiveController } from "./monitorLiveController";
@@ -66,6 +70,12 @@ export interface MonitorPanelDeps {
   isPanelActive(): boolean;
   /** MonitorProcessManager.writeMonitorControlへの委譲。MonitorDeviceOpsのdown系ジョブ前後で呼ぶ。 */
   writeMonitorControl(cmd: MonitorControlCommand): void;
+  /** MonitorDeviceStreamController.isStreamingへの委譲。monitorProcessManager.tsがmonitorFrameを
+   * タイルへ転送する前にストリーミング中かどうか判定し、真なら間引く。 */
+  isDeviceStreaming(deviceId: string): boolean;
+  /** monitorDevicesイベントをMonitorDeviceStreamControllerへ渡す(パイプラインの張り替え判定に使う。
+   * monitorProcessManager.tsのmonitorDevices処理から呼ぶ)。 */
+  notifyMonitorDevices(devices: readonly MonitorDevice[]): void;
   /** MonitorProfilesController.postMachineProfileInfoへの委譲。MonitorDeviceOps.runCreateDevice成功時に呼ぶ。 */
   notifyMachineProfilesChanged(): void;
   /** 生成したソース(絶対パス)を、デバイスモニターの列を避けた列に開く(モニター表示を覆わないため)。
@@ -108,6 +118,7 @@ class MonitorPanelController implements vscode.Disposable {
   private readonly deviceOps: MonitorDeviceOps;
   private readonly live: MonitorLiveController;
   private readonly explore: MonitorExploreController;
+  private readonly deviceStream: MonitorDeviceStreamController;
 
   /** パネル再作成時にhydrateLaneUi()で流し込むため、実行を跨いで保持する。 */
   private readonly laneState = createRunLaneState();
@@ -137,7 +148,10 @@ class MonitorPanelController implements vscode.Disposable {
       writeMonitorControl: (cmd) => this.processManager.writeMonitorControl(cmd),
       notifyMachineProfilesChanged: () => this.profiles.postMachineProfileInfo(),
       openGeneratedDocument: (filePath) => this.openGeneratedDocument(filePath),
+      isDeviceStreaming: (deviceId) => this.deviceStream.isStreaming(deviceId),
+      notifyMonitorDevices: (devices) => this.deviceStream.applyDevices(devices),
     };
+    this.deviceStream = new MonitorDeviceStreamController(this.deps);
     this.processManager = new MonitorProcessManager(this.deps);
     this.profiles = new MonitorProfilesController(this.deps);
     this.deviceOps = new MonitorDeviceOps(this.deps);
@@ -226,11 +240,15 @@ class MonitorPanelController implements vscode.Disposable {
     panel.webview.html = renderHtml(panel.webview, this.extensionUri);
 
     panel.webview.onDidReceiveMessage((message: unknown) => this.handleWebviewMessage(message));
+    // パネルが他タブの裏に隠れている間はストリーミング helper を止める(isPanelActive とは別軸:
+    // こちらは実際の表示可否。再表示後は次の monitorDevices イベントで再構築される)。
+    panel.onDidChangeViewState((event) => this.deviceStream.setVisible(event.webviewPanel.visible));
     panel.onDidDispose(() => {
       this.panel = undefined;
       this.processManager.stopMonitorProcess();
       this.processManager.stopHostMetricsProcess();
       this.live.stopProcesses();
+      this.deviceStream.dispose();
     });
 
     this.pendingInitialTab = initialTab;
@@ -248,6 +266,7 @@ class MonitorPanelController implements vscode.Disposable {
     this.processManager.stopHostMetricsProcess();
     this.live.dispose();
     this.explore.dispose();
+    this.deviceStream.dispose();
     const panel = this.panel;
     this.panel = undefined;
     panel?.dispose();

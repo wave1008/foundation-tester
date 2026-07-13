@@ -108,6 +108,15 @@ let package = Package(
             swiftSettings: swift5Mode
         ),
         // === ftester projects end ===
+        // headless iOS シミュレータ画面キャプチャ(ObjC単体・CoreSimulator/SimulatorKitはdlopen)
+        .executableTarget(
+            name: "ftester-simstream",
+            linkerSettings: [
+                .linkedFramework("Foundation"), .linkedFramework("CoreImage"),
+                .linkedFramework("CoreVideo"), .linkedFramework("IOSurface"),
+                .linkedFramework("QuartzCore"), .linkedFramework("CoreGraphics"),
+            ]
+        ),
         .testTarget(
             name: "FTCoreTests",
             dependencies: ["FTCore"],
