@@ -14,8 +14,10 @@ class ログインテスト {
                 condition {
                     launchApp()
                 }.action {
-                    type("#email", "test@example.com")
-                    type("#password", "password123")
+                    tap("#email")
+                    type("test@example.com")
+                    tap("#password")
+                    type("password123")
                     tap("#login_btn||ログイン")
                     wait(1)  // iOS 27 のパスワード保存シートの出現アニメーション整定待ち
                     tap("今はしない", optional: true)  // シートが出た場合のみ閉じる(出ない個体もある)
@@ -27,8 +29,10 @@ class ログインテスト {
                 condition {
                     relaunchApp()
                 }.action {
-                    type("#email", "test@example.com")
-                    type("#password", "wrong")
+                    tap("#email")
+                    type("test@example.com")
+                    tap("#password")
+                    type("wrong")
                     tap("#login_btn||ログイン")
                 }.expectation {
                     exist("#login_error")
