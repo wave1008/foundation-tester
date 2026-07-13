@@ -1151,27 +1151,30 @@ input[type="text"]::placeholder {
   padding: 12px;
   overflow: hidden;
 }
+/* flex:0(=伸びない)で pane 幅は画像実寸に縮む → 右隣の control-pane(要素一覧)が画像直後に左寄せで
+   並ぶ。伸ばすと要素一覧が右端へ押しやられる。min-width はボタン行/placeholder の下限。 */
 #panel-live .screenshot-pane {
-  flex: 1 1 auto;
-  min-width: 280px;
+  flex: 0 1 auto;
+  min-width: 200px;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  /* スクロール廃止。画像は fitScreenshot が可変スロットに収め、actions は下に固定表示する */
+  /* スクロール廃止。pane は上寄せ(既定 justify-content:flex-start)。画像は上端、actions は画像直下 */
   min-height: 0;
   overflow: hidden;
 }
-/* 画像の可変スロット。縦の余りを全部取り(flex:1 1 0=content 非依存)、内側 wrap を中央寄せ。
-   高さは actions を差し引いた確定値になり、liveTab.js の fitScreenshot が実測して画像に反映する。 */
+/* 画像スロット。内容フィット(flex:0 0 auto)で画像実寸に縮む → pane 上寄せなので画像は上端に付き、
+   actions が画像直下に並ぶ。横は左寄せ(justify-content:flex-start)。画像高は liveTab.js の
+   fitScreenshot が pane 実測高から actions/gap を引いて max-height に反映する。 */
 #panel-live .screenshot-frame {
-  flex: 1 1 0;
+  flex: 0 0 auto;
   min-height: 0;
   min-width: 0;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
 }
-/* flex:0 で常にスロット外の下端に確保 → ホーム/タスク切替は常に押せる */
+/* flex:0 で画像直下に確保 → ホーム/タスク切替は常に押せる */
 .screenshot-actions { flex: 0 0 auto; display: flex; justify-content: center; gap: 6px; }
 #panel-live .screenshot-wrap {
   position: relative;

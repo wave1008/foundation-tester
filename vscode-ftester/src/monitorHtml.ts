@@ -288,8 +288,8 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
 
     <div class="content">
       <div class="screenshot-pane" id="live-screenshot-pane">
-        <!-- 画像の可変スロット。flex で高さが確定し、liveTab.js の fitScreenshot がこの実測高を
-             #live-screenshot の max-height に反映する(スクロールさせずフィット)。 -->
+        <!-- 画像スロット。内容フィットで画像実寸に縮み pane 上端に付く。liveTab.js の fitScreenshot が
+             pane 実測高から actions/gap を引いた残りを #live-screenshot の max-height に反映する。 -->
         <div class="screenshot-frame" id="live-screenshot-frame">
           <div class="screenshot-wrap" id="live-screenshot-wrap">
             <img id="live-screenshot" alt="スクリーンショット">
