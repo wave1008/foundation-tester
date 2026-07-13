@@ -984,7 +984,7 @@ export class MonitorLiveController implements vscode.Disposable {
       if (generatedFile) {
         // 生成成功は自動で開くファイルが示すので「生成しました」の文言は出さず、生成中表示だけ消す。
         this.post({ type: "recordStatus", message: "", file: generatedFile });
-        void vscode.window.showTextDocument(vscode.Uri.file(generatedFile));
+        this.deps.openGeneratedDocument(generatedFile);
         this.refreshTestTree();
       } else {
         this.post({ type: "recordStatus", message: errorMsg ?? "テストコードの生成に失敗しました。", file: null });

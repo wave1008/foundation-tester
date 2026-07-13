@@ -250,12 +250,11 @@ export class MonitorExploreController implements vscode.Disposable {
     }
   }
 
-  private async openFile(): Promise<void> {
+  private openFile(): void {
     if (!this.lastGeneratedFile) {
       return;
     }
-    const doc = await vscode.workspace.openTextDocument(this.lastGeneratedFile);
-    await vscode.window.showTextDocument(doc);
+    this.deps.openGeneratedDocument(this.lastGeneratedFile);
   }
 
   // ---- webview からのメッセージ -----------------------------------------------------
