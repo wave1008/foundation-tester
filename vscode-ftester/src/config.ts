@@ -23,6 +23,10 @@ export interface FtesterConfig {
   monitorInterval: number;
   /** モニターのフレーム画像の長辺px(240〜1600にクランプ。`ftester api monitor --max-width`)。 */
   monitorMaxWidth: number;
+  /** ライブ操作タブの自動フレーム更新レート上限(fps、3〜30にクランプ)。旧実装は成功時 delayMs=0 の
+   * ホットループでデバイスが返す限り最速で /screenshot を叩き負荷源だった。目標fpsで頭打ちにする
+   * (monitorLiveController.ts frameTick)。 */
+  liveFps: number;
 }
 
 /** ワークスペースルート(Package.swift のあるフォルダ)を解決する。開いていなければ undefined。 */
@@ -53,6 +57,7 @@ export function readConfig(workspaceRoot: string): FtesterConfig {
     heal: configuration.get<boolean>("heal", false),
     monitorInterval: Math.max(0.5, configuration.get<number>("monitorInterval", 2)),
     monitorMaxWidth: Math.min(1600, Math.max(240, configuration.get<number>("monitorMaxWidth", 960))),
+    liveFps: Math.min(30, Math.max(3, configuration.get<number>("liveFps", 12))),
   };
 }
 
