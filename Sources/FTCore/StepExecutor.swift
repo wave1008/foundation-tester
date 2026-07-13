@@ -229,6 +229,15 @@ public final class StepExecutor {
                 "\(maxSwipes) 回スクロールしても要素が見つかりません: \(step.locatorSummary)"))
         }
 
+        // ロケータ指定のない type はフォーカス中の要素へ送る(直前の tap でフォーカスした欄など)。
+        // ref: nil = ブリッジがフォーカス中要素へ入力(iOS/Android とも)。ロケータ解決を挟まない。
+        if action == "type", step.locator == nil, step.fallbacks?.isEmpty ?? true {
+            let start = clock.now
+            try await driver.type(ref: nil, text: step.text ?? "")
+            phase.actionMs += Self.ms(clock.now - start)
+            return StepOutcome(status: .passed)
+        }
+
         // ロケータ解決の再試行(ファイル冒頭のセマンティクス参照: 最大3回、計700ms)
         var start = clock.now
         var snapshot = try await driver.snapshot()

@@ -141,6 +141,9 @@ public enum StepCommandParams {
         switch parsed.verb {
         case "type":
             let optional = try optionalArg(parsed, params)
+            if parsed.strings.count == 1 {
+                return "type(\(StepCommandText.literal(parsed.strings[0]))\(optional))"
+            }
             return "type(\(StepCommandText.literal(parsed.strings[0])), "
                 + "\(StepCommandText.literal(parsed.strings[1]))\(optional))"
         case "press":

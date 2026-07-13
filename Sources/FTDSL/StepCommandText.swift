@@ -75,9 +75,13 @@ public enum StepCommandText {
             guard !optionalFlag, let value = unquote(rest) else { return nil }
             return Parsed(verb: verb, strings: [value], optionalFlag: false, word: nil)
         case "type":
-            guard let (selector, input) = unquotePair(rest, separator: "\" \"") else { return nil }
-            return Parsed(verb: verb, strings: [selector, input],
-                          optionalFlag: optionalFlag, word: nil)
+            if let (selector, input) = unquotePair(rest, separator: "\" \"") {
+                return Parsed(verb: verb, strings: [selector, input],
+                              optionalFlag: optionalFlag, word: nil)
+            }
+            // ロケータなしの type "text"(フォーカス中要素へ入力)
+            guard let input = unquote(rest) else { return nil }
+            return Parsed(verb: verb, strings: [input], optionalFlag: optionalFlag, word: nil)
         case "textIs", "valueIs":
             guard !optionalFlag,
                   let (selector, expected) = unquotePair(rest, separator: "\" == \"") else {
@@ -170,6 +174,9 @@ public enum StepCommandText {
             return "scrollTo(\(literal(parsed.strings[0])))"
         case "exist", "screenIs":
             return "\(parsed.verb)(\(literal(parsed.strings[0])))"
+        case "type" where parsed.strings.count == 1:
+            // ロケータなしの type("text")
+            return "type(\(literal(parsed.strings[0]))\(optionalArg))"
         case "type", "textIs", "valueIs":
             return "\(parsed.verb)(\(literal(parsed.strings[0])), "
                 + "\(literal(parsed.strings[1]))\(optionalArg))"

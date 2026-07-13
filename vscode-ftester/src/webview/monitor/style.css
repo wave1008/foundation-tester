@@ -1197,6 +1197,34 @@ input[type="text"]::placeholder {
 #live-conn-overlay.visible { display: flex; }
 #live-conn-overlay .conn-title { font-size: 13px; font-weight: 600; }
 #live-conn-overlay #live-conn-detail { white-space: pre-wrap; opacity: 0.85; max-width: 320px; }
+/* 処理中(レコーディング開始のinstall→launch待ち等)に画面を薄暗くしてメッセージを出すオーバーレイ。
+   conn-overlay と同じく screenshot-wrap の inset:0。タップ透過(pointer-events:none)。 */
+#live-busy-overlay {
+  position: absolute;
+  inset: 0;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 16px;
+  text-align: center;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 13px;
+  pointer-events: none;
+}
+#live-busy-overlay.visible { display: flex; }
+#live-busy-spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid rgba(255, 255, 255, 0.25);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: live-busy-spin 0.8s linear infinite;
+}
+@keyframes live-busy-spin { to { transform: rotate(360deg); } }
+#live-busy-message { white-space: pre-wrap; max-width: 320px; }
 #live-hover-box {
   position: absolute;
   display: none;

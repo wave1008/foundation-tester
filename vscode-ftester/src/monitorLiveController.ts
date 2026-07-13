@@ -31,6 +31,7 @@ import {
   devicesToOptions,
   fallbackDeviceOption,
   hitTestElement,
+  isTextInputElement,
   type LiveActionResult,
   type LiveDeviceOption,
   type LiveDeviceRef,
@@ -71,6 +72,19 @@ const SERVE_REQUEST_TIMEOUT_MS = 20000;
 /** 自動フレームを実行できなかった回(busy・パネル非表示・serve 不在)と失敗時の再試行間隔(ms)。
  * 成功時は待ちなしで次フレームを送る(ホットループ防止のため失敗系のみ間隔を空ける)。 */
 const FRAME_IDLE_RETRY_MS = 500;
+
+/** serve 常駐プロセスの不在・応答不能・終了を表す文言。これらは個々の操作失敗(タップ失敗・
+ * 未入力など)とは違い「接続状態」の問題で、serve が復帰すれば自動で解消する。postActionError が
+ * CONNECTION_CLASS_MESSAGES との一致で connectionBannerShown を立て、復帰時(handleConnectionOk)に
+ * バナーを自動で消す。文言を変えたら CONNECTION_CLASS_MESSAGES も追随させること。 */
+const SERVE_UNAVAILABLE_MESSAGE = "ライブ操作の常駐プロセスが起動していません。デバイスを選び直してください。";
+const SERVE_TIMEOUT_MESSAGE = "ライブ操作の応答がタイムアウトしました(常駐プロセスが応答していません)。";
+const SERVE_CLOSED_MESSAGE = "ライブ操作の常駐プロセスが終了しました。";
+const CONNECTION_CLASS_MESSAGES = new Set<string>([
+  SERVE_UNAVAILABLE_MESSAGE,
+  SERVE_TIMEOUT_MESSAGE,
+  SERVE_CLOSED_MESSAGE,
+]);
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -123,6 +137,10 @@ export class MonitorLiveController implements vscode.Disposable {
   /** 直近 post した connection:false の message。Swift 側の自動起動サフィックスの進捗更新
    * (「自動起動しています…」→「失敗しました…」)を検知して再 post するための比較用。 */
   private lastConnectionMessage: string | undefined;
+  /** 直近 post した actionError バナーが接続系(CONNECTION_CLASS_MESSAGES)かどうか。true の間は
+   * serve 復帰(handleConnectionOk)で自動的に消す。個々の操作失敗バナーは false のままなので、
+   * 常時回っている自動フレームで誤って消えることはない。 */
+  private connectionBannerShown = false;
   /** list-devices のワンショット spawn(専用。runOneShot 経由)。 */
   private activeChild: PipeProcess | undefined;
 
@@ -160,6 +178,9 @@ export class MonitorLiveController implements vscode.Disposable {
 
   // ---- レコーディング(操作→FlowStep記録→gen-scenario) -----------------------------------
   private recording = false;
+  /** startRecord の install→launch 実行中(recording=true になる前)の再入ガード。無いと開始待ち中の
+   * 二度押しで2本目が走り、その finally が1本目の「処理中」recordStatus を消してしまう。 */
+  private startingRecord = false;
   private recordedSteps: RecordedStep[] = [];
   private recordApp: { bundle: string; platform: string } | null = null;
   /** refreshAppProfiles の選択維持用(applyDevices の selectedDeviceId と同じ役割)。 */
@@ -198,6 +219,14 @@ export class MonitorLiveController implements vscode.Disposable {
     this.post({ type: "busy", busy });
   }
 
+  /** actionError バナーを出す共通経路。接続系の文言(serve 不在・タイムアウト・終了)なら
+   * connectionBannerShown を立て、serve 復帰時に自動で消せるようにする。個々の操作失敗は
+   * false のまま残す(常時回る自動フレームで消さない)。全 actionError post はここを通す。 */
+  private postActionError(message: string): void {
+    this.connectionBannerShown = CONNECTION_CLASS_MESSAGES.has(message);
+    this.post({ type: "actionError", message });
+  }
+
   // ---- 接続断の可視化(自動フレームは失敗を無表示で再試行するため、connectionLost の間は
   // webview 側にオーバーレイを出し続けて「最後に取得した静止画」を生きた画面と誤認させない。
   // 受け手: src/webview/monitor/liveTab.js) ----
@@ -207,6 +236,14 @@ export class MonitorLiveController implements vscode.Disposable {
    * 新デバイスへ持ち越さないため)から呼ぶ。 */
   private handleConnectionOk(): void {
     this.frameFailureStreak = 0;
+    // serve が復帰したので接続系 actionError バナー(常駐プロセス不在・タイムアウト・終了)が
+    // 残っていれば消す。connectionLost の早期 return より前に行う: デバイス切り替えの再バインド中は
+    // 自動フレームが serve 不在でスキップして回るため connectionLost が立たず、serve が
+    // undefined→復帰してもこの経路でしかバナーを消せない(操作可能なのにエラーが残る問題の本丸)。
+    if (this.connectionBannerShown) {
+      this.connectionBannerShown = false;
+      this.post({ type: "actionError", message: "" });
+    }
     if (!this.connectionLost) {
       return;
     }
@@ -452,7 +489,7 @@ export class MonitorLiveController implements vscode.Disposable {
       if (this.serveProcess === proc) {
         this.serveProcess = undefined;
       }
-      this.failPendingServeRequest("ライブ操作の常駐プロセスが終了しました。");
+      this.failPendingServeRequest(SERVE_CLOSED_MESSAGE);
       // 意図した停止(dispose/再バインド)かどうかはフラグだけで判定する(monitorProcessManager.ts と同じ理由)。
       const selfInitiated = this.stoppingServe;
       this.stoppingServe = false;
@@ -606,7 +643,7 @@ export class MonitorLiveController implements vscode.Disposable {
   private sendServeCommandNow(command: LiveServeCommand): Promise<ServeRequestOutcome> {
     const proc = this.serveProcess;
     if (!proc || proc.exitCode !== null || proc.signalCode !== null) {
-      const message = "ライブ操作の常駐プロセスが起動していません。デバイスを選び直してください。";
+      const message = SERVE_UNAVAILABLE_MESSAGE;
       return Promise.resolve({
         action: command.cmd === "refresh" ? undefined : { ok: false, error: message },
         snapshot: { ok: false, error: message },
@@ -614,7 +651,7 @@ export class MonitorLiveController implements vscode.Disposable {
     }
     return new Promise((resolve) => {
       const timeout = setTimeout(() => {
-        this.failPendingServeRequest("ライブ操作の応答がタイムアウトしました(常駐プロセスが応答していません)。");
+        this.failPendingServeRequest(SERVE_TIMEOUT_MESSAGE);
       }, SERVE_REQUEST_TIMEOUT_MS);
       this.pendingServeRequest = {
         expectsAction: command.cmd !== "refresh",
@@ -642,12 +679,12 @@ export class MonitorLiveController implements vscode.Disposable {
     if (!proc || proc.exitCode !== null || proc.signalCode !== null) {
       return Promise.resolve({
         ok: false,
-        error: "ライブ操作の常駐プロセスが起動していません。デバイスを選び直してください。",
+        error: SERVE_UNAVAILABLE_MESSAGE,
       });
     }
     return new Promise((resolve) => {
       const timeout = setTimeout(() => {
-        this.failPendingServeRequest("ライブ操作の応答がタイムアウトしました(常駐プロセスが応答していません)。");
+        this.failPendingServeRequest(SERVE_TIMEOUT_MESSAGE);
       }, SERVE_REQUEST_TIMEOUT_MS);
       this.pendingServeRequest = {
         expectsAction: false,
@@ -665,7 +702,7 @@ export class MonitorLiveController implements vscode.Disposable {
 
   private applySnapshotResult(result: LiveSnapshot | LiveErrorResult): void {
     if (!result.ok) {
-      this.post({ type: "actionError", message: result.error });
+      this.postActionError(result.error);
       return;
     }
     this.handleConnectionOk();
@@ -677,7 +714,7 @@ export class MonitorLiveController implements vscode.Disposable {
   private async fetchSnapshot(): Promise<void> {
     const device = this.currentDeviceRef();
     if (!device) {
-      this.post({ type: "actionError", message: "デバイスが選択されていません。" });
+      this.postActionError("デバイスが選択されていません。");
       return;
     }
     this.ensureServeProcess(device);
@@ -693,7 +730,7 @@ export class MonitorLiveController implements vscode.Disposable {
     try {
       await this.fetchSnapshot();
     } catch (error) {
-      this.post({ type: "actionError", message: `snapshot の実行に失敗しました: ${errorMessage(error)}` });
+      this.postActionError(`snapshot の実行に失敗しました: ${errorMessage(error)}`);
     } finally {
       this.setBusy(false);
     }
@@ -764,7 +801,7 @@ export class MonitorLiveController implements vscode.Disposable {
     }
     const device = this.currentDeviceRef();
     if (!device) {
-      this.post({ type: "actionError", message: "デバイスが選択されていません。" });
+      this.postActionError("デバイスが選択されていません。");
       return false;
     }
     this.setBusy(true);
@@ -772,7 +809,7 @@ export class MonitorLiveController implements vscode.Disposable {
       this.ensureServeProcess(device);
       const { action, snapshot } = await this.sendServeCommand(command);
       if (action && !action.ok) {
-        this.post({ type: "actionError", message: action.error });
+        this.postActionError(action.error);
         return false;
       }
       if (this.recording && recordStep) {
@@ -784,10 +821,24 @@ export class MonitorLiveController implements vscode.Disposable {
       this.applySnapshotResult(snapshot);
       return snapshot.ok;
     } catch (error) {
-      this.post({ type: "actionError", message: `操作の実行に失敗しました: ${errorMessage(error)}` });
+      this.postActionError(`操作の実行に失敗しました: ${errorMessage(error)}`);
       return false;
     } finally {
       this.setBusy(false);
+    }
+  }
+
+  /** 画像上の点タップ専用。タップ成功後、当たった要素がテキスト入力欄なら webview の
+   * 「入力するテキスト」欄へフォーカスを移す(デバイス側の入力欄フォーカスに続けてすぐ入力できる)。
+   * hit は tapPoint 側で算出済みの当たり要素(recordStep と同じ hitTestElement 結果)。 */
+  private async runTapAtPoint(
+    command: LiveServeCommand,
+    step: RecordedStep | undefined,
+    hit: LiveElement | undefined,
+  ): Promise<void> {
+    const ok = await this.runAction(command, step);
+    if (ok && hit && isTextInputElement(hit)) {
+      this.post({ type: "focusTypeInput" });
     }
   }
 
@@ -811,119 +862,135 @@ export class MonitorLiveController implements vscode.Disposable {
   /** アプリ起動(必要なら事前インストール)まで完了させてから記録状態に入る。起動失敗時は
    * 記録を開始しない(runAction が既に actionError を post 済み)。 */
   private async startRecord(appProfile: string, autoInstall: boolean): Promise<void> {
-    if (this.recording) {
+    if (this.recording || this.startingRecord) {
       return;
     }
     const device = this.currentDeviceRef();
     if (!device) {
-      this.post({ type: "actionError", message: "デバイスが選択されていません。" });
+      this.postActionError("デバイスが選択されていません。");
       return;
     }
     const config = this.deps.getConfig();
     const resolution = resolveProjectName(this.deps.workspaceRoot, config);
     if (resolution.kind !== "resolved") {
-      this.post({
-        type: "actionError",
-        message: "対象のテストプロジェクトを解決できませんでした。ftester.project 設定を確認してください。",
-      });
+      this.postActionError("対象のテストプロジェクトを解決できませんでした。ftester.project 設定を確認してください。");
       return;
     }
     const target = readAppProfileTarget(this.deps.workspaceRoot, resolution.project, appProfile, device.platform);
     if (!target) {
-      this.post({ type: "actionError", message: "アプリプロファイルを解決できません" });
+      this.postActionError("アプリプロファイルを解決できません");
       return;
     }
     this.selectedAppProfileId = appProfile;
-    if (autoInstall && target.appPath) {
-      // 再インストールはアプリを終了させ、install 直後の観測は必ず「not running」で失敗する。
-      // それを表示・中断に使わないよう silentObservation。画面はこの後の launch が出す。
-      const installed = await this.runAction(
-        { cmd: "install", path: target.appPath }, undefined, { silentObservation: true });
-      if (!installed) {
+    // タップ直後〜アプリ起動完了(install→launch は数秒かかり得る)まで画面を薄暗くして「処理中」を出す。
+    // finally で必ず消す(成功時はレコーディングUI、失敗時は runAction が post 済みの actionError が状態を示す)。
+    this.startingRecord = true;
+    this.post({ type: "busyOverlay", message: "レコーディングを開始しています…" });
+    try {
+      if (autoInstall && target.appPath) {
+        // 再インストールはアプリを終了させ、install 直後の観測は必ず「not running」で失敗する。
+        // それを表示・中断に使わないよう silentObservation。画面はこの後の launch が出す。
+        const installed = await this.runAction(
+          { cmd: "install", path: target.appPath }, undefined, { silentObservation: true });
+        if (!installed) {
+          return;
+        }
+      }
+      const launched = await this.runAction({ cmd: "launch", bundle: target.bundle });
+      if (!launched) {
         return;
       }
+      this.recording = true;
+      this.recordedSteps = [];
+      this.recordApp = { bundle: target.bundle, platform: device.platform };
+      this.post({ type: "recording", active: true });
+    } finally {
+      this.startingRecord = false;
+      this.post({ type: "busyOverlay", message: null });
     }
-    const launched = await this.runAction({ cmd: "launch", bundle: target.bundle });
-    if (!launched) {
-      return;
-    }
-    this.recording = true;
-    this.recordedSteps = [];
-    this.recordApp = { bundle: target.bundle, platform: device.platform };
-    this.post({ type: "recording", active: true });
   }
 
   private stopRecord(): void {
     this.recording = false;
-    this.post({ type: "recording", active: false });
     if (this.recordedSteps.length === 0) {
+      this.post({ type: "recording", active: false });
       this.post({ type: "recordStatus", message: "操作が記録されていません", file: null });
       return;
     }
+    // 生成が終わるまでは「レコーディング終了」を非活性で見せる(active:false のまま generating:true)。
+    // active:false→開始ボタンへの切り替えは generateScenario の完了時(generating:false)に行う。
+    this.post({ type: "recording", active: false, generating: true });
     void this.generateScenario();
   }
 
   /** 記録済みステップを一時JSONに書き出し `ftester api gen-scenario` を(cli.ts の直列キュー経由で)
    * 実行する。成功時は生成ファイルを開いてテストツリーを更新する。一時ファイルはベストエフォートで削除する。 */
   private async generateScenario(): Promise<void> {
-    const app = this.recordApp;
-    const config = this.deps.getConfig();
-    const resolution = resolveProjectName(this.deps.workspaceRoot, config);
-    if (!app || resolution.kind !== "resolved") {
-      this.post({ type: "recordStatus", message: "対象のテストプロジェクトを解決できませんでした。", file: null });
-      return;
-    }
-
-    const payload = { app: app.bundle, platform: app.platform, steps: this.recordedSteps };
-    const tmpPath = path.join(os.tmpdir(), `ftester-record-${Date.now()}-${process.pid}.json`);
+    // stopRecord が generating:true を post 済み。成否・経路によらずここを抜けるときに
+    // 「レコーディング終了(非活性)」→「レコーディング開始」へ戻す(外側 finally で一元化)。
     try {
-      fs.writeFileSync(tmpPath, JSON.stringify(payload), "utf8");
-    } catch (error) {
-      this.post({
-        type: "recordStatus",
-        message: `一時ファイルの書き込みに失敗しました: ${errorMessage(error)}`,
-        file: null,
-      });
-      return;
-    }
-    this.post({ type: "recordStatus", message: "テストコードを生成中…", file: null });
-
-    let generatedFile: string | undefined;
-    let errorMsg: string | undefined;
-    this.generating = true;
-    try {
-      await this.cli.invoke(config.binaryPath, this.deps.workspaceRoot, {
-        args: ["api", "gen-scenario", "--project", resolution.project, "--steps", tmpPath],
-        onNdjsonValue: (value) => {
-          const event = parseGenScenarioEvent(value);
-          if (!event) {
-            return;
-          }
-          if (event.event === "scenarioGenerated") {
-            generatedFile = event.file;
-          } else {
-            errorMsg = event.message;
-          }
-        },
-        onLog: (line, stream) => this.deps.outputChannel.appendLine(`[gen-scenario ${stream}] ${line}`),
-      });
-    } catch (error) {
-      errorMsg = errorMessage(error);
-    } finally {
-      this.generating = false;
-      try {
-        fs.unlinkSync(tmpPath);
-      } catch {
-        // 生成完了後の一時ファイルなので削除失敗は無視してよい(ベストエフォート)。
+      const app = this.recordApp;
+      const config = this.deps.getConfig();
+      const resolution = resolveProjectName(this.deps.workspaceRoot, config);
+      if (!app || resolution.kind !== "resolved") {
+        this.post({ type: "recordStatus", message: "対象のテストプロジェクトを解決できませんでした。", file: null });
+        return;
       }
-    }
 
-    if (generatedFile) {
-      this.post({ type: "recordStatus", message: "生成しました", file: generatedFile });
-      void vscode.window.showTextDocument(vscode.Uri.file(generatedFile));
-      this.refreshTestTree();
-    } else {
-      this.post({ type: "recordStatus", message: errorMsg ?? "テストコードの生成に失敗しました。", file: null });
+      const payload = { app: app.bundle, platform: app.platform, steps: this.recordedSteps };
+      const tmpPath = path.join(os.tmpdir(), `ftester-record-${Date.now()}-${process.pid}.json`);
+      try {
+        fs.writeFileSync(tmpPath, JSON.stringify(payload), "utf8");
+      } catch (error) {
+        this.post({
+          type: "recordStatus",
+          message: `一時ファイルの書き込みに失敗しました: ${errorMessage(error)}`,
+          file: null,
+        });
+        return;
+      }
+      this.post({ type: "recordStatus", message: "テストコードを生成中…", file: null });
+
+      let generatedFile: string | undefined;
+      let errorMsg: string | undefined;
+      this.generating = true;
+      try {
+        await this.cli.invoke(config.binaryPath, this.deps.workspaceRoot, {
+          args: ["api", "gen-scenario", "--project", resolution.project, "--steps", tmpPath],
+          onNdjsonValue: (value) => {
+            const event = parseGenScenarioEvent(value);
+            if (!event) {
+              return;
+            }
+            if (event.event === "scenarioGenerated") {
+              generatedFile = event.file;
+            } else {
+              errorMsg = event.message;
+            }
+          },
+          onLog: (line, stream) => this.deps.outputChannel.appendLine(`[gen-scenario ${stream}] ${line}`),
+        });
+      } catch (error) {
+        errorMsg = errorMessage(error);
+      } finally {
+        this.generating = false;
+        try {
+          fs.unlinkSync(tmpPath);
+        } catch {
+          // 生成完了後の一時ファイルなので削除失敗は無視してよい(ベストエフォート)。
+        }
+      }
+
+      if (generatedFile) {
+        // 生成成功は自動で開くファイルが示すので「生成しました」の文言は出さず、生成中表示だけ消す。
+        this.post({ type: "recordStatus", message: "", file: generatedFile });
+        void vscode.window.showTextDocument(vscode.Uri.file(generatedFile));
+        this.refreshTestTree();
+      } else {
+        this.post({ type: "recordStatus", message: errorMsg ?? "テストコードの生成に失敗しました。", file: null });
+      }
+    } finally {
+      this.post({ type: "recording", active: false, generating: false });
     }
   }
 
@@ -954,7 +1021,7 @@ export class MonitorLiveController implements vscode.Disposable {
         break;
       case "tapPoint": {
         if (!this.lastScreen) {
-          this.post({ type: "actionError", message: "先に「更新」で画面を取得してください。" });
+          this.postActionError("先に「更新」で画面を取得してください。");
           break;
         }
         const point = pointFromClick(
@@ -963,15 +1030,14 @@ export class MonitorLiveController implements vscode.Disposable {
           this.lastScreen,
         );
         const tapHit = hitTestElement(point, this.lastElements);
-        const tapStep: RecordedStep | undefined = tapHit
-          ? { action: "tap", ...locatorChainForElement(tapHit, this.lastElements) }
-          : undefined;
-        void this.runAction({ cmd: "tap", x: point.x, y: point.y }, tapStep);
+        const tapChain = tapHit ? locatorChainForElement(tapHit, this.lastElements) : undefined;
+        const tapStep: RecordedStep | undefined = tapChain ? { action: "tap", ...tapChain } : undefined;
+        void this.runTapAtPoint({ cmd: "tap", x: point.x, y: point.y }, tapStep, tapHit);
         break;
       }
       case "dragPoints": {
         if (!this.lastScreen) {
-          this.post({ type: "actionError", message: "先に「更新」で画面を取得してください。" });
+          this.postActionError("先に「更新」で画面を取得してください。");
           break;
         }
         const display = { width: message.displayWidth, height: message.displayHeight };
@@ -996,7 +1062,7 @@ export class MonitorLiveController implements vscode.Disposable {
       }
       case "pressPoint": {
         if (!this.lastScreen) {
-          this.post({ type: "actionError", message: "先に「更新」で画面を取得してください。" });
+          this.postActionError("先に「更新」で画面を取得してください。");
           break;
         }
         const point = pointFromClick(
@@ -1015,22 +1081,19 @@ export class MonitorLiveController implements vscode.Disposable {
       }
       case "tapRef": {
         const refHit = this.lastElements.find((element) => element.ref === message.ref);
-        const tapRefStep: RecordedStep | undefined = refHit
-          ? { action: "tap", ...locatorChainForElement(refHit, this.lastElements) }
-          : undefined;
+        const refChain = refHit ? locatorChainForElement(refHit, this.lastElements) : undefined;
+        const tapRefStep: RecordedStep | undefined = refChain ? { action: "tap", ...refChain } : undefined;
         void this.runAction({ cmd: "tap", ref: message.ref }, tapRefStep);
         break;
       }
       case "typeText": {
         if (message.text.trim().length === 0) {
-          this.post({ type: "actionError", message: "入力するテキストを入力してください。" });
+          this.postActionError("入力するテキストを入力してください。");
           break;
         }
-        const typeHit =
-          message.ref !== null ? this.lastElements.find((element) => element.ref === message.ref) : undefined;
-        const typeStep: RecordedStep | undefined = typeHit
-          ? { action: "type", text: message.text, ...locatorChainForElement(typeHit, this.lastElements) }
-          : undefined;
+        // 直前の tap でフォーカスした要素へ送る前提でロケータを付けずに記録する(ScenarioCodeGen が
+        // type("text") を出す。ref:null=フォーカス中要素への入力)。
+        const typeStep: RecordedStep = { action: "type", text: message.text };
         void this.runAction({ cmd: "type", text: message.text, ref: message.ref }, typeStep);
         break;
       }
@@ -1039,9 +1102,6 @@ export class MonitorLiveController implements vscode.Disposable {
         break;
       case "appSwitcher":
         void this.runAction({ cmd: "appSwitcher" }, { action: "appSwitcher" });
-        break;
-      case "terminate":
-        void this.runAction({ cmd: "terminate" }, { action: "terminate" });
         break;
       case "visibility":
         this.liveTabVisible = message.visible;

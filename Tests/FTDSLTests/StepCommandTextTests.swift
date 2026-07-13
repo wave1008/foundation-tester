@@ -31,6 +31,12 @@ final class StepCommandTextTests: XCTestCase {
                              optionalFlag: false, word: nil))
     }
 
+    func testParseTypeSingleStringForm() {
+        // ロケータなしの type "text"(フォーカス中要素へ入力)
+        XCTAssertEqual(StepCommandText.parse("type \"あいう\""),
+                       .init(verb: "type", strings: ["あいう"], optionalFlag: false, word: nil))
+    }
+
     func testParseWordVerbs() {
         XCTAssertEqual(StepCommandText.parse("swipe up"),
                        .init(verb: "swipe", strings: [], optionalFlag: false, word: "up"))
@@ -68,6 +74,21 @@ final class StepCommandTextTests: XCTestCase {
             try StepCommandText.apply(display: "type \"メール\" \"b@example.com\"",
                                       toCode: "type(\"メール\", \"a@example.com\", optional: true)"),
             "type(\"メール\", \"b@example.com\", optional: true)")
+    }
+
+    func testApplyPatchesTypeSingleStringForm() throws {
+        // ロケータなしの type「フォーカス中要素へ入力」の文字列リテラル置換
+        XCTAssertEqual(
+            try StepCommandText.apply(display: "type \"新値\"", toCode: "type(\"旧値\")"),
+            "type(\"新値\")")
+    }
+
+    func testApplyRegeneratesFromTwoArgToOneArgType() throws {
+        // 二引数(セレクタ指定)→一引数(フォーカス中要素)への変更は呼び出し全体を生成し直す
+        XCTAssertEqual(
+            try StepCommandText.apply(display: "type \"text\"",
+                                      toCode: "type(\"#email\", \"old\")"),
+            "type(\"text\")")
     }
 
     func testApplyPatchesProcedureTitleKeepingBlock() throws {
