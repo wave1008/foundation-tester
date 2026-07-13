@@ -16,7 +16,8 @@ const busyLabel = document.getElementById('live-busy-label');
 const banner = document.getElementById('live-banner');
 
 const screenshot = document.getElementById('live-screenshot');
-const screenshotFrame = document.getElementById('live-screenshot-frame');
+const screenshotPane = document.getElementById('live-screenshot-pane');
+const screenshotActions = document.getElementById('live-screenshot-actions');
 const screenshotWrap = document.getElementById('live-screenshot-wrap');
 const hoverBox = document.getElementById('live-hover-box');
 const screenshotPlaceholder = document.getElementById('live-screenshot-placeholder');
@@ -214,21 +215,38 @@ document.addEventListener('contextmenu', () => closeLiveRecordMenu());
 
 // ---- スクリーンショット(クリック=タップ、ドラッグ=スワイプ、要素ホバー=枠オーバーレイ) ------
 
-// 画像をスクロールさせず可変スロット(#live-screenshot-frame)に収める。frame は flex で高さが確定
-// するので、その実測高を画像の max-height に反映する。object-fit は使えない(overlay が inset:0 で
-// wrap に貼り付き、タップ座標も img.getBoundingClientRect() 前提のため、要素ボックスを実画像サイズ
-// に保つ必要がある)。deviceTiles.js の relayoutTiles と同じ「実測 clientHeight で画像高を決める」方式。
+// 画像を上寄せ・スクロールなしで収める。frame は内容フィット(flex:0 0 auto)で画像実寸に縮むため
+// frame 自体の高さは画像に依存し測れない(循環する)。代わりに高さが flex で確定する
+// #live-screenshot-pane を実測し、そこから actions 高と pane の gap を引いた残りを画像 max-height に
+// する。object-fit は使えない(overlay が inset:0 で wrap に貼り付き、タップ座標も
+// img.getBoundingClientRect() 前提のため、要素ボックスを実画像サイズに保つ必要がある)。
 const SCREENSHOT_WRAP_BORDER = 2; // .screenshot-wrap の上下ボーダー合計(px)。CSS と一致させること
+const SCREENSHOT_PANE_GAP = 6;    // .screenshot-pane の gap(px)。CSS と一致させること
 function fitScreenshot() {
-  const h = screenshotFrame.clientHeight;
-  if (h === 0) { return; } // タブ非表示中(display:none)は測れないので触らない
-  screenshot.style.maxHeight = Math.max(40, h - SCREENSHOT_WRAP_BORDER) + 'px';
+  const paneH = screenshotPane.clientHeight;
+  if (paneH === 0) { return; } // タブ非表示中(display:none)は測れないので触らない
+  const avail = paneH - screenshotActions.offsetHeight - SCREENSHOT_PANE_GAP - SCREENSHOT_WRAP_BORDER;
+  const maxH = Math.max(40, avail);
+  screenshot.style.maxHeight = maxH + 'px';
+  // pane 幅をフィット後の画像表示幅に合わせて縮める → 右隣の control-pane(要素一覧)が画像直後へ
+  // 左寄せで並ぶ(伸ばすと右端へ押しやられる)。flex-basis:auto の max-content が画像の自然幅になる
+  // 実装差(Chromium)を避けるため確定値を JS で入れる。naturalWidth は load 後のみ有効なので
+  // screenshot の 'load' でも再実行する。未ロード時は cap を外し placeholder 幅(min-width)に委ねる。
+  if (screenshot.naturalWidth > 0 && screenshot.naturalHeight > 0) {
+    const dispH = Math.min(maxH, screenshot.naturalHeight); // 等倍を上限に(拡大しない)
+    const dispW = dispH * screenshot.naturalWidth / screenshot.naturalHeight;
+    screenshotPane.style.maxWidth = Math.ceil(dispW + SCREENSHOT_WRAP_BORDER) + 'px';
+  } else {
+    screenshotPane.style.maxWidth = '';
+  }
 }
-// frame の高さは flex で決まり画像内容に依存しない(=maxHeight 変更で再発火しない)ため無限ループ無し。
+// pane の高さは flex で決まり画像内容に依存しない(=maxHeight/maxWidth 変更で再発火しない)ため無限ループ無し。
 if (typeof ResizeObserver !== 'undefined') {
-  new ResizeObserver(fitScreenshot).observe(screenshotFrame);
+  new ResizeObserver(fitScreenshot).observe(screenshotPane);
 }
 window.addEventListener('resize', fitScreenshot);
+// data URI のデコードは非同期で src セット直後は naturalWidth=0。load 後に幅ハグを確定させる。
+screenshot.addEventListener('load', fitScreenshot);
 
 // liveModel.ts の frameToDisplayRect と同じ計算(webview は CSP により import 不可のため複製。
 // liveModel.ts 側を変更したらここも追随させること)。
