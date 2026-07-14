@@ -64,6 +64,34 @@ Demo 16 シナリオ(iOS 6+Android 10)を iOS/Android 同数のデバイスで A
   理論利得(iOS 3→2 本/台)が per-scenario の遅延増で相殺され改善しない
 - デバイス追加が効くのは「CPU idle が残っている」ときだけ。増やす前に実行中 idle を見る
 
+### 3.2 実行前固定コストの削減(2026-07-15 実装)
+
+シナリオ実行そのもの以外の「実行ボタン→最初のシナリオ開始」の固定コストを3点削減した:
+
+1. **変更なし時の swift build スキップ**(`ScenarioHost.build` + `Sources/FTCore/BuildFingerprint.swift`):
+   no-op の `swift build --product` でも SPM の依存グラフ再検証で **~2.6s** かかるため、
+   入力(Package.swift/.resolved・Sources/・Scenarios/ の mtime+size+ツールチェーン識別)の
+   フィンガープリント一致でスキップする。実測: `api run --dry-run` の連続実行 3.96s → **0.08s**。
+   ツールチェーン識別(xcode_select_link の先+version.plist の mtime)を含むのは、Xcode 更新後に
+   古いバイナリを温存して FoundationModels ABI 不整合で dyld クラッシュする罠(§CLAUDE.md)を
+   スキップが助長しないため。**強制的に再ビルドさせたいときは `.ftester/build-fingerprint-*.txt`
+   を消すか手で `swift build` する**
+2. **ビルドとワーカー供給の並行化**(`ftester api run`): ビルド(ホスト CPU)とデバイス供給
+   (ブリッジ待ち・install)は独立なので、並列実行経路ではワーカー構築 Task を build より先に
+   開始する(`ApiRunCommand.run()`)。stderr の供給ログとビルドログは交互に出るようになった
+3. **コールド供給のデバイス間並列化**(`BridgeProvisioner.provision`): 「差分判定(並列)→
+   プランニング=ポート採番(直列)→ 共有ビルド(直列)→ 起動(デバイス単位で並列)」に分離。
+   hybrid の 2 ブリッジは同一シミュレータへの simctl 競合を避けるためデバイス内では従来どおり直列。
+   `installIfNeeded` の autoInstall 差分判定(iOS バンドル深比較 / Android md5。アプリサイズ比例)も
+   ワーカー単位で並列化。実測: 3 台 hybrid(=6 ブリッジ)の完全コールド(sim ブート+install 込み)
+   +ログイン系 3 シナリオ並列で **99s・3/3 passed**(旧直列はデバイス毎に足し算)
+
+効果の出所はあくまで固定費とコールド供給で、ウォームのシナリオ実行本編は不変:
+demo-4devices(16 シナリオ・ウォーム・§3.1 と同条件)の実測は wall 55.5/62.0/56.1s
+(中央値 56.1s、全回 16/16 passed)で旧コードの 57s×3 と同等、
+「実行開始→最初のシナリオ」は旧 ~5.7s(ビルド 2.6s+供給 ~3.1s 直列)→ **3.2s**
+(スキップ時。ビルドが要る時も供給と並行なので ≈max(ビルド, 供給))。
+
 ## 4. 計測基盤の使い方(チューニングの必須手順)
 
 **変更前にベースライン、変更後に同条件で再計測、summary.md を比較する。**
@@ -137,6 +165,9 @@ python3 Scripts/stream_vs_poll_bench.py --boot-ios-name シミュ1 --boot-androi
 | `RETARGET_EXCLUDED_PACKAGES` | AndroidRunner/…/QuietWaiter.java | {com.android.systemui} | クロスパッケージ遷移時、静穏対象パッケージの追従(TYPE_WINDOW_STATE_CHANGED 検知時に静穏対象を送信元パッケージへ切替)から除外するパッケージ。追従してしまうと遷移先アプリ本体ではなく付随ウィンドウの静穏を待つことになるため |
 | `PollBackoff` | Sources/FTCore/PollBackoff.swift | 100→200→400→800→上限1000ms | exist/textIs/ロケータ解決リトライの共通バックオフ。5s timeout での snapshot 回数は旧5回→新8回(許容済み) |
 | `defaultTimeout` | FTRuntime(runs プロファイルで上書き可) | 5s | 検証系の待ち上限。失敗するテストの所要を支配 |
+| `timeout:`(tap/type/press) | DSL 引数(FTDSL/Commands.swift) | nil | アクションのロケータ解決待ち上限秒。nil=従来の3回リトライ(計700ms)、**0=リトライなし(optional の空振り ~750ms→数十msに短縮する opt-in ノブ)**。遅れて出る要素を拾えなくなるので optional 以外では基本使わない |
+| fallback 照会の間引き | StepExecutor.swift(executeAssert) | primary 2回目以降・偶数回ミスのみ | hybrid の SystemUIDriver 照会(springboard 再session+XCUITest snapshot=数百ms)の頻度。実在するシステムUI要素の検知遅れは最大バックオフ1段+1周期 |
+| ビルドスキップ判定 | FTCore/BuildFingerprint.swift | mtime+size+toolchain | §3.2。強制再ビルドは `.ftester/build-fingerprint-*.txt` を削除 |
 | `ftester.streamCodec` | VSCode 設定(package.json) | h264 | 画面配信コーデック。h264=HWエンコード/デコード(低負荷)、mjpeg=互換(WebCodecs 問題時の退避先。デバイス単位の自動フォールバックあり) |
 | 描画間引き(66ms) | vscode-ftester/src/webview/monitor/h264Decoder.js | 約15fps | h264 の canvas 描画間隔。デコード自体は全チャンク必須(P フレーム連鎖)なので下げても復号コストは減らない |
 | watchdog しきい値 | vscode-ftester/src/monitorBridgeWatchdog.ts | booted 連続5観測(約10秒)/クールダウン3分/2回で諦め | ブリッジ自動修復の感度。短くすると起動過渡を誤検知、長くすると復旧が遅い |
@@ -228,7 +259,9 @@ window/transition/animator の `*_scale` はチューニングノブではなく
 - **XCUITest ブリッジの3本目以降は負荷下で供給タイムアウトしやすい**。タイムアウト後に遅れて
   ready になり、次回の実行で「稼働中ブリッジを再利用」して成功する(=1回おきに成功・失敗が
   交互になったらこのパターン)。恒常的に3台以上の iOS 並列を使うなら供給タイムアウト延長か
-  供給の直列化を検討(§8)
+  供給の直列化を検討(§8)。※この実測は供給が直列だった時代のもの。2026-07-15 の並列供給化
+  (§3.2)後は無負荷コールドの 3 台 hybrid(6 ブリッジ)は成立を確認済みだが、負荷下の挙動は
+  未再計測(悪化しうる方向なので交互パターンを見たらまずここを疑う)
 
 ## 8. 今後の改善候補(価値が出たら)
 

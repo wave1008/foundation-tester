@@ -65,12 +65,14 @@ public func abortScenarioOnFailure(_ enabled: Bool = true) {
 
 // MARK: - 操作コマンド
 
-public func tap(_ selector: String, optional: Bool = false,
+/// timeout: 要素解決を待つ上限秒(0 = 初回スナップショットのみ。出るか不定な optional の
+/// 空振り ~0.7s を数十msに短縮)。省略時は既定の再試行(約0.7秒)
+public func tap(_ selector: String, optional: Bool = false, timeout: Int? = nil,
                 file: StaticString = #filePath, line: UInt = #line) {
     let parsed = FTSelector.parse(selector)
     let step = FlowStep(action: "tap", locator: parsed.primary,
                         fallbacks: parsed.fallbacks.isEmpty ? nil : parsed.fallbacks,
-                        optional: optional ? true : nil)
+                        timeout: timeout, optional: optional ? true : nil)
     FTRuntime.requireCore(command: "tap")
         .perform(step: step,
                  description: "tap \"\(selector)\"" + (optional ? " (optional)" : ""),
@@ -86,23 +88,28 @@ public func type(_ text: String, optional: Bool = false,
         .perform(step: step, description: "type \"\(text)\"", file: file, line: line)
 }
 
-public func type(_ selector: String, _ text: String, optional: Bool = false,
+/// timeout: 要素解決を待つ上限秒(0 = 初回スナップショットのみ。出るか不定な optional の
+/// 空振り ~0.7s を数十msに短縮)。省略時は既定の再試行(約0.7秒)
+public func type(_ selector: String, _ text: String, optional: Bool = false, timeout: Int? = nil,
                  file: StaticString = #filePath, line: UInt = #line) {
     let parsed = FTSelector.parse(selector)
     let step = FlowStep(action: "type", locator: parsed.primary,
                         fallbacks: parsed.fallbacks.isEmpty ? nil : parsed.fallbacks,
-                        text: text, optional: optional ? true : nil)
+                        text: text, timeout: timeout, optional: optional ? true : nil)
     FTRuntime.requireCore(command: "type")
         .perform(step: step, description: "type \"\(selector)\" \"\(text)\"",
                  selectorText: selector, file: file, line: line)
 }
 
+/// timeout: 要素解決を待つ上限秒(0 = 初回スナップショットのみ。出るか不定な optional の
+/// 空振り ~0.7s を数十msに短縮)。省略時は既定の再試行(約0.7秒)
 public func press(_ selector: String, duration: Double = 1.0, optional: Bool = false,
+                  timeout: Int? = nil,
                   file: StaticString = #filePath, line: UInt = #line) {
     let parsed = FTSelector.parse(selector)
     let step = FlowStep(action: "press", locator: parsed.primary,
                         fallbacks: parsed.fallbacks.isEmpty ? nil : parsed.fallbacks,
-                        optional: optional ? true : nil)
+                        timeout: timeout, optional: optional ? true : nil)
     FTRuntime.requireCore(command: "press")
         .perform(step: step, description: "press \"\(selector)\"",
                  selectorText: selector, file: file, line: line)

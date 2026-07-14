@@ -10,13 +10,13 @@ final class StepCommandParamsTests: XCTestCase {
         XCTAssertEqual(StepCommandParams.specs(forVerb: "scrollTo").map(\.name),
                        ["direction", "maxSwipes"])
         XCTAssertEqual(StepCommandParams.specs(forVerb: "press").map(\.name),
-                       ["duration", "optional"])
-        XCTAssertEqual(StepCommandParams.specs(forVerb: "type").map(\.name), ["optional"])
+                       ["duration", "optional", "timeout"])
+        XCTAssertEqual(StepCommandParams.specs(forVerb: "type").map(\.name),
+                       ["optional", "timeout"])
+        XCTAssertEqual(StepCommandParams.specs(forVerb: "tap").map(\.name), ["timeout"])
     }
 
     func testSpecsEmptyForVerbsWithoutHiddenParams() {
-        // tap の optional は表示表現のサフィックスで編集するためスキーマに含めない
-        XCTAssertEqual(StepCommandParams.specs(forVerb: "tap"), [])
         XCTAssertEqual(StepCommandParams.specs(forVerb: "swipe"), [])
         XCTAssertEqual(StepCommandParams.specs(forVerb: "wait"), [])
         XCTAssertEqual(StepCommandParams.specs(forVerb: "procedure"), [])
@@ -34,7 +34,7 @@ final class StepCommandParamsTests: XCTestCase {
         XCTAssertEqual(StepCommandParams.parse(code: "scrollTo(\"x\")", verb: "scrollTo"),
                        ["direction": "up", "maxSwipes": "8"])
         XCTAssertEqual(StepCommandParams.parse(code: "type(\"a\", \"b\")", verb: "type"),
-                       ["optional": "false"])
+                       ["optional": "false", "timeout": ""])
     }
 
     func testParseEnumAndMultipleKeywords() {
@@ -45,20 +45,41 @@ final class StepCommandParamsTests: XCTestCase {
         XCTAssertEqual(
             StepCommandParams.parse(code: "press(\"x\", duration: 0.5, optional: true)",
                                     verb: "press"),
-            ["duration": "0.5", "optional": "true"])
+            ["duration": "0.5", "optional": "true", "timeout": ""])
     }
 
     func testParseFormatsIntegralDoubleWithoutDecimalPoint() {
         XCTAssertEqual(StepCommandParams.parse(code: "press(\"x\", duration: 2.0)",
                                                verb: "press"),
-                       ["duration": "2", "optional": "false"])
+                       ["duration": "2", "optional": "false", "timeout": ""])
     }
 
     func testParseEmptySpecsVerbReturnsEmptyValues() {
         XCTAssertEqual(StepCommandParams.parse(code: "swipe(.up)", verb: "swipe"), [:])
-        XCTAssertEqual(StepCommandParams.parse(code: "tap(\"OK\", optional: true)",
-                                               verb: "tap"),
-                       [:])
+    }
+
+    func testParseTapIgnoresOptionalAndReturnsTimeoutDefault() {
+        // tap の optional は specList に無いが、ソースに存在しても素通しする(落とし穴対応)
+        XCTAssertEqual(StepCommandParams.parse(code: "tap(\"OK\", optional: true)", verb: "tap"),
+                       ["timeout": ""])
+    }
+
+    func testParseTapWithOptionalAndTimeout() {
+        XCTAssertEqual(
+            StepCommandParams.parse(code: "tap(\"x\", optional: true, timeout: 0)", verb: "tap"),
+            ["timeout": "0"])
+    }
+
+    func testParseActionTimeoutDefaultsAndExplicit() {
+        XCTAssertEqual(StepCommandParams.parse(code: "tap(\"x\")", verb: "tap"),
+                       ["timeout": ""])
+        XCTAssertEqual(StepCommandParams.parse(code: "tap(\"x\", timeout: 3)", verb: "tap"),
+                       ["timeout": "3"])
+        XCTAssertEqual(StepCommandParams.parse(code: "type(\"a\", \"b\", timeout: 0)", verb: "type"),
+                       ["optional": "false", "timeout": "0"])
+        XCTAssertEqual(
+            StepCommandParams.parse(code: "press(\"x\", duration: 0.5, timeout: 2)", verb: "press"),
+            ["duration": "0.5", "optional": "false", "timeout": "2"])
     }
 
     func testParseKeepsEscapedLiteral() {
@@ -157,6 +178,32 @@ final class StepCommandParamsTests: XCTestCase {
             "type(\"text\", optional: true)")
     }
 
+    func testApplyRendersTapOptionalAndTimeout() throws {
+        XCTAssertEqual(
+            try StepCommandParams.apply(display: "tap \"x\" (optional)", params: ["timeout": "0"],
+                                        toCode: "tap(\"y\")"),
+            "tap(\"x\", optional: true, timeout: 0)")
+        // 省略時(空文字)は出力しない
+        XCTAssertEqual(
+            try StepCommandParams.apply(display: "tap \"x\"", params: ["timeout": ""],
+                                        toCode: "tap(\"x\", timeout: 5)"),
+            "tap(\"x\")")
+    }
+
+    func testApplyRendersTypeAndPressTimeoutAfterOptional() throws {
+        // シグネチャ順(optional → timeout)で出力される
+        XCTAssertEqual(
+            try StepCommandParams.apply(display: "type \"欄\" \"値\"",
+                                        params: ["optional": "true", "timeout": "2"],
+                                        toCode: "type(\"欄\", \"値\")"),
+            "type(\"欄\", \"値\", optional: true, timeout: 2)")
+        XCTAssertEqual(
+            try StepCommandParams.apply(display: "press \"x\"",
+                                        params: ["duration": "1", "optional": "true", "timeout": "0"],
+                                        toCode: "press(\"x\")"),
+            "press(\"x\", optional: true, timeout: 0)")
+    }
+
     func testApplyRegeneratesOnVerbChangeWithParams() throws {
         XCTAssertEqual(
             try StepCommandParams.apply(display: "exist \"設定\"", params: ["timeout": "20"],
@@ -191,6 +238,14 @@ final class StepCommandParamsTests: XCTestCase {
             toCode: "scrollTo(\"x\")")) { error in
             XCTAssertEqual(error as? StepCommandParamsError,
                            .invalidValue(label: "maxSwipes", reason: "整数で入力してください"))
+        }
+    }
+
+    func testApplyThrowsInvalidValueForActionTimeout() {
+        XCTAssertThrowsError(try StepCommandParams.apply(
+            display: "tap \"x\"", params: ["timeout": "abc"], toCode: "tap(\"x\")")) { error in
+            XCTAssertEqual(error as? StepCommandParamsError,
+                           .invalidValue(label: "timeout", reason: "整数で入力してください"))
         }
     }
 
