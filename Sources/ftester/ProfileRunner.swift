@@ -43,7 +43,8 @@ enum ProfileRunner {
 
         let orchestrator = RunOrchestrator(
             project: project, workers: workers, healingEnabled: heal,
-            reportDir: reportDir, defaultTimeout: resolved.defaultTimeout)
+            reportDir: reportDir, defaultTimeout: resolved.defaultTimeout,
+            scenarioTimeout: resolved.scenarioTimeout)
         async let summary = orchestrator.run(items: items, defaultPlatform: defaultPlatform)
 
         // シナリオ毎にバッファして完了時に一括表示(並列時のステップ行の混線防止)

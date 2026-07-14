@@ -155,6 +155,9 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     public var reportDir: String?
     /// DSL コマンドの既定タイムアウト秒(省略時は DSL 側の既定値)
     public var defaultTimeout: Int?
+    /// シナリオ単位の壁時計タイムアウト秒(ホスト側 watchdog。子には渡さない。省略時 90)。
+    /// defaultTimeout(子内部の検証待ち)とは別物
+    public var scenarioTimeout: Int?
     /// devices を解決するマシンプロファイル名の明示指定(machines/<machine>.json)。
     /// 省略可(既存プロファイルとの後方互換のため必須にしない)。優先順位は
     /// ProfileResolver.determineMachine 参照
@@ -166,19 +169,21 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     public var iosInappEngine: Bool?
 
     public init(app: String? = nil, devices: [RunDeviceRef]? = nil, heal: Bool? = nil,
-                reportDir: String? = nil, defaultTimeout: Int? = nil, machine: String? = nil,
-                iosInappEngine: Bool? = nil) {
+                reportDir: String? = nil, defaultTimeout: Int? = nil, scenarioTimeout: Int? = nil,
+                machine: String? = nil, iosInappEngine: Bool? = nil) {
         self.app = app
         self.devices = devices
         self.heal = heal
         self.reportDir = reportDir
         self.defaultTimeout = defaultTimeout
+        self.scenarioTimeout = scenarioTimeout
         self.machine = machine
         self.iosInappEngine = iosInappEngine
     }
 
     static let knownKeys: Set<String> = [
-        "app", "devices", "heal", "reportDir", "defaultTimeout", "machine", "iosInappEngine",
+        "app", "devices", "heal", "reportDir", "defaultTimeout", "scenarioTimeout",
+        "machine", "iosInappEngine",
     ]
 }
 
@@ -226,6 +231,8 @@ public struct ResolvedProfile: Sendable {
     /// 絶対パス解決済み
     public let reportDir: URL
     public let defaultTimeout: Int?
+    /// シナリオ単位の壁時計タイムアウト秒(ホスト側 watchdog。nil=未指定→run 側で既定 90 を適用)
+    public let scenarioTimeout: Int?
     /// 解決中に出た警告(スキップしたデバイス・未知キー等)。呼び出し側が表示する
     public let warnings: [String]
 
@@ -508,6 +515,7 @@ public enum ProfileResolver {
             heal: runDoc.heal ?? false,
             reportDir: reportDir,
             defaultTimeout: runDoc.defaultTimeout,
+            scenarioTimeout: runDoc.scenarioTimeout,
             warnings: warnings)
     }
 

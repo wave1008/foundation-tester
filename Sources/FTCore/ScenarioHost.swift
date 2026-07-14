@@ -84,6 +84,10 @@ public enum ScenarioHostError: Error, LocalizedError {
 
 public enum ScenarioHost {
 
+    /// scenarioTimeout(ホスト側 watchdog)の既定秒。profile にも CLI にも未指定なら使う。
+    /// この値は子には渡さない(--default-timeout=子内部の検証待ちとは別物)
+    public static let defaultScenarioTimeout = 90
+
     /// テストプロジェクトを解決する。name 省略時:
     /// Projects/ が 1 つならそれ → LocalConfig.defaultProject → 候補一覧付きエラー
     public static func project(named name: String? = nil) throws -> TestProject {
@@ -172,6 +176,7 @@ public enum ScenarioHost {
     public static func run(project: TestProject, scenarioID: String,
                            connection: DriverConnection,
                            heal: Bool, reportDir: String, defaultTimeout: Int? = nil,
+                           scenarioTimeout: Int? = nil,
                            dryRun: Bool = false,
                            debug: ScenarioDebugOptions? = nil,
                            onEvent: @escaping (ScenarioEvent) -> Void) async -> Bool {
@@ -225,6 +230,23 @@ public enum ScenarioHost {
             debug.onControl(ScenarioRunControl(handle: stdinPipe.fileHandleForWriting))
         }
 
+        // scenarioTimeout はホスト側の壁時計 watchdog 専用で子には渡さない。debug 中は人間が
+        // ブレークで止めるため無効化する。発火時は SIGTERM→2s 猶予→SIGKILL で子を落とし、
+        // stdout の EOF で下の for-await が自然終了する経路に合流させる(ループ本体は変えない)。
+        let watchdogSeconds: Int? = (debug == nil)
+            ? (scenarioTimeout ?? defaultScenarioTimeout) : nil
+        let timeoutGuard = TimeoutGuard()
+        var killer: Task<Void, Never>?
+        if let watchdogSeconds {
+            killer = Task {
+                try? await Task.sleep(nanoseconds: UInt64(watchdogSeconds) * 1_000_000_000)
+                guard !Task.isCancelled, await timeoutGuard.claim() else { return }
+                process.terminate()  // SIGTERM
+                try? await Task.sleep(nanoseconds: 2_000_000_000)  // 2s 猶予
+                if process.isRunning { _ = kill(process.processIdentifier, SIGKILL) }
+            }
+        }
+
         // stderr は並行して読む(パイプ詰まりによるサブプロセスのブロック防止)
         let stderrTask = Task.detached { () -> [String] in
             var lines: [String] = []
@@ -250,8 +272,30 @@ public enum ScenarioHost {
 
         process.waitUntilExit()
         try? stdinPipe?.fileHandleForWriting.close()
+
+        // watchdog と正常終了のどちらが先に claim したかで timeout を確定する。cancel は
+        // waitUntilExit の後で行う: SIGTERM を子が無視する場合、killer の 2s 猶予後の SIGKILL が
+        // 唯一の脱出路なので、子の死を待つ前に killer を止めてはならない。
+        var timedOut = false
+        if let killer {
+            timedOut = !(await timeoutGuard.claim())
+            killer.cancel()
+        }
+
         let errLines = await stderrTask.value
         for line in errLines where !line.isEmpty { onEvent(.log("⚠️ \(line)")) }
+
+        // タイムアウト時は子がレポートも scenarioFinished も出さずに死ぬ。失敗可視化の契約:
+        // 合成 scenarioFinished(passed:false) を onEvent で流し、通常失敗と同じ経路で集計・
+        // モニタ表示させる(戻り値も false)。レポート(.md)は子専管のため書かない=クラッシュ相当。
+        if timedOut, let watchdogSeconds {
+            onEvent(.log("⏱ シナリオが \(watchdogSeconds)s を超過したため強制終了しました"))
+            var finished = ScenarioEvent(kind: "scenarioFinished")
+            finished.scenario = scenarioID
+            finished.passed = false
+            onEvent(finished)
+            return false
+        }
         // scenarioFinished が来なかった場合(クラッシュ等)は exit code で判定
         return passed ?? (process.terminationStatus == 0)
     }
@@ -323,6 +367,17 @@ public enum ScenarioHost {
             dir = parent
         }
         return nil
+    }
+}
+
+/// watchdog の kill と子の正常終了が競合したとき、先に claim した側だけが勝つ 1 回限りフラグ
+/// (kill 発火と cancel のレースで二重処理しないため)
+private actor TimeoutGuard {
+    private var claimed = false
+    func claim() -> Bool {
+        if claimed { return false }
+        claimed = true
+        return true
     }
 }
 
