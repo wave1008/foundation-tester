@@ -135,7 +135,16 @@ let package = Package(
         ),
         .testTarget(
             name: "FTDSLTests",
-            dependencies: ["FTDSL"],
+            // swift-syntax 2 プロダクトは swiftbuild バックエンド対策。FTDSLTests→FTDSL→FTDSLMacros
+            // の依存で、swiftbuild はマクロ(.macro)のオブジェクトをテストバンドルに誤って取り込むが
+            // swift-syntax をリンクしないため SwiftSyntax 系シンボルが undefined になる。ここで
+            // リンクして解決する(native バックエンドは取り込まないので未使用リンクで無害)。
+            // swiftbuild が直ったら削除可
+            dependencies: [
+                "FTDSL",
+                .product(name: "SwiftSyntaxMacros", package: "swift-syntax"),
+                .product(name: "SwiftCompilerPlugin", package: "swift-syntax"),
+            ],
             swiftSettings: swift5Mode
         ),
         .testTarget(
