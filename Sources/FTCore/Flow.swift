@@ -41,7 +41,8 @@ public struct FlowStep: Codable, Sendable {
     public var direction: String?
     /// screenMatches 用の期待状態(自然言語。マルチモーダル画面検証に使う)
     public var expected: String?
-    /// 秒(整数)
+    /// 秒(整数)。検証(assert)では要素出現待ちの上限。アクションではロケータ解決の
+    /// 再試行待ち上限(nil = 既定の約0.7秒 / 0 = 再試行なし。optional ステップの空振り短縮用)
     public var timeout: Int?
     /// scrollTo のスクロール回数上限(省略時 8)
     public var maxSwipes: Int?

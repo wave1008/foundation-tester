@@ -89,22 +89,6 @@ struct ApiRunCommand: AsyncParsableCommand {
 
         let testProject = try ScenarioHost.project(named: project)
 
-        // ビルドはホスト側で 1 回だけ(サブプロセスは自らビルドしない)
-        if !skipBuild {
-            logStderr("→ シナリオをビルド(\(testProject.name))...")
-            try ScenarioHost.build(project: testProject)
-        }
-
-        let all = try ScenarioHost.list(project: testProject)
-        guard !all.isEmpty else {
-            throw ValidationError(
-                "シナリオがありません(Projects/\(testProject.name)/Scenarios/ に @TestClass を追加してください)")
-        }
-        let selected = try RunScenarios.resolve(scenarios, from: all)
-        guard !selected.isEmpty else {
-            throw ValidationError("実行対象がありません(全シナリオが削除済み @Deleted)")
-        }
-
         // --debug: stdin を専用スレッドで読み行をそのままランナーへ渡す。ScenarioHost.run が
         // 起動直後に onControl で渡す ScenarioRunControl を待つ必要があるため小箱経由で受け渡す
         var debugOptions: ScenarioDebugOptions?
@@ -141,6 +125,45 @@ struct ApiRunCommand: AsyncParsableCommand {
             resolvedProfile = resolved
         }
 
+        // ワーカー並列実行経路のときだけビルドと並行してワーカー(iOSブリッジ起動/Android照合+
+        // インストール)を先行構築する。build/list/selected の解決が途中で throw した場合、この
+        // Task は待たずプロセスごと終了してよい: detach 起動されたブリッジ(xcodebuild/simctl)は
+        // 常駐資産として残り次回再利用されるため無害
+        let workersTask: Task<[RunWorker], Error>?
+        if let resolvedProfile, !dryRun, debugOptions == nil {
+            let resolved = resolvedProfile
+            workersTask = Task {
+                let deviceList = resolved.devices
+                    .map { "\($0.name)(\($0.platform))" }.joined(separator: ", ")
+                logStderr("🧩 プロファイル \(resolved.runName): \(resolved.appName) @ \(resolved.machineName)")
+                logStderr("   デバイス: \(deviceList)")
+                var workers = try await ProfileWorkerFactory.buildWorkers(
+                    resolved: resolved, repoRoot: try RepoRoot.find()) { logStderr($0) }
+                workers = try await ProfileWorkerFactory.installIfNeeded(
+                    apps: resolved.apps, workers: workers) { logStderr($0) }
+                logStderr("🚀 実行: \(workers.count) ワーカー(\(workers.map(\.label).joined(separator: " / ")))")
+                return workers
+            }
+        } else {
+            workersTask = nil
+        }
+
+        // ビルドはホスト側で 1 回だけ(サブプロセスは自らビルドしない)
+        if !skipBuild {
+            logStderr("→ シナリオをビルド(\(testProject.name))...")
+            try ScenarioHost.build(project: testProject) { logStderr($0) }
+        }
+
+        let all = try ScenarioHost.list(project: testProject)
+        guard !all.isEmpty else {
+            throw ValidationError(
+                "シナリオがありません(Projects/\(testProject.name)/Scenarios/ に @TestClass を追加してください)")
+        }
+        let selected = try RunScenarios.resolve(scenarios, from: all)
+        guard !selected.isEmpty else {
+            throw ValidationError("実行対象がありません(全シナリオが削除済み @Deleted)")
+        }
+
         emitLine(ApiRunStartedEvent(total: selected.count))
 
         let passedCount: Int
@@ -153,8 +176,10 @@ struct ApiRunCommand: AsyncParsableCommand {
                     resolved: resolvedProfile, project: testProject, selected: selected,
                     debugOptions: debugOptions)
             } else {
+                let workers = try await workersTask!.value
                 (passedCount, failedCount) = try await runWithProfileParallel(
-                    resolved: resolvedProfile, project: testProject, selected: selected)
+                    resolved: resolvedProfile, project: testProject, selected: selected,
+                    workers: workers)
             }
         } else {
             (passedCount, failedCount) = await runDirect(
@@ -268,23 +293,14 @@ struct ApiRunCommand: AsyncParsableCommand {
 
     /// 全ワーカーを RunOrchestrator(FTCore)に渡し ProfileRunner と同じ並列度で実行する。
     /// 進捗は RunEvent(Codable ではない)で届くため ndjsonLines(for:itemByURL:workerID:) で
-    /// ScenarioEvent 相当の NDJSON 行に変換する(失われる情報がある点に注意)
+    /// ScenarioEvent 相当の NDJSON 行に変換する(失われる情報がある点に注意)。
+    /// workers はビルドと並行して呼び出し側(run())が先行構築済みのもの
     private func runWithProfileParallel(
-        resolved: ResolvedProfile, project: TestProject, selected: [ScenarioInfo]
+        resolved: ResolvedProfile, project: TestProject, selected: [ScenarioInfo],
+        workers: [RunWorker]
     ) async throws -> (passed: Int, failed: Int) {
-        let profileName = resolved.runName
         let effectiveHeal = heal ? true : resolved.heal
         let reportDirURL = reportDir.map { URL(fileURLWithPath: $0) } ?? resolved.reportDir
-
-        let deviceList = resolved.devices
-            .map { "\($0.name)(\($0.platform))" }.joined(separator: ", ")
-        logStderr("🧩 プロファイル \(profileName): \(resolved.appName) @ \(resolved.machineName)")
-        logStderr("   デバイス: \(deviceList)")
-        var workers = try await ProfileWorkerFactory.buildWorkers(
-            resolved: resolved, repoRoot: try RepoRoot.find()) { logStderr($0) }
-        workers = try await ProfileWorkerFactory.installIfNeeded(
-            apps: resolved.apps, workers: workers) { logStderr($0) }
-        logStderr("🚀 実行: \(workers.count) ワーカー(\(workers.map(\.label).joined(separator: " / ")))")
 
         emitLine(ApiWorkersReadyEvent(workers: workersReadyInfo(workers)))
 

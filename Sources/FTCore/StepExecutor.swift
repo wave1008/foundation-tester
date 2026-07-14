@@ -2,7 +2,8 @@
 // 単一 FlowStep の決定的実行エンジン(Swift DSL のコマンドは全てここを通る)。
 // 実証済みのセマンティクス:
 // - ロケータ解決失敗は指数バックオフ(100→200→400ms、計3回)で再試行してからヒールへ
-//   (UI 遷移直後対策。ヒール発動までの総待機は計700ms)
+//   (UI 遷移直後対策。ヒール発動までの総待機は計700ms)。step.timeout 指定時はアクションも
+//   その秒数を予算にリトライ(0 = リトライなし。省略時=nilは従来の3回固定のまま)
 // - アサーションでは type+index のみのフォールバックを使わない(別画面要素への偽陽性防止)
 // - optional ステップは要素未発見でも失敗にせずスキップ(自己修復の対象外)
 // - 自己修復は delegate 提案の confidence == "high" のみ採用
@@ -244,16 +245,33 @@ public final class StepExecutor {
         phase.snapshotMs += Self.ms(clock.now - start)
         var resolved = Self.resolve(step: step, in: snapshot)
         if resolved == nil {
-            var backoff = PollBackoff()
-            for _ in 0..<3 {
-                start = clock.now
-                try await Task.sleep(for: backoff.nextDelay())
-                phase.waitMs += Self.ms(clock.now - start)
-                start = clock.now
-                snapshot = try await driver.snapshot()
-                phase.snapshotMs += Self.ms(clock.now - start)
-                resolved = Self.resolve(step: step, in: snapshot)
-                if resolved != nil { break }
+            if let timeout = step.timeout {
+                // timeout == 0: リトライなし(初回スナップショットのみ。optional の空振り短縮用)
+                if timeout > 0 {
+                    let retryDeadline = clock.now.advanced(by: .seconds(timeout))
+                    var backoff = PollBackoff()
+                    while resolved == nil, clock.now < retryDeadline {
+                        start = clock.now
+                        try await Task.sleep(for: backoff.nextDelay())
+                        phase.waitMs += Self.ms(clock.now - start)
+                        start = clock.now
+                        snapshot = try await driver.snapshot()
+                        phase.snapshotMs += Self.ms(clock.now - start)
+                        resolved = Self.resolve(step: step, in: snapshot)
+                    }
+                }
+            } else {
+                var backoff = PollBackoff()
+                for _ in 0..<3 {
+                    start = clock.now
+                    try await Task.sleep(for: backoff.nextDelay())
+                    phase.waitMs += Self.ms(clock.now - start)
+                    start = clock.now
+                    snapshot = try await driver.snapshot()
+                    phase.snapshotMs += Self.ms(clock.now - start)
+                    resolved = Self.resolve(step: step, in: snapshot)
+                    if resolved != nil { break }
+                }
             }
         }
 
@@ -347,6 +365,7 @@ public final class StepExecutor {
         case "exists":
             let deadline = Date().addingTimeInterval(TimeInterval(step.timeout ?? 5))
             var backoff = PollBackoff()
+            var primaryMisses = 0
             while Date() < deadline {
                 var start = clock.now
                 let snapshot = try await driver.snapshot()
@@ -357,8 +376,12 @@ public final class StepExecutor {
                     if let fallback { return .passedViaFallback(fallback) }
                     return .passed
                 }
-                // driver フォールバック(ハイブリッド): システム UI 上の要素を XCUITest で確認
-                if let fb = fallbackDriver {
+                primaryMisses += 1
+                // fallback(SystemUIDriver)の snapshot は springboard 再session+XCUITest snapshot で
+                // 数百ms。primary(in-app ~0.05ms)ミス毎に払うと通常のアプリ内要素待ちを支配するため
+                // 間引く: 2・4・6…回目のミスでのみ照会。実在するシステムUI要素の検知遅れは最大で
+                // バックオフ1段+1周期
+                if primaryMisses >= 2, primaryMisses % 2 == 0, let fb = fallbackDriver {
                     start = clock.now
                     let fsnap = try await fb.snapshot()
                     phase.snapshotMs += Self.ms(clock.now - start)
@@ -381,13 +404,17 @@ public final class StepExecutor {
             var lastActual: String?
             var found = false
             var backoff = PollBackoff()
+            var primaryMisses = 0
             while Date() < deadline {
                 var start = clock.now
                 let snapshot = try await driver.snapshot()
                 phase.snapshotMs += Self.ms(clock.now - start)
                 var candidate = Self.resolve(step: step, in: snapshot, strictForAssert: true)
-                // driver フォールバック(ハイブリッド): primary で見つからなければシステム UI を確認
-                if candidate == nil, let fb = fallbackDriver {
+                if candidate == nil { primaryMisses += 1 }
+                // driver フォールバック(ハイブリッド): primary で見つからなければシステム UI を確認。
+                // 間引きの契約は exists ケース参照
+                if candidate == nil, primaryMisses >= 2, primaryMisses % 2 == 0,
+                   let fb = fallbackDriver {
                     start = clock.now
                     let fsnap = try await fb.snapshot()
                     phase.snapshotMs += Self.ms(clock.now - start)

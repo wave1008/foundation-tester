@@ -96,14 +96,28 @@ public enum ScenarioHost {
     }
 
     /// プロジェクトのシナリオをビルドする。ホスト側で 1 回だけ呼び、サブプロセスは自らビルドしない
-    /// (並列ワーカーが同時に swift build して SPM ロック競合するのを防ぐ)
-    public static func build(project: TestProject) throws {
+    /// (並列ワーカーが同時に swift build して SPM ロック競合するのを防ぐ)。
+    /// no-op の swift build でも ~2.6s かかるため、BuildFingerprint が前回ビルド時と一致し
+    /// (mtime+size 比較。コンテンツ hash ではない)、かつバイナリが実在すればビルドをスキップする
+    public static func build(project: TestProject, log: ((String) -> Void)? = nil) throws {
         guard let root = packageRoot() else {
             throw ScenarioHostError.buildFailed("Package.swift が見つかりません(リポジトリ内で実行してください)")
         }
+
+        let fingerprint = BuildFingerprint.compute(repoRoot: root, scenariosDir: project.scenariosDir)
+        if let fingerprint,
+           fingerprint == BuildFingerprint.stored(productName: project.productName, repoRoot: root),
+           (try? runnerURL(project: project)) != nil {
+            log?("→ 変更なし・シナリオビルドをスキップ")
+            return
+        }
+
         let result = try Shell.run(["swift", "build", "--product", project.productName], cwd: root)
         guard result.status == 0 else {
             throw ScenarioHostError.buildFailed(result.tail)
+        }
+        if let fingerprint {
+            BuildFingerprint.store(fingerprint, productName: project.productName, repoRoot: root)
         }
     }
 

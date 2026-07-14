@@ -60,12 +60,19 @@ public enum StepCommandParams {
         name: "timeout", label: "タイムアウト(秒)", kind: .int, defaultValue: "",
         help: "要素の出現を待つ秒数。空欄 = 実行プロファイルの既定値を使う")
 
-    /// 動詞ごとの編集できるキーワード引数(シグネチャ順)。tap の optional は表示表現の
-    /// 「 (optional)」サフィックス側で編集するため含めない(二重管理回避)
+    /// tap/type/press のロケータ解決待ち(検証系の timeoutSpec とは別インスタンス。
+    /// name は同じ "timeout" だが意味・help・使い所が異なる)
+    private static let actionTimeoutSpec = StepParamSpec(
+        name: "timeout", label: "要素解決の待ち(秒)", kind: .int, defaultValue: "",
+        help: "見つからないとき再試行する上限秒。0 = 再試行しない(optional の空振りを速くする)。空欄 = 既定(約0.7秒)")
+
+    /// 動詞ごとの編集できるキーワード引数(シグネチャ順)。tap は timeout のみ持ち optional は
+    /// 含めない(表示表現の「 (optional)」サフィックス側で編集するため。二重管理回避)
     public static func specs(forVerb verb: String) -> [StepParamSpec] {
         switch verb {
-        case "type": return [optionalSpec]
-        case "press": return [durationSpec, optionalSpec]
+        case "tap": return [actionTimeoutSpec]
+        case "type": return [optionalSpec, actionTimeoutSpec]
+        case "press": return [durationSpec, optionalSpec, actionTimeoutSpec]
         case "scrollTo": return [directionSpec, maxSwipesSpec]
         case "exist", "textIs", "valueIs": return [timeoutSpec]
         default: return []
@@ -91,6 +98,12 @@ public enum StepCommandParams {
         var values: [String: String] = [:]
         for fragment in fragments {
             if let (label, valueText) = keywordArgument(fragment) {
+                // tap の optional は specList に無い(表示表現サフィックス側で管理)が、
+                // timeout 追加でソースには両方が共存しうる。素通しして次の fragment へ
+                if verb == "tap", label == "optional" {
+                    guard valueText == "true" || valueText == "false" else { return nil }
+                    continue
+                }
                 guard let spec = specList.first(where: { $0.name == label }),  // 未知ラベル
                       values[label] == nil,                                    // 重複
                       let uiValue = decode(valueText, kind: spec.kind) else {
@@ -139,13 +152,19 @@ public enum StepCommandParams {
     private static func render(_ parsed: StepCommandText.Parsed, params: [String: String],
                                display: String, code: String) throws -> String {
         switch parsed.verb {
+        case "tap":
+            var arguments = StepCommandText.literal(parsed.strings[0])
+            if parsed.optionalFlag { arguments += ", optional: true" }
+            arguments += try actionTimeoutArg(params)
+            return "tap(\(arguments))"
         case "type":
             let optional = try optionalArg(parsed, params)
+            let timeout = try actionTimeoutArg(params)
             if parsed.strings.count == 1 {
-                return "type(\(StepCommandText.literal(parsed.strings[0]))\(optional))"
+                return "type(\(StepCommandText.literal(parsed.strings[0]))\(optional)\(timeout))"
             }
             return "type(\(StepCommandText.literal(parsed.strings[0])), "
-                + "\(StepCommandText.literal(parsed.strings[1]))\(optional))"
+                + "\(StepCommandText.literal(parsed.strings[1]))\(optional)\(timeout))"
         case "press":
             var arguments = StepCommandText.literal(parsed.strings[0])
             let duration = try doubleValue(value(params, durationSpec), name: "duration")
@@ -153,6 +172,7 @@ public enum StepCommandParams {
                 arguments += ", duration: \(StepCommandText.formatSeconds(duration))"
             }
             arguments += try optionalArg(parsed, params)
+            arguments += try actionTimeoutArg(params)
             return "press(\(arguments))"
         case "scrollTo":
             var arguments = StepCommandText.literal(parsed.strings[0])
@@ -173,8 +193,8 @@ public enum StepCommandParams {
             return "\(parsed.verb)(\(StepCommandText.literal(parsed.strings[0])), "
                 + "\(StepCommandText.literal(parsed.strings[1]))\(timeout))"
         default:
-            // specs が空の動詞(tap / swipe / wait / launch / relaunch / terminate /
-            // screenIs)にパラメーターは無い。StepCommandText.apply(リテラル置換 or 再生成)に委ねる
+            // specs が空の動詞(swipe / wait / launch / relaunch / terminate / screenIs)に
+            // パラメーターは無い。StepCommandText.apply(リテラル置換 or 再生成)に委ねる
             return try StepCommandText.apply(display: display, toCode: code)
         }
     }
@@ -190,6 +210,14 @@ public enum StepCommandParams {
     /// exist / textIs / valueIs の timeout(空文字 = 省略 = プロファイル既定)
     private static func timeoutArg(_ params: [String: String]) throws -> String {
         let text = value(params, timeoutSpec)
+        if text.isEmpty { return "" }
+        let timeout = try intValue(text, name: "timeout")
+        return ", timeout: \(timeout)"
+    }
+
+    /// tap / type / press の timeout(空文字 = 省略 = 既定の再試行)
+    private static func actionTimeoutArg(_ params: [String: String]) throws -> String {
+        let text = value(params, actionTimeoutSpec)
         if text.isEmpty { return "" }
         let timeout = try intValue(text, name: "timeout")
         return ", timeout: \(timeout)"

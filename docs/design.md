@@ -444,6 +444,9 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
   完全一致 ID の明示指定でのみ実行可能。コードは残るため復活はアノテーションを外すだけ
 - コマンド(tap/type/exist/…)は**同期・非 throw のモジュールレベル自由関数**。
   `try await` も `{ it in }` も不要。カレント実行コンテキストを暗黙参照する
+- tap/type/press は `optional:`(見つからなくても失敗にしない)に加え `timeout:`
+  (ロケータ解決の再試行待ち上限秒。0=リトライなし。省略時は既定の約0.7秒)を取る。
+  出るか不定な optional ステップの空振り短縮用(performance-tuning §5)
 - セレクタ式は文字列1本: `#id` / `ラベル` / `.Type[n]`(n は 1 オリジン。1番目は [1] 省略で `.Type`、明記も可)/ `.Type#id` / `.Type=ラベル`、`||` でフォールバック連鎖
 - **label マッチは完全一致優先→無ければ部分一致(`contains`)**(`StepExecutor.match`)。短いラベルが
   長いラベルに誤マッチする(`ラベル"許可"` が `"通知を許可"` に当たる)。区別したい要素が同一画面に
@@ -563,13 +566,18 @@ platform フィールドは持たず、**iOS/Android のデバイス名を混在
 ### 11.4 実行フロー(ftester run --project P --profile ios)
 
 1. ProfileResolver で合成 → CLI 明示引数(--heal/--report-dir 等)が最終上書き
-2. `ScenarioHost.build(project:)`(ホスト 1 回)
+2. `ScenarioHost.build(project:)`(ホスト 1 回。入力の BuildFingerprint が前回ビルドと一致すれば
+   スキップ=無変更の再実行で no-op build ~2.6s を払わない。performance-tuning §3.2)。
+   `ftester api run` の並列実行経路ではワーカー供給(3〜4)をビルドと並行に開始する
 3. **デバイス供給**: iOS は BridgeProvisioner がポート範囲(8123〜)を短タイムアウトで並行スキャンし、
    /status のデバイス名 × simctl の UDID 照合で**稼働中ブリッジを再利用**、不足分は空きポートを採番して
    BridgeLauncher(xctestrun FT_PORT 注入)で起動・waitUntilReady。シミュレータの新規作成はしない
-   (同名複数の曖昧時は UDID 明記を推奨)。Android は AndroidDeviceCatalog で avd 照合
+   (同名複数の曖昧時は UDID 明記を推奨)。Android は AndroidDeviceCatalog で avd 照合。
+   コールド起動は「プランニング(ポート採番、直列)→ 共有ビルド(dylib/xctestrun、直列)→
+   起動(デバイス単位で並列。hybrid の 2 ブリッジはデバイス内直列)」(performance-tuning §3.2)
 4. **自動インストール**: `appPath` あり+`autoInstall`(既定 true)→ オーケストレータ投入前に
-   各ワーカーへ並行 install(失敗ワーカーは離脱、残ワーカーがキューを引き継ぐ)
+   各ワーカーへ並行 install(差分判定=installedIsCurrent も並列。失敗ワーカーは離脱、
+   残ワーカーがキューを引き継ぐ)
 5. RunOrchestrator で並列実行。ワーカーラベル=デバイスの論理名。レポートは
    `Projects/<P>/reports/`、ヒールキャッシュは `--project-dir` 経由で `Projects/<P>/.ftester/` に分離
 6. `defaultTimeout` はランナーの `--default-timeout` → FTDriveCore に渡り、
