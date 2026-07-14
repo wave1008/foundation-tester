@@ -205,6 +205,10 @@ export class MonitorLiveController implements vscode.Disposable {
   /** streamPipeline がバインドされているデバイスキー(iOS: シミュレータ UDID、Android: adb serial)。
    * デバイス切り替え時の張り替え要否判定に使う。 */
   private streamKey: string | undefined;
+  /** webview から codecError(scope=live)を受けたら true(fallbackToMjpeg 参照)。以後このタブは
+   * 設定値に関わらず mjpeg 固定。deviceStream.ts の mjpegFallbackIds と違いデバイス単位ではなく
+   * タブ単位(ライブ操作タブは常に1デバイスのみ選択するため)。 */
+  private liveMjpegFallback = false;
 
   // ---- レコーディング(操作→FlowStep記録→gen-scenario) -----------------------------------
   private recording = false;
@@ -832,6 +836,9 @@ export class MonitorLiveController implements vscode.Disposable {
     const config = this.deps.getConfig();
     const device = this.currentDeviceRef();
     const pollingForced = this.deps.isPollingMode();
+    // codecError(scope=live)を受けていれば設定値に関わらず mjpeg 固定(fallbackToMjpeg 参照)。
+    const codec: "mjpeg" | "h264" = this.liveMjpegFallback ? "mjpeg" : config.streamCodec;
+    const codecArgs = codec === "h264" ? ["--codec", "h264"] : [];
 
     if (!pollingForced && this.liveTabVisible && config.iosStreamEnabled && device?.platform === "ios" && device.udid) {
       const simStreamPath = resolveSimStream(config);
@@ -839,8 +846,12 @@ export class MonitorLiveController implements vscode.Disposable {
         this.clearFrameTimer();
         this.startStreamPipeline(device.udid, {
           command: simStreamPath,
-          args: ["--udid", device.udid, "--fps", String(config.liveFps), "--max-width", String(LIVE_STREAM_MAX_WIDTH)],
+          args: [
+            "--udid", device.udid, "--fps", String(config.liveFps), "--max-width", String(LIVE_STREAM_MAX_WIDTH),
+            ...codecArgs,
+          ],
           logPrefix: "ios-stream",
+          codec,
         });
         return;
       }
@@ -860,8 +871,10 @@ export class MonitorLiveController implements vscode.Disposable {
           args: [
             "--serial", device.serial, "--adb", adbPath,
             "--fps", String(config.liveFps), "--max-width", String(LIVE_STREAM_MAX_WIDTH),
+            ...codecArgs,
           ],
           logPrefix: "android-stream",
+          codec,
         });
         return;
       }
@@ -875,11 +888,27 @@ export class MonitorLiveController implements vscode.Disposable {
     }
   }
 
+  /** webview から codecError(scope=live)を受けたら monitorPanel.ts から呼ぶ。以後 mjpeg 固定にし、
+   * 稼働中のストリームがあれば同じ対象へ即座に mjpeg で再起動する(updateLiveFrameSource の
+   * startStreamPipeline は同一 key・稼働中なら早期returnするため、先に止めてから呼び直す)。 */
+  fallbackToMjpeg(): void {
+    this.liveMjpegFallback = true;
+    if (this.streamPipeline) {
+      this.stopStreamPipeline();
+      this.updateLiveFrameSource();
+    }
+  }
+
   /** key(iOS: UDID、Android: adb serial)向けの StreamPipeline を起動する。同じ key で既に稼働中
    * なら何もしない(張り替えでフレームが途切れないように)。別 key なら旧 helper を止めて張り替える。 */
   private startStreamPipeline(
     key: string,
-    spec: { readonly command: string; readonly args: readonly string[]; readonly logPrefix: string },
+    spec: {
+      readonly command: string;
+      readonly args: readonly string[];
+      readonly logPrefix: string;
+      readonly codec: "mjpeg" | "h264";
+    },
   ): void {
     if (this.streamPipeline && this.streamPipeline.isRunning() && this.streamKey === key) {
       return;
@@ -891,10 +920,17 @@ export class MonitorLiveController implements vscode.Disposable {
       args: spec.args,
       logPrefix: spec.logPrefix,
       outputChannel: this.deps.outputChannel,
+      codec: spec.codec,
       onFrame: (image) => {
         // ライブタブの frame メッセージは w/h を持たない(deviceStream.ts 冒頭コメント参照)ため無視する。
         this.handleConnectionOk();
         this.post({ type: "frame", image });
+      },
+      onChunk: (data, keyframe, width, height) => {
+        this.handleConnectionOk();
+        // liveH264Chunk は "live" 封筒を経由しない top-level メッセージ(webview 側 main.js の直下
+        // ディスパッチャが受ける契約。monitorModel.ts の MonitorToWebviewMessage 参照)。
+        this.deps.post({ type: "liveH264Chunk", keyframe, width, height, data: new Uint8Array(data) });
       },
       onConnectionOk: () => this.handleConnectionOk(),
       onFailure: (message) => this.handleStreamGiveUp(message),

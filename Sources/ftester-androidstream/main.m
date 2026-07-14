@@ -1,5 +1,6 @@
-// Android実機/エミュレータの画面ストリーミング。adb screenrecord(Annex-B H.264)をパースし
-// VideoToolboxでデコードしてJPEGをstdoutへ流す常駐ヘルパー(ftester-simstreamのAndroid版)。
+// Android実機/エミュレータの画面ストリーミング。adb screenrecord(Annex-B H.264)を常駐ヘルパーで
+// 中継する(ftester-simstreamのAndroid版)。既定はVideoToolboxでデコードしてJPEGをstdoutへ流す
+// (mjpeg)。--codec h264 はデコードせずAnnex-B AUをそのままstdoutへ流す(パススルー)。
 // デコード/Annex-B分割ロジックはspike(androidcap.m)を検証済みのまま流用。
 #import <Foundation/Foundation.h>
 #import <CoreImage/CoreImage.h>
@@ -18,6 +19,7 @@ static double gLastEmit = 0;
 static BOOL gTrailingArmed = NO;
 static NSTask *gAdbTask = nil;
 static BOOL gShuttingDown = NO;
+static BOOL gCodecH264 = NO;
 
 static double ftNow(void) { return CACurrentMediaTime(); }
 
@@ -35,9 +37,13 @@ static void ftWriteAll(const void *buf, size_t len) {
     }
 }
 
-// stdoutフレーム形式はSources/ftester-simstream/main.mのftWriteFrameと同一契約(パーサは共通:
-// vscode-ftester/src/deviceStream.ts)。変更する場合は3ファイルとも直すこと。stdoutはこの
-// バイナリ専用(ログは全てstderr)。バッファ済みstdioはEOFまでflushされない実績がある
+// stdoutレコード形式はSources/ftester-simstream/main.mと同一契約(パーサは共通:
+// vscode-ftester/src/deviceStream.ts)。変更する場合は3ファイルとも直すこと。
+// - 既定/--codec mjpeg: v1。WIDTH(u16 BE) HEIGHT(u16 BE) LEN(u32 BE) JPEGバイト×LEN(ftWriteFrame)。
+// - --codec h264: v2。KIND(u8: 2=H.264 AU Annex-B, 3=キープアライブping) FLAGS(u8: bit0=
+//   キーフレーム、KIND=2のみ意味を持つ) WIDTH/HEIGHT(常に0。デコードしないため実寸不明) LEN(u32 BE、
+//   KIND=3は0) DATA(LENバイト。keyframeはSPS+PPS+IDR連結、開始コードは4バイトへ正規化。ftWriteH264AU)。
+// stdoutはこのバイナリ専用(ログは全てstderr)。バッファ済みstdioはEOFまでflushされない実績がある
 // (spike検証時に実害)ため、write()都度発行+_IONBF(main側で設定)を用いる。
 static void ftWriteFrame(NSData *jpeg, uint16_t w, uint16_t h) {
     uint8_t hdr[8];
@@ -54,6 +60,30 @@ static void ftWriteFrame(NSData *jpeg, uint16_t w, uint16_t h) {
     ftWriteAll(jpeg.bytes, jpeg.length);
 }
 
+// v2ヘッダ(--codec h264 専用。フォーマット詳細は上のファイル冒頭契約コメント参照)。
+static void ftWriteV2(uint8_t kind, uint8_t flags, uint16_t w, uint16_t h, const void *data, uint32_t len) {
+    uint8_t hdr[10];
+    hdr[0] = kind;
+    hdr[1] = flags;
+    hdr[2] = (uint8_t)(w >> 8); hdr[3] = (uint8_t)(w & 0xFF);
+    hdr[4] = (uint8_t)(h >> 8); hdr[5] = (uint8_t)(h & 0xFF);
+    hdr[6] = (uint8_t)(len >> 24); hdr[7] = (uint8_t)(len >> 16);
+    hdr[8] = (uint8_t)(len >> 8);  hdr[9] = (uint8_t)(len & 0xFF);
+    ftWriteAll(hdr, sizeof(hdr));
+    if (len > 0) ftWriteAll(data, len);
+}
+
+// gLastEmitはkeepaliveタイマーのアイドル判定と共有するため、書き込みの都度ここで更新する。
+static void ftWriteH264AU(NSData *au, BOOL keyframe) {
+    if (au.length == 0) return;
+    ftWriteV2(2, keyframe ? 1 : 0, 0, 0, au.bytes, (uint32_t)au.length);
+    gLastEmit = ftNow();
+}
+static void ftWritePing(void) {
+    ftWriteV2(3, 0, 0, 0, NULL, 0);
+    gLastEmit = ftNow();
+}
+
 #pragma mark - Annex-B parse + VideoToolbox decode (spike由来。ロジックは変更しない)
 
 static CMVideoFormatDescriptionRef gFmt = NULL;
@@ -62,6 +92,9 @@ static uint8_t *gSPS = NULL; static size_t gSPSLen = 0;
 static uint8_t *gPPS = NULL; static size_t gPPSLen = 0;
 static NSMutableData *gBuf;
 static CVImageBufferRef gLatest = NULL;
+// --codec h264 専用。SEI等の非VCL NALを次のVCLレコード先頭へ連結するための保留バッファ
+// (gQueue上でのみ操作)。gSPS/gPPSはmjpegデコード経路と共用する(codecは起動時に固定・排他)。
+static NSMutableData *gPendingOther = nil;
 
 // gQueue上でのみ呼ぶこと(gLatest/gLastEmit/gTrailingArmedの直列性が前提)。
 static void ftEncodeAndEmit(void) {
@@ -148,10 +181,41 @@ static void decodeVCL(const uint8_t *nal, size_t len) {
     CFRelease(bb);
 }
 
+#pragma mark - H.264 passthrough (--codec h264)
+
+static void ftAppendStartCoded(NSMutableData *out, const uint8_t *nal, size_t len) {
+    static const uint8_t kStartCode[4] = {0, 0, 0, 1};
+    [out appendBytes:kStartCode length:4];
+    [out appendBytes:nal length:len];
+}
+
+// fpsスロットルせず全AUを転送する(Pフレームは前フレーム依存のため間引くとストリームが壊れる。
+// 間引きは受信側の描画で行う)。type7/8はキャッシュ、type5はSPS+PPS+IDR連結、type1は単独、
+// その他(SEI等)は次のVCLレコード先頭へ連結。
+static void ftHandleNALPassthrough(const uint8_t *nal, size_t len, int type) {
+    if (type == 7) { free(gSPS); gSPS = malloc(len); memcpy(gSPS, nal, len); gSPSLen = len; return; }
+    if (type == 8) { free(gPPS); gPPS = malloc(len); memcpy(gPPS, nal, len); gPPSLen = len; return; }
+    if (type != 1 && type != 5) {
+        if (!gPendingOther) gPendingOther = [NSMutableData data];
+        ftAppendStartCoded(gPendingOther, nal, len);
+        return;
+    }
+    NSMutableData *record = gPendingOther ?: [NSMutableData data];
+    gPendingOther = nil;
+    BOOL keyframe = (type == 5);
+    if (keyframe) {
+        if (gSPS) ftAppendStartCoded(record, gSPS, gSPSLen);
+        if (gPPS) ftAppendStartCoded(record, gPPS, gPPSLen);
+    }
+    ftAppendStartCoded(record, nal, len);
+    ftWriteH264AU(record, keyframe);
+}
+
 static void handleNAL(const uint8_t *nal, size_t len) {
     while (len > 0 && nal[len - 1] == 0x00) len--; // 末尾ゼロ除去(次の開始コードの先行ゼロを含み得る)
     if (len == 0) return;
     int type = nal[0] & 0x1F;
+    if (gCodecH264) { ftHandleNALPassthrough(nal, len, type); return; }
     if (type == 7) { free(gSPS); gSPS = malloc(len); memcpy(gSPS, nal, len); gSPSLen = len; }
     else if (type == 8) { free(gPPS); gPPS = malloc(len); memcpy(gPPS, nal, len); gPPSLen = len; ensureSession(); }
     else if (type == 1 || type == 5) decodeVCL(nal, len);
@@ -235,6 +299,7 @@ int main(int argc, char **argv) {
     NSString *adbArg = nil;
     int fps = 12;
     int maxWidth = 0;
+    NSString *codec = @"mjpeg";
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--serial") == 0 && i + 1 < argc) {
             serial = [NSString stringWithUTF8String:argv[++i]];
@@ -244,14 +309,17 @@ int main(int argc, char **argv) {
             maxWidth = atoi(argv[++i]);
         } else if (strcmp(argv[i], "--adb") == 0 && i + 1 < argc) {
             adbArg = [NSString stringWithUTF8String:argv[++i]];
+        } else if (strcmp(argv[i], "--codec") == 0 && i + 1 < argc) {
+            codec = [NSString stringWithUTF8String:argv[++i]];
         }
     }
-    if (serial.length == 0) {
-        fprintf(stderr, "usage: ftester-androidstream --serial <adb-serial> [--fps <n>] [--max-width <px>] [--adb <path>]\n");
+    if (serial.length == 0 || (![codec isEqualToString:@"mjpeg"] && ![codec isEqualToString:@"h264"])) {
+        fprintf(stderr, "usage: ftester-androidstream --serial <adb-serial> [--fps <n>] [--max-width <px>] [--adb <path>] [--codec h264|mjpeg]\n");
         return 2;
     }
     gFps = (fps > 0) ? fps : 12;
     gMaxWidth = (maxWidth > 0) ? maxWidth : 0;
+    gCodecH264 = [codec isEqualToString:@"h264"];
 
     NSString *adbPath = ftResolveAdbPath(adbArg);
     if (adbPath.length == 0) {
@@ -329,12 +397,15 @@ int main(int argc, char **argv) {
 
     // キープアライブ: screenrecordは通常静止画面でもフレームを吐き続けるが、万一途切れても
     // consumer側(deviceStream.ts)の無フレームwedge監視が誤って再起動ループに入らないよう、
-    // 直近デコード済みフレームを低レートで再送する(gQueue上で実行)。
+    // レコード送出が無ければ再送する(gQueue上で実行)。h264モードはKIND=3 pingのみ送る
+    // (パススルーのため直近AUの再送はできない)。mjpegは直近デコード済みフレームを再送する。
     dispatch_source_t keepaliveSrc = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, gQueue);
     dispatch_source_set_timer(keepaliveSrc, dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)),
                               (uint64_t)(3.0 * NSEC_PER_SEC), (uint64_t)(0.5 * NSEC_PER_SEC));
     dispatch_source_set_event_handler(keepaliveSrc, ^{
-        if (gLatest && ftNow() - gLastEmit >= 2.5) ftEncodeAndEmit();
+        if (ftNow() - gLastEmit < 2.5) return;
+        if (gCodecH264) { ftWritePing(); return; }
+        if (gLatest) ftEncodeAndEmit();
     });
     dispatch_resume(keepaliveSrc);
 

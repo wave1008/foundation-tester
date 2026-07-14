@@ -5,6 +5,7 @@
 import { vscode, persistedState } from './vscodeApi.js';
 import { activateTab } from './tabs.js';
 import { clampMenuPosition } from './deviceTiles.js';
+import { createH264Renderer } from './h264Decoder.js';
 
 function post(message) {
   vscode.postMessage({ type: 'live', message });
@@ -19,7 +20,13 @@ const screenshot = document.getElementById('live-screenshot');
 const screenshotPane = document.getElementById('live-screenshot-pane');
 const screenshotActions = document.getElementById('live-screenshot-actions');
 const screenshotWrap = document.getElementById('live-screenshot-wrap');
+// monitorHtml.ts は変更対象外のため canvas はここで生成し img の直後・オーバーレイ群の手前に挿す
+// (オーバーレイは絶対配置なので DOM 順序がそのまま重なり順になる)。表示切替は screenshot と同じ
+// '.visible' クラス方式(style.css で #live-screenshot と併記)。
+const liveCanvas = document.createElement('canvas');
+liveCanvas.id = 'live-canvas';
 const hoverBox = document.getElementById('live-hover-box');
+screenshotWrap.insertBefore(liveCanvas, hoverBox);
 const screenshotPlaceholder = document.getElementById('live-screenshot-placeholder');
 const dragOverlay = document.getElementById('live-drag-overlay');
 const dragLine = document.getElementById('live-drag-line');
@@ -66,6 +73,11 @@ let recording = false;
 let generating = false;
 // 選択可能なアプリプロファイルの有無(applyAppProfiles が更新)。無い間は開始不可。
 let hasAppProfile = false;
+// h264 描画中(canvas 表示・screenshot img 非表示)かどうか。liveH264ErrorSent は codecError
+// 送信済みガード(scope:'live' はデバイス紐付けが無いため単一フラグ。デバイス切替時にリセットする)。
+let liveRenderer = null;
+let liveUsingH264 = false;
+let liveH264ErrorSent = false;
 
 const busyButtons = [
   'live-btn-refresh-devices', 'live-btn-refresh-snapshot',
@@ -113,6 +125,9 @@ function applyDevices(devices, selectedId) {
 
 deviceSelect.addEventListener('change', () => {
   updateDeviceWarning();
+  // デバイス切替=新しい配信セッション。前デバイスの codecError 済みガードを引きずらない。
+  disposeLiveH264();
+  liveH264ErrorSent = false;
   post({ type: 'selectDevice', id: deviceSelect.value });
 });
 
@@ -223,19 +238,34 @@ document.addEventListener('contextmenu', () => closeLiveRecordMenu());
 // img.getBoundingClientRect() 前提のため、要素ボックスを実画像サイズに保つ必要がある)。
 const SCREENSHOT_WRAP_BORDER = 2; // .screenshot-wrap の上下ボーダー合計(px)。CSS と一致させること
 const SCREENSHOT_PANE_GAP = 6;    // .screenshot-pane の gap(px)。CSS と一致させること
+
+// タップ/ドラッグ/ホバー枠は screenshot と liveCanvas のうち現在表示中の方を基準にする
+// (どちらか一方だけが'.visible'で、サイズ・座標系は等価に保つ前提)。
+function activeScreenEl() {
+  return liveUsingH264 ? liveCanvas : screenshot;
+}
+// img は naturalWidth/Height、canvas はビットマップ実寸(h264Decoder が frame.displayWidth/Height に
+// 合わせて設定済み)で自然サイズを取る。
+function naturalSize(el) {
+  return el === liveCanvas ? { w: el.width, h: el.height } : { w: el.naturalWidth, h: el.naturalHeight };
+}
+
 function fitScreenshot() {
   const paneH = screenshotPane.clientHeight;
   if (paneH === 0) { return; } // タブ非表示中(display:none)は測れないので触らない
   const avail = paneH - screenshotActions.offsetHeight - SCREENSHOT_PANE_GAP - SCREENSHOT_WRAP_BORDER;
   const maxH = Math.max(40, avail);
   screenshot.style.maxHeight = maxH + 'px';
+  liveCanvas.style.maxHeight = maxH + 'px';
   // pane 幅をフィット後の画像表示幅に合わせて縮める → 右隣の control-pane(要素一覧)が画像直後へ
   // 左寄せで並ぶ(伸ばすと右端へ押しやられる)。flex-basis:auto の max-content が画像の自然幅になる
   // 実装差(Chromium)を避けるため確定値を JS で入れる。naturalWidth は load 後のみ有効なので
-  // screenshot の 'load' でも再実行する。未ロード時は cap を外し placeholder 幅(min-width)に委ねる。
-  if (screenshot.naturalWidth > 0 && screenshot.naturalHeight > 0) {
-    const dispH = Math.min(maxH, screenshot.naturalHeight); // 等倍を上限に(拡大しない)
-    const dispW = dispH * screenshot.naturalWidth / screenshot.naturalHeight;
+  // screenshot の 'load' でも再実行する(canvas は onFirstFrame 側で明示的に呼ぶ)。
+  // 未ロード時は cap を外し placeholder 幅(min-width)に委ねる。
+  const { w, h } = naturalSize(activeScreenEl());
+  if (w > 0 && h > 0) {
+    const dispH = Math.min(maxH, h); // 等倍を上限に(拡大しない)
+    const dispW = dispH * w / h;
     screenshotPane.style.maxWidth = Math.ceil(dispW + SCREENSHOT_WRAP_BORDER) + 'px';
   } else {
     screenshotPane.style.maxWidth = '';
@@ -248,6 +278,17 @@ if (typeof ResizeObserver !== 'undefined') {
 window.addEventListener('resize', fitScreenshot);
 // data URI のデコードは非同期で src セット直後は naturalWidth=0。load 後に幅ハグを確定させる。
 screenshot.addEventListener('load', fitScreenshot);
+
+// liveH264Chunk のレンダラ破棄(codecError 送信後、mjpeg フォールバック復帰、デバイス切替のいずれか)。
+// 呼び出し後は screenshot(img)側の表示に戻る前提(呼び出し元が classList を扱う)。
+function disposeLiveH264() {
+  liveUsingH264 = false;
+  liveCanvas.classList.remove('visible');
+  if (liveRenderer) {
+    liveRenderer.dispose();
+    liveRenderer = null;
+  }
+}
 
 // liveModel.ts の frameToDisplayRect と同じ計算(webview は CSP により import 不可のため複製。
 // liveModel.ts 側を変更したらここも追随させること)。
@@ -264,6 +305,7 @@ function frameToDisplayRect(frame, screen, display) {
 }
 
 function applySnapshot(message) {
+  disposeLiveH264(); // snapshot は jpeg 一枚絵。h264 ストリーム中でも img 表示に戻す
   lastScreen = message.screen;
   lastElements = message.elements;
   autoSnapshotRequested = false;
@@ -285,7 +327,7 @@ screenshot.draggable = false;
 screenshot.addEventListener('dragstart', (event) => event.preventDefault());
 const DRAG_MIN_PX = 5;
 const LONG_PRESS_MS = 500;
-let dragStart = null;
+let dragStart = null; // el: pointerdown を受けた要素(screenshot か liveCanvas)。以後の rect 計算に使う
 
 // デバイス側のスワイプは pointerup 時に1回で実行される(XCUITest にタッチ逐次移動 API が無く
 // リアルタイム追従は不可)ため、ドラッグ中は構成中のジェスチャを軌跡オーバーレイで見せる。
@@ -302,26 +344,31 @@ function hideDragOverlay() {
   dragOverlay.classList.remove('visible');
 }
 
-screenshot.addEventListener('pointerdown', (event) => {
+function handleScreenPointerDown(event) {
   if (busy || !lastScreen || event.button !== 0) { return; }
   // 既定動作(画像ドラッグ・テキスト選択の開始)の抑止。dragstart 抑止だけでは環境により
   // ネイティブドラッグが始まることがあるため両方必要。
   event.preventDefault();
-  const rect = screenshot.getBoundingClientRect();
+  const el = event.currentTarget;
+  const rect = el.getBoundingClientRect();
   dragStart = {
     x: event.clientX - rect.left, y: event.clientY - rect.top, pointerId: event.pointerId,
-    downAt: performance.now(), moveAt: null,
+    downAt: performance.now(), moveAt: null, el,
   };
   updateDragOverlay(dragStart, dragStart.x, dragStart.y);
   try {
-    screenshot.setPointerCapture(event.pointerId);
+    el.setPointerCapture(event.pointerId);
   } catch {
     // capture 不可でも window 側の pointerup で拾えるため無視してよい
   }
-});
+}
+// screenshot(img)/liveCanvas は同時には片方しか表示されないが、両方に登録しておき
+// 表示中の要素で受けたイベントの currentTarget を rect 計算に使う。
+screenshot.addEventListener('pointerdown', handleScreenPointerDown);
+liveCanvas.addEventListener('pointerdown', handleScreenPointerDown);
 window.addEventListener('pointermove', (event) => {
   if (!dragStart || event.pointerId !== dragStart.pointerId) { return; }
-  const rect = screenshot.getBoundingClientRect();
+  const rect = dragStart.el.getBoundingClientRect();
   const x = Math.min(Math.max(event.clientX - rect.left, 0), rect.width);
   const y = Math.min(Math.max(event.clientY - rect.top, 0), rect.height);
   updateDragOverlay(dragStart, x, y);
@@ -336,12 +383,12 @@ window.addEventListener('pointerup', (event) => {
   const start = dragStart;
   dragStart = null;
   try {
-    screenshot.releasePointerCapture(event.pointerId);
+    start.el.releasePointerCapture(event.pointerId);
   } catch {
     // 未 capture なら何もしない
   }
   if (busy || !lastScreen) { return; }
-  const rect = screenshot.getBoundingClientRect();
+  const rect = start.el.getBoundingClientRect();
   // キャプチャ中は画像外で離せるため表示範囲にクランプする
   const endX = Math.min(Math.max(event.clientX - rect.left, 0), rect.width);
   const endY = Math.min(Math.max(event.clientY - rect.top, 0), rect.height);
@@ -380,7 +427,7 @@ window.addEventListener('pointercancel', () => {
 
 function showHover(element) {
   if (!lastScreen) { return; }
-  const rect = screenshot.getBoundingClientRect();
+  const rect = activeScreenEl().getBoundingClientRect();
   const box = frameToDisplayRect(element.frame, lastScreen, { width: rect.width, height: rect.height });
   hoverBox.style.left = box.x + 'px';
   hoverBox.style.top = box.y + 'px';
@@ -469,6 +516,44 @@ typeTextInput.addEventListener('keydown', (event) => {
   submitTypeText();
 });
 
+// frame/liveH264Chunk は screen(タップ/ドラッグ座標変換の基準)を持たない。snapshot 未取得のまま
+// 流れているとポインタ操作が無反応になるため、一度だけ全量更新を要求する(パネル開き直しでライブ
+// タブが復元された直後に起きる)。フラグは applySnapshot で戻す。
+function requestSnapshotIfNeeded() {
+  if (!lastScreen && !autoSnapshotRequested && !busy) {
+    autoSnapshotRequested = true;
+    post({ type: 'refreshSnapshot' });
+  }
+}
+
+// liveH264Chunk は main.js の直下ディスパッチャから呼ばれる('live' 封筒を経由しない。対向の
+// h264Chunk[タイル]と同じ形の top-level メッセージ)。レンダラは1つだけ保持し、初回描画
+// (onFirstFrame)で screenshot(img)→liveCanvas に切り替える。
+export function applyLiveH264Chunk(message) {
+  if (liveH264ErrorSent) {
+    return;
+  }
+  if (!liveRenderer) {
+    liveRenderer = createH264Renderer({
+      canvas: liveCanvas,
+      onFirstFrame: () => {
+        liveUsingH264 = true;
+        screenshot.classList.remove('visible');
+        liveCanvas.classList.add('visible');
+        screenshotPlaceholder.style.display = 'none';
+        fitScreenshot();
+        requestSnapshotIfNeeded();
+      },
+      onError: () => {
+        liveH264ErrorSent = true;
+        vscode.postMessage({ type: 'codecError', scope: 'live' });
+        disposeLiveH264();
+      },
+    });
+  }
+  liveRenderer.pushChunk(message.data, message.keyframe, message.width, message.height);
+}
+
 // ---- host からのメッセージ(type:'live' 封筒の中身。main.js のディスパッチャから呼ばれる) --------
 
 export function applyLiveMessage(message) {
@@ -483,16 +568,11 @@ export function applyLiveMessage(message) {
       applySnapshot(message);
       break;
     case 'frame':
+      disposeLiveH264(); // mjpeg フォールバック復帰(codecError 後、host が frame 送信に切替えた場合)
       screenshot.src = 'data:image/jpeg;base64,' + message.image;
       screenshot.classList.add('visible');
       screenshotPlaceholder.style.display = 'none';
-      // frame は screen(タップ/ドラッグ座標変換の基準)を持たない。snapshot 未取得のまま frame
-      // だけが流れているとポインタ操作が無反応になるため、一度だけ全量更新を要求する
-      // (パネル開き直しでライブタブが復元された直後に起きる)。フラグは applySnapshot で戻す。
-      if (!lastScreen && !autoSnapshotRequested && !busy) {
-        autoSnapshotRequested = true;
-        post({ type: 'refreshSnapshot' });
-      }
+      requestSnapshotIfNeeded();
       break;
     case 'actionError':
       showActionError(message.message);
@@ -505,10 +585,12 @@ export function applyLiveMessage(message) {
         connOverlay.classList.add('visible');
         connDetail.textContent = message.message ?? '';
         screenshot.classList.add('disconnected');
+        liveCanvas.classList.add('disconnected');
       } else {
         connOverlay.classList.remove('visible');
         connDetail.textContent = '';
         screenshot.classList.remove('disconnected');
+        liveCanvas.classList.remove('disconnected');
       }
       break;
     case 'appProfiles':
@@ -558,6 +640,8 @@ document.addEventListener('ft-tab-activated', (event) => {
 // 抑止し、host 側 openDevice が一覧取得と選択をまとめて行う。
 document.addEventListener('ft-live-open-device', (event) => {
   initialized = true;
+  disposeLiveH264();
+  liveH264ErrorSent = false;
   activateTab('live');
   post({ type: 'openDevice', id: event.detail.id });
 });

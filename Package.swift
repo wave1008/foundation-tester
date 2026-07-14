@@ -115,6 +115,7 @@ let package = Package(
                 .linkedFramework("Foundation"), .linkedFramework("CoreImage"),
                 .linkedFramework("CoreVideo"), .linkedFramework("IOSurface"),
                 .linkedFramework("QuartzCore"), .linkedFramework("CoreGraphics"),
+                .linkedFramework("CoreMedia"), .linkedFramework("VideoToolbox"),
             ]
         ),
         // Android実機/エミュレータ画面ストリーミング(adb screenrecord H.264 -> VideoToolboxデコード)

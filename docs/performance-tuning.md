@@ -176,6 +176,14 @@ window/transition/animator の `*_scale` はチューニングノブではなく
   アドホックに spawn して計測・検証するとき、stdin を /dev/null 継承のまま渡すと即座に EOF を検知して
   終了し、0 サンプル/0 フレームになる(静止時の 0 と区別がつかず「helper が壊れた」と誤診しやすい)。
   子プロセスの stdin は開いたまま保持すること(`subprocess.Popen(..., stdin=PIPE)` で閉じない等)
+- **タイル黒+「接続中/ブリッジ応答なし」が続く=ブリッジ死を疑う**(XCUITest ランナーの HTTP
+  サーバだけ死んで xcodebuild 親が残ることがある。実例: 2026-07-14)。確認は
+  `curl -m 3 localhost:<port>/status`、復旧は `ftester devices up --profile <名>`
+  (死んだポートだけ再供給される)。拡張のウォッチドッグが自動修復するが、
+  `ftester.autoRepairBridge` を OFF にしている場合や CLI 単独運用ではこの手順で
+- **稼働中デバイスへ simstream/androidstream を並走 spawn して計測しない**(本番ストリームが
+  不安定化し、webview の codecError→mjpeg フォールバックやストリームのギブアップを誘発した実例
+  あり)。ヘルパー単体のベンチはモニターが掴んでいないデバイスで行う
 
 ## 8. 今後の改善候補(価値が出たら)
 

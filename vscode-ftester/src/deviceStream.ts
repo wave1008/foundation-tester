@@ -3,12 +3,15 @@
 // プロセス管理。iOS(ftester-simstream)・Android(ftester-androidstream)共通。両者の違いは
 // spawn する command/args のみ(呼び出し側が組み立てる。StreamPipeline 自体はどちらのプラット
 // フォームかを知らない)。ポーリング(monitorLiveController.ts の frameTick)に対する低負荷な代替
-// として、helper が JPEG フレームを stdout へ流し続けるのを逐次パースして onFrame へ渡す。
+// として、helper が JPEG(v1)または H.264 AU(v2、--codec h264)を stdout へ流し続けるのを
+// 逐次パースして onFrame/onChunk へ渡す。
 // プロセス管理は monitorLiveController.ts の serve と同じ思想: SIGTERM→2秒後 SIGKILL・
 // 予期しない終了は一定間隔で自動再起動・起動直後の異常終了が連続したら諦める。
 //
 // stdout フレームフォーマット(契約。対向: Sources/ftester-simstream/main.m(iOS)・
-// Sources/ftester-androidstream/main.m(Android)。片方を変えたら両方直す):
+// Sources/ftester-androidstream/main.m(Android)。3ファイルとも直すこと):
+//
+// v1(既定。helper を --codec 未指定 or mjpeg で起動、StreamPipelineOptions.codec="mjpeg"):
 //   フレームを次の順で繰り返す(テキストは一切混ざらない。ログ・エラーは stderr へ):
 //     WIDTH : uint16 big-endian(エンコード済み画像の幅px)
 //     HEIGHT: uint16 big-endian(エンコード済み画像の高さpx)
@@ -17,6 +20,18 @@
 //   ライブ操作タブは w/h を使わない(タップ座標変換は serve snapshot の screen を基準にする)。
 //   デバイスモニタータイルは w/h でタイルのアスペクト比を決めるため onFrame へ渡す(呼び出し側で
 //   使うかどうかは自由。詳細は deviceTiles.js の applyFrame/--tile-aspect)。
+//
+// v2(helper を --codec h264 で起動、StreamPipelineOptions.codec="h264" のときのみ):
+//   レコードを次の順で繰り返す:
+//     KIND  : uint8(2=H.264 AU(Annex-B、SPS+PPS+IDR連結済みのキーフレームを含む)、
+//             3=キープアライブ ping。他の値はプロトコル不整合)
+//     FLAGS : uint8(bit0=キーフレーム。KIND=2 のみ意味を持つ)
+//     WIDTH : uint16 big-endian(表示サイズpx。0=不明。受信側はデコード後の VideoFrame 実寸を使う)
+//     HEIGHT: uint16 big-endian
+//     LEN   : uint32 big-endian(続く DATA のバイト数。KIND=3 は 0)
+//     DATA  : LEN バイト
+//   KIND=3(ping)は onChunk を呼ばない(onConnectionOk+wedge リセットのみ)。未知 KIND は
+//   ingest() が helper を kill する(handleUnknownKind。close ハンドラの自動再起動に任せる)。
 
 import { type ChildProcessByStdio, spawn } from "node:child_process";
 import type { Readable, Writable } from "node:stream";
@@ -25,8 +40,13 @@ import type { OutputChannel } from "vscode";
 /** stdin/stdout/stderr すべてパイプの helper プロセス(stdin の EOF が helper への終了指示)。 */
 type StreamProcess = ChildProcessByStdio<Writable, Readable, Readable>;
 
-/** ヘッダ長: WIDTH(u16)+HEIGHT(u16)+LEN(u32)=8バイト。 */
-const HEADER_LEN = 8;
+/** v1(mjpeg)ヘッダ長: WIDTH(u16)+HEIGHT(u16)+LEN(u32)=8バイト。 */
+const MJPEG_HEADER_LEN = 8;
+/** v2(h264)ヘッダ長: KIND(u8)+FLAGS(u8)+WIDTH(u16)+HEIGHT(u16)+LEN(u32)=10バイト。 */
+const H264_HEADER_LEN = 10;
+/** v2 KIND 値(ファイル冒頭の契約コメント参照)。 */
+const H264_KIND_AU = 2;
+const H264_KIND_PING = 3;
 /** SIGTERM 後、応答が無ければ SIGKILL するまでの猶予(ms)。 */
 const KILL_GRACE_MS = 2000;
 /** 予期しない終了後、自動再起動するまでの待ち(ms)。 */
@@ -57,8 +77,14 @@ export interface StreamPipelineOptions {
   /** outputChannel のログ行プレフィックス(例: "ios-stream"/"android-stream")。 */
   readonly logPrefix: string;
   readonly outputChannel: OutputChannel;
-  /** 完成した1フレームを base64 エンコード済み JPEG(+エンコード済み画像の幅高さpx)で渡す。 */
+  /** stdout の形式。"mjpeg" は onFrame、"h264" は onChunk を使う(呼び出し側は両方定義してよい。
+   * 使われない方は呼ばれないだけ)。helper には呼び出し側が args に "--codec h264" を付与すること
+   * (このクラス自身は codec に応じたパース分岐のみ行い、起動引数は組み立てない)。 */
+  readonly codec: "mjpeg" | "h264";
+  /** 完成した1フレームを base64 エンコード済み JPEG(+エンコード済み画像の幅高さpx)で渡す(codec="mjpeg")。 */
   onFrame(jpegBase64: string, width: number, height: number): void;
+  /** 完成した1 H.264 AU(Annex-B)を渡す(codec="h264"。KIND=3 ping では呼ばれない)。 */
+  onChunk?(data: Buffer, keyframe: boolean, width: number, height: number): void;
   /** フレーム到達=接続健全のシグナル(接続断オーバーレイの解除に使う)。 */
   onConnectionOk(): void;
   /** ストリーミングを継続できず諦めたときに1回だけ呼ぶ(呼び出し側はポーリングへフォールバック)。 */
@@ -188,21 +214,30 @@ export class StreamPipeline implements LiveStreamPipeline {
     this.armWedgeTimer();
   }
 
-  /** stdout の受信バイトからフレーム境界を切り出す。1フレーム完成するたびに即 onFrame(待ち貯めしない)。 */
+  /** stdout の受信バイトからレコード境界を切り出す(codec で v1/v2 に分岐)。1件完成するたびに
+   * 即座にコールバックする(待ち貯めしない)。 */
   private ingest(chunk: Buffer): void {
     this.buffer = this.buffer.length === 0 ? chunk : Buffer.concat([this.buffer, chunk]);
+    if (this.options.codec === "h264") {
+      this.ingestH264();
+    } else {
+      this.ingestMjpeg();
+    }
+  }
+
+  private ingestMjpeg(): void {
     for (;;) {
-      if (this.buffer.length < HEADER_LEN) {
+      if (this.buffer.length < MJPEG_HEADER_LEN) {
         return;
       }
       const width = this.buffer.readUInt16BE(0);
       const height = this.buffer.readUInt16BE(2);
       const len = this.buffer.readUInt32BE(4);
-      const frameEnd = HEADER_LEN + len;
+      const frameEnd = MJPEG_HEADER_LEN + len;
       if (this.buffer.length < frameEnd) {
         return; // JPEG がまだ全部届いていない。次チャンクを待つ。
       }
-      const jpeg = this.buffer.subarray(HEADER_LEN, frameEnd);
+      const jpeg = this.buffer.subarray(MJPEG_HEADER_LEN, frameEnd);
       this.buffer = this.buffer.subarray(frameEnd);
       this.emitFrame(jpeg, width, height);
     }
@@ -212,6 +247,58 @@ export class StreamPipeline implements LiveStreamPipeline {
     this.options.onConnectionOk();
     this.armWedgeTimer(); // フレーム到達で無フレーム監視をリセット
     this.options.onFrame(jpeg.toString("base64"), width, height);
+  }
+
+  /** v2(--codec h264)のレコードパーサ(ファイル冒頭の契約コメント参照)。未知 KIND はここでループを
+   * 抜けて handleUnknownKind へ委ねる(以後の buffer は破棄済みなので継続パースしない)。 */
+  private ingestH264(): void {
+    for (;;) {
+      if (this.buffer.length < H264_HEADER_LEN) {
+        return;
+      }
+      const kind = this.buffer.readUInt8(0);
+      const flags = this.buffer.readUInt8(1);
+      const width = this.buffer.readUInt16BE(2);
+      const height = this.buffer.readUInt16BE(4);
+      const len = this.buffer.readUInt32BE(6);
+      const recordEnd = H264_HEADER_LEN + len;
+      if (this.buffer.length < recordEnd) {
+        return; // DATA がまだ全部届いていない。次チャンクを待つ。
+      }
+      const data = this.buffer.subarray(H264_HEADER_LEN, recordEnd);
+      this.buffer = this.buffer.subarray(recordEnd);
+      if (kind === H264_KIND_AU) {
+        this.emitChunk(data, (flags & 1) !== 0, width, height);
+      } else if (kind === H264_KIND_PING) {
+        this.options.onConnectionOk();
+        this.armWedgeTimer();
+      } else {
+        this.handleUnknownKind(kind);
+        return;
+      }
+    }
+  }
+
+  private emitChunk(data: Buffer, keyframe: boolean, width: number, height: number): void {
+    this.options.onConnectionOk();
+    this.armWedgeTimer();
+    this.options.onChunk?.(data, keyframe, width, height);
+  }
+
+  /** 未知 KIND はプロトコル不整合(helper とパーサのバージョン不一致等)なのでログして helper を
+   * kill する(handleWedge と同じく stopping を立てないため close ハンドラが自動再起動する)。
+   * this.process が無い(未起動/直接 ingest を呼ぶ単体テスト)場合はログのみ。 */
+  private handleUnknownKind(kind: number): void {
+    this.buffer = Buffer.alloc(0); // 以後のバイト列は信頼できないため破棄する
+    this.options.outputChannel.appendLine(
+      `[${this.options.logPrefix}] 未知の KIND(${kind})を受信しました(プロトコル不整合)。helper を再起動します。`,
+    );
+    const proc = this.process;
+    if (!proc || proc.exitCode !== null || proc.signalCode !== null) {
+      return;
+    }
+    proc.stdin.end();
+    killWithGrace(proc, KILL_GRACE_MS);
   }
 
   private handleUnexpectedExit(reason: string): void {

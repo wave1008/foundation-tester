@@ -13,18 +13,18 @@ import { btnUp, btnDown, btnRestart, emptyMessage } from './domRefs.js';
 import {
   applyDevices,
   applyFrame,
+  applyH264Chunk,
   applyDeviceError,
   showBanner,
   hideBanner,
   setBusy,
   closeDeviceOpMenu,
   findTileByName,
-  renderOpBadge,
-  renderDeviceOpMenuItem,
-  deviceOpMenuEntry,
+  renderMeta,
   tiles,
   selectedDeviceIds,
   applyProfileInfo,
+  applyBridgeWatch,
 } from './deviceTiles.js';
 import { applyLaneAction, applyLaneHydrate, updateLaneVisibility, updateLanesPlaceholder } from './laneLog.js';
 import { applyHostMetrics } from './hostCharts.js';
@@ -55,7 +55,7 @@ import {
   applyMachineDevicesSyncResult,
   applyNameInputOpen,
 } from './modals.js';
-import { applyLiveMessage } from './liveTab.js';
+import { applyLiveMessage, applyLiveH264Chunk } from './liveTab.js';
 import { applyExploreMessage } from './exploreTab.js';
 import { applySettings } from './settingsTab.js';
 import { activateTab, TAB_IDS, switchTab } from './tabs.js';
@@ -73,6 +73,12 @@ window.addEventListener('message', (event) => {
     case 'frame':
       applyFrame(message);
       break;
+    case 'h264Chunk':
+      applyH264Chunk(message);
+      break;
+    case 'liveH264Chunk':
+      applyLiveH264Chunk(message);
+      break;
     case 'deviceError':
       applyDeviceError(message);
       break;
@@ -89,13 +95,15 @@ window.addEventListener('message', (event) => {
       const entry = findTileByName(message.name);
       if (entry) {
         entry.opBusy = message.op ? { op: message.op, status: message.status || 'running' } : undefined;
-        renderOpBadge(entry);
-        if (deviceOpMenuEntry === entry) {
-          renderDeviceOpMenuItem();
-        }
+        // opBusy の有無は footer の bridgeWatch 優先度判定にも影響するため renderMeta で一括再描画する
+        // (renderOpBadge/デバイス操作メニュー項目の再描画も内部で行う)。
+        renderMeta(entry);
       }
       break;
     }
+    case 'bridgeWatch':
+      applyBridgeWatch(message);
+      break;
     case 'deviceOpFailed':
       showBanner(message.name + ': ' + message.message);
       break;
