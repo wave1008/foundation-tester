@@ -1,5 +1,5 @@
 // デモ_iOS設定.swift
-// 4台並列デモ用(iOS 設定アプリ)。wait() はデモの視認性のための演出(削ると数十秒短縮される)。
+// 4台並列デモ用(iOS 設定アプリ)。
 // セレクタは iPhone 17 Pro(iOS 27.0)/ja_JP で実機確認済み。#id はロケール非依存。
 
 import FTDSL
@@ -13,12 +13,9 @@ class デモ_iOS設定 {
             scene(1, "情報画面を開いてバージョンと機種を確認") {
                 condition {
                     launchApp()
-                    wait(2)
                 }.action {
                     tap("#com.apple.settings.general||一般||General")
-                    wait(2)
                     tap("#com.apple.settings.general.about||情報||About")
-                    wait(3)
                 }.expectation {
                     exist("#SW_VERSION_SPECIFIER")   // iOSバージョン行
                     exist("#ProductModelName")       // 機種名行
@@ -28,9 +25,7 @@ class デモ_iOS設定 {
             scene(2, "情報画面をスクロールして眺める") {
                 action {
                     swipe(.up)
-                    wait(3)
                     swipe(.down)
-                    wait(3)
                 }.expectation {
                     exist("#NAME_CELL_ID")
                 }
@@ -38,9 +33,7 @@ class デモ_iOS設定 {
             scene(3, "設定トップへ戻れる") {
                 action {
                     tap("#BackButton")
-                    wait(2)
                     tap("#BackButton")
-                    wait(2)
                 }.expectation {
                     exist("#com.apple.settings.general||一般||General")
                 }
@@ -54,10 +47,8 @@ class デモ_iOS設定 {
             scene(1, "外観モード画面を開く") {
                 condition {
                     launchApp()
-                    wait(2)
                 }.action {
                     tap("#com.apple.settings.appearance||外観||Appearance")
-                    wait(3)
                 }.expectation {
                     exist("外観モード||Appearance")
                     exist(".Switch=自動||.Switch=Automatic")
@@ -66,9 +57,7 @@ class デモ_iOS設定 {
             scene(2, "ダークにしてからライトへ戻す") {
                 action {
                     tap("ダーク||Dark")
-                    wait(5)
                     tap("ライト||Light")
-                    wait(4.5)
                 }.expectation {
                     exist("ダーク||Dark")
                     exist("ライト||Light")
@@ -77,7 +66,6 @@ class デモ_iOS設定 {
             scene(3, "設定トップへ戻れる") {
                 action {
                     tap("#BackButton")
-                    wait(2)
                 }.expectation {
                     exist("#com.apple.settings.appearance||外観||Appearance")
                 }
@@ -91,10 +79,8 @@ class デモ_iOS設定 {
             scene(1, "アクセシビリティ画面を開く") {
                 condition {
                     launchApp()
-                    wait(2)
                 }.action {
                     tap("#com.apple.settings.accessibility||アクセシビリティ||Accessibility")
-                    wait(3)
                 }.expectation {
                     exist("#DISPLAY_AND_TEXT||画面表示とテキストサイズ")
                     exist("#MOTION_TITLE||動作")
@@ -104,12 +90,9 @@ class デモ_iOS設定 {
             scene(2, "一覧をスクロールして戻る") {
                 action {
                     swipe(.up)
-                    wait(3)
                     swipe(.up)
-                    wait(3)
                     swipe(.down)
                     swipe(.down)
-                    wait(3)
                 }.expectation {
                     exist("#HOVERTEXT_TITLE||ホバーテキスト")
                 }
@@ -123,12 +106,9 @@ class デモ_iOS設定 {
             scene(1, "設定トップをスクロールしてデベロッパを開く") {
                 condition {
                     launchApp()
-                    wait(2)
                 }.action {
                     scrollTo("#com.apple.settings.developer||デベロッパ||Developer")
-                    wait(2)
                     tap("#com.apple.settings.developer||デベロッパ||Developer")
-                    wait(3)
                 }.expectation {
                     exist("デベロッパ||Developer")
                 }
@@ -136,7 +116,6 @@ class デモ_iOS設定 {
             scene(2, "Photos セクションまでスクロールする") {
                 action {
                     scrollTo(".Switch#PHOTOS_UPLOAD_DEVELOPER_MODE||.Switch=Resource Upload Test Mode", maxSwipes: 12)
-                    wait(3)
                 }.expectation {
                     // ON/OFF は個体差があるため exist のみ(valueIs にするとデバイス状態依存になる)
                     exist(".Switch#PHOTOS_UPLOAD_DEVELOPER_MODE||.Switch=Resource Upload Test Mode")
@@ -151,10 +130,8 @@ class デモ_iOS設定 {
             scene(1, "カメラ設定を開く") {
                 condition {
                     launchApp()
-                    wait(2)
                 }.action {
                     tap("#com.apple.settings.camera||カメラ||Camera")
-                    wait(3)
                 }.expectation {
                     exist("#SMART_STYLES||フォトグラフスタイル")
                     exist("#CameraVideoSettingsList||ビデオ撮影")
@@ -163,9 +140,7 @@ class デモ_iOS設定 {
             scene(2, "一覧をスクロールして眺める") {
                 action {
                     swipe(.up)
-                    wait(3)
                     swipe(.down)
-                    wait(3)
                 }.expectation {
                     exist("#SMART_STYLES||フォトグラフスタイル")
                 }
@@ -179,10 +154,8 @@ class デモ_iOS設定 {
             scene(1, "ホーム画面とアプリライブラリを開く") {
                 condition {
                     launchApp()
-                    wait(2)
                 }.action {
                     tap("#com.apple.settings.homeScreen||ホーム画面とアプリライブラリ")
-                    wait(3)
                 }.expectation {
                     exist("#APP_DOWNLOADS_HOME_SCREEN||ホーム画面に追加")
                     exist(".Switch#SHOW_SPOTLIGHT||.Switch=ホーム画面に表示")
@@ -191,7 +164,6 @@ class デモ_iOS設定 {
             scene(2, "設定トップへ戻れる") {
                 action {
                     tap("#BackButton")
-                    wait(2)
                 }.expectation {
                     exist("#com.apple.settings.homeScreen||ホーム画面とアプリライブラリ")
                 }
