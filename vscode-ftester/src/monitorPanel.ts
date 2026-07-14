@@ -363,6 +363,10 @@ class MonitorPanelController implements vscode.Disposable {
         this.deviceOps.enqueueLifecycleJob({ kind: "bulk", op: "down" });
         break;
       case "restartMonitor":
+        // ストリームを先に作り直す: streamingIds をクリアしてから monitor を再起動させることで、
+        // 新モニターへの stale な suppressFrames 再送を防ぎ、新キーフレームでタイル餓死を回避する
+        // (monitorDeviceStreamController.restartAllStreams 参照)。
+        this.deviceStream.restartAllStreams();
         this.processManager.restartAll();
         break;
       case "deviceOp":

@@ -181,6 +181,16 @@ export class MonitorDeviceStreamController {
     this.reapply(); // 次の monitorDevices(最大2秒後)を待たず直近入力で即再生成する
   }
 
+  /** モニター再起動(restartMonitor)時に呼ぶ。全ヘルパーを作り直して新キーフレームから始めさせる。
+   * 再起動では processManager が旧 streamingIds を根拠に suppressFrames を再送するが、走行中の
+   * h264 ストリームは新キーフレームを出さないため、ポーリング抑止・ストリーム無描画でタイルが
+   * 「起動中」に餓死する(冒頭コメントのデッドロック)。disposeAll で streamingIds も一旦クリアされる
+   * ため、新モニターへの stale な suppressFrames 再送も防げる。restartDevice の全台版。 */
+  restartAllStreams(): void {
+    this.disposeAll();
+    this.reapply();
+  }
+
   private startPipeline(deviceId: string, target: QualifyingTarget): void {
     const pipeline = new StreamPipeline({
       command: target.command,
