@@ -10,6 +10,10 @@
 // 生かしたままにして、タイルが一瞬空白になるのを防ぐ(ポーリング→ストリーミングのシームレスな引き継ぎ)。
 // ストリーミングが継続不能(onFailure)になった場合も同様にポーリングへ戻すだけで、明示的な
 // フォールバック処理は不要(ポーリングは止めていないため)。
+//
+// streamingDeviceIds が変化するたび syncSuppressFrames() が monitor プロセスへ suppressFrames
+// (Sources/ftester/ApiMonitorCommand.swift 同期)を送り、生成側でもポーリングを止める
+// (monitorProcessManager.ts の間引きは受信後の安全弁として残る)。
 
 import { resolveAdb, resolveAndroidStream, resolveSimStream } from "./config";
 import { StreamPipeline } from "./deviceStream";
@@ -43,11 +47,20 @@ export class MonitorDeviceStreamController {
   /** 直近の applyDevices 呼び出し引数。reapply() がポーリングモードのトグル直後に同じ入力で
    * 再判定するために保持する(次の monitorDevices イベント[最大 monitorInterval 秒後]を待たない)。 */
   private lastDevices: readonly MonitorDevice[] | undefined;
+  /** 直近に monitor へ送った suppressFrames の対象集合。同じ内容なら再送しない
+   * (applyDevices は monitorInterval 秒毎に呼ばれるためスパム防止。syncSuppressFrames 参照)。 */
+  private lastSuppressedIds: ReadonlySet<string> | undefined;
 
   constructor(private readonly deps: MonitorPanelDeps) {}
 
   isStreaming(deviceId: string): boolean {
     return this.streamingDeviceIds.has(deviceId);
+  }
+
+  /** 現在フレーム抑制中のデバイス id 一覧。monitor プロセス再起動直後の suppressFrames 再送に使う
+   * (monitorProcessManager.ts 参照。再起動でプロセス側の抑制状態が失われるため)。 */
+  streamingIds(): readonly string[] {
+    return [...this.streamingDeviceIds];
   }
 
   /** monitorDevices イベントのたびに呼ぶ(monitorProcessManager.ts 参照)。対象外になったデバイスは
@@ -134,7 +147,10 @@ export class MonitorDeviceStreamController {
       logPrefix: target.platform === "ios" ? "ios-stream" : "android-stream",
       outputChannel: this.deps.outputChannel,
       onFrame: (jpegBase64, width, height) => {
-        this.streamingDeviceIds.add(deviceId);
+        if (!this.streamingDeviceIds.has(deviceId)) {
+          this.streamingDeviceIds.add(deviceId);
+          this.syncSuppressFrames();
+        }
         this.deps.post({ type: "frame", device: deviceId, jpegBase64, width, height });
       },
       onConnectionOk: () => undefined,
@@ -153,13 +169,34 @@ export class MonitorDeviceStreamController {
   private disposeDevice(deviceId: string): void {
     this.pipelines.get(deviceId)?.pipeline.dispose();
     this.pipelines.delete(deviceId);
-    this.streamingDeviceIds.delete(deviceId);
+    if (this.streamingDeviceIds.delete(deviceId)) {
+      this.syncSuppressFrames();
+    }
   }
 
   private disposeAll(): void {
+    // disposeDevice を都度呼ぶと streamingDeviceIds が変化するたび syncSuppressFrames が走り
+    // スパムになるため、集合操作をここで直接行いループ後に1回だけ同期する。
     for (const deviceId of [...this.pipelines.keys()]) {
-      this.disposeDevice(deviceId);
+      this.pipelines.get(deviceId)?.pipeline.dispose();
+      this.pipelines.delete(deviceId);
+      this.streamingDeviceIds.delete(deviceId);
     }
+    this.syncSuppressFrames();
+  }
+
+  /** streamingDeviceIds の現在値を monitor へ suppressFrames として送る(前回と同じなら送らない)。 */
+  private syncSuppressFrames(): void {
+    const current = this.streamingDeviceIds;
+    if (
+      this.lastSuppressedIds &&
+      this.lastSuppressedIds.size === current.size &&
+      [...current].every((id) => this.lastSuppressedIds?.has(id))
+    ) {
+      return;
+    }
+    this.lastSuppressedIds = new Set(current);
+    this.deps.writeMonitorControl({ cmd: "suppressFrames", devices: [...current] });
   }
 
   /** パネルの表示状態(WebviewPanel.visible)に合わせる。非表示中はリソースを使わないよう全破棄し、

@@ -392,9 +392,17 @@ test("deviceLifecycleJobNeedsMonitorPause: bulk up / device up は false(起動�
   );
 });
 
-test("monitorControlLine: pause/resume を末尾改行付きの NDJSON 1行にする", () => {
-  assert.equal(monitorControlLine("pause"), '{"cmd":"pause"}\n');
-  assert.equal(monitorControlLine("resume"), '{"cmd":"resume"}\n');
+test("monitorControlLine: pause/resume/suppressFrames を末尾改行付きの NDJSON 1行にする", () => {
+  assert.equal(monitorControlLine({ cmd: "pause" }), '{"cmd":"pause"}\n');
+  assert.equal(monitorControlLine({ cmd: "resume" }), '{"cmd":"resume"}\n');
+  assert.equal(
+    monitorControlLine({ cmd: "suppressFrames", devices: ["ios:シミュ1"] }),
+    '{"cmd":"suppressFrames","devices":["ios:シミュ1"]}\n',
+  );
+  assert.equal(
+    monitorControlLine({ cmd: "suppressFrames", devices: [] }),
+    '{"cmd":"suppressFrames","devices":[]}\n',
+  );
 });
 
 // ---- devicesToShutdownOnScopeChange(プロファイル切り替え時の自動シャットダウン対象算出) ----
