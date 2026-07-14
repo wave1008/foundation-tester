@@ -194,7 +194,14 @@ final class BridgeRouter {
 
     private func handleTerminate() throws -> BridgeHTTPServer.Response {
         let app = try requireApp()
-        app.terminate()
+        // 未起動での terminate() は NSException(Code=10001「is not running」)を投げ、
+        // BridgeHTTPServer の例外シムで 500 化する。state で回避し、
+        // チェック〜呼び出し間のレースで投げられた「is not running」だけは握り潰して冪等にする。
+        if app.state != .notRunning && app.state != .unknown {
+            if let ex = FTCatchObjCException({ app.terminate() }), !ex.contains("is not running") {
+                throw BridgeError(500, "アプリの終了に失敗しました: \(ex)")
+            }
+        }
         self.app = nil
         sessionBundleID = nil
         refFrames = [:]
