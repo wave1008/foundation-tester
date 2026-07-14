@@ -74,6 +74,9 @@ export interface MonitorPanelDeps {
   /** MonitorDeviceStreamController.isStreamingへの委譲。monitorProcessManager.tsがmonitorFrameを
    * タイルへ転送する前にストリーミング中かどうか判定し、真なら間引く。 */
   isDeviceStreaming(deviceId: string): boolean;
+  /** MonitorDeviceStreamController.streamingIdsへの委譲。monitor プロセス(再)起動直後の
+   * suppressFrames 再送に使う(monitorProcessManager.ts 参照)。 */
+  getStreamingDeviceIds(): readonly string[];
   /** monitorDevicesイベントをMonitorDeviceStreamControllerへ渡す(パイプラインの張り替え判定に使う。
    * monitorProcessManager.tsのmonitorDevices処理から呼ぶ)。 */
   notifyMonitorDevices(devices: readonly MonitorDevice[]): void;
@@ -157,6 +160,7 @@ class MonitorPanelController implements vscode.Disposable {
       notifyMachineProfilesChanged: () => this.profiles.postMachineProfileInfo(),
       openGeneratedDocument: (filePath) => this.openGeneratedDocument(filePath),
       isDeviceStreaming: (deviceId) => this.deviceStream.isStreaming(deviceId),
+      getStreamingDeviceIds: () => this.deviceStream.streamingIds(),
       notifyMonitorDevices: (devices) => this.deviceStream.applyDevices(devices),
       isPollingMode: () => this.pollingMode,
     };

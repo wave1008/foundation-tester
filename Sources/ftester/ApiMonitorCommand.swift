@@ -9,6 +9,12 @@
 // 実行し、操作直後の観測をそのまま採用する(3ストライク持ち越しによる見せかけの警告を防止)。
 // pause が120秒続いたら安全弁として自動 resume する。
 //
+// suppressFrames プロトコル(デバイスタイルがストリーミング表示中はタイル側のポーリングを
+// 止めるため): stdin に {"cmd":"suppressFrames","devices":["<id>",...]}。devices は抑制対象の
+// 全置換(差分ではない)。省略/null は空集合(全デバイス再開)。抑制中デバイスはスクショ取得〜
+// monitorFrame emit をスキップするが monitorDevices は従来どおり全デバイス分 emit する。
+// 同期相手: vscode-ftester/src/monitorModel.ts (monitorControlLine)
+//
 // 過渡的エラーの抑制: iOS ブリッジ/adb はテスト実行中 /status・/screenshot がタイムアウト
 // しやすい(想定内の一時的競合)。1) connected からの降格は連続3回の失敗まで保留(昇格は即時)。
 // 2) connected 中のスクショ取得失敗は monitorError にせず stderr ログ+フレーム skip のみ
@@ -136,6 +142,9 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                     loggedFetchFailure.remove(state.target.id)
                     continue
                 }
+                // 拡張のデバイスタイルがストリーミング表示中のデバイスはスクショ取得側で
+                // 二重生成しない(拡張側は monitorFrame を受信しても捨てるだけになるため)
+                guard !control.isFrameSuppressed(state.target.id) else { continue }
 
                 let png: Data
                 do {
@@ -393,6 +402,12 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                 case "resume":
                     control.resume()
                     self.logStderr("[monitor] ポーリングを再開しました")
+                case "suppressFrames":
+                    let ids = Set(command.devices ?? [])
+                    control.setSuppressedFrames(ids)
+                    self.logStderr(
+                        "[monitor] フレーム抑制対象を更新しました" +
+                        "(\(ids.count)台: \(ids.sorted().joined(separator: ", ")))")
                 default:
                     break
                 }
@@ -512,6 +527,8 @@ private final class StopFlag: @unchecked Sendable {
 
 private struct MonitorControlCommand: Decodable {
     let cmd: String
+    /// cmd == "suppressFrames" のときのみ使用
+    let devices: [String]?
 }
 
 /// pause/resume コマンド(stdin 経由)の状態。stdin 読み取りスレッドとメインループの間で共有する
@@ -523,6 +540,8 @@ private final class MonitorControl: @unchecked Sendable {
     /// resume後、次周回でデバウンス記憶をクリアすべきという指示(単純さ優先で
     /// pause していなかった場合の resume でも一律クリアする)
     private var resetRequested = false
+    /// フレーム抑制対象デバイス id の集合(全置換。suppressFrames コマンドで更新)
+    private var suppressedFrames: Set<String> = []
 
     var isPaused: Bool {
         lock.lock(); defer { lock.unlock() }
@@ -562,6 +581,18 @@ private final class MonitorControl: @unchecked Sendable {
         let value = resetRequested
         resetRequested = false
         return value
+    }
+
+    /// フレーム抑制対象デバイス集合を全置換する
+    func setSuppressedFrames(_ ids: Set<String>) {
+        lock.lock()
+        suppressedFrames = ids
+        lock.unlock()
+    }
+
+    func isFrameSuppressed(_ id: String) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        return suppressedFrames.contains(id)
     }
 }
 

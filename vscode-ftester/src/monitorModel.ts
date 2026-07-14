@@ -687,12 +687,17 @@ export function deviceLifecycleStatusFor(
   return { op: job.op, status: index === 0 ? "running" : "queued" };
 }
 
-// ---- モニターの pause/resume 制御(「全て終了」「停止」実行中に使う) -----------------------
-// `ftester api monitor` は stdin から NDJSON 1行 {"cmd":"pause"} / {"cmd":"resume"} を受け付ける
-// (Sources/ftester/ApiMonitorCommand.swift)。down 系ジョブの実行直前に pause・完了時に resume を
-// 送り、片付け中のデバイスへスクショ取得に行くのを防ぐ。up 系は起動進行を見せるため pause しない。
+// ---- モニターの pause/resume/suppressFrames 制御 --------------------------------------------
+// `ftester api monitor` は stdin から NDJSON 1行を受け付ける(Sources/ftester/ApiMonitorCommand.swift、
+// 同期必須)。
+// - pause/resume:「全て終了」「停止」実行中に使う。down 系ジョブの実行直前に pause・完了時に resume を
+//   送り、片付け中のデバイスへスクショ取得に行くのを防ぐ(up 系は起動進行を見せるため pause しない)。
+// - suppressFrames: フレーム抑制対象デバイス id 集合の全置換(差分ではない)。空配列 = 全デバイス再開。
 
-export type MonitorControlCommand = "pause" | "resume";
+export type MonitorControlCommand =
+  | { readonly cmd: "pause" }
+  | { readonly cmd: "resume" }
+  | { readonly cmd: "suppressFrames"; readonly devices: readonly string[] };
 
 /** down 系ジョブのみ true(bulk/device いずれも op フィールドで判定可能)。 */
 export function deviceLifecycleJobNeedsMonitorPause(job: DeviceLifecycleJob): boolean {
@@ -701,7 +706,7 @@ export function deviceLifecycleJobNeedsMonitorPause(job: DeviceLifecycleJob): bo
 
 /** モニターの stdin に書き込む制御コマンドの NDJSON 1行(末尾に改行を含む)。 */
 export function monitorControlLine(cmd: MonitorControlCommand): string {
-  return `${JSON.stringify({ cmd })}\n`;
+  return `${JSON.stringify(cmd)}\n`;
 }
 
 // ---- 実行プロファイル切り替え時の自動シャットダウン対象算出 ------------------------------------

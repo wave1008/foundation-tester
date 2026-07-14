@@ -1,7 +1,7 @@
 // monitorProcessManager.ts
 // デバイスモニターパネル(monitorPanel.ts)の常駐子プロセス管理部分。
 // monitor プロセス(`ftester api monitor`)・host-metrics プロセス(`ftester api host-metrics`)の
-// 起動・停止・再起動・pause/resume 制御を担う。
+// 起動・停止・再起動・pause/resume/suppressFrames 制御を担う。
 
 import { type ChildProcessByStdio, spawn } from "node:child_process";
 import type { Readable, Writable } from "node:stream";
@@ -194,6 +194,12 @@ export class MonitorProcessManager {
 
     this.stoppingMonitor = false;
     this.monitorProcess = proc;
+    // 再起動(プロファイル切り替え含む)でプロセス側の抑制状態は失われるため、既にストリーミング中の
+    // デバイスがあれば suppressFrames を再送する(MonitorDeviceStreamController.streamingIds 参照)。
+    const streamingIds = this.deps.getStreamingDeviceIds();
+    if (streamingIds.length > 0) {
+      this.writeMonitorControl({ cmd: "suppressFrames", devices: streamingIds });
+    }
 
     const stdoutParser = new NdjsonParser(
       (value) => {
@@ -210,8 +216,8 @@ export class MonitorProcessManager {
           this.deps.notifyMonitorDevices(value.devices);
         }
         if (value.kind === "monitorFrame" && this.deps.isDeviceStreaming(value.device)) {
-          // iOS ストリーミング中のデバイスはポーリングフレームを間引く(二重供給による解像度の
-          // チラつき防止。monitorDeviceStreamController.ts 冒頭コメント参照)。
+          // 生成側(suppressFrames)でも止めているが、送信中フレームとの競合・再起動直後の残りを
+          // 吸収する安全弁としてここでも間引く(monitorDeviceStreamController.ts 冒頭コメント参照)。
           return;
         }
         this.deps.post(toWebviewMessage(value));
@@ -449,7 +455,7 @@ export class MonitorProcessManager {
   }
 
   /**
-   * モニタープロセスの stdin に pause/resume の制御コマンドを書き込む(NDJSON 1行)。モニターが
+   * モニタープロセスの stdin に制御コマンドを書き込む(NDJSON 1行)。モニターが
    * 未起動・終了済みのとき、および書き込み失敗はいずれも黙ってスキップし、呼び出し元のジョブ実行は
    * 継続させる。MonitorPanelDeps.writeMonitorControl 経由で呼ばれる(サブコントローラ間の直接参照禁止)。
    */

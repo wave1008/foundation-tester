@@ -107,7 +107,7 @@ export class MonitorDeviceOps {
     // デバイスへポーリングがスクショ取得に行って過渡的な警告を吐くのを防ぐ。up 系は起動進行を
     // タイルで見たいので pause しない。
     if (deviceLifecycleJobNeedsMonitorPause(job)) {
-      this.deps.writeMonitorControl("pause");
+      this.deps.writeMonitorControl({ cmd: "pause" });
     }
     if (job.kind === "bulk") {
       this.executeBulkJob(job.op);
@@ -126,7 +126,7 @@ export class MonitorDeviceOps {
     const finished = deviceLifecycleQueueHead(this.lifecycleQueue);
     // pause した down 系ジョブは、成功・失敗を問わずここ(finally 相当)でモニターを resume する。
     if (finished && deviceLifecycleJobNeedsMonitorPause(finished)) {
-      this.deps.writeMonitorControl("resume");
+      this.deps.writeMonitorControl({ cmd: "resume" });
     }
     this.lifecycleQueue = dequeueDeviceLifecycleJob(this.lifecycleQueue);
     if (finished?.kind === "device") {
