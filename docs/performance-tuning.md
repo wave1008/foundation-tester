@@ -97,6 +97,11 @@ python3 Scripts/stream_vs_poll_bench.py --boot-ios-name シミュ1 --boot-androi
   **~12**(滑らか) / ポーリング **5-8**(スクショ同期往復に律速)。静止でもポーリングは device 側込みで
   host **+14pt**(Android≈1.4コア)を消費。**→ ストリーミングはキャプチャがほぼ無料、特に静止画面
   (モニタの支配的状態)で圧倒的。**
+- **H.264+WebCodecs 化後の実測(2026-07-14。上記は MJPEG 経路の値)**: helper モーション時
+  Android **5.2%→1.0%**(パススルー化)・iOS **1.5%→0.9%**(VT HWエンコード)、4台デモ65秒平均で
+  webview Renderer **8.4%**(MJPEG 時代は瞬時 30-65%)・拡張ホスト 1.4%。このスクリプト自体は
+  MJPEG 経路(`--codec` 省略)を測る。h264 の helper 単体は `--codec h264` を付けて同手法で測れるが、
+  復号を担う消費側(webview Renderer)は本番パネルでの cputime デルタでしか測れない
 - **計測の罠(スクリプト冒頭 docstring に全掲)**:
   - `host-metrics`/`simstream`/`androidstream` は **stdin EOF で即終了**する常駐 CLI。Popen は
     `stdin=PIPE` を開いたまま保持必須(未保持=/dev/null 継承で即死→0 サンプル/0 フレーム。静止 0 と誤診しやすい)
@@ -117,6 +122,9 @@ python3 Scripts/stream_vs_poll_bench.py --boot-ios-name シミュ1 --boot-androi
 | `RETARGET_EXCLUDED_PACKAGES` | AndroidRunner/…/QuietWaiter.java | {com.android.systemui} | クロスパッケージ遷移時、静穏対象パッケージの追従(TYPE_WINDOW_STATE_CHANGED 検知時に静穏対象を送信元パッケージへ切替)から除外するパッケージ。追従してしまうと遷移先アプリ本体ではなく付随ウィンドウの静穏を待つことになるため |
 | `PollBackoff` | Sources/FTCore/PollBackoff.swift | 100→200→400→800→上限1000ms | exist/textIs/ロケータ解決リトライの共通バックオフ。5s timeout での snapshot 回数は旧5回→新8回(許容済み) |
 | `defaultTimeout` | FTRuntime(runs プロファイルで上書き可) | 5s | 検証系の待ち上限。失敗するテストの所要を支配 |
+| `ftester.streamCodec` | VSCode 設定(package.json) | h264 | 画面配信コーデック。h264=HWエンコード/デコード(低負荷)、mjpeg=互換(WebCodecs 問題時の退避先。デバイス単位の自動フォールバックあり) |
+| 描画間引き(66ms) | vscode-ftester/src/webview/monitor/h264Decoder.js | 約15fps | h264 の canvas 描画間隔。デコード自体は全チャンク必須(P フレーム連鎖)なので下げても復号コストは減らない |
+| watchdog しきい値 | vscode-ftester/src/monitorBridgeWatchdog.ts | booted 連続5観測(約10秒)/クールダウン3分/2回で諦め | ブリッジ自動修復の感度。短くすると起動過渡を誤検知、長くすると復旧が遅い |
 
 window/transition/animator の `*_scale` はチューニングノブではなく常時 0 固定で、
 `Sources/FTAndroid/AndroidBridge.swift` の `startBridge()` 内(ブリッジのコールド起動時)で
@@ -141,6 +149,7 @@ window/transition/animator の `*_scale` はチューニングノブではなく
 | capability 交渉・旧タイミング互換モード | バージョン整合は人間担保(ユーザー決定)・単一実装 | なし |
 | iOS のシミュレータ私有 IF 直叩き(idb 方式: AXRuntime ツリー+IndigoHID 入力) | snapshot は速くなるが**整定のイベント源が無い**(Android の a11y リスナ相当が無い)ためポーリングに回帰=負荷原則違反。Xcode ベータ毎に壊れるリスクも高い | プッシュ型のアイドル信号を得られる経路が見つかったら |
 | ライブ操作の SCK(ScreenCaptureKit)フレーム配信(DeviceHub/Emulator ウィンドウをキャプチャ、実装後ユーザー判断で撤回) | 実装は完動した(較正=ブリッジ実スクショとのテンプレートマッチ、~30fps)がキャンセル。実装時の実測知見: ①多数フレームワークをリンクした大型 CLI(ftester 本体)から SCK を呼ぶと macOS 27 beta で replayd 接続が再接続ストームになり await が無期限ブロック(Task.sleep も不発)→小型 @main 単体バイナリへの隔離が唯一の安定解 ②CLI からは NSApplication.shared(CGS 初期化)が先に必須 ③captureImage は要求キャンバスへスケールせず実効スケールで左上描画+透明パディング→倍率は不透明領域境界から検出する ④非表示ウィンドウへの captureImage はエラーでなくブロック=isOnScreen 必須 ⑤解像度は画面上のウィンドウサイズ依存(原寸スクショより低い) | 高fpsのライブ映像が再び必要になったら(実装の骨子はこの行と git 履歴のこのコミット前後を参照) |
+| エミュレータの Vulkan 有効化(`-feature Vulkan`)と HWUI の skiavk 化(guest UI 描画を GLES→Vulkan へ) | 2026-07-14 A/B 済(emulator 36.6 / Pixel 9 A16 / -gpu host)。**`-gpu host` の時点で gfxstream+host Vulkan(MoltenVK)は既定で有効**(起動ログ `vulkan_mode_selected:host`)のため `-feature Vulkan` は実質無操作。残る HWUI skiavk 化(`setprop debug.hwui.renderer skiavk`、Pipeline=Skia (Vulkan) 確認済)も同一スワイプ10回の qemu CPU が 10.6s→11.1s と改善なし(むしろ微増) | emulator が Apple Silicon で HWUI Vulkan を既定化したら、または ANGLE 変換(GLES→Metal)がプロファイルで支配的と実測されたら |
 | デバイス側動画ストリーミング(iOS=simctl recordVideo、Android=screenrecord/scrcpy + ffmpeg。2026-07-14 の当初 spike で不成立。ただし iOS はその後 ftester-simstream で成立→理由欄の追記参照) | **追記(2026-07-14以降): iOS のヘッドレス映像ストリーミングは別方式で成立済み**(`ftester-simstream`=CoreSimulator/SimulatorKit の private API `SimDisplayIOSurfaceRenderable` の IOSurface を `setPowerState:1` で起こし、フレーム単位に JPEG 化して長さ前置で stdout へ。simctl でも ffmpeg でもないため下記の不成立要因を構造的に回避。ヘッドレス=Simulator.app 非起動で mid-run・ネイティブ解像度・静止時ほぼ0fps を実測確認。ライブ操作タブ+デバイスモニタータブの両方で採用。実装: `Sources/ftester-simstream/main.m` / `vscode-ftester/src/deviceStream.ts` / `monitorDeviceStreamController.ts`。**「iOSストリーミングは不可能」と誤読しないこと**)。**以下の「不成立」は simctl recordVideo と ffmpeg パイプ方式に限った当初 spike の結果**。画像取得ポーリングの負荷対策として検討し、その2方式は両OSとも不成立だった。**iOS**: `simctl io recordVideo` は stdout(`-`)を「rendering to standard out is no longer supported」で拒否、ファイル/FIFO 出力も非フラグメント(moov を SIGINT 時に確定書き込み、`has_moof: False`)=録画停止まで1フレームも復号不可。**Android**: `adb exec-out screenrecord --output-format=h264 -` の生H.264を **ffmpeg にパイプ入力すると EOF まで出力をバッファしライブ逐次フレームが出ない**(実測: 同じH.264をファイル入力なら41フレーム復号できるがパイプ入力は mid-run 0。`-flush_packets1`/`-threads1`/`-use_wallclock_as_timestamps`/`-avioflags direct`/`-fflags nobuffer -flags low_delay`/fps有無/mpjpeg・image2pipe・image2個別ファイル の約16構成すべて mid-run 0。adb はパイプへ逐次配信済=adb 原因ではない。ffmpeg はライブ入力 lavfi なら逐次フラッシュするので raw-h264 パイプ demux の仕様的限界)。scrcpy 録画→FIFO(mkv)もクラスタバッファでライブ不可(frame=0)。**採用した代替=ライブの frameTick を旧 delayMs=0 ホットループから `ftester.liveFps`(既定12)頭打ちに変更**(iOS/Android 共通・依存ゼロ・負荷源そのものを解消) | **iOS は ftester-simstream で解決済み(理由欄の追記)。以下は Android 向け**: Android で真の映像ストリーミングが必要なら **GStreamer 未検証**(`fdsrc ! h264parse ! avdec_h264 ! jpegenc` はライブパイプ前提設計で ffmpeg のバッファ問題が無い可能性)。ただし heavy dep(`brew install gstreamer`)の再導入になる |
 
 ## 7. 既知の落とし穴(ベンチ・検証時)
@@ -184,6 +193,11 @@ window/transition/animator の `*_scale` はチューニングノブではなく
 - **稼働中デバイスへ simstream/androidstream を並走 spawn して計測しない**(本番ストリームが
   不安定化し、webview の codecError→mjpeg フォールバックやストリームのギブアップを誘発した実例
   あり)。ヘルパー単体のベンチはモニターが掴んでいないデバイスで行う
+- **「CPU 100% 張り付き+GPU は暇」はエミュレータのソフトウェア描画(SwiftShader)を疑う**。
+  判定は `adb shell dumpsys SurfaceFlinger | grep GLES:`(SwiftShader なら CPU 描画、
+  `Apple M1 ...(Metal)` なら host GPU)。DeviceBooter は `-gpu host` 起動で対策済みだが、
+  手動起動のエミュレータや AVD 設定変更で再発しうる(headless では hw.gpu.mode=auto が
+  SwiftShader に落ちる)
 
 ## 8. 今後の改善候補(価値が出たら)
 
