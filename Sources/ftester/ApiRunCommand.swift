@@ -45,6 +45,10 @@ struct ApiRunCommand: AsyncParsableCommand {
             help: "検証コマンド(exist/textIs 等)の既定タイムアウト秒(省略時 5。--profile 指定時は profile の defaultTimeout が優先される)")
     var defaultTimeout: Int?
 
+    @Option(name: .customLong("scenario-timeout"),
+            help: "シナリオ単位の壁時計タイムアウト秒(ホスト側 watchdog。超過で子を強制終了し失敗扱い。省略時 90。--profile 指定時は profile の scenarioTimeout が優先される)")
+    var scenarioTimeout: Int?
+
     @Flag(name: .customLong("dry-run"),
           help: "デバイスに触れず全コマンドを記録のみで通過させる(ステップ列挙・レビュー用。--profile 指定時はワーカー構築も省略する)")
     var dryRun = false
@@ -212,6 +216,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             let passed = await ScenarioHost.run(
                 project: project, scenarioID: info.id, connection: connection,
                 heal: heal, reportDir: reportDirPath, defaultTimeout: defaultTimeout,
+                scenarioTimeout: scenarioTimeout,
                 dryRun: dryRun, debug: debugOptions) { event in
                 // host 発の log イベント等、scenario 未設定のものは現在のシナリオ ID を補う
                 var event = event
@@ -278,7 +283,8 @@ struct ApiRunCommand: AsyncParsableCommand {
             let passed = await ScenarioHost.run(
                 project: project, scenarioID: info.id, connection: connection,
                 heal: effectiveHeal, reportDir: reportDirPath,
-                defaultTimeout: resolved.defaultTimeout, dryRun: dryRun,
+                defaultTimeout: resolved.defaultTimeout,
+                scenarioTimeout: resolved.scenarioTimeout, dryRun: dryRun,
                 debug: debugOptions) { event in
                 var event = event
                 if event.scenario == nil { event.scenario = info.id }
@@ -318,7 +324,8 @@ struct ApiRunCommand: AsyncParsableCommand {
 
         let orchestrator = RunOrchestrator(
             project: project, workers: workers, healingEnabled: effectiveHeal,
-            reportDir: reportDirURL, defaultTimeout: resolved.defaultTimeout)
+            reportDir: reportDirURL, defaultTimeout: resolved.defaultTimeout,
+            scenarioTimeout: resolved.scenarioTimeout)
         async let summary = orchestrator.run(items: items, defaultPlatform: defaultPlatform)
 
         for await event in orchestrator.events {

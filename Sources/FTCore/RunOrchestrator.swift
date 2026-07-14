@@ -101,6 +101,7 @@ public enum ScenarioRunner {
     public static func runOne(project: TestProject, item: ScenarioRunItem, worker: RunWorker,
                               healingEnabled: Bool, reportDir: URL,
                               defaultTimeout: Int? = nil,
+                              scenarioTimeout: Int? = nil,
                               debug: ScenarioDebugOptions? = nil,
                               onEvent: @escaping (RunEvent) -> Void) async -> Bool {
         onEvent(.flowStarted(worker: worker.label, flowURL: item.url,
@@ -110,7 +111,8 @@ public enum ScenarioRunner {
         let passed = await ScenarioHost.run(
             project: project, scenarioID: item.info.id, connection: worker.connection,
             heal: healingEnabled, reportDir: reportDir.path,
-            defaultTimeout: defaultTimeout, debug: debug) { event in
+            defaultTimeout: defaultTimeout, scenarioTimeout: scenarioTimeout,
+            debug: debug) { event in
             switch event.kind {
             case "sceneStarted":
                 onEvent(.sceneStarted(worker: worker.label, flowURL: item.url,
@@ -199,11 +201,12 @@ public final class RunOrchestrator {
     private let reportDir: URL
     private let project: TestProject
     private let defaultTimeout: Int?
+    private let scenarioTimeout: Int?
     /// デバッグ実行(ブレークポイント・ステップ実行)。呼び出し側が単一シナリオ実行時のみ指定する
     private let debug: ScenarioDebugOptions?
 
     public init(project: TestProject, workers: [RunWorker], healingEnabled: Bool,
-                reportDir: URL, defaultTimeout: Int? = nil,
+                reportDir: URL, defaultTimeout: Int? = nil, scenarioTimeout: Int? = nil,
                 debug: ScenarioDebugOptions? = nil) {
         (self.events, self.continuation) = AsyncStream.makeStream(of: RunEvent.self)
         self.workers = workers
@@ -211,6 +214,7 @@ public final class RunOrchestrator {
         self.reportDir = reportDir
         self.project = project
         self.defaultTimeout = defaultTimeout
+        self.scenarioTimeout = scenarioTimeout
         self.debug = debug
     }
 
@@ -279,7 +283,7 @@ public final class RunOrchestrator {
             let passed = await ScenarioRunner.runOne(
                 project: project, item: item, worker: worker,
                 healingEnabled: healingEnabled, reportDir: reportDir,
-                defaultTimeout: defaultTimeout, debug: debug,
+                defaultTimeout: defaultTimeout, scenarioTimeout: scenarioTimeout, debug: debug,
                 onEvent: { [continuation] in continuation.yield($0) })
             if !passed { failed += 1 }
         }
