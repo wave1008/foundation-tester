@@ -6,8 +6,11 @@
 //
 // ストリーミング中は monitorProcessManager.ts が2秒間隔で送るポーリングフレームを間引く
 // (isStreaming で判定。両方を同時にタイルへ描画すると解像度(width/height)が行き来してチラつく)。
-// 間引きは初回ストリームフレームが届いてから開始する — 起動直後(helper 起動待ち)はポーリングを
-// 生かしたままにして、タイルが一瞬空白になるのを防ぐ(ポーリング→ストリーミングのシームレスな引き継ぎ)。
+// 間引き開始は「webview がストリームフレームを実際に描画した」ack(streamRendered。
+// deviceTiles.js → monitorPanel.ts → noteStreamRendered)を受けてから。ホストがチャンクを
+// 受信した時点で間引くと、Reload Window 直後など webview 準備前に初期キーフレームが落ちた場合、
+// 静止画面では以後チャンクが来ず「ポーリング抑止済み・ストリーム無描画」でタイルが永久に
+// 「起動中」のまま止まる(2026-07-15 実害)。
 // ストリーミングが継続不能(onFailure)になった場合も同様にポーリングへ戻すだけで、明示的な
 // フォールバック処理は不要(ポーリングは止めていないため)。
 //
@@ -38,7 +41,8 @@ interface StreamEntry {
 
 export class MonitorDeviceStreamController {
   private readonly pipelines = new Map<string, StreamEntry>();
-  /** 1フレーム以上届き、ポーリングフレームを間引いてよい状態のデバイス id 集合(isStreaming が見る)。 */
+  /** webview がストリームフレームの描画を ack(streamRendered)済みで、ポーリングフレームを
+   * 間引いてよい状態のデバイス id 集合(isStreaming が見る)。 */
   private readonly streamingDeviceIds = new Set<string>();
   /** onFailure(helper が連続失敗で諦め)を受けたデバイス id。applyDevices は2秒毎に呼ばれるため、
    * これが無いと諦めた helper を毎回再生成してスパム再起動になる(将来の Xcode ABI 破壊時が該当)。
@@ -154,13 +158,27 @@ export class MonitorDeviceStreamController {
     }
   }
 
-  /** streamingDeviceIds への初回追加+syncSuppressFrames を onFrame/onChunk 共通で行う
-   * (suppressFrames 連動を codec に関わらず壊さないため)。 */
-  private markStreaming(deviceId: string): void {
+  /** webview の streamRendered ack(monitorPanel.ts 経由)で呼ぶ。パイプライン破棄後に遅れて
+   * 届いた ack で抑止だけ復活するとタイル餓死が再発するため、稼働中のみ受け付ける。
+   * ack はストリーム描画のたび(2秒スロットリング)届くので、二重呼び出しは no-op。 */
+  noteStreamRendered(deviceId: string): void {
+    if (!this.pipelines.has(deviceId)) {
+      return;
+    }
     if (!this.streamingDeviceIds.has(deviceId)) {
       this.streamingDeviceIds.add(deviceId);
       this.syncSuppressFrames();
     }
+  }
+
+  /** webview の streamStall(キーフレーム未受信のままデルタが流れ続けている)で呼ぶ。
+   * ヘルパーを作り直して新しいキーフレームから始めさせる(gaveUp/mjpeg 扱いにはしない)。 */
+  restartDevice(deviceId: string): void {
+    if (!this.pipelines.has(deviceId)) {
+      return;
+    }
+    this.disposeDevice(deviceId);
+    this.reapply(); // 次の monitorDevices(最大2秒後)を待たず直近入力で即再生成する
   }
 
   private startPipeline(deviceId: string, target: QualifyingTarget): void {
@@ -170,12 +188,11 @@ export class MonitorDeviceStreamController {
       logPrefix: target.platform === "ios" ? "ios-stream" : "android-stream",
       outputChannel: this.deps.outputChannel,
       codec: target.codec,
+      // 受信時に間引きは発動しない(stream: true を付けて webview の描画 ack に委ねる。冒頭コメント参照)
       onFrame: (jpegBase64, width, height) => {
-        this.markStreaming(deviceId);
-        this.deps.post({ type: "frame", device: deviceId, jpegBase64, width, height });
+        this.deps.post({ type: "frame", device: deviceId, jpegBase64, width, height, stream: true });
       },
       onChunk: (data, keyframe, width, height) => {
-        this.markStreaming(deviceId);
         this.deps.post({ type: "h264Chunk", device: deviceId, keyframe, width, height, data: new Uint8Array(data) });
       },
       onConnectionOk: () => undefined,

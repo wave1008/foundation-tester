@@ -123,6 +123,7 @@ async function executeRun(
   const config = getConfig();
   const targets = resolveTargets(controller, request);
   const run = controller.createTestRun(request);
+  const runStartedAt = Date.now();
 
   if (targets.size === 0) {
     run.end();
@@ -289,6 +290,9 @@ async function executeRun(
     eventBus.endRun(runId);
     cancelListener.dispose();
     watcher.setSuspended(false);
+    // キャンセル・異常終了でも経過は出す(TEST RESULTS の末尾行)
+    const totalSeconds = ((Date.now() - runStartedAt) / 1000).toFixed(1);
+    run.appendOutput(`\r\n⏱ トータル: ${totalSeconds}s\r\n`);
     run.end();
   }
 }

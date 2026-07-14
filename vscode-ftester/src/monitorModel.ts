@@ -105,6 +105,10 @@ export type MonitorToWebviewMessage =
       readonly jpegBase64: string;
       readonly width: number;
       readonly height: number;
+      /** true = ストリーミングヘルパー由来(monitorDeviceStreamController の mjpeg 経路)。
+       * webview は描画後に streamRendered を ack する(ポーリング由来のフレームには付かない。
+       * ack でポーリング抑止を発動する契約は monitorDeviceStreamController.ts 冒頭参照) */
+      readonly stream?: boolean;
     }
   // H.264 AU 1件(deviceStream.ts v2 形式。monitorDeviceStreamController.ts の onChunk が post する。
   // data は構造化クローンで転送される Uint8Array、base64 化しない。webview 側は main.js の
@@ -418,7 +422,14 @@ export type MonitorFromWebviewMessage =
   // codecError ハンドラ→monitorDeviceStreamController.fallbackToMjpeg/monitorLiveController.fallbackToMjpeg)。
   // scope="tile" は device 必須(対象タイルを1つ特定するため)、scope="live" は選択中デバイスに
   // 一律適用するため device 不要。
-  | { readonly type: "codecError"; readonly scope: "tile" | "live"; readonly device?: string };
+  | { readonly type: "codecError"; readonly scope: "tile" | "live"; readonly device?: string }
+  // webview がストリーム由来フレーム(h264 デコード成功 or stream:true の mjpeg)を描画できた ack
+  // (deviceTiles.js が2秒スロットリングで送る)。受け手: monitorPanel.ts →
+  // monitorDeviceStreamController.noteStreamRendered。これが届くまでポーリングは間引かれない
+  | { readonly type: "streamRendered"; readonly device: string }
+  // キーフレーム未受信のままデルタチャンクが流れ続けている(初期キーフレームの取り逃し)。受け手:
+  // monitorPanel.ts → monitorDeviceStreamController.restartDevice(ヘルパー再起動で新キーフレームを得る)
+  | { readonly type: "streamStall"; readonly device: string };
 
 /**
  * machineDevicesSync の add[] 1件(MachineDeviceAddEntry)の検証。name の空文字は不正。
@@ -578,6 +589,9 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
         (value.device === undefined || typeof value.device === "string") &&
         (value.scope !== "tile" || typeof value.device === "string")
       );
+    case "streamRendered":
+    case "streamStall":
+      return typeof value.device === "string" && value.device !== "";
     default:
       return false;
   }
