@@ -10,7 +10,7 @@ import * as vscode from "vscode";
 import { DEFAULT_MAX_STEPS } from "./exploreModel";
 
 /** デバイスモニターパネルのタイトル(VS Code タブ表示・HTML の <title> の両方で使う)。 */
-export const PANEL_TITLE = "ftester デバイスモニター";
+export const PANEL_TITLE = "Foundation Tester";
 
 function generateNonce(): string {
   return randomBytes(16).toString("hex");
@@ -38,20 +38,20 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
 <body>
   <div id="tabbar" role="tablist">
     <button id="tab-devices" class="tab-button active" type="button" role="tab" aria-selected="true" aria-controls="panel-devices">デバイス</button>
-    <button id="tab-profiles" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-profiles">プロファイル</button>
     <button id="tab-live" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-live">ライブ操作</button>
+    <button id="tab-profiles" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-profiles">プロファイル</button>
     <button id="tab-explore" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-explore">FM探索</button>
     <button id="tab-settings" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-settings">設定</button>
   </div>
 
   <div id="panel-devices" class="tab-panel" role="tabpanel" aria-labelledby="tab-devices">
     <div id="toolbar" class="toolbar">
-      <button id="btn-devices-up">デバイスを全て起動</button>
-      <button id="btn-devices-down" class="secondary">全て終了</button>
-      <button id="btn-restart" class="secondary">モニター再起動</button>
       <label class="profile-label">実行プロファイル
         <select id="profile-select" title="以後のテスト実行・デバッグ実行と、このモニターの監視対象デバイスに使う実行プロファイル(ftester.profile 設定)" disabled></select>
       </label>
+      <button id="btn-devices-up">デバイスを全て起動</button>
+      <button id="btn-devices-down" class="secondary">全て終了</button>
+      <button id="btn-restart" class="secondary">モニター再起動</button>
       <!-- hostMetricsメッセージ受信のたびにmain.js側で再描画(独自タイマーなし)。 -->
       <div id="host-metrics" class="host-metrics">
         <span class="host-metric" id="hm-mem" title="メモリ使用量"><span class="hm-label">MEM</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
@@ -279,7 +279,6 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
     <div class="toolbar live-record-row">
       <label for="live-app-profile-select">アプリプロファイル:</label>
       <select id="live-app-profile-select" title="アプリプロファイル"></select>
-      <label><input type="checkbox" id="live-record-autoinstall" checked> 自動インストール</label>
       <button id="live-btn-record">レコーディング開始</button>
       <span id="live-record-status" class="live-record-status"></span>
     </div>
@@ -314,18 +313,26 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
       </div>
 
       <div class="control-pane">
-        <div class="row controls-row">
-          <button id="live-btn-refresh-snapshot">更新</button>
+        <div class="live-lists">
+          <div class="live-elements-section" id="live-elements-section">
+            <div class="elements-header">
+              <span>要素一覧(クリックでタップ)</span>
+              <button id="live-btn-refresh-snapshot" class="secondary" title="要素一覧とタップ座標を現在の画面で取り直します。映像は自動更新されますが、操作なしで画面が変わった直後(非同期ロード・端末を直接操作など)に押すと要素一覧を拾い直せます。">要素一覧を更新</button>
+            </div>
+            <div id="live-elements-list" class="elements-list"></div>
+            <div class="row live-type-row">
+              <input id="live-type-text" type="text" placeholder="入力するテキスト(Enterで送信)">
+            </div>
+          </div>
+          <div class="splitter" id="live-lists-splitter" title="ドラッグで要素一覧と操作記録の高さを調整"></div>
+          <div class="live-oplog-section">
+            <div class="oplog-header">
+              <span>操作記録</span>
+              <button id="live-btn-oplog-clear" class="secondary" type="button">クリア</button>
+            </div>
+            <div id="live-oplog-list" class="oplog-list"></div>
+          </div>
         </div>
-
-        <div class="row">
-          <input id="live-type-text" type="text" placeholder="入力するテキスト">
-          <button id="live-btn-type">入力</button>
-        </div>
-        <span id="live-type-ref-hint">→ フォーカス中の要素に入力</span>
-
-        <div class="elements-header">要素一覧(クリックでタップ)</div>
-        <div id="live-elements-list" class="elements-list"></div>
       </div>
     </div>
   </div>

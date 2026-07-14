@@ -2,7 +2,7 @@
 // ディスパッチャに組み込む。host への送信は type:'live' の封筒で包む(対向: src/liveModel.ts の
 // LiveWebviewEnvelope、処理は src/monitorLiveController.ts)。
 
-import { vscode } from './vscodeApi.js';
+import { vscode, persistedState } from './vscodeApi.js';
 import { activateTab } from './tabs.js';
 import { clampMenuPosition } from './deviceTiles.js';
 
@@ -30,12 +30,14 @@ const busyOverlay = document.getElementById('live-busy-overlay');
 const busyMessage = document.getElementById('live-busy-message');
 
 const typeTextInput = document.getElementById('live-type-text');
-const typeRefHint = document.getElementById('live-type-ref-hint');
 const actionError = document.getElementById('live-action-error');
 const elementsList = document.getElementById('live-elements-list');
+const oplogList = document.getElementById('live-oplog-list');
+const oplogClearBtn = document.getElementById('live-btn-oplog-clear');
+const elementsSection = document.getElementById('live-elements-section');
+const listsSplitter = document.getElementById('live-lists-splitter');
 
 const appProfileSelect = document.getElementById('live-app-profile-select');
-const autoInstallCheckbox = document.getElementById('live-record-autoinstall');
 const recordBtn = document.getElementById('live-btn-record');
 const recordStatus = document.getElementById('live-record-status');
 // 画像右クリックの開始/終了メニュー(#live-btn-record と同じ start/stop フローを流す)。
@@ -68,7 +70,6 @@ let hasAppProfile = false;
 const busyButtons = [
   'live-btn-refresh-devices', 'live-btn-refresh-snapshot',
   'live-btn-app-switcher', 'live-btn-home',
-  'live-btn-type',
 ].map((id) => document.getElementById(id));
 
 function setBusy(value) {
@@ -156,7 +157,6 @@ function updateRecordButton() {
   recordBtn.classList.toggle('recording', showStop);
   recordBtn.disabled = generating || (!recording && !hasAppProfile);
   appProfileSelect.disabled = recording || generating;
-  autoInstallCheckbox.disabled = recording || generating;
   updateRecordMenuItems();
 }
 
@@ -173,7 +173,8 @@ recordBtn.addEventListener('click', () => {
   if (recording) {
     post({ type: 'stopRecord' });
   } else {
-    post({ type: 'startRecord', appProfile: appProfileSelect.value, autoInstall: autoInstallCheckbox.checked });
+    // 自動インストールは常に有効(チェックボックス廃止)。host 側は appPath があれば install→launch する。
+    post({ type: 'startRecord', appProfile: appProfileSelect.value, autoInstall: true });
   }
 });
 
@@ -195,7 +196,7 @@ function closeLiveRecordMenu() {
 recordMenuStart.addEventListener('click', (event) => {
   event.stopPropagation();
   if (recordMenuStart.disabled) { return; }
-  post({ type: 'startRecord', appProfile: appProfileSelect.value, autoInstall: autoInstallCheckbox.checked });
+  post({ type: 'startRecord', appProfile: appProfileSelect.value, autoInstall: true });
   closeLiveRecordMenu();
 });
 recordMenuStop.addEventListener('click', (event) => {
@@ -267,7 +268,6 @@ function applySnapshot(message) {
   lastElements = message.elements;
   autoSnapshotRequested = false;
   selectedRef = null;
-  typeRefHint.textContent = '→ フォーカス中の要素に入力';
   screenshot.src = 'data:image/jpeg;base64,' + message.image;
   screenshot.classList.add('visible');
   screenshotPlaceholder.style.display = 'none';
@@ -404,7 +404,6 @@ function renderElements() {
       for (const r of elementsList.querySelectorAll('.element-row')) { r.classList.remove('selected'); }
       row.classList.add('selected');
       selectedRef = element.ref;
-      typeRefHint.textContent = '→ ref ' + element.ref + ' に入力';
       post({ type: 'tapRef', ref: element.ref });
     });
     row.addEventListener('mouseenter', () => showHover(element));
@@ -412,6 +411,30 @@ function renderElements() {
     elementsList.appendChild(row);
   }
 }
+
+// ---- 操作記録(host の operationLog を追記。対向: monitorLiveController.ts の postOperationLog) ----
+
+const OPLOG_MAX_ROWS = 200; // DOM/メモリ肥大防止。超えたら最古行から捨てる
+function pad2(n) { return n < 10 ? '0' + n : '' + n; }
+function appendOperationLog(label, ok) {
+  const row = document.createElement('div');
+  row.className = ok ? 'oplog-row' : 'oplog-row failed';
+  const now = new Date();
+  const time = document.createElement('span');
+  time.className = 'oplog-time';
+  time.textContent = pad2(now.getHours()) + ':' + pad2(now.getMinutes()) + ':' + pad2(now.getSeconds());
+  const text = document.createElement('span');
+  text.className = 'oplog-label';
+  text.textContent = (ok ? '' : '✗ ') + label;
+  row.appendChild(time);
+  row.appendChild(text);
+  oplogList.appendChild(row);
+  while (oplogList.childElementCount > OPLOG_MAX_ROWS) {
+    oplogList.removeChild(oplogList.firstChild);
+  }
+  oplogList.scrollTop = oplogList.scrollHeight; // 最新行を見せる
+}
+oplogClearBtn.addEventListener('click', () => { oplogList.innerHTML = ''; });
 
 // ---- 操作ボタン ------------------------------------------------------------------
 
@@ -436,10 +459,9 @@ function submitTypeText() {
   // 送信したら入力欄をクリアする(post は value を同期読みするので後でクリアしてよい)。
   typeTextInput.value = '';
 }
-document.getElementById('live-btn-type').addEventListener('click', submitTypeText);
-// Enter で送信。IME変換中(日本語変換の確定)の Enter は送信しない: isComposing が true、
-// 環境により keyDown が keyCode 229(IME処理中)で届くため両方を除外する。busy 中は
-// 「入力」ボタンが非活性なので Enter でも送らない(挙動をボタンと揃える)。
+// テキスト送信は Enter のみ(「入力」ボタンは廃止)。IME変換中(日本語変換の確定)の Enter は
+// 送信しない: isComposing が true、環境により keyDown が keyCode 229(IME処理中)で届くため両方を除外する。
+// busy 中も送らない(処理中の多重送信を防ぐ)。
 typeTextInput.addEventListener('keydown', (event) => {
   if (event.key !== 'Enter' || event.isComposing || event.keyCode === 229) { return; }
   if (busy) { return; }
@@ -513,6 +535,9 @@ export function applyLiveMessage(message) {
       typeTextInput.focus();
       typeTextInput.select();
       break;
+    case 'operationLog':
+      appendOperationLog(message.label, !!message.ok);
+      break;
     default:
       break;
   }
@@ -540,4 +565,61 @@ document.addEventListener('ft-live-open-device', (event) => {
 // タブ表示状態を host へ通知(自動フレーム更新のオンオフ。監視元: monitorLiveController.ts)
 document.addEventListener('ft-tab-activated', (event) => {
   post({ type: 'visibility', visible: event.detail.tab === 'live' });
+  if (event.detail.tab === 'live') { applyElementsHeight(elementsSectionHeight); }
 });
+
+// ---- 要素一覧 / 操作記録 の上下スプリッター(splitter.js のデバイスタブ版と同パターン。
+// こちらはライブタブ専用で elements セクションの高さ[px]を持つ。位置は vscode.setState に永続化)。----
+
+const MIN_LIVE_SECTION = 80; // px。elements/oplog 各セクションの最小高(CSS の min-height と揃える)
+const livePanel = document.getElementById('panel-live');
+let elementsSectionHeight =
+  typeof persistedState.liveElementsHeight === 'number' && persistedState.liveElementsHeight > 0
+    ? persistedState.liveElementsHeight
+    : Math.round(window.innerHeight * 0.4);
+
+function liveListsAvailable() {
+  const lists = listsSplitter.parentElement; // .live-lists
+  return lists.clientHeight - listsSplitter.offsetHeight;
+}
+function clampElementsHeight(height) {
+  const available = liveListsAvailable();
+  const maxHeight = Math.max(MIN_LIVE_SECTION, available - MIN_LIVE_SECTION);
+  return Math.min(Math.max(height, MIN_LIVE_SECTION), maxHeight);
+}
+function applyElementsHeight(height) {
+  // ライブタブ非表示中は clientHeight=0 で誤って最小へクランプするため触らない(活性化時に呼び直す)。
+  if (livePanel.offsetParent === null || livePanel.clientHeight === 0) { return; }
+  elementsSectionHeight = clampElementsHeight(height);
+  elementsSection.style.height = elementsSectionHeight + 'px';
+}
+function persistElementsHeight() {
+  vscode.setState(Object.assign({}, vscode.getState(), { liveElementsHeight: elementsSectionHeight }));
+}
+
+let listsPointerId = null;
+let listsStartY = 0;
+let listsStartHeight = 0;
+listsSplitter.addEventListener('pointerdown', (event) => {
+  if (event.button !== 0) { return; }
+  listsPointerId = event.pointerId;
+  listsStartY = event.clientY;
+  listsStartHeight = elementsSectionHeight;
+  listsSplitter.setPointerCapture(event.pointerId);
+  listsSplitter.classList.add('dragging');
+  event.preventDefault();
+});
+listsSplitter.addEventListener('pointermove', (event) => {
+  if (listsPointerId !== event.pointerId) { return; }
+  applyElementsHeight(listsStartHeight + (event.clientY - listsStartY));
+});
+const endListsDrag = (event) => {
+  if (listsPointerId !== event.pointerId) { return; }
+  listsPointerId = null;
+  listsSplitter.classList.remove('dragging');
+  listsSplitter.releasePointerCapture(event.pointerId);
+  persistElementsHeight();
+};
+listsSplitter.addEventListener('pointerup', endListsDrag);
+listsSplitter.addEventListener('pointercancel', endListsDrag);
+window.addEventListener('resize', () => applyElementsHeight(elementsSectionHeight));

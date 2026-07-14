@@ -3,7 +3,14 @@
  * バンドルし、renderHtml() が <link rel="stylesheet"> で読み込む。
  */
 
-:root { color-scheme: light dark; }
+:root {
+  color-scheme: light dark;
+  /* 入力欄・セレクトの枠線トークン。--vscode-input-border / --vscode-dropdown-border は未定義または
+     背景と同色(透明)なテーマがあり、そのままだと枠が消える(再三の指摘・実害)。テーマトークンに
+     依存せず widget-border→panel-border→薄いグレーで必ず可視にする。入力欄・セレクトの border は
+     必ずこのトークンを使う(transparent や *-input-border 直参照をフォールバックにしないこと)。 */
+  --ft-control-border: var(--vscode-widget-border, var(--vscode-panel-border, rgba(127, 127, 127, 0.5)));
+}
 * { box-sizing: border-box; }
 html, body {
   height: 100%;
@@ -36,12 +43,18 @@ body {
   padding: 8px 18px;
   margin: 0;
   border: none;
-  border-right: 1px solid var(--vscode-tab-border, transparent);
+  /* タブ間の境界線。--vscode-tab-border は未定義または透明なテーマがあり線が消える(実害あり)ため
+     依存せず、前景色の薄い color-mix で描く。ライト/ダーク両テーマで必ず薄く見える。 */
+  border-right: 1px solid color-mix(in srgb, var(--vscode-foreground) 20%, transparent);
   border-top: 1px solid transparent;
   border-radius: 0;
   background-color: var(--vscode-tab-inactiveBackground, transparent);
   color: var(--vscode-tab-inactiveForeground, var(--vscode-descriptionForeground));
   cursor: pointer;
+}
+/* 末尾タブ(設定)の右側は境界の相手がいないため線を出さない(垂れ下がり線の回避)。 */
+#tabbar .tab-button:last-child {
+  border-right-color: transparent;
 }
 #tabbar .tab-button:hover:not(.active) {
   background-color: var(--vscode-tab-hoverBackground, var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31)));
@@ -176,7 +189,7 @@ button.secondary:hover:not(:disabled) {
   font-size: 11px;
   color: var(--vscode-foreground);
   min-width: 32px;
-  text-align: right;
+  text-align: left;
   font-variant-numeric: tabular-nums;
 }
 select {
@@ -186,7 +199,7 @@ select {
   border-radius: 2px;
   background-color: var(--vscode-dropdown-background);
   color: var(--vscode-dropdown-foreground);
-  border: 1px solid var(--vscode-dropdown-border);
+  border: 1px solid var(--ft-control-border);
 }
 select:disabled { opacity: 0.5; cursor: default; }
 .banner {
@@ -870,7 +883,7 @@ input[type="text"] {
   border-radius: 2px;
   background-color: var(--vscode-input-background);
   color: var(--vscode-input-foreground);
-  border: 1px solid var(--vscode-input-border, var(--vscode-dropdown-border));
+  border: 1px solid var(--ft-control-border);
 }
 input[type="text"]:disabled { opacity: 0.5; }
 input[type="text"]::placeholder {
@@ -1115,7 +1128,7 @@ input[type="text"]::placeholder {
   padding: 3px 6px;
   background-color: var(--vscode-input-background);
   color: var(--vscode-input-foreground);
-  border: 1px solid var(--vscode-input-border, transparent);
+  border: 1px solid var(--ft-control-border);
   border-radius: 2px;
 }
 #live-device-warning {
@@ -1283,7 +1296,8 @@ input[type="text"]::placeholder {
   max-width: 320px;
 }
 #panel-live .control-pane {
-  flex: 0 0 380px;
+  /* 画像の右の残り幅いっぱいに広げる(要素一覧・操作記録を横いっぱいに)。min-width が下限。 */
+  flex: 1 1 auto;
   min-width: 280px;
   display: flex;
   flex-direction: column;
@@ -1298,13 +1312,8 @@ input[type="text"]::placeholder {
 }
 #panel-live .row input[type="text"] { flex: 1 1 auto; min-width: 0; }
 #panel-live .row select { flex: 1 1 auto; min-width: 0; }
-/* --vscode-dropdown-border は背景と同色のテーマがあり枠が見えないため明示。
-   `#panel-live select`(border: var(--vscode-input-border, transparent))より詳細度を上げる必要がある
-   ため #panel-live を重ねる(ID単体では type+ID の方が詳細度が高く負ける)。 */
-#panel-live #live-device-select,
-#panel-live #live-app-profile-select {
-  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border, rgba(127, 127, 127, 0.5)));
-}
+/* 入力欄(要素一覧の直下)と下のスプリッターの間に少し余白を空ける。 */
+#panel-live .live-type-row { margin-bottom: 8px; }
 /* #panel-live(縦 flex)の直下に置き .content の上に独立した行として表示。
    タブ横幅いっぱいに広がり(既定 align: stretch)、表示時は .content ごと下へ押し下げる
    (更新ボタンが下がるのは許容)。非表示時は display:none で行を畳む。左寄せは既定。 */
@@ -1318,16 +1327,23 @@ input[type="text"]::placeholder {
 }
 #live-action-error.visible { display: block; }
 #panel-live .elements-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
   font-size: 12px;
   color: var(--vscode-descriptionForeground);
 }
-#live-type-ref-hint {
-  font-size: 11px;
-  color: var(--vscode-descriptionForeground);
+/* 見出しラベルは幅が足りなければ省略し、右のボタン(要素一覧を更新)を押し出さない。 */
+#panel-live .elements-header > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 #panel-live .elements-list {
   flex: 1 1 auto;
-  min-height: 80px;
+  min-height: 0;
   overflow-y: auto;
   border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
   border-radius: 3px;
@@ -1348,6 +1364,66 @@ input[type="text"]::placeholder {
   background-color: var(--vscode-editorGroupHeader-tabsBackground, rgba(128, 128, 128, 0.15));
 }
 
+/* ---- 操作記録(要素一覧の下・スプリッターで上下比率を調整。#live-lists-splitter は既存 .splitter を流用) ---- */
+#panel-live .live-lists {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+#panel-live .live-elements-section {
+  /* 高さは liveTab.js のスプリッターが style.height(px)で設定する。min-height はドラッグ下限。 */
+  flex: 0 0 auto;
+  min-height: 80px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+#panel-live .live-oplog-section {
+  flex: 1 1 auto;
+  min-height: 60px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  /* スプリッターと操作記録の間の余白。padding なのでスプリッターの高さ計算には影響しない。 */
+  padding-top: 8px;
+}
+#panel-live .oplog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+}
+#panel-live .oplog-header button,
+#panel-live .elements-header button {
+  flex: 0 0 auto;
+  padding: 0 6px;
+  font-size: 11px;
+}
+#panel-live .oplog-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
+  border-radius: 3px;
+}
+#panel-live .oplog-row {
+  padding: 2px 6px;
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#panel-live .oplog-row .oplog-time {
+  color: var(--vscode-descriptionForeground);
+  margin-right: 6px;
+}
+#panel-live .oplog-row.failed .oplog-label {
+  color: var(--vscode-errorForeground, #f14c4c);
+}
+
 /* ---- #panel-explore(FM探索タブ) ----------------------------------------------------- */
 /* .toolbar/button/button.secondary/select/.banner は既存のグローバルルールをそのまま使う
    (#panel-live と同じ方針。ここでは再定義しない)。 */
@@ -1357,7 +1433,7 @@ input[type="text"]::placeholder {
   padding: 3px 6px;
   background-color: var(--vscode-input-background);
   color: var(--vscode-input-foreground);
-  border: 1px solid var(--vscode-input-border, transparent);
+  border: 1px solid var(--ft-control-border);
   border-radius: 2px;
 }
 .explore-body {
@@ -1392,7 +1468,7 @@ input[type="text"]::placeholder {
   padding: 4px 6px;
   background-color: var(--vscode-input-background);
   color: var(--vscode-input-foreground);
-  border: 1px solid var(--vscode-input-border, var(--vscode-dropdown-border));
+  border: 1px solid var(--ft-control-border);
   border-radius: 2px;
 }
 .explore-form-row textarea {
