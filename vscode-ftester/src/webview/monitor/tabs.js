@@ -7,7 +7,7 @@ import { closeDeviceOpMenu } from './deviceTiles.js';
 import { closeMachineDeviceMenu } from './machineProfilesTab.js';
 import { applyTilePaneHeight, tilePaneHeight } from './splitter.js';
 
-export const TAB_IDS = ['devices', 'profiles', 'live', 'explore', 'settings'];
+export const TAB_IDS = ['devices', 'live', 'profiles', 'explore', 'settings'];
 const tabButtons = {
   devices: document.getElementById('tab-devices'),
   profiles: document.getElementById('tab-profiles'),

@@ -452,6 +452,17 @@ export function formatElementLine(element: LiveElement): string {
   return parts.join(" ");
 }
 
+/** 「操作記録」1行に使う要素の短い説明。label > #identifier > type の優先。 */
+export function describeElementShort(element: LiveElement): string {
+  if (element.label !== null && element.label.length > 0) {
+    return element.label;
+  }
+  if (element.identifier !== null && element.identifier.length > 0) {
+    return `#${element.identifier}`;
+  }
+  return element.type;
+}
+
 // ---- デバイス → CLI引数組み立て -----------------------------------------------------------
 
 export interface LiveDeviceRef {
@@ -579,7 +590,9 @@ export type LiveToWebviewMessage =
   | { readonly type: "recording"; readonly active: boolean; readonly generating?: boolean }
   | { readonly type: "recordStatus"; readonly message: string; readonly file: string | null }
   // テキスト入力欄をタップした直後に「入力するテキスト」欄へフォーカスを移す指示(受け手: liveTab.js)。
-  | { readonly type: "focusTypeInput" };
+  | { readonly type: "focusTypeInput" }
+  // 「操作記録」1行(レコーディング機能とは無関係。受け手: liveTab.js の operationLog ハンドラ)。
+  | { readonly type: "operationLog"; readonly label: string; readonly ok: boolean };
 
 export function toSnapshotMessage(snapshot: LiveSnapshot): LiveToWebviewMessage {
   return {

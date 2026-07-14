@@ -37,6 +37,7 @@ import {
 import { StreamPipeline, type LiveStreamPipeline } from "./deviceStream";
 import {
   buildDeviceArgs,
+  describeElementShort,
   devicesToOptions,
   fallbackDeviceOption,
   hitTestElement,
@@ -247,6 +248,12 @@ export class MonitorLiveController implements vscode.Disposable {
   private setBusy(busy: boolean): void {
     this.busy = busy;
     this.post({ type: "busy", busy });
+  }
+
+  /** 「操作記録」1行を webview へ送る(対向: liveTab.js の operationLog ハンドラ)。
+   * 全ユーザー操作(tap/swipe/type/press/home/appSwitcher)の成否をここへ流す。 */
+  private postOperationLog(label: string, ok: boolean): void {
+    this.post({ type: "operationLog", label, ok });
   }
 
   /** actionError バナーを出す共通経路。接続系の文言(serve 不在・タイムアウト・終了)なら
@@ -982,7 +989,7 @@ export class MonitorLiveController implements vscode.Disposable {
   private async runAction(
     command: LiveServeCommand,
     recordStep?: RecordedStep,
-    options?: { readonly silentObservation?: boolean },
+    options?: { readonly silentObservation?: boolean; readonly logLabel?: string },
   ): Promise<boolean> {
     if (this.busy) {
       return false;
@@ -998,10 +1005,16 @@ export class MonitorLiveController implements vscode.Disposable {
       const { action, snapshot } = await this.sendServeCommand(command);
       if (action && !action.ok) {
         this.postActionError(action.error);
+        if (options?.logLabel) {
+          this.postOperationLog(options.logLabel, false);
+        }
         return false;
       }
       if (this.recording && recordStep) {
         this.recordedSteps.push(recordStep);
+      }
+      if (options?.logLabel) {
+        this.postOperationLog(options.logLabel, true);
       }
       if (options?.silentObservation) {
         return true;  // action は成功。観測は反映も表示もしない(直後の launch が画面を出す)
@@ -1023,8 +1036,9 @@ export class MonitorLiveController implements vscode.Disposable {
     command: LiveServeCommand,
     step: RecordedStep | undefined,
     hit: LiveElement | undefined,
+    logLabel: string,
   ): Promise<void> {
-    const ok = await this.runAction(command, step);
+    const ok = await this.runAction(command, step, { logLabel });
     if (ok && hit && isTextInputElement(hit)) {
       this.post({ type: "focusTypeInput" });
     }
@@ -1220,7 +1234,10 @@ export class MonitorLiveController implements vscode.Disposable {
         const tapHit = hitTestElement(point, this.lastElements);
         const tapChain = tapHit ? locatorChainForElement(tapHit, this.lastElements) : undefined;
         const tapStep: RecordedStep | undefined = tapChain ? { action: "tap", ...tapChain } : undefined;
-        void this.runTapAtPoint({ cmd: "tap", x: point.x, y: point.y }, tapStep, tapHit);
+        const tapLabel = tapHit
+          ? `タップ: ${describeElementShort(tapHit)}`
+          : `タップ: (${Math.round(point.x)}, ${Math.round(point.y)})`;
+        void this.runTapAtPoint({ cmd: "tap", x: point.x, y: point.y }, tapStep, tapHit, tapLabel);
         break;
       }
       case "dragPoints": {
@@ -1238,6 +1255,7 @@ export class MonitorLiveController implements vscode.Disposable {
         const dy = message.toY - message.fromY;
         const direction: "up" | "down" | "left" | "right" =
           Math.abs(dx) >= Math.abs(dy) ? (dx >= 0 ? "right" : "left") : dy < 0 ? "up" : "down";
+        const swipeLabel = { up: "スワイプ: 上", down: "スワイプ: 下", left: "スワイプ: 左", right: "スワイプ: 右" }[direction];
         void this.runAction(
           {
             cmd: "drag",
@@ -1245,6 +1263,7 @@ export class MonitorLiveController implements vscode.Disposable {
             press: pressSeconds, duration: durationSeconds,
           },
           { action: "swipe", direction },
+          { logLabel: swipeLabel },
         );
         break;
       }
@@ -1264,14 +1283,18 @@ export class MonitorLiveController implements vscode.Disposable {
         const pressStep: RecordedStep | undefined = pressHit
           ? { action: "press", ...locatorChainForElement(pressHit, this.lastElements) }
           : undefined;
-        void this.runAction({ cmd: "press", x: point.x, y: point.y, duration }, pressStep);
+        const pressLabel = pressHit
+          ? `ロングプレス: ${describeElementShort(pressHit)}`
+          : `ロングプレス: (${Math.round(point.x)}, ${Math.round(point.y)})`;
+        void this.runAction({ cmd: "press", x: point.x, y: point.y, duration }, pressStep, { logLabel: pressLabel });
         break;
       }
       case "tapRef": {
         const refHit = this.lastElements.find((element) => element.ref === message.ref);
         const refChain = refHit ? locatorChainForElement(refHit, this.lastElements) : undefined;
         const tapRefStep: RecordedStep | undefined = refChain ? { action: "tap", ...refChain } : undefined;
-        void this.runAction({ cmd: "tap", ref: message.ref }, tapRefStep);
+        const tapRefLabel = refHit ? `タップ: ${describeElementShort(refHit)}` : "タップ";
+        void this.runAction({ cmd: "tap", ref: message.ref }, tapRefStep, { logLabel: tapRefLabel });
         break;
       }
       case "typeText": {
@@ -1282,14 +1305,19 @@ export class MonitorLiveController implements vscode.Disposable {
         // 直前の tap でフォーカスした要素へ送る前提でロケータを付けずに記録する(ScenarioCodeGen が
         // type("text") を出す。ref:null=フォーカス中要素への入力)。
         const typeStep: RecordedStep = { action: "type", text: message.text };
-        void this.runAction({ cmd: "type", text: message.text, ref: message.ref }, typeStep);
+        const typedLabel = message.text.length > 20 ? `${message.text.slice(0, 20)}…` : message.text;
+        void this.runAction(
+          { cmd: "type", text: message.text, ref: message.ref },
+          typeStep,
+          { logLabel: `入力: ${typedLabel}` },
+        );
         break;
       }
       case "home":
-        void this.runAction({ cmd: "home" }, { action: "home" });
+        void this.runAction({ cmd: "home" }, { action: "home" }, { logLabel: "ホーム" });
         break;
       case "appSwitcher":
-        void this.runAction({ cmd: "appSwitcher" }, { action: "appSwitcher" });
+        void this.runAction({ cmd: "appSwitcher" }, { action: "appSwitcher" }, { logLabel: "タスク切替" });
         break;
       case "visibility":
         this.liveTabVisible = message.visible;
