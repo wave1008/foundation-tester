@@ -300,8 +300,11 @@ public enum DeviceBooter {
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: binary)
+        // -gpu host 必須: headless(-no-window)では hw.gpu.mode=auto が SwiftShader(CPU 描画)に
+        // フォールバックし、モーション時 qemu が約3コア/台を消費する(host=Metal なら約1/3。実測 2026-07-14)
         process.arguments = ["-avd", avd,
-                             "-no-snapshot-save", "-no-window", "-no-boot-anim", "-no-audio"]
+                             "-no-snapshot-save", "-no-window", "-no-boot-anim", "-no-audio",
+                             "-gpu", "host"]
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
         try process.run()
