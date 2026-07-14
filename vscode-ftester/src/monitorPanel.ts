@@ -453,6 +453,21 @@ class MonitorPanelController implements vscode.Disposable {
         this.live.refreshFrameSource();
         this.deviceStream.reapply();
         break;
+      case "streamRendered":
+        // webview がストリームフレームを描画できた ack。これを受けて初めてポーリングを間引く
+        // (契約: monitorDeviceStreamController.ts 冒頭)
+        if (message.device) {
+          this.deviceStream.noteStreamRendered(message.device);
+        }
+        break;
+      case "streamStall":
+        if (message.device) {
+          this.outputChannel.appendLine(
+            `[monitor-stream] ${message.device}: キーフレーム未受信のままのためヘルパーを再起動します。`,
+          );
+          this.deviceStream.restartDevice(message.device);
+        }
+        break;
       case "codecError":
         if (message.scope === "tile" && message.device) {
           this.outputChannel.appendLine(

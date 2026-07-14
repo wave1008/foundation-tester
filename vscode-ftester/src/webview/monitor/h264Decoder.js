@@ -23,7 +23,9 @@ function findAvcCodecString(data) {
   return null;
 }
 
-export function createH264Renderer({ canvas, onError, onFirstFrame }) {
+// onFrameRendered(省略可): canvas へ 1 フレーム描画するたびに呼ぶ(描画間引き後=最大 ~15fps)。
+// deviceTiles.js がポーリング抑止の streamRendered ack に使う(liveTab.js は未使用)。
+export function createH264Renderer({ canvas, onError, onFirstFrame, onFrameRendered }) {
   const ctx = canvas.getContext('2d');
   let decoder = null;
   let state = 'idle'; // idle -> configuring -> ready、または errored/disposed で以後何もしない
@@ -113,6 +115,9 @@ export function createH264Renderer({ canvas, onError, onFirstFrame }) {
     if (!firstFrameSent) {
       firstFrameSent = true;
       onFirstFrame({ width: frame.displayWidth, height: frame.displayHeight });
+    }
+    if (onFrameRendered) {
+      onFrameRendered();
     }
   }
 

@@ -36,11 +36,6 @@ export const tiles = new Map();
 // 空 = 全ワーカー表示(絞り込みなし)
 export const selectedDeviceIds = new Set();
 
-function formatTime(date) {
-  const pad = (n) => String(n).padStart(2, '0');
-  return pad(date.getHours()) + ':' + pad(date.getMinutes()) + ':' + pad(date.getSeconds());
-}
-
 // タイル内の「画像以外」の高さの合計(px)。CSS の固定高と一致させること:
 // padding 上下 8+8 + header 20 + footer 18 + gap 6×2 = 66
 const TILE_CHROME_HEIGHT = 66;
@@ -90,11 +85,9 @@ function createTile(device) {
   footer.className = 'tile-footer';
   const stateBadge = document.createElement('span');
   stateBadge.className = 'tile-state';
-  const updated = document.createElement('span');
-  updated.className = 'tile-updated';
   const error = document.createElement('span');
   error.className = 'tile-error';
-  footer.append(stateBadge, error, updated);
+  footer.append(stateBadge, error);
 
   tile.append(header, frameWrap, footer);
   grid.appendChild(tile);
@@ -112,12 +105,17 @@ function createTile(device) {
     frameWrapEl: frameWrap,
     imgEl: img,
     placeholderEl: placeholder,
-    updatedEl: updated,
     errorEl: error,
     frameSrc: null,
-    lastUpdated: null,
     // bridgeWatch の直近 phase('ok'/未受信は undefined)。state==='booted' の間だけ表示に反映する。
     bridgeWatchPhase: undefined,
+    // ストリーム描画 ack(streamRendered)の直近送信時刻(ms)。2秒スロットリング用
+    // (受け手側 noteStreamRendered は冪等なので多重送信は無害だがスパムを避ける)。
+    streamAckAt: 0,
+    // キーフレーム未受信のまま届いたデルタチャンク数と streamStall 送信済みフラグ
+    // (キーフレーム到着でどちらもリセット=ヘルパー再起動1世代につき最大1回送る)。
+    h264DeltasBeforeKey: 0,
+    h264StallSent: false,
     // h264 描画中(canvas 表示・img 非表示)かどうか。canvasEl/h264Renderer は初回 h264Chunk で遅延生成。
     // h264ErrorSent は codecError 送信済み(以後 applyH264Chunk を無視、frame 復帰待ち)のガード。
     canvasEl: null,
@@ -193,7 +191,6 @@ export function renderMeta(entry) {
   }
   entry.stateBadgeEl.classList.toggle('tile-status-warn', warn);
   entry.stateBadgeEl.textContent = footerText;
-  entry.updatedEl.textContent = entry.lastUpdated ? formatTime(entry.lastUpdated) : '';
   renderOpBadge(entry);
   if (deviceOpMenuEntry === entry) {
     renderDeviceOpMenuItem();
@@ -294,11 +291,6 @@ export function findTileByName(name) {
   return undefined;
 }
 
-function touch(entry) {
-  entry.lastUpdated = new Date();
-  renderMeta(entry);
-}
-
 // 次の frame/devices 受信で自動的にクリアされる(表示し続けない設計)。
 function setTileError(entry, message) {
   entry.errorEl.textContent = '⚠ ' + message;
@@ -321,7 +313,7 @@ export function applyDevices(devices) {
     } else {
       entry.device = device;
     }
-    touch(entry);
+    renderMeta(entry);
     renderFrame(entry);
     clearTileError(entry);
   }
@@ -356,9 +348,13 @@ export function applyFrame(message) {
   if (message.width > 0 && message.height > 0) {
     entry.tile.style.setProperty('--tile-aspect', (message.width / message.height).toFixed(4));
   }
-  touch(entry);
+  renderMeta(entry);
   renderFrame(entry);
   clearTileError(entry);
+  // stream: true = ストリーミングヘルパー(mjpeg)由来。描画できたのでポーリング抑止を ack する
+  if (message.stream) {
+    ackStreamRendered(entry);
+  }
 }
 
 function disposeH264(entry) {
@@ -369,12 +365,36 @@ function disposeH264(entry) {
   }
 }
 
+// ストリーム由来フレームを実際に描画できたことをホストへ ack する(2秒スロットリング)。
+// ホストはこれを受けて初めてポーリングを間引く(契約: monitorDeviceStreamController.ts 冒頭。
+// ホスト受信基準で間引くと、webview 準備前に初期キーフレームが落ちた場合にタイルが餓死する)
+function ackStreamRendered(entry) {
+  const now = Date.now();
+  if (now - entry.streamAckAt < 2000) {
+    return;
+  }
+  entry.streamAckAt = now;
+  vscode.postMessage({ type: 'streamRendered', device: entry.device.id });
+}
+
 // h264Chunk(タイル用ストリーム)。デバイス毎にレンダラ/canvas を遅延生成し、初回描画(onFirstFrame)
 // で img→canvas に切り替える。h264ErrorSent 済みなら以後は無視(host が mjpeg に切替済みの前提)。
 export function applyH264Chunk(message) {
   const entry = tiles.get(message.device);
   if (!entry || entry.h264ErrorSent) {
     return;
+  }
+  // デコーダはキーフレームから始まる必要がある。初期キーフレームを取り逃した世代(webview 準備前に
+  // 送信済み等)はデルタしか届かず永久に描画できないため、ホストにヘルパー再起動を頼む
+  if (message.keyframe) {
+    entry.h264DeltasBeforeKey = 0;
+    entry.h264StallSent = false;
+  } else if (!entry.usingH264) {
+    entry.h264DeltasBeforeKey += 1;
+    if (entry.h264DeltasBeforeKey >= 30 && !entry.h264StallSent) {
+      entry.h264StallSent = true;
+      vscode.postMessage({ type: 'streamStall', device: message.device });
+    }
   }
   if (!entry.h264Renderer) {
     entry.canvasEl = entry.canvasEl || document.createElement('canvas');
@@ -385,8 +405,11 @@ export function applyH264Chunk(message) {
         if (dims.width > 0 && dims.height > 0) {
           entry.tile.style.setProperty('--tile-aspect', (dims.width / dims.height).toFixed(4));
         }
-        touch(entry);
+        renderMeta(entry);
         renderFrame(entry);
+      },
+      onFrameRendered: () => {
+        ackStreamRendered(entry);
       },
       onError: () => {
         entry.h264ErrorSent = true;
