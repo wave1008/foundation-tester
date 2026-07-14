@@ -218,6 +218,12 @@ export class MonitorDeviceOps {
     if (resolution.kind === "resolved") {
       args.push("--project", resolution.project);
     }
+    // machine 解決に使う。実行プロファイルの machine 指定を determineMachine が最優先で採用するため、
+    // これが無いと machines/ が複数のとき「マシン名が未登録」で落ちてブリッジ供給に到達しない
+    // (executeBulkJob と同経路。ApiDeviceUp/Down 側の --profile と対)。
+    if (config.profile) {
+      args.push("--profile", config.profile);
+    }
 
     let failureLogged = false;
     const logFailure = (message: string): void => {
