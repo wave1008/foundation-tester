@@ -27,6 +27,7 @@ interface QualifyingTarget {
   readonly key: string;
   readonly command: string;
   readonly args: readonly string[];
+  readonly codec: "mjpeg" | "h264";
 }
 
 interface StreamEntry {
@@ -43,6 +44,10 @@ export class MonitorDeviceStreamController {
    * これが無いと諦めた helper を毎回再生成してスパム再起動になる(将来の Xcode ABI 破壊時が該当)。
    * リセット条件は「デバイス切断=対象から外れる」か「パネル再表示(setVisible(true))」のみ。 */
   private readonly gaveUpDeviceIds = new Set<string>();
+  /** webview から codecError(scope=tile)を受けたデバイス id。以後 applyDevices は設定値に関わらず
+   * mjpeg を使う(fallbackToMjpeg 参照。gaveUpDeviceIds と違い切断でもクリアしない — WebCodecs
+   * 非対応はデバイス側でなく webview 側の恒常的な制約のため)。 */
+  private readonly mjpegFallbackIds = new Set<string>();
   private visible = true;
   /** 直近の applyDevices 呼び出し引数。reapply() がポーリングモードのトグル直後に同じ入力で
    * 再判定するために保持する(次の monitorDevices イベント[最大 monitorInterval 秒後]を待たない)。 */
@@ -92,12 +97,19 @@ export class MonitorDeviceStreamController {
       if (device.state !== "connected") {
         continue;
       }
+      // codecError を受けたデバイスは設定値に関わらず mjpeg 固定(fallbackToMjpeg 参照)。
+      const codec: "mjpeg" | "h264" = this.mjpegFallbackIds.has(device.id) ? "mjpeg" : config.streamCodec;
+      const codecArgs = codec === "h264" ? ["--codec", "h264"] : [];
       if (simStreamPath && device.platform === "ios" && device.udid) {
         qualifying.set(device.id, {
           platform: "ios",
           key: device.udid,
           command: simStreamPath,
-          args: ["--udid", device.udid, "--fps", String(config.liveFps), "--max-width", String(config.monitorMaxWidth)],
+          args: [
+            "--udid", device.udid, "--fps", String(config.liveFps), "--max-width", String(config.monitorMaxWidth),
+            ...codecArgs,
+          ],
+          codec,
         });
       } else if (androidStreamPath && adbPath && device.platform === "android" && device.serial) {
         qualifying.set(device.id, {
@@ -107,7 +119,9 @@ export class MonitorDeviceStreamController {
           args: [
             "--serial", device.serial, "--adb", adbPath,
             "--fps", String(config.liveFps), "--max-width", String(config.monitorMaxWidth),
+            ...codecArgs,
           ],
+          codec,
         });
       }
     }
@@ -140,18 +154,29 @@ export class MonitorDeviceStreamController {
     }
   }
 
+  /** streamingDeviceIds への初回追加+syncSuppressFrames を onFrame/onChunk 共通で行う
+   * (suppressFrames 連動を codec に関わらず壊さないため)。 */
+  private markStreaming(deviceId: string): void {
+    if (!this.streamingDeviceIds.has(deviceId)) {
+      this.streamingDeviceIds.add(deviceId);
+      this.syncSuppressFrames();
+    }
+  }
+
   private startPipeline(deviceId: string, target: QualifyingTarget): void {
     const pipeline = new StreamPipeline({
       command: target.command,
       args: target.args,
       logPrefix: target.platform === "ios" ? "ios-stream" : "android-stream",
       outputChannel: this.deps.outputChannel,
+      codec: target.codec,
       onFrame: (jpegBase64, width, height) => {
-        if (!this.streamingDeviceIds.has(deviceId)) {
-          this.streamingDeviceIds.add(deviceId);
-          this.syncSuppressFrames();
-        }
+        this.markStreaming(deviceId);
         this.deps.post({ type: "frame", device: deviceId, jpegBase64, width, height });
+      },
+      onChunk: (data, keyframe, width, height) => {
+        this.markStreaming(deviceId);
+        this.deps.post({ type: "h264Chunk", device: deviceId, keyframe, width, height, data: new Uint8Array(data) });
       },
       onConnectionOk: () => undefined,
       onFailure: (message) => {
@@ -164,6 +189,14 @@ export class MonitorDeviceStreamController {
     });
     this.pipelines.set(deviceId, { platform: target.platform, key: target.key, pipeline });
     pipeline.start();
+  }
+
+  /** webview から codecError(scope=tile, device=deviceId)を受けたら monitorPanel.ts から呼ぶ。
+   * 以後このデバイスは mjpeg 固定にし、稼働中のパイプラインを破棄する(次の applyDevices[最大
+   * monitorInterval 秒後]で mjpeg として再生成される。gaveUpDeviceIds には入れない=諦め扱いにしない)。 */
+  fallbackToMjpeg(deviceId: string): void {
+    this.mjpegFallbackIds.add(deviceId);
+    this.disposeDevice(deviceId);
   }
 
   private disposeDevice(deviceId: string): void {

@@ -4,11 +4,20 @@
 import { vscode } from './vscodeApi.js';
 import { grid, emptyMessage, banner, btnUp, btnDown, deviceOpMenu, deviceOpMenuItemBtn, deviceOpMenuItemLabel, deviceOpMenuLiveBtn, profileSelect } from './domRefs.js';
 import { updateLaneVisibility, syncLanesToDevices, runningWorkers } from './laneLog.js';
+import { createH264Renderer } from './h264Decoder.js';
 
 const STATE_LABEL = {
   connected: '接続済み',
   booted: '起動中',
   offline: '未起動',
+};
+
+// bridgeWatch(拡張ホストの自動修復ウォッチドッグ、契約は main.js の 'bridgeWatch' ケース参照)の
+// phase→footer表示。'ok'はここに含めず通常表示へフォールバックさせる。
+const BRIDGE_WATCH_LABEL = {
+  unresponsive: { label: 'ブリッジ応答なし', warn: true },
+  repairing: { label: 'ブリッジ再起動中…', warn: false },
+  failed: { label: '復旧失敗(ftester出力参照)', warn: true },
 };
 
 // src/monitorModel.ts の deviceOpMenuItem の複製(webview は CSP で import 不可のため)。変更時は
@@ -107,6 +116,14 @@ function createTile(device) {
     errorEl: error,
     frameSrc: null,
     lastUpdated: null,
+    // bridgeWatch の直近 phase('ok'/未受信は undefined)。state==='booted' の間だけ表示に反映する。
+    bridgeWatchPhase: undefined,
+    // h264 描画中(canvas 表示・img 非表示)かどうか。canvasEl/h264Renderer は初回 h264Chunk で遅延生成。
+    // h264ErrorSent は codecError 送信済み(以後 applyH264Chunk を無視、frame 復帰待ち)のガード。
+    canvasEl: null,
+    h264Renderer: null,
+    usingH264: false,
+    h264ErrorSent: false,
   };
   tiles.set(device.id, entry);
   return entry;
@@ -114,10 +131,19 @@ function createTile(device) {
 
 function renderFrame(entry) {
   entry.frameWrapEl.textContent = '';
-  if (entry.device.state !== 'offline' && entry.frameSrc) {
-    entry.imgEl.src = entry.frameSrc;
+  if (entry.device.state !== 'offline' && (entry.frameSrc || entry.usingH264)) {
+    if (entry.frameSrc) {
+      entry.imgEl.src = entry.frameSrc;
+    }
     entry.imgEl.alt = entry.device.name;
+    // usingH264 中は img を DOM に残したまま非表示にする(mjpeg フォールバック復帰時に renderFrame
+    // だけで即再表示できるようにするため。canvas は h264 停止後も再利用せず null 化する)。
+    entry.imgEl.classList.toggle('h264-hidden', entry.usingH264);
     entry.frameWrapEl.appendChild(entry.imgEl);
+    if (entry.canvasEl) {
+      entry.canvasEl.classList.toggle('visible', entry.usingH264);
+      entry.frameWrapEl.appendChild(entry.canvasEl);
+    }
   } else {
     // offline→未起動+電源アイコン、それ以外(booted/フレーム未着)→起動中+スピナー。
     const offline = entry.device.state === 'offline';
@@ -139,7 +165,9 @@ function renderFrame(entry) {
   entry.frameWrapEl.appendChild(entry.opBadgeEl);
 }
 
-function renderMeta(entry) {
+// main.js の deviceOpBusy ハンドラからも呼ばれる(opBusy 変化時に bridgeWatch 優先度の
+// 再判定とメニュー項目再描画を一度に行うため。renderOpBadge/renderDeviceOpMenuItem は内部で呼ぶ)。
+export function renderMeta(entry) {
   entry.nameEl.textContent = entry.device.name;
   entry.nameEl.className = 'tile-name tile-name-' + entry.device.platform;
   entry.nameEl.title = entry.device.name + ' (' + entry.device.platform + ')';
@@ -150,6 +178,20 @@ function renderMeta(entry) {
   } else if (entry.device.state === 'booted') {
     footerText = '接続中';
   }
+  // booted 離脱時は古い phase を捨てる(再度 booted に戻った際に前回の死活情報を誤って出さないため)。
+  if (entry.device.state !== 'booted') {
+    entry.bridgeWatchPhase = undefined;
+  }
+  // deviceOpBusy(実行中の起動/停止操作)がある間は既存表示を優先し、bridgeWatch では上書きしない。
+  let warn = false;
+  if (entry.device.state === 'booted' && !entry.opBusy && entry.bridgeWatchPhase) {
+    const override = BRIDGE_WATCH_LABEL[entry.bridgeWatchPhase];
+    if (override) {
+      footerText = override.label;
+      warn = override.warn;
+    }
+  }
+  entry.stateBadgeEl.classList.toggle('tile-status-warn', warn);
   entry.stateBadgeEl.textContent = footerText;
   entry.updatedEl.textContent = entry.lastUpdated ? formatTime(entry.lastUpdated) : '';
   renderOpBadge(entry);
@@ -158,7 +200,7 @@ function renderMeta(entry) {
   }
 }
 
-// devices サイクル(renderMeta 経由)と deviceOpBusy 受信(main.js)の両方から呼ばれる。
+// renderMeta からのみ呼ばれる(devices サイクル・deviceOpBusy 受信とも renderMeta 経由)。
 export function renderOpBadge(entry) {
   const item = deviceOpMenuItem(entry.device.state, entry.opBusy);
   entry.opBadgeEl.textContent = item.label;
@@ -288,6 +330,7 @@ export function applyDevices(devices) {
       if (deviceOpMenuEntry === entry) {
         closeDeviceOpMenu();
       }
+      disposeH264(entry);
       entry.tile.remove();
       tiles.delete(id);
       selectedDeviceIds.delete(id);
@@ -305,6 +348,10 @@ export function applyFrame(message) {
     return; // devices サイクルより先に届いた場合は無視する(次の devices で改めて反映される)
   }
   entry.frameSrc = 'data:image/jpeg;base64,' + message.jpegBase64;
+  // mjpeg フォールバック復帰(codecError 後は host が mjpeg に切替え以後 frame のみ届く)。
+  if (entry.usingH264) {
+    disposeH264(entry);
+  }
   // --tile-aspect は CSS 側でタイル幅の計算に使われる。
   if (message.width > 0 && message.height > 0) {
     entry.tile.style.setProperty('--tile-aspect', (message.width / message.height).toFixed(4));
@@ -312,6 +359,54 @@ export function applyFrame(message) {
   touch(entry);
   renderFrame(entry);
   clearTileError(entry);
+}
+
+function disposeH264(entry) {
+  entry.usingH264 = false;
+  if (entry.h264Renderer) {
+    entry.h264Renderer.dispose();
+    entry.h264Renderer = null;
+  }
+}
+
+// h264Chunk(タイル用ストリーム)。デバイス毎にレンダラ/canvas を遅延生成し、初回描画(onFirstFrame)
+// で img→canvas に切り替える。h264ErrorSent 済みなら以後は無視(host が mjpeg に切替済みの前提)。
+export function applyH264Chunk(message) {
+  const entry = tiles.get(message.device);
+  if (!entry || entry.h264ErrorSent) {
+    return;
+  }
+  if (!entry.h264Renderer) {
+    entry.canvasEl = entry.canvasEl || document.createElement('canvas');
+    entry.h264Renderer = createH264Renderer({
+      canvas: entry.canvasEl,
+      onFirstFrame: (dims) => {
+        entry.usingH264 = true;
+        if (dims.width > 0 && dims.height > 0) {
+          entry.tile.style.setProperty('--tile-aspect', (dims.width / dims.height).toFixed(4));
+        }
+        touch(entry);
+        renderFrame(entry);
+      },
+      onError: () => {
+        entry.h264ErrorSent = true;
+        vscode.postMessage({ type: 'codecError', scope: 'tile', device: message.device });
+        disposeH264(entry);
+        renderFrame(entry);
+      },
+    });
+  }
+  entry.h264Renderer.pushChunk(message.data, message.keyframe, message.width, message.height);
+}
+
+// 契約: { type: 'bridgeWatch', name, phase }(name は deviceOpBusy と同じ device.name 名前空間)。
+export function applyBridgeWatch(message) {
+  const entry = findTileByName(message.name);
+  if (!entry) {
+    return;
+  }
+  entry.bridgeWatchPhase = message.phase === 'ok' ? undefined : message.phase;
+  renderMeta(entry);
 }
 
 export function applyDeviceError(message) {

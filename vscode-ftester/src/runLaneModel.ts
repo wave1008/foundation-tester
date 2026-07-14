@@ -151,14 +151,30 @@ function applyWorkers(state: RunLaneState, workers: readonly WorkerInfo[]): Lane
   return [{ type: "lanesConfigured", lanes }];
 }
 
-/** runFinished を受信しないままプロセスが終わった場合、残っている「実行中」を強制解除する。 */
+/**
+ * runFinished を受信しないままプロセスが終わった場合、残っている「実行中」を強制解除する。
+ * scenarioTimings も clear すること(isAnyLaneRunning が依存する契約 — clear しないと
+ * scenarioFinished を受信できなかったシナリオの分だけ「実行中」が永久に残ってしまう)。
+ */
 export function forceEndRunLaneState(state: RunLaneState): LaneAction[] {
   const actions: LaneAction[] = [];
   for (const workerId of state.runningWorkers) {
     actions.push({ type: "workerRunning", workerId, running: false });
   }
   state.runningWorkers.clear();
+  state.scenarioTimings.clear();
   return actions;
+}
+
+/**
+ * 実行中(scenarioStarted〜scenarioFinished の間)のレーンが1つでもあるか。並列実行のワーカーレーンと
+ * 逐次実行の全体レーン(OVERALL_LANE_ID)の両方を scenarioTimings でカバーする(worker の有無を問わず
+ * scenarioStarted で積み scenarioFinished で消すため)。monitorBridgeWatchdog.ts が自動修復を
+ * 実行中レーンが無い間に限定する判定に使う。forceEndRunLaneState が scenarioTimings も clear する
+ * 契約に依存する(そうでないとクラッシュ後に恒久的 true を返し続ける)。
+ */
+export function isAnyLaneRunning(state: RunLaneState): boolean {
+  return state.runningWorkers.size > 0 || state.scenarioTimings.size > 0;
 }
 
 export function reduceLaneEvent(state: RunLaneState, event: RunEvent, nowMs: number): LaneAction[] {

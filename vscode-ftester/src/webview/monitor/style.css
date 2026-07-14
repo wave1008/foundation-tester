@@ -310,6 +310,10 @@ select:disabled { opacity: 0.5; cursor: default; }
   color: var(--vscode-descriptionForeground);
   white-space: nowrap;
 }
+/* bridgeWatch(unresponsive/failed)用の注意色。#live-device-warning と同じトークン。 */
+.tile-state.tile-status-warn {
+  color: var(--vscode-editorWarning-foreground, #cca700);
+}
 .badge-running {
   background-color: var(--vscode-charts-blue, #0078d4);
   color: #ffffff;
@@ -340,6 +344,21 @@ select:disabled { opacity: 0.5; cursor: default; }
   width: 100%;
   height: 100%;
   object-fit: contain;
+  display: block;
+}
+.frame-wrap img.h264-hidden {
+  display: none;
+}
+/* h264 描画用 canvas。img と同じ絶対配置(deviceTiles.js が visible クラスで img と排他表示)。 */
+.frame-wrap canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: none;
+}
+.frame-wrap canvas.visible {
   display: block;
 }
 .frame-placeholder {
@@ -1198,7 +1217,8 @@ input[type="text"]::placeholder {
   border-radius: 3px;
   background-color: var(--vscode-input-background, #1e1e1e);
 }
-#live-screenshot {
+/* #live-canvas(liveTab.js が生成する h264 描画用 canvas)は img と同じ表示規則を共用する。 */
+#live-screenshot, #live-canvas {
   display: none;
   max-width: 100%;
   max-height: calc(100vh - 140px);
@@ -1211,8 +1231,8 @@ input[type="text"]::placeholder {
     21 21,
     crosshair;
 }
-#live-screenshot.visible { display: block; }
-#live-screenshot.disconnected { filter: grayscale(1) brightness(0.75); }
+#live-screenshot.visible, #live-canvas.visible { display: block; }
+#live-screenshot.disconnected, #live-canvas.disconnected { filter: grayscale(1) brightness(0.75); }
 #live-conn-overlay {
   position: absolute;
   inset: 0;

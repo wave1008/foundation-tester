@@ -106,6 +106,27 @@ export type MonitorToWebviewMessage =
       readonly width: number;
       readonly height: number;
     }
+  // H.264 AU 1件(deviceStream.ts v2 形式。monitorDeviceStreamController.ts の onChunk が post する。
+  // data は構造化クローンで転送される Uint8Array、base64 化しない。webview 側は main.js の
+  // 直下ディスパッチャから直接 applyH264Chunk へ渡す — "live" 封筒は経由しない)。
+  | {
+      readonly type: "h264Chunk";
+      readonly device: string;
+      readonly keyframe: boolean;
+      readonly width: number;
+      readonly height: number;
+      readonly data: Uint8Array;
+    }
+  // ライブ操作タブの H.264 AU 1件(monitorLiveController.ts の onChunk が post する。既存の
+  // { type: "frame", image } と並置。h264Chunk と同じく "live" 封筒は経由しない — webview 側は
+  // main.js の直下ディスパッチャから直接 liveTab.js の applyLiveH264Chunk へ渡す)。
+  | {
+      readonly type: "liveH264Chunk";
+      readonly keyframe: boolean;
+      readonly width: number;
+      readonly height: number;
+      readonly data: Uint8Array;
+    }
   | { readonly type: "deviceError"; readonly device?: string; readonly message: string }
   | { readonly type: "bootBusy"; readonly busy: boolean }
   | { readonly type: "processDown"; readonly message: string }
@@ -261,7 +282,14 @@ export type MonitorToWebviewMessage =
   // 設定タブの「ポーリングモードを使用する」チェックボックスの現在値。ready 直後(永続状態の反映)と
   // setPollingMode 受信直後(monitorPanel.ts)の両方で送る。webview 側は settingsTab.js の
   // applySettings へそのまま渡す(setPollingMode と対の契約)。
-  | { readonly type: "pollingMode"; readonly value: boolean };
+  | { readonly type: "pollingMode"; readonly value: boolean }
+  // ブリッジ突然死の自動修復ウォッチドッグ(monitorBridgeWatchdog.ts)の状態遷移通知。name は
+  // deviceOpBusy と同じ名前空間(デバイス論理名)。webview 側はタイルのバッジ表示に使う。
+  | {
+      readonly type: "bridgeWatch";
+      readonly name: string;
+      readonly phase: "unresponsive" | "repairing" | "failed" | "ok";
+    };
 
 /** 検証済みの MonitorEvent を、webview へそのまま postMessage できる形に変換する。 */
 export function toWebviewMessage(event: MonitorEvent): MonitorToWebviewMessage {
@@ -385,7 +413,12 @@ export type MonitorFromWebviewMessage =
   // 設定タブの「ポーリングモードを使用する」チェックボックス変更(settingsTab.js)。true でストリーミングを
   // 止めてポーリングへ強制する(iOS/Android・ライブ操作タブ/デバイスタイル共通)。monitorPanel.ts が
   // workspaceState へ永続化し、対の "pollingMode" メッセージで即時反映する。
-  | { readonly type: "setPollingMode"; readonly value: boolean };
+  | { readonly type: "setPollingMode"; readonly value: boolean }
+  // webview 側 WebCodecs が未対応/デコード失敗したときに1回送られてくる(受け手: monitorPanel.ts の
+  // codecError ハンドラ→monitorDeviceStreamController.fallbackToMjpeg/monitorLiveController.fallbackToMjpeg)。
+  // scope="tile" は device 必須(対象タイルを1つ特定するため)、scope="live" は選択中デバイスに
+  // 一律適用するため device 不要。
+  | { readonly type: "codecError"; readonly scope: "tile" | "live"; readonly device?: string };
 
 /**
  * machineDevicesSync の add[] 1件(MachineDeviceAddEntry)の検証。name の空文字は不正。
@@ -539,6 +572,12 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
       return typeof value.id === "number";
     case "setPollingMode":
       return typeof value.value === "boolean";
+    case "codecError":
+      return (
+        (value.scope === "tile" || value.scope === "live") &&
+        (value.device === undefined || typeof value.device === "string") &&
+        (value.scope !== "tile" || typeof value.device === "string")
+      );
     default:
       return false;
   }

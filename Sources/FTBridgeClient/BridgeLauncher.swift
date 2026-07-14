@@ -78,6 +78,7 @@ public struct BridgeLauncher {
     /// FT_PORT はビルド時に 8123 で焼き込まれるため、xctestrun のコピーに指定ポートを注入してから
     /// 起動する(ビルド1回で任意ポート数のブリッジを起動できる)
     public func startDetached() throws {
+        killOrphanRunners()
         guard let original = try findXCTestRun() else {
             throw LauncherError.xctestrunNotFound(derivedDataPath.path)
         }
@@ -138,6 +139,38 @@ public struct BridgeLauncher {
         let outData = try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
         try outData.write(to: output)
         return output
+    }
+
+    /// HTTP サーバだけ死んで親 xcodebuild が残留するケースの後始末。起動前に走らせないと
+    /// pid ファイルが新プロセスの PID で上書きされ、旧プロセスがどの pid ファイルからも
+    /// 参照されない残骸になる。マッチはこのポート専用の xctestrun ファイル名
+    /// (FTesterRunner-<port>.xctestrun。ポートごとに別ファイルなので他ポートは誤爆しない)を
+    /// コマンドラインに含む xcodebuild のみ対象にする。
+    func killOrphanRunners() {
+        let xctestrunPath = derivedDataPath
+            .appendingPathComponent("Build/Products/FTesterRunner-\(port).xctestrun").path
+        guard let ps = try? Shell.run(["ps", "-axo", "pid=,command="]), ps.status == 0 else { return }
+        var pids: [Int32] = []
+        for line in ps.output.split(separator: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard let spaceIdx = trimmed.firstIndex(of: " ") else { continue }
+            let command = trimmed[trimmed.index(after: spaceIdx)...]
+            guard command.contains("xcodebuild"), command.contains(xctestrunPath),
+                  let pid = Int32(trimmed[..<spaceIdx]) else { continue }
+            pids.append(pid)
+        }
+        guard !pids.isEmpty else { return }
+        for pid in pids { kill(pid, SIGTERM) }
+        var remaining = Set(pids)
+        let deadline = Date().addingTimeInterval(5)
+        while Date() < deadline, !remaining.isEmpty {
+            remaining = remaining.filter { kill($0, 0) == 0 }
+            if remaining.isEmpty { break }
+            Thread.sleep(forTimeInterval: 0.2)
+        }
+        for pid in remaining { kill(pid, SIGKILL) }
+        let message = "→ ポート \(port) の残骸ランナー(pid \(pids.map(String.init).joined(separator: ", "))) を掃除しました\n"
+        FileHandle.standardError.write(Data(message.utf8))
     }
 
     public func stop() throws {

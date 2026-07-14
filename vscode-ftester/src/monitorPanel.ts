@@ -35,6 +35,7 @@ import {
   type MonitorDevice,
   type MonitorToWebviewMessage,
 } from "./monitorModel";
+import { MonitorBridgeWatchdog } from "./monitorBridgeWatchdog";
 import { MonitorDeviceOps } from "./monitorDeviceOps";
 import { MonitorDeviceStreamController } from "./monitorDeviceStreamController";
 import { MonitorExploreController } from "./monitorExploreController";
@@ -46,6 +47,7 @@ import type { RunBusMessage, RunEventBus } from "./runEventBus";
 import {
   createRunLaneState,
   forceEndRunLaneState,
+  isAnyLaneRunning,
   reduceLaneEvent,
   snapshotRunLaneState,
   type RunLaneToWebviewMessage,
@@ -124,6 +126,7 @@ class MonitorPanelController implements vscode.Disposable {
   private readonly processManager: MonitorProcessManager;
   private readonly profiles: MonitorProfilesController;
   private readonly deviceOps: MonitorDeviceOps;
+  private readonly bridgeWatchdog: MonitorBridgeWatchdog;
   private readonly live: MonitorLiveController;
   private readonly explore: MonitorExploreController;
   private readonly deviceStream: MonitorDeviceStreamController;
@@ -161,13 +164,24 @@ class MonitorPanelController implements vscode.Disposable {
       openGeneratedDocument: (filePath) => this.openGeneratedDocument(filePath),
       isDeviceStreaming: (deviceId) => this.deviceStream.isStreaming(deviceId),
       getStreamingDeviceIds: () => this.deviceStream.streamingIds(),
-      notifyMonitorDevices: (devices) => this.deviceStream.applyDevices(devices),
+      notifyMonitorDevices: (devices) => {
+        this.deviceStream.applyDevices(devices);
+        this.bridgeWatchdog.observe(devices);
+      },
       isPollingMode: () => this.pollingMode,
     };
     this.deviceStream = new MonitorDeviceStreamController(this.deps);
     this.processManager = new MonitorProcessManager(this.deps);
     this.profiles = new MonitorProfilesController(this.deps);
     this.deviceOps = new MonitorDeviceOps(this.deps);
+    // enqueueLifecycleJob 委譲のため deviceOps より後に生成する。
+    this.bridgeWatchdog = new MonitorBridgeWatchdog({
+      post: (message) => this.post(message),
+      log: (message) => this.outputChannel.appendLine(message),
+      enqueueLifecycleJob: (job) => this.deviceOps.enqueueLifecycleJob(job),
+      isAutoRepairEnabled: () => this.getConfig().autoRepairBridge,
+      isAnyRunActive: () => isAnyLaneRunning(this.laneState),
+    });
     this.live = new MonitorLiveController(this.deps, cli, () => void testTree.refresh());
     this.explore = new MonitorExploreController(this.deps, cli, workspaceState, () => void testTree.refresh());
 
@@ -438,6 +452,17 @@ class MonitorPanelController implements vscode.Disposable {
         // トグル直後に両供給元へ即時反映する(次のデバイス選択/monitorDevicesイベント待ちにしない)。
         this.live.refreshFrameSource();
         this.deviceStream.reapply();
+        break;
+      case "codecError":
+        if (message.scope === "tile" && message.device) {
+          this.outputChannel.appendLine(
+            `[monitor-stream] ${message.device}: WebCodecs 未対応/デコード失敗のため mjpeg へフォールバックします。`,
+          );
+          this.deviceStream.fallbackToMjpeg(message.device);
+        } else if (message.scope === "live") {
+          this.outputChannel.appendLine("[live-stream] WebCodecs 未対応/デコード失敗のため mjpeg へフォールバックします。");
+          this.live.fallbackToMjpeg();
+        }
         break;
     }
   }

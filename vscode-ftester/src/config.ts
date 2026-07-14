@@ -33,6 +33,14 @@ export interface FtesterConfig {
   /** Android 実機/エミュレータのライブ映像ストリーミング(ftester-androidstream)を使うか。
    * iosStreamEnabled と同じ方針(helper 未ビルド・adb 未検出なら自動でポーリングにフォールバック)。 */
   androidStreamEnabled: boolean;
+  /** 画面ストリーミングのコーデック。"h264": WebCodecs によるハードウェアデコード(既定、
+   * deviceStream.ts の v2 stdout 形式)。"mjpeg": 従来方式(v1 形式)。webview からの
+   * codecError(WebCodecs 未対応/デコード失敗)を受けた個別デバイスは設定に関わらず
+   * mjpeg へ自動フォールバックする(monitorDeviceStreamController.ts/monitorLiveController.ts)。 */
+  streamCodec: "h264" | "mjpeg";
+  /** true の場合、ブリッジ無応答(connected→booted 降格が booted 連続5回続く)を検出したら、実行中の
+   * レーンが無い間に限り device-up で自動修復を試みる(monitorBridgeWatchdog.ts)。 */
+  autoRepairBridge: boolean;
 }
 
 /** ワークスペースルート(Package.swift のあるフォルダ)を解決する。開いていなければ undefined。 */
@@ -66,6 +74,8 @@ export function readConfig(workspaceRoot: string): FtesterConfig {
     liveFps: Math.min(30, Math.max(3, configuration.get<number>("liveFps", 12))),
     iosStreamEnabled: configuration.get<boolean>("iosStreamEnabled", true),
     androidStreamEnabled: configuration.get<boolean>("androidStreamEnabled", true),
+    streamCodec: configuration.get<"h264" | "mjpeg">("streamCodec", "h264"),
+    autoRepairBridge: configuration.get<boolean>("autoRepairBridge", true),
   };
 }
 
