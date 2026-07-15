@@ -29,12 +29,16 @@ public enum ProfileWorkerFactory {
                 // フォールバック)を使う。ホスト warmup 用 driver は in-app ブリッジへの BridgeClient
                 // でよい(in-app も HTTP 応答するため)。
                 let engine = (device.engine == "inapp" || device.engine == "hybrid") ? device.engine : nil
+                // suspend された in-app アプリは /status が無応答になるため、注入先アプリの bundleID を
+                // 明示的に渡してサブプロセスの inapp/XCUITest ルーティングを確定させる(engine 有りのみ)
+                let inappBundleID = engine != nil ? iosApp?.bundleID : nil
                 workers.append(RunWorker(
                     label: "\(device.name)(ios:\(device.port))", platform: "ios",
                     driver: BridgeClient(port: device.port),
                     connection: DriverConnection(platform: "ios", port: device.port,
                                                  engine: engine, udid: device.udid,
-                                                 xcuiPort: device.xcuiPort),
+                                                 xcuiPort: device.xcuiPort,
+                                                 inappBundleID: inappBundleID),
                     logicalName: device.name))
             }
         }

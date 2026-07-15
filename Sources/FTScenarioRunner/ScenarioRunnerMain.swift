@@ -99,6 +99,10 @@ struct RunScenario: AsyncParsableCommand {
     @Option(name: .customLong("xcui-port"), help: "iOS: hybrid のフォールバック用 XCUITest ブリッジのポート")
     var xcuiPort: UInt16?
 
+    @Option(name: .customLong("inapp-app"),
+            help: "iOS: provision 時に in-app ブリッジを注入したアプリの bundleID(suspend 時の注入先判定用)")
+    var inappApp: String?
+
     @Flag(help: "FM によるロケータ自己修復を許可する")
     var heal = false
 
@@ -163,7 +167,17 @@ struct RunScenario: AsyncParsableCommand {
                     // 注入先(/status の sessionBundleID)と異なる場合、別アプリを注入起動すると
                     // ポート衝突で旧ブリッジが偽成功応答し「裏のアプリを操作して失敗」する。
                     // hybrid はそのシナリオを丸ごと XCUITest ブリッジで駆動、inapp は明示エラー。
-                    let injected = try await BridgeClient(port: port).status().sessionBundleID
+                    //
+                    // suspend 対策: 直前が別アプリ(system-UI)のシナリオだと注入先アプリは
+                    // バックグラウンドで iOS に suspend され、in-app ブリッジは TCP を受理するが
+                    // 応答しない(既定 45s で「ドライバに接続できません: The request timed out」ハング)。
+                    // 短いタイムアウトでプローブし、無応答時は provision 時の注入先(inappApp)を
+                    // 注入先とみなす。これで対象アプリ==注入先なら InAppDriver(冒頭 launchApp が
+                    // relaunch で bridge を張り直す)、別アプリ(Preferences 等)なら mismatch=XCUITest
+                    // へ正しく分岐する。inappApp を使わず nil を「不明」扱いにすると、suspend 中の
+                    // 別アプリシナリオを in-app 経路へ誤ルーティングして破綻する(実際に回帰した)。
+                    let probe = BridgeClient(port: port, timeoutSeconds: 4)
+                    let injected = (try? await probe.status(timeout: 4))?.sessionBundleID ?? inappApp
                     if let injected, injected != testClass.app {
                         guard engine == "hybrid", let xcuiPort else {
                             throw ValidationError(
@@ -190,7 +204,12 @@ struct RunScenario: AsyncParsableCommand {
             default:
                 throw ValidationError("platform は ios / android のいずれかです: \(runPlatform)")
             }
-            _ = try await driver.status()  // 接続不能なら早期に分かりやすく失敗させる
+            // InAppDriver は注入先アプリが suspend 中だと status がハングし(上記 suspend 対策参照)、
+            // かつ冒頭 launchApp の relaunch で必ず bridge を張り直すため pre-flight の接続確認はしない。
+            // XCUITest / Android の常駐ドライバのみ、接続不能を早期に分かりやすく失敗させる。
+            if !(driver is InAppDriver) {
+                _ = try await driver.status()
+            }
         }
 
         let delegate = LazyFMDelegate()  // 遅延初期化の理由は class doc 参照
