@@ -22,6 +22,7 @@ import {
   isDeviceCatalogJson,
   isDeviceLifecycleQueueBusy,
   isDeviceOpEvent,
+  isDevicesUpEvent,
   isInstalledDevicesJson,
   type MonitorFromWebviewMessage,
   type MonitorToWebviewMessage,
@@ -173,7 +174,9 @@ export class MonitorDeviceOps {
   private executeBulkJob(kind: "up" | "down"): void {
     const config = this.deps.getConfig();
     const resolution = resolveProjectName(this.deps.workspaceRoot, config);
-    const args: string[] = ["devices", kind];
+    // up は ftester api devices-up(deviceStarting/deviceFinished の NDJSON でタイルを即時更新)、
+    // down は従来どおり devices down(プレーンテキスト出力のみ)。
+    const args: string[] = kind === "up" ? ["api", "devices-up"] : ["devices", kind];
     if (resolution.kind === "resolved") {
       args.push("--project", resolution.project);
     }
@@ -213,7 +216,66 @@ export class MonitorDeviceOps {
         }
       }
     };
-    proc.stdout.on("data", (chunk: Buffer) => appendLines("stdout", chunk));
+
+    if (kind === "down") {
+      proc.stdout.on("data", (chunk: Buffer) => appendLines("stdout", chunk));
+      proc.stderr.on("data", (chunk: Buffer) => appendLines("stderr", chunk));
+
+      proc.on("error", (error) => {
+        this.deps.outputChannel.appendLine(
+          `[ftester] devices ${kind} の実行でエラーが発生しました: ${error.message}`,
+        );
+        finishOnce();
+      });
+      proc.on("close", (exitCode) => {
+        this.deps.outputChannel.appendLine(
+          `[ftester] devices ${kind} が終了しました(exit code: ${String(exitCode)})`,
+        );
+        finishOnce();
+      });
+      return;
+    }
+
+    // ---- up 専用経路: devices-up の NDJSON を中継し、deviceStarting/deviceFinished から
+    // 即座にタイルの「起動中」表示を作る(モニターの状態スキャン到達を待たない)。stderr は
+    // devices-up の診断ログのみなので down と同じプレーンテキスト出力のまま。----
+
+    // このジョブのクロージャ内だけで有効な「起動を掴んだがまだ完了していないデバイス名」集合。
+    // close 時に残っていればクラッシュ・kill とみなし、deviceOpBusy(null) で表示を剥がす
+    // (正常終了なら deviceFinished で空になっているはずなので no-op)。
+    const startedNames = new Set<string>();
+    const stdoutParser = new NdjsonParser(
+      (value) => {
+        if (!isDevicesUpEvent(value)) {
+          this.deps.outputChannel.appendLine(
+            `[devices up] 未知の形式の行を無視しました: ${JSON.stringify(value)}`,
+          );
+          return;
+        }
+        switch (value.kind) {
+          case "log":
+            this.deps.outputChannel.appendLine(`[devices up] ${value.message}`);
+            break;
+          case "deviceStarting":
+            startedNames.add(value.name);
+            this.deps.post({ type: "deviceOpBusy", name: value.name, op: "up", status: "running" });
+            break;
+          case "deviceFinished":
+            startedNames.delete(value.name);
+            this.deps.post({ type: "deviceOpBusy", name: value.name, op: null, status: null });
+            break;
+          case "finished":
+            if (!value.ok) {
+              this.deps.outputChannel.appendLine(
+                `[ftester] devices up が失敗しました: ${value.error ?? "(詳細不明)"}`,
+              );
+            }
+            break;
+        }
+      },
+      (line) => this.deps.outputChannel.appendLine(`[devices up stdout] ${line}`),
+    );
+    proc.stdout.on("data", (chunk: Buffer) => stdoutParser.push(chunk));
     proc.stderr.on("data", (chunk: Buffer) => appendLines("stderr", chunk));
 
     proc.on("error", (error) => {
@@ -223,6 +285,13 @@ export class MonitorDeviceOps {
       finishOnce();
     });
     proc.on("close", (exitCode) => {
+      stdoutParser.end();
+      // クラッシュ・kill でタイルの「起動中」表示が永久に残らないためのクリーンアップ
+      // (正常終了なら deviceFinished 済みでこの Set は空 = 無害な no-op)。
+      for (const name of startedNames) {
+        this.deps.post({ type: "deviceOpBusy", name, op: null, status: null });
+      }
+      startedNames.clear();
       this.deps.outputChannel.appendLine(
         `[ftester] devices ${kind} が終了しました(exit code: ${String(exitCode)})`,
       );

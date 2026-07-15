@@ -9,7 +9,9 @@
 //     "state":"connected"|"booted"|"offline","detail":".."}]}   … サイクル毎
 //   {"kind":"monitorFrame","device":"..","jpegBase64":"..","width":480,"height":1040}
 //     … connected デバイスのみ、約interval秒毎
-//   {"kind":"monitorError","device":"..","message":".."}         … device は省略されうる
+//   {"kind":"monitorError","device":"..","message":".."}         … device は省略されうる。
+//     現行バイナリは送出しない(スクショ変換失敗は stderr のみ。ユーザー決定 2026-07-16)が、
+//     読み手としては旧バイナリ互換のため受理し続ける
 
 export type MonitorPlatform = "ios" | "android";
 export type MonitorDeviceState = "connected" | "booted" | "offline";
@@ -639,6 +641,33 @@ export function isDeviceOpEvent(value: unknown): value is DeviceOpEvent {
   switch (value.kind) {
     case "log":
       return typeof value.message === "string";
+    case "finished":
+      return typeof value.ok === "boolean" && (value.error === null || typeof value.error === "string");
+    default:
+      return false;
+  }
+}
+
+/** `ftester api devices-up` の NDJSON 1行分のイベント。
+ * 契約の同期相手: Sources/ftester/ApiDeviceCommands.swift ApiDevicesUp(deviceStarting/deviceFinished は
+ * ブート開始/完了の即時通知で、モニターの状態スキャンを待たずタイルを「起動中」表示にするために使う)。 */
+export type DevicesUpEvent =
+  | { readonly kind: "log"; readonly message: string }
+  | { readonly kind: "deviceStarting"; readonly name: string; readonly platform: string }
+  | { readonly kind: "deviceFinished"; readonly name: string; readonly platform: string }
+  | { readonly kind: "finished"; readonly ok: boolean; readonly error: string | null };
+
+/** value が DevicesUpEvent として扱ってよいか判定する(isDeviceOpEvent と同じ方針)。 */
+export function isDevicesUpEvent(value: unknown): value is DevicesUpEvent {
+  if (!isRecord(value) || typeof value.kind !== "string") {
+    return false;
+  }
+  switch (value.kind) {
+    case "log":
+      return typeof value.message === "string";
+    case "deviceStarting":
+    case "deviceFinished":
+      return typeof value.name === "string" && typeof value.platform === "string";
     case "finished":
       return typeof value.ok === "boolean" && (value.error === null || typeof value.error === "string");
     default:

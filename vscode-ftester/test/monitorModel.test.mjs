@@ -29,6 +29,7 @@ import {
   isDeviceCatalogJson,
   isDeviceLifecycleQueueBusy,
   isDeviceOpEvent,
+  isDevicesUpEvent,
   isInstalledDevicesJson,
   isMonitorEvent,
   isMonitorFromWebviewMessage,
@@ -277,6 +278,29 @@ test("isDeviceOpEvent: 未知のkind・フィールド欠落/型不一致は fal
   assert.equal(isDeviceOpEvent({ kind: "finished", ok: "true", error: null }), false);
   assert.equal(isDeviceOpEvent({ kind: "finished", ok: false, error: 123 }), false);
   assert.equal(isDeviceOpEvent(null), false);
+});
+
+// ---- isDevicesUpEvent ----
+
+test("isDevicesUpEvent: log/deviceStarting/deviceFinished/finished(ok:true/false)の正常な値を true と判定する", () => {
+  assert.equal(isDevicesUpEvent({ kind: "log", message: "起動しています..." }), true);
+  assert.equal(isDevicesUpEvent({ kind: "deviceStarting", name: "シミュ1", platform: "ios" }), true);
+  assert.equal(isDevicesUpEvent({ kind: "deviceFinished", name: "シミュ1", platform: "ios" }), true);
+  assert.equal(isDevicesUpEvent({ kind: "finished", ok: true, error: null }), true);
+  assert.equal(isDevicesUpEvent({ kind: "finished", ok: false, error: "失敗しました" }), true);
+});
+
+test("isDevicesUpEvent: 未知のkind・フィールド欠落/型不一致は false", () => {
+  assert.equal(isDevicesUpEvent({ kind: "unknown" }), false);
+  assert.equal(isDevicesUpEvent({ kind: "log" }), false);
+  assert.equal(isDevicesUpEvent({ kind: "log", message: 123 }), false);
+  assert.equal(isDevicesUpEvent({ kind: "deviceStarting" }), false);
+  assert.equal(isDevicesUpEvent({ kind: "deviceStarting", name: "シミュ1" }), false);
+  assert.equal(isDevicesUpEvent({ kind: "deviceStarting", name: 123, platform: "ios" }), false);
+  assert.equal(isDevicesUpEvent({ kind: "deviceFinished", name: "シミュ1", platform: 123 }), false);
+  assert.equal(isDevicesUpEvent({ kind: "finished", ok: "true", error: null }), false);
+  assert.equal(isDevicesUpEvent({ kind: "finished", ok: false, error: 123 }), false);
+  assert.equal(isDevicesUpEvent(null), false);
 });
 
 // ---- deviceOpMenuItem ----
