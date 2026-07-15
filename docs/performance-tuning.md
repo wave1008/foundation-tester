@@ -92,6 +92,26 @@ demo-4devices(16 シナリオ・ウォーム・§3.1 と同条件)の実測は w
 「実行開始→最初のシナリオ」は旧 ~5.7s(ビルド 2.6s+供給 ~3.1s 直列)→ **3.2s**
 (スキップ時。ビルドが要る時も供給と並行なので ≈max(ビルド, 供給))。
 
+### 3.3 devices up(デバイス一括起動)の再設計(2026-07-16 実装)
+
+「デバイスを起動」(`ftester devices up` = `DeviceBooter.bootAll`)の最終仕様:
+
+1. **CPU 負荷ゲートの廃止**(ユーザー決定): 旧実装は毎ブート前に「CPU<90% まで待つ」ゲートが
+   あり、最低でも 5 秒窓の計測待ち、負荷が高いと最大 90 秒待った。同時 2 台の固定上限だけで
+   CPU はほぼ飽和し暴走もしないため、ゲートごと削除した。
+2. **同時進行は最大 2 台・1台ずつ完結**(ユーザー決定): ワーカーは 1 台を「ブート →(iOS)
+   ブリッジ供給」まで完結させてから次のデバイスへ進む。**「同時進行が 2 台を超えて見えない」
+   こと自体が要件**。ブート完了分を束ねる供給バッチ化(ProvisionBatcher)は demo-3x3 コールドで
+   138s→79s と速かったが、供給中デバイス+ブート中デバイスが同時に 3〜4 台進行して見えるため
+   撤回した(再検討時は git 履歴のこの日付近傍を参照)。ワーカー間の provision() 同時実行の
+   排他は provision() 内の ProvisionLock(flock)が担う。
+3. **`api devices-up`(NDJSON)**: 拡張の一括起動はこれを spawn し、`deviceStarting`/
+   `deviceFinished` イベントで該当タイルを即「起動中」表示にする(モニターの 2 秒周期スキャン
+   の観測を待たない)。タイルのプレースホルダは「待機中(順番待ち)→ 起動中(ブート処理中)→
+   接続中(booted・フレーム未着)→ 画面表示」。
+
+cores/3 への同時数自動スケールも実装後に撤回(同ユーザー決定。固定 2)。
+
 ## 4. 計測基盤の使い方(チューニングの必須手順)
 
 **変更前にベースライン、変更後に同条件で再計測、summary.md を比較する。**
@@ -171,6 +191,7 @@ python3 Scripts/stream_vs_poll_bench.py --boot-ios-name シミュ1 --boot-androi
 | `ftester.streamCodec` | VSCode 設定(package.json) | h264 | 画面配信コーデック。h264=HWエンコード/デコード(低負荷)、mjpeg=互換(WebCodecs 問題時の退避先。デバイス単位の自動フォールバックあり) |
 | 描画間引き(66ms) | vscode-ftester/src/webview/monitor/h264Decoder.js | 約15fps | h264 の canvas 描画間隔。デコード自体は全チャンク必須(P フレーム連鎖)なので下げても復号コストは減らない |
 | watchdog しきい値 | vscode-ftester/src/monitorBridgeWatchdog.ts | booted 連続5観測(約10秒)/クールダウン3分/2回で諦め | ブリッジ自動修復の感度。短くすると起動過渡を誤検知、長くすると復旧が遅い |
+| `maxConcurrent`(bootAll 引数) | Sources/FTAndroid/DeviceBooter.swift | 2(固定。ユーザー決定 2026-07-16) | devices up の同時進行数(1台=ブート→iOS ブリッジ供給まで)。上限がブートストーム防止を兼ねる(旧 CPU 負荷ゲートは廃止済み。§3.3)。上げると速いがタイルの進行表示も増える |
 
 window/transition/animator の `*_scale` はチューニングノブではなく常時 0 固定で、
 `Sources/FTAndroid/AndroidBridge.swift` の `startBridge()` 内(ブリッジのコールド起動時)で

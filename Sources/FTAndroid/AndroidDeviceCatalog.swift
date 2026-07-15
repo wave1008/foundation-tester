@@ -84,8 +84,21 @@ public enum AndroidDeviceCatalog {
 
     /// 一致しなければ入力をそのまま返す(後段の照合エラーメッセージで内容が分かるようにするため)
     public static func canonicalAVDID(_ name: String) -> String {
-        let installed = installedAVDs()
+        canonicalAVDID(name, installed: installedAVDs())
+    }
+
+    /// 照合順序: ①id 完全一致 ②Android Studio の id 生成規則(非英数字→_)で正規化した候補
+    /// ③displayName 一致。②を③より先に行うのは、displayName は ini を失った孤児 .avd
+    /// ディレクトリにも一致し起動不能な id を返しうるため(実例 2026-07-16: "Pixel 9(Android 15)"
+    /// が ini 無しの Pixel_9_Android_15__1 に解決され serial 検出の 60 秒タイムアウトまで待った)
+    static func canonicalAVDID(
+        _ name: String, installed: [(id: String, displayName: String?)]
+    ) -> String {
         if installed.contains(where: { $0.id == name }) { return name }
+        let sanitized = String(name.map { ch in
+            ch.isLetter || ch.isNumber || ch == "." || ch == "-" || ch == "_" ? ch : "_"
+        })
+        if sanitized != name, installed.contains(where: { $0.id == sanitized }) { return sanitized }
         if let match = installed.first(where: { $0.displayName == name }) { return match.id }
         return name
     }

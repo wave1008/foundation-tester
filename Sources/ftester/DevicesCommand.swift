@@ -1,5 +1,5 @@
 // マシンプロファイルに定義されたデバイス群の起動・停止 CLI。
-//   ftester devices up   … 段階的起動(負荷ゲート付き・起動済みスキップ・iOS はブリッジ供給まで)
+//   ftester devices up   … 並行起動(最大2台同時・起動済みスキップ・iOS はブリッジ供給まで)
 //   ftester devices down … 全ブリッジ停止+シミュレータ/エミュレータ全終了
 // どちらも --profile(実行プロファイル名)指定時は、そのプロファイルが参照するデバイスのみを
 // 対象にする(RunProfileScope.swift。省略時はマシンプロファイルの全デバイス)。
@@ -19,7 +19,7 @@ struct DevicesCommand: AsyncParsableCommand {
 
     struct Up: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "全デバイスを段階的に起動する(負荷を見ながら最大2台同時。起動済みはスキップ。"
+            abstract: "全デバイスを起動する(最大2台同時。起動済みはスキップ。"
                 + "--profile 指定時はそのプロファイルが参照するデバイスのみ)")
 
         @Option(help: "テストプロジェクト名(省略時: Projects/ が 1 つならそれ / 既定プロジェクト)")
@@ -32,25 +32,12 @@ struct DevicesCommand: AsyncParsableCommand {
         var noBridge = false
 
         func run() async throws {
-            let testProject = try ScenarioHost.project(named: project)
-            // --profile の machine 明示指定を最優先(ProfileResolver.resolve() と同じ優先順位)
-            let machine = try ProfileResolver.determineMachine(
-                project: testProject, registered: LocalConfig.currentMachineName(),
-                runProfileName: profile)
-            if machine.auto {
-                print("→ マシンプロファイル自動採用: \(machine.name)")
-            }
-            let url = testProject.machinesDir.appendingPathComponent("\(machine.name).json")
-            var machineProfile = try JSONDecoder().decode(
-                MachineProfile.self, from: Data(contentsOf: url))
+            let machineProfile = try MachineProfileLoad.load(
+                project: project, profile: profile,
+                noteAutoMachine: { print($0) },
+                warn: { print($0) })
 
-            if let profile {
-                machineProfile = try RunProfileScope.filteredMachineProfile(
-                    project: testProject, machineName: machine.name, machineProfile: machineProfile,
-                    runProfileName: profile, warn: { print($0) })
-            }
-
-            // iOS は起動直後にそのままブリッジ供給まで行う(1 台単位で完結)
+            // iOS はブート完了分をバッチで束ねてブリッジ供給する(bootAll 内。ブートと供給は並行)
             let repoRoot = noBridge ? nil : try RepoRoot.find()
             await DeviceBooter.bootAll(machine: machineProfile, repoRoot: repoRoot) { print($0) }
             print("✅ デバイス起動シーケンス完了")
@@ -120,20 +107,10 @@ struct DevicesCommand: AsyncParsableCommand {
         /// (1台の失敗で全体を止めない)、exit 0 で完走する
         private func shutdownProfile(_ profile: String) async {
             do {
-                let testProject = try ScenarioHost.project(named: project)
-                // Up と同じ優先順位: プロファイルが machine を明示指定していれば最優先
-                let machine = try ProfileResolver.determineMachine(
-                    project: testProject, registered: LocalConfig.currentMachineName(),
-                    runProfileName: profile)
-                if machine.auto {
-                    print("→ マシンプロファイル自動採用: \(machine.name)")
-                }
-                let url = testProject.machinesDir.appendingPathComponent("\(machine.name).json")
-                let machineProfile = try JSONDecoder().decode(
-                    MachineProfile.self, from: Data(contentsOf: url))
-                let filtered = try RunProfileScope.filteredMachineProfile(
-                    project: testProject, machineName: machine.name, machineProfile: machineProfile,
-                    runProfileName: profile, warn: { print($0) })
+                let filtered = try MachineProfileLoad.load(
+                    project: project, profile: profile,
+                    noteAutoMachine: { print($0) },
+                    warn: { print($0) })
 
                 // iOS はシミュレータ停止前に稼働ブリッジも探して停止する(ゾンビ化防止)。repoRoot
                 // 未検出時はブリッジ停止をスキップし simctl shutdown のみ行う(ApiDeviceDown と同じ)
@@ -158,5 +135,34 @@ struct DevicesCommand: AsyncParsableCommand {
                 print("⚠️ \(error.localizedDescription)")
             }
         }
+    }
+}
+
+/// devices up/down・api devices-up 共通: プロジェクト/実行プロファイルからマシンプロファイルを
+/// 解決して読み込む(profile 指定時はそのプロファイルが参照するデバイスのみに絞る)。
+/// Up の従来コードをそのまま移した実装(ApiDeviceOperation の machineProfileNotFound ガードは
+/// 意図的に取り込まない。ファイル未検出時は Data(contentsOf:) がそのまま throw する Up 従来挙動を維持)
+enum MachineProfileLoad {
+    static func load(project: String?, profile: String?,
+                     noteAutoMachine: (String) -> Void,
+                     warn: (String) -> Void) throws -> MachineProfile {
+        let testProject = try ScenarioHost.project(named: project)
+        // --profile の machine 明示指定を最優先(ProfileResolver.resolve() と同じ優先順位)
+        let machine = try ProfileResolver.determineMachine(
+            project: testProject, registered: LocalConfig.currentMachineName(),
+            runProfileName: profile)
+        if machine.auto {
+            noteAutoMachine("→ マシンプロファイル自動採用: \(machine.name)")
+        }
+        let url = testProject.machinesDir.appendingPathComponent("\(machine.name).json")
+        var machineProfile = try JSONDecoder().decode(
+            MachineProfile.self, from: Data(contentsOf: url))
+
+        if let profile {
+            machineProfile = try RunProfileScope.filteredMachineProfile(
+                project: testProject, machineName: machine.name, machineProfile: machineProfile,
+                runProfileName: profile, warn: warn)
+        }
+        return machineProfile
     }
 }
