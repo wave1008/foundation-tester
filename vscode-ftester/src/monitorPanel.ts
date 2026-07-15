@@ -181,6 +181,7 @@ class MonitorPanelController implements vscode.Disposable {
       enqueueLifecycleJob: (job) => this.deviceOps.enqueueLifecycleJob(job),
       isAutoRepairEnabled: () => this.getConfig().autoRepairBridge,
       isAnyRunActive: () => isAnyLaneRunning(this.laneState),
+      isDeviceLifecycleQueueBusy: () => this.deviceOps.isQueueBusy(),
     });
     this.live = new MonitorLiveController(this.deps, cli, () => void testTree.refresh());
     this.explore = new MonitorExploreController(this.deps, cli, workspaceState, () => void testTree.refresh());
