@@ -33,6 +33,10 @@ function deviceOpMenuItem(state, busy) {
 
 // device id -> タイルDOM要素・最新フレーム(1枚のみ保持、履歴は溜めない)
 export const tiles = new Map();
+// bootBusy.bulkOp(「全て起動/終了」がキュー内にある間 'up'/'down'、無ければ null)。
+// up の間は未起動タイルを「待機中」、down の間は稼働中タイルを「シャットダウン中」表示にする
+// (起動/終了が進み devices サイクルで state が変われば通常表示に遷移)。
+let bulkOpActive = null;
 // 空 = 全ワーカー表示(絞り込みなし)
 export const selectedDeviceIds = new Set();
 
@@ -77,9 +81,6 @@ function createTile(device) {
   const img = document.createElement('img');
   const placeholder = document.createElement('div');
   placeholder.className = 'frame-placeholder';
-  // renderFrame() が frame-wrap を作り直す際に毎回末尾へ再アペンドする(忘れると消える)。
-  const opBadge = document.createElement('span');
-  opBadge.className = 'tile-op-badge';
 
   const footer = document.createElement('div');
   footer.className = 'tile-footer';
@@ -99,7 +100,6 @@ function createTile(device) {
     // そのデバイスの直列キュー上の状態({ op: 'up'|'down', status: 'queued'|'running' })。
     // キューに入っていなければ undefined。
     opBusy: undefined,
-    opBadgeEl: opBadge,
     stateBadgeEl: stateBadge,
     runningBadgeEl: runningBadge,
     frameWrapEl: frameWrap,
@@ -129,7 +129,16 @@ function createTile(device) {
 
 function renderFrame(entry) {
   entry.frameWrapEl.textContent = '';
-  if (entry.device.state !== 'offline' && (entry.frameSrc || entry.usingH264)) {
+  const offline = entry.device.state === 'offline';
+  // 終了中(一括・個別とも)は最終フレームを凍結表示のまま見せず、プレースホルダに倒す
+  // (ストリームは down 開始時に破棄済みで、以後フレームは更新されない)。
+  const shuttingDown = !offline && (bulkOpActive === 'down' || entry.opBusy?.op === 'down');
+  // まだ offline の起動操作中の表示分け(booted への遷移は devices サイクルの state 更新に任せる):
+  //  - 個別起動が実行中(status==='running'=simctl 起動処理が走っている)→「起動中」スピナー(下の booting 分岐)
+  //  - 個別起動がキュー待ち(status==='queued')/一括起動(個別 status を持たない)→「待機中」時計
+  const upRunning = offline && entry.opBusy?.op === 'up' && entry.opBusy.status === 'running';
+  const waitingUp = offline && !upRunning && (bulkOpActive === 'up' || entry.opBusy?.op === 'up');
+  if (!offline && !shuttingDown && (entry.frameSrc || entry.usingH264)) {
     if (entry.frameSrc) {
       entry.imgEl.src = entry.frameSrc;
     }
@@ -143,29 +152,41 @@ function renderFrame(entry) {
       entry.frameWrapEl.appendChild(entry.canvasEl);
     }
   } else {
-    // offline→未起動+電源アイコン、それ以外(booted/フレーム未着)→起動中+スピナー。
-    const offline = entry.device.state === 'offline';
+    // offline→未起動+電源アイコン(起動待ちは待機中+時計)、終了中→シャットダウン中+
+    // 無彩色スピナー、それ以外(booted/フレーム未着)→起動中+スピナー。
     entry.placeholderEl.textContent = '';
     const icon = document.createElement('span');
-    if (offline) {
+    if (shuttingDown) {
+      icon.className = 'placeholder-icon shutdown';
+    } else if (waitingUp) {
+      icon.className = 'placeholder-icon waiting';
+      icon.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"'
+        + ' stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">'
+        + '<circle cx="8" cy="8" r="6.2"/><path d="M8 4.6v3.4l2.4 1.5"/></svg>';
+    } else if (offline && !upRunning) {
       icon.className = 'placeholder-icon offline';
       icon.innerHTML = '<svg width="14" height="14" viewBox="0 0 16 16" fill="none"'
         + ' stroke="currentColor" stroke-width="1.6" stroke-linecap="round">'
         + '<path d="M8 1.8v5.4"/><path d="M4.4 3.9a5.4 5.4 0 1 0 7.2 0"/></svg>';
     } else {
+      // booted 待ち、または個別起動が実行中(offline のまま simctl 起動処理中)。
       icon.className = 'placeholder-icon booting';
     }
     const labelSpan = document.createElement('span');
-    labelSpan.textContent = offline ? '未起動' : '起動中';
+    labelSpan.textContent = shuttingDown
+      ? 'シャットダウン中'
+      : waitingUp
+        ? '待機中'
+        : offline && !upRunning
+          ? '未起動'
+          : '起動中';
     entry.placeholderEl.append(icon, labelSpan);
     entry.frameWrapEl.appendChild(entry.placeholderEl);
   }
-  entry.frameWrapEl.appendChild(entry.opBadgeEl);
 }
 
-// main.js の deviceOpBusy ハンドラからも呼ばれる(opBusy 変化時に bridgeWatch 優先度の
-// 再判定とメニュー項目再描画を一度に行うため。renderOpBadge/renderDeviceOpMenuItem は内部で呼ぶ)。
-export function renderMeta(entry) {
+// renderDeviceOpMenuItem は内部で呼ぶ(opBusy・state 変化時の一括再描画)。
+function renderMeta(entry) {
   entry.nameEl.textContent = entry.device.name;
   entry.nameEl.className = 'tile-name tile-name-' + entry.device.platform;
   entry.nameEl.title = entry.device.name + ' (' + entry.device.platform + ')';
@@ -191,17 +212,9 @@ export function renderMeta(entry) {
   }
   entry.stateBadgeEl.classList.toggle('tile-status-warn', warn);
   entry.stateBadgeEl.textContent = footerText;
-  renderOpBadge(entry);
   if (deviceOpMenuEntry === entry) {
     renderDeviceOpMenuItem();
   }
-}
-
-// renderMeta からのみ呼ばれる(devices サイクル・deviceOpBusy 受信とも renderMeta 経由)。
-export function renderOpBadge(entry) {
-  const item = deviceOpMenuItem(entry.device.state, entry.opBusy);
-  entry.opBadgeEl.textContent = item.label;
-  entry.opBadgeEl.classList.toggle('visible', item.disabled);
 }
 
 // 現在メニューを開いている対象のタイル entry(未オープンなら null)。
@@ -238,6 +251,9 @@ export function clampMenuPosition(menuEl, clientX, clientY) {
 function openDeviceOpMenu(entry, clientX, clientY) {
   deviceOpMenuEntry = entry;
   renderDeviceOpMenuItem();
+  // ライブ操作はブリッジ接続済み(state==='connected')でのみ機能する(liveTab.js の「接続されていません」
+  // 警告と対)。未接続では項目自体を出さない。
+  deviceOpMenuLiveBtn.style.display = entry.device.state === 'connected' ? '' : 'none';
   deviceOpMenu.classList.add('visible');
   clampMenuPosition(deviceOpMenu, clientX, clientY);
 }
@@ -282,7 +298,7 @@ window.addEventListener('resize', () => closeDeviceOpMenu());
 document.addEventListener('contextmenu', () => closeDeviceOpMenu());
 
 // deviceOp は device.name(論理名)だけをhostに渡すため、host応答(deviceOpBusy等)もnameで来る。
-export function findTileByName(name) {
+function findTileByName(name) {
   for (const entry of tiles.values()) {
     if (entry.device.name === name) {
       return entry;
@@ -422,6 +438,25 @@ export function applyH264Chunk(message) {
   entry.h264Renderer.pushChunk(message.data, message.keyframe, message.width, message.height);
 }
 
+// 契約: { type: 'deviceOpBusy', name, op, status }(monitorDeviceOps.ts postDeviceLifecycleStatus と対。
+// op: 'up'|'down'|null、status: 'queued'|'running'|null)。
+export function applyDeviceOpBusy(message) {
+  const entry = findTileByName(message.name);
+  if (!entry) {
+    return;
+  }
+  const prev = entry.opBusy;
+  entry.opBusy = message.op ? { op: message.op, status: message.status || 'running' } : undefined;
+  // opBusy の有無は footer の bridgeWatch 優先度判定にも影響するため renderMeta で一括再描画する。
+  renderMeta(entry);
+  // down 完了直後の稼働中タイルは再描画しない(setBusy の down 解除と同じ理由: state が offline に
+  // 更新される前に再描画すると凍結フレームが一瞬再表示される。次の devices 反映で「未起動」へ遷移)。
+  if (prev?.op === 'down' && !entry.opBusy && entry.device.state !== 'offline') {
+    return;
+  }
+  renderFrame(entry);
+}
+
 // 契約: { type: 'bridgeWatch', name, phase }(name は deviceOpBusy と同じ device.name 名前空間)。
 export function applyBridgeWatch(message) {
   const entry = findTileByName(message.name);
@@ -450,9 +485,24 @@ export function hideBanner() {
   banner.classList.remove('visible');
 }
 
-export function setBusy(busy) {
+export function setBusy(busy, bulkOp) {
   btnUp.disabled = busy;
   btnDown.disabled = busy;
+  const next = bulkOp === 'up' || bulkOp === 'down' ? bulkOp : null;
+  if (bulkOpActive !== next) {
+    const wasDown = bulkOpActive === 'down';
+    bulkOpActive = next;
+    // 表示(未起動⇔待機中、フレーム⇔シャットダウン中)を即時反映する。次の devices サイクルを
+    // 待つと数秒古い表示のままに見える。
+    for (const entry of tiles.values()) {
+      // down 解除時の稼働中タイルは除外: state が offline に更新される前に再描画すると凍結フレームが
+      // 一瞬再表示される。「シャットダウン中」のまま次の devices 反映で「未起動」へ直接遷移させる。
+      if (wasDown && entry.device.state !== 'offline') {
+        continue;
+      }
+      renderFrame(entry);
+    }
+  }
 }
 
 // この select は「使用する実行プロファイルの指定」のみ。追加/編集は runProfilesTab.js が担当。

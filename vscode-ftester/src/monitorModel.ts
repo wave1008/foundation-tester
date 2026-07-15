@@ -132,7 +132,7 @@ export type MonitorToWebviewMessage =
       readonly data: Uint8Array;
     }
   | { readonly type: "deviceError"; readonly device?: string; readonly message: string }
-  | { readonly type: "bootBusy"; readonly busy: boolean }
+  | { readonly type: "bootBusy"; readonly busy: boolean; readonly bulkOp: "up" | "down" | null }
   | { readonly type: "processDown"; readonly message: string }
   | {
       readonly type: "deviceOpBusy";
@@ -735,6 +735,13 @@ export function deviceLifecycleQueueHead(state: DeviceLifecycleQueueState): Devi
 /** 指定デバイス名を対象にした device ジョブが既にキュー内(実行中含む)にあるか(連打防止に使う)。 */
 export function hasDeviceLifecycleJobFor(state: DeviceLifecycleQueueState, name: string): boolean {
   return state.jobs.some((job) => job.kind === "device" && job.name === name);
+}
+
+/** キュー内(実行中含む)の bulk(全て起動/終了)ジョブの op。bootBusy.bulkOp の算出に使う
+ * (webview は up の間 未起動タイルを「待機中」、down の間 稼働中タイルを「シャットダウン中」表示にする)。 */
+export function bulkLifecycleOp(state: DeviceLifecycleQueueState): "up" | "down" | null {
+  const job = state.jobs.find((job) => job.kind === "bulk");
+  return job?.kind === "bulk" ? job.op : null;
 }
 
 /** 指定デバイス名の現在のキュー状態を返す(対象ジョブが無ければ undefined)。 */

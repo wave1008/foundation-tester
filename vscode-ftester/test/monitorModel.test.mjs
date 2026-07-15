@@ -15,6 +15,7 @@ import { NdjsonParser } from "../src/ndjson";
 import {
   addDevicesToMachineProfile,
   buildRunProfileTemplate,
+  bulkLifecycleOp,
   createDeviceLifecycleQueueState,
   dequeueDeviceLifecycleJob,
   deviceLifecycleJobNeedsMonitorPause,
@@ -374,6 +375,20 @@ test("DeviceLifecycleQueue: bulk(全台)ジョブは deviceLifecycleStatusFor �
   state = enqueueDeviceLifecycleJob(state, { kind: "device", name: "シミュ1", op: "up" });
   // bulk ジョブが先頭で実行中なので、後ろに積まれた device ジョブは queued
   assert.deepEqual(deviceLifecycleStatusFor(state, "シミュ1"), { op: "up", status: "queued" });
+});
+
+test("bulkLifecycleOp: キュー内(実行中/待機中問わず)の bulk ジョブの op を返す(無ければ null)", () => {
+  let state = createDeviceLifecycleQueueState();
+  assert.equal(bulkLifecycleOp(state), null);
+  state = enqueueDeviceLifecycleJob(state, { kind: "device", name: "シミュ1", op: "up" });
+  assert.equal(bulkLifecycleOp(state), null);
+  state = enqueueDeviceLifecycleJob(state, { kind: "bulk", op: "down" });
+  assert.equal(bulkLifecycleOp(state), "down");
+  state = dequeueDeviceLifecycleJob(state); // device up 完了
+  state = dequeueDeviceLifecycleJob(state); // bulk down 完了
+  assert.equal(bulkLifecycleOp(state), null);
+  state = enqueueDeviceLifecycleJob(state, { kind: "bulk", op: "up" });
+  assert.equal(bulkLifecycleOp(state), "up");
 });
 
 test("hasDeviceLifecycleJobFor: 同じデバイス名のジョブがキュー内(実行中/待機中問わず)にあれば true", () => {
