@@ -1,6 +1,6 @@
 // マシンプロファイルに定義されたデバイスの起動・停止。
-// - bootAll: 全デバイスの段階的起動。一斉起動はマシンが固まるため、
-//   1 台ずつ「負荷ゲート(loadavg)→ 起動 → ブート完了待ち」を繰り返す
+// - bootAll: 全デバイスの並行起動(最大2台同時)。1台を「ブート →(iOS)ブリッジ供給」まで
+//   完結させてから次のデバイスへ進む(同時進行が2台を超えないこと自体が要件)
 // - bootOne / shutdownOne: 1 台単位の起動・停止(モニターのプレースホルダー右クリック等)
 // iOS = simctl bootstatus -b / shutdown(ヘッドレス)、Android = emulator -avd(-no-window)/ emu kill。
 
@@ -27,10 +27,13 @@ public enum DeviceBooterError: Error, LocalizedError {
 
 public enum DeviceBooter {
 
-    /// 起動済みはスキップ。完全逐次だと負荷低下後も無駄に待つため、最大 maxConcurrent(既定2)台まで
-    /// 同時起動する(各自が負荷ゲートを通ってから起動するのでブートストームにはならない)。
-    /// repoRoot 指定時は iOS シミュレータ起動直後にブリッジも供給し、「起動済みだがブリッジ未接続」の
-    /// 中間状態を見せない。deviceFinished は成否問わず必ず呼ばれる(呼び出し側の再スキャン契約)。
+    /// 起動済みはスキップ。最大 maxConcurrent 台まで同時進行する(既定2はユーザー決定 2026-07-16:
+    /// 固定値。この上限がブートストーム防止を兼ねる。旧実装の CPU 負荷ゲートは同決定で廃止)。
+    /// ワーカーは1台を「ブート →(repoRoot 指定時の iOS)ブリッジ供給」まで完結させてから次へ進む。
+    /// 「同時進行が maxConcurrent 台を超えて見えない」こと自体が要件(ユーザー決定 2026-07-16。
+    /// ブート完了分を束ねる供給バッチ化 ProvisionBatcher は速いが同時進行が上限を超えるため撤回。
+    /// 再検討時は git 履歴参照)。
+    /// deviceFinished は成否問わず必ず呼ばれる(呼び出し側の再スキャン契約)。
     public static func bootAll(
         machine: MachineProfile,
         repoRoot: URL? = nil,
@@ -45,14 +48,11 @@ public enum DeviceBooter {
         guard !items.isEmpty else { return }
 
         let queue = BootQueue(items)
-        // ブリッジ供給は空きポート採番が競合するため直列化する(起動自体は並行)
-        let provisionLock = AsyncSemaphore(1)
-
         await withTaskGroup(of: Void.self) { group in
             for _ in 0..<max(1, min(maxConcurrent, items.count)) {
                 group.addTask {
                     while let item = await queue.next() {
-                        await bootItem(item, repoRoot: repoRoot, provisionLock: provisionLock,
+                        await bootItem(item, repoRoot: repoRoot,
                                        log: log, deviceStarting: deviceStarting,
                                        deviceFinished: deviceFinished)
                     }
@@ -72,30 +72,10 @@ public enum DeviceBooter {
         func next() -> BootItem? { items.isEmpty ? nil : items.removeFirst() }
     }
 
-    /// 並行実行の直列化用セマフォ(actor はサスペンションをまたいで排他しないため明示的に持つ)
-    private actor AsyncSemaphore {
-        private var available: Int
-        private var waiters: [CheckedContinuation<Void, Never>] = []
-        init(_ count: Int) { available = count }
-        func wait() async {
-            if available > 0 {
-                available -= 1
-                return
-            }
-            await withCheckedContinuation { waiters.append($0) }
-        }
-        func signal() {
-            if waiters.isEmpty {
-                available += 1
-            } else {
-                waiters.removeFirst().resume()
-            }
-        }
-    }
-
-    /// 1 デバイス分の起動処理(負荷ゲート → 起動 → iOS はブリッジ供給)
+    /// 1 デバイス分の起動処理(ブート → iOS はブリッジ供給まで完結)。deviceFinished は
+    /// 成否問わず末尾で必ず呼ぶ
     private static func bootItem(
-        _ item: BootItem, repoRoot: URL?, provisionLock: AsyncSemaphore,
+        _ item: BootItem, repoRoot: URL?,
         log: @escaping @Sendable (String) -> Void,
         deviceStarting: @escaping @Sendable (String, String) -> Void,
         deviceFinished: @escaping @Sendable (String, String) -> Void
@@ -106,20 +86,14 @@ public enum DeviceBooter {
             if let running = runningDescription(spec: spec, platform: item.platform) {
                 log("✔ \(spec.name): 起動済み(\(running))")
             } else {
-                await waitForLoadSettle(name: spec.name, log: log)
                 try await bootOne(spec: spec, platform: item.platform, log: log)
             }
             if item.platform == "ios", let repoRoot {
-                // 稼働中ブリッジは再利用されるので起動済みデバイスでも安全
-                await provisionLock.wait()
-                do {
-                    _ = try await BridgeProvisioner(repoRoot: repoRoot)
-                        .provision(devices: [(spec.name, spec)], log: log)
-                    await provisionLock.signal()
-                } catch {
-                    await provisionLock.signal()
-                    throw error
-                }
+                // 稼働中ブリッジは provision() が再利用するので起動済みデバイスでも安全。
+                // 複数ワーカーの provision() 同時実行はその内部の ProvisionLock(flock)が
+                // 直列化する(同一プロセス内の別 fd 同士でも排他が効く。ProvisionLockTests 参照)
+                _ = try await BridgeProvisioner(repoRoot: repoRoot)
+                    .provision(devices: [(spec.name, spec)], log: log)
             }
         } catch {
             log("❌ \(spec.name): \(error.localizedDescription)")
@@ -222,54 +196,6 @@ public enum DeviceBooter {
             .first(where: { $0.value == avdID })?.key
     }
 
-    // MARK: - 負荷ゲート
-
-    /// CPU使用率が90%を下回るまで待つ(上限90秒、超えたら続行)。1分間ロードアベレージは
-    /// 反応が遅く直前ブートの余波を引きずるため、5秒窓の実測値(host_statisticsのtick差分)で判定する
-    static func waitForLoadSettle(name: String = "", timeout: TimeInterval = 90,
-                                  log: @escaping @Sendable (String) -> Void) async {
-        let limit = 0.9
-        let prefix = name.isEmpty ? "" : "\(name): "
-        let deadline = Date().addingTimeInterval(timeout)
-        var announced = false
-        while Date() < deadline {
-            let usage = await cpuUsage(over: 5)
-            if usage < limit { return }
-            if !announced {
-                log(String(format: "⏳ \(prefix)負荷が落ち着くのを待ってから起動します(CPU %.0f%% / しきい値 %.0f%%)",
-                           usage * 100, limit * 100))
-                announced = true
-            }
-        }
-        log("⚠️ \(prefix)負荷が高いままですが起動を続行します")
-    }
-
-    static func cpuUsage(over seconds: TimeInterval) async -> Double {
-        guard let start = cpuTicks() else { return 0 }
-        try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
-        guard let end = cpuTicks() else { return 0 }
-        let busy = Double((end.user &- start.user) &+ (end.system &- start.system)
-                          &+ (end.nice &- start.nice))
-        let total = busy + Double(end.idle &- start.idle)
-        return total > 0 ? busy / total : 0
-    }
-
-    /// host_statistics(HOST_CPU_LOAD_INFO)の累積 tick(user/system/idle/nice)
-    private static func cpuTicks() -> (user: UInt64, system: UInt64,
-                                       idle: UInt64, nice: UInt64)? {
-        var size = mach_msg_type_number_t(
-            MemoryLayout<host_cpu_load_info_data_t>.size / MemoryLayout<integer_t>.size)
-        var info = host_cpu_load_info_data_t()
-        let result = withUnsafeMutablePointer(to: &info) {
-            $0.withMemoryRebound(to: integer_t.self, capacity: Int(size)) {
-                host_statistics(mach_host_self(), HOST_CPU_LOAD_INFO, $0, &size)
-            }
-        }
-        guard result == KERN_SUCCESS else { return nil }
-        return (UInt64(info.cpu_ticks.0), UInt64(info.cpu_ticks.1),
-                UInt64(info.cpu_ticks.2), UInt64(info.cpu_ticks.3))
-    }
-
     // MARK: - Android
 
     /// emulator バイナリの場所: ANDROID_HOME/ANDROID_SDK_ROOT → adb からの相対
@@ -338,3 +264,4 @@ public enum DeviceBooter {
         throw DeviceBooterError.bootTimedOut(serial: serial)
     }
 }
+

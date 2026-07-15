@@ -25,14 +25,14 @@
       {
         "name": "iPhone 17 Pro(iOS 27.0)",
         "os": "27.0",
-        "simulator": "iPhone 17 Pro",
-        "udid": "42D525B9-8FAD-4CFB-8B8E-3AF61EBB0A35"
+        "simulator": "iPhone 17 Pro(iOS 27.0)",
+        "udid": "A012ADD8-EEA0-4F0C-B8BC-65E748F5906F"
       },
       {
         "name": "シミュ3",
         "os": "27.0",
         "simulator": "iPhone 17 Pro-c",
-        "udid": "3EDCE6A7-375E-4216-9C61-97AB387D39A4"
+        "udid": "59E1AC43-435D-4B51-A1D0-EB66790520E2"
       }
     ]
   }

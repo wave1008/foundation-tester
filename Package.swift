@@ -139,6 +139,11 @@ let package = Package(
             swiftSettings: swift5Mode
         ),
         .testTarget(
+            name: "FTAndroidTests",
+            dependencies: ["FTAndroid", "FTCore"],
+            swiftSettings: swift5Mode
+        ),
+        .testTarget(
             name: "FTDSLTests",
             // swift-syntax 2 プロダクトは swiftbuild バックエンド対策。FTDSLTests→FTDSL→FTDSLMacros
             // の依存で、swiftbuild はマクロ(.macro)のオブジェクトをテストバンドルに誤って取り込むが
