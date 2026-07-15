@@ -50,15 +50,21 @@ public struct DriverConnection: Sendable, Hashable {
     public let udid: String?
     /// iOS: engine=hybrid のフォールバック用 XCUITest ブリッジのポート
     public let xcuiPort: UInt16?
+    /// iOS: provision 時に in-app ブリッジを注入したアプリの bundleID(engine=inapp/hybrid のみ)。
+    /// アプリが suspend され /status プローブが無応答のとき、注入先を特定して inapp/XCUITest の
+    /// ルーティングを正しく決めるために使う(サブプロセスの mismatch 判定を参照)。
+    public let inappBundleID: String?
 
     public init(platform: String, port: UInt16? = nil, serial: String? = nil,
-                engine: String? = nil, udid: String? = nil, xcuiPort: UInt16? = nil) {
+                engine: String? = nil, udid: String? = nil, xcuiPort: UInt16? = nil,
+                inappBundleID: String? = nil) {
         self.platform = platform
         self.port = port
         self.serial = serial
         self.engine = engine
         self.udid = udid
         self.xcuiPort = xcuiPort
+        self.inappBundleID = inappBundleID
     }
 }
 
@@ -201,6 +207,7 @@ public enum ScenarioHost {
         if let engine = connection.engine { args += ["--engine", engine] }
         if let udid = connection.udid { args += ["--udid", udid] }
         if let xcuiPort = connection.xcuiPort { args += ["--xcui-port", String(xcuiPort)] }
+        if let inappBundleID = connection.inappBundleID { args += ["--inapp-app", inappBundleID] }
         if let defaultTimeout { args += ["--default-timeout", String(defaultTimeout)] }
         if let debug {
             args.append("--debug")
@@ -243,7 +250,10 @@ public enum ScenarioHost {
                 guard !Task.isCancelled, await timeoutGuard.claim() else { return }
                 process.terminate()  // SIGTERM
                 try? await Task.sleep(nanoseconds: 2_000_000_000)  // 2s 猶予
-                if process.isRunning { _ = kill(process.processIdentifier, SIGKILL) }
+                // process.isRunning は内部で waitpid して子を reap してしまい、下の
+                // waitUntilExit() が終了通知を取りこぼして永久ハングする(SIGTERM を無視した
+                // 子で実測: run 全体が凍結)。kill(pid, 0) は reap せず生存確認だけ行う。
+                if kill(process.processIdentifier, 0) == 0 { _ = kill(process.processIdentifier, SIGKILL) }
             }
         }
 

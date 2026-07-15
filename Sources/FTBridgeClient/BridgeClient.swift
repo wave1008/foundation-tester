@@ -44,6 +44,14 @@ public final class BridgeClient: AppDriver {
         try await get("/status", timeout: sessionTimeout)
     }
 
+    /// 短いタイムアウトでの /status プローブ。バックグラウンドで iOS に suspend された in-app
+    /// アプリは TCP 接続は受理するが応答しないため、既定 sessionTimeout(45s)では無限待ちになる。
+    /// 呼び出し側は無応答を「不明」として扱う(engine=inapp/hybrid の注入先判定を参照)。
+    /// 確実に短時間で切るため config 側も短くした BridgeClient から呼ぶこと。
+    public func status(timeout: TimeInterval) async throws -> StatusResponse {
+        try await get("/status", timeout: timeout)
+    }
+
     /// install は HTTP エンドポイントを持たず simctl の役割。/status のデバイス名から対象シミュレータを
     /// 特定する。同名デバイス(Shutdown の複製等)があると名前指定 simctl は失敗するため、
     /// Booted かつ同名の UDID に解決してから実行する(解決不能時は名前のまま試す)。
