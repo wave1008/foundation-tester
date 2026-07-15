@@ -6,8 +6,12 @@ import FTCore
 public final class BridgeClient: AppDriver {
     let baseURL: URL
     let session: URLSession
+    /// per-endpoint の壁時計上限(秒)。既定は Timeout.interaction/session。
+    /// テスト seam(下の internal init)経由でのみ短縮注入できる
+    let interactionTimeout: TimeInterval
+    let sessionTimeout: TimeInterval
 
-    /// per-endpoint の壁時計上限(秒)。init の 120 は未指定エンドポイントのフォールバック。
+    /// per-endpoint の壁時計上限(秒)の既定値。init の 120 は未指定エンドポイントのフォールバック。
     /// URLRequest.timeoutInterval で config の既定を1リクエスト単位に上書きする
     enum Timeout {
         static let interaction: TimeInterval = 20  // tap/swipe/type/press/drag
@@ -17,17 +21,27 @@ public final class BridgeClient: AppDriver {
 
     /// timeoutSeconds: 既定 120 秒(launch や snapshot は数秒かかることがある)。
     /// ポート範囲のスキャン(生存確認)には短い値を渡す
-    public init(port: UInt16 = BridgeAPI.defaultPort, timeoutSeconds: TimeInterval = 120) {
+    public convenience init(port: UInt16 = BridgeAPI.defaultPort, timeoutSeconds: TimeInterval = 120) {
+        self.init(port: port, timeoutSeconds: timeoutSeconds,
+                  interactionTimeout: Timeout.interaction, sessionTimeout: Timeout.session)
+    }
+
+    /// テスト専用 seam: interaction/session の予算を短縮注入する(未応答ブリッジのタイムアウト
+    /// 検証等)。公開 init(port:timeoutSeconds:) はこれを既定予算付きで呼ぶだけで公開 API は不変
+    init(port: UInt16, timeoutSeconds: TimeInterval = 120,
+        interactionTimeout: TimeInterval, sessionTimeout: TimeInterval) {
         self.baseURL = URL(string: "http://127.0.0.1:\(port)")!
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = timeoutSeconds
         self.session = URLSession(configuration: config)
+        self.interactionTimeout = interactionTimeout
+        self.sessionTimeout = sessionTimeout
     }
 
     // MARK: - AppDriver
 
     public func status() async throws -> StatusResponse {
-        try await get("/status", timeout: Timeout.session)
+        try await get("/status", timeout: sessionTimeout)
     }
 
     /// install は HTTP エンドポイントを持たず simctl の役割。/status のデバイス名から対象シミュレータを
@@ -46,12 +60,12 @@ public final class BridgeClient: AppDriver {
 
     public func launch(bundleID: String) async throws {
         let _: OKResponse = try await post("/session", body: LaunchRequest(bundleID: bundleID),
-                                           timeout: Timeout.session)
+                                           timeout: sessionTimeout)
     }
 
     public func activate(bundleID: String) async throws {
         let _: OKResponse = try await post("/session", body: LaunchRequest(bundleID: bundleID, activate: true),
-                                           timeout: Timeout.session)
+                                           timeout: sessionTimeout)
     }
 
     public func openAppSwitcher() async throws {
@@ -63,27 +77,27 @@ public final class BridgeClient: AppDriver {
     }
 
     public func snapshot() async throws -> SnapshotResponse {
-        try await get("/snapshot", timeout: Timeout.session)
+        try await get("/snapshot", timeout: sessionTimeout)
     }
 
     public func tap(ref: Int) async throws {
         let _: OKResponse = try await post("/tap", body: TapRequest(ref: ref),
-                                           timeout: Timeout.interaction)
+                                           timeout: interactionTimeout)
     }
 
     public func tap(x: Double, y: Double) async throws {
         let _: OKResponse = try await post("/tap", body: TapRequest(x: x, y: y),
-                                           timeout: Timeout.interaction)
+                                           timeout: interactionTimeout)
     }
 
     public func type(ref: Int?, text: String) async throws {
         let _: OKResponse = try await post("/type", body: TypeRequest(ref: ref, text: text),
-                                           timeout: Timeout.interaction)
+                                           timeout: interactionTimeout)
     }
 
     public func swipe(_ direction: FTSwipeDirection) async throws {
         let _: OKResponse = try await post("/swipe", body: SwipeRequest(direction: direction),
-                                           timeout: Timeout.interaction)
+                                           timeout: interactionTimeout)
     }
 
     public func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
@@ -91,29 +105,29 @@ public final class BridgeClient: AppDriver {
         let _: OKResponse = try await post("/drag", body: DragRequest(
             fromX: fromX, fromY: fromY, toX: toX, toY: toY,
             press: pressSeconds, duration: durationSeconds),
-            timeout: Timeout.interaction)
+            timeout: interactionTimeout)
     }
 
     public func press(ref: Int, duration: Double) async throws {
         let _: OKResponse = try await post("/press", body: PressRequest(ref: ref, duration: duration),
-                                           timeout: Timeout.interaction)
+                                           timeout: interactionTimeout)
     }
 
     public func press(x: Double, y: Double, duration: Double) async throws {
         let _: OKResponse = try await post("/press", body: PressRequest(x: x, y: y, duration: duration),
-                                           timeout: Timeout.interaction)
+                                           timeout: interactionTimeout)
     }
 
     public func screenshot() async throws -> Data {
         let (data, response) = try await request(path: "/screenshot", method: "GET", body: nil,
-                                                 timeout: Timeout.session)
+                                                 timeout: sessionTimeout)
         try Self.check(response: response, data: data)
         return data
     }
 
     public func terminate() async throws {
         let _: OKResponse = try await post("/terminate", body: OKResponse(),
-                                           timeout: Timeout.session)
+                                           timeout: sessionTimeout)
     }
 
     // MARK: - HTTP helpers

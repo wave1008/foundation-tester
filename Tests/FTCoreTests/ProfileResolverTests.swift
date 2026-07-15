@@ -41,7 +41,7 @@ final class ProfileResolverTests: XCTestCase {
         try write("""
         { "app": "sampleapp",
           "devices": [ { "name": "メイン機" }, { "name": "サブ機" }, { "name": "エミュ1" } ],
-          "heal": true, "reportDir": "reports", "defaultTimeout": 8 }
+          "heal": true, "reportDir": "reports", "defaultTimeout": 8, "scenarioTimeout": 60 }
         """, to: project.runsDir, name: "all")
     }
 
@@ -57,6 +57,7 @@ final class ProfileResolverTests: XCTestCase {
         XCTAssertEqual(resolved.androidDevices.count, 1)
         XCTAssertTrue(resolved.heal)
         XCTAssertEqual(resolved.defaultTimeout, 8)
+        XCTAssertEqual(resolved.scenarioTimeout, 60, "scenarioTimeout が RunProfileDocument→ResolvedProfile へ透過する")
         XCTAssertTrue(resolved.warnings.isEmpty, "警告なしのはず: \(resolved.warnings)")
 
         let ios = try XCTUnwrap(resolved.apps["ios"])
