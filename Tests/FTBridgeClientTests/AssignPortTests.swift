@@ -1,0 +1,77 @@
+// BridgeProvisioner.assignPort の採番ロジック(pid ファイル存在=使用中とみなす)を
+// デバイス不要で検証する。並列 device-up の bindFailed(48) 競合の中核ロジック。
+
+import XCTest
+@testable import FTBridgeClient
+
+final class AssignPortTests: XCTestCase {
+    private var repoRoot: URL!
+
+    override func setUpWithError() throws {
+        repoRoot = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ftbridge-assignport-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(
+            at: repoRoot.appendingPathComponent(".ftester"), withIntermediateDirectories: true)
+    }
+
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: repoRoot)
+    }
+
+    private func writePidFile(port: UInt16) throws {
+        try "12345".write(
+            to: repoRoot.appendingPathComponent(".ftester/bridge-\(port).pid"),
+            atomically: true, encoding: .utf8)
+    }
+
+    func testPrefersUnusedPreferred() throws {
+        let provisioner = BridgeProvisioner(repoRoot: repoRoot, portRange: 8123...8130)
+        var used: Set<UInt16> = []
+        XCTAssertEqual(try provisioner.assignPort(preferred: 8127, used: &used), 8127)
+        XCTAssertTrue(used.contains(8127))
+    }
+
+    func testSkipsPreferredWhenUsedAndFallsToRangeHead() throws {
+        let provisioner = BridgeProvisioner(repoRoot: repoRoot, portRange: 8123...8130)
+        var used: Set<UInt16> = [8123]
+        // preferred 8123 は used のため範囲先頭の空き 8124 へ
+        XCTAssertEqual(try provisioner.assignPort(preferred: 8123, used: &used), 8124)
+    }
+
+    func testSkipsPortsWithPidFile() throws {
+        try writePidFile(port: 8123)
+        try writePidFile(port: 8124)
+        let provisioner = BridgeProvisioner(repoRoot: repoRoot, portRange: 8123...8130)
+        var used: Set<UInt16> = []
+        XCTAssertEqual(try provisioner.assignPort(preferred: nil, used: &used), 8125,
+                       "pid ファイルのある 8123/8124 はスキップされる")
+    }
+
+    func testIgnoringPidFileForReusesThatPort() throws {
+        try writePidFile(port: 8123)
+        let provisioner = BridgeProvisioner(repoRoot: repoRoot, portRange: 8123...8130)
+        var used: Set<UInt16> = []
+        // 8123 は pid ファイルがあるが ignoringPidFileFor で空き扱いになる(同ポート再起動用)
+        XCTAssertEqual(
+            try provisioner.assignPort(preferred: nil, used: &used, ignoringPidFileFor: 8123), 8123)
+    }
+
+    func testUsedSetPreventsSameAssignmentTwice() throws {
+        let provisioner = BridgeProvisioner(repoRoot: repoRoot, portRange: 8123...8130)
+        var used: Set<UInt16> = []
+        let first = try provisioner.assignPort(preferred: nil, used: &used)
+        let second = try provisioner.assignPort(preferred: nil, used: &used)
+        XCTAssertNotEqual(first, second, "used が引き継がれ同一ポートを二度返さない")
+    }
+
+    func testNoFreePortThrows() throws {
+        for port: UInt16 in 8123...8125 { try writePidFile(port: port) }
+        let provisioner = BridgeProvisioner(repoRoot: repoRoot, portRange: 8123...8125)
+        var used: Set<UInt16> = []
+        XCTAssertThrowsError(try provisioner.assignPort(preferred: nil, used: &used)) { error in
+            guard case BridgeProvisionerError.noFreePort = error else {
+                return XCTFail("noFreePort を期待: \(error)")
+            }
+        }
+    }
+}
