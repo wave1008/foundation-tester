@@ -78,6 +78,9 @@ let hasAppProfile = false;
 let liveRenderer = null;
 let liveUsingH264 = false;
 let liveH264ErrorSent = false;
+// キーフレーム未受信のまま届いたデルタチャンク数と streamStall 送信済みフラグ(タイル側 deviceTiles.js と同型)
+let liveDeltasBeforeKey = 0;
+let liveStallSent = false;
 
 const busyButtons = [
   'live-btn-refresh-devices', 'live-btn-refresh-snapshot',
@@ -283,6 +286,8 @@ screenshot.addEventListener('load', fitScreenshot);
 // 呼び出し後は screenshot(img)側の表示に戻る前提(呼び出し元が classList を扱う)。
 function disposeLiveH264() {
   liveUsingH264 = false;
+  liveDeltasBeforeKey = 0;
+  liveStallSent = false;
   liveCanvas.classList.remove('visible');
   if (liveRenderer) {
     liveRenderer.dispose();
@@ -532,6 +537,18 @@ function requestSnapshotIfNeeded() {
 export function applyLiveH264Chunk(message) {
   if (liveH264ErrorSent) {
     return;
+  }
+  // 初期キーフレームを取り逃すとデルタしか届かず永久に描画できない(タイルで実害化したのと同型)。
+  // 一定数デルタが続いたらホストにヘルパー再起動を頼み、新キーフレームから始め直す(deviceTiles.js と同型)。
+  if (message.keyframe) {
+    liveDeltasBeforeKey = 0;
+    liveStallSent = false;
+  } else if (!liveUsingH264) {
+    liveDeltasBeforeKey += 1;
+    if (liveDeltasBeforeKey >= 30 && !liveStallSent) {
+      liveStallSent = true;
+      vscode.postMessage({ type: 'streamStall', scope: 'live' });
+    }
   }
   if (!liveRenderer) {
     liveRenderer = createH264Renderer({

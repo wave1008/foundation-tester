@@ -899,6 +899,17 @@ export class MonitorLiveController implements vscode.Disposable {
     }
   }
 
+  /** webview から streamStall(scope=live)を受けたら monitorPanel.ts から呼ぶ。初期キーフレームの
+   * 取り逃しで描画が始まらない状態を、helper を作り直して新キーフレームから始めさせて回復する
+   * (startStreamPipeline は同一 key・稼働中なら早期returnするため、先に止めてから張り直す)。
+   * fallbackToMjpeg と同型。 */
+  restartStream(): void {
+    if (this.streamPipeline) {
+      this.stopStreamPipeline();
+      this.updateLiveFrameSource();
+    }
+  }
+
   /** key(iOS: UDID、Android: adb serial)向けの StreamPipeline を起動する。同じ key で既に稼働中
    * なら何もしない(張り替えでフレームが途切れないように)。別 key なら旧 helper を止めて張り替える。 */
   private startStreamPipeline(
