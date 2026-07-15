@@ -192,7 +192,7 @@ public struct BridgeLauncher {
     }
 
     /// SIGTERM 済みの pid の消滅を timeout まで待ち、生き残れば SIGKILL してから pid ファイルを削除する。
-    /// 同期版(stop / 静的 stopAll・stopMatching が使う。async は stopAndWait 参照)。
+    /// 同期版(stop が使う。async は stopAndWait 参照)。
     static func confirmDeathThenRemovePidFile(pid: Int32, pidPath: URL, timeout: TimeInterval) {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
@@ -205,6 +205,23 @@ public struct BridgeLauncher {
         kill(pid, SIGKILL)
         Thread.sleep(forTimeInterval: 0.5)
         try? FileManager.default.removeItem(at: pidPath)
+    }
+
+    /// SIGTERM 済みの pid 群の消滅を timeout まで待ち、生き残りを SIGKILL する(stopAll/stopMatching 用)。
+    /// 呼び出し元は直後に simctl shutdown を実行するため、ここで待たずに返すと生きた XCUITest
+    /// セッションの teardown と shutdown が競合し、セッションがシャットダウン中のシミュレータを
+    /// 再ブートさせる。再ブートで起き上がった SpringBoard は表示サービス不在の assert
+    /// (FBSDisplayMonitor)でクラッシュループし、macOS のクラッシュダイアログが連発する(実害あり)。
+    static func confirmDeaths(pids: [Int32], timeout: TimeInterval) {
+        var remaining = Set(pids.filter { kill($0, 0) == 0 })
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline, !remaining.isEmpty {
+            Thread.sleep(forTimeInterval: 0.2)
+            remaining = remaining.filter { kill($0, 0) == 0 }
+        }
+        guard !remaining.isEmpty else { return }
+        for pid in remaining { kill(pid, SIGKILL) }
+        Thread.sleep(forTimeInterval: 0.5)
     }
 
     /// 同一ポートで起動し直す前に旧プロセスの消滅を待つ(stop() は待たないため、直後の
@@ -237,6 +254,7 @@ public struct BridgeLauncher {
         guard let entries = try? FileManager.default.contentsOfDirectory(
             at: stateDir, includingPropertiesForKeys: nil) else { return [] }
         var stopped: [String] = []
+        var terminated: [Int32] = []
         for entry in entries where entry.lastPathComponent.hasPrefix("bridge-")
             && entry.pathExtension == "pid" {
             guard let pidString = try? String(contentsOf: entry, encoding: .utf8),
@@ -252,10 +270,13 @@ public struct BridgeLauncher {
             }
             guard ps.output.contains(udid) else { continue }
             kill(pid, SIGTERM)
+            terminated.append(pid)
             try? FileManager.default.removeItem(at: entry)
             stopped.append(entry.deletingPathExtension().lastPathComponent
                 .replacingOccurrences(of: "bridge-", with: ""))
         }
+        // 直後の simctl shutdown と XCUITest teardown の競合防止(confirmDeaths のコメント参照)
+        confirmDeaths(pids: terminated, timeout: 5)
         return stopped.sorted()
     }
 
@@ -266,12 +287,14 @@ public struct BridgeLauncher {
         guard let entries = try? FileManager.default.contentsOfDirectory(
             at: stateDir, includingPropertiesForKeys: nil) else { return [] }
         var stopped: [String] = []
+        var terminated: [Int32] = []
         for entry in entries where entry.lastPathComponent.hasPrefix("bridge-") {
             switch entry.pathExtension {
             case "pid":
                 if let pidString = try? String(contentsOf: entry, encoding: .utf8),
                    let pid = Int32(pidString.trimmingCharacters(in: .whitespacesAndNewlines)) {
                     kill(pid, SIGTERM)
+                    terminated.append(pid)
                     stopped.append(entry.deletingPathExtension().lastPathComponent
                         .replacingOccurrences(of: "bridge-", with: ""))
                 }
@@ -284,6 +307,8 @@ public struct BridgeLauncher {
                 continue
             }
         }
+        // 直後の simctl shutdown all と XCUITest teardown の競合防止(confirmDeaths のコメント参照)
+        confirmDeaths(pids: terminated, timeout: 5)
         return stopped
     }
 
