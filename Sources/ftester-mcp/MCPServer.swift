@@ -268,7 +268,8 @@ final class MCPServer {
             if platform == "ios" {
                 let provisioner = BridgeProvisioner(repoRoot: root(of: project))
                 let provisioned = try await provisioner.provision(
-                    devices: [(device.name, device.spec)]) { prologue.append($0) }
+                    devices: [(device.name, device.spec)],
+                    externalRun: true, force: args["force"] as? Bool ?? false) { prologue.append($0) }
                 connection = DriverConnection(platform: "ios", port: provisioned[0].port)
             } else {
                 let serial = try AndroidDeviceCatalog.resolveSerial(spec: device.spec)
@@ -339,6 +340,7 @@ final class MCPServer {
             "project": ["type": "string", "description": "テストプロジェクト名(省略時は既定プロジェクト)"],
             "profile": ["type": "string", "description": "実行プロファイル名(profiles/runs/。接続先・heal・レポート先を解決)"],
             "heal": ["type": "boolean", "description": "ロケータ自己修復を許可(既定 false)"],
+            "force": ["type": "boolean", "description": "モニター使用中デバイスへの相乗りを許可する(既定 false)"],
             "port": ["type": "integer", "description": "iOS ブリッジのポート(既定 8123)"],
             "serial": ["type": "string", "description": "Android デバイスのシリアル"],
         ], required: ["id"]),

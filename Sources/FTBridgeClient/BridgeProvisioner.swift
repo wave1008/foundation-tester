@@ -38,6 +38,8 @@ public enum BridgeProvisionerError: Error, LocalizedError {
     case appNotInstalled(device: String, bundleID: String, udid: String)
     /// preinstallAppPath 指定時の simctl install 自体が失敗した
     case preinstallFailed(device: String, detail: String)
+    /// externalRun=true 時、対象シミュレータをライブモニター(ftester api monitor)が監視中(force 未指定)
+    case monitorOccupied(names: [String])
 
     public var errorDescription: String? {
         switch self {
@@ -56,6 +58,9 @@ public enum BridgeProvisionerError: Error, LocalizedError {
                 + "apps プロファイルに appPath+autoInstall を設定してください"
         case .preinstallFailed(let device, let detail):
             return "\(device): アプリの自動インストールに失敗しました:\n\(detail)"
+        case .monitorOccupied(let names):
+            return "デバイス \(names.joined(separator: "、")) はモニター(ftester api monitor)が使用中です。"
+                + "相乗り run はデモを凍結させ得ます。モニターを止めるか、force 指定で上書きしてください。"
         }
     }
 }
@@ -145,6 +150,8 @@ public struct BridgeProvisioner {
     public func provision(devices: [(name: String, spec: DeviceSpec)],
                           bundleID: String? = nil,
                           preinstallAppPath: String? = nil,
+                          externalRun: Bool = false,
+                          force: Bool = false,
                           log: @escaping (String) -> Void) async throws -> [ProvisionedIOSDevice] {
         // 呼び出し側の log(logStderr / print 等)はスレッド安全の契約が無い。
         // 並列フェーズからは必ずこのロック付きラッパーを使う
@@ -168,6 +175,18 @@ public struct BridgeProvisioner {
         for (name, spec) in devices {
             let sim = try SimulatorCatalog.resolve(spec: spec, in: catalog)
             targets.append((name, spec, sim))
+        }
+
+        // externalRun: モニター(ftester api monitor)が監視中のシミュレータへの相乗り provision を
+        // 拒否する(同一 UDID のブリッジ再利用がモニターの blocking launch と衝突しランナーの
+        // main queue を凍結させるため)。force で明示的に上書き可能
+        if externalRun, !force {
+            let occupied = targets.filter {
+                MonitorLease.isFresh(stateDir: repoRoot.appendingPathComponent(".ftester"), udid: $0.sim.udid)
+            }
+            if !occupied.isEmpty {
+                throw BridgeProvisionerError.monitorOccupied(names: occupied.map(\.name))
+            }
         }
 
         // 2. 稼働中ブリッジのスキャン(ポート → (UDID, engine)。同一 UDID に inapp/xcuitest が

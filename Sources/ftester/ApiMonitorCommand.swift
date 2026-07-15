@@ -112,6 +112,12 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         // 直近の確定状態(デバイス毎、debounce 用)
         var confirmed: [String: ConfirmedDeviceState] = [:]
 
+        // モニターのハートビート lease(.ftester/monitor-<udid>.lease)。best-effort: リポジトリ外
+        // 実行等で root が取れない場合は lease を書かない(BridgeProvisioner 側の occupancy guard も
+        // 素通りするだけで安全)
+        let leaseStateDir = (try? RepoRoot.find())?.appendingPathComponent(".ftester")
+        var leasedUdids: Set<String> = []
+
         while !stop.isSet {
             if control.autoResumeIfStale(limit: Self.pauseSafetyValveSeconds) {
                 logStderr(
@@ -141,6 +147,11 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                     lastErrorMessage[state.target.id] = nil
                     loggedFetchFailure.remove(state.target.id)
                     continue
+                }
+                if let leaseStateDir, let udid = state.iosUdid {
+                    MonitorLease.write(stateDir: leaseStateDir, udid: udid,
+                                       pid: ProcessInfo.processInfo.processIdentifier)
+                    leasedUdids.insert(udid)
                 }
                 // 拡張のデバイスタイルがストリーミング表示中のデバイスはスクショ取得側で
                 // 二重生成しない(拡張側は monitorFrame を受信しても捨てるだけになるため)
@@ -180,6 +191,9 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             }
 
             await Self.sleepInterruptible(seconds: interval, stop: stop)
+        }
+        if let leaseStateDir {
+            for udid in leasedUdids { MonitorLease.remove(stateDir: leaseStateDir, udid: udid) }
         }
     }
 
