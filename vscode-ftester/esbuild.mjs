@@ -69,6 +69,23 @@ async function buildWebview() {
   }
 }
 
+// テスト実行時に VSCode ランタイムは無いが、config.ts 等はモジュール解決のために "vscode" を
+// 値 import する。これを連鎖可能な空スタブへ差し替え、controller/config をテストから読み込める
+// ようにする(テストが実際に呼ぶ vscode API は無い前提。呼べば undefined 相当で顕在化する)。
+const vscodeStubPlugin = {
+  name: "vscode-stub",
+  setup(build) {
+    build.onResolve({ filter: /^vscode$/ }, () => ({ path: "vscode", namespace: "vscode-stub" }));
+    build.onLoad({ filter: /.*/, namespace: "vscode-stub" }, () => ({
+      contents:
+        "const make = () => new Proxy(function () {}, " +
+        "{ get: (_, p) => (p === '__esModule' ? false : make()), apply: () => make() });\n" +
+        "module.exports = make();",
+      loader: "js",
+    }));
+  },
+};
+
 async function buildTests() {
   const testDir = path.join(rootDir, "test");
   const entryPoints = readdirSync(testDir)
@@ -96,6 +113,7 @@ async function buildTests() {
     // out-test/ 配下からでも Node の ESM 解決が親ディレクトリの node_modules を辿るため解決できる)。
     // jsdom/esbuild も同様(webviewLiveDrag.test.mjs が実行時に使う。どちらも CJS/動的 require 持ち)。
     external: ["@vscode/debugadapter", "@vscode/debugprotocol", "jsdom", "esbuild"],
+    plugins: [vscodeStubPlugin],
   });
 }
 
