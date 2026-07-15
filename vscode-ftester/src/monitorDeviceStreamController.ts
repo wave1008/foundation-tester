@@ -36,6 +36,9 @@ interface QualifyingTarget {
 interface StreamEntry {
   readonly platform: MonitorPlatform;
   readonly key: string;
+  // 稼働中パイプラインの codec。設定 streamCodec 変更(h264⇔mjpeg)を稼働中ストリームへ反映
+  // するため、破棄判定で target.codec と比較する(不一致なら張り替え)。
+  readonly codec: "mjpeg" | "h264";
   readonly pipeline: StreamPipeline;
 }
 
@@ -130,10 +133,12 @@ export class MonitorDeviceStreamController {
       }
     }
 
-    // 対象から外れた(切断・一覧から消えた)、またはプラットフォーム/key が変わったデバイスを破棄する。
+    // 対象から外れた(切断・一覧から消えた)、プラットフォーム/key が変わった、または codec 設定が
+    // 変わったデバイスを破棄する(次ループで新 codec のヘルパーとして張り直される)。
     for (const [deviceId, entry] of this.pipelines) {
       const target = qualifying.get(deviceId);
-      if (!target || target.platform !== entry.platform || target.key !== entry.key) {
+      if (!target || target.platform !== entry.platform || target.key !== entry.key
+          || target.codec !== entry.codec) {
         this.disposeDevice(deviceId);
       }
     }
@@ -214,7 +219,9 @@ export class MonitorDeviceStreamController {
         this.gaveUpDeviceIds.add(deviceId); // 2秒毎の applyDevices による再生成スパムを止める
       },
     });
-    this.pipelines.set(deviceId, { platform: target.platform, key: target.key, pipeline });
+    this.pipelines.set(deviceId, {
+      platform: target.platform, key: target.key, codec: target.codec, pipeline,
+    });
     pipeline.start();
   }
 
@@ -224,6 +231,7 @@ export class MonitorDeviceStreamController {
   fallbackToMjpeg(deviceId: string): void {
     this.mjpegFallbackIds.add(deviceId);
     this.disposeDevice(deviceId);
+    this.reapply(); // restartDevice と同様に即座に mjpeg で張り直す(次の applyDevices を待たない)
   }
 
   private disposeDevice(deviceId: string): void {
