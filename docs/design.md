@@ -414,6 +414,15 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
   Pro Max(440pt)でそのまま通る(実測済み)
 - 実測: 3フロー(iOS×2 + Android×1)逐次 55.2秒 → iOS 2ワーカー+Android 1ワーカー並列で
   31.2秒。壁時間は最長フローに漸近する(理想スケーリング)
+- **サブプロセス kill と `waitUntilExit()` の reap 競合(1本の詰まりが run 全体を凍結)**:
+  `ScenarioHost.run` の watchdog kill で `Process.isRunning` を使うと内部の `waitpid` が子を
+  **reap** し、直後の `waitUntilExit()` が終了通知を取りこぼして**永久ハング**する(SIGTERM を
+  無視した子で実測: ワーカー全体が `waitUntilExit` で停止)。**生存確認は reap しない `kill(pid, 0)`**
+  を使うこと(`process.isRunning` は使わない)。この凍結は 90s watchdog を超えるシナリオでのみ
+  顕在化する潜在バグで、hybrid の suspend 誤ルーティング(performance-tuning §6.4)が引き金だった。
+- **hybrid の in-app suspend**: system-UI シナリオと in-app シナリオを混在実行すると、背面の
+  注入先アプリが iOS に suspend され in-app ブリッジが無応答になる。ドライバ選択は provision 時の
+  注入先 bundleID で分岐する(詳細と対策は performance-tuning §6.4「suspend 時のルーティング」)。
 
 ## 9. 検証方法(E2E)
 
