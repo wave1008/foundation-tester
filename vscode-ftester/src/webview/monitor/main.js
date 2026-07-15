@@ -19,8 +19,7 @@ import {
   hideBanner,
   setBusy,
   closeDeviceOpMenu,
-  findTileByName,
-  renderMeta,
+  applyDeviceOpBusy,
   tiles,
   selectedDeviceIds,
   applyProfileInfo,
@@ -84,7 +83,7 @@ window.addEventListener('message', (event) => {
       applyDeviceError(message);
       break;
     case 'bootBusy':
-      setBusy(!!message.busy);
+      setBusy(!!message.busy, message.bulkOp);
       break;
     case 'processDown':
       showBanner(message.message);
@@ -92,16 +91,9 @@ window.addEventListener('message', (event) => {
     case 'hostMetrics':
       applyHostMetrics(message);
       break;
-    case 'deviceOpBusy': {
-      const entry = findTileByName(message.name);
-      if (entry) {
-        entry.opBusy = message.op ? { op: message.op, status: message.status || 'running' } : undefined;
-        // opBusy の有無は footer の bridgeWatch 優先度判定にも影響するため renderMeta で一括再描画する
-        // (renderOpBadge/デバイス操作メニュー項目の再描画も内部で行う)。
-        renderMeta(entry);
-      }
+    case 'deviceOpBusy':
+      applyDeviceOpBusy(message);
       break;
-    }
     case 'bridgeWatch':
       applyBridgeWatch(message);
       break;

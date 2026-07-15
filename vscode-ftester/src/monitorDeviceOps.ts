@@ -7,6 +7,7 @@ import { type ChildProcessByStdio, spawn } from "node:child_process";
 import type { Readable } from "node:stream";
 import { resolveProjectName } from "./config";
 import {
+  bulkLifecycleOp,
   createDeviceLifecycleQueueState,
   dequeueDeviceLifecycleJob,
   type DeviceLifecycleJob,
@@ -73,12 +74,22 @@ export class MonitorDeviceOps {
     }
     const wasBusy = isDeviceLifecycleQueueBusy(this.lifecycleQueue);
     this.lifecycleQueue = enqueueDeviceLifecycleJob(this.lifecycleQueue, job);
+    this.postBootBusy();
     if (!wasBusy) {
-      this.deps.post({ type: "bootBusy", busy: true });
       this.runLifecycleQueueHead();
     } else if (job.kind === "device") {
       this.postDeviceLifecycleStatus(job.name);
     }
+  }
+
+  /** キューの現在状態を bootBusy として webview に送る(busy=グローバルボタン無効化、
+   * bulkOp=タイルの「待機中」/「シャットダウン中」表示)。キューが変化するたびに呼ぶ(上書き描画のみなので冪等)。 */
+  private postBootBusy(): void {
+    this.deps.post({
+      type: "bootBusy",
+      busy: isDeviceLifecycleQueueBusy(this.lifecycleQueue),
+      bulkOp: bulkLifecycleOp(this.lifecycleQueue),
+    });
   }
 
   /** 指定デバイスの現在のキュー状態(実行中/待機中/なし)を deviceOpBusy として webview に送る。 */
@@ -94,7 +105,7 @@ export class MonitorDeviceOps {
    */
   resendQueueStatus(): void {
     if (isDeviceLifecycleQueueBusy(this.lifecycleQueue)) {
-      this.deps.post({ type: "bootBusy", busy: true });
+      this.postBootBusy();
     }
     for (const job of this.lifecycleQueue.jobs) {
       if (job.kind === "device") {
@@ -146,10 +157,10 @@ export class MonitorDeviceOps {
     if (finished?.kind === "device") {
       this.deps.post({ type: "deviceOpBusy", name: finished.name, op: null, status: null });
     }
+    // bulk 完了時に bulkOp:null を届けて「待機中」/「シャットダウン中」表示を解除するため、空でなくても送る。
+    this.postBootBusy();
     if (isDeviceLifecycleQueueBusy(this.lifecycleQueue)) {
       this.runLifecycleQueueHead();
-    } else {
-      this.deps.post({ type: "bootBusy", busy: false });
     }
   }
 
