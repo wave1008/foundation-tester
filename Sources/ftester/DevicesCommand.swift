@@ -80,8 +80,27 @@ struct DevicesCommand: AsyncParsableCommand {
                     print("✅ ブリッジ停止(port: \(stopped.joined(separator: ", ")))")
                 }
             }
-            _ = try? Shell.run(["xcrun", "simctl", "shutdown", "all"])
-            print("✅ シミュレータを全て終了しました")
+            // exit code でなくカタログの実状態で成否判定し、Booted が残れば再試行する
+            // (DeviceBooter.shutdownOne と同じ理由: macOS 27 beta の 405 レース、および
+            // 生き残ったセッションによる shutdown 中の再ブート)
+            var shutdownConfirmed = false
+            for attempt in 1...3 {
+                _ = try? Shell.run(["xcrun", "simctl", "shutdown", "all"])
+                let stillBooted = (try? SimulatorCatalog.devices())?.contains(where: \.booted) ?? false
+                if !stillBooted {
+                    shutdownConfirmed = true
+                    break
+                }
+                if attempt < 3 {
+                    print("→ 停止が反映されないシミュレータがあるため再試行(\(attempt)/3)...")
+                    try? await Task.sleep(nanoseconds: 2_000_000_000)
+                }
+            }
+            if shutdownConfirmed {
+                print("✅ シミュレータを全て終了しました")
+            } else {
+                print("⚠️ 一部のシミュレータが停止しません(xcrun simctl list devices で確認してください)")
+            }
             // offline のエミュレータには emu kill が届かないため、残った qemu を直接落とす
             if let adb = try? AndroidDriver.findADB(),
                let serials = try? AndroidDeviceCatalog.allEmulatorSerials() {
