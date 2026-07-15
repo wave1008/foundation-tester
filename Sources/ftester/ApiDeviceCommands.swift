@@ -38,6 +38,54 @@ struct ApiDeviceUp: AsyncParsableCommand {
     }
 }
 
+struct ApiDevicesUp: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "devices-up",
+        abstract: "マシンプロファイルの全デバイスを起動する(NDJSON: log/deviceStarting/deviceFinished → "
+            + "finished を stdout に出力。診断は stderr のみ)")
+
+    @Option(help: "テストプロジェクト名(省略時: Projects/ が 1 つならそれ / 既定プロジェクト)")
+    var project: String?
+
+    @Option(help: "実行プロファイル名(指定時はそのプロファイルが参照するデバイスのみ起動する)")
+    var profile: String?
+
+    @Flag(name: .customLong("no-bridge"), help: "iOS ブリッジの供給を行わない")
+    var noBridge = false
+
+    func run() async throws {
+        setvbuf(stdout, nil, _IOLBF, 0)
+        do {
+            let machineProfile = try MachineProfileLoad.load(
+                project: project, profile: profile,
+                noteAutoMachine: { Self.logStderr($0) },
+                warn: { Self.logStderr($0) })
+            let repoRoot = noBridge ? nil : try RepoRoot.find()
+            // deviceStarting/deviceFinished は bootAll のワーカータスクから並行に呼ばれるため、
+            // emit(ApiDeviceEventEmitter 経由)でロックして直列化する
+            await DeviceBooter.bootAll(
+                machine: machineProfile, repoRoot: repoRoot,
+                log: { message in ApiDeviceEventEmitter.emit(ApiDeviceLogEvent(message: message)) },
+                deviceStarting: { name, platform in
+                    ApiDeviceEventEmitter.emit(
+                        ApiDevicesUpLifecycleEvent(kind: "deviceStarting", name: name, platform: platform))
+                },
+                deviceFinished: { name, platform in
+                    ApiDeviceEventEmitter.emit(
+                        ApiDevicesUpLifecycleEvent(kind: "deviceFinished", name: name, platform: platform))
+                })
+            ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent(ok: true, error: nil))
+        } catch {
+            ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent(ok: false, error: error.localizedDescription))
+            throw ExitCode(1)
+        }
+    }
+
+    private static func logStderr(_ message: String) {
+        FileHandle.standardError.write(Data((message + "\n").utf8))
+    }
+}
+
 struct ApiDeviceDown: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "device-down",
@@ -128,19 +176,11 @@ private enum ApiDeviceOperation {
     }
 
     private static func emitLog(_ message: String) {
-        emitLine(ApiDeviceLogEvent(message: message))
+        ApiDeviceEventEmitter.emit(ApiDeviceLogEvent(message: message))
     }
 
     private static func emitFinished(ok: Bool, error: String?) {
-        emitLine(ApiDeviceFinishedEvent(ok: ok, error: error))
-    }
-
-    private static func emitLine<T: Encodable>(_ value: T) {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-        guard let data = try? encoder.encode(value),
-              let line = String(data: data, encoding: .utf8) else { return }
-        print(line)
+        ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent(ok: ok, error: error))
     }
 
     private static func logStderr(_ message: String) {
@@ -148,10 +188,35 @@ private enum ApiDeviceOperation {
     }
 }
 
+/// stdout への NDJSON 1行出力(JSONEncoder sortedKeys)。ApiDeviceOperation(1台のみ・並行呼び出し
+/// なし)と ApiDevicesUp(bootAll のワーカータスクから並行に呼ばれる)で共有する。NSLock で
+/// print までを直列化し、複数タスクからの出力が1行の途中で混ざらないようにする
+private enum ApiDeviceEventEmitter {
+    private static let lock = NSLock()
+
+    static func emit<T: Encodable>(_ value: T) {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        guard let data = try? encoder.encode(value),
+              let line = String(data: data, encoding: .utf8) else { return }
+        lock.lock()
+        defer { lock.unlock() }
+        print(line)
+    }
+}
+
 /// 進捗ログ 1 行分(DeviceBooter/BridgeProvisioner の log コールバック由来)
 private struct ApiDeviceLogEvent: Encodable {
     let kind = "log"
     let message: String
+}
+
+/// devices-up の per-device 進捗(kind: "deviceStarting" / "deviceFinished")。
+/// 消費側: vscode-ftester/src/monitorModel.ts isDevicesUpEvent(契約の同期相手)
+private struct ApiDevicesUpLifecycleEvent: Encodable {
+    let kind: String
+    let name: String
+    let platform: String
 }
 
 /// 末尾イベント。error は省略可能フィールドとして明示的に null を encode する
