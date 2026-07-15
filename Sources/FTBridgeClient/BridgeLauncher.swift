@@ -176,7 +176,14 @@ public struct BridgeLauncher {
     public func stop() throws {
         guard let pidString = try? String(contentsOf: pidPath, encoding: .utf8),
               let pid = Int32(pidString.trimmingCharacters(in: .whitespacesAndNewlines)) else {
-            throw LauncherError.notRunning
+            // pid ファイルが無くても in-app ブリッジ(dylib 注入・pid ファイル非対応)の
+            // 状態ファイルがあれば simctl terminate で後始末する
+            let inappPath = InAppBridgeState.url(stateDir: stateDir, port: port)
+            guard FileManager.default.fileExists(atPath: inappPath.path) else {
+                throw LauncherError.notRunning
+            }
+            InAppBridgeState.terminateAndRemove(at: inappPath)
+            return
         }
         kill(pid, SIGTERM)
         // 死亡確認してから pid ファイルを消す。即削除すると assignPort がそのポートを空きと誤認し、
@@ -252,21 +259,30 @@ public struct BridgeLauncher {
         return stopped.sorted()
     }
 
-    /// .ftester/bridge-*.pid を走査して全ブリッジを停止する。戻り値は停止したポート一覧
+    /// .ftester/bridge-*.pid(xcuitest)と bridge-*.inapp(dylib 注入)を走査して全ブリッジを
+    /// 停止する。戻り値は停止したポート一覧
     public static func stopAll(repoRoot: URL) -> [String] {
         let stateDir = repoRoot.appendingPathComponent(".ftester")
         guard let entries = try? FileManager.default.contentsOfDirectory(
             at: stateDir, includingPropertiesForKeys: nil) else { return [] }
         var stopped: [String] = []
-        for entry in entries where entry.lastPathComponent.hasPrefix("bridge-")
-            && entry.pathExtension == "pid" {
-            if let pidString = try? String(contentsOf: entry, encoding: .utf8),
-               let pid = Int32(pidString.trimmingCharacters(in: .whitespacesAndNewlines)) {
-                kill(pid, SIGTERM)
+        for entry in entries where entry.lastPathComponent.hasPrefix("bridge-") {
+            switch entry.pathExtension {
+            case "pid":
+                if let pidString = try? String(contentsOf: entry, encoding: .utf8),
+                   let pid = Int32(pidString.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                    kill(pid, SIGTERM)
+                    stopped.append(entry.deletingPathExtension().lastPathComponent
+                        .replacingOccurrences(of: "bridge-", with: ""))
+                }
+                try? FileManager.default.removeItem(at: entry)
+            case "inapp":
+                InAppBridgeState.terminateAndRemove(at: entry)
                 stopped.append(entry.deletingPathExtension().lastPathComponent
                     .replacingOccurrences(of: "bridge-", with: ""))
+            default:
+                continue
             }
-            try? FileManager.default.removeItem(at: entry)
         }
         return stopped
     }
