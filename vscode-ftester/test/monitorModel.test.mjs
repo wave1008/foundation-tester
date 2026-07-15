@@ -207,6 +207,17 @@ test("isMonitorFromWebviewMessage: 未知の type や不正値は false", () => 
   assert.equal(isMonitorFromWebviewMessage("devicesUp"), false);
 });
 
+test("isMonitorFromWebviewMessage: streamStall は scope=live なら device 不要、tile/未指定は device 必須", () => {
+  // ライブタブ餓死自己修復(scope=live): device なしで有効
+  assert.equal(isMonitorFromWebviewMessage({ type: "streamStall", scope: "live" }), true);
+  // タイル(未指定=従来互換)は device 必須
+  assert.equal(isMonitorFromWebviewMessage({ type: "streamStall", device: "sim-1" }), true);
+  assert.equal(isMonitorFromWebviewMessage({ type: "streamStall", scope: "tile", device: "sim-1" }), true);
+  // device も scope=live も無ければ不正
+  assert.equal(isMonitorFromWebviewMessage({ type: "streamStall" }), false);
+  assert.equal(isMonitorFromWebviewMessage({ type: "streamStall", device: "" }), false);
+});
+
 test("isMonitorFromWebviewMessage: deviceOp は name(string)+op(up/down)が揃っていれば true", () => {
   assert.equal(isMonitorFromWebviewMessage({ type: "deviceOp", name: "シミュ1", op: "up" }), true);
   assert.equal(isMonitorFromWebviewMessage({ type: "deviceOp", name: "シミュ1", op: "down" }), true);

@@ -465,7 +465,12 @@ class MonitorPanelController implements vscode.Disposable {
         }
         break;
       case "streamStall":
-        if (message.device) {
+        if (message.scope === "live") {
+          this.outputChannel.appendLine(
+            "[live-stream] キーフレーム未受信のままのためヘルパーを再起動します。",
+          );
+          this.live.restartStream();
+        } else if (message.device) {
           this.outputChannel.appendLine(
             `[monitor-stream] ${message.device}: キーフレーム未受信のままのためヘルパーを再起動します。`,
           );

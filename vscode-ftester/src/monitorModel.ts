@@ -428,8 +428,10 @@ export type MonitorFromWebviewMessage =
   // monitorDeviceStreamController.noteStreamRendered。これが届くまでポーリングは間引かれない
   | { readonly type: "streamRendered"; readonly device: string }
   // キーフレーム未受信のままデルタチャンクが流れ続けている(初期キーフレームの取り逃し)。受け手:
-  // monitorPanel.ts → monitorDeviceStreamController.restartDevice(ヘルパー再起動で新キーフレームを得る)
-  | { readonly type: "streamStall"; readonly device: string };
+  // monitorPanel.ts。scope="tile"(既定・device 必須)→ monitorDeviceStreamController.restartDevice、
+  // scope="live"(選択中デバイス一律・device 不要)→ monitorLiveController.restartStream。
+  // どちらもヘルパー再起動で新キーフレームを得る。
+  | { readonly type: "streamStall"; readonly scope?: "tile" | "live"; readonly device?: string };
 
 /**
  * machineDevicesSync の add[] 1件(MachineDeviceAddEntry)の検証。name の空文字は不正。
@@ -590,8 +592,10 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
         (value.scope !== "tile" || typeof value.device === "string")
       );
     case "streamRendered":
-    case "streamStall":
       return typeof value.device === "string" && value.device !== "";
+    case "streamStall":
+      // scope="live" は device 不要(選択中デバイスに一律)。それ以外(tile/未指定)は device 必須
+      return value.scope === "live" || (typeof value.device === "string" && value.device !== "");
     default:
       return false;
   }
