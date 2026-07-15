@@ -60,6 +60,39 @@ public enum BridgeProvisionerError: Error, LocalizedError {
     }
 }
 
+/// provision() のプランニング〜起動を跨いだクロスプロセス排他(.ftester/provision.lock への flock 助言ロック)。
+/// ポート予約は pid ファイル存在で判定するが pid ファイルは起動フェーズまで書かれないため、複数の
+/// ftester プロセスが同時に provision すると同じ空きポートを選び bindFailed(48) を起こす。provision()
+/// 全体をこのロックで直列化して防ぐ(pid 予約ロジックには手を入れない)。flock はプロセス終了で
+/// 自動解放されるためデッドロックしない。1 プロセス内の複数デバイス並列起動は provision 内部で維持される。
+final class ProvisionLock {
+    enum LockError: Error { case openFailed(Int32) }
+    private let fd: Int32
+
+    init(stateDir: URL) throws {
+        try FileManager.default.createDirectory(at: stateDir, withIntermediateDirectories: true)
+        let path = stateDir.appendingPathComponent("provision.lock").path
+        fd = open(path, O_CREAT | O_RDWR, 0o644)
+        guard fd >= 0 else { throw LockError.openFailed(errno) }
+    }
+
+    /// LOCK_EX を取得。取得待ちのブロッキングは別スレッドで行い、async executor を塞がない。
+    func acquire() async {
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            let fd = self.fd
+            DispatchQueue.global().async {
+                _ = flock(fd, LOCK_EX)
+                cont.resume()
+            }
+        }
+    }
+
+    func release() {
+        _ = flock(fd, LOCK_UN)
+        close(fd)
+    }
+}
+
 public struct BridgeProvisioner {
     let repoRoot: URL
     /// 稼働ブリッジのスキャン・自動採番の範囲(既定: 8123〜8154)
@@ -121,6 +154,12 @@ public struct BridgeProvisioner {
             defer { logLock.unlock() }
             log(message)
         }
+
+        // クロスプロセス排他: scan→採番→起動(pid ファイル書き込み)を跨いで直列化する。
+        // 他 ftester プロセスと同じ空きポートを取り合う bindFailed(48) を防ぐ(ProvisionLock 参照)。
+        let provisionLock = try ProvisionLock(stateDir: repoRoot.appendingPathComponent(".ftester"))
+        await provisionLock.acquire()
+        defer { provisionLock.release() }
 
         let catalog = try SimulatorCatalog.devices()
 
