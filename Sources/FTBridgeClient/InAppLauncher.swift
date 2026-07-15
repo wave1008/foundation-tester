@@ -10,6 +10,8 @@ public struct InAppLauncher {
     public let udid: String
     public let port: UInt16
 
+    var stateDir: URL { repoRoot.appendingPathComponent(".ftester") }
+
     public init(repoRoot: URL, udid: String, port: UInt16) {
         self.repoRoot = repoRoot
         self.udid = udid
@@ -60,6 +62,8 @@ public struct InAppLauncher {
             throw InAppLauncherError.launchFailed(result.tail)
         }
         try await waitUntilReady()
+        // pid ファイルを持たない in-app ブリッジを bridge down 系コマンドが後始末できるよう記録
+        InAppBridgeState.write(stateDir: stateDir, port: port, udid: udid, bundleID: bundleID)
     }
 
     public func terminate(bundleID: String) {
