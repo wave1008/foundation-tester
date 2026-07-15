@@ -179,6 +179,24 @@ public struct BridgeLauncher {
             throw LauncherError.notRunning
         }
         kill(pid, SIGTERM)
+        // 死亡確認してから pid ファイルを消す。即削除すると assignPort がそのポートを空きと誤認し、
+        // まだ生きているプロセスとの同ポート再起動で bindFailed(48) を招く(stopAndWait と同じ理由)。
+        Self.confirmDeathThenRemovePidFile(pid: pid, pidPath: pidPath, timeout: 5)
+    }
+
+    /// SIGTERM 済みの pid の消滅を timeout まで待ち、生き残れば SIGKILL してから pid ファイルを削除する。
+    /// 同期版(stop / 静的 stopAll・stopMatching が使う。async は stopAndWait 参照)。
+    static func confirmDeathThenRemovePidFile(pid: Int32, pidPath: URL, timeout: TimeInterval) {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if kill(pid, 0) != 0 {  // プロセス不在=死亡
+                try? FileManager.default.removeItem(at: pidPath)
+                return
+            }
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+        kill(pid, SIGKILL)
+        Thread.sleep(forTimeInterval: 0.5)
         try? FileManager.default.removeItem(at: pidPath)
     }
 
