@@ -86,6 +86,9 @@ export class MonitorProcessManager {
    * restartMonitorProcess() の多重起動ガード。連続したプロファイル変更やボタン連打で
    * stopMonitorProcess()→startMonitorProcess() が重なり二重起動するのを防ぐ。
    */
+  /** scheduleRestartAfterClose の安全弁: close をこの秒数待って来なければ強制的に再起動を進める。
+   * stopXProcess は SIGTERM 後 2s で SIGKILL するため close は通常 ~2-3s で来る。8s は余裕を持たせた上限。 */
+  private static readonly RESTART_CLOSE_TIMEOUT_MS = 8000;
   private restartPending = false;
   /** host-metrics プロセス(常駐。monitor プロセスとは独立に管理する)。 */
   private hostMetricsProcess: MonitorProcess | undefined;
@@ -291,15 +294,38 @@ export class MonitorProcessManager {
     this.restartPending = true;
     const proc = this.monitorProcess;
     this.stopMonitorProcess();
+    this.scheduleRestartAfterClose(
+      proc,
+      () => { this.restartPending = false; },
+      () => this.startMonitorProcess(),
+    );
+  }
+
+  /** proc の close を待って start する共通ロジック。close が来ない(defunct/zombie 化等)と
+   * pending が永久 true になり以後の再起動が全て握り潰されるため、RESTART_CLOSE_TIMEOUT_MS の
+   * 安全弁でも1回だけ進める(close と二重起動しない)。 */
+  private scheduleRestartAfterClose(
+    proc: MonitorProcess | undefined,
+    clearPending: () => void,
+    start: () => void,
+  ): void {
     if (!proc) {
-      this.restartPending = false;
-      this.startMonitorProcess();
+      clearPending();
+      start();
       return;
     }
-    proc.once("close", () => {
-      this.restartPending = false;
-      this.startMonitorProcess();
-    });
+    let proceeded = false;
+    const proceed = () => {
+      if (proceeded) {
+        return;
+      }
+      proceeded = true;
+      clearTimeout(timer);
+      clearPending();
+      start();
+    };
+    const timer = setTimeout(proceed, MonitorProcessManager.RESTART_CLOSE_TIMEOUT_MS);
+    proc.once("close", proceed);
   }
 
   /**
@@ -443,15 +469,11 @@ export class MonitorProcessManager {
     this.hostMetricsRestartPending = true;
     const proc = this.hostMetricsProcess;
     this.stopHostMetricsProcess();
-    if (!proc) {
-      this.hostMetricsRestartPending = false;
-      this.startHostMetricsProcess();
-      return;
-    }
-    proc.once("close", () => {
-      this.hostMetricsRestartPending = false;
-      this.startHostMetricsProcess();
-    });
+    this.scheduleRestartAfterClose(
+      proc,
+      () => { this.hostMetricsRestartPending = false; },
+      () => this.startHostMetricsProcess(),
+    );
   }
 
   /**

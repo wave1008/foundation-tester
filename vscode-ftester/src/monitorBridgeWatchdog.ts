@@ -27,6 +27,10 @@ export interface MonitorBridgeWatchdogDeps {
   isAutoRepairEnabled(): boolean;
   /** 実行中のレーンが1つでもあるか(runLaneModel.isAnyLaneRunning への委譲)。 */
   isAnyRunActive(): boolean;
+  /** デバイスライフサイクルキューが busy か(MonitorDeviceOps.isQueueBusy への委譲)。一括down 等の
+   * 実行中は修復 up を積まない — さもないと停止処理中の booted を無応答と誤検知し、ユーザーが停止した
+   * デバイスを勝手に再起動してしまう。 */
+  isDeviceLifecycleQueueBusy(): boolean;
   /** テスト用の時刻注入。省略時 Date.now(拡張ホスト側の実運用ではこちらを使う)。 */
   now?: () => number;
 }
@@ -133,7 +137,8 @@ export class MonitorBridgeWatchdog {
       this.deps.post({ type: "bridgeWatch", name, phase: "failed" });
       return;
     }
-    if (!this.deps.isAutoRepairEnabled() || this.deps.isAnyRunActive()) {
+    if (!this.deps.isAutoRepairEnabled() || this.deps.isAnyRunActive()
+        || this.deps.isDeviceLifecycleQueueBusy()) {
       return;
     }
     entry.attemptCount += 1;

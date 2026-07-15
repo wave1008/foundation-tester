@@ -55,6 +55,12 @@ export class MonitorDeviceOps {
 
   constructor(private readonly deps: MonitorPanelDeps) {}
 
+  /** ライフサイクルキューに実行中/待機中のジョブがあるか。watchdog が「一括down 実行中に
+   * 無応答と誤検知して停止デバイスを再起動する」競合を避けるため、修復 up の抑止判定に使う。 */
+  isQueueBusy(): boolean {
+    return isDeviceLifecycleQueueBusy(this.lifecycleQueue);
+  }
+
   /**
    * デバイスライフサイクル操作をキューに積む。空なら即実行、そうでなければ先行ジョブの完了後に
    * 実行される。同じデバイスへの deviceOp が既にキュー内(実行中/待機中)にあれば連打とみなして
