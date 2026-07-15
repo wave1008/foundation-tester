@@ -6,17 +6,12 @@ import { grid, emptyMessage, banner, btnUp, btnDown, deviceOpMenu, deviceOpMenuI
 import { updateLaneVisibility, syncLanesToDevices, runningWorkers } from './laneLog.js';
 import { createH264Renderer } from './h264Decoder.js';
 
-const STATE_LABEL = {
-  connected: '接続済み',
-  booted: '起動中',
-  offline: '未起動',
-};
-
 // bridgeWatch(拡張ホストの自動修復ウォッチドッグ、契約は main.js の 'bridgeWatch' ケース参照)の
 // phase→footer表示。'ok'はここに含めず通常表示へフォールバックさせる。
+// unresponsive(検知中)・repairing(自動修復中)は表示しない(ユーザー決定 2026-07-16:
+// 過渡的・自己解決する内部状態のため)。自動修復が諦めた failed だけ表示する
+// (これも消すとブリッジ死亡時にタイルが無言で「接続中」のまま止まり手掛かりが無くなる)。
 const BRIDGE_WATCH_LABEL = {
-  unresponsive: { label: 'ブリッジ応答なし', warn: true },
-  repairing: { label: 'ブリッジ再起動中…', warn: false },
   failed: { label: '復旧失敗(ftester出力参照)', warn: true },
 };
 
@@ -153,7 +148,9 @@ function renderFrame(entry) {
     }
   } else {
     // offline→未起動+電源アイコン(起動待ちは待機中+時計)、終了中→シャットダウン中+
-    // 無彩色スピナー、それ以外(booted/フレーム未着)→起動中+スピナー。
+    // 無彩色スピナー、ブート処理中(offline のまま upRunning)→起動中+スピナー、
+    // booted でフレーム未着(ブリッジ供給・ストリーム確立待ち)→接続中+スピナー。
+    // 「起動中」をブート処理中に限定することで、同時ブート上限(2台)とタイル表示が一致する。
     entry.placeholderEl.textContent = '';
     const icon = document.createElement('span');
     if (shuttingDown) {
@@ -170,16 +167,17 @@ function renderFrame(entry) {
         + '<path d="M8 1.8v5.4"/><path d="M4.4 3.9a5.4 5.4 0 1 0 7.2 0"/></svg>';
     } else {
       // booted 待ち、または個別起動が実行中(offline のまま simctl 起動処理中)。
-      icon.className = 'placeholder-icon booting';
+      // スピナー色はプラットフォーム別(タイトルのピルと同色。style.css の booting-ios/-android)
+      icon.className = 'placeholder-icon booting booting-' + entry.device.platform;
     }
     const labelSpan = document.createElement('span');
     labelSpan.textContent = shuttingDown
       ? 'シャットダウン中'
       : waitingUp
         ? '待機中'
-        : offline && !upRunning
-          ? '未起動'
-          : '起動中';
+        : offline
+          ? (upRunning ? '起動中' : '未起動')
+          : '接続中';
     entry.placeholderEl.append(icon, labelSpan);
     entry.frameWrapEl.appendChild(entry.placeholderEl);
   }
@@ -190,13 +188,10 @@ function renderMeta(entry) {
   entry.nameEl.textContent = entry.device.name;
   entry.nameEl.className = 'tile-name tile-name-' + entry.device.platform;
   entry.nameEl.title = entry.device.name + ' (' + entry.device.platform + ')';
-  // connected+フレーム有→「接続済み」、booted→「接続中」、それ以外→空(要素は固定高のため残す)。
+  // 通常時は空(接続済みは画面表示自体が、接続待ちはプレースホルダの「接続中」が伝えるため
+  // 冗長で出さない。ユーザー決定 2026-07-16)。bridgeWatch の異常時だけ下で埋める。
+  // 要素は固定高のため空でも残す(タイル高の計算は createTile 付近のコメント参照)。
   let footerText = '';
-  if (entry.device.state === 'connected' && entry.frameSrc) {
-    footerText = STATE_LABEL.connected;
-  } else if (entry.device.state === 'booted') {
-    footerText = '接続中';
-  }
   // booted 離脱時は古い phase を捨てる(再度 booted に戻った際に前回の死活情報を誤って出さないため)。
   if (entry.device.state !== 'booted') {
     entry.bridgeWatchPhase = undefined;
@@ -439,7 +434,8 @@ export function applyH264Chunk(message) {
 }
 
 // 契約: { type: 'deviceOpBusy', name, op, status }(monitorDeviceOps.ts postDeviceLifecycleStatus と対。
-// op: 'up'|'down'|null、status: 'queued'|'running'|null)。
+// op: 'up'|'down'|null、status: 'queued'|'running'|null)。一括起動時は executeBulkJob の
+// devices-up NDJSON 中継からも同形のメッセージが飛ぶ(op:'up'→null。由来は個別デバイスではなく一括起動)。
 export function applyDeviceOpBusy(message) {
   const entry = findTileByName(message.name);
   if (!entry) {

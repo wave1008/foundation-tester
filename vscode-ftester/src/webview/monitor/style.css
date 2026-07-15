@@ -380,16 +380,24 @@ select:disabled { opacity: 0.5; cursor: default; }
 .placeholder-icon.offline {
   color: var(--vscode-descriptionForeground);
 }
-/* 一括起動待ちの「待機中」(deviceTiles.js renderFrame)。booting スピナーと同系色で起動予定を示す。 */
-.placeholder-icon.waiting {
-  color: var(--vscode-charts-yellow, #e2b93d);
-}
+/* 「待機中」の時計アイコン(.waiting)は専用の色を持たず .frame-placeholder の文字色を継承する
+   (アイコンと文字を同色にする。ユーザー決定 2026-07-16)。 */
 .placeholder-icon.booting {
   box-sizing: border-box;
   border-radius: 50%;
   border: 2px solid rgba(226, 185, 61, 0.25);
   border-top-color: var(--vscode-charts-yellow, #e2b93d);
   animation: ft-placeholder-spin 1s linear infinite;
+}
+/* スピナーのプラットフォーム別色。実色は .tile-name-ios/-android と同じ値(変更時は揃えること)。
+   上の .booting は構造+フォールバック色(platform クラス欠落時のみ見える)。 */
+.placeholder-icon.booting-ios {
+  border-color: rgba(41, 182, 246, 0.25);
+  border-top-color: #29b6f6;
+}
+.placeholder-icon.booting-android {
+  border-color: rgba(61, 220, 132, 0.25);
+  border-top-color: #3ddc84;
 }
 /* 一括終了中の「シャットダウン中」(deviceTiles.js renderFrame)。booting と同型・無彩色スピナー。 */
 .placeholder-icon.shutdown {
