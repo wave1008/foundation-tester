@@ -241,9 +241,10 @@ class デモ_Android設定 {
         }
     }
 
-    // アプリ切り替えデモ: 設定 ⇔ サンプルアプリ。SampleApp は実行プロファイル(app: sampleapp)が全台に導入済み。
-    // Android の SampleApp セレクタは未確認のため切替 scene は action のみ(検証は戻り先の設定アプリで行う)。
-    @Test("設定アプリとサンプルアプリを行き来できる")
+    // アプリ切り替えデモ: 設定 ⇔ 時計(deskclock)。SampleApp は Android ビルドが存在しないため
+    // 切替先はエミュ常設の時計アプリ。時計側のセレクタは未確認のため切替 scene は action のみ
+    // (検証は戻り先の設定アプリで行う)。
+    @Test("設定アプリと時計アプリを行き来できる")
     func S0060() {
         scenario {
             scene(1, "設定アプリを起動する") {
@@ -253,9 +254,9 @@ class デモ_Android設定 {
                     exist("ネットワークとインターネット||Network & internet")
                 }
             }
-            scene(2, "サンプルアプリへ切り替える") {
+            scene(2, "時計アプリへ切り替える") {
                 action {
-                    launchApp("com.example.sampleapp")
+                    launchApp("com.google.android.deskclock")
                     wait(1)  // 起動アニメーション整定待ち
                 }
             }
