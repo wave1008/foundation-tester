@@ -249,17 +249,20 @@ private final class GPUSampler {
 /// ANE(Apple Neural Engine)負荷を IOReport 私有API 経由で取得する。libIOReport.dylib を
 /// dlopen し、"SoC Stats" グループのチャネルをサブスクライブして tick 毎に
 /// IOReportCreateSamplesDelta で区間デルタを取り、state 形式の residency チャネル
-/// SOCn_ANE_Fn(単位 24Mticks)の ACT residency 合算 / 総 ticks(ACT+INACT)を
-/// 負荷率(0..1)として返す。
+/// DIE_n_ANEm(ダイ別の ANE 集約 residency)の ACT residency 合算 / 総 ticks(ACT+INACT)を
+/// 負荷率(0..1)として返す。macOS 27 beta で名称が SOCn_ANE_Fn(周波数段別・単一ダイ)から
+/// DIE_n_ANEm(ダイ別集約)へ変わった。複数ダイ機(Ultra 等)では各ダイが独立した観測窓を
+/// 張るため、busy/total ともにダイ横断で合算する(= ダイ平均利用率)。
 /// "Energy Model" グループの ANE0 エネルギーチャネルは macOS 27 beta では常に 0 を返す
 /// (ANE 割り込み・DMA が活発でも計上されない実測)ため使わない。
 /// dlopen/dlsym や IOReportCopyChannelsInGroup/IOReportCreateSubscription のいずれかが
 /// 失敗したら以降ずっと nil を返す(初期化失敗は起動直後に stderr へ1回だけログし、
 /// クラッシュはさせない)。
 private final class ANESampler {
-    /// 対象チャネル名のパターン。SOC0_ANE_F1 / SOC0_ANE_F2 のような周波数段別チャネルだけを
-    /// 拾い、SOC0_F1_ANE_F2 のような複合名は除外する
-    private static let channelNamePattern = #"^SOC\d+_ANE_F\d+$"#
+    /// 対象チャネル名のパターン。DIE_0_ANE0 / DIE_1_ANE0 のようなダイ別 ANE 集約チャネルだけを
+    /// 拾い、DIE_0_ANE0_ADCLK_TRG / _DITHR_TRG / _EXT_TRGn のような下位トリガ/クロック
+    /// チャネルは末尾一致($)で除外する
+    private static let channelNamePattern = #"^DIE_\d+_ANE\d+$"#
     /// IOReportChannelGetFormat が state 形式(residency 配列を持つ)チャネルに返す値
     private static let stateFormat: UInt8 = 2
 
@@ -324,7 +327,7 @@ private final class ANESampler {
         let residency = Self.aneResidency(delta: delta, api: api)
         guard residency.matchedChannels > 0 else {
             logIfNeeded(
-                "SoC Stats に SOCn_ANE_Fn 形式の residency チャネルが見つかりません" +
+                "SoC Stats に DIE_n_ANEm 形式の residency チャネルが見つかりません" +
                 "(OS 更新でチャネル名が変わった可能性)。ANE負荷は取得できません")
             return nil
         }
@@ -332,12 +335,12 @@ private final class ANESampler {
         return min(1.0, max(0.0, Double(residency.busyTicks) / Double(residency.totalTicks)))
     }
 
-    /// delta の "IOReportChannels" 配列を巡回し、チャネル名が SOCn_ANE_Fn にマッチする
+    /// delta の "IOReportChannels" 配列を巡回し、チャネル名が DIE_n_ANEm にマッチする
     /// state 形式チャネルの residency を集計する。
-    /// - busyTicks: 全対象チャネルの state 名 "ACT" の residency 合算(F1/F2 等の周波数段は
-    ///   排他的に ACT になるため合算してよい)
-    /// - totalTicks: 1 チャネル分の全 state(ACT+INACT)合計。各 F チャネルは同じ観測窓を
-    ///   張るため、いずれか 1 チャネル分(最大値を採用)が窓全体の ticks になる
+    /// - busyTicks: 全対象チャネルの state 名 "ACT" の residency 合算
+    /// - totalTicks: 全対象チャネルの全 state(ACT+INACT)合計。各 DIE_n_ANEm は独立した
+    ///   ダイ = 独立した観測窓なので、ダイ横断で合算する(busy/total = ダイ平均利用率)。
+    ///   ※旧 SOCn_ANE_Fn(周波数段が同一窓を共有)とは異なり max ではなく合算
     /// CF型のまま扱う(Swift Dictionary へブリッジすると、IOReportChannelGetChannelName が
     /// チャネル辞書へ書き戻すためimmutableなブリッジ辞書上でクラッシュする。実測済みの罠)
     private static func aneResidency(
@@ -368,7 +371,7 @@ private final class ANESampler {
                     busyTicks += ticks
                 }
             }
-            totalTicks = max(totalTicks, channelTotal)
+            totalTicks += channelTotal
         }
         return (busyTicks, totalTicks, matchedChannels)
     }
