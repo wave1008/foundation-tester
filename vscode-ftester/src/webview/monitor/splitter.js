@@ -39,7 +39,22 @@ export function applyTilePaneHeight(height) {
 }
 
 function persistTilePaneHeight() {
+  // getState はパネルを閉じると失われるため、同一セッション内の即時復元用の setState に加えて
+  // host(workspaceState)へも保存する(パネル再作成後は "tilePaneHeight" メッセージで復元される。
+  // 契約: monitorModel.ts の setTilePaneHeight / tilePaneHeight)。
   vscode.setState(Object.assign({}, vscode.getState(), { tilePaneHeight }));
+  vscode.postMessage({ type: 'setTilePaneHeight', value: tilePaneHeight });
+}
+
+// host からの復元値(sendInitialState)を反映する。「デバイス」タブ非表示中は applyTilePaneHeight が
+// no-op のため、モジュール変数を直接更新して次の switchTab で反映されるようにする(tilePaneHeight は
+// live binding で tabs.js が参照する)。
+export function setTilePaneHeight(height) {
+  if (typeof height !== 'number' || !(height > 0)) {
+    return;
+  }
+  tilePaneHeight = height;
+  applyTilePaneHeight(height);
 }
 
 applyTilePaneHeight(tilePaneHeight);

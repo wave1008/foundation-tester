@@ -59,6 +59,7 @@ import { applyLiveMessage, applyLiveH264Chunk } from './liveTab.js';
 import { applyExploreMessage } from './exploreTab.js';
 import { applySettings } from './settingsTab.js';
 import { activateTab, TAB_IDS, switchTab } from './tabs.js';
+import { setTilePaneHeight } from './splitter.js';
 
 window.addEventListener('message', (event) => {
   const message = event.data;
@@ -181,6 +182,9 @@ window.addEventListener('message', (event) => {
       break;
     case 'pollingMode':
       applySettings(message);
+      break;
+    case 'tilePaneHeight':
+      setTilePaneHeight(message.value);
       break;
     default:
       break;

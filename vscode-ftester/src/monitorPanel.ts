@@ -150,6 +150,9 @@ class MonitorPanelController implements vscode.Disposable {
   private pendingInitialTab: string | undefined;
   /** 設定タブ「ポーリングモードを使用する」の現在値(ワークスペース単位で永続化)。 */
   private pollingMode: boolean;
+  /** デバイスタブのスプリッター位置(タイルペイン高さ px)。未設定(パネル未ドラッグ)は undefined。
+   * webview の getState はパネルを閉じると失われるため host 側で永続化する(splitter.js と対の契約)。 */
+  private tilePaneHeight: number | undefined;
 
   constructor(
     private readonly workspaceRoot: string,
@@ -162,6 +165,7 @@ class MonitorPanelController implements vscode.Disposable {
     testTree: FtesterTestTree,
   ) {
     this.pollingMode = workspaceState.get<boolean>("monitor.pollingMode", false);
+    this.tilePaneHeight = workspaceState.get<number>("monitor.tilePaneHeight");
     this.deps = {
       workspaceRoot: this.workspaceRoot,
       getConfig: this.getConfig,
@@ -467,6 +471,10 @@ class MonitorPanelController implements vscode.Disposable {
         this.live.refreshFrameSource();
         this.deviceStream.reapply();
         break;
+      case "setTilePaneHeight":
+        this.tilePaneHeight = message.value;
+        void this.workspaceState.update("monitor.tilePaneHeight", message.value);
+        break;
       case "streamRendered":
         // webview がストリームフレームを描画できた ack。これを受けて初めてポーリングを間引く
         // (契約: monitorDeviceStreamController.ts 冒頭)
@@ -513,6 +521,9 @@ class MonitorPanelController implements vscode.Disposable {
     this.deviceOps.resendQueueStatus();
     this.explore.sendInitialState();
     this.post({ type: "pollingMode", value: this.pollingMode });
+    if (this.tilePaneHeight !== undefined) {
+      this.post({ type: "tilePaneHeight", value: this.tilePaneHeight });
+    }
     if (this.pendingInitialTab) {
       this.post({ type: "switchTab", tab: this.pendingInitialTab });
       this.pendingInitialTab = undefined;

@@ -287,6 +287,10 @@ export type MonitorToWebviewMessage =
   // setPollingMode 受信直後(monitorPanel.ts)の両方で送る。webview 側は settingsTab.js の
   // applySettings へそのまま渡す(setPollingMode と対の契約)。
   | { readonly type: "pollingMode"; readonly value: boolean }
+  // デバイスタブのスプリッター位置(タイルペイン高さ px)。ready 直後に workspaceState の永続値を反映する。
+  // webview の getState はパネルを閉じると失われるため host 側で永続化する(setTilePaneHeight と対の契約)。
+  // webview 側は splitter.js の setTilePaneHeight へ渡す。
+  | { readonly type: "tilePaneHeight"; readonly value: number }
   // ブリッジ突然死の自動修復ウォッチドッグ(monitorBridgeWatchdog.ts)の状態遷移通知。name は
   // deviceOpBusy と同じ名前空間(デバイス論理名)。webview 側はタイルのバッジ表示に使う。
   | {
@@ -418,6 +422,9 @@ export type MonitorFromWebviewMessage =
   // 止めてポーリングへ強制する(iOS/Android・ライブ操作タブ/デバイスタイル共通)。monitorPanel.ts が
   // workspaceState へ永続化し、対の "pollingMode" メッセージで即時反映する。
   | { readonly type: "setPollingMode"; readonly value: boolean }
+  // デバイスタブのスプリッターをドラッグ終了した時のタイルペイン高さ(px)。monitorPanel.ts が
+  // workspaceState へ永続化し、パネル再作成時に "tilePaneHeight" メッセージで復元する。
+  | { readonly type: "setTilePaneHeight"; readonly value: number }
   // webview 側 WebCodecs が未対応/デコード失敗したときに1回送られてくる(受け手: monitorPanel.ts の
   // codecError ハンドラ→monitorDeviceStreamController.fallbackToMjpeg/monitorLiveController.fallbackToMjpeg)。
   // scope="tile" は device 必須(対象タイルを1つ特定するため)、scope="live" は選択中デバイスに
@@ -585,6 +592,8 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
       return typeof value.id === "number";
     case "setPollingMode":
       return typeof value.value === "boolean";
+    case "setTilePaneHeight":
+      return typeof value.value === "number" && value.value > 0;
     case "codecError":
       return (
         (value.scope === "tile" || value.scope === "live") &&
