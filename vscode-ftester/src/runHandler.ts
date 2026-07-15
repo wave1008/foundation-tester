@@ -130,6 +130,12 @@ async function executeRun(
     return;
   }
 
+  // キュー投入時点で全対象を enqueued にし、前回の合否アイコンをリセットして待機表示にする
+  // (started は各シナリオ開始時に個別に来るため、それまで前回結果が残るのを防ぐ)。
+  for (const item of targets.values()) {
+    run.enqueued(item);
+  }
+
   const resolution = resolveProjectName(workspaceRoot, config);
   if (resolution.kind !== "resolved") {
     run.appendOutput(
@@ -336,6 +342,9 @@ async function executeDebugRun(
     );
   }
   const [id, item] = [...targets.entries()][0]!;
+
+  // キュー投入時点で前回の合否アイコンをリセットして待機表示にする(started は下で来る)。
+  run.enqueued(item);
 
   const resolution = resolveProjectName(workspaceRoot, config);
   if (resolution.kind !== "resolved") {
