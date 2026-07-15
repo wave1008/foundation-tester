@@ -116,7 +116,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         // 実行等で root が取れない場合は lease を書かない(BridgeProvisioner 側の occupancy guard も
         // 素通りするだけで安全)
         let leaseStateDir = (try? RepoRoot.find())?.appendingPathComponent(".ftester")
-        var leasedUdids: Set<String> = []
+        var leasedKeys: Set<String> = []
 
         while !stop.isSet {
             if control.autoResumeIfStale(limit: Self.pauseSafetyValveSeconds) {
@@ -148,10 +148,17 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                     loggedFetchFailure.remove(state.target.id)
                     continue
                 }
-                if let leaseStateDir, let udid = state.iosUdid {
-                    MonitorLease.write(stateDir: leaseStateDir, udid: udid,
-                                       pid: ProcessInfo.processInfo.processIdentifier)
-                    leasedUdids.insert(udid)
+                if let leaseStateDir {
+                    if let udid = state.iosUdid {
+                        MonitorLease.write(stateDir: leaseStateDir, key: udid,
+                                           pid: ProcessInfo.processInfo.processIdentifier)
+                        leasedKeys.insert(udid)
+                    }
+                    if let serial = state.androidSerial {
+                        MonitorLease.write(stateDir: leaseStateDir, key: serial,
+                                           pid: ProcessInfo.processInfo.processIdentifier)
+                        leasedKeys.insert(serial)
+                    }
                 }
                 // 拡張のデバイスタイルがストリーミング表示中のデバイスはスクショ取得側で
                 // 二重生成しない(拡張側は monitorFrame を受信しても捨てるだけになるため)
@@ -193,7 +200,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             await Self.sleepInterruptible(seconds: interval, stop: stop)
         }
         if let leaseStateDir {
-            for udid in leasedUdids { MonitorLease.remove(stateDir: leaseStateDir, udid: udid) }
+            for key in leasedKeys { MonitorLease.remove(stateDir: leaseStateDir, key: key) }
         }
     }
 

@@ -17,8 +17,8 @@ final class MonitorLeaseTests: XCTestCase {
         let stateDir = makeStateDir()
         defer { try? FileManager.default.removeItem(at: stateDir) }
 
-        MonitorLease.write(stateDir: stateDir, udid: udid, pid: ProcessInfo.processInfo.processIdentifier)
-        XCTAssertTrue(MonitorLease.isFresh(stateDir: stateDir, udid: udid))
+        MonitorLease.write(stateDir: stateDir, key: udid, pid: ProcessInfo.processInfo.processIdentifier)
+        XCTAssertTrue(MonitorLease.isFresh(stateDir: stateDir, key: udid))
     }
 
     func testIsFreshFalseWhenPidNotAlive() throws {
@@ -26,26 +26,38 @@ final class MonitorLeaseTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: stateDir) }
 
         try FileManager.default.createDirectory(at: stateDir, withIntermediateDirectories: true)
-        try String(999999).write(to: MonitorLease.leaseURL(stateDir: stateDir, udid: udid),
+        try String(999999).write(to: MonitorLease.leaseURL(stateDir: stateDir, key: udid),
                                  atomically: true, encoding: .utf8)
-        XCTAssertFalse(MonitorLease.isFresh(stateDir: stateDir, udid: udid))
+        XCTAssertFalse(MonitorLease.isFresh(stateDir: stateDir, key: udid))
     }
 
     func testIsFreshFalseWhenStale() throws {
         let stateDir = makeStateDir()
         defer { try? FileManager.default.removeItem(at: stateDir) }
 
-        MonitorLease.write(stateDir: stateDir, udid: udid, pid: ProcessInfo.processInfo.processIdentifier)
-        let url = MonitorLease.leaseURL(stateDir: stateDir, udid: udid)
+        MonitorLease.write(stateDir: stateDir, key: udid, pid: ProcessInfo.processInfo.processIdentifier)
+        let url = MonitorLease.leaseURL(stateDir: stateDir, key: udid)
         let past = Date().addingTimeInterval(-30)
         try FileManager.default.setAttributes([.modificationDate: past], ofItemAtPath: url.path)
-        XCTAssertFalse(MonitorLease.isFresh(stateDir: stateDir, udid: udid))
+        XCTAssertFalse(MonitorLease.isFresh(stateDir: stateDir, key: udid))
     }
 
     func testIsFreshFalseWhenLeaseFileMissing() {
         let stateDir = makeStateDir()
         defer { try? FileManager.default.removeItem(at: stateDir) }
 
-        XCTAssertFalse(MonitorLease.isFresh(stateDir: stateDir, udid: udid))
+        XCTAssertFalse(MonitorLease.isFresh(stateDir: stateDir, key: udid))
+    }
+
+    func testAndroidSerialKeyRoundTrips() throws {
+        let stateDir = makeStateDir()
+        defer { try? FileManager.default.removeItem(at: stateDir) }
+        let serial = "emulator-5554"
+
+        MonitorLease.write(stateDir: stateDir, key: serial, pid: ProcessInfo.processInfo.processIdentifier)
+        XCTAssertTrue(MonitorLease.isFresh(stateDir: stateDir, key: serial))
+
+        MonitorLease.remove(stateDir: stateDir, key: serial)
+        XCTAssertFalse(MonitorLease.isFresh(stateDir: stateDir, key: serial))
     }
 }

@@ -270,9 +270,15 @@ final class MCPServer {
                 let provisioned = try await provisioner.provision(
                     devices: [(device.name, device.spec)],
                     externalRun: true, force: args["force"] as? Bool ?? false) { prologue.append($0) }
-                connection = DriverConnection(platform: "ios", port: provisioned[0].port)
+                connection = DriverConnection(platform: "ios", port: provisioned[0].port,
+                                              udid: provisioned[0].udid)
             } else {
                 let serial = try AndroidDeviceCatalog.resolveSerial(spec: device.spec)
+                if !(args["force"] as? Bool ?? false),
+                   MonitorLease.isFresh(stateDir: root(of: project).appendingPathComponent(".ftester"), key: serial) {
+                    throw MCPError("デバイス \(device.name) はモニター(ftester api monitor)が使用中です。"
+                        + "相乗り run はデモを凍結させ得ます。モニターを止めるか、force 指定で上書きしてください。")
+                }
                 connection = DriverConnection(platform: "android", serial: serial)
             }
         } else {
