@@ -196,6 +196,23 @@ export class MonitorDeviceStreamController {
     this.reapply();
   }
 
+  /** device-down ジョブ(monitorDeviceOps.ts)の実行開始時に呼ぶ。deviceId は "<platform>:<name>"
+   * (Swift 側 MonitorTarget.id)だがジョブは name しか持たないため、":name" サフィックス一致で
+   * 判定する(同名デバイスが ios/android 両方に存在する場合も両方破棄する)。 */
+  disposeForDeviceName(name: string): void {
+    const suffix = `:${name}`;
+    for (const deviceId of [...this.pipelines.keys()]) {
+      if (deviceId.endsWith(suffix)) {
+        this.disposeDevice(deviceId);
+      }
+    }
+  }
+
+  /** 一括 down ジョブの実行開始時に monitorDeviceOps.ts から呼ぶ。disposeAll と同じ全破棄(冪等)。 */
+  disposeAllForDown(): void {
+    this.disposeAll();
+  }
+
   private startPipeline(deviceId: string, target: QualifyingTarget): void {
     const pipeline = new StreamPipeline({
       command: target.command,
