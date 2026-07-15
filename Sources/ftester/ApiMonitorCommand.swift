@@ -188,10 +188,12 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                         width: jpeg.width, height: jpeg.height))
                     lastErrorMessage[state.target.id] = nil
                 } catch {
-                    // JPEG 変換失敗は接続状態では説明できない異常なので monitorError を出す
+                    // JPEG 変換失敗(壊れた PNG 等)はタイルへ警告を出さない(ユーザー決定 2026-07-16:
+                    // 過渡的でユーザーに対処可能性が無いため)。stderr のみ・同一メッセージ連続中は
+                    // 再ログしない。持続するならブリッジ不調のサイン(curl /screenshot で切り分け)
                     let message = error.localizedDescription
                     if lastErrorMessage[state.target.id] != message {
-                        emitLine(ApiMonitorErrorEvent(device: state.target.id, message: message))
+                        logStderr("[monitor] \(state.target.id): \(message)(タイルへは通知しない)")
                         lastErrorMessage[state.target.id] = message
                     }
                 }
@@ -655,13 +657,6 @@ private struct ApiMonitorFrameEvent: Encodable {
     let jpegBase64: String
     let width: Int
     let height: Int
-}
-
-/// monitorError イベント: スクリーンショット取得失敗時(状態変化時のみ。連続エラーは抑制)
-private struct ApiMonitorErrorEvent: Encodable {
-    let kind = "monitorError"
-    let device: String
-    let message: String
 }
 
 // MARK: - 画像変換
