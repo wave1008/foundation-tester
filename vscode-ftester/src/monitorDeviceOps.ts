@@ -116,10 +116,18 @@ export class MonitorDeviceOps {
       this.deps.writeMonitorControl({ cmd: "pause" });
     }
     if (job.kind === "bulk") {
+      // down 実行直前にストリームを破棄し、simctl/adb に殺される前にタイルを切断表示へ倒す
+      // (放置すると stall 自己修復[15-25秒]まで最終フレームが固まって見える)。
+      if (job.op === "down") {
+        this.deps.stopAllStreams();
+      }
       this.executeBulkJob(job.op);
     } else {
       // 待機中だったジョブがここで先頭に回ってきた場合も含め、「実行中」バッジに更新する。
       this.postDeviceLifecycleStatus(job.name);
+      if (job.op === "down") {
+        this.deps.stopDeviceStreams(job.name);
+      }
       this.executeDeviceOpJob(job.name, job.op);
     }
   }

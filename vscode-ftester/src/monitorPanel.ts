@@ -88,6 +88,12 @@ export interface MonitorPanelDeps {
   isPollingMode(): boolean;
   /** MonitorProfilesController.postMachineProfileInfoへの委譲。MonitorDeviceOps.runCreateDevice成功時に呼ぶ。 */
   notifyMachineProfilesChanged(): void;
+  /** MonitorDeviceStreamController.disposeForDeviceNameへの委譲。MonitorDeviceOpsのdevice-downジョブが
+   * 実行を開始する時点(simctl/adbで実際に殺す前)で呼び、タイルを即座に切断表示へ倒す。 */
+  stopDeviceStreams(name: string): void;
+  /** MonitorDeviceStreamController.disposeAllForDownへの委譲。MonitorDeviceOpsの一括downジョブの
+   * 実行開始時に呼ぶ(stopDeviceStreamsの全台版)。 */
+  stopAllStreams(): void;
   /** 生成したソース(絶対パス)を、デバイスモニターの列を避けた列に開く(モニター表示を覆わないため)。
    * live/explore 両コントローラの生成完了時に使う。 */
   openGeneratedDocument(filePath: string): void;
@@ -182,6 +188,8 @@ class MonitorPanelController implements vscode.Disposable {
         this.bridgeWatchdog.observe(devices);
       },
       isPollingMode: () => this.pollingMode,
+      stopDeviceStreams: (name) => this.deviceStream.disposeForDeviceName(name),
+      stopAllStreams: () => this.deviceStream.disposeAllForDown(),
     };
     this.deviceStream = new MonitorDeviceStreamController(this.deps);
     this.processManager = new MonitorProcessManager(this.deps);

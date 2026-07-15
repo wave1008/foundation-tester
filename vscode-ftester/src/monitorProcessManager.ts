@@ -119,7 +119,11 @@ export class MonitorProcessManager {
    */
   lastKnownDevices: readonly MonitorDevice[] = [];
 
-  constructor(private readonly deps: MonitorPanelDeps) {}
+  /** テスト用の spawn 差し替え口(既定は実 spawn)。monitorProcessManager.test.mjs 参照。 */
+  constructor(
+    private readonly deps: MonitorPanelDeps,
+    private readonly spawnFn: typeof spawn = spawn,
+  ) {}
 
   /**
    * パネルを新規に開いたとき(show())の起動一式: monitor プロセスを起動し、host-metrics の
@@ -177,7 +181,7 @@ export class MonitorProcessManager {
 
     let proc: MonitorProcess;
     try {
-      proc = spawn(config.binaryPath, args, {
+      proc = this.spawnFn(config.binaryPath, args, {
         cwd: this.deps.workspaceRoot,
         shell: false,
         stdio: ["pipe", "pipe", "pipe"],
@@ -344,7 +348,7 @@ export class MonitorProcessManager {
     const config = this.deps.getConfig();
     let proc: MonitorProcess;
     try {
-      proc = spawn(config.binaryPath, ["api", "host-metrics", "--interval", "1"], {
+      proc = this.spawnFn(config.binaryPath, ["api", "host-metrics", "--interval", "1"], {
         cwd: this.deps.workspaceRoot,
         shell: false,
         stdio: ["pipe", "pipe", "pipe"],
