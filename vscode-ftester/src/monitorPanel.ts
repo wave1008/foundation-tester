@@ -112,8 +112,17 @@ export function registerMonitorPanel(
     cli,
     testTree,
   );
+  // TEST EXPLORER タイトルの view/title ボタンはペイン非フォーカス時に隠れる。
+  // フォーカスに依存しない常時表示の導線としてステータスバーへ常駐させる。
+  const statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
+  statusItem.text = "$(device-mobile) デバイスモニター";
+  statusItem.tooltip = "ftester: デバイスモニターを表示";
+  statusItem.command = "ftester.showDeviceMonitor";
+  statusItem.show();
+
   context.subscriptions.push(
     controller,
+    statusItem,
     vscode.commands.registerCommand("ftester.showDeviceMonitor", () => controller.show()),
     vscode.commands.registerCommand("ftester.showLiveControl", () => controller.show("live")),
     vscode.commands.registerCommand("ftester.explore", () => controller.show("explore")),
