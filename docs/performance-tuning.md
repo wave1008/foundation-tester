@@ -421,6 +421,18 @@ window/transition/animator の `*_scale` はチューニングノブではなく
        hybrid はそのシナリオを**丸ごと XCUITest ブリッジで駆動**(iOS設定アプリ等のシナリオが既定 ON でも
        動く)。engine=inapp(明示)は明示エラー。**この分岐が無いと別アプリの注入起動がポート衝突で
        旧ブリッジの偽成功応答になり「裏のアプリを操作して失敗」する**(E2E で実際に発生)。
+     - **suspend 時のルーティング(2026-07-15 修正。混在実行の必須対策)**: 上記ルーティングは in-app
+       /status の応答に依存するが、**直前に別アプリ(system-UI)シナリオが走ると iOS が背面へ回った
+       注入先アプリを suspend し、in-app ブリッジは TCP は受理するが HTTP 応答を返さなくなる**
+       (pre-flight プローブが既定 45s ハング=「ドライバに接続できません: The request timed out」)。
+       対策: プローブは短タイムアウト(`BridgeClient.status(timeout:)` 4s)にし、**無応答時は provision
+       時の注入先 bundleID(`DriverConnection.inappBundleID` → `ScenarioHost` が `--inapp-app` で伝搬)を
+       注入先とみなして**分岐する(対象==注入先 → InAppDriver、別アプリ → XCUITest)。**無応答を一律
+       InAppDriver に倒すと、suspend 中の別アプリ(Preferences 等)シナリオを in-app 経路へ誤ルーティング
+       して破綻する**(この誤りで実際に回帰し、Preferences シナリオがハング → §design 8.8 の
+       `waitUntilExit` 凍結で run 全体が固まった)。InAppDriver 経路は pre-flight `status()` を省略する
+       (suspend でハングし、かつ冒頭 launchApp の注入 relaunch で bridge を必ず張り直すため不要)。
+       混在させないなら `iosInappEngine=false`(全 XCUITest)で回避もできる。
      - **未達**: リッチなサービス所有シート(iOS27 写真限定ライブラリ=com.apple.PhotosViewService)は
        app.snapshot() の1アプリツリーモデルでは掴めない。**推奨運用**: 単純アラートはハイブリッド、
        リッチシートや確実性重視は `simctl privacy grant`/`defaults write` でダイアログを最初から出さない
