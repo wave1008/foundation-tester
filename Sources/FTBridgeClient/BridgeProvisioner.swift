@@ -182,7 +182,7 @@ public struct BridgeProvisioner {
         // main queue を凍結させるため)。force で明示的に上書き可能
         if externalRun, !force {
             let occupied = targets.filter {
-                MonitorLease.isFresh(stateDir: repoRoot.appendingPathComponent(".ftester"), udid: $0.sim.udid)
+                MonitorLease.isFresh(stateDir: repoRoot.appendingPathComponent(".ftester"), key: $0.sim.udid)
             }
             if !occupied.isEmpty {
                 throw BridgeProvisionerError.monitorOccupied(names: occupied.map(\.name))

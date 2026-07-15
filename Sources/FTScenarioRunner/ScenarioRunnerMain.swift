@@ -93,7 +93,7 @@ struct RunScenario: AsyncParsableCommand {
     @Option(help: "iOS 駆動エンジン: xcuitest(既定)/ inapp(dylib 注入)/ hybrid(in-app+XCUITest)")
     var engine: String?
 
-    @Option(help: "iOS: in-app 再起動用のシミュレータ UDID(engine=inapp/hybrid のみ)")
+    @Option(help: "iOS: シミュレータ UDID(inapp/hybrid の再起動、xcuitest の launch 事前検査に使用)")
     var udid: String?
 
     @Option(name: .customLong("xcui-port"), help: "iOS: hybrid のフォールバック用 XCUITest ブリッジのポート")
@@ -187,7 +187,8 @@ struct RunScenario: AsyncParsableCommand {
                                 + "hybrid)で実行すると XCUITest 経由で自動駆動されます"
                                 + "(engine=inapp 明示デバイスには iosInappEngine は適用されません)")
                         }
-                        driver = BridgeClient(port: xcuiPort)
+                        let client = BridgeClient(port: xcuiPort)
+                        driver = udid.map { LaunchPreflightDriver(base: client, udid: $0) } ?? client
                     } else {
                         // in-app は launch=simctl 再起動+dylib 注入(自己再起動できないため)
                         let repoRoot = try RepoRoot.find()
@@ -197,7 +198,8 @@ struct RunScenario: AsyncParsableCommand {
                         }
                     }
                 } else {
-                    driver = BridgeClient(port: port)
+                    let client = BridgeClient(port: port)
+                    driver = udid.map { LaunchPreflightDriver(base: client, udid: $0) } ?? client
                 }
             case "android":
                 driver = try AndroidDriver(serial: serial)
