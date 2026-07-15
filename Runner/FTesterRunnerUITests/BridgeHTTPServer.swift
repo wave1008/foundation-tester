@@ -38,10 +38,22 @@ final class BridgeHTTPServer {
         case listenFailed(Int32)
     }
 
+    /// main queue の async クロージャが書き込み、セマフォ signal 後に accept スレッドが読む
+    /// (happens-before で安全)。タイムアウト時は書き込まれないため読まない。
+    private final class ResponseBox {
+        var response: Response = .error("unhandled", status: 500)
+    }
+
     private let port: UInt16
     private let handler: (Request) -> Response
     private var serverFD: Int32 = -1
     private(set) var isRunning = false
+
+    /// 1リクエストの handler(main スレッド上の XCUITest 操作)の壁時計上限(秒)。超過は
+    /// "Wait for app to idle" 等で main が恒久ブロックした状態で、main は復帰不能。クライアントの
+    /// per-endpoint 上限(interaction 20s / session 45s)より長く、シナリオ watchdog(90s)より短く
+    /// 取り、504 を返してプロセス自死→ポート解放→device-up 再起動に委ねる。
+    static let handlerTimeout: TimeInterval = 60
 
     init(port: UInt16, handler: @escaping (Request) -> Response) {
         self.port = port
@@ -110,19 +122,30 @@ final class BridgeHTTPServer {
         }
     }
 
-    /// XCUITest API はメインスレッド必須(launch 等)。テストメソッド側が
-    /// RunLoop を回し続けているので、main queue への sync ディスパッチで実行される。
-    /// NSException(launch 失敗等)は捕捉して 500 で返し、プロセスを守る。
+    /// XCUITest API はメインスレッド必須(launch 等)。テストメソッド側が RunLoop を回し続けて
+    /// いるので main queue に投げて実行する。NSException(launch 失敗等)は捕捉して 500 で返す。
+    /// handlerTimeout を超えたら main が恒久ブロックしたとみなし、504 を返して自死する(main は
+    /// 復帰不能なので待ち続けても無意味。接続直列処理のため放置すると /status も含む全接続が固まる)。
     private func dispatchToMain(_ request: Request) -> Response {
-        DispatchQueue.main.sync {
-            var response: Response = .error("unhandled", status: 500)
+        let done = DispatchSemaphore(value: 0)
+        // async 実行前に確定させておく既定値。タイムアウト時はこの箱を読まない(未書き込みのため)。
+        let box = ResponseBox()
+        DispatchQueue.main.async {
             if let exceptionMessage = FTCatchObjCException({
-                response = self.handler(request)
+                box.response = self.handler(request)
             }) {
-                response = .error("XCUITest exception: \(exceptionMessage)", status: 500)
+                box.response = .error("XCUITest exception: \(exceptionMessage)", status: 500)
             }
-            return response
+            done.signal()
         }
+        if done.wait(timeout: .now() + Self.handlerTimeout) == .timedOut {
+            // 504 をクライアントへ書き終える猶予を与えてから exit。main はブロック済みなので
+            // global キューで自死をスケジュールする(このメソッドは accept スレッド上で動く)。
+            DispatchQueue.global().asyncAfter(deadline: .now() + 0.3) { exit(70) }
+            return .error("handler timed out after \(Int(Self.handlerTimeout))s; bridge self-terminating",
+                          status: 504)
+        }
+        return box.response
     }
 
     private func readRequest(_ fd: Int32) -> Request? {
