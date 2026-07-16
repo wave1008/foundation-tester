@@ -115,7 +115,12 @@ export class MonitorExploreController implements vscode.Disposable {
       return;
     }
     try {
-      const result = await this.runOneShotList(["api", "list-devices", "--project", resolution.project]);
+      // --profile が無いと machines/ が複数のとき「マシン名が未登録」で落ちる(monitorDeviceOps.ts と同経路)
+      const listArgs = ["api", "list-devices", "--project", resolution.project];
+      if (config.profile) {
+        listArgs.push("--profile", config.profile);
+      }
+      const result = await this.runOneShotList(listArgs);
       const parsed = parseListDevicesResult(result.json);
       if (!parsed) {
         const detail = result.stderrTail.length > 0 ? result.stderrTail : `exit code: ${String(result.exitCode)}`;

@@ -361,7 +361,12 @@ export class MonitorLiveController implements vscode.Disposable {
 
     this.setBusy(true);
     try {
-      const result = await this.runCli(["api", "list-devices", "--project", resolution.project]);
+      // --profile が無いと machines/ が複数のとき「マシン名が未登録」で落ちる(monitorDeviceOps.ts と同経路)
+      const listArgs = ["api", "list-devices", "--project", resolution.project];
+      if (config.profile) {
+        listArgs.push("--profile", config.profile);
+      }
+      const result = await this.runCli(listArgs);
       const parsed = parseListDevicesResult(result.json);
       if (!parsed) {
         const detail = result.stderrTail.length > 0 ? result.stderrTail : `exit code: ${String(result.exitCode)}`;
