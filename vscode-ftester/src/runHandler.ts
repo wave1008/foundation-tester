@@ -13,6 +13,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { type FtesterCli } from "./cli";
 import { type FtesterConfig, resolveProjectName } from "./config";
+import { resolveEntryAtCursor, truncateForStatusBar, type TreeItemEntry } from "./copyTestName";
 import { lastResultsDir, lookupKey, readFailedScenarioIds } from "./lastResults";
 import type { ScenarioFinishedEventBody } from "./debugAdapter";
 import { isRunEvent } from "./model";
@@ -30,6 +31,14 @@ import type { ScenarioFileWatcher } from "./watcher";
 let activeRunCount = 0;
 export function isRunActive(): boolean {
   return activeRunCount > 0;
+}
+
+// コントローラ行(ルートの「ftester」)の右クリックは TestItem でない内部オブジェクト
+// (id が undefined)が渡る。TestItem として妥当なものだけ採用し、それ以外は全体扱い
+export function isTestItem(x: unknown): x is vscode.TestItem {
+  return typeof x === "object" && x !== null
+    && typeof (x as vscode.TestItem).id === "string"
+    && typeof (x as vscode.TestItem).children === "object";
 }
 
 export function registerRunHandler(
@@ -88,12 +97,6 @@ export function registerRunHandler(
     vscode.commands.registerCommand(
       "ftester.rerunFailedTests",
       (item?: unknown, items?: unknown) => {
-        // コントローラ行(ルートの「ftester」)の右クリックは TestItem でない内部オブジェクト
-        // (id が undefined)が渡る。TestItem として妥当なものだけ採用し、それ以外は全体扱い
-        const isTestItem = (x: unknown): x is vscode.TestItem =>
-          typeof x === "object" && x !== null
-          && typeof (x as vscode.TestItem).id === "string"
-          && typeof (x as vscode.TestItem).children === "object";
         const multi = Array.isArray(items) ? items.filter(isTestItem) : [];
         const include = multi.length > 0 ? multi : isTestItem(item) ? [item] : undefined;
         outputChannel.appendLine(
@@ -105,7 +108,59 @@ export function registerRunHandler(
         );
       },
     ),
+    vscode.commands.registerCommand(
+      "ftester.copyTestName",
+      (item?: unknown, items?: unknown) => {
+        const multi = Array.isArray(items) ? items.filter(isTestItem) : [];
+        const include = multi.length > 0 ? multi : isTestItem(item) ? [item] : undefined;
+
+        if (include && include.length > 0) {
+          void copyAndNotify(include.map((i) => i.label).join("\n"));
+          return;
+        }
+
+        const notFound = () =>
+          vscode.window.setStatusBarMessage(
+            "コピー対象を特定できませんでした(Test Explorer で右クリック → 名前をコピー)", 3000);
+
+        const activeEditor = vscode.window.activeTextEditor;
+        if (!activeEditor) {
+          notFound();
+          return;
+        }
+        const entries: TreeItemEntry[] = [];
+        const collect = (treeItem: vscode.TestItem, depth: number): void => {
+          if (treeItem.uri && treeItem.range) {
+            entries.push({
+              id: treeItem.id,
+              label: treeItem.label,
+              uriKey: treeItem.uri.toString(),
+              startLine: treeItem.range.start.line,
+              depth,
+            });
+          }
+          treeItem.children.forEach((child) => collect(child, depth + 1));
+        };
+        controller.items.forEach((treeItem) => collect(treeItem, 0));
+
+        const cursor = {
+          uriKey: activeEditor.document.uri.toString(),
+          line: activeEditor.selection.active.line,
+        };
+        const resolved = resolveEntryAtCursor(entries, cursor);
+        if (!resolved) {
+          notFound();
+          return;
+        }
+        void copyAndNotify(resolved.label);
+      },
+    ),
   );
+}
+
+async function copyAndNotify(text: string): Promise<void> {
+  await vscode.env.clipboard.writeText(text);
+  vscode.window.setStatusBarMessage(`コピーしました: ${truncateForStatusBar(text)}`, 3000);
 }
 
 /**
