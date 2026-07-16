@@ -44,6 +44,10 @@ export interface FtesterConfig {
   /** true の場合、ブリッジ無応答(connected→booted 降格が booted 連続5回続く)を検出したら、実行中の
    * レーンが無い間に限り device-up で自動修復を試みる(monitorBridgeWatchdog.ts)。 */
   autoRepairBridge: boolean;
+  /** true の場合、Android ゲスト OS 異常(Wi-Fi 無効・時計凍結)を検出したら Wi-Fi 再有効化→再起動の
+   * 順で自動修復を試みる(monitorHealthWatchdog.ts)。既定 false: autoRepairBridge と異なり、
+   * Wi-Fi をわざと切ってテストするケースを勝手に上書きしないため。 */
+  autoRepairDeviceHealth: boolean;
 }
 
 /** ワークスペースルート(Package.swift のあるフォルダ)を解決する。開いていなければ undefined。 */
@@ -80,6 +84,7 @@ export function readConfig(workspaceRoot: string): FtesterConfig {
     streamCodec: configuration.get<"h264" | "mjpeg">("streamCodec", "h264"),
     showOnlyFailedTests: configuration.get<boolean>("showOnlyFailedTests", false),
     autoRepairBridge: configuration.get<boolean>("autoRepairBridge", true),
+    autoRepairDeviceHealth: configuration.get<boolean>("autoRepairDeviceHealth", false),
   };
 }
 

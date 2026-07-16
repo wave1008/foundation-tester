@@ -1,5 +1,7 @@
 // tiles/selectedDeviceIds/deviceOpMenuEntry の書き込みはこのモジュールに限定する。
 // laneLog.js は tiles/selectedDeviceIds を読み取り専用で参照する。
+// healthWatch(MonitorHealthWatchdog、Android ゲスト OS 異常の自動修復)は state==='connected' の
+// 間だけ footer に表示する(bridgeWatch は state==='booted' の間だけ表示、と対で排他)。
 
 import { vscode } from './vscodeApi.js';
 import { grid, emptyMessage, banner, btnUp, btnDown, deviceOpMenu, deviceOpMenuItemBtn, deviceOpMenuItemLabel, deviceOpMenuLiveBtn, profileSelect } from './domRefs.js';
@@ -13,6 +15,16 @@ import { createH264Renderer } from './h264Decoder.js';
 // (これも消すとブリッジ死亡時にタイルが無言で「接続中」のまま止まり手掛かりが無くなる)。
 const BRIDGE_WATCH_LABEL = {
   failed: { label: '復旧失敗(ftester出力参照)', warn: true },
+};
+
+// healthWatch(MonitorHealthWatchdog、契約は main.js の 'healthWatch' ケース参照)の phase→footer表示。
+// 'ok' はここに含めず通常表示へフォールバックさせる。bridgeWatch と異なり全 phase を表示する
+// (Wi-Fi/時計異常はブリッジ無応答と違い自己解決しないため、修復の進行状況を出す)。
+const HEALTH_WATCH_LABEL = {
+  unhealthy: { label: 'デバイス異常を検出', warn: true },
+  repairing: { label: 'Wi-Fi 修復中...', warn: true },
+  restarting: { label: '自動再起動中...', warn: true },
+  failed: { label: '自動修復失敗', warn: true },
 };
 
 // src/monitorModel.ts の deviceOpMenuItem の複製(webview は CSP で import 不可のため)。変更時は
@@ -104,6 +116,8 @@ function createTile(device) {
     frameSrc: null,
     // bridgeWatch の直近 phase('ok'/未受信は undefined)。state==='booted' の間だけ表示に反映する。
     bridgeWatchPhase: undefined,
+    // healthWatch の直近 phase('ok'/未受信は undefined)。state==='connected' の間だけ表示に反映する。
+    healthWatchPhase: undefined,
     // ストリーム描画 ack(streamRendered)の直近送信時刻(ms)。2秒スロットリング用
     // (受け手側 noteStreamRendered は冪等なので多重送信は無害だがスパムを避ける)。
     streamAckAt: 0,
@@ -192,14 +206,26 @@ function renderMeta(entry) {
   // 冗長で出さない。ユーザー決定 2026-07-16)。bridgeWatch の異常時だけ下で埋める。
   // 要素は固定高のため空でも残す(タイル高の計算は createTile 付近のコメント参照)。
   let footerText = '';
-  // booted 離脱時は古い phase を捨てる(再度 booted に戻った際に前回の死活情報を誤って出さないため)。
+  // booted/connected 離脱時は古い phase を捨てる(再度その state に戻った際に前回の死活情報を
+  // 誤って出さないため)。再起動中は connected を離れる=healthWatchPhase が捨てられ、opBusy
+  // バッジ(「起動中」等)に表示を譲る。
   if (entry.device.state !== 'booted') {
     entry.bridgeWatchPhase = undefined;
   }
-  // deviceOpBusy(実行中の起動/停止操作)がある間は既存表示を優先し、bridgeWatch では上書きしない。
+  if (entry.device.state !== 'connected') {
+    entry.healthWatchPhase = undefined;
+  }
+  // deviceOpBusy(実行中の起動/停止操作)がある間は既存表示を優先し、bridgeWatch/healthWatch では
+  // 上書きしない。state で排他(booted/connected)のため bridgeWatch と healthWatch は衝突しない。
   let warn = false;
   if (entry.device.state === 'booted' && !entry.opBusy && entry.bridgeWatchPhase) {
     const override = BRIDGE_WATCH_LABEL[entry.bridgeWatchPhase];
+    if (override) {
+      footerText = override.label;
+      warn = override.warn;
+    }
+  } else if (entry.device.state === 'connected' && !entry.opBusy && entry.healthWatchPhase) {
+    const override = HEALTH_WATCH_LABEL[entry.healthWatchPhase];
     if (override) {
       footerText = override.label;
       warn = override.warn;
@@ -469,6 +495,16 @@ export function applyBridgeWatch(message) {
     return;
   }
   entry.bridgeWatchPhase = message.phase === 'ok' ? undefined : message.phase;
+  renderMeta(entry);
+}
+
+// 契約: { type: 'healthWatch', name, phase }(name は deviceOpBusy と同じ device.name 名前空間)。
+export function applyHealthWatch(message) {
+  const entry = findTileByName(message.name);
+  if (!entry) {
+    return;
+  }
+  entry.healthWatchPhase = message.phase === 'ok' ? undefined : message.phase;
   renderMeta(entry);
 }
 

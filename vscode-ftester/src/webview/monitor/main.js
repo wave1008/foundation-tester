@@ -24,6 +24,7 @@ import {
   selectedDeviceIds,
   applyProfileInfo,
   applyBridgeWatch,
+  applyHealthWatch,
 } from './deviceTiles.js';
 import { applyLaneAction, applyLaneHydrate, updateLaneVisibility, updateLanesPlaceholder } from './laneLog.js';
 import { applyHostMetrics } from './hostCharts.js';
@@ -96,6 +97,9 @@ window.addEventListener('message', (event) => {
       break;
     case 'bridgeWatch':
       applyBridgeWatch(message);
+      break;
+    case 'healthWatch':
+      applyHealthWatch(message);
       break;
     case 'deviceOpFailed':
       showBanner(message.name + ': ' + message.message);

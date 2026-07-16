@@ -73,6 +73,22 @@ export class MonitorDeviceOps {
     if (job.kind === "device" && hasDeviceLifecycleJobFor(this.lifecycleQueue, job.name)) {
       return;
     }
+    this.pushLifecycleJob(job);
+  }
+
+  /** ヘルスウォッチドッグの再起動修復: down→up を連続で積む。対象デバイスのジョブが既に
+   * キューにあれば何もしない(enqueueLifecycleJob の連打対策と同じ理由。down と up のペアは
+   * この直後の連続 push なので per-name 重複排除を素通しする)。 */
+  enqueueRestart(name: string): void {
+    if (hasDeviceLifecycleJobFor(this.lifecycleQueue, name)) {
+      return;
+    }
+    this.pushLifecycleJob({ kind: "device", name, op: "down" });
+    this.pushLifecycleJob({ kind: "device", name, op: "up" });
+  }
+
+  /** enqueueLifecycleJob/enqueueRestart 共通のキュー投入処理(重複排除は呼び出し側の責務)。 */
+  private pushLifecycleJob(job: DeviceLifecycleJob): void {
     const wasBusy = isDeviceLifecycleQueueBusy(this.lifecycleQueue);
     this.lifecycleQueue = enqueueDeviceLifecycleJob(this.lifecycleQueue, job);
     this.postBootBusy();
