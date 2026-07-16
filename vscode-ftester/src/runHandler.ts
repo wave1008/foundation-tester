@@ -13,6 +13,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { type FtesterCli } from "./cli";
 import { type FtesterConfig, resolveProjectName } from "./config";
+import { lastResultsDir, readFailedScenarioIds } from "./lastResults";
 import type { ScenarioFinishedEventBody } from "./debugAdapter";
 import { isRunEvent } from "./model";
 import { type RunEventBus } from "./runEventBus";
@@ -37,9 +38,21 @@ export function registerRunHandler(
 ): void {
   const controller = testTree.controller;
 
-  const makeHandler = (dryRun: boolean) =>
+  const makeHandler = (dryRun: boolean, failedOnly = false) =>
     (request: vscode.TestRunRequest, token: vscode.CancellationToken): Thenable<void> =>
-      executeRun(controller, cli, workspaceRoot, getConfig, watcher, outputChannel, eventBus, request, token, dryRun);
+      executeRun(
+        controller,
+        cli,
+        workspaceRoot,
+        getConfig,
+        watcher,
+        outputChannel,
+        eventBus,
+        request,
+        token,
+        dryRun,
+        failedOnly,
+      );
 
   context.subscriptions.push(
     controller.createRunProfile("実行", vscode.TestRunProfileKind.Run, makeHandler(false), true),
@@ -47,6 +60,12 @@ export function registerRunHandler(
       "実行 (dry-run)",
       vscode.TestRunProfileKind.Run,
       makeHandler(true),
+      false,
+    ),
+    controller.createRunProfile(
+      "失敗のみ実行",
+      vscode.TestRunProfileKind.Run,
+      makeHandler(false, true),
       false,
     ),
     controller.createRunProfile(
@@ -119,13 +138,27 @@ async function executeRun(
   request: vscode.TestRunRequest,
   token: vscode.CancellationToken,
   dryRun: boolean,
+  failedOnly: boolean,
 ): Promise<void> {
   const config = getConfig();
-  const targets = resolveTargets(controller, request);
+  let targets = resolveTargets(controller, request);
+
+  if (failedOnly) {
+    const resolution = resolveProjectName(workspaceRoot, config);
+    const failedIds =
+      resolution.kind === "resolved"
+        ? readFailedScenarioIds(lastResultsDir(workspaceRoot, resolution.project))
+        : new Set<string>();
+    targets = new Map([...targets].filter(([id]) => failedIds.has(id)));
+  }
+
   const run = controller.createTestRun(request);
   const runStartedAt = Date.now();
 
   if (targets.size === 0) {
+    if (failedOnly) {
+      run.appendOutput("前回失敗したシナリオはありません(全て成功済みか未実行)\r\n");
+    }
     run.end();
     return;
   }
