@@ -20,7 +20,10 @@ class ログインテスト {
                     type("password123")
                     tap("#login_btn||ログイン")
                     wait(1)  // iOS 27 のパスワード保存シートの出現アニメーション整定待ち
-                    tap("今はしない", optional: true)  // シートが出た場合のみ閉じる(出ない個体もある)
+                    tap("今はしない", optional: true, timeout: 2)  // シートが出た場合のみ閉じる(出ない個体もある)
+                    ifCanSelect("今はしない", waitSeconds: 1) {  // アニメ中タップの空振り(シート残留)への再試行
+                        tap("今はしない")
+                    }
                 }.expectation {
                     exist("#welcome_text||ようこそ")
                 }
