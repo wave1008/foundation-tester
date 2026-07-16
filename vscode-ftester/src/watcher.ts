@@ -6,7 +6,8 @@
 import * as vscode from "vscode";
 
 const DEFAULT_DEBOUNCE_MS = 800;
-const WATCH_GLOB = "Projects/*/Scenarios/**/*.swift";
+/** シナリオファイルの glob(reportCodeLens.ts の CodeLens 対象パターンと同一にすること)。 */
+export const WATCH_GLOB = "Projects/*/Scenarios/**/*.swift";
 
 export class ScenarioFileWatcher implements vscode.Disposable {
   private readonly watcher: vscode.FileSystemWatcher;

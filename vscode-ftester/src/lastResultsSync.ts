@@ -21,6 +21,8 @@ export interface LastResultsSyncDeps {
   getConfig: () => FtesterConfig;
   isGuiRunActive: () => boolean;
   outputChannel: vscode.OutputChannel;
+  /** ストアに変化があった tick(初回反映含む)ごとに呼ぶ(reportCodeLens.ts の refresh 用)。 */
+  onResultsApplied?: () => void;
 }
 
 /** current のうち previous と状態が異なる(または previous に無い)エントリのみ返す。
@@ -91,7 +93,7 @@ function hasAnyLeaf(items: vscode.TestItemCollection): boolean {
 }
 
 export function registerLastResultsSync(deps: LastResultsSyncDeps): vscode.Disposable {
-  const { controller, workspaceRoot, getConfig, isGuiRunActive, outputChannel } = deps;
+  const { controller, workspaceRoot, getConfig, isGuiRunActive, outputChannel, onResultsApplied } = deps;
 
   let appliedSnapshot: Map<string, ResultState> = new Map();
   let fsWatcher: fs.FSWatcher | undefined;
@@ -113,6 +115,8 @@ export function registerLastResultsSync(deps: LastResultsSyncDeps): vscode.Dispo
     if (changed.length === 0) {
       return;
     }
+    // CodeLens はツリーの leaf 解決を経ずストアを直接読むため、matches が空でも呼ぶ。
+    onResultsApplied?.();
     const matches: Array<{ item: vscode.TestItem; state: ResultState }> = [];
     for (const { id, state } of changed) {
       const item = findLeaf(controller.items, id);

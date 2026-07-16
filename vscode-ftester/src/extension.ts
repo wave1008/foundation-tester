@@ -19,6 +19,7 @@ import { registerLastResultsSync } from "./lastResultsSync";
 import { registerMonitorPanel } from "./monitorPanel";
 import { sweepOrphans } from "./orphanSweep";
 import { registerProfileDiagnostics } from "./profileDiagnostics";
+import { registerReportCodeLens } from "./reportCodeLens";
 import { RunEventBus } from "./runEventBus";
 import { isRunActive, registerRunHandler } from "./runHandler";
 import { registerStepsView } from "./stepsView";
@@ -63,7 +64,20 @@ export function activate(context: vscode.ExtensionContext): void {
   const testTree = registerTestTree(context, cli, workspaceRoot, getConfig, outputChannel);
   const watcher = registerWatcher(context, workspaceRoot, testTree);
   registerCommands(context, cli, workspaceRoot, testTree, getConfig, outputChannel);
-  registerRunHandler(context, cli, workspaceRoot, getConfig, testTree, watcher, outputChannel, runEventBus);
+
+  // 失敗テストの「レポートを開く」CodeLens。last-results 変化(lastResultsSync)・GUI 実行終了
+  // (runHandler)のどちらでも再描画させる(reportCodeLens.ts 冒頭コメント参照)。
+  const reportCodeLens = registerReportCodeLens({
+    controller: testTree.controller,
+    workspaceRoot,
+    getConfig,
+  });
+  context.subscriptions.push(reportCodeLens);
+
+  registerRunHandler(
+    context, cli, workspaceRoot, getConfig, testTree, watcher, outputChannel, runEventBus,
+    () => reportCodeLens.refresh(),
+  );
   context.subscriptions.push(
     registerLastResultsSync({
       controller: testTree.controller,
@@ -71,6 +85,7 @@ export function activate(context: vscode.ExtensionContext): void {
       getConfig,
       isGuiRunActive: isRunActive,
       outputChannel,
+      onResultsApplied: () => reportCodeLens.refresh(),
     }),
   );
   registerDebugAdapter(context, workspaceRoot, getConfig, outputChannel);
