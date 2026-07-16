@@ -320,6 +320,20 @@ select:disabled { opacity: 0.5; cursor: default; }
   display: none;
   margin-left: auto;
 }
+.badge-render {
+  font-size: 9px;
+  padding: 0 4px;
+  border-radius: 3px;
+  display: none;
+}
+.render-gpu {
+  background-color: var(--vscode-charts-green, #2f9e63);
+  color: #ffffff;
+}
+.render-cpu {
+  background-color: var(--vscode-charts-orange, #cc6633);
+  color: #ffffff;
+}
 .frame-wrap {
   /* --tile-image-h/--tile-aspect は JS の relayoutTiles() が設定する(高さは実測、
      アスペクトはフレーム受信時)。画像の自然サイズではなくこの計算幅でタイル幅を

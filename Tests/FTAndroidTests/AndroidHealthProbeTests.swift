@@ -75,6 +75,23 @@ final class AndroidHealthProbeTests: XCTestCase {
         XCTAssertFalse(AndroidHealthProbe.blankScreen(pngByteCount: 0))
     }
 
+    // MARK: - renderMode
+
+    func testGpuGlesLineDetectsGpu() {
+        let output = "GLES: Google (Apple), Android Emulator OpenGL ES Translator (Apple M2 Ultra), " +
+            "OpenGL ES 3.0 (4.1 Metal - 91.7)"
+        XCTAssertEqual(AndroidHealthProbe.renderMode(fromSurfaceFlinger: output), "gpu")
+    }
+
+    func testSwiftShaderGlesLineDetectsCpu() {
+        let output = "GLES: Google, Android Emulator OpenGL ES Translator, OpenGL ES 3.0 (SwiftShader)"
+        XCTAssertEqual(AndroidHealthProbe.renderMode(fromSurfaceFlinger: output), "cpu")
+    }
+
+    func testNoGlesLineIsUnknown() {
+        XCTAssertNil(AndroidHealthProbe.renderMode(fromSurfaceFlinger: "some other dumpsys output\n"))
+    }
+
     // MARK: - AndroidHealthDebounce
 
     func testFirstObservationDoesNotConfirm() {

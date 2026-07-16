@@ -19,6 +19,28 @@ public enum AndroidHealthProbe {
     /// ウェッジは a11y は生きたまま画面だけ死ぬため、screencap のサイズでしか安価に検出できない
     public static let blankScreenMaxPNGBytes = 30_000
 
+    /// `dumpsys SurfaceFlinger` の GLES 行から実描画モードを判定する(判定基準は
+    /// docs/performance-tuning.md §7)。SwiftShader は文字列上 Metal と共起しうるため
+    /// 安全側(cpu 判定)を優先して先にチェックする
+    static func renderMode(fromSurfaceFlinger output: String) -> String? {
+        guard let glesLine = output.split(separator: "\n").first(where: { $0.contains("GLES:") }) else {
+            return nil
+        }
+        if glesLine.range(of: "SwiftShader", options: .caseInsensitive) != nil { return "cpu" }
+        if glesLine.contains("Metal") { return "gpu" }
+        return nil
+    }
+
+    /// ブート時固定の実描画モードを adb dumpsys で1回検出する(呼び出し側=ApiMonitorCommand.swift が
+    /// 接続毎にキャッシュし、再検出しない)
+    public static func detectRenderMode(serial: String) -> String? {
+        guard let adbPath = try? AndroidDriver.findADB() else { return nil }
+        guard let result = try? Shell.run([adbPath, "-s", serial, "shell", "dumpsys", "SurfaceFlinger"]) else {
+            return nil
+        }
+        return renderMode(fromSurfaceFlinger: result.output)
+    }
+
     /// serial のエミュレータに adb で2プローブを実行する。adb 失敗(コマンドエラー・出力パース
     /// 不能)はそのプローブの判定をスキップ(=異常扱いしない。誤検知よりプローブ欠測を優先)。
     public static func observeIssues(serial: String, hostNow: Date = Date()) -> Set<String> {
