@@ -54,10 +54,13 @@ public struct DriverConnection: Sendable, Hashable {
     /// アプリが suspend され /status プローブが無応答のとき、注入先を特定して inapp/XCUITest の
     /// ルーティングを正しく決めるために使う(サブプロセスの mismatch 判定を参照)。
     public let inappBundleID: String?
+    /// 実行プロファイル上のデバイス論理名(profiles/machines/ の name)。レポートヘッダ表示用
+    /// (ProfileWorkerFactory/MCPServer のプロファイル経路で設定される。--ports 直指定等では nil)
+    public let deviceName: String?
 
     public init(platform: String, port: UInt16? = nil, serial: String? = nil,
                 engine: String? = nil, udid: String? = nil, xcuiPort: UInt16? = nil,
-                inappBundleID: String? = nil) {
+                inappBundleID: String? = nil, deviceName: String? = nil) {
         self.platform = platform
         self.port = port
         self.serial = serial
@@ -65,6 +68,7 @@ public struct DriverConnection: Sendable, Hashable {
         self.udid = udid
         self.xcuiPort = xcuiPort
         self.inappBundleID = inappBundleID
+        self.deviceName = deviceName
     }
 }
 
@@ -208,6 +212,7 @@ public enum ScenarioHost {
         if let udid = connection.udid { args += ["--udid", udid] }
         if let xcuiPort = connection.xcuiPort { args += ["--xcui-port", String(xcuiPort)] }
         if let inappBundleID = connection.inappBundleID { args += ["--inapp-app", inappBundleID] }
+        if let deviceName = connection.deviceName { args += ["--device-name", deviceName] }
         if let defaultTimeout { args += ["--default-timeout", String(defaultTimeout)] }
         if let debug {
             args.append("--debug")

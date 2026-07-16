@@ -22,6 +22,9 @@ public enum ScenarioReportWriter {
         md += "\n"
         md += "- アプリ: \(record.app)\n"
         md += "- プラットフォーム: \(record.platform)\n"
+        if let deviceLine = deviceLine(name: record.deviceName, identifier: record.deviceIdentifier) {
+            md += "- デバイス: \(deviceLine)\n"
+        }
         md += "- 結果: \(record.passed ? "✅ 成功" : "❌ 失敗")\n"
         md += "- 日時: \(ISO8601DateFormatter().string(from: Date()))\n"
 
@@ -73,6 +76,16 @@ public enum ScenarioReportWriter {
         let url = dir.appendingPathComponent("\(baseName).md")
         try md.write(to: url, atomically: true, encoding: .utf8)
         return url
+    }
+
+    /// 実行デバイス行のテキスト(論理名+括弧で技術識別子)。両方 nil なら行自体を省略するため nil を返す
+    static func deviceLine(name: String?, identifier: String?) -> String? {
+        switch (name, identifier) {
+        case let (name?, identifier?): return "\(name) (\(identifier))"
+        case let (name?, nil): return name
+        case let (nil, identifier?): return "(\(identifier))"
+        case (nil, nil): return nil
+        }
     }
 
     static func line(for step: DSLStepRecord) -> String {

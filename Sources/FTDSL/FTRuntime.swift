@@ -46,8 +46,26 @@ public struct ScenarioRecordData: Sendable {
     public let title: String
     public let app: String
     public let platform: String
+    /// 実行プロファイル上のデバイス論理名(profiles/machines/ の name)。orchestrator 経由でない
+    /// 実行(--ports 直指定等)では取得できず nil
+    public let deviceName: String?
+    /// 技術識別子(Android: adb serial / iOS: シミュレータ UDID)。取得できなければ nil
+    public let deviceIdentifier: String?
     public var scenes: [SceneRecordData] = []
     public var fixSuggestions: [FixSuggestion] = []
+
+    public init(id: String, title: String, app: String, platform: String,
+                deviceName: String? = nil, deviceIdentifier: String? = nil,
+                scenes: [SceneRecordData] = [], fixSuggestions: [FixSuggestion] = []) {
+        self.id = id
+        self.title = title
+        self.app = app
+        self.platform = platform
+        self.deviceName = deviceName
+        self.deviceIdentifier = deviceIdentifier
+        self.scenes = scenes
+        self.fixSuggestions = fixSuggestions
+    }
 
     public var passed: Bool { scenes.allSatisfy(\.passed) }
 }
@@ -121,6 +139,8 @@ public final class FTDriveCore {
                 healCacheURL: URL? = nil,
                 defaultTimeout: Int? = nil,
                 fallbackDriver: AppDriver? = nil,
+                deviceName: String? = nil,
+                deviceIdentifier: String? = nil,
                 emit: @escaping (ScenarioEvent) -> Void) {
         self.driver = driver
         self.platform = platform
@@ -135,7 +155,8 @@ public final class FTDriveCore {
         self.defaultTimeout = defaultTimeout ?? 5
         self.emit = emit
         self.record = ScenarioRecordData(id: scenarioID, title: scenarioTitle,
-                                         app: app, platform: platform)
+                                         app: app, platform: platform,
+                                         deviceName: deviceName, deviceIdentifier: deviceIdentifier)
     }
 
     public var finalRecord: ScenarioRecordData { record }

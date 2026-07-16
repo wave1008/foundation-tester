@@ -9,9 +9,15 @@ public enum AndroidHealthProbe {
     /// 検出する異常の識別子(VSCode 拡張側 monitorModel.ts の health 契約と同期)
     public static let issueWifiDisabled = "wifi-disabled"
     public static let issueClockSkew = "clock-skew"
+    public static let issueBlankScreen = "blank-screen"
 
     /// clock-skew の既定閾値(秒)。エミュレータの正常な揺らぎは数秒以内、今回の実害は約2時間。
     public static let clockSkewThresholdSeconds: Double = 120
+
+    /// blank-screen 判定の PNG サイズ閾値(バイト)。一様フレームは PNG 圧縮で極小になる
+    /// (実測 @1080x2424: ウェッジ時の白/黒 10-16KB、正常画面 130KB 以上)。描画パイプラインの
+    /// ウェッジは a11y は生きたまま画面だけ死ぬため、screencap のサイズでしか安価に検出できない
+    public static let blankScreenMaxPNGBytes = 30_000
 
     /// serial のエミュレータに adb で2プローブを実行する。adb 失敗(コマンドエラー・出力パース
     /// 不能)はそのプローブの判定をスキップ(=異常扱いしない。誤検知よりプローブ欠測を優先)。
@@ -27,7 +33,16 @@ public enum AndroidHealthProbe {
                        thresholdSeconds: clockSkewThresholdSeconds) == true {
             issues.insert(issueClockSkew)
         }
+        if let cap = try? Shell.runData([adbPath, "-s", serial, "exec-out", "screencap", "-p"]),
+           cap.status == 0, blankScreen(pngByteCount: cap.data.count) {
+            issues.insert(issueBlankScreen)
+        }
         return issues
+    }
+
+    /// screencap PNG のサイズだけでブランク(一様フレーム)を判定する。0 は取得失敗(判定しない)
+    static func blankScreen(pngByteCount: Int) -> Bool {
+        pngByteCount > 0 && pngByteCount < blankScreenMaxPNGBytes
     }
 
     /// `adb shell cmd wifi status` の出力に "Wifi is disabled" が含まれるかで判定

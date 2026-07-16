@@ -136,6 +136,7 @@ class デモ_iOS設定3 {
                 }.action {
                     tap("#com.apple.settings.general||一般")
                     scrollTo("#com.apple.settings.general.autoFillAndPasswords||自動入力とパスワード")
+                    wait(1)  // スクロールのバウンス整定待ち(整定前 tap は隣接行に流れる。実害: 隣の言語と地域が開いた)
                     tap("#com.apple.settings.general.autoFillAndPasswords||自動入力とパスワード")
                 }.expectation {
                     exist(".Switch#AutoFillToggle")

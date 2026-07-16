@@ -59,6 +59,22 @@ final class AndroidHealthProbeTests: XCTestCase {
                 dateOutput: "date: not found", hostNow: 1_753_600_000, thresholdSeconds: 120))
     }
 
+    // MARK: - blankScreen
+
+    func testBlankScreenDetectsUniformFrameSize() {
+        // 実測: ウェッジ時の一様白フレーム 10,295 バイト(@1080x2424)
+        XCTAssertTrue(AndroidHealthProbe.blankScreen(pngByteCount: 10_295))
+    }
+
+    func testNormalScreenIsNotBlank() {
+        // 実測: 正常画面 130KB 以上
+        XCTAssertFalse(AndroidHealthProbe.blankScreen(pngByteCount: 132_927))
+    }
+
+    func testEmptyCaptureIsNotJudged() {
+        XCTAssertFalse(AndroidHealthProbe.blankScreen(pngByteCount: 0))
+    }
+
     // MARK: - AndroidHealthDebounce
 
     func testFirstObservationDoesNotConfirm() {

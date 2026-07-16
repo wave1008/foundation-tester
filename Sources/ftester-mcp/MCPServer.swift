@@ -271,7 +271,7 @@ final class MCPServer {
                     devices: [(device.name, device.spec)],
                     externalRun: true, force: args["force"] as? Bool ?? false) { prologue.append($0) }
                 connection = DriverConnection(platform: "ios", port: provisioned[0].port,
-                                              udid: provisioned[0].udid)
+                                              udid: provisioned[0].udid, deviceName: device.name)
             } else {
                 let serial = try AndroidDeviceCatalog.resolveSerial(spec: device.spec)
                 if !(args["force"] as? Bool ?? false),
@@ -279,7 +279,7 @@ final class MCPServer {
                     throw MCPError("デバイス \(device.name) はモニター(ftester api monitor)が使用中です。"
                         + "相乗り run はデモを凍結させ得ます。モニターを止めるか、force 指定で上書きしてください。")
                 }
-                connection = DriverConnection(platform: "android", serial: serial)
+                connection = DriverConnection(platform: "android", serial: serial, deviceName: device.name)
             }
         } else {
             let platform = info.platform ?? (args["platform"] as? String ?? "ios")
