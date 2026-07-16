@@ -11,6 +11,7 @@ import {
   type MonitorDevice,
   isMonitorEvent,
   monitorControlLine,
+  sortMonitorDevices,
   toWebviewMessage,
 } from "./monitorModel";
 import { NdjsonParser } from "./ndjson";
@@ -209,14 +210,17 @@ export class MonitorProcessManager {
     }
 
     const stdoutParser = new NdjsonParser(
-      (value) => {
-        if (!isMonitorEvent(value)) {
+      (rawValue) => {
+        if (!isMonitorEvent(rawValue)) {
           this.deps.outputChannel.appendLine(
-            `[monitor] 未知の形式の行を無視しました: ${JSON.stringify(value)}`,
+            `[monitor] 未知の形式の行を無視しました: ${JSON.stringify(rawValue)}`,
           );
           return;
         }
+        let value = rawValue;
         if (value.kind === "monitorDevices") {
+          // プロファイルタブの表示順に整列してから全消費側へ配る(sortMonitorDevices 参照)。
+          value = { kind: "monitorDevices", devices: sortMonitorDevices(value.devices) };
           // モニター再起動(プロファイル切り替え含む)を跨いで保持する(lastKnownDevices 宣言部参照)。
           this.lastKnownDevices = value.devices;
           // MonitorDeviceStreamController のパイプライン張り替え判定に使う(monitorPanel.ts で配線)。

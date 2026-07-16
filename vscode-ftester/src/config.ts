@@ -286,8 +286,8 @@ export function readAppProfileTarget(
 }
 
 /**
- * profiles/machines/ 直下の .json が**ちょうど1つ**のときのみ、その ios→android 順の
- * devices[].name を返す(monitorPanel.ts の profileAdd が新規実行プロファイルの
+ * profiles/machines/ 直下の .json が**ちょうど1つ**のときのみ、その ios→android 順
+ * (各プラットフォーム内は name 順)の devices[].name を返す(monitorPanel.ts の profileAdd が新規実行プロファイルの
  * デバイス候補に使う)。実際に「使われる」マシンプロファイルの判定(登録名/FT_MACHINE)は
  * CLI 側にしか無く、この拡張からは複数存在時にどれを使うか判定できないため、あいまいさが
  * 無い場合に限って埋める。0個・複数・読み取り/解析失敗は空配列。
@@ -321,15 +321,18 @@ export function readMachineDeviceNames(workspaceRoot: string, project: string): 
       if (!Array.isArray(devices)) {
         continue;
       }
+      const sectionNames: string[] = [];
       for (const device of devices) {
         const name =
           typeof device === "object" && device !== null
             ? (device as Record<string, unknown>).name
             : undefined;
         if (typeof name === "string") {
-          names.push(name);
+          sectionNames.push(name);
         }
       }
+      sectionNames.sort((a, b) => a.localeCompare(b));
+      names.push(...sectionNames);
     }
     return names;
   } catch {
@@ -395,8 +398,8 @@ function toMachineDeviceEntry(value: unknown, platform: Platform): MachineDevice
 }
 
 /**
- * profiles/machines/ 直下の .json をファイル名順に読み、ios→android順で devices を一覧化する
- * (webview「プロファイル」タブ用)。要素単位の型不正はスキップ、ファイル自体が読めなければ
+ * profiles/machines/ 直下の .json をファイル名順に読み、ios→android順・各プラットフォーム内は
+ * name 順で devices を一覧化する(webview「プロファイル」タブ用)。要素単位の型不正はスキップ、ファイル自体が読めなければ
  * そのマシンは devices:[] のみ返す(1件の不備で一覧全体を空にしないため)。readMachineDeviceNames
  * と異なり複数ファイルを許容する(UI表示用のため「1マシン1ファイル」制約は課さない)。
  */
@@ -430,12 +433,15 @@ export function listMachineProfiles(workspaceRoot: string, project: string): Mac
         if (!Array.isArray(rawDevices)) {
           continue;
         }
+        const sectionDevices: MachineDeviceEntry[] = [];
         for (const rawDevice of rawDevices) {
           const device = toMachineDeviceEntry(rawDevice, platform);
           if (device) {
-            devices.push(device);
+            sectionDevices.push(device);
           }
         }
+        sectionDevices.sort((a, b) => a.name.localeCompare(b.name));
+        devices.push(...sectionDevices);
       }
       return { name, devices };
     } catch {

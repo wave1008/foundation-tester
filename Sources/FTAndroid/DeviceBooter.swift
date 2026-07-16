@@ -42,9 +42,18 @@ public enum DeviceBooter {
         deviceStarting: @escaping @Sendable (String, String) -> Void = { _, _ in },
         deviceFinished: @escaping @Sendable (String, String) -> Void = { _, _ in }
     ) async {
-        // iOS(軽い)を先頭に、Android(重い)を後ろに並べた早い者勝ちキュー
-        var items = (machine.ios?.devices ?? []).map { BootItem(spec: $0, platform: "ios") }
-        items += (machine.android?.devices ?? []).map { BootItem(spec: $0, platform: "android") }
+        // iOS(軽い)を先頭に、Android(重い)を後ろに並べた早い者勝ちキュー。各プラットフォーム内は
+        // name 昇順に整列してモニタータイルの表示順(左→右)と起動順を一致させる(表示規則の同期相手:
+        // vscode-ftester/src/monitorModel.ts sortMonitorDevices「ios→android・各内は name 順」。
+        // プロファイル JSON の配列順は name 順とは限らず、放置すると左→右と起動順がずれる)。
+        // localizedCompare で JS localeCompare 相当。
+        let iosItems = (machine.ios?.devices ?? [])
+            .sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
+            .map { BootItem(spec: $0, platform: "ios") }
+        let androidItems = (machine.android?.devices ?? [])
+            .sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
+            .map { BootItem(spec: $0, platform: "android") }
+        let items = iosItems + androidItems
         guard !items.isEmpty else { return }
 
         let queue = BootQueue(items)
