@@ -504,6 +504,9 @@ struct RunScenarios: AsyncParsableCommand {
     @Flag(help: "FM によるロケータ自己修復を許可する")
     var heal = false
 
+    @Flag(help: "前回失敗したシナリオだけを実行する(結果は実行のたびに .ftester/last-results/ に記録される)")
+    var failed = false
+
     @Option(name: .customLong("report-dir"),
             help: "レポート出力先ディレクトリ(省略時: Projects/<name>/reports)")
     var reportDir: String?
@@ -529,12 +532,21 @@ struct RunScenarios: AsyncParsableCommand {
             throw ValidationError(
                 "シナリオがありません(Projects/\(testProject.name)/Scenarios/ に @TestClass を追加してください)")
         }
-        let selected = try Self.resolve(scenarios, from: all)
+        var selected = try Self.resolve(scenarios, from: all)
         if scenarios.isEmpty {
             let deletedCount = all.filter(\.deleted).count
             if deletedCount > 0 {
                 print("→ 削除済み(@Deleted)のシナリオ \(deletedCount) 件を除外")
             }
+        }
+        if failed {
+            let failedSet = LastResultsStore.failedIDs(project: testProject)
+            selected = selected.filter { failedSet.contains($0.id) }
+            guard !selected.isEmpty else {
+                print("前回失敗したシナリオはありません(全て成功済みか未実行)")
+                return
+            }
+            print("→ 前回失敗した \(selected.count) 件を再実行")
         }
         guard !selected.isEmpty else {
             print("実行対象がありません(全シナリオが削除済み @Deleted)")
@@ -604,10 +616,20 @@ struct RunScenarios: AsyncParsableCommand {
         return result
     }
 
+    /// ブリッジの /status(デバイス名)→ 起動中シミュレータの一意な同名から UDID を解決する。
+    /// launch 事前検査(LaunchPreflightDriver)用。同名複数・未起動・応答なしは nil(検査なしで従来動作)
+    private static func resolveUdid(port: UInt16) async -> String? {
+        guard let status = try? await BridgeClient(port: port, timeoutSeconds: 5).status(),
+              let catalog = try? SimulatorCatalog.devices() else { return nil }
+        let matches = catalog.filter { $0.booted && $0.name == status.device }
+        return matches.count == 1 ? matches[0].udid : nil
+    }
+
     // MARK: - 逐次実行(ライブ出力)
 
     private func runSequential(_ items: [ScenarioRunItem], project: TestProject,
                                port: UInt16, reportDir: String) async throws -> Int {
+        let iosUdid = await Self.resolveUdid(port: port)
         var failedCount = 0
         for item in items {
             let platform = item.info.platform ?? driverOptions.platform
@@ -618,7 +640,7 @@ struct RunScenarios: AsyncParsableCommand {
                 connection = DriverConnection(platform: "android", serial: driverOptions.serial)
             } else {
                 driver = BridgeClient(port: port)
-                connection = DriverConnection(platform: "ios", port: port)
+                connection = DriverConnection(platform: "ios", port: port, udid: iosUdid)
             }
             _ = try await driver.status()
             let worker = RunWorker(label: platform, platform: platform,
@@ -643,9 +665,13 @@ struct RunScenarios: AsyncParsableCommand {
         print("🚀 並列実行: iOS \(iosPorts.count) ワーカー(port: \(portList))"
               + (androidItems.isEmpty ? "" : " + Android 1 ワーカー") + "\n")
 
-        var workers: [RunWorker] = iosPorts.map {
-            RunWorker(label: "ios:\($0)", platform: "ios", driver: BridgeClient(port: $0),
-                      connection: DriverConnection(platform: "ios", port: $0))
+        var workers: [RunWorker] = []
+        for port in iosPorts {
+            let udid = await Self.resolveUdid(port: port)
+            workers.append(RunWorker(label: "ios:\(port)", platform: "ios",
+                                     driver: BridgeClient(port: port),
+                                     connection: DriverConnection(platform: "ios", port: port,
+                                                                  udid: udid)))
         }
         if !androidItems.isEmpty {
             if let driver = try? AndroidDriver(serial: driverOptions.serial) {
