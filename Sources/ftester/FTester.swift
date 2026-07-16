@@ -501,6 +501,10 @@ struct RunScenarios: AsyncParsableCommand {
             help: "実行するシナリオ ID(クラス名.メソッド名。クラス名のみで全シナリオ。複数可。省略時は全件。削除済み @Deleted は完全一致指定のときだけ実行)")
     var scenarios: [String] = []
 
+    @Option(name: .customLong("folder"), parsing: .upToNextOption,
+            help: "実行するシナリオのフォルダ名(Scenarios/ 直下のサブフォルダ。複数可。--scenario・--failed と併用可)")
+    var folders: [String] = []
+
     @Flag(help: "FM によるロケータ自己修復を許可する")
     var heal = false
 
@@ -538,6 +542,10 @@ struct RunScenarios: AsyncParsableCommand {
             if deletedCount > 0 {
                 print("→ 削除済み(@Deleted)のシナリオ \(deletedCount) 件を除外")
             }
+        }
+        if !folders.isEmpty {
+            selected = try Self.filterByFolders(selected, folders: folders,
+                                                scenariosDir: testProject.scenariosDir)
         }
         if failed {
             let failedSet = LastResultsStore.failedIDs(project: testProject)
@@ -614,6 +622,26 @@ struct RunScenarios: AsyncParsableCommand {
             result.append(contentsOf: classMatches)
         }
         return result
+    }
+
+    /// --folder でシナリオを絞り込む(クラス名→ソースファイル→フォルダ名で照合)。
+    /// 絞り込んだ結果が空、かつ未知のフォルダ名が含まれる場合はエラー
+    static func filterByFolders(_ infos: [ScenarioInfo], folders: [String],
+                                scenariosDir: URL) throws -> [ScenarioInfo] {
+        let classFile = ScenarioFolders.classFileMap(scenariosDir: scenariosDir)
+        let filtered = ScenarioFolders.filter(infos, byFolders: folders) { className in
+            classFile[className].flatMap { ScenarioFolders.folderName(of: $0, scenariosDir: scenariosDir) }
+        }
+        if filtered.isEmpty {
+            let available = ScenarioFolders.list(scenariosDir: scenariosDir)
+            let unknown = folders.filter { !available.contains($0) }
+            if !unknown.isEmpty {
+                throw ValidationError(
+                    "フォルダが見つかりません: \(unknown.joined(separator: ", "))"
+                    + "(利用可能: \(available.joined(separator: ", ")))")
+            }
+        }
+        return filtered
     }
 
     /// ブリッジの /status(デバイス名)→ 起動中シミュレータの一意な同名から UDID を解決する。

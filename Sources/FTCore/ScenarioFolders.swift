@@ -70,6 +70,20 @@ public enum ScenarioFolders {
         return path[base.count]
     }
 
+    /// シナリオをフォルダ名で絞り込む(folders が空なら絞り込まない)。
+    /// folderOf はクラス名(ID の最初の "." の手前)→ フォルダ名(Scenarios/ 直下は nil)
+    public static func filter(_ infos: [ScenarioInfo], byFolders folders: [String],
+                              folderOf: (String) -> String?) -> [ScenarioInfo] {
+        guard !folders.isEmpty else { return infos }
+        let wanted = Set(folders)
+        return infos.filter { info in
+            let className = info.id.split(separator: ".", maxSplits: 1).first.map(String.init)
+                ?? info.id
+            guard let folder = folderOf(className) else { return false }
+            return wanted.contains(folder)
+        }
+    }
+
     /// フォルダ名の検証。戻り値: エラーメッセージ(nil = 有効)
     public static func validateName(_ name: String) -> String? {
         if name.isEmpty {

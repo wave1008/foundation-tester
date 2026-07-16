@@ -79,6 +79,31 @@ final class ScenarioFoldersTests: XCTestCase {
         XCTAssertEqual(names, ["本物", "Second"])
     }
 
+    func testFilterByFolders() {
+        let infos = [
+            ScenarioInfo(id: "Alpha.S1", title: "t", app: "a", platform: nil),
+            ScenarioInfo(id: "Beta.S1", title: "t", app: "a", platform: nil),
+            ScenarioInfo(id: "Gamma.S1", title: "t", app: "a", platform: nil),
+        ]
+        let folderOf: (String) -> String? = { className in
+            switch className {
+            case "Alpha": return "スモーク"
+            case "Beta": return "回帰"
+            default: return nil  // Gamma は Scenarios/ 直下
+            }
+        }
+
+        XCTAssertEqual(ScenarioFolders.filter(infos, byFolders: [], folderOf: folderOf).map(\.id),
+                       infos.map(\.id))
+        XCTAssertEqual(ScenarioFolders.filter(infos, byFolders: ["スモーク"], folderOf: folderOf)
+                       .map(\.id), ["Alpha.S1"])
+        XCTAssertEqual(Set(ScenarioFolders.filter(infos, byFolders: ["スモーク", "回帰"],
+                                                  folderOf: folderOf).map(\.id)),
+                       ["Alpha.S1", "Beta.S1"])
+        XCTAssertEqual(ScenarioFolders.filter(infos, byFolders: ["存在しない"], folderOf: folderOf),
+                       [])
+    }
+
     func testValidateName() {
         XCTAssertNil(ScenarioFolders.validateName("スモーク"))
         XCTAssertNil(ScenarioFolders.validateName("Generated"))
