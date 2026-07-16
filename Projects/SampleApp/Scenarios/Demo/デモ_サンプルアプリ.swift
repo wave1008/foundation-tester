@@ -122,16 +122,17 @@ class デモ_サンプルアプリ {
                     ensureLoggedIn()
                     tap("#tab_settings||設定")
                 }.expectation {
-                    exist(".Switch#notif_toggle||.Switch=通知")
-                    exist(".Switch#darkmode_toggle||.Switch=ダークモード")
+                    // 型は縛らない: トグルは xcuitest=Switch / in-app エンジン=Button で露出が異なる
+                    exist("#notif_toggle||通知")
+                    exist("#darkmode_toggle||ダークモード")
                 }
             }
             scene(2, "ダークモードを ON→OFF に戻す") {
                 action {
-                    tap(".Switch#darkmode_toggle||.Switch=ダークモード")
-                    tap(".Switch#darkmode_toggle||.Switch=ダークモード")
+                    tap("#darkmode_toggle||ダークモード")
+                    tap("#darkmode_toggle||ダークモード")
                 }.expectation {
-                    exist(".Switch#darkmode_toggle||.Switch=ダークモード")
+                    exist("#darkmode_toggle||ダークモード")
                 }
             }
             scene(3, "ホームタブへ戻れる") {
