@@ -45,6 +45,41 @@ public enum AndroidHealthProbe {
         pngByteCount > 0 && pngByteCount < blankScreenMaxPNGBytes
     }
 
+    /// 事前除外用: serial が「恒常的に」blank-screen かを短時間の連続 probe で確定する。
+    /// 白化は約25秒周期でフラッピングする(実測)ため、1回の blank だけでは除外しない。
+    /// 健全機は1サンプル目で即 false が返り待たない(全機健全ならディスパッチ前チェックは数秒で終わる)。
+    public static func isPersistentlyBlank(serial: String, samples: Int = 5,
+                                           intervalMs: UInt64 = 8_000) async -> Bool {
+        var observed: [Bool] = []
+        for i in 0..<max(samples, 1) {
+            let blank = probeBlank(serial: serial)
+            observed.append(blank)
+            if !blank { break }  // 非blank観測=フラッピングの回復側。即座に健全確定し以降は待たない
+            if i < samples - 1 {
+                try? await Task.sleep(nanoseconds: intervalMs * 1_000_000)
+            }
+        }
+        return decidePersistentBlank(samples: observed)
+    }
+
+    /// serial に1回 screencap して blank 判定する。adb 取得失敗(コマンドエラー・status != 0)は
+    /// 「blank ではない」扱い(誤って健全機を除外しない安全側)
+    private static func probeBlank(serial: String) -> Bool {
+        guard let adbPath = try? AndroidDriver.findADB(),
+              let cap = try? Shell.runData([adbPath, "-s", serial, "exec-out", "screencap", "-p"]),
+              cap.status == 0 else {
+            return false
+        }
+        return blankScreen(pngByteCount: cap.data.count)
+    }
+
+    /// 純粋な確定ロジック: 全サンプルが blank なら true、1つでも非blankがあれば false、
+    /// 空配列(観測なし)は false
+    static func decidePersistentBlank(samples: [Bool]) -> Bool {
+        guard !samples.isEmpty else { return false }
+        return samples.allSatisfy { $0 }
+    }
+
     /// `adb shell cmd wifi status` の出力に "Wifi is disabled" が含まれるかで判定
     /// (正常時は "Wifi is enabled" / "Wifi is connected to ..." が出る)
     static func wifiDisabled(statusOutput: String) -> Bool {

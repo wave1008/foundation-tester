@@ -26,6 +26,7 @@ const HEALTH_WATCH_LABEL = {
   unhealthy: { label: 'デバイス異常を検出', warn: true },
   repairing: { label: 'Wi-Fi 修復中...', warn: true },
   streamRepairing: { label: 'ストリーム修復中...', warn: true },
+  cpuFallback: { label: 'CPU描画で再起動中...', warn: true },
   restarting: { label: '自動再起動中...', warn: true },
   failed: { label: '自動修復失敗', warn: true },
 };

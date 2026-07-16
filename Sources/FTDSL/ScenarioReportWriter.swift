@@ -57,6 +57,9 @@ public enum ScenarioReportWriter {
                 // 縮小表示+クリックでフルサイズ(markdown プレビューはインライン HTML を描画する。
                 // ![...]() 直埋めだと端末縦解像度のまま表示され確認しづらい)
                 md += "\n### 失敗時のスクリーンショット(クリックでフルサイズ)\n\n"
+                if scene.evidenceBlank {
+                    md += "\n> ⚠️ 証跡スクリーンショットが白フレーム(デバイス表示凍結)のためエビデンスとして無効です。\n"
+                }
                 md += "<a href=\"\(imageName)\"><img src=\"\(imageName)\" width=\"320\"/></a>\n"
             }
         }

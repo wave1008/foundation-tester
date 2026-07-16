@@ -32,6 +32,8 @@ public struct SceneRecordData: Sendable {
     public var steps: [DSLStepRecord] = []
     public var triage: TriageInfo?
     public var failureScreenshot: Data?
+    /// 失敗時証跡スクショが白フレーム(画面凍結)でエビデンス無効。ScenarioReportWriter が警告表示する。
+    public var evidenceBlank: Bool = false
 
     public var passed: Bool {
         steps.allSatisfy {
@@ -441,23 +443,40 @@ public final class FTDriveCore {
         sceneAborted = true
         if abortScenarioOnSceneFailure { scenarioAborted = true }
 
-        // 失敗時のスクリーンショット+トリアージ(FM 利用可時のみ)
+        // 失敗時のスクリーンショット+トリアージ(FM 利用可時のみ)。Android は画面凍結(白フレーム)で
+        // 証跡が無効になり得るため、blank を検知したら最大3回撮り直して回復を待つ(iOS は対象外)。
+        // トリアージは白のままでも変わらず実行する(証跡としては evidenceBlank で無効マークするのみ)。
         let driver = self.driver
         let delegate = executor.delegate
         let goal = scenarioTitle.isEmpty ? scenarioID : scenarioTitle
-        let context = FTSync.run { () async -> (Data?, TriageInfo?) in
+        let isAndroid = platform == "android"
+        let context = FTSync.run { () async -> (Data?, TriageInfo?, Bool) in
             let snapshot = try? await driver.snapshot()
-            let screenshot = try? await driver.screenshot()
+            var screenshot = try? await driver.screenshot()
+            var evidenceBlank = false
+            if isAndroid, let shot = screenshot, BlankFrameDetector.isUniformBlank(pngData: shot) {
+                evidenceBlank = true
+                for _ in 0..<3 {
+                    try? await Task.sleep(nanoseconds: 2_500_000_000)
+                    guard let retry = try? await driver.screenshot() else { continue }
+                    screenshot = retry
+                    if !BlankFrameDetector.isUniformBlank(pngData: retry) {
+                        evidenceBlank = false
+                        break
+                    }
+                }
+            }
             let triage = await delegate?.triage(goal: goal,
                                                 stepDescription: stepDescription,
                                                 failureReason: reason,
                                                 snapshot: snapshot,
                                                 screenshotPNG: screenshot)
-            return (screenshot, triage)
+            return (screenshot, triage, evidenceBlank)
         }
-        if let (screenshot, triage) = context, !record.scenes.isEmpty {
+        if let (screenshot, triage, evidenceBlank) = context, !record.scenes.isEmpty {
             record.scenes[record.scenes.count - 1].failureScreenshot = screenshot
             record.scenes[record.scenes.count - 1].triage = triage
+            record.scenes[record.scenes.count - 1].evidenceBlank = evidenceBlank
         }
     }
 

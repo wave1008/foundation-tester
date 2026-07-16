@@ -54,6 +54,10 @@ export class MonitorDeviceOps {
   private lifecycleQueue: DeviceLifecycleQueueState = createDeviceLifecycleQueueState();
   /** create-device の多重実行ガード。true の間に来た createDevice リクエストは即座に失敗を返す。 */
   private creatingDevice = false;
+  /** 凍結が治らず CPU 描画(swiftshader)へフォールバックしたデバイス論理名。セッション中維持
+   * (host に戻すと再凍結するため)。個別 device-up 時に --gpu を付ける。bulk devices-up は
+   * 別経路(executeBulkJob)のため対象外。 */
+  private readonly cpuRenderNames = new Set<string>();
 
   constructor(private readonly deps: MonitorPanelDeps) {}
 
@@ -85,6 +89,12 @@ export class MonitorDeviceOps {
     }
     this.pushLifecycleJob({ kind: "device", name, op: "down" });
     this.pushLifecycleJob({ kind: "device", name, op: "up" });
+  }
+
+  /** MonitorHealthWatchdogDeps.forceCpuRender への実装。以後この名前の device-up は
+   * swiftshader で起動する(セッション中維持)。 */
+  markCpuRender(name: string): void {
+    this.cpuRenderNames.add(name);
   }
 
   /** enqueueLifecycleJob/enqueueRestart 共通のキュー投入処理(重複排除は呼び出し側の責務)。 */
@@ -333,6 +343,9 @@ export class MonitorDeviceOps {
     // (executeBulkJob と同経路。ApiDeviceUp/Down 側の --profile と対)。
     if (config.profile) {
       args.push("--profile", config.profile);
+    }
+    if (op === "up" && this.cpuRenderNames.has(name)) {
+      args.push("--gpu", "swiftshader_indirect");
     }
 
     let failureLogged = false;
