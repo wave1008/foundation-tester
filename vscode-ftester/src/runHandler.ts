@@ -54,6 +54,16 @@ export function registerRunHandler(
         failedOnly,
       );
 
+  // ftester.rerunFailedTests(testing/item/context)と「失敗のみ実行」プロファイルは同じ handler を
+  // 共有する(パイプライン重複を避けるため)。
+  const failedOnlyHandler = makeHandler(false, true);
+  const failedOnlyProfile = controller.createRunProfile(
+    "失敗のみ実行",
+    vscode.TestRunProfileKind.Run,
+    failedOnlyHandler,
+    false,
+  );
+
   context.subscriptions.push(
     controller.createRunProfile("実行", vscode.TestRunProfileKind.Run, makeHandler(false), true),
     controller.createRunProfile(
@@ -62,17 +72,23 @@ export function registerRunHandler(
       makeHandler(true),
       false,
     ),
-    controller.createRunProfile(
-      "失敗のみ実行",
-      vscode.TestRunProfileKind.Run,
-      makeHandler(false, true),
-      false,
-    ),
+    failedOnlyProfile,
     controller.createRunProfile(
       "デバッグ",
       vscode.TestRunProfileKind.Debug,
       (request, token) => executeDebugRun(controller, workspaceRoot, getConfig, watcher, request, token),
       true,
+    ),
+    vscode.commands.registerCommand(
+      "ftester.rerunFailedTests",
+      (item?: vscode.TestItem, items?: vscode.TestItem[]) => {
+        const include = Array.isArray(items) && items.length > 0 ? items : item ? [item] : undefined;
+        const request = new vscode.TestRunRequest(include, undefined, failedOnlyProfile);
+        const tokenSource = new vscode.CancellationTokenSource();
+        void Promise.resolve(failedOnlyHandler(request, tokenSource.token)).finally(() =>
+          tokenSource.dispose(),
+        );
+      },
     ),
   );
 }
