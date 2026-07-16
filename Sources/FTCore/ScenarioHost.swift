@@ -304,10 +304,14 @@ public enum ScenarioHost {
             finished.scenario = scenarioID
             finished.passed = false
             onEvent(finished)
+            if !dryRun { LastResultsStore.record(project: project, scenarioID: scenarioID, passed: false) }
             return false
         }
         // scenarioFinished が来なかった場合(クラッシュ等)は exit code で判定
-        return passed ?? (process.terminationStatus == 0)
+        let result = passed ?? (process.terminationStatus == 0)
+        // dry-run は実機能を動かしていないため直近結果を上書きしない(実失敗を消さない)
+        if !dryRun { LastResultsStore.record(project: project, scenarioID: scenarioID, passed: result) }
+        return result
     }
 
     /// シナリオを dry-run(No-Load-Run)してイベント列を収集する。デバイス不要・FM 不使用で
