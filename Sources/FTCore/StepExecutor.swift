@@ -445,9 +445,23 @@ public final class StepExecutor {
             guard let delegate else {
                 return .skipped("FM 検証が無効(Foundation Models 利用不可)")
             }
-            let start = clock.now
-            let screenshot = try await driver.screenshot()
+            var start = clock.now
+            var screenshot = try await driver.screenshot()
             phase.actionMs += Self.ms(clock.now - start)
+            // 白フレーム(画面凍結)を FM 検証に渡すと必ず不一致で誤失敗するため、リトライで回復を待つ
+            if BlankFrameDetector.isUniformBlank(pngData: screenshot) {
+                for _ in 0..<2 {
+                    try await Task.sleep(nanoseconds: 2_000_000_000)
+                    start = clock.now
+                    let retry = try await driver.screenshot()
+                    phase.actionMs += Self.ms(clock.now - start)
+                    screenshot = retry
+                    if !BlankFrameDetector.isUniformBlank(pngData: retry) { break }
+                }
+                if BlankFrameDetector.isUniformBlank(pngData: screenshot) {
+                    return .skipped("画面検証不可: 白フレーム(証跡無効)")
+                }
+            }
             guard let verdict = await delegate.verifyScreen(expected: expected, screenshotPNG: screenshot) else {
                 return .skipped("画面検証を実行できませんでした")
             }

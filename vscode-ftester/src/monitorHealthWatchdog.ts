@@ -18,6 +18,9 @@ export interface MonitorHealthWatchdogDeps {
   log(message: string): void;
   /** MonitorDeviceOps.enqueueRestart への委譲(down→up をペアで積む。重複排除は呼び出し先)。 */
   enqueueRestart(name: string): void;
+  /** MonitorDeviceOps.markCpuRender への委譲。以後この名前の device-up は swiftshader で起動する
+   * (セッション中維持)。 */
+  forceCpuRender(name: string): void;
   /** adb で Wi-Fi を再有効化する軽量修復。解決失敗・実行失敗は false(例外は投げない)。 */
   runWifiRepair(serial: string): Promise<boolean>;
   /** MonitorDeviceStreamController.restartForDeviceName への委譲。稼働中パイプラインが無ければ
@@ -55,6 +58,9 @@ interface DeviceHealthEntry {
   wifiAttempted: boolean;
   /** このエピソードでストリーム修復を試みたか(blank-screen 検出時のみ1回だけ試す)。 */
   streamAttempted: boolean;
+  /** このエピソードで CPU 描画(swiftshader)への切替・再起動を試みたか(blank-screen 検出時のみ
+   * 1回だけ試す)。 */
+  cpuFallbackAttempted: boolean;
   /** このエピソードで実際に投入した再起動の回数。 */
   restartAttempts: number;
   /** この時刻(ms)まで新規の修復・再起動を投入しない(0 = クールダウン無し)。 */
@@ -72,6 +78,7 @@ function freshEntry(): DeviceHealthEntry {
     degraded: false,
     wifiAttempted: false,
     streamAttempted: false,
+    cpuFallbackAttempted: false,
     restartAttempts: 0,
     cooldownUntil: 0,
     failed: false,
@@ -175,16 +182,37 @@ export class MonitorHealthWatchdog {
       return;
     }
 
-    if (health.includes("blank-screen") && !entry.streamAttempted) {
-      entry.streamAttempted = true;
-      if (this.deps.restartStream(name)) {
-        entry.cooldownUntil = this.now() + STREAM_REPAIR_COOLDOWN_MS;
-        this.deps.log(`[health-watch] ${name}: 画面ストリームヘルパーの再起動による修復を試みます。`);
-        this.deps.post({ type: "healthWatch", name, phase: "streamRepairing" });
+    const hasBlank = health.includes("blank-screen");
+    if (hasBlank) {
+      // blank-screen 専用ラダー: streamRepair 1回 → swiftshader 再起動 1回 → failed。
+      // host 再起動は実験で「治らず再凍結」が確定したため一切挟まない(2026-07-17)。
+      if (!entry.streamAttempted) {
+        entry.streamAttempted = true;
+        if (this.deps.restartStream(name)) {
+          entry.cooldownUntil = this.now() + STREAM_REPAIR_COOLDOWN_MS;
+          this.deps.log(`[health-watch] ${name}: 画面ストリームヘルパーの再起動による修復を試みます。`);
+          this.deps.post({ type: "healthWatch", name, phase: "streamRepairing" });
+          return;
+        }
+        this.deps.log(`[health-watch] ${name}: ストリーム未稼働のためヘルパー再起動をスキップし、CPU 描画切替へ進みます。`);
+        // fall through(同サイクルで CPU 描画切替へ)
+      }
+
+      if (!entry.cpuFallbackAttempted) {
+        entry.cpuFallbackAttempted = true;
+        entry.cooldownUntil = this.now() + RESTART_COOLDOWN_MS;
+        this.deps.forceCpuRender(name);
+        this.deps.log(`[health-watch] ${name}: 画面凍結が解消しないため CPU 描画(swiftshader)へ切り替えて再起動します。`);
+        this.deps.post({ type: "healthWatch", name, phase: "cpuFallback" });
+        this.deps.enqueueRestart(name);
         return;
       }
-      this.deps.log(`[health-watch] ${name}: ストリーム未稼働のためヘルパー再起動をスキップし、デバイス再起動へ進みます。`);
-      // fall through(再起動段へ)
+
+      // swiftshader 再起動でも解消しない(想定外)。
+      entry.failed = true;
+      this.deps.log(`[health-watch] ${name}: CPU 描画への切替後も画面凍結が解消しませんでした。`);
+      this.deps.post({ type: "healthWatch", name, phase: "failed" });
+      return;
     }
 
     if (entry.restartAttempts >= MAX_RESTART_ATTEMPTS) {

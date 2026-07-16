@@ -111,7 +111,7 @@ public enum DeviceBooter {
     }
 
     /// 1 台起動(起動済みなら何もしない)
-    public static func bootOne(spec: DeviceSpec, platform: String,
+    public static func bootOne(spec: DeviceSpec, platform: String, gpuMode: String = "host",
                                log: @escaping @Sendable (String) -> Void) async throws {
         if platform == "ios" {
             let sim = try SimulatorCatalog.resolve(spec: spec, in: SimulatorCatalog.devices())
@@ -138,7 +138,7 @@ public enum DeviceBooter {
                 return
             }
             log("→ \(spec.name): エミュレータ起動(\(avdID))...")
-            let serial = try await startEmulator(avd: avdID)
+            let serial = try await startEmulator(avd: avdID, gpuMode: gpuMode)
             try await waitForAndroidBoot(serial: serial)
             await applyLocale(serial: serial, locale: defaultLocale, deviceName: spec.name, log: log)
             log("✅ \(spec.name): 起動完了(\(serial))")
@@ -251,7 +251,7 @@ public enum DeviceBooter {
     /// locale の -change-locale は **Play イメージ(フリート全機)では無効**(実測 2026-07-17。
     /// AOSP イメージ向けの保険として残置)。実効的なロケール適用はブート完了後の applyLocale
     /// (ブリッジ /locale)が担う
-    static func startEmulator(avd: String, locale: String? = "ja_JP") async throws -> String {
+    static func startEmulator(avd: String, gpuMode: String = "host", locale: String? = "ja_JP") async throws -> String {
         let binary = try findEmulatorBinary()
         let adbPath = try AndroidDriver.findADB()
         let before = Set((try? AndroidDeviceCatalog.connectedSerials()) ?? [])
@@ -260,12 +260,14 @@ public enum DeviceBooter {
         process.executableURL = URL(fileURLWithPath: binary)
         // -gpu host 必須: headless(-no-window)では hw.gpu.mode=auto が SwiftShader(CPU 描画)に
         // フォールバックし、モーション時 qemu が約3コア/台を消費する(host=Metal なら約1/3。実測 2026-07-14)
+        // gpuMode 既定は host。swiftshader_indirect は軽い修復で直らない凍結個体のみ呼び出し側が
+        // 指定する(CPU 描画は凍結を回避できるが上記の約3コア/台を払う)
         // -no-snapshot 必須: ロード+セーブ両方の無効化=コールドブート保証。Quickboot スナップショットの
         // ロードはブート時黒画面の代表原因(旧 -no-snapshot-save はセーブのみ無効で、Android Studio 等が
         // 残したスナップショットがあるとロードしてしまう。docs/performance-tuning.md §6 の Wipe Data 行参照)
         var arguments = ["-avd", avd,
                          "-no-snapshot", "-no-window", "-no-boot-anim", "-no-audio",
-                         "-gpu", "host"]
+                         "-gpu", gpuMode]
         if let locale {
             arguments += ["-change-locale", locale.replacingOccurrences(of: "_", with: "-")]
         }

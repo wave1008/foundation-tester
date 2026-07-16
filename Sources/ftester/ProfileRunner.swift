@@ -41,9 +41,10 @@ enum ProfileRunner {
                 locale: resolved.locale) { print($0) }
         }
 
-        // 2. ワーカー構築(iOS 供給+Android 照合)→ 自動インストール
+        // 2. ワーカー構築(iOS 供給+Android 照合)→ 白化デバイス除外 → 自動インストール
         var workers = try await ProfileWorkerFactory.buildWorkers(
             resolved: resolved, repoRoot: try RepoRoot.find()) { print($0) }
+        workers = try await excludeBlankScreenWorkers(workers)
         workers = try await ProfileWorkerFactory.installIfNeeded(
             apps: resolved.apps, workers: workers,
             forceAndroidInstall: !wipedAndroid.isEmpty) { print($0) }
@@ -82,5 +83,40 @@ enum ProfileRunner {
             + "テスト実時間: \(testStr)s / シナリオ合計: \(scenarioTotalStr)s")
 
         return await summary.failed
+    }
+
+    /// android かつ serial 判明済みのワーカーを対象に恒常 blank-screen(画面凍結)を並列判定して
+    /// 除外する。健全機は1サンプルで即返るため全機健全なら数秒で通過(白い機のみ最大 ~32s 待つ)。
+    /// 元 workers の順序は維持する
+    private static func excludeBlankScreenWorkers(_ workers: [RunWorker]) async throws -> [RunWorker] {
+        let candidates = workers.enumerated().filter {
+            $0.element.platform == "android" && $0.element.connection.serial != nil
+        }
+        guard !candidates.isEmpty else { return workers }
+
+        let blankIndices = await withTaskGroup(of: Int?.self, returning: Set<Int>.self) { group in
+            for (index, worker) in candidates {
+                group.addTask {
+                    guard let serial = worker.connection.serial else { return nil }
+                    return await AndroidHealthProbe.isPersistentlyBlank(serial: serial) ? index : nil
+                }
+            }
+            var result: Set<Int> = []
+            for await index in group {
+                if let index { result.insert(index) }
+            }
+            return result
+        }
+        guard !blankIndices.isEmpty else { return workers }
+
+        for index in blankIndices.sorted() {
+            print("⚠️ \(workers[index].label): 画面が白化(blank-screen)しているためディスパッチから除外します")
+        }
+        let filtered = workers.enumerated().filter { !blankIndices.contains($0.offset) }.map(\.element)
+        guard !filtered.isEmpty else {
+            throw ProfileWorkerFactory.InstallError(
+                message: "実行可能なデバイスがありません(全 Android デバイスが白化)")
+        }
+        return filtered
     }
 }

@@ -24,9 +24,22 @@ struct ApiDeviceUp: AsyncParsableCommand {
     @Option(help: "実行プロファイル名(machine 解決に使う。指定時はそのプロファイルの machine を最優先。省略時は FT_MACHINE / 登録マシン / machines が 1 つならそれ)")
     var profile: String?
 
+    @Option(help: "Android の GPU 描画モード(host / swiftshader_indirect。既定 host。凍結個体の CPU 描画フォールバック用)")
+    var gpu: String?
+
     func run() async throws {
+        let resolvedGpu: String
+        switch gpu {
+        case nil:
+            resolvedGpu = "host"
+        case "host"?, "swiftshader_indirect"?:
+            resolvedGpu = gpu!
+        default:
+            FileHandle.standardError.write(Data("⚠️ 未知の --gpu 値のため host にフォールバック: \(gpu!)\n".utf8))
+            resolvedGpu = "host"
+        }
         try await ApiDeviceOperation.run(name: name, project: project, profile: profile) { spec, platform, log in
-            try await DeviceBooter.bootOne(spec: spec, platform: platform, log: log)
+            try await DeviceBooter.bootOne(spec: spec, platform: platform, gpuMode: resolvedGpu, log: log)
             // iOS はブリッジも供給する(稼働中ブリッジがあれば再利用。供給しないと画面が取れず
             // 「起動済み(ブリッジ未接続)」のままになる)
             if platform == "ios" {

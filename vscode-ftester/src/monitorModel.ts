@@ -315,7 +315,7 @@ export type MonitorToWebviewMessage =
   | {
       readonly type: "healthWatch";
       readonly name: string;
-      readonly phase: "unhealthy" | "repairing" | "streamRepairing" | "restarting" | "failed" | "ok";
+      readonly phase: "unhealthy" | "repairing" | "streamRepairing" | "cpuFallback" | "restarting" | "failed" | "ok";
     }
   // `ftester api run` の AVD Wipe Data 進行状況(model.ts の WipeStatusEvent が NDJSON 契約の同期相手)。
   // name は deviceOpBusy と同じ名前空間(デバイス論理名)。webview はタイルのバッジ表示に使う。
