@@ -8,6 +8,8 @@ import FTDSL
 @TestClass(app: "com.google.android.deskclock", platform: "android")
 class デモ_Android時計 {
 
+    // アラームの有無はエミュ個体差(既定アラームが無い環境あり)。一覧コンテナ(#alarm_recycler_view)と
+    // 追加ボタン(#fab)は空でも存在するため、これらをアンカーにする
     @Test("アラーム一覧が表示される")
     func S0010() {
         scenario {
@@ -17,15 +19,14 @@ class デモ_Android時計 {
                 }.action {
                     tap("#tab_menu_alarm")
                 }.expectation {
-                    exist("#alarm_card")
-                    exist("#digital_clock")
-                    exist(".Switch#onoff")
+                    exist("#alarm_recycler_view")
+                    exist("#fab")
                 }
             }
         }
     }
 
-    @Test("アラームを ON にして OFF に戻せる")
+    @Test("アラームがあれば ON にして OFF に戻せる")
     func S0020() {
         scenario {
             scene(1, "アラームタブを開く") {
@@ -34,17 +35,18 @@ class デモ_Android時計 {
                 }.action {
                     tap("#tab_menu_alarm")
                 }.expectation {
-                    exist(".Switch#onoff")
+                    exist("#alarm_recycler_view")
                 }
             }
-            scene(2, "先頭アラームのスイッチを2回タップして元に戻す") {
+            scene(2, "アラームがある場合のみスイッチを2回タップして元に戻す") {
                 action {
-                    tap(".Switch#onoff")
-                    wait(1)  // ON 直後のスナックバー表示の整定待ち
-                    tap(".Switch#onoff")
+                    ifCanSelect(".Switch#onoff", waitSeconds: 1) {
+                        tap(".Switch#onoff")
+                        wait(1)  // ON 直後のスナックバー表示の整定待ち
+                        tap(".Switch#onoff")
+                    }
                 }.expectation {
-                    exist(".Switch#onoff")
-                    exist("#alarm_card")
+                    exist("#alarm_recycler_view")
                 }
             }
         }
@@ -60,7 +62,7 @@ class デモ_Android時計 {
                     tap("#tab_menu_clock")
                 }.expectation {
                     exist("#digital_clock")
-                    exist("#current_date")
+                    exist("#current_date||#date_and_next_alarm")  // A16=current_date / A15=date_and_next_alarm
                 }
             }
         }
@@ -104,9 +106,10 @@ class デモ_Android時計 {
             }
             scene(2, "開始して一時停止する") {
                 action {
-                    tap("#start_stop_button")   // 開始
+                    // A16=start_stop_button / A15=fab(ストップウォッチタブ内なので fab=開始/停止)
+                    tap("#start_stop_button||#fab")   // 開始
                     wait(1)
-                    tap("#start_stop_button")   // 一時停止
+                    tap("#start_stop_button||#fab")   // 一時停止
                 }.expectation {
                     exist("#stopwatch_time_text")
                 }
@@ -130,7 +133,7 @@ class デモ_Android時計 {
                 action {
                     tap("#tab_menu_alarm")
                 }.expectation {
-                    exist("#alarm_card")
+                    exist("#alarm_recycler_view||#fab")
                 }
             }
         }

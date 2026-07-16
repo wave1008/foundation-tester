@@ -46,7 +46,8 @@ class デモ_Android設定2 {
                     scrollTo("システム||System", maxSwipes: 12)
                     tap("システム||System")
                 }.expectation {
-                    exist("言語と地域||Language & region")
+                    // A15=言語 / A16=言語と地域(exist 用途なので contains 誤マッチも許容範囲)
+                    exist("言語||言語と地域||Languages||Language & region")
                     exist("日付と時刻||Date & time")
                 }
             }
@@ -70,16 +71,16 @@ class デモ_Android設定2 {
                 }.action {
                     tap("モード||Modes")
                 }.expectation {
+                    // おやすみ時間・独自モード作成は A15 イメージに無い個体があるためアンカーにしない
                     exist("サイレント モード||Do Not Disturb")
-                    exist("おやすみ時間||Bedtime")
                 }
             }
-            scene(2, "独自モード作成の項目まで確認する") {
+            scene(2, "一覧を上下にスクロールして眺める") {
                 action {
                     swipe(.up)
                     swipe(.down)
                 }.expectation {
-                    exist("独自のモードを作成||Create your own mode")
+                    exist("#collapsing_toolbar")
                 }
             }
         }
@@ -95,7 +96,8 @@ class デモ_Android設定2 {
                     scrollTo("パスワード、パスキー、アカウント||Passwords, passkeys & accounts", maxSwipes: 12)
                     tap("パスワード、パスキー、アカウント||Passwords, passkeys & accounts")
                 }.expectation {
-                    exist("優先サービス||Preferred service")
+                    // A15=優先するサービス / A16=優先サービス
+                    exist("優先するサービス||優先サービス||Preferred service")
                     exist("アカウントを追加||Add account")
                 }
             }
