@@ -183,6 +183,17 @@ async function copyAndNotify(text: string): Promise<void> {
   vscode.window.setStatusBarMessage(`コピーしました: ${truncateForStatusBar(text)}`, 3000);
 }
 
+/** 失敗メッセージ末尾に添える「レポートを開く」リンク(lastResultsSync.ts の CLI 反映側と同じ
+ * コマンド URI。レポートはクリック時に最新を解決するため、イベント時点でのパス解決は不要)。 */
+export function buildReportLinkMessage(scenarioId: string): vscode.TestMessage {
+  const args = encodeURIComponent(JSON.stringify([scenarioId]));
+  const markdown = new vscode.MarkdownString(
+    `[レポートを開く](command:ftester.openScenarioReport?${args})`,
+  );
+  markdown.isTrusted = { enabledCommands: ["ftester.openScenarioReport"] };
+  return new vscode.TestMessage(markdown);
+}
+
 async function openReport(reportPath: string): Promise<void> {
   try {
     // markdown プレビューはレポート埋め込みの screenshot 画像リンクを描画できる。
@@ -442,6 +453,13 @@ async function executeRun(
             message.location = toLocation(m.location);
             return message;
           });
+          // dry-run はレポートを出力しないためリンクを付けない
+          if (!dryRun) {
+            const link = buildReportLinkMessage(action.scenario);
+            link.location = messages[0]?.location
+              ?? (item.uri && item.range ? new vscode.Location(item.uri, item.range) : undefined);
+            messages.push(link);
+          }
           run.failed(item, messages, action.durationMs);
         }
         break;
