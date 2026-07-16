@@ -2,7 +2,7 @@
   "name": "vscode-ftester",
   "displayName": "ftester",
   "description": "ftester (Swift 製モバイル UI テストツール) のシナリオをツリー表示・実行するための VS Code 拡張",
-  "version": "0.0.197",
+  "version": "0.0.198",
   "private": true,
   "publisher": "wave1008",
   "license": "MIT",
@@ -107,6 +107,11 @@
           "type": "boolean",
           "default": true,
           "description": "ブリッジ無応答(connected だったデバイスが booted のまま復帰しない状態が続く)を検出したら、実行中のレーンが無い間に限り device-up で自動修復を試みます。"
+        },
+        "ftester.autoRepairDeviceHealth": {
+          "type": "boolean",
+          "default": false,
+          "description": "Android エミュレータのゲスト OS 異常(Wi-Fi 無効・時計のずれ)を検出したとき、Wi-Fi 再有効化→再起動の順で自動修復を試みます。"
         },
         "ftester.showOnlyFailedTests": {
           "type": "boolean",

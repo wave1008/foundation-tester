@@ -24,8 +24,9 @@
 //   (restartMonitorIfScopeChanged 等)では再起動しない。
 
 import * as vscode from "vscode";
+import { repairWifi } from "./adbWifiRepair";
 import type { FtesterCli } from "./cli";
-import { type FtesterConfig, readRunProfileDeviceNames, resolveProjectName } from "./config";
+import { type FtesterConfig, readRunProfileDeviceNames, resolveAdb, resolveProjectName } from "./config";
 import { isExploreWebviewEnvelope, type ExploreToWebviewEnvelope } from "./exploreModel";
 import { isLiveWebviewEnvelope, type LiveToWebviewEnvelope } from "./liveModel";
 import {
@@ -39,6 +40,7 @@ import { MonitorBridgeWatchdog } from "./monitorBridgeWatchdog";
 import { MonitorDeviceOps } from "./monitorDeviceOps";
 import { MonitorDeviceStreamController } from "./monitorDeviceStreamController";
 import { MonitorExploreController } from "./monitorExploreController";
+import { MonitorHealthWatchdog } from "./monitorHealthWatchdog";
 import { PANEL_TITLE, renderHtml } from "./monitorHtml";
 import { MonitorLiveController } from "./monitorLiveController";
 import { type HostMetricsToWebviewMessage, MonitorProcessManager } from "./monitorProcessManager";
@@ -142,6 +144,7 @@ class MonitorPanelController implements vscode.Disposable {
   private readonly profiles: MonitorProfilesController;
   private readonly deviceOps: MonitorDeviceOps;
   private readonly bridgeWatchdog: MonitorBridgeWatchdog;
+  private readonly healthWatchdog: MonitorHealthWatchdog;
   private readonly live: MonitorLiveController;
   private readonly explore: MonitorExploreController;
   private readonly deviceStream: MonitorDeviceStreamController;
@@ -186,6 +189,7 @@ class MonitorPanelController implements vscode.Disposable {
       notifyMonitorDevices: (devices) => {
         this.deviceStream.applyDevices(devices);
         this.bridgeWatchdog.observe(devices);
+        this.healthWatchdog.observe(devices);
       },
       isPollingMode: () => this.pollingMode,
       stopDeviceStreams: (name) => this.deviceStream.disposeForDeviceName(name),
@@ -201,6 +205,19 @@ class MonitorPanelController implements vscode.Disposable {
       log: (message) => this.outputChannel.appendLine(message),
       enqueueLifecycleJob: (job) => this.deviceOps.enqueueLifecycleJob(job),
       isAutoRepairEnabled: () => this.getConfig().autoRepairBridge,
+      isAnyRunActive: () => isAnyLaneRunning(this.laneState),
+      isDeviceLifecycleQueueBusy: () => this.deviceOps.isQueueBusy(),
+    });
+    // enqueueRestart 委譲のため deviceOps より後に生成する(bridgeWatchdog と同じ理由)。
+    this.healthWatchdog = new MonitorHealthWatchdog({
+      post: (message) => this.post(message),
+      log: (message) => this.outputChannel.appendLine(message),
+      enqueueRestart: (name) => this.deviceOps.enqueueRestart(name),
+      runWifiRepair: (serial) => {
+        const adb = resolveAdb();
+        return adb ? repairWifi(adb, serial) : Promise.resolve(false);
+      },
+      isAutoRepairEnabled: () => this.getConfig().autoRepairDeviceHealth,
       isAnyRunActive: () => isAnyLaneRunning(this.laneState),
       isDeviceLifecycleQueueBusy: () => this.deviceOps.isQueueBusy(),
     });

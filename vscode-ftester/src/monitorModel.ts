@@ -6,7 +6,9 @@
 // 契約: `ftester api monitor --project <P> [--interval <秒>] [--max-width <px>] [--profile <run>]`
 // の stdout NDJSON:
 //   {"kind":"monitorDevices","devices":[{"id":..,"name":..,"platform":"ios"|"android",
-//     "state":"connected"|"booted"|"offline","detail":".."}]}   … サイクル毎
+//     "state":"connected"|"booted"|"offline","detail":"..","health":string[]|null}]}   … サイクル毎
+//     (health は connected な Android エミュレータのみ設定されうる。省略/null/空配列=異常なし。
+//     値は "wifi-disabled"|"clock-skew" 等。未知の文字列も受理して保持する)
 //   {"kind":"monitorFrame","device":"..","jpegBase64":"..","width":480,"height":1040}
 //     … connected デバイスのみ、約interval秒毎
 //   {"kind":"monitorError","device":"..","message":".."}         … device は省略されうる。
@@ -28,6 +30,9 @@ export interface MonitorDevice {
   /** Android: 解決済み adb serial。iOS: undefined(Swift 側は null を送るがここで正規化する)。
    * monitorDeviceStreamController.ts が Android ストリーミング helper の起動先として使う。 */
   readonly serial?: string;
+  /** ゲストOS健全性プローブの異常種別(connected な Android エミュレータのみ)。省略/空=異常なし。
+   * 未知の文字列も受理して保持する(monitorHealthWatchdog.ts が消費)。 */
+  readonly health?: readonly string[];
 }
 
 /** `ftester api monitor` の NDJSON 1行分のイベント(kind で判別)。 */
@@ -60,6 +65,9 @@ function isMonitorDevice(value: unknown): value is MonitorDevice {
   if (value.serial === null) {
     value.serial = undefined;
   }
+  if (value.health === null) {
+    value.health = undefined;
+  }
   return (
     typeof value.id === "string" &&
     typeof value.name === "string" &&
@@ -69,7 +77,9 @@ function isMonitorDevice(value: unknown): value is MonitorDevice {
     STATES.has(value.state) &&
     typeof value.detail === "string" &&
     (value.udid === undefined || typeof value.udid === "string") &&
-    (value.serial === undefined || typeof value.serial === "string")
+    (value.serial === undefined || typeof value.serial === "string") &&
+    (value.health === undefined ||
+      (Array.isArray(value.health) && value.health.every((item) => typeof item === "string")))
   );
 }
 
@@ -299,6 +309,13 @@ export type MonitorToWebviewMessage =
       readonly type: "bridgeWatch";
       readonly name: string;
       readonly phase: "unresponsive" | "repairing" | "failed" | "ok";
+    }
+  // ゲストOS健全性の自動修復ウォッチドッグ(monitorHealthWatchdog.ts)の状態遷移通知。
+  // name は deviceOpBusy と同じ名前空間(デバイス論理名)。webview はタイルのバッジ表示に使う。
+  | {
+      readonly type: "healthWatch";
+      readonly name: string;
+      readonly phase: "unhealthy" | "repairing" | "restarting" | "failed" | "ok";
     };
 
 /**

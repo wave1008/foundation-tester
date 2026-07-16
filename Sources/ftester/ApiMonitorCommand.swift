@@ -15,6 +15,10 @@
 // monitorFrame emit をスキップするが monitorDevices は従来どおり全デバイス分 emit する。
 // 同期相手: vscode-ftester/src/monitorModel.ts (monitorControlLine)
 //
+// health プローブ: state=connected の Android エミュレータ(実機除く)へ低頻度で adb ヘルス
+// チェックを行い、確定済み異常を devices[].health(異常なし/非対象は省略)に載せる
+// (AndroidHealthProbe.swift。同期相手: vscode-ftester/src/monitorModel.ts の health 契約)。
+//
 // 過渡的エラーの抑制: iOS ブリッジ/adb はテスト実行中 /status・/screenshot がタイムアウト
 // しやすい(想定内の一時的競合)。1) connected からの降格は連続3回の失敗まで保留(昇格は即時)。
 // 2) connected 中のスクショ取得失敗は monitorError にせず stderr ログ+フレーム skip のみ
@@ -111,6 +115,10 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         var loggedFetchFailure: Set<String> = []
         // 直近の確定状態(デバイス毎、debounce 用)
         var confirmed: [String: ConfirmedDeviceState] = [:]
+        // Android ヘルスプローブ: serial 毎の直近プローブ時刻と確定済み異常の記憶
+        // (healthProbeIntervalSeconds 未満はプローブせず直近の確定値を使い回す)
+        var lastHealthProbeAt: [String: Date] = [:]
+        var healthDebounce = AndroidHealthDebounce(confirmThreshold: 2)
 
         // モニターのハートビート lease(.ftester/monitor-<udid>.lease)。best-effort: リポジトリ外
         // 実行等で root が取れない場合は lease を書かない(BridgeProvisioner 側の occupancy guard も
@@ -138,7 +146,43 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             let states = Self.debounce(observed, confirmed: &confirmed) { message in
                 self.logStderr(message)
             }
-            emitLine(ApiMonitorDevicesEvent(devices: states.map(\.info)))
+
+            // connected な Android エミュレータのみ対象(実機は Wi-Fi オフが意図的でありうるため除外)
+            let candidateSerials = Set(states.compactMap { state -> String? in
+                guard state.state == "connected", let serial = state.androidSerial,
+                      serial.hasPrefix("emulator-") else { return nil }
+                return serial
+            })
+            for serial in Set(lastHealthProbeAt.keys).subtracting(candidateSerials) {
+                lastHealthProbeAt.removeValue(forKey: serial)
+                healthDebounce.forget(serial: serial)
+            }
+            let probeNow = Date()
+            let dueSerials = candidateSerials.filter { serial in
+                guard let last = lastHealthProbeAt[serial] else { return true }
+                return probeNow.timeIntervalSince(last) >= Self.healthProbeIntervalSeconds
+            }
+            if !dueSerials.isEmpty {
+                let issuesBySerial = await withTaskGroup(
+                    of: (String, Set<String>).self, returning: [String: Set<String>].self
+                ) { group in
+                    for serial in dueSerials {
+                        group.addTask { (serial, AndroidHealthProbe.observeIssues(serial: serial)) }
+                    }
+                    var result: [String: Set<String>] = [:]
+                    for await (serial, issues) in group { result[serial] = issues }
+                    return result
+                }
+                for (serial, issues) in issuesBySerial {
+                    _ = healthDebounce.record(issues, serial: serial)
+                    lastHealthProbeAt[serial] = probeNow
+                }
+            }
+
+            emitLine(ApiMonitorDevicesEvent(devices: states.map { state in
+                let confirmedIssues = state.androidSerial.map { healthDebounce.confirmed(serial: $0) } ?? []
+                return state.info(health: confirmedIssues.isEmpty ? nil : confirmedIssues)
+            }))
 
             for state in states {
                 guard !stop.isSet else { break }
@@ -236,6 +280,10 @@ struct ApiMonitorCommand: AsyncParsableCommand {
 
     /// connected からの降格を確定させるまでに要する連続失敗回数(1回の失敗では降格しない)
     private static let connectedDowngradeMissThreshold = 3
+
+    /// Android ヘルスプローブ(adb 経由)の再実行間隔(秒)。毎サイクル叩くと adb 負荷が
+    /// 高いため低頻度化する
+    private static let healthProbeIntervalSeconds: TimeInterval = 30
 
     /// pause したまま resume が来ない場合に自動的に resume 扱いにするまでの秒数(安全弁)
     private static let pauseSafetyValveSeconds: TimeInterval = 120
@@ -513,11 +561,12 @@ struct DeviceRuntimeState {
     }
 
     /// fileprivate: 戻り値の型 ApiMonitorDeviceInfo がファイル限定の private 型のため
-    /// (list-devices は同じ情報を ApiDeviceEntry として別途組み立てる)
-    fileprivate var info: ApiMonitorDeviceInfo {
+    /// (list-devices は同じ情報を ApiDeviceEntry として別途組み立てる)。
+    /// health は monitor ループだけが知る状態(AndroidHealthDebounce)のため引数で受け取る
+    fileprivate func info(health: [String]?) -> ApiMonitorDeviceInfo {
         ApiMonitorDeviceInfo(id: target.id, name: target.name,
                              platform: target.platform, state: state, detail: detail,
-                             udid: iosUdid, serial: androidSerial)
+                             udid: iosUdid, serial: androidSerial, health: health)
     }
 }
 
@@ -648,6 +697,8 @@ private struct ApiMonitorDeviceInfo: Encodable {
     let udid: String?
     /// Android の adb serial(デバイスタブの ftester-androidstream 画面ストリーミングに使う)。iOS は nil。
     let serial: String?
+    /// AndroidHealthProbe で確定した異常の識別子一覧。異常なし・非対象(iOS/実機/未接続)は nil
+    let health: [String]?
 }
 
 /// monitorFrame イベント: state == connected のデバイスのみ、スクリーンショットを添えて出す
