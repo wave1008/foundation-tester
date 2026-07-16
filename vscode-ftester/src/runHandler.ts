@@ -15,6 +15,7 @@ import { type FtesterCli } from "./cli";
 import { type FtesterConfig, resolveProjectName } from "./config";
 import { resolveEntryAtCursor, truncateForStatusBar, type TreeItemEntry } from "./copyTestName";
 import { lastResultsDir, lookupKey, readFailedScenarioIds } from "./lastResults";
+import { findLatestReport, listRecentReports, reportsDir } from "./scenarioReports";
 import type { ScenarioFinishedEventBody } from "./debugAdapter";
 import { isRunEvent } from "./model";
 import { type RunEventBus } from "./runEventBus";
@@ -155,12 +156,96 @@ export function registerRunHandler(
         void copyAndNotify(resolved.label);
       },
     ),
+    vscode.commands.registerCommand(
+      "ftester.openScenarioReport",
+      // item が string: lastResultsSync.ts の markdown リンク(command:ftester.openScenarioReport)
+      // からのシナリオID直渡し。leaf TestItem: children.size===0(resolveTargets と同じ leaf 規則)。
+      // それ以外(class/folder の TestItem、または未指定=ルート右クリック)は配下 leaf を全展開する。
+      async (item?: unknown, ..._args: unknown[]) => {
+        if (typeof item === "string") {
+          await openLatestReportForScenario(workspaceRoot, getConfig, item);
+          return;
+        }
+        if (isTestItem(item) && item.children.size === 0) {
+          await openLatestReportForScenario(workspaceRoot, getConfig, item.id);
+          return;
+        }
+        const leafIds: string[] = [];
+        collectLeafScenarioIds(isTestItem(item) ? item.children : controller.items, leafIds);
+        await openReportForScenarios(workspaceRoot, getConfig, leafIds);
+      },
+    ),
   );
 }
 
 async function copyAndNotify(text: string): Promise<void> {
   await vscode.env.clipboard.writeText(text);
   vscode.window.setStatusBarMessage(`コピーしました: ${truncateForStatusBar(text)}`, 3000);
+}
+
+async function openReport(reportPath: string): Promise<void> {
+  try {
+    // markdown プレビューはレポート埋め込みの screenshot 画像リンクを描画できる。
+    await vscode.commands.executeCommand("markdown.showPreview", vscode.Uri.file(reportPath));
+  } catch {
+    await vscode.window.showTextDocument(vscode.Uri.file(reportPath));
+  }
+}
+
+function collectLeafScenarioIds(items: vscode.TestItemCollection, out: string[]): void {
+  items.forEach((item) => {
+    if (item.children.size === 0) {
+      out.push(item.id);
+    } else {
+      collectLeafScenarioIds(item.children, out);
+    }
+  });
+}
+
+async function openLatestReportForScenario(
+  workspaceRoot: string,
+  getConfig: () => FtesterConfig,
+  scenarioId: string,
+): Promise<void> {
+  const resolution = resolveProjectName(workspaceRoot, getConfig());
+  if (resolution.kind !== "resolved") {
+    void vscode.window.showInformationMessage("対象のテストプロジェクトを解決できませんでした。");
+    return;
+  }
+  const found = findLatestReport(reportsDir(workspaceRoot, resolution.project), scenarioId);
+  if (!found) {
+    void vscode.window.showInformationMessage(`レポートが見つかりません: ${scenarioId}`);
+    return;
+  }
+  await openReport(found);
+}
+
+async function openReportForScenarios(
+  workspaceRoot: string,
+  getConfig: () => FtesterConfig,
+  scenarioIds: string[],
+): Promise<void> {
+  const resolution = resolveProjectName(workspaceRoot, getConfig());
+  if (resolution.kind !== "resolved") {
+    void vscode.window.showInformationMessage("対象のテストプロジェクトを解決できませんでした。");
+    return;
+  }
+  const reports = listRecentReports(reportsDir(workspaceRoot, resolution.project), new Set(scenarioIds));
+  if (reports.length === 0) {
+    void vscode.window.showInformationMessage("レポートが見つかりません。");
+    return;
+  }
+  if (reports.length === 1) {
+    await openReport(reports[0]!.path);
+    return;
+  }
+  const picked = await vscode.window.showQuickPick(
+    reports.map((r) => ({ label: r.scenarioId, description: r.fileName, reportPath: r.path })),
+    { placeHolder: "開くレポートを選択" },
+  );
+  if (picked) {
+    await openReport(picked.reportPath);
+  }
 }
 
 /**

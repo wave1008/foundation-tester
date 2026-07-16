@@ -8,6 +8,7 @@ import * as fs from "node:fs";
 import * as vscode from "vscode";
 import { type FtesterConfig, resolveProjectName } from "./config";
 import { lastResultsDir, readAllResults, type ResultState } from "./lastResults";
+import { findLatestReport, reportsDir } from "./scenarioReports";
 
 const DEBOUNCE_MS = 1000;
 const DIR_RETRY_MS = 10000;
@@ -50,6 +51,21 @@ function findLeaf(items: vscode.TestItemCollection, id: string): vscode.TestItem
     }
   });
   return found;
+}
+
+/** レポートが見つかれば ftester.openScenarioReport(runHandler.ts)へのリンク付きメッセージ、
+ * 無ければ従来通りのプレーンテキスト。 */
+function buildFailedMessage(workspaceRoot: string, project: string, scenarioId: string): vscode.TestMessage {
+  const reportPath = findLatestReport(reportsDir(workspaceRoot, project), scenarioId);
+  if (!reportPath) {
+    return new vscode.TestMessage("CLI 実行で失敗(詳細はレポート参照)");
+  }
+  const args = encodeURIComponent(JSON.stringify([scenarioId]));
+  const markdown = new vscode.MarkdownString(
+    `CLI 実行で失敗 — [レポートを開く](command:ftester.openScenarioReport?${args})`,
+  );
+  markdown.isTrusted = { enabledCommands: ["ftester.openScenarioReport"] };
+  return new vscode.TestMessage(markdown);
 }
 
 /** leaf の定義は runHandler.ts の resolveTargets/addSubtree と同じ(children.size === 0)。 */
@@ -102,7 +118,7 @@ export function registerLastResultsSync(deps: LastResultsSyncDeps): vscode.Dispo
       if (state === "passed") {
         run.passed(item);
       } else {
-        run.failed(item, new vscode.TestMessage("CLI 実行で失敗(詳細はレポート参照)"));
+        run.failed(item, buildFailedMessage(workspaceRoot, resolution.project, item.id));
       }
     }
     run.end();
