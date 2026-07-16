@@ -23,28 +23,27 @@ class デモ_Android設定3 {
                     launchApp()
                 }.action {
                     tap("アプリ||Apps")
-                    // 実ラベル「35 個のアプリをすべて表示」— 先頭に可変数(アプリ数)が入るため
+                    // 実ラベル「30 個のアプリをすべて表示」— 先頭に可変数(アプリ数)が入るため
                     // 数を含まない安定部分文字列で contains 一致させる
                     tap("アプリをすべて表示||See all")
                 }.expectation {
-                    exist("Chrome")
+                    // 一覧先頭付近の安定アプリ(Chrome/連絡帳は下方のためスクロールして確認する)
                     exist("カメラ||Camera")
                 }
             }
-            scene(2, "スクロールして他のアプリも確認する") {
+            scene(2, "スクロールして Chrome を確認する") {
                 action {
-                    swipe(.up)
-                }.expectation {
-                    exist("連絡先||Contacts")
-                }
-            }
-            scene(3, "先頭まで戻る") {
-                action {
-                    swipe(.up)
-                    swipe(.down)
-                    swipe(.down)
+                    scrollTo("Chrome", maxSwipes: 12)
                 }.expectation {
                     exist("Chrome")
+                }
+            }
+            scene(3, "スクロールして連絡帳を確認する") {
+                action {
+                    // アプリ一覧での連絡先アプリの表示名は「連絡帳」(コンテンツ側の「連絡先」ではない)
+                    scrollTo("連絡帳||Contacts", maxSwipes: 12)
+                }.expectation {
+                    exist("連絡帳||Contacts")
                 }
             }
         }
@@ -84,8 +83,11 @@ class デモ_Android設定3 {
                 condition {
                     launchApp()
                 }.action {
-                    tap("ディスプレイ||Display & touch||Display")
-                    tap("画面自動消灯||Screen timeout")  // 実ラベルは「画面自動消灯」
+                    // A15/16 実ラベルは「ディスプレイとタップ」(旧「ディスプレイ」は消滅)。
+                    // 「ディスプレイ」単体はユーザー補助の要約にも部分一致し曖昧解決不能になる
+                    scrollTo("ディスプレイとタップ||Display & touch", maxSwipes: 12)
+                    tap("ディスプレイとタップ||Display & touch")
+                    tap("画面消灯||Screen timeout")  // A15/16 実ラベル「画面消灯」(旧「画面自動消灯」は説明文にのみ残存)
                 }.expectation {
                     exist("#collapsing_toolbar")
                     exist("15 秒||15 seconds")
@@ -142,9 +144,8 @@ class デモ_Android設定3 {
                     tap("ジェスチャー||Gestures")
                 }.expectation {
                     exist("#collapsing_toolbar")
-                    // 実ラベル「電源ボタンを 2 回押す」(「すばやく」なし・数字前後に空白)。
-                    // 空白/数字を跨がない一意な部分文字列で contains 一致(「長押し」行とは非衝突)
-                    exist("回押す||Double press")
+                    // A15 ジェスチャー画面の安定項目(旧「電源ボタンを 2 回押す/回押す」は当該画面に非存在)
+                    exist("電源ボタンを長押し||Press and hold power button")
                 }
             }
         }
@@ -162,7 +163,7 @@ class デモ_Android設定3 {
                     tap("日付と時刻||Date & time")
                 }.expectation {
                     exist("#collapsing_toolbar")
-                    exist("日時の自動設定||Automatic date and time")  // 実ラベルは「日時の自動設定」
+                    exist("日時を自動的に設定||Set time automatically")  // A15 実ラベル「日時を自動的に設定」
                 }
             }
             scene(2, "タイムゾーンの項目までスクロールして確認する") {
