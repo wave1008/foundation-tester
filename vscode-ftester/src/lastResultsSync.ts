@@ -1,13 +1,15 @@
 // lastResultsSync.ts
 // last-results ディレクトリ(CLI が書く。lastResults.ts 参照)への書き込みをターミナルからの
 // `ftester run` 実行時にも Test Explorer アイコンへ反映する(runHandler.ts の GUI 実行は
-// 自前でツリーへ反映済みなので対象外)。GUI 実行中(isGuiRunActive)は tick を丸ごと skip する
-// (appliedSnapshot は更新しない。ストアは増える一方なので GUI 実行終了後の次 tick で追いつく)。
+// 自前でツリーへ反映済みなので対象外)。GUI 実行中(isGuiRunActive)は tick を丸ごと skip し、
+// GUI 実行終了時は runHandler.ts が absorb(実行対象ID)を呼んでその分のスナップショットだけ
+// 黙って進める(合成 run を作ると TEST RESULTS の最新実行が出力ゼロの run に切り替わり、
+// GUI 実行の出力が隠れるため)。GUI 実行と無関係なターミナル実行分は従来どおり tick で反映する。
 
 import * as fs from "node:fs";
 import * as vscode from "vscode";
 import { type FtesterConfig, resolveProjectName } from "./config";
-import { lastResultsDir, readAllResults, type ResultState } from "./lastResults";
+import { lastResultsDir, lookupKey, readAllResults, type ResultState } from "./lastResults";
 import { findLatestReport, reportsDir } from "./scenarioReports";
 
 const DEBOUNCE_MS = 1000;
@@ -23,6 +25,30 @@ export interface LastResultsSyncDeps {
   outputChannel: vscode.OutputChannel;
   /** ストアに変化があった tick(初回反映含む)ごとに呼ぶ(reportCodeLens.ts の refresh 用)。 */
   onResultsApplied?: () => void;
+}
+
+export interface LastResultsSync extends vscode.Disposable {
+  /** GUI 実行終了時に実行対象シナリオIDを渡す。その分だけスナップショットを現ストア値へ進め、
+   * 次 tick の差分(=合成 run)から除外する。ID は lookupKey で正規化して照合する。 */
+  absorb(executedScenarioIds: readonly string[]): void;
+}
+
+/** snapshot の scenarioIds 分のエントリを current の値へ揃える(in-place)。
+ * current に無い id は snapshot からも消す(dry-run 等でストア未記録のままの id)。 */
+export function absorbIntoSnapshot(
+  snapshot: Map<string, ResultState>,
+  current: Map<string, ResultState>,
+  scenarioIds: readonly string[],
+): void {
+  for (const id of scenarioIds) {
+    const key = lookupKey(id);
+    const state = current.get(key);
+    if (state) {
+      snapshot.set(key, state);
+    } else {
+      snapshot.delete(key);
+    }
+  }
 }
 
 /** current のうち previous と状態が異なる(または previous に無い)エントリのみ返す。
@@ -92,7 +118,7 @@ function hasAnyLeaf(items: vscode.TestItemCollection): boolean {
   return has;
 }
 
-export function registerLastResultsSync(deps: LastResultsSyncDeps): vscode.Disposable {
+export function registerLastResultsSync(deps: LastResultsSyncDeps): LastResultsSync {
   const { controller, workspaceRoot, getConfig, isGuiRunActive, outputChannel, onResultsApplied } = deps;
 
   let appliedSnapshot: Map<string, ResultState> = new Map();
@@ -188,6 +214,14 @@ export function registerLastResultsSync(deps: LastResultsSyncDeps): vscode.Dispo
   }, INITIAL_REFLECT_POLL_MS);
 
   return {
+    absorb(executedScenarioIds: readonly string[]): void {
+      const resolution = resolveProjectName(workspaceRoot, getConfig());
+      if (resolution.kind !== "resolved") {
+        return;
+      }
+      const current = readAllResults(lastResultsDir(workspaceRoot, resolution.project));
+      absorbIntoSnapshot(appliedSnapshot, current, executedScenarioIds);
+    },
     dispose(): void {
       fsWatcher?.close();
       if (dirRetryTimer) {

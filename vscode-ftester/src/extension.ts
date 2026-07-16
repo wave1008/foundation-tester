@@ -84,19 +84,23 @@ export function activate(context: vscode.ExtensionContext): void {
     }
   };
 
+  const lastResultsSync = registerLastResultsSync({
+    controller: testTree.controller,
+    workspaceRoot,
+    getConfig,
+    isGuiRunActive: isRunActive,
+    outputChannel,
+    onResultsApplied: onResultsChanged,
+  });
+  context.subscriptions.push(lastResultsSync);
   registerRunHandler(
     context, cli, workspaceRoot, getConfig, testTree, watcher, outputChannel, runEventBus,
-    onResultsChanged,
-  );
-  context.subscriptions.push(
-    registerLastResultsSync({
-      controller: testTree.controller,
-      workspaceRoot,
-      getConfig,
-      isGuiRunActive: isRunActive,
-      outputChannel,
-      onResultsApplied: onResultsChanged,
-    }),
+    (executedScenarioIds) => {
+      // absorb しないと GUI 実行分が次 tick で合成 run(出力ゼロ)になり TEST RESULTS の
+      // 最新実行を乗っ取る(lastResultsSync.ts 冒頭コメント参照)。
+      lastResultsSync.absorb(executedScenarioIds);
+      onResultsChanged();
+    },
   );
   registerDebugAdapter(context, workspaceRoot, getConfig, outputChannel);
   registerStepsView(context, cli, workspaceRoot, getConfig, testTree, watcher, outputChannel);
