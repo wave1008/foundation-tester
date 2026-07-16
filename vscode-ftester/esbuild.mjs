@@ -49,6 +49,8 @@ async function buildWebview() {
     entryPoints: [
       path.join(rootDir, "src/webview/monitor/main.js"),
       path.join(rootDir, "src/webview/monitor/style.css"),
+      path.join(rootDir, "src/webview/dashboard/main.js"),
+      path.join(rootDir, "src/webview/dashboard/style.css"),
     ],
     bundle: true,
     platform: "browser",

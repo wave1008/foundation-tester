@@ -30,6 +30,7 @@ struct FTester: AsyncParsableCommand {
             ProfileCommand.self,
             DevicesCommand.self,
             ApiCommand.self,
+            ResultsCommand.self,
         ]
     )
 }
@@ -566,10 +567,13 @@ struct RunScenarios: AsyncParsableCommand {
             print("⚠️ Foundation Models 利用不可: 自己修復・screenIs・トリアージは無効です")
         }
 
+        let recorder = RunRecorder.begin(project: testProject, profile: profile, trigger: "cli")
+
         if let profile {
             let failedCount = try await ProfileRunner.run(
                 project: testProject, profileName: profile, items: items,
-                healOverride: heal ? true : nil, reportDirOverride: reportDir)
+                healOverride: heal ? true : nil, reportDirOverride: reportDir, recorder: recorder)
+            recorder.finish(total: items.count, passed: items.count - failedCount, failed: failedCount)
             print(failedCount == 0
                   ? "✅ 全 \(items.count) シナリオ成功"
                   : "❌ \(items.count) シナリオ中 \(failedCount) 件失敗")
@@ -586,11 +590,14 @@ struct RunScenarios: AsyncParsableCommand {
         let failedCount: Int
         if iosPorts.count <= 1 {
             failedCount = try await runSequential(items, project: testProject,
-                                                  port: iosPorts[0], reportDir: reportDirPath)
+                                                  port: iosPorts[0], reportDir: reportDirPath,
+                                                  recorder: recorder)
         } else {
             failedCount = await runParallel(items, project: testProject,
-                                            iosPorts: iosPorts, reportDir: reportDirPath)
+                                            iosPorts: iosPorts, reportDir: reportDirPath,
+                                            recorder: recorder)
         }
+        recorder.finish(total: items.count, passed: items.count - failedCount, failed: failedCount)
 
         print(failedCount == 0
               ? "✅ 全 \(items.count) シナリオ成功"
@@ -656,7 +663,8 @@ struct RunScenarios: AsyncParsableCommand {
     // MARK: - 逐次実行(ライブ出力)
 
     private func runSequential(_ items: [ScenarioRunItem], project: TestProject,
-                               port: UInt16, reportDir: String) async throws -> Int {
+                               port: UInt16, reportDir: String,
+                               recorder: RunRecorder?) async throws -> Int {
         let iosUdid = await Self.resolveUdid(port: port)
         var failedCount = 0
         for item in items {
@@ -675,7 +683,7 @@ struct RunScenarios: AsyncParsableCommand {
                                    driver: driver, connection: connection)
             let passed = await ScenarioRunner.runOne(
                 project: project, item: item, worker: worker, healingEnabled: heal,
-                reportDir: URL(fileURLWithPath: reportDir)) { event in
+                reportDir: URL(fileURLWithPath: reportDir), recorder: recorder) { event in
                 for line in RunLogFormatter.lines(for: event) { print(line) }
             }
             if !passed { failedCount += 1 }
@@ -686,7 +694,8 @@ struct RunScenarios: AsyncParsableCommand {
     // MARK: - 並列実行(iOS はポート毎のワーカー、Android は専用ワーカー)
 
     private func runParallel(_ items: [ScenarioRunItem], project: TestProject,
-                             iosPorts: [UInt16], reportDir: String) async -> Int {
+                             iosPorts: [UInt16], reportDir: String,
+                             recorder: RunRecorder?) async -> Int {
         let defaultPlatform = driverOptions.platform
         let androidItems = items.filter { ($0.info.platform ?? defaultPlatform) == "android" }
         let portList = iosPorts.map(String.init).joined(separator: ", ")
@@ -714,7 +723,8 @@ struct RunScenarios: AsyncParsableCommand {
 
         let orchestrator = RunOrchestrator(project: project, workers: workers,
                                            healingEnabled: heal,
-                                           reportDir: URL(fileURLWithPath: reportDir))
+                                           reportDir: URL(fileURLWithPath: reportDir),
+                                           recorder: recorder)
         async let summary = orchestrator.run(items: items, defaultPlatform: defaultPlatform)
 
         // シナリオ毎にバッファして完了時に一括表示(並列時のステップ行の混線防止)

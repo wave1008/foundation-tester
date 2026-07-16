@@ -13,6 +13,7 @@ import {
   resolveProjectName,
   resolveWorkspaceRoot,
 } from "./config";
+import { registerDashboardPanel } from "./dashboardPanel";
 import { registerDebugAdapter } from "./debugConfig";
 import { registerHealReviewPanel } from "./healReviewPanel";
 import { registerLastResultsSync } from "./lastResultsSync";
@@ -106,6 +107,7 @@ export function activate(context: vscode.ExtensionContext): void {
   registerStepsView(context, cli, workspaceRoot, getConfig, testTree, watcher, outputChannel);
   registerMonitorPanel(context, workspaceRoot, getConfig, outputChannel, runEventBus, cli, testTree);
   registerHealReviewPanel(context, workspaceRoot, getConfig, outputChannel, runEventBus, cli);
+  registerDashboardPanel(context, workspaceRoot, getConfig, outputChannel, runEventBus);
   registerProfileDiagnostics(context, cli, workspaceRoot, getConfig, outputChannel);
 
   void testTree.refresh();
