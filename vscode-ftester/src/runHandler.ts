@@ -81,8 +81,17 @@ export function registerRunHandler(
     ),
     vscode.commands.registerCommand(
       "ftester.rerunFailedTests",
-      (item?: vscode.TestItem, items?: vscode.TestItem[]) => {
-        const include = Array.isArray(items) && items.length > 0 ? items : item ? [item] : undefined;
+      (item?: unknown, items?: unknown) => {
+        // コントローラ行(ルートの「ftester」)の右クリックは TestItem でない内部オブジェクト
+        // (id が undefined)が渡る。TestItem として妥当なものだけ採用し、それ以外は全体扱い
+        const isTestItem = (x: unknown): x is vscode.TestItem =>
+          typeof x === "object" && x !== null
+          && typeof (x as vscode.TestItem).id === "string"
+          && typeof (x as vscode.TestItem).children === "object";
+        const multi = Array.isArray(items) ? items.filter(isTestItem) : [];
+        const include = multi.length > 0 ? multi : isTestItem(item) ? [item] : undefined;
+        outputChannel.appendLine(
+          `[rerunFailed] include=${include ? include.map((i) => i.id).join(",") : "全体"}`);
         const request = new vscode.TestRunRequest(include, undefined, failedOnlyProfile);
         const tokenSource = new vscode.CancellationTokenSource();
         void Promise.resolve(failedOnlyHandler(request, tokenSource.token)).finally(() =>
@@ -165,6 +174,10 @@ async function executeRun(
       resolution.kind === "resolved"
         ? readFailedScenarioIds(lastResultsDir(workspaceRoot, resolution.project))
         : new Set<string>();
+    outputChannel.appendLine(
+      `[rerunFailed] project=${resolution.kind === "resolved" ? resolution.project : resolution.kind}`
+      + ` 展開=${targets.size}件 失敗記録=${failedIds.size}件`
+      + ` 対象=${[...targets.keys()].filter((id) => failedIds.has(id)).length}件`);
     targets = new Map([...targets].filter(([id]) => failedIds.has(id)));
   }
 
@@ -174,6 +187,9 @@ async function executeRun(
   if (targets.size === 0) {
     if (failedOnly) {
       run.appendOutput("前回失敗したシナリオはありません(全て成功済みか未実行)\r\n");
+      // 実行が一瞬で終わり run 出力は見落としやすいため、可視の通知も出す
+      void vscode.window.showInformationMessage(
+        "ftester: 前回失敗したシナリオはありません(全て成功済みか未実行)");
     }
     run.end();
     return;
