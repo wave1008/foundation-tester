@@ -192,6 +192,7 @@ python3 Scripts/stream_vs_poll_bench.py --boot-ios-name シミュ1 --boot-androi
 | 描画間引き(66ms) | vscode-ftester/src/webview/monitor/h264Decoder.js | 約15fps | h264 の canvas 描画間隔。デコード自体は全チャンク必須(P フレーム連鎖)なので下げても復号コストは減らない |
 | watchdog しきい値 | vscode-ftester/src/monitorBridgeWatchdog.ts | booted 連続5観測(約10秒)/クールダウン3分/2回で諦め | ブリッジ自動修復の感度。短くすると起動過渡を誤検知、長くすると復旧が遅い |
 | `maxConcurrent`(bootAll 引数) | Sources/FTAndroid/DeviceBooter.swift | 2(固定。ユーザー決定 2026-07-16) | devices up の同時進行数(1台=ブート→iOS ブリッジ供給まで)。上限がブートストーム防止を兼ねる(旧 CPU 負荷ゲートは廃止済み。§3.3)。上げると速いがタイルの進行表示も増える |
+| GPU 描画モード / 凍結時 CPU フォールバック | DeviceBooter.startEmulator(gpuMode) / ApiDeviceUp `--gpu` / monitorHealthWatchdog | 既定 host / 凍結個体のみ swiftshader_indirect | `-gpu host` は速い(モーション時 約1コア/台)が**画面凍結の主因**(§7)。swiftshader は免疫だが 約3コア/台。全機 swiftshader ではなく、凍結が streamRepair で治らない個体だけ per-device で swiftshader 再起動(セッション中維持。bulk devices-up は host のまま=既知の穴) |
 
 window/transition/animator の `*_scale` はチューニングノブではなく常時 0 固定で、
 `Sources/FTAndroid/AndroidBridge.swift` の `startBridge()` 内(ブリッジのコールド起動時)で
@@ -207,7 +208,8 @@ window/transition/animator の `*_scale` はチューニングノブではなく
 | 施策 | 不採用理由 | 再検討条件 |
 |---|---|---|
 | ランナー常駐化(stdin でシナリオ逐次投入) | 残存コスト ~0.2s/本(全体の1〜6%)に対し、プロトコル+クラッシュ隔離の複雑さが見合わない | ヒール多用ワークロード(FM 3B モデルのプロセス毎再ロードが効く)か、1 バッチ数十本規模 |
-| エミュレータ黒画面対策としての Wipe Data / キャッシュ削除の自動化(2026-07-17 精査)→ **同日ユーザー決定で実行プロファイルのオプションとして実装済み** | 精査結論: Wipe Data が効くのは「ブート時黒画面」(Quickboot スナップショット破損・userdata 破損)。本フリートの症状は正常ブート後数分の表示パイプライン凍結で adb reboot で一旦回復する=userdata 破損型と不一致(guest cache.img は 66MB で削除効果なし)。コールドブート保証(`-no-snapshot`。ロード+セーブ無効)を DeviceBooter に実装。**別発見: フリート AVD の userdata-qemu.img.qcow2 が 6〜12GB に肥大**(qcow2 差分は縮まない)。この肥大解消のため、ユーザー決定で実行プロファイルに `wipeDataOnBloat`(既定 true)/`wipeDataThresholdGB`(既定 8。wipe 直後の再構築だけで 2〜4GB になるため 4GB 以下はスラッシング)を追加し、実行開始時に超過 AVD を Wipe Data する(AndroidDataWiper.swift)。**Wipe はゲストを初期化するが、アプリは appPath があれば強制再インストール、ロケールは実行プロファイル `locale`(既定 ja_JP)が再ブート後にブリッジ /locale で自動適用される**(design.md §11.2) | 凍結が Wipe 運用でも再発するなら真因切り分け(screenrecord アタッチ / -gpu host / macOS beta)へ |
+| エミュレータ黒画面対策としての Wipe Data / キャッシュ削除の自動化(2026-07-17 精査)→ **同日ユーザー決定で実行プロファイルのオプションとして実装済み** | 精査結論: Wipe Data が効くのは「ブート時黒画面」(Quickboot スナップショット破損・userdata 破損)。本フリートの症状は正常ブート後数分の表示パイプライン凍結で adb reboot で一旦回復する=userdata 破損型と不一致(guest cache.img は 66MB で削除効果なし)。コールドブート保証(`-no-snapshot`。ロード+セーブ無効)を DeviceBooter に実装。**別発見: フリート AVD の userdata-qemu.img.qcow2 が 6〜12GB に肥大**(qcow2 差分は縮まない)。この肥大解消のため、ユーザー決定で実行プロファイルに `wipeDataOnBloat`(既定 true)/`wipeDataThresholdGB`(既定 8。wipe 直後の再構築だけで 2〜4GB になるため 4GB 以下はスラッシング)を追加し、実行開始時に超過 AVD を Wipe Data する(AndroidDataWiper.swift)。**Wipe はゲストを初期化するが、アプリは appPath があれば強制再インストール、ロケールは実行プロファイル `locale`(既定 ja_JP)が再ブート後にブリッジ /locale で自動適用される**(design.md §11.2) | **真因は切り分け済み(2026-07-17): `-gpu host`(§7)。Wipe は凍結には無効で確定** |
+| エミュレータ凍結対策としての swangle_indirect(ANGLE/Metal)描画 | 2026-07-17 実測。headless で `screencap -p` が終始 0B(フレームバッファを読めない=証跡取得不能)。GPU アクセラを保ったまま凍結を避ける狙いだったが使い物にならない | emulator が headless での swangle スクショ取得に対応したら |
 | ワーカー開始のスタガリング | 混在 5 デバイス実測で CPU 平均 50%・launch 衝突スパイクなし | ベンチで launch 時刻と CPU ピークの相関が観測されたら |
 | snapshot 差分ポーリング/ポーリング間隔の一律短縮 | 負荷が並列 N 台で掛け算(原則違反) | なし(原則ごと見直す場合のみ) |
 | ブリッジ /waitFor(セレクタ条件待ち) | セレクタ解決の Java 複製=二重仕様。整定後は初回ヒットが普通で価値が薄い | exist の初回ミス率が実測で高くなったら |
@@ -266,6 +268,16 @@ window/transition/animator の `*_scale` はチューニングノブではなく
   `Apple M1 ...(Metal)` なら host GPU)。DeviceBooter は `-gpu host` 起動で対策済みだが、
   手動起動のエミュレータや AVD 設定変更で再発しうる(headless では hw.gpu.mode=auto が
   SwiftShader に落ちる)
+- **画面凍結(白フレーム固着)の真因は `-gpu host` + headless + macOS 27 / emulator 36.5.10**
+  (切り分け実測 2026-07-17)。症状: ゲストは健全(`mWakefulness=Awake`・screen ON・adb/a11y/入力可)
+  だが `screencap`/`screenrecord` が一様白(PNG 10-16KB)を返す。起動後 0〜3 分でランダム発生、
+  約25秒周期でフラッピングする個体もある。**切り分け手順**(再発時の検証テンプレ): 空き AVD を
+  `emulator -avd X -port P -no-window -no-snapshot -gpu <mode>` で直接起動(モニターのプロファイル外=
+  stream されない)し、GPU モードだけ変えて同一ホスト・同一負荷で `screencap -p | wc -c` を比較。
+  実測: host は screenrecord 有無問わず凍結、swiftshader_indirect は約20分健全。**readback(screencap/
+  screenrecord)は真因でなく不安定な緩和**(アイドル host 機は readback ゼロだと確実凍結、readback で
+  一時回復するが高負荷下では screenrecord 稼働中でも再凍結する)。根治は GPU モード変更(§5・§6・
+  design.md §12.3)。対処: 凍結個体だけ swiftshader へ per-device フォールバック(design.md §12.4)
 - **シミュレータのコールドブート直後は Spotlight インデックスが計測を汚す**: 設定トップに
   「検索とSiriを最適化中」行(id=com.apple.settings.spotlightIndexingProgress)が挿入され、
   CPU も食う(負荷下ではタイムアウト失敗を誘発。完了まで10分超の個体もある)。ベンチ前の
