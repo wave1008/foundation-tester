@@ -20,10 +20,16 @@ struct ApiListDevices: AsyncParsableCommand {
     @Option(help: "テストプロジェクト名(省略時: Projects/ が 1 つならそれ / 既定プロジェクト)")
     var project: String?
 
+    @Option(help: "実行プロファイル名(machine 解決に使う。指定時はそのプロファイルの machine を最優先。省略時は FT_MACHINE / 登録マシン / machines が 1 つならそれ)")
+    var profile: String?
+
     func run() async throws {
         let testProject = try ScenarioHost.project(named: project)
+        // runProfileName を渡さないと machines/ 複数時に「マシン名が未登録」で落ちる
+        // (ApiDeviceCommands.swift と同経路。対向: monitorLiveController.ts / monitorExploreController.ts)
         let machine = try ProfileResolver.determineMachine(
-            project: testProject, registered: LocalConfig.currentMachineName())
+            project: testProject, registered: LocalConfig.currentMachineName(),
+            runProfileName: profile)
         if machine.auto {
             logStderr("→ マシンプロファイル自動採用: \(machine.name)(machines/ が 1 つのため)")
         }
