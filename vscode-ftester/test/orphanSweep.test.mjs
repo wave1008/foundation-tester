@@ -24,11 +24,13 @@ test("parseOrphanPids: PPID が 1 でない同コマンドは除外する", () =
   assert.deepEqual(parseOrphanPids(psOutput), []);
 });
 
-test("parseOrphanPids: PPID=1 でも非常駐コマンド(api run / api explore)は除外する", () => {
-  const psOutput = [
-    "  111     1 .build/debug/ftester api run --project SampleApp --scenario Foo",
-    "  222     1 .build/debug/ftester api explore --project SampleApp",
-  ].join("\n");
+test("parseOrphanPids: PPID=1 の api run はデバイス占有解除のため対象に含める", () => {
+  const psOutput = "  111     1 .build/debug/ftester api run --project SampleApp --scenario Foo";
+  assert.deepEqual(parseOrphanPids(psOutput), [111]);
+});
+
+test("parseOrphanPids: PPID=1 でも api run 以外の非常駐コマンド(api explore 等)は除外する", () => {
+  const psOutput = "  222     1 .build/debug/ftester api explore --project SampleApp";
   assert.deepEqual(parseOrphanPids(psOutput), []);
 });
 

@@ -23,7 +23,7 @@ import { registerReportCodeLens } from "./reportCodeLens";
 import { RunEventBus } from "./runEventBus";
 import { isRunActive, registerRunHandler } from "./runHandler";
 import { registerStepsView } from "./stepsView";
-import { FtesterTestTree } from "./testTree";
+import { FtesterTestTree, unhideAllTests } from "./testTree";
 import { ScenarioFileWatcher } from "./watcher";
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -74,9 +74,19 @@ export function activate(context: vscode.ExtensionContext): void {
   });
   context.subscriptions.push(reportCodeLens);
 
+  // 実行結果が変化したときの共通処理。showOnlyFailedTests が ON の間は合否の変化で表示対象も
+  // 変わる(新規失敗は現れ、成功に転じたものは消える)ためツリーを再構築する。
+  const onResultsChanged = (): void => {
+    reportCodeLens.refresh();
+    unhideAllTests();
+    if (getConfig().showOnlyFailedTests && !isRunActive()) {
+      testTree.rebuildFromLastData();
+    }
+  };
+
   registerRunHandler(
     context, cli, workspaceRoot, getConfig, testTree, watcher, outputChannel, runEventBus,
-    () => reportCodeLens.refresh(),
+    onResultsChanged,
   );
   context.subscriptions.push(
     registerLastResultsSync({
@@ -85,7 +95,7 @@ export function activate(context: vscode.ExtensionContext): void {
       getConfig,
       isGuiRunActive: isRunActive,
       outputChannel,
-      onResultsApplied: () => reportCodeLens.refresh(),
+      onResultsApplied: onResultsChanged,
     }),
   );
   registerDebugAdapter(context, workspaceRoot, getConfig, outputChannel);
@@ -179,7 +189,47 @@ function registerCommands(
   getConfig: () => FtesterConfig,
   outputChannel: vscode.OutputChannel,
 ): void {
+  // Test Explorer タイトルバーのトグルボタン(package.json view/title の enable/disable ペア)の
+  // 表示切替に使う context key。設定 ftester.showOnlyFailedTests と常に同期させる
+  // (設定エディタから直接変更された場合も onDidChangeConfiguration で追従し、ツリーも再構築)。
+  const syncFailedFilterContext = (): void => {
+    void vscode.commands.executeCommand(
+      "setContext",
+      "ftester.failedTestsFilterEnabled",
+      getConfig().showOnlyFailedTests,
+    );
+  };
+  syncFailedFilterContext();
+  const setFailedFilter = async (value: boolean): Promise<void> => {
+    await vscode.workspace
+      .getConfiguration("ftester")
+      .update("showOnlyFailedTests", value, vscode.ConfigurationTarget.Global);
+    vscode.window.setStatusBarMessage(
+      value
+        ? "ftester: 失敗したテストのみ表示します(未実施・成功は除外)"
+        : "ftester: フィルターを解除しました(全テストを表示)",
+      3000,
+    );
+  };
+
   context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (!e.affectsConfiguration("ftester.showOnlyFailedTests")) {
+        return;
+      }
+      syncFailedFilterContext();
+      // 実行中は TestRun が既存アイテムを参照しているため再構築しない(実行終了時の
+      // onRunFinished 経由で追いつく)。
+      if (!isRunActive()) {
+        testTree.rebuildFromLastData();
+      }
+    }),
+    vscode.commands.registerCommand("ftester.enableFailedTestsFilter", () => {
+      void setFailedFilter(true);
+    }),
+    vscode.commands.registerCommand("ftester.disableFailedTestsFilter", () => {
+      void setFailedFilter(false);
+    }),
     vscode.commands.registerCommand("ftester.refreshScenarios", () => {
       void testTree.refresh();
     }),

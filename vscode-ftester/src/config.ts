@@ -38,6 +38,9 @@ export interface FtesterConfig {
    * codecError(WebCodecs 未対応/デコード失敗)を受けた個別デバイスは設定に関わらず
    * mjpeg へ自動フォールバックする(monitorDeviceStreamController.ts/monitorLiveController.ts)。 */
   streamCodec: "h264" | "mjpeg";
+  /** true の場合、Test Explorer ツリーを失敗テストのみ表示(未実施・成功は除外。testTree.ts の
+   * resolveFailedFilter。トグルボタンの context key 同期は extension.ts registerCommands)。 */
+  showOnlyFailedTests: boolean;
   /** true の場合、ブリッジ無応答(connected→booted 降格が booted 連続5回続く)を検出したら、実行中の
    * レーンが無い間に限り device-up で自動修復を試みる(monitorBridgeWatchdog.ts)。 */
   autoRepairBridge: boolean;
@@ -75,6 +78,7 @@ export function readConfig(workspaceRoot: string): FtesterConfig {
     iosStreamEnabled: configuration.get<boolean>("iosStreamEnabled", true),
     androidStreamEnabled: configuration.get<boolean>("androidStreamEnabled", true),
     streamCodec: configuration.get<"h264" | "mjpeg">("streamCodec", "h264"),
+    showOnlyFailedTests: configuration.get<boolean>("showOnlyFailedTests", false),
     autoRepairBridge: configuration.get<boolean>("autoRepairBridge", true),
   };
 }
