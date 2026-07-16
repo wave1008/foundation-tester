@@ -122,6 +122,18 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
             <input type="checkbox" id="run-profile-ios-inapp-engine">
             <label for="run-profile-ios-inapp-engine">高速なinappエンジンを使用する(iOS)</label>
           </div>
+          <div class="modal-row profile-checkbox-row">
+            <input type="checkbox" id="run-profile-wipe-data-on-bloat">
+            <label for="run-profile-wipe-data-on-bloat">イメージ肥大時に自動で Wipe Data する(Android)</label>
+          </div>
+          <div class="modal-row">
+            <label for="run-profile-wipe-threshold">Wipe Data しきい値(GB)</label>
+            <input type="text" id="run-profile-wipe-threshold" placeholder="8">
+          </div>
+          <div class="modal-row">
+            <label for="run-profile-locale">ロケール</label>
+            <input type="text" id="run-profile-locale" placeholder="ja_JP">
+          </div>
           <div class="modal-row">
             <label for="run-profile-report-dir">reportDir</label>
             <input type="text" id="run-profile-report-dir" placeholder="reports">

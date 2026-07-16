@@ -571,8 +571,23 @@ platform フィールドは持たず、**iOS/Android のデバイス名を混在
 ```json
 { "app": "sampleapp",
   "devices": [ { "name": "メイン機" }, { "name": "サブ機" }, { "name": "エミュ1" } ],
-  "heal": false, "reportDir": "reports", "defaultTimeout": 5 }
+  "heal": false, "reportDir": "reports", "defaultTimeout": 5,
+  "wipeDataOnBloat": true, "wipeDataThresholdGB": 8 }
 ```
+
+`wipeDataOnBloat`(既定 true)は実行開始時に Android AVD の wipe 対象
+(userdata/cache/snapshots)合計が `wipeDataThresholdGB`(既定 8。**Play イメージは wipe 直後の
+再構築だけで 2〜4GB になるため 4GB 以下はスラッシング**、実測 2026-07-17)超過なら Wipe Data してから
+実行する(AndroidDataWiper.swift。ゲストは初期化されるが、アプリは appPath があれば強制
+再インストール、ロケールは下記 `locale` が再ブート後に自動適用される)。
+
+`locale`(既定 "ja_JP")は Android エミュレータのブート完了時(device-up と wipe 後の再起動)に
+適用される。**Play イメージは root/`setprop`/`settings put system system_locales`/emulator の
+`-change-locale` が全て無効**(実測 2026-07-17)のため、適用はブリッジの `POST /locale`
+(BridgeRouter.java: shell 権限借用 CHANGE_CONFIGURATION + IActivityManager.
+updatePersistentConfiguration、要 `hidden_api_policy=1`=ブリッジ起動時に自動設定)で行う。
+一致時は no-op、変更は再起動を跨いで永続。iOS には影響しない。device-up 経由の既定は
+DeviceBooter.defaultLocale(実行プロファイルの locale が届くのは wipe 再起動経路のみ)。
 
 ### 11.3 解決規則(ProfileResolver)
 

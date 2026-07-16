@@ -15,7 +15,7 @@ extension AndroidDriver {
     /// デバイス側の listen ポート(全デバイス共通。デバイス毎に独立 loopback なので衝突しない)
     static let bridgeDevicePort: UInt16 = 8123
     /// AndroidRunner/build.sh の VERSION_CODE と同期(不一致なら自動で再インストール)
-    public static let expectedBridgeVersionCode = 5
+    public static let expectedBridgeVersionCode = 6
 
     enum BridgeState {
         case active(BridgeClient)
@@ -99,6 +99,7 @@ extension AndroidDriver {
         if let client = await probeBridge(hostPort: hostPort) { return client }
 
         disableAnimations()
+        allowHiddenAPIReflection()
         try installBridgeIfNeeded()
         _ = try? adb(["shell", "am", "force-stop", Self.bridgePackage])
         // -w 必須(UiAutomationConnection は am プロセス側に生成される)。
@@ -126,6 +127,17 @@ extension AndroidDriver {
         let message = "⚠️ Android アニメーション設定の無効化に失敗しました(\(failed.joined(separator: ", ")))。"
             + "有効なままだと静穏判定後に screenshot が古い絵を掴むことがあります\n"
         FileHandle.standardError.write(Data(message.utf8))
+    }
+
+    /// ブリッジの /locale(BridgeRouter.java handleLocale)が使う隠し API 反射の許可。
+    /// 未設定だとロケール変更だけが 500 になる。失敗は非致命(disableAnimations と同方針)
+    private func allowHiddenAPIReflection() {
+        guard (try? adb(["shell", "settings", "put", "global", "hidden_api_policy", "1"]))?.status == 0
+        else {
+            FileHandle.standardError.write(Data(
+                "⚠️ hidden_api_policy の設定に失敗しました(ロケール変更 /locale が使えません)\n".utf8))
+            return
+        }
     }
 
     private func probeBridge(hostPort: UInt16) async -> BridgeClient? {

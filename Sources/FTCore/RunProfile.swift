@@ -167,10 +167,25 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     /// false → "xcuitest" にする。マシンプロファイルでデバイスに engine を明示している場合は
     /// そちらが優先(resolve 参照)。Android には影響しない。
     public var iosInappEngine: Bool?
+    /// 実行開始時に Android AVD の肥大化(wipe 対象ファイル合計サイズ)を検査し超過分を
+    /// Wipe Data するか(既定 true=ON)。同期相手: vscode-ftester/schemas/run-profile.schema.json
+    /// と src/monitorModel.ts の RunProfileFormFields
+    public var wipeDataOnBloat: Bool?
+    /// wipeDataOnBloat のしきい値(GB、1GB=1_073_741_824 バイト。既定 8。0 以下は検証エラー。
+    /// Play イメージは wipe 直後の再構築だけで userdata が 2〜4GB になるため(実測 2026-07-17)、
+    /// それ未満のしきい値は毎実行 wipe が発動するスラッシングになる — 下げるときは要注意)
+    public var wipeDataThresholdGB: Double?
+    /// Android エミュレータのブート完了時(Wipe Data 後の再起動を含む)にブリッジ /locale で
+    /// 適用するロケール(既定 "ja_JP"。Play イメージでは -change-locale 等が無効なため。
+    /// design.md §11.2)。iOS には影響しない。同期相手: vscode-ftester/schemas/run-profile.schema.json
+    /// と src/monitorModel.ts の RunProfileFormFields
+    public var locale: String?
 
     public init(app: String? = nil, devices: [RunDeviceRef]? = nil, heal: Bool? = nil,
                 reportDir: String? = nil, defaultTimeout: Int? = nil, scenarioTimeout: Int? = nil,
-                machine: String? = nil, iosInappEngine: Bool? = nil) {
+                machine: String? = nil, iosInappEngine: Bool? = nil,
+                wipeDataOnBloat: Bool? = nil, wipeDataThresholdGB: Double? = nil,
+                locale: String? = nil) {
         self.app = app
         self.devices = devices
         self.heal = heal
@@ -179,11 +194,14 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
         self.scenarioTimeout = scenarioTimeout
         self.machine = machine
         self.iosInappEngine = iosInappEngine
+        self.wipeDataOnBloat = wipeDataOnBloat
+        self.wipeDataThresholdGB = wipeDataThresholdGB
+        self.locale = locale
     }
 
     static let knownKeys: Set<String> = [
         "app", "devices", "heal", "reportDir", "defaultTimeout", "scenarioTimeout",
-        "machine", "iosInappEngine",
+        "machine", "iosInappEngine", "wipeDataOnBloat", "wipeDataThresholdGB", "locale",
     ]
 }
 
@@ -233,6 +251,12 @@ public struct ResolvedProfile: Sendable {
     public let defaultTimeout: Int?
     /// シナリオ単位の壁時計タイムアウト秒(ホスト側 watchdog。nil=未指定→run 側で既定 90 を適用)
     public let scenarioTimeout: Int?
+    /// 実行開始時に Android AVD 肥大化を Wipe Data するか(既定 true)
+    public let wipeDataOnBloat: Bool
+    /// wipeDataOnBloat のしきい値(GB)
+    public let wipeDataThresholdGB: Double
+    /// Android エミュレータのブート時に -change-locale で適用するロケール(既定 "ja_JP")
+    public let locale: String
     /// 解決中に出た警告(スキップしたデバイス・未知キー等)。呼び出し側が表示する
     public let warnings: [String]
 
@@ -279,6 +303,8 @@ public enum ProfileError: Error, LocalizedError {
     case duplicateDeviceName(name: String, machine: String)
     case noDevicesResolved(run: String, machine: String, requested: [String], available: [String])
     case missingBundleID(platform: String, appProfile: String)
+    case invalidWipeDataThreshold(run: String)
+    case invalidLocale(run: String)
 
     public var errorDescription: String? {
         switch self {
@@ -315,6 +341,10 @@ public enum ProfileError: Error, LocalizedError {
             // common の app は廃止(merging 参照)のため、案内は platform セクション限定
             return "アプリケーションプロファイル \(appProfile) に \(platform) の \"app\""
                 + "(bundle ID / パッケージ名)がありません(\(platform) セクションに記述)"
+        case .invalidWipeDataThreshold(let run):
+            return "実行プロファイル \(run) の wipeDataThresholdGB は正の数(GB)で指定してください"
+        case .invalidLocale(let run):
+            return "実行プロファイル \(run) の locale は ja_JP のような形式で指定してください"
         }
     }
 
@@ -505,6 +535,16 @@ public enum ProfileResolver {
         let reportDir = URL(fileURLWithPath:
             resolvePath(runDoc.reportDir ?? "reports", base: project.rootURL))
 
+        let wipeDataThresholdGB = runDoc.wipeDataThresholdGB ?? 8
+        guard wipeDataThresholdGB > 0 else {
+            throw ProfileError.invalidWipeDataThreshold(run: runName)
+        }
+
+        let locale = (runDoc.locale ?? "ja_JP").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard isValidLocale(locale) else {
+            throw ProfileError.invalidLocale(run: runName)
+        }
+
         return ResolvedProfile(
             project: project,
             runName: runName,
@@ -516,7 +556,15 @@ public enum ProfileResolver {
             reportDir: reportDir,
             defaultTimeout: runDoc.defaultTimeout,
             scenarioTimeout: runDoc.scenarioTimeout,
+            wipeDataOnBloat: runDoc.wipeDataOnBloat ?? true,
+            wipeDataThresholdGB: wipeDataThresholdGB,
+            locale: locale,
             warnings: warnings)
+    }
+
+    /// locale 形式検証(trim 済み文字列を渡すこと): 言語[-地域/バリアント...](BCP47 風の緩い検査)
+    private static func isValidLocale(_ value: String) -> Bool {
+        value.range(of: "^[A-Za-z]{2,3}([-_][A-Za-z0-9]{2,8})*$", options: .regularExpression) != nil
     }
 
     /// チルダ展開+相対パスは base(プロジェクトルート)基準で絶対化
@@ -564,6 +612,13 @@ public enum ProfileResolver {
             if let doc = try? decoder.decode(RunProfileDocument.self, from: data) {
                 if doc.app == nil { errors.append("\"app\"(apps/ への参照)がありません") }
                 if (doc.devices ?? []).isEmpty { errors.append("\"devices\" がありません") }
+                if let threshold = doc.wipeDataThresholdGB, threshold <= 0 {
+                    errors.append("\"wipeDataThresholdGB\" は正の数(GB)で指定してください")
+                }
+                let locale = (doc.locale ?? "ja_JP").trimmingCharacters(in: .whitespacesAndNewlines)
+                if !isValidLocale(locale) {
+                    errors.append("\"locale\" は ja_JP のような形式で指定してください")
+                }
             } else {
                 errors.append("実行プロファイルとして読み込めません(型不一致)")
             }

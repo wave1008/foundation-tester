@@ -20,6 +20,9 @@ export interface MonitorHealthWatchdogDeps {
   enqueueRestart(name: string): void;
   /** adb で Wi-Fi を再有効化する軽量修復。解決失敗・実行失敗は false(例外は投げない)。 */
   runWifiRepair(serial: string): Promise<boolean>;
+  /** MonitorDeviceStreamController.restartForDeviceName への委譲。稼働中パイプラインが無ければ
+   * false(ポーリングモード・諦め済み等)。 */
+  restartStream(name: string): boolean;
   /** 設定 ftester.autoRepairDeviceHealth の現在値。 */
   isAutoRepairEnabled(): boolean;
   /** 実行中のレーンが1つでもあるか(runLaneModel.isAnyLaneRunning への委譲)。 */
@@ -37,6 +40,12 @@ const WIFI_REPAIR_COOLDOWN_MS = 120_000;
 const RESTART_COOLDOWN_MS = 5 * 60_000;
 /** クールダウンを挟んで最大何回まで自動再起動を試みるか。超えたら failed で以後停止(異常なし観測まで)。 */
 const MAX_RESTART_ATTEMPTS = 2;
+/** 異常なし観測がこの時間(ミリ秒)連続して初めてエピソード(試行回数の記憶)を破棄する。ブート直後は
+ * 一時的に健全になるため、即時リセットだと restartAttempts が毎回0に戻り MAX_RESTART_ATTEMPTS が
+ * 永遠に発動せず無限再起動ループになった実害への対策(2026-07-17)。 */
+const EPISODE_RESET_AFTER_HEALTHY_MS = 10 * 60_000;
+/** ストリーム修復後、再判定を待つクールダウン(ミリ秒)。Wi-Fi 修復と同じ根拠(プローブ30秒×2回+マージン)。 */
+const STREAM_REPAIR_COOLDOWN_MS = 120_000;
 
 interface DeviceHealthEntry {
   /** 現在のエピソードで一度でも unhealthy を post したか。post の重複防止、および異常なし復帰時に
@@ -44,16 +53,30 @@ interface DeviceHealthEntry {
   degraded: boolean;
   /** このエピソードで Wi-Fi 修復を試みたか(wifi-disabled 単独時のみ1回だけ試す)。 */
   wifiAttempted: boolean;
+  /** このエピソードでストリーム修復を試みたか(blank-screen 検出時のみ1回だけ試す)。 */
+  streamAttempted: boolean;
   /** このエピソードで実際に投入した再起動の回数。 */
   restartAttempts: number;
   /** この時刻(ms)まで新規の修復・再起動を投入しない(0 = クールダウン無し)。 */
   cooldownUntil: number;
   /** MAX_RESTART_ATTEMPTS 到達済み。異常なし観測まで一切の判定をスキップする。 */
   failed: boolean;
+  /** 連続して異常なしを観測し始めた時刻(ms)。undefined = 直近観測が異常または未観測
+   * (0 センチネルはテストの注入時計が 0 始まりのため使えない)。
+   * EPISODE_RESET_AFTER_HEALTHY_MS 継続して初めてエントリを削除する。 */
+  healthySince: number | undefined;
 }
 
 function freshEntry(): DeviceHealthEntry {
-  return { degraded: false, wifiAttempted: false, restartAttempts: 0, cooldownUntil: 0, failed: false };
+  return {
+    degraded: false,
+    wifiAttempted: false,
+    streamAttempted: false,
+    restartAttempts: 0,
+    cooldownUntil: 0,
+    failed: false,
+    healthySince: undefined,
+  };
 }
 
 /**
@@ -94,9 +117,18 @@ export class MonitorHealthWatchdog {
 
     if (!hasIssue) {
       const entry = this.entries.get(name);
-      if (entry?.degraded) {
-        this.entries.delete(name);
+      if (!entry) {
+        return;
+      }
+      if (entry.degraded) {
+        entry.degraded = false;
         this.deps.post({ type: "healthWatch", name, phase: "ok" });
+      }
+      const now = this.now();
+      if (entry.healthySince === undefined) {
+        entry.healthySince = now;
+      } else if (now - entry.healthySince >= EPISODE_RESET_AFTER_HEALTHY_MS) {
+        this.entries.delete(name);
       }
       return;
     }
@@ -106,15 +138,17 @@ export class MonitorHealthWatchdog {
       entry = freshEntry();
       this.entries.set(name, entry);
     }
-
-    if (entry.failed) {
-      return;
-    }
+    entry.healthySince = undefined;
 
     if (!entry.degraded) {
       entry.degraded = true;
       this.deps.log(`[health-watch] ${name}: ゲストOS健全性異常を検出しました(${health.join(", ")})。`);
-      this.deps.post({ type: "healthWatch", name, phase: "unhealthy" });
+      // failed 後に白⇔正常をフラッピングする個体向け: 異常中はタイルに修復失敗を出し続ける。
+      this.deps.post({ type: "healthWatch", name, phase: entry.failed ? "failed" : "unhealthy" });
+    }
+
+    if (entry.failed) {
+      return;
     }
 
     if (this.now() < entry.cooldownUntil) {
@@ -124,7 +158,8 @@ export class MonitorHealthWatchdog {
       return;
     }
 
-    const isWifiOnly = health.includes("wifi-disabled") && !health.includes("clock-skew");
+    const isWifiOnly =
+      health.includes("wifi-disabled") && !health.includes("clock-skew") && !health.includes("blank-screen");
     if (isWifiOnly && !entry.wifiAttempted && serial !== undefined) {
       entry.wifiAttempted = true;
       entry.cooldownUntil = this.now() + WIFI_REPAIR_COOLDOWN_MS;
@@ -138,6 +173,18 @@ export class MonitorHealthWatchdog {
         );
       });
       return;
+    }
+
+    if (health.includes("blank-screen") && !entry.streamAttempted) {
+      entry.streamAttempted = true;
+      if (this.deps.restartStream(name)) {
+        entry.cooldownUntil = this.now() + STREAM_REPAIR_COOLDOWN_MS;
+        this.deps.log(`[health-watch] ${name}: 画面ストリームヘルパーの再起動による修復を試みます。`);
+        this.deps.post({ type: "healthWatch", name, phase: "streamRepairing" });
+        return;
+      }
+      this.deps.log(`[health-watch] ${name}: ストリーム未稼働のためヘルパー再起動をスキップし、デバイス再起動へ進みます。`);
+      // fall through(再起動段へ)
     }
 
     if (entry.restartAttempts >= MAX_RESTART_ATTEMPTS) {

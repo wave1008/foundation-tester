@@ -164,6 +164,10 @@ function actionsFor(state: RunReducerState, event: RunEvent, nowMs: number): Run
         },
         { type: "end", passed: event.passed, failed: event.failed },
       ];
+
+    case "wipeStatus":
+      // デバイスタイルのバッジ表示(monitorPanel.ts)専用。Test Explorer 出力には出さない。
+      return [];
   }
 }
 

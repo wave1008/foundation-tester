@@ -66,5 +66,6 @@
   "defaultTimeout": 8,
   "iosInappEngine": true,
   "reportDir": "reports",
-  "machine": "M2_ManyDevices"
+  "machine": "M2_ManyDevices",
+  "wipeDataOnBloat": true
 }

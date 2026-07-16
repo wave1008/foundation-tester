@@ -655,4 +655,110 @@ final class ProfileResolverTests: XCTestCase {
         XCTAssertFalse(resolved.warnings.contains { $0.contains("適用されません") },
                        "フラグ未指定では警告しないはず: \(resolved.warnings)")
     }
+
+    // MARK: - wipeDataOnBloat / wipeDataThresholdGB
+
+    func testWipeDataDefaultsWhenUnspecified() throws {
+        try writeStandardFixture()  // "all" は wipeDataOnBloat/wipeDataThresholdGB 未指定
+        let resolved = try ProfileResolver.resolve(
+            project: project, runName: "all", machineName: "M1 Max(64GB)")
+        XCTAssertTrue(resolved.wipeDataOnBloat, "省略時は既定 true(ON)のはず")
+        XCTAssertEqual(resolved.wipeDataThresholdGB, 8, "省略時は既定 8GB のはず")
+    }
+
+    func testWipeDataExplicitValuesAreReflected() throws {
+        try writeStandardFixture()
+        try write("""
+        { "app": "sampleapp", "devices": [ { "name": "メイン機" } ],
+          "wipeDataOnBloat": false, "wipeDataThresholdGB": 3.5 }
+        """, to: project.runsDir, name: "wipe")
+        let resolved = try ProfileResolver.resolve(
+            project: project, runName: "wipe", machineName: "M1 Max(64GB)")
+        XCTAssertFalse(resolved.wipeDataOnBloat)
+        XCTAssertEqual(resolved.wipeDataThresholdGB, 3.5)
+    }
+
+    func testWipeDataThresholdZeroOrLessFails() throws {
+        try writeStandardFixture()
+        try write("""
+        { "app": "sampleapp", "devices": [ { "name": "メイン機" } ], "wipeDataThresholdGB": 0 }
+        """, to: project.runsDir, name: "badThreshold")
+        XCTAssertThrowsError(try ProfileResolver.resolve(
+            project: project, runName: "badThreshold", machineName: "M1 Max(64GB)")) { error in
+            guard case ProfileError.invalidWipeDataThreshold(let run) = error else {
+                return XCTFail("invalidWipeDataThreshold のはず: \(error)")
+            }
+            XCTAssertEqual(run, "badThreshold")
+        }
+
+        try write("""
+        { "app": "sampleapp", "devices": [ { "name": "メイン機" } ], "wipeDataThresholdGB": -2 }
+        """, to: project.runsDir, name: "negativeThreshold")
+        XCTAssertThrowsError(try ProfileResolver.resolve(
+            project: project, runName: "negativeThreshold", machineName: "M1 Max(64GB)")) { error in
+            guard case ProfileError.invalidWipeDataThreshold = error else {
+                return XCTFail("invalidWipeDataThreshold のはず: \(error)")
+            }
+        }
+    }
+
+    func testValidateRunWipeDataThresholdZeroOrLessErrors() throws {
+        try writeStandardFixture()
+        let data = #"""
+        { "app": "sampleapp", "devices": [ { "name": "メイン機" } ], "wipeDataThresholdGB": 0 }
+        """#.data(using: .utf8)!
+
+        let (errors, _) = ProfileResolver.validate(
+            kind: .run, data: data, context: "runs/badThreshold.json", project: project)
+        XCTAssertTrue(errors.contains { $0.contains("wipeDataThresholdGB") },
+                      "wipeDataThresholdGB エラーが出るはず: \(errors)")
+    }
+
+    // MARK: - locale
+
+    func testLocaleDefaultsWhenUnspecified() throws {
+        try writeStandardFixture()  // "all" は locale 未指定
+        let resolved = try ProfileResolver.resolve(
+            project: project, runName: "all", machineName: "M1 Max(64GB)")
+        XCTAssertEqual(resolved.locale, "ja_JP", "省略時は既定 ja_JP のはず")
+    }
+
+    func testLocaleExplicitValueIsReflected() throws {
+        try writeStandardFixture()
+        try write("""
+        { "app": "sampleapp", "devices": [ { "name": "メイン機" } ], "locale": "en-US" }
+        """, to: project.runsDir, name: "locale")
+        let resolved = try ProfileResolver.resolve(
+            project: project, runName: "locale", machineName: "M1 Max(64GB)")
+        XCTAssertEqual(resolved.locale, "en-US")
+    }
+
+    func testLocaleInvalidFormatFails() throws {
+        try writeStandardFixture()
+        for (name, value) in [("badLocaleSpace", "ja JP"), ("badLocaleEmpty", ""),
+                               ("badLocaleNonAscii", "日本語")] {
+            try write("""
+            { "app": "sampleapp", "devices": [ { "name": "メイン機" } ], "locale": "\(value)" }
+            """, to: project.runsDir, name: name)
+            XCTAssertThrowsError(try ProfileResolver.resolve(
+                project: project, runName: name, machineName: "M1 Max(64GB)")) { error in
+                guard case ProfileError.invalidLocale(let run) = error else {
+                    return XCTFail("invalidLocale のはず(\(name)): \(error)")
+                }
+                XCTAssertEqual(run, name)
+            }
+        }
+    }
+
+    func testValidateRunLocaleInvalidFormatErrors() throws {
+        try writeStandardFixture()
+        let data = #"""
+        { "app": "sampleapp", "devices": [ { "name": "メイン機" } ], "locale": "ja JP" }
+        """#.data(using: .utf8)!
+
+        let (errors, _) = ProfileResolver.validate(
+            kind: .run, data: data, context: "runs/badLocale.json", project: project)
+        XCTAssertTrue(errors.contains { $0.contains("locale") },
+                      "locale エラーが出るはず: \(errors)")
+    }
 }

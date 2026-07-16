@@ -10,18 +10,20 @@ function device(name, state, health, serial) {
   return { id: name, name, platform: "android", state, detail: "", health, serial };
 }
 
-/** テスト用ハーネス。posts/logs/restarts を配列に記録し、now/autoRepair/runActive/queueBusy/wifi 結果を
- * 手元で操作できる。runWifiRepair の解決を手動制御したい場合は wifiResolver を渡す。 */
+/** テスト用ハーネス。posts/logs/restarts/streamRestarts を配列に記録し、
+ * now/autoRepair/runActive/queueBusy/wifi/stream 結果を手元で操作できる。 */
 function createHarness(options = {}) {
   const posts = [];
   const logs = [];
   const restarts = [];
   const wifiCalls = [];
+  const streamRestarts = [];
   let currentTime = 0;
   let autoRepairEnabled = options.autoRepairEnabled ?? true;
   let runActive = options.runActive ?? false;
   let queueBusy = options.queueBusy ?? false;
   const wifiResult = options.wifiResult ?? true;
+  const streamRestartResult = options.streamRestartResult ?? true;
 
   const watchdog = new MonitorHealthWatchdog({
     post: (message) => posts.push(message),
@@ -30,6 +32,10 @@ function createHarness(options = {}) {
     runWifiRepair: async (serial) => {
       wifiCalls.push(serial);
       return wifiResult;
+    },
+    restartStream: (name) => {
+      streamRestarts.push(name);
+      return streamRestartResult;
     },
     isAutoRepairEnabled: () => autoRepairEnabled,
     isAnyRunActive: () => runActive,
@@ -43,6 +49,7 @@ function createHarness(options = {}) {
     logs,
     restarts,
     wifiCalls,
+    streamRestarts,
     advance: (ms) => {
       currentTime += ms;
     },
@@ -60,6 +67,8 @@ function createHarness(options = {}) {
 
 const WIFI_REPAIR_COOLDOWN_MS = 120_000;
 const RESTART_COOLDOWN_MS = 5 * 60_000;
+const STREAM_REPAIR_COOLDOWN_MS = 120_000;
+const EPISODE_RESET_AFTER_HEALTHY_MS = 10 * 60_000;
 
 test("異常なしの観測では何も post しない", () => {
   const h = createHarness();
@@ -98,7 +107,7 @@ test("同一サイクル内で繰り返し observe しても repairing は再投
   ]);
 });
 
-test("修復後の異常なし観測 → ok が post されエピソードリセット", () => {
+test("修復後の短い ok では試行回数が残る。10分健全が持続して初めてエピソードがリセットされる", () => {
   const h = createHarness();
   h.watchdog.observe([device("Pixel1", "connected", ["wifi-disabled"], "emulator-5554")]);
   assert.equal(h.posts.length, 2);
@@ -106,15 +115,27 @@ test("修復後の異常なし観測 → ok が post されエピソードリセ
   h.watchdog.observe([device("Pixel1", "connected", undefined, "emulator-5554")]);
   assert.deepEqual(h.posts.at(-1), { type: "healthWatch", name: "Pixel1", phase: "ok" });
 
-  // リセット後、再び異常が起きれば新たに unhealthy〜repairing が発生する(履歴を引きずらない)。
-  const postsBefore = h.posts.length;
-  const wifiCallsBefore = h.wifiCalls.length;
+  // 短時間で再発しても wifiAttempted 済みのエピソードのまま(repairing は再投入されない)。
+  const postsBeforeShortRelapse = h.posts.length;
   h.watchdog.observe([device("Pixel1", "connected", ["wifi-disabled"], "emulator-5554")]);
-  assert.deepEqual(h.posts.slice(postsBefore), [
+  assert.deepEqual(h.posts.slice(postsBeforeShortRelapse), [
+    { type: "healthWatch", name: "Pixel1", phase: "unhealthy" },
+  ]);
+  assert.equal(h.wifiCalls.length, 1, "同一エピソード内では wifi 修復を再投入しない");
+
+  // 10分健全が持続して初めてエピソードが破棄される(2回連続 ok の間に10分空ける)。
+  h.watchdog.observe([device("Pixel1", "connected", undefined, "emulator-5554")]);
+  h.advance(EPISODE_RESET_AFTER_HEALTHY_MS);
+  h.watchdog.observe([device("Pixel1", "connected", undefined, "emulator-5554")]);
+
+  const postsBeforeReset = h.posts.length;
+  const wifiCallsBeforeReset = h.wifiCalls.length;
+  h.watchdog.observe([device("Pixel1", "connected", ["wifi-disabled"], "emulator-5554")]);
+  assert.deepEqual(h.posts.slice(postsBeforeReset), [
     { type: "healthWatch", name: "Pixel1", phase: "unhealthy" },
     { type: "healthWatch", name: "Pixel1", phase: "repairing" },
   ]);
-  assert.equal(h.wifiCalls.length, wifiCallsBefore + 1);
+  assert.equal(h.wifiCalls.length, wifiCallsBeforeReset + 1, "エピソードリセット後は再度 wifi 修復を試みる");
 });
 
 test("クールダウン中は再修復しない。now を進めると再判定する", () => {
@@ -269,4 +290,108 @@ test("複数デバイスは独立して状態管理される", () => {
     { type: "healthWatch", name: "Pixel1", phase: "repairing" },
   ]);
   assert.deepEqual(h.wifiCalls, ["emulator-5554"]);
+});
+
+test("短い ok では試行回数がリセットされない(streamRestartResult=false でストリーム修復に失敗し再起動のみでカウントする場合)", () => {
+  const h = createHarness({ streamRestartResult: false });
+  h.watchdog.observe([device("Pixel1", "connected", ["blank-screen"], "emulator-5554")]);
+  assert.deepEqual(h.restarts, ["Pixel1"], "ストリーム修復失敗で即デバイス再起動(1回目)");
+  assert.equal(h.streamRestarts.length, 1);
+
+  h.watchdog.observe([device("Pixel1", "connected", undefined, "emulator-5554")]);
+  assert.deepEqual(h.posts.at(-1), { type: "healthWatch", name: "Pixel1", phase: "ok" });
+
+  h.watchdog.observe([device("Pixel1", "connected", ["blank-screen"], "emulator-5554")]);
+  assert.equal(h.restarts.length, 1, "再起動クールダウン中はまだ2回目を投入しない");
+
+  h.advance(RESTART_COOLDOWN_MS);
+  h.watchdog.observe([device("Pixel1", "connected", ["blank-screen"], "emulator-5554")]);
+  assert.equal(h.restarts.length, 2, "短い ok を挟んでも試行回数は引き継がれ2回目が投入される");
+  assert.equal(h.streamRestarts.length, 1, "ストリーム修復は1エピソードにつき1回のみ");
+
+  h.watchdog.observe([device("Pixel1", "connected", undefined, "emulator-5554")]);
+  h.watchdog.observe([device("Pixel1", "connected", ["blank-screen"], "emulator-5554")]);
+  h.advance(RESTART_COOLDOWN_MS);
+  h.watchdog.observe([device("Pixel1", "connected", ["blank-screen"], "emulator-5554")]);
+  assert.equal(h.restarts.length, 2, "3回目は投入せず failed になる(短い ok でリセットされていれば3回投入されてしまうはず)");
+  assert.deepEqual(h.posts.at(-1), { type: "healthWatch", name: "Pixel1", phase: "failed" });
+});
+
+test("failed 到達後、10分健全が持続するとエピソードが破棄され新エピソードとして再試行される", () => {
+  const h = createHarness();
+  h.watchdog.observe([device("Pixel1", "connected", ["clock-skew"], "emulator-5554")]);
+  h.advance(RESTART_COOLDOWN_MS);
+  h.watchdog.observe([device("Pixel1", "connected", ["clock-skew"], "emulator-5554")]);
+  h.advance(RESTART_COOLDOWN_MS);
+  h.watchdog.observe([device("Pixel1", "connected", ["clock-skew"], "emulator-5554")]);
+  assert.deepEqual(h.posts.at(-1), { type: "healthWatch", name: "Pixel1", phase: "failed" });
+
+  h.watchdog.observe([device("Pixel1", "connected", undefined, "emulator-5554")]);
+  assert.deepEqual(h.posts.at(-1), { type: "healthWatch", name: "Pixel1", phase: "ok" });
+
+  h.advance(EPISODE_RESET_AFTER_HEALTHY_MS);
+  const postsBeforeSecondOk = h.posts.length;
+  h.watchdog.observe([device("Pixel1", "connected", undefined, "emulator-5554")]);
+  assert.equal(h.posts.length, postsBeforeSecondOk, "2回目の ok は既に degraded=false のため再 post しない(エントリのみ削除)");
+
+  h.watchdog.observe([device("Pixel1", "connected", ["blank-screen"], "emulator-5554")]);
+  assert.deepEqual(h.posts.slice(-2), [
+    { type: "healthWatch", name: "Pixel1", phase: "unhealthy" },
+    { type: "healthWatch", name: "Pixel1", phase: "streamRepairing" },
+  ]);
+  assert.deepEqual(h.streamRestarts, ["Pixel1"], "failed 記憶が消え新エピソードとしてストリーム修復から再試行される");
+});
+
+test("blank-screen 検出 → ストリーム修復が先行し、失敗しなければ再起動より軽量修復を優先する", () => {
+  const h = createHarness();
+  h.watchdog.observe([device("Pixel1", "connected", ["blank-screen"], "emulator-5554")]);
+  assert.deepEqual(h.posts, [
+    { type: "healthWatch", name: "Pixel1", phase: "unhealthy" },
+    { type: "healthWatch", name: "Pixel1", phase: "streamRepairing" },
+  ]);
+  assert.deepEqual(h.streamRestarts, ["Pixel1"]);
+  assert.equal(h.restarts.length, 0, "ストリーム修復に成功見込みの間は enqueueRestart しない");
+
+  h.watchdog.observe([device("Pixel1", "connected", ["blank-screen"], "emulator-5554")]);
+  assert.equal(h.posts.length, 2, "クールダウン中は再判定しない");
+  assert.equal(h.streamRestarts.length, 1);
+
+  h.advance(STREAM_REPAIR_COOLDOWN_MS);
+  h.watchdog.observe([device("Pixel1", "connected", ["blank-screen"], "emulator-5554")]);
+  assert.deepEqual(h.posts.at(-1), { type: "healthWatch", name: "Pixel1", phase: "restarting" });
+  assert.deepEqual(h.restarts, ["Pixel1"]);
+});
+
+test("restartStream が false ならストリーム修復を経ずに即デバイス再起動へフォールスルーする", () => {
+  const h = createHarness({ streamRestartResult: false });
+  h.watchdog.observe([device("Pixel1", "connected", ["blank-screen"], "emulator-5554")]);
+  assert.deepEqual(h.posts, [
+    { type: "healthWatch", name: "Pixel1", phase: "unhealthy" },
+    { type: "healthWatch", name: "Pixel1", phase: "restarting" },
+  ]);
+  assert.deepEqual(h.streamRestarts, ["Pixel1"]);
+  assert.deepEqual(h.restarts, ["Pixel1"]);
+});
+
+test("failed 到達後に ok→再異常 を短時間で繰り返しても phase は failed のまま(unhealthy に戻らない)", () => {
+  const h = createHarness();
+  h.watchdog.observe([device("Pixel1", "connected", ["clock-skew"], "emulator-5554")]);
+  h.advance(RESTART_COOLDOWN_MS);
+  h.watchdog.observe([device("Pixel1", "connected", ["clock-skew"], "emulator-5554")]);
+  h.advance(RESTART_COOLDOWN_MS);
+  h.watchdog.observe([device("Pixel1", "connected", ["clock-skew"], "emulator-5554")]);
+  assert.deepEqual(h.posts.at(-1), { type: "healthWatch", name: "Pixel1", phase: "failed" });
+
+  h.watchdog.observe([device("Pixel1", "connected", undefined, "emulator-5554")]);
+  assert.deepEqual(h.posts.at(-1), { type: "healthWatch", name: "Pixel1", phase: "ok" });
+
+  h.watchdog.observe([device("Pixel1", "connected", ["clock-skew"], "emulator-5554")]);
+  assert.deepEqual(h.posts.at(-1), { type: "healthWatch", name: "Pixel1", phase: "failed" });
+});
+
+test("wifi-disabled と blank-screen が同時なら Wi-Fi 修復ではなくストリーム修復を優先する", () => {
+  const h = createHarness();
+  h.watchdog.observe([device("Pixel1", "connected", ["wifi-disabled", "blank-screen"], "emulator-5554")]);
+  assert.deepEqual(h.wifiCalls, []);
+  assert.deepEqual(h.streamRestarts, ["Pixel1"]);
 });

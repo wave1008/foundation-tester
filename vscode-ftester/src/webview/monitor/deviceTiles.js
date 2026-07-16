@@ -2,6 +2,8 @@
 // laneLog.js は tiles/selectedDeviceIds を読み取り専用で参照する。
 // healthWatch(MonitorHealthWatchdog、Android ゲスト OS 異常の自動修復)は state==='connected' の
 // 間だけ footer に表示する(bridgeWatch は state==='booted' の間だけ表示、と対で排他)。
+// footer 優先順位: opBusy > wipeStatus > bridgeWatch/healthWatch。wipeStatus は Wipe 中に
+// offline/booted を経由する(state==='connected' に限定できない)ため他2つと別枠で判定する。
 
 import { vscode } from './vscodeApi.js';
 import { grid, emptyMessage, banner, btnUp, btnDown, deviceOpMenu, deviceOpMenuItemBtn, deviceOpMenuItemLabel, deviceOpMenuLiveBtn, profileSelect } from './domRefs.js';
@@ -23,8 +25,18 @@ const BRIDGE_WATCH_LABEL = {
 const HEALTH_WATCH_LABEL = {
   unhealthy: { label: 'デバイス異常を検出', warn: true },
   repairing: { label: 'Wi-Fi 修復中...', warn: true },
+  streamRepairing: { label: 'ストリーム修復中...', warn: true },
   restarting: { label: '自動再起動中...', warn: true },
   failed: { label: '自動修復失敗', warn: true },
+};
+
+// wipeStatus(`ftester api run` 開始時の AVD Wipe Data、契約は main.js の 'wipeStatus' ケース参照)の
+// phase→footer表示。'done' はここに含めず通常表示へフォールバックさせる。'failed' は次の
+// wipeStatus 受信まで残す(applyWipeStatus 参照)。
+const WIPE_STATUS_LABEL = {
+  stopping: { label: '🧹 Wipe Data(停止中)...', warn: false },
+  rebooting: { label: '🧹 Wipe Data(再起動中)...', warn: false },
+  failed: { label: '🧹 Wipe Data失敗', warn: true },
 };
 
 // src/monitorModel.ts の deviceOpMenuItem の複製(webview は CSP で import 不可のため)。変更時は
@@ -118,6 +130,8 @@ function createTile(device) {
     bridgeWatchPhase: undefined,
     // healthWatch の直近 phase('ok'/未受信は undefined)。state==='connected' の間だけ表示に反映する。
     healthWatchPhase: undefined,
+    // wipeStatus の直近 phase('done'/未受信は undefined)。device.state に関わらず表示に反映する。
+    wipePhase: undefined,
     // ストリーム描画 ack(streamRendered)の直近送信時刻(ms)。2秒スロットリング用
     // (受け手側 noteStreamRendered は冪等なので多重送信は無害だがスパムを避ける)。
     streamAckAt: 0,
@@ -215,16 +229,24 @@ function renderMeta(entry) {
   if (entry.device.state !== 'connected') {
     entry.healthWatchPhase = undefined;
   }
-  // deviceOpBusy(実行中の起動/停止操作)がある間は既存表示を優先し、bridgeWatch/healthWatch では
-  // 上書きしない。state で排他(booted/connected)のため bridgeWatch と healthWatch は衝突しない。
+  // 優先順位: deviceOpBusy(手動の起動/停止操作) > wipeStatus > bridgeWatch/healthWatch。
+  // state で排他(booted/connected)のため bridgeWatch と healthWatch は衝突しない。
   let warn = false;
-  if (entry.device.state === 'booted' && !entry.opBusy && entry.bridgeWatchPhase) {
+  if (entry.opBusy) {
+    // 何もしない: footerText は空のまま(deviceOpMenuItem 側のラベルに譲る)。
+  } else if (entry.wipePhase) {
+    const override = WIPE_STATUS_LABEL[entry.wipePhase];
+    if (override) {
+      footerText = override.label;
+      warn = override.warn;
+    }
+  } else if (entry.device.state === 'booted' && entry.bridgeWatchPhase) {
     const override = BRIDGE_WATCH_LABEL[entry.bridgeWatchPhase];
     if (override) {
       footerText = override.label;
       warn = override.warn;
     }
-  } else if (entry.device.state === 'connected' && !entry.opBusy && entry.healthWatchPhase) {
+  } else if (entry.device.state === 'connected' && entry.healthWatchPhase) {
     const override = HEALTH_WATCH_LABEL[entry.healthWatchPhase];
     if (override) {
       footerText = override.label;
@@ -505,6 +527,17 @@ export function applyHealthWatch(message) {
     return;
   }
   entry.healthWatchPhase = message.phase === 'ok' ? undefined : message.phase;
+  renderMeta(entry);
+}
+
+// 契約: { type: 'wipeStatus', name, phase }(name は deviceOpBusy と同じ device.name 名前空間。
+// 契約元は model.ts の WipeStatusEvent / monitorPanel.ts の handleWipeStatusEvent)。
+export function applyWipeStatus(message) {
+  const entry = findTileByName(message.name);
+  if (!entry) {
+    return;
+  }
+  entry.wipePhase = message.phase === 'done' ? undefined : message.phase;
   renderMeta(entry);
 }
 

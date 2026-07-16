@@ -76,8 +76,11 @@ public enum ProfileWorkerFactory {
     /// インストール失敗ワーカーは離脱し残りが続行する(全滅時のみエラー)。
     /// 判定(installedIsCurrent)〜必要なら install まではワーカー単位で並列(1タスク内で判定→install を直列に実行)。
     /// 戻り値は workers 順を維持する。
+    /// forceAndroidInstall: true のとき android は autoInstall=false でも appPath があれば
+    /// インストール候補に含める(AndroidDataWiper の Wipe Data でアプリが消えているため)
     public static func installIfNeeded(apps: [String: ResolvedAppTarget],
                                        workers: [RunWorker],
+                                       forceAndroidInstall: Bool = false,
                                        log: @escaping (String) -> Void) async throws -> [RunWorker] {
         // 呼び出し元の log はスレッド安全という契約が無い(CLI 側 print 等)ため、並列区間からは
         // このロック越しラッパーのみを使う。
@@ -98,7 +101,9 @@ public enum ProfileWorkerFactory {
                 passthrough.append((index, worker))
                 continue
             }
-            if let app = apps[worker.platform], let appPath = app.appPath, app.autoInstall {
+            let forceThis = forceAndroidInstall && worker.platform == "android"
+            if let app = apps[worker.platform], let appPath = app.appPath,
+               app.autoInstall || forceThis {
                 // 存在確認だけは直列のまま行う: 確定的な順序で早期 throw するため
                 // (差分判定・インストールは下の TaskGroup で並列化)
                 guard FileManager.default.fileExists(atPath: appPath) else {
@@ -106,6 +111,10 @@ public enum ProfileWorkerFactory {
                 }
                 candidates.append((index, worker, app, appPath))
             } else {
+                if forceThis, apps[worker.platform]?.appPath == nil {
+                    safeLog("⚠️ \(worker.label): Wipe Data 後の再インストールに appPath が必要です"
+                        + "(apps/ の appPath 未指定)")
+                }
                 passthrough.append((index, worker))
             }
         }

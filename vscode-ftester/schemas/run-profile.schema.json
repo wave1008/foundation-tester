@@ -57,6 +57,23 @@
       "type": "boolean",
       "description": "iOS の高速な in-app エンジン(ハイブリッド)を使うか(既定 true=ON)。ON → iOS デバイスを hybrid(in-app 主+XCUITest フォールバック)、OFF → xcuitest で駆動する。マシンプロファイルでデバイスに engine を明示している場合はそちらが優先。Android には影響しない。",
       "default": true
+    },
+    "wipeDataOnBloat": {
+      "type": "boolean",
+      "description": "省略時 true。実行開始時に Android AVD のイメージ(userdata/cache/snapshots)がしきい値(wipeDataThresholdGB)超過なら Wipe Data してから実行する。",
+      "default": true
+    },
+    "wipeDataThresholdGB": {
+      "type": "number",
+      "description": "Wipe Data 発動しきい値(GB)。省略時 8。Play イメージは wipe 直後でも userdata が 2〜4GB あるため、4GB 以下にすると毎実行 wipe が発動する。",
+      "exclusiveMinimum": 0,
+      "default": 8
+    },
+    "locale": {
+      "type": "string",
+      "description": "ロケール(Android エミュレータのブート完了時、Wipe Data 後の再起動を含めてブリッジ経由で適用される。iOS には影響しない)。省略時 \"ja_JP\"。",
+      "pattern": "^[A-Za-z]{2,3}([-_][A-Za-z0-9]{2,8})*$",
+      "default": "ja_JP"
     }
   }
 }
