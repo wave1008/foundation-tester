@@ -91,10 +91,12 @@ function createTile(device) {
   header.className = 'tile-header';
   const name = document.createElement('span');
   name.className = 'tile-name';
+  const renderBadge = document.createElement('span');
+  renderBadge.className = 'badge badge-render';
   const runningBadge = document.createElement('span');
   runningBadge.className = 'badge badge-running';
   runningBadge.textContent = '実行中';
-  header.append(name, runningBadge);
+  header.append(name, renderBadge, runningBadge);
 
   const frameWrap = document.createElement('div');
   frameWrap.className = 'frame-wrap';
@@ -122,6 +124,7 @@ function createTile(device) {
     opBusy: undefined,
     stateBadgeEl: stateBadge,
     runningBadgeEl: runningBadge,
+    renderBadgeEl: renderBadge,
     frameWrapEl: frameWrap,
     imgEl: img,
     placeholderEl: placeholder,
@@ -212,11 +215,29 @@ function renderFrame(entry) {
   }
 }
 
+// GPU/CPU はゲスト OS 異常ではなく構成情報のため device.state に関わらず表示してよい
+// (offline 等で renderMode 未受信なら非表示)
+function renderRenderBadge(entry) {
+  const device = entry.device;
+  const mode = device.platform === 'android' && (device.renderMode === 'gpu' || device.renderMode === 'cpu')
+    ? device.renderMode
+    : null;
+  if (!mode) {
+    entry.renderBadgeEl.style.display = 'none';
+    return;
+  }
+  entry.renderBadgeEl.style.display = '';
+  entry.renderBadgeEl.className = 'badge badge-render render-' + mode;
+  entry.renderBadgeEl.textContent = mode === 'gpu' ? 'GPU' : 'CPU';
+  entry.renderBadgeEl.title = mode === 'gpu' ? 'GPU描画(host)' : 'CPU描画(swiftshader・フォールバック)';
+}
+
 // renderDeviceOpMenuItem は内部で呼ぶ(opBusy・state 変化時の一括再描画)。
 function renderMeta(entry) {
   entry.nameEl.textContent = entry.device.name;
   entry.nameEl.className = 'tile-name tile-name-' + entry.device.platform;
   entry.nameEl.title = entry.device.name + ' (' + entry.device.platform + ')';
+  renderRenderBadge(entry);
   // 通常時は空(接続済みは画面表示自体が、接続待ちはプレースホルダの「接続中」が伝えるため
   // 冗長で出さない。ユーザー決定 2026-07-16)。bridgeWatch の異常時だけ下で埋める。
   // 要素は固定高のため空でも残す(タイル高の計算は createTile 付近のコメント参照)。

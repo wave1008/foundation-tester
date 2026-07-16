@@ -119,6 +119,9 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         // (healthProbeIntervalSeconds 未満はプローブせず直近の確定値を使い回す)
         var lastHealthProbeAt: [String: Date] = [:]
         var healthDebounce = AndroidHealthDebounce(confirmThreshold: 2)
+        // GPU/CPU 判定はブート時固定のため接続毎に1回のみ検出しキャッシュする(健全性プローブとは
+        // 別間隔。再接続=リブートで変わりうるため切断時に破棄する)
+        var renderModeCache: [String: String] = [:]
 
         // モニターのハートビート lease(.ftester/monitor-<udid>.lease)。best-effort: リポジトリ外
         // 実行等で root が取れない場合は lease を書かない(BridgeProvisioner 側の occupancy guard も
@@ -156,6 +159,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             for serial in Set(lastHealthProbeAt.keys).subtracting(candidateSerials) {
                 lastHealthProbeAt.removeValue(forKey: serial)
                 healthDebounce.forget(serial: serial)
+                renderModeCache.removeValue(forKey: serial)
             }
             let probeNow = Date()
             let dueSerials = candidateSerials.filter { serial in
@@ -179,9 +183,27 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                 }
             }
 
+            let uncachedSerials = candidateSerials.filter { renderModeCache[$0] == nil }
+            if !uncachedSerials.isEmpty {
+                let modesBySerial = await withTaskGroup(
+                    of: (String, String?).self, returning: [String: String?].self
+                ) { group in
+                    for serial in uncachedSerials {
+                        group.addTask { (serial, AndroidHealthProbe.detectRenderMode(serial: serial)) }
+                    }
+                    var result: [String: String?] = [:]
+                    for await (serial, mode) in group { result[serial] = mode }
+                    return result
+                }
+                for (serial, mode) in modesBySerial {
+                    if let mode { renderModeCache[serial] = mode }
+                }
+            }
+
             emitLine(ApiMonitorDevicesEvent(devices: states.map { state in
                 let confirmedIssues = state.androidSerial.map { healthDebounce.confirmed(serial: $0) } ?? []
-                return state.info(health: confirmedIssues.isEmpty ? nil : confirmedIssues)
+                return state.info(health: confirmedIssues.isEmpty ? nil : confirmedIssues,
+                                   renderMode: state.androidSerial.flatMap { renderModeCache[$0] })
             }))
 
             for state in states {
@@ -562,11 +584,11 @@ struct DeviceRuntimeState {
 
     /// fileprivate: 戻り値の型 ApiMonitorDeviceInfo がファイル限定の private 型のため
     /// (list-devices は同じ情報を ApiDeviceEntry として別途組み立てる)。
-    /// health は monitor ループだけが知る状態(AndroidHealthDebounce)のため引数で受け取る
-    fileprivate func info(health: [String]?) -> ApiMonitorDeviceInfo {
+    /// health・renderMode は monitor ループだけが知る状態のため引数で受け取る
+    fileprivate func info(health: [String]?, renderMode: String?) -> ApiMonitorDeviceInfo {
         ApiMonitorDeviceInfo(id: target.id, name: target.name,
                              platform: target.platform, state: state, detail: detail,
-                             udid: iosUdid, serial: androidSerial, health: health)
+                             udid: iosUdid, serial: androidSerial, health: health, renderMode: renderMode)
     }
 }
 
@@ -699,6 +721,9 @@ private struct ApiMonitorDeviceInfo: Encodable {
     let serial: String?
     /// AndroidHealthProbe で確定した異常の識別子一覧。異常なし・非対象(iOS/実機/未接続)は nil
     let health: [String]?
+    /// AndroidHealthProbe.detectRenderMode で検出した実描画モード("gpu"=host/Metal、"cpu"=swiftshader)。
+    /// connected な Android のみ。iOS・実機・未検出は nil
+    let renderMode: String?
 }
 
 /// monitorFrame イベント: state == connected のデバイスのみ、スクリーンショットを添えて出す
