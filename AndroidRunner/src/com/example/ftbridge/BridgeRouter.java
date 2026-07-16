@@ -119,7 +119,16 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
     }
 
     private BridgeHttpServer.Response handleSnapshot() throws JSONException {
-        SnapshotBuilder.Result result = SnapshotBuilder.build(ua());
+        SnapshotBuilder.Result result;
+        try {
+            result = SnapshotBuilder.build(ua());
+        } catch (IllegalStateException e) {
+            // root=null が waitForRoot の 2s を超えて続く一時ストール(高負荷時の画面消灯/描画停止で
+            // 実測。黒スクショと対の症状)。WAKEUP 注入で display を起こしてから1回だけ再試行する
+            shell("input keyevent KEYCODE_WAKEUP");
+            SystemClock.sleep(500);
+            result = SnapshotBuilder.build(ua());
+        }
         refCenters = result.refCenters;
         lastScreen = result.screen;
         return BridgeHttpServer.Response.json(200, result.json);

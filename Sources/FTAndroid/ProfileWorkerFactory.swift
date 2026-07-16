@@ -38,7 +38,8 @@ public enum ProfileWorkerFactory {
                     connection: DriverConnection(platform: "ios", port: device.port,
                                                  engine: engine, udid: device.udid,
                                                  xcuiPort: device.xcuiPort,
-                                                 inappBundleID: inappBundleID),
+                                                 inappBundleID: inappBundleID,
+                                                 deviceName: device.name),
                     logicalName: device.name))
             }
         }
@@ -49,7 +50,8 @@ public enum ProfileWorkerFactory {
             workers.append(RunWorker(
                 label: "\(device.name)(android:\(serial))", platform: "android",
                 driver: driver,
-                connection: DriverConnection(platform: "android", serial: serial),
+                connection: DriverConnection(platform: "android", serial: serial,
+                                             deviceName: device.name),
                 logicalName: device.name))
         }
         guard !workers.isEmpty else {

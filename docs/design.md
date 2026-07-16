@@ -688,9 +688,11 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
 
 - **プローブ**(`Sources/FTAndroid/AndroidHealthProbe.swift`): monitor が connected な Android
   エミュレータ(`emulator-*` のみ。実機は Wi-Fi オフが意図的でありうるため対象外)へ 30 秒間隔で
-  `cmd wifi status` / `date +%s` を実行。2回連続観測で確定・正常1回で即クリア(AndroidHealthDebounce)。
-  確定異常は monitorDevices の `health: ["wifi-disabled"|"clock-skew"]` で拡張へ伝搬
-  (契約は `vscode-ftester/src/monitorModel.ts` 冒頭)
+  `cmd wifi status` / `date +%s` / `screencap -p`(PNG サイズで一様フレーム=描画ウェッジを検出。
+  a11y は生きたまま画面だけ死ぬ症状で、guest 再起動でのみ回復)を実行。2回連続観測で確定・
+  正常1回で即クリア(AndroidHealthDebounce)。確定異常は monitorDevices の
+  `health: ["wifi-disabled"|"clock-skew"|"blank-screen"]` で拡張へ伝搬
+  (契約は `vscode-ftester/src/monitorModel.ts` 冒頭。拡張は未知の種別も再起動修復に倒す)
 - **watchdog**(`vscode-ftester/src/monitorHealthWatchdog.ts`): wifi-disabled 単独はまず
   `adb shell cmd wifi set-wifi-enabled enabled`(軽量修復、クールダウン 120s)、clock-skew を
   含む/軽量修復で直らない場合は down→up 再起動(`MonitorDeviceOps.enqueueRestart`。クールダウン

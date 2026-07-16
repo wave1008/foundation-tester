@@ -103,6 +103,10 @@ struct RunScenario: AsyncParsableCommand {
             help: "iOS: provision 時に in-app ブリッジを注入したアプリの bundleID(suspend 時の注入先判定用)")
     var inappApp: String?
 
+    @Option(name: .customLong("device-name"),
+            help: "実行プロファイル上のデバイス論理名(レポートヘッダ表示用。orchestrator から渡される)")
+    var deviceName: String?
+
     @Flag(help: "FM によるロケータ自己修復を許可する")
     var heal = false
 
@@ -230,11 +234,14 @@ struct RunScenario: AsyncParsableCommand {
         let healCacheURL = projectDir.map {
             URL(fileURLWithPath: $0).appendingPathComponent(".ftester/heal-cache.json")
         }
+        // 技術識別子: Android は adb serial、iOS はシミュレータ UDID(共に既存のドライバ構築引数の再利用)
+        let deviceIdentifier = runPlatform == "android" ? serial : udid
         let core = FTDriveCore(driver: driver, platform: runPlatform, app: testClass.app,
                                scenarioID: scenarioID, scenarioTitle: descriptor.title,
                                delegate: delegate, healingEnabled: heal, dryRun: dryRun,
                                healCacheURL: healCacheURL, defaultTimeout: defaultTimeout,
                                fallbackDriver: fallbackDriver,
+                               deviceName: deviceName, deviceIdentifier: deviceIdentifier,
                                emit: emit)
 
         if debug {
