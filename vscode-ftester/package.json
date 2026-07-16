@@ -2,7 +2,7 @@
   "name": "vscode-ftester",
   "displayName": "ftester",
   "description": "ftester (Swift 製モバイル UI テストツール) のシナリオをツリー表示・実行するための VS Code 拡張",
-  "version": "0.0.185",
+  "version": "0.0.186",
   "private": true,
   "publisher": "wave1008",
   "license": "MIT",
@@ -256,6 +256,11 @@
         "command": "ftester.rerunFailedTests",
         "title": "失敗したテストを再実行",
         "category": "ftester"
+      },
+      {
+        "command": "ftester.copyTestName",
+        "title": "名前をコピー",
+        "category": "ftester"
       }
     ],
     "menus": {
@@ -267,7 +272,12 @@
         {
           "command": "ftester.rerunFailedTests",
           "when": "controllerId == 'ftester'",
-          "group": "y_rerun"
+          "group": "y_rerun@1"
+        },
+        {
+          "command": "ftester.copyTestName",
+          "when": "controllerId == 'ftester'",
+          "group": "y_rerun@2"
         },
         {
           "command": "ftester.deleteScenario",
@@ -288,6 +298,14 @@
         }
       ]
     },
+    "keybindings": [
+      {
+        "command": "ftester.copyTestName",
+        "key": "ctrl+c",
+        "mac": "cmd+c",
+        "when": "focusedView == 'workbench.view.testing'"
+      }
+    ],
     "jsonValidation": [
       {
         "fileMatch": "**/Projects/*/profiles/runs/*.json",
