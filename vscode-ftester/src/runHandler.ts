@@ -26,6 +26,12 @@ import {
 import { DELETED_TAG, type FtesterTestTree } from "./testTree";
 import type { ScenarioFileWatcher } from "./watcher";
 
+// lastResultsSync.ts の isGuiRunActive が参照する(GUI 実行中はツリーへの反映を譲る)。
+let activeRunCount = 0;
+export function isRunActive(): boolean {
+  return activeRunCount > 0;
+}
+
 export function registerRunHandler(
   context: vscode.ExtensionContext,
   cli: FtesterCli,
@@ -244,6 +250,7 @@ async function executeRun(
   }
 
   watcher.setSuspended(true);
+  activeRunCount += 1;
 
   const finished = new Set<string>();
   let sawEnd = false;
@@ -361,6 +368,7 @@ async function executeRun(
     eventBus.endRun(runId);
     cancelListener.dispose();
     watcher.setSuspended(false);
+    activeRunCount -= 1;
     // キャンセル・異常終了でも経過は出す(TEST RESULTS の末尾行)
     const totalSeconds = ((Date.now() - runStartedAt) / 1000).toFixed(1);
     run.appendOutput(`\r\n⏱ トータル: ${totalSeconds}s\r\n`);
@@ -473,6 +481,7 @@ async function executeDebugRun(
   });
 
   watcher.setSuspended(true);
+  activeRunCount += 1;
   run.started(item);
 
   try {
@@ -513,6 +522,7 @@ async function executeDebugRun(
     customEventListener.dispose();
     cancelListener.dispose();
     watcher.setSuspended(false);
+    activeRunCount -= 1;
     run.end();
   }
 }

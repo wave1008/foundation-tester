@@ -15,11 +15,12 @@ import {
 } from "./config";
 import { registerDebugAdapter } from "./debugConfig";
 import { registerHealReviewPanel } from "./healReviewPanel";
+import { registerLastResultsSync } from "./lastResultsSync";
 import { registerMonitorPanel } from "./monitorPanel";
 import { sweepOrphans } from "./orphanSweep";
 import { registerProfileDiagnostics } from "./profileDiagnostics";
 import { RunEventBus } from "./runEventBus";
-import { registerRunHandler } from "./runHandler";
+import { isRunActive, registerRunHandler } from "./runHandler";
 import { registerStepsView } from "./stepsView";
 import { FtesterTestTree } from "./testTree";
 import { ScenarioFileWatcher } from "./watcher";
@@ -63,6 +64,15 @@ export function activate(context: vscode.ExtensionContext): void {
   const watcher = registerWatcher(context, workspaceRoot, testTree);
   registerCommands(context, cli, workspaceRoot, testTree, getConfig, outputChannel);
   registerRunHandler(context, cli, workspaceRoot, getConfig, testTree, watcher, outputChannel, runEventBus);
+  context.subscriptions.push(
+    registerLastResultsSync({
+      controller: testTree.controller,
+      workspaceRoot,
+      getConfig,
+      isGuiRunActive: isRunActive,
+      outputChannel,
+    }),
+  );
   registerDebugAdapter(context, workspaceRoot, getConfig, outputChannel);
   registerStepsView(context, cli, workspaceRoot, getConfig, testTree, watcher, outputChannel);
   registerMonitorPanel(context, workspaceRoot, getConfig, outputChannel, runEventBus, cli, testTree);
