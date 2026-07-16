@@ -34,6 +34,7 @@ class デモ_iOS設定 {
             scene(3, "設定トップへ戻ってアクセシビリティを開く") {
                 action {
                     tap("#BackButton")
+                    wait(1)  // 戻りアニメの整定待ち(S0030 と同パターンの予防)
                     tap("#com.apple.settings.accessibility||アクセシビリティ||Accessibility")
                 }.expectation {
                     exist("#DISPLAY_AND_TEXT||画面表示とテキストサイズ")
@@ -138,6 +139,7 @@ class デモ_iOS設定 {
             scene(3, "設定トップへ戻ってホーム画面とアプリライブラリを開く") {
                 action {
                     tap("#BackButton")
+                    wait(1)  // 戻りアニメの整定待ち(整定前タップは検索バーに着弾した実績: 2026-07-16)
                     tap("#com.apple.settings.homeScreen||ホーム画面とアプリライブラリ")
                 }.expectation {
                     exist("#APP_DOWNLOADS_HOME_SCREEN||ホーム画面に追加")
