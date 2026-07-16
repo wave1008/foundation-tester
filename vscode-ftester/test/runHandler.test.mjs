@@ -1,7 +1,8 @@
 // runHandler.test.mjs
 // lastResults.ts のヘルパー(lastResultsDir/readFailedScenarioIds/readAllResults)の回帰テスト。
-// node:test。executeRun 本体は vscode.TestRun/TestItem の実装が要るため(vscode-stub は空 Proxy)、
-// この関数群はどれも vscode を呼ばない純粋な fs 読み取りのみなのでテスト可能(esbuild.mjs 参照)。
+// node:test。executeRun 本体は vscode.TestRun/TestItem の実装が要るため(vscode-stub は空 Proxy)
+// テスト対象外(esbuild.mjs 参照)。runHandler.ts 自体も import しない(testTree.ts の
+// トップレベル new vscode.TestTag がスタブで落ちる)。
 
 import assert from "node:assert/strict";
 import fs from "node:fs";

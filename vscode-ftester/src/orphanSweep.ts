@@ -7,10 +7,12 @@ import { execFile } from "node:child_process";
 
 const ORPHAN_PPID = 1;
 
-// `ftester api <live serve|host-metrics|monitor>` を、パスの前置(相対/絶対)を問わず
-// サブコマンド位置で判定する。`api run`/`api explore` 等の非常駐コマンドや、
-// 引数中に "monitor" 等の語が偶然出るだけの無関係コマンドは対象外。
-const ORPHAN_COMMAND_RE = /(^|\/)ftester(?:\s|$).*\bapi\s+(?:live\s+serve|host-metrics|monitor)(?:\s|$)/;
+// `ftester api <live serve|host-metrics|monitor|run>` を、パスの前置(相対/絶対)を問わず
+// サブコマンド位置で判定する。`api run` は非常駐だが、孤児化するとプロファイル全デバイスの
+// ブリッジを占有し続け(親死亡で結果も届かない)、新セッションのモニター表示・実行を阻害する
+// ため対象に含める。`api explore` 等その他の非常駐コマンドや、引数中に "monitor" 等の語が
+// 偶然出るだけの無関係コマンドは対象外。
+const ORPHAN_COMMAND_RE = /(^|\/)ftester(?:\s|$).*\bapi\s+(?:live\s+serve|host-metrics|monitor|run)(?:\s|$)/;
 
 /** ps 出力(`ps -axo pid=,ppid=,command=`)から、孤児化した ftester 常駐プロセスの PID を抽出する。
  * 対象: PPID が 1(親死亡で launchd に reparent 済み=誰の管理下にも無い)かつ、コマンドが

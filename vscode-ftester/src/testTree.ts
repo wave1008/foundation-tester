@@ -8,10 +8,19 @@
 import * as vscode from "vscode";
 import { type CliResult, CliSupersededError, type FtesterCli } from "./cli";
 import { type FtesterConfig, resolveProjectName } from "./config";
+import { lastResultsDir, lookupKey, readFailedScenarioIds } from "./lastResults";
 import type { ListScenariosResult, ScenarioInfo } from "./model";
 
 /** @Deleted シナリオに付与する TestTag(runHandler.ts の対象解決でも参照する)。 */
 export const DELETED_TAG = new vscode.TestTag("deleted");
+
+/** VSCode 本体の「Hide Test」の実質無効化。メニュー項目は拡張から除去できないため、非表示状態を
+ * 常時解除する(activate 時の初回 refresh とツリー再構築のたび。extension.ts の結果反映時も呼ぶ)。 */
+export function unhideAllTests(): void {
+  void vscode.commands.executeCommand("testing.unhideAllTests").then(undefined, () => {
+    // コマンドが無い環境(将来の本体変更)でも他機能に影響させない
+  });
+}
 
 /** folder ノード id / class ノード id の衝突回避用プレフィックス。 */
 function folderId(folderName: string): string {
@@ -24,8 +33,11 @@ function classId(folderName: string | null, className: string): string {
 export class FtesterTestTree implements vscode.Disposable {
   readonly controller: vscode.TestController;
   private generation = 0;
-  /** 直近の refresh() で取得したシナリオ一覧(stepsView.ts のエディタ追従の逆引きに使う)。 */
+  /** 直近の refresh() で取得したシナリオ一覧(stepsView.ts のエディタ追従の逆引きに使う)。
+   * showOnlyFailedTests フィルターに関わらず常に全件を保持する。 */
   private lastScenarios: ScenarioInfo[] = [];
+  /** 直近の list-scenarios 結果。フィルター切替時に CLI を叩き直さず再構築するために保持する。 */
+  private lastData: ListScenariosResult | undefined;
 
   constructor(
     private readonly cli: FtesterCli,
@@ -44,6 +56,31 @@ export class FtesterTestTree implements vscode.Disposable {
   /** 直近の refresh() で取得したシナリオ一覧(file は絶対パス)。未取得なら空配列。 */
   get scenarios(): readonly ScenarioInfo[] {
     return this.lastScenarios;
+  }
+
+  /** showOnlyFailedTests の切替・実行結果の変化後に、CLI を叩き直さず直近データからツリーを
+   * 再構築する(未取得なら refresh() に委ねる)。実行中(TestRun がアイテムを参照している間)は
+   * 呼ばないこと(呼び出し側 extension.ts が isRunActive でガードする)。 */
+  rebuildFromLastData(): void {
+    if (this.lastData) {
+      this.rebuildTree(this.lastData);
+    } else {
+      void this.refresh();
+    }
+  }
+
+  /** showOnlyFailedTests が ON なら失敗シナリオ id(lookupKey 正規化済み)の集合、OFF なら
+   * undefined(=フィルターなし)。 */
+  private resolveFailedFilter(): Set<string> | undefined {
+    const workspaceRoot = this.getWorkspaceRoot();
+    if (!workspaceRoot || !this.getConfig().showOnlyFailedTests) {
+      return undefined;
+    }
+    const resolution = resolveProjectName(workspaceRoot, this.getConfig());
+    if (resolution.kind !== "resolved") {
+      return undefined;
+    }
+    return readFailedScenarioIds(lastResultsDir(workspaceRoot, resolution.project));
   }
 
   async refresh(): Promise<void> {
@@ -136,7 +173,9 @@ export class FtesterTestTree implements vscode.Disposable {
   }
 
   private rebuildTree(data: ListScenariosResult): void {
+    this.lastData = data;
     this.lastScenarios = data.scenarios;
+    const failedFilter = this.resolveFailedFilter();
     this.controller.items.replace([]);
 
     const folderNodes = new Map<string, vscode.TestItem>();
@@ -179,7 +218,12 @@ export class FtesterTestTree implements vscode.Disposable {
       return node;
     };
 
-    for (const scenario of data.scenarios) {
+    // フィルター ON のときは失敗シナリオだけ leaf を作る(未実施・成功は除外)。
+    const scenarios = failedFilter
+      ? data.scenarios.filter((scenario) => failedFilter.has(lookupKey(scenario.id)))
+      : data.scenarios;
+
+    for (const scenario of scenarios) {
       const className = scenario.id.split(".")[0] ?? scenario.id;
       const classNode = getClassNode(scenario.folder, className, scenario.file, scenario.classLine);
 
@@ -198,8 +242,13 @@ export class FtesterTestTree implements vscode.Disposable {
 
     // 空クラス(@Test なし)は class ノードだけ作る(子リーフ無し)。唯一の関数を消しても
     // ファイルが残っていることをツリーで示すため(対向: list-scenarios の emptyClasses)。
-    for (const empty of data.emptyClasses ?? []) {
-      getClassNode(empty.folder, empty.className, empty.file, empty.classLine);
+    // フィルター ON のときは未実施扱いで出さない。
+    if (!failedFilter) {
+      for (const empty of data.emptyClasses ?? []) {
+        getClassNode(empty.folder, empty.className, empty.file, empty.classLine);
+      }
     }
+
+    unhideAllTests();
   }
 }

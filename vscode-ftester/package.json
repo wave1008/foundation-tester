@@ -2,7 +2,7 @@
   "name": "vscode-ftester",
   "displayName": "ftester",
   "description": "ftester (Swift 製モバイル UI テストツール) のシナリオをツリー表示・実行するための VS Code 拡張",
-  "version": "0.0.189",
+  "version": "0.0.195",
   "private": true,
   "publisher": "wave1008",
   "license": "MIT",
@@ -107,6 +107,11 @@
           "type": "boolean",
           "default": true,
           "description": "ブリッジ無応答(connected だったデバイスが booted のまま復帰しない状態が続く)を検出したら、実行中のレーンが無い間に限り device-up で自動修復を試みます。"
+        },
+        "ftester.showOnlyFailedTests": {
+          "type": "boolean",
+          "default": false,
+          "description": "Test Explorer のツリーを失敗したテストだけに絞り込みます(未実施・成功のテストは非表示)。Test Explorer タイトルバーのフィルターボタンでも切り替えられます。"
         }
       }
     },
@@ -266,6 +271,18 @@
         "command": "ftester.openScenarioReport",
         "title": "レポートを開く",
         "category": "ftester"
+      },
+      {
+        "command": "ftester.enableFailedTestsFilter",
+        "title": "失敗したテストのみ表示(未実施・成功を除外)",
+        "category": "ftester",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "ftester.disableFailedTestsFilter",
+        "title": "フィルターを解除(全テストを表示)",
+        "category": "ftester",
+        "icon": "$(filter-filled)"
       }
     ],
     "menus": {
@@ -302,8 +319,13 @@
           "group": "navigation"
         },
         {
-          "command": "ftester.showDeviceMonitor",
-          "when": "view == workbench.view.testing",
+          "command": "ftester.enableFailedTestsFilter",
+          "when": "view == workbench.view.testing && !ftester.failedTestsFilterEnabled",
+          "group": "navigation"
+        },
+        {
+          "command": "ftester.disableFailedTestsFilter",
+          "when": "view == workbench.view.testing && ftester.failedTestsFilterEnabled",
           "group": "navigation"
         }
       ]

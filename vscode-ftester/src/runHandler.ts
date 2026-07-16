@@ -331,6 +331,7 @@ async function executeRun(
 ): Promise<void> {
   const config = getConfig();
   let targets = resolveTargets(controller, request);
+  let runRequest = request;
 
   if (failedOnly) {
     const resolution = resolveProjectName(workspaceRoot, config);
@@ -343,9 +344,14 @@ async function executeRun(
       + ` 展開=${targets.size}件 失敗記録=${failedIds.size}件`
       + ` 対象=${[...targets.keys()].filter((id) => failedIds.has(lookupKey(id))).length}件`);
     targets = new Map([...targets].filter(([id]) => failedIds.has(lookupKey(id))));
+    // 元 request の include(folder/class/全体)のまま TestRun を作ると、実際には走らない
+    // 非対象テストまで実行単位として表示される。実対象 leaf だけの request に差し替える。
+    if (targets.size > 0) {
+      runRequest = new vscode.TestRunRequest([...targets.values()], undefined, request.profile);
+    }
   }
 
-  const run = controller.createTestRun(request);
+  const run = controller.createTestRun(runRequest);
   const runStartedAt = Date.now();
 
   if (targets.size === 0) {
