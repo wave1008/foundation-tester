@@ -731,3 +731,52 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
   `ScenarioRunnerMain` が BridgeClient をラップ。udid 供給元は ProfileWorkerFactory / MCPServer
 - 教訓: 当初「2ランナー競合」を凍結の主犯と推定したが、本番構成の通し run で監視中シムに
   第2ランナーが共存しても凍結しないことを確認。主犯は「未導入 app の launch」
+
+## 14. 実行結果のファイルベース DB(2026-07-17)
+
+シナリオ実行結果を git 管理下の `Projects/<name>/results/` に蓄積し、分散チーム(複数マシン・
+複数ブランチ)の結果をコミット・マージで合流させる。サーバ DB は使わない。
+
+### 14.1 マージ安全性(設計の核)
+
+**1 run = 1 ディレクトリ、1 シナリオ実行 = 1 ファイルの追加専用レイアウト**。
+runID = `<yyyyMMdd-HHmmss(UTC)>Z-<マシン名>-<乱数4hex>` をディレクトリ名にするため、
+異なるマシン・異なる実行は必ず別パスに書き、git 上は常に純粋な追加になる
+(同一秒・同一マシンの二重起動は乱数 4hex で分離)。JSONL 追記型は同一ファイルへの
+複数ブランチ追記で必ず衝突するため不採用。
+
+検証済み(2026-07-17): 2 ブランチで同一シナリオ集合を同時刻に実行→マージで、
+コンフリクトゼロ・全 run が合流・`ftester results list` が統合結果を返すことを確認。
+
+- レイアウト: `results/runs/<YYYY-MM>/<runID>/run.json + scenarios/<シナリオID>.json`
+  (月別シャーディングで走査範囲を限定。間引きは月ディレクトリごと git rm)
+- run.json のみ実行完了時に同一プロセスが 1 回上書き(finishedAt・集計)。finishedAt 欠落=
+  未完了 run(クラッシュ検出に利用)。scenarios/ は追加専用(同一 run 内の再実行は `~2` 連番)
+- スキーマ詳細・フィールド一覧は `Projects/SampleApp/results/README.md`(データと同居させる)
+
+### 14.2 記録パス
+
+全実行経路(api run 直列/プロファイル/並列、ftester run 直列/並列/ProfileRunner)は
+`ScenarioHost.run` に合流するため、レコード生成フックはそこ 1 点
+(`ScenarioEvent` 列を `ScenarioRecordBuilder` で畳み込み)。run 単位のメタ(runID・プロファイル・
+trigger)は CLI エントリでしか分からないため、`RunRecorder` を CLI エントリで生成して注入する。
+
+- 実装: `Sources/FTCore/RunRecord.swift`(DTO+Builder)/ `RunResultsStore.swift`(I/O・月別走査)/
+  `RunRecorder.swift`(発番・NSLock 直列化)。書き込みは全て best-effort(実行を止めない)
+- dry-run・debug 実行は記録しない(last-results と同判断)。ftester-scenarios 直叩き・MCP 経路は対象外
+- レコード粒度: 成否・所要時間・worker・scene 別合否は常時、ステップ詳細・fixSuggestions・
+  errorLogs(インフラ失敗の切り分け用)は失敗時のみ。スクリーンショットは含めない
+  (reports/ への相対パス参照のみ。reports/ は gitignore のまま)
+
+### 14.3 分析
+
+- 集計は `Sources/FTCore/RunResultsQuery.swift` の純関数に集約(閾値定数も同ファイル冒頭)。
+  CLI(`ftester results list/summary/flaky/trend/devices/slow/insights`)と
+  拡張向け `ftester api results`(1 行 JSON)の両方がこれを使う
+- ダッシュボード: `vscode-ftester/src/dashboardPanel.ts` + `src/webview/dashboard/`。
+  ペイロード契約は `ApiResultsCommand.swift` ⇔ `dashboardModel.ts` で同期
+- スキーマ進化: 全ファイルに schemaVersion。フィールド追加は Optional でバージョン据え置き、
+  読み側は自分より新しい version をスキップ。既存ファイルの書き換えマイグレーションは
+  しない(git 履歴とマージ安全性を壊すため)
+- インデックス/キャッシュは未導入(月別プルーニング+全走査で当面十分。遅くなったら
+  `.ftester/` 配下に再構築可能キャッシュを足す)
