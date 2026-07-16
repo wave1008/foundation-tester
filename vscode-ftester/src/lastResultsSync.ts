@@ -54,18 +54,28 @@ function findLeaf(items: vscode.TestItemCollection, id: string): vscode.TestItem
 }
 
 /** レポートが見つかれば ftester.openScenarioReport(runHandler.ts)へのリンク付きメッセージ、
- * 無ければ従来通りのプレーンテキスト。 */
-function buildFailedMessage(workspaceRoot: string, project: string, scenarioId: string): vscode.TestMessage {
-  const reportPath = findLatestReport(reportsDir(workspaceRoot, project), scenarioId);
+ * 無ければ従来通りのプレーンテキスト。location(テスト宣言位置)が無いとエディタの
+ * インライン peek に出ず Test Results パネル限定になる(テストをクリックした時にリンクが
+ * 見えない)ため、item の uri/range があれば付ける。 */
+function buildFailedMessage(
+  workspaceRoot: string, project: string, item: vscode.TestItem,
+): vscode.TestMessage {
+  const reportPath = findLatestReport(reportsDir(workspaceRoot, project), item.id);
+  let message: vscode.TestMessage;
   if (!reportPath) {
-    return new vscode.TestMessage("CLI 実行で失敗(詳細はレポート参照)");
+    message = new vscode.TestMessage("CLI 実行で失敗(詳細はレポート参照)");
+  } else {
+    const args = encodeURIComponent(JSON.stringify([item.id]));
+    const markdown = new vscode.MarkdownString(
+      `CLI 実行で失敗 — [レポートを開く](command:ftester.openScenarioReport?${args})`,
+    );
+    markdown.isTrusted = { enabledCommands: ["ftester.openScenarioReport"] };
+    message = new vscode.TestMessage(markdown);
   }
-  const args = encodeURIComponent(JSON.stringify([scenarioId]));
-  const markdown = new vscode.MarkdownString(
-    `CLI 実行で失敗 — [レポートを開く](command:ftester.openScenarioReport?${args})`,
-  );
-  markdown.isTrusted = { enabledCommands: ["ftester.openScenarioReport"] };
-  return new vscode.TestMessage(markdown);
+  if (item.uri && item.range) {
+    message.location = new vscode.Location(item.uri, item.range);
+  }
+  return message;
 }
 
 /** leaf の定義は runHandler.ts の resolveTargets/addSubtree と同じ(children.size === 0)。 */
@@ -118,7 +128,7 @@ export function registerLastResultsSync(deps: LastResultsSyncDeps): vscode.Dispo
       if (state === "passed") {
         run.passed(item);
       } else {
-        run.failed(item, buildFailedMessage(workspaceRoot, resolution.project, item.id));
+        run.failed(item, buildFailedMessage(workspaceRoot, resolution.project, item));
       }
     }
     run.end();
