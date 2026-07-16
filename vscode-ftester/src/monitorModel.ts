@@ -301,6 +301,18 @@ export type MonitorToWebviewMessage =
       readonly phase: "unresponsive" | "repairing" | "failed" | "ok";
     };
 
+/**
+ * デバイス一覧をプロファイルタブの表示順(ios→android・各プラットフォーム内は name 順。
+ * config.ts の listMachineProfiles と同じ規則 — 変更時は両方揃える)に整列する。
+ * monitorProcessManager.ts が monitorDevices 受信時に適用し、以降の全消費側
+ * (デバイスタブのタイル・lastKnownDevices)はこの順で受け取る。
+ */
+export function sortMonitorDevices(devices: readonly MonitorDevice[]): MonitorDevice[] {
+  return [...devices].sort((a, b) =>
+    a.platform !== b.platform ? (a.platform === "ios" ? -1 : 1) : a.name.localeCompare(b.name),
+  );
+}
+
 /** 検証済みの MonitorEvent を、webview へそのまま postMessage できる形に変換する。 */
 export function toWebviewMessage(event: MonitorEvent): MonitorToWebviewMessage {
   switch (event.kind) {

@@ -339,6 +339,15 @@ export function applyDevices(devices) {
       selectedDeviceIds.delete(id);
     }
   }
+  // タイルの DOM 順を devices 順(host が sortMonitorDevices で整列済み)に合わせる。
+  // 生成順は概ね一致するが、モニター再起動でデバイスが増えた場合などは末尾追加でずれるため、
+  // 不一致のときだけ並べ直す(毎サイクルの appendChild は無駄な DOM 移動になるので避ける)。
+  const ordered = devices.map((device) => tiles.get(device.id)).filter(Boolean);
+  if (ordered.some((entry, index) => grid.children[index] !== entry.tile)) {
+    for (const entry of ordered) {
+      grid.appendChild(entry.tile);
+    }
+  }
   emptyMessage.style.display = tiles.size === 0 ? 'flex' : 'none';
   relayoutTiles();
   syncLanesToDevices(devices);
