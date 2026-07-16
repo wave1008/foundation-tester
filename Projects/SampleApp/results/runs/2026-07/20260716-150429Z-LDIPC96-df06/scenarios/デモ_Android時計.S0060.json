@@ -1,0 +1,37 @@
+{
+  "durationMs" : 1835,
+  "machine" : "LDIPC96",
+  "passed" : true,
+  "platform" : "android",
+  "profile" : "M2_4devices",
+  "reportPath" : "Projects/SampleApp/reports/scenario-20260717-000451-428-デモ_Android時計_S0060.md",
+  "runID" : "20260716-150429Z-LDIPC96-df06",
+  "scenarioID" : "デモ_Android時計.S0060",
+  "scenes" : [
+    {
+      "durationMs" : 1336,
+      "passed" : true,
+      "scene" : 1,
+      "title" : "おやすみ時間タブを開く"
+    },
+    {
+      "durationMs" : 355,
+      "passed" : true,
+      "scene" : 2,
+      "title" : "アラームタブへ戻れる"
+    }
+  ],
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-16T15:04:49Z",
+  "steps" : {
+    "failed" : 0,
+    "healed" : 0,
+    "passed" : 5,
+    "passedViaFallback" : 0,
+    "skipped" : 0,
+    "total" : 5
+  },
+  "timedOut" : false,
+  "title" : "おやすみ時間タブを表示できる",
+  "worker" : "android:Pixel 9(Android 15)-01"
+}

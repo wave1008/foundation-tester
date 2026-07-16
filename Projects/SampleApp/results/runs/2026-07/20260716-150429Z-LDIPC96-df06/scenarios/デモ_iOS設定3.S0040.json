@@ -1,0 +1,43 @@
+{
+  "durationMs" : 13150,
+  "machine" : "LDIPC96",
+  "passed" : true,
+  "platform" : "ios",
+  "profile" : "M2_4devices",
+  "reportPath" : "Projects/SampleApp/reports/scenario-20260717-000823-322-デモ_iOS設定3_S0040.md",
+  "runID" : "20260716-150429Z-LDIPC96-df06",
+  "scenarioID" : "デモ_iOS設定3.S0040",
+  "scenes" : [
+    {
+      "durationMs" : 9178,
+      "passed" : true,
+      "scene" : 1,
+      "title" : "一般 > 自動入力とパスワードを開く"
+    },
+    {
+      "durationMs" : 2020,
+      "passed" : true,
+      "scene" : 2,
+      "title" : "確認コードの項目まで確認する"
+    },
+    {
+      "durationMs" : 1816,
+      "passed" : true,
+      "scene" : 3,
+      "title" : "一般へ戻って設定トップへ戻れる"
+    }
+  ],
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-16T15:08:10Z",
+  "steps" : {
+    "failed" : 0,
+    "healed" : 0,
+    "passed" : 13,
+    "passedViaFallback" : 0,
+    "skipped" : 0,
+    "total" : 13
+  },
+  "timedOut" : false,
+  "title" : "一般の自動入力とパスワードを確認できる",
+  "worker" : "ios:iPhone 17(iOS 27.0)"
+}

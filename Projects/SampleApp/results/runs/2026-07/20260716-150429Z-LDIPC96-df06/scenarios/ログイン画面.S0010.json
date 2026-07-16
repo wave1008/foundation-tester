@@ -1,0 +1,31 @@
+{
+  "durationMs" : 8581,
+  "machine" : "LDIPC96",
+  "passed" : true,
+  "platform" : "ios",
+  "profile" : "M2_4devices",
+  "reportPath" : "Projects/SampleApp/reports/scenario-20260717-000916-050-ログイン画面_S0010.md",
+  "runID" : "20260716-150429Z-LDIPC96-df06",
+  "scenarioID" : "ログイン画面.S0010",
+  "scenes" : [
+    {
+      "durationMs" : 7442,
+      "passed" : true,
+      "scene" : 1,
+      "title" : ""
+    }
+  ],
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-16T15:09:07Z",
+  "steps" : {
+    "failed" : 0,
+    "healed" : 0,
+    "passed" : 7,
+    "passedViaFallback" : 0,
+    "skipped" : 1,
+    "total" : 8
+  },
+  "timedOut" : false,
+  "title" : "メールアドレス test@example.com、パスワード password123 でログインし、ホーム画面に「ようこそ」が表示されることを確認する",
+  "worker" : "ios:iPhone 17(iOS 27.0)"
+}

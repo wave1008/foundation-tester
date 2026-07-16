@@ -168,6 +168,11 @@ struct ApiRunCommand: AsyncParsableCommand {
             throw ValidationError("実行対象がありません(全シナリオが削除済み @Deleted)")
         }
 
+        // dry-run/debug は実測にならない(dry-run はデバイス未接続、debug は人間介入前提)ため記録しない
+        let recorder: RunRecorder? = (!dryRun && debugOptions == nil)
+            ? RunRecorder.begin(project: testProject, profile: profile, trigger: "api")
+            : nil
+
         emitLine(ApiRunStartedEvent(total: selected.count))
 
         let passedCount: Int
@@ -178,18 +183,20 @@ struct ApiRunCommand: AsyncParsableCommand {
             if dryRun || debugOptions != nil {
                 (passedCount, failedCount) = try await runWithProfile(
                     resolved: resolvedProfile, project: testProject, selected: selected,
-                    debugOptions: debugOptions)
+                    debugOptions: debugOptions, recorder: recorder)
             } else {
                 let workers = try await workersTask!.value
                 (passedCount, failedCount) = try await runWithProfileParallel(
                     resolved: resolvedProfile, project: testProject, selected: selected,
-                    workers: workers)
+                    workers: workers, recorder: recorder)
             }
         } else {
             (passedCount, failedCount) = await runDirect(
-                project: testProject, selected: selected, debugOptions: debugOptions)
+                project: testProject, selected: selected, debugOptions: debugOptions,
+                recorder: recorder)
         }
 
+        recorder?.finish(total: selected.count, passed: passedCount, failed: failedCount)
         emitLine(ApiRunFinishedEvent(passed: passedCount, failed: failedCount))
 
         if failedCount > 0 {
@@ -200,7 +207,8 @@ struct ApiRunCommand: AsyncParsableCommand {
     // MARK: - --platform/--port/--serial 直接指定(--profile 未指定)
 
     private func runDirect(project: TestProject, selected: [ScenarioInfo],
-                           debugOptions: ScenarioDebugOptions?) async -> (passed: Int, failed: Int) {
+                           debugOptions: ScenarioDebugOptions?,
+                           recorder: RunRecorder?) async -> (passed: Int, failed: Int) {
         let effectivePlatform = platform ?? "ios"
         let effectivePort = port ?? BridgeAPI.defaultPort
         let reportDirPath = reportDir ?? project.reportsDir.path
@@ -212,12 +220,14 @@ struct ApiRunCommand: AsyncParsableCommand {
             let connection = scenarioPlatform == "android"
                 ? DriverConnection(platform: "android", serial: serial)
                 : DriverConnection(platform: "ios", port: effectivePort)
+            // --platform/--port/--serial 直指定経路にはデバイス論理名が無いため worker は nil
+            let recording = recorder.map { ScenarioRecording(recorder: $0, title: info.title) }
 
             let passed = await ScenarioHost.run(
                 project: project, scenarioID: info.id, connection: connection,
                 heal: heal, reportDir: reportDirPath, defaultTimeout: defaultTimeout,
                 scenarioTimeout: scenarioTimeout,
-                dryRun: dryRun, debug: debugOptions) { event in
+                dryRun: dryRun, debug: debugOptions, recording: recording) { event in
                 // host 発の log イベント等、scenario 未設定のものは現在のシナリオ ID を補う
                 var event = event
                 if event.scenario == nil { event.scenario = info.id }
@@ -235,7 +245,8 @@ struct ApiRunCommand: AsyncParsableCommand {
     /// defaultTimeout/heal の反映だけ行って NullDriver で流す
     private func runWithProfile(
         resolved: ResolvedProfile, project: TestProject,
-        selected: [ScenarioInfo], debugOptions: ScenarioDebugOptions?
+        selected: [ScenarioInfo], debugOptions: ScenarioDebugOptions?,
+        recorder: RunRecorder?
     ) async throws -> (passed: Int, failed: Int) {
         let profileName = resolved.runName
         let effectiveHeal = heal ? true : resolved.heal
@@ -265,10 +276,14 @@ struct ApiRunCommand: AsyncParsableCommand {
             let scenarioPlatform = info.platform ?? defaultPlatform
 
             let connection: DriverConnection
+            let recordingWorker: String?
             if dryRun {
                 connection = DriverConnection(platform: scenarioPlatform)
+                recordingWorker = nil
             } else if let worker = workers.first(where: { $0.platform == scenarioPlatform }) {
                 connection = worker.connection
+                // id 形式は workersReadyInfo/workerID(runWithProfileParallel)と同一規則
+                recordingWorker = "\(worker.platform):\(worker.logicalName ?? worker.label)"
             } else {
                 let workerList = workers.isEmpty
                     ? "なし" : workers.map(\.label).joined(separator: ", ")
@@ -276,8 +291,13 @@ struct ApiRunCommand: AsyncParsableCommand {
                     + "(プロファイル \(profileName) のワーカー: \(workerList))"
                 logStderr("⚠️ \(info.id): \(reason)")
                 emitMissingWorkerFailure(info: info, reason: reason)
+                recorder?.recordSkipped(scenarioID: info.id, title: info.title,
+                                        platform: scenarioPlatform, worker: nil, reason: reason)
                 failedCount += 1
                 continue
+            }
+            let recording = recorder.map {
+                ScenarioRecording(recorder: $0, worker: recordingWorker, title: info.title)
             }
 
             let passed = await ScenarioHost.run(
@@ -285,7 +305,7 @@ struct ApiRunCommand: AsyncParsableCommand {
                 heal: effectiveHeal, reportDir: reportDirPath,
                 defaultTimeout: resolved.defaultTimeout,
                 scenarioTimeout: resolved.scenarioTimeout, dryRun: dryRun,
-                debug: debugOptions) { event in
+                debug: debugOptions, recording: recording) { event in
                 var event = event
                 if event.scenario == nil { event.scenario = info.id }
                 writeLine(event.encodedLine())
@@ -303,7 +323,7 @@ struct ApiRunCommand: AsyncParsableCommand {
     /// workers はビルドと並行して呼び出し側(run())が先行構築済みのもの
     private func runWithProfileParallel(
         resolved: ResolvedProfile, project: TestProject, selected: [ScenarioInfo],
-        workers: [RunWorker]
+        workers: [RunWorker], recorder: RunRecorder?
     ) async throws -> (passed: Int, failed: Int) {
         let effectiveHeal = heal ? true : resolved.heal
         let reportDirURL = reportDir.map { URL(fileURLWithPath: $0) } ?? resolved.reportDir
@@ -325,7 +345,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         let orchestrator = RunOrchestrator(
             project: project, workers: workers, healingEnabled: effectiveHeal,
             reportDir: reportDirURL, defaultTimeout: resolved.defaultTimeout,
-            scenarioTimeout: resolved.scenarioTimeout)
+            scenarioTimeout: resolved.scenarioTimeout, recorder: recorder)
         async let summary = orchestrator.run(items: items, defaultPlatform: defaultPlatform)
 
         for await event in orchestrator.events {

@@ -1,0 +1,43 @@
+{
+  "durationMs" : 11953,
+  "machine" : "LDIPC96",
+  "passed" : true,
+  "platform" : "ios",
+  "profile" : "M2_4devices",
+  "reportPath" : "Projects/SampleApp/reports/scenario-20260717-000810-236-デモ_iOS設定3_S0030.md",
+  "runID" : "20260716-150429Z-LDIPC96-df06",
+  "scenarioID" : "デモ_iOS設定3.S0030",
+  "scenes" : [
+    {
+      "durationMs" : 8043,
+      "passed" : true,
+      "scene" : 1,
+      "title" : "一般 > トラックパッドを開く"
+    },
+    {
+      "durationMs" : 2072,
+      "passed" : true,
+      "scene" : 2,
+      "title" : "タップとセカンダリクリックの項目まで確認する"
+    },
+    {
+      "durationMs" : 1772,
+      "passed" : true,
+      "scene" : 3,
+      "title" : "一般へ戻って設定トップへ戻れる"
+    }
+  ],
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-16T15:07:58Z",
+  "steps" : {
+    "failed" : 0,
+    "healed" : 0,
+    "passed" : 13,
+    "passedViaFallback" : 0,
+    "skipped" : 0,
+    "total" : 13
+  },
+  "timedOut" : false,
+  "title" : "一般のトラックパッド設定を確認できる",
+  "worker" : "ios:iPhone 17(iOS 27.0)"
+}

@@ -12,7 +12,8 @@ enum ProfileRunner {
 
     /// 戻り値: 失敗シナリオ数
     static func run(project: TestProject, profileName: String, items: [ScenarioRunItem],
-                    healOverride: Bool?, reportDirOverride: String?) async throws -> Int {
+                    healOverride: Bool?, reportDirOverride: String?,
+                    recorder: RunRecorder? = nil) async throws -> Int {
         // 1. マシン決定 → プロファイル合成(実行プロファイル自身の machine 指定があれば最優先)
         let machine = try ProfileResolver.determineMachine(
             project: project, registered: LocalConfig.currentMachineName(),
@@ -44,7 +45,7 @@ enum ProfileRunner {
         let orchestrator = RunOrchestrator(
             project: project, workers: workers, healingEnabled: heal,
             reportDir: reportDir, defaultTimeout: resolved.defaultTimeout,
-            scenarioTimeout: resolved.scenarioTimeout)
+            scenarioTimeout: resolved.scenarioTimeout, recorder: recorder)
         async let summary = orchestrator.run(items: items, defaultPlatform: defaultPlatform)
 
         // シナリオ毎にバッファして完了時に一括表示(並列時のステップ行の混線防止)

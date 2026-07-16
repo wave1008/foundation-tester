@@ -1,0 +1,37 @@
+{
+  "durationMs" : 3331,
+  "machine" : "LDIPC96",
+  "passed" : true,
+  "platform" : "android",
+  "profile" : "M2_4devices",
+  "reportPath" : "Projects/SampleApp/reports/scenario-20260716-233716-134-デモ_Androidアプリ_S0020.md",
+  "runID" : "20260716-143708Z-LDIPC96-467e",
+  "scenarioID" : "デモ_Androidアプリ.S0020",
+  "scenes" : [
+    {
+      "durationMs" : 2446,
+      "passed" : true,
+      "scene" : 1,
+      "title" : "リスト表示とグリッド表示を切り替えて戻す(起動直後はグリッド表示)"
+    },
+    {
+      "durationMs" : 734,
+      "passed" : true,
+      "scene" : 2,
+      "title" : "画像フィルタを ON にして OFF に戻す"
+    }
+  ],
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-16T14:37:12Z",
+  "steps" : {
+    "failed" : 0,
+    "healed" : 0,
+    "passed" : 9,
+    "passedViaFallback" : 0,
+    "skipped" : 0,
+    "total" : 9
+  },
+  "timedOut" : false,
+  "title" : "Filesアプリで表示形式とファイル種別フィルタを切り替えられる(状態は戻す)",
+  "worker" : "android:Pixel 9(Android 15)-02"
+}

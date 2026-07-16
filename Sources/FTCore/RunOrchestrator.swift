@@ -103,16 +103,23 @@ public enum ScenarioRunner {
                               defaultTimeout: Int? = nil,
                               scenarioTimeout: Int? = nil,
                               debug: ScenarioDebugOptions? = nil,
+                              recorder: RunRecorder? = nil,
                               onEvent: @escaping (RunEvent) -> Void) async -> Bool {
         onEvent(.flowStarted(worker: worker.label, flowURL: item.url,
                              flowName: item.info.id, isDirty: false))
 
+        // worker id 形式は ApiRunCommand.swift の workerID 変換表・workersReadyInfo と同一規則
+        let recording = recorder.map {
+            ScenarioRecording(recorder: $0,
+                              worker: "\(worker.platform):\(worker.logicalName ?? worker.label)",
+                              title: item.info.title)
+        }
         var reportURL: URL?
         let passed = await ScenarioHost.run(
             project: project, scenarioID: item.info.id, connection: worker.connection,
             heal: healingEnabled, reportDir: reportDir.path,
             defaultTimeout: defaultTimeout, scenarioTimeout: scenarioTimeout,
-            debug: debug) { event in
+            debug: debug, recording: recording) { event in
             switch event.kind {
             case "sceneStarted":
                 onEvent(.sceneStarted(worker: worker.label, flowURL: item.url,
@@ -204,10 +211,11 @@ public final class RunOrchestrator {
     private let scenarioTimeout: Int?
     /// デバッグ実行(ブレークポイント・ステップ実行)。呼び出し側が単一シナリオ実行時のみ指定する
     private let debug: ScenarioDebugOptions?
+    private let recorder: RunRecorder?
 
     public init(project: TestProject, workers: [RunWorker], healingEnabled: Bool,
                 reportDir: URL, defaultTimeout: Int? = nil, scenarioTimeout: Int? = nil,
-                debug: ScenarioDebugOptions? = nil) {
+                debug: ScenarioDebugOptions? = nil, recorder: RunRecorder? = nil) {
         (self.events, self.continuation) = AsyncStream.makeStream(of: RunEvent.self)
         self.workers = workers
         self.healingEnabled = healingEnabled
@@ -216,6 +224,7 @@ public final class RunOrchestrator {
         self.defaultTimeout = defaultTimeout
         self.scenarioTimeout = scenarioTimeout
         self.debug = debug
+        self.recorder = recorder
     }
 
     public func run(items: [ScenarioRunItem], defaultPlatform: String) async -> RunSummary {
@@ -226,9 +235,10 @@ public final class RunOrchestrator {
         // 担当ワーカーのない platform のシナリオは即スキップ(失敗扱い)
         for (platform, list) in grouped where !workerPlatforms.contains(platform) {
             for item in list {
-                continuation.yield(.flowSkipped(
-                    flowURL: item.url,
-                    reason: "担当ワーカーがありません(platform: \(platform))"))
+                let reason = "担当ワーカーがありません(platform: \(platform))"
+                continuation.yield(.flowSkipped(flowURL: item.url, reason: reason))
+                recorder?.recordSkipped(scenarioID: item.info.id, title: item.info.title,
+                                        platform: platform, worker: nil, reason: reason)
             }
             failed += list.count
         }
@@ -249,10 +259,12 @@ public final class RunOrchestrator {
         }
 
         // ワーカー全滅でキューに残ったシナリオは失敗扱い
-        for (_, queue) in queues {
+        for (platform, queue) in queues {
             while let item = await queue.next() {
-                continuation.yield(.flowSkipped(flowURL: item.url,
-                                                reason: "実行できるワーカーがありません"))
+                let reason = "実行できるワーカーがありません"
+                continuation.yield(.flowSkipped(flowURL: item.url, reason: reason))
+                recorder?.recordSkipped(scenarioID: item.info.id, title: item.info.title,
+                                        platform: platform, worker: nil, reason: reason)
                 failed += 1
             }
         }
@@ -284,6 +296,7 @@ public final class RunOrchestrator {
                 project: project, item: item, worker: worker,
                 healingEnabled: healingEnabled, reportDir: reportDir,
                 defaultTimeout: defaultTimeout, scenarioTimeout: scenarioTimeout, debug: debug,
+                recorder: recorder,
                 onEvent: { [continuation] in continuation.yield($0) })
             if !passed { failed += 1 }
         }

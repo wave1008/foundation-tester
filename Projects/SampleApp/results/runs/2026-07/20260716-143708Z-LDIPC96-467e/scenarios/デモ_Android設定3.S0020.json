@@ -1,0 +1,37 @@
+{
+  "durationMs" : 4807,
+  "machine" : "LDIPC96",
+  "passed" : true,
+  "platform" : "android",
+  "profile" : "M2_4devices",
+  "reportPath" : "Projects/SampleApp/reports/scenario-20260716-233814-739-デモ_Android設定3_S0020.md",
+  "runID" : "20260716-143708Z-LDIPC96-467e",
+  "scenarioID" : "デモ_Android設定3.S0020",
+  "scenes" : [
+    {
+      "durationMs" : 2022,
+      "passed" : true,
+      "scene" : 1,
+      "title" : "アプリの通知を開く"
+    },
+    {
+      "durationMs" : 1870,
+      "passed" : true,
+      "scene" : 2,
+      "title" : "設定トップへ戻して通知の履歴を開く"
+    }
+  ],
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-16T14:38:10Z",
+  "steps" : {
+    "failed" : 0,
+    "healed" : 0,
+    "passed" : 9,
+    "passedViaFallback" : 0,
+    "skipped" : 0,
+    "total" : 9
+  },
+  "timedOut" : false,
+  "title" : "通知のサブ画面(アプリの通知・通知の履歴)を確認できる",
+  "worker" : "android:Pixel 9(Android 15)-02"
+}

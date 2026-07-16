@@ -1,0 +1,49 @@
+{
+  "durationMs" : 24193,
+  "machine" : "LDIPC96",
+  "passed" : true,
+  "platform" : "ios",
+  "profile" : "M2_4devices",
+  "reportPath" : "Projects/SampleApp/reports/scenario-20260717-000658-833-デモ_iOS設定_S0050.md",
+  "runID" : "20260716-150429Z-LDIPC96-df06",
+  "scenarioID" : "デモ_iOS設定.S0050",
+  "scenes" : [
+    {
+      "durationMs" : 5732,
+      "passed" : true,
+      "scene" : 1,
+      "title" : "設定アプリを起動する"
+    },
+    {
+      "durationMs" : 5661,
+      "passed" : true,
+      "scene" : 2,
+      "title" : "サンプルアプリへ切り替える"
+    },
+    {
+      "durationMs" : 3417,
+      "passed" : true,
+      "scene" : 3,
+      "title" : "ホーム経由でアプリスイッチャーを開く"
+    },
+    {
+      "durationMs" : 5242,
+      "passed" : true,
+      "scene" : 4,
+      "title" : "設定アプリへ戻る"
+    }
+  ],
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-16T15:06:34Z",
+  "steps" : {
+    "failed" : 0,
+    "healed" : 0,
+    "passed" : 9,
+    "passedViaFallback" : 0,
+    "skipped" : 0,
+    "total" : 9
+  },
+  "timedOut" : false,
+  "title" : "設定アプリとサンプルアプリを行き来できる",
+  "worker" : "ios:iPhone 17(iOS 27.0)"
+}

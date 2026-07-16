@@ -1,0 +1,13 @@
+{
+  "failed" : 1,
+  "finishedAt" : "2026-07-16T14:41:09Z",
+  "machine" : "LDIPC96",
+  "passed" : 54,
+  "profile" : "M2_4devices",
+  "project" : "SampleApp",
+  "runID" : "20260716-143708Z-LDIPC96-467e",
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-16T14:37:08Z",
+  "total" : 55,
+  "trigger" : "api"
+}

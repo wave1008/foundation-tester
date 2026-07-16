@@ -1,0 +1,43 @@
+{
+  "durationMs" : 12391,
+  "machine" : "LDIPC96",
+  "passed" : true,
+  "platform" : "ios",
+  "profile" : "M2_4devices",
+  "reportPath" : "Projects/SampleApp/reports/scenario-20260716-233943-653-デモ_iOS設定2_S0050.md",
+  "runID" : "20260716-143708Z-LDIPC96-467e",
+  "scenarioID" : "デモ_iOS設定2.S0050",
+  "scenes" : [
+    {
+      "durationMs" : 8321,
+      "passed" : true,
+      "scene" : 1,
+      "title" : "一般 > キーボード を開く"
+    },
+    {
+      "durationMs" : 2106,
+      "passed" : true,
+      "scene" : 2,
+      "title" : "一般へ戻って 言語と地域 を開く"
+    },
+    {
+      "durationMs" : 1830,
+      "passed" : true,
+      "scene" : 3,
+      "title" : "設定トップへ戻れる"
+    }
+  ],
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-16T14:39:31Z",
+  "steps" : {
+    "failed" : 0,
+    "healed" : 0,
+    "passed" : 14,
+    "passedViaFallback" : 0,
+    "skipped" : 0,
+    "total" : 14
+  },
+  "timedOut" : false,
+  "title" : "一般のキーボードと言語と地域を確認できる",
+  "worker" : "ios:iPhone 17(iOS 27.0)"
+}

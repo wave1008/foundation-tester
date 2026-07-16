@@ -1,0 +1,37 @@
+{
+  "durationMs" : 14417,
+  "machine" : "LDIPC96",
+  "passed" : true,
+  "platform" : "ios",
+  "profile" : "M2_4devices",
+  "reportPath" : "Projects/SampleApp/reports/scenario-20260717-000900-787-デモ_サンプルアプリ_S0050.md",
+  "runID" : "20260716-150429Z-LDIPC96-df06",
+  "scenarioID" : "デモ_サンプルアプリ.S0050",
+  "scenes" : [
+    {
+      "durationMs" : 7629,
+      "passed" : true,
+      "scene" : 1,
+      "title" : "設定タブからログアウトする"
+    },
+    {
+      "durationMs" : 4561,
+      "passed" : true,
+      "scene" : 2,
+      "title" : "再ログインできる"
+    }
+  ],
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-16T15:08:46Z",
+  "steps" : {
+    "failed" : 0,
+    "healed" : 0,
+    "passed" : 16,
+    "passedViaFallback" : 1,
+    "skipped" : 2,
+    "total" : 19
+  },
+  "timedOut" : false,
+  "title" : "ログアウトするとログイン画面に戻る",
+  "worker" : "ios:iPhone 17 Pro(iOS 27.0)"
+}

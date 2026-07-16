@@ -1,0 +1,49 @@
+{
+  "durationMs" : 4960,
+  "machine" : "LDIPC96",
+  "passed" : true,
+  "platform" : "android",
+  "profile" : "M2_4devices",
+  "reportPath" : "Projects/SampleApp/reports/scenario-20260717-000518-589-デモ_Android設定_S0060.md",
+  "runID" : "20260716-150429Z-LDIPC96-df06",
+  "scenarioID" : "デモ_Android設定.S0060",
+  "scenes" : [
+    {
+      "durationMs" : 845,
+      "passed" : true,
+      "scene" : 1,
+      "title" : "設定アプリを起動する"
+    },
+    {
+      "durationMs" : 1531,
+      "passed" : true,
+      "scene" : 2,
+      "title" : "時計アプリへ切り替える"
+    },
+    {
+      "durationMs" : 1705,
+      "passed" : true,
+      "scene" : 3,
+      "title" : "ホーム経由でアプリスイッチャーを開く"
+    },
+    {
+      "durationMs" : 804,
+      "passed" : true,
+      "scene" : 4,
+      "title" : "設定アプリへ戻る"
+    }
+  ],
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-16T15:05:13Z",
+  "steps" : {
+    "failed" : 0,
+    "healed" : 0,
+    "passed" : 8,
+    "passedViaFallback" : 0,
+    "skipped" : 0,
+    "total" : 8
+  },
+  "timedOut" : false,
+  "title" : "設定アプリと時計アプリを行き来できる",
+  "worker" : "android:Pixel 9(Android 15)-02"
+}

@@ -1,0 +1,9 @@
+{
+  "machine" : "LDIPC96",
+  "profile" : "M2_4devices",
+  "project" : "SampleApp",
+  "runID" : "20260716-151207Z-LDIPC96-9bc4",
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-16T15:12:07Z",
+  "trigger" : "api"
+}

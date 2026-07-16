@@ -1,0 +1,37 @@
+{
+  "durationMs" : 3224,
+  "machine" : "LDIPC96",
+  "passed" : true,
+  "platform" : "android",
+  "profile" : "M2_4devices",
+  "reportPath" : "Projects/SampleApp/reports/scenario-20260716-233716-024-デモ_Androidアプリ_S0010.md",
+  "runID" : "20260716-143708Z-LDIPC96-467e",
+  "scenarioID" : "デモ_Androidアプリ.S0010",
+  "scenes" : [
+    {
+      "durationMs" : 1490,
+      "passed" : true,
+      "scene" : 1,
+      "title" : "起動直後はダウンロードフォルダが開いている"
+    },
+    {
+      "durationMs" : 1584,
+      "passed" : true,
+      "scene" : 2,
+      "title" : "ルート一覧から画像フォルダへ切り替える"
+    }
+  ],
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-16T14:37:12Z",
+  "steps" : {
+    "failed" : 0,
+    "healed" : 0,
+    "passed" : 6,
+    "passedViaFallback" : 0,
+    "skipped" : 0,
+    "total" : 6
+  },
+  "timedOut" : false,
+  "title" : "Filesアプリでダウンロードと画像フォルダを行き来できる",
+  "worker" : "android:Pixel 9(Android 15)-01"
+}

@@ -1,0 +1,49 @@
+{
+  "durationMs" : 75141,
+  "machine" : "LDIPC96",
+  "passed" : true,
+  "platform" : "ios",
+  "profile" : "M2_4devices",
+  "reportPath" : "Projects/SampleApp/reports/scenario-20260717-000605-265-デモ_iOS設定_S0030.md",
+  "runID" : "20260716-150429Z-LDIPC96-df06",
+  "scenarioID" : "デモ_iOS設定.S0030",
+  "scenes" : [
+    {
+      "durationMs" : 7165,
+      "passed" : true,
+      "scene" : 1,
+      "title" : "カメラ設定を開く"
+    },
+    {
+      "durationMs" : 6397,
+      "passed" : true,
+      "scene" : 2,
+      "title" : "カメラ一覧を上下にスクロールする"
+    },
+    {
+      "durationMs" : 2970,
+      "passed" : true,
+      "scene" : 3,
+      "title" : "設定トップへ戻ってホーム画面とアプリライブラリを開く"
+    },
+    {
+      "durationMs" : 918,
+      "passed" : true,
+      "scene" : 4,
+      "title" : "設定トップへ戻れる"
+    }
+  ],
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-16T15:05:43Z",
+  "steps" : {
+    "failed" : 0,
+    "healed" : 0,
+    "passed" : 15,
+    "passedViaFallback" : 0,
+    "skipped" : 0,
+    "total" : 15
+  },
+  "timedOut" : false,
+  "title" : "メディアとホーム画面の設定(カメラ・ホーム画面)を確認できる",
+  "worker" : "ios:iPhone 17 Pro(iOS 27.0)"
+}

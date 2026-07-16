@@ -189,12 +189,27 @@ public enum ScenarioHost {
                            scenarioTimeout: Int? = nil,
                            dryRun: Bool = false,
                            debug: ScenarioDebugOptions? = nil,
+                           recording: ScenarioRecording? = nil,
                            onEvent: @escaping (ScenarioEvent) -> Void) async -> Bool {
+        let startedAt = Date()
+        let clock = ContinuousClock()
+        let clockStart = clock.now
+        // dry-run は LastResultsStore と同じく記録対象外。builder は emit 全経路(合成
+        // scenarioFinished 含む)を素通しで受け取り、2 箇所の記録確定点でのみ recorder へ渡す
+        var builder: ScenarioRecordBuilder? = (recording != nil && !dryRun)
+            ? ScenarioRecordBuilder(scenarioID: scenarioID, platform: connection.platform,
+                                    title: recording?.title, worker: recording?.worker)
+            : nil
+        let emit: (ScenarioEvent) -> Void = { event in
+            builder?.consume(event)
+            onEvent(event)
+        }
+
         let runner: URL
         do {
             runner = try runnerURL(project: project)
         } catch {
-            onEvent(.log("❌ \(error.localizedDescription)"))
+            emit(.log("❌ \(error.localizedDescription)"))
             return false
         }
 
@@ -236,7 +251,7 @@ public enum ScenarioHost {
         do {
             try process.run()
         } catch {
-            onEvent(.log("❌ ランナーを起動できません: \(error.localizedDescription)"))
+            emit(.log("❌ ランナーを起動できません: \(error.localizedDescription)"))
             return false
         }
         if let debug, let stdinPipe {
@@ -279,10 +294,10 @@ public enum ScenarioHost {
         for await line in lineStream(stdout.fileHandleForReading) {
             if let event = ScenarioEvent.decode(line: line) {
                 if event.kind == "scenarioFinished" { passed = event.passed }
-                onEvent(event)
+                emit(event)
             } else if !line.isEmpty {
                 // ユーザーコードの print 等、JSON でない行はログとして取り込む
-                onEvent(.log(line))
+                emit(.log(line))
             }
         }
 
@@ -300,24 +315,34 @@ public enum ScenarioHost {
         }
 
         let errLines = await stderrTask.value
-        for line in errLines where !line.isEmpty { onEvent(.log("⚠️ \(line)")) }
+        for line in errLines where !line.isEmpty { emit(.log("⚠️ \(line)")) }
 
         // タイムアウト時は子がレポートも scenarioFinished も出さずに死ぬ。失敗可視化の契約:
-        // 合成 scenarioFinished(passed:false) を onEvent で流し、通常失敗と同じ経路で集計・
+        // 合成 scenarioFinished(passed:false) を emit で流し、通常失敗と同じ経路で集計・
         // モニタ表示させる(戻り値も false)。レポート(.md)は子専管のため書かない=クラッシュ相当。
         if timedOut, let watchdogSeconds {
-            onEvent(.log("⏱ シナリオが \(watchdogSeconds)s を超過したため強制終了しました"))
+            emit(.log("⏱ シナリオが \(watchdogSeconds)s を超過したため強制終了しました"))
             var finished = ScenarioEvent(kind: "scenarioFinished")
             finished.scenario = scenarioID
             finished.passed = false
-            onEvent(finished)
+            emit(finished)
             if !dryRun { LastResultsStore.record(project: project, scenarioID: scenarioID, passed: false) }
+            if let recording, let builder {
+                recording.recorder.record(builder.build(
+                    passed: false, timedOut: true, startedAt: startedAt,
+                    durationMs: continuousClockMs(clock.now - clockStart), packageRoot: packageRoot()))
+            }
             return false
         }
         // scenarioFinished が来なかった場合(クラッシュ等)は exit code で判定
         let result = passed ?? (process.terminationStatus == 0)
         // dry-run は実機能を動かしていないため直近結果を上書きしない(実失敗を消さない)
         if !dryRun { LastResultsStore.record(project: project, scenarioID: scenarioID, passed: result) }
+        if let recording, let builder {
+            recording.recorder.record(builder.build(
+                passed: result, timedOut: false, startedAt: startedAt,
+                durationMs: continuousClockMs(clock.now - clockStart), packageRoot: packageRoot()))
+        }
         return result
     }
 
@@ -373,6 +398,12 @@ public enum ScenarioHost {
                 handle.readabilityHandler = nil
             }
         }
+    }
+
+    /// ContinuousClock の Duration → 整数ミリ秒(秒成分×1000 + attoseconds成分。1ms = 1e15 attoseconds)
+    static func continuousClockMs(_ duration: Duration) -> Int {
+        let (seconds, attoseconds) = duration.components
+        return Int(seconds) * 1000 + Int(attoseconds / 1_000_000_000_000_000)
     }
 
     /// カレントディレクトリから上に辿って Package.swift を持つディレクトリを探す

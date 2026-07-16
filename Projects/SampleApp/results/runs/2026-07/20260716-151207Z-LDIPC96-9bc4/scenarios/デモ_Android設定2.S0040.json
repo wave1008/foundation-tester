@@ -1,0 +1,37 @@
+{
+  "durationMs" : 4336,
+  "machine" : "LDIPC96",
+  "passed" : true,
+  "platform" : "android",
+  "profile" : "M2_4devices",
+  "reportPath" : "Projects/SampleApp/reports/scenario-20260717-001315-700-デモ_Android設定2_S0040.md",
+  "runID" : "20260716-151207Z-LDIPC96-9bc4",
+  "scenarioID" : "デモ_Android設定2.S0040",
+  "scenes" : [
+    {
+      "durationMs" : 3331,
+      "passed" : true,
+      "scene" : 1,
+      "title" : "パスワードとアカウントを開く"
+    },
+    {
+      "durationMs" : 838,
+      "passed" : true,
+      "scene" : 2,
+      "title" : "自動同期のスイッチがある"
+    }
+  ],
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-16T15:13:11Z",
+  "steps" : {
+    "failed" : 0,
+    "healed" : 0,
+    "passed" : 7,
+    "passedViaFallback" : 0,
+    "skipped" : 0,
+    "total" : 7
+  },
+  "timedOut" : false,
+  "title" : "パスワードとアカウントの設定を確認できる",
+  "worker" : "android:Pixel 9(Android 15)-02"
+}

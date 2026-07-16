@@ -1,0 +1,54 @@
+{
+  "durationMs" : 11198,
+  "failedSteps" : [
+    {
+      "description" : "launch com.google.android.contacts",
+      "detail" : "ドライバがエラーを返しました (500): アプリの画面が表示されませんでした: com.google.android.contacts",
+      "durationMs" : 10311,
+      "file" : "Projects/SampleApp/Scenarios/Demo/デモ_Androidアプリ.swift",
+      "index" : 1,
+      "line" : 131,
+      "scene" : 1,
+      "sceneTitle" : "連絡先アプリを起動する(初回の通知許可は許可しない)",
+      "section" : "condition"
+    }
+  ],
+  "machine" : "LDIPC96",
+  "passed" : false,
+  "platform" : "android",
+  "profile" : "M2_4devices",
+  "reportPath" : "Projects/SampleApp/reports/scenario-20260717-000449-591-デモ_Androidアプリ_S0050.md",
+  "runID" : "20260716-150429Z-LDIPC96-df06",
+  "scenarioID" : "デモ_Androidアプリ.S0050",
+  "scenes" : [
+    {
+      "durationMs" : 10311,
+      "passed" : false,
+      "scene" : 1,
+      "title" : "連絡先アプリを起動する(初回の通知許可は許可しない)"
+    },
+    {
+      "passed" : true,
+      "scene" : 2,
+      "title" : "検索してから閉じる"
+    },
+    {
+      "passed" : true,
+      "scene" : 3,
+      "title" : "整理タブと設定画面を確認する(閲覧のみ)"
+    }
+  ],
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-16T15:04:38Z",
+  "steps" : {
+    "failed" : 1,
+    "healed" : 0,
+    "passed" : 1,
+    "passedViaFallback" : 0,
+    "skipped" : 3,
+    "total" : 5
+  },
+  "timedOut" : false,
+  "title" : "連絡先アプリの一覧・検索・整理タブを確認できる(データは作成しない)",
+  "worker" : "android:Pixel 9(Android 15)-01"
+}
