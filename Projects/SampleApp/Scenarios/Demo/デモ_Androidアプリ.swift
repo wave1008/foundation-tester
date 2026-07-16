@@ -151,7 +151,8 @@ class デモ_Androidアプリ {
                     tap("#nav_organize")
                     tap("設定||Settings")
                 }.expectation {
-                    exist("並べ替え||Sort by")  // 実ラベル「並べ替え順序」に contains 一致
+                    // 連絡先設定の安定項目(旧「並べ替え(順序)」は現バージョンで消滅)
+                    exist("自分の情報||My info")
                     exist("モード||Theme")  // 実ラベルは「モード」(「テーマ」行は存在しない)
                 }
             }
