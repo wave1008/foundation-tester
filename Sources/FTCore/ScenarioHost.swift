@@ -232,6 +232,7 @@ public enum ScenarioHost {
             stdinPipe = pipe
         }
 
+        let processExited = ProcessExitWait.prepare(process)
         do {
             try process.run()
         } catch {
@@ -255,9 +256,9 @@ public enum ScenarioHost {
                 guard !Task.isCancelled, await timeoutGuard.claim() else { return }
                 process.terminate()  // SIGTERM
                 try? await Task.sleep(nanoseconds: 2_000_000_000)  // 2s 猶予
-                // process.isRunning は内部で waitpid して子を reap してしまい、下の
-                // waitUntilExit() が終了通知を取りこぼして永久ハングする(SIGTERM を無視した
-                // 子で実測: run 全体が凍結)。kill(pid, 0) は reap せず生存確認だけ行う。
+                // process.isRunning は内部で waitpid して子を reap してしまい、終了待ち
+                // (processExited)が通知を取りこぼす恐れがある(SIGTERM を無視した子で
+                // 実測: run 全体が凍結)。kill(pid, 0) は reap せず生存確認だけ行う。
                 if kill(process.processIdentifier, 0) == 0 { _ = kill(process.processIdentifier, SIGKILL) }
             }
         }
@@ -285,11 +286,12 @@ public enum ScenarioHost {
             }
         }
 
-        process.waitUntilExit()
+        // waitUntilExit() は使わない(永久ハングの実害。理由は ProcessExitWait 参照)
+        for await _ in processExited {}
         try? stdinPipe?.fileHandleForWriting.close()
 
         // watchdog と正常終了のどちらが先に claim したかで timeout を確定する。cancel は
-        // waitUntilExit の後で行う: SIGTERM を子が無視する場合、killer の 2s 猶予後の SIGKILL が
+        // 終了待ちの後で行う: SIGTERM を子が無視する場合、killer の 2s 猶予後の SIGKILL が
         // 唯一の脱出路なので、子の死を待つ前に killer を止めてはならない。
         var timedOut = false
         if let killer {
