@@ -65,6 +65,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
                 case "GET /screenshot": return handleScreenshot();
                 case "POST /session": return handleLaunch(body(request));
                 case "POST /terminate": return handleTerminate();
+                case "POST /locale": return handleLocale(body(request));
                 default:
                     return BridgeHttpServer.Response.error(404,
                             "not found: " + request.method + " " + request.path);
@@ -250,6 +251,53 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
             sessionBundleID = null;
         }
         return ok();
+    }
+
+    /**
+     * システムロケールの永続変更(Play イメージは root/setprop/-change-locale が全滅のため、
+     * shell 権限借用(CHANGE_CONFIGURATION)+ IActivityManager.updatePersistentConfiguration
+     * が唯一の非 root 手段。fastlane screengrab と同方式)。
+     * 隠し API 反射のため、ホスト側 AndroidBridge.swift(同期相手)がブリッジ起動時に
+     * `settings put global hidden_api_policy 1` を設定していることが前提。
+     * userSetLocale=true が永続化(再起動後も保持)の鍵。
+     * 応答: {"changed": bool, "locale": "<BCP-47>"}(iOS ブリッジに本エンドポイントは無い)
+     */
+    private BridgeHttpServer.Response handleLocale(JSONObject body) throws JSONException {
+        String tag = body.optString("locale", "").replace('_', '-');
+        if (tag.isEmpty()) throw new BridgeException(400, "locale がありません");
+        java.util.Locale target = java.util.Locale.forLanguageTag(tag);
+        if (target.getLanguage().isEmpty()) {
+            throw new BridgeException(400, "locale を解釈できません: " + tag);
+        }
+        java.util.Locale current = android.content.res.Resources.getSystem()
+                .getConfiguration().getLocales().get(0);
+        JSONObject o = new JSONObject();
+        if (current.toLanguageTag().equalsIgnoreCase(target.toLanguageTag())) {
+            o.put("changed", false);
+            o.put("locale", current.toLanguageTag());
+            return BridgeHttpServer.Response.json(200, o.toString());
+        }
+        if (Build.VERSION.SDK_INT < 29) {
+            throw new BridgeException(500, "ロケール変更は API 29 以上のみ対応です");
+        }
+        UiAutomation ua = ua();
+        ua.adoptShellPermissionIdentity();
+        try {
+            Object am = Class.forName("android.app.ActivityManager")
+                    .getMethod("getService").invoke(null);
+            android.content.res.Configuration config = new android.content.res.Configuration();
+            config.setLocales(new android.os.LocaleList(target));
+            config.getClass().getField("userSetLocale").setBoolean(config, true);
+            am.getClass().getMethod("updatePersistentConfiguration",
+                    android.content.res.Configuration.class).invoke(am, config);
+        } catch (ReflectiveOperationException e) {
+            throw new BridgeException(500, "ロケール変更に失敗(hidden_api_policy=1 が必要): " + e);
+        } finally {
+            ua.dropShellPermissionIdentity();
+        }
+        o.put("changed", true);
+        o.put("locale", target.toLanguageTag());
+        return BridgeHttpServer.Response.json(200, o.toString());
     }
 
     // MARK: - Helpers

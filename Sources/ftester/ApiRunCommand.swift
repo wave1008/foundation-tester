@@ -141,10 +141,20 @@ struct ApiRunCommand: AsyncParsableCommand {
                     .map { "\($0.name)(\($0.platform))" }.joined(separator: ", ")
                 logStderr("🧩 プロファイル \(resolved.runName): \(resolved.appName) @ \(resolved.machineName)")
                 logStderr("   デバイス: \(deviceList)")
+                var wipedAndroid: [String] = []
+                if resolved.wipeDataOnBloat {
+                    wipedAndroid = await AndroidDataWiper.wipeBloatedAVDs(
+                        devices: resolved.androidDevices,
+                        thresholdGB: resolved.wipeDataThresholdGB,
+                        locale: resolved.locale,
+                        status: { self.emitLine(ApiWipeStatusEvent(device: $0, phase: $1)) },
+                        log: { logStderr($0) })
+                }
                 var workers = try await ProfileWorkerFactory.buildWorkers(
                     resolved: resolved, repoRoot: try RepoRoot.find()) { logStderr($0) }
                 workers = try await ProfileWorkerFactory.installIfNeeded(
-                    apps: resolved.apps, workers: workers) { logStderr($0) }
+                    apps: resolved.apps, workers: workers,
+                    forceAndroidInstall: !wipedAndroid.isEmpty) { logStderr($0) }
                 logStderr("🚀 実行: \(workers.count) ワーカー(\(workers.map(\.label).joined(separator: " / ")))")
                 return workers
             }
@@ -175,31 +185,32 @@ struct ApiRunCommand: AsyncParsableCommand {
 
         emitLine(ApiRunStartedEvent(total: selected.count))
 
-        let passedCount: Int
-        let failedCount: Int
+        let outcome: RunOutcome
         if let resolvedProfile {
             // --dry-run/--debug は単純な逐次実行のまま(worker フィールド無し)。それ以外は
             // RunOrchestrator による並列実行
             if dryRun || debugOptions != nil {
-                (passedCount, failedCount) = try await runWithProfile(
+                outcome = try await runWithProfile(
                     resolved: resolvedProfile, project: testProject, selected: selected,
                     debugOptions: debugOptions, recorder: recorder)
             } else {
                 let workers = try await workersTask!.value
-                (passedCount, failedCount) = try await runWithProfileParallel(
+                outcome = try await runWithProfileParallel(
                     resolved: resolvedProfile, project: testProject, selected: selected,
                     workers: workers, recorder: recorder)
             }
         } else {
-            (passedCount, failedCount) = await runDirect(
+            outcome = await runDirect(
                 project: testProject, selected: selected, debugOptions: debugOptions,
                 recorder: recorder)
         }
 
-        recorder?.finish(total: selected.count, passed: passedCount, failed: failedCount)
-        emitLine(ApiRunFinishedEvent(passed: passedCount, failed: failedCount))
+        recorder?.finish(total: selected.count, passed: outcome.passed, failed: outcome.failed)
+        emitLine(ApiRunFinishedEvent(passed: outcome.passed, failed: outcome.failed,
+                                     testSeconds: outcome.testSeconds,
+                                     scenarioTotalSeconds: outcome.scenarioTotalSeconds))
 
-        if failedCount > 0 {
+        if outcome.failed > 0 {
             throw ExitCode(1)
         }
     }
@@ -208,13 +219,14 @@ struct ApiRunCommand: AsyncParsableCommand {
 
     private func runDirect(project: TestProject, selected: [ScenarioInfo],
                            debugOptions: ScenarioDebugOptions?,
-                           recorder: RunRecorder?) async -> (passed: Int, failed: Int) {
+                           recorder: RunRecorder?) async -> RunOutcome {
         let effectivePlatform = platform ?? "ios"
         let effectivePort = port ?? BridgeAPI.defaultPort
         let reportDirPath = reportDir ?? project.reportsDir.path
 
         var passedCount = 0
         var failedCount = 0
+        var timing = ScenarioTimingTracker()
         for info in selected {
             let scenarioPlatform = info.platform ?? effectivePlatform
             let connection = scenarioPlatform == "android"
@@ -223,6 +235,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             // --platform/--port/--serial 直指定経路にはデバイス論理名が無いため worker は nil
             let recording = recorder.map { ScenarioRecording(recorder: $0, title: info.title) }
 
+            let scenarioStart = Date()
             let passed = await ScenarioHost.run(
                 project: project, scenarioID: info.id, connection: connection,
                 heal: heal, reportDir: reportDirPath, defaultTimeout: defaultTimeout,
@@ -233,9 +246,13 @@ struct ApiRunCommand: AsyncParsableCommand {
                 if event.scenario == nil { event.scenario = info.id }
                 writeLine(event.encodedLine())
             }
+            let scenarioEnd = Date()
+            timing.recordSequential(start: scenarioStart, finish: scenarioEnd)
             if passed { passedCount += 1 } else { failedCount += 1 }
         }
-        return (passedCount, failedCount)
+        return RunOutcome(passed: passedCount, failed: failedCount,
+                          testSeconds: timing.testSeconds,
+                          scenarioTotalSeconds: timing.scenarioTotalSeconds)
     }
 
     // MARK: - --profile 指定
@@ -247,7 +264,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         resolved: ResolvedProfile, project: TestProject,
         selected: [ScenarioInfo], debugOptions: ScenarioDebugOptions?,
         recorder: RunRecorder?
-    ) async throws -> (passed: Int, failed: Int) {
+    ) async throws -> RunOutcome {
         let profileName = resolved.runName
         let effectiveHeal = heal ? true : resolved.heal
         let reportDirPath = (reportDir.map { URL(fileURLWithPath: $0) } ?? resolved.reportDir).path
@@ -258,10 +275,20 @@ struct ApiRunCommand: AsyncParsableCommand {
                 .map { "\($0.name)(\($0.platform))" }.joined(separator: ", ")
             logStderr("🧩 プロファイル \(profileName): \(resolved.appName) @ \(resolved.machineName)")
             logStderr("   デバイス: \(deviceList)")
+            var wipedAndroid: [String] = []
+            if resolved.wipeDataOnBloat {
+                wipedAndroid = await AndroidDataWiper.wipeBloatedAVDs(
+                    devices: resolved.androidDevices,
+                    thresholdGB: resolved.wipeDataThresholdGB,
+                    locale: resolved.locale,
+                    status: { self.emitLine(ApiWipeStatusEvent(device: $0, phase: $1)) },
+                    log: { logStderr($0) })
+            }
             workers = try await ProfileWorkerFactory.buildWorkers(
                 resolved: resolved, repoRoot: try RepoRoot.find()) { logStderr($0) }
             workers = try await ProfileWorkerFactory.installIfNeeded(
-                apps: resolved.apps, workers: workers) { logStderr($0) }
+                apps: resolved.apps, workers: workers,
+                forceAndroidInstall: !wipedAndroid.isEmpty) { logStderr($0) }
         }
 
         // シナリオが platform 未指定のときの既定 platform(iOS ワーカーがあれば ios 優先。
@@ -272,6 +299,7 @@ struct ApiRunCommand: AsyncParsableCommand {
 
         var passedCount = 0
         var failedCount = 0
+        var timing = ScenarioTimingTracker()
         for info in selected {
             let scenarioPlatform = info.platform ?? defaultPlatform
 
@@ -300,6 +328,7 @@ struct ApiRunCommand: AsyncParsableCommand {
                 ScenarioRecording(recorder: $0, worker: recordingWorker, title: info.title)
             }
 
+            let scenarioStart = Date()
             let passed = await ScenarioHost.run(
                 project: project, scenarioID: info.id, connection: connection,
                 heal: effectiveHeal, reportDir: reportDirPath,
@@ -310,9 +339,13 @@ struct ApiRunCommand: AsyncParsableCommand {
                 if event.scenario == nil { event.scenario = info.id }
                 writeLine(event.encodedLine())
             }
+            let scenarioEnd = Date()
+            timing.recordSequential(start: scenarioStart, finish: scenarioEnd)
             if passed { passedCount += 1 } else { failedCount += 1 }
         }
-        return (passedCount, failedCount)
+        return RunOutcome(passed: passedCount, failed: failedCount,
+                          testSeconds: timing.testSeconds,
+                          scenarioTotalSeconds: timing.scenarioTotalSeconds)
     }
 
     // MARK: - --profile 指定(ワーカー並列実行。--dry-run/--debug 以外)
@@ -324,7 +357,7 @@ struct ApiRunCommand: AsyncParsableCommand {
     private func runWithProfileParallel(
         resolved: ResolvedProfile, project: TestProject, selected: [ScenarioInfo],
         workers: [RunWorker], recorder: RunRecorder?
-    ) async throws -> (passed: Int, failed: Int) {
+    ) async throws -> RunOutcome {
         let effectiveHeal = heal ? true : resolved.heal
         let reportDirURL = reportDir.map { URL(fileURLWithPath: $0) } ?? resolved.reportDir
 
@@ -348,14 +381,18 @@ struct ApiRunCommand: AsyncParsableCommand {
             scenarioTimeout: resolved.scenarioTimeout, recorder: recorder)
         async let summary = orchestrator.run(items: items, defaultPlatform: defaultPlatform)
 
+        var timing = ScenarioTimingTracker()
         for await event in orchestrator.events {
+            timing.record(event)
             for line in ndjsonLines(for: event, itemByURL: itemByURL, workerID: workerID) {
                 writeLine(line)
             }
         }
 
         let result = await summary
-        return (result.passed, result.failed)
+        return RunOutcome(passed: result.passed, failed: result.failed,
+                          testSeconds: timing.testSeconds,
+                          scenarioTotalSeconds: timing.scenarioTotalSeconds)
     }
 
     /// workersReady の devices 配列を組み立てる(id 形式は ApiWorkersReadyEvent 参照)
@@ -579,6 +616,15 @@ private struct ApiRunStartedEvent: Encodable {
     let total: Int
 }
 
+/// 実行開始時の Wipe Data(AndroidDataWiper)のデバイス単位フェーズ通知。runStarted より
+/// 前に emit されうる。同期相手: vscode-ftester/src/model.ts の WipeStatusEvent
+private struct ApiWipeStatusEvent: Encodable {
+    let kind = "wipeStatus"
+    let device: String
+    /// "stopping" | "rebooting" | "done" | "failed"
+    let phase: String
+}
+
 /// --profile 指定(ワーカー並列実行時)のみ、runStarted 直後に 1 回 emit するイベント。
 /// id は "<platform>:<デバイス論理名>"(ApiMonitorCommand.swift の monitorDevices の id と
 /// 同一規則。VSCode 拡張がモニタータイルと突合するため)
@@ -595,9 +641,66 @@ private struct ApiWorkerInfo: Encodable {
     let detail: String
 }
 
-/// ftester api run の末尾イベント
+/// ftester api run の末尾イベント。vscode-ftester/src/model.ts の RunFinishedEvent と
+/// フィールド名を同期(testSeconds/scenarioTotalSeconds のリネーム不可)
 private struct ApiRunFinishedEvent: Encodable {
     let kind = "runFinished"
     let passed: Int
     let failed: Int
+    let testSeconds: Double?
+    let scenarioTotalSeconds: Double?
+}
+
+/// 実行の集計結果。testSeconds/scenarioTotalSeconds は ScenarioTimingTracker 参照
+struct RunOutcome {
+    var passed: Int
+    var failed: Int
+    var testSeconds: Double?
+    var scenarioTotalSeconds: Double?
+}
+
+/// flowStarted〜flowFinished から testSeconds(最初の開始〜最後の完了)と
+/// scenarioTotalSeconds(シナリオ毎の所要時間の合計)を計測する。並列実行では
+/// record(_:) で RunEvent の flowStarted/flowFinished を渡す(flowURL をキーに対応付ける。
+/// flowSkipped は無視 = 0秒扱い)。逐次実行では recordSequential(start:finish:) を
+/// シナリオ毎に直接呼ぶ(同時に1件しか走らないため URL キー付けは不要)。ProfileRunner.swift
+/// からも同一ターゲット内で参照
+struct ScenarioTimingTracker {
+    private var firstStart: Date?
+    private var lastFinish: Date?
+    private var startedAt: [URL: Date] = [:]
+    private var scenarioTotal: TimeInterval = 0
+    private var hasScenario = false
+
+    mutating func record(_ event: RunEvent) {
+        switch event {
+        case .flowStarted(_, let flowURL, _, _):
+            let now = Date()
+            if firstStart == nil { firstStart = now }
+            startedAt[flowURL] = now
+            hasScenario = true
+        case .flowFinished(_, let flowURL, _, _, _):
+            let now = Date()
+            lastFinish = now
+            if let start = startedAt.removeValue(forKey: flowURL) {
+                scenarioTotal += now.timeIntervalSince(start)
+            }
+        default:
+            break
+        }
+    }
+
+    mutating func recordSequential(start: Date, finish: Date) {
+        if firstStart == nil { firstStart = start }
+        lastFinish = finish
+        scenarioTotal += finish.timeIntervalSince(start)
+        hasScenario = true
+    }
+
+    var testSeconds: Double? {
+        guard let firstStart, let lastFinish else { return nil }
+        return lastFinish.timeIntervalSince(firstStart)
+    }
+
+    var scenarioTotalSeconds: Double? { hasScenario ? scenarioTotal : nil }
 }

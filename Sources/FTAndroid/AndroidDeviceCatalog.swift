@@ -55,11 +55,41 @@ public enum AndroidDeviceCatalog {
         return result
     }
 
-    public static func installedAVDs() -> [(id: String, displayName: String?)] {
-        let home = ProcessInfo.processInfo.environment["ANDROID_AVD_HOME"]
+    /// AVD ホームディレクトリ(ANDROID_AVD_HOME → ~/.android/avd)。
+    /// AndroidDataWiper と共用(wipe 対象ディレクトリの解決に使う)
+    public static func avdHomeDirectory() -> URL {
+        ProcessInfo.processInfo.environment["ANDROID_AVD_HOME"]
             .map { URL(fileURLWithPath: $0) }
             ?? FileManager.default.homeDirectoryForCurrentUser
                 .appendingPathComponent(".android/avd")
+    }
+
+    /// AVD の実体ディレクトリ。**`<id>.avd` の機械組み立てではなく `<id>.ini` の `path=` が正**
+    /// (emulator も ini を見る。Android Studio の改名で別名ディレクトリを指すことがある。
+    /// 実例 2026-07-17: Pixel_9_Android_15_ の実体は Pixel_9_Android_15__1.avd で、
+    /// `.avd` 直組みの wiper が空の残骸を測り 11.5GiB の実体が wipe をすり抜けた)。
+    /// ini 欠落・path 不在時は `<home>/<id>.avd` にフォールバック
+    public static func avdContentDirectory(id: String) -> URL {
+        avdContentDirectory(id: id, home: avdHomeDirectory())
+    }
+
+    static func avdContentDirectory(id: String, home: URL) -> URL {
+        let fallback = home.appendingPathComponent("\(id).avd")
+        let ini = home.appendingPathComponent("\(id).ini")
+        guard let text = try? String(contentsOf: ini, encoding: .utf8) else { return fallback }
+        for line in text.split(separator: "\n") where line.hasPrefix("path=") {
+            let path = String(line.dropFirst("path=".count)).trimmingCharacters(in: .whitespaces)
+            var isDir: ObjCBool = false
+            if !path.isEmpty,
+               FileManager.default.fileExists(atPath: path, isDirectory: &isDir), isDir.boolValue {
+                return URL(fileURLWithPath: path)
+            }
+        }
+        return fallback
+    }
+
+    public static func installedAVDs() -> [(id: String, displayName: String?)] {
+        let home = avdHomeDirectory()
         guard let entries = try? FileManager.default.contentsOfDirectory(
             at: home, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) else {
             return []

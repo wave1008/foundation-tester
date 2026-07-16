@@ -161,9 +161,21 @@ export function applyLaneAction(action) {
     case 'workerRunning':
       setTileRunning(action.workerId, action.running);
       break;
-    case 'runFinished':
-      lanesRunStatus.textContent = '完了: 成功 ' + action.passed + ' / 失敗 ' + action.failed;
+    case 'runFinished': {
+      const base = '完了: 成功 ' + action.passed + ' / 失敗 ' + action.failed;
+      const timingParts = [];
+      if (action.totalSeconds != null) {
+        timingParts.push('トータル ' + action.totalSeconds.toFixed(1) + 's');
+      }
+      if (action.testSeconds != null) {
+        timingParts.push('テスト実時間 ' + action.testSeconds.toFixed(1) + 's');
+      }
+      if (action.scenarioTotalSeconds != null) {
+        timingParts.push('シナリオ合計 ' + action.scenarioTotalSeconds.toFixed(1) + 's');
+      }
+      lanesRunStatus.textContent = timingParts.length > 0 ? base + '(' + timingParts.join(' / ') + ')' : base;
       break;
+    }
     default:
       break;
   }

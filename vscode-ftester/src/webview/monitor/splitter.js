@@ -9,10 +9,18 @@ import { relayoutTiles } from './deviceTiles.js';
 // 自動占有するため個別管理は不要。
 
 const MIN_PANE_HEIGHT = 120;
+
+// 保存値がない初期表示はスプリット領域の上下中央(50%)。「デバイス」タブ非表示等で
+// 領域が測れないときのみ window.innerHeight で代替する。
+function defaultTilePaneHeight() {
+  const available = availableSplitHeight();
+  return Math.round((available > 0 ? available : window.innerHeight) / 2);
+}
+
 export let tilePaneHeight =
   typeof persistedState.tilePaneHeight === 'number' && persistedState.tilePaneHeight > 0
     ? persistedState.tilePaneHeight
-    : Math.round(window.innerHeight * 0.45);
+    : defaultTilePaneHeight();
 
 // document.body.clientHeight だとタブバー分ずれるため、「デバイス」タブパネル自身の
 // clientHeight を基準にする。

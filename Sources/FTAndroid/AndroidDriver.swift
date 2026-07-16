@@ -153,6 +153,12 @@ public final class AndroidDriver: AppDriver {
         return snapshot
     }
 
+    /// システムロケールの永続変更(ブリッジ /locale。ブート完了後に呼ぶこと)。
+    /// 既に一致していれば changed=false の no-op(フレームワーク再起動なし)
+    public func setDeviceLocale(_ locale: String) async throws -> BridgeClient.DeviceLocaleResponse {
+        try await withBridge { try await $0.setDeviceLocale(locale) }
+    }
+
     public func tap(ref: Int) async throws {
         restoreStateIfNeeded()
         guard let center = refCenters[ref] else {

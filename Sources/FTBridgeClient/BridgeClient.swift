@@ -138,6 +138,19 @@ public final class BridgeClient: AppDriver {
                                            timeout: sessionTimeout)
     }
 
+    public struct DeviceLocaleResponse: Decodable, Sendable {
+        public let changed: Bool
+        public let locale: String
+    }
+
+    /// システムロケールの永続変更。Android ブリッジのみ対応(iOS ブリッジは 404。
+    /// 同期相手: AndroidRunner/src/.../BridgeRouter.java handleLocale)
+    public func setDeviceLocale(_ locale: String) async throws -> DeviceLocaleResponse {
+        struct LocaleRequest: Encodable { let locale: String }
+        return try await post("/locale", body: LocaleRequest(locale: locale),
+                              timeout: sessionTimeout)
+    }
+
     // MARK: - HTTP helpers
 
     func get<R: Decodable>(_ path: String, timeout: TimeInterval? = nil) async throws -> R {

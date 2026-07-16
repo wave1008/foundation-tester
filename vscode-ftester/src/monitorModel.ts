@@ -315,7 +315,14 @@ export type MonitorToWebviewMessage =
   | {
       readonly type: "healthWatch";
       readonly name: string;
-      readonly phase: "unhealthy" | "repairing" | "restarting" | "failed" | "ok";
+      readonly phase: "unhealthy" | "repairing" | "streamRepairing" | "restarting" | "failed" | "ok";
+    }
+  // `ftester api run` の AVD Wipe Data 進行状況(model.ts の WipeStatusEvent が NDJSON 契約の同期相手)。
+  // name は deviceOpBusy と同じ名前空間(デバイス論理名)。webview はタイルのバッジ表示に使う。
+  | {
+      readonly type: "wipeStatus";
+      readonly name: string;
+      readonly phase: "stopping" | "rebooting" | "done" | "failed";
     };
 
 /**
@@ -598,7 +605,10 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
         typeof value.fields.heal === "boolean" &&
         typeof value.fields.iosInappEngine === "boolean" &&
         typeof value.fields.reportDir === "string" &&
-        typeof value.fields.defaultTimeout === "string"
+        typeof value.fields.defaultTimeout === "string" &&
+        typeof value.fields.wipeDataOnBloat === "boolean" &&
+        typeof value.fields.wipeDataThresholdGB === "string" &&
+        typeof value.fields.locale === "string"
       );
     case "appProfileAdd":
       return true;
@@ -909,6 +919,7 @@ export function buildRunProfileTemplate(
   template.devices = devices;
   template.heal = false;
   template.iosInappEngine = true;
+  template.wipeDataOnBloat = true;
   template.reportDir = "reports";
   return `${JSON.stringify(template, null, 2)}\n`;
 }
@@ -942,10 +953,10 @@ export function validateNewAppProfileName(name: string, existing: readonly strin
 }
 
 // ---- プロファイルタブ下半分: 実行プロファイルの設定フォーム -----------------------------
-// handleRunProfileLoad/Save(monitorPanel.ts)が使う、JSON⇔フォーム7フィールド変換の純粋関数
+// handleRunProfileLoad/Save(monitorPanel.ts)が使う、JSON⇔フォーム10フィールド変換の純粋関数
 // (未知キー保持のイミュータブルな方針。updateDeviceInMachineProfile と同じ)。
 
-/** 実行プロファイル設定フォームの7フィールド(全て文字列/配列/真偽値化済み。空文字は未設定)。 */
+/** 実行プロファイル設定フォームの10フィールド(全て文字列/配列/真偽値化済み。空文字は未設定)。 */
 export interface RunProfileFormFields {
   readonly machine: string;
   readonly app: string;
@@ -954,14 +965,17 @@ export interface RunProfileFormFields {
   readonly iosInappEngine: boolean;
   readonly reportDir: string;
   readonly defaultTimeout: string;
+  readonly wipeDataOnBloat: boolean;
+  readonly wipeDataThresholdGB: string;
+  readonly locale: string;
 }
 
 /**
- * runs/<name>.json のトップレベルから、フォームの7フィールドを許容的に読み取る(トップレベルが
+ * runs/<name>.json のトップレベルから、フォームの10フィールドを許容的に読み取る(トップレベルが
  * 非オブジェクトなら null)。各キーは欠落・型不正を「読めなければ空/既定値」で許容し、スキーマ
  * 妥当性検証はしない(保存時 updateRunProfileInObject・CLI 側 ProfileResolver.validate に委ねる)。
- * defaultTimeout は number ならそのまま String() 化する(0.5 のようなスキーマ違反値もそのまま
- * 表示し、整数化はしない)。
+ * defaultTimeout/wipeDataThresholdGB は number ならそのまま String() 化する(0.5 のような
+ * スキーマ違反値もそのまま表示し、整数化はしない)。
  */
 export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFields | null {
   // 配列も typeof "object" だが、トップレベルとしては不正なので弾く(他の同様関数と同じ判定)。
@@ -972,8 +986,10 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
   const machine = typeof source.machine === "string" ? source.machine : "";
   const app = typeof source.app === "string" ? source.app : "";
   const reportDir = typeof source.reportDir === "string" ? source.reportDir : "";
+  const locale = typeof source.locale === "string" ? source.locale : "";
   const heal = typeof source.heal === "boolean" ? source.heal : false;
   const iosInappEngine = typeof source.iosInappEngine === "boolean" ? source.iosInappEngine : true;
+  const wipeDataOnBloat = typeof source.wipeDataOnBloat === "boolean" ? source.wipeDataOnBloat : true;
   const devices: string[] = Array.isArray(source.devices)
     ? source.devices
         .map((device) => (isRecord(device) && typeof device.name === "string" ? device.name : undefined))
@@ -982,7 +998,10 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
   const rawTimeout = source.defaultTimeout;
   const defaultTimeout =
     typeof rawTimeout === "number" ? String(rawTimeout) : typeof rawTimeout === "string" ? rawTimeout : "";
-  return { machine, app, devices, heal, iosInappEngine, reportDir, defaultTimeout };
+  const rawThreshold = source.wipeDataThresholdGB;
+  const wipeDataThresholdGB =
+    typeof rawThreshold === "number" ? String(rawThreshold) : typeof rawThreshold === "string" ? rawThreshold : "";
+  return { machine, app, devices, heal, iosInappEngine, reportDir, defaultTimeout, wipeDataOnBloat, wipeDataThresholdGB, locale };
 }
 
 export type RunProfileUpdateResult =
@@ -990,9 +1009,10 @@ export type RunProfileUpdateResult =
   | { readonly ok: false; readonly error: string };
 
 /**
- * runs/<name>.json を、フォームの7フィールドの内容で更新した新オブジェクトを組み立てる
+ * runs/<name>.json を、フォームの10フィールドの内容で更新した新オブジェクトを組み立てる
  * (未知キー保持のイミュータブルな方針。profileObject が非オブジェクトなら ok:false)。
  * defaultTimeout は空文字ならキー削除、正の整数文字列以外はエラー。
+ * wipeDataThresholdGB は空文字ならキー削除、正の数(小数許容)文字列以外はエラー。
  * devices は fields.devices の順に並べ直し、既存 devices 配列の同名エントリ(未知キー込み)を
  * 再利用する(新規名は { name } のみ追加。同名重複があれば最初の1件を採用)。
  */
@@ -1017,6 +1037,7 @@ export function updateRunProfileInObject(
 
   result.heal = fields.heal;
   result.iosInappEngine = fields.iosInappEngine;
+  result.wipeDataOnBloat = fields.wipeDataOnBloat;
 
   const timeoutTrimmed = fields.defaultTimeout.trim();
   if (timeoutTrimmed.length === 0) {
@@ -1025,6 +1046,24 @@ export function updateRunProfileInObject(
     return { ok: false, error: "defaultTimeout は正の整数で入力してください。" };
   } else {
     result.defaultTimeout = Number(timeoutTrimmed);
+  }
+
+  const thresholdTrimmed = fields.wipeDataThresholdGB.trim();
+  if (thresholdTrimmed.length === 0) {
+    delete result.wipeDataThresholdGB;
+  } else if (!/^\d+(\.\d+)?$/.test(thresholdTrimmed) || Number(thresholdTrimmed) <= 0) {
+    return { ok: false, error: "wipeDataThresholdGB は正の数(GB)で入力してください。" };
+  } else {
+    result.wipeDataThresholdGB = Number(thresholdTrimmed);
+  }
+
+  const localeTrimmed = fields.locale.trim();
+  if (localeTrimmed.length === 0) {
+    delete result.locale;
+  } else if (!/^[A-Za-z]{2,3}([-_][A-Za-z0-9]{2,8})*$/.test(localeTrimmed)) {
+    return { ok: false, error: "locale は ja_JP のような形式で入力してください。" };
+  } else {
+    result.locale = localeTrimmed;
   }
 
   const existingDevices = Array.isArray(source.devices) ? source.devices : [];

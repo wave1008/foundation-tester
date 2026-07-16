@@ -353,6 +353,9 @@ async function executeRun(
 
   const run = controller.createTestRun(runRequest);
   const runStartedAt = Date.now();
+  // runFinished(NDJSON)で埋まる。ApiRunCommand.swift の ApiRunFinishedEvent と同期(model.ts の RunFinishedEvent)。
+  let testSeconds: number | undefined;
+  let scenarioTotalSeconds: number | undefined;
 
   if (targets.size === 0) {
     if (failedOnly) {
@@ -500,6 +503,10 @@ async function executeRun(
       onNdjsonValue: (value) => {
         if (isRunEvent(value)) {
           eventBus.publish(runId, value);
+          if (value.kind === "runFinished") {
+            testSeconds = value.testSeconds;
+            scenarioTotalSeconds = value.scenarioTotalSeconds;
+          }
         }
         const { state, actions } = reduceRunEvent(reducerState, value, Date.now());
         reducerState = state;
@@ -542,7 +549,14 @@ async function executeRun(
     activeRunCount -= 1;
     // キャンセル・異常終了でも経過は出す(TEST RESULTS の末尾行)
     const totalSeconds = ((Date.now() - runStartedAt) / 1000).toFixed(1);
-    run.appendOutput(`\r\n⏱ トータル: ${totalSeconds}s\r\n`);
+    const parts = [`⏱ トータル: ${totalSeconds}s`];
+    if (testSeconds != null) {
+      parts.push(`テスト実時間: ${testSeconds.toFixed(1)}s`);
+    }
+    if (scenarioTotalSeconds != null) {
+      parts.push(`シナリオ合計: ${scenarioTotalSeconds.toFixed(1)}s`);
+    }
+    run.appendOutput(`\r\n${parts.join(" / ")}\r\n`);
     run.end();
     onRunFinished?.([...targets.keys()]);
   }

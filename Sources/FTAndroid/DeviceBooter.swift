@@ -140,7 +140,27 @@ public enum DeviceBooter {
             log("→ \(spec.name): エミュレータ起動(\(avdID))...")
             let serial = try await startEmulator(avd: avdID)
             try await waitForAndroidBoot(serial: serial)
+            await applyLocale(serial: serial, locale: defaultLocale, deviceName: spec.name, log: log)
             log("✅ \(spec.name): 起動完了(\(serial))")
+        }
+    }
+
+    /// device-up 経由のブートに適用する既定ロケール(実行プロファイル locale が届くのは
+    /// AndroidDataWiper の wipe 後再起動経路のみ。ユーザー既定 = ja_JP)
+    public static let defaultLocale = "ja_JP"
+
+    /// ブート完了後のロケール適用(ブリッジ /locale。Play イメージでは root/-change-locale/
+    /// settings put が全て無効のため、これが唯一の手段)。ブリッジ未導入なら自動導入される。
+    /// 一致時は no-op(changed=false)。失敗は非致命(ブート自体は成功扱い)
+    static func applyLocale(serial: String, locale: String, deviceName: String,
+                            log: @escaping @Sendable (String) -> Void) async {
+        do {
+            let result = try await AndroidDriver(serial: serial).setDeviceLocale(locale)
+            if result.changed {
+                log("→ \(deviceName): ロケールを \(result.locale) に設定しました")
+            }
+        } catch {
+            log("⚠️ \(deviceName): ロケール設定に失敗 — \(error.localizedDescription)")
         }
     }
 
@@ -227,8 +247,11 @@ public enum DeviceBooter {
     }
 
     /// エミュレータをヘッドレスでデタッチ起動し、serial(自動採番)を検出して返す(検出待ち上限60秒)。
-    /// 並行起動時に他デバイスの serial を拾わないよう、新規 serial の AVD 名を照合する
-    static func startEmulator(avd: String) async throws -> String {
+    /// 並行起動時に他デバイスの serial を拾わないよう、新規 serial の AVD 名を照合する。
+    /// locale の -change-locale は **Play イメージ(フリート全機)では無効**(実測 2026-07-17。
+    /// AOSP イメージ向けの保険として残置)。実効的なロケール適用はブート完了後の applyLocale
+    /// (ブリッジ /locale)が担う
+    static func startEmulator(avd: String, locale: String? = "ja_JP") async throws -> String {
         let binary = try findEmulatorBinary()
         let adbPath = try AndroidDriver.findADB()
         let before = Set((try? AndroidDeviceCatalog.connectedSerials()) ?? [])
@@ -237,9 +260,16 @@ public enum DeviceBooter {
         process.executableURL = URL(fileURLWithPath: binary)
         // -gpu host 必須: headless(-no-window)では hw.gpu.mode=auto が SwiftShader(CPU 描画)に
         // フォールバックし、モーション時 qemu が約3コア/台を消費する(host=Metal なら約1/3。実測 2026-07-14)
-        process.arguments = ["-avd", avd,
-                             "-no-snapshot-save", "-no-window", "-no-boot-anim", "-no-audio",
-                             "-gpu", "host"]
+        // -no-snapshot 必須: ロード+セーブ両方の無効化=コールドブート保証。Quickboot スナップショットの
+        // ロードはブート時黒画面の代表原因(旧 -no-snapshot-save はセーブのみ無効で、Android Studio 等が
+        // 残したスナップショットがあるとロードしてしまう。docs/performance-tuning.md §6 の Wipe Data 行参照)
+        var arguments = ["-avd", avd,
+                         "-no-snapshot", "-no-window", "-no-boot-anim", "-no-audio",
+                         "-gpu", "host"]
+        if let locale {
+            arguments += ["-change-locale", locale.replacingOccurrences(of: "_", with: "-")]
+        }
+        process.arguments = arguments
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
         try process.run()

@@ -58,6 +58,8 @@ import type { FtesterTestTree } from "./testTree";
 
 const VIEW_TYPE = "ftesterMonitor";
 
+type WipeStatusMessage = Extract<MonitorToWebviewMessage, { readonly type: "wipeStatus" }>;
+
 /** サブコントローラ間連携の唯一の窓口(サブコントローラ同士は互いを直接参照しない)。 */
 export interface MonitorPanelDeps {
   readonly workspaceRoot: string;
@@ -162,6 +164,9 @@ class MonitorPanelController implements vscode.Disposable {
   /** デバイスタブのスプリッター位置(タイルペイン高さ px)。未設定(パネル未ドラッグ)は undefined。
    * webview の getState はパネルを閉じると失われるため host 側で永続化する(splitter.js と対の契約)。 */
   private tilePaneHeight: number | undefined;
+  /** stopping/rebooting を post 済みで done/failed が未着のデバイス名。runEnded 時、キャンセル等で
+   * done/failed が来ないまま残った名前にバッジ固着を防ぐため phase:"done" を post する。 */
+  private readonly wipeInProgress = new Set<string>();
 
   constructor(
     private readonly workspaceRoot: string,
@@ -217,6 +222,7 @@ class MonitorPanelController implements vscode.Disposable {
         const adb = resolveAdb();
         return adb ? repairWifi(adb, serial) : Promise.resolve(false);
       },
+      restartStream: (name) => this.deviceStream.restartForDeviceName(name),
       isAutoRepairEnabled: () => this.getConfig().autoRepairDeviceHealth,
       isAnyRunActive: () => isAnyLaneRunning(this.laneState),
       isDeviceLifecycleQueueBusy: () => this.deviceOps.isQueueBusy(),
@@ -366,6 +372,9 @@ class MonitorPanelController implements vscode.Disposable {
         this.post({ type: "laneSectionVisible", visible: true });
         break;
       case "event":
+        if (message.event.kind === "wipeStatus") {
+          this.handleWipeStatusEvent(message.event.device, message.event.phase);
+        }
         for (const action of reduceLaneEvent(this.laneState, message.event, Date.now())) {
           this.post({ type: "runEvent", action });
         }
@@ -375,8 +384,21 @@ class MonitorPanelController implements vscode.Disposable {
         for (const action of forceEndRunLaneState(this.laneState)) {
           this.post({ type: "runEvent", action });
         }
+        for (const name of this.wipeInProgress) {
+          this.post({ type: "wipeStatus", name, phase: "done" });
+        }
+        this.wipeInProgress.clear();
         break;
     }
+  }
+
+  private handleWipeStatusEvent(name: string, phase: WipeStatusMessage["phase"]): void {
+    if (phase === "stopping" || phase === "rebooting") {
+      this.wipeInProgress.add(name);
+    } else {
+      this.wipeInProgress.delete(name);
+    }
+    this.post({ type: "wipeStatus", name, phase });
   }
 
   private handleWebviewMessage(message: unknown): void {

@@ -208,6 +208,23 @@ export class MonitorDeviceStreamController {
     }
   }
 
+  /** health watchdog の blank-screen 軽量修復(monitorHealthWatchdog.ts)。name の稼働中パイプラインを
+   * 破棄して即再生成する(restartDevice と同じ仕組み)。1本でも張り替えたら true。 */
+  restartForDeviceName(name: string): boolean {
+    const suffix = `:${name}`;
+    let found = false;
+    for (const deviceId of [...this.pipelines.keys()]) {
+      if (deviceId.endsWith(suffix)) {
+        this.disposeDevice(deviceId);
+        found = true;
+      }
+    }
+    if (found) {
+      this.reapply();
+    }
+    return found;
+  }
+
   /** 一括 down ジョブの実行開始時に monitorDeviceOps.ts から呼ぶ。disposeAll と同じ全破棄(冪等)。 */
   disposeAllForDown(): void {
     this.disposeAll();

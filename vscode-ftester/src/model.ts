@@ -67,7 +67,8 @@ export type RunEventKind =
   | "paused"
   | "scenarioFinished"
   | "log"
-  | "runFinished";
+  | "runFinished"
+  | "wipeStatus";
 
 const RUN_EVENT_KINDS: ReadonlySet<string> = new Set<RunEventKind>([
   "runStarted",
@@ -81,6 +82,7 @@ const RUN_EVENT_KINDS: ReadonlySet<string> = new Set<RunEventKind>([
   "scenarioFinished",
   "log",
   "runFinished",
+  "wipeStatus",
 ]);
 
 /** 並列実行(`--profile` 指定時)のワーカー(デバイス)1台分の情報。 */
@@ -204,11 +206,24 @@ export interface LogEvent {
   worker?: string;
 }
 
-/** ApiRunCommand.swift の ApiRunFinishedEvent。 */
+/** ApiRunCommand.swift の ApiRunFinishedEvent。testSeconds/scenarioTotalSeconds は計測不能時 undefined。 */
 export interface RunFinishedEvent {
   kind: "runFinished";
   passed: number;
   failed: number;
+  testSeconds?: number;
+  scenarioTotalSeconds?: number;
+}
+
+/**
+ * AndroidDataWiper.swift(実行開始時の AVD Wipe Data)の進行状況。runStarted より前に届くことがある。
+ * device はマシンプロファイルのデバイス名(モニタータイル・deviceOpBusy・healthWatch と同じ名前空間)。
+ * failed の後に done は来ない。
+ */
+export interface WipeStatusEvent {
+  kind: "wipeStatus";
+  device: string;
+  phase: "stopping" | "rebooting" | "done" | "failed";
 }
 
 /** NDJSON の1行分のイベント(kind で判別する共用体)。 */
@@ -223,7 +238,8 @@ export type RunEvent =
   | PausedEvent
   | ScenarioFinishedEvent
   | LogEvent
-  | RunFinishedEvent;
+  | RunFinishedEvent
+  | WipeStatusEvent;
 
 /**
  * unknown 値(NdjsonParser が JSON.parse しただけの値。cli.ts の onNdjsonValue 経由)が

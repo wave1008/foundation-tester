@@ -22,6 +22,9 @@ const runProfileApp = document.getElementById('run-profile-app');
 const runProfileDevices = document.getElementById('run-profile-devices');
 const runProfileHeal = document.getElementById('run-profile-heal');
 const runProfileIosInappEngine = document.getElementById('run-profile-ios-inapp-engine');
+const runProfileWipeDataOnBloat = document.getElementById('run-profile-wipe-data-on-bloat');
+const runProfileWipeThreshold = document.getElementById('run-profile-wipe-threshold');
+const runProfileLocale = document.getElementById('run-profile-locale');
 const runProfileReportDir = document.getElementById('run-profile-report-dir');
 const runProfileDefaultTimeout = document.getElementById('run-profile-default-timeout');
 const runProfileError = document.getElementById('run-profile-error');
@@ -33,7 +36,7 @@ let runProfileNames = [];
 let runProfileApps = [];
 // 編集対象の実行プロファイル名(一覧が0件なら null)。
 let selectedRunProfile = null;
-// 直近ロード(runProfileData ok:true)時点の7フィールド値。null の間はフォーム非表示。
+// 直近ロード(runProfileData ok:true)時点の10フィールド値。null の間はフォーム非表示。
 let runProfileOriginalFields = null;
 // 現在チェック済みのデバイス名(表示順。チェックボックス操作・machine切替の引き継ぎの正)。
 let runProfileCheckedNames = [];
@@ -181,7 +184,7 @@ export function applyRunProfileData(message) {
   renderRunProfileEditor(message.fields);
 }
 
-// ロード済みの7フィールド値でフォームを作り直す(編集途中の値は破棄する)。
+// ロード済みの10フィールド値でフォームを作り直す(編集途中の値は破棄する)。
 function renderRunProfileEditor(fields) {
   runProfileOriginalFields = fields;
   runProfileSubmitting = false;
@@ -193,6 +196,9 @@ function renderRunProfileEditor(fields) {
   renderRunProfileDevices();
   runProfileHeal.checked = fields.heal;
   runProfileIosInappEngine.checked = fields.iosInappEngine;
+  runProfileWipeDataOnBloat.checked = fields.wipeDataOnBloat;
+  runProfileWipeThreshold.value = fields.wipeDataThresholdGB;
+  runProfileLocale.value = fields.locale;
   runProfileReportDir.value = fields.reportDir;
   runProfileDefaultTimeout.value = fields.defaultTimeout;
 
@@ -322,6 +328,9 @@ runProfileMachine.addEventListener('change', () => {
 runProfileApp.addEventListener('change', onRunProfileFormInput);
 runProfileHeal.addEventListener('change', onRunProfileFormInput);
 runProfileIosInappEngine.addEventListener('change', onRunProfileFormInput);
+runProfileWipeDataOnBloat.addEventListener('change', onRunProfileFormInput);
+runProfileWipeThreshold.addEventListener('input', onRunProfileFormInput);
+runProfileLocale.addEventListener('input', onRunProfileFormInput);
 runProfileReportDir.addEventListener('input', onRunProfileFormInput);
 runProfileDefaultTimeout.addEventListener('input', onRunProfileFormInput);
 
@@ -342,6 +351,9 @@ function runProfileValuesEqual(fields) {
     runProfileDevicesEqual(runProfileCheckedNames, fields.devices) &&
     runProfileHeal.checked === fields.heal &&
     runProfileIosInappEngine.checked === fields.iosInappEngine &&
+    runProfileWipeDataOnBloat.checked === fields.wipeDataOnBloat &&
+    runProfileWipeThreshold.value === fields.wipeDataThresholdGB &&
+    runProfileLocale.value === fields.locale &&
     runProfileReportDir.value === fields.reportDir &&
     runProfileDefaultTimeout.value === fields.defaultTimeout
   );
@@ -361,6 +373,9 @@ function setRunProfileControlsEnabled(enabled) {
   runProfileApp.disabled = !enabled;
   runProfileHeal.disabled = !enabled;
   runProfileIosInappEngine.disabled = !enabled;
+  runProfileWipeDataOnBloat.disabled = !enabled;
+  runProfileWipeThreshold.disabled = !enabled;
+  runProfileLocale.disabled = !enabled;
   runProfileReportDir.disabled = !enabled;
   runProfileDefaultTimeout.disabled = !enabled;
   for (const checkbox of runProfileDevices.querySelectorAll('input[type="checkbox"]')) {
@@ -386,6 +401,14 @@ function validateRunProfileFields() {
   const timeout = runProfileDefaultTimeout.value.trim();
   if (timeout !== '' && (!/^\d+$/.test(timeout) || Number(timeout) <= 0)) {
     return 'defaultTimeout は正の整数で入力してください。';
+  }
+  const threshold = runProfileWipeThreshold.value.trim();
+  if (threshold !== '' && (!/^\d+(\.\d+)?$/.test(threshold) || Number(threshold) <= 0)) {
+    return 'Wipe Data しきい値は正の数(GB)で入力してください。';
+  }
+  const locale = runProfileLocale.value.trim();
+  if (locale !== '' && !/^[A-Za-z]{2,3}([-_][A-Za-z0-9]{2,8})*$/.test(locale)) {
+    return 'ロケールは ja_JP のような形式で入力してください。';
   }
   return null;
 }
@@ -413,6 +436,9 @@ runProfileConfirm.addEventListener('click', () => {
       devices: runProfileCheckedNames.slice(),
       heal: runProfileHeal.checked,
       iosInappEngine: runProfileIosInappEngine.checked,
+      wipeDataOnBloat: runProfileWipeDataOnBloat.checked,
+      wipeDataThresholdGB: runProfileWipeThreshold.value.trim(),
+      locale: runProfileLocale.value.trim(),
       reportDir: runProfileReportDir.value.trim(),
       defaultTimeout: runProfileDefaultTimeout.value.trim(),
     },
