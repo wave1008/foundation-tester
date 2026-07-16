@@ -132,6 +132,7 @@ class デモ_iOS設定2 {
             scene(2, "設定トップへ戻って Siri を開く") {
                 action {
                     tap("#BackButton")
+                    wait(1)  // 戻りアニメの整定待ち(デモ_iOS設定.S0030 と同パターンの予防)
                     tap("#com.apple.settings.siri||Siri")
                 }.expectation {
                     exist(".NavigationBar#Siri")
