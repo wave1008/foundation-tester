@@ -8,7 +8,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { lastResultsDir, readFailedScenarioIds } from "../src/lastResults";
+import { lastResultsDir, lookupKey, readFailedScenarioIds } from "../src/lastResults";
 
 function makeStateDir(entries) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ftester-last-results-test-"));
@@ -38,4 +38,16 @@ test("readFailedScenarioIds: 内容が failed のファイル名だけを集合�
 test("readFailedScenarioIds: ディレクトリが無ければ空集合", () => {
   const missing = path.join(os.tmpdir(), "ftester-last-results-missing-", String(Date.now()));
   assert.deepEqual(readFailedScenarioIds(missing), new Set());
+});
+
+test("readFailedScenarioIds: NFD ファイル名でも NFC の id で照合できる(macOS readdir 対策)", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ftester-nfd-"));
+  try {
+    const nfcId = "デモ_Android時計.S0010";
+    fs.writeFileSync(path.join(dir, nfcId.normalize("NFD")), "failed");
+    const ids = readFailedScenarioIds(dir);
+    assert.equal(ids.has(lookupKey(nfcId)), true);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

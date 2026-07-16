@@ -13,7 +13,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { type FtesterCli } from "./cli";
 import { type FtesterConfig, resolveProjectName } from "./config";
-import { lastResultsDir, readFailedScenarioIds } from "./lastResults";
+import { lastResultsDir, lookupKey, readFailedScenarioIds } from "./lastResults";
 import type { ScenarioFinishedEventBody } from "./debugAdapter";
 import { isRunEvent } from "./model";
 import { type RunEventBus } from "./runEventBus";
@@ -177,8 +177,8 @@ async function executeRun(
     outputChannel.appendLine(
       `[rerunFailed] project=${resolution.kind === "resolved" ? resolution.project : resolution.kind}`
       + ` 展開=${targets.size}件 失敗記録=${failedIds.size}件`
-      + ` 対象=${[...targets.keys()].filter((id) => failedIds.has(id)).length}件`);
-    targets = new Map([...targets].filter(([id]) => failedIds.has(id)));
+      + ` 対象=${[...targets.keys()].filter((id) => failedIds.has(lookupKey(id))).length}件`);
+    targets = new Map([...targets].filter(([id]) => failedIds.has(lookupKey(id))));
   }
 
   const run = controller.createTestRun(request);

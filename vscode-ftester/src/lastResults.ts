@@ -12,7 +12,10 @@ export function lastResultsDir(workspaceRoot: string, project: string): string {
 }
 
 /** last-results ディレクトリを1回読み、内容が "failed" のファイル名(=シナリオID)集合を返す。
- * ディレクトリ無し/読み取り不可は空集合(LastResultsStore.failedIDs と同じ方針)。 */
+ * ディレクトリ無し/読み取り不可は空集合(LastResultsStore.failedIDs と同じ方針)。
+ * 集合は NFC 正規化済み — macOS の readdir は日本語名を NFD で返すことがあり、
+ * TestItem id(NFC)との JS 完全一致比較が全滅する(Swift の == は正準等価なので CLI は無関係)。
+ * 照合側も lookupKey() を通すこと。 */
 export function readFailedScenarioIds(dir: string): Set<string> {
   const result = new Set<string>();
   let names: string[];
@@ -24,11 +27,16 @@ export function readFailedScenarioIds(dir: string): Set<string> {
   for (const name of names) {
     try {
       if (fs.readFileSync(path.join(dir, name), "utf8") === "failed") {
-        result.add(name);
+        result.add(name.normalize("NFC"));
       }
     } catch {
       // 壊れた/競合中のファイルはスキップ
     }
   }
   return result;
+}
+
+/** readFailedScenarioIds の集合を引くためのキー正規化(NFC)。 */
+export function lookupKey(scenarioId: string): string {
+  return scenarioId.normalize("NFC");
 }
