@@ -3,6 +3,28 @@
 
 import Foundation
 
+/// 子プロセスの終了待ち。Process.waitUntilExit() は使わない: RunLoop 通知に依存し、
+/// Swift Concurrency の協調スレッド上では終了通知を取りこぼして永久ハングし得る
+/// (watchdog の SIGKILL 後に run 全体が凍結した実害あり)。terminationHandler は
+/// Foundation が子を reap した後に必ず呼ばれるため、これを終了シグナルに使う。
+/// 契約: prepare 系は必ず process.run() より前に呼ぶ(起動後だと発火を取りこぼし得る)。
+public enum ProcessExitWait {
+    /// async 待機用。返り値を `for await _ in stream {}` で待つ。
+    /// AsyncStream はバッファするため、await より先に終了しても取りこぼさない。
+    public static func prepare(_ process: Process) -> AsyncStream<Void> {
+        let (stream, continuation) = AsyncStream.makeStream(of: Void.self)
+        process.terminationHandler = { _ in continuation.finish() }
+        return stream
+    }
+
+    /// 同期待機用。返り値のクロージャが終了までブロックする。
+    public static func prepareBlocking(_ process: Process) -> () -> Void {
+        let semaphore = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in semaphore.signal() }
+        return { semaphore.wait() }
+    }
+}
+
 public enum Shell {
     public struct Result {
         public let status: Int32
@@ -38,9 +60,10 @@ public enum Shell {
         } else {
             process.standardError = FileHandle.nullDevice
         }
+        let waitForExit = ProcessExitWait.prepareBlocking(process)
         try process.run()
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
+        waitForExit()
         return (process.terminationStatus, data)
     }
 }

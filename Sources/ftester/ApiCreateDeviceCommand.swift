@@ -241,13 +241,14 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
         process.standardInput = stdinPipe
         process.standardOutput = outputPipe
         process.standardError = outputPipe
+        let waitForExit = ProcessExitWait.prepareBlocking(process)
         try process.run()
         // プロンプトへの回答は数バイトなのでパイプバッファに収まり、書き込みはブロックしない。
         // 書き込み後すぐ閉じてから出力を読み切る(avdmanager 側は追加の入力を待たないため安全)
         stdinPipe.fileHandleForWriting.write(Data("no\n".utf8))
         try? stdinPipe.fileHandleForWriting.close()
         let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
-        process.waitUntilExit()
+        waitForExit()
         guard process.terminationStatus == 0 else {
             let output = String(data: outputData, encoding: .utf8) ?? ""
             throw CreateDeviceError("avdmanager create avd に失敗しました: \(output)")
