@@ -51,7 +51,10 @@ public enum ScenarioReportWriter {
             if let screenshot = scene.failureScreenshot {
                 let imageName = "\(baseName)-scene\(scene.number).png"
                 screenshots.append((imageName, screenshot))
-                md += "\n### 失敗時のスクリーンショット\n\n![failure](\(imageName))\n"
+                // 縮小表示+クリックでフルサイズ(markdown プレビューはインライン HTML を描画する。
+                // ![...]() 直埋めだと端末縦解像度のまま表示され確認しづらい)
+                md += "\n### 失敗時のスクリーンショット(クリックでフルサイズ)\n\n"
+                md += "<a href=\"\(imageName)\"><img src=\"\(imageName)\" width=\"320\"/></a>\n"
             }
         }
 
