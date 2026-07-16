@@ -51,6 +51,9 @@ export function registerRunHandler(
   watcher: ScenarioFileWatcher,
   outputChannel: vscode.OutputChannel,
   eventBus: RunEventBus,
+  // GUI 実行(実行/デバッグ)が終わるたびに呼ぶ(reportCodeLens.ts の refresh 用。last-results が
+  // 変化し得るタイミング)。
+  onRunFinished?: () => void,
 ): void {
   const controller = testTree.controller;
 
@@ -68,6 +71,7 @@ export function registerRunHandler(
         token,
         dryRun,
         failedOnly,
+        onRunFinished,
       );
 
   // ftester.rerunFailedTests(testing/item/context)と「失敗のみ実行」プロファイルは同じ handler を
@@ -92,7 +96,8 @@ export function registerRunHandler(
     controller.createRunProfile(
       "デバッグ",
       vscode.TestRunProfileKind.Debug,
-      (request, token) => executeDebugRun(controller, workspaceRoot, getConfig, watcher, request, token),
+      (request, token) =>
+        executeDebugRun(controller, workspaceRoot, getConfig, watcher, request, token, onRunFinished),
       true,
     ),
     vscode.commands.registerCommand(
@@ -196,8 +201,9 @@ export function buildReportLinkMessage(scenarioId: string): vscode.TestMessage {
 
 async function openReport(reportPath: string): Promise<void> {
   try {
-    // markdown プレビューはレポート埋め込みの screenshot 画像リンクを描画できる。
-    await vscode.commands.executeCommand("markdown.showPreview", vscode.Uri.file(reportPath));
+    // markdown プレビューはレポート埋め込みの screenshot 画像リンクを描画できる。ToSide で
+    // CodeLens/失敗メッセージのあるエディタを隠さず横に開く。
+    await vscode.commands.executeCommand("markdown.showPreviewToSide", vscode.Uri.file(reportPath));
   } catch {
     await vscode.window.showTextDocument(vscode.Uri.file(reportPath));
   }
@@ -321,6 +327,7 @@ async function executeRun(
   token: vscode.CancellationToken,
   dryRun: boolean,
   failedOnly: boolean,
+  onRunFinished?: () => void,
 ): Promise<void> {
   const config = getConfig();
   let targets = resolveTargets(controller, request);
@@ -531,6 +538,7 @@ async function executeRun(
     const totalSeconds = ((Date.now() - runStartedAt) / 1000).toFixed(1);
     run.appendOutput(`\r\n⏱ トータル: ${totalSeconds}s\r\n`);
     run.end();
+    onRunFinished?.();
   }
 }
 
@@ -558,6 +566,7 @@ async function executeDebugRun(
   watcher: ScenarioFileWatcher,
   request: vscode.TestRunRequest,
   token: vscode.CancellationToken,
+  onRunFinished?: () => void,
 ): Promise<void> {
   const config = getConfig();
   const targets = resolveTargets(controller, request);
@@ -682,5 +691,6 @@ async function executeDebugRun(
     watcher.setSuspended(false);
     activeRunCount -= 1;
     run.end();
+    onRunFinished?.();
   }
 }
