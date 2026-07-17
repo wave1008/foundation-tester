@@ -321,6 +321,7 @@ select:disabled { opacity: 0.5; cursor: default; }
   margin-left: auto;
 }
 .badge-render {
+  flex: 0 0 auto; /* フッター右端に置く(tile-error の flex:1 が押し出す)。縮めない */
   font-size: 9px;
   padding: 0 4px;
   border-radius: 3px;

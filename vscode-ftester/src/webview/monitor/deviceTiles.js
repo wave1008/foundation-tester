@@ -96,7 +96,7 @@ function createTile(device) {
   const runningBadge = document.createElement('span');
   runningBadge.className = 'badge badge-running';
   runningBadge.textContent = '実行中';
-  header.append(name, renderBadge, runningBadge);
+  header.append(name, runningBadge);
 
   const frameWrap = document.createElement('div');
   frameWrap.className = 'frame-wrap';
@@ -110,7 +110,8 @@ function createTile(device) {
   stateBadge.className = 'tile-state';
   const error = document.createElement('span');
   error.className = 'tile-error';
-  footer.append(stateBadge, error);
+  // renderBadge はフッター末尾に置く。tile-error が flex:1 で伸びるため自動的に右端(=タイル右下)に寄る。
+  footer.append(stateBadge, error, renderBadge);
 
   tile.append(header, frameWrap, footer);
   grid.appendChild(tile);
@@ -226,7 +227,8 @@ function renderRenderBadge(entry) {
     entry.renderBadgeEl.style.display = 'none';
     return;
   }
-  entry.renderBadgeEl.style.display = '';
+  // 明示的に inline-block を入れる('' だと CSS の .badge-render{display:none} に戻り永久非表示になる)
+  entry.renderBadgeEl.style.display = 'inline-block';
   entry.renderBadgeEl.className = 'badge badge-render render-' + mode;
   entry.renderBadgeEl.textContent = mode === 'gpu' ? 'GPU' : 'CPU';
   entry.renderBadgeEl.title = mode === 'gpu' ? 'GPU描画(host)' : 'CPU描画(swiftshader・フォールバック)';
