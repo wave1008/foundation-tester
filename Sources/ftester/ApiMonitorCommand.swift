@@ -202,8 +202,13 @@ struct ApiMonitorCommand: AsyncParsableCommand {
 
             emitLine(ApiMonitorDevicesEvent(devices: states.map { state in
                 let confirmedIssues = state.androidSerial.map { healthDebounce.confirmed(serial: $0) } ?? []
+                let leaseKey = state.iosUdid ?? state.androidSerial
+                let inRun = leaseStateDir.flatMap { dir in
+                    leaseKey.map { RunLease.isFresh(stateDir: dir, key: $0) }
+                } ?? false
                 return state.info(health: confirmedIssues.isEmpty ? nil : confirmedIssues,
-                                   renderMode: state.androidSerial.flatMap { renderModeCache[$0] })
+                                   renderMode: state.androidSerial.flatMap { renderModeCache[$0] },
+                                   inRun: inRun)
             }))
 
             for state in states {
@@ -584,11 +589,12 @@ struct DeviceRuntimeState {
 
     /// fileprivate: 戻り値の型 ApiMonitorDeviceInfo がファイル限定の private 型のため
     /// (list-devices は同じ情報を ApiDeviceEntry として別途組み立てる)。
-    /// health・renderMode は monitor ループだけが知る状態のため引数で受け取る
-    fileprivate func info(health: [String]?, renderMode: String?) -> ApiMonitorDeviceInfo {
+    /// health・renderMode・inRun は monitor ループだけが知る状態のため引数で受け取る
+    fileprivate func info(health: [String]?, renderMode: String?, inRun: Bool) -> ApiMonitorDeviceInfo {
         ApiMonitorDeviceInfo(id: target.id, name: target.name,
                              platform: target.platform, state: state, detail: detail,
-                             udid: iosUdid, serial: androidSerial, health: health, renderMode: renderMode)
+                             udid: iosUdid, serial: androidSerial, health: health, renderMode: renderMode,
+                             inRun: inRun)
     }
 }
 
@@ -724,6 +730,9 @@ private struct ApiMonitorDeviceInfo: Encodable {
     /// AndroidHealthProbe.detectRenderMode で検出した実描画モード("gpu"=host/Metal、"cpu"=swiftshader)。
     /// connected な Android のみ。iOS・実機・未検出は nil
     let renderMode: String?
+    /// run-lease(RunLease.isFresh)が生存中なら true。ftester api run がこのデバイスを使用中の意味。
+    /// leaseStateDir 未解決時は常に false
+    let inRun: Bool
 }
 
 /// monitorFrame イベント: state == connected のデバイスのみ、スクリーンショットを添えて出す

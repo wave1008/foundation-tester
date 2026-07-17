@@ -133,10 +133,15 @@ struct ApiRunCommand: AsyncParsableCommand {
         // インストール)を先行構築する。build/list/selected の解決が途中で throw した場合、この
         // Task は待たずプロセスごと終了してよい: detach 起動されたブリッジ(xcodebuild/simctl)は
         // 常駐資産として残り次回再利用されるため無害
-        let workersTask: Task<[RunWorker], Error>?
+        // Android(serial 照合+インストール確認=数秒)と iOS(ブリッジ供給=壊れたブリッジの
+        // 置き換えで数十秒かかりうる)を分離する。Android は先行ワーカーとして即時実行を開始し、
+        // iOS は RunOrchestrator の lateWorkers として供給完了後に合流する(実測: 供給待ちで
+        // 全ワーカーの開始が 10s→81s に悪化した対策。2026-07-18)。
+        let androidWorkersTask: Task<[RunWorker], Error>?
+        var iosWorkersTask: Task<[RunWorker], Never>?
         if let resolvedProfile, !dryRun, debugOptions == nil {
             let resolved = resolvedProfile
-            workersTask = Task {
+            androidWorkersTask = Task {
                 let deviceList = resolved.devices
                     .map { "\($0.name)(\($0.platform))" }.joined(separator: ", ")
                 logStderr("🧩 プロファイル \(resolved.runName): \(resolved.appName) @ \(resolved.machineName)")
@@ -150,16 +155,35 @@ struct ApiRunCommand: AsyncParsableCommand {
                         status: { self.emitLine(ApiWipeStatusEvent(device: $0, phase: $1)) },
                         log: { logStderr($0) })
                 }
-                var workers = try await ProfileWorkerFactory.buildWorkers(
-                    resolved: resolved, repoRoot: try RepoRoot.find()) { logStderr($0) }
+                var workers = try ProfileWorkerFactory.buildAndroidWorkers(resolved: resolved)
                 workers = try await ProfileWorkerFactory.installIfNeeded(
                     apps: resolved.apps, workers: workers,
                     forceAndroidInstall: !wipedAndroid.isEmpty) { logStderr($0) }
-                logStderr("🚀 実行: \(workers.count) ワーカー(\(workers.map(\.label).joined(separator: " / ")))")
+                if !workers.isEmpty {
+                    logStderr("🚀 Android \(workers.count) ワーカーで開始(iOS はブリッジ供給完了後に合流)")
+                }
                 return workers
             }
+            if !resolved.iosDevices.isEmpty {
+                iosWorkersTask = Task {
+                    do {
+                        var workers = try await ProfileWorkerFactory.buildIOSWorkers(
+                            resolved: resolved, repoRoot: try RepoRoot.find()) { logStderr($0) }
+                        workers = (try? await ProfileWorkerFactory.installIfNeeded(
+                            apps: resolved.apps, workers: workers,
+                            forceAndroidInstall: false) { logStderr($0) }) ?? workers
+                        logStderr("🚀 iOS \(workers.count) ワーカーが合流")
+                        return workers
+                    } catch {
+                        // iOS 供給失敗は run 全体を落とさない(iOS シナリオはワーカー不在として
+                        // ドレインで失敗確定し、Android の結果は生きる)
+                        logStderr("❌ iOS ワーカー構築に失敗しました: \(error.localizedDescription)")
+                        return []
+                    }
+                }
+            }
         } else {
-            workersTask = nil
+            androidWorkersTask = nil
         }
 
         // ビルドはホスト側で 1 回だけ(サブプロセスは自らビルドしない)
@@ -194,10 +218,10 @@ struct ApiRunCommand: AsyncParsableCommand {
                     resolved: resolvedProfile, project: testProject, selected: selected,
                     debugOptions: debugOptions, recorder: recorder)
             } else {
-                let workers = try await workersTask!.value
+                let workers = try await androidWorkersTask!.value
                 outcome = try await runWithProfileParallel(
                     resolved: resolvedProfile, project: testProject, selected: selected,
-                    workers: workers, recorder: recorder)
+                    workers: workers, iosWorkersTask: iosWorkersTask, recorder: recorder)
             }
         } else {
             outcome = await runDirect(
@@ -205,7 +229,17 @@ struct ApiRunCommand: AsyncParsableCommand {
                 recorder: recorder)
         }
 
-        recorder?.finish(total: selected.count, passed: outcome.passed, failed: outcome.failed)
+        recorder?.finish(total: selected.count, passed: outcome.passed, failed: outcome.failed,
+                         degradedWorkers: outcome.degradedWorkers,
+                         freezeRetries: outcome.freezeRetries)
+        if !outcome.degradedWorkers.isEmpty {
+            logStderr("⚠️ 劣化・離脱したワーカー(\(outcome.degradedWorkers.count)):")
+            for entry in outcome.degradedWorkers { logStderr("   - \(entry)") }
+        }
+        if !outcome.freezeRetries.isEmpty {
+            logStderr("🔁 結果取り消し+振り直し(\(outcome.freezeRetries.count)):")
+            for entry in outcome.freezeRetries { logStderr("   - \(entry)") }
+        }
         emitLine(ApiRunFinishedEvent(passed: outcome.passed, failed: outcome.failed,
                                      testSeconds: outcome.testSeconds,
                                      scenarioTotalSeconds: outcome.scenarioTotalSeconds))
@@ -356,29 +390,85 @@ struct ApiRunCommand: AsyncParsableCommand {
     /// workers はビルドと並行して呼び出し側(run())が先行構築済みのもの
     private func runWithProfileParallel(
         resolved: ResolvedProfile, project: TestProject, selected: [ScenarioInfo],
-        workers: [RunWorker], recorder: RunRecorder?
+        workers: [RunWorker], iosWorkersTask: Task<[RunWorker], Never>?, recorder: RunRecorder?
     ) async throws -> RunOutcome {
+        let repoRoot = try RepoRoot.find()
         let effectiveHeal = heal ? true : resolved.heal
         let reportDirURL = reportDir.map { URL(fileURLWithPath: $0) } ?? resolved.reportDir
 
-        emitLine(ApiWorkersReadyEvent(workers: workersReadyInfo(workers)))
+        // workersReady はレーン構成の全置換(runLaneModel.applyWorkers が lanes.clear する)ため
+        // 1回だけ・全ワーカー分を宣言する。iOS はブリッジ供給前でも id("ios:論理名")が確定する
+        // ので、供給待ちを表す detail 付きのプレースホルダで先に載せる(port は表示のみの情報)。
+        var readyInfo = workersReadyInfo(workers)
+        if iosWorkersTask != nil {
+            readyInfo += resolved.iosDevices.map {
+                ApiWorkerInfo(id: "ios:\($0.name)", name: $0.name, platform: "ios",
+                              detail: "ブリッジ供給中...")
+            }
+        }
+        emitLine(ApiWorkersReadyEvent(workers: readyInfo))
 
-        // シナリオが platform 未指定のときの既定 platform(既存の runWithProfile と同じ方針)
-        let defaultPlatform = workers.contains { $0.platform == "ios" } ? "ios" : "android"
+        // シナリオが platform 未指定のときの既定 platform(既存の runWithProfile と同じ方針。
+        // iOS は遅延参加のため resolved 側で判定する)
+        let defaultPlatform = (!resolved.iosDevices.isEmpty
+            || workers.contains { $0.platform == "ios" }) ? "ios" : "android"
 
         let items = selected.map { ScenarioRunItem(info: $0) }
         // RunEvent の flowURL(scenario:// URL)→ 元の ScenarioInfo の逆引き。
         // RunEvent は scenario ID・title を毎回運んでくれないため、変換時にここから補う
         let itemByURL = Dictionary(uniqueKeysWithValues: items.map { ($0.url, $0) })
-        // RunEvent の worker(= RunWorker.label)→ workersReady と同じ id 文字列への変換表
-        let workerID = Dictionary(uniqueKeysWithValues: workers.map {
-            ($0.label, "\($0.platform):\($0.logicalName ?? $0.label)")
-        })
+        // RunEvent の worker(= RunWorker.label)→ workersReady と同じ id 文字列への変換表。
+        // iOS ワーカーは遅延参加(lateWorkers)で後から merge されるためロック付きの箱にする
+        let workerID = WorkerIDMap(workers)
+
+        // run-lease(.ftester/run-<key>.lease)。best-effort: リポジトリ外実行等で root が
+        // 取れない場合は書かない(monitor 側の inRun 判定が false になるだけで安全)
+        let leaseStateDir = (try? RepoRoot.find())?.appendingPathComponent(".ftester")
 
         let orchestrator = RunOrchestrator(
             project: project, workers: workers, healingEnabled: effectiveHeal,
             reportDir: reportDirURL, defaultTimeout: resolved.defaultTimeout,
-            scenarioTimeout: resolved.scenarioTimeout, recorder: recorder)
+            scenarioTimeout: resolved.scenarioTimeout, recorder: recorder,
+            isDeviceFrozen: { serial in
+                // 事後判定は isBlankObserved(窓内に一度でも blank)。isPersistentlyBlank だと
+                // 約25秒周期のフラッピングの回復側を引いて凍結を見逃す(実測 2026-07-18)
+                await AndroidHealthProbe.isBlankObserved(serial: serial)
+            },
+            isDeviceUnreachable: { serial in
+                // adb で state=device の一覧に居なければ消失(offline/未検出)。取得失敗時は誤って
+                // 振り直さないよう false(reachable 扱い)に倒す。
+                guard let serials = try? AndroidDeviceCatalog.connectedSerials() else { return false }
+                return !serials.contains(serial)
+            },
+            writeRunLease: { key in
+                guard let leaseStateDir else { return }
+                RunLease.write(stateDir: leaseStateDir, key: key, pid: ProcessInfo.processInfo.processIdentifier)
+            },
+            removeRunLease: { key in
+                guard let leaseStateDir else { return }
+                RunLease.remove(stateDir: leaseStateDir, key: key)
+            },
+            reviveWorker: { retired in
+                guard let name = retired.logicalName else { return nil }
+                let deadline = Date().addingTimeInterval(Self.REVIVE_TIMEOUT)
+                while Date() < deadline {
+                    if let w = await ProfileWorkerFactory.buildWorker(forLogicalName: name, resolved: resolved,
+                                                                       repoRoot: repoRoot, log: { logStderr($0) }) {
+                        let installed = (try? await ProfileWorkerFactory.installIfNeeded(
+                            apps: resolved.apps, workers: [w], forceAndroidInstall: false) { logStderr($0) }) ?? [w]
+                        return installed.first ?? w
+                    }
+                    try? await Task.sleep(nanoseconds: 5_000_000_000)
+                }
+                return nil
+            },
+            lateWorkers: iosWorkersTask.map { task in
+                (platforms: Set(["ios"]), provider: { @Sendable in
+                    let ws = await task.value
+                    workerID.merge(ws)
+                    return ws
+                })
+            })
         async let summary = orchestrator.run(items: items, defaultPlatform: defaultPlatform)
 
         var timing = ScenarioTimingTracker()
@@ -392,7 +482,9 @@ struct ApiRunCommand: AsyncParsableCommand {
         let result = await summary
         return RunOutcome(passed: result.passed, failed: result.failed,
                           testSeconds: timing.testSeconds,
-                          scenarioTotalSeconds: timing.scenarioTotalSeconds)
+                          scenarioTotalSeconds: timing.scenarioTotalSeconds,
+                          degradedWorkers: result.degradedWorkers,
+                          freezeRetries: result.freezeRetries)
     }
 
     /// workersReady の devices 配列を組み立てる(id 形式は ApiWorkersReadyEvent 参照)
@@ -424,7 +516,7 @@ struct ApiRunCommand: AsyncParsableCommand {
     /// - fixSuggestion に伴う合成 step(StepResult.synthetic == true)は次の .fixSuggestion で
     ///   kind:"fixSuggestion" として別途出すためここでは除外する
     private func ndjsonLines(
-        for event: RunEvent, itemByURL: [URL: ScenarioRunItem], workerID: [String: String]
+        for event: RunEvent, itemByURL: [URL: ScenarioRunItem], workerID: WorkerIDMap
     ) -> [String] {
         switch event {
         case .runStarted, .workerReady, .runFinished, .flowHealed, .flowPaused:
@@ -434,7 +526,7 @@ struct ApiRunCommand: AsyncParsableCommand {
 
         case .sceneStarted(let worker, let flowURL, let scene, let sceneTitle):
             var started = ScenarioEvent(kind: "sceneStarted")
-            started.worker = workerID[worker] ?? worker
+            started.worker = workerID.id(for: worker)
             started.scenario = itemByURL[flowURL]?.info.id
             started.scene = scene
             started.sceneTitle = sceneTitle
@@ -442,7 +534,7 @@ struct ApiRunCommand: AsyncParsableCommand {
 
         case .sceneFinished(let worker, let flowURL, let scene, let sceneTitle, let passed):
             var finished = ScenarioEvent(kind: "sceneFinished")
-            finished.worker = workerID[worker] ?? worker
+            finished.worker = workerID.id(for: worker)
             finished.scenario = itemByURL[flowURL]?.info.id
             finished.scene = scene
             finished.sceneTitle = sceneTitle
@@ -451,13 +543,31 @@ struct ApiRunCommand: AsyncParsableCommand {
 
         case .workerFailed(let worker, let message):
             var log = ScenarioEvent(kind: "log")
-            log.worker = workerID[worker] ?? worker
+            log.worker = workerID.id(for: worker)
             log.message = "❌ ワーカー \(log.worker ?? worker) が離脱しました: \(message)"
             return [log.encodedLine()]
 
+        case .workerLog(let worker, let message):
+            // ワーカー復帰の進行メッセージ。既存の "log" kind で流す(レーン/Test Explorer 出力に表示)
+            var log = ScenarioEvent(kind: "log")
+            log.worker = workerID.id(for: worker)
+            log.message = message
+            return [log.encodedLine()]
+
+        case .flowRequeued(let worker, let flowURL, let reason, let attempt, let limit):
+            // 振り直し通知。Test Explorer は該当項目を「待機中」アイコンへ戻す
+            // (契約: vscode-ftester/src/model.ts ScenarioRequeuedEvent / runReducer の "requeued")
+            guard let scenario = itemByURL[flowURL]?.info.id else { return [] }
+            guard let data = try? JSONEncoder().encode(ApiScenarioRequeuedEvent(
+                scenario: scenario, worker: workerID.id(for: worker),
+                reason: reason, attempt: attempt, limit: limit)),
+                let text = String(data: data, encoding: .utf8) else { return [] }
+            return [text]
+
+
         case .flowStarted(let worker, let flowURL, let flowName, _):
             var started = ScenarioEvent(kind: "scenarioStarted")
-            started.worker = workerID[worker] ?? worker
+            started.worker = workerID.id(for: worker)
             started.scenario = flowName
             started.title = itemByURL[flowURL]?.info.title
             return [started.encodedLine()]
@@ -467,7 +577,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             // .fixSuggestion で kind:"fixSuggestion" として出すため重複emitを避けて捨てる
             if result.synthetic { return [] }
 
-            let workerIDValue = workerID[worker] ?? worker
+            let workerIDValue = workerID.id(for: worker)
             let scenario = itemByURL[flowURL]?.info.id
             // index 0 は log イベント由来の情報行の目印(ScenarioRunner.runOne の case "log" 参照)
             if result.index == 0 {
@@ -513,7 +623,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         case .fixSuggestion(let worker, _, let scenarioID, let command, let file, let line,
                             let oldSelector, let newSelector, let message):
             var suggestion = ScenarioEvent(kind: "fixSuggestion")
-            suggestion.worker = workerID[worker] ?? worker
+            suggestion.worker = workerID.id(for: worker)
             suggestion.scenario = scenarioID
             suggestion.description = command
             suggestion.file = file
@@ -525,7 +635,7 @@ struct ApiRunCommand: AsyncParsableCommand {
 
         case .flowFinished(let worker, let flowURL, let passed, _, let reportURL):
             var finished = ScenarioEvent(kind: "scenarioFinished")
-            finished.worker = workerID[worker] ?? worker
+            finished.worker = workerID.id(for: worker)
             finished.scenario = itemByURL[flowURL]?.info.id
             finished.passed = passed
             finished.reportPath = reportURL?.path
@@ -593,6 +703,9 @@ struct ApiRunCommand: AsyncParsableCommand {
 
     private static let stdoutLock = NSLock()
 
+    /// ワーカー復帰待ちの上限。監視側の再起動やデバイス自己回復を待つ
+    private static let REVIVE_TIMEOUT: TimeInterval = 90
+
     private func logStderr(_ message: String) {
         FileHandle.standardError.write(Data((message + "\n").utf8))
     }
@@ -625,6 +738,16 @@ private struct ApiWipeStatusEvent: Encodable {
     let phase: String
 }
 
+/// 振り直し通知(RunEvent.flowRequeued)。契約の同期相手: vscode-ftester/src/model.ts ScenarioRequeuedEvent
+private struct ApiScenarioRequeuedEvent: Encodable {
+    let kind = "scenarioRequeued"
+    let scenario: String
+    let worker: String
+    let reason: String
+    let attempt: Int
+    let limit: Int
+}
+
 /// --profile 指定(ワーカー並列実行時)のみ、runStarted 直後に 1 回 emit するイベント。
 /// id は "<platform>:<デバイス論理名>"(ApiMonitorCommand.swift の monitorDevices の id と
 /// 同一規則。VSCode 拡張がモニタータイルと突合するため)
@@ -652,11 +775,43 @@ private struct ApiRunFinishedEvent: Encodable {
 }
 
 /// 実行の集計結果。testSeconds/scenarioTotalSeconds は ScenarioTimingTracker 参照
+/// RunEvent の worker(= RunWorker.label)→ workersReady と同じ id("platform:論理名")への変換表。
+/// iOS ワーカーが遅延参加(RunOrchestrator.lateWorkers)で後から加わるため、NSLock で保護した
+/// 可変 map にする(書き手=lateWorkers provider タスク、読み手=NDJSON 変換ループ)。
+final class WorkerIDMap: @unchecked Sendable {
+    private let lock = NSLock()
+    private var map: [String: String]
+
+    init(_ workers: [RunWorker]) {
+        map = Dictionary(uniqueKeysWithValues: workers.map {
+            ($0.label, "\($0.platform):\($0.logicalName ?? $0.label)")
+        })
+    }
+
+    func merge(_ workers: [RunWorker]) {
+        lock.lock()
+        defer { lock.unlock() }
+        for w in workers {
+            map[w.label] = "\(w.platform):\(w.logicalName ?? w.label)"
+        }
+    }
+
+    func id(for label: String) -> String {
+        lock.lock()
+        defer { lock.unlock() }
+        return map[label] ?? label
+    }
+}
+
 struct RunOutcome {
     var passed: Int
     var failed: Int
     var testSeconds: Double?
     var scenarioTotalSeconds: Double?
+    /// 実行中に劣化・離脱したワーカー(「label: 理由」)。並列経路のみ発生しうる。
+    var degradedWorkers: [String] = []
+    /// 結果取り消し+振り直しの監査記録(並列経路のみ)。
+    var freezeRetries: [String] = []
 }
 
 /// flowStarted〜flowFinished から testSeconds(最初の開始〜最後の完了)と

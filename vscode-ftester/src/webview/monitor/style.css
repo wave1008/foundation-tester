@@ -314,11 +314,24 @@ select:disabled { opacity: 0.5; cursor: default; }
 .tile-state.tile-status-warn {
   color: var(--vscode-editorWarning-foreground, #cca700);
 }
+/* シナリオ実行中バッジ。タイル左下(フッター先頭)。表示切替は laneLog.js/deviceTiles.js。 */
 .badge-running {
   background-color: var(--vscode-charts-blue, #0078d4);
   color: #ffffff;
   display: none;
-  margin-left: auto;
+  flex: 0 0 auto;
+  font-size: 9px;
+  margin-right: 4px;
+}
+/* ライフサイクルキュー待ち(起動待機/再起動待機)の明示チップ。タイル左下(フッター先頭)。
+   deviceTiles.js renderMeta が表示切替。 */
+.badge-queued {
+  background-color: var(--vscode-editorWarning-foreground, #cca700);
+  color: #1e1e1e;
+  display: none;
+  flex: 0 0 auto;
+  font-size: 9px;
+  margin-right: 4px;
 }
 .badge-render {
   flex: 0 0 auto; /* フッター右端に置く(tile-error の flex:1 が押し出す)。縮めない */
@@ -326,10 +339,6 @@ select:disabled { opacity: 0.5; cursor: default; }
   padding: 0 4px;
   border-radius: 3px;
   display: none;
-}
-.render-gpu {
-  background-color: var(--vscode-charts-green, #2f9e63);
-  color: #ffffff;
 }
 .render-cpu {
   background-color: var(--vscode-charts-orange, #cc6633);

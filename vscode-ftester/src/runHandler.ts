@@ -419,8 +419,15 @@ async function executeRun(
   watcher.setSuspended(true);
   activeRunCount += 1;
 
+  // finished は「現在 終端状態(passed/failed)にある」シナリオ。started で解除する:
+  // 振り直し(凍結/ブリッジ離脱→別デバイス再実行)は同一シナリオに scenarioStarted を再度出し
+  // VS Code の項目を「完了→再び実行中」へ戻すため、add-only だと最終状態を取りこぼす。
   const finished = new Set<string>();
+  // 各シナリオの直近の終端結果を再適用するクロージャ(reconcile で未終端項目を埋める)。
+  const reapplyTerminal = new Map<string, () => void>();
   let sawEnd = false;
+  // 異常終了・キャンセル時に未終端項目へ付けるメッセージ(正常終了時は undefined)。
+  let abnormalMessage: string | undefined;
   let reducerState = createRunReducerState();
   // workersReady(並列実行時のみ)で埋まる worker id → デバイス名。output のプレフィックスに使う。
   const workerNames = new Map<string, string>();
@@ -441,6 +448,8 @@ async function executeRun(
     switch (action.type) {
       case "started": {
         const item = targets.get(action.scenario);
+        // 振り直しで再開したシナリオは「実行中」へ戻す(最終結果は次の passed/failed で確定する)。
+        finished.delete(action.scenario);
         if (item) {
           run.started(item);
         }
@@ -456,7 +465,9 @@ async function executeRun(
         finished.add(action.scenario);
         const item = targets.get(action.scenario);
         if (item) {
-          run.passed(item, action.durationMs);
+          const durationMs = action.durationMs;
+          reapplyTerminal.set(action.scenario, () => run.passed(item, durationMs));
+          run.passed(item, durationMs);
         }
         break;
       }
@@ -476,7 +487,22 @@ async function executeRun(
               ?? (item.uri && item.range ? new vscode.Location(item.uri, item.range) : undefined);
             messages.push(link);
           }
-          run.failed(item, messages, action.durationMs);
+          const durationMs = action.durationMs;
+          reapplyTerminal.set(action.scenario, () => run.failed(item, messages, durationMs));
+          run.failed(item, messages, durationMs);
+        }
+        break;
+      }
+      case "requeued": {
+        // 振り直し: 前回の結果アイコン(✗ 等)のまま放置すると「全部終わっているのに run が
+        // 終わらない」ように見えるため、「待機中(enqueued)」へ戻す。再実行の started で実行中に遷移。
+        // 再実行されないまま run が終わった場合は reconcile が errored にする(直前の結果は取り消し
+        // 済みのため再適用しない)。
+        finished.delete(action.scenario);
+        reapplyTerminal.delete(action.scenario);
+        const item = targets.get(action.scenario);
+        if (item) {
+          run.enqueued(item);
         }
         break;
       }
@@ -527,13 +553,11 @@ async function executeRun(
 
     if (!sawEnd && result.exitCode !== 0) {
       // runFinished を受信しないまま(異常終了 / デバイス切断など)プロセスが終了した。
-      // まだ完了していない対象は errored にして、実行結果が不明のまま放置しないようにする
       const tail = stderrTail.length > 0 ? `\n--- stderr 末尾 ---\n${stderrTail.join("\n")}` : "";
-      const message = result.cancelled
+      abnormalMessage = result.cancelled
         ? "実行がキャンセルされました。"
         : `ftester プロセスが異常終了しました(exit code: ${String(result.exitCode)})。` +
           `出力パネル「ftester」を確認してください。${tail}`;
-      markRemainingErrored(run, targets, finished, message);
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -541,8 +565,29 @@ async function executeRun(
     void vscode.window.showWarningMessage(
       `ftester CLI の実行に失敗しました(${message})。出力パネル「ftester」を確認してください。`,
     );
-    markRemainingErrored(run, targets, finished, message);
+    abnormalMessage = message;
   } finally {
+    // 未終端(振り直しでイベントを取りこぼした・異常終了で結果未着)の項目を必ず終端化する。
+    // これをしないと VS Code の進捗が 70/75 のように途中で止まって見える。直近の終端結果が
+    // あれば再適用、無ければ errored にする(正常終了時も含めて常に実行)。
+    for (const [id, item] of targets) {
+      if (finished.has(id)) {
+        continue;
+      }
+      const reapply = reapplyTerminal.get(id);
+      if (reapply) {
+        reapply();
+      } else {
+        run.errored(
+          item,
+          new vscode.TestMessage(
+            abnormalMessage
+              ?? "実行結果イベントを受信できませんでした(振り直し等で欠落した可能性)。"
+                + "出力パネル「ftester」を確認してください。",
+          ),
+        );
+      }
+    }
     eventBus.endRun(runId);
     cancelListener.dispose();
     watcher.setSuspended(false);
@@ -559,19 +604,6 @@ async function executeRun(
     run.appendOutput(`\r\n${parts.join(" / ")}\r\n`);
     run.end();
     onRunFinished?.([...targets.keys()]);
-  }
-}
-
-function markRemainingErrored(
-  run: vscode.TestRun,
-  targets: Map<string, vscode.TestItem>,
-  finished: Set<string>,
-  message: string,
-): void {
-  for (const [id, item] of targets) {
-    if (!finished.has(id)) {
-      run.errored(item, new vscode.TestMessage(message));
-    }
   }
 }
 

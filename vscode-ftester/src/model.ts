@@ -68,7 +68,8 @@ export type RunEventKind =
   | "scenarioFinished"
   | "log"
   | "runFinished"
-  | "wipeStatus";
+  | "wipeStatus"
+  | "scenarioRequeued";
 
 const RUN_EVENT_KINDS: ReadonlySet<string> = new Set<RunEventKind>([
   "runStarted",
@@ -83,6 +84,7 @@ const RUN_EVENT_KINDS: ReadonlySet<string> = new Set<RunEventKind>([
   "log",
   "runFinished",
   "wipeStatus",
+  "scenarioRequeued",
 ]);
 
 /** 並列実行(`--profile` 指定時)のワーカー(デバイス)1台分の情報。 */
@@ -226,6 +228,20 @@ export interface WipeStatusEvent {
   phase: "stopping" | "rebooting" | "done" | "failed";
 }
 
+/**
+ * シナリオの結果を取り消して別デバイスへ振り直した(RunOrchestrator の discard+requeue)。
+ * Test Explorer は該当項目を「待機中(enqueued)」へ戻し、再実行の scenarioStarted で実行中に遷移する。
+ * 契約の同期相手: Sources/ftester/ApiRunCommand.swift ApiScenarioRequeuedEvent
+ */
+export interface ScenarioRequeuedEvent {
+  kind: "scenarioRequeued";
+  scenario: string;
+  worker?: string;
+  reason: string;
+  attempt: number;
+  limit: number;
+}
+
 /** NDJSON の1行分のイベント(kind で判別する共用体)。 */
 export type RunEvent =
   | RunStartedEvent
@@ -239,7 +255,8 @@ export type RunEvent =
   | ScenarioFinishedEvent
   | LogEvent
   | RunFinishedEvent
-  | WipeStatusEvent;
+  | WipeStatusEvent
+  | ScenarioRequeuedEvent;
 
 /**
  * unknown 値(NdjsonParser が JSON.parse しただけの値。cli.ts の onNdjsonValue 経由)が

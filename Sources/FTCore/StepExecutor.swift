@@ -135,6 +135,8 @@ public final class StepExecutor {
     public let fallbackDriver: AppDriver?
     public var delegate: ReplayDelegate?
     public var healingEnabled: Bool
+    /// 白フレーム確定時に呼ぶ。FTDriveCore が凍結中断+deviceFrozen emit を行う
+    public var onDeviceFrozen: (@Sendable () -> Void)?
 
     public init(driver: AppDriver, fallbackDriver: AppDriver? = nil,
                 delegate: ReplayDelegate? = nil, healingEnabled: Bool = false) {
@@ -459,7 +461,8 @@ public final class StepExecutor {
                     if !BlankFrameDetector.isUniformBlank(pngData: retry) { break }
                 }
                 if BlankFrameDetector.isUniformBlank(pngData: screenshot) {
-                    return .skipped("画面検証不可: 白フレーム(証跡無効)")
+                    onDeviceFrozen?()
+                    return .skipped("画面凍結(白フレーム)のため中断・別デバイスへ振り直し")
                 }
             }
             guard let verdict = await delegate.verifyScreen(expected: expected, screenshotPNG: screenshot) else {

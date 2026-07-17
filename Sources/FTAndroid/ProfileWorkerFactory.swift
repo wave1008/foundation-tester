@@ -15,50 +15,104 @@ public enum ProfileWorkerFactory {
 
     public static func buildWorkers(resolved: ResolvedProfile, repoRoot: URL,
                                     log: @escaping (String) -> Void) async throws -> [RunWorker] {
-        var workers: [RunWorker] = []
-
-        if !resolved.iosDevices.isEmpty {
-            let provisioner = BridgeProvisioner(repoRoot: repoRoot)
-            let iosApp = resolved.apps["ios"]
-            let provisioned = try await provisioner.provision(
-                devices: resolved.iosDevices.map { ($0.name, $0.spec) },
-                bundleID: iosApp?.bundleID,
-                preinstallAppPath: iosApp?.autoInstall == true ? iosApp?.appPath : nil,
-                log: log)
-            for device in provisioned {
-                // engine=inapp/hybrid のときサブプロセスは InAppDriver(+hybrid は SystemUIDriver
-                // フォールバック)を使う。ホスト warmup 用 driver は in-app ブリッジへの BridgeClient
-                // でよい(in-app も HTTP 応答するため)。
-                let engine = (device.engine == "inapp" || device.engine == "hybrid") ? device.engine : nil
-                // suspend された in-app アプリは /status が無応答になるため、注入先アプリの bundleID を
-                // 明示的に渡してサブプロセスの inapp/XCUITest ルーティングを確定させる(engine 有りのみ)
-                let inappBundleID = engine != nil ? iosApp?.bundleID : nil
-                workers.append(RunWorker(
-                    label: "\(device.name)(ios:\(device.port))", platform: "ios",
-                    driver: BridgeClient(port: device.port),
-                    connection: DriverConnection(platform: "ios", port: device.port,
-                                                 engine: engine, udid: device.udid,
-                                                 xcuiPort: device.xcuiPort,
-                                                 inappBundleID: inappBundleID,
-                                                 deviceName: device.name),
-                    logicalName: device.name))
-            }
-        }
-
-        for device in resolved.androidDevices {
-            let serial = try AndroidDeviceCatalog.resolveSerial(spec: device.spec)
-            let driver = try AndroidDriver(serial: serial)
-            workers.append(RunWorker(
-                label: "\(device.name)(android:\(serial))", platform: "android",
-                driver: driver,
-                connection: DriverConnection(platform: "android", serial: serial,
-                                             deviceName: device.name),
-                logicalName: device.name))
-        }
+        let workers = try await buildIOSWorkers(resolved: resolved, repoRoot: repoRoot, log: log)
+            + (try buildAndroidWorkers(resolved: resolved))
         guard !workers.isEmpty else {
             throw InstallError(message: "実行可能なワーカーがありません(全デバイスが離脱しました)")
         }
         return workers
+    }
+
+    /// iOS ワーカーのみ構築(ブリッジ供給込み=数十秒かかりうる)。Android と分離して呼べるのは
+    /// 「Android を iOS 供給の完了待ちにしない」ため(RunOrchestrator の lateWorkers 参照)。
+    public static func buildIOSWorkers(resolved: ResolvedProfile, repoRoot: URL,
+                                       log: @escaping (String) -> Void) async throws -> [RunWorker] {
+        guard !resolved.iosDevices.isEmpty else { return [] }
+        let provisioner = BridgeProvisioner(repoRoot: repoRoot)
+        let iosApp = resolved.apps["ios"]
+        let provisioned = try await provisioner.provision(
+            devices: resolved.iosDevices.map { ($0.name, $0.spec) },
+            bundleID: iosApp?.bundleID,
+            preinstallAppPath: iosApp?.autoInstall == true ? iosApp?.appPath : nil,
+            log: log)
+        return provisioned.map { makeIOSWorker(device: $0, iosApp: iosApp) }
+    }
+
+    /// Android ワーカーのみ構築(serial 照合+ドライバ生成のみ=数秒)。
+    public static func buildAndroidWorkers(resolved: ResolvedProfile) throws -> [RunWorker] {
+        try resolved.androidDevices.map { device in
+            let serial = try AndroidDeviceCatalog.resolveSerial(spec: device.spec)
+            let driver = try AndroidDriver(serial: serial)
+            return RunWorker(
+                label: "\(device.name)(android:\(serial))", platform: "android",
+                driver: driver,
+                connection: DriverConnection(platform: "android", serial: serial,
+                                             deviceName: device.name),
+                logicalName: device.name)
+        }
+    }
+
+    /// engine=inapp/hybrid のときサブプロセスは InAppDriver(+hybrid は SystemUIDriver フォールバック)を
+    /// 使う。ホスト warmup 用 driver は in-app ブリッジへの BridgeClient でよい(in-app も HTTP 応答する)。
+    /// suspend された in-app アプリは /status が無応答になるため、注入先アプリの bundleID を明示的に渡して
+    /// サブプロセスの inapp/XCUITest ルーティングを確定させる(engine 有りのみ)
+    private static func makeIOSWorker(device: ProvisionedIOSDevice, iosApp: ResolvedAppTarget?) -> RunWorker {
+        let engine = (device.engine == "inapp" || device.engine == "hybrid") ? device.engine : nil
+        let inappBundleID = engine != nil ? iosApp?.bundleID : nil
+        return RunWorker(
+            label: "\(device.name)(ios:\(device.port))", platform: "ios",
+            driver: BridgeClient(port: device.port),
+            connection: DriverConnection(platform: "ios", port: device.port,
+                                         engine: engine, udid: device.udid,
+                                         xcuiPort: device.xcuiPort,
+                                         inappBundleID: inappBundleID,
+                                         deviceName: device.name),
+            logicalName: device.name)
+    }
+
+    /// logicalName の1台だけを再供給する。到達不能・供給失敗は nil(throw しない)。
+    public static func buildWorker(forLogicalName name: String, resolved: ResolvedProfile,
+                                   repoRoot: URL, log: @escaping (String) -> Void) async -> RunWorker? {
+        if let device = resolved.iosDevices.first(where: { $0.name == name }) {
+            let provisioner = BridgeProvisioner(repoRoot: repoRoot)
+            let iosApp = resolved.apps["ios"]
+            // provision に 60s の期限を切る: ウェッジしたブリッジは接続を受けたまま応答せず、
+            // BridgeClient の既定 120s/リクエストに任せると復帰ポーリング1回が数分止まる
+            // (呼び出し側 reviveWorker の Date 期限は await 中は効かない)。キャンセルで確実に抜ける。
+            let provisioned = await withTaskGroup(of: [ProvisionedIOSDevice]?.self) { group in
+                group.addTask {
+                    try? await provisioner.provision(
+                        devices: [(device.name, device.spec)],
+                        bundleID: iosApp?.bundleID,
+                        preinstallAppPath: iosApp?.autoInstall == true ? iosApp?.appPath : nil,
+                        log: log)
+                }
+                group.addTask {
+                    try? await Task.sleep(nanoseconds: 60_000_000_000)
+                    return nil
+                }
+                let first = await group.next() ?? nil
+                group.cancelAll()
+                return first
+            }
+            guard let first = provisioned?.first else { return nil }
+            return makeIOSWorker(device: first, iosApp: iosApp)
+        }
+        if let device = resolved.androidDevices.first(where: { $0.name == name }) {
+            do {
+                let serial = try AndroidDeviceCatalog.resolveSerial(spec: device.spec)
+                let driver = try AndroidDriver(serial: serial)
+                return RunWorker(
+                    label: "\(device.name)(android:\(serial))", platform: "android",
+                    driver: driver,
+                    connection: DriverConnection(platform: "android", serial: serial,
+                                                 deviceName: device.name),
+                    logicalName: device.name)
+            } catch {
+                return nil
+            }
+        }
+        return nil
     }
 
     /// autoInstall の差分スキップ判定(iOS: バンドル深比較 / Android: APK md5)。

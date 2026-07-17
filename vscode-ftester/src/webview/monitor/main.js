@@ -85,6 +85,7 @@ window.addEventListener('message', (event) => {
       applyDeviceError(message);
       break;
     case 'bootBusy':
+      bulkUpActive = !!message.busy && message.bulkOp === 'up';
       setBusy(!!message.busy, message.bulkOp);
       break;
     case 'processDown':
@@ -191,7 +192,23 @@ window.addEventListener('message', (event) => {
   }
 });
 
-btnUp.addEventListener('click', () => vscode.postMessage({ type: 'devicesUp' }));
+// bulk up 実行中フラグ(bootBusy で更新)。true の間、btnUp は「デバイスの起動を中断」として動く
+// (ラベル切替は deviceTiles.js setBusy)。
+let bulkUpActive = false;
+
+btnUp.addEventListener('click', () => {
+  if (bulkUpActive) {
+    vscode.postMessage({ type: 'devicesUpCancel' });
+    return;
+  }
+  // CPU 描画フォールバック中(CPUバッジ)の Android は restartNames として渡し、未起動機のブートと
+  // 同一キュー(devices-up --restart。1ジョブ・2台ずつ並行)で down→up される。ジョブを分けないので
+  // 種別を問わず常に最大2台だけが起動処理中(受信側: monitorPanel.ts → monitorDeviceOps.bulkUpWithRestarts)。
+  const cpuNames = [...tiles.values()]
+    .filter((entry) => entry.device.platform === 'android' && entry.device.renderMode === 'cpu')
+    .map((entry) => entry.device.name);
+  vscode.postMessage({ type: 'devicesUp', restartNames: cpuNames });
+});
 btnDown.addEventListener('click', () => vscode.postMessage({ type: 'devicesDown' }));
 btnRestart.addEventListener('click', () => {
   hideBanner();
@@ -208,6 +225,11 @@ btnRestart.addEventListener('click', () => {
 // 選択タブの永続化(vscode.getState())から復元する。不正値・未設定は 'devices'。
 const initialTab = TAB_IDS.includes(persistedState.activeTab) ? persistedState.activeTab : 'devices';
 switchTab(initialTab);
+
+// 初回 monitorDevices が届くまで(monitor プロセス起動+初回スキャンで数秒かかる)、待機メッセージを
+// 表示する。.empty は CSS 既定 display:none で、これが無いと最初のイベントまでタイル領域が無言の空白に
+// なる(restartMonitor ハンドラと同じ既知・安全な出し方。applyDevices が実デバイス到着後に none へ戻す)。
+emptyMessage.style.display = 'flex';
 
 updateLaneVisibility();
 updateLanesPlaceholder();

@@ -154,6 +154,29 @@ final class RunResultsStoreTests: XCTestCase {
         XCTAssertFalse(meta?.machine.isEmpty ?? true)
     }
 
+    func testDiscardLastRemovesFileAndRewindsCounter() {
+        let recorder = RunRecorder.begin(project: project, profile: "default", trigger: "cli")
+        recorder.record(makeScenarioRecord(scenarioID: "Foo.bar", runID: "", passed: false))
+
+        let runDir = RunResultsStore.runDir(resultsDir: resultsDir, runID: recorder.runID)
+        let scenariosDir = runDir.appendingPathComponent("scenarios")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: scenariosDir.appendingPathComponent("Foo.bar.json").path))
+
+        recorder.discardLast(scenarioID: "Foo.bar")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: scenariosDir.appendingPathComponent("Foo.bar.json").path))
+
+        // 連番カウンタが巻き戻り、再実行の記録が base 名(サフィックス無し)で書かれる
+        recorder.record(makeScenarioRecord(scenarioID: "Foo.bar", runID: "", passed: true))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: scenariosDir.appendingPathComponent("Foo.bar.json").path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: scenariosDir.appendingPathComponent("Foo.bar~2.json").path))
+    }
+
+    func testDiscardLastOnUnrecordedScenarioIsNoop() {
+        let recorder = RunRecorder.begin(project: project, profile: "default", trigger: "cli")
+        recorder.discardLast(scenarioID: "Never.recorded")
+        // クラッシュ・例外を起こさないことのみ確認する
+    }
+
     func testRecordFillsRunIDMachineProfile() {
         let recorder = RunRecorder.begin(project: project, profile: "myProfile", trigger: "api")
         recorder.record(makeScenarioRecord(scenarioID: "Foo.bar", runID: "", passed: true))

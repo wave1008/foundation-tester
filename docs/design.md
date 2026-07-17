@@ -714,7 +714,9 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
   `health: ["wifi-disabled"|"clock-skew"|"blank-screen"]` で拡張へ伝搬
   (契約は `vscode-ftester/src/monitorModel.ts` 冒頭。拡張は未知の種別も再起動修復に倒す)
 - **watchdog**(`vscode-ftester/src/monitorHealthWatchdog.ts`): 異常種別ごとに修復ラダーが分かれる。
-  実行レーン稼働中・ライフサイクルキュー busy 中は保留。設定 `ftester.autoRepairDeviceHealth` は
+  ライフサイクルキュー busy 中は保留(起動/停止処理との競合回避)。テスト実行中は保留しない
+  (ユーザー決定 2026-07-17: 凍結は実行完了を待たず即修復。実行中の該当デバイスは再起動で落ちるが
+  凍結済みで証跡が撮れないため許容)。設定 `ftester.autoRepairDeviceHealth` は
   **既定 OFF**(autoRepairBridge と異なり、Wi-Fi をわざと切ったテスト環境を勝手に上書きしないため)。
   検出通知(タイルの警告バッジ)は設定 OFF でも出す。
   - **wifi-disabled 単独**: まず `adb shell cmd wifi set-wifi-enabled enabled`(軽量修復、クールダウン 120s)。
@@ -729,6 +731,121 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
   縮小スクショでも誤検知しない): テスト実行の失敗時証跡スクショ(`FTRuntime.handleFailure`、Android のみ)が
   白フレームなら最大3回撮り直し、それでも白ければ `evidenceBlank` を立ててレポートに警告表示。実行前は
   恒常白のデバイスをワーカーからディスパッチ除外(`ProfileRunner`、短時間の連続 probe でフラップと区別)
+- **実行中の凍結による結果取り消し+別デバイス再実行**(`RunOrchestrator.runWorker`。2026-07-17):
+  シナリオが失敗した直後にそのワーカーの Android デバイスを `isDeviceFrozen`(注入プローブ=
+  `AndroidHealthProbe.isPersistentlyBlank`。FTCore→FTAndroid は循環のため呼び出し側=ftester ターゲットが注入。
+  未注入時は常に false)で確認し、凍結していれば `RunRecorder.discardLast` で直前の記録を取り消し、
+  `ScenarioQueue.requeue`(上限 `MAX_FREEZE_RETRIES`=2。item を末尾へ戻す)で別ワーカーへ振り直す。
+  凍結ワーカーは `.workerFailed` を出してその実行から離脱する(残りの正常機で消化)。上限到達時は
+  `recordSkipped`+`failed` として確定。再実行の通知は新イベントを足さず既存の `.step`(synthetic)で行う。
+  monitor 側の自動 CPU フォールバック(§12.4)とは別プロセス・別機構(こちらは実行結果の振り直し)
+  - **凍結の検知契機は2つ**: (1) **スクショ時の明示シグナル**(即時・確実)= サブプロセスが白フレームを
+    確定した瞬間(`StepExecutor` の screenMatches 画面検証、および失敗時証跡の `evidenceBlank` 確定)に
+    `FTDriveCore.markDeviceFrozen` が `scenarioAborted` を立ててシナリオを打ち切り、NDJSON イベント
+    `deviceFrozen`(文字列 kind。`ScenarioHost.run`/`ScenarioRunnerMain`/`ApiRunCommand`/MCP は無改修で素通し)を
+    emit。ホストの `ScenarioRunner.runOne` がこれを検知して戻り値 `ScenarioOutcome.frozen` を返し、事後
+    プローブ無しで即振り直す。白フレームの screenMatches は従来 `.skipped`(検証されず継続=結果汚染)だったのを
+    この経路に変更。(2) **失敗後の事後プローブ**(上記の `isDeviceFrozen`)= タイムアウト/ハング等で
+    `deviceFrozen` を出さずに死んだ凍結を拾う保険。runOne は `.passed`/`.failed`/`.frozen` を返し、
+    runWorker は `.frozen` は即・`.failed` はプローブ確認で振り分ける。事後プローブは
+    `AndroidHealthProbe.isBlankObserved`(窓内=既定 4×2s に一度でも blank で凍結扱い)を使う —
+    `isPersistentlyBlank`(非 blank で即健全)だと約25秒周期のフラッピングの回復側を引いて見逃す
+    (実測 2026-07-18。isPersistentlyBlank は実行前の恒常白除外用として存続)
+  - **iOS はブリッジ接続不能も振り分け対象**(2026-07-18): ブリッジのウェッジ(シナリオ途中から全ステップ
+    「ドライバに接続できません」)は Android のプローブでは拾えず通常失敗になっていた(実測: 1ワーカーで
+    2件連鎖)。`.failed` 時に `/status` を2回(2s 間隔)確認し、両方失敗なら「ブリッジ接続不能」として
+    同じ discard+requeue+離脱へ。復帰(reviveWorker)は BridgeProvisioner.provision を通るため、
+    ウェッジしたブリッジの再供給も試みられる
+  - **Android は iOS ブリッジ供給の完了を待たず開始**(`RunOrchestrator.lateWorkers`。2026-07-18):
+    run 開始時のワーカー構築は iOS ブリッジ供給(壊れたブリッジの置き換え=数十秒)を含み、従来は
+    全ワーカーがその完了待ちだった(実測: 開始→最初のシナリオが 10s→81s に悪化)。対策として
+    ProfileWorkerFactory を buildAndroidWorkers(数秒)/buildIOSWorkers(供給込み)に分割し、
+    Android を初期ワーカーとして即時開始、iOS は lateWorkers(platforms 宣言+provider)として
+    供給完了後に task group へ合流する(group スコープ内の await は既存子タスクを止めない)。
+    workersReady はレーン構成の**全置換**(runLaneModel.applyWorkers)のため1回だけ・全ワーカー分を
+    宣言する(iOS は供給前でも id="ios:論理名" が確定。detail「ブリッジ供給中...」のプレースホルダ)。
+    label→id 変換は WorkerIDMap(NSLock)で iOS 合流時に merge。iOS 供給失敗は run を落とさず
+    iOS シナリオのみワーカー不在ドレインで失敗確定(Android の結果は生きる)。CLI(ProfileRunner)も同構成
+  - **iOS ブリッジの実行前プレフライトは不採用**(ユーザー決定 2026-07-18): ウェッジ機で
+    `scenarioTimeout`(90s)を失うのを実行前の status 確認で回避する試み。①「item を取ってから
+    5s×2 判定→振り直し+離脱」は 10台同時の AX スパイク(一過性の遅さ)で9台一斉離脱・freeze-retry
+    上限到達の失敗まで発生、②「取る前に 2s 即断・無応答中は取らずに回復待ち(60s)」も負荷時の
+    誤判定で品質が安定せず撤去。**ウェッジの検知は失敗後の事後チェック(bridgeUnreachable/
+    deviceUnreachable/deviceFrozen → 振り直し)のみで行う**(ウェッジ機の1件は 90s を失うが確実)。
+    再提案しないこと
+  - **withDeadline は「先着で確定・遅い方を待たない」レースにする**(2026-07-18): 当初 `withTaskGroup`+
+    `cancelAll` で実装したが、構造化並行はスコープ終端で全子タスクの完了を待つため、op(ウェッジ機への
+    `status`=URLSession)がキャンセルに即応しないと期限側が勝っても遅い方を待ち続け、**run 全体が5分以上
+    アイドル固着した実害**(全スレッドパーク・子プロセスもソケットも無いデッドロック)。対策として
+    `withCheckedContinuation`+`DeadlineGuard`(継続を一度だけ resume)で、先に終わった方で即確定し op が
+    ハングしても放置(URLSession の timeout で自然消滅)する。これで死活確認・プレフライト・warmup が
+    確実に期限内で返る
+  - **死活確認系の await は必ず短期限**(`RunOrchestrator.withDeadline`。2026-07-18): ウェッジしたブリッジは
+    **接続を受けたまま応答しない**ため、BridgeClient の既定 120s/リクエストに任せると status 確認・ウォームアップ・
+    復帰 provision が 120s×N 直列に積み重なり、全シナリオ記録済みなのに run が数分〜十数分終わらない
+    (実測: 8141/8142 への ESTABLISHED 固着で Test Explorer が 69/75 のまま停止)。対策: 死活確認は
+    withDeadline(タスクレース+cancelAll。URLSession await はキャンセルで解ける)で bridgeUnreachable=5s、
+    warmup status=10s・snapshot=15s、復帰 provision(ProfileWorkerFactory.buildWorker)=60s に制限
+  - **振り直しの監査記録(freezeRetries)**(2026-07-18): 成功した振り直しはシナリオ記録に痕跡を残さない
+    (discard 後に別ワーカーの pass で上書き)ため、`RunSummary.freezeRetries` に「シナリオ: 理由
+    (元ワーカー、試行 n/2 or 上限到達)」を集約し、run.json の `freezeRetries` に永続化+CLI 末尾に表示
+  - **ワーカー・サーキットブレーカ**(2026-07-18): 凍結/消失の個別プローブに当てはまらない不良(ブリッジの
+    ウェッジ・ANR 連発等)で死んだワーカーへシナリオを投げ続ける事故を防ぐ一般化。同一ワーカーで通常失敗が
+    `WORKER_FAILURE_CIRCUIT_THRESHOLD`(=3)連続したら原因不明でも離脱+現シナリオ振り直し(`.passed` で
+    カウンタリセット)。凍結/消失判定はこのブレーカの前段(既知の即離脱)、ブレーカは後段の保険
+  - **凍結だけでなく「実行中のデバイス消失」も振り分け対象**(2026-07-18): watchdog の実行中再起動や
+    エミュレータのクラッシュで adb からデバイスが消える(`device offline`→`not found`)と、runner の
+    固定ワーカーは以降のシナリオを全部即失敗させる(実測: 1台消失で11件連鎖失敗)。これを拾うため
+    `.failed` 時に `isDeviceUnreachable`(注入=`AndroidDeviceCatalog.connectedSerials` に serial が居ないか。
+    取得失敗時は誤振り分け回避で false)を **凍結プローブより先に**確認し、消失していれば同じ
+    discard+requeue+離脱へ流す(理由表示「デバイス消失(offline/未検出)」)。`isDeviceFrozen`/`isDeviceUnreachable`
+    の注入は `ProfileRunner`・`ApiRunCommand` の両並列経路で行う
+- **劣化ワーカーの可視化**(`RunSummary.degradedWorkers`。2026-07-18): 連鎖失敗が結果 JSON を掘るまで見えなかった
+  問題への観測性。RunOrchestrator が離脱(凍結/消失/連続失敗/接続不能)を `DegradedWorkerCollector` で集約し
+  `RunSummary.degradedWorkers`(「label: 理由」)に載せる。`RunRecorder.finish` 経由で run.json の `degradedWorkers`
+  に永続化(空は nil 省略)し、CLI(ProfileRunner の print / ApiRunCommand の logStderr)にも末尾サマリを出す
+- **動的ワーカープール(復帰デバイスの再参加)**(`RunOrchestrator.superviseWorker`。2026-07-18): 従来ワーカー集合は
+  実行開始時固定で、離脱したデバイスは監視側が再起動しても同一実行に戻れなかった(構造的限界)。`runWorker` の戻り値を
+  `WorkerExit{completed/retired}` にし、離脱時は `superviseWorker` が同じタスクスロット内で `reviveWorker`(注入クロージャ=
+  ftester 側が `ProfileWorkerFactory.buildWorker(forLogicalName:)` を `REVIVE_TIMEOUT`=90s・5s 間隔でポーリング+アプリ再導入)を
+  呼び、復帰できたら新ワーカーでキュー消化を再開。`MAX_WORKER_REVIVES`=2・`ScenarioQueue.hasItems()` ガードで暴走と
+  無駄な再供給を防ぐ。動的タスク追加はせず withTaskGroup 構造は不変(=安全)。FTCore→FTAndroid 循環回避のため
+  再供給は注入(既存 isDeviceFrozen 等と同じ)。**注**: 実行開始時の接続失敗も retired 扱いのため、開始時から不在の
+  デバイスは最大 MAX_WORKER_REVIVES×REVIVE_TIMEOUT 分ポーリングする(他ワーカーと並行なので run はブロックしない)
+- **個別デバイス操作の2台並行**(`monitorModel.ts` スケジューラ化。2026-07-18): 右クリック起動/停止の
+  ライフサイクルキューを完全直列から「running(実行中)+jobs(FIFO 待機列)」のスケジューラに変更。
+  device ジョブは `DEVICE_LIFECYCLE_MAX_CONCURRENT`(=2)まで同時実行、bulk/restartBatch は単独占有
+  (内部で2台並行するため重ねると全体上限2を超える)。追い越しはしない(先頭が開始できない間は後続も
+  待つ=投入順保証)。同一デバイス名のジョブは同時に実行しない(enqueueRestart の down→up ペアの逐次性)。
+  かつての完全直列の根拠(並行 provision の waitUntilReady 失敗・ゾンビブリッジ)は ProvisionLock が
+  供給を直列化する現在は解消済み。down 系の monitor pause は参照カウント化
+  (`MonitorDeviceOps.monitorPauseDepth`。0→1 で pause、1→0 で resume)
+- **デバイス再起動命令のロバスト化**(`MonitorDeviceOps.runDeviceOpAttempt`。2026-07-18): 再起動(`enqueueRestart`
+  の down→up)の **up が失敗するとデバイスが下がったまま放置**され、watchdog も offline を blank-screen として
+  拾えず二度と復旧しなかった。対策として up 失敗時は `deviceUpMaxRetries`(=2、`deviceUpRetryDelayMs`=3s 間隔)
+  まで再試行してからキューを進める(down は再試行しない)。試行の終端は `settle(failed)` に集約し、
+  ジョブ単位の `finishOnce` で `finishLifecycleQueueHead` を1回だけ呼ぶ
+- **GPU 再起動と一括起動の単一キュー統合(`devices-up --restart`)**(2026-07-18): 本質要件は
+  「操作種別を問わず**同時2台まで**」(2台同時でホスト CPU がほぼ飽和するため)。ジョブを分けると
+  ジョブ境界がバリアになり並行枠が遊ぶ(例: CPU 機3台の再起動の端数1台の間、未起動機が待つ)。
+  そこで「全て起動」は `devicesUp{restartNames}` 1メッセージ→ bulk up 1ジョブ→
+  `ftester api devices-up --restart A --restart B` とし、**DeviceBooter.bootAll の単一キュー**に
+  再起動アイテム(先頭。起動済みでもスキップせず shutdownOne→bootOne[host GPU])と通常ブート
+  アイテム(restart 対象は除外=同一機の二重処理防止)を混載、既存の2ワーカーが消化する。
+  NDJSON に `deviceStopping`(--restart 機の down 開始)を追加(検証: monitorModel.ts
+  `isDevicesUpEvent`。受信時にそのデバイスだけ stopDeviceStreams)。cpuRenderNames の解除は
+  `MonitorDeviceOps.bulkUpWithRestarts`。右クリック単発「GPUで再起動」は従来どおり
+  `restartBatch` ジョブ(`ftester api devices-restart`、`isDevicesRestartEvent`)を使う
+
+- **監視と実行の協調(run-lease)**(2026-07-18): monitor(watchdog)と run は別プロセスで無協調のため、
+  watchdog が実行中デバイスに破壊的再起動をかけて run のワーカーを壊していた。対策として run→monitor 方向の
+  lease を追加(`Sources/FTBridgeClient/RunLease.swift`=`MonitorLease` と対。`run-<key>.lease`)。`ftester api run`
+  (RunOrchestrator)がワーカー担当デバイス(serial/udid)へ 5s ハートビートで write、離脱・完了時に remove
+  (FTCore→FTBridgeClient は循環のため `writeRunLease`/`removeRunLease` クロージャ注入。`RunLeaseKeys` actor で
+  管理)。`ftester api monitor` が `RunLease.isFresh` を読んでデバイスイベントに `inRun` を載せ、拡張の
+  `monitorHealthWatchdog` が **clock-skew 等の host 再起動分岐のみ inRun 中は保留**(restartAttempts/cooldown を
+  動かさず見送る)。**blank-screen(CPU フォールバック再起動)と wifi 修復は inRun でも実行**(凍結はデータ汚染で
+  即対応が要件、wifi は非破壊)。凍結で run のワーカーが壊れる分は §12.4 の requeue が回復する
 
 ## 13. 実行の相乗りガードと launch 事前検査(2026-07-16)
 

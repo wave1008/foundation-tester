@@ -1,7 +1,7 @@
 // ScenarioEvent.swift
 // ftester-scenarios(サブプロセス)とホスト(CLI/MCP)の間で交わす NDJSON イベントの DTO。
 // Foundation 以外に依存しないこと(ホスト側の軽量パースを保つ)。
-// kind: scenarioStarted / sceneStarted / step / sceneFinished / fixSuggestion / scenarioFinished / log
+// kind: scenarioStarted / sceneStarted / step / sceneFinished / fixSuggestion / scenarioFinished / log / deviceFrozen
 // step は tap/exist 等 1 操作の結果(既存 StepResult と同語彙)。
 
 import Foundation

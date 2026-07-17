@@ -38,7 +38,9 @@ public enum DeviceBooter {
         machine: MachineProfile,
         repoRoot: URL? = nil,
         maxConcurrent: Int = 2,
+        restartNames: Set<String> = [],
         log: @escaping @Sendable (String) -> Void,
+        deviceStopping: @escaping @Sendable (String, String) -> Void = { _, _ in },
         deviceStarting: @escaping @Sendable (String, String) -> Void = { _, _ in },
         deviceFinished: @escaping @Sendable (String, String) -> Void = { _, _ in }
     ) async {
@@ -47,13 +49,25 @@ public enum DeviceBooter {
         // vscode-ftester/src/monitorModel.ts sortMonitorDevices「ios→android・各内は name 順」。
         // プロファイル JSON の配列順は name 順とは限らず、放置すると左→右と起動順がずれる)。
         // localizedCompare で JS localeCompare 相当。
+        //
+        // restartNames: 強制再起動(down→up)するデバイス論理名(CPU 描画フォールバック機の GPU 復帰用)。
+        // 同一キューの先頭に置き、通常ブート項目からは除外する(同じデバイスを2ワーカーが同時に
+        // 触る競合を防ぐ)。ジョブを分けず1キューに混載することで、種別を問わず常に最大
+        // maxConcurrent 台だけが起動処理中になる(再起動の端数で並行枠が遊ばない)。
+        let restartItems = ((machine.ios?.devices ?? []).map { ($0, "ios") }
+            + (machine.android?.devices ?? []).map { ($0, "android") })
+            .filter { restartNames.contains($0.0.name) }
+            .sorted { $0.0.name.localizedCompare($1.0.name) == .orderedAscending }
+            .map { BootItem(spec: $0.0, platform: $0.1, restart: true) }
         let iosItems = (machine.ios?.devices ?? [])
+            .filter { !restartNames.contains($0.name) }
             .sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
-            .map { BootItem(spec: $0, platform: "ios") }
+            .map { BootItem(spec: $0, platform: "ios", restart: false) }
         let androidItems = (machine.android?.devices ?? [])
+            .filter { !restartNames.contains($0.name) }
             .sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
-            .map { BootItem(spec: $0, platform: "android") }
-        let items = iosItems + androidItems
+            .map { BootItem(spec: $0, platform: "android", restart: false) }
+        let items = restartItems + iosItems + androidItems
         guard !items.isEmpty else { return }
 
         let queue = BootQueue(items)
@@ -62,7 +76,8 @@ public enum DeviceBooter {
                 group.addTask {
                     while let item = await queue.next() {
                         await bootItem(item, repoRoot: repoRoot,
-                                       log: log, deviceStarting: deviceStarting,
+                                       log: log, deviceStopping: deviceStopping,
+                                       deviceStarting: deviceStarting,
                                        deviceFinished: deviceFinished)
                     }
                 }
@@ -73,6 +88,7 @@ public enum DeviceBooter {
     private struct BootItem: Sendable {
         let spec: DeviceSpec
         let platform: String
+        let restart: Bool
     }
 
     private actor BootQueue {
@@ -82,19 +98,28 @@ public enum DeviceBooter {
     }
 
     /// 1 デバイス分の起動処理(ブート → iOS はブリッジ供給まで完結)。deviceFinished は
-    /// 成否問わず末尾で必ず呼ぶ
+    /// 成否問わず末尾で必ず呼ぶ。restart 項目は起動済みでもスキップせず down→up する
+    /// (GPU モードは起動時固定のため、CPU 描画からの復帰は再起動でしか行えない)
     private static func bootItem(
         _ item: BootItem, repoRoot: URL?,
         log: @escaping @Sendable (String) -> Void,
+        deviceStopping: @escaping @Sendable (String, String) -> Void,
         deviceStarting: @escaping @Sendable (String, String) -> Void,
         deviceFinished: @escaping @Sendable (String, String) -> Void
     ) async {
         let spec = item.spec
-        deviceStarting(spec.name, item.platform)
         do {
-            if let running = runningDescription(spec: spec, platform: item.platform) {
+            if item.restart {
+                deviceStopping(spec.name, item.platform)
+                try await shutdownOne(spec: spec, platform: item.platform,
+                                      repoRoot: item.platform == "ios" ? repoRoot : nil, log: log)
+                deviceStarting(spec.name, item.platform)
+                try await bootOne(spec: spec, platform: item.platform, log: log)
+            } else if let running = runningDescription(spec: spec, platform: item.platform) {
+                deviceStarting(spec.name, item.platform)
                 log("✔ \(spec.name): 起動済み(\(running))")
             } else {
+                deviceStarting(spec.name, item.platform)
                 try await bootOne(spec: spec, platform: item.platform, log: log)
             }
             if item.platform == "ios", let repoRoot {

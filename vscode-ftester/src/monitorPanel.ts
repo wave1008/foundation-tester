@@ -225,7 +225,6 @@ class MonitorPanelController implements vscode.Disposable {
       },
       restartStream: (name) => this.deviceStream.restartForDeviceName(name),
       isAutoRepairEnabled: () => this.getConfig().autoRepairDeviceHealth,
-      isAnyRunActive: () => isAnyLaneRunning(this.laneState),
       isDeviceLifecycleQueueBusy: () => this.deviceOps.isQueueBusy(),
     });
     this.live = new MonitorLiveController(this.deps, cli, () => void testTree.refresh());
@@ -419,7 +418,10 @@ class MonitorPanelController implements vscode.Disposable {
         this.sendInitialState();
         break;
       case "devicesUp":
-        this.deviceOps.enqueueLifecycleJob({ kind: "bulk", op: "up" });
+        this.deviceOps.bulkUpWithRestarts(message.restartNames ?? []);
+        break;
+      case "devicesUpCancel":
+        this.deviceOps.cancelBulkUp();
         break;
       case "devicesDown":
         this.deviceOps.enqueueLifecycleJob({ kind: "bulk", op: "down" });
@@ -433,6 +435,12 @@ class MonitorPanelController implements vscode.Disposable {
         break;
       case "deviceOp":
         this.deviceOps.enqueueLifecycleJob({ kind: "device", name: message.name, op: message.op });
+        break;
+      case "deviceRestartGpu":
+        this.deviceOps.restartWithGpu(message.name);
+        break;
+      case "devicesRestartGpu":
+        this.deviceOps.restartWithGpuBatch(message.names);
         break;
       case "selectProfile":
         this.profiles.selectProfile(message.profile);

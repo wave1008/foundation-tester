@@ -28,6 +28,8 @@ export type RunAction =
   | { type: "passed"; scenario: string; durationMs: number }
   | { type: "failed"; scenario: string; messages: RunFailureMessage[]; durationMs: number }
   | { type: "end"; passed: number; failed: number }
+  /** 振り直し(scenarioRequeued): 項目を「待機中」へ戻す(runHandler が run.enqueued を呼ぶ)。 */
+  | { type: "requeued"; scenario: string }
   /** workersReady から発生(--profile 並列実行時のみ)。 */
   | { type: "workers"; workers: WorkerInfo[] };
 
@@ -168,6 +170,18 @@ function actionsFor(state: RunReducerState, event: RunEvent, nowMs: number): Run
     case "wipeStatus":
       // デバイスタイルのバッジ表示(monitorPanel.ts)専用。Test Explorer 出力には出さない。
       return [];
+
+    case "scenarioRequeued":
+      return [
+        {
+          type: "output",
+          scenario: event.scenario,
+          text: `  🔁 ${event.reason}のため別デバイスで再実行します(${String(event.attempt)}/${String(event.limit)})`,
+          worker: event.worker,
+        },
+        { type: "requeued", scenario: event.scenario },
+      ];
+
   }
 }
 

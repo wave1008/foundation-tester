@@ -416,3 +416,16 @@ function runMockThroughPipeline(mockArgs) {
     });
   });
 }
+
+test("scenarioRequeued は出力行と requeued アクション(待機中へ戻す)を発生させる", () => {
+  const state = createRunReducerState();
+  const r = reduceRunEvent(state, {
+    kind: "scenarioRequeued", scenario: "Foo.S0010", worker: "ios:シム1",
+    reason: "ブリッジ接続不能", attempt: 1, limit: 2,
+  }, 0);
+  assert.equal(r.actions.length, 2);
+  assert.equal(r.actions[0].type, "output");
+  assert.ok(r.actions[0].text.includes("🔁"));
+  assert.ok(r.actions[0].text.includes("(1/2)"));
+  assert.deepEqual(r.actions[1], { type: "requeued", scenario: "Foo.S0010" });
+});

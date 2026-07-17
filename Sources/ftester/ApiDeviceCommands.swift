@@ -66,6 +66,10 @@ struct ApiDevicesUp: AsyncParsableCommand {
     @Flag(name: .customLong("no-bridge"), help: "iOS ブリッジの供給を行わない")
     var noBridge = false
 
+    @Option(name: .customLong("restart"), parsing: .upToNextOption,
+            help: "起動済みでもスキップせず down→up で再起動するデバイス論理名(CPU 描画フォールバック機の GPU 復帰用。複数指定可。未起動機のブートと同一キューで2台ずつ並行処理される)")
+    var restart: [String] = []
+
     func run() async throws {
         setvbuf(stdout, nil, _IOLBF, 0)
         do {
@@ -74,11 +78,16 @@ struct ApiDevicesUp: AsyncParsableCommand {
                 noteAutoMachine: { Self.logStderr($0) },
                 warn: { Self.logStderr($0) })
             let repoRoot = noBridge ? nil : try RepoRoot.find()
-            // deviceStarting/deviceFinished は bootAll のワーカータスクから並行に呼ばれるため、
-            // emit(ApiDeviceEventEmitter 経由)でロックして直列化する
+            // deviceStopping/deviceStarting/deviceFinished は bootAll のワーカータスクから並行に
+            // 呼ばれるため、emit(ApiDeviceEventEmitter 経由)でロックして直列化する
             await DeviceBooter.bootAll(
                 machine: machineProfile, repoRoot: repoRoot,
+                restartNames: Set(restart),
                 log: { message in ApiDeviceEventEmitter.emit(ApiDeviceLogEvent(message: message)) },
+                deviceStopping: { name, platform in
+                    ApiDeviceEventEmitter.emit(
+                        ApiDevicesUpLifecycleEvent(kind: "deviceStopping", name: name, platform: platform))
+                },
                 deviceStarting: { name, platform in
                     ApiDeviceEventEmitter.emit(
                         ApiDevicesUpLifecycleEvent(kind: "deviceStarting", name: name, platform: platform))
@@ -92,6 +101,104 @@ struct ApiDevicesUp: AsyncParsableCommand {
             ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent(ok: false, error: error.localizedDescription))
             throw ExitCode(1)
         }
+    }
+
+    private static func logStderr(_ message: String) {
+        FileHandle.standardError.write(Data((message + "\n").utf8))
+    }
+}
+
+struct ApiDevicesRestart: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "devices-restart",
+        abstract: "指定した複数デバイスを down→up で再起動する(2台ずつ並行。NDJSON: "
+            + "log/deviceStopping/deviceStarting/deviceFinished → finished を stdout に出力。"
+            + "診断は stderr のみ。ok:false のときは exit code 1)")
+
+    @Option(name: .customLong("name"), parsing: .upToNextOption,
+            help: "再起動するデバイスの論理名(マシンプロファイルの ios/android どちらか。複数指定可)")
+    var name: [String] = []
+
+    @Option(help: "テストプロジェクト名(省略時: Projects/ が 1 つならそれ / 既定プロジェクト)")
+    var project: String?
+
+    @Option(help: "実行プロファイル名(指定時はそのプロファイルが参照するデバイスのみ対象)")
+    var profile: String?
+
+    func run() async throws {
+        setvbuf(stdout, nil, _IOLBF, 0)
+        guard !name.isEmpty else {
+            throw ValidationError("--name を1つ以上指定してください")
+        }
+        do {
+            let machineProfile = try MachineProfileLoad.load(
+                project: project, profile: profile,
+                noteAutoMachine: { Self.logStderr($0) },
+                warn: { Self.logStderr($0) })
+
+            var items: [RestartItem] = []
+            for deviceName in name {
+                guard let found = ApiDeviceOperation.findDevice(name: deviceName, in: machineProfile) else {
+                    ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent(
+                        ok: false, error: "デバイスが見つかりません: \(deviceName)"))
+                    throw ExitCode(1)
+                }
+                items.append(RestartItem(spec: found.spec, platform: found.platform))
+            }
+
+            let repoRoot = try? RepoRoot.find()
+            let queue = RestartQueue(items)
+            await withTaskGroup(of: Void.self) { group in
+                for _ in 0..<min(2, items.count) {
+                    group.addTask {
+                        while let item = await queue.next() {
+                            await Self.restartOne(item, repoRoot: repoRoot)
+                        }
+                    }
+                }
+            }
+            ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent(ok: true, error: nil))
+        } catch let exitCode as ExitCode {
+            throw exitCode
+        } catch {
+            ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent(ok: false, error: error.localizedDescription))
+            throw ExitCode(1)
+        }
+    }
+
+    /// 1 台分の down→up。shutdownOne/bootOne いずれかが失敗しても deviceFinished は必ず送出する
+    /// (呼び出し側 VSCode 拡張の再スキャン契約。ApiDevicesUp の deviceFinished 契約と同じ)
+    private static func restartOne(_ item: RestartItem, repoRoot: URL?) async {
+        let spec = item.spec
+        let platform = item.platform
+        let log: @Sendable (String) -> Void = { message in
+            ApiDeviceEventEmitter.emit(ApiDeviceLogEvent(message: message))
+        }
+        ApiDeviceEventEmitter.emit(
+            ApiDevicesUpLifecycleEvent(kind: "deviceStopping", name: spec.name, platform: platform))
+        do {
+            try await DeviceBooter.shutdownOne(
+                spec: spec, platform: platform,
+                repoRoot: platform == "ios" ? repoRoot : nil, log: log)
+            ApiDeviceEventEmitter.emit(
+                ApiDevicesUpLifecycleEvent(kind: "deviceStarting", name: spec.name, platform: platform))
+            try await DeviceBooter.bootOne(spec: spec, platform: platform, log: log)
+        } catch {
+            log("❌ \(spec.name): \(error.localizedDescription)")
+        }
+        ApiDeviceEventEmitter.emit(
+            ApiDevicesUpLifecycleEvent(kind: "deviceFinished", name: spec.name, platform: platform))
+    }
+
+    private struct RestartItem: Sendable {
+        let spec: DeviceSpec
+        let platform: String
+    }
+
+    private actor RestartQueue {
+        private var items: [RestartItem]
+        init(_ items: [RestartItem]) { self.items = items }
+        func next() -> RestartItem? { items.isEmpty ? nil : items.removeFirst() }
     }
 
     private static func logStderr(_ message: String) {
@@ -175,8 +282,8 @@ private enum ApiDeviceOperation {
         }
     }
 
-    /// --name をマシンプロファイルの ios/android 両方から検索する
-    private static func findDevice(
+    /// --name をマシンプロファイルの ios/android 両方から検索する(ApiDevicesRestart も利用するため fileprivate)
+    fileprivate static func findDevice(
         name: String, in machine: MachineProfile
     ) -> (spec: DeviceSpec, platform: String)? {
         if let spec = (machine.ios?.devices ?? []).first(where: { $0.name == name }) {
@@ -225,6 +332,7 @@ private struct ApiDeviceLogEvent: Encodable {
 }
 
 /// devices-up の per-device 進捗(kind: "deviceStarting" / "deviceFinished")。
+/// devices-restart も同型を使い、加えて kind: "deviceStopping" を送出する。
 /// 消費側: vscode-ftester/src/monitorModel.ts isDevicesUpEvent(契約の同期相手)
 private struct ApiDevicesUpLifecycleEvent: Encodable {
     let kind: String

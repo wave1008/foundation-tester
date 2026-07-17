@@ -28,8 +28,6 @@ export interface MonitorHealthWatchdogDeps {
   restartStream(name: string): boolean;
   /** 設定 ftester.autoRepairDeviceHealth の現在値。 */
   isAutoRepairEnabled(): boolean;
-  /** 実行中のレーンが1つでもあるか(runLaneModel.isAnyLaneRunning への委譲)。 */
-  isAnyRunActive(): boolean;
   /** デバイスライフサイクルキューが busy か(MonitorDeviceOps.isQueueBusy への委譲)。 */
   isDeviceLifecycleQueueBusy(): boolean;
   /** テスト用の時刻注入。省略時 Date.now(拡張ホスト側の実運用ではこちらを使う)。 */
@@ -104,7 +102,7 @@ export class MonitorHealthWatchdog {
 
   observe(devices: readonly MonitorDevice[]): void {
     for (const device of devices) {
-      this.observeOne(device.name, device.state, device.health, device.serial);
+      this.observeOne(device.name, device.state, device.health, device.serial, device.inRun);
     }
   }
 
@@ -113,6 +111,7 @@ export class MonitorHealthWatchdog {
     state: MonitorDeviceState,
     health: readonly string[] | undefined,
     serial: string | undefined,
+    inRun: boolean | undefined,
   ): void {
     if (state !== "connected") {
       // 自動再起動中は offline/booted を経由するので、エントリを消してはいけない(failed 等の
@@ -161,7 +160,11 @@ export class MonitorHealthWatchdog {
     if (this.now() < entry.cooldownUntil) {
       return;
     }
-    if (!this.deps.isAutoRepairEnabled() || this.deps.isAnyRunActive() || this.deps.isDeviceLifecycleQueueBusy()) {
+    // テスト実行中でも保留しない(ユーザー決定 2026-07-17): 画面凍結は a11y が生きたまま画面だけ死ぬ
+    // 症状で、実行完了を待つとその間ずっとフリーズ表示のまま。実行中の該当デバイスは再起動で落ちるが、
+    // 凍結済み=どのみち証跡が撮れないため許容する。lifecycle キュー busy は起動/停止処理との競合を
+    // 避けるため引き続き保留する。
+    if (!this.deps.isAutoRepairEnabled() || this.deps.isDeviceLifecycleQueueBusy()) {
       return;
     }
 
@@ -212,6 +215,13 @@ export class MonitorHealthWatchdog {
       entry.failed = true;
       this.deps.log(`[health-watch] ${name}: CPU 描画への切替後も画面凍結が解消しませんでした。`);
       this.deps.post({ type: "healthWatch", name, phase: "failed" });
+      return;
+    }
+
+    if (inRun) {
+      // clock-skew 等の host 再起動のみ保留(blank-screen/wifi-disabled は対象外・上記分岐で既に return 済み)。
+      // 実行中は再起動で証跡を失うため、restartAttempts/cooldown を一切動かさず毎サイクル無害に見送る。
+      this.deps.log(`[health-watch] ${name}: 実行中のため host 再起動を保留します。`);
       return;
     }
 

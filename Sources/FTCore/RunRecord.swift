@@ -25,11 +25,17 @@ public struct RunMetaRecord: Codable, Sendable {
     public var total: Int?
     public var passed: Int?
     public var failed: Int?
+    /// 実行中に劣化・離脱したワーカー(「label: 理由」)。空/未発生は nil で省略。連鎖失敗の事後診断用。
+    public var degradedWorkers: [String]?
+    /// 凍結等による結果取り消し+振り直しの監査記録(成功した振り直しはシナリオ記録に痕跡を
+    /// 残さないため、ここが唯一の証跡)。空/未発生は nil で省略。
+    public var freezeRetries: [String]?
 
     public init(schemaVersion: Int = RunRecordSchema.current, runID: String, project: String,
                 profile: String?, machine: String, trigger: String, startedAt: String,
                 finishedAt: String? = nil, total: Int? = nil, passed: Int? = nil,
-                failed: Int? = nil) {
+                failed: Int? = nil, degradedWorkers: [String]? = nil,
+                freezeRetries: [String]? = nil) {
         self.schemaVersion = schemaVersion
         self.runID = runID
         self.project = project
@@ -41,6 +47,8 @@ public struct RunMetaRecord: Codable, Sendable {
         self.total = total
         self.passed = passed
         self.failed = failed
+        self.degradedWorkers = degradedWorkers
+        self.freezeRetries = freezeRetries
     }
 }
 

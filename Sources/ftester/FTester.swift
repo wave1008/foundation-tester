@@ -570,10 +570,13 @@ struct RunScenarios: AsyncParsableCommand {
         let recorder = RunRecorder.begin(project: testProject, profile: profile, trigger: "cli")
 
         if let profile {
-            let failedCount = try await ProfileRunner.run(
+            let runSummary = try await ProfileRunner.run(
                 project: testProject, profileName: profile, items: items,
                 healOverride: heal ? true : nil, reportDirOverride: reportDir, recorder: recorder)
-            recorder.finish(total: items.count, passed: items.count - failedCount, failed: failedCount)
+            let failedCount = runSummary.failed
+            recorder.finish(total: items.count, passed: items.count - failedCount, failed: failedCount,
+                            degradedWorkers: runSummary.degradedWorkers,
+                            freezeRetries: runSummary.freezeRetries)
             print(failedCount == 0
                   ? "✅ 全 \(items.count) シナリオ成功"
                   : "❌ \(items.count) シナリオ中 \(failedCount) 件失敗")
@@ -681,12 +684,12 @@ struct RunScenarios: AsyncParsableCommand {
             _ = try await driver.status()
             let worker = RunWorker(label: platform, platform: platform,
                                    driver: driver, connection: connection)
-            let passed = await ScenarioRunner.runOne(
+            let outcome = await ScenarioRunner.runOne(
                 project: project, item: item, worker: worker, healingEnabled: heal,
                 reportDir: URL(fileURLWithPath: reportDir), recorder: recorder) { event in
                 for line in RunLogFormatter.lines(for: event) { print(line) }
             }
-            if !passed { failedCount += 1 }
+            if outcome != .passed { failedCount += 1 }
         }
         return failedCount
     }
