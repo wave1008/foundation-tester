@@ -1,6 +1,7 @@
 // in-app ブリッジ(dylib 注入。pid ファイルを持たずホストアプリのプロセス内に常駐)の状態ファイル。
-// 書き手: InAppLauncher.relaunch(起動成功時)。読み手: BridgeLauncher.stop/stopAll
-// (bridge down 系コマンドが simctl terminate で後始末するための、pid ファイルの代替)。
+// 書き手: InAppLauncher.relaunch(起動成功時)。読み手: BridgeLauncher.stop/stopAll/stopMatching・
+// PortHolder.stopIfOwnedBridge(bridge down 系コマンドが simctl terminate で後始末するための、
+// pid ファイルの代替)。
 
 import Foundation
 import FTCore

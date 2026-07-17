@@ -333,17 +333,19 @@ async function executeRun(
   let targets = resolveTargets(controller, request);
   let runRequest = request;
 
+  const resolution = resolveProjectName(workspaceRoot, config);
+  // 前回 failed のシナリオ集合(failedOnly の絞り込みと、投入時のスピナー表示判定に使う)
+  const lastFailed =
+    resolution.kind === "resolved"
+      ? readFailedScenarioIds(lastResultsDir(workspaceRoot, resolution.project))
+      : new Set<string>();
+
   if (failedOnly) {
-    const resolution = resolveProjectName(workspaceRoot, config);
-    const failedIds =
-      resolution.kind === "resolved"
-        ? readFailedScenarioIds(lastResultsDir(workspaceRoot, resolution.project))
-        : new Set<string>();
     outputChannel.appendLine(
       `[rerunFailed] project=${resolution.kind === "resolved" ? resolution.project : resolution.kind}`
-      + ` 展開=${targets.size}件 失敗記録=${failedIds.size}件`
-      + ` 対象=${[...targets.keys()].filter((id) => failedIds.has(lookupKey(id))).length}件`);
-    targets = new Map([...targets].filter(([id]) => failedIds.has(lookupKey(id))));
+      + ` 展開=${targets.size}件 失敗記録=${lastFailed.size}件`
+      + ` 対象=${[...targets.keys()].filter((id) => lastFailed.has(lookupKey(id))).length}件`);
+    targets = new Map([...targets].filter(([id]) => lastFailed.has(lookupKey(id))));
     // 元 request の include(folder/class/全体)のまま TestRun を作ると、実際には走らない
     // 非対象テストまで実行単位として表示される。実対象 leaf だけの request に差し替える。
     if (targets.size > 0) {
@@ -352,6 +354,13 @@ async function executeRun(
   }
 
   const run = controller.createTestRun(runRequest);
+  // ロード中の拡張バージョンを明示する(vsix 更新後に Reload Window を忘れると旧版が動き続け、
+  // 「修正が効いていない」調査が空転する事故が実際に多発)。ID は package.json の publisher.name
+  const loadedVersion = (vscode.extensions.getExtension("wave1008.vscode-ftester")?.packageJSON as
+    { version?: string } | undefined)?.version;
+  if (loadedVersion) {
+    run.appendOutput(`vscode-ftester v${loadedVersion}\r\n`);
+  }
   const runStartedAt = Date.now();
   // runFinished(NDJSON)で埋まる。ApiRunCommand.swift の ApiRunFinishedEvent と同期(model.ts の RunFinishedEvent)。
   let testSeconds: number | undefined;
@@ -368,13 +377,18 @@ async function executeRun(
     return;
   }
 
-  // キュー投入時点で全対象を enqueued にし、前回の合否アイコンをリセットして待機表示にする
-  // (started は各シナリオ開始時に個別に来るため、それまで前回結果が残るのを防ぐ)。
-  for (const item of targets.values()) {
-    run.enqueued(item);
+  // キュー投入時点で前回の合否アイコンをリセットする。前回 failed のシナリオ(=失敗テストの
+  // 再実行)は準備中からスピナー表示にする — VS Code の TestRun に「準備中」状態は無く、
+  // スピナーは started のみのため started で積む(実行開始時の scenarioStarted 再送は無害)。
+  // それ以外は enqueued(待機アイコン)にし、各シナリオの started を待つ。
+  for (const [id, item] of targets) {
+    if (lastFailed.has(lookupKey(id))) {
+      run.started(item);
+    } else {
+      run.enqueued(item);
+    }
   }
 
-  const resolution = resolveProjectName(workspaceRoot, config);
   if (resolution.kind !== "resolved") {
     run.appendOutput(
       "対象のテストプロジェクトを解決できませんでした。ftester.project 設定を確認してください。\r\n",
@@ -495,14 +509,14 @@ async function executeRun(
       }
       case "requeued": {
         // 振り直し: 前回の結果アイコン(✗ 等)のまま放置すると「全部終わっているのに run が
-        // 終わらない」ように見えるため、「待機中(enqueued)」へ戻す。再実行の started で実行中に遷移。
+        // 終わらない」ように見えるため、再実行待ち(準備中)としてスピナー(started)にする。
         // 再実行されないまま run が終わった場合は reconcile が errored にする(直前の結果は取り消し
         // 済みのため再適用しない)。
         finished.delete(action.scenario);
         reapplyTerminal.delete(action.scenario);
         const item = targets.get(action.scenario);
         if (item) {
-          run.enqueued(item);
+          run.started(item);
         }
         break;
       }
@@ -635,10 +649,17 @@ async function executeDebugRun(
   }
   const [id, item] = [...targets.entries()][0]!;
 
-  // キュー投入時点で前回の合否アイコンをリセットして待機表示にする(started は下で来る)。
-  run.enqueued(item);
-
   const resolution = resolveProjectName(workspaceRoot, config);
+  // キュー投入時点で前回の合否アイコンをリセットする。前回 failed の再実行は準備中から
+  // スピナー表示(理由は executeRun の同処理を参照)。
+  if (resolution.kind === "resolved"
+      && readFailedScenarioIds(lastResultsDir(workspaceRoot, resolution.project))
+        .has(lookupKey(id))) {
+    run.started(item);
+  } else {
+    run.enqueued(item);
+  }
+
   if (resolution.kind !== "resolved") {
     run.appendOutput(
       "対象のテストプロジェクトを解決できませんでした。ftester.project 設定を確認してください。\r\n",

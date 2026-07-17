@@ -102,6 +102,21 @@ public enum ProfileWorkerFactory {
             do {
                 let serial = try AndroidDeviceCatalog.resolveSerial(spec: device.spec)
                 let driver = try AndroidDriver(serial: serial)
+                // ゲスト OS 再起動中でも serial 解決・ドライバ構築は成功してしまうため、status の
+                // 疎通を確認してから返す(無検証で返すと呼び出し側が「復帰成功→即 status 死亡」で
+                // 復帰上限を空費し、REVIVE_TIMEOUT の再試行ループが機能しない)。ウェッジした
+                // ブリッジは応答を返さないことがあるため 10s 期限で打ち切る(iOS 分岐の 60s と同型)
+                let reachable = await withTaskGroup(of: Bool.self) { group in
+                    group.addTask { (try? await driver.status()) != nil }
+                    group.addTask {
+                        try? await Task.sleep(nanoseconds: 10_000_000_000)
+                        return false
+                    }
+                    let first = await group.next() ?? false
+                    group.cancelAll()
+                    return first
+                }
+                guard reachable else { return nil }
                 return RunWorker(
                     label: "\(device.name)(android:\(serial))", platform: "android",
                     driver: driver,

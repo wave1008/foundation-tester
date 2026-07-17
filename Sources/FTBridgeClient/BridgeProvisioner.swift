@@ -115,13 +115,15 @@ public struct BridgeProvisioner {
     enum EnginePlan {
         case reuse(port: UInt16)
         /// stopStalePort: 起動前に停止すべき旧版 xcuitest ブリッジのポート。
-        /// needsInstall: inapp の autoInstall 差し替え(インストールファイルが更新済み)
-        case launch(port: UInt16, needsInstall: Bool, stopStalePort: UInt16?)
+        /// needsInstall: inapp の autoInstall 差し替え(インストールファイルが更新済み)。
+        /// reclaimInApp: このポートに stale な .inapp(ウェッジ等の残留 in-app ブリッジ)が
+        /// 既にあり、起動前に simctl terminate で回収する必要がある
+        case launch(port: UInt16, needsInstall: Bool, stopStalePort: UInt16?, reclaimInApp: Bool)
 
         var port: UInt16 {
             switch self {
             case .reuse(let port): return port
-            case .launch(let port, _, _): return port
+            case .launch(let port, _, _, _): return port
             }
         }
         var isLaunch: Bool {
@@ -352,7 +354,13 @@ public struct BridgeProvisioner {
         if engine == "inapp", bundleID == nil {
             throw BridgeProvisionerError.inAppNeedsBundleID(name: name)
         }
-        return .launch(port: port, needsInstall: inappNeedsInstall, stopStalePort: stopStalePort)
+        // assignPort が .inapp 残留ポートを回収して返した場合(preferred 経由も含む)。
+        // executeBridge が起動前に simctl terminate する
+        let inappStatePath = InAppBridgeState.url(
+            stateDir: repoRoot.appendingPathComponent(".ftester"), port: port)
+        let reclaimInApp = FileManager.default.fileExists(atPath: inappStatePath.path)
+        return .launch(port: port, needsInstall: inappNeedsInstall, stopStalePort: stopStalePort,
+                       reclaimInApp: reclaimInApp)
     }
 
     /// 全デバイス共有のビルド成果物(in-app dylib / xcuitest の xctestrun)は、並列起動フェーズの
@@ -411,7 +419,7 @@ public struct BridgeProvisioner {
         case .reuse(let port):
             log("✅ \(name): 稼働中 \(engine) ブリッジを再利用(port \(port), \(sim.name))")
             return port
-        case .launch(let port, let needsInstall, let stopStalePort):
+        case .launch(let port, let needsInstall, let stopStalePort, let reclaimInApp):
             if let stopStalePort {
                 log("→ \(name): 旧ビルドのブリッジ(port \(stopStalePort))を停止して起動し直します")
                 do {
@@ -420,6 +428,26 @@ public struct BridgeProvisioner {
                 } catch {
                     log("⚠️ \(name): 旧ブリッジの停止に失敗しました(port \(stopStalePort)): \(error.localizedDescription)")
                 }
+            }
+            if reclaimInApp {
+                // stale .inapp の記録は「今このポートを掴んでいる」保証がない(同アプリが別ポートの
+                // 現役ブリッジとして生きていることがあり、記録どおりに terminate すると稼働中ブリッジを
+                // 誤殺して実行中ワーカーが連鎖死する。実害あり)。実際に LISTEN されている場合のみ
+                // PortHolder が占有者の実体を確認して停止し、無人なら記録ファイルの削除だけ行う
+                let stateDir = repoRoot.appendingPathComponent(".ftester")
+                switch PortHolder.stopIfOwnedBridge(
+                    port: port, stateDir: stateDir,
+                    derivedDataPath: stateDir.appendingPathComponent("DerivedData")) {
+                case .stopped(let holder):
+                    log("🔧 \(name): ポート \(port) の残留 in-app ブリッジを停止しました(\(holder))")
+                case .notFound:
+                    break
+                case .foreign(let holder):
+                    // 起動は bindFailed → portInUse 経路が拾って明示エラーになる
+                    log("⚠️ \(name): ポート \(port) は無関係プロセスが使用中です(\(holder))")
+                }
+                try? FileManager.default.removeItem(
+                    at: InAppBridgeState.url(stateDir: stateDir, port: port))
             }
             log("→ \(name): \(engine) ブリッジ起動(port \(port), \(sim.name) \(sim.os))...")
             if engine == "inapp" {
@@ -446,6 +474,38 @@ public struct BridgeProvisioner {
                 }.value
                 do {
                     try await launcher.waitUntilReady()
+                } catch let error as LauncherError {
+                    guard case .portInUse = error else {
+                        try? launcher.stop()
+                        throw BridgeProvisionerError.notReady(port: port, underlying: error)
+                    }
+                    // 失敗した試行の pid ファイルを掃除してから占有者を特定・後始末を試みる
+                    try? launcher.stop()
+                    let outcome = PortHolder.stopIfOwnedBridge(
+                        port: port, stateDir: repoRoot.appendingPathComponent(".ftester"),
+                        derivedDataPath: launcher.derivedDataPath)
+                    let description: String
+                    switch outcome {
+                    case .stopped(let d):
+                        description = d
+                    case .foreign(let d):
+                        throw BridgeProvisionerError.notReady(
+                            port: port, underlying: LauncherError.portInUse(port: port, holder: d))
+                    case .notFound:
+                        throw BridgeProvisionerError.notReady(
+                            port: port, underlying: LauncherError.portInUse(port: port, holder: nil))
+                    }
+                    log("🔧 \(name): ポート \(port) の残留プロセスを停止して再試行します(\(description))")
+                    // 1 回だけ同一ポートで再試行する(無限ループ禁止。再失敗はここで諦める)
+                    do {
+                        try await Task.detached(priority: .userInitiated) {
+                            try launcher.startDetached()
+                        }.value
+                        try await launcher.waitUntilReady()
+                    } catch {
+                        try? launcher.stop()
+                        throw BridgeProvisionerError.notReady(port: port, underlying: error)
+                    }
                 } catch {
                     // 後始末せずに投げると assignPort がこのポートを使用中とみなし続け採番がずれていく
                     try? launcher.stop()
@@ -518,7 +578,8 @@ public struct BridgeProvisioner {
         }
     }
 
-    /// 空きポートの採番: spec.port 指定があればそれ(使用中なら次へ)、なければ範囲の先頭から。
+    /// 空きポートの採番: spec.port 指定があればそれ(使用中なら次へ)、なければ範囲の先頭から
+    /// 2パスで探す(.pid のあるポートはどちらのパスでも常に除外)。
     /// ignoringPidFileFor: このポートだけ pid ファイルが残っていても空き扱いにする
     /// (停止予定の旧版 xcuitest ブリッジの「同ポート再起動」用。停止はプランニング後の
     /// 並列実行フェーズで行われるため、プランニング時点では pid ファイルがまだ残っている)
@@ -528,10 +589,24 @@ public struct BridgeProvisioner {
             used.insert(preferred)
             return preferred
         }
-        for port in portRange where !used.contains(port)
-            && (port == ignoringPidFileFor
+        func isPidFree(_ port: UInt16) -> Bool {
+            port == ignoringPidFileFor
                 || !FileManager.default.fileExists(
-                    atPath: repoRoot.appendingPathComponent(".ftester/bridge-\(port).pid").path)) {
+                    atPath: repoRoot.appendingPathComponent(".ftester/bridge-\(port).pid").path)
+        }
+        func hasInApp(_ port: UInt16) -> Bool {
+            FileManager.default.fileExists(atPath: InAppBridgeState.url(
+                stateDir: repoRoot.appendingPathComponent(".ftester"), port: port).path)
+        }
+        // 1st パス: .pid も .inapp も無いポートを優先
+        for port in portRange where !used.contains(port) && isPidFree(port) && !hasInApp(port) {
+            used.insert(port)
+            return port
+        }
+        // 2nd パス: .inapp のみ残るポートを許可(呼び出し元 planBridge が起動前に回収する)。
+        // 「.inapp の存在=予約」にはしない: ウェッジした in-app ブリッジが採番範囲全部に
+        // 残ることが実際にあり、予約扱いだと即 noFreePort で枯渇するため後回しにするだけに留める
+        for port in portRange where !used.contains(port) && isPidFree(port) {
             used.insert(port)
             return port
         }

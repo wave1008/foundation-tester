@@ -119,7 +119,22 @@ private actor NoteCollector {
 }
 
 /// 1 シナリオあたりの凍結再実行上限。ポイズンシナリオのフリート全滅を防ぐ
-private let MAX_FREEZE_RETRIES = 2
+/// (2→1: 意図的に NG になるテストがデバイス不調と重なった際の再実行を最小化。ユーザー決定 2026-07-18)
+private let MAX_FREEZE_RETRIES = 1
+
+/// 失敗後ブリッジチェックの観察窓と、ログ静止によるウェッジ確定時間(秒)。
+/// AX 飽和(健全だが数十秒無応答)を「接続不能」と誤検知しないための値(bridgeUnreachable 参照)
+private let BRIDGE_PROBE_OBSERVE_SECONDS: TimeInterval = 60
+private let BRIDGE_PROBE_LOG_SILENCE_SECONDS: TimeInterval = 15
+
+/// 失敗後ブリッジプローブ 1 回分の結果(probeBridge 注入クロージャの戻り値)
+public enum BridgeProbeOutcome: Sendable {
+    case ok
+    /// connection refused = ポート LISTEN なし(ブリッジプロセス死亡)
+    case refused
+    /// 期限内無応答(busy かウェッジかはこれだけでは未確定)
+    case silent
+}
 
 /// ワーカー・サーキットブレーカ: 同一ワーカーで通常失敗(凍結/消失に該当しない)が連続でこの回数に
 /// 達したら、原因不明でも「不調ワーカー」とみなして離脱させ現シナリオを振り直す。凍結/消失の個別
@@ -297,6 +312,15 @@ public final class RunOrchestrator {
     /// なったかの判定。凍結(adb 生存・画面のみ死)とは別で、こちらは adb からデバイス自体が消えた状態。
     /// isDeviceFrozen と同じ理由で呼び出し側が注入(未注入時は常に false)
     private let isDeviceUnreachable: (@Sendable (String) async -> Bool)?
+    /// xcuitest ブリッジのランナーログ(.ftester/bridge-<port>.log)の現在サイズ。ログ成長=ランナー生存
+    /// の傍証として bridgeUnreachable の busy/ウェッジ判別に使う。ログパスは FTBridgeClient 側の知識
+    /// なので isDeviceFrozen と同じ理由で注入。取得不能・非 xcuitest は nil(判別に使わない)
+    private let bridgeLogSize: (@Sendable (RunWorker) -> UInt64?)?
+    /// 失敗後チェックの /status プローブ 1 回分。isDeviceFrozen と同じ理由で注入(BridgeClient は
+    /// FTBridgeClient)。hybrid は主ポート(in-app)が別アプリのシナリオ中サスペンドされ
+    /// 「TCP 受理・HTTP 無応答」になるため、注入側で xcuitest 側ポートを叩く(design §8.8)。
+    /// 未注入時は worker.driver への素朴なプローブにフォールバック
+    private let probeBridge: (@Sendable (RunWorker) async -> BridgeProbeOutcome)?
     /// run-lease(RunLease.write/remove、FTBridgeClient)のハートビート書き込み・削除。
     /// isDeviceFrozen と同じ理由(FTCore は FTBridgeClient に依存できない)で ftester ターゲットが注入。
     /// nil(未注入。テストハーネス等)時は lease 書き込みを単に skip する
@@ -305,6 +329,11 @@ public final class RunOrchestrator {
     /// run 中に稼働しているワーカーのデバイスキー集合(ハートビート対象)。run() 内のバックグラウンド
     /// タスクが 5 秒毎にこの snapshot を舐めて writeRunLease を呼ぶ
     private let leaseKeys = RunLeaseKeys()
+    /// ワーカー離脱(retired)時の後始末(ウェッジしたブリッジプロセスの停止等)。復帰(revive)の
+    /// 有無に関係なく離脱の度に必ず呼ぶ — 復帰しない離脱(キュー空・上限到達)で kill を省くと、
+    /// ウェッジしたランナーがシミュレータを掴んだまま生き残り、次回 run の新ブリッジと
+    /// 2ランナー競合を起こす。isDeviceFrozen と同じ理由で呼び出し側が注入
+    private let cleanupRetiredWorker: (@Sendable (RunWorker) async -> Void)?
     /// retired ワーカーの論理デバイス復帰。nil(未注入)なら復帰を試みず即ギブアップ
     /// (呼び出し側がプロファイル経由の場合のみ注入。--ports 等の非プロファイル経路では nil)
     private let reviveWorker: (@Sendable (RunWorker) async -> RunWorker?)?
@@ -330,8 +359,11 @@ public final class RunOrchestrator {
                 debug: ScenarioDebugOptions? = nil, recorder: RunRecorder? = nil,
                 isDeviceFrozen: (@Sendable (String) async -> Bool)? = nil,
                 isDeviceUnreachable: (@Sendable (String) async -> Bool)? = nil,
+                bridgeLogSize: (@Sendable (RunWorker) -> UInt64?)? = nil,
+                probeBridge: (@Sendable (RunWorker) async -> BridgeProbeOutcome)? = nil,
                 writeRunLease: (@Sendable (String) -> Void)? = nil,
                 removeRunLease: (@Sendable (String) -> Void)? = nil,
+                cleanupRetiredWorker: (@Sendable (RunWorker) async -> Void)? = nil,
                 reviveWorker: (@Sendable (RunWorker) async -> RunWorker?)? = nil,
                 lateWorkers: (platforms: Set<String>, provider: @Sendable () async -> [RunWorker])? = nil) {
         (self.events, self.continuation) = AsyncStream.makeStream(of: RunEvent.self)
@@ -345,8 +377,11 @@ public final class RunOrchestrator {
         self.recorder = recorder
         self.isDeviceFrozen = isDeviceFrozen
         self.isDeviceUnreachable = isDeviceUnreachable
+        self.bridgeLogSize = bridgeLogSize
+        self.probeBridge = probeBridge
         self.writeRunLease = writeRunLease
         self.removeRunLease = removeRunLease
+        self.cleanupRetiredWorker = cleanupRetiredWorker
         self.reviveWorker = reviveWorker
         self.lateWorkers = lateWorkers
     }
@@ -383,12 +418,50 @@ public final class RunOrchestrator {
         }
     }
 
-    /// iOS ワーカーの失敗後チェック: ブリッジ /status を2回(2s 間隔・各5s期限)試し、
-    /// 両方失敗なら接続不能。一過性のタイムアウトでの誤離脱を避けるためリトライを1回挟む。
-    private func bridgeUnreachable(_ driver: AppDriver) async -> Bool {
-        if await withDeadline(seconds: 5, { try await driver.status() }) != nil { return false }
-        try? await Task.sleep(nanoseconds: 2_000_000_000)
-        return await withDeadline(seconds: 5, { try await driver.status() }) == nil
+    /// /status 1回分(5s 期限)。refused=ポート LISTEN なし(プロセス死亡)、silent=期限内無応答。
+    /// probeBridge(注入)があればそちら(hybrid の suspend 回避で xcuitest 側ポートを叩く)。
+    /// 未注入時は worker.driver に対する素朴なプローブ
+    private func probeBridgeOnce(_ worker: RunWorker) async -> BridgeProbeOutcome {
+        if let probeBridge { return await probeBridge(worker) }
+        let result = await withDeadline(seconds: 5) { () -> BridgeProbeOutcome in
+            do { _ = try await worker.driver.status(); return .ok }
+            catch DriverError.bridgeConnectionRefused { return .refused }
+            catch { return .silent }
+        }
+        return result ?? .silent
+    }
+
+    /// iOS ワーカーの失敗後チェック。「接続不能」の確定条件:
+    /// - connection refused(プロセス死亡)は即確定
+    /// - それ以外は観察窓(60s)内で /status を繰り返す。失敗直後は AX 飽和で健全ブリッジも
+    ///   数十秒 /status に応答しない(プレフライト不採用と同じ教訓。短い期限は必ず誤検知する)
+    /// - xcuitest はランナーログが AX 処理中も成長し続ける=生存の傍証(bridgeLogSize 注入)。
+    ///   /status 無応答のままログが 15s 静止したらウェッジ確定(窓の残りを待たない)。
+    ///   窓を使い切ってもログが成長し続けていれば busy(健全)扱いで接続不能にしない
+    private func bridgeUnreachable(_ worker: RunWorker) async -> Bool {
+        let deadline = Date().addingTimeInterval(BRIDGE_PROBE_OBSERVE_SECONDS)
+        var lastSize = bridgeLogSize?(worker)
+        let hasLogSignal = lastSize != nil  // in-app 等ホスト側ログが無い場合は窓いっぱい /status のみで判定
+        var lastGrowth = Date()
+        while true {
+            switch await probeBridgeOnce(worker) {
+            case .ok: return false
+            case .refused: return true
+            case .silent: break
+            }
+            if hasLogSignal, let size = bridgeLogSize?(worker) {
+                if let prev = lastSize, size > prev { lastGrowth = Date() }
+                lastSize = size
+                if Date().timeIntervalSince(lastGrowth) >= BRIDGE_PROBE_LOG_SILENCE_SECONDS {
+                    return true
+                }
+            }
+            if Date() >= deadline {
+                // 窓内で一度も応答なし。ログが直近まで成長していた場合のみ busy=健全側に倒す
+                return !(hasLogSignal && Date().timeIntervalSince(lastGrowth) < BRIDGE_PROBE_LOG_SILENCE_SECONDS)
+            }
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+        }
     }
 
     private func deviceFrozen(_ serial: String) async -> Bool {
@@ -508,6 +581,9 @@ public final class RunOrchestrator {
                 return totalFailed + f
             case .retired(let f, let retired):
                 totalFailed += f
+                // ウェッジしたブリッジプロセスの停止は復帰の有無に関係なく必ず行う(プロパティ宣言の
+                // コメント参照)。復帰する場合も、供給前に旧プロセスを止めておく方が安全
+                await cleanupRetiredWorker?(retired)
                 // queue が空/復帰未注入/復帰回数上限 のいずれかならこれ以上粘っても無駄なので諦める
                 guard revives < MAX_WORKER_REVIVES, await queue.hasItems(), let revive = reviveWorker else {
                     return totalFailed
@@ -582,7 +658,7 @@ public final class RunOrchestrator {
                 }
             }
             if unusableReason == nil, outcome == .failed, worker.platform == "ios",
-               await bridgeUnreachable(worker.driver) {
+               await bridgeUnreachable(worker) {
                 unusableReason = "ブリッジ接続不能"
             }
             // サーキットブレーカ: 凍結/消失に当てはまらなくても連続失敗が閾値に達したら不調ワーカーとして離脱。
