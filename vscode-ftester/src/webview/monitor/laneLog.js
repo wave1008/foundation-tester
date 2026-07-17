@@ -8,6 +8,26 @@ import { tiles, selectedDeviceIds } from './deviceTiles.js';
 // レーン id(worker id、または OVERALL_LANE_ID) -> DOM 要素・自動スクロール状態
 const lanes = new Map();
 
+// devices同期(タイルと同じ配列)のid順。レーンの列順は常にこれに合わせる。
+// lanesConfigured(workersReady)はワーカー合流順(Android先行・iOS後合流)で届くため、
+// DOM追加順のままだとタイルの並びと食い違う。
+let deviceOrder = [];
+
+// lanesGridの子要素をdeviceOrder順に並べ直す(appendChildは既存ノードの移動)。
+// deviceOrderに無いid(全体レーン等)は末尾・相対順維持。
+function reorderLanes() {
+  if (deviceOrder.length === 0) {
+    return;
+  }
+  const rank = new Map(deviceOrder.map((id, index) => [id, index]));
+  const ordered = [...lanes.keys()].sort(
+    (a, b) => (rank.get(a) ?? Number.MAX_SAFE_INTEGER) - (rank.get(b) ?? Number.MAX_SAFE_INTEGER),
+  );
+  for (const id of ordered) {
+    lanesGrid.appendChild(lanes.get(id).el);
+  }
+}
+
 // worker id(またはタイルが存在しない全体レーン)ごとの「実行中」状態。
 export const runningWorkers = new Set();
 
@@ -105,6 +125,7 @@ function configureLanes(laneInfos) {
   for (const info of laneInfos) {
     ensureLane(info.id, info.name, info.platform, true);
   }
+  reorderLanes();
   updateLaneVisibility();
 }
 
@@ -144,6 +165,8 @@ export function syncLanesToDevices(devices) {
   for (const device of devices) {
     ensureLane(device.id, device.name, device.platform, true);
   }
+  deviceOrder = devices.map((device) => device.id);
+  reorderLanes();
   updateLaneVisibility();
 }
 

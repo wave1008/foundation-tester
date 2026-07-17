@@ -14,9 +14,7 @@ final class ScenarioQueueTests: XCTestCase {
         let first = await queue.requeue(item)
         XCTAssertEqual(first, 1)
         let second = await queue.requeue(item)
-        XCTAssertEqual(second, 2)
-        let third = await queue.requeue(item)
-        XCTAssertNil(third, "上限(2 回)を超えたら再キューしない")
+        XCTAssertNil(second, "上限(1 回)を超えたら再キューしない")
     }
 
     func testRequeueAppendsItemToQueue() async {

@@ -277,6 +277,14 @@ public struct BridgeLauncher {
         }
         // 直後の simctl shutdown と XCUITest teardown の競合防止(confirmDeaths のコメント参照)
         confirmDeaths(pids: terminated, timeout: 5)
+        // in-app ブリッジ(pid ファイルを持たない。/status 無応答のウェッジも含めて udid 一致だけで判定)
+        for entry in entries where entry.lastPathComponent.hasPrefix("bridge-")
+            && entry.pathExtension == "inapp" {
+            guard let state = InAppBridgeState.read(at: entry), state.udid == udid else { continue }
+            InAppBridgeState.terminateAndRemove(at: entry)
+            stopped.append(entry.deletingPathExtension().lastPathComponent
+                .replacingOccurrences(of: "bridge-", with: ""))
+        }
         return stopped.sorted()
     }
 
@@ -326,9 +334,29 @@ public struct BridgeLauncher {
             } catch {
                 lastError = error
             }
+            // startDetached が logPath を毎回空で作り直す(createFile)ため、ここで見つかる
+            // bindFailed は必ず今回の起動試行のもの。180 秒待たずに fail-fast する
+            // (別プロセスがポートを握っている限り再試行しても直らないため)。
+            if logTailContainsBindFailed() {
+                throw LauncherError.portInUse(port: port, holder: nil)
+            }
             try await Task.sleep(nanoseconds: 2_000_000_000)
         }
         throw LauncherError.timedOut(lastError.map { "\($0)" } ?? "no response", logPath.path)
+    }
+
+    /// 検知文字列 "bindFailed(" は Runner/FTesterRunnerUITests/BridgeHTTPServer.swift の
+    /// ServerError.bindFailed(errno)(XCTest 失敗ログに Swift 既定の記述で出力される)との言語間契約。
+    /// 変更する場合は両方を同期させること。
+    private func logTailContainsBindFailed() -> Bool {
+        guard let handle = try? FileHandle(forReadingFrom: logPath) else { return false }
+        defer { try? handle.close() }
+        guard let size = try? handle.seekToEnd() else { return false }
+        let readSize: UInt64 = 64 * 1024
+        let offset = size > readSize ? size - readSize : 0
+        guard (try? handle.seek(toOffset: offset)) != nil,
+              let data = try? handle.readToEnd() else { return false }
+        return String(data: data, encoding: .utf8)?.contains("bindFailed(") ?? false
     }
 
     /// コールド起動時のみ実行(稼働中ブリッジの再利用時はここを通らない)。設定は以後起動される
@@ -371,6 +399,8 @@ public enum LauncherError: Error, LocalizedError {
     case xctestrunNotFound(String)
     case notRunning
     case timedOut(String, String)
+    /// bindFailed(48) 検知(waitUntilReady のログ監視)。holder は判明していれば占有プロセスの説明
+    case portInUse(port: UInt16, holder: String?)
 
     public var errorDescription: String? {
         switch self {
@@ -382,6 +412,11 @@ public enum LauncherError: Error, LocalizedError {
             return "ブリッジは起動していません(.ftester/bridge.pid なし)"
         case .timedOut(let lastError, let log):
             return "ブリッジの起動がタイムアウトしました(最後のエラー: \(lastError))。ログ: \(log)"
+        case .portInUse(let port, let holder):
+            if let holder {
+                return "ポート \(port) が別プロセスに使用されています(\(holder))"
+            }
+            return "ポート \(port) が別プロセスに使用されています"
         }
     }
 }

@@ -64,7 +64,7 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
 
     <div id="tile-pane" class="tile-pane">
       <div id="grid" class="grid"></div>
-      <div id="empty" class="empty">デバイス情報を待機しています(ポーリング形式のため反映まで数秒かかることがあります)...</div>
+      <div id="empty" class="empty">デバイス情報を待機しています(ポーリング形式のため反映まで数十秒かかることがあります)...</div>
     </div>
 
     <div id="splitter" class="splitter" role="separator" aria-orientation="horizontal" aria-label="タイルと出力の分割境界線"></div>

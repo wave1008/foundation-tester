@@ -440,6 +440,31 @@ struct ApiRunCommand: AsyncParsableCommand {
                 guard let serials = try? AndroidDeviceCatalog.connectedSerials() else { return false }
                 return !serials.contains(serial)
             },
+            bridgeLogSize: { worker in
+                // xcuitest ランナーのログのみ有効(hybrid は xcuiPort 側。in-app はホスト側ログが
+                // AX 処理で成長しないため nil を返して /status のみの判定にフォールバックさせる)
+                guard let port = worker.connection.xcuiPort
+                    ?? ((worker.connection.engine == nil || worker.connection.engine == "xcuitest")
+                        ? worker.connection.port : nil) else { return nil }
+                let attrs = try? FileManager.default.attributesOfItem(
+                    atPath: repoRoot.appendingPathComponent(".ftester/bridge-\(port).log").path)
+                return (attrs?[.size] as? NSNumber)?.uint64Value
+            },
+            probeBridge: { worker in
+                // hybrid の主ポート(in-app)は別アプリのシナリオ中サスペンドされ TCP 受理・HTTP
+                // 無応答になる(design §8.8)ため、死活確認は suspend されない xcuitest 側で行う
+                guard let port = worker.connection.xcuiPort ?? worker.connection.port else {
+                    return .silent
+                }
+                do {
+                    _ = try await BridgeClient(port: port).status(timeout: 5)
+                    return .ok
+                } catch DriverError.bridgeConnectionRefused {
+                    return .refused
+                } catch {
+                    return .silent
+                }
+            },
             writeRunLease: { key in
                 guard let leaseStateDir else { return }
                 RunLease.write(stateDir: leaseStateDir, key: key, pid: ProcessInfo.processInfo.processIdentifier)
@@ -447,6 +472,16 @@ struct ApiRunCommand: AsyncParsableCommand {
             removeRunLease: { key in
                 guard let leaseStateDir else { return }
                 RunLease.remove(stateDir: leaseStateDir, key: key)
+            },
+            cleanupRetiredWorker: { retired in
+                // ウェッジした旧ブリッジ(/status 無応答)は provision の再利用スキャンに映らないまま
+                // 生き残り、シミュレータを掴み続ける。離脱検知の時点で UDID 照合で明示停止する
+                // (revive 内でなくここに置く理由: 復帰を試みない離脱でも必ず kill するため)
+                guard let udid = retired.connection.udid else { return }  // udid は iOS のみ
+                let stopped = BridgeLauncher.stopMatching(udid: udid, repoRoot: repoRoot)
+                if !stopped.isEmpty {
+                    logStderr("🔧 旧ブリッジを停止しました: port \(stopped.joined(separator: ", "))")
+                }
             },
             reviveWorker: { retired in
                 guard let name = retired.logicalName else { return nil }
