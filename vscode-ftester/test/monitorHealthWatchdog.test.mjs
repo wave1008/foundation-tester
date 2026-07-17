@@ -6,12 +6,12 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { MonitorHealthWatchdog } from "../src/monitorHealthWatchdog";
 
-function device(name, state, health, serial) {
-  return { id: name, name, platform: "android", state, detail: "", health, serial };
+function device(name, state, health, serial, inRun) {
+  return { id: name, name, platform: "android", state, detail: "", health, serial, inRun };
 }
 
 /** テスト用ハーネス。posts/logs/restarts/streamRestarts を配列に記録し、
- * now/autoRepair/runActive/queueBusy/wifi/stream 結果を手元で操作できる。 */
+ * now/autoRepair/queueBusy/wifi/stream 結果を手元で操作できる。 */
 function createHarness(options = {}) {
   const posts = [];
   const logs = [];
@@ -21,7 +21,6 @@ function createHarness(options = {}) {
   const cpuRenders = [];
   let currentTime = 0;
   let autoRepairEnabled = options.autoRepairEnabled ?? true;
-  let runActive = options.runActive ?? false;
   let queueBusy = options.queueBusy ?? false;
   const wifiResult = options.wifiResult ?? true;
   const streamRestartResult = options.streamRestartResult ?? true;
@@ -40,7 +39,6 @@ function createHarness(options = {}) {
       return streamRestartResult;
     },
     isAutoRepairEnabled: () => autoRepairEnabled,
-    isAnyRunActive: () => runActive,
     isDeviceLifecycleQueueBusy: () => queueBusy,
     now: () => currentTime,
   });
@@ -58,9 +56,6 @@ function createHarness(options = {}) {
     },
     setAutoRepairEnabled: (value) => {
       autoRepairEnabled = value;
-    },
-    setRunActive: (value) => {
-      runActive = value;
     },
     setQueueBusy: (value) => {
       queueBusy = value;
@@ -228,15 +223,11 @@ test("設定オフでは unhealthy 通知のみで修復しない", () => {
   assert.deepEqual(h.wifiCalls, ["emulator-5554"], "設定が有効化されれば次の観測で修復を試みる");
 });
 
-test("run 実行中は unhealthy 通知のみで修復しない", () => {
-  const h = createHarness({ runActive: true });
+test("テスト実行中でも保留せず修復に進む", () => {
+  // 旧挙動(実行中は保留)を撤回(ユーザー決定 2026-07-17)。凍結は実行完了を待たず即修復する。
+  const h = createHarness();
   h.watchdog.observe([device("Pixel1", "connected", ["wifi-disabled"], "emulator-5554")]);
-  assert.deepEqual(h.posts, [{ type: "healthWatch", name: "Pixel1", phase: "unhealthy" }]);
-  assert.deepEqual(h.wifiCalls, []);
-
-  h.setRunActive(false);
-  h.watchdog.observe([device("Pixel1", "connected", ["wifi-disabled"], "emulator-5554")]);
-  assert.deepEqual(h.wifiCalls, ["emulator-5554"]);
+  assert.deepEqual(h.wifiCalls, ["emulator-5554"], "実行中かどうかに関わらず修復する");
 });
 
 test("ライフサイクルキュー busy 中は unhealthy 通知のみで修復しない", () => {
@@ -443,4 +434,53 @@ test("wifi-disabled と blank-screen が同時なら Wi-Fi 修復ではなくス
   h.watchdog.observe([device("Pixel1", "connected", ["wifi-disabled", "blank-screen"], "emulator-5554")]);
   assert.deepEqual(h.wifiCalls, []);
   assert.deepEqual(h.streamRestarts, ["Pixel1"]);
+});
+
+test("clock-skew + inRun:true → host 再起動を保留し続け、inRun:false になった観測で初めて restarting へ進む", () => {
+  const h = createHarness();
+  h.watchdog.observe([device("Pixel1", "connected", ["clock-skew"], "emulator-5554", true)]);
+  assert.deepEqual(h.posts, [{ type: "healthWatch", name: "Pixel1", phase: "unhealthy" }], "restarting は post しない");
+  assert.deepEqual(h.restarts, [], "enqueueRestart しない");
+  assert.ok(
+    h.logs.some((line) => line.includes("実行中のため") && line.includes("保留")),
+    "保留したことが分かるログを出す",
+  );
+
+  // cooldown が一切設定されないので、時間を進めても held のままであることを確認する(一度きりの
+  // latch ではなく毎サイクル評価されることの検証)。
+  h.advance(RESTART_COOLDOWN_MS * 3);
+  h.watchdog.observe([device("Pixel1", "connected", ["clock-skew"], "emulator-5554", true)]);
+  assert.deepEqual(h.restarts, [], "inRun が true の間は何度観測しても restart しない");
+  assert.deepEqual(h.posts, [{ type: "healthWatch", name: "Pixel1", phase: "unhealthy" }], "保留中に unhealthy を再 post しない");
+
+  // inRun が false に落ちれば、同じエピソードのまま restarting へ進む。
+  h.watchdog.observe([device("Pixel1", "connected", ["clock-skew"], "emulator-5554", false)]);
+  assert.deepEqual(h.restarts, ["Pixel1"]);
+  assert.deepEqual(h.posts.at(-1), { type: "healthWatch", name: "Pixel1", phase: "restarting" });
+});
+
+test("blank-screen + inRun:true でも CPU 描画フォールバックの再起動は保留されない(host 再起動のみが inRun の対象)", () => {
+  const h = createHarness();
+  h.watchdog.observe([device("Pixel1", "connected", ["blank-screen"], "emulator-5554", true)]);
+  assert.deepEqual(h.posts, [
+    { type: "healthWatch", name: "Pixel1", phase: "unhealthy" },
+    { type: "healthWatch", name: "Pixel1", phase: "streamRepairing" },
+  ]);
+  assert.deepEqual(h.streamRestarts, ["Pixel1"]);
+
+  h.advance(STREAM_REPAIR_COOLDOWN_MS);
+  h.watchdog.observe([device("Pixel1", "connected", ["blank-screen"], "emulator-5554", true)]);
+  assert.deepEqual(h.posts.at(-1), { type: "healthWatch", name: "Pixel1", phase: "cpuFallback" });
+  assert.deepEqual(h.cpuRenders, ["Pixel1"]);
+  assert.deepEqual(h.restarts, ["Pixel1"], "inRun:true でも blank-screen の CPU フォールバック再起動は実行される");
+});
+
+test("wifi-disabled + inRun:true でも Wi-Fi 修復は保留されない(host 再起動のみが inRun の対象)", () => {
+  const h = createHarness();
+  h.watchdog.observe([device("Pixel1", "connected", ["wifi-disabled"], "emulator-5554", true)]);
+  assert.deepEqual(h.posts, [
+    { type: "healthWatch", name: "Pixel1", phase: "unhealthy" },
+    { type: "healthWatch", name: "Pixel1", phase: "repairing" },
+  ]);
+  assert.deepEqual(h.wifiCalls, ["emulator-5554"], "inRun:true でも wifi 修復は実行される");
 });

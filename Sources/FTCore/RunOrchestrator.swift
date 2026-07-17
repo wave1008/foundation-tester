@@ -53,6 +53,11 @@ public enum RunEvent: Sendable {
     case workerReady(worker: String)
     /// 接続不能などでワーカーが離脱した(他ワーカーが残キューを引き継ぐ)
     case workerFailed(worker: String, message: String)
+    /// ワーカーの進行状況メッセージ(離脱ではない。ワーカー復帰の進行可視化用。NDJSON では "log")
+    case workerLog(worker: String, message: String)
+    /// シナリオの結果を取り消して別デバイスへ振り直した(Test Explorer は該当項目を「待機中」へ戻す。
+    /// NDJSON では "scenarioRequeued"。契約: vscode-ftester/src/model.ts ScenarioRequeuedEvent)
+    case flowRequeued(worker: String, flowURL: URL, reason: String, attempt: Int, limit: Int)
     case flowStarted(worker: String, flowURL: URL, flowName: String, isDirty: Bool)
     /// scene 開始(ScenarioEvent kind "sceneStarted" 相当)
     case sceneStarted(worker: String, flowURL: URL, scene: Int, sceneTitle: String)
@@ -80,31 +85,92 @@ public struct RunSummary: Sendable {
     public let total: Int
     public let failed: Int
     public var passed: Int { total - failed }
+    /// 実行中に劣化・離脱したワーカーの記録(「label: 理由」)。凍結/消失/連続失敗/接続不能で離脱した
+    /// ワーカーを可視化する(復帰した場合も含む)。連鎖失敗の事後診断・レポート表示用。
+    public let degradedWorkers: [String]
+    /// 結果取り消し+振り直しの監査記録(成功した振り直しは合否記録に痕跡を残さないため、
+    /// ここに「どのシナリオを・どのワーカーから・何回目か」を残す)。
+    public let freezeRetries: [String]
 
-    public init(total: Int, failed: Int) {
+    public init(total: Int, failed: Int, degradedWorkers: [String] = [],
+                freezeRetries: [String] = []) {
         self.total = total
         self.failed = failed
+        self.degradedWorkers = degradedWorkers
+        self.freezeRetries = freezeRetries
     }
+}
+
+/// withDeadline の「継続を一度だけ resume する」ガード(op 完了 と 期限 のレース勝者判定)。
+private actor DeadlineGuard {
+    private var done = false
+    func claim() -> Bool {
+        if done { return false }
+        done = true
+        return true
+    }
+}
+
+/// 並列ワーカーからの文字列記録の収集(劣化ワーカー・振り直し監査)。run() が summary に畳む。
+private actor NoteCollector {
+    private var entries: [String] = []
+    func add(_ entry: String) { entries.append(entry) }
+    func snapshot() -> [String] { entries }
+}
+
+/// 1 シナリオあたりの凍結再実行上限。ポイズンシナリオのフリート全滅を防ぐ
+private let MAX_FREEZE_RETRIES = 2
+
+/// ワーカー・サーキットブレーカ: 同一ワーカーで通常失敗(凍結/消失に該当しない)が連続でこの回数に
+/// 達したら、原因不明でも「不調ワーカー」とみなして離脱させ現シナリオを振り直す。凍結/消失の個別
+/// プローブで拾えない不良(ブリッジのウェッジ・ANR 連発等)で死んだワーカーへ投げ続ける事故を防ぐ。
+private let WORKER_FAILURE_CIRCUIT_THRESHOLD = 3
+
+/// 1論理デバイスの復帰試行上限。復帰→即死→復帰の暴走防止
+private let MAX_WORKER_REVIVES = 2
+
+/// run 中に稼働しているワーカーのデバイスキー集合(run-lease ハートビート対象)。
+private actor RunLeaseKeys {
+    private var keys: Set<String> = []
+    func insert(_ key: String) { keys.insert(key) }
+    func remove(_ key: String) { keys.remove(key) }
+    func snapshot() -> Set<String> { keys }
 }
 
 /// 並列ワーカーへのシナリオ分配キュー(早い者勝ち)
 actor ScenarioQueue {
     private var items: [ScenarioRunItem]
+    private var attempts: [URL: Int] = [:]
     init(_ items: [ScenarioRunItem]) { self.items = items }
     func next() -> ScenarioRunItem? { items.isEmpty ? nil : items.removeFirst() }
+    func hasItems() -> Bool { !items.isEmpty }
+
+    /// 凍結による再実行。上限(MAX_FREEZE_RETRIES)まで item を末尾へ戻し、
+    /// 何回目の再実行かを返す。上限超過なら nil(=もう再実行しない)。
+    func requeue(_ item: ScenarioRunItem) -> Int? {
+        let n = (attempts[item.id] ?? 0) + 1
+        attempts[item.id] = n
+        guard n <= MAX_FREEZE_RETRIES else { return nil }
+        items.append(item)
+        return n
+    }
 }
 
 /// 1 シナリオの実行(サブプロセス起動+イベント変換)。
 /// CLI の逐次実行と RunOrchestrator のワーカーの両方がここを通る。
+public enum ScenarioOutcome: Sendable, Equatable {
+    case passed, failed, frozen
+}
+
 public enum ScenarioRunner {
-    /// 戻り値: passed。進捗は onEvent で通知される
+    /// 戻り値: 実行結果。進捗は onEvent で通知される
     public static func runOne(project: TestProject, item: ScenarioRunItem, worker: RunWorker,
                               healingEnabled: Bool, reportDir: URL,
                               defaultTimeout: Int? = nil,
                               scenarioTimeout: Int? = nil,
                               debug: ScenarioDebugOptions? = nil,
                               recorder: RunRecorder? = nil,
-                              onEvent: @escaping (RunEvent) -> Void) async -> Bool {
+                              onEvent: @escaping (RunEvent) -> Void) async -> ScenarioOutcome {
         onEvent(.flowStarted(worker: worker.label, flowURL: item.url,
                              flowName: item.info.id, isDirty: false))
 
@@ -115,6 +181,7 @@ public enum ScenarioRunner {
                               title: item.info.title)
         }
         var reportURL: URL?
+        var frozen = false
         let passed = await ScenarioHost.run(
             project: project, scenarioID: item.info.id, connection: worker.connection,
             heal: healingEnabled, reportDir: reportDir.path,
@@ -154,6 +221,8 @@ public enum ScenarioRunner {
                                        message: event.detail ?? ""))
             case "scenarioFinished":
                 reportURL = event.reportPath.map { URL(fileURLWithPath: $0) }
+            case "deviceFrozen":
+                frozen = true
             case "log":
                 if let message = event.message, !message.isEmpty {
                     onEvent(.step(worker: worker.label, flowURL: item.url,
@@ -165,9 +234,10 @@ public enum ScenarioRunner {
             }
         }
 
-        onEvent(.flowFinished(worker: worker.label, flowURL: item.url, passed: passed,
+        let outcome: ScenarioOutcome = frozen ? .frozen : (passed ? .passed : .failed)
+        onEvent(.flowFinished(worker: worker.label, flowURL: item.url, passed: frozen ? false : passed,
                               triage: nil, reportURL: reportURL))
-        return passed
+        return outcome
     }
 
     /// ScenarioEvent(step)→ StepResult。scene/sceneTitle/section は構造化フィールドのまま写す。
@@ -198,6 +268,13 @@ public enum ScenarioRunner {
     }
 }
 
+/// runWorker() の離脱理由。.retired は「デバイス使用不能でループを抜けた」場合のみで、
+/// superviseWorker の復帰トライへ渡す worker を保持する(キュー消化を再開できる)
+private enum WorkerExit {
+    case completed(Int)
+    case retired(failed: Int, worker: RunWorker)
+}
+
 /// シナリオ群をワーカー群で並列消化する。進捗は events(AsyncStream)で配信され、
 /// run() の完了時に finish する。イベントはバッファされるため消費開始が遅れても失われない。
 public final class RunOrchestrator {
@@ -212,10 +289,51 @@ public final class RunOrchestrator {
     /// デバッグ実行(ブレークポイント・ステップ実行)。呼び出し側が単一シナリオ実行時のみ指定する
     private let debug: ScenarioDebugOptions?
     private let recorder: RunRecorder?
+    /// Android の画面凍結(blank-screen)判定。FTCore は FTAndroid に依存できない(循環)ため
+    /// 実プローブ(AndroidHealthProbe)の注入は呼び出し側(ftester ターゲット)が行う。
+    /// nil(未注入)時は常に false(凍結扱いしない)
+    private let isDeviceFrozen: (@Sendable (String) async -> Bool)?
+    /// Android デバイスが実行中に到達不能(adb で offline/未検出=プロセス消滅・watchdog 再起動 down 等)に
+    /// なったかの判定。凍結(adb 生存・画面のみ死)とは別で、こちらは adb からデバイス自体が消えた状態。
+    /// isDeviceFrozen と同じ理由で呼び出し側が注入(未注入時は常に false)
+    private let isDeviceUnreachable: (@Sendable (String) async -> Bool)?
+    /// run-lease(RunLease.write/remove、FTBridgeClient)のハートビート書き込み・削除。
+    /// isDeviceFrozen と同じ理由(FTCore は FTBridgeClient に依存できない)で ftester ターゲットが注入。
+    /// nil(未注入。テストハーネス等)時は lease 書き込みを単に skip する
+    private let writeRunLease: (@Sendable (String) -> Void)?
+    private let removeRunLease: (@Sendable (String) -> Void)?
+    /// run 中に稼働しているワーカーのデバイスキー集合(ハートビート対象)。run() 内のバックグラウンド
+    /// タスクが 5 秒毎にこの snapshot を舐めて writeRunLease を呼ぶ
+    private let leaseKeys = RunLeaseKeys()
+    /// retired ワーカーの論理デバイス復帰。nil(未注入)なら復帰を試みず即ギブアップ
+    /// (呼び出し側がプロファイル経由の場合のみ注入。--ports 等の非プロファイル経路では nil)
+    private let reviveWorker: (@Sendable (RunWorker) async -> RunWorker?)?
+    /// 遅延参加ワーカー(iOS ブリッジ供給待ち)。platforms は「後から必ず来る platform」の宣言で、
+    /// これが無いと初期ワーカーに iOS が居ない時点で iOS シナリオが「担当ワーカーなし」で即失敗する。
+    /// provider は供給完了時にワーカー群を返す(失敗時は空配列。キューに残った分は run 末尾の
+    /// ドレインが「実行できるワーカーがありません」で失敗確定する)。
+    /// Android を iOS 供給(壊れたブリッジの置き換え=数十秒)の完了待ちにしないための機構。
+    private let lateWorkers: (platforms: Set<String>, provider: @Sendable () async -> [RunWorker])?
+    /// 劣化・離脱したワーカーの収集(summary/レポートの degradedWorkers に載せる)。
+    private let degraded = NoteCollector()
+    /// 振り直し(結果取り消し+requeue)の監査記録(summary/レポートの freezeRetries に載せる)。
+    private let retries = NoteCollector()
+
+    /// ワーカー離脱を通知(イベント yield + 劣化ワーカー収集)を1箇所に集約する。
+    private func reportWorkerFailed(_ label: String, _ message: String) async {
+        continuation.yield(.workerFailed(worker: label, message: message))
+        await degraded.add("\(label): \(message)")
+    }
 
     public init(project: TestProject, workers: [RunWorker], healingEnabled: Bool,
                 reportDir: URL, defaultTimeout: Int? = nil, scenarioTimeout: Int? = nil,
-                debug: ScenarioDebugOptions? = nil, recorder: RunRecorder? = nil) {
+                debug: ScenarioDebugOptions? = nil, recorder: RunRecorder? = nil,
+                isDeviceFrozen: (@Sendable (String) async -> Bool)? = nil,
+                isDeviceUnreachable: (@Sendable (String) async -> Bool)? = nil,
+                writeRunLease: (@Sendable (String) -> Void)? = nil,
+                removeRunLease: (@Sendable (String) -> Void)? = nil,
+                reviveWorker: (@Sendable (RunWorker) async -> RunWorker?)? = nil,
+                lateWorkers: (platforms: Set<String>, provider: @Sendable () async -> [RunWorker])? = nil) {
         (self.events, self.continuation) = AsyncStream.makeStream(of: RunEvent.self)
         self.workers = workers
         self.healingEnabled = healingEnabled
@@ -225,11 +343,64 @@ public final class RunOrchestrator {
         self.scenarioTimeout = scenarioTimeout
         self.debug = debug
         self.recorder = recorder
+        self.isDeviceFrozen = isDeviceFrozen
+        self.isDeviceUnreachable = isDeviceUnreachable
+        self.writeRunLease = writeRunLease
+        self.removeRunLease = removeRunLease
+        self.reviveWorker = reviveWorker
+        self.lateWorkers = lateWorkers
+    }
+
+    private func deviceUnreachable(_ serial: String) async -> Bool {
+        guard let probe = isDeviceUnreachable else { return false }
+        return await probe(serial)
+    }
+
+    /// 死活確認系の await に期限を切る。ウェッジしたブリッジは「接続は受けるが応答しない」ため、
+    /// BridgeClient の既定タイムアウトに任せると status 確認だけで数分止まり run 全体が凍結する
+    /// (実測 2026-07-18: ウェッジ機への status で run が 5 分以上アイドル固着)。
+    ///
+    /// **withTaskGroup は使わない**: 構造化並行はスコープ終端で全子タスクの完了を待つため、
+    /// op(URLSession)がキャンセルに即応しないと cancelAll しても遅い方を待ち続けてハングする。
+    /// ここは「先に終わった方で即確定・遅い方は待たない」レースにする(継続を一度だけ resume。
+    /// 期限側が勝ったら op はキャンセルだけして放置=最終的に URLSession の timeout で自然消滅)。
+    private func withDeadline<T: Sendable>(
+        seconds: Double, _ op: @escaping @Sendable () async throws -> T
+    ) async -> T? {
+        let settled = DeadlineGuard()
+        return await withCheckedContinuation { (cont: CheckedContinuation<T?, Never>) in
+            let opTask = Task {
+                let result = try? await op()
+                if await settled.claim() { cont.resume(returning: result) }
+            }
+            Task {
+                try? await Task.sleep(nanoseconds: UInt64(max(0, seconds) * 1_000_000_000))
+                if await settled.claim() {
+                    opTask.cancel()
+                    cont.resume(returning: nil)
+                }
+            }
+        }
+    }
+
+    /// iOS ワーカーの失敗後チェック: ブリッジ /status を2回(2s 間隔・各5s期限)試し、
+    /// 両方失敗なら接続不能。一過性のタイムアウトでの誤離脱を避けるためリトライを1回挟む。
+    private func bridgeUnreachable(_ driver: AppDriver) async -> Bool {
+        if await withDeadline(seconds: 5, { try await driver.status() }) != nil { return false }
+        try? await Task.sleep(nanoseconds: 2_000_000_000)
+        return await withDeadline(seconds: 5, { try await driver.status() }) == nil
+    }
+
+    private func deviceFrozen(_ serial: String) async -> Bool {
+        guard let probe = isDeviceFrozen else { return false }
+        return await probe(serial)
     }
 
     public func run(items: [ScenarioRunItem], defaultPlatform: String) async -> RunSummary {
         let grouped = Dictionary(grouping: items) { $0.info.platform ?? defaultPlatform }
-        let workerPlatforms = Set(workers.map(\.platform))
+        // 遅延参加分の platform も含める(含めないと初期ワーカー不在の platform のシナリオが
+        // 供給完了を待たず「担当ワーカーなし」で即失敗する)
+        let workerPlatforms = Set(workers.map(\.platform)).union(lateWorkers?.platforms ?? [])
         var failed = 0
 
         // 担当ワーカーのない platform のシナリオは即スキップ(失敗扱い)
@@ -248,15 +419,37 @@ public final class RunOrchestrator {
 
         continuation.yield(.runStarted(total: items.count, workerLabels: workers.map(\.label)))
 
+        // run-lease ハートビート: mtime を stalenessSeconds(15s)以内に保つため 5s 毎に再書き込み
+        let heartbeat: Task<Void, Never>? = writeRunLease != nil ? Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                guard !Task.isCancelled, let self else { return }
+                for key in await self.leaseKeys.snapshot() { self.writeRunLease?(key) }
+            }
+        } : nil
+
         failed += await withTaskGroup(of: Int.self, returning: Int.self) { group in
             for worker in workers {
                 guard let queue = queues[worker.platform] else { continue }
-                group.addTask { await self.runWorker(worker, queue: queue) }
+                group.addTask { await self.superviseWorker(worker, queue: queue) }
+            }
+            // 遅延参加(iOS ブリッジ供給待ち)。この await の間も上で積んだ初期ワーカーの子タスクは
+            // 並行実行される(group スコープ内の await は子を止めない)ため、Android は先に走り出す。
+            if let late = lateWorkers {
+                for worker in await late.provider() {
+                    guard let queue = queues[worker.platform] else { continue }
+                    group.addTask { await self.superviseWorker(worker, queue: queue) }
+                }
             }
             var total = 0
             for await workerFailed in group { total += workerFailed }
             return total
         }
+
+        heartbeat?.cancel()
+        // ワーカーが自分の return 時に外し忘れた lease がないよう最終掃除(通常は runWorker 側で
+        // 既に空になっているはず)
+        for key in await leaseKeys.snapshot() { removeRunLease?(key) }
 
         // ワーカー全滅でキューに残ったシナリオは失敗扱い
         for (platform, queue) in queues {
@@ -269,38 +462,153 @@ public final class RunOrchestrator {
             }
         }
 
-        let summary = RunSummary(total: items.count, failed: failed)
+        let summary = RunSummary(total: items.count, failed: failed,
+                                 degradedWorkers: await degraded.snapshot(),
+                                 freezeRetries: await retries.snapshot())
         continuation.yield(.runFinished(passed: summary.passed, failed: summary.failed))
         continuation.finish()
         return summary
     }
 
-    private func runWorker(_ worker: RunWorker, queue: ScenarioQueue) async -> Int {
-        do {
-            _ = try await worker.driver.status()
-        } catch {
-            continuation.yield(.workerFailed(worker: worker.label,
-                                             message: "接続できません: \(error.localizedDescription)"))
-            return 0
+    /// 使用不能デバイス(画面凍結・実行中の消失)のシナリオを結果取り消し+別デバイス再キュー。
+    /// requeue できたら true、上限到達で false。reason は表示・記録用の理由(例:「画面凍結」)。
+    /// discardRecord=false は「シナリオ未実行のまま振り直す」プレフライト用(まだ記録が無いので
+    /// discardLast を呼ばない)。post-failure は true(失敗した記録を取り消す)。
+    private func discardAndRequeue(_ item: ScenarioRunItem, worker: RunWorker,
+                                   queue: ScenarioQueue, reason: String,
+                                   discardRecord: Bool = true) async -> Bool {
+        if discardRecord {
+            recorder?.discardLast(scenarioID: item.info.id)
+        }
+        if let attempt = await queue.requeue(item) {
+            await retries.add("\(item.info.id): \(reason)(\(worker.label) から振り直し \(attempt)/\(MAX_FREEZE_RETRIES))")
+            continuation.yield(.flowRequeued(worker: worker.label, flowURL: item.url,
+                                             reason: reason, attempt: attempt,
+                                             limit: MAX_FREEZE_RETRIES))
+            return true
+        }
+        await retries.add("\(item.info.id): \(reason)(\(worker.label)、上限到達で失敗確定)")
+        recorder?.recordSkipped(scenarioID: item.info.id, title: item.info.title,
+            platform: worker.platform, worker: worker.label,
+            reason: "\(reason)が解消せず再実行上限に到達しました")
+        continuation.yield(.flowSkipped(flowURL: item.url,
+            reason: "\(reason)が解消せず再実行上限に到達しました"))
+        return false
+    }
+
+    /// retired ワーカーを reviveWorker で復帰させ、同じ queue の消化を継続する。
+    /// runWorker が .completed を返すまで(または復帰を諦めるまで)ループする。
+    private func superviseWorker(_ worker: RunWorker, queue: ScenarioQueue) async -> Int {
+        var current = worker
+        var totalFailed = 0
+        var revives = 0
+        while true {
+            switch await runWorker(current, queue: queue) {
+            case .completed(let f):
+                return totalFailed + f
+            case .retired(let f, let retired):
+                totalFailed += f
+                // queue が空/復帰未注入/復帰回数上限 のいずれかならこれ以上粘っても無駄なので諦める
+                guard revives < MAX_WORKER_REVIVES, await queue.hasItems(), let revive = reviveWorker else {
+                    return totalFailed
+                }
+                continuation.yield(.workerLog(worker: retired.label,
+                    message: "🔧 ワーカー復帰を試みます(\(revives + 1)/\(MAX_WORKER_REVIVES)。"
+                        + "ブリッジ再作成のため数十秒かかることがあります)..."))
+                guard let newWorker = await revive(retired) else {
+                    continuation.yield(.workerLog(worker: retired.label,
+                        message: "⛔ ワーカーを復帰できませんでした"))
+                    return totalFailed
+                }
+                revives += 1
+                continuation.yield(.workerLog(worker: newWorker.label,
+                    message: "✅ ワーカーが復帰しました。実行を再開します"))
+                continuation.yield(.workerReady(worker: newWorker.label))
+                current = newWorker
+            }
+        }
+    }
+
+    private func runWorker(_ worker: RunWorker, queue: ScenarioQueue) async -> WorkerExit {
+        // 期限付き(ウェッジしたブリッジで 120s×N 待たないため。withDeadline 参照)。
+        guard await withDeadline(seconds: 10, { try await worker.driver.status() }) != nil else {
+            await reportWorkerFailed(worker.label, "接続できません(status 応答なし)")
+            // leaseKey 未取得(まだ何もしていない)なので releaseLease は呼ばない。
+            // 接続不能もデバイス使用不能の一種として復帰トライの対象にする(監視側の再起動待ち等)。
+            return .retired(failed: 0, worker: worker)
         }
         // コールドブート直後のシミュレータは最初の AX 問い合わせが極端に遅い
         // (kAXErrorIPCTimeout でランナーが落ちる)ため、snapshot で温める(リトライ1回)
-        if (try? await worker.driver.snapshot()) == nil {
-            _ = try? await worker.driver.snapshot()
+        if await withDeadline(seconds: 15, { try await worker.driver.snapshot() }) == nil {
+            _ = await withDeadline(seconds: 15, { try await worker.driver.snapshot() })
         }
         continuation.yield(.workerReady(worker: worker.label))
 
+        let leaseKey = worker.connection.serial ?? worker.connection.udid
+        if let leaseKey {
+            await leaseKeys.insert(leaseKey)
+            writeRunLease?(leaseKey)
+        }
+
         var failed = 0
+        var consecutiveFailures = 0
+        // 実行前のブリッジ疎通確認(プレフライト)は不採用(ユーザー決定 2026-07-18)。
+        // 「取ってから判定」版は一過性の AX スパイクで9台一斉離脱、「取る前に2sで即断」版も
+        // 負荷時の誤判定で品質が安定しなかった。ウェッジは失敗後の事後チェック
+        // (bridgeUnreachable/deviceUnreachable/deviceFrozen → 振り直し)だけで拾う。
         while let item = await queue.next() {
-            let passed = await ScenarioRunner.runOne(
+            let outcome = await ScenarioRunner.runOne(
                 project: project, item: item, worker: worker,
                 healingEnabled: healingEnabled, reportDir: reportDir,
                 defaultTimeout: defaultTimeout, scenarioTimeout: scenarioTimeout, debug: debug,
                 recorder: recorder,
                 onEvent: { [continuation] in continuation.yield($0) })
-            if !passed { failed += 1 }
+            if outcome == .passed {
+                consecutiveFailures = 0
+                continue
+            }
+            // デバイスが使用不能なら結果取り消し+別デバイス再実行+ワーカー離脱。
+            // .frozen(スクショ由来の明示シグナル)は即。.failed は事後プローブで確認:
+            // まず消失(adb offline/未検出。安価な adb devices 1回)、次に画面凍結(screencap プローブ)。
+            // iOS はブリッジ /status の生存確認(ブリッジのウェッジ=シナリオ途中から全ステップが
+            // 接続エラーになる実害があり、Android のプローブでは拾えない)。
+            var unusableReason: String? = outcome == .frozen ? "画面凍結" : nil
+            if unusableReason == nil, outcome == .failed, worker.platform == "android",
+               let serial = worker.connection.serial {
+                if await deviceUnreachable(serial) {
+                    unusableReason = "デバイス消失(offline/未検出)"
+                } else if await deviceFrozen(serial) {
+                    unusableReason = "画面凍結"
+                }
+            }
+            if unusableReason == nil, outcome == .failed, worker.platform == "ios",
+               await bridgeUnreachable(worker.driver) {
+                unusableReason = "ブリッジ接続不能"
+            }
+            // サーキットブレーカ: 凍結/消失に当てはまらなくても連続失敗が閾値に達したら不調ワーカーとして離脱。
+            if unusableReason == nil {
+                consecutiveFailures += 1
+                if consecutiveFailures >= WORKER_FAILURE_CIRCUIT_THRESHOLD {
+                    unusableReason = "ワーカー連続失敗(\(consecutiveFailures)回)"
+                }
+            }
+            if let reason = unusableReason {
+                let requeued = await discardAndRequeue(item, worker: worker, queue: queue, reason: reason)
+                if !requeued { failed += 1 }
+                await reportWorkerFailed(worker.label, "\(reason)のため離脱しました")
+                await releaseLease(leaseKey)
+                return .retired(failed: failed, worker: worker)
+            }
+            failed += 1
         }
-        return failed
+        await releaseLease(leaseKey)
+        return .completed(failed)
+    }
+
+    private func releaseLease(_ key: String?) async {
+        guard let key else { return }
+        await leaseKeys.remove(key)
+        removeRunLease?(key)
     }
 }
 
@@ -317,6 +625,10 @@ public enum RunLogFormatter {
             return []
         case .workerFailed(let worker, let message):
             return ["❌ ワーカー \(worker) が離脱しました: \(message)"]
+        case .workerLog(let worker, let message):
+            return ["ℹ️ [\(worker)] \(message)"]
+        case .flowRequeued(_, _, let reason, let attempt, let limit):
+            return ["  🔁 \(reason)のため別デバイスで再実行します(\(attempt)/\(limit))"]
         case .flowStarted(let worker, _, let flowName, let isDirty):
             var lines = ["▶ \(flowName) [\(worker)]"]
             if isDirty { lines.append("  ⚠️ このフローは dirty(要レビュー)状態です") }

@@ -83,12 +83,27 @@ public final class RunRecorder: @unchecked Sendable {
         write(record)
     }
 
-    public func finish(total: Int, passed: Int, failed: Int) {
+    /// 凍結による再実行時に直前の記録を取り消す。連番カウンタも巻き戻す
+    public func discardLast(scenarioID: String) {
+        let baseName = Self.sanitizeFileName(scenarioID)
+        lock.lock()
+        let count = fileNameCounts[baseName] ?? 0
+        guard count > 0 else { lock.unlock(); return }
+        let fileName = count == 1 ? baseName : "\(baseName)~\(count)"
+        fileNameCounts[baseName] = count - 1
+        lock.unlock()
+        RunResultsStore.removeScenario(runDir: runDir, fileName: fileName)
+    }
+
+    public func finish(total: Int, passed: Int, failed: Int, degradedWorkers: [String] = [],
+                       freezeRetries: [String] = []) {
         let meta = RunMetaRecord(
             runID: runID, project: projectName, profile: profile, machine: machine,
             trigger: trigger, startedAt: startedAt,
             finishedAt: ISO8601DateFormatter().string(from: Date()),
-            total: total, passed: passed, failed: failed)
+            total: total, passed: passed, failed: failed,
+            degradedWorkers: degradedWorkers.isEmpty ? nil : degradedWorkers,
+            freezeRetries: freezeRetries.isEmpty ? nil : freezeRetries)
         RunResultsStore.writeMeta(meta, runDir: runDir)
     }
 

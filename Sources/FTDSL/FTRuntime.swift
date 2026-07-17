@@ -133,6 +133,8 @@ public final class FTDriveCore {
     public var debugControl: ScenarioDebugControl?
     /// stop コマンドで中断した場合 true。expectation 未到達なので成功扱いにしない
     public private(set) var stoppedByUser = false
+    /// スクショ時に画面凍結を検知して中断した場合 true。別デバイス再実行対象
+    public private(set) var deviceFrozen = false
 
     public init(driver: AppDriver, platform: String, app: String,
                 scenarioID: String, scenarioTitle: String,
@@ -159,6 +161,7 @@ public final class FTDriveCore {
         self.record = ScenarioRecordData(id: scenarioID, title: scenarioTitle,
                                          app: app, platform: platform,
                                          deviceName: deviceName, deviceIdentifier: deviceIdentifier)
+        self.executor.onDeviceFrozen = { [weak self] in self?.markDeviceFrozen() }
     }
 
     public var finalRecord: ScenarioRecordData { record }
@@ -439,6 +442,15 @@ public final class FTDriveCore {
         record.scenes[record.scenes.count - 1].steps.append(step)
     }
 
+    private func markDeviceFrozen() {
+        guard !deviceFrozen else { return }
+        deviceFrozen = true
+        scenarioAborted = true
+        var event = ScenarioEvent(kind: "deviceFrozen")
+        event.scenario = scenarioID
+        emit(event)
+    }
+
     private func handleFailure(stepDescription: String, reason: String) {
         sceneAborted = true
         if abortScenarioOnSceneFailure { scenarioAborted = true }
@@ -477,6 +489,7 @@ public final class FTDriveCore {
             record.scenes[record.scenes.count - 1].failureScreenshot = screenshot
             record.scenes[record.scenes.count - 1].triage = triage
             record.scenes[record.scenes.count - 1].evidenceBlank = evidenceBlank
+            if evidenceBlank { markDeviceFrozen() }
         }
     }
 

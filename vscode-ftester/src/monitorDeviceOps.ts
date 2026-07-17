@@ -9,11 +9,11 @@ import { resolveProjectName } from "./config";
 import {
   bulkLifecycleOp,
   createDeviceLifecycleQueueState,
-  dequeueDeviceLifecycleJob,
+  finishDeviceLifecycleJob,
   type DeviceLifecycleJob,
   type DeviceLifecycleQueueState,
   deviceLifecycleJobNeedsMonitorPause,
-  deviceLifecycleQueueHead,
+  promoteDeviceLifecycleJobs,
   deviceLifecycleStatusFor,
   type DeviceOpKind,
   enqueueDeviceLifecycleJob,
@@ -22,7 +22,9 @@ import {
   isDeviceCatalogJson,
   isDeviceLifecycleQueueBusy,
   isDeviceOpEvent,
+  isDevicesRestartEvent,
   isDevicesUpEvent,
+  removeQueuedBulkUpJob,
   isInstalledDevicesJson,
   type MonitorFromWebviewMessage,
   type MonitorToWebviewMessage,
@@ -46,14 +48,18 @@ export function summarizeDeviceNames(names: readonly string[]): string {
  * 短命プロセス実行を担う。MonitorPanelController が1つ保持する。 */
 export class MonitorDeviceOps {
   /**
-   * デバイスライフサイクル操作(全起動/終了・個別 device-up/down)の直列キュー。ブリッジ供給・
-   * simctl・adb が競合しないよう必ず1件ずつ実行する(実機ログ解析: 並行実行がブリッジ供給の
-   * waitUntilReady 失敗・ゾンビブリッジ蓄積を誘発していた)。状態遷移(queued/running)の純粋
-   * ロジックは monitorModel.ts 側(vscode 非依存・単体テスト対象)。
+   * デバイスライフサイクル操作のスケジューラ。device ジョブは最大2台まで同時実行
+   * (右クリック起動の2台並行=一括起動の2台固定ポリシーと同じ上限)、bulk/restartBatch は
+   * 単独占有(内部で2台並行するため)。かつてブリッジ供給の並行実行が waitUntilReady 失敗・
+   * ゾンビブリッジを誘発したため完全直列だったが、現在は ProvisionLock(クロスプロセス flock)が
+   * 供給を直列化するので device ジョブの並行は安全。状態遷移(queued/running)の純粋ロジックは
+   * monitorModel.ts 側(vscode 非依存・単体テスト対象)。
    */
   private lifecycleQueue: DeviceLifecycleQueueState = createDeviceLifecycleQueueState();
   /** create-device の多重実行ガード。true の間に来た createDevice リクエストは即座に失敗を返す。 */
   private creatingDevice = false;
+  /** 実行中の bulk up(devices-up)プロセス。「デバイスの起動を中断」の kill 対象。close で undefined に戻す。 */
+  private bulkUpProc: PipeProcess | undefined;
   /** 凍結が治らず CPU 描画(swiftshader)へフォールバックしたデバイス論理名。セッション中維持
    * (host に戻すと再凍結するため)。個別 device-up 時に --gpu を付ける。bulk devices-up は
    * 別経路(executeBulkJob)のため対象外。 */
@@ -97,15 +103,94 @@ export class MonitorDeviceOps {
     this.cpuRenderNames.add(name);
   }
 
-  /** enqueueLifecycleJob/enqueueRestart 共通のキュー投入処理(重複排除は呼び出し側の責務)。 */
+  /** 「GPUで再起動」(手動・右クリックメニュー): 単発もバッチジョブ(1件)として実行する。 */
+  restartWithGpu(name: string): void {
+    this.restartWithGpuBatch([name]);
+  }
+
+  /** 「デバイスを全て起動」: 未起動機のブートと CPU バッジ機の GPU 再起動を1ジョブ
+   * (devices-up --restart)に統合して積む。CLI 側の単一キューを2ワーカーが消化するため、
+   * 種別を問わず常に最大2台だけが起動処理中になる(2台同時でホスト CPU がほぼ飽和するため)。 */
+  bulkUpWithRestarts(restartNames: readonly string[]): void {
+    const targets = restartNames.filter((n) => !hasDeviceLifecycleJobFor(this.lifecycleQueue, n));
+    for (const n of targets) {
+      this.cpuRenderNames.delete(n);
+    }
+    this.enqueueLifecycleJob({ kind: "bulk", op: "up", restartNames: targets });
+  }
+
+  /** 「デバイスの起動を中断」: 実行中の bulk up プロセスを SIGTERM で止める。進行中(最大2台)の
+   * ブート自体はエミュレータ/simctl が detach 済みのため完走しうる=中断の意味は「以降のデバイスへ
+   * 進まない」。後始末(チップ剥がし・busy 解除・次ジョブ実行)は既存の close→finishLifecycleQueueHead
+   * 経路が担う。キュー待ち(未実行)の bulk up はキューから除去する。 */
+  cancelBulkUp(): void {
+    const runningBulkUp = this.lifecycleQueue.running.some(
+      (job) => job.kind === "bulk" && job.op === "up",
+    );
+    if (runningBulkUp) {
+      if (this.bulkUpProc) {
+        this.deps.outputChannel.appendLine("[ftester] デバイスの起動を中断します(devices-up へ SIGTERM)");
+        this.bulkUpProc.kill("SIGTERM");
+      }
+      return;
+    }
+    const result = removeQueuedBulkUpJob(this.lifecycleQueue);
+    if (result.removed) {
+      this.lifecycleQueue = result.state;
+      for (const n of result.removed.restartNames ?? []) {
+        this.deps.post({ type: "deviceOpBusy", name: n, op: null, status: null });
+      }
+      this.postBootBusy();
+      this.deps.outputChannel.appendLine("[ftester] キュー待ちの一括起動を取り消しました");
+    }
+  }
+
+  /** CPU 描画フォールバックの記憶を解除し、devices-restart(2台ずつ並行の down→up)1ジョブで
+   * まとめて再起動する。次回起動は --gpu が付かず host(GPU)。以後また画面凍結して watchdog の
+   * 自動フォールバックが走れば CPU に戻る(既知のトレードオフ。docs/design.md §12.4)。
+   * 直列キューに既に載っているデバイスは除外(連打防止の既存方針)。 */
+  restartWithGpuBatch(names: readonly string[]): void {
+    const targets = names.filter((n) => !hasDeviceLifecycleJobFor(this.lifecycleQueue, n));
+    if (targets.length === 0) {
+      return;
+    }
+    for (const n of targets) {
+      this.cpuRenderNames.delete(n);
+    }
+    this.pushLifecycleJob({ kind: "restartBatch", names: targets });
+  }
+
+  /** enqueueLifecycleJob/enqueueRestart 共通のキュー投入処理(重複排除は呼び出し側の責務)。
+   * 投入後にスケジューラを回し、開始できるジョブ(device は最大2並行)を即時開始する。 */
   private pushLifecycleJob(job: DeviceLifecycleJob): void {
-    const wasBusy = isDeviceLifecycleQueueBusy(this.lifecycleQueue);
     this.lifecycleQueue = enqueueDeviceLifecycleJob(this.lifecycleQueue, job);
     this.postBootBusy();
-    if (!wasBusy) {
-      this.runLifecycleQueueHead();
-    } else if (job.kind === "device") {
+    this.postJobStatuses(job);
+    this.scheduleLifecycleJobs();
+  }
+
+  /** ジョブ対象デバイスの queued/running バッジを再送する(投入直後・開始直後の表示更新)。 */
+  private postJobStatuses(job: DeviceLifecycleJob): void {
+    if (job.kind === "device") {
       this.postDeviceLifecycleStatus(job.name);
+    } else if (job.kind === "restartBatch") {
+      for (const n of job.names) {
+        this.postDeviceLifecycleStatus(n);
+      }
+    } else {
+      // 再起動待ちの CPU 機に「再起動待機中」を出す(無表示だと処理対象なのか分からない)。
+      for (const n of job.restartNames ?? []) {
+        this.postDeviceLifecycleStatus(n);
+      }
+    }
+  }
+
+  /** スケジューラ: 開始可能な待機ジョブを running へ昇格し、実処理を開始する。 */
+  private scheduleLifecycleJobs(): void {
+    const result = promoteDeviceLifecycleJobs(this.lifecycleQueue);
+    this.lifecycleQueue = result.state;
+    for (const job of result.started) {
+      this.startLifecycleJob(job);
     }
   }
 
@@ -134,24 +219,35 @@ export class MonitorDeviceOps {
     if (isDeviceLifecycleQueueBusy(this.lifecycleQueue)) {
       this.postBootBusy();
     }
-    for (const job of this.lifecycleQueue.jobs) {
-      if (job.kind === "device") {
-        this.postDeviceLifecycleStatus(job.name);
-      }
+    for (const job of [...this.lifecycleQueue.running, ...this.lifecycleQueue.jobs]) {
+      this.postJobStatuses(job);
     }
   }
 
   /** キュー先頭のジョブを実行する(devices up/down の一括実行、または device-up/down の個別実行)。 */
-  private runLifecycleQueueHead(): void {
-    const job = deviceLifecycleQueueHead(this.lifecycleQueue);
-    if (!job) {
-      return;
-    }
-    // down 系ジョブ(bulk down / device-down)は実行直前にモニターへ pause を送り、片付け中の
-    // デバイスへポーリングがスクショ取得に行って過渡的な警告を吐くのを防ぐ。up 系は起動進行を
-    // タイルで見たいので pause しない。
-    if (deviceLifecycleJobNeedsMonitorPause(job)) {
+  /** モニター pause の参照カウント(down 系ジョブが同時に複数走るため。0→1 で pause、1→0 で resume)。 */
+  private monitorPauseDepth = 0;
+
+  private acquireMonitorPause(): void {
+    this.monitorPauseDepth += 1;
+    if (this.monitorPauseDepth === 1) {
       this.deps.writeMonitorControl({ cmd: "pause" });
+    }
+  }
+
+  private releaseMonitorPause(): void {
+    this.monitorPauseDepth = Math.max(0, this.monitorPauseDepth - 1);
+    if (this.monitorPauseDepth === 0) {
+      this.deps.writeMonitorControl({ cmd: "resume" });
+    }
+  }
+
+  /** 1ジョブの実処理を開始する(scheduleLifecycleJobs が running へ昇格させた直後に呼ぶ)。 */
+  private startLifecycleJob(job: DeviceLifecycleJob): void {
+    // down 系ジョブは実行直前にモニターへ pause を送り、片付け中のデバイスへポーリングが
+    // スクショ取得に行って過渡的な警告を吐くのを防ぐ。up 系は起動進行を見せるので pause しない。
+    if (deviceLifecycleJobNeedsMonitorPause(job)) {
+      this.acquireMonitorPause();
     }
     if (job.kind === "bulk") {
       // down 実行直前にストリームを破棄し、simctl/adb に殺される前にタイルを切断表示へ倒す
@@ -159,9 +255,15 @@ export class MonitorDeviceOps {
       if (job.op === "down") {
         this.deps.stopAllStreams();
       }
-      this.executeBulkJob(job.op);
+      this.postJobStatuses(job);
+      this.executeBulkJob(job.op, job.restartNames ?? []);
+    } else if (job.kind === "restartBatch") {
+      // ストリームはここでは止めず、CLI の deviceStopping イベント受信時にそのデバイスだけ止める
+      // (2台ずつ並行のため、まだ触れていないデバイスのライブ映像を先に消さない)。
+      this.postJobStatuses(job);
+      this.executeRestartBatchJob(job.names);
     } else {
-      // 待機中だったジョブがここで先頭に回ってきた場合も含め、「実行中」バッジに更新する。
+      // 「実行中」バッジへ更新(running へ昇格済みのため statusFor が running を返す)。
       this.postDeviceLifecycleStatus(job.name);
       if (job.op === "down") {
         this.deps.stopDeviceStreams(job.name);
@@ -171,24 +273,34 @@ export class MonitorDeviceOps {
   }
 
   /**
-   * 先頭ジョブの完了後始末。キューから取り除き、残りがあれば続けて次を実行し、
-   * 空になったらグローバルボタンの busy 状態を解除する。
+   * ジョブの完了後始末。running から取り除き、pause の参照を返し、対象デバイスのバッジを剥がして
+   * スケジューラを回す(開始できる待機ジョブがあれば続けて実行する)。
    */
-  private finishLifecycleQueueHead(): void {
-    const finished = deviceLifecycleQueueHead(this.lifecycleQueue);
-    // pause した down 系ジョブは、成功・失敗を問わずここ(finally 相当)でモニターを resume する。
-    if (finished && deviceLifecycleJobNeedsMonitorPause(finished)) {
-      this.deps.writeMonitorControl({ cmd: "resume" });
+  private finishLifecycleJob(job: DeviceLifecycleJob): void {
+    const result = finishDeviceLifecycleJob(this.lifecycleQueue, job);
+    this.lifecycleQueue = result.state;
+    const finished = result.removed;
+    // pause した down 系ジョブは、成功・失敗を問わずここ(finally 相当)で参照を返す。
+    if (deviceLifecycleJobNeedsMonitorPause(finished)) {
+      this.releaseMonitorPause();
     }
-    this.lifecycleQueue = dequeueDeviceLifecycleJob(this.lifecycleQueue);
-    if (finished?.kind === "device") {
+    if (finished.kind === "device") {
       this.deps.post({ type: "deviceOpBusy", name: finished.name, op: null, status: null });
+    } else if (finished.kind === "restartBatch") {
+      // プロセスクラッシュ等で per-device の deviceFinished が欠けた場合の表示剥がし
+      // (正常時は二重送信だが上書き描画のみなので無害)。
+      for (const n of finished.names) {
+        this.deps.post({ type: "deviceOpBusy", name: n, op: null, status: null });
+      }
+    } else {
+      // bulk の restartNames も同様(deviceStopping 前にクラッシュすると「再起動待機中」が残る)。
+      for (const n of finished.restartNames ?? []) {
+        this.deps.post({ type: "deviceOpBusy", name: n, op: null, status: null });
+      }
     }
     // bulk 完了時に bulkOp:null を届けて「待機中」/「シャットダウン中」表示を解除するため、空でなくても送る。
     this.postBootBusy();
-    if (isDeviceLifecycleQueueBusy(this.lifecycleQueue)) {
-      this.runLifecycleQueueHead();
-    }
+    this.scheduleLifecycleJobs();
   }
 
   /**
@@ -197,12 +309,19 @@ export class MonitorDeviceOps {
    * そのプロファイルが参照するデバイスのみに限定する(空ならマシンプロファイルの全デバイス。
    * down も同様に --project/--profile を渡せる)。
    */
-  private executeBulkJob(kind: "up" | "down"): void {
+  private executeBulkJob(kind: "up" | "down", restartNames: readonly string[] = []): void {
     const config = this.deps.getConfig();
     const resolution = resolveProjectName(this.deps.workspaceRoot, config);
     // up は ftester api devices-up(deviceStarting/deviceFinished の NDJSON でタイルを即時更新)、
     // down は従来どおり devices down(プレーンテキスト出力のみ)。
     const args: string[] = kind === "up" ? ["api", "devices-up"] : ["devices", kind];
+    if (kind === "up") {
+      // 起動済みでも down→up する対象(CPU バッジ機の GPU 復帰)。未起動機のブートと同一キューで
+      // 2台ずつ並行処理される(DeviceBooter.bootAll の restartNames)。
+      for (const n of restartNames) {
+        args.push("--restart", n);
+      }
+    }
     if (resolution.kind === "resolved") {
       args.push("--project", resolution.project);
     }
@@ -218,7 +337,7 @@ export class MonitorDeviceOps {
         return;
       }
       jobFinished = true;
-      this.finishLifecycleQueueHead();
+      this.finishLifecycleJob({ kind: "bulk", op: kind });
     };
 
     let proc: PipeProcess;
@@ -232,6 +351,15 @@ export class MonitorDeviceOps {
       this.deps.outputChannel.appendLine(`[ftester] devices ${kind} の起動に失敗しました: ${String(error)}`);
       finishOnce();
       return;
+    }
+    if (kind === "up") {
+      // 「デバイスの起動を中断」(cancelBulkUp)の kill 対象として保持。close で解除。
+      this.bulkUpProc = proc;
+      proc.on("close", () => {
+        if (this.bulkUpProc === proc) {
+          this.bulkUpProc = undefined;
+        }
+      });
     }
 
     const appendLines = (stream: "stdout" | "stderr", chunk: Buffer): void => {
@@ -282,6 +410,13 @@ export class MonitorDeviceOps {
           case "log":
             this.deps.outputChannel.appendLine(`[devices up] ${value.message}`);
             break;
+          case "deviceStopping":
+            // --restart 対象の down 開始。ストリームをこのデバイスだけ止める(simctl/adb に殺される前に
+            // タイルを切断表示へ倒す。他デバイスのライブ映像は残す)。
+            startedNames.add(value.name);
+            this.deps.stopDeviceStreams(value.name);
+            this.deps.post({ type: "deviceOpBusy", name: value.name, op: "down", status: "running" });
+            break;
           case "deviceStarting":
             startedNames.add(value.name);
             this.deps.post({ type: "deviceOpBusy", name: value.name, op: "up", status: "running" });
@@ -326,12 +461,150 @@ export class MonitorDeviceOps {
   }
 
   /**
-   * タイル右クリックメニューの起動/停止項目から、デバイス1台だけを
+   * `ftester api devices-restart` を短命プロセスとして実行する(restartBatch ジョブの実処理)。
+   * CLI 側が 2 台ずつ並行で down→up し、per-device の deviceStopping/deviceStarting/deviceFinished
+   * NDJSON を流す(契約: monitorModel.ts isDevicesRestartEvent / Sources/ftester/ApiDeviceCommands.swift)。
+   * 全体の構造(spawn 例外・'error'+'close' 二重発火の finishOnce ガード・close 時の表示剥がし)は
+   * executeBulkJob の up 経路と同じ。
+   */
+  private executeRestartBatchJob(names: readonly string[]): void {
+    const config = this.deps.getConfig();
+    const resolution = resolveProjectName(this.deps.workspaceRoot, config);
+    const args: string[] = ["api", "devices-restart"];
+    for (const n of names) {
+      args.push("--name", n);
+    }
+    if (resolution.kind === "resolved") {
+      args.push("--project", resolution.project);
+    }
+    // machine 解決に使う(executeDeviceOpJob と同じ理由。ApiDevicesRestart 側の --profile と対)。
+    if (config.profile) {
+      args.push("--profile", config.profile);
+    }
+
+    let jobFinished = false;
+    const finishOnce = (): void => {
+      if (jobFinished) {
+        return;
+      }
+      jobFinished = true;
+      this.finishLifecycleJob({ kind: "restartBatch", names });
+    };
+
+    let proc: PipeProcess;
+    try {
+      proc = spawn(config.binaryPath, args, {
+        cwd: this.deps.workspaceRoot,
+        shell: false,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+    } catch (error) {
+      this.deps.outputChannel.appendLine(`[ftester] devices-restart の起動に失敗しました: ${String(error)}`);
+      finishOnce();
+      return;
+    }
+
+    // 「down/up を掴んだがまだ完了していないデバイス名」。close 時に残っていればクラッシュ・kill と
+    // みなし表示を剥がす(executeBulkJob の startedNames と同じ目的)。
+    const busyNames = new Set<string>();
+    const stdoutParser = new NdjsonParser(
+      (value) => {
+        if (!isDevicesRestartEvent(value)) {
+          this.deps.outputChannel.appendLine(
+            `[devices-restart] 未知の形式の行を無視しました: ${JSON.stringify(value)}`,
+          );
+          return;
+        }
+        switch (value.kind) {
+          case "log":
+            this.deps.outputChannel.appendLine(`[devices-restart] ${value.message}`);
+            break;
+          case "deviceStopping":
+            // このデバイスの down が始まる。ストリームをここで止める(simctl/adb に殺される前に
+            // タイルを切断表示へ倒す。バッチ開始時に全台止めない理由は runLifecycleQueueHead 参照)。
+            busyNames.add(value.name);
+            this.deps.stopDeviceStreams(value.name);
+            this.deps.post({ type: "deviceOpBusy", name: value.name, op: "down", status: "running" });
+            break;
+          case "deviceStarting":
+            busyNames.add(value.name);
+            this.deps.post({ type: "deviceOpBusy", name: value.name, op: "up", status: "running" });
+            break;
+          case "deviceFinished":
+            busyNames.delete(value.name);
+            this.deps.post({ type: "deviceOpBusy", name: value.name, op: null, status: null });
+            break;
+          case "finished":
+            if (!value.ok) {
+              this.deps.outputChannel.appendLine(
+                `[ftester] devices-restart が失敗しました: ${value.error ?? "(詳細不明)"}`,
+              );
+            }
+            break;
+        }
+      },
+      (line) => this.deps.outputChannel.appendLine(`[devices-restart stdout] ${line}`),
+    );
+    proc.stdout.on("data", (chunk: Buffer) => stdoutParser.push(chunk));
+    proc.stderr.on("data", (chunk: Buffer) => {
+      for (const rawLine of chunk.toString("utf8").split("\n")) {
+        const line = rawLine.trim();
+        if (line.length > 0) {
+          this.deps.outputChannel.appendLine(`[devices-restart stderr] ${line}`);
+        }
+      }
+    });
+
+    proc.on("error", (error) => {
+      this.deps.outputChannel.appendLine(
+        `[ftester] devices-restart の実行でエラーが発生しました: ${error.message}`,
+      );
+      finishOnce();
+    });
+    proc.on("close", (exitCode) => {
+      stdoutParser.end();
+      for (const name of busyNames) {
+        this.deps.post({ type: "deviceOpBusy", name, op: null, status: null });
+      }
+      busyNames.clear();
+      this.deps.outputChannel.appendLine(
+        `[ftester] devices-restart が終了しました(exit code: ${String(exitCode)})`,
+      );
+      finishOnce();
+    });
+  }
+
+  /** up が失敗したときの追加試行回数(計 1+2=3 回)。再起動(down→up)の up が転けてデバイスが
+   * 下がったまま放置される事故を防ぐ。watchdog は offline/消失を blank-screen として拾えず
+   * 二度と復旧しないため、この経路で確実に復帰を試みる。down は再試行しない(消したいだけなので)。 */
+  private static readonly deviceUpMaxRetries = 2;
+  /** up 再試行の間隔(ミリ秒)。直前の失敗した起動/adb を落ち着かせてから再スポーンする。 */
+  private static readonly deviceUpRetryDelayMs = 3000;
+
+  /**
+   * タイル右クリックメニューの起動/停止項目・再起動(down→up)から、デバイス1台だけを
    * `ftester api device-up`/`device-down` で起動/停止する(device ジョブの実処理)。
+   * up が失敗した場合は deviceUpMaxRetries まで再試行してからキューを進める。
    * 失敗時(finished ok:false、または finished を出せずに落ちた場合を含む)は、バナーがパネルを
    * 閉じると消えるため、事後診断できるよう出力チャネルにも必ずログを残す。
    */
   private executeDeviceOpJob(name: string, op: DeviceOpKind): void {
+    // spawn 失敗時の 'error'+'close' 二重発火・複数試行にまたがる finish の二重呼び出しを防ぐ
+    // ジョブ単位のガード(finishLifecycleQueueHead は1ジョブにつき1回だけ呼ぶ)。
+    let jobFinished = false;
+    const finishOnce = (): void => {
+      if (jobFinished) {
+        return;
+      }
+      jobFinished = true;
+      this.finishLifecycleJob({ kind: "device", name, op });
+    };
+    this.runDeviceOpAttempt(name, op, 0, finishOnce);
+  }
+
+  /** device-up/down の1回分の実行。up が失敗し追加試行が残っていれば遅延後に再試行、
+   * それ以外(成功・down・up の上限到達)は finishOnce でキューを進める。 */
+  private runDeviceOpAttempt(name: string, op: DeviceOpKind, attempt: number, finishOnce: () => void): void {
     const config = this.deps.getConfig();
     const resolution = resolveProjectName(this.deps.workspaceRoot, config);
     const args: string[] = ["api", op === "up" ? "device-up" : "device-down", "--name", name];
@@ -348,20 +621,33 @@ export class MonitorDeviceOps {
       args.push("--gpu", "swiftshader_indirect");
     }
 
+    const attemptLabel = attempt > 0 ? `(再試行 ${attempt}/${MonitorDeviceOps.deviceUpMaxRetries})` : "";
     let failureLogged = false;
     const logFailure = (message: string): void => {
       failureLogged = true;
-      this.deps.outputChannel.appendLine(`[ftester] device-${op}(${name})が失敗しました: ${message}`);
+      this.deps.outputChannel.appendLine(`[ftester] device-${op}(${name})が失敗しました${attemptLabel}: ${message}`);
     };
 
-    // spawn 失敗時の 'error'+'close' 二重発火対策(executeBulkJob と同じ理由)。
-    let jobFinished = false;
-    const finishOnce = (): void => {
-      if (jobFinished) {
+    // この試行の終端('error' と 'close' の二重発火を1回に集約)。up が失敗し追加試行が残っていれば
+    // 再試行(キューは進めない)、それ以外は finishOnce。
+    let attemptSettled = false;
+    const settle = (failed: boolean): void => {
+      if (attemptSettled) {
         return;
       }
-      jobFinished = true;
-      this.finishLifecycleQueueHead();
+      attemptSettled = true;
+      if (failed && op === "up" && attempt < MonitorDeviceOps.deviceUpMaxRetries) {
+        this.deps.outputChannel.appendLine(
+          `[ftester] device-up(${name})を再試行します(${attempt + 1}/${MonitorDeviceOps.deviceUpMaxRetries}、`
+            + `${MonitorDeviceOps.deviceUpRetryDelayMs}ms 後)`,
+        );
+        setTimeout(
+          () => this.runDeviceOpAttempt(name, op, attempt + 1, finishOnce),
+          MonitorDeviceOps.deviceUpRetryDelayMs,
+        );
+        return;
+      }
+      finishOnce();
     };
 
     let proc: PipeProcess;
@@ -374,7 +660,7 @@ export class MonitorDeviceOps {
     } catch (error) {
       logFailure(String(error));
       this.deps.post({ type: "deviceOpFailed", name, message: String(error) });
-      finishOnce();
+      settle(true);
       return;
     }
 
@@ -407,20 +693,20 @@ export class MonitorDeviceOps {
     proc.on("error", (error) => {
       logFailure(error.message);
       this.deps.post({ type: "deviceOpFailed", name, message: error.message });
-      finishOnce();
+      settle(true);
     });
     proc.on("close", (exitCode) => {
       stdoutParser.end();
       stderrParser.end();
       this.deps.outputChannel.appendLine(
-        `[ftester] device-${op}(${name})が終了しました(exit code: ${String(exitCode)})`,
+        `[ftester] device-${op}(${name})が終了しました${attemptLabel}(exit code: ${String(exitCode)})`,
       );
       // finished(ok:false)を経由せずに落ちたケース(クラッシュ・kill 等)を捕捉する。
       // finished 経由で既にログ済みの場合は二重に出さない。
       if (!failureLogged && exitCode !== 0) {
         logFailure(`プロセスが exit code ${String(exitCode)} で終了しました`);
       }
-      finishOnce();
+      settle(failureLogged);
     });
   }
 

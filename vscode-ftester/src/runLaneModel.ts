@@ -295,6 +295,10 @@ export function reduceLaneEvent(state: RunLaneState, event: RunEvent, nowMs: num
       return actions;
     }
 
+    case "scenarioRequeued":
+      return pushLine(state, laneIdOf(event),
+        `  🔁 ${event.reason}のため別デバイスで再実行します(${String(event.attempt)}/${String(event.limit)})`);
+
     case "wipeStatus":
       // デバイスタイルのバッジ表示(monitorPanel.ts の handleBusMessage)専用。ログレーンには出さない。
       return [];

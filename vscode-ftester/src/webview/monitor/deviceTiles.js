@@ -6,7 +6,7 @@
 // offline/booted を経由する(state==='connected' に限定できない)ため他2つと別枠で判定する。
 
 import { vscode } from './vscodeApi.js';
-import { grid, emptyMessage, banner, btnUp, btnDown, deviceOpMenu, deviceOpMenuItemBtn, deviceOpMenuItemLabel, deviceOpMenuLiveBtn, profileSelect } from './domRefs.js';
+import { grid, emptyMessage, banner, btnUp, btnDown, deviceOpMenu, deviceOpMenuItemBtn, deviceOpMenuItemLabel, deviceOpMenuLiveBtn, deviceOpMenuGpuBtn, profileSelect } from './domRefs.js';
 import { updateLaneVisibility, syncLanesToDevices, runningWorkers } from './laneLog.js';
 import { createH264Renderer } from './h264Decoder.js';
 
@@ -96,7 +96,11 @@ function createTile(device) {
   const runningBadge = document.createElement('span');
   runningBadge.className = 'badge badge-running';
   runningBadge.textContent = '実行中';
-  header.append(name, runningBadge);
+  // ライフサイクルキュー待ち(queued)の明示チップ。「全て起動」時にどのデバイスが処理待ちか
+  // 一目で分かるようにする。タイル左下(フッター先頭)に置く(ユーザー指定)。表示は renderMeta。
+  const queuedBadge = document.createElement('span');
+  queuedBadge.className = 'badge badge-queued';
+  header.append(name);
 
   const frameWrap = document.createElement('div');
   frameWrap.className = 'frame-wrap';
@@ -111,7 +115,8 @@ function createTile(device) {
   const error = document.createElement('span');
   error.className = 'tile-error';
   // renderBadge はフッター末尾に置く。tile-error が flex:1 で伸びるため自動的に右端(=タイル右下)に寄る。
-  footer.append(stateBadge, error, renderBadge);
+  // 実行中/キュー待ちのバッジはタイル左下(フッター先頭)に置く(ユーザー指定。ヘッダーはデバイス名のみ)。
+  footer.append(runningBadge, queuedBadge, stateBadge, error, renderBadge);
 
   tile.append(header, frameWrap, footer);
   grid.appendChild(tile);
@@ -125,6 +130,7 @@ function createTile(device) {
     opBusy: undefined,
     stateBadgeEl: stateBadge,
     runningBadgeEl: runningBadge,
+    queuedBadgeEl: queuedBadge,
     renderBadgeEl: renderBadge,
     frameWrapEl: frameWrap,
     imgEl: img,
@@ -150,6 +156,12 @@ function createTile(device) {
     h264Renderer: null,
     usingH264: false,
     h264ErrorSent: false,
+    // 再起動(down 実行)後、monitor の renderMode が再検出されるまで 'cpu' を信用しないフラグ
+    // (renderRenderBadge のちらつき対策)。connected を離れたら解除(次の値は再検出値)。
+    // down が失敗して実際には落ちなかった場合の保険として、opBusy 無しの connected を
+    // 3サイクル連続観測したら「本当にまだ CPU」とみなして解除する(staleConnectedCycles)。
+    renderModeStale: false,
+    staleConnectedCycles: 0,
   };
   tiles.set(device.id, entry);
   return entry;
@@ -160,7 +172,12 @@ function renderFrame(entry) {
   const offline = entry.device.state === 'offline';
   // 終了中(一括・個別とも)は最終フレームを凍結表示のまま見せず、プレースホルダに倒す
   // (ストリームは down 開始時に破棄済みで、以後フレームは更新されない)。
-  const shuttingDown = !offline && (bulkOpActive === 'down' || entry.opBusy?.op === 'down');
+  // ただし個別 down が「キュー待ち(queued)」の間はまだ stopDeviceStreams 前=ストリーム生存中なので
+  // シャットダウン扱いにしない(ライブ映像を出したまま順番待ち)。実際に落ち始める running でだけ倒す。
+  // これを外すと、一括起動の後ろに積まれた再起動待ちの CPU 機が、まだ動いているのに数分間
+  // 「シャットダウン中」表示で固まって見える(順番待ちを停止中と誤認させる)。
+  const shuttingDown = !offline && (bulkOpActive === 'down'
+    || (entry.opBusy?.op === 'down' && entry.opBusy.status === 'running'));
   // まだ offline の起動操作中の表示分け(booted への遷移は devices サイクルの state 更新に任せる):
   //  - 個別起動が実行中(status==='running'=simctl 起動処理が走っている)→「起動中」スピナー(下の booting 分岐)
   //  - 個別起動がキュー待ち(status==='queued')/一括起動(個別 status を持たない)→「待機中」時計
@@ -220,18 +237,27 @@ function renderFrame(entry) {
 // (offline 等で renderMode 未受信なら非表示)
 function renderRenderBadge(entry) {
   const device = entry.device;
-  const mode = device.platform === 'android' && (device.renderMode === 'gpu' || device.renderMode === 'cpu')
-    ? device.renderMode
-    : null;
-  if (!mode) {
+  // GPU(host)は既定状態なのでバッジを出さない。CPU(swiftshader=凍結フォールバック)だけ表示する。
+  // 表示規則(一貫性のため位相で固定):
+  //  - 再起動キュー待ち(opBusy queued): 表示したまま(まだ実際に CPU で動いている。フッターの
+  //    「再起動待機中...」が処理予定を伝える)
+  //  - down/up 実行中(opBusy running)・未接続: 非表示
+  //  - 再起動完了直後: renderModeStale の間は非表示(monitor が connected 降格 debounce+serial
+  //    キャッシュで再起動前の 'cpu' を一瞬送り続けるため、そのまま出すとバッジが消えた後に
+  //    一瞬再表示されるちらつきになる。ApiMonitorCommand 参照。フラグ管理は applyDevices/applyDeviceOpBusy)
+  const isCpu = device.platform === 'android' && device.renderMode === 'cpu'
+    && device.state === 'connected'
+    && !(entry.opBusy && entry.opBusy.status === 'running')
+    && !entry.renderModeStale;
+  if (!isCpu) {
     entry.renderBadgeEl.style.display = 'none';
     return;
   }
   // 明示的に inline-block を入れる('' だと CSS の .badge-render{display:none} に戻り永久非表示になる)
   entry.renderBadgeEl.style.display = 'inline-block';
-  entry.renderBadgeEl.className = 'badge badge-render render-' + mode;
-  entry.renderBadgeEl.textContent = mode === 'gpu' ? 'GPU' : 'CPU';
-  entry.renderBadgeEl.title = mode === 'gpu' ? 'GPU描画(host)' : 'CPU描画(swiftshader・フォールバック)';
+  entry.renderBadgeEl.className = 'badge badge-render render-cpu';
+  entry.renderBadgeEl.textContent = 'CPU';
+  entry.renderBadgeEl.title = 'CPU描画(swiftshader・フォールバック)';
 }
 
 // renderDeviceOpMenuItem は内部で呼ぶ(opBusy・state 変化時の一括再描画)。
@@ -257,7 +283,8 @@ function renderMeta(entry) {
   // state で排他(booted/connected)のため bridgeWatch と healthWatch は衝突しない。
   let warn = false;
   if (entry.opBusy) {
-    // 何もしない: footerText は空のまま(deviceOpMenuItem 側のラベルに譲る)。
+    // 何もしない: footerText は空のまま(キュー待ちは左下の queuedBadge チップが伝える。
+    // 実行中の down/up はプレースホルダ側のラベルに譲る)。
   } else if (entry.wipePhase) {
     const override = WIPE_STATUS_LABEL[entry.wipePhase];
     if (override) {
@@ -279,6 +306,19 @@ function renderMeta(entry) {
   }
   entry.stateBadgeEl.classList.toggle('tile-status-warn', warn);
   entry.stateBadgeEl.textContent = footerText;
+
+  // キュー待ちチップ(ヘッダー)。per-device の queued(再起動待ち/個別起動待ち)に加え、
+  // 一括起動中で CLI が未到達の未起動機(per-device 状態なし)にも「起動待機」を出す。
+  // bulkOpActive 変化時の再評価は setBusy 側の renderMeta 一括呼び出しが担う。
+  let queuedText = '';
+  if (entry.opBusy?.status === 'queued') {
+    queuedText = entry.opBusy.op === 'down' ? '再起動待機' : '起動待機';
+  } else if (!entry.opBusy && bulkOpActive === 'up' && entry.device.state === 'offline') {
+    queuedText = '起動待機';
+  }
+  entry.queuedBadgeEl.style.display = queuedText ? 'inline-block' : 'none';
+  entry.queuedBadgeEl.textContent = queuedText;
+
   if (deviceOpMenuEntry === entry) {
     renderDeviceOpMenuItem();
   }
@@ -321,6 +361,10 @@ function openDeviceOpMenu(entry, clientX, clientY) {
   // ライブ操作はブリッジ接続済み(state==='connected')でのみ機能する(liveTab.js の「接続されていません」
   // 警告と対)。未接続では項目自体を出さない。
   deviceOpMenuLiveBtn.style.display = entry.device.state === 'connected' ? '' : 'none';
+  // 「GPUで再起動」は CPU 描画フォールバック中(CPU バッジ)の Android タイルでのみ意味を持つ。
+  // 起動/停止のライフサイクル操作中(opBusy)は再起動を積んでも enqueueRestart が無視するため出さない。
+  deviceOpMenuGpuBtn.style.display =
+    !entry.opBusy && entry.device.platform === 'android' && entry.device.renderMode === 'cpu' ? '' : 'none';
   deviceOpMenu.classList.add('visible');
   clampMenuPosition(deviceOpMenu, clientX, clientY);
 }
@@ -335,6 +379,16 @@ deviceOpMenuItemBtn.addEventListener('click', (event) => {
     name: deviceOpMenuEntry.device.name,
     op: deviceOpMenuItemBtn.dataset.op,
   });
+  closeDeviceOpMenu();
+});
+
+// CPU 描画フォールバックを解除して host GPU で再起動(受け手は monitorPanel.ts の deviceRestartGpu)。
+deviceOpMenuGpuBtn.addEventListener('click', (event) => {
+  event.stopPropagation();
+  if (!deviceOpMenuEntry) {
+    return;
+  }
+  vscode.postMessage({ type: 'deviceRestartGpu', name: deviceOpMenuEntry.device.name });
   closeDeviceOpMenu();
 });
 
@@ -395,6 +449,17 @@ export function applyDevices(devices) {
       entry.runningBadgeEl.style.display = runningWorkers.has(device.id) ? 'inline-block' : 'none';
     } else {
       entry.device = device;
+      // renderModeStale の解除判定(フラグの意味は createTile の初期化コメント参照)。
+      if (entry.renderModeStale) {
+        if (device.state !== 'connected') {
+          entry.renderModeStale = false;
+        } else if (!entry.opBusy) {
+          entry.staleConnectedCycles += 1;
+          if (entry.staleConnectedCycles >= 3) {
+            entry.renderModeStale = false;
+          }
+        }
+      }
     }
     renderMeta(entry);
     renderFrame(entry);
@@ -524,6 +589,13 @@ export function applyDeviceOpBusy(message) {
   }
   const prev = entry.opBusy;
   entry.opBusy = message.op ? { op: message.op, status: message.status || 'running' } : undefined;
+  // down が実際に走り始めた時点から、monitor の 'cpu' は再起動前の残存値になりうる
+  // (フラグの意味・解除は createTile 初期化コメントと applyDevices 参照)。
+  if (entry.device.platform === 'android'
+      && entry.opBusy?.op === 'down' && entry.opBusy.status === 'running') {
+    entry.renderModeStale = true;
+    entry.staleConnectedCycles = 0;
+  }
   // opBusy の有無は footer の bridgeWatch 優先度判定にも影響するため renderMeta で一括再描画する。
   renderMeta(entry);
   // down 完了直後の稼働中タイルは再描画しない(setBusy の down 解除と同じ理由: state が offline に
@@ -584,7 +656,11 @@ export function hideBanner() {
 }
 
 export function setBusy(busy, bulkOp) {
-  btnUp.disabled = busy;
+  // bulk up 実行中は「全て起動」ボタンを中断ボタンに転用する(クリック時の分岐は main.js。
+  // 受け手: monitorPanel.ts devicesUpCancel → MonitorDeviceOps.cancelBulkUp)。
+  const upCancelMode = busy && bulkOp === 'up';
+  btnUp.disabled = busy && !upCancelMode;
+  btnUp.textContent = upCancelMode ? 'デバイスの起動を中断' : 'デバイスを全て起動';
   btnDown.disabled = busy;
   const next = bulkOp === 'up' || bulkOp === 'down' ? bulkOp : null;
   if (bulkOpActive !== next) {
@@ -593,6 +669,8 @@ export function setBusy(busy, bulkOp) {
     // 表示(未起動⇔待機中、フレーム⇔シャットダウン中)を即時反映する。次の devices サイクルを
     // 待つと数秒古い表示のままに見える。
     for (const entry of tiles.values()) {
+      // キュー待ちチップ(起動待機)は bulkOpActive に依存するため全タイル再評価する。
+      renderMeta(entry);
       // down 解除時の稼働中タイルは除外: state が offline に更新される前に再描画すると凍結フレームが
       // 一瞬再表示される。「シャットダウン中」のまま次の devices 反映で「未起動」へ直接遷移させる。
       if (wasDown && entry.device.state !== 'offline') {

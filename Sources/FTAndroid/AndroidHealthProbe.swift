@@ -84,6 +84,21 @@ public enum AndroidHealthProbe {
         return decidePersistentBlank(samples: observed)
     }
 
+    /// シナリオ失敗直後の事後判定用: サンプリング窓の中で**一度でも** blank を観測したら true。
+    /// isPersistentlyBlank(全サンプル blank で確定・非 blank で即健全)と逆の判定で、白フレームが
+    /// 約25秒周期でフラッピングする凍結個体の「回復側の瞬間」を引いて見逃すのを防ぐ。
+    /// 健全機は全サンプル非 blank のため窓ぶん(既定 4×2s≈8s)待つ — 失敗シナリオでのみ呼ぶこと。
+    public static func isBlankObserved(serial: String, samples: Int = 4,
+                                       intervalMs: UInt64 = 2_000) async -> Bool {
+        for i in 0..<max(samples, 1) {
+            if probeBlank(serial: serial) { return true }
+            if i < samples - 1 {
+                try? await Task.sleep(nanoseconds: intervalMs * 1_000_000)
+            }
+        }
+        return false
+    }
+
     /// serial に1回 screencap して blank 判定する。adb 取得失敗(コマンドエラー・status != 0)は
     /// 「blank ではない」扱い(誤って健全機を除外しない安全側)
     private static func probeBlank(serial: String) -> Bool {

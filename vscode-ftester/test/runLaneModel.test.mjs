@@ -318,3 +318,17 @@ function runMockThroughLanePipeline(mockArgs) {
     });
   });
 }
+
+test("scenarioRequeued は担当ワーカーのレーンに 🔁 行を出す", () => {
+  const state = createRunLaneState();
+  feed(state, [
+    { kind: "workersReady", workers: [{ id: "ios:シム1", name: "シム1", platform: "ios", detail: "" }] },
+  ]);
+  const actions = feed(state, [{
+    kind: "scenarioRequeued", scenario: "Foo.S0010", worker: "ios:シム1",
+    reason: "ブリッジ接続不能", attempt: 1, limit: 2,
+  }]);
+  const lineAction = actions.find((a) => a.type === "line");
+  assert.ok(lineAction, "レーン行アクションが発生する");
+  assert.ok(lineAction.text.includes("🔁"));
+});

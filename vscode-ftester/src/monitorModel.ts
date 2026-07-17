@@ -11,6 +11,8 @@
 //     値は "wifi-disabled"|"clock-skew" 等。未知の文字列も受理して保持する)
 //     ("renderMode":"gpu"|"cpu"|null も同様。connected な Android エミュレータのみ設定されうる。
 //     ブート時固定のため接続中は変化しない値)
+//     ("inRun":bool は ApiMonitorCommand.swift の RunLease.isFresh 判定。`ftester api run` が
+//     このデバイスを使用中なら true。null 化されないが読み手は欠落/非bool を false とみなす)
 //   {"kind":"monitorFrame","device":"..","jpegBase64":"..","width":480,"height":1040}
 //     … connected デバイスのみ、約interval秒毎
 //   {"kind":"monitorError","device":"..","message":".."}         … device は省略されうる。
@@ -38,6 +40,9 @@ export interface MonitorDevice {
   /** Android エミュレータの実描画モード("gpu"=host/Metal、"cpu"=swiftshader)。
    * connected な Android のみ・判定不能や iOS は undefined(Swift は null を送るので正規化する)。 */
   readonly renderMode?: "gpu" | "cpu";
+  /** `ftester api run` がこのデバイスを使用中か(ApiMonitorCommand.swift の RunLease.isFresh)。
+   * Swift は常に true/false を送るが、欠落・非 bool は false として扱う(isMonitorDevice が正規化)。 */
+  readonly inRun?: boolean;
 }
 
 /** `ftester api monitor` の NDJSON 1行分のイベント(kind で判別)。 */
@@ -80,6 +85,10 @@ function isMonitorDevice(value: unknown): value is MonitorDevice {
   if (value.renderMode !== undefined && value.renderMode !== "gpu" && value.renderMode !== "cpu") {
     value.renderMode = undefined;
   }
+  if (value.inRun !== true && value.inRun !== false) {
+    // 欠落/null/型不正を「未使用中」に寄せる(イベント全体は捨てない)。
+    value.inRun = false;
+  }
   return (
     typeof value.id === "string" &&
     typeof value.name === "string" &&
@@ -92,7 +101,8 @@ function isMonitorDevice(value: unknown): value is MonitorDevice {
     (value.serial === undefined || typeof value.serial === "string") &&
     (value.health === undefined ||
       (Array.isArray(value.health) && value.health.every((item) => typeof item === "string"))) &&
-    (value.renderMode === undefined || value.renderMode === "gpu" || value.renderMode === "cpu")
+    (value.renderMode === undefined || value.renderMode === "gpu" || value.renderMode === "cpu") &&
+    typeof value.inRun === "boolean"
   );
 }
 
@@ -373,10 +383,19 @@ export type MonitorFromWebviewMessage =
   // webview の初期化完了通知。拡張側はこれを受けてから初期状態を送る(html設定直後の postMessage は
   // リスナー登録前のレースで捨てられるため、一度きりの送信はこの通知を待つ)。
   | { readonly type: "ready" }
-  | { readonly type: "devicesUp" }
+  // restartNames: 起動済みでも down→up で再起動するデバイス論理名(CPU バッジ機の GPU 復帰)。
+  // 未起動機のブートと同一キューで2台ずつ並行処理される(devices-up --restart。DeviceBooter.bootAll)。
+  | { readonly type: "devicesUp"; readonly restartNames?: readonly string[] }
+  // 「デバイスの起動を中断」: 実行中の bulk up プロセスを停止/キュー待ちの bulk up を除去する。
+  | { readonly type: "devicesUpCancel" }
   | { readonly type: "devicesDown" }
   | { readonly type: "restartMonitor" }
   | { readonly type: "deviceOp"; readonly name: string; readonly op: DeviceOpKind }
+  // 「GPUで再起動」: CPU 描画フォールバックを解除して host GPU で再起動する手動操作。
+  // webview 側は CPU バッジ(renderMode==='cpu')の Android タイルでのみメニューに出す。
+  | { readonly type: "deviceRestartGpu"; readonly name: string }
+  // deviceRestartGpu の複数選択版(バッチ再起動)。names はタイル複数選択の対象デバイス名。
+  | { readonly type: "devicesRestartGpu"; readonly names: readonly string[] }
   | { readonly type: "selectProfile"; readonly profile: string }
   // 実行プロファイルの追加/コピー/名前変更/削除(マシンプロファイルの追加/コピー/削除/名前変更と
   // 同じ構成)。コピー/名前変更/削除の対象 profile の空文字は「対象なし」として検証で弾く。
@@ -536,13 +555,27 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
   }
   switch (value.type) {
     case "ready":
-    case "devicesUp":
+    case "devicesUpCancel":
     case "devicesDown":
     case "restartMonitor":
     case "profileAdd":
       return true;
+    case "devicesUp":
+      return (
+        value.restartNames === undefined ||
+        (Array.isArray(value.restartNames) &&
+          value.restartNames.every((n) => typeof n === "string" && n !== ""))
+      );
     case "deviceOp":
       return typeof value.name === "string" && (value.op === "up" || value.op === "down");
+    case "deviceRestartGpu":
+      return typeof value.name === "string" && value.name !== "";
+    case "devicesRestartGpu":
+      return (
+        Array.isArray(value.names) &&
+        value.names.length > 0 &&
+        value.names.every((n) => typeof n === "string" && n !== "")
+      );
     case "selectProfile":
       return typeof value.profile === "string";
     case "profileCopy":
@@ -702,9 +735,11 @@ export function isDeviceOpEvent(value: unknown): value is DeviceOpEvent {
 
 /** `ftester api devices-up` の NDJSON 1行分のイベント。
  * 契約の同期相手: Sources/ftester/ApiDeviceCommands.swift ApiDevicesUp(deviceStarting/deviceFinished は
- * ブート開始/完了の即時通知で、モニターの状態スキャンを待たずタイルを「起動中」表示にするために使う)。 */
+ * ブート開始/完了の即時通知で、モニターの状態スキャンを待たずタイルを「起動中」表示にするために使う。
+ * deviceStopping は --restart 指定デバイスの down 開始通知)。 */
 export type DevicesUpEvent =
   | { readonly kind: "log"; readonly message: string }
+  | { readonly kind: "deviceStopping"; readonly name: string; readonly platform: string }
   | { readonly kind: "deviceStarting"; readonly name: string; readonly platform: string }
   | { readonly kind: "deviceFinished"; readonly name: string; readonly platform: string }
   | { readonly kind: "finished"; readonly ok: boolean; readonly error: string | null };
@@ -717,11 +752,45 @@ export function isDevicesUpEvent(value: unknown): value is DevicesUpEvent {
   switch (value.kind) {
     case "log":
       return typeof value.message === "string";
+    case "deviceStopping":
     case "deviceStarting":
     case "deviceFinished":
       return typeof value.name === "string" && typeof value.platform === "string";
     case "finished":
       return typeof value.ok === "boolean" && (value.error === null || typeof value.error === "string");
+    default:
+      return false;
+  }
+}
+
+/** `ftester api devices-restart` の NDJSON 1行分のイベント。deviceStopping/deviceStarting/
+ * deviceFinished はバッチ内の1台ごとの down→up 進行通知(モニターの状態スキャンを待たず
+ * タイルを更新するために使う。deviceLifecycleStatusFor は restartBatch を常に queued 扱いにする
+ * ため、running 表示はこのイベント由来の deviceOpBusy post が担う)。 */
+export type DevicesRestartEvent =
+  | { readonly kind: "log"; readonly message: string }
+  | { readonly kind: "deviceStopping"; readonly name: string; readonly platform: string }
+  | { readonly kind: "deviceStarting"; readonly name: string; readonly platform: string }
+  | { readonly kind: "deviceFinished"; readonly name: string; readonly platform: string }
+  | { readonly kind: "finished"; readonly ok: boolean; readonly error?: string | null };
+
+/** value が DevicesRestartEvent として扱ってよいか判定する(isDevicesUpEvent と同じ方針)。 */
+export function isDevicesRestartEvent(value: unknown): value is DevicesRestartEvent {
+  if (!isRecord(value) || typeof value.kind !== "string") {
+    return false;
+  }
+  switch (value.kind) {
+    case "log":
+      return typeof value.message === "string";
+    case "deviceStopping":
+    case "deviceStarting":
+    case "deviceFinished":
+      return typeof value.name === "string" && typeof value.platform === "string";
+    case "finished":
+      return (
+        typeof value.ok === "boolean" &&
+        (value.error === undefined || value.error === null || typeof value.error === "string")
+      );
     default:
       return false;
   }
@@ -768,60 +837,153 @@ export function deviceOpMenuItem(
 // ブリッジ供給の waitUntilReady が失敗しゾンビブリッジが蓄積することが判明済み)。
 //
 // ここは vscode 非依存の純粋な状態管理のみ(spawn 自体は monitorPanel.ts 側)。常に entries[0] が
-// 「現在実行中のジョブ」という不変条件を保つ FIFO(enqueueDeviceLifecycleJob で積み、完了後
-// dequeueDeviceLifecycleJob で先頭を取り除いて次を実行)。
+// デバイスライフサイクルのスケジューラ(running=実行中・jobs=FIFO 待機列)。
+// - device ジョブは最大 DEVICE_LIFECYCLE_MAX_CONCURRENT 台まで同時実行(右クリック起動を2台並行に)。
+// - bulk / restartBatch は単独占有(内部で2台並行するため、他と重ねると全体上限2を超える)。
+// - 追い越しはしない(先頭が開始できない間は後続も待つ=投入順の保証)。
+// - 同一デバイス名のジョブは同時に実行しない(enqueueRestart の down→up ペアの逐次性を守る)。
 
 export type DeviceOpQueueStatus = "queued" | "running";
 
-/** キューに積む1件のデバイスライフサイクル操作。全台(bulk)/1台(device)の2種別。 */
+/** キューに積む1件のデバイスライフサイクル操作。全台(bulk)/1台(device)/複数台GPU再起動(restartBatch)の3種別。 */
 export type DeviceLifecycleJob =
-  | { readonly kind: "bulk"; readonly op: "up" | "down" }
-  | { readonly kind: "device"; readonly name: string; readonly op: DeviceOpKind };
+  // restartNames: up のみ。起動済みでも down→up する対象(devices-up --restart に渡す)。
+  | { readonly kind: "bulk"; readonly op: "up" | "down"; readonly restartNames?: readonly string[] }
+  | { readonly kind: "device"; readonly name: string; readonly op: DeviceOpKind }
+  | { readonly kind: "restartBatch"; readonly names: readonly string[] };
 
-/** 直列キューの状態(不変)。jobs[0] が実行中、それ以降が待機中。 */
+/** device ジョブの同時実行上限(2台同時でホスト CPU がほぼ飽和する実測に基づくフリート共通の上限)。 */
+export const DEVICE_LIFECYCLE_MAX_CONCURRENT = 2;
+
+/** スケジューラ状態(不変)。running が実行中、jobs が待機列(FIFO)。 */
 export interface DeviceLifecycleQueueState {
+  readonly running: readonly DeviceLifecycleJob[];
   readonly jobs: readonly DeviceLifecycleJob[];
 }
 
 export function createDeviceLifecycleQueueState(): DeviceLifecycleQueueState {
-  return { jobs: [] };
+  return { running: [], jobs: [] };
 }
 
-/** ジョブをキュー末尾に積む(新しい state を返す。呼び出し側は戻り値で置き換えること)。 */
+/** ジョブを待機列末尾に積む(新しい state を返す。実行開始は promoteDeviceLifecycleJobs)。 */
 export function enqueueDeviceLifecycleJob(
   state: DeviceLifecycleQueueState,
   job: DeviceLifecycleJob,
 ): DeviceLifecycleQueueState {
-  return { jobs: [...state.jobs, job] };
+  return { running: state.running, jobs: [...state.jobs, job] };
 }
 
-/** 実行完了したジョブ(先頭)をキューから取り除く。空のキューに対して呼ぶのはバグなので例外を投げる。 */
-export function dequeueDeviceLifecycleJob(state: DeviceLifecycleQueueState): DeviceLifecycleQueueState {
-  if (state.jobs.length === 0) {
-    throw new Error("dequeueDeviceLifecycleJob: キューが空です(先頭ジョブの完了通知が重複した可能性)");
+/** ジョブの同一性(finish の running 照合用)。device は name+op、bulk は op、restartBatch は names。 */
+function sameLifecycleJob(a: DeviceLifecycleJob, b: DeviceLifecycleJob): boolean {
+  if (a.kind === "device" && b.kind === "device") {
+    return a.name === b.name && a.op === b.op;
   }
-  return { jobs: state.jobs.slice(1) };
+  if (a.kind === "bulk" && b.kind === "bulk") {
+    return a.op === b.op;
+  }
+  if (a.kind === "restartBatch" && b.kind === "restartBatch") {
+    return a.names.length === b.names.length && a.names.every((n, i) => n === b.names[i]);
+  }
+  return false;
 }
 
-/** キューに何か(実行中含む)積まれているか。true の間はグローバルボタン(全て起動/終了)を無効化する。 */
+/** 今すぐ実行開始できる待機ジョブを running へ昇格する。started が新規開始分(呼び出し側が実処理を開始する)。 */
+export function promoteDeviceLifecycleJobs(state: DeviceLifecycleQueueState): {
+  readonly state: DeviceLifecycleQueueState;
+  readonly started: readonly DeviceLifecycleJob[];
+} {
+  const running = [...state.running];
+  const jobs = [...state.jobs];
+  const started: DeviceLifecycleJob[] = [];
+  while (jobs.length > 0) {
+    const job = jobs[0];
+    if (!job) {
+      break;
+    }
+    if (job.kind === "device") {
+      if (running.length >= DEVICE_LIFECYCLE_MAX_CONCURRENT) {
+        break;
+      }
+      if (running.some((j) => j.kind !== "device")) {
+        break;
+      }
+      if (running.some((j) => j.kind === "device" && j.name === job.name)) {
+        break;
+      }
+      running.push(job);
+      started.push(job);
+      jobs.shift();
+      continue;
+    }
+    if (running.length > 0) {
+      break;
+    }
+    running.push(job);
+    started.push(job);
+    jobs.shift();
+    break;
+  }
+  return { state: { running, jobs }, started };
+}
+
+/** 完了したジョブを running から取り除く。見つからないのはバグ(完了通知の重複等)なので例外を投げる。 */
+export function finishDeviceLifecycleJob(
+  state: DeviceLifecycleQueueState,
+  finished: DeviceLifecycleJob,
+): { readonly state: DeviceLifecycleQueueState; readonly removed: DeviceLifecycleJob } {
+  const index = state.running.findIndex((j) => sameLifecycleJob(j, finished));
+  if (index === -1) {
+    throw new Error("finishDeviceLifecycleJob: 実行中に該当ジョブがありません(完了通知が重複した可能性)");
+  }
+  const removed = state.running[index] as DeviceLifecycleJob;
+  return {
+    state: {
+      running: [...state.running.slice(0, index), ...state.running.slice(index + 1)],
+      jobs: state.jobs,
+    },
+    removed,
+  };
+}
+
+/** 実行中/待機中を問わず何か積まれているか。true の間はグローバルボタン(全て起動/終了)を無効化する。 */
 export function isDeviceLifecycleQueueBusy(state: DeviceLifecycleQueueState): boolean {
-  return state.jobs.length > 0;
-}
-
-/** 先頭(=現在実行すべき/実行中の)ジョブ。キューが空なら undefined。 */
-export function deviceLifecycleQueueHead(state: DeviceLifecycleQueueState): DeviceLifecycleJob | undefined {
-  return state.jobs[0];
+  return state.running.length > 0 || state.jobs.length > 0;
 }
 
 /** 指定デバイス名を対象にした device ジョブが既にキュー内(実行中含む)にあるか(連打防止に使う)。 */
 export function hasDeviceLifecycleJobFor(state: DeviceLifecycleQueueState, name: string): boolean {
-  return state.jobs.some((job) => job.kind === "device" && job.name === name);
+  return [...state.running, ...state.jobs].some(
+    (job) =>
+      (job.kind === "device" && job.name === name) ||
+      (job.kind === "restartBatch" && job.names.includes(name)) ||
+      (job.kind === "bulk" && (job.restartNames?.includes(name) ?? false)),
+  );
+}
+
+/** 待機中の bulk up ジョブを1件取り除く(「デバイスの起動を中断」用。実行中(running)の bulk up は
+ * プロセス kill で止める=ここでは触らない)。該当が無ければ state をそのまま返す。 */
+export function removeQueuedBulkUpJob(state: DeviceLifecycleQueueState): {
+  readonly state: DeviceLifecycleQueueState;
+  readonly removed?: Extract<DeviceLifecycleJob, { kind: "bulk" }>;
+} {
+  const index = state.jobs.findIndex((job) => job.kind === "bulk" && job.op === "up");
+  if (index === -1) {
+    return { state };
+  }
+  const removed = state.jobs[index] as Extract<DeviceLifecycleJob, { kind: "bulk" }>;
+  return {
+    state: {
+      running: state.running,
+      jobs: [...state.jobs.slice(0, index), ...state.jobs.slice(index + 1)],
+    },
+    removed,
+  };
 }
 
 /** キュー内(実行中含む)の bulk(全て起動/終了)ジョブの op。bootBusy.bulkOp の算出に使う
  * (webview は up の間 未起動タイルを「待機中」、down の間 稼働中タイルを「シャットダウン中」表示にする)。 */
 export function bulkLifecycleOp(state: DeviceLifecycleQueueState): "up" | "down" | null {
-  const job = state.jobs.find((job) => job.kind === "bulk");
+  const job = [...state.running, ...state.jobs].find((job) => job.kind === "bulk");
   return job?.kind === "bulk" ? job.op : null;
 }
 
@@ -830,15 +992,25 @@ export function deviceLifecycleStatusFor(
   state: DeviceLifecycleQueueState,
   name: string,
 ): DeviceOpBusyState | undefined {
-  const index = state.jobs.findIndex((job) => job.kind === "device" && job.name === name);
-  if (index === -1) {
-    return undefined;
+  const all = [...state.running, ...state.jobs];
+  // bulk up の restartNames(GPU 復帰対象)/ restartBatch は、ジョブが実行中でも CLI がその
+  // デバイスに触れる(deviceStopping)までは「順番待ち」。per-device の実行中表示は
+  // monitorDeviceOps.ts が NDJSON イベントから別途 deviceOpBusy を post する側の責務。
+  if (all.some((job) => job.kind === "bulk" && (job.restartNames?.includes(name) ?? false))) {
+    return { op: "down", status: "queued" };
   }
-  const job = state.jobs[index];
-  if (!job || job.kind !== "device") {
-    return undefined;
+  if (all.some((job) => job.kind === "restartBatch" && job.names.includes(name))) {
+    return { op: "down", status: "queued" };
   }
-  return { op: job.op, status: index === 0 ? "running" : "queued" };
+  const runningJob = state.running.find((job) => job.kind === "device" && job.name === name);
+  if (runningJob && runningJob.kind === "device") {
+    return { op: runningJob.op, status: "running" };
+  }
+  const queuedJob = state.jobs.find((job) => job.kind === "device" && job.name === name);
+  if (queuedJob && queuedJob.kind === "device") {
+    return { op: queuedJob.op, status: "queued" };
+  }
+  return undefined;
 }
 
 // ---- モニターの pause/resume/suppressFrames 制御 --------------------------------------------
@@ -853,9 +1025,10 @@ export type MonitorControlCommand =
   | { readonly cmd: "resume" }
   | { readonly cmd: "suppressFrames"; readonly devices: readonly string[] };
 
-/** down 系ジョブのみ true(bulk/device いずれも op フィールドで判定可能)。 */
+/** down 系ジョブのみ true(bulk/device いずれも op フィールドで判定可能)。restartBatch は
+ * up 系と同様 pause せずタイル上に進行を出す(GPU 再起動はタイル単位で見せたいため)。 */
 export function deviceLifecycleJobNeedsMonitorPause(job: DeviceLifecycleJob): boolean {
-  return job.op === "down";
+  return job.kind !== "restartBatch" && job.op === "down";
 }
 
 /** モニターの stdin に書き込む制御コマンドの NDJSON 1行(末尾に改行を含む)。 */

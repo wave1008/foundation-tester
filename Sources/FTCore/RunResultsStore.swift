@@ -54,6 +54,14 @@ public enum RunResultsStore {
         return url
     }
 
+    /// discardLast(凍結再実行時の取り消し)専用。fileName は writeScenario と同じ規約
+    /// (拡張子なし・dir 計算も一致させる)。存在しなければ何もしない
+    public static func removeScenario(runDir: URL, fileName: String) {
+        let url = runDir.appendingPathComponent("scenarios").appendingPathComponent("\(fileName).json")
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        try? FileManager.default.removeItem(at: url)
+    }
+
     // MARK: - 読み取り(スキャン)
 
     /// results/runs/ 配下に実在する月ディレクトリ(YYYY-MM)のうち since/until の範囲に

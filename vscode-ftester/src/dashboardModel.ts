@@ -19,6 +19,12 @@ export interface RunMetaRecord {
   readonly total?: number | null;
   readonly passed?: number | null;
   readonly failed?: number | null;
+  /** 実行中に劣化・離脱したワーカー(「label: 理由」)。Swift 側 RunMetaRecord.degradedWorkers と対。
+   * 空/未発生は省略(nil)。連鎖失敗の事後診断用(現状はダッシュボード未表示・run.json に永続化のみ)。 */
+  readonly degradedWorkers?: readonly string[] | null;
+  /** 凍結等による結果取り消し+振り直しの監査記録。Swift 側 RunMetaRecord.freezeRetries と対
+   * (成功した振り直しはシナリオ記録に痕跡を残さないため、ここが唯一の証跡)。 */
+  readonly freezeRetries?: readonly string[] | null;
 }
 
 export interface ScenarioSummaryRow {
