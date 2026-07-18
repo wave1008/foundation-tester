@@ -150,8 +150,8 @@ export const panelsStrings = {
   "panels.live.stopRecording": { ja: "レコーディング終了", en: "Stop Recording" },
   "panels.live.screenshotAlt": { ja: "スクリーンショット", en: "Screenshot" },
   "panels.live.screenshotPlaceholder": {
-    ja: "「更新」ボタンで画面を取得してください",
-    en: "Press \"Refresh\" to capture the screen",
+    ja: "デバイスに接続されていません",
+    en: "Device is not connected",
   },
   "panels.live.connectionErrorTitle": { ja: "⚠ デバイスに接続できません", en: "⚠ Cannot connect to device" },
   "panels.live.connectionErrorNote": {
@@ -176,7 +176,21 @@ export const panelsStrings = {
     ja: "ドラッグで要素一覧と操作記録の高さを調整",
     en: "Drag to resize the elements list and operation log",
   },
+  "panels.live.screenSplitterTitle": {
+    ja: "ドラッグでデバイス画像の幅を調整",
+    en: "Drag to resize the device image width",
+  },
   "panels.live.oplogHeader": { ja: "操作記録", en: "Operation Log" },
   "panels.live.oplogClear": { ja: "クリア", en: "Clear" },
+  "panels.live.installButton": { ja: "インストール", en: "Install" },
+  "panels.live.installButtonTitle": {
+    ja: "選択中プロファイルのパッケージを選択デバイスにインストールします",
+    en: "Install the selected profile's package to the selected device",
+  },
+  "panels.live.launchButton": { ja: "アプリを起動", en: "Launch App" },
+  "panels.live.launchButtonTitle": {
+    ja: "選択中プロファイルのアプリを選択デバイスで起動します",
+    en: "Launch the selected profile's app on the selected device",
+  },
   "panels.live.panelTitle": { ja: "ライブ操作", en: "Live Control" },
 } satisfies MessageDict;

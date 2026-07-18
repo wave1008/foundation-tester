@@ -43,10 +43,16 @@ const oplogList = document.getElementById('live-oplog-list');
 const oplogClearBtn = document.getElementById('live-btn-oplog-clear');
 const elementsSection = document.getElementById('live-elements-section');
 const listsSplitter = document.getElementById('live-lists-splitter');
+const screenSplitter = document.getElementById('live-screen-splitter');
 
 const appProfileSelect = document.getElementById('live-app-profile-select');
 const recordBtn = document.getElementById('live-btn-record');
 const recordStatus = document.getElementById('live-record-status');
+const installBtn = document.getElementById('live-btn-install');
+const launchBtn = document.getElementById('live-btn-launch');
+const appProfileNameEl = document.getElementById('live-app-profile-name');
+const appProfileBundleEl = document.getElementById('live-app-profile-bundle');
+const appProfilePathEl = document.getElementById('live-app-profile-path');
 // 画像右クリックの開始/終了メニュー(#live-btn-record と同じ start/stop フローを流す)。
 const recordMenu = document.getElementById('live-record-menu');
 const recordMenuStart = document.getElementById('live-record-menu-start');
@@ -73,6 +79,16 @@ let recording = false;
 let generating = false;
 // 選択可能なアプリプロファイルの有無(applyAppProfiles が更新)。無い間は開始不可。
 let hasAppProfile = false;
+// 選択中プロファイルの appPath(インストール可否判定)。null=不可(システムアプリ・ビルド無し等)。
+let installableAppPath = null;
+// 選択中プロファイルの bundle/アプリID(起動可否判定)。null=不可(現 platform 用の定義なし)。
+let launchableBundle = null;
+// デバイス画像 pane の手動幅[px](右のスプリッターでドラッグ調整)。null=自動フィット(画像実寸ハグ)。
+// 永続化: vscode.setState の liveScreenWidth。fitScreenshot が非 null のとき pane を固定幅にする。
+let screenPaneWidth =
+  typeof persistedState.liveScreenWidth === 'number' && persistedState.liveScreenWidth > 0
+    ? persistedState.liveScreenWidth
+    : null;
 // h264 描画中(canvas 表示・screenshot img 非表示)かどうか。liveH264ErrorSent は codecError
 // 送信済みガード(scope:'live' はデバイス紐付けが無いため単一フラグ。デバイス切替時にリセットする)。
 let liveRenderer = null;
@@ -92,6 +108,34 @@ function setBusy(value) {
   for (const b of busyButtons) { b.disabled = value; }
   deviceSelect.disabled = value;
   busyLabel.textContent = value ? t('wvMonitor.live.processing') : '';
+  updateProfileActionButtons();
+}
+
+const DETAIL_UNSET = t('wvMonitor.live.detailUnset');
+// インストール(appPath 必須)/アプリを起動(bundle 必須)の活性を busy/recording/generating と
+// 選択中プロファイルの解決結果から一元的に決める。
+function updateProfileActionButtons() {
+  const blocked = busy || recording || generating;
+  installBtn.disabled = blocked || !installableAppPath;
+  launchBtn.disabled = blocked || !launchableBundle;
+}
+function applyAppProfileDetail(message) {
+  appProfileNameEl.textContent = message.appName || DETAIL_UNSET;
+  appProfileBundleEl.textContent = message.bundle || DETAIL_UNSET;
+  appProfilePathEl.textContent = message.appPath || DETAIL_UNSET;
+  appProfilePathEl.title = message.appPath || '';
+  installableAppPath = message.appPath || null;
+  launchableBundle = message.bundle || null;
+  updateProfileActionButtons();
+}
+function clearAppProfileDetail() {
+  appProfileNameEl.textContent = DETAIL_UNSET;
+  appProfileBundleEl.textContent = DETAIL_UNSET;
+  appProfilePathEl.textContent = DETAIL_UNSET;
+  appProfilePathEl.title = '';
+  installableAppPath = null;
+  launchableBundle = null;
+  updateProfileActionButtons();
 }
 
 function showBanner(text) {
@@ -146,6 +190,7 @@ function applyAppProfiles(profiles, selectedId) {
     opt.disabled = true;
     opt.selected = true;
     appProfileSelect.appendChild(opt);
+    clearAppProfileDetail();
     updateRecordButton();
     return;
   }
@@ -176,6 +221,7 @@ function updateRecordButton() {
   recordBtn.disabled = generating || (!recording && !hasAppProfile);
   appProfileSelect.disabled = recording || generating;
   updateRecordMenuItems();
+  updateProfileActionButtons();
 }
 
 // 画像右クリックメニューの開始/終了の活性を updateRecordButton と同条件で同期(開いている間に
@@ -194,6 +240,20 @@ recordBtn.addEventListener('click', () => {
     // 自動インストールは常に有効(チェックボックス廃止)。host 側は appPath があれば install→launch する。
     post({ type: 'startRecord', appProfile: appProfileSelect.value, autoInstall: true });
   }
+});
+
+appProfileSelect.addEventListener('change', () => {
+  post({ type: 'selectAppProfile', appProfile: appProfileSelect.value });
+});
+
+installBtn.addEventListener('click', () => {
+  if (installBtn.disabled) { return; }
+  post({ type: 'installApp', appProfile: appProfileSelect.value });
+});
+
+launchBtn.addEventListener('click', () => {
+  if (launchBtn.disabled) { return; }
+  post({ type: 'launchApp', appProfile: appProfileSelect.value });
 });
 
 // 画像上で右クリック → 開始/終了メニュー。stopPropagation で document の contextmenu→閉じるを抑止
@@ -260,6 +320,14 @@ function fitScreenshot() {
   const maxH = Math.max(40, avail);
   screenshot.style.maxHeight = maxH + 'px';
   liveCanvas.style.maxHeight = maxH + 'px';
+  // スプリッターで手動幅が設定されているときは pane を固定幅にし、画像はその幅(max-width:100%)と
+  // 高さ(maxHeight)の小さい方に自動フィットさせる(自動ハグの maxWidth 計算はしない)。
+  if (screenPaneWidth != null) {
+    screenshotPane.style.flex = '0 0 ' + screenPaneWidth + 'px';
+    screenshotPane.style.maxWidth = screenPaneWidth + 'px';
+    return;
+  }
+  screenshotPane.style.flex = '';
   // pane 幅をフィット後の画像表示幅に合わせて縮める → 右隣の control-pane(要素一覧)が画像直後へ
   // 左寄せで並ぶ(伸ばすと右端へ押しやられる)。flex-basis:auto の max-content が画像の自然幅になる
   // 実装差(Chromium)を避けるため確定値を JS で入れる。naturalWidth は load 後のみ有効なので
@@ -613,6 +681,9 @@ export function applyLiveMessage(message) {
     case 'appProfiles':
       applyAppProfiles(message.profiles, message.selectedId);
       break;
+    case 'appProfileDetail':
+      applyAppProfileDetail(message);
+      break;
     case 'recording':
       applyRecording(!!message.active, !!message.generating);
       break;
@@ -729,3 +800,57 @@ const endListsDrag = (event) => {
 listsSplitter.addEventListener('pointerup', endListsDrag);
 listsSplitter.addEventListener('pointercancel', endListsDrag);
 window.addEventListener('resize', () => applyElementsHeight(elementsSectionHeight));
+
+// ---- デバイス画像の右スプリッター(左右ドラッグで screenshot-pane 幅を調整。fitScreenshot が反映)。----
+// 幅は px で持ち vscode.setState(liveScreenWidth)に永続化。MIN は CSS の .screenshot-pane min-width と、
+// 右端の下限は .control-pane min-width(280)と揃える(超えると overflow:hidden で片方が切れるため)。
+const MIN_SCREEN_WIDTH = 200; // px。CSS の #panel-live .screenshot-pane min-width と揃えること
+const CONTROL_MIN_WIDTH = 280; // px。CSS の #panel-live .control-pane min-width と揃えること
+function clampScreenWidth(width) {
+  const content = screenSplitter.parentElement; // .content
+  // .content は padding:12・gap:12(pane|splitter|control の2箇所)。使える横幅から control 下限と
+  // splitter 幅・余白を引いた残りが pane の上限。
+  const maxWidth = Math.max(
+    MIN_SCREEN_WIDTH,
+    content.clientWidth - 24 /* padding */ - 24 /* 2 gaps */ - screenSplitter.offsetWidth - CONTROL_MIN_WIDTH,
+  );
+  return Math.min(Math.max(width, MIN_SCREEN_WIDTH), maxWidth);
+}
+function applyScreenWidth(width) {
+  // タブ非表示中は content.clientWidth=0 で誤クランプするため触らない(活性化時の fitScreenshot が反映)。
+  if (livePanel.offsetParent === null || livePanel.clientHeight === 0) { return; }
+  screenPaneWidth = clampScreenWidth(width);
+  fitScreenshot();
+}
+function persistScreenWidth() {
+  vscode.setState(Object.assign({}, vscode.getState(), { liveScreenWidth: screenPaneWidth }));
+}
+
+let screenPointerId = null;
+let screenStartX = 0;
+let screenStartWidth = 0;
+screenSplitter.addEventListener('pointerdown', (event) => {
+  if (event.button !== 0) { return; }
+  screenPointerId = event.pointerId;
+  screenStartX = event.clientX;
+  // 未設定(自動フィット)時は現在の実測幅を基準にする → ドラッグが連続して感じられる。
+  screenStartWidth = screenPaneWidth != null ? screenPaneWidth : screenshotPane.getBoundingClientRect().width;
+  screenSplitter.setPointerCapture(event.pointerId);
+  screenSplitter.classList.add('dragging');
+  event.preventDefault();
+});
+screenSplitter.addEventListener('pointermove', (event) => {
+  if (screenPointerId !== event.pointerId) { return; }
+  applyScreenWidth(screenStartWidth + (event.clientX - screenStartX));
+});
+const endScreenDrag = (event) => {
+  if (screenPointerId !== event.pointerId) { return; }
+  screenPointerId = null;
+  screenSplitter.classList.remove('dragging');
+  screenSplitter.releasePointerCapture(event.pointerId);
+  persistScreenWidth();
+};
+screenSplitter.addEventListener('pointerup', endScreenDrag);
+screenSplitter.addEventListener('pointercancel', endScreenDrag);
+// ウィンドウ幅が変わったら手動幅を再クランプ(狭くなって上限を割ったら縮める)。
+window.addEventListener('resize', () => { if (screenPaneWidth != null) { applyScreenWidth(screenPaneWidth); } });

@@ -77,4 +77,5 @@ export const webviewMonitorAStrings = {
   "wvMonitor.live.recordStop": { ja: "レコーディング終了", en: "Stop Recording" },
   "wvMonitor.live.recordStart": { ja: "レコーディング開始", en: "Start Recording" },
   "wvMonitor.live.appProfileRequired": { ja: "アプリプロファイルが必要です", en: "An app profile is required" },
+  "wvMonitor.live.detailUnset": { ja: "—", en: "—" },
 } satisfies MessageDict;
