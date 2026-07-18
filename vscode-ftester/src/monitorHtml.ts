@@ -40,6 +40,7 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
     <button id="tab-devices" class="tab-button active" type="button" role="tab" aria-selected="true" aria-controls="panel-devices">デバイス</button>
     <button id="tab-profiles" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-profiles">プロファイル</button>
     <button id="tab-explore" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-explore">FM探索</button>
+    <button id="tab-processes" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-processes">プロセス</button>
     <button id="tab-settings" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-settings">設定</button>
   </div>
 
@@ -314,6 +315,25 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
 
       <div id="explore-result" class="explore-result"></div>
       <button id="explore-btn-open-file" class="secondary explore-open-file-btn" style="display: none;">ファイルを開く</button>
+    </div>
+  </div>
+
+  <div id="panel-processes" class="tab-panel" role="tabpanel" aria-labelledby="tab-processes" style="display: none;">
+    <div class="processes-body">
+      <div class="processes-title">常駐プロセス</div>
+      <div id="resident-updated" class="resident-updated"></div>
+      <div class="resident-toolbar">
+        <button id="resident-kill-all" class="resident-danger" type="button">すべて強制終了</button>
+        <span id="resident-status" class="resident-status"></span>
+      </div>
+      <div id="resident-list" class="resident-list">
+        <table class="resident-table">
+          <thead>
+            <tr><th class="col-kind" data-sort="kind">種別</th><th class="col-port" data-sort="port">ポート</th><th class="col-pid" data-sort="pid">PID</th><th class="col-detail" data-sort="detail">識別子</th><th class="col-ppid" data-sort="ppid">親PID</th><th class="col-pdesc" data-sort="parentDescription">親プロセス</th><th class="col-note" data-sort="note">補足</th></tr>
+          </thead>
+          <tbody id="resident-tbody"></tbody>
+        </table>
+      </div>
     </div>
   </div>
 

@@ -1622,3 +1622,164 @@ input[type="text"]::placeholder {
   font-size: 11px;
   color: var(--vscode-descriptionForeground);
 }
+/* パネル全体を縦flexで満たし、#resident-list(表のスクロール領域)を余白いっぱいに伸ばす。 */
+.processes-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 8px;
+}
+.processes-title {
+  font-weight: 600;
+  font-size: 13px;
+}
+.resident-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+/* 「すべて強制終了」を右端へ寄せる(margin-left:auto で左の要素との間に余白を作る)。 */
+.resident-toolbar .resident-danger {
+  margin-left: auto;
+}
+.resident-danger {
+  background-color: var(--vscode-inputValidation-errorBorder, #be1100);
+  color: #fff;
+}
+.resident-danger:hover:not(:disabled) {
+  background-color: color-mix(in srgb, var(--vscode-inputValidation-errorBorder, #be1100) 85%, #fff 15%);
+}
+.resident-status {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+.resident-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  /* 縦flex親の中で横方向はストレッチさせず、テーブルの実幅(min-width〜コンテンツ幅)に縮める。
+     はみ出す長い識別子は overflow:auto で横スクロール。 */
+  align-self: flex-start;
+  max-width: 100%;
+  margin-top: 8px;
+  overflow: auto;
+  border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.3));
+  border-radius: 2px;
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 11px;
+}
+/* 幅は固定せず auto レイアウト。短いコンテンツでも詰まらない min-width を置き、以降はコンテンツで伸長。
+   thead は sticky で固定ヘッダ。 */
+.resident-table {
+  border-collapse: collapse;
+  min-width: 280px;
+}
+.resident-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  text-align: left;
+  font-weight: 600;
+  padding: 4px 6px;
+  background-color: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  border-bottom: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.4));
+  border-right: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.2));
+}
+.resident-table thead th.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+.resident-table thead th.sortable:hover {
+  background-color: var(--vscode-list-hoverBackground, rgba(128, 128, 128, 0.15));
+}
+.resident-table thead th.sort-active {
+  color: var(--vscode-textLink-foreground);
+}
+.resident-table td {
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.2));
+  border-right: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.2));
+  vertical-align: middle;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 最右列は縦区切り線を出さない(枠と二重にならないように)。 */
+.resident-table th:last-child,
+.resident-table td:last-child {
+  border-right: none;
+}
+.resident-table tbody tr:last-child td {
+  border-bottom: none;
+}
+.col-pid,
+.col-ppid,
+.col-port {
+  text-align: right;
+  white-space: nowrap;
+  color: var(--vscode-descriptionForeground);
+}
+.col-detail,
+.col-pdesc,
+.col-note {
+  color: var(--vscode-descriptionForeground);
+}
+.resident-updated {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+.resident-empty {
+  padding: 8px;
+  color: var(--vscode-descriptionForeground);
+}
+.resident-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 2px;
+  background-color: var(--vscode-badge-background, rgba(128, 128, 128, 0.3));
+  color: var(--vscode-badge-foreground, var(--vscode-foreground));
+}
+/* フリート系は種別ごとに色分け(bridge=青 / sim-runner=紫 / inapp-bridge=ティール /
+   emulator=緑)。補助常駐は既定のバッジ色のまま。文字は一律白で可読性を確保。 */
+.resident-kind-bridge .resident-badge,
+.resident-kind-sim-runner .resident-badge,
+.resident-kind-inapp-bridge .resident-badge,
+.resident-kind-emulator .resident-badge {
+  color: #fff;
+}
+.resident-kind-bridge .resident-badge {
+  background-color: var(--vscode-charts-blue, #3794ff);
+}
+.resident-kind-sim-runner .resident-badge {
+  background-color: var(--vscode-charts-purple, #b180d7);
+}
+.resident-kind-inapp-bridge .resident-badge {
+  background-color: #2aa198;
+}
+.resident-kind-emulator .resident-badge {
+  background-color: var(--vscode-charts-green, #388a34);
+}
+/* Android ブリッジ(情報行)は黄で区別。kill 非対象のため PID 列は "—"。 */
+.resident-kind-android-bridge .resident-badge {
+  background-color: var(--vscode-charts-yellow, #d1a416);
+  color: #000;
+}
+.resident-kind-run .resident-badge {
+  background-color: var(--vscode-charts-orange, #d18616);
+  color: #fff;
+}
+/* ゾンビ(defunct)行: 種別セルに赤タグを添え、行を淡い赤で強調。 */
+.resident-zombie-badge {
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 2px;
+  font-size: 10px;
+  background-color: var(--vscode-inputValidation-errorBackground, rgba(190, 17, 0, 0.2));
+  color: var(--vscode-inputValidation-errorForeground, #f48771);
+  border: 1px solid var(--vscode-inputValidation-errorBorder, #be1100);
+}
+.resident-zombie td {
+  background-color: rgba(190, 17, 0, 0.12);
+}
