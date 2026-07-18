@@ -200,12 +200,8 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         return BridgeHttpServer.Response.png(out.toByteArray());
     }
 
-    /** アプリ起動(ホストの AndroidDriver.launch() はこのエンドポイントに一本化されている) */
-    private BridgeHttpServer.Response handleLaunch(JSONObject body) {
-        String bundleID = body.optString("bundleID");
-        if (bundleID.isEmpty()) {
-            throw new BridgeException(400, "bundleID が必要です");
-        }
+    /** 1回分の起動試行。前面判定タイムアウトは例外ではなく false */
+    private boolean attemptLaunch(String bundleID) {
         shell("am force-stop " + bundleID);
         String output = shell("monkey -p " + bundleID + " -c android.intent.category.LAUNCHER 1");
         if (!output.contains("Events injected: 1")) {
@@ -228,7 +224,8 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         sessionBundleID = bundleID;
 
         // root ウィンドウが対象パッケージに切り替わるまで待つ(in-process の短間隔チェック。
-        // 50ms 粒度以下。HTTP/snapshot ポーリングではない)。上限超過は黙って進まずエラーにする
+        // 50ms 粒度以下。HTTP/snapshot ポーリングではない)。上限超過は例外にせず false を返す
+        // (呼び出し元 handleLaunch が前面掃除つきで1回だけ再試行する)
         long deadline = SystemClock.uptimeMillis() + LAUNCH_CAP_MS;
         while (true) {
             AccessibilityNodeInfo root = ua().getRootInActiveWindow();
@@ -236,13 +233,34 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
                     ? root.getPackageName().toString() : null;
             if (bundleID.equals(pkg)) break;
             if (SystemClock.uptimeMillis() >= deadline) {
-                throw new BridgeException(500, "アプリの画面が表示されませんでした: " + bundleID);
+                return false;
             }
             SystemClock.sleep(50);
         }
         long remaining = Math.max(0, deadline - SystemClock.uptimeMillis());
         quietWaiter.quietWait(bundleID, QuietWaiter.QUIET_MS, remaining);
-        return ok();
+        return true;
+    }
+
+    /** アプリ起動(ホストの AndroidDriver.launch() はこのエンドポイントに一本化されている) */
+    private BridgeHttpServer.Response handleLaunch(JSONObject body) {
+        String bundleID = body.optString("bundleID");
+        if (bundleID.isEmpty()) {
+            throw new BridgeException(400, "bundleID が必要です");
+        }
+        if (attemptLaunch(bundleID)) return ok();
+        // 前面判定が別パッケージの居座りで詰んだ。前面を掃除して1回だけ再試行する。
+        // force-stop が bundleID しか殺さないと以後の launchApp が全滅する既知の罠(design.md §8.7)。
+        // 掃除対象は bundleID 自身・ブリッジ自身・HOME ランチャーを除いた前面パッケージのみ。
+        String stuck = activePackage();
+        String self = instrumentation.getContext().getPackageName();
+        String home = resolveHomePackage();
+        if (stuck != null && !stuck.equals(bundleID) && !stuck.equals(self) && !stuck.equals(home)) {
+            shell("am force-stop " + stuck);
+            shell("input keyevent KEYCODE_HOME");
+        }
+        if (attemptLaunch(bundleID)) return ok();
+        throw new BridgeException(500, "アプリの画面が表示されませんでした: " + bundleID);
     }
 
     private BridgeHttpServer.Response handleTerminate() {
@@ -308,6 +326,18 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         String pkg = root != null && root.getPackageName() != null
                 ? root.getPackageName().toString() : null;
         return pkg != null ? pkg : sessionBundleID;
+    }
+
+    /** HOME ランチャーのパッケージ名(復旧時の前面掃除で除外するため)。解決不能なら null */
+    private String resolveHomePackage() {
+        String resolve = shell("cmd package resolve-activity --brief "
+                + "-c android.intent.category.HOME");
+        String component = null;
+        for (String line : resolve.split("\n")) {
+            line = line.trim();
+            if (line.contains("/")) component = line;
+        }
+        return component == null ? null : component.substring(0, component.indexOf('/'));
     }
 
     /**
