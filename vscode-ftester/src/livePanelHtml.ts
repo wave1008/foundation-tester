@@ -49,7 +49,16 @@ export function renderLiveHtml(webview: vscode.Webview, extensionUri: vscode.Uri
     <div class="toolbar live-record-row">
       <label for="live-app-profile-select">${t("panels.live.appProfileLabelColon")}</label>
       <select id="live-app-profile-select" title="${t("panels.common.appProfile")}"></select>
+    </div>
+    <div class="toolbar live-app-profile-detail" id="live-app-profile-detail">
+      <span class="app-profile-detail-field"><span class="app-profile-detail-label">${t("panels.appProfile.displayNameLabel")}:</span> <span id="live-app-profile-name" class="app-profile-detail-value">—</span></span>
+      <span class="app-profile-detail-field"><span class="app-profile-detail-label">${t("panels.appProfile.appIdLabel")}:</span> <span id="live-app-profile-bundle" class="app-profile-detail-value">—</span></span>
+      <span class="app-profile-detail-field app-profile-detail-path"><span class="app-profile-detail-label">${t("panels.appProfile.packagePathLabel")}:</span> <span id="live-app-profile-path" class="app-profile-detail-value">—</span></span>
+      <button id="live-btn-install" class="secondary" title="${t("panels.live.installButtonTitle")}" disabled>${t("panels.live.installButton")}</button>
+    </div>
+    <div class="toolbar live-record-actions">
       <button id="live-btn-record">${t("panels.live.startRecording")}</button>
+      <button id="live-btn-launch" class="secondary" title="${t("panels.live.launchButtonTitle")}" disabled>${t("panels.live.launchButton")}</button>
       <span id="live-record-status" class="live-record-status"></span>
     </div>
     <div id="live-banner" class="banner"></div>
@@ -81,6 +90,8 @@ export function renderLiveHtml(webview: vscode.Webview, extensionUri: vscode.Uri
           <button id="live-btn-app-switcher" class="secondary" title="${t("panels.live.appSwitcherTitle")}">${t("panels.live.appSwitcherButton")}</button>
         </div>
       </div>
+
+      <div class="splitter splitter-vertical" id="live-screen-splitter" title="${t("panels.live.screenSplitterTitle")}"></div>
 
       <div class="control-pane">
         <div class="live-lists">

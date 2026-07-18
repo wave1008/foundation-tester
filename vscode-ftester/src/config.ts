@@ -294,6 +294,50 @@ export function readAppProfileTarget(
   }
 }
 
+export interface AppProfileDetail {
+  readonly appName: string | null;
+  readonly bundle: string | null;
+  readonly appPath: string | null;
+}
+
+/** ライブ操作パネルの詳細表示用。readAppProfileTarget と違い bundle 欠落でも null にせず、
+ * 表示名(common→platform マージ。RunProfile.swift の AppProfileSection.merging と同じく platform 側が優先)と
+ * platform セクションの app / appPath を個別に返す。ファイル未読/解析失敗のみ null。 */
+export function readAppProfileDetail(
+  workspaceRoot: string,
+  project: string,
+  name: string,
+  platform: Platform,
+): AppProfileDetail | null {
+  const profilePath = path.join(workspaceRoot, "Projects", project, "profiles", "apps", `${name}.json`);
+  try {
+    const parsed: unknown = JSON.parse(fs.readFileSync(profilePath, "utf8"));
+    if (typeof parsed !== "object" || parsed === null) {
+      return null;
+    }
+    const record = parsed as Record<string, unknown>;
+    const common = typeof record.common === "object" && record.common !== null
+      ? (record.common as Record<string, unknown>) : undefined;
+    const section = typeof record[platform] === "object" && record[platform] !== null
+      ? (record[platform] as Record<string, unknown>) : undefined;
+    const str = (v: unknown): string | null => (typeof v === "string" && v.length > 0 ? v : null);
+    const appName = str(section?.appName) ?? str(common?.appName);
+    const bundle = str(section?.app);
+    const rawAppPath = str(section?.appPath);
+    let appPath: string | null = null;
+    if (rawAppPath) {
+      // ベースディレクトリ・~展開の契約は readAppProfileTarget と同一(RunProfile.swift:492 resolvePath, base=Projects/<project>/)。
+      const expanded = rawAppPath.startsWith("~") ? path.join(os.homedir(), rawAppPath.slice(1)) : rawAppPath;
+      appPath = path.isAbsolute(expanded)
+        ? expanded
+        : path.resolve(path.join(workspaceRoot, "Projects", project), expanded);
+    }
+    return { appName, bundle, appPath };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * profiles/machines/ 直下の .json が**ちょうど1つ**のときのみ、その ios→android 順
  * (各プラットフォーム内は name 順)の devices[].name を返す(monitorPanel.ts の profileAdd が新規実行プロファイルの

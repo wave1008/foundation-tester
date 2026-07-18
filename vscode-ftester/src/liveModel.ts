@@ -683,6 +683,13 @@ export type LiveToWebviewMessage =
       readonly profiles: readonly string[];
       readonly selectedId: string | undefined;
     }
+  | {
+      readonly type: "appProfileDetail";
+      readonly appProfile: string;
+      readonly appName: string | null;
+      readonly bundle: string | null;
+      readonly appPath: string | null;
+    }
   | { readonly type: "recording"; readonly active: boolean; readonly generating?: boolean }
   | { readonly type: "recordStatus"; readonly message: string; readonly file: string | null }
   // テキスト入力欄をタップした直後に「入力するテキスト」欄へフォーカスを移す指示(受け手: liveTab.js)。
@@ -737,6 +744,9 @@ export type LiveFromWebviewMessage =
   | { readonly type: "home" }
   | { readonly type: "visibility"; readonly visible: boolean }
   | { readonly type: "refreshAppProfiles" }
+  | { readonly type: "selectAppProfile"; readonly appProfile: string }
+  | { readonly type: "installApp"; readonly appProfile: string }
+  | { readonly type: "launchApp"; readonly appProfile: string }
   | { readonly type: "startRecord"; readonly appProfile: string; readonly autoInstall: boolean }
   | { readonly type: "stopRecord" };
 
@@ -787,6 +797,10 @@ export function isLiveFromWebviewMessage(value: unknown): value is LiveFromWebvi
       return typeof value.text === "string" && (value.ref === null || typeof value.ref === "number");
     case "visibility":
       return typeof value.visible === "boolean";
+    case "selectAppProfile":
+    case "installApp":
+    case "launchApp":
+      return typeof value.appProfile === "string";
     case "startRecord":
       return typeof value.appProfile === "string" && typeof value.autoInstall === "boolean";
     default:

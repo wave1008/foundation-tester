@@ -93,6 +93,15 @@ export const liveStrings = {
     ja: "snapshot の実行に失敗しました: {error}",
     en: "Failed to run snapshot: {error}",
   },
+  "live.installing": { ja: "インストール中...", en: "Installing..." },
+  "live.installNoPath": {
+    ja: "インストールするパッケージパスが設定されていません",
+    en: "No package path is configured to install",
+  },
+  "live.launchNoBundle": {
+    ja: "起動するアプリID が設定されていません",
+    en: "No app ID is configured to launch",
+  },
   "live.streamGiveUpSwitchPolling": {
     ja: "[live-stream] {message} ポーリングに切り替えます。",
     en: "[live-stream] {message} Switching to polling.",
@@ -126,8 +135,8 @@ export const liveStrings = {
     en: "Failed to generate test code.",
   },
   "live.refreshFirst": {
-    ja: "先に「更新」で画面を取得してください。",
-    en: 'Fetch the screen with "Refresh" first.',
+    ja: "先に「要素一覧を更新」で画面を取得してください。",
+    en: 'Fetch the screen with "Refresh Elements" first.',
   },
   "live.typeTextEmpty": {
     ja: "入力するテキストを入力してください。",
@@ -145,6 +154,7 @@ export const liveStrings = {
   "live.opLabel.home": { ja: "ホーム", en: "Home" },
   "live.opLabel.appSwitcher": { ja: "タスク切替", en: "App Switcher" },
   "live.opLabel.launch": { ja: "起動: {bundle}", en: "Launch: {bundle}" },
+  "live.opLabel.install": { ja: "インストール: {name}", en: "Install: {name}" },
   "live.opLabel.terminate": { ja: "終了", en: "Terminate" },
   "live.opLabel.wait": { ja: "待機: {seconds}秒", en: "Wait: {seconds}s" },
   "live.direction.up": { ja: "上", en: "Up" },

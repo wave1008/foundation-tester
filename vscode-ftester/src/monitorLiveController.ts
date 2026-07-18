@@ -28,6 +28,7 @@ import type { FtesterCli } from "./cli";
 import {
   type FtesterConfig,
   listAppProfileNames,
+  readAppProfileDetail,
   readAppProfileTarget,
   resolveAdb,
   resolveAndroidStream,
@@ -441,6 +442,10 @@ export class MonitorLiveController implements vscode.Disposable {
     this.post({ type: "devices", devices: options, selectedId: this.selectedDeviceId });
     this.post({ type: "banner", message: bannerMessage ?? null });
     this.ensureServeProcessForSelection();
+    // アプリID/パッケージパスは選択デバイスの platform で解決する(android/ios でセクションが別)。
+    // デバイス確定(初期ロード・一覧更新・自動選択)のたびに送り直さないと、platform 未確定時に
+    // 計算した空の詳細が残る。
+    this.postAppProfileDetail();
   }
 
   private applyFallback(config: FtesterConfig, bannerMessage: string): void {
@@ -468,6 +473,7 @@ export class MonitorLiveController implements vscode.Disposable {
     this.selectedDeviceId = match.id;
     this.post({ type: "devices", devices: this.devices, selectedId: this.selectedDeviceId });
     this.ensureServeProcessForSelection();
+    this.postAppProfileDetail(); // platform 切替に合わせて詳細も更新する(applyDevices と同理由)。
     if (match.state === "connected") {
       void this.refreshSnapshot();
     }
@@ -1271,6 +1277,86 @@ export class MonitorLiveController implements vscode.Disposable {
     const stillExists = this.selectedAppProfileId !== undefined && profiles.includes(this.selectedAppProfileId);
     this.selectedAppProfileId = stillExists ? this.selectedAppProfileId : profiles[0];
     this.post({ type: "appProfiles", profiles, selectedId: this.selectedAppProfileId });
+    this.postAppProfileDetail();
+  }
+
+  /** 選択中アプリプロファイルの詳細(表示名/アプリID/パッケージパス)を現在のデバイス platform で
+   * 解決して webview へ送る。詳細は platform 依存(bundle/appPath が OS 別)のため、デバイス変更・
+   * プロファイル選択変更・一覧更新のたびに送り直す。未選択・プロジェクト未解決・デバイス未選択では
+   * 空値を送る(webview 側で「—」表示・インストール不可になる)。 */
+  private postAppProfileDetail(): void {
+    const id = this.selectedAppProfileId;
+    if (!id) {
+      return;
+    }
+    const resolution = resolveProjectName(this.deps.workspaceRoot, this.deps.getConfig());
+    const device = this.currentDeviceRef();
+    const detail =
+      resolution.kind === "resolved" && device
+        ? readAppProfileDetail(this.deps.workspaceRoot, resolution.project, id, device.platform)
+        : null;
+    this.post({
+      type: "appProfileDetail",
+      appProfile: id,
+      appName: detail?.appName ?? null,
+      bundle: detail?.bundle ?? null,
+      appPath: detail?.appPath ?? null,
+    });
+  }
+
+  /** 選択中プロファイルの appPath を現在のデバイス platform で解決してインストールする。
+   * appPath 未設定(システムアプリ・ビルド無し等)や未解決はエラー表示して何もしない。 */
+  private async installApp(appProfile: string): Promise<void> {
+    const device = this.currentDeviceRef();
+    if (!device) {
+      this.postActionError(t("live.noDeviceSelected"));
+      return;
+    }
+    const resolution = resolveProjectName(this.deps.workspaceRoot, this.deps.getConfig());
+    if (resolution.kind !== "resolved") {
+      this.postActionError(t("live.projectUnresolved"));
+      return;
+    }
+    const detail = readAppProfileDetail(this.deps.workspaceRoot, resolution.project, appProfile, device.platform);
+    if (!detail?.appPath) {
+      this.postActionError(t("live.installNoPath"));
+      return;
+    }
+    this.post({ type: "busyOverlay", message: t("live.installing") });
+    try {
+      await this.runAction(
+        { cmd: "install", path: detail.appPath },
+        undefined,
+        { silentObservation: true, logLabel: t("live.opLabel.install", { name: appProfile }) },
+      );
+    } finally {
+      this.post({ type: "busyOverlay", message: null });
+    }
+  }
+
+  /** 選択中プロファイルのアプリ(bundle)を現在のデバイス platform で解決して起動する
+   * (記録は開始しない。startRecord と違い install はしない)。bundle 未解決はエラー表示のみ。 */
+  private async launchApp(appProfile: string): Promise<void> {
+    const device = this.currentDeviceRef();
+    if (!device) {
+      this.postActionError(t("live.noDeviceSelected"));
+      return;
+    }
+    const resolution = resolveProjectName(this.deps.workspaceRoot, this.deps.getConfig());
+    if (resolution.kind !== "resolved") {
+      this.postActionError(t("live.projectUnresolved"));
+      return;
+    }
+    const detail = readAppProfileDetail(this.deps.workspaceRoot, resolution.project, appProfile, device.platform);
+    if (!detail?.bundle) {
+      this.postActionError(t("live.launchNoBundle"));
+      return;
+    }
+    await this.runAction(
+      { cmd: "launch", bundle: detail.bundle },
+      undefined,
+      { logLabel: t("live.opLabel.launch", { bundle: detail.bundle }) },
+    );
   }
 
   /** アプリ起動(必要なら事前インストール)まで完了させてから記録状態に入る。起動失敗時は
@@ -1423,6 +1509,7 @@ export class MonitorLiveController implements vscode.Disposable {
           this.preferredPlatform = undefined; // 手動選択は platform 優先より強い(明示選択を尊重)
           this.selectedDeviceId = message.id;
           this.ensureServeProcessForSelection();
+          this.postAppProfileDetail();
         }
         break;
       case "openDevice":
@@ -1546,6 +1633,16 @@ export class MonitorLiveController implements vscode.Disposable {
         break;
       case "refreshAppProfiles":
         this.refreshAppProfiles();
+        break;
+      case "selectAppProfile":
+        this.selectedAppProfileId = message.appProfile;
+        this.postAppProfileDetail();
+        break;
+      case "installApp":
+        void this.installApp(message.appProfile);
+        break;
+      case "launchApp":
+        void this.launchApp(message.appProfile);
         break;
       case "startRecord":
         void this.startRecord(message.appProfile, message.autoInstall);
