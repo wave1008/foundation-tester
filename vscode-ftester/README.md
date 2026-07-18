@@ -112,7 +112,7 @@ npm run package        # vsce package --allow-missing-repository → vscode-ftes
 `VSIX からのインストール...` で選択するか、以下のコマンドでインストールします。
 
 ```bash
-code --install-extension vscode-ftester-0.0.12.vsix
+code --install-extension vscode-ftester-<version>.vsix
 ```
 
 インストール後は Extension Development Host のときと同様、`foundation-tester` リポジトリの
