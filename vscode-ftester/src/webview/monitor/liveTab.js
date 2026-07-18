@@ -1,10 +1,9 @@
-// モニターパネル「ライブ操作」タブ(#panel-live)。main.js が applyLiveMessage を message
-// ディスパッチャに組み込む。host への送信は type:'live' の封筒で包む(対向: src/liveModel.ts の
-// LiveWebviewEnvelope、処理は src/monitorLiveController.ts)。
+// 独立ライブ操作パネル(#panel-live)の UI 本体。src/webview/live/main.js が applyLiveMessage を
+// message ディスパッチャに組み込む。host への送信は type:'live' の封筒で包む(対向: src/liveModel.ts の
+// LiveWebviewEnvelope、処理は src/monitorLiveController.ts。host 側の窓口は src/livePanel.ts)。
 
 import { vscode, persistedState } from './vscodeApi.js';
-import { activateTab } from './tabs.js';
-import { clampMenuPosition } from './deviceTiles.js';
+import { clampMenuPosition } from './menu.js';
 import { createH264Renderer } from './h264Decoder.js';
 
 function post(message) {
@@ -642,32 +641,37 @@ export function applyLiveMessage(message) {
   }
 }
 
-// 初回タブ活性化時にデバイス一覧を自動取得する(旧ライブ操作パネルの show()→refreshDevices相当。
-// tabs.js の switchTab が発火する ft-tab-activated に依存)。
-let initialized = false;
-document.addEventListener('ft-tab-activated', (event) => {
-  if (event.detail.tab === 'live' && !initialized) {
-    initialized = true;
-    post({ type: 'refreshDevices' });
-    post({ type: 'refreshAppProfiles' });
-  }
-});
+// ---- パネル本体(src/webview/live/main.js)から呼ばれるエントリポイント -----------------------
 
-// デバイスタブの右クリック「ライブ操作」(deviceTiles.js が dispatch)。初回自動 refreshDevices は
-// 抑止し、host 側 openDevice が一覧取得と選択をまとめて行う。
-document.addEventListener('ft-live-open-device', (event) => {
+let initialized = false;
+
+/** パネル初期化(初回のみ)。デバイス一覧・アプリプロファイル一覧を取得し、要素一覧セクションの
+ * 高さを復元する(旧ライブ操作パネルの show()→refreshDevices 相当)。 */
+export function initLive() {
+  if (initialized) { return; }
   initialized = true;
+  post({ type: 'refreshDevices' });
+  post({ type: 'refreshAppProfiles' });
+  applyElementsHeight(elementsSectionHeight);
+}
+
+/** パネルの表示状態を host へ通知する(自動フレーム更新のオンオフ。監視元: monitorLiveController.ts)。 */
+export function setLiveVisible(visible) {
+  post({ type: 'visibility', visible });
+  if (visible) { applyElementsHeight(elementsSectionHeight); }
+}
+
+/** デバイスタイル右クリック「ライブ操作」(受信元: deviceTiles.js → livePanel.ts → ここ)。 */
+export function openLiveDevice(id) {
   disposeLiveH264();
   liveH264ErrorSent = false;
-  activateTab('live');
-  post({ type: 'openDevice', id: event.detail.id });
-});
+  post({ type: 'openDevice', id });
+}
 
-// タブ表示状態を host へ通知(自動フレーム更新のオンオフ。監視元: monitorLiveController.ts)
-document.addEventListener('ft-tab-activated', (event) => {
-  post({ type: 'visibility', visible: event.detail.tab === 'live' });
-  if (event.detail.tab === 'live') { applyElementsHeight(elementsSectionHeight); }
-});
+/** ftester.showLiveControl の再表示(パネルが既に開いている場合の再バインド要求)。 */
+export function refreshLiveDevices() {
+  post({ type: 'refreshDevices' });
+}
 
 // ---- 要素一覧 / 操作記録 の上下スプリッター(splitter.js のデバイスタブ版と同パターン。
 // こちらはライブタブ専用で elements セクションの高さ[px]を持つ。位置は vscode.setState に永続化)。----

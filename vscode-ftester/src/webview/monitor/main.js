@@ -2,8 +2,9 @@
 //   vscodeApi.js  acquireVsCodeApi(1回のみ)+persistedState / domRefs.js  共有DOM定数
 //   splitter.js/deviceTiles.js/laneLog.js/hostCharts.js  デバイスタブ
 //   machineProfilesTab.js/appProfilesTab.js/runProfilesTab.js  プロファイルタブ
-//   liveTab.js  ライブ操作タブ / exploreTab.js  FM探索タブ / settingsTab.js  設定タブ
+//   exploreTab.js  FM探索タブ / settingsTab.js  設定タブ
 //   modals.js  3モーダル / tabs.js  タブ切替
+// ライブ操作は独立パネル(src/webview/live/main.js、UI本体は liveTab.js を共有)へ分離済み。
 // 各モジュールの import はトップレベルのイベント登録実行に必要(未使用に見えても消さない)。
 // 外側IIFEは無い(esbuildのiife出力が同役割)。ここにはメッセージディスパッチャ・ツールバー
 // ボタン・起動時ブートストラップのみを置く。
@@ -56,7 +57,6 @@ import {
   applyMachineDevicesSyncResult,
   applyNameInputOpen,
 } from './modals.js';
-import { applyLiveMessage, applyLiveH264Chunk } from './liveTab.js';
 import { applyExploreMessage } from './exploreTab.js';
 import { applySettings } from './settingsTab.js';
 import { activateTab, TAB_IDS, switchTab } from './tabs.js';
@@ -77,9 +77,6 @@ window.addEventListener('message', (event) => {
       break;
     case 'h264Chunk':
       applyH264Chunk(message);
-      break;
-    case 'liveH264Chunk':
-      applyLiveH264Chunk(message);
       break;
     case 'deviceError':
       applyDeviceError(message);
@@ -171,9 +168,6 @@ window.addEventListener('message', (event) => {
       break;
     case 'nameInputOpen':
       applyNameInputOpen(message);
-      break;
-    case 'live':
-      applyLiveMessage(message.message);
       break;
     case 'explore':
       applyExploreMessage(message.message);

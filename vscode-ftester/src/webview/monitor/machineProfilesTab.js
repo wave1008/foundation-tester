@@ -4,7 +4,7 @@
 // runProfilesTab.js・modals.js からは machineProfiles/findMachine/selectedMachine を読み取り専用で参照する。
 
 import { vscode } from './vscodeApi.js';
-import { clampMenuPosition } from './deviceTiles.js';
+import { clampMenuPosition } from './menu.js';
 
 // ---- プロファイルタブ: マシンプロファイル ---------------------------------------
 

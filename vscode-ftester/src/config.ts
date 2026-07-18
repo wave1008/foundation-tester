@@ -23,7 +23,7 @@ export interface FtesterConfig {
   monitorInterval: number;
   /** モニターのフレーム画像の長辺px(240〜1600にクランプ。`ftester api monitor --max-width`)。 */
   monitorMaxWidth: number;
-  /** ライブ操作タブの自動フレーム更新レート上限(fps、3〜30にクランプ)。旧実装は成功時 delayMs=0 の
+  /** ライブ操作パネルの自動フレーム更新レート上限(fps、3〜30にクランプ)。旧実装は成功時 delayMs=0 の
    * ホットループでデバイスが返す限り最速で /screenshot を叩き負荷源だった。目標fpsで頭打ちにする
    * (monitorLiveController.ts frameTick)。 */
   liveFps: number;
@@ -48,6 +48,9 @@ export interface FtesterConfig {
    * 順で自動修復を試みる(monitorHealthWatchdog.ts)。既定 false: autoRepairBridge と異なり、
    * Wi-Fi をわざと切ってテストするケースを勝手に上書きしないため。 */
   autoRepairDeviceHealth: boolean;
+  /** true の場合、テスト実行(Run Test、非dry-run)開始時にライブ操作パネル(livePanel.ts)を
+   * エディタの右側(ViewColumn.Beside)へ自動表示する。 */
+  liveControlOnRun: boolean;
 }
 
 /** ワークスペースルート(Package.swift のあるフォルダ)を解決する。開いていなければ undefined。 */
@@ -85,6 +88,7 @@ export function readConfig(workspaceRoot: string): FtesterConfig {
     showOnlyFailedTests: configuration.get<boolean>("showOnlyFailedTests", false),
     autoRepairBridge: configuration.get<boolean>("autoRepairBridge", true),
     autoRepairDeviceHealth: configuration.get<boolean>("autoRepairDeviceHealth", false),
+    liveControlOnRun: configuration.get<boolean>("liveControlOnRun", true),
   };
 }
 

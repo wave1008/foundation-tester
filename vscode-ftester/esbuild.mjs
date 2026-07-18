@@ -2,8 +2,8 @@
 // vscode-ftester のビルドスクリプト。
 //
 //   node esbuild.mjs          : src/extension.ts -> dist/extension.js と
-//                                src/webview/monitor/{main.js,style.css} -> media/monitor/
-//                                の両方を1回ビルド
+//                                src/webview/{monitor,live,dashboard}/ -> media/{monitor,live,dashboard}/
+//                                の両方を1回ビルド(live は main.js のみ。style.css は media/monitor/ を共用)
 //   node esbuild.mjs --watch  : 上記をどちらもウォッチモードで実行
 //   node esbuild.mjs --tests  : test/*.test.mjs を out-test/ にバンドルする(node:test 用。
 //                                src/*.ts を直接 import しているテストを Node がそのまま
@@ -49,6 +49,7 @@ async function buildWebview() {
     entryPoints: [
       path.join(rootDir, "src/webview/monitor/main.js"),
       path.join(rootDir, "src/webview/monitor/style.css"),
+      path.join(rootDir, "src/webview/live/main.js"),
       path.join(rootDir, "src/webview/dashboard/main.js"),
       path.join(rootDir, "src/webview/dashboard/style.css"),
     ],

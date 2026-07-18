@@ -698,10 +698,9 @@ export function isLiveFromWebviewMessage(value: unknown): value is LiveFromWebvi
   }
 }
 
-// ---- モニターwebviewとの多重化封筒 --------------------------------------------------------
-// モニターパネル(monitorPanel.ts)は1つのwebviewに複数機能のメッセージが行き交うため、live系は
-// type:"live" で包んで monitor系メッセージ型(monitorModel.ts)との衝突を避ける。
-// 対向: src/webview/monitor/liveTab.js
+// ---- host⇔webview封筒 -------------------------------------------------------------------
+// ライブ操作パネルは独立webviewのため多重化の実利用は無いが、既存プロトコルとして type:"live" で
+// 包む形を維持する(対向: src/webview/monitor/liveTab.js、host 側: src/livePanel.ts)。
 
 /** webview → host。 */
 export interface LiveWebviewEnvelope {

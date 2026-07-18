@@ -17,6 +17,7 @@ import { registerDashboardPanel } from "./dashboardPanel";
 import { registerDebugAdapter } from "./debugConfig";
 import { registerHealReviewPanel } from "./healReviewPanel";
 import { registerLastResultsSync } from "./lastResultsSync";
+import { registerLivePanel } from "./livePanel";
 import { registerMonitorPanel } from "./monitorPanel";
 import { sweepOrphans } from "./orphanSweep";
 import { registerProfileDiagnostics } from "./profileDiagnostics";
@@ -94,6 +95,9 @@ export function activate(context: vscode.ExtensionContext): void {
     onResultsApplied: onResultsChanged,
   });
   context.subscriptions.push(lastResultsSync);
+  // registerRunHandler の Run Test 前ライブパネル連携(prepareForRun)と registerMonitorPanel の
+  // openLiveForDevice(デバイスタイル右クリック連携)の両方に使うため先に生成する。
+  const livePanel = registerLivePanel(context, workspaceRoot, getConfig, outputChannel, cli, testTree, runEventBus);
   registerRunHandler(
     context, cli, workspaceRoot, getConfig, testTree, watcher, outputChannel, runEventBus,
     (executedScenarioIds) => {
@@ -102,10 +106,13 @@ export function activate(context: vscode.ExtensionContext): void {
       lastResultsSync.absorb(executedScenarioIds);
       onResultsChanged();
     },
+    livePanel.prepareForRun,
   );
   registerDebugAdapter(context, workspaceRoot, getConfig, outputChannel);
   registerStepsView(context, cli, workspaceRoot, getConfig, testTree, watcher, outputChannel);
-  registerMonitorPanel(context, workspaceRoot, getConfig, outputChannel, runEventBus, cli, testTree);
+  registerMonitorPanel(
+    context, workspaceRoot, getConfig, outputChannel, runEventBus, cli, testTree, livePanel.openForDevice,
+  );
   registerHealReviewPanel(context, workspaceRoot, getConfig, outputChannel, runEventBus, cli);
   registerDashboardPanel(context, workspaceRoot, getConfig, outputChannel, runEventBus);
   registerProfileDiagnostics(context, cli, workspaceRoot, getConfig, outputChannel);

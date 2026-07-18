@@ -156,9 +156,9 @@ export type MonitorToWebviewMessage =
       readonly height: number;
       readonly data: Uint8Array;
     }
-  // ライブ操作タブの H.264 AU 1件(monitorLiveController.ts の onChunk が post する。既存の
+  // ライブ操作パネルの H.264 AU 1件(monitorLiveController.ts の onChunk が post する。既存の
   // { type: "frame", image } と並置。h264Chunk と同じく "live" 封筒は経由しない — webview 側は
-  // main.js の直下ディスパッチャから直接 liveTab.js の applyLiveH264Chunk へ渡す)。
+  // src/webview/live/main.js の直下ディスパッチャから直接 liveTab.js の applyLiveH264Chunk へ渡す)。
   | {
       readonly type: "liveH264Chunk";
       readonly keyframe: boolean;
@@ -315,8 +315,8 @@ export type MonitorToWebviewMessage =
       readonly existing: readonly string[];
       readonly caseInsensitiveDup: boolean;
     }
-  // ホスト駆動のタブ切替(例: ftester.showLiveControl でパネルを開き直さず「ライブ操作」タブへ
-  // 直接切り替える)。webview 側は tabs.js の activateTab へそのまま渡す。
+  // ホスト駆動のタブ切替(例: ftester.explore でパネルを開き直さず「FM探索」タブへ直接切り替える)。
+  // webview 側は tabs.js の activateTab へそのまま渡す。
   | { readonly type: "switchTab"; readonly tab: string }
   // 設定タブの「ポーリングモードを使用する」チェックボックスの現在値。ready 直後(永続状態の反映)と
   // setPollingMode 受信直後(monitorPanel.ts)の両方で送る。webview 側は settingsTab.js の
@@ -391,6 +391,9 @@ export type MonitorFromWebviewMessage =
   | { readonly type: "devicesDown" }
   | { readonly type: "restartMonitor" }
   | { readonly type: "deviceOp"; readonly name: string; readonly op: DeviceOpKind }
+  // デバイスタイル右クリック「ライブ操作」: 独立ライブ操作パネル(livePanel.ts)を開いて id のデバイスを
+  // 選択させる(受け手: monitorPanel.ts → registerMonitorPanel の openLiveForDevice)。
+  | { readonly type: "openLiveForDevice"; readonly id: string }
   // 「GPUで再起動」: CPU 描画フォールバックを解除して host GPU で再起動する手動操作。
   // webview 側は CPU バッジ(renderMode==='cpu')の Android タイルでのみメニューに出す。
   | { readonly type: "deviceRestartGpu"; readonly name: string }
@@ -489,8 +492,9 @@ export type MonitorFromWebviewMessage =
   | { readonly type: "nameInputConfirm"; readonly id: number; readonly name: string }
   | { readonly type: "nameInputCancel"; readonly id: number }
   // 設定タブの「ポーリングモードを使用する」チェックボックス変更(settingsTab.js)。true でストリーミングを
-  // 止めてポーリングへ強制する(iOS/Android・ライブ操作タブ/デバイスタイル共通)。monitorPanel.ts が
-  // workspaceState へ永続化し、対の "pollingMode" メッセージで即時反映する。
+  // 止めてポーリングへ強制する(iOS/Android・ライブ操作パネル/デバイスタイル共通)。monitorPanel.ts が
+  // workspaceState へ永続化し、対の "pollingMode" メッセージで即時反映する(livePanel.ts は
+  // workspaceState を直接読むため、この即時反映の対象はデバイスタイルのみ)。
   | { readonly type: "setPollingMode"; readonly value: boolean }
   // デバイスタブのスプリッターをドラッグ終了した時のタイルペイン高さ(px)。monitorPanel.ts が
   // workspaceState へ永続化し、パネル再作成時に "tilePaneHeight" メッセージで復元する。
@@ -568,6 +572,8 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
       );
     case "deviceOp":
       return typeof value.name === "string" && (value.op === "up" || value.op === "down");
+    case "openLiveForDevice":
+      return typeof value.id === "string" && value.id !== "";
     case "deviceRestartGpu":
       return typeof value.name === "string" && value.name !== "";
     case "devicesRestartGpu":
