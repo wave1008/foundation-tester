@@ -80,7 +80,11 @@ class LivePanelController implements vscode.Disposable {
     }
     switch (message.type) {
       case "runStarted":
-        if (!message.isDryRun) {
+        // 単一クラス実行のときだけ自動追従する(runHandler.ts が単一デバイスの liveTarget を用意した run
+        // = liveFollow=true)。複数クラス(並列バッチ)は liveFollow=false で追従しない。クラス数判定は
+        // runHandler に集約し、ここは結果フラグだけを見る(判定の二重化を避ける)。手動オープン時の
+        // 操作記録流し込み(上)は liveControlOnRun とも liveFollow とも独立。
+        if (!message.isDryRun && message.liveFollow) {
           this.runAutoOpenActive = true;
           this.show(true);
         }
