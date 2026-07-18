@@ -1,11 +1,11 @@
 // monitorPanel.ts
-// デバイスモニターの WebviewPanel(コマンド `ftester.showDeviceMonitor`/`ftester.showLiveControl`)。
+// デバイスモニターの WebviewPanel(コマンド `ftester.showDeviceMonitor`)。ライブ操作は独立パネル
+// (livePanel.ts)へ分離済み。デバイスタイル右クリック「ライブ操作」だけ openLiveForDevice 経由で連携する。
 // MonitorPanelController は以下のサブコントローラを束ねるオーケストレーターで、各サブコントローラは
 // 互いを直接参照せず MonitorPanelDeps 経由でのみ連携する:
 // - monitorProcessManager.ts の MonitorProcessManager: monitor/host-metrics 常駐子プロセスの起動・停止・再起動
 // - monitorProfilesController.ts の MonitorProfilesController: 「プロファイル」タブの一覧post・CRUD・フォームのロード/保存
 // - monitorDeviceOps.ts の MonitorDeviceOps: デバイスライフサイクルキュー・device-catalog/installed-devices/create-device
-// - monitorLiveController.ts の MonitorLiveController: 「ライブ操作」タブの list-devices・live serve プロセス管理
 // - monitorExploreController.ts の MonitorExploreController: 「FM探索」タブの list-devices・`api explore` 実行
 // - monitorDeviceStreamController.ts の MonitorDeviceStreamController: デバイスタイルの画面ストリーミング
 //   (iOS/Android共通の StreamPipeline)管理。connected な monitorFrame ポーリングとの間引き調停は
@@ -28,7 +28,6 @@ import { repairWifi } from "./adbWifiRepair";
 import type { FtesterCli } from "./cli";
 import { type FtesterConfig, readRunProfileDeviceNames, resolveAdb, resolveProjectName } from "./config";
 import { isExploreWebviewEnvelope, type ExploreToWebviewEnvelope } from "./exploreModel";
-import { isLiveWebviewEnvelope, type LiveToWebviewEnvelope } from "./liveModel";
 import {
   devicesToShutdownOnScopeChange,
   isMonitorFromWebviewMessage,
@@ -42,7 +41,6 @@ import { MonitorDeviceStreamController } from "./monitorDeviceStreamController";
 import { MonitorExploreController } from "./monitorExploreController";
 import { MonitorHealthWatchdog } from "./monitorHealthWatchdog";
 import { PANEL_TITLE, renderHtml } from "./monitorHtml";
-import { MonitorLiveController } from "./monitorLiveController";
 import { type HostMetricsToWebviewMessage, MonitorProcessManager } from "./monitorProcessManager";
 import { MonitorProfilesController } from "./monitorProfilesController";
 import type { RunBusMessage, RunEventBus } from "./runEventBus";
@@ -70,7 +68,6 @@ export interface MonitorPanelDeps {
       | MonitorToWebviewMessage
       | RunLaneToWebviewMessage
       | HostMetricsToWebviewMessage
-      | LiveToWebviewEnvelope
       | ExploreToWebviewEnvelope,
   ): void;
   /** パネル表示中か。MonitorProcessManager.scheduleHostMetricsRestart()の5秒後再起動タイマーが使う。 */
@@ -87,8 +84,8 @@ export interface MonitorPanelDeps {
    * monitorProcessManager.tsのmonitorDevices処理から呼ぶ)。 */
   notifyMonitorDevices(devices: readonly MonitorDevice[]): void;
   /** 設定タブの「ポーリングモードを使用する」チェックボックスの現在値。true の間は
-   * monitorLiveController.ts/monitorDeviceStreamController.ts の両方がストリーミング開始を
-   * 抑止しポーリングへフォールバックする(iOS/Android・ライブ操作タブ/デバイスタイル共通)。 */
+   * monitorDeviceStreamController.ts がストリーミング開始を抑止しポーリングへフォールバックする
+   * (workspaceState の "monitor.pollingMode" を共有する livePanel.ts/monitorLiveController.ts も同様)。 */
   isPollingMode(): boolean;
   /** MonitorProfilesController.postMachineProfileInfoへの委譲。MonitorDeviceOps.runCreateDevice成功時に呼ぶ。 */
   notifyMachineProfilesChanged(): void;
@@ -99,7 +96,7 @@ export interface MonitorPanelDeps {
    * 実行開始時に呼ぶ(stopDeviceStreamsの全台版)。 */
   stopAllStreams(): void;
   /** 生成したソース(絶対パス)を、デバイスモニターの列を避けた列に開く(モニター表示を覆わないため)。
-   * live/explore 両コントローラの生成完了時に使う。 */
+   * explore コントローラの生成完了時に使う。 */
   openGeneratedDocument(filePath: string): void;
 }
 
@@ -111,6 +108,7 @@ export function registerMonitorPanel(
   eventBus: RunEventBus,
   cli: FtesterCli,
   testTree: FtesterTestTree,
+  openLiveForDevice: (id: string) => void,
 ): void {
   const controller = new MonitorPanelController(
     workspaceRoot,
@@ -121,6 +119,7 @@ export function registerMonitorPanel(
     context.workspaceState,
     cli,
     testTree,
+    openLiveForDevice,
   );
   // TEST EXPLORER タイトルの view/title ボタンはペイン非フォーカス時に隠れる。
   // フォーカスに依存しない常時表示の導線としてステータスバーへ常駐させる。
@@ -134,7 +133,6 @@ export function registerMonitorPanel(
     controller,
     statusItem,
     vscode.commands.registerCommand("ftester.showDeviceMonitor", () => controller.show()),
-    vscode.commands.registerCommand("ftester.showLiveControl", () => controller.show("live")),
     vscode.commands.registerCommand("ftester.explore", () => controller.show("explore")),
   );
 }
@@ -147,7 +145,6 @@ class MonitorPanelController implements vscode.Disposable {
   private readonly deviceOps: MonitorDeviceOps;
   private readonly bridgeWatchdog: MonitorBridgeWatchdog;
   private readonly healthWatchdog: MonitorHealthWatchdog;
-  private readonly live: MonitorLiveController;
   private readonly explore: MonitorExploreController;
   private readonly deviceStream: MonitorDeviceStreamController;
 
@@ -177,6 +174,7 @@ class MonitorPanelController implements vscode.Disposable {
     private readonly workspaceState: vscode.Memento,
     cli: FtesterCli,
     testTree: FtesterTestTree,
+    private readonly openLiveForDevice: (id: string) => void,
   ) {
     this.pollingMode = workspaceState.get<boolean>("monitor.pollingMode", false);
     this.tilePaneHeight = workspaceState.get<number>("monitor.tilePaneHeight");
@@ -227,7 +225,6 @@ class MonitorPanelController implements vscode.Disposable {
       isAutoRepairEnabled: () => this.getConfig().autoRepairDeviceHealth,
       isDeviceLifecycleQueueBusy: () => this.deviceOps.isQueueBusy(),
     });
-    this.live = new MonitorLiveController(this.deps, cli, () => void testTree.refresh());
     this.explore = new MonitorExploreController(this.deps, cli, workspaceState, () => void testTree.refresh());
 
     this.unsubscribeBus = eventBus.subscribe((message) => this.handleBusMessage(message));
@@ -319,7 +316,6 @@ class MonitorPanelController implements vscode.Disposable {
       this.panel = undefined;
       this.processManager.stopMonitorProcess();
       this.processManager.stopHostMetricsProcess();
-      this.live.stopProcesses();
       this.deviceStream.dispose();
     });
 
@@ -336,7 +332,6 @@ class MonitorPanelController implements vscode.Disposable {
     this.profiles.disposeWatchers();
     this.processManager.stopMonitorProcess();
     this.processManager.stopHostMetricsProcess();
-    this.live.dispose();
     this.explore.dispose();
     this.deviceStream.dispose();
     const panel = this.panel;
@@ -349,7 +344,6 @@ class MonitorPanelController implements vscode.Disposable {
       | MonitorToWebviewMessage
       | RunLaneToWebviewMessage
       | HostMetricsToWebviewMessage
-      | LiveToWebviewEnvelope
       | ExploreToWebviewEnvelope,
   ): void {
     void this.panel?.webview.postMessage(message);
@@ -402,10 +396,6 @@ class MonitorPanelController implements vscode.Disposable {
   }
 
   private handleWebviewMessage(message: unknown): void {
-    if (isLiveWebviewEnvelope(message)) {
-      this.live.handleWebviewMessage(message.message);
-      return;
-    }
     if (isExploreWebviewEnvelope(message)) {
       this.explore.handleWebviewMessage(message.message);
       return;
@@ -435,6 +425,9 @@ class MonitorPanelController implements vscode.Disposable {
         break;
       case "deviceOp":
         this.deviceOps.enqueueLifecycleJob({ kind: "device", name: message.name, op: message.op });
+        break;
+      case "openLiveForDevice":
+        this.openLiveForDevice(message.id);
         break;
       case "deviceRestartGpu":
         this.deviceOps.restartWithGpu(message.name);
@@ -523,8 +516,8 @@ class MonitorPanelController implements vscode.Disposable {
       case "setPollingMode":
         this.pollingMode = message.value;
         void this.workspaceState.update("monitor.pollingMode", message.value);
-        // トグル直後に両供給元へ即時反映する(次のデバイス選択/monitorDevicesイベント待ちにしない)。
-        this.live.refreshFrameSource();
+        // トグル直後に即時反映する(次の monitorDevices イベント待ちにしない)。ライブ操作パネル
+        // (livePanel.ts)は独立プロセスのため、こちらは次のデバイス選択/表示状態変化で追いつく。
         this.deviceStream.reapply();
         break;
       case "setTilePaneHeight":
@@ -539,12 +532,7 @@ class MonitorPanelController implements vscode.Disposable {
         }
         break;
       case "streamStall":
-        if (message.scope === "live") {
-          this.outputChannel.appendLine(
-            "[live-stream] キーフレーム未受信のままのためヘルパーを再起動します。",
-          );
-          this.live.restartStream();
-        } else if (message.device) {
+        if (message.device) {
           this.outputChannel.appendLine(
             `[monitor-stream] ${message.device}: キーフレーム未受信のままのためヘルパーを再起動します。`,
           );
@@ -557,9 +545,6 @@ class MonitorPanelController implements vscode.Disposable {
             `[monitor-stream] ${message.device}: WebCodecs 未対応/デコード失敗のため mjpeg へフォールバックします。`,
           );
           this.deviceStream.fallbackToMjpeg(message.device);
-        } else if (message.scope === "live") {
-          this.outputChannel.appendLine("[live-stream] WebCodecs 未対応/デコード失敗のため mjpeg へフォールバックします。");
-          this.live.fallbackToMjpeg();
         }
         break;
     }

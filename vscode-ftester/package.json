@@ -2,7 +2,7 @@
   "name": "vscode-ftester",
   "displayName": "ftester",
   "description": "ftester (Swift 製モバイル UI テストツール) のシナリオをツリー表示・実行するための VS Code 拡張",
-  "version": "0.0.242",
+  "version": "0.0.249",
   "private": true,
   "publisher": "wave1008",
   "license": "MIT",
@@ -102,6 +102,11 @@
           ],
           "default": "h264",
           "description": "デバイス画面ストリーミングのコーデック。h264(既定)は WebCodecs によるハードウェアデコードを使います。問題が出る環境では mjpeg(従来方式)へ切り替えてください。"
+        },
+        "ftester.liveControlOnRun": {
+          "type": "boolean",
+          "default": true,
+          "description": "テスト実行(Run Test)開始時に、ライブ操作パネルをエディタの右側へ自動表示します。"
         },
         "ftester.autoRepairBridge": {
           "type": "boolean",

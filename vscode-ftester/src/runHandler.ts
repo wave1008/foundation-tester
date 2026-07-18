@@ -9,12 +9,14 @@
 // 委譲する(詳細は executeDebugRun 参照)。結果はカスタムイベント `ftester.scenarioFinished`
 // (debugAdapter.ts が中継)を購読して run.passed/failed に反映する。
 
+import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { type FtesterCli } from "./cli";
 import { type FtesterConfig, resolveProjectName } from "./config";
 import { resolveEntryAtCursor, truncateForStatusBar, type TreeItemEntry } from "./copyTestName";
 import { lastResultsDir, lookupKey, readFailedScenarioIds } from "./lastResults";
+import type { LiveRunTarget } from "./liveRunTarget";
 import { findLatestReport, listRecentReports, reportsDir } from "./scenarioReports";
 import type { ScenarioFinishedEventBody } from "./debugAdapter";
 import { isRunEvent } from "./model";
@@ -54,6 +56,9 @@ export function registerRunHandler(
   // GUI 実行(実行/デバッグ)が終わるたびに実行対象シナリオIDを渡して呼ぶ(reportCodeLens.ts の
   // refresh と lastResultsSync.ts の absorb 用。last-results が変化し得るタイミング)。
   onRunFinished?: (executedScenarioIds: string[]) => void,
+  // ftester.liveControlOnRun 用: 実行(dry-run 以外)の前にライブ操作パネルを対象 platform の
+  // デバイスへ合わせる(livePanel.ts の prepareForRun)。デバッグ実行には渡さない。
+  prepareLiveForRun?: (platform: "ios" | "android") => Promise<LiveRunTarget | undefined>,
 ): void {
   const controller = testTree.controller;
 
@@ -72,6 +77,7 @@ export function registerRunHandler(
         dryRun,
         failedOnly,
         onRunFinished,
+        prepareLiveForRun,
       );
 
   // ftester.rerunFailedTests(testing/item/context)と「失敗のみ実行」プロファイルは同じ handler を
@@ -315,6 +321,46 @@ function isDeleted(item: vscode.TestItem): boolean {
   return item.tags.some((tag) => tag.id === DELETED_TAG.id);
 }
 
+/** targets の先頭1件のファイルから @TestClass(...) の platform を読み取る(ftester.liveControlOnRun
+ * 用。実行対象は単一 platform 前提のため先頭のみで足りる)。クラス名スコープの一致を優先し、
+ * 無ければファイル内最初の platform 指定にフォールバックする。読めない/見つからなければ
+ * undefined(呼び出し元が既存のフォールバックへ進む)。 */
+function resolveTargetPlatform(targets: Map<string, vscode.TestItem>): "ios" | "android" | undefined {
+  const first = [...targets.entries()][0];
+  if (!first) {
+    return undefined;
+  }
+  const [id, item] = first;
+  const filePath = item.uri?.fsPath;
+  if (!filePath) {
+    return undefined;
+  }
+  try {
+    const text = fs.readFileSync(filePath, "utf8");
+    const className = id.split(".")[0] ?? "";
+    // クラス名を正規表現へ埋め込まず、@TestClass(...) 直後の class 宣言を全て列挙してから比較する
+    // (埋め込み+固定長の先読みだと、対象クラスより手前にある無関係な @TestClass の属性を誤って
+    // スコープと誤認する早期一致バグになる。日本語クラス名を含むため \w ではなく \p{L}\p{N}_ で拾う)。
+    const classRe = /@TestClass\(([^)]*)\)[\s\S]{0,300}?\bclass\s+([\p{L}\p{N}_]+)/gu;
+    let match: RegExpExecArray | null;
+    let scopedAttrs: string | undefined;
+    while ((match = classRe.exec(text))) {
+      if (match[2] === className) {
+        scopedAttrs = match[1];
+        break;
+      }
+    }
+    const scoped = scopedAttrs ? /platform:\s*"(ios|android)"/.exec(scopedAttrs)?.[1] : undefined;
+    if (scoped === "ios" || scoped === "android") {
+      return scoped;
+    }
+    const fallback = /platform:\s*"(ios|android)"/.exec(text)?.[1];
+    return fallback === "ios" || fallback === "android" ? fallback : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function executeRun(
   controller: vscode.TestController,
   cli: FtesterCli,
@@ -328,6 +374,7 @@ async function executeRun(
   dryRun: boolean,
   failedOnly: boolean,
   onRunFinished?: (executedScenarioIds: string[]) => void,
+  prepareLiveForRun?: (platform: "ios" | "android") => Promise<LiveRunTarget | undefined>,
 ): Promise<void> {
   const config = getConfig();
   let targets = resolveTargets(controller, request);
@@ -400,14 +447,40 @@ async function executeRun(
     return;
   }
 
+  // ftester.liveControlOnRun 用: dry-run 以外はライブ操作パネルを対象 platform のデバイスへ合わせ、
+  // 成功すればそのデバイスを直接実行対象にする(liveTarget)。platform 不明・パネル側が対象なしを
+  // 返す・機能 OFF のいずれでも liveTarget は undefined のままで、既存の分岐(下)にフォールバックする。
+  let liveTarget: LiveRunTarget | undefined;
+  if (!dryRun && prepareLiveForRun && targets.size > 0) {
+    const platform = resolveTargetPlatform(targets);
+    if (platform) {
+      run.appendOutput("ライブ操作パネルのデバイス準備(未起動なら起動)と画面同期を待機しています…\r\n");
+      try {
+        liveTarget = await prepareLiveForRun(platform);
+      } catch (error) {
+        outputChannel.appendLine(
+          `[ftester] ライブ操作パネルの準備に失敗しました: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+  }
+
   const args = ["api", "run", "--project", resolution.project];
   for (const id of targets.keys()) {
     args.push("--scenario", id);
   }
-  // --profile と --platform/--port/--serial は ftester api run 側で同時指定不可なので、
-  // profile が非空のときはそちらだけを渡す(空なら platform/port/serial を渡す)。
+  // --profile と --platform/--port/--serial は ftester api run 側で同時指定不可なので、liveTarget が
+  // あれば最優先で使う(上のライブパネル連携)。無ければ既存どおり: profile が非空のときはそちらだけ、
+  // 空なら platform/port/serial を渡す。
   const profile = config.profile.trim();
-  if (profile.length > 0) {
+  if (liveTarget) {
+    args.push("--platform", liveTarget.platform);
+    if (liveTarget.platform === "android" && liveTarget.serial) {
+      args.push("--serial", liveTarget.serial);
+    } else if (liveTarget.platform === "ios" && liveTarget.port !== undefined) {
+      args.push("--port", String(liveTarget.port));
+    }
+  } else if (profile.length > 0) {
     args.push("--profile", profile);
   } else {
     args.push("--platform", config.platform);

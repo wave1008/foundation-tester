@@ -7,18 +7,16 @@ import { closeDeviceOpMenu } from './deviceTiles.js';
 import { closeMachineDeviceMenu } from './machineProfilesTab.js';
 import { applyTilePaneHeight, tilePaneHeight } from './splitter.js';
 
-export const TAB_IDS = ['devices', 'live', 'profiles', 'explore', 'settings'];
+export const TAB_IDS = ['devices', 'profiles', 'explore', 'settings'];
 const tabButtons = {
   devices: document.getElementById('tab-devices'),
   profiles: document.getElementById('tab-profiles'),
-  live: document.getElementById('tab-live'),
   explore: document.getElementById('tab-explore'),
   settings: document.getElementById('tab-settings'),
 };
 const tabPanels = {
   devices: devicesPanel,
   profiles: document.getElementById('panel-profiles'),
-  live: document.getElementById('panel-live'),
   explore: document.getElementById('panel-explore'),
   settings: document.getElementById('panel-settings'),
 };
@@ -41,7 +39,7 @@ export function switchTab(tab) {
     // 非表示中はclientHeight=0のガードで何もしなかった分を再クランプする(splitter.js参照)。
     applyTilePaneHeight(tilePaneHeight);
   }
-  // liveTab.js の初回活性化フック(自動デバイス取得)が依存する。
+  // exploreTab.js の初回活性化フック(自動デバイス取得)が依存する。
   document.dispatchEvent(new CustomEvent('ft-tab-activated', { detail: { tab } }));
 }
 

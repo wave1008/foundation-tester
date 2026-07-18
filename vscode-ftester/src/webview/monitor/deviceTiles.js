@@ -9,6 +9,7 @@ import { vscode } from './vscodeApi.js';
 import { grid, emptyMessage, banner, btnUp, btnDown, deviceOpMenu, deviceOpMenuItemBtn, deviceOpMenuItemLabel, deviceOpMenuLiveBtn, deviceOpMenuGpuBtn, profileSelect } from './domRefs.js';
 import { updateLaneVisibility, syncLanesToDevices, runningWorkers } from './laneLog.js';
 import { createH264Renderer } from './h264Decoder.js';
+import { clampMenuPosition } from './menu.js';
 
 // bridgeWatch(拡張ホストの自動修復ウォッチドッグ、契約は main.js の 'bridgeWatch' ケース参照)の
 // phase→footer表示。'ok'はここに含めず通常表示へフォールバックさせる。
@@ -346,15 +347,6 @@ export function closeDeviceOpMenu() {
   deviceOpMenu.classList.remove('visible');
 }
 
-// 画面端クランプ。タイル右クリックメニューとプロファイルタブの行メニュー(machineProfilesTab.js)で共用。
-export function clampMenuPosition(menuEl, clientX, clientY) {
-  const rect = menuEl.getBoundingClientRect();
-  const maxX = Math.max(4, window.innerWidth - rect.width - 4);
-  const maxY = Math.max(4, window.innerHeight - rect.height - 4);
-  menuEl.style.left = Math.min(Math.max(clientX, 4), maxX) + 'px';
-  menuEl.style.top = Math.min(Math.max(clientY, 4), maxY) + 'px';
-}
-
 function openDeviceOpMenu(entry, clientX, clientY) {
   deviceOpMenuEntry = entry;
   renderDeviceOpMenuItem();
@@ -392,13 +384,13 @@ deviceOpMenuGpuBtn.addEventListener('click', (event) => {
   closeDeviceOpMenu();
 });
 
-// 受け手は liveTab.js(タブ切替+host への openDevice 送信)。
+// 受け手: monitorPanel.ts → livePanel.ts の openForDevice(独立ライブ操作パネルを表示)。
 deviceOpMenuLiveBtn.addEventListener('click', (event) => {
   event.stopPropagation();
   if (!deviceOpMenuEntry) {
     return;
   }
-  document.dispatchEvent(new CustomEvent('ft-live-open-device', { detail: { id: deviceOpMenuEntry.device.id } }));
+  vscode.postMessage({ type: 'openLiveForDevice', id: deviceOpMenuEntry.device.id });
   closeDeviceOpMenu();
 });
 

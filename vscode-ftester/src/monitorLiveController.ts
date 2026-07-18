@@ -1,5 +1,5 @@
 // monitorLiveController.ts
-// デバイスモニターパネル(monitorPanel.ts)の「ライブ操作」タブ担当サブコントローラ。
+// ライブ操作パネル(livePanel.ts)のロジック本体。
 //
 // - `ftester api list-devices` は FtesterCli の直列キュー(`ftester api run` と共有。シナリオ実行が
 //   `swift build` を伴い得るため同時2プロセスを防ぐ SPM ビルドロック対策)には乗せず、oneShotCli.ts の
@@ -13,7 +13,7 @@
 //   serve はデバイスごとの状態を持つプロセスなので、デバイス選択が変わったら明示的に再バインド
 //   (停止→新デバイスで起動)し諦め状態もリセットする(=デバイスを選び直す操作が host-metrics の
 //   「再起動ボタン」に相当する回復経路。専用ボタンは無い)。
-// - webview 資産は src/webview/monitor/liveTab.js(main.js から applyLiveMessage を import)。
+// - webview 資産は src/webview/monitor/liveTab.js(src/webview/live/main.js から applyLiveMessage を import)。
 //   frameToDisplayRect の計算だけを手書きで複製している(要素一覧の表示テキストは host 側で
 //   事前整形して送るため複製不要)。liveModel.ts の frameToDisplayRect を変更したら
 //   liveTab.js 側も追随させること。
@@ -63,7 +63,8 @@ import {
   serializeLiveServeCommand,
   toSnapshotMessage,
 } from "./liveModel";
-import type { MonitorPanelDeps } from "./monitorPanel";
+import type { LiveDeps } from "./liveDeps";
+import type { LiveRunTarget } from "./liveRunTarget";
 import { NdjsonParser } from "./ndjson";
 import { type OneShotResult, type PipeProcess, runOneShot } from "./oneShotCli";
 
@@ -143,6 +144,11 @@ export class MonitorLiveController implements vscode.Disposable {
   private selectedDeviceId: string | undefined;
   /** openDevice 用: 次の applyDevices で優先選択する id(消費したら undefined に戻す)。 */
   private pendingSelectId: string | undefined;
+  /** preferPlatform 用: Run Test 自動オープン(livePanel.ts)が「実行中シナリオの platform」を渡す。
+   * 選択中デバイスの platform がこれと食い違う間、applyDevices/preferPlatform は一覧の先頭から
+   * この platform のデバイスを探して自動選択する。ユーザーが手動で選び直したら(selectDevice/
+   * openDevice)解除する(明示選択を尊重する)。 */
+  private preferredPlatform: string | undefined;
   /** 直近の snapshot の screen(ポイント座標のサイズ)。クリック→タップ座標変換に使う。 */
   private lastScreen: LiveSize | undefined;
   /** 直近の snapshot の要素一覧。レコーディング中のヒットテスト・ref 解決に使う。 */
@@ -160,6 +166,10 @@ export class MonitorLiveController implements vscode.Disposable {
    * serve 復帰(handleConnectionOk)で自動的に消す。個々の操作失敗バナーは false のままなので、
    * 常時回っている自動フレームで誤って消えることはない。 */
   private connectionBannerShown = false;
+  /** prepareForRun() の waitForStreamSync() 待ち手。handleConnectionOk() 到達のたびに全件 resolve
+   * して空にする(次の接続成功を「同期完了」とみなす契約。tap 待ち等 handleConnectionOk を呼ぶ
+   * 全経路が対象なので、対象デバイス切り替え後の最初のフレーム/snapshot 成功で必ず起きる)。 */
+  private streamSyncWaiters: Array<() => void> = [];
   /** list-devices のワンショット spawn(専用。runOneShot 経由)。 */
   private activeChild: PipeProcess | undefined;
 
@@ -205,9 +215,9 @@ export class MonitorLiveController implements vscode.Disposable {
   /** streamPipeline がバインドされているデバイスキー(iOS: シミュレータ UDID、Android: adb serial)。
    * デバイス切り替え時の張り替え要否判定に使う。 */
   private streamKey: string | undefined;
-  /** webview から codecError(scope=live)を受けたら true(fallbackToMjpeg 参照)。以後このタブは
+  /** webview から codecError(scope=live)を受けたら true(fallbackToMjpeg 参照)。以後このパネルは
    * 設定値に関わらず mjpeg 固定。deviceStream.ts の mjpegFallbackIds と違いデバイス単位ではなく
-   * タブ単位(ライブ操作タブは常に1デバイスのみ選択するため)。 */
+   * パネル単位(ライブ操作パネルは常に1デバイスのみ選択するため)。 */
   private liveMjpegFallback = false;
 
   // ---- レコーディング(操作→FlowStep記録→gen-scenario) -----------------------------------
@@ -224,7 +234,7 @@ export class MonitorLiveController implements vscode.Disposable {
   private generating = false;
 
   constructor(
-    private readonly deps: MonitorPanelDeps,
+    private readonly deps: LiveDeps,
     private readonly cli: FtesterCli,
     private readonly refreshTestTree: () => void,
   ) {}
@@ -278,6 +288,14 @@ export class MonitorLiveController implements vscode.Disposable {
   private handleConnectionOk(): void {
     this.frameFailureStreak = 0;
     this.serveTimeoutKillStreak = 0;
+    // prepareForRun() の waitForStreamSync() を起こす(streamSyncWaiters 冒頭コメントの契約)。
+    if (this.streamSyncWaiters.length > 0) {
+      const waiters = this.streamSyncWaiters;
+      this.streamSyncWaiters = [];
+      for (const wake of waiters) {
+        wake();
+      }
+    }
     // serve が復帰したので接続系 actionError バナー(常駐プロセス不在・タイムアウト・終了)が
     // 残っていれば消す。connectionLost の早期 return より前に行う: デバイス切り替えの再バインド中は
     // 自動フレームが serve 不在でスキップして回るため connectionLost が立たず、serve が
@@ -393,7 +411,19 @@ export class MonitorLiveController implements vscode.Disposable {
     this.pendingSelectId = undefined;
     const preferred = pending !== undefined && options.some((o) => o.id === pending) ? pending : undefined;
     const stillExists = this.selectedDeviceId !== undefined && options.some((o) => o.id === this.selectedDeviceId);
-    this.selectedDeviceId = preferred ?? (stillExists ? this.selectedDeviceId : options[0]?.id);
+    let selected = preferred ?? (stillExists ? this.selectedDeviceId : options[0]?.id);
+    // 明示選択(openDevice の pending)が無いときだけ platform 優先を適用する。選択中の platform が
+    // preferredPlatform と食い違う場合、一覧の先頭から一致する platform のデバイスを採る。
+    if (preferred === undefined && this.preferredPlatform) {
+      const current = options.find((o) => o.id === selected);
+      if (!current || current.platform !== this.preferredPlatform) {
+        const match = options.find((o) => o.platform === this.preferredPlatform);
+        if (match) {
+          selected = match.id;
+        }
+      }
+    }
+    this.selectedDeviceId = selected;
     this.post({ type: "devices", devices: options, selectedId: this.selectedDeviceId });
     this.post({ type: "banner", message: bannerMessage ?? null });
     this.ensureServeProcessForSelection();
@@ -404,7 +434,133 @@ export class MonitorLiveController implements vscode.Disposable {
     this.applyDevices([option], bannerMessage);
   }
 
-  /** デバイスタブの右クリック「ライブ操作」から(webview: deviceTiles.js→liveTab.js)。
+  /** Run Test 自動オープン(livePanel.ts)が「実行中シナリオの platform」を渡す窓口。選択中デバイスの
+   * platform が食い違う場合のみ、現在の一覧の先頭から一致する platform のデバイスへ即座に切り替える
+   * (一致するデバイスが無ければ現状維持)。一覧未取得のときは preferredPlatform を覚えておき、次の
+   * applyDevices が適用する。 */
+  preferPlatform(platform: string): void {
+    this.preferredPlatform = platform;
+    if (this.devices.length === 0) {
+      return; // 一覧未取得。refreshDevices 完了時の applyDevices が適用する。
+    }
+    const current = this.devices.find((o) => o.id === this.selectedDeviceId);
+    if (current && current.platform === platform) {
+      return; // 既に一致(ミスマッチのときだけ選び直す)。
+    }
+    const match = this.devices.find((o) => o.platform === platform);
+    if (!match || match.id === this.selectedDeviceId) {
+      return;
+    }
+    this.selectedDeviceId = match.id;
+    this.post({ type: "devices", devices: this.devices, selectedId: this.selectedDeviceId });
+    this.ensureServeProcessForSelection();
+    if (match.state === "connected") {
+      void this.refreshSnapshot();
+    }
+  }
+
+  /** Run Test 実行前(runHandler.ts の executeRun)から呼ばれる。対象 platform のデバイスへ選び直し、
+   * 未接続なら device-up で起動して待ち、webview の表示状態に関わらずホスト側でストリーミングを起動して
+   * 最初の同期(接続成功)を最大 timeoutMs 待つ(同期のタイムアウトは処理続行。デバイスは確定済み)。
+   * webview の visibility メッセージは別途届くが liveTabVisible の再設定は冪等なので無害。
+   * 一致する platform のデバイスが無い / 起動に失敗した / 実体識別子が無いときは undefined を返し、
+   * 呼び出し元を既存のプロファイル実行へフォールバックさせる(--serial 空で「more than one device」に
+   * なる事故を防ぐ)。 */
+  async prepareForRun(platform: "ios" | "android", timeoutMs: number): Promise<LiveRunTarget | undefined> {
+    if (this.devices.length === 0) {
+      await this.refreshDevices();
+    }
+    this.preferPlatform(platform);
+    // preferPlatform は状態を問わず対象 platform の先頭を選ぶ。一覧に対象 platform が無ければ起動対象も
+    // 選べないためフォールバック(applyFallback の合成デバイスも platform 不一致なら弾かれる)。
+    let option = this.selectedOption();
+    if (!option || option.platform !== platform) {
+      return undefined;
+    }
+    // 未接続(offline/booted/unknown)なら device-up で起動して待つ(冷起動は数十秒かかり得る)。
+    // 起動後に一覧を取り直し、同じ platform の先頭を選び直してから接続状態を再確認する。
+    if (option.state !== "connected") {
+      const booted = await this.bootDevice(option.name);
+      if (!booted) {
+        return undefined;
+      }
+      await this.refreshDevices();
+      this.preferPlatform(platform);
+      option = this.selectedOption();
+      if (!option || option.platform !== platform || option.state !== "connected") {
+        return undefined;
+      }
+    }
+    const ref = this.currentDeviceRef();
+    // 実体識別子(android: serial / ios: port)が無ければ単機実行の引数を組めないためフォールバック。
+    if (!ref || ref.platform !== platform || (platform === "android" ? !ref.serial : ref.port == null)) {
+      return undefined;
+    }
+    this.liveTabVisible = true;
+    this.updateLiveFrameSource();
+    await this.waitForStreamSync(timeoutMs);
+    return {
+      platform: ref.platform,
+      serial: ref.serial ?? undefined,
+      port: ref.port ?? undefined,
+      udid: ref.udid ?? undefined,
+    };
+  }
+
+  private selectedOption(): LiveDeviceOption | undefined {
+    return this.devices.find((o) => o.id === this.selectedDeviceId);
+  }
+
+  /** 選択デバイスを `api device-up --name` で起動し完了(exit 0)まで待つ。冷起動で長時間ブロックし得る
+   * (device-up 自身がタイムアウト/リトライを持つ)。進捗は live バナーへ出す。list-devices と同じ
+   * 専用 spawn(runCli=runOneShot)で FtesterCli の直列キューには乗せない。 */
+  private async bootDevice(name: string): Promise<boolean> {
+    const config = this.deps.getConfig();
+    const resolution = resolveProjectName(this.deps.workspaceRoot, config);
+    if (resolution.kind !== "resolved") {
+      return false;
+    }
+    this.post({ type: "banner", message: `デバイス「${name}」を起動しています…(初回は数十秒かかることがあります)` });
+    const args = ["api", "device-up", "--name", name, "--project", resolution.project];
+    if (config.profile) {
+      args.push("--profile", config.profile);
+    }
+    try {
+      const result = await this.runCli(args);
+      const ok = result.exitCode === 0;
+      this.post({ type: "banner", message: ok ? null : `デバイス「${name}」の起動に失敗しました。` });
+      return ok;
+    } catch (error) {
+      this.post({ type: "banner", message: `デバイス「${name}」の起動に失敗しました: ${errorMessage(error)}` });
+      return false;
+    }
+  }
+
+  /** 次の handleConnectionOk() 到達(=最初のフレーム/snapshot 成功)で true、timeoutMs 経過で false。
+   * どちらが先でも二重 resolve しない(settled ガード)。 */
+  private waitForStreamSync(timeoutMs: number): Promise<boolean> {
+    return new Promise((resolve) => {
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        resolve(false);
+      }, timeoutMs);
+      this.streamSyncWaiters.push(() => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(timer);
+        resolve(true);
+      });
+    });
+  }
+
+  /** デバイスタイル右クリック「ライブ操作」から(monitorPanel.ts の deviceTiles.js → livePanel.ts の
+   * openForDevice → 独立パネルの liveTab.js openLiveDevice)。
    * id はモニターと共通の `platform:name`(Swift 側 MonitorTarget.id と devicesToOptions が同形式)。
    * 一覧に無ければ取得し直してから選択し、接続済みなら snapshot まで自動取得する。 */
   private async openDevice(id: string): Promise<void> {
@@ -822,12 +978,9 @@ export class MonitorLiveController implements vscode.Disposable {
   }
 
   // ---- ライブ映像の供給元切り替え(ストリーミング ⇄ ポーリング) --------------------------
-
-  /** 設定タブの「ポーリングモードを使用する」トグル直後に monitorPanel.ts から呼ぶ
-   * (updateLiveFrameSource は private なため公開する窓口)。 */
-  refreshFrameSource(): void {
-    this.updateLiveFrameSource();
-  }
+  // 設定タブ「ポーリングモードを使用する」のトグルはワークスペース単位で永続化される
+  // (workspaceState の "monitor.pollingMode")のみで、パネルを跨いだ即時反映のプッシュ通知は無い。
+  // このパネルへは次のデバイス選択/表示状態変化(updateLiveFrameSource 呼び出し契機)で追随する。
 
   /**
    * ライブフレームの供給元を「画面ストリーミング(iOS: ftester-simstream / Android:
@@ -938,14 +1091,15 @@ export class MonitorLiveController implements vscode.Disposable {
       outputChannel: this.deps.outputChannel,
       codec: spec.codec,
       onFrame: (image) => {
-        // ライブタブの frame メッセージは w/h を持たない(deviceStream.ts 冒頭コメント参照)ため無視する。
+        // ライブ操作パネルの frame メッセージは w/h を持たない(deviceStream.ts 冒頭コメント参照)ため無視する。
         this.handleConnectionOk();
         this.post({ type: "frame", image });
       },
       onChunk: (data, keyframe, width, height) => {
         this.handleConnectionOk();
-        // liveH264Chunk は "live" 封筒を経由しない top-level メッセージ(webview 側 main.js の直下
-        // ディスパッチャが受ける契約。monitorModel.ts の MonitorToWebviewMessage 参照)。
+        // liveH264Chunk は "live" 封筒を経由しない top-level メッセージ(webview 側
+        // src/webview/live/main.js の直下ディスパッチャが受ける契約。monitorModel.ts の
+        // MonitorToWebviewMessage 参照)。
         this.deps.post({ type: "liveH264Chunk", keyframe, width, height, data: new Uint8Array(data) });
       },
       onConnectionOk: () => this.handleConnectionOk(),
@@ -1260,14 +1414,16 @@ export class MonitorLiveController implements vscode.Disposable {
       case "selectDevice":
         if (this.devices.some((device) => device.id === message.id)) {
           this.handleConnectionOk();
+          this.preferredPlatform = undefined; // 手動選択は platform 優先より強い(明示選択を尊重)
           this.selectedDeviceId = message.id;
           this.ensureServeProcessForSelection();
         }
         break;
       case "openDevice":
+        this.preferredPlatform = undefined; // 手動(タイル右クリック)選択は platform 優先を解除する
         void this.openDevice(message.id);
-        // 右クリック起動(ft-live-open-device)は webview 側で refreshAppProfiles を送らない
-        // (初回自動 refresh を抑止する経路)ため、ここでアプリプロファイル一覧を補充する。
+        // デバイスタイル右クリック起動(liveTab.js の openLiveDevice)は refreshAppProfiles を
+        // 送らない(初回自動 refresh を抑止する経路)ため、ここでアプリプロファイル一覧を補充する。
         this.refreshAppProfiles();
         break;
       case "refreshSnapshot":
