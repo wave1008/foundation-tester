@@ -5,6 +5,7 @@
 import * as vscode from "vscode";
 import { type FtesterConfig, resolveProjectName } from "./config";
 import { FtesterDebugSession } from "./debugAdapter";
+import { t } from "./i18n";
 
 export function registerDebugAdapter(
   context: vscode.ExtensionContext,
@@ -39,7 +40,7 @@ class FtesterDebugConfigurationProvider implements vscode.DebugConfigurationProv
       return null;
     }
     if (typeof config.scenario !== "string" || config.scenario.trim().length === 0) {
-      void vscode.window.showErrorMessage("ftester: デバッグ設定に scenario の指定が必要です。");
+      void vscode.window.showErrorMessage(t("run.debug.scenarioRequired"));
       return undefined;
     }
     if (typeof config.project !== "string" || config.project.trim().length === 0) {
@@ -47,9 +48,7 @@ class FtesterDebugConfigurationProvider implements vscode.DebugConfigurationProv
       if (resolution.kind === "resolved") {
         config.project = resolution.project;
       } else {
-        void vscode.window.showErrorMessage(
-          "ftester: 対象のテストプロジェクトを解決できませんでした。ftester.project 設定を確認してください。",
-        );
+        void vscode.window.showErrorMessage(`ftester: ${t("run.project.unresolvedHint")}`);
         return undefined;
       }
     }

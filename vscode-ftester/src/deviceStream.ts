@@ -36,6 +36,7 @@
 import { type ChildProcessByStdio, spawn } from "node:child_process";
 import type { Readable, Writable } from "node:stream";
 import type { OutputChannel } from "vscode";
+import { t } from "./i18n";
 
 /** stdin/stdout/stderr すべてパイプの helper プロセス(stdin の EOF が helper への終了指示)。 */
 type StreamProcess = ChildProcessByStdio<Writable, Readable, Readable>;
@@ -167,7 +168,7 @@ export class StreamPipeline implements LiveStreamPipeline {
       proc = spawn(this.options.command, this.options.args, { shell: false, stdio: ["pipe", "pipe", "pipe"] });
     } catch (error) {
       // spawn 失敗も「起動直後の異常終了」として連続失敗にカウントする(3連続で諦める)。
-      this.handleUnexpectedExit(`起動に失敗しました: ${errorMessage(error)}`);
+      this.handleUnexpectedExit(t("live.stream.spawnFailed", { error: errorMessage(error) }));
       return;
     }
     this.stopping = false;
@@ -189,7 +190,9 @@ export class StreamPipeline implements LiveStreamPipeline {
     });
 
     proc.on("error", (error) => {
-      this.options.outputChannel.appendLine(`[${this.options.logPrefix}] プロセスエラー: ${error.message}`);
+      this.options.outputChannel.appendLine(
+        t("live.stream.processError", { prefix: this.options.logPrefix, error: error.message }),
+      );
     });
 
     proc.on("close", (code, signal) => {
@@ -291,7 +294,7 @@ export class StreamPipeline implements LiveStreamPipeline {
   private handleUnknownKind(kind: number): void {
     this.buffer = Buffer.alloc(0); // 以後のバイト列は信頼できないため破棄する
     this.options.outputChannel.appendLine(
-      `[${this.options.logPrefix}] 未知の KIND(${kind})を受信しました(プロトコル不整合)。helper を再起動します。`,
+      t("live.stream.unknownKind", { prefix: this.options.logPrefix, kind }),
     );
     const proc = this.process;
     if (!proc || proc.exitCode !== null || proc.signalCode !== null) {
@@ -314,13 +317,13 @@ export class StreamPipeline implements LiveStreamPipeline {
     if (this.failureStreak >= MAX_QUICK_FAILURES) {
       this.gaveUp = true;
       this.options.outputChannel.appendLine(
-        `[${this.options.logPrefix}] 起動直後の異常終了が続いたため画面ストリーミングを停止します(${reason})。`,
+        t("live.stream.gaveUp", { prefix: this.options.logPrefix, reason }),
       );
-      this.options.onFailure(`画面ストリーミングを継続できませんでした(${reason})。`);
+      this.options.onFailure(t("live.stream.failureMessage", { reason }));
       return;
     }
     this.options.outputChannel.appendLine(
-      `[${this.options.logPrefix}] 予期しない終了(${reason})。${RESTART_DELAY_MS}ms 後に再起動します。`,
+      t("live.stream.restarting", { prefix: this.options.logPrefix, reason, delay: RESTART_DELAY_MS }),
     );
     this.scheduleRestart();
   }
@@ -352,7 +355,7 @@ export class StreamPipeline implements LiveStreamPipeline {
       return;
     }
     this.options.outputChannel.appendLine(
-      `[${this.options.logPrefix}] ${WEDGE_TIMEOUT_MS / 1000}秒フレームが届かないため helper を再起動します。`,
+      t("live.stream.wedgeRestart", { prefix: this.options.logPrefix, seconds: WEDGE_TIMEOUT_MS / 1000 }),
     );
     proc.stdin.end();
     killWithGrace(proc, KILL_GRACE_MS);

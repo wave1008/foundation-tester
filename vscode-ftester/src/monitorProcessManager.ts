@@ -6,6 +6,7 @@
 import { type ChildProcessByStdio, spawn } from "node:child_process";
 import type { Readable, Writable } from "node:stream";
 import { resolveProjectName } from "./config";
+import { t } from "./i18n";
 import {
   type MonitorControlCommand,
   type MonitorDevice,
@@ -157,8 +158,7 @@ export class MonitorProcessManager {
       this.monitorScope = undefined;
       this.deps.post({
         type: "processDown",
-        message:
-          "対象のテストプロジェクトを解決できませんでした。ftester.project 設定を確認してください。",
+        message: t("deviceOps.projectUnresolved"),
       });
       return;
     }
@@ -188,10 +188,10 @@ export class MonitorProcessManager {
         stdio: ["pipe", "pipe", "pipe"],
       });
     } catch (error) {
-      this.deps.outputChannel.appendLine(`[ftester] monitor プロセスの起動に失敗しました: ${String(error)}`);
+      this.deps.outputChannel.appendLine(t("deviceOps.log.monitorStartFailed", { error: String(error) }));
       this.deps.post({
         type: "processDown",
-        message: `モニタープロセスの起動に失敗しました: ${String(error)}`,
+        message: t("deviceOps.monitorStartFailedMessage", { error: String(error) }),
       });
       return;
     }
@@ -213,7 +213,7 @@ export class MonitorProcessManager {
       (rawValue) => {
         if (!isMonitorEvent(rawValue)) {
           this.deps.outputChannel.appendLine(
-            `[monitor] 未知の形式の行を無視しました: ${JSON.stringify(rawValue)}`,
+            t("deviceOps.log.unknownLine", { label: "monitor", value: JSON.stringify(rawValue) }),
           );
           return;
         }
@@ -244,7 +244,7 @@ export class MonitorProcessManager {
     proc.stderr.on("data", (chunk: Buffer) => stderrParser.push(chunk));
 
     proc.on("error", (error) => {
-      this.deps.outputChannel.appendLine(`[ftester] monitor プロセスでエラーが発生しました: ${error.message}`);
+      this.deps.outputChannel.appendLine(t("deviceOps.log.monitorRuntimeError", { error: error.message }));
     });
 
     proc.on("close", (exitCode, signal) => {
@@ -261,12 +261,15 @@ export class MonitorProcessManager {
         // exit 0 の予期しない終了(過去例: stdin の扱いの不備)も無言にせず必ず通知する。
         const hint =
           exitCode === 0
-            ? "予期せず終了しました。「モニター再起動」で再開できます。"
-            : "マシンプロファイル未設定の可能性があります。" +
-              "「ftester machine set」の実行、または Projects/<project>/profiles/machines/ の内容を確認してください。";
+            ? t("deviceOps.monitorExitedUnexpectedHint")
+            : t("deviceOps.monitorExitedMachineHint");
         this.deps.post({
           type: "processDown",
-          message: `モニタープロセスが終了しました(exit code: ${String(exitCode)}, signal: ${String(signal)})。${hint}`,
+          message: t("deviceOps.monitorClosedMessage", {
+            exitCode: String(exitCode),
+            signal: String(signal),
+            hint,
+          }),
         });
       }
     });
@@ -358,7 +361,7 @@ export class MonitorProcessManager {
         stdio: ["pipe", "pipe", "pipe"],
       });
     } catch (error) {
-      this.deps.outputChannel.appendLine(`[host-metrics] プロセスの起動に失敗しました: ${String(error)}`);
+      this.deps.outputChannel.appendLine(t("deviceOps.log.hostMetricsStartFailed", { error: String(error) }));
       return;
     }
 
@@ -372,7 +375,9 @@ export class MonitorProcessManager {
     const stdoutParser = new NdjsonParser(
       (value) => {
         if (!isHostMetricsEvent(value)) {
-          this.deps.outputChannel.appendLine(`[host-metrics] 未知の形式の行を無視しました: ${JSON.stringify(value)}`);
+          this.deps.outputChannel.appendLine(
+            t("deviceOps.log.unknownLine", { label: "host-metrics", value: JSON.stringify(value) }),
+          );
           return;
         }
         this.deps.post({
@@ -396,7 +401,7 @@ export class MonitorProcessManager {
     proc.stderr.on("data", (chunk: Buffer) => stderrParser.push(chunk));
 
     proc.on("error", (error) => {
-      this.deps.outputChannel.appendLine(`[host-metrics] プロセスでエラーが発生しました: ${error.message}`);
+      this.deps.outputChannel.appendLine(t("deviceOps.log.hostMetricsRuntimeError", { error: error.message }));
     });
 
     proc.on("close", () => {
@@ -429,11 +434,7 @@ export class MonitorProcessManager {
     if (this.hostMetricsFailureStreak >= 3) {
       if (!this.hostMetricsGaveUp) {
         this.hostMetricsGaveUp = true;
-        this.deps.outputChannel.appendLine(
-          "[host-metrics] 起動直後の異常終了が続いたため自動再起動を停止しました。" +
-            "バイナリが `api host-metrics` に対応しているか確認してください" +
-            "(対応後は「モニター再起動」ボタンで復帰できます)。",
-        );
+        this.deps.outputChannel.appendLine(t("deviceOps.log.hostMetricsGaveUp"));
       }
       return;
     }

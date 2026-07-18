@@ -7,6 +7,7 @@
 // 契約: webview へは { type: "bridgeWatch", name, phase } を post する(name は deviceOpBusy と
 // 同じ名前空間=デバイス論理名。monitorModel.ts の MonitorToWebviewMessage 参照)。
 
+import { t } from "./i18n";
 import type {
   DeviceLifecycleJob,
   MonitorDevice,
@@ -121,7 +122,7 @@ export class MonitorBridgeWatchdog {
     if (!entry.degraded) {
       entry.degraded = true;
       this.deps.log(
-        `[bridge-watch] ${name}: booted が${String(UNRESPONSIVE_THRESHOLD)}回連続したためブリッジ無応答とみなします。`,
+        `[bridge-watch] ${name}: ${t("monitor.bridgeWatch.unresponsiveDetected", { count: UNRESPONSIVE_THRESHOLD })}`,
       );
       this.deps.post({ type: "bridgeWatch", name, phase: "unresponsive" });
     }
@@ -132,7 +133,7 @@ export class MonitorBridgeWatchdog {
     if (entry.attemptCount >= MAX_REPAIR_ATTEMPTS) {
       entry.failed = true;
       this.deps.log(
-        `[bridge-watch] ${name}: 自動修復を${String(MAX_REPAIR_ATTEMPTS)}回試みましたが復旧しませんでした。`,
+        `[bridge-watch] ${name}: ${t("monitor.watchdog.giveUpAfterAttempts", { count: MAX_REPAIR_ATTEMPTS })}`,
       );
       this.deps.post({ type: "bridgeWatch", name, phase: "failed" });
       return;

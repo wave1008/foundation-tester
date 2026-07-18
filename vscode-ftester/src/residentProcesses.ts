@@ -1,14 +1,29 @@
 // residentProcesses.ts
 // 設定タブ「常駐プロセス」一覧の中核。`ps -axo pid=,ppid=,state=,command=` の出力から ftester 関連の
 // 常駐プロセスを分類・抽出する。vscode を import しない(test/residentProcesses.test.mjs から
-// 素の node:test で検証するため。orphanSweep.ts と同じ方針)。
+// 素の node:test で検証するため。orphanSweep.ts と同じ方針)。表示文字列の i18n は vscode 依存の
+// i18n/index.ts の t() ではなく、vscode 非依存の i18n/core.ts + strings/deviceOps.ts を直接引く
+// (下記 rt())。locale は呼び出し側が明示的に渡す(既定 "ja")— 現状 monitorPanel.ts(呼び出し元)
+// は locale を渡していないため常に ja 表示。currentLocale() を渡す配線は将来追加の余地として残す。
 //
 // 「ftester 関連」の判定はコマンド文字列のみに依存する。実行時の kill 経路(monitorPanel.ts)は
 // ここで得た pid を使うが、実際の停止は原則 `ftester devices down`(confirmDeaths→simctl
 // shutdown→emu kill の安全順序を Swift 側が保証)経由で行い、残余のみ SIGKILL で掃討する。
 
-/** 常駐プロセスの種別。表示順もこの配列順(KIND_ORDER)に従う。 */
-export type ResidentKind =
+import { formatMessage, type Locale } from "./i18n/core";
+import { deviceOpsStrings } from "./i18n/strings/deviceOps";
+
+/** vscode 非依存の辞書引き(i18n/index.ts の t() のここでの代替。ファイル冒頭コメント参照)。 */
+function rt(
+  key: keyof typeof deviceOpsStrings,
+  locale: Locale,
+  params?: Record<string, string | number>,
+): string {
+  return formatMessage(deviceOpsStrings[key][locale], params);
+}
+
+/** 常駐プロセスの種別。表示順もこの配列順(TYPE_ORDER)に従う。 */
+export type ResidentType =
   | "bridge" // iOS ブリッジ本体: xcodebuild test-without-building(FTesterRunner の xctestrun)
   | "sim-runner" // シミュレータ内の XCUITest ランナー: FTesterRunnerUITests-Runner.app
   | "inapp-bridge" // in-app ブリッジ: dylib 注入されたテスト対象アプリ本体(.inapp の UDID で識別)
@@ -25,7 +40,7 @@ export type ResidentKind =
 export interface ResidentProcess {
   readonly pid: number;
   readonly ppid: number;
-  readonly kind: ResidentKind;
+  readonly type: ResidentType;
   /** 種別の短い日本語ラベル(UI 表示用)。 */
   readonly label: string;
   /** 識別子(ポート/avd 名/UDID など、コマンドから抽出できた場合のみ。無ければ "")。 */
@@ -69,10 +84,12 @@ export interface ParseResidentOptions {
    *  1行目先頭=UDID)から作る。この UDID のシミュレータ内で走る注入アプリ本体を inapp-bridge 種別で
    *  拾い、ポートもここから解決する。 */
   readonly inappBridges?: ReadonlyMap<string, string>;
+  /** 表示文字列(label/parentDescription)の言語。既定 "ja"(ファイル冒頭コメント参照)。 */
+  readonly locale?: Locale;
 }
 
 /** 表示・kill の並び順(重いフリートを上に、補助常駐を下に)。 */
-export const KIND_ORDER: readonly ResidentKind[] = [
+export const TYPE_ORDER: readonly ResidentType[] = [
   "bridge",
   "sim-runner",
   "inapp-bridge",
@@ -87,20 +104,25 @@ export const KIND_ORDER: readonly ResidentKind[] = [
   "ftester",
 ];
 
-const KIND_LABEL: Record<ResidentKind, string> = {
-  bridge: "iOSブリッジ",
-  "sim-runner": "iOSランナー",
-  "inapp-bridge": "iOS in-appブリッジ",
-  emulator: "Androidエミュ",
-  "android-bridge": "Androidブリッジ",
-  monitor: "モニター",
-  "host-metrics": "ホストメトリクス",
-  "live-serve": "ライブ配信",
-  stream: "画面ストリーム",
-  run: "実行(run)",
-  mcp: "MCPサーバ",
-  ftester: "ftester",
+// ResidentType → 辞書キー(表示ラベル)。ftester は素の CLI 名で ja/en 差が無いためキー無し。
+const TYPE_LABEL_KEY: Partial<Record<ResidentType, keyof typeof deviceOpsStrings>> = {
+  bridge: "deviceOps.type.bridge",
+  "sim-runner": "deviceOps.type.simRunner",
+  "inapp-bridge": "deviceOps.type.inappBridge",
+  emulator: "deviceOps.type.emulator",
+  "android-bridge": "deviceOps.type.androidBridge",
+  monitor: "deviceOps.type.monitor",
+  "host-metrics": "deviceOps.type.hostMetrics",
+  "live-serve": "deviceOps.type.liveServe",
+  stream: "deviceOps.type.stream",
+  run: "deviceOps.type.run",
+  mcp: "deviceOps.type.mcp",
 };
+
+function typeLabel(type: ResidentType, locale: Locale): string {
+  const key = TYPE_LABEL_KEY[type];
+  return key ? rt(key, locale) : "ftester";
+}
 
 // ftester CLI をパス前置(相対/絶対)を問わずサブコマンド位置で判定する土台。ftester-mcp /
 // ftester-simstream / ftester-androidstream は "ftester" の直後が "-" なので (?:\s|$) に当たらず、
@@ -128,7 +150,7 @@ function extractArg(command: string, flag: string): string {
 export function classifyResident(
   command: string,
   opts: { binaryDir?: string; inappBridges?: ReadonlyMap<string, string> } = {},
-): { kind: ResidentKind; detail: string } | null {
+): { type: ResidentType; detail: string } | null {
   const cmd = command.trim();
   if (!cmd) {
     return null;
@@ -136,37 +158,37 @@ export function classifyResident(
 
   // 1. helper バイナリ(専用プロセス名。ftester CLI 判定より先に確定させる)
   if (/(^|\/)ftester-mcp(?:\s|$)/.test(cmd)) {
-    return { kind: "mcp", detail: "" };
+    return { type: "mcp", detail: "" };
   }
   if (/(^|\/)ftester-(?:sim|android)stream(?:\s|$)/.test(cmd)) {
     const serial = extractArg(cmd, "--serial") || extractArg(cmd, "--device") || extractArg(cmd, "--udid");
-    return { kind: "stream", detail: serial };
+    return { type: "stream", detail: serial };
   }
   // 1b. その他の ftester-<name> helper を汎用に拾う(専用判定の後。新規 helper のもれ防止)。
   //     detail に helper 名を出して種別「ftester」の中で区別できるようにする。
   const genericHelper = cmd.match(/(^|\/)(ftester-[A-Za-z0-9][A-Za-z0-9._-]*)(?:\s|$)/);
   if (genericHelper) {
-    return { kind: "ftester", detail: genericHelper[2] ?? "" };
+    return { type: "ftester", detail: genericHelper[2] ?? "" };
   }
 
   // 2. ftester CLI サブコマンド
   if (FTESTER_CLI_RE.test(cmd)) {
     if (/\bapi\s+monitor(?:\s|$)/.test(cmd)) {
-      return { kind: "monitor", detail: extractArg(cmd, "--project") || extractArg(cmd, "--profile") };
+      return { type: "monitor", detail: extractArg(cmd, "--project") || extractArg(cmd, "--profile") };
     }
     if (/\bapi\s+host-metrics(?:\s|$)/.test(cmd)) {
-      return { kind: "host-metrics", detail: "" };
+      return { type: "host-metrics", detail: "" };
     }
     if (/\bapi\s+live\s+serve(?:\s|$)/.test(cmd)) {
       const dev = extractArg(cmd, "--device") || extractArg(cmd, "--name");
-      return { kind: "live-serve", detail: dev };
+      return { type: "live-serve", detail: dev };
     }
     // 実行(run)。孤児化するとプロファイル全デバイスのブリッジを占有し続けるため対象に含める。
     if (/\bapi\s+run(?:\s|$)/.test(cmd) || /(^|\/)ftester\s+run(?:\s|$)/.test(cmd)) {
-      return { kind: "run", detail: extractArg(cmd, "--profile") };
+      return { type: "run", detail: extractArg(cmd, "--profile") };
     }
     // その他の ftester CLI 常駐(devices-up 等の一括操作を含む取りこぼし受け)
-    return { kind: "ftester", detail: "" };
+    return { type: "ftester", detail: "" };
   }
 
   // 3. iOS ブリッジ本体: FTesterRunner の xctestrun を回す xcodebuild
@@ -174,12 +196,12 @@ export function classifyResident(
     const udid = extractArg(cmd, "-destination")
       ? (cmd.match(/-destination[= ]+id=([0-9A-Fa-f-]{36})/)?.[1] ?? "")
       : "";
-    return { kind: "bridge", detail: udid };
+    return { type: "bridge", detail: udid };
   }
 
   // 4. シミュレータ内 XCUITest ランナー(in-app 判定より先。ランナー自身は inapp ではない)
   if (/FTesterRunnerUITests-Runner/.test(cmd)) {
-    return { kind: "sim-runner", detail: cmd.match(SIM_UDID_RE)?.[1] ?? "" };
+    return { type: "sim-runner", detail: cmd.match(SIM_UDID_RE)?.[1] ?? "" };
   }
 
   // 4b. in-app ブリッジ: `.inapp` が記録した UDID のシミュレータ内で走る注入アプリ本体
@@ -190,14 +212,14 @@ export function classifyResident(
       /CoreSimulator\/Devices\/([0-9A-Fa-f-]{36})\/data\/Containers\/Bundle\/Application\/[^/]+\/([^/]+)\.app\//,
     );
     if (app && opts.inappBridges.has((app[1] ?? "").toUpperCase())) {
-      return { kind: "inapp-bridge", detail: app[2] ?? "" };
+      return { type: "inapp-bridge", detail: app[2] ?? "" };
     }
   }
 
   // 5. Android エミュレータ(qemu)。ftester のフリートはここに含まれる。
   //    `ftester devices down` が `pkill -f sdk/emulator/qemu` で全 qemu を落とすのと対象範囲を揃える。
   if ((/qemu-system-/.test(cmd) || /sdk\/emulator\/qemu/.test(cmd)) && /\s-avd\s+\S/.test(cmd)) {
-    return { kind: "emulator", detail: extractArg(cmd, "-avd") };
+    return { type: "emulator", detail: extractArg(cmd, "-avd") };
   }
 
   // 6. フォールバック: リポジトリのビルド成果物ディレクトリ配下の実行ファイルは、名前を問わず
@@ -206,7 +228,7 @@ export function classifyResident(
     const exe = cmd.split(/\s+/)[0] ?? "";
     const dir = opts.binaryDir.replace(/\/+$/, "");
     if (dir && (exe === dir || exe.startsWith(`${dir}/`))) {
-      return { kind: "ftester", detail: exe.split("/").pop() ?? "" };
+      return { type: "ftester", detail: exe.split("/").pop() ?? "" };
     }
   }
 
@@ -221,73 +243,78 @@ export function describeParent(
   ppid: number,
   byPid: Map<number, RawProc>,
   simulatorNames: Record<string, string>,
+  locale: Locale = "ja",
 ): string {
   if (ppid <= 1) {
-    return "launchd(システム)";
+    return rt("deviceOps.parent.systemLaunchd", locale);
   }
   const parent = byPid.get(ppid);
   if (!parent) {
-    return "(不明)";
+    return rt("deviceOps.parent.unknown", locale);
   }
   const cmd = parent.command;
   // シミュレータの launchd_sim → デバイス名(UDID から解決)
   const simUdid = cmd.match(SIM_DEVICE_UDID_RE)?.[1];
   if (/\blaunchd_sim\b/.test(cmd) && simUdid) {
-    return simulatorNames[simUdid.toUpperCase()] ?? `シミュレータ ${simUdid.slice(0, 8)}`;
+    return (
+      simulatorNames[simUdid.toUpperCase()] ??
+      rt("deviceOps.parent.simulatorFallback", locale, { shortUdid: simUdid.slice(0, 8) })
+    );
   }
   // 親自身が ftester 関連なら種別ラベル(+識別子)で示す
   const cls = classifyResident(cmd);
   if (cls) {
-    const label = KIND_LABEL[cls.kind];
+    const label = typeLabel(cls.type, locale);
     return cls.detail ? `${label}(${cls.detail})` : label;
   }
   // 代表的な既知プロセス
   if (/Code Helper|\/Electron(?:\s|$)|Visual Studio Code/.test(cmd)) {
-    return "VSCode拡張ホスト";
+    return rt("deviceOps.parent.vscodeExtHost", locale);
   }
   if (/\bxcodebuild\b/.test(cmd)) {
     return "xcodebuild";
   }
   if (/qemu-system-|sdk\/emulator\/qemu/.test(cmd)) {
-    return "Androidエミュ(qemu)";
+    return rt("deviceOps.parent.androidEmulatorQemu", locale);
   }
   if (/\blaunchd_sim\b/.test(cmd)) {
-    return "シミュレータ(launchd_sim)";
+    return rt("deviceOps.parent.simulatorLaunchdSim", locale);
   }
   // 実行ファイル名(パス末尾)を落とす
   const first = cmd.trim().split(/\s+/)[0] ?? "";
-  return first.split("/").pop() || "(不明)";
+  return first.split("/").pop() || rt("deviceOps.parent.unknown", locale);
 }
 
 /** 種別ごとにブリッジポートを解決する。bridge は自コマンド、sim-runner は同一 UDID の bridge
  *  (bridgePortByUdid)、inapp-bridge は inappBridges から引く。どれにも当たらなければ ""。 */
 function resolveResidentPort(
-  kind: ResidentKind,
+  type: ResidentType,
   command: string,
   bridgePortByUdid: ReadonlyMap<string, string>,
   inappBridges: ReadonlyMap<string, string> | undefined,
 ): string {
-  if (kind === "bridge") {
+  if (type === "bridge") {
     return command.match(BRIDGE_XCTESTRUN_RE)?.[1] ?? "";
   }
-  if (kind === "sim-runner" || kind === "inapp-bridge") {
+  if (type === "sim-runner" || type === "inapp-bridge") {
     const udid = command.match(SIM_UDID_RE)?.[1]?.toUpperCase();
     if (!udid) {
       return "";
     }
-    const table = kind === "sim-runner" ? bridgePortByUdid : inappBridges;
+    const table = type === "sim-runner" ? bridgePortByUdid : inappBridges;
     return table?.get(udid) ?? "";
   }
   return "";
 }
 
 /** ps 出力(`ps -axo pid=,ppid=,state=,command=`)から ftester 関連の常駐プロセスを抽出し、
- *  KIND_ORDER→pid 昇順に整列して返す。親PID の説明は全プロセス表を引いて解決する。 */
+ *  TYPE_ORDER→pid 昇順に整列して返す。親PID の説明は全プロセス表を引いて解決する。 */
 export function parseResidentProcesses(
   psOutput: string,
   opts: ParseResidentOptions = {},
 ): ResidentProcess[] {
   const simulatorNames = opts.simulatorNames ?? {};
+  const locale = opts.locale ?? "ja";
   // 1パス目: 親解決のため全プロセスを pid で索引する(フィルタ前)。併せて iOS ブリッジの
   // UDID→ポートを採取する(sim-runner 側は自コマンドにポートが無く、この対応で解決する)。
   const byPid = new Map<number, RawProc>();
@@ -326,19 +353,19 @@ export function parseResidentProcesses(
     out.push({
       pid: r.pid,
       ppid: r.ppid,
-      kind: cls.kind,
-      label: KIND_LABEL[cls.kind],
+      type: cls.type,
+      label: typeLabel(cls.type, locale),
       detail: cls.detail,
-      port: resolveResidentPort(cls.kind, r.command, bridgePortByUdid, opts.inappBridges),
+      port: resolveResidentPort(cls.type, r.command, bridgePortByUdid, opts.inappBridges),
       zombie: /^Z/i.test(r.state) || /<defunct>|\(defunct\)/i.test(r.command),
-      parentDescription: describeParent(r.ppid, byPid, simulatorNames),
+      parentDescription: describeParent(r.ppid, byPid, simulatorNames, locale),
       command: r.command.length > 300 ? `${r.command.slice(0, 300)}…` : r.command,
       note: "", // ホスト ps 由来行に補足は無い(合成行の android-bridge のみ note を持つ)
     });
   }
   out.sort((a, b) => {
-    const ka = KIND_ORDER.indexOf(a.kind);
-    const kb = KIND_ORDER.indexOf(b.kind);
+    const ka = TYPE_ORDER.indexOf(a.type);
+    const kb = TYPE_ORDER.indexOf(b.type);
     return ka !== kb ? ka - kb : a.pid - b.pid;
   });
   return out;
@@ -356,6 +383,7 @@ const ANDROID_BRIDGE_DEVICE_PORT = "8123";
 export function parseAndroidBridges(
   adbForwardListOutput: string,
   pidBySerial?: ReadonlyMap<string, number>,
+  locale: Locale = "ja",
 ): ResidentProcess[] {
   const rows: ResidentProcess[] = [];
   for (const line of adbForwardListOutput.split("\n")) {
@@ -372,14 +400,14 @@ export function parseAndroidBridges(
     rows.push({
       pid: 0, // ホスト PID 無し(エミュレータ内プロセス)
       ppid: 0,
-      kind: "android-bridge",
-      label: KIND_LABEL["android-bridge"],
+      type: "android-bridge",
+      label: typeLabel("android-bridge", locale),
       port: hostPort, // ホスト側転送ポート(ここへ接続 → デバイスの 8123)
       detail: serial,
       zombie: false,
       parentDescription: `Android(${serial})`,
       command: `am instrument com.example.ftbridge/.BridgeInstrumentation @ ${serial}`,
-      note: "エミュレータ内プロセス",
+      note: rt("deviceOps.note.emulatorInternalProcess", locale),
       devicePid: pidBySerial?.get(serial),
     });
   }

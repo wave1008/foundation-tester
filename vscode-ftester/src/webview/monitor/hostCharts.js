@@ -1,6 +1,8 @@
 // hostMetrics受信毎に直近60サンプルのローリングバッファへ追加しcanvas再描画。webview側は
 // 独自タイマーを持たない(更新頻度はCLI側 --interval 1 に完全依存)。他モジュールとの状態共有は無い。
 
+import { t } from '../i18n.js';
+
 const HM_MAX_SAMPLES = 60;
 // バリデータ検証済みパレット(ダーク/ライトで系列色を切り替える。グリッド・軸は描かない)。
 const HM_COLORS = {
@@ -137,12 +139,17 @@ export function applyHostMetrics(message) {
   hmEntries.ane.value.textContent = hmFormatPercent(message.ane);
   hmEntries.mem.value.textContent = hmFormatPercent(memRatio);
 
-  hmEntries.cpu.el.title = 'CPU負荷 ' + hmFormatPercent(message.cpu);
-  hmEntries.gpu.el.title = 'GPU負荷 ' + hmFormatPercent(message.gpu);
-  hmEntries.ane.el.title = 'ANE負荷 ' + hmFormatPercent(message.ane) +
-    (typeof message.aneWatts === 'number' ? '(' + message.aneWatts.toFixed(1) + 'W)' : '');
-  hmEntries.mem.el.title = 'メモリ使用量 ' + hmFormatGb(message.memUsedBytes) + ' / ' +
-    hmFormatGb(message.memTotalBytes) + ' GB(' + hmFormatPercent(memRatio) + ')';
+  hmEntries.cpu.el.title = t('wvMonitor2.hostCharts.cpuTitle', { value: hmFormatPercent(message.cpu) });
+  hmEntries.gpu.el.title = t('wvMonitor2.hostCharts.gpuTitle', { value: hmFormatPercent(message.gpu) });
+  hmEntries.ane.el.title = t('wvMonitor2.hostCharts.aneTitle', { value: hmFormatPercent(message.ane) }) +
+    (typeof message.aneWatts === 'number'
+      ? t('wvMonitor2.hostCharts.wattsSuffix', { watts: message.aneWatts.toFixed(1) })
+      : '');
+  hmEntries.mem.el.title = t('wvMonitor2.hostCharts.memTitle', {
+    used: hmFormatGb(message.memUsedBytes),
+    total: hmFormatGb(message.memTotalBytes),
+    percent: hmFormatPercent(memRatio),
+  });
 
   for (const entry of HM_ALL_ENTRIES) {
     hmDraw(entry);

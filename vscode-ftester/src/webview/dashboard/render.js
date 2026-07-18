@@ -11,6 +11,7 @@ import {
   passFailMark,
   recentResultsMarks,
 } from './format.js';
+import { t } from '../i18n.js';
 
 const SEVERITY_ICON = { critical: '🔴', warn: '🟡', info: '🔵' };
 
@@ -30,7 +31,7 @@ function runCounts(run) {
   if (typeof run.total === 'number' && typeof run.passed === 'number' && typeof run.failed === 'number') {
     return run.passed + ' / ' + run.failed + ' / ' + run.total + '(passed/failed/total)';
   }
-  return '(未完了)';
+  return t('wvDashboard.render.runCountsIncomplete');
 }
 
 export function renderHeadline(latestRun) {
@@ -43,7 +44,7 @@ export function renderHeadline(latestRun) {
   const hasCounts = typeof latestRun.total === 'number' && typeof latestRun.passed === 'number' &&
     typeof latestRun.failed === 'number';
   badge.className = 'headline-badge ' + (hasCounts && latestRun.failed === 0 ? 'ok' : hasCounts ? 'bad' : 'pending');
-  badge.textContent = hasCounts ? (latestRun.passed + ' passed / ' + latestRun.failed + ' failed / ' + latestRun.total + ' total') : '未完了';
+  badge.textContent = hasCounts ? (latestRun.passed + ' passed / ' + latestRun.failed + ' failed / ' + latestRun.total + ' total') : t('wvDashboard.render.headlineIncomplete');
 
   const meta = document.createElement('div');
   meta.className = 'headline-meta';
@@ -51,7 +52,7 @@ export function renderHeadline(latestRun) {
     formatLocalDateTime(latestRun.startedAt),
     'trigger: ' + latestRun.trigger,
     'machine: ' + latestRun.machine,
-    'profile: ' + (latestRun.profile || '(なし)'),
+    'profile: ' + (latestRun.profile || t('wvDashboard.render.none')),
   ];
   for (const part of parts) {
     const span = document.createElement('span');

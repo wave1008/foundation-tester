@@ -3,6 +3,7 @@
 // ExploreWebviewEnvelope、処理は src/monitorExploreController.ts)。
 
 import { vscode } from './vscodeApi.js';
+import { t } from '../i18n.js';
 
 function post(message) {
   vscode.postMessage({ type: 'explore', message });
@@ -22,10 +23,10 @@ const resultEl = document.getElementById('explore-result');
 const btnOpenFile = document.getElementById('explore-btn-open-file');
 
 const STATE_LABEL = {
-  connected: '接続済み',
-  booted: '起動中',
-  offline: '未起動',
-  unknown: '状態不明(未確認)',
+  connected: t('wvMonitor2.explore.state.connected'),
+  booted: t('wvMonitor2.explore.state.booted'),
+  offline: t('wvMonitor2.explore.state.offline'),
+  unknown: t('wvMonitor2.explore.state.unknown'),
 };
 
 const RESULT_SEVERITY_CLASS = {
@@ -79,7 +80,7 @@ function setRunning(running) {
   btnStart.disabled = running;
   for (const input of formInputs) { input.disabled = running; }
   btnCancel.disabled = !running;
-  runningLabel.textContent = running ? '探索中...' : '';
+  runningLabel.textContent = running ? t('wvMonitor2.explore.running') : '';
 }
 
 // ---- 実行ログ --------------------------------------------------------------------

@@ -9,6 +9,7 @@
 // (✅ 成功 / ❌ 失敗 / ⚠️ スキップ / 🔧 自己修復 / 💡 修正提案 / ▶ 開始 / ⏸ 一時停止)。
 
 import { isRunEvent, type RunEvent, type WorkerInfo } from "./model";
+import { tLane } from "./i18n/strings/lane";
 
 /** 出力・失敗メッセージに添えるソース位置。file はリポジトリルート相対、line は1起点。 */
 export interface RunLocation {
@@ -71,7 +72,7 @@ export function reduceRunEvent(
 function actionsFor(state: RunReducerState, event: RunEvent, nowMs: number): RunAction[] {
   switch (event.kind) {
     case "runStarted":
-      return [{ type: "output", text: `▶ 実行開始(${String(event.total)}件)` }];
+      return [{ type: "output", text: tLane("lane.runStarted", { total: event.total }) }];
 
     case "workersReady":
       // 以降の全イベントに worker が付く合図。
@@ -93,7 +94,7 @@ function actionsFor(state: RunReducerState, event: RunEvent, nowMs: number): Run
         {
           type: "output",
           scenario: event.scenario,
-          text: `  シーン${String(scene)}: ${title}`,
+          text: tLane("lane.sceneStarted", { scene, title }),
           worker: event.worker,
         },
       ];
@@ -105,19 +106,19 @@ function actionsFor(state: RunReducerState, event: RunEvent, nowMs: number): Run
     case "sceneFinished": {
       const scene = event.scene ?? 0;
       const mark = event.passed ? "✅" : "❌";
-      const label = event.passed ? "成功" : "失敗";
+      const label = event.passed ? tLane("lane.pass") : tLane("lane.fail");
       return [
         {
           type: "output",
           scenario: event.scenario,
-          text: `  ${mark} シーン${String(scene)} ${label}`,
+          text: tLane("lane.sceneFinished", { mark, scene, label }),
           worker: event.worker,
         },
       ];
     }
 
     case "fixSuggestion": {
-      const text = `  💡 修正提案: ${event.detail ?? event.description ?? ""}`;
+      const text = tLane("lane.fixSuggestion", { detail: event.detail ?? event.description ?? "" });
       const location = toLocation(event.file, event.line);
       const actions: RunAction[] = [
         { type: "output", scenario: event.scenario, text, location, worker: event.worker },
@@ -142,7 +143,7 @@ function actionsFor(state: RunReducerState, event: RunEvent, nowMs: number): Run
         {
           type: "output",
           scenario: event.scenario,
-          text: `  ⏸ 一時停止: ${event.description ?? ""}`,
+          text: tLane("lane.paused", { description: event.description ?? "" }),
           location: toLocation(event.file, event.line),
         },
       ];
@@ -162,7 +163,7 @@ function actionsFor(state: RunReducerState, event: RunEvent, nowMs: number): Run
       return [
         {
           type: "output",
-          text: `■ 完了: 成功 ${String(event.passed)} / 失敗 ${String(event.failed)}`,
+          text: tLane("lane.runFinished", { passed: event.passed, failed: event.failed }),
         },
         { type: "end", passed: event.passed, failed: event.failed },
       ];
@@ -176,7 +177,7 @@ function actionsFor(state: RunReducerState, event: RunEvent, nowMs: number): Run
         {
           type: "output",
           scenario: event.scenario,
-          text: `  🔁 ${event.reason}のため別デバイスで再実行します(${String(event.attempt)}/${String(event.limit)})`,
+          text: tLane("lane.requeued", { reason: event.reason, attempt: event.attempt, limit: event.limit }),
           worker: event.worker,
         },
         { type: "requeued", scenario: event.scenario },
@@ -206,13 +207,13 @@ function stepActions(
     let detailLine: string;
     switch (event.status) {
       case "passedViaFallback":
-        detailLine = `     フォールバック: ${event.detail}`;
+        detailLine = tLane("lane.detailFallback", { detail: event.detail });
         break;
       case "healed":
-        detailLine = `     自己修復: ${event.detail}`;
+        detailLine = tLane("lane.detailHealed", { detail: event.detail });
         break;
       case "skipped":
-        detailLine = `     スキップ理由: ${event.detail}`;
+        detailLine = tLane("lane.detailSkipped", { detail: event.detail });
         break;
       default:
         detailLine = `     ${event.detail}`;
@@ -228,7 +229,7 @@ function stepActions(
 
   if (event.status === "failed") {
     const progress = state.scenarios.get(event.scenario);
-    const text = event.detail ? `${event.description ?? ""}\n${event.detail}` : (event.description ?? "失敗しました");
+    const text = event.detail ? `${event.description ?? ""}\n${event.detail}` : (event.description ?? tLane("lane.failedText"));
     const message: RunFailureMessage = { text, location };
     if (progress) {
       progress.messages.push(message);
@@ -256,21 +257,27 @@ function scenarioFinishedActions(
       {
         type: "output",
         scenario: event.scenario,
-        text: `  ✅ 成功 (${String(durationMs)}ms)`,
+        text: `${tLane("lane.passed")} (${String(durationMs)}ms)`,
         worker: event.worker,
       },
       { type: "passed", scenario: event.scenario, durationMs },
     ];
   }
 
-  const reportSuffix = event.reportPath ? ` — レポート: ${event.reportPath}` : "";
+  const reportSuffix = event.reportPath ? tLane("lane.reportSuffix", { path: event.reportPath }) : "";
   const messages =
     progress && progress.messages.length > 0
       ? progress.messages
-      : [{ text: `シナリオが失敗しました${event.reportPath ? `(レポート: ${event.reportPath})` : ""}` }];
+      : [
+          {
+            text:
+              tLane("lane.scenarioFailedText") +
+              (event.reportPath ? tLane("lane.reportParen", { path: event.reportPath }) : ""),
+          },
+        ];
 
   return [
-    { type: "output", scenario: event.scenario, text: `  ❌ 失敗${reportSuffix}`, worker: event.worker },
+    { type: "output", scenario: event.scenario, text: `${tLane("lane.failed")}${reportSuffix}`, worker: event.worker },
     { type: "failed", scenario: event.scenario, messages, durationMs },
   ];
 }

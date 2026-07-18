@@ -20,6 +20,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { type CliInvocation, type FtesterCli } from "./cli";
 import { type FtesterConfig, resolveProjectName } from "./config";
+import { currentLocale, t } from "./i18n";
 import {
   buildApplyHealRequest,
   healFixId,
@@ -33,7 +34,6 @@ import {
 import type { RunBusMessage, RunEventBus } from "./runEventBus";
 
 const VIEW_TYPE = "ftesterHealReview";
-const PANEL_TITLE = "ftester 自己修復の確認";
 
 /** webview へ渡す1件分の初期データ(拡張ホストが1回だけソースを読んで判定した結果)。 */
 interface HealReviewItem {
@@ -145,7 +145,7 @@ class HealReviewController implements vscode.Disposable {
       return;
     }
 
-    const panel = vscode.window.createWebviewPanel(VIEW_TYPE, PANEL_TITLE, vscode.ViewColumn.Active, {
+    const panel = vscode.window.createWebviewPanel(VIEW_TYPE, t("exploreHeal.heal.panelTitle"), vscode.ViewColumn.Active, {
       enableScripts: true,
       retainContextWhenHidden: true,
     });
@@ -177,7 +177,7 @@ class HealReviewController implements vscode.Disposable {
         }
       }
     } catch (error) {
-      this.outputChannel.appendLine(`[ftester] 自己修復確認: ${fix.file} を読み込めません(${String(error)})`);
+      this.outputChannel.appendLine(t("exploreHeal.heal.log.readFailed", { file: fix.file, error: String(error) }));
     }
     return {
       id,
@@ -212,7 +212,7 @@ class HealReviewController implements vscode.Disposable {
     if (!this.project) {
       this.post({
         type: "applyError",
-        message: "対象のテストプロジェクトを解決できませんでした。ftester.project 設定を確認してください。",
+        message: t("exploreHeal.common.projectUnresolved"),
       });
       return;
     }
@@ -231,7 +231,7 @@ class HealReviewController implements vscode.Disposable {
       if (!response) {
         this.post({
           type: "applyError",
-          message: `apply-heal の応答を解析できませんでした(exit code: ${String(result.exitCode)})。出力パネル「ftester」を確認してください。`,
+          message: t("exploreHeal.heal.applyResponseParseFailed", { exitCode: String(result.exitCode) }),
         });
         return;
       }
@@ -244,8 +244,8 @@ class HealReviewController implements vscode.Disposable {
       }
     } catch (error) {
       const messageText = error instanceof Error ? error.message : String(error);
-      this.outputChannel.appendLine(`[ftester] apply-heal の実行に失敗しました: ${messageText}`);
-      this.post({ type: "applyError", message: `apply-heal の実行に失敗しました: ${messageText}` });
+      this.outputChannel.appendLine(t("exploreHeal.heal.log.applyFailed", { message: messageText }));
+      this.post({ type: "applyError", message: t("exploreHeal.heal.applyFailed", { message: messageText }) });
     } finally {
       this.post({ type: "busy", busy: false });
     }
@@ -296,11 +296,11 @@ function renderHtml(items: readonly HealReviewItem[]): string {
   const csp = ["default-src 'none'", "style-src 'unsafe-inline'", `script-src 'nonce-${nonce}'`].join("; ");
 
   return `<!doctype html>
-<html lang="ja">
+<html lang="${currentLocale()}">
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="${csp}">
-<title>${PANEL_TITLE}</title>
+<title>${t("exploreHeal.heal.panelTitle")}</title>
 <style>
   :root { color-scheme: light dark; }
   * { box-sizing: border-box; }
@@ -422,15 +422,14 @@ function renderHtml(items: readonly HealReviewItem[]): string {
 </style>
 </head>
 <body>
-  <h1>自己修復の確認</h1>
-  <p class="intro">自己修復されたセレクタがあります。修復内容をシナリオのソースに反映しますか?
-    (「変更後」と「説明」は反映前に編集できます)</p>
+  <h1>${t("exploreHeal.heal.heading")}</h1>
+  <p class="intro">${t("exploreHeal.heal.intro")}</p>
   <div id="rows"></div>
-  <div id="empty">対象の候補はありません。</div>
+  <div id="empty">${t("exploreHeal.heal.empty")}</div>
   <div class="footer">
-    <button id="btn-apply">選択した 0 件を適用</button>
-    <button id="btn-close" class="secondary">閉じる</button>
-    <span id="busy-label" style="display:none;">適用中...</span>
+    <button id="btn-apply">${t("exploreHeal.heal.applyButtonLabel", { count: "0" })}</button>
+    <button id="btn-close" class="secondary">${t("exploreHeal.heal.closeButton")}</button>
+    <span id="busy-label" style="display:none;">${t("exploreHeal.heal.busyLabel")}</span>
   </div>
   <div id="error-area"></div>
 
@@ -444,11 +443,24 @@ function renderHtml(items: readonly HealReviewItem[]): string {
     const busyLabel = document.getElementById('busy-label');
     const errorArea = document.getElementById('error-area');
 
-    // id -> row handle(DOM要素・item データ)
+    // Display text (already localized via t() on the extension host). selectorWarn/commentWarn/
+    // unavailableWarn are static; applyButtonTemplate keeps the literal '{count}' token and is
+    // replaced with checkedCount at render time.
+    const TXT = {
+      fieldBefore: ${JSON.stringify(t("exploreHeal.heal.fieldBefore"))},
+      fieldAfter: ${JSON.stringify(t("exploreHeal.heal.fieldAfter"))},
+      fieldComment: ${JSON.stringify(t("exploreHeal.heal.fieldComment"))},
+      selectorWarn: ${JSON.stringify(t("exploreHeal.heal.selectorWarn"))},
+      commentWarn: ${JSON.stringify(t("exploreHeal.heal.commentWarn"))},
+      unavailableWarn: ${JSON.stringify(t("exploreHeal.heal.unavailableWarn"))},
+      applyButtonTemplate: ${JSON.stringify(t("exploreHeal.heal.applyButtonLabel"))},
+    };
+
+    // id -> row handle (DOM element + item data)
     const rows = new Map();
     let busy = false;
 
-    // ---- healModel.ts の純粋ロジックの手書き複製(webview は CSP により import 不可) ----
+    // ---- hand-copied pure logic from healModel.ts (webview can't import it due to CSP) ----
 
     function isValidSelector(selector) {
       return selector.length > 0 && selector.indexOf('"') === -1
@@ -514,7 +526,7 @@ function renderHtml(items: readonly HealReviewItem[]): string {
       return trimmed === (originalComment || '') ? null : trimmed;
     }
 
-    // ---- 行の構築・更新 ----------------------------------------------------------
+    // ---- Row construction/update ----------------------------------------------------------
 
     function createRow(item) {
       const row = document.createElement('div');
@@ -540,7 +552,7 @@ function renderHtml(items: readonly HealReviewItem[]): string {
       beforeField.className = 'field';
       const beforeLabel = document.createElement('span');
       beforeLabel.className = 'label';
-      beforeLabel.textContent = '変更前';
+      beforeLabel.textContent = TXT.fieldBefore;
       const beforeCode = document.createElement('code');
       beforeCode.textContent = item.oldSelector;
       beforeField.append(beforeLabel, beforeCode);
@@ -549,7 +561,7 @@ function renderHtml(items: readonly HealReviewItem[]): string {
       afterField.className = 'field';
       const afterLabel = document.createElement('span');
       afterLabel.className = 'label';
-      afterLabel.textContent = '変更後';
+      afterLabel.textContent = TXT.fieldAfter;
       const selectorInput = document.createElement('input');
       selectorInput.type = 'text';
       selectorInput.value = item.newSelector;
@@ -557,14 +569,14 @@ function renderHtml(items: readonly HealReviewItem[]): string {
 
       const selectorWarn = document.createElement('div');
       selectorWarn.className = 'warn';
-      selectorWarn.textContent = '⚠️ 適用できません(セレクタは空にできず、「"」と改行は使えません)';
+      selectorWarn.textContent = TXT.selectorWarn;
       selectorWarn.style.display = 'none';
 
       const commentField = document.createElement('div');
       commentField.className = 'field';
       const commentLabel = document.createElement('span');
       commentLabel.className = 'label';
-      commentLabel.textContent = '説明';
+      commentLabel.textContent = TXT.fieldComment;
       const commentInput = document.createElement('input');
       commentInput.type = 'text';
       commentInput.value = item.originalComment || '';
@@ -572,7 +584,7 @@ function renderHtml(items: readonly HealReviewItem[]): string {
 
       const commentWarn = document.createElement('div');
       commentWarn.className = 'warn';
-      commentWarn.textContent = '⚠️ 適用できません(説明に改行は使えません)';
+      commentWarn.textContent = TXT.commentWarn;
       commentWarn.style.display = 'none';
 
       const preview = document.createElement('div');
@@ -580,7 +592,7 @@ function renderHtml(items: readonly HealReviewItem[]): string {
 
       const unavailableWarn = document.createElement('div');
       unavailableWarn.className = 'warn';
-      unavailableWarn.textContent = '⚠️ 適用できません(ソースが変更されています)';
+      unavailableWarn.textContent = TXT.unavailableWarn;
 
       const messageEl = document.createElement('div');
       messageEl.className = 'message';
@@ -653,7 +665,7 @@ function renderHtml(items: readonly HealReviewItem[]): string {
 
     function updateApplyButton() {
       const checkedCount = [...rows.values()].filter((h) => !h.row.classList.contains('applied') && h.checkbox.checked).length;
-      btnApply.textContent = '選択した ' + checkedCount + ' 件を適用';
+      btnApply.textContent = TXT.applyButtonTemplate.replace('{count}', String(checkedCount));
       btnApply.disabled = busy || checkedCount === 0;
       btnClose.disabled = busy;
     }

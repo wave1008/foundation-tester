@@ -4,6 +4,7 @@
 //
 // scene グループの並び順は最初にそのシーン番号が出現した順(ソートし直さない)。
 
+import { t } from "./i18n";
 import type { StepRow, StepSection } from "./model";
 
 export interface StepTreeSceneNode {
@@ -60,7 +61,7 @@ export function buildStepTree(steps: readonly StepRow[]): StepTreeSceneNode[] {
 
 function toStepNode(step: StepRow): StepTreeStepNode {
   const description = step.comment ?? step.generatedComment ?? "";
-  const tooltipLines = [`区分: ${step.section}`];
+  const tooltipLines = [t("workbench.stepsModel.sectionLabel", { section: step.section })];
   const commentText = step.comment ?? step.generatedComment;
   if (commentText) {
     tooltipLines.push(commentText);

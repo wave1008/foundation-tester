@@ -4,6 +4,7 @@
 // (test/orphanSweep.test.mjs から素の node:test で検証するため)。
 
 import { execFile } from "node:child_process";
+import { t } from "./i18n";
 
 const ORPHAN_PPID = 1;
 
@@ -58,7 +59,7 @@ export async function sweepOrphans(log: (message: string) => void): Promise<void
       });
     });
   } catch (error) {
-    log(`[ftester] 孤児プロセスの検出に失敗しました(ps): ${String(error)}`);
+    log(t("workbench.orphanSweep.detectFailedLog", { error: String(error) }));
     return;
   }
 
@@ -75,11 +76,11 @@ export async function sweepOrphans(log: (message: string) => void): Promise<void
     } catch (error) {
       // ESRCH(既に終了済み)を含め、個別の失敗で全体を止めない。
       if ((error as NodeJS.ErrnoException)?.code !== "ESRCH") {
-        log(`[ftester] 孤児プロセス(PID ${pid})の終了に失敗しました: ${String(error)}`);
+        log(t("workbench.orphanSweep.killFailedLog", { pid, error: String(error) }));
       }
     }
   }
   if (killed.length > 0) {
-    log(`[ftester] 孤児化した常駐プロセスを掃除しました: PID ${killed.join(", ")}`);
+    log(t("workbench.orphanSweep.sweptLog", { pids: killed.join(", ") }));
   }
 }

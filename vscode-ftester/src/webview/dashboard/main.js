@@ -5,6 +5,7 @@
 import { vscode } from './vscodeApi.js';
 import { initDailyChart, renderDailyChart } from './charts.js';
 import { formatLocalDateTime } from './format.js';
+import { t } from '../i18n.js';
 import {
   renderDevicesTable,
   renderFlakyTable,
@@ -32,7 +33,7 @@ function showState(state) {
 
 function applyData(payload) {
   projectLabel.textContent = payload.project;
-  generatedAtLabel.textContent = '更新: ' + formatLocalDateTime(payload.generatedAt);
+  generatedAtLabel.textContent = t('wvDashboard.main.generatedAt', { time: formatLocalDateTime(payload.generatedAt) });
 
   if (payload.runs.length === 0) {
     showState('empty');

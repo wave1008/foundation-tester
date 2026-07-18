@@ -6,9 +6,13 @@
 
 import { randomBytes } from "node:crypto";
 import * as vscode from "vscode";
+import { currentLocale, t } from "./i18n";
 
-/** ライブ操作パネルのタイトル(VS Code タブ表示・HTML の <title> の両方で使う)。 */
-export const LIVE_PANEL_TITLE = "ライブ操作";
+/** ライブ操作パネルのタイトル(VS Code タブ表示・HTML の <title> の両方で使う)。locale 依存の
+ * ため関数(module-level const だと initI18n 前の既定 locale で固定されてしまう)。 */
+export function livePanelTitle(): string {
+  return t("panels.live.panelTitle");
+}
 
 function generateNonce(): string {
   return randomBytes(16).toString("hex");
@@ -26,26 +30,26 @@ export function renderLiveHtml(webview: vscode.Webview, extensionUri: vscode.Uri
   ].join("; ");
 
   return `<!doctype html>
-<html lang="ja">
+<html lang="${currentLocale()}">
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="${csp}">
-<title>${LIVE_PANEL_TITLE}</title>
+<title>${livePanelTitle()}</title>
 <link rel="stylesheet" href="${styleUri}">
 </head>
 <body>
   <div id="panel-live" class="tab-panel">
     <div class="toolbar">
-      <label for="live-device-select">デバイス:</label>
+      <label for="live-device-select">${t("panels.common.deviceLabelColon")}</label>
       <select id="live-device-select"></select>
-      <button id="live-btn-refresh-devices" class="secondary">デバイス一覧を更新</button>
+      <button id="live-btn-refresh-devices" class="secondary">${t("panels.common.refreshDeviceList")}</button>
       <span id="live-device-warning"></span>
       <span id="live-busy-label"></span>
     </div>
     <div class="toolbar live-record-row">
-      <label for="live-app-profile-select">アプリプロファイル:</label>
-      <select id="live-app-profile-select" title="アプリプロファイル"></select>
-      <button id="live-btn-record">レコーディング開始</button>
+      <label for="live-app-profile-select">${t("panels.live.appProfileLabelColon")}</label>
+      <select id="live-app-profile-select" title="${t("panels.common.appProfile")}"></select>
+      <button id="live-btn-record">${t("panels.live.startRecording")}</button>
       <span id="live-record-status" class="live-record-status"></span>
     </div>
     <div id="live-banner" class="banner"></div>
@@ -57,13 +61,13 @@ export function renderLiveHtml(webview: vscode.Webview, extensionUri: vscode.Uri
              pane 実測高から actions/gap を引いた残りを #live-screenshot の max-height に反映する。 -->
         <div class="screenshot-frame" id="live-screenshot-frame">
           <div class="screenshot-wrap" id="live-screenshot-wrap">
-            <img id="live-screenshot" alt="スクリーンショット">
+            <img id="live-screenshot" alt="${t("panels.live.screenshotAlt")}">
             <div id="live-hover-box"></div>
             <svg id="live-drag-overlay" aria-hidden="true"><line id="live-drag-line"/><circle id="live-drag-start" r="6"/></svg>
-            <div id="live-screenshot-placeholder">「更新」ボタンで画面を取得してください</div>
+            <div id="live-screenshot-placeholder">${t("panels.live.screenshotPlaceholder")}</div>
             <div id="live-conn-overlay">
-              <div class="conn-title">⚠ デバイスに接続できません</div>
-              <div class="conn-note">表示中の画面は最後に取得した状態です</div>
+              <div class="conn-title">${t("panels.live.connectionErrorTitle")}</div>
+              <div class="conn-note">${t("panels.live.connectionErrorNote")}</div>
               <div id="live-conn-detail"></div>
             </div>
             <div id="live-busy-overlay">
@@ -73,8 +77,8 @@ export function renderLiveHtml(webview: vscode.Webview, extensionUri: vscode.Uri
           </div>
         </div>
         <div class="screenshot-actions" id="live-screenshot-actions">
-          <button id="live-btn-home" class="secondary" title="ホーム画面に戻ります">ホーム</button>
-          <button id="live-btn-app-switcher" class="secondary" title="アプリスイッチャー(タスク一覧)を開きます">タスク切替</button>
+          <button id="live-btn-home" class="secondary" title="${t("panels.live.homeButtonTitle")}">${t("panels.live.homeButton")}</button>
+          <button id="live-btn-app-switcher" class="secondary" title="${t("panels.live.appSwitcherTitle")}">${t("panels.live.appSwitcherButton")}</button>
         </div>
       </div>
 
@@ -82,19 +86,19 @@ export function renderLiveHtml(webview: vscode.Webview, extensionUri: vscode.Uri
         <div class="live-lists">
           <div class="live-elements-section" id="live-elements-section">
             <div class="elements-header">
-              <span>要素一覧(クリックでタップ)</span>
-              <button id="live-btn-refresh-snapshot" class="secondary" title="要素一覧とタップ座標を現在の画面で取り直します。映像は自動更新されますが、操作なしで画面が変わった直後(非同期ロード・端末を直接操作など)に押すと要素一覧を拾い直せます。">要素一覧を更新</button>
+              <span>${t("panels.live.elementsHeader")}</span>
+              <button id="live-btn-refresh-snapshot" class="secondary" title="${t("panels.live.refreshSnapshotTitle")}">${t("panels.live.refreshSnapshot")}</button>
             </div>
             <div id="live-elements-list" class="elements-list"></div>
             <div class="row live-type-row">
-              <input id="live-type-text" type="text" placeholder="入力するテキスト(Enterで送信)">
+              <input id="live-type-text" type="text" placeholder="${t("panels.live.typeTextPlaceholder")}">
             </div>
           </div>
-          <div class="splitter" id="live-lists-splitter" title="ドラッグで要素一覧と操作記録の高さを調整"></div>
+          <div class="splitter" id="live-lists-splitter" title="${t("panels.live.listsSplitterTitle")}"></div>
           <div class="live-oplog-section">
             <div class="oplog-header">
-              <span>操作記録</span>
-              <button id="live-btn-oplog-clear" class="secondary" type="button">クリア</button>
+              <span>${t("panels.live.oplogHeader")}</span>
+              <button id="live-btn-oplog-clear" class="secondary" type="button">${t("panels.live.oplogClear")}</button>
             </div>
             <div id="live-oplog-list" class="oplog-list"></div>
           </div>
@@ -105,8 +109,8 @@ export function renderLiveHtml(webview: vscode.Webview, extensionUri: vscode.Uri
 
   <!-- ライブ操作の画像上で右クリック。開始/終了の活性は liveTab.js が録画状態に応じて切替(#live-btn-record と同ロジック)。 -->
   <div id="live-record-menu" class="device-op-menu" role="menu">
-    <button id="live-record-menu-start" class="device-op-menu-item" type="button" role="menuitem">レコーディング開始</button>
-    <button id="live-record-menu-stop" class="device-op-menu-item" type="button" role="menuitem">レコーディング終了</button>
+    <button id="live-record-menu-start" class="device-op-menu-item" type="button" role="menuitem">${t("panels.live.startRecording")}</button>
+    <button id="live-record-menu-stop" class="device-op-menu-item" type="button" role="menuitem">${t("panels.live.stopRecording")}</button>
   </div>
 
   <script nonce="${nonce}" src="${scriptUri}"></script>

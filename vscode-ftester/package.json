@@ -1,8 +1,8 @@
 {
   "name": "vscode-ftester",
   "displayName": "ftester",
-  "description": "ftester (Swift 製モバイル UI テストツール) のシナリオをツリー表示・実行するための VS Code 拡張",
-  "version": "0.0.280",
+  "description": "%ftester.extension.description%",
+  "version": "0.0.286",
   "private": true,
   "publisher": "wave1008",
   "license": "MIT",
@@ -23,17 +23,17 @@
         "ftester.binaryPath": {
           "type": "string",
           "default": ".build/debug/ftester",
-          "description": "ftester CLI バイナリのパス。相対パスはワークスペースルート基準で解決されます。"
+          "description": "%ftester.config.binaryPath.description%"
         },
         "ftester.project": {
           "type": "string",
           "default": "",
-          "description": "対象のテストプロジェクト名(Projects/<name> の <name>)。空の場合は自動判定します(Projects/ 直下がプロジェクト1つならそれを使用、複数ある場合は選択を促します)。"
+          "description": "%ftester.config.project.description%"
         },
         "ftester.profile": {
           "type": "string",
           "default": "",
-          "description": "使用する実行プロファイル名(Projects/<project>/profiles/runs/<name>.json の <name>)。空の場合は指定しません。非空の場合、実行・デバッグ実行では platform/port/serial の代わりにこちらが使われます(デバイス供給・自動インストール込みで実行。対象デバイスは事前に ftester devices up 等で起動しておく必要があります)。デバイスモニターの監視対象もこのプロファイルが参照するデバイスに絞られます(空の場合は全デバイス)。デバイスモニターの「デバイスを全て起動」「全て終了」もこのプロファイルのデバイスのみが対象になります(空の場合はマシンプロファイルの全デバイス)。この設定を切り替えると、新しいプロファイルに含まれない稼働中デバイスは自動的に停止されます(含まれるデバイスは稼働中でもそのまま。自動起動はしません)。"
+          "description": "%ftester.config.profile.description%"
         },
         "ftester.platform": {
           "type": "string",
@@ -42,57 +42,57 @@
             "android"
           ],
           "default": "ios",
-          "description": "対象プラットフォーム(ftester.profile が空の場合のみ使用)。"
+          "description": "%ftester.config.platform.description%"
         },
         "ftester.port": {
           "type": "number",
           "default": 0,
-          "description": "ブリッジ接続ポート。0 の場合は指定しません(既定値を使用。ftester.profile が空の場合のみ使用)。"
+          "description": "%ftester.config.port.description%"
         },
         "ftester.serial": {
           "type": "string",
           "default": "",
-          "description": "Android デバイスのシリアル番号。空の場合は指定しません(ftester.profile が空の場合のみ使用)。"
+          "description": "%ftester.config.serial.description%"
         },
         "ftester.buildBeforeRun": {
           "type": "boolean",
           "default": true,
-          "description": "CLI 呼び出し前に Swift ビルドを行うかどうか。false の場合は CLI 呼び出しに --skip-build を付与します。"
+          "description": "%ftester.config.buildBeforeRun.description%"
         },
         "ftester.heal": {
           "type": "boolean",
           "default": false,
-          "description": "実行時に FM によるロケータ自己修復(--heal)を有効にします。実行完了後、修復候補があれば確認パネルが開き、承認するとソースに反映されます。"
+          "description": "%ftester.config.heal.description%"
         },
         "ftester.monitorInterval": {
           "type": "number",
           "default": 2,
           "minimum": 0.5,
-          "description": "デバイスモニター(ftester: デバイスモニターを表示)の更新間隔(秒)。0.5 未満は 0.5 として扱われます。"
+          "description": "%ftester.config.monitorInterval.description%"
         },
         "ftester.monitorMaxWidth": {
           "type": "number",
           "default": 960,
           "minimum": 240,
           "maximum": 1600,
-          "description": "デバイスモニターのフレーム画像の長辺ピクセル数。大きいほど鮮明になりますが転送量が増えます(240〜1600)。"
+          "description": "%ftester.config.monitorMaxWidth.description%"
         },
         "ftester.liveFps": {
           "type": "number",
           "default": 12,
           "minimum": 3,
           "maximum": 30,
-          "description": "ライブ操作タブの自動フレーム更新レート上限(fps)。大きいほど滑らかですがホスト負荷が増えます(3〜30)。"
+          "description": "%ftester.config.liveFps.description%"
         },
         "ftester.iosStreamEnabled": {
           "type": "boolean",
           "default": true,
-          "description": "iOS シミュレータのライブ操作で画面を映像ストリーミング(ftester-simstream)で更新します。無効の場合やヘルパー未ビルドの場合はポーリングにフォールバックします。"
+          "description": "%ftester.config.iosStreamEnabled.description%"
         },
         "ftester.androidStreamEnabled": {
           "type": "boolean",
           "default": true,
-          "description": "Android 実機/エミュレータのライブ操作で画面を映像ストリーミング(ftester-androidstream)で更新します。無効の場合やヘルパー未ビルド・adb 未検出の場合はポーリングにフォールバックします。"
+          "description": "%ftester.config.androidStreamEnabled.description%"
         },
         "ftester.streamCodec": {
           "type": "string",
@@ -101,27 +101,37 @@
             "mjpeg"
           ],
           "default": "h264",
-          "description": "デバイス画面ストリーミングのコーデック。h264(既定)は WebCodecs によるハードウェアデコードを使います。問題が出る環境では mjpeg(従来方式)へ切り替えてください。"
+          "description": "%ftester.config.streamCodec.description%"
         },
         "ftester.liveControlOnRun": {
           "type": "boolean",
           "default": true,
-          "description": "テスト実行(Run Test)開始時に、ライブ操作パネルをエディタの右側へ自動表示します。"
+          "description": "%ftester.config.liveControlOnRun.description%"
         },
         "ftester.autoRepairBridge": {
           "type": "boolean",
           "default": true,
-          "description": "ブリッジ無応答(connected だったデバイスが booted のまま復帰しない状態が続く)を検出したら、実行中のレーンが無い間に限り device-up で自動修復を試みます。"
+          "description": "%ftester.config.autoRepairBridge.description%"
         },
         "ftester.autoRepairDeviceHealth": {
           "type": "boolean",
           "default": false,
-          "description": "Android エミュレータのゲスト OS 異常(Wi-Fi 無効・時計のずれ)を検出したとき、Wi-Fi 再有効化→再起動の順で自動修復を試みます。"
+          "description": "%ftester.config.autoRepairDeviceHealth.description%"
         },
         "ftester.showOnlyFailedTests": {
           "type": "boolean",
           "default": false,
-          "description": "Test Explorer のツリーを失敗したテストだけに絞り込みます(未実施・成功のテストは非表示)。Test Explorer タイトルバーのフィルターボタンでも切り替えられます。"
+          "description": "%ftester.config.showOnlyFailedTests.description%"
+        },
+        "ftester.language": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "ja",
+            "en"
+          ],
+          "default": "auto",
+          "description": "%ftester.config.language.description%"
         }
       }
     },
@@ -141,35 +151,35 @@
             "properties": {
               "project": {
                 "type": "string",
-                "description": "対象のテストプロジェクト名(Projects/<name> の <name>)。省略時は ftester.project 設定や自動判定で補完されます。"
+                "description": "%ftester.debugger.project.description%"
               },
               "scenario": {
                 "type": "string",
-                "description": "デバッグ実行するシナリオ ID(クラス名.メソッド名)。1件のみ指定できます。"
+                "description": "%ftester.debugger.scenario.description%"
               },
               "dryRun": {
                 "type": "boolean",
                 "default": false,
-                "description": "デバイスに触れず全コマンドを記録のみで通過させる(dry-run)。"
+                "description": "%ftester.debugger.dryRun.description%"
               },
               "stopOnEntry": {
                 "type": "boolean",
                 "default": false,
-                "description": "最初のステップの手前で一時停止して開始する。"
+                "description": "%ftester.debugger.stopOnEntry.description%"
               },
               "skipBuild": {
                 "type": "boolean",
                 "default": false,
-                "description": "実行前の swift build をスキップする。"
+                "description": "%ftester.debugger.skipBuild.description%"
               },
               "heal": {
                 "type": "boolean",
                 "default": false,
-                "description": "FM によるロケータ自己修復(--heal)を有効にする(dryRun 指定時は付与されない)。"
+                "description": "%ftester.debugger.heal.description%"
               },
               "profile": {
                 "type": "string",
-                "description": "使用する実行プロファイル名(Projects/<project>/profiles/runs/<name>.json の <name>。省略時は ftester.profile 設定を使用)。指定時は platform/port/serial は無視されます。"
+                "description": "%ftester.debugger.profile.description%"
               },
               "platform": {
                 "type": "string",
@@ -177,15 +187,15 @@
                   "ios",
                   "android"
                 ],
-                "description": "対象プラットフォーム(省略時は ftester.platform 設定を使用。profile 指定時は無視されます)。"
+                "description": "%ftester.debugger.platform.description%"
               },
               "port": {
                 "type": "number",
-                "description": "ブリッジ接続ポート(省略時は ftester.port 設定を使用)。"
+                "description": "%ftester.debugger.port.description%"
               },
               "serial": {
                 "type": "string",
-                "description": "Android デバイスのシリアル番号(省略時は ftester.serial 設定を使用)。"
+                "description": "%ftester.debugger.serial.description%"
               }
             }
           }
@@ -194,7 +204,7 @@
           {
             "type": "ftester",
             "request": "launch",
-            "name": "ftester: シナリオをデバッグ",
+            "name": "%ftester.debugger.initialConfig.name%",
             "project": "",
             "scenario": ""
           }
@@ -210,92 +220,92 @@
       "test": [
         {
           "id": "ftesterSteps",
-          "name": "ftester ステップ"
+          "name": "%ftester.view.ftesterSteps.name%"
         }
       ]
     },
     "commands": [
       {
         "command": "ftester.refreshScenarios",
-        "title": "ftester: シナリオを再読込",
+        "title": "%ftester.command.refreshScenarios.title%",
         "category": "ftester"
       },
       {
         "command": "ftester.selectProject",
-        "title": "ftester: プロジェクトを選択",
+        "title": "%ftester.command.selectProject.title%",
         "category": "ftester"
       },
       {
         "command": "ftester.showSteps",
-        "title": "ftester: ステップ一覧を表示",
+        "title": "%ftester.command.showSteps.title%",
         "category": "ftester"
       },
       {
         "command": "ftester.refreshSteps",
-        "title": "ftester: ステップ一覧を再取得",
+        "title": "%ftester.command.refreshSteps.title%",
         "category": "ftester",
         "icon": "$(refresh)"
       },
       {
         "command": "ftester.showDeviceMonitor",
-        "title": "ftester: デバイスモニターを表示",
+        "title": "%ftester.command.showDeviceMonitor.title%",
         "category": "ftester",
         "icon": "$(device-mobile)"
       },
       {
         "command": "ftester.showLiveControl",
-        "title": "ftester: ライブ操作を表示",
+        "title": "%ftester.command.showLiveControl.title%",
         "category": "ftester"
       },
       {
         "command": "ftester.showResultsDashboard",
-        "title": "ftester: 結果ダッシュボードを開く",
+        "title": "%ftester.command.showResultsDashboard.title%",
         "category": "ftester"
       },
       {
         "command": "ftester.explore",
-        "title": "ftester: FM探索でシナリオを生成",
+        "title": "%ftester.command.explore.title%",
         "category": "ftester"
       },
       {
         "command": "ftester.selectProfile",
-        "title": "ftester: 実行プロファイルを選択",
+        "title": "%ftester.command.selectProfile.title%",
         "category": "ftester"
       },
       {
         "command": "ftester.validateProfiles",
-        "title": "ftester: プロファイルを検証",
+        "title": "%ftester.command.validateProfiles.title%",
         "category": "ftester"
       },
       {
         "command": "ftester.deleteScenario",
-        "title": "削除",
+        "title": "%ftester.command.deleteScenario.title%",
         "category": "ftester"
       },
       {
         "command": "ftester.rerunFailedTests",
-        "title": "失敗したテストを再実行",
+        "title": "%ftester.command.rerunFailedTests.title%",
         "category": "ftester"
       },
       {
         "command": "ftester.copyTestName",
-        "title": "名前をコピー",
+        "title": "%ftester.command.copyTestName.title%",
         "category": "ftester"
       },
       {
         "command": "ftester.openScenarioReport",
-        "title": "レポートを開く",
+        "title": "%ftester.command.openScenarioReport.title%",
         "category": "ftester"
       },
       {
         "command": "ftester.enableFailedTestsFilter",
-        "title": "失敗したテストのみ表示(未実施・成功を除外)",
+        "title": "%ftester.command.enableFailedTestsFilter.title%",
         "category": "ftester",
         "icon": "$(filter)"
       },
       {
         "command": "ftester.disableFailedTestsFilter",
-        "title": "フィルターを解除(全テストを表示)",
+        "title": "%ftester.command.disableFailedTestsFilter.title%",
         "category": "ftester",
         "icon": "$(filter-filled)"
       }

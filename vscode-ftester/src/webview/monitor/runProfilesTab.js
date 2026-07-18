@@ -2,6 +2,7 @@
 
 import { vscode } from './vscodeApi.js';
 import { machineProfiles, findMachine } from './machineProfilesTab.js';
+import { t } from '../i18n.js';
 
 // 選択は「編集対象」であり、デバイスタブの実行プロファイル選択(ftester.profile)とは独立。
 // dirty管理: フォーム値と runProfileOriginalFields の比較で「確定」を有効化。
@@ -68,11 +69,11 @@ function showRunProfilePlaceholder(text) {
 
 function requestRunProfileLoad() {
   if (!selectedRunProfile) {
-    showRunProfilePlaceholder('実行プロファイルがありません。');
+    showRunProfilePlaceholder(t('wvMonitor2.runProfile.none'));
     return;
   }
   // 応答(runProfileData)が来るまで編集させない(レース防止。ローカル読みなので一瞬で置き換わる)。
-  showRunProfilePlaceholder('読み込み中...');
+  showRunProfilePlaceholder(t('wvMonitor2.common.loading'));
   vscode.postMessage({ type: 'runProfileLoad', profile: selectedRunProfile });
 }
 
@@ -106,7 +107,7 @@ export function applyRunProfileInfo(message) {
   if (selectedRunProfile !== null && !runProfileEditing()) {
     requestRunProfileLoad();
   } else if (selectedRunProfile === null) {
-    showRunProfilePlaceholder('実行プロファイルがありません。');
+    showRunProfilePlaceholder(t('wvMonitor2.runProfile.none'));
   }
 }
 
@@ -178,7 +179,7 @@ export function applyRunProfileData(message) {
     return;
   }
   if (!message.ok || !message.fields) {
-    showRunProfilePlaceholder(message.error || '実行プロファイルを読み込めませんでした。');
+    showRunProfilePlaceholder(message.error || t('wvMonitor2.runProfile.loadFailed'));
     return;
   }
   renderRunProfileEditor(message.fields);
@@ -203,7 +204,7 @@ function renderRunProfileEditor(fields) {
   runProfileDefaultTimeout.value = fields.defaultTimeout;
 
   setRunProfileControlsEnabled(true);
-  runProfileConfirm.textContent = '確定';
+  runProfileConfirm.textContent = t('wvMonitor2.common.confirm');
   runProfilePlaceholder.style.display = 'none';
   runProfileEditor.style.display = '';
   setRunProfileDirty(false);
@@ -217,7 +218,7 @@ function renderRunProfileMachineSelect(value) {
   if (value === '' || !names.includes(value)) {
     const unspecified = document.createElement('option');
     unspecified.value = '';
-    unspecified.textContent = '(未指定)';
+    unspecified.textContent = t('wvMonitor2.common.unspecified');
     runProfileMachine.appendChild(unspecified);
   }
   for (const name of names) {
@@ -242,7 +243,7 @@ function renderRunProfileAppSelect(value) {
   // 空文字(未指定)を常に先頭に置く(app欠落プロファイルの現在値を表す。空のまま確定は検証で弾かれる)。
   const emptyOption = document.createElement('option');
   emptyOption.value = '';
-  emptyOption.textContent = '(未指定)';
+  emptyOption.textContent = t('wvMonitor2.common.unspecified');
   runProfileApp.appendChild(emptyOption);
   for (const name of runProfileApps) {
     const option = document.createElement('option');
@@ -270,7 +271,7 @@ function renderRunProfileDevices() {
   if (machineName === '') {
     const note = document.createElement('div');
     note.className = 'run-profile-device-note';
-    note.textContent = 'マシンプロファイルを指定するとデバイスを選択できます';
+    note.textContent = t('wvMonitor2.runProfile.selectMachineFirst');
     runProfileDevices.appendChild(note);
     return;
   }
@@ -293,7 +294,7 @@ function renderRunProfileDevices() {
     if (missing) {
       const note = document.createElement('span');
       note.className = 'run-profile-device-note';
-      note.textContent = '(マシンプロファイルにありません)';
+      note.textContent = t('wvMonitor2.runProfile.deviceMissingFromMachine');
       row.appendChild(note);
     }
     runProfileDevices.appendChild(row);
@@ -387,28 +388,28 @@ function setRunProfileControlsEnabled(enabled) {
 function validateRunProfileFields() {
   const machine = runProfileMachine.value.trim();
   if (machine === '') {
-    return '使用するマシンプロファイルを指定してください。';
+    return t('wvMonitor2.runProfile.validation.machineRequired');
   }
   if (!findMachine(machine)) {
-    return 'マシンプロファイル「' + machine + '」が見つかりません。';
+    return t('wvMonitor2.runProfile.validation.machineNotFound', { machine });
   }
   if (runProfileApp.value.trim() === '') {
-    return 'アプリを指定してください。';
+    return t('wvMonitor2.runProfile.validation.appRequired');
   }
   if (runProfileCheckedNames.length === 0) {
-    return 'デバイスを1台以上選択してください。';
+    return t('wvMonitor2.runProfile.validation.deviceRequired');
   }
   const timeout = runProfileDefaultTimeout.value.trim();
   if (timeout !== '' && (!/^\d+$/.test(timeout) || Number(timeout) <= 0)) {
-    return 'defaultTimeout は正の整数で入力してください。';
+    return t('wvMonitor2.runProfile.validation.timeoutInvalid');
   }
   const threshold = runProfileWipeThreshold.value.trim();
   if (threshold !== '' && (!/^\d+(\.\d+)?$/.test(threshold) || Number(threshold) <= 0)) {
-    return 'Wipe Data しきい値は正の数(GB)で入力してください。';
+    return t('wvMonitor2.runProfile.validation.wipeThresholdInvalid');
   }
   const locale = runProfileLocale.value.trim();
   if (locale !== '' && !/^[A-Za-z]{2,3}([-_][A-Za-z0-9]{2,8})*$/.test(locale)) {
-    return 'ロケールは ja_JP のような形式で入力してください。';
+    return t('wvMonitor2.runProfile.validation.localeInvalid');
   }
   return null;
 }
@@ -424,7 +425,7 @@ runProfileConfirm.addEventListener('click', () => {
   }
   runProfileSubmitting = true;
   setRunProfileControlsEnabled(false);
-  runProfileConfirm.textContent = '確定中...';
+  runProfileConfirm.textContent = t('wvMonitor2.common.confirming');
   runProfileError.textContent = '';
   refreshRunProfileButtonsUi();
   vscode.postMessage({
@@ -461,14 +462,14 @@ export function applyRunProfileSaveResult(message) {
     return;
   }
   runProfileSubmitting = false;
-  runProfileConfirm.textContent = '確定';
+  runProfileConfirm.textContent = t('wvMonitor2.common.confirm');
   setRunProfileControlsEnabled(true);
   if (message.ok) {
     runProfileError.textContent = '';
     setRunProfileDirty(false);
   } else {
     refreshRunProfileButtonsUi();
-    runProfileError.textContent = message.error || '実行プロファイルの更新に失敗しました。';
+    runProfileError.textContent = message.error || t('wvMonitor2.runProfile.saveFailed');
   }
 }
 

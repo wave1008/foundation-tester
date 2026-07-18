@@ -12,6 +12,7 @@
 import * as vscode from "vscode";
 import { type FtesterCli } from "./cli";
 import { resolveProjectName } from "./config";
+import { t } from "./i18n";
 import {
   buildFinishedNotification,
   formatExploreLogLine,
@@ -111,7 +112,7 @@ export class MonitorExploreController implements vscode.Disposable {
     const config = this.deps.getConfig();
     const resolution = resolveProjectName(this.deps.workspaceRoot, config);
     if (resolution.kind !== "resolved") {
-      this.applyDevices([], "対象のテストプロジェクトを解決できませんでした。ftester.project 設定を確認してください。");
+      this.applyDevices([], t("exploreHeal.common.projectUnresolved"));
       return;
     }
     try {
@@ -126,13 +127,13 @@ export class MonitorExploreController implements vscode.Disposable {
         const detail = result.stderrTail.length > 0 ? result.stderrTail : `exit code: ${String(result.exitCode)}`;
         this.applyDevices(
           [],
-          `デバイス一覧の取得に失敗しました。マシンプロファイルの設定を確認してください(${detail})`,
+          t("exploreHeal.explore.deviceListFailedProfile", { detail }),
         );
         return;
       }
       this.applyDevices(devicesToOptions(parsed.devices), undefined);
     } catch (error) {
-      this.applyDevices([], `デバイス一覧の取得に失敗しました: ${errorMessage(error)}`);
+      this.applyDevices([], t("exploreHeal.explore.deviceListFailed", { error: errorMessage(error) }));
     }
   }
 
@@ -170,7 +171,7 @@ export class MonitorExploreController implements vscode.Disposable {
     }
     const device = this.devices.find((d) => d.id === this.selectedDeviceId);
     if (!device) {
-      this.post({ type: "formError", message: "デバイスを選択してください。" });
+      this.post({ type: "formError", message: t("exploreHeal.explore.selectDevicePrompt") });
       return;
     }
     const config = this.deps.getConfig();
@@ -178,7 +179,7 @@ export class MonitorExploreController implements vscode.Disposable {
     if (resolution.kind !== "resolved") {
       this.post({
         type: "formError",
-        message: "対象のテストプロジェクトを解決できませんでした。ftester.project 設定を確認してください。",
+        message: t("exploreHeal.common.projectUnresolved"),
       });
       return;
     }
@@ -235,12 +236,12 @@ export class MonitorExploreController implements vscode.Disposable {
         this.lastResult = { message: errorEvent.message, severity: "error", hasFile: false };
       } else if (!result.cancelled) {
         this.lastResult = {
-          message: `ftester プロセスが異常終了しました(exit code: ${String(result.exitCode)})。出力パネル「ftester」を確認してください。`,
+          message: t("exploreHeal.explore.processCrashed", { exitCode: String(result.exitCode) }),
           severity: "error",
           hasFile: false,
         };
       } else {
-        this.appendLog("[explore] キャンセルされました。");
+        this.appendLog(t("exploreHeal.explore.log.cancelled"));
       }
     } catch (error) {
       const message = errorMessage(error);

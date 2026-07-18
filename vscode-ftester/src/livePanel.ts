@@ -14,9 +14,10 @@
 import * as vscode from "vscode";
 import type { FtesterCli } from "./cli";
 import type { FtesterConfig } from "./config";
+import { t } from "./i18n";
 import type { LiveDeps } from "./liveDeps";
 import { isLiveWebviewEnvelope } from "./liveModel";
-import { LIVE_PANEL_TITLE, renderLiveHtml } from "./livePanelHtml";
+import { livePanelTitle, renderLiveHtml } from "./livePanelHtml";
 import type { LiveRunTarget } from "./liveRunTarget";
 import { MonitorLiveController } from "./monitorLiveController";
 import type { RunBusMessage, RunEventBus } from "./runEventBus";
@@ -138,17 +139,13 @@ class LivePanelController implements vscode.Disposable {
         break;
       case "streamStall":
         if (message.scope === "live") {
-          this.outputChannel.appendLine(
-            "[live-stream] キーフレーム未受信のままのためヘルパーを再起動します。",
-          );
+          this.outputChannel.appendLine(t("live.panel.streamStallRestart"));
           this.live.restartStream();
         }
         break;
       case "codecError":
         if (message.scope === "live") {
-          this.outputChannel.appendLine(
-            "[live-stream] WebCodecs 未対応/デコード失敗のため mjpeg へフォールバックします。",
-          );
+          this.outputChannel.appendLine(t("live.panel.codecFallback"));
           this.live.fallbackToMjpeg();
         }
         break;
@@ -192,7 +189,7 @@ class LivePanelController implements vscode.Disposable {
     // エディタを隠さない)。
     const panel = vscode.window.createWebviewPanel(
       VIEW_TYPE,
-      LIVE_PANEL_TITLE,
+      livePanelTitle(),
       { viewColumn: this.resolveTargetColumn(), preserveFocus: true },
       {
         enableScripts: true,
@@ -266,8 +263,8 @@ export function registerLivePanel(
   );
 
   const statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
-  statusItem.text = "$(device-mobile) ライブ操作";
-  statusItem.tooltip = "ftester: ライブ操作を表示";
+  statusItem.text = t("live.panel.statusBarLabel");
+  statusItem.tooltip = t("live.panel.statusBarTooltip");
   statusItem.command = "ftester.showLiveControl";
   statusItem.show();
 

@@ -13,6 +13,7 @@
 //   1行のみ(parseLiveServeEvent が "kind" で判別)。
 //   frame は画像のみの frame イベント1行(AXツリーは取らない。自動画面更新用)。
 
+import { t, type MessageKey } from "./i18n";
 import type { MonitorDeviceState, MonitorPlatform } from "./monitorModel";
 
 export type LivePlatform = MonitorPlatform;
@@ -441,7 +442,7 @@ export function parseGenScenarioEvent(value: unknown): GenScenarioEvent | undefi
 export function formatElementLine(element: LiveElement): string {
   const parts = [`[${element.ref}]`, element.type];
   if (element.label !== null && element.label.length > 0) {
-    parts.push(`「${element.label}」`);
+    parts.push(t("live.elementLine.label", { label: element.label }));
   }
   if (element.identifier !== null && element.identifier.length > 0) {
     parts.push(`id=${element.identifier}`);
@@ -489,13 +490,26 @@ export function selectorObjectPhrase(selector: string): string {
   return selector;
 }
 
-function truncateOperationLabelText(text: string): string {
+/** 「操作記録」ラベル("入力: {text}")の表示テキストを20文字に切り詰める(monitorLiveController.ts の
+ * typeText ハンドラと共用。同じ切り詰めルールを2箇所に複製しないための export)。 */
+export function truncateOperationLabelText(text: string): string {
   return text.length > 20 ? `${text.slice(0, 20)}…` : text;
 }
 
-const SWIPE_DIRECTION_LABELS: Record<string, string> = { up: "上", down: "下", left: "左", right: "右" };
+const SWIPE_DIRECTION_KEYS = {
+  up: "live.direction.up",
+  down: "live.direction.down",
+  left: "live.direction.left",
+  right: "live.direction.right",
+} as const satisfies Record<string, MessageKey>;
 
-/** StepEvent.description(RunEventBus 由来)を「操作記録」用の和文ラベルへ変換する。description の
+/** スワイプ方向の訳文("上"/"下"/"左"/"右" 等)。monitorLiveController.ts の dragPoints ハンドラと
+ * stepDescriptionToOperationLabel(下記)が同じ訳文を使うための共用関数。 */
+export function swipeDirectionLabel(direction: "up" | "down" | "left" | "right"): string {
+  return t(SWIPE_DIRECTION_KEYS[direction]);
+}
+
+/** StepEvent.description(RunEventBus 由来)を「操作記録」用の表示ラベルへ変換する。description の
  * 構文は Sources/FTDSL/Commands.swift 各コマンドの perform(description:) と、セレクタ→ラベル抽出は
  * selectorObjectPhrase(= StepDescription.objectPhrase(ofSelector:) / FTSelector.parseClause)と同期が必要。 */
 export function stepDescriptionToOperationLabel(description: string): string {
@@ -503,34 +517,43 @@ export function stepDescriptionToOperationLabel(description: string): string {
   const quoted = description.match(/"([^"]*)"/g)?.map((s) => s.slice(1, -1));
   switch (verb) {
     case "tap":
-      return quoted?.[0] !== undefined ? `タップ: ${selectorObjectPhrase(quoted[0])}` : description;
+      return quoted?.[0] !== undefined
+        ? t("live.opLabel.tap", { target: selectorObjectPhrase(quoted[0]) })
+        : description;
     case "press":
-      return quoted?.[0] !== undefined ? `ロングプレス: ${selectorObjectPhrase(quoted[0])}` : description;
+      return quoted?.[0] !== undefined
+        ? t("live.opLabel.press", { target: selectorObjectPhrase(quoted[0]) })
+        : description;
     case "type": {
       const text = quoted?.[quoted.length - 1];
-      return text !== undefined ? `入力: ${truncateOperationLabelText(text)}` : description;
+      return text !== undefined ? t("live.opLabel.type", { text: truncateOperationLabelText(text) }) : description;
     }
     case "scrollTo":
-      return quoted?.[0] !== undefined ? `スクロール: ${selectorObjectPhrase(quoted[0])}` : description;
+      return quoted?.[0] !== undefined
+        ? t("live.opLabel.scrollTo", { target: selectorObjectPhrase(quoted[0]) })
+        : description;
     case "swipe": {
       const dir = description.split(/\s+/)[1];
-      const label = dir !== undefined ? SWIPE_DIRECTION_LABELS[dir] : undefined;
-      return label !== undefined ? `スワイプ: ${label}` : description;
+      const isDirection = (value: string): value is "up" | "down" | "left" | "right" =>
+        value === "up" || value === "down" || value === "left" || value === "right";
+      return dir !== undefined && isDirection(dir)
+        ? t("live.opLabel.swipe", { direction: swipeDirectionLabel(dir) })
+        : description;
     }
     case "home":
-      return "ホーム";
+      return t("live.opLabel.home");
     case "appSwitcher":
-      return "タスク切替";
+      return t("live.opLabel.appSwitcher");
     case "launch": {
       const bundle = description.split(/\s+/)[1];
-      return bundle !== undefined ? `起動: ${bundle}` : description;
+      return bundle !== undefined ? t("live.opLabel.launch", { bundle }) : description;
     }
     case "terminate":
-      return "終了";
+      return t("live.opLabel.terminate");
     case "wait": {
       const arg = description.split(/\s+/)[1];
       const seconds = arg?.endsWith("s") ? arg.slice(0, -1) : undefined;
-      return seconds !== undefined ? `待機: ${seconds}秒` : description;
+      return seconds !== undefined ? t("live.opLabel.wait", { seconds }) : description;
     }
     default:
       return description;
@@ -620,10 +643,10 @@ export function fallbackDeviceOption(source: FallbackDeviceSource): LiveDeviceOp
   const ref = buildFallbackDevice(source);
   return {
     id: FALLBACK_DEVICE_ID,
-    name: "設定のデバイス",
+    name: t("live.fallbackDeviceName"),
     platform: ref.platform,
     state: "unknown",
-    detail: "ftester.platform/port/serial 設定から作成",
+    detail: t("live.fallbackDeviceDetail"),
     port: ref.port,
     serial: ref.serial,
     udid: ref.udid,

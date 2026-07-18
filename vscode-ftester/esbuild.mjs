@@ -115,7 +115,9 @@ async function buildTests() {
     // 実行時エラーになる。node_modules から素の bare import として解決させる(dap.test.mjs は
     // out-test/ 配下からでも Node の ESM 解決が親ディレクトリの node_modules を辿るため解決できる)。
     // jsdom/esbuild も同様(webviewLiveDrag.test.mjs が実行時に使う。どちらも CJS/動的 require 持ち)。
-    external: ["@vscode/debugadapter", "@vscode/debugprotocol", "jsdom", "esbuild"],
+    // typescript は i18n.test.mjs が AST 走査に使う。巨大 CJS(動的 require 持ち)なので
+    // バンドルせず node_modules から素の require で解決させる(jsdom/esbuild と同じ理由)。
+    external: ["@vscode/debugadapter", "@vscode/debugprotocol", "jsdom", "esbuild", "typescript"],
     plugins: [vscodeStubPlugin],
   });
 }

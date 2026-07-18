@@ -5,6 +5,7 @@
 import * as vscode from "vscode";
 import { type CliInvocation, type FtesterCli } from "./cli";
 import { type FtesterConfig, resolveProjectName } from "./config";
+import { t } from "./i18n";
 import {
   isValidateProfileOutput,
   parseProfileFilePath,
@@ -31,9 +32,7 @@ export function registerProfileDiagnostics(
     const config = getConfig();
     const resolution = resolveProjectName(workspaceRoot, config);
     if (resolution.kind !== "resolved") {
-      outputChannel.appendLine(
-        "[ftester] プロファイル検証: 対象のテストプロジェクトを解決できませんでした。",
-      );
+      outputChannel.appendLine(t("workbench.profileDiag.unresolvedProjectLog"));
       return undefined;
     }
     const args = ["api", "validate-profile", "--project", resolution.project];
@@ -55,7 +54,7 @@ export function registerProfileDiagnostics(
     try {
       result = await cli.invoke(config.binaryPath, workspaceRoot, invocation, "validate-profile");
     } catch (error) {
-      outputChannel.appendLine(`[ftester] プロファイル検証の実行に失敗しました: ${String(error)}`);
+      outputChannel.appendLine(t("workbench.profileDiag.runFailedLog", { error: String(error) }));
       return undefined;
     }
     if (result.cancelled) {
@@ -63,7 +62,7 @@ export function registerProfileDiagnostics(
     }
     if (!isValidateProfileOutput(result.json)) {
       outputChannel.appendLine(
-        `[ftester] プロファイル検証の出力を解析できませんでした(exit code: ${String(result.exitCode)})。`,
+        t("workbench.profileDiag.parseFailedLog", { exitCode: String(result.exitCode) }),
       );
       return undefined;
     }
@@ -113,9 +112,7 @@ export function registerProfileDiagnostics(
     vscode.commands.registerCommand("ftester.validateProfiles", async () => {
       const output = await runValidate();
       if (!output) {
-        void vscode.window.showWarningMessage(
-          "ftester: プロファイルの検証に失敗しました。対象プロジェクト(ftester.project)や出力パネル「ftester」を確認してください。",
-        );
+        void vscode.window.showWarningMessage(t("workbench.profileDiag.validateFailedWarning"));
         return;
       }
       applyDiagnostics(output, true);
@@ -126,8 +123,12 @@ export function registerProfileDiagnostics(
       ).length;
       const cleanFiles = output.results.length - errorFiles - warningOnlyFiles;
       void vscode.window.showInformationMessage(
-        `ftester: プロファイルを検証しました(${String(output.results.length)}件中` +
-          ` エラー ${String(errorFiles)}件・警告 ${String(warningOnlyFiles)}件・問題なし ${String(cleanFiles)}件)。`,
+        t("workbench.profileDiag.validatedInfo", {
+          total: output.results.length,
+          errorFiles,
+          warningOnlyFiles,
+          cleanFiles,
+        }),
       );
     }),
   );

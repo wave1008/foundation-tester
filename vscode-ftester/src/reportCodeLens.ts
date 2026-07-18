@@ -6,6 +6,7 @@
 
 import * as vscode from "vscode";
 import { type FtesterConfig, resolveProjectName } from "./config";
+import { t } from "./i18n";
 import { lastResultsDir, lookupKey, readAllResults, type ResultState } from "./lastResults";
 import { WATCH_GLOB } from "./watcher";
 
@@ -78,7 +79,7 @@ export function registerReportCodeLens(deps: ReportCodeLensDeps): ReportCodeLens
       return entries.map(
         (entry) =>
           new vscode.CodeLens(new vscode.Range(entry.line, 0, entry.line, 0), {
-            title: "❌ 前回失敗 — レポートを開く",
+            title: t("workbench.reportCodeLens.title"),
             command: "ftester.openScenarioReport",
             arguments: [entry.id],
           }),

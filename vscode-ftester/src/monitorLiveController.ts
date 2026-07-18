@@ -35,6 +35,7 @@ import {
   resolveSimStream,
 } from "./config";
 import { StreamPipeline, type LiveStreamPipeline } from "./deviceStream";
+import { t } from "./i18n";
 import {
   buildDeviceArgs,
   describeElementShort,
@@ -62,7 +63,9 @@ import {
   sameLiveDeviceRef,
   serializeLiveServeCommand,
   stepDescriptionToOperationLabel,
+  swipeDirectionLabel,
   toSnapshotMessage,
+  truncateOperationLabelText,
 } from "./liveModel";
 import type { LiveDeps } from "./liveDeps";
 import type { LiveRunTarget } from "./liveRunTarget";
@@ -83,7 +86,7 @@ type ServeProcess = ChildProcessByStdio<Writable, Readable, Readable>;
 const SERVE_REQUEST_TIMEOUT_MS = 20000;
 
 /** 応答タイムアウトによる wedge 復旧(serve の kill→自動 respawn)を連続で試みる上限。これを
- * 超えたら自動再起動を止め、SERVE_UNAVAILABLE_MESSAGE を出す(デバイス選び直し=rebind で解除)。 */
+ * 超えたら自動再起動を止め、serveUnavailableMessage() を出す(デバイス選び直し=rebind で解除)。 */
 const MAX_CONSECUTIVE_TIMEOUT_KILLS = 3;
 
 /** 自動フレームを実行できなかった回(busy・パネル非表示・serve 不在)と失敗時の再試行間隔(ms)。
@@ -97,16 +100,21 @@ const LIVE_STREAM_MAX_WIDTH = 900;
 
 /** serve 常駐プロセスの不在・応答不能・終了を表す文言。これらは個々の操作失敗(タップ失敗・
  * 未入力など)とは違い「接続状態」の問題で、serve が復帰すれば自動で解消する。postActionError が
- * CONNECTION_CLASS_MESSAGES との一致で connectionBannerShown を立て、復帰時(handleConnectionOk)に
- * バナーを自動で消す。文言を変えたら CONNECTION_CLASS_MESSAGES も追随させること。 */
-const SERVE_UNAVAILABLE_MESSAGE = "ライブ操作の常駐プロセスが起動していません。デバイスを選び直してください。";
-const SERVE_TIMEOUT_MESSAGE = "ライブ操作の応答がタイムアウトしました(常駐プロセスが応答していません)。";
-const SERVE_CLOSED_MESSAGE = "ライブ操作の常駐プロセスが終了しました。";
-const CONNECTION_CLASS_MESSAGES = new Set<string>([
-  SERVE_UNAVAILABLE_MESSAGE,
-  SERVE_TIMEOUT_MESSAGE,
-  SERVE_CLOSED_MESSAGE,
-]);
+ * isConnectionClassMessage との一致で connectionBannerShown を立て、復帰時(handleConnectionOk)に
+ * バナーを自動で消す。文言(キー)を増やしたら isConnectionClassMessage も追随させること。
+ * locale 切替後も表示側と比較側が食い違わないよう、値はキャッシュせず都度 t() で引く。 */
+function serveUnavailableMessage(): string {
+  return t("live.serveUnavailableMessage");
+}
+function serveTimeoutMessage(): string {
+  return t("live.serveTimeoutMessage");
+}
+function serveClosedMessage(): string {
+  return t("live.serveClosedMessage");
+}
+function isConnectionClassMessage(message: string): boolean {
+  return message === serveUnavailableMessage() || message === serveTimeoutMessage() || message === serveClosedMessage();
+}
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -164,7 +172,7 @@ export class MonitorLiveController implements vscode.Disposable {
   /** 直近 post した connection:false の message。Swift 側の自動起動サフィックスの進捗更新
    * (「自動起動しています…」→「失敗しました…」)を検知して再 post するための比較用。 */
   private lastConnectionMessage: string | undefined;
-  /** 直近 post した actionError バナーが接続系(CONNECTION_CLASS_MESSAGES)かどうか。true の間は
+  /** 直近 post した actionError バナーが接続系(isConnectionClassMessage)かどうか。true の間は
    * serve 復帰(handleConnectionOk)で自動的に消す。個々の操作失敗バナーは false のままなので、
    * 常時回っている自動フレームで誤って消えることはない。 */
   private connectionBannerShown = false;
@@ -273,7 +281,7 @@ export class MonitorLiveController implements vscode.Disposable {
   }
 
   /** テスト実行(RunEventBus の step)由来の操作を「操作記録」へ流す。section=action のみ・
-   * skipped は除外。ラベルは手動操作と同じ和文に揃える(stepDescriptionToOperationLabel)。 */
+   * skipped は除外。ラベルは手動操作と同じ表示文言に揃える(stepDescriptionToOperationLabel)。 */
   public injectTestStep(event: StepEvent): void {
     if (event.section !== "action" || event.status === "skipped" || !event.description) {
       return;
@@ -286,7 +294,7 @@ export class MonitorLiveController implements vscode.Disposable {
    * connectionBannerShown を立て、serve 復帰時に自動で消せるようにする。個々の操作失敗は
    * false のまま残す(常時回る自動フレームで消さない)。全 actionError post はここを通す。 */
   private postActionError(message: string): void {
-    this.connectionBannerShown = CONNECTION_CLASS_MESSAGES.has(message);
+    this.connectionBannerShown = isConnectionClassMessage(message);
     this.post({ type: "actionError", message });
   }
 
@@ -382,10 +390,7 @@ export class MonitorLiveController implements vscode.Disposable {
     const config = this.deps.getConfig();
     const resolution = resolveProjectName(this.deps.workspaceRoot, config);
     if (resolution.kind !== "resolved") {
-      this.applyFallback(
-        config,
-        "対象のテストプロジェクトを解決できませんでした。ftester.project 設定を確認してください。",
-      );
+      this.applyFallback(config, t("live.projectUnresolved"));
       return;
     }
 
@@ -400,15 +405,12 @@ export class MonitorLiveController implements vscode.Disposable {
       const parsed = parseListDevicesResult(result.json);
       if (!parsed) {
         const detail = result.stderrTail.length > 0 ? result.stderrTail : `exit code: ${String(result.exitCode)}`;
-        this.applyFallback(
-          config,
-          `デバイス一覧の取得に失敗しました。マシンプロファイルの設定を確認してください(${detail})`,
-        );
+        this.applyFallback(config, t("live.deviceListFailedDetail", { detail }));
         return;
       }
       this.applyDevices(devicesToOptions(parsed.devices), undefined);
     } catch (error) {
-      this.applyFallback(config, `デバイス一覧の取得に失敗しました: ${errorMessage(error)}`);
+      this.applyFallback(config, t("live.deviceListFailedError", { error: errorMessage(error) }));
     } finally {
       this.setBusy(false);
     }
@@ -532,7 +534,7 @@ export class MonitorLiveController implements vscode.Disposable {
     if (resolution.kind !== "resolved") {
       return false;
     }
-    this.post({ type: "banner", message: `デバイス「${name}」を起動しています…(初回は数十秒かかることがあります)` });
+    this.post({ type: "banner", message: t("live.deviceBooting", { name }) });
     const args = ["api", "device-up", "--name", name, "--project", resolution.project];
     if (config.profile) {
       args.push("--profile", config.profile);
@@ -540,10 +542,10 @@ export class MonitorLiveController implements vscode.Disposable {
     try {
       const result = await this.runCli(args);
       const ok = result.exitCode === 0;
-      this.post({ type: "banner", message: ok ? null : `デバイス「${name}」の起動に失敗しました。` });
+      this.post({ type: "banner", message: ok ? null : t("live.deviceBootFailed", { name }) });
       return ok;
     } catch (error) {
-      this.post({ type: "banner", message: `デバイス「${name}」の起動に失敗しました: ${errorMessage(error)}` });
+      this.post({ type: "banner", message: t("live.deviceBootFailedError", { name, error: errorMessage(error) }) });
       return false;
     }
   }
@@ -678,7 +680,7 @@ export class MonitorLiveController implements vscode.Disposable {
         stdio: ["pipe", "pipe", "pipe"],
       });
     } catch (error) {
-      this.deps.outputChannel.appendLine(`[live serve] プロセスの起動に失敗しました: ${String(error)}`);
+      this.deps.outputChannel.appendLine(t("live.serveSpawnFailed", { error: String(error) }));
       return;
     }
     proc.stdin.on("error", () => undefined);
@@ -699,7 +701,7 @@ export class MonitorLiveController implements vscode.Disposable {
     proc.stderr.on("data", (chunk: Buffer) => stderrParser.push(chunk));
 
     proc.on("error", (error) => {
-      this.deps.outputChannel.appendLine(`[live serve] プロセスでエラーが発生しました: ${error.message}`);
+      this.deps.outputChannel.appendLine(t("live.serveProcessError", { error: error.message }));
     });
 
     proc.on("close", () => {
@@ -708,7 +710,7 @@ export class MonitorLiveController implements vscode.Disposable {
       if (this.serveProcess === proc) {
         this.serveProcess = undefined;
       }
-      this.failPendingServeRequest(SERVE_CLOSED_MESSAGE);
+      this.failPendingServeRequest(serveClosedMessage());
       // 意図した停止(dispose/再バインド)かどうかはフラグだけで判定する(monitorProcessManager.ts と同じ理由)。
       const selfInitiated = this.stoppingServe;
       this.stoppingServe = false;
@@ -735,10 +737,7 @@ export class MonitorLiveController implements vscode.Disposable {
     if (this.serveFailureStreak >= 3) {
       if (!this.serveGaveUp) {
         this.serveGaveUp = true;
-        this.deps.outputChannel.appendLine(
-          "[live serve] 起動直後の異常終了が続いたため自動再起動を停止しました。" +
-            "デバイスを選び直すか、パネルを開き直すと再試行します。",
-        );
+        this.deps.outputChannel.appendLine(t("live.serveGiveUpEarlyExit"));
       }
       return;
     }
@@ -784,7 +783,7 @@ export class MonitorLiveController implements vscode.Disposable {
    * SIGTERM を SIG_IGN で無視するため、実際の停止は stdin EOF(serve の ResidentProcessGuard による
    * 2秒強制終了)か2秒後の SIGKILL による。killServeProcess とは違い stoppingServe を立てないので、
    * close ハンドラが scheduleServeRestart で現デバイスへ自動 respawn する(=wedge からの自動復帰)。
-   * 連続 MAX_CONSECUTIVE_TIMEOUT_KILLS 回で諦め、再起動させず SERVE_UNAVAILABLE_MESSAGE を出す。 */
+   * 連続 MAX_CONSECUTIVE_TIMEOUT_KILLS 回で諦め、再起動させず serveUnavailableMessage() を出す。 */
   private restartWedgedServe(proc: ServeProcess): void {
     if (this.serveProcess !== proc || proc.exitCode !== null || proc.signalCode !== null) {
       return;
@@ -793,14 +792,11 @@ export class MonitorLiveController implements vscode.Disposable {
     if (this.serveTimeoutKillStreak >= MAX_CONSECUTIVE_TIMEOUT_KILLS) {
       this.serveGaveUp = true;
       this.stoppingServe = true; // close ハンドラに自己終了とみなさせ、再起動を抑止する
-      this.deps.outputChannel.appendLine(
-        "[live serve] 応答タイムアウトによる再起動が連続したため自動再起動を停止しました。" +
-          "デバイスを選び直すか、パネルを開き直してください。",
-      );
-      this.postActionError(SERVE_UNAVAILABLE_MESSAGE);
+      this.deps.outputChannel.appendLine(t("live.serveGiveUpTimeout"));
+      this.postActionError(serveUnavailableMessage());
     } else {
       this.deps.outputChannel.appendLine(
-        `[live serve] 応答が${SERVE_REQUEST_TIMEOUT_MS / 1000}秒返らないため常駐プロセスを再起動します。`,
+        t("live.serveTimeoutRestart", { seconds: SERVE_REQUEST_TIMEOUT_MS / 1000 }),
       );
     }
     proc.stdin.end();
@@ -818,14 +814,12 @@ export class MonitorLiveController implements vscode.Disposable {
   private handleServeEvent(value: unknown): void {
     const event = parseLiveServeEvent(value);
     if (!event) {
-      this.deps.outputChannel.appendLine(`[live serve] 未知の形式の行を無視しました: ${JSON.stringify(value)}`);
+      this.deps.outputChannel.appendLine(t("live.serveUnknownLine", { value: JSON.stringify(value) }));
       return;
     }
     const pending = this.pendingServeRequest;
     if (!pending) {
-      this.deps.outputChannel.appendLine(
-        `[live serve] 対応するリクエストが無いイベントを受信しました(${event.kind})`,
-      );
+      this.deps.outputChannel.appendLine(t("live.serveNoPendingRequest", { kind: event.kind }));
       return;
     }
     if (event.kind === "actionResult") {
@@ -834,7 +828,7 @@ export class MonitorLiveController implements vscode.Disposable {
     }
     if (event.kind !== pending.resolvesOn) {
       this.deps.outputChannel.appendLine(
-        `[live serve] 対応しないイベントを受信しました(期待: ${pending.resolvesOn}、実際: ${event.kind})`,
+        t("live.serveMismatchedEvent", { expected: pending.resolvesOn, actual: event.kind }),
       );
       return;
     }
@@ -894,7 +888,7 @@ export class MonitorLiveController implements vscode.Disposable {
   private sendServeCommandNow(command: LiveServeCommand): Promise<ServeRequestOutcome> {
     const proc = this.serveProcess;
     if (!proc || proc.exitCode !== null || proc.signalCode !== null) {
-      const message = SERVE_UNAVAILABLE_MESSAGE;
+      const message = serveUnavailableMessage();
       return Promise.resolve({
         action: command.cmd === "refresh" ? undefined : { ok: false, error: message },
         snapshot: { ok: false, error: message },
@@ -902,7 +896,7 @@ export class MonitorLiveController implements vscode.Disposable {
     }
     return new Promise((resolve) => {
       const timeout = setTimeout(() => {
-        this.failPendingServeRequest(SERVE_TIMEOUT_MESSAGE);
+        this.failPendingServeRequest(serveTimeoutMessage());
         this.restartWedgedServe(proc);
       }, SERVE_REQUEST_TIMEOUT_MS);
       this.pendingServeRequest = {
@@ -912,7 +906,7 @@ export class MonitorLiveController implements vscode.Disposable {
         resolve: (outcome) =>
           resolve({
             action: outcome.action,
-            snapshot: outcome.snapshot ?? { ok: false, error: "内部エラー: snapshot が届きませんでした。" },
+            snapshot: outcome.snapshot ?? { ok: false, error: t("live.internalErrorSnapshotMissing") },
           }),
         timeout,
       };
@@ -931,12 +925,12 @@ export class MonitorLiveController implements vscode.Disposable {
     if (!proc || proc.exitCode !== null || proc.signalCode !== null) {
       return Promise.resolve({
         ok: false,
-        error: SERVE_UNAVAILABLE_MESSAGE,
+        error: serveUnavailableMessage(),
       });
     }
     return new Promise((resolve) => {
       const timeout = setTimeout(() => {
-        this.failPendingServeRequest(SERVE_TIMEOUT_MESSAGE);
+        this.failPendingServeRequest(serveTimeoutMessage());
         this.restartWedgedServe(proc);
       }, SERVE_REQUEST_TIMEOUT_MS);
       this.pendingServeRequest = {
@@ -944,7 +938,7 @@ export class MonitorLiveController implements vscode.Disposable {
         resolvesOn: "frame",
         action: undefined,
         resolve: (outcome) =>
-          resolve(outcome.frame ?? { ok: false, error: "内部エラー: frame が届きませんでした。" }),
+          resolve(outcome.frame ?? { ok: false, error: t("live.internalErrorFrameMissing") }),
         timeout,
       };
       proc.stdin.write(serializeLiveServeCommand({ cmd: "frame" }));
@@ -967,7 +961,7 @@ export class MonitorLiveController implements vscode.Disposable {
   private async fetchSnapshot(): Promise<void> {
     const device = this.currentDeviceRef();
     if (!device) {
-      this.postActionError("デバイスが選択されていません。");
+      this.postActionError(t("live.noDeviceSelected"));
       return;
     }
     this.ensureServeProcess(device);
@@ -983,7 +977,7 @@ export class MonitorLiveController implements vscode.Disposable {
     try {
       await this.fetchSnapshot();
     } catch (error) {
-      this.postActionError(`snapshot の実行に失敗しました: ${errorMessage(error)}`);
+      this.postActionError(t("live.snapshotFailed", { error: errorMessage(error) }));
     } finally {
       this.setBusy(false);
     }
@@ -1133,7 +1127,7 @@ export class MonitorLiveController implements vscode.Disposable {
   /** ストリーミングが継続不能になったときのフォールバック。helper を止め、接続断は出さずに
    * ポーリング(frameTick)へ戻す(ポーリングはヘッドレスでも動く既存経路)。 */
   private handleStreamGiveUp(message: string): void {
-    this.deps.outputChannel.appendLine(`[live-stream] ${message} ポーリングに切り替えます。`);
+    this.deps.outputChannel.appendLine(t("live.streamGiveUpSwitchPolling", { message }));
     this.stopStreamPipeline();
     if (this.liveTabVisible) {
       this.scheduleFrameTick(0);
@@ -1214,7 +1208,7 @@ export class MonitorLiveController implements vscode.Disposable {
     }
     const device = this.currentDeviceRef();
     if (!device) {
-      this.postActionError("デバイスが選択されていません。");
+      this.postActionError(t("live.noDeviceSelected"));
       return false;
     }
     this.setBusy(true);
@@ -1240,7 +1234,7 @@ export class MonitorLiveController implements vscode.Disposable {
       this.applySnapshotResult(snapshot);
       return snapshot.ok;
     } catch (error) {
-      this.postActionError(`操作の実行に失敗しました: ${errorMessage(error)}`);
+      this.postActionError(t("live.actionFailed", { error: errorMessage(error) }));
       return false;
     } finally {
       this.setBusy(false);
@@ -1287,25 +1281,25 @@ export class MonitorLiveController implements vscode.Disposable {
     }
     const device = this.currentDeviceRef();
     if (!device) {
-      this.postActionError("デバイスが選択されていません。");
+      this.postActionError(t("live.noDeviceSelected"));
       return;
     }
     const config = this.deps.getConfig();
     const resolution = resolveProjectName(this.deps.workspaceRoot, config);
     if (resolution.kind !== "resolved") {
-      this.postActionError("対象のテストプロジェクトを解決できませんでした。ftester.project 設定を確認してください。");
+      this.postActionError(t("live.projectUnresolved"));
       return;
     }
     const target = readAppProfileTarget(this.deps.workspaceRoot, resolution.project, appProfile, device.platform);
     if (!target) {
-      this.postActionError("アプリプロファイルを解決できません");
+      this.postActionError(t("live.appProfileUnresolved"));
       return;
     }
     this.selectedAppProfileId = appProfile;
     // タップ直後〜アプリ起動完了(install→launch は数秒かかり得る)まで画面を薄暗くして「処理中」を出す。
     // finally で必ず消す(成功時はレコーディングUI、失敗時は runAction が post 済みの actionError が状態を示す)。
     this.startingRecord = true;
-    this.post({ type: "busyOverlay", message: "レコーディングを開始しています…" });
+    this.post({ type: "busyOverlay", message: t("live.recordStarting") });
     try {
       if (autoInstall && target.appPath) {
         // 再インストールはアプリを終了させ、install 直後の観測は必ず「not running」で失敗する。
@@ -1334,7 +1328,7 @@ export class MonitorLiveController implements vscode.Disposable {
     this.recording = false;
     if (this.recordedSteps.length === 0) {
       this.post({ type: "recording", active: false });
-      this.post({ type: "recordStatus", message: "操作が記録されていません", file: null });
+      this.post({ type: "recordStatus", message: t("live.recordNoSteps"), file: null });
       return;
     }
     // 生成が終わるまでは「レコーディング終了」を非活性で見せる(active:false のまま generating:true)。
@@ -1353,7 +1347,7 @@ export class MonitorLiveController implements vscode.Disposable {
       const config = this.deps.getConfig();
       const resolution = resolveProjectName(this.deps.workspaceRoot, config);
       if (!app || resolution.kind !== "resolved") {
-        this.post({ type: "recordStatus", message: "対象のテストプロジェクトを解決できませんでした。", file: null });
+        this.post({ type: "recordStatus", message: t("live.projectUnresolvedShort"), file: null });
         return;
       }
 
@@ -1364,12 +1358,12 @@ export class MonitorLiveController implements vscode.Disposable {
       } catch (error) {
         this.post({
           type: "recordStatus",
-          message: `一時ファイルの書き込みに失敗しました: ${errorMessage(error)}`,
+          message: t("live.tempFileWriteFailed", { error: errorMessage(error) }),
           file: null,
         });
         return;
       }
-      this.post({ type: "recordStatus", message: "テストコードを生成中…", file: null });
+      this.post({ type: "recordStatus", message: t("live.generatingCode"), file: null });
 
       let generatedFile: string | undefined;
       let errorMsg: string | undefined;
@@ -1407,7 +1401,7 @@ export class MonitorLiveController implements vscode.Disposable {
         this.deps.openGeneratedDocument(generatedFile);
         this.refreshTestTree();
       } else {
-        this.post({ type: "recordStatus", message: errorMsg ?? "テストコードの生成に失敗しました。", file: null });
+        this.post({ type: "recordStatus", message: errorMsg ?? t("live.codeGenFailed"), file: null });
       }
     } finally {
       this.post({ type: "recording", active: false, generating: false });
@@ -1443,7 +1437,7 @@ export class MonitorLiveController implements vscode.Disposable {
         break;
       case "tapPoint": {
         if (!this.lastScreen) {
-          this.postActionError("先に「更新」で画面を取得してください。");
+          this.postActionError(t("live.refreshFirst"));
           break;
         }
         const point = pointFromClick(
@@ -1455,14 +1449,14 @@ export class MonitorLiveController implements vscode.Disposable {
         const tapChain = tapHit ? locatorChainForElement(tapHit, this.lastElements) : undefined;
         const tapStep: RecordedStep | undefined = tapChain ? { action: "tap", ...tapChain } : undefined;
         const tapLabel = tapHit
-          ? `タップ: ${describeElementShort(tapHit)}`
-          : `タップ: (${Math.round(point.x)}, ${Math.round(point.y)})`;
+          ? t("live.opLabel.tap", { target: describeElementShort(tapHit) })
+          : t("live.opLabel.tap", { target: `(${Math.round(point.x)}, ${Math.round(point.y)})` });
         void this.runTapAtPoint({ cmd: "tap", x: point.x, y: point.y }, tapStep, tapHit, tapLabel);
         break;
       }
       case "dragPoints": {
         if (!this.lastScreen) {
-          this.postActionError("先に「更新」で画面を取得してください。");
+          this.postActionError(t("live.refreshFirst"));
           break;
         }
         const display = { width: message.displayWidth, height: message.displayHeight };
@@ -1475,7 +1469,7 @@ export class MonitorLiveController implements vscode.Disposable {
         const dy = message.toY - message.fromY;
         const direction: "up" | "down" | "left" | "right" =
           Math.abs(dx) >= Math.abs(dy) ? (dx >= 0 ? "right" : "left") : dy < 0 ? "up" : "down";
-        const swipeLabel = { up: "スワイプ: 上", down: "スワイプ: 下", left: "スワイプ: 左", right: "スワイプ: 右" }[direction];
+        const swipeLabel = t("live.opLabel.swipe", { direction: swipeDirectionLabel(direction) });
         void this.runAction(
           {
             cmd: "drag",
@@ -1489,7 +1483,7 @@ export class MonitorLiveController implements vscode.Disposable {
       }
       case "pressPoint": {
         if (!this.lastScreen) {
-          this.postActionError("先に「更新」で画面を取得してください。");
+          this.postActionError(t("live.refreshFirst"));
           break;
         }
         const point = pointFromClick(
@@ -1504,8 +1498,8 @@ export class MonitorLiveController implements vscode.Disposable {
           ? { action: "press", ...locatorChainForElement(pressHit, this.lastElements) }
           : undefined;
         const pressLabel = pressHit
-          ? `ロングプレス: ${describeElementShort(pressHit)}`
-          : `ロングプレス: (${Math.round(point.x)}, ${Math.round(point.y)})`;
+          ? t("live.opLabel.press", { target: describeElementShort(pressHit) })
+          : t("live.opLabel.press", { target: `(${Math.round(point.x)}, ${Math.round(point.y)})` });
         void this.runAction({ cmd: "press", x: point.x, y: point.y, duration }, pressStep, { logLabel: pressLabel });
         break;
       }
@@ -1513,31 +1507,37 @@ export class MonitorLiveController implements vscode.Disposable {
         const refHit = this.lastElements.find((element) => element.ref === message.ref);
         const refChain = refHit ? locatorChainForElement(refHit, this.lastElements) : undefined;
         const tapRefStep: RecordedStep | undefined = refChain ? { action: "tap", ...refChain } : undefined;
-        const tapRefLabel = refHit ? `タップ: ${describeElementShort(refHit)}` : "タップ";
+        const tapRefLabel = refHit
+          ? t("live.opLabel.tap", { target: describeElementShort(refHit) })
+          : t("live.opLabel.tapPlain");
         void this.runAction({ cmd: "tap", ref: message.ref }, tapRefStep, { logLabel: tapRefLabel });
         break;
       }
       case "typeText": {
         if (message.text.trim().length === 0) {
-          this.postActionError("入力するテキストを入力してください。");
+          this.postActionError(t("live.typeTextEmpty"));
           break;
         }
         // 直前の tap でフォーカスした要素へ送る前提でロケータを付けずに記録する(ScenarioCodeGen が
         // type("text") を出す。ref:null=フォーカス中要素への入力)。
         const typeStep: RecordedStep = { action: "type", text: message.text };
-        const typedLabel = message.text.length > 20 ? `${message.text.slice(0, 20)}…` : message.text;
+        const typedLabel = t("live.opLabel.type", { text: truncateOperationLabelText(message.text) });
         void this.runAction(
           { cmd: "type", text: message.text, ref: message.ref },
           typeStep,
-          { logLabel: `入力: ${typedLabel}` },
+          { logLabel: typedLabel },
         );
         break;
       }
       case "home":
-        void this.runAction({ cmd: "home" }, { action: "home" }, { logLabel: "ホーム" });
+        void this.runAction({ cmd: "home" }, { action: "home" }, { logLabel: t("live.opLabel.home") });
         break;
       case "appSwitcher":
-        void this.runAction({ cmd: "appSwitcher" }, { action: "appSwitcher" }, { logLabel: "タスク切替" });
+        void this.runAction(
+          { cmd: "appSwitcher" },
+          { action: "appSwitcher" },
+          { logLabel: t("live.opLabel.appSwitcher") },
+        );
         break;
       case "visibility":
         this.liveTabVisible = message.visible;
