@@ -12,6 +12,7 @@
 - 拡張の挙動を変えたら: package.json の version を上げて `npm run install-local`(パッケージ+インストール+到達確認まで一括。code CLI は PATH に無い)。反映には VSCode の Reload Window+パネル開き直しが必要。コメント整理など挙動不変の変更では vsix 更新不要
 - 再ビルド後の検証前に旧バイナリの常駐プロセス(monitor/host-metrics)を kill(生き残って検証を汚す。docs/performance-tuning.md §7)
 - 実行ファイルを差し替えるビルドは `swift build --product <名>`。`--target` はコンパイルのみでリンクしない(旧バイナリをそのまま実行する事故が実際に起きた)
+- ビルドの合否は exit code で確認する。`npm run compile 2>&1 | grep ... && 次コマンド` のようにパイプすると grep の exit code が使われ、tsc の失敗を握りつぶして次へ進んでしまう(実際に起きかけた)
 - macOS ベータを更新したら Xcode も同じベータへ揃えてフルリビルド。FoundationModels の ABI 不整合で全バイナリが dyld クラッシュする(swift build は SDKROOT/--sdk を無視するため Xcode 側を揃えるしかない)
 
 ## 実装の委譲

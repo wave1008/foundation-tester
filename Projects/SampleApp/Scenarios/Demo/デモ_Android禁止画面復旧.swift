@@ -32,7 +32,7 @@ class デモ_Android禁止画面復旧 {
                     exist(".Other=セキュリティとプライバシー||.Other=Security & privacy")
                 }
             }
-            scene(3, "launchApp で設定へ復帰する(旧 v6 は全滅・v7 は自己復旧)") {
+            scene(3, "launchApp で設定へ復帰する(自己復旧)") {
                 condition {
                     // 復旧枝: 前面が別パッケージのままだと launchApp は前面判定タイムアウト後に
                     // 前面を force-stop+HOME して再試行する。10数秒かかる(BridgeClient session=45s 内)
