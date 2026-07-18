@@ -194,7 +194,7 @@ public final class FMReplayDelegate: ReplayDelegate {
         return parts.prefix(count).joined(separator: "。") + "。"
     }
 
-    /// Explorer.resolveElement の簡易版(elementText→要素解決)。変更時は両者の整合を確認
+    /// elementText→要素解決(テキスト一致で要素を引く簡易版)
     static func resolveByText(_ text: String, in snapshot: SnapshotResponse) -> ElementInfo? {
         var raw = text.trimmingCharacters(in: .whitespacesAndNewlines)
         raw = raw.replacingOccurrences(of: "「", with: "")

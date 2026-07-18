@@ -17,7 +17,7 @@ public final class AndroidDriver: AppDriver {
     let serial: String?
 
     // 直近スナップショットの ref → 中心座標(iOS ランナーと同じ方式)。iOS と違い CLI プロセス内に
-    // 住むため、呼び出しをまたぐ手動駆動用に一時ファイルへも永続化する(explore/run は単一プロセスで不要だが無害)
+    // 住むため、呼び出しをまたぐ手動駆動用に一時ファイルへも永続化する(run は単一プロセスで不要だが無害)
     private var refCenters: [Int: (x: Double, y: Double)] = [:]
     private var screen: FTRect = FTRect(x: 0, y: 0, width: 0, height: 0)
     private var currentPackage: String?

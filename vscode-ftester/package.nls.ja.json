@@ -38,7 +38,6 @@
   "ftester.command.showDeviceMonitor.title": "ftester: デバイスモニターを表示",
   "ftester.command.showLiveControl.title": "ftester: ライブ操作を表示",
   "ftester.command.showResultsDashboard.title": "ftester: 結果ダッシュボードを開く",
-  "ftester.command.explore.title": "ftester: FM探索でシナリオを生成",
   "ftester.command.selectProfile.title": "ftester: 実行プロファイルを選択",
   "ftester.command.validateProfiles.title": "ftester: プロファイルを検証",
   "ftester.command.deleteScenario.title": "削除",

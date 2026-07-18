@@ -1,4 +1,4 @@
-// Flow(インメモリの内部モデル)→ Swift DSL シナリオコードの生成。explore(FM 探索)が使う。
+// Flow(インメモリの内部モデル)→ Swift DSL シナリオコードの生成。gen-scenario(記録操作からのシナリオ生成)が使う。
 // 生成コードは人が追記編集する前提の素直な直列コードにする。
 
 import Foundation
@@ -27,7 +27,7 @@ public enum ScenarioCodeGen {
         lines.append(attr)
         lines.append("class \(className) {")
         lines.append("")
-        // @Test の説明文は flow.name を使う(record 経路=FM 操作要約 / explore 経路=シナリオ名)
+        // @Test の説明文は flow.name を使う(gen-scenario が付けるシナリオ名)
         lines.append("    @Test(\(literal(flow.name)))")
         lines.append("    func \(methodName(1))() {")
         lines.append("        scenario {")
@@ -64,9 +64,9 @@ public enum ScenarioCodeGen {
         return lines.joined(separator: "\n")
     }
 
-    /// FlowStep → DSL コマンド行(+行末コメント)。コメントは FM の意図メモ(note)のみ。
+    /// FlowStep → DSL コマンド行(+行末コメント)。行末コメントは FlowStep.note があるときのみ。
     /// 機械的な操作説明(StepDescription)は付けない(記録機能では note が無く、識別子から
-    /// 自明な説明はコメント規約で不可のため。explore は FM が note を入れるので残る)
+    /// 自明な説明はコメント規約で不可のため)
     static func render(step: FlowStep, indent: String) -> [String] {
         guard var line = command(for: step) else {
             return [indent + "// (未対応ステップ: \(step.summary))"]

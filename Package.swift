@@ -27,7 +27,7 @@ let package = Package(
             dependencies: ["FTCore"],
             swiftSettings: swift5Mode
         ),
-        // FoundationModels エージェント層(Explorer/Verifier/Triager)
+        // FoundationModels 補助層(自己修復・失敗トリアージ・シナリオ命名)
         .target(
             name: "FTAgent",
             dependencies: ["FTCore"],

@@ -6,7 +6,6 @@ import type { MessageDict } from "../core";
 export const panelsStrings = {
   "panels.tabs.devices": { ja: "デバイス", en: "Devices" },
   "panels.tabs.profiles": { ja: "プロファイル", en: "Profiles" },
-  "panels.tabs.explore": { ja: "FM探索", en: "Explore" },
   "panels.tabs.processes": { ja: "プロセス", en: "Processes" },
   "panels.tabs.settings": { ja: "設定", en: "Settings" },
 
@@ -105,19 +104,6 @@ export const panelsStrings = {
     ja: "AVDは変更できません(変更するにはデバイスを除去して作り直してください)",
     en: "AVD cannot be changed (remove and recreate the device to change it)",
   },
-
-  "panels.explore.bundleIdLabel": {
-    ja: "対象アプリの bundle ID / パッケージ名",
-    en: "Target app bundle ID / package name",
-  },
-  "panels.explore.goalLabel": { ja: "テストの目標(自然言語)", en: "Test goal (natural language)" },
-  "panels.explore.goalPlaceholder": {
-    ja: "例: ログインしてホーム画面が表示されることを確認する",
-    en: "e.g. confirm the home screen appears after logging in",
-  },
-  "panels.explore.maxStepsLabel": { ja: "最大ステップ数(1〜50)", en: "Max steps (1-50)" },
-  "panels.explore.start": { ja: "探索を開始", en: "Start Exploring" },
-  "panels.explore.openFile": { ja: "ファイルを開く", en: "Open File" },
 
   "panels.processes.title": { ja: "常駐プロセス", en: "Resident Processes" },
   "panels.processes.killAll": { ja: "すべて強制終了", en: "Force Stop All" },

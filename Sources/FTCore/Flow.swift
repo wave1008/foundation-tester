@@ -1,5 +1,5 @@
 // Flow.swift
-// ステップのインメモリ内部モデル。FM 探索(Explorer)の出力・コード生成(ScenarioCodeGen)の入力・
+// ステップのインメモリ内部モデル。コード生成(ScenarioCodeGen)の入力・
 // StepExecutor の実行単位・ヒールキャッシュの JSON 型として使う(永続化フォーマットではない)。
 
 import Foundation

@@ -239,8 +239,8 @@ export class MonitorLiveController implements vscode.Disposable {
   private recordApp: { bundle: string; platform: string } | null = null;
   /** refreshAppProfiles の選択維持用(applyDevices の selectedDeviceId と同じ役割)。 */
   private selectedAppProfileId: string | undefined;
-  /** generateScenario 実行中かどうか。dispose 時に cli.ts の直列キュー(explore と共有)から
-   * 自分のタスクを止めるか判定するのに使う(monitorExploreController.ts の running と同じ役割)。 */
+  /** generateScenario 実行中かどうか。dispose 時に cli.ts の直列キューから
+   * 自分のタスクを止めるか判定するのに使う。 */
   private generating = false;
 
   constructor(

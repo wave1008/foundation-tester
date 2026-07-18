@@ -2,7 +2,7 @@
 // (録画した操作列)を FlowStep 列として読み込み、FM でシナリオ名を付けて Swift シナリオを生成する。
 // NDJSON 契約: genStarted(任意) → scenarioGenerated | error。ScenarioCodeGen.writeValidated の
 // ビルド検証失敗(隔離)を含め、いかなるエラーも error イベントを出して exit 0 とする
-// (ApiExploreCommand.swift の非致命扱い方針と同じ。TS 側は event フィールドで分岐する契約)。
+// (TS 側は event フィールドで分岐する契約)。
 
 import ArgumentParser
 import Foundation
@@ -23,7 +23,7 @@ struct ApiGenScenarioCommand: AsyncParsableCommand {
     var stepsPath: String
 
     func run() async throws {
-        // ストリーミング読み取りが前提のため常に行バッファにする(ApiExploreCommand.swift と同じ理由)
+        // ストリーミング読み取りが前提のため常に行バッファにする
         setvbuf(stdout, nil, _IOLBF, 0)
 
         emitLine(ApiGenScenarioStartedEvent())

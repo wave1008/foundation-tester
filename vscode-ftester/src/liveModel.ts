@@ -569,8 +569,7 @@ export interface LiveDeviceRef {
   readonly udid: string | null;
 }
 
-/** udid は含めない: monitorExploreController も共用しており `api explore` 系は --udid を
- * 受け付けない(--udid は monitorLiveController.ts が `api live serve` 呼び出し時に個別に付与する)。 */
+/** udid は含めない(--udid は monitorLiveController.ts が `api live serve` 呼び出し時に個別に付与する)。 */
 export function buildDeviceArgs(device: LiveDeviceRef): string[] {
   const args = ["--platform", device.platform];
   if (device.platform === "ios") {

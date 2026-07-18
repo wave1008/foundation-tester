@@ -7,7 +7,6 @@
 
 import { randomBytes } from "node:crypto";
 import * as vscode from "vscode";
-import { DEFAULT_MAX_STEPS } from "./exploreModel";
 import { currentLocale, t } from "./i18n";
 
 /** デバイスモニターパネルのタイトル(VS Code タブ表示・HTML の <title> の両方で使う)。 */
@@ -40,7 +39,6 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
   <div id="tabbar" role="tablist">
     <button id="tab-devices" class="tab-button active" type="button" role="tab" aria-selected="true" aria-controls="panel-devices">${t("panels.tabs.devices")}</button>
     <button id="tab-profiles" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-profiles">${t("panels.tabs.profiles")}</button>
-    <button id="tab-explore" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-explore">${t("panels.tabs.explore")}</button>
     <button id="tab-processes" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-processes">${t("panels.tabs.processes")}</button>
     <button id="tab-settings" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-settings">${t("panels.tabs.settings")}</button>
   </div>
@@ -278,44 +276,6 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
           </div>
         </div>
       </div>
-    </div>
-  </div>
-
-  <div id="panel-explore" class="tab-panel" role="tabpanel" aria-labelledby="tab-explore" style="display: none;">
-    <div class="toolbar">
-      <label for="explore-device-select">${t("panels.common.deviceLabelColon")}</label>
-      <select id="explore-device-select"></select>
-      <button id="explore-btn-refresh-devices" class="secondary">${t("panels.common.refreshDeviceList")}</button>
-    </div>
-    <div id="explore-banner" class="banner"></div>
-
-    <div class="explore-body">
-      <div class="explore-form">
-        <div class="explore-form-row">
-          <label for="explore-bundle-id">${t("panels.explore.bundleIdLabel")}</label>
-          <input type="text" id="explore-bundle-id">
-        </div>
-        <div class="explore-form-row">
-          <label for="explore-goal">${t("panels.explore.goalLabel")}</label>
-          <textarea id="explore-goal" placeholder="${t("panels.explore.goalPlaceholder")}"></textarea>
-        </div>
-        <div class="explore-form-row">
-          <label for="explore-max-steps">${t("panels.explore.maxStepsLabel")}</label>
-          <input type="text" id="explore-max-steps" value="${DEFAULT_MAX_STEPS}">
-        </div>
-        <div class="explore-form-row explore-form-buttons">
-          <button id="explore-btn-start">${t("panels.explore.start")}</button>
-          <button id="explore-btn-cancel" class="secondary" disabled>${t("panels.common.cancel")}</button>
-          <span id="explore-running-label"></span>
-        </div>
-        <div id="explore-form-error" class="explore-form-error"></div>
-      </div>
-
-      <div class="explore-log-header">${t("panels.common.runLog")}</div>
-      <div id="explore-log" class="explore-log"></div>
-
-      <div id="explore-result" class="explore-result"></div>
-      <button id="explore-btn-open-file" class="secondary explore-open-file-btn" style="display: none;">${t("panels.explore.openFile")}</button>
     </div>
   </div>
 

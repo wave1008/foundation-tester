@@ -4,8 +4,8 @@
 //
 // - データは `ftester api results --project <名> --since 90d --min-runs 3` を1発叩いて得る
 //   1行 JSON(dashboardModel.ts の ApiResultsPayload / Sources/ftester/ApiResultsCommand.swift と同期)。
-//   ビルドを伴わない読み取り専用コマンドなので monitorExploreController.ts と同じ理由で
-//   cli.ts の FtesterCli(直列キュー)には乗せず oneShotCli.ts の runOneShot() で単発 spawn する。
+//   ビルドを伴わない読み取り専用コマンドなので cli.ts の FtesterCli(直列キュー)には乗せず
+//   oneShotCli.ts の runOneShot() で単発 spawn する。
 // - 更新タイミング: パネルを開いた時(show())・webview の「更新」ボタン(refresh)・
 //   RunEventBus の runEnded(GUI 実行完了。dry-run は結果 DB に記録されないため対象外)。
 // - webview 資産は src/webview/dashboard/{main.js,style.css}(esbuild が media/dashboard/ へ
@@ -58,7 +58,7 @@ function errorMessage(error: unknown): string {
 class DashboardPanelController implements vscode.Disposable {
   private panel: vscode.WebviewPanel | undefined;
   private readonly deps: DashboardPanelDeps;
-  /** results のワンショット spawn(専用。runOneShot 経由。monitorExploreController.ts と同じ形)。 */
+  /** results のワンショット spawn(専用。runOneShot 経由)。 */
   private activeChild: PipeProcess | undefined;
   private readonly unsubscribeBus: () => void;
   /** runStarted の isDryRun を runEnded まで持ち越す(healReviewPanel.ts の HealFixCollector と同じ理由:
@@ -115,7 +115,7 @@ class DashboardPanelController implements vscode.Disposable {
   }
 
   /** パネル close 時・dispose 時に results 実行中プロセスを止める(oneShotCli.ts 呼び出し側共通の
-   * SIGTERM→2秒後 SIGKILL。monitorExploreController.ts と同じ実装)。 */
+   * SIGTERM→2秒後 SIGKILL)。 */
   private killActiveChild(): void {
     const proc = this.activeChild;
     if (!proc || proc.exitCode !== null || proc.signalCode !== null) {
