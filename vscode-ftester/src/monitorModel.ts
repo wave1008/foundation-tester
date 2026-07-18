@@ -19,6 +19,8 @@
 //     現行バイナリは送出しない(スクショ変換失敗は stderr のみ。ユーザー決定 2026-07-16)が、
 //     読み手としては旧バイナリ互換のため受理し続ける
 
+import type { ResidentProcess } from "./residentProcesses";
+
 export type MonitorPlatform = "ios" | "android";
 export type MonitorDeviceState = "connected" | "booted" | "offline";
 
@@ -322,6 +324,11 @@ export type MonitorToWebviewMessage =
   // setPollingMode 受信直後(monitorPanel.ts)の両方で送る。webview 側は settingsTab.js の
   // applySettings へそのまま渡す(setPollingMode と対の契約)。
   | { readonly type: "pollingMode"; readonly value: boolean }
+  // 設定タブ「常駐プロセス」一覧。refreshResidentProcesses 受信時と killAllResidentProcesses 完了後に送る。
+  // 対向: settingsTab.js の applyResidentMessage。
+  | { readonly type: "residentProcesses"; readonly items: readonly ResidentProcess[]; readonly ts: number }
+  // 強制終了の結果(ボタン再活性化・ステータス表示用)
+  | { readonly type: "residentKillResult"; readonly status: "done" | "cancelled" | "error"; readonly killed?: number; readonly error?: string }
   // デバイスタブのスプリッター位置(タイルペイン高さ px)。ready 直後に workspaceState の永続値を反映する。
   // webview の getState はパネルを閉じると失われるため host 側で永続化する(setTilePaneHeight と対の契約)。
   // webview 側は splitter.js の setTilePaneHeight へ渡す。
@@ -496,6 +503,8 @@ export type MonitorFromWebviewMessage =
   // workspaceState へ永続化し、対の "pollingMode" メッセージで即時反映する(livePanel.ts は
   // workspaceState を直接読むため、この即時反映の対象はデバイスタイルのみ)。
   | { readonly type: "setPollingMode"; readonly value: boolean }
+  | { readonly type: "refreshResidentProcesses" }
+  | { readonly type: "killAllResidentProcesses" }
   // デバイスタブのスプリッターをドラッグ終了した時のタイルペイン高さ(px)。monitorPanel.ts が
   // workspaceState へ永続化し、パネル再作成時に "tilePaneHeight" メッセージで復元する。
   | { readonly type: "setTilePaneHeight"; readonly value: number }
@@ -685,6 +694,9 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
       return typeof value.id === "number";
     case "setPollingMode":
       return typeof value.value === "boolean";
+    case "refreshResidentProcesses":
+    case "killAllResidentProcesses":
+      return true;
     case "setTilePaneHeight":
       return typeof value.value === "number" && value.value > 0;
     case "codecError":

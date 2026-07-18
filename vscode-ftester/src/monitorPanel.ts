@@ -23,6 +23,10 @@
 // - host-metrics プロセスはプロファイル/プロジェクトに依存しないため、監視対象切り替え
 //   (restartMonitorIfScopeChanged 等)では再起動しない。
 
+import { type ChildProcessByStdio, execFile, spawn } from "node:child_process";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+import type { Readable } from "node:stream";
 import * as vscode from "vscode";
 import { repairWifi } from "./adbWifiRepair";
 import type { FtesterCli } from "./cli";
@@ -43,6 +47,7 @@ import { MonitorHealthWatchdog } from "./monitorHealthWatchdog";
 import { PANEL_TITLE, renderHtml } from "./monitorHtml";
 import { type HostMetricsToWebviewMessage, MonitorProcessManager } from "./monitorProcessManager";
 import { MonitorProfilesController } from "./monitorProfilesController";
+import { KIND_ORDER, parseAndroidBridges, parseResidentProcesses, type ResidentProcess } from "./residentProcesses";
 import type { RunBusMessage, RunEventBus } from "./runEventBus";
 import {
   createRunLaneState,
@@ -57,6 +62,9 @@ import type { FtesterTestTree } from "./testTree";
 const VIEW_TYPE = "ftesterMonitor";
 
 type WipeStatusMessage = Extract<MonitorToWebviewMessage, { readonly type: "wipeStatus" }>;
+
+/** stdin=ignore, stdout/stderr=pipe で spawn したプロセスの型(monitorDeviceOps.ts の PipeProcess と同じ形)。 */
+type PipeProcess = ChildProcessByStdio<null, Readable, Readable>;
 
 /** サブコントローラ間連携の唯一の窓口(サブコントローラ同士は互いを直接参照しない)。 */
 export interface MonitorPanelDeps {
@@ -423,6 +431,12 @@ class MonitorPanelController implements vscode.Disposable {
         this.deviceStream.restartAllStreams();
         this.processManager.restartAll();
         break;
+      case "refreshResidentProcesses":
+        void this.refreshResidentProcesses();
+        break;
+      case "killAllResidentProcesses":
+        void this.killAllResidentProcesses();
+        break;
       case "deviceOp":
         this.deviceOps.enqueueLifecycleJob({ kind: "device", name: message.name, op: message.op });
         break;
@@ -568,6 +582,261 @@ class MonitorPanelController implements vscode.Disposable {
     if (this.pendingInitialTab) {
       this.post({ type: "switchTab", tab: this.pendingInitialTab });
       this.pendingInitialTab = undefined;
+    }
+  }
+
+  // UDID(大文字)→ シミュレータ名。親PID が launchd_sim のとき説明をデバイス名にするのに使う。
+  // simctl は重いので 60 秒 TTL でキャッシュ(1 秒間隔の一覧更新で毎回叩かない)。
+  private simulatorNames: Record<string, string> = {};
+  private simulatorNamesFetchedAt = 0;
+
+  // in-app ブリッジは pid ファイルを持たず、注入先アプリのプロセスとして走る。どのシミュレータに
+  // 張られているかは `.ftester/bridge-<port>.inapp`("<udid> <bundleID>" の1行)に記録される。
+  // 実行のたびに変わるのでキャッシュせず毎回読む(小さいファイル数個)。
+  private async readInappBridges(): Promise<Map<string, string>> {
+    const dir = path.join(this.workspaceRoot, ".ftester");
+    const bridges = new Map<string, string>(); // UDID(大文字)→ ポート
+    let entries: string[];
+    try {
+      entries = await fs.readdir(dir);
+    } catch {
+      return bridges;
+    }
+    await Promise.all(
+      entries
+        .filter((f) => f.endsWith(".inapp"))
+        .map(async (f) => {
+          const port = f.match(/^bridge-(\d+)\.inapp$/)?.[1] ?? "";
+          try {
+            const txt = await fs.readFile(path.join(dir, f), "utf8");
+            const udid = txt.trim().split(/\s+/)[0];
+            if (udid) {
+              bridges.set(udid.toUpperCase(), port);
+            }
+          } catch {
+            // stale/読めないファイルは無視
+          }
+        }),
+    );
+    return bridges;
+  }
+
+  private execAdb(adb: string, args: string[]): Promise<string> {
+    return new Promise((resolve) => {
+      execFile(adb, args, { timeout: 4000 }, (err, out) => {
+        resolve(err || !out ? "" : out);
+      });
+    });
+  }
+
+  // Android ブリッジはエミュレータ内の am instrument でホスト ps に出ない。ホスト側に残る
+  // `adb forward tcp:<host> tcp:8123` の一覧から情報行を合成し、デバイス内 PID を
+  // `adb shell pidof <bridgePackage>` で埋める(PID 列に "(12345)" 表示用)。adb 未検出なら空。
+  private async listAndroidBridges(): Promise<ResidentProcess[]> {
+    const adb = resolveAdb();
+    if (!adb) {
+      return [];
+    }
+    const forwardOut = await this.execAdb(adb, ["forward", "--list"]);
+    if (!forwardOut) {
+      return [];
+    }
+    const serials = parseAndroidBridges(forwardOut).map((r) => r.detail);
+    // bridgePackage は Sources/FTAndroid/AndroidBridge.swift の bridgePackage と同期。
+    const pidBySerial = new Map<string, number>();
+    await Promise.all(
+      serials.map(async (serial) => {
+        const out = await this.execAdb(adb, ["-s", serial, "shell", "pidof", "com.example.ftbridge"]);
+        const pid = Number.parseInt(out.trim().split(/\s+/)[0] ?? "", 10);
+        if (Number.isInteger(pid) && pid > 0) {
+          pidBySerial.set(serial, pid);
+        }
+      }),
+    );
+    return parseAndroidBridges(forwardOut, pidBySerial);
+  }
+
+  private async listResidentProcesses(simulatorNames: Record<string, string> = {}): Promise<ResidentProcess[]> {
+    const [stdout, inappBridges, androidBridges] = await Promise.all([
+      new Promise<string>((resolve) => {
+        execFile("ps", ["-axo", "pid=,ppid=,state=,command="], { maxBuffer: 8 * 1024 * 1024 }, (err, out) => {
+          resolve(err ? "" : out);
+        });
+      }),
+      this.readInappBridges(),
+      this.listAndroidBridges(),
+    ]);
+    // config の binaryPath 配下(このリポジトリのビルド成果物)は名前を問わず ftester 由来として拾う。
+    const binaryDir = path.dirname(this.getConfig().binaryPath);
+    // 表示・掃除の対象外を取得段階で除外する: Android エミュ本体(qemu、デバイスタブの領域)と
+    // MCP サーバ(mcp、セッションを守るため掃討しない=表示もしない)。
+    const host = parseResidentProcesses(stdout, { simulatorNames, binaryDir, inappBridges }).filter(
+      (p) => p.kind !== "emulator" && p.kind !== "mcp",
+    );
+    // 合成した android-bridge 行を混ぜ、KIND_ORDER→pid で再整列(pid=0 同士は serial で安定化)。
+    const merged = [...host, ...androidBridges];
+    merged.sort((a, b) => {
+      const d = KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind);
+      if (d !== 0) {
+        return d;
+      }
+      return a.pid !== b.pid ? a.pid - b.pid : a.detail.localeCompare(b.detail);
+    });
+    return merged;
+  }
+
+  private async ensureSimulatorNames(): Promise<void> {
+    const now = Date.now();
+    if (now - this.simulatorNamesFetchedAt < 60000) {
+      return;
+    }
+    this.simulatorNamesFetchedAt = now; // 先に更新して並行取得を防ぐ(失敗しても次は 60 秒後)
+    const json = await new Promise<string>((resolve) => {
+      execFile(
+        "xcrun",
+        ["simctl", "list", "devices", "-j"],
+        { maxBuffer: 8 * 1024 * 1024, timeout: 8000 },
+        (err, out) => resolve(err ? "" : out),
+      );
+    });
+    if (!json) {
+      return;
+    }
+    try {
+      const parsed = JSON.parse(json) as { devices?: Record<string, Array<{ udid?: string; name?: string }>> };
+      const map: Record<string, string> = {};
+      for (const list of Object.values(parsed.devices ?? {})) {
+        for (const d of list) {
+          if (d?.udid && d?.name) {
+            map[String(d.udid).toUpperCase()] = String(d.name);
+          }
+        }
+      }
+      this.simulatorNames = map;
+    } catch {
+      // 壊れた JSON は無視(親説明は UDID 短縮にフォールバック)
+    }
+  }
+
+  private async refreshResidentProcesses(): Promise<void> {
+    await this.ensureSimulatorNames();
+    const items = await this.listResidentProcesses(this.simulatorNames);
+    this.post({ type: "residentProcesses", items, ts: Date.now() });
+  }
+
+  /** ftester CLI を1回実行して完了(または 120s タイムアウト)まで待つ。exit code は問わず
+   *  resolve する(掃除の一手段のため、失敗しても後段の SIGKILL 掃討に委ねて続行する)。 */
+  private runFtester(args: string[]): Promise<void> {
+    return new Promise<void>((resolve) => {
+      const tag = args.join(" ");
+      let proc: PipeProcess;
+      try {
+        proc = spawn(this.getConfig().binaryPath, args, {
+          cwd: this.workspaceRoot,
+          shell: false,
+          stdio: ["ignore", "pipe", "pipe"],
+        });
+      } catch (e) {
+        this.outputChannel.appendLine(`[ftester] ${tag} 起動失敗: ${String(e)}`);
+        resolve();
+        return;
+      }
+      const onLine = (stream: string, chunk: Buffer): void => {
+        for (const raw of chunk.toString("utf8").split("\n")) {
+          const t = raw.trim();
+          if (t) {
+            this.outputChannel.appendLine(`[${tag} ${stream}] ${t}`);
+          }
+        }
+      };
+      proc.stdout.on("data", (c: Buffer) => onLine("stdout", c));
+      proc.stderr.on("data", (c: Buffer) => onLine("stderr", c));
+      const timer = setTimeout(() => {
+        try {
+          proc.kill("SIGKILL");
+        } catch {
+          // already dead
+        }
+        resolve();
+      }, 120000);
+      proc.on("close", () => {
+        clearTimeout(timer);
+        resolve();
+      });
+      proc.on("error", () => {
+        clearTimeout(timer);
+        resolve();
+      });
+    });
+  }
+
+  // SIGKILL 掃討の対象を「この workspace 由来」に限定する判定。実行時の workspaceRoot / binaryDir を
+  // 基準にするため VSIX にパスは焼き込まれない(配布先では各自の開いている workspace が基準になる)。
+  // iOS ブリッジは xctestrun が <workspaceRoot>/.ftester 配下、ftester CLI/mcp/stream/run は binaryDir
+  // から起動されるため一致する。sim-runner / in-app はコマンドに workspace パスを持たない(sim
+  // コンテナ内)ため一致せず、それらは step 2 の bridge down --all に委ねる。
+  private isWorkspaceOwned(command: string): boolean {
+    if (command.includes(this.workspaceRoot)) {
+      return true;
+    }
+    const binaryDir = path.dirname(this.getConfig().binaryPath);
+    return path.isAbsolute(binaryDir) && command.includes(binaryDir);
+  }
+
+  private async killAllResidentProcesses(): Promise<void> {
+    const CONFIRM = "強制終了";
+    const choice = await vscode.window.showWarningMessage(
+      "この workspace の ftester 常駐プロセスを停止します。\n\niOS ブリッジ/ランナー・in-app ブリッジ・モニター/ホストメトリクス/画面ストリームを停止し、Android ブリッジは am/adb で停止します。\n\niOS シミュレータと Android エミュレータ本体・MCP サーバ・他 workspace のプロセスは停止しません。一部のプロセスは自動復帰します。",
+      { modal: true },
+      CONFIRM,
+    );
+    if (choice !== CONFIRM) {
+      this.post({ type: "residentKillResult", status: "cancelled" });
+      return;
+    }
+    try {
+      // 1) 自分の常駐子を respawn 抑止して停止(生 SIGKILL による respawn churn を防ぐため先に)。
+      this.deviceStream.disposeAllForDown();
+      this.processManager.stopMonitorProcess();
+      this.processManager.stopHostMetricsProcess();
+      // 2) iOS ブリッジをシミュレータ本体を残してクリーン停止(xcuitest+inapp。pid/inapp ファイル基準で
+      //    SIGTERM→simctl terminate。simctl shutdown はしない=デバイスタブの領域)。
+      await this.runFtester(["bridge", "down", "--all"]);
+      // 3) Android ブリッジを am force-stop + adb forward --remove で停止(qemu=エミュレータ本体は残す)。
+      //    adb 未検出環境ではスキップ(出力ノイズを避ける)。
+      if (resolveAdb()) {
+        await this.runFtester(["bridge", "down", "--platform", "android"]);
+      }
+      // 4) 残余のホスト常駐を SIGKILL 掃討。この workspace 由来のものだけに限定する
+      //    (machine-wide の巻き込み・別 repo の同種プロセスへの誤爆を避ける)。除外:
+      //    Android エミュ本体(emulator)/ PID 無しの情報行 / MCP サーバ(mcp)/ 拡張ホスト自身。
+      const remaining = await this.listResidentProcesses();
+      let killed = 0;
+      for (const p of remaining) {
+        if (p.pid <= 0 || p.pid === process.pid || p.kind === "emulator" || p.kind === "mcp") {
+          continue;
+        }
+        if (!this.isWorkspaceOwned(p.command)) {
+          continue;
+        }
+        try {
+          process.kill(p.pid, "SIGKILL");
+          killed++;
+        } catch (e) {
+          if ((e as NodeJS.ErrnoException)?.code !== "ESRCH") {
+            this.outputChannel.appendLine(`[ftester] 常駐プロセス(PID ${p.pid})の終了に失敗: ${String(e)}`);
+          }
+        }
+      }
+      this.post({ type: "residentKillResult", status: "done", killed });
+    } catch (e) {
+      this.post({ type: "residentKillResult", status: "error", error: String(e) });
+    } finally {
+      // step 1 でモニター/host-metrics を止めている。デバイスタブはモニターが供給する状態でしか
+      // タイルを更新できず、止めたままだと「シャットダウン中」等で固まる。掃討後に自動再起動して
+      // 復帰させる(手動「モニター再起動」不要)。restartAll は失敗カウンタもリセットする。
+      this.processManager.restartAll();
+      await this.refreshResidentProcesses();
     }
   }
 }

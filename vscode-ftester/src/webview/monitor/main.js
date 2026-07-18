@@ -59,6 +59,7 @@ import {
 } from './modals.js';
 import { applyExploreMessage } from './exploreTab.js';
 import { applySettings } from './settingsTab.js';
+import { applyResidentMessage } from './processesTab.js';
 import { activateTab, TAB_IDS, switchTab } from './tabs.js';
 import { setTilePaneHeight } from './splitter.js';
 
@@ -177,6 +178,10 @@ window.addEventListener('message', (event) => {
       break;
     case 'pollingMode':
       applySettings(message);
+      break;
+    case 'residentProcesses':
+    case 'residentKillResult':
+      applyResidentMessage(message);
       break;
     case 'tilePaneHeight':
       setTilePaneHeight(message.value);
