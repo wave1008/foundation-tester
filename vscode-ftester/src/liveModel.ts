@@ -463,6 +463,80 @@ export function describeElementShort(element: LiveElement): string {
   return element.type;
 }
 
+/** セレクタ(`||` 区切り節)から表示ラベルを抽出する。節分類は Sources/FTDSL/FTSelector.swift の
+ * parseClause と同期(label を持つ最初の節を採用。無ければセレクタ全体を返す)。 */
+export function selectorObjectPhrase(selector: string): string {
+  for (const clause of selector.split("||")) {
+    if (clause.startsWith("=")) {
+      return clause.slice(1);
+    }
+    if (clause.startsWith("#")) {
+      continue;
+    }
+    if (clause.startsWith(".") && clause.length > 1) {
+      const body = clause.slice(1);
+      if (body.includes("#")) {
+        continue;
+      }
+      const eq = body.indexOf("=");
+      if (eq !== -1) {
+        return body.slice(eq + 1);
+      }
+      continue;
+    }
+    return clause;
+  }
+  return selector;
+}
+
+function truncateOperationLabelText(text: string): string {
+  return text.length > 20 ? `${text.slice(0, 20)}…` : text;
+}
+
+const SWIPE_DIRECTION_LABELS: Record<string, string> = { up: "上", down: "下", left: "左", right: "右" };
+
+/** StepEvent.description(RunEventBus 由来)を「操作記録」用の和文ラベルへ変換する。description の
+ * 構文は Sources/FTDSL/Commands.swift 各コマンドの perform(description:) と、セレクタ→ラベル抽出は
+ * selectorObjectPhrase(= StepDescription.objectPhrase(ofSelector:) / FTSelector.parseClause)と同期が必要。 */
+export function stepDescriptionToOperationLabel(description: string): string {
+  const verb = description.split(/\s/, 1)[0] ?? "";
+  const quoted = description.match(/"([^"]*)"/g)?.map((s) => s.slice(1, -1));
+  switch (verb) {
+    case "tap":
+      return quoted?.[0] !== undefined ? `タップ: ${selectorObjectPhrase(quoted[0])}` : description;
+    case "press":
+      return quoted?.[0] !== undefined ? `ロングプレス: ${selectorObjectPhrase(quoted[0])}` : description;
+    case "type": {
+      const text = quoted?.[quoted.length - 1];
+      return text !== undefined ? `入力: ${truncateOperationLabelText(text)}` : description;
+    }
+    case "scrollTo":
+      return quoted?.[0] !== undefined ? `スクロール: ${selectorObjectPhrase(quoted[0])}` : description;
+    case "swipe": {
+      const dir = description.split(/\s+/)[1];
+      const label = dir !== undefined ? SWIPE_DIRECTION_LABELS[dir] : undefined;
+      return label !== undefined ? `スワイプ: ${label}` : description;
+    }
+    case "home":
+      return "ホーム";
+    case "appSwitcher":
+      return "タスク切替";
+    case "launch": {
+      const bundle = description.split(/\s+/)[1];
+      return bundle !== undefined ? `起動: ${bundle}` : description;
+    }
+    case "terminate":
+      return "終了";
+    case "wait": {
+      const arg = description.split(/\s+/)[1];
+      const seconds = arg?.endsWith("s") ? arg.slice(0, -1) : undefined;
+      return seconds !== undefined ? `待機: ${seconds}秒` : description;
+    }
+    default:
+      return description;
+  }
+}
+
 // ---- デバイス → CLI引数組み立て -----------------------------------------------------------
 
 export interface LiveDeviceRef {

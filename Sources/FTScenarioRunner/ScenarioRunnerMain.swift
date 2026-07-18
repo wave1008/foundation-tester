@@ -140,11 +140,11 @@ struct RunScenario: AsyncParsableCommand {
     var pauseOnStart = false
 
     func run() async throws {
-        if debug {
-            // paused イベントがパイプのバッファに滞留するとホストと相互待ちで
-            // デッドロックするため、stdout を行バッファにする(パイプ既定は全バッファ)
-            setvbuf(stdout, nil, _IOLBF, 0)
-        }
+        // stdout を常に行バッファにする(パイプ既定は全バッファでプロセス終了まで滞留)。2つの理由:
+        //   - step 等イベントを実行中に逐次ホストへ届ける(ライブ操作パネルの操作記録の都度更新など)
+        //   - --debug の paused イベントがパイプに滞留するとホストと相互待ちでデッドロックする
+        // ホスト側 stdout も同様に常時行バッファ(ApiRunCommand.swift の setvbuf(_IOLBF))。
+        setvbuf(stdout, nil, _IOLBF, 0)
         guard let (testClass, descriptor) = ScenarioDiscovery.find(id: scenario) else {
             let available = ScenarioDiscovery.allTestClasses()
                 .flatMap { c in c.scenarios.map { "\(c.className).\($0.name)" } }

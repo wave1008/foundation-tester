@@ -61,10 +61,12 @@ import {
   type RecordedStep,
   sameLiveDeviceRef,
   serializeLiveServeCommand,
+  stepDescriptionToOperationLabel,
   toSnapshotMessage,
 } from "./liveModel";
 import type { LiveDeps } from "./liveDeps";
 import type { LiveRunTarget } from "./liveRunTarget";
+import type { StepEvent } from "./model";
 import { NdjsonParser } from "./ndjson";
 import { type OneShotResult, type PipeProcess, runOneShot } from "./oneShotCli";
 
@@ -268,6 +270,16 @@ export class MonitorLiveController implements vscode.Disposable {
    * 全ユーザー操作(tap/swipe/type/press/home/appSwitcher)の成否をここへ流す。 */
   private postOperationLog(label: string, ok: boolean): void {
     this.post({ type: "operationLog", label, ok });
+  }
+
+  /** テスト実行(RunEventBus の step)由来の操作を「操作記録」へ流す。section=action のみ・
+   * skipped は除外。ラベルは手動操作と同じ和文に揃える(stepDescriptionToOperationLabel)。 */
+  public injectTestStep(event: StepEvent): void {
+    if (event.section !== "action" || event.status === "skipped" || !event.description) {
+      return;
+    }
+    const label = stepDescriptionToOperationLabel(event.description);
+    this.postOperationLog(label, event.status !== "failed");
   }
 
   /** actionError バナーを出す共通経路。接続系の文言(serve 不在・タイムアウト・終了)なら

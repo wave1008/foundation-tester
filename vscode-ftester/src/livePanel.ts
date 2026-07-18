@@ -69,6 +69,11 @@ class LivePanelController implements vscode.Disposable {
   }
 
   private handleBusMessage(message: RunBusMessage): void {
+    // 操作記録への流し込みは liveControlOnRun とは独立(手動で開いたパネルでも流す)。
+    // パネル未オープン時は流さない(postMessage は no-op だが無駄を避ける)。
+    if (message.type === "event" && message.event.kind === "step" && this.panel !== undefined) {
+      this.live.injectTestStep(message.event);
+    }
     if (!this.getConfig().liveControlOnRun) {
       return;
     }
