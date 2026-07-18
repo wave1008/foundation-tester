@@ -6,6 +6,7 @@
 import { type ChildProcessByStdio, spawn } from "node:child_process";
 import type { Readable } from "node:stream";
 import { resolveProjectName } from "./config";
+import { t } from "./i18n";
 import {
   bulkLifecycleOp,
   createDeviceLifecycleQueueState,
@@ -40,8 +41,8 @@ export type CreateDeviceMessage = Extract<MonitorFromWebviewMessage, { type: "cr
 
 /** monitorProfilesController.ts の handleMachineDeviceRemove(複数選択一括除去の確認文言)で使う。 */
 export function summarizeDeviceNames(names: readonly string[]): string {
-  const shown = names.slice(0, 3).join("、");
-  return names.length > 3 ? `${shown} ほか` : shown;
+  const shown = names.slice(0, 3).join(t("deviceOps.nameSeparator"));
+  return names.length > 3 ? t("deviceOps.nameListMore", { shown }) : shown;
 }
 
 /** デバイスライフサイクルの直列キューおよび device-catalog/installed-devices/create-device の
@@ -129,7 +130,7 @@ export class MonitorDeviceOps {
     );
     if (runningBulkUp) {
       if (this.bulkUpProc) {
-        this.deps.outputChannel.appendLine("[ftester] デバイスの起動を中断します(devices-up へ SIGTERM)");
+        this.deps.outputChannel.appendLine(t("deviceOps.log.cancelBulkUpSigterm"));
         this.bulkUpProc.kill("SIGTERM");
       }
       return;
@@ -141,7 +142,7 @@ export class MonitorDeviceOps {
         this.deps.post({ type: "deviceOpBusy", name: n, op: null, status: null });
       }
       this.postBootBusy();
-      this.deps.outputChannel.appendLine("[ftester] キュー待ちの一括起動を取り消しました");
+      this.deps.outputChannel.appendLine(t("deviceOps.log.bulkUpQueueCancelled"));
     }
   }
 
@@ -355,7 +356,7 @@ export class MonitorDeviceOps {
         stdio: ["ignore", "pipe", "pipe"],
       });
     } catch (error) {
-      this.deps.outputChannel.appendLine(`[ftester] devices ${kind} の起動に失敗しました: ${String(error)}`);
+      this.deps.outputChannel.appendLine(t("deviceOps.log.devicesStartFailed", { kind, error: String(error) }));
       finishOnce();
       return;
     }
@@ -385,13 +386,13 @@ export class MonitorDeviceOps {
 
       proc.on("error", (error) => {
         this.deps.outputChannel.appendLine(
-          `[ftester] devices ${kind} の実行でエラーが発生しました: ${error.message}`,
+          t("deviceOps.log.devicesRuntimeError", { kind, error: error.message }),
         );
         finishOnce();
       });
       proc.on("close", (exitCode) => {
         this.deps.outputChannel.appendLine(
-          `[ftester] devices ${kind} が終了しました(exit code: ${String(exitCode)})`,
+          t("deviceOps.log.devicesClosed", { kind, exitCode: String(exitCode) }),
         );
         finishOnce();
       });
@@ -412,7 +413,7 @@ export class MonitorDeviceOps {
       (value) => {
         if (!isDevicesUpEvent(value)) {
           this.deps.outputChannel.appendLine(
-            `[${label}] 未知の形式の行を無視しました: ${JSON.stringify(value)}`,
+            t("deviceOps.log.unknownLine", { label, value: JSON.stringify(value) }),
           );
           return;
         }
@@ -444,7 +445,7 @@ export class MonitorDeviceOps {
           case "finished":
             if (!value.ok) {
               this.deps.outputChannel.appendLine(
-                `[ftester] ${label} が失敗しました: ${value.error ?? "(詳細不明)"}`,
+                t("deviceOps.log.bulkOpFailed", { label, error: value.error ?? t("deviceOps.detailUnknown") }),
               );
             }
             break;
@@ -457,7 +458,7 @@ export class MonitorDeviceOps {
 
     proc.on("error", (error) => {
       this.deps.outputChannel.appendLine(
-        `[ftester] devices ${kind} の実行でエラーが発生しました: ${error.message}`,
+        t("deviceOps.log.devicesRuntimeError", { kind, error: error.message }),
       );
       finishOnce();
     });
@@ -470,7 +471,7 @@ export class MonitorDeviceOps {
       }
       startedNames.clear();
       this.deps.outputChannel.appendLine(
-        `[ftester] devices ${kind} が終了しました(exit code: ${String(exitCode)})`,
+        t("deviceOps.log.devicesClosed", { kind, exitCode: String(exitCode) }),
       );
       finishOnce();
     });
@@ -515,7 +516,9 @@ export class MonitorDeviceOps {
         stdio: ["ignore", "pipe", "pipe"],
       });
     } catch (error) {
-      this.deps.outputChannel.appendLine(`[ftester] devices-restart の起動に失敗しました: ${String(error)}`);
+      this.deps.outputChannel.appendLine(
+        t("deviceOps.log.devicesRestartStartFailed", { error: String(error) }),
+      );
       finishOnce();
       return;
     }
@@ -527,7 +530,7 @@ export class MonitorDeviceOps {
       (value) => {
         if (!isDevicesRestartEvent(value)) {
           this.deps.outputChannel.appendLine(
-            `[devices-restart] 未知の形式の行を無視しました: ${JSON.stringify(value)}`,
+            t("deviceOps.log.unknownLine", { label: "devices-restart", value: JSON.stringify(value) }),
           );
           return;
         }
@@ -553,7 +556,7 @@ export class MonitorDeviceOps {
           case "finished":
             if (!value.ok) {
               this.deps.outputChannel.appendLine(
-                `[ftester] devices-restart が失敗しました: ${value.error ?? "(詳細不明)"}`,
+                t("deviceOps.log.devicesRestartFailed", { error: value.error ?? t("deviceOps.detailUnknown") }),
               );
             }
             break;
@@ -573,7 +576,7 @@ export class MonitorDeviceOps {
 
     proc.on("error", (error) => {
       this.deps.outputChannel.appendLine(
-        `[ftester] devices-restart の実行でエラーが発生しました: ${error.message}`,
+        t("deviceOps.log.devicesRestartRuntimeError", { error: error.message }),
       );
       finishOnce();
     });
@@ -584,7 +587,7 @@ export class MonitorDeviceOps {
       }
       busyNames.clear();
       this.deps.outputChannel.appendLine(
-        `[ftester] devices-restart が終了しました(exit code: ${String(exitCode)})`,
+        t("deviceOps.log.devicesRestartClosed", { exitCode: String(exitCode) }),
       );
       finishOnce();
     });
@@ -637,11 +640,13 @@ export class MonitorDeviceOps {
       args.push("--gpu", "swiftshader_indirect");
     }
 
-    const attemptLabel = attempt > 0 ? `(再試行 ${attempt}/${MonitorDeviceOps.deviceUpMaxRetries})` : "";
+    const attemptLabel = attempt > 0
+      ? t("deviceOps.retryLabel", { attempt, max: MonitorDeviceOps.deviceUpMaxRetries })
+      : "";
     let failureLogged = false;
     const logFailure = (message: string): void => {
       failureLogged = true;
-      this.deps.outputChannel.appendLine(`[ftester] device-${op}(${name})が失敗しました${attemptLabel}: ${message}`);
+      this.deps.outputChannel.appendLine(t("deviceOps.log.deviceOpFailed", { op, name, attemptLabel, message }));
     };
 
     // この試行の終端('error' と 'close' の二重発火を1回に集約)。up が失敗し追加試行が残っていれば
@@ -654,8 +659,12 @@ export class MonitorDeviceOps {
       attemptSettled = true;
       if (failed && op === "up" && attempt < MonitorDeviceOps.deviceUpMaxRetries) {
         this.deps.outputChannel.appendLine(
-          `[ftester] device-up(${name})を再試行します(${attempt + 1}/${MonitorDeviceOps.deviceUpMaxRetries}、`
-            + `${MonitorDeviceOps.deviceUpRetryDelayMs}ms 後)`,
+          t("deviceOps.log.deviceUpRetrying", {
+            name,
+            nextAttempt: attempt + 1,
+            max: MonitorDeviceOps.deviceUpMaxRetries,
+            delayMs: MonitorDeviceOps.deviceUpRetryDelayMs,
+          }),
         );
         setTimeout(
           () => this.runDeviceOpAttempt(name, op, attempt + 1, finishOnce),
@@ -684,14 +693,14 @@ export class MonitorDeviceOps {
       (value) => {
         if (!isDeviceOpEvent(value)) {
           this.deps.outputChannel.appendLine(
-            `[device-${op} ${name}] 未知の形式の行を無視しました: ${JSON.stringify(value)}`,
+            t("deviceOps.log.unknownLine", { label: `device-${op} ${name}`, value: JSON.stringify(value) }),
           );
           return;
         }
         if (value.kind === "log") {
           this.deps.outputChannel.appendLine(`[device-${op} ${name}] ${value.message}`);
         } else if (!value.ok) {
-          const message = value.error ?? `device-${op} に失敗しました。`;
+          const message = value.error ?? t("deviceOps.deviceOpFailedGeneric", { op });
           logFailure(message);
           this.deps.post({ type: "deviceOpFailed", name, message });
         }
@@ -715,12 +724,12 @@ export class MonitorDeviceOps {
       stdoutParser.end();
       stderrParser.end();
       this.deps.outputChannel.appendLine(
-        `[ftester] device-${op}(${name})が終了しました${attemptLabel}(exit code: ${String(exitCode)})`,
+        t("deviceOps.log.deviceOpClosed", { op, name, attemptLabel, exitCode: String(exitCode) }),
       );
       // finished(ok:false)を経由せずに落ちたケース(クラッシュ・kill 等)を捕捉する。
       // finished 経由で既にログ済みの場合は二重に出さない。
       if (!failureLogged && exitCode !== 0) {
-        logFailure(`プロセスが exit code ${String(exitCode)} で終了しました`);
+        logFailure(t("deviceOps.processExitedWithCode", { exitCode: String(exitCode) }));
       }
       settle(failureLogged);
     });
@@ -748,7 +757,7 @@ export class MonitorDeviceOps {
         stdio: ["ignore", "pipe", "pipe"],
       });
     } catch (error) {
-      const message = `device-catalog の起動に失敗しました: ${String(error)}`;
+      const message = t("deviceOps.cmdStartFailed", { cmd: "device-catalog", error: String(error) });
       this.deps.outputChannel.appendLine(`[ftester] ${message}`);
       this.deps.post({ type: "deviceCatalog", ok: false, catalog: null, error: message });
       return;
@@ -780,7 +789,7 @@ export class MonitorDeviceOps {
     };
 
     proc.on("error", (error) => {
-      const message = `device-catalog の実行でエラーが発生しました: ${error.message}`;
+      const message = t("deviceOps.cmdRuntimeError", { cmd: "device-catalog", error: error.message });
       this.deps.outputChannel.appendLine(`[ftester] ${message}`);
       flushStderr();
       respond({ type: "deviceCatalog", ok: false, catalog: null, error: message });
@@ -788,7 +797,7 @@ export class MonitorDeviceOps {
     proc.on("close", (exitCode) => {
       flushStderr();
       if (exitCode !== 0) {
-        const message = `device-catalog が失敗しました(exit code: ${String(exitCode)})`;
+        const message = t("deviceOps.cmdFailedExitCode", { cmd: "device-catalog", exitCode: String(exitCode) });
         this.deps.outputChannel.appendLine(`[ftester] ${message}`);
         respond({ type: "deviceCatalog", ok: false, catalog: null, error: message });
         return;
@@ -797,13 +806,13 @@ export class MonitorDeviceOps {
       try {
         parsed = JSON.parse(stdout);
       } catch (error) {
-        const message = `device-catalog の出力を解析できませんでした: ${String(error)}`;
+        const message = t("deviceOps.cmdParseFailed", { cmd: "device-catalog", error: String(error) });
         this.deps.outputChannel.appendLine(`[ftester] ${message}`);
         respond({ type: "deviceCatalog", ok: false, catalog: null, error: message });
         return;
       }
       if (!isDeviceCatalogJson(parsed)) {
-        const message = "device-catalog の出力形式が不正です。";
+        const message = t("deviceOps.cmdOutputInvalid", { cmd: "device-catalog" });
         this.deps.outputChannel.appendLine(`[ftester] ${message}`);
         respond({ type: "deviceCatalog", ok: false, catalog: null, error: message });
         return;
@@ -829,7 +838,7 @@ export class MonitorDeviceOps {
         stdio: ["ignore", "pipe", "pipe"],
       });
     } catch (error) {
-      const message = `installed-devices の起動に失敗しました: ${String(error)}`;
+      const message = t("deviceOps.cmdStartFailed", { cmd: "installed-devices", error: String(error) });
       this.deps.outputChannel.appendLine(`[ftester] ${message}`);
       this.deps.post({ type: "installedDevices", ok: false, data: null, error: message });
       return;
@@ -860,7 +869,7 @@ export class MonitorDeviceOps {
     };
 
     proc.on("error", (error) => {
-      const message = `installed-devices の実行でエラーが発生しました: ${error.message}`;
+      const message = t("deviceOps.cmdRuntimeError", { cmd: "installed-devices", error: error.message });
       this.deps.outputChannel.appendLine(`[ftester] ${message}`);
       flushStderr();
       respond({ type: "installedDevices", ok: false, data: null, error: message });
@@ -868,7 +877,7 @@ export class MonitorDeviceOps {
     proc.on("close", (exitCode) => {
       flushStderr();
       if (exitCode !== 0) {
-        const message = `installed-devices が失敗しました(exit code: ${String(exitCode)})`;
+        const message = t("deviceOps.cmdFailedExitCode", { cmd: "installed-devices", exitCode: String(exitCode) });
         this.deps.outputChannel.appendLine(`[ftester] ${message}`);
         respond({ type: "installedDevices", ok: false, data: null, error: message });
         return;
@@ -877,13 +886,13 @@ export class MonitorDeviceOps {
       try {
         parsed = JSON.parse(stdout);
       } catch (error) {
-        const message = `installed-devices の出力を解析できませんでした: ${String(error)}`;
+        const message = t("deviceOps.cmdParseFailed", { cmd: "installed-devices", error: String(error) });
         this.deps.outputChannel.appendLine(`[ftester] ${message}`);
         respond({ type: "installedDevices", ok: false, data: null, error: message });
         return;
       }
       if (!isInstalledDevicesJson(parsed)) {
-        const message = "installed-devices の出力形式が不正です。";
+        const message = t("deviceOps.cmdOutputInvalid", { cmd: "installed-devices" });
         this.deps.outputChannel.appendLine(`[ftester] ${message}`);
         respond({ type: "installedDevices", ok: false, data: null, error: message });
         return;
@@ -907,7 +916,7 @@ export class MonitorDeviceOps {
         type: "createDeviceResult",
         ok: false,
         name: msg.name,
-        error: "作成処理が既に実行中です。",
+        error: t("deviceOps.createAlreadyRunning"),
         device: null,
       });
       return;
@@ -919,7 +928,7 @@ export class MonitorDeviceOps {
         type: "createDeviceResult",
         ok: false,
         name: msg.name,
-        error: "対象のテストプロジェクトを解決できませんでした。ftester.project 設定を確認してください。",
+        error: t("deviceOps.projectUnresolved"),
         device: null,
       });
       return;
@@ -971,7 +980,7 @@ export class MonitorDeviceOps {
       });
     } catch (error) {
       this.deps.outputChannel.appendLine(
-        `[ftester] create-device(${msg.name})の起動に失敗しました: ${String(error)}`,
+        t("deviceOps.log.createDeviceStartFailed", { name: msg.name, error: String(error) }),
       );
       respond(false, String(error), null);
       return;
@@ -981,7 +990,7 @@ export class MonitorDeviceOps {
       (value) => {
         if (!isCreateDeviceEvent(value)) {
           this.deps.outputChannel.appendLine(
-            `[create-device ${msg.name}] 未知の形式の行を無視しました: ${JSON.stringify(value)}`,
+            t("deviceOps.log.unknownLine", { label: `create-device ${msg.name}`, value: JSON.stringify(value) }),
           );
           return;
         }
@@ -990,7 +999,10 @@ export class MonitorDeviceOps {
         } else {
           if (!value.ok) {
             this.deps.outputChannel.appendLine(
-              `[ftester] create-device(${msg.name})が失敗しました: ${value.error ?? "(詳細不明)"}`,
+              t("deviceOps.log.createDeviceFailed", {
+                name: msg.name,
+                error: value.error ?? t("deviceOps.detailUnknown"),
+              }),
             );
           }
           respond(value.ok, value.error, value.device ? { avd: value.device.avd, udid: value.device.udid } : null);
@@ -1008,7 +1020,7 @@ export class MonitorDeviceOps {
 
     proc.on("error", (error) => {
       this.deps.outputChannel.appendLine(
-        `[ftester] create-device(${msg.name})の実行でエラーが発生しました: ${error.message}`,
+        t("deviceOps.log.createDeviceRuntimeError", { name: msg.name, error: error.message }),
       );
       respond(false, error.message, null);
     });
@@ -1016,10 +1028,10 @@ export class MonitorDeviceOps {
       stdoutParser.end();
       stderrParser.end();
       this.deps.outputChannel.appendLine(
-        `[ftester] create-device(${msg.name})が終了しました(exit code: ${String(exitCode)})`,
+        t("deviceOps.log.createDeviceClosed", { name: msg.name, exitCode: String(exitCode) }),
       );
       // finished を経由せず落ちた場合の合成失敗(executeDeviceOpJob と同じパターン。responded ガードで二重防止)。
-      respond(false, `プロセスが exit code ${String(exitCode)} で終了しました`, null);
+      respond(false, t("deviceOps.processExitedWithCode", { exitCode: String(exitCode) }), null);
     });
   }
 }

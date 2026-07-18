@@ -30,6 +30,7 @@ import {
   Variable,
 } from "@vscode/debugadapter";
 import type { DebugProtocol } from "@vscode/debugprotocol";
+import { t } from "./i18n";
 import { isRunEvent, type RunStepSection } from "./model";
 import { NdjsonParser } from "./ndjson";
 import { createRunReducerState, reduceRunEvent, type RunReducerState } from "./runReducer";
@@ -259,7 +260,7 @@ export class FtesterDebugSession extends DebugSession {
     // 停止中(lastPaused あり)のときだけ、スコープ「ステップ」を1つ返す。
     // 変数はステップ情報のみのフラットな一覧なので expensive: false。
     const scopes = this.lastPaused
-      ? [new Scope("ステップ", STEP_SCOPE_VARIABLES_REFERENCE, false)]
+      ? [new Scope(t("run.debug.stepScopeName"), STEP_SCOPE_VARIABLES_REFERENCE, false)]
       : [];
     response.body = { scopes };
     this.sendResponse(response);
@@ -290,13 +291,13 @@ export class FtesterDebugSession extends DebugSession {
       }
       variables.push(new Variable(name, String(value)));
     };
-    push("シナリオ", paused.scenario);
-    push("ステップ番号", paused.index);
-    push("コマンド", paused.description);
+    push(t("run.debug.varScenario"), paused.scenario);
+    push(t("run.debug.varStepIndex"), paused.index);
+    push(t("run.debug.varCommand"), paused.description);
     push("scene", paused.scene);
-    push("区分", paused.section);
+    push(t("run.debug.varSection"), paused.section);
     push(
-      "位置",
+      t("run.debug.varPosition"),
       paused.file !== undefined && paused.line != null ? `${paused.file}:${paused.line}` : undefined,
     );
     return variables;
@@ -342,14 +343,14 @@ export class FtesterDebugSession extends DebugSession {
     try {
       child.stdin.write(`${JSON.stringify(obj)}\n`);
     } catch (error) {
-      this.log(`stdin への書き込みに失敗しました: ${String(error)}`, "stderr");
+      this.log(t("run.debug.stdinWriteFailed", { error: String(error) }), "stderr");
     }
   }
 
   private startDebuggee(): void {
     const args = this.launchArgs;
     if (!args) {
-      this.log("launch 引数が無いまま configurationDone を受信しました", "stderr");
+      this.log(t("run.debug.noLaunchArgs"), "stderr");
       this.finishWithTerminated();
       return;
     }
@@ -395,7 +396,7 @@ export class FtesterDebugSession extends DebugSession {
         stdio: ["pipe", "pipe", "pipe"],
       });
     } catch (error) {
-      this.forwardStderrLine(`ftester CLI の起動に失敗しました: ${String(error)}`);
+      this.forwardStderrLine(t("run.cli.spawnFailed", { error: String(error) }));
       this.finishWithTerminated();
       return;
     }
@@ -419,7 +420,7 @@ export class FtesterDebugSession extends DebugSession {
     child.stderr.on("data", (chunk: Buffer) => stderrParser.push(chunk));
 
     child.on("error", (error) => {
-      this.forwardStderrLine(`ftester プロセスの実行でエラーが発生しました: ${error.message}`);
+      this.forwardStderrLine(t("run.debug.processError", { message: error.message }));
       this.finishWithTerminated();
     });
 

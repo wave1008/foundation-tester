@@ -7,6 +7,7 @@
 // 契約: webview へは { type: "healthWatch", name, phase } を post する(name は deviceOpBusy と
 // 同じ名前空間=デバイス論理名。monitorModel.ts の MonitorToWebviewMessage 参照)。
 
+import { t } from "./i18n";
 import type { MonitorDevice, MonitorDeviceState, MonitorToWebviewMessage } from "./monitorModel";
 
 export type HealthWatchMessage = Extract<MonitorToWebviewMessage, { readonly type: "healthWatch" }>;
@@ -148,7 +149,9 @@ export class MonitorHealthWatchdog {
 
     if (!entry.degraded) {
       entry.degraded = true;
-      this.deps.log(`[health-watch] ${name}: ゲストOS健全性異常を検出しました(${health.join(", ")})。`);
+      this.deps.log(
+        `[health-watch] ${name}: ${t("monitor.healthWatch.issueDetected", { health: health.join(", ") })}`,
+      );
       // failed 後に白⇔正常をフラッピングする個体向け: 異常中はタイルに修復失敗を出し続ける。
       this.deps.post({ type: "healthWatch", name, phase: entry.failed ? "failed" : "unhealthy" });
     }
@@ -173,13 +176,13 @@ export class MonitorHealthWatchdog {
     if (isWifiOnly && !entry.wifiAttempted && serial !== undefined) {
       entry.wifiAttempted = true;
       entry.cooldownUntil = this.now() + WIFI_REPAIR_COOLDOWN_MS;
-      this.deps.log(`[health-watch] ${name}: Wi-Fi 再有効化による修復を試みます。`);
+      this.deps.log(`[health-watch] ${name}: ${t("monitor.healthWatch.wifiRepairAttempt")}`);
       this.deps.post({ type: "healthWatch", name, phase: "repairing" });
       void this.deps.runWifiRepair(serial).then((ok) => {
         this.deps.log(
           ok
-            ? `[health-watch] ${name}: Wi-Fi 再有効化コマンドを実行しました。`
-            : `[health-watch] ${name}: Wi-Fi 再有効化コマンドの実行に失敗しました。`,
+            ? `[health-watch] ${name}: ${t("monitor.healthWatch.wifiRepairExecuted")}`
+            : `[health-watch] ${name}: ${t("monitor.healthWatch.wifiRepairFailed")}`,
         );
       });
       return;
@@ -193,11 +196,11 @@ export class MonitorHealthWatchdog {
         entry.streamAttempted = true;
         if (this.deps.restartStream(name)) {
           entry.cooldownUntil = this.now() + STREAM_REPAIR_COOLDOWN_MS;
-          this.deps.log(`[health-watch] ${name}: 画面ストリームヘルパーの再起動による修復を試みます。`);
+          this.deps.log(`[health-watch] ${name}: ${t("monitor.healthWatch.streamRepairAttempt")}`);
           this.deps.post({ type: "healthWatch", name, phase: "streamRepairing" });
           return;
         }
-        this.deps.log(`[health-watch] ${name}: ストリーム未稼働のためヘルパー再起動をスキップし、CPU 描画切替へ進みます。`);
+        this.deps.log(`[health-watch] ${name}: ${t("monitor.healthWatch.streamSkipToCpuFallback")}`);
         // fall through(同サイクルで CPU 描画切替へ)
       }
 
@@ -205,7 +208,7 @@ export class MonitorHealthWatchdog {
         entry.cpuFallbackAttempted = true;
         entry.cooldownUntil = this.now() + RESTART_COOLDOWN_MS;
         this.deps.forceCpuRender(name);
-        this.deps.log(`[health-watch] ${name}: 画面凍結が解消しないため CPU 描画(swiftshader)へ切り替えて再起動します。`);
+        this.deps.log(`[health-watch] ${name}: ${t("monitor.healthWatch.cpuFallbackRestart")}`);
         this.deps.post({ type: "healthWatch", name, phase: "cpuFallback" });
         this.deps.enqueueRestart(name);
         return;
@@ -213,7 +216,7 @@ export class MonitorHealthWatchdog {
 
       // swiftshader 再起動でも解消しない(想定外)。
       entry.failed = true;
-      this.deps.log(`[health-watch] ${name}: CPU 描画への切替後も画面凍結が解消しませんでした。`);
+      this.deps.log(`[health-watch] ${name}: ${t("monitor.healthWatch.cpuFallbackFailed")}`);
       this.deps.post({ type: "healthWatch", name, phase: "failed" });
       return;
     }
@@ -221,21 +224,21 @@ export class MonitorHealthWatchdog {
     if (inRun) {
       // clock-skew 等の host 再起動のみ保留(blank-screen/wifi-disabled は対象外・上記分岐で既に return 済み)。
       // 実行中は再起動で証跡を失うため、restartAttempts/cooldown を一切動かさず毎サイクル無害に見送る。
-      this.deps.log(`[health-watch] ${name}: 実行中のため host 再起動を保留します。`);
+      this.deps.log(`[health-watch] ${name}: ${t("monitor.healthWatch.restartDeferredInRun")}`);
       return;
     }
 
     if (entry.restartAttempts >= MAX_RESTART_ATTEMPTS) {
       entry.failed = true;
       this.deps.log(
-        `[health-watch] ${name}: 自動修復を${String(MAX_RESTART_ATTEMPTS)}回試みましたが復旧しませんでした。`,
+        `[health-watch] ${name}: ${t("monitor.watchdog.giveUpAfterAttempts", { count: MAX_RESTART_ATTEMPTS })}`,
       );
       this.deps.post({ type: "healthWatch", name, phase: "failed" });
       return;
     }
     entry.restartAttempts += 1;
     entry.cooldownUntil = this.now() + RESTART_COOLDOWN_MS;
-    this.deps.log(`[health-watch] ${name}: デバイス再起動による修復を試みます。`);
+    this.deps.log(`[health-watch] ${name}: ${t("monitor.healthWatch.restartAttempt")}`);
     this.deps.post({ type: "healthWatch", name, phase: "restarting" });
     this.deps.enqueueRestart(name);
   }

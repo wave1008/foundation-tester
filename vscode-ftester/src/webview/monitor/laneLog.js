@@ -1,9 +1,10 @@
 // lanesの読み書きはこのモジュールに閉じる。deviceTiles.jsとはselectedDeviceIds/tiles/
 // runningWorkers(いずれも再代入されないMap/Set)を介して相互参照する。
 
-import { MAX_LANE_LINES, OVERALL_LANE_ID, OVERALL_LANE_NAME } from "../../runLaneModel";
+import { MAX_LANE_LINES, OVERALL_LANE_ID, overallLaneName } from "../../runLaneModel";
 import { lanesPlaceholder, lanesGrid, lanesSelectionStatus, lanesRunStatus } from './domRefs.js';
 import { tiles, selectedDeviceIds } from './deviceTiles.js';
+import { t } from '../i18n.js';
 
 // レーン id(worker id、または OVERALL_LANE_ID) -> DOM 要素・自動スクロール状態
 const lanes = new Map();
@@ -82,7 +83,7 @@ function ensureLane(id, name, platform, updateLabel) {
 }
 
 function appendLaneLine(laneId, text) {
-  const lane = ensureLane(laneId, laneId === OVERALL_LANE_ID ? OVERALL_LANE_NAME : laneId, undefined, false);
+  const lane = ensureLane(laneId, laneId === OVERALL_LANE_ID ? overallLaneName() : laneId, undefined, false);
   const wasAtBottom = lane.atBottom;
   const line = document.createElement('div');
   line.className = 'lane-line';
@@ -140,8 +141,8 @@ export function updateLaneVisibility() {
     lane.el.style.display = activeIds.includes(id) ? 'flex' : 'none';
   }
   lanesSelectionStatus.textContent = selectedDeviceIds.size > 0
-    ? '選択中' + selectedDeviceIds.size + '台を表示'
-    : '全ワーカー';
+    ? t('wvMonitor2.laneLog.selectedCount', { count: selectedDeviceIds.size })
+    : t('wvMonitor2.laneLog.allWorkers');
 }
 
 // 出力ペインは常設(実行前もデバイス毎の空レーンを表示)。レーンはdevicesサイクルから常時同期。
@@ -185,16 +186,18 @@ export function applyLaneAction(action) {
       setTileRunning(action.workerId, action.running);
       break;
     case 'runFinished': {
-      const base = '完了: 成功 ' + action.passed + ' / 失敗 ' + action.failed;
+      const base = t('wvMonitor2.laneLog.runFinished', { passed: action.passed, failed: action.failed });
       const timingParts = [];
       if (action.totalSeconds != null) {
-        timingParts.push('トータル ' + action.totalSeconds.toFixed(1) + 's');
+        timingParts.push(t('wvMonitor2.laneLog.timingTotal', { seconds: action.totalSeconds.toFixed(1) }));
       }
       if (action.testSeconds != null) {
-        timingParts.push('テスト実時間 ' + action.testSeconds.toFixed(1) + 's');
+        timingParts.push(t('wvMonitor2.laneLog.timingTest', { seconds: action.testSeconds.toFixed(1) }));
       }
       if (action.scenarioTotalSeconds != null) {
-        timingParts.push('シナリオ合計 ' + action.scenarioTotalSeconds.toFixed(1) + 's');
+        timingParts.push(
+          t('wvMonitor2.laneLog.timingScenarioTotal', { seconds: action.scenarioTotalSeconds.toFixed(1) }),
+        );
       }
       lanesRunStatus.textContent = timingParts.length > 0 ? base + '(' + timingParts.join(' / ') + ')' : base;
       break;

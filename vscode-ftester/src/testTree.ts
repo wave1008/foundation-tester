@@ -8,6 +8,7 @@
 import * as vscode from "vscode";
 import { type CliResult, CliSupersededError, type FtesterCli } from "./cli";
 import { type FtesterConfig, resolveProjectName } from "./config";
+import { t } from "./i18n";
 import { lastResultsDir, lookupKey, readFailedScenarioIds } from "./lastResults";
 import type { ListScenariosResult, ScenarioInfo } from "./model";
 
@@ -92,9 +93,7 @@ export class FtesterTestTree implements vscode.Disposable {
     const resolution = resolveProjectName(workspaceRoot, config);
 
     if (resolution.kind === "none") {
-      this.outputChannel.appendLine(
-        "[ftester] Projects/ 配下にテストプロジェクトが見つかりません。",
-      );
+      this.outputChannel.appendLine(t("workbench.testTree.noProjectsLog"));
       return;
     }
     if (resolution.kind === "ambiguous") {
@@ -136,29 +135,27 @@ export class FtesterTestTree implements vscode.Disposable {
     }
     if (result.exitCode !== 0) {
       this.outputChannel.appendLine(
-        `[ftester] list-scenarios が exit code ${String(result.exitCode)} で終了しました。`,
+        t("workbench.testTree.listScenariosExitLog", { exitCode: String(result.exitCode) }),
       );
-      void vscode.window.showWarningMessage(
-        "ftester: シナリオ一覧の取得に失敗しました。出力パネル「ftester」を確認してください。",
-      );
+      void vscode.window.showWarningMessage(t("workbench.testTree.listScenariosFailedWarning"));
       return;
     }
 
     const parsed = result.json as ListScenariosResult | undefined;
     if (!parsed || !Array.isArray(parsed.scenarios)) {
-      this.outputChannel.appendLine("[ftester] list-scenarios の出力を解析できませんでした。");
+      this.outputChannel.appendLine(t("workbench.testTree.listScenariosParseFailedLog"));
       return;
     }
     this.rebuildTree(parsed);
   }
 
   private async promptAmbiguousProject(candidates: string[]): Promise<void> {
+    const selectProjectLabel = t("workbench.testTree.selectProjectButton");
     const choice = await vscode.window.showWarningMessage(
-      `ftester: 複数のテストプロジェクトが見つかりました(${candidates.join(", ")})。` +
-        "ftester.project 設定で対象を指定するか、プロジェクトを選択してください。",
-      "プロジェクトを選択",
+      t("workbench.testTree.ambiguousProjectWarning", { candidates: candidates.join(", ") }),
+      selectProjectLabel,
     );
-    if (choice === "プロジェクトを選択") {
+    if (choice === selectProjectLabel) {
       await vscode.commands.executeCommand("ftester.selectProject");
     }
   }
@@ -167,8 +164,7 @@ export class FtesterTestTree implements vscode.Disposable {
     const message = error instanceof Error ? error.message : String(error);
     this.outputChannel.appendLine(`[ftester] ${message}`);
     void vscode.window.showWarningMessage(
-      `ftester CLI を起動できませんでした(${binaryPath})。` +
-        '"swift build --product ftester" でビルド済みか確認してください。',
+      t("workbench.testTree.cliLaunchFailedWarning", { binaryPath }),
     );
   }
 
@@ -234,7 +230,7 @@ export class FtesterTestTree implements vscode.Disposable {
         leaf.range = new vscode.Range(line, 0, line, 0);
       }
       if (scenario.deleted) {
-        leaf.description = "(削除済み)";
+        leaf.description = t("workbench.testTree.deletedDescription");
         leaf.tags = [DELETED_TAG];
       }
       classNode.children.add(leaf);

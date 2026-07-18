@@ -14,12 +14,12 @@
 import { randomBytes } from "node:crypto";
 import * as vscode from "vscode";
 import { type FtesterConfig, resolveProjectName } from "./config";
+import { currentLocale, t } from "./i18n";
 import { isApiResultsPayload, isDashboardFromWebviewMessage, type DashboardToWebviewMessage } from "./dashboardModel";
 import { type OneShotResult, type PipeProcess, runOneShot } from "./oneShotCli";
 import type { RunBusMessage, RunEventBus } from "./runEventBus";
 
 const VIEW_TYPE = "ftesterResultsDashboard";
-const PANEL_TITLE = "ftester 結果ダッシュボード";
 const RESULTS_SINCE = "90d";
 const RESULTS_MIN_RUNS = 3;
 
@@ -96,7 +96,7 @@ class DashboardPanelController implements vscode.Disposable {
       this.panel.reveal(vscode.ViewColumn.Active);
       return;
     }
-    const panel = vscode.window.createWebviewPanel(VIEW_TYPE, PANEL_TITLE, vscode.ViewColumn.Active, {
+    const panel = vscode.window.createWebviewPanel(VIEW_TYPE, t("exploreHeal.dashboard.panelTitle"), vscode.ViewColumn.Active, {
       enableScripts: true,
       retainContextWhenHidden: true,
       localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, "media")],
@@ -166,7 +166,7 @@ class DashboardPanelController implements vscode.Disposable {
       if (resolution.kind !== "resolved") {
         this.deps.post({
           type: "error",
-          message: "対象のテストプロジェクトを解決できませんでした。ftester.project 設定を確認してください。",
+          message: t("exploreHeal.common.projectUnresolved"),
         });
         return;
       }
@@ -192,13 +192,16 @@ class DashboardPanelController implements vscode.Disposable {
         const detail = result.stderrTail.length > 0 ? result.stderrTail : `exit code: ${String(result.exitCode)}`;
         this.deps.post({
           type: "error",
-          message: `実行結果の取得に失敗しました。出力パネル「ftester」を確認してください(${detail})`,
+          message: t("exploreHeal.dashboard.fetchFailedDetail", { detail }),
         });
         return;
       }
       this.deps.post({ type: "data", payload: result.json });
     } catch (error) {
-      this.deps.post({ type: "error", message: `実行結果の取得に失敗しました: ${errorMessage(error)}` });
+      this.deps.post({
+        type: "error",
+        message: t("exploreHeal.dashboard.fetchFailedError", { error: errorMessage(error) }),
+      });
     } finally {
       this.refreshing = false;
     }
@@ -220,87 +223,87 @@ function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
   ].join("; ");
 
   return `<!doctype html>
-<html lang="ja">
+<html lang="${currentLocale()}">
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy" content="${csp}">
-<title>${PANEL_TITLE}</title>
+<title>${t("exploreHeal.dashboard.panelTitle")}</title>
 <link rel="stylesheet" href="${styleUri}">
 </head>
 <body>
   <div id="toolbar" class="toolbar">
-    <span class="dash-title">結果ダッシュボード</span>
+    <span class="dash-title">${t("exploreHeal.dashboard.title")}</span>
     <span id="dash-project" class="dash-project"></span>
-    <button id="btn-refresh" type="button">更新</button>
+    <button id="btn-refresh" type="button">${t("exploreHeal.dashboard.refreshButton")}</button>
     <span id="dash-generated-at" class="dash-generated-at"></span>
   </div>
 
-  <div id="status-loading" class="status-message" style="display: none;">読み込み中...</div>
+  <div id="status-loading" class="status-message" style="display: none;">${t("exploreHeal.dashboard.loading")}</div>
   <div id="status-error" class="status-message status-error" style="display: none;"></div>
-  <div id="status-empty" class="status-message" style="display: none;">まだ実行結果がありません。テストを実行すると、ここに集計が表示されます。</div>
+  <div id="status-empty" class="status-message" style="display: none;">${t("exploreHeal.dashboard.empty")}</div>
 
   <div id="content" class="content" style="display: none;">
     <section id="section-headline" class="dash-section">
-      <h2>直近の実行</h2>
+      <h2>${t("exploreHeal.dashboard.headingRecentRuns")}</h2>
       <div id="headline-latest" class="headline-latest"></div>
       <table id="table-runs" class="dash-table">
         <thead>
-          <tr><th>runID</th><th>日時</th><th>trigger</th><th>machine</th><th>profile</th><th>結果</th></tr>
+          <tr><th>runID</th><th>${t("exploreHeal.dashboard.colDateTime")}</th><th>trigger</th><th>machine</th><th>profile</th><th>${t("exploreHeal.dashboard.colResult")}</th></tr>
         </thead>
         <tbody id="table-runs-body"></tbody>
       </table>
     </section>
 
     <section id="section-insights" class="dash-section">
-      <h2 id="insights-heading">⚠ 注意が必要な現象</h2>
+      <h2 id="insights-heading">${t("exploreHeal.dashboard.headingInsights")}</h2>
       <ul id="insights-list" class="insights-list"></ul>
-      <div id="insights-empty" class="section-empty" style="display: none;">注意が必要な現象はありません ✅</div>
+      <div id="insights-empty" class="section-empty" style="display: none;">${t("exploreHeal.dashboard.insightsEmpty")}</div>
     </section>
 
     <section id="section-flaky" class="dash-section">
-      <h2>不安定なシナリオ</h2>
+      <h2>${t("exploreHeal.dashboard.headingFlaky")}</h2>
       <table id="table-flaky" class="dash-table">
         <thead>
-          <tr><th>シナリオID</th><th>実行回数</th><th>失敗率</th><th>遷移スコア</th><th>直近の結果(新→旧)</th></tr>
+          <tr><th>${t("exploreHeal.dashboard.colScenarioId")}</th><th>${t("exploreHeal.dashboard.colRuns")}</th><th>${t("exploreHeal.dashboard.colFailureRate")}</th><th>${t("exploreHeal.dashboard.colFlakinessScore")}</th><th>${t("exploreHeal.dashboard.colRecentResults")}</th></tr>
         </thead>
         <tbody id="table-flaky-body"></tbody>
       </table>
-      <div id="flaky-empty" class="section-empty" style="display: none;">不安定なシナリオはありません。</div>
+      <div id="flaky-empty" class="section-empty" style="display: none;">${t("exploreHeal.dashboard.flakyEmpty")}</div>
     </section>
 
     <section id="section-slow" class="dash-section">
-      <h2>遅いテスト</h2>
+      <h2>${t("exploreHeal.dashboard.headingSlow")}</h2>
       <table id="table-slow" class="dash-table">
         <thead>
-          <tr><th>シナリオID</th><th>実行回数</th><th>平均</th><th>p90</th><th>悪化率</th><th>最遅 scene</th></tr>
+          <tr><th>${t("exploreHeal.dashboard.colScenarioId")}</th><th>${t("exploreHeal.dashboard.colRuns")}</th><th>${t("exploreHeal.dashboard.colAverage")}</th><th>p90</th><th>${t("exploreHeal.dashboard.colRegressionRate")}</th><th>${t("exploreHeal.dashboard.colSlowestScene")}</th></tr>
         </thead>
         <tbody id="table-slow-body"></tbody>
       </table>
-      <div id="slow-empty" class="section-empty" style="display: none;">遅いテストはありません。</div>
+      <div id="slow-empty" class="section-empty" style="display: none;">${t("exploreHeal.dashboard.slowEmpty")}</div>
     </section>
 
     <section id="section-daily" class="dash-section">
-      <h2>日別成功率</h2>
+      <h2>${t("exploreHeal.dashboard.headingDaily")}</h2>
       <div class="daily-chart-wrap">
         <canvas id="daily-chart" class="daily-chart"></canvas>
       </div>
     </section>
 
     <section id="section-summary" class="dash-section">
-      <h2>シナリオ別サマリ</h2>
+      <h2>${t("exploreHeal.dashboard.headingSummary")}</h2>
       <table id="table-summary" class="dash-table">
         <thead>
-          <tr><th>シナリオID</th><th>実行回数</th><th>成功率</th><th>平均ms</th><th>最終実行</th><th>最終結果</th></tr>
+          <tr><th>${t("exploreHeal.dashboard.colScenarioId")}</th><th>${t("exploreHeal.dashboard.colRuns")}</th><th>${t("exploreHeal.dashboard.colSuccessRate")}</th><th>${t("exploreHeal.dashboard.colAvgMs")}</th><th>${t("exploreHeal.dashboard.colLastRun")}</th><th>${t("exploreHeal.dashboard.colLastResult")}</th></tr>
         </thead>
         <tbody id="table-summary-body"></tbody>
       </table>
     </section>
 
     <section id="section-devices" class="dash-section">
-      <h2>デバイス別集計</h2>
+      <h2>${t("exploreHeal.dashboard.headingDevices")}</h2>
       <table id="table-devices" class="dash-table">
         <thead>
-          <tr><th>worker</th><th>実行回数</th><th>成功率</th><th>平均ms</th></tr>
+          <tr><th>worker</th><th>${t("exploreHeal.dashboard.colRuns")}</th><th>${t("exploreHeal.dashboard.colSuccessRate")}</th><th>${t("exploreHeal.dashboard.colAvgMs")}</th></tr>
         </thead>
         <tbody id="table-devices-body"></tbody>
       </table>

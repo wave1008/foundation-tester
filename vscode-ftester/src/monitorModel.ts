@@ -19,6 +19,7 @@
 //     現行バイナリは送出しない(スクショ変換失敗は stderr のみ。ユーザー決定 2026-07-16)が、
 //     読み手としては旧バイナリ互換のため受理し続ける
 
+import { t } from "./i18n";
 import type { ResidentProcess } from "./residentProcesses";
 
 export type MonitorPlatform = "ios" | "android";
@@ -328,6 +329,9 @@ export type MonitorToWebviewMessage =
   // setPollingMode 受信直後(monitorPanel.ts)の両方で送る。webview 側は settingsTab.js の
   // applySettings へそのまま渡す(setPollingMode と対の契約)。
   | { readonly type: "pollingMode"; readonly value: boolean }
+  // 設定タブの表示言語セレクタ(#settings-language)の現在値(ftester.language 設定の生値)。ready 直後に
+  // 送る。webview 側は settingsTab.js の applySettings。切替は setLanguage と対。
+  | { readonly type: "language"; readonly value: "auto" | "ja" | "en" }
   // 設定タブ「常駐プロセス」一覧。refreshResidentProcesses 受信時と killAllResidentProcesses 完了後に送る。
   // 対向: settingsTab.js の applyResidentMessage。
   | { readonly type: "residentProcesses"; readonly items: readonly ResidentProcess[]; readonly ts: number }
@@ -507,6 +511,9 @@ export type MonitorFromWebviewMessage =
   // workspaceState へ永続化し、対の "pollingMode" メッセージで即時反映する(livePanel.ts は
   // workspaceState を直接読むため、この即時反映の対象はデバイスタイルのみ)。
   | { readonly type: "setPollingMode"; readonly value: boolean }
+  // 設定タブの表示言語セレクタ変更(settingsTab.js)。monitorPanel.ts が ftester.language 設定(Global)を
+  // 更新する。反映は extension.ts の onDidChangeConfiguration ハンドラ(ツリー再翻訳 + 再読み込み案内)。
+  | { readonly type: "setLanguage"; readonly value: "auto" | "ja" | "en" }
   | { readonly type: "refreshResidentProcesses" }
   | { readonly type: "killAllResidentProcesses" }
   // デバイスタブのスプリッターをドラッグ終了した時のタイルペイン高さ(px)。monitorPanel.ts が
@@ -698,6 +705,8 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
       return typeof value.id === "number";
     case "setPollingMode":
       return typeof value.value === "boolean";
+    case "setLanguage":
+      return value.value === "auto" || value.value === "ja" || value.value === "en";
     case "refreshResidentProcesses":
     case "killAllResidentProcesses":
       return true;
@@ -840,17 +849,17 @@ export function deviceOpMenuItem(
   busy: DeviceOpBusyState | undefined,
 ): DeviceOpMenuItem {
   if (busy?.status === "queued") {
-    return { label: "待機中...", op: busy.op, disabled: true };
+    return { label: t("monitor.deviceOp.labelQueued"), op: busy.op, disabled: true };
   }
   if (busy?.op === "up") {
-    return { label: "起動中...", op: "up", disabled: true };
+    return { label: t("monitor.deviceOp.labelStarting"), op: "up", disabled: true };
   }
   if (busy?.op === "down") {
-    return { label: "停止中...", op: "down", disabled: true };
+    return { label: t("monitor.deviceOp.labelStopping"), op: "down", disabled: true };
   }
   return state === "offline"
-    ? { label: "起動", op: "up", disabled: false }
-    : { label: "停止", op: "down", disabled: false };
+    ? { label: t("monitor.deviceOp.labelStart"), op: "up", disabled: false }
+    : { label: t("monitor.deviceOp.labelStop"), op: "down", disabled: false };
 }
 
 // ---- デバイスライフサイクル操作の直列キュー ------------------------------------------------
@@ -1088,19 +1097,19 @@ export function devicesToShutdownOnScopeChange(
  */
 export function validateNewRunProfileName(name: string, existing: readonly string[]): string | null {
   if (name !== name.trim()) {
-    return "プロファイル名の前後に空白を含めることはできません。";
+    return t("monitor.runProfile.nameNoSpaces");
   }
   if (name.length === 0) {
-    return "プロファイル名を入力してください。";
+    return t("monitor.runProfile.nameRequired");
   }
   if (name.includes("/") || name.includes("\\")) {
-    return 'プロファイル名に "/" や "\\" は使えません。';
+    return t("monitor.runProfile.nameNoSlash");
   }
   if (name.startsWith(".")) {
-    return 'プロファイル名を "." で始めることはできません。';
+    return t("monitor.runProfile.nameNoDotStart");
   }
   if (existing.includes(name)) {
-    return `実行プロファイル「${name}」は既に存在します。`;
+    return t("monitor.runProfile.nameExists", { name });
   }
   return null;
 }
@@ -1143,19 +1152,19 @@ export function buildRunProfileTemplate(
  */
 export function validateNewAppProfileName(name: string, existing: readonly string[]): string | null {
   if (name !== name.trim()) {
-    return "アプリプロファイル名の前後に空白を含めることはできません。";
+    return t("monitor.appProfile.nameNoSpaces");
   }
   if (name.length === 0) {
-    return "アプリプロファイル名を入力してください。";
+    return t("monitor.appProfile.nameRequired");
   }
   if (name.includes("/") || name.includes("\\")) {
-    return 'アプリプロファイル名に "/" や "\\" は使えません。';
+    return t("monitor.appProfile.nameNoSlash");
   }
   if (name.startsWith(".")) {
-    return 'アプリプロファイル名を "." で始めることはできません。';
+    return t("monitor.appProfile.nameNoDotStart");
   }
   if (existing.includes(name)) {
-    return `アプリプロファイル「${name}」は既に存在します。`;
+    return t("monitor.appProfile.nameExists", { name });
   }
   return null;
 }
@@ -1229,7 +1238,7 @@ export function updateRunProfileInObject(
   fields: RunProfileFormFields,
 ): RunProfileUpdateResult {
   if (typeof profileObject !== "object" || profileObject === null || Array.isArray(profileObject)) {
-    return { ok: false, error: "実行プロファイルの形式が不正です。" };
+    return { ok: false, error: t("monitor.runProfile.invalidFormat") };
   }
   const source = profileObject as Record<string, unknown>;
   const result: Record<string, unknown> = { ...source };
@@ -1251,7 +1260,7 @@ export function updateRunProfileInObject(
   if (timeoutTrimmed.length === 0) {
     delete result.defaultTimeout;
   } else if (!/^\d+$/.test(timeoutTrimmed) || Number(timeoutTrimmed) <= 0) {
-    return { ok: false, error: "defaultTimeout は正の整数で入力してください。" };
+    return { ok: false, error: t("monitor.runProfile.defaultTimeoutInvalid") };
   } else {
     result.defaultTimeout = Number(timeoutTrimmed);
   }
@@ -1260,7 +1269,7 @@ export function updateRunProfileInObject(
   if (thresholdTrimmed.length === 0) {
     delete result.wipeDataThresholdGB;
   } else if (!/^\d+(\.\d+)?$/.test(thresholdTrimmed) || Number(thresholdTrimmed) <= 0) {
-    return { ok: false, error: "wipeDataThresholdGB は正の数(GB)で入力してください。" };
+    return { ok: false, error: t("monitor.runProfile.wipeThresholdInvalid") };
   } else {
     result.wipeDataThresholdGB = Number(thresholdTrimmed);
   }
@@ -1269,7 +1278,7 @@ export function updateRunProfileInObject(
   if (localeTrimmed.length === 0) {
     delete result.locale;
   } else if (!/^[A-Za-z]{2,3}([-_][A-Za-z0-9]{2,8})*$/.test(localeTrimmed)) {
-    return { ok: false, error: "locale は ja_JP のような形式で入力してください。" };
+    return { ok: false, error: t("monitor.runProfile.localeInvalid") };
   } else {
     result.locale = localeTrimmed;
   }
@@ -1432,7 +1441,7 @@ export function updateAppProfileInObject(
   fields: AppProfileFormFields,
 ): AppProfileUpdateResult {
   if (typeof profileObject !== "object" || profileObject === null || Array.isArray(profileObject)) {
-    return { ok: false, error: "アプリプロファイルの形式が不正です。" };
+    return { ok: false, error: t("monitor.appProfile.invalidFormat") };
   }
   const source = profileObject as Record<string, unknown>;
   const result: Record<string, unknown> = { ...source };
@@ -1750,10 +1759,10 @@ export function machineDeviceDetail(entry: MachineDeviceEntry): string {
 export function validateNewDeviceName(name: string, existing: readonly string[]): string | null {
   const trimmed = name.trim();
   if (trimmed.length === 0) {
-    return "デバイス名を入力してください。";
+    return t("monitor.device.nameRequired");
   }
   if (existing.includes(trimmed)) {
-    return `「${trimmed}」は既に存在します。`;
+    return t("monitor.validation.nameAlreadyExists", { name: trimmed });
   }
   return null;
 }
@@ -1769,20 +1778,20 @@ export function validateNewDeviceName(name: string, existing: readonly string[])
  */
 export function validateNewMachineProfileName(name: string, existing: readonly string[]): string | null {
   if (name !== name.trim()) {
-    return "マシンプロファイル名の前後に空白を含めることはできません。";
+    return t("monitor.machineProfile.nameNoSpaces");
   }
   if (name.length === 0) {
-    return "マシンプロファイル名を入力してください。";
+    return t("monitor.machineProfile.nameRequired");
   }
   if (name.includes("/") || name.includes("\\")) {
-    return 'マシンプロファイル名に "/" や "\\" は使えません。';
+    return t("monitor.machineProfile.nameNoSlash");
   }
   if (name.startsWith(".")) {
-    return 'マシンプロファイル名を "." で始めることはできません。';
+    return t("monitor.machineProfile.nameNoDotStart");
   }
   const lowerName = name.toLowerCase();
   if (existing.some((item) => item.toLowerCase() === lowerName)) {
-    return `マシンプロファイル「${name}」は既に存在します。`;
+    return t("monitor.machineProfile.nameExists", { name });
   }
   return null;
 }
@@ -1868,10 +1877,13 @@ export function updateDeviceInMachineProfile(
   fields: MachineDeviceUpdateFields,
 ): MachineDeviceUpdateResult {
   if (typeof profileObject !== "object" || profileObject === null || Array.isArray(profileObject)) {
-    return { ok: false, error: "マシンプロファイルの形式が不正です。" };
+    return { ok: false, error: t("monitor.machineProfile.invalidFormat") };
   }
   const source = profileObject as Record<string, unknown>;
-  const notFoundError = { ok: false as const, error: `デバイス「${originalName}」が見つかりませんでした。` };
+  const notFoundError = {
+    ok: false as const,
+    error: t("monitor.device.notFound", { name: originalName }),
+  };
 
   const section = source[platform];
   if (!isDeviceEntryLike(section)) {
@@ -1889,7 +1901,7 @@ export function updateDeviceInMachineProfile(
 
   const newName = fields.name.trim();
   if (newName.length === 0) {
-    return { ok: false, error: "デバイス名を入力してください。" };
+    return { ok: false, error: t("monitor.device.nameRequired") };
   }
   for (const p of ["ios", "android"] as const) {
     const otherSection = source[p];
@@ -1901,7 +1913,7 @@ export function updateDeviceInMachineProfile(
         continue; // 対象エントリ自身は重複チェックから除く
       }
       if (device.name === newName) {
-        return { ok: false, error: `「${newName}」は既に存在します。` };
+        return { ok: false, error: t("monitor.validation.nameAlreadyExists", { name: newName }) };
       }
     }
   }
@@ -1915,7 +1927,7 @@ export function updateDeviceInMachineProfile(
       delete newEntry.port;
     } else {
       if (!/^\d+$/.test(portTrimmed) || Number(portTrimmed) > 65535) {
-        return { ok: false, error: "port は 0〜65535 の整数で入力してください。" };
+        return { ok: false, error: t("monitor.device.portInvalid") };
       }
       newEntry.port = Number(portTrimmed);
     }
@@ -1966,7 +1978,7 @@ export function addDevicesToMachineProfile(
   entries: readonly MachineDeviceAddEntry[],
 ): AddDevicesToMachineProfileResult {
   if (typeof profileObject !== "object" || profileObject === null || Array.isArray(profileObject)) {
-    return { ok: false, error: "マシンプロファイルの形式が不正です。" };
+    return { ok: false, error: t("monitor.machineProfile.invalidFormat") };
   }
   const source = profileObject as Record<string, unknown>;
   const result: Record<string, unknown> = { ...source };
@@ -2049,7 +2061,7 @@ export function syncDevicesInMachineProfile(
   remove: readonly string[],
 ): SyncDevicesInMachineProfileResult {
   if (typeof profileObject !== "object" || profileObject === null || Array.isArray(profileObject)) {
-    return { ok: false, error: "マシンプロファイルの形式が不正です。" };
+    return { ok: false, error: t("monitor.machineProfile.invalidFormat") };
   }
   let current: unknown = profileObject;
   let removedCount = 0;
@@ -2058,7 +2070,7 @@ export function syncDevicesInMachineProfile(
     if (!result) {
       // removeDeviceFromMachineProfile は object 入力に対し常に非null を返すため実際には到達しないが、
       // 型上 null を返しうるための防御(削除しない)。
-      return { ok: false, error: "マシンプロファイルの形式が不正です。" };
+      return { ok: false, error: t("monitor.machineProfile.invalidFormat") };
     }
     current = result.object;
     if (result.removed) {

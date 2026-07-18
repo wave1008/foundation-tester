@@ -15,6 +15,7 @@ import * as vscode from "vscode";
 import { type FtesterCli } from "./cli";
 import { type FtesterConfig, resolveProjectName } from "./config";
 import { resolveEntryAtCursor, truncateForStatusBar, type TreeItemEntry } from "./copyTestName";
+import { t } from "./i18n";
 import { lastResultsDir, lookupKey, readFailedScenarioIds } from "./lastResults";
 import type { LiveRunTarget } from "./liveRunTarget";
 import { findLatestReport, listRecentReports, reportsDir } from "./scenarioReports";
@@ -84,23 +85,23 @@ export function registerRunHandler(
   // 共有する(パイプライン重複を避けるため)。
   const failedOnlyHandler = makeHandler(false, true);
   const failedOnlyProfile = controller.createRunProfile(
-    "失敗のみ実行",
+    t("run.profile.failedOnly"),
     vscode.TestRunProfileKind.Run,
     failedOnlyHandler,
     false,
   );
 
   context.subscriptions.push(
-    controller.createRunProfile("実行", vscode.TestRunProfileKind.Run, makeHandler(false), true),
+    controller.createRunProfile(t("run.profile.run"), vscode.TestRunProfileKind.Run, makeHandler(false), true),
     controller.createRunProfile(
-      "実行 (dry-run)",
+      t("run.profile.dryRun"),
       vscode.TestRunProfileKind.Run,
       makeHandler(true),
       false,
     ),
     failedOnlyProfile,
     controller.createRunProfile(
-      "デバッグ",
+      t("run.profile.debug"),
       vscode.TestRunProfileKind.Debug,
       (request, token) =>
         executeDebugRun(controller, workspaceRoot, getConfig, watcher, request, token, onRunFinished),
@@ -112,7 +113,7 @@ export function registerRunHandler(
         const multi = Array.isArray(items) ? items.filter(isTestItem) : [];
         const include = multi.length > 0 ? multi : isTestItem(item) ? [item] : undefined;
         outputChannel.appendLine(
-          `[rerunFailed] include=${include ? include.map((i) => i.id).join(",") : "全体"}`);
+          `[rerunFailed] include=${include ? include.map((i) => i.id).join(",") : t("run.label.all")}`);
         const request = new vscode.TestRunRequest(include, undefined, failedOnlyProfile);
         const tokenSource = new vscode.CancellationTokenSource();
         void Promise.resolve(failedOnlyHandler(request, tokenSource.token)).finally(() =>
@@ -132,8 +133,7 @@ export function registerRunHandler(
         }
 
         const notFound = () =>
-          vscode.window.setStatusBarMessage(
-            "コピー対象を特定できませんでした(Test Explorer で右クリック → 名前をコピー)", 3000);
+          vscode.window.setStatusBarMessage(t("run.copy.notFound"), 3000);
 
         const activeEditor = vscode.window.activeTextEditor;
         if (!activeEditor) {
@@ -191,7 +191,7 @@ export function registerRunHandler(
 
 async function copyAndNotify(text: string): Promise<void> {
   await vscode.env.clipboard.writeText(text);
-  vscode.window.setStatusBarMessage(`コピーしました: ${truncateForStatusBar(text)}`, 3000);
+  vscode.window.setStatusBarMessage(t("run.copy.copied", { text: truncateForStatusBar(text) }), 3000);
 }
 
 /** 失敗メッセージ末尾に添える「レポートを開く」リンク(lastResultsSync.ts の CLI 反映側と同じ
@@ -199,7 +199,7 @@ async function copyAndNotify(text: string): Promise<void> {
 export function buildReportLinkMessage(scenarioId: string): vscode.TestMessage {
   const args = encodeURIComponent(JSON.stringify([scenarioId]));
   const markdown = new vscode.MarkdownString(
-    `[レポートを開く](command:ftester.openScenarioReport?${args})`,
+    `[${t("run.report.openLink")}](command:ftester.openScenarioReport?${args})`,
   );
   markdown.isTrusted = { enabledCommands: ["ftester.openScenarioReport"] };
   return new vscode.TestMessage(markdown);
@@ -232,12 +232,12 @@ async function openLatestReportForScenario(
 ): Promise<void> {
   const resolution = resolveProjectName(workspaceRoot, getConfig());
   if (resolution.kind !== "resolved") {
-    void vscode.window.showInformationMessage("対象のテストプロジェクトを解決できませんでした。");
+    void vscode.window.showInformationMessage(t("run.project.unresolved"));
     return;
   }
   const found = findLatestReport(reportsDir(workspaceRoot, resolution.project), scenarioId);
   if (!found) {
-    void vscode.window.showInformationMessage(`レポートが見つかりません: ${scenarioId}`);
+    void vscode.window.showInformationMessage(t("run.report.notFoundFor", { scenarioId }));
     return;
   }
   await openReport(found);
@@ -250,12 +250,12 @@ async function openReportForScenarios(
 ): Promise<void> {
   const resolution = resolveProjectName(workspaceRoot, getConfig());
   if (resolution.kind !== "resolved") {
-    void vscode.window.showInformationMessage("対象のテストプロジェクトを解決できませんでした。");
+    void vscode.window.showInformationMessage(t("run.project.unresolved"));
     return;
   }
   const reports = listRecentReports(reportsDir(workspaceRoot, resolution.project), new Set(scenarioIds));
   if (reports.length === 0) {
-    void vscode.window.showInformationMessage("レポートが見つかりません。");
+    void vscode.window.showInformationMessage(t("run.report.notFound"));
     return;
   }
   if (reports.length === 1) {
@@ -264,7 +264,7 @@ async function openReportForScenarios(
   }
   const picked = await vscode.window.showQuickPick(
     reports.map((r) => ({ label: r.scenarioId, description: r.fileName, reportPath: r.path })),
-    { placeHolder: "開くレポートを選択" },
+    { placeHolder: t("run.report.pickPlaceholder") },
   );
   if (picked) {
     await openReport(picked.reportPath);
@@ -389,9 +389,12 @@ async function executeRun(
 
   if (failedOnly) {
     outputChannel.appendLine(
-      `[rerunFailed] project=${resolution.kind === "resolved" ? resolution.project : resolution.kind}`
-      + ` 展開=${targets.size}件 失敗記録=${lastFailed.size}件`
-      + ` 対象=${[...targets.keys()].filter((id) => lastFailed.has(lookupKey(id))).length}件`);
+      t("run.log.rerunFailedSummary", {
+        project: resolution.kind === "resolved" ? resolution.project : resolution.kind,
+        expanded: String(targets.size),
+        failedCount: String(lastFailed.size),
+        target: String([...targets.keys()].filter((id) => lastFailed.has(lookupKey(id))).length),
+      }));
     targets = new Map([...targets].filter(([id]) => lastFailed.has(lookupKey(id))));
     // 元 request の include(folder/class/全体)のまま TestRun を作ると、実際には走らない
     // 非対象テストまで実行単位として表示される。実対象 leaf だけの request に差し替える。
@@ -415,10 +418,9 @@ async function executeRun(
 
   if (targets.size === 0) {
     if (failedOnly) {
-      run.appendOutput("前回失敗したシナリオはありません(全て成功済みか未実行)\r\n");
+      run.appendOutput(`${t("run.noFailedScenarios")}\r\n`);
       // 実行が一瞬で終わり run 出力は見落としやすいため、可視の通知も出す
-      void vscode.window.showInformationMessage(
-        "ftester: 前回失敗したシナリオはありません(全て成功済みか未実行)");
+      void vscode.window.showInformationMessage(`ftester: ${t("run.noFailedScenarios")}`);
     }
     run.end();
     return;
@@ -437,11 +439,9 @@ async function executeRun(
   }
 
   if (resolution.kind !== "resolved") {
-    run.appendOutput(
-      "対象のテストプロジェクトを解決できませんでした。ftester.project 設定を確認してください。\r\n",
-    );
+    run.appendOutput(`${t("run.project.unresolvedHint")}\r\n`);
     for (const item of targets.values()) {
-      run.errored(item, new vscode.TestMessage("対象のテストプロジェクトを解決できませんでした。"));
+      run.errored(item, new vscode.TestMessage(t("run.project.unresolved")));
     }
     run.end();
     return;
@@ -454,12 +454,14 @@ async function executeRun(
   if (!dryRun && prepareLiveForRun && targets.size > 0) {
     const platform = resolveTargetPlatform(targets);
     if (platform) {
-      run.appendOutput("ライブ操作パネルのデバイス準備(未起動なら起動)と画面同期を待機しています…\r\n");
+      run.appendOutput(`${t("run.live.preparing")}\r\n`);
       try {
         liveTarget = await prepareLiveForRun(platform);
       } catch (error) {
         outputChannel.appendLine(
-          `[ftester] ライブ操作パネルの準備に失敗しました: ${error instanceof Error ? error.message : String(error)}`,
+          t("run.live.prepareFailed", {
+            message: error instanceof Error ? error.message : String(error),
+          }),
         );
       }
     }
@@ -640,18 +642,15 @@ async function executeRun(
 
     if (!sawEnd && result.exitCode !== 0) {
       // runFinished を受信しないまま(異常終了 / デバイス切断など)プロセスが終了した。
-      const tail = stderrTail.length > 0 ? `\n--- stderr 末尾 ---\n${stderrTail.join("\n")}` : "";
+      const tail = stderrTail.length > 0 ? `\n--- ${t("run.process.stderrTailHeader")} ---\n${stderrTail.join("\n")}` : "";
       abnormalMessage = result.cancelled
-        ? "実行がキャンセルされました。"
-        : `ftester プロセスが異常終了しました(exit code: ${String(result.exitCode)})。` +
-          `出力パネル「ftester」を確認してください。${tail}`;
+        ? t("run.cancelled")
+        : t("run.process.abnormalExit", { exitCode: String(result.exitCode), tail });
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     outputChannel.appendLine(`[ftester] ${message}`);
-    void vscode.window.showWarningMessage(
-      `ftester CLI の実行に失敗しました(${message})。出力パネル「ftester」を確認してください。`,
-    );
+    void vscode.window.showWarningMessage(t("run.cli.invokeFailed", { message }));
     abnormalMessage = message;
   } finally {
     // 未終端(振り直しでイベントを取りこぼした・異常終了で結果未着)の項目を必ず終端化する。
@@ -667,11 +666,7 @@ async function executeRun(
       } else {
         run.errored(
           item,
-          new vscode.TestMessage(
-            abnormalMessage
-              ?? "実行結果イベントを受信できませんでした(振り直し等で欠落した可能性)。"
-                + "出力パネル「ftester」を確認してください。",
-          ),
+          new vscode.TestMessage(abnormalMessage ?? t("run.result.missing")),
         );
       }
     }
@@ -681,12 +676,12 @@ async function executeRun(
     activeRunCount -= 1;
     // キャンセル・異常終了でも経過は出す(TEST RESULTS の末尾行)
     const totalSeconds = ((Date.now() - runStartedAt) / 1000).toFixed(1);
-    const parts = [`⏱ トータル: ${totalSeconds}s`];
+    const parts = [t("run.summary.total", { seconds: totalSeconds })];
     if (testSeconds != null) {
-      parts.push(`テスト実時間: ${testSeconds.toFixed(1)}s`);
+      parts.push(t("run.summary.testTime", { seconds: testSeconds.toFixed(1) }));
     }
     if (scenarioTotalSeconds != null) {
-      parts.push(`シナリオ合計: ${scenarioTotalSeconds.toFixed(1)}s`);
+      parts.push(t("run.summary.scenarioTotal", { seconds: scenarioTotalSeconds.toFixed(1) }));
     }
     run.appendOutput(`\r\n${parts.join(" / ")}\r\n`);
     run.end();
@@ -716,9 +711,7 @@ async function executeDebugRun(
     return;
   }
   if (targets.size > 1) {
-    void vscode.window.showWarningMessage(
-      "ftester: デバッグ実行は1件のシナリオのみ対応しています。先頭の1件のみ実行します。",
-    );
+    void vscode.window.showWarningMessage(t("run.debug.multipleSelected"));
   }
   const [id, item] = [...targets.entries()][0]!;
 
@@ -734,10 +727,8 @@ async function executeDebugRun(
   }
 
   if (resolution.kind !== "resolved") {
-    run.appendOutput(
-      "対象のテストプロジェクトを解決できませんでした。ftester.project 設定を確認してください。\r\n",
-    );
-    run.errored(item, new vscode.TestMessage("対象のテストプロジェクトを解決できませんでした。"));
+    run.appendOutput(`${t("run.project.unresolvedHint")}\r\n`);
+    run.errored(item, new vscode.TestMessage(t("run.project.unresolved")));
     run.end();
     return;
   }
@@ -800,7 +791,7 @@ async function executeDebugRun(
   try {
     const started = await vscode.debug.startDebugging(workspaceFolder, debugConfig);
     if (!started) {
-      run.errored(item, new vscode.TestMessage("デバッグセッションを開始できませんでした。"));
+      run.errored(item, new vscode.TestMessage(t("run.debug.sessionStartFailed")));
       return;
     }
 
@@ -818,17 +809,13 @@ async function executeDebugRun(
       if (outcome.passed) {
         run.passed(item);
       } else {
-        const reportSuffix = outcome.reportPath ? ` — レポート: ${outcome.reportPath}` : "";
-        run.failed(item, new vscode.TestMessage(`シナリオが失敗しました${reportSuffix}`));
+        const message = outcome.reportPath
+          ? t("run.debug.scenarioFailedWithReport", { reportPath: outcome.reportPath })
+          : t("run.debug.scenarioFailed");
+        run.failed(item, new vscode.TestMessage(message));
       }
     } else {
-      run.errored(
-        item,
-        new vscode.TestMessage(
-          "実行結果を受信できませんでした(セッションが異常終了した可能性があります)。" +
-            "出力パネル「ftester」を確認してください。",
-        ),
-      );
+      run.errored(item, new vscode.TestMessage(t("run.debug.resultMissing")));
     }
   } finally {
     startListener.dispose();

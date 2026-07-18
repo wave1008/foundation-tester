@@ -1608,18 +1608,37 @@ input[type="text"]::placeholder {
 
 /* ---- #panel-settings(設定タブ) ------------------------------------------------------- */
 .settings-body {
-  padding: 12px;
+  padding: 18px 22px;
+  max-width: 720px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px; /* 設定グループ間の余白 */
+}
+/* 1設定 = ラベル→コントロール→説明 の縦積み。 */
+.settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.settings-label {
+  font-weight: 600;
+  color: var(--vscode-foreground);
 }
 .settings-item {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   cursor: pointer;
+  color: var(--vscode-foreground);
+}
+.settings-select {
+  min-width: 220px;
+  max-width: 320px;
+  padding: 4px 8px; /* グローバル select より高さを確保しクリックしやすく */
 }
 .settings-hint {
-  margin-top: 6px;
-  margin-left: 24px;
-  font-size: 11px;
+  font-size: 12px;
+  line-height: 1.5;
   color: var(--vscode-descriptionForeground);
 }
 /* パネル全体を縦flexで満たし、#resident-list(表のスクロール領域)を余白いっぱいに伸ばす。 */
@@ -1743,30 +1762,30 @@ input[type="text"]::placeholder {
 }
 /* フリート系は種別ごとに色分け(bridge=青 / sim-runner=紫 / inapp-bridge=ティール /
    emulator=緑)。補助常駐は既定のバッジ色のまま。文字は一律白で可読性を確保。 */
-.resident-kind-bridge .resident-badge,
-.resident-kind-sim-runner .resident-badge,
-.resident-kind-inapp-bridge .resident-badge,
-.resident-kind-emulator .resident-badge {
+.resident-type-bridge .resident-badge,
+.resident-type-sim-runner .resident-badge,
+.resident-type-inapp-bridge .resident-badge,
+.resident-type-emulator .resident-badge {
   color: #fff;
 }
-.resident-kind-bridge .resident-badge {
+.resident-type-bridge .resident-badge {
   background-color: var(--vscode-charts-blue, #3794ff);
 }
-.resident-kind-sim-runner .resident-badge {
+.resident-type-sim-runner .resident-badge {
   background-color: var(--vscode-charts-purple, #b180d7);
 }
-.resident-kind-inapp-bridge .resident-badge {
+.resident-type-inapp-bridge .resident-badge {
   background-color: #2aa198;
 }
-.resident-kind-emulator .resident-badge {
+.resident-type-emulator .resident-badge {
   background-color: var(--vscode-charts-green, #388a34);
 }
 /* Android ブリッジ(情報行)は黄で区別。kill 非対象のため PID 列は "—"。 */
-.resident-kind-android-bridge .resident-badge {
+.resident-type-android-bridge .resident-badge {
   background-color: var(--vscode-charts-yellow, #d1a416);
   color: #000;
 }
-.resident-kind-run .resident-badge {
+.resident-type-run .resident-badge {
   background-color: var(--vscode-charts-orange, #d18616);
   color: #fff;
 }

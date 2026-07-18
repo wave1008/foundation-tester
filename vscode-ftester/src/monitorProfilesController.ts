@@ -6,6 +6,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
+import { t } from "./i18n";
 import {
   listAppProfileNames,
   listMachineProfiles,
@@ -154,7 +155,7 @@ export class MonitorProfilesController {
         type: "machineProfileInfo",
         machines: [],
         current: null,
-        error: "対象のテストプロジェクトを解決できませんでした。ftester.project 設定を確認してください。",
+        error: t("profiles.error.projectUnresolved"),
       });
       return;
     }
@@ -237,18 +238,18 @@ export class MonitorProfilesController {
    * onDidChangeConfiguration 経由で postProfileInfo() が呼ばれるため、ここから直接 post しない。
    */
   selectProfile(profile: string): void {
-    const NONE_LABEL = "(プロファイルなし)";
+    const NONE_LABEL = t("profiles.label.noProfile");
     const displayValue = profile === "" ? NONE_LABEL : profile;
     vscode.workspace
       .getConfiguration("ftester")
       .update("profile", profile, vscode.ConfigurationTarget.Workspace)
       .then(
         () => {
-          this.deps.outputChannel.appendLine(`[ftester] 実行プロファイルを「${displayValue}」に設定しました。`);
+          this.deps.outputChannel.appendLine(t("profiles.log.runProfileSet", { name: displayValue }));
         },
         (error: unknown) => {
           this.deps.outputChannel.appendLine(
-            `[ftester] 実行プロファイルの設定に失敗しました(${displayValue}): ${String(error)}`,
+            t("profiles.log.runProfileSetFailed", { name: displayValue, error: String(error) }),
           );
         },
       );
@@ -267,9 +268,7 @@ export class MonitorProfilesController {
   private resolveProjectOrWarn(): string | undefined {
     const resolution = resolveProjectName(this.deps.workspaceRoot, this.deps.getConfig());
     if (resolution.kind !== "resolved") {
-      void vscode.window.showWarningMessage(
-        "ftester: 対象のテストプロジェクトを解決できませんでした。ftester.project 設定を確認してください。",
-      );
+      void vscode.window.showWarningMessage(`ftester: ${t("profiles.error.projectUnresolved")}`);
       return undefined;
     }
     return resolution.project;
@@ -283,10 +282,10 @@ export class MonitorProfilesController {
     }
     const existing = listRunProfileNames(this.deps.workspaceRoot, project);
     const input = await this.promptName({
-      title: "新しい実行プロファイル名",
+      title: t("profiles.title.newRunProfile"),
       value: "",
-      noun: "プロファイル名",
-      dupLabel: "実行プロファイル",
+      noun: t("profiles.noun.profileName"),
+      dupLabel: t("profiles.label.runProfile"),
       existing,
       caseInsensitiveDup: false,
     });
@@ -310,12 +309,12 @@ export class MonitorProfilesController {
         readMachineDeviceNames(this.deps.workspaceRoot, project),
       );
       fs.writeFileSync(path.join(runsDir, `${name}.json`), template, "utf8");
-      this.deps.outputChannel.appendLine(`[ftester] 実行プロファイル「${name}」を追加しました。`);
+      this.deps.outputChannel.appendLine(t("profiles.log.runProfileAdded", { name }));
       this.postProfileInfo();
       this.deps.post({ type: "runProfileSelected", name });
     } catch (error) {
-      this.deps.outputChannel.appendLine(`[ftester] 実行プロファイル「${name}」の追加に失敗しました: ${String(error)}`);
-      void vscode.window.showErrorMessage(`ftester: 実行プロファイル「${name}」の追加に失敗しました。`);
+      this.deps.outputChannel.appendLine(t("profiles.log.runProfileAddFailed", { name, error: String(error) }));
+      void vscode.window.showErrorMessage(`ftester: ${t("profiles.msg.runProfileAddFailed", { name })}`);
     }
   }
 
@@ -328,16 +327,16 @@ export class MonitorProfilesController {
     const runsDir = this.runsDir(project);
     const sourcePath = path.join(runsDir, `${source}.json`);
     if (!fs.existsSync(sourcePath)) {
-      void vscode.window.showWarningMessage(`ftester: 実行プロファイル「${source}」が見つかりません。`);
+      void vscode.window.showWarningMessage(`ftester: ${t("profiles.msg.runProfileNotFound", { name: source })}`);
       this.postProfileInfo();
       return;
     }
     const existing = listRunProfileNames(this.deps.workspaceRoot, project);
     const input = await this.promptName({
-      title: `「${source}」のコピー先の実行プロファイル名`,
+      title: t("profiles.title.copyRunProfile", { source }),
       value: `${source}-copy`,
-      noun: "プロファイル名",
-      dupLabel: "実行プロファイル",
+      noun: t("profiles.noun.profileName"),
+      dupLabel: t("profiles.label.runProfile"),
       existing,
       caseInsensitiveDup: false,
     });
@@ -355,12 +354,12 @@ export class MonitorProfilesController {
       const content = fs.readFileSync(sourcePath, "utf8");
       fs.mkdirSync(runsDir, { recursive: true });
       fs.writeFileSync(path.join(runsDir, `${name}.json`), content, "utf8");
-      this.deps.outputChannel.appendLine(`[ftester] 実行プロファイル「${source}」を「${name}」としてコピーしました。`);
+      this.deps.outputChannel.appendLine(t("profiles.log.runProfileCopied", { source, name }));
       this.postProfileInfo();
       this.deps.post({ type: "runProfileSelected", name });
     } catch (error) {
-      this.deps.outputChannel.appendLine(`[ftester] 実行プロファイル「${name}」のコピーに失敗しました: ${String(error)}`);
-      void vscode.window.showErrorMessage(`ftester: 実行プロファイル「${name}」のコピーに失敗しました。`);
+      this.deps.outputChannel.appendLine(t("profiles.log.runProfileCopyFailed", { name, error: String(error) }));
+      void vscode.window.showErrorMessage(`ftester: ${t("profiles.msg.runProfileCopyFailed", { name })}`);
     }
   }
 
@@ -375,23 +374,24 @@ export class MonitorProfilesController {
     if (!project) {
       return;
     }
+    const deleteLabel = t("profiles.button.delete");
     const choice = await vscode.window.showWarningMessage(
-      `実行プロファイル「${name}」を削除しますか?この操作は元に戻せません。`,
+      t("profiles.confirm.deleteRunProfile", { name }),
       { modal: true },
-      "削除",
+      deleteLabel,
     );
-    if (choice !== "削除") {
+    if (choice !== deleteLabel) {
       return;
     }
     try {
       fs.unlinkSync(path.join(this.runsDir(project), `${name}.json`));
-      this.deps.outputChannel.appendLine(`[ftester] 実行プロファイル「${name}」を削除しました。`);
+      this.deps.outputChannel.appendLine(t("profiles.log.runProfileDeleted", { name }));
       if (this.deps.getConfig().profile === name) {
         this.selectProfile("");
       }
     } catch (error) {
-      this.deps.outputChannel.appendLine(`[ftester] 実行プロファイル「${name}」の削除に失敗しました: ${String(error)}`);
-      void vscode.window.showErrorMessage(`ftester: 実行プロファイル「${name}」の削除に失敗しました。`);
+      this.deps.outputChannel.appendLine(t("profiles.log.runProfileDeleteFailed", { name, error: String(error) }));
+      void vscode.window.showErrorMessage(`ftester: ${t("profiles.msg.runProfileDeleteFailed", { name })}`);
     }
     this.postProfileInfo();
   }
@@ -408,7 +408,7 @@ export class MonitorProfilesController {
     const runsDir = this.runsDir(project);
     const oldPath = path.join(runsDir, `${profile}.json`);
     if (!fs.existsSync(oldPath)) {
-      void vscode.window.showWarningMessage(`ftester: 実行プロファイル「${profile}」が見つかりません。`);
+      void vscode.window.showWarningMessage(`ftester: ${t("profiles.msg.runProfileNotFound", { name: profile })}`);
       this.postProfileInfo();
       return;
     }
@@ -416,10 +416,10 @@ export class MonitorProfilesController {
     // (含めると「変更なし」のリネームも常に重複エラーになるため)。
     const existing = listRunProfileNames(this.deps.workspaceRoot, project).filter((name) => name !== profile);
     const input = await this.promptName({
-      title: `「${profile}」の新しい実行プロファイル名`,
+      title: t("profiles.title.renameRunProfile", { name: profile }),
       value: profile,
-      noun: "プロファイル名",
-      dupLabel: "実行プロファイル",
+      noun: t("profiles.noun.profileName"),
+      dupLabel: t("profiles.label.runProfile"),
       existing,
       caseInsensitiveDup: false,
     });
@@ -441,14 +441,14 @@ export class MonitorProfilesController {
       if (this.deps.getConfig().profile === profile) {
         this.selectProfile(newName);
       }
-      this.deps.outputChannel.appendLine(`[ftester] 実行プロファイル「${profile}」を「${newName}」に変更しました。`);
+      this.deps.outputChannel.appendLine(t("profiles.log.runProfileRenamed", { oldName: profile, newName }));
       this.postProfileInfo();
       this.deps.post({ type: "runProfileSelected", name: newName });
     } catch (error) {
       this.deps.outputChannel.appendLine(
-        `[ftester] 実行プロファイル「${profile}」の名前変更に失敗しました: ${String(error)}`,
+        t("profiles.log.runProfileRenameFailed", { name: profile, error: String(error) }),
       );
-      void vscode.window.showErrorMessage(`ftester: 実行プロファイル「${profile}」の名前変更に失敗しました。`);
+      void vscode.window.showErrorMessage(`ftester: ${t("profiles.msg.runProfileRenameFailed", { name: profile })}`);
     }
   }
 
@@ -469,10 +469,10 @@ export class MonitorProfilesController {
     }
     const existing = listAppProfileNames(this.deps.workspaceRoot, project);
     const input = await this.promptName({
-      title: "新しいアプリプロファイル名",
+      title: t("profiles.title.newAppProfile"),
       value: "",
-      noun: "アプリプロファイル名",
-      dupLabel: "アプリプロファイル",
+      noun: t("profiles.noun.appProfileName"),
+      dupLabel: t("profiles.label.appProfile"),
       existing,
       caseInsensitiveDup: false,
     });
@@ -492,12 +492,12 @@ export class MonitorProfilesController {
       // テンプレートは appName のみ(埋めるべき候補一覧が無く buildRunProfileTemplate とは異なる)。
       const template = { android: {}, common: { appName: name }, ios: {} };
       fs.writeFileSync(path.join(appsDir, `${name}.json`), `${JSON.stringify(template, null, 2)}\n`, "utf8");
-      this.deps.outputChannel.appendLine(`[ftester] アプリプロファイル「${name}」を追加しました。`);
+      this.deps.outputChannel.appendLine(t("profiles.log.appProfileAdded", { name }));
       this.postProfileInfo();
       this.deps.post({ type: "appProfileSelected", name });
     } catch (error) {
-      this.deps.outputChannel.appendLine(`[ftester] アプリプロファイル「${name}」の追加に失敗しました: ${String(error)}`);
-      void vscode.window.showErrorMessage(`ftester: アプリプロファイル「${name}」の追加に失敗しました。`);
+      this.deps.outputChannel.appendLine(t("profiles.log.appProfileAddFailed", { name, error: String(error) }));
+      void vscode.window.showErrorMessage(`ftester: ${t("profiles.msg.appProfileAddFailed", { name })}`);
     }
   }
 
@@ -510,16 +510,16 @@ export class MonitorProfilesController {
     const appsDir = this.appsDir(project);
     const sourcePath = path.join(appsDir, `${source}.json`);
     if (!fs.existsSync(sourcePath)) {
-      void vscode.window.showWarningMessage(`ftester: アプリプロファイル「${source}」が見つかりません。`);
+      void vscode.window.showWarningMessage(`ftester: ${t("profiles.msg.appProfileNotFound", { name: source })}`);
       this.postProfileInfo();
       return;
     }
     const existing = listAppProfileNames(this.deps.workspaceRoot, project);
     const input = await this.promptName({
-      title: `「${source}」のコピー先のアプリプロファイル名`,
+      title: t("profiles.title.copyAppProfile", { source }),
       value: `${source}-copy`,
-      noun: "アプリプロファイル名",
-      dupLabel: "アプリプロファイル",
+      noun: t("profiles.noun.appProfileName"),
+      dupLabel: t("profiles.label.appProfile"),
       existing,
       caseInsensitiveDup: false,
     });
@@ -537,12 +537,12 @@ export class MonitorProfilesController {
       const content = fs.readFileSync(sourcePath, "utf8");
       fs.mkdirSync(appsDir, { recursive: true });
       fs.writeFileSync(path.join(appsDir, `${name}.json`), content, "utf8");
-      this.deps.outputChannel.appendLine(`[ftester] アプリプロファイル「${source}」を「${name}」としてコピーしました。`);
+      this.deps.outputChannel.appendLine(t("profiles.log.appProfileCopied", { source, name }));
       this.postProfileInfo();
       this.deps.post({ type: "appProfileSelected", name });
     } catch (error) {
-      this.deps.outputChannel.appendLine(`[ftester] アプリプロファイル「${name}」のコピーに失敗しました: ${String(error)}`);
-      void vscode.window.showErrorMessage(`ftester: アプリプロファイル「${name}」のコピーに失敗しました。`);
+      this.deps.outputChannel.appendLine(t("profiles.log.appProfileCopyFailed", { name, error: String(error) }));
+      void vscode.window.showErrorMessage(`ftester: ${t("profiles.msg.appProfileCopyFailed", { name })}`);
     }
   }
 
@@ -552,20 +552,21 @@ export class MonitorProfilesController {
     if (!project) {
       return;
     }
+    const deleteLabel = t("profiles.button.delete");
     const choice = await vscode.window.showWarningMessage(
-      `アプリプロファイル「${name}」を削除しますか?この操作は元に戻せません。`,
+      t("profiles.confirm.deleteAppProfile", { name }),
       { modal: true },
-      "削除",
+      deleteLabel,
     );
-    if (choice !== "削除") {
+    if (choice !== deleteLabel) {
       return;
     }
     try {
       fs.unlinkSync(path.join(this.appsDir(project), `${name}.json`));
-      this.deps.outputChannel.appendLine(`[ftester] アプリプロファイル「${name}」を削除しました。`);
+      this.deps.outputChannel.appendLine(t("profiles.log.appProfileDeleted", { name }));
     } catch (error) {
-      this.deps.outputChannel.appendLine(`[ftester] アプリプロファイル「${name}」の削除に失敗しました: ${String(error)}`);
-      void vscode.window.showErrorMessage(`ftester: アプリプロファイル「${name}」の削除に失敗しました。`);
+      this.deps.outputChannel.appendLine(t("profiles.log.appProfileDeleteFailed", { name, error: String(error) }));
+      void vscode.window.showErrorMessage(`ftester: ${t("profiles.msg.appProfileDeleteFailed", { name })}`);
     }
     this.postProfileInfo();
   }
@@ -582,17 +583,17 @@ export class MonitorProfilesController {
     const appsDir = this.appsDir(project);
     const oldPath = path.join(appsDir, `${profile}.json`);
     if (!fs.existsSync(oldPath)) {
-      void vscode.window.showWarningMessage(`ftester: アプリプロファイル「${profile}」が見つかりません。`);
+      void vscode.window.showWarningMessage(`ftester: ${t("profiles.msg.appProfileNotFound", { name: profile })}`);
       this.postProfileInfo();
       return;
     }
     // 重複チェックは自分自身(現在の名前)を除いた一覧に対して行う(handleProfileRename と同じ方針)。
     const existing = listAppProfileNames(this.deps.workspaceRoot, project).filter((name) => name !== profile);
     const input = await this.promptName({
-      title: `「${profile}」の新しいアプリプロファイル名`,
+      title: t("profiles.title.renameAppProfile", { name: profile }),
       value: profile,
-      noun: "アプリプロファイル名",
-      dupLabel: "アプリプロファイル",
+      noun: t("profiles.noun.appProfileName"),
+      dupLabel: t("profiles.label.appProfile"),
       existing,
       caseInsensitiveDup: false,
     });
@@ -611,14 +612,14 @@ export class MonitorProfilesController {
     }
     try {
       fs.renameSync(oldPath, path.join(appsDir, `${newName}.json`));
-      this.deps.outputChannel.appendLine(`[ftester] アプリプロファイル「${profile}」を「${newName}」に変更しました。`);
+      this.deps.outputChannel.appendLine(t("profiles.log.appProfileRenamed", { oldName: profile, newName }));
       this.postProfileInfo();
       this.deps.post({ type: "appProfileSelected", name: newName });
     } catch (error) {
       this.deps.outputChannel.appendLine(
-        `[ftester] アプリプロファイル「${profile}」の名前変更に失敗しました: ${String(error)}`,
+        t("profiles.log.appProfileRenameFailed", { name: profile, error: String(error) }),
       );
-      void vscode.window.showErrorMessage(`ftester: アプリプロファイル「${profile}」の名前変更に失敗しました。`);
+      void vscode.window.showErrorMessage(`ftester: ${t("profiles.msg.appProfileRenameFailed", { name: profile })}`);
     }
   }
 
@@ -639,10 +640,10 @@ export class MonitorProfilesController {
     }
     const existing = listMachineProfiles(this.deps.workspaceRoot, project).map((summary) => summary.name);
     const input = await this.promptName({
-      title: "新しいマシンプロファイル名",
+      title: t("profiles.title.newMachineProfile"),
       value: "",
-      noun: "マシンプロファイル名",
-      dupLabel: "マシンプロファイル",
+      noun: t("profiles.noun.machineProfileName"),
+      dupLabel: t("profiles.label.machineProfile"),
       existing,
       caseInsensitiveDup: true,
     });
@@ -661,12 +662,12 @@ export class MonitorProfilesController {
       fs.mkdirSync(machinesDir, { recursive: true });
       const skeleton = { android: { devices: [] }, ios: { devices: [] } };
       fs.writeFileSync(path.join(machinesDir, `${name}.json`), `${JSON.stringify(skeleton, null, 2)}\n`, "utf8");
-      this.deps.outputChannel.appendLine(`[ftester] マシンプロファイル「${name}」を追加しました。`);
+      this.deps.outputChannel.appendLine(t("profiles.log.machineProfileAdded", { name }));
       this.postMachineProfileInfo();
       this.deps.post({ type: "machineProfileSelected", name });
     } catch (error) {
-      this.deps.outputChannel.appendLine(`[ftester] マシンプロファイル「${name}」の追加に失敗しました: ${String(error)}`);
-      void vscode.window.showErrorMessage(`ftester: マシンプロファイル「${name}」の追加に失敗しました。`);
+      this.deps.outputChannel.appendLine(t("profiles.log.machineProfileAddFailed", { name, error: String(error) }));
+      void vscode.window.showErrorMessage(`ftester: ${t("profiles.msg.machineProfileAddFailed", { name })}`);
     }
   }
 
@@ -679,16 +680,16 @@ export class MonitorProfilesController {
     const machinesDir = this.machinesDir(project);
     const sourcePath = path.join(machinesDir, `${machine}.json`);
     if (!fs.existsSync(sourcePath)) {
-      void vscode.window.showWarningMessage(`ftester: マシンプロファイル「${machine}」が見つかりません。`);
+      void vscode.window.showWarningMessage(`ftester: ${t("profiles.msg.machineProfileNotFound", { name: machine })}`);
       this.postMachineProfileInfo();
       return;
     }
     const existing = listMachineProfiles(this.deps.workspaceRoot, project).map((summary) => summary.name);
     const input = await this.promptName({
-      title: `「${machine}」のコピー先のマシンプロファイル名`,
+      title: t("profiles.title.copyMachineProfile", { name: machine }),
       value: `${machine}-copy`,
-      noun: "マシンプロファイル名",
-      dupLabel: "マシンプロファイル",
+      noun: t("profiles.noun.machineProfileName"),
+      dupLabel: t("profiles.label.machineProfile"),
       existing,
       caseInsensitiveDup: true,
     });
@@ -704,12 +705,12 @@ export class MonitorProfilesController {
     }
     try {
       fs.copyFileSync(sourcePath, path.join(machinesDir, `${name}.json`));
-      this.deps.outputChannel.appendLine(`[ftester] マシンプロファイル「${machine}」を「${name}」としてコピーしました。`);
+      this.deps.outputChannel.appendLine(t("profiles.log.machineProfileCopied", { machine, name }));
       this.postMachineProfileInfo();
       this.deps.post({ type: "machineProfileSelected", name });
     } catch (error) {
-      this.deps.outputChannel.appendLine(`[ftester] マシンプロファイル「${name}」のコピーに失敗しました: ${String(error)}`);
-      void vscode.window.showErrorMessage(`ftester: マシンプロファイル「${name}」のコピーに失敗しました。`);
+      this.deps.outputChannel.appendLine(t("profiles.log.machineProfileCopyFailed", { name, error: String(error) }));
+      void vscode.window.showErrorMessage(`ftester: ${t("profiles.msg.machineProfileCopyFailed", { name })}`);
     }
   }
 
@@ -726,7 +727,7 @@ export class MonitorProfilesController {
     const machinesDir = this.machinesDir(project);
     const oldPath = path.join(machinesDir, `${machine}.json`);
     if (!fs.existsSync(oldPath)) {
-      void vscode.window.showWarningMessage(`ftester: マシンプロファイル「${machine}」が見つかりません。`);
+      void vscode.window.showWarningMessage(`ftester: ${t("profiles.msg.machineProfileNotFound", { name: machine })}`);
       this.postMachineProfileInfo();
       return;
     }
@@ -735,10 +736,10 @@ export class MonitorProfilesController {
       .map((summary) => summary.name)
       .filter((name) => name !== machine);
     const input = await this.promptName({
-      title: `「${machine}」の新しいマシンプロファイル名`,
+      title: t("profiles.title.renameMachineProfile", { name: machine }),
       value: machine,
-      noun: "マシンプロファイル名",
-      dupLabel: "マシンプロファイル",
+      noun: t("profiles.noun.machineProfileName"),
+      dupLabel: t("profiles.label.machineProfile"),
       existing,
       caseInsensitiveDup: true,
     });
@@ -758,16 +759,18 @@ export class MonitorProfilesController {
     try {
       fs.renameSync(oldPath, path.join(machinesDir, `${newName}.json`));
       if (updateLocalMachineName(machine, newName)) {
-        this.deps.outputChannel.appendLine(`[ftester] 登録マシン名(machine set)も「${newName}」に更新しました。`);
+        this.deps.outputChannel.appendLine(t("profiles.log.registeredMachineNameUpdated", { name: newName }));
       }
-      this.deps.outputChannel.appendLine(`[ftester] マシンプロファイル「${machine}」を「${newName}」に変更しました。`);
+      this.deps.outputChannel.appendLine(t("profiles.log.machineProfileRenamed", { oldName: machine, newName }));
       this.postMachineProfileInfo();
       this.deps.post({ type: "machineProfileSelected", name: newName });
     } catch (error) {
       this.deps.outputChannel.appendLine(
-        `[ftester] マシンプロファイル「${machine}」の名前変更に失敗しました: ${String(error)}`,
+        t("profiles.log.machineProfileRenameFailed", { name: machine, error: String(error) }),
       );
-      void vscode.window.showErrorMessage(`ftester: マシンプロファイル「${machine}」の名前変更に失敗しました。`);
+      void vscode.window.showErrorMessage(
+        `ftester: ${t("profiles.msg.machineProfileRenameFailed", { name: machine })}`,
+      );
     }
   }
 
@@ -781,21 +784,24 @@ export class MonitorProfilesController {
     if (!project) {
       return;
     }
+    const deleteLabel = t("profiles.button.delete");
     const choice = await vscode.window.showWarningMessage(
-      `マシンプロファイル「${machine}」を削除しますか?この操作は元に戻せません(プロファイルファイルのみ削除され、シミュレータ/AVD 本体は削除されません)。`,
+      t("profiles.confirm.deleteMachineProfile", { name: machine }),
       { modal: true },
-      "削除",
+      deleteLabel,
     );
-    if (choice !== "削除") {
+    if (choice !== deleteLabel) {
       return;
     }
     try {
       fs.unlinkSync(path.join(this.machinesDir(project), `${machine}.json`));
-      this.deps.outputChannel.appendLine(`[ftester] マシンプロファイル「${machine}」を削除しました。`);
+      this.deps.outputChannel.appendLine(t("profiles.log.machineProfileDeleted", { name: machine }));
       this.postMachineProfileInfo();
     } catch (error) {
-      this.deps.outputChannel.appendLine(`[ftester] マシンプロファイル「${machine}」の削除に失敗しました: ${String(error)}`);
-      void vscode.window.showErrorMessage(`ftester: マシンプロファイル「${machine}」の削除に失敗しました。`);
+      this.deps.outputChannel.appendLine(
+        t("profiles.log.machineProfileDeleteFailed", { name: machine, error: String(error) }),
+      );
+      void vscode.window.showErrorMessage(`ftester: ${t("profiles.msg.machineProfileDeleteFailed", { name: machine })}`);
     }
   }
 
@@ -813,10 +819,15 @@ export class MonitorProfilesController {
     }
     const confirmMessage =
       names.length === 1
-        ? `マシンプロファイル「${machine}」からデバイス「${names[0]}」を除去しますか?プロファイルからの除去のみで、シミュレータ/AVD 本体は削除されません。`
-        : `マシンプロファイル「${machine}」から${names.length}台のデバイス(${summarizeDeviceNames(names)})を除去しますか?プロファイルからの除去のみで、シミュレータ/AVD 本体は削除されません。`;
-    const choice = await vscode.window.showWarningMessage(confirmMessage, { modal: true }, "除去");
-    if (choice !== "除去") {
+        ? t("profiles.confirm.removeDeviceSingle", { machine, name: names[0]! })
+        : t("profiles.confirm.removeDeviceMultiple", {
+            machine,
+            count: names.length,
+            names: summarizeDeviceNames(names),
+          });
+    const removeLabel = t("profiles.button.remove");
+    const choice = await vscode.window.showWarningMessage(confirmMessage, { modal: true }, removeLabel);
+    if (choice !== removeLabel) {
       return;
     }
     const machinePath = path.join(this.machinesDir(project), `${machine}.json`);
@@ -826,9 +837,11 @@ export class MonitorProfilesController {
         parsed = JSON.parse(fs.readFileSync(machinePath, "utf8"));
       } catch (error) {
         this.deps.outputChannel.appendLine(
-          `[ftester] マシンプロファイル「${machine}」の読み込みに失敗しました: ${String(error)}`,
+          t("profiles.log.machineProfileLoadFailed", { name: machine, error: String(error) }),
         );
-        void vscode.window.showWarningMessage(`ftester: マシンプロファイル「${machine}」を読み込めませんでした。`);
+        void vscode.window.showWarningMessage(
+          `ftester: ${t("profiles.msg.machineProfileLoadFailed", { name: machine })}`,
+        );
         return;
       }
       let current: unknown = parsed;
@@ -837,9 +850,11 @@ export class MonitorProfilesController {
         const result = removeDeviceFromMachineProfile(current, name);
         if (!result) {
           this.deps.outputChannel.appendLine(
-            `[ftester] マシンプロファイル「${machine}」の形式が不正なため、デバイスの除去を中断しました。`,
+            t("profiles.log.machineProfileInvalidFormatRemoveAborted", { name: machine }),
           );
-          void vscode.window.showWarningMessage(`ftester: マシンプロファイル「${machine}」を読み込めませんでした。`);
+          void vscode.window.showWarningMessage(
+            `ftester: ${t("profiles.msg.machineProfileLoadFailed", { name: machine })}`,
+          );
           return;
         }
         current = result.object;
@@ -849,25 +864,31 @@ export class MonitorProfilesController {
       }
       if (removedCount === 0) {
         this.deps.outputChannel.appendLine(
-          `[ftester] マシンプロファイル「${machine}」に指定のデバイスが見つからず、除去できませんでした。`,
+          t("profiles.log.machineProfileDeviceNotFoundRemoveFailed", { name: machine }),
         );
         void vscode.window.showWarningMessage(
-          `ftester: マシンプロファイル「${machine}」に指定のデバイスが見つかりませんでした。`,
+          `ftester: ${t("profiles.msg.machineProfileDeviceNotFound", { name: machine })}`,
         );
         return;
       }
       fs.writeFileSync(machinePath, `${JSON.stringify(current, null, 2)}\n`, "utf8");
       this.deps.outputChannel.appendLine(
-        `[ftester] マシンプロファイル「${machine}」から${removedCount}台のデバイスを除去しました(${names.join("、")})。`,
+        t("profiles.log.machineProfileDevicesRemoved", {
+          name: machine,
+          count: removedCount,
+          names: names.join("、"),
+        }),
       );
       // FileSystemWatcher(onDidChange)経由でも postMachineProfileInfo() が呼ばれるが、
       // 反映を待たせないようここでも明示的に呼ぶ(冪等)。
       this.postMachineProfileInfo();
     } catch (error) {
       this.deps.outputChannel.appendLine(
-        `[ftester] マシンプロファイル「${machine}」からのデバイス除去に失敗しました: ${String(error)}`,
+        t("profiles.log.machineProfileDeviceRemoveFailed", { name: machine, error: String(error) }),
       );
-      void vscode.window.showErrorMessage(`ftester: マシンプロファイル「${machine}」からのデバイス除去に失敗しました。`);
+      void vscode.window.showErrorMessage(
+        `ftester: ${t("profiles.msg.machineProfileDeviceRemoveFailed", { name: machine })}`,
+      );
     }
   }
 
@@ -884,11 +905,7 @@ export class MonitorProfilesController {
 
     const resolution = resolveProjectName(this.deps.workspaceRoot, this.deps.getConfig());
     if (resolution.kind !== "resolved") {
-      sendResult(
-        false,
-        message.originalName,
-        "対象のテストプロジェクトを解決できませんでした。ftester.project 設定を確認してください。",
-      );
+      sendResult(false, message.originalName, t("profiles.error.projectUnresolved"));
       return;
     }
 
@@ -898,9 +915,9 @@ export class MonitorProfilesController {
       parsed = JSON.parse(fs.readFileSync(machinePath, "utf8"));
     } catch (error) {
       this.deps.outputChannel.appendLine(
-        `[ftester] マシンプロファイル「${message.machine}」の読み込みに失敗しました: ${String(error)}`,
+        t("profiles.log.machineProfileLoadFailed", { name: message.machine, error: String(error) }),
       );
-      sendResult(false, message.originalName, `マシンプロファイル「${message.machine}」を読み込めませんでした。`);
+      sendResult(false, message.originalName, t("profiles.msg.machineProfileLoadFailed", { name: message.machine }));
       return;
     }
 
@@ -914,14 +931,18 @@ export class MonitorProfilesController {
       fs.writeFileSync(machinePath, `${JSON.stringify(result.object, null, 2)}\n`, "utf8");
     } catch (error) {
       this.deps.outputChannel.appendLine(
-        `[ftester] マシンプロファイル「${message.machine}」のデバイス「${message.originalName}」の更新に失敗しました: ${String(error)}`,
+        t("profiles.log.machineProfileDeviceUpdateFailed", {
+          machine: message.machine,
+          device: message.originalName,
+          error: String(error),
+        }),
       );
-      sendResult(false, message.originalName, `マシンプロファイル「${message.machine}」への書き込みに失敗しました。`);
+      sendResult(false, message.originalName, t("profiles.msg.machineProfileWriteFailed", { name: message.machine }));
       return;
     }
 
     this.deps.outputChannel.appendLine(
-      `[ftester] マシンプロファイル「${message.machine}」のデバイス「${message.originalName}」を更新しました。`,
+      t("profiles.log.machineProfileDeviceUpdated", { machine: message.machine, device: message.originalName }),
     );
     sendResult(true, result.name, null);
     // FileSystemWatcher(onDidChange)経由でも postMachineProfileInfo() が呼ばれるが、
@@ -941,7 +962,7 @@ export class MonitorProfilesController {
 
     const resolution = resolveProjectName(this.deps.workspaceRoot, this.deps.getConfig());
     if (resolution.kind !== "resolved") {
-      sendResult(false, 0, 0, "対象のテストプロジェクトを解決できませんでした。ftester.project 設定を確認してください。");
+      sendResult(false, 0, 0, t("profiles.error.projectUnresolved"));
       return;
     }
 
@@ -951,9 +972,9 @@ export class MonitorProfilesController {
       parsed = JSON.parse(fs.readFileSync(machinePath, "utf8"));
     } catch (error) {
       this.deps.outputChannel.appendLine(
-        `[ftester] マシンプロファイル「${message.machine}」の読み込みに失敗しました: ${String(error)}`,
+        t("profiles.log.machineProfileLoadFailed", { name: message.machine, error: String(error) }),
       );
-      sendResult(false, 0, 0, `マシンプロファイル「${message.machine}」を読み込めませんでした。`);
+      sendResult(false, 0, 0, t("profiles.msg.machineProfileLoadFailed", { name: message.machine }));
       return;
     }
 
@@ -967,16 +988,21 @@ export class MonitorProfilesController {
       fs.writeFileSync(machinePath, `${JSON.stringify(result.object, null, 2)}\n`, "utf8");
     } catch (error) {
       this.deps.outputChannel.appendLine(
-        `[ftester] マシンプロファイル「${message.machine}」へのデバイス同期の書き込みに失敗しました: ${String(error)}`,
+        t("profiles.log.machineProfileDevicesSyncWriteFailed", { machine: message.machine, error: String(error) }),
       );
-      sendResult(false, 0, 0, `マシンプロファイル「${message.machine}」への書き込みに失敗しました。`);
+      sendResult(false, 0, 0, t("profiles.msg.machineProfileWriteFailed", { name: message.machine }));
       return;
     }
 
+    const noneLabel = t("profiles.label.none");
     this.deps.outputChannel.appendLine(
-      `[ftester] マシンプロファイル「${message.machine}」に追加${result.added.length}台・登録解除${result.removed}台を適用しました` +
-        `(追加: ${result.added.length > 0 ? result.added.join("、") : "なし"}、` +
-        `登録解除: ${message.remove.length > 0 ? message.remove.join("、") : "なし"})。`,
+      t("profiles.log.machineProfileDevicesSynced", {
+        machine: message.machine,
+        added: result.added.length,
+        removed: result.removed,
+        addedList: result.added.length > 0 ? result.added.join("、") : noneLabel,
+        removeList: message.remove.length > 0 ? message.remove.join("、") : noneLabel,
+      }),
     );
     sendResult(true, result.added.length, result.removed, null);
     // FileSystemWatcher 経由でも呼ばれるが、反映を待たせないようここでも明示的に呼ぶ
@@ -999,11 +1025,7 @@ export class MonitorProfilesController {
 
     const resolution = resolveProjectName(this.deps.workspaceRoot, this.deps.getConfig());
     if (resolution.kind !== "resolved") {
-      sendResult(
-        false,
-        "対象のテストプロジェクトを解決できませんでした。ftester.project 設定を確認してください。",
-        null,
-      );
+      sendResult(false, t("profiles.error.projectUnresolved"), null);
       return;
     }
 
@@ -1012,14 +1034,16 @@ export class MonitorProfilesController {
     try {
       parsed = JSON.parse(fs.readFileSync(runPath, "utf8"));
     } catch (error) {
-      this.deps.outputChannel.appendLine(`[ftester] 実行プロファイル「${profile}」の読み込みに失敗しました: ${String(error)}`);
-      sendResult(false, `実行プロファイル「${profile}」を読み込めませんでした。`, null);
+      this.deps.outputChannel.appendLine(
+        t("profiles.log.runProfileLoadFailed", { name: profile, error: String(error) }),
+      );
+      sendResult(false, t("profiles.msg.runProfileLoadFailed", { name: profile }), null);
       return;
     }
 
     const fields = parseRunProfileForForm(parsed);
     if (!fields) {
-      sendResult(false, `実行プロファイル「${profile}」の形式が不正です。`, null);
+      sendResult(false, t("profiles.msg.runProfileInvalidFormat", { name: profile }), null);
       return;
     }
     sendResult(true, null, fields);
@@ -1037,7 +1061,7 @@ export class MonitorProfilesController {
 
     const resolution = resolveProjectName(this.deps.workspaceRoot, this.deps.getConfig());
     if (resolution.kind !== "resolved") {
-      sendResult(false, "対象のテストプロジェクトを解決できませんでした。ftester.project 設定を確認してください。");
+      sendResult(false, t("profiles.error.projectUnresolved"));
       return;
     }
 
@@ -1046,8 +1070,10 @@ export class MonitorProfilesController {
     try {
       parsed = JSON.parse(fs.readFileSync(runPath, "utf8"));
     } catch (error) {
-      this.deps.outputChannel.appendLine(`[ftester] 実行プロファイル「${profile}」の読み込みに失敗しました: ${String(error)}`);
-      sendResult(false, `実行プロファイル「${profile}」を読み込めませんでした。`);
+      this.deps.outputChannel.appendLine(
+        t("profiles.log.runProfileLoadFailed", { name: profile, error: String(error) }),
+      );
+      sendResult(false, t("profiles.msg.runProfileLoadFailed", { name: profile }));
       return;
     }
 
@@ -1060,12 +1086,14 @@ export class MonitorProfilesController {
     try {
       fs.writeFileSync(runPath, `${JSON.stringify(result.object, null, 2)}\n`, "utf8");
     } catch (error) {
-      this.deps.outputChannel.appendLine(`[ftester] 実行プロファイル「${profile}」の書き込みに失敗しました: ${String(error)}`);
-      sendResult(false, `実行プロファイル「${profile}」への書き込みに失敗しました。`);
+      this.deps.outputChannel.appendLine(
+        t("profiles.log.runProfileWriteFailed", { name: profile, error: String(error) }),
+      );
+      sendResult(false, t("profiles.msg.runProfileWriteFailed", { name: profile }));
       return;
     }
 
-    this.deps.outputChannel.appendLine(`[ftester] 実行プロファイル「${profile}」を更新しました。`);
+    this.deps.outputChannel.appendLine(t("profiles.log.runProfileUpdated", { name: profile }));
     sendResult(true, null);
     this.handleRunProfileLoad(profile);
   }
@@ -1082,11 +1110,7 @@ export class MonitorProfilesController {
 
     const resolution = resolveProjectName(this.deps.workspaceRoot, this.deps.getConfig());
     if (resolution.kind !== "resolved") {
-      sendResult(
-        false,
-        "対象のテストプロジェクトを解決できませんでした。ftester.project 設定を確認してください。",
-        null,
-      );
+      sendResult(false, t("profiles.error.projectUnresolved"), null);
       return;
     }
 
@@ -1095,14 +1119,16 @@ export class MonitorProfilesController {
     try {
       parsed = JSON.parse(fs.readFileSync(appPath, "utf8"));
     } catch (error) {
-      this.deps.outputChannel.appendLine(`[ftester] アプリプロファイル「${profile}」の読み込みに失敗しました: ${String(error)}`);
-      sendResult(false, `アプリプロファイル「${profile}」を読み込めませんでした。`, null);
+      this.deps.outputChannel.appendLine(
+        t("profiles.log.appProfileLoadFailed", { name: profile, error: String(error) }),
+      );
+      sendResult(false, t("profiles.msg.appProfileLoadFailed", { name: profile }), null);
       return;
     }
 
     const fields = parseAppProfileForForm(parsed);
     if (!fields) {
-      sendResult(false, `アプリプロファイル「${profile}」の形式が不正です。`, null);
+      sendResult(false, t("profiles.msg.appProfileInvalidFormat", { name: profile }), null);
       return;
     }
     sendResult(true, null, fields);
@@ -1117,7 +1143,7 @@ export class MonitorProfilesController {
 
     const resolution = resolveProjectName(this.deps.workspaceRoot, this.deps.getConfig());
     if (resolution.kind !== "resolved") {
-      sendResult(false, "対象のテストプロジェクトを解決できませんでした。ftester.project 設定を確認してください。");
+      sendResult(false, t("profiles.error.projectUnresolved"));
       return;
     }
 
@@ -1126,8 +1152,10 @@ export class MonitorProfilesController {
     try {
       parsed = JSON.parse(fs.readFileSync(appPath, "utf8"));
     } catch (error) {
-      this.deps.outputChannel.appendLine(`[ftester] アプリプロファイル「${profile}」の読み込みに失敗しました: ${String(error)}`);
-      sendResult(false, `アプリプロファイル「${profile}」を読み込めませんでした。`);
+      this.deps.outputChannel.appendLine(
+        t("profiles.log.appProfileLoadFailed", { name: profile, error: String(error) }),
+      );
+      sendResult(false, t("profiles.msg.appProfileLoadFailed", { name: profile }));
       return;
     }
 
@@ -1140,12 +1168,14 @@ export class MonitorProfilesController {
     try {
       fs.writeFileSync(appPath, `${JSON.stringify(result.object, null, 2)}\n`, "utf8");
     } catch (error) {
-      this.deps.outputChannel.appendLine(`[ftester] アプリプロファイル「${profile}」の書き込みに失敗しました: ${String(error)}`);
-      sendResult(false, `アプリプロファイル「${profile}」への書き込みに失敗しました。`);
+      this.deps.outputChannel.appendLine(
+        t("profiles.log.appProfileWriteFailed", { name: profile, error: String(error) }),
+      );
+      sendResult(false, t("profiles.msg.appProfileWriteFailed", { name: profile }));
       return;
     }
 
-    this.deps.outputChannel.appendLine(`[ftester] アプリプロファイル「${profile}」を更新しました。`);
+    this.deps.outputChannel.appendLine(t("profiles.log.appProfileUpdated", { name: profile }));
     sendResult(true, null);
     this.handleAppProfileLoad(profile);
   }

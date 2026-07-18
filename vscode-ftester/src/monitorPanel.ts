@@ -32,6 +32,7 @@ import { repairWifi } from "./adbWifiRepair";
 import type { FtesterCli } from "./cli";
 import { type FtesterConfig, readRunProfileDeviceNames, resolveAdb, resolveProjectName } from "./config";
 import { isExploreWebviewEnvelope, type ExploreToWebviewEnvelope } from "./exploreModel";
+import { currentLocale, t } from "./i18n";
 import {
   devicesToShutdownOnScopeChange,
   isMonitorFromWebviewMessage,
@@ -47,7 +48,7 @@ import { MonitorHealthWatchdog } from "./monitorHealthWatchdog";
 import { PANEL_TITLE, renderHtml } from "./monitorHtml";
 import { type HostMetricsToWebviewMessage, MonitorProcessManager } from "./monitorProcessManager";
 import { MonitorProfilesController } from "./monitorProfilesController";
-import { KIND_ORDER, parseAndroidBridges, parseResidentProcesses, type ResidentProcess } from "./residentProcesses";
+import { TYPE_ORDER, parseAndroidBridges, parseResidentProcesses, type ResidentProcess } from "./residentProcesses";
 import type { RunBusMessage, RunEventBus } from "./runEventBus";
 import {
   createRunLaneState,
@@ -132,8 +133,8 @@ export function registerMonitorPanel(
   // TEST EXPLORER タイトルの view/title ボタンはペイン非フォーカス時に隠れる。
   // フォーカスに依存しない常時表示の導線としてステータスバーへ常駐させる。
   const statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
-  statusItem.text = "$(device-mobile) デバイスモニター";
-  statusItem.tooltip = "ftester: デバイスモニターを表示";
+  statusItem.text = t("monitor.statusBar.label");
+  statusItem.tooltip = t("monitor.statusBar.tooltip");
   statusItem.command = "ftester.showDeviceMonitor";
   statusItem.show();
 
@@ -280,7 +281,7 @@ class MonitorPanelController implements vscode.Disposable {
       return;
     }
     this.outputChannel.appendLine(
-      `[ftester] プロファイル切り替えに伴い監視対象外のデバイスを停止します: ${targets.join(", ")}`,
+      `[ftester] ${t("monitor.log.stoppingOutOfScopeDevices", { names: targets.join(", ") })}`,
     );
     for (const name of targets) {
       this.deviceOps.enqueueLifecycleJob({ kind: "device", name, op: "down" });
@@ -534,6 +535,13 @@ class MonitorPanelController implements vscode.Disposable {
         // (livePanel.ts)は独立プロセスのため、こちらは次のデバイス選択/表示状態変化で追いつく。
         this.deviceStream.reapply();
         break;
+      case "setLanguage":
+        // ftester.language 設定(Global)を更新。反映(ツリー再翻訳 + 再読み込み案内)は
+        // extension.ts の onDidChangeConfiguration ハンドラが担う。
+        void vscode.workspace
+          .getConfiguration("ftester")
+          .update("language", message.value, vscode.ConfigurationTarget.Global);
+        break;
       case "setTilePaneHeight":
         this.tilePaneHeight = message.value;
         void this.workspaceState.update("monitor.tilePaneHeight", message.value);
@@ -548,7 +556,7 @@ class MonitorPanelController implements vscode.Disposable {
       case "streamStall":
         if (message.device) {
           this.outputChannel.appendLine(
-            `[monitor-stream] ${message.device}: キーフレーム未受信のままのためヘルパーを再起動します。`,
+            `[monitor-stream] ${message.device}: ${t("monitor.log.streamStallRestart")}`,
           );
           this.deviceStream.restartDevice(message.device);
         }
@@ -556,7 +564,7 @@ class MonitorPanelController implements vscode.Disposable {
       case "codecError":
         if (message.scope === "tile" && message.device) {
           this.outputChannel.appendLine(
-            `[monitor-stream] ${message.device}: WebCodecs 未対応/デコード失敗のため mjpeg へフォールバックします。`,
+            `[monitor-stream] ${message.device}: ${t("monitor.log.codecFallbackMjpeg")}`,
           );
           this.deviceStream.fallbackToMjpeg(message.device);
         }
@@ -576,6 +584,10 @@ class MonitorPanelController implements vscode.Disposable {
     this.deviceOps.resendQueueStatus();
     this.explore.sendInitialState();
     this.post({ type: "pollingMode", value: this.pollingMode });
+    this.post({
+      type: "language",
+      value: vscode.workspace.getConfiguration("ftester").get<"auto" | "ja" | "en">("language", "auto"),
+    });
     if (this.tilePaneHeight !== undefined) {
       this.post({ type: "tilePaneHeight", value: this.tilePaneHeight });
     }
@@ -653,7 +665,7 @@ class MonitorPanelController implements vscode.Disposable {
         }
       }),
     );
-    return parseAndroidBridges(forwardOut, pidBySerial);
+    return parseAndroidBridges(forwardOut, pidBySerial, currentLocale());
   }
 
   private async listResidentProcesses(simulatorNames: Record<string, string> = {}): Promise<ResidentProcess[]> {
@@ -670,13 +682,13 @@ class MonitorPanelController implements vscode.Disposable {
     const binaryDir = path.dirname(this.getConfig().binaryPath);
     // 表示・掃除の対象外を取得段階で除外する: Android エミュ本体(qemu、デバイスタブの領域)と
     // MCP サーバ(mcp、セッションを守るため掃討しない=表示もしない)。
-    const host = parseResidentProcesses(stdout, { simulatorNames, binaryDir, inappBridges }).filter(
-      (p) => p.kind !== "emulator" && p.kind !== "mcp",
+    const host = parseResidentProcesses(stdout, { simulatorNames, binaryDir, inappBridges, locale: currentLocale() }).filter(
+      (p) => p.type !== "emulator" && p.type !== "mcp",
     );
-    // 合成した android-bridge 行を混ぜ、KIND_ORDER→pid で再整列(pid=0 同士は serial で安定化)。
+    // 合成した android-bridge 行を混ぜ、TYPE_ORDER→pid で再整列(pid=0 同士は serial で安定化)。
     const merged = [...host, ...androidBridges];
     merged.sort((a, b) => {
-      const d = KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind);
+      const d = TYPE_ORDER.indexOf(a.type) - TYPE_ORDER.indexOf(b.type);
       if (d !== 0) {
         return d;
       }
@@ -737,7 +749,7 @@ class MonitorPanelController implements vscode.Disposable {
           stdio: ["ignore", "pipe", "pipe"],
         });
       } catch (e) {
-        this.outputChannel.appendLine(`[ftester] ${tag} 起動失敗: ${String(e)}`);
+        this.outputChannel.appendLine(`[ftester] ${tag} ${t("monitor.log.launchFailed", { error: String(e) })}`);
         resolve();
         return;
       }
@@ -784,9 +796,9 @@ class MonitorPanelController implements vscode.Disposable {
   }
 
   private async killAllResidentProcesses(): Promise<void> {
-    const CONFIRM = "強制終了";
+    const CONFIRM = t("monitor.residentKill.confirmButton");
     const choice = await vscode.window.showWarningMessage(
-      "この workspace の ftester 常駐プロセスを停止します。\n\niOS ブリッジ/ランナー・in-app ブリッジ・モニター/ホストメトリクス/画面ストリームを停止し、Android ブリッジは am/adb で停止します。\n\niOS シミュレータと Android エミュレータ本体・MCP サーバ・他 workspace のプロセスは停止しません。一部のプロセスは自動復帰します。",
+      t("monitor.residentKill.warningBody"),
       { modal: true },
       CONFIRM,
     );
@@ -813,7 +825,7 @@ class MonitorPanelController implements vscode.Disposable {
       const remaining = await this.listResidentProcesses();
       let killed = 0;
       for (const p of remaining) {
-        if (p.pid <= 0 || p.pid === process.pid || p.kind === "emulator" || p.kind === "mcp") {
+        if (p.pid <= 0 || p.pid === process.pid || p.type === "emulator" || p.type === "mcp") {
           continue;
         }
         if (!this.isWorkspaceOwned(p.command)) {
@@ -824,7 +836,9 @@ class MonitorPanelController implements vscode.Disposable {
           killed++;
         } catch (e) {
           if ((e as NodeJS.ErrnoException)?.code !== "ESRCH") {
-            this.outputChannel.appendLine(`[ftester] 常駐プロセス(PID ${p.pid})の終了に失敗: ${String(e)}`);
+            this.outputChannel.appendLine(
+              `[ftester] ${t("monitor.log.residentKillFailed", { pid: p.pid, error: String(e) })}`,
+            );
           }
         }
       }

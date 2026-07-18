@@ -20,6 +20,7 @@
 
 import { resolveAdb, resolveAndroidStream, resolveSimStream } from "./config";
 import { StreamPipeline } from "./deviceStream";
+import { t } from "./i18n";
 import type { MonitorDevice, MonitorPlatform } from "./monitorModel";
 import type { MonitorPanelDeps } from "./monitorPanel";
 
@@ -247,7 +248,7 @@ export class MonitorDeviceStreamController {
       onConnectionOk: () => undefined,
       onFailure: (message) => {
         this.deps.outputChannel.appendLine(
-          `[monitor-stream] ${deviceId}: ${message} ポーリングへ戻します。`,
+          `[monitor-stream] ${deviceId}: ${message} ${t("monitor.deviceStream.fallbackToPolling")}`,
         );
         this.disposeDevice(deviceId);
         this.gaveUpDeviceIds.add(deviceId); // 2秒毎の applyDevices による再生成スパムを止める

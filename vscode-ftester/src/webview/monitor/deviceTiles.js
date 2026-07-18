@@ -5,6 +5,7 @@
 // footer 優先順位: opBusy > wipeStatus > bridgeWatch/healthWatch。wipeStatus は Wipe 中に
 // offline/booted を経由する(state==='connected' に限定できない)ため他2つと別枠で判定する。
 
+import { t } from '../i18n.js';
 import { vscode } from './vscodeApi.js';
 import { grid, emptyMessage, banner, btnUp, btnDown, deviceOpMenu, deviceOpMenuItemBtn, deviceOpMenuItemLabel, deviceOpMenuLiveBtn, deviceOpMenuGpuBtn, profileSelect } from './domRefs.js';
 import { updateLaneVisibility, syncLanesToDevices, runningWorkers } from './laneLog.js';
@@ -17,39 +18,39 @@ import { clampMenuPosition } from './menu.js';
 // 過渡的・自己解決する内部状態のため)。自動修復が諦めた failed だけ表示する
 // (これも消すとブリッジ死亡時にタイルが無言で「接続中」のまま止まり手掛かりが無くなる)。
 const BRIDGE_WATCH_LABEL = {
-  failed: { label: '復旧失敗(ftester出力参照)', warn: true },
+  failed: { label: t('wvMonitor.footer.bridgeRepairFailed'), warn: true },
 };
 
 // healthWatch(MonitorHealthWatchdog、契約は main.js の 'healthWatch' ケース参照)の phase→footer表示。
 // 'ok' はここに含めず通常表示へフォールバックさせる。bridgeWatch と異なり全 phase を表示する
 // (Wi-Fi/時計異常はブリッジ無応答と違い自己解決しないため、修復の進行状況を出す)。
 const HEALTH_WATCH_LABEL = {
-  unhealthy: { label: 'デバイス異常を検出', warn: true },
-  repairing: { label: 'Wi-Fi 修復中...', warn: true },
-  streamRepairing: { label: 'ストリーム修復中...', warn: true },
-  cpuFallback: { label: 'CPU描画で再起動中...', warn: true },
-  restarting: { label: '自動再起動中...', warn: true },
-  failed: { label: '自動修復失敗', warn: true },
+  unhealthy: { label: t('wvMonitor.footer.healthUnhealthy'), warn: true },
+  repairing: { label: t('wvMonitor.footer.healthWifiRepairing'), warn: true },
+  streamRepairing: { label: t('wvMonitor.footer.healthStreamRepairing'), warn: true },
+  cpuFallback: { label: t('wvMonitor.footer.healthCpuFallback'), warn: true },
+  restarting: { label: t('wvMonitor.footer.healthRestarting'), warn: true },
+  failed: { label: t('wvMonitor.footer.healthFailed'), warn: true },
 };
 
 // wipeStatus(`ftester api run` 開始時の AVD Wipe Data、契約は main.js の 'wipeStatus' ケース参照)の
 // phase→footer表示。'done' はここに含めず通常表示へフォールバックさせる。'failed' は次の
 // wipeStatus 受信まで残す(applyWipeStatus 参照)。
 const WIPE_STATUS_LABEL = {
-  stopping: { label: '🧹 Wipe Data(停止中)...', warn: false },
-  rebooting: { label: '🧹 Wipe Data(再起動中)...', warn: false },
-  failed: { label: '🧹 Wipe Data失敗', warn: true },
+  stopping: { label: t('wvMonitor.footer.wipeStopping'), warn: false },
+  rebooting: { label: t('wvMonitor.footer.wipeRebooting'), warn: false },
+  failed: { label: t('wvMonitor.footer.wipeFailed'), warn: true },
 };
 
 // src/monitorModel.ts の deviceOpMenuItem の複製(webview は CSP で import 不可のため)。変更時は
 // 両方を同期すること。busy は { op, status }('queued'|'running')または undefined。
 function deviceOpMenuItem(state, busy) {
-  if (busy && busy.status === 'queued') { return { label: '待機中...', op: busy.op, disabled: true }; }
-  if (busy && busy.op === 'up') { return { label: '起動中...', op: 'up', disabled: true }; }
-  if (busy && busy.op === 'down') { return { label: '停止中...', op: 'down', disabled: true }; }
+  if (busy && busy.status === 'queued') { return { label: t('wvMonitor.deviceOpMenu.queued'), op: busy.op, disabled: true }; }
+  if (busy && busy.op === 'up') { return { label: t('wvMonitor.deviceOpMenu.startingUp'), op: 'up', disabled: true }; }
+  if (busy && busy.op === 'down') { return { label: t('wvMonitor.deviceOpMenu.stoppingDown'), op: 'down', disabled: true }; }
   return state === 'offline'
-    ? { label: '起動', op: 'up', disabled: false }
-    : { label: '停止', op: 'down', disabled: false };
+    ? { label: t('wvMonitor.deviceOpMenu.start'), op: 'up', disabled: false }
+    : { label: t('wvMonitor.deviceOpMenu.stop'), op: 'down', disabled: false };
 }
 
 // device id -> タイルDOM要素・最新フレーム(1枚のみ保持、履歴は溜めない)
@@ -79,7 +80,7 @@ export function relayoutTiles() {
 function createTile(device) {
   const tile = document.createElement('div');
   tile.className = 'tile';
-  tile.title = 'クリックで選択 / 右クリックで起動・停止・ライブ操作';
+  tile.title = t('wvMonitor.tile.title');
   tile.addEventListener('click', () => toggleDeviceSelection(device.id));
   tile.addEventListener('contextmenu', (event) => {
     // 既定メニュー抑止+タイルクリック(選択トグル)への波及防止。
@@ -96,7 +97,7 @@ function createTile(device) {
   renderBadge.className = 'badge badge-render';
   const runningBadge = document.createElement('span');
   runningBadge.className = 'badge badge-running';
-  runningBadge.textContent = '実行中';
+  runningBadge.textContent = t('wvMonitor.tile.running');
   // ライフサイクルキュー待ち(queued)の明示チップ。「全て起動」時にどのデバイスが処理待ちか
   // 一目で分かるようにする。タイル左下(フッター先頭)に置く(ユーザー指定)。表示は renderMeta。
   const queuedBadge = document.createElement('span');
@@ -223,12 +224,12 @@ function renderFrame(entry) {
     }
     const labelSpan = document.createElement('span');
     labelSpan.textContent = shuttingDown
-      ? 'シャットダウン中'
+      ? t('wvMonitor.tile.shuttingDown')
       : waitingUp
-        ? '待機中'
+        ? t('wvMonitor.tile.waiting')
         : offline
-          ? (upRunning ? '起動中' : '未起動')
-          : '接続中';
+          ? (upRunning ? t('wvMonitor.deviceState.booting') : t('wvMonitor.deviceState.offline'))
+          : t('wvMonitor.tile.connecting');
     entry.placeholderEl.append(icon, labelSpan);
     entry.frameWrapEl.appendChild(entry.placeholderEl);
   }
@@ -258,7 +259,7 @@ function renderRenderBadge(entry) {
   entry.renderBadgeEl.style.display = 'inline-block';
   entry.renderBadgeEl.className = 'badge badge-render render-cpu';
   entry.renderBadgeEl.textContent = 'CPU';
-  entry.renderBadgeEl.title = 'CPU描画(swiftshader・フォールバック)';
+  entry.renderBadgeEl.title = t('wvMonitor.tile.cpuBadgeTitle');
 }
 
 // renderDeviceOpMenuItem は内部で呼ぶ(opBusy・state 変化時の一括再描画)。
@@ -313,9 +314,9 @@ function renderMeta(entry) {
   // bulkOpActive 変化時の再評価は setBusy 側の renderMeta 一括呼び出しが担う。
   let queuedText = '';
   if (entry.opBusy?.status === 'queued') {
-    queuedText = entry.opBusy.op === 'down' ? '再起動待機' : '起動待機';
+    queuedText = entry.opBusy.op === 'down' ? t('wvMonitor.tile.queuedRestart') : t('wvMonitor.tile.queuedStart');
   } else if (!entry.opBusy && bulkOpActive === 'up' && entry.device.state === 'offline') {
-    queuedText = '起動待機';
+    queuedText = t('wvMonitor.tile.queuedStart');
   }
   entry.queuedBadgeEl.style.display = queuedText ? 'inline-block' : 'none';
   entry.queuedBadgeEl.textContent = queuedText;
@@ -668,7 +669,7 @@ export function setBusy(busy, bulkOp) {
   // 受け手: monitorPanel.ts devicesUpCancel → MonitorDeviceOps.cancelBulkUp)。
   const upCancelMode = busy && bulkOp === 'up';
   btnUp.disabled = busy && !upCancelMode;
-  btnUp.textContent = upCancelMode ? 'デバイスの起動を中断' : 'デバイスを全て起動';
+  btnUp.textContent = upCancelMode ? t('wvMonitor.bulk.cancelStart') : t('wvMonitor.bulk.startAll');
   btnDown.disabled = busy;
   const next = bulkOp === 'up' || bulkOp === 'down' ? bulkOp : null;
   if (bulkOpActive !== next) {
@@ -691,7 +692,7 @@ export function setBusy(busy, bulkOp) {
 
 // この select は「使用する実行プロファイルの指定」のみ。追加/編集は runProfilesTab.js が担当。
 
-const PROFILE_NONE_LABEL = '(プロファイルなし)';
+const PROFILE_NONE_LABEL = t('wvMonitor.profile.none');
 
 // 現在値が profiles に無ければ(手書き設定等)unknownOption で補い選択状態を保つ。
 export function applyProfileInfo(message) {

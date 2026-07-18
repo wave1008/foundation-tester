@@ -9,6 +9,7 @@
 import * as fs from "node:fs";
 import * as vscode from "vscode";
 import { type FtesterConfig, resolveProjectName } from "./config";
+import { t } from "./i18n";
 import { lastResultsDir, lookupKey, readAllResults, type ResultState } from "./lastResults";
 import { findLatestReport, reportsDir } from "./scenarioReports";
 
@@ -91,11 +92,11 @@ function buildFailedMessage(
   const reportPath = findLatestReport(reportsDir(workspaceRoot, project), item.id);
   let message: vscode.TestMessage;
   if (!reportPath) {
-    message = new vscode.TestMessage("CLI 実行で失敗(詳細はレポート参照)");
+    message = new vscode.TestMessage(t("workbench.lastResults.cliFailedNoReport"));
   } else {
     const args = encodeURIComponent(JSON.stringify([item.id]));
     const markdown = new vscode.MarkdownString(
-      `CLI 実行で失敗 — [レポートを開く](command:ftester.openScenarioReport?${args})`,
+      t("workbench.lastResults.cliFailedWithReport", { args }),
     );
     markdown.isTrusted = { enabledCommands: ["ftester.openScenarioReport"] };
     message = new vscode.TestMessage(markdown);
@@ -153,7 +154,7 @@ export function registerLastResultsSync(deps: LastResultsSyncDeps): LastResultsS
     if (matches.length === 0) {
       return;
     }
-    const run = controller.createTestRun(new vscode.TestRunRequest(), "CLI実行結果", false);
+    const run = controller.createTestRun(new vscode.TestRunRequest(), t("workbench.lastResults.testRunName"), false);
     for (const { item, state } of matches) {
       if (state === "passed") {
         run.passed(item);
@@ -162,7 +163,7 @@ export function registerLastResultsSync(deps: LastResultsSyncDeps): LastResultsS
       }
     }
     run.end();
-    outputChannel.appendLine(`[lastResultsSync] 反映 ${matches.length}件`);
+    outputChannel.appendLine(t("workbench.lastResults.appliedLog", { count: matches.length }));
   };
 
   const scheduleTick = (): void => {

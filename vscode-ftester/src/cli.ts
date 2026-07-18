@@ -12,6 +12,7 @@
 import { type ChildProcessByStdio, spawn } from "node:child_process";
 import type { Readable, Writable } from "node:stream";
 import type * as vscode from "vscode";
+import { t } from "./i18n";
 import { NdjsonParser } from "./ndjson";
 
 /**
@@ -61,7 +62,7 @@ export class CliError extends Error {
 /** 同じ key の新しい要求に置き換えられて破棄されたことを表す(呼び出し側はエラー表示不要)。 */
 export class CliSupersededError extends Error {
   constructor() {
-    super("同じ key の新しいリクエストに置き換えられたため破棄されました");
+    super(t("run.cli.superseded"));
     this.name = "CliSupersededError";
   }
 }
@@ -152,7 +153,7 @@ export class FtesterCli {
             ? spawn(binaryPath, invocation.args, { cwd, shell: false, stdio: ["pipe", "pipe", "pipe"] })
             : spawn(binaryPath, invocation.args, { cwd, shell: false, stdio: ["ignore", "pipe", "pipe"] });
       } catch (error) {
-        reject(new CliError(`ftester CLI の起動に失敗しました: ${String(error)}`, error));
+        reject(new CliError(t("run.cli.spawnFailed", { error: String(error) }), error));
         return;
       }
       this.currentProcess = proc;
@@ -184,7 +185,7 @@ export class FtesterCli {
 
       proc.on("error", (error) => {
         this.currentProcess = undefined;
-        reject(new CliError(`ftester CLI の実行でエラーが発生しました: ${error.message}`, error));
+        reject(new CliError(t("run.cli.executionError", { message: error.message }), error));
       });
 
       proc.on("close", (exitCode, signal) => {
@@ -202,7 +203,7 @@ export class FtesterCli {
             try {
               json = JSON.parse(text);
             } catch {
-              this.outputChannel.appendLine(`[ftester] stdout を JSON として解析できませんでした: ${text}`);
+              this.outputChannel.appendLine(t("run.cli.parseError", { text }));
             }
           }
         }

@@ -181,6 +181,7 @@ window.addEventListener('message', (event) => {
       activateTab(message.tab);
       break;
     case 'pollingMode':
+    case 'language':
       applySettings(message);
       break;
     case 'residentProcesses':

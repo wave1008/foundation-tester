@@ -3,6 +3,7 @@
 // applyCreateDeviceResult が既存選択モーダルの pendingAutoCheck を直接書き換えるため、
 // setter を挟まず同一モジュールに置いている。
 
+import { t } from '../i18n.js';
 import { vscode } from './vscodeApi.js';
 import { selectedMachine, findMachine, allDeviceNamesForSelectedMachine, btnDeviceAddExisting } from './machineProfilesTab.js';
 
@@ -13,10 +14,10 @@ import { selectedMachine, findMachine, allDeviceNamesForSelectedMachine, btnDevi
 function validateNewDeviceName(name, existing) {
   const trimmed = name.trim();
   if (trimmed.length === 0) {
-    return 'デバイス名を入力してください。';
+    return t('wvMonitor.deviceAdd.nameRequired');
   }
   if (existing.includes(trimmed)) {
-    return '「' + trimmed + '」は既に存在します。';
+    return t('wvMonitor.deviceAdd.nameDuplicate', { name: trimmed });
   }
   return null;
 }
@@ -157,7 +158,7 @@ function openDeviceAddModal() {
   dlgModel.textContent = '';
   dlgOs.textContent = '';
   dlgError.classList.add('info');
-  dlgError.textContent = 'カタログを読み込み中...';
+  dlgError.textContent = t('wvMonitor.deviceAdd.catalogLoading');
   setDialogControlsEnabled(false);
   dlgOk.disabled = true;
   dlgOk.textContent = 'OK';
@@ -180,7 +181,7 @@ export function applyDeviceCatalog(message) {
   }
   if (!message.ok || !message.catalog) {
     dlgError.classList.remove('info');
-    dlgError.textContent = message.error || 'カタログの取得に失敗しました。';
+    dlgError.textContent = message.error || t('wvMonitor.deviceAdd.catalogFailed');
     dlgOk.disabled = true;
     return;
   }
@@ -215,7 +216,7 @@ export function applyCreateDeviceResult(message) {
   // available:false 側を戻す。
   applyPlatformAvailability();
   dlgError.classList.remove('info');
-  dlgError.textContent = message.error || 'デバイスの作成に失敗しました。';
+  dlgError.textContent = message.error || t('wvMonitor.deviceAdd.createFailed');
 }
 
 // 「+新規作成」ボタンは無く、openDeviceAddModal は #device-pick-overlay 内の「+」からのみ開く。
@@ -240,7 +241,7 @@ dlgOk.addEventListener('click', () => {
   setDialogControlsEnabled(false);
   dlgOk.disabled = true;
   dlgCancel.disabled = true;
-  dlgOk.textContent = '作成中...';
+  dlgOk.textContent = t('wvMonitor.deviceAdd.creating');
   dlgError.textContent = '';
   vscode.postMessage({
     type: 'createDevice',
@@ -279,18 +280,18 @@ let nameInputState = null;
 function validateNameInputValue(raw, state) {
   const trimmed = raw.trim();
   if (trimmed.length === 0) {
-    return state.noun + 'を入力してください。';
+    return t('wvMonitor.nameInput.required', { noun: state.noun });
   }
   if (trimmed.indexOf('/') !== -1 || trimmed.indexOf(NAME_INPUT_BACKSLASH) !== -1) {
-    return state.noun + 'に "/" や "' + NAME_INPUT_BACKSLASH + '" は使えません。';
+    return t('wvMonitor.nameInput.forbiddenChars', { noun: state.noun, backslash: NAME_INPUT_BACKSLASH });
   }
   if (trimmed.charAt(0) === '.') {
-    return state.noun + 'を "." で始めることはできません。';
+    return t('wvMonitor.nameInput.leadingDot', { noun: state.noun });
   }
   const compareName = state.caseInsensitiveDup ? trimmed.toLowerCase() : trimmed;
   const isDup = state.existing.some((item) => (state.caseInsensitiveDup ? item.toLowerCase() : item) === compareName);
   if (isDup) {
-    return state.dupLabel + '「' + trimmed + '」は既に存在します。';
+    return t('wvMonitor.nameInput.duplicate', { dupLabel: state.dupLabel, name: trimmed });
   }
   return null;
 }
@@ -474,11 +475,11 @@ function renderDevicePickGroups(data) {
 
   const iosNameByUdid = registeredIosNameByUdid();
   const iosData = data.ios;
-  devicePickIosTitle.textContent = 'iOS シミュレータ (' + iosData.devices.length + ')';
+  devicePickIosTitle.textContent = t('wvMonitor.devicePick.iosCountTitle', { count: iosData.devices.length });
   if (!iosData.available) {
-    buildDevicePickEmptyRow(devicePickIosBody, iosData.error || 'iOS シミュレータを取得できませんでした。');
+    buildDevicePickEmptyRow(devicePickIosBody, iosData.error || t('wvMonitor.devicePick.iosFetchFailed'));
   } else if (iosData.devices.length === 0) {
-    buildDevicePickEmptyRow(devicePickIosBody, 'iOS シミュレータがありません。');
+    buildDevicePickEmptyRow(devicePickIosBody, t('wvMonitor.devicePick.iosEmpty'));
   } else {
     for (const device of iosData.devices) {
       const registeredName = iosNameByUdid.get(device.udid);
@@ -514,9 +515,9 @@ function renderDevicePickGroups(data) {
   const androidData = data.android;
   devicePickAndroidTitle.textContent = 'Android AVD (' + androidData.avds.length + ')';
   if (!androidData.available) {
-    buildDevicePickEmptyRow(devicePickAndroidBody, androidData.error || 'Android AVD を取得できませんでした。');
+    buildDevicePickEmptyRow(devicePickAndroidBody, androidData.error || t('wvMonitor.devicePick.androidFetchFailed'));
   } else if (androidData.avds.length === 0) {
-    buildDevicePickEmptyRow(devicePickAndroidBody, 'Android AVD がありません。');
+    buildDevicePickEmptyRow(devicePickAndroidBody, t('wvMonitor.devicePick.androidEmpty'));
   } else {
     for (const avd of androidData.avds) {
       const registeredName = androidNameByAvd.get(avd.id) ?? androidNameByAvd.get(avd.displayName);
@@ -542,7 +543,7 @@ function renderDevicePickGroups(data) {
       if (avd.id !== avd.displayName) {
         detailParts.push(avd.id);
       }
-      detailEl.textContent = detailParts.join('・');
+      detailEl.textContent = detailParts.join(t('wvMonitor.devicePick.detailSeparator'));
       textWrap.append(nameEl, detailEl);
       row.append(checkbox, textWrap);
       attachDevicePickRowToggle(row, checkbox);
@@ -590,7 +591,7 @@ function reloadDevicePickIfOpen() {
     return;
   }
   devicePickError.classList.add('info');
-  devicePickError.textContent = '一覧を読み込み中...';
+  devicePickError.textContent = t('wvMonitor.devicePick.loading');
   devicePickOk.disabled = true;
   vscode.postMessage({ type: 'installedDevicesRequest' });
 }
@@ -606,10 +607,10 @@ function openDevicePickModal() {
   devicePickAndroidRows = [];
   devicePickIosBody.textContent = '';
   devicePickAndroidBody.textContent = '';
-  devicePickIosTitle.textContent = 'iOS シミュレータ';
+  devicePickIosTitle.textContent = t('wvMonitor.devicePick.iosTitle');
   devicePickAndroidTitle.textContent = 'Android AVD';
   devicePickError.classList.add('info');
-  devicePickError.textContent = '一覧を読み込み中...';
+  devicePickError.textContent = t('wvMonitor.devicePick.loading');
   devicePickOk.disabled = true;
   devicePickOk.textContent = 'OK';
   devicePickCancel.disabled = false;
@@ -632,7 +633,7 @@ export function applyInstalledDevices(message) {
   }
   if (!message.ok || !message.data) {
     devicePickError.classList.remove('info');
-    devicePickError.textContent = message.error || '一覧の取得に失敗しました。';
+    devicePickError.textContent = message.error || t('wvMonitor.devicePick.fetchFailed');
     devicePickOk.disabled = true;
     return;
   }
@@ -657,7 +658,7 @@ export function applyMachineDevicesSyncResult(message) {
   setDevicePickControlsEnabled(true);
   updateDevicePickOkState();
   devicePickError.classList.remove('info');
-  devicePickError.textContent = message.error || 'デバイスの同期に失敗しました。';
+  devicePickError.textContent = message.error || t('wvMonitor.devicePick.syncFailed');
 }
 
 btnDeviceAddExisting.addEventListener('click', () => openDevicePickModal());
@@ -701,7 +702,7 @@ devicePickOk.addEventListener('click', () => {
   setDevicePickControlsEnabled(false);
   devicePickOk.disabled = true;
   devicePickCancel.disabled = true;
-  devicePickOk.textContent = '適用中...';
+  devicePickOk.textContent = t('wvMonitor.devicePick.applying');
   devicePickError.classList.remove('info');
   devicePickError.textContent = '';
   vscode.postMessage({ type: 'machineDevicesSync', machine: selectedMachine, add: add, remove: remove });

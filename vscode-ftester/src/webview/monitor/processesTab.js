@@ -3,6 +3,7 @@
 // killAllResidentProcesses/residentProcesses/residentKillResult、処理は src/monitorPanel.ts。
 
 import { vscode } from './vscodeApi.js';
+import { t } from '../i18n.js';
 
 const processesPanel = document.getElementById('panel-processes');
 const residentKillAllBtn = document.getElementById('resident-kill-all');
@@ -19,9 +20,9 @@ function formatUpdatedAt(ts) {
 }
 
 // data-sort の値 → 並べ替えキーの取り出し方と型。number 型は空("")を最小(-Infinity)扱いにして
-// ホスト順(KIND_ORDER→pid)の並びを壊さない。Array.prototype.sort は安定なので同値はホスト順を保つ。
+// ホスト順(TYPE_ORDER→pid)の並びを壊さない。Array.prototype.sort は安定なので同値はホスト順を保つ。
 const SORT_COLUMNS = {
-  kind: { type: 'string', get: (i) => i.label },
+  type: { type: 'string', get: (i) => i.label },
   port: { type: 'number', get: (i) => i.port },
   pid: { type: 'number', get: (i) => (i.pid > 0 ? i.pid : i.devicePid || 0) },
   detail: { type: 'string', get: (i) => i.detail },
@@ -32,7 +33,7 @@ const SORT_COLUMNS = {
 
 // 直近受信分。ヘッダクリック時に再ソート描画するため保持する(1秒ごとの自動更新でも上書きされる)。
 let lastItems = [];
-let sortKey = null; // null = ホスト順(サーバが KIND_ORDER→pid で整列済み)
+let sortKey = null; // null = ホスト順(サーバが TYPE_ORDER→pid で整列済み)
 let sortDir = 'asc';
 
 function compareBy(col, a, b) {
@@ -63,33 +64,33 @@ function renderResidentList(items) {
     const cell = document.createElement('td');
     cell.colSpan = 7;
     cell.className = 'resident-empty';
-    cell.textContent = '常駐プロセスはありません';
+    cell.textContent = t('wvMonitor2.process.empty');
     row.appendChild(cell);
     residentTbody.appendChild(row);
     return;
   }
   for (const item of sortForDisplay(items)) {
     const row = document.createElement('tr');
-    row.className = `resident-row resident-kind-${item.kind}`;
+    row.className = `resident-row resident-type-${item.type}`;
     if (item.zombie) {
       row.classList.add('resident-zombie');
     }
-    row.dataset.kind = item.kind;
+    row.dataset.type = item.type;
 
-    const kindCell = document.createElement('td');
-    kindCell.className = 'col-kind';
+    const typeCell = document.createElement('td');
+    typeCell.className = 'col-type';
     const badge = document.createElement('span');
     badge.className = 'resident-badge';
     badge.textContent = item.label;
-    kindCell.appendChild(badge);
+    typeCell.appendChild(badge);
     if (item.zombie) {
       const z = document.createElement('span');
       z.className = 'resident-zombie-badge';
-      z.textContent = 'ゾンビ';
-      z.title = '親に reap されていない defunct プロセス';
-      kindCell.appendChild(z);
+      z.textContent = t('wvMonitor2.process.zombieBadge');
+      z.title = t('wvMonitor2.process.zombieTitle');
+      typeCell.appendChild(z);
     }
-    row.appendChild(kindCell);
+    row.appendChild(typeCell);
 
     const portCell = document.createElement('td');
     portCell.className = 'col-port';
@@ -105,8 +106,8 @@ function renderResidentList(items) {
       pidCell.textContent = String(item.pid);
     } else if (item.devicePid) {
       pidCell.textContent = `(${item.devicePid})`;
-    } else if (item.kind === 'android-bridge') {
-      pidCell.textContent = '(遅延起動)';
+    } else if (item.type === 'android-bridge') {
+      pidCell.textContent = t('wvMonitor2.process.pendingLaunch');
     } else {
       pidCell.textContent = '—';
     }
@@ -147,18 +148,19 @@ export function applyResidentMessage(message) {
     }
     lastSignature = signature;
     renderResidentList(message.items);
-    residentStatus.textContent = message.items.length > 0 ? `${message.items.length}件` : '';
-    residentUpdated.textContent = `前回更新: ${formatUpdatedAt(message.ts)}`;
+    residentStatus.textContent =
+      message.items.length > 0 ? t('wvMonitor2.process.statusCount', { count: message.items.length }) : '';
+    residentUpdated.textContent = t('wvMonitor2.process.lastUpdated', { time: formatUpdatedAt(message.ts) });
     return;
   }
   if (message.type === 'residentKillResult') {
     residentKillAllBtn.disabled = false;
     if (message.status === 'done') {
-      residentStatus.textContent = `強制終了しました(${message.killed ?? 0}件)`;
+      residentStatus.textContent = t('wvMonitor2.process.killedCount', { count: message.killed ?? 0 });
     } else if (message.status === 'cancelled') {
       residentStatus.textContent = '';
     } else {
-      residentStatus.textContent = `失敗: ${message.error ?? ''}`;
+      residentStatus.textContent = t('wvMonitor2.process.killFailed', { error: message.error ?? '' });
     }
   }
 }
@@ -169,7 +171,7 @@ function requestRefresh() {
 
 residentKillAllBtn.addEventListener('click', () => {
   residentKillAllBtn.disabled = true;
-  residentStatus.textContent = '実行中…';
+  residentStatus.textContent = t('wvMonitor2.process.running');
   vscode.postMessage({ type: 'killAllResidentProcesses' });
 });
 

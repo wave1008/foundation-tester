@@ -2,6 +2,7 @@
 // message ディスパッチャに組み込む。host への送信は type:'live' の封筒で包む(対向: src/liveModel.ts の
 // LiveWebviewEnvelope、処理は src/monitorLiveController.ts。host 側の窓口は src/livePanel.ts)。
 
+import { t } from '../i18n.js';
 import { vscode, persistedState } from './vscodeApi.js';
 import { clampMenuPosition } from './menu.js';
 import { createH264Renderer } from './h264Decoder.js';
@@ -53,10 +54,10 @@ const recordMenuStop = document.getElementById('live-record-menu-stop');
 let recordMenuOpen = false;
 
 const STATE_LABEL = {
-  connected: '接続済み',
-  booted: '起動中',
-  offline: '未起動',
-  unknown: '状態不明(未確認)',
+  connected: t('wvMonitor.live.stateConnected'),
+  booted: t('wvMonitor.deviceState.booting'),
+  offline: t('wvMonitor.deviceState.offline'),
+  unknown: t('wvMonitor.live.stateUnknown'),
 };
 
 let currentDevices = [];
@@ -90,7 +91,7 @@ function setBusy(value) {
   busy = value;
   for (const b of busyButtons) { b.disabled = value; }
   deviceSelect.disabled = value;
-  busyLabel.textContent = value ? '処理中...' : '';
+  busyLabel.textContent = value ? t('wvMonitor.live.processing') : '';
 }
 
 function showBanner(text) {
@@ -109,7 +110,7 @@ function showActionError(text) {
 
 function updateDeviceWarning() {
   const selected = currentDevices.find((d) => d.id === deviceSelect.value);
-  deviceWarning.textContent = selected && selected.state !== 'connected' ? '⚠ 接続されていません' : '';
+  deviceWarning.textContent = selected && selected.state !== 'connected' ? t('wvMonitor.live.notConnectedWarning') : '';
 }
 
 function applyDevices(devices, selectedId) {
@@ -141,7 +142,7 @@ function applyAppProfiles(profiles, selectedId) {
   if (!hasAppProfile) {
     const opt = document.createElement('option');
     opt.value = '';
-    opt.textContent = '(アプリプロファイルなし)';
+    opt.textContent = t('wvMonitor.live.noAppProfile');
     opt.disabled = true;
     opt.selected = true;
     appProfileSelect.appendChild(opt);
@@ -170,7 +171,7 @@ function applyRecording(active, isGenerating) {
 // - 停止中: 「レコーディング開始」。選択可能なプロファイルが無ければ非活性。
 function updateRecordButton() {
   const showStop = recording || generating;
-  recordBtn.textContent = showStop ? 'レコーディング終了' : 'レコーディング開始';
+  recordBtn.textContent = showStop ? t('wvMonitor.live.recordStop') : t('wvMonitor.live.recordStart');
   recordBtn.classList.toggle('recording', showStop);
   recordBtn.disabled = generating || (!recording && !hasAppProfile);
   appProfileSelect.disabled = recording || generating;
@@ -182,7 +183,7 @@ function updateRecordButton() {
 function updateRecordMenuItems() {
   recordMenuStart.disabled = recording || generating || !hasAppProfile;
   recordMenuStop.disabled = !recording || generating;
-  recordMenuStart.title = (!recording && !generating && !hasAppProfile) ? 'アプリプロファイルが必要です' : '';
+  recordMenuStart.title = (!recording && !generating && !hasAppProfile) ? t('wvMonitor.live.appProfileRequired') : '';
 }
 
 recordBtn.addEventListener('click', () => {

@@ -6,6 +6,7 @@
 import { type ChildProcessByStdio, spawn } from "node:child_process";
 import type { Readable } from "node:stream";
 import type * as vscode from "vscode";
+import { t } from "./i18n";
 
 /** stdin=ignore, stdout/stderr=pipe で spawn したプロセスの型(cli.ts/monitorPanel.ts と同じ形。
  * list-devices のワンショット spawn 専用)。 */
@@ -34,7 +35,7 @@ export function runOneShot(
     try {
       proc = spawn(binaryPath, args, { cwd, shell: false, stdio: ["ignore", "pipe", "pipe"] });
     } catch (error) {
-      reject(new Error(`ftester CLI の起動に失敗しました: ${String(error)}`));
+      reject(new Error(t("run.cli.spawnFailed", { error: String(error) })));
       return;
     }
     registerChild(proc);
@@ -52,7 +53,7 @@ export function runOneShot(
       }
     });
     proc.on("error", (error) => {
-      reject(new Error(`ftester CLI の実行でエラーが発生しました: ${error.message}`));
+      reject(new Error(t("run.cli.executionError", { message: error.message })));
     });
     proc.on("close", (exitCode) => {
       const text = Buffer.concat(stdoutChunks).toString("utf8").trim();
@@ -61,7 +62,7 @@ export function runOneShot(
         try {
           json = JSON.parse(text);
         } catch {
-          outputChannel.appendLine(`[ftester] live: stdout を JSON として解析できませんでした: ${text}`);
+          outputChannel.appendLine(t("run.cli.liveParseError", { text }));
         }
       }
       resolve({ json, exitCode, stderrTail: stderrLines.slice(-5).join("\n") });

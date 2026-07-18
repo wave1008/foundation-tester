@@ -12,6 +12,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 import { CliSupersededError, type FtesterCli } from "./cli";
 import { type FtesterConfig, resolveProjectName } from "./config";
+import { t } from "./i18n";
 import type { ScenarioInfo, StepRow, StepsResult } from "./model";
 import { buildStepTree, type StepTreeSceneNode, type StepTreeStepNode } from "./stepsModel";
 import type { FtesterTestTree } from "./testTree";
@@ -91,16 +92,12 @@ export function registerStepsView(
       }
       const scenario = testTree.scenarios.find((s) => s.id === item.id);
       if (!scenario) {
-        void vscode.window.showWarningMessage(
-          "ftester: シナリオ(メソッド)を選択してから実行してください。",
-        );
+        void vscode.window.showWarningMessage(t("workbench.showSteps.noScenario"));
         return;
       }
       const project = resolveProject();
       if (!project) {
-        void vscode.window.showWarningMessage(
-          "ftester: 対象のテストプロジェクトを解決できませんでした。ftester.project 設定を確認してください。",
-        );
+        void vscode.window.showWarningMessage(t("workbench.project.unresolvedWarning"));
         return;
       }
       provider.setScenario(scenario.id, project);
@@ -166,10 +163,6 @@ interface CurrentScenario {
   readonly id: string;
   readonly project: string;
 }
-
-const NO_SELECTION_MESSAGE =
-  "対象のシナリオが選択されていません。エディタでシナリオ(@Test メソッド)内にカーソルを置くか、" +
-  "テストビューでシナリオを右クリックして「ftester: ステップ一覧を表示」を実行してください。";
 
 class StepsTreeDataProvider implements vscode.TreeDataProvider<ViewNode>, vscode.Disposable {
   private readonly emitter = new vscode.EventEmitter<void>();
@@ -295,18 +288,18 @@ class StepsTreeDataProvider implements vscode.TreeDataProvider<ViewNode>, vscode
     );
 
     if (result.cancelled) {
-      throw new Error("ステップ一覧の取得がキャンセルされました。");
+      throw new Error(t("workbench.stepsView.fetchCancelled"));
     }
     if (result.exitCode !== 0) {
       const summary = stderrLines.slice(-3).join(" / ");
       const suffix = summary.length > 0 ? `: ${summary}` : "";
       throw new Error(
-        `ステップ一覧の取得に失敗しました(exit code: ${String(result.exitCode)})${suffix}`,
+        t("workbench.stepsView.fetchFailed", { exitCode: String(result.exitCode), suffix }),
       );
     }
     const parsed = result.json as StepsResult | undefined;
     if (!parsed || !Array.isArray(parsed.steps)) {
-      throw new Error("ステップ一覧の出力を解析できませんでした。");
+      throw new Error(t("workbench.stepsView.parseFailed"));
     }
     return parsed.steps;
   }
@@ -319,17 +312,17 @@ class StepsTreeDataProvider implements vscode.TreeDataProvider<ViewNode>, vscode
   getTreeItem(element: ViewNode): vscode.TreeItem {
     switch (element.type) {
       case "empty": {
-        const item = new vscode.TreeItem(element.message ?? NO_SELECTION_MESSAGE);
+        const item = new vscode.TreeItem(element.message ?? t("workbench.stepsView.noSelection"));
         item.iconPath = new vscode.ThemeIcon("info");
         return item;
       }
       case "loading": {
-        const item = new vscode.TreeItem("読み込み中...");
+        const item = new vscode.TreeItem(t("workbench.common.loading"));
         item.iconPath = new vscode.ThemeIcon("loading~spin");
         return item;
       }
       case "error": {
-        const item = new vscode.TreeItem(`エラー: ${element.message}`);
+        const item = new vscode.TreeItem(t("workbench.common.errorPrefix", { message: element.message }));
         item.tooltip = element.message;
         item.iconPath = new vscode.ThemeIcon("error");
         return item;
@@ -351,7 +344,7 @@ class StepsTreeDataProvider implements vscode.TreeDataProvider<ViewNode>, vscode
         item.contextValue = "ftesterStepsStep";
         item.command = {
           command: OPEN_STEP_LOCATION_COMMAND,
-          title: "ftester: ソースへ移動",
+          title: t("workbench.stepsView.openSourceCommandTitle"),
           arguments: [step.file, step.line],
         };
         return item;
@@ -379,7 +372,7 @@ class StepsTreeDataProvider implements vscode.TreeDataProvider<ViewNode>, vscode
 
     const scenes = buildStepTree(this.status.steps);
     if (scenes.length === 0) {
-      return [{ type: "empty", message: "このシナリオにはステップがありません。" }];
+      return [{ type: "empty", message: t("workbench.stepsView.noSteps") }];
     }
     return scenes.map((scene) => ({ type: "scene", scene }));
   }

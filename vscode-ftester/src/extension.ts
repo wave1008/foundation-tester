@@ -16,6 +16,7 @@ import {
 import { registerDashboardPanel } from "./dashboardPanel";
 import { registerDebugAdapter } from "./debugConfig";
 import { registerHealReviewPanel } from "./healReviewPanel";
+import { initI18n, setLocaleFromConfig, t } from "./i18n";
 import { registerLastResultsSync } from "./lastResultsSync";
 import { registerLivePanel } from "./livePanel";
 import { registerMonitorPanel } from "./monitorPanel";
@@ -29,6 +30,9 @@ import { FtesterTestTree, unhideAllTests } from "./testTree";
 import { ScenarioFileWatcher } from "./watcher";
 
 export function activate(context: vscode.ExtensionContext): void {
+  // UI 文字列の locale を確定してから各コンポーネントを組み立てる(以降の t() が正しい言語を返す)。
+  initI18n();
+
   const outputChannel = vscode.window.createOutputChannel("ftester");
   context.subscriptions.push(outputChannel);
 
@@ -39,23 +43,16 @@ export function activate(context: vscode.ExtensionContext): void {
   const workspaceRoot = resolveWorkspaceRoot();
   if (!workspaceRoot) {
     // 無言で終わると「ビューに provider が無い」という分かりにくい表示になるため理由を明示する。
-    outputChannel.appendLine(
-      "[ftester] フォルダーが開かれていないため初期化を中止しました。" +
-        "foundation-tester リポジトリのフォルダーを開いてから再読み込みしてください。",
-    );
-    void vscode.window.showWarningMessage(
-      "ftester: フォルダーが開かれていません。リポジトリのフォルダーを開いてください。",
-    );
+    outputChannel.appendLine(t("workbench.activate.noWorkspaceLog"));
+    void vscode.window.showWarningMessage(t("workbench.activate.noWorkspaceWarning"));
     return;
   }
   if (!hasProjectsDirectory(workspaceRoot)) {
     // ftester のテストプロジェクトを持たないリポジトリでは登録しない。
-    outputChannel.appendLine(
-      `[ftester] ${workspaceRoot} に Projects/ が見つからないため初期化しません。`,
-    );
+    outputChannel.appendLine(t("workbench.activate.noProjectsDirLog", { workspaceRoot }));
     return;
   }
-  outputChannel.appendLine(`[ftester] 初期化しました: ${workspaceRoot}`);
+  outputChannel.appendLine(t("workbench.activate.initializedLog", { workspaceRoot }));
 
   const cli = new FtesterCli(outputChannel);
   const getConfig = (): FtesterConfig => readConfig(workspaceRoot);
@@ -218,9 +215,7 @@ function registerCommands(
       .getConfiguration("ftester")
       .update("showOnlyFailedTests", value, vscode.ConfigurationTarget.Global);
     vscode.window.setStatusBarMessage(
-      value
-        ? "ftester: 失敗したテストのみ表示します(未実施・成功は除外)"
-        : "ftester: フィルターを解除しました(全テストを表示)",
+      value ? t("workbench.filter.enabledStatus") : t("workbench.filter.disabledStatus"),
       3000,
     );
   };
@@ -236,6 +231,25 @@ function registerCommands(
       if (!isRunActive()) {
         testTree.rebuildFromLastData();
       }
+    }),
+    // 表示言語(ftester.language)変更: locale を切り替え、テストツリーは即時に再翻訳する。
+    // webview パネルや package.nls(コマンド/設定説明)は再レンダー配線を持たないため、完全反映には
+    // ウィンドウ再読み込みが要る。案内を出してユーザーに委ねる。
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (!e.affectsConfiguration("ftester.language")) {
+        return;
+      }
+      setLocaleFromConfig();
+      if (!isRunActive()) {
+        testTree.rebuildFromLastData();
+      }
+      void vscode.window
+        .showInformationMessage(t("workbench.language.reloadPrompt"), t("workbench.language.reloadButton"))
+        .then((picked) => {
+          if (picked === t("workbench.language.reloadButton")) {
+            void vscode.commands.executeCommand("workbench.action.reloadWindow");
+          }
+        });
     }),
     vscode.commands.registerCommand("ftester.enableFailedTestsFilter", () => {
       void setFailedFilter(true);
@@ -254,7 +268,7 @@ function registerCommands(
       }
       const file = item.uri?.fsPath;
       if (!file) {
-        void vscode.window.showErrorMessage("ftester: 削除対象のファイルを特定できませんでした。");
+        void vscode.window.showErrorMessage(t("workbench.delete.fileNotFound"));
         return;
       }
       const isClass = item.id.startsWith("class:");
@@ -268,14 +282,15 @@ function registerCommands(
         method = dot >= 0 ? item.id.slice(dot + 1) : undefined;
       }
       const target = isClass
-        ? `テストクラス「${className}」(.swift ファイルごと)`
-        : `テスト「${item.label}」`;
+        ? t("workbench.delete.targetClass", { className })
+        : t("workbench.delete.targetTest", { label: item.label });
+      const deleteButtonLabel = t("workbench.delete.confirmButton");
       const picked = await vscode.window.showWarningMessage(
-        `${target}を削除します。この操作は元に戻せません。`,
+        t("workbench.delete.confirmMessage", { target }),
         { modal: true },
-        "削除",
+        deleteButtonLabel,
       );
-      if (picked !== "削除") {
+      if (picked !== deleteButtonLabel) {
         return;
       }
       // ファイル削除の前に、そのファイルを開いているエディタを閉じる(削除後にダングリング
@@ -296,7 +311,7 @@ function registerCommands(
       // 復元不要。失敗時は元の状態(@Deleted なら「(削除済み)」)へ戻す。
       item.busy = true;
       const prevDescription = item.description;
-      item.description = "削除中…";
+      item.description = t("workbench.delete.inProgress");
       const restoreItem = (): void => {
         item.busy = false;
         item.description = prevDescription;
@@ -316,14 +331,18 @@ function registerCommands(
       } catch (error) {
         restoreItem();
         void vscode.window.showErrorMessage(
-          `ftester: 削除に失敗しました: ${error instanceof Error ? error.message : String(error)}`,
+          t("workbench.delete.failedWithError", {
+            message: error instanceof Error ? error.message : String(error),
+          }),
         );
         return;
       }
       if (result.exitCode !== 0) {
         restoreItem();
         void vscode.window.showErrorMessage(
-          `ftester: 削除に失敗しました。${stderr.trim() || "出力パネル「ftester」を確認してください。"}`,
+          t("workbench.delete.failedGeneric", {
+            detail: stderr.trim() || t("workbench.outputPanelHint"),
+          }),
         );
         return;
       }
@@ -336,13 +355,11 @@ function registerCommands(
     vscode.commands.registerCommand("ftester.selectProject", async () => {
       const candidates = listProjectCandidates(workspaceRoot);
       if (candidates.length === 0) {
-        void vscode.window.showWarningMessage(
-          "ftester: Projects/ 配下にテストプロジェクトが見つかりません。",
-        );
+        void vscode.window.showWarningMessage(t("workbench.selectProject.noProjects"));
         return;
       }
       const picked = await vscode.window.showQuickPick(candidates, {
-        placeHolder: "対象のテストプロジェクトを選択してください",
+        placeHolder: t("workbench.selectProject.placeholder"),
       });
       if (!picked) {
         return;
@@ -350,34 +367,31 @@ function registerCommands(
       await vscode.workspace
         .getConfiguration("ftester")
         .update("project", picked, vscode.ConfigurationTarget.Workspace);
-      outputChannel.appendLine(`[ftester] プロジェクトを「${picked}」に設定しました。`);
+      outputChannel.appendLine(t("workbench.selectProject.setLog", { project: picked }));
       void testTree.refresh();
     }),
     vscode.commands.registerCommand("ftester.selectProfile", async () => {
       const config = getConfig();
       const resolution = resolveProjectName(workspaceRoot, config);
       if (resolution.kind !== "resolved") {
-        void vscode.window.showWarningMessage(
-          "ftester: 対象のテストプロジェクトを解決できませんでした。ftester.project 設定を確認してください。",
-        );
+        void vscode.window.showWarningMessage(t("workbench.project.unresolvedWarning"));
         return;
       }
       const names = listRunProfileNames(workspaceRoot, resolution.project);
-      const NONE_LABEL = "(プロファイルなし)";
+      const NONE_LABEL = t("workbench.profile.none");
+      const currentSettingLabel = t("workbench.profile.currentSetting");
       const items: vscode.QuickPickItem[] = [
         {
           label: config.profile === "" ? `$(check) ${NONE_LABEL}` : NONE_LABEL,
-          description: config.profile === "" ? "現在の設定" : undefined,
+          description: config.profile === "" ? currentSettingLabel : undefined,
         },
         ...names.map((name) => ({
           label: config.profile === name ? `$(check) ${name}` : name,
-          description: config.profile === name ? "現在の設定" : undefined,
+          description: config.profile === name ? currentSettingLabel : undefined,
         })),
       ];
       const picked = await vscode.window.showQuickPick(items, {
-        placeHolder:
-          `使用する実行プロファイルを選択してください` +
-          `(Projects/${resolution.project}/profiles/runs/ の一覧)`,
+        placeHolder: t("workbench.selectProfile.placeholder", { project: resolution.project }),
       });
       if (!picked) {
         return;
@@ -388,8 +402,8 @@ function registerCommands(
         .getConfiguration("ftester")
         .update("profile", value, vscode.ConfigurationTarget.Workspace);
       const displayValue = value === "" ? NONE_LABEL : value;
-      outputChannel.appendLine(`[ftester] 実行プロファイルを「${displayValue}」に設定しました。`);
-      void vscode.window.showInformationMessage(`ftester: 実行プロファイルを「${displayValue}」に設定しました。`);
+      outputChannel.appendLine(t("workbench.selectProfile.setLog", { value: displayValue }));
+      void vscode.window.showInformationMessage(t("workbench.selectProfile.setInfo", { value: displayValue }));
     }),
   );
 }

@@ -2,6 +2,7 @@
 // 依存ライブラリなし)。データ0件時は何も描かない(呼び出し側が status-empty を出す)。
 
 import { isLightTheme } from './format.js';
+import { t } from '../i18n.js';
 
 const BAR_WIDTH = 20; // css px。90日分でも横スクロール前提のため詰めすぎない幅にする。
 const BAR_GAP = 4;
@@ -90,8 +91,8 @@ function handleMouseMove(event) {
   const day = currentDaily[index];
   const rate = successRate(day);
   tooltip.textContent = day.date + ': ' + day.passed + '/' + day.total + ' passed' +
-    (rate === null ? '(実行なし)' : '(' + rate.toFixed(1) + '%)') +
-    (day.failed > 0 ? ' / 失敗 ' + day.failed : '');
+    (rate === null ? t('wvDashboard.chart.noRuns') : '(' + rate.toFixed(1) + '%)') +
+    (day.failed > 0 ? t('wvDashboard.chart.failedCount', { count: day.failed }) : '');
   tooltip.style.display = 'block';
   tooltip.style.left = event.clientX + 'px';
   tooltip.style.top = (rect.top - 28) + 'px';

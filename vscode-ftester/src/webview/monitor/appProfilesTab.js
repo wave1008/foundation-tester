@@ -1,6 +1,7 @@
 // 他モジュールの状態には依存しない(vscode の postMessage/受信ハンドラのみで完結)。
 
 import { vscode } from './vscodeApi.js';
+import { t } from '../i18n.js';
 
 // dirty管理・再ロードの方針は runProfilesTab.js と同じ(フォールバックは常に一覧の先頭。
 // 「現在値」に相当する設定が無いため)。クライアント側必須検証は無い(全フィールド省略可。
@@ -82,11 +83,11 @@ function showAppProfilePlaceholder(text) {
 
 function requestAppProfileLoad() {
   if (!selectedAppProfile) {
-    showAppProfilePlaceholder('アプリプロファイルがありません。');
+    showAppProfilePlaceholder(t('wvMonitor2.appProfile.none'));
     return;
   }
   // 応答(appProfileData)が来るまで編集させない(requestRunProfileLoad と同じ理由)。
-  showAppProfilePlaceholder('読み込み中...');
+  showAppProfilePlaceholder(t('wvMonitor2.common.loading'));
   vscode.postMessage({ type: 'appProfileLoad', profile: selectedAppProfile });
 }
 
@@ -112,7 +113,7 @@ export function applyAppProfileInfo(message) {
   if (selectedAppProfile !== null && !appProfileEditing()) {
     requestAppProfileLoad();
   } else if (selectedAppProfile === null) {
-    showAppProfilePlaceholder('アプリプロファイルがありません。');
+    showAppProfilePlaceholder(t('wvMonitor2.appProfile.none'));
   }
 }
 
@@ -175,7 +176,7 @@ export function applyAppProfileData(message) {
     return;
   }
   if (!message.ok || !message.fields) {
-    showAppProfilePlaceholder(message.error || 'アプリプロファイルを読み込めませんでした。');
+    showAppProfilePlaceholder(message.error || t('wvMonitor2.appProfile.loadFailed'));
     return;
   }
   renderAppProfileEditor(message.fields);
@@ -210,7 +211,7 @@ function renderAppProfileEditor(fields) {
   updateAppProfileNamePlaceholders();
 
   setAppProfileControlsEnabled(true);
-  appProfileConfirm.textContent = '確定';
+  appProfileConfirm.textContent = t('wvMonitor2.common.confirm');
   appProfilePlaceholder.style.display = 'none';
   appProfileEditor.style.display = '';
   setAppProfileDirty(false);
@@ -289,7 +290,7 @@ appProfileConfirm.addEventListener('click', () => {
   }
   appProfileSubmitting = true;
   setAppProfileControlsEnabled(false);
-  appProfileConfirm.textContent = '確定中...';
+  appProfileConfirm.textContent = t('wvMonitor2.common.confirming');
   appProfileError.textContent = '';
   refreshAppProfileButtonsUi();
   vscode.postMessage({
@@ -315,14 +316,14 @@ export function applyAppProfileSaveResult(message) {
     return;
   }
   appProfileSubmitting = false;
-  appProfileConfirm.textContent = '確定';
+  appProfileConfirm.textContent = t('wvMonitor2.common.confirm');
   setAppProfileControlsEnabled(true);
   if (message.ok) {
     appProfileError.textContent = '';
     setAppProfileDirty(false);
   } else {
     refreshAppProfileButtonsUi();
-    appProfileError.textContent = message.error || 'アプリプロファイルの更新に失敗しました。';
+    appProfileError.textContent = message.error || t('wvMonitor2.appProfile.saveFailed');
   }
 }
 

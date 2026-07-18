@@ -5,6 +5,7 @@
 
 import { vscode } from './vscodeApi.js';
 import { clampMenuPosition } from './menu.js';
+import { t } from '../i18n.js';
 
 // ---- プロファイルタブ: マシンプロファイル ---------------------------------------
 
@@ -135,7 +136,7 @@ function renderMachineSelect() {
   } else {
     machineSelect.style.display = 'none';
     machineNameStatic.style.display = '';
-    machineNameStatic.textContent = '(マシンプロファイルなし)';
+    machineNameStatic.textContent = t('wvMonitor2.machine.none');
   }
 }
 
@@ -220,7 +221,7 @@ function renderMachineProfileBody(error) {
   if (devices.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'machine-device-empty';
-    empty.textContent = 'デバイスがありません。上のボタンから追加できます。';
+    empty.textContent = t('wvMonitor2.machine.deviceEmpty');
     machineDeviceList.appendChild(empty);
   } else {
     for (const device of devices) {
@@ -343,7 +344,7 @@ function renderDeviceEditor(machine, device) {
   editorAvd.textContent = editorOriginalValues.avd;
   editorIosFields.style.display = device.platform === 'ios' ? '' : 'none';
   editorAndroidFields.style.display = device.platform === 'android' ? '' : 'none';
-  editorConfirm.textContent = '確定';
+  editorConfirm.textContent = t('wvMonitor2.common.confirm');
   profileDetailPlaceholder.style.display = 'none';
   machineDeviceEditor.style.display = '';
   setEditorDirty(false);
@@ -379,7 +380,7 @@ function singleSelectedDevice() {
 // 選択変更・マシン切替用。1台選択ならフォームを作り直し、それ以外はプレースホルダーに戻す。
 function rebuildEditorForSelection() {
   if (selectedDeviceNames.size >= 2) {
-    clearDeviceEditor(selectedDeviceNames.size + '台選択中(右クリックで一括除去できます)');
+    clearDeviceEditor(t('wvMonitor2.machine.multiSelected', { count: selectedDeviceNames.size }));
     return;
   }
   const device = singleSelectedDevice();
@@ -397,7 +398,7 @@ function refreshEditorAfterProfileInfo() {
     return;
   }
   if (selectedDeviceNames.size >= 2) {
-    clearDeviceEditor(selectedDeviceNames.size + '台選択中(右クリックで一括除去できます)');
+    clearDeviceEditor(t('wvMonitor2.machine.multiSelected', { count: selectedDeviceNames.size }));
     return;
   }
   if (selectedDeviceNames.size === 0) {
@@ -439,16 +440,16 @@ editorCancel.addEventListener('click', () => {
 // のため複製。ロジック変更時は両方に反映すること)。
 function validateDeviceEditorFields(name) {
   if (name.length === 0) {
-    return 'デバイス名を入力してください。';
+    return t('wvMonitor2.machine.validation.nameRequired');
   }
   const others = allDeviceNamesForSelectedMachine().filter((n) => n !== editorTarget.originalName);
   if (others.includes(name)) {
-    return '「' + name + '」は既に存在します。';
+    return t('wvMonitor2.machine.validation.nameExists', { name });
   }
   if (editorTarget.platform === 'ios') {
     const portValue = editorPort.value.trim();
     if (portValue.length > 0 && (!/^\d+$/.test(portValue) || Number(portValue) > 65535)) {
-      return 'port は 0〜65535 の整数で入力してください。';
+      return t('wvMonitor2.machine.validation.portInvalid');
     }
   }
   return null;
@@ -465,7 +466,7 @@ editorConfirm.addEventListener('click', () => {
     return;
   }
   editorSubmitting = true;
-  editorConfirm.textContent = '確定中...';
+  editorConfirm.textContent = t('wvMonitor2.common.confirming');
   editorError.textContent = '';
   refreshEditorButtonsUi();
   vscode.postMessage({
@@ -489,14 +490,14 @@ editorConfirm.addEventListener('click', () => {
 // エラー表示のみで入力値は保持する。
 export function applyMachineDeviceUpdateResult(message) {
   editorSubmitting = false;
-  editorConfirm.textContent = '確定';
+  editorConfirm.textContent = t('wvMonitor2.common.confirm');
   if (message.ok) {
     selectedDeviceNames = new Set([message.name]);
     editorError.textContent = '';
     setEditorDirty(false);
   } else {
     refreshEditorButtonsUi();
-    editorError.textContent = message.error || 'デバイスの更新に失敗しました。';
+    editorError.textContent = message.error || t('wvMonitor2.machine.updateFailed');
   }
 }
 
@@ -515,7 +516,9 @@ export function closeMachineDeviceMenu() {
 function openMachineDeviceMenu(entry, clientX, clientY) {
   machineDeviceMenuEntry = entry;
   machineDeviceMenuItemBtn.textContent =
-    entry.names.length >= 2 ? '選択した' + entry.names.length + '台を除去' : '除去';
+    entry.names.length >= 2
+      ? t('wvMonitor2.machine.removeSelectedCount', { count: entry.names.length })
+      : t('wvMonitor2.common.remove');
   machineDeviceMenu.classList.add('visible');
   clampMenuPosition(machineDeviceMenu, clientX, clientY);
 }

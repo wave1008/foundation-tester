@@ -6,11 +6,13 @@
 // runReducer.ts とは別の状態を持つ独立モジュールだが、アイコンは STATUS_MARK を再利用して揃える。
 
 import { STATUS_MARK } from "./runReducer";
+import { overallLaneName, tLane } from "./i18n/strings/lane";
 import type { RunEvent, WorkerInfo } from "./model";
 
 /** worker フィールドが無いイベント(逐次実行 = 非プロファイル/dry-run/デバッグ)をまとめるレーン。 */
 export const OVERALL_LANE_ID = "__overall__";
-export const OVERALL_LANE_NAME = "全体";
+// 「全体」レーンの表示名は locale 依存のため関数。webview(laneLog.js)もこれを import して使う。
+export { overallLaneName };
 
 /** レーンごとに保持する最大行数。超えた分は古い行から捨てる。 */
 export const MAX_LANE_LINES = 500;
@@ -124,7 +126,7 @@ function ensureLane(state: RunLaneState, laneId: string): LaneEntry {
   }
   const info: LaneInfo =
     laneId === OVERALL_LANE_ID
-      ? { id: OVERALL_LANE_ID, name: OVERALL_LANE_NAME, platform: undefined, detail: undefined }
+      ? { id: OVERALL_LANE_ID, name: overallLaneName(), platform: undefined, detail: undefined }
       : { id: laneId, name: laneId, platform: undefined, detail: undefined };
   const entry: LaneEntry = { info, lines: [] };
   state.lanes.set(laneId, entry);
@@ -214,7 +216,7 @@ export function reduceLaneEvent(state: RunLaneState, event: RunEvent, nowMs: num
 
     case "sceneStarted": {
       const scene = event.scene ?? 0;
-      return pushLine(state, laneIdOf(event), `  シーン${String(scene)}: ${event.sceneTitle ?? ""}`);
+      return pushLine(state, laneIdOf(event), tLane("lane.sceneStarted", { scene, title: event.sceneTitle ?? "" }));
     }
 
     case "step": {
@@ -230,15 +232,15 @@ export function reduceLaneEvent(state: RunLaneState, event: RunEvent, nowMs: num
     case "sceneFinished": {
       const scene = event.scene ?? 0;
       const mark = event.passed ? "✅" : "❌";
-      const label = event.passed ? "成功" : "失敗";
-      return pushLine(state, laneIdOf(event), `  ${mark} シーン${String(scene)} ${label}`);
+      const label = event.passed ? tLane("lane.pass") : tLane("lane.fail");
+      return pushLine(state, laneIdOf(event), tLane("lane.sceneFinished", { mark, scene, label }));
     }
 
     case "fixSuggestion": {
       const actions = pushLine(
         state,
         laneIdOf(event),
-        `  💡 修正提案: ${event.detail ?? event.description ?? ""}`,
+        tLane("lane.fixSuggestion", { detail: event.detail ?? event.description ?? "" }),
       );
       if (event.oldSelector && event.newSelector) {
         actions.push(
@@ -260,10 +262,10 @@ export function reduceLaneEvent(state: RunLaneState, event: RunEvent, nowMs: num
       if (event.passed) {
         const durationMs = timing ? Math.max(0, nowMs - timing.startedAtMs) : undefined;
         const suffix = durationMs != null ? ` (${String(durationMs)}ms)` : "";
-        actions.push(...pushLine(state, laneId, `  ✅ 成功${suffix}`));
+        actions.push(...pushLine(state, laneId, `${tLane("lane.passed")}${suffix}`));
       } else {
-        const reportSuffix = event.reportPath ? ` — レポート: ${event.reportPath}` : "";
-        actions.push(...pushLine(state, laneId, `  ❌ 失敗${reportSuffix}`));
+        const reportSuffix = event.reportPath ? tLane("lane.reportSuffix", { path: event.reportPath }) : "";
+        actions.push(...pushLine(state, laneId, `${tLane("lane.failed")}${reportSuffix}`));
       }
       if (event.worker && state.runningWorkers.has(event.worker)) {
         state.runningWorkers.delete(event.worker);
@@ -297,7 +299,7 @@ export function reduceLaneEvent(state: RunLaneState, event: RunEvent, nowMs: num
 
     case "scenarioRequeued":
       return pushLine(state, laneIdOf(event),
-        `  🔁 ${event.reason}のため別デバイスで再実行します(${String(event.attempt)}/${String(event.limit)})`);
+        tLane("lane.requeued", { reason: event.reason, attempt: event.attempt, limit: event.limit }));
 
     case "wipeStatus":
       // デバイスタイルのバッジ表示(monitorPanel.ts の handleBusMessage)専用。ログレーンには出さない。

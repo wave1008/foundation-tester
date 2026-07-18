@@ -12,6 +12,7 @@
 //     … quarantined=true はビルド検証失敗で Scenarios/_disabled/ に隔離されたことを示す(exit 0)
 //   {"kind":"error","message":"..."}                                   … 致命的な失敗(exit 1)
 
+import { t } from "./i18n";
 import type { LiveDeviceOption, LiveDeviceOptionState } from "./liveModel";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -114,10 +115,12 @@ export function formatStepProgressMessage(event: ExploreStepEvent): string {
 export function formatExploreLogLine(event: ExploreEvent): string {
   switch (event.kind) {
     case "exploreStarted":
-      return (
-        `[explore] 開始: bundle=${event.bundleID} goal=${event.goal} ` +
-        `maxSteps=${event.maxSteps} platform=${event.platform}`
-      );
+      return t("exploreHeal.explore.log.started", {
+        bundleID: event.bundleID,
+        goal: event.goal,
+        maxSteps: String(event.maxSteps),
+        platform: event.platform,
+      });
     case "exploreStep":
       return `[explore] ${formatStepProgressMessage(event)}`;
     case "exploreValidating":
@@ -125,13 +128,16 @@ export function formatExploreLogLine(event: ExploreEvent): string {
     case "exploreFinished": {
       const filePart = event.file ? ` file=${event.file}` : "";
       const detailPart = event.detail ? ` detail=${event.detail}` : "";
-      return (
-        `[explore] 終了: outcome=${event.outcome} stepsTaken=${event.stepsTaken} ` +
-        `quarantined=${String(event.quarantined)}${filePart}${detailPart}`
-      );
+      return t("exploreHeal.explore.log.finished", {
+        outcome: event.outcome,
+        stepsTaken: String(event.stepsTaken),
+        quarantined: String(event.quarantined),
+        filePart,
+        detailPart,
+      });
     }
     case "error":
-      return `[explore] エラー: ${event.message}`;
+      return t("exploreHeal.explore.log.error", { message: event.message });
   }
 }
 
@@ -150,17 +156,20 @@ export function buildFinishedNotification(event: ExploreFinishedEvent): ExploreF
   if (event.quarantined) {
     return {
       severity: "warning",
-      message: "ftester: ビルド検証に失敗したため _disabled/ に隔離されました。",
+      message: t("exploreHeal.explore.notif.quarantined"),
     };
   }
   switch (event.outcome) {
     case "completed":
-      return { severity: "info", message: `ftester: 探索完了(${event.stepsTaken}ステップ)` };
+      return {
+        severity: "info",
+        message: t("exploreHeal.explore.notif.completed", { steps: String(event.stepsTaken) }),
+      };
     case "gaveUp":
     case "stepLimitReached":
       return {
         severity: "warning",
-        message: "ftester: 探索は未完了ですがシナリオを生成しました(TODOコメント付き)。",
+        message: t("exploreHeal.explore.notif.incomplete"),
       };
   }
 }
@@ -169,25 +178,32 @@ export function buildFinishedNotification(event: ExploreFinishedEvent): ExploreF
 // undefined を返すと妥当な入力として扱われる。文字列を返すと showInputBox 上にエラーとして表示される。
 
 export function validateBundleIdInput(value: string): string | undefined {
-  return value.trim().length === 0 ? "bundle ID / パッケージ名を入力してください。" : undefined;
+  return value.trim().length === 0 ? t("exploreHeal.explore.validate.bundleIdRequired") : undefined;
 }
 
 export function validateGoalInput(value: string): string | undefined {
-  return value.trim().length === 0 ? "テストの目標を入力してください。" : undefined;
+  return value.trim().length === 0 ? t("exploreHeal.explore.validate.goalRequired") : undefined;
 }
 
 const MIN_MAX_STEPS = 1;
 const MAX_MAX_STEPS = 50;
 export const DEFAULT_MAX_STEPS = 25;
 
+function maxStepsRangeMessage(): string {
+  return t("exploreHeal.explore.validate.maxStepsRange", {
+    min: String(MIN_MAX_STEPS),
+    max: String(MAX_MAX_STEPS),
+  });
+}
+
 export function validateMaxStepsInput(value: string): string | undefined {
   const trimmed = value.trim();
   if (trimmed.length === 0 || !/^\d+$/.test(trimmed)) {
-    return `${MIN_MAX_STEPS}〜${MAX_MAX_STEPS}の整数を入力してください。`;
+    return maxStepsRangeMessage();
   }
   const parsed = Number(trimmed);
   if (parsed < MIN_MAX_STEPS || parsed > MAX_MAX_STEPS) {
-    return `${MIN_MAX_STEPS}〜${MAX_MAX_STEPS}の整数を入力してください。`;
+    return maxStepsRangeMessage();
   }
   return undefined;
 }
@@ -199,12 +215,20 @@ export function parseMaxSteps(value: string): number {
 
 // ---- デバイス選択 QuickPick アイテム組み立て -------------------------------------------
 
-const DEVICE_STATE_LABEL: Record<LiveDeviceOptionState, string> = {
-  connected: "接続済み",
-  booted: "起動中",
-  offline: "未起動",
-  unknown: "状態不明(未確認)",
-};
+// locale が activate() 時に確定する(モジュール評価時点は未確定)ため、モジュール定数ではなく
+// 呼び出し時に t() を引く関数にする(healReviewPanel.ts の旧 PANEL_TITLE と同じ罠)。
+function deviceStateLabel(state: LiveDeviceOptionState): string {
+  switch (state) {
+    case "connected":
+      return t("exploreHeal.explore.deviceState.connected");
+    case "booted":
+      return t("exploreHeal.explore.deviceState.booted");
+    case "offline":
+      return t("exploreHeal.explore.deviceState.offline");
+    case "unknown":
+      return t("exploreHeal.explore.deviceState.unknown");
+  }
+}
 
 export interface ExploreDeviceQuickPickItem {
   readonly label: string;
@@ -219,11 +243,12 @@ export function buildDeviceQuickPickItems(
 ): ExploreDeviceQuickPickItem[] {
   return devices.map((device) => ({
     label: device.name,
-    description: `${device.platform} ・ ${DEVICE_STATE_LABEL[device.state]}`,
+    description: t("exploreHeal.explore.device.description", {
+      platform: device.platform,
+      state: deviceStateLabel(device.state),
+    }),
     detail:
-      device.state === "connected"
-        ? undefined
-        : "⚠ 接続されていません。探索が失敗する可能性があります。",
+      device.state === "connected" ? undefined : t("exploreHeal.explore.deviceNotConnectedWarning"),
     device,
   }));
 }
