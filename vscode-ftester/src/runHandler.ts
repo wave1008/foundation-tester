@@ -450,8 +450,14 @@ async function executeRun(
   // ftester.liveControlOnRun 用: dry-run 以外はライブ操作パネルを対象 platform のデバイスへ合わせ、
   // 成功すればそのデバイスを直接実行対象にする(liveTarget)。platform 不明・パネル側が対象なしを
   // 返す・機能 OFF のいずれでも liveTarget は undefined のままで、既存の分岐(下)にフォールバックする。
+  // 単一クラス実行(=全 target が同一クラス。id は "クラス名.シナリオ名"、resolveTargetPlatform と同じ抽出)
+  // のときだけライブ連動する。複数クラス(Test Explorer の一括等)は --profile 並列を優先し連動しない:
+  // liveTarget は単一デバイスで --profile と排他(下の args 分岐)のため、連動させると並列が単一に潰れる。
+  // クラス内の複数シナリオは連動対象(ユーザー決定。シナリオ数ではなくクラス数で判定)。
+  const profile = config.profile.trim();
+  const singleClass = new Set([...targets.keys()].map((id) => id.split(".")[0])).size === 1;
   let liveTarget: LiveRunTarget | undefined;
-  if (!dryRun && prepareLiveForRun && targets.size > 0) {
+  if (!dryRun && singleClass && prepareLiveForRun && targets.size > 0) {
     const platform = resolveTargetPlatform(targets);
     if (platform) {
       run.appendOutput(`${t("run.live.preparing")}\r\n`);
@@ -473,8 +479,7 @@ async function executeRun(
   }
   // --profile と --platform/--port/--serial は ftester api run 側で同時指定不可なので、liveTarget が
   // あれば最優先で使う(上のライブパネル連携)。無ければ既存どおり: profile が非空のときはそちらだけ、
-  // 空なら platform/port/serial を渡す。
-  const profile = config.profile.trim();
+  // 空なら platform/port/serial を渡す。liveTarget は profile 空のときだけ立つ(上の連動ガード)。
   if (liveTarget) {
     args.push("--platform", liveTarget.platform);
     if (liveTarget.platform === "android" && liveTarget.serial) {
@@ -610,7 +615,8 @@ async function executeRun(
     cli.cancelCurrent();
   });
 
-  const runId = eventBus.beginRun(dryRun);
+  // liveFollow: livePanel.ts が単一クラス実行のときだけ自動追従する判定(runHandler が liveTarget を用意したか)。
+  const runId = eventBus.beginRun(dryRun, liveTarget !== undefined);
 
   try {
     const result = await cli.invoke(config.binaryPath, workspaceRoot, {
