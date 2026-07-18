@@ -112,6 +112,26 @@ demo-4devices(16 シナリオ・ウォーム・§3.1 と同条件)の実測は w
 
 cores/3 への同時数自動スケールも実装後に撤回(同ユーザー決定。固定 2)。
 
+### 3.4 devices down(一括終了)の per-device 反映(2026-07-19 実装)
+
+「全て終了」= bulk down のタイルが「全台落ちてからまとめて未起動」になっていた原因と対策:
+
+- **monitor の `pause` はスキャンサイクルごと止める**(フレームだけでなく `determineStates`+
+  monitorDevices 送出も止まる。`ApiMonitorCommand` の `if control.isPaused { … continue }`)。bulk down は
+  開始時に pause を送る(片付け中デバイスへのスクショ取得で出る過渡的警告を防ぐため。
+  `MonitorDeviceOps.monitorPauseDepth`)ので、resume(down 完了)まで各デバイスの offline 遷移が届かず
+  最後にまとめて反映されていた。**`suppressFrames` はフレームだけ止めて状態スキャンは継続する別コマンド**
+  (pause と混同しない)。タイルの `offline` は monitor 供給の `device.state` 依存。
+- 対策: profile 指定の bulk down を **`api devices-down`(NDJSON)** に切替(`Sources/ftester/
+  ApiDeviceCommands.swift`)。停止ロジックは `DevicesCommand.Down` の `shutdownProfile` と同一(ios→android
+  逐次の `shutdownOne`)で、per-device の `deviceStopping`/`deviceFinished` を足しただけ=回帰なし。拡張は
+  `deviceFinished` 受信ごとに **そのタイルだけ offline を先行反映**(`deviceDownFinished` メッセージ →
+  `deviceTiles.applyDeviceDownFinished`。monitor は pause のまま=ストリーム再開の競合なし。resume 後の
+  devices 反映で本物の state に上書き)。**profile 無しの down は従来の `devices down`**(全ブリッジ停止+
+  simctl shutdown all+全 qemu kill の全掃討)のまま=orphan sim/emu も掃討するため。
+- イベント形は devices-up と共通(`isDevicesUpEvent`)。契約同期相手: `ApiDevicesDown`(Swift)/
+  `monitorDeviceOps.ts` executeBulkJob / `monitorModel.ts` `deviceDownFinished` / `deviceTiles.js`。
+
 ## 4. 計測基盤の使い方(チューニングの必須手順)
 
 **変更前にベースライン、変更後に同条件で再計測、summary.md を比較する。**

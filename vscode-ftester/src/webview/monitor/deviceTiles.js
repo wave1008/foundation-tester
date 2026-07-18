@@ -598,6 +598,22 @@ export function applyDeviceOpBusy(message) {
   renderFrame(entry);
 }
 
+// 契約: { type: 'deviceDownFinished', name }(monitorModel.ts / monitorDeviceOps.ts の api devices-down)。
+// 一括 down で1台の停止が完了した通知。down 中はモニターが pause で state 更新を出さないため、この
+// タイルだけ offline を先行反映して「未起動」へ倒す(次の devices 反映=resume 後に本物の state で
+// 上書きされる)。opBusy も解除する。offline を立てることで renderFrame が凍結フレームを出さない
+// (applyDeviceOpBusy の「down 完了直後は再描画しない」フリッカ回避と同じ問題をここで解消する)。
+export function applyDeviceDownFinished(message) {
+  const entry = findTileByName(message.name);
+  if (!entry) {
+    return;
+  }
+  entry.device = { ...entry.device, state: 'offline' };
+  entry.opBusy = undefined;
+  renderMeta(entry);
+  renderFrame(entry);
+}
+
 // 契約: { type: 'bridgeWatch', name, phase }(name は deviceOpBusy と同じ device.name 名前空間)。
 export function applyBridgeWatch(message) {
   const entry = findTileByName(message.name);

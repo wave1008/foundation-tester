@@ -312,9 +312,16 @@ export class MonitorDeviceOps {
   private executeBulkJob(kind: "up" | "down", restartNames: readonly string[] = []): void {
     const config = this.deps.getConfig();
     const resolution = resolveProjectName(this.deps.workspaceRoot, config);
-    // up は ftester api devices-up(deviceStarting/deviceFinished の NDJSON でタイルを即時更新)、
-    // down は従来どおり devices down(プレーンテキスト出力のみ)。
-    const args: string[] = kind === "up" ? ["api", "devices-up"] : ["devices", kind];
+    // up は api devices-up(deviceStarting/deviceFinished の NDJSON でタイルを即時更新)。
+    // down は profile 指定時のみ api devices-down(deviceStopping/deviceFinished の NDJSON。1台落ちる
+    // ごとにそのタイルを「未起動」へ倒す)。profile 無しは従来の devices down(全ブリッジ停止+
+    // simctl shutdown all+全 qemu kill の全掃討。プレーンテキスト)。
+    const useNdjson = kind === "up" || (kind === "down" && !!config.profile);
+    const args: string[] = kind === "up"
+      ? ["api", "devices-up"]
+      : useNdjson
+        ? ["api", "devices-down"]
+        : ["devices", "down"];
     if (kind === "up") {
       // 起動済みでも down→up する対象(CPU バッジ機の GPU 復帰)。未起動機のブートと同一キューで
       // 2台ずつ並行処理される(DeviceBooter.bootAll の restartNames)。
@@ -371,7 +378,8 @@ export class MonitorDeviceOps {
       }
     };
 
-    if (kind === "down") {
+    if (!useNdjson) {
+      // profile 無しの down = 従来の devices down(全掃討・プレーンテキスト)。
       proc.stdout.on("data", (chunk: Buffer) => appendLines("stdout", chunk));
       proc.stderr.on("data", (chunk: Buffer) => appendLines("stderr", chunk));
 
@@ -390,11 +398,13 @@ export class MonitorDeviceOps {
       return;
     }
 
-    // ---- up 専用経路: devices-up の NDJSON を中継し、deviceStarting/deviceFinished から
-    // 即座にタイルの「起動中」表示を作る(モニターの状態スキャン到達を待たない)。stderr は
-    // devices-up の診断ログのみなので down と同じプレーンテキスト出力のまま。----
+    // ---- NDJSON 経路(up: devices-up / profile 指定 down: devices-down)----
+    // up は deviceStarting/deviceFinished、down は deviceStopping/deviceFinished を per-device に流す。
+    // モニターの状態スキャン到達を待たず、up は「起動中」、down は1台落ちるごとに「未起動」へタイルを
+    // 即時反映する。イベント形は共通(isDevicesUpEvent)。stderr は診断ログのみでプレーンテキスト。
+    const label = kind === "up" ? "devices up" : "devices down";
 
-    // このジョブのクロージャ内だけで有効な「起動を掴んだがまだ完了していないデバイス名」集合。
+    // このジョブのクロージャ内だけで有効な「操作を掴んだがまだ完了していないデバイス名」集合。
     // close 時に残っていればクラッシュ・kill とみなし、deviceOpBusy(null) で表示を剥がす
     // (正常終了なら deviceFinished で空になっているはずなので no-op)。
     const startedNames = new Set<string>();
@@ -402,17 +412,17 @@ export class MonitorDeviceOps {
       (value) => {
         if (!isDevicesUpEvent(value)) {
           this.deps.outputChannel.appendLine(
-            `[devices up] 未知の形式の行を無視しました: ${JSON.stringify(value)}`,
+            `[${label}] 未知の形式の行を無視しました: ${JSON.stringify(value)}`,
           );
           return;
         }
         switch (value.kind) {
           case "log":
-            this.deps.outputChannel.appendLine(`[devices up] ${value.message}`);
+            this.deps.outputChannel.appendLine(`[${label}] ${value.message}`);
             break;
           case "deviceStopping":
-            // --restart 対象の down 開始。ストリームをこのデバイスだけ止める(simctl/adb に殺される前に
-            // タイルを切断表示へ倒す。他デバイスのライブ映像は残す)。
+            // down 開始(up では --restart 対象)。ストリームをこのデバイスだけ止め(simctl/adb に
+            // 殺される前にタイルを切断表示へ倒す。他デバイスのライブ映像は残す)、「シャットダウン中」に。
             startedNames.add(value.name);
             this.deps.stopDeviceStreams(value.name);
             this.deps.post({ type: "deviceOpBusy", name: value.name, op: "down", status: "running" });
@@ -423,18 +433,24 @@ export class MonitorDeviceOps {
             break;
           case "deviceFinished":
             startedNames.delete(value.name);
-            this.deps.post({ type: "deviceOpBusy", name: value.name, op: null, status: null });
+            if (kind === "down") {
+              // down 中はモニター pause で state 更新が来ないため、この per-device 通知でそのタイルを
+              // 即「未起動」へ倒す(offline を先行反映。opBusy もここで解除される)。
+              this.deps.post({ type: "deviceDownFinished", name: value.name });
+            } else {
+              this.deps.post({ type: "deviceOpBusy", name: value.name, op: null, status: null });
+            }
             break;
           case "finished":
             if (!value.ok) {
               this.deps.outputChannel.appendLine(
-                `[ftester] devices up が失敗しました: ${value.error ?? "(詳細不明)"}`,
+                `[ftester] ${label} が失敗しました: ${value.error ?? "(詳細不明)"}`,
               );
             }
             break;
         }
       },
-      (line) => this.deps.outputChannel.appendLine(`[devices up stdout] ${line}`),
+      (line) => this.deps.outputChannel.appendLine(`[${label} stdout] ${line}`),
     );
     proc.stdout.on("data", (chunk: Buffer) => stdoutParser.push(chunk));
     proc.stderr.on("data", (chunk: Buffer) => appendLines("stderr", chunk));

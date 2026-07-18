@@ -21,6 +21,7 @@ import {
   setBusy,
   closeDeviceOpMenu,
   applyDeviceOpBusy,
+  applyDeviceDownFinished,
   tiles,
   selectedDeviceIds,
   applyProfileInfo,
@@ -94,6 +95,9 @@ window.addEventListener('message', (event) => {
       break;
     case 'deviceOpBusy':
       applyDeviceOpBusy(message);
+      break;
+    case 'deviceDownFinished':
+      applyDeviceDownFinished(message);
       break;
     case 'bridgeWatch':
       applyBridgeWatch(message);
