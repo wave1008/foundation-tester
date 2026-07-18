@@ -23,7 +23,6 @@ struct FTester: AsyncParsableCommand {
             Press.self,
             Screenshot.self,
             Terminate.self,
-            Explore.self,
             RunScenarios.self,
             ProjectCommand.self,
             MachineCommand.self,
@@ -419,73 +418,7 @@ struct Terminate: AsyncParsableCommand {
     }
 }
 
-// MARK: - 探索・実行コマンド
-
-struct Explore: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(
-        abstract: "FM エージェントがアプリを探索して Swift シナリオを生成する")
-
-    @Argument(help: "対象アプリの bundle identifier")
-    var bundleID: String
-
-    @Option(help: "テストの目標(自然言語)")
-    var goal: String
-
-    @Option(name: .customLong("max-steps"), help: "探索ステップ数の上限")
-    var maxSteps: Int = 25
-
-    @Option(help: "テストプロジェクト名(省略時: Projects/ が 1 つならそれ / 既定プロジェクト)")
-    var project: String?
-
-    @Option(help: "シナリオの生成先ディレクトリ(省略時: Projects/<name>/Scenarios/Generated)")
-    var out: String?
-
-    @OptionGroup var driverOptions: DriverOptions
-
-    func run() async throws {
-        let fm = FMDoctor.check()
-        guard fm.available else { throw ValidationError(fm.detail) }
-        let testProject = try ScenarioHost.project(named: project)
-        let driver = try driverOptions.makeDriver()
-        _ = try await driver.status()  // 接続不能なら早期に分かりやすく失敗させる
-
-        print("🧭 探索開始: \(bundleID) [\(driverOptions.platform)]")
-        print("   目標: \(goal)")
-        let agent = ExplorerAgent(driver: driver, goal: goal, maxSteps: maxSteps)
-        agent.onStep = { step, desc in print("  [\(step)/\(maxSteps)] \(desc)") }
-        let result = try await agent.explore(bundleID: bundleID)
-
-        var flow = result.flow
-        flow.platform = driverOptions.platform  // 実行時のドライバ自動選択に使う
-
-        switch result.outcome {
-        case .completed(let desc):
-            print("✅ 目標達成(\(result.stepsTaken)ステップ)")
-            if let desc, !desc.isEmpty { print("   最終画面: \(desc)") }
-        case .gaveUp(let reason):
-            print("⚠️ 中断: \(reason)(TODO コメント付きで生成します)")
-        case .stepLimitReached:
-            print("⚠️ ステップ上限に達しました(TODO コメント付きで生成します)")
-        }
-
-        // ビルド検証に失敗したシナリオは quarantineDir(_disabled/)に隔離される
-        let dir = out.map { URL(fileURLWithPath: $0) } ?? testProject.generatedDir
-        let quarantineDir = testProject.disabledDir
-        let className = ScenarioCodeGen.suggestedClassName(
-            for: flow,
-            existing: ScenarioCodeGen.existingClassNames(
-                in: [testProject.scenariosDir, dir, quarantineDir]))
-        let code = ScenarioCodeGen.render(flow: flow, className: className,
-                                          generatedBy: "ftester explore v0.1 (apple-fm-on-device)")
-        print("→ 生成コードをビルド検証中...")
-        let url = try ScenarioCodeGen.writeValidated(code: code, className: className,
-                                                     dir: dir, quarantineDir: quarantineDir,
-                                                     project: testProject)
-        print("📄 シナリオを生成: \(url.path)")
-        print("   実行: swift run ftester run --project \(testProject.name)"
-              + " --scenario \(className).\(ScenarioCodeGen.methodName(1))")
-    }
-}
+// MARK: - 実行コマンド
 
 struct RunScenarios: AsyncParsableCommand {
     static let configuration = CommandConfiguration(

@@ -561,33 +561,28 @@ select:disabled { opacity: 0.5; cursor: default; }
   font-size: 11px;
   background-color: var(--vscode-editor-background);
 }
-/* 実行ログ系(レーン一覧・レーン本文・explore ログ)の縦スクロールバーを .grid と同じ
+/* 実行ログ系(レーン一覧・レーン本文)の縦スクロールバーを .grid と同じ
    クラシック常時表示にする(オーバーレイ式の自動フェードを避ける) */
 .lanes-grid::-webkit-scrollbar,
-.lane-body::-webkit-scrollbar,
-.explore-log::-webkit-scrollbar {
+.lane-body::-webkit-scrollbar {
   width: 12px;
 }
 .lanes-grid::-webkit-scrollbar-track,
-.lane-body::-webkit-scrollbar-track,
-.explore-log::-webkit-scrollbar-track {
+.lane-body::-webkit-scrollbar-track {
   background-color: rgba(121, 121, 121, 0.15);
   border-radius: 6px;
 }
 .lanes-grid::-webkit-scrollbar-thumb,
-.lane-body::-webkit-scrollbar-thumb,
-.explore-log::-webkit-scrollbar-thumb {
+.lane-body::-webkit-scrollbar-thumb {
   background-color: var(--vscode-scrollbarSlider-background, rgba(121, 121, 121, 0.4));
   border-radius: 6px;
 }
 .lanes-grid::-webkit-scrollbar-thumb:hover,
-.lane-body::-webkit-scrollbar-thumb:hover,
-.explore-log::-webkit-scrollbar-thumb:hover {
+.lane-body::-webkit-scrollbar-thumb:hover {
   background-color: var(--vscode-scrollbarSlider-hoverBackground, rgba(100, 100, 100, 0.7));
 }
 .lanes-grid::-webkit-scrollbar-thumb:active,
-.lane-body::-webkit-scrollbar-thumb:active,
-.explore-log::-webkit-scrollbar-thumb:active {
+.lane-body::-webkit-scrollbar-thumb:active {
   background-color: var(--vscode-scrollbarSlider-activeBackground, rgba(191, 191, 191, 0.4));
 }
 .lane-line {
@@ -1492,118 +1487,6 @@ input[type="text"]::placeholder {
 }
 #panel-live .oplog-row.failed .oplog-label {
   color: var(--vscode-errorForeground, #f14c4c);
-}
-
-/* ---- #panel-explore(FM探索タブ) ----------------------------------------------------- */
-/* .toolbar/button/button.secondary/select/.banner は既存のグローバルルールをそのまま使う
-   (#panel-live と同じ方針。ここでは再定義しない)。 */
-#panel-explore select {
-  font-family: inherit;
-  font-size: inherit;
-  padding: 3px 6px;
-  background-color: var(--vscode-input-background);
-  color: var(--vscode-input-foreground);
-  border: 1px solid var(--ft-control-border);
-  border-radius: 2px;
-}
-.explore-body {
-  flex: 1 1 auto;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 12px;
-  overflow: hidden;
-}
-.explore-form {
-  flex: 0 0 auto;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  max-width: 640px;
-}
-.explore-form-row {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.explore-form-row > label {
-  font-size: 12px;
-  color: var(--vscode-descriptionForeground);
-}
-.explore-form-row input[type="text"],
-.explore-form-row textarea {
-  font-family: inherit;
-  font-size: inherit;
-  padding: 4px 6px;
-  background-color: var(--vscode-input-background);
-  color: var(--vscode-input-foreground);
-  border: 1px solid var(--ft-control-border);
-  border-radius: 2px;
-}
-.explore-form-row textarea {
-  min-height: 60px;
-  resize: vertical;
-}
-.explore-form-row input:disabled,
-.explore-form-row textarea:disabled {
-  opacity: 0.5;
-}
-.explore-form-buttons {
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
-}
-#explore-running-label {
-  font-size: 12px;
-  color: var(--vscode-descriptionForeground);
-}
-.explore-form-error {
-  display: none;
-  font-size: 12px;
-  color: var(--vscode-errorForeground, #f14c4c);
-  white-space: pre-wrap;
-}
-.explore-form-error.visible {
-  display: block;
-}
-.explore-log-header {
-  flex: 0 0 auto;
-  font-size: 12px;
-  color: var(--vscode-descriptionForeground);
-}
-.explore-log {
-  flex: 1 1 auto;
-  min-height: 120px;
-  overflow-y: scroll; /* 常時表示(共通スクロールバーブロック参照) */
-  border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border));
-  border-radius: 3px;
-  padding: 6px 8px;
-  font-family: var(--vscode-editor-font-family, monospace);
-  font-size: 11px;
-}
-.explore-log-line {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  line-height: 1.4;
-}
-.explore-result {
-  flex: 0 0 auto;
-  font-size: 12px;
-  white-space: pre-wrap;
-  color: var(--vscode-descriptionForeground);
-}
-.explore-result-info {
-  color: var(--vscode-descriptionForeground);
-}
-.explore-result-warning {
-  color: var(--vscode-editorWarning-foreground, #cca700);
-}
-.explore-result-error {
-  color: var(--vscode-errorForeground, #f14c4c);
-}
-.explore-open-file-btn {
-  align-self: flex-start;
 }
 
 /* ---- #panel-settings(設定タブ) ------------------------------------------------------- */

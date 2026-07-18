@@ -26,7 +26,7 @@ struct ApiListDevices: AsyncParsableCommand {
     func run() async throws {
         let testProject = try ScenarioHost.project(named: project)
         // runProfileName を渡さないと machines/ 複数時に「マシン名が未登録」で落ちる
-        // (ApiDeviceCommands.swift と同経路。対向: monitorLiveController.ts / monitorExploreController.ts)
+        // (ApiDeviceCommands.swift と同経路。対向: monitorLiveController.ts)
         let machine = try ProfileResolver.determineMachine(
             project: testProject, registered: LocalConfig.currentMachineName(),
             runProfileName: profile)

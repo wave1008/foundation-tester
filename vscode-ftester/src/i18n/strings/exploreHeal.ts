@@ -1,6 +1,5 @@
 // バッチH 辞書。namespace: exploreHeal.
-// 対象ソース: healReviewPanel.ts, healModel.ts, exploreModel.ts, monitorExploreController.ts,
-//   dashboardPanel.ts, dashboardModel.ts
+// 対象ソース: healReviewPanel.ts, healModel.ts, dashboardPanel.ts, dashboardModel.ts
 // キーは "exploreHeal." 始まり。ja は元の日本語と byte-identical(既存テスト互換)。
 import type { MessageDict } from "../core";
 
@@ -79,88 +78,6 @@ export const exploreHealStrings = {
   "exploreHeal.heal.applyFailed": {
     ja: "apply-heal の実行に失敗しました: {message}",
     en: "apply-heal failed: {message}",
-  },
-
-  // ---- exploreModel.ts / monitorExploreController.ts ----
-  "exploreHeal.explore.log.started": {
-    ja: "[explore] 開始: bundle={bundleID} goal={goal} maxSteps={maxSteps} platform={platform}",
-    en: "[explore] Started: bundle={bundleID} goal={goal} maxSteps={maxSteps} platform={platform}",
-  },
-  "exploreHeal.explore.log.finished": {
-    ja: "[explore] 終了: outcome={outcome} stepsTaken={stepsTaken} quarantined={quarantined}{filePart}{detailPart}",
-    en: "[explore] Finished: outcome={outcome} stepsTaken={stepsTaken} quarantined={quarantined}{filePart}{detailPart}",
-  },
-  "exploreHeal.explore.log.error": {
-    ja: "[explore] エラー: {message}",
-    en: "[explore] Error: {message}",
-  },
-  "exploreHeal.explore.log.cancelled": {
-    ja: "[explore] キャンセルされました。",
-    en: "[explore] Cancelled.",
-  },
-  "exploreHeal.explore.notif.quarantined": {
-    ja: "ftester: ビルド検証に失敗したため _disabled/ に隔離されました。",
-    en: "ftester: Build verification failed; quarantined to _disabled/.",
-  },
-  "exploreHeal.explore.notif.completed": {
-    ja: "ftester: 探索完了({steps}ステップ)",
-    en: "ftester: Explore completed ({steps} steps)",
-  },
-  "exploreHeal.explore.notif.incomplete": {
-    ja: "ftester: 探索は未完了ですがシナリオを生成しました(TODOコメント付き)。",
-    en: "ftester: Explore didn't finish, but a scenario was generated (with TODO comments).",
-  },
-  "exploreHeal.explore.validate.bundleIdRequired": {
-    ja: "bundle ID / パッケージ名を入力してください。",
-    en: "Enter a bundle ID / package name.",
-  },
-  "exploreHeal.explore.validate.goalRequired": {
-    ja: "テストの目標を入力してください。",
-    en: "Enter a test goal.",
-  },
-  "exploreHeal.explore.validate.maxStepsRange": {
-    ja: "{min}〜{max}の整数を入力してください。",
-    en: "Enter an integer between {min} and {max}.",
-  },
-  "exploreHeal.explore.deviceState.connected": {
-    ja: "接続済み",
-    en: "Connected",
-  },
-  "exploreHeal.explore.deviceState.booted": {
-    ja: "起動中",
-    en: "Booted",
-  },
-  "exploreHeal.explore.deviceState.offline": {
-    ja: "未起動",
-    en: "Offline",
-  },
-  "exploreHeal.explore.deviceState.unknown": {
-    ja: "状態不明(未確認)",
-    en: "Unknown (unverified)",
-  },
-  "exploreHeal.explore.device.description": {
-    ja: "{platform} ・ {state}",
-    en: "{platform} · {state}",
-  },
-  "exploreHeal.explore.deviceNotConnectedWarning": {
-    ja: "⚠ 接続されていません。探索が失敗する可能性があります。",
-    en: "⚠ Not connected. Explore may fail.",
-  },
-  "exploreHeal.explore.selectDevicePrompt": {
-    ja: "デバイスを選択してください。",
-    en: "Select a device.",
-  },
-  "exploreHeal.explore.deviceListFailedProfile": {
-    ja: "デバイス一覧の取得に失敗しました。マシンプロファイルの設定を確認してください({detail})",
-    en: "Failed to fetch the device list. Check the machine profile configuration ({detail})",
-  },
-  "exploreHeal.explore.deviceListFailed": {
-    ja: "デバイス一覧の取得に失敗しました: {error}",
-    en: "Failed to fetch the device list: {error}",
-  },
-  "exploreHeal.explore.processCrashed": {
-    ja: "ftester プロセスが異常終了しました(exit code: {exitCode})。出力パネル「ftester」を確認してください。",
-    en: "The ftester process exited abnormally (exit code: {exitCode}). Check the “ftester” output panel.",
   },
 
   // ---- dashboardPanel.ts ----

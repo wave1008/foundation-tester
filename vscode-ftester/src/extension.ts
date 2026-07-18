@@ -107,9 +107,7 @@ export function activate(context: vscode.ExtensionContext): void {
   );
   registerDebugAdapter(context, workspaceRoot, getConfig, outputChannel);
   registerStepsView(context, cli, workspaceRoot, getConfig, testTree, watcher, outputChannel);
-  registerMonitorPanel(
-    context, workspaceRoot, getConfig, outputChannel, runEventBus, cli, testTree, livePanel.openForDevice,
-  );
+  registerMonitorPanel(context, workspaceRoot, getConfig, outputChannel, runEventBus, livePanel.openForDevice);
   registerHealReviewPanel(context, workspaceRoot, getConfig, outputChannel, runEventBus, cli);
   registerDashboardPanel(context, workspaceRoot, getConfig, outputChannel, runEventBus);
   registerProfileDiagnostics(context, cli, workspaceRoot, getConfig, outputChannel);

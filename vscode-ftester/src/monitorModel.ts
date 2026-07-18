@@ -322,8 +322,8 @@ export type MonitorToWebviewMessage =
       readonly existing: readonly string[];
       readonly caseInsensitiveDup: boolean;
     }
-  // ホスト駆動のタブ切替(例: ftester.explore でパネルを開き直さず「FM探索」タブへ直接切り替える)。
-  // webview 側は tabs.js の activateTab へそのまま渡す。
+  // ホスト駆動のタブ切替(パネルを開き直さず特定タブへ直接切り替える。monitorPanel.ts の
+  // show(initialTab) が使う)。webview 側は tabs.js の activateTab へそのまま渡す。
   | { readonly type: "switchTab"; readonly tab: string }
   // 設定タブの「ポーリングモードを使用する」チェックボックスの現在値。ready 直後(永続状態の反映)と
   // setPollingMode 受信直後(monitorPanel.ts)の両方で送る。webview 側は settingsTab.js の

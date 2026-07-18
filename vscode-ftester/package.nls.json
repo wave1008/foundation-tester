@@ -38,7 +38,6 @@
   "ftester.command.showDeviceMonitor.title": "ftester: Show Device Monitor",
   "ftester.command.showLiveControl.title": "ftester: Show Live Control",
   "ftester.command.showResultsDashboard.title": "ftester: Open Results Dashboard",
-  "ftester.command.explore.title": "ftester: Generate Scenario via FM Exploration",
   "ftester.command.selectProfile.title": "ftester: Select Run Profile",
   "ftester.command.validateProfiles.title": "ftester: Validate Profiles",
   "ftester.command.deleteScenario.title": "Delete",

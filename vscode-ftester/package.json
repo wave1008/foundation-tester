@@ -2,7 +2,7 @@
   "name": "vscode-ftester",
   "displayName": "ftester",
   "description": "%ftester.extension.description%",
-  "version": "0.0.286",
+  "version": "0.0.287",
   "private": true,
   "publisher": "wave1008",
   "license": "MIT",
@@ -260,11 +260,6 @@
       {
         "command": "ftester.showResultsDashboard",
         "title": "%ftester.command.showResultsDashboard.title%",
-        "category": "ftester"
-      },
-      {
-        "command": "ftester.explore",
-        "title": "%ftester.command.explore.title%",
         "category": "ftester"
       },
       {

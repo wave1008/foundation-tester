@@ -1,6 +1,6 @@
 // バッチJ 辞書(webview 側)。namespace: wvMonitor2.
 // 対象ソース: webview/monitor/{runProfilesTab,processesTab,machineProfilesTab,appProfilesTab,
-//   exploreTab,laneLog,hostCharts,splitter,h264Decoder,main,menu,tabs,settingsTab}.js,
+//   laneLog,hostCharts,splitter,h264Decoder,main,menu,tabs,settingsTab}.js,
 //   webview/live/main.js
 // webview バンドルから import される。**vscode 非依存**を保つこと。
 // キーは "wvMonitor2." 始まり。ja は元の日本語と byte-identical(既存テスト互換)。
@@ -116,13 +116,6 @@ export const webviewMonitorBStrings = {
     ja: "アプリプロファイルの更新に失敗しました。",
     en: "Failed to update the app profile.",
   },
-
-  // exploreTab.js
-  "wvMonitor2.explore.state.connected": { ja: "接続済み", en: "Connected" },
-  "wvMonitor2.explore.state.booted": { ja: "起動中", en: "Booted" },
-  "wvMonitor2.explore.state.offline": { ja: "未起動", en: "Offline" },
-  "wvMonitor2.explore.state.unknown": { ja: "状態不明(未確認)", en: "Unknown (unverified)" },
-  "wvMonitor2.explore.running": { ja: "探索中...", en: "Exploring..." },
 
   // laneLog.js
   "wvMonitor2.laneLog.selectedCount": { ja: "選択中{count}台を表示", en: "Showing {count} selected" },

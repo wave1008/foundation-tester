@@ -6,7 +6,6 @@
 // - monitorProcessManager.ts の MonitorProcessManager: monitor/host-metrics 常駐子プロセスの起動・停止・再起動
 // - monitorProfilesController.ts の MonitorProfilesController: 「プロファイル」タブの一覧post・CRUD・フォームのロード/保存
 // - monitorDeviceOps.ts の MonitorDeviceOps: デバイスライフサイクルキュー・device-catalog/installed-devices/create-device
-// - monitorExploreController.ts の MonitorExploreController: 「FM探索」タブの list-devices・`api explore` 実行
 // - monitorDeviceStreamController.ts の MonitorDeviceStreamController: デバイスタイルの画面ストリーミング
 //   (iOS/Android共通の StreamPipeline)管理。connected な monitorFrame ポーリングとの間引き調停は
 //   MonitorProcessManager 側。
@@ -29,9 +28,7 @@ import * as path from "node:path";
 import type { Readable } from "node:stream";
 import * as vscode from "vscode";
 import { repairWifi } from "./adbWifiRepair";
-import type { FtesterCli } from "./cli";
 import { type FtesterConfig, readRunProfileDeviceNames, resolveAdb, resolveProjectName } from "./config";
-import { isExploreWebviewEnvelope, type ExploreToWebviewEnvelope } from "./exploreModel";
 import { currentLocale, t } from "./i18n";
 import {
   devicesToShutdownOnScopeChange,
@@ -43,7 +40,6 @@ import {
 import { MonitorBridgeWatchdog } from "./monitorBridgeWatchdog";
 import { MonitorDeviceOps } from "./monitorDeviceOps";
 import { MonitorDeviceStreamController } from "./monitorDeviceStreamController";
-import { MonitorExploreController } from "./monitorExploreController";
 import { MonitorHealthWatchdog } from "./monitorHealthWatchdog";
 import { PANEL_TITLE, renderHtml } from "./monitorHtml";
 import { type HostMetricsToWebviewMessage, MonitorProcessManager } from "./monitorProcessManager";
@@ -58,7 +54,6 @@ import {
   snapshotRunLaneState,
   type RunLaneToWebviewMessage,
 } from "./runLaneModel";
-import type { FtesterTestTree } from "./testTree";
 
 const VIEW_TYPE = "ftesterMonitor";
 
@@ -72,13 +67,7 @@ export interface MonitorPanelDeps {
   readonly workspaceRoot: string;
   getConfig(): FtesterConfig;
   readonly outputChannel: vscode.OutputChannel;
-  post(
-    message:
-      | MonitorToWebviewMessage
-      | RunLaneToWebviewMessage
-      | HostMetricsToWebviewMessage
-      | ExploreToWebviewEnvelope,
-  ): void;
+  post(message: MonitorToWebviewMessage | RunLaneToWebviewMessage | HostMetricsToWebviewMessage): void;
   /** パネル表示中か。MonitorProcessManager.scheduleHostMetricsRestart()の5秒後再起動タイマーが使う。 */
   isPanelActive(): boolean;
   /** MonitorProcessManager.writeMonitorControlへの委譲。MonitorDeviceOpsのdown系ジョブ前後で呼ぶ。 */
@@ -104,8 +93,7 @@ export interface MonitorPanelDeps {
   /** MonitorDeviceStreamController.disposeAllForDownへの委譲。MonitorDeviceOpsの一括downジョブの
    * 実行開始時に呼ぶ(stopDeviceStreamsの全台版)。 */
   stopAllStreams(): void;
-  /** 生成したソース(絶対パス)を、デバイスモニターの列を避けた列に開く(モニター表示を覆わないため)。
-   * explore コントローラの生成完了時に使う。 */
+  /** 生成したソース(絶対パス)を、デバイスモニターの列を避けた列に開く(モニター表示を覆わないため)。 */
   openGeneratedDocument(filePath: string): void;
 }
 
@@ -115,8 +103,6 @@ export function registerMonitorPanel(
   getConfig: () => FtesterConfig,
   outputChannel: vscode.OutputChannel,
   eventBus: RunEventBus,
-  cli: FtesterCli,
-  testTree: FtesterTestTree,
   openLiveForDevice: (id: string) => void,
 ): void {
   const controller = new MonitorPanelController(
@@ -126,8 +112,6 @@ export function registerMonitorPanel(
     eventBus,
     context.extensionUri,
     context.workspaceState,
-    cli,
-    testTree,
     openLiveForDevice,
   );
   // TEST EXPLORER タイトルの view/title ボタンはペイン非フォーカス時に隠れる。
@@ -142,7 +126,6 @@ export function registerMonitorPanel(
     controller,
     statusItem,
     vscode.commands.registerCommand("ftester.showDeviceMonitor", () => controller.show()),
-    vscode.commands.registerCommand("ftester.explore", () => controller.show("explore")),
   );
 }
 
@@ -154,7 +137,6 @@ class MonitorPanelController implements vscode.Disposable {
   private readonly deviceOps: MonitorDeviceOps;
   private readonly bridgeWatchdog: MonitorBridgeWatchdog;
   private readonly healthWatchdog: MonitorHealthWatchdog;
-  private readonly explore: MonitorExploreController;
   private readonly deviceStream: MonitorDeviceStreamController;
 
   /** パネル再作成時にhydrateLaneUi()で流し込むため、実行を跨いで保持する。 */
@@ -181,8 +163,6 @@ class MonitorPanelController implements vscode.Disposable {
     eventBus: RunEventBus,
     private readonly extensionUri: vscode.Uri,
     private readonly workspaceState: vscode.Memento,
-    cli: FtesterCli,
-    testTree: FtesterTestTree,
     private readonly openLiveForDevice: (id: string) => void,
   ) {
     this.pollingMode = workspaceState.get<boolean>("monitor.pollingMode", false);
@@ -234,7 +214,6 @@ class MonitorPanelController implements vscode.Disposable {
       isAutoRepairEnabled: () => this.getConfig().autoRepairDeviceHealth,
       isDeviceLifecycleQueueBusy: () => this.deviceOps.isQueueBusy(),
     });
-    this.explore = new MonitorExploreController(this.deps, cli, workspaceState, () => void testTree.refresh());
 
     this.unsubscribeBus = eventBus.subscribe((message) => this.handleBusMessage(message));
     this.configChangeSubscription = vscode.workspace.onDidChangeConfiguration((event) => {
@@ -341,20 +320,13 @@ class MonitorPanelController implements vscode.Disposable {
     this.profiles.disposeWatchers();
     this.processManager.stopMonitorProcess();
     this.processManager.stopHostMetricsProcess();
-    this.explore.dispose();
     this.deviceStream.dispose();
     const panel = this.panel;
     this.panel = undefined;
     panel?.dispose();
   }
 
-  private post(
-    message:
-      | MonitorToWebviewMessage
-      | RunLaneToWebviewMessage
-      | HostMetricsToWebviewMessage
-      | ExploreToWebviewEnvelope,
-  ): void {
+  private post(message: MonitorToWebviewMessage | RunLaneToWebviewMessage | HostMetricsToWebviewMessage): void {
     void this.panel?.webview.postMessage(message);
   }
 
@@ -405,10 +377,6 @@ class MonitorPanelController implements vscode.Disposable {
   }
 
   private handleWebviewMessage(message: unknown): void {
-    if (isExploreWebviewEnvelope(message)) {
-      this.explore.handleWebviewMessage(message.message);
-      return;
-    }
     if (!isMonitorFromWebviewMessage(message)) {
       return;
     }
@@ -582,7 +550,6 @@ class MonitorPanelController implements vscode.Disposable {
     this.profiles.postMachineProfileInfo();
     // webview再読込がジョブ実行中に起きた場合にボタン無効状態・タイルのバッジを復元するため。
     this.deviceOps.resendQueueStatus();
-    this.explore.sendInitialState();
     this.post({ type: "pollingMode", value: this.pollingMode });
     this.post({
       type: "language",
