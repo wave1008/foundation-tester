@@ -858,6 +858,20 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
   `isDevicesUpEvent`。受信時にそのデバイスだけ stopDeviceStreams)。cpuRenderNames の解除は
   `MonitorDeviceOps.bulkUpWithRestarts`。右クリック単発「GPUで再起動」は従来どおり
   `restartBatch` ジョブ(`ftester api devices-restart`、`isDevicesRestartEvent`)を使う
+- **一括 down の per-device 反映(`api devices-down`)**(2026-07-19): monitor は down 中 pause で
+  状態スキャンごと止まる(→タイルが全台落ちてからまとめて「未起動」化していた)。対策として **profile 指定の
+  bulk down を NDJSON 化**(`deviceStopping`/`deviceFinished`。停止ロジックは `shutdownProfile` と同一で回帰なし)、
+  拡張は `deviceFinished` ごとにそのタイルだけ offline を先行反映(`deviceDownFinished` → resume 後に本物の
+  state で上書き)。profile 無しの down は従来の全掃討 `devices down` のまま。詳細は performance-tuning.md §3.4
+- **「プロセス」タブ(常駐プロセス一覧・停止)**(2026-07-19): `ps` の ftester 関連常駐を分類表示
+  (`residentProcesses.ts`)。Android ブリッジは**エミュレータ内 `am instrument`= ホスト `ps` に出ない**ため
+  `adb forward --list` から情報行を合成(ホスト PID 無し→PID 列は `(遅延起動)`/デバイス内 PID `(12345)`)。
+  「すべて強制終了」の掃討スコープは**ユーザー決定**で: ① iOS ブリッジ/ランナー・in-app・モニター/
+  host-metrics/stream を停止し **iOS シミュレータと Android エミュ本体(qemu)は残す**(デバイスタブの領域。
+  `bridge down --all`=sim を残す/`bridge down --platform android`=qemu を残す/残余 SIGKILL は
+  **この workspace 由来のみ**=workspaceRoot/binaryDir を含むコマンド。machine-wide 巻き込み回避)、
+  ② **MCP サーバ(mcp)は表示・掃討とも対象外**(セッション保護)、③ 掃討後に `restartAll()` で
+  monitor/host-metrics を**自動再起動**(止めたままだとデバイスタブが状態更新を失い凍結するため)
 
 - **監視と実行の協調(run-lease)**(2026-07-18): monitor(watchdog)と run は別プロセスで無協調のため、
   watchdog が実行中デバイスに破壊的再起動をかけて run のワーカーを壊していた。対策として run→monitor 方向の

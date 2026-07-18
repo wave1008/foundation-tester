@@ -179,6 +179,10 @@ export type MonitorToWebviewMessage =
       readonly status: DeviceOpQueueStatus | null;
     }
   | { readonly type: "deviceOpFailed"; readonly name: string; readonly message: string }
+  // 一括 down(api devices-down)で1台停止完了ごとに送る。webview はそのタイルを即「未起動」へ倒す
+  // (down 中はモニター pause で state 更新が来ないため、落ちた順の反映をこの per-device 通知で行う。
+  //  次の devices 反映=resume 後に本物の state で上書きされる)。name は deviceOpBusy と同じ名前空間。
+  | { readonly type: "deviceDownFinished"; readonly name: string }
   | {
       readonly type: "profileInfo";
       /** 対象プロジェクトの実行プロファイル名一覧(Projects/<project>/profiles/runs/ 直下)。 */

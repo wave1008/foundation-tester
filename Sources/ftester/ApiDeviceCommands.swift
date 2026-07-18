@@ -206,6 +206,65 @@ struct ApiDevicesRestart: AsyncParsableCommand {
     }
 }
 
+struct ApiDevicesDown: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "devices-down",
+        abstract: "マシンプロファイルの全デバイスを停止する(NDJSON: log/deviceStopping/deviceFinished → "
+            + "finished を stdout に出力。診断は stderr のみ。ok:false のときは exit code 1)。"
+            + "--profile 指定時はそのプロファイルが参照するデバイスのみ。停止ロジックは DevicesCommand.Down "
+            + "の shutdownProfile と同一(ios→android 逐次の shutdownOne)で、per-device 進捗を足しただけ")
+
+    @Option(help: "テストプロジェクト名(省略時: Projects/ が 1 つならそれ / 既定プロジェクト)")
+    var project: String?
+
+    @Option(help: "実行プロファイル名(指定時はそのプロファイルが参照するデバイスのみ停止する)")
+    var profile: String?
+
+    func run() async throws {
+        setvbuf(stdout, nil, _IOLBF, 0)
+        do {
+            let machineProfile = try MachineProfileLoad.load(
+                project: project, profile: profile,
+                noteAutoMachine: { Self.logStderr($0) },
+                warn: { Self.logStderr($0) })
+            // shutdownProfile と同じ ios→android 逐次(1台落ちるごとに deviceFinished を出すので、
+            // 拡張側は落ちた順にタイルを「未起動」へ倒せる)。iOS のみブリッジ停止のため repoRoot を渡す。
+            let repoRoot = try? RepoRoot.find()
+            for spec in machineProfile.ios?.devices ?? [] {
+                await Self.shutdownOneEmitting(spec: spec, platform: "ios", repoRoot: repoRoot)
+            }
+            for spec in machineProfile.android?.devices ?? [] {
+                await Self.shutdownOneEmitting(spec: spec, platform: "android", repoRoot: nil)
+            }
+            ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent(ok: true, error: nil))
+        } catch {
+            ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent(ok: false, error: error.localizedDescription))
+            throw ExitCode(1)
+        }
+    }
+
+    /// 1台停止。失敗しても deviceFinished は必ず送出する(拡張の再スキャン契約。
+    /// ApiDevicesUp/Restart の deviceFinished 契約と同じ)。
+    private static func shutdownOneEmitting(spec: DeviceSpec, platform: String, repoRoot: URL?) async {
+        let log: @Sendable (String) -> Void = { message in
+            ApiDeviceEventEmitter.emit(ApiDeviceLogEvent(message: message))
+        }
+        ApiDeviceEventEmitter.emit(
+            ApiDevicesUpLifecycleEvent(kind: "deviceStopping", name: spec.name, platform: platform))
+        do {
+            try await DeviceBooter.shutdownOne(spec: spec, platform: platform, repoRoot: repoRoot, log: log)
+        } catch {
+            log("❌ \(spec.name): \(error.localizedDescription)")
+        }
+        ApiDeviceEventEmitter.emit(
+            ApiDevicesUpLifecycleEvent(kind: "deviceFinished", name: spec.name, platform: platform))
+    }
+
+    private static func logStderr(_ message: String) {
+        FileHandle.standardError.write(Data((message + "\n").utf8))
+    }
+}
+
 struct ApiDeviceDown: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "device-down",
