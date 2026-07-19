@@ -2,9 +2,11 @@
 # foundation-tester ブートストラップスキル導入器。
 #
 # 何も入れていないユーザーが、空ディレクトリで次を実行すると、カレントの
-# .claude/skills/ に ftester-setup と ftester-update の両スキルを置く(この時点では repo を clone しない):
+# .claude/skills/ に ftester-setup / ftester-update / ftester-profiles スキルを置く
+# (この時点では repo を clone しない):
 #   curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install-skill.sh | sh
-# 以後 Claude Code で /ftester-setup(初回導入)や /ftester-update(更新)を呼べる。
+# 以後 Claude Code で /ftester-setup(初回導入)・/ftester-update(更新)・
+# /ftester-profiles(プロファイル一括作成)を呼べる。
 # clone/build/install は各スキル本体が行う(大きな取得/ビルドの前にユーザーがレビューできるようにするため)。
 #
 # 契約: 取得元は repo 内の正典 .claude/skills/<name>/SKILL.md(単一ソース)。
@@ -14,7 +16,7 @@ set -eu
 REF="${FTESTER_REF:-main}"
 REPO="wave1008/foundation-tester"
 BASE="https://raw.githubusercontent.com/${REPO}/${REF}/.claude/skills"
-SKILLS="ftester-setup ftester-update"
+SKILLS="ftester-setup ftester-update ftester-profiles"
 
 command -v curl >/dev/null 2>&1 || { echo "エラー: curl が必要です" >&2; exit 1; }
 
@@ -49,9 +51,10 @@ for name in ${SKILLS}; do
 done
 
 cat <<'EOF'
-✅ ftester-setup / ftester-update スキルを .claude/skills/ に導入しました。
+✅ ftester-setup / ftester-update / ftester-profiles スキルを .claude/skills/ に導入しました。
 次の手順:
   1. このフォルダを Claude Code で開く(既に開いているなら再読込)
   2. /ftester-setup を実行する(初回導入: clone → build → install)
      以後、修正版の取り込みは /ftester-update
+     マシン/アプリ/実行プロファイルの一括作成は /ftester-profiles
 EOF

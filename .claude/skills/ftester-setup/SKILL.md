@@ -170,6 +170,13 @@ ftester run --project <ProjectName> --profile ios
 （外部構成では `ftester` = `../foundation-tester/.build/debug/ftester`。clone 構成は `swift run ftester run ...`。）
 または拡張のライブ操作パネルで操作を録画してシナリオを1本生成して実行。ここまで通れば初期セットアップ完了。
 
+### 10. 続けてプロファイル一括作成へ（/ftester-profiles）
+
+初期セットアップ（1〜9）が完了したら、**続けて `/ftester-profiles` スキルを呼び出す**
+（マシン/アプリ/実行プロファイルの一括作成）。`/ftester-profiles` が完了したら、**そこで処理を終了する**。
+指示にない追加作業を自分の判断で始めない（コミット・push・別プロファイルやシナリオの追加作成・
+最適化提案などをこちらから勝手に行わない）。
+
 ## 完了後
 
 外部パッケージ構成では、以後の `/ftester-setup`(デバイス定義・アプリパス・実行)は `ftester init` が
