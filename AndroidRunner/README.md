@@ -2,9 +2,10 @@
 
 iOS の `Runner/`(XCUITest ランナー)と対になる、Android デバイス常駐の HTTP サーバ。
 uiautomator dump(約2秒)の代わりに AccessibilityNodeInfo を直接走査して
-スナップショットをミリ秒オーダーで返す。プロトコルは iOS ブリッジと完全互換
-(`Sources/FTCore/BridgeDTO.swift` の 9 エンドポイント)なので、ホスト側は
-`BridgeClient` をそのまま使う。
+スナップショットをミリ秒オーダーで返す。HTTP プロトコルは iOS ブリッジと互換
+(DTO 形は `Sources/FTCore/BridgeDTO.swift`、ルーティングは `AndroidRunner/src/.../BridgeRouter.java` /
+iOS 側 `Runner/FTesterRunnerUITests/BridgeRouter.swift`)なので、ホスト側は `BridgeClient` をそのまま使う。
+一部(`home`/`drag`)は Android では adb で肩代わりする(`Sources/FTAndroid/AndroidDriver.swift`)。
 
 - 純フレームワーク API の Java のみ(androidx / gradle / Kotlin 不使用)
 - `Sources/FTAndroid/AndroidBridge.swift` が初回操作時に自動インストール・自動起動する。

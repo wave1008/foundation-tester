@@ -8,6 +8,10 @@ description: 既に foundation-tester をセットアップ済みの受け手が
 セットアップ済みの環境に upstream の修正版を取り込む。初回導入は `/ftester-setup`。
 背景・手動手順は docs/getting-started.md の「更新のしかた」。
 
+**この runbook は Tier 1(foundation-tester を clone してその中で使う)専用。** mint 導入の Tier 2
+(自分のパッケージ + `ftester init`)の更新は、`mint install wave1008/foundation-tester@<新version>` と
+受け手 Package.swift の `--ftester-version` 付け替え(docs/getting-started.md 付録)で行う。
+
 ## 進め方の原則
 
 - 各ステップは **exit code で成否判定**（パイプで grep に繋がない）。
