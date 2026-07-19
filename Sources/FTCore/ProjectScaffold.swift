@@ -152,6 +152,27 @@ public enum ProjectScaffold {
         ftester api run --project \(name) --scenario <クラス名> --dry-run --skip-build
         ```
 
+        ### 6. MCP サーバの登録(Claude Code から ft_* ツールを使う。任意)
+        Claude Code がアプリを直接操作してシナリオを生成したいとき登録する(VSCode 拡張とは別の消費面)。
+        このパッケージのルートに `.mcp.json` を書く(claude CLI 不要・ただの JSON)。`<CLONE_ABS>` は
+        clone した foundation-tester の**絶対パス**(`cd <clone> && pwd` で得る)に置換。既存 `.mcp.json` が
+        あれば `mcpServers.ftester` キーだけマージする:
+
+        ```json
+        {
+          "mcpServers": {
+            "ftester": {
+              "command": "bash",
+              "args": ["-lc", "cd <CLONE_ABS> && swift build --product ftester-mcp >/dev/null 2>&1 && exec <CLONE_ABS>/.build/debug/ftester-mcp"]
+            }
+          }
+        }
+        ```
+
+        rebuild-on-start なので clone を `git pull` しても版ズレしない。build 出力は `/dev/null`
+        (JSON-RPC は stdout 専用)。Claude Code はプロジェクトスコープの MCP を初回に承認確認する
+        → 許可すると `ft_*` ツールが使え、`/ftester-scenario` が MCP 経由で動く。
+
         ## 更新(新しい版が出たとき)
         clone した foundation-tester で `git pull`(または `git checkout <新version>`)して `swift build`
         し直し、Package.swift の依存(`.package(... from:)` の版)も同じ版へ上げる。CLI と依存の版は揃える。
