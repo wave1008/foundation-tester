@@ -28,8 +28,12 @@ struct InitCommand: AsyncParsableCommand {
     var ftesterURL: String?
 
     @Option(name: .customLong("ftester-version"),
-            help: "git 依存時の最小バージョン(--ftester-url と併用)")
+            help: "git 依存時の最小バージョン(--ftester-url と併用。--ftester-branch 指定時は無視)")
     var ftesterVersion: String = "0.0.1"
+
+    @Option(name: .customLong("ftester-branch"),
+            help: "git 依存をタグではなくブランチで引く(--ftester-url と併用。タグ未発行時・検証用)")
+    var ftesterBranch: String?
 
     func run() async throws {
         let cwd = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
@@ -51,7 +55,9 @@ struct InitCommand: AsyncParsableCommand {
             let abs = URL(fileURLWithPath: ftesterPath, relativeTo: cwd).standardizedFileURL.path
             dependencyLine = #".package(path: "\#(abs)"),"#
         } else if let ftesterURL {
-            dependencyLine = #".package(url: "\#(ftesterURL)", from: "\#(ftesterVersion)"),"#
+            dependencyLine = ftesterBranch.map {
+                #".package(url: "\#(ftesterURL)", branch: "\#($0)"),"#
+            } ?? #".package(url: "\#(ftesterURL)", from: "\#(ftesterVersion)"),"#
         } else {
             throw ValidationError("--ftester-path か --ftester-url のいずれかを指定してください")
         }
