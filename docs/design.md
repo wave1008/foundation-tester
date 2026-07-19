@@ -923,7 +923,13 @@ trigger)は CLI エントリでしか分からないため、`RunRecorder` を C
 - インデックス/キャッシュは未導入(月別プルーニング+全走査で当面十分。遅くなったら
   `.ftester/` 配下に再構築可能キャッシュを足す)
 
-## 15. 外部パッケージ配布と mint 配布(2026-07-19)
+## 15. 外部パッケージ配布と mint 配布の履歴(2026-07-19)
+
+**現状(正典)**: onboarding は純 clone 構成に一本化(CLI・VSCode 拡張とも同一 clone から `swift build` /
+`npm run install-local`)。入口は curl ワンライナー(`Scripts/install-skill.sh` が `/ftester-setup`・`/ftester-update` の
+両スキルを .claude/skills/ へ導入)→ Claude Code の `/ftester-setup` スキル。mint は廃止(VSIX はバイナリ配布しないため clone がどのみち必須で、CLI だけ
+mint 経由にすると二重取得になるだけだったため)。以下の外部パッケージ構成(旧 Tier2・`ftester init`)は
+コードは残置しているが onboarding では未使用。
 
 受け手が foundation-tester を clone せず、**自分の Swift パッケージが ftester を SPM 依存として引いて**
 自分のアプリのシナリオを書ける構成(以下「外部パッケージ構成」)。clone してその中でシナリオを管理する構成を「clone 構成」と呼ぶ。
@@ -939,11 +945,13 @@ trigger)は CLI エントリでしか分からないため、`RunRecorder` を C
   ① 実行ディレクトリ上方の Package.swift+Runner/(clone 構成)② 受け手パッケージの `.build/checkouts/*/Runner/`
   (外部パッケージ構成の git 依存。swift build が展開・CLI の導入方法に依らず永続)③ `#filePath` からのツールソース
   (local path 依存 / 自前ビルド)。下流(BridgeProvisioner/DevicesCommand/InApp/LiveBridge)は無変更。
-- **mint 配布(採用)**: `mint install wave1008/foundation-tester@<ver>`。**罠**: mint は temp でビルドして
-  バイナリのみ残しソースを消すため CLI の `#filePath` は死ぬ → ブリッジは上記②(受け手の checkout)で解決する。
-  よって外部パッケージ構成は **git 依存必須**(ブリッジ用に Runner/ を含む checkout が要る)。ソース無し mint バイナリで
-  bridge up→/status ready を実機実証済み。**制約**: XCUITest ブリッジは SPM ライブラリ化できないため
-  「ソースビルド配布」前提(prebuilt をソースの無い別マシンへ運ぶと Runner/ 解決不能)。
-- **拡張**: `binaryPath` は実在しなければ PATH フォールバック(`binaryPathResolve.ts`)で `~/.mint/bin/ftester` を発見。
-- **版**: git タグ(mint 配布)/ 拡張 package.json / プロトコル版(compatCheck)は独立。リリースは
+- **mint 配布(採用していたが廃止)**: `mint install wave1008/foundation-tester@<ver>`。**罠(記録)**: mint は
+  temp でビルドしてバイナリのみ残しソースを消すため CLI の `#filePath` は死ぬ → ブリッジは上記②(受け手の
+  checkout)で解決する必要があった。よって外部パッケージ構成は **git 依存必須**(ブリッジ用に Runner/ を含む
+  checkout が要る)。ソース無し mint バイナリで bridge up→/status ready を実機実証済みだったが、CLI/VSIX の
+  二重取得の無駄から mint 自体を廃止(現状は上記「正典」参照)。**制約(継続)**: XCUITest ブリッジは SPM
+  ライブラリ化できないため「ソースビルド配布」前提(prebuilt をソースの無い別マシンへ運ぶと Runner/ 解決不能)。
+- **拡張**: `binaryPath` は実在しなければ PATH フォールバック(`binaryPathResolve.ts`)で外部パッケージ構成の
+  CLI(自前ビルドの PATH 登録先)を発見する。
+- **版**: git タグ(版ピン用)/ 拡張 package.json / プロトコル版(compatCheck)は独立。リリースは
   `Scripts/release.sh`(docs/releasing.md)。

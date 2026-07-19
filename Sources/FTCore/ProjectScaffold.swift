@@ -94,8 +94,10 @@ public enum ProjectScaffold {
 
         # ftester セットアップ(このパッケージ)
 
-        このパッケージは `ftester init` で作られた ftester テストプロジェクト。ftester は mint 導入済みが前提
-        (未導入なら `mint install wave1008/foundation-tester@<version>` を実行し `~/.mint/bin` を PATH に入れる)。
+        このパッケージは `ftester init` で作られた ftester テストプロジェクト。ftester CLI は foundation-tester
+        を clone して `swift build` 済みであることが前提(未ビルドなら
+        `git clone https://github.com/wave1008/foundation-tester.git` して `swift build` し、
+        `.build/debug/ftester` を PATH に入れる)。
         自分のアプリのシナリオを書いて実行できる状態まで仕上げる。
 
         ## 原則
@@ -151,8 +153,8 @@ public enum ProjectScaffold {
         ```
 
         ## 更新(新しい版が出たとき)
-        `mint install wave1008/foundation-tester@<新version> --force` を実行し、Package.swift の依存
-        (`.package(... from:)` の版)も同じ版へ上げてから `swift build`。CLI と依存の版は揃える。
+        clone した foundation-tester で `git pull`(または `git checkout <新version>`)して `swift build`
+        し直し、Package.swift の依存(`.package(... from:)` の版)も同じ版へ上げる。CLI と依存の版は揃える。
         """
     }
 

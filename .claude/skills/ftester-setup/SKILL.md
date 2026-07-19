@@ -1,12 +1,13 @@
 ---
 name: ftester-setup
-description: foundation-tester をクローンした受け手が、自分の iOS/Android アプリ向けにシナリオを書いて実行できる状態まで初期セットアップする。ビルド・環境検証・自分のプロジェクト作成・マシン/アプリのプロファイル設定・VSCode 拡張のインストールを、検証ゲートと人間チェックポイント付きで順に実行する。「セットアップして」「使えるようにして」「動かせるようにして」等の初回導入依頼で使う。
+description: foundation-tester を使いたい受け手を、自分の iOS/Android アプリ向けにシナリオを書いて実行できる状態まで初期セットアップする。未クローンなら clone から行い、ビルド・環境検証・自分のプロジェクト作成・マシン/アプリのプロファイル設定・VSCode 拡張のインストールを、検証ゲートと人間チェックポイント付きで順に実行する。「セットアップして」「使えるようにして」「動かせるようにして」等の初回導入依頼で使う。
 ---
 
 # ftester 初期セットアップ runbook
 
-このリポジトリを使う受け手を、**自分のアプリのシナリオを書いて実行できる状態**まで導く。
+受け手を、**自分のアプリのシナリオを書いて実行できる状態**まで導く。
 全体像・背景は docs/getting-started.md。ここはエージェントが順に実行するための手順書。
+入り方は2通り(既にクローン内 / curl でスキルだけ入れた空ディレクトリ)。ステップ 0.5 で判定・取得する。
 
 ## 進め方の原則
 
@@ -26,6 +27,23 @@ description: foundation-tester をクローンした受け手が、自分の iOS
 - Xcode 27+ 導入済み・`sudo xcodebuild -license accept` 済みか
 - iOS シミュレータの runtime を1つ以上導入済みか
 - （初回のみ）テスト対象アプリのビルド済み `.app` / `.apk` のパス、使いたいシミュレータ名、マシン名
+
+### 0.5 リポジトリ取得（未クローンなら）
+
+入り方を判定してからリポジトリルートを確定する:
+
+- **既にクローン内**（カレントか祖先に `Package.swift` と `Sources/FTScenarioRunner/` の両方がある）
+  → clone 済み。そのディレクトリをリポジトリルートとして以降を進める。
+- **未クローン**（curl でスキルだけ入れた空ディレクトリ）→ ここで取得する。🧑 に clone 先を確認してよい
+  （既定はカレント直下 `foundation-tester/`）:
+
+```
+git clone https://github.com/wave1008/foundation-tester.git
+cd foundation-tester
+```
+
+以降のステップ（build / doctor / project create / install-local 等）は**このリポジトリルート内**で実行する。
+版を固定したい場合は 🧑 に確認して `git checkout <tag>`（配布はソースビルド前提なので tag も clone で取得できる）。
 
 ### 1. xcodegen
 

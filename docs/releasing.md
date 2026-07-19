@@ -1,20 +1,21 @@
-# リリース手順(git タグ発行と mint 配布)
+# リリース手順(git タグ発行)
 
-受け手は ftester を [mint](https://github.com/yonaskolb/Mint) で導入する(docs/getting-started.md 付録)。
-mint は **git タグ(semver)**を参照するため、配布 = **タグを発行して push すること**。
+git タグ(semver)は**版ピン用**に使う(clone 時の `git checkout <tag>` や `ftester init --ftester-version`)。
+配布そのものは git clone + `swift build` / `npm run install-local`(docs/getting-started.md)であり、
+タグは必須ではないが、特定版に固定したい受け手のために発行する。
 
 ## 版は3つ(独立)
 
 | 版 | 置き場所 | いつ上げる | 参照する側 |
 |---|---|---|---|
-| **git タグ**(例 `0.1.0`) | `git tag` | ftester 本体(CLI/Swift パッケージ)をリリースするたび | mint の `@<ver>` / `ftester init --ftester-version` |
+| **git タグ**(例 `0.1.0`) | `git tag` | ftester 本体(CLI/Swift パッケージ)をリリースするたび | `git checkout <tag>` / `ftester init --ftester-version` |
 | **拡張の version** | `vscode-ftester/package.json` | 拡張の挙動を変えたとき | VSIX(別途 publish。Marketplace 等) |
 | **プロトコル版** | `Sources/FTCore/ProtocolVersion.swift` | 拡張↔CLI の JSON/NDJSON 契約を**後方非互換に**変えたときだけ +1 | 起動時の版照合(compatCheck.ts) |
 
 これらは**別系統**。git タグを切っても拡張の version は変わらない(逆も同様)。プロトコル版は
 契約が壊れるときだけ動かす(CLAUDE.md「ビルド・検証」参照)。
 
-タグは **`v` プレフィックス無しの semver**(`0.1.0`)。SPM の `from:` / mint の `@0.1.0` が解釈できる形。
+タグは **`v` プレフィックス無しの semver**(`0.1.0`)。SPM の `from:` が解釈できる形。
 
 ## 手順
 
@@ -34,13 +35,12 @@ git push origin 0.1.0
 ## 発行後の確認
 
 ```bash
-mint install wave1008/foundation-tester@0.1.0
-~/.mint/bin/ftester --help | head -3
+git clone https://github.com/wave1008/foundation-tester.git /tmp/ftester-check
+cd /tmp/ftester-check && git checkout 0.1.0 && swift build && .build/debug/ftester --help | head -3
 ```
 
-受け手の利用フローは docs/getting-started.md「付録: `ftester init` で自分のパッケージにする」を参照。
-`ftester init --ftester-version <ver>` の `<ver>` は、その受け手が使う CLI(mint)と**同じタグ**にする
-(ブリッジと scenario runtime の版一致のため)。
+受け手の利用フローは docs/getting-started.md を参照。特定版に固定したい場合は clone 後に
+`git checkout <tag>` してからビルドする。
 
 ## まだ手動なもの(未整備)
 
