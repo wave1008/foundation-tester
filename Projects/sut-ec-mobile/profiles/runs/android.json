@@ -1,0 +1,8 @@
+{
+  "app": "sut-ec-mobile",
+  "devices": [
+    { "name": "エミュ1" }
+  ],
+  "heal": false,
+  "reportDir": "reports"
+}

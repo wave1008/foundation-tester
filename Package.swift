@@ -118,6 +118,13 @@ let package = Package(
             exclude: ["_disabled"],
             swiftSettings: swift5Mode
         ),
+        .executableTarget(
+            name: "ftester-scenarios-sut-ec-mobile",
+            dependencies: ["FTScenarioRunner", "FTDSL"],
+            path: "Projects/sut-ec-mobile/Scenarios",
+            exclude: ["_disabled"],
+            swiftSettings: swift5Mode
+        ),
         // === ftester projects end ===
         // headless iOS シミュレータ画面キャプチャ(ObjC単体・CoreSimulator/SimulatorKitはdlopen)
         .executableTarget(

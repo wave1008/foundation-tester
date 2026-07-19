@@ -1,0 +1,12 @@
+{
+  "ios": {
+    "devices": [
+      {
+        "name": "メイン機",
+        "simulator": "iPhone 17 Pro",
+        "os": "27.0",
+        "udid": "586B57F8-57AD-4A2A-8CFC-F0753070D14C"
+      }
+    ]
+  }
+}

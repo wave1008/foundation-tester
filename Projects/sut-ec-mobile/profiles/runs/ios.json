@@ -1,0 +1,8 @@
+{
+  "app": "sut-ec-mobile",
+  "devices": [
+    { "name": "メイン機" }
+  ],
+  "heal": false,
+  "reportDir": "reports"
+}

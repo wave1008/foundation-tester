@@ -1,0 +1,13 @@
+{
+  "android": {
+    "app": "com.sutec.mobile",
+    "appPath": "../sut-ec-mobile/dist/android/sut-store-debug.apk"
+  },
+  "common": {
+    "appName": "SUT Store"
+  },
+  "ios": {
+    "app": "com.sutec.mobile",
+    "appPath": "../sut-ec-mobile/dist/ios-simulator/SUTStore.app"
+  }
+}
