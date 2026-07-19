@@ -157,7 +157,12 @@ ftester init --name MyApp --app com.mycompany.myapp \
 
 CLI(mint)と依存(`--ftester-version`)は**同じ version に揃えます**(ブリッジと scenario runtime の
 版一致のため)。これで、ftester に依存する `Package.swift`(`.product(name: "FTScenarioRunner"/"FTDSL",
-package: "foundation-tester")`)と最初のプロジェクト `Projects/MyApp/` が生成されます。
+package: "foundation-tester")`)と最初のプロジェクト `Projects/MyApp/`、そして
+**Claude Code スキル `.claude/skills/ftester-setup/`** が生成されます。
+
+> **Claude Code で仕上げる**: 生成された `my-app-tests` フォルダを VSCode/Claude Code で開き、
+> `/ftester-setup` を実行すると、環境検証(doctor)・この Mac のデバイス定義・アプリのパス設定・
+> 最初のシナリオ実行までを検証付きで駆動できます(以下の手動手順の代わり)。
 
 ### ビルド・実行
 
