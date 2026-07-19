@@ -132,6 +132,7 @@ public enum ProjectScaffold {
         { "common": { "appName": "\(name)", "autoInstall": true },
           "ios":    { "app": "<bundle id>", "appPath": "~/builds/\(name).app" } }
         ```
+        `appPath` の相対パスはリポジトリルート基準(`builds/x.app` → `<repoRoot>/builds/x.app`)。`~`・絶対パスも可。
 
         ### 4. シナリオを1本用意
         - まず `Projects/\(name)/docs/testbases/` にテストの元資料(仕様・観点・元ネタ)を置き、

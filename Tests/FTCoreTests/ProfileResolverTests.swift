@@ -62,10 +62,16 @@ final class ProfileResolverTests: XCTestCase {
 
         let ios = try XCTUnwrap(resolved.apps["ios"])
         XCTAssertEqual(ios.bundleID, "com.example.sampleapp")
-        XCTAssertEqual(ios.appPath, project.rootURL.appendingPathComponent("builds/SampleApp.app").path)
+        // appPath の相対パスはリポジトリルート基準(= project.rootURL の 2 階層上 = tempDir)
+        XCTAssertEqual(ios.appPath,
+                       tempDir.appendingPathComponent("builds/SampleApp.app").path,
+                       "appPath 相対はリポジトリルート(<repoRoot>/Projects/<name> の 2 階層上)基準")
         XCTAssertTrue(ios.autoInstall, "common の autoInstall: true が両 platform に効く")
         let android = try XCTUnwrap(resolved.apps["android"])
         XCTAssertEqual(android.bundleID, "com.example.sampleapp")
+        XCTAssertEqual(android.appPath,
+                       tempDir.appendingPathComponent("builds/app-debug.apk").path,
+                       "android の appPath 相対もリポジトリルート基準")
         XCTAssertTrue(android.autoInstall, "common の autoInstall: true が両 platform に効く")
 
         XCTAssertEqual(resolved.reportDir.path,

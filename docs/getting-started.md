@@ -100,6 +100,8 @@ xcrun simctl list devices available          # 使えるシミュレータ名を
 
 `appName`/`autoInstall` は `common`、bundle ID(`app`)と `appPath` は `ios`/`android` セクションに書く
 (common に書いた `app`/`appPath` は無視され、validate が警告する)。
+`appPath` に相対パスを書いた場合は**リポジトリルート**基準で解決される(例 `builds/app-debug.apk` →
+`<repoRoot>/builds/app-debug.apk`)。`~`(ホーム)展開・絶対パスも使える。
 
 ### 6. VSCode 拡張をビルド・インストール
 
