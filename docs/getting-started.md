@@ -132,28 +132,53 @@ cd vscode-ftester && npm install && npm run install-local
 
 上記は foundation-tester を clone してその中にシナリオを置くモデル(Tier 1)です。代わりに、
 **自分の独立した Swift パッケージが ftester を SPM 依存として引く**構成(Tier 2)も使えます。
+clone 不要で、シナリオは自分の repo に住みます。
+
+### 導入(mint)
+
+`ftester` CLI は [mint](https://github.com/yonaskolb/Mint) で導入します(git タグから source build)。
+
+```bash
+brew install mint
+mint install wave1008/foundation-tester@<version>   # ftester を導入
+export PATH="$HOME/.mint/bin:$PATH"                  # ~/.mint/bin を PATH に(未設定なら)
+```
+
+### 自分のパッケージを作る
 
 ```bash
 mkdir my-app-tests && cd my-app-tests
-# ftester CLI(foundation-tester を clone して swift build したもの)を使って scaffold
-/path/to/foundation-tester/.build/debug/ftester init \
-  --name MyApp --app com.mycompany.myapp \
-  --ftester-path /path/to/foundation-tester      # 公開後は --ftester-url + --ftester-version
+ftester init --name MyApp --app com.mycompany.myapp \
+  --ftester-url https://github.com/wave1008/foundation-tester --ftester-version <version>
 ```
 
-これで、ftester に依存する `Package.swift`(`.product(name: "FTScenarioRunner"/"FTDSL", package:
-"foundation-tester")`)と最初のプロジェクト `Projects/MyApp/` が生成されます。以後 `ftester run` /
-`api list-scenarios` などは**自分のパッケージ**をビルド・実行します(シナリオは自分の repo に住む)。
+CLI(mint)と依存(`--ftester-version`)は**同じ version に揃えます**(ブリッジと scenario runtime の
+版一致のため)。これで、ftester に依存する `Package.swift`(`.product(name: "FTScenarioRunner"/"FTDSL",
+package: "foundation-tester")`)と最初のプロジェクト `Projects/MyApp/` が生成されます。
 
-**動くこと(PoC 実証済み):** シナリオの **ビルド・列挙・dry-run 実行**に加え、**ライブの iOS
-デバイス実行**(XCUITest ブリッジ)も動作。ブリッジ(汎用の自動化ハーネス)は ftester 依存の
-ソース(`.package(path:)` のパス、または SPM が checkout する `.build/checkouts/foundation-tester/`)
-からビルドされます。シナリオは自分のパッケージ、ブリッジはツール側でビルドされ HTTP で接続します。
+### ビルド・実行
 
-**制約:** ブリッジは ftester の**ソースが必要**(XCUITest プロジェクトは SPM ライブラリにできないため)。
-配布は**ソースビルド前提**(`.package(url:)` の git 依存 / brew-from-source など。prebuilt バイナリを
-ソースの無い別マシンへ運ぶと解決不能)。また **VSCode 拡張の UI を Tier 2 で使うには**、拡張設定
-`ftester.binaryPath`(既定 `.build/debug/ftester`)を、導入した `ftester` の PATH へ向ける必要があります。
+```bash
+swift build --product ftester-scenarios-MyApp   # foundation-tester を .build/checkouts へ展開
+ftester run --project MyApp --profile ios
+```
+
+以後 `ftester run` / `api list-scenarios` などは**自分のパッケージ**をビルド・実行します。
+
+> **ローカル開発**では git URL の代わりに `--ftester-path /path/to/foundation-tester`(ローカル依存)、
+> タグ未発行なら `--ftester-url ... --ftester-branch main` も使えます。
+
+**動くこと(mint 導入で実証済み):** シナリオの **ビルド・列挙・dry-run 実行**に加え、**ライブの iOS
+デバイス実行**(XCUITest ブリッジ)も動作。ブリッジ(汎用の自動化ハーネス)は **受け手パッケージの
+`.build/checkouts/foundation-tester/`(swift build が展開する)**の `Runner/` からビルドされます。
+シナリオは自分のパッケージ、ブリッジはこの checkout でビルドされ HTTP で接続します。mint はツールを
+temp でビルドしてソースを消しますが、ブリッジ資産は受け手の checkout から解決されるため問題ありません。
+
+**制約:** ブリッジは foundation-tester の**ソースが必要**(XCUITest プロジェクトは SPM ライブラリに
+できないため)。git 依存(`.package(url:)`)なら swift build が checkout を展開するので満たされます。
+また **VSCode 拡張の UI を Tier 2 で使うには**、拡張設定 `ftester.binaryPath`(既定 `.build/debug/ftester`)
+が存在しなければ **PATH から `ftester` を解決**するので、mint の `~/.mint/bin` を PATH に入れておけば
+そのまま使えます。
 
 ## トラブルシュート
 
