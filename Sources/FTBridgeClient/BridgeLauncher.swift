@@ -422,21 +422,46 @@ public enum LauncherError: Error, LocalizedError {
 }
 
 public enum RepoRoot {
-    /// カレントディレクトリから上に辿って Package.swift + Runner/ を持つディレクトリを探す
+    /// ブリッジ資産(Runner/・InAppBridge/・Sources/FTCore/BridgeDTO.swift など)を持つルートを返す。
+    /// = ツール本体(foundation-tester)のソースルート。シナリオがビルドされる受け手のパッケージ
+    /// (ScenarioHost.packageRoot())とは別物で、Tier 2 では両者が食い違う。
     public static func find() throws -> URL {
+        // 1. Tier 1: 実行ディレクトリの上方に Package.swift + Runner/ があればそれ(ツール repo 内実行)
         var dir = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
         for _ in 0..<10 {
-            let hasPackage = FileManager.default.fileExists(
-                atPath: dir.appendingPathComponent("Package.swift").path)
-            let hasRunner = FileManager.default.fileExists(
-                atPath: dir.appendingPathComponent("Runner/project.yml").path)
-            if hasPackage && hasRunner { return dir }
+            if hasRunner(dir),
+               FileManager.default.fileExists(atPath: dir.appendingPathComponent("Package.swift").path) {
+                return dir
+            }
             let parent = dir.deletingLastPathComponent()
             if parent.path == dir.path { break }
             dir = parent
         }
+        // 2. Tier 2: 受け手のパッケージ(Runner/ を持たない)から実行された場合、ツール自身のソース
+        //    位置へフォールバックする。#filePath はコンパイル時に焼かれる自ソースの絶対パス。
+        //    ソースビルド配布(SPM local path / git checkout / brew-from-source)ではソースがその
+        //    パスに実在するため Runner/ 一式が揃う(そこは gitignore 済みで書込可)。prebuilt バイナリを
+        //    ソースの無い別マシンへ運ぶと解決不能(既知の制約。配布はソースビルドを前提とする)。
+        if let toolRoot = toolSourceRoot() { return toolRoot }
         throw LauncherError.commandFailed(
             "repo root detection",
-            "foundation-tester リポジトリのルート(またはその配下)で実行してください")
+            "ブリッジ資産(Runner/)が見つかりません。ツール本体 foundation-tester のソースが必要です"
+                + "(Tier 2 では SPM 依存の checkout / --ftester-path のソースが使われます)")
+    }
+
+    private static func hasRunner(_ dir: URL) -> Bool {
+        FileManager.default.fileExists(atPath: dir.appendingPathComponent("Runner/project.yml").path)
+    }
+
+    /// #filePath(このソースの絶対パス)から上方に辿り、Runner/ を持つツールソースルートを探す。
+    static func toolSourceRoot() -> URL? {
+        var dir = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        for _ in 0..<10 {
+            if hasRunner(dir) { return dir }
+            let parent = dir.deletingLastPathComponent()
+            if parent.path == dir.path { break }
+            dir = parent
+        }
+        return nil
     }
 }
