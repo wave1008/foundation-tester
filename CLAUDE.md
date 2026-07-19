@@ -10,6 +10,7 @@
 ## ドキュメント
 
 - 使い方(クローン→ビルド→自分のアプリを登録→実行。受け手向け): docs/getting-started.md
+- リリース(git タグ発行と mint 配布・版の関係): docs/releasing.md(`Scripts/release.sh`)
 - 設計書(アーキテクチャ・Swift DSL 仕様・セレクタ記法・プロファイル): docs/design.md
 - 性能チューニング(調整ノブ・不採用施策と再検討条件・計測手順): docs/performance-tuning.md
 
