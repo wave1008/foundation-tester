@@ -152,6 +152,41 @@ cd ../foundation-tester/vscode-ftester && npm install && npm run install-local
 （clone 構成なら `cd vscode-ftester && ...`。）`install-local` はパッケージ→インストール→到達確認まで
 一括で行う。**exit code で成否判定**。
 
+### 7.5 MCP サーバの登録（Claude Code から ft_* ツールを使う）
+
+VSIX とは別の消費面。Claude Code がアプリを直接操作してシナリオを生成するための MCP サーバ
+（`ftester-mcp`）を登録する。バイナリは TOOL_ROOT のクローンから毎回ビルドされる（配布はソースビルド前提。
+products 未宣言でも `swift build --product ftester-mcp` は暗黙 product として通る）。
+
+- **clone 構成**: TOOL_ROOT ルートの `.mcp.json`（既存・プロジェクトスコープ）がそのまま効く。追加不要。
+  Claude Code を**クローンルートで開く**前提（相対 `.build/debug` 依存）。
+
+- **外部パッケージ構成（既定）**: WORK_DIR に `.mcp.json` を書く（**claude CLI 不要**・ただの JSON ファイル）。
+  TOOL_ROOT を**絶対パス**で埋める（受け手がどの cwd で開いても解決できる）:
+
+  1. `ABS_TOOL_ROOT=$(cd ../foundation-tester && pwd)` で絶対パスを得る。
+  2. WORK_DIR の `.mcp.json` に次の `ftester` サーバを追加する（既存 `.mcp.json` があれば
+     `mcpServers.ftester` キーだけをマージし、他のサーバは温存する）。`<ABS_TOOL_ROOT>` は 1 の実値に置換:
+
+```json
+{
+  "mcpServers": {
+    "ftester": {
+      "command": "bash",
+      "args": ["-lc", "cd <ABS_TOOL_ROOT> && swift build --product ftester-mcp >/dev/null 2>&1 && exec <ABS_TOOL_ROOT>/.build/debug/ftester-mcp"]
+    }
+  }
+}
+```
+
+  rebuild-on-start なので `/ftester-update` 後も版ズレしない（無変更なら増分ビルドは即座）。build 出力は
+  `/dev/null`（JSON-RPC は stdout 専用・混ぜると壊れる）。`bash -lc`（ログインシェル）はデスクトップ版
+  Claude Code が最小 PATH でサーバを起こしても swift/Xcode ツールチェインを引けるようにするため。
+
+「全プロジェクトで使いたい」場合のみ、代わりに user スコープ登録
+（`claude mcp add ftester --scope user -- bash -lc '...'`・claude CLI が PATH に要る）を案内する。
+CLI が無ければ上の WORK_DIR `.mcp.json` 方式で十分。
+
 ### 8. 🧑 人間チェックポイント（反映と起動）
 
 ユーザーに依頼する（エージェントでは代行不可）:
@@ -164,6 +199,8 @@ cd ../foundation-tester/vscode-ftester && npm install && npm run install-local
 - `Developer: Reload Window` を実行（インストール・設定だけでは反映されない）
 - プロジェクトが複数あるなら設定 `ftester.project` を `<ProjectName>` にするか、拡張の選択で選ぶ
 - ftester パネル（Test Explorer / デバイスモニター等）を開く
+- （7.5 で `.mcp.json` を書いた場合）Claude Code が **ftester MCP サーバの承認**を求めたら許可する
+  → `ft_*` ツールが使え、`/ftester-scenario` が MCP 経由で動く
 
 ### 9. 続けてプロファイル一括作成へ（/ftester-profiles）
 
