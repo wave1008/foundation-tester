@@ -267,11 +267,15 @@ final class MCPServer {
             }
             if platform == "ios" {
                 let provisioner = BridgeProvisioner(repoRoot: root(of: project))
+                // bundleID/preinstallAppPath は inapp ブリッジのコールドスタートに必須。
+                // 稼働中ブリッジ再利用時は使われないため、欠落しても露見しにくい(実際に欠落バグが起きた)
+                let iosApp = resolved.apps["ios"]
                 let provisioned = try await provisioner.provision(
                     devices: [(device.name, device.spec)],
+                    bundleID: iosApp?.bundleID,
+                    preinstallAppPath: iosApp?.autoInstall == true ? iosApp?.appPath : nil,
                     externalRun: true, force: args["force"] as? Bool ?? false) { prologue.append($0) }
-                connection = DriverConnection(platform: "ios", port: provisioned[0].port,
-                                              udid: provisioned[0].udid, deviceName: device.name)
+                connection = ProfileWorkerFactory.iosConnection(device: provisioned[0], iosApp: iosApp)
             } else {
                 let serial = try AndroidDeviceCatalog.resolveSerial(spec: device.spec)
                 if !(args["force"] as? Bool ?? false),

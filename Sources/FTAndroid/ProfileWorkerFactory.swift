@@ -53,20 +53,25 @@ public enum ProfileWorkerFactory {
     }
 
     /// engine=inapp/hybrid のときサブプロセスは InAppDriver(+hybrid は SystemUIDriver フォールバック)を
-    /// 使う。ホスト warmup 用 driver は in-app ブリッジへの BridgeClient でよい(in-app も HTTP 応答する)。
-    /// suspend された in-app アプリは /status が無応答になるため、注入先アプリの bundleID を明示的に渡して
-    /// サブプロセスの inapp/XCUITest ルーティングを確定させる(engine 有りのみ)
-    private static func makeIOSWorker(device: ProvisionedIOSDevice, iosApp: ResolvedAppTarget?) -> RunWorker {
+    /// 使う。suspend された in-app アプリは /status が無応答になるため、注入先アプリの bundleID を
+    /// 明示的に渡してサブプロセスの inapp/XCUITest ルーティングを確定させる(engine 有りのみ)。
+    /// CLI(makeIOSWorker)と MCP(MCPServer.runScenario)のプロファイル経路で共有する。
+    public static func iosConnection(device: ProvisionedIOSDevice,
+                                     iosApp: ResolvedAppTarget?) -> DriverConnection {
         let engine = (device.engine == "inapp" || device.engine == "hybrid") ? device.engine : nil
-        let inappBundleID = engine != nil ? iosApp?.bundleID : nil
-        return RunWorker(
+        return DriverConnection(platform: "ios", port: device.port,
+                                engine: engine, udid: device.udid,
+                                xcuiPort: device.xcuiPort,
+                                inappBundleID: engine != nil ? iosApp?.bundleID : nil,
+                                deviceName: device.name)
+    }
+
+    /// ホスト warmup 用 driver は in-app ブリッジへの BridgeClient でよい(in-app も HTTP 応答する)。
+    private static func makeIOSWorker(device: ProvisionedIOSDevice, iosApp: ResolvedAppTarget?) -> RunWorker {
+        RunWorker(
             label: "\(device.name)(ios:\(device.port))", platform: "ios",
             driver: BridgeClient(port: device.port),
-            connection: DriverConnection(platform: "ios", port: device.port,
-                                         engine: engine, udid: device.udid,
-                                         xcuiPort: device.xcuiPort,
-                                         inappBundleID: inappBundleID,
-                                         deviceName: device.name),
+            connection: iosConnection(device: device, iosApp: iosApp),
             logicalName: device.name)
     }
 
