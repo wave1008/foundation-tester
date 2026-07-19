@@ -145,9 +145,15 @@ mkdir my-app-tests && cd my-app-tests
 "foundation-tester")`)と最初のプロジェクト `Projects/MyApp/` が生成されます。以後 `ftester run` /
 `api list-scenarios` などは**自分のパッケージ**をビルド・実行します(シナリオは自分の repo に住む)。
 
-**現状の到達点(PoC):** シナリオの **ビルド・列挙・dry-run 実行**は products 経由で動作確認済み。
-**ライブのデバイス実行(iOS ブリッジ)は未対応**です(ブリッジ生成が foundation-tester の `Runner/` を
-必要とするため。この分離は今後の課題)。ライブ実行が要るうちは Tier 1(clone モデル)を使ってください。
+**動くこと(PoC 実証済み):** シナリオの **ビルド・列挙・dry-run 実行**に加え、**ライブの iOS
+デバイス実行**(XCUITest ブリッジ)も動作。ブリッジ(汎用の自動化ハーネス)は ftester 依存の
+ソース(`.package(path:)` のパス、または SPM が checkout する `.build/checkouts/foundation-tester/`)
+からビルドされます。シナリオは自分のパッケージ、ブリッジはツール側でビルドされ HTTP で接続します。
+
+**制約:** ブリッジは ftester の**ソースが必要**(XCUITest プロジェクトは SPM ライブラリにできないため)。
+配布は**ソースビルド前提**(`.package(url:)` の git 依存 / brew-from-source など。prebuilt バイナリを
+ソースの無い別マシンへ運ぶと解決不能)。また **VSCode 拡張の UI を Tier 2 で使うには**、拡張設定
+`ftester.binaryPath`(既定 `.build/debug/ftester`)を、導入した `ftester` の PATH へ向ける必要があります。
 
 ## トラブルシュート
 
