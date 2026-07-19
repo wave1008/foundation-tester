@@ -1,6 +1,6 @@
 {
   "ftester.extension.description": "ftester (Swift 製モバイル UI テストツール) のシナリオをツリー表示・実行するための VS Code 拡張",
-  "ftester.config.binaryPath.description": "ftester CLI バイナリのパス。相対パスはワークスペースルート基準で解決されます。",
+  "ftester.config.binaryPath.description": "ftester CLI バイナリのパス。相対パスはワークスペースルート基準で解決されます。パスが存在しない場合(ftester をグローバル導入した Tier 2 パッケージ等)は PATH から ftester を探します。",
   "ftester.config.project.description": "対象のテストプロジェクト名(Projects/<name> の <name>)。空の場合は自動判定します(Projects/ 直下がプロジェクト1つならそれを使用、複数ある場合は選択を促します)。",
   "ftester.config.profile.description": "使用する実行プロファイル名(Projects/<project>/profiles/runs/<name>.json の <name>)。空の場合は指定しません。非空の場合、実行・デバッグ実行では platform/port/serial の代わりにこちらが使われます(デバイス供給・自動インストール込みで実行。対象デバイスは事前に ftester devices up 等で起動しておく必要があります)。デバイスモニターの監視対象もこのプロファイルが参照するデバイスに絞られます(空の場合は全デバイス)。デバイスモニターの「デバイスを全て起動」「全て終了」もこのプロファイルのデバイスのみが対象になります(空の場合はマシンプロファイルの全デバイス)。この設定を切り替えると、新しいプロファイルに含まれない稼働中デバイスは自動的に停止されます(含まれるデバイスは稼働中でもそのまま。自動起動はしません)。",
   "ftester.config.platform.description": "対象プラットフォーム(ftester.profile が空の場合のみ使用)。",

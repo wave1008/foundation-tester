@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
+import { resolveBinaryPath } from "./binaryPathResolve";
 
 export type Platform = "ios" | "android";
 
@@ -66,9 +67,7 @@ export function resolveWorkspaceRoot(): string | undefined {
 export function readConfig(workspaceRoot: string): FtesterConfig {
   const configuration = vscode.workspace.getConfiguration("ftester");
   const rawBinaryPath = configuration.get<string>("binaryPath", ".build/debug/ftester");
-  const binaryPath = path.isAbsolute(rawBinaryPath)
-    ? rawBinaryPath
-    : path.join(workspaceRoot, rawBinaryPath);
+  const binaryPath = resolveBinaryPath(workspaceRoot, rawBinaryPath);
 
   return {
     binaryPath,
