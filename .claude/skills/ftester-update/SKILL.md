@@ -8,9 +8,10 @@ description: 既に foundation-tester をセットアップ済みの受け手が
 セットアップ済みの環境に upstream の修正版を取り込む。初回導入は `/ftester-setup`。
 背景・手動手順は docs/getting-started.md の「更新のしかた」。
 
-**この runbook は clone 構成(foundation-tester を clone してその中で使う)専用。** mint 導入の外部パッケージ構成
-(自分のパッケージ + `ftester init`)の更新は、`mint install wave1008/foundation-tester@<新version>` と
-受け手 Package.swift の `--ftester-version` 付け替え(docs/getting-started.md 付録)で行う。
+**この runbook は clone 構成(foundation-tester を clone してその中で使う)専用。** 外部パッケージ構成
+(自分のパッケージ + `ftester init`)の更新は、foundation-tester の clone を `git pull`(または
+`git checkout <新version>`)して `swift build` し直し、受け手 Package.swift の `--ftester-version`
+付け替えで行う。
 
 ## 進め方の原則
 
@@ -21,9 +22,20 @@ description: 既に foundation-tester をセットアップ済みの受け手が
 
 ## 手順
 
+### 0. リポジトリの所在を確定
+
+update は既存の clone に対して実行する。まず clone のルートを特定する（setup のステップ 0.5 と対称）:
+
+- **カレントか祖先に `Package.swift` と `Sources/FTScenarioRunner/` の両方がある** → そこが clone ルート。
+- 無ければ**カレント直下の `foundation-tester/`** を探す（curl でスキルだけ親ワークスペースに入れた場合）。
+  あれば `cd foundation-tester`。
+- どちらも無ければ**未セットアップ**。停止して `/ftester-setup`（初回導入）を案内する。
+
+以降のステップ（git pull / build / install-local 等）は**この clone ルート内**で実行する。
+
 ### 1. 取り込み
 
-リポジトリルートで:
+clone ルートで:
 
 ```
 git pull

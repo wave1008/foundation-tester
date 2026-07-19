@@ -428,8 +428,8 @@ public enum RepoRoot {
     public static func find() throws -> URL {
         // 1. clone 構成: 実行ディレクトリの上方に Package.swift + Runner/ があればそれ(ツール repo 内実行)。
         //    外部パッケージ構成: 受け手パッケージ(Runner/ 無し)なら、その SPM checkout に foundation-tester が
-        //    展開されているのでそれを使う(.build/checkouts/*/Runner/。ftester CLI の導入方法に依らず
-        //    永続する = mint 導入版でも解決可。mint はビルド後にソースを消すため #filePath は使えない)。
+        //    展開されているのでそれを使う(.build/checkouts/*/Runner/。ftester CLI がどこでビルドされたかに
+        //    依らず解決可 = ビルド元のソースツリーが既に無い場合でも #filePath に頼らず済む)。
         var dir = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
         for _ in 0..<10 {
             if FileManager.default.fileExists(atPath: dir.appendingPathComponent("Package.swift").path) {
@@ -442,7 +442,7 @@ public enum RepoRoot {
         }
         // 2. 最後のフォールバック: #filePath(コンパイル時に焼かれる自ソースの絶対パス)からツールソース
         //    へ。SPM local path 依存(--ftester-path)や自前ビルドではソースがそのパスに実在する。
-        //    ※ mint 導入版は temp でビルドしてソースを消すため #filePath は死んでいる(上の checkout 経由で解決)。
+        //    ※ ビルド元のソースが既に削除・移動されていれば #filePath は死んでいる(上の checkout 経由で解決)。
         if let toolRoot = toolSourceRoot() { return toolRoot }
         throw LauncherError.commandFailed(
             "repo root detection",
