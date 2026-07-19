@@ -927,13 +927,17 @@ trigger)は CLI エントリでしか分からないため、`RunRecorder` を C
 - インデックス/キャッシュは未導入(月別プルーニング+全走査で当面十分。遅くなったら
   `.ftester/` 配下に再構築可能キャッシュを足す)
 
-## 15. 外部パッケージ配布と mint 配布の履歴(2026-07-19)
+## 15. 外部パッケージ配布と mint 配布の履歴(2026-07-19・07-20 外部構成を既定化)
 
-**現状(正典)**: onboarding は純 clone 構成に一本化(CLI・VSCode 拡張とも同一 clone から `swift build` /
-`npm run install-local`)。入口は curl ワンライナー(`Scripts/install-skill.sh` が `/ftester-setup`・`/ftester-update` の
-両スキルを .claude/skills/ へ導入)→ Claude Code の `/ftester-setup` スキル。mint は廃止(VSIX はバイナリ配布しないため clone がどのみち必須で、CLI だけ
-mint 経由にすると二重取得になるだけだったため)。以下の外部パッケージ構成(旧 Tier2・`ftester init`)は
-コードは残置しているが onboarding では未使用。
+**現状(正典)**: onboarding の既定は**外部パッケージ構成**(受け手ディレクトリを `ftester init` で
+テストパッケージ化し、Projects は受け手側に住む。foundation-tester は横に clone した「ツール」=
+TOOL_ROOT)。clone 構成(クローンの中で直接シナリオを管理)は保守者/PoC 向け。入口は curl ワンライナー
+(`Scripts/install-skill.sh` が `/ftester-setup`・`/ftester-update`・`/ftester-profiles` を .claude/skills/ へ導入)
+→ Claude Code の `/ftester-setup`(構成を自動判定し、curl 入口=受け手ディレクトリは外部構成へ分岐、
+クローン内は clone 構成)。CLI・VSCode 拡張とも TOOL_ROOT の clone から `swift build` /
+`npm run install-local` でビルドする(バイナリ配布はしない)。mint は廃止(VSIX はバイナリ配布しないため
+clone がどのみち必須で、CLI だけ mint 経由にすると二重取得になるだけだったため)。以下は外部パッケージ構成
+(`ftester init`)の実装詳細。
 
 受け手が foundation-tester を clone せず、**自分の Swift パッケージが ftester を SPM 依存として引いて**
 自分のアプリのシナリオを書ける構成(以下「外部パッケージ構成」)。clone してその中でシナリオを管理する構成を「clone 構成」と呼ぶ。
