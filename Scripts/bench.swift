@@ -1,6 +1,6 @@
 #!/usr/bin/env swift
 // bench.swift
-// Phase 0 計測基盤: ftester のベンチハーネス。
+// 計測基盤: ftester のベンチハーネス。
 // `<binary> api host-metrics` をホスト負荷の記録用に常駐させたまま、
 // `<binary> api run --profile ...` を N 回繰り返し実行し、各回の NDJSON(ScenarioEvent 相当)を
 // 保存しつつ、壁時計・ステップ時間内訳(durationMs/snapshotMs/actionMs/waitMs。StepExecutor が
@@ -474,7 +474,7 @@ md += "- 中央値: \(secondsText(median(aggregator.scenarioDurationsMs)))\n"
 md += "- 平均: \(secondsText(mean(aggregator.scenarioDurationsMs)))\n"
 md += "- 最大: \(secondsText(aggregator.scenarioDurationsMs.max().map(Double.init)))\n"
 
-md += "\n## ステップ所要(Phase 0 計測基盤: durationMs / snapshotMs / actionMs / waitMs)\n\n"
+md += "\n## ステップ所要(durationMs / snapshotMs / actionMs / waitMs)\n\n"
 md += "- サンプル数: \(aggregator.stepDurationMs.count)\n"
 md += "- durationMs 中央値: \(millisecondsText(median(aggregator.stepDurationMs)))"
     + " / 平均: \(millisecondsText(mean(aggregator.stepDurationMs)))\n"

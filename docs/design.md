@@ -133,6 +133,7 @@ foundation-tester/
 │   └── SampleApp/
 │       ├── profiles/              #   実行プロファイル(apps / machines / runs)
 │       ├── Scenarios/             #   Swift DSL シナリオ(SPM ターゲットの path)
+│       ├── docs/testbases/        #   テスト設計の元資料(仕様・観点)。シナリオの根拠
 │       ├── reports/               #   実行レポート出力先(プロジェクト別)
 │       └── .ftester/              #   ヒールキャッシュ等(プロジェクト別)
 ├── Scripts/bench.swift            # 計測基盤(§9。詳細は docs/performance-tuning.md)
@@ -374,15 +375,12 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
 - 純フレームワーク API の Java のみ(androidx/gradle 不要、SDK 付属ツールでビルド、
   prebuilt APK を同梱)。初回操作時に自動インストール・自動起動(`AndroidBridge.swift`)
 - 実測: snapshot 2.0s → 8.7ms(中央値)、フロー8本 87s → 38s。日本語 type も
-  ACTION_SET_TEXT で IME 不要になった(ADBKeyboard はフォールバック専用に降格)
-- adb 直叩き経路は削除せず自動フォールバックとして維持(`FT_ANDROID_NO_BRIDGE=1` で強制)
+  ACTION_SET_TEXT で IME 不要(ADBKeyboard は不使用)
+- ブリッジ単一実装。adb 直叩き経路(uiautomator dump/input/screencap、Unicode IME 自動導入)は持たない。
+  操作毎の `/status` 事前プローブも持たず、接続拒否系エラー時のみ自動再プロビジョン+1回リトライする
 - 落とし穴: (1) UiAutomation は `am instrument -w` 必須(UiAutomationConnection が am
   プロセス側に住む)→ デバイス内で `&` バックグラウンド化して常駐 (2) a11y 接続は実質1本
-  → ブリッジ稼働中は uiautomator dump が Killed される。フォールバック前に必ず force-stop
-
-**2026-07-12追記**: adb 直叩きフォールバック(uiautomator dump/input/screencap、Unicode IME 自動導入)は
-削除し、ブリッジ単一実装とした(高速化計画 Phase 1)。あわせて操作毎の冗長な `/status` 事前プローブも廃止し、
-接続拒否系エラー時のみ自動再プロビジョン+1回リトライする方式に変更した。
+  → ブリッジ稼働中は他の a11y クライアント(uiautomator dump 等)が Killed される
 
 ## 8.8 並列実行の実装知見
 
@@ -925,10 +923,10 @@ trigger)は CLI エントリでしか分からないため、`RunRecorder` を C
 - インデックス/キャッシュは未導入(月別プルーニング+全走査で当面十分。遅くなったら
   `.ftester/` 配下に再構築可能キャッシュを足す)
 
-## 15. 外部パッケージ配布(Tier 2)と mint 配布(2026-07-19)
+## 15. 外部パッケージ配布と mint 配布(2026-07-19)
 
 受け手が foundation-tester を clone せず、**自分の Swift パッケージが ftester を SPM 依存として引いて**
-自分のアプリのシナリオを書ける構成(Tier 2)。clone してその中でシナリオを管理する従来モデルを Tier 1 と呼ぶ。
+自分のアプリのシナリオを書ける構成(以下「外部パッケージ構成」)。clone してその中でシナリオを管理する構成を「clone 構成」と呼ぶ。
 
 - **公開 products**: `Package.swift` の `products:` に `.library`(FTScenarioRunner / FTDSL / FTCore)と
   `.executable`(ftester)。受け手のシナリオターゲットはこれを `.product(package: "foundation-tester")` で引く。
@@ -938,12 +936,12 @@ trigger)は CLI エントリでしか分からないため、`RunRecorder` を C
   外部=`.product` 参照のスタンザを生成する(`project sync` も同じ判定)。
 - **repoRoot の二役分離**: シナリオビルドは `ScenarioHost.packageRoot()`(= 受け手パッケージ。Package.swift
   のみ上方探索)。ブリッジ資産(`Runner/`・`InAppBridge/`)は `RepoRoot.find()`。後者の解決順は
-  ① 実行ディレクトリ上方の Package.swift+Runner/(Tier 1)② 受け手パッケージの `.build/checkouts/*/Runner/`
-  (Tier 2 git 依存。swift build が展開・CLI の導入方法に依らず永続)③ `#filePath` からのツールソース
+  ① 実行ディレクトリ上方の Package.swift+Runner/(clone 構成)② 受け手パッケージの `.build/checkouts/*/Runner/`
+  (外部パッケージ構成の git 依存。swift build が展開・CLI の導入方法に依らず永続)③ `#filePath` からのツールソース
   (local path 依存 / 自前ビルド)。下流(BridgeProvisioner/DevicesCommand/InApp/LiveBridge)は無変更。
 - **mint 配布(採用)**: `mint install wave1008/foundation-tester@<ver>`。**罠**: mint は temp でビルドして
   バイナリのみ残しソースを消すため CLI の `#filePath` は死ぬ → ブリッジは上記②(受け手の checkout)で解決する。
-  よって Tier 2 は **git 依存必須**(ブリッジ用に Runner/ を含む checkout が要る)。ソース無し mint バイナリで
+  よって外部パッケージ構成は **git 依存必須**(ブリッジ用に Runner/ を含む checkout が要る)。ソース無し mint バイナリで
   bridge up→/status ready を実機実証済み。**制約**: XCUITest ブリッジは SPM ライブラリ化できないため
   「ソースビルド配布」前提(prebuilt をソースの無い別マシンへ運ぶと Runner/ 解決不能)。
 - **拡張**: `binaryPath` は実在しなければ PATH フォールバック(`binaryPathResolve.ts`)で `~/.mint/bin/ftester` を発見。

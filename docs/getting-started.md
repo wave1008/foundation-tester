@@ -50,7 +50,7 @@ swift run ftester doctor         # 環境検証。赤が出たら潰してから
 swift run ftester project create MyApp --app com.mycompany.myapp
 ```
 
-- `Projects/MyApp/`（Scenarios/・profiles/apps・machines・runs・reports）を生成し、
+- `Projects/MyApp/`（Scenarios/・profiles/apps・machines・runs・reports・docs/testbases）を生成し、
   Package.swift のマーカー区間に `ftester-scenarios-MyApp` ターゲットを自動登録します（手編集不要）。
 - プロジェクト名は SPM ターゲット名になるため `^[A-Za-z0-9_][A-Za-z0-9_-]*$`（英数字）。
 
@@ -131,10 +131,10 @@ cd vscode-ftester && npm install && npm run install-local
 
 > あなたの `Projects/MyApp/` は git 管理外に置くか別リポジトリで管理すると、`git pull` の衝突を避けられます。
 
-## 付録: `ftester init` で自分のパッケージにする(Tier 2・実験的)
+## 付録: `ftester init` で自分のパッケージにする(実験的)
 
-上記は foundation-tester を clone してその中にシナリオを置くモデル(Tier 1)です。代わりに、
-**自分の独立した Swift パッケージが ftester を SPM 依存として引く**構成(Tier 2)も使えます。
+上記は foundation-tester を clone してその中にシナリオを置く構成です。代わりに、
+**自分の独立した Swift パッケージが ftester を SPM 依存として引く**構成も使えます。
 clone 不要で、シナリオは自分の repo に住みます。
 
 ### 導入(mint)
@@ -184,7 +184,7 @@ temp でビルドしてソースを消しますが、ブリッジ資産は受け
 
 **制約:** ブリッジは foundation-tester の**ソースが必要**(XCUITest プロジェクトは SPM ライブラリに
 できないため)。git 依存(`.package(url:)`)なら swift build が checkout を展開するので満たされます。
-また **VSCode 拡張の UI を Tier 2 で使うには**、拡張設定 `ftester.binaryPath`(既定 `.build/debug/ftester`)
+また **VSCode 拡張の UI をこの外部パッケージ構成で使うには**、拡張設定 `ftester.binaryPath`(既定 `.build/debug/ftester`)
 が存在しなければ **PATH から `ftester` を解決**するので、mint の `~/.mint/bin` を PATH に入れておけば
 そのまま使えます。
 

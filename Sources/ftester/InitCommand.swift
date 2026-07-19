@@ -1,4 +1,4 @@
-// ftester init: 受け手のパッケージを scaffold する(Tier 2)。
+// ftester init: 受け手のパッケージを scaffold する(外部パッケージ構成)。
 // カレントディレクトリに、ftester を SPM 依存として引く Package.swift(空マーカー区間つき)を書き、
 // 直後に最初のテストプロジェクトを createAndRegister(external 自動判定で .product 参照スタンザ)する。
 // 対向: Sources/FTCore/ProjectScaffold.externalManifest / PackageManifestEditor(external モード)。

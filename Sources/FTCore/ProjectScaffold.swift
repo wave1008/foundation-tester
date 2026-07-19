@@ -75,7 +75,7 @@ public enum ProjectScaffold {
 
     /// 受け手のパッケージに Claude Code スキル `.claude/skills/ftester-setup/SKILL.md` を書く
     /// (ftester init から呼ぶ)。受け手が自分のプロジェクトを Claude Code で開いて `/ftester-setup`
-    /// で残りのセットアップ(デバイス定義・アプリパス・実行)を駆動できるようにする。Tier 1 の
+    /// で残りのセットアップ(デバイス定義・アプリパス・実行)を駆動できるようにする。clone 構成の
     /// foundation-tester 同梱スキルは受け手のパッケージには届かないため、init で scaffold する。
     public static func writeRecipientSkill(packageRoot: URL, projectName: String) throws {
         let dir = packageRoot.appendingPathComponent(".claude/skills/ftester-setup")
@@ -132,6 +132,8 @@ public enum ProjectScaffold {
         ```
 
         ### 4. シナリオを1本用意
+        - まず `Projects/\(name)/docs/testbases/` にテストの元資料(仕様・観点・元ネタ)を置き、
+          それを根拠にシナリオを書く(何をなぜテストするかの拠り所。任意だが推奨)。
         - `Projects/\(name)/Scenarios/` に `@TestClass` の .swift を置く(`import FTDSL`)、
           または VSCode 拡張のライブ操作パネルで操作を録画して生成する。
 
@@ -160,7 +162,7 @@ public enum ProjectScaffold {
         let fm = FileManager.default
         for dir in [project.generatedDir, project.disabledDir,
                     project.appsDir, project.machinesDir, project.runsDir,
-                    project.reportsDir] {
+                    project.reportsDir, project.testbasesDir] {
             try fm.createDirectory(at: dir, withIntermediateDirectories: true)
         }
 
@@ -171,6 +173,9 @@ public enum ProjectScaffold {
             atomically: true, encoding: .utf8)
         try machinesReadme.write(
             to: project.machinesDir.appendingPathComponent("README.md"),
+            atomically: true, encoding: .utf8)
+        try testbasesReadme.write(
+            to: project.testbasesDir.appendingPathComponent("README.md"),
             atomically: true, encoding: .utf8)
 
         let appRef = project.name.lowercased()
@@ -215,6 +220,13 @@ public enum ProjectScaffold {
 
     - 並列デモなど普段の「全実行」に含めたくないシナリオはここに置く(有効化は Scenarios/ 直下へ移動)
     - gen-scenario の生成コードがビルドに失敗した場合もここに隔離される
+    """
+
+    static let testbasesReadme = """
+    # docs/testbases
+
+    テスト設計の元になる資料(仕様・テスト観点・元ネタ)を置く場所。
+    ここのドキュメントを根拠に Scenarios/ のシナリオを書く。
     """
 
     public static let machinesReadme = """

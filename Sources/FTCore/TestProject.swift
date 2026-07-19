@@ -26,6 +26,9 @@ public struct TestProject: Sendable, Hashable, Identifiable {
     public var machinesDir: URL { profilesDir.appendingPathComponent("machines") }
     public var runsDir: URL { profilesDir.appendingPathComponent("runs") }
     public var reportsDir: URL { rootURL.appendingPathComponent("reports") }
+    public var docsDir: URL { rootURL.appendingPathComponent("docs") }
+    /// テスト設計の元資料(仕様・観点)置き場。シナリオの根拠ドキュメント
+    public var testbasesDir: URL { docsDir.appendingPathComponent("testbases") }
     /// プロジェクト別の実行時状態(ヒールキャッシュ等)
     public var stateDir: URL { rootURL.appendingPathComponent(".ftester") }
 }

@@ -1,6 +1,6 @@
 # パフォーマンスチューニングガイド
 
-2026-07 の高速化実装(Phase 0〜4)の設計判断・計測方法・調整ノブをまとめた恒久文書。
+高速化実装の設計判断・計測方法・調整ノブをまとめた恒久文書。
 将来チューニングを行う際は、**まず本書の「設計原則」と「不採用の施策」を読んでから**着手すること。
 過去に検討済みの案を再発明・再検討する無駄を避けるための文書でもある。
 
@@ -337,10 +337,10 @@ window/transition/animator の `*_scale` はチューニングノブではなく
   負荷連動延長、ランナー起動の直列化、タイムアウト後も起動継続中なら待ち直す再確認ループ。
   現状 2 台までは安定しているため優先度低(3.1 の実測により 2+2 が sweet spot で、
   3 台以上を常用する動機も当面ない)
-- **iOS の高速化ロードマップ(2026-07-12 検討)**: iOS の残り時間は「XCUITest 税」
+- **iOS の「XCUITest 税」と高速化エンジン**: XCUITest 経路の残り時間は「XCUITest 税」
   = snapshot が毎回 testmanagerd 経由 IPC で全属性取得(~250ms)+イベント合成前の
-  暗黙 quiescence 待ち。段階は 2 つ:
-  1. **短期(税の減額)= Phase 1 実施済み(2026-07-12)**。3 施策のうち採否が分かれた:
+  暗黙 quiescence 待ち。施策は 2 系統:
+  1. **税の減額(XCUITest 経路内)**。3 施策のうち採否が分かれた:
      - ✅ **Reduce Motion 自動設定**(採用): `BridgeLauncher.enableReduceMotion()` が
        コールド起動時のみ `simctl spawn <device> defaults write com.apple.Accessibility
        ReduceMotionEnabled -bool true` を実行(Android の `disableAnimations()` の対称)。
@@ -360,11 +360,10 @@ window/transition/animator の `*_scale` はチューニングノブではなく
        私有 API 依存 + Xcode ベータ毎に壊れるリスクだけが残るため採用ゲート不通過。
        **再検討条件**: 要素数が数百規模の巨大画面が現れ、warm snapshot が実測で
        ボトルネックになったら(そのとき maxChildren/maxArrayCount の方が効く可能性)。
-     Phase 1 全体の効果は限定的(action 支配項の quiescence ~1s/step は XCUITest 継続の限り残る)。
+     税の減額の効果は限定的(action 支配項の quiescence ~1s/step は XCUITest 継続の限り残る)。
      **iOS の真のボトルネックは scrollTo(action 中央値 ~7.6s/回。swipe+再 snapshot ループ)と
-     tap/type の quiescence 床**であり、大幅短縮には段階 2 が必要と確認された。
-  2. **本命(税の撤廃)= Phase 2 プロトタイプで成立を実証済み(2026-07-12)**:
-     **アプリ内常駐ブリッジ**(EarlGrey/Espresso と同クラス)。シミュレータは
+     tap/type の quiescence 床**であり、大幅短縮には税の撤廃(下記2)が要る。
+  2. **税の撤廃 = アプリ内常駐ブリッジ**(EarlGrey/Espresso と同クラス)。シミュレータは
      `SIMCTL_CHILD_DYLD_INSERT_LIBRARIES=<dylib> simctl launch` で任意アプリに
      リビルドなしで注入できる(シミュレータプロセスは SIP/hardened runtime 非適用)。
      UIKit ビュー階層の直接走査(ms 級・IPC ゼロ)+ランループオブザーバと
@@ -391,12 +390,11 @@ window/transition/animator の `*_scale` はチューニングノブではなく
      (自ビルドアプリへのリンク方式のみ)、タッチ合成に私有 API を使う。
      **XCUITest ランナー(Runner/)は実機用として残す**(ユーザー決定 2026-07-12)=
      単一実装原則の明示的な例外として「シミュレータ=in-app / 実機=XCUITest」の 2 経路を許容。
-  3. **Phase 3 着手済み(2026-07-12、branch ios-speedup)= `InAppBridge/`**:
-     DYLD 注入で対象アプリに常駐し HTTP 応答する in-app ブリッジ。既存 XCUITest 経路
-     (`Runner/`)には未接続=**追加のみ**。`build.sh` が `BridgeDTO`(共有)+ in-app 実装 +
+  3. **in-app ブリッジの実装(`InAppBridge/`)**:
+     DYLD 注入で対象アプリに常駐し HTTP 応答する in-app ブリッジ。`build.sh` が `BridgeDTO`(共有)+ in-app 実装 +
      ObjC 構成子を単一 dylib(`InAppBridge/build/libFTInAppBridge.dylib`)にリンク
      (`swiftc -c -wmo`)。9 エンドポイント実装済み(/session は「注入先アプリ一致で OK」、
-     lifecycle リセットはホスト再起動が担う)。**動いているもの(実機実証)**:
+     lifecycle リセットはホスト再起動が担う)。**実装(実機確認済み)**:
      - snapshot: `UIAccessibility` API で AX ツリー走査 → `ElementInfo`(DTO 完全互換)。
        起動時に **`_AXSSetAutomationEnabled(YES)`** で AX を活性化(XCUITest 相当。しないと
        `accessibilityFrame` が zero・label 空で全要素が落ちる)。フレームは `view.convert
@@ -457,8 +455,7 @@ window/transition/animator の `*_scale` はチューニングノブではなく
      必要=エラーメッセージで案内)。
      なお XCUITest の quiescence 自体を私有 API で無効化する案(WDA 方式)は、
      代替の整定信号がプロセス外から得られないため 2 とセットでない限り採らない
-  4. **cross-app ハイブリッド(in-app 主 + XCUITest フォールバック)= 本実装済み(2026-07-12、
-     branch ios-speedup)。** `engine=hybrid` を指定すると in-app(主・高速)で駆動し、対象要素が
+  4. **cross-app ハイブリッド(in-app 主 + XCUITest フォールバック)**: `engine=hybrid` を指定すると in-app(主・高速)で駆動し、対象要素が
      in-app snapshot に無いとき **XCUITest(システム UI)へ自動フォールバック**する。in-app は
      同一プロセスしか見えない(=速さの源泉と表裏)ので、既に前面にあるシステム UI(権限ダイアログ等)
      だけ XCUITest に委ねる。「XCUITest が in-app を起動」案とは別(あちらは launch 4200-5400ms と遅い)。
