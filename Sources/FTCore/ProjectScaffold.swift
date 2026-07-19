@@ -89,7 +89,7 @@ public enum ProjectScaffold {
         return """
         ---
         name: ftester-setup
-        description: この ftester テストパッケージのセットアップを仕上げて実行できる状態にする。環境検証(doctor)・この Mac のデバイス定義(マシンプロファイル)・対象アプリのパス設定・最初のシナリオ実行までを、検証ゲートと人間チェックポイント付きで行う。「セットアップして」「動かせるようにして」「テストを実行できるようにして」等の依頼で使う。
+        description: この ftester テストパッケージのセットアップを仕上げて実行できる状態にする。環境検証(doctor)・この Mac のデバイス定義(マシンプロファイル)・対象アプリのパス設定・デバイス不要の動作確認までを、検証ゲートと人間チェックポイント付きで行う。「セットアップして」「動かせるようにして」「テストを実行できるようにして」等の依頼で使う。
         ---
 
         # ftester セットアップ(このパッケージ)
@@ -103,6 +103,9 @@ public enum ProjectScaffold {
         ## 原則
         - 各ステップの後に検証ゲート(exit code / doctor)を通す。緑になるまで次へ進まない。
         - 人間チェックポイント(🧑)では**停止して依頼・確認する**(エージェントでは代行不可)。
+        - **Bundle ID・アプリの `.app`/`.apk` パス等のセットアップ値は、兄弟ディレクトリや別リポジトリを
+          勝手に `find`/`grep` で探索して確定してはならない。必ず人間に質問して答えを得る**
+          (探索で見つけた候補を既定値として提示するのも避ける)。
         - 失敗は握りつぶさず、doctor 出力や stderr をそのままユーザーに見せて相談する。
 
         ## 手順
@@ -111,6 +114,7 @@ public enum ProjectScaffold {
         次を人間に確認する。未達なら停止して依頼(代行不可):
         - macOS 27+ / Apple Intelligence 有効(System 設定)/ Xcode 27+ 導入済み / iOS シミュレータ runtime を1つ以上
         - ビルド済みの対象アプリ(.app / .apk)のパス、使うシミュレータ名、マシン名
+          → **これらは人間に聞く。他リポジトリを勝手に探索して埋めない**(バージョン・パスの推測は事故のもと)。
 
         ### 1. 環境検証
         `ftester doctor` を実行し、結果を要約して見せる。赤(未導入・無効)が残る項目は 0 に戻って対処を依頼。
@@ -126,7 +130,8 @@ public enum ProjectScaffold {
 
         ### 3. 対象アプリのパス
         🧑 `Projects/\(name)/profiles/apps/\(appRef).json` を、あなたのビルド済みアプリへ向ける
-        (`appName`/`autoInstall` は common、bundle ID(`app`)と `appPath` は ios/android セクション):
+        (`appName`/`autoInstall` は common、bundle ID(`app`)と `appPath` は ios/android セクション)。
+        **bundle ID と appPath は人間に確認した値を書く。別リポジトリを覗いて確定値を書き込まない**:
 
         ```json
         { "common": { "appName": "\(name)", "autoInstall": true },
@@ -145,12 +150,6 @@ public enum ProjectScaffold {
         swift build --product ftester-scenarios-\(name)
         ftester api list-scenarios --project \(name)
         ftester api run --project \(name) --scenario <クラス名> --dry-run --skip-build
-        ```
-
-        ### 6. 🧑 実機で実行
-        対象シミュレータを起動してから:
-        ```bash
-        ftester run --project \(name) --profile ios
         ```
 
         ## 更新(新しい版が出たとき)
