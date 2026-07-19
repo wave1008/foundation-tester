@@ -13,3 +13,6 @@ bench-results/
 
 # in-app bridge のビルド生成物
 InAppBridge/build/
+
+# Claude Code のローカル設定(マシン固有・コミットしない)
+.claude/settings.local.json
