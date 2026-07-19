@@ -5,6 +5,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { type CliResult, FtesterCli } from "./cli";
+import { checkFtesterCompat } from "./compatCheck";
 import {
   type FtesterConfig,
   listProjectCandidates,
@@ -56,6 +57,13 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const cli = new FtesterCli(outputChannel);
   const getConfig = (): FtesterConfig => readConfig(workspaceRoot);
+
+  // CLI ↔ 拡張のプロトコル版照合(compatCheck.ts)。activate をブロックしない fire-and-forget。
+  void checkFtesterCompat(getConfig().binaryPath, workspaceRoot, outputChannel, (proc) => {
+    context.subscriptions.push({ dispose: () => proc.kill() });
+  }).catch((error) => {
+    outputChannel.appendLine(`[ftester] ${error instanceof Error ? error.message : String(error)}`);
+  });
 
   // runHandler と monitorPanel へ配信する共有インスタンス(runEventBus.ts 参照)。
   const runEventBus = new RunEventBus();

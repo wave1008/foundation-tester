@@ -14,6 +14,7 @@ import path from "node:path";
 import { test } from "node:test";
 import ts from "typescript";
 
+import { compatStrings } from "../src/i18n/strings/compat";
 import { profilesStrings } from "../src/i18n/strings/profiles";
 import { panelsStrings } from "../src/i18n/strings/panels";
 import { monitorStrings } from "../src/i18n/strings/monitor";
@@ -39,6 +40,7 @@ const DICTS = [
   { name: "run", prefix: "run.", dict: runStrings, side: "ext" },
   { name: "workbench", prefix: "workbench.", dict: workbenchStrings, side: "ext" },
   { name: "exploreHeal", prefix: "exploreHeal.", dict: exploreHealStrings, side: "ext" },
+  { name: "compat", prefix: "compat.", dict: compatStrings, side: "ext" },
   { name: "webviewMonitorA", prefix: "wvMonitor.", dict: webviewMonitorAStrings, side: "webview" },
   { name: "webviewMonitorB", prefix: "wvMonitor2.", dict: webviewMonitorBStrings, side: "webview" },
   { name: "webviewDashboard", prefix: "wvDashboard.", dict: webviewDashboardStrings, side: "webview" },

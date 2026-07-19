@@ -22,6 +22,7 @@
 - 実行ファイルを差し替えるビルドは `swift build --product <名>`。`--target` はコンパイルのみでリンクしない(旧バイナリをそのまま実行する事故が実際に起きた)
 - ビルドの合否は exit code で確認する。`npm run compile 2>&1 | grep ... && 次コマンド` のようにパイプすると grep の exit code が使われ、tsc の失敗を握りつぶして次へ進んでしまう(実際に起きかけた)
 - macOS ベータを更新したら Xcode も同じベータへ揃えてフルリビルド。FoundationModels の ABI 不整合で全バイナリが dyld クラッシュする(swift build は SDKROOT/--sdk を無視するため Xcode 側を揃えるしかない)
+- `ftester api ...` の JSON/NDJSON 契約を後方非互換に変えたら `Sources/FTCore/ProtocolVersion.swift` と `vscode-ftester/src/protocolVersion.ts` の版を +1(両者一致必須・`protocolVersion.test.mjs` が検出)。拡張は起動時に `ftester api version` で照合し不一致を警告する(`compatCheck.ts`)
 
 ## 実装の委譲
 
