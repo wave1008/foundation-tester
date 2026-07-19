@@ -6,7 +6,7 @@
 // ハンドラは InAppHTTPServer の accept ループ(バックグラウンド)で呼ばれる。UIKit 参照や
 // タッチ合成はメインへホップし、アクションは実行後に整定(InAppSettle)を待ってから応答する。
 //
-// 現状(Phase 3): /status /snapshot /tap /type /swipe /press /screenshot 実装。
+// 実装エンドポイント: /status /snapshot /tap /type /swipe /press /screenshot。
 // /session はアプリ再起動を伴うためホスト側(BridgeProvisioner)が simctl launch+注入で担う。
 
 import Foundation

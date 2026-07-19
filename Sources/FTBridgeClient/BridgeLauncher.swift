@@ -424,10 +424,10 @@ public enum LauncherError: Error, LocalizedError {
 public enum RepoRoot {
     /// ブリッジ資産(Runner/・InAppBridge/・Sources/FTCore/BridgeDTO.swift など)を持つルートを返す。
     /// = ツール本体(foundation-tester)のソースルート。シナリオがビルドされる受け手のパッケージ
-    /// (ScenarioHost.packageRoot())とは別物で、Tier 2 では両者が食い違う。
+    /// (ScenarioHost.packageRoot())とは別物で、外部パッケージ構成では両者が食い違う。
     public static func find() throws -> URL {
-        // 1. Tier 1: 実行ディレクトリの上方に Package.swift + Runner/ があればそれ(ツール repo 内実行)。
-        //    Tier 2: 受け手パッケージ(Runner/ 無し)なら、その SPM checkout に foundation-tester が
+        // 1. clone 構成: 実行ディレクトリの上方に Package.swift + Runner/ があればそれ(ツール repo 内実行)。
+        //    外部パッケージ構成: 受け手パッケージ(Runner/ 無し)なら、その SPM checkout に foundation-tester が
         //    展開されているのでそれを使う(.build/checkouts/*/Runner/。ftester CLI の導入方法に依らず
         //    永続する = mint 導入版でも解決可。mint はビルド後にソースを消すため #filePath は使えない)。
         var dir = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
@@ -447,7 +447,7 @@ public enum RepoRoot {
         throw LauncherError.commandFailed(
             "repo root detection",
             "ブリッジ資産(Runner/)が見つかりません。ツール本体 foundation-tester のソースが必要です"
-                + "(Tier 2 では受け手パッケージの .build/checkouts か --ftester-path のソースが使われます)")
+                + "(外部パッケージ構成では受け手パッケージの .build/checkouts か --ftester-path のソースが使われます)")
     }
 
     private static func hasRunner(_ dir: URL) -> Bool {
