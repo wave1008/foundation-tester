@@ -32,12 +32,22 @@ public enum PackageManifestEditor {
     public static let endMarker =
         "// === ftester projects end ==="
 
-    /// 1 プロジェクト分の executableTarget エントリ(targets 配列内、8 スペースインデント)
-    public static func targetEntry(for name: String) -> String {
-        """
+    /// 1 プロジェクト分の executableTarget エントリ(targets 配列内、8 スペースインデント)。
+    /// external = true(ftester init が生成する受け手のパッケージ)では FTScenarioRunner/FTDSL を
+    /// 内部ターゲット参照ではなく `.product(name:..., package: "foundation-tester")` で引く。
+    public static func targetEntry(for name: String, external: Bool = false) -> String {
+        // deps は literal に補間されるため 8 スペースのストリップ対象外。最終ファイルの
+        // フィールド(12 スペース)に合わせ .product を 16、閉じ ] を 12 スペースで直書きする。
+        let deps = external
+            ? "[\n"
+                + "                .product(name: \"FTScenarioRunner\", package: \"foundation-tester\"),\n"
+                + "                .product(name: \"FTDSL\", package: \"foundation-tester\"),\n"
+                + "            ]"
+            : #"["FTScenarioRunner", "FTDSL"]"#
+        return """
                 .executableTarget(
                     name: "ftester-scenarios-\(name)",
-                    dependencies: ["FTScenarioRunner", "FTDSL"],
+                    dependencies: \(deps),
                     path: "Projects/\(name)/Scenarios",
                     exclude: ["_disabled"],
                     swiftSettings: swift5Mode
@@ -46,19 +56,20 @@ public enum PackageManifestEditor {
     }
 
     /// マーカー区間全体(begin/end 行込み)を生成する
-    public static func section(projectNames: [String]) -> String {
+    public static func section(projectNames: [String], external: Bool = false) -> String {
         var lines = ["        \(beginMarker)"]
         for name in projectNames.sorted() {
-            lines.append(targetEntry(for: name))
+            lines.append(targetEntry(for: name, external: external))
         }
         lines.append("        \(endMarker)")
         return lines.joined(separator: "\n")
     }
 
     /// マーカー区間を projectNames の内容で全置換する。
-    /// verify = true なら swift package dump-package で検証し、失敗時はロールバックして throw
+    /// verify = true なら swift package dump-package で検証し、失敗時はロールバックして throw。
+    /// external は targetEntry と同義(受け手のパッケージなら .product 参照)。
     public static func updateProjects(manifestURL: URL, projectNames: [String],
-                                      verify: Bool = true) throws {
+                                      external: Bool = false, verify: Bool = true) throws {
         guard FileManager.default.fileExists(atPath: manifestURL.path) else {
             throw PackageManifestEditorError.manifestNotFound(manifestURL)
         }
@@ -71,7 +82,8 @@ public enum PackageManifestEditor {
         let start = original.lineRange(for: beginRange).lowerBound
         let end = original.lineRange(for: endRange).upperBound
         var updated = original
-        updated.replaceSubrange(start..<end, with: section(projectNames: projectNames) + "\n")
+        updated.replaceSubrange(start..<end,
+                                with: section(projectNames: projectNames, external: external) + "\n")
         guard updated != original else { return }
 
         try updated.write(to: manifestURL, atomically: true, encoding: .utf8)
