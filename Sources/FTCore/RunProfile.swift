@@ -518,6 +518,12 @@ public enum ProfileResolver {
         }
 
         // 5. アプリ解決(デバイスのある platform ごと。合成規則は AppProfileSection.merging 参照)
+        // appPath の相対パスは「リポジトリルート」基準(project.rootURL = <repoRoot>/Projects/<name> の
+        // 2 階層上)。ビルド成果物は Projects/ 外(リポジトリ直下の builds/ 等)に置くのが普通なため。
+        // packageRoot() の CWD 走査は使わない(単体テストでは CWD が本体リポジトリを指し誤基準になる。
+        // project.rootURL からの決定的導出で統一)。reportDir だけはプロジェクト直下に出すため下記で
+        // project.rootURL 基準のまま(基準が異なるので resolvePath の base で使い分ける)。
+        let repoRoot = project.rootURL.deletingLastPathComponent().deletingLastPathComponent()
         var apps: [String: ResolvedAppTarget] = [:]
         for platform in Set(devices.map(\.platform)) {
             let section = appProfile.section(for: platform)
@@ -526,7 +532,7 @@ public enum ProfileResolver {
             }
             apps[platform] = ResolvedAppTarget(
                 bundleID: bundleID,
-                appPath: section.appPath.map { resolvePath($0, base: project.rootURL) },
+                appPath: section.appPath.map { resolvePath($0, base: repoRoot) },
                 // autoInstall 未指定時の既定は false(無効)。appPath 指定+未指定のまま
                 // 実行前インストールされてしまう事故を避けるため、明示指定を必須とする
                 autoInstall: section.autoInstall ?? false)
@@ -567,7 +573,8 @@ public enum ProfileResolver {
         value.range(of: "^[A-Za-z]{2,3}([-_][A-Za-z0-9]{2,8})*$", options: .regularExpression) != nil
     }
 
-    /// チルダ展開+相対パスは base(プロジェクトルート)基準で絶対化
+    /// チルダ展開+相対パスは呼び出し側が渡す base 基準で絶対化
+    /// (base は用途で異なる: appPath=リポジトリルート / reportDir=プロジェクトルート。resolve 参照)
     public static func resolvePath(_ path: String, base: URL) -> String {
         let expanded = (path as NSString).expandingTildeInPath
         if expanded.hasPrefix("/") { return expanded }
