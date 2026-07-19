@@ -92,7 +92,7 @@ cd vscode-ftester && npm install && npm run install-local
 swift run ftester run --project <ProjectName> --profile ios
 ```
 
-または拡張の FM 探索でシナリオを1本生成して実行。ここまで通れば初期セットアップ完了。
+または拡張のライブ操作パネルで操作を録画してシナリオを1本生成して実行。ここまで通れば初期セットアップ完了。
 
 ## 完了後
 
