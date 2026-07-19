@@ -923,3 +923,28 @@ trigger)は CLI エントリでしか分からないため、`RunRecorder` を C
   しない(git 履歴とマージ安全性を壊すため)
 - インデックス/キャッシュは未導入(月別プルーニング+全走査で当面十分。遅くなったら
   `.ftester/` 配下に再構築可能キャッシュを足す)
+
+## 15. 外部パッケージ配布(Tier 2)と mint 配布(2026-07-19)
+
+受け手が foundation-tester を clone せず、**自分の Swift パッケージが ftester を SPM 依存として引いて**
+自分のアプリのシナリオを書ける構成(Tier 2)。clone してその中でシナリオを管理する従来モデルを Tier 1 と呼ぶ。
+
+- **公開 products**: `Package.swift` の `products:` に `.library`(FTScenarioRunner / FTDSL / FTCore)と
+  `.executable`(ftester)。受け手のシナリオターゲットはこれを `.product(package: "foundation-tester")` で引く。
+- **`ftester init`**: 受け手の Package.swift(空マーカー区間 + swift5Mode + ftester 依存)を書き、
+  `ProjectScaffold.createAndRegister` が最初のプロジェクトを登録。内外は `isExternalPackage`
+  (`Sources/FTScenarioRunner` の有無)で自動判定し、`PackageManifestEditor` が内部=target 参照 /
+  外部=`.product` 参照のスタンザを生成する(`project sync` も同じ判定)。
+- **repoRoot の二役分離**: シナリオビルドは `ScenarioHost.packageRoot()`(= 受け手パッケージ。Package.swift
+  のみ上方探索)。ブリッジ資産(`Runner/`・`InAppBridge/`)は `RepoRoot.find()`。後者の解決順は
+  ① 実行ディレクトリ上方の Package.swift+Runner/(Tier 1)② 受け手パッケージの `.build/checkouts/*/Runner/`
+  (Tier 2 git 依存。swift build が展開・CLI の導入方法に依らず永続)③ `#filePath` からのツールソース
+  (local path 依存 / 自前ビルド)。下流(BridgeProvisioner/DevicesCommand/InApp/LiveBridge)は無変更。
+- **mint 配布(採用)**: `mint install wave1008/foundation-tester@<ver>`。**罠**: mint は temp でビルドして
+  バイナリのみ残しソースを消すため CLI の `#filePath` は死ぬ → ブリッジは上記②(受け手の checkout)で解決する。
+  よって Tier 2 は **git 依存必須**(ブリッジ用に Runner/ を含む checkout が要る)。ソース無し mint バイナリで
+  bridge up→/status ready を実機実証済み。**制約**: XCUITest ブリッジは SPM ライブラリ化できないため
+  「ソースビルド配布」前提(prebuilt をソースの無い別マシンへ運ぶと Runner/ 解決不能)。
+- **拡張**: `binaryPath` は実在しなければ PATH フォールバック(`binaryPathResolve.ts`)で `~/.mint/bin/ftester` を発見。
+- **版**: git タグ(mint 配布)/ 拡張 package.json / プロトコル版(compatCheck)は独立。リリースは
+  `Scripts/release.sh`(docs/releasing.md)。
