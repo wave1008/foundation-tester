@@ -135,29 +135,34 @@ public enum ScenarioHost {
         }
     }
 
-    /// ランナー実行ファイルの場所: 自 executable と同ディレクトリ → .build/debug →
-    /// swift build --show-bin-path。.build/debug の直接参照は近道であると同時に、
-    /// swift test 実行中(SPM ビルドロック保持中)に swift build を呼んでデッドロックするのを
-    /// 避けるため(XCTest からも ScenarioHost.run を使えるように)
+    /// ランナー実行ファイルの場所: packageRoot/.build/debug(そのプロジェクトを所有する repo)→
+    /// 自 executable と同ディレクトリ(release ビルドや別 build-path のフォールバック)→
+    /// swift build --show-bin-path。前2つは swift を呼ばないファイル確認のみ。
+    /// packageRoot を最優先にするのは、外部パッケージ構成で ftester バイナリ(TOOL_ROOT/.build/debug)の
+    /// 隣にクローンの同名 product が居ると誤ってそれを実行するため(受け手の product は
+    /// WORK_DIR/.build/debug に建つ。所有 repo = packageRoot が正)。
+    /// --show-bin-path(swift 起動)は最後: swift test 実行中(SPM ビルドロック保持中)に呼ぶと
+    /// デッドロックするため、先の2つのファイル確認で解決させる(XCTest からも ScenarioHost.run を使えるように)。
     public static func runnerURL(project: TestProject) throws -> URL {
-        if let sibling = Bundle.main.executableURL?
-            .deletingLastPathComponent().appendingPathComponent(project.productName),
-           FileManager.default.isExecutableFile(atPath: sibling.path) {
-            return sibling
-        }
         if let root = packageRoot() {
             let debugBinary = root.appendingPathComponent(".build/debug")
                 .appendingPathComponent(project.productName)
             if FileManager.default.isExecutableFile(atPath: debugBinary.path) {
                 return debugBinary
             }
-            if let result = try? Shell.run(["swift", "build", "--show-bin-path"], cwd: root),
-               result.status == 0 {
-                let binPath = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
-                    .split(separator: "\n").last.map(String.init) ?? ""
-                let url = URL(fileURLWithPath: binPath).appendingPathComponent(project.productName)
-                if FileManager.default.isExecutableFile(atPath: url.path) { return url }
-            }
+        }
+        if let sibling = Bundle.main.executableURL?
+            .deletingLastPathComponent().appendingPathComponent(project.productName),
+           FileManager.default.isExecutableFile(atPath: sibling.path) {
+            return sibling
+        }
+        if let root = packageRoot(),
+           let result = try? Shell.run(["swift", "build", "--show-bin-path"], cwd: root),
+           result.status == 0 {
+            let binPath = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
+                .split(separator: "\n").last.map(String.init) ?? ""
+            let url = URL(fileURLWithPath: binPath).appendingPathComponent(project.productName)
+            if FileManager.default.isExecutableFile(atPath: url.path) { return url }
         }
         throw ScenarioHostError.runnerNotFound(product: project.productName)
     }
