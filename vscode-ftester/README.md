@@ -178,7 +178,7 @@ code --install-extension vscode-ftester-<version>.vsix
 
 | 設定キー | 型 | 既定値 | 説明 |
 |---|---|---|---|
-| `ftester.binaryPath` | string | `.build/debug/ftester` | ftester CLI バイナリのパス。相対パスはワークスペースルート基準で解決される。**存在しなければ PATH から `ftester` を探す**(mint 導入の外部パッケージ構成で `~/.mint/bin` を PATH に入れた場合など) |
+| `ftester.binaryPath` | string | `.build/debug/ftester` | ftester CLI バイナリのパス。相対パスはワークスペースルート基準で解決される。**存在しなければ PATH から `ftester` を探す**(ビルド済み `ftester` を PATH に置いた場合など) |
 | `ftester.project` | string | `""` | 対象のテストプロジェクト名(`Projects/<name>` の `<name>`)。空なら自動判定(`Projects/` 直下が1つならそれを使用。複数あれば選択を促す) |
 | `ftester.profile` | string | `""` | 使用する実行プロファイル名(`Projects/<project>/profiles/runs/<name>.json` の `<name>`)。空なら未指定。非空なら実行・デバッグ実行の両方で `platform`/`port`/`serial` の代わりにこちらが使われる。**デバイスモニターの監視対象・「デバイスを全て起動/終了」もこのプロファイルのデバイスに絞られ、切り替えると新プロファイルに含まれない稼働中デバイスは自動停止される**(空ならマシンプロファイルの全デバイスが対象) |
 | `ftester.platform` | `"ios"` \| `"android"` | `"ios"` | 対象プラットフォーム。`ftester.profile` が空のときだけ使われる |

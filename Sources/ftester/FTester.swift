@@ -64,9 +64,19 @@ struct Doctor: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Foundation Models・Xcode・シミュレータの事前チェック")
 
+    // FM/Apple Intelligence の可否だけを判定して exit code に反映する高速ゲート。
+    // setup スキルがビルド直後に人間へ聞かずに自動判定するために使う(FM 不可なら非0で終了)。
+    @Flag(name: .long, help: "Apple Intelligence / オンデバイス FM の可否だけを確認し exit code で返す")
+    var fmOnly = false
+
     func run() async throws {
         let fm = FMDoctor.check()
         print(fm.available ? "✅ \(fm.detail)" : "❌ \(fm.detail)")
+        if fmOnly {
+            // 可: 0 / 不可(AI 無効・DL中・対象外): 1。呼び出し側が理由文字列を stdout から読める。
+            if !fm.available { throw ExitCode(1) }
+            return
+        }
 
         let xcode = try Shell.run(["xcodebuild", "-version"])
         let xcodeLine = xcode.output.split(separator: "\n").first.map(String.init) ?? "不明"
