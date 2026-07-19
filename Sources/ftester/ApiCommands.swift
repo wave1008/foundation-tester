@@ -20,7 +20,7 @@ struct ApiCommand: AsyncParsableCommand {
                       ApiDeviceCatalogCommand.self, ApiCreateDeviceCommand.self,
                       ApiInstalledDevicesCommand.self, ApiHostMetricsCommand.self,
                       ApiGenScenarioCommand.self, ApiDeleteScenarioCommand.self,
-                      ApiResultsCommand.self])
+                      ApiResultsCommand.self, ApiVersionCommand.self])
 }
 
 struct ApiListScenarios: AsyncParsableCommand {

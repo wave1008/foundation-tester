@@ -10,6 +10,7 @@
 import * as vscode from "vscode";
 import { formatMessage, type Locale, type MessageDict } from "./core";
 import { setLaneLocale } from "./strings/lane";
+import { compatStrings } from "./strings/compat";
 import { deviceOpsStrings } from "./strings/deviceOps";
 import { exploreHealStrings } from "./strings/exploreHeal";
 import { liveStrings } from "./strings/live";
@@ -29,6 +30,7 @@ const merged = {
   ...runStrings,
   ...workbenchStrings,
   ...exploreHealStrings,
+  ...compatStrings,
 };
 
 /** 全辞書のキー和集合。t() の第1引数はこの型に制約され、typo を tsc がコンパイル時に検出する。 */
