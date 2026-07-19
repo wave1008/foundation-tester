@@ -2,10 +2,19 @@
   "name": "vscode-ftester",
   "displayName": "ftester",
   "description": "%ftester.extension.description%",
-  "version": "0.0.297",
+  "version": "0.0.298",
   "private": true,
   "publisher": "wave1008",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wave1008/foundation-tester.git",
+    "directory": "vscode-ftester"
+  },
+  "bugs": {
+    "url": "https://github.com/wave1008/foundation-tester/issues"
+  },
+  "homepage": "https://github.com/wave1008/foundation-tester/tree/main/vscode-ftester#readme",
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -378,7 +387,7 @@
     "compile": "node esbuild.mjs && tsc --noEmit",
     "watch": "node esbuild.mjs --watch",
     "test": "node esbuild.mjs --tests && node --test out-test/*.test.mjs",
-    "package": "vsce package --allow-missing-repository",
+    "package": "vsce package",
     "install-local": "bash scripts/install-local.sh"
   },
   "devDependencies": {
