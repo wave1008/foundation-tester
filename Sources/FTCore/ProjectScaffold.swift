@@ -73,6 +73,87 @@ public enum ProjectScaffold {
         """
     }
 
+    /// 受け手のパッケージに Claude Code スキル `.claude/skills/ftester-setup/SKILL.md` を書く
+    /// (ftester init から呼ぶ)。受け手が自分のプロジェクトを Claude Code で開いて `/ftester-setup`
+    /// で残りのセットアップ(デバイス定義・アプリパス・実行)を駆動できるようにする。Tier 1 の
+    /// foundation-tester 同梱スキルは受け手のパッケージには届かないため、init で scaffold する。
+    public static func writeRecipientSkill(packageRoot: URL, projectName: String) throws {
+        let dir = packageRoot.appendingPathComponent(".claude/skills/ftester-setup")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try recipientSetupSkill(projectName: projectName).write(
+            to: dir.appendingPathComponent("SKILL.md"), atomically: true, encoding: .utf8)
+    }
+
+    static func recipientSetupSkill(projectName name: String) -> String {
+        let appRef = name.lowercased()
+        return """
+        ---
+        name: ftester-setup
+        description: この ftester テストパッケージのセットアップを仕上げて実行できる状態にする。環境検証(doctor)・この Mac のデバイス定義(マシンプロファイル)・対象アプリのパス設定・最初のシナリオ実行までを、検証ゲートと人間チェックポイント付きで行う。「セットアップして」「動かせるようにして」「テストを実行できるようにして」等の依頼で使う。
+        ---
+
+        # ftester セットアップ(このパッケージ)
+
+        このパッケージは `ftester init` で作られた ftester テストプロジェクト。ftester は mint 導入済みが前提
+        (未導入なら `mint install wave1008/foundation-tester@<version>` を実行し `~/.mint/bin` を PATH に入れる)。
+        自分のアプリのシナリオを書いて実行できる状態まで仕上げる。
+
+        ## 原則
+        - 各ステップの後に検証ゲート(exit code / doctor)を通す。緑になるまで次へ進まない。
+        - 人間チェックポイント(🧑)では**停止して依頼・確認する**(エージェントでは代行不可)。
+        - 失敗は握りつぶさず、doctor 出力や stderr をそのままユーザーに見せて相談する。
+
+        ## 手順
+
+        ### 0. 🧑 前提の確認
+        次を人間に確認する。未達なら停止して依頼(代行不可):
+        - macOS 27+ / Apple Intelligence 有効(System 設定)/ Xcode 27+ 導入済み / iOS シミュレータ runtime を1つ以上
+        - ビルド済みの対象アプリ(.app / .apk)のパス、使うシミュレータ名、マシン名
+
+        ### 1. 環境検証
+        `ftester doctor` を実行し、結果を要約して見せる。赤(未導入・無効)が残る項目は 0 に戻って対処を依頼。
+
+        ### 2. マシンプロファイル(この Mac のデバイス定義)
+        - `ftester machine set "<マシン名>"`(machines/ に .json が1つだけなら自動採用で省略可)
+        - `xcrun simctl list devices available` で使えるシミュレータ名を採取
+        - 🧑 `Projects/\(name)/profiles/machines/<マシン名>.json` に使うデバイスを列挙(雛形は同ディレクトリの README.md):
+
+        ```json
+        { "ios": { "devices": [ { "name": "メイン機", "simulator": "iPhone 17 Pro", "os": "27.0" } ] } }
+        ```
+
+        ### 3. 対象アプリのパス
+        🧑 `Projects/\(name)/profiles/apps/\(appRef).json` を、あなたのビルド済みアプリへ向ける
+        (`appName`/`autoInstall` は common、bundle ID(`app`)と `appPath` は ios/android セクション):
+
+        ```json
+        { "common": { "appName": "\(name)", "autoInstall": true },
+          "ios":    { "app": "<bundle id>", "appPath": "~/builds/\(name).app" } }
+        ```
+
+        ### 4. シナリオを1本用意
+        - `Projects/\(name)/Scenarios/` に `@TestClass` の .swift を置く(`import FTDSL`)、
+          または VSCode 拡張のライブ操作パネルで操作を録画して生成する。
+
+        ### 5. デバイス不要の動作確認(まずここまで)
+        ```bash
+        swift build --product ftester-scenarios-\(name)
+        ftester api list-scenarios --project \(name)
+        ftester api run --project \(name) --scenario <クラス名> --dry-run --skip-build
+        ```
+
+        ### 6. 🧑 実機で実行
+        対象シミュレータを起動してから:
+        ```bash
+        ftester run --project \(name) --profile ios
+        ```
+
+        ## 更新(新しい版が出たとき)
+        `mint install wave1008/foundation-tester@<新version> --force` を実行し、Package.swift の依存
+        (`.package(... from:)` の版)も同じ版へ上げてから `swift build`。CLI と依存の版は揃える。
+        """
+    }
+
     /// プロジェクト雛形を生成する(ディレクトリは存在しない前提。Package.swift の更新は呼び出し側)
     public static func create(project: TestProject, app: String,
                               machineName: String? = nil) throws {

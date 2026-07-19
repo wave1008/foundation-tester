@@ -69,12 +69,15 @@ struct InitCommand: AsyncParsableCommand {
             let project = try ProjectScaffold.createAndRegister(
                 name: projectName, app: app, repoRoot: cwd,
                 machineName: LocalConfig.currentMachineName())
+            // 受け手が自分のプロジェクトを Claude Code で開いて /ftester-setup で残りを駆動できるように
+            try ProjectScaffold.writeRecipientSkill(packageRoot: cwd, projectName: projectName)
             print("✅ 受け手パッケージを作成しました: \(packageName)")
             print("   依存:         \(dependencyLine)")
             print("   プロジェクト: Projects/\(projectName)/(Scenarios/ に @TestClass の .swift を追加)")
             print("   アプリ設定:   Projects/\(projectName)/profiles/apps/ の appPath を自分のビルドへ")
             print("   ビルド:       swift build --product \(project.productName)")
             print("   実行:         ftester run --project \(projectName) --profile ios")
+            print("   Claude Code:  このフォルダを開いて /ftester-setup でデバイス設定〜実行まで駆動できます")
         } catch {
             // マニフェストだけ書いて scaffold に失敗したら、中途半端な Package.swift を残さない
             try? FileManager.default.removeItem(at: manifest)
