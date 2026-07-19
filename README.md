@@ -48,13 +48,14 @@ curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scr
 ```
 
 - この1行が `.claude/skills/` に **`ftester-setup`(初回導入)・`ftester-update`(更新)・
-  `ftester-profiles`(マシン/アプリ/実行プロファイルの一括作成)** の各スキルを置く
+  `ftester-profiles`(マシン/アプリ/実行プロファイルの一括作成)・`ftester-scenario`(テストシナリオ作成)** の各スキルを置く
   (この時点では clone しない=大きな取得の前にレビューできる)。版を固定するなら `FTESTER_REF=<tag>` を前置。
 - `/ftester-setup`(既定=**外部パッケージ構成**): foundation-tester を横に `git clone` → `swift build`
   (ツールの CLI)→ `npm run install-local`(VSCode 拡張)→ **いま開いているディレクトリ**を `ftester init` で
   テストパッケージ化(あなたのプロジェクトは自分のディレクトリの `Projects/` に住み、ツールの clone とは分離)。
   仕上げに `/ftester-profiles` を呼んでプロファイルを作る。検証ゲートと人間チェックポイント付き。
-- 以後、修正版の取り込みは `/ftester-update`、テスト対象やデバイスの追加は `/ftester-profiles`。
+- 以後、修正版の取り込みは `/ftester-update`、テスト対象やデバイスの追加は `/ftester-profiles`、
+  テストシナリオ(.swift)の作成は `/ftester-scenario`。
 - 手順の全体像・手動でのやり方・トラブルシュートは [docs/getting-started.md](docs/getting-started.md)。
 
 > **配布はソースビルド前提**(バイナリ配布はしない)。ツール本体(CLI)も VSCode 拡張(.vsix)も、この clone から

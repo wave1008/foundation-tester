@@ -1,0 +1,13 @@
+{
+  "common": {
+    "appName": "sut-ec-mobile",
+    "autoInstall": true
+  },
+  "ios": {
+    "app": "com.sutec.mobile",
+    "appPath": "../sut-ec-mobile/dist/ios-simulator/SUTStore.app"
+  },
+  "android": {
+    "app": "com.sutec.mobile"
+  }
+}
