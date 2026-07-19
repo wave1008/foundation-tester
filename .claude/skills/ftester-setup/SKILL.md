@@ -25,6 +25,10 @@ description: foundation-tester を使いたい受け手を、自分の iOS/Andro
 
 - **各ステップの後に検証ゲートを通す**（exit code / doctor / 到達確認）。緑になるまで次へ進まない。
 - **人間チェックポイント（🧑）では必ず停止して依頼・確認する**。エージェントでは代行できない。
+- **セットアップ値は探索せず人間に聞く**：Bundle ID・App ID・ビルド済み `.app`/`.apk` のパス・
+  テスト対象アプリの所在などを、兄弟ディレクトリや別リポジトリを勝手に `find`/`grep` で探索して
+  確定してはならない。必ず人間に質問して答えを得る（探索で見つけた候補を既定値として提示するのも避ける）。
+  「質問を減らすため」の事前調査も禁止。
 - **冪等に**：既に済んでいる状態を検出したらスキップする（再実行に強く）。
 - 失敗したら握りつぶさず、doctor 出力や stderr をそのままユーザーに見せて相談する。
 
@@ -37,6 +41,7 @@ description: foundation-tester を使いたい受け手を、自分の iOS/Andro
 - macOS 27+ か
 - Xcode 27+ 導入済み・`sudo xcodebuild -license accept` 済みか
 - （初回のみ）テスト対象アプリのビルド済み `.app` / `.apk` のパス、マシン名
+  → **人間に聞く。他リポジトリを勝手に探索して埋めない**（バージョン・パスの推測は事故のもと）。
 
 （シミュレータは step 5 で自動採取・自動選択するのでここでは聞かない。）
 
@@ -134,6 +139,7 @@ tag も clone で取得できる)。
 `Projects/<ProjectName>/profiles/apps/<projectname>.json` を編集し、🧑 に確認したビルド済みアプリへ
 `appPath` を向ける（ios は `.app`、android は `.apk`）。相対パスは **WORK_DIR(そのプロジェクトの
 Package.swift があるディレクトリ)基準**・`~` 展開可・絶対パス可。
+**bundle ID と appPath は人間に確認した値を書く。別リポジトリを覗いて確定値を書き込まない。**
 
 ### 7. VSCode 拡張のインストール
 
@@ -159,27 +165,16 @@ cd ../foundation-tester/vscode-ftester && npm install && npm run install-local
 - プロジェクトが複数あるなら設定 `ftester.project` を `<ProjectName>` にするか、拡張の選択で選ぶ
 - ftester パネル（Test Explorer / デバイスモニター等）を開く
 
-### 9. 動作確認
+### 9. 続けてプロファイル一括作成へ（/ftester-profiles）
 
-最小の1本を通す。**WORK_DIR で** CLI なら:
-
-```
-ftester run --project <ProjectName> --profile ios
-```
-
-（外部構成では `ftester` = `../foundation-tester/.build/debug/ftester`。clone 構成は `swift run ftester run ...`。）
-または拡張のライブ操作パネルで操作を録画してシナリオを1本生成して実行。ここまで通れば初期セットアップ完了。
-
-### 10. 続けてプロファイル一括作成へ（/ftester-profiles）
-
-初期セットアップ（1〜9）が完了したら、**続けて `/ftester-profiles` スキルを呼び出す**
+初期セットアップ（1〜8）が完了したら、**続けて `/ftester-profiles` スキルを呼び出す**
 （マシン/アプリ/実行プロファイルの一括作成）。`/ftester-profiles` が完了したら、**そこで処理を終了する**。
 指示にない追加作業を自分の判断で始めない（コミット・push・別プロファイルやシナリオの追加作成・
 最適化提案などをこちらから勝手に行わない）。
 
 ## 完了後
 
-外部パッケージ構成では、以後の `/ftester-setup`(デバイス定義・アプリパス・実行)は `ftester init` が
+外部パッケージ構成では、以後の `/ftester-setup`(デバイス定義・アプリパス・動作確認)は `ftester init` が
 WORK_DIR に置いた**受け手専用スキル**が担う。更新（新しい修正版が出たとき）は `/ftester-update` を使う
 （TOOL_ROOT で git pull → swift build 再ビルド → 依存版を揃える → 拡張再インストール → Reload Window）。
 手動手順は docs/getting-started.md「更新のしかた」。
