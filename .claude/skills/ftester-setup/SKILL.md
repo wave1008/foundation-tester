@@ -7,7 +7,19 @@ description: foundation-tester を使いたい受け手を、自分の iOS/Andro
 
 受け手を、**自分のアプリのシナリオを書いて実行できる状態**まで導く。
 全体像・背景は docs/getting-started.md。ここはエージェントが順に実行するための手順書。
-入り方は2通り(既にクローン内 / curl でスキルだけ入れた空ディレクトリ)。ステップ 0.5 で判定・取得する。
+
+**入り方は2通り。ステップ 0.5 で判定する:**
+
+- **外部パッケージ構成(既定・curl でスキルだけ入れた受け手ディレクトリ)**: いま開いているこの
+  ディレクトリを ftester テストパッケージにする。**あなたのプロジェクト(`Projects/<name>/`)は
+  この受け手ディレクトリに作られる**。foundation-tester は「ツール(CLI・拡張)」として横に clone+build
+  するだけで、Projects はここに住む。作成は `ftester init`。
+- **clone 構成(foundation-tester クローンの中で直接作業する保守者/PoC)**: Projects はクローンの
+  `Projects/` に作る。作成は `ftester project create`。
+
+以降、**TOOL_ROOT** = foundation-tester クローン(swift build / doctor / 拡張ビルドを行う場所。CLI は
+`TOOL_ROOT/.build/debug/ftester`)、**WORK_DIR** = `Projects/` が住む作業ディレクトリ、と呼ぶ。
+外部構成では WORK_DIR = このカレント・TOOL_ROOT = `../foundation-tester`。clone 構成では両者は同一(クローン)。
 
 ## 進め方の原則
 
@@ -23,27 +35,32 @@ description: foundation-tester を使いたい受け手を、自分の iOS/Andro
 先に次を人間に確認する。未達なら停止して依頼する（エージェントでは実施不可）:
 
 - macOS 27+ か
-- Apple Intelligence が有効か（System 設定 → Apple Intelligence & Siri。オンデバイス FM に必須）
 - Xcode 27+ 導入済み・`sudo xcodebuild -license accept` 済みか
-- iOS シミュレータの runtime を1つ以上導入済みか
-- （初回のみ）テスト対象アプリのビルド済み `.app` / `.apk` のパス、使いたいシミュレータ名、マシン名
+- （初回のみ）テスト対象アプリのビルド済み `.app` / `.apk` のパス、マシン名
 
-### 0.5 リポジトリ取得（未クローンなら）
+（シミュレータは step 5 で自動採取・自動選択するのでここでは聞かない。）
 
-入り方を判定してからリポジトリルートを確定する:
+### 0.5 入り方の判定と TOOL_ROOT の取得
 
-- **既にクローン内**（カレントか祖先に `Package.swift` と `Sources/FTScenarioRunner/` の両方がある）
-  → clone 済み。そのディレクトリをリポジトリルートとして以降を進める。
-- **未クローン**（curl でスキルだけ入れた空ディレクトリ）→ ここで取得する。🧑 に clone 先を確認してよい
-  （既定はカレント直下 `foundation-tester/`）:
+カレントか祖先に `Package.swift` と `Sources/FTScenarioRunner/` の**両方**があるかで判定する
+(この2つが揃うのは foundation-tester クローンだけ):
+
+- **両方ある = clone 構成**: いま foundation-tester クローンの中にいる。TOOL_ROOT = WORK_DIR =
+  そのディレクトリ。取得不要でステップ1へ。
+- **無い = 外部パッケージ構成(既定)**: WORK_DIR = このカレント(ここに Projects/ を作る)。
+  ツールを供給するため foundation-tester を**兄弟ディレクトリ**に clone+build する(受け手の
+  ディレクトリの中にネストさせない):
 
 ```
-git clone https://github.com/wave1008/foundation-tester.git
-cd foundation-tester
+git clone https://github.com/wave1008/foundation-tester.git ../foundation-tester
 ```
 
-以降のステップ（build / doctor / project create / install-local 等）は**このリポジトリルート内**で実行する。
-版を固定したい場合は 🧑 に確認して `git checkout <tag>`（配布はソースビルド前提なので tag も clone で取得できる）。
+  → TOOL_ROOT = `../foundation-tester`。build / doctor / 拡張ビルドは TOOL_ROOT で、`ftester init` と
+  プロファイル設定は WORK_DIR(カレント)で行う。**カレントに `Package.swift` があってはいけない**
+  (`ftester init` が拒否する。既存 repo の直下ではなく、テスト専用の新規ディレクトリで実行する)。
+
+版を固定したい場合は 🧑 に確認して TOOL_ROOT で `git checkout <tag>`(配布はソースビルド前提なので
+tag も clone で取得できる)。
 
 ### 1. xcodegen
 
@@ -51,68 +68,111 @@ cd foundation-tester
 
 ### 2. ビルド
 
-リポジトリルートで `swift build`（初回は数分）。**exit code で成否を判定**（パイプで grep に繋がない）。
+**TOOL_ROOT で** `swift build`（初回は数分）。**exit code で成否を判定**（パイプで grep に繋がない）。
+これで `TOOL_ROOT/.build/debug/ftester`(CLI 本体)が揃う。以降 `ftester` はこのバイナリを指す。
+
+### 2.5 Apple Intelligence 自動判定ゲート（人間に聞かない）
+
+**TOOL_ROOT で** `swift run ftester doctor --fm-only` を実行する。これは `SystemLanguageModel.default.availability`
+（オンデバイス FM／Apple Intelligence の可否）だけを見て **exit code で返す**（可=0／不可=1）。
+オンデバイス FM はこのツールの頭脳なので、ここが緑でないと以降は無意味。**人間に「有効か」を聞かない**：
+
+- **exit 0**（`✅ 利用可能`）→ 次へ。
+- **exit 1 で `Apple Intelligence が無効`** → 🧑 停止して依頼する：System 設定 → Apple Intelligence & Siri
+  でオンにしてもらう。有効化後に本コマンドを再実行（ビルドはキャッシュ済みで即座）。
+- **exit 1 で `モデルのダウンロード中`** → 数分待って再実行（DL 完了で 0 になる）。
+- **exit 1 で `このデバイスは対象外`** → このマシンではオンデバイス FM を使えない。🧑 に伝えて相談。
 
 ### 3. 環境検証ゲート
 
-`swift run ftester doctor` を実行し、出力をユーザーに要約して見せる。
+**TOOL_ROOT で** `swift run ftester doctor` を実行し、出力をユーザーに要約して見せる（FM/AI は 2.5 で判定済み）。
 赤（未導入・無効）が残る項目は、ステップ0に戻って人間に対処を依頼してから再実行。全緑で次へ。
 
-### 4. 自分のプロジェクトを作る
+### 4. 自分のプロジェクトを作る(構成で分岐)
 
-プロジェクト名（英数字 `^[A-Za-z0-9_][A-Za-z0-9_-]*$`）とアプリの bundle ID を🧑に確認して:
+プロジェクト名（英数字 `^[A-Za-z0-9_][A-Za-z0-9_-]*$`）とアプリの bundle ID を🧑に確認して、
+**WORK_DIR(カレント)で**作る:
+
+- **外部パッケージ構成(既定)**: `ftester init` で WORK_DIR を ftester テストパッケージにする。
+  TOOL_ROOT を SPM のローカルパス依存として引き、最初のプロジェクトを登録する:
 
 ```
-swift run ftester project create <ProjectName> --app <bundleID>
+../foundation-tester/.build/debug/ftester init \
+  --ftester-path ../foundation-tester --name <ProjectName> --app <bundleID>
 ```
 
-`Projects/<ProjectName>/` と Package.swift のターゲット登録が生成されたことを確認する。
+  → WORK_DIR に `Package.swift`(空マーカー区間 + ftester 依存)と `Projects/<ProjectName>/` が生成され、
+  受け手専用の `/ftester-setup` スキルが `.claude/skills/` に上書きされる(次回以降の実行はそちらを使う。
+  この実行はロード済み手順のまま継続してよい)。ローカルパス依存なので `swift build` はネットワーク不要・
+  TOOL_ROOT を `git pull` すれば ftester 側も更新される。git 依存にしたい場合のみ `--ftester-url
+  https://github.com/wave1008/foundation-tester.git --ftester-version <ver>` を使う(`--ftester-path` と排他)。
+  以降このスキル内で `ftester ...` と書いたら `../foundation-tester/.build/debug/ftester ...` を実行する。
+
+- **clone 構成**: TOOL_ROOT(=WORK_DIR)で `swift run ftester project create <ProjectName> --app <bundleID>`。
+  `Projects/<ProjectName>/` と Package.swift のターゲット登録が生成されたことを確認する。
 
 ### 5. マシンプロファイル（このPC）
 
-- `swift run ftester machine set "<マシン名>"` を実行（machines/ が1つだけなら自動採用が効くので省略可。
-  複数マシンを1クローンで扱う時のみ必須）。
-- `xcrun simctl list devices available` で使えるシミュレータ名を採取。
-- 🧑 使うデバイスを確認し、`Projects/<ProjectName>/profiles/machines/<マシン名>.json` を作成/編集する
-  （雛形は同ディレクトリの README.md）。`name` は runs から参照されるため ios/android 横断で一意に:
+以降のプロファイル編集は **WORK_DIR の `Projects/<ProjectName>/`** に対して行う。
+
+- `ftester machine set "<マシン名>"` を実行（machines/ が1つだけなら自動採用が効くので省略可。
+  複数マシンを1クローンで扱う時のみ必須。登録先は `~/.config/ftester/config.json` でグローバル）。
+- `xcrun simctl list devices available` で使えるシミュレータを採取し、**シミュレータはユーザーに聞かず
+  自動選択**する（既定：利用可能な中で最新 iOS の iPhone。Pro があれば優先、無ければ先頭の iPhone）。
+  `Projects/<ProjectName>/profiles/machines/<マシン名>.json` を自動作成し、選んだ名前を要約報告する
+  （後から編集可。雛形は同ディレクトリの README.md）。`name` は runs から参照されるため ios/android
+  横断で一意に:
 
 ```json
 { "ios": { "devices": [ { "name": "メイン機", "simulator": "iPhone 17 Pro", "os": "27.0" } ] } }
 ```
 
+- 利用可能な iOS シミュレータが **0 件のときだけ** 🧑 停止し、Xcode で runtime/デバイスの導入を依頼する。
+
 ### 6. アプリのパスを向ける
 
 `Projects/<ProjectName>/profiles/apps/<projectname>.json` を編集し、🧑 に確認したビルド済みアプリへ
-`appPath` を向ける（ios は `.app`、android は `.apk`。`~` 展開可）。
+`appPath` を向ける（ios は `.app`、android は `.apk`）。相対パスは **WORK_DIR(そのプロジェクトの
+Package.swift があるディレクトリ)基準**・`~` 展開可・絶対パス可。
 
 ### 7. VSCode 拡張のインストール
 
+**TOOL_ROOT の拡張を**ビルド・インストールする（外部構成でも拡張は TOOL_ROOT 側から入れる）:
+
 ```
-cd vscode-ftester && npm install && npm run install-local
+cd ../foundation-tester/vscode-ftester && npm install && npm run install-local
 ```
 
-`install-local` はパッケージ→インストール→到達確認まで一括で行う。**exit code で成否判定**。
+（clone 構成なら `cd vscode-ftester && ...`。）`install-local` はパッケージ→インストール→到達確認まで
+一括で行う。**exit code で成否判定**。
 
 ### 8. 🧑 人間チェックポイント（反映と起動）
 
 ユーザーに依頼する（エージェントでは代行不可）:
 
-- VSCode でこの `foundation-tester` フォルダを開く
-- `Developer: Reload Window` を実行（インストールだけでは反映されない）
+- VSCode で **WORK_DIR** を開く（外部構成: あなたのテストパッケージのフォルダ。clone 構成:
+  `foundation-tester` フォルダ）
+- **外部パッケージ構成のときは** 設定 `ftester.binaryPath` を TOOL_ROOT の CLI に向ける
+  （ワークスペース相対で `../foundation-tester/.build/debug/ftester`、または絶対パス。拡張は設定値が
+  実在すればそれを、無ければ PATH の `ftester` を使う）。clone 構成では既定 `.build/debug/ftester` のままでよい
+- `Developer: Reload Window` を実行（インストール・設定だけでは反映されない）
 - プロジェクトが複数あるなら設定 `ftester.project` を `<ProjectName>` にするか、拡張の選択で選ぶ
 - ftester パネル（Test Explorer / デバイスモニター等）を開く
 
 ### 9. 動作確認
 
-最小の1本を通す。CLI なら:
+最小の1本を通す。**WORK_DIR で** CLI なら:
 
 ```
-swift run ftester run --project <ProjectName> --profile ios
+ftester run --project <ProjectName> --profile ios
 ```
 
+（外部構成では `ftester` = `../foundation-tester/.build/debug/ftester`。clone 構成は `swift run ftester run ...`。）
 または拡張のライブ操作パネルで操作を録画してシナリオを1本生成して実行。ここまで通れば初期セットアップ完了。
 
 ## 完了後
 
-更新（新しい修正版が出たとき）は `/ftester-update` を使う（git pull → project sync →
-swift build → 拡張再インストール → Reload Window）。手動手順は docs/getting-started.md「更新のしかた」。
+外部パッケージ構成では、以後の `/ftester-setup`(デバイス定義・アプリパス・実行)は `ftester init` が
+WORK_DIR に置いた**受け手専用スキル**が担う。更新（新しい修正版が出たとき）は `/ftester-update` を使う
+（TOOL_ROOT で git pull → swift build 再ビルド → 依存版を揃える → 拡張再インストール → Reload Window）。
+手動手順は docs/getting-started.md「更新のしかた」。
