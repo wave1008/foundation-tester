@@ -96,7 +96,9 @@ struct ProjectCommand: AsyncParsableCommand {
         let manifest = repoRoot.appendingPathComponent("Package.swift")
         let names = ProjectStore.all(repoRoot: repoRoot).map(\.name)
         let before = (try? PackageManifestEditor.registeredProjects(manifestURL: manifest)) ?? []
-        try PackageManifestEditor.updateProjects(manifestURL: manifest, projectNames: names)
+        try PackageManifestEditor.updateProjects(
+            manifestURL: manifest, projectNames: names,
+            external: ProjectScaffold.isExternalPackage(repoRoot: repoRoot))
         if verbose {
             let added = names.filter { !before.contains($0) }
             let removed = before.filter { !names.contains($0) }

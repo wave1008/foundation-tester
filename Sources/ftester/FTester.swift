@@ -12,6 +12,7 @@ struct FTester: AsyncParsableCommand {
         commandName: "ftester",
         abstract: "macOS Foundation Models を頭脳にした iOS/Android アプリテストツール",
         subcommands: [
+            InitCommand.self,
             Doctor.self,
             Bridge.self,
             Install.self,

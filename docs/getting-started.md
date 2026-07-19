@@ -128,6 +128,27 @@ cd vscode-ftester && npm install && npm run install-local
 
 > あなたの `Projects/MyApp/` は git 管理外に置くか別リポジトリで管理すると、`git pull` の衝突を避けられます。
 
+## 付録: `ftester init` で自分のパッケージにする(Tier 2・実験的)
+
+上記は foundation-tester を clone してその中にシナリオを置くモデル(Tier 1)です。代わりに、
+**自分の独立した Swift パッケージが ftester を SPM 依存として引く**構成(Tier 2)も使えます。
+
+```bash
+mkdir my-app-tests && cd my-app-tests
+# ftester CLI(foundation-tester を clone して swift build したもの)を使って scaffold
+/path/to/foundation-tester/.build/debug/ftester init \
+  --name MyApp --app com.mycompany.myapp \
+  --ftester-path /path/to/foundation-tester      # 公開後は --ftester-url + --ftester-version
+```
+
+これで、ftester に依存する `Package.swift`(`.product(name: "FTScenarioRunner"/"FTDSL", package:
+"foundation-tester")`)と最初のプロジェクト `Projects/MyApp/` が生成されます。以後 `ftester run` /
+`api list-scenarios` などは**自分のパッケージ**をビルド・実行します(シナリオは自分の repo に住む)。
+
+**現状の到達点(PoC):** シナリオの **ビルド・列挙・dry-run 実行**は products 経由で動作確認済み。
+**ライブのデバイス実行(iOS ブリッジ)は未対応**です(ブリッジ生成が foundation-tester の `Runner/` を
+必要とするため。この分離は今後の課題)。ライブ実行が要るうちは Tier 1(clone モデル)を使ってください。
+
 ## トラブルシュート
 
 - **まず `swift run ftester doctor`**。FM 可用性・Xcode・xcodegen・シミュレータ・adb の状態を一覧します。

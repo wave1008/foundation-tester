@@ -9,6 +9,17 @@ let package = Package(
     platforms: [
         .macOS("27.0"),  // Foundation Models のマルチモーダル(Attachment)が macOS 27+
     ],
+    // 外部パッケージ(ftester init が生成する受け手の Package.swift)が依存する公開 product。
+    // 受け手のシナリオターゲットは .product(name: "FTScenarioRunner"/"FTDSL", package: "foundation-tester")
+    // を dependencies に持つ(対向: Sources/FTCore/PackageManifestEditor.swift の external モード)。
+    // FTScenarioRunner が FTCore/FTBridgeClient/FTAgent/FTAndroid を、FTDSL が FTDSLMacros を
+    // 推移的に引くため、公開が要るのはこの3つだけ。ftester は CLI ツール本体。
+    products: [
+        .executable(name: "ftester", targets: ["ftester"]),
+        .library(name: "FTScenarioRunner", targets: ["FTScenarioRunner"]),
+        .library(name: "FTDSL", targets: ["FTDSL"]),
+        .library(name: "FTCore", targets: ["FTCore"]),
+    ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.5.0"),
         // @TestClass/@Test マクロの実装(コンパイル時のみ。成果物にはリンクされない)

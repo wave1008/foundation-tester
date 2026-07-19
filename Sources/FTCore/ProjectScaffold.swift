@@ -34,8 +34,43 @@ public enum ProjectScaffold {
         try create(project: project, app: app, machineName: machineName)
         try PackageManifestEditor.updateProjects(
             manifestURL: repoRoot.appendingPathComponent("Package.swift"),
-            projectNames: ProjectStore.all(repoRoot: repoRoot).map(\.name))
+            projectNames: ProjectStore.all(repoRoot: repoRoot).map(\.name),
+            external: isExternalPackage(repoRoot: repoRoot))
         return project
+    }
+
+    /// 受け手のパッケージ(ftester を SPM 依存として引く)か、ftester 本体リポジトリかを判定する。
+    /// 本体だけが Sources/FTScenarioRunner を持つ。project create/sync がマーカー区間を
+    /// 内部ターゲット参照(本体)/ .product 参照(受け手)のどちらで生成するかの分岐に使う。
+    public static func isExternalPackage(repoRoot: URL) -> Bool {
+        !FileManager.default.fileExists(
+            atPath: repoRoot.appendingPathComponent("Sources/FTScenarioRunner").path)
+    }
+
+    /// ftester init が生成する受け手の Package.swift。空のマーカー区間を持ち、直後に
+    /// createAndRegister(external 自動判定)が最初のプロジェクトを登録する。
+    /// dependencyLine は `.package(path: "...")` か `.package(url: "...", from: "...")`。
+    public static func externalManifest(packageName: String, dependencyLine: String) -> String {
+        """
+        // swift-tools-version: 6.0
+        import PackageDescription
+
+        let swift5Mode: [SwiftSetting] = [.swiftLanguageMode(.v5)]
+
+        let package = Package(
+            name: "\(packageName)",
+            platforms: [
+                .macOS("27.0"),  // Foundation Models(ftester のランタイム要件)
+            ],
+            dependencies: [
+                \(dependencyLine)
+            ],
+            targets: [
+                \(PackageManifestEditor.beginMarker)
+                \(PackageManifestEditor.endMarker)
+            ]
+        )
+        """
     }
 
     /// プロジェクト雛形を生成する(ディレクトリは存在しない前提。Package.swift の更新は呼び出し側)
