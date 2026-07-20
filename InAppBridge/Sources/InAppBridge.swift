@@ -80,12 +80,20 @@ final class FTInAppBridge {
     private func handleStatus() -> InAppHTTPServer.Response {
         mainSync {
             let device = UIDevice.current
+            let state: String
+            switch UIApplication.shared.applicationState {
+            case .active: state = "active"
+            case .inactive: state = "inactive"
+            case .background: state = "background"
+            @unknown default: state = "unknown"
+            }
             return .json(StatusResponse(
                 ready: true,
                 device: device.name,
                 osVersion: "\(device.systemName) \(device.systemVersion)",
                 sessionBundleID: Bundle.main.bundleIdentifier,
-                engine: "inapp"))
+                engine: "inapp",
+                applicationState: state))
         }
     }
 
@@ -121,6 +129,10 @@ final class FTInAppBridge {
             // 合成 AX ノードで hitTest の view 階層には無いため、snapshot 要素から解決する)。
             // 合成タッチはジェスチャを発火しないので座標タップが無言 no-op になるのを防ぐ。無ければ合成タッチ。
             if req.ref == nil, self.activateSnapshotNode(containing: p) { return }
+            // ref 指定で要素はあるが accessibilityActivate が false(デフォルトアクション不発)のときも
+            // ここに落ちる。FTSynthTap は成否を返さないため、要素が実際に反応したかは検知できず
+            // 無言 no-op になり得る(throw は追加しない: 誤検知で正常系を壊す方が害が大きい)。
+            // 反応しない場合は accessibilityIdentifier(testTag)を付けるか engine=hybrid を検討。
             FTSynthTap(window, p)
         }
         return .json(OKResponse())
@@ -150,7 +162,10 @@ final class FTInAppBridge {
         var inserted = false
         try performWithSettle { _ in inserted = FTInsertTextIntoFirstResponder(req.text) }
         guard inserted else {
-            throw InAppError(409, "フォーカスされた入力欄がありません(先に対象を tap してください)")
+            throw InAppError(409, "フォーカスされた入力欄がありません。対象を先に tap してください。"
+                + "入力欄が AX ツリーに現れない(SwiftUI/Compose で accessibilityIdentifier 未設定)場合は"
+                + "安定セレクタで指せません。accessibilityIdentifier(testTag)を付けるか、"
+                + "実行プロファイルを engine=hybrid にして XCUITest フォールバックで引いてください")
         }
         return .json(OKResponse())
     }

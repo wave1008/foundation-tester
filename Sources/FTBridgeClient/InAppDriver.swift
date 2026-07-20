@@ -52,18 +52,25 @@ public final class InAppDriver: AppDriver {
     }
     public func screenshot() async throws -> Data { try await withCrashContext { try await client.screenshot() } }
 
-    /// bridgeConnectionRefused だけ、直近クラッシュレポートのパス/理由を detail 末尾に付与して
-    /// 同じ case で再 throw する(呼び出し側は catch DriverError.bridgeConnectionRefused のまま動く)。
+    /// bridgeConnectionRefused だけ、直近クラッシュレポートの有無に応じた切り分け情報を detail 末尾に
+    /// 付与して同じ case で再 throw する(呼び出し側は catch DriverError.bridgeConnectionRefused のまま動く)。
+    /// lastBundleID が nil(launch 未実施)なら素の detail のまま re-throw。
     private func withCrashContext<T>(_ op: () async throws -> T) async throws -> T {
         do {
             return try await op()
         } catch let DriverError.bridgeConnectionRefused(detail) {
-            guard let bundleID = lastBundleID,
-                  let hit = SimulatorCrashReport.findRecent(bundleID: bundleID) else {
+            guard let bundleID = lastBundleID else {
                 throw DriverError.bridgeConnectionRefused(detail)
             }
-            let suffix = hit.reason.map { " (\($0))" } ?? ""
-            throw DriverError.bridgeConnectionRefused(detail + " / クラッシュレポート: \(hit.path)\(suffix)")
+            if let hit = SimulatorCrashReport.findRecent(bundleID: bundleID) {
+                let suffix = hit.reason.map { " (\($0))" } ?? ""
+                throw DriverError.bridgeConnectionRefused(detail + " / アプリがクラッシュしました: \(hit.path)\(suffix)")
+            }
+            throw DriverError.bridgeConnectionRefused(
+                detail + " / 直近のクラッシュレポートは見つかりませんでした"
+                    + "(OS によるプロセス終了・メモリ圧・自発終了の可能性。"
+                    + "ハイブリッド混在実行では背面アプリが suspend/終了されることがあります)"
+            )
         }
     }
 }

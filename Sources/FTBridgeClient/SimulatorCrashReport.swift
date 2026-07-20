@@ -1,7 +1,7 @@
 // iOS シミュレータのクラッシュレポート(.ips)要約。ホスト Mac が
 // ~/Library/Logs/DiagnosticReports に書く。行1=ヘッダ JSON(bundleID 等)、
-// 行2以降=ペイロード JSON(exception/termination)。フォーマットは新macOSの
-// JSON形式(旧テキスト形式は非対応)。
+// 行2以降=ペイロード JSON(exception/termination)。新macOSの JSON形式を優先し、
+// 解釈できなければ旧テキスト形式(Identifier:/Exception Type: 等の行)にフォールバックする。
 
 import Foundation
 
@@ -38,6 +38,35 @@ public enum SimulatorCrashReport {
         return flattened.isEmpty ? nil : flattened
     }
 
+    /// 旧テキスト形式 .ips 用フォールバック。「ラベル: 値」の行を素朴に走査する(正規表現不要)。
+    public static func summarizeTextFormat(_ text: String) -> (bundleID: String?, reason: String?)? {
+        var bundleID: String?
+        var exceptionType: String?
+        var terminationReason: String?
+        for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
+            let s = String(line)
+            if bundleID == nil {
+                bundleID = value(afterPrefix: "Identifier:", in: s)
+            }
+            if exceptionType == nil {
+                exceptionType = value(afterPrefix: "Exception Type:", in: s)
+            }
+            if terminationReason == nil {
+                terminationReason = value(afterPrefix: "Termination Reason:", in: s)
+            }
+        }
+        let reasonParts = [exceptionType, terminationReason].compactMap { $0 }
+        let reason = reasonParts.isEmpty ? nil : oneLine(reasonParts.joined(separator: " / "))
+        guard bundleID != nil || reason != nil else { return nil }
+        return (bundleID, reason)
+    }
+
+    private static func value(afterPrefix prefix: String, in line: String) -> String? {
+        guard line.hasPrefix(prefix) else { return nil }
+        let v = line.dropFirst(prefix.count).trimmingCharacters(in: .whitespaces)
+        return v.isEmpty ? nil : v
+    }
+
     /// dir 内の直近クラッシュを新しい順に探し、bundleID が一致する最初の1件を返す。
     public static func findRecent(
         bundleID: String,
@@ -63,18 +92,25 @@ public enum SimulatorCrashReport {
             .prefix(50) // DiagnosticReports が肥大化していても走査を打ち切るための上限
 
         for (url, _) in candidates {
-            guard let (header, payload) = readHeaderAndPayload(url),
-                  let summary = summarize(headerLine: header, payload: payload),
-                  summary.bundleID == bundleID else { continue }
+            guard let content = readWholeText(url) else { continue }
+            // JSON 形式を優先(既存の header/payload 分割 + summarize)。summarize が nil なら
+            // 旧テキスト形式にフォールバック。JSON ファイルは分割が失敗しないため既存挙動は不変。
+            let summary = splitHeaderAndPayload(content)
+                .flatMap { summarize(headerLine: $0.header, payload: $0.payload) }
+                ?? summarizeTextFormat(content)
+            guard let summary, summary.bundleID == bundleID else { continue }
             return (url.path, summary.reason)
         }
         return nil
     }
 
-    private static func readHeaderAndPayload(_ url: URL) -> (header: String, payload: String)? {
-        guard let data = try? Data(contentsOf: url),
-              let content = String(data: data, encoding: .utf8),
-              let newline = content.firstIndex(of: "\n") else { return nil }
+    private static func readWholeText(_ url: URL) -> String? {
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    private static func splitHeaderAndPayload(_ content: String) -> (header: String, payload: String)? {
+        guard let newline = content.firstIndex(of: "\n") else { return nil }
         return (String(content[content.startIndex..<newline]), String(content[content.index(after: newline)...]))
     }
 }
