@@ -54,11 +54,13 @@ public enum DriverError: Error, LocalizedError {
     }
 
     /// URLError のうち、接続そのものが成立しなかったことが確実なものだけを true とする
-    /// (タイムアウト・キャンセル等、届いた可能性が残るものは false = 安全のためリトライしない)
+    /// (タイムアウト・キャンセル等、届いた可能性が残るものは false = 安全のためリトライしない)。
+    /// .networkConnectionLost は接続確立後の切断でも出る=届いて処理された可能性が残るため含めない
+    /// (Android withBridge が true 時に operation を再実行するので、含めると tap 等が二重実行されうる)
     public static func isDefiniteDeliveryFailure(_ error: Error) -> Bool {
         guard let urlError = error as? URLError else { return false }
         switch urlError.code {
-        case .cannotConnectToHost, .networkConnectionLost, .notConnectedToInternet, .cannotFindHost:
+        case .cannotConnectToHost, .notConnectedToInternet, .cannotFindHost:
             return true
         default:
             return false

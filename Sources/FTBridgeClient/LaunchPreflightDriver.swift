@@ -32,10 +32,18 @@ public final class LaunchPreflightDriver: AppDriver {
     public func install(packagePath: String) async throws { try await base.install(packagePath: packagePath) }
 
     public func launch(bundleID: String) async throws {
-        if confirmedInstalled.contains(bundleID) {
-            try await base.launch(bundleID: bundleID)
-            return
-        }
+        try ensureInstalled(bundleID: bundleID)
+        try await base.launch(bundleID: bundleID)
+    }
+
+    // activate も launch と同じ /session を叩くため、未インストール時のランナーハングは同経路
+    public func activate(bundleID: String) async throws {
+        try ensureInstalled(bundleID: bundleID)
+        try await base.activate(bundleID: bundleID)
+    }
+
+    private func ensureInstalled(bundleID: String) throws {
+        if confirmedInstalled.contains(bundleID) { return }
         guard let container = try? Shell.run(
             ["xcrun", "simctl", "get_app_container", udid, bundleID]),
             container.status == 0,
@@ -43,10 +51,7 @@ public final class LaunchPreflightDriver: AppDriver {
             throw LaunchPreflightError.appNotInstalled(bundleID: bundleID, udid: udid)
         }
         confirmedInstalled.insert(bundleID)
-        try await base.launch(bundleID: bundleID)
     }
-
-    public func activate(bundleID: String) async throws { try await base.activate(bundleID: bundleID) }
     public func openAppSwitcher() async throws { try await base.openAppSwitcher() }
     public func home() async throws { try await base.home() }
     public func snapshot() async throws -> SnapshotResponse { try await base.snapshot() }

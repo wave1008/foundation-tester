@@ -16,7 +16,7 @@ public final class BridgeClient: AppDriver {
     enum Timeout {
         static let interaction: TimeInterval = 20  // tap/swipe/type/press/drag
         // snapshot は a11y ツリー直列化で並列飽和時に伸びるため session 側に置く(誤爆回避)
-        static let session: TimeInterval = 45      // launch/activate/screenshot/status/terminate/snapshot
+        static let session: TimeInterval = 45      // launch/activate/screenshot/status/terminate/snapshot/appswitcher/home
     }
 
     /// timeoutSeconds: 既定 120 秒(launch や snapshot は数秒かかることがある)。
@@ -77,11 +77,13 @@ public final class BridgeClient: AppDriver {
     }
 
     public func openAppSwitcher() async throws {
-        let _: OKResponse = try await post("/appswitcher", body: OKResponse())
+        let _: OKResponse = try await post("/appswitcher", body: OKResponse(),
+                                           timeout: sessionTimeout)
     }
 
     public func home() async throws {
-        let _: OKResponse = try await post("/home", body: OKResponse())
+        let _: OKResponse = try await post("/home", body: OKResponse(),
+                                           timeout: sessionTimeout)
     }
 
     public func snapshot() async throws -> SnapshotResponse {
