@@ -1,7 +1,6 @@
 # foundation-tester
 
-macOS の Foundation Models framework(オンデバイス 3B モデル)を頭脳にした、
-iOS / Android アプリの E2E テストツール。
+Claude Codeを前提とした macOS専用の iOS / Android アプリの E2E テストツール。
 
 **設計思想: 「AI がテストを作り、コードが決定的に再生する」**
 
