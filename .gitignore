@@ -7,6 +7,7 @@ DerivedData/
 # xcodegen が project.yml から生成する(コミットしない)
 Runner/FTesterRunner.xcodeproj
 reports/
+results/
 bench-results/
 *.log
 .vscode/
