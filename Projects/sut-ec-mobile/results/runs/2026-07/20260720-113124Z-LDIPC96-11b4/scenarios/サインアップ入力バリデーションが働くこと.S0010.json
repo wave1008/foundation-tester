@@ -1,0 +1,37 @@
+{
+  "durationMs" : 3250,
+  "machine" : "LDIPC96",
+  "passed" : true,
+  "platform" : "android",
+  "profile" : "android",
+  "reportPath" : "Projects/sut-ec-mobile/reports/scenario-20260720-203208-812-サインアップ入力バリデーションが働くこと_S00.md",
+  "runID" : "20260720-113124Z-LDIPC96-11b4",
+  "scenarioID" : "サインアップ入力バリデーションが働くこと.S0010",
+  "scenes" : [
+    {
+      "durationMs" : 2868,
+      "passed" : true,
+      "scene" : 1,
+      "title" : "サインアップ画面を開く"
+    },
+    {
+      "durationMs" : 257,
+      "passed" : true,
+      "scene" : 2,
+      "title" : "全欄空のまま登録すると弾かれる"
+    }
+  ],
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-20T11:32:05Z",
+  "steps" : {
+    "failed" : 0,
+    "healed" : 0,
+    "passed" : 10,
+    "passedViaFallback" : 0,
+    "skipped" : 0,
+    "total" : 10
+  },
+  "timedOut" : false,
+  "title" : "必須項目が空だと登録されない",
+  "worker" : "android:Pixel 9(Android 15)-01"
+}

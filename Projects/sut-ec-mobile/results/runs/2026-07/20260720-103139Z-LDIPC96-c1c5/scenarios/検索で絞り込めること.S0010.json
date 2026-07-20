@@ -1,0 +1,43 @@
+{
+  "durationMs" : 3261,
+  "machine" : "LDIPC96",
+  "passed" : true,
+  "platform" : "android",
+  "profile" : "android",
+  "reportPath" : "Projects/sut-ec-mobile/reports/scenario-20260720-193342-461-検索で絞り込めること_S0010.md",
+  "runID" : "20260720-103139Z-LDIPC96-c1c5",
+  "scenarioID" : "検索で絞り込めること.S0010",
+  "scenes" : [
+    {
+      "durationMs" : 2331,
+      "passed" : true,
+      "scene" : 1,
+      "title" : "検索ランディングを開く"
+    },
+    {
+      "durationMs" : 446,
+      "passed" : true,
+      "scene" : 2,
+      "title" : "ファッションで絞り込む"
+    },
+    {
+      "durationMs" : 400,
+      "passed" : true,
+      "scene" : 3,
+      "title" : "家電・電化製品に切り替えると結果が変わる"
+    }
+  ],
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-20T10:33:39Z",
+  "steps" : {
+    "failed" : 0,
+    "healed" : 0,
+    "passed" : 8,
+    "passedViaFallback" : 0,
+    "skipped" : 0,
+    "total" : 8
+  },
+  "timedOut" : false,
+  "title" : "カテゴリで絞り込むと結果が切り替わる",
+  "worker" : "android:Pixel 9(Android 15)-01"
+}

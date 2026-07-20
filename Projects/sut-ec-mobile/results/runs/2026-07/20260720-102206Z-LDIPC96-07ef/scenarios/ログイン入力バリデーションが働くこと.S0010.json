@@ -1,0 +1,61 @@
+{
+  "durationMs" : 5304,
+  "failedSteps" : [
+    {
+      "description" : "tap \"#btn_login\"",
+      "detail" : "ロケータを解決できません: id=btn_login",
+      "durationMs" : 808,
+      "file" : "Projects/sut-ec-mobile/Scenarios/ログイン入力バリデーション.swift",
+      "index" : 4,
+      "line" : 16,
+      "scene" : 1,
+      "sceneTitle" : "ログイン画面を開く",
+      "section" : "action"
+    },
+    {
+      "description" : "type \"#field_password\" \"somepassword\"",
+      "detail" : "ロケータを解決できません: id=field_password",
+      "durationMs" : 749,
+      "file" : "Projects/sut-ec-mobile/Scenarios/ログイン入力バリデーション.swift",
+      "index" : 6,
+      "line" : 33,
+      "scene" : 2,
+      "sceneTitle" : "メール空・パスワードのみで失敗",
+      "section" : "action"
+    }
+  ],
+  "machine" : "LDIPC96",
+  "passed" : false,
+  "platform" : "android",
+  "profile" : "android",
+  "reportPath" : "Projects/sut-ec-mobile/reports/scenario-20260720-192339-856-ログイン入力バリデーションが働くこと_S0010.md",
+  "runID" : "20260720-102206Z-LDIPC96-07ef",
+  "scenarioID" : "ログイン入力バリデーションが働くこと.S0010",
+  "scenes" : [
+    {
+      "durationMs" : 2731,
+      "passed" : false,
+      "scene" : 1,
+      "title" : "ログイン画面を開く"
+    },
+    {
+      "durationMs" : 749,
+      "passed" : false,
+      "scene" : 2,
+      "title" : "メール空・パスワードのみで失敗"
+    }
+  ],
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-20T10:23:34Z",
+  "steps" : {
+    "failed" : 2,
+    "healed" : 0,
+    "passed" : 3,
+    "passedViaFallback" : 0,
+    "skipped" : 3,
+    "total" : 8
+  },
+  "timedOut" : false,
+  "title" : "メール空欄ではログインできずエラーが出る",
+  "worker" : "android:Pixel 9(Android 15)-01"
+}

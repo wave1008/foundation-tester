@@ -1,0 +1,37 @@
+{
+  "durationMs" : 3380,
+  "machine" : "LDIPC96",
+  "passed" : true,
+  "platform" : "android",
+  "profile" : "android",
+  "reportPath" : "Projects/sut-ec-mobile/reports/scenario-20260720-193304-931-ログイン入力バリデーションが働くこと_S0020.md",
+  "runID" : "20260720-103139Z-LDIPC96-c1c5",
+  "scenarioID" : "ログイン入力バリデーションが働くこと.S0020",
+  "scenes" : [
+    {
+      "durationMs" : 2330,
+      "passed" : true,
+      "scene" : 1,
+      "title" : "ログイン画面を開く"
+    },
+    {
+      "durationMs" : 930,
+      "passed" : true,
+      "scene" : 2,
+      "title" : "パスワード空・メールのみで失敗"
+    }
+  ],
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-20T10:33:01Z",
+  "steps" : {
+    "failed" : 0,
+    "healed" : 0,
+    "passed" : 8,
+    "passedViaFallback" : 0,
+    "skipped" : 0,
+    "total" : 8
+  },
+  "timedOut" : false,
+  "title" : "パスワード空欄ではログインできずエラーが出る",
+  "worker" : "android:Pixel 9(Android 15)-01"
+}

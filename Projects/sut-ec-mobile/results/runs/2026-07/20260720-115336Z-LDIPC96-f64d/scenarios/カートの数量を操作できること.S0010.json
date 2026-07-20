@@ -1,0 +1,43 @@
+{
+  "durationMs" : 5406,
+  "machine" : "LDIPC96",
+  "passed" : true,
+  "platform" : "ios",
+  "profile" : "all",
+  "reportPath" : "Projects/sut-ec-mobile/reports/scenario-20260720-205347-872-カートの数量を操作できること_S0010.md",
+  "runID" : "20260720-115336Z-LDIPC96-f64d",
+  "scenarioID" : "カートの数量を操作できること.S0010",
+  "scenes" : [
+    {
+      "durationMs" : 4088,
+      "passed" : true,
+      "scene" : 1,
+      "title" : "空カートに腕時計を1点追加"
+    },
+    {
+      "durationMs" : 125,
+      "passed" : true,
+      "scene" : 2,
+      "title" : "数量を増やすと合計が倍になる"
+    },
+    {
+      "durationMs" : 114,
+      "passed" : true,
+      "scene" : 3,
+      "title" : "後始末: カートを空に戻す"
+    }
+  ],
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-20T11:53:42Z",
+  "steps" : {
+    "failed" : 0,
+    "healed" : 0,
+    "passed" : 13,
+    "passedViaFallback" : 0,
+    "skipped" : 0,
+    "total" : 13
+  },
+  "timedOut" : false,
+  "title" : "カートで数量を増やすと合計が再計算される",
+  "worker" : "ios:iPhone 17 Pro(iOS 27.0)-03"
+}

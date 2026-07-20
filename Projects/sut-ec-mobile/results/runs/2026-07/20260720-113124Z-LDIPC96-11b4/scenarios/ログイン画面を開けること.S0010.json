@@ -1,0 +1,31 @@
+{
+  "durationMs" : 2422,
+  "machine" : "LDIPC96",
+  "passed" : true,
+  "platform" : "android",
+  "profile" : "android",
+  "reportPath" : "Projects/sut-ec-mobile/reports/scenario-20260720-203237-826-ログイン画面を開けること_S0010.md",
+  "runID" : "20260720-113124Z-LDIPC96-11b4",
+  "scenarioID" : "ログイン画面を開けること.S0010",
+  "scenes" : [
+    {
+      "durationMs" : 2312,
+      "passed" : true,
+      "scene" : 1,
+      "title" : "アカウントからログイン画面を開く"
+    }
+  ],
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-20T11:32:35Z",
+  "steps" : {
+    "failed" : 0,
+    "healed" : 0,
+    "passed" : 8,
+    "passedViaFallback" : 0,
+    "skipped" : 0,
+    "total" : 8
+  },
+  "timedOut" : false,
+  "title" : "アカウントからログイン画面を開き入力導線が表示される",
+  "worker" : "android:Pixel 9(Android 15)-01"
+}

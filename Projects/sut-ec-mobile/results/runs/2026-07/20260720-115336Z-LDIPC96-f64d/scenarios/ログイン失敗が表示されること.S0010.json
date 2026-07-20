@@ -1,0 +1,50 @@
+{
+  "durationMs" : 24432,
+  "failedSteps" : [
+    {
+      "description" : "type \"#field_email\" \"nouser@example.com\"",
+      "detail" : "実行エラー: ドライバがエラーを返しました (409): フォーカスされた入力欄がありません(先に対象を tap してください)",
+      "durationMs" : 1004,
+      "file" : "Projects/sut-ec-mobile/Scenarios/ログイン失敗.swift",
+      "index" : 8,
+      "line" : 36,
+      "scene" : 2,
+      "sceneTitle" : "誤った資格情報でエラーが出る",
+      "section" : "action"
+    }
+  ],
+  "machine" : "LDIPC96",
+  "passed" : false,
+  "platform" : "ios",
+  "profile" : "all",
+  "reportPath" : "Projects/sut-ec-mobile/reports/scenario-20260720-205422-245-ログイン失敗が表示されること_S0010.md",
+  "runID" : "20260720-115336Z-LDIPC96-f64d",
+  "scenarioID" : "ログイン失敗が表示されること.S0010",
+  "scenes" : [
+    {
+      "durationMs" : 3120,
+      "passed" : true,
+      "scene" : 1,
+      "title" : "ログイン画面を開く"
+    },
+    {
+      "durationMs" : 1812,
+      "passed" : false,
+      "scene" : 2,
+      "title" : "誤った資格情報でエラーが出る"
+    }
+  ],
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-20T11:53:57Z",
+  "steps" : {
+    "failed" : 1,
+    "healed" : 0,
+    "passed" : 7,
+    "passedViaFallback" : 0,
+    "skipped" : 4,
+    "total" : 12
+  },
+  "timedOut" : false,
+  "title" : "誤った資格情報ではログインできずエラーが出る",
+  "worker" : "ios:iPhone 17 Pro(iOS 27.0)-01"
+}

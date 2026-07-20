@@ -1,0 +1,43 @@
+{
+  "durationMs" : 3848,
+  "machine" : "LDIPC96",
+  "passed" : true,
+  "platform" : "android",
+  "profile" : "android",
+  "reportPath" : "Projects/sut-ec-mobile/reports/scenario-20260720-192429-042-商品詳細が表示されること_S0010.md",
+  "runID" : "20260720-102206Z-LDIPC96-07ef",
+  "scenarioID" : "商品詳細が表示されること.S0010",
+  "scenes" : [
+    {
+      "durationMs" : 3041,
+      "passed" : true,
+      "scene" : 1,
+      "title" : "ワイヤレスイヤホン Pro の詳細を開く"
+    },
+    {
+      "durationMs" : 14,
+      "passed" : true,
+      "scene" : 2,
+      "title" : "割引価格と割引率(切り捨て)が表示される"
+    },
+    {
+      "durationMs" : 700,
+      "passed" : true,
+      "scene" : 3,
+      "title" : "別商品でも割引率は切り捨て表示される(TC-32)"
+    }
+  ],
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-20T10:24:25Z",
+  "steps" : {
+    "failed" : 0,
+    "healed" : 0,
+    "passed" : 18,
+    "passedViaFallback" : 0,
+    "skipped" : 0,
+    "total" : 18
+  },
+  "timedOut" : false,
+  "title" : "商品詳細に情報と割引が表示される",
+  "worker" : "android:Pixel 9(Android 15)-01"
+}

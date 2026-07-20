@@ -1,0 +1,54 @@
+{
+  "durationMs" : 14763,
+  "failedSteps" : [
+    {
+      "description" : "launch com.sutec.mobile",
+      "detail" : "ドライバがエラーを返しました (500): アプリを起動できませんでした: com.sutec.mobile(インストール済みか確認してください)",
+      "durationMs" : 13571,
+      "file" : "Projects/sut-ec-mobile/Scenarios/検索と絞り込み.swift",
+      "index" : 1,
+      "line" : 20,
+      "scene" : 1,
+      "sceneTitle" : "検索ランディングを開く",
+      "section" : "condition"
+    }
+  ],
+  "machine" : "LDIPC96",
+  "passed" : false,
+  "platform" : "ios",
+  "profile" : "ios-xcuitest",
+  "reportPath" : "Projects/sut-ec-mobile/reports/scenario-20260720-194103-413-検索で絞り込めること_S0010.md",
+  "runID" : "20260720-104047Z-LDIPC96-5982",
+  "scenarioID" : "検索で絞り込めること.S0010",
+  "scenes" : [
+    {
+      "durationMs" : 13571,
+      "passed" : false,
+      "scene" : 1,
+      "title" : "検索ランディングを開く"
+    },
+    {
+      "passed" : true,
+      "scene" : 2,
+      "title" : "ファッションで絞り込む"
+    },
+    {
+      "passed" : true,
+      "scene" : 3,
+      "title" : "家電・電化製品に切り替えると結果が変わる"
+    }
+  ],
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-20T10:40:48Z",
+  "steps" : {
+    "failed" : 1,
+    "healed" : 0,
+    "passed" : 0,
+    "passedViaFallback" : 0,
+    "skipped" : 5,
+    "total" : 6
+  },
+  "timedOut" : false,
+  "title" : "カテゴリで絞り込むと結果が切り替わる",
+  "worker" : "ios:メイン機"
+}

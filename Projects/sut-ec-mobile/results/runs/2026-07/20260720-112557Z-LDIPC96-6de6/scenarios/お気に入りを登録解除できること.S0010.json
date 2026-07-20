@@ -1,0 +1,49 @@
+{
+  "durationMs" : 5363,
+  "machine" : "LDIPC96",
+  "passed" : true,
+  "platform" : "android",
+  "profile" : "android",
+  "reportPath" : "Projects/sut-ec-mobile/reports/scenario-20260720-202604-230-お気に入りを登録解除できること_S0010.md",
+  "runID" : "20260720-112557Z-LDIPC96-6de6",
+  "scenarioID" : "お気に入りを登録解除できること.S0010",
+  "scenes" : [
+    {
+      "durationMs" : 3126,
+      "passed" : true,
+      "scene" : 1,
+      "title" : "対象商品を未登録状態にする(基準化)"
+    },
+    {
+      "durationMs" : 267,
+      "passed" : true,
+      "scene" : 2,
+      "title" : "お気に入りに登録する"
+    },
+    {
+      "durationMs" : 668,
+      "passed" : true,
+      "scene" : 3,
+      "title" : "お気に入りタブに表示される"
+    },
+    {
+      "durationMs" : 1013,
+      "passed" : true,
+      "scene" : 4,
+      "title" : "後始末: 詳細で♡を外して空に戻す"
+    }
+  ],
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-20T11:25:58Z",
+  "steps" : {
+    "failed" : 0,
+    "healed" : 0,
+    "passed" : 12,
+    "passedViaFallback" : 0,
+    "skipped" : 0,
+    "total" : 12
+  },
+  "timedOut" : false,
+  "title" : "商品をお気に入りに登録してタブで確認できる",
+  "worker" : "android:Pixel 9(Android 15)-01"
+}

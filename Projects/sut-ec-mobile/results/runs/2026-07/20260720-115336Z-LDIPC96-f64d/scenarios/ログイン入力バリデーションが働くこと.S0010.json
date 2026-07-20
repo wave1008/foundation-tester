@@ -1,0 +1,50 @@
+{
+  "durationMs" : 12984,
+  "failedSteps" : [
+    {
+      "description" : "type \"#field_password\" \"somepassword\"",
+      "detail" : "実行エラー: ドライバがエラーを返しました (409): フォーカスされた入力欄がありません(先に対象を tap してください)",
+      "durationMs" : 1032,
+      "file" : "Projects/sut-ec-mobile/Scenarios/ログイン入力バリデーション.swift",
+      "index" : 7,
+      "line" : 36,
+      "scene" : 2,
+      "sceneTitle" : "メール空・パスワードのみで失敗",
+      "section" : "action"
+    }
+  ],
+  "machine" : "LDIPC96",
+  "passed" : false,
+  "platform" : "ios",
+  "profile" : "all",
+  "reportPath" : "Projects/sut-ec-mobile/reports/scenario-20260720-205403-563-ログイン入力バリデーションが働くこと_S0010.md",
+  "runID" : "20260720-115336Z-LDIPC96-f64d",
+  "scenarioID" : "ログイン入力バリデーションが働くこと.S0010",
+  "scenes" : [
+    {
+      "durationMs" : 3128,
+      "passed" : true,
+      "scene" : 1,
+      "title" : "ログイン画面を開く"
+    },
+    {
+      "durationMs" : 1944,
+      "passed" : false,
+      "scene" : 2,
+      "title" : "メール空・パスワードのみで失敗"
+    }
+  ],
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-20T11:53:50Z",
+  "steps" : {
+    "failed" : 1,
+    "healed" : 0,
+    "passed" : 6,
+    "passedViaFallback" : 0,
+    "skipped" : 2,
+    "total" : 9
+  },
+  "timedOut" : false,
+  "title" : "メール空欄ではログインできずエラーが出る",
+  "worker" : "ios:iPhone 17 Pro(iOS 27.0)-04"
+}

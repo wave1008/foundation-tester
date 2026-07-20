@@ -1,0 +1,19 @@
+{
+  "degradedWorkers" : [
+    "メイン機(ios:8131): ワーカー連続失敗(3回)のため離脱しました"
+  ],
+  "failed" : 4,
+  "finishedAt" : "2026-07-20T10:39:46Z",
+  "freezeRetries" : [
+    "お気に入りを登録解除できること.S0010: ワーカー連続失敗(3回)(メイン機(ios:8131) から振り直し 1/1)"
+  ],
+  "machine" : "LDIPC96",
+  "passed" : 0,
+  "profile" : "ios-xcuitest",
+  "project" : "sut-ec-mobile",
+  "runID" : "20260720-103814Z-LDIPC96-6d45",
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-20T10:38:14Z",
+  "total" : 4,
+  "trigger" : "cli"
+}

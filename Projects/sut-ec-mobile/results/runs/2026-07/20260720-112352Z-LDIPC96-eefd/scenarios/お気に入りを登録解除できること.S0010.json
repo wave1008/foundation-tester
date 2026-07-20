@@ -1,0 +1,62 @@
+{
+  "durationMs" : 17652,
+  "failedSteps" : [
+    {
+      "description" : "exist \"お気に入りは空です\"",
+      "detail" : "要素が見つかりません: label=お気に入りは空です(timeout 5s)",
+      "durationMs" : 6066,
+      "file" : "Projects/sut-ec-mobile/Scenarios/お気に入り.swift",
+      "index" : 12,
+      "line" : 53,
+      "scene" : 4,
+      "sceneTitle" : "後始末: お気に入りから削除して空に戻す",
+      "section" : "expectation"
+    }
+  ],
+  "machine" : "LDIPC96",
+  "passed" : false,
+  "platform" : "ios",
+  "profile" : "_ios-smoke",
+  "reportPath" : "Projects/sut-ec-mobile/reports/scenario-20260720-202412-067-お気に入りを登録解除できること_S0010.md",
+  "runID" : "20260720-112352Z-LDIPC96-eefd",
+  "scenarioID" : "お気に入りを登録解除できること.S0010",
+  "scenes" : [
+    {
+      "durationMs" : 2857,
+      "passed" : true,
+      "scene" : 1,
+      "title" : "対象商品を未登録状態にする(基準化)"
+    },
+    {
+      "durationMs" : 146,
+      "passed" : true,
+      "scene" : 2,
+      "title" : "お気に入りに登録する"
+    },
+    {
+      "durationMs" : 251,
+      "passed" : true,
+      "scene" : 3,
+      "title" : "お気に入りタブに表示される"
+    },
+    {
+      "durationMs" : 6209,
+      "passed" : false,
+      "scene" : 4,
+      "title" : "後始末: お気に入りから削除して空に戻す"
+    }
+  ],
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-20T11:23:54Z",
+  "steps" : {
+    "failed" : 1,
+    "healed" : 0,
+    "passed" : 11,
+    "passedViaFallback" : 0,
+    "skipped" : 0,
+    "total" : 12
+  },
+  "timedOut" : false,
+  "title" : "商品をお気に入りに登録してタブで確認できる",
+  "worker" : "ios:メイン機"
+}

@@ -1,0 +1,30 @@
+{
+  "durationMs" : 0,
+  "failedSteps" : [
+    {
+      "description" : "実行できるワーカーがありません",
+      "index" : 0
+    }
+  ],
+  "machine" : "LDIPC96",
+  "passed" : false,
+  "platform" : "ios",
+  "profile" : "_ios-smoke",
+  "runID" : "20260720-110241Z-LDIPC96-2299",
+  "scenarioID" : "詳細から戻れること.S0010",
+  "scenes" : [
+
+  ],
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-20T11:03:14Z",
+  "steps" : {
+    "failed" : 0,
+    "healed" : 0,
+    "passed" : 0,
+    "passedViaFallback" : 0,
+    "skipped" : 1,
+    "total" : 1
+  },
+  "timedOut" : false,
+  "title" : "商品詳細から戻るでホームへ復帰する"
+}

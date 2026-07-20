@@ -1,0 +1,37 @@
+{
+  "durationMs" : 3326,
+  "machine" : "LDIPC96",
+  "passed" : true,
+  "platform" : "ios",
+  "profile" : "_ios-smoke",
+  "reportPath" : "Projects/sut-ec-mobile/reports/scenario-20260720-202105-178-サインアップ入力バリデーションが働くこと_S00.md",
+  "runID" : "20260720-112006Z-LDIPC96-0d24",
+  "scenarioID" : "サインアップ入力バリデーションが働くこと.S0010",
+  "scenes" : [
+    {
+      "durationMs" : 2973,
+      "passed" : true,
+      "scene" : 1,
+      "title" : "サインアップ画面を開く"
+    },
+    {
+      "durationMs" : 120,
+      "passed" : true,
+      "scene" : 2,
+      "title" : "全欄空のまま登録すると弾かれる"
+    }
+  ],
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-20T11:21:01Z",
+  "steps" : {
+    "failed" : 0,
+    "healed" : 0,
+    "passed" : 10,
+    "passedViaFallback" : 0,
+    "skipped" : 0,
+    "total" : 10
+  },
+  "timedOut" : false,
+  "title" : "必須項目が空だと登録されない",
+  "worker" : "ios:メイン機"
+}

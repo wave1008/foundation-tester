@@ -1,0 +1,13 @@
+{
+  "failed" : 0,
+  "finishedAt" : "2026-07-20T10:37:20Z",
+  "machine" : "LDIPC96",
+  "passed" : 5,
+  "profile" : "android",
+  "project" : "sut-ec-mobile",
+  "runID" : "20260720-103659Z-LDIPC96-d48f",
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-20T10:36:59Z",
+  "total" : 5,
+  "trigger" : "cli"
+}

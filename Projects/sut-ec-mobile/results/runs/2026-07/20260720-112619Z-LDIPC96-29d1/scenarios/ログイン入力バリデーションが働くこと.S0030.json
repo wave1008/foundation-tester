@@ -1,0 +1,37 @@
+{
+  "durationMs" : 9670,
+  "machine" : "LDIPC96",
+  "passed" : true,
+  "platform" : "ios",
+  "profile" : "ios-xcuitest",
+  "reportPath" : "Projects/sut-ec-mobile/reports/scenario-20260720-202648-842-ログイン入力バリデーションが働くこと_S0030.md",
+  "runID" : "20260720-112619Z-LDIPC96-29d1",
+  "scenarioID" : "ログイン入力バリデーションが働くこと.S0030",
+  "scenes" : [
+    {
+      "durationMs" : 5519,
+      "passed" : true,
+      "scene" : 1,
+      "title" : "ログイン画面を開く"
+    },
+    {
+      "durationMs" : 3926,
+      "passed" : true,
+      "scene" : 2,
+      "title" : "メール/パスワードに空白のみで失敗"
+    }
+  ],
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-20T11:26:39Z",
+  "steps" : {
+    "failed" : 0,
+    "healed" : 0,
+    "passed" : 11,
+    "passedViaFallback" : 0,
+    "skipped" : 0,
+    "total" : 11
+  },
+  "timedOut" : false,
+  "title" : "空白のみの入力ではログインできずエラーが出る",
+  "worker" : "ios:メイン機"
+}

@@ -1,0 +1,13 @@
+{
+  "failed" : 1,
+  "finishedAt" : "2026-07-20T11:31:00Z",
+  "machine" : "LDIPC96",
+  "passed" : 12,
+  "profile" : "_ios-smoke",
+  "project" : "sut-ec-mobile",
+  "runID" : "20260720-112950Z-LDIPC96-4f9b",
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-20T11:29:50Z",
+  "total" : 13,
+  "trigger" : "cli"
+}

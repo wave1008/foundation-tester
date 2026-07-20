@@ -1,0 +1,44 @@
+{
+  "durationMs" : 3814,
+  "failedSteps" : [
+    {
+      "description" : "tap \"#btn_login\"",
+      "detail" : "ロケータを解決できません: id=btn_login",
+      "durationMs" : 803,
+      "file" : "Projects/sut-ec-mobile/Scenarios/ログイン画面.swift",
+      "index" : 4,
+      "line" : 24,
+      "scene" : 1,
+      "sceneTitle" : "アカウントからログイン画面を開く",
+      "section" : "action"
+    }
+  ],
+  "machine" : "LDIPC96",
+  "passed" : false,
+  "platform" : "android",
+  "profile" : "android",
+  "reportPath" : "Projects/sut-ec-mobile/reports/scenario-20260720-192418-248-ログイン画面を開けること_S0010.md",
+  "runID" : "20260720-102206Z-LDIPC96-07ef",
+  "scenarioID" : "ログイン画面を開けること.S0010",
+  "scenes" : [
+    {
+      "durationMs" : 2739,
+      "passed" : false,
+      "scene" : 1,
+      "title" : "アカウントからログイン画面を開く"
+    }
+  ],
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-20T10:24:14Z",
+  "steps" : {
+    "failed" : 1,
+    "healed" : 0,
+    "passed" : 3,
+    "passedViaFallback" : 0,
+    "skipped" : 4,
+    "total" : 8
+  },
+  "timedOut" : false,
+  "title" : "アカウントからログイン画面を開き入力導線が表示される",
+  "worker" : "android:Pixel 9(Android 15)-01"
+}

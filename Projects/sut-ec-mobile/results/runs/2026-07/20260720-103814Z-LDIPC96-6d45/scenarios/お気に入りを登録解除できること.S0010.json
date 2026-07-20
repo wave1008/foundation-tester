@@ -1,0 +1,59 @@
+{
+  "durationMs" : 14867,
+  "failedSteps" : [
+    {
+      "description" : "launch com.sutec.mobile",
+      "detail" : "ドライバがエラーを返しました (500): アプリを起動できませんでした: com.sutec.mobile(インストール済みか確認してください)",
+      "durationMs" : 13696,
+      "file" : "Projects/sut-ec-mobile/Scenarios/お気に入り.swift",
+      "index" : 1,
+      "line" : 18,
+      "scene" : 1,
+      "sceneTitle" : "対象商品を未登録状態にする(基準化)",
+      "section" : "condition"
+    }
+  ],
+  "machine" : "LDIPC96",
+  "passed" : false,
+  "platform" : "ios",
+  "profile" : "ios-xcuitest",
+  "reportPath" : "Projects/sut-ec-mobile/reports/scenario-20260720-193946-271-お気に入りを登録解除できること_S0010.md",
+  "runID" : "20260720-103814Z-LDIPC96-6d45",
+  "scenarioID" : "お気に入りを登録解除できること.S0010",
+  "scenes" : [
+    {
+      "durationMs" : 13696,
+      "passed" : false,
+      "scene" : 1,
+      "title" : "対象商品を未登録状態にする(基準化)"
+    },
+    {
+      "passed" : true,
+      "scene" : 2,
+      "title" : "お気に入りに登録する"
+    },
+    {
+      "passed" : true,
+      "scene" : 3,
+      "title" : "お気に入りタブに表示される"
+    },
+    {
+      "passed" : true,
+      "scene" : 4,
+      "title" : "後始末: お気に入りから削除して空に戻す"
+    }
+  ],
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-20T10:39:31Z",
+  "steps" : {
+    "failed" : 1,
+    "healed" : 0,
+    "passed" : 1,
+    "passedViaFallback" : 0,
+    "skipped" : 6,
+    "total" : 8
+  },
+  "timedOut" : false,
+  "title" : "商品をお気に入りに登録してタブで確認できる",
+  "worker" : "ios:メイン機"
+}

@@ -1,0 +1,78 @@
+{
+  "durationMs" : 23450,
+  "failedSteps" : [
+    {
+      "description" : "exist \"ログイン / 登録\"",
+      "detail" : "要素が見つかりません: label=ログイン / 登録(timeout 5s)",
+      "durationMs" : 5780,
+      "file" : "Projects/sut-ec-mobile/Scenarios/言語切替.swift",
+      "index" : 6,
+      "line" : 27,
+      "scene" : 1,
+      "sceneTitle" : "アカウントを開き日本語を基準化",
+      "section" : "expectation"
+    },
+    {
+      "description" : "exist \"Log in / Sign up\"",
+      "detail" : "要素が見つかりません: label=Log in / Sign up(timeout 5s)",
+      "durationMs" : 5805,
+      "file" : "Projects/sut-ec-mobile/Scenarios/言語切替.swift",
+      "index" : 9,
+      "line" : 35,
+      "scene" : 2,
+      "sceneTitle" : "Englishに切り替える",
+      "section" : "expectation"
+    },
+    {
+      "description" : "exist \"ログイン / 登録\"",
+      "detail" : "要素が見つかりません: label=ログイン / 登録(timeout 5s)",
+      "durationMs" : 5775,
+      "file" : "Projects/sut-ec-mobile/Scenarios/言語切替.swift",
+      "index" : 12,
+      "line" : 43,
+      "scene" : 3,
+      "sceneTitle" : "後始末: 日本語に戻す",
+      "section" : "expectation"
+    }
+  ],
+  "machine" : "LDIPC96",
+  "passed" : false,
+  "platform" : "android",
+  "profile" : "android",
+  "reportPath" : "Projects/sut-ec-mobile/reports/scenario-20260720-192501-515-言語を切り替えられること_S0010.md",
+  "runID" : "20260720-102206Z-LDIPC96-07ef",
+  "scenarioID" : "言語を切り替えられること.S0010",
+  "scenes" : [
+    {
+      "durationMs" : 8098,
+      "passed" : false,
+      "scene" : 1,
+      "title" : "アカウントを開き日本語を基準化"
+    },
+    {
+      "durationMs" : 6176,
+      "passed" : false,
+      "scene" : 2,
+      "title" : "Englishに切り替える"
+    },
+    {
+      "durationMs" : 6166,
+      "passed" : false,
+      "scene" : 3,
+      "title" : "後始末: 日本語に戻す"
+    }
+  ],
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-20T10:24:38Z",
+  "steps" : {
+    "failed" : 3,
+    "healed" : 0,
+    "passed" : 9,
+    "passedViaFallback" : 0,
+    "skipped" : 0,
+    "total" : 12
+  },
+  "timedOut" : false,
+  "title" : "日本語とEnglishを切り替えられる",
+  "worker" : "android:Pixel 9(Android 15)-01"
+}

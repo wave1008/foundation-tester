@@ -1,0 +1,56 @@
+{
+  "durationMs" : 11271,
+  "failedSteps" : [
+    {
+      "description" : "exist \"カートは空です\"",
+      "detail" : "要素が見つかりません: label=カートは空です(timeout 5s)",
+      "durationMs" : 5021,
+      "file" : "Projects/sut-ec-mobile/Scenarios/カートの数量操作.swift",
+      "index" : 10,
+      "line" : 76,
+      "scene" : 2,
+      "sceneTitle" : "数量1で − を押すと明細が削除される(TC-42)",
+      "section" : "expectation"
+    }
+  ],
+  "machine" : "LDIPC96",
+  "passed" : false,
+  "platform" : "ios",
+  "profile" : "all",
+  "reportPath" : "Projects/sut-ec-mobile/reports/scenario-20260720-165445-085-カートの数量を操作できること_S0020.md",
+  "runID" : "20260720-075431Z-LDIPC96-70ee",
+  "scenarioID" : "カートの数量を操作できること.S0020",
+  "scenes" : [
+    {
+      "durationMs" : 3784,
+      "passed" : true,
+      "scene" : 1,
+      "title" : "空カートに腕時計を1点追加"
+    },
+    {
+      "durationMs" : 5172,
+      "passed" : false,
+      "scene" : 2,
+      "title" : "数量1で − を押すと明細が削除される(TC-42)"
+    },
+    {
+      "durationMs" : 109,
+      "passed" : true,
+      "scene" : 3,
+      "title" : "後始末: 残っていればゴミ箱で削除"
+    }
+  ],
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-20T07:54:33Z",
+  "steps" : {
+    "failed" : 1,
+    "healed" : 0,
+    "passed" : 12,
+    "passedViaFallback" : 0,
+    "skipped" : 0,
+    "total" : 13
+  },
+  "timedOut" : false,
+  "title" : "数量1から減らすとカートから削除される",
+  "worker" : "ios:iPhone 17 Pro(iOS 27.0)-02"
+}

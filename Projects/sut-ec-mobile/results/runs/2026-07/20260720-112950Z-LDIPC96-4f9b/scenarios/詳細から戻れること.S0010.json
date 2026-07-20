@@ -1,0 +1,37 @@
+{
+  "durationMs" : 3154,
+  "machine" : "LDIPC96",
+  "passed" : true,
+  "platform" : "ios",
+  "profile" : "_ios-smoke",
+  "reportPath" : "Projects/sut-ec-mobile/reports/scenario-20260720-203018-400-詳細から戻れること_S0010.md",
+  "runID" : "20260720-112950Z-LDIPC96-4f9b",
+  "scenarioID" : "詳細から戻れること.S0010",
+  "scenes" : [
+    {
+      "durationMs" : 2953,
+      "passed" : true,
+      "scene" : 1,
+      "title" : "ホームから商品詳細へ"
+    },
+    {
+      "durationMs" : 153,
+      "passed" : true,
+      "scene" : 2,
+      "title" : "戻るでホームへ復帰"
+    }
+  ],
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-20T11:30:15Z",
+  "steps" : {
+    "failed" : 0,
+    "healed" : 0,
+    "passed" : 8,
+    "passedViaFallback" : 0,
+    "skipped" : 0,
+    "total" : 8
+  },
+  "timedOut" : false,
+  "title" : "商品詳細から戻るでホームへ復帰する",
+  "worker" : "ios:メイン機"
+}

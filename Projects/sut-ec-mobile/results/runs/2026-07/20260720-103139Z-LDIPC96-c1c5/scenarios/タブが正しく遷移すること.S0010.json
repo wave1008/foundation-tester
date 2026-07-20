@@ -1,0 +1,73 @@
+{
+  "durationMs" : 7686,
+  "machine" : "LDIPC96",
+  "passed" : true,
+  "platform" : "android",
+  "profile" : "android",
+  "reportPath" : "Projects/sut-ec-mobile/reports/scenario-20260720-193246-949-タブが正しく遷移すること_S0010.md",
+  "runID" : "20260720-103139Z-LDIPC96-c1c5",
+  "scenarioID" : "タブが正しく遷移すること.S0010",
+  "scenes" : [
+    {
+      "durationMs" : 1886,
+      "passed" : true,
+      "scene" : 1,
+      "title" : "基準: カートを空にする"
+    },
+    {
+      "durationMs" : 568,
+      "passed" : true,
+      "scene" : 2,
+      "title" : "ホームタブ → ホーム"
+    },
+    {
+      "durationMs" : 398,
+      "passed" : true,
+      "scene" : 3,
+      "title" : "検索タブ → 検索"
+    },
+    {
+      "durationMs" : 345,
+      "passed" : true,
+      "scene" : 4,
+      "title" : "お気に入りタブ → お気に入り"
+    },
+    {
+      "durationMs" : 365,
+      "passed" : true,
+      "scene" : 5,
+      "title" : "アカウントタブ → アカウント"
+    },
+    {
+      "durationMs" : 369,
+      "passed" : true,
+      "scene" : 6,
+      "title" : "カートタブ → カート(空)"
+    },
+    {
+      "durationMs" : 1869,
+      "passed" : true,
+      "scene" : 7,
+      "title" : "汚染トリガ後もホームタブが正常(回帰)"
+    },
+    {
+      "durationMs" : 728,
+      "passed" : true,
+      "scene" : 8,
+      "title" : "後始末: カートを空に戻す"
+    }
+  ],
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-20T10:32:39Z",
+  "steps" : {
+    "failed" : 0,
+    "healed" : 0,
+    "passed" : 25,
+    "passedViaFallback" : 0,
+    "skipped" : 0,
+    "total" : 25
+  },
+  "timedOut" : false,
+  "title" : "下部タブが各セクションへ正しく着地する",
+  "worker" : "android:Pixel 9(Android 15)-01"
+}

@@ -1,0 +1,37 @@
+{
+  "durationMs" : 4432,
+  "machine" : "LDIPC96",
+  "passed" : true,
+  "platform" : "android",
+  "profile" : "android",
+  "reportPath" : "Projects/sut-ec-mobile/reports/scenario-20260720-193720-656-ログイン失敗が表示されること_S0010.md",
+  "runID" : "20260720-103659Z-LDIPC96-d48f",
+  "scenarioID" : "ログイン失敗が表示されること.S0010",
+  "scenes" : [
+    {
+      "durationMs" : 2285,
+      "passed" : true,
+      "scene" : 1,
+      "title" : "ログイン画面を開く"
+    },
+    {
+      "durationMs" : 2028,
+      "passed" : true,
+      "scene" : 2,
+      "title" : "誤った資格情報でエラーが出る"
+    }
+  ],
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-20T10:37:16Z",
+  "steps" : {
+    "failed" : 0,
+    "healed" : 0,
+    "passed" : 12,
+    "passedViaFallback" : 0,
+    "skipped" : 0,
+    "total" : 12
+  },
+  "timedOut" : false,
+  "title" : "誤った資格情報ではログインできずエラーが出る",
+  "worker" : "android:Pixel 9(Android 15)-01"
+}
