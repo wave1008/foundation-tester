@@ -26,6 +26,11 @@ final class FTInAppBridge {
     // nodes は弱参照テーブル(画面遷移後に旧ビュー階層を snapshot 更新まで抱え込まないため)。
     private var frames: [Int: CGRect] = [:]
     private let nodes = NSMapTable<NSNumber, AnyObject>(keyOptions: .strongMemory, valueOptions: .weakMemory)
+    // compose-resources = Compose Multiplatform のリソースバンドル(2026-07-20 実バンドルで検証済みマーカー)。
+    // type ルーティング判定(StepExecutor)に使う
+    private lazy var uiFramework: String = FileManager.default.fileExists(
+        atPath: (Bundle.main.bundlePath as NSString).appendingPathComponent("compose-resources")
+    ) ? "compose" : "uikit"
 
     func start() {
         let port = UInt16(ProcessInfo.processInfo.environment["FT_PORT"] ?? "")
@@ -93,7 +98,8 @@ final class FTInAppBridge {
                 osVersion: "\(device.systemName) \(device.systemVersion)",
                 sessionBundleID: Bundle.main.bundleIdentifier,
                 engine: "inapp",
-                applicationState: state))
+                applicationState: state,
+                uiFramework: self.uiFramework))
         }
     }
 
@@ -132,7 +138,8 @@ final class FTInAppBridge {
             // ref 指定で要素はあるが accessibilityActivate が false(デフォルトアクション不発)のときも
             // ここに落ちる。FTSynthTap は成否を返さないため、要素が実際に反応したかは検知できず
             // 無言 no-op になり得る(throw は追加しない: 誤検知で正常系を壊す方が害が大きい)。
-            // 反応しない場合は accessibilityIdentifier(testTag)を付けるか engine=hybrid を検討。
+            // 反応しない場合は accessibilityIdentifier(testTag)を付けるか engine=xcuitest を検討
+            // (hybrid の XCUITest フォールバックは springboard 参照でアプリ要素には効かない)。
             FTSynthTap(window, p)
         }
         return .json(OKResponse())
@@ -162,10 +169,14 @@ final class FTInAppBridge {
         var inserted = false
         try performWithSettle { _ in inserted = FTInsertTextIntoFirstResponder(req.text) }
         guard inserted else {
+            // hybrid の XCUITest フォールバック(SystemUIDriver)は springboard 参照のシステム UI 専用で
+            // アプリの入力欄を解決できない(2026-07-20 実証)。ここで hybrid を案内しないこと。
             throw InAppError(409, "フォーカスされた入力欄がありません。対象を先に tap してください。"
-                + "入力欄が AX ツリーに現れない(SwiftUI/Compose で accessibilityIdentifier 未設定)場合は"
-                + "安定セレクタで指せません。accessibilityIdentifier(testTag)を付けるか、"
-                + "実行プロファイルを engine=hybrid にして XCUITest フォールバックで引いてください")
+                + "tap 済みでも発生する場合、入力欄が UIKit 非依存(Compose Multiplatform/Flutter 等)の"
+                + "アプリは inapp では first responder を張れず type できません。"
+                + "engine=xcuitest の実行プロファイル(iosInappEngine: false)で実行してください。"
+                + "入力欄が AX ツリーに現れない(accessibilityIdentifier/testTag 未設定)場合は"
+                + "アプリ側で testTag を付けてください")
         }
         return .json(OKResponse())
     }

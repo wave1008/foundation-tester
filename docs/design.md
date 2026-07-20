@@ -456,6 +456,21 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
   `"通知を許可"` に当たる)。区別したい要素が同一画面に共存するときは `#id` か `.Type=ラベル` で
   型を絞る。id マッチは常に完全一致。**hybrid の tap アクションでは primary が substring 止まりなら
   fallback を照会し、fallback の exact を優先**(§performance-tuning「フォールバック検証の偽陽性」)
+- **hybrid の type は Compose 自動判定で XCUITest 実行に切り替わる**(2026-07-20)。inapp の type は
+  UIKit の first responder への挿入なので、Compose Multiplatform 等 UIKit 非依存アプリでは 409 になる
+  (tap/exist は HID 合成で通る)。対策の3点セット:
+  - inapp dylib がバンドル直下の `compose-resources/` 実在で Compose を自己判定し `/status` の
+    `uiFramework`("compose"/"uikit")で申告(InAppBridge。マーカーは実バンドル検証済み)
+  - ScenarioRunnerMain(hybrid)が probe の uiFramework=="compose" なら `preferTypeDriver=true` とし、
+    StepExecutor の type は inapp を試さず最初から `typeDriver`(`AppAttachDriver`)で実行。
+    tap/exist は inapp のまま高速。probe 不達時は false のまま=下の安全網頼み
+  - 安全網: inapp type が 409 なら同じ typeDriver でリアクティブ切替(`passedViaFallback` 記録)
+  `AppAttachDriver` は XCUITest ブリッジへ `/session {activate:true}`(実行中アプリを再起動せず
+  状態保持で attach)→ snapshot → type(ref は typeDriver 側 snapshot で取り直す。ref 名前空間は
+  ブリッジごとに独立)。**springboard 参照の SystemUIDriver(fallbackDriver)はアプリ要素を一切
+  見られないため type の受け皿にできない**(実測: snapshot は SBSwitcherWindow 等8要素のみ)。
+  用途を混ぜないこと。engine=inapp 単独(xcuiPort 無し)ではこの経路は無く、409 メッセージが
+  xcuitest プロファイルへ誘導する
 - **短いラベルは別項目の要約(summary)にも contains 一致し「曖昧解決不能」で throw する**:
   例 `"ディスプレイ"` は行 `"ディスプレイとタップ"` と、無関係な `"ユーザー補助"` の要約
   `"ディスプレイ、操作、音声"` の両方に当たる。実 UI の完全ラベルに寄せる(`"ディスプレイとタップ"`)か

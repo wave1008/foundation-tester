@@ -133,15 +133,25 @@ public final class StepExecutor {
     /// 解決を試す(アプリ上に載ったシステム UI=別プロセスのダイアログ等を XCUITest で拾う)。
     /// 解決に使った driver でそのまま act するので ref 名前空間の混同はない。
     public let fallbackDriver: AppDriver?
+    /// hybrid 用: type アクションを XCUITest(アプリ attach)で実行する代替ドライバ。inapp が
+    /// UIKit 非依存アプリ(Compose 等)で type 不能(409)なときの経路。fallbackDriver(springboard
+    /// 参照・システム UI 用)とは別物。
+    public let typeDriver: AppDriver?
+    /// inapp /status の uiFramework=="compose" 検出時 true。type を inapp で試さず最初から
+    /// typeDriver で実行する(409 の無駄打ち回避)。
+    public var preferTypeDriver: Bool
     public var delegate: ReplayDelegate?
     public var healingEnabled: Bool
     /// 白フレーム確定時に呼ぶ。FTDriveCore が凍結中断+deviceFrozen emit を行う
     public var onDeviceFrozen: (@Sendable () -> Void)?
 
     public init(driver: AppDriver, fallbackDriver: AppDriver? = nil,
+                typeDriver: AppDriver? = nil, preferTypeDriver: Bool = false,
                 delegate: ReplayDelegate? = nil, healingEnabled: Bool = false) {
         self.driver = driver
         self.fallbackDriver = fallbackDriver
+        self.typeDriver = typeDriver
+        self.preferTypeDriver = preferTypeDriver
         self.delegate = delegate
         self.healingEnabled = healingEnabled
     }
@@ -342,9 +352,21 @@ public final class StepExecutor {
             try await actingDriver.tap(ref: element.ref)
             phase.actionMs += Self.ms(clock.now - start)
         case "type":
-            start = clock.now
-            try await actingDriver.type(ref: element.ref, text: step.text ?? "")
-            phase.actionMs += Self.ms(clock.now - start)
+            if let td = typeDriver, preferTypeDriver,
+               try await typeViaTypeDriver(td, step: step, phase: &phase) {
+                return StepOutcome(status: .passed, healedStep: healedStep, healedByCache: healedByCache)
+            }
+            do {
+                start = clock.now
+                try await actingDriver.type(ref: element.ref, text: step.text ?? "")
+                phase.actionMs += Self.ms(clock.now - start)
+            } catch {
+                // 409 = inapp が非 UIKit 入力欄で first responder を張れない兆候
+                guard case DriverError.badResponse(let code, _) = error, code == 409,
+                      let td = typeDriver else { throw error }
+                guard try await typeViaTypeDriver(td, step: step, phase: &phase) else { throw error }
+                status = .passedViaFallback(step.locator ?? FlowLocator(raw: step.locatorSummary))
+            }
         case "press":
             start = clock.now
             try await actingDriver.press(ref: element.ref, duration: 1.0)
@@ -353,6 +375,21 @@ public final class StepExecutor {
             return StepOutcome(status: .skipped("未知のアクション: \(action)"))
         }
         return StepOutcome(status: status, healedStep: healedStep, healedByCache: healedByCache)
+    }
+
+    /// typeDriver で type を試みる。ref はブリッジごとに別名前空間なので typeDriver 側 snapshot で
+    /// 取り直す。解決できなければ false(呼び出し側で通常経路[inapp]へフォールバック/再スロー)。
+    private func typeViaTypeDriver(_ td: AppDriver, step: FlowStep,
+                                   phase: inout PhaseAccumulator) async throws -> Bool {
+        let clock = ContinuousClock()
+        var start = clock.now
+        let snapshot = try await td.snapshot()
+        phase.snapshotMs += Self.ms(clock.now - start)
+        guard let resolved = Self.resolveDetailed(step: step, in: snapshot) else { return false }
+        start = clock.now
+        try await td.type(ref: resolved.element.ref, text: step.text ?? "")
+        phase.actionMs += Self.ms(clock.now - start)
+        return true
     }
 
     /// ヒールキャッシュのロケータ連鎖を順に照合する

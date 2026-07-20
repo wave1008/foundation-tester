@@ -161,6 +161,10 @@ struct RunScenario: AsyncParsableCommand {
         // hybrid: primary=in-app、fallback=XCUITest ブリッジ(springboard 参照)を StepExecutor へ。
         let driver: AppDriver
         var fallbackDriver: AppDriver?
+        // typeDriver は常に渡す(409 安全網)。preferTypeDriver は probe の uiFramework 検出時のみ
+        // (probe 不達なら false のまま=安全網頼み)。
+        var typeDriver: AppDriver?
+        var preferTypeDriver = false
         if dryRun {
             driver = NullDriver()  // dry-run はデバイスに触れない
         } else {
@@ -181,7 +185,8 @@ struct RunScenario: AsyncParsableCommand {
                     // へ正しく分岐する。inappApp を使わず nil を「不明」扱いにすると、suspend 中の
                     // 別アプリシナリオを in-app 経路へ誤ルーティングして破綻する(実際に回帰した)。
                     let probe = BridgeClient(port: port, timeoutSeconds: 4)
-                    let injected = (try? await probe.status(timeout: 4))?.sessionBundleID ?? inappApp
+                    let probeStatus = try? await probe.status(timeout: 4)
+                    let injected = probeStatus?.sessionBundleID ?? inappApp
                     if let injected, injected != testClass.app {
                         guard engine == "hybrid", let xcuiPort else {
                             throw ValidationError(
@@ -199,6 +204,8 @@ struct RunScenario: AsyncParsableCommand {
                         driver = InAppDriver(repoRoot: repoRoot, udid: udid ?? "booted", port: port)
                         if engine == "hybrid", let xcuiPort {
                             fallbackDriver = SystemUIDriver(port: xcuiPort)
+                            typeDriver = AppAttachDriver(port: xcuiPort, bundleID: testClass.app)
+                            preferTypeDriver = probeStatus?.uiFramework == "compose"
                         }
                     }
                 } else {
@@ -241,6 +248,7 @@ struct RunScenario: AsyncParsableCommand {
                                delegate: delegate, healingEnabled: heal, dryRun: dryRun,
                                healCacheURL: healCacheURL, defaultTimeout: defaultTimeout,
                                fallbackDriver: fallbackDriver,
+                               typeDriver: typeDriver, preferTypeDriver: preferTypeDriver,
                                deviceName: deviceName, deviceIdentifier: deviceIdentifier,
                                emit: emit)
 

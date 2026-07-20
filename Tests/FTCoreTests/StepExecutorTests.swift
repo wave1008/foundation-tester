@@ -14,6 +14,8 @@ private final class FakeAppDriver: AppDriver {
     let log: CallLog
     var snapshotElements: [[ElementInfo]]
     private(set) var snapshotCallCount = 0
+    /// 非 nil なら type(ref:text:) がこのエラーを throw する(409 リアクティブ切替の検証用)
+    var typeError: Error?
 
     init(name: String, log: CallLog, snapshotElements: [[ElementInfo]] = []) {
         self.name = name
@@ -53,7 +55,11 @@ private final class FakeAppDriver: AppDriver {
     func tap(x: Double, y: Double) async throws {}
 
     func type(ref: Int?, text: String) async throws {
-        log.entries.append("\(name).type")
+        if let typeError {
+            log.entries.append("\(name).type(throws)")
+            throw typeError
+        }
+        log.entries.append("\(name).type(ref:\(ref.map(String.init) ?? "nil"))")
     }
 
     func swipe(_ direction: FTSwipeDirection) async throws {}
@@ -247,5 +253,116 @@ final class StepExecutorTests: XCTestCase {
             return
         }
         XCTAssertEqual(fallback.snapshotCallCount, 0)
+    }
+
+    // MARK: - type の XCUITest ルーティング
+
+    /// preferTypeDriver(Compose 検出)時は primary を試さず typeDriver で type すること
+    func testTypePrefersTypeDriverWhenComposeDetected() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[element(ref: 1, id: "field_email")]])
+        let typeDriver = FakeAppDriver(name: "typedriver", log: log,
+                                       snapshotElements: [[element(ref: 2, id: "field_email")]])
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, preferTypeDriver: true)
+        let step = FlowStep(action: "type", locator: FlowLocator(id: "field_email"), text: "hi")
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("typeDriver 経由での passed を期待したが \(outcome.status) だった")
+            return
+        }
+        guard let snapIdx = log.entries.firstIndex(of: "typedriver.snapshot"),
+              let typeIdx = log.entries.firstIndex(of: "typedriver.type(ref:2)") else {
+            XCTFail("typedriver.snapshot → typedriver.type(ref:2) が見当たらない: \(log.entries)")
+            return
+        }
+        XCTAssertLessThan(snapIdx, typeIdx)
+        XCTAssertFalse(log.entries.contains { $0.hasPrefix("primary.type") },
+                       "primary.type が呼ばれてはいけない: \(log.entries)")
+    }
+
+    /// preferTypeDriver でも typeDriver 側で解決できなければ primary(通常経路)へ落とすこと
+    func testTypeFallsToPrimaryWhenTypeDriverCannotResolve() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[element(ref: 1, id: "field_email")]])
+        let typeDriver = FakeAppDriver(name: "typedriver", log: log, snapshotElements: [[]])
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, preferTypeDriver: true)
+        let step = FlowStep(action: "type", locator: FlowLocator(id: "field_email"), text: "hi")
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("primary フォールバックでの passed を期待したが \(outcome.status) だった")
+            return
+        }
+        XCTAssertTrue(log.entries.contains("primary.type(ref:1)"),
+                      "typeDriver が解決できないとき primary.type すべき: \(log.entries)")
+    }
+
+    /// 409(inapp が非 UIKit 入力欄で first responder を張れない)はリアクティブに typeDriver へ切り替えること
+    func testType409FallsBackToTypeDriverReactively() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[element(ref: 1, id: "field_email")]])
+        primary.typeError = DriverError.badResponse(status: 409, body: "no first responder")
+        let typeDriver = FakeAppDriver(name: "typedriver", log: log,
+                                       snapshotElements: [[element(ref: 2, id: "field_email")]])
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, preferTypeDriver: false)
+        let step = FlowStep(action: "type", locator: FlowLocator(id: "field_email"), text: "hi")
+
+        let outcome = await executor.execute(step)
+
+        guard case .passedViaFallback(let locator) = outcome.status else {
+            XCTFail("409 からの typeDriver 切替による passedViaFallback を期待したが \(outcome.status) だった")
+            return
+        }
+        XCTAssertEqual(locator, FlowLocator(id: "field_email"))
+        XCTAssertEqual(log.entries, [
+            "primary.snapshot",
+            "primary.type(throws)",
+            "typedriver.snapshot",
+            "typedriver.type(ref:2)",
+        ])
+    }
+
+    /// 409 以外のエラーは typeDriver へ切り替えず、そのまま失敗させること
+    func testTypeNon409DoesNotUseTypeDriver() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[element(ref: 1, id: "field_email")]])
+        primary.typeError = DriverError.badResponse(status: 500, body: "server error")
+        let typeDriver = FakeAppDriver(name: "typedriver", log: log,
+                                       snapshotElements: [[element(ref: 2, id: "field_email")]])
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, preferTypeDriver: false)
+        let step = FlowStep(action: "type", locator: FlowLocator(id: "field_email"), text: "hi")
+
+        let outcome = await executor.execute(step)
+
+        guard case .failed = outcome.status else {
+            XCTFail("409 以外は失敗のままを期待したが \(outcome.status) だった")
+            return
+        }
+        XCTAssertFalse(log.entries.contains { $0.hasPrefix("typedriver") },
+                       "409 以外で typeDriver を照会してはいけない: \(log.entries)")
+    }
+
+    /// typeDriver が無い場合、409 はそのまま伝播して失敗させること
+    func testType409WithoutTypeDriverPropagates() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[element(ref: 1, id: "field_email")]])
+        primary.typeError = DriverError.badResponse(status: 409, body: "no first responder")
+        let executor = StepExecutor(driver: primary)
+        let step = FlowStep(action: "type", locator: FlowLocator(id: "field_email"), text: "hi")
+
+        let outcome = await executor.execute(step)
+
+        guard case .failed = outcome.status else {
+            XCTFail("typeDriver 無しでの 409 失敗を期待したが \(outcome.status) だった")
+            return
+        }
     }
 }
