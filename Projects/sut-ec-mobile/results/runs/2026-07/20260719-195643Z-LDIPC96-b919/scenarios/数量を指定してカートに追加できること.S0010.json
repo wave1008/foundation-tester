@@ -1,0 +1,43 @@
+{
+  "durationMs" : 16056,
+  "machine" : "LDIPC96",
+  "passed" : true,
+  "platform" : "ios",
+  "profile" : "ios",
+  "reportPath" : "Projects/sut-ec-mobile/reports/scenario-20260720-045747-292-数量を指定してカートに追加できること_S0010.md",
+  "runID" : "20260719-195643Z-LDIPC96-b919",
+  "scenarioID" : "数量を指定してカートに追加できること.S0010",
+  "scenes" : [
+    {
+      "durationMs" : 3705,
+      "passed" : true,
+      "scene" : 1,
+      "title" : "基準: カートを空にする"
+    },
+    {
+      "durationMs" : 6976,
+      "passed" : true,
+      "scene" : 2,
+      "title" : "詳細で数量を3にしてカートに追加する"
+    },
+    {
+      "durationMs" : 1172,
+      "passed" : true,
+      "scene" : 3,
+      "title" : "後始末: カートを空に戻す"
+    }
+  ],
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-19T19:57:31Z",
+  "steps" : {
+    "failed" : 0,
+    "healed" : 0,
+    "passed" : 25,
+    "passedViaFallback" : 0,
+    "skipped" : 0,
+    "total" : 25
+  },
+  "timedOut" : false,
+  "title" : "数量を3にして追加すると小計に反映される",
+  "worker" : "ios:メイン機"
+}

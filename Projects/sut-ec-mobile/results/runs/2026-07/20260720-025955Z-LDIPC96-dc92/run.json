@@ -1,0 +1,19 @@
+{
+  "degradedWorkers" : [
+    "メイン機(ios:8131): ワーカー連続失敗(3回)のため離脱しました"
+  ],
+  "failed" : 3,
+  "finishedAt" : "2026-07-20T03:01:40Z",
+  "freezeRetries" : [
+    "数量を指定してカートに追加できること.S0010: ワーカー連続失敗(3回)(メイン機(ios:8131) から振り直し 1/1)"
+  ],
+  "machine" : "LDIPC96",
+  "passed" : 4,
+  "profile" : "ios",
+  "project" : "sut-ec-mobile",
+  "runID" : "20260720-025955Z-LDIPC96-dc92",
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-20T02:59:55Z",
+  "total" : 7,
+  "trigger" : "cli"
+}

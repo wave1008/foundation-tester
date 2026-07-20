@@ -1,0 +1,43 @@
+{
+  "durationMs" : 7642,
+  "machine" : "LDIPC96",
+  "passed" : true,
+  "platform" : "ios",
+  "profile" : "all",
+  "reportPath" : "Projects/sut-ec-mobile/reports/scenario-20260720-164354-552-検索で絞り込めること_S0010.md",
+  "runID" : "20260720-074312Z-LDIPC96-93e1",
+  "scenarioID" : "検索で絞り込めること.S0010",
+  "scenes" : [
+    {
+      "durationMs" : 5284,
+      "passed" : true,
+      "scene" : 1,
+      "title" : "検索ランディングを開く"
+    },
+    {
+      "durationMs" : 1148,
+      "passed" : true,
+      "scene" : 2,
+      "title" : "ファッションで絞り込む"
+    },
+    {
+      "durationMs" : 1152,
+      "passed" : true,
+      "scene" : 3,
+      "title" : "家電・電化製品に切り替えると結果が変わる"
+    }
+  ],
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-20T07:43:46Z",
+  "steps" : {
+    "failed" : 0,
+    "healed" : 0,
+    "passed" : 12,
+    "passedViaFallback" : 0,
+    "skipped" : 0,
+    "total" : 12
+  },
+  "timedOut" : false,
+  "title" : "カテゴリで絞り込むと結果が切り替わる",
+  "worker" : "ios:iPhone 17 Pro(iOS 27.0)-03"
+}

@@ -1,0 +1,50 @@
+{
+  "durationMs" : 4245,
+  "failedSteps" : [
+    {
+      "description" : "type \".TextView=メールアドレス\" \"nouser@example.com\"",
+      "detail" : "実行エラー: ドライバに接続できません(iOS: ftester bridge up を先に実行 / Android: adb devices を確認): Could not connect to the server.",
+      "durationMs" : 722,
+      "file" : "Projects/sut-ec-mobile/Scenarios/ログイン失敗.swift",
+      "index" : 7,
+      "line" : 32,
+      "scene" : 2,
+      "sceneTitle" : "誤った資格情報でエラーが出る",
+      "section" : "action"
+    }
+  ],
+  "machine" : "LDIPC96",
+  "passed" : false,
+  "platform" : "ios",
+  "profile" : "ios",
+  "reportPath" : "Projects/sut-ec-mobile/reports/scenario-20260720-120055-221-ログイン失敗が表示されること_S0010.md",
+  "runID" : "20260720-025955Z-LDIPC96-dc92",
+  "scenarioID" : "ログイン失敗が表示されること.S0010",
+  "scenes" : [
+    {
+      "durationMs" : 2953,
+      "passed" : true,
+      "scene" : 1,
+      "title" : "ログイン画面を開く"
+    },
+    {
+      "durationMs" : 722,
+      "passed" : false,
+      "scene" : 2,
+      "title" : "誤った資格情報でエラーが出る"
+    }
+  ],
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-20T03:00:50Z",
+  "steps" : {
+    "failed" : 1,
+    "healed" : 0,
+    "passed" : 6,
+    "passedViaFallback" : 0,
+    "skipped" : 3,
+    "total" : 10
+  },
+  "timedOut" : false,
+  "title" : "誤った資格情報ではログインできずエラーが出る",
+  "worker" : "ios:メイン機"
+}

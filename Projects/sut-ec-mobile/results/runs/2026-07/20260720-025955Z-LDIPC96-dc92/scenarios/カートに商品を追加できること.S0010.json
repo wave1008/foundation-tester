@@ -1,0 +1,62 @@
+{
+  "durationMs" : 17050,
+  "failedSteps" : [
+    {
+      "description" : "exist \"カートは空です\"",
+      "detail" : "実行エラー: ドライバに接続できません(iOS: ftester bridge up を先に実行 / Android: adb devices を確認): Could not connect to the server.",
+      "durationMs" : 1,
+      "file" : "Projects/sut-ec-mobile/Scenarios/カートに商品を追加.swift",
+      "index" : 5,
+      "line" : 33,
+      "scene" : 1,
+      "sceneTitle" : "カートを空にして基準を作る",
+      "section" : "expectation"
+    }
+  ],
+  "machine" : "LDIPC96",
+  "passed" : false,
+  "platform" : "ios",
+  "profile" : "ios",
+  "reportPath" : "Projects/sut-ec-mobile/reports/scenario-20260720-120026-922-カートに商品を追加できること_S0010.md",
+  "runID" : "20260720-025955Z-LDIPC96-dc92",
+  "scenarioID" : "カートに商品を追加できること.S0010",
+  "scenes" : [
+    {
+      "durationMs" : 4035,
+      "passed" : false,
+      "scene" : 1,
+      "title" : "カートを空にして基準を作る"
+    },
+    {
+      "durationMs" : 4022,
+      "passed" : true,
+      "scene" : 2,
+      "title" : "ホームからおすすめ商品の詳細を開く"
+    },
+    {
+      "durationMs" : 2354,
+      "passed" : true,
+      "scene" : 3,
+      "title" : "カートに追加し、空だったカートに入ることを確認する"
+    },
+    {
+      "durationMs" : 5039,
+      "passed" : true,
+      "scene" : 4,
+      "title" : "後始末: カートを空に戻す"
+    }
+  ],
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-20T03:00:09Z",
+  "steps" : {
+    "failed" : 1,
+    "healed" : 0,
+    "passed" : 19,
+    "passedViaFallback" : 0,
+    "skipped" : 0,
+    "total" : 20
+  },
+  "timedOut" : false,
+  "title" : "おすすめの商品をカートに追加できる",
+  "worker" : "ios:メイン機"
+}

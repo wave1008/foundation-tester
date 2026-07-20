@@ -1,0 +1,49 @@
+{
+  "durationMs" : 14630,
+  "machine" : "LDIPC96",
+  "passed" : true,
+  "platform" : "ios",
+  "profile" : "ios-xcuitest",
+  "reportPath" : "Projects/sut-ec-mobile/reports/scenario-20260720-162744-326-カートに商品を追加できること_S0010.md",
+  "runID" : "20260720-072713Z-LDIPC96-4a92",
+  "scenarioID" : "カートに商品を追加できること.S0010",
+  "scenes" : [
+    {
+      "durationMs" : 6030,
+      "passed" : true,
+      "scene" : 1,
+      "title" : "カートを空にして基準を作る"
+    },
+    {
+      "durationMs" : 3013,
+      "passed" : true,
+      "scene" : 2,
+      "title" : "ホームからおすすめ商品の詳細を開く"
+    },
+    {
+      "durationMs" : 2943,
+      "passed" : true,
+      "scene" : 3,
+      "title" : "カートに追加し、空だったカートに入ることを確認する"
+    },
+    {
+      "durationMs" : 1484,
+      "passed" : true,
+      "scene" : 4,
+      "title" : "後始末: カートを空に戻す"
+    }
+  ],
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-20T07:27:29Z",
+  "steps" : {
+    "failed" : 0,
+    "healed" : 0,
+    "passed" : 20,
+    "passedViaFallback" : 0,
+    "skipped" : 0,
+    "total" : 20
+  },
+  "timedOut" : false,
+  "title" : "おすすめの商品をカートに追加できる",
+  "worker" : "ios:メイン機"
+}

@@ -1,0 +1,44 @@
+{
+  "durationMs" : 6303,
+  "failedSteps" : [
+    {
+      "description" : "tap \"#tab_account\"",
+      "detail" : "ロケータを解決できません: id=tab_account",
+      "durationMs" : 850,
+      "file" : "Projects/sut-ec-mobile/Scenarios/ログイン画面.swift",
+      "index" : 4,
+      "line" : 28,
+      "scene" : 1,
+      "sceneTitle" : "アカウントからログイン画面を開く",
+      "section" : "action"
+    }
+  ],
+  "machine" : "LDIPC96",
+  "passed" : false,
+  "platform" : "ios",
+  "profile" : "ios",
+  "reportPath" : "Projects/sut-ec-mobile/reports/scenario-20260720-120101-527-ログイン画面を開けること_S0010.md",
+  "runID" : "20260720-025955Z-LDIPC96-dc92",
+  "scenarioID" : "ログイン画面を開けること.S0010",
+  "scenes" : [
+    {
+      "durationMs" : 4106,
+      "passed" : false,
+      "scene" : 1,
+      "title" : "アカウントからログイン画面を開く"
+    }
+  ],
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-20T03:00:55Z",
+  "steps" : {
+    "failed" : 1,
+    "healed" : 0,
+    "passed" : 3,
+    "passedViaFallback" : 0,
+    "skipped" : 7,
+    "total" : 11
+  },
+  "timedOut" : false,
+  "title" : "アカウントからログイン画面を開き入力導線が表示される",
+  "worker" : "ios:メイン機"
+}

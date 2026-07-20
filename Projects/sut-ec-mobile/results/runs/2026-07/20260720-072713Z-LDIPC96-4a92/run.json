@@ -1,0 +1,13 @@
+{
+  "failed" : 1,
+  "finishedAt" : "2026-07-20T07:30:35Z",
+  "machine" : "LDIPC96",
+  "passed" : 16,
+  "profile" : "ios-xcuitest",
+  "project" : "sut-ec-mobile",
+  "runID" : "20260720-072713Z-LDIPC96-4a92",
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-20T07:27:13Z",
+  "total" : 17,
+  "trigger" : "cli"
+}

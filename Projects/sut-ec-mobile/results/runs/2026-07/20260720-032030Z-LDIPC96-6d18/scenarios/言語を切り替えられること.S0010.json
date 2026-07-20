@@ -1,0 +1,43 @@
+{
+  "durationMs" : 6514,
+  "machine" : "LDIPC96",
+  "passed" : true,
+  "platform" : "ios",
+  "profile" : "ios-xcuitest",
+  "reportPath" : "Projects/sut-ec-mobile/reports/scenario-20260720-122218-646-言語を切り替えられること_S0010.md",
+  "runID" : "20260720-032030Z-LDIPC96-6d18",
+  "scenarioID" : "言語を切り替えられること.S0010",
+  "scenes" : [
+    {
+      "durationMs" : 5360,
+      "passed" : true,
+      "scene" : 1,
+      "title" : "アカウントを開き日本語を基準化"
+    },
+    {
+      "durationMs" : 460,
+      "passed" : true,
+      "scene" : 2,
+      "title" : "Englishに切り替える"
+    },
+    {
+      "durationMs" : 456,
+      "passed" : true,
+      "scene" : 3,
+      "title" : "後始末: 日本語に戻す"
+    }
+  ],
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-20T03:22:12Z",
+  "steps" : {
+    "failed" : 0,
+    "healed" : 0,
+    "passed" : 12,
+    "passedViaFallback" : 0,
+    "skipped" : 0,
+    "total" : 12
+  },
+  "timedOut" : false,
+  "title" : "日本語とEnglishを切り替えられる",
+  "worker" : "ios:メイン機"
+}

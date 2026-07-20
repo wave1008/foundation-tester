@@ -1,0 +1,62 @@
+{
+  "durationMs" : 18585,
+  "failedSteps" : [
+    {
+      "description" : "tap \"#btn_remove_item\"",
+      "detail" : "ロケータを解決できません: id=btn_remove_item",
+      "durationMs" : 886,
+      "file" : "Projects/sut-ec-mobile/Scenarios/カートに商品を追加.swift",
+      "index" : 21,
+      "line" : 67,
+      "scene" : 4,
+      "sceneTitle" : "後始末: カートを空に戻す",
+      "section" : "action"
+    }
+  ],
+  "machine" : "LDIPC96",
+  "passed" : false,
+  "platform" : "ios",
+  "profile" : "ios-xcuitest",
+  "reportPath" : "Projects/sut-ec-mobile/reports/scenario-20260720-115334-199-カートに商品を追加できること_S0010.md",
+  "runID" : "20260720-025259Z-LDIPC96-02db",
+  "scenarioID" : "カートに商品を追加できること.S0010",
+  "scenes" : [
+    {
+      "durationMs" : 6286,
+      "passed" : true,
+      "scene" : 1,
+      "title" : "カートを空にして基準を作る"
+    },
+    {
+      "durationMs" : 3025,
+      "passed" : true,
+      "scene" : 2,
+      "title" : "ホームからおすすめ商品の詳細を開く"
+    },
+    {
+      "durationMs" : 2951,
+      "passed" : true,
+      "scene" : 3,
+      "title" : "カートに追加し、空だったカートに入ることを確認する"
+    },
+    {
+      "durationMs" : 886,
+      "passed" : false,
+      "scene" : 4,
+      "title" : "後始末: カートを空に戻す"
+    }
+  ],
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-20T02:53:15Z",
+  "steps" : {
+    "failed" : 1,
+    "healed" : 0,
+    "passed" : 20,
+    "passedViaFallback" : 0,
+    "skipped" : 2,
+    "total" : 23
+  },
+  "timedOut" : false,
+  "title" : "おすすめの商品をカートに追加できる",
+  "worker" : "ios:メイン機"
+}

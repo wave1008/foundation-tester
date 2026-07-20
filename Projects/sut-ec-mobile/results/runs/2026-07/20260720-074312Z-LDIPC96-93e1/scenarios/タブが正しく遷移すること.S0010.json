@@ -1,0 +1,73 @@
+{
+  "durationMs" : 19194,
+  "machine" : "LDIPC96",
+  "passed" : true,
+  "platform" : "ios",
+  "profile" : "all",
+  "reportPath" : "Projects/sut-ec-mobile/reports/scenario-20260720-164349-841-タブが正しく遷移すること_S0010.md",
+  "runID" : "20260720-074312Z-LDIPC96-93e1",
+  "scenarioID" : "タブが正しく遷移すること.S0010",
+  "scenes" : [
+    {
+      "durationMs" : 4097,
+      "passed" : true,
+      "scene" : 1,
+      "title" : "基準: カートを空にする"
+    },
+    {
+      "durationMs" : 1194,
+      "passed" : true,
+      "scene" : 2,
+      "title" : "ホームタブ → ホーム"
+    },
+    {
+      "durationMs" : 1184,
+      "passed" : true,
+      "scene" : 3,
+      "title" : "検索タブ → 検索"
+    },
+    {
+      "durationMs" : 1157,
+      "passed" : true,
+      "scene" : 4,
+      "title" : "お気に入りタブ → お気に入り"
+    },
+    {
+      "durationMs" : 1138,
+      "passed" : true,
+      "scene" : 5,
+      "title" : "アカウントタブ → アカウント"
+    },
+    {
+      "durationMs" : 1179,
+      "passed" : true,
+      "scene" : 6,
+      "title" : "カートタブ → カート(空)"
+    },
+    {
+      "durationMs" : 5817,
+      "passed" : true,
+      "scene" : 7,
+      "title" : "汚染トリガ後もホームタブが正常(回帰)"
+    },
+    {
+      "durationMs" : 2334,
+      "passed" : true,
+      "scene" : 8,
+      "title" : "後始末: カートを空に戻す"
+    }
+  ],
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-20T07:43:30Z",
+  "steps" : {
+    "failed" : 0,
+    "healed" : 0,
+    "passed" : 38,
+    "passedViaFallback" : 0,
+    "skipped" : 0,
+    "total" : 38
+  },
+  "timedOut" : false,
+  "title" : "下部タブが各セクションへ正しく着地する",
+  "worker" : "ios:iPhone 17 Pro(iOS 27.0)-04"
+}

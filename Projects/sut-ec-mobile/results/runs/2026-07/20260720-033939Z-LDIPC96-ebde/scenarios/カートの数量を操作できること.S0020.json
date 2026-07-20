@@ -1,0 +1,43 @@
+{
+  "durationMs" : 16152,
+  "machine" : "LDIPC96",
+  "passed" : true,
+  "platform" : "ios",
+  "profile" : "ios-xcuitest",
+  "reportPath" : "Projects/sut-ec-mobile/reports/scenario-20260720-124042-312-カートの数量を操作できること_S0020.md",
+  "runID" : "20260720-033939Z-LDIPC96-ebde",
+  "scenarioID" : "カートの数量を操作できること.S0020",
+  "scenes" : [
+    {
+      "durationMs" : 11956,
+      "passed" : true,
+      "scene" : 1,
+      "title" : "空カートに腕時計を1点追加"
+    },
+    {
+      "durationMs" : 1512,
+      "passed" : true,
+      "scene" : 2,
+      "title" : "数量1では − が無効で明細は残る"
+    },
+    {
+      "durationMs" : 1486,
+      "passed" : true,
+      "scene" : 3,
+      "title" : "ゴミ箱で削除すると空になる"
+    }
+  ],
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-20T03:40:26Z",
+  "steps" : {
+    "failed" : 0,
+    "healed" : 0,
+    "passed" : 20,
+    "passedViaFallback" : 0,
+    "skipped" : 0,
+    "total" : 20
+  },
+  "timedOut" : false,
+  "title" : "数量1では減らす操作で削除されずゴミ箱で削除する",
+  "worker" : "ios:メイン機"
+}

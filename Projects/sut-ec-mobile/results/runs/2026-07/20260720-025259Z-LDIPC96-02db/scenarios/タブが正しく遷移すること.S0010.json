@@ -1,0 +1,86 @@
+{
+  "durationMs" : 28957,
+  "failedSteps" : [
+    {
+      "description" : "tap \"#btn_remove_item\"",
+      "detail" : "ロケータを解決できません: id=btn_remove_item",
+      "durationMs" : 964,
+      "file" : "Projects/sut-ec-mobile/Scenarios/タブナビゲーション.swift",
+      "index" : 39,
+      "line" : 100,
+      "scene" : 8,
+      "sceneTitle" : "後始末: カートを空に戻す",
+      "section" : "action"
+    }
+  ],
+  "machine" : "LDIPC96",
+  "passed" : false,
+  "platform" : "ios",
+  "profile" : "ios-xcuitest",
+  "reportPath" : "Projects/sut-ec-mobile/reports/scenario-20260720-115403-159-タブが正しく遷移すること_S0010.md",
+  "runID" : "20260720-025259Z-LDIPC96-02db",
+  "scenarioID" : "タブが正しく遷移すること.S0010",
+  "scenes" : [
+    {
+      "durationMs" : 6275,
+      "passed" : true,
+      "scene" : 1,
+      "title" : "基準: カートを空にする"
+    },
+    {
+      "durationMs" : 1537,
+      "passed" : true,
+      "scene" : 2,
+      "title" : "ホームタブ → ホーム"
+    },
+    {
+      "durationMs" : 1548,
+      "passed" : true,
+      "scene" : 3,
+      "title" : "検索タブ → 検索"
+    },
+    {
+      "durationMs" : 1477,
+      "passed" : true,
+      "scene" : 4,
+      "title" : "お気に入りタブ → お気に入り"
+    },
+    {
+      "durationMs" : 1451,
+      "passed" : true,
+      "scene" : 5,
+      "title" : "アカウントタブ → アカウント"
+    },
+    {
+      "durationMs" : 1442,
+      "passed" : true,
+      "scene" : 6,
+      "title" : "カートタブ → カート(空)"
+    },
+    {
+      "durationMs" : 7371,
+      "passed" : true,
+      "scene" : 7,
+      "title" : "汚染トリガ後もホームタブが正常(回帰)"
+    },
+    {
+      "durationMs" : 2428,
+      "passed" : false,
+      "scene" : 8,
+      "title" : "後始末: カートを空に戻す"
+    }
+  ],
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-20T02:53:34Z",
+  "steps" : {
+    "failed" : 1,
+    "healed" : 0,
+    "passed" : 38,
+    "passedViaFallback" : 0,
+    "skipped" : 2,
+    "total" : 41
+  },
+  "timedOut" : false,
+  "title" : "下部タブが各セクションへ正しく着地する",
+  "worker" : "ios:メイン機"
+}

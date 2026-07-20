@@ -1,0 +1,43 @@
+{
+  "durationMs" : 10843,
+  "machine" : "LDIPC96",
+  "passed" : true,
+  "platform" : "ios",
+  "profile" : "ios-xcuitest",
+  "reportPath" : "Projects/sut-ec-mobile/reports/scenario-20260720-124236-660-検索で絞り込めること_S0010.md",
+  "runID" : "20260720-033939Z-LDIPC96-ebde",
+  "scenarioID" : "検索で絞り込めること.S0010",
+  "scenes" : [
+    {
+      "durationMs" : 7751,
+      "passed" : true,
+      "scene" : 1,
+      "title" : "検索ランディングを開く"
+    },
+    {
+      "durationMs" : 1504,
+      "passed" : true,
+      "scene" : 2,
+      "title" : "ファッションで絞り込む"
+    },
+    {
+      "durationMs" : 1520,
+      "passed" : true,
+      "scene" : 3,
+      "title" : "家電・電化製品に切り替えると結果が変わる"
+    }
+  ],
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-20T03:42:25Z",
+  "steps" : {
+    "failed" : 0,
+    "healed" : 0,
+    "passed" : 12,
+    "passedViaFallback" : 0,
+    "skipped" : 0,
+    "total" : 12
+  },
+  "timedOut" : false,
+  "title" : "カテゴリで絞り込むと結果が切り替わる",
+  "worker" : "ios:メイン機"
+}
