@@ -1,0 +1,13 @@
+{
+  "failed" : 0,
+  "finishedAt" : "2026-07-19T19:57:54Z",
+  "machine" : "M2Ultra",
+  "passed" : 5,
+  "profile" : "ios",
+  "project" : "sut-ec-mobile",
+  "runID" : "20260719-195643Z-M2Ultra-b919",
+  "schemaVersion" : 1,
+  "startedAt" : "2026-07-19T19:56:43Z",
+  "total" : 5,
+  "trigger" : "cli"
+}
