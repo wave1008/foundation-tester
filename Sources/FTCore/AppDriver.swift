@@ -40,8 +40,12 @@ public enum DriverError: Error, LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case .bridgeUnreachable(let detail), .bridgeConnectionRefused(let detail):
-            return "ドライバに接続できません(iOS: ftester bridge up を先に実行 / Android: adb devices を確認): \(detail)"
+        case .bridgeUnreachable(let detail):
+            return "ドライバに接続できません(ブリッジ未起動・応答遅延の可能性。iOS: ftester bridge up / Android: adb devices を確認): \(detail)"
+        case .bridgeConnectionRefused(let detail):
+            // 接続拒否=ポートで誰も待受していない。実行途中なら対象アプリのプロセス死が最有力
+            // (iOS inapp はブリッジがアプリ内常駐のため、アプリが落ちると即接続不能になる)。
+            return "ドライバへの接続が拒否されました(ポートで待受なし): \(detail)。実行の途中で発生した場合は対象アプリのプロセスが終了/クラッシュした可能性が高いです(iOS inapp はブリッジがアプリ内常駐のため、アプリが落ちると接続不能になります)。まだ起動していない場合は iOS: ftester bridge up / Android: adb devices を確認してください"
         case .badResponse(let status, let body):
             return "ドライバがエラーを返しました (\(status)): \(body)"
         }
