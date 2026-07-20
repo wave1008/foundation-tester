@@ -15,15 +15,21 @@ extension AndroidDriver {
     /// デバイス側の listen ポート(全デバイス共通。デバイス毎に独立 loopback なので衝突しない)
     static let bridgeDevicePort: UInt16 = 8123
     /// AndroidRunner/build.sh の VERSION_CODE と同期(不一致なら自動で再インストール)
-    public static let expectedBridgeVersionCode = 7
+    public static let expectedBridgeVersionCode = 8
 
     enum BridgeState {
         case active(BridgeClient)
-        case unavailable
+        /// retryAfter まで再試行しない(嵐防止)。期限後の ensureBridge が自動で再試行するため、
+        /// 長寿命プロセス(ftester-mcp / api monitor)でもデバイス復旧後に自動回復する。
+        /// detail は初回失敗の原因(期限内の再 throw に引き継ぐ)
+        case unavailable(retryAfter: Date, detail: String?)
     }
 
-    /// serial → ブリッジ状態。ドライバを都度生成してもプローブを繰り返さないプロセス共有レジストリ。
-    /// `.unavailable` はプロセス終了まで再試行しない(再試行の嵐防止)
+    /// 失敗キャッシュの保持時間。startBridge の失敗は probe 2s+起動待ち最大 10s 級のコストなので
+    /// この間隔で十分嵐を防げる
+    static let unavailableRetryInterval: TimeInterval = 60
+
+    /// serial → ブリッジ状態。ドライバを都度生成してもプローブを繰り返さないプロセス共有レジストリ
     static let bridgeLock = NSLock()
     nonisolated(unsafe) static var bridgeRegistry: [String: BridgeState] = [:]
 
@@ -37,8 +43,9 @@ extension AndroidDriver {
         switch Self.getRegistry(bridgeKey) {
         case .active(let client):
             return client
-        case .unavailable:
-            throw Self.unreachableError(detail: nil)
+        case .unavailable(let retryAfter, let detail):
+            guard Date() >= retryAfter else { throw Self.unreachableError(detail: detail) }
+            // 期限切れ → 下の再セットアップへ
         case nil:
             break
         }
@@ -48,8 +55,10 @@ extension AndroidDriver {
             Self.setRegistry(bridgeKey, .active(client))
             return client
         } catch {
-            Self.setRegistry(bridgeKey, .unavailable)
             let message = (error as? LocalizedError)?.errorDescription ?? "\(error)"
+            Self.setRegistry(bridgeKey, .unavailable(
+                retryAfter: Date().addingTimeInterval(Self.unavailableRetryInterval),
+                detail: message))
             throw Self.unreachableError(detail: message)
         }
     }
@@ -95,8 +104,13 @@ extension AndroidDriver {
 
     private func startBridge() async throws -> BridgeClient {
         let hostPort = try ensureForward()
-        // 既に稼働中ならそのまま使う(CLI の別プロセスが起動済みのケース)
-        if let client = await probeBridge(hostPort: hostPort) { return client }
+        // 既に稼働中で版一致ならそのまま使う(CLI の別プロセスが起動済みのケース)。
+        // 版不一致(旧ブリッジプロセスが常駐したまま)は素通しせず、下の再インストール+
+        // force-stop+再起動で更新する(APK 差し替えだけでは稼働中プロセスは旧版のまま)
+        if let (client, version) = await probeBridge(hostPort: hostPort),
+           version == Self.expectedBridgeVersionCode {
+            return client
+        }
 
         disableAnimations()
         allowHiddenAPIReflection()
@@ -108,9 +122,9 @@ extension AndroidDriver {
                      "am instrument -w -e port \(Self.bridgeDevicePort) \(Self.bridgeComponent) "
                      + "</dev/null >/dev/null 2>&1 &"])
 
-        // ready 待ち(200ms 間隔・最大 10 秒)
+        // ready 待ち(200ms 間隔・最大 10 秒)。起動直後は導入したての APK なので版照合は不要
         for _ in 0..<50 {
-            if let client = await probeBridge(hostPort: hostPort) { return client }
+            if let (client, _) = await probeBridge(hostPort: hostPort) { return client }
             try await Task.sleep(nanoseconds: 200_000_000)
         }
         throw DriverError.bridgeUnreachable(
@@ -140,11 +154,12 @@ extension AndroidDriver {
         }
     }
 
-    private func probeBridge(hostPort: UInt16) async -> BridgeClient? {
+    /// 生存確認+稼働中プロセスの版(旧ブリッジは bridgeVersionCode を返さない → nil)
+    private func probeBridge(hostPort: UInt16) async -> (client: BridgeClient, version: Int?)? {
         let probe = BridgeClient(port: hostPort, timeoutSeconds: 2)
-        guard (try? await probe.status())?.ready == true else { return nil }
+        guard let status = try? await probe.status(), status.ready else { return nil }
         // 操作用は通常タイムアウト(snapshot 等は余裕を持つ)
-        return BridgeClient(port: hostPort)
+        return (BridgeClient(port: hostPort), status.bridgeVersionCode)
     }
 
     private func ensureForward() throws -> UInt16 {
