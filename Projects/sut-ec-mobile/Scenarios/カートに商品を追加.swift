@@ -13,15 +13,10 @@ import FTDSL
 @TestClass(app: "com.sutec.mobile", platform: "ios")
 class カートに商品を追加できること {
 
-    /// カート画面で全行を削除して空にする（擬陽性防止の基準作り）。
-    /// 空カートでは「合計」が無く ifCanSelect が空振りするため、上限回数だけ試せば安全（想定件数は僅少）。
-    /// 注: 行ごとの削除ボタンは各行が同一 id=btn_remove_item を持ち複数行で曖昧になるため、
-    /// ここは先頭行を型+順番 .Button[2]（各行 Button 並びは product, 削除 の順）で狙う。
+    /// 対象商品(fashion_5)の行を削除して空にする（擬陽性防止の基準作り）。
+    /// 各行の削除ボタンは id=btn_remove_<productId> で一意。空カートなら空振りして無害。本スイートはこの1商品のみ扱う。
     private func emptyCart() {
-        ifCanSelect("合計", waitSeconds: 1) { tap(".Button[2]") }
-        ifCanSelect("合計", waitSeconds: 1) { tap(".Button[2]") }
-        ifCanSelect("合計", waitSeconds: 1) { tap(".Button[2]") }
-        ifCanSelect("合計", waitSeconds: 1) { tap(".Button[2]") }
+        ifCanSelect("#btn_remove_fashion_5", waitSeconds: 1) { tap("#btn_remove_fashion_5") }
     }
 
     @Test("おすすめの商品をカートに追加できる")
@@ -42,17 +37,16 @@ class カートに商品を追加できること {
                 action {
                     tap("#tab_home")  // ホームタブ（id 指定・修正版で正常にホームへ遷移）
                     wait(1)
-                    // おすすめ先頭カード。カードは id 無しのため型+部分ラベルで一意に指す
-                    tap(".Button=ミニマルデザイン腕時計")
+                    tap("#product_card_fashion_5")  // おすすめ先頭カード（id 指定）
                     wait(1)
                 }.expectation {
                     exist("在庫あり")
-                    exist(".Button=カートに追加")
+                    exist("#btn_add_to_cart")
                 }
             }
             scene(3, "カートに追加し、空だったカートに入ることを確認する") {
                 action {
-                    tap(".Button=カートに追加")  // 追加ボタンは id 未付与のためラベルで指定
+                    tap("#btn_add_to_cart")  // カートに追加（id 指定）
                     wait(1)  // 「カートに追加しました」スナックバーのアニメーション整定
                     tap("#btn_open_cart")  // 詳細右上のカートアイコン（id 指定）
                     wait(1)
@@ -63,8 +57,8 @@ class カートに商品を追加できること {
             }
             scene(4, "後始末: カートを空に戻す") {
                 action {
-                    // 追加した1点を削除（単一行なので id で一意）。副作用を残さない
-                    tap("#btn_remove_item")
+                    // 追加した1点を削除（行ごとに id=btn_remove_<productId>）。副作用を残さない
+                    tap("#btn_remove_fashion_5")
                     wait(1)
                 }.expectation {
                     exist("カートは空です")

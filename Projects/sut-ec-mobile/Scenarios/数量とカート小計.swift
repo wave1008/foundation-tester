@@ -9,13 +9,10 @@ import FTDSL
 @TestClass(app: "com.sutec.mobile", platform: "ios")
 class 数量を指定してカートに追加できること {
 
-    /// カート画面で全行を削除して空にする(基準化)。削除は各行同一 id=btn_remove_item で複数行だと
-    /// 曖昧なため先頭行を型+順番 .Button[2] で狙う。空カートでは「合計」が無く空振りして無害。
+    /// 対象商品(fashion_5)の行を削除して空にする(基準化)。各行の削除ボタンは id=btn_remove_<productId> で一意。
+    /// 空カートなら空振りして無害。本スイートはこの1商品のみ扱う。
     private func emptyCart() {
-        ifCanSelect("合計", waitSeconds: 1) { tap(".Button[2]") }
-        ifCanSelect("合計", waitSeconds: 1) { tap(".Button[2]") }
-        ifCanSelect("合計", waitSeconds: 1) { tap(".Button[2]") }
-        ifCanSelect("合計", waitSeconds: 1) { tap(".Button[2]") }
+        ifCanSelect("#btn_remove_fashion_5", waitSeconds: 1) { tap("#btn_remove_fashion_5") }
     }
 
     @Test("数量を3にして追加すると小計に反映される")
@@ -36,13 +33,13 @@ class 数量を指定してカートに追加できること {
                 action {
                     tap("#tab_home")
                     wait(1)
-                    tap(".Button=ミニマルデザイン腕時計")
+                    tap("#product_card_fashion_5")
                     wait(1)
                     tap("#btn_qty_increment")  // 1 → 2
                     wait(1)
                     tap("#btn_qty_increment")  // 2 → 3
                     wait(1)
-                    tap(".Button=カートに追加")
+                    tap("#btn_add_to_cart")
                     wait(1)
                     tap("#btn_open_cart")
                     wait(1)
@@ -53,7 +50,7 @@ class 数量を指定してカートに追加できること {
             }
             scene(3, "後始末: カートを空に戻す") {
                 action {
-                    tap("#btn_remove_item")  // 単一行なので id で一意
+                    tap("#btn_remove_fashion_5")  // 行ごとに id=btn_remove_<productId>
                     wait(1)
                 }.expectation {
                     exist("カートは空です")

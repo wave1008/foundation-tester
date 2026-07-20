@@ -10,13 +10,10 @@ import FTDSL
 @TestClass(app: "com.sutec.mobile", platform: "ios")
 class タブが正しく遷移すること {
 
-    /// カート画面で全行を削除して空にする(前回残留の基準化)。削除は各行同一 id=btn_remove_item で
-    /// 複数行だと曖昧なため先頭行を型+順番 .Button[2] で狙う。空カートでは「合計」が無く空振りして無害。
+    /// 対象商品(fashion_5)の行を削除して空にする(前回残留の基準化)。各行の削除ボタンは
+    /// id=btn_remove_<productId> で一意。空カートなら空振りして無害。本シナリオはこの1商品のみ扱う。
     private func emptyCart() {
-        ifCanSelect("合計", waitSeconds: 1) { tap(".Button[2]") }
-        ifCanSelect("合計", waitSeconds: 1) { tap(".Button[2]") }
-        ifCanSelect("合計", waitSeconds: 1) { tap(".Button[2]") }
-        ifCanSelect("合計", waitSeconds: 1) { tap(".Button[2]") }
+        ifCanSelect("#btn_remove_fashion_5", waitSeconds: 1) { tap("#btn_remove_fashion_5") }
     }
 
     @Test("下部タブが各セクションへ正しく着地する")
@@ -79,9 +76,9 @@ class タブが正しく遷移すること {
                     // [Home, Detail, Cart] のスタックを作る(旧バグの発火条件)
                     tap("#tab_home")
                     wait(1)
-                    tap(".Button=ミニマルデザイン腕時計")
+                    tap("#product_card_fashion_5")
                     wait(1)
-                    tap(".Button=カートに追加")
+                    tap("#btn_add_to_cart")
                     wait(1)
                     tap("#btn_open_cart")
                     wait(1)
@@ -97,7 +94,7 @@ class タブが正しく遷移すること {
                 action {
                     tap("#tab_cart")
                     wait(1)
-                    tap("#btn_remove_item")  // 単一行なので id で一意
+                    tap("#btn_remove_fashion_5")  // 行ごとに id=btn_remove_<productId>
                     wait(1)
                 }.expectation {
                     exist("カートは空です")

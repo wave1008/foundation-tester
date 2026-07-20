@@ -18,7 +18,7 @@ class お気に入りを登録解除できること {
                 }.action {
                     tap("#tab_home")  // launchApp の再開画面を正規化
                     wait(1)
-                    tap(".Button=ミニマルデザイン腕時計")  // おすすめ先頭カード → 詳細
+                    tap("#product_card_fashion_5")  // おすすめ先頭カード（id 指定）→ 詳細
                     wait(1)
                     // 既に登録済みなら外して「未登録」を基準にする(トグルの擬陽性回避)
                     ifCanSelect("お気に入りから削除") { tap("#btn_wishlist_toggle") }
