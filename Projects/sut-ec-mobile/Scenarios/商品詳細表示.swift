@@ -20,9 +20,7 @@ class 商品詳細が表示されること {
                     launchApp()
                 }.action {
                     tap("#tab_search")
-                    wait(1)
                     tap("#chip_category_electronics")
-                    wait(1)
                     tap("#product_card_electronics_1")
                 }.expectation {
                     exist("ワイヤレスイヤホン Pro")  // 商品名
@@ -43,9 +41,7 @@ class 商品詳細が表示されること {
             scene(3, "別商品でも割引率は切り捨て表示される(TC-32)") {
                 action {
                     tap("#btn_back")
-                    wait(1)
                     tap("#product_card_electronics_3")  // メカニカルキーボード
-                    wait(1)
                 }.expectation {
                     exist("¥12,500")
                     exist("¥15,000")

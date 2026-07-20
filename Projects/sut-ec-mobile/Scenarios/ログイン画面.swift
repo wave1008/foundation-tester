@@ -25,11 +25,8 @@ class ログイン画面を開けること {
                 }.action {
                     // 押し込み画面から再開した場合に一覧へ正規化(タブ根なら無害)
                     ifCanSelect("戻る") { tap("#btn_back") }
-                    wait(1)
                     tap("#tab_account")
-                    wait(1)
                     tap(".Button=ログイン / 登録")
-                    wait(1)
                 }.expectation {
                     exist("メールアドレス")
                     exist("パスワード")
