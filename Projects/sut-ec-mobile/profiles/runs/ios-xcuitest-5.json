@@ -14,21 +14,12 @@
       "name": "iPhone 17 Pro(iOS 27.0)-04"
     },
     {
-      "name": "Pixel 9(Android 15)-01"
-    },
-    {
-      "name": "Pixel 9(Android 15)-02"
-    },
-    {
-      "name": "Pixel 9(Android 15)-03"
-    },
-    {
-      "name": "Pixel 9(Android 15)-04"
+      "name": "iPhone 17 Pro(iOS 27.0)-05"
     }
   ],
+  "iosInappEngine": false,
   "heal": false,
   "reportDir": "reports",
   "machine": "M2Ultra",
-  "iosInappEngine": true,
   "wipeDataOnBloat": true
 }
