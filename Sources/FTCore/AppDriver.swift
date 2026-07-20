@@ -45,7 +45,7 @@ public enum DriverError: Error, LocalizedError {
         case .bridgeConnectionRefused(let detail):
             // 接続拒否=ポートで誰も待受していない。実行途中なら対象アプリのプロセス死が最有力
             // (iOS inapp はブリッジがアプリ内常駐のため、アプリが落ちると即接続不能になる)。
-            return "ドライバへの接続が拒否されました(ポートで待受なし): \(detail)。実行の途中で発生した場合は対象アプリのプロセスが終了/クラッシュした可能性が高いです(iOS inapp はブリッジがアプリ内常駐のため、アプリが落ちると接続不能になります)。まだ起動していない場合は iOS: ftester bridge up / Android: adb devices を確認してください"
+            return "ドライバへの接続が拒否されました(ポートで待受なし)。実行の途中で発生した場合は対象アプリのプロセスが終了/クラッシュした可能性が高いです(iOS inapp はブリッジがアプリ内常駐のため、アプリが落ちると接続不能になります)。まだ起動していない場合は iOS: ftester bridge up / Android: adb devices を確認してください。詳細: \(detail)"
         case .badResponse(let status, let body):
             return "ドライバがエラーを返しました (\(status)): \(body)"
         }
