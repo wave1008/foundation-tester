@@ -10,7 +10,7 @@ import FTDSL
 struct FTester: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "ftester",
-        abstract: "macOS Foundation Models を頭脳にした iOS/Android アプリテストツール",
+        abstract: "macOS用 iOS/Android アプリテストツール",
         subcommands: [
             InitCommand.self,
             Doctor.self,
