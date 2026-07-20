@@ -1,0 +1,25 @@
+{
+  "app": "sut-ec-mobile",
+  "devices": [
+    {
+      "name": "iPhone 17 Pro(iOS 27.0)-01"
+    },
+    {
+      "name": "iPhone 17 Pro(iOS 27.0)-02"
+    },
+    {
+      "name": "iPhone 17 Pro(iOS 27.0)-03"
+    },
+    {
+      "name": "iPhone 17 Pro(iOS 27.0)-04"
+    },
+    {
+      "name": "iPhone 17 Pro(iOS 27.0)-05"
+    }
+  ],
+  "heal": false,
+  "reportDir": "reports",
+  "machine": "LDIPC96",
+  "iosInappEngine": true,
+  "wipeDataOnBloat": true
+}

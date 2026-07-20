@@ -2,18 +2,6 @@
   "app": "sut-ec-mobile",
   "devices": [
     {
-      "name": "iPhone 17 Pro(iOS 27.0)-01"
-    },
-    {
-      "name": "iPhone 17 Pro(iOS 27.0)-02"
-    },
-    {
-      "name": "iPhone 17 Pro(iOS 27.0)-03"
-    },
-    {
-      "name": "iPhone 17 Pro(iOS 27.0)-04"
-    },
-    {
       "name": "Pixel 9(Android 15)-01"
     },
     {
@@ -24,6 +12,9 @@
     },
     {
       "name": "Pixel 9(Android 15)-04"
+    },
+    {
+      "name": "Pixel 9(Android 15)-05"
     }
   ],
   "heal": false,
