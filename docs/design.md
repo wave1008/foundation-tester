@@ -497,6 +497,16 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
   シナリオ側で `wait(1)` を挟むのが確実(コードで書けるようになった利点)
 - 3B FM のヒールは誤要素(NavigationBar 等)を高確信で選ぶことがある。キャッシュは誤ヒールも
   固定化するため、修正提案を人がレビューしてソースを直すループが前提
+- **inapp の `launchApp` は毎回 `simctl launch --terminate-running-process` で terminate+relaunch する
+  が、アプリのデータは消さないためアプリがディスクへ永続化した直前ルートを復元し得る**(プロセス
+  再利用ではない)。決定的なナビ状態リセットはアプリ側の責務で、ツールは状態リセットの注入
+  (`SIMCTL_CHILD_FT_RESET` 等)を意図的に提供しない(ユーザー決定・2026-07-20)。
+  シナリオ側は scene1 で対象タブをルートへ正規化して吸収する
+- **inapp ブリッジは注入先アプリのプロセス内常駐**なので、アプリがクラッシュ/終了すると HTTP が
+  `DriverError.bridgeConnectionRefused`(「Could not connect」)になる。xcuitest/Android はブリッジが
+  別プロセスのためこの切断は起きない(inapp 固有)。切断時は `InAppDriver` がホストの
+  `~/Library/Logs/DiagnosticReports` から対象 bundleID の直近 `.ips` を探し、レポートのエラー行に
+  クラッシュレポートのパスと終了理由を1行で添付する(`SimulatorCrashReport`)
 
 ---
 
