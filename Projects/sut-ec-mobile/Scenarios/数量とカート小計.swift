@@ -24,7 +24,6 @@ class 数量を指定してカートに追加できること {
                     launchApp()
                 }.action {
                     tap("#tab_cart")
-                    wait(1)
                     emptyCart()
                 }.expectation {
                     exist("カートは空です")
@@ -33,17 +32,11 @@ class 数量を指定してカートに追加できること {
             scene(2, "詳細で数量を3にしてカートに追加する") {
                 action {
                     tap("#tab_home")
-                    wait(1)
                     tap("#product_card_fashion_5")
-                    wait(1)
                     tap("#btn_qty_increment")  // 1 → 2
-                    wait(1)
                     tap("#btn_qty_increment")  // 2 → 3
-                    wait(1)
                     tap("#btn_add_to_cart")
-                    wait(1)
                     tap("#btn_open_cart")
-                    wait(1)
                 }.expectation {
                     exist("合計")
                     exist("¥54,000")  // ¥18,000 × 3(空基準なのでこの額=数量反映の証拠)
@@ -52,7 +45,6 @@ class 数量を指定してカートに追加できること {
             scene(3, "後始末: カートを空に戻す") {
                 action {
                     tap("#btn_remove_fashion_5")  // 行ごとに id=btn_remove_<productId>
-                    wait(1)
                 }.expectation {
                     exist("カートは空です")
                 }

@@ -25,7 +25,6 @@ class タブが正しく遷移すること {
                     launchApp()
                 }.action {
                     tap("#tab_cart")
-                    wait(1)
                     emptyCart()
                 }.expectation {
                     exist("カートは空です")
@@ -34,7 +33,6 @@ class タブが正しく遷移すること {
             scene(2, "ホームタブ → ホーム") {
                 action {
                     tap("#tab_home")
-                    wait(1)
                 }.expectation {
                     exist("SUT Store")
                     exist("おすすめ")
@@ -43,7 +41,6 @@ class タブが正しく遷移すること {
             scene(3, "検索タブ → 検索") {
                 action {
                     tap("#tab_search")
-                    wait(1)
                 }.expectation {
                     exist("カテゴリから探す")
                 }
@@ -51,7 +48,6 @@ class タブが正しく遷移すること {
             scene(4, "お気に入りタブ → お気に入り") {
                 action {
                     tap("#tab_wishlist")
-                    wait(1)
                 }.expectation {
                     exist("お気に入りは空です")
                 }
@@ -59,7 +55,6 @@ class タブが正しく遷移すること {
             scene(5, "アカウントタブ → アカウント") {
                 action {
                     tap("#tab_account")
-                    wait(1)
                 }.expectation {
                     exist("ログイン / 登録")
                 }
@@ -67,7 +62,6 @@ class タブが正しく遷移すること {
             scene(6, "カートタブ → カート(空)") {
                 action {
                     tap("#tab_cart")
-                    wait(1)
                 }.expectation {
                     exist("カートは空です")
                 }
@@ -76,16 +70,11 @@ class タブが正しく遷移すること {
                 action {
                     // [Home, Detail, Cart] のスタックを作る(旧バグの発火条件)
                     tap("#tab_home")
-                    wait(1)
                     tap("#product_card_fashion_5")
-                    wait(1)
                     tap("#btn_add_to_cart")
-                    wait(1)
                     tap("#btn_open_cart")
-                    wait(1)
                     // 旧バグではここでカートが復元されて残留した。修正版はホームへ着地する
                     tap("#tab_home")
-                    wait(1)
                 }.expectation {
                     exist("SUT Store")
                     exist("おすすめ")
@@ -94,9 +83,7 @@ class タブが正しく遷移すること {
             scene(8, "後始末: カートを空に戻す") {
                 action {
                     tap("#tab_cart")
-                    wait(1)
                     tap("#btn_remove_fashion_5")  // 行ごとに id=btn_remove_<productId>
-                    wait(1)
                 }.expectation {
                     exist("カートは空です")
                 }

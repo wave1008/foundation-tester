@@ -28,7 +28,6 @@ class サインアップ入力バリデーションが働くこと {
             scene(2, "全欄空のまま登録すると弾かれる") {
                 action {
                     tap("#btn_signup")  // 何も入力せず登録(バリデーションで失敗・アカウント未作成)
-                    wait(1)
                 }.expectation {
                     exist("#field_name")  // サインアップ画面に留まる=登録されていない
                     exist("#btn_signup")

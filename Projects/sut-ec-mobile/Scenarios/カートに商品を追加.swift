@@ -28,7 +28,6 @@ class カートに商品を追加できること {
                     launchApp()
                 }.action {
                     tap("#tab_cart")  // カートタブ（id 指定）
-                    wait(1)
                     emptyCart()
                 }.expectation {
                     exist("カートは空です")
@@ -37,9 +36,7 @@ class カートに商品を追加できること {
             scene(2, "ホームからおすすめ商品の詳細を開く") {
                 action {
                     tap("#tab_home")  // ホームタブ（id 指定・修正版で正常にホームへ遷移）
-                    wait(1)
                     tap("#product_card_fashion_5")  // おすすめ先頭カード（id 指定）
-                    wait(1)
                 }.expectation {
                     exist("在庫あり")
                     exist("#btn_add_to_cart")
@@ -50,7 +47,6 @@ class カートに商品を追加できること {
                     tap("#btn_add_to_cart")  // カートに追加（id 指定）
                     wait(1)  // 「カートに追加しました」スナックバーのアニメーション整定
                     tap("#btn_open_cart")  // 詳細右上のカートアイコン（id 指定）
-                    wait(1)
                 }.expectation {
                     exist("合計")  // 空表示から商品ありへ遷移した（合計は非空時のみ出る）
                     exist("ミニマルデザイン腕時計")  // scene1で空を確認済み → 存在=今回の追加が成立
@@ -60,7 +56,6 @@ class カートに商品を追加できること {
                 action {
                     // 追加した1点を削除（行ごとに id=btn_remove_<productId>）。副作用を残さない
                     tap("#btn_remove_fashion_5")
-                    wait(1)
                 }.expectation {
                     exist("カートは空です")
                 }

@@ -16,7 +16,6 @@ class 詳細から戻れること {
                     launchApp()
                 }.action {
                     tap("#tab_home")
-                    wait(1)
                     tap("#product_card_fashion_5")
                 }.expectation {
                     exist("#btn_back")        // 詳細の戻るボタン

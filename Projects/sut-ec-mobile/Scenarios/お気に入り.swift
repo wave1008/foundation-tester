@@ -18,12 +18,9 @@ class お気に入りを登録解除できること {
                     launchApp()
                 }.action {
                     tap("#tab_home")  // launchApp の再開画面を正規化
-                    wait(1)
                     tap("#product_card_fashion_5")  // おすすめ先頭カード（id 指定）→ 詳細
-                    wait(1)
                     // 既に登録済みなら外して「未登録」を基準にする(トグルの擬陽性回避)
                     ifCanSelect("お気に入りから削除") { tap("#btn_wishlist_toggle") }
-                    wait(1)
                 }.expectation {
                     exist("お気に入りに追加")  // ♡ が未登録状態
                 }
@@ -31,7 +28,6 @@ class お気に入りを登録解除できること {
             scene(2, "お気に入りに登録する") {
                 action {
                     tap("#btn_wishlist_toggle")
-                    wait(1)
                 }.expectation {
                     exist("お気に入りから削除")  // ♡ が登録状態に変化=登録成立
                 }
@@ -39,9 +35,7 @@ class お気に入りを登録解除できること {
             scene(3, "お気に入りタブに表示される") {
                 action {
                     tap("#btn_back")
-                    wait(1)
                     tap("#tab_wishlist")
-                    wait(1)
                 }.expectation {
                     exist("ミニマルデザイン腕時計")  // 登録商品が一覧にある
                 }
@@ -50,7 +44,6 @@ class お気に入りを登録解除できること {
                 action {
                     // 一覧の ♡(単一項目なのでラベル完全一致で一意)
                     tap(".Button=お気に入りから削除")
-                    wait(1)
                 }.expectation {
                     exist("お気に入りは空です")
                 }

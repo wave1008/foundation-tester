@@ -16,16 +16,11 @@ class カートの数量を操作できること {
     /// 空カートを作り、腕時計を1点だけ入れてカート画面に着地する
     private func resetAndAddOneWatch() {
         tap("#tab_cart")
-        wait(1)
         emptyCart()
         tap("#tab_home")
-        wait(1)
         tap("#product_card_fashion_5")
-        wait(1)
         tap("#btn_add_to_cart")
-        wait(1)
         tap("#btn_open_cart")
-        wait(1)
     }
 
     @Test("カートで数量を増やすと合計が再計算される")
@@ -44,7 +39,6 @@ class カートの数量を操作できること {
             scene(2, "数量を増やすと合計が倍になる") {
                 action {
                     tap("#btn_qty_increment")  // カート行の＋
-                    wait(1)
                 }.expectation {
                     exist("¥36,000")  // ¥18,000 × 2 に再計算
                 }
@@ -52,7 +46,6 @@ class カートの数量を操作できること {
             scene(3, "後始末: カートを空に戻す") {
                 action {
                     tap("#btn_remove_fashion_5")
-                    wait(1)
                 }.expectation {
                     exist("カートは空です")
                 }
@@ -79,7 +72,6 @@ class カートの数量を操作できること {
             scene(2, "数量1で − を押すと明細が削除される(TC-42)") {
                 action {
                     tap("#btn_qty_decrement")  // 期待: 1→0 で自動削除
-                    wait(1)
                 }.expectation {
                     exist("カートは空です")  // 現状は削除されず RED(不具合 D-01)
                 }
@@ -87,7 +79,6 @@ class カートの数量を操作できること {
             scene(3, "後始末: 残っていればゴミ箱で削除") {
                 action {
                     ifCanSelect("#btn_remove_fashion_5", waitSeconds: 1) { tap("#btn_remove_fashion_5") }
-                    wait(1)
                 }.expectation {
                     exist("カートは空です")
                 }
