@@ -50,6 +50,47 @@ final class SimulatorCrashReportTests: XCTestCase {
         XCTAssertNil(result)
     }
 
+    // MARK: - summarizeTextFormat(旧テキスト形式 .ips フォールバック)
+
+    func testSummarizeTextFormatExtractsBundleIDAndReason() {
+        let text = """
+        Incident Identifier: 12345
+        Identifier:            com.sutec.mobile
+        Version:               1.0
+        Exception Type:  EXC_BAD_ACCESS (SIGSEGV)
+        Exception Codes: KERN_INVALID_ADDRESS at 0x0
+        Termination Reason: Namespace SIGNAL, Code 11 Segmentation fault
+        """
+
+        let result = SimulatorCrashReport.summarizeTextFormat(text)
+
+        XCTAssertEqual(result?.bundleID, "com.sutec.mobile")
+        XCTAssertEqual(result?.reason, "EXC_BAD_ACCESS (SIGSEGV) / Namespace SIGNAL, Code 11 Segmentation fault")
+    }
+
+    func testSummarizeTextFormatWithoutTerminationReasonStillExtractsException() {
+        let text = """
+        Identifier:            com.sutec.mobile
+        Exception Type:  EXC_CRASH (SIGABRT)
+        """
+
+        let result = SimulatorCrashReport.summarizeTextFormat(text)
+
+        XCTAssertEqual(result?.bundleID, "com.sutec.mobile")
+        XCTAssertEqual(result?.reason, "EXC_CRASH (SIGABRT)")
+    }
+
+    func testSummarizeTextFormatReturnsNilWhenNeitherLabelPresent() {
+        let text = """
+        Hardware Model:      iPhone14,2
+        OS Version:          iPhone OS 17.0
+        """
+
+        let result = SimulatorCrashReport.summarizeTextFormat(text)
+
+        XCTAssertNil(result)
+    }
+
     // MARK: - findRecent
 
     // temporaryDirectory は /var/folders/…、contentsOfDirectory が返す URL は /private/var/… に

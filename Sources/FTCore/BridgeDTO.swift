@@ -44,15 +44,19 @@ public struct StatusResponse: Codable, Sendable {
     public var engine: String?
     /// BridgeAPI.bridgeProtocolVersion。旧ブリッジは返さない → nil 許容(=旧版扱い)。
     public var protocolVersion: Int?
+    /// UIApplication.applicationState の文字列化("active"/"inactive"/"background")。
+    /// inapp 専用診断(背面 suspend でハングしていないかの申告)。xcuitest ブリッジは返さない → nil 許容。
+    public var applicationState: String?
 
     public init(ready: Bool, device: String, osVersion: String, sessionBundleID: String?,
-                engine: String? = nil, protocolVersion: Int? = nil) {
+                engine: String? = nil, protocolVersion: Int? = nil, applicationState: String? = nil) {
         self.ready = ready
         self.device = device
         self.osVersion = osVersion
         self.sessionBundleID = sessionBundleID
         self.engine = engine
         self.protocolVersion = protocolVersion
+        self.applicationState = applicationState
     }
 }
 

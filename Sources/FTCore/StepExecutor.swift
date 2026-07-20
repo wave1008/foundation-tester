@@ -277,17 +277,25 @@ public final class StepExecutor {
             }
         }
 
-        // driver フォールバック(ハイブリッド): primary(in-app)で解決できないとき、fallbackDriver
-        // (XCUITest=システム UI)の snapshot でも解決を試す。act は解決した driver で行う。
+        // driver フォールバック(ハイブリッド): primary(in-app)で解決できない、または primary が
+        // label 部分一致(substring)でしか解決できていないとき、fallbackDriver(XCUITest=システム UI)
+        // の snapshot でも解決を試す。act は解決した driver で行う。
+        // substring 誤解決の偽陽性(in-app の label がシステム UI label の部分文字列で contains 命中し、
+        // 本来当てたいシステム UI 要素へフォールバックされない)を、fallback の exact 一致で上書きする。
+        // primary が exact のときは fallback を照会しない(従来どおりコスト増なし)。
         var actingDriver: AppDriver = driver
-        if resolved == nil, let fb = fallbackDriver {
-            start = clock.now
-            let fsnap = try await fb.snapshot()
-            phase.snapshotMs += Self.ms(clock.now - start)
-            if let r = Self.resolve(step: step, in: fsnap) {
-                resolved = r
-                snapshot = fsnap
-                actingDriver = fb
+        if let fb = fallbackDriver {
+            let primaryQuality = resolved == nil ? nil : Self.resolveDetailed(step: step, in: snapshot)?.quality
+            if resolved == nil || primaryQuality == .substring {
+                start = clock.now
+                let fsnap = try await fb.snapshot()
+                phase.snapshotMs += Self.ms(clock.now - start)
+                if let r = Self.resolveDetailed(step: step, in: fsnap),
+                   resolved == nil || r.quality == .exact {
+                    resolved = (r.element, r.usedFallback)
+                    snapshot = fsnap
+                    actingDriver = fb
+                }
             }
         }
 
@@ -478,10 +486,23 @@ public final class StepExecutor {
 
     // MARK: - ロケータ解決(決定的)
 
+    /// label の一致品質。exact=完全一致、substring=部分一致(contains)。
+    /// ハイブリッドで「primary の substring 解決」を「fallback の exact 解決」で上書きする判定に使う。
+    /// id / type+index による一致は exact 扱い。
+    public enum MatchQuality { case exact, substring }
+
     /// 戻り値: (要素, 使用したフォールバック)。プライマリで解決した場合フォールバックは nil
     /// strictForAssert: id も label もない(type+index のみの)フォールバックを除外する
     public static func resolve(step: FlowStep, in snapshot: SnapshotResponse,
                                strictForAssert: Bool = false) -> (ElementInfo, FlowLocator?)? {
+        resolveDetailed(step: step, in: snapshot, strictForAssert: strictForAssert)
+            .map { ($0.element, $0.usedFallback) }
+    }
+
+    /// resolve に label 一致品質(quality)を添えた版。ハイブリッドの偽陽性抑止に使う。
+    public static func resolveDetailed(step: FlowStep, in snapshot: SnapshotResponse,
+                                       strictForAssert: Bool = false)
+        -> (element: ElementInfo, usedFallback: FlowLocator?, quality: MatchQuality)? {
         var chain: [(FlowLocator, isPrimary: Bool)] = []
         if let locator = step.locator { chain.append((locator, true)) }
         for fallback in step.fallbacks ?? [] {
@@ -490,14 +511,19 @@ public final class StepExecutor {
         }
 
         for (locator, isPrimary) in chain {
-            if let element = match(locator, in: snapshot) {
-                return (element, isPrimary ? nil : locator)
+            if let (element, quality) = matchDetailed(locator, in: snapshot) {
+                return (element, isPrimary ? nil : locator, quality)
             }
         }
         return nil
     }
 
     public static func match(_ locator: FlowLocator, in snapshot: SnapshotResponse) -> ElementInfo? {
+        matchDetailed(locator, in: snapshot)?.0
+    }
+
+    public static func matchDetailed(_ locator: FlowLocator, in snapshot: SnapshotResponse)
+        -> (ElementInfo, MatchQuality)? {
         // type は絞り込み条件として id/label と併用できる
         // (同じ id が Cell/Switch/Button に付くことがあり、値検証では型の指定が必要)
         var candidates = snapshot.elements
@@ -505,15 +531,16 @@ public final class StepExecutor {
             candidates = candidates.filter { $0.type == type }
         }
         if let id = locator.id {
-            return candidates.first { $0.identifier == id }
+            return candidates.first { $0.identifier == id }.map { ($0, .exact) }
         }
         if let label = locator.label {
-            return candidates.first { $0.label == label }
-                ?? candidates.first { ($0.label ?? "").contains(label) }
+            if let exact = candidates.first(where: { $0.label == label }) { return (exact, .exact) }
+            if let sub = candidates.first(where: { ($0.label ?? "").contains(label) }) { return (sub, .substring) }
+            return nil
         }
         if locator.type != nil {
             let index = locator.index ?? 0
-            return index < candidates.count ? candidates[index] : nil
+            return index < candidates.count ? (candidates[index], .exact) : nil
         }
         return nil
     }

@@ -74,6 +74,12 @@ final class StepExecutorTests: XCTestCase {
                    frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: 0)
     }
 
+    private func labeled(ref: Int, label: String) -> ElementInfo {
+        ElementInfo(ref: ref, type: "Button", identifier: nil, label: label, value: nil,
+                   placeholder: nil, enabled: true,
+                   frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: 0)
+    }
+
     /// exists のフォールバック照会は 2・4・6…回目の primary ミスでのみ発生する(間引き契約。
     /// StepExecutor.swift executeAssert "exists" 参照)
     func testExistsThrottlesFallbackQuery() async throws {
@@ -155,6 +161,74 @@ final class StepExecutorTests: XCTestCase {
             return
         }
         XCTAssertEqual(primary.snapshotCallCount, 4)
+    }
+
+    // MARK: - 施策3: substring 偽陽性の fallback exact 上書き(tap アクション経路)
+
+    /// primary が label 部分一致(substring)でしか解決できないとき、fallback に完全一致(exact)が
+    /// あれば fallback で act する(in-app label がシステム UI label の部分文字列 → 偽陽性の抑止)
+    func testTapPrefersFallbackExactOverPrimarySubstring() async throws {
+        let log = CallLog()
+        // primary: "ログイン" を含むが完全一致でない(部分一致のみ)
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[labeled(ref: 1, label: "ログインに失敗しました")]])
+        // fallback: "ログイン" の完全一致
+        let fallback = FakeAppDriver(name: "fallback", log: log,
+                                     snapshotElements: [[labeled(ref: 2, label: "ログイン")]])
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback)
+        let step = FlowStep(action: "tap", locator: FlowLocator(label: "ログイン"))
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("fallback exact 解決での passed を期待したが \(outcome.status) だった")
+            return
+        }
+        XCTAssertTrue(log.entries.contains("fallback.tap(ref:2)"),
+                      "fallback の exact 要素で act すべき: \(log.entries)")
+        XCTAssertFalse(log.entries.contains("primary.tap(ref:1)"),
+                       "primary の substring 要素で act してはいけない(偽陽性): \(log.entries)")
+    }
+
+    /// primary が substring 一致で fallback に exact が無ければ、primary の substring 一致で act する
+    /// (fallback は1回照会するが上書きしない)
+    func testTapKeepsPrimarySubstringWhenFallbackHasNoExact() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[labeled(ref: 1, label: "ログインに失敗しました")]])
+        let fallback = FakeAppDriver(name: "fallback", log: log, snapshotElements: [[]])
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback)
+        let step = FlowStep(action: "tap", locator: FlowLocator(label: "ログイン"))
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("primary substring 解決での passed を期待したが \(outcome.status) だった")
+            return
+        }
+        XCTAssertTrue(log.entries.contains("primary.tap(ref:1)"),
+                      "fallback に exact が無ければ primary substring で act すべき: \(log.entries)")
+        XCTAssertEqual(fallback.snapshotCallCount, 1, "substring 一致では fallback を1回照会する")
+    }
+
+    /// primary が完全一致(exact)のときは fallback を一切照会しない(コスト増を避ける契約)
+    func testTapExactPrimaryNeverQueriesFallback() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[labeled(ref: 1, label: "ログイン")]])
+        let fallback = FakeAppDriver(name: "fallback", log: log,
+                                     snapshotElements: [[labeled(ref: 2, label: "ログイン")]])
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback)
+        let step = FlowStep(action: "tap", locator: FlowLocator(label: "ログイン"))
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("primary exact 解決での passed を期待したが \(outcome.status) だった")
+            return
+        }
+        XCTAssertEqual(fallback.snapshotCallCount, 0, "primary exact のとき fallback は照会しない")
+        XCTAssertTrue(log.entries.contains("primary.tap(ref:1)"), "primary で act すべき: \(log.entries)")
     }
 
     /// primary に要素があれば fallbackDriver は一度も呼ばれないこと
