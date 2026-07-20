@@ -11,7 +11,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.sutec.mobile", platform: "ios")
+@TestClass(app: "com.sutec.mobile")  // iOS/Android 両対応(#id は testTag→resource-id/accessibilityId で共通)
 class カートに商品を追加できること {
 
     /// 対象商品(fashion_5)の行を削除して空にする（擬陽性防止の基準作り）。
@@ -36,7 +36,7 @@ class カートに商品を追加できること {
             scene(2, "ホームからおすすめ商品の詳細を開く") {
                 action {
                     tap("#tab_home")  // ホームタブ（id 指定・修正版で正常にホームへ遷移）
-                    tap("#product_card_fashion_5")  // おすすめ先頭カード（id 指定）
+                    tap("#product_card_fashion_5", timeout: 5)  // おすすめ先頭カード（id 指定）。ホームおすすめは非同期ロード(Android cold で既定0.7sは空振り)
                 }.expectation {
                     exist("在庫あり")
                     exist("#btn_add_to_cart")

@@ -5,7 +5,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.sutec.mobile", platform: "ios")
+@TestClass(app: "com.sutec.mobile")  // iOS/Android 両対応(#id は testTag→resource-id/accessibilityId で共通)
 class 詳細から戻れること {
 
     @Test("商品詳細から戻るでホームへ復帰する")
@@ -16,7 +16,7 @@ class 詳細から戻れること {
                     launchApp()
                 }.action {
                     tap("#tab_home")
-                    tap("#product_card_fashion_5")
+                    tap("#product_card_fashion_5", timeout: 5)  // ホームおすすめは非同期ロード(Android cold で既定0.7sは空振り)
                 }.expectation {
                     exist("#btn_back")        // 詳細の戻るボタン
                     exist("#btn_add_to_cart")

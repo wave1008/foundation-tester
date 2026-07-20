@@ -5,7 +5,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.sutec.mobile", platform: "ios")
+@TestClass(app: "com.sutec.mobile")  // iOS/Android 両対応(#id は testTag→resource-id/accessibilityId で共通)
 class カートの数量を操作できること {
 
     /// カート画面で対象行を削除して空にする(基準化)
@@ -18,7 +18,7 @@ class カートの数量を操作できること {
         tap("#tab_cart")
         emptyCart()
         tap("#tab_home")
-        tap("#product_card_fashion_5")
+        tap("#product_card_fashion_5", timeout: 5)  // ホームおすすめは非同期ロード(Android cold で既定0.7sは空振り)
         tap("#btn_add_to_cart")
         tap("#btn_open_cart")
     }

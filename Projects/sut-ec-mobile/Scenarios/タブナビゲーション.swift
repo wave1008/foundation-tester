@@ -8,7 +8,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.sutec.mobile", platform: "ios")
+@TestClass(app: "com.sutec.mobile")  // iOS/Android 両対応(#id は testTag→resource-id/accessibilityId で共通)
 class タブが正しく遷移すること {
 
     /// 対象商品(fashion_5)の行を削除して空にする(前回残留の基準化)。各行の削除ボタンは
@@ -70,7 +70,7 @@ class タブが正しく遷移すること {
                 action {
                     // [Home, Detail, Cart] のスタックを作る(旧バグの発火条件)
                     tap("#tab_home")
-                    tap("#product_card_fashion_5")
+                    tap("#product_card_fashion_5", timeout: 5)  // ホームおすすめは非同期ロード(Android cold で既定0.7sは空振り)
                     tap("#btn_add_to_cart")
                     tap("#btn_open_cart")
                     // 旧バグではここでカートが復元されて残留した。修正版はホームへ着地する

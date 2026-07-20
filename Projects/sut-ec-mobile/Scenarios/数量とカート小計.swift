@@ -7,7 +7,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.sutec.mobile", platform: "ios")
+@TestClass(app: "com.sutec.mobile")  // iOS/Android 両対応(#id は testTag→resource-id/accessibilityId で共通)
 class 数量を指定してカートに追加できること {
 
     /// 対象商品(fashion_5)の行を削除して空にする(基準化)。各行の削除ボタンは id=btn_remove_<productId> で一意。
@@ -32,7 +32,7 @@ class 数量を指定してカートに追加できること {
             scene(2, "詳細で数量を3にしてカートに追加する") {
                 action {
                     tap("#tab_home")
-                    tap("#product_card_fashion_5")
+                    tap("#product_card_fashion_5", timeout: 5)  // ホームおすすめは非同期ロード(Android cold で既定0.7sは空振り)
                     tap("#btn_qty_increment")  // 1 → 2
                     tap("#btn_qty_increment")  // 2 → 3
                     tap("#btn_add_to_cart")

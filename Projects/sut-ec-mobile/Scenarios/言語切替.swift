@@ -7,7 +7,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.sutec.mobile", platform: "ios")
+@TestClass(app: "com.sutec.mobile")  // iOS/Android 両対応(#id は testTag→resource-id/accessibilityId で共通)
 class 言語を切り替えられること {
 
     @Test("日本語とEnglishを切り替えられる")
