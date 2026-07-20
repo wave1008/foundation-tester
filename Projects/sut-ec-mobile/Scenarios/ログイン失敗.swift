@@ -1,4 +1,5 @@
 // ログイン失敗.swift
+// testbase: TC-80 の負側/第2段階の実認証(user-manual「誤ったパスワードでのログインはできません」)。
 // 誤った資格情報ではログインできずエラーが出ることを検証する(負テスト・入力を伴う)。
 // 【engine=xcuitest 専用】: 入力欄は id 付与済み(#field_email/#field_password)で解決は両エンジンで
 // できるが、inapp のタップは Compose 入力欄をフォーカスできず type が 409 になる。フルアプリ XCUITest
