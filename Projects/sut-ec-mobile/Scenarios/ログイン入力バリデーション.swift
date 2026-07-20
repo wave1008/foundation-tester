@@ -1,7 +1,9 @@
 // ログイン入力バリデーション.swift
 // testbase TC-130/131/132(SC-130/131/132): ログインの空欄・空白入力は失敗しエラー表示(isBlank 判定)。
-// type を伴う。iOS は ios-xcuitest プロファイル必須(inapp は Compose 入力欄をフォーカスできず type が 409)。
-// Android は inapp で type 可(ACTION_SET_TEXT・IME 不要)。→ iOS-inapp プロファイルには載せない。
+// type を伴う。iOS-hybrid(all/ios プロファイル)は Compose 自動判定で type だけ XCUITest 実行に
+// 切り替わるためそのまま通る(2026-07-20〜。docs/design.md §セレクタの hybrid type 項)。
+// engine=inapp 単独のプロファイルにだけは載せない(type が 409)。
+// Android は inapp で type 可(ACTION_SET_TEXT・IME 不要)。
 // 失敗ログインはサーバ状態を作らないため副作用なし。セレクタは修正版ビルドで採取。
 
 import FTDSL

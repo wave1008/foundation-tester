@@ -197,3 +197,7 @@ cd <TOOL_ROOT>/vscode-ftester && npm install && npm run install-local
 - 拡張が更新されない → VSCode の `Developer: Reload Window`、モニターパネルは開き直す。外部構成では
   `ftester.binaryPath` が TOOL_ROOT の CLI を指しているかも確認。
 - Android で adb 未検出 → `export ANDROID_HOME=~/Library/Android/sdk`、`bash AndroidRunner/build.sh`。
+- iOS の `type` だけ「(409): フォーカスされた入力欄がありません」→ アプリが Compose Multiplatform /
+  Flutter 等(UIKit の入力欄を持たない)のときの症状。既定の実行プロファイル(hybrid)なら Compose は
+  自動判定して type を XCUITest 実行に切り替えるので通常は起きない(tap/exist は影響なし)。起きるのは
+  engine=inapp を明示したプロファイルのみ → `iosInappEngine` 既定(hybrid)に戻すか xcuitest にする。
