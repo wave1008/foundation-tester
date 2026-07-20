@@ -9,7 +9,7 @@
 
 import FTDSL
 
-@TestClass(app: "com.sutec.mobile", platform: "ios")
+@TestClass(app: "com.sutec.mobile")  // iOS/Android 両対応(#id は testTag→resource-id/accessibilityId で共通)
 class 商品詳細が表示されること {
 
     @Test("商品詳細に情報と割引が表示される")

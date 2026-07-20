@@ -8,6 +8,7 @@
     "appPath": "../sut-ec-mobile/dist/ios-simulator/SUTStore.app"
   },
   "android": {
-    "app": "com.sutec.mobile"
+    "app": "com.sutec.mobile",
+    "appPath": "../sut-ec-mobile/dist/android/sut-store-debug.apk"
   }
 }
