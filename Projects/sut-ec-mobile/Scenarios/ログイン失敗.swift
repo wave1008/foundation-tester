@@ -1,10 +1,10 @@
 // ログイン失敗.swift
 // testbase: TC-80 の負側/第2段階の実認証(user-manual「誤ったパスワードでのログインはできません」)。
 // 誤った資格情報ではログインできずエラーが出ることを検証する(負テスト・入力を伴う)。
-// type を伴う。入力欄は id 付与済み(#field_email/#field_password)で解決は全エンジン共通だが:
-//   - iOS: inapp のタップは Compose 入力欄をフォーカスできず type が 409 → フルアプリ XCUITest
-//     ブリッジ(profiles/runs/ios-xcuitest.json, iosInappEngine=false)必須。`--profile ios-xcuitest` で実行。
-//   - Android: inapp で type 可(ACTION_SET_TEXT・IME 不要)。→ iOS-inapp プロファイルには載せない。
+// type を伴う。入力欄は id 付与済み(#field_email/#field_password)で解決は全エンジン共通:
+//   - iOS: hybrid(all/ios プロファイル)は Compose 自動判定で type だけ XCUITest 実行に切り替わる
+//     ためそのまま通る(2026-07-20〜)。engine=inapp 単独にだけは載せない(type が 409)。
+//   - Android: inapp で type 可(ACTION_SET_TEXT・IME 不要)。
 // 失敗ログインはサーバ状態を作らないため副作用なし(正常ログイン/アカウント作成は専用テストアカウントが要る)。
 // セレクタは iPhone 17 Pro(iOS 27.0)/ja_JP・修正版ビルドで採取。
 
