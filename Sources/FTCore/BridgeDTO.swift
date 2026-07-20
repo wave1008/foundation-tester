@@ -50,10 +50,13 @@ public struct StatusResponse: Codable, Sendable {
     /// inapp ブリッジが自己申告する UI フレームワーク("compose"/"uikit")。判定は InAppBridge の
     /// compose-resources 実在チェック。xcuitest/Android ブリッジは返さない → nil 許容。
     public var uiFramework: String?
+    /// Android ブリッジ APK の versionCode(BridgeRouter.java handleStatus)。稼働中の旧ブリッジを
+    /// probe 時に検知して自動更新するために使う。iOS ブリッジ・旧 Android ブリッジは返さない → nil 許容。
+    public var bridgeVersionCode: Int?
 
     public init(ready: Bool, device: String, osVersion: String, sessionBundleID: String?,
                 engine: String? = nil, protocolVersion: Int? = nil, applicationState: String? = nil,
-                uiFramework: String? = nil) {
+                uiFramework: String? = nil, bridgeVersionCode: Int? = nil) {
         self.ready = ready
         self.device = device
         self.osVersion = osVersion
@@ -62,6 +65,7 @@ public struct StatusResponse: Codable, Sendable {
         self.protocolVersion = protocolVersion
         self.applicationState = applicationState
         self.uiFramework = uiFramework
+        self.bridgeVersionCode = bridgeVersionCode
     }
 }
 

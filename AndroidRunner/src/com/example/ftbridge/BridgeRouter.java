@@ -45,10 +45,23 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
     private Map<Integer, double[]> refCenters = new HashMap<>();
     private Rect lastScreen = new Rect();
     private String sessionBundleID;
+    /** 自 APK の versionCode(/status で申告)。取得失敗時は 0 = 申告しない */
+    private final int versionCode;
 
     BridgeRouter(Instrumentation instrumentation) {
         this.instrumentation = instrumentation;
+        this.versionCode = resolveVersionCode(instrumentation);
         ua().setOnAccessibilityEventListener(quietWaiter.listener());
+    }
+
+    /** インストール済み APK の実 versionCode(build.sh の VERSION_CODE と手動同期しないため実物を引く) */
+    private static int resolveVersionCode(Instrumentation instrumentation) {
+        try {
+            android.content.Context ctx = instrumentation.getContext();
+            return ctx.getPackageManager().getPackageInfo(ctx.getPackageName(), 0).versionCode;
+        } catch (Exception e) {
+            return 0;
+        }
     }
 
     @Override
@@ -114,6 +127,9 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         o.put("ready", ready);
         o.put("device", Build.MODEL);
         o.put("osVersion", "Android " + Build.VERSION.RELEASE);
+        // 稼働中プロセスの版をホストが照合できるように申告(AndroidBridge.swift probeBridge が
+        // expectedBridgeVersionCode と比較し、不一致なら再インストール+再起動する)
+        if (versionCode > 0) o.put("bridgeVersionCode", versionCode);
         String session = pkg != null ? pkg : sessionBundleID;
         if (session != null) o.put("sessionBundleID", session);
         return BridgeHttpServer.Response.json(200, o.toString());
@@ -179,10 +195,8 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
     }
 
     private BridgeHttpServer.Response handlePress(JSONObject body) {
-        if (!body.has("ref")) {
-            throw new BridgeException(400, "ref が必要です");
-        }
-        double[] center = centerOf(body.optInt("ref"));
+        // ref または x/y(iOS ブリッジと同じ受理形。ホストは ref を自前解決して x/y で送る)
+        double[] center = resolvePoint(body);
         double duration = body.optDouble("duration", 1.0);
         InputInjector.press(ua(), center[0], center[1], duration);
         settle();

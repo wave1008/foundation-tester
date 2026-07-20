@@ -7,6 +7,9 @@ import FTCore
 
 public enum LaunchPreflightError: Error, LocalizedError {
     case appNotInstalled(bundleID: String, udid: String)
+    /// simctl を実行できなかった(xcrun 不在・spawn 失敗等)。未インストールとは区別する
+    /// (「インストールされていません」と誤診断してユーザーを誤誘導しないため)
+    case checkFailed(bundleID: String, detail: String)
 
     public var errorDescription: String? {
         switch self {
@@ -14,6 +17,9 @@ public enum LaunchPreflightError: Error, LocalizedError {
             return "アプリ \(bundleID) はシミュレータ(\(udid))にインストールされていません"
                 + "(未インストールのまま launch すると XCUITest ランナーがハングするため事前検査で中断)。"
                 + "実行プロファイル(apps/<名>.json の appPath+autoInstall)でのインストールを確認してください。"
+        case .checkFailed(let bundleID, let detail):
+            return "アプリ \(bundleID) のインストール事前検査(simctl get_app_container)を実行できませんでした"
+                + "(未インストールかどうかは不明)。Xcode コマンドラインツールの状態を確認してください: \(detail)"
         }
     }
 }
@@ -44,10 +50,14 @@ public final class LaunchPreflightDriver: AppDriver {
 
     private func ensureInstalled(bundleID: String) throws {
         if confirmedInstalled.contains(bundleID) { return }
-        guard let container = try? Shell.run(
-            ["xcrun", "simctl", "get_app_container", udid, bundleID]),
-            container.status == 0,
-            !container.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        let container: Shell.Result
+        do {
+            container = try Shell.run(["xcrun", "simctl", "get_app_container", udid, bundleID])
+        } catch {
+            throw LaunchPreflightError.checkFailed(bundleID: bundleID, detail: "\(error)")
+        }
+        guard container.status == 0,
+              !container.output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw LaunchPreflightError.appNotInstalled(bundleID: bundleID, udid: udid)
         }
         confirmedInstalled.insert(bundleID)

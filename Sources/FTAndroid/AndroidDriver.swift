@@ -106,7 +106,11 @@ public final class AndroidDriver: AppDriver {
         // force-stop+monkey+am start フォールバックと整定待ちはブリッジ側 handleLaunch() が持つ
         // (ここでの追加 sleep は不要)
         try await withBridge { try await $0.launch(bundleID: bundleID) }
+        // 再起動で旧 snapshot の ref は無効。メモリ・永続化の両方から落とし、
+        // 以後の tap(ref:) を「先に snapshot」エラーに倒す(古い座標への誤タップ防止)
+        refCenters = [:]
         currentPackage = bundleID
+        persistState()
     }
 
     /// 状態を保持したまま前面化する。ブリッジの launch(force-stop+再起動)は使わず adb 直で
@@ -121,7 +125,9 @@ public final class AndroidDriver: AppDriver {
         // monkey は intent 送信のみで遷移完了を待たないため、直後の snapshot が遷移前の画面を
         // 掴まない程度の整定待ち
         try await Task.sleep(nanoseconds: 800_000_000)
+        restoreStateIfNeeded()  // 状態保持の前面化なので refs は維持(空の状態で persist して消さない)
         currentPackage = bundleID
+        persistState()
     }
 
     /// タスク一覧(最近使ったアプリ)を開く。
@@ -211,10 +217,13 @@ public final class AndroidDriver: AppDriver {
 
     public func press(ref: Int, duration: Double) async throws {
         restoreStateIfNeeded()
-        guard refCenters[ref] != nil else {
-            throw DriverError.badResponse(status: 404, body: "参照番号 [\(ref)] は未知です")
+        guard let center = refCenters[ref] else {
+            throw DriverError.badResponse(status: 404, body: "参照番号 [\(ref)] は未知です。先に snapshot を実行してください")
         }
-        try await withBridge { try await $0.press(ref: ref, duration: duration) }
+        // tap(ref:) と同じくホスト側で座標解決してブリッジへは x/y で送る(ブリッジ再起動で
+        // ブリッジ側 ref 表だけが消えてもずれない。注入経路は従来と同じ InputInjector.press)。
+        // ブリッジ v8 以降が前提(v7 は /press が ref 必須。probe の版照合で自動更新される)
+        try await withBridge { try await $0.press(x: center.x, y: center.y, duration: duration) }
     }
 
     /// 座標ロングプレス。同一点への input swipe が Android の標準的な長押し合成手段。
@@ -238,6 +247,7 @@ public final class AndroidDriver: AppDriver {
         if let package = currentPackage {
             _ = try adb(["shell", "am", "force-stop", package])
             currentPackage = nil
+            persistState()  // 消さないと別プロセスの再 terminate が古い package を force-stop する
         }
     }
 
