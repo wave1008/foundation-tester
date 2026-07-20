@@ -1,4 +1,5 @@
 // カートに商品を追加.swift
+// testbase: TC-40(SC-40)カート表示 / TC-01 手順1-3(商品→カート追加→カートに表示)の基礎ハッピーパス。
 // SUT Store（com.sutec.mobile）の「商品をカートに追加」ハッピーパス。
 // セレクタは iPhone 17 Pro（iOS 27.0）/ja_JP・修正版ビルド（2026-07-20）で実機採取済み。
 // 主要導線に accessibilityIdentifier が付いたため id 指定へ移行（旧・順序依存の .Button[N] を撤去）。
