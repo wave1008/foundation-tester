@@ -308,6 +308,21 @@ OcclusionVerifier)が実機で機能することを確認**。これで PoC は 
 これで存在系(`exist`)・一致系(`textIs`/`valueIs`)とも既定で「見えていること」を確認する。
 `present` は存在系のツリーのみ版、テキスト系は `occlusionGuard: false` がオプトアウト。
 
+## 5.14 スクショ再利用: 操作を挟まない連続ガードで往復(~125ms)を回避(2026-07-22)
+
+実測(§crop 検討)で、ガード発火のたびに全画面スクショ往復 **~125ms** を払っていた。**操作を挟まない
+連続ガード**(`exist` を並べる等、同一静止画面)では 1 枚を使い回して往復を省く。
+
+- StepExecutor に `cachedScreenshot` を持ち、occlusionFlip の取得を `guardScreenshot()` 経由に。
+- **無効化**(古いスクショの再利用防止): ① action(tap/type/swipe 等= executeAction 冒頭)
+  ② performCustom(launch/wait/procedure = executor をバイパスするため [FTRuntime](../Sources/FTDSL/FTRuntime.swift) から
+  `invalidateScreenshotCache()` を呼ぶ)③ poll 待機ごと(poll-until-visible で画面が変わり得る)
+  ④ **200ms TTL**(静止画面前提の staleness 上限)。
+- 効果: 連続する N 個の可視ガードが **スクショ 1 回**で済む(従来 N 回)。実測往復 ~125ms/回なので
+  例: 連続 5 ガードで ~500ms 削減。FM が絡む場合は FM 側が支配的なので効果は相対的に小。
+- テスト: 連続ガードでスクショ 1 回に集約 / 操作を挟むと取り直す、を StepExecutorTests で検証(count で確認)。
+  実機 E2E 無回帰(覆い→failed / 可視→passed)。poll-until-visible とも両立(待機ごとに取り直すため覆いは再判定)。
+
 ## 6. 既知の限界
 
 1. **合成フィクスチャでの計測**。実機スクショ(半透明シート、影、アンチエイリアス、動的コンテンツ)は
