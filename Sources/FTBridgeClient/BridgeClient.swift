@@ -10,6 +10,10 @@ public final class BridgeClient: AppDriver {
     /// テスト seam(下の internal init)経由でのみ短縮注入できる
     let interactionTimeout: TimeInterval
     let sessionTimeout: TimeInterval
+    /// 高速入力(quiescence スキップ)。init 時に FT_FAST_INPUT 環境変数から確定
+    let fastInput: Bool
+    /// リクエストに載せる値(未使用時はキーごと省略 → 旧ランナーと byte 互換)
+    private var fastFlag: Bool? { fastInput ? true : nil }
 
     /// per-endpoint の壁時計上限(秒)の既定値。init の 120 は未指定エンドポイントのフォールバック。
     /// URLRequest.timeoutInterval で config の既定を1リクエスト単位に上書きする
@@ -31,6 +35,10 @@ public final class BridgeClient: AppDriver {
     init(port: UInt16, timeoutSeconds: TimeInterval = 120,
         interactionTimeout: TimeInterval, sessionTimeout: TimeInterval) {
         self.baseURL = URL(string: "http://127.0.0.1:\(port)")!
+        // 高速入力(quiescence スキップ)はプロセス単位の環境変数で有効化する
+        // (実行プロファイル iosFastInput / CLI --fast-input が FT_FAST_INPUT=1 を注入。
+        //  BridgeClient は hybrid のフォールバック経路でも生成されるため init 引数ではなく env で統一)
+        self.fastInput = ProcessInfo.processInfo.environment["FT_FAST_INPUT"] == "1"
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = timeoutSeconds
         self.session = URLSession(configuration: config)
@@ -66,6 +74,13 @@ public final class BridgeClient: AppDriver {
         }
     }
 
+    /// simctl 等で起動済みのアプリへプロキシ接続だけ行う(FastLaunchDriver 用。activate 比 約-1s)
+    public func attach(bundleID: String) async throws {
+        let _: OKResponse = try await post("/session",
+                                           body: LaunchRequest(bundleID: bundleID, attachOnly: true),
+                                           timeout: sessionTimeout)
+    }
+
     public func launch(bundleID: String) async throws {
         let _: OKResponse = try await post("/session", body: LaunchRequest(bundleID: bundleID),
                                            timeout: sessionTimeout)
@@ -91,12 +106,12 @@ public final class BridgeClient: AppDriver {
     }
 
     public func tap(ref: Int) async throws {
-        let _: OKResponse = try await post("/tap", body: TapRequest(ref: ref),
+        let _: OKResponse = try await post("/tap", body: TapRequest(ref: ref, fast: fastFlag),
                                            timeout: interactionTimeout)
     }
 
     public func tap(x: Double, y: Double) async throws {
-        let _: OKResponse = try await post("/tap", body: TapRequest(x: x, y: y),
+        let _: OKResponse = try await post("/tap", body: TapRequest(x: x, y: y, fast: fastFlag),
                                            timeout: interactionTimeout)
     }
 
@@ -106,7 +121,7 @@ public final class BridgeClient: AppDriver {
     }
 
     public func swipe(_ direction: FTSwipeDirection) async throws {
-        let _: OKResponse = try await post("/swipe", body: SwipeRequest(direction: direction),
+        let _: OKResponse = try await post("/swipe", body: SwipeRequest(direction: direction, fast: fastFlag),
                                            timeout: interactionTimeout)
     }
 
@@ -119,12 +134,14 @@ public final class BridgeClient: AppDriver {
     }
 
     public func press(ref: Int, duration: Double) async throws {
-        let _: OKResponse = try await post("/press", body: PressRequest(ref: ref, duration: duration),
+        let _: OKResponse = try await post("/press", body: PressRequest(ref: ref, duration: duration,
+                                                                        fast: fastFlag),
                                            timeout: interactionTimeout)
     }
 
     public func press(x: Double, y: Double, duration: Double) async throws {
-        let _: OKResponse = try await post("/press", body: PressRequest(x: x, y: y, duration: duration),
+        let _: OKResponse = try await post("/press", body: PressRequest(x: x, y: y, duration: duration,
+                                                                        fast: fastFlag),
                                            timeout: interactionTimeout)
     }
 
