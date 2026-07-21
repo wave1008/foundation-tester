@@ -2,6 +2,7 @@
 #import <dlfcn.h>
 #import <mach/mach_time.h>
 #import <objc/message.h>
+#import <objc/runtime.h>
 
 // UITouch/UIApplication/UITouchesEvent の合成 private セレクタ(実在確認済み: Xcode 27 beta 3)。
 // これらが消えたら合成が黙って効かなくなるので、壊れたら InAppInput の再調査が必要。
@@ -154,16 +155,86 @@ static __weak UIResponder *ftCapturedFirstResponder = nil;
 - (void)ft_captureFirstResponder:(id)sender { ftCapturedFirstResponder = self; }
 @end
 
-BOOL FTInsertTextIntoFirstResponder(NSString *text) {
+// sendAction(to:nil)で捕まらない埋め込みレスポンダ(Compose 等の可能性)向けの
+// ビュー木からの isFirstResponder 探索フォールバック
+static UIView * _Nullable ftFindFirstResponderView(UIView *root) {
+    if (root.isFirstResponder) return root;
+    for (UIView *sub in root.subviews) {
+        UIView *found = ftFindFirstResponderView(sub);
+        if (found) return found;
+    }
+    return nil;
+}
+
+static UIResponder * _Nullable ftCurrentFirstResponder(void) {
     ftCapturedFirstResponder = nil;
     [UIApplication.sharedApplication sendAction:@selector(ft_captureFirstResponder:)
                                              to:nil from:nil forEvent:nil];
-    UIResponder *fr = ftCapturedFirstResponder;
+    if (ftCapturedFirstResponder) return ftCapturedFirstResponder;
+    for (UIWindow *w in UIApplication.sharedApplication.windows) {
+        UIView *found = ftFindFirstResponderView(w);
+        if (found) return found;
+    }
+    return nil;
+}
+
+// 前方宣言(定義は診断セクション)
+static NSArray<UIView *> *ftTextReceivers(void);
+
+BOOL FTInsertTextIntoFirstResponder(NSString *text) {
+    // 罠: first responder が複数ウィンドウに存在しうる(Compose はフォーカスアンカーの
+    // OverlayInputView と、実際のキーボード受け口 IntermediateTextInputUIView が別ビュー。
+    // 2026-07-21 実測)。「insertText: に応答し、かつ isFirstResponder」のビューを最優先する
+    for (UIView *v in ftTextReceivers()) {
+        if (!v.isFirstResponder) continue;  // 非フォーカス受け口への誤入力防止
+        if ([v conformsToProtocol:@protocol(UIKeyInput)]) {
+            [(id<UIKeyInput>)v insertText:text];
+        } else {
+            ((void (*)(id, SEL, NSString *))objc_msgSend)(v, @selector(insertText:), text);
+        }
+        return YES;
+    }
+    // 従来経路: sendAction で捕まえた first responder(UITextField 等)
+    UIResponder *fr = ftCurrentFirstResponder();
+    if (!fr) return NO;
     if ([fr conformsToProtocol:@protocol(UIKeyInput)]) {
         [(id<UIKeyInput>)fr insertText:text];
         return YES;
     }
+    if ([fr respondsToSelector:@selector(insertText:)]) {
+        ((void (*)(id, SEL, NSString *))objc_msgSend)(fr, @selector(insertText:), text);
+        return YES;
+    }
     return NO;
+}
+
+// ウィンドウ木から insertText: に応答するビューを収集(Compose 等は first responder と
+// 実際の入力受け口が別オブジェクトのため)
+static void ftCollectTextReceivers(UIView *root, NSMutableArray<UIView *> *out) {
+    if ([root respondsToSelector:@selector(insertText:)]) [out addObject:root];
+    for (UIView *sub in root.subviews) ftCollectTextReceivers(sub, out);
+}
+
+static NSArray<UIView *> *ftTextReceivers(void) {
+    NSMutableArray<UIView *> *out = [NSMutableArray array];
+    for (UIWindow *w in UIApplication.sharedApplication.windows) {
+        ftCollectTextReceivers(w, out);
+    }
+    return out;
+}
+
+/// type 失敗(409)時の診断: first responder と「insertText: に応答するビュー」の一覧
+NSString *FTFirstResponderDiagnostics(void) {
+    UIResponder *fr = ftCurrentFirstResponder();
+    NSMutableArray<NSString *> *receivers = [NSMutableArray array];
+    for (UIView *v in ftTextReceivers()) {
+        [receivers addObject:[NSString stringWithFormat:@"%@(fr=%d,keyInput=%d)",
+                              NSStringFromClass(v.class), v.isFirstResponder,
+                              [v conformsToProtocol:@protocol(UIKeyInput)]]];
+    }
+    return [NSString stringWithFormat:@"firstResponder=%@ textReceivers=[%@]",
+            fr ? NSStringFromClass(fr.class) : @"nil",
+            [receivers componentsJoinedByString:@", "]];
 }
 
 void FTActivateAccessibility(void) {
