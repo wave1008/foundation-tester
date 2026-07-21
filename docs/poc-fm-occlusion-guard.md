@@ -287,6 +287,27 @@ OcclusionVerifier)が実機で機能することを確認**。これで PoC は 
 - 実機 E2E 再確認: sticky バー裏「レビュー」の `exist` は依然 failed(可視化されないため timeout で反転)、
   `present`/可視テキストは pass(無回帰)。
 
+## 5.13 textIs / valueIs も既定 occlusion-guard 化(2026-07-22)
+
+`exist` と揃え、`textIs` / `valueIs` も**既定で occlusion 確認あり**(一致かつ実際に見えていること)に。
+テキスト系には `present` のような自然な名前付き対が無いため、オプトアウトは bool 引数で提供。
+
+```swift
+textIs("#msg", "完了")                        // 既定: 一致 + 見えている
+textIs("#msg", "完了", occlusionGuard: false)  // 一致のみ(可視性は問わない)
+valueIs("#sw", "1")                            // 同上
+```
+
+- 機構は既存の textEquals/valueEquals 経路の occlusionFlip をそのまま使用(poll-until-visible も適用)。
+- ソース契約: codegen(オプトアウト時のみ `, occlusionGuard: false` を付与)・VSCode パラメータ編集
+  (`occlusionGuard` bool・既定 true)を textIs/valueIs に登録([ScenarioCodeGen](../Sources/FTDSL/ScenarioCodeGen.swift)・
+  [StepCommandParams](../Sources/FTDSL/StepCommandParams.swift))。FTElement チェーン(`.textIs`/`.valueIs`)も対応。
+- テスト: textEquals 経路のガード反転(StepExecutorTests)、textIs/valueIs のパラメータ解析・オプトアウト
+  (StepCommandParamsTests)を検証(全 green)。
+
+これで存在系(`exist`)・一致系(`textIs`/`valueIs`)とも既定で「見えていること」を確認する。
+`present` は存在系のツリーのみ版、テキスト系は `occlusionGuard: false` がオプトアウト。
+
 ## 6. 既知の限界
 
 1. **合成フィクスチャでの計測**。実機スクショ(半透明シート、影、アンチエイリアス、動的コンテンツ)は

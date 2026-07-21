@@ -161,6 +161,21 @@ final class StepExecutorTests: XCTestCase {
         }
     }
 
+    /// textIs(occlusionGuard 既定)も同じガードを通る: 一致しても覆われていれば失敗へ反転
+    func testOcclusionGuardOnTextEquals() async throws {
+        let log = CallLog()
+        let el = textElement(id: "msg", label: "合致")
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[el]])
+        let executor = StepExecutor(driver: primary, delegate: SequenceVisibilityDelegate([false]))
+        let step = FlowStep(assert: "textEquals", locator: FlowLocator(id: "msg"),
+                            expected: "合致", timeout: 1, occlusionGuard: true)
+
+        guard case .failed(let msg) = await executor.execute(step).status else {
+            XCTFail("一致かつ覆われ=occlusion 失敗のはず"); return
+        }
+        XCTAssertTrue(msg.contains("occlusion"), "occlusion 失敗を返すこと: \(msg)")
+    }
+
     /// 素の exist(occlusionGuard 未指定)は、隠れ判定 delegate が居ても FM を呼ばず pass(オプトイン)
     func testPlainExistsNeverInvokesGuard() async throws {
         let log = CallLog()

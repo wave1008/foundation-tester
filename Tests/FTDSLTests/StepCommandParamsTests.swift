@@ -6,8 +6,10 @@ final class StepCommandParamsTests: XCTestCase {
     func testSpecsForVerbs() {
         XCTAssertEqual(StepCommandParams.specs(forVerb: "exist").map(\.name), ["timeout"])
         XCTAssertEqual(StepCommandParams.specs(forVerb: "present").map(\.name), ["timeout"])
-        XCTAssertEqual(StepCommandParams.specs(forVerb: "textIs").map(\.name), ["timeout"])
-        XCTAssertEqual(StepCommandParams.specs(forVerb: "valueIs").map(\.name), ["timeout"])
+        XCTAssertEqual(StepCommandParams.specs(forVerb: "textIs").map(\.name),
+                       ["timeout", "occlusionGuard"])
+        XCTAssertEqual(StepCommandParams.specs(forVerb: "valueIs").map(\.name),
+                       ["timeout", "occlusionGuard"])
         XCTAssertEqual(StepCommandParams.specs(forVerb: "scrollTo").map(\.name),
                        ["direction", "maxSwipes"])
         XCTAssertEqual(StepCommandParams.specs(forVerb: "press").map(\.name),
@@ -35,6 +37,20 @@ final class StepCommandParamsTests: XCTestCase {
                        ["timeout": "3"])
         XCTAssertEqual(StepCommandParams.parse(code: "present(\"#ok\")", verb: "present"),
                        ["timeout": ""])
+    }
+
+    func testTextIsOcclusionGuardOptOut() {
+        // 既定は occlusionGuard=true。オプトアウトを読み取れること
+        XCTAssertEqual(
+            StepCommandParams.parse(code: "textIs(\"#t\", \"hi\")", verb: "textIs"),
+            ["timeout": "", "occlusionGuard": "true"])
+        XCTAssertEqual(
+            StepCommandParams.parse(code: "textIs(\"#t\", \"hi\", occlusionGuard: false)", verb: "textIs"),
+            ["timeout": "", "occlusionGuard": "false"])
+        XCTAssertEqual(
+            StepCommandParams.parse(code: "valueIs(\"#v\", \"1\", timeout: 2, occlusionGuard: false)",
+                                    verb: "valueIs"),
+            ["timeout": "2", "occlusionGuard": "false"])
     }
 
     func testParseFillsOmittedArgumentsWithDefaults() {
