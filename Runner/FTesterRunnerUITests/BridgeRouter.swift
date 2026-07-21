@@ -62,7 +62,8 @@ final class BridgeRouter {
             osVersion: "\(device.systemName) \(device.systemVersion)",
             sessionBundleID: sessionBundleID,
             engine: "xcuitest",
-            protocolVersion: BridgeAPI.bridgeProtocolVersion))
+            protocolVersion: BridgeAPI.bridgeProtocolVersion,
+            fastInputAvailable: FastInput.available))
     }
 
     private func handleLaunch(_ body: Data) throws -> BridgeHTTPServer.Response {
@@ -113,7 +114,10 @@ final class BridgeRouter {
     private func handleTap(_ body: Data) throws -> BridgeHTTPServer.Response {
         let req = try decode(TapRequest.self, body)
         let app = try requireApp()
-        coordinate(app, try resolvePoint(ref: req.ref, x: req.x, y: req.y)).tap()
+        let point = try resolvePoint(ref: req.ref, x: req.x, y: req.y)
+        try FastInput.with(req.fast) {
+            coordinate(app, point).tap()
+        }
         return .json(OKResponse())
     }
 
@@ -132,11 +136,13 @@ final class BridgeRouter {
     private func handleSwipe(_ body: Data) throws -> BridgeHTTPServer.Response {
         let req = try decode(SwipeRequest.self, body)
         let app = try requireApp()
-        switch req.direction {
-        case .up: app.swipeUp()
-        case .down: app.swipeDown()
-        case .left: app.swipeLeft()
-        case .right: app.swipeRight()
+        FastInput.with(req.fast) {
+            switch req.direction {
+            case .up: app.swipeUp()
+            case .down: app.swipeDown()
+            case .left: app.swipeLeft()
+            case .right: app.swipeRight()
+            }
         }
         return .json(OKResponse())
     }
@@ -165,8 +171,10 @@ final class BridgeRouter {
     private func handlePress(_ body: Data) throws -> BridgeHTTPServer.Response {
         let req = try decode(PressRequest.self, body)
         let app = try requireApp()
-        coordinate(app, try resolvePoint(ref: req.ref, x: req.x, y: req.y))
-            .press(forDuration: req.duration)
+        let point = try resolvePoint(ref: req.ref, x: req.x, y: req.y)
+        try FastInput.with(req.fast) {
+            coordinate(app, point).press(forDuration: req.duration)
+        }
         return .json(OKResponse())
     }
 

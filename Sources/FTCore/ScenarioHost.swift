@@ -295,8 +295,22 @@ public enum ScenarioHost {
         // 注意: FileHandle.bytes.lines は使わない。パイプではプロセス終了(EOF)まで
         // 行がまとめて届くことがあり、一時停止中の paused イベントがホストへ届かず
         // デバッグ実行が相互待ちになる(ScenarioHostDebugTests で回帰検知)
+        // ベンチ用: FT_EVENT_LOG_PATH が設定されていれば子の NDJSON 生ログを追記する
+        // (1プロセス実行=1ファイル前提。JSON デコード可否に関わらず非空行はそのまま書く)
+        let eventLogHandle: FileHandle? = ProcessInfo.processInfo.environment["FT_EVENT_LOG_PATH"].flatMap { path in
+            if !FileManager.default.fileExists(atPath: path) {
+                FileManager.default.createFile(atPath: path, contents: nil)
+            }
+            let handle = FileHandle(forWritingAtPath: path)
+            handle?.seekToEndOfFile()
+            return handle
+        }
+
         var passed: Bool?
         for await line in lineStream(stdout.fileHandleForReading) {
+            if !line.isEmpty {
+                eventLogHandle?.write(Data((line + "\n").utf8))
+            }
             if let event = ScenarioEvent.decode(line: line) {
                 if event.kind == "scenarioFinished" { passed = event.passed }
                 emit(event)
@@ -308,6 +322,7 @@ public enum ScenarioHost {
 
         // waitUntilExit() は使わない(永久ハングの実害。理由は ProcessExitWait 参照)
         for await _ in processExited {}
+        try? eventLogHandle?.close()
         try? stdinPipe?.fileHandleForWriting.close()
 
         // watchdog と正常終了のどちらが先に claim したかで timeout を確定する。cancel は

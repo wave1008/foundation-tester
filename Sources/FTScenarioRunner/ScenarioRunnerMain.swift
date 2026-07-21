@@ -107,6 +107,9 @@ struct RunScenario: AsyncParsableCommand {
             help: "実行プロファイル上のデバイス論理名(レポートヘッダ表示用。orchestrator から渡される)")
     var deviceName: String?
 
+    @Option(name: .customLong("appium-url"), help: "Appium サーバの URL(省略時は FT_APPIUM_URL 環境変数 → 既定 http://127.0.0.1:4723)")
+    var appiumURL: String?
+
     @Flag(help: "FM によるロケータ自己修復を許可する")
     var heal = false
 
@@ -167,6 +170,20 @@ struct RunScenario: AsyncParsableCommand {
         var preferTypeDriver = false
         if dryRun {
             driver = NullDriver()  // dry-run はデバイスに触れない
+        } else if engine == "appium" {
+            let repoRoot = try RepoRoot.find()
+            let serverURL = AppiumDriver.resolveServerURL(override: appiumURL)
+            switch runPlatform {
+            case "ios":
+                driver = AppiumDriver(platform: "ios", udid: udid, bundleID: testClass.app,
+                                      serverURL: serverURL, repoRoot: repoRoot)
+            case "android":
+                driver = AppiumDriver(platform: "android", serial: serial, bundleID: testClass.app,
+                                      serverURL: serverURL, repoRoot: repoRoot)
+            default:
+                throw ValidationError("platform は ios / android のいずれかです: \(runPlatform)")
+            }
+            _ = try await driver.status()
         } else {
             switch runPlatform {
             case "ios":
@@ -210,7 +227,12 @@ struct RunScenario: AsyncParsableCommand {
                     }
                 } else {
                     let client = BridgeClient(port: port)
-                    driver = udid.map { LaunchPreflightDriver(base: client, udid: $0) } ?? client
+                    // fast-input 有効時は launch を simctl 化(レバー2。FastLaunchDriver 参照)。
+                    // preflight(未インストール検査)は fast launch の外側に置く
+                    let fastLaunch = ProcessInfo.processInfo.environment["FT_FAST_INPUT"] == "1"
+                    let inner: AppDriver = (fastLaunch && udid != nil)
+                        ? FastLaunchDriver(base: client, udid: udid!) : client
+                    driver = udid.map { LaunchPreflightDriver(base: inner, udid: $0) } ?? client
                 }
             case "android":
                 driver = try AndroidDriver(serial: serial)

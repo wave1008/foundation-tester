@@ -126,6 +126,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             let resolved = try ProfileResolver.resolve(
                 project: testProject, runName: profile, machineName: machine.name)
             for warning in resolved.warnings { logStderr("⚠️ \(warning)") }
+            if resolved.iosFastInput { setenv("FT_FAST_INPUT", "1", 1) }  // BridgeClient.fastInput 参照
             resolvedProfile = resolved
         }
 
@@ -155,7 +156,8 @@ struct ApiRunCommand: AsyncParsableCommand {
                         status: { self.emitLine(ApiWipeStatusEvent(device: $0, phase: $1)) },
                         log: { logStderr($0) })
                 }
-                var workers = try ProfileWorkerFactory.buildAndroidWorkers(resolved: resolved)
+                var workers = try await ProfileWorkerFactory.buildAndroidWorkers(
+                    resolved: resolved) { logStderr($0) }
                 workers = try await ProfileWorkerFactory.installIfNeeded(
                     apps: resolved.apps, workers: workers,
                     forceAndroidInstall: !wipedAndroid.isEmpty) { logStderr($0) }
