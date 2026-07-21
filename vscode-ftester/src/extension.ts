@@ -227,6 +227,17 @@ function registerCommands(
   };
 
   context.subscriptions.push(
+    // 対象プロジェクト切替(ftester.selectProject コマンド、または設定の直接編集)に追従。
+    // シナリオ実体はプロジェクトごとに異なるため CLI 再実行の全再構築(refresh)が要る
+    // (rebuildFromLastData は前プロジェクトのデータを再利用してしまう)。実行中はガード。
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (!e.affectsConfiguration("ftester.project")) {
+        return;
+      }
+      if (!isRunActive()) {
+        void testTree.refresh();
+      }
+    }),
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (!e.affectsConfiguration("ftester.showOnlyFailedTests")) {
         return;
@@ -364,17 +375,20 @@ function registerCommands(
         void vscode.window.showWarningMessage(t("workbench.selectProject.noProjects"));
         return;
       }
-      const picked = await vscode.window.showQuickPick(candidates, {
-        placeHolder: t("workbench.selectProject.placeholder"),
-      });
+      // 中央モーダルで選択。候補は modal ダイアログのボタンとして並ぶ(戻り値は押されたボタン文字列 or undefined)。
+      const picked = await vscode.window.showInformationMessage(
+        t("workbench.selectProject.placeholder"),
+        { modal: true },
+        ...candidates,
+      );
       if (!picked) {
         return;
       }
+      // 設定更新で onDidChangeConfiguration("ftester.project") が発火し、そちらで refresh する。
       await vscode.workspace
         .getConfiguration("ftester")
         .update("project", picked, vscode.ConfigurationTarget.Workspace);
       outputChannel.appendLine(t("workbench.selectProject.setLog", { project: picked }));
-      void testTree.refresh();
     }),
     vscode.commands.registerCommand("ftester.selectProfile", async () => {
       const config = getConfig();
