@@ -71,7 +71,7 @@ public enum StepCommandText {
             // scrollTo に optional 引数は無い(付けるとコンパイル不能コードを生むため拒否)
             guard !optionalFlag, let selector = unquote(rest) else { return nil }
             return Parsed(verb: verb, strings: [selector], optionalFlag: false, word: nil)
-        case "exist", "screenIs", "procedure":
+        case "exist", "present", "screenIs", "procedure":
             guard !optionalFlag, let value = unquote(rest) else { return nil }
             return Parsed(verb: verb, strings: [value], optionalFlag: false, word: nil)
         case "type":
@@ -159,7 +159,7 @@ public enum StepCommandText {
     /// 呼び出し全体の生成し直しを許すソース関数(これ以外は生 Swift とみなして触らない。
     /// procedure はブロックを伴うため文字列リテラル置換のみ=ここに含めない)
     internal static let renewableFuncs: Set<String> = [
-        "tap", "type", "press", "swipe", "scrollTo", "exist", "textIs", "valueIs",
+        "tap", "type", "press", "swipe", "scrollTo", "exist", "present", "textIs", "valueIs",
         "screenIs", "launchApp", "relaunchApp", "terminateApp", "wait",
     ]
 
@@ -172,7 +172,7 @@ public enum StepCommandText {
         case "scrollTo":
             // scrollTo に optional 引数は無い(parse も optionalFlag 付きを受理しない)
             return "scrollTo(\(literal(parsed.strings[0])))"
-        case "exist", "screenIs":
+        case "exist", "present", "screenIs":
             return "\(parsed.verb)(\(literal(parsed.strings[0])))"
         case "type" where parsed.strings.count == 1:
             // ロケータなしの type("text")

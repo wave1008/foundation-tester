@@ -116,7 +116,10 @@ public enum ScenarioCodeGen {
         if let assert = step.assert {
             switch assert {
             case "exists":
-                return "exist(\(literal(selector))\(timeoutArg(step)))"
+                // exist は既定で occlusion 確認あり。確認なし(occlusionGuard==false)は present()
+                return step.occlusionGuard == false
+                    ? "present(\(literal(selector))\(timeoutArg(step)))"
+                    : "exist(\(literal(selector))\(timeoutArg(step)))"
             case "valueEquals":
                 return "valueIs(\(literal(selector)), \(literal(step.expected ?? ""))\(timeoutArg(step)))"
             case "textEquals":
