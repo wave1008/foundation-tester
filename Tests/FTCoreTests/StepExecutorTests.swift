@@ -68,7 +68,8 @@ private final class FakeAppDriver: AppDriver {
         log.entries.append("\(name).press(ref:\(ref))")
     }
 
-    func screenshot() async throws -> Data { Data() }
+    private(set) var screenshotCallCount = 0
+    func screenshot() async throws -> Data { screenshotCallCount += 1; return Data() }
 
     func terminate() async throws {}
 }
@@ -159,6 +160,37 @@ final class StepExecutorTests: XCTestCase {
         guard case .passed = await executor.execute(step).status else {
             XCTFail("可視判定で pass を期待"); return
         }
+    }
+
+    /// スクショ再利用: 操作を挟まない連続ガードでは 1 回のスクショを使い回す
+    func testGuardReusesScreenshotAcrossConsecutiveAsserts() async throws {
+        let log = CallLog()
+        let el = textElement(id: "msg", label: "こんにちは")
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[el]])
+        let executor = StepExecutor(driver: primary, delegate: FakeVisibilityDelegate(visible: true))
+        let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
+                            timeout: 1, occlusionGuard: true)
+
+        _ = await executor.execute(step)
+        _ = await executor.execute(step)
+
+        XCTAssertEqual(primary.screenshotCallCount, 1, "連続ガードはスクショ1回に集約されるはず")
+    }
+
+    /// スクショ再利用: 間に操作(tap)が入るとキャッシュを捨てて取り直す
+    func testGuardScreenshotInvalidatedByAction() async throws {
+        let log = CallLog()
+        let el = textElement(id: "msg", label: "こんにちは")
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[el]])
+        let executor = StepExecutor(driver: primary, delegate: FakeVisibilityDelegate(visible: true))
+        let assertStep = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
+                                  timeout: 1, occlusionGuard: true)
+
+        _ = await executor.execute(assertStep)
+        _ = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "msg")))
+        _ = await executor.execute(assertStep)
+
+        XCTAssertEqual(primary.screenshotCallCount, 2, "操作を挟んだら取り直すはず")
     }
 
     /// textIs(occlusionGuard 既定)も同じガードを通る: 一致しても覆われていれば失敗へ反転

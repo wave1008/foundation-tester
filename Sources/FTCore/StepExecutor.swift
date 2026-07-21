@@ -165,8 +165,30 @@ public final class StepExecutor {
     /// 単位はスクショの輝度分散(0〜約128)。実測(合成フィクスチャ)で可視 stddev≳25 / 覆い・空・減光
     /// stddev≲8 に分離するため既定 12。0 にすると常に FM を呼ぶ(ゲート無効)。
     public var occlusionInkThreshold: Double
+    /// [occlusion-guard] スクショ再利用キャッシュ。操作を挟まない連続ガード(exist を並べる等)で
+    /// 直近のスクショを使い回し、往復(~125ms)を省く。無効化は action/performCustom(launch/wait)/
+    /// poll 待機、および 200ms TTL(下記 guardScreenshot)。静止画面前提のため TTL で staleness を上限。
+    private var cachedScreenshot: Data?
+    private var cachedShotAt: ContinuousClock.Instant?
     /// 白フレーム確定時に呼ぶ。FTDriveCore が凍結中断+deviceFrozen emit を行う
     public var onDeviceFrozen: (@Sendable () -> Void)?
+
+    /// 画面が変わり得る操作の直後に呼び、スクショ再利用キャッシュを捨てる(performCustom から呼ぶ)。
+    public func invalidateScreenshotCache() { cachedScreenshot = nil }
+
+    /// occlusion-guard 用スクショ。直近(200ms 以内・無効化なし)なら再利用、無ければ取得してキャッシュ。
+    private func guardScreenshot(phase: inout PhaseAccumulator) async throws -> Data {
+        let clock = ContinuousClock()
+        if let shot = cachedScreenshot, let at = cachedShotAt, clock.now - at < .milliseconds(200) {
+            return shot
+        }
+        let start = clock.now
+        let shot = try await driver.screenshot()
+        phase.actionMs += Self.ms(clock.now - start)
+        cachedScreenshot = shot
+        cachedShotAt = clock.now
+        return shot
+    }
 
     public init(driver: AppDriver, fallbackDriver: AppDriver? = nil,
                 typeDriver: AppDriver? = nil, preferTypeDriver: Bool = false,
@@ -234,6 +256,7 @@ public final class StepExecutor {
                                cached: [FlowLocator] = [],
                                phase: inout PhaseAccumulator) async throws -> StepOutcome {
         let clock = ContinuousClock()
+        cachedScreenshot = nil   // 画面を変える操作 → occlusion-guard スクショ再利用を無効化
         // ロケータ不要のアクション
         if action == "swipe" {
             let direction = FTSwipeDirection(rawValue: step.direction ?? "") ?? .up
@@ -445,10 +468,8 @@ public final class StepExecutor {
         // 足切り: label が verbatim 描画されない要素(アイコン/画像/絵文字/結合セマンティクス)は
         // FM で約50%誤反転する(実機確認)ため対象外=素通り(pass)。
         guard OcclusionEligibility.eligible(type: element.type, label: expectedText).ok else { return nil }
-        let clock = ContinuousClock()
-        let start = clock.now
-        let screenshot = try await driver.screenshot()
-        phase.actionMs += Self.ms(clock.now - start)
+        // 操作を挟まない連続ガードでは直近スクショを再利用(~125ms 削減)。
+        let screenshot = try await guardScreenshot(phase: &phase)
         // Tier-0 幾何(ツリーのみ)で疑わしければインク量に関わらず FM へ(部分覆いの取りこぼし対策)。
         let geo = OcclusionSuspicion.geometric(element: element, in: elements, screen: screen,
                                                looseMatch: looseMatch)
@@ -514,6 +535,7 @@ public final class StepExecutor {
                 start = clock.now
                 try await Task.sleep(for: backoff.nextDelay())
                 phase.waitMs += Self.ms(clock.now - start)
+                cachedScreenshot = nil   // 待機中に画面が変わり得る → 次周回は取り直す
             }
             // timeout: 覆われ続けた occlusion があればそれを、無ければ未発見を返す
             if let lastOcclusion { return lastOcclusion }
@@ -566,6 +588,7 @@ public final class StepExecutor {
                 start = clock.now
                 try await Task.sleep(for: backoff.nextDelay())
                 phase.waitMs += Self.ms(clock.now - start)
+                cachedScreenshot = nil   // 待機中に画面が変わり得る → 次周回は取り直す
             }
             if let lastOcclusion { return lastOcclusion }   // 覆われ続けた
             let subject = assert == "textEquals" ? "テキスト" : "値"
