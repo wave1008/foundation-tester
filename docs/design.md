@@ -456,15 +456,16 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
   `"通知を許可"` に当たる)。区別したい要素が同一画面に共存するときは `#id` か `.Type=ラベル` で
   型を絞る。id マッチは常に完全一致。**hybrid の tap アクションでは primary が substring 止まりなら
   fallback を照会し、fallback の exact を優先**(§performance-tuning「フォールバック検証の偽陽性」)
-- **hybrid の type は Compose 自動判定で XCUITest 実行に切り替わる**(2026-07-20)。inapp の type は
-  UIKit の first responder への挿入なので、Compose Multiplatform 等 UIKit 非依存アプリでは 409 になる
-  (tap/exist は HID 合成で通る)。対策の3点セット:
-  - inapp dylib がバンドル直下の `compose-resources/` 実在で Compose を自己判定し `/status` の
-    `uiFramework`("compose"/"uikit")で申告(InAppBridge。マーカーは実バンドル検証済み)
-  - ScenarioRunnerMain(hybrid)が probe の uiFramework=="compose" なら `preferTypeDriver=true` とし、
-    StepExecutor の type は inapp を試さず最初から `typeDriver`(`AppAttachDriver`)で実行。
-    tap/exist は inapp のまま高速。probe 不達時は false のまま=下の安全網頼み
-  - 安全網: inapp type が 409 なら同じ typeDriver でリアクティブ切替(`passedViaFallback` 記録)
+- **inapp の type は Compose Multiplatform でも通る**(2026-07-21 更新。それ以前は XCUITest 切替が
+  必要だった)。Compose は「フォーカスアンカーの OverlayInputView(入力セレクタ非応答)」と
+  「実際のキーボード受け口 IntermediateTextInputUIView(UIKeyInput 準拠・isFirstResponder)」が
+  **別ウィンドウの別ビュー**のため、first responder を1つ捕まえるだけでは前者を拾って 409 になる。
+  現実装(InAppInput.m)は「insertText: に応答し かつ isFirstResponder のビュー」を全ウィンドウから
+  探して最優先で挿入する(実測 253〜358ms。XCUITest attach 経路 1.0〜1.3s の約1/4)。
+  - `preferTypeDriver`(Compose 検出時に最初から attach)は廃止(常に false)。
+    `/status` の `uiFramework` 申告は情報として残存
+  - 安全網: inapp type が 409 なら `typeDriver`(`AppAttachDriver`)でリアクティブ切替
+    (`passedViaFallback` 記録)。409 メッセージには first responder 診断が付く
   `AppAttachDriver` は XCUITest ブリッジへ `/session {activate:true}`(実行中アプリを再起動せず
   状態保持で attach)→ snapshot → type(ref は typeDriver 側 snapshot で取り直す。ref 名前空間は
   ブリッジごとに独立)。**springboard 参照の SystemUIDriver(fallbackDriver)はアプリ要素を一切
@@ -514,6 +515,10 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
   シナリオ側で `wait(1)` を挟むのが確実(コードで書けるようになった利点)
 - 3B FM のヒールは誤要素(NavigationBar 等)を高確信で選ぶことがある。キャッシュは誤ヒールも
   固定化するため、修正提案を人がレビューしてソースを直すループが前提
+- **xcuitest の `launchApp` も既定で simctl 化**(FastLaunchDriver・2026-07-21)。
+  XCUIApplication.launch()(約4.6s)の代わりに simctl terminate+launch+activate 接続(約2.4s)で
+  再起動する(シナリオ wall −14〜19%)。`FT_NO_FAST_LAUNCH=1` で従来動作へ戻せる。
+  attachOnly(整定なし接続)を launch に使わない理由は performance-tuning §6
 - **inapp の `launchApp` は毎回 `simctl launch --terminate-running-process` で terminate+relaunch する
   が、アプリのデータは消さないためアプリがディスクへ永続化した直前ルートを復元し得る**(プロセス
   再利用ではない)。決定的なナビ状態リセットはアプリ側の責務で、ツールは状態リセットの注入
