@@ -15,6 +15,7 @@ final class FTesterBridgeTests: XCTestCase {
         let portString = ProcessInfo.processInfo.environment["FT_PORT"] ?? ""
         let port = UInt16(portString) ?? BridgeAPI.defaultPort
 
+        FastInput.installSwizzle()  // 高速入力(quiescence スキップ)。失敗しても通常動作
         let router = BridgeRouter()
         let server = BridgeHTTPServer(port: port) { router.handle($0) }
         try server.start()

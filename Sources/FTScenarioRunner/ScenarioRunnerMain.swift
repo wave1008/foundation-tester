@@ -205,12 +205,22 @@ struct RunScenario: AsyncParsableCommand {
                         if engine == "hybrid", let xcuiPort {
                             fallbackDriver = SystemUIDriver(port: xcuiPort)
                             typeDriver = AppAttachDriver(port: xcuiPort, bundleID: testClass.app)
-                            preferTypeDriver = probeStatus?.uiFramework == "compose"
+                            // 2026-07-21 から Compose も inapp で type 可能
+                            // (IntermediateTextInputUIView への insertText。InAppInput.m 参照。
+                            // 実測 266ms vs attach 1.0〜1.3s)。attach 優先は廃止し、
+                            // 失敗時 409 → typeDriver フォールバック(StepExecutor)だけを安全網とする
+                            preferTypeDriver = false
                         }
                     }
                 } else {
                     let client = BridgeClient(port: port)
-                    driver = udid.map { LaunchPreflightDriver(base: client, udid: $0) } ?? client
+                    // launch は既定で simctl 化(FastLaunchDriver。実測 -14〜19%)。
+                    // FT_NO_FAST_LAUNCH=1 で従来の XCUIApplication.launch() に戻せる。
+                    // preflight(未インストール検査)は fast launch の外側に置く
+                    let noFastLaunch = ProcessInfo.processInfo.environment["FT_NO_FAST_LAUNCH"] == "1"
+                    let inner: AppDriver = (!noFastLaunch && udid != nil)
+                        ? FastLaunchDriver(base: client, udid: udid!) : client
+                    driver = udid.map { LaunchPreflightDriver(base: inner, udid: $0) } ?? client
                 }
             case "android":
                 driver = try AndroidDriver(serial: serial)

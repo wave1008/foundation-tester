@@ -209,6 +209,10 @@ public enum ProfileWorkerFactory {
                     }
                     do {
                         try await worker.driver.install(packagePath: appPath)
+                        if worker.platform == "ios", let udid = worker.connection.udid {
+                            InstalledAppCheck.recordInstalled(udid: udid, bundleID: app.bundleID,
+                                                             appPath: appPath)
+                        }
                         safeLog("✅ \(worker.label): インストール完了")
                         return (index, worker)
                     } catch {
