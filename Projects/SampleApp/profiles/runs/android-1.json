@@ -1,0 +1,13 @@
+{
+  "app": "sampleapp_ios",
+  "devices": [
+    {
+      "name": "Pixel 9(Android 15)-01"
+    }
+  ],
+  "heal": false,
+  "reportDir": "reports",
+  "machine": "M2 Ultra",
+  "iosInappEngine": true,
+  "wipeDataOnBloat": true
+}

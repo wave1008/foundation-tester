@@ -1,11 +1,11 @@
 {
-  "app": "sampleapp",
+  "app": "sampleapp_ios",
   "devices": [
     {
-      "name": "iPhone 17 Pro(iOS 27.0)"
+      "name": "iPhone 17 Pro(iOS 27.0)-01"
     },
     {
-      "name": "iPhone 17(iOS 27.0)"
+      "name": "iPhone 17 Pro(iOS 27.0)-02"
     },
     {
       "name": "Pixel 9(Android 15)-01"
@@ -15,7 +15,8 @@
     }
   ],
   "heal": false,
+  "iosInappEngine": true,
   "reportDir": "reports",
-  "machine": "M2 Ultra",
-  "iosInappEngine": true
+  "machine": "M2_8devices",
+  "wipeDataOnBloat": true
 }

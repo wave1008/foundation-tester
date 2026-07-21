@@ -1,0 +1,34 @@
+{
+  "app": "sampleapp_ios",
+  "devices": [
+    {
+      "name": "iPhone 17 Pro(iOS 27.0)-01"
+    },
+    {
+      "name": "iPhone 17 Pro(iOS 27.0)-02"
+    },
+    {
+      "name": "iPhone 17 Pro(iOS 27.0)-03"
+    },
+    {
+      "name": "iPhone 17 Pro(iOS 27.0)-04"
+    },
+    {
+      "name": "Pixel 9(Android 15)-01"
+    },
+    {
+      "name": "Pixel 9(Android 15)-02"
+    },
+    {
+      "name": "Pixel 9(Android 15)-03"
+    },
+    {
+      "name": "Pixel 9(Android 15)-04"
+    }
+  ],
+  "heal": false,
+  "iosInappEngine": true,
+  "reportDir": "reports",
+  "machine": "M2_8devices",
+  "wipeDataOnBloat": true
+}
