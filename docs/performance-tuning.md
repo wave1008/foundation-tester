@@ -239,6 +239,8 @@ window/transition/animator の `*_scale` はチューニングノブではなく
 | 拡張既定バイナリの release 化 | 常駐化でプロセス起動が初回 1 回になり意味消失 | なし |
 | capability 交渉・旧タイミング互換モード | バージョン整合は人間担保(ユーザー決定)・単一実装 | なし |
 | iOS のシミュレータ私有 IF 直叩き(idb 方式: AXRuntime ツリー+IndigoHID 入力) | snapshot は速くなるが**整定のイベント源が無い**(Android の a11y リスナ相当が無い)ためポーリングに回帰=負荷原則違反。Xcode ベータ毎に壊れるリスクも高い | プッシュ型のアイドル信号を得られる経路が見つかったら |
+| xcuitest の quiescence 待ちを swizzle でスキップ(FastInput.swift。2026-07-21 PoC) | swizzle 導入・リクエスト毎の発火まで実測確認したうえで**効果 0〜2%**。静的アプリでは quiescence 待ちは元々ほぼゼロで、tap ≈360ms の実体は XCUITest のイベント合成往復(実測記録: poc/appium-driver-benchmark ブランチの docs/poc-appium-benchmark.md 追補3)。実装はトグル付きで残置(iosFastInput / --fast-input、既定 off) | アニメーション・常時通信の多いアプリで tap が実測で遅いと分かったら(そのアプリでのみ opt-in) |
+| fast launch の attachOnly 化(simctl launch 後に activate() を呼ばずプロキシ接続のみ。2026-07-21) | launch 単発は 3.4→1.2s に見えるが、**activate() が担っていた初回整定が最初のステップのポーリング待ちへ移動して相殺**、シナリオ全体ではむしろ微悪化。simctl+activate を採用。ランナーの attachOnly 対応(LaunchRequest.attachOnly)は無害なので残置 | launch 直後に操作しない(整定を別途待つ)ワークロードが現れたら |
 | ライブ操作の SCK(ScreenCaptureKit)フレーム配信(DeviceHub/Emulator ウィンドウをキャプチャ、実装後ユーザー判断で撤回) | 実装は完動した(較正=ブリッジ実スクショとのテンプレートマッチ、~30fps)がキャンセル。実装時の実測知見: ①多数フレームワークをリンクした大型 CLI(ftester 本体)から SCK を呼ぶと macOS 27 beta で replayd 接続が再接続ストームになり await が無期限ブロック(Task.sleep も不発)→小型 @main 単体バイナリへの隔離が唯一の安定解 ②CLI からは NSApplication.shared(CGS 初期化)が先に必須 ③captureImage は要求キャンバスへスケールせず実効スケールで左上描画+透明パディング→倍率は不透明領域境界から検出する ④非表示ウィンドウへの captureImage はエラーでなくブロック=isOnScreen 必須 ⑤解像度は画面上のウィンドウサイズ依存(原寸スクショより低い) | 高fpsのライブ映像が再び必要になったら(実装の骨子はこの行と git 履歴のこのコミット前後を参照) |
 | エミュレータの Vulkan 有効化(`-feature Vulkan`)と HWUI の skiavk 化(guest UI 描画を GLES→Vulkan へ) | 2026-07-14 A/B 済(emulator 36.6 / Pixel 9 A16 / -gpu host)。**`-gpu host` の時点で gfxstream+host Vulkan(MoltenVK)は既定で有効**(起動ログ `vulkan_mode_selected:host`)のため `-feature Vulkan` は実質無操作。残る HWUI skiavk 化(`setprop debug.hwui.renderer skiavk`、Pipeline=Skia (Vulkan) 確認済)も同一スワイプ10回の qemu CPU が 10.6s→11.1s と改善なし(むしろ微増) | emulator が Apple Silicon で HWUI Vulkan を既定化したら、または ANGLE 変換(GLES→Metal)がプロファイルで支配的と実測されたら |
 | デバイス側動画ストリーミング(iOS=simctl recordVideo、Android=screenrecord/scrcpy + ffmpeg。2026-07-14 の当初 spike で不成立。ただし iOS はその後 ftester-simstream で成立→理由欄の追記参照) | **追記(2026-07-14以降): iOS のヘッドレス映像ストリーミングは別方式で成立済み**(`ftester-simstream`=CoreSimulator/SimulatorKit の private API `SimDisplayIOSurfaceRenderable` の IOSurface を `setPowerState:1` で起こし、フレーム単位に JPEG 化して長さ前置で stdout へ。simctl でも ffmpeg でもないため下記の不成立要因を構造的に回避。ヘッドレス=Simulator.app 非起動で mid-run・ネイティブ解像度・静止時ほぼ0fps を実測確認。ライブ操作タブ+デバイスモニタータブの両方で採用。実装: `Sources/ftester-simstream/main.m` / `vscode-ftester/src/deviceStream.ts` / `monitorDeviceStreamController.ts`。**「iOSストリーミングは不可能」と誤読しないこと**)。**以下の「不成立」は simctl recordVideo と ffmpeg パイプ方式に限った当初 spike の結果**。画像取得ポーリングの負荷対策として検討し、その2方式は両OSとも不成立だった。**iOS**: `simctl io recordVideo` は stdout(`-`)を「rendering to standard out is no longer supported」で拒否、ファイル/FIFO 出力も非フラグメント(moov を SIGINT 時に確定書き込み、`has_moof: False`)=録画停止まで1フレームも復号不可。**Android**: `adb exec-out screenrecord --output-format=h264 -` の生H.264を **ffmpeg にパイプ入力すると EOF まで出力をバッファしライブ逐次フレームが出ない**(実測: 同じH.264をファイル入力なら41フレーム復号できるがパイプ入力は mid-run 0。`-flush_packets1`/`-threads1`/`-use_wallclock_as_timestamps`/`-avioflags direct`/`-fflags nobuffer -flags low_delay`/fps有無/mpjpeg・image2pipe・image2個別ファイル の約16構成すべて mid-run 0。adb はパイプへ逐次配信済=adb 原因ではない。ffmpeg はライブ入力 lavfi なら逐次フラッシュするので raw-h264 パイプ demux の仕様的限界)。scrcpy 録画→FIFO(mkv)もクラスタバッファでライブ不可(frame=0)。**採用した代替=ライブの frameTick を旧 delayMs=0 ホットループから `ftester.liveFps`(既定12)頭打ちに変更**(iOS/Android 共通・依存ゼロ・負荷源そのものを解消) | **iOS は ftester-simstream で解決済み(理由欄の追記)。以下は Android 向け**: Android で真の映像ストリーミングが必要なら **GStreamer 未検証**(`fdsrc ! h264parse ! avdec_h264 ! jpegenc` はライブパイプ前提設計で ffmpeg のバッファ問題が無い可能性)。ただし heavy dep(`brew install gstreamer`)の再導入になる |
@@ -358,6 +360,28 @@ window/transition/animator の `*_scale` はチューニングノブではなく
        悪化。2026-07-12 実測)。**最終解は待ちを完全削除**(`coordinate.tap()` が既に
        quiescence まで待つため後続 `typeText` は安定)。type 中央値 1616→1387ms(−230ms)・
        5 連続入力成功・成功率 100%。
+     - ✅ **xcuitest launch の simctl 化**(採用 2026-07-21・既定 on): `FastLaunchDriver` が
+       launch を XCUIApplication.launch()(実測 4.6〜5.4s)から simctl terminate+launch+
+       activate 接続(≈2.4s)へ置換。シナリオ wall −14〜19%。復帰用のエスケープハッチは
+       `FT_NO_FAST_LAUNCH=1`。attachOnly 化の不採用理由は §6 参照。
+     - ✅ **autoInstall 差分判定の指紋キャッシュ**(採用 2026-07-21): `InstalledAppCheck` の
+       バンドル深比較(40MB で 0.86s/ラン)を、検証済みソース指紋(相対パス+サイズ+mtime の
+       SHA256、.ftester/install-check/)のヒット時にスキップ。0.86→0.41s(残りは列挙+
+       get_app_container の実在確認=erase 検知のため残す)。
+     - ✅ **inapp type の Compose 対応**(採用 2026-07-21): Compose は「フォーカスアンカーの
+       OverlayInputView(入力セレクタ非応答)」と「実際のキーボード受け口 IntermediateTextInputUIView
+       (UIKeyInput 準拠・isFirstResponder)」が**別ウィンドウの別ビュー**で、従来の first responder
+       捕捉が前者を拾って 409 になっていた。「insertText: に応答し かつ isFirstResponder のビュー」を
+       最優先する探索に変更(InAppInput.m FTInsertTextIntoFirstResponder)し、type 実測 262〜299ms
+       (XCUITest attach 経路 1.0〜1.3s の約1/4)。hybrid の Compose 検出時 attach 優先
+       (preferTypeDriver)は廃止し、409→attach フォールバックのみを安全網として残す。
+       ログイン系シナリオ 18.9→15.3s(−19%)。
+     - ✅ **FT_PHASE_LOG=1 のフェーズ計測**(採用 2026-07-21): run の固定費内訳を stderr に出す
+       計測点(PhaseLog.swift)。実測: CLI 側固定費はほぼゼロ(0.05s)で、ラン毎オーバーヘッドの
+       実体は iOS ワーカー合流(ブリッジ再利用スキャン 0.55s+インストール差分判定)。
+     - ℹ️ **inapp launch(2.3s)は現状が床**(2026-07-21 精査): simctl 1コール化
+       (--terminate-running-process)・80ms ポーリング済みで、残りは simctl とアプリ起動そのもの。
+       検知側の伸びしろなし。
      - ❌ **snapshot の私有パラメータ絞り込み**(不採用): `snapshotWithParameters:error:`
        (maxDepth 等)は Xcode 27 beta 3 に実在し呼び出しも成功したが、**速度改善が実測ゼロ**。
        設定アプリのルート画面で有効要素が深さ 21 前後に集中しており、取りこぼさない安全な
