@@ -24,27 +24,40 @@ final class BridgeRouter {
     private var app: XCUIApplication?
     private var sessionBundleID: String?
     private var refFrames: [Int: CGRect] = [:]
+    // 直前の要求が画面を変えうる操作(tap/swipe/press/type/drag/session)だったか。
+    // XCUITest の tap quiescence は非同期 push 遷移の完了前に返ることがあり、直後 snapshot が
+    // 遷移前ツリーを掴む(実測 50% / bridge-8123)。操作直後の snapshot に限り整定確認する。
+    // app.snapshot() は ~0.45s と高コストなので、連続 snapshot には課さない(false のまま)。
+    private var settlePending = false
 
     private let decoder = JSONDecoder()
 
+    // 画面を変えうる操作。直後の snapshot だけ整定確認する(handleSnapshot の settlePending)
+    private static let mutatingPaths: Set<String> = ["/session", "/tap", "/type", "/swipe", "/drag", "/press", "/appswitcher", "/home"]
+
     func handle(_ request: BridgeHTTPServer.Request) -> BridgeHTTPServer.Response {
         do {
+            let response: BridgeHTTPServer.Response
             switch (request.method, request.path) {
-            case ("GET", "/status"): return handleStatus()
-            case ("POST", "/session"): return try handleLaunch(request.body)
-            case ("GET", "/snapshot"): return try handleSnapshot()
-            case ("POST", "/tap"): return try handleTap(request.body)
-            case ("POST", "/type"): return try handleType(request.body)
-            case ("POST", "/swipe"): return try handleSwipe(request.body)
-            case ("POST", "/drag"): return try handleDrag(request.body)
-            case ("POST", "/press"): return try handlePress(request.body)
-            case ("GET", "/screenshot"): return handleScreenshot()
-            case ("POST", "/appswitcher"): return try handleAppSwitcher()
-            case ("POST", "/home"): return try handleHome()
-            case ("POST", "/terminate"): return try handleTerminate()
+            case ("GET", "/status"): response = handleStatus()
+            case ("POST", "/session"): response = try handleLaunch(request.body)
+            case ("GET", "/snapshot"): response = try handleSnapshot()
+            case ("POST", "/tap"): response = try handleTap(request.body)
+            case ("POST", "/type"): response = try handleType(request.body)
+            case ("POST", "/swipe"): response = try handleSwipe(request.body)
+            case ("POST", "/drag"): response = try handleDrag(request.body)
+            case ("POST", "/press"): response = try handlePress(request.body)
+            case ("GET", "/screenshot"): response = handleScreenshot()
+            case ("POST", "/appswitcher"): response = try handleAppSwitcher()
+            case ("POST", "/home"): response = try handleHome()
+            case ("POST", "/terminate"): response = try handleTerminate()
             default:
                 return .error("not found: \(request.method) \(request.path)", status: 404)
             }
+            if request.method == "POST", Self.mutatingPaths.contains(request.path) {
+                settlePending = true
+            }
+            return response
         } catch let error as BridgeError {
             return .error(error.message, status: error.status)
         } catch {
@@ -99,24 +112,43 @@ final class BridgeRouter {
         return .json(OKResponse())
     }
 
+    private struct Captured {
+        let elements: [ElementInfo]
+        let frames: [Int: CGRect]
+        let truncated: Int
+        let screen: CGRect
+    }
+
     private func handleSnapshot() throws -> BridgeHTTPServer.Response {
         let app = try requireApp()
+        // 操作直後のみ整定してから取得する。XCUITest の tap quiescence は非同期 push 遷移の完了前に
+        // 返り、かつ直近 snapshot をキャッシュするため、直後の素取得は遷移前ツリーを返す(実測 50%)。
+        // 短い待機後に取り直すと遷移完了後の fresh ツリーになる(要 sleep: キャッシュ失効 + 遷移完了。
+        // 実測 350ms で staleness 0/10。連続 snapshot(settlePending=false)は 0.45s のまま非課金)。
+        if settlePending {
+            settlePending = false
+            Thread.sleep(forTimeInterval: 0.35)
+        }
+        let cap = try captureOnce(app)
+
+        refFrames = cap.frames
+        return .json(SnapshotResponse(
+            sessionBundleID: sessionBundleID,
+            screen: FTRect(x: cap.screen.origin.x, y: cap.screen.origin.y,
+                           width: cap.screen.width, height: cap.screen.height),
+            elements: cap.elements,
+            truncatedCount: cap.truncated))
+    }
+
+    private func captureOnce(_ app: XCUIApplication) throws -> Captured {
         let root = try app.snapshot()
         let screen = root.frame
-
         var elements: [ElementInfo] = []
         var frames: [Int: CGRect] = [:]
         var truncated = 0
         collect(root, depth: 0, screen: screen,
                 elements: &elements, frames: &frames, truncated: &truncated)
-
-        refFrames = frames
-        return .json(SnapshotResponse(
-            sessionBundleID: sessionBundleID,
-            screen: FTRect(x: screen.origin.x, y: screen.origin.y,
-                           width: screen.width, height: screen.height),
-            elements: elements,
-            truncatedCount: truncated))
+        return Captured(elements: elements, frames: frames, truncated: truncated, screen: screen)
     }
 
     private func handleTap(_ body: Data) throws -> BridgeHTTPServer.Response {
