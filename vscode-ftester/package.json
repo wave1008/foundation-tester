@@ -2,7 +2,7 @@
   "name": "vscode-ftester",
   "displayName": "ftester",
   "description": "%ftester.extension.description%",
-  "version": "0.0.302",
+  "version": "0.0.305",
   "private": true,
   "publisher": "wave1008",
   "license": "MIT",
@@ -242,7 +242,8 @@
       {
         "command": "ftester.selectProject",
         "title": "%ftester.command.selectProject.title%",
-        "category": "ftester"
+        "category": "ftester",
+        "icon": "$(folder-library)"
       },
       {
         "command": "ftester.showSteps",
@@ -346,6 +347,11 @@
           "command": "ftester.refreshSteps",
           "when": "view == ftesterSteps",
           "group": "navigation"
+        },
+        {
+          "command": "ftester.selectProject",
+          "when": "view == workbench.view.testing",
+          "group": "navigation@0"
         },
         {
           "command": "ftester.enableFailedTestsFilter",
