@@ -324,9 +324,11 @@ final class MCPServer {
             "bundleId": ["type": "string", "description": "bundle ID(iOS)/ パッケージ名(Android)"],
         ], required: ["bundleId"]),
         tool("ft_snapshot", "現在画面の要素一覧を取得する。各行 [ref] Type \"label\" id=... (x,y WxH)。tap/type はこの ref を使う", [:]),
-        tool("ft_tap", "要素または座標をタップする", [
+        tool("ft_tap", "要素(ref)または座標(x,y)をタップする。x/y は ft_snapshot の frame と同一座標系(iOS=ポイント pt / Android=デバイスピクセル px)。スクリーンショットのピクセルではない。"
+            + "【iOS の既知の制約】Compose Multiplatform 等の高密度・縦スクロール画面では、ビューポート外(フォールド下)の要素の frame が画面下端に丸められて報告されることがあり、その座標/ref をタップしても当たらない。対象を ft_swipe で可視領域に入れてから ft_snapshot し直してタップする。", [
             "ref": ["type": "integer", "description": "ft_snapshot の参照番号"],
-            "x": ["type": "number"], "y": ["type": "number"],
+            "x": ["type": "number", "description": "iOS=pt / Android=px(snapshot の frame と同一座標系)"],
+            "y": ["type": "number", "description": "iOS=pt / Android=px(snapshot の frame と同一座標系)"],
         ]),
         tool("ft_type", "テキストを入力する(ref 指定時はその入力欄をタップしてから入力)", [
             "text": ["type": "string"],
