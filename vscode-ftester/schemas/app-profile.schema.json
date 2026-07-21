@@ -32,6 +32,10 @@
           "type": "boolean",
           "description": "実行前に appPath を自動インストールするか(既定 false=無効)。common でのみ指定可(ios/android 側の autoInstall は廃止)。",
           "default": false
+        },
+        "healthCheckURL": {
+          "type": "string",
+          "description": "アプリが依存するバックエンドの死活確認 URL(common のみ)。実行前に到達確認し不達なら警告(ブロックはしない)"
         }
       }
     },
@@ -55,6 +59,10 @@
         "autoInstall": {
           "type": "boolean",
           "description": "廃止(common.autoInstall に一本化された)。残存していても実行時は無視される。"
+        },
+        "healthCheckURL": {
+          "type": "string",
+          "description": "アプリが依存するバックエンドの死活確認 URL(common のみ)。実行前に到達確認し不達なら警告(ブロックはしない)"
         }
       }
     }
