@@ -60,6 +60,11 @@ public enum StepCommandParams {
         name: "timeout", label: "タイムアウト(秒)", kind: .int, defaultValue: "",
         help: "要素の出現を待つ秒数。空欄 = 実行プロファイルの既定値を使う")
 
+    /// textIs / valueIs の occlusion-guard。既定 true(見えていることも確認)。false で一致のみ。
+    private static let occlusionGuardSpec = StepParamSpec(
+        name: "occlusionGuard", label: "見えていることも確認", kind: .bool, defaultValue: "true",
+        help: "オンで一致に加え要素が実際に見えているか(覆われ/切れ/不在でないか)を FM で確認。オフで一致のみ")
+
     /// tap/type/press のロケータ解決待ち(検証系の timeoutSpec とは別インスタンス。
     /// name は同じ "timeout" だが意味・help・使い所が異なる)
     private static let actionTimeoutSpec = StepParamSpec(
@@ -74,7 +79,8 @@ public enum StepCommandParams {
         case "type": return [optionalSpec, actionTimeoutSpec]
         case "press": return [durationSpec, optionalSpec, actionTimeoutSpec]
         case "scrollTo": return [directionSpec, maxSwipesSpec]
-        case "exist", "present", "textIs", "valueIs": return [timeoutSpec]
+        case "exist", "present": return [timeoutSpec]
+        case "textIs", "valueIs": return [timeoutSpec, occlusionGuardSpec]
         default: return []
         }
     }
@@ -190,8 +196,9 @@ public enum StepCommandParams {
             return "\(parsed.verb)(\(StepCommandText.literal(parsed.strings[0]))\(timeout))"
         case "textIs", "valueIs":
             let timeout = try timeoutArg(params)
+            let guardArg = try occlusionGuardArg(params)
             return "\(parsed.verb)(\(StepCommandText.literal(parsed.strings[0])), "
-                + "\(StepCommandText.literal(parsed.strings[1]))\(timeout))"
+                + "\(StepCommandText.literal(parsed.strings[1]))\(timeout)\(guardArg))"
         default:
             // specs が空の動詞(swipe / wait / launch / relaunch / terminate / screenIs)に
             // パラメーターは無い。StepCommandText.apply(リテラル置換 or 再生成)に委ねる
@@ -205,6 +212,12 @@ public enum StepCommandParams {
                                     _ params: [String: String]) throws -> String {
         let fromParams = try boolValue(value(params, optionalSpec), name: "optional")
         return (parsed.optionalFlag || fromParams) ? ", optional: true" : ""
+    }
+
+    /// textIs / valueIs の occlusionGuard(既定 true は省略。false のときだけ引数を出す)
+    private static func occlusionGuardArg(_ params: [String: String]) throws -> String {
+        let on = try boolValue(value(params, occlusionGuardSpec), name: "occlusionGuard")
+        return on ? "" : ", occlusionGuard: false"
     }
 
     /// exist / present / textIs / valueIs の timeout(空文字 = 省略 = プロファイル既定)

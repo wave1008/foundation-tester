@@ -121,9 +121,11 @@ public enum ScenarioCodeGen {
                     ? "present(\(literal(selector))\(timeoutArg(step)))"
                     : "exist(\(literal(selector))\(timeoutArg(step)))"
             case "valueEquals":
-                return "valueIs(\(literal(selector)), \(literal(step.expected ?? ""))\(timeoutArg(step)))"
+                let g = step.occlusionGuard == false ? ", occlusionGuard: false" : ""
+                return "valueIs(\(literal(selector)), \(literal(step.expected ?? ""))\(timeoutArg(step))\(g))"
             case "textEquals":
-                return "textIs(\(literal(selector)), \(literal(step.expected ?? ""))\(timeoutArg(step)))"
+                let g = step.occlusionGuard == false ? ", occlusionGuard: false" : ""
+                return "textIs(\(literal(selector)), \(literal(step.expected ?? ""))\(timeoutArg(step))\(g))"
             case "screenMatches":
                 return "screenIs(\(literal(step.expected ?? "")))"
             default:
