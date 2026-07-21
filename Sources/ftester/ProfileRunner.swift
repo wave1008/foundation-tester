@@ -19,6 +19,7 @@ enum ProfileRunner {
                     recorder: RunRecorder? = nil) async throws -> RunSummary {
         let runClockStart = Date()
         // 1. マシン決定 → プロファイル合成(実行プロファイル自身の machine 指定があれば最優先)
+        PhaseLog.mark("profile-runner-start")
         let machine = try ProfileResolver.determineMachine(
             project: project, registered: LocalConfig.currentMachineName(),
             runProfileName: profileName)
@@ -27,6 +28,7 @@ enum ProfileRunner {
         }
         let resolved = try ProfileResolver.resolve(
             project: project, runName: profileName, machineName: machine.name)
+        PhaseLog.mark("profile-resolved")
         for warning in resolved.warnings { print("⚠️ \(warning)") }
 
         let heal = healOverride ?? resolved.heal
@@ -49,7 +51,10 @@ enum ProfileRunner {
         // iOS(ブリッジ供給=壊れたブリッジの置き換えで数十秒かかりうる)は lateWorkers として
         // 分離し、Android を供給完了待ちにしない(ApiRunCommand の並列経路と同じ方針)。
         let repoRoot = try RepoRoot.find()
+        await BackendHealthCheck.warnIfUnreachable(resolved: resolved) { print($0) }
+        PhaseLog.mark("wipe-check-done")
         var workers = try await ProfileWorkerFactory.buildAndroidWorkers(resolved: resolved) { print($0) }
+        PhaseLog.mark("android-workers")
         workers = try await excludeBlankScreenWorkers(workers)
         workers = try await ProfileWorkerFactory.installIfNeeded(
             apps: resolved.apps, workers: workers,
@@ -140,10 +145,13 @@ enum ProfileRunner {
             },
             lateWorkers: hasLateIOS ? (platforms: Set(["ios"]), provider: { @Sendable in
                 do {
+                    PhaseLog.mark("ios-workers-start")
                     var ws = try await ProfileWorkerFactory.buildIOSWorkers(
                         resolved: resolved, repoRoot: repoRoot) { print($0) }
+                    PhaseLog.mark("ios-workers-built")
                     ws = (try? await ProfileWorkerFactory.installIfNeeded(
                         apps: resolved.apps, workers: ws, forceAndroidInstall: false) { print($0) }) ?? ws
+                    PhaseLog.mark("ios-workers-installed")
                     print("🚀 iOS \(ws.count) ワーカーが合流")
                     return ws
                 } catch {
@@ -152,6 +160,7 @@ enum ProfileRunner {
                     return []
                 }
             }) : nil)
+        PhaseLog.mark("orchestrator-setup")
         async let summary = orchestrator.run(items: items, defaultPlatform: defaultPlatform)
 
         // シナリオ毎にバッファして完了時に一括表示(並列時のステップ行の混線防止)
@@ -172,6 +181,7 @@ enum ProfileRunner {
             }
         }
 
+        PhaseLog.mark("events-drained")
         let totalSeconds = Date().timeIntervalSince(runClockStart)
         let testStr = timing.testSeconds.map { String(format: "%.1f", $0) } ?? "-"
         let scenarioTotalStr = timing.scenarioTotalSeconds.map { String(format: "%.1f", $0) } ?? "-"
@@ -187,6 +197,7 @@ enum ProfileRunner {
             print("🔁 結果取り消し+振り直し(\(finalSummary.freezeRetries.count)):")
             for entry in finalSummary.freezeRetries { print("   - \(entry)") }
         }
+        PhaseLog.mark("summary-done")
         return finalSummary
     }
 

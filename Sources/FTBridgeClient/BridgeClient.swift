@@ -74,6 +74,13 @@ public final class BridgeClient: AppDriver {
         }
     }
 
+    /// simctl 等で起動済みのアプリへプロキシ接続だけ行う(FastLaunchDriver 用。activate 比 約-1s)
+    public func attach(bundleID: String) async throws {
+        let _: OKResponse = try await post("/session",
+                                           body: LaunchRequest(bundleID: bundleID, attachOnly: true),
+                                           timeout: sessionTimeout)
+    }
+
     public func launch(bundleID: String) async throws {
         let _: OKResponse = try await post("/session", body: LaunchRequest(bundleID: bundleID),
                                            timeout: sessionTimeout)

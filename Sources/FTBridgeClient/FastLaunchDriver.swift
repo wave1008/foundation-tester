@@ -1,18 +1,19 @@
-// レバー2 PoC: xcuitest エンジンの launch を高速化する AppDriver ラッパー。
-// XCUIApplication.launch()(実測 約4.6s。ランナー側の quiescence 込み)の代わりに
-// simctl terminate+launch(実測 約2.3s)でアプリを再起動し、ランナーへは activate
-// (XCUIApplication.activate() = 起動済みアプリへのプロキシ接続)だけを頼む。
-// launch の「再起動」意味論は維持される。FT_FAST_INPUT(iosFastInput / --fast-input)
-// 有効時のみ ScenarioRunnerMain が装着する。
+// xcuitest エンジンの launch を高速化する AppDriver ラッパー(既定で装着。FT_NO_FAST_LAUNCH=1 で
+// 従来の XCUIApplication.launch() に戻せる)。
+// XCUIApplication.launch()(実測 約4.6s)の代わりに simctl terminate+launch でアプリを再起動し、
+// ランナーへは activate(プロキシ接続+前面化+整定 約1.1s)を頼む。シナリオ全体で −14〜19%。
+// launch の「再起動」意味論は維持される。
+// 注: attachOnly(整定なし接続 約0.1s)も試したが、浮いた整定コストが最初のステップの
+// ポーリング待ちに移動して相殺・むしろ微悪化(bench-7 vs bench-8)のため activate を採用。
 
 import Foundation
 import FTCore
 
 public final class FastLaunchDriver: AppDriver {
-    private let base: AppDriver
+    private let base: BridgeClient
     private let udid: String
 
-    public init(base: AppDriver, udid: String) {
+    public init(base: BridgeClient, udid: String) {
         self.base = base
         self.udid = udid
     }
@@ -25,7 +26,7 @@ public final class FastLaunchDriver: AppDriver {
             throw DriverError.badResponse(status: Int(result.status),
                 body: "simctl launch に失敗しました(fast-input の高速 launch): \(result.tail)")
         }
-        // ランナーの XCUIApplication プロキシを接続(activate は起動済みアプリには前面化+attach のみ)
+        // activate = プロキシ接続+前面化+初回整定(冒頭コメントの attachOnly 不採用理由を参照)
         try await base.activate(bundleID: bundleID)
     }
 

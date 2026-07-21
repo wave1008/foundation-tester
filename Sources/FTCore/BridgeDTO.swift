@@ -78,9 +78,14 @@ public struct LaunchRequest: Codable {
     /// true なら XCUIApplication.activate()(起動中は状態保持で前面化、未起動なら起動)。
     /// nil/false は従来どおり launch(再起動)。旧ランナーは本フィールドを無視して launch する。
     public var activate: Bool?
-    public init(bundleID: String, activate: Bool? = nil) {
+    /// true ならプロキシ接続のみ(XCUIApplication を生成・保持するだけで launch/activate を呼ばない。
+    /// simctl で起動済みのアプリに使う=FastLaunchDriver)。activate より優先。
+    /// 旧ランナーは無視して launch する(TapRequest.fast と同じ互換方針で版は据え置き)
+    public var attachOnly: Bool?
+    public init(bundleID: String, activate: Bool? = nil, attachOnly: Bool? = nil) {
         self.bundleID = bundleID
         self.activate = activate
+        self.attachOnly = attachOnly
     }
 }
 

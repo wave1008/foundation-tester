@@ -77,7 +77,15 @@ final class BridgeRouter {
             refFrames = [:]
             return .json(OKResponse())
         }
-        if req.activate == true {
+        if req.attachOnly == true {
+            // simctl 等で起動済みのアプリへのプロキシ接続のみ(activate() の約1s を払わない。
+            // 前面到達の確認だけ行う=未起動なら即エラーで呼び出し側が診断できる)
+            guard target.state == .runningForeground
+                || target.wait(for: .runningForeground, timeout: 5) else {
+                throw BridgeError(500, "attach 対象アプリが前面にありません: \(req.bundleID)"
+                    + "(simctl launch の成否を確認してください)")
+            }
+        } else if req.activate == true {
             target.activate()
         } else {
             target.launch()
