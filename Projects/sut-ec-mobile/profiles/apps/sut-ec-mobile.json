@@ -1,7 +1,8 @@
 {
   "common": {
     "appName": "sut-ec-mobile",
-    "autoInstall": true
+    "autoInstall": true,
+    "healthCheckURL": "http://localhost:8090/"
   },
   "ios": {
     "app": "com.sutec.mobile",
