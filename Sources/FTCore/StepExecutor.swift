@@ -460,14 +460,16 @@ public final class StepExecutor {
     /// コストは足切り+低インクゲートで抑制(可視な高インク領域は FM を呼ばず nil で即通過)。
     private func occlusionFlip(element: ElementInfo, expectedText: String, elements: [ElementInfo],
                               screen: FTRect, looseMatch: Bool, perStepGuard: Bool?,
+                              expectedIsUserText: Bool = false,
                               phase: inout PhaseAccumulator) async throws -> StepResult.Status? {
         // 有効化はステップ指定(DSL の visible())優先、無ければ executor 既定
         guard (perStepGuard ?? occlusionGuard), let delegate else { return nil }
         // 退化 frame(サイズ 0・クランプで潰れた等)は視覚照合の意味がないのでスキップ(素通り)
         guard element.frame.width >= 1, element.frame.height >= 1, !expectedText.isEmpty else { return nil }
         // 足切り: label が verbatim 描画されない要素(アイコン/画像/絵文字/結合セマンティクス)は
-        // FM で約50%誤反転する(実機確認)ため対象外=素通り(pass)。
-        guard OcclusionEligibility.eligible(type: element.type, label: expectedText).ok else { return nil }
+        // FM で約50%誤反転する(実機確認)ため対象外=素通り(pass)。textEquals の期待値は結合規則を外す。
+        guard OcclusionEligibility.eligible(type: element.type, label: expectedText,
+                                            isUserText: expectedIsUserText).ok else { return nil }
         // 操作を挟まない連続ガードでは直近スクショを再利用(~125ms 削減)。
         let screenshot = try await guardScreenshot(phase: &phase)
         // Tier-0 幾何(ツリーのみ)で疑わしければインク量に関わらず FM へ(部分覆いの取りこぼし対策)。
@@ -556,6 +558,7 @@ public final class StepExecutor {
                 let snapshot = try await driver.snapshot()
                 phase.snapshotMs += Self.ms(clock.now - start)
                 var candidate = Self.resolve(step: step, in: snapshot, strictForAssert: true)
+                var fromFallbackDriver = false
                 if candidate == nil { primaryMisses += 1 }
                 // driver フォールバック(ハイブリッド): primary で見つからなければシステム UI を確認。
                 // 間引きの契約は exists ケース参照
@@ -565,6 +568,7 @@ public final class StepExecutor {
                     let fsnap = try await fb.snapshot()
                     phase.snapshotMs += Self.ms(clock.now - start)
                     candidate = Self.resolve(step: step, in: fsnap, strictForAssert: true)
+                    fromFallbackDriver = candidate != nil
                 }
                 if let (element, fallback) = candidate {
                     found = true
@@ -573,16 +577,24 @@ public final class StepExecutor {
                     if actual == expected {
                         // ロケータを label 指定していて実 label と不一致=部分一致で掴んだ疑い
                         let loose = step.locator?.label != nil && element.label != step.locator?.label
+                        // フォールバックドライバ(システムUI/springboard)由来の要素は primary の座標系・
+                        // スクショと食い違うためガードを掛けない(exist の fsnap 経路と同契約)。
+                        if fromFallbackDriver {
+                            if let fallback { return .passedViaFallback(fallback) }
+                            return .passed
+                        }
                         if let flip = try await occlusionFlip(
                             element: element, expectedText: expected,
                             elements: snapshot.elements, screen: snapshot.screen,
                             looseMatch: loose, perStepGuard: step.occlusionGuard,
-                            phase: &phase) {
+                            expectedIsUserText: true, phase: &phase) {
                             lastOcclusion = flip   // 覆われている: 可視化を待つ
                         } else {
                             if let fallback { return .passedViaFallback(fallback) }
                             return .passed
                         }
+                    } else {
+                        lastOcclusion = nil   // 直近の観測はテキスト不一致 → 過去の occlusion 失敗は無効化
                     }
                 }
                 start = clock.now
