@@ -61,6 +61,17 @@ let package = Package(
             ],
             swiftSettings: swift5Mode
         ),
+        // [PoC occlusion-guard] FM 視覚照合の正確性/速度を合成フィクスチャで計測する単体ハーネス。
+        // 実機不要・FM はオンデバイス。恒常機能ではなく PoC 用(不要になれば target ごと削除可)。
+        .executableTarget(
+            name: "ftester-poc-occlusion",
+            dependencies: [
+                "FTCore",
+                "FTAgent",
+                "FTBridgeClient",
+            ],
+            swiftSettings: swift5Mode
+        ),
         .executableTarget(
             name: "ftester",
             dependencies: [
