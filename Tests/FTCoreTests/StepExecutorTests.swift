@@ -89,6 +89,24 @@ private final class FakeVisibilityDelegate: ReplayDelegate {
     }
 }
 
+/// verifyElementVisible が呼び出しごとに指定の visible 列を返す(尽きたら最後を繰り返す)。
+/// 過渡的オーバーレイ(covered→visible)の poll-until-visible 検証用。
+private final class SequenceVisibilityDelegate: ReplayDelegate {
+    private let results: [Bool]
+    private(set) var calls = 0
+    init(_ results: [Bool]) { self.results = results }
+    func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealProposal? { nil }
+    func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)? { nil }
+    func triage(goal: String?, stepDescription: String, failureReason: String,
+                snapshot: SnapshotResponse?, screenshotPNG: Data?) async -> TriageInfo? { nil }
+    func verifyElementVisible(expectedText: String, frame: FTRect, screen: FTRect,
+                              screenshotPNG: Data) async -> (visible: Bool, state: String, reason: String)? {
+        let v = calls < results.count ? results[calls] : (results.last ?? true)
+        calls += 1
+        return (v, v ? "fullyVisible" : "covered", "test")
+    }
+}
+
 final class StepExecutorTests: XCTestCase {
     /// occlusion-guard 対象になり得るテキスト要素(StaticText + 文字を含む label)
     private func textElement(id: String, label: String) -> ElementInfo {
@@ -125,7 +143,8 @@ final class StepExecutorTests: XCTestCase {
             XCTFail("occlusion 反転で失敗を期待したが \(outcome.status) だった"); return
         }
         XCTAssertTrue(msg.contains("occlusion"), "失敗理由に occlusion を含むこと: \(msg)")
-        XCTAssertEqual(delegate.visibleCalls, 1)
+        // poll-until-visible: 覆われ続ける間は timeout まで繰り返し照合する(1回とは限らない)
+        XCTAssertGreaterThanOrEqual(delegate.visibleCalls, 1)
     }
 
     /// occlusionGuard 付き exists: delegate が「見える」を返せば通常どおり pass
@@ -155,6 +174,38 @@ final class StepExecutorTests: XCTestCase {
             XCTFail("ガード無効の exist は pass のはず"); return
         }
         XCTAssertEqual(delegate.visibleCalls, 0, "occlusionGuard 未指定で FM を呼んではいけない")
+    }
+
+    /// poll-until-visible: 最初は覆われ(covered)、後で可視になる過渡的オーバーレイは、即失敗せず
+    /// timeout まで待って pass する
+    func testOcclusionGuardWaitsOutTransientOverlay() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[textElement(id: "msg", label: "こんにちは")]])
+        let delegate = SequenceVisibilityDelegate([false, true])   // 覆い → 可視
+        let executor = StepExecutor(driver: primary, delegate: delegate)
+        let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
+                            timeout: 3, occlusionGuard: true)
+
+        guard case .passed = await executor.execute(step).status else {
+            XCTFail("過渡的な覆いは待って pass するはず"); return
+        }
+        XCTAssertGreaterThanOrEqual(delegate.calls, 2, "少なくとも covered→visible の 2 回照合すること")
+    }
+
+    /// poll-until-visible: 覆われ続ける場合は timeout で occlusion 失敗を返す
+    func testOcclusionGuardFailsIfCoveredUntilTimeout() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[textElement(id: "msg", label: "こんにちは")]])
+        let executor = StepExecutor(driver: primary, delegate: SequenceVisibilityDelegate([false]))
+        let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
+                            timeout: 1, occlusionGuard: true)
+
+        guard case .failed(let msg) = await executor.execute(step).status else {
+            XCTFail("覆われ続けたら失敗するはず"); return
+        }
+        XCTAssertTrue(msg.contains("occlusion"), "occlusion 失敗を返すこと: \(msg)")
     }
 
     /// exists のフォールバック照会は 2・4・6…回目の primary ミスでのみ発生する(間引き契約。

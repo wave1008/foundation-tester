@@ -431,9 +431,10 @@ public final class StepExecutor {
 
     // MARK: - アサーション
 
-    /// [PoC occlusion-guard] ツリー一致した要素を FM でスクショ照合し、覆われ/切れ/減光/不在なら
+    /// [occlusion-guard] ツリー一致した要素を FM でスクショ照合し、覆われ/切れ/減光/不在なら
     /// 偽陽性として反転する失敗ステータスを返す。反転不要(可視 or 判定不能 or 無効)なら nil。
-    /// コスト上限のため poll ループ内では呼ばず、pass 確定の一点でのみ1回呼ぶ。
+    /// 呼び出し側(exists/textEquals)は覆いを即失敗にせず timeout まで可視化を待つ(poll-until-visible)。
+    /// コストは足切り+低インクゲートで抑制(可視な高インク領域は FM を呼ばず nil で即通過)。
     private func occlusionFlip(element: ElementInfo, expectedText: String, elements: [ElementInfo],
                               screen: FTRect, looseMatch: Bool, perStepGuard: Bool?,
                               phase: inout PhaseAccumulator) async throws -> StepResult.Status? {
@@ -473,6 +474,10 @@ public final class StepExecutor {
             let deadline = Date().addingTimeInterval(TimeInterval(step.timeout ?? 5))
             var backoff = PollBackoff()
             var primaryMisses = 0
+            // occlusion-guard: 要素が見つかっても覆われている場合、過渡的オーバーレイ(ローディング/
+            // スナックバー等)が消えるのを timeout まで待ってから失敗にする(即失敗の脆さを回避)。
+            // 最後に観測した occlusion 失敗を保持し、可視化されなければこれを返す。
+            var lastOcclusion: StepResult.Status?
             while Date() < deadline {
                 var start = clock.now
                 let snapshot = try await driver.snapshot()
@@ -484,28 +489,34 @@ public final class StepExecutor {
                         element: d.element, expectedText: d.element.label ?? step.locator?.label ?? "",
                         elements: snapshot.elements, screen: snapshot.screen,
                         looseMatch: d.quality == .substring, perStepGuard: step.occlusionGuard,
-                        phase: &phase) { return flip }
-                    if let fallback = d.usedFallback { return .passedViaFallback(fallback) }
-                    return .passed
-                }
-                primaryMisses += 1
-                // fallback(SystemUIDriver)の snapshot は springboard 再session+XCUITest snapshot で
-                // 数百ms。primary(in-app ~0.05ms)ミス毎に払うと通常のアプリ内要素待ちを支配するため
-                // 間引く: 2・4・6…回目のミスでのみ照会。実在するシステムUI要素の検知遅れは最大で
-                // バックオフ1段+1周期
-                if primaryMisses >= 2, primaryMisses % 2 == 0, let fb = fallbackDriver {
-                    start = clock.now
-                    let fsnap = try await fb.snapshot()
-                    phase.snapshotMs += Self.ms(clock.now - start)
-                    if let (_, fallback) = Self.resolve(step: step, in: fsnap, strictForAssert: true) {
-                        if let fallback { return .passedViaFallback(fallback) }
+                        phase: &phase) {
+                        lastOcclusion = flip   // 覆われている: 可視化を待つ(下の sleep へ)
+                    } else {
+                        if let fallback = d.usedFallback { return .passedViaFallback(fallback) }
                         return .passed
+                    }
+                } else {
+                    primaryMisses += 1
+                    // fallback(SystemUIDriver)の snapshot は springboard 再session+XCUITest snapshot で
+                    // 数百ms。primary(in-app ~0.05ms)ミス毎に払うと通常のアプリ内要素待ちを支配するため
+                    // 間引く: 2・4・6…回目のミスでのみ照会。実在するシステムUI要素の検知遅れは最大で
+                    // バックオフ1段+1周期
+                    if primaryMisses >= 2, primaryMisses % 2 == 0, let fb = fallbackDriver {
+                        start = clock.now
+                        let fsnap = try await fb.snapshot()
+                        phase.snapshotMs += Self.ms(clock.now - start)
+                        if let (_, fallback) = Self.resolve(step: step, in: fsnap, strictForAssert: true) {
+                            if let fallback { return .passedViaFallback(fallback) }
+                            return .passed
+                        }
                     }
                 }
                 start = clock.now
                 try await Task.sleep(for: backoff.nextDelay())
                 phase.waitMs += Self.ms(clock.now - start)
             }
+            // timeout: 覆われ続けた occlusion があればそれを、無ければ未発見を返す
+            if let lastOcclusion { return lastOcclusion }
             return .failed("要素が見つかりません: \(step.locatorSummary)(timeout \(step.timeout ?? 5)s)")
 
         case "valueEquals", "textEquals":
@@ -517,6 +528,7 @@ public final class StepExecutor {
             var found = false
             var backoff = PollBackoff()
             var primaryMisses = 0
+            var lastOcclusion: StepResult.Status?   // occlusion-guard: 可視化待ち(exists と同契約)
             while Date() < deadline {
                 var start = clock.now
                 let snapshot = try await driver.snapshot()
@@ -543,15 +555,19 @@ public final class StepExecutor {
                             element: element, expectedText: expected,
                             elements: snapshot.elements, screen: snapshot.screen,
                             looseMatch: loose, perStepGuard: step.occlusionGuard,
-                            phase: &phase) { return flip }
-                        if let fallback { return .passedViaFallback(fallback) }
-                        return .passed
+                            phase: &phase) {
+                            lastOcclusion = flip   // 覆われている: 可視化を待つ
+                        } else {
+                            if let fallback { return .passedViaFallback(fallback) }
+                            return .passed
+                        }
                     }
                 }
                 start = clock.now
                 try await Task.sleep(for: backoff.nextDelay())
                 phase.waitMs += Self.ms(clock.now - start)
             }
+            if let lastOcclusion { return lastOcclusion }   // 覆われ続けた
             let subject = assert == "textEquals" ? "テキスト" : "値"
             return found
                 ? .failed("\(subject)が一致しません: 期待 \"\(expected)\"、実際 \"\(lastActual ?? "nil")\"")
