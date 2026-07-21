@@ -1,11 +1,9 @@
-// [PoC occlusion-guard] アクセシビリティツリー上は一致した要素が、実際の描画(スクショ)で
+// occlusion-guard: アクセシビリティツリー上は一致した要素が、実際の描画(スクショ)で
 // 覆われ/切れ/減光されて「見えていない」偽陽性を、FM のマルチモーダル判定で排除する検証器。
-// アサーション(exists/textEquals)がツリー通過した直後に1回だけ呼ぶ想定(常時実行はコスト過大)。
-//
-// 2アーム実装(PoC で正確性を比較するため):
-//  - cropped: スクショを要素 frame(+padding)にクロップして FM に渡す。座標を言葉で説明する必要が
-//    なく、視覚モデルが「この領域に期待テキストが明瞭に見えるか」だけに集中できる(本命)。
-//  - full:    スクショ全体+frame 座標を言葉で渡す。座標→ピクセルの対応を FM に委ねるため弱いはず。
+// アサーション(exists/textEquals)がツリー通過した直後に呼ぶ(poll-until-visible で待機中は各周回)。
+// スクショを要素 frame(+padding)にクロップして FM に渡す(座標を言葉で説明せず「この領域に期待
+// テキストが明瞭に見えるか」だけに集中させる)。全画面+座標を言葉で渡す方式は PoC で精度が劣ると
+// 確定し不採用(経緯は docs/poc-fm-occlusion-guard.md §5.10)。
 // frame の単位はスクショのピクセル空間に一致している前提(呼び出し側で pt→px 換算する)。
 
 import CoreGraphics
@@ -60,7 +58,7 @@ public struct OcclusionVerifier {
         self.cropPadding = cropPadding
     }
 
-    // MARK: Arm B(本命): frame をクロップして判定
+    // frame をクロップして判定
 
     public func verifyCropped(expectedText: String, frame: FTRect, screen: FTRect,
                               screenshotPNG: Data) async -> Result? {
@@ -88,28 +86,6 @@ public struct OcclusionVerifier {
         """
         return await respond(instructions: instructions, image: crop) {
             "期待テキスト(末尾は省略や折り返しがあり得る): \"\(expectedText)\"\nこのテキスト(またはその先頭部分)が、覆われず判読できる状態で描画されていますか。"
-        }
-    }
-
-    // MARK: Arm A(比較用): 全画面+座標を言葉で渡す
-
-    public func verifyFull(expectedText: String, frame: FTRect, screen: FTRect,
-                           screenshotPNG: Data) async -> Result? {
-        guard let full = Self.cgImage(fromPNG: screenshotPNG) else { return nil }
-        let instructions = """
-        あなたは UI テストの視覚検証者です。スクリーンショット(=実際の描画)だけを根拠に、
-        アクセシビリティツリーが報告する要素が、指定領域に覆われず・切れず・減光されず
-        明瞭に描画されているかを厳密に判定してください。ツリーが存在を主張しても、視覚的に
-        読めなければ visible=false としてください。推測で補完しないこと。
-        """
-        return await respond(instructions: instructions, image: full) {
-            """
-            アクセシビリティツリーは、次のテキストが以下の矩形に存在すると報告しています。
-            期待テキスト: "\(expectedText)"
-            報告領域(左上原点): x=\(Int(frame.x)) y=\(Int(frame.y)) 幅=\(Int(frame.width)) 高さ=\(Int(frame.height))
-            画面サイズ: 幅=\(Int(screen.width)) 高さ=\(Int(screen.height))
-            この領域に、そのテキストが覆われず・切れず・明瞭に描画されているか判定してください。
-            """
         }
     }
 
