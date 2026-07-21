@@ -466,9 +466,16 @@ struct RunScenarios: AsyncParsableCommand {
     @Flag(name: .customLong("skip-build"), help: "実行前の swift build をスキップする")
     var skipBuild = false
 
+    @Flag(name: .customLong("fast-input"),
+          help: "iOS xcuitest ブリッジの高速入力(quiescence 待ちスキップ)を有効化する(実行プロファイルの iosFastInput でも指定可)")
+    var fastInput = false
+
     @OptionGroup var driverOptions: DriverOptions
 
     func run() async throws {
+        // BridgeClient(ホスト・サブプロセス両方)が FT_FAST_INPUT を読む。プロファイル指定分は
+        // ProfileRunner が同様に注入する
+        if fastInput { setenv("FT_FAST_INPUT", "1", 1) }
         let testProject = try ScenarioHost.project(named: project)
 
         // ビルドはホスト側で 1 回だけ(サブプロセスは自らビルドしない)

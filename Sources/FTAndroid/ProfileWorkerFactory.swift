@@ -16,7 +16,7 @@ public enum ProfileWorkerFactory {
     public static func buildWorkers(resolved: ResolvedProfile, repoRoot: URL,
                                     log: @escaping (String) -> Void) async throws -> [RunWorker] {
         let workers = try await buildIOSWorkers(resolved: resolved, repoRoot: repoRoot, log: log)
-            + (try buildAndroidWorkers(resolved: resolved))
+            + (try await buildAndroidWorkers(resolved: resolved, log: log))
         guard !workers.isEmpty else {
             throw InstallError(message: "実行可能なワーカーがありません(全デバイスが離脱しました)")
         }
@@ -25,31 +25,94 @@ public enum ProfileWorkerFactory {
 
     /// iOS ワーカーのみ構築(ブリッジ供給込み=数十秒かかりうる)。Android と分離して呼べるのは
     /// 「Android を iOS 供給の完了待ちにしない」ため(RunOrchestrator の lateWorkers 参照)。
+    /// engine=appium のデバイスは BridgeProvisioner(XCUITest ランナー供給)を一切経由しない
+    /// (makeAppiumIOSWorker 参照)。
     public static func buildIOSWorkers(resolved: ResolvedProfile, repoRoot: URL,
                                        log: @escaping (String) -> Void) async throws -> [RunWorker] {
         guard !resolved.iosDevices.isEmpty else { return [] }
-        let provisioner = BridgeProvisioner(repoRoot: repoRoot)
         let iosApp = resolved.apps["ios"]
-        let provisioned = try await provisioner.provision(
-            devices: resolved.iosDevices.map { ($0.name, $0.spec) },
-            bundleID: iosApp?.bundleID,
-            preinstallAppPath: iosApp?.autoInstall == true ? iosApp?.appPath : nil,
-            log: log)
-        return provisioned.map { makeIOSWorker(device: $0, iosApp: iosApp) }
+        let appiumDevices = resolved.iosDevices.filter { $0.spec.engine == "appium" }
+        let normalDevices = resolved.iosDevices.filter { $0.spec.engine != "appium" }
+
+        var workers: [RunWorker] = []
+        for device in appiumDevices {
+            workers.append(try await makeAppiumIOSWorker(device: device, iosApp: iosApp,
+                                                          repoRoot: repoRoot, log: log))
+        }
+        if !normalDevices.isEmpty {
+            let provisioner = BridgeProvisioner(repoRoot: repoRoot)
+            let provisioned = try await provisioner.provision(
+                devices: normalDevices.map { ($0.name, $0.spec) },
+                bundleID: iosApp?.bundleID,
+                preinstallAppPath: iosApp?.autoInstall == true ? iosApp?.appPath : nil,
+                log: log)
+            workers += provisioned.map { makeIOSWorker(device: $0, iosApp: iosApp) }
+        }
+        return workers
     }
 
-    /// Android ワーカーのみ構築(serial 照合+ドライバ生成のみ=数秒)。
-    public static func buildAndroidWorkers(resolved: ResolvedProfile) throws -> [RunWorker] {
-        try resolved.androidDevices.map { device in
-            let serial = try AndroidDeviceCatalog.resolveSerial(spec: device.spec)
-            let driver = try AndroidDriver(serial: serial)
-            return RunWorker(
-                label: "\(device.name)(android:\(serial))", platform: "android",
-                driver: driver,
-                connection: DriverConnection(platform: "android", serial: serial,
-                                             deviceName: device.name),
-                logicalName: device.name)
+    /// engine=appium の iOS デバイスは XCUITest ランナー供給(BridgeProvisioner)を一切経由しない。
+    /// ここで AppiumDriver.status() を(デッドライン無しで)呼びセッションを確立してから返す —
+    /// RunOrchestrator.runWorker は最初に driver.status() を 10s デッドライン付きで呼ぶため
+    /// (セッション新規作成は最大180sかかりうる。ここで先に済ませておかないと初回実行が必ず
+    /// 「接続不能」扱いで離脱する)。
+    private static func makeAppiumIOSWorker(device: ResolvedDevice, iosApp: ResolvedAppTarget?,
+                                            repoRoot: URL, log: @escaping (String) -> Void) async throws -> RunWorker {
+        guard let udid = device.spec.udid else {
+            throw InstallError(message: "\(device.name): engine=appium の iOS デバイスは udid の明示指定が必要です")
         }
+        guard let bundleID = iosApp?.bundleID else {
+            throw InstallError(message: "\(device.name): appium デバイスにはアプリの bundleID が必要です")
+        }
+        log("→ \(device.name): Appium セッションを準備中(初回は WDA 起動で数十秒かかることがあります)...")
+        let driver = AppiumDriver(platform: "ios", udid: udid, bundleID: bundleID,
+                                  serverURL: AppiumDriver.resolveServerURL(), repoRoot: repoRoot)
+        _ = try await driver.status()
+        return RunWorker(
+            label: "\(device.name)(ios:appium)", platform: "ios", driver: driver,
+            connection: DriverConnection(platform: "ios", engine: "appium", udid: udid, deviceName: device.name),
+            logicalName: device.name)
+    }
+
+    /// Android ワーカーのみ構築(serial 照合+ドライバ生成のみ=数秒。engine=appium は
+    /// makeAppiumAndroidWorker でセッション確立まで行うため数十秒かかりうる)。
+    public static func buildAndroidWorkers(resolved: ResolvedProfile,
+                                           log: @escaping (String) -> Void) async throws -> [RunWorker] {
+        var workers: [RunWorker] = []
+        for device in resolved.androidDevices {
+            if device.spec.engine == "appium" {
+                workers.append(try await makeAppiumAndroidWorker(device: device, resolved: resolved, log: log))
+            } else {
+                let serial = try AndroidDeviceCatalog.resolveSerial(spec: device.spec)
+                let driver = try AndroidDriver(serial: serial)
+                workers.append(RunWorker(
+                    label: "\(device.name)(android:\(serial))", platform: "android",
+                    driver: driver,
+                    connection: DriverConnection(platform: "android", serial: serial,
+                                                 deviceName: device.name),
+                    logicalName: device.name))
+            }
+        }
+        return workers
+    }
+
+    /// makeAppiumIOSWorker と同じ理由(コメント参照)で、appium Android デバイスも
+    /// RunWorker を返す前に AppiumDriver.status() を先に呼びセッションを確立しておく。
+    private static func makeAppiumAndroidWorker(device: ResolvedDevice, resolved: ResolvedProfile,
+                                                log: @escaping (String) -> Void) async throws -> RunWorker {
+        let serial = try AndroidDeviceCatalog.resolveSerial(spec: device.spec)
+        guard let bundleID = resolved.apps["android"]?.bundleID else {
+            throw InstallError(message: "\(device.name): appium デバイスにはアプリのパッケージ名が必要です")
+        }
+        log("→ \(device.name): Appium セッションを準備中...")
+        let driver = AppiumDriver(platform: "android", serial: serial, bundleID: bundleID,
+                                  serverURL: AppiumDriver.resolveServerURL(), repoRoot: try RepoRoot.find())
+        _ = try await driver.status()
+        return RunWorker(
+            label: "\(device.name)(android:appium)", platform: "android", driver: driver,
+            connection: DriverConnection(platform: "android", serial: serial,
+                                         engine: "appium", deviceName: device.name),
+            logicalName: device.name)
     }
 
     /// engine=inapp/hybrid のときサブプロセスは InAppDriver(+hybrid は SystemUIDriver フォールバック)を
@@ -79,6 +142,13 @@ public enum ProfileWorkerFactory {
     public static func buildWorker(forLogicalName name: String, resolved: ResolvedProfile,
                                    repoRoot: URL, log: @escaping (String) -> Void) async -> RunWorker? {
         if let device = resolved.iosDevices.first(where: { $0.name == name }) {
+            if device.spec.engine == "appium" {
+                // 復帰パスの appium: makeAppiumIOSWorker のコールドセッション作成(最大180s)には
+                // 通常実行の 60s task-group デッドラインが不十分な場合があるが、復帰パスは
+                // 通常実行では使われないため今回は「動く」ことだけ優先する(既知の制限)。
+                return try? await makeAppiumIOSWorker(device: device, iosApp: resolved.apps["ios"],
+                                                      repoRoot: repoRoot, log: log)
+            }
             let provisioner = BridgeProvisioner(repoRoot: repoRoot)
             let iosApp = resolved.apps["ios"]
             // provision に 60s の期限を切る: ウェッジしたブリッジは接続を受けたまま応答せず、
@@ -104,6 +174,9 @@ public enum ProfileWorkerFactory {
             return makeIOSWorker(device: first, iosApp: iosApp)
         }
         if let device = resolved.androidDevices.first(where: { $0.name == name }) {
+            if device.spec.engine == "appium" {
+                return try? await makeAppiumAndroidWorker(device: device, resolved: resolved, log: log)
+            }
             do {
                 let serial = try AndroidDeviceCatalog.resolveSerial(spec: device.spec)
                 let driver = try AndroidDriver(serial: serial)
@@ -170,9 +243,11 @@ public enum ProfileWorkerFactory {
         var passthrough: [(index: Int, worker: RunWorker)] = []
         for (index, worker) in workers.enumerated() {
             // inapp/hybrid の iOS はプロビジョニング時にインストール済み。ここで入れ直すと
-            // 起動中の in-app ブリッジ(アプリ内常駐)が simctl install で終了してしまうため必ずスキップ
+            // 起動中の in-app ブリッジ(アプリ内常駐)が simctl install で終了してしまうため必ずスキップ。
+            // appium も同様(ワーカー構築時に確立済み・simctl/adb 再インストールが Appium/WDA
+            // セッションを道連れに終了させうる)ため対象に含める。
             if worker.platform == "ios", let engine = worker.connection.engine,
-               engine == "inapp" || engine == "hybrid" {
+               engine == "inapp" || engine == "hybrid" || engine == "appium" {
                 passthrough.append((index, worker))
                 continue
             }

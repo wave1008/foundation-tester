@@ -180,12 +180,20 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     /// design.md §11.2)。iOS には影響しない。同期相手: vscode-ftester/schemas/run-profile.schema.json
     /// と src/monitorModel.ts の RunProfileFormFields
     public var locale: String?
+    /// iOS/Android の駆動エンジンを直接指定する(例 "appium")。マシンプロファイルで
+    /// DeviceSpec.engine を明示している場合はそちらが優先。iosInappEngine 由来の
+    /// hybrid/xcuitest 選択より優先度が高い
+    public var engine: String?
+    /// iOS xcuitest ブリッジの高速入力(quiescence 待ちスキップ。PoC)。true で FT_FAST_INPUT=1 を
+    /// 実行環境に注入する(伝搬経路は BridgeClient.fastInput 参照)。動きの激しい画面では
+    /// 整定前タップのフレークリスクを伴う
+    public var iosFastInput: Bool?
 
     public init(app: String? = nil, devices: [RunDeviceRef]? = nil, heal: Bool? = nil,
                 reportDir: String? = nil, defaultTimeout: Int? = nil, scenarioTimeout: Int? = nil,
                 machine: String? = nil, iosInappEngine: Bool? = nil,
                 wipeDataOnBloat: Bool? = nil, wipeDataThresholdGB: Double? = nil,
-                locale: String? = nil) {
+                locale: String? = nil, engine: String? = nil, iosFastInput: Bool? = nil) {
         self.app = app
         self.devices = devices
         self.heal = heal
@@ -197,11 +205,14 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
         self.wipeDataOnBloat = wipeDataOnBloat
         self.wipeDataThresholdGB = wipeDataThresholdGB
         self.locale = locale
+        self.engine = engine
+        self.iosFastInput = iosFastInput
     }
 
     static let knownKeys: Set<String> = [
         "app", "devices", "heal", "reportDir", "defaultTimeout", "scenarioTimeout",
-        "machine", "iosInappEngine", "wipeDataOnBloat", "wipeDataThresholdGB", "locale",
+        "machine", "iosInappEngine", "wipeDataOnBloat", "wipeDataThresholdGB", "locale", "engine",
+        "iosFastInput",
     ]
 }
 
@@ -257,6 +268,8 @@ public struct ResolvedProfile: Sendable {
     public let wipeDataThresholdGB: Double
     /// Android エミュレータのブート時に -change-locale で適用するロケール(既定 "ja_JP")
     public let locale: String
+    /// iOS xcuitest ブリッジの高速入力(RunProfileDocument.iosFastInput。既定 false)
+    public let iosFastInput: Bool
     /// 解決中に出た警告(スキップしたデバイス・未知キー等)。呼び出し側が表示する
     public let warnings: [String]
 
@@ -487,7 +500,10 @@ public enum ProfileResolver {
         // iOS 実効エンジン: 実行プロファイルの iosInappEngine(既定 true)で決める。
         // true → "hybrid"(高速な in-app 主+XCUITest フォールバック)、false → "xcuitest"。
         // ただしマシンプロファイルでデバイスに engine を明示していればそちらが優先(上書きしない)。
-        let iosEngine = (runDoc.iosInappEngine ?? true) ? "hybrid" : "xcuitest"
+        let explicitRunEngine = runDoc.engine?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let iosEngine = (explicitRunEngine?.isEmpty == false)
+            ? explicitRunEngine!
+            : ((runDoc.iosInappEngine ?? true) ? "hybrid" : "xcuitest")
         var devices: [ResolvedDevice] = []
         for ref in deviceRefs {
             if let device = catalog[ref.name] {
@@ -565,6 +581,7 @@ public enum ProfileResolver {
             wipeDataOnBloat: runDoc.wipeDataOnBloat ?? true,
             wipeDataThresholdGB: wipeDataThresholdGB,
             locale: locale,
+            iosFastInput: runDoc.iosFastInput ?? false,
             warnings: warnings)
     }
 

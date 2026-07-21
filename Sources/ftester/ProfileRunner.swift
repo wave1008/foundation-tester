@@ -31,6 +31,7 @@ enum ProfileRunner {
 
         let heal = healOverride ?? resolved.heal
         let reportDir = reportDirOverride.map { URL(fileURLWithPath: $0) } ?? resolved.reportDir
+        if resolved.iosFastInput { setenv("FT_FAST_INPUT", "1", 1) }  // BridgeClient.fastInput 参照
         let deviceList = resolved.devices
             .map { "\($0.name)(\($0.platform))" }.joined(separator: ", ")
         print("🧩 プロファイル \(profileName): \(resolved.appName) @ \(resolved.machineName)")
@@ -48,7 +49,7 @@ enum ProfileRunner {
         // iOS(ブリッジ供給=壊れたブリッジの置き換えで数十秒かかりうる)は lateWorkers として
         // 分離し、Android を供給完了待ちにしない(ApiRunCommand の並列経路と同じ方針)。
         let repoRoot = try RepoRoot.find()
-        var workers = try ProfileWorkerFactory.buildAndroidWorkers(resolved: resolved)
+        var workers = try await ProfileWorkerFactory.buildAndroidWorkers(resolved: resolved) { print($0) }
         workers = try await excludeBlankScreenWorkers(workers)
         workers = try await ProfileWorkerFactory.installIfNeeded(
             apps: resolved.apps, workers: workers,

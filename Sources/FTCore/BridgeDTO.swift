@@ -53,10 +53,14 @@ public struct StatusResponse: Codable, Sendable {
     /// Android ブリッジ APK の versionCode(BridgeRouter.java handleStatus)。稼働中の旧ブリッジを
     /// probe 時に検知して自動更新するために使う。iOS ブリッジ・旧 Android ブリッジは返さない → nil 許容。
     public var bridgeVersionCode: Int?
+    /// xcuitest ランナーが高速入力(quiescence スキップ)swizzle の導入に成功したか(FastInput.swift)。
+    /// 旧ランナー・他ブリッジは返さない → nil 許容(=非対応)
+    public var fastInputAvailable: Bool?
 
     public init(ready: Bool, device: String, osVersion: String, sessionBundleID: String?,
                 engine: String? = nil, protocolVersion: Int? = nil, applicationState: String? = nil,
-                uiFramework: String? = nil, bridgeVersionCode: Int? = nil) {
+                uiFramework: String? = nil, bridgeVersionCode: Int? = nil,
+                fastInputAvailable: Bool? = nil) {
         self.ready = ready
         self.device = device
         self.osVersion = osVersion
@@ -126,10 +130,16 @@ public struct TapRequest: Codable {
     public var ref: Int?
     public var x: Double?
     public var y: Double?
-    public init(ref: Int? = nil, x: Double? = nil, y: Double? = nil) {
+    /// true = quiescence 待ちスキップの高速入力(PoC・FastInput.swift)。省略可能な追加
+    /// フィールドのみのため bridgeProtocolVersion は据え置き(旧ランナーは無視して通常タップ・
+    /// 旧ホストは未指定。bump すると稼働中の旧ホスト常駐プロセスが新ランナーを stale 判定して
+    /// 再起動ループに入るため、追加フィールドでは上げない)
+    public var fast: Bool?
+    public init(ref: Int? = nil, x: Double? = nil, y: Double? = nil, fast: Bool? = nil) {
         self.ref = ref
         self.x = x
         self.y = y
+        self.fast = fast
     }
 }
 
@@ -168,7 +178,12 @@ public enum FTSwipeDirection: String, Codable, CaseIterable {
 
 public struct SwipeRequest: Codable {
     public var direction: FTSwipeDirection
-    public init(direction: FTSwipeDirection) { self.direction = direction }
+    /// TapRequest.fast と同じ(互換性の注記もそちらを参照)
+    public var fast: Bool?
+    public init(direction: FTSwipeDirection, fast: Bool? = nil) {
+        self.direction = direction
+        self.fast = fast
+    }
 }
 
 public struct PressRequest: Codable {
@@ -176,11 +191,15 @@ public struct PressRequest: Codable {
     public var x: Double?
     public var y: Double?
     public var duration: Double
-    public init(ref: Int? = nil, x: Double? = nil, y: Double? = nil, duration: Double) {
+    /// TapRequest.fast と同じ(互換性の注記もそちらを参照)
+    public var fast: Bool?
+    public init(ref: Int? = nil, x: Double? = nil, y: Double? = nil, duration: Double,
+                fast: Bool? = nil) {
         self.ref = ref
         self.x = x
         self.y = y
         self.duration = duration
+        self.fast = fast
     }
 }
 
