@@ -23,6 +23,8 @@
 - 実行ファイルを差し替えるビルドは `swift build --product <名>`。`--target` はコンパイルのみでリンクしない(旧バイナリをそのまま実行する事故が実際に起きた)
 - ビルドの合否は exit code で確認する。`npm run compile 2>&1 | grep ... && 次コマンド` のようにパイプすると grep の exit code が使われ、tsc の失敗を握りつぶして次へ進んでしまう(実際に起きかけた)
 - macOS ベータを更新したら Xcode も同じベータへ揃えてフルリビルド。FoundationModels の ABI 不整合で全バイナリが dyld クラッシュする(swift build は SDKROOT/--sdk を無視するため Xcode 側を揃えるしかない)
+- Xcode(beta)単体の更新でも同様: iOS ランタイム導入(`xcodebuild -downloadPlatform iOS`)+ランナー再ビルドで整合させる。不整合はアプリが数操作で「Application is not running」クラッシュする(`ftester doctor` が DTXcodeBuild 不一致を警告。2026-07-21 実害)
+- テストが「Application is not running」で全滅したら、ランナーや自分の変更を疑う前に **SUT のバックエンド死活を確認**(sut-ec-mobile は localhost:8090 の dev サーバ。停止中はアプリが非同期例外でクラッシュする)。apps プロファイルの healthCheckURL が実行開始時に警告を出す
 - `ftester api ...` の JSON/NDJSON 契約を後方非互換に変えたら `Sources/FTCore/ProtocolVersion.swift` と `vscode-ftester/src/protocolVersion.ts` の版を +1(両者一致必須・`protocolVersion.test.mjs` が検出)。拡張は起動時に `ftester api version` で照合し不一致を警告する(`compatCheck.ts`)
 
 ## 実装の委譲
