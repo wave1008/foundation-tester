@@ -1,0 +1,11 @@
+{
+  "app": "sut-ec-mobile",
+  "devices": [
+    { "name": "PoC-01" }
+  ],
+  "engine": "appium",
+  "heal": false,
+  "reportDir": "reports",
+  "machine": "LDIPC96-poc",
+  "wipeDataOnBloat": false
+}
