@@ -40,9 +40,6 @@ public enum StepDescription {
         case "exist":
             guard let selector = unquote(rest) else { return nil }
             return "\"\(objectPhrase(ofSelector: selectorOverride ?? selector))\"が(覆われず)見えていること"
-        case "present":
-            guard let selector = unquote(rest) else { return nil }
-            return "\"\(objectPhrase(ofSelector: selectorOverride ?? selector))\"が表示されること"
         case "type":
             if let (selector, input) = unquotePair(rest, separator: "\" \"") {
                 return "\"\(objectPhrase(ofSelector: selectorOverride ?? selector))\""

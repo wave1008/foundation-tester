@@ -4,8 +4,8 @@ import XCTest
 final class StepCommandParamsTests: XCTestCase {
 
     func testSpecsForVerbs() {
-        XCTAssertEqual(StepCommandParams.specs(forVerb: "exist").map(\.name), ["timeout"])
-        XCTAssertEqual(StepCommandParams.specs(forVerb: "present").map(\.name), ["timeout"])
+        XCTAssertEqual(StepCommandParams.specs(forVerb: "exist").map(\.name),
+                       ["timeout", "requireVisible"])
         XCTAssertEqual(StepCommandParams.specs(forVerb: "textIs").map(\.name),
                        ["timeout", "requireVisible"])
         XCTAssertEqual(StepCommandParams.specs(forVerb: "valueIs").map(\.name),
@@ -28,15 +28,21 @@ final class StepCommandParamsTests: XCTestCase {
     func testParseKeywordArgument() {
         XCTAssertEqual(StepCommandParams.parse(code: "exist(\"WiFi\", timeout: 15)",
                                                verb: "exist"),
-                       ["timeout": "15"])
+                       ["timeout": "15", "requireVisible": "true"])
     }
 
-    func testPresentParsesLikeExist() {
-        XCTAssertEqual(StepCommandParams.parse(code: "present(\"#ok\", timeout: 3)",
-                                               verb: "present"),
-                       ["timeout": "3"])
-        XCTAssertEqual(StepCommandParams.parse(code: "present(\"#ok\")", verb: "present"),
-                       ["timeout": ""])
+    func testExistRequireVisibleOptOut() {
+        // exist も既定 requireVisible=true。false でツリー存在のみ
+        XCTAssertEqual(
+            StepCommandParams.parse(code: "exist(\"#ok\")", verb: "exist"),
+            ["timeout": "", "requireVisible": "true"])
+        XCTAssertEqual(
+            StepCommandParams.parse(code: "exist(\"#ok\", requireVisible: false)", verb: "exist"),
+            ["timeout": "", "requireVisible": "false"])
+        XCTAssertEqual(
+            StepCommandParams.parse(code: "exist(\"#ok\", timeout: 2, requireVisible: false)",
+                                    verb: "exist"),
+            ["timeout": "2", "requireVisible": "false"])
     }
 
     func testTextIsRequireVisibleOptOut() {
@@ -55,7 +61,7 @@ final class StepCommandParamsTests: XCTestCase {
 
     func testParseFillsOmittedArgumentsWithDefaults() {
         XCTAssertEqual(StepCommandParams.parse(code: "exist(\"WiFi\")", verb: "exist"),
-                       ["timeout": ""])
+                       ["timeout": "", "requireVisible": "true"])
         XCTAssertEqual(StepCommandParams.parse(code: "scrollTo(\"x\")", verb: "scrollTo"),
                        ["direction": "up", "maxSwipes": "8"])
         XCTAssertEqual(StepCommandParams.parse(code: "type(\"a\", \"b\")", verb: "type"),
@@ -110,7 +116,7 @@ final class StepCommandParamsTests: XCTestCase {
     func testParseKeepsEscapedLiteral() {
         XCTAssertEqual(StepCommandParams.parse(code: #"exist("a\"b", timeout: 5)"#,
                                                verb: "exist"),
-                       ["timeout": "5"])
+                       ["timeout": "5", "requireVisible": "true"])
     }
 
     func testParseRejectsVariableArgument() {
