@@ -10,7 +10,10 @@ public enum OcclusionEligibility {
     public struct Verdict { public let ok: Bool; public let reason: String }
 
     /// FM occlusion 照合の対象にしてよいか。ok=false の要素はガードを素通り(従来どおり pass)。
-    public static func eligible(type: String, label: String) -> Verdict {
+    /// isUserText: label が textEquals/valueEquals の**ユーザー期待値**(リテラル)か。true のときは
+    /// 結合セマンティクスの `, ` 規則を当てない(ユーザーが句読点入りテキストを意図的に検証し得るため。
+    /// この規則は exist の実 a11y label=結合コンテナ検出のためのもの)。
+    public static func eligible(type: String, label: String, isUserText: Bool = false) -> Verdict {
         // テキスト系の型のみ(Compose iOS/XCUITest とも本文テキストは "StaticText")。
         // Image/Button/Cell/Other 等はアイコン・画像でラベルが説明文になりがち。
         let textTypes = ["StaticText", "Text", "TextView", "Label", "SearchField", "TextField"]
@@ -18,7 +21,8 @@ public enum OcclusionEligibility {
             return Verdict(ok: false, reason: "非テキスト型:\(type)")
         }
         // 結合セマンティクス(コンテナが子を連結した label)。`, ` 区切りは複数要素の合成。
-        if label.contains(", ") {
+        // ユーザー期待値(textEquals)には当てない(正当な句読点を誤除外するため)。
+        if !isUserText, label.contains(", ") {
             return Verdict(ok: false, reason: "結合label")
         }
         // 記号/絵文字のみ(判読すべき「文字」が無い)。文字=Unicode の letter か number を1つ以上要求。
