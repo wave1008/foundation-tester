@@ -5,7 +5,7 @@
   },
   "ios": {
     "app": "com.example.sampleapp",
-    "appPath": "../../.ftester/DerivedData/Build/Products/Debug-iphonesimulator/SampleApp.app"
+    "appPath": ".ftester/DerivedData/Build/Products/Debug-iphonesimulator/SampleApp.app"
   },
   "android": {
     "app": "com.example.sampleapp"
