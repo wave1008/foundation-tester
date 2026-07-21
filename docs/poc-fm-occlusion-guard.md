@@ -294,9 +294,13 @@ OcclusionVerifier)が実機で機能することを確認**。これで PoC は 
 
 ```swift
 textIs("#msg", "完了")                        // 既定: 一致 + 見えている
-textIs("#msg", "完了", occlusionGuard: false)  // 一致のみ(可視性は問わない)
+textIs("#msg", "完了", requireVisible: false)  // 一致のみ(可視性は問わない)
 valueIs("#sw", "1")                            // 同上
 ```
+
+オプトアウト引数名は `requireVisible`(ユーザー決定)。`requireVisible: false` が「見えていることを要求しない」で
+最も明快なため採用(`occlusionGuard` は専門用語で分かりにくく、`visible: false` は「非表示を検証」と誤読される)。
+内部の `FlowStep.occlusionGuard` フィールドは実装名として据え置き。
 
 - 機構は既存の textEquals/valueEquals 経路の occlusionFlip をそのまま使用(poll-until-visible も適用)。
 - ソース契約: codegen(オプトアウト時のみ `, occlusionGuard: false` を付与)・VSCode パラメータ編集

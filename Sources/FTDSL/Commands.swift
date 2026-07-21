@@ -169,32 +169,32 @@ public func present(_ selector: String, timeout: Int? = nil,
     return FTElement(selector: selector)
 }
 
-/// テキスト一致検証。既定で occlusion 確認あり(一致かつ実際に見えていること)。
-/// 可視性を問わずテキスト一致だけ見たい場合は occlusionGuard: false。
+/// テキスト一致検証。既定で可視性も確認(一致かつ実際に見えていること)。
+/// 可視性を問わずテキスト一致だけ見たい場合は requireVisible: false。
 public func textIs(_ selector: String, _ expected: String, timeout: Int? = nil,
-                   occlusionGuard: Bool = true,
+                   requireVisible: Bool = true,
                    file: StaticString = #filePath, line: UInt = #line) {
     let core = FTRuntime.requireCore(command: "textIs")
     let parsed = FTSelector.parse(selector)
     let step = FlowStep(assert: "textEquals", locator: parsed.primary,
                         fallbacks: parsed.fallbacks.isEmpty ? nil : parsed.fallbacks,
                         expected: expected, timeout: timeout ?? core.defaultTimeout,
-                        occlusionGuard: occlusionGuard)
+                        occlusionGuard: requireVisible)
     core.perform(step: step, description: "textIs \"\(selector)\" == \"\(expected)\"",
                  selectorText: selector, file: file, line: line)
 }
 
-/// 値一致検証。既定で occlusion 確認あり(一致かつ実際に見えていること)。
-/// 可視性を問わず値一致だけ見たい場合は occlusionGuard: false。
+/// 値一致検証。既定で可視性も確認(一致かつ実際に見えていること)。
+/// 可視性を問わず値一致だけ見たい場合は requireVisible: false。
 public func valueIs(_ selector: String, _ expected: String, timeout: Int? = nil,
-                    occlusionGuard: Bool = true,
+                    requireVisible: Bool = true,
                     file: StaticString = #filePath, line: UInt = #line) {
     let core = FTRuntime.requireCore(command: "valueIs")
     let parsed = FTSelector.parse(selector)
     let step = FlowStep(assert: "valueEquals", locator: parsed.primary,
                         fallbacks: parsed.fallbacks.isEmpty ? nil : parsed.fallbacks,
                         expected: expected, timeout: timeout ?? core.defaultTimeout,
-                        occlusionGuard: occlusionGuard)
+                        occlusionGuard: requireVisible)
     core.perform(step: step, description: "valueIs \"\(selector)\" == \"\(expected)\"",
                  selectorText: selector, file: file, line: line)
 }
@@ -212,17 +212,17 @@ public struct FTElement {
     let selector: String
 
     @discardableResult
-    public func textIs(_ expected: String, timeout: Int? = nil, occlusionGuard: Bool = true,
+    public func textIs(_ expected: String, timeout: Int? = nil, requireVisible: Bool = true,
                        file: StaticString = #filePath, line: UInt = #line) -> FTElement {
-        FTDSL.textIs(selector, expected, timeout: timeout, occlusionGuard: occlusionGuard,
+        FTDSL.textIs(selector, expected, timeout: timeout, requireVisible: requireVisible,
                      file: file, line: line)
         return self
     }
 
     @discardableResult
-    public func valueIs(_ expected: String, timeout: Int? = nil, occlusionGuard: Bool = true,
+    public func valueIs(_ expected: String, timeout: Int? = nil, requireVisible: Bool = true,
                         file: StaticString = #filePath, line: UInt = #line) -> FTElement {
-        FTDSL.valueIs(selector, expected, timeout: timeout, occlusionGuard: occlusionGuard,
+        FTDSL.valueIs(selector, expected, timeout: timeout, requireVisible: requireVisible,
                       file: file, line: line)
         return self
     }
