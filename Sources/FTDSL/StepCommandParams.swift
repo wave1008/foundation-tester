@@ -79,8 +79,7 @@ public enum StepCommandParams {
         case "type": return [optionalSpec, actionTimeoutSpec]
         case "press": return [durationSpec, optionalSpec, actionTimeoutSpec]
         case "scrollTo": return [directionSpec, maxSwipesSpec]
-        case "exist", "present": return [timeoutSpec]
-        case "textIs", "valueIs": return [timeoutSpec, requireVisibleSpec]
+        case "exist", "textIs", "valueIs": return [timeoutSpec, requireVisibleSpec]
         default: return []
         }
     }
@@ -191,9 +190,10 @@ public enum StepCommandParams {
                 arguments += ", maxSwipes: \(maxSwipes)"
             }
             return "scrollTo(\(arguments))"
-        case "exist", "present":
+        case "exist":
             let timeout = try timeoutArg(params)
-            return "\(parsed.verb)(\(StepCommandText.literal(parsed.strings[0]))\(timeout))"
+            let visArg = try requireVisibleArg(params)
+            return "exist(\(StepCommandText.literal(parsed.strings[0]))\(timeout)\(visArg))"
         case "textIs", "valueIs":
             let timeout = try timeoutArg(params)
             let visArg = try requireVisibleArg(params)
@@ -220,7 +220,7 @@ public enum StepCommandParams {
         return on ? "" : ", requireVisible: false"
     }
 
-    /// exist / present / textIs / valueIs の timeout(空文字 = 省略 = プロファイル既定)
+    /// exist / textIs / valueIs の timeout(空文字 = 省略 = プロファイル既定)
     private static func timeoutArg(_ params: [String: String]) throws -> String {
         let text = value(params, timeoutSpec)
         if text.isEmpty { return "" }

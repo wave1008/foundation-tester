@@ -62,11 +62,6 @@ final class StepDescriptionTests: XCTestCase {
                        "\"ようこそ\"が(覆われず)見えていること")
     }
 
-    func testPresent() {
-        XCTAssertEqual(StepDescription.describe(command: "present \"ようこそ\""),
-                       "\"ようこそ\"が表示されること")
-    }
-
     func testTextIs() {
         XCTAssertEqual(
             StepDescription.describe(command: "textIs \"#login_error\" == \"パスワードが違います\""),

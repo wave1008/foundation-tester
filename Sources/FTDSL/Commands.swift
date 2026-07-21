@@ -138,33 +138,18 @@ public func scrollTo(_ selector: String, direction: FTSwipeDirection = .up, maxS
 
 /// 要素の存在検証。戻り値に .textIs / .valueIs をチェーンできる
 /// (timeout 省略時は実行プロファイルの defaultTimeout、それも無ければ 5 秒)
-/// 既定で occlusion-guard 有効(= 実際に見えていることも確認): ツリー存在に加え、要素が別要素に
-/// 覆われ/切れ/不在で見えていないかを FM で確認する(見えなければ失敗)。ツリー存在のみで良い
-/// (高速・アイコン等)場合は present() を使う。FM 未配線時は guard は素通り(present と同じ挙動)。
+/// 存在検証。既定で可視性も確認(= 実際に見えていることも確認): ツリー存在に加え、要素が別要素に
+/// 覆われ/切れ/不在で見えていないかを FM で確認する(見えなければ失敗)。ツリー存在だけ見たい
+/// (高速・アイコン等)場合は requireVisible: false。FM 未配線時は guard は素通り(存在のみと同じ)。
 @discardableResult
-public func exist(_ selector: String, timeout: Int? = nil,
+public func exist(_ selector: String, timeout: Int? = nil, requireVisible: Bool = true,
                   file: StaticString = #filePath, line: UInt = #line) -> FTElement {
     let core = FTRuntime.requireCore(command: "exist")
     let parsed = FTSelector.parse(selector)
     let step = FlowStep(assert: "exists", locator: parsed.primary,
                         fallbacks: parsed.fallbacks.isEmpty ? nil : parsed.fallbacks,
-                        timeout: timeout ?? core.defaultTimeout, occlusionGuard: true)
+                        timeout: timeout ?? core.defaultTimeout, occlusionGuard: requireVisible)
     core.perform(step: step, description: "exist \"\(selector)\"",
-                 selectorText: selector, file: file, line: line)
-    return FTElement(selector: selector)
-}
-
-/// アクセシビリティツリー上の存在のみ検証する(見えているかは問わない・高速)。
-/// exist が既定で行う occlusion 確認を省いた版(exist の occlusion 確認なし = present)。
-@discardableResult
-public func present(_ selector: String, timeout: Int? = nil,
-                    file: StaticString = #filePath, line: UInt = #line) -> FTElement {
-    let core = FTRuntime.requireCore(command: "present")
-    let parsed = FTSelector.parse(selector)
-    let step = FlowStep(assert: "exists", locator: parsed.primary,
-                        fallbacks: parsed.fallbacks.isEmpty ? nil : parsed.fallbacks,
-                        timeout: timeout ?? core.defaultTimeout, occlusionGuard: false)
-    core.perform(step: step, description: "present \"\(selector)\"",
                  selectorText: selector, file: file, line: line)
     return FTElement(selector: selector)
 }
