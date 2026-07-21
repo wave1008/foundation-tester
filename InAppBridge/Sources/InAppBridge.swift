@@ -176,7 +176,7 @@ final class FTInAppBridge {
                 + "アプリは inapp では first responder を張れず type できません。"
                 + "engine=xcuitest の実行プロファイル(iosInappEngine: false)で実行してください。"
                 + "入力欄が AX ツリーに現れない(accessibilityIdentifier/testTag 未設定)場合は"
-                + "アプリ側で testTag を付けてください")
+                + "アプリ側で testTag を付けてください。診断: \(FTFirstResponderDiagnostics())")
         }
         return .json(OKResponse())
     }
