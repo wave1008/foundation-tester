@@ -127,6 +127,7 @@ struct ApiRunCommand: AsyncParsableCommand {
                 project: testProject, runName: profile, machineName: machine.name)
             for warning in resolved.warnings { logStderr("⚠️ \(warning)") }
             if resolved.iosFastInput { setenv("FT_FAST_INPUT", "1", 1) }  // BridgeClient.fastInput 参照
+            await BackendHealthCheck.warnIfUnreachable(resolved: resolved) { logStderr($0) }
             resolvedProfile = resolved
         }
 

@@ -82,6 +82,31 @@ struct Doctor: AsyncParsableCommand {
         let xcodeLine = xcode.output.split(separator: "\n").first.map(String.init) ?? "不明"
         print(xcode.status == 0 ? "✅ \(xcodeLine)" : "❌ xcodebuild が見つかりません")
 
+        // ランナーをビルドした Xcode と現在選択中の Xcode の一致確認。Xcode(beta)更新後に
+        // 旧ビルドのランナーを使う・逆に新ビルドのランナーを旧ランタイムに載せると、アプリが
+        // 実行中に「Application is not running」でクラッシュする(2026-07-21 実害)。
+        // CLAUDE.md の「Xcode 更新後はフルリビルド」を機械検知にしたもの。
+        // 注: DTSDKBuild とランタイムのビルド ID は別体系のため比較しない(誤検知する)
+        if let root = try? RepoRoot.find() {
+            let plist = root.appendingPathComponent(".ftester/DerivedData/Build/Products/"
+                + "Debug-iphonesimulator/FTesterRunnerUITests-Runner.app/Info.plist")
+            // 末尾レター違い(27A5228b vs 27A5228h)は同一ビルド系列の再発行+増分ビルドで
+            // Info.plist が残るケースがあり実害なし(実測)。数字部分の差のみを不整合とみなす
+            func core(_ build: String) -> String {
+                String(build.reversed().drop(while: \.isLetter).reversed())
+            }
+            if let data = try? Data(contentsOf: plist),
+               let dict = try? PropertyListSerialization.propertyList(from: data, format: nil)
+                   as? [String: Any],
+               let runnerXcodeBuild = dict["DTXcodeBuild"] as? String,
+               !core(runnerXcodeBuild).isEmpty,
+               !xcode.output.contains(core(runnerXcodeBuild)) {
+                print("⚠️ XCUITest ランナーは別の Xcode(build \(runnerXcodeBuild))でビルドされています。"
+                    + "Xcode 更新後はランタイム導入(xcodebuild -downloadPlatform iOS)とフルリビルドで"
+                    + "整合させてください(不整合はアプリが実行中にクラッシュします)")
+            }
+        }
+
         let sims = try Shell.run(["xcrun", "simctl", "list", "devices", "booted"])
         let booted = sims.output.split(separator: "\n")
             .filter { $0.contains("(Booted)") }
@@ -476,14 +501,18 @@ struct RunScenarios: AsyncParsableCommand {
         // BridgeClient(ホスト・サブプロセス両方)が FT_FAST_INPUT を読む。プロファイル指定分は
         // ProfileRunner が同様に注入する
         if fastInput { setenv("FT_FAST_INPUT", "1", 1) }
+        PhaseLog.mark("start")
         let testProject = try ScenarioHost.project(named: project)
+        PhaseLog.mark("project-resolved")
 
         // ビルドはホスト側で 1 回だけ(サブプロセスは自らビルドしない)
         if !skipBuild {
             print("→ シナリオをビルド(\(testProject.name))...")
             try ScenarioHost.build(project: testProject)
         }
+        PhaseLog.mark("build")
         let all = try ScenarioHost.list(project: testProject)
+        PhaseLog.mark("scenario-list")
         guard !all.isEmpty else {
             throw ValidationError(
                 "シナリオがありません(Projects/\(testProject.name)/Scenarios/ に @TestClass を追加してください)")
@@ -518,16 +547,20 @@ struct RunScenarios: AsyncParsableCommand {
             print("⚠️ Foundation Models 利用不可: 自己修復・screenIs・トリアージは無効です")
         }
 
+        PhaseLog.mark("fm-doctor")
         let recorder = RunRecorder.begin(project: testProject, profile: profile, trigger: "cli")
+        PhaseLog.mark("recorder-begin")
 
         if let profile {
             let runSummary = try await ProfileRunner.run(
                 project: testProject, profileName: profile, items: items,
                 healOverride: heal ? true : nil, reportDirOverride: reportDir, recorder: recorder)
             let failedCount = runSummary.failed
+            PhaseLog.mark("profile-run-done")
             recorder.finish(total: items.count, passed: items.count - failedCount, failed: failedCount,
                             degradedWorkers: runSummary.degradedWorkers,
                             freezeRetries: runSummary.freezeRetries)
+            PhaseLog.mark("recorder-finish")
             print(failedCount == 0
                   ? "✅ 全 \(items.count) シナリオ成功"
                   : "❌ \(items.count) シナリオ中 \(failedCount) 件失敗")

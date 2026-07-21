@@ -24,16 +24,22 @@ public struct AppProfileSection: Codable, Sendable, Equatable {
     public var appPath: String?
     /// 実行前に appPath を自動インストールするか(既定 false = 無効)
     public var autoInstall: Bool?
+    /// アプリが依存するバックエンドの死活確認 URL(common のみ)。実行開始前に到達確認し、
+    /// 不達なら警告する(バックエンド停止でアプリがクラッシュ→全滅する事故の早期検知。
+    /// 2026-07-21 の実害から追加)。ブロックはしない(オフライン検証を妨げない)
+    public var healthCheckURL: String?
 
     public init(appName: String? = nil, app: String? = nil,
-                appPath: String? = nil, autoInstall: Bool? = nil) {
+                appPath: String? = nil, autoInstall: Bool? = nil,
+                healthCheckURL: String? = nil) {
         self.appName = appName
         self.app = app
         self.appPath = appPath
         self.autoInstall = autoInstall
+        self.healthCheckURL = healthCheckURL
     }
 
-    static let knownKeys: Set<String> = ["appName", "app", "appPath", "autoInstall"]
+    static let knownKeys: Set<String> = ["appName", "app", "appPath", "autoInstall", "healthCheckURL"]
 
     /// common(self)と platform セクション(other)の合成(section(for:)専用)。フィールドごとに
     /// 採用元が異なる: appName = common→platform 後勝ち(表示名は共通定義が自然なため) /
@@ -47,7 +53,8 @@ public struct AppProfileSection: Codable, Sendable, Equatable {
             appName: other?.appName ?? appName,
             app: other?.app,
             appPath: other?.appPath,
-            autoInstall: autoInstall)
+            autoInstall: autoInstall,
+            healthCheckURL: healthCheckURL)  // autoInstall と同じく common のみ
     }
 }
 
@@ -238,11 +245,15 @@ public struct ResolvedAppTarget: Sendable, Hashable {
     /// 実行前に appPath を自動インストールするか(既定 false = 無効。
     /// common セクションで明示的に true にした場合のみ有効)
     public let autoInstall: Bool
+    /// バックエンド死活確認 URL(AppProfileSection.healthCheckURL)
+    public let healthCheckURL: String?
 
-    public init(bundleID: String, appPath: String? = nil, autoInstall: Bool = false) {
+    public init(bundleID: String, appPath: String? = nil, autoInstall: Bool = false,
+                healthCheckURL: String? = nil) {
         self.bundleID = bundleID
         self.appPath = appPath
         self.autoInstall = autoInstall
+        self.healthCheckURL = healthCheckURL
     }
 }
 
@@ -551,7 +562,8 @@ public enum ProfileResolver {
                 appPath: section.appPath.map { resolvePath($0, base: repoRoot) },
                 // autoInstall 未指定時の既定は false(無効)。appPath 指定+未指定のまま
                 // 実行前インストールされてしまう事故を避けるため、明示指定を必須とする
-                autoInstall: section.autoInstall ?? false)
+                autoInstall: section.autoInstall ?? false,
+                healthCheckURL: section.healthCheckURL)
         }
 
         let reportDir = URL(fileURLWithPath:
