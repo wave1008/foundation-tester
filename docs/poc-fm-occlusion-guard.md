@@ -393,13 +393,14 @@ OcclusionVerifier)が実機で機能することを確認**。これで PoC は 
 
 計測に使った単体ハーネス `ftester-poc-occlusion`(合成フィクスチャ計測+実機駆動の
 live/dump/explore/occtest/e2e モード)は **PoC ブランチ `poc/fm-occlusion-verify` の履歴に保存**され、
-本流(main)には含めていない(実機を hardcoded フローで駆動する調査足場のため)。再計測が必要なら
-当該ブランチから `Sources/ftester-poc-occlusion/` と Package.swift の該当ターゲットを取り出す:
+本流(main)には含めていない(実機を hardcoded フローで駆動する調査足場のため。ブランチ tip の
+cleanup コミットで削除済み=履歴からのみ辿れる)。再計測が必要なら履歴から復元する:
 
 ```
-git show poc/fm-occlusion-verify:Sources/ftester-poc-occlusion/main.swift
-swift build --product ftester-poc-occlusion   # ターゲット復元後
-.build/debug/ftester-poc-occlusion <出力ディレクトリ>   # 合成計測
+git log --all --oneline -- Sources/ftester-poc-occlusion/   # 存在するコミットを探す
+git checkout <上記コミット> -- Sources/ftester-poc-occlusion/ Package.swift
+swift build --product ftester-poc-occlusion
+.build/debug/ftester-poc-occlusion <出力ディレクトリ>          # 合成計測
 .build/debug/ftester-poc-occlusion e2e <udid> <bundleID> <port>   # 実機 E2E
 ```
 
