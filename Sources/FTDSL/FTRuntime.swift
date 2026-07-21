@@ -333,6 +333,8 @@ public final class FTDriveCore {
             return .passed
         }
 
+        // launch/wait/procedure 等は画面を変え得る → occlusion-guard のスクショ再利用を無効化
+        executor.invalidateScreenshotCache()
         let clock = ContinuousClock()
         let start = clock.now
         let result = FTSync.runThrowing { try await body() }
