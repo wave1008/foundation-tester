@@ -51,11 +51,15 @@ public struct FlowStep: Codable, Sendable {
     public var optional: Bool?
     /// 探索時に FM が述べた意図(リプレイでは使わないがレビューの助けになる)
     public var note: String?
+    /// [occlusion-guard] true のとき、この検証(exists/textEquals)がツリー一致で pass した直後に
+    /// FM でスクショ視覚照合し、覆われ/切れ/不在なら偽陽性として失敗へ反転する。DSL の visible() が立てる。
+    /// nil = executor 既定(StepExecutor.occlusionGuard)に従う。
+    public var occlusionGuard: Bool?
 
     public init(action: String? = nil, assert: String? = nil, locator: FlowLocator? = nil,
                 fallbacks: [FlowLocator]? = nil, text: String? = nil, direction: String? = nil,
                 expected: String? = nil, timeout: Int? = nil, maxSwipes: Int? = nil,
-                optional: Bool? = nil, note: String? = nil) {
+                optional: Bool? = nil, note: String? = nil, occlusionGuard: Bool? = nil) {
         self.action = action
         self.assert = assert
         self.locator = locator
@@ -67,6 +71,7 @@ public struct FlowStep: Codable, Sendable {
         self.maxSwipes = maxSwipes
         self.optional = optional
         self.note = note
+        self.occlusionGuard = occlusionGuard
     }
 }
 

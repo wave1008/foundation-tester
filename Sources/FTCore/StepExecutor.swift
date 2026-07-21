@@ -48,6 +48,20 @@ public protocol ReplayDelegate: AnyObject {
     func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)?
     func triage(goal: String?, stepDescription: String, failureReason: String,
                 snapshot: SnapshotResponse?, screenshotPNG: Data?) async -> TriageInfo?
+    /// [PoC occlusion-guard] ツリー上は一致した要素が、実際にスクショ上で覆われず/切れず/
+    /// 明瞭に描画されているかを FM に照合させる。visible=false なら assert を偽陽性として反転する。
+    /// 戻り nil = 判定不能(FM 不可・画像不正)で、この場合ガードは何もしない(従来どおり pass)。
+    /// state は fullyVisible/covered/dimmed/notRendered/textMismatch のいずれか(FTCore は FM 非依存
+    /// のため文字列で受ける)。既定実装は nil(ガード無効時・非対応 delegate は素通り)。
+    func verifyElementVisible(expectedText: String, frame: FTRect, screen: FTRect,
+                              screenshotPNG: Data) async -> (visible: Bool, state: String, reason: String)?
+}
+
+public extension ReplayDelegate {
+    func verifyElementVisible(expectedText: String, frame: FTRect, screen: FTRect,
+                              screenshotPNG: Data) async -> (visible: Bool, state: String, reason: String)? {
+        nil
+    }
 }
 
 public struct StepResult: Sendable {
@@ -142,18 +156,30 @@ public final class StepExecutor {
     public var preferTypeDriver: Bool
     public var delegate: ReplayDelegate?
     public var healingEnabled: Bool
+    /// [PoC occlusion-guard] true のとき、exists/textEquals がツリー一致で pass した直後に
+    /// FM で「その要素がスクショ上で実際に見えているか」を1回照合し、覆われ/切れ/減光/不在なら
+    /// 偽陽性として失敗へ反転する。delegate が verifyElementVisible を実装していなければ無効。
+    public var occlusionGuard: Bool
+    /// [PoC occlusion-guard] 事前フィルタの閾値。対象 frame 領域の輝度 stddev がこの値以上なら
+    /// 「明瞭にインクあり=見えている」とみなし FM を省略する(疑いのある低インク領域だけ FM へ回す)。
+    /// 単位はスクショの輝度分散(0〜約128)。実測(合成フィクスチャ)で可視 stddev≳25 / 覆い・空・減光
+    /// stddev≲8 に分離するため既定 12。0 にすると常に FM を呼ぶ(ゲート無効)。
+    public var occlusionInkThreshold: Double
     /// 白フレーム確定時に呼ぶ。FTDriveCore が凍結中断+deviceFrozen emit を行う
     public var onDeviceFrozen: (@Sendable () -> Void)?
 
     public init(driver: AppDriver, fallbackDriver: AppDriver? = nil,
                 typeDriver: AppDriver? = nil, preferTypeDriver: Bool = false,
-                delegate: ReplayDelegate? = nil, healingEnabled: Bool = false) {
+                delegate: ReplayDelegate? = nil, healingEnabled: Bool = false,
+                occlusionGuard: Bool = false, occlusionInkThreshold: Double = 12) {
         self.driver = driver
         self.fallbackDriver = fallbackDriver
         self.typeDriver = typeDriver
         self.preferTypeDriver = preferTypeDriver
         self.delegate = delegate
         self.healingEnabled = healingEnabled
+        self.occlusionGuard = occlusionGuard
+        self.occlusionInkThreshold = occlusionInkThreshold
     }
 
     /// cached: ヒールキャッシュ由来のロケータ連鎖。解決順は
@@ -405,6 +431,40 @@ public final class StepExecutor {
 
     // MARK: - アサーション
 
+    /// [PoC occlusion-guard] ツリー一致した要素を FM でスクショ照合し、覆われ/切れ/減光/不在なら
+    /// 偽陽性として反転する失敗ステータスを返す。反転不要(可視 or 判定不能 or 無効)なら nil。
+    /// コスト上限のため poll ループ内では呼ばず、pass 確定の一点でのみ1回呼ぶ。
+    private func occlusionFlip(element: ElementInfo, expectedText: String, elements: [ElementInfo],
+                              screen: FTRect, looseMatch: Bool, perStepGuard: Bool?,
+                              phase: inout PhaseAccumulator) async throws -> StepResult.Status? {
+        // 有効化はステップ指定(DSL の visible())優先、無ければ executor 既定
+        guard (perStepGuard ?? occlusionGuard), let delegate else { return nil }
+        // 退化 frame(サイズ 0・クランプで潰れた等)は視覚照合の意味がないのでスキップ(素通り)
+        guard element.frame.width >= 1, element.frame.height >= 1, !expectedText.isEmpty else { return nil }
+        // 足切り: label が verbatim 描画されない要素(アイコン/画像/絵文字/結合セマンティクス)は
+        // FM で約50%誤反転する(実機確認)ため対象外=素通り(pass)。
+        guard OcclusionEligibility.eligible(type: element.type, label: expectedText).ok else { return nil }
+        let clock = ContinuousClock()
+        let start = clock.now
+        let screenshot = try await driver.screenshot()
+        phase.actionMs += Self.ms(clock.now - start)
+        // Tier-0 幾何(ツリーのみ)で疑わしければインク量に関わらず FM へ(部分覆いの取りこぼし対策)。
+        let geo = OcclusionSuspicion.geometric(element: element, in: elements, screen: screen,
+                                               looseMatch: looseMatch)
+        // Tier-1 事前フィルタ: 幾何的に無罪 かつ 領域に明瞭なインクがあれば FM を省略して素通り(pass)。
+        // 疑いのある低インク領域(覆い/空/減光)だけ FM に回すことで FM 呼出を大幅削減する。
+        if !geo, occlusionInkThreshold > 0,
+           let sd = RegionInk.luminanceStdDev(pngData: screenshot, frame: element.frame, screen: screen),
+           sd >= occlusionInkThreshold {
+            return nil
+        }
+        guard let v = await delegate.verifyElementVisible(
+            expectedText: expectedText, frame: element.frame, screen: screen, screenshotPNG: screenshot)
+        else { return nil }
+        if v.visible { return nil }
+        return .failed("偽陽性(occlusion): ツリー上に存在するが視覚的に見えない [\(v.state)] \(v.reason)")
+    }
+
     private func executeAssert(_ assert: String, step: FlowStep,
                                phase: inout PhaseAccumulator) async throws -> StepResult.Status {
         let clock = ContinuousClock()
@@ -419,8 +479,13 @@ public final class StepExecutor {
                 phase.snapshotMs += Self.ms(clock.now - start)
                 // アサーションでは type+index のみのフォールバックを使わない。
                 // 別画面の無関係な要素にマッチして偽陽性になる(実測済み)
-                if let (_, fallback) = Self.resolve(step: step, in: snapshot, strictForAssert: true) {
-                    if let fallback { return .passedViaFallback(fallback) }
+                if let d = Self.resolveDetailed(step: step, in: snapshot, strictForAssert: true) {
+                    if let flip = try await occlusionFlip(
+                        element: d.element, expectedText: d.element.label ?? step.locator?.label ?? "",
+                        elements: snapshot.elements, screen: snapshot.screen,
+                        looseMatch: d.quality == .substring, perStepGuard: step.occlusionGuard,
+                        phase: &phase) { return flip }
+                    if let fallback = d.usedFallback { return .passedViaFallback(fallback) }
                     return .passed
                 }
                 primaryMisses += 1
@@ -472,6 +537,13 @@ public final class StepExecutor {
                     let actual = assert == "textEquals" ? element.label : element.value
                     lastActual = actual
                     if actual == expected {
+                        // ロケータを label 指定していて実 label と不一致=部分一致で掴んだ疑い
+                        let loose = step.locator?.label != nil && element.label != step.locator?.label
+                        if let flip = try await occlusionFlip(
+                            element: element, expectedText: expected,
+                            elements: snapshot.elements, screen: snapshot.screen,
+                            looseMatch: loose, perStepGuard: step.occlusionGuard,
+                            phase: &phase) { return flip }
                         if let fallback { return .passedViaFallback(fallback) }
                         return .passed
                     }

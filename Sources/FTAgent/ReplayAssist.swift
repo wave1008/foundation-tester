@@ -125,6 +125,16 @@ public final class FMReplayDelegate: ReplayDelegate {
         }
     }
 
+    // MARK: Occlusion guard(PoC)
+
+    public func verifyElementVisible(expectedText: String, frame: FTRect, screen: FTRect,
+                                     screenshotPNG: Data) async -> (visible: Bool, state: String, reason: String)? {
+        guard let r = await OcclusionVerifier().verifyCropped(
+            expectedText: expectedText, frame: frame, screen: screen, screenshotPNG: screenshotPNG)
+        else { return nil }
+        return (r.visible, r.state, r.reason)
+    }
+
     // MARK: Triager
 
     public func triage(goal: String?, stepDescription: String, failureReason: String,
