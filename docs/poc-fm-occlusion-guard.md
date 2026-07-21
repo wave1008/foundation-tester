@@ -22,7 +22,7 @@ hittable は無く、②Compose iOS では `isHittable` 自体が壊れている
 | `OcclusionVerifier` | [Sources/FTAgent/OcclusionVerifier.swift](../Sources/FTAgent/OcclusionVerifier.swift) | FM 視覚照合器。`@Generable VisibilityVerdict{ visible, state, observedText, reason }` を greedy で生成 |
 | `ReplayDelegate.verifyElementVisible` | [Sources/FTCore/StepExecutor.swift](../Sources/FTCore/StepExecutor.swift) | FM 非依存の delegate フック(既定実装 nil)。FTCore を FM から切り離したまま結線 |
 | `StepExecutor.occlusionGuard` + `occlusionFlip()` | 同上 | ノブ。exists/textEquals がツリー一致した**一点で1回だけ** FM 照合し、`visible==false` なら `.failed("偽陽性(occlusion)…")` へ反転 |
-| 計測ハーネス | [Sources/ftester-poc-occlusion/main.swift](../Sources/ftester-poc-occlusion/main.swift) | 正解ラベル付き合成フィクスチャで正確性・速度を計測 |
+| 計測ハーネス | `ftester-poc-occlusion`(PoC ブランチ履歴・§8) | 正解ラベル付き合成フィクスチャで正確性・速度を計測 |
 
 検証器は 2 アームを実装して比較した:
 
@@ -134,7 +134,7 @@ hittable は無く、②Compose iOS では `isHittable` 自体が壊れている
 ## 5.7 実機(シミュレータ)再計測 — 合成では見えなかった重大な誤反転(2026-07-21)
 
 空きデバイス **A012ADD8**(iPhone 17 Pro/iOS 27、モニター占有外)に inapp ブリッジを注入起動し、
-**sut-ec-mobile** の実画面で計測([Sources/ftester-poc-occlusion/Live.swift](../Sources/ftester-poc-occlusion/Live.swift)、
+**sut-ec-mobile** の実画面で計測(ハーネス `ftester-poc-occlusion` の Live.swift・§8、
 `ftester-poc-occlusion live <udid> <bundle> <port> <dir>`)。ground truth はスクショ目視で確定。
 
 ### 結果: unconditional FM は実 UI で**約50%の有害誤反転**
@@ -199,7 +199,7 @@ occlusion 検知能力の裏付けは現状 §4(合成: 覆い/空/減光を 100
 
 ## 5.9 実機 true-positive を取得(2026-07-22)
 
-`occtest` モード([Live.swift](../Sources/ftester-poc-occlusion/Live.swift))で実 occlusion を作って検証:
+`occtest` モード(ハーネス Live.swift・§8)で実 occlusion を作って検証:
 商品詳細で「カートに追加」→ スナックバー(`カートに追加しました 見る`)が下部を覆う瞬間に snapshot+screenshot し、
 覆われた適格テキストを verifier が捕捉できるか確認した。ground truth はスクショ目視。
 
@@ -389,12 +389,18 @@ OcclusionVerifier)が実機で機能することを確認**。これで PoC は 
 `eligible(足切り) → 低インク or Tier-0幾何(疑い) → FM(cropped・省略許容) → visible判定`の順。
 整定後の assert 一点で1回だけ実行。state は診断ログのみ。
 
-## 8. 再現手順
+## 8. 再現手順(計測ハーネス)
+
+計測に使った単体ハーネス `ftester-poc-occlusion`(合成フィクスチャ計測+実機駆動の
+live/dump/explore/occtest/e2e モード)は **PoC ブランチ `poc/fm-occlusion-verify` の履歴に保存**され、
+本流(main)には含めていない(実機を hardcoded フローで駆動する調査足場のため)。再計測が必要なら
+当該ブランチから `Sources/ftester-poc-occlusion/` と Package.swift の該当ターゲットを取り出す:
 
 ```
-swift build --product ftester-poc-occlusion
-.build/debug/ftester-poc-occlusion <出力ディレクトリ>
-# → <dir>/fixtures/*.png, <dir>/report.md, <dir>/results.json
+git show poc/fm-occlusion-verify:Sources/ftester-poc-occlusion/main.swift
+swift build --product ftester-poc-occlusion   # ターゲット復元後
+.build/debug/ftester-poc-occlusion <出力ディレクトリ>   # 合成計測
+.build/debug/ftester-poc-occlusion e2e <udid> <bundleID> <port>   # 実機 E2E
 ```
 
 [compose-ios-ax-frame-clamp]: ./design.md
