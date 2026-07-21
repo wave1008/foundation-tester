@@ -73,7 +73,30 @@ private final class FakeAppDriver: AppDriver {
     func terminate() async throws {}
 }
 
+/// occlusion-guard 検証用の最小 delegate。verifyElementVisible だけ意味を持たせる。
+private final class FakeVisibilityDelegate: ReplayDelegate {
+    let visible: Bool
+    private(set) var visibleCalls = 0
+    init(visible: Bool) { self.visible = visible }
+    func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealProposal? { nil }
+    func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)? { nil }
+    func triage(goal: String?, stepDescription: String, failureReason: String,
+                snapshot: SnapshotResponse?, screenshotPNG: Data?) async -> TriageInfo? { nil }
+    func verifyElementVisible(expectedText: String, frame: FTRect, screen: FTRect,
+                              screenshotPNG: Data) async -> (visible: Bool, state: String, reason: String)? {
+        visibleCalls += 1
+        return (visible, visible ? "fullyVisible" : "covered", "test")
+    }
+}
+
 final class StepExecutorTests: XCTestCase {
+    /// occlusion-guard 対象になり得るテキスト要素(StaticText + 文字を含む label)
+    private func textElement(id: String, label: String) -> ElementInfo {
+        ElementInfo(ref: 1, type: "StaticText", identifier: id, label: label, value: nil,
+                    placeholder: nil, enabled: true,
+                    frame: FTRect(x: 0, y: 0, width: 100, height: 20), depth: 0)
+    }
+
     private func element(ref: Int, id: String) -> ElementInfo {
         ElementInfo(ref: ref, type: "Button", identifier: id, label: nil, value: nil,
                    placeholder: nil, enabled: true,
@@ -84,6 +107,54 @@ final class StepExecutorTests: XCTestCase {
         ElementInfo(ref: ref, type: "Button", identifier: nil, label: label, value: nil,
                    placeholder: nil, enabled: true,
                    frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: 0)
+    }
+
+    /// occlusionGuard 付き exists(exist の既定): delegate が「隠れ」を返すと偽陽性として失敗へ反転する
+    func testOcclusionGuardFlipsWhenOccluded() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[textElement(id: "msg", label: "こんにちは")]])
+        let delegate = FakeVisibilityDelegate(visible: false)
+        let executor = StepExecutor(driver: primary, delegate: delegate)
+        let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
+                            timeout: 1, occlusionGuard: true)
+
+        let outcome = await executor.execute(step)
+
+        guard case .failed(let msg) = outcome.status else {
+            XCTFail("occlusion 反転で失敗を期待したが \(outcome.status) だった"); return
+        }
+        XCTAssertTrue(msg.contains("occlusion"), "失敗理由に occlusion を含むこと: \(msg)")
+        XCTAssertEqual(delegate.visibleCalls, 1)
+    }
+
+    /// occlusionGuard 付き exists: delegate が「見える」を返せば通常どおり pass
+    func testOcclusionGuardPassesWhenVisible() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[textElement(id: "msg", label: "こんにちは")]])
+        let executor = StepExecutor(driver: primary, delegate: FakeVisibilityDelegate(visible: true))
+        let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
+                            timeout: 1, occlusionGuard: true)
+
+        guard case .passed = await executor.execute(step).status else {
+            XCTFail("可視判定で pass を期待"); return
+        }
+    }
+
+    /// 素の exist(occlusionGuard 未指定)は、隠れ判定 delegate が居ても FM を呼ばず pass(オプトイン)
+    func testPlainExistsNeverInvokesGuard() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[textElement(id: "msg", label: "こんにちは")]])
+        let delegate = FakeVisibilityDelegate(visible: false)
+        let executor = StepExecutor(driver: primary, delegate: delegate)
+        let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"), timeout: 1)
+
+        guard case .passed = await executor.execute(step).status else {
+            XCTFail("ガード無効の exist は pass のはず"); return
+        }
+        XCTAssertEqual(delegate.visibleCalls, 0, "occlusionGuard 未指定で FM を呼んではいけない")
     }
 
     /// exists のフォールバック照会は 2・4・6…回目の primary ミスでのみ発生する(間引き契約。
