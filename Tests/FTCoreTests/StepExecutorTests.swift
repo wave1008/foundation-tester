@@ -193,6 +193,60 @@ final class StepExecutorTests: XCTestCase {
         XCTAssertEqual(primary.screenshotCallCount, 2, "操作を挟んだら取り直すはず")
     }
 
+    /// #2 修正: textEquals の期待値(ユーザーリテラル)は結合 `, ` 規則を外す(句読点入りテキストを守る)
+    func testEligibilityAllowsCommaInUserText() {
+        // 実 label(exist)では `, ` を結合セマンティクスとして除外
+        XCTAssertFalse(OcclusionEligibility.eligible(type: "StaticText", label: "A, B").ok)
+        // ユーザー期待値(textEquals)では除外しない
+        XCTAssertTrue(OcclusionEligibility.eligible(type: "StaticText", label: "Hello, World",
+                                                    isUserText: true).ok)
+        // 型・絵文字の規則は isUserText でも維持
+        XCTAssertFalse(OcclusionEligibility.eligible(type: "Button", label: "x", isUserText: true).ok)
+        XCTAssertFalse(OcclusionEligibility.eligible(type: "StaticText", label: "📱",
+                                                     isUserText: true).ok)
+    }
+
+    /// #1 修正: フォールバックドライバ(システムUI)由来の textEquals 一致は座標系が食い違うためガードしない
+    func testTextEqualsSkipsGuardForFallbackDriverMatch() async throws {
+        let log = CallLog()
+        let match = ElementInfo(ref: 1, type: "StaticText", identifier: "msg", label: "OK",
+                                value: nil, placeholder: nil, enabled: true,
+                                frame: FTRect(x: 0, y: 0, width: 100, height: 20), depth: 0)
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])   // 常に空
+        let fallback = FakeAppDriver(name: "fallback", log: log, snapshotElements: [[match]])
+        let delegate = SequenceVisibilityDelegate([false])   // ガードが走れば覆いで失敗させる
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback, delegate: delegate)
+        let step = FlowStep(assert: "textEquals", locator: FlowLocator(id: "msg"),
+                            expected: "OK", timeout: 2, occlusionGuard: true)
+
+        guard case .passed = await executor.execute(step).status else {
+            XCTFail("fsnap 一致はガード無しで pass のはず"); return
+        }
+        XCTAssertEqual(delegate.calls, 0, "フォールバックドライバ一致では FM を呼ばない")
+    }
+
+    /// #5 修正: 覆い観測後にテキストが不一致へ変わったら、stale な occlusion でなく不一致失敗を返す
+    func testTextEqualsClearsStaleOcclusionOnMismatch() async throws {
+        let log = CallLog()
+        func el(_ label: String) -> ElementInfo {
+            ElementInfo(ref: 1, type: "StaticText", identifier: "msg", label: label, value: nil,
+                        placeholder: nil, enabled: true,
+                        frame: FTRect(x: 0, y: 0, width: 100, height: 20), depth: 0)
+        }
+        // 1周目: 一致(覆い)→ 2周目以降: 不一致
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[el("OK")], [el("NG")]])
+        let executor = StepExecutor(driver: primary, delegate: SequenceVisibilityDelegate([false]))
+        let step = FlowStep(assert: "textEquals", locator: FlowLocator(id: "msg"),
+                            expected: "OK", timeout: 1, occlusionGuard: true)
+
+        guard case .failed(let msg) = await executor.execute(step).status else {
+            XCTFail("timeout で失敗するはず"); return
+        }
+        XCTAssertTrue(msg.contains("一致しません"), "テキスト不一致を返すこと: \(msg)")
+        XCTAssertFalse(msg.contains("occlusion"), "stale な occlusion を返さないこと: \(msg)")
+    }
+
     /// textIs(occlusionGuard 既定)も同じガードを通る: 一致しても覆われていれば失敗へ反転
     func testOcclusionGuardOnTextEquals() async throws {
         let log = CallLog()

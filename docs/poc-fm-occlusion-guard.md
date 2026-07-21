@@ -323,6 +323,25 @@ OcclusionVerifier)が実機で機能することを確認**。これで PoC は 
 - テスト: 連続ガードでスクショ 1 回に集約 / 操作を挟むと取り直す、を StepExecutorTests で検証(count で確認)。
   実機 E2E 無回帰(覆い→failed / 可視→passed)。poll-until-visible とも両立(待機ごとに取り直すため覆いは再判定)。
 
+## 5.15 レビュー反映(別セッションのレビュー・2026-07-22)
+
+- **#1 座標系の食い違い(要修正・中)**: textEquals/valueEquals がフォールバックドライバ(SystemUI/springboard)
+  由来の要素に一致した場合、その frame/screen は primary と別座標系なのに occlusionFlip へ primary の
+  snapshot/screenshot を渡していた(FM に別アプリのスクショ+システム要素を渡し偽陽性化しうる)。
+  → **fsnap 由来一致はガードをスキップ**(exist の fsnap 経路と同契約)。`fromFallbackDriver` で判定。
+- **#2 結合 `, ` 規則の過剰適用(低〜中)**: `textIs("#x", "Hello, World")` のような正当な句読点入り期待値が
+  結合セマンティクス扱いで黙って素通りしていた。→ eligibility に `isUserText` を追加し、**ユーザー期待値
+  (textEquals/valueEquals)には `, ` 規則を当てない**(型・絵文字の規則は維持)。
+- **#5 stale occlusion(軽微)**: 覆い観測後にテキストが不一致へ変化して timeout すると、実態(不一致)を
+  隠して古い occlusion 失敗を返していた。→ **`actual != expected` を観測したら `lastOcclusion` をクリア**。
+- **#3 既定 ON の是非(設計判断)**: exist/textIs/valueIs の既定 ON は全既存シナリオの検証意味論を変える。
+  三段ゲート+スクショ再利用で実コストは抑制済みだが、**本流マージ時に「既定 ON のまま」か「当面オプトイン」かは
+  意識的に決める**(現状は PoC ブランチ・ユーザー決定で既定 ON)。
+- **#4 TTL 200ms / 良い点**: 指摘どおり論理健全・コメントに根拠あり(変更不要)。
+
+テスト追加: #1 fsnap 一致でガード不呼出 / #2 eligibility の isUserText / #5 不一致時に occlusion を返さない
+(StepExecutorTests・全 green)。
+
 ## 6. 既知の限界
 
 1. **合成フィクスチャでの計測**。実機スクショ(半透明シート、影、アンチエイリアス、動的コンテンツ)は
