@@ -5,6 +5,7 @@ final class StepCommandParamsTests: XCTestCase {
 
     func testSpecsForVerbs() {
         XCTAssertEqual(StepCommandParams.specs(forVerb: "exist").map(\.name), ["timeout"])
+        XCTAssertEqual(StepCommandParams.specs(forVerb: "present").map(\.name), ["timeout"])
         XCTAssertEqual(StepCommandParams.specs(forVerb: "textIs").map(\.name), ["timeout"])
         XCTAssertEqual(StepCommandParams.specs(forVerb: "valueIs").map(\.name), ["timeout"])
         XCTAssertEqual(StepCommandParams.specs(forVerb: "scrollTo").map(\.name),
@@ -26,6 +27,14 @@ final class StepCommandParamsTests: XCTestCase {
         XCTAssertEqual(StepCommandParams.parse(code: "exist(\"WiFi\", timeout: 15)",
                                                verb: "exist"),
                        ["timeout": "15"])
+    }
+
+    func testPresentParsesLikeExist() {
+        XCTAssertEqual(StepCommandParams.parse(code: "present(\"#ok\", timeout: 3)",
+                                               verb: "present"),
+                       ["timeout": "3"])
+        XCTAssertEqual(StepCommandParams.parse(code: "present(\"#ok\")", verb: "present"),
+                       ["timeout": ""])
     }
 
     func testParseFillsOmittedArgumentsWithDefaults() {

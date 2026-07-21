@@ -39,6 +39,9 @@ public enum StepDescription {
                 + "が表示されるまでスクロールする"
         case "exist":
             guard let selector = unquote(rest) else { return nil }
+            return "\"\(objectPhrase(ofSelector: selectorOverride ?? selector))\"が(覆われず)見えていること"
+        case "present":
+            guard let selector = unquote(rest) else { return nil }
             return "\"\(objectPhrase(ofSelector: selectorOverride ?? selector))\"が表示されること"
         case "type":
             if let (selector, input) = unquotePair(rest, separator: "\" \"") {
@@ -100,7 +103,9 @@ public enum StepDescription {
         if let assert = step.assert {
             switch assert {
             case "exists":
-                return "\"\(objectPhrase(ofStep: step))\"が表示されること"
+                return step.occlusionGuard == true
+                    ? "\"\(objectPhrase(ofStep: step))\"が(覆われず)見えていること"
+                    : "\"\(objectPhrase(ofStep: step))\"が表示されること"
             case "textEquals":
                 return "\"\(objectPhrase(ofStep: step))\"のテキストが\"\(step.expected ?? "")\"であること"
             case "valueEquals":

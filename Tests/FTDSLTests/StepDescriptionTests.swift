@@ -14,7 +14,7 @@ final class StepDescriptionTests: XCTestCase {
         XCTAssertEqual(
             StepDescription.describe(
                 command: "exist \"#collapsing_toolbar||ネットワークとインターネット\""),
-            "\"ネットワークとインターネット\"が表示されること")
+            "\"ネットワークとインターネット\"が(覆われず)見えていること")
     }
 
     func testTap() {
@@ -59,6 +59,11 @@ final class StepDescriptionTests: XCTestCase {
 
     func testExist() {
         XCTAssertEqual(StepDescription.describe(command: "exist \"ようこそ\""),
+                       "\"ようこそ\"が(覆われず)見えていること")
+    }
+
+    func testPresent() {
+        XCTAssertEqual(StepDescription.describe(command: "present \"ようこそ\""),
                        "\"ようこそ\"が表示されること")
     }
 
@@ -131,7 +136,7 @@ final class StepDescriptionTests: XCTestCase {
         XCTAssertEqual(
             StepDescription.describe(command: "exist \"旧ラベル\"",
                                      selectorOverride: "#id_only"),
-            "\"#id_only\"が表示されること")
+            "\"#id_only\"が(覆われず)見えていること")
     }
 
     // MARK: - describe(step:)(コード生成用)
