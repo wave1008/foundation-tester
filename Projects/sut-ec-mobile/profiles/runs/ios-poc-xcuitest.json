@@ -1,0 +1,11 @@
+{
+  "app": "sut-ec-mobile",
+  "devices": [
+    { "name": "PoC-01" }
+  ],
+  "iosInappEngine": false,
+  "heal": false,
+  "reportDir": "reports",
+  "machine": "M2Ultra-poc",
+  "wipeDataOnBloat": false
+}

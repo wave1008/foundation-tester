@@ -1,0 +1,15 @@
+{
+  "ios": {
+    "devices": [
+      {
+        "name": "PoC-01",
+        "simulator": "iPhone 17 Pro(PoC-b4)",
+        "os": "27.0",
+        "udid": "BBFA37C9-ADC7-4623-A9D4-D357CFED1763"
+      }
+    ]
+  },
+  "android": {
+    "devices": []
+  }
+}
