@@ -67,7 +67,7 @@ public struct InAppLauncher {
     }
 
     public func terminate(bundleID: String) {
-        _ = try? Shell.run(["xcrun", "simctl", "terminate", udid, bundleID])
+        _ = try? Shell.run(["xcrun", "simctl", "terminate", udid, bundleID], timeout: 15)
     }
 
     public func waitUntilReady(timeout: TimeInterval = 30) async throws {

@@ -157,6 +157,11 @@ let package = Package(
             swiftSettings: swift5Mode
         ),
         .testTarget(
+            name: "FTAgentTests",
+            dependencies: ["FTAgent", "FTCore"],
+            swiftSettings: swift5Mode
+        ),
+        .testTarget(
             name: "FTAndroidTests",
             dependencies: ["FTAndroid", "FTCore"],
             swiftSettings: swift5Mode

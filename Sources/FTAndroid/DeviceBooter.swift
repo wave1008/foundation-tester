@@ -215,7 +215,8 @@ public enum DeviceBooter {
             // Booted のまま残るレースがあるため、exit code でなくカタログの実状態で成否判定する
             var lastResult: Shell.Result?
             for attempt in 1...3 {
-                lastResult = try Shell.run(["xcrun", "simctl", "shutdown", sim.udid])
+                // simctl が稀に応答不能になるため時限化(30s)。締切ループが無効化するのを防ぐ。
+                lastResult = try Shell.run(["xcrun", "simctl", "shutdown", sim.udid], timeout: 30)
                 let stillBooted = (try? SimulatorCatalog.devices())?
                     .first(where: { $0.udid == sim.udid })?.booted ?? false
                 if !stillBooted {
@@ -232,7 +233,7 @@ public enum DeviceBooter {
         } else {
             let serial = try AndroidDeviceCatalog.resolveSerial(spec: spec)
             let adb = try AndroidDriver.findADB()
-            _ = try Shell.run([adb, "-s", serial, "emu", "kill"])
+            _ = try Shell.run([adb, "-s", serial, "emu", "kill"], timeout: 10)
             log("✅ \(spec.name): エミュレータを停止しました(\(serial))")
         }
     }
@@ -321,7 +322,7 @@ public enum DeviceBooter {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             if let output = try? Shell.run(
-                [adb, "-s", serial, "shell", "getprop", "sys.boot_completed"]).output,
+                [adb, "-s", serial, "shell", "getprop", "sys.boot_completed"], timeout: 10).output,
                output.trimmingCharacters(in: .whitespacesAndNewlines) == "1" {
                 return
             }

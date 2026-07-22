@@ -29,7 +29,8 @@ public enum InAppBridgeState {
     /// アプリ/シミュレータが既に死んでいる場合の terminate 失敗は無視する(stale ファイル許容)。
     public static func terminateAndRemove(at path: URL) {
         if let state = read(at: path) {
-            _ = try? Shell.run(["xcrun", "simctl", "terminate", state.udid, state.bundleID])
+            // teardown 経路。simctl が wedge しても停止が永久ブロックしないよう時限化(15s)。
+            _ = try? Shell.run(["xcrun", "simctl", "terminate", state.udid, state.bundleID], timeout: 15)
         }
         try? FileManager.default.removeItem(at: path)
     }

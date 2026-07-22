@@ -27,7 +27,8 @@ public enum AndroidDeviceCatalog {
     /// 接続中のデバイスシリアル一覧(state = device のみ)
     public static func connectedSerials() throws -> [String] {
         let adbPath = try AndroidDriver.findADB()
-        let devices = try Shell.run([adbPath, "devices"])
+        // ポーリングループ内から呼ばれる。wedge した adb で締切が無効化しないよう時限化(10s)。
+        let devices = try Shell.run([adbPath, "devices"], timeout: 10)
         return devices.output.split(separator: "\n").dropFirst()
             .filter { $0.contains("\tdevice") }
             .compactMap { $0.split(separator: "\t").first.map(String.init) }
@@ -37,7 +38,7 @@ public enum AndroidDeviceCatalog {
     /// シャットダウン時は offline のエミュレータにも kill を送る必要がある
     public static func allEmulatorSerials() throws -> [String] {
         let adbPath = try AndroidDriver.findADB()
-        let devices = try Shell.run([adbPath, "devices"])
+        let devices = try Shell.run([adbPath, "devices"], timeout: 10)
         return devices.output.split(separator: "\n").dropFirst()
             .compactMap { $0.split(separator: "\t").first.map(String.init) }
             .filter { $0.hasPrefix("emulator-") }
@@ -160,14 +161,14 @@ public enum AndroidDeviceCatalog {
     /// `adb emu avd name`(出力 "<AVD名>\nOK")が空/失敗の場合は getprop の
     /// ro.boot.qemu.avd_name / ro.kernel.qemu.avd_name にフォールバック(環境依存で emu が返さない)
     static func avdName(adbPath: String, serial: String) -> String? {
-        if let output = try? Shell.run([adbPath, "-s", serial, "emu", "avd", "name"]).output,
+        if let output = try? Shell.run([adbPath, "-s", serial, "emu", "avd", "name"], timeout: 10).output,
            let first = output.split(separator: "\n").first
                .map({ $0.trimmingCharacters(in: .whitespaces) }),
            !first.isEmpty, first != "OK" {
             return first
         }
         for prop in ["ro.boot.qemu.avd_name", "ro.kernel.qemu.avd_name"] {
-            if let output = try? Shell.run([adbPath, "-s", serial, "shell", "getprop", prop]).output {
+            if let output = try? Shell.run([adbPath, "-s", serial, "shell", "getprop", prop], timeout: 10).output {
                 let name = output.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !name.isEmpty { return name }
             }

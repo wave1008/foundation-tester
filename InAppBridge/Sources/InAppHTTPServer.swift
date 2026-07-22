@@ -79,6 +79,11 @@ final class InAppHTTPServer {
                 if isRunning { usleep(10_000) }
                 continue
             }
+            // 相手が応答途中で切断した際の write() が SIGPIPE(既定でプロセス終了=対象アプリごと
+            // クラッシュ)を上げないようにする。Android は OutputStream が IOException を投げるため
+            // 不要な iOS 固有の防御。ソケット単位なので他ソケットに影響しない。
+            var noSigPipe: Int32 = 1
+            setsockopt(clientFD, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
             autoreleasepool {
                 if let request = readRequest(clientFD) {
                     // accept ループ(バックグラウンド)上でハンドラを呼ぶ。整定待ちはメインの
