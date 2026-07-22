@@ -44,6 +44,24 @@ final class AssignPortTests: XCTestCase {
         XCTAssertEqual(try provisioner.assignPort(preferred: 8123, used: &used), 8124)
     }
 
+    func testSkipsPreferredWithStalePidFile() throws {
+        try writePidFile(port: 8127)
+        let provisioner = BridgeProvisioner(repoRoot: repoRoot, portRange: 8123...8130)
+        var used: Set<UInt16> = []
+        let port = try provisioner.assignPort(preferred: 8127, used: &used)
+        XCTAssertNotEqual(port, 8127, "pid ファイルのある preferred は honor しない")
+        XCTAssertEqual(port, 8123, "自動採番で範囲先頭の空きへ")
+    }
+
+    func testPreferredWithPidFileHonoredWhenIgnored() throws {
+        try writePidFile(port: 8127)
+        let provisioner = BridgeProvisioner(repoRoot: repoRoot, portRange: 8123...8130)
+        var used: Set<UInt16> = []
+        // 同ポート再起動(ignoringPidFileFor)なら pid ファイルがあっても preferred を honor する
+        XCTAssertEqual(
+            try provisioner.assignPort(preferred: 8127, used: &used, ignoringPidFileFor: 8127), 8127)
+    }
+
     func testSkipsPortsWithPidFile() throws {
         try writePidFile(port: 8123)
         try writePidFile(port: 8124)

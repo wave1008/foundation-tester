@@ -585,10 +585,6 @@ public struct BridgeProvisioner {
     /// 並列実行フェーズで行われるため、プランニング時点では pid ファイルがまだ残っている)
     func assignPort(preferred: UInt16?, used: inout Set<UInt16>,
                     ignoringPidFileFor: UInt16? = nil) throws -> UInt16 {
-        if let preferred, !used.contains(preferred) {
-            used.insert(preferred)
-            return preferred
-        }
         func isPidFree(_ port: UInt16) -> Bool {
             port == ignoringPidFileFor
                 || !FileManager.default.fileExists(
@@ -597,6 +593,12 @@ public struct BridgeProvisioner {
         func hasInApp(_ port: UInt16) -> Bool {
             FileManager.default.fileExists(atPath: InAppBridgeState.url(
                 stateDir: repoRoot.appendingPathComponent(".ftester"), port: port).path)
+        }
+        // preferred も pid ファイル(=別ブリッジ稼働/stale)があれば honor しない(自動採番と同じ空き判定)。
+        // .inapp のみは 2nd パス同様に許可(呼び出し元 planBridge が reclaimInApp で回収する)。
+        if let preferred, !used.contains(preferred), isPidFree(preferred) {
+            used.insert(preferred)
+            return preferred
         }
         // 1st パス: .pid も .inapp も無いポートを優先
         for port in portRange where !used.contains(port) && isPidFree(port) && !hasInApp(port) {
