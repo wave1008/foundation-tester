@@ -331,30 +331,33 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             if state.state == "connected" {
                 confirmed[id] = ConfirmedDeviceState(
                     state: "connected", detail: state.detail,
-                    iosPort: state.iosPort, androidSerial: state.androidSerial, missStreak: 0)
+                    iosPort: state.iosPort, androidSerial: state.androidSerial,
+                    iosUdid: state.iosUdid, missStreak: 0)
                 return state
             }
             guard var current = confirmed[id], current.state == "connected" else {
                 confirmed[id] = ConfirmedDeviceState(
                     state: state.state, detail: state.detail,
-                    iosPort: nil, androidSerial: nil, missStreak: 0)
+                    iosPort: nil, androidSerial: nil, iosUdid: nil, missStreak: 0)
                 return state
             }
             current.missStreak += 1
             if current.missStreak >= connectedDowngradeMissThreshold {
                 confirmed[id] = ConfirmedDeviceState(
                     state: state.state, detail: state.detail,
-                    iosPort: nil, androidSerial: nil, missStreak: 0)
+                    iosPort: nil, androidSerial: nil, iosUdid: nil, missStreak: 0)
                 logDowngrade(
                     "[monitor] \(id) の接続が途切れました" +
                     "(/status 失敗が \(connectedDowngradeMissThreshold) 回連続したため降格: \(state.state))")
                 return state
             }
             confirmed[id] = current
-            // 維持中: connected のまま、接続情報(port/serial)も直前の値を使い続ける
+            // 維持中: connected のまま、接続情報(port/serial/udid)も直前の値を使い続ける。
+            // iosUdid を持ち越さないと leaseKey が nil になり lease 未更新+inRun=false に振れる。
             return DeviceRuntimeState(
                 target: state.target, state: "connected", detail: current.detail,
-                iosPort: current.iosPort, androidSerial: current.androidSerial)
+                iosPort: current.iosPort, androidSerial: current.androidSerial,
+                iosUdid: current.iosUdid)
         }
     }
 
@@ -604,6 +607,9 @@ private struct ConfirmedDeviceState {
     let detail: String
     let iosPort: UInt16?
     let androidSerial: String?
+    /// iOS の UDID。維持(debounce)中もこれを持ち越さないと leaseKey が nil になり、
+    /// 一過性の /status 失敗の間だけ MonitorLease.write がスキップ+inRun=false に振れる。
+    let iosUdid: String?
     /// confirmed が connected の間、observed が connected でなかった連続回数。
     /// connectedDowngradeMissThreshold に達するまでは降格させない
     var missStreak: Int
