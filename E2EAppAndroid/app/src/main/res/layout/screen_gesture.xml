@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ブリッジの swipe は要素を狙わず画面比率の固定座標で撃たれる
+     (Android: 縦 0.3h↔0.7h / 横 0.2w↔0.8w, y=0.5h)。よって #pad_swipe をコンテンツ領域
+     いっぱいに敷き、操作要素はその上に重ねる。ボタン類は始点を塞がないよう
+     幅 45% 以内(中央列を空ける)かつ上下の端(中央行を空ける)に置く。 -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <View
+        android:id="@+id/pad_swipe"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#EEEEEE"
+        android:contentDescription="スワイプ領域" />
+
+    <!-- 幅 45% を作るのは**横**の LinearLayout + weightSum。縦の LinearLayout に
+         layout_weight を書くと高さに効いて幅が 0dp のままになり、要素がスナップショットから
+         丸ごと消える(幅 2px 未満はフィルタで除外される。実測で踏んだ)。 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|start"
+        android:orientation="horizontal"
+        android:padding="12dp"
+        android:weightSum="1">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="0.45"
+            android:orientation="vertical">
+
+            <Button
+                android:id="@+id/btn_tap_counter"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
+                android:text="タップ" />
+
+            <!-- 通常タップでは増えず長押しでのみ増える。clickable=false + longClickable=true。 -->
+            <Button
+                android:id="@+id/btn_long_press"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:minHeight="56dp"
+                android:clickable="false"
+                android:longClickable="true"
+                android:text="長押し" />
+        </LinearLayout>
+
+        <Space
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="0.55" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|end"
+        android:orientation="vertical"
+        android:gravity="end"
+        android:padding="12dp">
+
+        <TextView
+            android:id="@+id/txt_tap_count"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="tap=0" />
+
+        <TextView
+            android:id="@+id/txt_press_count"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="press=0" />
+
+        <TextView
+            android:id="@+id/txt_swipe_dir"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="swipe=-" />
+
+        <TextView
+            android:id="@+id/txt_last_gesture"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="last=-" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|start"
+        android:orientation="horizontal"
+        android:padding="12dp"
+        android:weightSum="1">
+
+        <Button
+            android:id="@+id/btn_gesture_reset"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="0.45"
+            android:minHeight="48dp"
+            android:text="ジェスチャクリア" />
+    </LinearLayout>
+</FrameLayout>

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 行は clickable な ViewGroup にする(SnapshotBuilder.mappedType の既定 clickable 側 = `Cell`)。
+     ラベルは contentDescription で行自身に持たせる。中の TextView にも同じ文字列が出るが、
+     ブリッジの UiAutomation は FLAG_INCLUDE_NOT_IMPORTANT_VIEWS 相当で走査するため
+     importantForAccessibility="no" でも消えない(実測)。id を付けずに置き、
+     ラベル指定は型限定(`.Cell=行 03`)で一意化する契約にする。
+     id は onBind で R.id.row_NN を割り当てる(View は resource-id を実行時生成できない)。 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="56dp"
+    android:orientation="vertical"
+    android:gravity="center_vertical"
+    android:paddingStart="12dp"
+    android:paddingEnd="12dp"
+    android:clickable="true"
+    android:focusable="true">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:importantForAccessibility="no" />
+</LinearLayout>

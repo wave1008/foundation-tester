@@ -1,0 +1,10 @@
+{
+  "common": {
+    "appName": "FT E2E Android",
+    "autoInstall": true
+  },
+  "android": {
+    "app": "com.ftester.e2e.android",
+    "appPath": "E2EAppAndroid/dist/android/ft-e2e-android-debug.apk"
+  }
+}
