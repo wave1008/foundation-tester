@@ -210,7 +210,13 @@ public struct PressRequest: Codable {
 
 public struct OKResponse: Codable {
     public var ok: Bool
-    public init(ok: Bool = true) { self.ok = ok }
+    /// 通常と違う経路を通ったときの短い説明(既定 nil)。失敗ではなく観測用(例: InAppBridge.handleTap の
+    /// activate 不発→合成タッチ)。throw にしない代わりに StepExecutor.driverFallback へ載せて可視化する。
+    public var note: String?
+    public init(ok: Bool = true, note: String? = nil) {
+        self.ok = ok
+        self.note = note
+    }
 }
 
 public struct ErrorResponse: Codable {

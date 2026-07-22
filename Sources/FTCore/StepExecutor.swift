@@ -131,8 +131,9 @@ public struct StepOutcome: Sendable {
     /// ステップの所要時間内訳。action も assert もない(空)ステップの場合のみ nil
     /// (実行エラー時も catch 節でこの時点までの計測値を積んで返す)
     public let timing: StepTiming?
-    /// ドライバのフォールバックで通過したときの説明(例 "XCUITest")。ロケータの
-    /// フォールバック(.passedViaFallback)とは別物で、セレクタ更新の提案は出さない。
+    /// ドライバが通常と違う経路を通ったときの注記。FTRuntime が説明文に括弧書きでそのまま付けるため
+    /// 表示済み文言で持つ(例 "XCUITest へフォールバック" / "activate 不発 → 合成タッチ(...)")。
+    /// ロケータのフォールバック(.passedViaFallback)とは別物で、セレクタ更新の提案は出さない。
     public let driverFallback: String?
 
     public init(status: StepResult.Status, healedStep: FlowStep? = nil, healedByCache: Bool = false,
@@ -276,7 +277,7 @@ public final class StepExecutor {
         if action == "swipe" {
             let direction = FTSwipeDirection(rawValue: step.direction ?? "") ?? .up
             let viaXCUITest = try await swipeWithFallback(direction, phase: &phase)
-            return StepOutcome(status: .passed, driverFallback: viaXCUITest ? "XCUITest" : nil)
+            return StepOutcome(status: .passed, driverFallback: viaXCUITest ? "XCUITest へフォールバック" : nil)
         }
 
         // 要素が見つかるまでスクロール(見つかったら成功。操作はしない)
@@ -294,9 +295,9 @@ public final class StepExecutor {
                 if let (_, fallback) = Self.resolve(step: step, in: snapshot, strictForAssert: true) {
                     if let fallback {
                         return StepOutcome(status: .passedViaFallback(fallback),
-                                           driverFallback: viaXCUITest ? "XCUITest" : nil)
+                                           driverFallback: viaXCUITest ? "XCUITest へフォールバック" : nil)
                     }
-                    return StepOutcome(status: .passed, driverFallback: viaXCUITest ? "XCUITest" : nil)
+                    return StepOutcome(status: .passed, driverFallback: viaXCUITest ? "XCUITest へフォールバック" : nil)
                 }
                 if attempt < maxSwipes {
                     if try await swipeWithFallback(direction, phase: &phase) { viaXCUITest = true }
@@ -418,6 +419,9 @@ public final class StepExecutor {
             start = clock.now
             try await actingDriver.tap(ref: element.ref)
             phase.actionMs += Self.ms(clock.now - start)
+            // ドライバが「無言 no-op になり得る経路を通った」と申告した注記(例: InAppBridge の
+            // activate 不発→合成タッチ)。失敗ではないので driverFallback に載せて可視化するだけ
+            if let note = actingDriver.lastActionNote { driverFallback = note }
         case "type":
             if let td = typeDriver, preferTypeDriver,
                try await typeViaTypeDriver(td, step: step, phase: &phase) {
@@ -434,13 +438,13 @@ public final class StepExecutor {
                       let td = typeDriver else { throw error }
                 guard try await typeViaTypeDriver(td, step: step, phase: &phase) else { throw error }
                 // セレクタは正しくドライバが変わっただけ = .passedViaFallback(ロケータ用)は立てない
-                driverFallback = "XCUITest"
+                driverFallback = "XCUITest へフォールバック"
             }
         case "press":
             if gesturesViaTypeDriver || gestureFallbackLatched, let td = typeDriver,
                try await pressViaTypeDriver(td, step: step, phase: &phase) {
                 return StepOutcome(status: .passed, healedStep: healedStep, healedByCache: healedByCache,
-                                   driverFallback: "XCUITest")
+                                   driverFallback: "XCUITest へフォールバック")
             }
             do {
                 start = clock.now
@@ -453,7 +457,7 @@ public final class StepExecutor {
                       let td = typeDriver else { throw error }
                 guard try await pressViaTypeDriver(td, step: step, phase: &phase) else { throw error }
                 gestureFallbackLatched = true
-                driverFallback = "XCUITest"
+                driverFallback = "XCUITest へフォールバック"
             }
         default:
             return StepOutcome(status: .skipped("未知のアクション: \(action)"))

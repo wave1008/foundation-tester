@@ -51,6 +51,7 @@ public final class InAppDriver: AppDriver {
         try await withCrashContext { try await client.press(ref: ref, duration: duration) }
     }
     public func screenshot() async throws -> Data { try await withCrashContext { try await client.screenshot() } }
+    public var lastActionNote: String? { client.lastActionNote }
 
     /// 接続系エラーに、直近クラッシュレポートの有無に応じた切り分け情報を detail 末尾に付与して
     /// **同じ case のまま**再 throw する(呼び出し側の catch は変えなくてよい)。

@@ -122,6 +122,9 @@ final class FTInAppBridge {
 
     private func handleTap(_ body: Data) throws -> InAppHTTPServer.Response {
         let req = try decode(TapRequest.self, body)
+        // ref 指定で activate 不発により合成タッチへ落ちたときだけ true にする(note 用)。
+        // 座標指定の経路や activate 成功の通常経路は無言 no-op になり得ないので対象外。
+        var fellBackToSynthTapForRef = false
         try performWithSettle { window in
             // ref 指定はまず保持要素を accessibilityActivate(要素のデフォルトアクション=ボタン発火・
             // セル選択等を確実に起こす。合成タッチはジェスチャ認識器を発火できないため)。
@@ -140,9 +143,14 @@ final class FTInAppBridge {
             // 無言 no-op になり得る(throw は追加しない: 誤検知で正常系を壊す方が害が大きい)。
             // 反応しない場合は accessibilityIdentifier(testTag)を付けるか engine=xcuitest を検討
             // (hybrid の XCUITest フォールバックは springboard 参照でアプリ要素には効かない)。
+            // OKResponse.note で観測可能にする(下記)。
+            if req.ref != nil { fellBackToSynthTapForRef = true }
             FTSynthTap(window, p)
         }
-        return .json(OKResponse())
+        let note = fellBackToSynthTapForRef
+            ? "activate 不発 → 合成タッチ(要素が反応しない場合は testTag 付与か engine=xcuitest を検討)"
+            : nil
+        return .json(OKResponse(note: note))
     }
 
     /// point を含む最小フレームの snapshot 要素を accessibilityActivate する(座標→要素解決)。

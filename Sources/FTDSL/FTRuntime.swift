@@ -246,10 +246,11 @@ public final class FTDriveCore {
         let status = outcome?.status
             ?? .failed("コマンドがタイムアウトしました(\(Int(FTSync.commandTimeout))s)")
         // driverFallback はロケータの .passedViaFallback とは別物(セレクタは正しくドライバが
-        // 変わっただけ)。修正提案は出さず、説明文に注記だけ付ける。
+        // 変わっただけ、または無言 no-op になり得る経路の注記)。修正提案は出さず、説明文に
+        // 括弧書きで付けるだけ。値は表示済み文言(StepExecutor.StepOutcome.driverFallback 参照)。
         let recordedDescription: String
         if let driverFallback = outcome?.driverFallback {
-            recordedDescription = "\(description)(\(driverFallback) へフォールバック)"
+            recordedDescription = "\(description)(\(driverFallback))"
         } else {
             recordedDescription = description
         }

@@ -29,6 +29,11 @@ public protocol AppDriver {
     func press(x: Double, y: Double, duration: Double) async throws
     func screenshot() async throws -> Data
     func terminate() async throws
+    /// 直前のアクションで通常と違う経路を通ったときの説明(既定 nil)。失敗ではなく観測用。
+    /// 「次のアクション呼び出しで上書き/クリアする」実装が前提(1シナリオ=1ドライバの逐次実行なので、
+    /// クリアしないと前回の注記が別ステップに誤って付く)。デコレータ実装は base の値を透過すること
+    /// (透過しないと最外のドライバから見えない)。
+    var lastActionNote: String? { get }
 }
 
 public enum DriverError: Error, LocalizedError {
@@ -70,6 +75,8 @@ public enum DriverError: Error, LocalizedError {
 
 /// activate 未対応ドライバ(InAppDriver/SystemUIDriver 等)は launch(再起動)にフォールバックする。
 public extension AppDriver {
+    var lastActionNote: String? { nil }
+
     func activate(bundleID: String) async throws {
         try await launch(bundleID: bundleID)
     }

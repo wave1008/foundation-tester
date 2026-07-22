@@ -45,6 +45,7 @@ public final class SessionRecoveryDriver: AppDriver {
 
     public func status() async throws -> StatusResponse { try await base.status() }
     public func install(packagePath: String) async throws { try await base.install(packagePath: packagePath) }
+    public var lastActionNote: String? { base.lastActionNote }
 
     public func launch(bundleID: String) async throws {
         try await base.launch(bundleID: bundleID)
