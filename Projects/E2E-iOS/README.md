@@ -28,6 +28,37 @@ ftester run --project E2E-iOS --profile ios-heal       # --heal
 | プロファイル | 結果 | 壁時計 |
 |---|---|---|
 | `ios-xcuitest` | ✅ 20/20 | 91.3s |
+| `ios-heal` | ✅ 20/20 | — |
+| `ios-inapp` | ❌ 2件失敗(**既知・下記の ftester 側の穴**) | 55.1s |
+
+## `ios-inapp` で判明した ftester 側の穴(2026-07-23)
+
+この SUT を作って初めて見えた2点。**どちらも Compose 固有ではなく、SwiftUI ネイティブでも起きる**。
+
+### 1. in-app のジェスチャ空振りが hybrid でフォールバックされない
+
+`press` / `swipe` は 200 を返して成功扱いになるが、SwiftUI の `onLongPressGesture` /
+`DragGesture` は発火しない(`tap` は合成タッチで通る)。CMP 版と同じ症状だが、
+**hybrid の XCUITest フォールバックが働かない**:
+
+- `InAppBridge.swift` は `unsupportedActions` の申告も 501 の返却も
+  **`uiFramework == "compose"` のときだけ**行う(bundle 内の Kotlin フレームワーク有無で判定)
+- SwiftUI ネイティブは `uiFramework != "compose"` なので申告も 501 も出ず、
+  ホストは「成功した」と解釈してフォールバックしない → **黙って空振りする**
+
+つまり `Projects/E2E/README.md` の「Compose Multiplatform の iOS では in-app が…」という
+記述は範囲が狭すぎで、実際は **in-app の合成タッチが時間・移動を伴うジェスチャを
+駆動できない**(フレームワーク非依存)のが根。修正するなら 501 の条件を
+`uiFramework` ではなくアクション種別(swipe/press)そのものに広げる話になる。
+
+### 2. `.Cell` 型が in-app エンジンでは出ない
+
+`.Cell=行 03` が解決できず失敗する。`InAppSnapshot.elementType` には
+`UITableViewCell` を判定する分岐が無く(enum の `.cell` は定義だけで到達不能)、
+セルは `Other` に落ちる。XCUITest エンジンは同じ画面で `Cell` を返すため、
+**エンジンを替えると型セレクタが壊れる**。
+
+→ 当面 `ios-xcuitest` を基準とし、`ios-inapp` はこの2点の観測用に残す。
 
 ## シナリオ一覧
 
