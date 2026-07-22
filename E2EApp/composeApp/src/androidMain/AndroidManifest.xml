@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application
+        android:allowBackup="true"
+        android:icon="@android:drawable/sym_def_app_icon"
+        android:label="FT E2E"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.FtE2e">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|uiMode"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Prefs.android.kt の appContext を埋める。onCreate はプロセス起動時(初期 composition より前)に
+             走るため、この登録が無いと Prefs が未初期化で落ちる。 -->
+        <provider
+            android:name="com.ftester.e2e.util.E2EInitializer"
+            android:authorities="${applicationId}.e2einit"
+            android:exported="false"
+            android:initOrder="100" />
+    </application>
+
+</manifest>
