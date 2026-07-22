@@ -62,6 +62,9 @@ final class BridgeHttpServer {
         try (ServerSocket server = new ServerSocket(port, 16, InetAddress.getLoopbackAddress())) {
             while (true) {
                 try (Socket sock = server.accept()) {
+                    // 相手が Content-Length 分を送り切らずに待つと、単スレッドの accept ループが
+                    // read で無限ブロックしブリッジ全体が wedge する。受信タイムアウトで離脱させる(15s)。
+                    sock.setSoTimeout(15000);
                     Request request = readRequest(sock.getInputStream());
                     Response response;
                     if (request == null) {
@@ -105,9 +108,15 @@ final class BridgeHttpServer {
         for (String line : lines) {
             int colon = line.indexOf(':');
             if (colon > 0 && line.substring(0, colon).equalsIgnoreCase("Content-Length")) {
-                contentLength = Integer.parseInt(line.substring(colon + 1).trim());
+                try {
+                    contentLength = Integer.parseInt(line.substring(colon + 1).trim());
+                } catch (NumberFormatException e) {
+                    contentLength = 0;  // iOS の Int(...) ?? 0 と同じ寛容化(throw で接続を落とさない)
+                }
             }
         }
+        // 過大/不正な Content-Length は無制限メモリ確保・長時間読取の的になるため弾く(不正=null→400)。
+        if (contentLength < 0 || contentLength > 8 * 1024 * 1024) return null;
         ByteArrayOutputStream body = new ByteArrayOutputStream();
         int bodyStart = headerEnd + 4;
         body.write(all, bodyStart, all.length - bodyStart);
