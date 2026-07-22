@@ -99,12 +99,31 @@ public final class FMReplayDelegate: ReplayDelegate {
             case .low: confidence = "low"
             }
             return HealProposal(element: element, confidence: confidence,
-                                rationale: String(suggestion.rationale.prefix(120)))
+                                rationale: Self.sanitizeRationale(suggestion.rationale))
         } catch {
             FMHealth.record(kind: "heal", ms: OcclusionVerifier.elapsedMs(healStartedAt), ok: false,
                             error: "heal: \(error)")
             return nil
         }
+    }
+
+    /// rationale(@Guide は「日本語で1文」)は構造化出力から外れて後続を巻き込むことがある。
+    /// 実測(2026-07-22): 「…適切な代わりとなる。」} with tools:[] | 私は UI テストのロケータ修復者です…」
+    /// のようにセッションのトランスクリプトが末尾に連結された。修正提案とヒールキャッシュの
+    /// 両方に永続化されるため、発生源で1文に切り詰める。
+    static func sanitizeRationale(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let end = trimmed.firstIndex(of: "。") {
+            return String(trimmed[...end])
+        }
+        // 句点が無いときは崩れの目印で切る(見つからなければ従来どおり長さで頭打ち)
+        for marker in ["」}", "} with", " with tools", "\n"] {
+            if let r = trimmed.range(of: marker) {
+                return String(trimmed[..<r.lowerBound])
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+        return String(trimmed.prefix(120))
     }
 
     // MARK: Verifier(マルチモーダル)
