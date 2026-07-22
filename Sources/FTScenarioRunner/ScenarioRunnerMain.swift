@@ -165,6 +165,10 @@ struct RunScenario: AsyncParsableCommand {
         // (probe 不達なら false のまま=安全網頼み)。
         var typeDriver: AppDriver?
         var preferTypeDriver = false
+        // Compose は合成タッチで時間・移動を伴うジェスチャ(swipe/press)を駆動できない
+        // (tap/type は通る。実験で確定済み)。probe の uiFramework=="compose" 検出時のみ true
+        // (probe 不達なら false のまま=StepExecutor の事後 409 安全網に委ねる)
+        var gesturesViaTypeDriver = false
         if dryRun {
             driver = NullDriver()  // dry-run はデバイスに触れない
         } else {
@@ -210,6 +214,7 @@ struct RunScenario: AsyncParsableCommand {
                             // 実測 266ms vs attach 1.0〜1.3s)。attach 優先は廃止し、
                             // 失敗時 409 → typeDriver フォールバック(StepExecutor)だけを安全網とする
                             preferTypeDriver = false
+                            gesturesViaTypeDriver = probeStatus?.uiFramework == "compose"
                         }
                     }
                 } else {
@@ -259,6 +264,7 @@ struct RunScenario: AsyncParsableCommand {
                                healCacheURL: healCacheURL, defaultTimeout: defaultTimeout,
                                fallbackDriver: fallbackDriver,
                                typeDriver: typeDriver, preferTypeDriver: preferTypeDriver,
+                               gesturesViaTypeDriver: gesturesViaTypeDriver,
                                deviceName: deviceName, deviceIdentifier: deviceIdentifier,
                                emit: emit)
 

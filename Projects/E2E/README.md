@@ -21,29 +21,32 @@ ftester run --project E2E --profile android    # Pixel 9(Android 15)-01
 ftester run --project E2E --profile heal       # --heal(_disabled/90 を有効化して回すとき)
 ```
 
-### iOS のエンジン選択(重要)
+### iOS のエンジン選択
 
-`ios.json` は **xcuitest**(`iosInappEngine: false`)。inapp のほうが速いが、**Compose Multiplatform の
-iOS では inapp が「時間・移動を伴うジェスチャ」を駆動できない**ため。両エンジンで同一シナリオを回した実測
-(2026-07-22):
+**Compose Multiplatform の iOS では in-app エンジンが「時間・移動を伴うジェスチャ」を駆動できない**
+(tap/type は通るが swipe/press は無反応)。両エンジンで同一シナリオを回した実測(2026-07-22):
 
-| コマンド | inapp | xcuitest |
+| コマンド | inapp 単体 | xcuitest |
 |---|---|---|
-| `tap` | ✅ | ✅ |
-| `type` | ✅ | ✅ |
+| `tap` / `type` | ✅ | ✅ |
 | `press`(長押し) | ❌ 無反応 | ✅ |
 | `swipe` 4方向 | ❌ 無反応 | ✅ |
-| `scrollTo`(LazyColumn) | ❌ 15回スワイプしても動かない | ✅ |
-
-`ios-inapp` で回すと `06_ジェスチャ`(1本)と `07_スクロール`(2本)の計3シナリオが 409 で落ちる = **既知**。
-この差分自体がこのプロジェクトの観測対象なので、profile を消さずに残してある。詳細は docs/design.md §10 の知見。
+| `scrollTo`(LazyColumn) | ❌ 何回スワイプしても動かない | ✅ |
 
 原因は合成タッチの品質ではなく2段構え: (1) `/swipe` の主経路は `UIScrollView.contentOffset` の
 直接操作で、Compose 画面にある**無関係な UIScrollView** を動かして黙って空振りしていた。
 (2) 合成タッチへ迂回しても Compose は drag/長押しを受理しない。
-**2026-07-22 に inapp ブリッジを修正**し、Compose 検出時は `swipe`/`press` を **409 で明示失敗**させて
-xcuitest へ誘導するようにした(黙った空振り → 「12回スクロールしても見つかりません」のような
-誤診断を防ぐ)。UIKit/SwiftUI の経路は不変。
+
+**ただし hybrid(`iosInappEngine: true`)では自動でフォールバックする**(2026-07-23)。
+hybrid は in-app と XCUITest の両ブリッジを張るので、ジェスチャだけ XCUITest 側へ回せばよい:
+
+- `/status` の `uiFramework == "compose"` を起動時プローブで検出したら**最初から** XCUITest へ回す
+- 検出漏れ時は 409 を捕まえて切り替え、以降はラッチして 409 の往復を繰り返さない
+- どちらも効かない構成(engine=inapp 単独・XCUITest ブリッジ無し)でのみ 409 が表面化する
+
+この結果 **`ios-inapp` も 18/18 で通る**(37.3s。フォールバック導入前は3シナリオが落ちて 93.9s)。
+`tap`/`type`/スナップショットは高速な in-app のまま、ジェスチャだけが XCUITest 経由になる。
+詳細は docs/design.md §10 の知見。
 
 ### 両OSで回すときは `ios` と `android` を別々に実行する
 

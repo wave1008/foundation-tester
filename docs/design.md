@@ -598,12 +598,26 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
      刻みながら押下保持する、はいずれも**効果なし**(実験済み・不採用)。単発 down/up の
      `FTSynthTap` だけが通る
 
-  対処(2026-07-22 実装): **Compose 検出時は `/swipe` と `/press` を 409 で明示失敗**させ、
-  xcuitest プロファイルへ誘導する(`InAppBridge.handleSwipe`/`handlePress`。判定は `/status` と
-  同じ `compose-resources` マーカー)。黙って空振りするより「12回スクロールしても見つかりません」の
-  ような誤診断を防ぐ方が価値が高い。**UIKit/SwiftUI 側の経路は一切変えていない**。
-  Compose を対象にするプロジェクトは xcuitest プロファイルを既定にする
-  (`Projects/E2E/profiles/runs/ios.json` はそうしてある。差分観測用に `ios-inapp.json` を併置)
+  対処は3層(1 はブリッジ側、2〜3 はホスト側)。**UIKit/SwiftUI 側の経路は一切変えていない**:
+  1. **ブリッジ**: Compose 検出時の `/swipe` `/press` は **409**(`InAppBridge.handleSwipe`/`handlePress`。
+     判定は `/status` と同じ `compose-resources` マーカー)。黙って空振りするより
+     「12回スクロールしても見つかりません」のような誤診断を防ぐ方が価値が高い
+  2. **事前ルーティング**(2026-07-23): hybrid は in-app と XCUITest の両ブリッジを張るので、
+     起動時プローブの `/status.uiFramework == "compose"` かつ typeDriver ありなら
+     swipe/press/scrollTo のスワイプを**最初から** typeDriver(`AppAttachDriver`)へ回す
+     (`StepExecutor.gesturesViaTypeDriver`)。409 の往復はゼロ
+  3. **事後 409 キャッチ**: プローブ不達で 2 が立たなかった場合の安全網。1回 409 を受けたら
+     ラッチして以降は直接 typeDriver へ(`scrollTo` は maxSwipes 回まわるので毎回往復させない)。
+     `type` の 409 安全網と同じ形。**press は ref がブリッジごとに別名前空間**なので
+     typeDriver 側で snapshot し直して再解決する(`pressViaTypeDriver`)
+
+  これにより **hybrid では Compose でもジェスチャが通る**(`Projects/E2E` の `ios-inapp` が
+  18/18・37.3s。導入前は3シナリオ失敗・93.9s)。tap/type/スナップショットは高速な in-app のまま。
+  409 が表面化するのは **typeDriver が無い構成**(engine=inapp 単独・xcuiPort 無し)だけで、
+  そのときはメッセージが xcuitest プロファイルへ誘導する。
+  なお `type` の事前ルーティング(`preferTypeDriver`)は別物で廃止済み — Compose でも inapp の
+  type が可能かつ高速(266ms vs attach 1.0〜1.3s)なため。ジェスチャは inapp が**不可能**なので
+  トレードオフの向きが逆になり、事前ルーティングが常に得になる
 - **`.Type[n]` の n は「現在画面に見えている同型要素のツリー順」**。圧縮スナップショットは画面外要素を
   含まないため、序数は**スクロール位置と画面クロム(戻るボタン・下部タブ)に依存する**。
   レイアウト変更で黙ってずれるので、序数セレクタは実スナップショットで採取してから書く
