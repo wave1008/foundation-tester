@@ -181,7 +181,7 @@ final class MCPServer {
             return try listProjects()
 
         case "ft_doctor":
-            let fm = FMDoctor.check()
+            let fm = await FMDoctor.checkLive()
             return text((fm.available ? "✅ " : "❌ ") + fm.detail)
 
         default:

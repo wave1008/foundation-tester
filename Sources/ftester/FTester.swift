@@ -70,7 +70,9 @@ struct Doctor: AsyncParsableCommand {
     var fmOnly = false
 
     func run() async throws {
-        let fm = FMDoctor.check()
+        // availability だけでは実呼び出しの可否が分からない(FMDoctor.checkLive の doc 参照)。
+        // doctor は「本当に使えるか」を答える場所なので実呼び出しで確認する
+        let fm = await FMDoctor.checkLive()
         print(fm.available ? "✅ \(fm.detail)" : "❌ \(fm.detail)")
         if fmOnly {
             // 可: 0 / 不可(AI 無効・DL中・対象外): 1。呼び出し側が理由文字列を stdout から読める。
@@ -721,7 +723,7 @@ struct RunScenarios: AsyncParsableCommand {
             switch event {
             case .flowStarted(_, let url, _, _), .step(_, let url, _), .flowHealed(_, let url):
                 buffers[url, default: []].append(contentsOf: lines)
-            case .flowFinished(_, let url, _, _, _):
+            case .flowFinished(_, let url, _, _, _, _):
                 let all = (buffers.removeValue(forKey: url) ?? []) + lines
                 print(all.joined(separator: "\n"))
             default:

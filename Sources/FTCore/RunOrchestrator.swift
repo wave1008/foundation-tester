@@ -74,8 +74,11 @@ public enum RunEvent: Sendable {
     case fixSuggestion(worker: String, flowURL: URL, scenarioID: String,
                        command: String?, file: String?, line: Int?,
                        oldSelector: String?, newSelector: String?, message: String)
+    /// fm: シナリオの FM 呼び出し実測。並列実行では親が scenarioFinished を**再構築**して
+    /// stdout へ出すため、ここで運ばないと拡張(モニターの FM グラフ)まで届かない
+    /// (結果 JSON は ScenarioHost 内の builder が別経路で受けるので落ちない)
     case flowFinished(worker: String, flowURL: URL, passed: Bool,
-                      triage: TriageInfo?, reportURL: URL?)
+                      triage: TriageInfo?, reportURL: URL?, fm: FMUsageRecord?)
     /// 担当ワーカー不在などで実行できなかった(失敗として数える)
     case flowSkipped(flowURL: URL, reason: String)
     case runFinished(passed: Int, failed: Int)
@@ -202,6 +205,7 @@ public enum ScenarioRunner {
                               title: item.info.title)
         }
         var reportURL: URL?
+        var fmUsage: FMUsageRecord?
         var frozen = false
         let passed = await ScenarioHost.run(
             project: project, scenarioID: item.info.id, connection: worker.connection,
@@ -242,6 +246,7 @@ public enum ScenarioRunner {
                                        message: event.detail ?? ""))
             case "scenarioFinished":
                 reportURL = event.reportPath.map { URL(fileURLWithPath: $0) }
+                fmUsage = event.fm
             case "deviceFrozen":
                 frozen = true
             case "log":
@@ -257,7 +262,7 @@ public enum ScenarioRunner {
 
         let outcome: ScenarioOutcome = frozen ? .frozen : (passed ? .passed : .failed)
         onEvent(.flowFinished(worker: worker.label, flowURL: item.url, passed: frozen ? false : passed,
-                              triage: nil, reportURL: reportURL))
+                              triage: nil, reportURL: reportURL, fm: fmUsage))
         return outcome
     }
 
@@ -729,7 +734,7 @@ public enum RunLogFormatter {
             return ["  🔧 修復したロケータでフローを更新しました(dirty: true — 要レビュー)"]
         case .fixSuggestion:
             return []
-        case .flowFinished(_, _, let passed, let triage, let reportURL):
+        case .flowFinished(_, _, let passed, let triage, let reportURL, _):
             var lines: [String] = []
             if passed {
                 lines.append("  → ✅ 成功")

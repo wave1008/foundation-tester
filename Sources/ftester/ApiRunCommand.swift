@@ -674,12 +674,14 @@ struct ApiRunCommand: AsyncParsableCommand {
             suggestion.detail = message
             return [suggestion.encodedLine()]
 
-        case .flowFinished(let worker, let flowURL, let passed, _, let reportURL):
+        case .flowFinished(let worker, let flowURL, let passed, _, let reportURL, let fm):
             var finished = ScenarioEvent(kind: "scenarioFinished")
             finished.worker = workerID.id(for: worker)
             finished.scenario = itemByURL[flowURL]?.info.id
             finished.passed = passed
             finished.reportPath = reportURL?.path
+            // 再構築なので明示的に写す(落とすとモニターの FM グラフが 0 のままになる。実害あり)
+            finished.fm = fm
             return [finished.encodedLine()]
 
         case .flowSkipped(let flowURL, let reason):
@@ -875,7 +877,7 @@ struct ScenarioTimingTracker {
             if firstStart == nil { firstStart = now }
             startedAt[flowURL] = now
             hasScenario = true
-        case .flowFinished(_, let flowURL, _, _, _):
+        case .flowFinished(_, let flowURL, _, _, _, _):
             let now = Date()
             lastFinish = now
             if let start = startedAt.removeValue(forKey: flowURL) {

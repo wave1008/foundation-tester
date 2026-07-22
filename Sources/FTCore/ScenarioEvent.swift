@@ -49,6 +49,10 @@ public struct ScenarioEvent: Codable, Sendable {
     public var actionMs: Int?
     /// durationMs の内訳: 固定 sleep・ポーリング待ちの合計(ミリ秒)
     public var waitMs: Int?
+    /// kind == scenarioFinished。このシナリオの FM 呼び出し実測(回数・レイテンシ)。
+    /// FM を使わなかったシナリオでは nil(キーごと省略)。FM はホスト全体で直列化するため、
+    /// 並列実行では他レーンの待ちも含む値になる(FMHealth の doc 参照)
+    public var fm: FMUsageRecord?
 
     public init(kind: String) {
         self.kind = kind

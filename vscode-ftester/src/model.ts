@@ -198,6 +198,10 @@ export interface ScenarioFinishedEvent {
   passed: boolean;
   reportPath?: string;
   worker?: string;
+  /** このシナリオの FM 呼び出し実測(Sources/FTCore/FMHealth.swift の FMUsageRecord)。
+   *  FM を使わなかったシナリオでは欠落する。FM はホスト全体で直列化する共有資源のため、
+   *  モニターの FM グラフ(hostCharts.js)がこれを積んで実行コストを可視化する。 */
+  fm?: { calls: number; failures: number; totalMs: number };
 }
 
 /** ScenarioEvent(kind: "log")。ユーザー print の混入行などホスト側の付随情報。 */
