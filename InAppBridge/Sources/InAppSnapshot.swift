@@ -155,6 +155,10 @@ enum InAppSnapshot {
     private static func elementType(_ node: NSObject) -> UIKitType {
         if let tf = node as? UITextField { return tf.isSecureTextEntry ? .secureTextField : .textField }
         if node is UITextView { return .textView }
+        // セルは trait を持たないため、クラスで判定しないと .other に落ちて `.Cell` セレクタが
+        // xcuitest エンジンとだけ食い違う(2026-07-23 に Projects/E2E-iOS で実測)。
+        // trait 判定より先に置く: セル内のボタン trait に引きずられて Button にしないため。
+        if node is UITableViewCell || node is UICollectionViewCell { return .cell }
         let t = node.accessibilityTraits
         if t.contains(.keyboardKey) { return .keyboardKey }
         if t.contains(.searchField) { return .searchField }

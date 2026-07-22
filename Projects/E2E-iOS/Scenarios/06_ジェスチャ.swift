@@ -1,7 +1,7 @@
 // 06_ジェスチャ.swift
 // ftester 機能: `tap` の連打カウント / `press`(長押し)と通常タップの区別 / `swipe` 4方向。
 // SUT 側は SwiftUI の DragGesture / onLongPressGesture で検出する。swipe は要素を狙わず
-// 画面比率の固定座標(iOS: 縦 0.15h↔0.85h / 横 0.15w↔0.85w)で撃たれるため、
+// 画面全体を払う形(XCUITest の XCUIApplication.swipeUp() 等)で撃たれるため、
 // #pad_swipe をコンテンツ領域いっぱいに敷いてある(E2EAppIOS/docs/ui-contract.md)。
 
 import FTDSL
