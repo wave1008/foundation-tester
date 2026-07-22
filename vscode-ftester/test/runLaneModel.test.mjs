@@ -104,6 +104,65 @@ test("scenarioStarted〜scenarioFinished の間、そのworkerは workerRunning:
   );
 });
 
+test("scenarioFinished に fm があれば fmUsage アクションを出す(モニターの FM グラフの供給元)", () => {
+  const state = createRunLaneState();
+  const actions = feed(state, [
+    { kind: "scenarioStarted", scenario: "S.A", title: "A", worker: "ios:シミュ1" },
+    {
+      kind: "scenarioFinished",
+      scenario: "S.A",
+      passed: true,
+      worker: "ios:シミュ1",
+      fm: { calls: 4, failures: 0, totalMs: 9532 },
+    },
+  ]);
+
+  const fmActions = actions.filter((a) => a.type === "fmUsage");
+  assert.deepEqual(fmActions, [{ type: "fmUsage", calls: 4, totalMs: 9532 }]);
+});
+
+test("FM を使わなかったシナリオでは fmUsage を出さない(誤カウント防止)", () => {
+  const state = createRunLaneState();
+  const actions = feed(state, [
+    { kind: "scenarioStarted", scenario: "S.A", title: "A", worker: "ios:シミュ1" },
+    { kind: "scenarioFinished", scenario: "S.A", passed: true, worker: "ios:シミュ1" },
+  ]);
+  assert.equal(actions.filter((a) => a.type === "fmUsage").length, 0);
+});
+
+test("calls が 0 の fm では fmUsage を出さない", () => {
+  const state = createRunLaneState();
+  const actions = feed(state, [
+    { kind: "scenarioStarted", scenario: "S.A", title: "A", worker: "ios:シミュ1" },
+    {
+      kind: "scenarioFinished",
+      scenario: "S.A",
+      passed: true,
+      worker: "ios:シミュ1",
+      fm: { calls: 0, failures: 0, totalMs: 0 },
+    },
+  ]);
+  assert.equal(actions.filter((a) => a.type === "fmUsage").length, 0);
+});
+
+test("失敗シナリオでも fmUsage は出す(FM コストは成否によらず計上する)", () => {
+  const state = createRunLaneState();
+  const actions = feed(state, [
+    { kind: "scenarioStarted", scenario: "S.A", title: "A", worker: "ios:シミュ1" },
+    {
+      kind: "scenarioFinished",
+      scenario: "S.A",
+      passed: false,
+      worker: "ios:シミュ1",
+      fm: { calls: 2, failures: 1, totalMs: 4000 },
+    },
+  ]);
+  assert.deepEqual(
+    actions.filter((a) => a.type === "fmUsage"),
+    [{ type: "fmUsage", calls: 2, totalMs: 4000 }],
+  );
+});
+
 test("scenarioFinished(passed:true) の行には所要時間が付く", () => {
   const state = createRunLaneState();
   const actions = feed(

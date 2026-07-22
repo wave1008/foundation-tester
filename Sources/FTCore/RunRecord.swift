@@ -157,6 +157,9 @@ public struct ScenarioRunRecord: Codable, Sendable {
     /// 失敗時のみ。ステップ到達前のインフラ失敗(ブリッジ未接続・タイムアウト等)は failedSteps が
     /// 空になるため、エラーログ末尾を残して失敗原因の分析(インフラ起因 vs アサーション起因)を可能にする
     public var errorLogs: [String]?
+    /// FM 呼び出し実測(回数・レイテンシ)。FM を使わなかったシナリオでは nil。
+    /// FM は直列化するので、run 全体で totalMs を合算すると実行時間の下限が見積もれる
+    public var fm: FMUsageRecord?
 
     public init(schemaVersion: Int = RunRecordSchema.current, runID: String = "",
                 scenarioID: String, title: String? = nil, platform: String, worker: String? = nil,
@@ -165,7 +168,9 @@ public struct ScenarioRunRecord: Codable, Sendable {
                 steps: StepCountsRecord, reportPath: String? = nil,
                 failedSteps: [FailedStepRecord]? = nil,
                 fixSuggestions: [FixSuggestionRecord]? = nil,
-                errorLogs: [String]? = nil) {
+                errorLogs: [String]? = nil,
+                fm: FMUsageRecord? = nil) {
+        self.fm = fm
         self.schemaVersion = schemaVersion
         self.runID = runID
         self.scenarioID = scenarioID
@@ -201,6 +206,7 @@ public struct ScenarioRecordBuilder {
     private var failedSteps: [FailedStepRecord] = []
     private var fixSuggestions: [FixSuggestionRecord] = []
     private var reportPath: String?
+    private var fm: FMUsageRecord?
 
     private var sceneTitles: [Int: String] = [:]
     /// sceneFinished が durationMs を持たない場合のフォールバック(scene 内 step の合計)
@@ -231,6 +237,7 @@ public struct ScenarioRecordBuilder {
                 oldSelector: event.oldSelector, newSelector: event.newSelector))
         case "scenarioFinished":
             reportPath = event.reportPath
+            fm = event.fm
         case "log":
             if let message = event.message,
                message.hasPrefix("❌") || message.hasPrefix("⚠️") || message.hasPrefix("⏱") {
@@ -288,7 +295,9 @@ public struct ScenarioRecordBuilder {
             reportPath: Self.relativize(reportPath, packageRoot: packageRoot),
             failedSteps: passed ? nil : (failedSteps.isEmpty ? nil : failedSteps),
             fixSuggestions: passed ? nil : (fixSuggestions.isEmpty ? nil : fixSuggestions),
-            errorLogs: passed ? nil : (errorLogs.isEmpty ? nil : errorLogs))
+            errorLogs: passed ? nil : (errorLogs.isEmpty ? nil : errorLogs),
+            // FM 実測は成否によらず残す(コスト分析は成功実行こそ必要)
+            fm: fm)
     }
 
     private static func relativize(_ path: String?, packageRoot: URL?) -> String? {

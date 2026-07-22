@@ -170,7 +170,7 @@ enum ProfileRunner {
             case .flowStarted(_, let url, _, _), .step(_, let url, _), .flowHealed(_, let url),
                  .flowRequeued(_, let url, _, _, _):
                 buffers[url, default: []].append(contentsOf: lines)
-            case .flowFinished(_, let url, _, _, _):
+            case .flowFinished(_, let url, _, _, _, _):
                 let all = (buffers.removeValue(forKey: url) ?? []) + lines
                 print(all.joined(separator: "\n"))
             default:

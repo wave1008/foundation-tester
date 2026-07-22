@@ -300,7 +300,20 @@ struct RunScenario: AsyncParsableCommand {
         finished.scenario = scenarioID
         finished.passed = passed
         finished.reportPath = reportURL?.path
+        // FM 実測を親へ運ぶ(→ ScenarioRecordBuilder → 結果 JSON の fm)。run 全体で合算すると
+        // 「FM 直列化による実行時間の下限」が出る。ANE 負荷率では測れない(FMHealth の doc 参照)
+        finished.fm = FMHealth.usage()
         emit(finished)
+
+        // FM 失敗は各呼び出し箇所が nil を返して素通りさせる契約のため、結果からは見えない。
+        // stdout は NDJSON 契約なので診断は stderr へ出す(api host-metrics と同じ方針)。
+        // **失敗時だけ**にすること: 子の stderr は ScenarioHost が1行ずつ "⚠️ " 付きの log
+        // イベントへ変換し、ScenarioRecordBuilder がそれを errorLogs(上限5件)へ入れる。
+        // 情報行を出すと、インフラ失敗の原因を残すための errorLogs が押し出されて潰れる(実害あり)。
+        // FM のコスト(回数・レイテンシ)は結果 JSON の fm とモニターの FM グラフで見る。
+        if let warning = FMHealth.warningText() {
+            FileHandle.standardError.write(Data((warning + "\n").utf8))
+        }
 
         if !passed {
             throw ExitCode(1)

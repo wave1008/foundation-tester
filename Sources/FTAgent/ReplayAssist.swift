@@ -80,6 +80,7 @@ public final class FMReplayDelegate: ReplayDelegate {
 
         このステップの対象として最も適切な要素を1つ選んでください。
         """
+        let healStartedAt = Date()
         do {
             let suggestion = try await session.respond(
                 to: prompt,
@@ -87,6 +88,7 @@ public final class FMReplayDelegate: ReplayDelegate {
                 options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 250)
             ).content
 
+            FMHealth.record(kind: "heal", ms: OcclusionVerifier.elapsedMs(healStartedAt), ok: true)
             guard let element = Self.resolveByText(suggestion.elementText, in: snapshot) else {
                 return nil
             }
@@ -99,6 +101,8 @@ public final class FMReplayDelegate: ReplayDelegate {
             return HealProposal(element: element, confidence: confidence,
                                 rationale: String(suggestion.rationale.prefix(120)))
         } catch {
+            FMHealth.record(kind: "heal", ms: OcclusionVerifier.elapsedMs(healStartedAt), ok: false,
+                            error: "heal: \(error)")
             return nil
         }
     }
@@ -111,6 +115,7 @@ public final class FMReplayDelegate: ReplayDelegate {
         あなたは UI テストの画面検証者です。スクリーンショットを見て、
         期待する状態と一致しているかを厳密に判定します。
         """)
+        let screenStartedAt = Date()
         do {
             let verdict = try await session.respond(
                 generating: ScreenVerdict.self,
@@ -119,8 +124,11 @@ public final class FMReplayDelegate: ReplayDelegate {
                 "期待する画面の状態: \(expected)\n以下のスクリーンショットがこの状態と一致しているか判定してください。"
                 Attachment(cgImage)
             }.content
+            FMHealth.record(kind: "screenIs", ms: OcclusionVerifier.elapsedMs(screenStartedAt), ok: true)
             return (verdict.pass, String(verdict.reason.prefix(200)))
         } catch {
+            FMHealth.record(kind: "screenIs", ms: OcclusionVerifier.elapsedMs(screenStartedAt),
+                            ok: false, error: "screenIs: \(error)")
             return nil
         }
     }

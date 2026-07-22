@@ -88,6 +88,7 @@ public struct OcclusionVerifier {
     private func respond(instructions: String, image: CGImage,
                          prompt: () -> String) async -> Result? {
         let session = LanguageModelSession(instructions: instructions)
+        let startedAt = Date()
         do {
             let verdict = try await session.respond(
                 generating: VisibilityVerdict.self,
@@ -96,13 +97,20 @@ public struct OcclusionVerifier {
                 prompt()
                 Attachment(image)
             }.content
+            FMHealth.record(kind: "occlusion", ms: Self.elapsedMs(startedAt), ok: true)
             return Result(visible: verdict.visible, state: Self.name(verdict.state),
                           observedText: String(verdict.observedText.prefix(120)),
                           reason: String(verdict.reason.prefix(200)))
         } catch {
+            // nil を返すと呼び出し側(StepExecutor.occlusionFlip)はガードを素通りさせる。
+            // 記録しないと「FM 全滅で無効」と「疑わしい要素が無く正常」が区別できない
+            FMHealth.record(kind: "occlusion", ms: Self.elapsedMs(startedAt), ok: false,
+                            error: "occlusion: \(error)")
             return nil
         }
     }
+
+    static func elapsedMs(_ from: Date) -> Double { Date().timeIntervalSince(from) * 1000 }
 
     static func name(_ s: VisibilityState) -> String {
         switch s {
