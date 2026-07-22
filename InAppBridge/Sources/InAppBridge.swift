@@ -99,7 +99,11 @@ final class FTInAppBridge {
                 sessionBundleID: Bundle.main.bundleIdentifier,
                 engine: "inapp",
                 applicationState: state,
-                uiFramework: self.uiFramework))
+                uiFramework: self.uiFramework,
+                // Compose は自前描画で、合成タッチの drag/長押しを受理しない(tap/type は通る)。
+                // ホストはこの申告を見てジェスチャだけ XCUITest へ回す。撃たれた場合は 501 で拒否する
+                // (申告と拒否の二重化。申告を見ないホスト・旧ホストでも黙って空振りしない)。
+                unsupportedActions: self.uiFramework == "compose" ? ["swipe", "press"] : nil))
         }
     }
 

@@ -56,11 +56,16 @@ public struct StatusResponse: Codable, Sendable {
     /// xcuitest ランナーが高速入力(quiescence スキップ)swizzle の導入に成功したか(FastInput.swift)。
     /// 旧ランナー・他ブリッジは返さない → nil 許容(=非対応)
     public var fastInputAvailable: Bool?
+    /// このブリッジが**この対象アプリでは実行できない**アクション名(FlowStep.action と同じ語:
+    /// "swipe" / "press" 等)。ホストはこれを見て代替ドライバへ回す/明示的に失敗させる。
+    /// 「compose なら swipe 不可」のような知識をホストへ散らかさず、事情を知っている
+    /// ブリッジ側に集約するための申告。返さない実装は nil(=制約なしとみなす)。
+    public var unsupportedActions: [String]?
 
     public init(ready: Bool, device: String, osVersion: String, sessionBundleID: String?,
                 engine: String? = nil, protocolVersion: Int? = nil, applicationState: String? = nil,
                 uiFramework: String? = nil, bridgeVersionCode: Int? = nil,
-                fastInputAvailable: Bool? = nil) {
+                fastInputAvailable: Bool? = nil, unsupportedActions: [String]? = nil) {
         self.ready = ready
         self.device = device
         self.osVersion = osVersion
@@ -70,6 +75,8 @@ public struct StatusResponse: Codable, Sendable {
         self.applicationState = applicationState
         self.uiFramework = uiFramework
         self.bridgeVersionCode = bridgeVersionCode
+        self.fastInputAvailable = fastInputAvailable
+        self.unsupportedActions = unsupportedActions
     }
 }
 
