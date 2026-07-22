@@ -53,6 +53,17 @@ class E2EApp extends StatelessWidget {
   Widget build(BuildContext context) => MaterialApp(
         title: 'FT E2E Flutter',
         debugShowCheckedModeBanner: false,
+        // **高コントラスト固定**(Material 3 の淡い着色を使わない)。M3 既定の薄紫背景 +
+        // 薄紫文字だと、ftester の occlusion-guard(exist の requireVisible)が低インクと判定して
+        // FM 視覚照合を呼び、FM が「覆われている」と誤判定して exist が落ちる
+        // (実測: 実際には完全に見えている。2026-07-23)。
+        // この SUT の目的は DSL の検証であって FM の視覚精度の検証ではないため、
+        // 他の SUT(白背景・黒文字)と同じ見た目に揃えて FM を呼ばせない。
+        theme: ThemeData(
+          useMaterial3: false,
+          scaffoldBackgroundColor: Colors.white,
+          canvasColor: Colors.white,
+        ),
         home: const AppShell(),
       );
 }

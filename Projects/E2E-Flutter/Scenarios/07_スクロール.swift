@@ -20,7 +20,12 @@ class スクロールで折り返し下の要素に到達できること {
                     // Flutter は起動直後の数百 ms、a11y ツリーは完成しているのに**ポインタ入力を
                     // 取りこぼす**ことがある(初回タップが成功扱いのまま黙って無反応になる。
                     // Android で実測)。ここで1往復させ、着地を確認してから操作する。
-                    exist("#txt_home_marker")
+                    //
+                    // requireVisible: false = これは可視性の**検証**ではなく同期のための1往復。
+                    // 既定(true)だと occlusion-guard が FM 視覚照合を呼び、Flutter の小さな
+                    // テキスト領域を「覆われている」と誤判定して落ちることがある
+                    // (実際には完全に見えている。2026-07-23 実測)。可視性の検証は 01 が行う。
+                    exist("#txt_home_marker", requireVisible: false)
                 }.action {
                     tap("#nav_scroll")
                 }.expectation {
@@ -64,7 +69,12 @@ class スクロールで折り返し下の要素に到達できること {
                     // Flutter は起動直後の数百 ms、a11y ツリーは完成しているのに**ポインタ入力を
                     // 取りこぼす**ことがある(初回タップが成功扱いのまま黙って無反応になる。
                     // Android で実測)。ここで1往復させ、着地を確認してから操作する。
-                    exist("#txt_home_marker")
+                    //
+                    // requireVisible: false = これは可視性の**検証**ではなく同期のための1往復。
+                    // 既定(true)だと occlusion-guard が FM 視覚照合を呼び、Flutter の小さな
+                    // テキスト領域を「覆われている」と誤判定して落ちることがある
+                    // (実際には完全に見えている。2026-07-23 実測)。可視性の検証は 01 が行う。
+                    exist("#txt_home_marker", requireVisible: false)
                 }.action {
                     tap("#nav_scroll")
                 }.expectation {
@@ -91,7 +101,12 @@ class スクロールで折り返し下の要素に到達できること {
                     // Flutter は起動直後の数百 ms、a11y ツリーは完成しているのに**ポインタ入力を
                     // 取りこぼす**ことがある(初回タップが成功扱いのまま黙って無反応になる。
                     // Android で実測)。ここで1往復させ、着地を確認してから操作する。
-                    exist("#txt_home_marker")
+                    //
+                    // requireVisible: false = これは可視性の**検証**ではなく同期のための1往復。
+                    // 既定(true)だと occlusion-guard が FM 視覚照合を呼び、Flutter の小さな
+                    // テキスト領域を「覆われている」と誤判定して落ちることがある
+                    // (実際には完全に見えている。2026-07-23 実測)。可視性の検証は 01 が行う。
+                    exist("#txt_home_marker", requireVisible: false)
                 }.action {
                     tap("#nav_selector")
                 }.expectation {
