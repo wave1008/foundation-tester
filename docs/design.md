@@ -149,6 +149,12 @@ foundation-tester/
 │       ├── reports/               #   実行レポート出力先(プロジェクト別)
 │       └── .ftester/              #   ヒールキャッシュ等(プロジェクト別)
 ├── Scripts/bench.swift            # 計測基盤(§9。詳細は docs/performance-tuning.md)
+├── E2EApp/                        # 自己 E2E の SUT: Compose Multiplatform(→ Projects/E2E)
+│   └── docs/ui-contract.md        #   **全 SUT 共通の画面・#id・ラベル契約(唯一の正)**
+├── E2EAppIOS/                     # 自己 E2E の SUT: SwiftUI + 一部 UIKit(→ Projects/E2E-iOS)
+├── E2EAppAndroid/                 # 自己 E2E の SUT: View/XML + 一部 Compose(→ Projects/E2E-Android)
+├── E2EAppFlutter/                 # 自己 E2E の SUT: Flutter(→ Projects/E2E-Flutter)
+│                                  #   各 SUT の docs/ui-contract.md には**型語彙と固有の罠だけ**を置く
 ├── SampleApp/                     # 検証用の小さな SwiftUI デモアプリ(テスト対象)
 ├── vscode-ftester/                # VSCode 拡張。UI 入口はここに一本化(旧 ftester-gui は 2026-07-10 削除)
 └── docs/design.md                 # 本書
@@ -469,12 +475,39 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
 
 ## 9. 検証方法(E2E)
 
-0. **`E2EApp`(Compose Multiplatform・iOS/Android 両対応)+ `Projects/E2E`** が ftester 自身の
-   機能別 E2E。DSL のコマンド面(セレクタ記法・type・press/swipe・scrollTo・暗黙待ちと timeout・
-   ifCanSelect/optional・relaunch・ios{}/android{})を 1 機能 1 シナリオで網羅する。
-   testTag とラベルの契約は `E2EApp/docs/ui-contract.md` が唯一の正(アプリとシナリオが両方参照)。
+0. **同梱 SUT + 対になるテストプロジェクト**が ftester 自身の機能別 E2E。DSL のコマンド面
+   (セレクタ記法・type・press/swipe・scrollTo・暗黙待ちと timeout・ifCanSelect/optional・
+   relaunch・ios{}/android{})を 1 機能 1 シナリオで網羅する。
    ネットワーク依存ゼロ・状態は起動ごとにルート正規化する設計で、フリートのロケール差や
-   バックエンド死活に左右されない。手順は Projects/E2E/README.md
+   バックエンド死活に左右されない。`Scripts/e2e.sh` が全 SUT を鮮度判定つきで回す。
+
+   **SUT は UI フレームワークごとに4つ**ある。同じ画面・同じ `#id`・同じラベルを4通りの
+   実装で作ってあり、`AppDriver` から上(セレクタ解決・スナップショット圧縮)がフレームワークに
+   依存しないことを実証する土台になっている:
+
+   | SUT | 実装 | プロジェクト | 対象 OS | 契約 |
+   |---|---|---|---|---|
+   | `E2EApp/` | Compose Multiplatform | `Projects/E2E` | ios + android | **`E2EApp/docs/ui-contract.md` が唯一の正** |
+   | `E2EAppIOS/` | SwiftUI + 一部 UIKit | `Projects/E2E-iOS` | ios | 差分のみ `E2EAppIOS/docs/ui-contract.md` |
+   | `E2EAppAndroid/` | View/XML + 一部 Compose | `Projects/E2E-Android` | android | 差分のみ `E2EAppAndroid/docs/ui-contract.md` |
+   | `E2EAppFlutter/` | Flutter | `Projects/E2E-Flutter` | ios + android | 差分のみ `E2EAppFlutter/docs/ui-contract.md` |
+
+   **`#id` とラベルは4 SUT で完全に同一、違うのは「型」と「id を露出させる作法」だけ**という設計。
+   実測で採取した型の食い違い(いずれも同じ `#id` を指す):
+
+   | 要素 | CMP(iOS) | CMP(Android) | SwiftUI/UIKit | View/XML | Flutter(iOS) | Flutter(Android) |
+   |---|---|---|---|---|---|---|
+   | ボタン | `Button` | `Cell` | `Button` | `Button` | `Button` | `Button` |
+   | テキスト | `StaticText` | `StaticText` | `StaticText` | `StaticText` | `StaticText` | **`Other`** |
+   | パスワード欄 | `TextField` | `SecureTextField` | `SecureTextField` | `SecureTextField` | `TextField` | `TextField` |
+   | リスト行 | `Button` | `Cell` | `Cell`(UITableView) | `Cell` | `Button` | `Button` |
+
+   id 露出の作法もフレームワークごとに違う: Compose は `testTagsAsResourceId`(Android のみ・
+   ダイアログには再適用が必要)、View 系は `android:id`(**実行時に resource-id を作れないため
+   動的リストは `res/values/ids.xml` に静的宣言**)、SwiftUI は `.accessibilityIdentifier`
+   (**UIAlertController の title/message には効かない**)、Flutter は `Semantics(identifier:)`
+   (**`ensureSemantics()` 必須・`MergeSemantics` で畳む必要あり・Slider に畳むと iOS で
+   a11y ツリーが丸ごと空になる**)。詳細は各 SUT の `docs/ui-contract.md`。
 1. `SampleApp`(ログイン画面 + ホーム画面 + 設定画面の 3 画面 SwiftUI アプリ、
    accessibility identifier 付き)をリポジトリに同梱
 2. M1: `ftester bridge up` → `curl localhost:8123/snapshot` で圧縮ツリーが返る

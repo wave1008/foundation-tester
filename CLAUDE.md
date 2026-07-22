@@ -13,8 +13,18 @@
 - リリース(git タグ発行と版ピンの関係。配布はソースビルド前提): docs/releasing.md(`Scripts/release.sh`)
 - 設計書(アーキテクチャ・Swift DSL 仕様・セレクタ記法・プロファイル): docs/design.md
 - 性能チューニング(調整ノブ・不採用施策と再検討条件・計測手順): docs/performance-tuning.md
-- ftester 自身の E2E(同梱 SUT の Compose Multiplatform アプリ + 検証シナリオ): Projects/E2E/README.md。
-  **要素の testTag/ラベルの唯一の正は `E2EApp/docs/ui-contract.md`**(アプリとシナリオの両方がこれを参照。片方だけ変えない)
+- ftester 自身の E2E: **UI フレームワークごとに SUT が4つ**ある(画面・`#id`・ラベルは全 SUT 共通契約):
+
+  | SUT | 実装 | プロジェクト | 対象 OS |
+  |---|---|---|---|
+  | `E2EApp/` | Compose Multiplatform | Projects/E2E | ios + android |
+  | `E2EAppIOS/` | SwiftUI + 一部 UIKit | Projects/E2E-iOS | ios |
+  | `E2EAppAndroid/` | View/XML + 一部 Compose | Projects/E2E-Android | android |
+  | `E2EAppFlutter/` | Flutter | Projects/E2E-Flutter | ios + android |
+
+  **要素の testTag/`#id`/ラベルの唯一の正は `E2EApp/docs/ui-contract.md`**(全 SUT とシナリオがこれを参照。
+  片方だけ変えない)。**型語彙・OS/フレームワーク固有の罠だけ**は各 SUT の `<SUT>/docs/ui-contract.md` に置く
+  (同じ `#id` でも型は SUT ごとに違う。例: ボタンは CMP/Android で `Cell`、View/XML なら `Button`)
 
 ## ビルド・検証
 
@@ -32,10 +42,13 @@
   - DSL コマンド(`Sources/FTDSL/Commands.swift`)・`StepExecutor`・ドライバ(`Sources/FTBridgeClient/`)
   - ブリッジ(`InAppBridge/`・`Runner/`・`AndroidRunner/`)
   - セレクタ解決・スナップショット・ヒール(`FTAgent`)
-- `Scripts/e2e.sh` は SUT(`E2EApp/`)の鮮度を見て必要なら再ビルドし、`ios-xcuitest` と `android` を順に回す
-  (`--rebuild` / `--ios` / `--android`)。**両OSを1プロファイルにまとめない**: platform 未指定シナリオは
-  既定 platform のキューにしか入らず他方のワーカーが空回りする(design.md §11.4)。
-  SUT はネットワーク依存ゼロなのでバックエンド死活の切り分けは不要
+- `Scripts/e2e.sh` は **4 SUT 全部**の鮮度を見て必要なら再ビルドし、各プロファイルを順に回す
+  (`--rebuild` / `--ios` / `--android` / `--cmp` / `--ios-native` / `--android-native` / `--flutter`)。
+  **両OSを1プロファイルにまとめない**: platform 未指定シナリオは既定 platform のキューにしか入らず
+  他方のワーカーが空回りする(design.md §11.4)。SUT はネットワーク依存ゼロなのでバックエンド死活の切り分けは不要
+- **フレームワーク差の退行は SUT を跨がないと出ない**。ブリッジのスナップショット/型写像
+  (`SnapshotBuilder`・`BridgeRouter`)を触ったら SUT を絞らず全部回す。片方だけ通って
+  もう片方が黙って空振りする類の退行が実際に出る(Compose の Button は `Cell`、View/XML は `Button` 等)
 - `ftester api ...` の JSON/NDJSON 契約を後方非互換に変えたら `Sources/FTCore/ProtocolVersion.swift` と `vscode-ftester/src/protocolVersion.ts` の版を +1(両者一致必須・`protocolVersion.test.mjs` が検出)。拡張は起動時に `ftester api version` で照合し不一致を警告する(`compatCheck.ts`)
 
 ## 実装の委譲
