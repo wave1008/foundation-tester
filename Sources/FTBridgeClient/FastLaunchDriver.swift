@@ -20,7 +20,7 @@ public final class FastLaunchDriver: AppDriver {
 
     public func launch(bundleID: String) async throws {
         // terminate は未起動なら失敗してよい(冪等化)
-        _ = try? Shell.run(["xcrun", "simctl", "terminate", udid, bundleID])
+        _ = try? Shell.run(["xcrun", "simctl", "terminate", udid, bundleID], timeout: 15)
         let result = try Shell.run(["xcrun", "simctl", "launch", udid, bundleID])
         guard result.status == 0 else {
             throw DriverError.badResponse(status: Int(result.status),

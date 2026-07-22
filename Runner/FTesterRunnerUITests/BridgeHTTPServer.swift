@@ -111,6 +111,10 @@ final class BridgeHTTPServer {
                 if isRunning { usleep(10_000) }
                 continue
             }
+            // 応答途中でホストが切断した際の write() の SIGPIPE(既定でランナープロセス終了)を防ぐ。
+            // InAppHTTPServer と同じ防御(あちらは対象アプリ、こちらは XCUITest ランナーがクラッシュする)。
+            var noSigPipe: Int32 = 1
+            setsockopt(clientFD, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
             autoreleasepool {
                 if let request = readRequest(clientFD) {
                     writeResponse(clientFD, dispatchToMain(request))
