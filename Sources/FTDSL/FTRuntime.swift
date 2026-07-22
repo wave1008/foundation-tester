@@ -145,6 +145,7 @@ public final class FTDriveCore {
                 fallbackDriver: AppDriver? = nil,
                 typeDriver: AppDriver? = nil,
                 preferTypeDriver: Bool = false,
+                gesturesViaTypeDriver: Bool = false,
                 deviceName: String? = nil,
                 deviceIdentifier: String? = nil,
                 emit: @escaping (ScenarioEvent) -> Void) {
@@ -153,6 +154,7 @@ public final class FTDriveCore {
         self.appBundleID = app
         self.executor = StepExecutor(driver: driver, fallbackDriver: fallbackDriver,
                                      typeDriver: typeDriver, preferTypeDriver: preferTypeDriver,
+                                     gesturesViaTypeDriver: gesturesViaTypeDriver,
                                      delegate: delegate, healingEnabled: healingEnabled)
         self.scenarioID = scenarioID
         self.scenarioTitle = scenarioTitle
