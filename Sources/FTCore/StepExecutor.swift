@@ -501,7 +501,8 @@ public final class StepExecutor {
             // スナックバー等)が消えるのを timeout まで待ってから失敗にする(即失敗の脆さを回避)。
             // 最後に観測した occlusion 失敗を保持し、可視化されなければこれを返す。
             var lastOcclusion: StepResult.Status?
-            while Date() < deadline {
+            // timeout==0 でも初回照会は必ず1回行う(ループ後段の deadline チェックで離脱)。
+            while true {
                 var start = clock.now
                 let snapshot = try await driver.snapshot()
                 phase.snapshotMs += Self.ms(clock.now - start)
@@ -512,13 +513,16 @@ public final class StepExecutor {
                         element: d.element, expectedText: d.element.label ?? step.locator?.label ?? "",
                         elements: snapshot.elements, screen: snapshot.screen,
                         looseMatch: d.quality == .substring, perStepGuard: step.occlusionGuard,
-                        phase: &phase) {
+                        // #4: label セレクタ一致はユーザー期待値。結合ラベル `, ` 規則を当てず
+                        // exist("Hello, World") でガードがスキップされる欠陥を防ぐ(textEquals と同契約)。
+                        expectedIsUserText: step.locator?.label != nil, phase: &phase) {
                         lastOcclusion = flip   // 覆われている: 可視化を待つ(下の sleep へ)
                     } else {
                         if let fallback = d.usedFallback { return .passedViaFallback(fallback) }
                         return .passed
                     }
                 } else {
+                    lastOcclusion = nil   // #5: 直近は未発見 → 過去の occlusion 失敗を無効化(消失時に stale を返さない)
                     primaryMisses += 1
                     // fallback(SystemUIDriver)の snapshot は springboard 再session+XCUITest snapshot で
                     // 数百ms。primary(in-app ~0.05ms)ミス毎に払うと通常のアプリ内要素待ちを支配するため
@@ -534,6 +538,7 @@ public final class StepExecutor {
                         }
                     }
                 }
+                if Date() >= deadline { break }   // 初回照会後にここで離脱(timeout==0 も含む)
                 start = clock.now
                 try await Task.sleep(for: backoff.nextDelay())
                 phase.waitMs += Self.ms(clock.now - start)
@@ -553,7 +558,8 @@ public final class StepExecutor {
             var backoff = PollBackoff()
             var primaryMisses = 0
             var lastOcclusion: StepResult.Status?   // occlusion-guard: 可視化待ち(exists と同契約)
-            while Date() < deadline {
+            // timeout==0 でも初回照会は必ず1回行う(ループ後段の deadline チェックで離脱)。
+            while true {
                 var start = clock.now
                 let snapshot = try await driver.snapshot()
                 phase.snapshotMs += Self.ms(clock.now - start)
@@ -596,7 +602,10 @@ public final class StepExecutor {
                     } else {
                         lastOcclusion = nil   // 直近の観測はテキスト不一致 → 過去の occlusion 失敗は無効化
                     }
+                } else {
+                    lastOcclusion = nil   // #5: 要素未発見 → 過去の occlusion 失敗を無効化(消失時に stale を返さない)
                 }
+                if Date() >= deadline { break }   // 初回照会後にここで離脱(timeout==0 も含む)
                 start = clock.now
                 try await Task.sleep(for: backoff.nextDelay())
                 phase.waitMs += Self.ms(clock.now - start)

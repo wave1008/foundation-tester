@@ -247,6 +247,58 @@ final class StepExecutorTests: XCTestCase {
         XCTAssertFalse(msg.contains("occlusion"), "stale な occlusion を返さないこと: \(msg)")
     }
 
+    /// #4 修正: label セレクタの exist("Hello, World")はユーザー期待値。結合 `, ` 規則でガードを
+    /// スキップせず、覆われていれば occlusion 失敗へ反転する(修正前は素通り pass していた)。
+    func testExistsWithCommaLabelStillGuards() async throws {
+        let log = CallLog()
+        let el = ElementInfo(ref: 1, type: "StaticText", identifier: nil, label: "Hello, World",
+                             value: nil, placeholder: nil, enabled: true,
+                             frame: FTRect(x: 0, y: 0, width: 100, height: 20), depth: 0)
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[el]])
+        let delegate = FakeVisibilityDelegate(visible: false)
+        let executor = StepExecutor(driver: primary, delegate: delegate)
+        let step = FlowStep(assert: "exists", locator: FlowLocator(label: "Hello, World"),
+                            timeout: 1, occlusionGuard: true)
+
+        guard case .failed(let msg) = await executor.execute(step).status else {
+            XCTFail("ユーザーラベルの句読点でガードがスキップされ pass してしまった"); return
+        }
+        XCTAssertTrue(msg.contains("occlusion"), "occlusion 失敗を返すこと: \(msg)")
+        XCTAssertGreaterThanOrEqual(delegate.visibleCalls, 1, "ガードが実行されること")
+    }
+
+    /// #5 修正: exist で覆い観測後に要素が消失したら、stale な occlusion でなく未発見を返す。
+    func testExistsClearsStaleOcclusionOnDisappearance() async throws {
+        let log = CallLog()
+        let el = textElement(id: "msg", label: "こんにちは")
+        // 1周目: 覆われて存在 → 2周目以降: 消失(空)
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[el], []])
+        let executor = StepExecutor(driver: primary, delegate: FakeVisibilityDelegate(visible: false))
+        let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
+                            timeout: 1, occlusionGuard: true)
+
+        guard case .failed(let msg) = await executor.execute(step).status else {
+            XCTFail("timeout で失敗するはず"); return
+        }
+        XCTAssertTrue(msg.contains("見つかりません"), "未発見を返すこと: \(msg)")
+        XCTAssertFalse(msg.contains("occlusion"), "stale な occlusion を返さないこと: \(msg)")
+    }
+
+    /// timeout==0 の exist は「初回照会のみ・リトライなし」。0回照会で必ず失敗する回帰を防ぐ
+    /// (存在する要素は 1 回の照会で pass する)。
+    func testExistsTimeoutZeroChecksOnce() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[textElement(id: "msg", label: "こんにちは")]])
+        let executor = StepExecutor(driver: primary)
+        let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"), timeout: 0)
+
+        guard case .passed = await executor.execute(step).status else {
+            XCTFail("timeout==0 でも初回照会で存在すれば pass のはず(0回照会の回帰)"); return
+        }
+        XCTAssertEqual(primary.snapshotCallCount, 1, "初回照会は1回だけ")
+    }
+
     /// textIs(occlusionGuard 既定)も同じガードを通る: 一致しても覆われていれば失敗へ反転
     func testOcclusionGuardOnTextEquals() async throws {
         let log = CallLog()

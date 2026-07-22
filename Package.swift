@@ -163,7 +163,7 @@ let package = Package(
         ),
         .testTarget(
             name: "FTAndroidTests",
-            dependencies: ["FTAndroid", "FTCore"],
+            dependencies: ["FTAndroid", "FTCore", "FTBridgeClient"],
             swiftSettings: swift5Mode
         ),
         .testTarget(
