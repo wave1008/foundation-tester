@@ -1,0 +1,7 @@
+build/
+.gradle/
+local.properties
+dist/
+iosApp/build/
+iosApp/iosApp.xcodeproj/
+.DS_Store
