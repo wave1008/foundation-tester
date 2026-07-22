@@ -13,6 +13,8 @@
 - リリース(git タグ発行と版ピンの関係。配布はソースビルド前提): docs/releasing.md(`Scripts/release.sh`)
 - 設計書(アーキテクチャ・Swift DSL 仕様・セレクタ記法・プロファイル): docs/design.md
 - 性能チューニング(調整ノブ・不採用施策と再検討条件・計測手順): docs/performance-tuning.md
+- ftester 自身の E2E(同梱 SUT の Compose Multiplatform アプリ + 検証シナリオ): Projects/E2E/README.md。
+  **要素の testTag/ラベルの唯一の正は `E2EApp/docs/ui-contract.md`**(アプリとシナリオの両方がこれを参照。片方だけ変えない)
 
 ## ビルド・検証
 
@@ -25,6 +27,9 @@
 - macOS ベータを更新したら Xcode も同じベータへ揃えてフルリビルド。FoundationModels の ABI 不整合で全バイナリが dyld クラッシュする(swift build は SDKROOT/--sdk を無視するため Xcode 側を揃えるしかない)
 - Xcode(beta)単体の更新でも同様: iOS ランタイム導入(`xcodebuild -downloadPlatform iOS`)+ランナー再ビルドで整合させる。不整合はアプリが数操作で「Application is not running」クラッシュする(`ftester doctor` が DTXcodeBuild 不一致を警告。2026-07-21 実害)
 - テストが「Application is not running」で全滅したら、ランナーや自分の変更を疑う前に **SUT のバックエンド死活を確認**(sut-ec-mobile は localhost:8090 の dev サーバ。停止中はアプリが非同期例外でクラッシュする)。apps プロファイルの healthCheckURL が実行開始時に警告を出す
+- ftester 自身の E2E(Projects/E2E)は同梱アプリ `E2EApp/` を SUT にする。**アプリの UI を変えたら再ビルドが必要**
+  (`E2EApp/scripts/build-ios.sh` / `build-android.sh` → `E2EApp/dist/`。apps プロファイルが autoInstall で拾う)。
+  ネットワーク依存ゼロなのでバックエンド死活の切り分けは不要。実行は `ftester run --project E2E --profile ios|android|all`
 - `ftester api ...` の JSON/NDJSON 契約を後方非互換に変えたら `Sources/FTCore/ProtocolVersion.swift` と `vscode-ftester/src/protocolVersion.ts` の版を +1(両者一致必須・`protocolVersion.test.mjs` が検出)。拡張は起動時に `ftester api version` で照合し不一致を警告する(`compatCheck.ts`)
 
 ## 実装の委譲
