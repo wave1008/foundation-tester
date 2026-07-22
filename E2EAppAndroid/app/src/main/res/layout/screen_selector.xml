@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <TextView
+            android:id="@+id/txt_selector_result"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="result=-" />
+
+        <!-- 「許可」⊂「通知を許可」の部分一致衝突は契約で意図的に作られた検証材料。 -->
+        <Button
+            android:id="@+id/btn_allow"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:minHeight="48dp"
+            android:text="許可" />
+
+        <Button
+            android:id="@+id/btn_allow_notification"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:minHeight="48dp"
+            android:text="通知を許可" />
+
+        <!-- 同一ラベル「項目」の3連。ラベル指定では曖昧・#id か .Type[n] でのみ引ける。 -->
+        <Button
+            android:id="@+id/btn_item_1"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:minHeight="48dp"
+            android:text="項目" />
+
+        <Button
+            android:id="@+id/btn_item_2"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:minHeight="48dp"
+            android:text="項目" />
+
+        <Button
+            android:id="@+id/btn_item_3"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:minHeight="48dp"
+            android:text="項目" />
+
+        <TextView
+            android:id="@+id/txt_shared_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="共通ラベル" />
+
+        <Button
+            android:id="@+id/btn_shared_label"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:minHeight="48dp"
+            android:text="共通ラベル" />
+
+        <Button
+            android:id="@+id/btn_alias_new"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:minHeight="48dp"
+            android:text="別名ボタン" />
+
+        <Button
+            android:id="@+id/btn_selector_reset"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:minHeight="48dp"
+            android:text="結果クリア" />
+
+        <!-- 700dp: 初期表示では絶対に画面内に入らない高さ(scrollTo / requireVisible の検証材料)。 -->
+        <Space
+            android:layout_width="match_parent"
+            android:layout_height="700dp" />
+
+        <TextView
+            android:id="@+id/txt_offscreen"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="画面外テキスト" />
+    </LinearLayout>
+</ScrollView>

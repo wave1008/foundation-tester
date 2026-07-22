@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ソフトキーボード対策(Compose 版と同じ制約): スクロールさせず、シナリオが触る要素
+     (echo 4本 + 単一行/パスワード欄 + 送信/クリア)を画面上部に固め、複数行欄だけ下に置く。
+     manifest は adjustResize。下に置くとキーボードに覆われ exist/textIs が occlusion で落ちる。 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <TextView
+        android:id="@+id/txt_echo_single"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="single=" />
+
+    <TextView
+        android:id="@+id/txt_echo_password"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="password=" />
+
+    <TextView
+        android:id="@+id/txt_echo_length"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="len=0" />
+
+    <TextView
+        android:id="@+id/txt_input_submitted"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="submitted=-" />
+
+    <EditText
+        android:id="@+id/field_single"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="単一行"
+        android:inputType="text"
+        android:saveEnabled="false"
+        android:importantForAutofill="no" />
+
+    <EditText
+        android:id="@+id/field_password"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="パスワード"
+        android:inputType="textPassword"
+        android:saveEnabled="false"
+        android:importantForAutofill="no" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/btn_input_submit"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:minHeight="48dp"
+            android:text="送信" />
+
+        <Button
+            android:id="@+id/btn_input_clear"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:minHeight="48dp"
+            android:text="入力クリア" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/txt_echo_multiline"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="multiline=" />
+
+    <EditText
+        android:id="@+id/field_multiline"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="複数行"
+        android:inputType="textMultiLine"
+        android:minLines="3"
+        android:gravity="top"
+        android:saveEnabled="false"
+        android:importantForAutofill="no" />
+</LinearLayout>

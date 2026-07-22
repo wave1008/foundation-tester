@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <TextView
+            android:id="@+id/txt_home_marker"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="E2E ホーム" />
+
+        <Button
+            android:id="@+id/nav_selector"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="48dp"
+            android:text="セレクタ" />
+
+        <Button
+            android:id="@+id/nav_input"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="48dp"
+            android:text="テキスト入力" />
+
+        <Button
+            android:id="@+id/nav_gesture"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="48dp"
+            android:text="ジェスチャ" />
+
+        <Button
+            android:id="@+id/nav_scroll"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="48dp"
+            android:text="スクロール" />
+
+        <Button
+            android:id="@+id/nav_async"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="48dp"
+            android:text="非同期表示" />
+
+        <Button
+            android:id="@+id/nav_dialog"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="48dp"
+            android:text="ダイアログ" />
+
+        <Button
+            android:id="@+id/nav_lifecycle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="48dp"
+            android:text="ライフサイクル" />
+
+        <Button
+            android:id="@+id/nav_heal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="48dp"
+            android:text="自己修復" />
+
+        <Button
+            android:id="@+id/nav_diagnostics"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="48dp"
+            android:text="診断" />
+    </LinearLayout>
+</ScrollView>

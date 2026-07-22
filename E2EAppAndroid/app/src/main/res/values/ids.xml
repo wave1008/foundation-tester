@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- スクロール画面の行 id。Android の View は resource-id を実行時に生成できないため、
+     row_01..row_40 を静的に宣言して RecyclerView の onBind で view.id に割り当てる。
+     これが無いと #row_NN が一切引けない(Compose の testTag に相当するものが View 系に無い)。 -->
+<resources>
+    <item name="row_01" type="id" />
+    <item name="row_02" type="id" />
+    <item name="row_03" type="id" />
+    <item name="row_04" type="id" />
+    <item name="row_05" type="id" />
+    <item name="row_06" type="id" />
+    <item name="row_07" type="id" />
+    <item name="row_08" type="id" />
+    <item name="row_09" type="id" />
+    <item name="row_10" type="id" />
+    <item name="row_11" type="id" />
+    <item name="row_12" type="id" />
+    <item name="row_13" type="id" />
+    <item name="row_14" type="id" />
+    <item name="row_15" type="id" />
+    <item name="row_16" type="id" />
+    <item name="row_17" type="id" />
+    <item name="row_18" type="id" />
+    <item name="row_19" type="id" />
+    <item name="row_20" type="id" />
+    <item name="row_21" type="id" />
+    <item name="row_22" type="id" />
+    <item name="row_23" type="id" />
+    <item name="row_24" type="id" />
+    <item name="row_25" type="id" />
+    <item name="row_26" type="id" />
+    <item name="row_27" type="id" />
+    <item name="row_28" type="id" />
+    <item name="row_29" type="id" />
+    <item name="row_30" type="id" />
+    <item name="row_31" type="id" />
+    <item name="row_32" type="id" />
+    <item name="row_33" type="id" />
+    <item name="row_34" type="id" />
+    <item name="row_35" type="id" />
+    <item name="row_36" type="id" />
+    <item name="row_37" type="id" />
+    <item name="row_38" type="id" />
+    <item name="row_39" type="id" />
+    <item name="row_40" type="id" />
+</resources>
