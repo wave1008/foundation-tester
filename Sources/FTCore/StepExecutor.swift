@@ -131,13 +131,17 @@ public struct StepOutcome: Sendable {
     /// ステップの所要時間内訳。action も assert もない(空)ステップの場合のみ nil
     /// (実行エラー時も catch 節でこの時点までの計測値を積んで返す)
     public let timing: StepTiming?
+    /// ドライバのフォールバックで通過したときの説明(例 "XCUITest")。ロケータの
+    /// フォールバック(.passedViaFallback)とは別物で、セレクタ更新の提案は出さない。
+    public let driverFallback: String?
 
     public init(status: StepResult.Status, healedStep: FlowStep? = nil, healedByCache: Bool = false,
-               timing: StepTiming? = nil) {
+               timing: StepTiming? = nil, driverFallback: String? = nil) {
         self.status = status
         self.healedStep = healedStep
         self.healedByCache = healedByCache
         self.timing = timing
+        self.driverFallback = driverFallback
     }
 }
 
@@ -159,8 +163,8 @@ public final class StepExecutor {
     /// swipe/press を inapp で試さず最初から typeDriver で実行する。type 用の preferTypeDriver
     /// (廃止済み・常に false)とは別物。
     public var gesturesViaTypeDriver: Bool
-    /// swipe/press が 409 を1回でも受けたら true。以降は直接 typeDriver へ(scrollTo は
-    /// 最大 maxSwipes 回 swipe するため、毎回 409 を往復させないため)
+    /// swipe/press が 501 を1回でも受けたら true。以降は直接 typeDriver へ(scrollTo は
+    /// 最大 maxSwipes 回 swipe するため、毎回 501 を往復させないため)
     private var gestureFallbackLatched = false
     public var delegate: ReplayDelegate?
     public var healingEnabled: Bool
@@ -227,7 +231,8 @@ public final class StepExecutor {
                                    healedByCache: outcome.healedByCache,
                                    timing: StepTiming(durationMs: Self.ms(clock.now - start),
                                                       snapshotMs: phase.snapshotMs,
-                                                      actionMs: phase.actionMs, waitMs: phase.waitMs))
+                                                      actionMs: phase.actionMs, waitMs: phase.waitMs),
+                                   driverFallback: outcome.driverFallback)
             }
             if let assert = step.assert {
                 let status = try await executeAssert(assert, step: step, phase: &phase)
@@ -270,8 +275,8 @@ public final class StepExecutor {
         // ロケータ不要のアクション
         if action == "swipe" {
             let direction = FTSwipeDirection(rawValue: step.direction ?? "") ?? .up
-            try await swipeWithFallback(direction, phase: &phase)
-            return StepOutcome(status: .passed)
+            let viaXCUITest = try await swipeWithFallback(direction, phase: &phase)
+            return StepOutcome(status: .passed, driverFallback: viaXCUITest ? "XCUITest" : nil)
         }
 
         // 要素が見つかるまでスクロール(見つかったら成功。操作はしない)
@@ -279,6 +284,8 @@ public final class StepExecutor {
             let direction = FTSwipeDirection(rawValue: step.direction ?? "") ?? .up
             // 負値だと 0...(-1) が ClosedRange 生成で trap(クラッシュ)するため 0 で下限クランプ。
             let maxSwipes = max(0, step.maxSwipes ?? 8)
+            // ループ内で1回でも XCUITest 経由の swipe が発生したら最終 outcome に記録する
+            var viaXCUITest = false
             for attempt in 0...maxSwipes {
                 let start = clock.now
                 let snapshot = try await driver.snapshot()
@@ -286,12 +293,13 @@ public final class StepExecutor {
                 // スクロール探索でも type+index フォールバックは偽陽性のもとなので使わない
                 if let (_, fallback) = Self.resolve(step: step, in: snapshot, strictForAssert: true) {
                     if let fallback {
-                        return StepOutcome(status: .passedViaFallback(fallback))
+                        return StepOutcome(status: .passedViaFallback(fallback),
+                                           driverFallback: viaXCUITest ? "XCUITest" : nil)
                     }
-                    return StepOutcome(status: .passed)
+                    return StepOutcome(status: .passed, driverFallback: viaXCUITest ? "XCUITest" : nil)
                 }
                 if attempt < maxSwipes {
-                    try await swipeWithFallback(direction, phase: &phase)
+                    if try await swipeWithFallback(direction, phase: &phase) { viaXCUITest = true }
                 }
             }
             return StepOutcome(status: .failed(
@@ -368,6 +376,9 @@ public final class StepExecutor {
         var status: StepResult.Status = .passed
         var healedStep: FlowStep?
         var healedByCache = false
+        // ロケータのフォールバック(.passedViaFallback)とは別物。ドライバ切替の注記のみで、
+        // FTRuntime の修正提案(セレクタ更新)は誘発しない
+        var driverFallback: String?
         var element: ElementInfo
 
         if let (found, usedFallback) = resolved {
@@ -417,33 +428,38 @@ public final class StepExecutor {
                 try await actingDriver.type(ref: element.ref, text: step.text ?? "")
                 phase.actionMs += Self.ms(clock.now - start)
             } catch {
-                // 409 = inapp が非 UIKit 入力欄で first responder を張れない兆候
+                // 409 = inapp が非 UIKit 入力欄で first responder を張れない兆候。type は要素個別の
+                // フォーカス有無に依存する一時的競合なので、press/swipe と違い 501 化しない。
                 guard case DriverError.badResponse(let code, _) = error, code == 409,
                       let td = typeDriver else { throw error }
                 guard try await typeViaTypeDriver(td, step: step, phase: &phase) else { throw error }
-                status = .passedViaFallback(step.locator ?? FlowLocator(raw: step.locatorSummary))
+                // セレクタは正しくドライバが変わっただけ = .passedViaFallback(ロケータ用)は立てない
+                driverFallback = "XCUITest"
             }
         case "press":
             if gesturesViaTypeDriver || gestureFallbackLatched, let td = typeDriver,
                try await pressViaTypeDriver(td, step: step, phase: &phase) {
-                return StepOutcome(status: .passed, healedStep: healedStep, healedByCache: healedByCache)
+                return StepOutcome(status: .passed, healedStep: healedStep, healedByCache: healedByCache,
+                                   driverFallback: "XCUITest")
             }
             do {
                 start = clock.now
                 try await actingDriver.press(ref: element.ref, duration: 1.0)
                 phase.actionMs += Self.ms(clock.now - start)
             } catch {
-                // 409 = inapp(Compose)が press を駆動できない兆候。type と同じ安全網
-                guard case DriverError.badResponse(let code, _) = error, code == 409,
+                // 501 = inapp(Compose)が press(長押し)に未対応(InAppBridge.swift 側で 501 化済み)。
+                // 409 はキーウィンドウ不在等の一時的競合と同じコードのため取り違える。
+                guard case DriverError.badResponse(let code, _) = error, code == 501,
                       let td = typeDriver else { throw error }
                 guard try await pressViaTypeDriver(td, step: step, phase: &phase) else { throw error }
                 gestureFallbackLatched = true
-                status = .passedViaFallback(step.locator ?? FlowLocator(raw: step.locatorSummary))
+                driverFallback = "XCUITest"
             }
         default:
             return StepOutcome(status: .skipped("未知のアクション: \(action)"))
         }
-        return StepOutcome(status: status, healedStep: healedStep, healedByCache: healedByCache)
+        return StepOutcome(status: status, healedStep: healedStep, healedByCache: healedByCache,
+                           driverFallback: driverFallback)
     }
 
     /// typeDriver で type を試みる。ref はブリッジごとに別名前空間なので typeDriver 側 snapshot で
@@ -476,29 +492,33 @@ public final class StepExecutor {
         return true
     }
 
-    /// swipe を通常ドライバ→(gesturesViaTypeDriver/ラッチ済みなら最初から、409 ならキャッチしてから)
+    /// swipe を通常ドライバ→(gesturesViaTypeDriver/ラッチ済みなら最初から、501 ならキャッチしてから)
     /// typeDriver の順で試す。swipe は ref を使わないので要素再解決は不要。
+    /// 戻り値: true = typeDriver(XCUITest)経由で実行した
     private func swipeWithFallback(_ direction: FTSwipeDirection,
-                                   phase: inout PhaseAccumulator) async throws {
+                                   phase: inout PhaseAccumulator) async throws -> Bool {
         let clock = ContinuousClock()
         if gesturesViaTypeDriver || gestureFallbackLatched, let td = typeDriver {
             let start = clock.now
             try await td.swipe(direction)
             phase.actionMs += Self.ms(clock.now - start)
-            return
+            return true
         }
         do {
             let start = clock.now
             try await driver.swipe(direction)
             phase.actionMs += Self.ms(clock.now - start)
+            return false
         } catch {
-            // 409 = inapp(Compose)が swipe を駆動できない兆候。type と同じ安全網
-            guard case DriverError.badResponse(let code, _) = error, code == 409,
+            // 501 = inapp(Compose)が swipe に未対応(InAppBridge.swift 側で 501 化済み)。
+            // 409 はキーウィンドウ不在等の一時的競合と同じコードのため取り違える。
+            guard case DriverError.badResponse(let code, _) = error, code == 501,
                   let td = typeDriver else { throw error }
             let start = clock.now
             try await td.swipe(direction)
             phase.actionMs += Self.ms(clock.now - start)
             gestureFallbackLatched = true
+            return true
         }
     }
 

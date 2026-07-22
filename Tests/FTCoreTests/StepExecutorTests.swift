@@ -16,6 +16,9 @@ private final class FakeAppDriver: AppDriver {
     private(set) var snapshotCallCount = 0
     /// 非 nil なら type(ref:text:) がこのエラーを throw する(409 リアクティブ切替の検証用)
     var typeError: Error?
+    /// 非 nil なら swipe/press がこのエラーを throw する(501 ジェスチャ切替の検証用)
+    var swipeError: Error?
+    var pressError: Error?
 
     init(name: String, log: CallLog, snapshotElements: [[ElementInfo]] = []) {
         self.name = name
@@ -62,9 +65,19 @@ private final class FakeAppDriver: AppDriver {
         log.entries.append("\(name).type(ref:\(ref.map(String.init) ?? "nil"))")
     }
 
-    func swipe(_ direction: FTSwipeDirection) async throws {}
+    func swipe(_ direction: FTSwipeDirection) async throws {
+        if let swipeError {
+            log.entries.append("\(name).swipe(throws)")
+            throw swipeError
+        }
+        log.entries.append("\(name).swipe")
+    }
 
     func press(ref: Int, duration: Double) async throws {
+        if let pressError {
+            log.entries.append("\(name).press(throws)")
+            throw pressError
+        }
         log.entries.append("\(name).press(ref:\(ref))")
     }
 
@@ -590,7 +603,88 @@ final class StepExecutorTests: XCTestCase {
                       "typeDriver が解決できないとき primary.type すべき: \(log.entries)")
     }
 
-    /// 409(inapp が非 UIKit 入力欄で first responder を張れない)はリアクティブに typeDriver へ切り替えること
+    // MARK: - ジェスチャのドライバフォールバック(Compose)
+
+    /// 501(このエンジンでは未対応)なら swipe を typeDriver へ切り替え、driverFallback を記録すること
+    func testSwipe501FallsBackToTypeDriver() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log)
+        primary.swipeError = DriverError.badResponse(status: 501, body: "compose では swipe が効きません")
+        let typeDriver = FakeAppDriver(name: "typedriver", log: log)
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver)
+
+        let outcome = await executor.execute(FlowStep(action: "swipe", direction: "up"))
+
+        guard case .passed = outcome.status else {
+            XCTFail("501 からの切替で passed を期待したが \(outcome.status) だった")
+            return
+        }
+        XCTAssertEqual(outcome.driverFallback, "XCUITest")
+        XCTAssertEqual(log.entries, ["primary.swipe(throws)", "typedriver.swipe"])
+    }
+
+    /// 409(キーウィンドウ不在等の一時的な競合)ではジェスチャを切り替えないこと。
+    /// 切り替えると「アプリが前面に無い」状況を隠して別画面を操作しかねない
+    func testSwipe409DoesNotFallBack() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log)
+        primary.swipeError = DriverError.badResponse(status: 409, body: "キーウィンドウがありません")
+        let typeDriver = FakeAppDriver(name: "typedriver", log: log)
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver)
+
+        let outcome = await executor.execute(FlowStep(action: "swipe", direction: "up"))
+
+        guard case .failed = outcome.status else {
+            XCTFail("409 は失敗のままを期待したが \(outcome.status) だった")
+            return
+        }
+        XCTAssertNil(outcome.driverFallback)
+        XCTAssertEqual(log.entries, ["primary.swipe(throws)"], "typeDriver を呼んではいけない")
+    }
+
+    /// gesturesViaTypeDriver(probe で compose 検出)なら 501 を待たず最初から typeDriver で撃つこと
+    func testGesturesViaTypeDriverRoutesUpfront() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log)
+        let typeDriver = FakeAppDriver(name: "typedriver", log: log)
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver,
+                                    gesturesViaTypeDriver: true)
+
+        let outcome = await executor.execute(FlowStep(action: "swipe", direction: "up"))
+
+        XCTAssertEqual(outcome.driverFallback, "XCUITest")
+        XCTAssertEqual(log.entries, ["typedriver.swipe"], "primary を無駄打ちしてはいけない")
+    }
+
+    /// press の 501 切替は ref を typeDriver 側 snapshot で取り直すこと(ref はブリッジごとに別名前空間)
+    func testPress501FallsBackAndReresolvesRef() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[element(ref: 1, id: "btn_long")]])
+        primary.pressError = DriverError.badResponse(status: 501, body: "compose では press が効きません")
+        let typeDriver = FakeAppDriver(name: "typedriver", log: log,
+                                       snapshotElements: [[element(ref: 9, id: "btn_long")]])
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver)
+        let step = FlowStep(action: "press", locator: FlowLocator(id: "btn_long"))
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("501 からの切替で passed を期待したが \(outcome.status) だった")
+            return
+        }
+        XCTAssertEqual(outcome.driverFallback, "XCUITest")
+        XCTAssertEqual(log.entries, [
+            "primary.snapshot",
+            "primary.press(throws)",
+            "typedriver.snapshot",
+            "typedriver.press(ref:9)",
+        ], "typeDriver 側の ref(9)で press すべき")
+    }
+
+    /// 409(inapp が非 UIKit 入力欄で first responder を張れない)はリアクティブに typeDriver へ切り替えること。
+    /// ドライバが変わっただけでセレクタは正しいので、ロケータの passedViaFallback ではなく
+    /// driverFallback 注記になる(誤ったセレクタ更新提案を防ぐ)。
     func testType409FallsBackToTypeDriverReactively() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log,
@@ -603,11 +697,11 @@ final class StepExecutorTests: XCTestCase {
 
         let outcome = await executor.execute(step)
 
-        guard case .passedViaFallback(let locator) = outcome.status else {
-            XCTFail("409 からの typeDriver 切替による passedViaFallback を期待したが \(outcome.status) だった")
+        guard case .passed = outcome.status else {
+            XCTFail("409 からの typeDriver 切替による passed を期待したが \(outcome.status) だった")
             return
         }
-        XCTAssertEqual(locator, FlowLocator(id: "field_email"))
+        XCTAssertEqual(outcome.driverFallback, "XCUITest")
         XCTAssertEqual(log.entries, [
             "primary.snapshot",
             "primary.type(throws)",

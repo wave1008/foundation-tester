@@ -524,7 +524,9 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
   - `preferTypeDriver`(Compose 検出時に最初から attach)は廃止(常に false)。
     `/status` の `uiFramework` 申告は情報として残存
   - 安全網: inapp type が 409 なら `typeDriver`(`AppAttachDriver`)でリアクティブ切替
-    (`passedViaFallback` 記録)。409 メッセージには first responder 診断が付く
+    (`StepOutcome.driverFallback` に記録。**ロケータの `passedViaFallback` とは別物**で、
+    セレクタ更新の提案は出さない=セレクタは正しくドライバが変わっただけ)。
+    409 メッセージには first responder 診断が付く
   `AppAttachDriver` は XCUITest ブリッジへ `/session {activate:true}`(実行中アプリを再起動せず
   状態保持で attach)→ snapshot → type(ref は typeDriver 側 snapshot で取り直す。ref 名前空間は
   ブリッジごとに独立)。**springboard 参照の SystemUIDriver(fallbackDriver)はアプリ要素を一切
@@ -599,14 +601,17 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
      `FTSynthTap` だけが通る
 
   対処は3層(1 はブリッジ側、2〜3 はホスト側)。**UIKit/SwiftUI 側の経路は一切変えていない**:
-  1. **ブリッジ**: Compose 検出時の `/swipe` `/press` は **409**(`InAppBridge.handleSwipe`/`handlePress`。
+  1. **ブリッジ**: Compose 検出時の `/swipe` `/press` は **501**(`InAppBridge.handleSwipe`/`handlePress`。
      判定は `/status` と同じ `compose-resources` マーカー)。黙って空振りするより
-     「12回スクロールしても見つかりません」のような誤診断を防ぐ方が価値が高い
+     「12回スクロールしても見つかりません」のような誤診断を防ぐ方が価値が高い。
+     **409 ではなく 501 なのは意図的**: 409 はキーウィンドウ不在等の一時的競合にも使われるため、
+     フォールバック判定に使うと「アプリが前面に無い」状況を隠して別画面を操作しかねない
+     (`/terminate` が既に 501=このエンジンでは未対応 を返している慣習に合わせた)
   2. **事前ルーティング**(2026-07-23): hybrid は in-app と XCUITest の両ブリッジを張るので、
      起動時プローブの `/status.uiFramework == "compose"` かつ typeDriver ありなら
      swipe/press/scrollTo のスワイプを**最初から** typeDriver(`AppAttachDriver`)へ回す
      (`StepExecutor.gesturesViaTypeDriver`)。409 の往復はゼロ
-  3. **事後 409 キャッチ**: プローブ不達で 2 が立たなかった場合の安全網。1回 409 を受けたら
+  3. **事後 501 キャッチ**: プローブ不達で 2 が立たなかった場合の安全網。1回 501 を受けたら
      ラッチして以降は直接 typeDriver へ(`scrollTo` は maxSwipes 回まわるので毎回往復させない)。
      `type` の 409 安全網と同じ形。**press は ref がブリッジごとに別名前空間**なので
      typeDriver 側で snapshot し直して再解決する(`pressViaTypeDriver`)
