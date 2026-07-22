@@ -1,0 +1,18 @@
+{
+  "app": "ft_e2e_flutter",
+  "machine": "M2 Ultra",
+  "devices": [
+    { "name": "Pixel 9(Android 15)-01" },
+    { "name": "Pixel 9(Android 15)-02" },
+    { "name": "Pixel 9(Android 15)-03" },
+    { "name": "Pixel 9(Android 15)-04" },
+    { "name": "Pixel 9(Android 15)-05" },
+    { "name": "Pixel 9(Android 15)-06" },
+    { "name": "Pixel 9(Android 15)-07" },
+    { "name": "Pixel 9(Android 15)-08" }
+  ],
+  "heal": false,
+  "reportDir": "reports",
+  "iosInappEngine": false,
+  "wipeDataOnBloat": true
+}
