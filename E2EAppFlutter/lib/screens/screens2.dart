@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ffi';
 
 import 'package:flutter/material.dart';
 
@@ -406,9 +407,12 @@ class DiagnosticsScreen extends StatelessWidget {
                 TaggedButton(Tags.btnCrashCancel, 'やめる',
                     onTap: () => Navigator.of(context).pop()),
                 // 押すと即プロセス異常終了する。クラッシュレポート添付の検証専用。
+                // **throw では落ちない**: Dart の例外はフレームワーク(FlutterError.onError /
+                // zone)に捕捉され、ログに出るだけでプロセスは生き続ける。プロセスを本当に
+                // 異常終了させるため、dart:ffi で NULL 参照して SIGSEGV を起こす。
                 TaggedButton(Tags.btnCrashConfirm, '本当にクラッシュ', onTap: () {
                   Navigator.of(context).pop();
-                  throw StateError('FT_E2E intentional crash');
+                  Pointer<Uint8>.fromAddress(0).value;
                 }),
               ],
             ),

@@ -87,6 +87,19 @@ for u in $(xcrun simctl list devices booted -j | ...); do xcrun simctl terminate
 | `09_条件分岐とダイアログ.swift` | `ifCanSelect` と `optional:`。UIAlertController のボタン id 解決 |
 | `10_ライフサイクルとコントロール.swift` | `relaunchApp` によるプロセス内/永続状態の分離、Switch/ラジオ/Slider の状態遷移 |
 
+## `_disabled/`(通常実行に含めない)
+
+**`_disabled/` は SPM のビルド対象外**(`Package.swift` の `exclude`)。回すときは
+`Scenarios/` 直下へ移動 → `swift build --product ftester-scenarios-E2E-iOS` → 実行 → 元に戻す。
+
+- `90_自己修復.swift` — FM 必須。`ios-heal` プロファイルで実行。**未検証**(検証時点で FM が
+  `SensitiveContentAnalysisML error 15` で不通のため。シナリオ側の機構〈schema を v2 に切り替えて
+  `#btn_heal_v1` が解決不能になる〉までは動作確認済み)
+- `91_クラッシュ検知.swift` — アプリを実際にクラッシュさせる破壊的シナリオ。**`ios-inapp` で回すこと**。
+  **2026-07-23 検証済み**: `fatalError` でプロセスが落ち、エラー行に `.ips` のパスと終了理由
+  (`EXC_BREAKPOINT SIGTRAP`)が付く。この検証で ftester 側のバグを2件発見・修正した
+  (`.ips` の探索が早すぎて取りこぼす / 前の実行の古い `.ips` を拾う)
+
 ## 注意
 
 - **ダイアログ見出しに id は付かない**。`exist("確認")` とラベルで引く。

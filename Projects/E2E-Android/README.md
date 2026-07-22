@@ -42,6 +42,17 @@ ftester run --project E2E-Android --profile android
 | `09_条件分岐とダイアログ.swift` | `ifCanSelect` と `optional:`。カスタムビュー AlertDialog の id 解決 |
 | `10_ライフサイクルとコントロール.swift` | `relaunchApp` によるプロセス内/永続状態の分離、Compose コントロールの状態遷移 |
 
+## `_disabled/`(通常実行に含めない)
+
+**`_disabled/` は SPM のビルド対象外**(`Package.swift` の `exclude`)。回すときは
+`Scenarios/` 直下へ移動 → `swift build --product ftester-scenarios-E2E-Android` → 実行 → 元に戻す。
+
+- `90_自己修復.swift` — FM 必須。`--heal` を付けて実行。**未検証**(検証時点で FM が不通)
+- `91_クラッシュ検知.swift` — アプリを実際にクラッシュさせる破壊的シナリオ。
+  **2026-07-23 検証済み**: メインスレッドの未捕捉 RuntimeException でプロセスが落ちる。
+  **Android のブリッジは別プロセス(instrumentation)なので切断せず**、iOS inapp のような
+  `.ips` 添付も無い。「要素が見つかりません」という形でクラッシュが現れる
+
 ## 注意
 
 - **同じアプリの中で型語彙が変わる**。View の Button は `Button`、Compose の Button は `Cell`。
