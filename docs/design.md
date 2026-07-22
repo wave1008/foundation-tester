@@ -752,6 +752,14 @@ DeviceBooter.defaultLocale(実行プロファイルの locale が届くのは wi
    残ワーカーがキューを引き継ぐ)
 5. RunOrchestrator で並列実行。ワーカーラベル=デバイスの論理名。レポートは
    `Projects/<P>/reports/`、ヒールキャッシュは `--project-dir` 経由で `Projects/<P>/.ftester/` に分離
+   - **シナリオの振り分けは platform 別の静的分配**(ワークスティールではない)。
+     `ProfileRunner` は iOS デバイスが1台でもあれば既定 platform を `ios` にし、
+     `RunOrchestrator` は `@TestClass` の `platform:` **未指定**シナリオをその既定 platform の
+     キューにだけ入れる。自分の platform のキューが無いワーカーは1本も受け取らずに終わる。
+     → **両OSのデバイスを供給する実行プロファイル(`all` 等)を使っても、platform 未指定の
+     シナリオは片方の OS でしか走らない**(供給された他方のデバイスは空回り)。
+     platform 非依存に書いたシナリオを両OSで回すなら `--profile ios` と `--profile android` を
+     別々に実行する。シナリオ数や負荷には依存しない決定的な挙動(2026-07-22 実測)
 6. `defaultTimeout` はランナーの `--default-timeout` → FTDriveCore に渡り、
    exist/textIs/valueIs の `timeout: Int? = nil` の既定値になる
 7. ワーカー構築(供給+インストール)は ProfileWorkerFactory(FTAndroid)に共通化され、
