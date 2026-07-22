@@ -234,7 +234,18 @@ public enum DeviceBooter {
             let serial = try AndroidDeviceCatalog.resolveSerial(spec: spec)
             let adb = try AndroidDriver.findADB()
             _ = try Shell.run([adb, "-s", serial, "emu", "kill"], timeout: 10)
-            log("✅ \(spec.name): エミュレータを停止しました(\(serial))")
+            // emu kill は非同期。serial 消失を待たずに戻ると runningDescription が停止直後も
+            // 「起動中」と誤報する(AndroidDataWiper.stopIfRunning と同じ死活確認・上限15s)。
+            let deadline = Date().addingTimeInterval(15)
+            while Date() < deadline {
+                let connected = (try? AndroidDeviceCatalog.connectedSerials()) ?? []
+                if !connected.contains(serial) {
+                    log("✅ \(spec.name): エミュレータを停止しました(\(serial))")
+                    return
+                }
+                try? await Task.sleep(nanoseconds: 500_000_000)
+            }
+            log("⚠️ \(spec.name): emu kill を送りましたが serial 消失を確認できません(\(serial))")
         }
     }
 

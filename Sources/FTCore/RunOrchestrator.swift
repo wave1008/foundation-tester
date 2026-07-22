@@ -111,6 +111,12 @@ private actor DeadlineGuard {
     }
 }
 
+/// withDeadline の満期スレッパー task 参照を保持する箱(op 勝利時に cancel するための前方参照用)。
+/// 代入は op の初回 await より前(同期区間)で完了するため実質レースしない。
+private final class DeadlineTaskBox: @unchecked Sendable {
+    var task: Task<Void, Never>?
+}
+
 /// 並列ワーカーからの文字列記録の収集(劣化ワーカー・振り直し監査)。run() が summary に畳む。
 private actor NoteCollector {
     private var entries: [String] = []
@@ -403,12 +409,18 @@ public final class RunOrchestrator {
         seconds: Double, _ op: @escaping @Sendable () async throws -> T
     ) async -> T? {
         let settled = DeadlineGuard()
+        // 敗者を残さないため相互キャンセルする(op が先に終わったら満期スリーパーを cancel。
+        // 残すと probe 毎に seconds 秒のスリーパー task が居座る=失敗プローブのホットパスで無駄)。
+        let timeoutBox = DeadlineTaskBox()
         return await withCheckedContinuation { (cont: CheckedContinuation<T?, Never>) in
             let opTask = Task {
                 let result = try? await op()
-                if await settled.claim() { cont.resume(returning: result) }
+                if await settled.claim() {
+                    timeoutBox.task?.cancel()
+                    cont.resume(returning: result)
+                }
             }
-            Task {
+            timeoutBox.task = Task {
                 try? await Task.sleep(nanoseconds: UInt64(max(0, seconds) * 1_000_000_000))
                 if await settled.claim() {
                     opTask.cancel()
