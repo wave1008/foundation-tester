@@ -190,7 +190,9 @@ final class FTInAppBridge {
         // Compose は drag を受理しない(tap のみ通る。2026-07-22 に Projects/E2E で実測)。
         // よってここで明示的に失敗させ、xcuitest プロファイルへ誘導する。
         if uiFramework == "compose" {
-            throw InAppError(409, "Compose Multiplatform では in-app エンジンの swipe/scrollTo が効きません"
+            // 501 = このエンジンでは未対応(/terminate と同じ慣習)。409(Conflict)はキーウィンドウ
+            // 不在等の一時的競合と同じコードのため、フォールバック判定に使うと取り違える。
+            throw InAppError(501, "Compose Multiplatform では in-app エンジンの swipe/scrollTo が効きません"
                 + "(UIScrollView を介さない自前描画で、合成タッチの drag も受理されない)。"
                 + "実行プロファイルで iosInappEngine: false(xcuitest)にしてください")
         }
@@ -251,7 +253,8 @@ final class FTInAppBridge {
         // swipe と同じ理由で Compose は合成タッチの長押しを受理しない(tap だけが通る)。
         // 黙って空振りさせず、xcuitest へ誘導する。
         if uiFramework == "compose" {
-            throw InAppError(409, "Compose Multiplatform では in-app エンジンの press(長押し)が効きません"
+            // 501 = このエンジンでは未対応(swipe と同じ理由。409 との取り違え防止)。
+            throw InAppError(501, "Compose Multiplatform では in-app エンジンの press(長押し)が効きません"
                 + "(合成タッチの押下保持が受理されない)。"
                 + "実行プロファイルで iosInappEngine: false(xcuitest)にしてください")
         }

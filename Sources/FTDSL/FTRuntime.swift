@@ -245,7 +245,15 @@ public final class FTDriveCore {
         let outcome = FTSync.run { await executor.execute(step, cached: cachedLocators) }
         let status = outcome?.status
             ?? .failed("コマンドがタイムアウトしました(\(Int(FTSync.commandTimeout))s)")
-        recordStep(description: description, status: status, file: filePath, line: Int(line),
+        // driverFallback はロケータの .passedViaFallback とは別物(セレクタは正しくドライバが
+        // 変わっただけ)。修正提案は出さず、説明文に注記だけ付ける。
+        let recordedDescription: String
+        if let driverFallback = outcome?.driverFallback {
+            recordedDescription = "\(description)(\(driverFallback) へフォールバック)"
+        } else {
+            recordedDescription = description
+        }
+        recordStep(description: recordedDescription, status: status, file: filePath, line: Int(line),
                    durationMs: outcome?.timing?.durationMs,
                    snapshotMs: outcome?.timing?.snapshotMs,
                    actionMs: outcome?.timing?.actionMs,
