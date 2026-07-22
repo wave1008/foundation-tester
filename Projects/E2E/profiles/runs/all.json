@@ -1,0 +1,16 @@
+{
+  "app": "ft_e2e",
+  "machine": "M2 Ultra",
+  "devices": [
+    {
+      "name": "iPhone 17 Pro(iOS 27.0)"
+    },
+    {
+      "name": "Pixel 9(Android 15)-01"
+    }
+  ],
+  "heal": false,
+  "reportDir": "reports",
+  "iosInappEngine": false,
+  "wipeDataOnBloat": true
+}
