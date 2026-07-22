@@ -183,11 +183,22 @@ final class FTInAppBridge {
 
     private func handleSwipe(_ body: Data) throws -> InAppHTTPServer.Response {
         let req = try decode(SwipeRequest.self, body)
+        // Compose Multiplatform は自前描画で、スクロールも長押しも UIKit を経由しない。
+        // この経路は「画面内の UIScrollView の contentOffset を動かす」ものだが、Compose の
+        // 画面にも**本体のスクロールとは無関係な UIScrollView が存在する**ため、動かしても
+        // 見た目は一切変わらず、エラーも出ない = 黙った空振りになる。合成タッチへ迂回しても
+        // Compose は drag を受理しない(tap のみ通る。2026-07-22 に Projects/E2E で実測)。
+        // よってここで明示的に失敗させ、xcuitest プロファイルへ誘導する。
+        if uiFramework == "compose" {
+            throw InAppError(409, "Compose Multiplatform では in-app エンジンの swipe/scrollTo が効きません"
+                + "(UIScrollView を介さない自前描画で、合成タッチの drag も受理されない)。"
+                + "実行プロファイルで iosInappEngine: false(xcuitest)にしてください")
+        }
         try performWithSettle { window in
-            // スクロールのジェスチャ認識器は合成タッチでは駆動できない(tap と同じ)。
-            // スクロール可能要素の contentOffset を直接動かす(accessibilityScroll は SwiftUI List で
-            // 片方向しか効かず不安定だった。setContentOffset は決定的・双方向)。
-            if let scrollView = Self.findScrollView(in: window) {
+            // UIKit/SwiftUI のスクロールは合成タッチでは駆動できない(ジェスチャ認識器が受理しない)ため、
+            // contentOffset を直接動かす(accessibilityScroll は SwiftUI List で片方向しか効かず不安定
+            // だった。setContentOffset は決定的・双方向)。
+            if let scrollView = Self.largestScrollView(in: window) {
                 Self.scrollByPage(scrollView, direction: req.direction)
             } else {
                 let (from, to) = Self.swipeVector(req.direction, in: window.bounds)
@@ -217,8 +228,8 @@ final class FTInAppBridge {
         sv.setContentOffset(offset, animated: false)
     }
 
-    /// 面積最大の可視スクロールビューを返す(メインのリスト/スクロール領域)
-    private static func findScrollView(in window: UIWindow) -> UIScrollView? {
+    /// 面積最大の可視スクロールビュー(メインのリスト/スクロール領域)
+    private static func largestScrollView(in window: UIWindow) -> UIScrollView? {
         var best: UIScrollView?
         var bestArea: CGFloat = 0
         var stack: [UIView] = [window]
@@ -237,6 +248,13 @@ final class FTInAppBridge {
         // duration は FTSynthPress がメイン run loop を保持する秒数。過大値/NaN で対象アプリの UI が
         // 長時間フリーズするのを防ぐため 0〜10s にクランプする(長押しの実用範囲を十分カバー)。
         let duration = req.duration.isFinite ? min(max(req.duration, 0), 10) : 0
+        // swipe と同じ理由で Compose は合成タッチの長押しを受理しない(tap だけが通る)。
+        // 黙って空振りさせず、xcuitest へ誘導する。
+        if uiFramework == "compose" {
+            throw InAppError(409, "Compose Multiplatform では in-app エンジンの press(長押し)が効きません"
+                + "(合成タッチの押下保持が受理されない)。"
+                + "実行プロファイルで iosInappEngine: false(xcuitest)にしてください")
+        }
         // press は block 内で duration 秒メインを保持する。settle cap(2500)とは別に、その保持分を
         // blockBudgetMs として semaphore タイムアウトに足す(足さないと長い duration で settle 完了前に
         // タイムアウトが発火し、実行中に OK を返してしまう)。
