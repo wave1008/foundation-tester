@@ -27,9 +27,15 @@
 - macOS ベータを更新したら Xcode も同じベータへ揃えてフルリビルド。FoundationModels の ABI 不整合で全バイナリが dyld クラッシュする(swift build は SDKROOT/--sdk を無視するため Xcode 側を揃えるしかない)
 - Xcode(beta)単体の更新でも同様: iOS ランタイム導入(`xcodebuild -downloadPlatform iOS`)+ランナー再ビルドで整合させる。不整合はアプリが数操作で「Application is not running」クラッシュする(`ftester doctor` が DTXcodeBuild 不一致を警告。2026-07-21 実害)
 - テストが「Application is not running」で全滅したら、ランナーや自分の変更を疑う前に **SUT のバックエンド死活を確認**(sut-ec-mobile は localhost:8090 の dev サーバ。停止中はアプリが非同期例外でクラッシュする)。apps プロファイルの healthCheckURL が実行開始時に警告を出す
-- ftester 自身の E2E(Projects/E2E)は同梱アプリ `E2EApp/` を SUT にする。**アプリの UI を変えたら再ビルドが必要**
-  (`E2EApp/scripts/build-ios.sh` / `build-android.sh` → `E2EApp/dist/`。apps プロファイルが autoInstall で拾う)。
-  ネットワーク依存ゼロなのでバックエンド死活の切り分けは不要。実行は `ftester run --project E2E --profile ios` と `--profile android` の2回(両OS共通シナリオは片方の OS でしか走らないため。design.md §11.4)
+- **次を変えたら `Scripts/e2e.sh` を回す**(ftester 自身の E2E。ユニットテストはデバイス境界のバグを
+  1つも捕まえられないため、ここを通さないと「黙って空振りする」類の退行が素通りする):
+  - DSL コマンド(`Sources/FTDSL/Commands.swift`)・`StepExecutor`・ドライバ(`Sources/FTBridgeClient/`)
+  - ブリッジ(`InAppBridge/`・`Runner/`・`AndroidRunner/`)
+  - セレクタ解決・スナップショット・ヒール(`FTAgent`)
+- `Scripts/e2e.sh` は SUT(`E2EApp/`)の鮮度を見て必要なら再ビルドし、`ios-xcuitest` と `android` を順に回す
+  (`--rebuild` / `--ios` / `--android`)。**両OSを1プロファイルにまとめない**: platform 未指定シナリオは
+  既定 platform のキューにしか入らず他方のワーカーが空回りする(design.md §11.4)。
+  SUT はネットワーク依存ゼロなのでバックエンド死活の切り分けは不要
 - `ftester api ...` の JSON/NDJSON 契約を後方非互換に変えたら `Sources/FTCore/ProtocolVersion.swift` と `vscode-ftester/src/protocolVersion.ts` の版を +1(両者一致必須・`protocolVersion.test.mjs` が検出)。拡張は起動時に `ftester api version` で照合し不一致を警告する(`compatCheck.ts`)
 
 ## 実装の委譲
