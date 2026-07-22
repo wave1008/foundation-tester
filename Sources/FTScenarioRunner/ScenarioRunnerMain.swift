@@ -225,7 +225,11 @@ struct RunScenario: AsyncParsableCommand {
                     let noFastLaunch = ProcessInfo.processInfo.environment["FT_NO_FAST_LAUNCH"] == "1"
                     let inner: AppDriver = (!noFastLaunch && udid != nil)
                         ? FastLaunchDriver(base: client, udid: udid!) : client
-                    driver = udid.map { LaunchPreflightDriver(base: inner, udid: $0) } ?? client
+                    // SessionRecoveryDriver は最外側(回復時の activate に LaunchPreflightDriver の
+                    // 未インストール検査を効かせるため)。in-app/hybrid 経路には入れない
+                    // (InAppDriver は別プロトコルで 409 の意味が違う)。
+                    driver = SessionRecoveryDriver(
+                        base: udid.map { LaunchPreflightDriver(base: inner, udid: $0) } ?? client)
                 }
             case "android":
                 driver = try AndroidDriver(serial: serial)

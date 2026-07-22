@@ -375,7 +375,10 @@ final class BridgeRouter {
 
     private func requireApp() throws -> XCUIApplication {
         guard let app else {
-            throw BridgeError(409, "セッションがありません。POST /session でアプリを起動してください")
+            // status は 409 のまま変えないこと(ホスト側 SessionRecoveryDriver がこの1箇所の
+            // 409 だけを「セッション消失」と断定して判定に使う)
+            throw BridgeError(409, "XCUITest ランナーにセッションがありません"
+                + "(ランナー再起動でセッションが失われた可能性)。ホストが /session で張り直します")
         }
         return app
     }
