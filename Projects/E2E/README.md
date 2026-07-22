@@ -18,7 +18,7 @@ cd E2EApp
 ftester run --project E2E --profile ios        # iPhone 17 Pro(iOS 27.0)・xcuitest エンジン(全件グリーンの基準)
 ftester run --project E2E --profile ios-inapp  # 同じ端末を inapp エンジンで(エンジン差分の観測用)
 ftester run --project E2E --profile android    # Pixel 9(Android 15)-01
-ftester run --project E2E --profile all        # 両OS のデバイスを供給(下記の注意あり)
+ftester run --project E2E --profile all        # 両OS のデバイスを供給するだけ(E2E では使わない。下記)
 ftester run --project E2E --profile heal       # --heal(_disabled/90 を有効化して回すとき)
 ```
 
@@ -46,12 +46,21 @@ iOS では inapp が「時間・移動を伴うジェスチャ」を駆動でき
 xcuitest へ誘導するようにした(黙った空振り → 「12回スクロールしても見つかりません」のような
 誤診断を防ぐ)。UIKit/SwiftUI の経路は不変。
 
-### `all` は「両OSで回る」保証ではない
+### 両OSで回すときは `ios` と `android` を別々に実行する(`all` は使わない)
 
-`all` は両OSのデバイスを供給するだけで、割り当ては空いたレーンが取るワークスティール方式。
-18本程度だと **iOS レーンが全部さらって Android が 0 本になる**(実測。レーン稼働の偏りは
-docs/performance-tuning.md §3.6 の既知傾向)。**両OSのカバレッジを担保したいときは `ios` と
-`android` を別々に回すこと。**
+**このプロジェクトで `all` を使っても Android では1本も走らない。** シナリオの振り分けは
+**platform 別の静的分配**で、空いたレーンが取りに行く仕組みではない:
+
+- `ProfileRunner` は「iOS デバイスが1台でもあれば」既定 platform を `ios` にする
+- `RunOrchestrator` は `@TestClass` の `platform:` 未指定シナリオを**その既定 platform のキューにだけ**入れる
+- 自分の platform のキューが無いワーカーは**1本も受け取らずに終わる**
+
+E2E のシナリオは全て `@TestClass(app: "com.ftester.e2e")` で `platform:` を持たない(=両OS共通で
+書いてある)ため、`all` では全 18 本が iOS キューに入り、Android エミュレータは起動されるだけで空回りする。
+実測でもレポート 18 件すべて `platform: ios` だった。シナリオ数や負荷には依存しない決定的な挙動。
+
+**したがって両OSのカバレッジは `--profile ios` と `--profile android` の2回実行で担保する。**
+`all.json` は他プロジェクトとの形を揃えて残してあるだけで、E2E では用途がない。
 
 ## 実測(2026-07-22・M2 Ultra)
 
