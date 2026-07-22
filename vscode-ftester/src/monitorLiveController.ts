@@ -257,6 +257,10 @@ export class MonitorLiveController implements vscode.Disposable {
     this.stopServeProcess();
     this.stopStreamPipeline();
     this.clearFrameTimer();
+    // パネル close/dispose 経由でのみ呼ばれる(終端)。可視フラグを落とさないと、パネル不在後に
+    // preferPlatform 等が liveTabVisible=true を見て serve/stream を無表示で respawn し得る。
+    // 再オープン時は panelVisible メッセージが冪等に再設定するため安全。
+    this.liveTabVisible = false;
   }
 
   dispose(): void {
@@ -561,21 +565,32 @@ export class MonitorLiveController implements vscode.Disposable {
   private waitForStreamSync(timeoutMs: number): Promise<boolean> {
     return new Promise((resolve) => {
       let settled = false;
-      const timer = setTimeout(() => {
-        if (settled) {
-          return;
+      const removeWaiter = () => {
+        const i = this.streamSyncWaiters.indexOf(waiter);
+        if (i >= 0) {
+          this.streamSyncWaiters.splice(i, 1);
         }
-        settled = true;
-        resolve(false);
-      }, timeoutMs);
-      this.streamSyncWaiters.push(() => {
+      };
+      // タイムアウトでも waiter を配列から除去する。残すと再接続が来ないまま prepareForRun が
+      // 繰り返しタイムアウトした際に streamSyncWaiters が次の handleConnectionOk まで無制限に伸びる。
+      const waiter = () => {
         if (settled) {
           return;
         }
         settled = true;
         clearTimeout(timer);
+        removeWaiter();
         resolve(true);
-      });
+      };
+      const timer = setTimeout(() => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        removeWaiter();
+        resolve(false);
+      }, timeoutMs);
+      this.streamSyncWaiters.push(waiter);
     });
   }
 
