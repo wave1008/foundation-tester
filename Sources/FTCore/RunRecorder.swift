@@ -33,9 +33,11 @@ public final class RunRecorder: @unchecked Sendable {
     private let lock = NSLock()
     /// ファイル名(sanitize 済み scenarioID)ごとの記録回数。2 回目以降は `~<回数>` を付与
     private var fileNameCounts: [String: Int] = [:]
+    private let hostMetrics: HostMetricsRecorder?
 
     private init(runID: String, projectName: String, profile: String?, machine: String,
-                trigger: String, startedAt: String, runDir: URL) {
+                trigger: String, startedAt: String, runDir: URL,
+                hostMetrics: HostMetricsRecorder?) {
         self.runID = runID
         self.projectName = projectName
         self.profile = profile
@@ -43,18 +45,27 @@ public final class RunRecorder: @unchecked Sendable {
         self.trigger = trigger
         self.startedAt = startedAt
         self.runDir = runDir
+        self.hostMetrics = hostMetrics
     }
 
-    public static func begin(project: TestProject, profile: String?, trigger: String) -> RunRecorder {
+    public static func begin(project: TestProject, profile: String?, trigger: String,
+                             captureHostMetrics: Bool = true) -> RunRecorder {
         let machine = resolveMachine()
         let runID = makeRunID(machine: machine)
         let resultsDir = RunResultsStore.resultsDir(projectRoot: project.rootURL)
         let runDir = RunResultsStore.runDir(resultsDir: resultsDir, runID: runID)
         let startedAt = ISO8601DateFormatter().string(from: Date())
 
+        // runDir/host-metrics.ndjson へ 1Hz 採取・finish で停止
+        let hostMetrics: HostMetricsRecorder? = captureHostMetrics
+            ? HostMetricsRecorder(
+                outputURL: runDir.appendingPathComponent("host-metrics.ndjson"), interval: 1,
+                logFailure: { FileHandle.standardError.write(Data(("[RunRecorder] " + $0 + "\n").utf8)) })
+            : nil
+
         let recorder = RunRecorder(
             runID: runID, projectName: project.name, profile: profile, machine: machine,
-            trigger: trigger, startedAt: startedAt, runDir: runDir)
+            trigger: trigger, startedAt: startedAt, runDir: runDir, hostMetrics: hostMetrics)
 
         let meta = RunMetaRecord(
             runID: runID, project: project.name, profile: profile, machine: machine,
@@ -97,6 +108,7 @@ public final class RunRecorder: @unchecked Sendable {
 
     public func finish(total: Int, passed: Int, failed: Int, degradedWorkers: [String] = [],
                        freezeRetries: [String] = []) {
+        hostMetrics?.stop()
         let meta = RunMetaRecord(
             runID: runID, project: projectName, profile: profile, machine: machine,
             trigger: trigger, startedAt: startedAt,

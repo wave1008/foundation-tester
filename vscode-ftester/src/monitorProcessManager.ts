@@ -33,8 +33,6 @@ type HostMetricsRawEvent = {
   readonly ts: number;
   readonly cpu: number | null;
   readonly gpu: number | null;
-  readonly ane: number | null;
-  readonly aneWatts: number | null;
   readonly memUsedBytes: number | null;
   readonly memTotalBytes: number | null;
 };
@@ -51,8 +49,6 @@ function isHostMetricsEvent(value: unknown): value is HostMetricsRawEvent {
     typeof record.ts === "number" &&
     numberOrNull(record.cpu) &&
     numberOrNull(record.gpu) &&
-    numberOrNull(record.ane) &&
-    numberOrNull(record.aneWatts) &&
     numberOrNull(record.memUsedBytes) &&
     numberOrNull(record.memTotalBytes)
   );
@@ -63,8 +59,6 @@ export type HostMetricsToWebviewMessage = {
   readonly type: "hostMetrics";
   readonly cpu: number | null;
   readonly gpu: number | null;
-  readonly ane: number | null;
-  readonly aneWatts: number | null;
   readonly memUsedBytes: number | null;
   readonly memTotalBytes: number | null;
 };
@@ -342,7 +336,8 @@ export class MonitorProcessManager {
   /**
    * host-metrics プロセス(`ftester api host-metrics --interval 1`)を spawn する。--project/--profile は
    * 付けない — ホストMac自体の値であり監視対象デバイスに依存しないため(restartMonitorIfScopeChanged()
-   * からは呼ばない)。
+   * からは呼ばない)。このプロセスはライブ表示専用でファイル永続化は行わない — 実行履歴は
+   * run 単位(RunRecorder)で results/runs/<YYYY-MM>/<runID>/host-metrics.ndjson へ記録される。
    */
   startHostMetricsProcess(): void {
     // 予約済みの自動再起動があれば無効化する。「プロセス終了→close未配送」の隙間で
@@ -355,11 +350,15 @@ export class MonitorProcessManager {
     const config = this.deps.getConfig();
     let proc: MonitorProcess;
     try {
-      proc = this.spawnFn(config.binaryPath, ["api", "host-metrics", "--interval", "1"], {
-        cwd: this.deps.workspaceRoot,
-        shell: false,
-        stdio: ["pipe", "pipe", "pipe"],
-      });
+      proc = this.spawnFn(
+        config.binaryPath,
+        ["api", "host-metrics", "--interval", "1"],
+        {
+          cwd: this.deps.workspaceRoot,
+          shell: false,
+          stdio: ["pipe", "pipe", "pipe"],
+        },
+      );
     } catch (error) {
       this.deps.outputChannel.appendLine(t("deviceOps.log.hostMetricsStartFailed", { error: String(error) }));
       return;
@@ -384,8 +383,6 @@ export class MonitorProcessManager {
           type: "hostMetrics",
           cpu: value.cpu,
           gpu: value.gpu,
-          ane: value.ane,
-          aneWatts: value.aneWatts,
           memUsedBytes: value.memUsedBytes,
           memTotalBytes: value.memTotalBytes,
         });

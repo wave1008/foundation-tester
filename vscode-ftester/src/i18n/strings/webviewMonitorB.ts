@@ -134,8 +134,10 @@ export const webviewMonitorBStrings = {
   // hostCharts.js
   "wvMonitor2.hostCharts.cpuTitle": { ja: "CPU負荷 {value}", en: "CPU load {value}" },
   "wvMonitor2.hostCharts.gpuTitle": { ja: "GPU負荷 {value}", en: "GPU load {value}" },
-  "wvMonitor2.hostCharts.aneTitle": { ja: "ANE負荷 {value}", en: "ANE load {value}" },
-  "wvMonitor2.hostCharts.wattsSuffix": { ja: "({watts}W)", en: "({watts}W)" },
+  "wvMonitor2.hostCharts.fmTitle": {
+    ja: "FM 呼び出し {total}回 / 計{totalSec}秒(直近1秒 {delta}回)",
+    en: "FM calls {total} / {totalSec}s total (last 1s: {delta})",
+  },
   "wvMonitor2.hostCharts.memTitle": {
     ja: "メモリ使用量 {used} / {total} GB({percent})",
     en: "Memory usage {used} / {total} GB ({percent})",
