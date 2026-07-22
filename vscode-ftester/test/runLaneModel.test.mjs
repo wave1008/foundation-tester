@@ -104,6 +104,12 @@ test("scenarioStarted〜scenarioFinished の間、そのworkerは workerRunning:
   );
 });
 
+test("runStarted は cleared を出す(FM グラフの累計リセットの起点)", () => {
+  const state = createRunLaneState();
+  const actions = feed(state, [{ kind: "runStarted" }]);
+  assert.deepEqual(actions, [{ type: "cleared" }]);
+});
+
 test("scenarioFinished に fm があれば fmUsage アクションを出す(モニターの FM グラフの供給元)", () => {
   const state = createRunLaneState();
   const actions = feed(state, [
