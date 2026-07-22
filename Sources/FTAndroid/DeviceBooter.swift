@@ -312,6 +312,9 @@ public enum DeviceBooter {
             }
             try? await Task.sleep(nanoseconds: 1_000_000_000)
         }
+        // serial を掴めないまま放置すると、起動済みエミュレータが参照されないまま ~3コアを消費し続ける
+        // (次回スキャンで自己回復するが当該 run 中は resource を食う)。失敗経路では明示終了する。
+        process.terminate()
         throw DeviceBooterError.commandFailed(
             "エミュレータの serial を検出できません(\(avd)。AVD 名が正しいか確認してください)")
     }
