@@ -115,6 +115,10 @@ final class BridgeHTTPServer {
             // InAppHTTPServer と同じ防御(あちらは対象アプリ、こちらは XCUITest ランナーがクラッシュする)。
             var noSigPipe: Int32 = 1
             setsockopt(clientFD, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
+            // 相手が Content-Length 分を送り切らずに待つと read が無限ブロックし接続直列処理の全体が
+            // 固まる。受信タイムアウトで停滞読取を離脱させる(InAppHTTPServer と同じ防御)。
+            var rcvTimeout = timeval(tv_sec: 15, tv_usec: 0)
+            setsockopt(clientFD, SOL_SOCKET, SO_RCVTIMEO, &rcvTimeout, socklen_t(MemoryLayout<timeval>.size))
             autoreleasepool {
                 if let request = readRequest(clientFD) {
                     writeResponse(clientFD, dispatchToMain(request))
@@ -182,6 +186,8 @@ final class BridgeHTTPServer {
                 contentLength = Int(kv[1].trimmingCharacters(in: .whitespaces)) ?? 0
             }
         }
+        // 過大/不正な Content-Length は無制限メモリ確保・長時間読取の的になるため弾く(不正=nil→400)。
+        if contentLength < 0 || contentLength > 8_000_000 { return nil }
 
         var body = Data(buffer[hr.upperBound...])
         while body.count < contentLength {

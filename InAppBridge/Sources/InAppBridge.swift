@@ -234,12 +234,15 @@ final class FTInAppBridge {
 
     private func handlePress(_ body: Data) throws -> InAppHTTPServer.Response {
         let req = try decode(PressRequest.self, body)
+        // duration は FTSynthPress がメイン run loop を保持する秒数。過大値/NaN で対象アプリの UI が
+        // 長時間フリーズするのを防ぐため 0〜10s にクランプする(長押しの実用範囲を十分カバー)。
+        let duration = req.duration.isFinite ? min(max(req.duration, 0), 10) : 0
         // press は block 内で duration 秒メインを保持する。settle cap(2500)とは別に、その保持分を
         // blockBudgetMs として semaphore タイムアウトに足す(足さないと長い duration で settle 完了前に
         // タイムアウトが発火し、実行中に OK を返してしまう)。
-        try performWithSettle(blockBudgetMs: Int(req.duration * 1000) + 500) { window in
+        try performWithSettle(blockBudgetMs: Int(duration * 1000) + 500) { window in
             let p = try self.resolvePoint(ref: req.ref, x: nil, y: nil)
-            FTSynthPress(window, p, req.duration)
+            FTSynthPress(window, p, duration)
         }
         return .json(OKResponse())
     }

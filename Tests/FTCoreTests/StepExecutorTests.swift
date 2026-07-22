@@ -299,6 +299,19 @@ final class StepExecutorTests: XCTestCase {
         XCTAssertEqual(primary.snapshotCallCount, 1, "初回照会は1回だけ")
     }
 
+    /// scrollTo に負の maxSwipes が来ても 0...(-1) で trap せず、初回照会で存在すれば pass する。
+    func testScrollToNegativeMaxSwipesDoesNotTrap() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[textElement(id: "msg", label: "こんにちは")]])
+        let executor = StepExecutor(driver: primary)
+        let step = FlowStep(action: "scrollTo", locator: FlowLocator(id: "msg"), maxSwipes: -1)
+
+        guard case .passed = await executor.execute(step).status else {
+            XCTFail("負の maxSwipes でも trap せず初回発見で pass のはず"); return
+        }
+    }
+
     /// textIs(occlusionGuard 既定)も同じガードを通る: 一致しても覆われていれば失敗へ反転
     func testOcclusionGuardOnTextEquals() async throws {
         let log = CallLog()
