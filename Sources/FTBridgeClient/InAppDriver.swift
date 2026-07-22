@@ -66,20 +66,30 @@ public final class InAppDriver: AppDriver {
         do {
             return try await op()
         } catch let DriverError.bridgeConnectionRefused(detail) {
-            throw DriverError.bridgeConnectionRefused(crashAnnotated(detail))
+            throw DriverError.bridgeConnectionRefused(await crashAnnotated(detail))
         } catch let DriverError.bridgeUnreachable(detail) {
-            throw DriverError.bridgeUnreachable(crashAnnotated(detail))
+            throw DriverError.bridgeUnreachable(await crashAnnotated(detail))
         }
     }
 
-    private func crashAnnotated(_ detail: String) -> String {
+    /// クラッシュ検知時の注記。**.ips は落ちてから遅れて書かれる**(実測: ブリッジ切断の
+    /// 約 2 秒後。Projects/E2E-iOS の 91_クラッシュ検知 で確認)。切断直後に1回だけ探すと
+    /// ファイルがまだ無く「見つかりませんでした」になるため、短くポーリングして待つ。
+    /// この経路は既に失敗が確定しているので、待ち時間が正常系を遅らせることはない。
+    private func crashAnnotated(_ detail: String) async -> String {
         guard let bundleID = lastBundleID else { return detail }
-        if let hit = SimulatorCrashReport.findRecent(bundleID: bundleID) {
-            let suffix = hit.reason.map { " (\($0))" } ?? ""
-            return detail + " / アプリがクラッシュしました: \(hit.path)\(suffix)"
+        for attempt in 0..<8 {
+            // within を既定(120s)のままにすると、**前の実行が残した .ips** が先に窓へ入って
+            // 古いパスと終了理由を報告してしまう(実測: 94 秒前のレポートを拾った)。
+            // 今しがた切断したのだから、対象は数秒以内のものだけでよい。
+            if let hit = SimulatorCrashReport.findRecent(bundleID: bundleID, within: 10) {
+                let suffix = hit.reason.map { " (\($0))" } ?? ""
+                return detail + " / アプリがクラッシュしました: \(hit.path)\(suffix)"
+            }
+            if attempt < 7 { try? await Task.sleep(for: .milliseconds(500)) }
         }
         return detail + " / 直近のクラッシュレポートは見つかりませんでした"
-            + "(OS によるプロセス終了・メモリ圧・自発終了の可能性。"
+            + "(4秒待っても .ips が現れず。OS によるプロセス終了・メモリ圧・自発終了の可能性。"
             + "ハイブリッド混在実行では背面アプリが suspend/終了されることがあります)"
     }
 }

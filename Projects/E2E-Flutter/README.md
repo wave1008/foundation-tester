@@ -48,6 +48,23 @@ ftester run --project E2E-Flutter --profile android
 | `09_条件分岐とダイアログ.swift` | `ifCanSelect` と `optional:` |
 | `10_ライフサイクルとプラットフォーム分岐.swift` | `relaunchApp`、`ios {}` / `android {}`、コントロールの状態遷移 |
 
+## `_disabled/`(通常実行に含めない)
+
+**`_disabled/` は SPM のビルド対象外**(`Package.swift` の `exclude`)。回すときは
+`Scenarios/` 直下へ移動 → `swift build --product ftester-scenarios-E2E-Flutter` → 実行 → 元に戻す。
+
+- `90_自己修復.swift` — FM 必須。`--heal` を付けて実行。**未検証**(検証時点で FM が不通)
+- `91_クラッシュ検知.swift` — アプリを実際にクラッシュさせる破壊的シナリオ。**`ios-xcuitest` で回す**。
+  **2026-07-23 検証済み**: `dart:ffi` の NULL 参照(SIGSEGV)でプロセスが落ち、
+  「Application ... is not running」(XCUITest 500)として現れる。
+  **Dart の `throw` では落ちない**(フレームワークに捕捉される)ため意図的に不正メモリアクセスにしている
+
+## Flutter は in-app エンジンでは動かない(2026-07-23 実測)
+
+`iosInappEngine: true`(hybrid)で回すと **a11y ツリーが取れず要素が1つも見えない**
+(`#txt_home_marker` すら解決できない)。原因は未特定。
+そのため `ios-inapp` プロファイルは置かず、iOS は `ios-xcuitest` で回す。
+
 ## 注意(Flutter 特有。シナリオの書き方に直接効く)
 
 - **`launchApp()` の直後に `exist("#txt_home_marker")` を必ず挟む**。Flutter は起動直後の数百 ms、
