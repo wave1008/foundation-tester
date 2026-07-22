@@ -301,11 +301,19 @@ public struct BridgeLauncher {
             case "pid":
                 if let pidString = try? String(contentsOf: entry, encoding: .utf8),
                    let pid = Int32(pidString.trimmingCharacters(in: .whitespacesAndNewlines)) {
-                    kill(pid, SIGTERM)
-                    terminated.append(pid)
-                    stopped.append(entry.deletingPathExtension().lastPathComponent
-                        .replacingOccurrences(of: "bridge-", with: ""))
+                    let port = entry.deletingPathExtension().lastPathComponent
+                        .replacingOccurrences(of: "bridge-", with: "")
+                    // PID 再利用対策: pid ファイルの PID が実際に当該ポートのランナーか cmdline で確認してから
+                    // 殺す(stopMatching/killOrphanRunners と同方針)。-ww で cmdline 切り詰めを防ぎ、
+                    // -xctestrun のポート専用ファイル名で同定する。無関係な再利用 PID は撃たない。
+                    let ps = try? Shell.run(["ps", "-ww", "-p", String(pid), "-o", "command="])
+                    if let ps, ps.status == 0, ps.output.contains("FTesterRunner-\(port).xctestrun") {
+                        kill(pid, SIGTERM)
+                        terminated.append(pid)
+                        stopped.append(port)
+                    }
                 }
+                // 同定できてもできなくても stale な pid ファイルは掃除する(assignPort の採番ずれ防止)。
                 try? FileManager.default.removeItem(at: entry)
             case "inapp":
                 InAppBridgeState.terminateAndRemove(at: entry)

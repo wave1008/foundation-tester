@@ -802,13 +802,35 @@ async function executeDebugRun(
     }
 
     await new Promise<void>((resolve) => {
-      const terminateListener = vscode.debug.onDidTerminateDebugSession((terminated) => {
-        if (!matchesThisRun(terminated)) {
+      let settled = false;
+      let graceTimer: ReturnType<typeof setTimeout> | undefined;
+      const finish = () => {
+        if (settled) {
           return;
         }
+        settled = true;
         terminateListener.dispose();
+        clearInterval(poll);
+        if (graceTimer) {
+          clearTimeout(graceTimer);
+        }
         resolve();
+      };
+      const terminateListener = vscode.debug.onDidTerminateDebugSession((terminated) => {
+        if (matchesThisRun(terminated)) {
+          finish();
+        }
       });
+      // フェイルセーフ: アダプタが terminate イベントを発火せずに死ぬ/固まると、この Promise が
+      // 永久に解決せず finally が走らない(watcher 停止・activeRunCount 詰まり・スピナー残留が全体に波及)。
+      // キャンセル要求後、または完了イベント(outcome)受領後に terminate が来なければ猶予後に解放する。
+      // 正常時は terminateListener が先に発火するためこの経路は使わない。
+      const GRACE_MS = 10_000;
+      const poll = setInterval(() => {
+        if ((token.isCancellationRequested || outcome !== undefined) && !graceTimer) {
+          graceTimer = setTimeout(finish, GRACE_MS);
+        }
+      }, 500);
     });
 
     if (outcome) {

@@ -493,7 +493,11 @@ struct ApiRunCommand: AsyncParsableCommand {
                                                                        repoRoot: repoRoot, log: { logStderr($0) }) {
                         let installed = (try? await ProfileWorkerFactory.installIfNeeded(
                             apps: resolved.apps, workers: [w], forceAndroidInstall: false) { logStderr($0) }) ?? [w]
-                        return installed.first ?? w
+                        let revived = installed.first ?? w
+                        // revive でブリッジポートが変わると label も変わる。stable id 変換表へ登録しないと
+                        // 以後の step/log 等の NDJSON worker が workersReady の id と不一致になる(lateWorkers と同処理)。
+                        workerID.merge([revived])
+                        return revived
                     }
                     try? await Task.sleep(nanoseconds: 5_000_000_000)
                 }
