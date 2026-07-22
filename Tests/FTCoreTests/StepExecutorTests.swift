@@ -619,7 +619,7 @@ final class StepExecutorTests: XCTestCase {
             XCTFail("501 からの切替で passed を期待したが \(outcome.status) だった")
             return
         }
-        XCTAssertEqual(outcome.driverFallback, "XCUITest")
+        XCTAssertEqual(outcome.driverFallback, "XCUITest へフォールバック")
         XCTAssertEqual(log.entries, ["primary.swipe(throws)", "typedriver.swipe"])
     }
 
@@ -652,7 +652,7 @@ final class StepExecutorTests: XCTestCase {
 
         let outcome = await executor.execute(FlowStep(action: "swipe", direction: "up"))
 
-        XCTAssertEqual(outcome.driverFallback, "XCUITest")
+        XCTAssertEqual(outcome.driverFallback, "XCUITest へフォールバック")
         XCTAssertEqual(log.entries, ["typedriver.swipe"], "primary を無駄打ちしてはいけない")
     }
 
@@ -673,7 +673,7 @@ final class StepExecutorTests: XCTestCase {
             XCTFail("501 からの切替で passed を期待したが \(outcome.status) だった")
             return
         }
-        XCTAssertEqual(outcome.driverFallback, "XCUITest")
+        XCTAssertEqual(outcome.driverFallback, "XCUITest へフォールバック")
         XCTAssertEqual(log.entries, [
             "primary.snapshot",
             "primary.press(throws)",
@@ -701,7 +701,7 @@ final class StepExecutorTests: XCTestCase {
             XCTFail("409 からの typeDriver 切替による passed を期待したが \(outcome.status) だった")
             return
         }
-        XCTAssertEqual(outcome.driverFallback, "XCUITest")
+        XCTAssertEqual(outcome.driverFallback, "XCUITest へフォールバック")
         XCTAssertEqual(log.entries, [
             "primary.snapshot",
             "primary.type(throws)",

@@ -33,4 +33,5 @@ public final class AppAttachDriver: AppDriver {
     public func install(packagePath: String) async throws {}
     public func launch(bundleID: String) async throws {}
     public func terminate() async throws {}
+    public var lastActionNote: String? { client.lastActionNote }
 }

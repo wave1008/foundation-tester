@@ -15,6 +15,10 @@ public final class BridgeClient: AppDriver {
     /// リクエストに載せる値(未使用時はキーごと省略 → 旧ランナーと byte 互換)
     private var fastFlag: Bool? { fastInput ? true : nil }
 
+    /// tap(ref:) が受け取った OKResponse.note(AppDriver.lastActionNote 参照)。
+    /// tap(ref:) 呼び出しの冒頭で必ずクリアする(残ると別ステップに誤って付く)。
+    public private(set) var lastActionNote: String?
+
     /// per-endpoint の壁時計上限(秒)の既定値。init の 120 は未指定エンドポイントのフォールバック。
     /// URLRequest.timeoutInterval で config の既定を1リクエスト単位に上書きする
     enum Timeout {
@@ -106,8 +110,10 @@ public final class BridgeClient: AppDriver {
     }
 
     public func tap(ref: Int) async throws {
-        let _: OKResponse = try await post("/tap", body: TapRequest(ref: ref, fast: fastFlag),
-                                           timeout: interactionTimeout)
+        lastActionNote = nil
+        let res: OKResponse = try await post("/tap", body: TapRequest(ref: ref, fast: fastFlag),
+                                             timeout: interactionTimeout)
+        lastActionNote = res.note
     }
 
     public func tap(x: Double, y: Double) async throws {

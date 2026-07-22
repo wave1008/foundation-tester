@@ -51,4 +51,5 @@ public final class FastLaunchDriver: AppDriver {
     }
     public func screenshot() async throws -> Data { try await base.screenshot() }
     public func terminate() async throws { try await base.terminate() }
+    public var lastActionNote: String? { base.lastActionNote }
 }
