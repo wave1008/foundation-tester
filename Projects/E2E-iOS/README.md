@@ -29,36 +29,48 @@ ftester run --project E2E-iOS --profile ios-heal       # --heal
 |---|---|---|
 | `ios-xcuitest` | ✅ 20/20 | 91.3s |
 | `ios-heal` | ✅ 20/20 | — |
-| `ios-inapp` | ❌ 2件失敗(**既知・下記の ftester 側の穴**) | 55.1s |
+| `ios-inapp` | ✅ 20/20 | 30.4s |
 
-## `ios-inapp` で判明した ftester 側の穴(2026-07-23)
+## `ios-inapp` で判明し、修正した ftester 側の穴2件(2026-07-23)
 
-この SUT を作って初めて見えた2点。**どちらも Compose 固有ではなく、SwiftUI ネイティブでも起きる**。
+この SUT を作って初めて見えた2点。**どちらも Compose 固有ではなく SwiftUI ネイティブでも起きていた**。
+いずれも修正済みで、現在 `ios-inapp` は 20/20 グリーン(30.4s。xcuitest の 42.6s より速い)。
 
-### 1. in-app のジェスチャ空振りが hybrid でフォールバックされない
+### 1. in-app のジェスチャ空振りが hybrid でフォールバックされなかった
 
-`press` / `swipe` は 200 を返して成功扱いになるが、SwiftUI の `onLongPressGesture` /
-`DragGesture` は発火しない(`tap` は合成タッチで通る)。CMP 版と同じ症状だが、
-**hybrid の XCUITest フォールバックが働かない**:
+`press` / `swipe` が 200 を返して成功扱いになるのに `onLongPressGesture` / `DragGesture` が
+発火しない、という「黙った空振り」。原因は `InAppBridge` が `unsupportedActions` の申告も 501 の
+返却も **`uiFramework == "compose"` のときだけ**行っていたこと。SwiftUI ネイティブは判定から
+外れるため申告も 501 も出ず、ホストはフォールバックしなかった。
 
-- `InAppBridge.swift` は `unsupportedActions` の申告も 501 の返却も
-  **`uiFramework == "compose"` のときだけ**行う(bundle 内の Kotlin フレームワーク有無で判定)
-- SwiftUI ネイティブは `uiFramework != "compose"` なので申告も 501 も出ず、
-  ホストは「成功した」と解釈してフォールバックしない → **黙って空振りする**
+修正:
+- `press` は実装を持たず**常に 501**(合成タッチの押下保持はどのフレームワークでも受理されない)
+- `swipe` は contentOffset を動かせるスクロールビューが**その向きに余地を持って**存在するときだけ実行し、
+  無ければ 501(ジェスチャ検出用パッドのように合成タッチへ落ちるしかない画面を申告する)
+- `/status` の `unsupportedActions` は uikit でも `["press"]` を申告する
+- `AppAttachDriver.swipe` は 409(セッションなし)なら activate して1回だけ再試行する
+  (フォールバック先の XCUITest ブリッジに attach していない状態で swipe が最初の操作になると落ちていた。
+  Compose 版は press のフォールバックが先に snapshot=activate していて露呈していなかった)
 
-つまり `Projects/E2E/README.md` の「Compose Multiplatform の iOS では in-app が…」という
-記述は範囲が狭すぎで、実際は **in-app の合成タッチが時間・移動を伴うジェスチャを
-駆動できない**(フレームワーク非依存)のが根。修正するなら 501 の条件を
-`uiFramework` ではなくアクション種別(swipe/press)そのものに広げる話になる。
+### 2. `.Cell` 型が in-app エンジンでは出なかった
 
-### 2. `.Cell` 型が in-app エンジンでは出ない
+`InAppSnapshot.elementType` に `UITableViewCell` の分岐が無く(enum の `.cell` は定義だけで到達不能)、
+セルが `Other` に落ちていた。XCUITest エンジンは同じ画面で `Cell` を返すため、エンジンを替えると
+型セレクタが壊れる。`UITableViewCell` / `UICollectionViewCell` の判定を追加して解消。
 
-`.Cell=行 03` が解決できず失敗する。`InAppSnapshot.elementType` には
-`UITableViewCell` を判定する分岐が無く(enum の `.cell` は定義だけで到達不能)、
-セルは `Other` に落ちる。XCUITest エンジンは同じ画面で `Cell` を返すため、
-**エンジンを替えると型セレクタが壊れる**。
+### 残る運用上の注意: inapp プロファイルを別 SUT と交互に回さない
 
-→ 当面 `ios-xcuitest` を基準とし、`ios-inapp` はこの2点の観測用に残す。
+`E2E`(com.ftester.e2e)と `E2E-iOS`(com.ftester.e2e.ios)の inapp を**同じシミュレータ群で
+連続実行すると、後から回した方が「ブリッジ接続不能(The request timed out)」で大量に落ちる**。
+これは ftester が元から持つ制約(エラーメッセージにある「背面アプリが suspend され TCP は受理されても
+HTTP 応答が返らない」)で、iOS の SUT が2つになって初めて踏みやすくなった。
+回避は**前の SUT のアプリを terminate してから回す**:
+
+```sh
+for u in $(xcrun simctl list devices booted -j | ...); do xcrun simctl terminate "$u" <前の bundle id>; done
+```
+
+`Scripts/e2e.sh` は inapp プロファイルを既定で回さないため、通常の E2E では踏まない。
 
 ## シナリオ一覧
 

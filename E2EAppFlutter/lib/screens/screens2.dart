@@ -6,8 +6,9 @@ import '../main.dart';
 import '../tags.dart';
 import '../widgets.dart';
 
-// ブリッジの swipe は要素を狙わず画面比率の固定座標で撃たれる
-// (iOS: 縦 0.15h↔0.85h / 横 0.15w↔0.85w、Android: 縦 0.3h↔0.7h / 横 0.2w↔0.8w)。
+// ブリッジの swipe は要素を狙わず画面を払う
+// (iOS は XCUITest の XCUIApplication.swipeUp() 等でアプリ frame 全体を払う。
+//  Android は BridgeRouter.handleSwipe が縦 0.3h↔0.7h / 横 0.2w↔0.8w の固定座標)。
 // よって #pad_swipe はコンテンツ領域いっぱいに敷き、操作要素はその上に重ねる。
 // ボタン類は始点を塞がないよう幅 45% 以内(中央列を空ける)かつ上下の端に置く。
 class GestureScreen extends StatefulWidget {

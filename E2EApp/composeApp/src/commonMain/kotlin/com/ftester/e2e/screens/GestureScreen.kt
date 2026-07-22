@@ -29,8 +29,9 @@ import com.ftester.e2e.ui.TaggedButton
 import com.ftester.e2e.ui.TaggedText
 import kotlin.math.abs
 
-// ブリッジの swipe は画面比率の固定座標で撃たれる(要素を狙わない):
-//   iOS(InAppBridge.swipeVector) 縦 0.15h↔0.85h / 横 0.15w↔0.85w(y=0.5h)
+// ブリッジの swipe は要素を狙わず画面を払う: iOS は XCUITest の XCUIApplication.swipeUp() 等で
+// アプリ frame 全体を払う(in-app エンジンは座標スワイプを持たず、動かせるスクロールビューが
+// 無ければ 501 を返して XCUITest へ回る)。
 //   Android(BridgeRouter.handleSwipe) 縦 0.3h↔0.7h / 横 0.2w↔0.8w(y=0.5h)
 // よって #pad_swipe は**コンテンツ領域いっぱい**に敷き、その上に操作要素を重ねる構成にする。
 // 重ねてよいのは Text(ポインタを消費しない)だけ。ボタン類は始点を塞がないよう

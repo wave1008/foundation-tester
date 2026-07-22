@@ -100,10 +100,15 @@ final class FTInAppBridge {
                 engine: "inapp",
                 applicationState: state,
                 uiFramework: self.uiFramework,
-                // Compose は自前描画で、合成タッチの drag/長押しを受理しない(tap/type は通る)。
-                // ホストはこの申告を見てジェスチャだけ XCUITest へ回す。撃たれた場合は 501 で拒否する
+                // 合成タッチは「時間・移動を伴うジェスチャ」を駆動できない。これは Compose 固有ではなく
+                // SwiftUI/UIKit でも同じ(2026-07-23 に Projects/E2E-iOS で実測)。
+                // - press は全フレームワークで駆動不能 → 常に申告する
+                // - swipe は UIScrollView の contentOffset を直接動かす経路があるので UIKit では通ることが
+                //   多い。ただし Compose はその経路が無関係な UIScrollView を動かして空振りするため申告する
+                //   (UIKit で対象スクロールビューが無い場合は handleSwipe が個別に 501 を返す)
+                // ホストはこの申告を見てジェスチャを XCUITest へ回す。撃たれた場合は 501 で拒否する
                 // (申告と拒否の二重化。申告を見ないホスト・旧ホストでも黙って空振りしない)。
-                unsupportedActions: self.uiFramework == "compose" ? ["swipe", "press"] : nil))
+                unsupportedActions: self.uiFramework == "compose" ? ["swipe", "press"] : ["press"]))
         }
     }
 
@@ -212,12 +217,16 @@ final class FTInAppBridge {
             // UIKit/SwiftUI のスクロールは合成タッチでは駆動できない(ジェスチャ認識器が受理しない)ため、
             // contentOffset を直接動かす(accessibilityScroll は SwiftUI List で片方向しか効かず不安定
             // だった。setContentOffset は決定的・双方向)。
-            if let scrollView = Self.largestScrollView(in: window) {
-                Self.scrollByPage(scrollView, direction: req.direction)
-            } else {
-                let (from, to) = Self.swipeVector(req.direction, in: window.bounds)
-                FTSynthSwipe(window, from, to, 12)
+            guard let scrollView = Self.scrollableScrollView(in: window, direction: req.direction) else {
+                // 動かせるスクロールビューが無い = 合成タッチに落ちるしかない画面(ジェスチャ検出用の
+                // パッド等)。FTSynthSwipe を撃っても DragGesture / UIPanGestureRecognizer は受理せず、
+                // **200 を返して黙って空振り**する(2026-07-23 に Projects/E2E-iOS で実測)。
+                // 501 で申告してホストに XCUITest へ回させる(compose の早期 return と同じ慣習)。
+                throw InAppError(501, "この画面には in-app エンジンで動かせるスクロールビューがありません"
+                    + "(合成タッチの drag はジェスチャ認識器に受理されません)。"
+                    + "hybrid なら XCUITest へフォールバックします")
             }
+            Self.scrollByPage(scrollView, direction: req.direction)
         }
         return .json(OKResponse())
     }
@@ -242,13 +251,17 @@ final class FTInAppBridge {
         sv.setContentOffset(offset, animated: false)
     }
 
-    /// 面積最大の可視スクロールビュー(メインのリスト/スクロール領域)
-    private static func largestScrollView(in window: UIWindow) -> UIScrollView? {
+    /// 面積最大の可視スクロールビューのうち、**その向きに実際にスクロール余地があるもの**。
+    /// 余地の判定を入れているのは、画面上に本体のスクロールとは無関係な(コンテンツが収まりきっている)
+    /// UIScrollView が居ることがあり、それを動かすと「offset は変わったが見た目は不変」= 黙った空振りに
+    /// なるため。余地が無ければ nil を返し、呼び出し側が 501 でホストに知らせる。
+    private static func scrollableScrollView(in window: UIWindow,
+                                             direction: FTSwipeDirection) -> UIScrollView? {
         var best: UIScrollView?
         var bestArea: CGFloat = 0
         var stack: [UIView] = [window]
         while let v = stack.popLast() {
-            if let sv = v as? UIScrollView, !sv.isHidden, sv.alpha > 0.01 {
+            if let sv = v as? UIScrollView, !sv.isHidden, sv.alpha > 0.01, hasRoom(sv, direction) {
                 let area = sv.bounds.width * sv.bounds.height
                 if area > bestArea { best = sv; bestArea = area }
             }
@@ -257,27 +270,29 @@ final class FTInAppBridge {
         return best
     }
 
+    /// 指定方向へまだ動かせるか(1pt でも余地があれば真)。指の向きとスクロール方向は逆。
+    private static func hasRoom(_ sv: UIScrollView, _ direction: FTSwipeDirection) -> Bool {
+        let inset = sv.adjustedContentInset
+        let maxY = max(-inset.top, sv.contentSize.height + inset.bottom - sv.bounds.height)
+        let maxX = max(-inset.left, sv.contentSize.width + inset.right - sv.bounds.width)
+        switch direction {
+        case .up:    return sv.contentOffset.y < maxY - 1
+        case .down:  return sv.contentOffset.y > -inset.top + 1
+        case .left:  return sv.contentOffset.x < maxX - 1
+        case .right: return sv.contentOffset.x > -inset.left + 1
+        }
+    }
+
+    // 合成タッチの押下保持はどのフレームワークでも長押しとして受理されない
+    // (Compose だけでなく SwiftUI の onLongPressGesture でも発火しないことを 2026-07-23 に
+    // Projects/E2E-iOS で実測。tap だけが通る)。黙って空振りさせず xcuitest へ誘導するため、
+    // 実装(FTSynthPress 経路)は持たず常に 501 を返す。
+    // 501 = このエンジンでは未対応(/terminate と同じ慣習。409 は一時的競合なので取り違えない)。
     private func handlePress(_ body: Data) throws -> InAppHTTPServer.Response {
-        let req = try decode(PressRequest.self, body)
-        // duration は FTSynthPress がメイン run loop を保持する秒数。過大値/NaN で対象アプリの UI が
-        // 長時間フリーズするのを防ぐため 0〜10s にクランプする(長押しの実用範囲を十分カバー)。
-        let duration = req.duration.isFinite ? min(max(req.duration, 0), 10) : 0
-        // swipe と同じ理由で Compose は合成タッチの長押しを受理しない(tap だけが通る)。
-        // 黙って空振りさせず、xcuitest へ誘導する。
-        if uiFramework == "compose" {
-            // 501 = このエンジンでは未対応(swipe と同じ理由。409 との取り違え防止)。
-            throw InAppError(501, "Compose Multiplatform では in-app エンジンの press(長押し)が効きません"
-                + "(合成タッチの押下保持が受理されない)。"
-                + "実行プロファイルで iosInappEngine: false(xcuitest)にしてください")
-        }
-        // press は block 内で duration 秒メインを保持する。settle cap(2500)とは別に、その保持分を
-        // blockBudgetMs として semaphore タイムアウトに足す(足さないと長い duration で settle 完了前に
-        // タイムアウトが発火し、実行中に OK を返してしまう)。
-        try performWithSettle(blockBudgetMs: Int(duration * 1000) + 500) { window in
-            let p = try self.resolvePoint(ref: req.ref, x: nil, y: nil)
-            FTSynthPress(window, p, duration)
-        }
-        return .json(OKResponse())
+        throw InAppError(501, "in-app エンジンでは press(長押し)が効きません"
+            + "(合成タッチの押下保持がジェスチャ認識器に受理されない)。"
+            + "hybrid なら XCUITest へフォールバックします。engine=inapp 単独なら"
+            + "実行プロファイルで iosInappEngine: false(xcuitest)にしてください")
     }
 
     private func handleScreenshot() throws -> InAppHTTPServer.Response {
@@ -350,17 +365,6 @@ final class FTInAppBridge {
         }
     }
 
-    private static func swipeVector(_ direction: FTSwipeDirection, in bounds: CGRect) -> (CGPoint, CGPoint) {
-        let cx = bounds.midX, cy = bounds.midY
-        let dx = bounds.width * 0.35, dy = bounds.height * 0.35
-        switch direction {
-        // スワイプの向き = 指の動く向き(上スワイプ=下から上へ=コンテンツは上へスクロール)
-        case .up:    return (CGPoint(x: cx, y: cy + dy), CGPoint(x: cx, y: cy - dy))
-        case .down:  return (CGPoint(x: cx, y: cy - dy), CGPoint(x: cx, y: cy + dy))
-        case .left:  return (CGPoint(x: cx + dx, y: cy), CGPoint(x: cx - dx, y: cy))
-        case .right: return (CGPoint(x: cx - dx, y: cy), CGPoint(x: cx + dx, y: cy))
-        }
-    }
 
     private func keyWindow() -> UIWindow? {
         for scene in UIApplication.shared.connectedScenes {
