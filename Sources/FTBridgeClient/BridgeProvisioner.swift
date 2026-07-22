@@ -70,19 +70,21 @@ public enum BridgeProvisionerError: Error, LocalizedError {
 /// ftester プロセスが同時に provision すると同じ空きポートを選び bindFailed(48) を起こす。provision()
 /// 全体をこのロックで直列化して防ぐ(pid 予約ロジックには手を入れない)。flock はプロセス終了で
 /// 自動解放されるためデッドロックしない。1 プロセス内の複数デバイス並列起動は provision 内部で維持される。
-final class ProvisionLock {
+public final class ProvisionLock {
     enum LockError: Error { case openFailed(Int32) }
     private let fd: Int32
 
-    init(stateDir: URL) throws {
+    /// stateDir/<lockName> を flock 対象にする。既定は provision.lock(ブリッジ供給用)。
+    /// 別用途(例: マシンプロファイル追記)は別 lockName を渡して独立させる。
+    public init(stateDir: URL, lockName: String = "provision.lock") throws {
         try FileManager.default.createDirectory(at: stateDir, withIntermediateDirectories: true)
-        let path = stateDir.appendingPathComponent("provision.lock").path
+        let path = stateDir.appendingPathComponent(lockName).path
         fd = open(path, O_CREAT | O_RDWR, 0o644)
         guard fd >= 0 else { throw LockError.openFailed(errno) }
     }
 
     /// LOCK_EX を取得。取得待ちのブロッキングは別スレッドで行い、async executor を塞がない。
-    func acquire() async {
+    public func acquire() async {
         await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
             let fd = self.fd
             DispatchQueue.global().async {
@@ -92,7 +94,7 @@ final class ProvisionLock {
         }
     }
 
-    func release() {
+    public func release() {
         _ = flock(fd, LOCK_UN)
         close(fd)
     }

@@ -6,6 +6,7 @@
 import ArgumentParser
 import Foundation
 import FTAndroid
+import FTBridgeClient
 import FTCore
 
 struct ApiCreateDeviceCommand: AsyncParsableCommand {
@@ -109,11 +110,34 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
         }
 
         // ここまでで実体の作成は完了。以降(追記・書き戻し)が失敗しても実体は残るため
-        // エラーメッセージにその旨を含める(呼び出し側が後始末できるように)
+        // エラーメッセージにその旨を含める(呼び出し側が後始末できるように)。
+        // 追記〜書き戻しはプロファイル単位の flock で直列化し、並行 create-device が互いの追記を
+        // 上書きする lost-update を防ぐ。物理作成は上で完了済み=ロック外(並行のまま)。
+        let lock = try ProvisionLock(stateDir: testProject.machinesDir,
+                                     lockName: "machine-\(machineName).lock")
+        await lock.acquire()
+        defer { lock.release() }
+
+        // ロック下で最新のプロファイルを読み直す(初回読みは line 88。別プロセスの追記を取りこぼさない)。
+        let currentObject: [String: Any]
+        do {
+            let freshData = try Data(contentsOf: machineURL)
+            guard let obj = (try? JSONSerialization.jsonObject(with: freshData)) as? [String: Any] else {
+                throw CreateDeviceError("マシンプロファイル \(machineName).json を JSON として解析できません")
+            }
+            currentObject = obj
+        } catch let error as CreateDeviceError {
+            throw error
+        } catch {
+            throw CreateDeviceError(
+                "シミュレータ/AVD の作成には成功しましたが、プロファイルの読み直しに失敗しました: "
+                + error.localizedDescription)
+        }
+
         let updated: [String: Any]
         do {
             updated = try MachineProfileEditor.addingDevice(
-                toProfileObject: profileObject, platform: platform, device: deviceEntry)
+                toProfileObject: currentObject, platform: platform, device: deviceEntry)
         } catch {
             throw CreateDeviceError(
                 "シミュレータ/AVD の作成には成功しましたが、プロファイルへの追記に失敗しました: "
