@@ -269,7 +269,8 @@ public final class StepExecutor {
         // 要素が見つかるまでスクロール(見つかったら成功。操作はしない)
         if action == "scrollTo" {
             let direction = FTSwipeDirection(rawValue: step.direction ?? "") ?? .up
-            let maxSwipes = step.maxSwipes ?? 8
+            // 負値だと 0...(-1) が ClosedRange 生成で trap(クラッシュ)するため 0 で下限クランプ。
+            let maxSwipes = max(0, step.maxSwipes ?? 8)
             for attempt in 0...maxSwipes {
                 var start = clock.now
                 let snapshot = try await driver.snapshot()

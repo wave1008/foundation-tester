@@ -84,6 +84,10 @@ final class InAppHTTPServer {
             // 不要な iOS 固有の防御。ソケット単位なので他ソケットに影響しない。
             var noSigPipe: Int32 = 1
             setsockopt(clientFD, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
+            // 相手が Content-Length 分を送り切らずに待つと、単スレッドの accept ループが read で無限に
+            // ブロックしブリッジ全体が wedge する。受信タイムアウトで停滞読取を必ず離脱させる(15s)。
+            var rcvTimeout = timeval(tv_sec: 15, tv_usec: 0)
+            setsockopt(clientFD, SOL_SOCKET, SO_RCVTIMEO, &rcvTimeout, socklen_t(MemoryLayout<timeval>.size))
             autoreleasepool {
                 if let request = readRequest(clientFD) {
                     // accept ループ(バックグラウンド)上でハンドラを呼ぶ。整定待ちはメインの
@@ -127,6 +131,8 @@ final class InAppHTTPServer {
                 contentLength = Int(kv[1].trimmingCharacters(in: .whitespaces)) ?? 0
             }
         }
+        // 過大/不正な Content-Length は無制限メモリ確保・長時間読取の的になるため弾く(不正=nil→400)。
+        if contentLength < 0 || contentLength > 8_000_000 { return nil }
 
         var body = Data(buffer[hr.upperBound...])
         while body.count < contentLength {
