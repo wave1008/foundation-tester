@@ -469,6 +469,12 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
 
 ## 9. 検証方法(E2E)
 
+0. **`E2EApp`(Compose Multiplatform・iOS/Android 両対応)+ `Projects/E2E`** が ftester 自身の
+   機能別 E2E。DSL のコマンド面(セレクタ記法・type・press/swipe・scrollTo・暗黙待ちと timeout・
+   ifCanSelect/optional・relaunch・ios{}/android{})を 1 機能 1 シナリオで網羅する。
+   testTag とラベルの契約は `E2EApp/docs/ui-contract.md` が唯一の正(アプリとシナリオが両方参照)。
+   ネットワーク依存ゼロ・状態は起動ごとにルート正規化する設計で、フリートのロケール差や
+   バックエンド死活に左右されない。手順は Projects/E2E/README.md
 1. `SampleApp`(ログイン画面 + ホーム画面 + 設定画面の 3 画面 SwiftUI アプリ、
    accessibility identifier 付き)をリポジトリに同梱
 2. M1: `ftester bridge up` → `curl localhost:8123/snapshot` で圧縮ツリーが返る
@@ -577,6 +583,42 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
   再利用ではない)。決定的なナビ状態リセットはアプリ側の責務で、ツールは状態リセットの注入
   (`SIMCTL_CHILD_FT_RESET` 等)を意図的に提供しない(ユーザー決定・2026-07-20)。
   シナリオ側は scene1 で対象タブをルートへ正規化して吸収する
+- **inapp は Compose Multiplatform(iOS)の swipe/scrollTo/press を駆動できない**
+  (2026-07-22・`Projects/E2E` で切り分け確定)。同一アプリ・同一シナリオの両エンジン差分:
+  - inapp: `tap`/`type` は通る。`swipe` 4方向・`scrollTo`・`press`(長押し)が**すべて無反応**
+  - xcuitest: 同じシナリオが**全て成功**
+
+  原因は2段構えで、**合成タッチの品質の問題ではない**:
+  1. `/swipe` の主経路はタッチ合成ではなく **`UIScrollView.contentOffset` の直接操作**
+     (UIKit/SwiftUI ではジェスチャ認識器が合成タッチを受理しないため、意図的にこうしてある)。
+     Compose の画面にも**本体のスクロールとは無関係な UIScrollView が存在する**ので、
+     それを動かしても描画は一切変わらず、エラーも出ない = **黙った空振り**になっていた
+  2. 経路を合成タッチ(`FTSynthSwipe`/`FTSynthPress`)へ向け直しても Compose は受理しない。
+     イベント間でランループを回す・moved の HID マスクに RANGE|TOUCH を足す・静止 moved を
+     刻みながら押下保持する、はいずれも**効果なし**(実験済み・不採用)。単発 down/up の
+     `FTSynthTap` だけが通る
+
+  対処(2026-07-22 実装): **Compose 検出時は `/swipe` と `/press` を 409 で明示失敗**させ、
+  xcuitest プロファイルへ誘導する(`InAppBridge.handleSwipe`/`handlePress`。判定は `/status` と
+  同じ `compose-resources` マーカー)。黙って空振りするより「12回スクロールしても見つかりません」の
+  ような誤診断を防ぐ方が価値が高い。**UIKit/SwiftUI 側の経路は一切変えていない**。
+  Compose を対象にするプロジェクトは xcuitest プロファイルを既定にする
+  (`Projects/E2E/profiles/runs/ios.json` はそうしてある。差分観測用に `ios-inapp.json` を併置)
+- **`.Type[n]` の n は「現在画面に見えている同型要素のツリー順」**。圧縮スナップショットは画面外要素を
+  含まないため、序数は**スクロール位置と画面クロム(戻るボタン・下部タブ)に依存する**。
+  レイアウト変更で黙ってずれるので、序数セレクタは実スナップショットで採取してから書く
+- **型名は OS で異なる**(2026-07-22・Compose Multiplatform の同一アプリで実測)。Compose の Button は
+  iOS = `Button` / Android = `Cell`(Android は className が `android.widget.Button` にならず
+  `SnapshotBuilder.mappedType` の既定側へ落ちる)。**型を使うセレクタは `ios {}` / `android {}` で分ける**。
+  `#id`(testTag)とラベルは両 OS 共通で引ける
+- **Android は「別ウィンドウ」に描画される UI(`AlertDialog` 等)にテスト用 id が出ない**
+  (2026-07-22 実測)。`testTagsAsResourceId` はルートに1回付ければ子孫全体に効くが、ダイアログは
+  ルートの子孫ではないため効かず、**ダイアログ内だけ `#id` が全滅する**(ラベルは引ける)。
+  アプリ側でダイアログにも `Modifier.semantics { testTagsAsResourceId = true }` を再適用させる。
+  iOS は testTag が自動で accessibilityIdentifier になるため起きない(Android 固有)
+- **`exist`/`textIs` は既定 `requireVisible: true` なので、ソフトキーボードに覆われた要素は
+  「偽陽性(occlusion)」で失敗する**。入力を伴う画面では検証対象・操作対象を入力欄より**上**に置く
+  (Projects/E2E のテキスト入力画面がこの配置。2026-07-22 実測)
 - **inapp ブリッジは注入先アプリのプロセス内常駐**なので、アプリがクラッシュ/終了すると HTTP が
   `DriverError.bridgeConnectionRefused`(「Could not connect」)になる。xcuitest/Android はブリッジが
   別プロセスのためこの切断は起きない(inapp 固有)。切断時は `InAppDriver` がホストの
