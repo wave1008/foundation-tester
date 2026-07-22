@@ -52,25 +52,33 @@ public final class InAppDriver: AppDriver {
     }
     public func screenshot() async throws -> Data { try await withCrashContext { try await client.screenshot() } }
 
-    /// bridgeConnectionRefused だけ、直近クラッシュレポートの有無に応じた切り分け情報を detail 末尾に
-    /// 付与して同じ case で再 throw する(呼び出し側は catch DriverError.bridgeConnectionRefused のまま動く)。
+    /// 接続系エラーに、直近クラッシュレポートの有無に応じた切り分け情報を detail 末尾に付与して
+    /// **同じ case のまま**再 throw する(呼び出し側の catch は変えなくてよい)。
     /// lastBundleID が nil(launch 未実施)なら素の detail のまま re-throw。
+    ///
+    /// refused だけでなく unreachable も見るのが要点: **操作自体がクラッシュを引き起こした場合**は
+    /// リクエスト配送中に切断されるため URLSession は networkConnectionLost を返し、
+    /// `isDefiniteDeliveryFailure` が false → bridgeUnreachable に分類される。refused だけを
+    /// 見ていると「最も普通のクラッシュ」でレポート添付を取り逃す(2026-07-22 実測)。
+    /// 分類自体は変えない(unreachable は「届いたか不明」= リトライ可否の意味論を持つため)。
     private func withCrashContext<T>(_ op: () async throws -> T) async throws -> T {
         do {
             return try await op()
         } catch let DriverError.bridgeConnectionRefused(detail) {
-            guard let bundleID = lastBundleID else {
-                throw DriverError.bridgeConnectionRefused(detail)
-            }
-            if let hit = SimulatorCrashReport.findRecent(bundleID: bundleID) {
-                let suffix = hit.reason.map { " (\($0))" } ?? ""
-                throw DriverError.bridgeConnectionRefused(detail + " / アプリがクラッシュしました: \(hit.path)\(suffix)")
-            }
-            throw DriverError.bridgeConnectionRefused(
-                detail + " / 直近のクラッシュレポートは見つかりませんでした"
-                    + "(OS によるプロセス終了・メモリ圧・自発終了の可能性。"
-                    + "ハイブリッド混在実行では背面アプリが suspend/終了されることがあります)"
-            )
+            throw DriverError.bridgeConnectionRefused(crashAnnotated(detail))
+        } catch let DriverError.bridgeUnreachable(detail) {
+            throw DriverError.bridgeUnreachable(crashAnnotated(detail))
         }
+    }
+
+    private func crashAnnotated(_ detail: String) -> String {
+        guard let bundleID = lastBundleID else { return detail }
+        if let hit = SimulatorCrashReport.findRecent(bundleID: bundleID) {
+            let suffix = hit.reason.map { " (\($0))" } ?? ""
+            return detail + " / アプリがクラッシュしました: \(hit.path)\(suffix)"
+        }
+        return detail + " / 直近のクラッシュレポートは見つかりませんでした"
+            + "(OS によるプロセス終了・メモリ圧・自発終了の可能性。"
+            + "ハイブリッド混在実行では背面アプリが suspend/終了されることがあります)"
     }
 }
