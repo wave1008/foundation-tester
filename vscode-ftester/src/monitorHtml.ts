@@ -56,7 +56,7 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
         <span class="host-metric" id="hm-mem" title="${t("panels.hostMetrics.memTitle")}"><span class="hm-label">MEM</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
         <span class="host-metric" id="hm-cpu" title="${t("panels.hostMetrics.cpuTitle")}"><span class="hm-label">CPU</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
         <span class="host-metric" id="hm-gpu" title="${t("panels.hostMetrics.gpuTitle")}"><span class="hm-label">GPU</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
-        <span class="host-metric" id="hm-ane" title="${t("panels.hostMetrics.aneTitle")}"><span class="hm-label">ANE</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
+        <span class="host-metric" id="hm-fm" title="${t("panels.hostMetrics.fmTitle")}"><span class="hm-label">FM</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
       </div>
     </div>
     <div id="banner" class="banner"></div>

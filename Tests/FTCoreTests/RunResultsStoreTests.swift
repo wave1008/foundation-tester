@@ -122,7 +122,7 @@ final class RunResultsStoreTests: XCTestCase {
     // MARK: - RunRecorder
 
     func testRunRecorderSequentialNamingAndFinish() {
-        let recorder = RunRecorder.begin(project: project, profile: "default", trigger: "cli")
+        let recorder = RunRecorder.begin(project: project, profile: "default", trigger: "cli", captureHostMetrics: false)
         XCTAssertTrue(
             recorder.runID.range(of: #"^\d{8}-\d{6}Z-.+-[0-9a-f]{4}$"#, options: .regularExpression) != nil,
             "runID: \(recorder.runID)")
@@ -155,7 +155,7 @@ final class RunResultsStoreTests: XCTestCase {
     }
 
     func testDiscardLastRemovesFileAndRewindsCounter() {
-        let recorder = RunRecorder.begin(project: project, profile: "default", trigger: "cli")
+        let recorder = RunRecorder.begin(project: project, profile: "default", trigger: "cli", captureHostMetrics: false)
         recorder.record(makeScenarioRecord(scenarioID: "Foo.bar", runID: "", passed: false))
 
         let runDir = RunResultsStore.runDir(resultsDir: resultsDir, runID: recorder.runID)
@@ -172,13 +172,13 @@ final class RunResultsStoreTests: XCTestCase {
     }
 
     func testDiscardLastOnUnrecordedScenarioIsNoop() {
-        let recorder = RunRecorder.begin(project: project, profile: "default", trigger: "cli")
+        let recorder = RunRecorder.begin(project: project, profile: "default", trigger: "cli", captureHostMetrics: false)
         recorder.discardLast(scenarioID: "Never.recorded")
         // クラッシュ・例外を起こさないことのみ確認する
     }
 
     func testRecordFillsRunIDMachineProfile() {
-        let recorder = RunRecorder.begin(project: project, profile: "myProfile", trigger: "api")
+        let recorder = RunRecorder.begin(project: project, profile: "myProfile", trigger: "api", captureHostMetrics: false)
         recorder.record(makeScenarioRecord(scenarioID: "Foo.bar", runID: "", passed: true))
 
         let runDir = RunResultsStore.runDir(resultsDir: resultsDir, runID: recorder.runID)

@@ -29,7 +29,7 @@ import {
   applyWipeStatus,
 } from './deviceTiles.js';
 import { applyLaneAction, applyLaneHydrate, updateLaneVisibility, updateLanesPlaceholder } from './laneLog.js';
-import { applyHostMetrics } from './hostCharts.js';
+import { applyHostMetrics, recordFmCalls, resetFmUsage } from './hostCharts.js';
 import {
   applyMachineProfileInfo,
   applyMachineProfileSelected,
@@ -114,6 +114,14 @@ window.addEventListener('message', (event) => {
       break;
     case 'runEvent':
       applyLaneAction(message.action);
+      // FM 実測はシナリオ完了時にしか来ない(hostMetrics ストリームには乗らない)。
+      // hostCharts 側が次の tick で系列へ積む
+      if (message.action && message.action.type === 'fmUsage') {
+        recordFmCalls(message.action.calls, message.action.totalMs);
+      }
+      if (message.action && message.action.type === 'cleared') {
+        resetFmUsage();
+      }
       break;
     case 'laneHydrate':
       applyLaneHydrate(message.snapshot);

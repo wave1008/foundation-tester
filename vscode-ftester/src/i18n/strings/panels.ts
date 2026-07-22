@@ -31,7 +31,7 @@ export const panelsStrings = {
   "panels.hostMetrics.memTitle": { ja: "メモリ使用量", en: "Memory usage" },
   "panels.hostMetrics.cpuTitle": { ja: "CPU負荷", en: "CPU load" },
   "panels.hostMetrics.gpuTitle": { ja: "GPU負荷", en: "GPU load" },
-  "panels.hostMetrics.aneTitle": { ja: "ANE負荷", en: "ANE load" },
+  "panels.hostMetrics.fmTitle": { ja: "FM 呼び出し回数", en: "FM call count" },
 
   "panels.devices.emptyMessage": {
     ja: "デバイス情報を待機しています(ポーリング形式のため反映まで数十秒かかることがあります)...",
