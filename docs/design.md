@@ -623,6 +623,16 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
   なお `type` の事前ルーティング(`preferTypeDriver`)は別物で廃止済み — Compose でも inapp の
   type が可能かつ高速(266ms vs attach 1.0〜1.3s)なため。ジェスチャは inapp が**不可能**なので
   トレードオフの向きが逆になり、事前ルーティングが常に得になる
+- **XCUITest のセッション消失は snapshot 境界でだけ自動回復する**(`SessionRecoveryDriver`)。
+  ランナー再起動で `BridgeRouter.requireApp()` が 409 を返すと以前は全操作が落ちていた。
+  この経路の 409 はセッション消失専用(409 を投げる箇所が1つしかない)なので状態コードだけで判定でき、
+  `activate`(**`launch` ではない**。launch はアプリを再起動してナビ状態を飛ばす)で張り直す。
+  **ref を使う操作(tap/type/press の ref 指定)は再試行しない**: セッション確立は `refFrames` を
+  クリアするため、同じ ref での再試行は別要素を操作しかねない。セッションだけ張り直して 409 を返し、
+  次のステップの snapshot で ref が振り直されて復帰する(StepExecutor は各アクションの前に必ず
+  snapshot するので、実際の損失は最大1ステップ)。ref を使わない操作(snapshot/screenshot/swipe/
+  座標指定 tap/press/drag/home/appSwitcher)だけ 1 回再試行する。
+  in-app/hybrid 経路には入れない(InAppDriver の 409 は意味が違う)
 - **`.Type[n]` の n は「現在画面に見えている同型要素のツリー順」**。圧縮スナップショットは画面外要素を
   含まないため、序数は**スクロール位置と画面クロム(戻るボタン・下部タブ)に依存する**。
   レイアウト変更で黙ってずれるので、序数セレクタは実スナップショットで採取してから書く
