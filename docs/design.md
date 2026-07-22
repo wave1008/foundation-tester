@@ -23,6 +23,18 @@ iOS / Android 両対応のアプリ E2E テストツール。iOS を先行実装
 | Dynamic Profiles | セッション中にモデル・ツール・instructions を切替 | verifier / triager の役割切替 |
 | `LanguageModel` プロトコル | オンデバイス / PCC(32K ctx) / Claude / Gemini / MLX を同一 Session API で差替 | 難しい計画立案だけ大型モデルに逃がす保険 |
 | 制約: コンテキスト ~4K トークン級 | TN3193 参照。プロンプト+応答で共有 | **設計全体を規定する最重要制約** |
+| 制約: ホスト全体で直列化 | 実測でスループットは並列度によらず約1回/秒・レイテンシは並列度に正比例 | 並列実行では FM 呼び出し数が実行時間の下限になる(performance-tuning.md §3.5) |
+
+**可否判定の罠**: `SystemLanguageModel.default.availability` は「端末が対応しているか」しか見ておらず、
+モデル資産側の理由で**全呼び出しが失敗していても `.available` を返す**(専用ケース
+`.appleIntelligenceNotEnabled` があるのに返さない。2026-07-22 実測)。可否を人へ報告する場所では
+実際に1回推論する `FMDoctor.checkLive()` を使う(`ftester doctor` / MCP の `ft_doctor` が採用)。
+同期の `FMDoctor.check()` はホットパス用で**可否を保証しない**。
+
+**FM 失敗は握りつぶされる**: occlusion-guard・heal・screenIs はいずれも FM 失敗時に nil を返して
+素通りする契約なので、FM が全滅してもテストは緑のまま**機能だけ無効**になる。
+`FMHealth`(Sources/FTCore/FMHealth.swift)が呼び出しの回数・レイテンシ・成否を計上し、
+実行後に stderr へ警告する。結果 JSON の `fm` にも載る(performance-tuning.md §4.2)。
 
 ### 1.2 3B モデルに合わせた基本方針: 決定的な再生 + 失敗時のみ FM 介入
 
@@ -463,7 +475,7 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
 3. M3: SampleApp の identifier を 1 つ改名 → `ftester run --heal` で修復・成功。
    意図的にログインを失敗させるビルド → TriageReport が `appBug` と分類する
 4. 性能の検証・回帰比較は `Scripts/bench.swift` の計測基盤で行う。壁時計中央値・
-   シナリオ/ステップ内訳・成功率・ホスト CPU/GPU/ANE/MEM を `summary.md` に出力し、
+   シナリオ/ステップ内訳・成功率・ホスト CPU/GPU/MEM を `summary.md` に出力し、
    変更前後を比較する。手順・指標の読み方は
    [パフォーマンスチューニングガイド](performance-tuning.md)を参照
 

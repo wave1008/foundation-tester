@@ -43,13 +43,27 @@ clone 構成では同一です。
 
 | 対象 | 要件 | 誰がやるか |
 |---|---|---|
-| 共通 | macOS 27+、Apple Intelligence 有効（Foundation Models） | **人間のみ**（System 設定で有効化・モデル DL） |
+| 共通 | macOS 27+、Apple Intelligence 有効（Foundation Models）。**システム言語は英語**（下記） | **人間のみ**（System 設定で有効化・モデル DL） |
 | iOS | Xcode 27+、iOS シミュレータ runtime、xcodegen | Xcode 導入は**人間**／`brew install xcodegen` は自動可 |
 | Android（任意） | Android SDK（adb）、エミュレータまたは実機 | 人間（SDK 導入）＋自動（ブリッジ APK ビルド） |
 | 拡張ビルド | Node.js v24 系 / npm v11 系 | 自動可 |
 
 > macOS ベータを使う場合は **Xcode を同じベータへ揃えてフルリビルド**すること。
 > FoundationModels の ABI 不整合で全バイナリが dyld クラッシュします。
+
+> **Apple Intelligence が設定に出てこない場合**: システム言語が日本語（ja-JP）だと
+> Apple Intelligence の設定項目自体が現れないことがあります（macOS 27.0 beta で確認）。
+> 設定ペインが「Apple Intelligence と Siri」ではなく「Siri」単独になり、設定の検索で
+> "Apple Intelligence" を引いても結果ゼロになります。
+> **システム言語を English (United States) に変える**と項目が現れます（地域は日本のままで可）。
+>
+> 確認は `ftester doctor --fm-only`。実際に 1 回推論して可否を判定し、exit code に反映します
+> （✅ + exit 0 なら利用可）。**macOS の API は「利用可能」と報告しながら全呼び出しが失敗する
+> ことがある**ため、設定画面の見た目ではなくこのコマンドで確認してください。
+>
+> FM が使えないと、`exist` の既定の可視性確認（occlusion-guard）・自己修復・`screenIs` が
+> **無言で素通り**します（テストは緑のまま機能だけ無効）。実行時に警告が出ますが、
+> 事前に doctor で確認するのが確実です。
 
 ## セットアップ手順（手動）
 
