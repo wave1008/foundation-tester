@@ -21,9 +21,12 @@ final class InputInjector {
     }
 
     static void press(UiAutomation ua, double x, double y, double durationSeconds) {
+        // 過大値/NaN で単スレッドの accept スレッドを長時間ブロックしブリッジが無応答になるのを防ぐため
+        // 0〜10s にクランプ(iOS 側 handlePress と同契約)。
+        double clamped = Double.isFinite(durationSeconds) ? Math.min(Math.max(durationSeconds, 0), 10) : 0;
         long downTime = SystemClock.uptimeMillis();
         inject(ua, event(downTime, downTime, MotionEvent.ACTION_DOWN, x, y));
-        SystemClock.sleep((long) (durationSeconds * 1000));
+        SystemClock.sleep((long) (clamped * 1000));
         inject(ua, event(downTime, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, x, y));
     }
 
