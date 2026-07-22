@@ -32,6 +32,9 @@ extension AndroidDriver {
     /// serial → ブリッジ状態。ドライバを都度生成してもプローブを繰り返さないプロセス共有レジストリ
     static let bridgeLock = NSLock()
     nonisolated(unsafe) static var bridgeRegistry: [String: BridgeState] = [:]
+    /// serial → 進行中の startBridge タスク。同一 serial の並行初回操作を1本に集約する
+    /// (未集約だと両者が nil を観測し adb forward / am instrument が二重実行される)。
+    nonisolated(unsafe) static var bridgeSetup: [String: Task<BridgeClient, Error>] = [:]
 
     var bridgeKey: String { serial ?? "default" }
 
@@ -50,17 +53,50 @@ extension AndroidDriver {
             break
         }
 
+        // 同一 serial の並行初回操作は1本の startBridge に集約する(進行中があれば相乗り)。
+        let key = bridgeKey
+        let setup = Self.beginSetup(key: key) { [self] in
+            do {
+                let client = try await startBridge()
+                Self.setRegistry(key, .active(client))
+                return client
+            } catch {
+                let message = (error as? LocalizedError)?.errorDescription ?? "\(error)"
+                Self.setRegistry(key, .unavailable(
+                    retryAfter: Date().addingTimeInterval(Self.unavailableRetryInterval),
+                    detail: message))
+                throw error
+            }
+        }
         do {
-            let client = try await startBridge()
-            Self.setRegistry(bridgeKey, .active(client))
-            return client
+            return try await setup.value
         } catch {
             let message = (error as? LocalizedError)?.errorDescription ?? "\(error)"
-            Self.setRegistry(bridgeKey, .unavailable(
-                retryAfter: Date().addingTimeInterval(Self.unavailableRetryInterval),
-                detail: message))
             throw Self.unreachableError(detail: message)
         }
+    }
+
+    /// 同一 key の setup を1本に集約する。進行中の Task があればそれを返し、無ければ起動して登録。
+    /// 完了(成功/失敗いずれも)で自動的に登録解除し、次回の再セットアップを妨げない。
+    static func beginSetup(key: String,
+                           _ body: @escaping @Sendable () async throws -> BridgeClient)
+        -> Task<BridgeClient, Error> {
+        bridgeLock.lock()
+        if let existing = bridgeSetup[key] {
+            bridgeLock.unlock()
+            return existing
+        }
+        let task = Task { () async throws -> BridgeClient in
+            defer { clearSetup(key: key) }
+            return try await body()
+        }
+        bridgeSetup[key] = task
+        bridgeLock.unlock()
+        return task
+    }
+
+    private static func clearSetup(key: String) {
+        bridgeLock.lock(); bridgeSetup[key] = nil; bridgeLock.unlock()
     }
 
     private static func unreachableError(detail: String?) -> DriverError {
