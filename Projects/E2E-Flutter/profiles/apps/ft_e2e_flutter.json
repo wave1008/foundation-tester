@@ -1,0 +1,14 @@
+{
+  "common": {
+    "appName": "FT E2E Flutter",
+    "autoInstall": true
+  },
+  "ios": {
+    "app": "com.ftester.e2e.flutter",
+    "appPath": "E2EAppFlutter/dist/ios-simulator/FTE2EFlutter.app"
+  },
+  "android": {
+    "app": "com.ftester.e2e.flutter",
+    "appPath": "E2EAppFlutter/dist/android/ft-e2e-flutter-debug.apk"
+  }
+}

@@ -119,6 +119,13 @@ let package = Package(
             swiftSettings: swift5Mode
         ),
         .executableTarget(
+            name: "ftester-scenarios-E2E-Flutter",
+            dependencies: ["FTScenarioRunner", "FTDSL"],
+            path: "Projects/E2E-Flutter/Scenarios",
+            exclude: ["_disabled"],
+            swiftSettings: swift5Mode
+        ),
+        .executableTarget(
             name: "ftester-scenarios-E2E-iOS",
             dependencies: ["FTScenarioRunner", "FTDSL"],
             path: "Projects/E2E-iOS/Scenarios",
