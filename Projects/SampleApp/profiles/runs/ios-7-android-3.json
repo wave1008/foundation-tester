@@ -1,0 +1,41 @@
+{
+  "app": "sampleapp_ios",
+  "devices": [
+    {
+      "name": "iPhone 17 Pro(iOS 27.0)-01"
+    },
+    {
+      "name": "iPhone 17 Pro(iOS 27.0)-02"
+    },
+    {
+      "name": "iPhone 17 Pro(iOS 27.0)-03"
+    },
+    {
+      "name": "iPhone 17 Pro(iOS 27.0)-04"
+    },
+    {
+      "name": "iPhone 17 Pro(iOS 27.0)-05"
+    },
+    {
+      "name": "iPhone 17 Pro(iOS 27.0)-06"
+    },
+    {
+      "name": "iPhone 17 Pro(iOS 27.0)-07"
+    },
+    {
+      "name": "Pixel 9(Android 15)-01"
+    },
+    {
+      "name": "Pixel 9(Android 15)-02"
+    },
+    {
+      "name": "Pixel 9(Android 15)-03"
+    }
+  ],
+  "heal": true,
+  "defaultTimeout": 8,
+  "iosInappEngine": true,
+  "reportDir": "reports",
+  "machine": "M2_ManyDevices",
+  "wipeDataOnBloat": true
+}
