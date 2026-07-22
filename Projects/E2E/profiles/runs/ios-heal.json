@@ -21,8 +21,8 @@
       "name": "iPhone 17 Pro(iOS 27.0)-06"
     }
   ],
-  "heal": false,
+  "heal": true,
   "reportDir": "reports",
   "iosInappEngine": true,
-  "wipeDataOnBloat": true
+  "wipeDataOnBloat": false
 }

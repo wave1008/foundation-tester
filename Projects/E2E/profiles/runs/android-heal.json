@@ -27,8 +27,8 @@
       "name": "Pixel 9(Android 15)-08"
     }
   ],
-  "heal": false,
+  "heal": true,
   "reportDir": "reports",
-  "iosInappEngine": false,
+  "iosInappEngine": true,
   "wipeDataOnBloat": true
 }

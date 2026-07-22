@@ -8,22 +8,108 @@
       {
         "name": "Pixel 9(Android 15)-02",
         "avd": "Pixel_9_Android_15_-02"
+      },
+      {
+        "name": "Pixel 9(Android 15)-03",
+        "avd": "Pixel_9_Android_15_-03"
+      },
+      {
+        "name": "Pixel 9(Android 15)-04",
+        "avd": "Pixel_9_Android_15_-04"
+      },
+      {
+        "name": "Pixel 9(Android 15)-05",
+        "avd": "Pixel_9_Android_15_-05"
+      },
+      {
+        "name": "Pixel 9(Android 15)-06",
+        "avd": "Pixel_9_Android_15_-06"
+      },
+      {
+        "name": "Pixel 9(Android 15)-07",
+        "avd": "Pixel_9_Android_15_-07"
+      },
+      {
+        "name": "Pixel 9(Android 15)-08",
+        "avd": "Pixel_9_Android_15_-08"
+      },
+      {
+        "name": "Pixel 9(Android 15)-09",
+        "avd": "Pixel_9_Android_15_-09"
+      },
+      {
+        "name": "Pixel 9(Android 15)-10",
+        "avd": "Pixel_9_Android_15_-10"
       }
     ]
   },
   "ios": {
     "devices": [
       {
-        "name": "iPhone 17 Pro(iOS 27.0)",
-        "simulator": "iPhone 17 Pro(iOS 27.0)",
-        "os": "27.0",
-        "udid": "A012ADD8-EEA0-4F0C-B8BC-65E748F5906F"
-      },
-      {
         "name": "iPhone 17(iOS 27.0)",
         "simulator": "iPhone 17(iOS 27.0)",
         "os": "27.0",
         "udid": "6109860E-93CE-47E1-9989-5DCD16186434"
+      },
+      {
+        "name": "iPhone 17 Pro(iOS 27.0)-01",
+        "simulator": "iPhone 17 Pro(iOS 27.0)-01",
+        "os": "27.0",
+        "udid": "E38DCA93-95F2-4DDF-B1FE-29527205D3EE"
+      },
+      {
+        "name": "iPhone 17 Pro(iOS 27.0)-02",
+        "simulator": "iPhone 17 Pro(iOS 27.0)-02",
+        "os": "27.0",
+        "udid": "C96A69C4-FE49-42EE-8C7F-ED5F603C346B"
+      },
+      {
+        "name": "iPhone 17 Pro(iOS 27.0)-03",
+        "simulator": "iPhone 17 Pro(iOS 27.0)-03",
+        "os": "27.0",
+        "udid": "B422AB58-6C79-45BC-92F0-BEF88061C8E1"
+      },
+      {
+        "name": "iPhone 17 Pro(iOS 27.0)-04",
+        "simulator": "iPhone 17 Pro(iOS 27.0)-04",
+        "os": "27.0",
+        "udid": "2C4FBE2E-5358-48CD-B32A-964B8EB817B4"
+      },
+      {
+        "name": "iPhone 17 Pro(iOS 27.0)-05",
+        "simulator": "iPhone 17 Pro(iOS 27.0)-05",
+        "os": "27.0",
+        "udid": "61A7E615-9C85-438E-BE3D-1BAC78640B11"
+      },
+      {
+        "name": "iPhone 17 Pro(iOS 27.0)-06",
+        "simulator": "iPhone 17 Pro(iOS 27.0)-06",
+        "os": "27.0",
+        "udid": "26FB5C4F-28B3-42D0-BB3A-A7B4D63917FF"
+      },
+      {
+        "name": "iPhone 17 Pro(iOS 27.0)-07",
+        "simulator": "iPhone 17 Pro(iOS 27.0)-07",
+        "os": "27.0",
+        "udid": "0B7E3ADA-B0E7-4A5B-99A7-B29091AE547A"
+      },
+      {
+        "name": "iPhone 17 Pro(iOS 27.0)-08",
+        "simulator": "iPhone 17 Pro(iOS 27.0)-08",
+        "os": "27.0",
+        "udid": "257324AF-D10D-42DE-AD7D-ADB682E8365F"
+      },
+      {
+        "name": "iPhone 17 Pro(iOS 27.0)-09",
+        "simulator": "iPhone 17 Pro(iOS 27.0)-09",
+        "os": "27.0",
+        "udid": "2A7FBD43-4A72-44DA-AB95-EED23B1B3B6D"
+      },
+      {
+        "name": "iPhone 17 Pro(iOS 27.0)-10",
+        "simulator": "iPhone 17 Pro(iOS 27.0)-10",
+        "os": "27.0",
+        "udid": "AF99951F-FB48-4D6A-9BB2-BBCE8CFEEC8B"
       }
     ]
   }
