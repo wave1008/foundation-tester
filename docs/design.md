@@ -608,7 +608,8 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
      フォールバック判定に使うと「アプリが前面に無い」状況を隠して別画面を操作しかねない
      (`/terminate` が既に 501=このエンジンでは未対応 を返している慣習に合わせた)
   2. **事前ルーティング**(2026-07-23): hybrid は in-app と XCUITest の両ブリッジを張るので、
-     起動時プローブの `/status.uiFramework == "compose"` かつ typeDriver ありなら
+     起動時プローブの **`/status.unsupportedActions`**(ブリッジが「この対象アプリでは実行できない」
+     アクション名を申告する。Compose なら `["swipe","press"]`)に該当し typeDriver ありなら
      swipe/press/scrollTo のスワイプを**最初から** typeDriver(`AppAttachDriver`)へ回す
      (`StepExecutor.gesturesViaTypeDriver`)。409 の往復はゼロ
   3. **事後 501 キャッチ**: プローブ不達で 2 が立たなかった場合の安全網。1回 501 を受けたら

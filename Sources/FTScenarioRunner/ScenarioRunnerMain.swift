@@ -214,7 +214,12 @@ struct RunScenario: AsyncParsableCommand {
                             // 実測 266ms vs attach 1.0〜1.3s)。attach 優先は廃止し、
                             // 失敗時 409 → typeDriver フォールバック(StepExecutor)だけを安全網とする
                             preferTypeDriver = false
-                            gesturesViaTypeDriver = probeStatus?.uiFramework == "compose"
+                            // 「どの操作が不可か」はブリッジの申告に従う(ホストに
+                            // 「compose なら swipe 不可」という知識を持たせない)。
+                            // 申告が無い(旧ブリッジ・probe 不達)なら false のまま
+                            // = StepExecutor の事後 501 キャッチに委ねる
+                            let unsupported = Set(probeStatus?.unsupportedActions ?? [])
+                            gesturesViaTypeDriver = !unsupported.isDisjoint(with: ["swipe", "press"])
                         }
                     }
                 } else {
