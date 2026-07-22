@@ -54,7 +54,8 @@ private final class FakeAppDriver: AppDriver {
     func press(ref: Int, duration: Double) async throws {}
     func press(x: Double, y: Double, duration: Double) async throws {}
     func screenshot() async throws -> Data { Data() }
-    func terminate() async throws {}
+    private(set) var terminateCallCount = 0
+    func terminate() async throws { terminateCallCount += 1 }
 }
 
 final class SessionRecoveryDriverTests: XCTestCase {
@@ -68,6 +69,28 @@ final class SessionRecoveryDriverTests: XCTestCase {
 
         XCTAssertEqual(fake.activateCalls, ["com.example.app"])
         XCTAssertEqual(fake.snapshotCallCount, 2)
+    }
+
+    /// terminateApp 後は回復対象にしない。残すと次の snapshot が activate でアプリを起動し直し、
+    /// 明示的な terminate を黙って打ち消してしまう(セッション消失=障害 と 意図的な終了 は別物)。
+    func testTerminateStopsRecoveryAndDoesNotRelaunch() async throws {
+        let fake = FakeAppDriver()
+        let driver = SessionRecoveryDriver(base: fake)
+        try await driver.launch(bundleID: "com.example.app")
+        try await driver.terminate()
+        fake.snapshotShouldFail = [true, false]
+
+        do {
+            _ = try await driver.snapshot()
+            XCTFail("terminate 後の 409 は回復せず再スローされるべき")
+        } catch {
+            guard case DriverError.badResponse(let status, _) = error, status == 409 else {
+                XCTFail("409 の再スローを期待したが \(error) だった")
+                return
+            }
+        }
+        XCTAssertEqual(fake.activateCalls, [], "アプリを起動し直してはいけない")
+        XCTAssertEqual(fake.snapshotCallCount, 1, "再試行してはいけない")
     }
 
     func testTapRefDoesNotRetryButRecoversSessionAndRethrows() async throws {

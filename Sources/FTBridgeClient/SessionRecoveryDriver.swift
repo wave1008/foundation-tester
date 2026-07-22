@@ -77,7 +77,14 @@ public final class SessionRecoveryDriver: AppDriver {
     }
 
     public func screenshot() async throws -> Data { try await withRecovery { try await base.screenshot() } }
-    public func terminate() async throws { try await base.terminate() }
+    /// terminate 後は回復対象にしない。ブリッジ側 handleTerminate も app=nil にするため以降は 409 に
+    /// なるが、これは「意図してセッションを終わらせた」状態であって復旧すべき障害ではない。
+    /// ここで lastBundleID を残すと、次の snapshot が activate で**アプリを勝手に起動し直し**、
+    /// 明示的な terminateApp を黙って打ち消してしまう。
+    public func terminate() async throws {
+        try await base.terminate()
+        lastBundleID = nil
+    }
 
     // ref を使う操作は再試行禁止(冒頭コメント参照)。409 はセッションだけ張り直した上で
     // 文言を差し替えて再スローする。次のステップの snapshot から ref が振り直され復帰できる。
@@ -115,7 +122,8 @@ public final class SessionRecoveryDriver: AppDriver {
             "XCUITest ランナーのセッションが失われました(ランナー再起動の可能性)。"
             + (recovered
                ? "セッションは張り直したので次のステップから復帰します。"
-               : "まだ launch していないためセッションを張り直せません(先に launchApp が要ります)。")
+               : "セッションを張り直せる対象がありません(未 launch、または terminateApp 済み)。"
+                 + "先に launchApp が要ります。")
             + "このステップは ref(直前スナップショットの要素番号)が無効になるため再試行しません")
     }
 }
