@@ -1,0 +1,5 @@
+# xcodegen が project.yml から生成する(コミットしない)
+FTE2EIOS.xcodeproj/
+build/
+dist/
+.DS_Store

@@ -1,0 +1,16 @@
+{
+  "app": "ft_e2e_ios",
+  "machine": "M2 Ultra",
+  "devices": [
+    { "name": "iPhone 17 Pro(iOS 27.0)-01" },
+    { "name": "iPhone 17 Pro(iOS 27.0)-02" },
+    { "name": "iPhone 17 Pro(iOS 27.0)-03" },
+    { "name": "iPhone 17 Pro(iOS 27.0)-04" },
+    { "name": "iPhone 17 Pro(iOS 27.0)-05" },
+    { "name": "iPhone 17 Pro(iOS 27.0)-06" }
+  ],
+  "heal": false,
+  "reportDir": "reports",
+  "iosInappEngine": false,
+  "wipeDataOnBloat": true
+}
