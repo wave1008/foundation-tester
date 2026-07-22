@@ -310,7 +310,7 @@ public struct BridgeProvisioner {
 
     /// 1 デバイス・1 エンジンのプラン決定。副作用は claimed/usedPorts の更新のみ
     /// (ログ・プロセス操作・await なし=単体テスト可能に保つこと)
-    private func planBridge(engine: String, preferred: UInt16?, name: String, sim: SimDeviceInfo,
+    func planBridge(engine: String, preferred: UInt16?, name: String, sim: SimDeviceInfo,
                             bundleID: String?, appIsCurrent: [String: Bool],
                             preinstallAppPath: String?,
                             running: [UInt16: RunningBridge],
@@ -324,11 +324,17 @@ public struct BridgeProvisioner {
         if engine == "inapp", preinstallAppPath != nil, bundleID != nil {
             inappNeedsInstall = !(appIsCurrent[sim.udid] ?? false)
         }
+        // 稼働ブリッジと供給対象 sim の相関: 通常は udid。ただし同名 sim が複数 booted だと
+        // detectRunningBridges が udid を nil に落とす。その場合は名前で相関し、同一デバイスへの
+        // 二重ブリッジ起動を避ける(同名 sim 同士は構成が同じで実害小)。
+        func sameDevice(_ rb: RunningBridge) -> Bool {
+            rb.udid == sim.udid || (rb.udid == nil && rb.name == sim.name)
+        }
         // xcuitest は protocolVersion が現行値と一致するときだけ再利用する(旧ビルドは 404 等の
         // 不整合を招くため。inapp は毎プロビジョンで再ビルド・再注入なので判定しない)
         if !(engine == "inapp" && inappNeedsInstall),
            let port = running.first(where: {
-            $0.value.udid == sim.udid && $0.value.engine == engine && !claimed.contains($0.key)
+            sameDevice($0.value) && $0.value.engine == engine && !claimed.contains($0.key)
                 && (engine != "xcuitest" || $0.value.protocolVersion == BridgeAPI.bridgeProtocolVersion)
            })?.key {
             claimed.insert(port)
@@ -339,7 +345,7 @@ public struct BridgeProvisioner {
         // 停止(stopAndWait)は並列実行フェーズが行い、ここは採番状態の更新だけ
         var stopStalePort: UInt16?
         if engine == "xcuitest", let stale = running.first(where: {
-            $0.value.udid == sim.udid && $0.value.engine == "xcuitest" && !claimed.contains($0.key)
+            sameDevice($0.value) && $0.value.engine == "xcuitest" && !claimed.contains($0.key)
                 && $0.value.protocolVersion != BridgeAPI.bridgeProtocolVersion
         }) {
             claimed.insert(stale.key)
@@ -544,6 +550,8 @@ public struct BridgeProvisioner {
     /// 稼働中ブリッジ 1 つの識別情報(接続先 UDID・engine 種別)
     struct RunningBridge: Sendable {
         let udid: String?
+        /// /status が返したデバイス名。udid が同名複数で nil に落ちたときの相関フォールバックに使う。
+        let name: String?
         let engine: String
         /// BridgeAPI.bridgeProtocolVersion。旧ブリッジは nil(xcuitest の再利用判定に使う)。
         let protocolVersion: Int?
@@ -566,7 +574,8 @@ public struct BridgeProvisioner {
                     // デバイス名 → UDID(同名の起動中シミュレータが複数なら特定不能 = nil)
                     let booted = catalog.filter { $0.booted && $0.name == status.device }
                     let udid = booted.count == 1 ? booted[0].udid : nil
-                    return (port, RunningBridge(udid: udid, engine: status.engine ?? "xcuitest",
+                    return (port, RunningBridge(udid: udid, name: status.device,
+                                                engine: status.engine ?? "xcuitest",
                                                 protocolVersion: status.protocolVersion))
                 }
             }

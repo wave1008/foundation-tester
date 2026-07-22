@@ -209,15 +209,21 @@ extension AndroidDriver {
 
     private func findExistingForward() -> UInt16? {
         guard let list = try? adb(["forward", "--list"]) else { return nil }
+        var unscopedMatches: [UInt16] = []
         for line in list.output.split(separator: "\n") {
             // 形式: "<serial> tcp:<hostPort> tcp:<devicePort>"
             let parts = line.split(separator: " ").map(String.init)
             guard parts.count == 3, parts[2] == "tcp:\(Self.bridgeDevicePort)",
-                  serial == nil || parts[0] == serial,
                   let hostPort = UInt16(parts[1].dropFirst(4)) else { continue }
-            return hostPort
+            if let serial {
+                if parts[0] == serial { return hostPort }
+            } else {
+                unscopedMatches.append(hostPort)
+            }
         }
-        return nil
+        // serial 未指定(デフォルトドライバ)は、bridge ポートへの forward が唯一のときだけ再利用する。
+        // 複数あると別デバイスの forward を掴み得るため、曖昧回避で nil を返す(呼び出し側が新規 forward)。
+        return unscopedMatches.count == 1 ? unscopedMatches[0] : nil
     }
 
     // MARK: - CLI(bridge down / status / doctor)用

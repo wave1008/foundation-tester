@@ -135,7 +135,9 @@ private final class StopFlag: @unchecked Sendable {
 /// host_processor_info(PROCESSOR_CPU_LOAD_INFO) で全コア合計の累積 tick を取得し、
 /// 前回サンプルとのデルタから busy/(busy+idle) を算出する。初回はデルタが無いため nil。
 private final class CPUSampler {
-    private var previous: (user: UInt64, system: UInt64, nice: UInt64, idle: UInt64)?
+    /// 1コア分の累積 tick(各カウンタは 32bit・ラップし得る)。
+    struct CoreTicks { let user: UInt32; let system: UInt32; let nice: UInt32; let idle: UInt32 }
+    private var previous: [CoreTicks]?
     private var loggedFailure = false
     private let logFailure: (String) -> Void
 
@@ -146,20 +148,24 @@ private final class CPUSampler {
     func sample() -> Double? {
         guard let current = Self.ticks(log: logIfNeeded) else { return nil }
         defer { previous = current }
-        guard let previous else { return nil }
-        let busy = Double((current.user &- previous.user) &+ (current.system &- previous.system)
-                          &+ (current.nice &- previous.nice))
-        let idle = Double(current.idle &- previous.idle)
+        // コア数が変わった直後(サンプラー跨ぎ等)はデルタ不能なのでスキップ。
+        guard let previous, previous.count == current.count else { return nil }
+        // デルタは**コアごとに 32bit 単位で** &- する(ラップ跨ぎでも正しい小さな正のデルタになる)。
+        // コア横断で合算してから引くと、1コアのカウンタが 2^32 をまたいだ tick で総和が減り
+        // UInt64 の underflow で巨大値=偽の ~100% が出る(長時間稼働ホストの実害)。
+        var busy: UInt64 = 0, idle: UInt64 = 0
+        for (p, c) in zip(previous, current) {
+            busy += UInt64(c.user &- p.user) + UInt64(c.system &- p.system) + UInt64(c.nice &- p.nice)
+            idle += UInt64(c.idle &- p.idle)
+        }
         let total = busy + idle
         guard total > 0 else { return nil }
-        return min(1.0, max(0.0, busy / total))
+        return min(1.0, max(0.0, Double(busy) / Double(total)))
     }
 
-    /// 全コア分の累積 tick(user/system/idle/nice)を合算して返す。
+    /// 全コア分の累積 tick(user/system/idle/nice)をコア別に返す。
     /// 返却された info 配列は vm_deallocate で解放する(呼び出し側の責務)
-    private static func ticks(
-        log: (String) -> Void
-    ) -> (user: UInt64, system: UInt64, nice: UInt64, idle: UInt64)? {
+    private static func ticks(log: (String) -> Void) -> [CoreTicks]? {
         var processorCount: natural_t = 0
         var infoArray: processor_info_array_t?
         var infoCount: mach_msg_type_number_t = 0
@@ -175,16 +181,18 @@ private final class CPUSampler {
         }
         // tick カウンタはカーネル側では符号なし32bitだが integer_t(Int32)として返るため、
         // 長時間稼働で 2^31 を超えると負値に見える。UInt64(負値) は実行時トラップするので
-        // 必ず UInt32(bitPattern:) を経由する
-        var user: UInt64 = 0, system: UInt64 = 0, idle: UInt64 = 0, nice: UInt64 = 0
+        // 必ず UInt32(bitPattern:) を経由する(デルタ計算も 32bit 単位。sample() 参照)。
+        var cores: [CoreTicks] = []
+        cores.reserveCapacity(Int(processorCount))
         for core in 0..<Int(processorCount) {
             let offset = Int(CPU_STATE_MAX) * core
-            user += UInt64(UInt32(bitPattern: infoArray[offset + Int(CPU_STATE_USER)]))
-            system += UInt64(UInt32(bitPattern: infoArray[offset + Int(CPU_STATE_SYSTEM)]))
-            idle += UInt64(UInt32(bitPattern: infoArray[offset + Int(CPU_STATE_IDLE)]))
-            nice += UInt64(UInt32(bitPattern: infoArray[offset + Int(CPU_STATE_NICE)]))
+            cores.append(CoreTicks(
+                user: UInt32(bitPattern: infoArray[offset + Int(CPU_STATE_USER)]),
+                system: UInt32(bitPattern: infoArray[offset + Int(CPU_STATE_SYSTEM)]),
+                nice: UInt32(bitPattern: infoArray[offset + Int(CPU_STATE_NICE)]),
+                idle: UInt32(bitPattern: infoArray[offset + Int(CPU_STATE_IDLE)])))
         }
-        return (user, system, nice, idle)
+        return cores
     }
 
     private func logIfNeeded(_ message: String) {
