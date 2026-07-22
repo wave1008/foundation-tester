@@ -23,7 +23,11 @@ public enum OcclusionSuspicion {
         let area = max(1, t.width * t.height)
         guard let selfIndex = elements.firstIndex(where: { $0.ref == element.ref }) else { return false }
         for (i, other) in elements.enumerated() where i > selfIndex {   // 記載順で後=手前寄り
-            if intersectionArea(t, other.frame) / area >= overlapFraction { return true }
+            guard intersectionArea(t, other.frame) / area >= overlapFraction else { continue }
+            // Compose-iOS の frame クランプで画面外行が画面端の同一座標へ潰れて生じる ghost スタックは
+            // occluder とみなさない(見えている端要素へ余分な FM を誘発する。docs compose-ios-ax-frame-clamp)。
+            if isClampGhost(other.frame, in: elements, screen: screen) { continue }
+            return true
         }
         return false
     }
@@ -33,5 +37,26 @@ public enum OcclusionSuspicion {
         let right = min(a.x + a.width, b.x + b.width)
         let bottom = min(a.y + a.height, b.y + b.height)
         return max(0, right - x) * max(0, bottom - y)
+    }
+
+    /// クランプ ghost = 「画面端に接する」かつ「同一 frame の要素が3つ以上(潰れた行スタック)」。
+    /// 親子で frame を共有するだけの2重複は本物の occluder を守るため除外しない(閾値3)。
+    static func isClampGhost(_ f: FTRect, in elements: [ElementInfo], screen: FTRect,
+                             tol: Double = 1.0) -> Bool {
+        let atEdge = abs(f.y) <= tol || abs(f.x) <= tol
+            || abs(f.y + f.height - screen.height) <= tol
+            || abs(f.x + f.width - screen.width) <= tol
+        guard atEdge else { return false }
+        var duplicates = 0
+        for e in elements where frameApproxEqual(e.frame, f, tol: tol) {
+            duplicates += 1
+            if duplicates >= 3 { return true }
+        }
+        return false
+    }
+
+    static func frameApproxEqual(_ a: FTRect, _ b: FTRect, tol: Double) -> Bool {
+        abs(a.x - b.x) <= tol && abs(a.y - b.y) <= tol
+            && abs(a.width - b.width) <= tol && abs(a.height - b.height) <= tol
     }
 }
