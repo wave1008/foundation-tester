@@ -1,0 +1,35 @@
+name: FTE2EIOS
+options:
+  bundleIdPrefix: com.ftester
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    ONLY_ACTIVE_ARCH: YES
+    SWIFT_VERSION: "5.0"
+
+targets:
+  FTE2EIOS:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+    info:
+      path: Sources/Info.plist
+      properties:
+        CFBundleDisplayName: FT E2E iOS
+        CFBundleShortVersionString: "1.0.0"
+        CFBundleVersion: "1"
+        UILaunchScreen: {}
+        UIApplicationSupportsIndirectInputEvents: true
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.ftester.e2e.ios
+        PRODUCT_NAME: FTE2EIOS
+        GENERATE_INFOPLIST_FILE: NO
