@@ -1,7 +1,10 @@
 // VideoRecordingCoordinator.swift
-// run profile の record:true 時、RunOrchestrator がワーカーの起動/離脱に合わせて
-// 呼び出す録画セッションの束ね役。1 ワーカー = 1 DeviceVideoRecorderSession。
-// index.json への書き出しは finish()(run() の task group join 後に 1 回だけ呼ぶ)。
+// run profile の record:true 時、RunOrchestrator がワーカーの起動/離脱・シナリオ開始/終了に
+// 合わせて呼び出す録画セッションの束ね役。
+// 録画プロセス自体はワーカー単位で回す(シナリオ毎の start/stop はオーバーヘッド大)が、
+// 成果物はテスト関数(シナリオ)ごとに 1 本の mp4 へファイナライズ時に壁時計区間で切り出す
+// (VideoRecordingFinalizer.extractClip)。index.json への書き出しは finish()
+// (run() の task group join 後に 1 回だけ呼ぶ)。
 
 import Foundation
 
@@ -19,14 +22,23 @@ public struct VideoRecordingConfig: Sendable {
     }
 }
 
+/// 1 ワーカーのフル録画ソース。iOS は要素数 1([.mov])、Android は pull 済みセグメント mp4 群
+/// (180 秒毎)。files[i] の壁時計スパンが segments[i](1:1 対応・連結順)。
+/// ソース自体は録画停止していた区間(欠落)を含まない = ここでの位置がそのままソース内 CMTime になる
+struct RecordingSource: Sendable {
+    let files: [URL]
+    let segments: [RecordingIndexSegment]
+}
+
 /// iOS(simctl)/Android(adb screenrecord)の実体を隠す共通インターフェース
 protocol DeviceVideoRecorderSession: Sendable {
     /// 録画プロセスの起動に成功したら true。RecordingLease の書き込み可否の判定に使う
     /// (RunOrchestrator.videoRecording?.start(_:) の戻り値経由)
     func start() async -> Bool
-    /// 録画停止+ファイナライズ。録画自体が始まっていない/停止時に何も拾えなかった場合は nil
+    /// 録画停止。フル録画のソースを返す(ファイナライズ/クリップ切り出しは呼び出し側が行う)。
+    /// 録画自体が始まっていない/停止時に何も拾えなかった場合は nil
     /// (呼び出し側は警告ログのみで run を失敗させない)
-    func stopAndFinalize() async -> [RecordingIndexSegment]?
+    func stop() async -> RecordingSource?
 }
 
 actor VideoRecordingCoordinator {
@@ -34,12 +46,24 @@ actor VideoRecordingCoordinator {
         let session: any DeviceVideoRecorderSession
         let workerID: String
         let platform: String
-        let fileStem: String
+    }
+
+    /// 1 シナリオの実行区間(壁時計)。end が nil の間は実行中(scenarioFinished 未着)
+    private struct ScenarioInterval {
+        let scenarioID: String
+        let start: Date
+        var end: Date?
     }
 
     private let config: VideoRecordingConfig
-    private var active: [String: ActiveEntry] = [:]   // key = worker.label(物理ワーカー単位)
-    private var fileNameCounts: [String: Int] = [:]
+    private var active: [String: ActiveEntry] = [:]  // key = worker.label(物理ワーカー単位)
+    /// key = worker.label。superviseWorker の revive で worker.label が変わっても、
+    /// 古いラベルの区間は stop()/finish() 時にそのラベルの録画ソースに対して処理されるだけで矛盾しない
+    private var scenarioIntervals: [String: [ScenarioInterval]] = [:]
+    /// ソース一時ファイル名(recordings/ 配下に直接置く)の一意化。key = workerID
+    private var sourceFileNameCounts: [String: Int] = [:]
+    /// 最終クリップファイル名の一意化(同一 scenarioID の revive 後再実行等)。key = scenarioID
+    private var clipFileNameCounts: [String: Int] = [:]
     private var entries: [RecordingIndexEntry] = []
 
     init(config: VideoRecordingConfig) {
@@ -47,26 +71,26 @@ actor VideoRecordingCoordinator {
     }
 
     /// worker.label(物理ワーカー)ごとにセッションを開始する。revive 後の新ワーカーは
-    /// worker.label が変わるため独立したセッション(=別ファイル)になる(index.json に
-    /// 同じ worker id で複数エントリが載り得る既知の制約。動画自体は revive 前後で連結しない)。
+    /// worker.label が変わるため独立したセッション(=別ソース)になる。
     /// 戻り値: 録画プロセスの起動に成功したら true(呼び出し側の RecordingLease 書き込み判定用)
     @discardableResult
     func start(_ worker: RunWorker) async -> Bool {
         let workerID = "\(worker.platform):\(worker.logicalName ?? worker.label)"
-        let fileStem = uniqueFileStem(for: workerID)
         let recordingsDir = config.runDir.appendingPathComponent(RecordingIndexIO.directoryName)
         try? FileManager.default.createDirectory(at: recordingsDir, withIntermediateDirectories: true)
+        // クリップの最終ファイル名(scenarioID 由来)とは別名前空間(ソースは切り出し後に削除される一時物)
+        let sourceStem = "src-\(uniqueSourceStem(for: workerID))"
 
         let session: (any DeviceVideoRecorderSession)?
         switch worker.platform {
         case "ios":
             session = worker.connection.udid.map {
-                IOSSimulatorVideoRecorder(udid: $0, workDir: recordingsDir, fileStem: fileStem)
+                IOSSimulatorVideoRecorder(udid: $0, workDir: recordingsDir, fileStem: sourceStem)
             }
         case "android":
             if let serial = worker.connection.serial, let adbPath = config.androidADBPath {
                 session = AndroidScreenVideoRecorder(
-                    serial: serial, adbPath: adbPath, workDir: recordingsDir, fileStem: fileStem)
+                    serial: serial, adbPath: adbPath, workDir: recordingsDir, fileStem: sourceStem)
             } else {
                 session = nil
             }
@@ -75,46 +99,92 @@ actor VideoRecordingCoordinator {
         }
         guard let session else { return false }
         guard await session.start() else { return false }
-        active[worker.label] = ActiveEntry(
-            session: session, workerID: workerID, platform: worker.platform, fileStem: fileStem)
+        active[worker.label] = ActiveEntry(session: session, workerID: workerID, platform: worker.platform)
         return true
+    }
+
+    /// RunOrchestrator のワーカーループが ScenarioRunner.runOne 呼び出し直前に通知する
+    func scenarioStarted(workerLabel: String, scenarioID: String, at: Date) {
+        scenarioIntervals[workerLabel, default: []].append(
+            ScenarioInterval(scenarioID: scenarioID, start: at, end: nil))
+    }
+
+    /// RunOrchestrator のワーカーループが ScenarioRunner.runOne 呼び出し直後に通知する
+    func scenarioFinished(workerLabel: String, at: Date) {
+        guard var list = scenarioIntervals[workerLabel], let last = list.indices.last,
+              list[last].end == nil else { return }
+        list[last].end = at
+        scenarioIntervals[workerLabel] = list
     }
 
     func stop(_ worker: RunWorker) async {
         guard let entry = active.removeValue(forKey: worker.label) else { return }
-        await finalize(entry)
+        await finalize(worker.label, entry)
     }
-
-    /// これ未満の録画は index に載せず破棄する(ms)。シナリオが1本も来なかったアイドルワーカーは
-    /// 画面が変化せず VFR ソースが数 ms になる。0:00 動画が再生ビューの既定選択になる実害があった
-    private static let minimumDurationMs = 1000
 
     /// run() の task group join 後に 1 回呼ぶ。残っているセッション(通常は無いはずの安全網)を
     /// 畳んでから index.json を書く
     func finish() async {
         let remaining = active
         active.removeAll()
-        for (_, entry) in remaining { await finalize(entry) }
-        // worker id 順で安定させる(再生ビューの既定選択が先頭エントリになるため)
-        entries.sort { $0.worker < $1.worker }
+        for (label, entry) in remaining { await finalize(label, entry) }
+        // 先頭 segment の startedAt 昇順(再生ビューの既定選択・一覧表示の安定順)
+        entries.sort { ($0.segments.first?.startedAt ?? "") < ($1.segments.first?.startedAt ?? "") }
         RecordingIndexIO.write(entries, runDir: config.runDir)
     }
 
-    private func finalize(_ entry: ActiveEntry) async {
-        guard let segments = await entry.session.stopAndFinalize(), !segments.isEmpty else { return }
-        let file = "\(RecordingIndexIO.directoryName)/\(entry.fileStem).mp4"
-        guard segments.reduce(0, { $0 + $1.durationMs }) >= Self.minimumDurationMs else {
-            try? FileManager.default.removeItem(at: config.runDir.appendingPathComponent(file))
-            return
+    /// 1 ワーカーのフル録画を停止し、そのワーカーで実行された各シナリオの区間ごとに
+    /// クリップを切り出す。フルソースは(1件もクリップが取れなくても)必ず削除する
+    private func finalize(_ workerLabel: String, _ entry: ActiveEntry) async {
+        guard let source = await entry.session.stop() else { return }
+        defer { for file in source.files { try? FileManager.default.removeItem(at: file) } }
+
+        // 区間が1つも無いワーカーの録画は破棄(シナリオが1本も来なかったアイドルワーカー等)
+        let intervals = scenarioIntervals.removeValue(forKey: workerLabel) ?? []
+        guard !intervals.isEmpty,
+              let recordingRange = RecordingWallClock.wallClockRange(of: source.segments) else { return }
+
+        for interval in intervals {
+            // クリップの壁時計範囲 = [max(シナリオ開始, 録画開始), min(シナリオ終了, 録画終了)]
+            let clipWallStart = max(interval.start, recordingRange.start)
+            let clipWallEnd = min(interval.end ?? recordingRange.end, recordingRange.end)
+            // 実長500ms未満はスキップ
+            guard clipWallEnd.timeIntervalSince(clipWallStart) >= 0.5 else { continue }
+
+            let clipStartMs = RecordingWallClock.offsetMs(source.segments, at: clipWallStart)
+            let clipEndMs = RecordingWallClock.offsetMs(source.segments, at: clipWallEnd)
+            // シナリオ区間全体が録画の欠落(停止していた間)に落ちるとゼロ長になり得る
+            guard clipEndMs > clipStartMs else { continue }
+
+            let fileStem = uniqueClipStem(for: interval.scenarioID)
+            let file = "\(RecordingIndexIO.directoryName)/\(fileStem).mp4"
+            let outputURL = config.runDir.appendingPathComponent(file)
+            guard await VideoRecordingFinalizer.extractClip(
+                sourceFiles: source.files, clipStartMs: clipStartMs, clipEndMs: clipEndMs,
+                to: outputURL) else {
+                FileHandle.standardError.write(Data(
+                    "⚠️ [recording] \(interval.scenarioID): クリップの切り出しに失敗しました\n".utf8))
+                continue
+            }
+            let clipSegments = RecordingWallClock.intersect(
+                source.segments, range: (clipWallStart, clipWallEnd))
+            entries.append(RecordingIndexEntry(
+                scenarioID: interval.scenarioID, worker: entry.workerID, platform: entry.platform,
+                file: file, segments: clipSegments))
         }
-        entries.append(RecordingIndexEntry(
-            worker: entry.workerID, platform: entry.platform, file: file, segments: segments))
     }
 
-    private func uniqueFileStem(for workerID: String) -> String {
+    private func uniqueSourceStem(for workerID: String) -> String {
         let base = RecordingIndexIO.sanitizedFileName(for: workerID)
-        let count = (fileNameCounts[base] ?? 0) + 1
-        fileNameCounts[base] = count
+        let count = (sourceFileNameCounts[base] ?? 0) + 1
+        sourceFileNameCounts[base] = count
+        return count == 1 ? base : "\(base)~\(count)"
+    }
+
+    private func uniqueClipStem(for scenarioID: String) -> String {
+        let base = RecordingIndexIO.sanitizedFileName(for: scenarioID)
+        let count = (clipFileNameCounts[base] ?? 0) + 1
+        clipFileNameCounts[base] = count
         return count == 1 ? base : "\(base)~\(count)"
     }
 }

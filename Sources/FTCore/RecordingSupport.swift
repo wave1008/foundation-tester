@@ -13,6 +13,13 @@ public enum ISO8601Millis {
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter.string(from: date)
     }
+
+    /// string(from:) の逆変換(壁時計→ソース位置の区分計算に使う)。解析失敗時 nil
+    public static func date(from string: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.date(from: string)
+    }
 }
 
 /// 「先に確定した方だけを採用する」レースの 1 回限りフラグ(RunOrchestrator.DeadlineGuard と同じ用途。

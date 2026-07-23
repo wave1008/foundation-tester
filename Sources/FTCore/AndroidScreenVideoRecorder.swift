@@ -1,8 +1,10 @@
 // AndroidScreenVideoRecorder.swift
 // Android の録画(adb shell screenrecord)。1 回の screenrecord は 180 秒上限のため、
 // プロセス exit の度に pull → デバイス側ファイル削除 → 次セグメント spawn を停止指示まで
-// 繰り返す(セグメントは VideoRecordingFinalizer.concatenate で 1 本の mp4 に連結する)。
+// 繰り返す。stop() は pull 済みセグメント群を生ソースとして返すだけで、シナリオ毎のクリップ
+// 切り出し(連結+再エンコード)は VideoRecordingCoordinator/VideoRecordingFinalizer が行う。
 
+import AVFoundation
 import Foundation
 
 actor AndroidScreenVideoRecorder: DeviceVideoRecorderSession {
@@ -35,7 +37,7 @@ actor AndroidScreenVideoRecorder: DeviceVideoRecorderSession {
         return await spawnNextSegment()
     }
 
-    func stopAndFinalize() async -> [RecordingIndexSegment]? {
+    func stop() async -> RecordingSource? {
         stopRequested = true
         if currentProcess != nil {
             // ホスト側 adb クライアントを kill してもデバイス上の screenrecord は止まらず
@@ -46,20 +48,25 @@ actor AndroidScreenVideoRecorder: DeviceVideoRecorderSession {
             }
         }
         guard !pulledSegments.isEmpty else { return nil }
-        let localURLs = pulledSegments.map(\.url)
-        guard let durationsMs = await VideoRecordingFinalizer.concatenate(
-            segmentURLs: localURLs, to: finalMP4URL), durationsMs.count == pulledSegments.count else {
-            warn("セグメント結合に失敗しました")
-            cleanupSegmentFiles()
-            return nil
-        }
-        cleanupSegmentFiles()
-        return zip(pulledSegments, durationsMs).map {
-            RecordingIndexSegment(startedAt: ISO8601Millis.string(from: $0.0.startedAt), durationMs: $0.1)
-        }
-    }
 
-    private var finalMP4URL: URL { workDir.appendingPathComponent("\(fileStem).mp4") }
+        // 各セグメントの実 duration だけ測る(連結+再エンコードはシナリオ毎のクリップ切り出し時に行う)。
+        // 読めないセグメントはここで即座に掃除する(coordinator は返した files しか知らないため)
+        var files: [URL] = []
+        var segments: [RecordingIndexSegment] = []
+        for segment in pulledSegments {
+            guard let duration = try? await AVURLAsset(url: segment.url).load(.duration),
+                  duration.isNumeric, duration.seconds > 0 else {
+                try? FileManager.default.removeItem(at: segment.url)
+                continue
+            }
+            files.append(segment.url)
+            segments.append(RecordingIndexSegment(
+                startedAt: ISO8601Millis.string(from: segment.startedAt),
+                durationMs: Int((duration.seconds * 1000).rounded())))
+        }
+        guard !files.isEmpty else { return nil }
+        return RecordingSource(files: files, segments: segments)
+    }
 
     @discardableResult
     private func spawnNextSegment() async -> Bool {
@@ -111,10 +118,6 @@ actor AndroidScreenVideoRecorder: DeviceVideoRecorderSession {
             return false
         }
         return true
-    }
-
-    private func cleanupSegmentFiles() {
-        for segment in pulledSegments { try? FileManager.default.removeItem(at: segment.url) }
     }
 
     /// 起動前に stale な screenrecord を best-effort で止める

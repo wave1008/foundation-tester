@@ -1820,24 +1820,6 @@ input[type="text"]::placeholder {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.recordings-worker-tabs {
-  display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
-}
-.recordings-worker-tab {
-  padding: 3px 10px;
-  border: 1px solid var(--ft-control-border);
-  border-radius: 12px;
-  background-color: transparent;
-  color: var(--vscode-foreground);
-  font-size: 12px;
-}
-.recordings-worker-tab.active {
-  background-color: var(--vscode-button-background);
-  color: var(--vscode-button-foreground);
-  border-color: transparent;
-}
 .recordings-body {
   flex: 1 1 auto;
   min-height: 0;
@@ -1979,6 +1961,14 @@ input[type="text"]::placeholder {
   height: 28px;
   font-size: 13px;
   border: 1px solid var(--vscode-button-border, color-mix(in srgb, var(--vscode-foreground) 35%, transparent));
+}
+/* 再生ボタンだけ強調色(テーマの primary ボタン配色。ユーザー指定)。 */
+.recordings-play-button {
+  background-color: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #ffffff);
+}
+.recordings-play-button:hover:not(:disabled) {
+  background-color: var(--vscode-button-hoverBackground, #1177bb);
 }
 /* ハイライト色(button 既定の accent)ではなく secondary のノーマル配色にする(ユーザー指定)。 */
 .recordings-seek-button {

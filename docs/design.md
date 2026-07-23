@@ -768,11 +768,13 @@ platform フィールドは持たず、**iOS/Android のデバイス名を混在
 実行する(AndroidDataWiper.swift。ゲストは初期化されるが、アプリは appPath があれば強制
 再インストール、ロケールは下記 `locale` が再ブート後に自動適用される)。
 
-`record`(既定 false)を true にすると、並列実行の各ワーカー(デバイス)ごとに run 全体を
-1本の動画に録画し `<runDir>/recordings/` に保存する(iOS: `simctl io recordVideo` →
-AVFoundation で半分解像度+低 bitrate の H.264 へ再エンコード / Android: `screenrecord` の
-180 秒セグメントループ → passthrough 連結)。拡張側との契約は `recordings/index.json`
-(VideoRecordingCoordinator.swift・RecordingIndex.swift)。録画自体の失敗は run を失敗させない。
+`record`(既定 false)を true にすると、各ワーカー(デバイス)で run 全体を録画し続けつつ
+(iOS: `simctl io recordVideo` の .mov / Android: `screenrecord` の 180 秒セグメント群)、
+ファイナライズ時に**テスト関数(シナリオ)ごとに1本の mp4**へ壁時計区間で切り出して
+`<runDir>/recordings/` に保存する(AVAssetReader/Writer で該当区間だけ半分解像度+低 bitrate の
+H.264 に再エンコード。VFR ソースの区間頭フレーム欠落は直前サンプルの retime で補う)。拡張側との
+契約は `recordings/index.json`(schemaVersion 2。VideoRecordingCoordinator.swift・
+RecordingIndex.swift・RecordingWallClock.swift)。録画自体の失敗は run を失敗させない。
 
 `locale`(既定 "ja_JP")は Android エミュレータのブート完了時(device-up と wipe 後の再起動)に
 適用される。**Play イメージは root/`setprop`/`settings put system system_locales`/emulator の

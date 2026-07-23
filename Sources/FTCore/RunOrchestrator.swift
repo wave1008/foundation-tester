@@ -680,12 +680,17 @@ public final class RunOrchestrator {
         // 負荷時の誤判定で品質が安定しなかった。ウェッジは失敗後の事後チェック
         // (bridgeUnreachable/deviceUnreachable/deviceFrozen → 振り直し)だけで拾う。
         while let item = await queue.next() {
+            // 動画のシナリオ毎クリップ切り出し用の壁時計区間通知(録画無効時は no-op)。
+            // ワーカーの録画プロセス自体は起動しっぱなしで、ここでは区間だけ記録する
+            await videoRecording?.scenarioStarted(
+                workerLabel: worker.label, scenarioID: item.info.id, at: Date())
             let outcome = await ScenarioRunner.runOne(
                 project: project, item: item, worker: worker,
                 healingEnabled: healingEnabled, reportDir: reportDir,
                 defaultTimeout: defaultTimeout, scenarioTimeout: scenarioTimeout, debug: debug,
                 recorder: recorder,
                 onEvent: { [continuation] in continuation.yield($0) })
+            await videoRecording?.scenarioFinished(workerLabel: worker.label, at: Date())
             if outcome == .passed {
                 consecutiveFailures = 0
                 continue
@@ -736,9 +741,9 @@ public final class RunOrchestrator {
         removeRunLease?(key)
     }
 
-    /// RecordingLease の削除は stopAndFinalize 開始時点で行う(ファイナライズ[AVFoundation の
-    /// エクスポート]は数秒〜十数秒かかりうるが、モニターの「録画中」表示は停止指示と同時に
-    /// 消してよい)。lease 削除後に videoRecording?.stop で実際の停止+ファイナライズへ進む
+    /// RecordingLease の削除は停止指示と同時に行う(クリップ切り出し[AVFoundation のエクスポート]は
+    /// シナリオ数分繰り返され数秒〜数十秒かかりうるが、モニターの「録画中」表示は停止指示と同時に
+    /// 消してよい)。lease 削除後に videoRecording?.stop で実際の停止+クリップ切り出しへ進む
     private func stopRecording(_ worker: RunWorker, leaseKey: String?) async {
         if let leaseKey {
             await recordingLeaseKeys.remove(leaseKey)
