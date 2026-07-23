@@ -8,10 +8,11 @@ import * as path from "node:path";
 import {
   buildRecordingErrorEntries,
   buildRecordingTree,
+  firstRecordingEntryByScenario,
   groupTreeByClass,
   extractScenarioFailureSource,
   extractScenarioTreeSource,
-  type RecordingWorkerDetail,
+  type RecordingScenarioVideo,
 } from "./recordingsModel";
 import { listRecordingSessions, loadRecordingSessionDetail } from "./recordingsStore";
 import type { MonitorPanelDeps } from "./monitorPanel";
@@ -33,17 +34,19 @@ export class MonitorRecordingsController {
         project,
         runID,
         error: "recordings not found",
-        workers: null,
+        videos: null,
         errors: null,
         tree: null,
       });
       return;
     }
-    const workers: RecordingWorkerDetail[] = [];
-    for (const entry of detail.index.recordings) {
+    // scenarioID ごとに最初にマッチしたエントリの動画だけ webview URI 化する(revive 再実行での
+    // 重複 scenarioID は recordingsModel.ts 側と同じ「最初の1件」規約)。
+    const videos: RecordingScenarioVideo[] = [];
+    for (const [scenarioID, entry] of firstRecordingEntryByScenario(detail.index.recordings)) {
       const videoUri = this.deps.videoWebviewUri(path.join(detail.runDir, entry.file));
       if (videoUri) {
-        workers.push({ worker: entry.worker, platform: entry.platform, videoUri });
+        videos.push({ scenarioID, videoUri });
       }
     }
     const failureSources = detail.scenarios
@@ -54,6 +57,6 @@ export class MonitorRecordingsController {
       .map(extractScenarioTreeSource)
       .filter((s): s is NonNullable<typeof s> => s !== null);
     const tree = groupTreeByClass(buildRecordingTree(treeSources, detail.index.recordings));
-    this.deps.post({ type: "recordingsSession", ok: true, project, runID, error: null, workers, errors, tree });
+    this.deps.post({ type: "recordingsSession", ok: true, project, runID, error: null, videos, errors, tree });
   }
 }

@@ -3,9 +3,13 @@
 // recordingsStore.ts と test/recordingsModel.test.mjs の両方から使う。
 //
 // 契約(録画側実装。runDir = <workspaceRoot>/Projects/<project>/results/runs/<YYYY-MM>/<runID>/):
-// - recordings/index.json: { schemaVersion, recordings: [{ worker, platform, file, segments }] }
-//   file は runDir 相対の H.264 mp4。worker は "ios:iPhone 16" 形式(scenarios/*.json の worker と一致)。
-//   segments は録画の実区間。Android は180秒制限のセグメント連結のため区間間に数百msの欠落がありうる。
+// - recordings/index.json は schemaVersion 2: { schemaVersion:2, recordings: [{ scenarioID, worker,
+//   platform, file, segments }] }。**1エントリ = 1テスト関数(scenarioID)の mp4**(v1 の1ワーカー
+//   1動画とは異なる)。file は runDir 相対。動画の0秒 = 先頭 segment の startedAt(クリップ自体が
+//   そのテストの録画区間なので、壁時計→クリップ内位置は既存 offsetMsForWallClock がそのまま使える)。
+//   エントリは開始時刻昇順。同一 scenarioID が複数(revive 再実行)ありうるが対応は最初にマッチした
+//   エントリでよい(firstRecordingEntryByScenario)。schemaVersion!==2 の古い(v1)セッションは
+//   isRecordingIndex が弾く(一覧に出さない)。
 // - scenarios/<name>.json (ScenarioRunRecord, Sources/FTCore/RunRecord.swift): startedAt/worker/passed/
 //   failedSteps[]/errorLogs のみ参照。failedSteps[].at(失敗確定の壁時計時刻)は古い記録には無い。
 // - 同ファイルの optional `timeline`(全ステップがイベント順)は TEST EXPLORER 風ツリー用。
@@ -18,6 +22,7 @@ export interface RecordingSegment {
 }
 
 export interface RecordingEntry {
+  readonly scenarioID: string;
   readonly worker: string;
   readonly platform: "ios" | "android";
   readonly file: string;
@@ -29,11 +34,27 @@ export interface RecordingIndex {
   readonly recordings: readonly RecordingEntry[];
 }
 
-/** recordingsSession 応答でwebviewへ渡す1ワーカー分の動画情報。videoUri は webview.asWebviewUri 済み。 */
-export interface RecordingWorkerDetail {
-  readonly worker: string;
-  readonly platform: "ios" | "android";
+/** recordingsSession 応答でwebviewへ渡す1シナリオ分の動画情報。videoUri は webview.asWebviewUri 済み。 */
+export interface RecordingScenarioVideo {
+  readonly scenarioID: string;
   readonly videoUri: string;
+}
+
+/**
+ * scenarioID → 最初にマッチしたエントリ(revive 再実行等で同一 scenarioID が複数あっても先頭を
+ * 採用する契約)。recordings は開始時刻昇順(契約)であること。エラー一覧・ツリーのオフセット計算・
+ * 動画 URI 一覧の組み立て(monitorRecordingsController.ts)が共通で使う。
+ */
+export function firstRecordingEntryByScenario(
+  recordings: readonly RecordingEntry[],
+): ReadonlyMap<string, RecordingEntry> {
+  const map = new Map<string, RecordingEntry>();
+  for (const entry of recordings) {
+    if (!map.has(entry.scenarioID)) {
+      map.set(entry.scenarioID, entry);
+    }
+  }
+  return map;
 }
 
 /** エラー一覧1件(オフセット計算済み)。offsetMs は動画内位置(ms、範囲外はclamp済み)。 */
@@ -62,6 +83,7 @@ function isRecordingSegment(value: unknown): value is RecordingSegment {
 function isRecordingEntry(value: unknown): value is RecordingEntry {
   return (
     isRecord(value) &&
+    typeof value.scenarioID === "string" &&
     typeof value.worker === "string" &&
     (value.platform === "ios" || value.platform === "android") &&
     typeof value.file === "string" &&
@@ -70,11 +92,12 @@ function isRecordingEntry(value: unknown): value is RecordingEntry {
   );
 }
 
-/** recordings/index.json の生 JSON(JSON.parse 済み unknown)の検証。 */
+/** recordings/index.json の生 JSON(JSON.parse 済み unknown)の検証。schemaVersion===2 必須
+ * (v1 の1ワーカー1動画セッションは scenarioID を持たないため、ここで弾いて一覧に出さない)。 */
 export function isRecordingIndex(value: unknown): value is RecordingIndex {
   return (
     isRecord(value) &&
-    typeof value.schemaVersion === "number" &&
+    value.schemaVersion === 2 &&
     Array.isArray(value.recordings) &&
     value.recordings.every(isRecordingEntry)
   );
@@ -165,17 +188,18 @@ export function extractScenarioFailureSource(raw: unknown): ScenarioFailureSourc
 /**
  * 失敗シナリオ群 + 録画セグメント表からエラー一覧(オフセット計算済み・at 昇順)を組み立てる。
  * failedSteps があればステップ単位(at が無ければシナリオ startedAt にフォールバック)、
- * 無く errorLogs のみあればシナリオ1行(位置はシナリオ startedAt)。worker に対応する録画が
- * 無いシナリオは offsetMs=0(segments=[] として計算される)。
+ * 無く errorLogs のみあればシナリオ1行(位置はシナリオ startedAt)。offsetMs はそのシナリオの
+ * クリップ(scenarioID でマッチした録画エントリ)の segments で計算する。対応する録画が無い
+ * シナリオは offsetMs=0(segments=[] として計算される)。
  */
 export function buildRecordingErrorEntries(
   scenarios: readonly ScenarioFailureSource[],
   recordings: readonly RecordingEntry[],
 ): RecordingErrorEntry[] {
-  const segmentsByWorker = new Map(recordings.map((r) => [r.worker, r.segments] as const));
+  const byScenario = firstRecordingEntryByScenario(recordings);
   const entries: RecordingErrorEntry[] = [];
   for (const scenario of scenarios) {
-    const segments = segmentsByWorker.get(scenario.worker) ?? [];
+    const segments = byScenario.get(scenario.scenarioID)?.segments ?? [];
     if (scenario.failedSteps.length > 0) {
       for (const step of scenario.failedSteps) {
         const at = step.at ?? scenario.startedAt;
@@ -258,12 +282,11 @@ export interface RecordingTreeScenario {
   readonly scenarioID: string;
   /** @Test の説明文(表示ラベル。無ければ webview 側が method 名にフォールバック)。 */
   readonly title: string | null;
-  readonly worker: string;
-  /** シナリオ開始の壁時計時刻(ISO8601)。前/次テストのセッション横断ナビの並び順に使う
-   * (offsetMs はワーカーごとの動画内位置なのでワーカーを跨ぐ比較には使えない)。 */
+  /** シナリオ開始の壁時計時刻(ISO8601)。セッション横断の前/次テストナビの並び順に使う。 */
   readonly startedAt: string;
   readonly status: RecordingTreeStatus;
-  /** シーククリック時の動画内オフセット(ms)。シナリオ startedAt。 */
+  /** シーククリック時の動画内オフセット(ms)。1エントリ=1シナリオのクリップなので常に 0
+   * (クリップ先頭 = シナリオ開始)。 */
   readonly offsetMs: number;
   /** timeline が無い記録は空配列(ツリーはこのシナリオノードのみ、展開矢印も出さない)。 */
   readonly scenes: readonly RecordingTreeScene[];
@@ -284,7 +307,6 @@ export interface ScenarioTreeSource {
   readonly scenarioID: string;
   /** raw.title(@Test の説明文)。ツリーのテスト関数ノードの表示ラベルに使う(無ければ null)。 */
   readonly title: string | null;
-  readonly worker: string;
   readonly startedAt: string;
   /** raw.passed(真偽値でなければ false 扱い。extractScenarioFailureSource と同じ規約)。 */
   readonly passed: boolean;
@@ -319,7 +341,6 @@ export function extractScenarioTreeSource(raw: unknown): ScenarioTreeSource | nu
   if (!isRecord(raw) || typeof raw.scenarioID !== "string" || typeof raw.startedAt !== "string") {
     return null;
   }
-  const worker = typeof raw.worker === "string" ? raw.worker : "";
   const passed = raw.passed === true;
   const scenePassed = new Map<number, boolean>();
   if (Array.isArray(raw.scenes)) {
@@ -333,7 +354,7 @@ export function extractScenarioTreeSource(raw: unknown): ScenarioTreeSource | nu
     ? raw.timeline.map(parseTimelineStep).filter((s): s is RawTimelineStep => s !== null)
     : [];
   const title = typeof raw.title === "string" && raw.title !== "" ? raw.title : null;
-  return { scenarioID: raw.scenarioID, title, worker, startedAt: raw.startedAt, passed, scenePassed, timeline };
+  return { scenarioID: raw.scenarioID, title, startedAt: raw.startedAt, passed, scenePassed, timeline };
 }
 
 /** timeline を scene 番号でグルーピングする(欠落は0番、ScenarioRecordBuilder の event.scene ?? 0 と
@@ -373,17 +394,17 @@ function stepStartAtISO(step: RawTimelineStep, sceneFirstAt: string | null, scen
 
 /**
  * 失敗有無に関わらず全シナリオからツリー(startedAt 昇順)を組み立てる。offsetMs は全ノードで
- * 動画内オフセット計算済み(recordings/index.json の segments を worker で引いて
- * offsetMsForWallClock に通す。worker に対応する録画が無ければ segments=[] で 0 になる)。
+ * 動画内オフセット計算済み(recordings/index.json の segments を scenarioID で引いて
+ * offsetMsForWallClock に通す。対応する録画が無ければ segments=[] で 0 になる)。
  */
 export function buildRecordingTree(
   scenarios: readonly ScenarioTreeSource[],
   recordings: readonly RecordingEntry[],
 ): RecordingTreeScenario[] {
-  const segmentsByWorker = new Map(recordings.map((r) => [r.worker, r.segments] as const));
+  const byScenario = firstRecordingEntryByScenario(recordings);
   const ordered = [...scenarios].sort((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt));
   return ordered.map((scenario) => {
-    const segments = segmentsByWorker.get(scenario.worker) ?? [];
+    const segments = byScenario.get(scenario.scenarioID)?.segments ?? [];
     const scenes: RecordingTreeScene[] = groupTimelineByScene(scenario.timeline).map((group) => {
       const sceneFirstAt = group.steps.find((s) => s.at !== null)?.at ?? null;
       const steps: RecordingTreeStep[] = group.steps.map((step) => ({
@@ -404,10 +425,9 @@ export function buildRecordingTree(
     return {
       scenarioID: scenario.scenarioID,
       title: scenario.title,
-      worker: scenario.worker,
       startedAt: scenario.startedAt,
       status: aggregateStatus(scenes.map((s) => s.status), scenario.passed),
-      offsetMs: offsetMsForWallClock(segments, scenario.startedAt),
+      offsetMs: 0, // クリップ先頭 = シナリオ開始(1エントリ=1シナリオの契約)
       scenes,
     };
   });
@@ -418,12 +438,12 @@ export interface RecordingTreeClassScenario extends RecordingTreeScenario {
   readonly method: string;
 }
 
-/** ツリー最上位のテストクラスノード。worker/offsetMs はクラス内の最初のシナリオ(クリック時のシーク先)。 */
+/** ツリー最上位のテストクラスノード。 */
 export interface RecordingTreeClass {
   readonly classID: string;
   readonly status: RecordingTreeStatus;
-  readonly worker: string;
-  readonly offsetMs: number;
+  /** クラス内最初のシナリオの scenarioID(クラスクリックでこの動画の先頭[offset 0]へ切り替える)。 */
+  readonly firstScenarioID: string;
   readonly scenarios: readonly RecordingTreeClassScenario[];
 }
 
@@ -450,8 +470,7 @@ export function groupTreeByClass(scenarios: readonly RecordingTreeScenario[]): R
     return {
       classID,
       status: aggregateStatus(list.map((s) => s.status), undefined),
-      worker: first?.worker ?? "",
-      offsetMs: first?.offsetMs ?? 0,
+      firstScenarioID: first?.scenarioID ?? "",
       scenarios: list,
     };
   });

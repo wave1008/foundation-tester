@@ -2,6 +2,11 @@
 // 対向: src/monitorModel.ts の recordingsSessions/recordingsSession(拡張→webview)・
 // recordingsRefresh/recordingsOpen(webview→拡張)、処理は src/monitorRecordingsController.ts。
 // エラー一覧の動画内オフセット(offsetMs)は拡張側(recordingsModel.ts)で計算済みのものを使うだけ。
+//
+// 契約: recordings/index.json は1エントリ=1シナリオ(テスト関数)の mp4(v2)。動画の切替は
+// 「ワーカー切替」ではなく「シナリオ動画の切替」(selectScenarioVideo)。動画は各シナリオの
+// クリップそのものなので、再生範囲を絞るウィンドウ機構は無く、シークバー・時間表示は常に
+// 表示中の動画全体(video.duration)を表す。
 
 import { vscode, persistedState } from './vscodeApi.js';
 import { t } from '../i18n.js';
@@ -13,7 +18,6 @@ const sessionsList = document.getElementById('recordings-sessions');
 const refreshBtn = document.getElementById('recordings-refresh');
 const backBtn = document.getElementById('recordings-back');
 const sessionTitle = document.getElementById('recordings-session-title');
-const workerTabs = document.getElementById('recordings-worker-tabs');
 const video = document.getElementById('recordings-video');
 const playBtn = document.getElementById('recordings-play');
 const rewindBtn = document.getElementById('recordings-rewind');
@@ -35,7 +39,9 @@ const recordingsBody = playerView.querySelector('.recordings-body');
 // シークバーの内部分解能(0〜SEEK_RESOLUTIONの整数値をvideo.durationとの比率に変換する)。
 const SEEK_RESOLUTION = 1000;
 
-let currentDetail = null; // 直近の recordingsSession 応答(ok:true時)。errors は全件を保持
+// 直近の recordingsSession 応答(ok:true時)。videosByScenario: scenarioID→videoUri、
+// selectedScenarioID: 現在 <video> に読み込まれているシナリオ(未選択は null)、errors は全件を保持。
+let currentDetail = null;
 let seekDragging = false; // ドラッグ中はtimeupdateでシークバー位置を上書きしない
 // ツリー選択によるエラー一覧の絞り込み。null = 全件。scene/stepIndex は undefined なら階層ごと不問
 // (シナリオ選択= scenarioID のみ、シーン選択= +scene、ステップ選択= +stepIndex)。
@@ -122,28 +128,24 @@ export function applyRecordingsSessions(message) {
   renderSessions(message.sessions);
 }
 
-function selectWorker(worker, seekToSeconds) {
-  if (!currentDetail) {
+/** シナリオ動画へ切替える(既に表示中なら切替えず位置だけ変える)。entry = {scenarioID, videoUri}。 */
+function selectScenarioVideo(entry, seekSeconds) {
+  if (!currentDetail || !entry) {
     return;
   }
-  const entry = currentDetail.workers.find((w) => w.worker === worker);
-  if (!entry) {
+  const target = seekSeconds !== undefined ? seekSeconds : 0;
+  if (currentDetail.selectedScenarioID === entry.scenarioID) {
+    video.currentTime = Math.max(0, Math.min(target, video.duration || 0));
+    updateTimeDisplay();
     return;
-  }
-  for (const btn of workerTabs.children) {
-    btn.classList.toggle('active', btn.dataset.worker === worker);
   }
   const wasPaused = video.paused;
-  // 切替時は再生位置を絶対秒で引き継ぐ(各録画はほぼ同じ壁時計で開始されるため、
-  // 絶対秒の維持が「同じ瞬間を見る」に一致する。動画長が短い側では末尾にclamp)。
-  const carrySeconds = video.currentTime;
-  currentDetail.selectedWorker = worker;
+  currentDetail.selectedScenarioID = entry.scenarioID;
   video.src = entry.videoUri;
   video.load();
   video.addEventListener(
     'loadedmetadata',
     () => {
-      const target = seekToSeconds !== undefined ? seekToSeconds : carrySeconds;
       video.currentTime = Math.max(0, Math.min(target, video.duration || 0));
       if (!wasPaused) {
         video.play().catch(() => {});
@@ -152,19 +154,6 @@ function selectWorker(worker, seekToSeconds) {
     },
     { once: true },
   );
-}
-
-function renderWorkerTabs(workers) {
-  workerTabs.textContent = '';
-  for (const w of workers) {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'recordings-worker-tab';
-    btn.textContent = w.worker;
-    btn.dataset.worker = w.worker;
-    btn.addEventListener('click', () => selectWorker(w.worker));
-    workerTabs.appendChild(btn);
-  }
 }
 
 function matchesErrorFilter(err) {
@@ -259,23 +248,22 @@ function renderErrors() {
   }
 }
 
-// 必要ならワーカーを切り替えてから offsetMs(ms)の位置へシークする(エラー一覧・ツリー共通)。
-function seekToOffset(worker, offsetMs) {
+// 必要なら scenarioID の動画へ切り替えてから offsetMs(ms)の位置へシークする(エラー一覧・ツリー共通)。
+// 対応する動画が無い scenarioID(録画対象外だった等)は何もしない。
+function seekToOffset(scenarioID, offsetMs) {
   if (!currentDetail) {
     return;
   }
-  const targetSeconds = Math.max(0, offsetMs / 1000);
-  if (currentDetail.selectedWorker !== worker) {
-    selectWorker(worker, targetSeconds);
+  const videoUri = currentDetail.videosByScenario.get(scenarioID);
+  if (!videoUri) {
     return;
   }
-  video.currentTime = Math.min(targetSeconds, video.duration || targetSeconds);
-  updateTimeDisplay();
+  selectScenarioVideo({ scenarioID, videoUri }, Math.max(0, offsetMs / 1000));
 }
 
 function jumpToError(err) {
   // 文脈が見えるよう3秒手前へ(仕様)。
-  seekToOffset(err.worker, Math.max(0, err.offsetMs - 3000));
+  seekToOffset(err.scenarioID, Math.max(0, err.offsetMs - 3000));
 }
 
 // ---- TEST EXPLORER 風ツリー(再生ビュー左ペイン) -------------------------------------
@@ -297,12 +285,13 @@ const TREE_CHEVRON_SVG =
 let selectedTreeRowEl = null;
 // 開閉可能な全行の setExpanded ハンドル(renderTree でリセット)。全て開く/閉じるボタン用。
 let treeExpandHandles = [];
-// 再生位置→対応ノードの索引。worker → [{startMs, rowEl, caption}](startMs 昇順)。
+// 再生位置→対応ノードの索引。scenarioID → [{startMs, rowEl, caption}](startMs 昇順)。動画は
+// 1エントリ=1シナリオなので、キーは現在表示中の scenarioID の分しか意味を持たない。
 // シナリオ行とステップ行を登録し、timeupdate で「startMs ≤ 現在位置」の最後の項目を再生中扱いにする。
 let playbackEntries = new Map();
 let currentPlaybackEntry = null;
 // 前/次テストのナビ用: セッション内全シナリオを壁時計 startedAt 昇順で持つ
-// [{worker, scenarioID, rowEl, offsetMs, landingMs, startedAtMs}](renderTree で再構築)。
+// [{scenarioID, chipLabel, rowEl, landingMs, startedAtMs}](renderTree で再構築)。
 let scenarioNav = [];
 const nowPlayingClassEl = document.getElementById('recordings-now-playing-class');
 const nowPlayingDetailEl = document.getElementById('recordings-now-playing-detail');
@@ -336,18 +325,18 @@ function setNowPlayingLine(el, status, text) {
   el.title = text;
 }
 
-function registerPlaybackEntry(worker, startMs, rowEl, caption) {
-  let list = playbackEntries.get(worker);
+function registerPlaybackEntry(scenarioID, startMs, rowEl, caption) {
+  let list = playbackEntries.get(scenarioID);
   if (!list) {
     list = [];
-    playbackEntries.set(worker, list);
+    playbackEntries.set(scenarioID, list);
   }
   list.push({ startMs, rowEl, caption });
 }
 
 function updateNowPlaying() {
-  const worker = currentDetail ? currentDetail.selectedWorker : null;
-  const list = (worker && playbackEntries.get(worker)) || [];
+  const scenarioID = currentDetail ? currentDetail.selectedScenarioID : null;
+  const list = (scenarioID && playbackEntries.get(scenarioID)) || [];
   const ms = video.currentTime * 1000;
   let entry = null;
   for (const candidate of list) {
@@ -394,6 +383,7 @@ function deselectTreeRow() {
     selectedTreeRowEl = null;
   }
   setErrorFilter(null);
+  updateTimeDisplay();
 }
 
 /** 戻り値: 新たに選択したら true / 既に選択中の行(=トグルで解除)なら false。 */
@@ -478,13 +468,13 @@ function buildStepNode(scenario, scene, step, clsStatus) {
     collapsible: false,
     onActivate: () => {
       setErrorFilter({ scenarioID: scenario.scenarioID, scene: scene.scene, stepIndex: step.index }, label);
-      seekToOffset(scenario.worker, step.offsetMs);
+      seekToOffset(scenario.scenarioID, step.offsetMs);
     },
   });
   node.appendChild(row);
   const sceneLabel = scene.sceneTitle || t('recordings.tree.sceneDefaultTitle', { n: scene.scene });
   const parts = scenarioCaptionParts(scenario);
-  registerPlaybackEntry(scenario.worker, step.offsetMs, row, {
+  registerPlaybackEntry(scenario.scenarioID, step.offsetMs, row, {
     cls: parts.cls,
     clsStatus,
     detail: `${parts.title} › ${sceneLabel} › ${label}`,
@@ -512,7 +502,7 @@ function buildSceneNode(scenario, scene, clsStatus) {
       childrenEl,
       onActivate: () => {
         setErrorFilter({ scenarioID: scenario.scenarioID, scene: scene.scene }, label);
-        seekToOffset(scenario.worker, scene.offsetMs);
+        seekToOffset(scenario.scenarioID, scene.offsetMs);
       },
     }),
   );
@@ -547,26 +537,24 @@ function buildScenarioNode(scenario, clsStatus) {
     onActivate: () => {
       const parts = scenarioCaptionParts(scenario);
       setErrorFilter({ scenarioID: scenario.scenarioID }, `${parts.cls}/${parts.title}`);
-      seekToOffset(scenario.worker, scenario.offsetMs);
+      seekToOffset(scenario.scenarioID, scenario.offsetMs);
     },
   });
   node.appendChild(row);
   const parts = scenarioCaptionParts(scenario);
-  registerPlaybackEntry(scenario.worker, scenario.offsetMs, row, {
+  registerPlaybackEntry(scenario.scenarioID, scenario.offsetMs, row, {
     cls: parts.cls,
     clsStatus,
     detail: parts.title,
     detailStatus: scenario.status,
   });
   scenarioNav.push({
-    worker: scenario.worker,
     scenarioID: scenario.scenarioID,
     chipLabel: `${parts.cls}/${parts.title}`,
     rowEl: row,
-    offsetMs: scenario.offsetMs,
-    // ⏮/⏭ の着地点。シナリオ記録開始(offsetMs)はアプリ起動前の画面が映るため、
+    // ⏮/⏭ の着地点。シナリオ記録開始(0秒)はアプリ起動前の画面が映るため、
     // 最初のシーン(=最初のステップ)の開始があればそちらへ着地する。
-    landingMs: scenario.scenes[0]?.offsetMs ?? scenario.offsetMs,
+    landingMs: scenario.scenes[0]?.offsetMs ?? 0,
     startedAtMs: Date.parse(scenario.startedAt) || 0,
   });
   if (hasScenes) {
@@ -596,7 +584,8 @@ function buildClassNode(cls) {
       childrenEl,
       onActivate: () => {
         setErrorFilter({ classID: cls.classID }, cls.classID);
-        seekToOffset(cls.worker, cls.offsetMs);
+        // クラスクリックは最初のシナリオ動画の先頭へ。
+        seekToOffset(cls.firstScenarioID, 0);
       },
     }),
   );
@@ -624,26 +613,16 @@ function renderTree(tree) {
   for (const cls of tree) {
     treeContainer.appendChild(buildClassNode(cls));
   }
-  // クラスのグルーピングで per-worker の登録順が時系列と一致しない場合があるためソートする。
   for (const list of playbackEntries.values()) {
     list.sort((a, b) => a.startMs - b.startMs);
   }
   scenarioNav.sort((a, b) => a.startedAtMs - b.startedAtMs);
 }
 
-// 現在再生中のテストの scenarioNav 上の位置(選択中ワーカーで現在位置以前に始まった最後のテスト)。
-// 見つからなければ -1(先頭テストより手前)。
+// 現在表示中の動画(scenarioID)の scenarioNav 上の位置。見つからなければ -1。
 function currentScenarioNavIndex() {
-  const worker = currentDetail ? currentDetail.selectedWorker : null;
-  const ms = video.currentTime * 1000;
-  let index = -1;
-  for (let i = 0; i < scenarioNav.length; i++) {
-    const nav = scenarioNav[i];
-    if (nav.worker === worker && nav.offsetMs <= ms + 500) {
-      index = i;
-    }
-  }
-  return index;
+  const scenarioID = currentDetail ? currentDetail.selectedScenarioID : null;
+  return scenarioNav.findIndex((nav) => nav.scenarioID === scenarioID);
 }
 
 // ツリー選択とエラー一覧フィルターも移動先テストへ連動させる(ツリーの行クリックと同じ状態にする)。
@@ -660,11 +639,12 @@ function jumpToScenarioNav(index) {
     nav.rowEl.classList.add('recordings-tree-row-selected');
   }
   setErrorFilter({ scenarioID: nav.scenarioID }, nav.chipLabel);
-  seekToOffset(nav.worker, nav.landingMs);
+  seekToOffset(nav.scenarioID, nav.landingMs);
 }
 
 // ⏮ は一般的なプレイヤー流儀: テストの途中(先頭から2秒超)なら現在テストの先頭へ戻り、
-// 先頭付近ならひとつ前のテストへ移る。
+// 先頭付近ならひとつ前のテストへ移る(現在動画自身のクリップ内位置で判定するので動画は
+// 切り替わらない)。
 document.getElementById('recordings-prev-test').addEventListener('click', () => {
   const index = currentScenarioNavIndex();
   if (index < 0) {
@@ -681,30 +661,38 @@ document.getElementById('recordings-next-test').addEventListener('click', () => 
 });
 
 export function applyRecordingsSession(message) {
-  if (!message.ok || !message.workers || message.workers.length === 0) {
+  if (!message.ok || !message.videos || message.videos.length === 0) {
     showListView();
     return;
   }
-  currentDetail = { workers: message.workers, selectedWorker: null, errors: message.errors || [] };
+  currentDetail = {
+    videosByScenario: new Map(message.videos.map((v) => [v.scenarioID, v.videoUri])),
+    selectedScenarioID: null,
+    errors: message.errors || [],
+  };
   sessionTitle.textContent = `${message.project} / ${message.runID}`;
-  renderWorkerTabs(message.workers);
   setErrorFilter(null);
   renderTree(message.tree || []);
   showPlayerView();
-  selectWorker(message.workers[0].worker, 0);
+  if (scenarioNav.length > 0) {
+    seekToOffset(scenarioNav[0].scenarioID, 0);
+  }
 }
 
 // ---- 再生コントロール ---------------------------------------------------------------
+// シークバー・時間表示は常に表示中の動画全体(video.duration)を表す(再生範囲を絞るウィンドウは
+// 無い。動画自体が1シナリオ分のクリップなので、終端は <video> が自然に停止する)。
 
 function updatePlayIcon() {
   playBtn.textContent = video.paused ? '▶' : '⏸';
 }
 
 function updateTimeDisplay() {
+  const duration = video.duration || 0;
   timeCurrent.textContent = formatTime(video.currentTime);
-  timeTotal.textContent = formatTime(video.duration);
-  if (!seekDragging && video.duration > 0) {
-    seekBar.value = String(Math.round((video.currentTime / video.duration) * SEEK_RESOLUTION));
+  timeTotal.textContent = formatTime(duration);
+  if (!seekDragging && duration > 0) {
+    seekBar.value = String(Math.round((video.currentTime / duration) * SEEK_RESOLUTION));
   }
   updateNowPlaying();
 }
@@ -738,8 +726,9 @@ speedSelect.addEventListener('change', () => {
 // 内部で間引くため input 毎の currentTime 代入で問題ない。
 seekBar.addEventListener('input', () => {
   seekDragging = true;
-  if (video.duration > 0) {
-    const target = (Number(seekBar.value) / SEEK_RESOLUTION) * video.duration;
+  const duration = video.duration || 0;
+  if (duration > 0) {
+    const target = (Number(seekBar.value) / SEEK_RESOLUTION) * duration;
     video.currentTime = target;
     timeCurrent.textContent = formatTime(target);
   }

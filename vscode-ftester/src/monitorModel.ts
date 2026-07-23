@@ -20,7 +20,7 @@
 //     読み手としては旧バイナリ互換のため受理し続ける
 
 import { t } from "./i18n";
-import type { RecordingErrorEntry, RecordingTreeClass, RecordingWorkerDetail } from "./recordingsModel";
+import type { RecordingErrorEntry, RecordingScenarioVideo, RecordingTreeClass } from "./recordingsModel";
 import type { RecordingSessionSummary } from "./recordingsStore";
 import type { ResidentProcess } from "./residentProcesses";
 
@@ -377,8 +377,9 @@ export type MonitorToWebviewMessage =
   // 列挙。新しい順・最大50件)。recordingsRefresh 受信時に post する。
   | { readonly type: "recordingsSessions"; readonly sessions: readonly RecordingSessionSummary[] }
   // recordingsOpen への応答。ok:false は index.json 未検出等(webview は一覧ビューのまま)。
-  // workers は動画の webview URI 込み(MonitorPanelDeps.videoWebviewUri で変換済み)。errors は
-  // 動画内オフセット計算済み(recordingsModel.ts の buildRecordingErrorEntries、at 昇順)。
+  // videos は scenarioID→動画 webview URI(MonitorPanelDeps.videoWebviewUri で変換済み。1エントリ=
+  // 1シナリオのクリップ契約なので worker タブは無い)。errors は動画内オフセット計算済み
+  // (recordingsModel.ts の buildRecordingErrorEntries、at 昇順)。
   // tree は TEST EXPLORER 風ツリー(buildRecordingTree → groupTreeByClass。クラスは初出順)。timeline の無い
   // 古い記録のシナリオは scenes:[] (ツリーはそのシナリオノードのみ)。
   | {
@@ -387,7 +388,7 @@ export type MonitorToWebviewMessage =
       readonly project: string;
       readonly runID: string;
       readonly error: string | null;
-      readonly workers: readonly RecordingWorkerDetail[] | null;
+      readonly videos: readonly RecordingScenarioVideo[] | null;
       readonly errors: readonly RecordingErrorEntry[] | null;
       readonly tree: readonly RecordingTreeClass[] | null;
     };

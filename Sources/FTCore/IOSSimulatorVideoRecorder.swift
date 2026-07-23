@@ -1,8 +1,10 @@
 // IOSSimulatorVideoRecorder.swift
 // iOS シミュレータの録画(xcrun simctl io recordVideo)。長時間常駐+SIGINT 停止のため
 // Shell.swift(待ち切り実行)ではなく Process を直接管理する(BridgeLauncher.swift の
-// pid 管理パターンを踏襲)。
+// pid 管理パターンを踏襲)。stop() は生ソース(.mov)を返すだけで、シナリオ毎のクリップ切り出しは
+// VideoRecordingCoordinator/VideoRecordingFinalizer が行う。
 
+import AVFoundation
 import Foundation
 
 actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
@@ -15,7 +17,6 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
     private var startedAt: Date?
 
     private var movURL: URL { workDir.appendingPathComponent("\(fileStem).mov") }
-    private var mp4URL: URL { workDir.appendingPathComponent("\(fileStem).mp4") }
 
     init(udid: String, workDir: URL, fileStem: String) {
         self.udid = udid
@@ -54,7 +55,7 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
         return true
     }
 
-    func stopAndFinalize() async -> [RecordingIndexSegment]? {
+    func stop() async -> RecordingSource? {
         guard let process, let startedAt, let exitStream else { return nil }
         process.interrupt()  // SIGINT。SIGKILL すると moov 未書き込みでファイルが壊れる
         let exited = await raceWithDeadline(seconds: 15, onTimeout: false) {
@@ -68,13 +69,18 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
             return nil
         }
         guard FileManager.default.fileExists(atPath: movURL.path) else { return nil }
-        guard let durationMs = await VideoRecordingFinalizer.transcode(from: movURL, to: mp4URL) else {
-            warn("mp4 への変換に失敗しました")
+        // duration だけ測る(実際のエンコードはシナリオ毎のクリップ切り出し時に行う)
+        guard let duration = try? await AVURLAsset(url: movURL).load(.duration), duration.isNumeric,
+              duration.seconds > 0 else {
+            warn("録画ファイルを読めませんでした")
             try? FileManager.default.removeItem(at: movURL)
             return nil
         }
-        try? FileManager.default.removeItem(at: movURL)
-        return [RecordingIndexSegment(startedAt: ISO8601Millis.string(from: startedAt), durationMs: durationMs)]
+        let durationMs = Int((duration.seconds * 1000).rounded())
+        return RecordingSource(
+            files: [movURL],
+            segments: [RecordingIndexSegment(startedAt: ISO8601Millis.string(from: startedAt),
+                                             durationMs: durationMs)])
     }
 
     /// 同じ udid への stale な recordVideo を起動前に best-effort で止める
