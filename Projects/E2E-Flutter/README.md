@@ -53,7 +53,9 @@ ftester run --project E2E-Flutter --profile android
 **`_disabled/` は SPM のビルド対象外**(`Package.swift` の `exclude`)。回すときは
 `Scenarios/` 直下へ移動 → `swift build --product ftester-scenarios-E2E-Flutter` → 実行 → 元に戻す。
 
-- `90_自己修復.swift` — FM 必須。`--heal` を付けて実行。**未検証**(検証時点で FM が不通)
+- `90_自己修復.swift` — FM 必須。`--heal` を付けて実行。
+  **2026-07-23 検証済み**(iOS): FM 経路で `#btn_heal_v1` → `#btn_heal_v2||修復対象` に修復できることを確認。
+  この検証で SUT のバグを1件発見・修正した(下記「key 無しの identifier 切替」)
 - `91_クラッシュ検知.swift` — アプリを実際にクラッシュさせる破壊的シナリオ。**`ios-xcuitest` で回す**。
   **2026-07-23 検証済み**: `dart:ffi` の NULL 参照(SIGSEGV)でプロセスが落ち、
   「Application ... is not running」(XCUITest 500)として現れる。

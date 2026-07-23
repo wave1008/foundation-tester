@@ -84,6 +84,13 @@ Semantics として出る → **`#txt_dialog_title` が両 OS で引ける**
 キーボードで列が動くと入力欄がキーボード下へ回り込み、ロケータが解決できなくなる
 (Compose 版で実測した罠と同じ)。Scaffold で無効化している。
 
+### I. rebuild だけでは `Semantics(identifier:)` の変更が反映されない
+
+状態で identifier を切り替えるウィジェット(自己修復画面の `_schemaV1 ? btnHealV1 : btnHealV2`)は、
+**key を付けないと rebuild しても a11y ツリー上の identifier が古いまま**になる
+(タップの closure は新しい状態で動くのに、`#btn_heal_v1` が schema=v2 でも解決できてしまう。
+2026-07-23 実測)。`key: ValueKey(状態)` でウィジェットごと再生成させて切替を強制する。
+
 ## セレクタ画面の序数(シナリオ 04 が依存)
 
 見えている Button のツリー順は他の SUT と**同じ**:
