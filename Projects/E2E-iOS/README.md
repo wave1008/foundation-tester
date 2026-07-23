@@ -92,9 +92,9 @@ simctl terminate する(ログに「別アプリに注入された in-app ブリ
 **`_disabled/` は SPM のビルド対象外**(`Package.swift` の `exclude`)。回すときは
 `Scenarios/` 直下へ移動 → `swift build --product ftester-scenarios-E2E-iOS` → 実行 → 元に戻す。
 
-- `90_自己修復.swift` — FM 必須。`ios-heal` プロファイルで実行。**未検証**(検証時点で FM が
-  `SensitiveContentAnalysisML error 15` で不通のため。シナリオ側の機構〈schema を v2 に切り替えて
-  `#btn_heal_v1` が解決不能になる〉までは動作確認済み)
+- `90_自己修復.swift` — FM 必須。`ios-heal` プロファイルで実行。
+  **2026-07-23 検証済み**: FM 経路で `#btn_heal_v1` → `#btn_heal_v2||修復対象` に修復、
+  2回目はヒールキャッシュ経路(FM 不使用)で通ることを確認
 - `91_クラッシュ検知.swift` — アプリを実際にクラッシュさせる破壊的シナリオ。**`ios-inapp` で回すこと**。
   **2026-07-23 検証済み**: `fatalError` でプロセスが落ち、エラー行に `.ips` のパスと終了理由
   (`EXC_BREAKPOINT SIGTRAP`)が付く。この検証で ftester 側のバグを2件発見・修正した

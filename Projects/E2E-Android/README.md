@@ -47,7 +47,8 @@ ftester run --project E2E-Android --profile android
 **`_disabled/` は SPM のビルド対象外**(`Package.swift` の `exclude`)。回すときは
 `Scenarios/` 直下へ移動 → `swift build --product ftester-scenarios-E2E-Android` → 実行 → 元に戻す。
 
-- `90_自己修復.swift` — FM 必須。`--heal` を付けて実行。**未検証**(検証時点で FM が不通)
+- `90_自己修復.swift` — FM 必須。`--heal` を付けて実行。
+  **2026-07-23 検証済み**: FM 経路で `#btn_heal_v1` → `#btn_heal_v2||修復対象` に修復できることを確認
 - `91_クラッシュ検知.swift` — アプリを実際にクラッシュさせる破壊的シナリオ。
   **2026-07-23 検証済み**: メインスレッドの未捕捉 RuntimeException でプロセスが落ちる。
   **Android のブリッジは別プロセス(instrumentation)なので切断せず**、iOS inapp のような

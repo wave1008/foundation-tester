@@ -202,7 +202,12 @@ class _HealScreenState extends State<HealScreen> {
         ]),
         TaggedText(Tags.txtHealSchema, 'schema=${_schemaV1 ? 'v1' : 'v2'}'),
         // ラベル固定・id のみ切替がヒール検証の核。
+        // **key は必須**: 無いと rebuild しても Semantics(identifier:) の変更が a11y ツリーへ
+        // 反映されず、schema=v2 でも古い #btn_heal_v1 が解決できてしまう(2026-07-23 実測。
+        // タップの closure は新しい状態で動くのに identifier だけ据え置きになる)。
+        // key でウィジェットごと再生成させ、identifier の切替を強制する。
         TaggedButton(_schemaV1 ? Tags.btnHealV1 : Tags.btnHealV2, '修復対象',
+            key: ValueKey(_schemaV1),
             onTap: () => setState(() => _tapped = _schemaV1 ? 'v1' : 'v2')),
         TaggedText(Tags.txtHealResult, 'tapped=$_tapped'),
         TaggedButton(Tags.btnHealReset, '修復結果クリア',
