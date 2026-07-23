@@ -78,14 +78,14 @@ public struct OcclusionVerifier {
           (b)真っ白/真っ黒/単色で文字が全く無い、(c)期待テキストとは無関係の別文字列だけが描かれている。
         - 多少の減光でも判読できるなら visible=true。推測で補完しないこと。
         """
-        return await respond(instructions: instructions, image: crop) {
+        return await respond(instructions: instructions, image: crop, expectedText: expectedText) {
             "期待テキスト(末尾は省略や折り返しがあり得る): \"\(expectedText)\"\nこのテキスト(またはその先頭部分)が、覆われず判読できる状態で描画されていますか。"
         }
     }
 
     // MARK: - 共通の FM 呼び出し
 
-    private func respond(instructions: String, image: CGImage,
+    private func respond(instructions: String, image: CGImage, expectedText: String,
                          prompt: () -> String) async -> Result? {
         let session = LanguageModelSession(instructions: instructions)
         let startedAt = Date()
@@ -98,9 +98,17 @@ public struct OcclusionVerifier {
                 Attachment(image)
             }.content
             FMHealth.record(kind: "occlusion", ms: Self.elapsedMs(startedAt), ok: true)
+            var reason = String(verdict.reason.prefix(200))
+            // 反転(不可視判定)したときだけ、**FM が実際に見た crop** を保存する。
+            // レポートの失敗時スクショは poll が尽きた後の別撮りで、FM の入力ではない。
+            // これを残さないと「FM の誤判定」なのか「渡した crop が別物だった」のかを
+            // 事後に切り分けられない(2026-07-23、切り分け不能に陥って追加)。
+            if !verdict.visible, let dumped = Self.dump(crop: image, expectedText: expectedText) {
+                reason += " [crop: \(dumped.path)]"
+            }
             return Result(visible: verdict.visible, state: Self.name(verdict.state),
                           observedText: String(verdict.observedText.prefix(120)),
-                          reason: String(verdict.reason.prefix(200)))
+                          reason: reason)
         } catch {
             // nil を返すと呼び出し側(StepExecutor.occlusionFlip)はガードを素通りさせる。
             // 記録しないと「FM 全滅で無効」と「疑わしい要素が無く正常」が区別できない
@@ -146,6 +154,29 @@ public struct OcclusionVerifier {
         let clamped = px.intersection(CGRect(x: 0, y: 0, width: imageWidth, height: imageHeight))
         guard !clamped.isNull, clamped.width >= 1, clamped.height >= 1 else { return nil }
         return clamped
+    }
+
+    /// FM が不可視と判定した crop を ~/Library/Logs/ftester/occlusion/ へ保存する
+    /// (環境変数 FT_OCCLUSION_DUMP_DIR で変更可、"off" で無効)。
+    /// 保存した PNG は Scripts/occlusion-repro.swift にそのまま食わせて再判定できる。
+    static func dump(crop: CGImage, expectedText: String) -> (path: String, Void)? {
+        let env = ProcessInfo.processInfo.environment["FT_OCCLUSION_DUMP_DIR"]
+        if env == "off" { return nil }
+        let dir = env.map { URL(fileURLWithPath: $0) }
+            ?? FileManager.default.homeDirectoryForCurrentUser
+                .appendingPathComponent("Library/Logs/ftester/occlusion")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let stamp = ISO8601DateFormatter().string(from: Date())
+            .replacingOccurrences(of: ":", with: "-")
+        let url = dir.appendingPathComponent("occlusion-\(stamp).png")
+        guard let dst = CGImageDestinationCreateWithURL(
+            url as CFURL, UTType.png.identifier as CFString, 1, nil) else { return nil }
+        CGImageDestinationAddImage(dst, crop, nil)
+        guard CGImageDestinationFinalize(dst) else { return nil }
+        // 期待テキストが無いと再判定できないので隣に置く
+        try? expectedText.write(to: url.deletingPathExtension().appendingPathExtension("txt"),
+                                atomically: true, encoding: .utf8)
+        return (url.path, ())
     }
 
     static func cgImage(fromPNG data: Data) -> CGImage? {
