@@ -58,19 +58,19 @@ ftester run --project E2E-iOS --profile ios-heal       # --heal
 セルが `Other` に落ちていた。XCUITest エンジンは同じ画面で `Cell` を返すため、エンジンを替えると
 型セレクタが壊れる。`UITableViewCell` / `UICollectionViewCell` の判定を追加して解消。
 
-### 残る運用上の注意: inapp プロファイルを別 SUT と交互に回さない
+### (解消済み 2026-07-23)SUT 跨ぎの inapp 連続実行ハザード
 
-`E2E`(com.ftester.e2e)と `E2E-iOS`(com.ftester.e2e.ios)の inapp を**同じシミュレータ群で
-連続実行すると、後から回した方が「ブリッジ接続不能(The request timed out)」で大量に落ちる**。
-これは ftester が元から持つ制約(エラーメッセージにある「背面アプリが suspend され TCP は受理されても
-HTTP 応答が返らない」)で、iOS の SUT が2つになって初めて踏みやすくなった。
-回避は**前の SUT のアプリを terminate してから回す**:
+かつて `E2E`(com.ftester.e2e)と `E2E-iOS`(com.ftester.e2e.ios)の inapp を同じシミュレータ群で
+連続実行すると、後から回した方が「ブリッジ接続不能(The request timed out)」で大量に落ちた
+(実測 14/20 失敗)。根本原因は **provisioner の inapp 再利用判定が注入先アプリを見ていなかった**こと:
 
-```sh
-for u in $(xcrun simctl list devices booted -j | ...); do xcrun simctl terminate "$u" <前の bundle id>; done
-```
+別アプリのブリッジを掴む → 最初のシナリオが対象アプリを前面化した時点で旧アプリが suspend →
+probe 無応答 → フォールバックが「注入先 = 今回のアプリ」と誤認 → 旧アプリが握ったままのポートで
+relaunch → bind 失敗 → 以降のリクエストは suspend した旧ブリッジへ(TCP 受理・HTTP 無応答)。
 
-`Scripts/e2e.sh` は inapp プロファイルを既定で回さないため、通常の E2E では踏まない。
+現在は再利用を「同じアプリに注入済み」のときだけに限定し、別アプリの旧ブリッジは provision 時に
+simctl terminate する(ログに「別アプリに注入された in-app ブリッジ(port N)を終了して起動し直します」
+と出る)。手動の terminate は不要になった。A→B / B→A の両方向で検証済み。
 
 ## シナリオ一覧
 

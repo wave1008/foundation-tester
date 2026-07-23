@@ -333,18 +333,26 @@ public struct BridgeProvisioner {
             rb.udid == sim.udid || (rb.udid == nil && rb.name == sim.name)
         }
         // xcuitest は protocolVersion が現行値と一致するときだけ再利用する(旧ビルドは 404 等の
-        // 不整合を招くため。inapp は毎プロビジョンで再ビルド・再注入なので判定しない)
+        // 不整合を招くため。inapp は毎プロビジョンで再ビルド・再注入なので判定しない)。
+        // inapp は**注入先アプリが一致するときだけ**再利用する。別アプリの SUT が同じデバイス群を
+        // 使い回すと、アプリ違いのブリッジを掴む → 最初のシナリオが対象アプリを前面化した時点で
+        // 旧アプリが suspend → probe が無応答 → フォールバックが「注入先 = 今回のアプリ」と誤認 →
+        // 旧アプリが握ったままのポートで relaunch → bind 失敗し、以降のリクエストは suspend した
+        // 旧ブリッジへ(TCP 受理・HTTP 無応答の 20s タイムアウト)。2026-07-23 に E2E → E2E-iOS の
+        // 連続実行で 14/20 失敗として実害化した連鎖の根がここ
         if !(engine == "inapp" && inappNeedsInstall),
            let port = running.first(where: {
             sameDevice($0.value) && $0.value.engine == engine && !claimed.contains($0.key)
                 && (engine != "xcuitest" || $0.value.protocolVersion == BridgeAPI.bridgeProtocolVersion)
+                && (engine != "inapp" || $0.value.sessionBundleID == bundleID)
            })?.key {
             claimed.insert(port)
             return .reuse(port: port)
         }
-        // 再利用できない同一 UDID・xcuitest の旧版ブリッジは止めてから新規起動する
-        // (放置するとポートを握ったまま残り、次回以降の /status も旧版のまま応答し続ける)。
-        // 停止(stopAndWait)は並列実行フェーズが行い、ここは採番状態の更新だけ
+        // 再利用できない同一 UDID の旧ブリッジは止めてから新規起動する
+        // (放置するとポートを握ったまま残り、xcuitest は /status が旧版のまま応答し続け、
+        // inapp は対象アプリ前面化で suspend したゾンビになる)。
+        // 停止は並列実行フェーズが行い、ここは採番状態の更新だけ
         var stopStalePort: UInt16?
         if engine == "xcuitest", let stale = running.first(where: {
             sameDevice($0.value) && $0.value.engine == "xcuitest" && !claimed.contains($0.key)
@@ -352,6 +360,14 @@ public struct BridgeProvisioner {
         }) {
             claimed.insert(stale.key)
             usedPorts.remove(stale.key)
+            stopStalePort = stale.key
+        }
+        // 別アプリに注入された同一デバイスの inapp ブリッジ(上の再利用条件から漏れたもの)
+        if engine == "inapp", let stale = running.first(where: {
+            sameDevice($0.value) && $0.value.engine == "inapp" && !claimed.contains($0.key)
+                && $0.value.sessionBundleID != bundleID
+        }) {
+            claimed.insert(stale.key)
             stopStalePort = stale.key
         }
         let port = try assignPort(preferred: preferred, used: &usedPorts,
@@ -429,12 +445,21 @@ public struct BridgeProvisioner {
             return port
         case .launch(let port, let needsInstall, let stopStalePort, let reclaimInApp):
             if let stopStalePort {
-                log("→ \(name): 旧ビルドのブリッジ(port \(stopStalePort))を停止して起動し直します")
-                do {
-                    try await BridgeLauncher(repoRoot: repoRoot, device: sim.udid,
-                                             port: stopStalePort).stopAndWait()
-                } catch {
-                    log("⚠️ \(name): 旧ブリッジの停止に失敗しました(port \(stopStalePort)): \(error.localizedDescription)")
+                // inapp(pid ファイル無し・.inapp 状態ファイルあり)は simctl terminate で、
+                // xcuitest(pid ファイルあり)は stopAndWait で止める
+                let stalePath = InAppBridgeState.url(
+                    stateDir: repoRoot.appendingPathComponent(".ftester"), port: stopStalePort)
+                if FileManager.default.fileExists(atPath: stalePath.path) {
+                    log("→ \(name): 別アプリに注入された in-app ブリッジ(port \(stopStalePort))を終了して起動し直します")
+                    InAppBridgeState.terminateAndRemove(at: stalePath)
+                } else {
+                    log("→ \(name): 旧ビルドのブリッジ(port \(stopStalePort))を停止して起動し直します")
+                    do {
+                        try await BridgeLauncher(repoRoot: repoRoot, device: sim.udid,
+                                                 port: stopStalePort).stopAndWait()
+                    } catch {
+                        log("⚠️ \(name): 旧ブリッジの停止に失敗しました(port \(stopStalePort)): \(error.localizedDescription)")
+                    }
                 }
             }
             if reclaimInApp {
@@ -557,6 +582,9 @@ public struct BridgeProvisioner {
         let engine: String
         /// BridgeAPI.bridgeProtocolVersion。旧ブリッジは nil(xcuitest の再利用判定に使う)。
         let protocolVersion: Int?
+        /// /status の sessionBundleID。in-app ブリッジは注入先アプリ固有のため、
+        /// 再利用は「同じアプリに注入済み」のときだけ許す(inapp の再利用判定に使う)。
+        let sessionBundleID: String?
     }
 
     /// provision の再利用判定用。engine・protocolVersion は /status のもの(旧ブリッジはどちらも
@@ -578,7 +606,8 @@ public struct BridgeProvisioner {
                     let udid = booted.count == 1 ? booted[0].udid : nil
                     return (port, RunningBridge(udid: udid, name: status.device,
                                                 engine: status.engine ?? "xcuitest",
-                                                protocolVersion: status.protocolVersion))
+                                                protocolVersion: status.protocolVersion,
+                                                sessionBundleID: status.sessionBundleID))
                 }
             }
             var result: [UInt16: RunningBridge] = [:]
