@@ -96,6 +96,12 @@ enum VideoRecordingFinalizer {
                 while writerInput.isReadyForMoreMediaData {
                     guard !finished else { return }
                     guard let sample = readerOutput.copyNextSampleBuffer() else {
+                        // 区間内に 1 サンプルも無い(区間中ずっと画面静止)場合、区間前の最後の
+                        // フレームで静止クリップを作る(何も append しないと writer が失敗する)
+                        if !enteredClip, let pending = pendingBeforeClip,
+                           let retimed = retimed(pending, to: clipStart) {
+                            writerInput.append(retimed)
+                        }
                         finished = true
                         writerInput.markAsFinished()
                         continuation.resume()
