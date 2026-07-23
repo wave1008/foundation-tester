@@ -166,16 +166,12 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         if (body.has("ref")) {
             double[] center = centerOf(body.optInt("ref"));
             InputInjector.tap(ua(), center[0], center[1]);
-            // **タップした対象**にフォーカスが移るまで待つ(「何かしらのフォーカス」待ちだと
-            // 別フィールドが既にフォーカスを持つ場合に即通過し、旧フィールドへ誤追記する。
-            // InputInjector.waitForFocusAt のコメント参照)。移らなければ誤爆せず失敗させる
-            if (!InputInjector.waitForFocusAt(ua(), center[0], center[1], 2000)) {
-                throw new BridgeException(500,
-                        "タップしたフィールドにフォーカスが移りませんでした"
-                        + "(2秒待機。他のフィールドへ誤入力しないため中止します)");
-            }
+            // 確認と注入を統合した経路(InputInjector.setTextAppendingAt のコメント参照)。
+            // タップした点を含むフォーカスノードにだけ SET_TEXT し、他フィールドへ誤爆しない
+            InputInjector.setTextAppendingAt(ua(), center[0], center[1], text, 2000);
+        } else {
+            InputInjector.setTextAppending(ua(), text);
         }
-        InputInjector.setTextAppending(ua(), text);
         settle();
         return ok();
     }
