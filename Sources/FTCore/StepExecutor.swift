@@ -53,13 +53,16 @@ public protocol ReplayDelegate: AnyObject {
     /// 戻り nil = 判定不能(FM 不可・画像不正)で、この場合ガードは何もしない(従来どおり pass)。
     /// state は fullyVisible/covered/dimmed/notRendered/textMismatch のいずれか(FTCore は FM 非依存
     /// のため文字列で受ける)。既定実装は nil(ガード無効時・非対応 delegate は素通り)。
+    /// observedText は FM が実際に読み取れた文字列(切り分け用。空 = 何も読めなかった)。
     func verifyElementVisible(expectedText: String, frame: FTRect, screen: FTRect,
-                              screenshotPNG: Data) async -> (visible: Bool, state: String, reason: String)?
+                              screenshotPNG: Data) async
+        -> (visible: Bool, state: String, reason: String, observedText: String)?
 }
 
 public extension ReplayDelegate {
     func verifyElementVisible(expectedText: String, frame: FTRect, screen: FTRect,
-                              screenshotPNG: Data) async -> (visible: Bool, state: String, reason: String)? {
+                              screenshotPNG: Data) async
+        -> (visible: Bool, state: String, reason: String, observedText: String)? {
         nil
     }
 }
@@ -571,7 +574,11 @@ public final class StepExecutor {
             expectedText: expectedText, frame: element.frame, screen: screen, screenshotPNG: screenshot)
         else { return nil }
         if v.visible { return nil }
-        return .failed("偽陽性(occlusion): ツリー上に存在するが視覚的に見えない [\(v.state)] \(v.reason)")
+        // observedText は原因切り分けの鍵: 空なら「FM に画像が渡っていない/白紙を見た」
+        // (SCA 劣化で添付が落ちる仮説・起動遷移画面)、期待どおりの文字列なら「読めたのに
+        // 覆われていると答えた」= 純粋な判定誤り。これが無くて切り分けに窮した(2026-07-23)。
+        return .failed("偽陽性(occlusion): ツリー上に存在するが視覚的に見えない [\(v.state)] \(v.reason)"
+                       + " observed=\"\(v.observedText)\"")
     }
 
     private func executeAssert(_ assert: String, step: FlowStep,

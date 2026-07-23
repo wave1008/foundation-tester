@@ -62,44 +62,60 @@ ftester run --project E2E-Flutter --profile android
 ## 既知の未解決事象: occlusion-guard の偽陽性(2026-07-23)
 
 FM が生きている状態でこの SUT を回すと、`launchApp()` 直後の `exist("#txt_home_marker")` が
-「偽陽性(occlusion): 領域が不透明な要素に覆われている」で落ちることが**ある実行の窓で3回**あった。
+「偽陽性(occlusion): [covered]」で落ちることが**ある時間窓で3回**あった。**原因は未特定**。
 
-**原因は未特定。** 当初「FM の誤判定」と結論したが、それは誤りだった:
+### 確定していること(コード精査 + 実測)
 
-- レポートに添付される失敗時スクリーンショットは **FM の入力ではない**。
-  FM が見るのは poll ループ内で撮る `guardScreenshot()`(判定時点)で、
-  レポートのスクショは poll が尽きた後の別撮り
-- その別撮り画像を同じクロップ・同じ instructions/prompt で FM に 15 回食わせたところ
-  **15/15 とも fullyVisible**(`sampling: .greedy` = 決定的デコード)。
-  つまり「その画像を FM が誤判定した」わけではない
-- 残る仮説は「FM に渡った crop が別物だった」(起動直後の未確定 frame で
-  空白領域を切り出した等)。これは ftester 側の入力の問題であり Apple の不具合ではない
+- レポート添付の失敗時スクリーンショットは **FM の入力ではない**(FM が見るのは poll 周回内の
+  `guardScreenshot()`。添付は poll が尽きた後の別撮り)。当初これを取り違えて「FM の誤判定」と
+  断定したのは誤り
+- その別撮り画像を同一クロップ・同一 instructions/prompt で 15 回再判定 → **15/15 fullyVisible**
+  (`sampling: .greedy`)。「その画像を見て誤判定した」のではない
+- poll はスクショを**周回ごとに取り直す**(TTL 200ms + 周回末尾で無効化)。腐ったキャッシュ説はコードで否定
+- `lastOcclusion` は要素未発見の周回でクリアされるため、失敗が返った以上
+  **最終周回(起動の約5秒後)でも要素は解決でき、その時点の新鮮なスクショを FM が covered と判定した**
+- 3件とも `#txt_home_marker`(淡色背景に淡色テキスト)。この SUT で低インク事前フィルタを抜けて
+  FM に回るのは実質この領域だけで、高コントラストの echo 検証は FM を呼ばない
+  (同じ実行窓で CMP/ネイティブ SUT が無傷だったのはこのため。除外の根拠にならない)
 
-切り分けのため、**guard が反転したときに FM へ渡した crop 自体を保存する**ようにした:
+### 競合する仮説(次回発生時に下記の計装で判別する)
 
-```
-~/Library/Logs/ftester/occlusion/occlusion-<時刻>.png   ← FM が実際に見た画像
-~/Library/Logs/ftester/occlusion/occlusion-<時刻>.txt   ← 期待テキスト
-```
+1. **FM/SCA の劣化窓**(有力): flip は 04:08 の FM 全滅(ModelManagerError 1001)と
+   05:34 の全滅(SensitiveContentAnalysisML error 15)の**間**の 05:22-05:25 に起きた。
+   SCA が劣化する過程で画像添付が白紙化/破棄され、モデルは「何も見えない画像」に正しく
+   covered と答えていた可能性(応答自体は成功するので FM 全滅の警告は出ない)。
+   これなら **Apple 報告案件**(availability は正常のまま vision 経路だけ黙って劣化する)
+2. **起動遷移画面**: Flutter debug ビルド(JIT)の first frame が並列負荷で遅れ、
+   launch screen(白)が覆っている間に判定された = **guard は正しかった**可能性。
+   ただし落ちた実行の launch 時間(5.6s)は通った実行の範囲(4.2〜7.5s)に収まっており、相関は弱い
 
-保存先は `FT_OCCLUSION_DUMP_DIR` で変更可(`off` で無効)。失敗理由の末尾に `[crop: <path>]` が付く。
-再判定は `Scripts/occlusion-repro.swift`(ftester 非依存。Apple へ出す最小再現にもなる):
+### 次回発生時の切り分け手順
+
+flip 時に **FM が実際に見た crop** と読み取り結果が自動で残る(この事象のために追加した計装):
+
+- 失敗メッセージ末尾の `observed="..."` — **空なら仮説1**(画像が渡っていない)、
+  **期待どおりの文字列なら純粋な判定誤り**(読めたのに covered と答えた = Apple 報告の最有力材料)
+- 失敗メッセージ末尾の `[crop: <path>]` — FM が見た画像そのもの
+  (`~/Library/Logs/ftester/occlusion/`。`FT_OCCLUSION_DUMP_DIR` で変更可・`off` で無効)。
+  **白紙なら仮説1か2**、レンダリング済みなら判定誤り
+- 再判定・Apple 提出用の最小再現: `Scripts/occlusion-repro.swift`(ftester 非依存)
 
 ```sh
 xcrun swiftc -O Scripts/occlusion-repro.swift -o /tmp/occlusion-repro
 /tmp/occlusion-repro ~/Library/Logs/ftester/occlusion/occlusion-<時刻>.png 15
 ```
 
-配色について: この SUT は **Material 3 の既定配色(淡い着色)をそのまま使う**。
-白背景・黒文字に変えれば低インク判定を避けられるが、M3 既定はごく普通の実アプリの見た目であり、
-そこで落ちるなら ftester 側の問題。SUT の見た目を変えて避けるのは**検出器を潰す**行為なので採らない。
+### 配色と検出器の方針
 
-- **検出点は `01_起動と画面遷移`**。ここは `exist` を既定(`requireVisible: true`)のまま置いてある
-- 他シナリオの `launchApp()` 直後の着地確認だけは `requireVisible: false`。あれは可視性の
-  **検証**ではなく「Flutter が起動直後にポインタ入力を取りこぼす」ための同期の1往復であり、
-  かつ FM はホスト全体で直列化(約1回/秒)されるため 19 箇所で呼ぶとコストだけが乗る
-- **現状**: M3 既定のまま 01 単体 10 回 + フルスイート 3 回で再現せず。
-  「潰れた」のか「踏まなくなっただけ」なのかは区別できていない
+この SUT は **Material 3 の既定配色(淡い着色)をそのまま使う**。白背景に変えれば低インク判定を
+避けられるが、M3 既定はごく普通の実アプリの見た目であり、そこで落ちるなら ftester 側の問題。
+SUT の見た目を変えて避けるのは**検出器を潰す**行為なので採らない。
+
+- **検出点は `01_起動と画面遷移`**(既定 `requireVisible: true` のまま。timeout も既定 5s のまま —
+  広げると仮説2を吸収してしまい、判別材料が消える)
+- 他シナリオの `launchApp()` 直後の着地確認だけは `requireVisible: false`。あれは可視性の検証ではなく
+  「Flutter が起動直後にポインタ入力を取りこぼす」ための同期の1往復で、FM 直列化(約1回/秒)の
+  コストだけが乗るため
 
 ## Flutter は in-app エンジンでは動かない(2026-07-23 実測)
 

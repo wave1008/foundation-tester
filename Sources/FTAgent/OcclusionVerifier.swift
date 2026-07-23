@@ -103,8 +103,8 @@ public struct OcclusionVerifier {
             // レポートの失敗時スクショは poll が尽きた後の別撮りで、FM の入力ではない。
             // これを残さないと「FM の誤判定」なのか「渡した crop が別物だった」のかを
             // 事後に切り分けられない(2026-07-23、切り分け不能に陥って追加)。
-            if !verdict.visible, let dumped = Self.dump(crop: image, expectedText: expectedText) {
-                reason += " [crop: \(dumped.path)]"
+            if !verdict.visible, let dumpedPath = Self.dump(crop: image, expectedText: expectedText) {
+                reason += " [crop: \(dumpedPath)]"
             }
             return Result(visible: verdict.visible, state: Self.name(verdict.state),
                           observedText: String(verdict.observedText.prefix(120)),
@@ -159,15 +159,19 @@ public struct OcclusionVerifier {
     /// FM が不可視と判定した crop を ~/Library/Logs/ftester/occlusion/ へ保存する
     /// (環境変数 FT_OCCLUSION_DUMP_DIR で変更可、"off" で無効)。
     /// 保存した PNG は Scripts/occlusion-repro.swift にそのまま食わせて再判定できる。
-    static func dump(crop: CGImage, expectedText: String) -> (path: String, Void)? {
+    /// 真の陽性(実際に覆われている過渡状態)でも保存されるため、7日より古いものは書き込み時に掃除する。
+    static func dump(crop: CGImage, expectedText: String) -> String? {
         let env = ProcessInfo.processInfo.environment["FT_OCCLUSION_DUMP_DIR"]
         if env == "off" { return nil }
         let dir = env.map { URL(fileURLWithPath: $0) }
             ?? FileManager.default.homeDirectoryForCurrentUser
                 .appendingPathComponent("Library/Logs/ftester/occlusion")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let stamp = ISO8601DateFormatter().string(from: Date())
-            .replacingOccurrences(of: ":", with: "-")
+        pruneOldDumps(in: dir)
+        // FM はホスト全体で直列化(約1回/秒)されるが並列ワーカーで同秒が起き得るため ms まで入れる
+        let fmt = ISO8601DateFormatter()
+        fmt.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let stamp = fmt.string(from: Date()).replacingOccurrences(of: ":", with: "-")
         let url = dir.appendingPathComponent("occlusion-\(stamp).png")
         guard let dst = CGImageDestinationCreateWithURL(
             url as CFURL, UTType.png.identifier as CFString, 1, nil) else { return nil }
@@ -176,7 +180,20 @@ public struct OcclusionVerifier {
         // 期待テキストが無いと再判定できないので隣に置く
         try? expectedText.write(to: url.deletingPathExtension().appendingPathExtension("txt"),
                                 atomically: true, encoding: .utf8)
-        return (url.path, ())
+        return url.path
+    }
+
+    private static func pruneOldDumps(in dir: URL) {
+        let fm = FileManager.default
+        guard let entries = try? fm.contentsOfDirectory(
+            at: dir, includingPropertiesForKeys: [.contentModificationDateKey]) else { return }
+        let cutoff = Date().addingTimeInterval(-7 * 24 * 3600)
+        for url in entries {
+            if let mtime = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
+                .contentModificationDate, mtime < cutoff {
+                try? fm.removeItem(at: url)
+            }
+        }
     }
 
     static func cgImage(fromPNG data: Data) -> CGImage? {
