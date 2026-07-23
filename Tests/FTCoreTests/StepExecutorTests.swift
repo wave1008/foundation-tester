@@ -97,9 +97,10 @@ private final class FakeVisibilityDelegate: ReplayDelegate {
     func triage(goal: String?, stepDescription: String, failureReason: String,
                 snapshot: SnapshotResponse?, screenshotPNG: Data?) async -> TriageInfo? { nil }
     func verifyElementVisible(expectedText: String, frame: FTRect, screen: FTRect,
-                              screenshotPNG: Data) async -> (visible: Bool, state: String, reason: String)? {
+                              screenshotPNG: Data) async
+        -> (visible: Bool, state: String, reason: String, observedText: String)? {
         visibleCalls += 1
-        return (visible, visible ? "fullyVisible" : "covered", "test")
+        return (visible, visible ? "fullyVisible" : "covered", "test", "")
     }
 }
 
@@ -114,10 +115,11 @@ private final class SequenceVisibilityDelegate: ReplayDelegate {
     func triage(goal: String?, stepDescription: String, failureReason: String,
                 snapshot: SnapshotResponse?, screenshotPNG: Data?) async -> TriageInfo? { nil }
     func verifyElementVisible(expectedText: String, frame: FTRect, screen: FTRect,
-                              screenshotPNG: Data) async -> (visible: Bool, state: String, reason: String)? {
+                              screenshotPNG: Data) async
+        -> (visible: Bool, state: String, reason: String, observedText: String)? {
         let v = calls < results.count ? results[calls] : (results.last ?? true)
         calls += 1
-        return (v, v ? "fullyVisible" : "covered", "test")
+        return (v, v ? "fullyVisible" : "covered", "test", "")
     }
 }
 
@@ -642,18 +644,34 @@ final class StepExecutorTests: XCTestCase {
         XCTAssertEqual(log.entries, ["primary.swipe(throws)"], "typeDriver を呼んではいけない")
     }
 
-    /// gesturesViaTypeDriver(probe で compose 検出)なら 501 を待たず最初から typeDriver で撃つこと
-    func testGesturesViaTypeDriverRoutesUpfront() async throws {
+    /// typeDriverGestures に swipe が申告されていれば 501 を待たず最初から typeDriver で撃つこと
+    func testTypeDriverGesturesRoutesSwipeUpfront() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log)
         let typeDriver = FakeAppDriver(name: "typedriver", log: log)
         let executor = StepExecutor(driver: primary, typeDriver: typeDriver,
-                                    gesturesViaTypeDriver: true)
+                                    typeDriverGestures: ["swipe", "press"])
 
         let outcome = await executor.execute(FlowStep(action: "swipe", direction: "up"))
 
         XCTAssertEqual(outcome.driverFallback, "XCUITest へフォールバック")
         XCTAssertEqual(log.entries, ["typedriver.swipe"], "primary を無駄打ちしてはいけない")
+    }
+
+    /// **アクション別ルーティング**: press だけの申告(uikit)で swipe まで typeDriver へ回さないこと。
+    /// 一括 Bool だった頃、press の申告だけで scrollTo の swipe が XCUITest 実スワイプ化し、
+    /// バウンス由来の非決定性で下端の行タップが flake した(2026-07-23 実害)。
+    func testPressOnlyDeclarationKeepsSwipeOnPrimary() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log)
+        let typeDriver = FakeAppDriver(name: "typedriver", log: log)
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver,
+                                    typeDriverGestures: ["press"])
+
+        let outcome = await executor.execute(FlowStep(action: "swipe", direction: "up"))
+
+        XCTAssertNil(outcome.driverFallback, "press だけの申告で swipe を typeDriver へ回さない")
+        XCTAssertEqual(log.entries, ["primary.swipe"], "swipe は primary(in-app)で実行するはず")
     }
 
     /// press の 501 切替は ref を typeDriver 側 snapshot で取り直すこと(ref はブリッジごとに別名前空間)

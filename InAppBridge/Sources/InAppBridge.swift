@@ -217,16 +217,25 @@ final class FTInAppBridge {
             // UIKit/SwiftUI のスクロールは合成タッチでは駆動できない(ジェスチャ認識器が受理しない)ため、
             // contentOffset を直接動かす(accessibilityScroll は SwiftUI List で片方向しか効かず不安定
             // だった。setContentOffset は決定的・双方向)。
-            guard let scrollView = Self.scrollableScrollView(in: window, direction: req.direction) else {
-                // 動かせるスクロールビューが無い = 合成タッチに落ちるしかない画面(ジェスチャ検出用の
-                // パッド等)。FTSynthSwipe を撃っても DragGesture / UIPanGestureRecognizer は受理せず、
-                // **200 を返して黙って空振り**する(2026-07-23 に Projects/E2E-iOS で実測)。
-                // 501 で申告してホストに XCUITest へ回させる(compose の早期 return と同じ慣習)。
+            //
+            // 「スクロールビューが無い」と「あるが端に達した」は**区別する**:
+            // - 無い = ジェスチャ検出用パッド等。FTSynthSwipe を撃っても DragGesture /
+            //   UIPanGestureRecognizer は受理されず 200 で黙って空振りするため、501 で申告して
+            //   ホストに XCUITest へ回させる(2026-07-23 に Projects/E2E-iOS で実測)
+            // - 端に達した = scrollTo の探索が終端に来ただけの**正常な状態**。ここで 501 を返すと
+            //   XCUITest の実スワイプ(バウンス)へ切り替わり、さらにラッチで以降のジェスチャ全部が
+            //   XCUITest 化して、下端でのタップが不安定になる(実測: scrollTo 直後の行タップが
+            //   空振りする flake)。従来どおり無害な no-op にする(次の snapshot が解決を判定する)
+            let scrollViews = Self.visibleScrollViews(in: window)
+            guard !scrollViews.isEmpty else {
                 throw InAppError(501, "この画面には in-app エンジンで動かせるスクロールビューがありません"
                     + "(合成タッチの drag はジェスチャ認識器に受理されません)。"
                     + "hybrid なら XCUITest へフォールバックします")
             }
-            Self.scrollByPage(scrollView, direction: req.direction)
+            if let scrollView = Self.largestWithRoom(scrollViews, direction: req.direction) {
+                Self.scrollByPage(scrollView, direction: req.direction)
+            }
+            // 余地なし = 端。no-op で 200 を返す
         }
         return .json(OKResponse())
     }
@@ -251,21 +260,29 @@ final class FTInAppBridge {
         sv.setContentOffset(offset, animated: false)
     }
 
-    /// 面積最大の可視スクロールビューのうち、**その向きに実際にスクロール余地があるもの**。
-    /// 余地の判定を入れているのは、画面上に本体のスクロールとは無関係な(コンテンツが収まりきっている)
-    /// UIScrollView が居ることがあり、それを動かすと「offset は変わったが見た目は不変」= 黙った空振りに
-    /// なるため。余地が無ければ nil を返し、呼び出し側が 501 でホストに知らせる。
-    private static func scrollableScrollView(in window: UIWindow,
-                                             direction: FTSwipeDirection) -> UIScrollView? {
-        var best: UIScrollView?
-        var bestArea: CGFloat = 0
+    private static func visibleScrollViews(in window: UIWindow) -> [UIScrollView] {
+        var found: [UIScrollView] = []
         var stack: [UIView] = [window]
         while let v = stack.popLast() {
-            if let sv = v as? UIScrollView, !sv.isHidden, sv.alpha > 0.01, hasRoom(sv, direction) {
-                let area = sv.bounds.width * sv.bounds.height
-                if area > bestArea { best = sv; bestArea = area }
+            if let sv = v as? UIScrollView, !sv.isHidden, sv.alpha > 0.01 {
+                found.append(sv)
             }
             stack.append(contentsOf: v.subviews)
+        }
+        return found
+    }
+
+    /// 面積最大の、**その向きに実際にスクロール余地がある**スクロールビュー。
+    /// 余地の判定を入れているのは、画面上に本体のスクロールとは無関係な(コンテンツが収まりきっている)
+    /// UIScrollView が居ることがあり、それを動かすと「offset は変わったが見た目は不変」= 黙った空振りに
+    /// なるため。全て余地なし = 端に達している(呼び出し側が no-op にする)。
+    private static func largestWithRoom(_ scrollViews: [UIScrollView],
+                                        direction: FTSwipeDirection) -> UIScrollView? {
+        var best: UIScrollView?
+        var bestArea: CGFloat = 0
+        for sv in scrollViews where hasRoom(sv, direction) {
+            let area = sv.bounds.width * sv.bounds.height
+            if area > bestArea { best = sv; bestArea = area }
         }
         return best
     }

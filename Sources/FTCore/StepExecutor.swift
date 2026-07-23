@@ -162,11 +162,13 @@ public final class StepExecutor {
     /// inapp /status の uiFramework=="compose" 検出時 true。type を inapp で試さず最初から
     /// typeDriver で実行する(409 の無駄打ち回避)。
     public var preferTypeDriver: Bool
-    /// Compose iOS は合成タッチで時間・移動を伴うジェスチャ(swipe/press)を駆動できない
-    /// (tap/type は通る。実験で確定済み)。probe で compose 検出+typeDriver ありのとき true になり、
-    /// swipe/press を inapp で試さず最初から typeDriver で実行する。type 用の preferTypeDriver
-    /// (廃止済み・常に false)とは別物。
-    public var gesturesViaTypeDriver: Bool
+    /// in-app ブリッジが /status の unsupportedActions で申告したジェスチャ("swipe"/"press")。
+    /// 含まれるアクションは inapp で試さず最初から typeDriver で実行する。
+    /// **アクション別に持つ**: uikit は press だけ申告する(swipe は contentOffset 直接操作で
+    /// 決定的に効く)。一括 Bool だと press の申告だけで swipe まで XCUITest 実スワイプ化し、
+    /// バウンス由来の非決定性で scrollTo 直後のタップが flake した(2026-07-23 実害)。
+    /// type 用の preferTypeDriver(廃止済み・常に false)とは別物。
+    public var typeDriverGestures: Set<String>
     /// swipe/press が 501 を1回でも受けたら true。以降は直接 typeDriver へ(scrollTo は
     /// 最大 maxSwipes 回 swipe するため、毎回 501 を往復させないため)
     private var gestureFallbackLatched = false
@@ -208,14 +210,14 @@ public final class StepExecutor {
 
     public init(driver: AppDriver, fallbackDriver: AppDriver? = nil,
                 typeDriver: AppDriver? = nil, preferTypeDriver: Bool = false,
-                gesturesViaTypeDriver: Bool = false,
+                typeDriverGestures: Set<String> = [],
                 delegate: ReplayDelegate? = nil, healingEnabled: Bool = false,
                 occlusionGuard: Bool = false, occlusionInkThreshold: Double = 12) {
         self.driver = driver
         self.fallbackDriver = fallbackDriver
         self.typeDriver = typeDriver
         self.preferTypeDriver = preferTypeDriver
-        self.gesturesViaTypeDriver = gesturesViaTypeDriver
+        self.typeDriverGestures = typeDriverGestures
         self.delegate = delegate
         self.healingEnabled = healingEnabled
         self.occlusionGuard = occlusionGuard
@@ -444,7 +446,7 @@ public final class StepExecutor {
                 driverFallback = "XCUITest へフォールバック"
             }
         case "press":
-            if gesturesViaTypeDriver || gestureFallbackLatched, let td = typeDriver,
+            if typeDriverGestures.contains("press") || gestureFallbackLatched, let td = typeDriver,
                try await pressViaTypeDriver(td, step: step, phase: &phase) {
                 return StepOutcome(status: .passed, healedStep: healedStep, healedByCache: healedByCache,
                                    driverFallback: "XCUITest へフォールバック")
@@ -499,13 +501,13 @@ public final class StepExecutor {
         return true
     }
 
-    /// swipe を通常ドライバ→(gesturesViaTypeDriver/ラッチ済みなら最初から、501 ならキャッチしてから)
+    /// swipe を通常ドライバ→(typeDriverGestures 申告/ラッチ済みなら最初から、501 ならキャッチしてから)
     /// typeDriver の順で試す。swipe は ref を使わないので要素再解決は不要。
     /// 戻り値: true = typeDriver(XCUITest)経由で実行した
     private func swipeWithFallback(_ direction: FTSwipeDirection,
                                    phase: inout PhaseAccumulator) async throws -> Bool {
         let clock = ContinuousClock()
-        if gesturesViaTypeDriver || gestureFallbackLatched, let td = typeDriver {
+        if typeDriverGestures.contains("swipe") || gestureFallbackLatched, let td = typeDriver {
             let start = clock.now
             try await td.swipe(direction)
             phase.actionMs += Self.ms(clock.now - start)
