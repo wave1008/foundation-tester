@@ -4,7 +4,7 @@
 
 - **このツールを「使う」だけ**(自分のアプリのシナリオを書いて実行したい。ツール本体は改造しない):
   `/ftester-setup` スキルに従ってセットアップする。手順の全体像は docs/getting-started.md。
-  **以下の保守者向けルール(委譲方針・コメント規約・常駐プロセス掃除・ソース分割等)は適用しない。**
+  **以下の保守者向けルール(委譲方針・コメント規約・i18n・ソース分割等)は適用しない。**
 - **このツール本体を「改造する」保守者**: 以下すべてが適用対象。
 
 ## ドキュメント
@@ -13,6 +13,7 @@
 - リリース(git タグ発行と版ピンの関係。配布はソースビルド前提): docs/releasing.md(`Scripts/release.sh`)
 - 設計書(アーキテクチャ・Swift DSL 仕様・セレクタ記法・プロファイル): docs/design.md
 - 性能チューニング(調整ノブ・不採用施策と再検討条件・計測手順): docs/performance-tuning.md
+- 検証の詳細(flake/性能の判定規律・ベータ整合・全滅時の切り分け・e2e.sh のオプション): docs/verification.md
 - ftester 自身の E2E: **UI フレームワークごとに SUT が4つ**ある(画面・`#id`・ラベルは全 SUT 共通契約):
 
   | SUT | 実装 | プロジェクト | 対象 OS |
@@ -28,28 +29,20 @@
 
 ## ビルド・検証
 
-- 拡張: `cd vscode-ftester && npm run compile`(esbuild+tsc)/ `npm test`
-- Swift: `swift build --build-tests` / `swift test`
-- 拡張の挙動を変えたら: package.json の version を上げて `npm run install-local`(パッケージ+インストール+到達確認まで一括。code CLI は PATH に無い)。反映には VSCode の Reload Window+パネル開き直しが必要。コメント整理など挙動不変の変更では vsix 更新不要
-- 再ビルド後の検証前に旧バイナリの常駐プロセス(monitor/host-metrics)を kill(生き残って検証を汚す。docs/performance-tuning.md §7)
-- 実行ファイルを差し替えるビルドは `swift build --product <名>`。`--target` はコンパイルのみでリンクしない(旧バイナリをそのまま実行する事故が実際に起きた)
-- ビルドの合否は exit code で確認する。`npm run compile 2>&1 | grep ... && 次コマンド` のようにパイプすると grep の exit code が使われ、tsc の失敗を握りつぶして次へ進んでしまう(実際に起きかけた)
-- macOS ベータを更新したら Xcode も同じベータへ揃えてフルリビルド。FoundationModels の ABI 不整合で全バイナリが dyld クラッシュする(swift build は SDKROOT/--sdk を無視するため Xcode 側を揃えるしかない)
-- Xcode(beta)単体の更新でも同様: iOS ランタイム導入(`xcodebuild -downloadPlatform iOS`)+ランナー再ビルドで整合させる。不整合はアプリが数操作で「Application is not running」クラッシュする(`ftester doctor` が DTXcodeBuild 不一致を警告。2026-07-21 実害)
-- テストが「Application is not running」で全滅したら、ランナーや自分の変更を疑う前に **SUT のバックエンド死活を確認**(sut-ec-mobile は localhost:8090 の dev サーバ。停止中はアプリが非同期例外でクラッシュする)。apps プロファイルの healthCheckURL が実行開始時に警告を出す
-- **次を変えたら `Scripts/e2e.sh` を回す**(ftester 自身の E2E。ユニットテストはデバイス境界のバグを
-  1つも捕まえられないため、ここを通さないと「黙って空振りする」類の退行が素通りする):
-  - DSL コマンド(`Sources/FTDSL/Commands.swift`)・`StepExecutor`・ドライバ(`Sources/FTBridgeClient/`)
-  - ブリッジ(`InAppBridge/`・`Runner/`・`AndroidRunner/`)
-  - セレクタ解決・スナップショット・ヒール(`FTAgent`)
-- `Scripts/e2e.sh` は **4 SUT 全部**の鮮度を見て必要なら再ビルドし、各プロファイルを順に回す
-  (`--rebuild` / `--ios` / `--android` / `--cmp` / `--ios-native` / `--android-native` / `--flutter`)。
-  **両OSを1プロファイルにまとめない**: platform 未指定シナリオは既定 platform のキューにしか入らず
-  他方のワーカーが空回りする(design.md §11.4)。SUT はネットワーク依存ゼロなのでバックエンド死活の切り分けは不要
-- **フレームワーク差の退行は SUT を跨がないと出ない**。ブリッジのスナップショット/型写像
-  (`SnapshotBuilder`・`BridgeRouter`)を触ったら SUT を絞らず全部回す。片方だけ通って
-  もう片方が黙って空振りする類の退行が実際に出る(Compose の Button は `Cell`、View/XML は `Button` 等)
-- `ftester api ...` の JSON/NDJSON 契約を後方非互換に変えたら `Sources/FTCore/ProtocolVersion.swift` と `vscode-ftester/src/protocolVersion.ts` の版を +1(両者一致必須・`protocolVersion.test.mjs` が検出)。拡張は起動時に `ftester api version` で照合し不一致を警告する(`compatCheck.ts`)
+**検証の詳細な罠と判定規律(flake/性能の判定・macOS/Xcode ベータ整合・常駐プロセス掃除・
+「Application is not running」全滅時の切り分け・`Scripts/e2e.sh` の各オプション)は docs/verification.md**。
+以下は毎回効く最重要ゲートだけ。
+
+- 拡張: `cd vscode-ftester && npm run compile`(esbuild+tsc)/ `npm test`。挙動を変えたら package.json の version を上げて `npm run install-local`(反映は VSCode の Reload Window **+パネル開き直し**。Reload だけでは効かないことがある。code CLI は PATH に無い)
+- Swift: `swift build --build-tests` / `swift test`。**合否は exit code で見る**(パイプすると grep 等の exit code に化けて失敗を握りつぶす実害)
+- 実行ファイル差し替えは `swift build --product <名>`。`--target` はリンクせず旧バイナリを実行する(事故実績)
+- **DSL コマンド・`StepExecutor`・ドライバ・ブリッジ(`InAppBridge`/`Runner`/`AndroidRunner`)・
+  セレクタ/スナップショット/ヒール(`FTAgent`)を変えたら `Scripts/e2e.sh`**(ユニットテストはデバイス
+  境界のバグを1つも捕まえない)。**ブリッジのスナップショット/型写像を触ったら SUT を絞らず全部**回す
+  (フレームワーク差の退行は SUT を跨がないと出ない)。詳細は docs/verification.md
+- **flake の修正は1回グリーンで判定しない・単発の観測で性能を断じない**(反復+負荷で叩く。実害と
+  手順は docs/verification.md)
+- `ftester api` の JSON/NDJSON 契約を後方非互換に変えたら `Sources/FTCore/ProtocolVersion.swift` と `vscode-ftester/src/protocolVersion.ts` の版を +1(両者一致必須・`protocolVersion.test.mjs` が検出。拡張は起動時に照合し不一致を警告)
 
 ## 実装の委譲
 
