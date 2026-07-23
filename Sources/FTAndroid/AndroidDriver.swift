@@ -189,10 +189,14 @@ public final class AndroidDriver: AppDriver {
     }
 
     public func type(ref: Int?, text: String) async throws {
-        if let ref {
-            try await tap(ref: ref)  // ref はホスト側で座標解決(タップ自体の整定待ちはブリッジ側で完了済み)
-        }
-        try await withBridge { try await $0.type(ref: nil, text: text) }  // ACTION_SET_TEXT(日本語も IME 不要)
+        // ref は**ブリッジまで通す**(ホスト側で tap+ref:nil に分解しない)。分解すると
+        // ブリッジは「フォーカス中のフィールドへ注入」(findFocus)しかできず、直前の scene で
+        // 別フィールドがフォーカスを保持している+フォーカス遷移が負荷で遅れた実行で
+        // 旧フィールドへ誤追記する(hello123secret42 事故)。ブリッジの ref 経路
+        // (InputInjector.setTextAppendingAt)は「タップ点にある editable ノードそのもの」へ
+        // SET_TEXT + 期限内リトライするため、誤爆が構造的に起きない。
+        // v10-v12 のブリッジ側修正がここの分解のせいで一度も実行されていなかった(2026-07-23)。
+        try await withBridge { try await $0.type(ref: ref, text: text) }
     }
 
     public func swipe(_ direction: FTSwipeDirection) async throws {
