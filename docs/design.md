@@ -768,6 +768,12 @@ platform フィールドは持たず、**iOS/Android のデバイス名を混在
 実行する(AndroidDataWiper.swift。ゲストは初期化されるが、アプリは appPath があれば強制
 再インストール、ロケールは下記 `locale` が再ブート後に自動適用される)。
 
+`record`(既定 false)を true にすると、並列実行の各ワーカー(デバイス)ごとに run 全体を
+1本の動画に録画し `<runDir>/recordings/` に保存する(iOS: `simctl io recordVideo` →
+AVFoundation で半分解像度+低 bitrate の H.264 へ再エンコード / Android: `screenrecord` の
+180 秒セグメントループ → passthrough 連結)。拡張側との契約は `recordings/index.json`
+(VideoRecordingCoordinator.swift・RecordingIndex.swift)。録画自体の失敗は run を失敗させない。
+
 `locale`(既定 "ja_JP")は Android エミュレータのブート完了時(device-up と wipe 後の再起動)に
 適用される。**Play イメージは root/`setprop`/`settings put system system_locales`/emulator の
 `-change-locale` が全て無効**(実測 2026-07-17)のため、適用はブリッジの `POST /locale`

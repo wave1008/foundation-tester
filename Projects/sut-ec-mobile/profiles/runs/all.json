@@ -36,5 +36,6 @@
   "reportDir": "reports",
   "machine": "M2Ultra",
   "iosInappEngine": true,
-  "wipeDataOnBloat": true
+  "wipeDataOnBloat": true,
+  "record": true
 }

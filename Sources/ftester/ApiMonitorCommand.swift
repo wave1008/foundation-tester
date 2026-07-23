@@ -206,9 +206,12 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                 let inRun = leaseStateDir.flatMap { dir in
                     leaseKey.map { RunLease.isFresh(stateDir: dir, key: $0) }
                 } ?? false
+                let recording = leaseStateDir.flatMap { dir in
+                    leaseKey.map { RecordingLease.isFresh(stateDir: dir, key: $0) }
+                } ?? false
                 return state.info(health: confirmedIssues.isEmpty ? nil : confirmedIssues,
                                    renderMode: state.androidSerial.flatMap { renderModeCache[$0] },
-                                   inRun: inRun)
+                                   inRun: inRun, recording: recording)
             }))
 
             for state in states {
@@ -592,12 +595,13 @@ struct DeviceRuntimeState {
 
     /// fileprivate: 戻り値の型 ApiMonitorDeviceInfo がファイル限定の private 型のため
     /// (list-devices は同じ情報を ApiDeviceEntry として別途組み立てる)。
-    /// health・renderMode・inRun は monitor ループだけが知る状態のため引数で受け取る
-    fileprivate func info(health: [String]?, renderMode: String?, inRun: Bool) -> ApiMonitorDeviceInfo {
+    /// health・renderMode・inRun・recording は monitor ループだけが知る状態のため引数で受け取る
+    fileprivate func info(health: [String]?, renderMode: String?, inRun: Bool,
+                          recording: Bool) -> ApiMonitorDeviceInfo {
         ApiMonitorDeviceInfo(id: target.id, name: target.name,
                              platform: target.platform, state: state, detail: detail,
                              udid: iosUdid, serial: androidSerial, health: health, renderMode: renderMode,
-                             inRun: inRun)
+                             inRun: inRun, recording: recording)
     }
 }
 
@@ -739,6 +743,9 @@ private struct ApiMonitorDeviceInfo: Encodable {
     /// run-lease(RunLease.isFresh)が生存中なら true。ftester api run がこのデバイスを使用中の意味。
     /// leaseStateDir 未解決時は常に false
     let inRun: Bool
+    /// recording-lease(RecordingLease.isFresh)が生存中なら true。run profile の record:true で
+    /// このデバイスの動画録画(VideoRecordingCoordinator)が進行中の意味。leaseStateDir 未解決時は常に false
+    let recording: Bool
 }
 
 /// monitorFrame イベント: state == connected のデバイスのみ、スクリーンショットを添えて出す

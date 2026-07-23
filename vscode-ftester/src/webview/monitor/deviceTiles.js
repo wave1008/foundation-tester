@@ -102,6 +102,10 @@ function createTile(device) {
   // 一目で分かるようにする。タイル左下(フッター先頭)に置く(ユーザー指定)。表示は renderMeta。
   const queuedBadge = document.createElement('span');
   queuedBadge.className = 'badge badge-queued';
+  // 録画中バッジ。device.recording が true の間だけ表示(renderMeta が切替)。
+  const recordingBadge = document.createElement('span');
+  recordingBadge.className = 'badge badge-recording';
+  recordingBadge.textContent = t('recordings.deviceBadge');
   header.append(name);
 
   const frameWrap = document.createElement('div');
@@ -117,8 +121,8 @@ function createTile(device) {
   const error = document.createElement('span');
   error.className = 'tile-error';
   // renderBadge はフッター末尾に置く。tile-error が flex:1 で伸びるため自動的に右端(=タイル右下)に寄る。
-  // 実行中/キュー待ちのバッジはタイル左下(フッター先頭)に置く(ユーザー指定。ヘッダーはデバイス名のみ)。
-  footer.append(runningBadge, queuedBadge, stateBadge, error, renderBadge);
+  // 実行中/キュー待ち/録画中のバッジはタイル左下(フッター先頭)。録画は実行中の右(ユーザー指定)。
+  footer.append(runningBadge, recordingBadge, queuedBadge, stateBadge, error, renderBadge);
 
   tile.append(header, frameWrap, footer);
   grid.appendChild(tile);
@@ -133,6 +137,7 @@ function createTile(device) {
     stateBadgeEl: stateBadge,
     runningBadgeEl: runningBadge,
     queuedBadgeEl: queuedBadge,
+    recordingBadgeEl: recordingBadge,
     renderBadgeEl: renderBadge,
     frameWrapEl: frameWrap,
     imgEl: img,
@@ -267,6 +272,7 @@ function renderMeta(entry) {
   entry.nameEl.textContent = entry.device.name;
   entry.nameEl.className = 'tile-name tile-name-' + entry.device.platform;
   entry.nameEl.title = entry.device.name + ' (' + entry.device.platform + ')';
+  entry.recordingBadgeEl.style.display = entry.device.recording ? 'inline-block' : 'none';
   renderRenderBadge(entry);
   // 通常時は空(接続済みは画面表示自体が、接続待ちはプレースホルダの「接続中」が伝えるため
   // 冗長で出さない。ユーザー決定 2026-07-16)。bridgeWatch の異常時だけ下で埋める。

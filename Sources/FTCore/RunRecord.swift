@@ -95,10 +95,13 @@ public struct FailedStepRecord: Codable, Sendable {
     public var file: String?
     public var line: Int?
     public var durationMs: Int?
+    /// 失敗確定時刻(ISO8601+ミリ秒。ScenarioEvent.at 由来)。動画録画(record:true)の
+    /// 再生位置ジャンプ用。取得できない経路(recordSkipped 等)では nil
+    public var at: String?
 
     public init(index: Int, scene: Int? = nil, sceneTitle: String? = nil, section: String? = nil,
                 description: String, detail: String? = nil, file: String? = nil,
-                line: Int? = nil, durationMs: Int? = nil) {
+                line: Int? = nil, durationMs: Int? = nil, at: String? = nil) {
         self.index = index
         self.scene = scene
         self.sceneTitle = sceneTitle
@@ -107,6 +110,32 @@ public struct FailedStepRecord: Codable, Sendable {
         self.detail = detail
         self.file = file
         self.line = line
+        self.durationMs = durationMs
+        self.at = at
+    }
+}
+
+/// 録画再生 UI のステップツリー(クリックでシーク)用。failedSteps と違い成否によらず全ステップを
+/// 記録順(イベント到着順)のまま保持する。sceneTitle の解決規則は FailedStepRecord と同一
+public struct TimelineStepRecord: Codable, Sendable {
+    public var scene: Int?
+    public var sceneTitle: String?
+    public var index: Int
+    public var description: String
+    /// ScenarioEvent.status をそのまま(passed/passedViaFallback/healed/failed/skipped)
+    public var status: String
+    /// ISO8601+ミリ秒(ScenarioEvent.at 由来)。取得できないステップでは nil
+    public var at: String?
+    public var durationMs: Int?
+
+    public init(scene: Int? = nil, sceneTitle: String? = nil, index: Int, description: String,
+                status: String, at: String? = nil, durationMs: Int? = nil) {
+        self.scene = scene
+        self.sceneTitle = sceneTitle
+        self.index = index
+        self.description = description
+        self.status = status
+        self.at = at
         self.durationMs = durationMs
     }
 }
@@ -160,6 +189,9 @@ public struct ScenarioRunRecord: Codable, Sendable {
     /// FM 呼び出し実測(回数・レイテンシ)。FM を使わなかったシナリオでは nil。
     /// FM は直列化するので、run 全体で totalMs を合算すると実行時間の下限が見積もれる
     public var fm: FMUsageRecord?
+    /// 全ステップのタイムライン(録画再生 UI のステップツリー用。イベント到着順)。
+    /// failedSteps と異なり成否によらず記録する。ステップが1つも無ければ nil
+    public var timeline: [TimelineStepRecord]?
 
     public init(schemaVersion: Int = RunRecordSchema.current, runID: String = "",
                 scenarioID: String, title: String? = nil, platform: String, worker: String? = nil,
@@ -169,7 +201,8 @@ public struct ScenarioRunRecord: Codable, Sendable {
                 failedSteps: [FailedStepRecord]? = nil,
                 fixSuggestions: [FixSuggestionRecord]? = nil,
                 errorLogs: [String]? = nil,
-                fm: FMUsageRecord? = nil) {
+                fm: FMUsageRecord? = nil,
+                timeline: [TimelineStepRecord]? = nil) {
         self.fm = fm
         self.schemaVersion = schemaVersion
         self.runID = runID
@@ -189,6 +222,7 @@ public struct ScenarioRunRecord: Codable, Sendable {
         self.failedSteps = failedSteps
         self.fixSuggestions = fixSuggestions
         self.errorLogs = errorLogs
+        self.timeline = timeline
     }
 }
 
@@ -207,6 +241,8 @@ public struct ScenarioRecordBuilder {
     private var fixSuggestions: [FixSuggestionRecord] = []
     private var reportPath: String?
     private var fm: FMUsageRecord?
+    /// 全ステップのタイムライン(成否によらず到着順で蓄積。build() で timeline へ)
+    private var timeline: [TimelineStepRecord] = []
 
     private var sceneTitles: [Int: String] = [:]
     /// sceneFinished が durationMs を持たない場合のフォールバック(scene 内 step の合計)
@@ -255,6 +291,11 @@ public struct ScenarioRecordBuilder {
         }
         guard let status = event.status else { return }
         stepCounts.total += 1
+        // 録画再生 UI のステップツリー用: 成否によらず到着順のまま全ステップを積む
+        timeline.append(TimelineStepRecord(
+            scene: event.scene, sceneTitle: event.sceneTitle ?? event.scene.flatMap { sceneTitles[$0] },
+            index: event.index ?? 0, description: event.description ?? "",
+            status: status, at: event.at, durationMs: event.durationMs))
         switch status {
         case "passed":
             stepCounts.passed += 1
@@ -271,7 +312,7 @@ public struct ScenarioRecordBuilder {
                 sceneTitle: event.sceneTitle ?? event.scene.flatMap { sceneTitles[$0] },
                 section: event.section, description: event.description ?? "",
                 detail: event.detail, file: event.file, line: event.line,
-                durationMs: event.durationMs))
+                durationMs: event.durationMs, at: event.at))
         default:
             break
         }
@@ -297,7 +338,9 @@ public struct ScenarioRecordBuilder {
             fixSuggestions: passed ? nil : (fixSuggestions.isEmpty ? nil : fixSuggestions),
             errorLogs: passed ? nil : (errorLogs.isEmpty ? nil : errorLogs),
             // FM 実測は成否によらず残す(コスト分析は成功実行こそ必要)
-            fm: fm)
+            fm: fm,
+            // timeline も成否によらず残す(録画再生 UI は成功シナリオでもステップツリーを出す)
+            timeline: timeline.isEmpty ? nil : timeline)
     }
 
     private static func relativize(_ path: String?, packageRoot: URL?) -> String? {

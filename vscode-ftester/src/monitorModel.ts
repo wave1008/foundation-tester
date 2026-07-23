@@ -20,6 +20,8 @@
 //     読み手としては旧バイナリ互換のため受理し続ける
 
 import { t } from "./i18n";
+import type { RecordingErrorEntry, RecordingTreeClass, RecordingWorkerDetail } from "./recordingsModel";
+import type { RecordingSessionSummary } from "./recordingsStore";
 import type { ResidentProcess } from "./residentProcesses";
 
 export type MonitorPlatform = "ios" | "android";
@@ -46,6 +48,9 @@ export interface MonitorDevice {
   /** `ftester api run` がこのデバイスを使用中か(ApiMonitorCommand.swift の RunLease.isFresh)。
    * Swift は常に true/false を送るが、欠落・非 bool は false として扱う(isMonitorDevice が正規化)。 */
   readonly inRun?: boolean;
+  /** このデバイスが画面録画中か。inRun と同じ契約(Swift は常に true/false を送るが、
+   * 欠落・非 bool は false として扱う=isMonitorDevice が正規化。旧バイナリとの互換のため)。 */
+  readonly recording?: boolean;
 }
 
 /** `ftester api monitor` の NDJSON 1行分のイベント(kind で判別)。 */
@@ -92,6 +97,10 @@ function isMonitorDevice(value: unknown): value is MonitorDevice {
     // 欠落/null/型不正を「未使用中」に寄せる(イベント全体は捨てない)。
     value.inRun = false;
   }
+  if (value.recording !== true && value.recording !== false) {
+    // 欠落/null/型不正を「録画していない」に寄せる(inRun と同じ方針)。
+    value.recording = false;
+  }
   return (
     typeof value.id === "string" &&
     typeof value.name === "string" &&
@@ -105,7 +114,8 @@ function isMonitorDevice(value: unknown): value is MonitorDevice {
     (value.health === undefined ||
       (Array.isArray(value.health) && value.health.every((item) => typeof item === "string"))) &&
     (value.renderMode === undefined || value.renderMode === "gpu" || value.renderMode === "cpu") &&
-    typeof value.inRun === "boolean"
+    typeof value.inRun === "boolean" &&
+    typeof value.recording === "boolean"
   );
 }
 
@@ -361,6 +371,25 @@ export type MonitorToWebviewMessage =
       readonly type: "wipeStatus";
       readonly name: string;
       readonly phase: "stopping" | "rebooting" | "done" | "failed";
+    }
+  // ---- 録画タブ ---------------------------------------------------------------------------
+  // セッション一覧(recordingsStore.ts が Projects/*/results/runs/*/*/recordings/index.json を
+  // 列挙。新しい順・最大50件)。recordingsRefresh 受信時に post する。
+  | { readonly type: "recordingsSessions"; readonly sessions: readonly RecordingSessionSummary[] }
+  // recordingsOpen への応答。ok:false は index.json 未検出等(webview は一覧ビューのまま)。
+  // workers は動画の webview URI 込み(MonitorPanelDeps.videoWebviewUri で変換済み)。errors は
+  // 動画内オフセット計算済み(recordingsModel.ts の buildRecordingErrorEntries、at 昇順)。
+  // tree は TEST EXPLORER 風ツリー(buildRecordingTree → groupTreeByClass。クラスは初出順)。timeline の無い
+  // 古い記録のシナリオは scenes:[] (ツリーはそのシナリオノードのみ)。
+  | {
+      readonly type: "recordingsSession";
+      readonly ok: boolean;
+      readonly project: string;
+      readonly runID: string;
+      readonly error: string | null;
+      readonly workers: readonly RecordingWorkerDetail[] | null;
+      readonly errors: readonly RecordingErrorEntry[] | null;
+      readonly tree: readonly RecordingTreeClass[] | null;
     };
 
 /**
@@ -532,7 +561,10 @@ export type MonitorFromWebviewMessage =
   // monitorPanel.ts。scope="tile"(既定・device 必須)→ monitorDeviceStreamController.restartDevice、
   // scope="live"(選択中デバイス一律・device 不要)→ monitorLiveController.restartStream。
   // どちらもヘルパー再起動で新キーフレームを得る。
-  | { readonly type: "streamStall"; readonly scope?: "tile" | "live"; readonly device?: string };
+  | { readonly type: "streamStall"; readonly scope?: "tile" | "live"; readonly device?: string }
+  // ---- 録画タブ ---------------------------------------------------------------------------
+  | { readonly type: "recordingsRefresh" }
+  | { readonly type: "recordingsOpen"; readonly project: string; readonly runID: string };
 
 /**
  * machineDevicesSync の add[] 1件(MachineDeviceAddEntry)の検証。name の空文字は不正。
@@ -680,7 +712,8 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
         typeof value.fields.defaultTimeout === "string" &&
         typeof value.fields.wipeDataOnBloat === "boolean" &&
         typeof value.fields.wipeDataThresholdGB === "string" &&
-        typeof value.fields.locale === "string"
+        typeof value.fields.locale === "string" &&
+        typeof value.fields.record === "boolean"
       );
     case "appProfileAdd":
       return true;
@@ -723,6 +756,10 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
     case "streamStall":
       // scope="live" は device 不要(選択中デバイスに一律)。それ以外(tile/未指定)は device 必須
       return value.scope === "live" || (typeof value.device === "string" && value.device !== "");
+    case "recordingsRefresh":
+      return true;
+    case "recordingsOpen":
+      return typeof value.project === "string" && value.project !== "" && typeof value.runID === "string" && value.runID !== "";
     default:
       return false;
   }
@@ -1170,10 +1207,10 @@ export function validateNewAppProfileName(name: string, existing: readonly strin
 }
 
 // ---- プロファイルタブ下半分: 実行プロファイルの設定フォーム -----------------------------
-// handleRunProfileLoad/Save(monitorPanel.ts)が使う、JSON⇔フォーム10フィールド変換の純粋関数
+// handleRunProfileLoad/Save(monitorPanel.ts)が使う、JSON⇔フォーム11フィールド変換の純粋関数
 // (未知キー保持のイミュータブルな方針。updateDeviceInMachineProfile と同じ)。
 
-/** 実行プロファイル設定フォームの10フィールド(全て文字列/配列/真偽値化済み。空文字は未設定)。 */
+/** 実行プロファイル設定フォームの11フィールド(全て文字列/配列/真偽値化済み。空文字は未設定)。 */
 export interface RunProfileFormFields {
   readonly machine: string;
   readonly app: string;
@@ -1185,14 +1222,15 @@ export interface RunProfileFormFields {
   readonly wipeDataOnBloat: boolean;
   readonly wipeDataThresholdGB: string;
   readonly locale: string;
+  readonly record: boolean;
 }
 
 /**
- * runs/<name>.json のトップレベルから、フォームの10フィールドを許容的に読み取る(トップレベルが
+ * runs/<name>.json のトップレベルから、フォームの11フィールドを許容的に読み取る(トップレベルが
  * 非オブジェクトなら null)。各キーは欠落・型不正を「読めなければ空/既定値」で許容し、スキーマ
  * 妥当性検証はしない(保存時 updateRunProfileInObject・CLI 側 ProfileResolver.validate に委ねる)。
  * defaultTimeout/wipeDataThresholdGB は number ならそのまま String() 化する(0.5 のような
- * スキーマ違反値もそのまま表示し、整数化はしない)。
+ * スキーマ違反値もそのまま表示し、整数化はしない)。record は既定 false(未設定=録画しない)。
  */
 export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFields | null {
   // 配列も typeof "object" だが、トップレベルとしては不正なので弾く(他の同様関数と同じ判定)。
@@ -1207,6 +1245,7 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
   const heal = typeof source.heal === "boolean" ? source.heal : false;
   const iosInappEngine = typeof source.iosInappEngine === "boolean" ? source.iosInappEngine : true;
   const wipeDataOnBloat = typeof source.wipeDataOnBloat === "boolean" ? source.wipeDataOnBloat : true;
+  const record = typeof source.record === "boolean" ? source.record : false;
   const devices: string[] = Array.isArray(source.devices)
     ? source.devices
         .map((device) => (isRecord(device) && typeof device.name === "string" ? device.name : undefined))
@@ -1218,7 +1257,19 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
   const rawThreshold = source.wipeDataThresholdGB;
   const wipeDataThresholdGB =
     typeof rawThreshold === "number" ? String(rawThreshold) : typeof rawThreshold === "string" ? rawThreshold : "";
-  return { machine, app, devices, heal, iosInappEngine, reportDir, defaultTimeout, wipeDataOnBloat, wipeDataThresholdGB, locale };
+  return {
+    machine,
+    app,
+    devices,
+    heal,
+    iosInappEngine,
+    reportDir,
+    defaultTimeout,
+    wipeDataOnBloat,
+    wipeDataThresholdGB,
+    locale,
+    record,
+  };
 }
 
 export type RunProfileUpdateResult =
@@ -1226,12 +1277,14 @@ export type RunProfileUpdateResult =
   | { readonly ok: false; readonly error: string };
 
 /**
- * runs/<name>.json を、フォームの10フィールドの内容で更新した新オブジェクトを組み立てる
+ * runs/<name>.json を、フォームの11フィールドの内容で更新した新オブジェクトを組み立てる
  * (未知キー保持のイミュータブルな方針。profileObject が非オブジェクトなら ok:false)。
  * defaultTimeout は空文字ならキー削除、正の整数文字列以外はエラー。
  * wipeDataThresholdGB は空文字ならキー削除、正の数(小数許容)文字列以外はエラー。
  * devices は fields.devices の順に並べ直し、既存 devices 配列の同名エントリ(未知キー込み)を
  * 再利用する(新規名は { name } のみ追加。同名重複があれば最初の1件を採用)。
+ * record は false のときキー自体を書かない(既定値のノイズを既存プロファイルに足さない。
+ * parseRunProfileForForm の「欠落→false」と対で round-trip が安定する)。
  */
 export function updateRunProfileInObject(
   profileObject: unknown,
@@ -1255,6 +1308,11 @@ export function updateRunProfileInObject(
   result.heal = fields.heal;
   result.iosInappEngine = fields.iosInappEngine;
   result.wipeDataOnBloat = fields.wipeDataOnBloat;
+  if (fields.record) {
+    result.record = true;
+  } else {
+    delete result.record;
+  }
 
   const timeoutTrimmed = fields.defaultTimeout.trim();
   if (timeoutTrimmed.length === 0) {

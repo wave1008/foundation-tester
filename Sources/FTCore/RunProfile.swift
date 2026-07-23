@@ -191,12 +191,16 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     /// 実行環境に注入する(伝搬経路は BridgeClient.fastInput 参照)。動きの激しい画面では
     /// 整定前タップのフレークリスクを伴う(既定 false)
     public var iosFastInput: Bool?
+    /// 並列実行の各ワーカー(デバイス)ごとに run 全体を1本の動画に録画するか(既定 false)。
+    /// 実体は RunOrchestrator への VideoRecordingConfig 注入(VideoRecordingCoordinator.swift)。
+    /// 録画失敗は run を失敗させない(警告ログのみ)
+    public var record: Bool?
 
     public init(app: String? = nil, devices: [RunDeviceRef]? = nil, heal: Bool? = nil,
                 reportDir: String? = nil, defaultTimeout: Int? = nil, scenarioTimeout: Int? = nil,
                 machine: String? = nil, iosInappEngine: Bool? = nil,
                 wipeDataOnBloat: Bool? = nil, wipeDataThresholdGB: Double? = nil,
-                locale: String? = nil, iosFastInput: Bool? = nil) {
+                locale: String? = nil, iosFastInput: Bool? = nil, record: Bool? = nil) {
         self.app = app
         self.devices = devices
         self.heal = heal
@@ -209,12 +213,13 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
         self.wipeDataThresholdGB = wipeDataThresholdGB
         self.locale = locale
         self.iosFastInput = iosFastInput
+        self.record = record
     }
 
     static let knownKeys: Set<String> = [
         "app", "devices", "heal", "reportDir", "defaultTimeout", "scenarioTimeout",
         "machine", "iosInappEngine", "wipeDataOnBloat", "wipeDataThresholdGB", "locale",
-        "iosFastInput",
+        "iosFastInput", "record",
     ]
 }
 
@@ -276,6 +281,8 @@ public struct ResolvedProfile: Sendable {
     public let locale: String
     /// iOS xcuitest ブリッジの高速入力(RunProfileDocument.iosFastInput。既定 false)
     public let iosFastInput: Bool
+    /// 各ワーカーを run 全体で 1 本の動画に録画するか(RunProfileDocument.record。既定 false)
+    public let record: Bool
     /// 解決中に出た警告(スキップしたデバイス・未知キー等)。呼び出し側が表示する
     public let warnings: [String]
 
@@ -586,6 +593,7 @@ public enum ProfileResolver {
             wipeDataThresholdGB: wipeDataThresholdGB,
             locale: locale,
             iosFastInput: runDoc.iosFastInput ?? false,
+            record: runDoc.record ?? false,
             warnings: warnings)
     }
 

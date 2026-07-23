@@ -53,6 +53,10 @@ public struct ScenarioEvent: Codable, Sendable {
     /// FM を使わなかったシナリオでは nil(キーごと省略)。FM はホスト全体で直列化するため、
     /// 並列実行では他レーンの待ちも含む値になる(FMHealth の doc 参照)
     public var fm: FMUsageRecord?
+    /// kind == step。ステップの結果が確定した壁時計時刻(ISO8601+ミリ秒)。動画録画(record:true)の
+    /// 再生位置ジャンプ用(録画の startedAt と突き合わせる)。failed 以外も付与されるが、
+    /// 永続化(FailedStepRecord.at)は失敗ステップのみ
+    public var at: String?
 
     public init(kind: String) {
         self.kind = kind

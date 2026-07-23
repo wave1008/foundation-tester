@@ -23,6 +23,8 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
   const csp = [
     "default-src 'none'",
     "img-src data:",
+    // 録画タブの <video src> (webview.asWebviewUri 経由の mp4)読み込みに必要。
+    `media-src ${webview.cspSource}`,
     `style-src ${webview.cspSource} 'unsafe-inline'`,
     `script-src 'nonce-${nonce}'`,
   ].join("; ");
@@ -40,6 +42,7 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
     <button id="tab-devices" class="tab-button active" type="button" role="tab" aria-selected="true" aria-controls="panel-devices">${t("panels.tabs.devices")}</button>
     <button id="tab-profiles" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-profiles">${t("panels.tabs.profiles")}</button>
     <button id="tab-processes" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-processes">${t("panels.tabs.processes")}</button>
+    <button id="tab-recordings" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-recordings">${t("panels.tabs.recordings")}</button>
     <button id="tab-settings" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-settings">${t("panels.tabs.settings")}</button>
   </div>
 
@@ -112,6 +115,10 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
           <div class="modal-row run-profile-devices-row">
             <label>${t("panels.common.devices")}</label>
             <div id="run-profile-devices" class="run-profile-devices"></div>
+          </div>
+          <div class="modal-row profile-checkbox-row">
+            <input type="checkbox" id="run-profile-record">
+            <label for="run-profile-record">${t("panels.runProfile.recordLabel")}</label>
           </div>
           <div class="modal-row profile-checkbox-row">
             <input type="checkbox" id="run-profile-heal">
@@ -294,6 +301,70 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
           </thead>
           <tbody id="resident-tbody"></tbody>
         </table>
+      </div>
+    </div>
+  </div>
+
+  <div id="panel-recordings" class="tab-panel" role="tabpanel" aria-labelledby="tab-recordings" style="display: none;">
+    <div id="recordings-list-view" class="recordings-list-view">
+      <div class="recordings-toolbar">
+        <span class="recordings-toolbar-title">${t("panels.recordings.sessionsTitle")}</span>
+        <button id="recordings-refresh" class="secondary" type="button">${t("panels.recordings.refresh")}</button>
+      </div>
+      <div id="recordings-empty" class="recordings-empty" style="display: none;"></div>
+      <div id="recordings-sessions" class="recordings-sessions"></div>
+    </div>
+    <div id="recordings-player-view" class="recordings-player-view" style="display: none;">
+      <div class="recordings-player-toolbar">
+        <button id="recordings-back" class="icon-button" type="button" title="${t("panels.recordings.backTitle")}"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="M7.146 3.646a.5.5 0 0 1 .708.708L4.707 7.5H13.5a.5.5 0 0 1 0 1H4.707l3.147 3.146a.5.5 0 0 1-.708.708l-4-4a.5.5 0 0 1 0-.708l4-4z"/></svg></button>
+        <span id="recordings-session-title" class="recordings-session-title"></span>
+        <div id="recordings-worker-tabs" class="recordings-worker-tabs"></div>
+      </div>
+      <div class="recordings-body">
+        <div class="recordings-video-pane">
+          <video id="recordings-video" class="recordings-video" playsinline></video>
+          <div class="recordings-now-playing">
+            <div id="recordings-now-playing-class" class="recordings-now-playing-line"></div>
+            <div id="recordings-now-playing-detail" class="recordings-now-playing-line recordings-now-playing-detail"></div>
+          </div>
+          <div class="recordings-controls">
+            <select id="recordings-speed" class="recordings-speed">
+              <option value="0.5">0.5x</option>
+              <option value="1" selected>1x</option>
+              <option value="2">2x</option>
+              <option value="4">4x</option>
+            </select>
+            <input id="recordings-seek" class="recordings-seek-bar" type="range" min="0" max="1000" value="0" step="1" aria-label="${t("panels.recordings.seekAriaLabel")}">
+            <span id="recordings-time-current" class="recordings-time">0:00</span>
+            <span class="recordings-time-sep">/</span>
+            <span id="recordings-time-total" class="recordings-time">0:00</span>
+            <button id="recordings-rewind" type="button" class="recordings-seek-button" title="${t("panels.recordings.rewindTitle")}">−10s</button>
+            <button id="recordings-play" type="button" class="icon-button recordings-play-button" title="${t("panels.recordings.playPauseTitle")}"></button>
+            <button id="recordings-forward" type="button" class="recordings-seek-button" title="${t("panels.recordings.forwardTitle")}">+10s</button>
+            <button id="recordings-prev-test" type="button" class="icon-button recordings-nav-button" title="${t("panels.recordings.prevTestTitle")}"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M3.5 3H5v10H3.5z"/><path d="M12.5 3v10L6 8z"/></svg></button>
+            <button id="recordings-next-test" type="button" class="icon-button recordings-nav-button" title="${t("panels.recordings.nextTestTitle")}"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M11 3h1.5v10H11z"/><path d="M3.5 3v10L10 8z"/></svg></button>
+          </div>
+        </div>
+        <div class="splitter splitter-vertical" id="recordings-splitter-tree" role="separator" aria-orientation="vertical" title="${t("panels.recordings.splitterTitle")}"></div>
+        <div class="recordings-tree-pane">
+          <div class="recordings-tree-header">
+            <span class="recordings-tree-title">${t("panels.recordings.treeTitle")}</span>
+            <button id="recordings-tree-expand-all" class="icon-button" type="button" title="${t("panels.recordings.expandAllTitle")}"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M6 7h1v2h2v1H7v2H6v-2H4V9h2V7z"/><path fill-rule="evenodd" clip-rule="evenodd" d="M5 3l1-1h7l1 1v7l-1 1h-2v2l-1 1H3l-1-1V6l1-1h2V3zm1 2h4l1 1v4h2V3H6v2zm4 1H3v7h7V6z"/></svg></button>
+            <button id="recordings-tree-collapse-all" class="icon-button" type="button" title="${t("panels.recordings.collapseAllTitle")}"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M9 9H4v1h5V9z"/><path fill-rule="evenodd" clip-rule="evenodd" d="M5 3l1-1h7l1 1v7l-1 1h-2v2l-1 1H3l-1-1V6l1-1h2V3zm1 2h4l1 1v4h2V3H6v2zm4 1H3v7h7V6z"/></svg></button>
+          </div>
+          <div id="recordings-tree-empty" class="recordings-tree-empty" style="display: none;"></div>
+          <div id="recordings-tree" class="recordings-tree" role="tree"></div>
+        </div>
+        <div class="splitter splitter-vertical splitter-static" id="recordings-splitter-errors" role="separator" aria-orientation="vertical"></div>
+        <div class="recordings-errors-pane">
+          <div class="recordings-errors-title">${t("panels.recordings.errorsTitle")}</div>
+          <div id="recordings-errors-filter" class="recordings-errors-filter" style="display: none;">
+            <span id="recordings-errors-filter-label" class="recordings-errors-filter-label"></span>
+            <button id="recordings-errors-filter-clear" class="recordings-errors-filter-clear" type="button" title="${t("panels.recordings.filterClearTitle")}">${t("panels.recordings.filterClear")}</button>
+          </div>
+          <div id="recordings-errors-empty" class="recordings-errors-empty" style="display: none;"></div>
+          <div id="recordings-errors-list" class="recordings-errors-list"></div>
+        </div>
       </div>
     </div>
   </div>

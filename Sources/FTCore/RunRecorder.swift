@@ -28,7 +28,9 @@ public final class RunRecorder: @unchecked Sendable {
     private let machine: String
     private let trigger: String
     private let startedAt: String
-    private let runDir: URL
+    /// 動画録画(record:true)が recordings/index.json を書く場所。RunOrchestrator への
+    /// VideoRecordingConfig 注入に呼び出し側(ApiRunCommand/ProfileRunner)が使う
+    public let runDir: URL
 
     private let lock = NSLock()
     /// ファイル名(sanitize 済み scenarioID)ごとの記録回数。2 回目以降は `~<回数>` を付与

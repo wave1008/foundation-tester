@@ -314,24 +314,26 @@ select:disabled { opacity: 0.5; cursor: default; }
 .tile-state.tile-status-warn {
   color: var(--vscode-editorWarning-foreground, #cca700);
 }
-/* シナリオ実行中バッジ。タイル左下(フッター先頭)。表示切替は laneLog.js/deviceTiles.js。 */
+/* 実行中/キュー待ち/録画中チップ(タイル左下)。寸法をここで共通化し高さを揃える
+   (line-height 明示で文字種による差も殺す)。表示切替は laneLog.js/deviceTiles.js。 */
+.badge-running,
+.badge-queued,
+.badge-recording {
+  display: none;
+  flex: 0 0 auto;
+  font-size: 9px;
+  line-height: 12px;
+  padding: 1px 6px;
+  margin-right: 4px;
+}
 .badge-running {
   background-color: var(--vscode-charts-blue, #0078d4);
   color: #ffffff;
-  display: none;
-  flex: 0 0 auto;
-  font-size: 9px;
-  margin-right: 4px;
 }
-/* ライフサイクルキュー待ち(起動待機/再起動待機)の明示チップ。タイル左下(フッター先頭)。
-   deviceTiles.js renderMeta が表示切替。 */
+/* ライフサイクルキュー待ち(起動待機/再起動待機)の明示チップ。 */
 .badge-queued {
   background-color: var(--vscode-editorWarning-foreground, #cca700);
   color: #1e1e1e;
-  display: none;
-  flex: 0 0 auto;
-  font-size: 9px;
-  margin-right: 4px;
 }
 .badge-render {
   flex: 0 0 auto; /* フッター右端に置く(tile-error の flex:1 が押し出す)。縮めない */
@@ -339,6 +341,12 @@ select:disabled { opacity: 0.5; cursor: default; }
   padding: 0 4px;
   border-radius: 3px;
   display: none;
+}
+/* 録画中バッジ。device.recording が true の間だけ表示(deviceTiles.js renderMeta)。
+   寸法は .badge-running との共通ルール側(高さ合わせ)。 */
+.badge-recording {
+  background-color: var(--vscode-errorForeground, #f14c4c);
+  color: #ffffff;
 }
 .render-cpu {
   background-color: var(--vscode-charts-orange, #cc6633);
@@ -480,6 +488,16 @@ select:disabled { opacity: 0.5; cursor: default; }
   height: auto;
   align-self: stretch;
   cursor: col-resize;
+}
+/* ドラッグ不可の静的な仕切り。ドラッグできそうに見えないよう 1px の罫線にする
+   (スプリッターバーの太さ・hover ハイライトを打ち消す)。 */
+.splitter-static {
+  pointer-events: none;
+  cursor: default;
+  flex: 0 0 1px;
+  width: 1px;
+  border-radius: 0;
+  background-color: color-mix(in srgb, var(--vscode-foreground) 20%, transparent);
 }
 .output-pane {
   flex: 1 1 auto;
@@ -1721,4 +1739,407 @@ input[type="text"]::placeholder {
 }
 .resident-zombie td {
   background-color: rgba(190, 17, 0, 0.12);
+}
+
+/* ---- #panel-recordings(録画タブ) ------------------------------------------------------ */
+#recordings-list-view,
+#recordings-player-view {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 12px;
+  gap: 8px;
+}
+.recordings-toolbar,
+.recordings-player-toolbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.recordings-toolbar-title {
+  font-weight: 600;
+  margin-right: auto;
+}
+.recordings-empty {
+  padding: 16px 4px;
+  color: var(--vscode-descriptionForeground);
+}
+.recordings-sessions {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.recordings-session-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--ft-control-border);
+  border-radius: 3px;
+  cursor: pointer;
+}
+.recordings-session-item:hover,
+.recordings-session-item:focus-visible {
+  background-color: var(--vscode-list-hoverBackground, rgba(90, 93, 94, 0.2));
+  outline: none;
+}
+.recordings-session-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.recordings-session-runid {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.recordings-session-started {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+.recordings-session-counts {
+  flex: 0 0 auto;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+}
+.recordings-session-counts-failed {
+  color: var(--vscode-errorForeground, #f14c4c);
+}
+.recordings-session-title {
+  font-weight: 600;
+  margin-right: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.recordings-worker-tabs {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.recordings-worker-tab {
+  padding: 3px 10px;
+  border: 1px solid var(--ft-control-border);
+  border-radius: 12px;
+  background-color: transparent;
+  color: var(--vscode-foreground);
+  font-size: 12px;
+}
+.recordings-worker-tab.active {
+  background-color: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  border-color: transparent;
+}
+.recordings-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  gap: 6px;
+}
+/* TEST EXPLORER 風ツリー(動画とエラー一覧の間の中央ペイン)。エラー一覧と同じ flex(1:1)で、
+   動画ペインの残り幅を常に等分する(ユーザー指定)。ペイン境界の線はスプリッターバーが担う。 */
+.recordings-tree-pane {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.recordings-tree-empty {
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+  padding: 4px 2px;
+}
+.recordings-tree {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+.recordings-tree-children {
+  display: block;
+}
+.recordings-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px 3px calc(6px + var(--tree-depth, 0) * 16px);
+  font-size: 12px;
+  border-radius: 3px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.recordings-tree-row:hover {
+  background-color: var(--vscode-list-hoverBackground, rgba(90, 93, 94, 0.2));
+}
+.recordings-tree-row:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder, #007acc);
+  outline-offset: -1px;
+}
+.recordings-tree-row-selected,
+.recordings-tree-row-selected:hover {
+  background-color: var(--vscode-list-activeSelectionBackground, #094771);
+  color: var(--vscode-list-activeSelectionForeground, #ffffff);
+}
+.recordings-tree-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-bottom: 4px;
+}
+/* flex:0 でラベル直後に開閉ボタンが並ぶ(右端寄せにしない。ユーザー指定)。 */
+.recordings-tree-title {
+  font-weight: 600;
+  flex: 0 0 auto;
+  margin-right: 4px;
+}
+.recordings-tree-toggle {
+  flex: 0 0 14px;
+  width: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--vscode-descriptionForeground);
+}
+.recordings-tree-toggle svg {
+  width: 12px;
+  height: 12px;
+  transition: transform 0.1s ease;
+}
+/* expanded で > を 90° 回して ∨ にする(recordingsTab.js がクラスを切替)。 */
+.recordings-tree-toggle.expanded svg {
+  transform: rotate(90deg);
+}
+.recordings-tree-toggle-empty {
+  visibility: hidden;
+}
+.recordings-tree-icon {
+  flex: 0 0 auto;
+  width: 15px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.recordings-tree-icon svg {
+  width: 14px;
+  height: 14px;
+}
+.recordings-tree-icon-passed {
+  color: var(--vscode-charts-green, #388a34);
+}
+.recordings-tree-icon-failed {
+  color: var(--vscode-errorForeground, #f14c4c);
+}
+.recordings-tree-icon-other {
+  color: var(--vscode-descriptionForeground);
+}
+.recordings-tree-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.recordings-video-pane {
+  flex: 2 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+/* basis 0 で「コントロール行を除く残り高さ」ちょうどをボックスにし、上下フィットを保証する
+   (auto だと動画の内在サイズが基準になり高さが余る/はみ出す)。中身は contain で収める。 */
+.recordings-video {
+  flex: 1 1 0;
+  min-height: 0;
+  width: 100%;
+  object-fit: contain;
+  background-color: #000;
+  border-radius: 3px;
+}
+.recordings-controls {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+/* 再生・前/次テストボタン。icon-button の border:none を上書きして枠を付け、同サイズに揃える
+   (ユーザー指定)。 */
+.recordings-play-button,
+.recordings-nav-button {
+  width: 28px;
+  height: 28px;
+  font-size: 13px;
+  border: 1px solid var(--vscode-button-border, color-mix(in srgb, var(--vscode-foreground) 35%, transparent));
+}
+/* ハイライト色(button 既定の accent)ではなく secondary のノーマル配色にする(ユーザー指定)。 */
+.recordings-seek-button {
+  font-size: 11px;
+  padding: 3px 8px;
+  background-color: var(--vscode-button-secondaryBackground, rgba(128, 128, 128, 0.3));
+  color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+}
+.recordings-seek-bar {
+  flex: 1 1 120px;
+  min-width: 80px;
+}
+/* 再生位置に対応するテスト(クラス.メソッド › シーン › ステップ)の常時表示。
+   recordingsTab.js の updateNowPlaying が timeupdate で更新する。 */
+.recordings-now-playing {
+  flex: 0 0 auto;
+  font-size: 14px;
+  color: var(--vscode-foreground);
+  min-height: 42px;
+  border-radius: 4px;
+  overflow: hidden;
+}
+/* 上段(クラス名)は背景なし、下段(説明)だけ薄い帯で区別する(ユーザー指定)。 */
+.recordings-now-playing-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 21px;
+  padding: 1px 8px;
+}
+/* 下段(関数の説明)はインデントのみ(背景なし。ユーザー指定)。 */
+.recordings-now-playing-detail {
+  padding-left: calc(8px + 1em);
+}
+.recordings-now-playing-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+}
+.recordings-now-playing-icon svg {
+  width: 14px;
+  height: 14px;
+}
+.recordings-now-playing-text {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* ツリー側の「再生中ノード」マーカー。クリック選択(背景ハイライト)と紛れないよう
+   背景は塗らず左端の青いバーだけにする(2つが同時に選択状態に見える実害があった)。 */
+.recordings-tree-row-playing {
+  box-shadow: inset 3px 0 0 var(--vscode-focusBorder, #007acc);
+}
+.recordings-time {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--vscode-descriptionForeground);
+  white-space: nowrap;
+}
+.recordings-time-sep {
+  color: var(--vscode-descriptionForeground);
+}
+.recordings-speed {
+  padding: 2px 4px;
+}
+/* ツリーと同じ flex(1:1)で残り幅を等分する(recordings-tree-pane のコメント参照)。 */
+.recordings-errors-pane {
+  flex: 1 1 0;
+  min-width: 140px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.recordings-errors-title {
+  font-weight: 600;
+  flex: 0 0 auto;
+}
+/* ツリー選択によるフィルター中を示すチップ(recordingsTab.js setErrorFilter が表示切替)。 */
+.recordings-errors-filter {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  font-size: 11px;
+  padding: 1px 4px 1px 8px;
+  border-radius: 10px;
+  background-color: var(--vscode-badge-background, #4d4d4d);
+  color: var(--vscode-badge-foreground, #ffffff);
+  max-width: 100%;
+}
+.recordings-errors-filter-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.recordings-errors-filter-clear {
+  flex: 0 0 auto;
+  border: none;
+  border-radius: 3px;
+  background-color: var(--vscode-button-background, #0e639c);
+  color: var(--vscode-button-foreground, #ffffff);
+  cursor: pointer;
+  padding: 1px 6px;
+  font-size: 11px;
+  line-height: 14px;
+}
+.recordings-errors-filter-clear:hover {
+  background-color: var(--vscode-button-hoverBackground, #1177bb);
+}
+.recordings-errors-empty {
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+}
+.recordings-errors-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.recordings-error-item {
+  padding: 6px 8px;
+  border: 1px solid var(--ft-control-border);
+  border-left: 3px solid var(--vscode-errorForeground, #f14c4c);
+  border-radius: 2px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.recordings-error-item:hover,
+.recordings-error-item:focus-visible {
+  background-color: var(--vscode-list-hoverBackground, rgba(90, 93, 94, 0.2));
+  outline: none;
+}
+.recordings-error-head {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-weight: 600;
+}
+.recordings-error-scene {
+  font-weight: 400;
+  color: var(--vscode-descriptionForeground);
+}
+.recordings-error-worker {
+  margin-left: auto;
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+}
+.recordings-error-desc {
+  margin-top: 3px;
+  white-space: pre-wrap;
+}
+.recordings-error-detail {
+  margin-top: 3px;
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+  white-space: pre-wrap;
+  max-height: 4.5em;
+  overflow-y: auto;
 }
