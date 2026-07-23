@@ -26,6 +26,18 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
 
     func start() async -> Bool {
         killStaleRecording()
+        // run を数十秒間隔で連続させると、直前セッションの CoreSimulator io 解放が間に合わず
+        // recordVideo が実際には録画を開始しない(ファイルが空のまま)ことがある(e2e 連続実行で実害)。
+        // "Recording started" を開始確認として扱い、出なければ仕切り直して再試行する
+        for attempt in 1...3 {
+            if await startOnce() { return true }
+            warn("recordVideo の開始を確認できませんでした(試行 \(attempt)/3)")
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+        }
+        return false
+    }
+
+    private func startOnce() async -> Bool {
         try? FileManager.default.removeItem(at: movURL)
 
         let process = Process()
@@ -39,19 +51,23 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
         process.standardError = stderrPipe
         // prepare は必ず run() より前(Shell.swift の ProcessExitWait 契約)
         let exitStream = ProcessExitWait.prepare(process)
-        let spawnedAt = Date()
         do {
             try process.run()
         } catch {
             warn("recordVideo を起動できません: \(error.localizedDescription)")
             return false
         }
+        // "Recording started"(最初のフレーム処理済み)が出るまでは開始とみなさない
+        guard let observedStart = await Self.waitForRecordingStarted(
+            stderr: stderrPipe.fileHandleForReading, timeoutSeconds: 10) else {
+            if process.isRunning { process.interrupt() }
+            _ = await raceWithDeadline(seconds: 3, onTimeout: ()) { for await _ in exitStream {} }
+            if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+            return false
+        }
         self.process = process
         self.exitStream = exitStream
-        // stderr に "Recording started" が出た時点を開始時刻とする(最大10秒。出なければ spawn 時刻で代用)
-        let observedStart = await Self.waitForRecordingStarted(
-            stderr: stderrPipe.fileHandleForReading, timeoutSeconds: 10)
-        self.startedAt = observedStart ?? spawnedAt
+        self.startedAt = observedStart
         return true
     }
 
