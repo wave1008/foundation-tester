@@ -20,9 +20,10 @@ class 待機とタイムアウトが正しく効くこと {
                     // Android で実測)。ここで1往復させ、着地を確認してから操作する。
                     //
                     // requireVisible: false = これは可視性の**検証**ではなく同期のための1往復。
-                    // 既定(true)だと occlusion-guard が FM 視覚照合を呼び、Flutter の小さな
-                    // テキスト領域を「覆われている」と誤判定して落ちることがある
-                    // (実際には完全に見えている。2026-07-23 実測)。可視性の検証は 01 が行う。
+                    // FM はホスト全体で直列化(約1回/秒)されるため、全 launchApp で FM を
+                    // 呼ぶとコストだけが乗る。**可視性の検証と、occlusion-guard の誤判定を
+                    // 検出する役目は 01_起動と画面遷移 が既定(true)のまま担う**
+                    // (README「既知の ftester 欠陥」参照。ここで guard を切っても検出器は死なない)。
                     exist("#txt_home_marker", requireVisible: false)
                 }.action {
                     tap("#nav_async")
@@ -53,9 +54,10 @@ class 待機とタイムアウトが正しく効くこと {
                     // Android で実測)。ここで1往復させ、着地を確認してから操作する。
                     //
                     // requireVisible: false = これは可視性の**検証**ではなく同期のための1往復。
-                    // 既定(true)だと occlusion-guard が FM 視覚照合を呼び、Flutter の小さな
-                    // テキスト領域を「覆われている」と誤判定して落ちることがある
-                    // (実際には完全に見えている。2026-07-23 実測)。可視性の検証は 01 が行う。
+                    // FM はホスト全体で直列化(約1回/秒)されるため、全 launchApp で FM を
+                    // 呼ぶとコストだけが乗る。**可視性の検証と、occlusion-guard の誤判定を
+                    // 検出する役目は 01_起動と画面遷移 が既定(true)のまま担う**
+                    // (README「既知の ftester 欠陥」参照。ここで guard を切っても検出器は死なない)。
                     exist("#txt_home_marker", requireVisible: false)
                 }.action {
                     tap("#nav_async")
