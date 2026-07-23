@@ -49,6 +49,8 @@ Flutter は canvas 描画で、Android 側の className が `android.view.View` 
 テキストが `StaticText` に写像されない。
 → **型セレクタを使ってよいのは `Button` だけ**。テキストの検証は必ず `#id` + `textIs` で書く。
 → `obscureText: true` は **`SecureTextField` にならない**(ネイティブ SUT と違い型で区別できない)。
+→ **iOS の in-app エンジンではテキスト欄は `Other`**(Flutter のフィールドは UITextField ではないため。
+  `#id` 指定なら両エンジン同一に動く)。
 
 ### C. リストの行はデフォルトで `StaticText`
 

@@ -27,10 +27,18 @@ final class FTInAppBridge {
     private var frames: [Int: CGRect] = [:]
     private let nodes = NSMapTable<NSNumber, AnyObject>(keyOptions: .strongMemory, valueOptions: .weakMemory)
     // compose-resources = Compose Multiplatform のリソースバンドル(2026-07-20 実バンドルで検証済みマーカー)。
-    // type ルーティング判定(StepExecutor)に使う
-    private lazy var uiFramework: String = FileManager.default.fileExists(
-        atPath: (Bundle.main.bundlePath as NSString).appendingPathComponent("compose-resources")
-    ) ? "compose" : "uikit"
+    // Frameworks/Flutter.framework = Flutter アプリのマーカー。type ルーティング判定(StepExecutor)に使う
+    private lazy var uiFramework: String = {
+        let bundle = Bundle.main.bundlePath as NSString
+        if FileManager.default.fileExists(atPath: bundle.appendingPathComponent("compose-resources")) {
+            return "compose"
+        }
+        if FileManager.default.fileExists(
+            atPath: bundle.appendingPathComponent("Frameworks/Flutter.framework")) {
+            return "flutter"
+        }
+        return "uikit"
+    }()
 
     func start() {
         let port = UInt16(ProcessInfo.processInfo.environment["FT_PORT"] ?? "")
@@ -108,7 +116,10 @@ final class FTInAppBridge {
                 //   (UIKit で対象スクロールビューが無い場合は handleSwipe が個別に 501 を返す)
                 // ホストはこの申告を見てジェスチャを XCUITest へ回す。撃たれた場合は 501 で拒否する
                 // (申告と拒否の二重化。申告を見ないホスト・旧ホストでも黙って空振りしない)。
-                unsupportedActions: self.uiFramework == "compose" ? ["swipe", "press"] : ["press"]))
+                // flutter も swipe を申告する: UIScrollView が存在しないため in-app の
+                // contentOffset 経路が無く、常に 501 になる(往復を省くため最初から XCUITest へ)
+                unsupportedActions: ["compose", "flutter"].contains(self.uiFramework)
+                    ? ["swipe", "press"] : ["press"]))
         }
     }
 
@@ -117,6 +128,10 @@ final class FTInAppBridge {
             guard let window = self.keyWindow() else {
                 throw InAppError(409, "キーウィンドウがありません")
             }
+            // Flutter は engine.ensureSemanticsEnabled を呼ばないと SemanticsObject が生成されず
+            // 0 要素になる(_AXSSetAutomationEnabled は Flutter engine に効かない)。冪等・非 Flutter は no-op。
+            // 起動直後は FlutterViewController が未生成のことがあるため boot 時でなく snapshot ごとに呼ぶ
+            FTEnsureFlutterSemantics()
             let result = InAppSnapshot.capture(window: window)
             self.frames = result.frames
             self.nodes.removeAllObjects()

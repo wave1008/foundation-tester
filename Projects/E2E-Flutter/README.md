@@ -31,6 +31,7 @@ ftester run --project E2E-Flutter --profile android
 | プロファイル | 結果 | 壁時計 |
 |---|---|---|
 | `ios-xcuitest`(iPhone 17 Pro/iOS 27.0 × 6) | ✅ 20/20 | 43.3s |
+| `ios-inapp`(同上・hybrid) | ✅ 20/20 | — |
 | `android`(Pixel 9/Android 15 × 8) | ✅ 20/20 | 30.9s |
 
 ## シナリオ一覧
@@ -119,11 +120,23 @@ SUT の見た目を変えて避けるのは**検出器を潰す**行為なので
   「Flutter が起動直後にポインタ入力を取りこぼす」ための同期の1往復で、FM 直列化(約1回/秒)の
   コストだけが乗るため
 
-## Flutter は in-app エンジンでは動かない(2026-07-23 実測)
+## in-app エンジン対応(2026-07-23 に2つの修正で解決)
 
-`iosInappEngine: true`(hybrid)で回すと **a11y ツリーが取れず要素が1つも見えない**
-(`#txt_home_marker` すら解決できない)。原因は未特定。
-そのため `ios-inapp` プロファイルは置かず、iOS は `ios-xcuitest` で回す。
+かつては `iosInappEngine: true` で回すと **a11y ツリーが取れず要素が1つも見えなかった**。
+原因は2つあり、どちらも ftester 側で解決済み(`ios-inapp` プロファイルで 20/20 グリーン):
+
+1. **Flutter engine は `_AXSSetAutomationEnabled` を見ない**。platform 側の a11y ブリッジ
+   (SemanticsObject 群)が生成されず `FlutterView.accessibilityElements` が空のままだった。
+   → in-app ブリッジが snapshot ごとに `FlutterEngine.ensureSemanticsEnabled`(公開 API)を
+   動的に呼ぶ(`FTEnsureFlutterSemantics`。非 Flutter アプリでは no-op)
+2. **Flutter の SemanticsObjectContainer は旧式の indexed UIAccessibilityContainer API しか
+   実装しない**(`accessibilityElements` プロパティは空)。走査がコンテナで止まっていた。
+   → 非 UIView ノード限定で `accessibilityElementCount`/`accessibilityElement(at:)` を辿る
+   (UIView に適用すると UITableView の走査を乗っ取り `.Cell` が消える退行になる。実測済み)
+
+in-app での注意: テキスト欄の型は `Other` になる(XCUITest の `TextField` と食い違う。
+Flutter のフィールドは UITextField ではないため)。`#id` 指定なら両エンジンで同一に動く。
+ジェスチャ(swipe/press)は申告により XCUITest へ自動フォールバックする(hybrid)。
 
 ## 注意(Flutter 特有。シナリオの書き方に直接効く)
 
