@@ -59,29 +59,47 @@ ftester run --project E2E-Flutter --profile android
   「Application ... is not running」(XCUITest 500)として現れる。
   **Dart の `throw` では落ちない**(フレームワークに捕捉される)ため意図的に不正メモリアクセスにしている
 
-## 既知の ftester 欠陥: occlusion-guard が低コントラスト画面で誤判定する(2026-07-23 実測)
+## 既知の未解決事象: occlusion-guard の偽陽性(2026-07-23)
 
-FM が生きている状態でこの SUT を回すと、`exist("#txt_home_marker")` が
-「偽陽性(occlusion): 領域が不透明な要素に覆われている」で落ちることがある。
-**失敗時スクリーンショットでは当該テキストは完全に見えており、FM の誤判定**
-(memory の poc-fm-occlusion-guard: 素の FM は低インク領域で約 50% 誤反転する、と符合)。
+FM が生きている状態でこの SUT を回すと、`launchApp()` 直後の `exist("#txt_home_marker")` が
+「偽陽性(occlusion): 領域が不透明な要素に覆われている」で落ちることが**ある実行の窓で3回**あった。
 
-この SUT は **Material 3 の既定配色(淡い着色)をそのまま使う**。白背景・黒文字の
-高コントラストに変えれば落ちなくなるが、それは**検出器を潰す**行為である
-(M3 既定はごく普通の実アプリの見た目であり、そこで落ちるなら ftester 側の問題)。
-よって配色は変えず、欠陥が再現する状態を保つ。
+**原因は未特定。** 当初「FM の誤判定」と結論したが、それは誤りだった:
+
+- レポートに添付される失敗時スクリーンショットは **FM の入力ではない**。
+  FM が見るのは poll ループ内で撮る `guardScreenshot()`(判定時点)で、
+  レポートのスクショは poll が尽きた後の別撮り
+- その別撮り画像を同じクロップ・同じ instructions/prompt で FM に 15 回食わせたところ
+  **15/15 とも fullyVisible**(`sampling: .greedy` = 決定的デコード)。
+  つまり「その画像を FM が誤判定した」わけではない
+- 残る仮説は「FM に渡った crop が別物だった」(起動直後の未確定 frame で
+  空白領域を切り出した等)。これは ftester 側の入力の問題であり Apple の不具合ではない
+
+切り分けのため、**guard が反転したときに FM へ渡した crop 自体を保存する**ようにした:
+
+```
+~/Library/Logs/ftester/occlusion/occlusion-<時刻>.png   ← FM が実際に見た画像
+~/Library/Logs/ftester/occlusion/occlusion-<時刻>.txt   ← 期待テキスト
+```
+
+保存先は `FT_OCCLUSION_DUMP_DIR` で変更可(`off` で無効)。失敗理由の末尾に `[crop: <path>]` が付く。
+再判定は `Scripts/occlusion-repro.swift`(ftester 非依存。Apple へ出す最小再現にもなる):
+
+```sh
+xcrun swiftc -O Scripts/occlusion-repro.swift -o /tmp/occlusion-repro
+/tmp/occlusion-repro ~/Library/Logs/ftester/occlusion/occlusion-<時刻>.png 15
+```
+
+配色について: この SUT は **Material 3 の既定配色(淡い着色)をそのまま使う**。
+白背景・黒文字に変えれば低インク判定を避けられるが、M3 既定はごく普通の実アプリの見た目であり、
+そこで落ちるなら ftester 側の問題。SUT の見た目を変えて避けるのは**検出器を潰す**行為なので採らない。
 
 - **検出点は `01_起動と画面遷移`**。ここは `exist` を既定(`requireVisible: true`)のまま置いてある
 - 他シナリオの `launchApp()` 直後の着地確認だけは `requireVisible: false`。あれは可視性の
   **検証**ではなく「Flutter が起動直後にポインタ入力を取りこぼす」ための同期の1往復であり、
-  かつ FM はホスト全体で直列化(約1回/秒)されるため、19 箇所すべてで FM を呼ぶと
-  実行時間が跳ね上がる。検証としての価値は無く、コストだけがある
-- **再現性(2026-07-23 実測)**: 誤判定は**ある実行の窓で3回**観測されたが、その後
-  FM が生きている状態で 01 単体 10 回 + フルスイート 3 回を回して**再現しなかった**。
-  安定化したのは配色ではなく、上記の同期バリアを `requireVisible: false` にしたこと
-  (誤判定はすべて同期バリアのステップで起きていた)。
-  よって現時点では「潰れた」のか「踏まなくなっただけ」なのか区別できていない。
-  01 が guard を持ち続けているので、再発すればそこで捕まる
+  かつ FM はホスト全体で直列化(約1回/秒)されるため 19 箇所で呼ぶとコストだけが乗る
+- **現状**: M3 既定のまま 01 単体 10 回 + フルスイート 3 回で再現せず。
+  「潰れた」のか「踏まなくなっただけ」なのかは区別できていない
 
 ## Flutter は in-app エンジンでは動かない(2026-07-23 実測)
 
