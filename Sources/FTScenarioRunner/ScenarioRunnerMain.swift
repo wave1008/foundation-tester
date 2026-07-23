@@ -168,7 +168,7 @@ struct RunScenario: AsyncParsableCommand {
         // Compose は合成タッチで時間・移動を伴うジェスチャ(swipe/press)を駆動できない
         // (tap/type は通る。実験で確定済み)。probe の uiFramework=="compose" 検出時のみ true
         // (probe 不達なら false のまま=StepExecutor の事後 409 安全網に委ねる)
-        var gesturesViaTypeDriver = false
+        var typeDriverGestures: Set<String> = []
         if dryRun {
             driver = NullDriver()  // dry-run はデバイスに触れない
         } else {
@@ -218,8 +218,11 @@ struct RunScenario: AsyncParsableCommand {
                             // 「compose なら swipe 不可」という知識を持たせない)。
                             // 申告が無い(旧ブリッジ・probe 不達)なら false のまま
                             // = StepExecutor の事後 501 キャッチに委ねる
-                            let unsupported = Set(probeStatus?.unsupportedActions ?? [])
-                            gesturesViaTypeDriver = !unsupported.isDisjoint(with: ["swipe", "press"])
+                            // 申告されたアクション**だけ**を typeDriver へ回す(一括 Bool にしない。
+                            // uikit の press 申告で swipe まで XCUITest 化させない — StepExecutor の
+                            // typeDriverGestures のコメント参照)
+                            typeDriverGestures = Set(probeStatus?.unsupportedActions ?? [])
+                                .intersection(["swipe", "press"])
                         }
                     }
                 } else {
@@ -273,7 +276,7 @@ struct RunScenario: AsyncParsableCommand {
                                healCacheURL: healCacheURL, defaultTimeout: defaultTimeout,
                                fallbackDriver: fallbackDriver,
                                typeDriver: typeDriver, preferTypeDriver: preferTypeDriver,
-                               gesturesViaTypeDriver: gesturesViaTypeDriver,
+                               typeDriverGestures: typeDriverGestures,
                                deviceName: deviceName, deviceIdentifier: deviceIdentifier,
                                emit: emit)
 
