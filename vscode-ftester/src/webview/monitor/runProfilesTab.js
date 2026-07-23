@@ -24,6 +24,7 @@ const runProfileDevices = document.getElementById('run-profile-devices');
 const runProfileHeal = document.getElementById('run-profile-heal');
 const runProfileIosInappEngine = document.getElementById('run-profile-ios-inapp-engine');
 const runProfileWipeDataOnBloat = document.getElementById('run-profile-wipe-data-on-bloat');
+const runProfileRecord = document.getElementById('run-profile-record');
 const runProfileWipeThreshold = document.getElementById('run-profile-wipe-threshold');
 const runProfileLocale = document.getElementById('run-profile-locale');
 const runProfileReportDir = document.getElementById('run-profile-report-dir');
@@ -198,6 +199,7 @@ function renderRunProfileEditor(fields) {
   runProfileHeal.checked = fields.heal;
   runProfileIosInappEngine.checked = fields.iosInappEngine;
   runProfileWipeDataOnBloat.checked = fields.wipeDataOnBloat;
+  runProfileRecord.checked = fields.record;
   runProfileWipeThreshold.value = fields.wipeDataThresholdGB;
   runProfileLocale.value = fields.locale;
   runProfileReportDir.value = fields.reportDir;
@@ -330,6 +332,7 @@ runProfileApp.addEventListener('change', onRunProfileFormInput);
 runProfileHeal.addEventListener('change', onRunProfileFormInput);
 runProfileIosInappEngine.addEventListener('change', onRunProfileFormInput);
 runProfileWipeDataOnBloat.addEventListener('change', onRunProfileFormInput);
+runProfileRecord.addEventListener('change', onRunProfileFormInput);
 runProfileWipeThreshold.addEventListener('input', onRunProfileFormInput);
 runProfileLocale.addEventListener('input', onRunProfileFormInput);
 runProfileReportDir.addEventListener('input', onRunProfileFormInput);
@@ -353,6 +356,7 @@ function runProfileValuesEqual(fields) {
     runProfileHeal.checked === fields.heal &&
     runProfileIosInappEngine.checked === fields.iosInappEngine &&
     runProfileWipeDataOnBloat.checked === fields.wipeDataOnBloat &&
+    runProfileRecord.checked === fields.record &&
     runProfileWipeThreshold.value === fields.wipeDataThresholdGB &&
     runProfileLocale.value === fields.locale &&
     runProfileReportDir.value === fields.reportDir &&
@@ -375,6 +379,7 @@ function setRunProfileControlsEnabled(enabled) {
   runProfileHeal.disabled = !enabled;
   runProfileIosInappEngine.disabled = !enabled;
   runProfileWipeDataOnBloat.disabled = !enabled;
+  runProfileRecord.disabled = !enabled;
   runProfileWipeThreshold.disabled = !enabled;
   runProfileLocale.disabled = !enabled;
   runProfileReportDir.disabled = !enabled;
@@ -438,6 +443,7 @@ runProfileConfirm.addEventListener('click', () => {
       heal: runProfileHeal.checked,
       iosInappEngine: runProfileIosInappEngine.checked,
       wipeDataOnBloat: runProfileWipeDataOnBloat.checked,
+      record: runProfileRecord.checked,
       wipeDataThresholdGB: runProfileWipeThreshold.value.trim(),
       locale: runProfileLocale.value.trim(),
       reportDir: runProfileReportDir.value.trim(),

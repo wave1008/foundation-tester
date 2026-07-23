@@ -93,10 +93,13 @@ public struct StepResult: Sendable {
     /// ステップの所要時間内訳。--profile 並列実行ではサブプロセスの
     /// ScenarioEvent から復元される(ScenarioRunner.stepResult(from:) 参照)。合成行は nil
     public let timing: StepTiming?
+    /// 結果確定時刻(ISO8601+ミリ秒。ScenarioEvent.at 由来)。--profile 並列実行の NDJSON
+    /// 再構築(ApiRunCommand.ndjsonLines)で失わないよう運ぶ。逐次実行等の合成行は nil
+    public let at: String?
 
     public init(index: Int, description: String, status: Status,
                 scene: Int? = nil, sceneTitle: String? = nil, section: String? = nil,
-                synthetic: Bool = false, timing: StepTiming? = nil) {
+                synthetic: Bool = false, timing: StepTiming? = nil, at: String? = nil) {
         self.index = index
         self.description = description
         self.status = status
@@ -105,6 +108,7 @@ public struct StepResult: Sendable {
         self.section = section
         self.synthetic = synthetic
         self.timing = timing
+        self.at = at
     }
 }
 
@@ -138,14 +142,19 @@ public struct StepOutcome: Sendable {
     /// 表示済み文言で持つ(例 "XCUITest へフォールバック" / "activate 不発 → 合成タッチ(...)")。
     /// ロケータのフォールバック(.passedViaFallback)とは別物で、セレクタ更新の提案は出さない。
     public let driverFallback: String?
+    /// このステップの結果が確定した壁時計時刻(ISO8601+ミリ秒)。execute(_:cached:) が
+    /// 返す直前に都度 Date() から採る(failed 以外にも付くが、永続化するのは失敗ステップのみ。
+    /// ScenarioEvent.at / FailedStepRecord.at 参照)
+    public let at: String
 
     public init(status: StepResult.Status, healedStep: FlowStep? = nil, healedByCache: Bool = false,
-               timing: StepTiming? = nil, driverFallback: String? = nil) {
+               timing: StepTiming? = nil, driverFallback: String? = nil, at: String = ISO8601Millis.string(from: Date())) {
         self.status = status
         self.healedStep = healedStep
         self.healedByCache = healedByCache
         self.timing = timing
         self.driverFallback = driverFallback
+        self.at = at
     }
 }
 

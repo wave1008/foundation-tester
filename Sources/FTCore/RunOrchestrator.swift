@@ -290,7 +290,7 @@ public enum ScenarioRunner {
         }
         return StepResult(index: event.index ?? 0, description: event.description ?? "",
                           status: status, scene: event.scene, sceneTitle: event.sceneTitle,
-                          section: event.section, timing: timing)
+                          section: event.section, timing: timing, at: event.at)
     }
 }
 
@@ -315,6 +315,8 @@ public final class RunOrchestrator {
     /// デバッグ実行(ブレークポイント・ステップ実行)。呼び出し側が単一シナリオ実行時のみ指定する
     private let debug: ScenarioDebugOptions?
     private let recorder: RunRecorder?
+    /// run profile の record:true 時のワーカー動画録画(nil = 無効)。VideoRecordingCoordinator.swift
+    private let videoRecording: VideoRecordingCoordinator?
     /// Android の画面凍結(blank-screen)判定。FTCore は FTAndroid に依存できない(循環)ため
     /// 実プローブ(AndroidHealthProbe)の注入は呼び出し側(ftester ターゲット)が行う。
     /// nil(未注入)時は常に false(凍結扱いしない)
@@ -340,6 +342,14 @@ public final class RunOrchestrator {
     /// run 中に稼働しているワーカーのデバイスキー集合(ハートビート対象)。run() 内のバックグラウンド
     /// タスクが 5 秒毎にこの snapshot を舐めて writeRunLease を呼ぶ
     private let leaseKeys = RunLeaseKeys()
+    /// 録画中 lease(RecordingLease.write/remove、FTBridgeClient)のハートビート書き込み・削除。
+    /// writeRunLease と同じ理由(FTCore は FTBridgeClient に依存できない)で ftester ターゲットが注入。
+    /// videoRecording?.start(_:) が true(録画プロセスの起動に成功)を返したキーだけ書く
+    private let writeRecordingLease: (@Sendable (String) -> Void)?
+    private let removeRecordingLease: (@Sendable (String) -> Void)?
+    /// 録画がアクティブなワーカーのデバイスキー集合(ハートビート対象)。leaseKeys と同じ
+    /// RunLeaseKeys(汎用の Set<String> アクター)を録画用に再利用する
+    private let recordingLeaseKeys = RunLeaseKeys()
     /// ワーカー離脱(retired)時の後始末(ウェッジしたブリッジプロセスの停止等)。復帰(revive)の
     /// 有無に関係なく離脱の度に必ず呼ぶ — 復帰しない離脱(キュー空・上限到達)で kill を省くと、
     /// ウェッジしたランナーがシミュレータを掴んだまま生き残り、次回 run の新ブリッジと
@@ -368,12 +378,15 @@ public final class RunOrchestrator {
     public init(project: TestProject, workers: [RunWorker], healingEnabled: Bool,
                 reportDir: URL, defaultTimeout: Int? = nil, scenarioTimeout: Int? = nil,
                 debug: ScenarioDebugOptions? = nil, recorder: RunRecorder? = nil,
+                recordingConfig: VideoRecordingConfig? = nil,
                 isDeviceFrozen: (@Sendable (String) async -> Bool)? = nil,
                 isDeviceUnreachable: (@Sendable (String) async -> Bool)? = nil,
                 bridgeLogSize: (@Sendable (RunWorker) -> UInt64?)? = nil,
                 probeBridge: (@Sendable (RunWorker) async -> BridgeProbeOutcome)? = nil,
                 writeRunLease: (@Sendable (String) -> Void)? = nil,
                 removeRunLease: (@Sendable (String) -> Void)? = nil,
+                writeRecordingLease: (@Sendable (String) -> Void)? = nil,
+                removeRecordingLease: (@Sendable (String) -> Void)? = nil,
                 cleanupRetiredWorker: (@Sendable (RunWorker) async -> Void)? = nil,
                 reviveWorker: (@Sendable (RunWorker) async -> RunWorker?)? = nil,
                 lateWorkers: (platforms: Set<String>, provider: @Sendable () async -> [RunWorker])? = nil) {
@@ -386,12 +399,15 @@ public final class RunOrchestrator {
         self.scenarioTimeout = scenarioTimeout
         self.debug = debug
         self.recorder = recorder
+        self.videoRecording = recordingConfig.map { VideoRecordingCoordinator(config: $0) }
         self.isDeviceFrozen = isDeviceFrozen
         self.isDeviceUnreachable = isDeviceUnreachable
         self.bridgeLogSize = bridgeLogSize
         self.probeBridge = probeBridge
         self.writeRunLease = writeRunLease
         self.removeRunLease = removeRunLease
+        self.writeRecordingLease = writeRecordingLease
+        self.removeRecordingLease = removeRecordingLease
         self.cleanupRetiredWorker = cleanupRetiredWorker
         self.reviveWorker = reviveWorker
         self.lateWorkers = lateWorkers
@@ -509,14 +525,18 @@ public final class RunOrchestrator {
 
         continuation.yield(.runStarted(total: items.count, workerLabels: workers.map(\.label)))
 
-        // run-lease ハートビート: mtime を stalenessSeconds(15s)以内に保つため 5s 毎に再書き込み
-        let heartbeat: Task<Void, Never>? = writeRunLease != nil ? Task { [weak self] in
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 5_000_000_000)
-                guard !Task.isCancelled, let self else { return }
-                for key in await self.leaseKeys.snapshot() { self.writeRunLease?(key) }
-            }
-        } : nil
+        // run-lease/recording-lease ハートビート: mtime を stalenessSeconds(15s)以内に保つため
+        // 5s 毎に再書き込み。録画は videoRecording?.start(_:) が成功した時だけ recordingLeaseKeys に
+        // 積まれる(record:false の run では何も積まれず writeRecordingLease も呼ばれない)
+        let heartbeat: Task<Void, Never>? = (writeRunLease != nil || writeRecordingLease != nil)
+            ? Task { [weak self] in
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: 5_000_000_000)
+                    guard !Task.isCancelled, let self else { return }
+                    for key in await self.leaseKeys.snapshot() { self.writeRunLease?(key) }
+                    for key in await self.recordingLeaseKeys.snapshot() { self.writeRecordingLease?(key) }
+                }
+            } : nil
 
         failed += await withTaskGroup(of: Int.self, returning: Int.self) { group in
             for worker in workers {
@@ -540,6 +560,9 @@ public final class RunOrchestrator {
         // ワーカーが自分の return 時に外し忘れた lease がないよう最終掃除(通常は runWorker 側で
         // 既に空になっているはず)
         for key in await leaseKeys.snapshot() { removeRunLease?(key) }
+        for key in await recordingLeaseKeys.snapshot() { removeRecordingLease?(key) }
+        // 全ワーカー終了後に 1 回だけ index.json を書く(拡張側との契約。RecordingIndexIO 参照)
+        await videoRecording?.finish()
 
         // ワーカー全滅でキューに残ったシナリオは失敗扱い
         for (platform, queue) in queues {
@@ -643,6 +666,13 @@ public final class RunOrchestrator {
             writeRunLease?(leaseKey)
         }
 
+        // 録画プロセスの起動に成功したときだけ RecordingLease を書く(record:false・adb/udid 不明・
+        // プロセス spawn 失敗はいずれも false を返し、lease は書かれない)
+        if await videoRecording?.start(worker) == true, let leaseKey {
+            await recordingLeaseKeys.insert(leaseKey)
+            writeRecordingLease?(leaseKey)
+        }
+
         var failed = 0
         var consecutiveFailures = 0
         // 実行前のブリッジ疎通確認(プレフライト)は不採用(ユーザー決定 2026-07-18)。
@@ -690,11 +720,13 @@ public final class RunOrchestrator {
                 if !requeued { failed += 1 }
                 await reportWorkerFailed(worker.label, "\(reason)のため離脱しました")
                 await releaseLease(leaseKey)
+                await stopRecording(worker, leaseKey: leaseKey)
                 return .retired(failed: failed, worker: worker)
             }
             failed += 1
         }
         await releaseLease(leaseKey)
+        await stopRecording(worker, leaseKey: leaseKey)
         return .completed(failed)
     }
 
@@ -702,6 +734,17 @@ public final class RunOrchestrator {
         guard let key else { return }
         await leaseKeys.remove(key)
         removeRunLease?(key)
+    }
+
+    /// RecordingLease の削除は stopAndFinalize 開始時点で行う(ファイナライズ[AVFoundation の
+    /// エクスポート]は数秒〜十数秒かかりうるが、モニターの「録画中」表示は停止指示と同時に
+    /// 消してよい)。lease 削除後に videoRecording?.stop で実際の停止+ファイナライズへ進む
+    private func stopRecording(_ worker: RunWorker, leaseKey: String?) async {
+        if let leaseKey {
+            await recordingLeaseKeys.remove(leaseKey)
+            removeRecordingLease?(leaseKey)
+        }
+        await videoRecording?.stop(worker)
     }
 }
 

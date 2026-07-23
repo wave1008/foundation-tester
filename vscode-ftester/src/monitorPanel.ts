@@ -44,6 +44,7 @@ import { MonitorHealthWatchdog } from "./monitorHealthWatchdog";
 import { PANEL_TITLE, renderHtml } from "./monitorHtml";
 import { type HostMetricsToWebviewMessage, MonitorProcessManager } from "./monitorProcessManager";
 import { MonitorProfilesController } from "./monitorProfilesController";
+import { MonitorRecordingsController } from "./monitorRecordingsController";
 import { TYPE_ORDER, parseAndroidBridges, parseResidentProcesses, type ResidentProcess } from "./residentProcesses";
 import type { RunBusMessage, RunEventBus } from "./runEventBus";
 import {
@@ -95,6 +96,9 @@ export interface MonitorPanelDeps {
   stopAllStreams(): void;
   /** 生成したソース(絶対パス)を、デバイスモニターの列を避けた列に開く(モニター表示を覆わないため)。 */
   openGeneratedDocument(filePath: string): void;
+  /** 録画動画ファイル(絶対パス)を webview から読める URI 文字列に変換する(録画タブ用)。
+   * パネル未生成時は null。localResourceRoots(Projects/ 配下)の対象外パスを渡さないこと。 */
+  videoWebviewUri(absPath: string): string | null;
 }
 
 export function registerMonitorPanel(
@@ -138,6 +142,7 @@ class MonitorPanelController implements vscode.Disposable {
   private readonly bridgeWatchdog: MonitorBridgeWatchdog;
   private readonly healthWatchdog: MonitorHealthWatchdog;
   private readonly deviceStream: MonitorDeviceStreamController;
+  private readonly recordings: MonitorRecordingsController;
 
   /** パネル再作成時にhydrateLaneUi()で流し込むため、実行を跨いで保持する。 */
   private readonly laneState = createRunLaneState();
@@ -186,11 +191,14 @@ class MonitorPanelController implements vscode.Disposable {
       isPollingMode: () => this.pollingMode,
       stopDeviceStreams: (name) => this.deviceStream.disposeForDeviceName(name),
       stopAllStreams: () => this.deviceStream.disposeAllForDown(),
+      videoWebviewUri: (absPath) =>
+        this.panel ? this.panel.webview.asWebviewUri(vscode.Uri.file(absPath)).toString() : null,
     };
     this.deviceStream = new MonitorDeviceStreamController(this.deps);
     this.processManager = new MonitorProcessManager(this.deps);
     this.profiles = new MonitorProfilesController(this.deps);
     this.deviceOps = new MonitorDeviceOps(this.deps);
+    this.recordings = new MonitorRecordingsController(this.deps);
     // enqueueLifecycleJob 委譲のため deviceOps より後に生成する。
     this.bridgeWatchdog = new MonitorBridgeWatchdog({
       post: (message) => this.post(message),
@@ -291,7 +299,12 @@ class MonitorPanelController implements vscode.Disposable {
     const panel = vscode.window.createWebviewPanel(VIEW_TYPE, PANEL_TITLE, vscode.ViewColumn.Beside, {
       enableScripts: true,
       retainContextWhenHidden: true,
-      localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, "media")],
+      // Projects/ 配下は録画タブの動画(mp4)読み込みに必要(monitorRecordingsController.ts が
+      // asWebviewUri で変換するファイルはこの配下)。
+      localResourceRoots: [
+        vscode.Uri.joinPath(this.extensionUri, "media"),
+        vscode.Uri.joinPath(vscode.Uri.file(this.workspaceRoot), "Projects"),
+      ],
     });
     this.panel = panel;
     panel.webview.html = renderHtml(panel.webview, this.extensionUri);
@@ -536,6 +549,12 @@ class MonitorPanelController implements vscode.Disposable {
           );
           this.deviceStream.fallbackToMjpeg(message.device);
         }
+        break;
+      case "recordingsRefresh":
+        void this.recordings.refreshSessions();
+        break;
+      case "recordingsOpen":
+        void this.recordings.openSession(message.project, message.runID);
         break;
     }
   }

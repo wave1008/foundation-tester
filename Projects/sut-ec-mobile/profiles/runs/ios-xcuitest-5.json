@@ -18,6 +18,7 @@
     }
   ],
   "iosInappEngine": false,
+  "record": true,
   "heal": false,
   "reportDir": "reports",
   "machine": "LDIPC96",

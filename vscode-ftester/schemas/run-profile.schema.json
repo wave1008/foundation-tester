@@ -83,6 +83,11 @@
     "iosFastInput": {
       "type": "boolean",
       "description": "iOS xcuitest ブリッジの高速入力(quiescence 待ちスキップ)。動きの激しい画面ではフレークリスクあり(既定 false)"
+    },
+    "record": {
+      "type": "boolean",
+      "description": "各デバイスの画面録画を有効化する(既定 false)。録画は results/runs/<YYYY-MM>/<runID>/recordings/ 配下に保存され、モニターパネルの「録画」タブから再生できる。",
+      "default": false
     }
   }
 }

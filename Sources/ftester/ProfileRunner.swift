@@ -68,10 +68,17 @@ enum ProfileRunner {
         // 取れない場合は書かない(monitor 側の inRun 判定が false になるだけで安全)
         let leaseStateDir = (try? RepoRoot.find())?.appendingPathComponent(".ftester")
 
+        // record:true のときだけ VideoRecordingConfig を注入(runDir が無ければ録画自体しない)
+        let recordingConfig: VideoRecordingConfig? = {
+            guard resolved.record, let recorder else { return nil }
+            return VideoRecordingConfig(runDir: recorder.runDir, androidADBPath: try? AndroidDriver.findADB())
+        }()
+
         let orchestrator = RunOrchestrator(
             project: project, workers: workers, healingEnabled: heal,
             reportDir: reportDir, defaultTimeout: resolved.defaultTimeout,
             scenarioTimeout: resolved.scenarioTimeout, recorder: recorder,
+            recordingConfig: recordingConfig,
             isDeviceFrozen: { serial in
                 // 事後判定は isBlankObserved(窓内に一度でも blank)。isPersistentlyBlank だと
                 // 約25秒周期のフラッピングの回復側を引いて凍結を見逃す(実測 2026-07-18)
@@ -115,6 +122,15 @@ enum ProfileRunner {
             removeRunLease: { key in
                 guard let leaseStateDir else { return }
                 RunLease.remove(stateDir: leaseStateDir, key: key)
+            },
+            writeRecordingLease: { key in
+                guard let leaseStateDir else { return }
+                RecordingLease.write(stateDir: leaseStateDir, key: key,
+                                     pid: ProcessInfo.processInfo.processIdentifier)
+            },
+            removeRecordingLease: { key in
+                guard let leaseStateDir else { return }
+                RecordingLease.remove(stateDir: leaseStateDir, key: key)
             },
             cleanupRetiredWorker: { retired in
                 // ウェッジした旧ブリッジ(/status 無応答)は provision の再利用スキャンに映らないまま

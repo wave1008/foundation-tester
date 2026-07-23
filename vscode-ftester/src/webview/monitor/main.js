@@ -59,6 +59,7 @@ import {
 } from './modals.js';
 import { applySettings } from './settingsTab.js';
 import { applyResidentMessage } from './processesTab.js';
+import { applyRecordingsSessions, applyRecordingsSession } from './recordingsTab.js';
 import { activateTab, TAB_IDS, switchTab } from './tabs.js';
 import { setTilePaneHeight } from './splitter.js';
 
@@ -190,6 +191,12 @@ window.addEventListener('message', (event) => {
     case 'residentProcesses':
     case 'residentKillResult':
       applyResidentMessage(message);
+      break;
+    case 'recordingsSessions':
+      applyRecordingsSessions(message);
+      break;
+    case 'recordingsSession':
+      applyRecordingsSession(message);
       break;
     case 'tilePaneHeight':
       setTilePaneHeight(message.value);

@@ -11,11 +11,13 @@ import { setLaneLocale } from '../i18n/strings/lane';
 import { webviewMonitorAStrings } from '../i18n/strings/webviewMonitorA';
 import { webviewMonitorBStrings } from '../i18n/strings/webviewMonitorB';
 import { webviewDashboardStrings } from '../i18n/strings/webviewDashboard';
+import { recordingsStrings } from '../i18n/strings/recordings';
 
 const merged = {
   ...webviewMonitorAStrings,
   ...webviewMonitorBStrings,
   ...webviewDashboardStrings,
+  ...recordingsStrings,
 };
 
 const locale = document.documentElement.lang === 'ja' ? 'ja' : 'en';

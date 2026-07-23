@@ -258,7 +258,8 @@ public final class FTDriveCore {
                    durationMs: outcome?.timing?.durationMs,
                    snapshotMs: outcome?.timing?.snapshotMs,
                    actionMs: outcome?.timing?.actionMs,
-                   waitMs: outcome?.timing?.waitMs)
+                   waitMs: outcome?.timing?.waitMs,
+                   at: outcome?.at)
 
         // 修正提案とヒールキャッシュの更新
         if let outcome, let selectorText {
@@ -360,7 +361,7 @@ public final class FTDriveCore {
             status = .failed("処理がタイムアウトしました(\(Int(FTSync.commandTimeout))s)")
         }
         recordStep(description: description, status: status, file: "\(file)", line: Int(line),
-                   durationMs: elapsedMs)
+                   durationMs: elapsedMs, at: ISO8601Millis.string(from: Date()))
 
         if case .failed(let reason) = status {
             if abortsScenario { scenarioAborted = true }
@@ -425,7 +426,7 @@ public final class FTDriveCore {
     /// 全て nil のまま(=計測なし)になる
     func recordStep(description: String, status: StepResult.Status, file: String, line: Int,
                     durationMs: Int? = nil, snapshotMs: Int? = nil,
-                    actionMs: Int? = nil, waitMs: Int? = nil) {
+                    actionMs: Int? = nil, waitMs: Int? = nil, at: String? = nil) {
         stepCounter += 1
         let record = DSLStepRecord(index: stepCounter, section: currentSection,
                                    description: description, status: status,
@@ -447,6 +448,7 @@ public final class FTDriveCore {
         event.snapshotMs = snapshotMs
         event.actionMs = actionMs
         event.waitMs = waitMs
+        event.at = at
         emit(event)
     }
 

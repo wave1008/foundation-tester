@@ -36,5 +36,6 @@
   "reportDir": "reports",
   "machine": "LDIPC96",
   "iosInappEngine": true,
-  "wipeDataOnBloat": true
+  "wipeDataOnBloat": true,
+  "record": true
 }

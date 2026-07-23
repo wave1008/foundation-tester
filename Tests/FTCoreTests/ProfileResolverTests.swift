@@ -720,6 +720,25 @@ final class ProfileResolverTests: XCTestCase {
                       "wipeDataThresholdGB エラーが出るはず: \(errors)")
     }
 
+    // MARK: - record
+
+    func testRecordDefaultsToFalseWhenUnspecified() throws {
+        try writeStandardFixture()  // "all" は record 未指定
+        let resolved = try ProfileResolver.resolve(
+            project: project, runName: "all", machineName: "M1 Max(64GB)")
+        XCTAssertFalse(resolved.record, "省略時は既定 false のはず")
+    }
+
+    func testRecordExplicitTrueIsReflected() throws {
+        try writeStandardFixture()
+        try write("""
+        { "app": "sampleapp", "devices": [ { "name": "メイン機" } ], "record": true }
+        """, to: project.runsDir, name: "record")
+        let resolved = try ProfileResolver.resolve(
+            project: project, runName: "record", machineName: "M1 Max(64GB)")
+        XCTAssertTrue(resolved.record)
+    }
+
     // MARK: - locale
 
     func testLocaleDefaultsWhenUnspecified() throws {
