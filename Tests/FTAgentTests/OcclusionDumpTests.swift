@@ -23,10 +23,10 @@ final class OcclusionDumpTests: XCTestCase {
         setenv("FT_OCCLUSION_DUMP_DIR", dir.path, 1)
         defer { unsetenv("FT_OCCLUSION_DUMP_DIR"); try? FileManager.default.removeItem(at: dir) }
 
-        let dumped = try XCTUnwrap(OcclusionVerifier.dump(crop: makeImage(), expectedText: "E2E ホーム"))
-        XCTAssertTrue(FileManager.default.fileExists(atPath: dumped.path))
+        let dumpedPath = try XCTUnwrap(OcclusionVerifier.dump(crop: makeImage(), expectedText: "E2E ホーム"))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: dumpedPath))
         // 期待テキストが隣に無いと再判定(Scripts/occlusion-repro.swift)に食わせられない
-        let txt = URL(fileURLWithPath: dumped.path).deletingPathExtension()
+        let txt = URL(fileURLWithPath: dumpedPath).deletingPathExtension()
             .appendingPathExtension("txt")
         XCTAssertEqual(try String(contentsOf: txt, encoding: .utf8), "E2E ホーム")
     }

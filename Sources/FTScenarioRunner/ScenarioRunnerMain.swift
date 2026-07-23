@@ -372,7 +372,8 @@ final class LazyFMDelegate: ReplayDelegate {
     // occlusion-guard(exist の既定)の FM 照合。転送しないと ReplayDelegate 既定実装(nil)に落ち、
     // 実行時にガードが黙って素通りする(=機能が無効化される)ため必須。
     func verifyElementVisible(expectedText: String, frame: FTRect, screen: FTRect,
-                              screenshotPNG: Data) async -> (visible: Bool, state: String, reason: String)? {
+                              screenshotPNG: Data) async
+        -> (visible: Bool, state: String, reason: String, observedText: String)? {
         await resolve()?.verifyElementVisible(expectedText: expectedText, frame: frame,
                                               screen: screen, screenshotPNG: screenshotPNG)
     }
