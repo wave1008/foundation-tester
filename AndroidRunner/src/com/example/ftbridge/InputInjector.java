@@ -4,6 +4,7 @@
 package com.example.ftbridge;
 
 import android.app.UiAutomation;
+import android.graphics.Rect;
 import android.os.Bundle;
 import android.os.SystemClock;
 import android.view.InputDevice;
@@ -45,19 +46,27 @@ final class InputInjector {
     }
 
     /**
-     * フォーカス中の入力要素(FOCUS_INPUT)が現れるまで待つ(ref タップ直後、フォーカス反映の
-     * ラグ対策。固定 sleep(500) の代替)。in-process の短間隔チェックのみ(50ms 粒度以下。
-     * HTTP/snapshot ポーリングではない)。見つからないまま timeoutMs 経過しても例外は投げない
-     * (最終判定は setTextAppending 側の findFocus に委ねる)。
+     * タップした点(x,y)を bounds に含む入力要素へフォーカスが移るまで待つ(ref タップ直後、
+     * フォーカス反映のラグ対策)。in-process の短間隔チェックのみ(HTTP/snapshot ポーリングではない)。
+     *
+     * 「何かしらのフォーカスが現れるまで」の待機では**別フィールドが既にフォーカスを持っている**
+     * 場合に即座に満たされ、フォーカス遷移が完了する前に setTextAppending が旧フィールドへ追記する
+     * (実害: 単一行欄 hello123 の後にパスワード欄へ type した secret42 が単一行欄に追記され
+     * hello123secret42 になった。負荷でフォーカス遷移が遅れた実行だけで起きる flake。2026-07-23)。
+     * 戻り値 false = 期限内に対象へフォーカスが移らなかった(呼び出し側は誤爆せず失敗させる)。
      */
-    static void waitForFocusInput(UiAutomation ua, long timeoutMs) {
+    static boolean waitForFocusAt(UiAutomation ua, double x, double y, long timeoutMs) {
         long deadline = SystemClock.uptimeMillis() + timeoutMs;
+        Rect bounds = new Rect();
         while (true) {
             AccessibilityNodeInfo root = ua.getRootInActiveWindow();
             AccessibilityNodeInfo focus = root == null ? null
                     : root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
-            if (focus != null) return;
-            if (SystemClock.uptimeMillis() >= deadline) return;
+            if (focus != null) {
+                focus.getBoundsInScreen(bounds);
+                if (bounds.contains((int) x, (int) y)) return true;
+            }
+            if (SystemClock.uptimeMillis() >= deadline) return false;
             SystemClock.sleep(20);
         }
     }
