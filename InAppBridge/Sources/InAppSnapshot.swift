@@ -67,6 +67,21 @@ enum InAppSnapshot {
     private static func axChildren(_ node: NSObject) -> [NSObject] {
         if let els = node.accessibilityElements as? [NSObject], !els.isEmpty { return els }
         if let view = node as? UIView { return view.subviews }
+        // **非 UIView 限定**: Flutter の SemanticsObjectContainer は accessibilityElements を
+        // 実装せず、旧式の indexed UIAccessibilityContainer API(accessibilityElementCount /
+        // accessibilityElement(at:))だけを実装する。これを辿らないと FlutterView の
+        // 直下(コンテナ)で走査が止まり snapshot が 0 要素になる(2026-07-23 実測)。
+        // UIView に適用してはいけない: UITableView 等も indexed API を実装しており、
+        // subviews 走査(UITableViewCell を拾う従来経路)を乗っ取って `.Cell` が消える退行を
+        // 実際に起こした。上限は暴走ガード(通常の Flutter コンテナは子1〜数十個)。
+        let count = node.accessibilityElementCount()
+        if count > 0, count != NSNotFound, count < 10_000 {
+            var out: [NSObject] = []
+            for i in 0..<count {
+                if let el = node.accessibilityElement(at: i) as? NSObject { out.append(el) }
+            }
+            if !out.isEmpty { return out }
+        }
         return []
     }
 

@@ -237,6 +237,30 @@ NSString *FTFirstResponderDiagnostics(void) {
             [receivers componentsJoinedByString:@", "]];
 }
 
+void FTEnsureFlutterSemantics(void) {
+    Class flutterVCClass = NSClassFromString(@"FlutterViewController");
+    if (!flutterVCClass) return;  // Flutter アプリではない
+    // rootViewController から VC ツリーを浅く辿って FlutterViewController を探す
+    // (presented / child まで。Flutter アプリは通常 root がそのまま FlutterViewController)
+    NSMutableArray<UIViewController *> *queue = [NSMutableArray array];
+    for (UIWindow *w in [UIApplication sharedApplication].windows) {
+        if (w.rootViewController) [queue addObject:w.rootViewController];
+    }
+    while (queue.count > 0) {
+        UIViewController *vc = queue.firstObject;
+        [queue removeObjectAtIndex:0];
+        if ([vc isKindOfClass:flutterVCClass] && [vc respondsToSelector:@selector(engine)]) {
+            id engine = ((id (*)(id, SEL))objc_msgSend)(vc, @selector(engine));
+            if ([engine respondsToSelector:@selector(ensureSemanticsEnabled)]) {
+                ((void (*)(id, SEL))objc_msgSend)(engine, @selector(ensureSemanticsEnabled));
+            }
+            return;
+        }
+        [queue addObjectsFromArray:vc.childViewControllers];
+        if (vc.presentedViewController) [queue addObject:vc.presentedViewController];
+    }
+}
+
 void FTActivateAccessibility(void) {
     void (*setAutomationEnabled)(BOOL) = dlsym(RTLD_DEFAULT, "_AXSSetAutomationEnabled");
     if (!setAutomationEnabled) {

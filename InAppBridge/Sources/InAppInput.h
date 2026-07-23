@@ -26,6 +26,13 @@ NSString *FTFirstResponderDiagnostics(void);
 /// (XCUITest は起動時にこれを行っている)。起動時に1回呼ぶ。失敗は非致命。
 void FTActivateAccessibility(void);
 
+/// Flutter アプリで platform 側の a11y ブリッジ(SemanticsObject 群)を強制生成する。
+/// _AXSSetAutomationEnabled は Flutter engine には効かず、これを呼ばないと
+/// FlutterView.accessibilityElements が空のまま = snapshot が 0 要素になる。
+/// FlutterEngine.ensureSemanticsEnabled(公開 API)を動的に呼ぶ。非 Flutter アプリでは no-op。
+/// 冪等。メインスレッドから呼ぶこと。
+void FTEnsureFlutterSemantics(void);
+
 /// node の accessibilityIdentifier を返す(セレクタ応答時のみ)。SwiftUI の AccessibilityNode /
 /// UIKitTextField は UIAccessibilityIdentification 準拠を宣言しないため Swift の as? では取れず、
 /// セレクタ直接呼び出しが要る。空文字は nil を返す。
