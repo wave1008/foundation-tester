@@ -38,6 +38,51 @@ public enum ProfileWorkerFactory {
         return provisioned.map { makeIOSWorker(device: $0, iosApp: iosApp) }
     }
 
+    /// android かつ serial 判明済みのワーカーを対象に恒常 blank-screen(画面凍結)を並列判定し、
+    /// **blank ならまず sleep/wake 修復(~4s)を試み、回復しなければ除外する**。健全機は1サンプルで
+    /// 即返る。blank の確定は2連続サンプル ~1.5s(単発フレーム誤検知の回避): run 前の除外に既定の
+    /// 「40s ずっと blank」の確実性は過剰で、凍結が1台でもあると setup 全体が ~37s に膨らむ
+    /// (-gpu host の凍結は頻発。実測)。修復で回復すれば除外しない(除外だけだとワーカーが半減し得る。
+    /// 修復の実測は AndroidHealthProbe.repairBlankDisplay 参照)。事後の凍結判定(isBlankObserved・
+    /// 実行中の flap 検知)は別物。非 android ワーカーはそのまま通し、元 workers の順序を維持する。
+    /// 全除外で空になっても throw しない(混在プロファイルの iOS 合流を殺さない。呼び出し側が判断)
+    public static func excludeOrRepairBlankScreenWorkers(
+        _ workers: [RunWorker], log: (String) -> Void) async -> [RunWorker] {
+        let candidates = workers.enumerated().filter {
+            $0.element.platform == "android" && $0.element.connection.serial != nil
+        }
+        guard !candidates.isEmpty else { return workers }
+
+        // タスクは (index, repaired) を返す: nil=健全 / repaired=true は修復済み(除外しない)
+        let outcomes = await withTaskGroup(of: (index: Int, repaired: Bool)?.self,
+                                           returning: [(index: Int, repaired: Bool)].self) { group in
+            for (index, worker) in candidates {
+                group.addTask {
+                    guard let serial = worker.connection.serial else { return nil }
+                    guard await AndroidHealthProbe.isPersistentlyBlank(
+                        serial: serial, samples: 2, intervalMs: 1_500) else { return nil }
+                    let repaired = await AndroidHealthProbe.repairBlankDisplay(serial: serial)
+                    return (index, repaired)
+                }
+            }
+            var result: [(index: Int, repaired: Bool)] = []
+            for await outcome in group {
+                if let outcome { result.append(outcome) }
+            }
+            return result
+        }
+        for outcome in outcomes.sorted(by: { $0.index < $1.index }) where outcome.repaired {
+            log("🔧 \(workers[outcome.index].label): 画面凍結(blank-screen)を sleep/wake で修復しました")
+        }
+        let blankIndices = Set(outcomes.filter { !$0.repaired }.map(\.index))
+        guard !blankIndices.isEmpty else { return workers }
+
+        for index in blankIndices.sorted() {
+            log("⚠️ \(workers[index].label): 画面が白化(blank-screen)しており修復も不発のためディスパッチから除外します")
+        }
+        return workers.enumerated().filter { !blankIndices.contains($0.offset) }.map(\.element)
+    }
+
     /// Android ワーカーのみ構築(serial 照合+ドライバ生成のみ=数秒)。
     public static func buildAndroidWorkers(resolved: ResolvedProfile) throws -> [RunWorker] {
         try resolved.androidDevices.map { device in
