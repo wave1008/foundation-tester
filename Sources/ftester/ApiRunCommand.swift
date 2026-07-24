@@ -139,6 +139,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         // 置き換えで数十秒かかりうる)を分離する。Android は先行ワーカーとして即時実行を開始し、
         // iOS は RunOrchestrator の lateWorkers として供給完了後に合流する(実測: 供給待ちで
         // 全ワーカーの開始が 10s→81s に悪化した対策。2026-07-18)。
+        let triageBox = BlankTriageBox()
         let androidWorkersTask: Task<[RunWorker], Error>?
         var iosWorkersTask: Task<[RunWorker], Never>?
         if let resolvedProfile, !dryRun, debugOptions == nil {
@@ -160,7 +161,9 @@ struct ApiRunCommand: AsyncParsableCommand {
                 var workers = try ProfileWorkerFactory.buildAndroidWorkers(resolved: resolved)
                 // 凍結機はまず修復・不発のみ除外(CLI の ProfileRunner と同じ。全滅しても throw せず
                 // 空で返す=iOS の合流を殺さない。android シナリオはワーカー不在ドレインで失敗確定)
-                workers = await ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers(workers) { logStderr($0) }
+                let triage = await ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers(workers) { logStderr($0) }
+                workers = triage.workers
+                triageBox.set(repaired: triage.repaired, excluded: triage.excluded)
                 workers = try await ProfileWorkerFactory.installIfNeeded(
                     apps: resolved.apps, workers: workers,
                     forceAndroidInstall: !wipedAndroid.isEmpty) { logStderr($0) }
@@ -214,7 +217,7 @@ struct ApiRunCommand: AsyncParsableCommand {
 
         emitLine(ApiRunStartedEvent(total: selected.count))
 
-        let outcome: RunOutcome
+        var outcome: RunOutcome
         if let resolvedProfile {
             // --dry-run/--debug は単純な逐次実行のまま(worker フィールド無し)。それ以外は
             // RunOrchestrator による並列実行
@@ -234,9 +237,15 @@ struct ApiRunCommand: AsyncParsableCommand {
                 recorder: recorder)
         }
 
+        // 並列経路の triage は box 経由(sequential 経路は outcome に設定済みのため二重加算しない)
+        let boxTriage = triageBox.get()
+        if outcome.blankRepairs.isEmpty { outcome.blankRepairs = boxTriage.repaired }
+        if outcome.blankExclusions.isEmpty { outcome.blankExclusions = boxTriage.excluded }
         recorder?.finish(total: selected.count, passed: outcome.passed, failed: outcome.failed,
                          degradedWorkers: outcome.degradedWorkers,
-                         freezeRetries: outcome.freezeRetries)
+                         freezeRetries: outcome.freezeRetries,
+                         blankRepairs: outcome.blankRepairs,
+                         blankExclusions: outcome.blankExclusions)
         if !outcome.degradedWorkers.isEmpty {
             logStderr("⚠️ 劣化・離脱したワーカー(\(outcome.degradedWorkers.count)):")
             for entry in outcome.degradedWorkers { logStderr("   - \(entry)") }
@@ -306,8 +315,10 @@ struct ApiRunCommand: AsyncParsableCommand {
     ) async throws -> RunOutcome {
         let profileName = resolved.runName
         let effectiveHeal = heal ? true : resolved.heal
+        await ProfileRunner.warnIfHealDegraded(heal: effectiveHeal) { logStderr($0) }
         let reportDirPath = (reportDir.map { URL(fileURLWithPath: $0) } ?? resolved.reportDir).path
 
+        var blankTriage: (repaired: [String], excluded: [String]) = ([], [])
         var workers: [RunWorker] = []
         if !dryRun {
             let deviceList = resolved.devices
@@ -326,7 +337,9 @@ struct ApiRunCommand: AsyncParsableCommand {
             workers = try await ProfileWorkerFactory.buildWorkers(
                 resolved: resolved, repoRoot: try RepoRoot.find()) { logStderr($0) }
             // android ワーカーのみ判定対象(iOS はそのまま通る)。凍結機は修復・不発のみ除外
-            workers = await ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers(workers) { logStderr($0) }
+            let triage = await ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers(workers) { logStderr($0) }
+            workers = triage.workers
+            blankTriage = (triage.repaired, triage.excluded)
             workers = try await ProfileWorkerFactory.installIfNeeded(
                 apps: resolved.apps, workers: workers,
                 forceAndroidInstall: !wipedAndroid.isEmpty) { logStderr($0) }
@@ -386,7 +399,9 @@ struct ApiRunCommand: AsyncParsableCommand {
         }
         return RunOutcome(passed: passedCount, failed: failedCount,
                           testSeconds: timing.testSeconds,
-                          scenarioTotalSeconds: timing.scenarioTotalSeconds)
+                          scenarioTotalSeconds: timing.scenarioTotalSeconds,
+                          blankRepairs: blankTriage.repaired,
+                          blankExclusions: blankTriage.excluded)
     }
 
     // MARK: - --profile 指定(ワーカー並列実行。--dry-run/--debug 以外)
@@ -401,6 +416,7 @@ struct ApiRunCommand: AsyncParsableCommand {
     ) async throws -> RunOutcome {
         let repoRoot = try RepoRoot.find()
         let effectiveHeal = heal ? true : resolved.heal
+        await ProfileRunner.warnIfHealDegraded(heal: effectiveHeal) { logStderr($0) }
         let reportDirURL = reportDir.map { URL(fileURLWithPath: $0) } ?? resolved.reportDir
 
         // workersReady はレーン構成の全置換(runLaneModel.applyWorkers が lanes.clear する)ため
@@ -881,6 +897,25 @@ struct RunOutcome {
     var degradedWorkers: [String] = []
     /// 結果取り消し+振り直しの監査記録(並列経路のみ)。
     var freezeRetries: [String] = []
+    /// run 前の blank 判定で修復/除外されたワーカー label(RunMetaRecord へ記録)。
+    var blankRepairs: [String] = []
+    var blankExclusions: [String] = []
+}
+
+/// 並列ワーカー構築 Task から blank triage を run() へ運ぶ入れ物
+/// (--debug の DebugControlBox と同じ受け渡しパターン。書き手は android task のみ)
+final class BlankTriageBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var repaired: [String] = []
+    private var excluded: [String] = []
+    func set(repaired: [String], excluded: [String]) {
+        lock.lock(); defer { lock.unlock() }
+        self.repaired = repaired; self.excluded = excluded
+    }
+    func get() -> (repaired: [String], excluded: [String]) {
+        lock.lock(); defer { lock.unlock() }
+        return (repaired, excluded)
+    }
 }
 
 /// flowStarted〜flowFinished から testSeconds(最初の開始〜最後の完了)と

@@ -39,6 +39,7 @@ public enum DeviceBooter {
         repoRoot: URL? = nil,
         maxConcurrent: Int = 2,
         restartNames: Set<String> = [],
+        cpuRenderNames: Set<String> = [],
         log: @escaping @Sendable (String) -> Void,
         deviceStopping: @escaping @Sendable (String, String) -> Void = { _, _ in },
         deviceStarting: @escaping @Sendable (String, String) -> Void = { _, _ in },
@@ -58,15 +59,17 @@ public enum DeviceBooter {
             + (machine.android?.devices ?? []).map { ($0, "android") })
             .filter { restartNames.contains($0.0.name) }
             .sorted { $0.0.name.localizedCompare($1.0.name) == .orderedAscending }
-            .map { BootItem(spec: $0.0, platform: $0.1, restart: true) }
+            .map { BootItem(spec: $0.0, platform: $0.1, restart: true,
+                            gpuMode: gpuMode(name: $0.0.name, platform: $0.1, cpuRenderNames: cpuRenderNames)) }
         let iosItems = (machine.ios?.devices ?? [])
             .filter { !restartNames.contains($0.name) }
             .sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
-            .map { BootItem(spec: $0, platform: "ios", restart: false) }
+            .map { BootItem(spec: $0, platform: "ios", restart: false, gpuMode: "host") }
         let androidItems = (machine.android?.devices ?? [])
             .filter { !restartNames.contains($0.name) }
             .sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
-            .map { BootItem(spec: $0, platform: "android", restart: false) }
+            .map { BootItem(spec: $0, platform: "android", restart: false,
+                            gpuMode: gpuMode(name: $0.name, platform: "android", cpuRenderNames: cpuRenderNames)) }
         let items = restartItems + iosItems + androidItems
         guard !items.isEmpty else { return }
 
@@ -89,6 +92,15 @@ public enum DeviceBooter {
         let spec: DeviceSpec
         let platform: String
         let restart: Bool
+        /// android のみ有効(ios は無視される)。cpuRenderNames 該当機は swiftshader_indirect
+        let gpuMode: String
+    }
+
+    /// 凍結フォールバック中の個体(cpuRenderNames)は一括起動でも swiftshader を維持する
+    /// (従来は bulk devices-up が host で起き上がり直してフォールバックが消える穴だった。
+    /// 名簿は VSCode 拡張 MonitorDeviceOps.cpuRenderNames が --cpu-render で渡す)
+    private static func gpuMode(name: String, platform: String, cpuRenderNames: Set<String>) -> String {
+        platform == "android" && cpuRenderNames.contains(name) ? "swiftshader_indirect" : "host"
     }
 
     private actor BootQueue {
@@ -114,13 +126,13 @@ public enum DeviceBooter {
                 try await shutdownOne(spec: spec, platform: item.platform,
                                       repoRoot: item.platform == "ios" ? repoRoot : nil, log: log)
                 deviceStarting(spec.name, item.platform)
-                try await bootOne(spec: spec, platform: item.platform, log: log)
+                try await bootOne(spec: spec, platform: item.platform, gpuMode: item.gpuMode, log: log)
             } else if let running = runningDescription(spec: spec, platform: item.platform) {
                 deviceStarting(spec.name, item.platform)
                 log("✔ \(spec.name): 起動済み(\(running))")
             } else {
                 deviceStarting(spec.name, item.platform)
-                try await bootOne(spec: spec, platform: item.platform, log: log)
+                try await bootOne(spec: spec, platform: item.platform, gpuMode: item.gpuMode, log: log)
             }
             if item.platform == "ios", let repoRoot {
                 // 稼働中ブリッジは provision() が再利用するので起動済みデバイスでも安全。

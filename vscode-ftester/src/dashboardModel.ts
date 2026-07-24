@@ -25,6 +25,12 @@ export interface RunMetaRecord {
   /** 凍結等による結果取り消し+振り直しの監査記録。Swift 側 RunMetaRecord.freezeRetries と対
    * (成功した振り直しはシナリオ記録に痕跡を残さないため、ここが唯一の証跡)。 */
   readonly freezeRetries?: readonly string[] | null;
+  /** run 前の blank 判定で sleep/wake 修復により除外を免れたワーカー label。
+   * Swift 側 RunMetaRecord.blankRepairs と対(現状はダッシュボード未表示・run.json 永続化のみ)。 */
+  readonly blankRepairs?: readonly string[] | null;
+  /** run 前の blank 判定で修復不発により除外したワーカー label(guest reboot 発行済み)。
+   * Swift 側 RunMetaRecord.blankExclusions と対。 */
+  readonly blankExclusions?: readonly string[] | null;
 }
 
 export interface ScenarioSummaryRow {

@@ -66,6 +66,10 @@ struct ApiDevicesUp: AsyncParsableCommand {
     @Flag(name: .customLong("no-bridge"), help: "iOS ブリッジの供給を行わない")
     var noBridge = false
 
+    @Option(name: .customLong("cpu-render"), parsing: .upToNextOption,
+            help: "swiftshader_indirect(CPU 描画)で起動するデバイス論理名(凍結フォールバック中の個体の維持用。複数指定可。watchdog の per-device フォールバックと同期相手: vscode-ftester/src/monitorDeviceOps.ts)")
+    var cpuRender: [String] = []
+
     @Option(name: .customLong("restart"), parsing: .upToNextOption,
             help: "起動済みでもスキップせず down→up で再起動するデバイス論理名(CPU 描画フォールバック機の GPU 復帰用。複数指定可。未起動機のブートと同一キューで2台ずつ並行処理される)")
     var restart: [String] = []
@@ -83,6 +87,7 @@ struct ApiDevicesUp: AsyncParsableCommand {
             await DeviceBooter.bootAll(
                 machine: machineProfile, repoRoot: repoRoot,
                 restartNames: Set(restart),
+                cpuRenderNames: Set(cpuRender),
                 log: { message in ApiDeviceEventEmitter.emit(ApiDeviceLogEvent(message: message)) },
                 deviceStopping: { name, platform in
                     ApiDeviceEventEmitter.emit(

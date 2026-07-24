@@ -38,20 +38,32 @@ public enum ProfileWorkerFactory {
         return provisioned.map { makeIOSWorker(device: $0, iosApp: iosApp) }
     }
 
+    /// excludeOrRepairBlankScreenWorkers の結果。repaired/excluded はワーカー label
+    /// (RunSummary → RunMetaRecord(run.json)に監査記録として残る)
+    public struct BlankScreenTriage {
+        public let workers: [RunWorker]
+        public let repaired: [String]
+        public let excluded: [String]
+    }
+
     /// android かつ serial 判明済みのワーカーを対象に恒常 blank-screen(画面凍結)を並列判定し、
     /// **blank ならまず sleep/wake 修復(~4s)を試み、回復しなければ除外する**。健全機は1サンプルで
     /// 即返る。blank の確定は2連続サンプル ~1.5s(単発フレーム誤検知の回避): run 前の除外に既定の
     /// 「40s ずっと blank」の確実性は過剰で、凍結が1台でもあると setup 全体が ~37s に膨らむ
     /// (-gpu host の凍結は頻発。実測)。修復で回復すれば除外しない(除外だけだとワーカーが半減し得る。
-    /// 修復の実測は AndroidHealthProbe.repairBlankDisplay 参照)。事後の凍結判定(isBlankObserved・
+    /// 修復の実測は AndroidHealthProbe.repairBlankDisplay 参照)。**除外した個体には guest reboot を
+    /// 非同期発行する**(sleep/wake が効かない難治型は reboot のみ有効・実測。今回の run には既に
+    /// 除外済みで影響ゼロ、~60s 後の次 run から全数復帰する)。事後の凍結判定(isBlankObserved・
     /// 実行中の flap 検知)は別物。非 android ワーカーはそのまま通し、元 workers の順序を維持する。
     /// 全除外で空になっても throw しない(混在プロファイルの iOS 合流を殺さない。呼び出し側が判断)
     public static func excludeOrRepairBlankScreenWorkers(
-        _ workers: [RunWorker], log: (String) -> Void) async -> [RunWorker] {
+        _ workers: [RunWorker], log: (String) -> Void) async -> BlankScreenTriage {
         let candidates = workers.enumerated().filter {
             $0.element.platform == "android" && $0.element.connection.serial != nil
         }
-        guard !candidates.isEmpty else { return workers }
+        guard !candidates.isEmpty else {
+            return BlankScreenTriage(workers: workers, repaired: [], excluded: [])
+        }
 
         // タスクは (index, repaired) を返す: nil=健全 / repaired=true は修復済み(除外しない)
         let outcomes = await withTaskGroup(of: (index: Int, repaired: Bool)?.self,
@@ -71,16 +83,34 @@ public enum ProfileWorkerFactory {
             }
             return result
         }
-        for outcome in outcomes.sorted(by: { $0.index < $1.index }) where outcome.repaired {
-            log("🔧 \(workers[outcome.index].label): 画面凍結(blank-screen)を sleep/wake で修復しました")
+        let repairedLabels = outcomes.sorted(by: { $0.index < $1.index })
+            .filter(\.repaired).map { workers[$0.index].label }
+        for label in repairedLabels {
+            log("🔧 \(label): 画面凍結(blank-screen)を sleep/wake で修復しました")
         }
         let blankIndices = Set(outcomes.filter { !$0.repaired }.map(\.index))
-        guard !blankIndices.isEmpty else { return workers }
-
-        for index in blankIndices.sorted() {
-            log("⚠️ \(workers[index].label): 画面が白化(blank-screen)しており修復も不発のためディスパッチから除外します")
+        guard !blankIndices.isEmpty else {
+            return BlankScreenTriage(workers: workers, repaired: repairedLabels, excluded: [])
         }
-        return workers.enumerated().filter { !blankIndices.contains($0.offset) }.map(\.element)
+
+        let adbPath = try? AndroidDriver.findADB()
+        var excludedLabels: [String] = []
+        for index in blankIndices.sorted() {
+            excludedLabels.append(workers[index].label)
+            log("⚠️ \(workers[index].label): 画面が白化(blank-screen)しており修復も不発のため"
+                + "ディスパッチから除外し、guest を再起動します(次回 run から復帰見込み)")
+            // sleep/wake が効かない難治型は guest reboot のみ有効(実測)。既に除外済みなので
+            // この run には影響ゼロ。fire-and-forget(reboot 中に次 run が来ても serial 未解決 or
+            // blank 扱いで除外継続=安全側)
+            if let adbPath, let serial = workers[index].connection.serial {
+                Task.detached(priority: .background) {
+                    _ = try? Shell.run([adbPath, "-s", serial, "reboot"], timeout: 15)
+                }
+            }
+        }
+        return BlankScreenTriage(
+            workers: workers.enumerated().filter { !blankIndices.contains($0.offset) }.map(\.element),
+            repaired: repairedLabels, excluded: excludedLabels)
     }
 
     /// Android ワーカーのみ構築(serial 照合+ドライバ生成のみ=数秒)。
