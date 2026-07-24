@@ -218,35 +218,43 @@ enum ProfileRunner {
     /// android かつ serial 判明済みのワーカーを対象に恒常 blank-screen(画面凍結)を並列判定して
     /// 除外する。健全機は1サンプルで即返る。**白い機の確定は速い判定(2連続サンプル ~1.5s)**で行う:
     /// run 前の除外に「40s ずっと blank」の確実性は過剰で、凍結が1台でもあると setup 全体が ~37s に
-    /// 膨らむ(-gpu host の凍結は頻発。実測)。run 開始時に blank な個体は不安定なので速く除外して
-    /// 健全機で走ればよく、誤除外のコストはワーカー1台減るだけ(run は通る)。単発フレーム誤検知は
-    /// 2連続で回避する。事後の凍結判定(isBlankObserved・実行中の flap 検知)は従来どおり別物。
-    /// 元 workers の順序は維持する
+    /// 膨らむ(-gpu host の凍結は頻発。実測)。判定は2連続サンプル ~1.5s(単発フレーム誤検知の回避)。
+    /// **blank 検出後はまず sleep/wake 修復(~4s)を試み、回復すれば除外しない**(凍結は複数台同時
+    /// 描画で頻発するため、除外だけだとワーカーが半減し得る。修復の実測は AndroidHealthProbe.
+    /// repairBlankDisplay 参照)。修復不発のみ除外。事後の凍結判定(isBlankObserved・実行中の
+    /// flap 検知)は従来どおり別物。元 workers の順序は維持する
     private static func excludeBlankScreenWorkers(_ workers: [RunWorker]) async throws -> [RunWorker] {
         let candidates = workers.enumerated().filter {
             $0.element.platform == "android" && $0.element.connection.serial != nil
         }
         guard !candidates.isEmpty else { return workers }
 
-        let blankIndices = await withTaskGroup(of: Int?.self, returning: Set<Int>.self) { group in
+        // タスクは (index, repaired) を返す: nil=健全 / repaired=true は修復済み(除外しない)
+        let outcomes = await withTaskGroup(of: (index: Int, repaired: Bool)?.self,
+                                           returning: [(index: Int, repaired: Bool)].self) { group in
             for (index, worker) in candidates {
                 group.addTask {
                     guard let serial = worker.connection.serial else { return nil }
-                    // 速い pre-run 除外(既定の 5×8s=40s ではなく 2×1.5s≈1.5s。上のコメント参照)
-                    return await AndroidHealthProbe.isPersistentlyBlank(
-                        serial: serial, samples: 2, intervalMs: 1_500) ? index : nil
+                    guard await AndroidHealthProbe.isPersistentlyBlank(
+                        serial: serial, samples: 2, intervalMs: 1_500) else { return nil }
+                    let repaired = await AndroidHealthProbe.repairBlankDisplay(serial: serial)
+                    return (index, repaired)
                 }
             }
-            var result: Set<Int> = []
-            for await index in group {
-                if let index { result.insert(index) }
+            var result: [(index: Int, repaired: Bool)] = []
+            for await outcome in group {
+                if let outcome { result.append(outcome) }
             }
             return result
         }
+        for outcome in outcomes.sorted(by: { $0.index < $1.index }) where outcome.repaired {
+            print("🔧 \(workers[outcome.index].label): 画面凍結(blank-screen)を sleep/wake で修復しました")
+        }
+        let blankIndices = Set(outcomes.filter { !$0.repaired }.map(\.index))
         guard !blankIndices.isEmpty else { return workers }
 
         for index in blankIndices.sorted() {
-            print("⚠️ \(workers[index].label): 画面が白化(blank-screen)しているためディスパッチから除外します")
+            print("⚠️ \(workers[index].label): 画面が白化(blank-screen)しており修復も不発のためディスパッチから除外します")
         }
         let filtered = workers.enumerated().filter { !blankIndices.contains($0.offset) }.map(\.element)
         guard !filtered.isEmpty else {

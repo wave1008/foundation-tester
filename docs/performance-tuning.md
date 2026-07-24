@@ -395,6 +395,14 @@ window/transition/animator の `*_scale` はチューニングノブではなく
   screenrecord)は真因でなく不安定な緩和**(アイドル host 機は readback ゼロだと確実凍結、readback で
   一時回復するが高負荷下では screenrecord 稼働中でも再凍結する)。根治は GPU モード変更(§5・§6・
   design.md §12.3)。対処: 凍結個体だけ swiftshader へ per-device フォールバック(design.md §12.4)
+  - **トリガと軽量修復(対照実験 2026-07-25)**: 発生条件は**複数エミュレータの同時描画**
+    (8台並列 run 中のみ発生。アイドル・1台単独への同一負荷では発生ゼロ=デバイス自身の負荷ではなく
+    ホスト GPU の並行合成競合)。凍結には瞬間ブリップ/自然回復(~30s)/固着の3型があり、**固着型は
+    `input keyevent KEYCODE_SLEEP`→`KEYCODE_WAKEUP` で ~4s で修復できる**(表示パイプラインの
+    無効化→再合成。readback では回復しない。回転トグルも有効。adb reboot ~60s は不要)。
+    run 前の blank 除外(ProfileRunner.excludeBlankScreenWorkers)はこの修復を先に試し、回復すれば
+    除外しない=ワーカー全数維持(実装 AndroidHealthProbe.repairBlankDisplay)。修復は免疫ではない
+    (次の並列描画で再発し得る)。ホスト側ログは無音(統合ログ・crash レポートに qemu の痕跡なし)
 - **シミュレータのコールドブート直後は Spotlight インデックスが計測を汚す**: 設定トップに
   「検索とSiriを最適化中」行(id=com.apple.settings.spotlightIndexingProgress)が挿入され、
   CPU も食う(負荷下ではタイムアウト失敗を誘発。完了まで10分超の個体もある)。ベンチ前の
