@@ -216,7 +216,11 @@ enum ProfileRunner {
     }
 
     /// android かつ serial 判明済みのワーカーを対象に恒常 blank-screen(画面凍結)を並列判定して
-    /// 除外する。健全機は1サンプルで即返るため全機健全なら数秒で通過(白い機のみ最大 ~32s 待つ)。
+    /// 除外する。健全機は1サンプルで即返る。**白い機の確定は速い判定(2連続サンプル ~1.5s)**で行う:
+    /// run 前の除外に「40s ずっと blank」の確実性は過剰で、凍結が1台でもあると setup 全体が ~37s に
+    /// 膨らむ(-gpu host の凍結は頻発。実測)。run 開始時に blank な個体は不安定なので速く除外して
+    /// 健全機で走ればよく、誤除外のコストはワーカー1台減るだけ(run は通る)。単発フレーム誤検知は
+    /// 2連続で回避する。事後の凍結判定(isBlankObserved・実行中の flap 検知)は従来どおり別物。
     /// 元 workers の順序は維持する
     private static func excludeBlankScreenWorkers(_ workers: [RunWorker]) async throws -> [RunWorker] {
         let candidates = workers.enumerated().filter {
@@ -228,7 +232,9 @@ enum ProfileRunner {
             for (index, worker) in candidates {
                 group.addTask {
                     guard let serial = worker.connection.serial else { return nil }
-                    return await AndroidHealthProbe.isPersistentlyBlank(serial: serial) ? index : nil
+                    // 速い pre-run 除外(既定の 5×8s=40s ではなく 2×1.5s≈1.5s。上のコメント参照)
+                    return await AndroidHealthProbe.isPersistentlyBlank(
+                        serial: serial, samples: 2, intervalMs: 1_500) ? index : nil
                 }
             }
             var result: Set<Int> = []
