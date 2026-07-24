@@ -74,6 +74,79 @@ final class EmulatorEndpointsTests: XCTestCase {
         // EmulatorControl 経由(ポリシー層)でも同じ結果になること
         let viaControl = await EmulatorControl.screenshotPNG(serial: ep.serial)
         XCTAssertNotNil(viaControl)
+        // PNG デコード→一様判定: 健全機の実画面は非一様(blank 誤検知しない)
+        let rgba = AndroidHealthProbe.decodeRGBA(png: png)
+        XCTAssertNotNil(rgba, "PNG デコード失敗(\(ep.serial))")
+        XCTAssertFalse(AndroidHealthProbe.uniformFrame(rgba: rgba ?? Data()),
+                       "健全画面が一様判定された(\(ep.serial))")
+    }
+
+    /// uniformFrame: 一様=blank / 非一様=健全 の純粋判定
+    /// (実凍結フレームは spread 0(2026-07-25 証跡 PNG の画素解析)。tolerance 8 はノイズ余裕)
+    func testUniformFrameDetection() {
+        func rgba(_ pixels: [[UInt8]]) -> Data {
+            Data(pixels.flatMap { [$0[0], $0[1], $0[2], 255] })
+        }
+        // 一様黒・一様白(gRPC 黒凍結 / adb 白凍結の生画素相当)
+        XCTAssertTrue(AndroidHealthProbe.uniformFrame(rgba: rgba(Array(repeating: [0, 0, 0], count: 1000))))
+        XCTAssertTrue(AndroidHealthProbe.uniformFrame(rgba: rgba(Array(repeating: [255, 255, 255], count: 1000))))
+        // tolerance 内の微小ノイズは一様扱い
+        var noisy: [[UInt8]] = Array(repeating: [100, 100, 100], count: 1000)
+        noisy[500] = [104, 96, 100]
+        XCTAssertTrue(AndroidHealthProbe.uniformFrame(rgba: rgba(noisy)))
+        // 実コンテンツ(グラデーション)は非一様
+        let gradient: [[UInt8]] = (0..<1000).map { [UInt8($0 % 256), 50, 200] }
+        XCTAssertFalse(AndroidHealthProbe.uniformFrame(rgba: rgba(gradient)))
+        // 1画素だけ大きく違う(サンプリングに乗る先頭)も非一様
+        var oneOff: [[UInt8]] = Array(repeating: [0, 0, 0], count: 1000)
+        oneOff[0] = [200, 0, 0]
+        XCTAssertFalse(AndroidHealthProbe.uniformFrame(rgba: rgba(oneOff)))
+        // 空・端数は判定不能=false(安全側)
+        XCTAssertFalse(AndroidHealthProbe.uniformFrame(rgba: Data()))
+        XCTAssertFalse(AndroidHealthProbe.uniformFrame(rgba: Data([1, 2, 3])))
+    }
+
+    /// decodeRGBA → uniformFrame の結合: 生成した一様/非一様 PNG で判定が通ること
+    func testDecodeRGBAUniformity() throws {
+        func makePNG(fill: (CGContext, Int, Int) -> Void) throws -> Data {
+            let w = 64, h = 64
+            let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8,
+                                bytesPerRow: w * 4, space: CGColorSpaceCreateDeviceRGB(),
+                                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+            fill(ctx, w, h)
+            let image = ctx.makeImage()!
+            let out = NSMutableData()
+            let dest = CGImageDestinationCreateWithData(out, "public.png" as CFString, 1, nil)!
+            CGImageDestinationAddImage(dest, image, nil)
+            CGImageDestinationFinalize(dest)
+            return out as Data
+        }
+        let black = try makePNG { ctx, w, h in
+            ctx.setFillColor(CGColor(red: 0, green: 0, blue: 0, alpha: 1))
+            ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
+        }
+        let rgbaBlack = try XCTUnwrap(AndroidHealthProbe.decodeRGBA(png: black))
+        XCTAssertTrue(AndroidHealthProbe.uniformFrame(rgba: rgbaBlack))
+        let mixed = try makePNG { ctx, w, h in
+            ctx.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+            ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
+            ctx.setFillColor(CGColor(red: 1, green: 0, blue: 0, alpha: 1))
+            ctx.fill(CGRect(x: 0, y: 0, width: w / 2, height: h))
+        }
+        let rgbaMixed = try XCTUnwrap(AndroidHealthProbe.decodeRGBA(png: mixed))
+        XCTAssertFalse(AndroidHealthProbe.uniformFrame(rgba: rgbaMixed))
+        XCTAssertNil(AndroidHealthProbe.decodeRGBA(png: Data([0, 1, 2])))
+    }
+
+    /// 実凍結の証跡 PNG に対する回帰検証(FT_EVIDENCE_PNG=<path> 指定時のみ。
+    /// 2026-07-25 の PoC 証跡: gRPC 黒 51KB / adb 白 10KB がどちらも一様=blank と判定されること)
+    func testEvidencePngIsUniform() throws {
+        guard let path = ProcessInfo.processInfo.environment["FT_EVIDENCE_PNG"] else {
+            throw XCTSkip("FT_EVIDENCE_PNG 未指定")
+        }
+        let png = try Data(contentsOf: URL(fileURLWithPath: path))
+        let rgba = try XCTUnwrap(AndroidHealthProbe.decodeRGBA(png: png))
+        XCTAssertTrue(AndroidHealthProbe.uniformFrame(rgba: rgba), "証跡 PNG が一様判定されない: \(path)")
     }
 
     /// 入力系(named key / touch 合成)実発射のスモーク(対象機の画面を操作するため

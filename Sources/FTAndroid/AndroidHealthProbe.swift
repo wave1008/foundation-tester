@@ -2,8 +2,10 @@
 // から呼ばれる)。adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト時計が凍結)なまま
 // テストが延々失敗し続けた実害(2026-07-16)への対策。
 
+import CoreGraphics
 import FTCore
 import Foundation
+import ImageIO
 
 public enum AndroidHealthProbe {
     /// 検出する異常の識別子(VSCode 拡張側 monitorModel.ts の health 契約と同期)
@@ -56,7 +58,7 @@ public enum AndroidHealthProbe {
                        thresholdSeconds: clockSkewThresholdSeconds) == true {
             issues.insert(issueClockSkew)
         }
-        if let count = await screencapByteCount(serial: serial), blankScreen(pngByteCount: count) {
+        if await probeBlank(serial: serial) {
             issues.insert(issueBlankScreen)
         }
         return issues
@@ -143,26 +145,66 @@ public enum AndroidHealthProbe {
         return true
     }
 
-    /// serial に1回 screencap して blank 判定する。取得失敗(gRPC/adb 両方不可)は
-    /// 「blank ではない」扱い(誤って健全機を除外しない安全側)。
-    /// 凍結中の見え方は経路で異なる(adb=白 / gRPC=黒。2026-07-25 実測)が、どちらも一様フレーム
-    /// なのでサイズ閾値判定は共通に機能する
+    /// serial に1回スクリーンショットを取り blank 判定する。取得失敗(gRPC/adb 両方不可)・
+    /// デコード失敗は「blank ではない」扱い(誤って健全機を除外しない安全側)。
+    /// 経路で判定方法が違う(重要):
+    /// - gRPC: PNG をホスト側でデコードし画素の一様判定(uniformFrame)。凍結フレームは経路により
+    ///   白/黒どちらもあり、emulator の PNG エンコーダは一様黒でも 51KB を出すため
+    ///   **PNG サイズ閾値は使えない**(30KB 閾値は adb screencap のエンコーダ較正。
+    ///   2026-07-25 証跡 PNG の画素解析で確認)
+    /// - adb フォールバック: 従来どおり PNG サイズ閾値(blankScreen)
     private static func probeBlank(serial: String) async -> Bool {
-        guard let count = await screencapByteCount(serial: serial) else { return false }
-        return blankScreen(pngByteCount: count)
-    }
-
-    /// PNG スクリーンショットのバイト数(gRPC 優先・adb フォールバック)。nil = 両経路とも取得失敗
-    private static func screencapByteCount(serial: String) async -> Int? {
-        if let png = await EmulatorControl.screenshotPNG(serial: serial) {
-            return png.count
+        if let png = await EmulatorControl.screenshotPNG(serial: serial),
+           let rgba = decodeRGBA(png: png) {
+            return uniformFrame(rgba: rgba)
         }
         guard let adbPath = try? AndroidDriver.findADB(),
               let cap = try? Shell.runData([adbPath, "-s", serial, "exec-out", "screencap", "-p"]),
               cap.status == 0 else {
-            return nil
+            return false
         }
-        return cap.data.count
+        return blankScreen(pngByteCount: cap.data.count)
+    }
+
+    /// PNG → RGBA8888 生画素(ImageIO/CoreGraphics。フル解像度・補間なしで uniformFrame 用)
+    static func decodeRGBA(png: Data) -> Data? {
+        guard let source = CGImageSourceCreateWithData(png as CFData, nil),
+              let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return nil }
+        let width = image.width
+        let height = image.height
+        guard width > 0, height > 0,
+              let context = CGContext(
+                  data: nil, width: width, height: height, bitsPerComponent: 8,
+                  bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
+                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        guard let buffer = context.data else { return nil }
+        return Data(bytes: buffer, count: width * height * 4)
+    }
+
+    /// RGBA 生画素バッファが一様フレーム(=blank)か。RGB 各チャネルの min/max 差が
+    /// tolerance 以下なら一様(alpha は無視。実凍結フレームは spread 0 だがノイズ耐性を持たせる)。
+    /// 4バイト未満(空含む)は判定不能= false(誤検知しない安全側)
+    static func uniformFrame(rgba: Data, tolerance: UInt8 = 8, sampleCount: Int = 4096) -> Bool {
+        let pixelCount = rgba.count / 4
+        guard pixelCount > 0 else { return false }
+        let stride = max(1, pixelCount / sampleCount)
+        var minC: [UInt8] = [255, 255, 255]
+        var maxC: [UInt8] = [0, 0, 0]
+        return rgba.withUnsafeBytes { (buf: UnsafeRawBufferPointer) -> Bool in
+            var p = 0
+            while p < pixelCount {
+                let base = p * 4
+                for c in 0..<3 {
+                    let v = buf[base + c]
+                    if v < minC[c] { minC[c] = v }
+                    if v > maxC[c] { maxC[c] = v }
+                }
+                p += stride
+            }
+            for c in 0..<3 where maxC[c] &- minC[c] > tolerance { return false }
+            return true
+        }
     }
 
     /// 純粋な確定ロジック: 全サンプルが blank なら true、1つでも非blankがあれば false、

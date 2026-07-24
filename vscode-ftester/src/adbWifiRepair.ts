@@ -4,7 +4,7 @@
 // (emulatorGrpc.ts)・不可なら adb にフォールバック(Swift 側 FTAndroid.EmulatorControl と同じ方針)。
 
 import { execFile } from "node:child_process";
-import { grpcScreenshotPngBytes, grpcSleepWake } from "./emulatorGrpc";
+import { grpcProbeBlank, grpcSleepWake } from "./emulatorGrpc";
 
 /** adb がデバイス無応答時にハングしうるための上限(ミリ秒)。 */
 const TIMEOUT_MS = 10 * 1000;
@@ -27,13 +27,13 @@ export function repairWifi(adbPath: string, serial: string): Promise<boolean> {
  * 言語間契約 — 変更する場合は両方を同期させること。 */
 const BLANK_SCREEN_MAX_PNG_BYTES = 30_000;
 
-/** PNG スクリーンショットのバイト数で blank(一様フレーム)を判定する。gRPC(emulatorGrpc.ts)優先、
- * 不可なら `adb exec-out screencap -p` にフォールバック。取得失敗・0 バイトは「blank ではない」扱い
- * (誤修復継続しない安全側。Swift 側 AndroidHealthProbe.probeBlank と同方針)。 */
+/** blank(一様フレーム)判定。gRPC(RGBA 生画素の一様判定)優先、不可なら
+ * `adb exec-out screencap -p` の PNG サイズ閾値にフォールバック。取得失敗・0 バイトは
+ * 「blank ではない」扱い(誤修復継続しない安全側。Swift 側 AndroidHealthProbe.probeBlank と同方針)。 */
 async function probeBlank(adbPath: string, serial: string): Promise<boolean> {
-  const grpcBytes = await grpcScreenshotPngBytes(serial);
-  if (grpcBytes !== undefined) {
-    return grpcBytes > 0 && grpcBytes < BLANK_SCREEN_MAX_PNG_BYTES;
+  const grpcBlank = await grpcProbeBlank(serial);
+  if (grpcBlank !== undefined) {
+    return grpcBlank;
   }
   return new Promise((resolve) => {
     execFile(
