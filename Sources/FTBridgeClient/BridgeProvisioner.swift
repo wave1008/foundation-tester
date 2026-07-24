@@ -470,6 +470,13 @@ public struct BridgeProvisioner {
                 guard let bundleID else {
                     throw BridgeProvisionerError.inAppNeedsBundleID(name: name)
                 }
+                // 起動前に、同一デバイスの再利用対象外 in-app ゾンビを掃除する(累積の発生源対策)。
+                // in-app ブリッジは対象アプリが背面化で suspend されると /status 無応答になり
+                // scanRunningBridges に映らない=再利用も stale 停止もされず、inapp run のたびに
+                // 1本ずつ .inapp 状態ファイルが積もる(実測: 連続 inapp で 6→12)。放置すると
+                // ポート範囲を食い潰し・シミュレータのリソースを消費する(scan の遅延自体は
+                // status(timeout:) 化で別途緩和済み)。
+                reclaimInAppOrphans(udid: sim.udid, exceptPort: port, name: name, log: log)
                 let launcher = InAppLauncher(repoRoot: repoRoot, udid: sim.udid, port: port)
                 // dylib ビルドは prepareSharedBuilds で完了済み(ここで buildIfNeeded すると並列で競合)
                 try await Task.detached(priority: .userInitiated) {
@@ -529,6 +536,34 @@ public struct BridgeProvisioner {
             }
             log("✅ \(name): \(engine) ブリッジ準備完了(port \(port))")
             return port
+        }
+    }
+
+    /// 同一 UDID の再利用対象外 in-app ゾンビ(.inapp 状態ファイルは残るが scanRunningBridges には
+    /// 映らない suspend 個体)を、新しい in-app ブリッジを起動する前に掃除する。exceptPort(今回
+    /// 起動するポート)は除外する。
+    /// 誤殺防止: terminate(bundleID) で blind に止めると同アプリの別ポートの現役ブリッジを誤殺して
+    /// 実行中ワーカーが連鎖死する実害があったため(reclaimInApp のコメント参照)、ここでも
+    /// PortHolder(実際に LISTEN している場合のみ占有者を確認して停止・無人なら記録削除)を使う。
+    /// scan に映らない=同一 provision 内で再利用中ではない(launch 側でのみ呼ぶ)ため、掃除しても
+    /// 稼働中ブリッジは殺さない。ファイルは全ケースで削除する(stale 記録を残さない)。
+    private func reclaimInAppOrphans(udid: String, exceptPort: UInt16, name: String,
+                                    log: (String) -> Void) {
+        let stateDir = repoRoot.appendingPathComponent(".ftester")
+        guard let entries = try? FileManager.default.contentsOfDirectory(
+            at: stateDir, includingPropertiesForKeys: nil) else { return }
+        for entry in entries where entry.lastPathComponent.hasPrefix("bridge-")
+            && entry.pathExtension == "inapp" {
+            let portStr = entry.deletingPathExtension().lastPathComponent
+                .replacingOccurrences(of: "bridge-", with: "")
+            guard let orphanPort = UInt16(portStr), orphanPort != exceptPort,
+                  let state = InAppBridgeState.read(at: entry), state.udid == udid else { continue }
+            if case .stopped(let holder) = PortHolder.stopIfOwnedBridge(
+                port: orphanPort, stateDir: stateDir,
+                derivedDataPath: stateDir.appendingPathComponent("DerivedData")) {
+                log("🔧 \(name): 同一デバイスの残留 in-app ブリッジ(port \(orphanPort))を停止しました(\(holder))")
+            }
+            try? FileManager.default.removeItem(at: entry)
         }
     }
 
