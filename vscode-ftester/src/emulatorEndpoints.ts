@@ -46,6 +46,28 @@ function isPidAlive(pid: number): boolean {
   }
 }
 
+/** RGBA8888 生画素バッファが一様フレーム(=blank)か。RGB 各チャネルの min/max 差が
+ * tolerance 以下なら一様(alpha は無視)。4バイト未満は判定不能= false(誤検知しない安全側)。
+ * Swift 側 AndroidHealthProbe.uniformFrame と同一ロジック(tolerance/サンプル数含めて同期)。
+ * 実凍結フレームは spread 0(2026-07-25 証跡 PNG の画素解析)。PNG バイト数閾値は emulator の
+ * エンコーダ(一様黒でも 51KB)に効かないため使わないこと。 */
+export function isUniformRgba(rgba: Uint8Array, tolerance = 8, sampleCount = 4096): boolean {
+  const pixelCount = Math.floor(rgba.length / 4);
+  if (pixelCount === 0) return false;
+  const stride = Math.max(1, Math.floor(pixelCount / sampleCount));
+  const mins = [255, 255, 255];
+  const maxs = [0, 0, 0];
+  for (let p = 0; p < pixelCount; p += stride) {
+    const base = p * 4;
+    for (let c = 0; c < 3; c++) {
+      const v = rgba[base + c] ?? 0;
+      if (v < (mins[c] ?? 255)) mins[c] = v;
+      if (v > (maxs[c] ?? 0)) maxs[c] = v;
+    }
+  }
+  return maxs.every((m, c) => m - (mins[c] ?? 0) <= tolerance);
+}
+
 /** serial に対応する稼働中(プロセス生存確認済み)エンドポイントを返す(無ければ undefined =
  * 実機 or gRPC 情報なし)。directory はテスト用の差し替え口(既定は実ディスカバリディレクトリ)。 */
 export function endpointForSerial(

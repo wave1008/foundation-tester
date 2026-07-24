@@ -10,7 +10,7 @@
 import * as path from "node:path";
 import * as grpc from "@grpc/grpc-js";
 import * as protoLoader from "@grpc/proto-loader";
-import { EmulatorEndpoint, endpointForSerial } from "./emulatorEndpoints";
+import { EmulatorEndpoint, endpointForSerial, isUniformRgba } from "./emulatorEndpoints";
 
 // --- gRPC 呼び出し ---
 // evdev キーコード。KEY_WAKEUP(143) は emulator のキー変換で欠落し不発(2026-07-25 実測)なので
@@ -20,7 +20,7 @@ const KEY_SLEEP = 142;
 const KEY_POWER = 116;
 const KEY_CODE_TYPE_EVDEV = 1;
 const KEY_EVENT_TYPE_KEYPRESS = 2;
-const IMAGE_FORMAT_PNG = 0;
+const IMAGE_FORMAT_RGBA8888 = 1;
 const RPC_DEADLINE_MS = 10_000;
 
 /** 一度でも gRPC 呼び出しに失敗した emulator pid(同一ブート中は adb 固定。再試行で遅くしない。
@@ -62,7 +62,10 @@ function loadEmulatorControllerProto(): DynamicProto {
 function newControllerClient(endpoint: EmulatorEndpoint): DynamicProto {
   const proto = loadEmulatorControllerProto();
   const ControllerCtor = proto.android.emulation.control.EmulatorController;
-  return new ControllerCtor(`127.0.0.1:${endpoint.grpcPort}`, grpc.credentials.createInsecure());
+  return new ControllerCtor(`127.0.0.1:${endpoint.grpcPort}`, grpc.credentials.createInsecure(), {
+    // RGBA 生画素は 1080x2424 で約10MB(grpc-js 既定 4MB のままだと受信で切断される)
+    "grpc.max_receive_message_length": 64 * 1024 * 1024,
+  });
 }
 
 function authMetadata(endpoint: EmulatorEndpoint): grpc.Metadata {
@@ -110,15 +113,17 @@ async function withGrpc<T>(
   }
 }
 
-/** PNG スクリーンショットのバイト数。undefined = gRPC 不可(呼び出し側が adb screencap へ
- * フォールバックする。blank 閾値の適用はここでは行わない=呼び出し側の責務、Swift 側
- * screencapByteCount/blankScreen の分離と同じ)。 */
-export function grpcScreenshotPngBytes(serial: string): Promise<number | undefined> {
+/** blank(一様フレーム)判定。RGBA 生画素を取り isUniformRgba で判定する。
+ * undefined = gRPC 不可(呼び出し側が adb screencap の PNG サイズ閾値へフォールバック)。
+ * PNG バイト数では判定しないこと(emulator エンコーダは一様黒でも 51KB を出し、
+ * adb 較正の 30KB 閾値をすり抜ける。Swift 側 AndroidHealthProbe.probeBlank と同方針)。 */
+export function grpcProbeBlank(serial: string): Promise<boolean | undefined> {
   return withGrpc(serial, async (endpoint) => {
     const image = await callRpc<{ format: number }, { image: Buffer }>(endpoint, "getScreenshot", {
-      format: IMAGE_FORMAT_PNG,
+      format: IMAGE_FORMAT_RGBA8888,
     });
-    return image.image.length;
+    if (image.image.length < 4) throw new Error("empty frame");  // 取得不能扱い→adb へ
+    return isUniformRgba(image.image);
   });
 }
 

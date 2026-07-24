@@ -10,7 +10,11 @@ public enum EmulatorGrpcSession {
 
     public static let defaultTimeout: Duration = .seconds(10)
 
-    /// PNG スクリーンショット(adb screencap -p の代替。実測 48ms vs 140〜250ms)
+    /// PNG スクリーンショット(adb screencap -p の代替。実測 48ms vs 140〜250ms)。
+    /// 注意: blank 判定に PNG バイト数を使わないこと(emulator 側エンコーダは一様黒でも
+    /// 51KB を出す=adb 較正の 30KB 閾値をすり抜ける。判定はホスト側でデコードして画素一様性で
+    /// 行う(AndroidHealthProbe.uniformFrame)。RGBA8888 直取りは約10MB の単一メッセージが
+    /// grpc-swift トランスポートに切断され使えない(2026-07-25 実測。node の grpc-js は受かる))
     public static func screenshotPNG(endpoint: EmulatorEndpoint,
                                      timeout: Duration = defaultTimeout) async throws -> Data {
         try await withController(endpoint: endpoint, timeout: timeout) { client, metadata, options in
