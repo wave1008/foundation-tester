@@ -418,6 +418,26 @@ window/transition/animator の `*_scale` はチューニングノブではなく
 - **XCUITest ランナーの起動 ≈25〜30s/本はビルドではなくセッション確立コスト**(`xcodebuild test-without-building`=ランナー .app の sim へのインストール+XCTest セッション確立+/status 応答まで。共有ビルドはキャッシュで通常 no-op)。さらに供給は ProvisionLock(クロスプロセス flock、ポート採番の bindFailed(48) 対策)で直列化されるため、**壊れたブリッジが多いと run 開始が 10s→70〜80s 化する**。健全なフリートなら再利用スキャン(2s タイムアウト)だけで 1〜2s
 - **iOS 10台同時のシナリオ第一波で AX スパイクが起き、健全なブリッジも数秒〜数十秒 /status に応答しなくなる**(2026-07-18 実測: 一斉離脱後の計測で 12本中11本が 200=一過性)。短い期限の死活確認はここで誤判定する(§6 プレフライト不採用の根拠)
 - **Swift 構造化並行の罠: `withTaskGroup`+`cancelAll` はキャンセルに応答しない子タスクの完了を待つ**。ウェッジ機への URLSession(120s/リクエスト)を子に持つと、期限側が勝っても遅い方を待ち続けて run 全体が凍結する(実測: 全スレッドパークで5分以上)。死活確認の期限は「先着確定レース+遅い方は放置」(RunOrchestrator.withDeadline)にする
+- **孤児ブリッジ累積で連続 run が逓減する(根本原因と2修正・2026-07-25 確定)**: in-app ブリッジは
+  対象アプリが背面化で suspend されると TCP 受理・HTTP 無応答になり `scanRunningBridges`(/status)に
+  映らない=再利用も stale 停止もされず、inapp run のたびに `.inapp` 状態ファイルが1デバイス1本ずつ
+  積もる(実測: xcuitest↔inapp 切替を繰り返すと 6→12→…)。さらに scan の /status プローブは
+  引数なし `status()` が `sessionTimeout`(=Timeout.session=45s)を per-request の timeoutInterval に
+  上書きするため、`BridgeClient(timeoutSeconds:2)` の 2s が効かず、**suspend ゾンビ1本で scan 全体が
+  並列でも ~45s 待つ**(本数に依らず固定 ~45s。18本の合成でも 46s)。結果 iOS 壁時計が実行時間そのままに
+  ~45s 逓増する。修正: ① `scanRunningBridges` を `status(timeout: 2)` にして本数に依らず ~2s 頭打ち、
+  ② inapp 起動前に同 UDID の再利用対象外ゾンビを PortHolder で掃除し発生源を止める(`reclaimInAppOrphans`。
+  blind な `simctl terminate` は同アプリ別ポートの稼働中ブリッジを誤殺し実行中ワーカーを連鎖死させる
+  実害があるため使わない)。いずれも `BridgeProvisioner.swift`。手動掃除は `ftester bridge down --all`
+- **iOS 壁時計だけ伸びて「テスト実時間」が一定なら供給/scan を疑う(アプリサイズではない)**:
+  install 深比較や SUT サイズを疑うのは誤り。実測で native 1M ≈ Flutter 94M ≈ 同じ ~47s overhead=
+  サイズ無相関、真因は上項の孤児ブリッジ scan だった。フェーズ内訳は `FT_PHASE_LOG=1 ftester run ...`
+  (`ios-workers-start→ios-workers-built` が provision=scan+catalog。ここが膨らむ)
+- **`simctl list` は ~0.5s の固定費(件数非依存)**: 279件でも booted 6件でも 0.57 vs 0.45s=
+  CoreSimulator 呼び出し自体のコストで、クエリを狭めても縮まない(booted 限定は未ブート対象の
+  resolve を壊すので不可)。provision は catalog を1回取得して scan/resolve で使い回す=per-run は
+  1回で最小(これ以上削れない)。devices-up だけは 2回/台(DeviceBooter の boot 確認+provision)だが、
+  boot 中はデバイス状態が変わり catalog キャッシュは誤認を招くうえ効果も ~1% なので見送り
 
 ## 8. 今後の改善候補(価値が出たら)
 
