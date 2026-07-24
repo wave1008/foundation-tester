@@ -109,7 +109,8 @@ public final class RunRecorder: @unchecked Sendable {
     }
 
     public func finish(total: Int, passed: Int, failed: Int, degradedWorkers: [String] = [],
-                       freezeRetries: [String] = []) {
+                       freezeRetries: [String] = [],
+                       blankRepairs: [String] = [], blankExclusions: [String] = []) {
         hostMetrics?.stop()
         let meta = RunMetaRecord(
             runID: runID, project: projectName, profile: profile, machine: machine,
@@ -117,7 +118,9 @@ public final class RunRecorder: @unchecked Sendable {
             finishedAt: ISO8601DateFormatter().string(from: Date()),
             total: total, passed: passed, failed: failed,
             degradedWorkers: degradedWorkers.isEmpty ? nil : degradedWorkers,
-            freezeRetries: freezeRetries.isEmpty ? nil : freezeRetries)
+            freezeRetries: freezeRetries.isEmpty ? nil : freezeRetries,
+            blankRepairs: blankRepairs.isEmpty ? nil : blankRepairs,
+            blankExclusions: blankExclusions.isEmpty ? nil : blankExclusions)
         RunResultsStore.writeMeta(meta, runDir: runDir)
     }
 

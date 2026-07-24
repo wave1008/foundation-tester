@@ -94,13 +94,21 @@ public struct RunSummary: Sendable {
     /// 結果取り消し+振り直しの監査記録(成功した振り直しは合否記録に痕跡を残さないため、
     /// ここに「どのシナリオを・どのワーカーから・何回目か」を残す)。
     public let freezeRetries: [String]
+    /// run 前の blank 判定で sleep/wake 修復により除外を免れたワーカー label(orchestrator は
+    /// 関与しない=呼び出し側がワーカー構築時の triage を summary に載せ替える)。
+    public let blankRepairs: [String]
+    /// run 前の blank 判定で修復不発により除外したワーカー label(同上)。
+    public let blankExclusions: [String]
 
     public init(total: Int, failed: Int, degradedWorkers: [String] = [],
-                freezeRetries: [String] = []) {
+                freezeRetries: [String] = [],
+                blankRepairs: [String] = [], blankExclusions: [String] = []) {
         self.total = total
         self.failed = failed
         self.degradedWorkers = degradedWorkers
         self.freezeRetries = freezeRetries
+        self.blankRepairs = blankRepairs
+        self.blankExclusions = blankExclusions
     }
 }
 

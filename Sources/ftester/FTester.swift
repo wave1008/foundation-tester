@@ -580,7 +580,9 @@ struct RunScenarios: AsyncParsableCommand {
             PhaseLog.mark("profile-run-done")
             recorder.finish(total: items.count, passed: items.count - failedCount, failed: failedCount,
                             degradedWorkers: runSummary.degradedWorkers,
-                            freezeRetries: runSummary.freezeRetries)
+                            freezeRetries: runSummary.freezeRetries,
+                            blankRepairs: runSummary.blankRepairs,
+                            blankExclusions: runSummary.blankExclusions)
             PhaseLog.mark("recorder-finish")
             print(failedCount == 0
                   ? "✅ 全 \(items.count) シナリオ成功"
