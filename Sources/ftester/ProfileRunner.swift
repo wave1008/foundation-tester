@@ -4,6 +4,7 @@
 // ワーカー構築の実体は ProfileWorkerFactory。
 
 import Foundation
+import FTAgent
 import FTAndroid
 import FTBridgeClient
 import FTCore
@@ -31,6 +32,7 @@ enum ProfileRunner {
         for warning in resolved.warnings { print("⚠️ \(warning)") }
 
         let heal = healOverride ?? resolved.heal
+        await Self.warnIfHealDegraded(heal: heal) { print($0) }
         let reportDir = reportDirOverride.map { URL(fileURLWithPath: $0) } ?? resolved.reportDir
         if resolved.iosFastInput { setenv("FT_FAST_INPUT", "1", 1) }  // BridgeClient.fastInput 参照
         let deviceList = resolved.devices
@@ -53,7 +55,8 @@ enum ProfileRunner {
         await BackendHealthCheck.warnIfUnreachable(resolved: resolved) { print($0) }
         var workers = try ProfileWorkerFactory.buildAndroidWorkers(resolved: resolved)
         let beforeBlankCheck = workers.count
-        workers = await ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers(workers) { print($0) }
+        let triage = await ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers(workers) { print($0) }
+        workers = triage.workers
         if workers.isEmpty && beforeBlankCheck > 0 {
             throw ProfileWorkerFactory.InstallError(
                 message: "実行可能なデバイスがありません(全 Android デバイスが白化)")
@@ -218,7 +221,24 @@ enum ProfileRunner {
             print("🔁 結果取り消し+振り直し(\(finalSummary.freezeRetries.count)):")
             for entry in finalSummary.freezeRetries { print("   - \(entry)") }
         }
-        return finalSummary
+        // run 前の blank triage(orchestrator は関与しない)を summary に載せ替えて返す
+        // (RunScenarios が recorder.finish で run.json に記録する)
+        return RunSummary(total: finalSummary.total, failed: finalSummary.failed,
+                          degradedWorkers: finalSummary.degradedWorkers,
+                          freezeRetries: finalSummary.freezeRetries,
+                          blankRepairs: triage.repaired, blankExclusions: triage.excluded)
     }
 
+    /// heal 有効 run の開始前に FM の実呼び出し可否を確認して警告する。availability は嘘をつく
+    /// (available のまま実呼び出しが全滅する実測 2026-07-22)ため checkLive を使う。FM 実呼び出しは
+    /// ~1s かかるので heal 有効時のみ(occlusion-guard の劣化はシナリオ実行中の警告が別途出る)。
+    /// ApiRunCommand と共用。
+    static func warnIfHealDegraded(heal: Bool, log: (String) -> Void) async {
+        guard heal else { return }
+        let fm = await FMDoctor.checkLive()
+        if !fm.available {
+            log("⚠️ heal が有効ですが FM の実呼び出しに失敗するため、"
+                + "自己修復・occlusion-guard・screenIs はこの実行では無効です")
+        }
+    }
 }

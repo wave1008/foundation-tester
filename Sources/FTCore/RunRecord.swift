@@ -30,12 +30,19 @@ public struct RunMetaRecord: Codable, Sendable {
     /// 凍結等による結果取り消し+振り直しの監査記録(成功した振り直しはシナリオ記録に痕跡を
     /// 残さないため、ここが唯一の証跡)。空/未発生は nil で省略。
     public var freezeRetries: [String]?
+    /// run 前の blank 判定で sleep/wake 修復により除外を免れたワーカー label(凍結傾向の追跡用。
+    /// TS ミラー: vscode-ftester/src/dashboardModel.ts)。空/未発生は nil で省略。
+    public var blankRepairs: [String]?
+    /// run 前の blank 判定で修復不発により除外したワーカー label(guest reboot 発行済み)。
+    /// 空/未発生は nil で省略。
+    public var blankExclusions: [String]?
 
     public init(schemaVersion: Int = RunRecordSchema.current, runID: String, project: String,
                 profile: String?, machine: String, trigger: String, startedAt: String,
                 finishedAt: String? = nil, total: Int? = nil, passed: Int? = nil,
                 failed: Int? = nil, degradedWorkers: [String]? = nil,
-                freezeRetries: [String]? = nil) {
+                freezeRetries: [String]? = nil,
+                blankRepairs: [String]? = nil, blankExclusions: [String]? = nil) {
         self.schemaVersion = schemaVersion
         self.runID = runID
         self.project = project
@@ -49,6 +56,8 @@ public struct RunMetaRecord: Codable, Sendable {
         self.failed = failed
         self.degradedWorkers = degradedWorkers
         self.freezeRetries = freezeRetries
+        self.blankRepairs = blankRepairs
+        self.blankExclusions = blankExclusions
     }
 }
 

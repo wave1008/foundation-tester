@@ -62,8 +62,9 @@ export class MonitorDeviceOps {
   /** 実行中の bulk up(devices-up)プロセス。「デバイスの起動を中断」の kill 対象。close で undefined に戻す。 */
   private bulkUpProc: PipeProcess | undefined;
   /** 凍結が治らず CPU 描画(swiftshader)へフォールバックしたデバイス論理名。セッション中維持
-   * (host に戻すと再凍結するため)。個別 device-up 時に --gpu を付ける。bulk devices-up は
-   * 別経路(executeBulkJob)のため対象外。 */
+   * (host に戻すと再凍結するため)。個別 device-up 時に --gpu を、bulk devices-up
+   * (executeBulkJob)時に --cpu-render を付ける(CLI 側の同期相手:
+   * Sources/ftester/ApiDeviceCommands.swift の cpuRender → DeviceBooter.bootAll)。 */
   private readonly cpuRenderNames = new Set<string>();
 
   constructor(private readonly deps: MonitorPanelDeps) {}
@@ -328,6 +329,11 @@ export class MonitorDeviceOps {
       // 2台ずつ並行処理される(DeviceBooter.bootAll の restartNames)。
       for (const n of restartNames) {
         args.push("--restart", n);
+      }
+      // CPU 描画フォールバック中の個体は一括起動でも swiftshader を維持する(従来は bulk up が
+      // host で起き上がり直してフォールバックが消える既知の穴だった)
+      for (const n of this.cpuRenderNames) {
+        args.push("--cpu-render", n);
       }
     }
     if (resolution.kind === "resolved") {
