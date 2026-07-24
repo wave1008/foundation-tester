@@ -169,6 +169,14 @@ export class MonitorHealthWatchdog {
       return;
     }
 
+    // metal-errors は早期警報のみ(閾値・根拠は Swift 側 AndroidHealthProbe.issueMetalErrors)。
+    // 修復・再起動アクションは取らない(自動リブートのポリシー化は未決)。単独ならここで終了、
+    // 他 issue と併発時は以降のラダーを actionable で判定する
+    const actionable = health.filter((issue) => issue !== "metal-errors");
+    if (actionable.length === 0) {
+      return;
+    }
+
     if (this.now() < entry.cooldownUntil) {
       return;
     }
@@ -181,7 +189,8 @@ export class MonitorHealthWatchdog {
     }
 
     const isWifiOnly =
-      health.includes("wifi-disabled") && !health.includes("clock-skew") && !health.includes("blank-screen");
+      actionable.includes("wifi-disabled") && !actionable.includes("clock-skew") &&
+      !actionable.includes("blank-screen");
     if (isWifiOnly && !entry.wifiAttempted && serial !== undefined) {
       entry.wifiAttempted = true;
       entry.cooldownUntil = this.now() + WIFI_REPAIR_COOLDOWN_MS;
@@ -197,7 +206,7 @@ export class MonitorHealthWatchdog {
       return;
     }
 
-    const hasBlank = health.includes("blank-screen");
+    const hasBlank = actionable.includes("blank-screen");
     if (hasBlank) {
       // blank-screen 専用ラダー: displayRepair(sleep/wake ~4s)1回 → streamRepair 1回 →
       // swiftshader 再起動 1回 → failed。host 再起動は実験で「治らず再凍結」が確定したため

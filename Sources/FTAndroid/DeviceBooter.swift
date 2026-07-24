@@ -351,13 +351,12 @@ public enum DeviceBooter {
             "エミュレータの serial を検出できません(\(avd)。AVD 名が正しいか確認してください)")
     }
 
-    /// ~/Library/Logs/ftester/emulator/<AVD>.log を truncate して開く(ヘッダ=起動時刻+引数)。
+    /// EmulatorLog.url を truncate して開く(ヘッダ=起動時刻+引数)。
     /// ブート毎上書きなので肥大しない(残るのは最終ブート1回分のみ)
     private static func emulatorLogHandle(avd: String, arguments: [String]) -> FileHandle? {
-        let dir = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Logs/ftester/emulator")
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let url = dir.appendingPathComponent(avd.replacingOccurrences(of: "/", with: "_") + ".log")
+        try? FileManager.default.createDirectory(at: EmulatorLog.directory,
+                                                 withIntermediateDirectories: true)
+        let url = EmulatorLog.url(avdID: avd)
         let header = "=== \(ISO8601DateFormatter().string(from: Date())) emulator \(arguments.joined(separator: " "))\n"
         guard FileManager.default.createFile(atPath: url.path, contents: Data(header.utf8)),
               let handle = try? FileHandle(forWritingTo: url) else { return nil }
