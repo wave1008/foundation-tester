@@ -579,8 +579,12 @@ public struct BridgeProvisioner {
                             returning: [UInt16: RunningBridge].self) { group in
             for port in portRange {
                 group.addTask {
+                    // status(timeout:) を明示する(引数なし status() は sessionTimeout=45s を
+                    // per-request に上書きするため、init の timeoutSeconds:2 が効かない)。これを怠ると
+                    // suspend/ウェッジした孤児ブリッジ(TCP 受理・HTTP 無応答)1本で scan 全体が
+                    // 並列でも ~45s 待ち、連続 run が逓減する(2026-07-25 実測 46s→<2s)。
                     let client = BridgeClient(port: port, timeoutSeconds: 2)
-                    guard let status = try? await client.status(), status.ready else {
+                    guard let status = try? await client.status(timeout: 2), status.ready else {
                         return nil
                     }
                     // デバイス名 → UDID(同名の起動中シミュレータが複数なら特定不能 = nil)
