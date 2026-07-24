@@ -1239,3 +1239,19 @@ proto は `third_party/emulator-proto/`(vendored・再生成手順は同 README�
 - grpc-swift v2 の正リポジトリは **grpc/grpc-swift-2.git**(grpc-swift.git の 2.x タグは旧系)
 - 拡張は **grpc-js を import しない純粋部(emulatorEndpoints.ts)を分離必須**(esm テストバンドルが
   grpc-js の動的 require で死ぬ)
+
+### 16.4 iOS 側の相当実装: simctl→CoreSimulator 直叩き(2026-07-25)
+
+iOS には emulator gRPC に相当する公開 RPC が無いため、同型の勝ち筋は **simctl のプロセス起動固定費の
+排除**。`FTCoreSimShim`(ObjC・dlopen+objc_msgSend、ftester-simstream と同作法)が
+CoreSimulator.framework を直接叩き、`SimulatorCatalog.devices()` が直叩き優先・simctl フォールバックで
+振り分ける。殺しスイッチ **`FT_SIMULATOR_CONTROL=simctl`**。
+
+- 実測(シミュレータ 210 台): 列挙 6ms vs simctl 567ms(92倍)・全台 state 読み 0.03ms。
+  初期化(dlopen+SimServiceContext)は初回のみ ~470ms=常駐(monitor)で償却
+- 保持する deviceSet ハンドルは boot/shutdown に live 追従(再初期化不要)
+- セレクタ欠落(Xcode 版差)は列挙ごと nil → simctl へ(部分的な混在結果を返さない)。
+  等価性は UDID/booted 集合の完全一致を live テストで担保
+  (Tests/FTBridgeClientTests/SimulatorCatalogCoreSimTests.swift、FT_LIVE_SIM=1)
+- ステップ実行(tap ~490ms)は XCUITest エンジン内部コストでこの施策の対象外。
+  HID 注入バイパスは評価済み不採用(backboardd クラッシュ)・再提案しない

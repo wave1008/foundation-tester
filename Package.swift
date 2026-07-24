@@ -37,10 +37,14 @@ let package = Package(
             name: "FTCore",
             swiftSettings: swift5Mode
         ),
+        // CoreSimulator 直叩きシム(ObjC・dlopen。SimulatorCatalog の simctl 高速化用)
+        .target(
+            name: "FTCoreSimShim"
+        ),
         // XCUITestランナー(ブリッジ)へのHTTPクライアントと起動管理
         .target(
             name: "FTBridgeClient",
-            dependencies: ["FTCore"],
+            dependencies: ["FTCore", "FTCoreSimShim"],
             swiftSettings: swift5Mode
         ),
         // FoundationModels 補助層(自己修復・失敗トリアージ・シナリオ命名)

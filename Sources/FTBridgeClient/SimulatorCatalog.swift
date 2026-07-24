@@ -4,6 +4,7 @@
 
 import Foundation
 import FTCore
+import FTCoreSimShim
 
 public struct SimDeviceInfo: Sendable, Hashable, Identifiable {
     public let udid: String
@@ -42,8 +43,32 @@ public enum SimulatorCatalogError: Error, LocalizedError {
 
 public enum SimulatorCatalog {
 
-    /// 利用可能な iOS シミュレータ一覧(起動中 → OS 降順 → 名前順)
+    /// 利用可能な iOS シミュレータ一覧(起動中 → OS 降順 → 名前順)。
+    /// CoreSimulator 直叩き(FTCoreSimShim。列挙 6ms vs simctl 567ms・2026-07-25 実測)優先、
+    /// 利用不能なら simctl フォールバック。殺しスイッチ: FT_SIMULATOR_CONTROL=simctl
     public static func devices() throws -> [SimDeviceInfo] {
+        if ProcessInfo.processInfo.environment["FT_SIMULATOR_CONTROL"] != "simctl",
+           let viaShim = devicesViaCoreSimulator() {
+            return viaShim
+        }
+        return try devicesViaSimctl()
+    }
+
+    /// CoreSimulator 経由(nil = シム利用不能。私有 API のセレクタ欠落等)。テストが等価性検証に使う
+    static func devicesViaCoreSimulator() -> [SimDeviceInfo]? {
+        guard let raw = FTCoreSimListDevices() else { return nil }
+        let found = raw.compactMap { entry -> SimDeviceInfo? in
+            guard let udid = entry["udid"] as? String,
+                  let name = entry["name"] as? String,
+                  let os = entry["os"] as? String,
+                  let booted = entry["booted"] as? Bool else { return nil }
+            return SimDeviceInfo(udid: udid, name: name, os: os, booted: booted)
+        }
+        return sorted(found)
+    }
+
+    /// simctl 経由(従来経路)。テストが等価性検証に使う
+    static func devicesViaSimctl() throws -> [SimDeviceInfo] {
         let result = try Shell.run(["xcrun", "simctl", "list", "devices", "-j"])
         guard result.status == 0,
               let data = result.output.data(using: .utf8),
@@ -67,7 +92,12 @@ public enum SimulatorCatalog {
                 found.append(SimDeviceInfo(udid: udid, name: name, os: os, booted: booted))
             }
         }
-        return found.sorted {
+        return sorted(found)
+    }
+
+    /// 起動中 → OS 降順 → 名前順(resolve が「先頭=最良候補」に依存する契約)
+    private static func sorted(_ devices: [SimDeviceInfo]) -> [SimDeviceInfo] {
+        devices.sorted {
             if $0.booted != $1.booted { return $0.booted }
             if $0.os != $1.os { return $0.os > $1.os }
             return $0.name < $1.name
