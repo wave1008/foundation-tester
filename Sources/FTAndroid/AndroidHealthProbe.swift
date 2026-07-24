@@ -119,6 +119,21 @@ public enum AndroidHealthProbe {
         return false
     }
 
+    /// 実行中の凍結起因失敗の事後判定+その場修復: isBlankObserved が true なら sleep/wake 修復を
+    /// 試みてから true を返す。判定結果(このシナリオ失敗が凍結起因か)は修復成否で変えない=
+    /// 振り直し・ワーカー離脱は従来どおりで、修復は「次のシナリオ/ワーカー復帰が健全画面に当たる」
+    /// ための処置。RunOrchestrator.isDeviceFrozen への注入用(ProfileRunner / ApiRunCommand で共用)。
+    public static func observeBlankAndRepair(serial: String,
+                                             log: (String) -> Void) async -> Bool {
+        guard await isBlankObserved(serial: serial) else { return false }
+        if await repairBlankDisplay(serial: serial) {
+            log("🔧 実行中の画面凍結を sleep/wake で修復しました(\(serial))")
+        } else {
+            log("⚠️ 実行中の画面凍結を修復できませんでした(\(serial))")
+        }
+        return true
+    }
+
     /// serial に1回 screencap して blank 判定する。adb 取得失敗(コマンドエラー・status != 0)は
     /// 「blank ではない」扱い(誤って健全機を除外しない安全側)
     private static func probeBlank(serial: String) -> Bool {

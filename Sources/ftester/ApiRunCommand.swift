@@ -158,6 +158,9 @@ struct ApiRunCommand: AsyncParsableCommand {
                         log: { logStderr($0) })
                 }
                 var workers = try ProfileWorkerFactory.buildAndroidWorkers(resolved: resolved)
+                // 凍結機はまず修復・不発のみ除外(CLI の ProfileRunner と同じ。全滅しても throw せず
+                // 空で返す=iOS の合流を殺さない。android シナリオはワーカー不在ドレインで失敗確定)
+                workers = await ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers(workers) { logStderr($0) }
                 workers = try await ProfileWorkerFactory.installIfNeeded(
                     apps: resolved.apps, workers: workers,
                     forceAndroidInstall: !wipedAndroid.isEmpty) { logStderr($0) }
@@ -322,6 +325,8 @@ struct ApiRunCommand: AsyncParsableCommand {
             }
             workers = try await ProfileWorkerFactory.buildWorkers(
                 resolved: resolved, repoRoot: try RepoRoot.find()) { logStderr($0) }
+            // android ワーカーのみ判定対象(iOS はそのまま通る)。凍結機は修復・不発のみ除外
+            workers = await ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers(workers) { logStderr($0) }
             workers = try await ProfileWorkerFactory.installIfNeeded(
                 apps: resolved.apps, workers: workers,
                 forceAndroidInstall: !wipedAndroid.isEmpty) { logStderr($0) }
@@ -443,8 +448,9 @@ struct ApiRunCommand: AsyncParsableCommand {
             recordingConfig: recordingConfig,
             isDeviceFrozen: { serial in
                 // 事後判定は isBlankObserved(窓内に一度でも blank)。isPersistentlyBlank だと
-                // 約25秒周期のフラッピングの回復側を引いて凍結を見逃す(実測 2026-07-18)
-                await AndroidHealthProbe.isBlankObserved(serial: serial)
+                // 約25秒周期のフラッピングの回復側を引いて凍結を見逃す(実測 2026-07-18)。
+                // 凍結確定時はその場で sleep/wake 修復も試みる(判定・振り直しは従来どおり)
+                await AndroidHealthProbe.observeBlankAndRepair(serial: serial) { logStderr($0) }
             },
             isDeviceUnreachable: { serial in
                 // adb で state=device の一覧に居なければ消失(offline/未検出)。取得失敗時は誤って
