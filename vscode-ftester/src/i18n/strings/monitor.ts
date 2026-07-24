@@ -179,6 +179,18 @@ export const monitorStrings = {
     ja: "Wi-Fi 再有効化コマンドの実行に失敗しました。",
     en: "Failed to run the Wi-Fi re-enable command.",
   },
+  "monitor.healthWatch.displayRepairAttempt": {
+    ja: "画面リセット(sleep/wake)による修復を試みます。",
+    en: "Attempting repair by resetting the display (sleep/wake).",
+  },
+  "monitor.healthWatch.displayRepairExecuted": {
+    ja: "画面リセットコマンドを実行しました。",
+    en: "Ran the display reset commands.",
+  },
+  "monitor.healthWatch.displayRepairFailed": {
+    ja: "画面リセットコマンドの実行に失敗しました。",
+    en: "Failed to run the display reset commands.",
+  },
   "monitor.healthWatch.streamRepairAttempt": {
     ja: "画面ストリームヘルパーの再起動による修復を試みます。",
     en: "Attempting repair by restarting the screen stream helper.",
