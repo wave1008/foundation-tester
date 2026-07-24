@@ -105,10 +105,11 @@ public enum AndroidHealthProbe {
     /// 対照実験 2026-07-25、docs/performance-tuning.md §7)。
     /// 1サイクル(dwell 1.5s ≈4s)で直らない抵抗性の変種が実在し(wake 後 6s 待っても blank)、
     /// dwell 3s の2サイクル目で回復する(実測)。成功時 ~4s・抵抗変種のみ ~11s。
-    /// 戻り値: 修復後の再プローブで非 blank になったら true。adb 失敗は false(安全側=呼び出し側が除外)。
+    /// 戻り値: 修復後の再プローブで非 blank になったら true。adb 解決失敗のみ false。
+    /// プローブ取得失敗は probeBlank の「非 blank」扱いに倒れ true になる(誤除外しない安全側)。
     public static func repairBlankDisplay(serial: String) async -> Bool {
+        guard let adbPath = try? AndroidDriver.findADB() else { return false }
         for dwellNs: UInt64 in [1_500_000_000, 3_000_000_000] {
-            guard let adbPath = try? AndroidDriver.findADB() else { return false }
             _ = try? Shell.run([adbPath, "-s", serial, "shell", "input", "keyevent", "KEYCODE_SLEEP"])
             try? await Task.sleep(nanoseconds: dwellNs)
             _ = try? Shell.run([adbPath, "-s", serial, "shell", "input", "keyevent", "KEYCODE_WAKEUP"])

@@ -184,12 +184,12 @@ export const monitorStrings = {
     en: "Attempting repair by resetting the display (sleep/wake).",
   },
   "monitor.healthWatch.displayRepairExecuted": {
-    ja: "画面リセットコマンドを実行しました。",
-    en: "Ran the display reset commands.",
+    ja: "画面リセットで凍結が解消しました。",
+    en: "The display reset cleared the freeze.",
   },
   "monitor.healthWatch.displayRepairFailed": {
-    ja: "画面リセットコマンドの実行に失敗しました。",
-    en: "Failed to run the display reset commands.",
+    ja: "画面リセットでは解消しませんでした(クールダウン後に次段の修復へ進みます)。",
+    en: "The display reset did not clear the freeze (escalating to the next repair after cooldown).",
   },
   "monitor.healthWatch.streamRepairAttempt": {
     ja: "画面ストリームヘルパーの再起動による修復を試みます。",
