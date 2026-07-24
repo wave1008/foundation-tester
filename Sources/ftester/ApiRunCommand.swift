@@ -315,7 +315,8 @@ struct ApiRunCommand: AsyncParsableCommand {
     ) async throws -> RunOutcome {
         let profileName = resolved.runName
         let effectiveHeal = heal ? true : resolved.heal
-        await ProfileRunner.warnIfHealDegraded(heal: effectiveHeal) { logStderr($0) }
+        // dry-run は FM を使わないため警告(と実呼び出し ~1s)を抑止する
+        await ProfileRunner.warnIfHealDegraded(heal: effectiveHeal && !dryRun) { logStderr($0) }
         let reportDirPath = (reportDir.map { URL(fileURLWithPath: $0) } ?? resolved.reportDir).path
 
         var blankTriage: (repaired: [String], excluded: [String]) = ([], [])
