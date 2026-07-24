@@ -215,14 +215,13 @@ enum ProfileRunner {
         return finalSummary
     }
 
-    /// android かつ serial 判明済みのワーカーを対象に恒常 blank-screen(画面凍結)を並列判定して
-    /// 除外する。健全機は1サンプルで即返る。**白い機の確定は速い判定(2連続サンプル ~1.5s)**で行う:
-    /// run 前の除外に「40s ずっと blank」の確実性は過剰で、凍結が1台でもあると setup 全体が ~37s に
-    /// 膨らむ(-gpu host の凍結は頻発。実測)。判定は2連続サンプル ~1.5s(単発フレーム誤検知の回避)。
-    /// **blank 検出後はまず sleep/wake 修復(~4s)を試み、回復すれば除外しない**(凍結は複数台同時
-    /// 描画で頻発するため、除外だけだとワーカーが半減し得る。修復の実測は AndroidHealthProbe.
-    /// repairBlankDisplay 参照)。修復不発のみ除外。事後の凍結判定(isBlankObserved・実行中の
-    /// flap 検知)は従来どおり別物。元 workers の順序は維持する
+    /// android かつ serial 判明済みのワーカーを対象に恒常 blank-screen(画面凍結)を並列判定し、
+    /// **blank ならまず sleep/wake 修復(~4s)を試み、回復しなければ除外する**。健全機は1サンプルで即返る。
+    /// blank の確定は2連続サンプル ~1.5s(単発フレーム誤検知の回避): run 前の除外に既定の
+    /// 「40s ずっと blank」の確実性は過剰で、凍結が1台でもあると setup 全体が ~37s に膨らむ
+    /// (-gpu host の凍結は頻発。実測)。修復で回復すれば除外しない(除外だけだとワーカーが半減し得る。
+    /// 修復の実測は AndroidHealthProbe.repairBlankDisplay 参照)。事後の凍結判定(isBlankObserved・
+    /// 実行中の flap 検知)は従来どおり別物。元 workers の順序は維持する
     private static func excludeBlankScreenWorkers(_ workers: [RunWorker]) async throws -> [RunWorker] {
         let candidates = workers.enumerated().filter {
             $0.element.platform == "android" && $0.element.connection.serial != nil
