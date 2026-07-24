@@ -59,6 +59,14 @@ apps プロファイルの healthCheckURL が実行開始時に警告を出す�
   本番ログの「実行中の画面凍結を修復」で観測する
 - **実凍結は事前修復が先に治すため「実行中だけ凍結」を意図的に作れない**(実凍結の誘発は
   8台並列 run の反復のみ。1台単独負荷・アイドルでは発生しない。performance-tuning.md §7)
+- **凍結のホスト側証跡は `~/Library/Logs/ftester/emulator/<AVD>.log`**(DeviceBooter が
+  emulator stdout/stderr を保存。ブート毎 truncate)。根因の Metal エラー
+  (`GLDRendererMetal command buffer completion error` / `IOGPUCommandQueueErrorDomain 518`)は
+  ここにしか出ない(2026-07-25 実測)。凍結個体を調べるときはまずこのログを見る
+- **エミュレータ操作は既定で emulator gRPC(EmulatorController)経由**(スクショ/キー・タッチ注入/
+  停止等。実機・gRPC 失敗個体は自動で adb フォールバック。`Sources/FTAndroid/EmulatorControl.swift`)。
+  gRPC 起因を疑うときは **`FT_EMULATOR_CONTROL=adb`** で全面 adb に切り替えて比較できる
+  (拡張側 `vscode-ftester/src/emulatorGrpc.ts` も同じ環境変数)。挙動差の切り分けはまずこれ
 
 ## 常駐ブリッジのセッション(iOS xcuitest を CLI で直接叩くとき)
 

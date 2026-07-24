@@ -169,7 +169,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                     of: (String, Set<String>).self, returning: [String: Set<String>].self
                 ) { group in
                     for serial in dueSerials {
-                        group.addTask { (serial, AndroidHealthProbe.observeIssues(serial: serial)) }
+                        group.addTask { (serial, await AndroidHealthProbe.observeIssues(serial: serial)) }
                     }
                     var result: [String: Set<String>] = [:]
                     for await (serial, issues) in group { result[serial] = issues }
@@ -418,7 +418,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
     private static func scanBootCompleted(serials: Set<String>) async -> [String: Bool] {
         await withTaskGroup(of: (String, Bool).self, returning: [String: Bool].self) { group in
             for serial in serials {
-                group.addTask { (serial, AndroidDeviceCatalog.bootCompleted(serial: serial)) }
+                group.addTask { (serial, await AndroidDeviceCatalog.bootCompleted(serial: serial)) }
             }
             var result: [String: Bool] = [:]
             for await (serial, completed) in group {

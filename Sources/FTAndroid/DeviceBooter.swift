@@ -244,9 +244,13 @@ public enum DeviceBooter {
                 "simctl shutdown: 3回試行してもシミュレータが停止しません(最後の出力: \(lastResult?.tail ?? ""))")
         } else {
             let serial = try AndroidDeviceCatalog.resolveSerial(spec: spec)
-            let adb = try AndroidDriver.findADB()
-            _ = try Shell.run([adb, "-s", serial, "emu", "kill"], timeout: 10)
-            // emu kill は非同期。serial 消失を待たずに戻ると runningDescription が停止直後も
+            // gRPC setVmState(SHUTDOWN) 優先(adb 経路がウェッジした個体にも届く)・
+            // 不可なら従来の adb emu kill
+            if await !EmulatorControl.shutdown(serial: serial) {
+                let adb = try AndroidDriver.findADB()
+                _ = try Shell.run([adb, "-s", serial, "emu", "kill"], timeout: 10)
+            }
+            // シャットダウンは非同期。serial 消失を待たずに戻ると runningDescription が停止直後も
             // 「起動中」と誤報する(AndroidDataWiper.stopIfRunning と同じ死活確認・上限15s)。
             let deadline = Date().addingTimeInterval(15)
             while Date() < deadline {
@@ -321,8 +325,13 @@ public enum DeviceBooter {
             arguments += ["-change-locale", locale.replacingOccurrences(of: "_", with: "-")]
         }
         process.arguments = arguments
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
+        // 凍結の根因証跡(GLDRendererMetal command buffer completion error 等)は emulator の
+        // stdout/stderr にしか出ない(2026-07-25 実測)ため捨てずに AVD 毎ログへ残す。
+        // ログを開けない場合はブートを優先して従来どおり破棄する
+        let logHandle = emulatorLogHandle(avd: avd, arguments: arguments)
+        process.standardOutput = logHandle ?? FileHandle.nullDevice
+        process.standardError = logHandle ?? FileHandle.nullDevice
+        defer { try? logHandle?.close() }  // 子プロセス側は spawn 時に dup 済み
         try process.run()
 
         let deadline = Date().addingTimeInterval(60)
@@ -340,6 +349,20 @@ public enum DeviceBooter {
         process.terminate()
         throw DeviceBooterError.commandFailed(
             "エミュレータの serial を検出できません(\(avd)。AVD 名が正しいか確認してください)")
+    }
+
+    /// ~/Library/Logs/ftester/emulator/<AVD>.log を truncate して開く(ヘッダ=起動時刻+引数)。
+    /// ブート毎上書きなので肥大しない(残るのは最終ブート1回分のみ)
+    private static func emulatorLogHandle(avd: String, arguments: [String]) -> FileHandle? {
+        let dir = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Logs/ftester/emulator")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let url = dir.appendingPathComponent(avd.replacingOccurrences(of: "/", with: "_") + ".log")
+        let header = "=== \(ISO8601DateFormatter().string(from: Date())) emulator \(arguments.joined(separator: " "))\n"
+        guard FileManager.default.createFile(atPath: url.path, contents: Data(header.utf8)),
+              let handle = try? FileHandle(forWritingTo: url) else { return nil }
+        handle.seekToEndOfFile()
+        return handle
     }
 
     /// sys.boot_completed=1 までポーリング(既定 180 秒)

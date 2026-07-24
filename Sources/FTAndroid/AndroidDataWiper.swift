@@ -115,8 +115,11 @@ public enum AndroidDataWiper {
             .first(where: { $0.value == avdID })?.key else {
             return .wasNotRunning
         }
-        let adb = try AndroidDriver.findADB()
-        _ = try? Shell.run([adb, "-s", serial, "emu", "kill"])
+        // gRPC SHUTDOWN 優先(adb 経路死亡でも届く)・不可なら従来の emu kill
+        if await !EmulatorControl.shutdown(serial: serial) {
+            let adb = try AndroidDriver.findADB()
+            _ = try? Shell.run([adb, "-s", serial, "emu", "kill"])
+        }
 
         let deadline = Date().addingTimeInterval(30)
         while Date() < deadline {

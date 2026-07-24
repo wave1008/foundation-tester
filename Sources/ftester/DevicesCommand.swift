@@ -88,11 +88,14 @@ struct DevicesCommand: AsyncParsableCommand {
             } else {
                 print("⚠️ 一部のシミュレータが停止しません(xcrun simctl list devices で確認してください)")
             }
-            // offline のエミュレータには emu kill が届かないため、残った qemu を直接落とす
+            // gRPC SHUTDOWN 優先(adb 経路死亡でも届く)・不可なら emu kill。
+            // それでも offline には届かないため、残った qemu を最後に直接落とす
             if let adb = try? AndroidDriver.findADB(),
                let serials = try? AndroidDeviceCatalog.allEmulatorSerials() {
                 for serial in serials {
-                    _ = try? Shell.run([adb, "-s", serial, "emu", "kill"])
+                    if await !EmulatorControl.shutdown(serial: serial) {
+                        _ = try? Shell.run([adb, "-s", serial, "emu", "kill"])
+                    }
                     print("✅ エミュレータを終了しました(\(serial))")
                 }
                 if !serials.isEmpty {
