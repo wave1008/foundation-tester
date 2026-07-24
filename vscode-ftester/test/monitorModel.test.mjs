@@ -989,12 +989,16 @@ const VALID_RUN_PROFILE_SAVE = {
     devices: ["シミュ1", "エミュ1"],
     heal: false,
     iosInappEngine: true,
+    iosFastInput: false,
     reportDir: "reports",
     defaultTimeout: "10",
     wipeDataOnBloat: true,
     wipeDataThresholdGB: "1",
     locale: "ja_JP",
     record: false,
+    recordFailuresOnly: false,
+    recordBitrateKbps: "",
+    recordFullResolution: false,
   },
 };
 
@@ -1025,12 +1029,16 @@ test("isMonitorFromWebviewMessage: runProfileSave は profile 非空・fields10�
         devices: [],
         heal: true,
         iosInappEngine: false,
+        iosFastInput: true,
         reportDir: "",
         defaultTimeout: "",
         wipeDataOnBloat: false,
         wipeDataThresholdGB: "",
         locale: "",
         record: true,
+        recordFailuresOnly: true,
+        recordBitrateKbps: "",
+        recordFullResolution: true,
       },
     }),
     true,
@@ -1064,6 +1072,13 @@ test("isMonitorFromWebviewMessage: runProfileSave は profile 空文字・fields
   assert.equal(
     isMonitorFromWebviewMessage({
       ...VALID_RUN_PROFILE_SAVE,
+      fields: { ...VALID_RUN_PROFILE_SAVE.fields, iosFastInput: "true" }, // boolean でない
+    }),
+    false,
+  );
+  assert.equal(
+    isMonitorFromWebviewMessage({
+      ...VALID_RUN_PROFILE_SAVE,
       fields: { ...VALID_RUN_PROFILE_SAVE.fields, defaultTimeout: 10 }, // number(string でない)
     }),
     false,
@@ -1079,6 +1094,27 @@ test("isMonitorFromWebviewMessage: runProfileSave は profile 空文字・fields
     isMonitorFromWebviewMessage({
       ...VALID_RUN_PROFILE_SAVE,
       fields: { ...VALID_RUN_PROFILE_SAVE.fields, record: "true" }, // boolean でない
+    }),
+    false,
+  );
+  assert.equal(
+    isMonitorFromWebviewMessage({
+      ...VALID_RUN_PROFILE_SAVE,
+      fields: { ...VALID_RUN_PROFILE_SAVE.fields, recordFailuresOnly: "true" }, // boolean でない
+    }),
+    false,
+  );
+  assert.equal(
+    isMonitorFromWebviewMessage({
+      ...VALID_RUN_PROFILE_SAVE,
+      fields: { ...VALID_RUN_PROFILE_SAVE.fields, recordBitrateKbps: 1500 }, // number(string でない)
+    }),
+    false,
+  );
+  assert.equal(
+    isMonitorFromWebviewMessage({
+      ...VALID_RUN_PROFILE_SAVE,
+      fields: { ...VALID_RUN_PROFILE_SAVE.fields, recordFullResolution: "true" }, // boolean でない
     }),
     false,
   );
@@ -1684,19 +1720,23 @@ test("syncDevicesInMachineProfile: トップレベルがオブジェクトでな
 
 // ---- parseRunProfileForForm ----
 
-test("parseRunProfileForForm: 正常な値は11フィールドをそのまま読み取る", () => {
+test("parseRunProfileForForm: 正常な値は15フィールドをそのまま読み取る", () => {
   const parsed = parseRunProfileForForm({
     machine: "M1 Max",
     app: "sampleapp",
     devices: [{ name: "シミュ1" }, { name: "エミュ1" }],
     heal: true,
     iosInappEngine: false,
+    iosFastInput: true,
     reportDir: "reports",
     defaultTimeout: 10,
     wipeDataOnBloat: false,
     wipeDataThresholdGB: 1.5,
     locale: "en_US",
     record: true,
+    recordFailuresOnly: true,
+    recordBitrateKbps: 2000,
+    recordFullResolution: true,
   });
   assert.deepEqual(parsed, {
     machine: "M1 Max",
@@ -1704,16 +1744,20 @@ test("parseRunProfileForForm: 正常な値は11フィールドをそのまま読
     devices: ["シミュ1", "エミュ1"],
     heal: true,
     iosInappEngine: false,
+    iosFastInput: true,
     reportDir: "reports",
     defaultTimeout: "10",
     wipeDataOnBloat: false,
     wipeDataThresholdGB: "1.5",
     locale: "en_US",
     record: true,
+    recordFailuresOnly: true,
+    recordBitrateKbps: "2000",
+    recordFullResolution: true,
   });
 });
 
-test("parseRunProfileForForm: 欠落キーは既定値(machine/app/reportDir/locale=''、devices=[]、heal=false、iosInappEngine=true、defaultTimeout=''、wipeDataOnBloat=true、wipeDataThresholdGB=''、record=false)", () => {
+test("parseRunProfileForForm: 欠落キーは既定値(machine/app/reportDir/locale/recordBitrateKbps=''、devices=[]、heal=false、iosInappEngine=true、defaultTimeout=''、wipeDataOnBloat=true、wipeDataThresholdGB=''、record/recordFailuresOnly/recordFullResolution/iosFastInput=false)", () => {
   const parsed = parseRunProfileForForm({});
   assert.deepEqual(parsed, {
     machine: "",
@@ -1721,28 +1765,36 @@ test("parseRunProfileForForm: 欠落キーは既定値(machine/app/reportDir/loc
     devices: [],
     heal: false,
     iosInappEngine: true,
+    iosFastInput: false,
     reportDir: "",
     defaultTimeout: "",
     wipeDataOnBloat: true,
     wipeDataThresholdGB: "",
     locale: "",
     record: false,
+    recordFailuresOnly: false,
+    recordBitrateKbps: "",
+    recordFullResolution: false,
   });
 });
 
-test("parseRunProfileForForm: 型不正のキーは既定値扱い(machine が数値、heal が文字列、record が文字列 等)", () => {
+test("parseRunProfileForForm: 型不正のキーは既定値扱い(machine が数値、heal が文字列、record/recordFailuresOnly/recordFullResolution/iosFastInput が文字列 等)", () => {
   const parsed = parseRunProfileForForm({
     machine: 123,
     app: null,
     devices: "not-an-array",
     heal: "true",
     iosInappEngine: "false",
+    iosFastInput: "true",
     reportDir: false,
     defaultTimeout: {},
     wipeDataOnBloat: "false",
     wipeDataThresholdGB: {},
     locale: 123,
     record: "true",
+    recordFailuresOnly: "true",
+    recordBitrateKbps: {},
+    recordFullResolution: "true",
   });
   assert.deepEqual(parsed, {
     machine: "",
@@ -1750,13 +1802,28 @@ test("parseRunProfileForForm: 型不正のキーは既定値扱い(machine が�
     devices: [],
     heal: false,
     iosInappEngine: true,
+    iosFastInput: false,
     reportDir: "",
     defaultTimeout: "",
     wipeDataOnBloat: true,
     wipeDataThresholdGB: "",
     locale: "",
     record: false,
+    recordFailuresOnly: false,
+    recordBitrateKbps: "",
+    recordFullResolution: false,
   });
+});
+
+test("parseRunProfileForForm: iosFastInput は boolean ならそのまま返し、欠落/非 boolean は既定値 false", () => {
+  assert.equal(parseRunProfileForForm({ iosFastInput: true }).iosFastInput, true);
+  assert.equal(parseRunProfileForForm({}).iosFastInput, false);
+  assert.equal(parseRunProfileForForm({ iosFastInput: "true" }).iosFastInput, false);
+});
+
+test("parseRunProfileForForm: recordBitrateKbps は number なら String() 化、string ならそのまま返す", () => {
+  assert.equal(parseRunProfileForForm({ recordBitrateKbps: 1500 }).recordBitrateKbps, "1500");
+  assert.equal(parseRunProfileForForm({ recordBitrateKbps: "3000" }).recordBitrateKbps, "3000");
 });
 
 test("parseRunProfileForForm: devices は name が非文字列/オブジェクトでない要素をスキップする", () => {
@@ -1787,6 +1854,15 @@ test("parseRunProfileForForm: record は boolean ならそのまま返し、欠�
   assert.equal(parseRunProfileForForm({ record: false }).record, false);
   assert.equal(parseRunProfileForForm({}).record, false);
   assert.equal(parseRunProfileForForm({ record: "true" }).record, false);
+});
+
+test("parseRunProfileForForm: recordFailuresOnly/recordFullResolution は boolean ならそのまま返し、欠落/非 boolean は既定値 false", () => {
+  assert.equal(parseRunProfileForForm({ recordFailuresOnly: true }).recordFailuresOnly, true);
+  assert.equal(parseRunProfileForForm({}).recordFailuresOnly, false);
+  assert.equal(parseRunProfileForForm({ recordFailuresOnly: "true" }).recordFailuresOnly, false);
+  assert.equal(parseRunProfileForForm({ recordFullResolution: true }).recordFullResolution, true);
+  assert.equal(parseRunProfileForForm({}).recordFullResolution, false);
+  assert.equal(parseRunProfileForForm({ recordFullResolution: "true" }).recordFullResolution, false);
 });
 
 test("parseRunProfileForForm: トップレベルが非オブジェクト(配列含む)なら null", () => {
@@ -1871,12 +1947,16 @@ const BASE_RUN_PROFILE_FIELDS = {
   devices: ["シミュ1", "エミュ1"],
   heal: false,
   iosInappEngine: true,
+  iosFastInput: false,
   reportDir: "reports",
   defaultTimeout: "10",
   wipeDataOnBloat: true,
   wipeDataThresholdGB: "1",
   locale: "ja_JP",
   record: false,
+  recordFailuresOnly: false,
+  recordBitrateKbps: "",
+  recordFullResolution: false,
 };
 
 test("updateRunProfileInObject: 基本更新(machine/app/heal/iosInappEngine/wipeDataOnBloat/reportDir/defaultTimeout)", () => {
@@ -1893,20 +1973,46 @@ test("updateRunProfileInObject: 基本更新(machine/app/heal/iosInappEngine/wip
   assert.equal(result.object.locale, "ja_JP");
   assert.deepEqual(result.object.devices, [{ name: "シミュ1" }, { name: "エミュ1" }]);
   assert.equal("record" in result.object, false); // record:false はキーを書かない
+  assert.equal("recordFailuresOnly" in result.object, false);
+  assert.equal("recordBitrateKbps" in result.object, false);
+  assert.equal("recordFullResolution" in result.object, false);
+  assert.equal("iosFastInput" in result.object, false);
 });
 
-test("updateRunProfileInObject: record は true のときのみ書き込み、false なら既存キーごと削除する", () => {
-  const enabled = updateRunProfileInObject({}, { ...BASE_RUN_PROFILE_FIELDS, record: true });
-  assert.equal(enabled.ok, true);
-  assert.equal(enabled.object.record, true);
+test("updateRunProfileInObject: record/recordFailuresOnly/recordFullResolution/iosFastInput は true のときのみ書き込み、false なら既存キーごと削除する", () => {
+  for (const key of ["record", "recordFailuresOnly", "recordFullResolution", "iosFastInput"]) {
+    const enabled = updateRunProfileInObject({}, { ...BASE_RUN_PROFILE_FIELDS, [key]: true });
+    assert.equal(enabled.ok, true);
+    assert.equal(enabled.object[key], true, `${key}: true で書き込まれるべき`);
 
-  const disabledFromScratch = updateRunProfileInObject({}, { ...BASE_RUN_PROFILE_FIELDS, record: false });
-  assert.equal(disabledFromScratch.ok, true);
-  assert.equal("record" in disabledFromScratch.object, false);
+    const disabledFromScratch = updateRunProfileInObject({}, { ...BASE_RUN_PROFILE_FIELDS, [key]: false });
+    assert.equal(disabledFromScratch.ok, true);
+    assert.equal(key in disabledFromScratch.object, false, `${key}: false ならキー無しであるべき`);
 
-  const disabledFromExisting = updateRunProfileInObject({ record: true }, { ...BASE_RUN_PROFILE_FIELDS, record: false });
-  assert.equal(disabledFromExisting.ok, true);
-  assert.equal("record" in disabledFromExisting.object, false);
+    const disabledFromExisting = updateRunProfileInObject({ [key]: true }, { ...BASE_RUN_PROFILE_FIELDS, [key]: false });
+    assert.equal(disabledFromExisting.ok, true);
+    assert.equal(key in disabledFromExisting.object, false, `${key}: 既存 true → false で削除されるべき`);
+  }
+});
+
+test("updateRunProfileInObject: recordBitrateKbps は空文字でキー削除、正の整数で number 化、不正値でエラー", () => {
+  const removed = updateRunProfileInObject(
+    { recordBitrateKbps: 2000 },
+    { ...BASE_RUN_PROFILE_FIELDS, recordBitrateKbps: "" },
+  );
+  assert.equal(removed.ok, true);
+  assert.equal("recordBitrateKbps" in removed.object, false);
+
+  const added = updateRunProfileInObject({}, { ...BASE_RUN_PROFILE_FIELDS, recordBitrateKbps: "3000" });
+  assert.equal(added.ok, true);
+  assert.equal(added.object.recordBitrateKbps, 3000);
+  assert.equal(typeof added.object.recordBitrateKbps, "number");
+
+  for (const invalid of ["0", "-1", "1.5", "abc"]) {
+    const result = updateRunProfileInObject({}, { ...BASE_RUN_PROFILE_FIELDS, recordBitrateKbps: invalid });
+    assert.equal(result.ok, false, `recordBitrateKbps=${invalid} は不正値としてエラーになるべき`);
+    assert.match(result.error, /recordBitrateKbps/);
+  }
 });
 
 test("updateRunProfileInObject: wipeDataOnBloat は常時書き込み、wipeDataThresholdGB は空文字でキー削除、正の数(小数許容)で number 化、不正値でエラー", () => {

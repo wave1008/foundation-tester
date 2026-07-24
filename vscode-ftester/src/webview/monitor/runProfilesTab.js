@@ -23,8 +23,13 @@ const runProfileApp = document.getElementById('run-profile-app');
 const runProfileDevices = document.getElementById('run-profile-devices');
 const runProfileHeal = document.getElementById('run-profile-heal');
 const runProfileIosInappEngine = document.getElementById('run-profile-ios-inapp-engine');
+const runProfileIosFastInput = document.getElementById('run-profile-ios-fast-input');
 const runProfileWipeDataOnBloat = document.getElementById('run-profile-wipe-data-on-bloat');
 const runProfileRecord = document.getElementById('run-profile-record');
+const runProfileRecordOptions = document.getElementById('run-profile-record-options');
+const runProfileRecordFailuresOnly = document.getElementById('run-profile-record-failures-only');
+const runProfileRecordBitrate = document.getElementById('run-profile-record-bitrate');
+const runProfileRecordFullResolution = document.getElementById('run-profile-record-full-resolution');
 const runProfileWipeThreshold = document.getElementById('run-profile-wipe-threshold');
 const runProfileLocale = document.getElementById('run-profile-locale');
 const runProfileReportDir = document.getElementById('run-profile-report-dir');
@@ -198,8 +203,13 @@ function renderRunProfileEditor(fields) {
   renderRunProfileDevices();
   runProfileHeal.checked = fields.heal;
   runProfileIosInappEngine.checked = fields.iosInappEngine;
+  runProfileIosFastInput.checked = fields.iosFastInput;
   runProfileWipeDataOnBloat.checked = fields.wipeDataOnBloat;
   runProfileRecord.checked = fields.record;
+  runProfileRecordFailuresOnly.checked = fields.recordFailuresOnly;
+  runProfileRecordBitrate.value = fields.recordBitrateKbps;
+  runProfileRecordFullResolution.checked = fields.recordFullResolution;
+  updateRecordOptionsVisibility();
   runProfileWipeThreshold.value = fields.wipeDataThresholdGB;
   runProfileLocale.value = fields.locale;
   runProfileReportDir.value = fields.reportDir;
@@ -331,8 +341,20 @@ runProfileMachine.addEventListener('change', () => {
 runProfileApp.addEventListener('change', onRunProfileFormInput);
 runProfileHeal.addEventListener('change', onRunProfileFormInput);
 runProfileIosInappEngine.addEventListener('change', onRunProfileFormInput);
+runProfileIosFastInput.addEventListener('change', onRunProfileFormInput);
 runProfileWipeDataOnBloat.addEventListener('change', onRunProfileFormInput);
-runProfileRecord.addEventListener('change', onRunProfileFormInput);
+// record ON のときだけ配下のサブオプション(recordFailuresOnly/recordBitrateKbps/
+// recordFullResolution)を表示する(値そのものは record の状態に関わらず保持・保存する)。
+function updateRecordOptionsVisibility() {
+  runProfileRecordOptions.style.display = runProfileRecord.checked ? '' : 'none';
+}
+runProfileRecord.addEventListener('change', () => {
+  updateRecordOptionsVisibility();
+  onRunProfileFormInput();
+});
+runProfileRecordFailuresOnly.addEventListener('change', onRunProfileFormInput);
+runProfileRecordBitrate.addEventListener('input', onRunProfileFormInput);
+runProfileRecordFullResolution.addEventListener('change', onRunProfileFormInput);
 runProfileWipeThreshold.addEventListener('input', onRunProfileFormInput);
 runProfileLocale.addEventListener('input', onRunProfileFormInput);
 runProfileReportDir.addEventListener('input', onRunProfileFormInput);
@@ -355,8 +377,12 @@ function runProfileValuesEqual(fields) {
     runProfileDevicesEqual(runProfileCheckedNames, fields.devices) &&
     runProfileHeal.checked === fields.heal &&
     runProfileIosInappEngine.checked === fields.iosInappEngine &&
+    runProfileIosFastInput.checked === fields.iosFastInput &&
     runProfileWipeDataOnBloat.checked === fields.wipeDataOnBloat &&
     runProfileRecord.checked === fields.record &&
+    runProfileRecordFailuresOnly.checked === fields.recordFailuresOnly &&
+    runProfileRecordBitrate.value === fields.recordBitrateKbps &&
+    runProfileRecordFullResolution.checked === fields.recordFullResolution &&
     runProfileWipeThreshold.value === fields.wipeDataThresholdGB &&
     runProfileLocale.value === fields.locale &&
     runProfileReportDir.value === fields.reportDir &&
@@ -378,8 +404,12 @@ function setRunProfileControlsEnabled(enabled) {
   runProfileApp.disabled = !enabled;
   runProfileHeal.disabled = !enabled;
   runProfileIosInappEngine.disabled = !enabled;
+  runProfileIosFastInput.disabled = !enabled;
   runProfileWipeDataOnBloat.disabled = !enabled;
   runProfileRecord.disabled = !enabled;
+  runProfileRecordFailuresOnly.disabled = !enabled;
+  runProfileRecordBitrate.disabled = !enabled;
+  runProfileRecordFullResolution.disabled = !enabled;
   runProfileWipeThreshold.disabled = !enabled;
   runProfileLocale.disabled = !enabled;
   runProfileReportDir.disabled = !enabled;
@@ -412,6 +442,10 @@ function validateRunProfileFields() {
   if (threshold !== '' && (!/^\d+(\.\d+)?$/.test(threshold) || Number(threshold) <= 0)) {
     return t('wvMonitor2.runProfile.validation.wipeThresholdInvalid');
   }
+  const bitrate = runProfileRecordBitrate.value.trim();
+  if (bitrate !== '' && (!/^\d+$/.test(bitrate) || Number(bitrate) <= 0)) {
+    return t('wvMonitor2.runProfile.validation.recordBitrateInvalid');
+  }
   const locale = runProfileLocale.value.trim();
   if (locale !== '' && !/^[A-Za-z]{2,3}([-_][A-Za-z0-9]{2,8})*$/.test(locale)) {
     return t('wvMonitor2.runProfile.validation.localeInvalid');
@@ -442,8 +476,12 @@ runProfileConfirm.addEventListener('click', () => {
       devices: runProfileCheckedNames.slice(),
       heal: runProfileHeal.checked,
       iosInappEngine: runProfileIosInappEngine.checked,
+      iosFastInput: runProfileIosFastInput.checked,
       wipeDataOnBloat: runProfileWipeDataOnBloat.checked,
       record: runProfileRecord.checked,
+      recordFailuresOnly: runProfileRecordFailuresOnly.checked,
+      recordBitrateKbps: runProfileRecordBitrate.value.trim(),
+      recordFullResolution: runProfileRecordFullResolution.checked,
       wipeDataThresholdGB: runProfileWipeThreshold.value.trim(),
       locale: runProfileLocale.value.trim(),
       reportDir: runProfileReportDir.value.trim(),

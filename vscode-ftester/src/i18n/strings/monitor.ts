@@ -45,6 +45,10 @@ export const monitorStrings = {
     ja: "wipeDataThresholdGB は正の数(GB)で入力してください。",
     en: "Enter wipeDataThresholdGB as a positive number (GB).",
   },
+  "monitor.runProfile.recordBitrateInvalid": {
+    ja: "recordBitrateKbps は正の整数で入力してください。",
+    en: "Enter recordBitrateKbps as a positive integer.",
+  },
   "monitor.runProfile.localeInvalid": {
     ja: "locale は ja_JP のような形式で入力してください。",
     en: "Enter locale in a format like ja_JP.",

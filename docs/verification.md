@@ -20,7 +20,8 @@ CLAUDE.md「ビルド・検証」からの詳細分。コマンドと最重要�
 ## `Scripts/e2e.sh`(ftester 自身の E2E)
 
 - SUT(`E2EApp/` 他)の鮮度を見て必要なら再ビルドし、各プロファイルを順に回す。オプション:
-  `--rebuild` / `--ios` / `--android` / `--cmp` / `--ios-native` / `--android-native` / `--flutter`
+  `--rebuild` / `--ios` / `--android` / `--cmp` / `--ios-native` / `--android-native` / `--flutter` /
+  `--record`(録画パイプラインの整合チェック付き。詳細は下記「録画」節)
 - **両OSを1プロファイルにまとめない**: platform 未指定シナリオは既定 platform のキューにしか入らず
   他方のワーカーが空回りする(design.md §11.4)。SUT はネットワーク依存ゼロなのでバックエンド死活の
   切り分けは不要
@@ -65,14 +66,18 @@ apps プロファイルの healthCheckURL が実行開始時に警告を出す�
 録画パイプライン(Recorder/Finalizer/Coordinator/`RecordingWallClock`)を触ったら、
 ユニットテストでは AVFoundation・デバイス境界を捕まえられないため、record:true の実 run で確認する:
 
+- **録画パイプラインの退行は `Scripts/e2e.sh --record` で検知できる**(各プロファイルの一時コピーに
+  record:true を付けて実行し、`Scripts/check-recordings.py` が schemaVersion・クリップ数・
+  クリップ長・mp4 存在を機械チェックする。元のプロファイルは書き換えない)
 - **クリップ数 = シナリオ数**(シナリオが来なかったアイドルワーカーの録画は破棄される)、
   **クリップ長 ≒ シナリオ durationMs**(ミリ秒オーダーで一致するのが正常)、index.json(schemaVersion 2)の整合
 - **VFR の罠**: simctl/screenrecord は「画面が変化した時だけ」フレームを吐く。切り出しは
   「区間開始前の最後のフレームを retime して先頭に置く」+「endSession で区間終了まで保持」が無いと
   先頭/末尾が欠ける(実測: 11.1s ソースが endSession 無しで 8.7s に縮んだ)
 - **codec は H.264 固定**(再生側 = 拡張 webview の Chromium は HEVC 不可)。simctl に bitrate ノブは
-  無く、圧縮はファイナライズの再エンコードで行う(ノブは `VideoRecordingFinalizer` の
-  targetBitRate / shrinkThreshold。閾値を誤ると Android ソースの二重縮小になる実害があった)
+  無く、圧縮はファイナライズの再エンコードで行う(bitrate は run profile の recordBitrateKbps、
+  解像度は recordFullResolution。`VideoRecordingFinalizer` の shrinkThreshold を誤ると Android
+  ソースの二重縮小になる実害があった)
 - **サイズの目安**: 1テスト 0.1〜3MB(iOS 約50〜150KB/s、Android は静止的で約8〜30KB/s)。
   大きく外れたら解像度判定(shrinkThreshold)かビットレートを疑う
 - Android screenrecord は180秒上限のセグメントループ。停止は**デバイス側プロセスへ kill -2**

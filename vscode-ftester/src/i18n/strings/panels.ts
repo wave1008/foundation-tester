@@ -29,6 +29,7 @@ export const panelsStrings = {
     ja: "エラー一覧のフィルターを解除(ツリーの選択中ノードをもう一度クリックしても解除できます)",
     en: "Clear the error-list filter (clicking the selected tree node again also clears it)",
   },
+  "panels.recordings.autoAdvanceLabel": { ja: "連続再生", en: "Auto-play next" },
 
   "panels.common.runProfile": { ja: "実行プロファイル", en: "Run Profile" },
   "panels.common.appProfile": { ja: "アプリプロファイル", en: "App Profile" },
@@ -72,16 +73,32 @@ export const panelsStrings = {
   "panels.runProfile.machineLabel": { ja: "使用するマシンプロファイル", en: "Machine profile to use" },
   "panels.runProfile.appLabel": { ja: "アプリ", en: "App" },
   "panels.runProfile.healLabel": { ja: "自己修復(heal)を有効にする", en: "Enable self-heal" },
+  "panels.runProfile.iosSectionTitle": { ja: "iOS", en: "iOS" },
   "panels.runProfile.inappEngineLabel": {
     ja: "高速なinappエンジンを使用する(iOS)",
     en: "Use the fast in-app engine (iOS)",
   },
+  "panels.runProfile.iosFastInputLabel": {
+    ja: "高速入力(整定前タップのフレークリスク)",
+    en: "Fast input (risk of tapping before settle)",
+  },
+  "panels.runProfile.androidSectionTitle": { ja: "Android", en: "Android" },
   "panels.runProfile.wipeOnBloatLabel": {
     ja: "イメージ肥大時に自動で Wipe Data する(Android)",
     en: "Automatically wipe data when the image bloats (Android)",
   },
   "panels.runProfile.wipeThresholdLabel": { ja: "Wipe Data しきい値(GB)", en: "Wipe data threshold (GB)" },
+  "panels.runProfile.recordSectionTitle": { ja: "録画", en: "Recording" },
   "panels.runProfile.recordLabel": { ja: "録画する", en: "Record video" },
+  "panels.runProfile.recordFailuresOnlyLabel": {
+    ja: "OKになったテストの録画は保存しない",
+    en: "Don't keep recordings of tests that passed",
+  },
+  "panels.runProfile.recordBitrateLabel": { ja: "ビットレート(kbps)", en: "Bitrate (kbps)" },
+  "panels.runProfile.recordFullResolutionLabel": {
+    ja: "フル解像度で保存(容量増)",
+    en: "Save at full resolution (larger files)",
+  },
   "panels.runProfile.localeLabel": { ja: "ロケール", en: "Locale" },
 
   "panels.appProfile.noneSelected": { ja: "(アプリプロファイルなし)", en: "(No app profile)" },

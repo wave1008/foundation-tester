@@ -430,7 +430,10 @@ struct ApiRunCommand: AsyncParsableCommand {
         // record:true のときだけ VideoRecordingConfig を注入(runDir が無ければ録画自体しない)
         let recordingConfig: VideoRecordingConfig? = {
             guard resolved.record, let recorder else { return nil }
-            return VideoRecordingConfig(runDir: recorder.runDir, androidADBPath: try? AndroidDriver.findADB())
+            return VideoRecordingConfig(
+                runDir: recorder.runDir, androidADBPath: try? AndroidDriver.findADB(),
+                failuresOnly: resolved.recordFailuresOnly, bitrateKbps: resolved.recordBitrateKbps,
+                fullResolution: resolved.recordFullResolution)
         }()
 
         let orchestrator = RunOrchestrator(

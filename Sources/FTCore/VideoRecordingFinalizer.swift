@@ -15,20 +15,19 @@ import Foundation
 
 enum VideoRecordingFinalizer {
 
-    /// 上限 bitrate(bps)。Android 側 screenrecord の --bit-rate と同値。UI はほぼ静止画のため
-    /// 実効レートはこれを大きく下回る(H.264 のレート制御が undershoot する)
-    private static let targetBitRate = 1_500_000
-    /// この値(width/height の大きい方)を超えるソースだけ半分解像度にする。Android の screenrecord
-    /// ソースは wm size 由来で既に半分解像度で録っているため、無条件に半分化すると二重縮小になる。
-    /// 実測: iOS simctl はフル解像度 1206x2622(→半分化する)、Android 半分済みソースは
-    /// 540x1212(→そのまま)。縦長画面の縦辺で判定されるため両者の間の 1600 を閾値にする
-    /// (900 だと Android の縦 1212 が超過して二重縮小になる実害があった)
+    /// この値(width/height の大きい方)を超えるソースだけ半分解像度にする(fullResolution:false 時)。
+    /// Android の screenrecord ソースは wm size 由来で既に半分解像度で録っているため、無条件に
+    /// 半分化すると二重縮小になる。実測: iOS simctl はフル解像度 1206x2622(→半分化する)、
+    /// Android 半分済みソースは 540x1212(→そのまま)。縦長画面の縦辺で判定されるため両者の間の
+    /// 1600 を閾値にする(900 だと Android の縦 1212 が超過して二重縮小になる実害があった)
     private static let shrinkThreshold: CGFloat = 1600
 
     /// sourceFiles(連結順。要素数 1 で単一ファイルのケースも含む)の [clipStartMs, clipEndMs) を
-    /// 切り出し、半分解像度(既定より大きい場合のみ)+targetBitRate の H.264 .mp4 として書き出す。
+    /// 切り出し、bitrateKbps*1000 bps の H.264 .mp4 として書き出す。fullResolution:false(既定)なら
+    /// shrinkThreshold より大きいソースだけ半分解像度にする(true なら常にソース解像度のまま)。
     /// clipStartMs/clipEndMs はソース内(gapless)の位置(RecordingWallClock.offsetMs 参照)
     static func extractClip(sourceFiles: [URL], clipStartMs: Int, clipEndMs: Int,
+                            bitrateKbps: Int, fullResolution: Bool,
                             to outputURL: URL) async -> Bool {
         guard clipEndMs > clipStartMs, !sourceFiles.isEmpty else { return false }
         try? FileManager.default.removeItem(at: outputURL)
@@ -49,7 +48,8 @@ enum VideoRecordingFinalizer {
               let naturalSize = try? await compositionTrack.load(.naturalSize),
               naturalSize.width >= 4, naturalSize.height >= 4 else { return false }
 
-        let scale: CGFloat = max(naturalSize.width, naturalSize.height) > shrinkThreshold ? 0.5 : 1.0
+        let scale: CGFloat = (!fullResolution && max(naturalSize.width, naturalSize.height) > shrinkThreshold)
+            ? 0.5 : 1.0
         func scaledEven(_ v: CGFloat) -> Int {
             let scaled = Int(v * scale)
             return scaled % 2 == 0 ? scaled : scaled - 1
@@ -70,7 +70,7 @@ enum VideoRecordingFinalizer {
             AVVideoWidthKey: scaledEven(naturalSize.width),
             AVVideoHeightKey: scaledEven(naturalSize.height),
             AVVideoScalingModeKey: AVVideoScalingModeResizeAspect,
-            AVVideoCompressionPropertiesKey: [AVVideoAverageBitRateKey: targetBitRate],
+            AVVideoCompressionPropertiesKey: [AVVideoAverageBitRateKey: bitrateKbps * 1000],
         ])
         writerInput.expectsMediaDataInRealTime = false
         guard writer.canAdd(writerInput) else { return false }
@@ -132,6 +132,10 @@ enum VideoRecordingFinalizer {
         if reachedClipEnd {
             reader.cancelReading()
         } else if reader.status != .completed {
+            // 散発的な切り出し失敗の診断用(status/error が唯一の手掛かり)
+            FileHandle.standardError.write(Data(
+                ("⚠️ [recording] extractClip reader failed: status=\(reader.status.rawValue) "
+                 + "error=\(String(describing: reader.error))\n").utf8))
             writer.cancelWriting()
             return false
         }
@@ -140,6 +144,11 @@ enum VideoRecordingFinalizer {
         // (実測: 11.1s ソース → endSession 無しだと 8.7s に縮む。旧 transcode 実装からの継承)
         writer.endSession(atSourceTime: clipEnd)
         await writer.finishWriting()
+        if writer.status != .completed {
+            FileHandle.standardError.write(Data(
+                ("⚠️ [recording] extractClip writer failed: status=\(writer.status.rawValue) "
+                 + "error=\(String(describing: writer.error))\n").utf8))
+        }
         return writer.status == .completed
     }
 

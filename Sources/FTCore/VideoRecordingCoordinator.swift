@@ -15,10 +15,22 @@ public struct VideoRecordingConfig: Sendable {
     /// Android の adb パス(AndroidDriver.findADB() 相当)。nil なら Android 録画は無効
     /// (FTCore は FTAndroid を import できないため呼び出し側が注入する)
     public let androidADBPath: String?
+    /// true なら成功したシナリオのクリップを保存しない(RunProfileDocument.recordFailuresOnly)
+    public let failuresOnly: Bool
+    /// クリップ再エンコードの目標 bitrate(kbps)。AVVideoAverageBitRateKey と Android
+    /// screenrecord --bit-rate の両方に *1000 して適用(RunProfileDocument.recordBitrateKbps)
+    public let bitrateKbps: Int
+    /// true なら半分解像度化をスキップ(Android は screenrecord 自体の --size 指定も省略)
+    /// (RunProfileDocument.recordFullResolution)
+    public let fullResolution: Bool
 
-    public init(runDir: URL, androidADBPath: String? = nil) {
+    public init(runDir: URL, androidADBPath: String? = nil, failuresOnly: Bool = false,
+                bitrateKbps: Int = 1500, fullResolution: Bool = false) {
         self.runDir = runDir
         self.androidADBPath = androidADBPath
+        self.failuresOnly = failuresOnly
+        self.bitrateKbps = bitrateKbps
+        self.fullResolution = fullResolution
     }
 }
 
@@ -48,11 +60,14 @@ actor VideoRecordingCoordinator {
         let platform: String
     }
 
-    /// 1 シナリオの実行区間(壁時計)。end が nil の間は実行中(scenarioFinished 未着)
+    /// 1 シナリオの実行区間(壁時計)。end が nil の間は実行中(scenarioFinished 未着)。
+    /// passed は scenarioFinished 到着時に確定(未着のまま run が終わった場合は nil = 不明。
+    /// recordFailuresOnly では「不明」も安全側に倒して保存対象にする)
     private struct ScenarioInterval {
         let scenarioID: String
         let start: Date
         var end: Date?
+        var passed: Bool?
     }
 
     private let config: VideoRecordingConfig
@@ -90,7 +105,8 @@ actor VideoRecordingCoordinator {
         case "android":
             if let serial = worker.connection.serial, let adbPath = config.androidADBPath {
                 session = AndroidScreenVideoRecorder(
-                    serial: serial, adbPath: adbPath, workDir: recordingsDir, fileStem: sourceStem)
+                    serial: serial, adbPath: adbPath, workDir: recordingsDir, fileStem: sourceStem,
+                    bitrateKbps: config.bitrateKbps, fullResolution: config.fullResolution)
             } else {
                 session = nil
             }
@@ -106,14 +122,16 @@ actor VideoRecordingCoordinator {
     /// RunOrchestrator のワーカーループが ScenarioRunner.runOne 呼び出し直前に通知する
     func scenarioStarted(workerLabel: String, scenarioID: String, at: Date) {
         scenarioIntervals[workerLabel, default: []].append(
-            ScenarioInterval(scenarioID: scenarioID, start: at, end: nil))
+            ScenarioInterval(scenarioID: scenarioID, start: at, end: nil, passed: nil))
     }
 
-    /// RunOrchestrator のワーカーループが ScenarioRunner.runOne 呼び出し直後に通知する
-    func scenarioFinished(workerLabel: String, at: Date) {
+    /// RunOrchestrator のワーカーループが ScenarioRunner.runOne 呼び出し直後に通知する。
+    /// passed は recordFailuresOnly の判定に使う(frozen は呼び出し側で false 扱いにして渡す)
+    func scenarioFinished(workerLabel: String, at: Date, passed: Bool) {
         guard var list = scenarioIntervals[workerLabel], let last = list.indices.last,
               list[last].end == nil else { return }
         list[last].end = at
+        list[last].passed = passed
         scenarioIntervals[workerLabel] = list
     }
 
@@ -145,6 +163,8 @@ actor VideoRecordingCoordinator {
               let recordingRange = RecordingWallClock.wallClockRange(of: source.segments) else { return }
 
         for interval in intervals {
+            if Self.shouldSkip(failuresOnly: config.failuresOnly, passed: interval.passed) { continue }
+
             // クリップの壁時計範囲 = [max(シナリオ開始, 録画開始), min(シナリオ終了, 録画終了)]
             let clipWallStart = max(interval.start, recordingRange.start)
             let clipWallEnd = min(interval.end ?? recordingRange.end, recordingRange.end)
@@ -161,6 +181,7 @@ actor VideoRecordingCoordinator {
             let outputURL = config.runDir.appendingPathComponent(file)
             guard await VideoRecordingFinalizer.extractClip(
                 sourceFiles: source.files, clipStartMs: clipStartMs, clipEndMs: clipEndMs,
+                bitrateKbps: config.bitrateKbps, fullResolution: config.fullResolution,
                 to: outputURL) else {
                 FileHandle.standardError.write(Data(
                     "⚠️ [recording] \(interval.scenarioID): クリップの切り出しに失敗しました\n".utf8))
@@ -172,6 +193,13 @@ actor VideoRecordingCoordinator {
                 scenarioID: interval.scenarioID, worker: entry.workerID, platform: entry.platform,
                 file: file, segments: clipSegments))
         }
+    }
+
+    /// recordFailuresOnly 時にこの区間のクリップをスキップするか。確実に成功したと分かっている
+    /// (passed == true)場合だけスキップし、失敗・不明(nil。scenarioFinished 未着のまま run が
+    /// 終わった等)は安全側に倒して保存対象に残す。actor 外(単体テスト)からも呼べるよう static/nonisolated
+    static func shouldSkip(failuresOnly: Bool, passed: Bool?) -> Bool {
+        failuresOnly && passed == true
     }
 
     private func uniqueSourceStem(for workerID: String) -> String {

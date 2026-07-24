@@ -117,36 +117,63 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
             <div id="run-profile-devices" class="run-profile-devices"></div>
           </div>
           <div class="modal-row profile-checkbox-row">
-            <input type="checkbox" id="run-profile-record">
-            <label for="run-profile-record">${t("panels.runProfile.recordLabel")}</label>
-          </div>
-          <div class="modal-row profile-checkbox-row">
             <input type="checkbox" id="run-profile-heal">
             <label for="run-profile-heal">${t("panels.runProfile.healLabel")}</label>
           </div>
-          <div class="modal-row profile-checkbox-row">
-            <input type="checkbox" id="run-profile-ios-inapp-engine">
-            <label for="run-profile-ios-inapp-engine">${t("panels.runProfile.inappEngineLabel")}</label>
-          </div>
-          <div class="modal-row profile-checkbox-row">
-            <input type="checkbox" id="run-profile-wipe-data-on-bloat">
-            <label for="run-profile-wipe-data-on-bloat">${t("panels.runProfile.wipeOnBloatLabel")}</label>
-          </div>
           <div class="modal-row">
-            <label for="run-profile-wipe-threshold">${t("panels.runProfile.wipeThresholdLabel")}</label>
-            <input type="text" id="run-profile-wipe-threshold" placeholder="8">
-          </div>
-          <div class="modal-row">
-            <label for="run-profile-locale">${t("panels.runProfile.localeLabel")}</label>
-            <input type="text" id="run-profile-locale" placeholder="ja_JP">
+            <label for="run-profile-default-timeout">defaultTimeout</label>
+            <input type="text" id="run-profile-default-timeout">
           </div>
           <div class="modal-row">
             <label for="run-profile-report-dir">reportDir</label>
             <input type="text" id="run-profile-report-dir" placeholder="reports">
           </div>
-          <div class="modal-row">
-            <label for="run-profile-default-timeout">defaultTimeout</label>
-            <input type="text" id="run-profile-default-timeout">
+          <div class="run-profile-section-group">
+            <div class="run-profile-section-title">${t("panels.runProfile.recordSectionTitle")}</div>
+            <div class="modal-row profile-checkbox-row">
+              <input type="checkbox" id="run-profile-record">
+              <label for="run-profile-record">${t("panels.runProfile.recordLabel")}</label>
+            </div>
+            <div id="run-profile-record-options" class="run-profile-record-options" style="display: none;">
+              <div class="modal-row profile-checkbox-row">
+                <input type="checkbox" id="run-profile-record-failures-only">
+                <label for="run-profile-record-failures-only">${t("panels.runProfile.recordFailuresOnlyLabel")}</label>
+              </div>
+              <div class="modal-row">
+                <label for="run-profile-record-bitrate">${t("panels.runProfile.recordBitrateLabel")}</label>
+                <input type="text" id="run-profile-record-bitrate" placeholder="1500">
+              </div>
+              <div class="modal-row profile-checkbox-row">
+                <input type="checkbox" id="run-profile-record-full-resolution">
+                <label for="run-profile-record-full-resolution">${t("panels.runProfile.recordFullResolutionLabel")}</label>
+              </div>
+            </div>
+          </div>
+          <div class="run-profile-section-group">
+            <div class="run-profile-section-title">${t("panels.runProfile.iosSectionTitle")}</div>
+            <div class="modal-row profile-checkbox-row">
+              <input type="checkbox" id="run-profile-ios-inapp-engine">
+              <label for="run-profile-ios-inapp-engine">${t("panels.runProfile.inappEngineLabel")}</label>
+            </div>
+            <div class="modal-row profile-checkbox-row">
+              <input type="checkbox" id="run-profile-ios-fast-input">
+              <label for="run-profile-ios-fast-input">${t("panels.runProfile.iosFastInputLabel")}</label>
+            </div>
+          </div>
+          <div class="run-profile-section-group">
+            <div class="run-profile-section-title">${t("panels.runProfile.androidSectionTitle")}</div>
+            <div class="modal-row profile-checkbox-row">
+              <input type="checkbox" id="run-profile-wipe-data-on-bloat">
+              <label for="run-profile-wipe-data-on-bloat">${t("panels.runProfile.wipeOnBloatLabel")}</label>
+            </div>
+            <div class="modal-row">
+              <label for="run-profile-wipe-threshold">${t("panels.runProfile.wipeThresholdLabel")}</label>
+              <input type="text" id="run-profile-wipe-threshold" placeholder="8">
+            </div>
+            <div class="modal-row">
+              <label for="run-profile-locale">${t("panels.runProfile.localeLabel")}</label>
+              <input type="text" id="run-profile-locale" placeholder="ja_JP">
+            </div>
           </div>
           <div id="run-profile-error" class="modal-error"></div>
           <div class="modal-buttons form-buttons">
@@ -342,6 +369,10 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
             <button id="recordings-forward" type="button" class="recordings-seek-button" title="${t("panels.recordings.forwardTitle")}">+10s</button>
             <button id="recordings-prev-test" type="button" class="icon-button recordings-nav-button" title="${t("panels.recordings.prevTestTitle")}"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M3.5 3H5v10H3.5z"/><path d="M12.5 3v10L6 8z"/></svg></button>
             <button id="recordings-next-test" type="button" class="icon-button recordings-nav-button" title="${t("panels.recordings.nextTestTitle")}"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M11 3h1.5v10H11z"/><path d="M3.5 3v10L10 8z"/></svg></button>
+            <label class="recordings-auto-advance">
+              <input type="checkbox" id="recordings-auto-advance">
+              ${t("panels.recordings.autoAdvanceLabel")}
+            </label>
           </div>
         </div>
         <div class="splitter splitter-vertical" id="recordings-splitter-tree" role="separator" aria-orientation="vertical" title="${t("panels.recordings.splitterTitle")}"></div>

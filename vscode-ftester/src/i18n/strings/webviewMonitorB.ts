@@ -51,6 +51,10 @@ export const webviewMonitorBStrings = {
     ja: "Wipe Data しきい値は正の数(GB)で入力してください。",
     en: "Enter the Wipe Data threshold as a positive number (GB).",
   },
+  "wvMonitor2.runProfile.validation.recordBitrateInvalid": {
+    ja: "ビットレートは正の整数(kbps)で入力してください。",
+    en: "Enter the bitrate as a positive integer (kbps).",
+  },
   "wvMonitor2.runProfile.validation.localeInvalid": {
     ja: "ロケールは ja_JP のような形式で入力してください。",
     en: "Enter the locale in a format like ja_JP.",

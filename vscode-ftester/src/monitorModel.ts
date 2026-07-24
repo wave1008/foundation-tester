@@ -709,12 +709,16 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
         value.fields.devices.every((name) => typeof name === "string") &&
         typeof value.fields.heal === "boolean" &&
         typeof value.fields.iosInappEngine === "boolean" &&
+        typeof value.fields.iosFastInput === "boolean" &&
         typeof value.fields.reportDir === "string" &&
         typeof value.fields.defaultTimeout === "string" &&
         typeof value.fields.wipeDataOnBloat === "boolean" &&
         typeof value.fields.wipeDataThresholdGB === "string" &&
         typeof value.fields.locale === "string" &&
-        typeof value.fields.record === "boolean"
+        typeof value.fields.record === "boolean" &&
+        typeof value.fields.recordFailuresOnly === "boolean" &&
+        typeof value.fields.recordBitrateKbps === "string" &&
+        typeof value.fields.recordFullResolution === "boolean"
       );
     case "appProfileAdd":
       return true;
@@ -1208,30 +1212,38 @@ export function validateNewAppProfileName(name: string, existing: readonly strin
 }
 
 // ---- プロファイルタブ下半分: 実行プロファイルの設定フォーム -----------------------------
-// handleRunProfileLoad/Save(monitorPanel.ts)が使う、JSON⇔フォーム11フィールド変換の純粋関数
+// handleRunProfileLoad/Save(monitorPanel.ts)が使う、JSON⇔フォーム14フィールド変換の純粋関数
 // (未知キー保持のイミュータブルな方針。updateDeviceInMachineProfile と同じ)。
 
-/** 実行プロファイル設定フォームの11フィールド(全て文字列/配列/真偽値化済み。空文字は未設定)。 */
+/** 実行プロファイル設定フォームの15フィールド(全て文字列/配列/真偽値化済み。空文字は未設定)。
+ * recordFailuresOnly/recordBitrateKbps/recordFullResolution は「録画セクション」、iosFastInput は
+ * 「iOS」セクションのサブオプション(親チェックボックスの状態に関わらず独立して保持・保存する。
+ * 表示上の非表示切替は runProfilesTab.js の責務)。 */
 export interface RunProfileFormFields {
   readonly machine: string;
   readonly app: string;
   readonly devices: readonly string[];
   readonly heal: boolean;
   readonly iosInappEngine: boolean;
+  readonly iosFastInput: boolean;
   readonly reportDir: string;
   readonly defaultTimeout: string;
   readonly wipeDataOnBloat: boolean;
   readonly wipeDataThresholdGB: string;
   readonly locale: string;
   readonly record: boolean;
+  readonly recordFailuresOnly: boolean;
+  readonly recordBitrateKbps: string;
+  readonly recordFullResolution: boolean;
 }
 
 /**
- * runs/<name>.json のトップレベルから、フォームの11フィールドを許容的に読み取る(トップレベルが
+ * runs/<name>.json のトップレベルから、フォームの15フィールドを許容的に読み取る(トップレベルが
  * 非オブジェクトなら null)。各キーは欠落・型不正を「読めなければ空/既定値」で許容し、スキーマ
  * 妥当性検証はしない(保存時 updateRunProfileInObject・CLI 側 ProfileResolver.validate に委ねる)。
- * defaultTimeout/wipeDataThresholdGB は number ならそのまま String() 化する(0.5 のような
- * スキーマ違反値もそのまま表示し、整数化はしない)。record は既定 false(未設定=録画しない)。
+ * defaultTimeout/wipeDataThresholdGB/recordBitrateKbps は number ならそのまま String() 化する
+ * (0.5 のようなスキーマ違反値もそのまま表示し、整数化はしない)。record/recordFailuresOnly/
+ * recordFullResolution/iosFastInput は既定 false、recordBitrateKbps は既定 ""(未設定=CLI側既定1500)。
  */
 export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFields | null {
   // 配列も typeof "object" だが、トップレベルとしては不正なので弾く(他の同様関数と同じ判定)。
@@ -1245,8 +1257,11 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
   const locale = typeof source.locale === "string" ? source.locale : "";
   const heal = typeof source.heal === "boolean" ? source.heal : false;
   const iosInappEngine = typeof source.iosInappEngine === "boolean" ? source.iosInappEngine : true;
+  const iosFastInput = typeof source.iosFastInput === "boolean" ? source.iosFastInput : false;
   const wipeDataOnBloat = typeof source.wipeDataOnBloat === "boolean" ? source.wipeDataOnBloat : true;
   const record = typeof source.record === "boolean" ? source.record : false;
+  const recordFailuresOnly = typeof source.recordFailuresOnly === "boolean" ? source.recordFailuresOnly : false;
+  const recordFullResolution = typeof source.recordFullResolution === "boolean" ? source.recordFullResolution : false;
   const devices: string[] = Array.isArray(source.devices)
     ? source.devices
         .map((device) => (isRecord(device) && typeof device.name === "string" ? device.name : undefined))
@@ -1258,18 +1273,25 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
   const rawThreshold = source.wipeDataThresholdGB;
   const wipeDataThresholdGB =
     typeof rawThreshold === "number" ? String(rawThreshold) : typeof rawThreshold === "string" ? rawThreshold : "";
+  const rawBitrate = source.recordBitrateKbps;
+  const recordBitrateKbps =
+    typeof rawBitrate === "number" ? String(rawBitrate) : typeof rawBitrate === "string" ? rawBitrate : "";
   return {
     machine,
     app,
     devices,
     heal,
     iosInappEngine,
+    iosFastInput,
     reportDir,
     defaultTimeout,
     wipeDataOnBloat,
     wipeDataThresholdGB,
     locale,
     record,
+    recordFailuresOnly,
+    recordBitrateKbps,
+    recordFullResolution,
   };
 }
 
@@ -1278,14 +1300,16 @@ export type RunProfileUpdateResult =
   | { readonly ok: false; readonly error: string };
 
 /**
- * runs/<name>.json を、フォームの11フィールドの内容で更新した新オブジェクトを組み立てる
+ * runs/<name>.json を、フォームの15フィールドの内容で更新した新オブジェクトを組み立てる
  * (未知キー保持のイミュータブルな方針。profileObject が非オブジェクトなら ok:false)。
  * defaultTimeout は空文字ならキー削除、正の整数文字列以外はエラー。
  * wipeDataThresholdGB は空文字ならキー削除、正の数(小数許容)文字列以外はエラー。
+ * recordBitrateKbps は空文字ならキー削除、正の整数文字列以外はエラー。
  * devices は fields.devices の順に並べ直し、既存 devices 配列の同名エントリ(未知キー込み)を
  * 再利用する(新規名は { name } のみ追加。同名重複があれば最初の1件を採用)。
- * record は false のときキー自体を書かない(既定値のノイズを既存プロファイルに足さない。
- * parseRunProfileForForm の「欠落→false」と対で round-trip が安定する)。
+ * record/recordFailuresOnly/recordFullResolution/iosFastInput は false のときキー自体を書かない
+ * (既定値のノイズを既存プロファイルに足さない。parseRunProfileForForm の「欠落→false」と対で
+ * round-trip が安定する)。
  */
 export function updateRunProfileInObject(
   profileObject: unknown,
@@ -1309,10 +1333,12 @@ export function updateRunProfileInObject(
   result.heal = fields.heal;
   result.iosInappEngine = fields.iosInappEngine;
   result.wipeDataOnBloat = fields.wipeDataOnBloat;
-  if (fields.record) {
-    result.record = true;
-  } else {
-    delete result.record;
+  for (const key of ["record", "recordFailuresOnly", "recordFullResolution", "iosFastInput"] as const) {
+    if (fields[key]) {
+      result[key] = true;
+    } else {
+      delete result[key];
+    }
   }
 
   const timeoutTrimmed = fields.defaultTimeout.trim();
@@ -1331,6 +1357,15 @@ export function updateRunProfileInObject(
     return { ok: false, error: t("monitor.runProfile.wipeThresholdInvalid") };
   } else {
     result.wipeDataThresholdGB = Number(thresholdTrimmed);
+  }
+
+  const bitrateTrimmed = fields.recordBitrateKbps.trim();
+  if (bitrateTrimmed.length === 0) {
+    delete result.recordBitrateKbps;
+  } else if (!/^\d+$/.test(bitrateTrimmed) || Number(bitrateTrimmed) <= 0) {
+    return { ok: false, error: t("monitor.runProfile.recordBitrateInvalid") };
+  } else {
+    result.recordBitrateKbps = Number(bitrateTrimmed);
   }
 
   const localeTrimmed = fields.locale.trim();

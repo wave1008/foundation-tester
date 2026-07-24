@@ -191,16 +191,27 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     /// 実行環境に注入する(伝搬経路は BridgeClient.fastInput 参照)。動きの激しい画面では
     /// 整定前タップのフレークリスクを伴う(既定 false)
     public var iosFastInput: Bool?
-    /// 並列実行の各ワーカー(デバイス)ごとに run 全体を1本の動画に録画するか(既定 false)。
-    /// 実体は RunOrchestrator への VideoRecordingConfig 注入(VideoRecordingCoordinator.swift)。
-    /// 録画失敗は run を失敗させない(警告ログのみ)
+    /// 並列実行の各ワーカー(デバイス)ごとに run 全体を録画し、テスト関数(シナリオ)ごとに
+    /// 1本の mp4 へ切り出すか(既定 false)。実体は RunOrchestrator への VideoRecordingConfig 注入
+    /// (VideoRecordingCoordinator.swift)。録画失敗は run を失敗させない(警告ログのみ)
     public var record: Bool?
+    /// true なら成功したシナリオのクリップは保存せず、失敗(frozen 含む)シナリオのみ切り出す
+    /// (既定 false = 全シナリオ保存)。record:false のときは無関係
+    public var recordFailuresOnly: Bool?
+    /// クリップ再エンコードの目標 bitrate(kbps。既定 1500)。AVVideoAverageBitRateKey と
+    /// Android screenrecord --bit-rate の両方に適用(*1000 して bps に変換)
+    public var recordBitrateKbps: Int?
+    /// true なら半分解像度化をスキップしフル解像度のまま出力する(既定 false)。
+    /// Android は screenrecord 自体の --size 指定も省略する(録画元から既にフル解像度になる)
+    public var recordFullResolution: Bool?
 
     public init(app: String? = nil, devices: [RunDeviceRef]? = nil, heal: Bool? = nil,
                 reportDir: String? = nil, defaultTimeout: Int? = nil, scenarioTimeout: Int? = nil,
                 machine: String? = nil, iosInappEngine: Bool? = nil,
                 wipeDataOnBloat: Bool? = nil, wipeDataThresholdGB: Double? = nil,
-                locale: String? = nil, iosFastInput: Bool? = nil, record: Bool? = nil) {
+                locale: String? = nil, iosFastInput: Bool? = nil, record: Bool? = nil,
+                recordFailuresOnly: Bool? = nil, recordBitrateKbps: Int? = nil,
+                recordFullResolution: Bool? = nil) {
         self.app = app
         self.devices = devices
         self.heal = heal
@@ -214,12 +225,15 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
         self.locale = locale
         self.iosFastInput = iosFastInput
         self.record = record
+        self.recordFailuresOnly = recordFailuresOnly
+        self.recordBitrateKbps = recordBitrateKbps
+        self.recordFullResolution = recordFullResolution
     }
 
     static let knownKeys: Set<String> = [
         "app", "devices", "heal", "reportDir", "defaultTimeout", "scenarioTimeout",
         "machine", "iosInappEngine", "wipeDataOnBloat", "wipeDataThresholdGB", "locale",
-        "iosFastInput", "record",
+        "iosFastInput", "record", "recordFailuresOnly", "recordBitrateKbps", "recordFullResolution",
     ]
 }
 
@@ -281,8 +295,14 @@ public struct ResolvedProfile: Sendable {
     public let locale: String
     /// iOS xcuitest ブリッジの高速入力(RunProfileDocument.iosFastInput。既定 false)
     public let iosFastInput: Bool
-    /// 各ワーカーを run 全体で 1 本の動画に録画するか(RunProfileDocument.record。既定 false)
+    /// 各ワーカーを run 全体で録画し、シナリオごとに切り出すか(RunProfileDocument.record。既定 false)
     public let record: Bool
+    /// 成功したシナリオのクリップを保存しないか(RunProfileDocument.recordFailuresOnly。既定 false)
+    public let recordFailuresOnly: Bool
+    /// クリップ再エンコードの目標 bitrate(kbps。RunProfileDocument.recordBitrateKbps。既定 1500)
+    public let recordBitrateKbps: Int
+    /// 半分解像度化をスキップするか(RunProfileDocument.recordFullResolution。既定 false)
+    public let recordFullResolution: Bool
     /// 解決中に出た警告(スキップしたデバイス・未知キー等)。呼び出し側が表示する
     public let warnings: [String]
 
@@ -594,6 +614,10 @@ public enum ProfileResolver {
             locale: locale,
             iosFastInput: runDoc.iosFastInput ?? false,
             record: runDoc.record ?? false,
+            recordFailuresOnly: runDoc.recordFailuresOnly ?? false,
+            // 0 以下は無意味な指定なので既定にフォールバック(run を止めるほどの問題ではない)
+            recordBitrateKbps: (runDoc.recordBitrateKbps).map { $0 > 0 ? $0 : 1500 } ?? 1500,
+            recordFullResolution: runDoc.recordFullResolution ?? false,
             warnings: warnings)
     }
 

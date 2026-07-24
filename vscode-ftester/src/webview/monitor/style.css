@@ -921,6 +921,26 @@ button.profile-jump-link:hover:not(:disabled) {
   font-size: 11px;
   color: var(--vscode-descriptionForeground);
 }
+/* 「録画」セクション。見出し+チェックボックス+サブオプション(record ON の間だけ表示)。 */
+.run-profile-section-group {
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--ft-control-border);
+  border-radius: 4px;
+}
+/* uppercase は付けない(「iOS」「Android」等の固有表記が IOS/ANDROID に化ける実害があった)。 */
+.run-profile-section-title {
+  margin-bottom: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--vscode-descriptionForeground);
+}
+.run-profile-record-options {
+  padding-left: 20px;
+}
+.run-profile-record-options .modal-row:last-child {
+  margin-bottom: 0;
+}
 /* .tile-name は白文字前提のため、背景色を必ず持たせる(中立色)。 */
 .tile-name-unknown {
   background-color: var(--vscode-descriptionForeground, #8a8a8a);
@@ -1929,6 +1949,17 @@ input[type="text"]::placeholder {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* 動画が無い(録画対象外だった等)行。グレーアウト+末尾に注記(recordings.tree.noVideo)。
+ * 選択・エラー一覧フィルターは効くが、シークは seekToOffset 側が無視するため無反応になる。 */
+.recordings-tree-row-no-video {
+  opacity: 0.55;
+}
+.recordings-tree-no-video-note {
+  flex: 0 0 auto;
+  font-size: 10px;
+  color: var(--vscode-descriptionForeground);
+  white-space: nowrap;
+}
 .recordings-video-pane {
   flex: 2 1 0;
   min-width: 0;
@@ -1952,6 +1983,17 @@ input[type="text"]::placeholder {
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
+}
+/* 「連続再生」トグル。コントロール行の右端に置く(margin-left:auto で他要素から分離)。 */
+.recordings-auto-advance {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  cursor: pointer;
+  white-space: nowrap;
 }
 /* 再生・前/次テストボタン。icon-button の border:none を上書きして枠を付け、同サイズに揃える
    (ユーザー指定)。 */
