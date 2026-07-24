@@ -67,6 +67,14 @@ apps プロファイルの healthCheckURL が実行開始時に警告を出す�
   停止等。実機・gRPC 失敗個体は自動で adb フォールバック。`Sources/FTAndroid/EmulatorControl.swift`)。
   gRPC 起因を疑うときは **`FT_EMULATOR_CONTROL=adb`** で全面 adb に切り替えて比較できる
   (拡張側 `vscode-ftester/src/emulatorGrpc.ts` も同じ環境変数)。挙動差の切り分けはまずこれ
+- **run が遅くなったら負荷トリアージを先に**: ① `top` で qemu の空転(劣化個体はアイドルでも
+  ~73%/台消費しホスト全体を遅くする)② run 同梱の `host-metrics.ndjson`(遅い run だけ CPU 飽和
+  していれば環境要因)。Spotlight/mediaanalysisd のインデックスストームは CPU 数百%でも run を
+  ほぼ遅くしない(M2 Ultra 実測)ので容疑から外してよい
+- **凍結調査は両経路スイープで**(`adb screencap` サイズと gRPC スクショの画素一様判定を並記)。
+  readback 白化と host キャプチャ黒は独立に壊れるため片経路だけでは誤診する。シナリオ成功率は
+  表示層の劣化を映さない(凍結9/14台でも 18/18 成功する)。変種一覧・スケール上限・Metal エラー
+  指標の正本は performance-tuning.md §7
 
 ## 常駐ブリッジのセッション(iOS xcuitest を CLI で直接叩くとき)
 

@@ -1199,3 +1199,43 @@ clone がどのみち必須で、CLI だけ mint 経由にすると二重取得�
   CLI(自前ビルドの PATH 登録先)を発見する。
 - **版**: git タグ(版ピン用)/ 拡張 package.json / プロトコル版(compatCheck)は独立。リリースは
   `Scripts/release.sh`(docs/releasing.md)。
+
+## 16. エミュレータ操作の gRPC 制御(2026-07-25)
+
+Android エミュレータへの操作は**既定で emulator 内蔵の gRPC(EmulatorController)経由**、失敗時は
+adb へ自動フォールバックする(ユーザー決定 2026-07-25)。動機は PoC 実測: スクショ 48ms vs adb
+140〜250ms(3〜6倍)、キー注入 1.2ms vs 215ms、run 起動オーバーヘッド 3.2s→0.6s、adb 経路死亡個体
+への修復・停止の到達性。
+
+### 16.1 構成(3層)
+
+| 層 | 場所 | 役割 |
+|---|---|---|
+| ディスカバリ | `FTEmulatorGrpc/EmulatorEndpoints` / 拡張 `emulatorEndpoints.ts` | `~/Library/Caches/TemporaryItems/avd/running/pid_<pid>.ini` から serial→port/token/avd.id を解決(pid 生存確認付き。トークンはブート毎に変わる) |
+| RPC | `FTEmulatorGrpc/EmulatorGrpcSession`(grpc-swift-2)/ 拡張 `emulatorGrpc.ts`(grpc-js) | 単発 RPC(接続は呼び出し毎)。認証は `authorization: Bearer <grpc.token>` のみ |
+| 振り分け | `FTAndroid/EmulatorControl` / 拡張 `emulatorGrpc.ts` 内 | emulator なら gRPC・実機/失敗個体は adb。**失敗した pid は同一ブート中 adb 固定**(再ブートで自動復帰)。殺しスイッチ `FT_EMULATOR_CONTROL=adb` |
+
+proto は `third_party/emulator-proto/`(vendored・再生成手順は同 README。Swift スタブは生成物を
+コミット、拡張は `assets/` の逐語コピーを実行時ロード)。
+
+### 16.2 置き換え済みの操作と残存 adb
+
+- gRPC 化済み: blank プローブ/sleep-wake 修復(AndroidHealthProbe)・停止=setVmState SHUTDOWN
+  (DeviceBooter/DataWiper/DevicesCommand)・serial→AVD 名=ディスカバリ読み・bootCompleted
+  (booted=true のみ確定、他は getprop 再確認)・難治型 reboot の adb 不達時 RESET・
+  home「GoHome」/appSwitcher「AppSwitch」/drag・press のタッチ合成(AndroidDriver)
+- adb 残存(原理的に置き換え不可): ブリッジ到達の `adb forward`+localhost HTTP・shell 系
+  (am/pm/settings/getprop/cmd wifi/dumpsys)・install・pull・実機の全操作
+
+### 16.3 罠(実測で確定・変更時に踏み直さないこと)
+
+- **wake は KEY_POWER(evdev 116)**。KEY_WAKEUP(143) は emulator のキー変換欠落で不発。
+  sleep は KEY_SLEEP(142・非トグル)→直後の POWER トグルは安全
+- **blank 判定に gRPC PNG のサイズ閾値を使わない**(emulator エンコーダは一様黒でも 51KB。
+  30KB 閾値は adb 較正)。gRPC 経路は画素一様判定(Swift=ImageIO デコード+uniformFrame、
+  拡張=RGBA8888 直取り+isUniformRgba)
+- **grpc-swift は約10MB の単一メッセージ受信で接続切断される**(RGBA 直取り不可。grpc-js は
+  `max_receive_message_length` 拡大で受かる=言語で実装が分かれている理由)
+- grpc-swift v2 の正リポジトリは **grpc/grpc-swift-2.git**(grpc-swift.git の 2.x タグは旧系)
+- 拡張は **grpc-js を import しない純粋部(emulatorEndpoints.ts)を分離必須**(esm テストバンドルが
+  grpc-js の動的 require で死ぬ)
