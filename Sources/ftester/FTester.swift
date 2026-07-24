@@ -230,6 +230,13 @@ struct Bridge: AsyncParsableCommand {
                 .provision(devices: [(spec.name, spec)], log: { print($0) })
             // provision() は失敗時に throw する(空配列で正常復帰はしない)ため、first は常に存在する
             let port = provisioned.first?.port ?? driverOptions.port
+            // provision は同一デバイスの稼働中ブリッジを preferred(--port)を無視して再利用する。
+            // 固定ポート前提のスクリプトが :driverOptions.port を叩いて外さないよう、差異を明示する
+            if port != driverOptions.port {
+                print("⚠️ 指定/既定ポート \(driverOptions.port) ではなく、このデバイスの稼働中ブリッジ"
+                    + "(port \(port))を再利用しました。port \(driverOptions.port) で立て直したい場合は"
+                    + "先に `ftester bridge down --port \(port)` で停止してから再実行してください。")
+            }
             print("✅ ブリッジ準備完了: http://127.0.0.1:\(port)")
         }
     }
