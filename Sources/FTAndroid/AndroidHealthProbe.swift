@@ -12,6 +12,16 @@ public enum AndroidHealthProbe {
     public static let issueWifiDisabled = "wifi-disabled"
     public static let issueClockSkew = "clock-skew"
     public static let issueBlankScreen = "blank-screen"
+    /// Metal エラー蓄積の早期警報(表示のみ。拡張 watchdog は修復・再起動アクションを取らない=
+    /// monitorHealthWatchdog.ts が明示除外。自動リブートのポリシー化は未決)
+    public static let issueMetalErrors = "metal-errors"
+
+    /// metal-errors の警告閾値(行数)。実測(2026-07-25 スケールテスト): 健全ブート 0〜2 件、
+    /// 劣化個体は数十〜513 件で高カウント個体が凍結する。ブート中の一過性(〜34件)を拾わない値
+    public static let metalErrorWarnThreshold = 100
+
+    /// エラー行数がこれを超えるサイズのログは数えず即・閾値超過扱い(エラー爆発時の読み込み抑制)
+    static let metalErrorLogSizeCap = 5_000_000
 
     /// clock-skew の既定閾値(秒)。エミュレータの正常な揺らぎは数秒以内、今回の実害は約2時間。
     public static let clockSkewThresholdSeconds: Double = 120
@@ -61,7 +71,29 @@ public enum AndroidHealthProbe {
         if await probeBlank(serial: serial) {
             issues.insert(issueBlankScreen)
         }
+        // emulator ログの Metal エラー蓄積(ホスト側ファイル読みのみ。実機・ログ無しはスキップ。
+        // ログは emulator プロセス再起動でのみ truncate=guest reboot では警告は消えない仕様)
+        if let avdID = EmulatorControl.avdName(serial: serial),
+           let count = metalErrorCount(logFile: EmulatorLog.url(avdID: avdID)),
+           count >= metalErrorWarnThreshold {
+            issues.insert(issueMetalErrors)
+        }
         return issues
+    }
+
+    /// ログ内の Metal エラー行数。nil = ログ無し(判定しない)。サイズ超過は Int.max(即・閾値超過)
+    static func metalErrorCount(logFile: URL) -> Int? {
+        guard let size = (try? FileManager.default.attributesOfItem(atPath: logFile.path))?[.size] as? Int
+        else { return nil }
+        if size > metalErrorLogSizeCap { return Int.max }
+        guard let text = try? String(contentsOf: logFile, encoding: .utf8) else { return nil }
+        var count = 0
+        text.enumerateLines { line, _ in
+            if line.contains("GLDRendererMetal") || line.contains("IOGPUCommandQueue") {
+                count += 1
+            }
+        }
+        return count
     }
 
     /// screencap PNG のサイズだけでブランク(一様フレーム)を判定する。0 は取得失敗(判定しない)

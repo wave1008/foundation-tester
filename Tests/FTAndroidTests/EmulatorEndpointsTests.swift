@@ -149,6 +149,51 @@ final class EmulatorEndpointsTests: XCTestCase {
         XCTAssertTrue(AndroidHealthProbe.uniformFrame(rgba: rgba), "証跡 PNG が一様判定されない: \(path)")
     }
 
+    /// metalErrorCount: 行カウント・ログ無し・サイズ超過の各分岐
+    func testMetalErrorCount() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("metal-tests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let log = dir.appendingPathComponent("a.log")
+        try """
+        === 2026-07-25T00:00:00Z emulator -avd X
+        INFO | Android emulator version
+        GLDRendererMetal command buffer completion error: MTLCommandBufferErrorDomain Code=1
+        normal line
+        NSUnderlyingError=IOGPUCommandQueueErrorDomain Code=518
+        GLDRendererMetal command buffer completion error: MTLCommandBufferErrorDomain Code=1
+        """.write(to: log, atomically: true, encoding: .utf8)
+        XCTAssertEqual(AndroidHealthProbe.metalErrorCount(logFile: log), 3)
+        XCTAssertNil(AndroidHealthProbe.metalErrorCount(logFile: dir.appendingPathComponent("nai.log")))
+        // サイズ超過は数えず即・閾値超過
+        let big = dir.appendingPathComponent("big.log")
+        FileManager.default.createFile(atPath: big.path,
+                                       contents: Data(count: AndroidHealthProbe.metalErrorLogSizeCap + 1))
+        XCTAssertEqual(AndroidHealthProbe.metalErrorCount(logFile: big), Int.max)
+    }
+
+    /// metal-errors 警報の実配線スモーク(FT_LIVE_EMULATOR=1。実ログに一時的に偽エラー行を
+    /// 追記して observeIssues が警報を立てることを確認し、原状復帰する)
+    func testLiveMetalErrorIssue() async throws {
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["FT_LIVE_EMULATOR"] == "1",
+                          "FT_LIVE_EMULATOR=1 のときのみ")
+        let endpoints = EmulatorEndpoints.all()
+        try XCTSkipIf(endpoints.isEmpty, "稼働中エミュレータなし")
+        let ep = endpoints[0]
+        let log = EmulatorLog.url(avdID: ep.avdID)
+        try XCTSkipUnless(FileManager.default.fileExists(atPath: log.path),
+                          "emulator ログ無し(ログ保存実装前のブート)")
+        let original = try Data(contentsOf: log)
+        defer { try? original.write(to: log) }
+        let fake = String(repeating: "GLDRendererMetal command buffer completion error: fake\n",
+                          count: AndroidHealthProbe.metalErrorWarnThreshold)
+        try (original + Data(fake.utf8)).write(to: log)
+        let issues = await AndroidHealthProbe.observeIssues(serial: ep.serial)
+        XCTAssertTrue(issues.contains(AndroidHealthProbe.issueMetalErrors),
+                      "metal-errors が立たない(\(ep.serial)): \(issues)")
+    }
+
     /// 入力系(named key / touch 合成)実発射のスモーク(対象機の画面を操作するため
     /// FT_LIVE_EMULATOR_INPUT=1 でのみ実行)
     func testLiveInputSmoke() async throws {

@@ -15,8 +15,8 @@
 // monitorFrame emit をスキップするが monitorDevices は従来どおり全デバイス分 emit する。
 // 同期相手: vscode-ftester/src/monitorModel.ts (monitorControlLine)
 //
-// health プローブ: state=connected の Android エミュレータ(実機除く)へ低頻度で adb ヘルス
-// チェックを行い、確定済み異常を devices[].health(異常なし/非対象は省略)に載せる
+// health プローブ: state=connected の Android エミュレータ(実機除く)へ低頻度でヘルス
+// チェック(adb/gRPC プローブ+emulator ログの Metal エラー計数)を行い、確定済み異常を devices[].health(異常なし/非対象は省略)に載せる
 // (AndroidHealthProbe.swift。同期相手: vscode-ftester/src/monitorModel.ts の health 契約)。
 //
 // 過渡的エラーの抑制: iOS ブリッジ/adb はテスト実行中 /status・/screenshot がタイムアウト
