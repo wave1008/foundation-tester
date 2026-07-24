@@ -455,6 +455,10 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
   Pro Max(440pt)でそのまま通る(実測済み)
 - 実測(M1 Max): 3フロー(iOS×2 + Android×1)逐次 55.2秒 → iOS 2ワーカー+Android 1ワーカー並列で
   31.2秒。壁時間は最長フローに漸近する(理想スケーリング)
+- **CLI での `Task.detached` fire-and-forget はプロセス終了と競合する**: 短命 CLI(ftester run 等)で
+  副作用(adb reboot 等)を detached Task に逃がすと、直後に throw → プロセス即終了する経路で
+  **発行前にプロセスが死ぬ**(まさに副作用が最も必要なエラー経路で消える)。発行が速い外部コマンドは
+  同期発行にする(実例: 難治型凍結の guest reboot。ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers)。
 - **サブプロセス kill と `waitUntilExit()` の reap 競合(1本の詰まりが run 全体を凍結)**:
   `ScenarioHost.run` の watchdog kill で `Process.isRunning` を使うと内部の `waitpid` が子を
   **reap** し、直後の `waitUntilExit()` が終了通知を取りこぼして**永久ハング**する(SIGTERM を
@@ -930,10 +934,17 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
   **既定 OFF**(autoRepairBridge と異なり、Wi-Fi をわざと切ったテスト環境を勝手に上書きしないため)。
   検出通知(タイルの警告バッジ)は設定 OFF でも出す。
   - **wifi-disabled 単独**: まず `adb shell cmd wifi set-wifi-enabled enabled`(軽量修復、クールダウン 120s)。
-  - **blank-screen(画面凍結)**: ストリームヘルパー再起動(`restartStream`。読み出し再開で一時回復。
+  - **blank-screen(画面凍結)**: **画面リセット(`runDisplayRepair`=sleep/wake keyevent ~4s。
+    固着した合成バッファの無効化→再合成で直す最軽量修復。readback が効かない個体にも効く。
+    クールダウン 60s)**→ ストリームヘルパー再起動(`restartStream`。読み出し再開で一時回復。
     クールダウン 120s)→ 効かなければ **CPU 描画へフォールバック**(`forceCpuRender`→`MonitorDeviceOps`
-    が個別 device-up に `--gpu swiftshader_indirect` を付与。セッション中維持)→ それでも駄目なら failed。
+    が個別 device-up に `--gpu swiftshader_indirect` を付与。セッション中維持。bulk devices-up も
+    `--cpu-render` で維持)→ それでも駄目なら failed。
     **host 再起動は挟まない**(実測で host 再起動は治らず再凍結=無駄。§12.3・performance-tuning.md §7)。
+    run 経路(CLI/api run)は watchdog と独立に、実行前トリアージ「blank 検出→sleep/wake 修復→
+    不発のみ除外+guest reboot 発行」と実行中修復を持つ(`ProfileWorkerFactory.
+    excludeOrRepairBlankScreenWorkers` / `AndroidHealthProbe.observeBlankAndRepair`。
+    修復/除外は run.json の blankRepairs/blankExclusions に記録される)。
   - **clock-skew 等その他**: down→up の host 再起動(`enqueueRestart`。クールダウン 5分・2回失敗で諦め)。
   - **無限ループ対策**: 「異常なし1回」ではエピソード(試行回数の記憶)を破棄せず、健全が 10 分持続して
     初めて破棄する(ブート直後の一時健全で restartAttempts が毎回リセットされ MAX 到達しなかった実害対策)。
