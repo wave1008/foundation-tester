@@ -214,11 +214,23 @@ struct Bridge: AsyncParsableCommand {
                 print("→ SampleApp をビルドしてインストール...")
                 try launcher.installSampleApp()
             }
-            print("→ ランナーを起動...")
-            try launcher.startDetached()
-            print("→ 起動待ち(/status ポーリング)...")
-            try await launcher.waitUntilReady()
-            print("✅ ブリッジ準備完了: http://127.0.0.1:\(driverOptions.port)")
+            // 起動は provision() 経由(直接 startDetached しない)。同一シミュレータに XCUITest
+            // ランナーは1本しか同居できず(全ポート共通 bundle id のため2本目が先代を蹴り出し双方
+            // signal kill で死ぬ)、直接起動は同一デバイスへの二重起動を防げない。provision() は
+            // 稼働中ブリッジのスキャン→版一致なら再利用/旧版なら停止して起動し直すをまとめて行う
+            // (モニター保持中でも拒否せず再利用・起動する=テスト/操作優先)。
+            let isUDID = device.count == 36 && device.split(separator: "-").count == 5
+            let spec = DeviceSpec(
+                name: device,
+                simulator: isUDID ? nil : device,
+                udid: isUDID ? device : nil,
+                port: driverOptions.port,
+                engine: "xcuitest")
+            let provisioned = try await BridgeProvisioner(repoRoot: root)
+                .provision(devices: [(spec.name, spec)], log: { print($0) })
+            // provision() は失敗時に throw する(空配列で正常復帰はしない)ため、first は常に存在する
+            let port = provisioned.first?.port ?? driverOptions.port
+            print("✅ ブリッジ準備完了: http://127.0.0.1:\(port)")
         }
     }
 
