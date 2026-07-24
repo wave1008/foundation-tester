@@ -9,31 +9,45 @@ import Foundation
 
 actor AndroidScreenVideoRecorder: DeviceVideoRecorderSession {
     private static let segmentTimeLimitSeconds = 180
+    /// この時間未満で死んだセグメントを「異常に短い」とみなす(クラッシュループ検知)
+    private static let crashLoopThresholdSeconds: TimeInterval = 3
+    /// crashLoopThresholdSeconds 未満のセグメントがこの回数連続したら録画を諦める。
+    /// 先日の実害(録画プロセスが途中死してワーカーの録画が丸ごと欠けた)を受け、無限リトライで
+    /// ログを埋め尽くす/デバイスに adb を叩き続けるのを防ぎつつ、それまでに撮れた分は活かす
+    private static let crashLoopMaxConsecutive = 5
 
     private let serial: String
     private let adbPath: String
     private let workDir: URL
     private let fileStem: String
+    private let bitrateKbps: Int
+    private let fullResolution: Bool
 
     private var stopRequested = false
+    private var gaveUp = false
     private var size: String?
     private var segmentIndex = 0
+    /// crashLoopThresholdSeconds 未満で終了したセグメントの連続回数(閾値以上で通常終了したらリセット)
+    private var consecutiveShortSegments = 0
     /// pull 済みローカルセグメント(連結順)と各々の spawn 時刻(index.json の startedAt に使う)
     private var pulledSegments: [(url: URL, startedAt: Date)] = []
     private var currentProcess: Process?
     /// 進行中セグメントの exit 監視タスク。stop 側はこれの完了(=最終 pull まで終わったこと)を待つ
     private var watchTask: Task<Void, Never>?
 
-    init(serial: String, adbPath: String, workDir: URL, fileStem: String) {
+    init(serial: String, adbPath: String, workDir: URL, fileStem: String,
+        bitrateKbps: Int = 1500, fullResolution: Bool = false) {
         self.serial = serial
         self.adbPath = adbPath
         self.workDir = workDir
         self.fileStem = fileStem
+        self.bitrateKbps = bitrateKbps
+        self.fullResolution = fullResolution
     }
 
     func start() async -> Bool {
         killStaleScreenrecord()
-        size = halvedPhysicalSize()
+        size = fullResolution ? nil : halvedPhysicalSize()
         return await spawnNextSegment()
     }
 
@@ -70,10 +84,10 @@ actor AndroidScreenVideoRecorder: DeviceVideoRecorderSession {
 
     @discardableResult
     private func spawnNextSegment() async -> Bool {
-        guard !stopRequested else { return false }
+        guard !stopRequested, !gaveUp else { return false }
         segmentIndex += 1
         let remotePath = "/sdcard/ftrec-\(fileStem)-\(segmentIndex).mp4"
-        var args = ["-s", serial, "shell", "screenrecord", "--bit-rate", "1500000"]
+        var args = ["-s", serial, "shell", "screenrecord", "--bit-rate", String(bitrateKbps * 1000)]
         if let size { args += ["--size", size] }
         args += ["--time-limit", String(Self.segmentTimeLimitSeconds), remotePath]
 
@@ -107,6 +121,21 @@ actor AndroidScreenVideoRecorder: DeviceVideoRecorderSession {
         }
         _ = try? Shell.run([adbPath, "-s", serial, "shell", "rm", "-f", remotePath])
         currentProcess = nil
+
+        // クラッシュループ検知: 明示停止でないのに極端に短時間で終わったセグメントが連続したら、
+        // それまで撮れた分(pulledSegments)は活かしつつ以降の再spawnを諦める
+        if !stopRequested, Date().timeIntervalSince(startedAt) < Self.crashLoopThresholdSeconds {
+            consecutiveShortSegments += 1
+            if consecutiveShortSegments >= Self.crashLoopMaxConsecutive {
+                gaveUp = true
+                warn("セグメントが \(Int(Self.crashLoopThresholdSeconds))秒未満で "
+                    + "\(consecutiveShortSegments) 回連続して終了したため録画を諦めます"
+                    + "(それまでに撮れた分は保存します)")
+                return
+            }
+        } else {
+            consecutiveShortSegments = 0
+        }
         if !stopRequested {
             await spawnNextSegment()
         }

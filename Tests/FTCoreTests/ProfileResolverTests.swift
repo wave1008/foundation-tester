@@ -739,6 +739,38 @@ final class ProfileResolverTests: XCTestCase {
         XCTAssertTrue(resolved.record)
     }
 
+    func testRecordOptionsDefaultWhenUnspecified() throws {
+        try writeStandardFixture()  // "all" は recordFailuresOnly/recordBitrateKbps/recordFullResolution 未指定
+        let resolved = try ProfileResolver.resolve(
+            project: project, runName: "all", machineName: "M1 Max(64GB)")
+        XCTAssertFalse(resolved.recordFailuresOnly, "省略時は既定 false のはず")
+        XCTAssertEqual(resolved.recordBitrateKbps, 1500, "省略時は既定 1500kbps のはず")
+        XCTAssertFalse(resolved.recordFullResolution, "省略時は既定 false のはず")
+    }
+
+    func testRecordOptionsExplicitValuesAreReflected() throws {
+        try writeStandardFixture()
+        try write("""
+        { "app": "sampleapp", "devices": [ { "name": "メイン機" } ], "record": true,
+          "recordFailuresOnly": true, "recordBitrateKbps": 3000, "recordFullResolution": true }
+        """, to: project.runsDir, name: "recordOptions")
+        let resolved = try ProfileResolver.resolve(
+            project: project, runName: "recordOptions", machineName: "M1 Max(64GB)")
+        XCTAssertTrue(resolved.recordFailuresOnly)
+        XCTAssertEqual(resolved.recordBitrateKbps, 3000)
+        XCTAssertTrue(resolved.recordFullResolution)
+    }
+
+    func testRecordBitrateKbpsNonPositiveFallsBackToDefault() throws {
+        try writeStandardFixture()
+        try write("""
+        { "app": "sampleapp", "devices": [ { "name": "メイン機" } ], "recordBitrateKbps": 0 }
+        """, to: project.runsDir, name: "recordBadBitrate")
+        let resolved = try ProfileResolver.resolve(
+            project: project, runName: "recordBadBitrate", machineName: "M1 Max(64GB)")
+        XCTAssertEqual(resolved.recordBitrateKbps, 1500, "0以下は既定にフォールバックするはず")
+    }
+
     // MARK: - locale
 
     func testLocaleDefaultsWhenUnspecified() throws {

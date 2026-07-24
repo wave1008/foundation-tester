@@ -776,6 +776,12 @@ H.264 に再エンコード。VFR ソースの区間頭フレーム欠落は直�
 契約は `recordings/index.json`(schemaVersion 2。VideoRecordingCoordinator.swift・
 RecordingIndex.swift・RecordingWallClock.swift)。録画自体の失敗は run を失敗させない。
 
+録画の付随設定(すべて `record: true` のときのみ意味を持つ): `recordFailuresOnly`(既定 false)
+は true で成功したシナリオのクリップを保存せず失敗(frozen 含む)分のみ残す。`recordBitrateKbps`
+(既定 1500)は再エンコードの bitrate(kbps)で AVVideoAverageBitRateKey と Android screenrecord
+`--bit-rate` の両方に適用。`recordFullResolution`(既定 false)は true で半分解像度化(iOS 再エンコード
+時の縮小・Android `screenrecord --size`)をスキップしフル解像度のまま出力する。
+
 `locale`(既定 "ja_JP")は Android エミュレータのブート完了時(device-up と wipe 後の再起動)に
 適用される。**Play イメージは root/`setprop`/`settings put system system_locales`/emulator の
 `-change-locale` が全て無効**(実測 2026-07-17)のため、適用はブリッジの `POST /locale`

@@ -21,4 +21,5 @@ export const recordingsStrings = {
   // TEST EXPLORER 風ツリー(再生ビュー左ペイン)。
   "recordings.tree.empty": { ja: "タイムラインがありません。", en: "No timeline available." },
   "recordings.tree.sceneDefaultTitle": { ja: "シーン {n}", en: "Scene {n}" },
+  "recordings.tree.noVideo": { ja: "録画なし", en: "No recording" },
 } satisfies MessageDict;

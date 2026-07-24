@@ -690,7 +690,8 @@ public final class RunOrchestrator {
                 defaultTimeout: defaultTimeout, scenarioTimeout: scenarioTimeout, debug: debug,
                 recorder: recorder,
                 onEvent: { [continuation] in continuation.yield($0) })
-            await videoRecording?.scenarioFinished(workerLabel: worker.label, at: Date())
+            await videoRecording?.scenarioFinished(
+                workerLabel: worker.label, at: Date(), passed: outcome == .passed)
             if outcome == .passed {
                 consecutiveFailures = 0
                 continue
