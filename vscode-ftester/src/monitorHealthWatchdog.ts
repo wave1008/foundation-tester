@@ -24,6 +24,9 @@ export interface MonitorHealthWatchdogDeps {
   forceCpuRender(name: string): void;
   /** adb で Wi-Fi を再有効化する軽量修復。解決失敗・実行失敗は false(例外は投げない)。 */
   runWifiRepair(serial: string): Promise<boolean>;
+  /** adb の画面 sleep→wake で凍結表示バッファを再合成させる軽量修復(adbWifiRepair.repairDisplay)。
+   * 解決失敗・実行失敗は false(例外は投げない)。 */
+  runDisplayRepair(serial: string): Promise<boolean>;
   /** MonitorDeviceStreamController.restartForDeviceName への委譲。稼働中パイプラインが無ければ
    * false(ポーリングモード・諦め済み等)。 */
   restartStream(name: string): boolean;
@@ -48,6 +51,9 @@ const MAX_RESTART_ATTEMPTS = 2;
 const EPISODE_RESET_AFTER_HEALTHY_MS = 10 * 60_000;
 /** ストリーム修復後、再判定を待つクールダウン(ミリ秒)。Wi-Fi 修復と同じ根拠(プローブ30秒×2回+マージン)。 */
 const STREAM_REPAIR_COOLDOWN_MS = 120_000;
+/** 画面リセット修復後、再判定を待つクールダウン(ミリ秒)。health のクリアは正常1回の観測で即時
+ * (AndroidHealthDebounce)のため、プローブ1周期30秒+マージンで足りる。 */
+const DISPLAY_REPAIR_COOLDOWN_MS = 60_000;
 
 interface DeviceHealthEntry {
   /** 現在のエピソードで一度でも unhealthy を post したか。post の重複防止、および異常なし復帰時に
@@ -55,6 +61,8 @@ interface DeviceHealthEntry {
   degraded: boolean;
   /** このエピソードで Wi-Fi 修復を試みたか(wifi-disabled 単独時のみ1回だけ試す)。 */
   wifiAttempted: boolean;
+  /** このエピソードで画面リセット(sleep/wake)修復を試みたか(blank-screen 検出時の第一手。1回だけ)。 */
+  displayAttempted: boolean;
   /** このエピソードでストリーム修復を試みたか(blank-screen 検出時のみ1回だけ試す)。 */
   streamAttempted: boolean;
   /** このエピソードで CPU 描画(swiftshader)への切替・再起動を試みたか(blank-screen 検出時のみ
@@ -76,6 +84,7 @@ function freshEntry(): DeviceHealthEntry {
   return {
     degraded: false,
     wifiAttempted: false,
+    displayAttempted: false,
     streamAttempted: false,
     cpuFallbackAttempted: false,
     restartAttempts: 0,
@@ -190,8 +199,25 @@ export class MonitorHealthWatchdog {
 
     const hasBlank = health.includes("blank-screen");
     if (hasBlank) {
-      // blank-screen 専用ラダー: streamRepair 1回 → swiftshader 再起動 1回 → failed。
-      // host 再起動は実験で「治らず再凍結」が確定したため一切挟まない(2026-07-17)。
+      // blank-screen 専用ラダー: displayRepair(sleep/wake ~4s)1回 → streamRepair 1回 →
+      // swiftshader 再起動 1回 → failed。host 再起動は実験で「治らず再凍結」が確定したため
+      // 一切挟まない(2026-07-17)。第一手の画面リセットは固着型を ~4s で直す最軽量修復
+      // (対照実験 2026-07-25。readback = stream 再起動が効かない個体にも効く)。
+      if (!entry.displayAttempted && serial !== undefined) {
+        entry.displayAttempted = true;
+        entry.cooldownUntil = this.now() + DISPLAY_REPAIR_COOLDOWN_MS;
+        this.deps.log(`[health-watch] ${name}: ${t("monitor.healthWatch.displayRepairAttempt")}`);
+        this.deps.post({ type: "healthWatch", name, phase: "displayRepairing" });
+        void this.deps.runDisplayRepair(serial).then((ok) => {
+          this.deps.log(
+            ok
+              ? `[health-watch] ${name}: ${t("monitor.healthWatch.displayRepairExecuted")}`
+              : `[health-watch] ${name}: ${t("monitor.healthWatch.displayRepairFailed")}`,
+          );
+        });
+        return;
+      }
+
       if (!entry.streamAttempted) {
         entry.streamAttempted = true;
         if (this.deps.restartStream(name)) {
