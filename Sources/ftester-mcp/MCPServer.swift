@@ -273,16 +273,10 @@ final class MCPServer {
                 let provisioned = try await provisioner.provision(
                     devices: [(device.name, device.spec)],
                     bundleID: iosApp?.bundleID,
-                    preinstallAppPath: iosApp?.autoInstall == true ? iosApp?.appPath : nil,
-                    externalRun: true, force: args["force"] as? Bool ?? false) { prologue.append($0) }
+                    preinstallAppPath: iosApp?.autoInstall == true ? iosApp?.appPath : nil) { prologue.append($0) }
                 connection = ProfileWorkerFactory.iosConnection(device: provisioned[0], iosApp: iosApp)
             } else {
                 let serial = try AndroidDeviceCatalog.resolveSerial(spec: device.spec)
-                if !(args["force"] as? Bool ?? false),
-                   MonitorLease.isFresh(stateDir: root(of: project).appendingPathComponent(".ftester"), key: serial) {
-                    throw MCPError("デバイス \(device.name) はモニター(ftester api monitor)が使用中です。"
-                        + "相乗り run はデモを凍結させ得ます。モニターを止めるか、force 指定で上書きしてください。")
-                }
                 connection = DriverConnection(platform: "android", serial: serial, deviceName: device.name)
             }
         } else {
@@ -352,7 +346,6 @@ final class MCPServer {
             "project": ["type": "string", "description": "テストプロジェクト名(省略時は既定プロジェクト)"],
             "profile": ["type": "string", "description": "実行プロファイル名(profiles/runs/。接続先・heal・レポート先を解決)"],
             "heal": ["type": "boolean", "description": "ロケータ自己修復を許可(既定 false)"],
-            "force": ["type": "boolean", "description": "モニター使用中デバイスへの相乗りを許可する(既定 false)"],
             "port": ["type": "integer", "description": "iOS ブリッジのポート(既定 8123)"],
             "serial": ["type": "string", "description": "Android デバイスのシリアル"],
         ], required: ["id"]),

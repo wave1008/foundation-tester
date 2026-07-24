@@ -1,4 +1,4 @@
-// RunLease の契約(生存 pid + mtime 鮮度)を検証する。MonitorLeaseTests.swift と同型。
+// RunLease の契約(生存 pid + mtime 鮮度)を検証する。RecordingLeaseTests.swift と同型。
 // 実プロセス起動不要: 自プロセスの pid を「生存」、999999 を「非生存」として使う。
 
 import XCTest

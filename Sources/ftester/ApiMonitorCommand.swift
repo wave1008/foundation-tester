@@ -123,11 +123,9 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         // 別間隔。再接続=リブートで変わりうるため切断時に破棄する)
         var renderModeCache: [String: String] = [:]
 
-        // モニターのハートビート lease(.ftester/monitor-<udid>.lease)。best-effort: リポジトリ外
-        // 実行等で root が取れない場合は lease を書かない(BridgeProvisioner 側の occupancy guard も
-        // 素通りするだけで安全)
+        // run/recording lease の読み取り用(.ftester/{run,recording}-<key>.lease で inRun/recording を
+        // 判定)。best-effort: リポジトリ外実行等で root が取れない場合は両者 false に倒す
         let leaseStateDir = (try? RepoRoot.find())?.appendingPathComponent(".ftester")
-        var leasedKeys: Set<String> = []
 
         while !stop.isSet {
             if control.autoResumeIfStale(limit: Self.pauseSafetyValveSeconds) {
@@ -222,18 +220,6 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                     loggedFetchFailure.remove(state.target.id)
                     continue
                 }
-                if let leaseStateDir {
-                    if let udid = state.iosUdid {
-                        MonitorLease.write(stateDir: leaseStateDir, key: udid,
-                                           pid: ProcessInfo.processInfo.processIdentifier)
-                        leasedKeys.insert(udid)
-                    }
-                    if let serial = state.androidSerial {
-                        MonitorLease.write(stateDir: leaseStateDir, key: serial,
-                                           pid: ProcessInfo.processInfo.processIdentifier)
-                        leasedKeys.insert(serial)
-                    }
-                }
                 // 拡張のデバイスタイルがストリーミング表示中のデバイスはスクショ取得側で
                 // 二重生成しない(拡張側は monitorFrame を受信しても捨てるだけになるため)
                 guard !control.isFrameSuppressed(state.target.id) else { continue }
@@ -274,9 +260,6 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             }
 
             await Self.sleepInterruptible(seconds: interval, stop: stop)
-        }
-        if let leaseStateDir {
-            for key in leasedKeys { MonitorLease.remove(stateDir: leaseStateDir, key: key) }
         }
     }
 
@@ -612,7 +595,7 @@ private struct ConfirmedDeviceState {
     let iosPort: UInt16?
     let androidSerial: String?
     /// iOS の UDID。維持(debounce)中もこれを持ち越さないと leaseKey が nil になり、
-    /// 一過性の /status 失敗の間だけ MonitorLease.write がスキップ+inRun=false に振れる。
+    /// 一過性の /status 失敗の間だけ inRun/recording 判定が false に振れる。
     let iosUdid: String?
     /// confirmed が connected の間、observed が connected でなかった連続回数。
     /// connectedDowngradeMissThreshold に達するまでは降格させない
