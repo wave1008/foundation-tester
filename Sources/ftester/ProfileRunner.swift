@@ -48,7 +48,7 @@ enum ProfileRunner {
                 locale: resolved.locale) { print($0) }
         }
 
-        // 2. Android ワーカー構築(serial 照合=数秒)→ 白化デバイス除外 → 自動インストール。
+        // 2. Android ワーカー構築(serial 照合=数秒)→ 白化の修復/除外 → 自動インストール。
         // iOS(ブリッジ供給=壊れたブリッジの置き換えで数十秒かかりうる)は lateWorkers として
         // 分離し、Android を供給完了待ちにしない(ApiRunCommand の並列経路と同じ方針)。
         let repoRoot = try RepoRoot.find()

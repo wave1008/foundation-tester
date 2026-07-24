@@ -100,12 +100,12 @@ public enum ProfileWorkerFactory {
             log("⚠️ \(workers[index].label): 画面が白化(blank-screen)しており修復も不発のため"
                 + "ディスパッチから除外し、guest を再起動します(次回 run から復帰見込み)")
             // sleep/wake が効かない難治型は guest reboot のみ有効(実測)。既に除外済みなので
-            // この run には影響ゼロ。fire-and-forget(reboot 中に次 run が来ても serial 未解決 or
-            // blank 扱いで除外継続=安全側)
+            // この run には影響ゼロ。発行は同期(~0.3s。Task.detached だと全 Android 除外→throw で
+            // プロセスが即終了する経路=最も reboot が必要な場面で発行前に死ぬ)。reboot 完了は
+            // 待たない(adb reboot は発行後すぐ返る)。次 run が reboot 中に来ても serial 未解決 or
+            // blank 扱いで除外継続=安全側
             if let adbPath, let serial = workers[index].connection.serial {
-                Task.detached(priority: .background) {
-                    _ = try? Shell.run([adbPath, "-s", serial, "reboot"], timeout: 15)
-                }
+                _ = try? Shell.run([adbPath, "-s", serial, "reboot"], timeout: 15)
             }
         }
         return BlankScreenTriage(
