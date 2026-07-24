@@ -35,6 +35,7 @@ const errorsFilterLabel = document.getElementById('recordings-errors-filter-labe
 const errorsFilterClear = document.getElementById('recordings-errors-filter-clear');
 const treeSplitter = document.getElementById('recordings-splitter-tree');
 const recordingsBody = playerView.querySelector('.recordings-body');
+const autoAdvanceCheckbox = document.getElementById('recordings-auto-advance');
 
 // シークバーの内部分解能(0〜SEEK_RESOLUTIONの整数値をvideo.durationとの比率に変換する)。
 const SEEK_RESOLUTION = 1000;
@@ -128,8 +129,11 @@ export function applyRecordingsSessions(message) {
   renderSessions(message.sessions);
 }
 
-/** シナリオ動画へ切替える(既に表示中なら切替えず位置だけ変える)。entry = {scenarioID, videoUri}。 */
-function selectScenarioVideo(entry, seekSeconds) {
+/** シナリオ動画へ切替える(既に表示中なら切替えず位置だけ変える)。entry = {scenarioID, videoUri}。
+ * forcePlay: true なら切替後に必ず再生する('ended' 直後は video.paused が true になるため、
+ * 連続再生(自動遷移)で再生継続させるにはこれが必要。既存の「一時停止中の切替は一時停止のまま」
+ * の挙動は forcePlay 未指定[手動のツリークリック・前/次テストボタン]では変えない)。 */
+function selectScenarioVideo(entry, seekSeconds, forcePlay) {
   if (!currentDetail || !entry) {
     return;
   }
@@ -137,6 +141,9 @@ function selectScenarioVideo(entry, seekSeconds) {
   if (currentDetail.selectedScenarioID === entry.scenarioID) {
     video.currentTime = Math.max(0, Math.min(target, video.duration || 0));
     updateTimeDisplay();
+    if (forcePlay) {
+      video.play().catch(() => {});
+    }
     return;
   }
   const wasPaused = video.paused;
@@ -147,7 +154,7 @@ function selectScenarioVideo(entry, seekSeconds) {
     'loadedmetadata',
     () => {
       video.currentTime = Math.max(0, Math.min(target, video.duration || 0));
-      if (!wasPaused) {
+      if (!wasPaused || forcePlay) {
         video.play().catch(() => {});
       }
       updateTimeDisplay();
@@ -249,8 +256,9 @@ function renderErrors() {
 }
 
 // 必要なら scenarioID の動画へ切り替えてから offsetMs(ms)の位置へシークする(エラー一覧・ツリー共通)。
-// 対応する動画が無い scenarioID(録画対象外だった等)は何もしない。
-function seekToOffset(scenarioID, offsetMs) {
+// 対応する動画が無い scenarioID(録画対象外だった等)は何もしない(ツリーのグレーアウト行クリックは
+// 選択・フィルターだけ効いてシークは無反応になる、という仕様をここの早期 return が担う)。
+function seekToOffset(scenarioID, offsetMs, forcePlay) {
   if (!currentDetail) {
     return;
   }
@@ -258,7 +266,7 @@ function seekToOffset(scenarioID, offsetMs) {
   if (!videoUri) {
     return;
   }
-  selectScenarioVideo({ scenarioID, videoUri }, Math.max(0, offsetMs / 1000));
+  selectScenarioVideo({ scenarioID, videoUri }, Math.max(0, offsetMs / 1000), forcePlay);
 }
 
 function jumpToError(err) {
@@ -402,7 +410,7 @@ function selectTreeRow(row) {
 
 // collapsible:false の葉(ステップ)は常に childrenEl なし。トグルは event.stopPropagation() で
 // 行クリック(シーク)への伝播を止める。
-function buildTreeRow({ depth, label, status, collapsible, expanded, childrenEl, onActivate }) {
+function buildTreeRow({ depth, label, status, collapsible, expanded, childrenEl, onActivate, noVideo }) {
   const row = document.createElement('div');
   row.className = 'recordings-tree-row';
   row.style.setProperty('--tree-depth', String(depth));
@@ -440,6 +448,16 @@ function buildTreeRow({ depth, label, status, collapsible, expanded, childrenEl,
   text.title = label;
   row.appendChild(text);
 
+  // 対応する動画が無い(録画対象外だった等)行はグレーアウト+注記。選択・フィルターは効くが、
+  // シークは seekToOffset 側が videosByScenario に無い scenarioID を無視するため自然に無反応になる。
+  if (noVideo) {
+    row.classList.add('recordings-tree-row-no-video');
+    const note = document.createElement('span');
+    note.className = 'recordings-tree-no-video-note';
+    note.textContent = t('recordings.tree.noVideo');
+    row.appendChild(note);
+  }
+
   const activate = () => {
     // 選択中の行の再クリックは選択解除(=フィルター解除)。シークもしない。
     if (selectTreeRow(row)) {
@@ -457,7 +475,7 @@ function buildTreeRow({ depth, label, status, collapsible, expanded, childrenEl,
   return row;
 }
 
-function buildStepNode(scenario, scene, step, clsStatus) {
+function buildStepNode(scenario, scene, step, clsStatus, hasVideo) {
   const node = document.createElement('div');
   node.className = 'recordings-tree-node';
   const label = `${step.index}. ${step.description}`;
@@ -466,24 +484,27 @@ function buildStepNode(scenario, scene, step, clsStatus) {
     label,
     status: step.status,
     collapsible: false,
+    noVideo: !hasVideo,
     onActivate: () => {
       setErrorFilter({ scenarioID: scenario.scenarioID, scene: scene.scene, stepIndex: step.index }, label);
       seekToOffset(scenario.scenarioID, step.offsetMs);
     },
   });
   node.appendChild(row);
-  const sceneLabel = scene.sceneTitle || t('recordings.tree.sceneDefaultTitle', { n: scene.scene });
-  const parts = scenarioCaptionParts(scenario);
-  registerPlaybackEntry(scenario.scenarioID, step.offsetMs, row, {
-    cls: parts.cls,
-    clsStatus,
-    detail: `${parts.title} › ${sceneLabel} › ${label}`,
-    detailStatus: step.status,
-  });
+  if (hasVideo) {
+    const sceneLabel = scene.sceneTitle || t('recordings.tree.sceneDefaultTitle', { n: scene.scene });
+    const parts = scenarioCaptionParts(scenario);
+    registerPlaybackEntry(scenario.scenarioID, step.offsetMs, row, {
+      cls: parts.cls,
+      clsStatus,
+      detail: `${parts.title} › ${sceneLabel} › ${label}`,
+      detailStatus: step.status,
+    });
+  }
   return node;
 }
 
-function buildSceneNode(scenario, scene, clsStatus) {
+function buildSceneNode(scenario, scene, clsStatus, hasVideo) {
   const node = document.createElement('div');
   node.className = 'recordings-tree-node';
   const hasSteps = scene.steps.length > 0;
@@ -500,6 +521,7 @@ function buildSceneNode(scenario, scene, clsStatus) {
       collapsible: hasSteps,
       expanded,
       childrenEl,
+      noVideo: !hasVideo,
       onActivate: () => {
         setErrorFilter({ scenarioID: scenario.scenarioID, scene: scene.scene }, label);
         seekToOffset(scenario.scenarioID, scene.offsetMs);
@@ -508,7 +530,7 @@ function buildSceneNode(scenario, scene, clsStatus) {
   );
   if (hasSteps) {
     for (const step of scene.steps) {
-      childrenEl.appendChild(buildStepNode(scenario, scene, step, clsStatus));
+      childrenEl.appendChild(buildStepNode(scenario, scene, step, clsStatus, hasVideo));
     }
   }
   if (!expanded) {
@@ -522,6 +544,7 @@ function buildScenarioNode(scenario, clsStatus) {
   const node = document.createElement('div');
   node.className = 'recordings-tree-node';
   const hasScenes = scenario.scenes.length > 0;
+  const hasVideo = currentDetail.videosByScenario.has(scenario.scenarioID);
   const childrenEl = document.createElement('div');
   childrenEl.className = 'recordings-tree-children';
   // 失敗したテスト関数は既定で展開(シーンの既定展開規則と同じ。成功はコンパクトに畳む)。
@@ -534,6 +557,7 @@ function buildScenarioNode(scenario, clsStatus) {
     collapsible: hasScenes,
     expanded,
     childrenEl,
+    noVideo: !hasVideo,
     onActivate: () => {
       const parts = scenarioCaptionParts(scenario);
       setErrorFilter({ scenarioID: scenario.scenarioID }, `${parts.cls}/${parts.title}`);
@@ -541,25 +565,27 @@ function buildScenarioNode(scenario, clsStatus) {
     },
   });
   node.appendChild(row);
-  const parts = scenarioCaptionParts(scenario);
-  registerPlaybackEntry(scenario.scenarioID, scenario.offsetMs, row, {
-    cls: parts.cls,
-    clsStatus,
-    detail: parts.title,
-    detailStatus: scenario.status,
-  });
-  scenarioNav.push({
-    scenarioID: scenario.scenarioID,
-    chipLabel: `${parts.cls}/${parts.title}`,
-    rowEl: row,
-    // ⏮/⏭ の着地点。シナリオ記録開始(0秒)はアプリ起動前の画面が映るため、
-    // 最初のシーン(=最初のステップ)の開始があればそちらへ着地する。
-    landingMs: scenario.scenes[0]?.offsetMs ?? 0,
-    startedAtMs: Date.parse(scenario.startedAt) || 0,
-  });
+  if (hasVideo) {
+    const parts = scenarioCaptionParts(scenario);
+    registerPlaybackEntry(scenario.scenarioID, scenario.offsetMs, row, {
+      cls: parts.cls,
+      clsStatus,
+      detail: parts.title,
+      detailStatus: scenario.status,
+    });
+    scenarioNav.push({
+      scenarioID: scenario.scenarioID,
+      chipLabel: `${parts.cls}/${parts.title}`,
+      rowEl: row,
+      // ⏮/⏭ の着地点。シナリオ記録開始(0秒)はアプリ起動前の画面が映るため、
+      // 最初のシーン(=最初のステップ)の開始があればそちらへ着地する。
+      landingMs: scenario.scenes[0]?.offsetMs ?? 0,
+      startedAtMs: Date.parse(scenario.startedAt) || 0,
+    });
+  }
   if (hasScenes) {
     for (const scene of scenario.scenes) {
-      childrenEl.appendChild(buildSceneNode(scenario, scene, clsStatus));
+      childrenEl.appendChild(buildSceneNode(scenario, scene, clsStatus, hasVideo));
     }
   }
   if (!expanded) {
@@ -626,7 +652,8 @@ function currentScenarioNavIndex() {
 }
 
 // ツリー選択とエラー一覧フィルターも移動先テストへ連動させる(ツリーの行クリックと同じ状態にする)。
-function jumpToScenarioNav(index) {
+// forcePlay は連続再生('ended' → 次テストへ自動遷移)専用(手動ナビは再生状態を維持するので渡さない)。
+function jumpToScenarioNav(index, forcePlay) {
   const nav = scenarioNav[index];
   if (!nav) {
     return;
@@ -639,13 +666,13 @@ function jumpToScenarioNav(index) {
     nav.rowEl.classList.add('recordings-tree-row-selected');
   }
   setErrorFilter({ scenarioID: nav.scenarioID }, nav.chipLabel);
-  seekToOffset(nav.scenarioID, nav.landingMs);
+  seekToOffset(nav.scenarioID, nav.landingMs, forcePlay);
 }
 
 // ⏮ は一般的なプレイヤー流儀: テストの途中(先頭から2秒超)なら現在テストの先頭へ戻り、
 // 先頭付近ならひとつ前のテストへ移る(現在動画自身のクリップ内位置で判定するので動画は
-// 切り替わらない)。
-document.getElementById('recordings-prev-test').addEventListener('click', () => {
+// 切り替わらない)。ボタン・↑/↓キーボードショートカット(仕様)の両方から呼ぶ。
+function goToPreviousTest() {
   const index = currentScenarioNavIndex();
   if (index < 0) {
     jumpToScenarioNav(0);
@@ -654,11 +681,13 @@ document.getElementById('recordings-prev-test').addEventListener('click', () => 
   const nav = scenarioNav[index];
   const intoTestMs = video.currentTime * 1000 - nav.landingMs;
   jumpToScenarioNav(intoTestMs > 2000 || index === 0 ? index : index - 1);
-});
-document.getElementById('recordings-next-test').addEventListener('click', () => {
+}
+function goToNextTest() {
   const index = currentScenarioNavIndex();
   jumpToScenarioNav(index < 0 ? 0 : Math.min(index + 1, scenarioNav.length - 1));
-});
+}
+document.getElementById('recordings-prev-test').addEventListener('click', goToPreviousTest);
+document.getElementById('recordings-next-test').addEventListener('click', goToNextTest);
 
 export function applyRecordingsSession(message) {
   if (!message.ok || !message.videos || message.videos.length === 0) {
@@ -699,24 +728,46 @@ function updateTimeDisplay() {
 
 updatePlayIcon();
 
-playBtn.addEventListener('click', () => {
+// ボタン・Space キーボードショートカット(仕様)の両方から呼ぶ。
+function togglePlayPause() {
   if (video.paused) {
     video.play().catch(() => {});
   } else {
     video.pause();
   }
-});
+}
+playBtn.addEventListener('click', togglePlayPause);
 video.addEventListener('play', updatePlayIcon);
 video.addEventListener('pause', updatePlayIcon);
 video.addEventListener('timeupdate', updateTimeDisplay);
 video.addEventListener('loadedmetadata', updateTimeDisplay);
 
-rewindBtn.addEventListener('click', () => {
-  video.currentTime = Math.max(0, video.currentTime - 10);
+// 連続再生。状態は vscode.setState で保持(recordingsAutoAdvance)。
+autoAdvanceCheckbox.checked = !!persistedState.recordingsAutoAdvance;
+autoAdvanceCheckbox.addEventListener('change', () => {
+  vscode.setState(Object.assign({}, vscode.getState(), { recordingsAutoAdvance: autoAdvanceCheckbox.checked }));
 });
-forwardBtn.addEventListener('click', () => {
-  video.currentTime = Math.min(video.duration || Infinity, video.currentTime + 10);
+// 動画終端('ended')で次のテストへ自動遷移して再生継続。最後のテストなら何もしない(自然に停止)。
+video.addEventListener('ended', () => {
+  if (!autoAdvanceCheckbox.checked) {
+    return;
+  }
+  const index = currentScenarioNavIndex();
+  if (index < 0 || index >= scenarioNav.length - 1) {
+    return;
+  }
+  jumpToScenarioNav(index + 1, true);
 });
+
+// ボタン・←/→ キーボードショートカット(仕様)の両方から呼ぶ。
+function seekRelative(deltaSeconds) {
+  video.currentTime =
+    deltaSeconds < 0
+      ? Math.max(0, video.currentTime + deltaSeconds)
+      : Math.min(video.duration || Infinity, video.currentTime + deltaSeconds);
+}
+rewindBtn.addEventListener('click', () => seekRelative(-10));
+forwardBtn.addEventListener('click', () => seekRelative(10));
 
 speedSelect.addEventListener('change', () => {
   video.playbackRate = Number(speedSelect.value);
@@ -751,10 +802,50 @@ backBtn.addEventListener('click', () => {
   requestSessionsRefresh();
 });
 
-// タブ活性化のたびにセッション一覧を更新する(一覧ビュー表示中のみ。再生ビュー中は保持)。
+// 録画タブが現在アクティブか(他タブ切替を含め ft-tab-activated のたびに更新。キーボード
+// ショートカットの発火条件に使う)。タブ活性化のたびにセッション一覧を更新する(一覧ビュー
+// 表示中のみ。再生ビュー中は保持)。
+let recordingsTabActive = false;
 document.addEventListener('ft-tab-activated', (event) => {
-  if (event.detail?.tab === 'recordings' && playerView.style.display === 'none') {
+  recordingsTabActive = event.detail?.tab === 'recordings';
+  if (recordingsTabActive && playerView.style.display === 'none') {
     requestSessionsRefresh();
+  }
+});
+
+// 再生ビュー表示中のみ有効なキーボードショートカット(仕様: Space=再生/一時停止、←/→=∓10秒、
+// ↑/↓=前/次のテスト)。フォーム入力中(input/select/textarea にフォーカス)は無視する。
+document.addEventListener('keydown', (event) => {
+  if (!recordingsTabActive || playerView.style.display === 'none') {
+    return;
+  }
+  const targetTag = event.target && event.target.tagName;
+  if (targetTag === 'INPUT' || targetTag === 'SELECT' || targetTag === 'TEXTAREA') {
+    return;
+  }
+  switch (event.key) {
+    case ' ':
+      event.preventDefault();
+      togglePlayPause();
+      break;
+    case 'ArrowLeft':
+      event.preventDefault();
+      seekRelative(-10);
+      break;
+    case 'ArrowRight':
+      event.preventDefault();
+      seekRelative(10);
+      break;
+    case 'ArrowUp':
+      event.preventDefault();
+      goToPreviousTest();
+      break;
+    case 'ArrowDown':
+      event.preventDefault();
+      goToNextTest();
+      break;
+    default:
+      break;
   }
 });
 

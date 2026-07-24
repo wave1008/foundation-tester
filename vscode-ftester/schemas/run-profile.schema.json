@@ -88,6 +88,22 @@
       "type": "boolean",
       "description": "各デバイスの画面録画を有効化する(既定 false)。録画は results/runs/<YYYY-MM>/<runID>/recordings/ 配下に保存され、モニターパネルの「録画」タブから再生できる。",
       "default": false
+    },
+    "recordFailuresOnly": {
+      "type": "boolean",
+      "description": "録画のうち、成功(passed)したテストの録画は保存しない(既定 false)。record が true のときのみ意味を持つ。",
+      "default": false
+    },
+    "recordBitrateKbps": {
+      "type": "integer",
+      "description": "録画のビットレート(kbps、既定 1500)。record が true のときのみ意味を持つ。",
+      "exclusiveMinimum": 0,
+      "default": 1500
+    },
+    "recordFullResolution": {
+      "type": "boolean",
+      "description": "録画をデバイス画面のフル解像度で保存する(既定 false=縮小)。容量が増える。record が true のときのみ意味を持つ。",
+      "default": false
     }
   }
 }

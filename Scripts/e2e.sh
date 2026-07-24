@@ -14,6 +14,9 @@
 #   Scripts/e2e.sh --cmp           # SUT を絞る(--ios-native / --android-native / --flutter も同様。併記可)
 #   Scripts/e2e.sh --ios           # OS を絞る(--android も同様)
 #   Scripts/e2e.sh --rebuild       # SUT を必ず再ビルドしてから実行
+#   Scripts/e2e.sh --record        # 各プロファイルの一時コピー(<名前>-record-tmp.json。実行後に削除)に
+#                                   # record:true を付けて実行し、録画パイプラインの整合を
+#                                   # Scripts/check-recordings.py で検証する(元のプロファイルは書き換えない)
 #
 # **両OSを1つの実行プロファイルにまとめない**: platform 未指定シナリオは既定 platform の
 # キューにしか入らず、もう一方のワーカーは1本も受け取らない(docs/design.md §11.4)。
@@ -30,6 +33,7 @@ FTESTER="$ROOT/.build/debug/ftester"
 FORCE_REBUILD=0
 RUN_IOS=1
 RUN_ANDROID=1
+RECORD=0
 SUTS=""
 
 for arg in "$@"; do
@@ -37,6 +41,7 @@ for arg in "$@"; do
     --rebuild) FORCE_REBUILD=1 ;;
     --ios) RUN_ANDROID=0 ;;
     --android) RUN_IOS=0 ;;
+    --record) RECORD=1 ;;
     --cmp|--ios-native|--android-native|--flutter) SUTS="$SUTS ${arg#--}" ;;
     *) echo "不明な引数: $arg" >&2; exit 2 ;;
   esac
@@ -44,6 +49,10 @@ done
 [ -n "$SUTS" ] || SUTS="cmp ios-native android-native flutter"
 
 [ -x "$FTESTER" ] || { echo "❌ $FTESTER がありません(swift build --product ftester)" >&2; exit 1; }
+if [ "$RECORD" = 1 ]; then
+  command -v jq >/dev/null || { echo "❌ --record には jq が必要です" >&2; exit 1; }
+  command -v python3 >/dev/null || { echo "❌ --record には python3 が必要です" >&2; exit 1; }
+fi
 
 # ソースが成果物より新しいか(成果物が無い場合も真)
 needs_rebuild() {  # $1 = 成果物パス, $2.. = 監視するソースディレクトリ
@@ -57,11 +66,35 @@ FAILED=0
 run_profile() {  # $1 = プロジェクト名, $2 = プロファイル名
   echo ""
   echo "═══ $1 / $2 ═══"
-  if "$FTESTER" run --project "$1" --profile "$2"; then
-    echo "✅ $1 / $2"
+
+  local profile="$2"
+  local tmp_profile_path=""
+  if [ "$RECORD" = 1 ]; then
+    local src_path="$ROOT/Projects/$1/profiles/runs/$2.json"
+    if [ -f "$src_path" ]; then
+      profile="$2-record-tmp"
+      tmp_profile_path="$ROOT/Projects/$1/profiles/runs/$profile.json"
+      # 元のプロファイルは書き換えず、record:true を足した一時コピーを作る
+      jq '. + {record: true}' "$src_path" > "$tmp_profile_path"
+    else
+      echo "⚠️ プロファイルが見つからないため --record をスキップします: $src_path" >&2
+    fi
+  fi
+
+  if "$FTESTER" run --project "$1" --profile "$profile"; then
+    echo "✅ $1 / $profile"
   else
-    echo "❌ $1 / $2"
+    echo "❌ $1 / $profile"
     FAILED=1
+  fi
+
+  if [ -n "$tmp_profile_path" ]; then
+    rm -f "$tmp_profile_path"
+    # run の成否に関わらず録画自体は行われているはずなので整合チェックする
+    if ! python3 "$ROOT/Scripts/check-recordings.py" --project "$1" --repo-root "$ROOT"; then
+      echo "❌ $1 / $profile: 録画整合チェックに失敗しました"
+      FAILED=1
+    fi
   fi
 }
 
