@@ -66,7 +66,9 @@ apps プロファイルの healthCheckURL が実行開始時に警告を出す�
 - **エミュレータ操作は既定で emulator gRPC(EmulatorController)経由**(スクショ/キー・タッチ注入/
   停止等。実機・gRPC 失敗個体は自動で adb フォールバック。`Sources/FTAndroid/EmulatorControl.swift`)。
   gRPC 起因を疑うときは **`FT_EMULATOR_CONTROL=adb`** で全面 adb に切り替えて比較できる
-  (拡張側 `vscode-ftester/src/emulatorGrpc.ts` も同じ環境変数)。挙動差の切り分けはまずこれ
+  (拡張側 `vscode-ftester/src/emulatorGrpc.ts` も同じ環境変数)。挙動差の切り分けはまずこれ。
+  **iOS のシミュレータ列挙も同様に CoreSimulator 直叩きが既定**(design.md §16.4)で、
+  **`FT_SIMULATOR_CONTROL=simctl`** が殺しスイッチ
 - **run が遅くなったら負荷トリアージを先に**: ① `top` で qemu の空転(劣化個体はアイドルでも
   ~73%/台消費しホスト全体を遅くする)② run 同梱の `host-metrics.ndjson`(遅い run だけ CPU 飽和
   していれば環境要因)。Spotlight/mediaanalysisd のインデックスストームは CPU 数百%でも run を
