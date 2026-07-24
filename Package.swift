@@ -170,6 +170,11 @@ let package = Package(
             swiftSettings: swift5Mode
         ),
         // === ftester projects end ===
+        // PoC: SimulatorCatalog の simctl→CoreSimulator 直叩き計測(poc/coresimulator-catalog ブランチ)
+        .executableTarget(
+            name: "poc-coresim",
+            linkerSettings: [.linkedFramework("Foundation")]
+        ),
         // headless iOS シミュレータ画面キャプチャ(ObjC単体・CoreSimulator/SimulatorKitはdlopen)
         .executableTarget(
             name: "ftester-simstream",
