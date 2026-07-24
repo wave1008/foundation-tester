@@ -402,13 +402,34 @@ window/transition/animator の `*_scale` はチューニングノブではなく
     run 前の blank 除外(ProfileRunner.excludeBlankScreenWorkers)はこの修復を先に試し、回復すれば
     除外しない=ワーカー全数維持(実装 AndroidHealthProbe.repairBlankDisplay。watchdog ラダーの
     第一手 adbWifiRepair.repairDisplay も同一手順)。修復は免疫ではない(次の並列描画で再発し得る)。
-    ホスト側ログは無音(統合ログ・crash レポートに qemu の痕跡なし)
+    **ホスト側証跡は `~/Library/Logs/ftester/emulator/<AVD>.log`**(DeviceBooter が emulator
+    stdout/stderr を保存・ブート毎 truncate。2026-07-25 実装)。根因の
+    `GLDRendererMetal command buffer completion error` / `IOGPUCommandQueueErrorDomain 518` は
+    ここにしか出ない(統合ログ・crash レポートは無音のまま)。**Metal エラー行数は劣化の定量指標**:
+    健全ブートは 0〜2 件、劣化個体は数百件まで単調増加し高カウント個体が凍結する
+    (スケール実測 2026-07-25: N=8 で 0〜30 → N=16 で最大 513/台)
   - **凍結の変種と修復応答(修復パラメータの根拠)**: ①瞬間ブリップ(数秒で自己回復。アプリ起動
     白画面の誤検知も混在し得る)②自然回復型(~30s)③固着・修復可(sleep/wake 1サイクル dwell 1.5s
     ≈4s で回復=最多)④固着・抵抗型(1サイクル+wake後6s待でも blank のまま。**dwell 3s の
     2サイクル目で回復**)⑤固着・難治型(sleep/wake ×3・回転トグル・wm size 再構成すべて不発。
     **guest reboot でのみ回復**。稀)。repairBlankDisplay/repairDisplay は ③④ を拾う2サイクル構成
-    (成功 ~4s・抵抗型のみ ~11s)。⑤は事前除外/watchdog の後段(swiftshader 再起動)に落ちる設計
+    (成功 ~4s・抵抗型のみ ~11s)。⑤は事前除外/watchdog の後段(swiftshader 再起動)に落ちる設計。
+    ⑥出生凍結(高並列下の新規ブートが最初から凍結。guest reboot・プロセス再起動も不発、
+    swiftshader なら健全。N≈12〜14 から確率的に発生)⑦アプリ面だけ黒(壁紙・ステータスバー・IME は
+    正常だが新規アプリウィンドウが全て黒。sleep/wake 1〜2サイクルで回復。**IME 等が写ると一様
+    フレームにならず blank プローブに掛からない**=モニタータイル目視が現状唯一の広域検出)
+  - **故障面は2つあり独立に壊れる(2026-07-25 スケール実測)**: (a) guest readback 白化
+    (`adb screencap`=白 10-16KB だが gRPC getScreenshot=実画面。表示は生きておりテストも通る)
+    (b) host キャプチャ黒(gRPC=一様黒 51KB だが adb=実画面)。切り分けは**両経路スイープ**
+    (adb サイズと gRPC PNG デコード一様判定を並記)で行う。**gRPC 経路の blank 判定に PNG
+    サイズ閾値を使わないこと**(emulator のエンコーダは一様黒でも 51KB を出す。30KB 閾値は
+    adb 較正。gRPC 経路は画素一様判定 AndroidHealthProbe.uniformFrame)
+  - **スケール上限(2026-07-25、N=8→16 段階実測)**: シナリオ成功率は表示層の崩壊と独立
+    (N=16・凍結9/14台でも全段 18/18=**成功率は劣化の指標にならない**)。run 後の凍結台数は
+    N=8 で 2 → N=14 で 9。**実用上限は 8 台+定期再起動**。10 台超で劣化加速、12 台超は新規ブート
+    自体が信頼できない(⑥)。**劣化個体はアイドルでも CPU を空転消費**(実測 ~73%/台)し、
+    ホスト全体を遅くする(iOS の6ワーカー同時コールド launch が一律 +3.3s 遅れた実害。
+    run が遅いときは top の qemu と run 同梱 host-metrics.ndjson を先に見る)
 - **シミュレータのコールドブート直後は Spotlight インデックスが計測を汚す**: 設定トップに
   「検索とSiriを最適化中」行(id=com.apple.settings.spotlightIndexingProgress)が挿入され、
   CPU も食う(負荷下ではタイムアウト失敗を誘発。完了まで10分超の個体もある)。ベンチ前の
