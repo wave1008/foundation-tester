@@ -148,8 +148,12 @@ public enum AndroidDeviceCatalog {
     }
 
     /// adb 不安定等で取得できない場合は安全側(未完了=false)を返す
-    /// (呼び出し元は「ブリッジ APK インストールを試みてよいか」の判定にこれを使う)
-    public static func bootCompleted(serial: String) -> Bool {
+    /// (呼び出し元は「ブリッジ APK インストールを試みてよいか」の判定にこれを使う)。
+    /// gRPC getStatus.booted は true のときだけ確定として使い、false/取得不可は従来の getprop で
+    /// 再確認する(booted の立つタイミングが sys.boot_completed と同一である保証がないため、
+    /// 判定 semantics を変えない安全側)
+    public static func bootCompleted(serial: String) async -> Bool {
+        if await EmulatorControl.statusBooted(serial: serial) == true { return true }
         guard let adbPath = try? AndroidDriver.findADB() else { return false }
         guard let result = try? Shell.run(
             [adbPath, "-s", serial, "shell", "getprop", "sys.boot_completed"]) else {
@@ -158,9 +162,13 @@ public enum AndroidDeviceCatalog {
         return result.output.trimmingCharacters(in: .whitespacesAndNewlines) == "1"
     }
 
-    /// `adb emu avd name`(出力 "<AVD名>\nOK")が空/失敗の場合は getprop の
+    /// serial → AVD 名。まずディスカバリファイル(adb 不要・EmulatorControl.avdName)、
+    /// 無ければ `adb emu avd name`(出力 "<AVD名>\nOK")、それも空/失敗なら getprop の
     /// ro.boot.qemu.avd_name / ro.kernel.qemu.avd_name にフォールバック(環境依存で emu が返さない)
     static func avdName(adbPath: String, serial: String) -> String? {
+        if let name = EmulatorControl.avdName(serial: serial) {
+            return name
+        }
         if let output = try? Shell.run([adbPath, "-s", serial, "emu", "avd", "name"], timeout: 10).output,
            let first = output.split(separator: "\n").first
                .map({ $0.trimmingCharacters(in: .whitespaces) }),

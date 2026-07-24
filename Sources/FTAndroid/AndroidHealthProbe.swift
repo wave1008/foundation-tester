@@ -41,9 +41,10 @@ public enum AndroidHealthProbe {
         return renderMode(fromSurfaceFlinger: result.output)
     }
 
-    /// serial のエミュレータに adb で2プローブを実行する。adb 失敗(コマンドエラー・出力パース
-    /// 不能)はそのプローブの判定をスキップ(=異常扱いしない。誤検知よりプローブ欠測を優先)。
-    public static func observeIssues(serial: String, hostNow: Date = Date()) -> Set<String> {
+    /// serial のエミュレータにプローブを実行する。wifi/clock は adb shell(gRPC 代替なし)、
+    /// screencap は gRPC 優先(EmulatorControl)。取得失敗(コマンドエラー・出力パース不能)は
+    /// そのプローブの判定をスキップ(=異常扱いしない。誤検知よりプローブ欠測を優先)。
+    public static func observeIssues(serial: String, hostNow: Date = Date()) async -> Set<String> {
         guard let adbPath = try? AndroidDriver.findADB() else { return [] }
         var issues: Set<String> = []
         if let wifi = try? Shell.run([adbPath, "-s", serial, "shell", "cmd", "wifi", "status"]),
@@ -55,8 +56,7 @@ public enum AndroidHealthProbe {
                        thresholdSeconds: clockSkewThresholdSeconds) == true {
             issues.insert(issueClockSkew)
         }
-        if let cap = try? Shell.runData([adbPath, "-s", serial, "exec-out", "screencap", "-p"]),
-           cap.status == 0, blankScreen(pngByteCount: cap.data.count) {
+        if let count = await screencapByteCount(serial: serial), blankScreen(pngByteCount: count) {
             issues.insert(issueBlankScreen)
         }
         return issues
@@ -74,7 +74,7 @@ public enum AndroidHealthProbe {
                                            intervalMs: UInt64 = 8_000) async -> Bool {
         var observed: [Bool] = []
         for i in 0..<max(samples, 1) {
-            let blank = probeBlank(serial: serial)
+            let blank = await probeBlank(serial: serial)
             observed.append(blank)
             if !blank { break }  // 非blank観測=フラッピングの回復側。即座に健全確定し以降は待たない
             if i < samples - 1 {
@@ -91,7 +91,7 @@ public enum AndroidHealthProbe {
     public static func isBlankObserved(serial: String, samples: Int = 4,
                                        intervalMs: UInt64 = 2_000) async -> Bool {
         for i in 0..<max(samples, 1) {
-            if probeBlank(serial: serial) { return true }
+            if await probeBlank(serial: serial) { return true }
             if i < samples - 1 {
                 try? await Task.sleep(nanoseconds: intervalMs * 1_000_000)
             }
@@ -105,16 +105,25 @@ public enum AndroidHealthProbe {
     /// 対照実験 2026-07-25、docs/performance-tuning.md §7)。
     /// 1サイクル(dwell 1.5s ≈4s)で直らない抵抗性の変種が実在し(wake 後 6s 待っても blank)、
     /// dwell 3s の2サイクル目で回復する(実測)。成功時 ~4s・抵抗変種のみ ~11s。
-    /// 戻り値: 修復後の再プローブで非 blank になったら true。adb 解決失敗のみ false。
+    /// 注入は gRPC 優先(sleep/wake ≈1.2ms×2・adb 死亡個体にも届く)・adb フォールバック
+    /// (adb 経路は KEYCODE_SLEEP/WAKEUP、gRPC 経路は evdev 142/116。KEY_WAKEUP=143 は
+    /// emulator の変換欠落で不発のため使わない。EmulatorGrpcSession.sleepWake 参照)。
+    /// 戻り値: 修復後の再プローブで非 blank になったら true。注入経路が両方ない場合のみ false。
     /// プローブ取得失敗は probeBlank の「非 blank」扱いに倒れ true になる(誤除外しない安全側)。
     public static func repairBlankDisplay(serial: String) async -> Bool {
-        guard let adbPath = try? AndroidDriver.findADB() else { return false }
+        let adbPath = try? AndroidDriver.findADB()
         for dwellNs: UInt64 in [1_500_000_000, 3_000_000_000] {
-            _ = try? Shell.run([adbPath, "-s", serial, "shell", "input", "keyevent", "KEYCODE_SLEEP"])
+            if await EmulatorControl.sleepWake(serial: serial, dwellNs: dwellNs) {
+                // gRPC 経路は dwell 済み(sleep→dwell→wake)。wake 後の整定だけ待つ
+            } else if let adbPath {
+                _ = try? Shell.run([adbPath, "-s", serial, "shell", "input", "keyevent", "KEYCODE_SLEEP"])
+                try? await Task.sleep(nanoseconds: dwellNs)
+                _ = try? Shell.run([adbPath, "-s", serial, "shell", "input", "keyevent", "KEYCODE_WAKEUP"])
+            } else {
+                return false
+            }
             try? await Task.sleep(nanoseconds: dwellNs)
-            _ = try? Shell.run([adbPath, "-s", serial, "shell", "input", "keyevent", "KEYCODE_WAKEUP"])
-            try? await Task.sleep(nanoseconds: dwellNs)
-            if !probeBlank(serial: serial) { return true }
+            if await !probeBlank(serial: serial) { return true }
         }
         return false
     }
@@ -134,15 +143,26 @@ public enum AndroidHealthProbe {
         return true
     }
 
-    /// serial に1回 screencap して blank 判定する。adb 取得失敗(コマンドエラー・status != 0)は
-    /// 「blank ではない」扱い(誤って健全機を除外しない安全側)
-    private static func probeBlank(serial: String) -> Bool {
+    /// serial に1回 screencap して blank 判定する。取得失敗(gRPC/adb 両方不可)は
+    /// 「blank ではない」扱い(誤って健全機を除外しない安全側)。
+    /// 凍結中の見え方は経路で異なる(adb=白 / gRPC=黒。2026-07-25 実測)が、どちらも一様フレーム
+    /// なのでサイズ閾値判定は共通に機能する
+    private static func probeBlank(serial: String) async -> Bool {
+        guard let count = await screencapByteCount(serial: serial) else { return false }
+        return blankScreen(pngByteCount: count)
+    }
+
+    /// PNG スクリーンショットのバイト数(gRPC 優先・adb フォールバック)。nil = 両経路とも取得失敗
+    private static func screencapByteCount(serial: String) async -> Int? {
+        if let png = await EmulatorControl.screenshotPNG(serial: serial) {
+            return png.count
+        }
         guard let adbPath = try? AndroidDriver.findADB(),
               let cap = try? Shell.runData([adbPath, "-s", serial, "exec-out", "screencap", "-p"]),
               cap.status == 0 else {
-            return false
+            return nil
         }
-        return blankScreen(pngByteCount: cap.data.count)
+        return cap.data.count
     }
 
     /// 純粋な確定ロジック: 全サンプルが blank なら true、1つでも非blankがあれば false、

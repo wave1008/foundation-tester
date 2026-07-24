@@ -24,6 +24,11 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.5.0"),
         // @TestClass/@Test マクロの実装(コンパイル時のみ。成果物にはリンクされない)
         .package(url: "https://github.com/swiftlang/swift-syntax", "600.0.1"..<"700.0.0"),
+        // エミュレータ EmulatorController gRPC クライアント(FTEmulatorGrpc)。
+        // 3 リポジトリで1セット(core / NIO トランスポート / protobuf ランタイム)
+        .package(url: "https://github.com/grpc/grpc-swift-2.git", from: "2.0.0"),
+        .package(url: "https://github.com/grpc/grpc-swift-nio-transport.git", from: "2.0.0"),
+        .package(url: "https://github.com/grpc/grpc-swift-protobuf.git", from: "2.0.0"),
     ],
     targets: [
         // ステップモデル・AppDriverプロトコル・StepExecutor・スナップショット描画など
@@ -44,10 +49,21 @@ let package = Package(
             dependencies: ["FTCore"],
             swiftSettings: swift5Mode
         ),
+        // エミュレータ EmulatorController gRPC クライアント(Generated/ は protoc 生成コードの
+        // vendored コピー。proto の正は third_party/emulator-proto/。再生成手順は同ディレクトリの
+        // README を参照。受け手ビルドに protoc を要求しないため生成物をコミットする)
+        .target(
+            name: "FTEmulatorGrpc",
+            dependencies: [
+                .product(name: "GRPCCore", package: "grpc-swift-2"),
+                .product(name: "GRPCNIOTransportHTTP2", package: "grpc-swift-nio-transport"),
+                .product(name: "GRPCProtobuf", package: "grpc-swift-protobuf"),
+            ]
+        ),
         // Android ドライバ(常駐ブリッジ。AppDriver の別実装)
         .target(
             name: "FTAndroid",
-            dependencies: ["FTCore", "FTBridgeClient"],
+            dependencies: ["FTCore", "FTBridgeClient", "FTEmulatorGrpc"],
             swiftSettings: swift5Mode
         ),
         // MCP サーバ(stdio)。Claude Code 等のエージェントからブリッジ操作・フロー実行を使えるようにする

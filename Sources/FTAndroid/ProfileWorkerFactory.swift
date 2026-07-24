@@ -104,8 +104,14 @@ public enum ProfileWorkerFactory {
             // プロセスが即終了する経路=最も reboot が必要な場面で発行前に死ぬ)。reboot 完了は
             // 待たない(adb reboot は発行後すぐ返る)。次 run が reboot 中に来ても serial 未解決 or
             // blank 扱いで除外継続=安全側
-            if let adbPath, let serial = workers[index].connection.serial {
-                _ = try? Shell.run([adbPath, "-s", serial, "reboot"], timeout: 15)
+            if let serial = workers[index].connection.serial {
+                // adb reboot が発行できない/失敗した個体のみ gRPC RESET(VM リセット=guest reboot 相当)
+                let issuedViaAdb = adbPath.flatMap {
+                    try? Shell.run([$0, "-s", serial, "reboot"], timeout: 15)
+                }?.status == 0
+                if !issuedViaAdb {
+                    _ = await EmulatorControl.reset(serial: serial)
+                }
             }
         }
         return BlankScreenTriage(

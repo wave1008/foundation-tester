@@ -130,23 +130,32 @@ public final class AndroidDriver: AppDriver {
         persistState()
     }
 
-    /// タスク一覧(最近使ったアプリ)を開く。
+    /// タスク一覧(最近使ったアプリ)を開く。gRPC "AppSwitch"(proto が Overview 動作を明記)優先・
+    /// adb keyevent フォールバック。
     public func openAppSwitcher() async throws {
-        let result = try adb(["shell", "input", "keyevent", "KEYCODE_APP_SWITCH"])
-        guard result.status == 0 else {
-            throw DriverError.badResponse(status: Int(result.status),
-                body: "タスク一覧を開けませんでした: \(result.tail)")
+        if let serial, await EmulatorControl.namedKeypress(serial: serial, key: "AppSwitch") {
+            // gRPC 成功
+        } else {
+            let result = try adb(["shell", "input", "keyevent", "KEYCODE_APP_SWITCH"])
+            guard result.status == 0 else {
+                throw DriverError.badResponse(status: Int(result.status),
+                    body: "タスク一覧を開けませんでした: \(result.tail)")
+            }
         }
         // keyevent は遷移完了を待たないため、直後の snapshot 用の整定待ち(activate と同様)
         try await Task.sleep(nanoseconds: 800_000_000)
     }
 
-    /// ホーム画面に戻る。
+    /// ホーム画面に戻る。gRPC "GoHome" 優先・adb keyevent フォールバック。
     public func home() async throws {
-        let result = try adb(["shell", "input", "keyevent", "KEYCODE_HOME"])
-        guard result.status == 0 else {
-            throw DriverError.badResponse(status: Int(result.status),
-                body: "ホーム画面に戻れませんでした: \(result.tail)")
+        if let serial, await EmulatorControl.namedKeypress(serial: serial, key: "GoHome") {
+            // gRPC 成功
+        } else {
+            let result = try adb(["shell", "input", "keyevent", "KEYCODE_HOME"])
+            guard result.status == 0 else {
+                throw DriverError.badResponse(status: Int(result.status),
+                    body: "ホーム画面に戻れませんでした: \(result.tail)")
+            }
         }
         // keyevent は遷移完了を待たないため、直後の snapshot 用の整定待ち(openAppSwitcher と同様)
         try await Task.sleep(nanoseconds: 800_000_000)
@@ -203,12 +212,19 @@ public final class AndroidDriver: AppDriver {
         try await withBridge { try await $0.swipe(direction) }
     }
 
-    /// 2点間ドラッグ。ブリッジ経由ではなく adb 直(input swipe は snapshot と同じピクセル座標)。
-    /// pressSeconds は input swipe に対応がなく未使用。durationSeconds を input swipe の duration(ms)へ
-    /// 変換し 50〜10000ms にクランプする。
+    /// 2点間ドラッグ。ブリッジ経由ではなく gRPC タッチ合成(down→補間 move→up)優先・
+    /// adb input swipe フォールバック(どちらも snapshot と同じピクセル座標)。
+    /// gRPC はゲスト内 app_process 起動(~300ms/回)が無くステップ列が高速。
+    /// pressSeconds は対応がなく未使用。durationSeconds を duration(ms)へ変換し 50〜10000ms にクランプ。
     public func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
                      pressSeconds: Double, durationSeconds: Double) async throws {
         let durationMs = min(max(Int((durationSeconds * 1000).rounded()), 50), 10000)
+        if let serial, await EmulatorControl.drag(serial: serial,
+                                      fromX: Int32(fromX.rounded()), fromY: Int32(fromY.rounded()),
+                                      toX: Int32(toX.rounded()), toY: Int32(toY.rounded()),
+                                      durationMs: durationMs) {
+            return
+        }
         let result = try adb(["shell", "input", "swipe",
                               String(Int(fromX.rounded())), String(Int(fromY.rounded())),
                               String(Int(toX.rounded())), String(Int(toY.rounded())),
@@ -230,9 +246,13 @@ public final class AndroidDriver: AppDriver {
         try await withBridge { try await $0.press(x: center.x, y: center.y, duration: duration) }
     }
 
-    /// 座標ロングプレス。同一点への input swipe が Android の標準的な長押し合成手段。
+    /// 座標ロングプレス。gRPC タッチ(down→保持→up)優先・同一点 input swipe フォールバック。
     public func press(x: Double, y: Double, duration: Double) async throws {
         let durationMs = min(max(Int((duration * 1000).rounded()), 300), 10000)
+        if let serial, await EmulatorControl.longPress(serial: serial, x: Int32(x.rounded()),
+                                           y: Int32(y.rounded()), durationMs: durationMs) {
+            return
+        }
         let px = String(Int(x.rounded()))
         let py = String(Int(y.rounded()))
         let result = try adb(["shell", "input", "swipe", px, py, px, py, String(durationMs)])
