@@ -17,12 +17,14 @@ function createHarness(options = {}) {
   const logs = [];
   const restarts = [];
   const wifiCalls = [];
+  const displayCalls = [];
   const streamRestarts = [];
   const cpuRenders = [];
   let currentTime = 0;
   let autoRepairEnabled = options.autoRepairEnabled ?? true;
   let queueBusy = options.queueBusy ?? false;
   const wifiResult = options.wifiResult ?? true;
+  const displayResult = options.displayResult ?? true;
   const streamRestartResult = options.streamRestartResult ?? true;
 
   const watchdog = new MonitorHealthWatchdog({
@@ -33,6 +35,10 @@ function createHarness(options = {}) {
     runWifiRepair: async (serial) => {
       wifiCalls.push(serial);
       return wifiResult;
+    },
+    runDisplayRepair: async (serial) => {
+      displayCalls.push(serial);
+      return displayResult;
     },
     restartStream: (name) => {
       streamRestarts.push(name);
@@ -49,6 +55,7 @@ function createHarness(options = {}) {
     logs,
     restarts,
     wifiCalls,
+    displayCalls,
     streamRestarts,
     cpuRenders,
     advance: (ms) => {
@@ -66,6 +73,7 @@ function createHarness(options = {}) {
 const WIFI_REPAIR_COOLDOWN_MS = 120_000;
 const RESTART_COOLDOWN_MS = 5 * 60_000;
 const STREAM_REPAIR_COOLDOWN_MS = 120_000;
+const DISPLAY_REPAIR_COOLDOWN_MS = 60_000;
 const EPISODE_RESET_AFTER_HEALTHY_MS = 10 * 60_000;
 
 test("異常なしの観測では何も post しない", () => {
@@ -290,6 +298,9 @@ test("複数デバイスは独立して状態管理される", () => {
 test("blank-screen: restartStream=false は同サイクルで cpuFallback(forceCpuRender+enqueueRestart)へ進み、次の観測で failed", () => {
   const h = createHarness({ streamRestartResult: false });
   h.watchdog.observe([device("Pixel1", "connected", ["blank-screen"], "emulator-5554")]);
+  assert.deepEqual(h.posts.at(-1), { type: "healthWatch", name: "Pixel1", phase: "displayRepairing" }, "第一手は画面リセット");
+  h.advance(DISPLAY_REPAIR_COOLDOWN_MS);
+  h.watchdog.observe([device("Pixel1", "connected", ["blank-screen"], "emulator-5554")]);
   assert.equal(h.streamRestarts.length, 1, "ストリーム修復は試みる(失敗する)");
   assert.deepEqual(h.cpuRenders, ["Pixel1"], "ストリーム修復失敗は同サイクルで CPU 描画切替へ落ちる");
   assert.deepEqual(h.restarts, ["Pixel1"], "CPU 描画切替と同時に enqueueRestart する");
@@ -335,25 +346,31 @@ test("failed 到達後、10分健全が持続するとエピソードが破棄�
   h.watchdog.observe([device("Pixel1", "connected", ["blank-screen"], "emulator-5554")]);
   assert.deepEqual(h.posts.slice(-2), [
     { type: "healthWatch", name: "Pixel1", phase: "unhealthy" },
-    { type: "healthWatch", name: "Pixel1", phase: "streamRepairing" },
+    { type: "healthWatch", name: "Pixel1", phase: "displayRepairing" },
   ]);
-  assert.deepEqual(h.streamRestarts, ["Pixel1"], "failed 記憶が消え新エピソードとしてストリーム修復から再試行される");
+  assert.deepEqual(h.displayCalls, ["emulator-5554"], "failed 記憶が消え新エピソードとして画面リセットから再試行される");
 });
 
-test("blank-screen 検出 → ストリーム修復が先行し、失敗しなければ CPU 描画切替より軽量修復を優先する", () => {
+test("blank-screen 検出 → 画面リセットが先行し、解消しなければ ストリーム修復 → CPU 描画切替の順に重い修復へ進む", () => {
   const h = createHarness();
   h.watchdog.observe([device("Pixel1", "connected", ["blank-screen"], "emulator-5554")]);
   assert.deepEqual(h.posts, [
     { type: "healthWatch", name: "Pixel1", phase: "unhealthy" },
-    { type: "healthWatch", name: "Pixel1", phase: "streamRepairing" },
+    { type: "healthWatch", name: "Pixel1", phase: "displayRepairing" },
   ]);
-  assert.deepEqual(h.streamRestarts, ["Pixel1"]);
-  assert.equal(h.restarts.length, 0, "ストリーム修復に成功見込みの間は enqueueRestart しない");
-  assert.equal(h.cpuRenders.length, 0, "ストリーム修復に成功見込みの間は CPU 描画切替もしない");
+  assert.deepEqual(h.displayCalls, ["emulator-5554"]);
+  assert.equal(h.streamRestarts.length, 0, "画面リセットに成功見込みの間はストリーム修復しない");
+  assert.equal(h.restarts.length, 0, "画面リセットに成功見込みの間は enqueueRestart しない");
+  assert.equal(h.cpuRenders.length, 0, "画面リセットに成功見込みの間は CPU 描画切替もしない");
 
   h.watchdog.observe([device("Pixel1", "connected", ["blank-screen"], "emulator-5554")]);
   assert.equal(h.posts.length, 2, "クールダウン中は再判定しない");
-  assert.equal(h.streamRestarts.length, 1);
+  assert.equal(h.displayCalls.length, 1);
+
+  h.advance(DISPLAY_REPAIR_COOLDOWN_MS);
+  h.watchdog.observe([device("Pixel1", "connected", ["blank-screen"], "emulator-5554")]);
+  assert.deepEqual(h.posts.at(-1), { type: "healthWatch", name: "Pixel1", phase: "streamRepairing" });
+  assert.deepEqual(h.streamRestarts, ["Pixel1"]);
 
   h.advance(STREAM_REPAIR_COOLDOWN_MS);
   h.watchdog.observe([device("Pixel1", "connected", ["blank-screen"], "emulator-5554")]);
@@ -362,20 +379,40 @@ test("blank-screen 検出 → ストリーム修復が先行し、失敗しな�
   assert.deepEqual(h.restarts, ["Pixel1"], "CPU 描画切替でも down→up は enqueueRestart で駆動する");
 });
 
+test("blank-screen: 画面リセットで解消すれば ok に戻り、ストリーム修復・CPU 切替は発動しない", () => {
+  const h = createHarness();
+  h.watchdog.observe([device("Pixel1", "connected", ["blank-screen"], "emulator-5554")]);
+  assert.deepEqual(h.displayCalls, ["emulator-5554"]);
+  h.watchdog.observe([device("Pixel1", "connected", undefined, "emulator-5554")]);
+  assert.deepEqual(h.posts.at(-1), { type: "healthWatch", name: "Pixel1", phase: "ok" });
+  assert.deepEqual(h.streamRestarts, []);
+  assert.deepEqual(h.cpuRenders, []);
+  assert.deepEqual(h.restarts, []);
+});
+
 test("restartStream が false なら即 CPU 描画切替(forceCpuRender+enqueueRestart)へフォールスルーする", () => {
   const h = createHarness({ streamRestartResult: false });
   h.watchdog.observe([device("Pixel1", "connected", ["blank-screen"], "emulator-5554")]);
   assert.deepEqual(h.posts, [
     { type: "healthWatch", name: "Pixel1", phase: "unhealthy" },
-    { type: "healthWatch", name: "Pixel1", phase: "cpuFallback" },
+    { type: "healthWatch", name: "Pixel1", phase: "displayRepairing" },
   ]);
+  h.advance(DISPLAY_REPAIR_COOLDOWN_MS);
+  h.watchdog.observe([device("Pixel1", "connected", ["blank-screen"], "emulator-5554")]);
+  assert.deepEqual(h.posts.at(-1), { type: "healthWatch", name: "Pixel1", phase: "cpuFallback" });
   assert.deepEqual(h.streamRestarts, ["Pixel1"]);
   assert.deepEqual(h.cpuRenders, ["Pixel1"]);
   assert.deepEqual(h.restarts, ["Pixel1"]);
 });
 
-test("blank-screen フルラダー: streamRepair → cpuFallback → failed の全段で restarts は1回のみ(host 再起動ループなし)", () => {
+test("blank-screen フルラダー: displayRepair → streamRepair → cpuFallback → failed の全段で restarts は1回のみ(host 再起動ループなし)", () => {
   const h = createHarness();
+  h.watchdog.observe([device("Pixel1", "connected", ["blank-screen"], "emulator-5554")]);
+  assert.deepEqual(h.posts.at(-1), { type: "healthWatch", name: "Pixel1", phase: "displayRepairing" });
+  assert.deepEqual(h.displayCalls, ["emulator-5554"]);
+  assert.deepEqual(h.restarts, [], "displayRepair 段では enqueueRestart しない");
+
+  h.advance(DISPLAY_REPAIR_COOLDOWN_MS);
   h.watchdog.observe([device("Pixel1", "connected", ["blank-screen"], "emulator-5554")]);
   assert.deepEqual(h.posts.at(-1), { type: "healthWatch", name: "Pixel1", phase: "streamRepairing" });
   assert.equal(h.streamRestarts.length, 1);
@@ -395,6 +432,8 @@ test("blank-screen フルラダー: streamRepair → cpuFallback → failed の�
 
 test("cpuFallback は1エピソードにつき最大1回。failed 到達後も blank-screen を観測し続けて increment しない", () => {
   const h = createHarness();
+  h.watchdog.observe([device("Pixel1", "connected", ["blank-screen"], "emulator-5554")]);
+  h.advance(DISPLAY_REPAIR_COOLDOWN_MS);
   h.watchdog.observe([device("Pixel1", "connected", ["blank-screen"], "emulator-5554")]);
   h.advance(STREAM_REPAIR_COOLDOWN_MS);
   h.watchdog.observe([device("Pixel1", "connected", ["blank-screen"], "emulator-5554")]);
@@ -429,11 +468,12 @@ test("failed 到達後に ok→再異常 を短時間で繰り返しても phase
   assert.deepEqual(h.posts.at(-1), { type: "healthWatch", name: "Pixel1", phase: "failed" });
 });
 
-test("wifi-disabled と blank-screen が同時なら Wi-Fi 修復ではなくストリーム修復を優先する", () => {
+test("wifi-disabled と blank-screen が同時なら Wi-Fi 修復ではなく画面リセットを優先する", () => {
   const h = createHarness();
   h.watchdog.observe([device("Pixel1", "connected", ["wifi-disabled", "blank-screen"], "emulator-5554")]);
   assert.deepEqual(h.wifiCalls, []);
-  assert.deepEqual(h.streamRestarts, ["Pixel1"]);
+  assert.deepEqual(h.displayCalls, ["emulator-5554"]);
+  assert.deepEqual(h.streamRestarts, []);
 });
 
 test("clock-skew + inRun:true → host 再起動を保留し続け、inRun:false になった観測で初めて restarting へ進む", () => {
@@ -464,8 +504,13 @@ test("blank-screen + inRun:true でも CPU 描画フォールバックの再起�
   h.watchdog.observe([device("Pixel1", "connected", ["blank-screen"], "emulator-5554", true)]);
   assert.deepEqual(h.posts, [
     { type: "healthWatch", name: "Pixel1", phase: "unhealthy" },
-    { type: "healthWatch", name: "Pixel1", phase: "streamRepairing" },
+    { type: "healthWatch", name: "Pixel1", phase: "displayRepairing" },
   ]);
+  assert.deepEqual(h.displayCalls, ["emulator-5554"], "inRun:true でも画面リセットは実行される");
+
+  h.advance(DISPLAY_REPAIR_COOLDOWN_MS);
+  h.watchdog.observe([device("Pixel1", "connected", ["blank-screen"], "emulator-5554", true)]);
+  assert.deepEqual(h.posts.at(-1), { type: "healthWatch", name: "Pixel1", phase: "streamRepairing" });
   assert.deepEqual(h.streamRestarts, ["Pixel1"]);
 
   h.advance(STREAM_REPAIR_COOLDOWN_MS);

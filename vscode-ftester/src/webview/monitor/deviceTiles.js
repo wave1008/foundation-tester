@@ -27,6 +27,7 @@ const BRIDGE_WATCH_LABEL = {
 const HEALTH_WATCH_LABEL = {
   unhealthy: { label: t('wvMonitor.footer.healthUnhealthy'), warn: true },
   repairing: { label: t('wvMonitor.footer.healthWifiRepairing'), warn: true },
+  displayRepairing: { label: t('wvMonitor.footer.healthDisplayRepairing'), warn: true },
   streamRepairing: { label: t('wvMonitor.footer.healthStreamRepairing'), warn: true },
   cpuFallback: { label: t('wvMonitor.footer.healthCpuFallback'), warn: true },
   restarting: { label: t('wvMonitor.footer.healthRestarting'), warn: true },

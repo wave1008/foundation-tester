@@ -27,7 +27,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import type { Readable } from "node:stream";
 import * as vscode from "vscode";
-import { repairWifi } from "./adbWifiRepair";
+import { repairDisplay, repairWifi } from "./adbWifiRepair";
 import { type FtesterConfig, readRunProfileDeviceNames, resolveAdb, resolveProjectName } from "./config";
 import { currentLocale, t } from "./i18n";
 import {
@@ -217,6 +217,10 @@ class MonitorPanelController implements vscode.Disposable {
       runWifiRepair: (serial) => {
         const adb = resolveAdb();
         return adb ? repairWifi(adb, serial) : Promise.resolve(false);
+      },
+      runDisplayRepair: (serial) => {
+        const adb = resolveAdb();
+        return adb ? repairDisplay(adb, serial) : Promise.resolve(false);
       },
       restartStream: (name) => this.deviceStream.restartForDeviceName(name),
       isAutoRepairEnabled: () => this.getConfig().autoRepairDeviceHealth,

@@ -8,6 +8,7 @@ export const webviewMonitorAStrings = {
   "wvMonitor.footer.bridgeRepairFailed": { ja: "復旧失敗(ftester出力参照)", en: "Repair failed (see ftester output)" },
   "wvMonitor.footer.healthUnhealthy": { ja: "デバイス異常を検出", en: "Device issue detected" },
   "wvMonitor.footer.healthWifiRepairing": { ja: "Wi-Fi 修復中...", en: "Repairing Wi-Fi..." },
+  "wvMonitor.footer.healthDisplayRepairing": { ja: "画面リセット修復中...", en: "Resetting display..." },
   "wvMonitor.footer.healthStreamRepairing": { ja: "ストリーム修復中...", en: "Repairing stream..." },
   "wvMonitor.footer.healthCpuFallback": { ja: "CPU描画で再起動中...", en: "Restarting with CPU rendering..." },
   "wvMonitor.footer.healthRestarting": { ja: "自動再起動中...", en: "Auto-restarting..." },
