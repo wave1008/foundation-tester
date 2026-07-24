@@ -397,12 +397,18 @@ window/transition/animator の `*_scale` はチューニングノブではなく
   design.md §12.3)。対処: 凍結個体だけ swiftshader へ per-device フォールバック(design.md §12.4)
   - **トリガと軽量修復(対照実験 2026-07-25)**: 発生条件は**複数エミュレータの同時描画**
     (8台並列 run 中のみ発生。アイドル・1台単独への同一負荷では発生ゼロ=デバイス自身の負荷ではなく
-    ホスト GPU の並行合成競合)。凍結には瞬間ブリップ/自然回復(~30s)/固着の3型があり、**固着型は
-    `input keyevent KEYCODE_SLEEP`→`KEYCODE_WAKEUP` で ~4s で修復できる**(表示パイプラインの
-    無効化→再合成。readback では回復しない。回転トグルも有効。adb reboot ~60s は不要)。
+    ホスト GPU の並行合成競合)。固着型は **`input keyevent KEYCODE_SLEEP`→`KEYCODE_WAKEUP`
+    (表示パイプラインの無効化→再合成)で修復できる**。readback では回復しない。
     run 前の blank 除外(ProfileRunner.excludeBlankScreenWorkers)はこの修復を先に試し、回復すれば
-    除外しない=ワーカー全数維持(実装 AndroidHealthProbe.repairBlankDisplay)。修復は免疫ではない
-    (次の並列描画で再発し得る)。ホスト側ログは無音(統合ログ・crash レポートに qemu の痕跡なし)
+    除外しない=ワーカー全数維持(実装 AndroidHealthProbe.repairBlankDisplay。watchdog ラダーの
+    第一手 adbWifiRepair.repairDisplay も同一手順)。修復は免疫ではない(次の並列描画で再発し得る)。
+    ホスト側ログは無音(統合ログ・crash レポートに qemu の痕跡なし)
+  - **凍結の変種と修復応答(修復パラメータの根拠)**: ①瞬間ブリップ(数秒で自己回復。アプリ起動
+    白画面の誤検知も混在し得る)②自然回復型(~30s)③固着・修復可(sleep/wake 1サイクル dwell 1.5s
+    ≈4s で回復=最多)④固着・抵抗型(1サイクル+wake後6s待でも blank のまま。**dwell 3s の
+    2サイクル目で回復**)⑤固着・難治型(sleep/wake ×3・回転トグル・wm size 再構成すべて不発。
+    **guest reboot でのみ回復**。稀)。repairBlankDisplay/repairDisplay は ③④ を拾う2サイクル構成
+    (成功 ~4s・抵抗型のみ ~11s)。⑤は事前除外/watchdog の後段(swiftshader 再起動)に落ちる設計
 - **シミュレータのコールドブート直後は Spotlight インデックスが計測を汚す**: 設定トップに
   「検索とSiriを最適化中」行(id=com.apple.settings.spotlightIndexingProgress)が挿入され、
   CPU も食う(負荷下ではタイムアウト失敗を誘発。完了まで10分超の個体もある)。ベンチ前の

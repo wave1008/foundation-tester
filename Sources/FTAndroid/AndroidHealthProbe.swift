@@ -101,16 +101,21 @@ public enum AndroidHealthProbe {
 
     /// 固着した表示凍結(blank)を画面 sleep→wake で修復する。凍結は複数エミュレータ同時描画時の
     /// ホスト GPU(-gpu host)側の合成バッファ固着で、表示パイプラインの無効化→再合成が唯一の
-    /// 軽量修復(実測 ~4s・3/3。readback = screencap/screenrecord では回復しない。adb reboot ~60s は
-    /// 不要。対照実験 2026-07-25、docs/performance-tuning.md §7)。
+    /// 軽量修復(readback = screencap/screenrecord では回復しない。adb reboot ~60s は不要。
+    /// 対照実験 2026-07-25、docs/performance-tuning.md §7)。
+    /// 1サイクル(dwell 1.5s ≈4s)で直らない抵抗性の変種が実在し(wake 後 6s 待っても blank)、
+    /// dwell 3s の2サイクル目で回復する(実測)。成功時 ~4s・抵抗変種のみ ~11s。
     /// 戻り値: 修復後の再プローブで非 blank になったら true。adb 失敗は false(安全側=呼び出し側が除外)。
     public static func repairBlankDisplay(serial: String) async -> Bool {
-        guard let adbPath = try? AndroidDriver.findADB() else { return false }
-        _ = try? Shell.run([adbPath, "-s", serial, "shell", "input", "keyevent", "KEYCODE_SLEEP"])
-        try? await Task.sleep(nanoseconds: 1_500_000_000)
-        _ = try? Shell.run([adbPath, "-s", serial, "shell", "input", "keyevent", "KEYCODE_WAKEUP"])
-        try? await Task.sleep(nanoseconds: 1_500_000_000)
-        return !probeBlank(serial: serial)
+        for dwellNs: UInt64 in [1_500_000_000, 3_000_000_000] {
+            guard let adbPath = try? AndroidDriver.findADB() else { return false }
+            _ = try? Shell.run([adbPath, "-s", serial, "shell", "input", "keyevent", "KEYCODE_SLEEP"])
+            try? await Task.sleep(nanoseconds: dwellNs)
+            _ = try? Shell.run([adbPath, "-s", serial, "shell", "input", "keyevent", "KEYCODE_WAKEUP"])
+            try? await Task.sleep(nanoseconds: dwellNs)
+            if !probeBlank(serial: serial) { return true }
+        }
+        return false
     }
 
     /// serial に1回 screencap して blank 判定する。adb 取得失敗(コマンドエラー・status != 0)は
