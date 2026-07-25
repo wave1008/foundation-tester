@@ -2,7 +2,7 @@
   "name": "vscode-ftester",
   "displayName": "ftester",
   "description": "%ftester.extension.description%",
-  "version": "0.0.389",
+  "version": "0.0.390",
   "private": true,
   "publisher": "wave1008",
   "license": "MIT",
@@ -414,8 +414,6 @@
     "typescript": "^6.0.3"
   },
   "dependencies": {
-    "@grpc/grpc-js": "^1.10.0",
-    "@grpc/proto-loader": "^0.7.13",
     "@vscode/debugadapter": "^1.65.0",
     "@vscode/debugprotocol": "^1.65.0"
   }

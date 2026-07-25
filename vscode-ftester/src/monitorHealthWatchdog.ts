@@ -24,8 +24,8 @@ export interface MonitorHealthWatchdogDeps {
   forceCpuRender(name: string): void;
   /** adb で Wi-Fi を再有効化する軽量修復。解決失敗・実行失敗は false(例外は投げない)。 */
   runWifiRepair(serial: string): Promise<boolean>;
-  /** adb の画面 sleep→wake で凍結表示バッファを再合成させる軽量修復(adbWifiRepair.repairDisplay)。
-   * 解決失敗・実行失敗は false(例外は投げない)。 */
+  /** 画面 sleep→wake で凍結表示バッファを再合成させる軽量修復(adbWifiRepair.repairDisplay →
+   * `ftester api repair-display`)。解決失敗・実行失敗は false(例外は投げない)。 */
   runDisplayRepair(serial: string): Promise<boolean>;
   /** MonitorDeviceStreamController.restartForDeviceName への委譲。稼働中パイプラインが無ければ
    * false(ポーリングモード・諦め済み等)。 */
