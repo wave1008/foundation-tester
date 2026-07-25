@@ -10,6 +10,7 @@
   "ftester.config.heal.description": "実行時に FM によるロケータ自己修復(--heal)を有効にします。実行完了後、修復候補があれば確認パネルが開き、承認するとソースに反映されます。",
   "ftester.config.monitorInterval.description": "デバイスモニター(ftester: デバイスモニターを表示)の更新間隔(秒)。0.5 未満は 0.5 として扱われます。",
   "ftester.config.monitorMaxWidth.description": "デバイスモニターのフレーム画像の長辺ピクセル数。大きいほど鮮明になりますが転送量が増えます(240〜1600)。",
+  "ftester.config.monitorDeviceFilter.description": "デバイスモニターがタイル表示するデバイスの範囲。\"all\": 監視スコープの全デバイス。\"running\": そのうち起動中のみ。通常はモニターのプロファイル選択(「(起動中のデバイス)」)から設定します。",
   "ftester.config.liveFps.description": "ライブ操作タブの自動フレーム更新レート上限(fps)。大きいほど滑らかですがホスト負荷が増えます(3〜30)。",
   "ftester.config.iosStreamEnabled.description": "iOS シミュレータのライブ操作で画面を映像ストリーミング(ftester-simstream)で更新します。無効の場合やヘルパー未ビルドの場合はポーリングにフォールバックします。",
   "ftester.config.androidStreamEnabled.description": "Android 実機/エミュレータのライブ操作で画面を映像ストリーミング(ftester-androidstream)で更新します。無効の場合やヘルパー未ビルド・adb 未検出の場合はポーリングにフォールバックします。",

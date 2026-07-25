@@ -28,10 +28,9 @@ import * as path from "node:path";
 import type { Readable } from "node:stream";
 import * as vscode from "vscode";
 import { repairDisplay, repairWifi } from "./adbWifiRepair";
-import { type FtesterConfig, readRunProfileDeviceNames, resolveAdb, resolveProjectName } from "./config";
+import { type FtesterConfig, resolveAdb, resolveProjectName } from "./config";
 import { currentLocale, t } from "./i18n";
 import {
-  devicesToShutdownOnScopeChange,
   isMonitorFromWebviewMessage,
   type MonitorControlCommand,
   type MonitorDevice,
@@ -235,6 +234,12 @@ class MonitorPanelController implements vscode.Disposable {
         // ftester.project の変更は対象マシンプロファイル一覧にも影響するため、こちらも最新化する。
         this.profiles.postMachineProfileInfo();
       }
+      // 表示フィルタの変更は監視スコープを変えない(モニター再起動なしで即時反映する)。
+      // 「起動中のデバイス」選択時は profile と 2 設定同時に変わるため、両分岐が走る。
+      if (event.affectsConfiguration("ftester.monitorDeviceFilter")) {
+        this.profiles.postProfileInfo();
+        this.processManager.repostDevicesWithCurrentFilter();
+      }
     });
   }
 
@@ -255,28 +260,7 @@ class MonitorPanelController implements vscode.Disposable {
     if (scope === this.processManager.monitorScope) {
       return;
     }
-    this.enqueueShutdownOutsideNewScope(resolution.project, config.profile);
     this.processManager.restartMonitorProcess();
-  }
-
-  /**
-   * 切り替え先プロファイルに定義されていない稼働中デバイスをdownする(定義済みデバイスは
-   * 稼働中でもそのまま — 自動起動はしない)。newProfileが空、またはreadRunProfileDeviceNamesが
-   * nullを返す場合はdevicesToShutdownOnScopeChange(devices, null)が空配列を返すため何もしない。
-   */
-  private enqueueShutdownOutsideNewScope(project: string, newProfile: string): void {
-    const newScopeNames =
-      newProfile === "" ? null : readRunProfileDeviceNames(this.workspaceRoot, project, newProfile);
-    const targets = devicesToShutdownOnScopeChange(this.processManager.lastKnownDevices, newScopeNames);
-    if (targets.length === 0) {
-      return;
-    }
-    this.outputChannel.appendLine(
-      `[ftester] ${t("monitor.log.stoppingOutOfScopeDevices", { names: targets.join(", ") })}`,
-    );
-    for (const name of targets) {
-      this.deviceOps.enqueueLifecycleJob({ kind: "device", name, op: "down" });
-    }
   }
 
   /** モニターは ViewColumn.Beside(通常2列目以降)に開く。生成ソースはその1つ左(モニターが

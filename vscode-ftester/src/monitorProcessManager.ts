@@ -10,6 +10,7 @@ import { t } from "./i18n";
 import {
   type MonitorControlCommand,
   type MonitorDevice,
+  filterMonitorDevices,
   isMonitorEvent,
   monitorControlLine,
   sortMonitorDevices,
@@ -108,12 +109,12 @@ export class MonitorProcessManager {
    */
   private hostMetricsGaveUp = false;
   /**
-   * 直近の monitorDevices イベントで観測したデバイス一覧。モニタープロセスの再起動(プロファイル
-   * 切り替え含む)を跨いで保持し、リセットしない — restartMonitorIfScopeChanged() が切り替え直前
-   * (旧スコープ)の最終観測を元に、新スコープ外の稼働中デバイスを判定する
-   * (devicesToShutdownOnScopeChange)ために必要。enqueueShutdownOutsideNewScope() が読むので公開する。
+   * 直近の monitorDevices で観測したデバイス一覧(整列済み・表示フィルタ適用前)。
+   * ftester.monitorDeviceFilter が変わったときに次の監視サイクル(最大 interval 秒)を待たず
+   * 絞り込み直して再送するためだけに保持する。monitor プロセス起動時にクリアし、旧スコープの
+   * 観測が新スコープの表示として再送されないようにする。
    */
-  lastKnownDevices: readonly MonitorDevice[] = [];
+  private latestDevices: readonly MonitorDevice[] | undefined;
 
   /** テスト用の spawn 差し替え口(既定は実 spawn)。monitorProcessManager.test.mjs 参照。 */
   constructor(
@@ -146,6 +147,7 @@ export class MonitorProcessManager {
   }
 
   startMonitorProcess(): void {
+    this.latestDevices = undefined;
     const config = this.deps.getConfig();
     const resolution = resolveProjectName(this.deps.workspaceRoot, config);
     if (resolution.kind !== "resolved") {
@@ -214,12 +216,18 @@ export class MonitorProcessManager {
         let value = rawValue;
         if (value.kind === "monitorDevices") {
           // プロファイルタブの表示順に整列してから全消費側へ配る(sortMonitorDevices 参照)。
-          value = { kind: "monitorDevices", devices: sortMonitorDevices(value.devices) };
-          // モニター再起動(プロファイル切り替え含む)を跨いで保持する(lastKnownDevices 宣言部参照)。
-          this.lastKnownDevices = value.devices;
+          this.latestDevices = sortMonitorDevices(value.devices);
           // MonitorDeviceStreamController のパイプライン張り替え判定に使う(monitorPanel.ts で配線)。
-          this.deps.notifyMonitorDevices(value.devices);
+          // 表示フィルタ前を渡す: ウォッチドッグは offline の観測で連続回数をリセットするため、
+          // 絞り込んだ一覧を渡すと古い booted 連続回数が次の起動へ持ち越されて誤検知に寄る。
+          this.deps.notifyMonitorDevices(this.latestDevices);
+          value = {
+            kind: "monitorDevices",
+            devices: filterMonitorDevices(this.latestDevices, this.deps.getConfig().monitorDeviceFilter),
+          };
         }
+        // monitorFrame は state==connected のデバイスにしか来ない(ApiMonitorCommand.swift)ため、
+        // "running" フィルタで消える対象=offline とは重ならない。フレーム側の絞り込みは不要。
         if (value.kind === "monitorFrame" && this.deps.isDeviceStreaming(value.device)) {
           // 生成側(suppressFrames)でも止めているが、送信中フレームとの競合・再起動直後の残りを
           // 吸収する安全弁としてここでも間引く(monitorDeviceStreamController.ts 冒頭コメント参照)。
@@ -284,6 +292,20 @@ export class MonitorProcessManager {
         proc.kill("SIGKILL");
       }
     }, 2000);
+  }
+
+  /**
+   * ftester.monitorDeviceFilter の変更を、次の監視サイクルを待たず直近の観測へ適用して再送する
+   * (monitor プロセスの再起動は不要 — 監視スコープは変わらず拡張側の表示フィルタだけが変わるため)。
+   * 観測がまだ無い(起動直後・スコープ変更直後)なら何もしない: 次サイクルでフィルタ込みで届く。
+   */
+  repostDevicesWithCurrentFilter(): void {
+    if (!this.latestDevices) {
+      return;
+    }
+    // webview への再送のみ(notifyMonitorDevices は呼ばない — ホスト側の状態は何も変わっていない)。
+    const visible = filterMonitorDevices(this.latestDevices, this.deps.getConfig().monitorDeviceFilter);
+    this.deps.post(toWebviewMessage({ kind: "monitorDevices", devices: visible }));
   }
 
   /**
