@@ -134,6 +134,28 @@ export function resolveSimStream(config: FtesterConfig): string | undefined {
   return undefined;
 }
 
+/** binaryPath を見つけた ftester-devicepoll のパスをキーにキャッシュ(resolveSimStream と同じ方針)。 */
+const devicePollCache = new Map<string, string>();
+
+/**
+ * ftester バイナリと同じディレクトリにある ftester-devicepoll(**実機**のライブ映像 helper)の絶対パス。
+ * 実機はスクリーンショットのポーリングで配信する: iOS 実機は simstream が CoreSimulator 私有 API の
+ * ため不可、Android 実機は screenrecord だと静止画面でフレームが流れない(Sources/ftester-devicepoll
+ * の冒頭コメント参照)。resolveSimStream と同じ方針(未検出は undefined・正の結果のみキャッシュ)。
+ */
+export function resolveDevicePoll(config: FtesterConfig): string | undefined {
+  const cached = devicePollCache.get(config.binaryPath);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const candidate = path.join(path.dirname(config.binaryPath), "ftester-devicepoll");
+  if (isExecutableFile(candidate)) {
+    devicePollCache.set(config.binaryPath, candidate);
+    return candidate;
+  }
+  return undefined;
+}
+
 /** binaryPath を見つけた ftester-androidstream のパスをキーにキャッシュ(resolveSimStream と同じ方針)。 */
 const androidStreamCache = new Map<string, string>();
 
@@ -375,15 +397,20 @@ export function readMachineDeviceNames(workspaceRoot: string, project: string): 
  * profiles/machines/<マシン名>.json の devices[] 1件分。name のみ必須(simulator/os/udid は
  * iOS 用、avd は Android 用。未知キーは無視)。monitorModel.ts にも同じ形の型を独立定義している
  * (vscode 非依存を保つため、型のためだけに config.ts を import させない方針)。
+ * kind="physical" は実機で、識別子は iOS=udid / Android=serial(Sources/FTCore/RunProfile.swift)。
  */
 export interface MachineDeviceEntry {
   readonly name: string;
   readonly platform: Platform;
+  readonly kind?: "virtual" | "physical";
   readonly simulator?: string;
   readonly os?: string;
   readonly udid?: string;
   readonly port?: number;
   readonly avd?: string;
+  readonly serial?: string;
+  /** 実機の機種名(表示専用。同定には使わない)。 */
+  readonly model?: string;
 }
 
 /** 1マシンプロファイル(machines/<マシン名>.json、ファイル名=マシン名)の要約。 */
@@ -398,7 +425,7 @@ function toMachineDeviceEntry(value: unknown, platform: Platform): MachineDevice
     return undefined;
   }
   const record = value as Record<string, unknown>;
-  const { name, simulator, os: osVersion, udid, port, avd } = record;
+  const { name, kind, simulator, os: osVersion, udid, port, avd, serial, model } = record;
   if (typeof name !== "string") {
     return undefined;
   }
@@ -417,14 +444,29 @@ function toMachineDeviceEntry(value: unknown, platform: Platform): MachineDevice
   if (avd !== undefined && typeof avd !== "string") {
     return undefined;
   }
+  if (serial !== undefined && typeof serial !== "string") {
+    return undefined;
+  }
+  if (model !== undefined && typeof model !== "string") {
+    return undefined;
+  }
+  // kind は省略可(未指定=virtual)。未知の値はこのエントリだけ捨てる
+  // (Swift 側は DeviceKind の decode に失敗してプロファイル全体がエラーになる。
+  // 拡張が勝手に virtual と解釈して表示すると、run では動かないものを動くように見せてしまう)
+  if (kind !== undefined && kind !== "virtual" && kind !== "physical") {
+    return undefined;
+  }
   return {
     name,
     platform,
+    kind: kind as "virtual" | "physical" | undefined,
     simulator: simulator as string | undefined,
     os: osVersion as string | undefined,
     udid: udid as string | undefined,
     port: port as number | undefined,
     avd: avd as string | undefined,
+    serial: serial as string | undefined,
+    model: model as string | undefined,
   };
 }
 

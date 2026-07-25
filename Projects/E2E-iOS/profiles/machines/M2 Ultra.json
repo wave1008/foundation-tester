@@ -114,7 +114,9 @@
       {
         "name": "iPhone wave(実機)",
         "kind": "physical",
-        "udid": "00008130-001819863E60001C"
+        "udid": "00008130-001819863E60001C",
+        "model": "iPhone 15 Pro",
+        "os": "26.5.2"
       }
     ]
   }

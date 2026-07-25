@@ -6,6 +6,7 @@
 import { vscode } from './vscodeApi.js';
 import { clampMenuPosition } from './menu.js';
 import { t } from '../i18n.js';
+import { physicalDeviceInfo } from './physicalDeviceCache.js';
 
 // ---- プロファイルタブ: マシンプロファイル ---------------------------------------
 
@@ -27,10 +28,21 @@ const editorIosFields = document.getElementById('editor-ios-fields');
 const editorAndroidFields = document.getElementById('editor-android-fields');
 const editorName = document.getElementById('editor-name');
 const editorSimulator = document.getElementById('editor-simulator');
+const editorSimulatorRow = document.getElementById('editor-simulator-row');
+const editorOsRow = document.getElementById('editor-os-row');
+const editorPhysicalFields = document.getElementById('editor-physical-fields');
+const editorModel = document.getElementById('editor-model');
+const editorModelRow = document.getElementById('editor-model-row');
+const editorPhysicalOs = document.getElementById('editor-physical-os');
+const editorPhysicalOsRow = document.getElementById('editor-physical-os-row');
 const editorOs = document.getElementById('editor-os');
 const editorUdid = document.getElementById('editor-udid');
 const editorPort = document.getElementById('editor-port');
 const editorAvd = document.getElementById('editor-avd');
+const editorAvdRow = document.getElementById('editor-avd-row');
+const editorSerial = document.getElementById('editor-serial');
+const editorSerialRow = document.getElementById('editor-serial-row');
+const editorDeviceKind = document.getElementById('editor-device-kind');
 const editorError = document.getElementById('editor-error');
 const editorConfirm = document.getElementById('editor-confirm');
 const editorCancel = document.getElementById('editor-cancel');
@@ -227,14 +239,24 @@ function renderMachineProfileBody(error) {
     for (const device of devices) {
       const row = document.createElement('div');
       row.className = 'machine-device-row';
+      const nameLine = document.createElement('div');
+      nameLine.className = 'machine-device-name-line';
       const name = document.createElement('span');
       // タイル/レーンのデバイス名ピルと同じ配色クラスを再利用する(tile-name-ios/-android)。
       name.className = 'tile-name tile-name-' + device.platform;
       name.textContent = device.name;
+      // 実機バッジはデバイス名の左(ピッカー・タイルと同じ配色 .badge-kind)
+      if (device.kind === 'physical') {
+        const badge = document.createElement('span');
+        badge.className = 'badge badge-kind';
+        badge.textContent = t('wvMonitor.tile.physicalBadge');
+        nameLine.appendChild(badge);
+      }
+      nameLine.appendChild(name);
       const detail = document.createElement('div');
       detail.className = 'machine-device-detail';
       detail.textContent = device.detail;
-      row.append(name, detail);
+      row.append(nameLine, detail);
       row.addEventListener('click', (event) => toggleDeviceRowSelection(device.name, event));
       row.addEventListener('contextmenu', (event) => {
         event.preventDefault();
@@ -282,15 +304,33 @@ const EDITOR_PLATFORM_LABEL = { ios: 'iOS', android: 'Android' };
 const editorFieldInputs = [editorName, editorPort];
 
 // undefined は空文字扱い、port は文字列化してフォーム6フィールド分を組み立てる。
+// 機種/OS 取得のために installedDevicesRequest を出したフォーム(machine+デバイス名)。
+// 無限要求ループ防止(renderDeviceEditor のコメント参照)。ピッカーを開けばキャッシュは
+// 更新されるので、ここを消して再要求させる必要はない
+const deviceInfoRequested = new Set();
+
 function deviceFieldValues(device) {
   return {
     name: device.name,
     simulator: device.simulator || '',
-    os: device.os || '',
+    os: device.os || deviceInfoFallback(device).os,
     udid: device.udid || '',
     port: device.port === undefined || device.port === null ? '' : String(device.port),
     avd: device.avd || '',
+    serial: device.serial || '',
+    // プロファイルに model/os が無い実機(この機能より前に登録したもの)は、接続中の実機から
+    // 取れた実値で補う。どちらも無ければ空(行を出さない)
+    model: device.model || deviceInfoFallback(device).model,
   };
+}
+
+/** 機種/OS の表示用フォールバック。iOS 実機=udid / Android 実機=serial / エミュ=avd で引く
+ * (シミュレータは simulator/os をプロファイルが持っているので不要)。取得前・未接続は空。 */
+function deviceInfoFallback(device) {
+  const key = device.kind === 'physical'
+    ? (device.platform === 'ios' ? device.udid : device.serial)
+    : (device.platform === 'android' ? device.avd : undefined);
+  return physicalDeviceInfo(key) || { model: '', os: '' };
 }
 
 function currentEditorValues() {
@@ -302,6 +342,7 @@ function currentEditorValues() {
     udid: editorUdid.textContent,
     port: editorPort.value,
     avd: editorAvd.textContent,
+    serial: editorSerial.textContent,
   };
 }
 
@@ -312,7 +353,8 @@ function valuesEqual(a, b) {
     a.os === b.os &&
     a.udid === b.udid &&
     a.port === b.port &&
-    a.avd === b.avd
+    a.avd === b.avd &&
+    a.serial === b.serial
   );
 }
 
@@ -342,8 +384,44 @@ function renderDeviceEditor(machine, device) {
   editorUdid.textContent = editorOriginalValues.udid;
   editorPort.value = editorOriginalValues.port;
   editorAvd.textContent = editorOriginalValues.avd;
+  editorSerial.textContent = editorOriginalValues.serial;
   editorIosFields.style.display = device.platform === 'ios' ? '' : 'none';
   editorAndroidFields.style.display = device.platform === 'android' ? '' : 'none';
+  // 実機は同定手段が違う: iOS=udid(既存行を流用)/ Android=serial(AVD の代わり)。
+  // 機種/OS は実機にもあるが**登録時に控えた表示専用の値**(model/os)。値が無い実機
+  // (旧 CLI で登録した等)は行ごと隠す — 空欄のラベルだけ残ると設定漏れに見えるため
+  const physical = device.kind === 'physical';
+  editorDeviceKind.style.display = physical ? '' : 'none';
+  editorAvdRow.style.display = physical ? 'none' : '';
+  editorSerialRow.style.display = physical ? '' : 'none';
+  // **iOS シミュレータだけは platform セクションに機種(simulator)/OS の行を持つ**
+  // (実体解決に使う値。プロファイルが保持している)。それ以外(iOS 実機・Android の
+  // 仮想/実機)は行が無いので共通ブロックで出す。両方出すと OS が 2 行になる(実害)
+  const ownsInfoRows = device.platform === 'ios' && !physical;
+  editorSimulatorRow.style.display = ownsInfoRows ? '' : 'none';
+  editorOsRow.style.display = ownsInfoRows ? '' : 'none';
+
+  // 共通ブロック。**editor-simulator を流用しない**: あれは dirty 判定の比較対象(simulator)
+  // なので model を書くと開いた瞬間に dirty になる。値が無ければ行ごと隠す
+  // (空欄のラベルだけ残ると設定漏れに見える)
+  const hasModel = !ownsInfoRows && !!editorOriginalValues.model;
+  const hasOs = !ownsInfoRows && !!editorOriginalValues.os;
+  editorModel.textContent = editorOriginalValues.model;
+  editorPhysicalOs.textContent = editorOriginalValues.os;
+  editorModelRow.style.display = hasModel ? '' : 'none';
+  editorPhysicalOsRow.style.display = hasOs ? '' : 'none';
+  editorPhysicalFields.style.display = hasModel || hasOs ? '' : 'none';
+  // 機種/OS が未取得なら取りに行く(応答は applyInstalledDevices →
+  // refreshSelectedDeviceEditor でこのフォームに反映される)。
+  // **必ず1デバイス1回に絞る**: installedDevicesRequest は毎回 `ftester api installed-devices` を
+  // spawn する(devicectl + adb getprop で数秒)。実機が未接続・AVD の config.ini に
+  // hw.device.name が無い等で値が埋まらないケースでは、応答→再描画→再要求が
+  // 永久ループになり CLI を叩き続ける(2026-07-25 のレビューで検出)
+  const infoKey = machine + '\u0000' + device.name;
+  if (!ownsInfoRows && !hasModel && !hasOs && !deviceInfoRequested.has(infoKey)) {
+    deviceInfoRequested.add(infoKey);
+    vscode.postMessage({ type: 'installedDevicesRequest' });
+  }
   editorConfirm.textContent = t('wvMonitor2.common.confirm');
   profileDetailPlaceholder.style.display = 'none';
   machineDeviceEditor.style.display = '';
@@ -378,6 +456,18 @@ function singleSelectedDevice() {
 }
 
 // 選択変更・マシン切替用。1台選択ならフォームを作り直し、それ以外はプレースホルダーに戻す。
+/** installedDevices 応答が届いたら、開いている編集フォームを埋め直す(modals.js から呼ぶ)。
+ * 編集中(dirty)は作り直さない — 入力を破棄してしまうため。 */
+export function refreshSelectedDeviceEditor() {
+  if (!editorTarget || editorDirty || editorSubmitting) {
+    return;
+  }
+  const device = singleSelectedDevice();
+  if (device) {
+    renderDeviceEditor(selectedMachine, device);
+  }
+}
+
 function rebuildEditorForSelection() {
   if (selectedDeviceNames.size >= 2) {
     clearDeviceEditor(t('wvMonitor2.machine.multiSelected', { count: selectedDeviceNames.size }));
@@ -482,6 +572,7 @@ editorConfirm.addEventListener('click', () => {
       udid: editorTarget.platform === 'ios' ? editorUdid.textContent.trim() : '',
       port: editorTarget.platform === 'ios' ? editorPort.value.trim() : '',
       avd: editorTarget.platform === 'android' ? editorAvd.textContent.trim() : '',
+      serial: editorTarget.platform === 'android' ? editorSerial.textContent.trim() : '',
     },
   });
 });

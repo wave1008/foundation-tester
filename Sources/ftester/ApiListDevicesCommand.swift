@@ -4,8 +4,11 @@
 // 再利用する(挙動を分岐させないため。private を外して共有した MonitorTarget /
 // DeviceRuntimeState も同様)。stdout には結果 1 行の JSON だけを出す(診断は stderr のみ)。
 //
-// udid: iOS は解決済みシミュレータ UDID(ApiLiveCommand --udid のブリッジ自動起動に使う)。
-// resolve 失敗・Android は null。対向: vscode-ftester/src/liveModel.ts
+// udid: iOS は解決済み UDID(シミュレータ / 実機とも。ApiLiveCommand --udid のブリッジ自動起動に
+// 使う)。resolve 失敗・Android は null。
+// kind: "virtual"(シミュレータ/エミュレータ)/ "physical"(実機)。実機は録画・画面配信が
+// できない等で扱いが変わるため消費側が判別できるようにする(追加フィールド=後方互換)。
+// 対向: vscode-ftester/src/liveModel.ts
 
 import ArgumentParser
 import Foundation
@@ -73,7 +76,8 @@ struct ApiListDevices: AsyncParsableCommand {
                 port: state.target.platform == "ios"
                     ? (state.iosPort ?? state.target.spec.port) : nil,
                 serial: state.target.platform == "android" ? state.androidSerial : nil,
-                udid: state.target.platform == "ios" ? state.iosUdid : nil)
+                udid: state.target.platform == "ios" ? state.iosUdid : nil,
+                kind: state.target.spec.isPhysical ? "physical" : "virtual")
         }
 
         let output = ApiListDevicesOutput(
@@ -99,9 +103,10 @@ private struct ApiDeviceEntry: Encodable {
     let port: UInt16?
     let serial: String?
     let udid: String?
+    let kind: String
 
     private enum CodingKeys: String, CodingKey {
-        case name, platform, state, detail, port, serial, udid
+        case name, platform, state, detail, port, serial, udid, kind
     }
 
     func encode(to encoder: Encoder) throws {
@@ -113,6 +118,7 @@ private struct ApiDeviceEntry: Encodable {
         try container.encode(port, forKey: .port)
         try container.encode(serial, forKey: .serial)
         try container.encode(udid, forKey: .udid)
+        try container.encode(kind, forKey: .kind)
     }
 }
 

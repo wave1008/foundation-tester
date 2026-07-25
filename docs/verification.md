@@ -151,9 +151,15 @@ apps プロファイルの healthCheckURL が実行開始時に警告を出す�
 - **実機とシミュレータを同じ run に混ぜられる**が、xctestrun は種別ごとに別物なので
   `prepareSharedBuilds` は**種別ごとに build-for-testing する**(1 つだけビルドすると、
   選ばれなかった側が `xctestrunNotFound` で落ちる)
-- 検証実績: iPhone 15 Pro(iOS 26.5.2)/ LAN 経由で E2E-iOS 全 20 シナリオ×3 連続グリーン
-  (2026-07-25)。ブリッジ供給は約 8 秒、run 全体は 257s(シミュレータ 2 台並列の 42.7s に対し
-  実機 1 台なので単純比較はできない)
+- 検証実績: iPhone 15 Pro(iOS 26.5.2)で E2E-iOS 全 20 シナリオ = LAN ×3・USB ×5 連続グリーン
+  (2026-07-25)。ブリッジ供給は約 8 秒。壁時計は USB 181〜191s / LAN 241〜259s
+- **トランスポートは端末の接続形態で決まる**: `devicectl` の `transportType` が `wired` でなければ
+  (= WiFi のみ)**iproxy は USB トンネルを張れない**ので lan に落ちる。ここを見ずに
+  「iproxy があれば usb」で選ぶと、`network connection was lost` で 180 秒待って失敗するだけの
+  無情報な結果になる(2026-07-25 に実際に踏んだ)。明示指定 `FT_IOS_DEVICE_TRANSPORT` は尊重する
+- **端末ロックの検出は締切後にもう一度ログを読む**。xcodebuild は諦めた時点で初めて
+  `Unlock <name> to Continue`(deviceprep Code=-3)を書くことがあり、待機ループ内の読み取りだけでは
+  間に合わずタイムアウトとしか出ない(`BridgeLauncher.waitUntilReady` の physicalDiagnosis)
 - **ブリッジのトランスポートが 2 択**(デバイス内のループバックはホストから見えない。
   Xcode 27 の devicectl にポート転送は無い)。`FT_IOS_DEVICE_TRANSPORT=lan|usb` で明示、
   未指定なら iproxy があれば usb、無ければ lan。**usb を強く推奨**(下記実測):
@@ -181,6 +187,60 @@ apps プロファイルの healthCheckURL が実行開始時に警告を出す�
 - アプリは `xcrun devicectl device install app` で入る(**署名済みの .app/.ipa が要る**)。
   SUT のシミュレータ用ビルド(`-sdk iphonesimulator`)はそのままでは使えない
 - モニター・`devices up/down` の一括操作・拡張のデバイスタイルは**まだ実機に対応していない**
+
+### 実機とモニター・API
+
+- `api list-devices` / `api monitor` は実機を返す。**状態判定は両者で共有**(`determineStates`)なので、
+  片方を直せば両方直る。実機で踏んだ罠:
+  - **Android 実機は `avd` が無いので、AVD 前提のままだと永久に offline**(「avd が未設定です」)。
+    `serial` を `adb devices` の接続一覧で確認する分岐が要る
+  - **iOS 実機の `/status` は device に機種名("iPhone")を返す**。マシンプロファイルのデバイス名
+    (例「iPhone wave(実機)」)と一致しないため、名前照合では永久に connected にならない。
+    ランナープロセスの `-destination id=<UDID>` で帰属を決める(`BridgeLauncher.portsMatching`)
+  - LAN 経由の実機ブリッジは 127.0.0.1 に居ないので、ポートスキャンは `.endpoint` を見る
+- `api installed-devices` は `ios.physicalDevices` / `android.physicalDevices` に接続中の実機を返す
+  (既存の `devices` / `avds` はシミュレータ・AVD のまま。追加フィールド=後方互換)
+- `kind`("virtual"/"physical")を `list-devices` と `monitor` の各デバイスに追加した。
+  拡張側は欠落を "virtual" に正規化する(旧 CLI 互換)
+
+### 実機と VSCode 拡張
+
+- マシンプロファイル編集フォームは実機で表示が変わる: iOS は機種/OS 行を隠し **udid** を、
+  Android は AVD 行の代わりに **serial** を readonly 表示する(いずれも実体を指すので変更不可)。
+  実機で識別子を空にした保存は拒否する(`updateDeviceInMachineProfile`)
+- デバイスタイルは実機に「実機」バッジを出す。右クリックの起動/停止は**項目を残したまま
+  ラベルを「ブリッジを起動/停止」に変える**(実機は端末そのものを起動・停止せず、操作対象は
+  ブリッジだけ)。**項目を隠してはいけない**: 隠すとモニターから実機のブリッジを起動できず、
+  タイルが「接続中」のまま何もできなくなる(2026-07-25 に実際にそうしてしまった)
+- `kind`/`serial` は拡張側の 2 箇所(`config.ts` の `MachineDeviceEntry` と `monitorModel.ts` の
+  同名型)に独立定義がある。**両方直すこと**(vscode 非依存を保つための意図的な重複)
+- webview→拡張の `machineDeviceUpdate.fields` に `serial` を足した。**拡張と webview のバンドルは
+  別々に更新されうる**ので、受信側は欠落を "" に補う(旧 webview と混ぜても壊さない)
+
+### 実機の画面配信(ftester-devicepoll)
+
+**実機は両OSとも `ftester-devicepoll`**(スクリーンショットのポーリング → MJPEG)に一本化した。
+既存の 2 ヘルパーが実機で使えないため:
+
+- `ftester-simstream` は CoreSimulator/SimulatorKit の私有 API で deviceSet から UDID を引くので
+  **iOS 実機では原理的に不可**。macOS 27 では iOS 実機を AVCaptureDevice として出す
+  **DAL プラグインも消えている**(`/System/Library/CoreMediaIO/Plug-Ins/DAL` が存在せず、
+  カメラ権限を付与した Info.plist 埋め込みバイナリでも CoreMediaIO デバイス数 0。2026-07-25 実測)
+  ので、QuickTime 方式の代替も無い
+- `ftester-androidstream`(adb screenrecord)は Android 実機だと **画面が動いている間しか
+  フレームが流れない**(操作中 455KB / 静止画面はキープアライブの 20 バイトのみ)。
+  エミュレータは静止時もフレームが出るためこの差は顕在化しない
+- あわせて **`screenrecord --time-limit 0`(無制限)は API 34 以上でしか使えない**ことも判明
+  (Android 13 実機は即終了して 47 バイト)。androidstream は API レベルで `0` / `180` を選ぶ
+
+devicepoll の要点:
+- 宛先は iOS が `--host/--port`(ブリッジの `/screenshot`)、Android が `--serial/--adb`
+  (`exec-out screencap -p`)。拡張は `api monitor` の `kind`/`host`/`port`/`serial` で振り分ける
+- 出力は **v1(MJPEG)固定**。`--max-width` は既存ヘルパーと同じく**幅**の上限
+  (ImageIO の `kCGImageSourceThumbnailMaxPixelSize` は**長辺**基準なので長辺換算して渡すこと。
+  そのまま渡すと 1080x2340 で 360 指定 → 166x360 になる)
+- 実測(2026-07-25、fps=2 / max-width 360): Android 実機 360x780 が 7 秒で 13 枚、
+  iOS 実機 360x781 が 8 秒で 16 枚。**静止画面でも出る**のがこの方式の要点
 
 ## 常駐ブリッジのセッション(iOS xcuitest を CLI で直接叩くとき)
 

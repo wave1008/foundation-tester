@@ -22,6 +22,9 @@ export const webviewMonitorAStrings = {
   "wvMonitor.deviceOpMenu.stoppingDown": { ja: "停止中...", en: "Stopping..." },
   "wvMonitor.deviceOpMenu.start": { ja: "起動", en: "Start" },
   "wvMonitor.deviceOpMenu.stop": { ja: "停止", en: "Stop" },
+  // 実機は端末そのものを起動・停止しない(操作対象はブリッジだけ)ので別ラベルにする
+  "wvMonitor.deviceOpMenu.startBridge": { ja: "ブリッジを起動", en: "Start bridge" },
+  "wvMonitor.deviceOpMenu.stopBridge": { ja: "ブリッジを停止", en: "Stop bridge" },
 
   "wvMonitor.tile.title": {
     ja: "クリックで選択 / 右クリックで起動・停止・ライブ操作",
@@ -32,6 +35,11 @@ export const webviewMonitorAStrings = {
   "wvMonitor.tile.waiting": { ja: "待機中", en: "Waiting" },
   "wvMonitor.tile.connecting": { ja: "接続中", en: "Connecting" },
   "wvMonitor.tile.cpuBadgeTitle": { ja: "CPU描画(swiftshader・フォールバック)", en: "CPU rendering (swiftshader fallback)" },
+  "wvMonitor.tile.physicalBadge": { ja: "実機", en: "Device" },
+  "wvMonitor.tile.physicalBadgeTitle": {
+    ja: "実機(シミュレータ/エミュレータではありません)。起動・停止は行いません",
+    en: "Physical device (not a simulator/emulator). It is never started or stopped.",
+  },
   "wvMonitor.tile.queuedRestart": { ja: "再起動待機", en: "Restart pending" },
   "wvMonitor.tile.queuedStart": { ja: "起動待機", en: "Start pending" },
 
@@ -63,12 +71,16 @@ export const webviewMonitorAStrings = {
   "wvMonitor.nameInput.leadingDot": { ja: "{noun}を \".\" で始めることはできません。", en: "{noun} cannot start with \".\"." },
   "wvMonitor.nameInput.duplicate": { ja: "{dupLabel}「{name}」は既に存在します。", en: "{dupLabel}\"{name}\" already exists." },
 
-  "wvMonitor.devicePick.iosCountTitle": { ja: "iOS シミュレータ ({count})", en: "iOS Simulators ({count})" },
-  "wvMonitor.devicePick.iosFetchFailed": { ja: "iOS シミュレータを取得できませんでした。", en: "Failed to retrieve iOS Simulators." },
-  "wvMonitor.devicePick.iosEmpty": { ja: "iOS シミュレータがありません。", en: "No iOS Simulators available." },
-  "wvMonitor.devicePick.androidFetchFailed": { ja: "Android AVD を取得できませんでした。", en: "Failed to retrieve Android AVDs." },
-  "wvMonitor.devicePick.androidEmpty": { ja: "Android AVD がありません。", en: "No Android AVDs available." },
-  "wvMonitor.devicePick.iosTitle": { ja: "iOS シミュレータ", en: "iOS Simulators" },
+  // グループにはシミュレータ/AVD だけでなく接続中の実機も並ぶため「デバイス」と呼ぶ
+  // (count は実機を含む合計)
+  "wvMonitor.devicePick.iosCountTitle": { ja: "iOS デバイス ({count})", en: "iOS devices ({count})" },
+  "wvMonitor.devicePick.androidCountTitle": { ja: "Android デバイス ({count})", en: "Android devices ({count})" },
+  "wvMonitor.devicePick.iosFetchFailed": { ja: "iOS シミュレータを取得できませんでした(実機は別に取得します)。", en: "Failed to retrieve iOS simulators (physical devices are retrieved separately)." },
+  "wvMonitor.devicePick.iosEmpty": { ja: "iOS シミュレータも接続中の実機もありません。", en: "No iOS simulators or connected devices." },
+  "wvMonitor.devicePick.androidFetchFailed": { ja: "Android AVD を取得できませんでした(実機は別に取得します)。", en: "Failed to retrieve Android AVDs (physical devices are retrieved separately)." },
+  "wvMonitor.devicePick.androidEmpty": { ja: "Android AVD も接続中の実機もありません。", en: "No Android AVDs or connected devices." },
+  "wvMonitor.devicePick.iosTitle": { ja: "iOS デバイス", en: "iOS devices" },
+  "wvMonitor.devicePick.androidTitle": { ja: "Android デバイス", en: "Android devices" },
   "wvMonitor.devicePick.loading": { ja: "一覧を読み込み中...", en: "Loading list..." },
   "wvMonitor.devicePick.fetchFailed": { ja: "一覧の取得に失敗しました。", en: "Failed to retrieve the list." },
   "wvMonitor.devicePick.syncFailed": { ja: "デバイスの同期に失敗しました。", en: "Failed to sync devices." },

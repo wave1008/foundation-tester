@@ -104,7 +104,8 @@ public struct DeviceSpec: Codable, Sendable, Hashable {
     public var kind: DeviceKind?
     /// iOS: シミュレータのデバイス名(例 "iPhone 17 Pro"。実機では未使用)
     public var simulator: String?
-    /// iOS: OS バージョン(例 "27.0"。省略時は名前一致の最新。実機では未使用)
+    /// OS バージョン(例 "27.0")。iOS シミュレータでは実体解決に使う(省略時は名前一致の最新)。
+    /// 実機では**表示専用**(model と同じく登録時に控えるだけ)
     public var os: String?
     /// iOS: UDID。kind=virtual ならシミュレータ UDID(simulator/os より優先)、
     /// kind=physical なら実機の識別子(必須)。`xcrun devicectl list devices` の Identifier 列と
@@ -121,10 +122,13 @@ public struct DeviceSpec: Codable, Sendable, Hashable {
     /// Android 実機: adb シリアル(USB は "14141JEC204922"、WiFi は "192.168.1.23:5555")。
     /// kind=physical のとき必須。エミュレータには使わない(avd から解決するため)
     public var serial: String?
+    /// 実機の機種名(iOS は marketingName、Android は ro.product.model)。**表示専用**で
+    /// 同定には使わない(登録時に控えるだけ。端末を挿し替えても値は追随しない)
+    public var model: String?
 
     public init(name: String, kind: DeviceKind? = nil, simulator: String? = nil, os: String? = nil,
                 udid: String? = nil, port: UInt16? = nil, engine: String? = nil,
-                avd: String? = nil, serial: String? = nil) {
+                avd: String? = nil, serial: String? = nil, model: String? = nil) {
         self.name = name
         self.kind = kind
         self.simulator = simulator
@@ -134,13 +138,14 @@ public struct DeviceSpec: Codable, Sendable, Hashable {
         self.engine = engine
         self.avd = avd
         self.serial = serial
+        self.model = model
     }
 
     /// 実機か(kind 省略時は virtual)。デバイス種別の分岐はすべてこれを見ること
     public var isPhysical: Bool { kind == .physical }
 
     static let knownKeys: Set<String> = [
-        "name", "kind", "simulator", "os", "udid", "port", "engine", "avd", "serial",
+        "name", "kind", "simulator", "os", "udid", "port", "engine", "avd", "serial", "model",
     ]
 }
 

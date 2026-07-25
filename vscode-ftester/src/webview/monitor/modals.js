@@ -5,7 +5,8 @@
 
 import { t } from '../i18n.js';
 import { vscode } from './vscodeApi.js';
-import { selectedMachine, findMachine, allDeviceNamesForSelectedMachine, btnDeviceAddExisting } from './machineProfilesTab.js';
+import { cachePhysicalDeviceInfo } from './physicalDeviceCache.js';
+import { selectedMachine, findMachine, allDeviceNamesForSelectedMachine, btnDeviceAddExisting, refreshSelectedDeviceEditor } from './machineProfilesTab.js';
 
 // ---- デバイス追加モーダル ---------------------------------------------------
 
@@ -429,6 +430,20 @@ function registeredAndroidNameByAvd() {
   return map;
 }
 
+// 実機は serial で登録済みを判定する(AVD は持たないため registeredAndroidNameByAvd に載らない)。
+function registeredAndroidNameBySerial() {
+  const machine = findMachine(selectedMachine);
+  const map = new Map();
+  if (machine) {
+    for (const d of machine.devices) {
+      if (d.platform === 'android' && d.serial) {
+        map.set(d.serial, d.name);
+      }
+    }
+  }
+  return map;
+}
+
 // OK は初期状態からの差分が1件以上あるときだけ有効(チェック済み数では判定できない)。
 function updateDevicePickOkState() {
   if (devicePickAdding) {
@@ -466,6 +481,47 @@ function attachDevicePickRowToggle(row, checkbox) {
   });
 }
 
+// 個体を識別できる部分だけを出す(ハイフン以降。無ければ全体)
+function physicalUdidLabel(udid) {
+  const dash = udid.indexOf('-');
+  return dash >= 0 ? udid.slice(dash + 1) : udid;
+}
+
+// 実機 1 行。シミュレータ/AVD 行と同じ見た目に「実機」バッジを足しただけ
+// (取り違えると署名・接続の前提が違うため必ず出す)。
+function buildPhysicalPickRow(spec) {
+  const rowEl = document.createElement('div');
+  rowEl.className = 'device-pick-row';
+  const checkbox = document.createElement('input');
+  checkbox.type = 'checkbox';
+  checkbox.checked = spec.registered;
+  checkbox.addEventListener('change', () => {
+    syncDevicePickRowChecked(rowEl, checkbox);
+    updateDevicePickOkState();
+  });
+  const textWrap = document.createElement('div');
+  textWrap.className = 'device-pick-row-text';
+  // バッジはデバイス名の左。横並びの行に入れる(textWrap 直下は column flex なので、
+  // 直接置くとバッジが行幅いっぱいに伸びる)
+  const nameRow = document.createElement('div');
+  nameRow.className = 'device-pick-row-name-line';
+  const badge = document.createElement('span');
+  badge.className = 'badge badge-kind';
+  badge.textContent = t('wvMonitor.tile.physicalBadge');
+  const nameEl = document.createElement('span');
+  nameEl.className = 'device-pick-row-name tile-name tile-name-' + spec.platform;
+  nameEl.textContent = spec.name;
+  nameRow.append(badge, nameEl);
+  const detailEl = document.createElement('div');
+  detailEl.className = 'device-pick-row-detail';
+  detailEl.textContent = spec.detail;
+  textWrap.append(nameRow, detailEl);
+  rowEl.append(checkbox, textWrap);
+  attachDevicePickRowToggle(rowEl, checkbox);
+  syncDevicePickRowChecked(rowEl, checkbox);
+  return { rowEl: rowEl, checkbox: checkbox };
+}
+
 // installedDevices(InstalledDevices の形)から2グループ分の行を組み立てる。
 function renderDevicePickGroups(data) {
   devicePickIosRows = [];
@@ -475,10 +531,33 @@ function renderDevicePickGroups(data) {
 
   const iosNameByUdid = registeredIosNameByUdid();
   const iosData = data.ios;
-  devicePickIosTitle.textContent = t('wvMonitor.devicePick.iosCountTitle', { count: iosData.devices.length });
+  // 実機はシミュレータと同じ iOS グループの先頭に出す(登録判定は udid で共通)
+  const iosPhysical = iosData.physicalDevices || [];
+  // 台数はグループの中身(シミュレータ+実機)の合計
+  devicePickIosTitle.textContent = t('wvMonitor.devicePick.iosCountTitle', {
+    count: iosData.devices.length + iosPhysical.length,
+  });
+  for (const device of iosPhysical) {
+    const registeredName = iosNameByUdid.get(device.udid);
+    const registered = registeredName !== undefined;
+    const row = buildPhysicalPickRow({
+      platform: 'ios',
+      name: device.name,
+      // UDID は**先頭を切らない**: "00008130-..." の前半は機種共通の固定値なので、
+      // 先頭8文字だと同型機が全部同じ表示になって区別できない(後半が個体固有)
+      detail: (device.model ? device.model + ' / ' : '') + 'iOS ' + device.os
+        + ' / ' + device.transport + ' / ' + physicalUdidLabel(device.udid),
+      registered: registered,
+    });
+    devicePickIosBody.appendChild(row.rowEl);
+    devicePickIosRows.push({
+      checkbox: row.checkbox, device: device, physical: true,
+      initialChecked: registered, registeredName: registeredName, rowEl: row.rowEl,
+    });
+  }
   if (!iosData.available) {
     buildDevicePickEmptyRow(devicePickIosBody, iosData.error || t('wvMonitor.devicePick.iosFetchFailed'));
-  } else if (iosData.devices.length === 0) {
+  } else if (iosData.devices.length === 0 && iosPhysical.length === 0) {
     buildDevicePickEmptyRow(devicePickIosBody, t('wvMonitor.devicePick.iosEmpty'));
   } else {
     for (const device of iosData.devices) {
@@ -512,11 +591,30 @@ function renderDevicePickGroups(data) {
   }
 
   const androidNameByAvd = registeredAndroidNameByAvd();
+  const androidNameBySerial = registeredAndroidNameBySerial();
   const androidData = data.android;
-  devicePickAndroidTitle.textContent = 'Android AVD (' + androidData.avds.length + ')';
+  const androidPhysical = androidData.physicalDevices || [];
+  devicePickAndroidTitle.textContent = t('wvMonitor.devicePick.androidCountTitle', {
+    count: androidData.avds.length + androidPhysical.length,
+  });
+  for (const device of androidPhysical) {
+    const registeredName = androidNameBySerial.get(device.serial);
+    const registered = registeredName !== undefined;
+    const row = buildPhysicalPickRow({
+      platform: 'android',
+      name: device.model,
+      detail: (device.os ? 'Android ' + device.os + ' / ' : '') + device.serial,
+      registered: registered,
+    });
+    devicePickAndroidBody.appendChild(row.rowEl);
+    devicePickAndroidRows.push({
+      checkbox: row.checkbox, physicalDevice: device, physical: true,
+      initialChecked: registered, registeredName: registeredName, rowEl: row.rowEl,
+    });
+  }
   if (!androidData.available) {
     buildDevicePickEmptyRow(devicePickAndroidBody, androidData.error || t('wvMonitor.devicePick.androidFetchFailed'));
-  } else if (androidData.avds.length === 0) {
+  } else if (androidData.avds.length === 0 && androidPhysical.length === 0) {
     buildDevicePickEmptyRow(devicePickAndroidBody, t('wvMonitor.devicePick.androidEmpty'));
   } else {
     for (const avd of androidData.avds) {
@@ -607,8 +705,9 @@ function openDevicePickModal() {
   devicePickAndroidRows = [];
   devicePickIosBody.textContent = '';
   devicePickAndroidBody.textContent = '';
+  // 台数確定前の見出し。確定後は renderDevicePickGroups が台数付きに差し替える
   devicePickIosTitle.textContent = t('wvMonitor.devicePick.iosTitle');
-  devicePickAndroidTitle.textContent = 'Android AVD';
+  devicePickAndroidTitle.textContent = t('wvMonitor.devicePick.androidTitle');
   devicePickError.classList.add('info');
   devicePickError.textContent = t('wvMonitor.devicePick.loading');
   devicePickOk.disabled = true;
@@ -628,6 +727,11 @@ function closeDevicePickModal() {
 }
 
 export function applyInstalledDevices(message) {
+  if (message.ok && message.data) {
+    // モーダルが閉じていてもキャッシュだけは更新する(編集フォームが使うため)
+    cachePhysicalDeviceInfo(message.data);
+    refreshSelectedDeviceEditor();
+  }
   if (!devicePickOpen) {
     return; // モーダルを閉じた後に届いた応答は無視する(applyDeviceCatalog と同じ方針)
   }
@@ -677,20 +781,28 @@ devicePickOk.addEventListener('click', () => {
   const remove = [];
   for (const row of devicePickIosRows) {
     if (row.checkbox.checked && !row.initialChecked) {
-      add.push({
-        platform: 'ios',
-        name: row.device.name,
-        simulator: row.device.name,
-        os: row.device.os,
-        udid: row.device.udid,
-      });
+      // 実機は simulator/os を持たない(実体を指すのは udid だけ)
+      add.push(row.physical
+        ? { platform: 'ios', kind: 'physical', name: row.device.name, udid: row.device.udid,
+            model: row.device.model, os: row.device.os }
+        : {
+            platform: 'ios',
+            name: row.device.name,
+            simulator: row.device.name,
+            os: row.device.os,
+            udid: row.device.udid,
+          });
     } else if (!row.checkbox.checked && row.initialChecked) {
       remove.push(row.registeredName);
     }
   }
   for (const row of devicePickAndroidRows) {
     if (row.checkbox.checked && !row.initialChecked) {
-      add.push({ platform: 'android', name: row.avd.displayName, avd: row.avd.id });
+      add.push(row.physical
+        ? { platform: 'android', kind: 'physical', name: row.physicalDevice.model,
+            serial: row.physicalDevice.serial,
+            model: row.physicalDevice.model, os: row.physicalDevice.os }
+        : { platform: 'android', name: row.avd.displayName, avd: row.avd.id });
     } else if (!row.checkbox.checked && row.initialChecked) {
       remove.push(row.registeredName);
     }

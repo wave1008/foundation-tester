@@ -118,8 +118,8 @@ export const panelsStrings = {
   "panels.machineProfile.removeTitle": { ja: "マシンプロファイルの削除", en: "Delete machine profile" },
   "panels.machineProfile.renameTitle": { ja: "マシンプロファイル名の変更", en: "Rename machine profile" },
   "panels.machineProfile.addExistingTitle": {
-    ja: "インストール済みのシミュレータ/AVDからマシンプロファイルに追加",
-    en: "Add from an installed simulator/AVD to the machine profile",
+    ja: "インストール済みのシミュレータ/AVD・接続中の実機からマシンプロファイルに追加",
+    en: "Add from installed simulators/AVDs or connected physical devices to the machine profile",
   },
   "panels.machineProfile.selectPrompt": {
     ja: "デバイスを選択すると内容を表示します",
@@ -142,6 +142,14 @@ export const panelsStrings = {
   "panels.machineProfile.avdReadonlyTitle": {
     ja: "AVDは変更できません(変更するにはデバイスを除去して作り直してください)",
     en: "AVD cannot be changed (remove and recreate the device to change it)",
+  },
+  "panels.machineProfile.physicalInfoReadonlyTitle": {
+    ja: "登録時に控えた実機の情報(表示専用)。同定には使いません",
+    en: "Device info captured at registration (display only). It is not used to identify the device.",
+  },
+  "panels.machineProfile.serialReadonlyTitle": {
+    ja: "実機の adb シリアル。実体を指すため変更できません(登録し直してください)",
+    en: "The adb serial of the physical device. It identifies the device and cannot be changed (re-register instead).",
   },
 
   "panels.processes.title": { ja: "常駐プロセス", en: "Resident Processes" },
@@ -178,7 +186,9 @@ export const panelsStrings = {
 
   "panels.devicePick.title": { ja: "既存のデバイスから選択", en: "Select from Existing Devices" },
   "panels.devicePick.addNewTitle": { ja: "デバイスを新規作成", en: "Create New Device" },
-  "panels.devicePick.iosGroupTitle": { ja: "iOS シミュレータ", en: "iOS Simulators" },
+  // 見出しには接続中の実機も並ぶため「デバイス」と呼ぶ(台数は JS が確定後に付ける)
+  "panels.devicePick.iosGroupTitle": { ja: "iOS デバイス", en: "iOS devices" },
+  "panels.devicePick.androidGroupTitle": { ja: "Android デバイス", en: "Android devices" },
   "panels.devicePick.note": {
     ja: "チェックを外して OK すると登録解除されます(シミュレータ/AVD 本体は削除されません)",
     en: "Unchecking and pressing OK unregisters the device (the simulator/AVD itself is not deleted)",

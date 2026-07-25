@@ -1,5 +1,6 @@
 // VSCode拡張の「既存のデバイスから選択」UI 向け: マシンにインストール済みの iOS シミュレータと
-// Android AVD を1回取得しJSONで stdout に出力する(ftester api installed-devices)。
+// Android AVD、**および接続中の実機**を1回取得しJSONで stdout に出力する
+// (ftester api installed-devices)。
 // プロジェクト/マシンプロファイルに依存しないため引数は無い。
 // stdout には結果 1 行の JSON だけを出す(診断は stderr のみ。ApiCommands.swift と同じ流儀)。
 //
@@ -38,8 +39,10 @@ struct ApiInstalledDevicesCommand: AsyncParsableCommand {
         do {
             devices = try SimulatorCatalog.devices()
         } catch {
+            // シミュレータ列挙が壊れていても実機は devicectl 経由で独立に取れる
             return ApiInstalledIOSCatalog(
-                available: false, error: error.localizedDescription, devices: [])
+                available: false, error: error.localizedDescription, devices: [],
+                physicalDevices: iosPhysicalDevices())
         }
         let sorted = devices.sorted {
             if $0.name != $1.name { return $0.name < $1.name }
@@ -48,7 +51,20 @@ struct ApiInstalledDevicesCommand: AsyncParsableCommand {
         let entries = sorted.map {
             ApiInstalledIOSDevice(name: $0.name, os: Self.normalizeOS($0.os), udid: $0.udid)
         }
-        return ApiInstalledIOSCatalog(available: true, error: nil, devices: entries)
+        return ApiInstalledIOSCatalog(available: true, error: nil, devices: entries,
+                                      physicalDevices: iosPhysicalDevices())
+    }
+
+    /// 接続中の iOS 実機(devicectl)。取得失敗・0 台は空配列で返す
+    /// (シミュレータ側の available を巻き添えで false にしない)。
+    /// udid は**ハードウェア UDID**(xcodebuild の -destination が受け付ける方。
+    /// devicectl の Identifier 列とは別物。IOSPhysicalDeviceCatalog 参照)
+    private static func iosPhysicalDevices() -> [ApiPhysicalIOSDevice] {
+        let devices = (try? IOSPhysicalDeviceCatalog.devices()) ?? []
+        return devices.filter(\.connected).map {
+            ApiPhysicalIOSDevice(name: $0.name, os: Self.normalizeOS($0.os), udid: $0.udid,
+                                 transport: $0.transport, model: $0.model)
+        }
     }
 
     /// SimDeviceInfo.os は "iOS 27.0" 形式。出力の os はバージョン番号のみ("27.0")に正規化する
@@ -61,10 +77,33 @@ struct ApiInstalledDevicesCommand: AsyncParsableCommand {
     /// AndroidDeviceCatalog.installedAVDs() は非 throwing(AVD ディレクトリが無ければ単に空配列)
     /// のため、この経路に失敗状態は無い
     private static func androidCatalog() -> ApiInstalledAndroidCatalog {
-        let avds = AndroidDeviceCatalog.installedAVDs().map {
-            ApiInstalledAVD(displayName: $0.displayName ?? $0.id, id: $0.id)
+        let avds = AndroidDeviceCatalog.installedAVDs().map { avd in
+            // 機種/OS は config.ini 由来の表示専用情報(実機の model/os と同じ扱い)
+            let info = AndroidDeviceCatalog.avdModelAndOS(id: avd.id)
+            return ApiInstalledAVD(displayName: avd.displayName ?? avd.id, id: avd.id,
+                                   model: info.model, os: info.os)
         }
-        return ApiInstalledAndroidCatalog(available: true, error: nil, avds: avds)
+        return ApiInstalledAndroidCatalog(available: true, error: nil, avds: avds,
+                                          physicalDevices: androidPhysicalDevices())
+    }
+
+    /// 接続中の Android 実機(adb devices の state=device のうち emulator- 前置でないもの)。
+    /// 表示名は ro.product.model(取れなければ serial)
+    private static func androidPhysicalDevices() -> [ApiPhysicalAndroidDevice] {
+        let serials = ((try? AndroidDeviceCatalog.connectedSerials()) ?? [])
+            .filter { !$0.hasPrefix("emulator-") }
+        guard !serials.isEmpty, let adb = try? AndroidDriver.findADB() else { return [] }
+        func getprop(_ serial: String, _ key: String) -> String {
+            (try? Shell.run([adb, "-s", serial, "shell", "getprop", key], timeout: 10))?
+                .output.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        }
+        return serials.map { serial in
+            let model = getprop(serial, "ro.product.model")
+            return ApiPhysicalAndroidDevice(
+                model: model.isEmpty ? serial : model,
+                os: getprop(serial, "ro.build.version.release"),
+                serial: serial)
+        }
     }
 }
 
@@ -82,9 +121,11 @@ private struct ApiInstalledIOSCatalog: Encodable {
     let available: Bool
     let error: String?
     let devices: [ApiInstalledIOSDevice]
+    /// 接続中の実機(kind=physical で登録する候補)。追加フィールド=後方互換
+    let physicalDevices: [ApiPhysicalIOSDevice]
 
     private enum CodingKeys: String, CodingKey {
-        case available, error, devices
+        case available, error, devices, physicalDevices
     }
 
     func encode(to encoder: Encoder) throws {
@@ -92,7 +133,20 @@ private struct ApiInstalledIOSCatalog: Encodable {
         try container.encode(available, forKey: .available)
         try container.encode(error, forKey: .error)
         try container.encode(devices, forKey: .devices)
+        try container.encode(physicalDevices, forKey: .physicalDevices)
     }
+}
+
+private struct ApiPhysicalIOSDevice: Encodable {
+    let name: String
+    /// "26.5.2" のようなバージョン番号のみ
+    let os: String
+    /// マシンプロファイルの udid にそのまま書ける値
+    let udid: String
+    /// "wired" / "localNetwork" 等(devicectl の transportType 生値)
+    let transport: String
+    /// 機種名(marketingName。例 "iPhone 15 Pro")
+    let model: String
 }
 
 private struct ApiInstalledIOSDevice: Encodable {
@@ -107,9 +161,11 @@ private struct ApiInstalledAndroidCatalog: Encodable {
     let available: Bool
     let error: String?
     let avds: [ApiInstalledAVD]
+    /// 接続中の実機(kind=physical で登録する候補)。追加フィールド=後方互換
+    let physicalDevices: [ApiPhysicalAndroidDevice]
 
     private enum CodingKeys: String, CodingKey {
-        case available, error, avds
+        case available, error, avds, physicalDevices
     }
 
     func encode(to encoder: Encoder) throws {
@@ -117,11 +173,35 @@ private struct ApiInstalledAndroidCatalog: Encodable {
         try container.encode(available, forKey: .available)
         try container.encode(error, forKey: .error)
         try container.encode(avds, forKey: .avds)
+        try container.encode(physicalDevices, forKey: .physicalDevices)
     }
+}
+
+private struct ApiPhysicalAndroidDevice: Encodable {
+    /// ro.product.model(取れなければ serial)
+    let model: String
+    /// ro.build.version.release(例 "13")
+    let os: String
+    /// マシンプロファイルの serial にそのまま書ける値
+    let serial: String
 }
 
 private struct ApiInstalledAVD: Encodable {
     /// displayName が無い AVD は id をそのまま使う
     let displayName: String
     let id: String
+    /// config.ini の hw.device.name(例 "pixel_9")。取れなければ null
+    let model: String?
+    /// image.sysdir.1 から導出した OS 表記(例 "Android 15")。取れなければ null
+    let os: String?
+
+    private enum CodingKeys: String, CodingKey { case displayName, id, model, os }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(displayName, forKey: .displayName)
+        try container.encode(id, forKey: .id)
+        try container.encode(model, forKey: .model)
+        try container.encode(os, forKey: .os)
+    }
 }

@@ -194,6 +194,15 @@ let package = Package(
                 .linkedFramework("CoreGraphics"),
             ]
         ),
+        // 実機(iOS/Android)画面ストリーミング(スクリーンショットのポーリング -> MJPEG)。
+        // simstream(シミュレータ専用)・androidstream(静止画面でフレームが出ない)の実機向け代替
+        .executableTarget(
+            name: "ftester-devicepoll",
+            linkerSettings: [
+                .linkedFramework("Foundation"), .linkedFramework("CoreGraphics"),
+                .linkedFramework("ImageIO"), .linkedFramework("UniformTypeIdentifiers"),
+            ]
+        ),
         .testTarget(
             name: "FTCoreTests",
             dependencies: ["FTCore"],

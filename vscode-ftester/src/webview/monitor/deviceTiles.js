@@ -11,6 +11,7 @@ import { grid, emptyMessage, banner, btnUp, btnDown, deviceOpMenu, deviceOpMenuI
 import { updateLaneVisibility, syncLanesToDevices, runningWorkers } from './laneLog.js';
 import { createH264Renderer } from './h264Decoder.js';
 import { clampMenuPosition } from './menu.js';
+import { setHoverTip } from './hoverTip.js';
 
 // bridgeWatch(拡張ホストの自動修復ウォッチドッグ、契約は main.js の 'bridgeWatch' ケース参照)の
 // phase→footer表示。'ok'はここに含めず通常表示へフォールバックさせる。
@@ -45,13 +46,24 @@ const WIPE_STATUS_LABEL = {
 
 // src/monitorModel.ts の deviceOpMenuItem の複製(webview は CSP で import 不可のため)。変更時は
 // 両方を同期すること。busy は { op, status }('queued'|'running')または undefined。
-function deviceOpMenuItem(state, busy) {
+// physical: 実機は端末そのものを起動・停止しない(DeviceBooter の実機分岐)。操作対象は
+// **ブリッジだけ**なのでラベルで明示する(「起動/停止」だと端末の電源だと誤解される)。
+// 項目自体は隠さない: 隠すとモニターから実機のブリッジを起動できなくなる(タイルが
+// 「接続中」のまま何もできない状態になる実害。2026-07-25)
+function deviceOpMenuItem(state, busy, physical) {
   if (busy && busy.status === 'queued') { return { label: t('wvMonitor.deviceOpMenu.queued'), op: busy.op, disabled: true }; }
   if (busy && busy.op === 'up') { return { label: t('wvMonitor.deviceOpMenu.startingUp'), op: 'up', disabled: true }; }
   if (busy && busy.op === 'down') { return { label: t('wvMonitor.deviceOpMenu.stoppingDown'), op: 'down', disabled: true }; }
-  return state === 'offline'
-    ? { label: t('wvMonitor.deviceOpMenu.start'), op: 'up', disabled: false }
-    : { label: t('wvMonitor.deviceOpMenu.stop'), op: 'down', disabled: false };
+  if (state === 'offline') {
+    return {
+      label: t(physical ? 'wvMonitor.deviceOpMenu.startBridge' : 'wvMonitor.deviceOpMenu.start'),
+      op: 'up', disabled: false,
+    };
+  }
+  return {
+    label: t(physical ? 'wvMonitor.deviceOpMenu.stopBridge' : 'wvMonitor.deviceOpMenu.stop'),
+    op: 'down', disabled: false,
+  };
 }
 
 // device id -> タイルDOM要素・最新フレーム(1枚のみ保持、履歴は溜めない)
@@ -94,6 +106,11 @@ function createTile(device) {
   header.className = 'tile-header';
   const name = document.createElement('span');
   name.className = 'tile-name';
+  const kindBadge = document.createElement('span');
+  kindBadge.className = 'badge badge-kind';
+  kindBadge.textContent = t('wvMonitor.tile.physicalBadge');
+  kindBadge.title = t('wvMonitor.tile.physicalBadgeTitle');
+  kindBadge.style.display = 'none';
   const renderBadge = document.createElement('span');
   renderBadge.className = 'badge badge-render';
   const runningBadge = document.createElement('span');
@@ -107,7 +124,8 @@ function createTile(device) {
   const recordingBadge = document.createElement('span');
   recordingBadge.className = 'badge badge-recording';
   recordingBadge.textContent = t('recordings.deviceBadge');
-  header.append(name);
+  // 実機バッジはデバイス名の左(ピッカー・一覧・編集フォームと同じ並び)
+  header.append(kindBadge, name);
 
   const frameWrap = document.createElement('div');
   frameWrap.className = 'frame-wrap';
@@ -140,6 +158,7 @@ function createTile(device) {
     queuedBadgeEl: queuedBadge,
     recordingBadgeEl: recordingBadge,
     renderBadgeEl: renderBadge,
+    kindBadgeEl: kindBadge,
     frameWrapEl: frameWrap,
     imgEl: img,
     placeholderEl: placeholder,
@@ -272,8 +291,10 @@ function renderRenderBadge(entry) {
 function renderMeta(entry) {
   entry.nameEl.textContent = entry.device.name;
   entry.nameEl.className = 'tile-name tile-name-' + entry.device.platform;
-  entry.nameEl.title = entry.device.name + ' (' + entry.device.platform + ')';
+  setHoverTip(entry.nameEl, entry.device.name + ' (' + entry.device.platform + ')');
   entry.recordingBadgeEl.style.display = entry.device.recording ? 'inline-block' : 'none';
+  // 実機は署名・接続の前提がシミュレータ/エミュレータと違うので取り違えないよう明示する
+  entry.kindBadgeEl.style.display = entry.device.kind === 'physical' ? 'inline-block' : 'none';
   renderRenderBadge(entry);
   // 通常時は空(接続済みは画面表示自体が、接続待ちはプレースホルダの「接続中」が伝えるため
   // 冗長で出さない。ユーザー決定 2026-07-16)。bridgeWatch の異常時だけ下で埋める。
@@ -340,7 +361,8 @@ export function renderDeviceOpMenuItem() {
   if (!deviceOpMenuEntry) {
     return;
   }
-  const item = deviceOpMenuItem(deviceOpMenuEntry.device.state, deviceOpMenuEntry.opBusy);
+  const item = deviceOpMenuItem(deviceOpMenuEntry.device.state, deviceOpMenuEntry.opBusy,
+                                deviceOpMenuEntry.device.kind === 'physical');
   // ラベルはspanに書く(ボタン直のtextContent代入はアイコンSVGを消す)。data-opはCSSのアイコン切替も担う。
   deviceOpMenuItemLabel.textContent = item.label;
   deviceOpMenuItemBtn.disabled = item.disabled;

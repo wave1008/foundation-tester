@@ -1259,6 +1259,18 @@ test("machineDeviceDetail: iOS は os が無ければ simulator のみ", () => {
   );
 });
 
+test("machineDeviceDetail: Android 実機は avd が無いので serial を出す", () => {
+  // 実機は AVD を持たない。従来は "Android" としか出ず、どの端末か分からなかった
+  assert.equal(
+    machineDeviceDetail({ name: "実機", platform: "android", kind: "physical", serial: "14141JEC204922" }),
+    "14141JEC204922",
+  );
+});
+
+test("machineDeviceDetail: Android は avd/serial とも無ければ 'Android'", () => {
+  assert.equal(machineDeviceDetail({ name: "謎", platform: "android" }), "Android");
+});
+
 test("machineDeviceDetail: iOS は simulator が無ければ udid の先頭8文字", () => {
   assert.equal(
     machineDeviceDetail({ name: "シミュ1", platform: "ios", udid: "ABCDEFGH-1234-5678" }),
@@ -1498,6 +1510,83 @@ test("updateDeviceInMachineProfile: 反対プラットフォームのフィー�
     avd: "Pixel 9(Android 17)",
     strayIosField: "keep",
   });
+});
+
+test("addDevicesToMachineProfile: 実機は kind/serial を書き、simulator/os/avd を書かない", () => {
+  const result = addDevicesToMachineProfile({}, [
+    { platform: "ios", kind: "physical", name: "iPhone 実機", udid: "00008130-AAAA" },
+    { platform: "android", kind: "physical", name: "Pixel 実機", serial: "14141JEC204922" },
+  ]);
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.object.ios.devices[0], {
+    name: "iPhone 実機", kind: "physical", udid: "00008130-AAAA",
+  });
+  assert.deepEqual(result.object.android.devices[0], {
+    name: "Pixel 実機", kind: "physical", serial: "14141JEC204922",
+  });
+});
+
+test("addDevicesToMachineProfile: 仮想デバイスには kind を書かない(既定 virtual)", () => {
+  const result = addDevicesToMachineProfile({}, [
+    { platform: "ios", name: "iPhone 17 Pro", simulator: "iPhone 17 Pro", os: "27.0", udid: "U1" },
+  ]);
+  assert.equal(result.ok, true);
+  assert.equal("kind" in result.object.ios.devices[0], false);
+});
+
+test("isInstalledDevicesJson: physicalDevices があっても無くても受理する", () => {
+  const base = {
+    android: { available: true, avds: [], error: null },
+    ios: { available: true, devices: [], error: null },
+  };
+  assert.equal(isInstalledDevicesJson(base), true, "旧 CLI(physicalDevices なし)");
+  assert.equal(isInstalledDevicesJson({
+    android: { ...base.android, physicalDevices: [{ model: "Pixel 4a", serial: "S1" }] },
+    ios: { ...base.ios, physicalDevices: [{ name: "iPhone", os: "26.5.2", udid: "U1", transport: "wired" }] },
+  }), true);
+  assert.equal(isInstalledDevicesJson({
+    ...base,
+    ios: { ...base.ios, physicalDevices: [{ name: "iPhone" }] },
+  }), false, "形が違う physicalDevices は弾く");
+});
+
+test("updateDeviceInMachineProfile: 実機(kind=physical)の serial を保存できる", () => {
+  const profile = { android: { devices: [{ name: "実機", kind: "physical", serial: "OLD" }] } };
+  const result = updateDeviceInMachineProfile(profile, "android", "実機", {
+    name: "実機", simulator: "", os: "", udid: "", port: "", avd: "", serial: "14141JEC204922",
+  });
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.object.android.devices[0], {
+    name: "実機", kind: "physical", serial: "14141JEC204922",
+  });
+});
+
+test("updateDeviceInMachineProfile: 実機で serial を空にすると保存を拒否する", () => {
+  // 空のまま保存できると run で「kind=physical ですが serial がありません」と落ちる
+  const profile = { android: { devices: [{ name: "実機", kind: "physical", serial: "S1" }] } };
+  const result = updateDeviceInMachineProfile(profile, "android", "実機", {
+    name: "実機", simulator: "", os: "", udid: "", port: "", avd: "", serial: "  ",
+  });
+  assert.equal(result.ok, false);
+  assert.match(result.error, /serial/);
+});
+
+test("updateDeviceInMachineProfile: iOS 実機で udid を空にすると保存を拒否する", () => {
+  const profile = { ios: { devices: [{ name: "実機", kind: "physical", udid: "00008130-AAAA" }] } };
+  const result = updateDeviceInMachineProfile(profile, "ios", "実機", {
+    name: "実機", simulator: "", os: "", udid: "", port: "", avd: "", serial: "",
+  });
+  assert.equal(result.ok, false);
+  assert.match(result.error, /udid/);
+});
+
+test("updateDeviceInMachineProfile: serial 欠落(旧 webview)でも落ちない", () => {
+  // 拡張と webview のバンドルは別々に更新されうる。欠落は未入力として扱う
+  const profile = { android: { devices: [{ name: "エミュ1", avd: "Pixel_9" }] } };
+  const result = updateDeviceInMachineProfile(profile, "android", "エミュ1", {
+    name: "エミュ1", simulator: "", os: "", udid: "", port: "", avd: "Pixel_9",
+  });
+  assert.equal(result.ok, true);
 });
 
 test("updateDeviceInMachineProfile: Android エントリに手書きの port キーがあっても保持する", () => {

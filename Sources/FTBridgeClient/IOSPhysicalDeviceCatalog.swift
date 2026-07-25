@@ -24,16 +24,19 @@ public struct IOSPhysicalDeviceInfo: Sendable, Hashable, Identifiable {
     public let connected: Bool
     /// "wired" / "localNetwork" など devicectl の transportType 生値
     public let transport: String
+    /// 機種名(marketingName。例 "iPhone 15 Pro")。取得できなければ空文字
+    public let model: String
     public var id: String { udid }
 
     public init(udid: String, name: String, os: String, connected: Bool, transport: String,
-                deviceCtlIdentifier: String? = nil) {
+                deviceCtlIdentifier: String? = nil, model: String = "") {
         self.udid = udid
         self.name = name
         self.os = os
         self.connected = connected
         self.transport = transport
         self.deviceCtlIdentifier = deviceCtlIdentifier ?? udid
+        self.model = model
     }
 }
 
@@ -122,7 +125,8 @@ public enum IOSPhysicalDeviceCatalog {
                 || (connection["tunnelState"] as? String) == "connected"
                 || paired || booted,
             transport: transport,
-            deviceCtlIdentifier: identifier)
+            deviceCtlIdentifier: identifier,
+            model: (hardware["marketingName"] as? String) ?? "")
     }
 
     /// マシンプロファイルの udid → 実機。未接続はエラー(この先の xcodebuild が必ず失敗するため、

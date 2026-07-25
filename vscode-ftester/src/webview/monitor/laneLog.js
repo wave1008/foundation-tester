@@ -5,6 +5,7 @@ import { MAX_LANE_LINES, OVERALL_LANE_ID, overallLaneName } from "../../runLaneM
 import { lanesPlaceholder, lanesGrid, lanesSelectionStatus, lanesRunStatus } from './domRefs.js';
 import { tiles, selectedDeviceIds } from './deviceTiles.js';
 import { t } from '../i18n.js';
+import { setHoverTip } from './hoverTip.js';
 
 // レーン id(worker id、または OVERALL_LANE_ID) -> DOM 要素・自動スクロール状態
 const lanes = new Map();
@@ -50,6 +51,7 @@ function setLaneHeader(headerEl, name, platform) {
   const pill = document.createElement('span');
   pill.className = 'lane-name ' + (platform ? 'tile-name-' + platform : 'lane-name-neutral');
   pill.textContent = name;
+  setHoverTip(pill, name);
   headerEl.appendChild(pill);
 }
 

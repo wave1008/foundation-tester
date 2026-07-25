@@ -181,6 +181,10 @@ export class MonitorProfilesController {
         udid: device.udid,
         port: device.port,
         avd: device.avd,
+        // 実機の識別(バッジ表示)と編集フォームの serial 行に必要
+        kind: device.kind,
+        serial: device.serial,
+        model: device.model,
       })),
     }));
     this.deps.post({ type: "machineProfileInfo", machines, current, error: null });
