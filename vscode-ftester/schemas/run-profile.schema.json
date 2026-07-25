@@ -74,6 +74,11 @@
       "exclusiveMinimum": 0,
       "default": 8
     },
+    "recoverCpuFallbackToGpu": {
+      "type": "boolean",
+      "description": "実行開始時に、画面凍結で CPU 描画(swiftshader)へ落ちた Android エミュレータを GPU(-gpu host)で起動し直す。GPU モードは起動引数で固定されるため emulator プロセスの再起動が必要で、該当機1台につき run 開始が約1分延びる。省略時 false。",
+      "default": false
+    },
     "locale": {
       "type": "string",
       "description": "ロケール(Android エミュレータのブート完了時、Wipe Data 後の再起動を含めてブリッジ経由で適用される。iOS には影響しない)。省略時 \"ja_JP\"。",

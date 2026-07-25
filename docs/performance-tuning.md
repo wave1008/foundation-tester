@@ -399,8 +399,9 @@ window/transition/animator の `*_scale` はチューニングノブではなく
     (8台並列 run 中のみ発生。アイドル・1台単独への同一負荷では発生ゼロ=デバイス自身の負荷ではなく
     ホスト GPU の並行合成競合)。固着型は **`input keyevent KEYCODE_SLEEP`→`KEYCODE_WAKEUP`
     (表示パイプラインの無効化→再合成)で修復できる**。readback では回復しない。
-    run 前の blank 除外(ProfileRunner.excludeBlankScreenWorkers)はこの修復を先に試し、回復すれば
-    除外しない=ワーカー全数維持(実装 AndroidHealthProbe.repairBlankDisplay。watchdog ラダーの
+    run 前の blank トリアージ(ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers)はこの修復を
+    先に試し、不発なら guest reboot を同期発行してブート完了を待ち、**どちらで直っても本 run で
+    使う**=ワーカー全数維持(実装 AndroidHealthProbe.repairBlankDisplay。watchdog ラダーの
     第一手 adbWifiRepair.repairDisplay も同一手順)。修復は免疫ではない(次の並列描画で再発し得る)。
     **ホスト側証跡は `~/Library/Logs/ftester/emulator/<AVD>.log`**(DeviceBooter が emulator
     stdout/stderr を保存・ブート毎 truncate。2026-07-25 実装)。根因の
@@ -408,9 +409,13 @@ window/transition/animator の `*_scale` はチューニングノブではなく
     ここにしか出ない(統合ログ・crash レポートは無音のまま)。**Metal エラー行数は劣化の定量指標**:
     健全ブートは 0〜2 件、劣化個体は数百件まで単調増加し高カウント個体が凍結する
     (スケール実測 2026-07-25: N=8 で 0〜30 → N=16 で最大 513/台)。
-    **モニターが自動警報する**: health プローブが行数を数え、閾値 100 で `metal-errors` を
-    タイルに警告表示(AndroidHealthProbe.issueMetalErrors。**表示のみ**=watchdog は修復・
-    再起動アクションを取らない。自動リブートのポリシー化は未決)
+    ただし**個体の異常判定には使えない**(2026-07-26 フリート全数検証): 実際に凍結した個体は累積
+    カウントでも増加速度でもフリート最上位ではなく(凍結機 2486 件/128 件毎分に対し健全機は最大
+    2560 件/288 件毎分)、ログのタイムスタンプ集計でもエラーは全機の同一時間帯(run 実行中)に
+    一斉発生していた=ホスト GPU ドライバ由来の背景現象。health プローブは行数を数え閾値 100 で
+    `metal-errors` を載せ続けるが(AndroidHealthProbe.issueMetalErrors)、**モニタータイルには
+    表示せず・修復アクションも取らない**(monitorHealthWatchdog が actionable から除外。
+    ユーザー決定 2026-07-26)。用途は下記の時系列記録による劣化分析のみ
     カウントの時系列は `~/Library/Logs/ftester/emulator/metal-history.ndjson` に残る
     (MetalErrorHistory。変化時のみ追記・5MB 超で `.1` へロールオーバー)
   - **凍結の変種と修復応答(修復パラメータの根拠)**: ①瞬間ブリップ(数秒で自己回復。アプリ起動
@@ -418,7 +423,8 @@ window/transition/animator の `*_scale` はチューニングノブではなく
     ≈4s で回復=最多)④固着・抵抗型(1サイクル+wake後6s待でも blank のまま。**dwell 3s の
     2サイクル目で回復**)⑤固着・難治型(sleep/wake ×3・回転トグル・wm size 再構成すべて不発。
     **guest reboot でのみ回復**。稀)。repairBlankDisplay/repairDisplay は ③④ を拾う2サイクル構成
-    (成功 ~4s・抵抗型のみ ~11s)。⑤は事前除外/watchdog の後段(swiftshader 再起動)に落ちる設計。
+    (成功 ~4s・抵抗型のみ ~11s)。⑤は run 前トリアージの guest reboot(同期・ブート完了待ち)/
+    watchdog の後段(swiftshader 再起動)に落ちる設計。
     ⑥出生凍結(高並列下の新規ブートが最初から凍結。guest reboot・プロセス再起動も不発、
     swiftshader なら健全。N≈12〜14 から確率的に発生)⑦アプリ面だけ黒(壁紙・ステータスバー・IME は
     正常だが新規アプリウィンドウが全て黒。sleep/wake 1〜2サイクルで回復。**IME 等が写ると一様

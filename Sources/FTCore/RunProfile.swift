@@ -211,6 +211,13 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     /// Play イメージは wipe 直後の再構築だけで userdata が 2〜4GB になるため(実測 2026-07-17)、
     /// それ未満のしきい値は毎実行 wipe が発動するスラッシングになる — 下げるときは要注意)
     public var wipeDataThresholdGB: Double?
+    /// 実行開始時に、画面凍結で CPU 描画(swiftshader)へフォールバック済みの Android エミュレータを
+    /// GPU(-gpu host)で起動し直すか(既定 false=OFF)。GPU モードは emulator プロセスの起動引数で
+    /// 決まるためプロセス再起動が必須で、該当機1台につき run 開始が約1分延びる。戻した先で再び凍結
+    /// すればモニターの watchdog がまた CPU に落とす(design.md §12.4 のトレードオフ)。
+    /// 同期相手: vscode-ftester/schemas/run-profile.schema.json と
+    /// src/monitorModel.ts の RunProfileFormFields
+    public var recoverCpuFallbackToGpu: Bool?
     /// Android エミュレータのブート完了時(Wipe Data 後の再起動を含む)にブリッジ /locale で
     /// 適用するロケール(既定 "ja_JP"。Play イメージでは -change-locale 等が無効なため。
     /// design.md §11.2)。iOS には影響しない。同期相手: vscode-ftester/schemas/run-profile.schema.json
@@ -238,6 +245,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
                 reportDir: String? = nil, defaultTimeout: Int? = nil, scenarioTimeout: Int? = nil,
                 machine: String? = nil, iosInappEngine: Bool? = nil,
                 wipeDataOnBloat: Bool? = nil, wipeDataThresholdGB: Double? = nil,
+                recoverCpuFallbackToGpu: Bool? = nil,
                 locale: String? = nil, iosFastInput: Bool? = nil, record: Bool? = nil,
                 recordFailuresOnly: Bool? = nil, recordBitrateKbps: Int? = nil,
                 recordFullResolution: Bool? = nil) {
@@ -251,6 +259,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
         self.iosInappEngine = iosInappEngine
         self.wipeDataOnBloat = wipeDataOnBloat
         self.wipeDataThresholdGB = wipeDataThresholdGB
+        self.recoverCpuFallbackToGpu = recoverCpuFallbackToGpu
         self.locale = locale
         self.iosFastInput = iosFastInput
         self.record = record
@@ -261,7 +270,8 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
 
     static let knownKeys: Set<String> = [
         "app", "devices", "heal", "reportDir", "defaultTimeout", "scenarioTimeout",
-        "machine", "iosInappEngine", "wipeDataOnBloat", "wipeDataThresholdGB", "locale",
+        "machine", "iosInappEngine", "wipeDataOnBloat", "wipeDataThresholdGB",
+        "recoverCpuFallbackToGpu", "locale",
         "iosFastInput", "record", "recordFailuresOnly", "recordBitrateKbps", "recordFullResolution",
     ]
 }
@@ -320,6 +330,9 @@ public struct ResolvedProfile: Sendable {
     public let wipeDataOnBloat: Bool
     /// wipeDataOnBloat のしきい値(GB)
     public let wipeDataThresholdGB: Double
+    /// 実行開始時に CPU 描画フォールバック機を GPU で起動し直すか
+    /// (RunProfileDocument.recoverCpuFallbackToGpu。既定 false)
+    public let recoverCpuFallbackToGpu: Bool
     /// Android エミュレータのブート時に -change-locale で適用するロケール(既定 "ja_JP")
     public let locale: String
     /// iOS xcuitest ブリッジの高速入力(RunProfileDocument.iosFastInput。既定 false)
@@ -662,6 +675,7 @@ public enum ProfileResolver {
             scenarioTimeout: runDoc.scenarioTimeout,
             wipeDataOnBloat: runDoc.wipeDataOnBloat ?? true,
             wipeDataThresholdGB: wipeDataThresholdGB,
+            recoverCpuFallbackToGpu: runDoc.recoverCpuFallbackToGpu ?? false,
             locale: locale,
             iosFastInput: runDoc.iosFastInput ?? false,
             record: runDoc.record ?? false,

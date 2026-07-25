@@ -208,6 +208,10 @@ export const liveStrings = {
     ja: "[{prefix}] 未知の KIND({kind})を受信しました(プロトコル不整合)。helper を再起動します。",
     en: "[{prefix}] Received unknown KIND ({kind}) (protocol mismatch). Restarting helper.",
   },
+  "live.stream.desync": {
+    ja: "[{prefix}] フレームの境界がずれています({detail})。helper を再起動します。",
+    en: "[{prefix}] Frame boundary desynchronized ({detail}). Restarting helper.",
+  },
   "live.stream.gaveUp": {
     ja: "[{prefix}] 起動直後の異常終了が続いたため画面ストリーミングを停止します({reason})。",
     en: "[{prefix}] Stopping screen streaming after repeated early exits ({reason}).",

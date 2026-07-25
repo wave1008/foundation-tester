@@ -27,6 +27,7 @@ import {
   isDevicesUpEvent,
   removeQueuedBulkUpJob,
   isInstalledDevicesJson,
+  type MonitorDevice,
   type MonitorFromWebviewMessage,
   type MonitorToWebviewMessage,
 } from "./monitorModel";
@@ -103,6 +104,28 @@ export class MonitorDeviceOps {
    * swiftshader で起動する(セッション中維持)。 */
   markCpuRender(name: string): void {
     this.cpuRenderNames.add(name);
+  }
+
+  /** monitorDevices 観測ごとに呼ぶ。CPU 描画でなくなった個体を記憶から落とす。
+   * 実行プロファイルの recoverCpuFallbackToGpu(run 開始時の GPU 復帰。Swift 側
+   * AndroidGpuRecovery)は拡張の外で emulator を入れ替えるため、これが無いと記憶だけ CPU のまま
+   * 残り、次の個別 device-up がタイルのバッジと矛盾して再び swiftshader で起こしてしまう。
+   * **ライフサイクルジョブ進行中の個体は対象外**: watchdog の CPU フォールバックは
+   * markCpuRender → enqueueRestart の順で、再起動が始まるまでの数秒はまだ GPU で connected の
+   * ままなので、除外しないと記憶が使われる前に消える(=フォールバックが永久に発動しない)。 */
+  syncCpuRenderNames(devices: readonly MonitorDevice[]): void {
+    for (const device of devices) {
+      if (device.platform !== "android" || device.state !== "connected") {
+        continue;
+      }
+      if (device.renderMode === undefined || device.renderMode === "cpu") {
+        continue;
+      }
+      if (hasDeviceLifecycleJobFor(this.lifecycleQueue, device.name)) {
+        continue;
+      }
+      this.cpuRenderNames.delete(device.name);
+    }
   }
 
   /** 「GPUで再起動」(手動・右クリックメニュー): 単発もバッチジョブ(1件)として実行する。 */

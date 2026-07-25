@@ -473,6 +473,28 @@ async function executeRun(
     }
   }
 
+  // プロファイル未指定は「ブリッジを自動供給しない直接ポート接続」モードに落ちる。事前に
+  // `ftester bridge up` を回していない限り全シナリオが接続拒否で即失敗するため、走らせずに止める
+  // (実害 2026-07-26: 19 シナリオが 2 秒で全滅し、原因が設定だと分からなかった)。
+  // 除外2件: dry-run はデバイスに触れない / liveTarget はライブ操作パネルが実デバイスを解決済み。
+  if (!dryRun && !liveTarget && profile.length === 0) {
+    const message = t("run.profileRequired.message");
+    run.appendOutput(`${message}\r\n`);
+    outputChannel.appendLine(message);
+    for (const item of targets.values()) {
+      run.errored(item, new vscode.TestMessage(message));
+    }
+    run.end();
+    void vscode.window
+      .showErrorMessage(`ftester: ${message}`, t("run.profileRequired.openDeviceTab"))
+      .then((picked) => {
+        if (picked !== undefined) {
+          void vscode.commands.executeCommand("ftester.showDeviceMonitor");
+        }
+      });
+    return;
+  }
+
   const args = ["api", "run", "--project", resolution.project];
   for (const id of targets.keys()) {
     args.push("--scenario", id);
@@ -739,6 +761,24 @@ async function executeDebugRun(
     return;
   }
 
+  // プロファイル未指定で走らせない理由・除外条件は executeRun の同ガード参照
+  // (デバッグ実行に dry-run / liveTarget は無いので無条件)。
+  const profile = config.profile.trim();
+  if (profile.length === 0) {
+    const message = t("run.profileRequired.message");
+    run.appendOutput(`${message}\r\n`);
+    run.errored(item, new vscode.TestMessage(message));
+    run.end();
+    void vscode.window
+      .showErrorMessage(`ftester: ${message}`, t("run.profileRequired.openDeviceTab"))
+      .then((picked) => {
+        if (picked !== undefined) {
+          void vscode.commands.executeCommand("ftester.showDeviceMonitor");
+        }
+      });
+    return;
+  }
+
   const debugConfig: vscode.DebugConfiguration = {
     type: "ftester",
     request: "launch",
@@ -747,20 +787,8 @@ async function executeDebugRun(
     scenario: id,
     skipBuild: !config.buildBeforeRun,
     heal: config.heal,
+    profile,
   };
-  // --profile と --platform/--port/--serial の組合せ規則は executeRun 参照。
-  const profile = config.profile.trim();
-  if (profile.length > 0) {
-    debugConfig.profile = profile;
-  } else {
-    debugConfig.platform = config.platform;
-    if (config.port > 0) {
-      debugConfig.port = config.port;
-    }
-    if (config.serial.trim().length > 0) {
-      debugConfig.serial = config.serial;
-    }
-  }
 
   const workspaceFolder = vscode.workspace.getWorkspaceFolder(
     item.uri ?? vscode.Uri.file(workspaceRoot),

@@ -134,3 +134,71 @@ test("h264: 未知 KIND はログして以後の同一チャンク分を破棄�
     `未知 KIND のログが出力されていない: ${JSON.stringify(h.logLines)}`,
   );
 });
+
+// --- v1(mjpeg)---
+
+/** v1 レコード1件分(WIDTH/HEIGHT/LEN/JPEG)。jpeg は SOI 検査を通す実体を渡すこと。 */
+function buildMjpegRecord(width, height, jpeg) {
+  const header = Buffer.alloc(8);
+  header.writeUInt16BE(width, 0);
+  header.writeUInt16BE(height, 2);
+  header.writeUInt32BE(jpeg.length, 4);
+  return Buffer.concat([header, jpeg]);
+}
+
+const JPEG_BODY = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46]);
+
+function createMjpegHarness() {
+  const logLines = [];
+  const frames = [];
+  const pipeline = new StreamPipeline({
+    command: "unused",
+    args: [],
+    logPrefix: "test-stream",
+    outputChannel: { appendLine: (line) => logLines.push(line) },
+    codec: "mjpeg",
+    onFrame: (jpegBase64, width, height) => {
+      frames.push({ jpegBase64, width, height });
+    },
+    onConnectionOk: () => undefined,
+    onFailure: () => undefined,
+  });
+  return { logLines, frames, ingest: (chunk) => pipeline.ingest(chunk) };
+}
+
+test("mjpeg: 分割着信しても1件パースでき、寸法をそのまま渡す", () => {
+  const h = createMjpegHarness();
+  const record = buildMjpegRecord(221, 480, JPEG_BODY);
+  h.ingest(record.subarray(0, 5));
+  assert.equal(h.frames.length, 0, "ヘッダ未完のうちは onFrame が呼ばれてはいけない");
+  h.ingest(record.subarray(5));
+
+  assert.equal(h.frames.length, 1);
+  assert.equal(h.frames[0].width, 221);
+  assert.equal(h.frames[0].height, 480);
+  assert.equal(h.frames[0].jpegBase64, JPEG_BODY.toString("base64"));
+});
+
+test("mjpeg: 寸法 0 のヘッダは desync として弾き、フレームを流さない", () => {
+  const h = createMjpegHarness();
+  h.ingest(buildMjpegRecord(0, 0, JPEG_BODY));
+
+  assert.equal(h.frames.length, 0);
+  assert.ok(
+    h.logLines.some((line) => line.includes("境界がずれています")),
+    `desync のログが出力されていない: ${JSON.stringify(h.logLines)}`,
+  );
+});
+
+test("mjpeg: JPEG でないペイロード(境界ズレ)は弾き、以後の同一チャンク分も破棄する", () => {
+  const h = createMjpegHarness();
+  const bad = buildMjpegRecord(100, 200, Buffer.from([0x00, 0x01, 0x02, 0x03]));
+  const good = buildMjpegRecord(221, 480, JPEG_BODY);
+  h.ingest(Buffer.concat([bad, good]));
+
+  assert.equal(h.frames.length, 0);
+  assert.ok(
+    h.logLines.some((line) => line.includes("境界がずれています")),
+    `desync のログが出力されていない: ${JSON.stringify(h.logLines)}`,
+  );
+});

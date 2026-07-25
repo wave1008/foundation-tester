@@ -111,3 +111,75 @@ test("bulk up ジョブは stopDeviceStreams/stopAllStreams のどちらも呼�
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// ---- syncCpuRenderNames(CPU 描画フォールバック記憶と実測 renderMode の同期) ----
+// 記憶(cpuRenderNames)は private なので、bulk up の spawn 引数に `--cpu-render <name>` が
+// 載るかどうかで観測する(executeBulkJob の引数組み立てがそのまま契約)。
+
+/** 引数を args.log へ追記してから exit 0 する mock ftester。 */
+function makeArgRecordingBinary() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ftester-deviceops-args-test-"));
+  const binaryPath = path.join(dir, "ftester");
+  const argsLog = path.join(dir, "args.log");
+  fs.writeFileSync(binaryPath, `#!/bin/sh\necho "$@" >> ${JSON.stringify(argsLog)}\nexit 0\n`);
+  fs.chmodSync(binaryPath, 0o755);
+  return { dir, binaryPath, argsLog };
+}
+
+/** bulk up を1件流し、mock が記録した引数行を返す。 */
+async function runBulkUpAndReadArgs(deviceOps, argsLog) {
+  deviceOps.enqueueLifecycleJob({ kind: "bulk", op: "up", restartNames: [] });
+  await waitUntilIdle(deviceOps);
+  return fs.existsSync(argsLog) ? fs.readFileSync(argsLog, "utf8") : "";
+}
+
+function androidDevice(name, renderMode, state = "connected") {
+  return { id: name, name, platform: "android", state, renderMode };
+}
+
+test("syncCpuRenderNames: connected で renderMode が cpu 以外なら記憶を落とす(run 側 GPU 復帰の反映)", async () => {
+  const { dir, binaryPath, argsLog } = makeArgRecordingBinary();
+  const { deps } = makeDeps(binaryPath);
+  const deviceOps = new MonitorDeviceOps(deps);
+
+  deviceOps.markCpuRender("Pixel1");
+  assert.match(await runBulkUpAndReadArgs(deviceOps, argsLog), /--cpu-render Pixel1/);
+
+  fs.rmSync(argsLog);
+  deviceOps.syncCpuRenderNames([androidDevice("Pixel1", "gpu")]);
+  assert.doesNotMatch(await runBulkUpAndReadArgs(deviceOps, argsLog), /--cpu-render/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("syncCpuRenderNames: renderMode が cpu / 未受信 / connected 以外 / 非 android なら記憶を保持する", async () => {
+  const { dir, binaryPath, argsLog } = makeArgRecordingBinary();
+  const { deps } = makeDeps(binaryPath);
+  const deviceOps = new MonitorDeviceOps(deps);
+
+  deviceOps.markCpuRender("Pixel1");
+  deviceOps.syncCpuRenderNames([
+    androidDevice("Pixel1", "cpu"),
+    androidDevice("Pixel1", undefined),
+    androidDevice("Pixel1", "gpu", "booted"),
+    { id: "iOS", name: "Pixel1", platform: "ios", state: "connected", renderMode: "gpu" },
+  ]);
+  assert.match(await runBulkUpAndReadArgs(deviceOps, argsLog), /--cpu-render Pixel1/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("syncCpuRenderNames: ライフサイクルジョブ進行中の個体は落とさない(フォールバック直後の競合対策)", async () => {
+  const { dir, binaryPath, argsLog } = makeArgRecordingBinary();
+  const { deps } = makeDeps(binaryPath);
+  const deviceOps = new MonitorDeviceOps(deps);
+
+  // watchdog の CPU フォールバックと同じ順序: markCpuRender → enqueueRestart。再起動が始まるまでの
+  // 数秒はまだ「GPU で connected」なので、ここで落とすとフォールバックが永久に発動しない。
+  deviceOps.markCpuRender("Pixel1");
+  deviceOps.enqueueRestart("Pixel1");
+  deviceOps.syncCpuRenderNames([androidDevice("Pixel1", "gpu")]);
+  await waitUntilIdle(deviceOps);
+
+  fs.rmSync(argsLog, { force: true });
+  assert.match(await runBulkUpAndReadArgs(deviceOps, argsLog), /--cpu-render Pixel1/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});

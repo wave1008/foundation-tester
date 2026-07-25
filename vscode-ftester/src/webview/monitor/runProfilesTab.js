@@ -25,6 +25,7 @@ const runProfileHeal = document.getElementById('run-profile-heal');
 const runProfileIosInappEngine = document.getElementById('run-profile-ios-inapp-engine');
 const runProfileIosFastInput = document.getElementById('run-profile-ios-fast-input');
 const runProfileWipeDataOnBloat = document.getElementById('run-profile-wipe-data-on-bloat');
+const runProfileRecoverCpuFallback = document.getElementById('run-profile-recover-cpu-fallback');
 const runProfileRecord = document.getElementById('run-profile-record');
 const runProfileRecordOptions = document.getElementById('run-profile-record-options');
 const runProfileRecordFailuresOnly = document.getElementById('run-profile-record-failures-only');
@@ -205,6 +206,7 @@ function renderRunProfileEditor(fields) {
   runProfileIosInappEngine.checked = fields.iosInappEngine;
   runProfileIosFastInput.checked = fields.iosFastInput;
   runProfileWipeDataOnBloat.checked = fields.wipeDataOnBloat;
+  runProfileRecoverCpuFallback.checked = fields.recoverCpuFallbackToGpu;
   runProfileRecord.checked = fields.record;
   runProfileRecordFailuresOnly.checked = fields.recordFailuresOnly;
   runProfileRecordBitrate.value = fields.recordBitrateKbps;
@@ -343,6 +345,7 @@ runProfileHeal.addEventListener('change', onRunProfileFormInput);
 runProfileIosInappEngine.addEventListener('change', onRunProfileFormInput);
 runProfileIosFastInput.addEventListener('change', onRunProfileFormInput);
 runProfileWipeDataOnBloat.addEventListener('change', onRunProfileFormInput);
+runProfileRecoverCpuFallback.addEventListener('change', onRunProfileFormInput);
 // record ON のときだけ配下のサブオプション(recordFailuresOnly/recordBitrateKbps/
 // recordFullResolution)を表示する(値そのものは record の状態に関わらず保持・保存する)。
 function updateRecordOptionsVisibility() {
@@ -379,6 +382,7 @@ function runProfileValuesEqual(fields) {
     runProfileIosInappEngine.checked === fields.iosInappEngine &&
     runProfileIosFastInput.checked === fields.iosFastInput &&
     runProfileWipeDataOnBloat.checked === fields.wipeDataOnBloat &&
+    runProfileRecoverCpuFallback.checked === fields.recoverCpuFallbackToGpu &&
     runProfileRecord.checked === fields.record &&
     runProfileRecordFailuresOnly.checked === fields.recordFailuresOnly &&
     runProfileRecordBitrate.value === fields.recordBitrateKbps &&
@@ -406,6 +410,7 @@ function setRunProfileControlsEnabled(enabled) {
   runProfileIosInappEngine.disabled = !enabled;
   runProfileIosFastInput.disabled = !enabled;
   runProfileWipeDataOnBloat.disabled = !enabled;
+  runProfileRecoverCpuFallback.disabled = !enabled;
   runProfileRecord.disabled = !enabled;
   runProfileRecordFailuresOnly.disabled = !enabled;
   runProfileRecordBitrate.disabled = !enabled;
@@ -478,6 +483,7 @@ runProfileConfirm.addEventListener('click', () => {
       iosInappEngine: runProfileIosInappEngine.checked,
       iosFastInput: runProfileIosFastInput.checked,
       wipeDataOnBloat: runProfileWipeDataOnBloat.checked,
+      recoverCpuFallbackToGpu: runProfileRecoverCpuFallback.checked,
       record: runProfileRecord.checked,
       recordFailuresOnly: runProfileRecordFailuresOnly.checked,
       recordBitrateKbps: runProfileRecordBitrate.value.trim(),

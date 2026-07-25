@@ -183,6 +183,7 @@ class MonitorPanelController implements vscode.Disposable {
       isDeviceStreaming: (deviceId) => this.deviceStream.isStreaming(deviceId),
       getStreamingDeviceIds: () => this.deviceStream.streamingIds(),
       notifyMonitorDevices: (devices) => {
+        this.deviceOps.syncCpuRenderNames(devices);
         this.deviceStream.applyDevices(devices);
         this.bridgeWatchdog.observe(devices);
         this.healthWatchdog.observe(devices);

@@ -18,8 +18,8 @@
 //     LEN   : uint32 big-endian(続く JPEG のバイト数)
 //     JPEG  : LEN バイト
 //   ライブ操作タブは w/h を使わない(タップ座標変換は serve snapshot の screen を基準にする)。
-//   デバイスモニタータイルは w/h でタイルのアスペクト比を決めるため onFrame へ渡す(呼び出し側で
-//   使うかどうかは自由。詳細は deviceTiles.js の applyFrame/--tile-aspect)。
+//   デバイスモニタータイルも**表示には使わない**(アスペクト比はデコード後の実寸から決める。
+//   deviceTiles.js の setTileAspect)。w/h はレコード境界の妥当性検査(ingestMjpeg)に使う。
 //
 // v2(helper を --codec h264 で起動、StreamPipelineOptions.codec="h264" のときのみ):
 //   レコードを次の順で繰り返す:
@@ -48,6 +48,11 @@ const H264_HEADER_LEN = 10;
 /** v2 KIND 値(ファイル冒頭の契約コメント参照)。 */
 const H264_KIND_AU = 2;
 const H264_KIND_PING = 3;
+/** v1 レコードの妥当性足切り(desync 検出用。正常値には十分な余裕がある)。 */
+const MAX_FRAME_DIMENSION = 8192;
+const MAX_FRAME_BYTES = 32 * 1024 * 1024;
+/** JPEG の SOI マーカー(0xFFD8)。v1 レコードの先頭バイト境界が合っているかの確認に使う。 */
+const JPEG_SOI = 0xffd8;
 /** SIGTERM 後、応答が無ければ SIGKILL するまでの猶予(ms)。 */
 const KILL_GRACE_MS = 2000;
 /** 予期しない終了後、自動再起動するまでの待ち(ms)。 */
@@ -236,11 +241,23 @@ export class StreamPipeline implements LiveStreamPipeline {
       const width = this.buffer.readUInt16BE(0);
       const height = this.buffer.readUInt16BE(2);
       const len = this.buffer.readUInt32BE(4);
+      // helper が書き込み途中で死ぬ等でバイト境界がズレると、以降このパーサは永久に
+      // 壊れた寸法+非 JPEG を吐き続ける(自力では復帰しない)。足切りで検出して helper を
+      // 再起動する。素通しした場合の実害はモニタータイルのアスペクト崩れ(2026-07-26)
+      if (width <= 0 || height <= 0 || width > MAX_FRAME_DIMENSION || height > MAX_FRAME_DIMENSION
+        || len <= 0 || len > MAX_FRAME_BYTES) {
+        this.handleProtocolDesync(`invalid v1 header w=${width} h=${height} len=${len}`);
+        return;
+      }
       const frameEnd = MJPEG_HEADER_LEN + len;
       if (this.buffer.length < frameEnd) {
         return; // JPEG がまだ全部届いていない。次チャンクを待つ。
       }
       const jpeg = this.buffer.subarray(MJPEG_HEADER_LEN, frameEnd);
+      if (jpeg.readUInt16BE(0) !== JPEG_SOI) {
+        this.handleProtocolDesync("v1 payload is not a JPEG (SOI mismatch)");
+        return;
+      }
       this.buffer = this.buffer.subarray(frameEnd);
       this.emitFrame(jpeg, width, height);
     }
@@ -292,10 +309,22 @@ export class StreamPipeline implements LiveStreamPipeline {
    * kill する(handleWedge と同じく stopping を立てないため close ハンドラが自動再起動する)。
    * this.process が無い(未起動/直接 ingest を呼ぶ単体テスト)場合はログのみ。 */
   private handleUnknownKind(kind: number): void {
-    this.buffer = Buffer.alloc(0); // 以後のバイト列は信頼できないため破棄する
     this.options.outputChannel.appendLine(
       t("live.stream.unknownKind", { prefix: this.options.logPrefix, kind }),
     );
+    this.killForProtocolError();
+  }
+
+  /** v1 レコードの境界ズレ(desync)。未知 KIND と同じく helper を kill して張り直す。 */
+  private handleProtocolDesync(detail: string): void {
+    this.options.outputChannel.appendLine(
+      t("live.stream.desync", { prefix: this.options.logPrefix, detail }),
+    );
+    this.killForProtocolError();
+  }
+
+  private killForProtocolError(): void {
+    this.buffer = Buffer.alloc(0); // 以後のバイト列は信頼できないため破棄する
     const proc = this.process;
     if (!proc || proc.exitCode !== null || proc.signalCode !== null) {
       return;

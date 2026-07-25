@@ -36,6 +36,12 @@ export const runStrings = {
     en: "Could not resolve the target test project. Check the ftester.project setting.",
   },
 
+  "run.profileRequired.message": {
+    ja: "❌ 実行プロファイルが指定されていません。テストを実行する前にデバイスタブで実行プロファイルを指定して下さい。",
+    en: "❌ No run profile is selected. Select one in the Devices tab before running tests.",
+  },
+  "run.profileRequired.openDeviceTab": { ja: "デバイスタブを開く", en: "Open Devices tab" },
+
   "run.label.all": { ja: "全体", en: "All" },
 
   "run.log.rerunFailedSummary": {

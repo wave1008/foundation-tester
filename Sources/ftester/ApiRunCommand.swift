@@ -158,10 +158,17 @@ struct ApiRunCommand: AsyncParsableCommand {
                         status: { self.emitLine(ApiWipeStatusEvent(device: $0, phase: $1)) },
                         log: { logStderr($0) })
                 }
+                // CPU 描画フォールバック機の GPU 復帰は buildAndroidWorkers より前(emulator
+                // プロセスを入れ替えるため serial が変わりうる。Wipe Data と同じ理由・同じ位置)
+                if resolved.recoverCpuFallbackToGpu {
+                    _ = await AndroidGpuRecovery.recoverCpuFallbackDevices(
+                        devices: resolved.androidDevices, locale: resolved.locale) { logStderr($0) }
+                }
                 await ProfileWorkerFactory.preparePhysicalAndroidDevices(
                     resolved: resolved) { logStderr($0) }
                 var workers = try ProfileWorkerFactory.buildAndroidWorkers(resolved: resolved)
-                // 凍結機はまず修復・不発のみ除外(CLI の ProfileRunner と同じ。全滅しても throw せず
+                // 凍結機は修復→不発なら guest reboot 待ちで本 run に復帰・それでも駄目な個体のみ除外
+                // (CLI の ProfileRunner と同じ。全滅しても throw せず
                 // 空で返す=iOS の合流を殺さない。android シナリオはワーカー不在ドレインで失敗確定)
                 let triage = await ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers(workers) { logStderr($0) }
                 workers = triage.workers
@@ -337,9 +344,15 @@ struct ApiRunCommand: AsyncParsableCommand {
                     status: { self.emitLine(ApiWipeStatusEvent(device: $0, phase: $1)) },
                     log: { logStderr($0) })
             }
+            // GPU 復帰は buildWorkers より前(理由は並列経路の同処理を参照)
+            if resolved.recoverCpuFallbackToGpu {
+                _ = await AndroidGpuRecovery.recoverCpuFallbackDevices(
+                    devices: resolved.androidDevices, locale: resolved.locale) { logStderr($0) }
+            }
             workers = try await ProfileWorkerFactory.buildWorkers(
                 resolved: resolved, repoRoot: try RepoRoot.find()) { logStderr($0) }
-            // android ワーカーのみ判定対象(iOS はそのまま通る)。凍結機は修復・不発のみ除外
+            // android ワーカーのみ判定対象(iOS はそのまま通る)。凍結機は修復→guest reboot 待ちで
+            // 本 run に復帰・それでも駄目な個体のみ除外
             let triage = await ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers(workers) { logStderr($0) }
             workers = triage.workers
             blankTriage = (triage.repaired, triage.excluded)
