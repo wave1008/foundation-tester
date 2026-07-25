@@ -133,7 +133,10 @@ xcrun simctl list devices available     # 使えるシミュレータ名を確�
 > `name`（例「メイン機」）は runs プロファイルから参照されるため ios/android 横断で一意に。
 
 **実機を使う場合**は `kind: "physical"` を付け、iOS は `udid`（`xcrun devicectl list devices` の
-Identifier）、Android は `serial`（`adb devices` の左列）を書きます:
+`hardwareProperties.udid`。`00008130-...` の形で、同じ一覧の Identifier 列とは別物です）、
+Android は `serial`（`adb devices` の左列）を書きます。
+VSCode 拡張のモニター →「マシンプロファイル」→「+既存から選択」なら、接続中の実機が一覧に出るので
+手書き不要です:
 
 ```json
 { "ios":     { "devices": [ { "name": "iPhone 実機", "kind": "physical",
@@ -151,13 +154,14 @@ Identifier）、Android は `serial`（`adb devices` の左列）を書きます
   設定。**Team ID は署名証明書の OU** です（`security find-identity` の括弧内は証明書 ID で、
   これを入れると `No Account for Team` で落ちます）:
   `security find-certificate -c "Apple Development: <you>" -p | openssl x509 -noout -subject`
-- **iOS**: 端末側は「このコンピュータを信頼」＋ Developer Mode の有効化。さらに**初回だけ**
+- **iOS**: 端末側は「このコンピュータを信頼」＋ Developer Mode の有効化。さらに
   設定 → 一般 → VPN とデバイス管理 からデベロッパ App の証明書を「信頼」する操作が要ります
+  （初回だけでなく、**証明書が作り直されると再度必要**です）
 - **iOS**: 端末のロックを解除しておく（設定 → 画面表示と明るさ → 自動ロック を「なし」に。
   ロック中は xcodebuild が待機したまま進みません）
-- **iOS**: `brew install libimobiledevice` を入れておく（USB トンネル経由になり、LAN 経由より
-  1 往復が 48ms → 4.7ms で **run 全体が約 25% 速くなります**。未導入なら LAN 経由に自動で落ち、
-  Mac と端末が同一ネットワークにある必要があります）
+- **iOS**: `brew install libimobiledevice` を入れて **USB で接続**する（USB トンネル経由になり、
+  LAN 経由より 1 往復が 48ms → 4.7ms で **run 全体が約 25% 速くなります**。未導入か、端末が
+  WiFi 接続のみの場合は LAN 経由に自動で落ち、Mac と端末が同一ネットワークにある必要があります）
 
 詳細と罠は docs/verification.md の「実機（kind: physical）の検証」。
 
