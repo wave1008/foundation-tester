@@ -170,6 +170,10 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
               <label for="run-profile-wipe-threshold">${t("panels.runProfile.wipeThresholdLabel")}</label>
               <input type="text" id="run-profile-wipe-threshold" placeholder="8">
             </div>
+            <div class="modal-row profile-checkbox-row">
+              <input type="checkbox" id="run-profile-recover-cpu-fallback">
+              <label for="run-profile-recover-cpu-fallback">${t("panels.runProfile.recoverCpuFallbackLabel")}</label>
+            </div>
             <div class="modal-row">
               <label for="run-profile-locale">${t("panels.runProfile.localeLabel")}</label>
               <input type="text" id="run-profile-locale" placeholder="ja_JP">

@@ -39,22 +39,33 @@ public enum ProfileWorkerFactory {
     }
 
     /// excludeOrRepairBlankScreenWorkers の結果。repaired/excluded はワーカー label
-    /// (RunSummary → RunMetaRecord(run.json)に監査記録として残る)
+    /// (RunSummary → RunMetaRecord(run.json)に監査記録として残る)。
+    /// repaired は sleep/wake 修復と guest reboot 修復の両方を含む(run.json のスキーマは
+    /// 「run 前に凍結を修復した個体」の1枠のまま。手段の別はログにのみ残す)
     public struct BlankScreenTriage {
         public let workers: [RunWorker]
         public let repaired: [String]
         public let excluded: [String]
     }
 
+    /// guest reboot 後にブート完了を待つ上限(秒)。実測 ~60s。超過分を待ち続けても run 開始が
+    /// 延びるだけなので打ち切り、blank 再判定に倒す(まだ blank なら除外)
+    static let blankRebootTimeoutSeconds: TimeInterval = 120
+    /// sys.boot_completed=1 から SystemUI 描画までの整定待ち(ナノ秒)
+    static let bootSettleNs: UInt64 = 5_000_000_000
+
     /// android かつ serial 判明済みのワーカーを対象に恒常 blank-screen(画面凍結)を並列判定し、
-    /// **blank ならまず sleep/wake 修復(~4s)を試み、回復しなければ除外する**。健全機は1サンプルで
-    /// 即返る。blank の確定は2連続サンプル ~1.5s(単発フレーム誤検知の回避): run 前の除外に既定の
-    /// 「40s ずっと blank」の確実性は過剰で、凍結が1台でもあると setup 全体が ~37s に膨らむ
-    /// (-gpu host の凍結は頻発。実測)。修復で回復すれば除外しない(除外だけだとワーカーが半減し得る。
-    /// 修復の実測は AndroidHealthProbe.repairBlankDisplay 参照)。**除外した個体には guest reboot を
-    /// 非同期発行する**(sleep/wake が効かない難治型は reboot のみ有効・実測。今回の run には既に
-    /// 除外済みで影響ゼロ、~60s 後の次 run から全数復帰する)。事後の凍結判定(isBlankObserved・
-    /// 実行中の flap 検知)は別物。非 android ワーカーはそのまま通し、元 workers の順序を維持する。
+    /// **blank ならまず sleep/wake 修復(~4s)、不発なら guest reboot を同期発行してブート完了まで
+    /// 待ち、本 run に復帰させる**(ユーザー決定 2026-07-26。以前は除外+非同期 reboot で次 run 復帰
+    /// だったが、台数が半減するのを避けて本 run 内で直す方針にした)。除外は「reboot でも blank の
+    /// まま」の最後の手段だけに残す。健全機は1サンプルで即返る。blank の確定は2連続サンプル ~1.5s
+    /// (単発フレーム誤検知の回避): run 前の判定に既定の「40s ずっと blank」の確実性は過剰で、凍結が
+    /// 1台でもあると setup 全体が ~37s に膨らむ(-gpu host の凍結は頻発。実測)。
+    /// sleep/wake の実測は AndroidHealthProbe.repairBlankDisplay、reboot が難治型に唯一効くことの
+    /// 実測根拠は rebootGuest 参照。guest reboot は emulator プロセスを再起動しないので **serial は
+    /// 変わらない**(ワーカーの driver をそのまま使い続けられる = 呼び出し側の再構築が不要)。
+    /// 事後の凍結判定(isBlankObserved・実行中の flap 検知)は別物。非 android ワーカーはそのまま
+    /// 通し、元 workers の順序を維持する。
     /// 全除外で空になっても throw しない(混在プロファイルの iOS 合流を殺さない。呼び出し側が判断)
     public static func excludeOrRepairBlankScreenWorkers(
         _ workers: [RunWorker], log: (String) -> Void) async -> BlankScreenTriage {
@@ -87,40 +98,90 @@ public enum ProfileWorkerFactory {
             }
             return result
         }
-        let repairedLabels = outcomes.sorted(by: { $0.index < $1.index })
+        var repairedLabels = outcomes.sorted(by: { $0.index < $1.index })
             .filter(\.repaired).map { workers[$0.index].label }
         for label in repairedLabels {
             log("🔧 \(label): 画面凍結(blank-screen)を sleep/wake で修復しました")
         }
-        let blankIndices = Set(outcomes.filter { !$0.repaired }.map(\.index))
-        guard !blankIndices.isEmpty else {
+        let stubbornIndices = outcomes.filter { !$0.repaired }.map(\.index).sorted()
+        guard !stubbornIndices.isEmpty else {
             return BlankScreenTriage(workers: workers, repaired: repairedLabels, excluded: [])
         }
 
-        let adbPath = try? AndroidDriver.findADB()
-        var excludedLabels: [String] = []
-        for index in blankIndices.sorted() {
-            excludedLabels.append(workers[index].label)
-            log("⚠️ \(workers[index].label): 画面が白化(blank-screen)しており修復も不発のため"
-                + "ディスパッチから除外し、guest を再起動します(次回 run から復帰見込み)")
-            // sleep/wake が効かない難治型は guest reboot のみ有効(実測)。既に除外済みなので
-            // この run には影響ゼロ。発行は同期(~0.3s。Task.detached だと全 Android 除外→throw で
-            // プロセスが即終了する経路=最も reboot が必要な場面で発行前に死ぬ)。reboot 完了は
-            // 待たない(adb reboot は発行後すぐ返る)。次 run が reboot 中に来ても serial 未解決 or
-            // blank 扱いで除外継続=安全側
-            if let serial = workers[index].connection.serial {
-                // adb reboot が発行できない/失敗した個体のみ gRPC RESET(VM リセット=guest reboot 相当)
-                let issuedViaAdb = adbPath.flatMap {
-                    try? Shell.run([$0, "-s", serial, "reboot"], timeout: 15)
-                }?.status == 0
-                if !issuedViaAdb {
-                    _ = await EmulatorControl.reset(serial: serial)
-                }
+        // sleep/wake 不発の難治型を guest reboot で本 run 内に復帰させる。1台ずつ直列に処理する
+        // (複数台の同時ブート描画は凍結そのもののトリガ=別個体を巻き込みうる。実測 2026-07-25)。
+        // 該当は通常 0〜1台のため直列でも run 開始の遅延は reboot 1回ぶんに収まる
+        var excludedIndices: Set<Int> = []
+        for index in stubbornIndices {
+            let worker = workers[index]
+            guard let serial = worker.connection.serial else {
+                excludedIndices.insert(index)
+                log("⚠️ \(worker.label): 画面が白化(blank-screen)していますが serial 不明で"
+                    + "再起動できないためディスパッチから除外します")
+                continue
             }
+            log("🔁 \(worker.label): 画面凍結が sleep/wake で直らないため guest を再起動します"
+                + "(ブート完了まで最大 \(Int(blankRebootTimeoutSeconds))s 待機。この run で使用します)")
+            // ブート完了が確認できない個体は blank 再判定に進めず除外する: 再起動中は screencap 取得
+            // 自体が失敗し、probeBlank はそれを「非 blank」(誤除外しない安全側)に倒すため、
+            // 判定に掛けるとブート途中の個体を「復帰した」と誤認して run に載せてしまう
+            guard await rebootGuest(serial: serial, timeout: blankRebootTimeoutSeconds) else {
+                excludedIndices.insert(index)
+                log("⚠️ \(worker.label): guest 再起動のブート完了を確認できないため"
+                    + "ディスパッチから除外します")
+                continue
+            }
+            if await !AndroidHealthProbe.isPersistentlyBlank(serial: serial, samples: 2,
+                                                             intervalMs: 1_500) {
+                repairedLabels.append(worker.label)
+                log("✅ \(worker.label): guest 再起動で画面凍結が解消しました(この run で使用します)")
+                continue
+            }
+            excludedIndices.insert(index)
+            log("⚠️ \(worker.label): guest 再起動でも画面が白化したままのためディスパッチから除外します")
+        }
+        guard !excludedIndices.isEmpty else {
+            return BlankScreenTriage(workers: workers, repaired: repairedLabels, excluded: [])
         }
         return BlankScreenTriage(
-            workers: workers.enumerated().filter { !blankIndices.contains($0.offset) }.map(\.element),
-            repaired: repairedLabels, excluded: excludedLabels)
+            workers: workers.enumerated().filter { !excludedIndices.contains($0.offset) }.map(\.element),
+            repaired: repairedLabels,
+            excluded: excludedIndices.sorted().map { workers[$0].label })
+    }
+
+    /// guest reboot(adb reboot・不可なら gRPC RESET=VM リセット)を発行し、ブート完了まで待つ。
+    /// sleep/wake が効かない難治型の凍結に唯一効くのが guest reboot(実測。docs/performance-tuning.md §7)。
+    /// emulator プロセスは生かしたままなので serial・adb forward は維持される(デバイス常駐ブリッジは
+    /// 死ぬが AndroidDriver.ensureBridge が次の操作で貼り直す)。
+    /// 戻り値 false = 発行不能 or ブート完了を確認できず(呼び出し側は blank 再判定で最終判断する)
+    private static func rebootGuest(serial: String, timeout: TimeInterval) async -> Bool {
+        let adbPath = try? AndroidDriver.findADB()
+        let issuedViaAdb = adbPath.flatMap {
+            try? Shell.run([$0, "-s", serial, "reboot"], timeout: 15)
+        }?.status == 0
+        if !issuedViaAdb, await !EmulatorControl.reset(serial: serial) {
+            return false
+        }
+        guard let adbPath else { return false }
+        // reboot 発行直後はまだ旧セッションが sys.boot_completed=1 を返すため、先に「1 でなくなる」
+        // ことを確認する(省くと waitForAndroidBoot が即成功し、再判定が凍結したままの旧画面に当たる)。
+        // 停止を観測できないまま 30s 過ぎたらそのままブート待ちへ進む(最終判断は blank 再判定)
+        let downDeadline = Date().addingTimeInterval(30)
+        while Date() < downDeadline {
+            let booted = try? Shell.run(
+                [adbPath, "-s", serial, "shell", "getprop", "sys.boot_completed"], timeout: 5)
+            if booted?.output.trimmingCharacters(in: .whitespacesAndNewlines) != "1" { break }
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+        }
+        do {
+            try await DeviceBooter.waitForAndroidBoot(serial: serial, timeout: timeout)
+        } catch {
+            return false
+        }
+        // sys.boot_completed=1 の直後は SystemUI が未描画で画面が一様になりうる。整定を待たずに
+        // 再判定すると回復済みの個体を「まだ blank」と誤判定して除外してしまう
+        try? await Task.sleep(nanoseconds: bootSettleNs)
+        return true
     }
 
     /// Android 実機の run 前準備(点灯+ロック解除+消灯抑止)。エミュレータは対象外。

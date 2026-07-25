@@ -53,6 +53,12 @@ enum ProfileRunner {
         // 分離し、Android を供給完了待ちにしない(ApiRunCommand の並列経路と同じ方針)。
         let repoRoot = try RepoRoot.find()
         await BackendHealthCheck.warnIfUnreachable(resolved: resolved) { print($0) }
+        // GPU 復帰は buildAndroidWorkers より前(emulator プロセスを入れ替えるため serial が
+        // 変わりうる。Wipe Data と同じ理由・同じ位置)
+        if resolved.recoverCpuFallbackToGpu {
+            _ = await AndroidGpuRecovery.recoverCpuFallbackDevices(
+                devices: resolved.androidDevices, locale: resolved.locale) { print($0) }
+        }
         await ProfileWorkerFactory.preparePhysicalAndroidDevices(resolved: resolved) { print($0) }
         var workers = try ProfileWorkerFactory.buildAndroidWorkers(resolved: resolved)
         let beforeBlankCheck = workers.count

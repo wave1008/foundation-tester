@@ -88,6 +88,10 @@ export const panelsStrings = {
     en: "Automatically wipe data when the image bloats (Android)",
   },
   "panels.runProfile.wipeThresholdLabel": { ja: "Wipe Data しきい値(GB)", en: "Wipe data threshold (GB)" },
+  "panels.runProfile.recoverCpuFallbackLabel": {
+    ja: "CPUフォールバックをGPUに回復する(実行開始時・該当機1台につき約1分)",
+    en: "Recover CPU fallback to GPU at run start (about 1 min per affected device)",
+  },
   "panels.runProfile.recordSectionTitle": { ja: "録画", en: "Recording" },
   "panels.runProfile.recordLabel": { ja: "録画する", en: "Record video" },
   "panels.runProfile.recordFailuresOnlyLabel": {

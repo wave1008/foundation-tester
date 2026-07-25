@@ -775,6 +775,11 @@ executableTarget `ftester-scenarios-<name>`(path: `Projects/<name>/Scenarios`)�
   の既定 hybrid を無視する。`engine: "inapp"` を明示すると検証エラー)
 - `devices up/down` は**端末そのものを起動・停止しない**(接続確認+ブリッジの供給/停止だけ)。
   モニターのタイル右クリックも実機ではラベルが「ブリッジを起動/停止」になる
+- **iOS 実機の `state: "booted"` は「端末は接続済みだがブリッジが1本も無い」**の意味
+  (`ApiMonitorCommand.iosState`。シミュレータの booted=起動済みとは意味が違う)。実機のブリッジは
+  自動供給されないのでこの状態は待っても変わらない ⇒ モニタータイルは**未起動として表示**し、
+  右クリックも「ブリッジを起動」を出す(`deviceTiles.js` の `bridgeNotRunning`)。
+  Android 実機の booted は「adb は見えるがブート未完了」= 本当に遷移途中なので対象外
 - ライブ映像は実機だけ **`ftester-devicepoll`**(スクショのポーリング → MJPEG)を使う。
   `ftester-simstream` は CoreSimulator 私有 API で iOS 実機に使えず、`ftester-androidstream`
   (screenrecord)は Android 実機だと静止画面でフレームが流れないため(詳細 docs/verification.md)
@@ -800,6 +805,16 @@ platform フィールドは持たず、**iOS/Android のデバイス名を混在
 再構築だけで 2〜4GB になるため 4GB 以下はスラッシング**、実測 2026-07-17)超過なら Wipe Data してから
 実行する(AndroidDataWiper.swift。ゲストは初期化されるが、アプリは appPath があれば強制
 再インストール、ロケールは下記 `locale` が再ブート後に自動適用される)。
+
+`recoverCpuFallbackToGpu`(既定 false)を true にすると、実行開始時に**画面凍結で CPU 描画
+(swiftshader)へ落ちた Android エミュレータを GPU(`-gpu host`)で起動し直す**
+(AndroidGpuRecovery.swift。`dumpsys SurfaceFlinger` で現に CPU の個体だけが対象、1台ずつ直列)。
+GPU モードは emulator の**起動引数で固定**されるためプロセス再起動が必須で、該当機1台につき
+run 開始が約1分延びる(ゲスト再起動では戻らない)。戻した先で再び凍結すればモニターの watchdog が
+また CPU に落とす(§12.4 の既知トレードオフ)。UI はデバイスタブの実行プロファイル設定
+「CPUフォールバックをGPUに回復する」。拡張側の記憶(`MonitorDeviceOps.cpuRenderNames`)は
+モニターが再検出した renderMode を見て `syncCpuRenderNames` が落とす(run 側の復帰は拡張の外で
+起きるため、これが無いと次の個別 device-up が再び swiftshader で起こしてしまう)。
 
 `record`(既定 false)を true にすると、各ワーカー(デバイス)で run 全体を録画し続けつつ
 (iOS: `simctl io recordVideo` の .mov / Android: `screenrecord` の 180 秒セグメント群)、
@@ -883,6 +898,10 @@ DeviceBooter.defaultLocale(実行プロファイルの locale が届くのは wi
   (`vscode-ftester/`)に一本化した。プロジェクト/実行プロファイルの選択はコマンドパレット
   (「ftester: プロジェクトを選択」「ftester: 実行プロファイルを選択」、`ftester.project` /
   `ftester.profile` 設定)、プロファイル JSON の編集・保存時検証は問題パネル(Diagnostics)で行う。
+  **実行/デバッグ実行は `ftester.profile` 未指定なら実行せず、デバイスタブでの指定を促す通知
+  (「デバイスタブを開く」= `ftester.showDeviceMonitor`)を出す**(未指定だとブリッジ自動供給の無い
+  直接ポート接続に落ち、全シナリオが接続拒否で即失敗するため。ユーザー決定 2026-07-26。
+  dry-run とライブ操作パネル連動は実デバイスを要さない/解決済みのため除外)
   内部的には CLI と同じ `ftester api ...` サブコマンドを呼ぶため、解決ロジック(ProfileResolver 等)
   は CLI と共通(詳細は [vscode-ftester/README.md](../vscode-ftester/README.md))
 - MCP: `ft_list_scenarios` / `ft_run_scenario` に `project` / `profile` 引数、`ft_list_projects` 追加。
@@ -925,7 +944,9 @@ XCUITest ランナーは HTTP サーバだけ死んで xcodebuild 親が残る�
 - **watchdog**(`vscode-ftester/src/monitorBridgeWatchdog.ts`): 一度 connected になったデバイスが
   booted(実体は起動中・ブリッジ無応答)へ降格して連続5観測(約10秒)続いたら `device-up` を
   自動投入。実行レーン稼働中は保留・クールダウン3分・2回失敗で諦めて表示(`ftester.autoRepairBridge`
-  既定 ON)。タイルは「ブリッジ応答なし/ブリッジ再起動中…/復旧失敗」を区別表示
+  既定 ON)。タイルに出すのは諦めた後(failed)だけで、文言は実機「デバイス未接続」/仮想機
+  「接続できません」(内部語ではなくユーザーの取れる行動が分かる語にする。ftester 出力への
+  誘導はホバーのツールチップへ退避。`deviceTiles.js` の `bridgeWatchLabel`)
 - **残骸掃除**: `BridgeLauncher.startDetached` は起動前に同一ポートの xctestrun
   (`FTesterRunner-<port>.xctestrun`)を掴む旧 xcodebuild を kill する(他ポートはパス不一致で不干渉)
 
@@ -954,8 +975,12 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
   `cmd wifi status` / `date +%s` / `screencap -p`(PNG サイズで一様フレーム=描画ウェッジを検出。
   a11y は生きたまま画面だけ死ぬ症状で、guest 再起動でのみ回復)を実行。2回連続観測で確定・
   正常1回で即クリア(AndroidHealthDebounce)。確定異常は monitorDevices の
-  `health: ["wifi-disabled"|"clock-skew"|"blank-screen"]` で拡張へ伝搬
-  (契約は `vscode-ftester/src/monitorModel.ts` 冒頭。拡張は未知の種別も再起動修復に倒す)
+  `health: ["wifi-disabled"|"clock-skew"|"blank-screen"|"metal-errors"]` で拡張へ伝搬
+  (契約は `vscode-ftester/src/monitorModel.ts` 冒頭。拡張は未知の種別も再起動修復に倒す)。
+  **`metal-errors` だけは拡張側で落とす**(表示も修復もしない。`monitorHealthWatchdog` の
+  actionable フィルタ。ホスト GPU ドライバ由来で全機に同時に出る背景現象で個体の異常を表さない=
+  タイルに出すのが不適切。フリート全数検証の実データは performance-tuning.md §7。
+  Swift 側は記録・分析のため載せ続ける契約のまま)
 - **watchdog**(`vscode-ftester/src/monitorHealthWatchdog.ts`): 異常種別ごとに修復ラダーが分かれる。
   ライフサイクルキュー busy 中は保留(起動/停止処理との競合回避)。テスト実行中は保留しない
   (ユーザー決定 2026-07-17: 凍結は実行完了を待たず即修復。実行中の該当デバイスは再起動で落ちるが
@@ -971,9 +996,11 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
     `--cpu-render` で維持)→ それでも駄目なら failed。
     **host 再起動は挟まない**(実測で host 再起動は治らず再凍結=無駄。§12.3・performance-tuning.md §7)。
     run 経路(CLI/api run)は watchdog と独立に、実行前トリアージ「blank 検出→sleep/wake 修復→
-    不発のみ除外+guest reboot 発行」と実行中修復を持つ(`ProfileWorkerFactory.
-    excludeOrRepairBlankScreenWorkers` / `AndroidHealthProbe.observeBlankAndRepair`。
-    修復/除外は run.json の blankRepairs/blankExclusions に記録される)。
+    不発なら guest reboot を同期発行しブート完了待ち→再判定して**本 run で使う**(まだ blank の
+    個体だけ除外)」と実行中修復を持つ(`ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers` /
+    `AndroidHealthProbe.observeBlankAndRepair`。修復/除外は run.json の
+    blankRepairs/blankExclusions に記録される。guest reboot は emulator プロセスを再起動しないので
+    serial は変わらず、ワーカーの再構築は不要)。
   - **clock-skew 等その他**: down→up の host 再起動(`enqueueRestart`。クールダウン 5分・2回失敗で諦め)。
   - **無限ループ対策**: 「異常なし1回」ではエピソード(試行回数の記憶)を破棄せず、健全が 10 分持続して
     初めて破棄する(ブート直後の一時健全で restartAttempts が毎回リセットされ MAX 到達しなかった実害対策)。

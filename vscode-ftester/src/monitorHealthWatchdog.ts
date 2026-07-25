@@ -129,7 +129,13 @@ export class MonitorHealthWatchdog {
       return;
     }
 
-    const hasIssue = health !== undefined && health.length > 0;
+    // metal-errors はここで落とす(表示も修復もしない。ユーザー決定 2026-07-26)。ホスト GPU
+    // ドライバ由来で艦隊全機に同じ時間帯に同時に出る背景現象であり、個体の異常を表さない
+    // (実測: 凍結した個体は累積カウント・増加速度ともフリート最上位ではなかった)。個々のタイルに
+    // 「デバイス異常を検出」と出すのが不適切なため落とす。Swift 側は health に載せ続ける
+    // (AndroidHealthProbe / MetalErrorHistory の記録・分析用。契約は変えない)。
+    const actionable = (health ?? []).filter((issue) => issue !== "metal-errors");
+    const hasIssue = actionable.length > 0;
 
     if (!hasIssue) {
       const entry = this.entries.get(name);
@@ -159,21 +165,13 @@ export class MonitorHealthWatchdog {
     if (!entry.degraded) {
       entry.degraded = true;
       this.deps.log(
-        `[health-watch] ${name}: ${t("monitor.healthWatch.issueDetected", { health: health.join(", ") })}`,
+        `[health-watch] ${name}: ${t("monitor.healthWatch.issueDetected", { health: actionable.join(", ") })}`,
       );
       // failed 後に白⇔正常をフラッピングする個体向け: 異常中はタイルに修復失敗を出し続ける。
       this.deps.post({ type: "healthWatch", name, phase: entry.failed ? "failed" : "unhealthy" });
     }
 
     if (entry.failed) {
-      return;
-    }
-
-    // metal-errors は早期警報のみ(閾値・根拠は Swift 側 AndroidHealthProbe.issueMetalErrors)。
-    // 修復・再起動アクションは取らない(自動リブートのポリシー化は未決)。単独ならここで終了、
-    // 他 issue と併発時は以降のラダーを actionable で判定する
-    const actionable = health.filter((issue) => issue !== "metal-errors");
-    if (actionable.length === 0) {
       return;
     }
 

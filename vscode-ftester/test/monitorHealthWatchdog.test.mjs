@@ -530,18 +530,32 @@ test("wifi-disabled + inRun:true でも Wi-Fi 修復は保留されない(host �
   assert.deepEqual(h.wifiCalls, ["emulator-5554"], "inRun:true でも wifi 修復は実行される");
 });
 
-test("metal-errors 単独は unhealthy バッジのみで修復・再起動アクションを取らない", () => {
+test("metal-errors 単独は post も修復・再起動アクションも一切起こさない", () => {
   const h = createHarness();
   h.watchdog.observe([device("Pixel1", "connected", ["metal-errors"], "emulator-5554")]);
-  assert.deepEqual(h.posts, [{ type: "healthWatch", name: "Pixel1", phase: "unhealthy" }]);
+  assert.deepEqual(h.posts, [], "タイルに「デバイス異常を検出」を出さない");
   // クールダウンを跨いで観測を繰り返してもアクションゼロ
   h.advance(RESTART_COOLDOWN_MS + 1);
   h.watchdog.observe([device("Pixel1", "connected", ["metal-errors"], "emulator-5554")]);
+  assert.deepEqual(h.posts, []);
   assert.deepEqual(h.restarts, []);
   assert.deepEqual(h.wifiCalls, []);
   assert.deepEqual(h.displayCalls, []);
   assert.deepEqual(h.streamRestarts, []);
   assert.deepEqual(h.cpuRenders, []);
+});
+
+test("actionable な異常が metal-errors だけ残して解消したら ok に戻る", () => {
+  const h = createHarness();
+  h.watchdog.observe([device("Pixel1", "connected", ["wifi-disabled"], "emulator-5554")]);
+  assert.deepEqual(h.posts, [
+    { type: "healthWatch", name: "Pixel1", phase: "unhealthy" },
+    { type: "healthWatch", name: "Pixel1", phase: "repairing" },
+  ]);
+  h.posts.length = 0;
+  // wifi が直り metal-errors だけ残った状態 = 異常なし扱い(タイルは通常表示へ戻す)
+  h.watchdog.observe([device("Pixel1", "connected", ["metal-errors"], "emulator-5554")]);
+  assert.deepEqual(h.posts, [{ type: "healthWatch", name: "Pixel1", phase: "ok" }]);
 });
 
 test("metal-errors と blank-screen の併発は blank ラダー(displayRepair)が動く", () => {

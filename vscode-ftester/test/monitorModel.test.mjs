@@ -998,6 +998,7 @@ const VALID_RUN_PROFILE_SAVE = {
     defaultTimeout: "10",
     wipeDataOnBloat: true,
     wipeDataThresholdGB: "1",
+    recoverCpuFallbackToGpu: false,
     locale: "ja_JP",
     record: false,
     recordFailuresOnly: false,
@@ -1016,7 +1017,7 @@ test("isMonitorFromWebviewMessage: runProfileLoad は profile 空文字/欠落/�
   assert.equal(isMonitorFromWebviewMessage({ type: "runProfileLoad", profile: 1 }), false);
 });
 
-test("isMonitorFromWebviewMessage: runProfileSave は profile 非空・fields10項目の型が揃っていれば true", () => {
+test("isMonitorFromWebviewMessage: runProfileSave は profile 非空・fields16項目の型が揃っていれば true", () => {
   assert.equal(isMonitorFromWebviewMessage(VALID_RUN_PROFILE_SAVE), true);
   // devices は空配列も(型としては)許容する — 「1件以上」の検証はクライアント側の別ロジックが担う。
   assert.equal(
@@ -1038,6 +1039,7 @@ test("isMonitorFromWebviewMessage: runProfileSave は profile 非空・fields10�
         defaultTimeout: "",
         wipeDataOnBloat: false,
         wipeDataThresholdGB: "",
+        recoverCpuFallbackToGpu: true,
         locale: "",
         record: true,
         recordFailuresOnly: true,
@@ -1813,7 +1815,7 @@ test("syncDevicesInMachineProfile: トップレベルがオブジェクトでな
 
 // ---- parseRunProfileForForm ----
 
-test("parseRunProfileForForm: 正常な値は15フィールドをそのまま読み取る", () => {
+test("parseRunProfileForForm: 正常な値は16フィールドをそのまま読み取る", () => {
   const parsed = parseRunProfileForForm({
     machine: "M1 Max",
     app: "sampleapp",
@@ -1825,6 +1827,7 @@ test("parseRunProfileForForm: 正常な値は15フィールドをそのまま読
     defaultTimeout: 10,
     wipeDataOnBloat: false,
     wipeDataThresholdGB: 1.5,
+    recoverCpuFallbackToGpu: true,
     locale: "en_US",
     record: true,
     recordFailuresOnly: true,
@@ -1842,6 +1845,7 @@ test("parseRunProfileForForm: 正常な値は15フィールドをそのまま読
     defaultTimeout: "10",
     wipeDataOnBloat: false,
     wipeDataThresholdGB: "1.5",
+    recoverCpuFallbackToGpu: true,
     locale: "en_US",
     record: true,
     recordFailuresOnly: true,
@@ -1850,7 +1854,7 @@ test("parseRunProfileForForm: 正常な値は15フィールドをそのまま読
   });
 });
 
-test("parseRunProfileForForm: 欠落キーは既定値(machine/app/reportDir/locale/recordBitrateKbps=''、devices=[]、heal=false、iosInappEngine=true、defaultTimeout=''、wipeDataOnBloat=true、wipeDataThresholdGB=''、record/recordFailuresOnly/recordFullResolution/iosFastInput=false)", () => {
+test("parseRunProfileForForm: 欠落キーは既定値(machine/app/reportDir/locale/recordBitrateKbps=''、devices=[]、heal=false、iosInappEngine=true、defaultTimeout=''、wipeDataOnBloat=true、wipeDataThresholdGB=''、record/recordFailuresOnly/recordFullResolution/iosFastInput/recoverCpuFallbackToGpu=false)", () => {
   const parsed = parseRunProfileForForm({});
   assert.deepEqual(parsed, {
     machine: "",
@@ -1863,6 +1867,7 @@ test("parseRunProfileForForm: 欠落キーは既定値(machine/app/reportDir/loc
     defaultTimeout: "",
     wipeDataOnBloat: true,
     wipeDataThresholdGB: "",
+    recoverCpuFallbackToGpu: false,
     locale: "",
     record: false,
     recordFailuresOnly: false,
@@ -1883,6 +1888,7 @@ test("parseRunProfileForForm: 型不正のキーは既定値扱い(machine が�
     defaultTimeout: {},
     wipeDataOnBloat: "false",
     wipeDataThresholdGB: {},
+    recoverCpuFallbackToGpu: "true",
     locale: 123,
     record: "true",
     recordFailuresOnly: "true",
@@ -1900,6 +1906,7 @@ test("parseRunProfileForForm: 型不正のキーは既定値扱い(machine が�
     defaultTimeout: "",
     wipeDataOnBloat: true,
     wipeDataThresholdGB: "",
+    recoverCpuFallbackToGpu: false,
     locale: "",
     record: false,
     recordFailuresOnly: false,

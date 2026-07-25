@@ -753,6 +753,7 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
         typeof value.fields.defaultTimeout === "string" &&
         typeof value.fields.wipeDataOnBloat === "boolean" &&
         typeof value.fields.wipeDataThresholdGB === "string" &&
+        typeof value.fields.recoverCpuFallbackToGpu === "boolean" &&
         typeof value.fields.locale === "string" &&
         typeof value.fields.record === "boolean" &&
         typeof value.fields.recordFailuresOnly === "boolean" &&
@@ -1255,10 +1256,10 @@ export function validateNewAppProfileName(name: string, existing: readonly strin
 }
 
 // ---- プロファイルタブ下半分: 実行プロファイルの設定フォーム -----------------------------
-// handleRunProfileLoad/Save(monitorPanel.ts)が使う、JSON⇔フォーム14フィールド変換の純粋関数
+// handleRunProfileLoad/Save(monitorPanel.ts)が使う、JSON⇔フォーム16フィールド変換の純粋関数
 // (未知キー保持のイミュータブルな方針。updateDeviceInMachineProfile と同じ)。
 
-/** 実行プロファイル設定フォームの15フィールド(全て文字列/配列/真偽値化済み。空文字は未設定)。
+/** 実行プロファイル設定フォームの16フィールド(全て文字列/配列/真偽値化済み。空文字は未設定)。
  * recordFailuresOnly/recordBitrateKbps/recordFullResolution は「録画セクション」、iosFastInput は
  * 「iOS」セクションのサブオプション(親チェックボックスの状態に関わらず独立して保持・保存する。
  * 表示上の非表示切替は runProfilesTab.js の責務)。 */
@@ -1273,6 +1274,7 @@ export interface RunProfileFormFields {
   readonly defaultTimeout: string;
   readonly wipeDataOnBloat: boolean;
   readonly wipeDataThresholdGB: string;
+  readonly recoverCpuFallbackToGpu: boolean;
   readonly locale: string;
   readonly record: boolean;
   readonly recordFailuresOnly: boolean;
@@ -1281,7 +1283,7 @@ export interface RunProfileFormFields {
 }
 
 /**
- * runs/<name>.json のトップレベルから、フォームの15フィールドを許容的に読み取る(トップレベルが
+ * runs/<name>.json のトップレベルから、フォームの16フィールドを許容的に読み取る(トップレベルが
  * 非オブジェクトなら null)。各キーは欠落・型不正を「読めなければ空/既定値」で許容し、スキーマ
  * 妥当性検証はしない(保存時 updateRunProfileInObject・CLI 側 ProfileResolver.validate に委ねる)。
  * defaultTimeout/wipeDataThresholdGB/recordBitrateKbps は number ならそのまま String() 化する
@@ -1302,6 +1304,8 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
   const iosInappEngine = typeof source.iosInappEngine === "boolean" ? source.iosInappEngine : true;
   const iosFastInput = typeof source.iosFastInput === "boolean" ? source.iosFastInput : false;
   const wipeDataOnBloat = typeof source.wipeDataOnBloat === "boolean" ? source.wipeDataOnBloat : true;
+  const recoverCpuFallbackToGpu =
+    typeof source.recoverCpuFallbackToGpu === "boolean" ? source.recoverCpuFallbackToGpu : false;
   const record = typeof source.record === "boolean" ? source.record : false;
   const recordFailuresOnly = typeof source.recordFailuresOnly === "boolean" ? source.recordFailuresOnly : false;
   const recordFullResolution = typeof source.recordFullResolution === "boolean" ? source.recordFullResolution : false;
@@ -1330,6 +1334,7 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
     defaultTimeout,
     wipeDataOnBloat,
     wipeDataThresholdGB,
+    recoverCpuFallbackToGpu,
     locale,
     record,
     recordFailuresOnly,
@@ -1376,7 +1381,9 @@ export function updateRunProfileInObject(
   result.heal = fields.heal;
   result.iosInappEngine = fields.iosInappEngine;
   result.wipeDataOnBloat = fields.wipeDataOnBloat;
-  for (const key of ["record", "recordFailuresOnly", "recordFullResolution", "iosFastInput"] as const) {
+  for (const key of [
+    "record", "recordFailuresOnly", "recordFullResolution", "iosFastInput", "recoverCpuFallbackToGpu",
+  ] as const) {
     if (fields[key]) {
       result[key] = true;
     } else {

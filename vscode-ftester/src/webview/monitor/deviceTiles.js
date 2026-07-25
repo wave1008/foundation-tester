@@ -18,9 +18,17 @@ import { setHoverTip } from './hoverTip.js';
 // unresponsive(検知中)・repairing(自動修復中)は表示しない(ユーザー決定 2026-07-16:
 // 過渡的・自己解決する内部状態のため)。自動修復が諦めた failed だけ表示する
 // (これも消すとブリッジ死亡時にタイルが無言で「接続中」のまま止まり手掛かりが無くなる)。
-const BRIDGE_WATCH_LABEL = {
-  failed: { label: t('wvMonitor.footer.bridgeRepairFailed'), warn: true },
-};
+// 実機と仮想機で原因も対処も違うため文言を分ける(実機=ケーブル/信頼設定など接続そのもの、
+// 仮想機=ブリッジ供給の失敗)。内部的な「復旧失敗」ではなくユーザーが取れる行動が分かる語にする。
+// 診断の入り口(ftester 出力)はホバーのツールチップに退避する
+function bridgeWatchLabel(phase, physical) {
+  if (phase !== 'failed') { return undefined; }
+  return {
+    label: t(physical ? 'wvMonitor.footer.bridgeFailedPhysical' : 'wvMonitor.footer.bridgeFailedVirtual'),
+    tip: t('wvMonitor.footer.bridgeFailedTip'),
+    warn: true,
+  };
+}
 
 // healthWatch(MonitorHealthWatchdog、契約は main.js の 'healthWatch' ケース参照)の phase→footer表示。
 // 'ok' はここに含めず通常表示へフォールバックさせる。bridgeWatch と異なり全 phase を表示する
@@ -66,6 +74,15 @@ function deviceOpMenuItem(state, busy, physical) {
   };
 }
 
+// iOS 実機の state==='booted' は「端末は接続済みだがブリッジが1本も無い」の意味
+// (ApiMonitorCommand.iosState。シミュレータの booted=起動済みとは意味が違う)。実機のブリッジは
+// 自動供給されない(run かタイルのメニューからのみ起動する)ため、この状態は待っても変わらない。
+// 「接続中」スピナーのまま放置すると復帰待ちに見えるので未起動として扱う(ユーザー決定 2026-07-26)。
+// android 実機の booted は「adb は見えるがブート未完了」= 本当に遷移途中なので対象外。
+function bridgeNotRunning(device) {
+  return device.kind === 'physical' && device.platform === 'ios' && device.state === 'booted';
+}
+
 // device id -> タイルDOM要素・最新フレーム(1枚のみ保持、履歴は溜めない)
 export const tiles = new Map();
 // bootBusy.bulkOp(「全て起動/終了」がキュー内にある間 'up'/'down'、無ければ null)。
@@ -78,6 +95,19 @@ export const selectedDeviceIds = new Set();
 // タイル内の「画像以外」の高さの合計(px)。CSS の固定高と一致させること:
 // padding 上下 8+8 + header 20 + footer 18 + gap 6×2 = 66
 const TILE_CHROME_HEIGHT = 66;
+
+// タイル幅は「--tile-image-h × --tile-aspect」で決まる(style.css の .frame-wrap)。
+// **実際にデコードできた画像の実寸からしか設定しない**: ストリームのヘッダ由来の寸法を信じると、
+// 境界ズレで壊れたフレーム1枚がタイルを異常な幅に広げ、以後そのまま戻らない(実害 2026-07-26。
+// 上流の検出は deviceStream.ts の handleProtocolDesync)。同値なら書かない(毎フレームの
+// スタイル書き込みによるレイアウト再計算を避ける)
+function setTileAspect(entry, aspect) {
+  if (!entry) { return; }
+  const value = aspect.toFixed(4);
+  if (entry.tileAspect === value) { return; }
+  entry.tileAspect = value;
+  entry.tile.style.setProperty('--tile-aspect', value);
+}
 
 // タイル実測高さから --tile-image-h を算出(タイル幅はこの高さ×アスペクト比で決まる)。
 // スプリッター移動・リサイズ・タイル生成のたびに呼び直す必要がある。
@@ -130,6 +160,20 @@ function createTile(device) {
   const frameWrap = document.createElement('div');
   frameWrap.className = 'frame-wrap';
   const img = document.createElement('img');
+  // アスペクト比はデコードできた画像の実寸だけから決める(下の setTileAspect のコメント参照)。
+  img.addEventListener('load', () => {
+    if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+      setTileAspect(tiles.get(device.id), img.naturalWidth / img.naturalHeight);
+    }
+  });
+  // デコードできないフレーム(ストリームの境界ズレ等)は黒い矩形を残さずプレースホルダへ倒す。
+  // 残すとブリッジ死亡後もタイルに黒画面が居座り、状態を誤認させる
+  img.addEventListener('error', () => {
+    const entryNow = tiles.get(device.id);
+    if (!entryNow || !entryNow.frameSrc) { return; }
+    entryNow.frameSrc = null;
+    renderFrame(entryNow);
+  });
   const placeholder = document.createElement('div');
   placeholder.className = 'frame-placeholder';
 
@@ -164,6 +208,8 @@ function createTile(device) {
     placeholderEl: placeholder,
     errorEl: error,
     frameSrc: null,
+    // 直近 setTileAspect した値(文字列)。同値の再書き込みを避けるためだけに持つ。
+    tileAspect: undefined,
     // bridgeWatch の直近 phase('ok'/未受信は undefined)。state==='booted' の間だけ表示に反映する。
     bridgeWatchPhase: undefined,
     // healthWatch の直近 phase('ok'/未受信は undefined)。state==='connected' の間だけ表示に反映する。
@@ -196,7 +242,9 @@ function createTile(device) {
 
 function renderFrame(entry) {
   entry.frameWrapEl.textContent = '';
-  const offline = entry.device.state === 'offline';
+  // ブリッジ不在の実機は未起動と同じ扱い(bridgeNotRunning のコメント参照)。フレームも出さない:
+  // 残っているのはブリッジが死ぬ前の古い1枚で、生きた画面と見分けがつかない
+  const offline = entry.device.state === 'offline' || bridgeNotRunning(entry.device);
   // 終了中(一括・個別とも)は最終フレームを凍結表示のまま見せず、プレースホルダに倒す
   // (ストリームは down 開始時に破棄済みで、以後フレームは更新されない)。
   // ただし個別 down が「キュー待ち(queued)」の間はまだ stopDeviceStreams 前=ストリーム生存中なので
@@ -312,6 +360,7 @@ function renderMeta(entry) {
   // 優先順位: deviceOpBusy(手動の起動/停止操作) > wipeStatus > bridgeWatch/healthWatch。
   // state で排他(booted/connected)のため bridgeWatch と healthWatch は衝突しない。
   let warn = false;
+  let footerTip = '';
   if (entry.opBusy) {
     // 何もしない: footerText は空のまま(キュー待ちは左下の queuedBadge チップが伝える。
     // 実行中の down/up はプレースホルダ側のラベルに譲る)。
@@ -322,9 +371,10 @@ function renderMeta(entry) {
       warn = override.warn;
     }
   } else if (entry.device.state === 'booted' && entry.bridgeWatchPhase) {
-    const override = BRIDGE_WATCH_LABEL[entry.bridgeWatchPhase];
+    const override = bridgeWatchLabel(entry.bridgeWatchPhase, entry.device.kind === 'physical');
     if (override) {
       footerText = override.label;
+      footerTip = override.tip;
       warn = override.warn;
     }
   } else if (entry.device.state === 'connected' && entry.healthWatchPhase) {
@@ -336,6 +386,7 @@ function renderMeta(entry) {
   }
   entry.stateBadgeEl.classList.toggle('tile-status-warn', warn);
   entry.stateBadgeEl.textContent = footerText;
+  setHoverTip(entry.stateBadgeEl, footerTip);
 
   // キュー待ちチップ(ヘッダー)。per-device の queued(再起動待ち/個別起動待ち)に加え、
   // 一括起動中で CLI が未到達の未起動機(per-device 状態なし)にも「起動待機」を出す。
@@ -361,8 +412,11 @@ export function renderDeviceOpMenuItem() {
   if (!deviceOpMenuEntry) {
     return;
   }
-  const item = deviceOpMenuItem(deviceOpMenuEntry.device.state, deviceOpMenuEntry.opBusy,
-                                deviceOpMenuEntry.device.kind === 'physical');
+  // ブリッジ不在の実機は offline と同じ扱い(そのまま booted を渡すと「ブリッジを停止」が出て、
+  // 止まっているものを止める操作しか選べなくなる)
+  const device = deviceOpMenuEntry.device;
+  const item = deviceOpMenuItem(bridgeNotRunning(device) ? 'offline' : device.state,
+                                deviceOpMenuEntry.opBusy, device.kind === 'physical');
   // ラベルはspanに書く(ボタン直のtextContent代入はアイコンSVGを消す)。data-opはCSSのアイコン切替も担う。
   deviceOpMenuItemLabel.textContent = item.label;
   deviceOpMenuItemBtn.disabled = item.disabled;
@@ -523,10 +577,7 @@ export function applyFrame(message) {
   if (entry.usingH264) {
     disposeH264(entry);
   }
-  // --tile-aspect は CSS 側でタイル幅の計算に使われる。
-  if (message.width > 0 && message.height > 0) {
-    entry.tile.style.setProperty('--tile-aspect', (message.width / message.height).toFixed(4));
-  }
+  // message.width/height はここでは使わない(アスペクト比は img の load で実寸から決める)。
   renderMeta(entry);
   renderFrame(entry);
   clearTileError(entry);
@@ -581,8 +632,9 @@ export function applyH264Chunk(message) {
       canvas: entry.canvasEl,
       onFirstFrame: (dims) => {
         entry.usingH264 = true;
+        // デコード後の実寸(VideoFrame)なのでそのまま採用してよい
         if (dims.width > 0 && dims.height > 0) {
-          entry.tile.style.setProperty('--tile-aspect', (dims.width / dims.height).toFixed(4));
+          setTileAspect(entry, dims.width / dims.height);
         }
         renderMeta(entry);
         renderFrame(entry);
