@@ -9,7 +9,7 @@ import FTCore
 struct ApiResultsCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "results",
-        abstract: "実行結果DB(results/)の集計(runs/summary/flaky/devices/daily/trend/slow/insights)を"
+        abstract: "実行結果DB(results/)の集計(runs/summary/flaky/devices/daily/trend/slow/insights/matrix)を"
             + "まとめてJSONでstdoutに出力する(診断は stderr のみ)")
 
     @Option(help: "テストプロジェクト名(省略時: Projects/ が 1 つならそれ / 既定プロジェクト)")
@@ -26,6 +26,9 @@ struct ApiResultsCommand: AsyncParsableCommand {
 
     @Option(help: "指定時のみ trend(実行履歴)を出力するシナリオID")
     var scenario: String?
+
+    @Option(name: .customLong("matrix-runs"), help: "直近何 run 分のシナリオ×run成否マトリクスを出力するか(0でmatrix省略)")
+    var matrixRuns: Int = 20
 
     func run() throws {
         let testProject = try ScenarioHost.project(named: project)
@@ -50,7 +53,8 @@ struct ApiResultsCommand: AsyncParsableCommand {
             daily: RunResultsQuery.dailyRates(records),
             trend: scenario.map { RunResultsQuery.trend(records, scenarioID: $0) },
             slow: RunResultsQuery.slowTests(records, limit: 10),
-            insights: RunResultsQuery.insights(records: records, runs: runs))
+            insights: RunResultsQuery.insights(records: records, runs: runs),
+            matrix: matrixRuns > 0 ? RunResultsQuery.matrix(records: records, runs: runs, limit: matrixRuns) : nil)
 
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
@@ -59,8 +63,8 @@ struct ApiResultsCommand: AsyncParsableCommand {
     }
 }
 
-/// ftester api results の出力全体。trend は --scenario 省略時、キー自体を出さない
-/// (null ではなくキー欠落。TS 側はキーの有無で --scenario 指定の有無を判定する契約)
+/// ftester api results の出力全体。trend は --scenario 省略時、matrix は --matrix-runs 0 指定時に
+/// キー自体を出さない(null ではなくキー欠落。TS 側はキーの有無で指定の有無を判定する契約)
 private struct ApiResultsOutput: Encodable {
     let schemaVersion: Int
     let project: String
@@ -74,10 +78,11 @@ private struct ApiResultsOutput: Encodable {
     let trend: [ScenarioRunRecord]?
     let slow: [RunResultsQuery.SlowTestRow]
     let insights: [RunResultsQuery.InsightRow]
+    let matrix: RunResultsQuery.MatrixReport?
 
     private enum CodingKeys: String, CodingKey {
         case schemaVersion, project, generatedAt, since, runs, summary, flaky, devices, daily, trend,
-             slow, insights
+             slow, insights, matrix
     }
 
     func encode(to encoder: Encoder) throws {
@@ -96,5 +101,8 @@ private struct ApiResultsOutput: Encodable {
         }
         try container.encode(slow, forKey: .slow)
         try container.encode(insights, forKey: .insights)
+        if let matrix {
+            try container.encode(matrix, forKey: .matrix)
+        }
     }
 }

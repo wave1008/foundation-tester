@@ -380,6 +380,103 @@ public enum RunResultsQuery {
         }
     }
 
+    // MARK: - matrix
+
+    public struct MatrixRunColumn: Codable, Sendable, Equatable {
+        public let runID: String
+        public let startedAt: String
+        public let profile: String?
+    }
+
+    public struct MatrixScenarioRow: Codable, Sendable, Equatable {
+        public let scenarioID: String
+        public let title: String?
+        /// runs と同順・同数。1=passed 0=failed null=その run にこのシナリオの記録が無い
+        public let cells: [Int?]
+    }
+
+    public struct MatrixReport: Codable, Sendable, Equatable {
+        public let runs: [MatrixRunColumn]
+        public let scenarios: [MatrixScenarioRow]
+    }
+
+    private struct MatrixKey: Hashable {
+        let runID: String
+        let scenarioID: String
+    }
+
+    /// シナリオ×直近 limit run の成否マトリクス。total==nil/0 の run(未完了・0件実行)は窓の対象外。
+    /// (runID, scenarioID) が複数レコードを持つ場合(RunRecorder の ~2 リトライ)は startedAt 最新を採用。
+    /// 出力順: flaky(pass/fail混在)→ all-fail → all-pass、各グループ内は scenarioID 昇順
+    public static func matrix(records: [ScenarioRunRecord], runs: [RunMetaRecord], limit: Int) -> MatrixReport {
+        guard limit > 0 else { return MatrixReport(runs: [], scenarios: []) }
+
+        let window = runs
+            .filter { ($0.total ?? 0) != 0 }
+            .sorted { date(from: $0.startedAt) > date(from: $1.startedAt) }
+            .prefix(limit)
+        guard !window.isEmpty else { return MatrixReport(runs: [], scenarios: []) }
+
+        let windowRunIDs = Set(window.map(\.runID))
+        var latestByKey: [MatrixKey: ScenarioRunRecord] = [:]
+        for record in records where windowRunIDs.contains(record.runID) {
+            let key = MatrixKey(runID: record.runID, scenarioID: record.scenarioID)
+            if let existing = latestByKey[key] {
+                if date(from: record.startedAt) > date(from: existing.startedAt) {
+                    latestByKey[key] = record
+                }
+            } else {
+                latestByKey[key] = record
+            }
+        }
+
+        var latestTitle: [String: (title: String?, date: Date)] = [:]
+        for record in records {
+            let recordDate = date(from: record.startedAt)
+            if let existing = latestTitle[record.scenarioID] {
+                if recordDate > existing.date {
+                    latestTitle[record.scenarioID] = (record.title, recordDate)
+                }
+            } else {
+                latestTitle[record.scenarioID] = (record.title, recordDate)
+            }
+        }
+
+        let runColumns = window.map { MatrixRunColumn(runID: $0.runID, startedAt: $0.startedAt, profile: $0.profile) }
+        let scenarioIDs = Set(records.map(\.scenarioID))
+
+        var flakyRows: [MatrixScenarioRow] = []
+        var allFailRows: [MatrixScenarioRow] = []
+        var allPassRows: [MatrixScenarioRow] = []
+
+        for scenarioID in scenarioIDs {
+            let cells: [Int?] = window.map { run in
+                guard let record = latestByKey[MatrixKey(runID: run.runID, scenarioID: scenarioID)] else { return nil }
+                return record.passed ? 1 : 0
+            }
+            let nonNilCells = cells.compactMap { $0 }
+            guard !nonNilCells.isEmpty else { continue }
+            let row = MatrixScenarioRow(scenarioID: scenarioID, title: latestTitle[scenarioID]?.title, cells: cells)
+            let hasPass = nonNilCells.contains(1)
+            let hasFail = nonNilCells.contains(0)
+            if hasPass && hasFail {
+                flakyRows.append(row)
+            } else if hasFail {
+                allFailRows.append(row)
+            } else {
+                allPassRows.append(row)
+            }
+        }
+
+        func sortedByScenarioID(_ rows: [MatrixScenarioRow]) -> [MatrixScenarioRow] {
+            rows.sorted { $0.scenarioID < $1.scenarioID }
+        }
+
+        return MatrixReport(
+            runs: runColumns,
+            scenarios: sortedByScenarioID(flakyRows) + sortedByScenarioID(allFailRows) + sortedByScenarioID(allPassRows))
+    }
+
     private static func severityRank(_ severity: String) -> Int {
         switch severity {
         case "critical": return 0

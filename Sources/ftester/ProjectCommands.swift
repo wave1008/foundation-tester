@@ -21,7 +21,7 @@ struct ProjectCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "project",
         abstract: "テストプロジェクト(Projects/<name>/)の管理",
-        subcommands: [Create.self, List.self, Sync.self])
+        subcommands: [Create.self, List.self, Sync.self, LintSelectors.self])
 
     struct Create: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
@@ -88,6 +88,78 @@ struct ProjectCommand: AsyncParsableCommand {
         func run() async throws {
             let root = try ftesterRepoRoot()
             try syncManifest(repoRoot: root, verbose: true)
+        }
+    }
+
+    struct LintSelectors: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "lint-selectors",
+            abstract: "シナリオの #id セレクタと契約書(ui-contract.md)のドリフトを検査する"
+                + "(対象は #id のみ。ラベルはローカライズで揺れるため対象外)")
+
+        @Option(help: "テストプロジェクト名(省略時の解決は他コマンドと同じ)")
+        var project: String?
+
+        @Option(help: "契約 md のパス(省略時: Projects/<name>/docs/ui-contract.md。無ければエラー)")
+        var contract: String?
+
+        func run() async throws {
+            let testProject = try ScenarioHost.project(named: project)
+
+            let contractURL = contract.map { URL(fileURLWithPath: $0) }
+                ?? testProject.docsDir.appendingPathComponent("ui-contract.md")
+            guard FileManager.default.fileExists(atPath: contractURL.path) else {
+                throw ValidationError(
+                    "契約ファイルが見つかりません(\(contractURL.path))。"
+                    + "--contract で契約 md のパスを指定してください")
+            }
+            guard let contractText = try? String(contentsOf: contractURL, encoding: .utf8) else {
+                throw ValidationError("契約ファイルの読み込みに失敗しました: \(contractURL.path)")
+            }
+
+            let files = ScenarioFolders.swiftFiles(under: testProject.scenariosDir)
+            var occurrences: [(file: URL, id: String, line: Int)] = []
+            for file in files {
+                guard let source = try? String(contentsOf: file, encoding: .utf8) else { continue }
+                for hit in SelectorLint.selectorsInSwiftSource(source) {
+                    occurrences.append((file: file, id: hit.id, line: hit.line))
+                }
+            }
+
+            let usedIDs = Set(occurrences.map(\.id))
+            let contractIDs = SelectorLint.idsInContract(contractText)
+            let (unknown, unusedContractIDs) = SelectorLint.drift(
+                usedIDs: usedIDs, contractIDs: contractIDs)
+
+            let scenariosBase = testProject.scenariosDir.standardizedFileURL.path + "/"
+            func relativePath(_ url: URL) -> String {
+                let path = url.standardizedFileURL.path
+                return path.hasPrefix(scenariosBase) ? String(path.dropFirst(scenariosBase.count))
+                                                       : path
+            }
+
+            if !unknown.isEmpty {
+                print("❌ 契約に無い #id セレクタが見つかりました:")
+                let hits = occurrences
+                    .filter { unknown.contains($0.id) }
+                    .sorted { $0.file.path != $1.file.path ? $0.file.path < $1.file.path
+                                                             : $0.line < $1.line }
+                for hit in hits {
+                    print("   \(relativePath(hit.file)):\(hit.line) #\(hit.id)")
+                }
+            }
+
+            if !unusedContractIDs.isEmpty {
+                let sorted = unusedContractIDs.sorted()
+                print("ℹ️ 契約にあるがシナリオから未使用の #id(\(sorted.count) 件): "
+                      + sorted.map { "#\($0)" }.joined(separator: ", "))
+            }
+
+            guard unknown.isEmpty else {
+                throw ExitCode(1)
+            }
+            print("✅ セレクタドリフトはありません(\(files.count) ファイル / \(usedIDs.count) セレクタ"
+                  + " / 契約 \(contractIDs.count) id)")
         }
     }
 

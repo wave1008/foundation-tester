@@ -74,9 +74,13 @@ public enum AndroidHealthProbe {
         // emulator ログの Metal エラー蓄積(ホスト側ファイル読みのみ。実機・ログ無しはスキップ。
         // ログは emulator プロセス再起動でのみ truncate=guest reboot では警告は消えない仕様)
         if let avdID = EmulatorControl.avdName(serial: serial),
-           let count = metalErrorCount(logFile: EmulatorLog.url(avdID: avdID)),
-           count >= metalErrorWarnThreshold {
-            issues.insert(issueMetalErrors)
+           let count = metalErrorCount(logFile: EmulatorLog.url(avdID: avdID)) {
+            // record はファイル I/O を伴う副作用。observeIssues が monitor の低頻度ポーリングから
+            // のみ呼ばれる前提で許容している(高頻度呼び出し元から呼ぶと I/O 過多になる)
+            MetalErrorHistory.record(avdID: avdID, serial: serial, count: count)
+            if count >= metalErrorWarnThreshold {
+                issues.insert(issueMetalErrors)
+            }
         }
         return issues
     }

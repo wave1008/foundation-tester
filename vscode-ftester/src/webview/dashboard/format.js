@@ -41,6 +41,15 @@ export function formatLocalDateTime(iso) {
     pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
 }
 
+// マトリクステーブルの run 列見出し用の短縮表示("MM-DD HH:mm")。
+export function formatShortDateTime(iso) {
+  if (!iso) return '–';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return iso;
+  const pad = (n) => String(n).padStart(2, '0');
+  return pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+}
+
 export function passFailMark(passed) {
   return passed ? '✅' : '❌';
 }

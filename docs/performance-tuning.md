@@ -411,6 +411,8 @@ window/transition/animator の `*_scale` はチューニングノブではなく
     **モニターが自動警報する**: health プローブが行数を数え、閾値 100 で `metal-errors` を
     タイルに警告表示(AndroidHealthProbe.issueMetalErrors。**表示のみ**=watchdog は修復・
     再起動アクションを取らない。自動リブートのポリシー化は未決)
+    カウントの時系列は `~/Library/Logs/ftester/emulator/metal-history.ndjson` に残る
+    (MetalErrorHistory。変化時のみ追記・5MB 超で `.1` へロールオーバー)
   - **凍結の変種と修復応答(修復パラメータの根拠)**: ①瞬間ブリップ(数秒で自己回復。アプリ起動
     白画面の誤検知も混在し得る)②自然回復型(~30s)③固着・修復可(sleep/wake 1サイクル dwell 1.5s
     ≈4s で回復=最多)④固着・抵抗型(1サイクル+wake後6s待でも blank のまま。**dwell 3s の

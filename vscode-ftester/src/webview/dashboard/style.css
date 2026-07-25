@@ -160,6 +160,26 @@ button:hover:not(:disabled) { background-color: var(--vscode-button-hoverBackgro
   color: var(--vscode-descriptionForeground);
 }
 
+.matrix-wrap {
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+.matrix-table th, .matrix-table td {
+  text-align: center;
+}
+.matrix-table td:first-child, .matrix-table th:first-child {
+  text-align: left;
+}
+.matrix-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.matrix-dot-pass { background-color: var(--vscode-charts-green, #2f9e63); }
+.matrix-dot-fail { background-color: var(--vscode-charts-red, #f2555a); }
+.matrix-dot-empty { background-color: rgba(127, 127, 127, 0.25); }
+
 .daily-chart-wrap {
   overflow-x: auto;
   padding-bottom: 4px;

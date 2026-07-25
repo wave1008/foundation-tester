@@ -523,22 +523,181 @@ final class RunResultsQueryTests: XCTestCase {
         XCTAssertEqual(rows.map(\.kind), ["consecutiveFailures", "selectorDecay", "unfinishedRuns"])
     }
 
+    // MARK: - matrix
+
+    func testMatrixBasicPivot() {
+        let runs = [
+            makeMeta(runID: "R1", startedAt: "2026-01-01T00:00:00Z", total: 2),
+            makeMeta(runID: "R2", startedAt: "2026-01-02T00:00:00Z", total: 2),
+        ]
+        let records = [
+            makeRecord(
+                scenarioID: "Foo.a", passed: true, startedAt: "2026-01-01T00:00:00Z", durationMs: 100, runID: "R1"),
+            makeRecord(
+                scenarioID: "Foo.a", passed: false, startedAt: "2026-01-02T00:00:00Z", durationMs: 100, runID: "R2"),
+            makeRecord(
+                scenarioID: "Foo.b", passed: true, startedAt: "2026-01-02T00:00:00Z", durationMs: 100, runID: "R2"),
+        ]
+        let report = RunResultsQuery.matrix(records: records, runs: runs, limit: 10)
+        XCTAssertEqual(report.runs.map(\.runID), ["R2", "R1"])  // startedAt 降順
+
+        let fooA = report.scenarios.first { $0.scenarioID == "Foo.a" }
+        XCTAssertEqual(fooA?.cells, [0, 1])  // 列順は runs と同じ(R2: fail, R1: pass)→ flaky
+
+        let fooB = report.scenarios.first { $0.scenarioID == "Foo.b" }
+        XCTAssertEqual(fooB?.cells, [1, nil])  // R2: pass, R1: このシナリオの記録なし
+    }
+
+    func testMatrixOrderingGroupsAndExcludesOutOfWindowScenarios() {
+        let runs = [
+            makeMeta(runID: "R1", startedAt: "2026-01-01T00:00:00Z", total: 2),
+            makeMeta(runID: "R2", startedAt: "2026-01-02T00:00:00Z", total: 2),
+            makeMeta(runID: "R3", startedAt: "2026-01-03T00:00:00Z", total: 2),
+            makeMeta(runID: "R4", startedAt: "2026-01-04T00:00:00Z", total: 2),
+        ]
+        let records = [
+            // flaky(挿入順をわざとアルファベット逆にして並び替えを検証)
+            makeRecord(
+                scenarioID: "Zeta.flaky", passed: false, startedAt: "2026-01-03T00:00:00Z", durationMs: 100,
+                runID: "R3"),
+            makeRecord(
+                scenarioID: "Zeta.flaky", passed: true, startedAt: "2026-01-02T00:00:00Z", durationMs: 100,
+                runID: "R2"),
+            makeRecord(
+                scenarioID: "Alpha.flaky", passed: true, startedAt: "2026-01-04T00:00:00Z", durationMs: 100,
+                runID: "R4"),
+            makeRecord(
+                scenarioID: "Alpha.flaky", passed: false, startedAt: "2026-01-02T00:00:00Z", durationMs: 100,
+                runID: "R2"),
+            // all-fail
+            makeRecord(
+                scenarioID: "Yankee.fail", passed: false, startedAt: "2026-01-04T00:00:00Z", durationMs: 100,
+                runID: "R4"),
+            makeRecord(
+                scenarioID: "Bravo.fail", passed: false, startedAt: "2026-01-03T00:00:00Z", durationMs: 100,
+                runID: "R3"),
+            // all-pass
+            makeRecord(
+                scenarioID: "Mike.pass", passed: true, startedAt: "2026-01-04T00:00:00Z", durationMs: 100,
+                runID: "R4"),
+            makeRecord(
+                scenarioID: "Charlie.pass", passed: true, startedAt: "2026-01-03T00:00:00Z", durationMs: 100,
+                runID: "R3"),
+            // window(直近3件=R4,R3,R2)の外(R1)にしか出現しないので除外される
+            makeRecord(
+                scenarioID: "Never.outside", passed: true, startedAt: "2026-01-01T00:00:00Z", durationMs: 100,
+                runID: "R1"),
+        ]
+        let report = RunResultsQuery.matrix(records: records, runs: runs, limit: 3)
+        XCTAssertEqual(report.runs.map(\.runID), ["R4", "R3", "R2"])
+        XCTAssertEqual(report.scenarios.map(\.scenarioID), [
+            "Alpha.flaky", "Zeta.flaky", "Bravo.fail", "Yankee.fail", "Charlie.pass", "Mike.pass",
+        ])
+    }
+
+    func testMatrixWindowSelectionUsesStartedAtNotArrayOrder() {
+        // runs 配列の並びと startedAt の並びを意図的にずらす
+        let runs = [
+            makeMeta(runID: "R3", startedAt: "2026-01-03T00:00:00Z", total: 1),
+            makeMeta(runID: "R1", startedAt: "2026-01-01T00:00:00Z", total: 1),
+            makeMeta(runID: "R2", startedAt: "2026-01-02T00:00:00Z", total: 1),
+        ]
+        let records = [
+            makeRecord(
+                scenarioID: "Foo.a", passed: true, startedAt: "2026-01-01T00:00:00Z", durationMs: 100, runID: "R1"),
+            makeRecord(
+                scenarioID: "Foo.a", passed: true, startedAt: "2026-01-02T00:00:00Z", durationMs: 100, runID: "R2"),
+            makeRecord(
+                scenarioID: "Foo.a", passed: false, startedAt: "2026-01-03T00:00:00Z", durationMs: 100, runID: "R3"),
+        ]
+        let report = RunResultsQuery.matrix(records: records, runs: runs, limit: 2)
+        XCTAssertEqual(report.runs.map(\.runID), ["R3", "R2"])  // 新しい2件のみ(R1 は限界外)
+        let fooA = report.scenarios.first { $0.scenarioID == "Foo.a" }
+        XCTAssertEqual(fooA?.cells, [0, 1])
+    }
+
+    func testMatrixExcludesRunsWithNilOrZeroTotal() {
+        let runs = [
+            makeMeta(runID: "R1", startedAt: "2026-01-01T00:00:00Z", total: 2),
+            makeMeta(runID: "R2", startedAt: "2026-01-02T00:00:00Z", total: 0),
+            makeMeta(runID: "R3", startedAt: "2026-01-03T00:00:00Z", total: nil),
+        ]
+        let records = [
+            makeRecord(
+                scenarioID: "Foo.a", passed: true, startedAt: "2026-01-01T00:00:00Z", durationMs: 100, runID: "R1"),
+            makeRecord(
+                scenarioID: "Foo.a", passed: false, startedAt: "2026-01-02T00:00:00Z", durationMs: 100, runID: "R2"),
+            makeRecord(
+                scenarioID: "Foo.a", passed: false, startedAt: "2026-01-03T00:00:00Z", durationMs: 100, runID: "R3"),
+        ]
+        let report = RunResultsQuery.matrix(records: records, runs: runs, limit: 10)
+        XCTAssertEqual(report.runs.map(\.runID), ["R1"])  // total==0/nil の R2/R3 は窓から除外
+        let fooA = report.scenarios.first { $0.scenarioID == "Foo.a" }
+        XCTAssertEqual(fooA?.cells, [1])  // R2/R3 のレコードはセルに現れない
+    }
+
+    func testMatrixLimitZeroReturnsEmptyReport() {
+        let runs = [makeMeta(runID: "R1", startedAt: "2026-01-01T00:00:00Z", total: 2)]
+        let records = [
+            makeRecord(
+                scenarioID: "Foo.a", passed: true, startedAt: "2026-01-01T00:00:00Z", durationMs: 100, runID: "R1"),
+        ]
+        let report = RunResultsQuery.matrix(records: records, runs: runs, limit: 0)
+        XCTAssertTrue(report.runs.isEmpty)
+        XCTAssertTrue(report.scenarios.isEmpty)
+    }
+
+    func testMatrixDuplicateRunScenarioPairPicksLatestStartedAt() {
+        let runs = [makeMeta(runID: "R1", startedAt: "2026-01-01T00:00:00Z", total: 2)]
+        let records = [
+            makeRecord(
+                scenarioID: "Foo.a", passed: false, startedAt: "2026-01-01T00:00:00Z", durationMs: 100, runID: "R1"),
+            // ~2 サフィックスのリトライ相当。startedAt が後発の方が勝つ
+            makeRecord(
+                scenarioID: "Foo.a", passed: true, startedAt: "2026-01-01T00:05:00Z", durationMs: 100, runID: "R1"),
+        ]
+        let report = RunResultsQuery.matrix(records: records, runs: runs, limit: 10)
+        let fooA = report.scenarios.first { $0.scenarioID == "Foo.a" }
+        XCTAssertEqual(fooA?.cells, [1])
+    }
+
+    func testMatrixTitleUsesChronologicallyLatestRecord() {
+        let runs = [
+            makeMeta(runID: "R1", startedAt: "2026-01-01T00:00:00Z", total: 1),
+            makeMeta(runID: "R2", startedAt: "2026-01-02T00:00:00Z", total: 1),
+        ]
+        let records = [
+            makeRecord(
+                scenarioID: "Foo.a", passed: true, startedAt: "2026-01-01T00:00:00Z", durationMs: 100,
+                runID: "R1", title: "Old Title"),
+            makeRecord(
+                scenarioID: "Foo.a", passed: true, startedAt: "2026-01-02T00:00:00Z", durationMs: 100,
+                runID: "R2", title: "New Title"),
+        ]
+        let report = RunResultsQuery.matrix(records: records, runs: runs, limit: 10)
+        XCTAssertEqual(report.scenarios.first { $0.scenarioID == "Foo.a" }?.title, "New Title")
+    }
+
     // MARK: - フィクスチャ
 
-    private func makeMeta(runID: String, finishedAt: String? = nil) -> RunMetaRecord {
+    private func makeMeta(
+        runID: String, startedAt: String = "2026-01-01T00:00:00Z", finishedAt: String? = nil, total: Int? = 1
+    ) -> RunMetaRecord {
         RunMetaRecord(
             runID: runID, project: "SampleApp", profile: nil, machine: "testmachine",
-            trigger: "cli", startedAt: "2026-01-01T00:00:00Z", finishedAt: finishedAt)
+            trigger: "cli", startedAt: startedAt, finishedAt: finishedAt, total: total)
     }
 
     private func makeRecord(
         scenarioID: String, passed: Bool, startedAt: String, durationMs: Int,
         steps: StepCountsRecord? = nil, platform: String = "ios", worker: String? = nil,
         timedOut: Bool? = nil, scenes: [SceneResultRecord] = [],
-        failedSteps: [FailedStepRecord]? = nil, errorLogs: [String]? = nil
+        failedSteps: [FailedStepRecord]? = nil, errorLogs: [String]? = nil,
+        runID: String = "", title: String? = nil
     ) -> ScenarioRunRecord {
         ScenarioRunRecord(
-            scenarioID: scenarioID, platform: platform, worker: worker, machine: "testmachine",
+            runID: runID, scenarioID: scenarioID, title: title, platform: platform, worker: worker,
+            machine: "testmachine",
             passed: passed, timedOut: timedOut, startedAt: startedAt, durationMs: durationMs,
             scenes: scenes, steps: steps ?? StepCountsRecord(total: 1, passed: passed ? 1 : 0, failed: passed ? 0 : 1),
             failedSteps: failedSteps, errorLogs: errorLogs)

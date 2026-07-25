@@ -137,6 +137,10 @@ export const exploreHealStrings = {
     ja: "遅いテストはありません。",
     en: "No slow tests.",
   },
+  "exploreHeal.dashboard.headingMatrix": {
+    ja: "シナリオ×run マトリクス",
+    en: "Scenario × Run Matrix",
+  },
   "exploreHeal.dashboard.headingDaily": {
     ja: "日別成功率",
     en: "Daily Success Rate",

@@ -114,6 +114,53 @@ test("isApiResultsPayload: slow/insights を含む完全な値も true と判定
   assert.equal(isApiResultsPayload(payload), true);
 });
 
+test("isApiResultsPayload: matrix を含む完全な値も true と判定する", () => {
+  const payload = validPayload({
+    matrix: {
+      runs: [
+        { runID: "20260716-000000", startedAt: "2026-07-16T00:00:00Z", profile: "default" },
+        { runID: "20260715-000000", startedAt: "2026-07-15T00:00:00Z" },
+      ],
+      scenarios: [
+        { scenarioID: "Login", title: "Login flow", cells: [1, 0] },
+        { scenarioID: "Checkout", cells: [null, 1] },
+      ],
+    },
+  });
+  assert.equal(isApiResultsPayload(payload), true);
+});
+
+test("isApiResultsPayload: matrix が欠落(--matrix-runs 0 相当)でも true と判定する", () => {
+  const payload = validPayload();
+  assert.equal(isApiResultsPayload(payload), true);
+  assert.equal("matrix" in payload, false);
+});
+
+test("isApiResultsPayload: matrix.scenarios[].cells に数値/null以外が混じれば false", () => {
+  const payload = validPayload({
+    matrix: {
+      runs: [{ runID: "R1", startedAt: "2026-07-16T00:00:00Z" }],
+      scenarios: [{ scenarioID: "Login", cells: ["true"] }],
+    },
+  });
+  assert.equal(isApiResultsPayload(payload), false);
+});
+
+test("isApiResultsPayload: matrix.runs[] の必須フィールド欠落は false", () => {
+  const payload = validPayload({
+    matrix: {
+      runs: [{ startedAt: "2026-07-16T00:00:00Z" }],
+      scenarios: [],
+    },
+  });
+  assert.equal(isApiResultsPayload(payload), false);
+});
+
+test("isApiResultsPayload: matrix が object でなければ false", () => {
+  const payload = validPayload({ matrix: "not-an-object" });
+  assert.equal(isApiResultsPayload(payload), false);
+});
+
 test("isApiResultsPayload: slow/insights が欠落(旧 CLI 相当)でも true と判定する", () => {
   const payload = validPayload();
   delete payload.slow;
