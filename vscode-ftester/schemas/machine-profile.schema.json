@@ -37,17 +37,22 @@
           "description": "デバイス識別名(実行プロファイルの devices[].name から参照されるキー)。ios/android 横断で一意にすること。",
           "minLength": 1
         },
+        "kind": {
+          "type": "string",
+          "enum": ["virtual", "physical"],
+          "description": "デバイスの実体種別(省略時 virtual)。virtual = iOS シミュレータ / Android エミュレータ。physical = 実機(iOS は udid、Android は serial が必須。iOS 実機は engine=xcuitest 固定)。"
+        },
         "simulator": {
           "type": "string",
-          "description": "iOS: シミュレータのデバイス名(例 \"iPhone 17 Pro\")。"
+          "description": "iOS: シミュレータのデバイス名(例 \"iPhone 17 Pro\")。実機では未使用。"
         },
         "os": {
           "type": "string",
-          "description": "iOS: OS バージョン(例 \"27.0\"。省略時は名前一致の最新)。"
+          "description": "iOS: OS バージョン(例 \"27.0\"。省略時は名前一致の最新)。実機では未使用。"
         },
         "udid": {
           "type": "string",
-          "description": "iOS: シミュレータ UDID(指定時は simulator/os より優先される)。"
+          "description": "iOS: UDID。kind=virtual ならシミュレータ UDID(simulator/os より優先)、kind=physical なら実機 UDID(xcrun devicectl list devices の Identifier。必須)。"
         },
         "port": {
           "type": "integer",
@@ -58,11 +63,15 @@
         "engine": {
           "type": "string",
           "enum": ["xcuitest", "inapp"],
-          "description": "iOS: 駆動エンジン。xcuitest(既定)= XCUITest ブリッジ / inapp = シミュレータのアプリに dylib 注入する in-app ブリッジ(実機不可・高速)。"
+          "description": "iOS: 駆動エンジン。xcuitest(既定)= XCUITest ブリッジ / inapp = シミュレータのアプリに dylib 注入する in-app ブリッジ(実機不可・高速)。kind=physical では xcuitest 以外は検証エラー。"
         },
         "avd": {
           "type": "string",
           "description": "Android: AVD(ID または表示名。起動中エミュレータとの照合で adb シリアルに解決される)。"
+        },
+        "serial": {
+          "type": "string",
+          "description": "Android 実機: adb シリアル(USB は \"14141JEC204922\"、WiFi は \"192.168.1.23:5555\")。kind=physical のとき必須。エミュレータでは使わない(avd から解決するため)。"
         }
       }
     }

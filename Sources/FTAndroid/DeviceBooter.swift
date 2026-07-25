@@ -150,6 +150,12 @@ public enum DeviceBooter {
     /// 1 台起動(起動済みなら何もしない)
     public static func bootOne(spec: DeviceSpec, platform: String, gpuMode: String = "host",
                                log: @escaping @Sendable (String) -> Void) async throws {
+        // 実機に「起動」は無い。到達性の確認だけして返す(未接続はここで明確に落とす)
+        if spec.isPhysical {
+            let description = try physicalDeviceDescription(spec: spec, platform: platform)
+            log("✔ \(spec.name): 実機接続を確認(\(description))")
+            return
+        }
         if platform == "ios" {
             let sim = try SimulatorCatalog.resolve(spec: spec, in: SimulatorCatalog.devices())
             guard !sim.booted else {
@@ -207,6 +213,22 @@ public enum DeviceBooter {
     public static func shutdownOne(spec: DeviceSpec, platform: String,
                                    repoRoot: URL? = nil,
                                    log: @escaping @Sendable (String) -> Void) async throws {
+        // 実機は停止しない(ユーザーの端末を勝手に落とさない)。iOS はブリッジだけ止める。
+        // Android の adb emu kill は実機に存在せず、serial 消失待ちで毎回 15s 空振りする
+        if spec.isPhysical {
+            if platform == "ios", let repoRoot {
+                // ランナープロセスの -destination に載るのは**解決後のハードウェア UDID**。
+                // プロファイルには devicectl の Identifier(別 UUID)も書けるので、
+                // spec.udid をそのまま照合すると一致せずブリッジが残る
+                let udid = (try? IOSPhysicalDeviceCatalog.resolve(
+                    spec: spec, in: IOSPhysicalDeviceCatalog.devices()))?.udid ?? spec.udid
+                for port in (udid.map { BridgeLauncher.stopMatching(udid: $0, repoRoot: repoRoot) } ?? []) {
+                    log("→ \(spec.name): ブリッジ停止(port \(port))")
+                }
+            }
+            log("✔ \(spec.name): 実機のため停止しません")
+            return
+        }
         if platform == "ios" {
             let catalog = try SimulatorCatalog.devices()
             let sim = try SimulatorCatalog.resolve(spec: spec, in: catalog)
@@ -265,8 +287,23 @@ public enum DeviceBooter {
         }
     }
 
+    /// 実機の到達性説明("iPhone 15 Pro(wired)" / "14141JEC204922")。未接続は throw
+    static func physicalDeviceDescription(spec: DeviceSpec, platform: String) throws -> String {
+        if platform == "ios" {
+            let device = try IOSPhysicalDeviceCatalog.resolve(
+                spec: spec, in: IOSPhysicalDeviceCatalog.devices())
+            return "\(device.name) \(device.os) / \(device.transport)"
+        }
+        return try AndroidDeviceCatalog.resolveSerial(spec: spec)
+    }
+
     /// 起動中ならその説明("iPhone 17 Pro" / "emulator-5554")、未起動なら nil
     static func runningDescription(spec: DeviceSpec, platform: String) -> String? {
+        if spec.isPhysical {
+            // 実機は「接続されていれば起動中」。未接続なら nil で「未起動」扱いになるが、
+            // bootOne は実機を起動しないので誤ってエミュレータ起動に流れることはない
+            return try? physicalDeviceDescription(spec: spec, platform: platform)
+        }
         if platform == "ios" {
             guard let sim = try? SimulatorCatalog.resolve(
                 spec: spec, in: SimulatorCatalog.devices()), sim.booted else { return nil }

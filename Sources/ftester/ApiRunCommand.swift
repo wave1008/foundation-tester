@@ -158,6 +158,8 @@ struct ApiRunCommand: AsyncParsableCommand {
                         status: { self.emitLine(ApiWipeStatusEvent(device: $0, phase: $1)) },
                         log: { logStderr($0) })
                 }
+                await ProfileWorkerFactory.preparePhysicalAndroidDevices(
+                    resolved: resolved) { logStderr($0) }
                 var workers = try ProfileWorkerFactory.buildAndroidWorkers(resolved: resolved)
                 // 凍結機はまず修復・不発のみ除外(CLI の ProfileRunner と同じ。全滅しても throw せず
                 // 空で返す=iOS の合流を殺さない。android シナリオはワーカー不在ドレインで失敗確定)
@@ -492,7 +494,12 @@ struct ApiRunCommand: AsyncParsableCommand {
                     return .silent
                 }
                 do {
-                    _ = try await BridgeClient(port: port).status(timeout: 5)
+                    // 実機ブリッジは 127.0.0.1 に居ない。宛先は DriverConnection 経由で届く
+                    // (取り違えると失敗のたびに健全な実機ワーカーを「接続不能」で離脱させる)
+                    _ = try await BridgeClient(
+                        port: port,
+                        host: worker.connection.host ?? BridgeEndpoint.loopbackHost)
+                        .status(timeout: 5)
                     return .ok
                 } catch DriverError.bridgeConnectionRefused {
                     return .refused

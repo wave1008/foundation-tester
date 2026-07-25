@@ -108,6 +108,9 @@ public final class FTRuntime {
 public final class FTDriveCore {
     let driver: AppDriver
     public let platform: String
+    /// 実機か。白フレーム=画面凍結の推定はエミュレータ固有の病理(GPU 合成バッファ固着)なので、
+    /// 実機では「画面が消灯しているだけ」を凍結と誤断しないためにこれで抑止する
+    public let physical: Bool
     let appBundleID: String
     let executor: StepExecutor
     let scenarioID: String
@@ -148,9 +151,11 @@ public final class FTDriveCore {
                 typeDriverGestures: Set<String> = [],
                 deviceName: String? = nil,
                 deviceIdentifier: String? = nil,
+                physical: Bool = false,
                 emit: @escaping (ScenarioEvent) -> Void) {
         self.driver = driver
         self.platform = platform
+        self.physical = physical
         self.appBundleID = app
         self.executor = StepExecutor(driver: driver, fallbackDriver: fallbackDriver,
                                      typeDriver: typeDriver, preferTypeDriver: preferTypeDriver,
@@ -479,12 +484,15 @@ public final class FTDriveCore {
         let driver = self.driver
         let delegate = executor.delegate
         let goal = scenarioTitle.isEmpty ? scenarioID : scenarioTitle
-        let isAndroid = platform == "android"
+        // 白フレーム=画面凍結の推定を行うか。エミュレータ固有の病理(GPU 合成バッファ固着)なので
+        // Android **かつ**実機でない場合だけ。実機は「画面が消灯しているだけ」を凍結と誤断する
+        let inferFrozenFromBlankFrame = platform == "android" && !physical
         let context = FTSync.run { () async -> (Data?, TriageInfo?, Bool) in
             let snapshot = try? await driver.snapshot()
             var screenshot = try? await driver.screenshot()
             var evidenceBlank = false
-            if isAndroid, let shot = screenshot, BlankFrameDetector.isUniformBlank(pngData: shot) {
+            if inferFrozenFromBlankFrame, let shot = screenshot,
+               BlankFrameDetector.isUniformBlank(pngData: shot) {
                 evidenceBlank = true
                 for _ in 0..<3 {
                     try? await Task.sleep(nanoseconds: 2_500_000_000)

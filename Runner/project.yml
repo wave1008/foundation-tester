@@ -11,6 +11,10 @@ settings:
     SWIFT_VERSION: "5.0"
     GENERATE_INFOPLIST_FILE: YES
     TARGETED_DEVICE_FAMILY: "1"
+    # 実機ビルドでは自動署名のためにチーム固有の bundle id が要る。ホスト側 BridgeLauncher が
+    # xcodebuild の引数で上書きする(既定 com.example のままだと他チーム登録済みの App ID と
+    # 衝突して自動署名が失敗しうる)。同期相手: Sources/FTBridgeClient/BridgeLauncher.swift
+    FT_BUNDLE_ID_PREFIX: com.example
 targets:
   # UIテストの器になる空のホストアプリ
   FTesterRunnerApp:
@@ -20,7 +24,7 @@ targets:
       - path: FTesterRunnerApp
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.example.ftrunner
+        PRODUCT_BUNDLE_IDENTIFIER: $(FT_BUNDLE_ID_PREFIX).ftrunner
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
 
@@ -36,7 +40,7 @@ targets:
       - target: FTesterRunnerApp
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.example.ftrunner.uitests
+        PRODUCT_BUNDLE_IDENTIFIER: $(FT_BUNDLE_ID_PREFIX).ftrunner.uitests
         TEST_TARGET_NAME: FTesterRunnerApp
         SWIFT_OBJC_BRIDGING_HEADER: FTesterRunnerUITests/BridgingHeader.h
 
@@ -48,7 +52,7 @@ targets:
       - path: ../SampleApp/Sources
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.example.sampleapp
+        PRODUCT_BUNDLE_IDENTIFIER: $(FT_BUNDLE_ID_PREFIX).sampleapp
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
 

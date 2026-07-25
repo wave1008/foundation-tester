@@ -99,7 +99,10 @@ actor VideoRecordingCoordinator {
         let session: (any DeviceVideoRecorderSession)?
         switch worker.platform {
         case "ios":
-            session = worker.connection.udid.map {
+            // 実機は録画不可(simctl io recordVideo はシミュレータ専用)。nil で静かにスキップする
+            // = 既存の「録画失敗は run を失敗させない」構造にそのまま乗る。Android 実機は
+            // adb screenrecord なのでそのまま録れる
+            session = worker.connection.physical ? nil : worker.connection.udid.map {
                 IOSSimulatorVideoRecorder(udid: $0, workDir: recordingsDir, fileStem: sourceStem)
             }
         case "android":

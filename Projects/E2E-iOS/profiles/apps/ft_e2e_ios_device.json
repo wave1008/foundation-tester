@@ -1,0 +1,10 @@
+{
+  "common": {
+    "appName": "FT E2E iOS(実機)",
+    "autoInstall": true
+  },
+  "ios": {
+    "app": "com.ftester.e2e.ios",
+    "appPath": "E2EAppIOS/dist/ios-device/FTE2EIOS.app"
+  }
+}

@@ -57,6 +57,15 @@ public enum PortHolder {
             return waitForRelease(port: port, description: description)
         }
 
+        // 実機の USB トンネル(iproxy <hostPort> ...)。第1引数が対象ポートのものだけ自分の資産と
+        // みなす(別ポートのトンネルを巻き添えで殺さない)。LAN モードではそもそも
+        // ホスト側に LISTEN が無いのでここに来ない
+        if command.contains("iproxy"),
+           command.split(separator: " ").dropFirst().first.flatMap({ UInt16($0) }) == port {
+            terminateThenKill(pid: pid)
+            return waitForRelease(port: port, description: description)
+        }
+
         return .foreign(description: description)
     }
 

@@ -58,8 +58,12 @@ public enum ProfileWorkerFactory {
     /// 全除外で空になっても throw しない(混在プロファイルの iOS 合流を殺さない。呼び出し側が判断)
     public static func excludeOrRepairBlankScreenWorkers(
         _ workers: [RunWorker], log: (String) -> Void) async -> BlankScreenTriage {
+        // 実機は対象外。blank 判定(blankScreenMaxPNGBytes=30KB)は 1080x2424 エミュレータ較正で
+        // 解像度の違う実機では当てにならず、誤判定すると健全な実機に adb reboot を撃ってしまう。
+        // そもそも blank-screen はエミュレータの GPU 合成バッファ固着という固有の病理
         let candidates = workers.enumerated().filter {
             $0.element.platform == "android" && $0.element.connection.serial != nil
+                && !$0.element.connection.physical
         }
         guard !candidates.isEmpty else {
             return BlankScreenTriage(workers: workers, repaired: [], excluded: [])
@@ -119,6 +123,17 @@ public enum ProfileWorkerFactory {
             repaired: repairedLabels, excluded: excludedLabels)
     }
 
+    /// Android 実機の run 前準備(点灯+ロック解除+消灯抑止)。エミュレータは対象外。
+    /// buildAndroidWorkers の前に呼ぶこと(呼ばないと実機が消灯したまま run が始まり、
+    /// launch の前面判定が通らず全シナリオが 500 で落ちる)
+    public static func preparePhysicalAndroidDevices(
+        resolved: ResolvedProfile, log: @escaping (String) -> Void) async {
+        for device in resolved.androidDevices where device.spec.isPhysical {
+            guard let serial = device.spec.serial else { continue }
+            await AndroidPhysicalDevice.prepareForRun(serial: serial, log: log)
+        }
+    }
+
     /// Android ワーカーのみ構築(serial 照合+ドライバ生成のみ=数秒)。
     public static func buildAndroidWorkers(resolved: ResolvedProfile) throws -> [RunWorker] {
         try resolved.androidDevices.map { device in
@@ -128,7 +143,8 @@ public enum ProfileWorkerFactory {
                 label: "\(device.name)(android:\(serial))", platform: "android",
                 driver: driver,
                 connection: DriverConnection(platform: "android", serial: serial,
-                                             deviceName: device.name),
+                                             deviceName: device.name,
+                                             physical: device.spec.isPhysical),
                 logicalName: device.name)
         }
     }
@@ -144,14 +160,18 @@ public enum ProfileWorkerFactory {
                                 engine: engine, udid: device.udid,
                                 xcuiPort: device.xcuiPort,
                                 inappBundleID: engine != nil ? iosApp?.bundleID : nil,
-                                deviceName: device.name)
+                                deviceName: device.name,
+                                physical: device.physical,
+                                host: device.physical ? device.host : nil)
     }
 
     /// ホスト warmup 用 driver は in-app ブリッジへの BridgeClient でよい(in-app も HTTP 応答する)。
+    /// 実機は宛先ホスト(LAN or iproxy)と UDID を持たせる(install が devicectl 経路に入る)
     private static func makeIOSWorker(device: ProvisionedIOSDevice, iosApp: ResolvedAppTarget?) -> RunWorker {
         RunWorker(
             label: "\(device.name)(ios:\(device.port))", platform: "ios",
-            driver: BridgeClient(port: device.port),
+            driver: BridgeClient(port: device.port, host: device.host,
+                                 physicalUDID: device.physical ? device.udid : nil),
             connection: iosConnection(device: device, iosApp: iosApp),
             logicalName: device.name)
     }
@@ -207,7 +227,8 @@ public enum ProfileWorkerFactory {
                     label: "\(device.name)(android:\(serial))", platform: "android",
                     driver: driver,
                     connection: DriverConnection(platform: "android", serial: serial,
-                                                 deviceName: device.name),
+                                                 deviceName: device.name,
+                                                 physical: device.spec.isPhysical),
                     logicalName: device.name)
             } catch {
                 return nil
@@ -221,7 +242,9 @@ public enum ProfileWorkerFactory {
     private static func installedIsCurrent(worker: RunWorker, app: ResolvedAppTarget,
                                            appPath: String) -> Bool {
         if worker.platform == "ios" {
-            guard let udid = worker.connection.udid else { return false }
+            // 実機のアプリコンテナはホストから読めない(simctl get_app_container 相当が無い)ので
+            // 深比較できない。false=毎回インストールの安全側にする(実機の autoInstall は遅くなる)
+            guard !worker.connection.physical, let udid = worker.connection.udid else { return false }
             return InstalledAppCheck.simulatorAppIsCurrent(
                 udid: udid, bundleID: app.bundleID, appPath: appPath)
         }

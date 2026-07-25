@@ -13,12 +13,36 @@ public struct LocalConfig: Codable, Sendable, Equatable {
     public var defaultProject: String?
     /// 呼び出し側が最後に選択した実行プロファイル名(プロジェクト毎)
     public var lastRunProfile: [String: String]?
+    /// iOS 実機用の Apple Developer Team ID(Xcode の自動署名に渡す)。
+    /// 実機ブリッジ(Runner/)のビルドにのみ使う。シミュレータでは不要
+    public var developmentTeam: String?
+    /// iOS 実機ブリッジの bundle id プレフィックス(既定 "com.example")。
+    /// 既定のままだと他チームが登録済みの App ID と衝突して自動署名が失敗することがある
+    public var bundleIDPrefix: String?
 
     public init(machineName: String? = nil, defaultProject: String? = nil,
-                lastRunProfile: [String: String]? = nil) {
+                lastRunProfile: [String: String]? = nil,
+                developmentTeam: String? = nil, bundleIDPrefix: String? = nil) {
         self.machineName = machineName
         self.defaultProject = defaultProject
         self.lastRunProfile = lastRunProfile
+        self.developmentTeam = developmentTeam
+        self.bundleIDPrefix = bundleIDPrefix
+    }
+
+    /// 実機署名の設定。優先順位: 環境変数 > 設定ファイル。
+    /// team が nil なら実機ビルドはできない(呼び出し側が案内を出す)
+    public static func codeSigning(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        configURL: URL? = nil
+    ) -> (team: String?, bundleIDPrefix: String) {
+        let config = load(from: configURL ?? Self.url(environment: environment))
+        let team = environment["FT_DEVELOPMENT_TEAM"].flatMap { $0.isEmpty ? nil : $0 }
+            ?? config.developmentTeam.flatMap { $0.isEmpty ? nil : $0 }
+        let prefix = environment["FT_BUNDLE_ID_PREFIX"].flatMap { $0.isEmpty ? nil : $0 }
+            ?? config.bundleIDPrefix.flatMap { $0.isEmpty ? nil : $0 }
+            ?? "com.example"
+        return (team, prefix)
     }
 
     /// 設定ファイルの場所: $XDG_CONFIG_HOME/ftester/config.json(既定 ~/.config/ftester/config.json)

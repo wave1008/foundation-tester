@@ -73,7 +73,11 @@ final class BridgeHTTPServer {
         addr.sin_port = port.bigEndian
         // シミュレータはホストとネットワークスタックを共有するため、
         // ループバックに bind すれば Mac 側の 127.0.0.1 から直接届く。
-        addr.sin_addr = in_addr(s_addr: inet_addr("127.0.0.1"))
+        // **実機だけ** FT_BIND_ALL=1(ホスト側 BridgeLauncher が xctestrun に注入)で
+        // 全インターフェースに開く。デバイス内のループバックはホストから見えないため。
+        // 既定をループバックのままにするのは、シミュレータ運用で LAN に晒さないため
+        let bindAll = ProcessInfo.processInfo.environment["FT_BIND_ALL"] == "1"
+        addr.sin_addr = in_addr(s_addr: bindAll ? INADDR_ANY : inet_addr("127.0.0.1"))
 
         let bindResult = withUnsafePointer(to: &addr) { ptr in
             ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) {
@@ -91,7 +95,39 @@ final class BridgeHTTPServer {
 
         serverFD = fd
         isRunning = true
+        if bindAll { announceAddress() }
         Thread.detachNewThread { [self] in acceptLoop() }
+    }
+
+    /// 実機の LAN IPv4 をホストへ知らせる。ホストは xcodebuild のテストログ
+    /// (.ftester/bridge-<port>.log)からこの行を拾って宛先にする。
+    /// 同期相手: Sources/FTBridgeClient/IOSDeviceTransport.swift の addressMarker
+    private func announceAddress() {
+        guard let host = primaryIPv4Address() else { return }
+        print("FT_BRIDGE_ADDR=\(host):\(port)")
+        fflush(stdout)
+    }
+
+    /// 最初に見つかった非ループバックの IPv4(WiFi の en0 を優先)
+    private func primaryIPv4Address() -> String? {
+        var head: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&head) == 0, let first = head else { return nil }
+        defer { freeifaddrs(head) }
+        var fallback: String?
+        for pointer in sequence(first: first, next: { $0.pointee.ifa_next }) {
+            let flags = Int32(pointer.pointee.ifa_flags)
+            guard flags & IFF_UP != 0, flags & IFF_LOOPBACK == 0,
+                  let addr = pointer.pointee.ifa_addr,
+                  addr.pointee.sa_family == UInt8(AF_INET) else { continue }
+            var buffer = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+            guard getnameinfo(addr, socklen_t(addr.pointee.sa_len),
+                              &buffer, socklen_t(buffer.count),
+                              nil, 0, NI_NUMERICHOST) == 0 else { continue }
+            let host = String(cString: buffer)
+            if String(cString: pointer.pointee.ifa_name) == "en0" { return host }
+            if fallback == nil { fallback = host }
+        }
+        return fallback
     }
 
     func stop() {

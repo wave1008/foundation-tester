@@ -78,6 +78,110 @@ apps プロファイルの healthCheckURL が実行開始時に警告を出す�
   表示層の劣化を映さない(凍結9/14台でも 18/18 成功する)。変種一覧・スケール上限・Metal エラー
   指標の正本は performance-tuning.md §7
 
+## 実機(kind: physical)の検証
+
+プロファイルの書き方は design.md §11.2。ここは実機でだけ踏む罠だけを置く。
+
+### Android 実機
+
+- **画面ロックは「なし」にしておく**。PIN/パターンが設定されていると adb から解除できず、
+  ロック中は `UiAutomation.getRootInActiveWindow()` が対象アプリにならないので **全シナリオが
+  launch 500(「アプリの画面が表示されませんでした」)で落ちる**
+- run 前に `AndroidPhysicalDevice.prepareForRun` が点灯・ロック解除・消灯抑止
+  (`svc power stayon true`)を行う。`stayon usb` では**効かない**ことがある(AC として認識される
+  ケーブル/ハブがあり、bitmask が USB=2 だけだと外れる。true=AC|USB|WIRELESS=7 を使う)
+- **ロック状態の判定に `isKeyguardShowing` と `mCurrentFocus` を使ってはいけない**。
+  Pixel 4a/Android 13 実測(2026-07-25)で、実際には解除されランチャーが見えている状態でも
+  `true` / `NotificationShade` を返し続けた。**信用できるのは `topResumedActivity` の有無だけ**
+  (ロック中はどのアクティビティも resume されないので行ごと消える)
+- `wm dismiss-keyguard` は非同期で **解除完了まで実測 3〜7 秒**。待たずに launch すると
+  run の初回シナリオだけが落ちる(8 run 中 1 件の flake として現れた)
+- **画面凍結(blank-screen)判定は実機では動かない**。閾値(30KB)が 1080x2424 エミュレータ較正で、
+  誤判定すると健全な実機に `adb reboot` を撃つため、事前トリアージ・事後プローブ・失敗時の
+  blank 証跡判定のいずれからも実機を除外してある
+- ブリッジ起動時のアニメーション無効化と `hidden_api_policy=1` は **実機では設定が永続する**
+  (使い捨てのエミュレータと違う)。戻すときは端末の開発者オプションから
+- 検証実績: Pixel 4a(Android 13 / arm64)で E2E-Android 全 21 シナリオ×6 連続グリーン
+  (消灯状態からの復帰込み。2026-07-25)
+
+### iOS 実機
+
+- **署名が要る**。`~/.config/ftester/config.json` の `developmentTeam`(または環境変数
+  `FT_DEVELOPMENT_TEAM`)に Apple Developer の Team ID を入れる。bundle id プレフィックスは
+  `bundleIDPrefix` / `FT_BUNDLE_ID_PREFIX`(既定 `com.example` のままだと他チームが登録済みの
+  App ID と衝突しうる)。ビルドは `-allowProvisioningUpdates` 付きで走る
+- **Team ID は証明書の OU**。`security find-identity -v -p codesigning` の
+  `Apple Development: <you> (XXXXXXXXXX)` の**括弧内は証明書 ID であって Team ID ではない**
+  (取り違えると `No Account for Team "..."` で落ちる。2026-07-25 に実際に踏んだ)。正しくは:
+  ```
+  security find-certificate -c "Apple Development: <you>" -p | openssl x509 -noout -subject
+  # → subject= UID=..., CN=Apple Development: ... (証明書ID), OU=GF42S2868Q, ...  ← OU が Team ID
+  ```
+- 端末側は「このコンピュータを信頼」と **Developer Mode の有効化**が前提。
+  `xcrun devicectl list devices` に出ることを先に確認する
+- **端末のロックを解除しておく**(Android と同じ前提)。ロックされていると xcodebuild が
+  `Unlock <name> to Continue` で無言のまま止まる。テスト中に再ロックされないよう
+  **設定 → 画面表示と明るさ → 自動ロック を「なし」**にしておくこと。この条件は
+  「失敗」ではなく「進まない」だけなので、検出しても throw せず待ちながら 1 回だけ促す
+  (`IOSDeviceTransport.blockingCondition`)
+- **初回は端末で開発者証明書の信頼が要る**(Personal/個人 Team では必須)。ビルドとインストールが
+  成功しても、起動時に `The application could not be launched because the Developer App Certificate
+  is not trusted.` で落ちる。iPhone の **設定 → 一般 → VPN とデバイス管理** から
+  デベロッパ App の証明書を「信頼」する。この失敗は 180 秒待たず即座に手順付きで報告される
+  (`IOSDeviceTransport.runnerFailureReason`)
+- `devicectl list devices` の **Identifier 列(UUID)と `hardwareProperties.udid`(`00008130-...`)は
+  別物**。`xcodebuild -destination id=` が受け付けるのは後者だけ(`devicectl --device` はどちらでも
+  通る)。プロファイルの `udid` には後者を書く(前者を書いても解決はする)
+- **`connection.state` は当てにならない**: USB 接続中で `devicectl list devices` が
+  `available (paired)` と表示している実機でも `disconnected` のままだった。未接続の実機は
+  そもそも一覧に出てこないので、一覧に居ること自体を到達性の主信号にしている
+- `hardware.reality`(CoreDevice の `DeviceReality`)は **`physical` / `simulated` / `virtual`(VM)
+  の三値**だが、**実機は値を出さずキーごと省略する**(Xcode 27 beta 4 実測: 68 台中 67 台が
+  `simulated`、実機 1 台はキー欠落)。`"physical"` 一致で拾うと**実機が 1 台も見えない**ので、
+  必ず「`simulated` 以外」で弾くこと
+- SUT の実機ビルド例: `E2EAppIOS/scripts/build-ios-device.sh`(`-sdk iphoneos` + 自動署名 →
+  `dist/ios-device/`)。シミュレータ版(`dist/ios-simulator/`)とは実体が別なので
+  **apps プロファイルを分ける**(`ft_e2e_ios_device.json` / 実行は `ios-device`)
+- **xcodebuild のテストログは CRLF**。Swift では `"\r\n"` が 1 つの Character なので
+  `split(separator: "\n")` は CRLF を**一切分割しない**(ログ全体が 1 行になる)。
+  ランナーの `FT_BRIDGE_ADDR` 宣言を拾う所で踏んで 180 秒待って失敗した。
+  ログを行単位で見るコードは `split(whereSeparator: \.isNewline)` を使うこと
+- ブリッジの到達手段の確立に失敗したら**必ず `launcher.stop()` する**。xcodebuild は実機で
+  走り続けるので、止めないと失敗のたびに常駐ランナーが端末に溜まる(実測で 5 本残った)
+- **実機とシミュレータを同じ run に混ぜられる**が、xctestrun は種別ごとに別物なので
+  `prepareSharedBuilds` は**種別ごとに build-for-testing する**(1 つだけビルドすると、
+  選ばれなかった側が `xctestrunNotFound` で落ちる)
+- 検証実績: iPhone 15 Pro(iOS 26.5.2)/ LAN 経由で E2E-iOS 全 20 シナリオ×3 連続グリーン
+  (2026-07-25)。ブリッジ供給は約 8 秒、run 全体は 257s(シミュレータ 2 台並列の 42.7s に対し
+  実機 1 台なので単純比較はできない)
+- **ブリッジのトランスポートが 2 択**(デバイス内のループバックはホストから見えない。
+  Xcode 27 の devicectl にポート転送は無い)。`FT_IOS_DEVICE_TRANSPORT=lan|usb` で明示、
+  未指定なら iproxy があれば usb、無ければ lan。**usb を強く推奨**(下記実測):
+
+  | 経路 | 1 往復(`/status`) | ばらつき | E2E-iOS 20 本 |
+  |---|---|---|---|
+  | シミュレータ(loopback) | 1.1 ms | σ 0.2 | 174.6s(6 台並列で壁 38.5s) |
+  | 実機 **usb**(iproxy) | **4.7 ms** | σ 0.7 | **181.3s** |
+  | 実機 lan(WiFi) | 47.9 ms | σ 26.9 | 241.1s |
+
+  LAN が遅いのは **iOS の WiFi 省電力**(ICMP でも avg 74ms / σ 32ms)。DSL の 1 ステップは
+  セレクタ解決・操作・整定確認で 8〜13 回ブリッジを往復するため、48ms × 10 回 ≈ +0.5s/ステップに
+  なる。ペイロードは 0.1KB なので**帯域ではなく往復回数**の問題(2026-07-25 実測)。
+  usb にすると 1 シナリオあたり 12.1s → 9.1s で、シミュレータ(8.7s)とほぼ同等になる:
+  - `lan` … ランナーが `0.0.0.0` に bind し(`FT_BIND_ALL=1` を xctestrun に注入)、自分の
+    LAN IPv4 を `FT_BRIDGE_ADDR=<ip>:<port>` としてテストログ(`.ftester/bridge-<port>.log`)に
+    1 行出す。ホストはそれを読んで宛先にする。**Mac と端末が同じネットワークに居ること**
+    (クライアント分離 WiFi では不可)
+  - `usb` … `iproxy`(`brew install libimobiledevice`)で USB トンネルを張り 127.0.0.1 を維持する
+- 実機とシミュレータで DerivedData を分けてある(`.ftester/DerivedData-device`)。混在させると
+  `findXCTestRun` が iphoneos/iphonesimulator の誤った方を掴む
+- **engine=xcuitest なら実機で動く、は誤り**だった箇所: `FastLaunchDriver`(xcuitest でも既定 ON・
+  中身は `simctl terminate`+`launch`)と `LaunchPreflightDriver`(`simctl get_app_container`)は
+  実機では無効化される(`--physical`)。素の `XCUIApplication.launch()` 経路に落ちる
+- アプリは `xcrun devicectl device install app` で入る(**署名済みの .app/.ipa が要る**)。
+  SUT のシミュレータ用ビルド(`-sdk iphonesimulator`)はそのままでは使えない
+- モニター・`devices up/down` の一括操作・拡張のデバイスタイルは**まだ実機に対応していない**
+
 ## 常駐ブリッジのセッション(iOS xcuitest を CLI で直接叩くとき)
 
 `bridge up` で立てた常駐ランナーへ curl 等で直接 `/snapshot`・`/tap` すると、最初の1回が

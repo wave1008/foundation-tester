@@ -8,6 +8,8 @@ import FTCore
 public enum AndroidDeviceCatalogError: Error, LocalizedError {
     case avdNotRunning(String, running: [String: String])
     case noIdentifier(name: String)
+    /// kind=physical の serial が adb に見えない
+    case deviceNotConnected(name: String, serial: String, connected: [String])
 
     public var errorDescription: String? {
         switch self {
@@ -18,6 +20,10 @@ public enum AndroidDeviceCatalogError: Error, LocalizedError {
                 + "起動: ftester devices up または emulator -avd <ID>"
         case .noIdentifier(let name):
             return "デバイス \"\(name)\" に avd がありません(マシンプロファイルに記述してください)"
+        case .deviceNotConnected(let name, let serial, let connected):
+            let list = connected.isEmpty ? "なし" : connected.joined(separator: ", ")
+            return "実機 \"\(name)\"(serial: \(serial))が adb から見えません(接続中: \(list))。"
+                + "USB 接続と端末側の USB デバッグ許可、`adb devices` の state=device を確認してください"
         }
     }
 }
@@ -134,7 +140,18 @@ public enum AndroidDeviceCatalog {
         return name
     }
 
+    /// 実機は serial 直指定(AVD 照合は使えない)。接続確認だけして返す。
+    /// エミュレータは従来どおり avd → 起動中エミュレータの AVD ID 照合
     public static func resolveSerial(spec: DeviceSpec) throws -> String {
+        if spec.isPhysical {
+            let serial = spec.serial ?? ""
+            let connected = (try? connectedSerials()) ?? []
+            guard connected.contains(serial) else {
+                throw AndroidDeviceCatalogError.deviceNotConnected(
+                    name: spec.name, serial: serial, connected: connected)
+            }
+            return serial
+        }
         guard let avd = spec.avd else {
             throw AndroidDeviceCatalogError.noIdentifier(name: spec.name)
         }

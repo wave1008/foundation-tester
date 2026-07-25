@@ -8,30 +8,45 @@ public struct BridgeLauncher {
     public let repoRoot: URL
     public let device: String
     public let port: UInt16
+    /// 実機か。シミュレータ UUID の形状推測では実機 UDID を判別できない
+    /// (実機は "00008130-000A1B2C3D4E5678" の 25 文字型や旧 40 桁 hex 型があり、
+    /// 36 文字・ダッシュ 5 分割の判定を外れて name= に化ける)ため呼び出し側が明示する
+    public let physical: Bool
 
     var stateDir: URL { repoRoot.appendingPathComponent(".ftester") }
-    var derivedDataPath: URL { stateDir.appendingPathComponent("DerivedData") }
+    /// 実機とシミュレータでビルド成果物(Debug-iphoneos / Debug-iphonesimulator)も
+    /// xctestrun も別物なので DerivedData ごと分ける(混在すると findXCTestRun が誤った方を掴む)
+    var derivedDataPath: URL {
+        stateDir.appendingPathComponent(physical ? "DerivedData-device" : "DerivedData")
+    }
     // ポート別に分離(複数ブリッジ=複数シミュレータの並列運用のため)
     var logPath: URL { stateDir.appendingPathComponent("bridge-\(port).log") }
     var pidPath: URL { stateDir.appendingPathComponent("bridge-\(port).pid") }
     var projectPath: URL { repoRoot.appendingPathComponent("Runner/FTesterRunner.xcodeproj") }
 
-    /// --device には名前("iPhone 17")と UDID のどちらも渡せる
+    /// --device には名前("iPhone 17")と UDID のどちらも渡せる(シミュレータのみ。実機は UDID 必須)
     var destination: String {
+        if physical { return "platform=iOS,id=\(device)" }
         let isUDID = device.count == 36 && device.split(separator: "-").count == 5
         return isUDID ? "platform=iOS Simulator,id=\(device)"
                       : "platform=iOS Simulator,name=\(device)"
     }
 
-    public init(repoRoot: URL, device: String = "iPhone 17 Pro", port: UInt16 = BridgeAPI.defaultPort) {
+    public init(repoRoot: URL, device: String = "iPhone 17 Pro",
+                port: UInt16 = BridgeAPI.defaultPort, physical: Bool = false) {
         self.repoRoot = repoRoot
         self.device = device
         self.port = port
+        self.physical = physical
     }
 
-    /// 生成物(.xcodeproj)はコミットしない方針
+    /// 生成物(.xcodeproj)はコミットしない方針。project.yml を編集したら作り直す
+    /// (bundle id の変数化・署名設定の追加が反映されないと実機ビルドが旧設定のまま通る)
     public func generateProjectIfNeeded() throws {
-        if FileManager.default.fileExists(atPath: projectPath.path) { return }
+        let manifest = repoRoot.appendingPathComponent("Runner/project.yml")
+        if FileManager.default.fileExists(atPath: projectPath.path), !isStale(manifest: manifest) {
+            return
+        }
         let result = try Shell.run(
             ["xcodegen", "generate"],
             cwd: repoRoot.appendingPathComponent("Runner")
@@ -39,6 +54,18 @@ public struct BridgeLauncher {
         guard result.status == 0 else {
             throw LauncherError.commandFailed("xcodegen generate", result.tail)
         }
+    }
+
+    /// project.yml が .xcodeproj より新しいか(取得できなければ「古くない」= 再生成しない)
+    private func isStale(manifest: URL) -> Bool {
+        func modified(_ url: URL) -> Date? {
+            (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+        }
+        guard let manifestDate = modified(manifest),
+              let projectDate = modified(projectPath.appendingPathComponent("project.pbxproj")) else {
+            return false
+        }
+        return manifestDate > projectDate
     }
 
     public func buildForTesting() throws {
@@ -49,10 +76,27 @@ public struct BridgeLauncher {
             "-scheme", "FTesterRunner",
             "-destination", destination,
             "-derivedDataPath", derivedDataPath.path,
-        ], cwd: repoRoot)
+        ] + (try codeSigningArguments()), cwd: repoRoot)
         guard result.status == 0 else {
             throw LauncherError.commandFailed("xcodebuild build-for-testing", result.tail)
         }
+    }
+
+    /// 実機ビルドは署名が要る。team は ~/.config/ftester/config.json の developmentTeam か
+    /// FT_DEVELOPMENT_TEAM。-allowProvisioningUpdates で App ID/プロファイルの自動登録を許す。
+    /// シミュレータでは空(署名不要のまま従来どおり)
+    func codeSigningArguments() throws -> [String] {
+        guard physical else { return [] }
+        let signing = LocalConfig.codeSigning()
+        // team 無しで走らせると xcodebuild が「No profiles for '...' were found」等の
+        // 原因の分かりにくい署名エラーで落ちる。設定不足はここで明示的に止める
+        guard let team = signing.team else { throw LauncherError.developmentTeamMissing }
+        // FT_BUNDLE_ID_PREFIX は project.yml が $(FT_BUNDLE_ID_PREFIX) で参照するユーザー定義設定。
+        // ここでコマンドライン上書きすると3ターゲットの bundle id がまとめてチーム固有になる
+        return ["-allowProvisioningUpdates",
+                "CODE_SIGN_STYLE=Automatic",
+                "FT_BUNDLE_ID_PREFIX=\(signing.bundleIDPrefix)",
+                "DEVELOPMENT_TEAM=\(team)"]
     }
 
     /// SampleApp をビルドしてシミュレータにインストールする(検証用)
@@ -112,6 +156,9 @@ public struct BridgeLauncher {
         func inject(into target: inout [String: Any]) {
             var env = target["EnvironmentVariables"] as? [String: Any] ?? [:]
             env["FT_PORT"] = String(port)
+            // 実機はデバイス内ループバックがホストから見えないので全インターフェースに開く。
+            // 同期相手: Runner/FTesterRunnerUITests/BridgeHTTPServer.swift の start()
+            if physical { env["FT_BIND_ALL"] = "1" }
             target["EnvironmentVariables"] = env
         }
 
@@ -174,6 +221,11 @@ public struct BridgeLauncher {
     }
 
     public func stop() throws {
+        // 実機の到達手段(iproxy トンネル・endpoint 記録)はブリッジと寿命を揃える。
+        // 残すと次回 provision が死んだブリッジ宛の古い宛先を再利用する。
+        // **physical で条件分岐しない**: `bridge down --port N` のように kind を知らない経路からも
+        // 停止されるため。シミュレータのポートには記録もトンネルも無いので teardown は no-op
+        IOSDeviceTransport.teardown(port: port, repoRoot: repoRoot)
         guard let pidString = try? String(contentsOf: pidPath, encoding: .utf8),
               let pid = Int32(pidString.trimmingCharacters(in: .whitespacesAndNewlines)) else {
             // pid ファイルが無くても in-app ブリッジ(dylib 注入・pid ファイル非対応)の
@@ -328,8 +380,10 @@ public struct BridgeLauncher {
         return stopped
     }
 
-    public func waitUntilReady(timeout: TimeInterval = 180) async throws {
-        let client = BridgeClient(port: port)
+    /// host: 実機は LAN IP か iproxy のループバック(IOSDeviceTransport が確立済みのもの)を渡す
+    public func waitUntilReady(timeout: TimeInterval = 180,
+                               host: String = BridgeEndpoint.loopbackHost) async throws {
+        let client = BridgeClient(port: port, host: host)
         let deadline = Date().addingTimeInterval(timeout)
         var lastError: Error?
         while Date() < deadline {
@@ -370,6 +424,9 @@ public struct BridgeLauncher {
     /// コールド起動時のみ実行(稼働中ブリッジの再利用時はここを通らない)。設定は以後起動される
     /// アプリに効く(実行中アプリには効かない。/session がシナリオ毎に再起動するので問題ない)。失敗は非致命。
     private func enableReduceMotion() {
+        // simctl spawn は実機に無い。実機のアクセシビリティ設定はホストから変えられないので
+        // 何もしない(端末側で「視差効果を減らす」を手動 ON にすると整定が速くなる)
+        if physical { return }
         let result = try? Shell.run([
             "xcrun", "simctl", "spawn", device,
             "defaults", "write", "com.apple.Accessibility", "ReduceMotionEnabled", "-bool", "true",
@@ -409,6 +466,8 @@ public enum LauncherError: Error, LocalizedError {
     case timedOut(String, String)
     /// bindFailed(48) 検知(waitUntilReady のログ監視)。holder は判明していれば占有プロセスの説明
     case portInUse(port: UInt16, holder: String?)
+    /// 実機ビルドに必要な Team ID が未設定(署名エラーになる前に止める)
+    case developmentTeamMissing
 
     public var errorDescription: String? {
         switch self {
@@ -425,6 +484,13 @@ public enum LauncherError: Error, LocalizedError {
                 return "ポート \(port) が別プロセスに使用されています(\(holder))"
             }
             return "ポート \(port) が別プロセスに使用されています"
+        case .developmentTeamMissing:
+            return "iOS 実機ビルドには Apple Developer の Team ID が必要です。"
+                + "~/.config/ftester/config.json の \"developmentTeam\" か環境変数 "
+                + "FT_DEVELOPMENT_TEAM に設定してください"
+                + "(Team ID は署名証明書の OU。`security find-certificate -c "
+                + "\"Apple Development: <you>\" -p | openssl x509 -noout -subject` で確認できる。"
+                + "`security find-identity` の括弧内は証明書 ID であって Team ID ではない)"
         }
     }
 }

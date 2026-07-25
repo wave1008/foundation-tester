@@ -49,7 +49,12 @@ struct DriverOptions: ParsableArguments {
     func makeDriver(overriding platformOverride: String? = nil) throws -> AppDriver {
         switch platformOverride ?? platform {
         case "ios":
-            return BridgeClient(port: port)
+            // 実機ブリッジは 127.0.0.1 に居ない。provision が残した宛先を使う
+            // (記録が無ければループバック = シミュレータの既定)
+            let host = (try? RepoRoot.find())
+                .map { BridgeEndpoint.load(port: port, repoRoot: $0).host }
+                ?? BridgeEndpoint.loopbackHost
+            return BridgeClient(port: port, host: host)
         case "android":
             return try AndroidDriver(serial: serial)
         default:
@@ -187,6 +192,9 @@ struct Bridge: AsyncParsableCommand {
         @Flag(help: "SampleApp のビルド・インストールもあわせて行う(iOS のみ)")
         var withSampleApp = false
 
+        @Flag(help: "--device を iOS 実機の UDID として扱う(xcrun devicectl list devices の Identifier)")
+        var physical = false
+
         @OptionGroup var driverOptions: DriverOptions
 
         func run() async throws {
@@ -201,7 +209,8 @@ struct Bridge: AsyncParsableCommand {
                 return
             }
             let root = try RepoRoot.find()
-            let launcher = BridgeLauncher(repoRoot: root, device: device, port: driverOptions.port)
+            let launcher = BridgeLauncher(repoRoot: root, device: device, port: driverOptions.port,
+                                          physical: physical)
 
             print("→ プロジェクト生成(xcodegen)...")
             try launcher.generateProjectIfNeeded()
@@ -219,9 +228,11 @@ struct Bridge: AsyncParsableCommand {
             // signal kill で死ぬ)、直接起動は同一デバイスへの二重起動を防げない。provision() は
             // 稼働中ブリッジのスキャン→版一致なら再利用/旧版なら停止して起動し直すをまとめて行う
             // (モニター保持中でも拒否せず再利用・起動する=テスト/操作優先)。
-            let isUDID = device.count == 36 && device.split(separator: "-").count == 5
+            // 実機は必ず UDID 指定(形状推測はしない。実機 UDID はシミュレータ UUID と形が違う)
+            let isUDID = physical || (device.count == 36 && device.split(separator: "-").count == 5)
             let spec = DeviceSpec(
                 name: device,
+                kind: physical ? .physical : nil,
                 simulator: isUDID ? nil : device,
                 udid: isUDID ? device : nil,
                 port: driverOptions.port,
@@ -237,7 +248,8 @@ struct Bridge: AsyncParsableCommand {
                     + "(port \(port))を再利用しました。port \(driverOptions.port) で立て直したい場合は"
                     + "先に `ftester bridge down --port \(port)` で停止してから再実行してください。")
             }
-            print("✅ ブリッジ準備完了: http://127.0.0.1:\(port)")
+            let host = provisioned.first?.host ?? BridgeEndpoint.loopbackHost
+            print("✅ ブリッジ準備完了: http://\(host):\(port)")
         }
     }
 

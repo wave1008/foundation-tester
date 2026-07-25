@@ -19,7 +19,10 @@ final class FTesterBridgeTests: XCTestCase {
         let router = BridgeRouter()
         let server = BridgeHTTPServer(port: port) { router.handle($0) }
         try server.start()
-        NSLog("[ftester] bridge listening on 127.0.0.1:%d", Int(port))
+        // 実機は FT_BIND_ALL=1 で 0.0.0.0 に開く(BridgeHTTPServer.start 参照)。
+        // 127.0.0.1 決め打ちで出すと実機の切り分け時に誤誘導する
+        let bindHost = ProcessInfo.processInfo.environment["FT_BIND_ALL"] == "1" ? "0.0.0.0" : "127.0.0.1"
+        NSLog("[ftester] bridge listening on %@:%d", bindHost, Int(port))
 
         // 接続処理は accept スレッドで行われる。ここでは RunLoop を回し続けて
         // テストを終わらせない(イベント合成等が必要とするランループも回る)。

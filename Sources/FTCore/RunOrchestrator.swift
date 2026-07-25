@@ -713,8 +713,11 @@ public final class RunOrchestrator {
             if unusableReason == nil, outcome == .failed, worker.platform == "android",
                let serial = worker.connection.serial {
                 if await deviceUnreachable(serial) {
+                    // 消失判定(adb devices)は実機でも有効。USB 抜け・WiFi 断の検知に使える
                     unusableReason = "デバイス消失(offline/未検出)"
-                } else if await deviceFrozen(serial) {
+                } else if !worker.connection.physical, await deviceFrozen(serial) {
+                    // 凍結判定はエミュレータ限定(閾値が解像度依存。ProfileWorkerFactory の
+                    // excludeOrRepairBlankScreenWorkers と同じ理由)
                     unusableReason = "画面凍結"
                 }
             }
