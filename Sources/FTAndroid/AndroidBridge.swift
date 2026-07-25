@@ -148,6 +148,7 @@ extension AndroidDriver {
             return client
         }
 
+        noticePersistentSettingsOnPhysicalDevice()
         disableAnimations()
         allowHiddenAPIReflection()
         try installBridgeIfNeeded()
@@ -165,6 +166,17 @@ extension AndroidDriver {
         }
         throw DriverError.bridgeUnreachable(
             "Android ブリッジが起動しません(adb logcat -s FTBridge を確認してください)")
+    }
+
+    /// 実機に対する disableAnimations / allowHiddenAPIReflection は端末のグローバル設定を
+    /// **永続的に**書き換える(使い捨てのエミュレータと違い、run 後も戻らない)。テスト安定に
+    /// 必要なので実行はするが、黙って変えないようコールド起動時に 1 回だけ知らせる。
+    /// 実機判定は serial の emulator- 前置(ApiMonitorCommand のヘルス除外と同じ規則)
+    private func noticePersistentSettingsOnPhysicalDevice() {
+        guard let serial, !serial.hasPrefix("emulator-") else { return }
+        let message = "ℹ️ \(serial): アニメーション無効化と hidden_api_policy=1 を端末に適用します"
+            + "(実機では設定が永続します。戻す場合は開発者オプションから)\n"
+        FileHandle.standardError.write(Data(message.utf8))
     }
 
     /// アニメーションは a11y イベントを発しないため、QuietWaiter の静穏判定後もアニメが表示を

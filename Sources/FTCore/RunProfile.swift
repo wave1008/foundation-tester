@@ -88,15 +88,28 @@ public struct AppProfile: Codable, Sendable, Equatable {
     }
 }
 
+/// デバイスの実体種別。省略時は virtual(既存プロファイルは無改修で動く)
+public enum DeviceKind: String, Codable, Sendable, Hashable {
+    /// iOS シミュレータ / Android エミュレータ
+    case virtual
+    /// 実機(iOS は udid、Android は serial で同定する)
+    case physical
+}
+
 /// マシンプロファイル内の 1 デバイス定義
 public struct DeviceSpec: Codable, Sendable, Hashable {
     /// ユーザーがデバイスを識別するための名前(実行プロファイルからの参照キー)
     public var name: String
-    /// iOS: シミュレータのデバイス名(例 "iPhone 17 Pro")
+    /// 実体種別(省略時 virtual)。実機の識別子は iOS=udid / Android=serial
+    public var kind: DeviceKind?
+    /// iOS: シミュレータのデバイス名(例 "iPhone 17 Pro"。実機では未使用)
     public var simulator: String?
-    /// iOS: OS バージョン(例 "27.0"。省略時は名前一致の最新)
+    /// iOS: OS バージョン(例 "27.0"。省略時は名前一致の最新。実機では未使用)
     public var os: String?
-    /// iOS: シミュレータ UDID(指定時は simulator/os より優先)
+    /// iOS: UDID。kind=virtual ならシミュレータ UDID(simulator/os より優先)、
+    /// kind=physical なら実機の識別子(必須)。`xcrun devicectl list devices` の Identifier 列と
+    /// ハードウェア UDID("00008130-..." 形式)のどちらでも解決する(内部では常に後者に正規化。
+    /// xcodebuild の -destination id= が受け付けるのは後者だけのため)
     public var udid: String?
     /// iOS: ブリッジポートの固定(省略時は自動採番)
     public var port: UInt16?
@@ -105,19 +118,30 @@ public struct DeviceSpec: Codable, Sendable, Hashable {
     public var engine: String?
     /// Android: AVD(ID または表示名。起動中エミュレータとの照合で adb シリアルに解決)
     public var avd: String?
+    /// Android 実機: adb シリアル(USB は "14141JEC204922"、WiFi は "192.168.1.23:5555")。
+    /// kind=physical のとき必須。エミュレータには使わない(avd から解決するため)
+    public var serial: String?
 
-    public init(name: String, simulator: String? = nil, os: String? = nil,
-                udid: String? = nil, port: UInt16? = nil, engine: String? = nil, avd: String? = nil) {
+    public init(name: String, kind: DeviceKind? = nil, simulator: String? = nil, os: String? = nil,
+                udid: String? = nil, port: UInt16? = nil, engine: String? = nil,
+                avd: String? = nil, serial: String? = nil) {
         self.name = name
+        self.kind = kind
         self.simulator = simulator
         self.os = os
         self.udid = udid
         self.port = port
         self.engine = engine
         self.avd = avd
+        self.serial = serial
     }
 
-    static let knownKeys: Set<String> = ["name", "simulator", "os", "udid", "port", "engine", "avd"]
+    /// 実機か(kind 省略時は virtual)。デバイス種別の分岐はすべてこれを見ること
+    public var isPhysical: Bool { kind == .physical }
+
+    static let knownKeys: Set<String> = [
+        "name", "kind", "simulator", "os", "udid", "port", "engine", "avd", "serial",
+    ]
 }
 
 public struct MachineDeviceList: Codable, Sendable, Equatable {
@@ -351,6 +375,10 @@ public enum ProfileError: Error, LocalizedError {
     case missingBundleID(platform: String, appProfile: String)
     case invalidWipeDataThreshold(run: String)
     case invalidLocale(run: String)
+    /// kind=physical なのに同定に必要な識別子(iOS=udid / Android=serial)が無い
+    case physicalDeviceMissingIdentifier(name: String, platform: String, machine: String)
+    /// kind=physical に dylib 注入エンジンが指定された(実機は注入不可)
+    case physicalDeviceUnsupportedEngine(name: String, engine: String, machine: String)
 
     public var errorDescription: String? {
         switch self {
@@ -391,6 +419,17 @@ public enum ProfileError: Error, LocalizedError {
             return "実行プロファイル \(run) の wipeDataThresholdGB は正の数(GB)で指定してください"
         case .invalidLocale(let run):
             return "実行プロファイル \(run) の locale は ja_JP のような形式で指定してください"
+        case .physicalDeviceMissingIdentifier(let name, let platform, let machine):
+            let field = platform == "ios" ? "udid" : "serial"
+            let how = platform == "ios"
+                ? "xcrun devicectl list devices の Identifier 列または UDID"
+                : "adb devices の左列"
+            return "マシンプロファイル \(machine) のデバイス \"\(name)\" は kind=physical ですが "
+                + "\"\(field)\" がありません(\(how)を指定してください)"
+        case .physicalDeviceUnsupportedEngine(let name, let engine, let machine):
+            return "マシンプロファイル \(machine) のデバイス \"\(name)\" は kind=physical のため "
+                + "engine=\(engine) は使えません(dylib 注入は実機不可。engine は省略するか "
+                + "\"xcuitest\" にしてください)"
         }
     }
 
@@ -537,7 +576,14 @@ public enum ProfileResolver {
         var devices: [ResolvedDevice] = []
         for ref in deviceRefs {
             if let device = catalog[ref.name] {
-                if device.platform == "ios", device.spec.engine == nil {
+                try validatePhysical(device, machine: machineName)
+                if device.spec.isPhysical, device.platform == "ios" {
+                    // 実機は dylib 注入不可。iosInappEngine の既定(hybrid)を無視して固定する
+                    // (ここで潰さないと provision が inapp 経路に入り実行時に落ちる)
+                    var spec = device.spec
+                    spec.engine = "xcuitest"
+                    devices.append(ResolvedDevice(platform: "ios", spec: spec))
+                } else if device.platform == "ios", device.spec.engine == nil {
                     var spec = device.spec
                     spec.engine = iosEngine
                     devices.append(ResolvedDevice(platform: "ios", spec: spec))
@@ -621,6 +667,22 @@ public enum ProfileResolver {
             warnings: warnings)
     }
 
+    /// 実機デバイスの整合検査。実行プロファイルから参照されたデバイスにのみ適用する
+    /// (マシンプロファイル全体に掛けると、無関係なデバイス定義の不備で run が止まる)
+    private static func validatePhysical(_ device: ResolvedDevice, machine: String) throws {
+        guard device.spec.isPhysical else { return }
+        let identifier = device.platform == "ios" ? device.spec.udid : device.spec.serial
+        guard let identifier, !identifier.trimmingCharacters(in: .whitespaces).isEmpty else {
+            throw ProfileError.physicalDeviceMissingIdentifier(
+                name: device.name, platform: device.platform, machine: machine)
+        }
+        if device.platform == "ios", let engine = device.spec.engine,
+           engine != "xcuitest" {
+            throw ProfileError.physicalDeviceUnsupportedEngine(
+                name: device.name, engine: engine, machine: machine)
+        }
+    }
+
     /// locale 形式検証(trim 済み文字列を渡すこと): 言語[-地域/バリアント...](BCP47 風の緩い検査)
     private static func isValidLocale(_ value: String) -> Bool {
         value.range(of: "^[A-Za-z]{2,3}([-_][A-Za-z0-9]{2,8})*$", options: .regularExpression) != nil
@@ -658,10 +720,13 @@ public enum ProfileResolver {
         case .machine:
             if let machine = try? decoder.decode(MachineProfile.self, from: data) {
                 var seen = Set<String>()
-                for list in [machine.ios, machine.android] {
-                    for spec in list?.devices ?? [] where !seen.insert(spec.name).inserted {
-                        errors.append("デバイス名が重複しています: \(spec.name)"
-                                      + "(name は ios/android 横断で一意にしてください)")
+                for (platform, list) in [("ios", machine.ios), ("android", machine.android)] {
+                    for spec in list?.devices ?? [] {
+                        if !seen.insert(spec.name).inserted {
+                            errors.append("デバイス名が重複しています: \(spec.name)"
+                                          + "(name は ios/android 横断で一意にしてください)")
+                        }
+                        errors += physicalDeviceErrors(spec, platform: platform)
                     }
                 }
             } else {
@@ -692,6 +757,22 @@ public enum ProfileResolver {
     }
 
     // MARK: - 内部ヘルパー
+
+    /// エディタ用の実機検査(resolve 側の validatePhysical と同じ規則を文言だけ単体ファイル向けにしたもの)
+    private static func physicalDeviceErrors(_ spec: DeviceSpec, platform: String) -> [String] {
+        guard spec.isPhysical else { return [] }
+        var errors: [String] = []
+        let field = platform == "ios" ? "udid" : "serial"
+        let identifier = platform == "ios" ? spec.udid : spec.serial
+        if (identifier?.trimmingCharacters(in: .whitespaces) ?? "").isEmpty {
+            errors.append("デバイス \"\(spec.name)\" は kind=physical ですが \"\(field)\" がありません")
+        }
+        if platform == "ios", let engine = spec.engine, engine != "xcuitest" {
+            errors.append("デバイス \"\(spec.name)\" は kind=physical のため engine=\(engine) は"
+                          + "使えません(実機は dylib 注入不可)")
+        }
+        return errors
+    }
 
     private static func jsonNames(in dir: URL) -> [String] {
         guard let entries = try? FileManager.default.contentsOfDirectory(

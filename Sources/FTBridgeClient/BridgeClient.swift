@@ -12,6 +12,8 @@ public final class BridgeClient: AppDriver {
     let sessionTimeout: TimeInterval
     /// 高速入力(quiescence スキップ)。init 時に FT_FAST_INPUT 環境変数から確定
     let fastInput: Bool
+    /// 実機の UDID(nil = シミュレータ)。install の simctl / devicectl 分岐にのみ使う
+    let physicalUDID: String?
     /// リクエストに載せる値(未使用時はキーごと省略 → 旧ランナーと byte 互換)
     private var fastFlag: Bool? { fastInput ? true : nil }
 
@@ -33,17 +35,25 @@ public final class BridgeClient: AppDriver {
     /// 上書きするため、timeoutSeconds でクランプしないと短い指定が無効化される(実害:
     /// scanBridgeStatuses の 1s が status() の 45s に化け、suspend ゾンビ存在時に
     /// monitor/list-devices のスキャンが毎回 45s 待った。2026-07-25)
-    public convenience init(port: UInt16 = BridgeAPI.defaultPort, timeoutSeconds: TimeInterval = 120) {
+    public convenience init(port: UInt16 = BridgeAPI.defaultPort, timeoutSeconds: TimeInterval = 120,
+                            host: String = BridgeEndpoint.loopbackHost,
+                            physicalUDID: String? = nil) {
         self.init(port: port, timeoutSeconds: timeoutSeconds,
                   interactionTimeout: min(Timeout.interaction, timeoutSeconds),
-                  sessionTimeout: min(Timeout.session, timeoutSeconds))
+                  sessionTimeout: min(Timeout.session, timeoutSeconds),
+                  host: host, physicalUDID: physicalUDID)
     }
 
     /// テスト専用 seam: interaction/session の予算を短縮注入する(未応答ブリッジのタイムアウト
-    /// 検証等)。公開 init(port:timeoutSeconds:) はこれを既定予算付きで呼ぶだけで公開 API は不変
+    /// 検証等)。公開 init(port:timeoutSeconds:) はこれを既定予算付きで呼ぶだけで公開 API は不変。
+    /// host はシミュレータ(ホストとネットワークスタックを共有)では常に 127.0.0.1。
+    /// iOS 実機だけ LAN IP を渡す(BridgeEndpoint 参照)
     init(port: UInt16, timeoutSeconds: TimeInterval = 120,
-        interactionTimeout: TimeInterval, sessionTimeout: TimeInterval) {
-        self.baseURL = URL(string: "http://127.0.0.1:\(port)")!
+        interactionTimeout: TimeInterval, sessionTimeout: TimeInterval,
+        host: String = BridgeEndpoint.loopbackHost,
+        physicalUDID: String? = nil) {
+        self.baseURL = URL(string: "http://\(host):\(port)")!
+        self.physicalUDID = physicalUDID
         // 高速入力(quiescence スキップ)はプロセス単位の環境変数で有効化する
         // (実行プロファイル iosFastInput / CLI --fast-input が FT_FAST_INPUT=1 を注入。
         //  BridgeClient は hybrid のフォールバック経路でも生成されるため init 引数ではなく env で統一)
@@ -69,10 +79,23 @@ public final class BridgeClient: AppDriver {
         try await get("/status", timeout: timeout)
     }
 
-    /// install は HTTP エンドポイントを持たず simctl の役割。/status のデバイス名から対象シミュレータを
-    /// 特定する。同名デバイス(Shutdown の複製等)があると名前指定 simctl は失敗するため、
-    /// Booted かつ同名の UDID に解決してから実行する(解決不能時は名前のまま試す)。
+    /// install は HTTP エンドポイントを持たず simctl / devicectl の役割。
+    /// 実機(physicalUDID 指定時)は `devicectl device install app`、シミュレータは従来どおり simctl。
+    /// シミュレータの対象特定は /status のデバイス名から行う。同名デバイス(Shutdown の複製等)が
+    /// あると名前指定 simctl は失敗するため、Booted かつ同名の UDID に解決してから実行する
+    /// (解決不能時は名前のまま試す)。
     public func install(packagePath: String) async throws {
+        if let udid = physicalUDID {
+            let result = try Shell.run(
+                ["xcrun", "devicectl", "device", "install", "app",
+                 "--device", udid, packagePath], timeout: 600)
+            guard result.status == 0 else {
+                throw DriverError.badResponse(status: Int(result.status),
+                    body: "devicectl device install app に失敗しました"
+                        + "(署名済みの .app/.ipa か、端末が接続済みかを確認してください): \(result.tail)")
+            }
+            return
+        }
         let current = try await status()
         let target = (try? SimulatorCatalog.devices())?
             .first(where: { $0.booted && $0.name == current.device })?.udid ?? current.device

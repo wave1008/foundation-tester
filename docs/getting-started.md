@@ -132,6 +132,35 @@ xcrun simctl list devices available     # 使えるシミュレータ名を確�
 
 > `name`（例「メイン機」）は runs プロファイルから参照されるため ios/android 横断で一意に。
 
+**実機を使う場合**は `kind: "physical"` を付け、iOS は `udid`（`xcrun devicectl list devices` の
+Identifier）、Android は `serial`（`adb devices` の左列）を書きます:
+
+```json
+{ "ios":     { "devices": [ { "name": "iPhone 実機", "kind": "physical",
+                              "udid": "00008130-000A1B2C3D4E5678" } ] },
+  "android": { "devices": [ { "name": "Pixel 実機", "kind": "physical",
+                              "serial": "14141JEC204922" } ] } }
+```
+
+実機とシミュレータでは `.app` の実体が違う（実機は署名済み・`-sdk iphoneos` ビルド）ため、
+**実機は専用の apps/runs プロファイルに分ける**のが確実です。事前準備:
+
+- **Android**: 端末の画面ロックを「なし」にする（PIN/パターンは adb から解除できず、
+  ロック中は全シナリオが launch で落ちます）
+- **iOS**: Apple Developer の Team ID を `~/.config/ftester/config.json` の `developmentTeam` に
+  設定。**Team ID は署名証明書の OU** です（`security find-identity` の括弧内は証明書 ID で、
+  これを入れると `No Account for Team` で落ちます）:
+  `security find-certificate -c "Apple Development: <you>" -p | openssl x509 -noout -subject`
+- **iOS**: 端末側は「このコンピュータを信頼」＋ Developer Mode の有効化。さらに**初回だけ**
+  設定 → 一般 → VPN とデバイス管理 からデベロッパ App の証明書を「信頼」する操作が要ります
+- **iOS**: 端末のロックを解除しておく（設定 → 画面表示と明るさ → 自動ロック を「なし」に。
+  ロック中は xcodebuild が待機したまま進みません）
+- **iOS**: `brew install libimobiledevice` を入れておく（USB トンネル経由になり、LAN 経由より
+  1 往復が 48ms → 4.7ms で **run 全体が約 25% 速くなります**。未導入なら LAN 経由に自動で落ち、
+  Mac と端末が同一ネットワークにある必要があります）
+
+詳細と罠は docs/verification.md の「実機（kind: physical）の検証」。
+
 **アプリプロファイル**（`Projects/MyApp/profiles/apps/myapp.json`。`appPath` を自分のビルドへ向ける）:
 
 ```json

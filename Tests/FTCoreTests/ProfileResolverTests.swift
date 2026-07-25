@@ -818,4 +818,108 @@ final class ProfileResolverTests: XCTestCase {
         XCTAssertTrue(errors.contains { $0.contains("locale") },
                       "locale エラーが出るはず: \(errors)")
     }
+
+    // MARK: - 実機(kind: physical)
+
+    /// 実機 1 台ずつを含むマシン+実行プロファイル一式を書く
+    private func writePhysicalFixture(iosEngine: String? = nil) throws {
+        try write("""
+        { "ios":     { "app": "com.example.app" },
+          "android": { "app": "com.example.app" } }
+        """, to: project.appsDir, name: "app")
+        let engineField = iosEngine.map { ", \"engine\": \"\($0)\"" } ?? ""
+        try write("""
+        { "ios": { "devices": [
+              { "name": "実機iPhone", "kind": "physical",
+                "udid": "00008130-000A1B2C3D4E5678"\(engineField) } ] },
+          "android": { "devices": [
+              { "name": "実機Pixel", "kind": "physical", "serial": "14141JEC204922" } ] } }
+        """, to: project.machinesDir, name: "m")
+        try write("""
+        { "app": "app", "devices": [ { "name": "実機iPhone" }, { "name": "実機Pixel" } ] }
+        """, to: project.runsDir, name: "r")
+    }
+
+    func testPhysicalDeviceKeepsIdentifiers() throws {
+        try writePhysicalFixture()
+        let resolved = try ProfileResolver.resolve(project: project, runName: "r", machineName: "m")
+        XCTAssertTrue(resolved.iosDevices[0].spec.isPhysical)
+        XCTAssertEqual(resolved.iosDevices[0].spec.udid, "00008130-000A1B2C3D4E5678")
+        XCTAssertTrue(resolved.androidDevices[0].spec.isPhysical)
+        XCTAssertEqual(resolved.androidDevices[0].spec.serial, "14141JEC204922")
+    }
+
+    func testPhysicalIosDeviceForcesXcuitestEngine() throws {
+        // iosInappEngine の既定(true→hybrid)を実機は無視する。ここで潰さないと inapp 経路に入る
+        try writePhysicalFixture()
+        let resolved = try ProfileResolver.resolve(project: project, runName: "r", machineName: "m")
+        XCTAssertEqual(resolved.iosDevices[0].spec.engine, "xcuitest")
+    }
+
+    func testPhysicalIosDeviceRejectsInappEngine() throws {
+        try writePhysicalFixture(iosEngine: "inapp")
+        XCTAssertThrowsError(
+            try ProfileResolver.resolve(project: project, runName: "r", machineName: "m")
+        ) { error in
+            guard case ProfileError.physicalDeviceUnsupportedEngine(let name, let engine, _) = error else {
+                return XCTFail("physicalDeviceUnsupportedEngine のはず: \(error)")
+            }
+            XCTAssertEqual(name, "実機iPhone")
+            XCTAssertEqual(engine, "inapp")
+        }
+    }
+
+    func testPhysicalDeviceWithoutIdentifierFails() throws {
+        try write("""
+        { "android": { "app": "com.example.app" } }
+        """, to: project.appsDir, name: "app")
+        try write("""
+        { "android": { "devices": [ { "name": "実機", "kind": "physical" } ] } }
+        """, to: project.machinesDir, name: "m")
+        try write("""
+        { "app": "app", "devices": [ { "name": "実機" } ] }
+        """, to: project.runsDir, name: "r")
+        XCTAssertThrowsError(
+            try ProfileResolver.resolve(project: project, runName: "r", machineName: "m")
+        ) { error in
+            guard case ProfileError.physicalDeviceMissingIdentifier(_, let platform, _) = error else {
+                return XCTFail("physicalDeviceMissingIdentifier のはず: \(error)")
+            }
+            XCTAssertEqual(platform, "android")
+        }
+    }
+
+    func testUnreferencedBrokenPhysicalDeviceDoesNotBlockRun() throws {
+        // 実機検査は「参照されたデバイス」のみ。無関係な定義の不備で run を止めない
+        try write("""
+        { "ios": { "app": "com.example.app" } }
+        """, to: project.appsDir, name: "app")
+        try write("""
+        { "ios": { "devices": [
+              { "name": "シミュ", "simulator": "iPhone 17 Pro" },
+              { "name": "壊れた実機", "kind": "physical" } ] } }
+        """, to: project.machinesDir, name: "m")
+        try write("""
+        { "app": "app", "devices": [ { "name": "シミュ" } ] }
+        """, to: project.runsDir, name: "r")
+        let resolved = try ProfileResolver.resolve(project: project, runName: "r", machineName: "m")
+        XCTAssertEqual(resolved.devices.map(\.name), ["シミュ"])
+    }
+
+    func testValidateMachineProfileReportsPhysicalErrors() throws {
+        let data = #"""
+        { "ios": { "devices": [ { "name": "実機", "kind": "physical", "engine": "inapp" } ] },
+          "android": { "devices": [ { "name": "実機A", "kind": "physical" } ] } }
+        """#.data(using: .utf8)!
+        let (errors, warnings) = ProfileResolver.validate(
+            kind: .machine, data: data, context: "machines/m.json", project: project)
+        XCTAssertTrue(errors.contains { $0.contains("実機") && $0.contains("udid") },
+                      "iOS 実機の udid 欠落エラーが出るはず: \(errors)")
+        XCTAssertTrue(errors.contains { $0.contains("inapp") },
+                      "iOS 実機の inapp 拒否エラーが出るはず: \(errors)")
+        XCTAssertTrue(errors.contains { $0.contains("実機A") && $0.contains("serial") },
+                      "Android 実機の serial 欠落エラーが出るはず: \(errors)")
+        XCTAssertFalse(warnings.contains { $0.contains("kind") || $0.contains("serial") },
+                       "kind/serial は既知キーなので未知キー警告を出さない: \(warnings)")
+    }
 }

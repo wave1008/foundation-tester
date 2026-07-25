@@ -53,6 +53,7 @@ enum ProfileRunner {
         // 分離し、Android を供給完了待ちにしない(ApiRunCommand の並列経路と同じ方針)。
         let repoRoot = try RepoRoot.find()
         await BackendHealthCheck.warnIfUnreachable(resolved: resolved) { print($0) }
+        await ProfileWorkerFactory.preparePhysicalAndroidDevices(resolved: resolved) { print($0) }
         var workers = try ProfileWorkerFactory.buildAndroidWorkers(resolved: resolved)
         let beforeBlankCheck = workers.count
         let triage = await ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers(workers) { print($0) }
@@ -119,7 +120,12 @@ enum ProfileRunner {
                     return .silent
                 }
                 do {
-                    _ = try await BridgeClient(port: port).status(timeout: 5)
+                    // 実機ブリッジは 127.0.0.1 に居ない。宛先は DriverConnection 経由で届く
+                    // (取り違えると失敗のたびに健全な実機ワーカーを「接続不能」で離脱させる)
+                    _ = try await BridgeClient(
+                        port: port,
+                        host: worker.connection.host ?? BridgeEndpoint.loopbackHost)
+                        .status(timeout: 5)
                     return .ok
                 } catch DriverError.bridgeConnectionRefused {
                     return .refused

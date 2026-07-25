@@ -6,19 +6,24 @@ import Foundation
 import FTCore
 import FTCoreSimShim
 
+/// 解決済みの iOS デバイス実体。シミュレータと実機の両方を表す(physical で区別)。
+/// 実機は SimulatorCatalog ではなく IOSPhysicalDeviceCatalog が埋める
 public struct SimDeviceInfo: Sendable, Hashable, Identifiable {
     public let udid: String
     public let name: String
     /// "iOS 27.0" 形式
     public let os: String
     public let booted: Bool
+    /// 実機か。simctl / CoreSimulator を叩く経路はすべてこれで分岐する
+    public let physical: Bool
     public var id: String { udid }
 
-    public init(udid: String, name: String, os: String, booted: Bool) {
+    public init(udid: String, name: String, os: String, booted: Bool, physical: Bool = false) {
         self.udid = udid
         self.name = name
         self.os = os
         self.booted = booted
+        self.physical = physical
     }
 }
 
@@ -104,9 +109,17 @@ public enum SimulatorCatalog {
         }
     }
 
-    /// UDID 指定が最優先、次に simulator 名+OS(候補複数なら起動中→OS降順の先頭)
+    /// UDID 指定が最優先、次に simulator 名+OS(候補複数なら起動中→OS降順の先頭)。
+    /// kind=physical は devices(シミュレータ一覧)を見ず devicectl 側へ委譲する
+    /// (呼び出し側は分岐を書かずに済む。実機は「常に booted」として扱う)
     public static func resolve(spec: DeviceSpec,
                                in devices: [SimDeviceInfo]) throws -> SimDeviceInfo {
+        if spec.isPhysical {
+            let device = try IOSPhysicalDeviceCatalog.resolve(
+                spec: spec, in: IOSPhysicalDeviceCatalog.devices())
+            return SimDeviceInfo(udid: device.udid, name: device.name, os: device.os,
+                                 booted: true, physical: true)
+        }
         if let udid = spec.udid {
             guard let device = devices.first(where: { $0.udid == udid }) else {
                 throw SimulatorCatalogError.udidNotFound(udid)

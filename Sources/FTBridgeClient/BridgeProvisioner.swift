@@ -16,15 +16,22 @@ public struct ProvisionedIOSDevice: Sendable {
     public let engine: String
     /// engine=hybrid のフォールバック用 XCUITest ブリッジのポート(hybrid 以外は nil)
     public let xcuiPort: UInt16?
+    /// 実機か(kind=physical)。simctl 依存の経路を止める分岐に使う
+    public let physical: Bool
+    /// ブリッジへの到達先ホスト。シミュレータは 127.0.0.1、実機は LAN IP か iproxy のループバック
+    public let host: String
 
     public init(name: String, udid: String, simulatorName: String, port: UInt16,
-                engine: String, xcuiPort: UInt16? = nil) {
+                engine: String, xcuiPort: UInt16? = nil,
+                physical: Bool = false, host: String = BridgeEndpoint.loopbackHost) {
         self.name = name
         self.udid = udid
         self.simulatorName = simulatorName
         self.port = port
         self.engine = engine
         self.xcuiPort = xcuiPort
+        self.physical = physical
+        self.host = host
     }
 }
 
@@ -379,21 +386,27 @@ public struct BridgeProvisioner {
                 .map { (sim: plan.sim, engine: $0.engine, port: $0.plan.port) }
         }
         let inapp = launches.first { $0.engine == "inapp" }
-        let xcui = launches.first { $0.engine != "inapp" }
-        guard inapp != nil || xcui != nil else { return }
+        // **シミュレータと実機で xctestrun は別物**(SDK も DerivedData も分かれている)。
+        // 種別ごとに 1 つずつビルドする。first で 1 つだけ選ぶと、混在 run で選ばれなかった側が
+        // startDetached の findXCTestRun で xctestrunNotFound になる
+        let xcuiByKind = Dictionary(
+            grouping: launches.filter { $0.engine != "inapp" }, by: { $0.sim.physical })
+            .compactMap { $0.value.first }
+        guard inapp != nil || !xcuiByKind.isEmpty else { return }
         try await Task.detached(priority: .userInitiated) {
             if let inapp {
                 // dylib は全デバイス共有(udid/port は buildIfNeeded では未使用)
                 try InAppLauncher(repoRoot: repoRoot, udid: inapp.sim.udid,
                                   port: inapp.port).buildIfNeeded()
             }
-            if let xcui {
-                // xctestrun は全ポート共有(startDetached がポート注入コピーを作る)
+            for xcui in xcuiByKind {
+                // xctestrun は同種別の全ポート共有(startDetached がポート注入コピーを作る)
                 let launcher = BridgeLauncher(repoRoot: repoRoot, device: xcui.sim.udid,
-                                              port: xcui.port)
+                                              port: xcui.port, physical: xcui.sim.physical)
                 try launcher.generateProjectIfNeeded()
                 if try launcher.findXCTestRun() == nil {
-                    log("→ build-for-testing(初回は数分かかります)...")
+                    log("→ build-for-testing(\(xcui.sim.physical ? "実機" : "シミュレータ")向け"
+                        + "・初回は数分かかります)...")
                     try launcher.buildForTesting()
                 }
             }
@@ -414,7 +427,10 @@ public struct BridgeProvisioner {
         return ProvisionedIOSDevice(
             name: plan.name, udid: plan.sim.udid, simulatorName: plan.sim.name,
             port: ports[0], engine: plan.engine,
-            xcuiPort: ports.count > 1 ? ports[1] : nil)
+            xcuiPort: ports.count > 1 ? ports[1] : nil,
+            physical: plan.sim.physical,
+            // 再利用(.reuse)経路でも宛先を復元できるよう記録ファイルを唯一の正にする
+            host: BridgeEndpoint.load(port: ports[0], repoRoot: repoRoot).host)
     }
 
     /// 1 ブリッジ分のプラン実行(ポート採番・再利用判定はプランニングで確定済み)
@@ -438,7 +454,8 @@ public struct BridgeProvisioner {
                     log("→ \(name): 旧ビルドのブリッジ(port \(stopStalePort))を停止して起動し直します")
                     do {
                         try await BridgeLauncher(repoRoot: repoRoot, device: sim.udid,
-                                                 port: stopStalePort).stopAndWait()
+                                                 port: stopStalePort,
+                                                 physical: sim.physical).stopAndWait()
                     } catch {
                         log("⚠️ \(name): 旧ブリッジの停止に失敗しました(port \(stopStalePort)): \(error.localizedDescription)")
                     }
@@ -487,15 +504,32 @@ public struct BridgeProvisioner {
                 }.value
                 try await launcher.relaunch(bundleID: bundleID)
             } else {
-                let launcher = BridgeLauncher(repoRoot: repoRoot, device: sim.udid, port: port)
+                let launcher = BridgeLauncher(repoRoot: repoRoot, device: sim.udid, port: port,
+                                              physical: sim.physical)
                 // xctestrun の存在は prepareSharedBuilds が保証済み(不在なら xctestrunNotFound が
                 // そのまま届く。ここで buildForTesting はしない=並列で二重ビルドさせない)
                 try await Task.detached(priority: .userInitiated) {
                     try launcher.generateProjectIfNeeded()
                     try launcher.startDetached()
                 }.value
+                // 実機はデバイス内ループバックに届かない。/status を叩く前に到達手段
+                // (LAN の宛先解決 or iproxy の USB トンネル)を確立して endpoint を記録する
+                var endpoint = BridgeEndpoint(port: port)
+                if sim.physical {
+                    do {
+                        endpoint = try await IOSDeviceTransport.establish(
+                            port: port, deviceUDID: sim.udid, repoRoot: repoRoot,
+                            log: { log("\(name): \($0)") })
+                    } catch {
+                        // 到達手段が確立できなくても xcodebuild は実機で走り続ける。止めないと
+                        // 失敗のたびに常駐ランナーとポートが実機に溜まる(実測で 5 本残った)
+                        try? launcher.stop()
+                        throw error
+                    }
+                    log("→ \(name): 実機ブリッジへ \(endpoint.host):\(port) で接続します")
+                }
                 do {
-                    try await launcher.waitUntilReady()
+                    try await launcher.waitUntilReady(host: endpoint.host)
                 } catch let error as LauncherError {
                     guard case .portInUse = error else {
                         try? launcher.stop()
@@ -618,7 +652,10 @@ public struct BridgeProvisioner {
                     // per-request に上書きするため、init の timeoutSeconds:2 が効かない)。これを怠ると
                     // suspend/ウェッジした孤児ブリッジ(TCP 受理・HTTP 無応答)1本で scan 全体が
                     // 並列でも ~45s 待ち、連続 run が逓減する(2026-07-25 実測 46s→<2s)。
-                    let client = BridgeClient(port: port, timeoutSeconds: 2)
+                    // 実機ブリッジは 127.0.0.1 に居ない。establish が残した宛先を使う
+                    // (記録が無ければループバック = シミュレータ/Android の既定)
+                    let endpoint = BridgeEndpoint.load(port: port, repoRoot: self.repoRoot)
+                    let client = BridgeClient(port: port, timeoutSeconds: 2, host: endpoint.host)
                     guard let status = try? await client.status(timeout: 2), status.ready else {
                         return nil
                     }

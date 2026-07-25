@@ -754,7 +754,28 @@ executableTarget `ftester-scenarios-<name>`(path: `Projects/<name>/Scenarios`)�
 - iOS: `simulator` 名+`os`(または `udid` 直指定。`port` で固定も可)
 - Android: `avd`(AVD の ID と表示名(config.ini の avd.ini.displayname)のどちらでも可。
   起動中エミュレータの AVD 名と照合して adb serial に解決。未起動はヒント付きエラー。
-  serial 直指定は廃止 — serial は起動順で変わるためプロファイルに書かない)
+  **エミュレータの** serial 直指定は廃止 — serial は起動順で変わるためプロファイルに書かない)
+
+**実機**(`kind: "physical"`。省略時は `"virtual"` = シミュレータ/エミュレータ)。
+識別子は iOS が `udid`、Android が `serial`(実機の serial は起動順で変わらないので直接書く):
+
+```json
+{ "ios":     { "devices": [ { "name": "iPhone 実機", "kind": "physical",
+                              "udid": "00008130-000A1B2C3D4E5678" } ] },
+  "android": { "devices": [ { "name": "Pixel 実機", "kind": "physical",
+                              "serial": "14141JEC204922" } ] } }
+```
+
+- iOS 実機の `udid` は `xcrun devicectl list devices` の Identifier、Android 実機の `serial` は
+  `adb devices` の左列(WiFi 接続なら `192.168.1.23:5555` 形式)
+- **iOS 実機は engine が `xcuitest` に固定される**(dylib 注入は実機不可なので `iosInappEngine`
+  の既定 hybrid を無視する。`engine: "inapp"` を明示すると検証エラー)
+- 実機は `devices up/down` で起動・停止しない(接続確認だけ行う)
+- 実機で成立しない機能は静かに無効化される: iOS の録画(`simctl io recordVideo`)、
+  ライブ映像(`ftester-simstream` は CoreSimulator 私有 API)、Reduce Motion 自動設定、
+  autoInstall の差分スキップ(コンテナを読めないため毎回インストール)。
+  Android 実機は録画(`adb screenrecord`)・ライブ映像とも従来どおり動く
+- 実機の要件と罠(iOS の署名・LAN/USB 経路、Android の画面ロック)は docs/verification.md
 
 **実行プロファイル** `runs/<name>.json` — アプリ+デバイス名リスト+実行時設定。
 platform フィールドは持たず、**iOS/Android のデバイス名を混在させれば両OS同時実行**になる:

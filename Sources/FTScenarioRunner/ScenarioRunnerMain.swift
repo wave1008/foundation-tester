@@ -107,6 +107,13 @@ struct RunScenario: AsyncParsableCommand {
             help: "実行プロファイル上のデバイス論理名(レポートヘッダ表示用。orchestrator から渡される)")
     var deviceName: String?
 
+    @Flag(help: "対象が実機(simctl 依存の高速 launch・未インストール事前検査を無効化する)")
+    var physical = false
+
+    @Option(name: .customLong("bridge-host"),
+            help: "iOS ブリッジの宛先ホスト(既定 127.0.0.1。実機は LAN IP か iproxy のループバック)")
+    var bridgeHost: String?
+
     @Flag(help: "FM によるロケータ自己修復を許可する")
     var heal = false
 
@@ -188,7 +195,7 @@ struct RunScenario: AsyncParsableCommand {
                     // relaunch で bridge を張り直す)、別アプリ(Preferences 等)なら mismatch=XCUITest
                     // へ正しく分岐する。inappApp を使わず nil を「不明」扱いにすると、suspend 中の
                     // 別アプリシナリオを in-app 経路へ誤ルーティングして破綻する(実際に回帰した)。
-                    let probe = BridgeClient(port: port, timeoutSeconds: 4)
+                    let probe = BridgeClient(port: port, timeoutSeconds: 4, host: bridgeHost ?? BridgeEndpoint.loopbackHost)
                     let probeStatus = try? await probe.status(timeout: 4)
                     let injected = probeStatus?.sessionBundleID ?? inappApp
                     if let injected, injected != testClass.app {
@@ -200,7 +207,7 @@ struct RunScenario: AsyncParsableCommand {
                                 + "hybrid)で実行すると XCUITest 経由で自動駆動されます"
                                 + "(engine=inapp 明示デバイスには iosInappEngine は適用されません)")
                         }
-                        let client = BridgeClient(port: xcuiPort)
+                        let client = BridgeClient(port: xcuiPort, host: bridgeHost ?? BridgeEndpoint.loopbackHost)
                         driver = udid.map { LaunchPreflightDriver(base: client, udid: $0) } ?? client
                     } else {
                         // in-app は launch=simctl 再起動+dylib 注入(自己再起動できないため)
@@ -226,18 +233,22 @@ struct RunScenario: AsyncParsableCommand {
                         }
                     }
                 } else {
-                    let client = BridgeClient(port: port)
+                    let client = BridgeClient(port: port, host: bridgeHost ?? BridgeEndpoint.loopbackHost)
                     // launch は既定で simctl 化(FastLaunchDriver。実測 -14〜19%)。
                     // FT_NO_FAST_LAUNCH=1 で従来の XCUIApplication.launch() に戻せる。
-                    // preflight(未インストール検査)は fast launch の外側に置く
+                    // preflight(未インストール検査)は fast launch の外側に置く。
+                    // **実機は両方とも simctl 依存なので必ず外す**(engine=xcuitest なら実機で動く、と
+                    // 誤認しやすい罠。素の XCUIApplication.launch() 経路に落とす)
                     let noFastLaunch = ProcessInfo.processInfo.environment["FT_NO_FAST_LAUNCH"] == "1"
-                    let inner: AppDriver = (!noFastLaunch && udid != nil)
+                    let inner: AppDriver = (!noFastLaunch && !physical && udid != nil)
                         ? FastLaunchDriver(base: client, udid: udid!) : client
                     // SessionRecoveryDriver は最外側(回復時の activate に LaunchPreflightDriver の
                     // 未インストール検査を効かせるため)。in-app/hybrid 経路には入れない
                     // (InAppDriver は別プロトコルで 409 の意味が違う)。
-                    driver = SessionRecoveryDriver(
-                        base: udid.map { LaunchPreflightDriver(base: inner, udid: $0) } ?? client)
+                    let preflighted: AppDriver = physical
+                        ? inner
+                        : (udid.map { LaunchPreflightDriver(base: inner, udid: $0) as AppDriver } ?? client)
+                    driver = SessionRecoveryDriver(base: preflighted)
                 }
             case "android":
                 driver = try AndroidDriver(serial: serial)
@@ -278,6 +289,7 @@ struct RunScenario: AsyncParsableCommand {
                                typeDriver: typeDriver, preferTypeDriver: preferTypeDriver,
                                typeDriverGestures: typeDriverGestures,
                                deviceName: deviceName, deviceIdentifier: deviceIdentifier,
+                               physical: physical,
                                emit: emit)
 
         if debug {

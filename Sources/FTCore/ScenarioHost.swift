@@ -57,10 +57,17 @@ public struct DriverConnection: Sendable, Hashable {
     /// 実行プロファイル上のデバイス論理名(profiles/machines/ の name)。レポートヘッダ表示用
     /// (ProfileWorkerFactory/MCPServer のプロファイル経路で設定される。--ports 直指定等では nil)
     public let deviceName: String?
+    /// 実機か(DeviceSpec.kind == physical)。simctl / エミュレータ前提の処理を止めるための判別軸。
+    /// サブプロセスへは --physical で渡る(iOS の FastLaunchDriver 抑止に必要)
+    public let physical: Bool
+    /// iOS ブリッジの宛先ホスト。nil = 127.0.0.1(シミュレータ)。実機は LAN IP か
+    /// iproxy のループバック(BridgeEndpoint 参照)。サブプロセスへは --bridge-host で渡る
+    public let host: String?
 
     public init(platform: String, port: UInt16? = nil, serial: String? = nil,
                 engine: String? = nil, udid: String? = nil, xcuiPort: UInt16? = nil,
-                inappBundleID: String? = nil, deviceName: String? = nil) {
+                inappBundleID: String? = nil, deviceName: String? = nil,
+                physical: Bool = false, host: String? = nil) {
         self.platform = platform
         self.port = port
         self.serial = serial
@@ -69,6 +76,8 @@ public struct DriverConnection: Sendable, Hashable {
         self.xcuiPort = xcuiPort
         self.inappBundleID = inappBundleID
         self.deviceName = deviceName
+        self.physical = physical
+        self.host = host
     }
 }
 
@@ -233,6 +242,8 @@ public enum ScenarioHost {
         if let xcuiPort = connection.xcuiPort { args += ["--xcui-port", String(xcuiPort)] }
         if let inappBundleID = connection.inappBundleID { args += ["--inapp-app", inappBundleID] }
         if let deviceName = connection.deviceName { args += ["--device-name", deviceName] }
+        if connection.physical { args.append("--physical") }
+        if let host = connection.host { args += ["--bridge-host", host] }
         if let defaultTimeout { args += ["--default-timeout", String(defaultTimeout)] }
         if let debug {
             args.append("--debug")

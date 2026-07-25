@@ -36,6 +36,8 @@ public enum AndroidDataWiper {
 
         var candidates: [Candidate] = []
         for device in devices where device.platform == "android" {
+            // 実機に AVD ディレクトリは無い(警告も出さない。毎 run のノイズにしかならない)
+            if device.spec.isPhysical { continue }
             guard let avd = device.spec.avd else {
                 log("⚠️ \(device.name): avd 未指定のため Wipe Data 判定をスキップします")
                 continue
