@@ -19,14 +19,31 @@ import os from "node:os";
 import path from "node:path";
 import { MonitorDeviceStreamController } from "../src/monitorDeviceStreamController";
 
-/** dirname(binaryPath) に常駐するだけの mock ftester-simstream を置き、binaryPath を返す。 */
-function makeMockBinaryDir() {
+/** dirname(binaryPath) に常駐するだけの mock helper 群を置き、binaryPath を返す。
+ * names で置く helper を選べる(実機は ftester-devicepoll に振り分けられるため)。 */
+function makeMockBinaryDir(names = ["ftester-simstream"]) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ftester-stream-test-"));
-  const helper = path.join(dir, "ftester-simstream");
-  // 引数は無視し、SIGTERM されるまで生存するだけ(dispose まで pipeline を running に保つ)
-  fs.writeFileSync(helper, "#!/bin/sh\nexec sleep 120\n");
-  fs.chmodSync(helper, 0o755);
+  for (const name of names) {
+    const helper = path.join(dir, name);
+    // 引数は無視し、SIGTERM されるまで生存するだけ(dispose まで pipeline を running に保つ)
+    // 起動引数は argv ファイルへ落として検証できるようにする
+    fs.writeFileSync(helper, `#!/bin/sh\necho "$@" > "${path.join(dir, name)}.argv"\nexec sleep 120\n`);
+    fs.chmodSync(helper, 0o755);
+  }
   return { dir, binaryPath: path.join(dir, "ftester") };
+}
+
+/** helper の spawn は非同期なので argv ファイルの生成を待つ(現れなければ undefined)。 */
+async function waitForArgv(dir, name, timeoutMs = 3000) {
+  const file = path.join(dir, `${name}.argv`);
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (fs.existsSync(file)) {
+      return fs.readFileSync(file, "utf8");
+    }
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  return undefined;
 }
 
 /** MonitorDeviceStreamController に渡す最小 fake deps。writeMonitorControl を記録する。 */
@@ -112,6 +129,71 @@ test("codec 設定変更で稼働中パイプラインが張り替えられる(�
     controller.applyDevices([iosDevice]);
     assert.equal(controller.isStreaming(iosDevice.id), false,
       "codec 変更で張り替えられ描画 ack がリセットされる");
+  } finally {
+    controller.setVisible(false);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ---- 実機(kind: physical)の振り分け ----
+
+test("iOS 実機は simstream ではなく devicepoll に振り分けられる(--host/--port 付き)", async () => {
+  // simstream は CoreSimulator 私有 API で実機に使えない。両方置いても devicepoll が選ばれること
+  const { dir, binaryPath } = makeMockBinaryDir(["ftester-simstream", "ftester-devicepoll"]);
+  const { deps } = makeDeps(binaryPath);
+  const controller = new MonitorDeviceStreamController(deps);
+  try {
+    controller.applyDevices([{
+      id: "phys-ios", name: "iPhone 実機", platform: "ios", state: "connected",
+      detail: "", kind: "physical", host: "127.0.0.1", port: 8134,
+      udid: "00008130-001819863E60001C",
+    }]);
+    const argv = await waitForArgv(dir, "ftester-devicepoll");
+    assert.ok(argv, "devicepoll が起動すること");
+    assert.match(argv, /--platform ios/);
+    assert.match(argv, /--host 127\.0\.0\.1/);
+    assert.match(argv, /--port 8134/);
+    assert.equal(fs.existsSync(path.join(dir, "ftester-simstream.argv")), false,
+      "実機に simstream を起動しないこと");
+  } finally {
+    controller.setVisible(false);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("Android 実機も devicepoll に振り分けられる(--serial 付き)", async () => {
+  const { dir, binaryPath } = makeMockBinaryDir(["ftester-androidstream", "ftester-devicepoll"]);
+  const { deps } = makeDeps(binaryPath);
+  deps.getConfig = () => ({
+    binaryPath, iosStreamEnabled: true, androidStreamEnabled: true,
+    streamCodec: "h264", liveFps: 12, monitorMaxWidth: 960,
+  });
+  const controller = new MonitorDeviceStreamController(deps);
+  try {
+    controller.applyDevices([{
+      id: "phys-and", name: "Pixel 実機", platform: "android", state: "connected",
+      detail: "", kind: "physical", serial: "14141JEC204922",
+    }]);
+    const argv = await waitForArgv(dir, "ftester-devicepoll");
+    assert.ok(argv, "devicepoll が起動すること");
+    assert.match(argv, /--platform android/);
+    assert.match(argv, /--serial 14141JEC204922/);
+    assert.equal(fs.existsSync(path.join(dir, "ftester-androidstream.argv")), false,
+      "実機に androidstream を起動しないこと(静止画面でフレームが流れない)");
+  } finally {
+    controller.setVisible(false);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("シミュレータは従来どおり simstream(実機振り分けの巻き添えにしない)", async () => {
+  const { dir, binaryPath } = makeMockBinaryDir(["ftester-simstream", "ftester-devicepoll"]);
+  const { deps } = makeDeps(binaryPath);
+  const controller = new MonitorDeviceStreamController(deps);
+  try {
+    controller.applyDevices([{ ...iosDevice, kind: "virtual" }]);
+    assert.ok(await waitForArgv(dir, "ftester-simstream"), "simstream が起動すること");
+    assert.equal(fs.existsSync(path.join(dir, "ftester-devicepoll.argv")), false);
   } finally {
     controller.setVisible(false);
     fs.rmSync(dir, { recursive: true, force: true });

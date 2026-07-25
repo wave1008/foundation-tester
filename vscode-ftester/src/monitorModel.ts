@@ -27,6 +27,8 @@ import type { ResidentProcess } from "./residentProcesses";
 
 export type MonitorPlatform = "ios" | "android";
 export type MonitorDeviceState = "connected" | "booted" | "offline";
+/** デバイスの実体種別(ApiMonitorCommand の kind。旧 CLI 互換のため欠落時は virtual 扱い)。 */
+export type MonitorDeviceKind = "virtual" | "physical";
 
 export interface MonitorDevice {
   readonly id: string;
@@ -46,6 +48,16 @@ export interface MonitorDevice {
   /** Android エミュレータの実描画モード("gpu"=host/Metal、"cpu"=swiftshader)。
    * connected な Android のみ・判定不能や iOS は undefined(Swift は null を送るので正規化する)。 */
   readonly renderMode?: "gpu" | "cpu";
+  /** デバイスの実体種別。"physical"=実機(iOS 実機は ftester-simstream が CoreSimulator 私有 API の
+   * ため画面配信不可)。欠落("kind" を返さない旧 CLI)は "virtual" に正規化する。 */
+  readonly kind: MonitorDeviceKind;
+  /** iOS 実機のブリッジ宛先ホスト(USB トンネルは "127.0.0.1"、LAN 経由はその LAN IP)。
+   * monitorDeviceStreamController.ts が ftester-devicepoll の --host に渡す。
+   * シミュレータ・Android・ブリッジ未起動は undefined(Swift は null を送るので正規化する)。 */
+  readonly host?: string;
+  /** iOS ブリッジの実効ポート(connected のときのみ)。ftester-devicepoll の --port に渡す。
+   * Android・未接続は undefined(Swift は null を送るので正規化する)。 */
+  readonly port?: number;
   /** `ftester api run` がこのデバイスを使用中か(ApiMonitorCommand.swift の RunLease.isFresh)。
    * Swift は常に true/false を送るが、欠落・非 bool は false として扱う(isMonitorDevice が正規化)。 */
   readonly inRun?: boolean;
@@ -97,6 +109,16 @@ function isMonitorDevice(value: unknown): value is MonitorDevice {
   if (value.inRun !== true && value.inRun !== false) {
     // 欠落/null/型不正を「未使用中」に寄せる(イベント全体は捨てない)。
     value.inRun = false;
+  }
+  // kind は後から追加したフィールド。欠落・未知値は virtual(=従来の挙動)に寄せる
+  if (value.kind !== "physical" && value.kind !== "virtual") {
+    value.kind = "virtual";
+  }
+  if (value.host === null || typeof value.host !== "string") {
+    value.host = undefined;
+  }
+  if (value.port === null || typeof value.port !== "number") {
+    value.port = undefined;
   }
   if (value.recording !== true && value.recording !== false) {
     // 欠落/null/型不正を「録画していない」に寄せる(inRun と同じ方針)。
@@ -225,6 +247,10 @@ export type MonitorToWebviewMessage =
           readonly udid?: string;
           readonly port?: number;
           readonly avd?: string;
+          /** 実機なら "physical"(一覧・編集フォームのバッジ表示に使う)。省略=virtual。 */
+          readonly kind?: "virtual" | "physical";
+          readonly serial?: string;
+          readonly model?: string;
         }[];
       }[];
       /** 現在選択中とみなすマシン名(machines に無ければ null)。 */
@@ -509,6 +535,8 @@ export type MonitorFromWebviewMessage =
         readonly udid: string;
         readonly port: string;
         readonly avd: string;
+        /** Android 実機の adb シリアル。旧 webview は送らないため受信側で "" に補う。 */
+        readonly serial: string;
       };
     }
   // 実行プロファイル設定フォームの選択変更・初回表示時のロード要求。profile の空文字は
@@ -585,7 +613,10 @@ function isMachineDeviceAddEntryLike(value: unknown): value is MachineDeviceAddE
     (value.simulator === undefined || typeof value.simulator === "string") &&
     (value.os === undefined || typeof value.os === "string") &&
     (value.udid === undefined || typeof value.udid === "string") &&
-    (value.avd === undefined || typeof value.avd === "string")
+    (value.avd === undefined || typeof value.avd === "string") &&
+    (value.serial === undefined || typeof value.serial === "string") &&
+    (value.model === undefined || typeof value.model === "string") &&
+    (value.kind === undefined || value.kind === "virtual" || value.kind === "physical")
   );
 }
 
@@ -698,7 +729,11 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
         typeof value.fields.os === "string" &&
         typeof value.fields.udid === "string" &&
         typeof value.fields.port === "string" &&
-        typeof value.fields.avd === "string"
+        typeof value.fields.avd === "string" &&
+        // serial は後から追加したフィールド。欠落は "" に補う(旧 webview との混在を弾かない)
+        (value.fields.serial === undefined
+          ? ((value.fields as Record<string, unknown>).serial = "") === ""
+          : typeof value.fields.serial === "string")
       );
     case "runProfileLoad":
       return typeof value.profile === "string" && value.profile !== "";
@@ -1587,11 +1622,18 @@ export function updateAppProfileInObject(
 export interface MachineDeviceEntry {
   readonly name: string;
   readonly platform: MonitorPlatform;
+  /** 実体種別。省略=virtual(シミュレータ/エミュレータ)。physical は実機で、
+   * 識別子は iOS=udid / Android=serial(Sources/FTCore/RunProfile.swift の DeviceKind と同期)。 */
+  readonly kind?: "virtual" | "physical";
   readonly simulator?: string;
   readonly os?: string;
   readonly udid?: string;
   readonly port?: number;
   readonly avd?: string;
+  /** Android 実機の adb シリアル(kind=physical のとき必須)。 */
+  readonly serial?: string;
+  /** 実機の機種名(表示専用。同定には使わない)。 */
+  readonly model?: string;
 }
 
 /**
@@ -1600,14 +1642,20 @@ export interface MachineDeviceEntry {
  * と違い、追加前なので port は持たない — ポートは追加後に右ペインの編集フォームで設定する)。
  * - iOS: { platform:"ios", name:<シミュレータ名>, simulator:<シミュレータ名>, os:<os>, udid:<udid> }
  * - Android: { platform:"android", name:<displayName>, avd:<id> }
+ * 実機は kind:"physical" 付きで、実体を指すのは iOS=udid / Android=serial のみ
+ * (simulator/os/avd は持たない)。
  */
 export interface MachineDeviceAddEntry {
   readonly platform: MonitorPlatform;
   readonly name: string;
+  readonly kind?: "virtual" | "physical";
   readonly simulator?: string;
   readonly os?: string;
   readonly udid?: string;
   readonly avd?: string;
+  readonly serial?: string;
+  /** 実機の機種名(表示専用)。 */
+  readonly model?: string;
 }
 
 export interface AndroidCatalogModel {
@@ -1725,11 +1773,27 @@ export function isDeviceCatalogJson(value: unknown): value is DeviceCatalog {
 export interface InstalledAndroidAvd {
   readonly displayName: string;
   readonly id: string;
+  /** config.ini の hw.device.name(例 "pixel_9")。旧 CLI は返さないため省略可。 */
+  readonly model?: string | null;
+  /** image.sysdir.1 から導出した OS 表記(例 "Android 15")。旧 CLI は返さないため省略可。 */
+  readonly os?: string | null;
+}
+
+/** 接続中の Android 実機(installed-devices の android.physicalDevices)。 */
+export interface InstalledAndroidPhysicalDevice {
+  /** ro.product.model(取れなければ serial)。 */
+  readonly model: string;
+  /** ro.build.version.release(例 "13")。旧 CLI は返さないため省略可。 */
+  readonly os?: string;
+  /** マシンプロファイルの serial にそのまま書ける値。 */
+  readonly serial: string;
 }
 
 export interface InstalledAndroidDevices {
   readonly available: boolean;
   readonly avds: readonly InstalledAndroidAvd[];
+  /** 旧 CLI は返さないため省略可(欠落=実機なし扱い)。 */
+  readonly physicalDevices?: readonly InstalledAndroidPhysicalDevice[];
   readonly error: string | null;
 }
 
@@ -1739,9 +1803,24 @@ export interface InstalledIosDevice {
   readonly udid: string;
 }
 
+/** 接続中の iOS 実機(installed-devices の ios.physicalDevices)。 */
+export interface InstalledIosPhysicalDevice {
+  readonly name: string;
+  readonly os: string;
+  /** ハードウェア UDID。マシンプロファイルの udid にそのまま書ける値
+   * (devicectl の Identifier 列とは別物。IOSPhysicalDeviceCatalog 参照)。 */
+  readonly udid: string;
+  /** "wired" / "localNetwork" 等。 */
+  readonly transport: string;
+  /** 機種名(marketingName。例 "iPhone 15 Pro")。旧 CLI は返さないため省略可。 */
+  readonly model?: string;
+}
+
 export interface InstalledIosDevices {
   readonly available: boolean;
   readonly devices: readonly InstalledIosDevice[];
+  /** 旧 CLI は返さないため省略可(欠落=実機なし扱い)。 */
+  readonly physicalDevices?: readonly InstalledIosPhysicalDevice[];
   readonly error: string | null;
 }
 
@@ -1752,7 +1831,14 @@ export interface InstalledDevices {
 }
 
 function isInstalledAndroidAvd(value: unknown): value is InstalledAndroidAvd {
-  return isRecord(value) && typeof value.displayName === "string" && typeof value.id === "string";
+  return (
+    isRecord(value) &&
+    typeof value.displayName === "string" &&
+    typeof value.id === "string" &&
+    // model/os は後から追加。null(取得できず)も許容する
+    (value.model === undefined || value.model === null || typeof value.model === "string") &&
+    (value.os === undefined || value.os === null || typeof value.os === "string")
+  );
 }
 
 function isInstalledIosDevice(value: unknown): value is InstalledIosDevice {
@@ -1764,13 +1850,30 @@ function isInstalledIosDevice(value: unknown): value is InstalledIosDevice {
   );
 }
 
+function isInstalledAndroidPhysical(value: unknown): value is InstalledAndroidPhysicalDevice {
+  return isRecord(value) && typeof value.model === "string" && typeof value.serial === "string";
+}
+
 function isInstalledAndroidDevices(value: unknown): value is InstalledAndroidDevices {
   return (
     isRecord(value) &&
     typeof value.available === "boolean" &&
     (value.error === null || typeof value.error === "string") &&
     Array.isArray(value.avds) &&
-    value.avds.every(isInstalledAndroidAvd)
+    value.avds.every(isInstalledAndroidAvd) &&
+    // physicalDevices は後から追加。欠落は許容し、あれば形を検証する
+    (value.physicalDevices === undefined ||
+      (Array.isArray(value.physicalDevices) && value.physicalDevices.every(isInstalledAndroidPhysical)))
+  );
+}
+
+function isInstalledIosPhysical(value: unknown): value is InstalledIosPhysicalDevice {
+  return (
+    isRecord(value) &&
+    typeof value.name === "string" &&
+    typeof value.os === "string" &&
+    typeof value.udid === "string" &&
+    typeof value.transport === "string"
   );
 }
 
@@ -1780,7 +1883,9 @@ function isInstalledIosDevices(value: unknown): value is InstalledIosDevices {
     typeof value.available === "boolean" &&
     (value.error === null || typeof value.error === "string") &&
     Array.isArray(value.devices) &&
-    value.devices.every(isInstalledIosDevice)
+    value.devices.every(isInstalledIosDevice) &&
+    (value.physicalDevices === undefined ||
+      (Array.isArray(value.physicalDevices) && value.physicalDevices.every(isInstalledIosPhysical)))
   );
 }
 
@@ -1842,7 +1947,8 @@ export function isCreateDeviceEvent(value: unknown): value is CreateDeviceEvent 
 
 /**
  * マシンプロファイルのデバイス一覧2行目の詳細文字列。iOS: simulator優先(os があれば併記)、
- * 無ければ udid 先頭8文字、それも無ければ "iOS"。Android: avd があれば "AVD: "+avd、無ければ "Android"。
+ * 無ければ udid 先頭8文字、それも無ければ "iOS"。Android: avd があれば "AVD: "+avd、
+ * 実機(avd を持たない)は serial、どちらも無ければ "Android"。
  */
 export function machineDeviceDetail(entry: MachineDeviceEntry): string {
   if (entry.platform === "ios") {
@@ -1854,7 +1960,11 @@ export function machineDeviceDetail(entry: MachineDeviceEntry): string {
     }
     return "iOS";
   }
-  return entry.avd ? `AVD: ${entry.avd}` : "Android";
+  if (entry.avd) {
+    return `AVD: ${entry.avd}`;
+  }
+  // 実機は AVD を持たない。serial が唯一の同定手段なのでそれを出す
+  return entry.serial ?? "Android";
 }
 
 /** デバイス追加モーダルの新規デバイス名検証(webview 内の複製版が入力中の検証にも使う)。 */
@@ -1954,6 +2064,8 @@ export interface MachineDeviceUpdateFields {
   readonly udid: string;
   readonly port: string;
   readonly avd: string;
+  /** Android 実機の adb シリアル(kind=physical のみ意味を持つ)。 */
+  readonly serial: string;
 }
 
 export type MachineDeviceUpdateResult =
@@ -2041,12 +2153,24 @@ export function updateDeviceInMachineProfile(
         newEntry[key] = value;
       }
     }
+    // 実機は udid が唯一の同定手段(simulator/os は使わない)。空のまま保存すると
+    // run で「kind=physical ですが udid がありません」と落ちるので手前で止める
+    if (newEntry.kind === "physical" && typeof newEntry.udid !== "string") {
+      return { ok: false, error: t("monitor.device.physicalUdidRequired") };
+    }
   } else {
-    const value = fields.avd.trim();
-    if (value.length === 0) {
-      delete newEntry.avd;
-    } else {
-      newEntry.avd = value;
+    for (const key of ["avd", "serial"] as const) {
+      // serial は後から追加したフィールド。拡張と webview のバンドルは別々に更新されうるので
+      // 欠落しても落ちないようにする(欠落=未入力として扱う)
+      const value = (fields[key] ?? "").trim();
+      if (value.length === 0) {
+        delete newEntry[key];
+      } else {
+        newEntry[key] = value;
+      }
+    }
+    if (newEntry.kind === "physical" && typeof newEntry.serial !== "string") {
+      return { ok: false, error: t("monitor.device.physicalSerialRequired") };
     }
   }
 
@@ -2113,6 +2237,10 @@ export function addDevicesToMachineProfile(
     added.push(name);
 
     const deviceEntry: Record<string, unknown> = { name };
+    // kind は physical のときだけ書く(未指定=virtual が既定。既存プロファイルにノイズを足さない)
+    if (entry.kind === "physical") {
+      deviceEntry.kind = "physical";
+    }
     if (entry.simulator) {
       deviceEntry.simulator = entry.simulator;
     }
@@ -2124,6 +2252,12 @@ export function addDevicesToMachineProfile(
     }
     if (entry.avd) {
       deviceEntry.avd = entry.avd;
+    }
+    if (entry.serial) {
+      deviceEntry.serial = entry.serial;
+    }
+    if (entry.model) {
+      deviceEntry.model = entry.model;
     }
     newEntriesByPlatform[entry.platform].push(deviceEntry);
   }

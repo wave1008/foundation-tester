@@ -297,6 +297,41 @@ public struct BridgeLauncher {
         try? FileManager.default.removeItem(at: pidPath)
     }
 
+    /// 指定 UDID を対象にするブリッジのポート一覧(停止しない読み取り専用)。
+    /// **実機のブリッジ帰属判定はこれで行う**: /status の device 名は実機だと機種名("iPhone")で
+    /// マシンプロファイルのデバイス名と一致しないため、名前照合では永久に紐付かない。
+    /// 特定は stopMatching と同じくプロセスの起動引数(-destination ... id=<UDID>)照合。
+    /// stale な pid ファイルはここでは消さない(読み取り専用に徹する。掃除は stopMatching の役割)
+    public static func portsMatching(udid: String, repoRoot: URL) -> [UInt16] {
+        let stateDir = repoRoot.appendingPathComponent(".ftester")
+        guard let entries = try? FileManager.default.contentsOfDirectory(
+            at: stateDir, includingPropertiesForKeys: nil) else { return [] }
+        var portByPID: [Int32: UInt16] = [:]
+        for entry in entries where entry.lastPathComponent.hasPrefix("bridge-")
+            && entry.pathExtension == "pid" {
+            guard let pidString = try? String(contentsOf: entry, encoding: .utf8),
+                  let pid = Int32(pidString.trimmingCharacters(in: .whitespacesAndNewlines)),
+                  let port = UInt16(entry.deletingPathExtension().lastPathComponent
+                      .replacingOccurrences(of: "bridge-", with: "")) else { continue }
+            portByPID[pid] = port
+        }
+        guard !portByPID.isEmpty else { return [] }
+        // **ps は 1 回だけ**(pid ごとに spawn すると、monitor が 2 秒間隔でこれを呼ぶので
+        // 常駐ブリッジ本数 × 0.5 回/秒のプロセス生成になる)。
+        // **`ps -p <pid列>` を使ってはいけない**: 範囲外の pid が 1 つ混じるとエラーになり
+        // **生きている分も含めて出力が空になる**(pid ファイルは壊れた値を持ち得る)。
+        // 全プロセス列挙して pid で引く方がゴミ値に強い
+        guard let ps = try? Shell.run(["ps", "-ax", "-o", "pid=,command="]) else { return [] }
+        var ports: [UInt16] = []
+        for line in ps.output.split(whereSeparator: \.isNewline) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard let space = trimmed.firstIndex(of: " "), trimmed.contains(udid),
+                  let pid = Int32(trimmed[..<space]), let port = portByPID[pid] else { continue }
+            ports.append(port)
+        }
+        return ports.sorted()
+    }
+
     /// 指定シミュレータ(UDID)を対象にするブリッジプロセスを pid ファイルから探して全て停止する。
     /// 特定はプロセスの起動引数(-destination ... id=<UDID>)照合。/status 無応答のゾンビ
     /// xcodebuild は HTTP スキャンに映らないがこれなら殺せる(生きた XCUITest セッションを残すと
@@ -380,12 +415,29 @@ public struct BridgeLauncher {
         return stopped
     }
 
-    /// host: 実機は LAN IP か iproxy のループバック(IOSDeviceTransport が確立済みのもの)を渡す
+    /// host: 実機は LAN IP か iproxy のループバック(IOSDeviceTransport が確立済みのもの)を渡す。
+    /// log: 実機で「失敗ではないが進まない」条件(端末ロック等)を1回だけ知らせるための出力先
     public func waitUntilReady(timeout: TimeInterval = 180,
-                               host: String = BridgeEndpoint.loopbackHost) async throws {
+                               host: String = BridgeEndpoint.loopbackHost,
+                               log: @escaping (String) -> Void = { _ in }) async throws {
         let client = BridgeClient(port: port, host: host)
         let deadline = Date().addingTimeInterval(timeout)
         var lastError: Error?
+        var blocker: String?
+        /// 実機の診断。LAN は宛先解決(waitForAnnouncedAddress)側でも同じ判定をするが、
+        /// **USB はそこを通らない**ため、ここで見ないと端末ロック・証明書未信頼が原因不明の
+        /// タイムアウトになる(実害)。判定の知識は IOSDeviceTransport の 2 関数に集約。
+        /// 致命的(証明書未信頼など)は throw、待てば解ける条件(ロック)は文言を返す
+        func physicalDiagnosis() throws -> String? {
+            guard physical, let text = try? String(contentsOf: logPath, encoding: .utf8) else {
+                return nil
+            }
+            if let reason = IOSDeviceTransport.runnerFailureReason(inLog: text) {
+                throw IOSDeviceTransportError.runnerFailed(
+                    port: port, reason: reason, logPath: logPath.path)
+            }
+            return IOSDeviceTransport.blockingCondition(inLog: text)
+        }
         while Date() < deadline {
             do {
                 let status = try await client.status()
@@ -402,7 +454,19 @@ public struct BridgeLauncher {
             if logTailContainsBindFailed() {
                 throw LauncherError.portInUse(port: port, holder: nil)
             }
+            if let detected = try physicalDiagnosis(), detected != blocker {
+                blocker = detected
+                log("⏳ \(detected)")
+            }
             try await Task.sleep(nanoseconds: 2_000_000_000)
+        }
+        // **締切後にもう一度読む**: xcodebuild は諦めた時点で初めて理由をログに書くことがある
+        // (ロック中の deviceprep エラーは実測でそう。2026-07-25)。ループ内の読み取りだけでは
+        // 「network connection was lost で 180 秒後にタイムアウト」という無情報な失敗になる
+        blocker = try physicalDiagnosis() ?? blocker
+        if let blocker {
+            throw IOSDeviceTransportError.addressNotAnnounced(
+                port: port, logPath: logPath.path, blocker: blocker)
         }
         throw LauncherError.timedOut(lastError.map { "\($0)" } ?? "no response", logPath.path)
     }

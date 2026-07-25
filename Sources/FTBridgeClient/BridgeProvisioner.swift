@@ -51,7 +51,11 @@ public enum BridgeProvisionerError: Error, LocalizedError {
         case .noFreePort(let scanned):
             return "空きポートがありません(走査範囲: \(scanned.lowerBound)〜\(scanned.upperBound))"
         case .notReady(let port, let underlying):
-            return "ブリッジが時間内に準備できませんでした(port \(port)): \(underlying)"
+            // localizedDescription を使う。素の enum を補間すると
+            // addressNotAnnounced(port: 8133, logPath: "...", blocker: Optional("..."))
+            // のような内部表現がそのままユーザーに出る(実害。2026-07-25)
+            return "ブリッジが時間内に準備できませんでした(port \(port)): "
+                + underlying.localizedDescription
         case .inAppNeedsBundleID(let name):
             return "\(name): engine=inapp のブリッジ起動にはアプリの bundleID が必要です。"
                 + "apps プロファイルの ios.app を設定してください"
@@ -519,7 +523,7 @@ public struct BridgeProvisioner {
                     do {
                         endpoint = try await IOSDeviceTransport.establish(
                             port: port, deviceUDID: sim.udid, repoRoot: repoRoot,
-                            log: { log("\(name): \($0)") })
+                            wired: sim.wired, log: { log("\(name): \($0)") })
                     } catch {
                         // 到達手段が確立できなくても xcodebuild は実機で走り続ける。止めないと
                         // 失敗のたびに常駐ランナーとポートが実機に溜まる(実測で 5 本残った)
@@ -529,7 +533,8 @@ public struct BridgeProvisioner {
                     log("→ \(name): 実機ブリッジへ \(endpoint.host):\(port) で接続します")
                 }
                 do {
-                    try await launcher.waitUntilReady(host: endpoint.host)
+                    try await launcher.waitUntilReady(host: endpoint.host,
+                                                      log: { log("\(name): \($0)") })
                 } catch let error as LauncherError {
                     guard case .portInUse = error else {
                         try? launcher.stop()

@@ -18,7 +18,7 @@
 // (Sources/ftester/ApiMonitorCommand.swift 同期)を送り、生成側でもポーリングを止める
 // (monitorProcessManager.ts の間引きは受信後の安全弁として残る)。
 
-import { resolveAdb, resolveAndroidStream, resolveSimStream } from "./config";
+import { resolveAdb, resolveAndroidStream, resolveDevicePoll, resolveSimStream } from "./config";
 import { StreamPipeline } from "./deviceStream";
 import { t } from "./i18n";
 import type { MonitorDevice, MonitorPlatform } from "./monitorModel";
@@ -94,8 +94,11 @@ export class MonitorDeviceStreamController {
     // いずれもキャッシュ済みだが、config.*StreamEnabled による無効化判定はここでまとめて行う)。
     const simStreamPath = config.iosStreamEnabled ? resolveSimStream(config) : undefined;
     const androidStreamPath = config.androidStreamEnabled ? resolveAndroidStream(config) : undefined;
-    const adbPath = androidStreamPath ? resolveAdb() : undefined;
-    if (!simStreamPath && !(androidStreamPath && adbPath)) {
+    const adbPath = (androidStreamPath || resolveDevicePoll(config)) ? resolveAdb() : undefined;
+    // 実機はスクリーンショットのポーリング(ftester-devicepoll)。iOS/Android で共通の helper。
+    // iOS 実機の有効/無効は iosStreamEnabled、Android 実機は androidStreamEnabled に従う
+    const devicePollPath = resolveDevicePoll(config);
+    if (!simStreamPath && !(androidStreamPath && adbPath) && !devicePollPath) {
       this.disposeAll();
       return;
     }
@@ -108,7 +111,30 @@ export class MonitorDeviceStreamController {
       // codecError を受けたデバイスは設定値に関わらず mjpeg 固定(fallbackToMjpeg 参照)。
       const codec: "mjpeg" | "h264" = this.mjpegFallbackIds.has(device.id) ? "mjpeg" : config.streamCodec;
       const codecArgs = codec === "h264" ? ["--codec", "h264"] : [];
-      if (simStreamPath && device.platform === "ios" && device.udid) {
+      // 実機は種別を問わず devicepoll(スクリーンショットのポーリング)。
+      // iOS 実機に simstream は使えず(CoreSimulator 私有 API)、Android 実機は screenrecord だと
+      // 静止画面でフレームが流れないため、両者ともこちらへ寄せる
+      if (devicePollPath && device.kind === "physical") {
+        const enabled = device.platform === "ios" ? config.iosStreamEnabled : config.androidStreamEnabled;
+        const reachable = device.platform === "ios" ? device.port !== undefined : device.serial !== undefined;
+        if (!enabled || !reachable) {
+          continue;
+        }
+        const pollArgs = device.platform === "ios"
+          ? ["--platform", "ios", "--host", device.host ?? "127.0.0.1", "--port", String(device.port)]
+          : ["--platform", "android", "--serial", String(device.serial), "--adb", adbPath ?? "adb"];
+        qualifying.set(device.id, {
+          platform: device.platform,
+          key: device.platform === "ios" ? String(device.port) : String(device.serial),
+          command: devicePollPath,
+          args: [
+            ...pollArgs,
+            "--fps", String(config.liveFps), "--max-width", String(config.monitorMaxWidth),
+          ],
+          // devicepoll は MJPEG(v1)固定。h264 パススルーは持たない
+          codec: "mjpeg",
+        });
+      } else if (simStreamPath && device.platform === "ios" && device.udid && device.kind !== "physical") {
         qualifying.set(device.id, {
           platform: "ios",
           key: device.udid,

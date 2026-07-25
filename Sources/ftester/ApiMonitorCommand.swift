@@ -125,7 +125,8 @@ struct ApiMonitorCommand: AsyncParsableCommand {
 
         // run/recording lease の読み取り用(.ftester/{run,recording}-<key>.lease で inRun/recording を
         // 判定)。best-effort: リポジトリ外実行等で root が取れない場合は両者 false に倒す
-        let leaseStateDir = (try? RepoRoot.find())?.appendingPathComponent(".ftester")
+        let monitorRepoRoot = try? RepoRoot.find()
+        let leaseStateDir = monitorRepoRoot?.appendingPathComponent(".ftester")
 
         while !stop.isSet {
             if control.autoResumeIfStale(limit: Self.pauseSafetyValveSeconds) {
@@ -207,9 +208,15 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                 let recording = leaseStateDir.flatMap { dir in
                     leaseKey.map { RecordingLease.isFresh(stateDir: dir, key: $0) }
                 } ?? false
+                // 実機の宛先(LAN IP or ループバック)。拡張が画面配信ヘルパーに渡す
+                let bridgeHost: String? = state.target.spec.isPhysical
+                    ? state.iosPort.flatMap { port in
+                        monitorRepoRoot.map { BridgeEndpoint.load(port: port, repoRoot: $0).host }
+                      }
+                    : nil
                 return state.info(health: confirmedIssues.isEmpty ? nil : confirmedIssues,
                                    renderMode: state.androidSerial.flatMap { renderModeCache[$0] },
-                                   inRun: inRun, recording: recording)
+                                   inRun: inRun, recording: recording, host: bridgeHost)
             }))
 
             for state in states {
@@ -268,14 +275,22 @@ struct ApiMonitorCommand: AsyncParsableCommand {
     /// iOS は simctl 一覧+ブリッジ /status、Android は起動中 AVD 一覧をそれぞれ一括取得して
     /// 各デバイスへ振り分ける(デバイス毎に simctl/adb を叩くと台数に比例して遅くなるため)。
     /// internal: ApiListDevicesCommand.swift が単発の状態判定にも同じロジックを再利用する
-    static func determineStates(targets: [MonitorTarget]) async -> [DeviceRuntimeState] {
-        async let bridgeStatusesTask = scanBridgeStatuses()
+    static func determineStates(targets: [MonitorTarget],
+                                repoRoot: URL? = try? RepoRoot.find()) async -> [DeviceRuntimeState] {
+        async let bridgeStatusesTask = scanBridgeStatuses(repoRoot: repoRoot)
         let simCatalog = (try? SimulatorCatalog.devices()) ?? []
         let runningAVDs = (try? AndroidDeviceCatalog.runningAVDs()) ?? [:]
+        // 実機は AVD 照合に載らないので adb の接続一覧で見る(エミュレータも含む全 serial)
+        let connectedSerials = Set((try? AndroidDeviceCatalog.connectedSerials()) ?? [])
         // ブート未完了なのに connected 扱いでスクショ取得(=ブリッジAPK自動インストール)を
         // 試みるとパッケージマネージャ未起動で失敗するため、起動中の対象のみブート完了を確認する
         let androidCandidateSerials = Set(targets.compactMap { target -> String? in
-            guard target.platform == "android", let avd = target.spec.avd else { return nil }
+            guard target.platform == "android" else { return nil }
+            // 実機は serial 直指定(接続していれば候補)。エミュレータは AVD 照合で serial を得る
+            if target.spec.isPhysical {
+                return target.spec.serial.flatMap { connectedSerials.contains($0) ? $0 : nil }
+            }
+            guard let avd = target.spec.avd else { return nil }
             let canonical = AndroidDeviceCatalog.canonicalAVDID(avd)
             return runningAVDs.first(where: { $0.value == canonical })?.key
         })
@@ -286,8 +301,10 @@ struct ApiMonitorCommand: AsyncParsableCommand {
 
         return targets.map { target in
             target.platform == "ios"
-                ? iosState(target: target, catalog: simCatalog, bridgeStatuses: bridgeStatuses)
-                : androidState(target: target, runningAVDs: runningAVDs, bootCompleted: bootCompleted)
+                ? iosState(target: target, catalog: simCatalog, bridgeStatuses: bridgeStatuses,
+                           repoRoot: repoRoot)
+                : androidState(target: target, runningAVDs: runningAVDs,
+                               connectedSerials: connectedSerials, bootCompleted: bootCompleted)
         }
     }
 
@@ -351,7 +368,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
     /// 応答しないが simctl 上で Booted → booted。それ以外 → offline
     private static func iosState(
         target: MonitorTarget, catalog: [SimDeviceInfo],
-        bridgeStatuses: [UInt16: StatusResponse]
+        bridgeStatuses: [UInt16: StatusResponse], repoRoot: URL? = nil
     ) -> DeviceRuntimeState {
         let sim: SimDeviceInfo
         do {
@@ -360,6 +377,21 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             return DeviceRuntimeState(target: target, state: "offline",
                                       detail: error.localizedDescription,
                                       iosPort: nil, androidSerial: nil)
+        }
+        // 実機は /status の device が機種名("iPhone")で返り、マシンプロファイルのデバイス名
+        // (例「iPhone wave(実機)」)と一致しない。名前照合では永久に connected にならないので、
+        // ランナープロセスの -destination id=<UDID> で帰属を決める。resolve が通っている
+        // = 接続済みなので、ブリッジが無くても booted(未接続なら上の catch で offline)
+        if target.spec.isPhysical {
+            let ports = repoRoot.map { BridgeLauncher.portsMatching(udid: sim.udid, repoRoot: $0) } ?? []
+            if let port = ports.first(where: { bridgeStatuses[$0] != nil }) {
+                return DeviceRuntimeState(target: target, state: "connected",
+                                          detail: "port \(port)", iosPort: port,
+                                          androidSerial: nil, iosUdid: sim.udid)
+            }
+            return DeviceRuntimeState(target: target, state: "booted",
+                                      detail: "\(sim.name) \(sim.os)",
+                                      iosPort: nil, androidSerial: nil, iosUdid: sim.udid)
         }
         // /status には UDID が無いため、ブリッジの帰属はデバイス名でしか判定できない。
         // hybrid は同一シミュレータに inapp+xcuitest の2ブリッジが並ぶため、複数一致でも
@@ -392,8 +424,28 @@ struct ApiMonitorCommand: AsyncParsableCommand {
     /// Android: AVD起動+ブート完了 → connected。AVD起動のみ(ブート未完了)→ booted
     /// (ブリッジAPKインストールを試みさせないため)。AVD未起動 → offline
     private static func androidState(
-        target: MonitorTarget, runningAVDs: [String: String], bootCompleted: [String: Bool]
+        target: MonitorTarget, runningAVDs: [String: String],
+        connectedSerials: Set<String>, bootCompleted: [String: Bool]
     ) -> DeviceRuntimeState {
+        // 実機は AVD を持たない。serial 直指定を adb の接続一覧で確認する
+        // (avd 前提のままだと実機が永久に「avd が未設定です」で offline になる)
+        if target.spec.isPhysical {
+            guard let serial = target.spec.serial, connectedSerials.contains(serial) else {
+                return DeviceRuntimeState(
+                    target: target, state: "offline",
+                    detail: target.spec.serial == nil
+                        ? "serial が未設定です"
+                        : "adb に見えません(USB 接続と USB デバッグ許可を確認)",
+                    iosPort: nil, androidSerial: nil)
+            }
+            guard bootCompleted[serial] == true else {
+                return DeviceRuntimeState(target: target, state: "booted",
+                                          detail: "ブート完了待ち(\(serial))",
+                                          iosPort: nil, androidSerial: nil)
+            }
+            return DeviceRuntimeState(target: target, state: "connected", detail: serial,
+                                      iosPort: nil, androidSerial: serial)
+        }
         guard let avd = target.spec.avd else {
             return DeviceRuntimeState(target: target, state: "offline",
                                       detail: "avd が未設定です",
@@ -431,7 +483,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
     /// 起動中ブリッジの一括スキャン。ポート毎に短いタイムアウトで並列に /status を叩く
     /// (offline デバイスの判定でループが遅くならないよう既定 1 秒に抑える)
     private static func scanBridgeStatuses(
-        timeout: TimeInterval = 1.0
+        timeout: TimeInterval = 1.0, repoRoot: URL? = nil
     ) async -> [UInt16: StatusResponse] {
         let portRange = BridgeAPI.defaultPort...(BridgeAPI.defaultPort + 31)
         return await withTaskGroup(
@@ -439,7 +491,11 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         ) { group in
             for port in portRange {
                 group.addTask {
-                    let client = BridgeClient(port: port, timeoutSeconds: timeout)
+                    // LAN 経由の実機ブリッジは 127.0.0.1 に居ない。establish が残した宛先を使う
+                    // (記録が無ければループバック = シミュレータ・USB トンネル・Android の既定)
+                    let host = repoRoot.map { BridgeEndpoint.load(port: port, repoRoot: $0).host }
+                        ?? BridgeEndpoint.loopbackHost
+                    let client = BridgeClient(port: port, timeoutSeconds: timeout, host: host)
                     guard let status = try? await client.status(), status.ready else { return nil }
                     return (port, status)
                 }
@@ -580,11 +636,14 @@ struct DeviceRuntimeState {
     /// (list-devices は同じ情報を ApiDeviceEntry として別途組み立てる)。
     /// health・renderMode・inRun・recording は monitor ループだけが知る状態のため引数で受け取る
     fileprivate func info(health: [String]?, renderMode: String?, inRun: Bool,
-                          recording: Bool) -> ApiMonitorDeviceInfo {
+                          recording: Bool, host: String? = nil) -> ApiMonitorDeviceInfo {
         ApiMonitorDeviceInfo(id: target.id, name: target.name,
                              platform: target.platform, state: state, detail: detail,
                              udid: iosUdid, serial: androidSerial, health: health, renderMode: renderMode,
-                             inRun: inRun, recording: recording)
+                             inRun: inRun,
+                             kind: target.spec.isPhysical ? "physical" : "virtual",
+                             host: host, port: iosPort,
+                             recording: recording)
     }
 }
 
@@ -726,6 +785,15 @@ private struct ApiMonitorDeviceInfo: Encodable {
     /// run-lease(RunLease.isFresh)が生存中なら true。ftester api run がこのデバイスを使用中の意味。
     /// leaseStateDir 未解決時は常に false
     let inRun: Bool
+    /// デバイスの実体種別("virtual" / "physical")。iOS 実機は ftester-simstream が
+    /// CoreSimulator 私有 API のため画面配信できない等、扱いが変わるので拡張側が分岐する
+    let kind: String
+    /// iOS ブリッジの宛先ホスト。シミュレータ・USB トンネルは "127.0.0.1"、LAN 経由の実機は
+    /// その LAN IP。拡張が ftester-devicepoll の --host に渡す。Android は nil
+    let host: String?
+    /// iOS ブリッジの実効ポート(connected のときのみ)。拡張が ftester-devicepoll の --port に渡す。
+    /// Android・未接続は nil(list-devices の port と同じ値)
+    let port: UInt16?
     /// recording-lease(RecordingLease.isFresh)が生存中なら true。run profile の record:true で
     /// このデバイスの動画録画(VideoRecordingCoordinator)が進行中の意味。leaseStateDir 未解決時は常に false
     let recording: Bool

@@ -95,6 +95,31 @@ public enum AndroidDeviceCatalog {
         return fallback
     }
 
+    /// AVD の config.ini から任意キーを引く(値が無ければ nil)
+    static func avdConfigValue(id: String, key: String) -> String? {
+        let config = avdContentDirectory(id: id).appendingPathComponent("config.ini")
+        guard let text = try? String(contentsOf: config, encoding: .utf8) else { return nil }
+        for line in text.split(whereSeparator: \.isNewline) where line.hasPrefix(key + "=") {
+            let value = line.dropFirst(key.count + 1).trimmingCharacters(in: .whitespaces)
+            return value.isEmpty ? nil : value
+        }
+        return nil
+    }
+
+    /// AVD の機種名(config.ini の hw.device.name。例 "pixel_9")と OS 表記
+    /// ("Android 15"。image.sysdir.1 の android-<API> から導出)。表示専用
+    public static func avdModelAndOS(id: String) -> (model: String?, os: String?) {
+        let model = avdConfigValue(id: id, key: "hw.device.name")
+        // image.sysdir.1 = "system-images/android-35/google_apis/arm64-v8a/"
+        let api = avdConfigValue(id: id, key: "image.sysdir.1")
+            .flatMap { sysdir -> Int? in
+                sysdir.split(separator: "/")
+                    .first { $0.hasPrefix("android-") }
+                    .flatMap { Int($0.dropFirst("android-".count)) }
+            }
+        return (model, api.map { MachineProfileEditor.androidVersionName(apiLevel: $0) })
+    }
+
     public static func installedAVDs() -> [(id: String, displayName: String?)] {
         let home = avdHomeDirectory()
         guard let entries = try? FileManager.default.contentsOfDirectory(

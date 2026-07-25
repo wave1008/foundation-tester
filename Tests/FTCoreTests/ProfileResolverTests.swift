@@ -906,6 +906,25 @@ final class ProfileResolverTests: XCTestCase {
         XCTAssertEqual(resolved.devices.map(\.name), ["シミュ"])
     }
 
+    func testPhysicalDeviceKeepsDisplayOnlyModelAndOS() throws {
+        // model/os は表示専用(同定には使わない)。未知キー警告を出さず素通しすること
+        try write("""
+        { "ios": { "app": "com.example.app" } }
+        """, to: project.appsDir, name: "app")
+        try write("""
+        { "ios": { "devices": [
+              { "name": "実機", "kind": "physical", "udid": "00008130-AAAA",
+                "model": "iPhone 15 Pro", "os": "26.5.2" } ] } }
+        """, to: project.machinesDir, name: "m")
+        try write("""
+        { "app": "app", "devices": [ { "name": "実機" } ] }
+        """, to: project.runsDir, name: "r")
+        let resolved = try ProfileResolver.resolve(project: project, runName: "r", machineName: "m")
+        XCTAssertEqual(resolved.iosDevices[0].spec.model, "iPhone 15 Pro")
+        XCTAssertEqual(resolved.iosDevices[0].spec.os, "26.5.2")
+        XCTAssertTrue(resolved.warnings.isEmpty, "model は既知キー: \(resolved.warnings)")
+    }
+
     func testValidateMachineProfileReportsPhysicalErrors() throws {
         let data = #"""
         { "ios": { "devices": [ { "name": "実機", "kind": "physical", "engine": "inapp" } ] },

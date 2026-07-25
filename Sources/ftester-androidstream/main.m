@@ -250,6 +250,28 @@ static void processChunk(NSData *chunk) {
 
 #pragma mark - adb path resolution
 
+/// screenrecord の --time-limit を端末の API レベルで決める。
+/// **--time-limit 0(無制限)は API 34 未満で使えない**: Android 13(API 33)実機では即座に
+/// 終了して 47 バイトしか出ない(2026-07-25 実測。エミュレータは API 35 で問題なく、
+/// この差のため実機で画面配信だけが無音で壊れていた)。古い端末は上限の 180 秒を使い、
+/// セッション終了後の再接続は拡張側の常駐監視(deviceStream.ts の handleUnexpectedExit)に任せる。
+static NSString *ftScreenRecordTimeLimit(NSString *adbPath, NSString *serial) {
+    NSTask *probe = [[NSTask alloc] init];
+    probe.executableURL = [NSURL fileURLWithPath:adbPath];
+    probe.arguments = @[@"-s", serial, @"shell", @"getprop", @"ro.build.version.sdk"];
+    NSPipe *pipe = [NSPipe pipe];
+    probe.standardOutput = pipe;
+    probe.standardError = [NSPipe pipe];
+    NSError *err = nil;
+    if (![probe launchAndReturnError:&err]) return @"180";
+    NSData *data = [pipe.fileHandleForReading readDataToEndOfFile];
+    [probe waitUntilExit];
+    NSString *text = [[[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding]
+                      stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    // 取得不能は安全側(全端末で通る 180)に倒す
+    return (text.intValue >= 34) ? @"0" : @"180";
+}
+
 static NSString *ftResolveAdbPath(NSString *cliAdb) {
     NSMutableArray<NSString *> *candidates = [NSMutableArray array];
     if (cliAdb.length > 0) [candidates addObject:cliAdb];
@@ -334,9 +356,12 @@ int main(int argc, char **argv) {
 
     NSTask *task = [[NSTask alloc] init];
     task.executableURL = [NSURL fileURLWithPath:adbPath];
-    // --time-limit 0 = 無制限。有限値だとscreenrecordが期限切れで終了し、consumer側は
-    // ストリーム断のまま古いプロセスが残る不整合を起こす(仕様上ここは変更禁止)。
-    task.arguments = @[@"-s", serial, @"exec-out", @"screenrecord", @"--output-format=h264", @"--time-limit", @"0", @"-"];
+    // --time-limit 0 = 無制限(API 34+ のみ)。古い端末は 180 が上限で、0 を渡すと即終了する
+    // (ftScreenRecordTimeLimit のコメント参照)。有限値のときは期限切れで screenrecord が
+    // 終了するが、拡張側の常駐監視が helper を再起動するので配信は続く
+    NSString *timeLimit = ftScreenRecordTimeLimit(adbPath, serial);
+    fprintf(stderr, "[androidstream] screenrecord --time-limit %s\n", timeLimit.UTF8String);
+    task.arguments = @[@"-s", serial, @"exec-out", @"screenrecord", @"--output-format=h264", @"--time-limit", timeLimit, @"-"];
     NSPipe *outPipe = [NSPipe pipe];
     NSPipe *errPipe = [NSPipe pipe];
     task.standardOutput = outPipe;

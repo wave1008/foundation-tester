@@ -16,14 +16,19 @@ public struct SimDeviceInfo: Sendable, Hashable, Identifiable {
     public let booted: Bool
     /// 実機か。simctl / CoreSimulator を叩く経路はすべてこれで分岐する
     public let physical: Bool
+    /// USB 接続か(devicectl の transportType == "wired")。実機のトランスポート選択に使う。
+    /// **WiFi のみの端末に iproxy の USB トンネルは張れない**(シミュレータは常に true 扱い)
+    public let wired: Bool
     public var id: String { udid }
 
-    public init(udid: String, name: String, os: String, booted: Bool, physical: Bool = false) {
+    public init(udid: String, name: String, os: String, booted: Bool, physical: Bool = false,
+                wired: Bool = true) {
         self.udid = udid
         self.name = name
         self.os = os
         self.booted = booted
         self.physical = physical
+        self.wired = wired
     }
 }
 
@@ -118,7 +123,8 @@ public enum SimulatorCatalog {
             let device = try IOSPhysicalDeviceCatalog.resolve(
                 spec: spec, in: IOSPhysicalDeviceCatalog.devices())
             return SimDeviceInfo(udid: device.udid, name: device.name, os: device.os,
-                                 booted: true, physical: true)
+                                 booted: true, physical: true,
+                                 wired: device.transport == "wired")
         }
         if let udid = spec.udid {
             guard let device = devices.first(where: { $0.udid == udid }) else {

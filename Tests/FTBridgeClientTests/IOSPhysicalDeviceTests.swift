@@ -230,6 +230,90 @@ final class IOSPhysicalDeviceTests: XCTestCase {
         XCTAssertEqual(IOSDeviceTransport.kind(environment: [:]), expected)
     }
 
+    /// WiFi 接続だけの端末に usb を選ぶと iproxy がトンネルを張れず、原因不明のまま
+    /// 180 秒タイムアウトする(2026-07-25 に実際に踏んだ)
+    func testTransportKindPrefersLanForNonWiredDevice() {
+        XCTAssertEqual(IOSDeviceTransport.kind(environment: [:], wired: false), .lan,
+                       "USB 接続でない端末には usb を選ばない")
+        // 明示指定は尊重する(切り分け用の殺しスイッチを wired 判定で潰さない)
+        XCTAssertEqual(
+            IOSDeviceTransport.kind(environment: ["FT_IOS_DEVICE_TRANSPORT": "usb"], wired: false),
+            .usb)
+    }
+
+    /// SimulatorCatalog.resolve が transportType を wired として運ぶこと
+    /// (ここが落ちると WiFi 接続の実機で usb が選ばれる)
+    func testResolveCarriesWiredFlagFromTransportType() throws {
+        let wifi = IOSPhysicalDeviceInfo(udid: "00008130-A", name: "iPhone wave", os: "iOS 26.5.2",
+                                         connected: true, transport: "localNetwork")
+        let usb = IOSPhysicalDeviceInfo(udid: "00008130-B", name: "iPhone wired", os: "iOS 26.5.2",
+                                        connected: true, transport: "wired")
+        let spec = DeviceSpec(name: "実機", kind: .physical, udid: "00008130-A")
+        let resolvedWifi = try IOSPhysicalDeviceCatalog.resolve(spec: spec, in: [wifi, usb])
+        XCTAssertEqual(resolvedWifi.transport, "localNetwork")
+        XCTAssertFalse(resolvedWifi.transport == "wired", "WiFi 接続を wired と誤判定しないこと")
+        let usbSpec = DeviceSpec(name: "実機", kind: .physical, udid: "00008130-B")
+        XCTAssertTrue(
+            try IOSPhysicalDeviceCatalog.resolve(spec: usbSpec, in: [wifi, usb]).transport == "wired")
+    }
+
+    // MARK: - 実機ブリッジの帰属(UDID → ポート)
+
+    /// 端末が起動を拒否した条件は、xcodebuild の終端マーカーを待たずに確定させること。
+    /// 実測(2026-07-26)で証明書未信頼のエラーは 20 秒時点でログに出ていたのに、
+    /// `** TEST EXECUTE FAILED **` が最後まで出ず 181 秒待たされ、無関係な理由で失敗した
+    func testRunnerFailureReasonDetectsUntrustedCertificateWithoutTerminalMarker() {
+        let log = """
+        2026-07-26 00:00:20.893 xcodebuild[15317:9582357]  IDELaunchReport: Launching \
+        FTesterRunnerUITests Finished with error: The application could not be launched \
+        because the Developer App Certificate is not trusted.
+        Recovery Suggestion: Verify that the Developer App certificate for your account is trusted.
+        """
+        let reason = IOSDeviceTransport.runnerFailureReason(inLog: log)
+        XCTAssertNotNil(reason, "終端マーカーが無くても証明書未信頼は確定させる")
+        XCTAssertTrue(reason?.contains("VPN とデバイス管理") == true, "端末側の手順を名指しすること")
+    }
+
+    /// 逆に、理由を特定できないログでマーカー無しに失敗扱いしないこと(誤検知で run を殺さない)
+    func testRunnerFailureReasonStaysSilentForOrdinaryLogWithoutTerminalMarker() {
+        XCTAssertNil(IOSDeviceTransport.runnerFailureReason(
+            inLog: "Test Suite 'All tests' started\nerror: something transient\n"))
+    }
+
+    /// 実機は /status の device が機種名で返るため名前照合では紐付かない。
+    /// ランナープロセスの起動引数に載る UDID で帰属を決められること
+    func testPortsMatchingFindsBridgeByUDIDInProcessArguments() throws {
+        let root = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("ft-ports-\(UUID().uuidString)")
+        let stateDir = root.appendingPathComponent(".ftester")
+        try FileManager.default.createDirectory(at: stateDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        // 起動引数に UDID を含む生きたプロセス(ランナーの -destination id=<UDID> の代役)
+        let udid = "00008130-001819863E60001C"
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        // **`sh -c "<単一コマンド>"` にしないこと**: sh が exec して自分を置き換えるため
+        // ps の command から引数(= UDID)が消える。`;` で 2 コマンドにすると sh が残る
+        process.arguments = ["-c", "sleep 20; : -destination platform=iOS,id=\(udid)"]
+        try process.run()
+        defer { process.terminate() }
+        try String(process.processIdentifier).write(
+            to: stateDir.appendingPathComponent("bridge-8199.pid"),
+            atomically: true, encoding: .utf8)
+        // 死んだ pid の stale ファイル(別ポート)。混ざらないこと
+        try "999999".write(to: stateDir.appendingPathComponent("bridge-8198.pid"),
+                           atomically: true, encoding: .utf8)
+
+        XCTAssertEqual(BridgeLauncher.portsMatching(udid: udid, repoRoot: root), [8199])
+        XCTAssertEqual(BridgeLauncher.portsMatching(udid: "00008130-OTHER", repoRoot: root), [],
+                       "別 UDID のブリッジを拾わないこと")
+        XCTAssertTrue(
+            FileManager.default.fileExists(
+                atPath: stateDir.appendingPathComponent("bridge-8198.pid").path),
+            "読み取り専用の契約: stale な pid ファイルを消さない(掃除は stopMatching の役割)")
+    }
+
     // MARK: - endpoint の永続化
 
     func testEndpointRoundTripsThroughFile() throws {

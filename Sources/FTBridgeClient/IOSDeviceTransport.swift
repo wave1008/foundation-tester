@@ -59,26 +59,35 @@ public enum IOSDeviceTransport {
 
     /// 選択された方式(環境変数 > iproxy の有無)
     public static func kind(
-        environment: [String: String] = ProcessInfo.processInfo.environment
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        wired: Bool = true
     ) -> IOSDeviceTransportKind {
         if let explicit = environment["FT_IOS_DEVICE_TRANSPORT"],
            let parsed = IOSDeviceTransportKind(rawValue: explicit) {
             return parsed
         }
+        // **USB 接続でない端末に usb を選んではいけない**: iproxy はトンネルを張れず、
+        // 「network connection was lost で 180 秒後にタイムアウト」としか出ない(2026-07-25 実害)。
+        // wired は devicectl の transportType 由来(localNetwork = WiFi のみ)
+        guard wired else { return .lan }
         return iproxyPath() == nil ? .lan : .usb
     }
 
     /// 実機ブリッジへの到達点を確立する。lan はランナーの宣言を待ち、usb は iproxy を常駐させる。
     /// deviceUDID は usb のトンネル先指定に使う(lan では未使用)
+    /// wired: USB 接続か(devicectl の transportType == "wired")。false なら usb は選べない
     public static func establish(port: UInt16, deviceUDID: String, repoRoot: URL,
+                                 wired: Bool = true,
                                  timeoutSeconds: TimeInterval = 180,
                                  log: @escaping (String) -> Void = { _ in }) async throws -> BridgeEndpoint {
         let endpoint: BridgeEndpoint
-        switch kind() {
+        switch kind(wired: wired) {
         case .lan:
             // LAN は WiFi の省電力で 1 往復 ~48ms(標準偏差 27ms)かかる。USB の ~5ms に比べ
             // 1 シナリオあたり約 25% 遅い(実測 2026-07-25)。iproxy があれば usb が既定
-            log("経路 lan(WiFi 経由。`brew install libimobiledevice` で USB トンネルの方が速い)")
+            log(wired
+                ? "経路 lan(WiFi 経由。`brew install libimobiledevice` で USB トンネルの方が速い)"
+                : "経路 lan(端末が USB 接続ではないため。USB で繋ぐと 1 往復 48ms → 5ms になる)")
             endpoint = BridgeEndpoint(
                 host: try await waitForAnnouncedAddress(
                     port: port, repoRoot: repoRoot, timeoutSeconds: timeoutSeconds, log: log),
@@ -145,16 +154,27 @@ public enum IOSDeviceTransport {
     /// 検知文字列は xcodebuild の出力に依存する(Xcode 更新で変わりうる。変わっても
     /// 180 秒タイムアウトに落ちるだけで誤検知はしない側に倒してある)
     static func runnerFailureReason(inLog text: String) -> String? {
-        guard text.contains("** TEST EXECUTE FAILED **")
-            || text.contains("Testing failed:") else { return nil }
-        // 初回だけ必ず踏む端末側の手動手順。汎用メッセージより先に名指しする
+        // **端末が起動を拒否した条件は終端マーカーを待たずに確定させる**:
+        // xcodebuild は `** TEST EXECUTE FAILED **` も `Testing failed:` も出さないまま
+        // 留まり続けることがある(実測 2026-07-26: 証明書未信頼のエラーは 20 秒時点でログに
+        // 出ていたのに、マーカー待ちのせいで 181 秒の締切まで待たされ、
+        // 「LAN アドレスを取得できません」という無関係な理由で失敗した)。
+        // 端末が拒否した時点で結論は出ているので、下の 3 文字列だけは単独で終端扱いにする
         if text.contains("Developer App Certificate is not trusted")
             || text.contains("has not been explicitly trusted by the user") {
             return "端末で開発者証明書が信頼されていません。"
                 + "iPhone の 設定 → 一般 → VPN とデバイス管理 から"
-                + "デベロッパ App の証明書を「信頼」してください(初回のみ必要な手動操作)"
+                + "デベロッパ App の証明書を「信頼」してください"
+                + "(証明書を作り直すと再度必要になります)"
         }
-        if text.contains("Developer Mode disabled") || text.contains("developer mode") {
+        if text.contains("Developer Mode disabled") {
+            return "端末の Developer Mode が無効です。"
+                + "iPhone の 設定 → プライバシーとセキュリティ → デベロッパモード を ON にしてください"
+        }
+        // ここから先は理由を特定できないケース。誤検知を避けるため終端マーカーが出てから判定する
+        guard text.contains("** TEST EXECUTE FAILED **")
+            || text.contains("Testing failed:") else { return nil }
+        if text.lowercased().contains("developer mode") {
             return "端末の Developer Mode が無効です。"
                 + "iPhone の 設定 → プライバシーとセキュリティ → デベロッパモード を ON にしてください"
         }

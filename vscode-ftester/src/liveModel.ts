@@ -5,8 +5,10 @@
 // 契約(Sources/ftester/ApiListDevicesCommand.swift・ApiLiveCommand.swift):
 //   `ftester api list-devices --project <p>`: 成功時は stdout 1行JSON、失敗時
 //   (マシンプロファイル未設定等)は stdout 出力なし・非0終了(診断は stderr のみ)。
-//   各デバイスの udid: iOS は解決済みシミュレータ UDID、Android・解決失敗は null
+//   各デバイスの udid: iOS は解決済み UDID(シミュレータ/実機とも)、Android・解決失敗は null
 //   (ApiListDevicesCommand.swift 参照。live serve --udid の自動起動判定に使う)。
+//   kind: "virtual"(シミュレータ/エミュレータ)/ "physical"(実機)。実機は録画・画面配信が
+//   できないので UI 側の出し分けに使う。旧 CLI は返さないため既定 "virtual" として読む。
 //   `ftester api live serve --platform <p> [--port <n>|--serial <s>]`(常駐。stdin から NDJSON で
 //   コマンドを1行ずつ受け、逐次処理する。コマンド/イベントの形は LiveServeCommand/LiveServeEvent
 //   型を参照): イベントは refresh 以外は actionResult→snapshot の順で2行、refresh は snapshot の
@@ -17,11 +19,14 @@ import { t, type MessageKey } from "./i18n";
 import type { MonitorDeviceState, MonitorPlatform } from "./monitorModel";
 
 export type LivePlatform = MonitorPlatform;
+/** デバイスの実体種別(list-devices の kind。旧 CLI 互換のため省略時は virtual 扱い)。 */
+export type LiveDeviceKind = "virtual" | "physical";
 /** list-devices の state 語彙は ApiMonitorCommand.determineStates と同一(monitorModel.ts を再利用)。 */
 export type LiveDeviceState = MonitorDeviceState;
 
 const PLATFORMS: ReadonlySet<string> = new Set<LivePlatform>(["ios", "android"]);
 const DEVICE_STATES: ReadonlySet<string> = new Set<LiveDeviceState>(["connected", "booted", "offline"]);
+const DEVICE_KINDS: ReadonlySet<string> = new Set<LiveDeviceKind>(["virtual", "physical"]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -37,6 +42,7 @@ export interface LiveDevice {
   readonly port: number | null;
   readonly serial: string | null;
   readonly udid: string | null;
+  readonly kind: LiveDeviceKind;
 }
 
 export interface ListDevicesResult {
@@ -58,7 +64,9 @@ function isLiveDevice(value: unknown): value is LiveDevice {
     typeof value.detail === "string" &&
     (value.port === null || typeof value.port === "number") &&
     (value.serial === null || typeof value.serial === "string") &&
-    (value.udid === null || typeof value.udid === "string")
+    (value.udid === null || typeof value.udid === "string") &&
+    // kind は後から追加したフィールド。値があれば検証し、無ければ virtual を補う
+    (value.kind === undefined || (typeof value.kind === "string" && DEVICE_KINDS.has(value.kind)))
   );
 }
 
@@ -75,7 +83,14 @@ export function isListDevicesResult(value: unknown): value is ListDevicesResult 
 }
 
 export function parseListDevicesResult(value: unknown): ListDevicesResult | undefined {
-  return isListDevicesResult(value) ? value : undefined;
+  if (!isListDevicesResult(value)) {
+    return undefined;
+  }
+  // 旧 CLI(kind を返さない)と混在しても消費側が分岐しなくて済むよう既定値を埋める
+  return {
+    ...value,
+    devices: value.devices.map((d) => ({ ...d, kind: d.kind ?? "virtual" })),
+  };
 }
 
 // ---- live snapshot / アクション共通 ----------------------------------------------------

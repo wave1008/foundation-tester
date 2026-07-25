@@ -72,6 +72,10 @@
         "serial": {
           "type": "string",
           "description": "Android 実機: adb シリアル(USB は \"14141JEC204922\"、WiFi は \"192.168.1.23:5555\")。kind=physical のとき必須。エミュレータでは使わない(avd から解決するため)。"
+        },
+        "model": {
+          "type": "string",
+          "description": "実機の機種名(iOS は marketingName、Android は ro.product.model)。表示専用で同定には使わない(登録時に控えるだけ)。"
         }
       }
     }

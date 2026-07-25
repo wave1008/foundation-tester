@@ -44,7 +44,9 @@
       {
         "name": "Pixel 4a(実機)",
         "kind": "physical",
-        "serial": "14141JEC204922"
+        "serial": "14141JEC204922",
+        "model": "Pixel 4a",
+        "os": "13"
       }
     ]
   },

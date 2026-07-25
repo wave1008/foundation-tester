@@ -268,6 +268,8 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
           <div id="profile-detail-placeholder" class="profile-detail-placeholder">${t("panels.machineProfile.selectPrompt")}</div>
           <div id="machine-device-editor" class="machine-device-editor" style="display: none;">
             <div class="machine-device-editor-header">
+              <!-- 実機バッジはデバイス名の左(ピッカー・一覧・タイルと同じ並び) -->
+              <span id="editor-device-kind" class="editor-kind-badge" style="display: none;">${t("monitor.device.physicalBadge")}</span>
               <span id="editor-device-name" class="tile-name"></span>
               <span id="editor-device-platform" class="editor-platform-label"></span>
             </div>
@@ -278,12 +280,24 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
               <label for="editor-name">${t("panels.machineProfile.nameLabel")}</label>
               <input type="text" id="editor-name">
             </div>
+            <!-- 実機の機種/OS。登録時に控えた表示専用の値(model/os)で、実体の同定には使わない。
+                 platform セクションの外に置き iOS/Android 共通で使う -->
+            <div id="editor-physical-fields" style="display: none;">
+              <div class="modal-row" id="editor-model-row">
+                <label>${t("panels.machineProfile.modelLabel")}</label>
+                <span id="editor-model" class="editor-readonly-value" title="${t("panels.machineProfile.physicalInfoReadonlyTitle")}"></span>
+              </div>
+              <div class="modal-row" id="editor-physical-os-row">
+                <label>OS</label>
+                <span id="editor-physical-os" class="editor-readonly-value" title="${t("panels.machineProfile.physicalInfoReadonlyTitle")}"></span>
+              </div>
+            </div>
             <div id="editor-ios-fields">
-              <div class="modal-row">
+              <div class="modal-row" id="editor-simulator-row">
                 <label>${t("panels.machineProfile.modelLabel")}</label>
                 <span id="editor-simulator" class="editor-readonly-value" title="${t("panels.machineProfile.modelReadonlyTitle")}"></span>
               </div>
-              <div class="modal-row">
+              <div class="modal-row" id="editor-os-row">
                 <label>OS</label>
                 <span id="editor-os" class="editor-readonly-value" title="${t("panels.machineProfile.osReadonlyTitle")}"></span>
               </div>
@@ -297,9 +311,14 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
               </div>
             </div>
             <div id="editor-android-fields">
-              <div class="modal-row">
+              <div class="modal-row" id="editor-avd-row">
                 <label>AVD</label>
                 <span id="editor-avd" class="editor-readonly-value" title="${t("panels.machineProfile.avdReadonlyTitle")}"></span>
+              </div>
+              <!-- 実機のみ。AVD と同じく実体を指す属性なので readonly 表示 -->
+              <div class="modal-row" id="editor-serial-row" style="display: none;">
+                <label>serial</label>
+                <span id="editor-serial" class="editor-readonly-value" title="${t("panels.machineProfile.serialReadonlyTitle")}"></span>
               </div>
             </div>
             <div id="editor-error" class="modal-error"></div>
@@ -494,7 +513,7 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
           <div id="device-pick-ios-body" class="device-pick-group-body"></div>
         </div>
         <div id="device-pick-android-group" class="device-pick-group">
-          <div class="device-pick-group-title" id="device-pick-android-title">Android AVD</div>
+          <div class="device-pick-group-title" id="device-pick-android-title">${t("panels.devicePick.androidGroupTitle")}</div>
           <div id="device-pick-android-body" class="device-pick-group-body"></div>
         </div>
       </div>

@@ -850,6 +850,26 @@ button.profile-jump-link:hover:not(:disabled) {
   color: var(--vscode-descriptionForeground);
 }
 
+/* 実機バッジ(タイルのデバイス名の右・ピッカーの詳細行の左)。他バッジと同じ .badge を土台にする。
+   配色は既存と衝突させない: 青=実行中 / 黄=キュー待ち / 赤=録画中 / 橙=CPU描画 が使用済みなので紫。
+   シミュレータ/エミュレータと取り違えると署名・接続・停止可否の前提が全部違うので目立たせる */
+.badge-kind {
+  flex: 0 0 auto;
+  background-color: var(--vscode-charts-purple, #b180d7);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+/* 編集フォームの実機バッジ。配色は .badge-kind と揃える(同じ意味のものを別色にしない) */
+.editor-kind-badge {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background-color: var(--vscode-charts-purple, #b180d7);
+  color: #ffffff;
+  font-weight: 600;
+}
+
 /* ---- プロファイルタブ: アプリプロファイルセクション ---- */
 .app-profile-body {
   padding: 12px;
@@ -1201,6 +1221,22 @@ input[type="text"]::placeholder {
 .device-pick-row-name {
   align-self: flex-start;
   max-width: 100%;
+}
+/* マシンプロファイル一覧の名前段(バッジ+デバイス名ピル) */
+.machine-device-name-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* 実機行の名前段。バッジ(文字幅)+デバイス名ピルを横並びにする。
+   バッジを textWrap 直下に置くと column flex で行幅いっぱいに伸びる */
+.device-pick-row-name-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
 }
 .device-pick-row-detail {
   font-size: 11px;
@@ -2174,4 +2210,25 @@ input[type="text"]::placeholder {
   white-space: pre-wrap;
   max-height: 4.5em;
   overflow-y: auto;
+}
+
+/* 自前ツールチップ(hoverTip.js)。ネイティブ title は遅延を指定できないので置き換えたもの。
+   position:fixed = 親の overflow:hidden(.tile-header/.lane-header)に切られないため。
+   z-index はモーダル(.modal-backdrop)より上。 */
+.hover-tip {
+  position: fixed;
+  display: none;
+  z-index: 10000;
+  max-width: 480px;
+  padding: 3px 7px;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+  color: var(--vscode-editorHoverWidget-foreground, var(--vscode-foreground));
+  background-color: var(--vscode-editorHoverWidget-background, #252526);
+  border: 1px solid var(--vscode-editorHoverWidget-border, var(--vscode-widget-border, #454545));
+  border-radius: 3px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
 }
