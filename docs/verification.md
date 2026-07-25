@@ -124,11 +124,17 @@ apps プロファイルの healthCheckURL が実行開始時に警告を出す�
   **設定 → 画面表示と明るさ → 自動ロック を「なし」**にしておくこと。この条件は
   「失敗」ではなく「進まない」だけなので、検出しても throw せず待ちながら 1 回だけ促す
   (`IOSDeviceTransport.blockingCondition`)
-- **初回は端末で開発者証明書の信頼が要る**(Personal/個人 Team では必須)。ビルドとインストールが
-  成功しても、起動時に `The application could not be launched because the Developer App Certificate
-  is not trusted.` で落ちる。iPhone の **設定 → 一般 → VPN とデバイス管理** から
-  デベロッパ App の証明書を「信頼」する。この失敗は 180 秒待たず即座に手順付きで報告される
-  (`IOSDeviceTransport.runnerFailureReason`)
+- **端末で開発者証明書の信頼が要る**。ビルドとインストールが成功しても、起動時に
+  `The application could not be launched because the Developer App Certificate is not trusted.`
+  で落ちる。iPhone の **設定 → 一般 → VPN とデバイス管理** からデベロッパ App の証明書を「信頼」する。
+  **「初回だけ」ではない**: 証明書やプロビジョニングプロファイルが作り直されると再度必要になる
+  (2026-07-26 に一度信頼済みの端末で再発)
+- **端末が起動を拒否した条件は xcodebuild の終端マーカーを待ってはいけない**。証明書未信頼の
+  エラーはログの 20 秒時点に出ていたのに、`** TEST EXECUTE FAILED **` も `Testing failed:` も
+  最後まで出ず、締切 181 秒まで待たされたうえ「LAN アドレスを取得できません」という無関係な
+  理由で失敗した(2026-07-26 実測)。証明書未信頼・Developer Mode 無効は単独で終端扱いにする
+  (`IOSDeviceTransport.runnerFailureReason`)。理由を特定できない失敗だけは誤検知を避けるため
+  従来どおりマーカー待ち
 - `devicectl list devices` の **Identifier 列(UUID)と `hardwareProperties.udid`(`00008130-...`)は
   別物**。`xcodebuild -destination id=` が受け付けるのは後者だけ(`devicectl --device` はどちらでも
   通る)。プロファイルの `udid` には後者を書く(前者を書いても解決はする)
@@ -151,8 +157,8 @@ apps プロファイルの healthCheckURL が実行開始時に警告を出す�
 - **実機とシミュレータを同じ run に混ぜられる**が、xctestrun は種別ごとに別物なので
   `prepareSharedBuilds` は**種別ごとに build-for-testing する**(1 つだけビルドすると、
   選ばれなかった側が `xctestrunNotFound` で落ちる)
-- 検証実績: iPhone 15 Pro(iOS 26.5.2)で E2E-iOS 全 20 シナリオ = LAN ×3・USB ×5 連続グリーン
-  (2026-07-25)。ブリッジ供給は約 8 秒。壁時計は USB 181〜191s / LAN 241〜259s
+- 検証実績: iPhone 15 Pro(iOS 26.5.2)で E2E-iOS 全 20 シナリオ = LAN ×3・USB ×6 連続グリーン
+  (2026-07-25〜26)。ブリッジ供給は約 8 秒。壁時計は USB 181〜211s / LAN 241〜259s
 - **トランスポートは端末の接続形態で決まる**: `devicectl` の `transportType` が `wired` でなければ
   (= WiFi のみ)**iproxy は USB トンネルを張れない**ので lan に落ちる。ここを見ずに
   「iproxy があれば usb」で選ぶと、`network connection was lost` で 180 秒待って失敗するだけの
@@ -186,7 +192,28 @@ apps プロファイルの healthCheckURL が実行開始時に警告を出す�
   実機では無効化される(`--physical`)。素の `XCUIApplication.launch()` 経路に落ちる
 - アプリは `xcrun devicectl device install app` で入る(**署名済みの .app/.ipa が要る**)。
   SUT のシミュレータ用ビルド(`-sdk iphonesimulator`)はそのままでは使えない
-- モニター・`devices up/down` の一括操作・拡張のデバイスタイルは**まだ実機に対応していない**
+- **UDID の先頭は機種共通**(`00008130-` は iPhone 15 Pro 系の固定値)。先頭 8 文字を
+  識別子として表示すると同型機が全部同じ表示になる。個体固有なのはハイフン以降
+
+### iOS 実機ブリッジが立たないとき(3 大原因)
+
+原因はほぼこの 3 つ。**いずれも現在は原因が名指しで報告される**ので、まずメッセージを読む
+(そうなるまでに 3 回とも「180 秒待って無情報なタイムアウト」を踏んでいる)。
+ログは `.ftester/bridge-<port>.log`:
+
+| 症状・ログ | 原因 | 対処 |
+|---|---|---|
+| `Unlock <name> to Continue`(deviceprep Code=-3) | 端末ロック | 解除+自動ロック「なし」 |
+| `Developer App Certificate is not trusted` | 証明書未信頼 | 設定 → 一般 → VPN とデバイス管理 |
+| `network connection was lost` が延々続く | WiFi 接続なのに usb を選んだ | USB で繋ぐ(自動で lan に落ちる) |
+
+検出側の設計上の要点(**同じ間違いを繰り返さないため**):
+- ロックは「失敗」ではなく「進まない」だけなので throw せず促す。ただし xcodebuild は
+  **諦めた時点で初めて**理由を書くことがあるので、待機ループ内だけでなく**締切後にもう一度**
+  ログを読む(`BridgeLauncher.waitUntilReady` の physicalDiagnosis)
+- 証明書未信頼・Developer Mode 無効は**終端マーカーを待たずに確定**させる(理由を特定できない
+  失敗だけマーカー待ち)。詳細は上の「iOS 実機」節
+- トランスポートは `transportType` で決める。`FT_IOS_DEVICE_TRANSPORT` の明示指定は尊重する
 
 ### 実機とモニター・API
 
@@ -198,8 +225,14 @@ apps プロファイルの healthCheckURL が実行開始時に警告を出す�
     (例「iPhone wave(実機)」)と一致しないため、名前照合では永久に connected にならない。
     ランナープロセスの `-destination id=<UDID>` で帰属を決める(`BridgeLauncher.portsMatching`)
   - LAN 経由の実機ブリッジは 127.0.0.1 に居ないので、ポートスキャンは `.endpoint` を見る
+  - **`ps -p <pid列>` を使ってはいけない**: 範囲外の pid が 1 つ混じるとエラーになり、
+    **生きている分も含めて出力が空になる**(pid ファイルは壊れた値を持ち得る)。全プロセスを
+    列挙して pid で引く。また monitor は 2 秒間隔でこれを呼ぶので、pid ごとに `ps` を spawn すると
+    常駐ブリッジ本数 × 0.5 回/秒のプロセス生成になる(1 回にまとめる)
 - `api installed-devices` は `ios.physicalDevices` / `android.physicalDevices` に接続中の実機を返す
-  (既存の `devices` / `avds` はシミュレータ・AVD のまま。追加フィールド=後方互換)
+  (既存の `devices` / `avds` はシミュレータ・AVD のまま。追加フィールド=後方互換)。
+  AVD には `model`(config.ini の `hw.device.name`)と `os`(`image.sysdir.1` の `android-<API>`
+  から導出)も付く — エミュレータはプロファイルに機種/OS を持たないため、表示はここが唯一の出所
 - `kind`("virtual"/"physical")を `list-devices` と `monitor` の各デバイスに追加した。
   拡張側は欠落を "virtual" に正規化する(旧 CLI 互換)
 
@@ -216,6 +249,15 @@ apps プロファイルの healthCheckURL が実行開始時に警告を出す�
   同名型)に独立定義がある。**両方直すこと**(vscode 非依存を保つための意図的な重複)
 - webview→拡張の `machineDeviceUpdate.fields` に `serial` を足した。**拡張と webview のバンドルは
   別々に更新されうる**ので、受信側は欠落を "" に補う(旧 webview と混ぜても壊さない)
+- 機種/OS はプロファイルに無ければ `installedDevicesRequest` で取りに行くが、**要求は
+  1 デバイス 1 回に絞ること**。この要求は毎回 `ftester api installed-devices` を spawn する
+  (devicectl + adb getprop で数秒)ので、値が埋まらないデバイス(未接続の実機・`hw.device.name`
+  の無い AVD)では 応答→再描画→再要求 が閉じず CLI を叩き続ける(2026-07-25 のレビューで検出)
+- **ネイティブ `title` は表示遅延を指定できない**(ブラウザ/OS 固定で約 1 秒)。省略表示の全文を
+  素早く出したい所は自前ツールチップ(`hoverTip.js`、0.2 秒)を使う。要点は
+  ① `position: fixed` で body 直下に出す(名前ピルの親 `.tile-header`/`.lane-header` は
+  `overflow: hidden` なので子要素方式だと切られる)② 対象に `title=""` を置いて祖先の `title` が
+  遅れて二重に出るのを止める
 
 ### 実機の画面配信(ftester-devicepoll)
 

@@ -766,15 +766,23 @@ executableTarget `ftester-scenarios-<name>`(path: `Projects/<name>/Scenarios`)�
                               "serial": "14141JEC204922" } ] } }
 ```
 
-- iOS 実機の `udid` は `xcrun devicectl list devices` の Identifier、Android 実機の `serial` は
+- iOS 実機の `udid` は `xcrun devicectl list devices` の **`hardwareProperties.udid`**
+  (`00008130-...` 形式。同じ一覧の Identifier 列(UUID)とは別物で、`xcodebuild -destination id=`
+  が受け付けるのは前者だけ。Identifier を書いても解決はする)。Android 実機の `serial` は
   `adb devices` の左列(WiFi 接続なら `192.168.1.23:5555` 形式)
+- 拡張のデバイスピッカー(「+既存から選択」)が接続中の実機を出すので、手書きしなくてよい
 - **iOS 実機は engine が `xcuitest` に固定される**(dylib 注入は実機不可なので `iosInappEngine`
   の既定 hybrid を無視する。`engine: "inapp"` を明示すると検証エラー)
-- 実機は `devices up/down` で起動・停止しない(接続確認だけ行う)
+- `devices up/down` は**端末そのものを起動・停止しない**(接続確認+ブリッジの供給/停止だけ)。
+  モニターのタイル右クリックも実機ではラベルが「ブリッジを起動/停止」になる
+- ライブ映像は実機だけ **`ftester-devicepoll`**(スクショのポーリング → MJPEG)を使う。
+  `ftester-simstream` は CoreSimulator 私有 API で iOS 実機に使えず、`ftester-androidstream`
+  (screenrecord)は Android 実機だと静止画面でフレームが流れないため(詳細 docs/verification.md)
 - 実機で成立しない機能は静かに無効化される: iOS の録画(`simctl io recordVideo`)、
-  ライブ映像(`ftester-simstream` は CoreSimulator 私有 API)、Reduce Motion 自動設定、
-  autoInstall の差分スキップ(コンテナを読めないため毎回インストール)。
-  Android 実機は録画(`adb screenrecord`)・ライブ映像とも従来どおり動く
+  Reduce Motion 自動設定、autoInstall の差分スキップ(コンテナを読めないため毎回インストール)。
+  Android 実機は録画(`adb screenrecord`)も従来どおり動く
+- `model` / `os` は実機では**表示専用**(登録時に控えるだけで同定には使わない。端末を挿し替えても
+  追随しない)。iOS シミュレータの `simulator`/`os` だけは実体解決に使う値なので意味が違う
 - 実機の要件と罠(iOS の署名・LAN/USB 経路、Android の画面ロック)は docs/verification.md
 
 **実行プロファイル** `runs/<name>.json` — アプリ+デバイス名リスト+実行時設定。
