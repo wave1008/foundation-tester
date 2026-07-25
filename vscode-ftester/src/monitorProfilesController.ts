@@ -25,6 +25,7 @@ import {
   parseAppProfileForForm,
   parseRunProfileForForm,
   removeDeviceFromMachineProfile,
+  RUNNING_DEVICES_PROFILE_VALUE,
   syncDevicesInMachineProfile,
   type RunProfileFormFields,
   updateAppProfileInObject,
@@ -126,7 +127,13 @@ export class MonitorProfilesController {
       resolution.kind === "resolved" ? listRunProfileNames(this.deps.workspaceRoot, resolution.project) : [];
     const apps =
       resolution.kind === "resolved" ? listAppProfileNames(this.deps.workspaceRoot, resolution.project) : [];
-    this.deps.post({ type: "profileInfo", profiles, current: config.profile, apps });
+    this.deps.post({
+      type: "profileInfo",
+      profiles,
+      current: config.profile,
+      filter: config.monitorDeviceFilter,
+      apps,
+    });
   }
 
   /**
@@ -234,25 +241,38 @@ export class MonitorProfilesController {
   }
 
   /**
-   * webview のドロップダウン操作を ftester.profile 設定へ反映する。成功時は
-   * onDidChangeConfiguration 経由で postProfileInfo() が呼ばれるため、ここから直接 post しない。
+   * webview のドロップダウン操作を設定へ反映する。成功時は onDidChangeConfiguration 経由で
+   * postProfileInfo() が呼ばれるため、ここから直接 post しない。
+   * 予約値「起動中のデバイス」(RUNNING_DEVICES_PROFILE_VALUE)は実行プロファイルではなく表示
+   * フィルタなので、profile="" + monitorDeviceFilter="running" の2設定に分解して保存する
+   * (この値を profile へ保存すると CLI の --profile へ渡って実行が落ちる)。
    */
   selectProfile(profile: string): void {
-    const NONE_LABEL = t("profiles.label.noProfile");
-    const displayValue = profile === "" ? NONE_LABEL : profile;
-    vscode.workspace
-      .getConfiguration("ftester")
-      .update("profile", profile, vscode.ConfigurationTarget.Workspace)
-      .then(
-        () => {
-          this.deps.outputChannel.appendLine(t("profiles.log.runProfileSet", { name: displayValue }));
-        },
-        (error: unknown) => {
-          this.deps.outputChannel.appendLine(
-            t("profiles.log.runProfileSetFailed", { name: displayValue, error: String(error) }),
-          );
-        },
-      );
+    const running = profile === RUNNING_DEVICES_PROFILE_VALUE;
+    const nextProfile = running ? "" : profile;
+    const displayValue = running
+      ? t("profiles.label.runningDevices")
+      : profile === ""
+        ? t("profiles.label.noProfile")
+        : profile;
+    const configuration = vscode.workspace.getConfiguration("ftester");
+    Promise.all([
+      configuration.update("profile", nextProfile, vscode.ConfigurationTarget.Workspace),
+      configuration.update(
+        "monitorDeviceFilter",
+        running ? "running" : "all",
+        vscode.ConfigurationTarget.Workspace,
+      ),
+    ]).then(
+      () => {
+        this.deps.outputChannel.appendLine(t("profiles.log.runProfileSet", { name: displayValue }));
+      },
+      (error: unknown) => {
+        this.deps.outputChannel.appendLine(
+          t("profiles.log.runProfileSetFailed", { name: displayValue, error: String(error) }),
+        );
+      },
+    );
   }
 
   // ---- 実行プロファイルの追加/コピー/名前変更/削除(プロファイルタブ下半分のアイコンボタン) ------
@@ -365,9 +385,7 @@ export class MonitorProfilesController {
 
   /**
    * 「削除」ボタン: モーダル確認で「削除」が選ばれたときのみ削除する。削除対象が現在選択中の
-   * プロファイル(ftester.profile)であれば selectProfile("") で戻す(新スコープが null になると
-   * devicesToShutdownOnScopeChange は常に空を返すため、この切り替えによる自動シャットダウンは
-   * 発生しない)。
+   * プロファイル(ftester.profile)であれば selectProfile("") で戻す。
    */
   async handleProfileDelete(name: string): Promise<void> {
     const project = this.resolveProjectOrWarn();

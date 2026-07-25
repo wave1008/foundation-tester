@@ -10,6 +10,7 @@ export const profilesStrings = {
   },
 
   "profiles.label.noProfile": { ja: "(プロファイルなし)", en: "(No profile)" },
+  "profiles.label.runningDevices": { ja: "(起動中のデバイス)", en: "(Running devices)" },
   "profiles.label.none": { ja: "なし", en: "None" },
   "profiles.label.runProfile": { ja: "実行プロファイル", en: "Run profile" },
   "profiles.label.appProfile": { ja: "アプリプロファイル", en: "App profile" },

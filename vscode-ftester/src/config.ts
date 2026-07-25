@@ -6,6 +6,9 @@ import { resolveBinaryPath } from "./binaryPathResolve";
 
 export type Platform = "ios" | "android";
 
+/** モニターのデバイスタイル表示範囲(設定 ftester.monitorDeviceFilter)。既定は "all"。 */
+export type MonitorDeviceFilter = "all" | "running";
+
 export interface FtesterConfig {
   /** ワークスペースルート基準の絶対パスに解決済みの CLI バイナリパス。 */
   binaryPath: string;
@@ -24,6 +27,11 @@ export interface FtesterConfig {
   monitorInterval: number;
   /** モニターのフレーム画像の長辺px(240〜1600にクランプ。`ftester api monitor --max-width`)。 */
   monitorMaxWidth: number;
+  /** モニターのデバイスタイルに出す範囲。"all": 監視スコープの全デバイス、"running": そのうち
+   * 起動中(offline 以外)のみ。監視スコープ自体(= CLI の --profile)は変えず拡張側の表示フィルタ
+   * として効く(monitorProcessManager.ts)。ドロップダウンの「起動中のデバイス」= profile "" +
+   * この値 "running"(monitorModel.ts の RUNNING_DEVICES_PROFILE_VALUE)。 */
+  monitorDeviceFilter: MonitorDeviceFilter;
   /** ライブ操作パネルの自動フレーム更新レート上限(fps、3〜30にクランプ)。旧実装は成功時 delayMs=0 の
    * ホットループでデバイスが返す限り最速で /screenshot を叩き負荷源だった。目標fpsで頭打ちにする
    * (monitorLiveController.ts frameTick)。 */
@@ -80,6 +88,7 @@ export function readConfig(workspaceRoot: string): FtesterConfig {
     heal: configuration.get<boolean>("heal", false),
     monitorInterval: Math.max(0.5, configuration.get<number>("monitorInterval", 2)),
     monitorMaxWidth: Math.min(1600, Math.max(240, configuration.get<number>("monitorMaxWidth", 960))),
+    monitorDeviceFilter: configuration.get<string>("monitorDeviceFilter", "all") === "running" ? "running" : "all",
     liveFps: Math.min(30, Math.max(3, configuration.get<number>("liveFps", 12))),
     iosStreamEnabled: configuration.get<boolean>("iosStreamEnabled", true),
     androidStreamEnabled: configuration.get<boolean>("androidStreamEnabled", true),
@@ -205,36 +214,6 @@ export function listRunProfileNames(workspaceRoot: string, project: string): str
       .sort((a, b) => a.localeCompare(b));
   } catch {
     return [];
-  }
-}
-
-/**
- * Projects/<project>/profiles/runs/<profileName>.json の devices[].name。
- * 読めない/解析不可/devices無しは null(空配列と区別: monitorPanel.ts の
- * devicesToShutdownOnScopeChange が「絞り込みなし」と「絞り込んだ結果0件」を区別するため)。
- */
-export function readRunProfileDeviceNames(
-  workspaceRoot: string,
-  project: string,
-  profileName: string,
-): string[] | null {
-  const runProfilePath = path.join(workspaceRoot, "Projects", project, "profiles", "runs", `${profileName}.json`);
-  try {
-    const raw = fs.readFileSync(runProfilePath, "utf8");
-    const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== "object" || parsed === null || !("devices" in parsed)) {
-      return null;
-    }
-    const devices = (parsed as { devices: unknown }).devices;
-    if (!Array.isArray(devices) || devices.length === 0) {
-      return null;
-    }
-    const names = devices
-      .map((device) => (typeof device === "object" && device !== null ? (device as { name: unknown }).name : undefined))
-      .filter((name): name is string => typeof name === "string");
-    return names.length > 0 ? names : null;
-  } catch {
-    return null;
   }
 }
 

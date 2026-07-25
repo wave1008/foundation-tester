@@ -10,6 +10,7 @@
   "ftester.config.heal.description": "Enables FM-based locator self-healing (--heal) during execution. After execution completes, if there are repair candidates a confirmation panel opens, and approving it applies the changes to the source.",
   "ftester.config.monitorInterval.description": "Update interval (seconds) for the device monitor (ftester: Show Device Monitor). Values below 0.5 are treated as 0.5.",
   "ftester.config.monitorMaxWidth.description": "Long-edge pixel size of the device monitor's frame images. Larger values are sharper but increase transfer volume (240-1600).",
+  "ftester.config.monitorDeviceFilter.description": "Which devices the device monitor shows as tiles. \"all\": every device in the monitored scope. \"running\": only the ones currently started. Normally set from the monitor's profile dropdown (\"(Running devices)\").",
   "ftester.config.liveFps.description": "Upper limit (fps) for the automatic frame update rate in the Live Control tab. Larger values are smoother but increase host load (3-30).",
   "ftester.config.iosStreamEnabled.description": "Updates the screen during iOS simulator live control via video streaming (ftester-simstream). Falls back to polling if disabled or the helper is not built.",
   "ftester.config.androidStreamEnabled.description": "Updates the screen during Android device/emulator live control via video streaming (ftester-androidstream). Falls back to polling if disabled, the helper is not built, or adb is not detected.",

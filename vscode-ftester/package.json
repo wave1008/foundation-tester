@@ -2,7 +2,7 @@
   "name": "vscode-ftester",
   "displayName": "ftester",
   "description": "%ftester.extension.description%",
-  "version": "0.0.364",
+  "version": "0.0.366",
   "private": true,
   "publisher": "wave1008",
   "license": "MIT",
@@ -85,6 +85,15 @@
           "minimum": 240,
           "maximum": 1600,
           "description": "%ftester.config.monitorMaxWidth.description%"
+        },
+        "ftester.monitorDeviceFilter": {
+          "type": "string",
+          "enum": [
+            "all",
+            "running"
+          ],
+          "default": "all",
+          "description": "%ftester.config.monitorDeviceFilter.description%"
         },
         "ftester.liveFps": {
           "type": "number",

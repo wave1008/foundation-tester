@@ -19,6 +19,7 @@
 //     現行バイナリは送出しない(スクショ変換失敗は stderr のみ。ユーザー決定 2026-07-16)が、
 //     読み手としては旧バイナリ互換のため受理し続ける
 
+import type { MonitorDeviceFilter } from "./config";
 import { t } from "./i18n";
 import type { RecordingErrorEntry, RecordingScenarioVideo, RecordingTreeClass } from "./recordingsModel";
 import type { RecordingSessionSummary } from "./recordingsStore";
@@ -200,6 +201,9 @@ export type MonitorToWebviewMessage =
       readonly profiles: readonly string[];
       /** 現在の ftester.profile 設定値。"" はプロファイルなし。 */
       readonly current: string;
+      /** 現在の ftester.monitorDeviceFilter 設定値。"running" のときドロップダウンの選択は
+       * current("")ではなく RUNNING_DEVICES_PROFILE_VALUE を選ぶ。 */
+      readonly filter: MonitorDeviceFilter;
       /** 対象プロジェクトのアプリプロファイル名一覧(profiles/apps/ 直下)。既存の applyProfileInfo は
        * このフィールドを無視するだけなので後方互換。 */
       readonly apps: readonly string[];
@@ -397,7 +401,7 @@ export type MonitorToWebviewMessage =
  * デバイス一覧をプロファイルタブの表示順(ios→android・各プラットフォーム内は name 順。
  * config.ts の listMachineProfiles と同じ規則 — 変更時は両方揃える)に整列する。
  * monitorProcessManager.ts が monitorDevices 受信時に適用し、以降の全消費側
- * (デバイスタブのタイル・lastKnownDevices)はこの順で受け取る。
+ * (デバイスタブのタイル)はこの順で受け取る。
  */
 export function sortMonitorDevices(devices: readonly MonitorDevice[]): MonitorDevice[] {
   return [...devices].sort((a, b) =>
@@ -1109,24 +1113,23 @@ export function monitorControlLine(cmd: MonitorControlCommand): string {
   return `${JSON.stringify(cmd)}\n`;
 }
 
-// ---- 実行プロファイル切り替え時の自動シャットダウン対象算出 ------------------------------------
-// プロファイル切り替え時、新プロファイルに含まれない稼働中デバイスはシャットダウンするが、
-// 含まれるデバイスは稼働中でも offline でも一切触らない(自動起動はしない)。
-// monitorPanel.ts の restartMonitorIfScopeChanged がこの結果を down ジョブとしてキューに積む。
+// ---- 「起動中のデバイス」(動的プロファイル)------------------------------------------------
+// 実行プロファイルではなく表示フィルタ: 監視スコープは「プロファイルなし」(= 全デバイス)のまま、
+// タイルに出すのを起動中(offline 以外)だけに絞る。選択時は ftester.profile="" +
+// ftester.monitorDeviceFilter="running" の2設定に分解して保存する(この値自体は ftester.profile へ
+// 保存しない — CLI の --profile へ渡ると実行プロファイル未検出で落ちるため)。
+// 同期相手: src/webview/monitor/deviceTiles.js(同名の複製定数。webview は CSP で import 不可)
 
-/**
- * シャットダウン対象デバイス名を返す(元の順序を保つ)。newScopeNames が null(プロファイルなし)
- * なら [](全デバイスが対象なので停止しない)。
- */
-export function devicesToShutdownOnScopeChange(
+/** ドロップダウンでの「起動中のデバイス」の予約値。実行プロファイル名としては
+ * validateNewRunProfileName が "@" 始まりを予約済みとして弾くため衝突しない。 */
+export const RUNNING_DEVICES_PROFILE_VALUE = "@running";
+
+/** filter="running" なら起動中(offline 以外)のみに絞る。"all" は素通し(元の順序を保つ)。 */
+export function filterMonitorDevices(
   devices: readonly MonitorDevice[],
-  newScopeNames: readonly string[] | null,
-): string[] {
-  if (newScopeNames === null) {
-    return [];
-  }
-  const keep = new Set(newScopeNames);
-  return devices.filter((device) => device.state !== "offline" && !keep.has(device.name)).map((device) => device.name);
+  filter: MonitorDeviceFilter,
+): readonly MonitorDevice[] {
+  return filter === "running" ? devices.filter((device) => device.state !== "offline") : devices;
 }
 
 // ---- 実行プロファイルの追加/コピー(名前検証・テンプレート生成) ------------------------------
@@ -1149,6 +1152,11 @@ export function validateNewRunProfileName(name: string, existing: readonly strin
   }
   if (name.startsWith(".")) {
     return t("monitor.runProfile.nameNoDotStart");
+  }
+  // "@" 始まりはドロップダウンの予約値用(RUNNING_DEVICES_PROFILE_VALUE)。同名プロファイルが
+  // 作れると選択値が衝突して解決不能になる。
+  if (name.startsWith("@")) {
+    return t("monitor.runProfile.nameNoAtStart");
   }
   if (existing.includes(name)) {
     return t("monitor.runProfile.nameExists", { name });

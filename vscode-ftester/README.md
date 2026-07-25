@@ -180,7 +180,7 @@ code --install-extension vscode-ftester-<version>.vsix
 |---|---|---|---|
 | `ftester.binaryPath` | string | `.build/debug/ftester` | ftester CLI バイナリのパス。相対パスはワークスペースルート基準で解決される。**存在しなければ PATH から `ftester` を探す**(ビルド済み `ftester` を PATH に置いた場合など) |
 | `ftester.project` | string | `""` | 対象のテストプロジェクト名(`Projects/<name>` の `<name>`)。空なら自動判定(`Projects/` 直下が1つならそれを使用。複数あれば選択を促す) |
-| `ftester.profile` | string | `""` | 使用する実行プロファイル名(`Projects/<project>/profiles/runs/<name>.json` の `<name>`)。空なら未指定。非空なら実行・デバッグ実行の両方で `platform`/`port`/`serial` の代わりにこちらが使われる。**デバイスモニターの監視対象・「デバイスを全て起動/終了」もこのプロファイルのデバイスに絞られ、切り替えると新プロファイルに含まれない稼働中デバイスは自動停止される**(空ならマシンプロファイルの全デバイスが対象) |
+| `ftester.profile` | string | `""` | 使用する実行プロファイル名(`Projects/<project>/profiles/runs/<name>.json` の `<name>`)。空なら未指定。非空なら実行・デバッグ実行の両方で `platform`/`port`/`serial` の代わりにこちらが使われる。**デバイスモニターの監視対象・「デバイスを全て起動/終了」もこのプロファイルのデバイスに絞られる**(空ならマシンプロファイルの全デバイスが対象)。切り替えてもデバイスの起動状態は変更されない |
 | `ftester.platform` | `"ios"` \| `"android"` | `"ios"` | 対象プラットフォーム。`ftester.profile` が空のときだけ使われる |
 | `ftester.port` | number | `0` | ブリッジ接続ポート。`0` は未指定(CLI 既定値を使用)。`ftester.profile` が空のときだけ使われる |
 | `ftester.serial` | string | `""` | Android デバイスのシリアル番号。空は未指定。`ftester.profile` が空のときだけ使われる |
@@ -188,6 +188,7 @@ code --install-extension vscode-ftester-<version>.vsix
 | `ftester.heal` | boolean | `false` | 実行時に FM によるロケータ自己修復(`--heal`)を有効にする。実行完了後、修復候補があれば確認パネルが開き、承認するとソースに反映される(詳細は下記「自己修復(heal)と修復候補の確定」) |
 | `ftester.monitorInterval` | number | `2` | デバイスモニターの更新間隔(秒)。`0.5` 未満は `0.5` として扱われる |
 | `ftester.monitorMaxWidth` | number | `960` | デバイスモニターのフレーム画像の長辺px(240〜1600)。大きいほど鮮明だが転送量が増える |
+| `ftester.monitorDeviceFilter` | `"all"` \| `"running"` | `"all"` | デバイスモニターがタイル表示するデバイスの範囲。`running` は監視スコープのうち起動中(未起動以外)のみを表示する。通常はモニターのプロファイルドロップダウンで「(起動中のデバイス)」を選ぶと `ftester.profile=""` とセットで設定される(監視スコープ自体は変えない表示フィルタ) |
 | `ftester.liveFps` | number | `12` | ライブ操作の自動フレーム更新レート上限(fps、3〜30)。大きいほど滑らかだがホスト負荷が増える |
 | `ftester.iosStreamEnabled` | boolean | `true` | iOS の画面更新に映像ストリーミング(`ftester-simstream`)を使う。無効・ヘルパー未ビルド時はポーリングにフォールバック |
 | `ftester.androidStreamEnabled` | boolean | `true` | Android の画面更新に映像ストリーミング(`ftester-androidstream`)を使う。無効・ヘルパー未ビルド・adb 未検出時はポーリングにフォールバック |
@@ -318,6 +319,19 @@ JSON→Diagnostic への変換ロジック自体は vscode 非依存の `src/pro
   指示します。再開時はモニター側の状態判定の記憶もクリアされるため、再開直後の1回で
   すぐに「未起動」へ反映されます(up 系の起動操作では一時停止しません。起動の進行状況を
   タイルで見られるようにするためです)。
+- **上部ツールバーの実行プロファイル選択**: 実行プロファイル名の一覧に加えて、次の2つの疑似項目が
+  先頭に並びます。
+  - **「(プロファイルなし)」**: マシンプロファイルの全デバイス(未起動を含む)を表示します。
+    タイル右クリックの「起動」で個別に起動できるのはこの表示(または実行プロファイル選択時)です。
+  - **「(起動中のデバイス)」**: 実行プロファイルではなく**表示フィルタ**で、監視対象は
+    「(プロファイルなし)」と同じまま、タイルに出すのを起動中(未起動以外)のデバイスだけに
+    絞ります。プロファイルを頻繁に切り替えずに、いま動いているデバイスだけを見たい場合に使います。
+    設定上は `ftester.profile=""` + `ftester.monitorDeviceFilter="running"` の組で保存されるため、
+    テスト実行・`devices up/down` の対象は「プロファイルなし」と同じ(=全デバイス)です。
+    未起動デバイスが一覧に出ないため、この表示中は「デバイスを全て起動」ボタンが無効になります
+    (起動したいときは「(プロファイルなし)」か実行プロファイルに切り替えてください)。
+  - プロファイルの切り替えで**デバイスの起動状態は変更されません**(切り替え先に含まれない稼働中
+    デバイスも停止しません)。
 - 上部ツールバーのボタン:
   - **「デバイスを全て起動」**: `ftester devices up` を実行します(マシンプロファイルに定義された
     デバイスを段階的に起動)。

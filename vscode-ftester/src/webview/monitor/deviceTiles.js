@@ -671,13 +671,29 @@ export function hideBanner() {
   banner.classList.remove('visible');
 }
 
-export function setBusy(busy, bulkOp) {
+// 一括ボタンの状態は setBusy(キュー稼働)と applyProfileInfo(表示フィルタ)の2経路から
+// 変わるため、双方の入力をここに保持して refreshBulkButtons() で一括評価する。
+let bulkBusy = false;
+let bulkBusyOp = null;
+let runningFilterActive = false;
+
+function refreshBulkButtons() {
   // bulk up 実行中は「全て起動」ボタンを中断ボタンに転用する(クリック時の分岐は main.js。
   // 受け手: monitorPanel.ts devicesUpCancel → MonitorDeviceOps.cancelBulkUp)。
-  const upCancelMode = busy && bulkOp === 'up';
-  btnUp.disabled = busy && !upCancelMode;
+  const upCancelMode = bulkBusy && bulkBusyOp === 'up';
+  // 「起動中のデバイス」表示中の一括起動は禁止(一覧に出ていない未起動デバイスまで起動するため)。
+  // 中断ボタンとして使っている間は無効化しない(進行中のジョブを止める導線を残す)。
+  const blockedByFilter = runningFilterActive && !upCancelMode;
+  btnUp.disabled = (bulkBusy && !upCancelMode) || blockedByFilter;
   btnUp.textContent = upCancelMode ? t('wvMonitor.bulk.cancelStart') : t('wvMonitor.bulk.startAll');
-  btnDown.disabled = busy;
+  btnUp.title = blockedByFilter ? t('wvMonitor.bulk.startAllDisabledRunning') : '';
+  btnDown.disabled = bulkBusy;
+}
+
+export function setBusy(busy, bulkOp) {
+  bulkBusy = busy;
+  bulkBusyOp = bulkOp;
+  refreshBulkButtons();
   const next = bulkOp === 'up' || bulkOp === 'down' ? bulkOp : null;
   if (bulkOpActive !== next) {
     const wasDown = bulkOpActive === 'down';
@@ -700,17 +716,29 @@ export function setBusy(busy, bulkOp) {
 // この select は「使用する実行プロファイルの指定」のみ。追加/編集は runProfilesTab.js が担当。
 
 const PROFILE_NONE_LABEL = t('wvMonitor.profile.none');
+const PROFILE_RUNNING_LABEL = t('wvMonitor.profile.running');
+// src/monitorModel.ts の RUNNING_DEVICES_PROFILE_VALUE の複製(webview は CSP で import 不可)。
+// 変更時は両方揃える。実行プロファイルではなく表示フィルタで、送信先の分解は
+// monitorProfilesController.selectProfile が行う。
+const PROFILE_RUNNING_VALUE = '@running';
 
 // 現在値が profiles に無ければ(手書き設定等)unknownOption で補い選択状態を保つ。
 export function applyProfileInfo(message) {
   const profiles = Array.isArray(message.profiles) ? message.profiles : [];
   const current = typeof message.current === 'string' ? message.current : '';
+  // filter==='running' は profile 未選択(current==='')と組で来る。選択表示は予約値側にする。
+  runningFilterActive = message.filter === 'running';
   profileSelect.textContent = '';
 
   const noneOption = document.createElement('option');
   noneOption.value = '';
   noneOption.textContent = PROFILE_NONE_LABEL;
   profileSelect.appendChild(noneOption);
+
+  const runningOption = document.createElement('option');
+  runningOption.value = PROFILE_RUNNING_VALUE;
+  runningOption.textContent = PROFILE_RUNNING_LABEL;
+  profileSelect.appendChild(runningOption);
 
   let matched = current === '';
   for (const name of profiles) {
@@ -728,8 +756,9 @@ export function applyProfileInfo(message) {
     unknownOption.textContent = current;
     profileSelect.appendChild(unknownOption);
   }
-  profileSelect.value = current;
+  profileSelect.value = runningFilterActive ? PROFILE_RUNNING_VALUE : current;
   profileSelect.disabled = false;
+  refreshBulkButtons();
 }
 
 profileSelect.addEventListener('change', () => {

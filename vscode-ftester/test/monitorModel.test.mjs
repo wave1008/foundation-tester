@@ -22,8 +22,8 @@ import {
   promoteDeviceLifecycleJobs,
   deviceLifecycleStatusFor,
   deviceOpMenuItem,
-  devicesToShutdownOnScopeChange,
   enqueueDeviceLifecycleJob,
+  filterMonitorDevices,
   hasDeviceLifecycleJobFor,
   isCreateDeviceEvent,
   isDeviceCatalogJson,
@@ -40,6 +40,7 @@ import {
   parseRunProfileForForm,
   removeDeviceFromMachineProfile,
   removeQueuedBulkUpJob,
+  RUNNING_DEVICES_PROFILE_VALUE,
   syncDevicesInMachineProfile,
   toWebviewMessage,
   updateAppProfileInObject,
@@ -513,35 +514,33 @@ test("monitorControlLine: pause/resume/suppressFrames を末尾改行付きの N
   );
 });
 
-// ---- devicesToShutdownOnScopeChange(プロファイル切り替え時の自動シャットダウン対象算出) ----
+// ---- filterMonitorDevices(「起動中のデバイス」表示フィルタ) ----
 
 const SIM1 = { id: "ios:シミュ1", name: "シミュ1", platform: "ios", state: "connected", detail: "" };
 const SIM2 = { id: "ios:シミュ2", name: "シミュ2", platform: "ios", state: "booted", detail: "" };
 const SIM3_OFFLINE = { id: "ios:シミュ3", name: "シミュ3", platform: "ios", state: "offline", detail: "" };
 const EMU1 = { id: "android:エミュ1", name: "エミュ1", platform: "android", state: "connected", detail: "" };
 
-test("devicesToShutdownOnScopeChange: newScopeNames が null(プロファイルなし)なら常に空配列", () => {
-  assert.deepEqual(devicesToShutdownOnScopeChange([SIM1, SIM2, SIM3_OFFLINE], null), []);
-  assert.deepEqual(devicesToShutdownOnScopeChange([], null), []);
+test("filterMonitorDevices: filter='all' は素通し(同一内容・順序)", () => {
+  const devices = [SIM1, SIM3_OFFLINE, EMU1];
+  assert.deepEqual(filterMonitorDevices(devices, "all"), devices);
 });
 
-test("devicesToShutdownOnScopeChange: offline のデバイスは新スコープ外でも対象にしない", () => {
-  assert.deepEqual(devicesToShutdownOnScopeChange([SIM3_OFFLINE], []), []);
+test("filterMonitorDevices: filter='running' は offline を除外し順序を保つ", () => {
+  assert.deepEqual(filterMonitorDevices([SIM1, SIM3_OFFLINE, SIM2, EMU1], "running"), [SIM1, SIM2, EMU1]);
 });
 
-test("devicesToShutdownOnScopeChange: 稼働中で新スコープに含まれるデバイスは対象にしない(自動起動もしない方針と対)", () => {
-  assert.deepEqual(devicesToShutdownOnScopeChange([SIM1, SIM2], ["シミュ1", "シミュ2"]), []);
+test("filterMonitorDevices: booted(ブート完了待ち)は起動中として残す", () => {
+  assert.deepEqual(filterMonitorDevices([SIM2], "running"), [SIM2]);
 });
 
-test("devicesToShutdownOnScopeChange: 稼働中で新スコープに含まれないデバイスは元の順序で対象になる", () => {
-  assert.deepEqual(
-    devicesToShutdownOnScopeChange([SIM1, SIM2, EMU1, SIM3_OFFLINE], ["エミュ1"]),
-    ["シミュ1", "シミュ2"],
-  );
+test("filterMonitorDevices: 全て offline なら空配列", () => {
+  assert.deepEqual(filterMonitorDevices([SIM3_OFFLINE], "running"), []);
+  assert.deepEqual(filterMonitorDevices([], "running"), []);
 });
 
-test("devicesToShutdownOnScopeChange: 複数該当時も devices の並び順のまま返す", () => {
-  assert.deepEqual(devicesToShutdownOnScopeChange([EMU1, SIM1, SIM2], []), ["エミュ1", "シミュ1", "シミュ2"]);
+test("RUNNING_DEVICES_PROFILE_VALUE: webview 側の複製定数(deviceTiles.js)と一致する", () => {
+  assert.equal(RUNNING_DEVICES_PROFILE_VALUE, "@running");
 });
 
 // ---- validateNewRunProfileName(新規/コピー先の実行プロファイル名検証) ----
@@ -567,6 +566,11 @@ test("validateNewRunProfileName: '/' や '\\\\' を含む場合はエラー", ()
 
 test("validateNewRunProfileName: '.' で始まる場合はエラー", () => {
   assert.notEqual(validateNewRunProfileName(".hidden", []), null);
+});
+
+test("validateNewRunProfileName: '@' で始まる場合はエラー(予約値との衝突防止)", () => {
+  assert.notEqual(validateNewRunProfileName("@running", []), null);
+  assert.notEqual(validateNewRunProfileName("@other", []), null);
 });
 
 test("validateNewRunProfileName: 既存名と重複する場合はエラー", () => {

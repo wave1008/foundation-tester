@@ -29,6 +29,10 @@ export const monitorStrings = {
     ja: 'プロファイル名を "." で始めることはできません。',
     en: 'The profile name cannot start with ".".',
   },
+  "monitor.runProfile.nameNoAtStart": {
+    ja: 'プロファイル名を "@" で始めることはできません(予約されています)。',
+    en: 'The profile name cannot start with "@" (reserved).',
+  },
   "monitor.runProfile.nameExists": {
     ja: "実行プロファイル「{name}」は既に存在します。",
     en: 'Run profile "{name}" already exists.',
@@ -132,10 +136,6 @@ export const monitorStrings = {
   "monitor.statusBar.tooltip": {
     ja: "ftester: デバイスモニターを表示",
     en: "ftester: Show device monitor",
-  },
-  "monitor.log.stoppingOutOfScopeDevices": {
-    ja: "プロファイル切り替えに伴い監視対象外のデバイスを停止します: {names}",
-    en: "Stopping devices outside the monitored scope due to profile switch: {names}",
   },
   "monitor.log.streamStallRestart": {
     ja: "キーフレーム未受信のままのためヘルパーを再起動します。",

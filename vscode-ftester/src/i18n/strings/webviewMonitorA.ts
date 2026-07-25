@@ -42,6 +42,11 @@ export const webviewMonitorAStrings = {
   "wvMonitor.bulk.startAll": { ja: "デバイスを全て起動", en: "Start All Devices" },
 
   "wvMonitor.profile.none": { ja: "(プロファイルなし)", en: "(No profile)" },
+  "wvMonitor.profile.running": { ja: "(起動中のデバイス)", en: "(Running devices)" },
+  "wvMonitor.bulk.startAllDisabledRunning": {
+    ja: "「(起動中のデバイス)」表示中は使えません(未起動のデバイスが一覧に出ないため)。「(プロファイルなし)」か実行プロファイルを選んでください。",
+    en: "Unavailable while showing \"(Running devices)\" because devices that are not started are hidden. Select \"(No profile)\" or a run profile.",
+  },
 
   "wvMonitor.deviceAdd.nameRequired": { ja: "デバイス名を入力してください。", en: "Please enter a device name." },
   "wvMonitor.deviceAdd.nameDuplicate": { ja: "「{name}」は既に存在します。", en: "\"{name}\" already exists." },
