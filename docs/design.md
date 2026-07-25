@@ -936,6 +936,12 @@ DeviceBooter.defaultLocale(実行プロファイルの locale が届くのは wi
 - **monitor のスクショポーリング抑制**: タイルがストリーミング表示中のデバイスは、拡張が
   `suppressFrames`(stdin 制御)で monitor 側の生成ごと止める(受信後の間引きは競合吸収の
   安全弁として残置)。契約は `Sources/ftester/ApiMonitorCommand.swift` 冒頭
+- **壊れたレコードを webview へ流さない**: 長さ前置きのバイナリ列は helper が書き込み途中で死ぬと
+  境界がズレ、以降**自力復帰せず**ゴミの寸法+非 JPEG を吐き続ける。v1 パーサは寸法・長さの足切りと
+  JPEG SOI 照合で desync を検出し、未知 KIND と同じく helper を kill して張り直す
+  (`deviceStream.ts` の `handleProtocolDesync`)。タイル側もヘッダ由来の寸法を信用せず
+  **デコードできた画像の実寸だけ**でアスペクト比を決める(壊れたフレーム1枚でタイル幅が
+  異常に広がったまま戻らない実害。2026-07-26)
 
 ### 12.2 ブリッジ死の検知と自己修復
 
