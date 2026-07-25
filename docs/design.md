@@ -1273,12 +1273,15 @@ adb へ自動フォールバックする(ユーザー決定 2026-07-25)。動機
 
 | 層 | 場所 | 役割 |
 |---|---|---|
-| ディスカバリ | `FTEmulatorGrpc/EmulatorEndpoints` / 拡張 `emulatorEndpoints.ts` | `~/Library/Caches/TemporaryItems/avd/running/pid_<pid>.ini` から serial→port/token/avd.id を解決(pid 生存確認付き。トークンはブート毎に変わる) |
-| RPC | `FTEmulatorGrpc/EmulatorGrpcSession`(grpc-swift-2)/ 拡張 `emulatorGrpc.ts`(grpc-js) | 単発 RPC(接続は呼び出し毎)。認証は `authorization: Bearer <grpc.token>` のみ |
-| 振り分け | `FTAndroid/EmulatorControl` / 拡張 `emulatorGrpc.ts` 内 | emulator なら gRPC・実機/失敗個体は adb。**失敗した pid は同一ブート中 adb 固定**(再ブートで自動復帰)。殺しスイッチ `FT_EMULATOR_CONTROL=adb` |
+| ディスカバリ | `FTEmulatorGrpc/EmulatorEndpoints` | `~/Library/Caches/TemporaryItems/avd/running/pid_<pid>.ini` から serial→port/token/avd.id を解決(pid 生存確認付き。トークンはブート毎に変わる) |
+| RPC | `FTEmulatorGrpc/EmulatorGrpcSession`(grpc-swift-2) | 単発 RPC(接続は呼び出し毎)。認証は `authorization: Bearer <grpc.token>` のみ |
+| 振り分け | `FTAndroid/EmulatorControl` | emulator なら gRPC・実機/失敗個体は adb。**失敗した pid は同一ブート中 adb 固定**(再ブートで自動復帰)。殺しスイッチ `FT_EMULATOR_CONTROL=adb` |
 
-proto は `third_party/emulator-proto/`(vendored・再生成手順は同 README。Swift スタブは生成物を
-コミット、拡張は `assets/` の逐語コピーを実行時ロード)。
+**gRPC を話すのは Swift だけ**。拡張は自前の gRPC クライアントを持たず、画面凍結修復を
+`ftester api repair-display`(`ApiRepairDisplayCommand`)へ委譲する(以前は `emulatorGrpc.ts` +
+`emulatorEndpoints.ts` に proto コピー・ディスカバリ・blank 判定の第二実装があり、閾値と手順を
+言語間で同期する必要があった)。proto は `third_party/emulator-proto/`(vendored・再生成手順は
+同 README。Swift スタブは生成物をコミット)。
 
 ### 16.2 置き換え済みの操作と残存 adb
 
@@ -1294,13 +1297,10 @@ proto は `third_party/emulator-proto/`(vendored・再生成手順は同 README�
 - **wake は KEY_POWER(evdev 116)**。KEY_WAKEUP(143) は emulator のキー変換欠落で不発。
   sleep は KEY_SLEEP(142・非トグル)→直後の POWER トグルは安全
 - **blank 判定に gRPC PNG のサイズ閾値を使わない**(emulator エンコーダは一様黒でも 51KB。
-  30KB 閾値は adb 較正)。gRPC 経路は画素一様判定(Swift=ImageIO デコード+uniformFrame、
-  拡張=RGBA8888 直取り+isUniformRgba)
-- **grpc-swift は約10MB の単一メッセージ受信で接続切断される**(RGBA 直取り不可。grpc-js は
-  `max_receive_message_length` 拡大で受かる=言語で実装が分かれている理由)
+  30KB 閾値は adb 較正)。gRPC 経路は ImageIO デコード+`uniformFrame` の画素一様判定
+- **grpc-swift は約10MB の単一メッセージ受信で接続切断される**(RGBA 直取り不可。PNG で受けて
+  ホスト側デコードにしている理由)
 - grpc-swift v2 の正リポジトリは **grpc/grpc-swift-2.git**(grpc-swift.git の 2.x タグは旧系)
-- 拡張は **grpc-js を import しない純粋部(emulatorEndpoints.ts)を分離必須**(esm テストバンドルが
-  grpc-js の動的 require で死ぬ)
 
 ### 16.4 iOS 側の相当実装: simctl→CoreSimulator 直叩き(2026-07-25)
 

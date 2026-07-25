@@ -218,10 +218,8 @@ class MonitorPanelController implements vscode.Disposable {
         const adb = resolveAdb();
         return adb ? repairWifi(adb, serial) : Promise.resolve(false);
       },
-      runDisplayRepair: (serial) => {
-        const adb = resolveAdb();
-        return adb ? repairDisplay(adb, serial) : Promise.resolve(false);
-      },
+      runDisplayRepair: (serial) =>
+        repairDisplay(this.getConfig().binaryPath, this.workspaceRoot, serial),
       restartStream: (name) => this.deviceStream.restartForDeviceName(name),
       isAutoRepairEnabled: () => this.getConfig().autoRepairDeviceHealth,
       isDeviceLifecycleQueueBusy: () => this.deviceOps.isQueueBusy(),
