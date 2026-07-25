@@ -149,6 +149,26 @@ export interface InsightRecord {
   readonly deltaPct?: number | null;
 }
 
+export interface MatrixRunColumn {
+  readonly runID: string;
+  readonly startedAt: string;
+  readonly profile?: string | null;
+}
+
+export interface MatrixScenarioRow {
+  readonly scenarioID: string;
+  readonly title?: string | null;
+  /** runs と同順・同数。1=passed 0=failed null=その run にこのシナリオの記録が無い */
+  readonly cells: readonly (number | null)[];
+}
+
+export interface MatrixReport {
+  /** newest-first(startedAt 降順) */
+  readonly runs: readonly MatrixRunColumn[];
+  /** flaky(pass/fail混在)→ all-fail → all-pass、各グループ内は scenarioID 昇順 */
+  readonly scenarios: readonly MatrixScenarioRow[];
+}
+
 export interface ApiResultsPayload {
   readonly schemaVersion: number;
   readonly project: string;
@@ -168,6 +188,8 @@ export interface ApiResultsPayload {
   readonly slow?: readonly SlowScenarioRow[];
   /** severity 順(critical→warn→info)。本フィールド追加前の CLI ではキー欠落。 */
   readonly insights?: readonly InsightRecord[];
+  /** シナリオ×直近N run の成否マトリクス。--matrix-runs 0 指定時・本フィールド追加前の CLI ではキー欠落。 */
+  readonly matrix?: MatrixReport;
 }
 
 // ---- webview ⇔ 拡張のメッセージ契約 ----------------------------------------------------
@@ -323,6 +345,31 @@ function isInsightRecord(value: unknown): value is InsightRecord {
   );
 }
 
+function isMatrixRunColumn(value: unknown): value is MatrixRunColumn {
+  if (!isRecord(value)) return false;
+  return typeof value.runID === "string" && typeof value.startedAt === "string" && isOptString(value.profile);
+}
+
+function isMatrixScenarioRow(value: unknown): value is MatrixScenarioRow {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.scenarioID === "string" &&
+    isOptString(value.title) &&
+    Array.isArray(value.cells) &&
+    value.cells.every((c) => c === null || typeof c === "number")
+  );
+}
+
+function isMatrixReport(value: unknown): value is MatrixReport {
+  if (!isRecord(value)) return false;
+  return (
+    Array.isArray(value.runs) &&
+    value.runs.every(isMatrixRunColumn) &&
+    Array.isArray(value.scenarios) &&
+    value.scenarios.every(isMatrixScenarioRow)
+  );
+}
+
 /** ApiResultsCommand の stdout(JSON.parse 済みの unknown)を検証する。 */
 export function isApiResultsPayload(value: unknown): value is ApiResultsPayload {
   if (!isRecord(value)) return false;
@@ -344,6 +391,10 @@ export function isApiResultsPayload(value: unknown): value is ApiResultsPayload 
     return false;
   }
   if (value.insights !== undefined && (!Array.isArray(value.insights) || !value.insights.every(isInsightRecord))) {
+    return false;
+  }
+  // matrix はキー欠落(--matrix-runs 0・古い CLI)を許容するため undefined のみ特別扱いする。
+  if (value.matrix !== undefined && !isMatrixReport(value.matrix)) {
     return false;
   }
   return true;

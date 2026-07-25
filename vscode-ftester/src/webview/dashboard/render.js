@@ -8,6 +8,7 @@ import {
   formatDurationMs,
   formatLocalDateTime,
   formatPercent,
+  formatShortDateTime,
   passFailMark,
   recentResultsMarks,
 } from './format.js';
@@ -177,6 +178,57 @@ function slowestSceneText(slowestScene, slowestSceneAvgMs) {
   return typeof slowestSceneAvgMs === 'number'
     ? slowestScene + '(' + formatDurationHuman(slowestSceneAvgMs) + ')'
     : slowestScene;
+}
+
+function matrixScenarioNameCell(scenario) {
+  const cell = document.createElement('td');
+  cell.textContent = scenario.title || scenario.scenarioID;
+  if (scenario.title && scenario.title !== scenario.scenarioID) {
+    cell.title = scenario.scenarioID;
+  }
+  return cell;
+}
+
+function matrixSuccessRateCell(cells) {
+  const nonNull = cells.filter((c) => c !== null);
+  const passCount = nonNull.filter((c) => c === 1).length;
+  const rate = nonNull.length > 0 ? (passCount / nonNull.length) * 100 : null;
+  return td(formatPercent(rate));
+}
+
+function matrixDotCell(cell) {
+  const wrap = document.createElement('td');
+  const dot = document.createElement('span');
+  dot.className = 'matrix-dot ' + (cell === 1 ? 'matrix-dot-pass' : cell === 0 ? 'matrix-dot-fail' : 'matrix-dot-empty');
+  wrap.appendChild(dot);
+  return wrap;
+}
+
+export function renderMatrixTable(matrix) {
+  const headRow = document.getElementById('table-matrix-head');
+  const body = document.getElementById('table-matrix-body');
+
+  // 先頭2列(シナリオ名・成功率)は dashboardPanel.ts の静的 HTML(i18n 済み見出し)。
+  // run 列は本数が可変なのでここで都度再構築する(未翻訳の技術的な日時見出しのみ)。
+  while (headRow.children.length > 2) {
+    headRow.removeChild(headRow.lastChild);
+  }
+  for (const run of matrix.runs) {
+    const th = document.createElement('th');
+    th.textContent = formatShortDateTime(run.startedAt);
+    th.title = run.runID + (run.profile ? ' / ' + run.profile : '');
+    headRow.appendChild(th);
+  }
+
+  clearChildren(body);
+  for (const scenario of matrix.scenarios) {
+    const tr = document.createElement('tr');
+    tr.append(matrixScenarioNameCell(scenario), matrixSuccessRateCell(scenario.cells));
+    for (const cell of scenario.cells) {
+      tr.appendChild(matrixDotCell(cell));
+    }
+    body.appendChild(tr);
+  }
 }
 
 export function renderSlowTable(slow) {

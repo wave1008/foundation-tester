@@ -11,6 +11,7 @@ import {
   renderFlakyTable,
   renderHeadline,
   renderInsights,
+  renderMatrixTable,
   renderRunsTable,
   renderSlowTable,
   renderSummaryTable,
@@ -46,6 +47,13 @@ function applyData(payload) {
   renderInsights(payload.insights || []);
   renderFlakyTable(payload.flaky);
   renderSlowTable(payload.slow || []);
+  const matrixSection = document.getElementById('section-matrix');
+  if (payload.matrix) {
+    matrixSection.style.display = 'block';
+    renderMatrixTable(payload.matrix);
+  } else {
+    matrixSection.style.display = 'none';
+  }
   renderDailyChart(payload.daily);
   renderSummaryTable(payload.summary);
   renderDevicesTable(payload.devices.byWorker);

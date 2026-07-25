@@ -282,6 +282,18 @@ function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
       <div id="slow-empty" class="section-empty" style="display: none;">${t("exploreHeal.dashboard.slowEmpty")}</div>
     </section>
 
+    <section id="section-matrix" class="dash-section" style="display: none;">
+      <h2>${t("exploreHeal.dashboard.headingMatrix")}</h2>
+      <div class="matrix-wrap">
+        <table id="table-matrix" class="dash-table matrix-table">
+          <thead>
+            <tr id="table-matrix-head"><th>${t("exploreHeal.dashboard.colScenarioId")}</th><th>${t("exploreHeal.dashboard.colSuccessRate")}</th></tr>
+          </thead>
+          <tbody id="table-matrix-body"></tbody>
+        </table>
+      </div>
+    </section>
+
     <section id="section-daily" class="dash-section">
       <h2>${t("exploreHeal.dashboard.headingDaily")}</h2>
       <div class="daily-chart-wrap">
