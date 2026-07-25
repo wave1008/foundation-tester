@@ -81,6 +81,26 @@ final class BridgeClientTimeoutTests: XCTestCase {
         }
     }
 
+    /// 公開 init の timeoutSeconds はクライアント全体の上限(per-endpoint 既定 45s/20s を
+    /// クランプする契約)。クランプが無いと status() の 45s が config の短い値を上書きし、
+    /// scanBridgeStatuses(1s 指定)が suspend ゾンビ相手に 45s 待つ実害があった
+    func testShortTimeoutSecondsCapsEndpointBudgets() async throws {
+        let listener = try UnresponsiveTCPListener()
+        defer { listener.stop() }
+        let client = BridgeClient(port: listener.port, timeoutSeconds: 0.5)
+        let start = Date()
+        do {
+            _ = try await client.status()
+            XCTFail("応答しないリスナ相手にタイムアウトするはず")
+        } catch {
+            let elapsed = Date().timeIntervalSince(start)
+            guard case DriverError.bridgeUnreachable = error else {
+                return XCTFail("タイムアウトは bridgeUnreachable のはず: \(error)")
+            }
+            XCTAssertLessThan(elapsed, 2.5, "timeoutSeconds(0.5s)でクランプされるべき。実測 \(elapsed)s")
+        }
+    }
+
     func testSessionEndpointUsesSessionBudget() async throws {
         let listener = try UnresponsiveTCPListener()
         defer { listener.stop() }

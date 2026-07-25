@@ -28,10 +28,15 @@ public final class BridgeClient: AppDriver {
     }
 
     /// timeoutSeconds: 既定 120 秒(launch や snapshot は数秒かかることがある)。
-    /// ポート範囲のスキャン(生存確認)には短い値を渡す
+    /// ポート範囲のスキャン(生存確認)には短い値を渡す。
+    /// per-endpoint 既定(interaction/session)は URLRequest.timeoutInterval として config 側を
+    /// 上書きするため、timeoutSeconds でクランプしないと短い指定が無効化される(実害:
+    /// scanBridgeStatuses の 1s が status() の 45s に化け、suspend ゾンビ存在時に
+    /// monitor/list-devices のスキャンが毎回 45s 待った。2026-07-25)
     public convenience init(port: UInt16 = BridgeAPI.defaultPort, timeoutSeconds: TimeInterval = 120) {
         self.init(port: port, timeoutSeconds: timeoutSeconds,
-                  interactionTimeout: Timeout.interaction, sessionTimeout: Timeout.session)
+                  interactionTimeout: min(Timeout.interaction, timeoutSeconds),
+                  sessionTimeout: min(Timeout.session, timeoutSeconds))
     }
 
     /// テスト専用 seam: interaction/session の予算を短縮注入する(未応答ブリッジのタイムアウト
