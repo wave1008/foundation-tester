@@ -7,9 +7,16 @@
 // README.md の既知事象)の有力仮説が「SCA 劣化の過程で画像添付だけが先に壊れる」であり、
 // vision だけ先に死ぬ観測が取れれば2つの事象が同じ根で繋がる。
 //
+// 3本目の permissive プローブ(2026-07-26 追加): guardrails を .permissiveContentTransformations に
+// した text 呼び出し。「安全性モデル instruct_300m.safety のロード失敗が根因なら、ガードレールを
+// 緩めれば呼び出し自体をスキップして生き残る」という仮説の検証材料。**default が死んでいる間に
+// permissive だけ生きる観測(tvP)が取れて初めて仮説が立つ** — 両方同時に死ぬ(tvp)なら
+// ガードレール緩和は回避策にならない(= 根因はもっと手前)。健全時(TVP)は何も言えない。
+//
 // ビルド: xcrun swiftc -O Scripts/fm-flap-monitor.swift -o /tmp/fm-flap-monitor
 // 実行:   /tmp/fm-flap-monitor [間隔秒=60] >> ~/Library/Logs/ftester/fm-flap.ndjson
-//         1行 = 1プローブ結果(NDJSON)。state が変わった行には "transition": true が付き、
+//         1行 = 1プローブ結果(NDJSON)。state は3文字 T/t=text V/v=vision P/p=permissive の生死
+//         (2026-07-26 に permissive を追加。それ以前のログは2文字)。state が変わった行には "transition": true が付き、
 //         直近 120 秒の modelmanagerd / SensitiveContentAnalysis 関連の system log を
 //         ~/Library/Logs/ftester/fm-transition-<時刻>.log に保存する。
 
@@ -50,10 +57,31 @@ struct ProbeResult {
     let detail: String   // ok: 応答内容 / ng: エラー1行
 }
 
+/// permissive guardrails のモデル。生成は1回だけ(毎回作ると初期化コストが乗る)
+let permissiveModel = SystemLanguageModel(guardrails: .permissiveContentTransformations)
+
 // text プローブ: 画像を介さない最小呼び出し
 func probeText() async -> ProbeResult {
     let start = Date()
     let session = LanguageModelSession(instructions: "指示された単語をそのまま返してください。")
+    do {
+        let r = try await session.respond(
+            generating: EchoAnswer.self,
+            options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 30)
+        ) { "単語: りんご" }.content
+        return ProbeResult(ok: true, ms: Int(Date().timeIntervalSince(start) * 1000),
+                           detail: r.word)
+    } catch {
+        return ProbeResult(ok: false, ms: Int(Date().timeIntervalSince(start) * 1000),
+                           detail: String("\(error)".prefix(300)))
+    }
+}
+
+// permissive プローブ: text と同じ呼び出しをガードレール緩和で行う(差分は guardrails だけ)
+func probeTextPermissive() async -> ProbeResult {
+    let start = Date()
+    let session = LanguageModelSession(model: permissiveModel,
+                                       instructions: "指示された単語をそのまま返してください。")
     do {
         let r = try await session.respond(
             generating: EchoAnswer.self,
@@ -134,11 +162,14 @@ setvbuf(stdout, nil, _IONBF, 0)
 while true {
     let text = await probeText()
     let vision = await probeVision(image: redImage)
-    let state = "\(text.ok ? "T" : "t")\(vision.ok ? "V" : "v")"   // 例 TV=両方生存, Tv=vision だけ死
+    let permissive = await probeTextPermissive()
+    // 例 TVP=全部生存 / tvP=default だけ死んで permissive は生存(= ガードレール緩和が回避策になる証拠)
+    let state = "\(text.ok ? "T" : "t")\(vision.ok ? "V" : "v")\(permissive.ok ? "P" : "p")"
     let transition = lastState != nil && state != lastState
     let line = "{\"at\":\"\(nowISO())\",\"state\":\"\(state)\""
         + ",\"text\":{\"ok\":\(text.ok),\"ms\":\(text.ms),\"detail\":\"\(jsonEscape(text.detail))\"}"
         + ",\"vision\":{\"ok\":\(vision.ok),\"ms\":\(vision.ms),\"detail\":\"\(jsonEscape(vision.detail))\"}"
+        + ",\"permissive\":{\"ok\":\(permissive.ok),\"ms\":\(permissive.ms),\"detail\":\"\(jsonEscape(permissive.detail))\"}"
         + (transition ? ",\"transition\":true,\"from\":\"\(lastState!)\"" : "")
         + "}"
     print(line)
