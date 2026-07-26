@@ -11,6 +11,7 @@
 
 - 使い方(クローン→ビルド→自分のアプリを登録→実行。受け手向け): docs/getting-started.md
 - リリース(git タグ発行と版ピンの関係。配布はソースビルド前提): docs/releasing.md(`Scripts/release.sh`)
+- 移行(既存シナリオの書き換えが要る破壊的変更だけ。更新のたびに追記する): docs/migration.md
 - 設計書(アーキテクチャ・Swift DSL 仕様・セレクタ記法・プロファイル): docs/design.md
 - 性能チューニング(調整ノブ・不採用施策と再検討条件・計測手順): docs/performance-tuning.md
 - 検証の詳細(flake/性能の判定規律・ベータ整合・全滅時の切り分け・e2e.sh のオプション): docs/verification.md

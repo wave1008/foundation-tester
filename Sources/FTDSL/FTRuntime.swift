@@ -34,6 +34,9 @@ public struct SceneRecordData: Sendable {
     public var failureScreenshot: Data?
     /// 失敗時証跡スクショが白フレーム(画面凍結)でエビデンス無効。ScenarioReportWriter が警告表示する。
     public var evidenceBlank: Bool = false
+    /// 失敗時点の要素一覧(SnapshotRenderer の1要素1行テキスト)。スクリーンショットからは
+    /// `#id` を読み取れないため、直すための情報はこちらが本体(レポートに折りたたみで載せる)
+    public var failureElements: String?
 
     public var passed: Bool {
         steps.allSatisfy {
@@ -130,6 +133,15 @@ public final class FTDriveCore {
     var scenarioAborted = false
     var abortScenarioOnSceneFailure = false
     var stepCounter = 0
+    /// シナリオ中に **1 度でも解決できた** `#id`。否定アサーション(notExist / countIs 0 /
+    /// ifCanSelect)だけで使われ、かつ最後まで一度も解決できなかった id は typo の可能性が高い
+    /// (構文検証では捕まらない。「そんな id は無い」= 否定は常に成功するため)
+    var resolvedIDs: Set<String> = []
+    /// 否定側でしか使われていない `#id` → 最初に見た説明(警告メッセージ用)
+    var negativeOnlyIDs: [String: String] = [:]
+    /// ifCanSelect のセレクタ → 一度でも成立したか。**一度も成立しなかったものだけ**警告する
+    /// (交互に出るダイアログのように「出ないこともある」のが正しい用途があるため)
+    var branchOutcomes: [String: Bool] = [:]
 
     /// true = デバイスに触れず全コマンドを記録のみで通過させる(ステップ列挙・コード生成の検証用)
     let dryRun: Bool
@@ -349,10 +361,67 @@ public final class FTDriveCore {
             }
         }
 
+        trackIDResolution(step: step, status: status, description: description)
+
         if case .failed(let reason) = status {
             handleFailure(stepDescription: description, reason: reason)
         }
         return status
+    }
+
+    /// `#id` が「解決できた」のか「否定側でしか使われていない」のかを覚える。
+    /// notExist / countIs 0 は要素が**無い**ことで成功するので、解決の証拠にはならない
+    private func trackIDResolution(step: FlowStep, status: StepResult.Status, description: String) {
+        // スコープ付き(`#容器 >> #id`)の否定は「容器の外にあること」の検証であり、
+        // id が実在しても解決しない。typo 検出の対象から外す(誤検知になるため)
+        let locators = ([step.locator] + (step.fallbacks ?? [])).compactMap { $0 }
+        let ids = locators.filter { $0.scope?.isEmpty ?? true }.compactMap { $0.id }
+        guard !ids.isEmpty else { return }
+        let isNegative = step.assert == "notExists"
+            || (step.assert == "count" && step.expectedCount == 0)
+        let succeeded: Bool
+        switch status {
+        case .passed, .passedViaFallback, .healed: succeeded = true
+        case .failed, .skipped: succeeded = false
+        }
+        for id in ids {
+            if succeeded, !isNegative {
+                resolvedIDs.insert(id)
+                negativeOnlyIDs[id] = nil
+            } else if isNegative, negativeOnlyIDs[id] == nil, !resolvedIDs.contains(id) {
+                negativeOnlyIDs[id] = description
+            }
+        }
+    }
+
+    /// dry-run 判定(repeatWhileCanSelect が空回りしないよう1周で切るために参照する)
+    public var isDryRun: Bool { dryRun }
+
+    /// ifCanSelect の成否を記録する(Commands.swift から呼ぶ)。同じセレクタが
+    /// 一度でも成立していれば警告しない = 「出ることも出ないこともある」正しい用途を潰さない
+    func noteBranchOutcome(selector: String, met: Bool) {
+        branchOutcomes[selector] = (branchOutcomes[selector] ?? false) || met
+    }
+
+    /// 否定側でしか現れず、一度も解決できなかった `#id` を弱い提案として残す。
+    /// シナリオ終了時に1回だけ呼ぶ(ftRunTearDown 後)
+    public func warnAboutNeverResolvedIDs() {
+        for (id, description) in negativeOnlyIDs.sorted(by: { $0.key < $1.key })
+        where !resolvedIDs.contains(id) {
+            addSuggestion(FixSuggestion(
+                isStrong: false,
+                message: "`#\(id)` はこのシナリオ中で一度も解決できませんでした"
+                    + "(\(description))。否定アサーションは id の綴り誤りでも成功するため、"
+                    + "実在する id か確認してください"),
+                emitEvent: false, file: "", line: 0)
+        }
+        for (selector, met) in branchOutcomes.sorted(by: { $0.key < $1.key }) where !met {
+            addSuggestion(FixSuggestion(
+                isStrong: false,
+                message: "ifCanSelect \"\(selector)\" はこのシナリオ中で一度も成立しませんでした"
+                    + "(セレクタが古い可能性があります。不成立は失敗にならないため気付けません)"),
+                emitEvent: false, file: "", line: 0)
+        }
     }
 
     private func addSuggestion(_ suggestion: FixSuggestion, emitEvent: Bool,
@@ -539,8 +608,9 @@ public final class FTDriveCore {
         // 白フレーム=画面凍結の推定を行うか。エミュレータ固有の病理(GPU 合成バッファ固着)なので
         // Android **かつ**実機でない場合だけ。実機は「画面が消灯しているだけ」を凍結と誤断する
         let inferFrozenFromBlankFrame = platform == "android" && !physical
-        let context = FTSync.run { () async -> (Data?, TriageInfo?, Bool) in
+        let context = FTSync.run { () async -> (Data?, TriageInfo?, Bool, String?) in
             let snapshot = try? await driver.snapshot()
+            let elementsText = snapshot.map { SnapshotRenderer.render($0) }
             var screenshot = try? await driver.screenshot()
             var evidenceBlank = false
             if inferFrozenFromBlankFrame, let shot = screenshot,
@@ -561,12 +631,13 @@ public final class FTDriveCore {
                                                 failureReason: reason,
                                                 snapshot: snapshot,
                                                 screenshotPNG: screenshot)
-            return (screenshot, triage, evidenceBlank)
+            return (screenshot, triage, evidenceBlank, elementsText)
         }
-        if let (screenshot, triage, evidenceBlank) = context, !record.scenes.isEmpty {
+        if let (screenshot, triage, evidenceBlank, elementsText) = context, !record.scenes.isEmpty {
             record.scenes[record.scenes.count - 1].failureScreenshot = screenshot
             record.scenes[record.scenes.count - 1].triage = triage
             record.scenes[record.scenes.count - 1].evidenceBlank = evidenceBlank
+            record.scenes[record.scenes.count - 1].failureElements = elementsText
             if evidenceBlank { markDeviceFrozen() }
         }
     }

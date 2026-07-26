@@ -426,7 +426,11 @@ public final class StepExecutor {
             healedStep = healed
             status = .healed(primary)
         } else {
-            return StepOutcome(status: .failed("ロケータを解決できません: \(step.locatorSummary)"))
+            // 惜しい候補を添える。これが無いと直すために snapshot を取り直す往復が必要になる
+            // (レポート側の全要素一覧は ScenarioReportWriter が別途出す)
+            let hint = Self.candidateHint(for: step, in: snapshot)
+            return StepOutcome(status: .failed(
+                "ロケータを解決できません: \(step.locatorSummary)" + (hint.map { "。\($0)" } ?? "")))
         }
 
         switch action {
@@ -652,7 +656,7 @@ public final class StepExecutor {
             if let lastOcclusion { return lastOcclusion }
             return .failed("要素が見つかりません: \(step.locatorSummary)(timeout \(step.timeout ?? 5)s)")
 
-        case "valueEquals", "textEquals":
+        case "valueEquals", "textEquals", "textContains", "textMatches":
             guard let expected = step.expected else {
                 return .skipped("expected が未指定")
             }
@@ -682,9 +686,12 @@ public final class StepExecutor {
                 }
                 if let (element, fallback) = candidate {
                     found = true
-                    let actual = assert == "textEquals" ? element.label : element.value
+                    let actual = assert == "valueEquals" ? element.value : element.label
                     lastActual = actual
-                    if actual == expected {
+                    // 一致したテキスト。occlusion-guard には**実際に一致した文字列**を渡す
+                    // (textMatches の期待値は正規表現で、そのまま画面と照合しても意味がないため)
+                    let matched = Self.matchedText(actual, expected: expected, assert: assert)
+                    if let expectedForGuard = matched {
                         // ロケータを label 指定していて実 label と不一致=部分一致で掴んだ疑い
                         let loose = step.locator?.label != nil && element.label != step.locator?.label
                         // フォールバックドライバ(システムUI/springboard)由来の要素は primary の座標系・
@@ -694,7 +701,7 @@ public final class StepExecutor {
                             return .passed
                         }
                         if let flip = try await occlusionFlip(
-                            element: element, expectedText: expected,
+                            element: element, expectedText: expectedForGuard,
                             elements: snapshot.elements, screen: snapshot.screen,
                             looseMatch: loose, perStepGuard: step.occlusionGuard,
                             expectedIsUserText: true, phase: &phase) {
@@ -716,9 +723,15 @@ public final class StepExecutor {
                 cachedScreenshot = nil   // 待機中に画面が変わり得る → 次周回は取り直す
             }
             if let lastOcclusion { return lastOcclusion }   // 覆われ続けた
-            let subject = assert == "textEquals" ? "テキスト" : "値"
+            let subject = assert == "valueEquals" ? "値" : "テキスト"
+            let relation: String
+            switch assert {
+            case "textContains": relation = "を含みません"
+            case "textMatches": relation = "に一致しません(正規表現)"
+            default: relation = "が一致しません"
+            }
             return found
-                ? .failed("\(subject)が一致しません: 期待 \"\(expected)\"、実際 \"\(lastActual ?? "nil")\"")
+                ? .failed("\(subject)\(relation): 期待 \"\(expected)\"、実際 \"\(lastActual ?? "nil")\"")
                 : .failed("要素が見つかりません: \(step.locatorSummary)")
 
         case "notExists":
@@ -970,6 +983,63 @@ public final class StepExecutor {
         }
         if locator.type != nil { return (pool, .exact) }
         return nil
+    }
+
+    /// アサート種別ごとの一致判定。戻り値は「画面上で実際に一致した文字列」(occlusion-guard 用)、
+    /// 不一致なら nil。textMatches は**部分一致の正規表現**(^...$ を書けば全体一致になる)
+    static func matchedText(_ actual: String?, expected: String, assert: String) -> String? {
+        guard let actual else { return nil }
+        switch assert {
+        case "textContains":
+            return actual.contains(expected) ? expected : nil
+        case "textMatches":
+            guard let range = actual.range(of: expected, options: .regularExpression) else {
+                return nil
+            }
+            return String(actual[range])
+        default:
+            return actual == expected ? expected : nil
+        }
+    }
+
+    /// 解決できなかったロケータに「惜しい候補」を最大3件添える(失敗メッセージ用)。
+    /// 優先度: id の部分一致 → ラベルの部分一致 → 同じ型。1件も無ければ nil(黙って何も足さない)
+    static func candidateHint(for step: FlowStep, in snapshot: SnapshotResponse) -> String? {
+        guard let locator = step.locator else { return nil }
+        let elements = snapshot.elements
+        var picked: [ElementInfo] = []
+
+        func add(_ candidates: [ElementInfo]) {
+            for candidate in candidates where !picked.contains(where: { $0.ref == candidate.ref }) {
+                picked.append(candidate)
+                if picked.count >= 3 { return }
+            }
+        }
+        if let id = locator.id?.lowercased(), !id.isEmpty {
+            add(elements.filter {
+                guard let other = $0.identifier?.lowercased() else { return false }
+                return other.contains(id) || id.contains(other)
+            })
+        }
+        if let label = locator.label?.lowercased(), !label.isEmpty, picked.count < 3 {
+            add(elements.filter {
+                guard let other = $0.label?.lowercased() else { return false }
+                return other.contains(label) || label.contains(other)
+            })
+        }
+        if let type = locator.type, picked.count < 3 {
+            add(elements.filter { $0.type == type })
+        }
+        guard !picked.isEmpty else { return nil }
+        let summaries = picked.prefix(3).map { element -> String in
+            var parts = [element.type]
+            if let id = element.identifier, !id.isEmpty { parts.append("#\(id)") }
+            if let label = element.label, !label.isEmpty {
+                parts.append("\"\(SnapshotRenderer.truncate(label, 24))\"")
+            }
+            return parts.joined(separator: " ")
+        }
+        return "近い候補: \(summaries.joined(separator: " / "))"
     }
 
     /// 要素の子孫(スナップショットは pre-order + 元ツリーの depth を保つため、

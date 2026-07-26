@@ -320,6 +320,10 @@ struct RunScenario: AsyncParsableCommand {
         }
         FTRuntime.tearDown()
 
+        // 「否定側でしか使われず一度も解決できなかった #id」「最後まで不成立の ifCanSelect」を
+        // 修正提案として残す(どちらも緑のまま腐る経路。docs/design.md §10)
+        core.warnAboutNeverResolvedIDs()
+
         let record = core.finalRecord
         let reportURL = try? ScenarioReportWriter.write(
             record: record, to: URL(fileURLWithPath: reportDir))

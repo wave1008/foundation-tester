@@ -96,6 +96,42 @@ final class AssertKindsTests: XCTestCase {
         XCTAssertEqual(failureReason(outcome.status)?.contains("システム UI"), true)
     }
 
+    // MARK: - textContains / textMatches
+
+    func testTextContainsAndMatches() async {
+        let frames = [[node(1, type: "staticText", id: "total", label: "合計 1,200円")]]
+        func run(_ assert: String, _ expected: String) async -> Bool {
+            let step = FlowStep(assert: assert, locator: FlowLocator(id: "total"),
+                                expected: expected, timeout: 0, occlusionGuard: false)
+            let outcome = await StepExecutor(driver: ScriptedDriver(frames: frames)).execute(step)
+            return isPassed(outcome.status)
+        }
+        let containsHit = await run("textContains", "1,200")
+        XCTAssertTrue(containsHit)
+        let containsMiss = await run("textContains", "1,300")
+        XCTAssertFalse(containsMiss)
+        // 部分一致の正規表現(全体一致にしたいときは ^...$ を書く契約)
+        let regexHit = await run("textMatches", "合計 [0-9,]+円")
+        XCTAssertTrue(regexHit)
+        let anchoredHit = await run("textMatches", "^合計")
+        XCTAssertTrue(anchoredHit)
+        let anchoredMiss = await run("textMatches", "^1,200")
+        XCTAssertFalse(anchoredMiss)
+    }
+
+    /// 惜しい候補を失敗メッセージに添える(直すための往復を1回減らす)
+    func testUnresolvedLocatorSuggestsNearbyCandidates() async {
+        let frames = [[node(1, type: "button", id: "btn_submit", label: "送信")]]
+        let step = FlowStep(action: "tap", locator: FlowLocator(id: "btn_submitt"), timeout: 0)
+        let outcome = await StepExecutor(driver: ScriptedDriver(frames: frames)).execute(step)
+        if case .failed(let reason) = outcome.status {
+            XCTAssertTrue(reason.contains("近い候補"), reason)
+            XCTAssertTrue(reason.contains("btn_submit"), reason)
+        } else {
+            XCTFail("失敗するはず")
+        }
+    }
+
     // MARK: - checked / notChecked
 
     /// ブリッジは checked を **true のときだけ送る**(省略 = オフ or 状態を持たない要素)。

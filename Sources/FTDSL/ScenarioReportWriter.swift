@@ -51,6 +51,12 @@ public enum ScenarioReportWriter {
                 md += "- 修正案: \(triage.suggestedFix)\n"
             }
 
+            if let elements = scene.failureElements, !elements.isEmpty {
+                // 直すための一次情報。スクショより先に置く(モデルは PNG から #id を読めない)
+                md += "\n<details><summary>失敗時点の要素一覧</summary>\n\n```\n"
+                md += elements
+                md += "\n```\n</details>\n"
+            }
             if let screenshot = scene.failureScreenshot {
                 let imageName = "\(baseName)-scene\(scene.number).png"
                 screenshots.append((imageName, screenshot))

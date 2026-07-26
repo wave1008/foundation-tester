@@ -173,9 +173,10 @@ testbase(SC/TC 等の仕様書)を根拠にシナリオを書く場合、実行�
 |---|---|
 | タップ/入力 | `tap(sel, optional:, timeout:)` / `type(text)`(直前フォーカス)/ `type(sel, text)` / `press(sel, duration:)`(長押し) |
 | スワイプ/スクロール | `swipe(.up/.down/.left/.right)` / `scrollTo(sel, direction:, maxSwipes:)` |
-| 検証 | `exist(sel)` / `notExist(sel)` / `textIs(sel, 期待)` / `valueIs(sel, 期待)` / `isEnabled(sel)` / `isDisabled(sel)` / `isChecked(sel)` / `isNotChecked(sel)` / `countIs(sel, 個数)` / `screenIs(名)`。exist は `.textIs()/.valueIs()` チェーン可 |
+| 検証 | `exist(sel)` / `notExist(sel)` / `textIs(sel, 期待)` / `textContains(sel, 部分文字列)` / `textMatches(sel, 正規表現)` / `valueIs(sel, 期待)` / `isEnabled(sel)` / `isDisabled(sel)` / `isChecked(sel)` / `isNotChecked(sel)` / `countIs(sel, 個数)` / `screenIs(名)`。exist は `.textIs()/.valueIs()` チェーン可 |
 | アプリ制御 | `launchApp(bundleID?)` / `relaunchApp()` / `terminateApp()` / `home()` / `appSwitcher()` |
 | 待機/分岐 | `wait(秒)` / `ifCanSelect(sel, waitSeconds:) { … }.ifElse { … }` / `ios { }` / `android { }` / `procedure("名") { try await … }` |
+| 反復 | `repeatWhileCanSelect(sel, max: n) { … }`(解決できる限り繰り返す。上限到達は失敗にしない) |
 | まとまり | `group("ログイン") { … }`(記録に `[ログイン]` を前置するだけ。実行・失敗の扱いは素の列と同じ) |
 | 前後処理 | テストクラスに `func setUp()` / `func tearDown()`(引数なし)を書くと各 `@Test` の前後で自動実行 |
 
@@ -233,8 +234,8 @@ testbase(SC/TC 等の仕様書)を根拠にシナリオを書く場合、実行�
   - **`.型[n]` は画面状態で指す要素が変わる**(一覧では削除ボタン、空表示では別ボタン/タブ 等)。
     容器の id があるなら `#容器 >> .型[n]` でスコープを付けると画面クロムやスクロール位置の影響を切れる。
     破壊的・index 指定の tap は、**意図した状態のみ出るマーカーで `ifCanSelect` ガード**してから撃つ。
-  - **件数不定の一括操作は DSL にループが無い**ので、この**ガード付き反復を上限回数ぶん並べて**表現する
-    (空になればガードが空振りして残りは無害。上限は想定最大件数に合わせる)。
+  - **件数不定の一括操作は `repeatWhileCanSelect(sel, max: n) { … }`** を使う(セレクタが解決
+    できる限り繰り返す。上限到達は失敗にしない)。上限は想定最大件数に合わせる。
 - **`exist`/`textIs`/`valueIs` は非スクロール**(現在画面のみ)。折り返し下の項目は先に
   `scrollTo(sel, maxSwipes:)` で送ってから確認する。
 - **`wait` が要るのはアニメーション整定だけ**。要素は在るのにタップ座標がアニメ中でずれる場合
