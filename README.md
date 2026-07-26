@@ -140,6 +140,7 @@ swift run ftester run --profile ios           # 実行プロファイル(ブリ�
 | `project create / list / sync` | テストプロジェクトの作成・一覧・Package.swift 再整合 |
 | `devices up / down` | 実行プロファイルのデバイスを一括起動・停止(ブリッジ供給込み) |
 | `results list / summary / flaky / trend / devices / slow / insights` | 実行結果の集約・分析(reports/ を横断) |
+| `draft-scenario` | テストベース(`docs/testbases/*.md`)からシナリオの下書きを生成(`--testbase`、`--app`、`--platform`、`--no-fm` で FM 不使用、`--dry-run`) |
 | `init` | 外部パッケージ構成の scaffold(受け手ディレクトリを ftester テストパッケージ化。curl 入口の `/ftester-setup` 既定経路) |
 | `profile list` | 実行プロファイルの一覧と現在マシンでの解決チェック |
 | `machine set / show` | このマシンの名前(マシンプロファイルの選択キー)の登録・確認 |
@@ -293,11 +294,20 @@ class ログインテスト {
 | `ログイン` | ラベル(完全一致 → 部分一致) |
 | `.Button` / `.Button[2]` | 型+順番(**1 オリジン**。`.Button[2]` = 2番目の Button。1番目は `[1]` を省略して `.Button` と書く。`[1]` と明記しても可) |
 | `.Switch#ID` / `.Switch=ラベル` | 型と id/label の併用(値検証などで型を絞る) |
-| `=#で始まる生ラベル` | `=` エスケープで label 扱い |
+| `#list >> .Cell[2]` | **スコープ**(祖先 >> 子孫)。序数はスコープ内で数えるので画面クロムやスクロール位置でずれない |
+| `.Button:near(合計)` | **近接アンカー**。候補のうちアンカーに最も近いものを選ぶ(同一ラベルの選び分け) |
+| `=#で始まる生ラベル` | `=` エスケープで label 扱い(`>>` や `:near(` を含むラベルもこれで書く) |
 
-**コマンド**: `tap` `type` `press` `swipe` `scrollTo` / `exist` `textIs` `valueIs`
-`screenIs`(FM 視覚検証)/ `launchApp` `relaunchApp` `terminateApp` `wait` /
-分岐 `ifCanSelect { }.ifElse { }`・`ios { }`・`android { }` / 任意コード `procedure("...") { try await ... }`
+**コマンド**: `tap` `type` `press` `swipe` `scrollTo` / `exist` `notExist` `textIs` `valueIs`
+`isEnabled` `isDisabled` `countIs` / `screenIs`(FM 視覚検証)/
+`launchApp` `relaunchApp` `terminateApp` `wait` /
+分岐 `ifCanSelect { }.ifElse { }`・`ios { }`・`android { }` / 任意コード `procedure("...") { try await ... }` /
+まとまり `group("ログイン") { ... }`
+
+- `notExist` は**消えるまで待つ**(初回で不在なら即成功)。ダイアログ・ローディングが閉じたことの確認に使う
+- `countIs("#list >> .Cell", 3)` はリスト件数の検証。タイムアウトまで個数の変化を待つ
+- テストクラスに `func setUp()` / `func tearDown()` を書くと各 `@Test` の前後で自動実行される。
+  **tearDown は失敗後でも実行される**(片付けが飛ぶと後続シナリオを汚すため)
 
 **イレギュラー処理・データセットアップはコードでそのまま書ける**のが YAML 時代との最大の違い:
 
