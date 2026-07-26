@@ -49,6 +49,14 @@ public enum StepDescription {
         case "isDisabled":
             guard let selector = unquote(rest) else { return nil }
             return "\"\(objectPhrase(ofSelector: selectorOverride ?? selector))\"が操作不可であること"
+        case "textContains":
+            guard let (selector, expected) = unquotePair(rest, separator: "\" ~ \"") else { return nil }
+            return "\"\(objectPhrase(ofSelector: selectorOverride ?? selector))\"が"
+                + "\"\(expected)\"を含むこと"
+        case "textMatches":
+            guard let (selector, pattern) = unquotePair(rest, separator: "\" ~ \"") else { return nil }
+            return "\"\(objectPhrase(ofSelector: selectorOverride ?? selector))\"が"
+                + "正規表現 \"\(pattern)\" に一致すること"
         case "isChecked":
             guard let selector = unquote(rest) else { return nil }
             return "\"\(objectPhrase(ofSelector: selectorOverride ?? selector))\"がオンであること"
@@ -127,6 +135,10 @@ public enum StepDescription {
                 return "\"\(objectPhrase(ofStep: step))\"が操作可能であること"
             case "disabled":
                 return "\"\(objectPhrase(ofStep: step))\"が操作不可であること"
+            case "textContains":
+                return "\"\(objectPhrase(ofStep: step))\"が\"\(step.expected ?? "")\"を含むこと"
+            case "textMatches":
+                return "\"\(objectPhrase(ofStep: step))\"が正規表現 \"\(step.expected ?? "")\" に一致すること"
             case "checked":
                 return "\"\(objectPhrase(ofStep: step))\"がオンであること"
             case "notChecked":

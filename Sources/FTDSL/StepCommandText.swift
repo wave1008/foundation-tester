@@ -105,6 +105,14 @@ public enum StepCommandText {
             }
             return Parsed(verb: verb, strings: [selector, expected],
                           optionalFlag: false, word: nil)
+        case "textContains", "textMatches":
+            // 説明文の区切りは `\" ~ \"`(textIs の `==` と区別する。Commands.swift と同期)
+            guard !optionalFlag,
+                  let (selector, expected) = unquotePair(rest, separator: "\" ~ \"") else {
+                return nil
+            }
+            return Parsed(verb: verb, strings: [selector, expected],
+                          optionalFlag: false, word: nil)
         case "swipe":
             guard !optionalFlag, ["up", "down", "left", "right"].contains(rest) else {
                 return nil
@@ -177,6 +185,7 @@ public enum StepCommandText {
     internal static let renewableFuncs: Set<String> = [
         "tap", "type", "press", "swipe", "scrollTo", "exist", "notExist", "isEnabled",
         "isDisabled", "isChecked", "isNotChecked", "countIs", "textIs", "valueIs",
+        "textContains", "textMatches",
         "screenIs", "launchApp", "relaunchApp", "terminateApp", "wait",
     ]
 
@@ -197,7 +206,7 @@ public enum StepCommandText {
         case "type" where parsed.strings.count == 1:
             // ロケータなしの type("text")
             return "type(\(literal(parsed.strings[0]))\(optionalArg))"
-        case "type", "textIs", "valueIs":
+        case "type", "textIs", "valueIs", "textContains", "textMatches":
             return "\(parsed.verb)(\(literal(parsed.strings[0])), "
                 + "\(literal(parsed.strings[1]))\(optionalArg))"
         case "swipe":

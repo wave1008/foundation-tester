@@ -184,6 +184,37 @@ public func valueIs(_ selector: String, _ expected: String, timeout: Int? = nil,
                  selectorText: selector, file: file, line: line)
 }
 
+/// テキストの**部分一致**検証(動的な数値・日時を含む表示に使う)。
+/// 完全一致は textIs。可視性の確認は「一致した部分文字列」で行う
+public func textContains(_ selector: String, _ expected: String, timeout: Int? = nil,
+                         requireVisible: Bool = true,
+                         file: StaticString = #filePath, line: UInt = #line) {
+    textAssert("textContains", verb: "textContains", selector: selector, expected: expected,
+               timeout: timeout, requireVisible: requireVisible, file: file, line: line)
+}
+
+/// テキストの**正規表現一致**検証(部分一致。全体一致にしたいときは `^...$` を書く)。
+/// 可視性の確認は「実際に一致した部分文字列」で行う(パターン文字列は画面に出ないため)
+public func textMatches(_ selector: String, _ pattern: String, timeout: Int? = nil,
+                        requireVisible: Bool = true,
+                        file: StaticString = #filePath, line: UInt = #line) {
+    textAssert("textMatches", verb: "textMatches", selector: selector, expected: pattern,
+               timeout: timeout, requireVisible: requireVisible, file: file, line: line)
+}
+
+private func textAssert(_ assert: String, verb: String, selector: String, expected: String,
+                        timeout: Int?, requireVisible: Bool,
+                        file: StaticString, line: UInt) {
+    let core = FTRuntime.requireCore(command: verb)
+    let parsed = FTSelector.parse(selector)
+    let step = FlowStep(assert: assert, locator: parsed.primary,
+                        fallbacks: parsed.fallbacks.isEmpty ? nil : parsed.fallbacks,
+                        expected: expected, timeout: timeout ?? core.defaultTimeout,
+                        occlusionGuard: requireVisible)
+    core.perform(step: step, description: "\(verb) \"\(selector)\" ~ \"\(expected)\"",
+                 selectorText: selector, file: file, line: line)
+}
+
 /// 不在検証。**消えるまで待つ**(初回で不在なら即成功、在ればタイムアウトまで消滅を待つ)。
 /// exist の裏返しであり、ダイアログ・ローディング・トーストが閉じたことの確認に使う。
 /// 可視性(occlusion)は見ない — ツリーから消えたことが判定基準。
@@ -366,8 +397,13 @@ public func ifCanSelect(_ selector: String, waitSeconds: Int = 0,
         return FTBranch(taken: false)
     }
     let found = core.canSelect(FTSelector.parse(selector), waitSeconds: waitSeconds)
-    core.recordStep(description: "ifCanSelect \"\(selector)\" → \(found ? "実行" : "不成立")",
-                    status: .passed, file: "\(file)", line: Int(line))
+    // 不成立は **skipped** で記録する(passed にすると「セレクタが腐って毎回飛んでいる」状態が
+    // 緑のまま見えなくなる)。run 終了時のサマリにも不成立を残す
+    let description = "ifCanSelect \"\(selector)\" → \(found ? "実行" : "不成立")"
+    core.recordStep(description: description,
+                    status: found ? .passed : .skipped("条件不成立"),
+                    file: "\(file)", line: Int(line))
+    core.noteBranchOutcome(selector: selector, met: found)
     if found { body() }
     return FTBranch(taken: found)
 }
@@ -389,6 +425,36 @@ public func ios(_ body: () -> Void) {
 /// プラットフォームが Android のときのみブロックを実行する
 public func android(_ body: () -> Void) {
     if FTRuntime.requireCore(command: "android").platform == "android" { body() }
+}
+
+/// セレクタが解決できる限り本体を繰り返す(件数不定の一括操作用。上限 max 回)。
+/// DSL にループが無いため、従来は「ガード付き反復を上限回数ぶん並べる」必要があった。
+/// **各周回のステップ説明には `[名前 #n]` が前置される**(group と同じ記録規約)。
+/// 上限に達しても失敗にはしない(消化しきれなかったことは記録に残る)。
+/// 本体が要素を減らさないと上限まで空回りするので、max は想定最大件数に合わせる
+public func repeatWhileCanSelect(_ selector: String, max: Int = 10, waitSeconds: Int = 0,
+                                 title: String? = nil,
+                                 file: StaticString = #filePath, line: UInt = #line,
+                                 _ body: () -> Void) {
+    let core = FTRuntime.requireCore(command: "repeatWhileCanSelect")
+    if let error = FTSelector.validationError(selector) {
+        let reason = "セレクタの構文が不正です: \(error)"
+        core.recordStep(description: "repeatWhileCanSelect \"\(selector)\"",
+                        status: .failed(reason), file: "\(file)", line: Int(line))
+        core.handleFailure(stepDescription: "repeatWhileCanSelect \"\(selector)\"", reason: reason)
+        return
+    }
+    let label = title ?? "repeat \"\(selector)\""
+    var iterations = 0
+    let parsed = FTSelector.parse(selector)
+    while iterations < max, core.canSelect(parsed, waitSeconds: waitSeconds) {
+        iterations += 1
+        core.runGroup("\(label) #\(iterations)", body)
+        // dry-run は canSelect が常に true を返すため、1 周だけ回してステップ列挙に留める
+        if core.isDryRun { break }
+    }
+    core.recordStep(description: "repeatWhileCanSelect \"\(selector)\" → \(iterations) 回",
+                    status: .passed, file: "\(file)", line: Int(line))
 }
 
 // MARK: - 共通ステップ・ライフサイクル

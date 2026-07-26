@@ -302,7 +302,7 @@ class ログインテスト {
 (黙ってラベル扱いにしない。誤記が `notExist` を素通りして緑になるのを防ぐため)。
 
 **コマンド**: `tap` `type` `press` `swipe` `scrollTo` / `exist` `notExist` `textIs` `valueIs`
-`isEnabled` `isDisabled` `isChecked` `isNotChecked` `countIs` / `screenIs`(FM 視覚検証)/
+`isEnabled` `isDisabled` `isChecked` `isNotChecked` `countIs` `textContains` `textMatches` / `screenIs`(FM 視覚検証)/
 `launchApp` `relaunchApp` `terminateApp` `wait` /
 分岐 `ifCanSelect { }.ifElse { }`・`ios { }`・`android { }` / 任意コード `procedure("...") { try await ... }` /
 まとまり `group("ログイン") { ... }`
