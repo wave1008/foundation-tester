@@ -87,6 +87,28 @@ public enum FMHealth {
         }
     }
 
+    /// NSError の入れ子(NSUnderlyingError / NSMultipleUnderlyingErrors)を辿って
+    /// `domain(code): 説明` の連鎖に畳む。**LanguageModelError は最上位が常に
+    /// `Code=-1 "The operation couldn't be completed."` で、真因は入れ子の中にしか無い**。
+    /// 素の description を切り詰めると真因ごと落ちるので、記録前にこれを通す
+    public static func describe(_ error: Error, limit: Int = 4) -> String {
+        var parts: [String] = []
+        var queue: [NSError] = [error as NSError]
+        var seen = 0
+        while !queue.isEmpty, seen < limit {
+            let next = queue.removeFirst()
+            seen += 1
+            let message = next.userInfo[NSLocalizedDescriptionKey] as? String
+                ?? next.localizedDescription
+            parts.append("\(next.domain)(\(next.code)): \(message)")
+            if let one = next.userInfo[NSUnderlyingErrorKey] as? NSError { queue.append(one) }
+            if let many = next.userInfo[NSMultipleUnderlyingErrorsKey] as? [NSError] {
+                queue.append(contentsOf: many)
+            }
+        }
+        return parts.joined(separator: " ← ")
+    }
+
     public static func snapshot() -> Snapshot {
         lock.lock()
         defer { lock.unlock() }

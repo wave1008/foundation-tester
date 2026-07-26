@@ -102,7 +102,7 @@ public final class FMReplayDelegate: ReplayDelegate {
                                 rationale: Self.sanitizeRationale(suggestion.rationale))
         } catch {
             FMHealth.record(kind: "heal", ms: OcclusionVerifier.elapsedMs(healStartedAt), ok: false,
-                            error: "heal: \(error)")
+                            error: "heal: \(FMHealth.describe(error))")
             return nil
         }
     }
@@ -147,7 +147,7 @@ public final class FMReplayDelegate: ReplayDelegate {
             return (verdict.pass, String(verdict.reason.prefix(200)))
         } catch {
             FMHealth.record(kind: "screenIs", ms: OcclusionVerifier.elapsedMs(screenStartedAt),
-                            ok: false, error: "screenIs: \(error)")
+                            ok: false, error: "screenIs: \(FMHealth.describe(error))")
             return nil
         }
     }
