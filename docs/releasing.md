@@ -1,8 +1,5 @@
 # リリース手順(git タグ発行)
 
-**破壊的変更(受け手のシナリオを直す必要があるもの)を含むリリースでは、先に
-docs/migration.md に「症状 → 置換」を追記する**(受け手はここだけ読めば直せる状態にする)。
-
 git タグ(semver)は**版ピン用**に使う(clone 時の `git checkout <tag>` や `ftester init --ftester-version`)。
 配布そのものは git clone + `swift build` / `npm run install-local`(docs/getting-started.md)であり、
 タグは必須ではないが、特定版に固定したい受け手のために発行する。

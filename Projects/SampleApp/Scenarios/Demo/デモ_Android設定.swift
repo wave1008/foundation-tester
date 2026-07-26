@@ -1,7 +1,7 @@
 // デモ_Android設定.swift
 // 4台並列デモ用(Android 設定アプリ)。
 // エミュ1(Pixel 9/Android 16)=日本語、エミュ2(Pixel 9/Android 15)=英語のため全セレクタは 日本語||英語 の連鎖。
-// サブ画面のタイトルは .Other#collapsing_toolbar のラベルで確認できる(全サブ画面共通)。
+// サブ画面のタイトルは .other#collapsing_toolbar のラベルで確認できる(全サブ画面共通)。
 // 画面単位ではなく関連画面をまとめた粒度で構成(1関数=複数画面)。Android は戻る DSL が無いため、
 // 画面を変えるたびに scene 先頭で launchApp() し設定トップへリセットする(設定は system アプリで起動は失敗しない)。
 
@@ -37,7 +37,7 @@ class デモ_Android設定 {
                 }.action {
                     tap("接続設定||Connected devices")
                 }.expectation {
-                    exist(".Other=接続設定||.Other=Connected devices")  // collapsing_toolbar のタイトル
+                    exist(".other&&接続設定||.other&&Connected devices")  // collapsing_toolbar のタイトル
                 }
             }
             scene(4, "接続設定一覧を上下にスクロールする") {
@@ -67,8 +67,8 @@ class デモ_Android設定 {
             scene(2, "ダークモードまでスクロールして ON→OFF に戻す") {
                 action {
                     scrollTo("ダークモード||Dark theme")
-                    tap(".Switch=ダークモード||.Switch#switchWidget")
-                    tap(".Switch=ダークモード||.Switch#switchWidget")
+                    tap(".switch&&ダークモード||.switch#switchWidget")
+                    tap(".switch&&ダークモード||.switch#switchWidget")
                 }.expectation {
                     exist("ダークモード||Dark theme")
                 }
@@ -79,7 +79,7 @@ class デモ_Android設定 {
                 }.action {
                     tap("通知||Notifications")
                 }.expectation {
-                    exist(".Other=通知||.Other=Notifications")  // collapsing_toolbar のタイトル
+                    exist(".other&&通知||.other&&Notifications")  // collapsing_toolbar のタイトル
                 }
             }
             scene(4, "通知一覧を上下にスクロールする") {
@@ -167,7 +167,7 @@ class デモ_Android設定 {
                 }.action {
                     tap("アプリ||Apps")
                 }.expectation {
-                    exist(".Other=アプリ||.Other=Apps")  // collapsing_toolbar のタイトル
+                    exist(".other&&アプリ||.other&&Apps")  // collapsing_toolbar のタイトル
                 }
             }
             scene(4, "設定トップへ戻して位置情報を開く") {
@@ -177,7 +177,7 @@ class デモ_Android設定 {
                     scrollTo("位置情報||Location", maxSwipes: 12)
                     tap("位置情報||Location")
                 }.expectation {
-                    exist(".Other=位置情報||.Other=Location")  // collapsing_toolbar のタイトル
+                    exist(".other&&位置情報||.other&&Location")  // collapsing_toolbar のタイトル
                 }
             }
             scene(5, "設定トップへ戻してユーザー補助を開く") {
@@ -187,7 +187,7 @@ class デモ_Android設定 {
                     scrollTo("ユーザー補助||Accessibility", maxSwipes: 12)
                     tap("ユーザー補助||Accessibility")
                 }.expectation {
-                    exist(".Other=ユーザー補助||.Other=Accessibility")  // collapsing_toolbar のタイトル
+                    exist(".other&&ユーザー補助||.other&&Accessibility")  // collapsing_toolbar のタイトル
                 }
             }
             scene(6, "ユーザー補助一覧を上下にスクロールする") {

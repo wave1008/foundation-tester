@@ -1,5 +1,5 @@
 // 04_セレクタ_型と序数.swift
-// ftester 機能: `.型[n]`(序数)/ `.型#id` / `.型=ラベル`(型限定ラベル)/ `||`(フォールバック連鎖)。
+// ftester 機能: `.型[n]`(序数)/ `.型#id` / `.型&&ラベル`(型限定ラベル)/ `||`(フォールバック連鎖)。
 //
 // 序数の契約(iPhone 17 Pro/iOS 27.0 と Pixel 9/Android 15 の実スナップショットで採取):
 // セレクタ画面の Button 順は 戻る(1) 許可(2) 通知を許可(3) 項目(4,5,6) 共通ラベル(7) 別名(8)
@@ -115,7 +115,7 @@ class セレクタの型と序数とフォールバックが解決できるこ�
         }
     }
 
-    @Test(".型=共通ラベル で同ラベルのテキストではなく Button が選ばれる")
+    @Test(".型&&共通ラベル で同ラベルのテキストではなく Button が選ばれる")
     func S0040() {
         scenario {
             scene(1, "セレクタ画面を開く") {
@@ -138,9 +138,9 @@ class セレクタの型と序数とフォールバックが解決できるこ�
                     textIs("#txt_selector_result", "result=-")
                 }
             }
-            scene(2, ".button=共通ラベル は #txt_shared_label ではなく #btn_shared_label に着地") {
+            scene(2, ".button&&共通ラベル は #txt_shared_label ではなく #btn_shared_label に着地") {
                 action {
-                    tap(".button=共通ラベル")
+                    tap(".button&&共通ラベル")
                 }.expectation {
                     textIs("#txt_selector_result", "result=shared")
                 }

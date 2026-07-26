@@ -1,5 +1,6 @@
 // 13_ID無し画面.swift
-// ftester 機能: **方向セレクタ(`:right` / `:left`)だけ**で id の無い画面を操作・検証する。
+// ftester 機能: **相対セレクタ(`基準:rightSwitch` / `基準:leftButton`)だけ**で id の無い画面を
+// 操作・検証する。
 // 対象画面(E2EApp/docs/ui-contract.md「ID なし画面」)の要素には id が一切無く、
 // スイッチは無ラベル・行3のボタンは左右とも同じラベル `変更` なので、方向でしか選び分けられない。
 // **この SUT に置く意味**: 方向判定は frame(座標)に依存するので、レイアウトの実装が変われば
@@ -24,43 +25,43 @@ class ID無し画面を方向セレクタで操作できること {
                 }.expectation {
                     // 画面タイトルはシェル要素で id があるため両 OS で引ける
                     textIs("#txt_screen_title", "ID なし")
-                    // 状態表示は id が無いので部分一致(`notify=` ⊂ `notify=off`)で引く
-                    textIs("notify=", "notify=off")
-                    textIs("location=", "location=off")
-                    textIs("qty=", "qty=0")
+                    // 状態表示は id が無いので前方一致(`notify=*` が `notify=off` に当たる)で引く
+                    textIs("notify=*", "notify=off")
+                    textIs("location=*", "location=off")
+                    textIs("qty=*", "qty=0")
                 }
             }
             scene(2, "行1のスイッチだけが切り替わる(帯判定が隣の行を拾わない)") {
                 action {
-                    tap(".switch:right(通知)")
+                    tap("通知:rightSwitch")
                 }.expectation {
-                    textIs("notify=", "notify=on")
-                    textIs("location=", "location=off")
+                    textIs("notify=*", "notify=on")
+                    textIs("location=*", "location=off")
                 }
             }
             scene(3, "行2のスイッチを同じ記法で切り替える") {
                 action {
-                    tap(".switch:right(位置情報)")
+                    tap("位置情報:rightSwitch")
                 }.expectation {
-                    textIs("location=", "location=on")
-                    textIs("notify=", "notify=on")
+                    textIs("location=*", "location=on")
+                    textIs("notify=*", "notify=on")
                 }
             }
             scene(4, "同一ラベルのボタンを左右で選び分ける") {
                 action {
-                    tap(".button=変更:right(数量)")
+                    tap("数量:right(.button&&変更)")
                 }.expectation {
-                    textIs("qty=", "qty=1")
+                    textIs("qty=*", "qty=1")
                 }.action {
-                    tap(".button=変更:left(数量)")
+                    tap("数量:leftButton")
                 }.expectation {
-                    textIs("qty=", "qty=0")
+                    textIs("qty=*", "qty=0")
                 }
             }
             scene(5, "方向が違えば解決しない(最も近いものを勝手に選ばない)") {
                 expectation {
                     // 通知ラベルの左にスイッチは無い。`:near` 時代はここで右のスイッチを拾っていた
-                    notExist(".switch:left(通知)")
+                    notExist("通知:leftSwitch")
                 }
             }
         }

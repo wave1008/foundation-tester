@@ -24,12 +24,17 @@ tag 定数は `composeApp/src/commonMain/kotlin/com/ftester/e2e/Tags.kt` に集�
   同じ文字列が出る = フリートのロケール差でシナリオが壊れない。
 - **入力する値は ASCII のみ**(IME を介さない `type` の対象にするため)。
 - **ラベルの部分一致衝突を意図的に1組だけ作る**(`許可` ⊂ `通知を許可`)。それ以外は衝突させない。
-  リスト行は `行 01`〜`行 40` とゼロ詰め(`行 1` が `行 12` に contains 一致する事故を避ける)。
+  素の文字列は完全一致なので衝突しないが、`*許可*` と書いたときの挙動(シナリオ 03)の検証材料。
+  素の `許可` が `通知を許可` に当たらないことの検証材料でもある。
+  リスト行は `行 01`〜`行 40` とゼロ詰め(`*行 1*` が `行 12` に contains 一致する事故を避ける)。
 - **状態表示は必ず `key=value` 形式の Text にする**(`textIs` で完全一致検証できる)。
   Switch/Checkbox の AX value は OS で表現が違うため、値検証は原則この echo Text で行う
   (`valueIs` の OS 依存挙動は `ios {}` / `android {}` 節でのみ確認する)。
-  **オン/オフだけなら `isChecked` / `isNotChecked` が OS 共通で使える**(2026-07-26。
-  iOS=selected trait / Android=isChecked。echo Text の無い実アプリでも検証できる)。
+  **`isChecked` / `isNotChecked`(と セレクタの `checked=`)は iOS 側が UI 実装依存**
+  (2026-07-26 の 4 SUT 実測。Android は 4 SUT とも取れる): Compose は selected trait を出すので
+  iOS でも取れるが、**SwiftUI/UIKit と Flutter の checkbox は出さない**。
+  だから**この契約では状態の正は echo Text**(`agree=<true|false>` 等)であり、
+  チェック状態を跨 SUT で検証するシナリオは echo Text を見る。
 - **プロセス起動時は必ずホームタブのルートに戻る**(画面遷移状態を永続化しない)。
   `launchApp` はアプリのデータを消さないため、ナビ状態のリセットはアプリ側の責務
   (docs/design.md §10 の知見)。永続化するのは下表の「永続」印の付いた値だけ。
@@ -70,7 +75,8 @@ tag 定数は `composeApp/src/commonMain/kotlin/com/ftester/e2e/Tags.kt` に集�
 
 ## セレクタ画面(タイトル `セレクタ`)
 
-`tap` のセレクタ記法(`#id` / ラベル / `.型[n]` / `.型#id` / `.型=label` / `||`)を網羅する。
+`tap` のセレクタ記法(`#id` / ラベル / `*部分一致*` / `.型[n]` / `.型#id` / `&&` 合成 / `||`)を
+網羅する。
 
 | tag | 種別 | ラベル/テキスト | タップ時の結果 |
 |---|---|---|---|
@@ -270,21 +276,21 @@ id がある(そこまで無いとテストが書けないため)。
 
 | 位置 | 種別 | ラベル/テキスト | 備考 |
 |---|---|---|---|
-| 見出し | Text | `設定` | `:below(設定)` のアンカー |
+| 見出し | Text | `設定` | `設定:below…` の基準 |
 | 行1 左 | Text | `通知` | |
-| 行1 右 | Switch | (無ラベル) | `.switch:right(通知)` で指す。初期 off |
-| 行1 下 | Text | `notify=off` / `notify=on` | 部分一致 `notify=` で引く |
+| 行1 右 | Switch | (無ラベル) | `通知:rightSwitch` で指す。初期 off |
+| 行1 下 | Text | `notify=off` / `notify=on` | 前方一致 `notify=*` で引く |
 | 行2 左 | Text | `位置情報` | |
-| 行2 右 | Switch | (無ラベル) | `.switch:right(位置情報)`。初期 off |
+| 行2 右 | Switch | (無ラベル) | `位置情報:rightSwitch`。初期 off |
 | 行2 下 | Text | `location=off` / `location=on` | |
 | 行3 左 | Button | `変更` | qty を -1(下限 0) |
-| 行3 中 | Text | `数量` | 左右ボタンのアンカー |
+| 行3 中 | Text | `数量` | 左右ボタンの基準 |
 | 行3 右 | Button | `変更` | qty を +1 |
 | 行3 下 | Text | `qty=<n>` 初期 `qty=0` | |
 
 - **行1/行2 のスイッチは同じ型・同じ(無)ラベル**なので、行を跨いで取り違えないこと(帯判定)が
   この画面の主目的。行の高さは 48dp 以上を確保し、行同士を縦に十分離す。
-- **行3 の `変更` は左右で同一ラベル**。`:left(数量)` / `:right(数量)` でしか区別できない。
+- **行3 の `変更` は左右で同一ラベル**。`数量:leftButton` / `数量:rightButton` でしか区別できない。
 - 状態は `key=value` の Text で echo する(全体規約と同じ)。値の永続化はしない。
 
 ## 情報タブ(タイトル `情報`)

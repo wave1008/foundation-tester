@@ -290,15 +290,22 @@ class ログインテスト {
 
 | 記法 | 意味 |
 |---|---|
-| `#login_btn` | accessibility id |
-| `ログイン` | ラベル(完全一致 → 部分一致) |
+| `#login_btn` | accessibility id(常に完全一致) |
+| `ログイン` | ラベル(**完全一致のみ**。完全形は `text=ログイン`) |
+| `*ログイン*` / `ログイン*` / `*ログイン` | 部分一致 / 前方一致 / 後方一致(完全形は `textContains=` `textStartsWith=` `textEndsWith=`) |
+| `textMatches=^行 [0-9]+$` | 正規表現(**部分一致**。全体一致は `^…$` を書く) |
 | `.button` / `.button[2]` | 型+順番(**1 オリジン**。`.button[2]` = 2番目の Button。1番目は `[1]` を省略して `.button` と書く。`[1]` と明記しても可) |
-| `.switch#ID` / `.switch=ラベル` | 型と id/label の併用(値検証などで型を絞る) |
+| `.switch#ID` / `.switch&&ラベル` | 型と id/label の併用(値検証などで型を絞る) |
+| `#save&&.button&&enabled=true` | **`&&` で AND 合成**。属性は `text` `value` `placeholder` `id` `type` `pos` `checked` `enabled` |
+| `.input` / `.widget` | 型エイリアス(`.input` = textField\|secureTextField / `.widget` = OS 共通の役割型5つ) |
 | `#list >> .clickable[2]` | **スコープ**(祖先 >> 子孫)。序数はスコープ内で数えるので画面クロムやスクロール位置でずれない |
-| `.switch:right(通知)` | **方向アンカー**(`:left` / `:above` / `:below` も同型)。アンカーの帯に入り、その方向にある最も近い候補。該当が無ければ失敗する(id が無い要素を隣のラベルから指す) |
-| `=#で始まる生ラベル` | `=` エスケープで label 扱い(`>>` や `:right(` を含むラベルもこれで書く) |
+| `通知:rightSwitch` | **相対セレクタ**(**基準が先**)。基準の帯に入り、その方向にある最も近い候補。該当が無ければ失敗する(id が無い要素を隣のラベルから指す) |
+| `数量:right(2)` / `#a:below(.button&&項目)` / `見出し:right:belowButton` | 序数 / 任意フィルタ / 連鎖 |
+| `<変更&&.button>:right(数量)` | 基準の `<...>` 囲み(Shirates 正典形・任意。基準の範囲を目で追いやすくする) |
+| `=#で始まる生ラベル` | `=` エスケープで label 扱い(`>>` `&&` `:right` `*` を含むラベルもこれで書く) |
 
-綴り誤りや未対応記法(`:near` `:parent` 等)、`[abc]` のような序数、閉じない括弧は**実行前に構文エラー**になる
+結合の強さは `&&` > `>>` > `||`。綴り誤りや未対応記法(`:near` `:parent` 等)、未知のフィルタ名、
+`[abc]` のような序数、閉じない括弧は**実行前に構文エラー**になる
 (黙ってラベル扱いにしない。誤記が `notExist` を素通りして緑になるのを防ぐため)。
 
 **コマンド**: `tap` `type` `press` `swipe` `scrollTo` / `exist` `notExist` `textIs` `valueIs`

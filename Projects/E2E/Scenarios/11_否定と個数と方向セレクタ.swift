@@ -1,5 +1,5 @@
 // 11_否定と個数と方向セレクタ.swift
-// ftester 機能: notExist / countIs / isEnabled / isDisabled / isChecked / isNotChecked / 方向セレクタ `:below(...)` `:above(...)` /
+// ftester 機能: notExist / countIs / isEnabled / isDisabled / isChecked / isNotChecked / 相対セレクタ `基準:below(...)` `基準:above(...)` /
 // 共通ステップ group / クラスの setUp・tearDown の検証。
 // 型を使うセレクタは OS 共通で書ける(ブリッジが役割へ正規化するため。ui-contract.md 全体規約)。
 
@@ -69,7 +69,7 @@ class 否定と個数と方向セレクタが正しく動くこと {
                     tap("#nav_selector")
                 }.expectation {
                     // 同一ラベル `項目` のボタンは3つ(内側の Text と混ざらないよう型で絞る)
-                    countIs(".button=項目", 3)
+                    countIs(".button&&項目", 3)
                     countIs("#btn_item_1", 1)
                     countIs("存在しないラベル", 0)
                 }
@@ -77,12 +77,12 @@ class 否定と個数と方向セレクタが正しく動くこと {
             scene(5, "方向セレクタで同一ラベル群をアンカーで選び分ける") {
                 action {
                     // 縦一列に並ぶので上下で選ぶ。`許可` の下にある最初の `項目` = 1 番目
-                    tap(".button=項目:below(#btn_allow)")
+                    tap("#btn_allow:below(.button&&項目)")
                 }.expectation {
                     textIs("#txt_selector_result", "result=item1")
                 }.action {
                     // `結果クリア` の上にある最も近い `項目` = 3 番目
-                    tap(".button=項目:above(#btn_selector_reset)")
+                    tap("#btn_selector_reset:above(.button&&項目)")
                 }.expectation {
                     textIs("#txt_selector_result", "result=item3")
                 }
@@ -133,6 +133,42 @@ class 否定と個数と方向セレクタが正しく動くこと {
                     exist("#list_rows >> .button[2]").textIs("行 02")
                     // スコープ外(固定ヘッダ)の要素はスコープ内からは解決できない
                     notExist("#list_rows >> #txt_row_selected")
+                }
+            }
+            scene(9, "`&&` 合成・序数つき相対セレクタ・状態フィルタ") {
+                condition {
+                    tap("#tab_home")
+                    tap("#nav_selector")
+                }.expectation {
+                    // `&&` は id と型の併用にも使える(`.button#btn_allow` と同義の一般形)
+                    exist("#btn_allow&&.button")
+                    countIs(".button&&項目", 3)
+                }.action {
+                    // 引数末尾の `&&[n]` は「その方向で近い順の n 番目」。`許可` の下に `項目` が
+                    // 3 つ縦に並ぶので 2 番目は item2(並び順は ui-contract.md)
+                    tap("#btn_allow:below(.button&&項目&&[2])")
+                }.expectation {
+                    textIs("#txt_selector_result", "result=item2")
+                }
+            }
+            scene(10, "状態フィルタ(enabled / checked)で候補を絞る") {
+                condition {
+                    tap("#tab_controls")
+                    tap("#btn_controls_reset")
+                }.expectation {
+                    // **型との AND は SUT 固有**(この SUT の無効ボタンは button だが、View/XML では
+                    // clickable になる。他 SUT の 12_セレクタ拡張 は id と併用する形で書いてある)。
+                    // disabled の供給源は 2 つだけ(ui-contract.md)
+                    countIs(".button&&enabled=false", 2)
+                    // checked は Compose が selected trait を出すので iOS でも取れる(SUT 固有。
+                    // SwiftUI/UIKit と Flutter(iOS)の checkbox は出さない = ui-contract.md)
+                    exist("#cb_agree&&checked=false")
+                }.action {
+                    tap("#cb_agree")
+                }.expectation {
+                    exist("#cb_agree&&checked=true")
+                    // #btn_toggle_target が有効化されるので disabled は 1 つに減る
+                    countIs(".button&&enabled=false", 1)
                 }
             }
         }

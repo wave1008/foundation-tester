@@ -1,5 +1,5 @@
 // 04_セレクタ_型と序数.swift
-// ftester 機能: `.型[n]`(序数)/ `.型#id` / `.型=ラベル`(型限定ラベル)/ `||`(フォールバック連鎖)。
+// ftester 機能: `.型[n]`(序数)/ `.型#id` / `.型&&ラベル`(型限定ラベル)/ `||`(フォールバック連鎖)。
 //
 // 序数の契約(Pixel 9/Android 15 の実スナップショットで採取):
 // `.型[n]` は「**現在画面に見えている**同型要素をツリー順に数えた n 番目」。
@@ -83,7 +83,7 @@ class セレクタの型と序数とフォールバックが解決できるこ�
         }
     }
 
-    @Test(".型=共通ラベル で同ラベルの Text ではなく Button が選ばれる")
+    @Test(".型&&共通ラベル で同ラベルの Text ではなく Button が選ばれる")
     func S0040() {
         scenario {
             scene(1, "セレクタ画面を開く") {
@@ -95,9 +95,9 @@ class セレクタの型と序数とフォールバックが解決できるこ�
                     textIs("#txt_selector_result", "result=-")
                 }
             }
-            scene(2, ".型=共通ラベル は #txt_shared_label(staticText)ではなく #btn_shared_label(button)に着地") {
+            scene(2, ".型&&共通ラベル は #txt_shared_label(staticText)ではなく #btn_shared_label(button)に着地") {
                 action {
-                    tap(".button=共通ラベル")
+                    tap(".button&&共通ラベル")
                 }.expectation {
                     textIs("#txt_selector_result", "result=shared")
                 }
@@ -120,7 +120,7 @@ class セレクタの型と序数とフォールバックが解決できるこ�
             scene(2, "Compose の Button は .clickable=ラベル で引ける(.button では引けない)") {
                 action {
                     tap("#radio_b")
-                    tap(".clickable=コントロールリセット")
+                    tap(".clickable&&コントロールリセット")
                 }.expectation {
                     textIs("#txt_radio", "plan=A")
                 }

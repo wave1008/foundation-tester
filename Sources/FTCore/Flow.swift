@@ -79,45 +79,130 @@ public struct FlowStep: Codable, Sendable {
     }
 }
 
+/// 文字列属性(label / value / placeholder)の一致方法。**既定は exact**(素のラベルは完全一致)で、
+/// 部分一致は記法で明示したときだけ(`*x*` / `x*` / `*x` / `textMatches=`)。
+/// matches は**部分一致の正規表現**(全体一致は `^...$`)で、
+/// textMatches アサーション(StepExecutor.matchedText)と同じ規約。
+public enum FlowMatchMode: String, Codable, Equatable, Sendable {
+    case exact, startsWith, contains, endsWith, matches
+
+    /// 実属性値がこの一致方法で expected を満たすか。nil の属性は常に不一致
+    public func matches(_ actual: String?, _ expected: String) -> Bool {
+        guard let actual else { return false }
+        switch self {
+        case .exact: return actual == expected
+        case .startsWith: return actual.hasPrefix(expected)
+        case .contains: return actual.contains(expected)
+        case .endsWith: return actual.hasSuffix(expected)
+        case .matches: return actual.range(of: expected, options: .regularExpression) != nil
+        }
+    }
+
+    /// セレクタ式のフィルタ名(属性名 + 一致方法)。exact は接尾辞なし。
+    /// 属性名は `text`(=ラベル。textIs/textContains アサーションと同じ語) / `value` / `placeholder`
+    public func filterName(_ attribute: String) -> String {
+        switch self {
+        case .exact: return attribute
+        case .startsWith: return attribute + "StartsWith"
+        case .contains: return attribute + "Contains"
+        case .endsWith: return attribute + "EndsWith"
+        case .matches: return attribute + "Matches"
+        }
+    }
+}
+
+/// 相対セレクタの1ステップ(`通知:rightSwitch` の `:rightSwitch` 側)。
+/// **基準要素から見て** direction 方向にある候補のうち、filter に合うものを近い順に並べ ordinal 番目を採る。
+/// 連鎖できる(`通知:right:belowButton`)ので FlowLocator は配列で持つ。
+public struct FlowRelativeStep: Codable, Equatable, Sendable {
+    public var direction: FlowDirection
+    /// 対象の絞り込み。`||` を書けるので配列(先に**方向解決まで成功した**節を採る)。
+    /// nil / 空 = `.widget`(型エイリアス。役割が確定した要素だけ = 容器を掴まない)
+    public var filter: [FlowLocator]?
+    /// 近い順の序数(1 オリジン。nil = 1番目)。表記も内部値も 1 オリジンで統一する
+    /// (`index` は 0 オリジンで別物。混同しないこと)
+    public var ordinal: Int?
+
+    public init(direction: FlowDirection, filter: [FlowLocator]? = nil, ordinal: Int? = nil) {
+        self.direction = direction
+        self.filter = filter
+        self.ordinal = ordinal
+    }
+}
+
+/// セレクタ式1節の解釈結果。**属性フィルタは全て AND**(セレクタ式の `&&`)で、
+/// 設定されているフィールドだけが条件になる(nil = 条件にしない)。
 public struct FlowLocator: Codable, Equatable, Sendable {
     public var id: String?
     public var label: String?
+    /// label の一致方法(nil = exact)。値だけ設定して mode を nil にすると完全一致になる
+    public var labelMatch: FlowMatchMode?
+    public var value: String?
+    public var valueMatch: FlowMatchMode?
+    public var placeholder: String?
+    public var placeholderMatch: FlowMatchMode?
+    /// 型名(先頭小文字)。エイリアス(`input` / `widget`)も**綴りのまま**保持し、
+    /// 照合時に FlowTypeAlias.expand で展開する(往復・表示を書いたとおりに保つため)
     public var type: String?
+    /// ElementInfo.checked との一致条件。false は「true でない」= オフ or 状態を持たない要素
+    public var checked: Bool?
+    public var enabled: Bool?
+    /// 候補内の順番(**0 オリジン**。記法 `[n]` / `pos=n` は 1 オリジンなのでパース時に -1 する)。
+    /// 型だけでなく全フィルタの組み合わせに対して効く
     public var index: Int?
     /// ScenarioEvent(サブプロセス発の NDJSON)から復元する際の生テキスト。
-    /// サブプロセス境界を跨ぐと構造化ロケータ(id/label/type/index)は失われ人間可読テキストしか
+    /// サブプロセス境界を跨ぐと構造化ロケータは失われ人間可読テキストしか
     /// 残らないため、その場合はこのフィールドのみ設定し summary でそのまま返す
     /// (RunOrchestrator.ScenarioRunner.stepResult(from:) 参照)。プロセス内解決時は nil のまま
     public var raw: String?
-    /// 祖先スコープ(外→内)。セレクタ式 `#list >> .Cell[2]` の `#list` 側。
+    /// 祖先スコープ(外→内)。セレクタ式 `#list >> .clickable[2]` の `#list` 側。
     /// この連鎖で解決した要素の**子孫だけ**を候補にする。index([n])もスコープ内の順序で数えるため、
     /// 画面クロム(戻るボタン・タブ)やスクロール位置に序数が影響されなくなる。
+    /// **相対セレクタの基準・対象の双方に効く**(節の中は全部スコープの中で解決する)
     public var scope: [FlowLocator]?
-    /// 方向アンカー(セレクタ式 `.Switch:right(通知)` の `通知` 側)。`||` 連鎖を書けるので配列。
-    /// `direction` と対で意味を持ち、片方だけでは無視される。アンカーはスコープの外から解決する
-    /// (隣接ラベルは容器の外にあることが普通のため)。
-    public var anchor: [FlowLocator]?
-    /// アンカーから見てどちら側の候補に限定するか(StepExecutor.pickDirectional が唯一の解釈者)
-    public var direction: FlowDirection?
+    /// 相対ステップ列(`通知:right:belowButton`)。空でなければ、この FlowLocator の属性フィルタは
+    /// **対象ではなく基準(アンカー)**を指す。最終結果は最後のステップの解決結果
+    public var relative: [FlowRelativeStep]?
 
-    public init(id: String? = nil, label: String? = nil, type: String? = nil, index: Int? = nil,
-                raw: String? = nil, scope: [FlowLocator]? = nil,
-                anchor: [FlowLocator]? = nil, direction: FlowDirection? = nil) {
+    public init(id: String? = nil, label: String? = nil, labelMatch: FlowMatchMode? = nil,
+                value: String? = nil, valueMatch: FlowMatchMode? = nil,
+                placeholder: String? = nil, placeholderMatch: FlowMatchMode? = nil,
+                type: String? = nil, checked: Bool? = nil, enabled: Bool? = nil,
+                index: Int? = nil, raw: String? = nil, scope: [FlowLocator]? = nil,
+                relative: [FlowRelativeStep]? = nil) {
         self.id = id
         self.label = label
+        self.labelMatch = labelMatch
+        self.value = value
+        self.valueMatch = valueMatch
+        self.placeholder = placeholder
+        self.placeholderMatch = placeholderMatch
         self.type = type
+        self.checked = checked
+        self.enabled = enabled
         self.index = index
         self.raw = raw
         self.scope = scope
-        self.anchor = anchor
-        self.direction = direction
+        self.relative = relative
+    }
+
+    /// 属性フィルタが1つも無いか(= 候補を絞れない節)
+    public var hasNoFilter: Bool {
+        id == nil && label == nil && value == nil && placeholder == nil
+            && type == nil && checked == nil && enabled == nil
     }
 
     public var summary: String {
         if let raw { return raw }
         var text = baseSummary
-        if let direction, let anchor = anchor?.first {
-            text += ":\(direction.rawValue)(\(anchor.summary))"
+        for step in relative ?? [] {
+            text += ":\(step.direction.rawValue)"
+            // 引数の書き方はセレクタ式に合わせる(フィルタ&&[序数] / 序数だけなら括弧に直接)
+            var argument = (step.filter ?? []).map(\.summary).joined(separator: "||")
+            if let ordinal = step.ordinal, ordinal > 1 {
+                argument += argument.isEmpty ? "\(ordinal)" : "&&[\(ordinal)]"
+            }
+            if !argument.isEmpty { text += "(\(argument))" }
         }
         if let scope, !scope.isEmpty {
             text = scope.map(\.summary).joined(separator: " >> ") + " >> " + text
@@ -126,28 +211,52 @@ public struct FlowLocator: Codable, Equatable, Sendable {
     }
 
     private var baseSummary: String {
-        if let id { return "id=\(id)" }
-        if let label { return "label=\(label)" }
-        // 表示は 1 オリジン、1番目は [1] を省略(セレクタ式の表記と揃える。内部 index は 0 オリジン)
-        if let type {
-            let ordinal = (index ?? 0) + 1
-            return ordinal > 1 ? "\(type)[\(ordinal)]" : type
+        var parts: [String] = []
+        if let id { parts.append("id=\(id)") }
+        if let label { parts.append("\((labelMatch ?? .exact).filterName("text"))=\(label)") }
+        if let value { parts.append("\((valueMatch ?? .exact).filterName("value"))=\(value)") }
+        if let placeholder {
+            parts.append("\((placeholderMatch ?? .exact).filterName("placeholder"))=\(placeholder)")
         }
-        return "(空)"
+        if let type { parts.append(type) }
+        if let checked { parts.append("checked=\(checked)") }
+        if let enabled { parts.append("enabled=\(enabled)") }
+        // 表示は 1 オリジン、1番目は省略(セレクタ式の表記と揃える。内部 index は 0 オリジン)
+        if let index, index > 0 { parts.append("[\(index + 1)]") }
+        return parts.isEmpty ? "(空)" : parts.joined(separator: "&&")
     }
 
     /// 「id も label も無い」= 単独では別画面の要素に誤マッチしやすいロケータか。
     /// アサーションのフォールバック連鎖から除外する判定に使う(StepExecutor.resolveDetailed)。
-    /// scope / 方向アンカー付きは錨を打っているので type+index でも除外しない。
+    /// scope / 相対セレクタ付きは錨を打っているので type+index でも除外しない。
     public var isWeakForAssert: Bool {
-        id == nil && label == nil && (scope?.isEmpty ?? true) && (anchor?.isEmpty ?? true)
+        id == nil && label == nil && value == nil && placeholder == nil
+            && (scope?.isEmpty ?? true) && (relative?.isEmpty ?? true)
     }
 }
 
-/// 方向セレクタの向き(`.Switch:right(通知)`)。アンカーから見た候補の位置を限定する。
-/// 判定規則は StepExecutor.pickDirectional に1箇所だけ置く(記法↔意味の対応表は docs/design.md §10)
+/// 相対セレクタの向き(`通知:rightSwitch`)。**基準要素から見た**対象の位置を限定する。
+/// 判定規則は StepExecutor.directionalCandidates に1箇所だけ置く(記法↔意味の対応表は docs/design.md §10)
 public enum FlowDirection: String, Codable, Equatable, Sendable {
     case right, left, above, below
+}
+
+/// 型エイリアス。**複数の実型をまとめて指す名前だけ**を置く(button/switch のように
+/// 実型が1つで足りるものは増やさない = 語彙を増やすと生成側の誤用が増えるため)。
+/// 実型の綴りは ElementInfo.normalizedType(先頭小文字)と揃える。
+public enum FlowTypeAlias {
+    /// OS を跨いで保証される役割型(E2EApp/docs/ui-contract.md の契約)。`.widget` と
+    /// 相対セレクタの既定フィルタがこれを使う(役割不明の `clickable` 容器は**入れない**)
+    public static let widget = ["button", "staticText", "textField", "secureTextField", "switch"]
+    private static let table: [String: [String]] = [
+        "input": ["textField", "secureTextField"],
+        "widget": widget,
+    ]
+
+    /// 型名を実型の集合へ。エイリアスでなければ自分自身1件
+    public static func expand(_ type: String) -> [String] {
+        table[type] ?? [type]
+    }
 }
 
 public enum FlowLocatorBuilder {

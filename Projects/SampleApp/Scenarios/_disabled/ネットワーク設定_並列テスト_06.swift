@@ -14,10 +14,10 @@ class ネットワーク設定_並列テスト_06 {
                 condition {
                     launchApp()
                 }.action {
-                    tap("Network & internet||.Cell[3]")  // 「Network & internet」に移動するステップ1を実行する
+                    tap("Network & internet||.clickable[3]")  // 「Network & internet」に移動するステップ1を実行する
                 }.expectation {
-                    exist("#collapsing_toolbar||Network & internet||.Other[2]")  // 目標から自動抽出した確認(探索終了時にコード側で検証済み)
-                    exist("Internet||.Cell")  // 目標から自動抽出した確認(探索終了時にコード側で検証済み)
+                    exist("#collapsing_toolbar||Network & internet||.other[2]")  // 目標から自動抽出した確認(探索終了時にコード側で検証済み)
+                    exist("Internet||.clickable")  // 目標から自動抽出した確認(探索終了時にコード側で検証済み)
                 }
             }
         }

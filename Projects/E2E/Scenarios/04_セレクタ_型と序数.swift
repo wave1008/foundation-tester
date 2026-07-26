@@ -1,5 +1,5 @@
 // 04_セレクタ_型と序数.swift
-// ftester 機能: `.型[n]`(序数)/ `.型#id` / `.型=ラベル`(型限定ラベル)/ `||`(フォールバック連鎖)。
+// ftester 機能: `.型[n]`(序数)/ `.型#id` / `.型&&ラベル`(型限定ラベル)/ `||`(フォールバック連鎖)。
 //
 // 序数の契約(iPhone 17 Pro/iOS 27.0・xcuitest ブリッジの実スナップショットで採取):
 // `.型[n]` は「**現在画面に見えている**同型要素をツリー順に数えた n 番目」。圧縮スナップショットは
@@ -82,7 +82,7 @@ class セレクタの型と序数とフォールバックが解決できるこ�
         }
     }
 
-    @Test(".型=共通ラベル で同ラベルの Text ではなく Button が選ばれる")
+    @Test(".型&&共通ラベル で同ラベルの Text ではなく Button が選ばれる")
     func S0040() {
         scenario {
             scene(1, "セレクタ画面を開く") {
@@ -94,9 +94,9 @@ class セレクタの型と序数とフォールバックが解決できるこ�
                     textIs("#txt_selector_result", "result=-")
                 }
             }
-            scene(2, ".型=共通ラベル は #txt_shared_label(Text)ではなく #btn_shared_label(button)に着地") {
+            scene(2, ".型&&共通ラベル は #txt_shared_label(Text)ではなく #btn_shared_label(button)に着地") {
                 action {
-                    tap(".button=共通ラベル")
+                    tap(".button&&共通ラベル")
                 }.expectation {
                     textIs("#txt_selector_result", "result=shared")
                 }

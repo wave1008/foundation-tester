@@ -842,7 +842,7 @@ public final class StepExecutor {
                 let snapshot = try await driver.snapshot()
                 phase.snapshotMs += Self.ms(clock.now - start)
                 actual = chain.lazy
-                    .compactMap { Self.candidates($0, elements: snapshot.elements)?.matches.count }
+                    .compactMap { Self.resolvedCandidates($0, elements: snapshot.elements)?.count }
                     .first { $0 > 0 } ?? 0
                 if actual == expectedCount { return .passed }
                 if Date() >= deadline { break }
@@ -933,56 +933,110 @@ public final class StepExecutor {
     }
 
     /// ロケータに一致する要素を 1 つ選ぶ。選択規則:
-    /// 方向アンカーあり = pickDirectional / type+index のみ = index 番目 / それ以外 = 先頭。
+    /// 属性フィルタ(全て AND)で絞る → `[n]` 番目を採る → 相対ステップがあれば順に辿る。
+    /// 相対セレクタ(`通知:rightSwitch`)では属性フィルタが**対象ではなく基準**を指す。
     public static func matchDetailed(_ locator: FlowLocator, elements: [ElementInfo])
         -> (ElementInfo, MatchQuality)? {
-        guard let found = candidates(locator, elements: elements), !found.matches.isEmpty else {
+        guard let matches = candidates(locator, elements: elements), !matches.isEmpty else {
             return nil
         }
-        if let direction = locator.direction, let anchorChain = locator.anchor, !anchorChain.isEmpty {
-            // アンカーはスコープの外にあることが普通(隣接ラベル等)なので全要素から解決する。
-            // 連鎖は `||` と同じく「先に解決できたもの」を採り、1つも解決できなければ不一致
-            guard let anchor = anchorChain.lazy
-                .compactMap({ matchDetailed($0, elements: elements)?.0 }).first else { return nil }
-            return pickDirectional(found.matches, anchor: anchor, direction: direction)
-                .map { ($0, found.quality) }
+        let index = locator.index ?? 0
+        guard index < matches.count else { return nil }
+        var current = matches[index]
+        let baseQuality = Self.quality(of: current, for: locator)
+        guard let steps = locator.relative, !steps.isEmpty else { return (current, baseQuality) }
+        // 相対ステップの候補もスコープの中から採る(節の中は全部同じ pool で解決する)
+        guard let pool = scopedPool(locator.scope, elements: elements) else { return nil }
+        // 品質は**返す要素**の話なので、最後のステップの判定だけが残る
+        // (基準や途中のステップを部分一致で書いても、最終的に掴んだ要素の一致品質とは無関係)
+        var quality = MatchQuality.exact
+        for step in steps {
+            guard let next = resolveRelative(step, from: current, pool: pool) else { return nil }
+            current = next.element
+            quality = next.quality
         }
-        // index が意味を持つのは type だけで絞ったとき(id/label 指定時は先頭)。
-        // 既存の記法・挙動をそのまま踏襲する
-        if locator.id == nil, locator.label == nil, locator.type != nil {
-            let index = locator.index ?? 0
-            return index < found.matches.count ? (found.matches[index], found.quality) : nil
-        }
-        return (found.matches[0], found.quality)
+        return (current, quality)
     }
 
-    /// ロケータに一致する全要素(スナップショットのツリー順)と label 一致品質。
-    /// 一致ゼロなら matches が空、そもそも条件が空(id/label/type すべて nil)なら nil。
-    public static func candidates(_ locator: FlowLocator, elements: [ElementInfo])
-        -> (matches: [ElementInfo], quality: MatchQuality)? {
-        // スコープ(`#list >> ...`)を外側から順に適用し、候補をその要素の子孫だけに狭める
+    /// 一致品質。**記法(部分一致かどうか)ではなく掴んだ要素**で判定する
+    /// (`*ログイン*` が "ログインに失敗しました" を掴めば substring、"ログイン" を掴めば exact)。
+    /// 読み手はハイブリッドの偽陽性抑止(fallback の exact を primary の substring より優先)だけ
+    static func quality(of element: ElementInfo, for locator: FlowLocator) -> MatchQuality {
+        guard let label = locator.label else { return .exact }
+        return element.label == label ? .exact : .substring
+    }
+
+    /// 相対ステップ1つ分。フィルタ連鎖は `||` と同じく「**方向解決まで成功した**最初の節」を採る
+    /// (候補は在るが方向条件を満たさない、で次の節へ落ちる)。
+    /// フィルタ省略時は `.widget`(役割が確定した要素だけ = 容器やレイアウトノードを掴まない)
+    static func resolveRelative(_ step: FlowRelativeStep, from anchor: ElementInfo,
+                                pool: [ElementInfo]) -> (element: ElementInfo, quality: MatchQuality)? {
+        let filters = (step.filter?.isEmpty ?? true)
+            ? [FlowLocator(type: "widget")] : step.filter!
+        for filter in filters {
+            guard let matches = resolvedCandidates(filter, elements: pool), !matches.isEmpty else { continue }
+            let ordered = directionalCandidates(matches, anchor: anchor, direction: step.direction)
+            // 序数は `:right(2)` が本線。`:right(.button&&[2])` と書いた場合も同じ意味にする。
+            // ただしフィルタ自身が相対セレクタなら index は既に基準の選択で消費済み
+            let filterIndex = (filter.relative?.isEmpty ?? true) ? filter.index : nil
+            let ordinal = step.ordinal ?? ((filterIndex ?? 0) + 1)
+            guard ordinal >= 1, ordinal <= ordered.count else { continue }
+            let picked = ordered[ordinal - 1]
+            return (picked, quality(of: picked, for: filter))
+        }
+        return nil
+    }
+
+    /// 節が指す候補集合。**相対ステップ付きは解決結果の 0 or 1 件**になる
+    /// (`candidates` は属性フィルタしか見ないので、countIs のような「集合を数える」用途が
+    /// `通知:rightSwitch` を基準の個数で数えてしまうのを防ぐ)。
+    /// 相対ステップのフィルタ自身がさらに相対セレクタでもよい(連鎖は有限なので停止する)
+    public static func resolvedCandidates(_ locator: FlowLocator, elements: [ElementInfo])
+        -> [ElementInfo]? {
+        guard locator.relative?.isEmpty ?? true else {
+            return matchDetailed(locator, elements: elements).map { [$0.0] } ?? []
+        }
+        return candidates(locator, elements: elements)
+    }
+
+    /// スコープ連鎖(`#list >> ...`)を外側から順に適用した候補プール。
+    /// 途中の容器が解決できなければ nil(= その節は不一致)
+    static func scopedPool(_ scope: [FlowLocator]?, elements: [ElementInfo]) -> [ElementInfo]? {
         var pool = elements
-        for scopeLocator in locator.scope ?? [] {
-            guard let (container, _) = matchDetailed(scopeLocator, elements: pool) else {
-                return ([], .exact)
-            }
+        for scopeLocator in scope ?? [] {
+            guard let (container, _) = matchDetailed(scopeLocator, elements: pool) else { return nil }
             pool = descendants(of: container, in: elements)
         }
-        // type は絞り込み条件として id/label と併用できる
-        // (同じ id が Cell/Switch/Button に付くことがあり、値検証では型の指定が必要)
+        return pool
+    }
+
+    /// ロケータの属性フィルタに一致する全要素(スナップショットのツリー順)。
+    /// **フィルタは全て AND**。一致ゼロなら空、絞り込み条件が1つも無ければ nil
+    /// (スコープだけは条件として認める。`#list >> [2]` を書けるようにするため)。
+    /// 相対ステップ(`relative`)と序数(`index`)はここでは見ない —
+    /// 呼び手(matchDetailed)が基準を決めてから辿る。
+    public static func candidates(_ locator: FlowLocator, elements: [ElementInfo]) -> [ElementInfo]? {
+        guard var pool = scopedPool(locator.scope, elements: elements) else { return [] }
+        if locator.hasNoFilter, locator.scope?.isEmpty ?? true { return nil }
+        // 素の文字列は**完全一致**。部分一致は `*x*` 等で明示したときだけ
+        func narrow(_ text: String?, _ mode: FlowMatchMode?, _ attribute: @escaping (ElementInfo) -> String?) {
+            guard let text else { return }
+            let mode = mode ?? .exact
+            pool = pool.filter { mode.matches(attribute($0), text) }
+        }
         if let type = locator.type {
-            pool = pool.filter { $0.type == type }
+            // エイリアス(input/widget)はここで実型集合へ展開する
+            let types = Set(FlowTypeAlias.expand(type))
+            pool = pool.filter { types.contains($0.type) }
         }
-        if let id = locator.id {
-            return (pool.filter { $0.identifier == id }, .exact)
-        }
-        if let label = locator.label {
-            let exact = pool.filter { $0.label == label }
-            if !exact.isEmpty { return (exact, .exact) }
-            return (pool.filter { ($0.label ?? "").contains(label) }, .substring)
-        }
-        if locator.type != nil { return (pool, .exact) }
-        return nil
+        if let id = locator.id { pool = pool.filter { $0.identifier == id } }
+        narrow(locator.label, locator.labelMatch) { $0.label }
+        narrow(locator.value, locator.valueMatch) { $0.value }
+        narrow(locator.placeholder, locator.placeholderMatch) { $0.placeholder }
+        // checked は true のときだけ送られる = false は「オフ、または状態を持たない要素」
+        if let checked = locator.checked { pool = pool.filter { ($0.checked ?? false) == checked } }
+        if let enabled = locator.enabled { pool = pool.filter { $0.enabled == enabled } }
+        return pool
     }
 
     /// アサート種別ごとの一致判定。戻り値は「画面上で実際に一致した文字列」(occlusion-guard 用)、
@@ -1028,18 +1082,35 @@ public final class StepExecutor {
             })
         }
         if let type = locator.type, picked.count < 3 {
-            add(elements.filter { $0.type == type })
+            // エイリアス(.input / .widget)も実型集合へ展開して候補を挙げる
+            let types = Set(FlowTypeAlias.expand(type))
+            add(elements.filter { types.contains($0.type) })
         }
-        guard !picked.isEmpty else { return nil }
-        let summaries = picked.prefix(3).map { element -> String in
-            var parts = [element.type]
-            if let id = element.identifier, !id.isEmpty { parts.append("#\(id)") }
-            if let label = element.label, !label.isEmpty {
-                parts.append("\"\(SnapshotRenderer.truncate(label, 24))\"")
+        var hints: [String] = []
+        if !picked.isEmpty {
+            let summaries = picked.prefix(3).map { element -> String in
+                var parts = [element.type]
+                if let id = element.identifier, !id.isEmpty { parts.append("#\(id)") }
+                if let label = element.label, !label.isEmpty {
+                    parts.append("\"\(SnapshotRenderer.truncate(label, 24))\"")
+                }
+                return parts.joined(separator: " ")
             }
-            return parts.joined(separator: " ")
+            hints.append("近い候補: \(summaries.joined(separator: " / "))")
         }
-        return "近い候補: \(summaries.joined(separator: " / "))"
+        if let hint = partialMatchHint(for: locator, in: elements) { hints.append(hint) }
+        // 候補の区切りが " / " なので、ヒント同士は別の記号で割る(読み手が機械でも人でも混ざらない)
+        return hints.isEmpty ? nil : hints.joined(separator: "。")
+    }
+
+    /// 完全一致のラベル指定が外れたが**部分一致なら在る**ときに書き方を示す
+    /// (素の文字列は完全一致なので、部分一致で拾いたいなら記法で明示する必要がある)
+    static func partialMatchHint(for locator: FlowLocator, in elements: [ElementInfo]) -> String? {
+        guard let label = locator.label, !label.isEmpty,
+              (locator.labelMatch ?? .exact) == .exact,
+              !elements.contains(where: { $0.label == label }),
+              elements.contains(where: { ($0.label ?? "").contains(label) }) else { return nil }
+        return "部分一致なら在る: \"*\(label)*\" と書くと拾える"
     }
 
     /// 要素の子孫(スナップショットは pre-order + 元ツリーの depth を保つため、
@@ -1057,20 +1128,20 @@ public final class StepExecutor {
         return result
     }
 
-    /// 方向セレクタ(`.Switch:right(通知)`)の選択規則。**この 1 箇所が唯一の解釈者**で、
-    /// 仕様は次の3条件のみ(調整値・閾値を持たない = 同じ画面なら常に同じ要素を返す):
-    ///  1. 帯: 候補の中心が、アンカーの frame をその軸方向に無限に伸ばした帯に入る
+    /// 相対セレクタ(`通知:rightSwitch`)の選択規則。**この 1 箇所が唯一の解釈者**で、
+    /// 仕様は次の3条件のみ(調整値・閾値を持たない = 同じ画面なら常に同じ順序を返す):
+    ///  1. 帯: 候補の中心が、基準の frame をその軸方向に無限に伸ばした帯に入る
     ///     (right/left なら中心 y が anchor の y..y+height、above/below なら中心 x が x..x+width)
-    ///  2. 向き: 候補の中心がアンカーの中心よりその方向にある
-    ///  3. 最近: 条件を満たす中で方向軸の中心間距離が最小。同距離はツリー順で先頭
-    /// 条件を満たす候補が無ければ **nil = 解決失敗**(「最も近いものを返す」はしない。
-    /// レイアウトが変わったときに黙って別要素を掴ませないため)。
-    /// アンカー自身は候補から除く。画面外要素は frame が丸められる環境があるため可視要素にのみ有効。
-    static func pickDirectional(_ candidates: [ElementInfo], anchor: ElementInfo,
-                                direction: FlowDirection) -> ElementInfo? {
+    ///  2. 向き: 候補の中心が基準の中心よりその方向にある
+    ///  3. 順序: 条件を満たすものを方向軸の中心間距離の昇順に並べる。同距離はツリー順
+    /// 戻り値が空 = **解決失敗**。条件を満たす候補が無いとき「最も近いものを返す」ことはしない
+    /// (レイアウトが変わったときに黙って別要素を掴ませないため)。序数(`:right(2)`)はこの並びの n 番目。
+    /// 基準自身は候補から除く。画面外要素は frame が丸められる環境があるため可視要素にのみ有効。
+    static func directionalCandidates(_ candidates: [ElementInfo], anchor: ElementInfo,
+                                      direction: FlowDirection) -> [ElementInfo] {
         let base = anchor.frame
-        var best: (element: ElementInfo, distance: Double)?
-        for candidate in candidates where candidate.ref != anchor.ref {
+        var scored: [(element: ElementInfo, distance: Double, order: Int)] = []
+        for (order, candidate) in candidates.enumerated() where candidate.ref != anchor.ref {
             let frame = candidate.frame
             let inBand: Bool
             let ahead: Bool
@@ -1088,11 +1159,10 @@ public final class StepExecutor {
                 distance = abs(frame.centerY - base.centerY)
             }
             guard inBand, ahead else { continue }
-            // 厳密に近いときだけ更新 = 同距離は先に現れた(ツリー順が先の)ものが残る
-            if best == nil || distance < best!.distance {
-                best = (candidate, distance)
-            }
+            scored.append((candidate, distance, order))
         }
-        return best?.element
+        return scored
+            .sorted { $0.distance == $1.distance ? $0.order < $1.order : $0.distance < $1.distance }
+            .map(\.element)
     }
 }

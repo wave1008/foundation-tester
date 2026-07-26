@@ -52,7 +52,7 @@ class デモ_Androidアプリ2 {
                     tap("ルートを表示||Show roots")
                     tap("画像||Images")
                 }.expectation {
-                    exist(".StaticText=画像||.StaticText=Images")
+                    exist(".staticText&&画像||.staticText&&Images")
                 }
             }
             scene(2, "内部ストレージへ切り替えて検索する") {

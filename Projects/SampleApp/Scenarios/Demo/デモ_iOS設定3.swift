@@ -104,7 +104,7 @@ class デモ_iOS設定3 {
                     tap("#com.apple.settings.general.pointerDevice||トラックパッド")
                 }.expectation {
                     exist("#trackingSpeed")
-                    exist(".Switch#naturalScrolling")
+                    exist(".switch#naturalScrolling")
                 }
             }
             scene(2, "タップとセカンダリクリックの項目まで確認する") {
@@ -112,8 +112,8 @@ class デモ_iOS設定3 {
                     swipe(.up)
                     swipe(.down)
                 }.expectation {
-                    exist(".Switch#tapToClick")
-                    exist(".Switch#twoFingerSecondaryClick")
+                    exist(".switch#tapToClick")
+                    exist(".switch#twoFingerSecondaryClick")
                 }
             }
             scene(3, "一般へ戻って設定トップへ戻れる") {
@@ -139,8 +139,8 @@ class デモ_iOS設定3 {
                     wait(1)  // スクロールのバウンス整定待ち(整定前 tap は隣接行に流れる。実害: 隣の言語と地域が開いた)
                     tap("#com.apple.settings.general.autoFillAndPasswords||自動入力とパスワード")
                 }.expectation {
-                    exist(".Switch#AutoFillToggle")
-                    exist(".Switch#AutoFillFromPasswordsToggle")
+                    exist(".switch#AutoFillToggle")
+                    exist(".switch#AutoFillFromPasswordsToggle")
                 }
             }
             scene(2, "確認コードの項目まで確認する") {
@@ -148,7 +148,7 @@ class デモ_iOS設定3 {
                     swipe(.up)
                     swipe(.down)
                 }.expectation {
-                    exist(".Switch#SuggestStrongPasswordsToggle")
+                    exist(".switch#SuggestStrongPasswordsToggle")
                 }
             }
             scene(3, "一般へ戻って設定トップへ戻れる") {
@@ -185,7 +185,7 @@ class デモ_iOS設定3 {
                     tap("#com.apple.settings.general.vpnAndDeviceManagement||VPNとデバイス管理")
                 }.expectation {
                     // プロファイル未導入のため画面タイトルは「デバイス管理」になる。空状態文言は label でなく id で露出する
-                    exist(".NavigationBar#デバイス管理")
+                    exist(".navigationBar#デバイス管理")
                     exist("#現在インストールされているプロファイルはありません。")
                 }
             }

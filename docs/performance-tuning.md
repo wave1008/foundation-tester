@@ -354,7 +354,9 @@ window/transition/animator の `*_scale` はチューニングノブではなく
   label が in-app の要素 label の**部分文字列**だと primary(in-app)が `contains` で誤解決し得た。
   現在は tap アクション経路で **primary が部分一致(substring)止まりなら fallback を照会し、
   fallback に完全一致(exact)があれば fallback を優先**する(`StepExecutor` の resolveDetailed/
-  matchDetailed。primary が exact のときは fallback を照会せずコスト増なし)。ただし `exist()` 等の
+  matchDetailed。primary が exact のときは fallback を照会せずコスト増なし)。
+  **素の文字列は完全一致だけ**なので、この経路に入るのは `*語*` 等の部分一致を
+  明示したときに限られる(判定は記法ではなく掴んだ要素。`StepExecutor.quality`)。ただし `exist()` 等の
   アサーション経路は従来どおり(部分一致の存在確認は許容)なので、確証が要るときは
   **同一シナリオを engine=inapp(フォールバック無)でも走らせ当該 tap が失敗することを確認**
   (negative control)。

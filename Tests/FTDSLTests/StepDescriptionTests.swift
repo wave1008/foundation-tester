@@ -108,8 +108,8 @@ final class StepDescriptionTests: XCTestCase {
         XCTAssertEqual(StepDescription.objectPhrase(ofSelector: "ログイン"), "ログイン")
         // id のみ(ラベル無し)→ セレクタ文字列そのまま
         XCTAssertEqual(StepDescription.objectPhrase(ofSelector: "#login_btn"), "#login_btn")
-        // type 節 + type=label 節 → label 成分
-        XCTAssertEqual(StepDescription.objectPhrase(ofSelector: ".Button||.Switch=アップロード"),
+        // type 節 + type&&label 節 → label 成分(旧 `.型=ラベル` は廃止済み)
+        XCTAssertEqual(StepDescription.objectPhrase(ofSelector: ".button||.switch&&アップロード"),
                        "アップロード")
         // = エスケープの生ラベル
         XCTAssertEqual(StepDescription.objectPhrase(ofSelector: "=#タグ"), "#タグ")

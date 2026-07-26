@@ -485,7 +485,9 @@ final class StepExecutorTests: XCTestCase {
         let fallback = FakeAppDriver(name: "fallback", log: log,
                                      snapshotElements: [[labeled(ref: 2, label: "ログイン")]])
         let executor = StepExecutor(driver: primary, fallbackDriver: fallback)
-        let step = FlowStep(action: "tap", locator: FlowLocator(label: "ログイン"))
+        // 部分一致は記法で明示する(素の "ログイン" は完全一致なので primary に当たらない)
+        let step = FlowStep(action: "tap",
+                            locator: FlowLocator(label: "ログイン", labelMatch: .contains))
 
         let outcome = await executor.execute(step)
 
@@ -507,7 +509,8 @@ final class StepExecutorTests: XCTestCase {
                                     snapshotElements: [[labeled(ref: 1, label: "ログインに失敗しました")]])
         let fallback = FakeAppDriver(name: "fallback", log: log, snapshotElements: [[]])
         let executor = StepExecutor(driver: primary, fallbackDriver: fallback)
-        let step = FlowStep(action: "tap", locator: FlowLocator(label: "ログイン"))
+        let step = FlowStep(action: "tap",
+                            locator: FlowLocator(label: "ログイン", labelMatch: .contains))
 
         let outcome = await executor.execute(step)
 

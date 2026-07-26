@@ -19,9 +19,9 @@ class iOS設定のデバイス画面 {
                 }.action {
                     scrollTo("#com.apple.settings.developer||デベロッパ||Developer")  // 設定トップを下へスクロールして「デベロッパ」行を探す
                     tap("#com.apple.settings.developer||デベロッパ||Developer")
-                    scrollTo(".Switch#PHOTOS_UPLOAD_DEVELOPER_MODE||.Switch=Resource Upload Test Mode", maxSwipes: 12)  // デベロッパ画面を下へスクロールして Photos セクションのスイッチを探す
+                    scrollTo(".switch#PHOTOS_UPLOAD_DEVELOPER_MODE||.switch&&Resource Upload Test Mode", maxSwipes: 12)  // デベロッパ画面を下へスクロールして Photos セクションのスイッチを探す
                 }.expectation {
-                    valueIs(".Switch#PHOTOS_UPLOAD_DEVELOPER_MODE||.Switch=Resource Upload Test Mode", "1")  // スイッチの value が "1"(ON)なら OK、"0"(OFF)なら NG
+                    valueIs(".switch#PHOTOS_UPLOAD_DEVELOPER_MODE||.switch&&Resource Upload Test Mode", "1")  // スイッチの value が "1"(ON)なら OK、"0"(OFF)なら NG
                 }
             }
         }
