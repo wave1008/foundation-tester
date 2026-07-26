@@ -28,6 +28,17 @@ public struct FTSelector {
     public let text: String
     public let primary: FlowLocator
     public let fallbacks: [FlowLocator]
+    /// 型付きセレクタ(Sel)が組み立てたもの。**実行時の構文検証を通さない**印
+    /// (綴り誤りはコンパイラが捕まえているので防波堤が要らない。加えて、ラベルに `>>` 等の
+    /// 予約文字が入ると serialize→再パースで別物になり得るのを避ける。FTRuntime.perform 参照)
+    public let structured: Bool
+
+    init(text: String, primary: FlowLocator, fallbacks: [FlowLocator], structured: Bool = false) {
+        self.text = text
+        self.primary = primary
+        self.fallbacks = fallbacks
+        self.structured = structured
+    }
 
     public static func parse(_ text: String) -> FTSelector {
         let clauses = splitTopLevel(text, separator: "||")

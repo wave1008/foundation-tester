@@ -467,7 +467,8 @@ public final class StepExecutor {
             }
             do {
                 start = clock.now
-                try await actingDriver.press(ref: element.ref, duration: 1.0)
+                try await actingDriver.press(
+                    ref: element.ref, duration: step.duration ?? FlowStep.defaultPressDuration)
                 phase.actionMs += Self.ms(clock.now - start)
             } catch {
                 // 501 = inapp(Compose)が press(長押し)に未対応(InAppBridge.swift 側で 501 化済み)。
@@ -510,7 +511,8 @@ public final class StepExecutor {
         phase.snapshotMs += Self.ms(clock.now - start)
         guard let resolved = Self.resolveDetailed(step: step, in: snapshot) else { return false }
         start = clock.now
-        try await td.press(ref: resolved.element.ref, duration: 1.0)
+        try await td.press(ref: resolved.element.ref,
+                           duration: step.duration ?? FlowStep.defaultPressDuration)
         phase.actionMs += Self.ms(clock.now - start)
         return true
     }

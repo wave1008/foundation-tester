@@ -46,6 +46,11 @@ public struct FlowStep: Codable, Sendable {
     public var timeout: Int?
     /// scrollTo のスクロール回数上限(省略時 8)
     public var maxSwipes: Int?
+    /// press の長押し秒数(nil = defaultPressDuration)。**ブリッジの /press は元から duration を
+    /// 受け取っており**、ここが nil だった間だけホスト側で 1.0 に潰れていた(DSL の press(duration:)と
+    /// 拡張のパラメーター編集が無効化されていた)。既定値と同じなら nil のまま置く
+    /// (生成コード・JSON を既定ケースで太らせないため)
+    public var duration: Double?
     /// count アサーションの期待個数(DSL の countIs)。他のステップでは nil
     public var expectedCount: Int?
     /// true のとき、ロケータが解決できなくても失敗にせずスキップする
@@ -58,9 +63,14 @@ public struct FlowStep: Codable, Sendable {
     /// nil = executor 既定(StepExecutor.occlusionGuard)に従う。
     public var occlusionGuard: Bool?
 
+    /// press の既定の長押し秒数。DSL の `press(duration:)` 既定値・拡張のパラメーター既定値
+    /// (StepCommandParams.durationSpec)・実行時のフォールバックはこの1つに揃える
+    public static let defaultPressDuration: Double = 1.0
+
     public init(action: String? = nil, assert: String? = nil, locator: FlowLocator? = nil,
                 fallbacks: [FlowLocator]? = nil, text: String? = nil, direction: String? = nil,
                 expected: String? = nil, timeout: Int? = nil, maxSwipes: Int? = nil,
+                duration: Double? = nil,
                 expectedCount: Int? = nil,
                 optional: Bool? = nil, note: String? = nil, occlusionGuard: Bool? = nil) {
         self.action = action
@@ -72,6 +82,7 @@ public struct FlowStep: Codable, Sendable {
         self.expected = expected
         self.timeout = timeout
         self.maxSwipes = maxSwipes
+        self.duration = duration
         self.expectedCount = expectedCount
         self.optional = optional
         self.note = note

@@ -10,6 +10,10 @@
 //         }
 //     }
 //
+// セレクタを取るコマンドは**文字列版と型付き版(Sel)を1対1で併設**する。両者は同じ FTSelector に
+// 畳んでから共通の impl を通るので、記録・失敗セマンティクス・ヒールは完全に同一
+// (型付き版の書き方は Sel.swift)。
+//
 // 失敗セマンティクス: コマンド NG → 同一 scene 内の以降のコマンドは自動スキップ(記録あり)。
 // ブロック内の生 Swift コードはスキップされないため、失敗後に走らせたくない処理は procedure { } に包む。
 
@@ -63,20 +67,45 @@ public func abortScenarioOnFailure(_ enabled: Bool = true) {
     FTRuntime.requireCore(command: "abortScenarioOnFailure").abortScenarioOnSceneFailure = enabled
 }
 
+// MARK: - セレクタを取るコマンドの共通経路
+
+extension FTSelector {
+    /// FlowStep のフォールバック欄(空なら nil = 既存の JSON 表現を保つ)
+    var stepFallbacks: [FlowLocator]? { fallbacks.isEmpty ? nil : fallbacks }
+}
+
+/// 型付きセレクタ由来なら構文検証を飛ばす(FTSelector.structured)
+@discardableResult
+private func perform(_ command: String, _ selector: FTSelector, step: FlowStep,
+                     description: String,
+                     file: StaticString, line: UInt) -> StepResult.Status {
+    FTRuntime.requireCore(command: command)
+        .perform(step: step, description: description, selectorText: selector.text,
+                 validateSelector: !selector.structured, file: file, line: line)
+}
+
 // MARK: - 操作コマンド
 
 /// timeout: 要素解決を待つ上限秒(0 = 初回スナップショットのみ。出るか不定な optional の
 /// 空振り ~0.7s を数十msに短縮)。省略時は既定の再試行(約0.7秒)
 public func tap(_ selector: String, optional: Bool = false, timeout: Int? = nil,
                 file: StaticString = #filePath, line: UInt = #line) {
-    let parsed = FTSelector.parse(selector)
-    let step = FlowStep(action: "tap", locator: parsed.primary,
-                        fallbacks: parsed.fallbacks.isEmpty ? nil : parsed.fallbacks,
+    tapImpl(FTSelector.parse(selector), optional: optional, timeout: timeout, file: file, line: line)
+}
+
+public func tap(_ selector: Sel, optional: Bool = false, timeout: Int? = nil,
+                file: StaticString = #filePath, line: UInt = #line) {
+    tapImpl(selector.ftSelector, optional: optional, timeout: timeout, file: file, line: line)
+}
+
+private func tapImpl(_ selector: FTSelector, optional: Bool, timeout: Int?,
+                     file: StaticString, line: UInt) {
+    let step = FlowStep(action: "tap", locator: selector.primary,
+                        fallbacks: selector.stepFallbacks,
                         timeout: timeout, optional: optional ? true : nil)
-    FTRuntime.requireCore(command: "tap")
-        .perform(step: step,
-                 description: "tap \"\(selector)\"" + (optional ? " (optional)" : ""),
-                 selectorText: selector, file: file, line: line)
+    perform("tap", selector, step: step,
+            description: "tap \"\(selector.text)\"" + (optional ? " (optional)" : ""),
+            file: file, line: line)
 }
 
 /// フォーカス中の要素にテキストを送信する(直前の tap でフォーカスした欄など。ロケータ指定なし)。
@@ -92,27 +121,52 @@ public func type(_ text: String, optional: Bool = false,
 /// 空振り ~0.7s を数十msに短縮)。省略時は既定の再試行(約0.7秒)
 public func type(_ selector: String, _ text: String, optional: Bool = false, timeout: Int? = nil,
                  file: StaticString = #filePath, line: UInt = #line) {
-    let parsed = FTSelector.parse(selector)
-    let step = FlowStep(action: "type", locator: parsed.primary,
-                        fallbacks: parsed.fallbacks.isEmpty ? nil : parsed.fallbacks,
+    typeImpl(FTSelector.parse(selector), text, optional: optional, timeout: timeout,
+             file: file, line: line)
+}
+
+public func type(_ selector: Sel, _ text: String, optional: Bool = false, timeout: Int? = nil,
+                 file: StaticString = #filePath, line: UInt = #line) {
+    typeImpl(selector.ftSelector, text, optional: optional, timeout: timeout,
+             file: file, line: line)
+}
+
+private func typeImpl(_ selector: FTSelector, _ text: String, optional: Bool, timeout: Int?,
+                      file: StaticString, line: UInt) {
+    let step = FlowStep(action: "type", locator: selector.primary,
+                        fallbacks: selector.stepFallbacks,
                         text: text, timeout: timeout, optional: optional ? true : nil)
-    FTRuntime.requireCore(command: "type")
-        .perform(step: step, description: "type \"\(selector)\" \"\(text)\"",
-                 selectorText: selector, file: file, line: line)
+    perform("type", selector, step: step,
+            description: "type \"\(selector.text)\" \"\(text)\"", file: file, line: line)
 }
 
 /// timeout: 要素解決を待つ上限秒(0 = 初回スナップショットのみ。出るか不定な optional の
 /// 空振り ~0.7s を数十msに短縮)。省略時は既定の再試行(約0.7秒)
-public func press(_ selector: String, duration: Double = 1.0, optional: Bool = false,
-                  timeout: Int? = nil,
+/// duration: 長押しする秒数
+public func press(_ selector: String, duration: Double = FlowStep.defaultPressDuration,
+                  optional: Bool = false, timeout: Int? = nil,
                   file: StaticString = #filePath, line: UInt = #line) {
-    let parsed = FTSelector.parse(selector)
-    let step = FlowStep(action: "press", locator: parsed.primary,
-                        fallbacks: parsed.fallbacks.isEmpty ? nil : parsed.fallbacks,
-                        timeout: timeout, optional: optional ? true : nil)
-    FTRuntime.requireCore(command: "press")
-        .perform(step: step, description: "press \"\(selector)\"",
-                 selectorText: selector, file: file, line: line)
+    pressImpl(FTSelector.parse(selector), duration: duration, optional: optional, timeout: timeout,
+              file: file, line: line)
+}
+
+public func press(_ selector: Sel, duration: Double = FlowStep.defaultPressDuration,
+                  optional: Bool = false, timeout: Int? = nil,
+                  file: StaticString = #filePath, line: UInt = #line) {
+    pressImpl(selector.ftSelector, duration: duration, optional: optional, timeout: timeout,
+              file: file, line: line)
+}
+
+private func pressImpl(_ selector: FTSelector, duration: Double, optional: Bool, timeout: Int?,
+                       file: StaticString, line: UInt) {
+    let step = FlowStep(action: "press", locator: selector.primary,
+                        fallbacks: selector.stepFallbacks,
+                        timeout: timeout,
+                        // 既定値は載せない(生成コード・ヒールキャッシュを既定ケースで太らせない)
+                        duration: duration == FlowStep.defaultPressDuration ? nil : duration,
+                        optional: optional ? true : nil)
+    perform("press", selector, step: step, description: "press \"\(selector.text)\"",
+            file: file, line: line)
 }
 
 public func swipe(_ direction: FTSwipeDirection,
@@ -125,13 +179,23 @@ public func swipe(_ direction: FTSwipeDirection,
 /// 要素が見つかるまでスクロールする(見つかったら成功。タップはしない)
 public func scrollTo(_ selector: String, direction: FTSwipeDirection = .up, maxSwipes: Int = 8,
                      file: StaticString = #filePath, line: UInt = #line) {
-    let parsed = FTSelector.parse(selector)
-    let step = FlowStep(action: "scrollTo", locator: parsed.primary,
-                        fallbacks: parsed.fallbacks.isEmpty ? nil : parsed.fallbacks,
+    scrollToImpl(FTSelector.parse(selector), direction: direction, maxSwipes: maxSwipes,
+                 file: file, line: line)
+}
+
+public func scrollTo(_ selector: Sel, direction: FTSwipeDirection = .up, maxSwipes: Int = 8,
+                     file: StaticString = #filePath, line: UInt = #line) {
+    scrollToImpl(selector.ftSelector, direction: direction, maxSwipes: maxSwipes,
+                 file: file, line: line)
+}
+
+private func scrollToImpl(_ selector: FTSelector, direction: FTSwipeDirection, maxSwipes: Int,
+                          file: StaticString, line: UInt) {
+    let step = FlowStep(action: "scrollTo", locator: selector.primary,
+                        fallbacks: selector.stepFallbacks,
                         direction: direction.rawValue, maxSwipes: maxSwipes)
-    FTRuntime.requireCore(command: "scrollTo")
-        .perform(step: step, description: "scrollTo \"\(selector)\"",
-                 selectorText: selector, file: file, line: line)
+    perform("scrollTo", selector, step: step, description: "scrollTo \"\(selector.text)\"",
+            file: file, line: line)
 }
 
 // MARK: - 検証コマンド
@@ -144,13 +208,26 @@ public func scrollTo(_ selector: String, direction: FTSwipeDirection = .up, maxS
 @discardableResult
 public func exist(_ selector: String, timeout: Int? = nil, requireVisible: Bool = true,
                   file: StaticString = #filePath, line: UInt = #line) -> FTElement {
+    existImpl(FTSelector.parse(selector), timeout: timeout, requireVisible: requireVisible,
+              file: file, line: line)
+}
+
+@discardableResult
+public func exist(_ selector: Sel, timeout: Int? = nil, requireVisible: Bool = true,
+                  file: StaticString = #filePath, line: UInt = #line) -> FTElement {
+    existImpl(selector.ftSelector, timeout: timeout, requireVisible: requireVisible,
+              file: file, line: line)
+}
+
+@discardableResult
+private func existImpl(_ selector: FTSelector, timeout: Int?, requireVisible: Bool,
+                       file: StaticString, line: UInt) -> FTElement {
     let core = FTRuntime.requireCore(command: "exist")
-    let parsed = FTSelector.parse(selector)
-    let step = FlowStep(assert: "exists", locator: parsed.primary,
-                        fallbacks: parsed.fallbacks.isEmpty ? nil : parsed.fallbacks,
+    let step = FlowStep(assert: "exists", locator: selector.primary,
+                        fallbacks: selector.stepFallbacks,
                         timeout: timeout ?? core.defaultTimeout, occlusionGuard: requireVisible)
-    core.perform(step: step, description: "exist \"\(selector)\"",
-                 selectorText: selector, file: file, line: line)
+    perform("exist", selector, step: step, description: "exist \"\(selector.text)\"",
+            file: file, line: line)
     return FTElement(selector: selector)
 }
 
@@ -159,14 +236,17 @@ public func exist(_ selector: String, timeout: Int? = nil, requireVisible: Bool 
 public func textIs(_ selector: String, _ expected: String, timeout: Int? = nil,
                    requireVisible: Bool = true,
                    file: StaticString = #filePath, line: UInt = #line) {
-    let core = FTRuntime.requireCore(command: "textIs")
-    let parsed = FTSelector.parse(selector)
-    let step = FlowStep(assert: "textEquals", locator: parsed.primary,
-                        fallbacks: parsed.fallbacks.isEmpty ? nil : parsed.fallbacks,
-                        expected: expected, timeout: timeout ?? core.defaultTimeout,
-                        occlusionGuard: requireVisible)
-    core.perform(step: step, description: "textIs \"\(selector)\" == \"\(expected)\"",
-                 selectorText: selector, file: file, line: line)
+    textAssert("textEquals", verb: "textIs", selector: FTSelector.parse(selector),
+               expected: expected, timeout: timeout, requireVisible: requireVisible,
+               operatorText: "==", file: file, line: line)
+}
+
+public func textIs(_ selector: Sel, _ expected: String, timeout: Int? = nil,
+                   requireVisible: Bool = true,
+                   file: StaticString = #filePath, line: UInt = #line) {
+    textAssert("textEquals", verb: "textIs", selector: selector.ftSelector,
+               expected: expected, timeout: timeout, requireVisible: requireVisible,
+               operatorText: "==", file: file, line: line)
 }
 
 /// 値一致検証。既定で可視性も確認(一致かつ実際に見えていること)。
@@ -174,14 +254,17 @@ public func textIs(_ selector: String, _ expected: String, timeout: Int? = nil,
 public func valueIs(_ selector: String, _ expected: String, timeout: Int? = nil,
                     requireVisible: Bool = true,
                     file: StaticString = #filePath, line: UInt = #line) {
-    let core = FTRuntime.requireCore(command: "valueIs")
-    let parsed = FTSelector.parse(selector)
-    let step = FlowStep(assert: "valueEquals", locator: parsed.primary,
-                        fallbacks: parsed.fallbacks.isEmpty ? nil : parsed.fallbacks,
-                        expected: expected, timeout: timeout ?? core.defaultTimeout,
-                        occlusionGuard: requireVisible)
-    core.perform(step: step, description: "valueIs \"\(selector)\" == \"\(expected)\"",
-                 selectorText: selector, file: file, line: line)
+    textAssert("valueEquals", verb: "valueIs", selector: FTSelector.parse(selector),
+               expected: expected, timeout: timeout, requireVisible: requireVisible,
+               operatorText: "==", file: file, line: line)
+}
+
+public func valueIs(_ selector: Sel, _ expected: String, timeout: Int? = nil,
+                    requireVisible: Bool = true,
+                    file: StaticString = #filePath, line: UInt = #line) {
+    textAssert("valueEquals", verb: "valueIs", selector: selector.ftSelector,
+               expected: expected, timeout: timeout, requireVisible: requireVisible,
+               operatorText: "==", file: file, line: line)
 }
 
 /// テキストの**部分一致**検証(動的な数値・日時を含む表示に使う)。
@@ -189,8 +272,17 @@ public func valueIs(_ selector: String, _ expected: String, timeout: Int? = nil,
 public func textContains(_ selector: String, _ expected: String, timeout: Int? = nil,
                          requireVisible: Bool = true,
                          file: StaticString = #filePath, line: UInt = #line) {
-    textAssert("textContains", verb: "textContains", selector: selector, expected: expected,
-               timeout: timeout, requireVisible: requireVisible, file: file, line: line)
+    textAssert("textContains", verb: "textContains", selector: FTSelector.parse(selector),
+               expected: expected, timeout: timeout, requireVisible: requireVisible,
+               file: file, line: line)
+}
+
+public func textContains(_ selector: Sel, _ expected: String, timeout: Int? = nil,
+                         requireVisible: Bool = true,
+                         file: StaticString = #filePath, line: UInt = #line) {
+    textAssert("textContains", verb: "textContains", selector: selector.ftSelector,
+               expected: expected, timeout: timeout, requireVisible: requireVisible,
+               file: file, line: line)
 }
 
 /// テキストの**正規表現一致**検証(部分一致。全体一致にしたいときは `^...$` を書く)。
@@ -198,21 +290,32 @@ public func textContains(_ selector: String, _ expected: String, timeout: Int? =
 public func textMatches(_ selector: String, _ pattern: String, timeout: Int? = nil,
                         requireVisible: Bool = true,
                         file: StaticString = #filePath, line: UInt = #line) {
-    textAssert("textMatches", verb: "textMatches", selector: selector, expected: pattern,
-               timeout: timeout, requireVisible: requireVisible, file: file, line: line)
+    textAssert("textMatches", verb: "textMatches", selector: FTSelector.parse(selector),
+               expected: pattern, timeout: timeout, requireVisible: requireVisible,
+               file: file, line: line)
 }
 
-private func textAssert(_ assert: String, verb: String, selector: String, expected: String,
-                        timeout: Int?, requireVisible: Bool,
+public func textMatches(_ selector: Sel, _ pattern: String, timeout: Int? = nil,
+                        requireVisible: Bool = true,
+                        file: StaticString = #filePath, line: UInt = #line) {
+    textAssert("textMatches", verb: "textMatches", selector: selector.ftSelector,
+               expected: pattern, timeout: timeout, requireVisible: requireVisible,
+               file: file, line: line)
+}
+
+/// textIs / valueIs / textContains / textMatches の共通実装。
+/// operatorText は説明文の記号だけを分ける(完全一致系は `==`、部分一致系は `~`)
+private func textAssert(_ assert: String, verb: String, selector: FTSelector, expected: String,
+                        timeout: Int?, requireVisible: Bool, operatorText: String = "~",
                         file: StaticString, line: UInt) {
     let core = FTRuntime.requireCore(command: verb)
-    let parsed = FTSelector.parse(selector)
-    let step = FlowStep(assert: assert, locator: parsed.primary,
-                        fallbacks: parsed.fallbacks.isEmpty ? nil : parsed.fallbacks,
+    let step = FlowStep(assert: assert, locator: selector.primary,
+                        fallbacks: selector.stepFallbacks,
                         expected: expected, timeout: timeout ?? core.defaultTimeout,
                         occlusionGuard: requireVisible)
-    core.perform(step: step, description: "\(verb) \"\(selector)\" ~ \"\(expected)\"",
-                 selectorText: selector, file: file, line: line)
+    perform(verb, selector, step: step,
+            description: "\(verb) \"\(selector.text)\" \(operatorText) \"\(expected)\"",
+            file: file, line: line)
 }
 
 /// 不在検証。**消えるまで待つ**(初回で不在なら即成功、在ればタイムアウトまで消滅を待つ)。
@@ -220,27 +323,48 @@ private func textAssert(_ assert: String, verb: String, selector: String, expect
 /// 可視性(occlusion)は見ない — ツリーから消えたことが判定基準。
 public func notExist(_ selector: String, timeout: Int? = nil,
                      file: StaticString = #filePath, line: UInt = #line) {
+    notExistImpl(FTSelector.parse(selector), timeout: timeout, file: file, line: line)
+}
+
+public func notExist(_ selector: Sel, timeout: Int? = nil,
+                     file: StaticString = #filePath, line: UInt = #line) {
+    notExistImpl(selector.ftSelector, timeout: timeout, file: file, line: line)
+}
+
+private func notExistImpl(_ selector: FTSelector, timeout: Int?,
+                          file: StaticString, line: UInt) {
     let core = FTRuntime.requireCore(command: "notExist")
-    let parsed = FTSelector.parse(selector)
-    let step = FlowStep(assert: "notExists", locator: parsed.primary,
-                        fallbacks: parsed.fallbacks.isEmpty ? nil : parsed.fallbacks,
+    let step = FlowStep(assert: "notExists", locator: selector.primary,
+                        fallbacks: selector.stepFallbacks,
                         timeout: timeout ?? core.defaultTimeout)
-    core.perform(step: step, description: "notExist \"\(selector)\"",
-                 selectorText: selector, file: file, line: line)
+    perform("notExist", selector, step: step, description: "notExist \"\(selector.text)\"",
+            file: file, line: line)
 }
 
 /// 要素が操作可能(enabled)であることの検証。タイムアウトまで状態変化を待つ
 public func isEnabled(_ selector: String, timeout: Int? = nil,
                       file: StaticString = #filePath, line: UInt = #line) {
-    enabledAssert("enabled", verb: "isEnabled", selector: selector, timeout: timeout,
-                  file: file, line: line)
+    enabledAssert("enabled", verb: "isEnabled", selector: FTSelector.parse(selector),
+                  timeout: timeout, file: file, line: line)
+}
+
+public func isEnabled(_ selector: Sel, timeout: Int? = nil,
+                      file: StaticString = #filePath, line: UInt = #line) {
+    enabledAssert("enabled", verb: "isEnabled", selector: selector.ftSelector,
+                  timeout: timeout, file: file, line: line)
 }
 
 /// 要素が操作不可(disabled)であることの検証。タイムアウトまで状態変化を待つ
 public func isDisabled(_ selector: String, timeout: Int? = nil,
                        file: StaticString = #filePath, line: UInt = #line) {
-    enabledAssert("disabled", verb: "isDisabled", selector: selector, timeout: timeout,
-                  file: file, line: line)
+    enabledAssert("disabled", verb: "isDisabled", selector: FTSelector.parse(selector),
+                  timeout: timeout, file: file, line: line)
+}
+
+public func isDisabled(_ selector: Sel, timeout: Int? = nil,
+                       file: StaticString = #filePath, line: UInt = #line) {
+    enabledAssert("disabled", verb: "isDisabled", selector: selector.ftSelector,
+                  timeout: timeout, file: file, line: line)
 }
 
 /// スイッチ・チェックボックス・ラジオが**オン**であることの検証。タイムアウトまで状態変化を待つ。
@@ -248,28 +372,39 @@ public func isDisabled(_ selector: String, timeout: Int? = nil,
 /// **型が OS で揃わない要素(checkbox/radio)でも使える** — 状態は型と独立に取れるため
 public func isChecked(_ selector: String, timeout: Int? = nil,
                       file: StaticString = #filePath, line: UInt = #line) {
-    enabledAssert("checked", verb: "isChecked", selector: selector, timeout: timeout,
-                  file: file, line: line)
+    enabledAssert("checked", verb: "isChecked", selector: FTSelector.parse(selector),
+                  timeout: timeout, file: file, line: line)
+}
+
+public func isChecked(_ selector: Sel, timeout: Int? = nil,
+                      file: StaticString = #filePath, line: UInt = #line) {
+    enabledAssert("checked", verb: "isChecked", selector: selector.ftSelector,
+                  timeout: timeout, file: file, line: line)
 }
 
 /// スイッチ・チェックボックス・ラジオが**オフ**であることの検証。
 /// 状態を持たない要素(ただのボタン等)も「オフ」として通る(ブリッジは true のときだけ送るため)
 public func isNotChecked(_ selector: String, timeout: Int? = nil,
                          file: StaticString = #filePath, line: UInt = #line) {
-    enabledAssert("notChecked", verb: "isNotChecked", selector: selector, timeout: timeout,
-                  file: file, line: line)
+    enabledAssert("notChecked", verb: "isNotChecked", selector: FTSelector.parse(selector),
+                  timeout: timeout, file: file, line: line)
+}
+
+public func isNotChecked(_ selector: Sel, timeout: Int? = nil,
+                         file: StaticString = #filePath, line: UInt = #line) {
+    enabledAssert("notChecked", verb: "isNotChecked", selector: selector.ftSelector,
+                  timeout: timeout, file: file, line: line)
 }
 
 /// enabled/disabled/checked/notChecked の共通実装(アサート名だけが違う)
-private func enabledAssert(_ assert: String, verb: String, selector: String, timeout: Int?,
+private func enabledAssert(_ assert: String, verb: String, selector: FTSelector, timeout: Int?,
                            file: StaticString, line: UInt) {
     let core = FTRuntime.requireCore(command: verb)
-    let parsed = FTSelector.parse(selector)
-    let step = FlowStep(assert: assert, locator: parsed.primary,
-                        fallbacks: parsed.fallbacks.isEmpty ? nil : parsed.fallbacks,
+    let step = FlowStep(assert: assert, locator: selector.primary,
+                        fallbacks: selector.stepFallbacks,
                         timeout: timeout ?? core.defaultTimeout)
-    core.perform(step: step, description: "\(verb) \"\(selector)\"",
-                 selectorText: selector, file: file, line: line)
+    perform(verb, selector, step: step, description: "\(verb) \"\(selector.text)\"",
+            file: file, line: line)
 }
 
 /// 一致する要素の個数を検証する(リスト件数の確認など)。タイムアウトまで個数の変化を待つ。
@@ -278,13 +413,22 @@ private func enabledAssert(_ assert: String, verb: String, selector: String, tim
 /// countIs("#list >> .Cell", 3)
 public func countIs(_ selector: String, _ expected: Int, timeout: Int? = nil,
                     file: StaticString = #filePath, line: UInt = #line) {
+    countIsImpl(FTSelector.parse(selector), expected, timeout: timeout, file: file, line: line)
+}
+
+public func countIs(_ selector: Sel, _ expected: Int, timeout: Int? = nil,
+                    file: StaticString = #filePath, line: UInt = #line) {
+    countIsImpl(selector.ftSelector, expected, timeout: timeout, file: file, line: line)
+}
+
+private func countIsImpl(_ selector: FTSelector, _ expected: Int, timeout: Int?,
+                         file: StaticString, line: UInt) {
     let core = FTRuntime.requireCore(command: "countIs")
-    let parsed = FTSelector.parse(selector)
-    let step = FlowStep(assert: "count", locator: parsed.primary,
-                        fallbacks: parsed.fallbacks.isEmpty ? nil : parsed.fallbacks,
+    let step = FlowStep(assert: "count", locator: selector.primary,
+                        fallbacks: selector.stepFallbacks,
                         timeout: timeout ?? core.defaultTimeout, expectedCount: expected)
-    core.perform(step: step, description: "countIs \"\(selector)\" == \(expected)",
-                 selectorText: selector, file: file, line: line)
+    perform("countIs", selector, step: step,
+            description: "countIs \"\(selector.text)\" == \(expected)", file: file, line: line)
 }
 
 /// 画面全体の検証(自然言語+Foundation Models のマルチモーダル判定)
@@ -297,21 +441,23 @@ public func screenIs(_ expected: String,
 
 /// exist の戻り値。検証をチェーンできる
 public struct FTElement {
-    let selector: String
+    let selector: FTSelector
 
     @discardableResult
     public func textIs(_ expected: String, timeout: Int? = nil, requireVisible: Bool = true,
                        file: StaticString = #filePath, line: UInt = #line) -> FTElement {
-        FTDSL.textIs(selector, expected, timeout: timeout, requireVisible: requireVisible,
-                     file: file, line: line)
+        textAssert("textEquals", verb: "textIs", selector: selector, expected: expected,
+                   timeout: timeout, requireVisible: requireVisible, operatorText: "==",
+                   file: file, line: line)
         return self
     }
 
     @discardableResult
     public func valueIs(_ expected: String, timeout: Int? = nil, requireVisible: Bool = true,
                         file: StaticString = #filePath, line: UInt = #line) -> FTElement {
-        FTDSL.valueIs(selector, expected, timeout: timeout, requireVisible: requireVisible,
-                      file: file, line: line)
+        textAssert("valueEquals", verb: "valueIs", selector: selector, expected: expected,
+                   timeout: timeout, requireVisible: requireVisible, operatorText: "==",
+                   file: file, line: line)
         return self
     }
 }
@@ -386,26 +532,46 @@ public func wait(_ seconds: Double,
 public func ifCanSelect(_ selector: String, waitSeconds: Int = 0,
                         file: StaticString = #filePath, line: UInt = #line,
                         _ body: () -> Void) -> FTBranch {
+    ifCanSelectImpl(FTSelector.parse(selector), waitSeconds: waitSeconds,
+                    file: file, line: line, body)
+}
+
+@discardableResult
+public func ifCanSelect(_ selector: Sel, waitSeconds: Int = 0,
+                        file: StaticString = #filePath, line: UInt = #line,
+                        _ body: () -> Void) -> FTBranch {
+    ifCanSelectImpl(selector.ftSelector, waitSeconds: waitSeconds, file: file, line: line, body)
+}
+
+@discardableResult
+private func ifCanSelectImpl(_ selector: FTSelector, waitSeconds: Int,
+                             file: StaticString, line: UInt,
+                             _ body: () -> Void) -> FTBranch {
     let core = FTRuntime.requireCore(command: "ifCanSelect")
     // 構文誤りは「不成立」と区別できない(どちらもブロックを飛ばして緑になる)ため、
     // perform を通らないこのコマンドでも実行前に検証する
-    if let error = FTSelector.validationError(selector) {
+    if let error = validationError(selector) {
         let reason = "セレクタの構文が不正です: \(error)"
-        core.recordStep(description: "ifCanSelect \"\(selector)\"", status: .failed(reason),
+        core.recordStep(description: "ifCanSelect \"\(selector.text)\"", status: .failed(reason),
                         file: "\(file)", line: Int(line))
-        core.handleFailure(stepDescription: "ifCanSelect \"\(selector)\"", reason: reason)
+        core.handleFailure(stepDescription: "ifCanSelect \"\(selector.text)\"", reason: reason)
         return FTBranch(taken: false)
     }
-    let found = core.canSelect(FTSelector.parse(selector), waitSeconds: waitSeconds)
+    let found = core.canSelect(selector, waitSeconds: waitSeconds)
     // 不成立は **skipped** で記録する(passed にすると「セレクタが腐って毎回飛んでいる」状態が
     // 緑のまま見えなくなる)。run 終了時のサマリにも不成立を残す
-    let description = "ifCanSelect \"\(selector)\" → \(found ? "実行" : "不成立")"
+    let description = "ifCanSelect \"\(selector.text)\" → \(found ? "実行" : "不成立")"
     core.recordStep(description: description,
                     status: found ? .passed : .skipped("条件不成立"),
                     file: "\(file)", line: Int(line))
-    core.noteBranchOutcome(selector: selector, met: found)
+    core.noteBranchOutcome(selector: selector.text, met: found)
     if found { body() }
     return FTBranch(taken: found)
+}
+
+/// 型付きセレクタは組み立て段階で綴りが保証されているので検証しない(FTSelector.structured)
+private func validationError(_ selector: FTSelector) -> String? {
+    selector.structured ? nil : FTSelector.validationError(selector.text)
 }
 
 public struct FTBranch {
@@ -436,24 +602,40 @@ public func repeatWhileCanSelect(_ selector: String, max: Int = 10, waitSeconds:
                                  title: String? = nil,
                                  file: StaticString = #filePath, line: UInt = #line,
                                  _ body: () -> Void) {
+    repeatWhileCanSelectImpl(FTSelector.parse(selector), max: max, waitSeconds: waitSeconds,
+                             title: title, file: file, line: line, body)
+}
+
+public func repeatWhileCanSelect(_ selector: Sel, max: Int = 10, waitSeconds: Int = 0,
+                                 title: String? = nil,
+                                 file: StaticString = #filePath, line: UInt = #line,
+                                 _ body: () -> Void) {
+    repeatWhileCanSelectImpl(selector.ftSelector, max: max, waitSeconds: waitSeconds,
+                             title: title, file: file, line: line, body)
+}
+
+private func repeatWhileCanSelectImpl(_ selector: FTSelector, max: Int, waitSeconds: Int,
+                                      title: String?,
+                                      file: StaticString, line: UInt,
+                                      _ body: () -> Void) {
     let core = FTRuntime.requireCore(command: "repeatWhileCanSelect")
-    if let error = FTSelector.validationError(selector) {
+    if let error = validationError(selector) {
         let reason = "セレクタの構文が不正です: \(error)"
-        core.recordStep(description: "repeatWhileCanSelect \"\(selector)\"",
+        core.recordStep(description: "repeatWhileCanSelect \"\(selector.text)\"",
                         status: .failed(reason), file: "\(file)", line: Int(line))
-        core.handleFailure(stepDescription: "repeatWhileCanSelect \"\(selector)\"", reason: reason)
+        core.handleFailure(stepDescription: "repeatWhileCanSelect \"\(selector.text)\"",
+                           reason: reason)
         return
     }
-    let label = title ?? "repeat \"\(selector)\""
+    let label = title ?? "repeat \"\(selector.text)\""
     var iterations = 0
-    let parsed = FTSelector.parse(selector)
-    while iterations < max, core.canSelect(parsed, waitSeconds: waitSeconds) {
+    while iterations < max, core.canSelect(selector, waitSeconds: waitSeconds) {
         iterations += 1
         core.runGroup("\(label) #\(iterations)", body)
         // dry-run は canSelect が常に true を返すため、1 周だけ回してステップ列挙に留める
         if core.isDryRun { break }
     }
-    core.recordStep(description: "repeatWhileCanSelect \"\(selector)\" → \(iterations) 回",
+    core.recordStep(description: "repeatWhileCanSelect \"\(selector.text)\" → \(iterations) 回",
                     status: .passed, file: "\(file)", line: Int(line))
 }
 

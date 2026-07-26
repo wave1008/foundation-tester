@@ -91,7 +91,10 @@ public enum ScenarioCodeGen {
                 }
                 return "type(\(literal(selector)), \(literal(step.text ?? ""))\(optionalArg(step)))"
             case "press":
-                return "press(\(literal(selector)))"
+                let duration = step.duration.map {
+                    ", duration: \(StepCommandText.formatSeconds($0))"
+                } ?? ""
+                return "press(\(literal(selector))\(duration))"
             case "swipe":
                 return "swipe(.\(step.direction ?? "up"))"
             case "home":

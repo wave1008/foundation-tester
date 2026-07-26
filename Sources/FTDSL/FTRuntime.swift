@@ -266,7 +266,9 @@ public final class FTDriveCore {
 
     /// コマンドの共通実行経路。selectorText はヒールキャッシュのキーと修正提案の表示に使う
     @discardableResult
+    /// validateSelector: false = 型付きセレクタ(Sel)由来なので構文検証を飛ばす(FTSelector.structured)
     func perform(step: FlowStep, description: String, selectorText: String? = nil,
+                 validateSelector: Bool = true,
                  file: StaticString, line: UInt) -> StepResult.Status {
         let filePath = relativePath("\(file)")
         debugCheckpoint(description: description, file: filePath, line: Int(line))
@@ -278,7 +280,7 @@ public final class FTDriveCore {
         // 構文検証はデバイスに触る前(dry-run でも)に行う。パースは失敗しない契約のため、
         // `:rigth(x)` のような誤りは「そんなラベルは無い」に化け、notExist/countIs(x,0) では
         // 緑になってしまう。ここで落とすのが唯一の防波堤(FTSelector.validationError 参照)
-        if let selectorText, let error = FTSelector.validationError(selectorText) {
+        if validateSelector, let selectorText, let error = FTSelector.validationError(selectorText) {
             let status = StepResult.Status.failed("セレクタの構文が不正です: \(error)")
             recordStep(description: description, status: status, file: filePath, line: Int(line))
             handleFailure(stepDescription: description, reason: "セレクタの構文が不正です: \(error)")

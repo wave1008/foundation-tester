@@ -73,7 +73,11 @@ private final class FakeAppDriver: AppDriver {
         log.entries.append("\(name).swipe")
     }
 
+    /// 直近の press に渡った長押し秒数(FlowStep.duration の配線確認用。ログ文言は変えない)
+    private(set) var lastPressDuration: Double?
+
     func press(ref: Int, duration: Double) async throws {
+        lastPressDuration = duration
         if let pressError {
             log.entries.append("\(name).press(throws)")
             throw pressError
@@ -701,6 +705,39 @@ final class StepExecutorTests: XCTestCase {
             "typedriver.snapshot",
             "typedriver.press(ref:9)",
         ], "typeDriver 側の ref(9)で press すべき")
+    }
+
+    /// FlowStep.duration は主経路にもフォールバック経路にも届くこと(旧実装は両方 1.0 固定で、
+    /// DSL の press(duration:)と拡張のパラメーター編集が黙って無効化されていた)
+    func testPressDurationIsPassedThroughBothPaths() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[element(ref: 1, id: "btn_long")]])
+        let executor = StepExecutor(driver: primary)
+        _ = await executor.execute(
+            FlowStep(action: "press", locator: FlowLocator(id: "btn_long"), duration: 3.5))
+        XCTAssertEqual(primary.lastPressDuration, 3.5)
+
+        let fallbackLog = CallLog()
+        let failing = FakeAppDriver(name: "primary", log: fallbackLog,
+                                    snapshotElements: [[element(ref: 1, id: "btn_long")]])
+        failing.pressError = DriverError.badResponse(status: 501, body: "compose では press が効きません")
+        let typeDriver = FakeAppDriver(name: "typedriver", log: fallbackLog,
+                                       snapshotElements: [[element(ref: 9, id: "btn_long")]])
+        let fallbackExecutor = StepExecutor(driver: failing, typeDriver: typeDriver)
+        _ = await fallbackExecutor.execute(
+            FlowStep(action: "press", locator: FlowLocator(id: "btn_long"), duration: 3.5))
+        XCTAssertEqual(typeDriver.lastPressDuration, 3.5)
+    }
+
+    /// 未指定なら既定秒数に落ちること
+    func testPressDurationDefaultsWhenUnset() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[element(ref: 1, id: "btn_long")]])
+        let executor = StepExecutor(driver: primary)
+        _ = await executor.execute(FlowStep(action: "press", locator: FlowLocator(id: "btn_long")))
+        XCTAssertEqual(primary.lastPressDuration, FlowStep.defaultPressDuration)
     }
 
     /// 409(inapp が非 UIKit 入力欄で first responder を張れない)はリアクティブに typeDriver へ切り替えること。
