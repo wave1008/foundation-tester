@@ -12,13 +12,17 @@ import FTDSL
 @TestClass(app: "com.sutec.mobile")  // iOS/Android 両対応(#id は testTag→resource-id/accessibilityId で共通)
 class 商品詳細が表示されること {
 
+    // launchApp は直前画面から再開する。各 @Test の前に毎回実行され、
+    // 以降の正規化・基準作りは各シナリオの scene 1 が担う
+    func setUp() {
+        launchApp()
+    }
+
     @Test("商品詳細に情報と割引が表示される")
     func S0010() {
         scenario {
             scene(1, "ワイヤレスイヤホン Pro の詳細を開く") {
-                condition {
-                    launchApp()
-                }.action {
+                action {
                     tap("#tab_search")
                     tap("#chip_category_electronics")
                     tap("#product_card_electronics_1")

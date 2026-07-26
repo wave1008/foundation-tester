@@ -12,15 +12,19 @@ import FTDSL
 @TestClass(app: "com.sutec.mobile")  // iOS/Android 両対応(#id は testTag→resource-id/accessibilityId で共通)
 class 検索で絞り込めること {
 
+    // 状態の正規化(各 @Test の前に毎回実行される)。launchApp は直前画面から再開するため、
+    // 既知の開始点へ揃えてからテスト本体を走らせる
+    func setUp() {
+        launchApp()
+        // launchApp は直前画面から再開するため、ホーム経由で検索ランディングへ正規化する
+        tap("#tab_home")
+    }
+
     @Test("カテゴリで絞り込むと結果が切り替わる")
     func S0010() {
         scenario {
             scene(1, "検索ランディングを開く") {
-                condition {
-                    launchApp()
-                }.action {
-                    // launchApp は直前画面から再開するため、ホーム経由で検索ランディングへ正規化する
-                    tap("#tab_home")
+                action {
                     tap("#tab_search")
                 }.expectation {
                     exist("カテゴリから探す")

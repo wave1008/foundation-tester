@@ -8,13 +8,17 @@ import FTDSL
 @TestClass(app: "com.sutec.mobile")  // iOS/Android 両対応(#id は testTag→resource-id/accessibilityId で共通)
 class 詳細から戻れること {
 
+    // launchApp は直前画面から再開する。各 @Test の前に毎回実行され、
+    // 以降の正規化・基準作りは各シナリオの scene 1 が担う
+    func setUp() {
+        launchApp()
+    }
+
     @Test("商品詳細から戻るでホームへ復帰する")
     func S0010() {
         scenario {
             scene(1, "ホームから商品詳細へ") {
-                condition {
-                    launchApp()
-                }.action {
+                action {
                     tap("#tab_home")
                     tap("#product_card_fashion_5", timeout: 5)  // ホームおすすめは非同期ロード(Android cold で既定0.7sは空振り)
                 }.expectation {

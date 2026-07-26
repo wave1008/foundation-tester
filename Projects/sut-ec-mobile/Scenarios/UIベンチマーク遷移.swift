@@ -19,13 +19,17 @@ import FTDSL
 @TestClass(app: "com.sutec.mobile")  // iOS/Android 両対応(#id は testTag→resource-id/accessibilityId で共通)
 class UIベンチマークを操作できること {
 
+    // launchApp は直前画面から再開する。各 @Test の前に毎回実行され、
+    // 以降の正規化・基準作りは各シナリオの scene 1 が担う
+    func setUp() {
+        launchApp()
+    }
+
     @Test("日タップで日詳細へ遷移でき戻れる")
     func S0010() {
         scenario {
             scene(1, "アカウント → UIベンチマーク到達・3年に基準化") {
-                condition {
-                    launchApp()
-                }.action {
+                action {
                     tap("#tab_account")
                     tap("#btn_benchmark")
                     // 直前の実行が別年数で残っていても 3年へ基準化する(resume 時の擬陽性回避)。

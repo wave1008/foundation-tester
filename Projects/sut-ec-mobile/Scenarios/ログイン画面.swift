@@ -11,16 +11,22 @@ import FTDSL
 @TestClass(app: "com.sutec.mobile")  // iOS/Android 両対応(#id は testTag→resource-id/accessibilityId で共通)
 class ログイン画面を開けること {
 
+    // 状態の正規化まで(**ログイン画面を開く操作そのものはこのテストの検証対象**なので本体に残す)。
+    // ログアウト状態が前提: 前のシナリオのセッションが残っているとアカウント画面がプロフィール
+    // 表示になり #btn_login が存在しない(ログイン失敗.swift と同じ理由)
+    func setUp() {
+        launchApp()
+        // 押し込み画面から再開した場合に一覧へ正規化(タブ根なら無害)
+        ifCanSelect("#btn_back") { tap("#btn_back") }
+        tap("#tab_account")
+        ifCanSelect("#btn_logout") { tap("#btn_logout") }
+    }
+
     @Test("アカウントからログイン画面を開き入力導線が表示される")
     func S0010() {
         scenario {
             scene(1, "アカウントからログイン画面を開く") {
-                condition {
-                    launchApp()
-                }.action {
-                    // 押し込み画面から再開した場合に一覧へ正規化(タブ根なら無害)
-                    ifCanSelect("#btn_back") { tap("#btn_back") }
-                    tap("#tab_account")
+                action {
                     tap("#btn_login", timeout: 5)  // アカウントの「ログイン / 登録」。セッション判定は非同期のため待つ
                 }.expectation {
                     exist("#field_email")       // メール欄

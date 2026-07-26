@@ -11,6 +11,12 @@ import FTDSL
 @TestClass(app: "com.sutec.mobile")  // iOS/Android 両対応(#id は testTag→resource-id/accessibilityId で共通)
 class タブが正しく遷移すること {
 
+    // launchApp は直前画面から再開する。各 @Test の前に毎回実行され、
+    // 以降の正規化・基準作りは各シナリオの scene 1 が担う
+    func setUp() {
+        launchApp()
+    }
+
     /// 対象商品(fashion_5)の行を削除して空にする(前回残留の基準化)。各行の削除ボタンは
     /// id=btn_remove_<productId> で一意。空カートなら空振りして無害。本シナリオはこの1商品のみ扱う。
     private func emptyCart() {
@@ -21,9 +27,7 @@ class タブが正しく遷移すること {
     func S0010() {
         scenario {
             scene(1, "基準: カートを空にする") {
-                condition {
-                    launchApp()
-                }.action {
+                action {
                     tap("#tab_cart")
                     emptyCart()
                 }.expectation {

@@ -10,15 +10,19 @@ import FTDSL
 @TestClass(app: "com.sutec.mobile")  // iOS/Android 両対応(#id は testTag→resource-id/accessibilityId で共通)
 class サインアップ入力バリデーションが働くこと {
 
+    // ログアウト状態が前提(理由と実害は ログイン失敗.swift の setUp を参照)
+    func setUp() {
+        launchApp()
+        ifCanSelect("#btn_back") { tap("#btn_back") }
+        tap("#tab_account")
+        ifCanSelect("#btn_logout") { tap("#btn_logout") }
+    }
+
     @Test("必須項目が空だと登録されない")
     func S0010() {
         scenario {
             scene(1, "サインアップ画面を開く") {
-                condition {
-                    launchApp()
-                }.action {
-                    ifCanSelect("#btn_back") { tap("#btn_back") }
-                    tap("#tab_account")
+                action {
                     tap("#btn_login", timeout: 5)  // セッション判定は非同期。logged-out で出るまで待つ
                     tap("#btn_goto_signup")
                 }.expectation {

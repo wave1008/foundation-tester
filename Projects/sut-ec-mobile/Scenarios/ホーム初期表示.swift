@@ -7,15 +7,18 @@ import FTDSL
 @TestClass(app: "com.sutec.mobile")  // iOS/Android 両対応(#id は testTag→resource-id/accessibilityId で共通)
 class ホームが初期表示されること {
 
+    // 状態の正規化(各 @Test の前に毎回実行される)。launchApp は直前画面から再開するため、
+    // 既知の開始点へ揃えてからテスト本体を走らせる
+    func setUp() {
+        launchApp()
+        tap("#tab_home")  // 直前画面から再開しても正規化
+    }
+
     @Test("ホームに主要セクションが表示される")
     func S0010() {
         scenario {
             scene(1, "ホームを開く") {
-                condition {
-                    launchApp()
-                }.action {
-                    tap("#tab_home")  // 直前画面から再開しても正規化
-                }.expectation {
+                expectation {
                     exist("SUT Store")
                     // 検索バーは placeholder("商品を検索")のみ。Android は hint が label でなく
                     // placeholder に載り exist(label 一致)で拾えないため iOS 限定で確認する
