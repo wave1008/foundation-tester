@@ -103,7 +103,7 @@ enum InAppSnapshot {
             || !(node.accessibilityValue ?? "").isEmpty
 
         switch type {
-        case .button, .textField, .secureTextField, .textView, .adjustable, .cell,
+        case .button, .toggle, .textField, .secureTextField, .textView, .adjustable, .cell,
              .link, .searchField, .picker:
             return Included(frame: frame)
         case .staticText, .image:
@@ -167,6 +167,8 @@ enum InAppSnapshot {
     enum UIKitType {
         case button, staticText, textField, secureTextField, textView, image, adjustable
         case cell, link, searchField, picker, navigationBar, tabBar, alert, keyboardKey, other
+        /// switch は予約語なので toggle と命名(型名は "Switch" = XCUITest 版と同じ語彙)
+        case toggle
     }
 
     private static func elementType(_ node: NSObject) -> UIKitType {
@@ -177,6 +179,12 @@ enum InAppSnapshot {
         // trait 判定より先に置く: セル内のボタン trait に引きずられて Button にしないため。
         if node is UITableViewCell || node is UICollectionViewCell { return .cell }
         let t = node.accessibilityTraits
+        // スイッチは `.button` も併せ持つので **button 判定より先**に見る。UIKit/SwiftUI/Compose とも
+        // 実測で traits = .button|.toggleButton(0x20000000000001)だった(2026-07-27・E2E-iOS と E2E)。
+        // これが無いと in-app だけ型が Button になり、`.switch` / `:rightSwitch` が xcuitest と食い違う
+        // (XCUITest は elementType が switch を直接返すため気づきにくい)
+        if #available(iOS 17.0, *), t.contains(.toggleButton) { return .toggle }
+        if node is UISwitch { return .toggle }
         if t.contains(.keyboardKey) { return .keyboardKey }
         if t.contains(.searchField) { return .searchField }
         if t.contains(.link) { return .link }
@@ -192,6 +200,7 @@ enum InAppSnapshot {
     private static func typeName(_ type: UIKitType) -> String {
         switch type {
         case .button: return "Button"
+        case .toggle: return "Switch"
         case .staticText: return "StaticText"
         case .textField: return "TextField"
         case .secureTextField: return "SecureTextField"

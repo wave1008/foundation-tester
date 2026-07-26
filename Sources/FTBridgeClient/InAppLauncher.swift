@@ -23,14 +23,49 @@ public struct InAppLauncher {
         repoRoot.appendingPathComponent("InAppBridge/build/libFTInAppBridge.dylib")
     }
 
-    /// dylib が未ビルドなら InAppBridge/build.sh でビルドする(BridgeLauncher の buildForTesting 相当)
+    /// dylib が未ビルド**または古い**なら InAppBridge/build.sh でビルドする
+    /// (BridgeLauncher の buildForTesting 相当)。
+    /// **存在チェックだけにしてはいけない**: build/ は gitignore・手動ビルドなので、ブリッジの
+    /// ソースを直しても注入されるのは古いバイナリのままになる。実害として、isChecked 追加と型の
+    /// 役割正規化(b8a408c)がビルドされず ios-inapp/ios-heal だけ「checked が取れない」
+    /// 「switch 型が出ない」で落ち続けた(2026-07-27 に判明)。SUT の再ビルド判定(Scripts/e2e.sh の
+    /// needs_rebuild)・シナリオの BuildFingerprint と同じ考え方を、ここにも置く。
     public func buildIfNeeded() throws {
-        if FileManager.default.fileExists(atPath: Self.dylibPath(repoRoot: repoRoot).path) { return }
+        guard Self.needsBuild(repoRoot: repoRoot) else { return }
         let script = repoRoot.appendingPathComponent("InAppBridge/build.sh").path
         let result = try Shell.run(["bash", script])
         guard result.status == 0 else {
             throw InAppLauncherError.buildFailed(result.tail)
         }
+    }
+
+    /// dylib が無い / 入力より古い / 判定不能 なら true(再ビルドが要る)
+    static func needsBuild(repoRoot: URL) -> Bool {
+        guard let built = modifiedAt(dylibPath(repoRoot: repoRoot)),
+              let newest = newestSourceTimestamp(repoRoot: repoRoot) else { return true }
+        return newest > built
+    }
+
+    /// dylib の入力(build.sh がコンパイルするソース一式 + build.sh 自身)の最終更新時刻。
+    /// 共有 DTO(Sources/FTCore/BridgeDTO.swift)も入力なので必ず含める(build.sh の SWIFT_SOURCES と対)。
+    /// 取得できない場合は nil = 「判定不能」として再ビルドさせる(古いまま走らせるより安全)
+    static func newestSourceTimestamp(repoRoot: URL) -> Date? {
+        var inputs = [
+            repoRoot.appendingPathComponent("InAppBridge/build.sh"),
+            repoRoot.appendingPathComponent("Sources/FTCore/BridgeDTO.swift"),
+        ]
+        let sourcesDir = repoRoot.appendingPathComponent("InAppBridge/Sources")
+        guard let entries = try? FileManager.default.contentsOfDirectory(
+            at: sourcesDir, includingPropertiesForKeys: [.contentModificationDateKey]) else {
+            return nil
+        }
+        inputs += entries
+        let dates = inputs.compactMap(modifiedAt)
+        return dates.count == inputs.count ? dates.max() : nil
+    }
+
+    private static func modifiedAt(_ url: URL) -> Date? {
+        try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
     }
 
     /// シミュレータが Shutdown なら boot して待つ(ブート済みなら即返るが ~200ms かかるため
