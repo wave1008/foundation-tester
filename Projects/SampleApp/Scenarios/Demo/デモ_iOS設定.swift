@@ -19,7 +19,7 @@ class デモ_iOS設定 {
                     tap("#com.apple.settings.appearance||外観||Appearance")
                 }.expectation {
                     exist("外観モード||Appearance")
-                    exist(".Switch=自動||.Switch=Automatic")
+                    exist(".switch&&自動||.switch&&Automatic")
                 }
             }
             scene(2, "ダークにしてからライトへ戻す") {
@@ -98,10 +98,10 @@ class デモ_iOS設定 {
             }
             scene(4, "Photos セクションまでスクロールする") {
                 action {
-                    scrollTo(".Switch#PHOTOS_UPLOAD_DEVELOPER_MODE||.Switch=Resource Upload Test Mode", maxSwipes: 12)
+                    scrollTo(".switch#PHOTOS_UPLOAD_DEVELOPER_MODE||.switch&&Resource Upload Test Mode", maxSwipes: 12)
                 }.expectation {
                     // ON/OFF は個体差があるため exist のみ(valueIs にするとデバイス状態依存になる)
-                    exist(".Switch#PHOTOS_UPLOAD_DEVELOPER_MODE||.Switch=Resource Upload Test Mode")
+                    exist(".switch#PHOTOS_UPLOAD_DEVELOPER_MODE||.switch&&Resource Upload Test Mode")
                 }
             }
             scene(5, "設定トップへ戻れる") {
@@ -143,7 +143,7 @@ class デモ_iOS設定 {
                     tap("#com.apple.settings.homeScreen||ホーム画面とアプリライブラリ")
                 }.expectation {
                     exist("#APP_DOWNLOADS_HOME_SCREEN||ホーム画面に追加")
-                    exist(".Switch#SHOW_SPOTLIGHT||.Switch=ホーム画面に表示")
+                    exist(".switch#SHOW_SPOTLIGHT||.switch&&ホーム画面に表示")
                 }
             }
             scene(4, "設定トップへ戻れる") {

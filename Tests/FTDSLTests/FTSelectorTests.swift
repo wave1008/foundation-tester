@@ -2,22 +2,91 @@ import XCTest
 @testable import FTDSL
 import FTCore
 
-/// セレクタ式のパース/直列化/構文検証。スコープ(`>>`)・方向(`:right(...)` 等)の追加後も
-/// 既存記法が壊れていないこと、および往復(parse → serialize → parse)が保たれることを見る。
+/// セレクタ式のパース/直列化/構文検証。既存記法(`#id` / ラベル / `.型[n]` / `>>` / `||`)が
+/// 壊れていないこと、`&&` 合成・部分一致記法・相対セレクタ(基準が先)が意図どおり読めること、
+/// および往復(parse → serialize → parse)が保たれることを見る。
 final class FTSelectorTests: XCTestCase {
+
+    private func step(_ direction: FlowDirection, type: String? = nil,
+                      filter: [FlowLocator]? = nil, ordinal: Int? = nil) -> FlowRelativeStep {
+        FlowRelativeStep(direction: direction,
+                         filter: filter ?? type.map { [FlowLocator(type: $0)] },
+                         ordinal: ordinal)
+    }
 
     func testExistingNotationsUnchanged() {
         XCTAssertEqual(FTSelector.parse("#login_btn").primary, FlowLocator(id: "login_btn"))
         XCTAssertEqual(FTSelector.parse("ログイン").primary, FlowLocator(label: "ログイン"))
         XCTAssertEqual(FTSelector.parse(".button[2]").primary, FlowLocator(type: "button", index: 1))
         XCTAssertEqual(FTSelector.parse(".switch#S1").primary, FlowLocator(id: "S1", type: "switch"))
-        XCTAssertEqual(FTSelector.parse(".switch=名前").primary,
+        XCTAssertEqual(FTSelector.parse(".switch&&名前").primary,
                        FlowLocator(label: "名前", type: "switch"))
         XCTAssertEqual(FTSelector.parse("=#raw").primary, FlowLocator(label: "#raw"))
         let chain = FTSelector.parse("#a||ラベル")
         XCTAssertEqual(chain.primary, FlowLocator(id: "a"))
         XCTAssertEqual(chain.fallbacks, [FlowLocator(label: "ラベル")])
     }
+
+    // MARK: - 部分一致(P1)
+
+    func testPartialMatchShorthands() {
+        XCTAssertEqual(FTSelector.parse("*許可*").primary,
+                       FlowLocator(label: "許可", labelMatch: .contains))
+        XCTAssertEqual(FTSelector.parse("許可*").primary,
+                       FlowLocator(label: "許可", labelMatch: .startsWith))
+        XCTAssertEqual(FTSelector.parse("*許可").primary,
+                       FlowLocator(label: "許可", labelMatch: .endsWith))
+        // 素の文字列は完全一致(labelMatch は nil = exact)
+        XCTAssertNil(FTSelector.parse("許可").primary.labelMatch)
+    }
+
+    func testTextFilterFullForms() {
+        XCTAssertEqual(FTSelector.parse("text=許可").primary, FlowLocator(label: "許可"))
+        XCTAssertEqual(FTSelector.parse("textContains=許可").primary,
+                       FlowLocator(label: "許可", labelMatch: .contains))
+        XCTAssertEqual(FTSelector.parse("textMatches=^許.$").primary,
+                       FlowLocator(label: "^許.$", labelMatch: .matches))
+        XCTAssertEqual(FTSelector.parse(".button&&*保存*").primary,
+                       FlowLocator(label: "保存", labelMatch: .contains, type: "button"))
+        XCTAssertEqual(FTSelector.parse(".button#id_1").primary,
+                       FlowLocator(id: "id_1", type: "button"))
+    }
+
+    // MARK: - `&&` 合成と属性フィルタ(P3)
+
+    func testAndCompositionOfFilters() {
+        XCTAssertEqual(FTSelector.parse("#save&&.button").primary,
+                       FlowLocator(id: "save", type: "button"))
+        XCTAssertEqual(FTSelector.parse(".textField&&value=太郎").primary,
+                       FlowLocator(value: "太郎", type: "textField"))
+        XCTAssertEqual(FTSelector.parse(".switch&&checked=true").primary,
+                       FlowLocator(type: "switch", checked: true))
+        XCTAssertEqual(FTSelector.parse("*保存*&&.button&&enabled=false").primary,
+                       FlowLocator(label: "保存", labelMatch: .contains, type: "button",
+                                   enabled: false))
+        XCTAssertEqual(FTSelector.parse("placeholderContains=氏名").primary,
+                       FlowLocator(placeholder: "氏名", placeholderMatch: .contains))
+    }
+
+    func testStandaloneOrdinalFilter() {
+        XCTAssertEqual(FTSelector.parse("#list >> [3]").primary,
+                       FlowLocator(index: 2, scope: [FlowLocator(id: "list")]))
+        XCTAssertEqual(FTSelector.parse("pos=3").primary, FlowLocator(index: 2))
+        XCTAssertEqual(FTSelector.parse("*行*&&[2]").primary,
+                       FlowLocator(label: "行", labelMatch: .contains, index: 1))
+    }
+
+    /// ラベルに見える文字列は既知のフィルタ名のときだけフィルタとして読む
+    func testUnknownNameBeforeEqualsStaysLabel() {
+        XCTAssertEqual(FTSelector.parse("合計: 1,200円").primary, FlowLocator(label: "合計: 1,200円"))
+        XCTAssertEqual(FTSelector.parse("設定=オン").primary, FlowLocator(label: "設定=オン"))
+        // 既知名と紛らわしくない `名前=値`(SUT の状態表示)は素の文字列のまま
+        XCTAssertEqual(FTSelector.parse("notify=off").primary, FlowLocator(label: "notify=off"))
+        XCTAssertEqual(FTSelector.parse("notify=*").primary,
+                       FlowLocator(label: "notify=", labelMatch: .startsWith))
+    }
+
+    // MARK: - スコープ
 
     func testScopeParsing() {
         let scoped = FTSelector.parse("#list >> .clickable[2]").primary
@@ -32,18 +101,6 @@ final class FTSelectorTests: XCTestCase {
         XCTAssertEqual(scoped.scope, [FlowLocator(id: "page"), FlowLocator(id: "list")])
     }
 
-    func testDirectionParsing() {
-        for (text, direction) in [(".button:right(氏名)", FlowDirection.right),
-                                  (".button:left(氏名)", .left),
-                                  (".button:above(氏名)", .above),
-                                  (".button:below(氏名)", .below)] {
-            let locator = FTSelector.parse(text).primary
-            XCTAssertEqual(locator.type, "button", text)
-            XCTAssertEqual(locator.direction, direction, text)
-            XCTAssertEqual(locator.anchor, [FlowLocator(label: "氏名")], text)
-        }
-    }
-
     func testScopeBindsTighterThanFallbackChain() {
         let selector = FTSelector.parse("#list >> .clickable || #fallback")
         XCTAssertEqual(selector.primary.scope, [FlowLocator(id: "list")])
@@ -51,70 +108,263 @@ final class FTSelectorTests: XCTestCase {
         XCTAssertEqual(selector.fallbacks, [FlowLocator(id: "fallback")])
     }
 
-    func testFallbackSeparatorInsideAnchorIsNotSplit() {
-        let selector = FTSelector.parse(".button:right(#a||氏名)")
+    /// `&&` は `>>` より強く結合する(`#list >> .button&&*保存*` = スコープ内の「button かつ 保存」)
+    func testAndBindsTighterThanScope() {
+        let locator = FTSelector.parse("#list >> .button&&*保存*").primary
+        XCTAssertEqual(locator.scope, [FlowLocator(id: "list")])
+        XCTAssertEqual(locator.type, "button")
+        XCTAssertEqual(locator.label, "保存")
+        XCTAssertEqual(locator.labelMatch, .contains)
+    }
+
+    // MARK: - 相対セレクタ(P2・基準が先)
+
+    func testRelativeSelectorIsAnchorFirst() {
+        for (text, direction) in [("氏名:rightButton", FlowDirection.right),
+                                  ("氏名:leftButton", .left),
+                                  ("氏名:aboveButton", .above),
+                                  ("氏名:belowButton", .below)] {
+            let locator = FTSelector.parse(text).primary
+            XCTAssertEqual(locator.label, "氏名", text)
+            XCTAssertEqual(locator.relative, [step(direction, type: "button")], text)
+        }
+    }
+
+    func testRelativeTypeShorthands() {
+        XCTAssertEqual(FTSelector.parse("氏名:rightInput").primary.relative,
+                       [step(.right, type: "input")])
+        XCTAssertEqual(FTSelector.parse("氏名:rightLabel").primary.relative,
+                       [step(.right, type: "staticText")])
+        XCTAssertEqual(FTSelector.parse("通知:rightSwitch").primary.relative,
+                       [step(.right, type: "switch")])
+        // 接尾辞なしは既定フィルタ(.widget)= filter は nil のまま
+        XCTAssertEqual(FTSelector.parse("通知:right").primary.relative, [step(.right)])
+    }
+
+    func testRelativeOrdinalAndFilterArguments() {
+        XCTAssertEqual(FTSelector.parse("数量:right(2)").primary.relative,
+                       [step(.right, ordinal: 2)])
+        XCTAssertEqual(FTSelector.parse("数量:rightButton(2)").primary.relative,
+                       [step(.right, type: "button", ordinal: 2)])
+        XCTAssertEqual(FTSelector.parse("数量:right(.button)").primary.relative,
+                       [step(.right, type: "button")])
+        // `[n]` を引数に書いた形は序数へ正規化する(往復のため構造を1つに寄せる)
+        XCTAssertEqual(FTSelector.parse("数量:right(.button[2])").primary.relative,
+                       [step(.right, type: "button", ordinal: 2)])
+        XCTAssertEqual(FTSelector.parse("数量:right(保存||#btn)").primary.relative,
+                       [step(.right, filter: [FlowLocator(label: "保存"), FlowLocator(id: "btn")])])
+    }
+
+    /// 引数は節1本と同じ文法(スコープも書ける)。`parseSegment` だと丸ごと id になって黙って壊れる
+    func testRelativeArgumentAcceptsScope() {
+        let step = FTSelector.parse("見出し:below(#list >> .button)").primary.relative?.first
+        XCTAssertEqual(step?.filter, [FlowLocator(type: "button", scope: [FlowLocator(id: "list")])])
+        XCTAssertNil(FTSelector.validationError("見出し:below(#list >> .button)"))
+        // 引数の中の綴り誤りも同じ規則で落とす
+        XCTAssertNotNil(FTSelector.validationError("見出し:below(#list >> .Button)"))
+        XCTAssertNotNil(FTSelector.validationError("見出し:below(x||)"))
+    }
+
+    /// Shirates の正典形 `<基準>:rightButton`。囲みは構文糖でパース結果は囲まない形と同一
+    func testBracketedBaseIsSyntacticSugar() {
+        XCTAssertEqual(FTSelector.parse("<通知>:rightSwitch").primary,
+                       FTSelector.parse("通知:rightSwitch").primary)
+        XCTAssertEqual(FTSelector.parse("<変更&&.button>:right(数量)").primary,
+                       FTSelector.parse("変更&&.button:right(数量)").primary)
+        let locator = FTSelector.parse("<変更&&.button>:right(数量)").primary
+        XCTAssertEqual(locator.label, "変更")
+        XCTAssertEqual(locator.type, "button")
+        XCTAssertEqual(locator.relative, [step(.right, filter: [FlowLocator(label: "数量")])])
+        XCTAssertNil(FTSelector.validationError("<変更&&.button>:right(数量)"))
+        XCTAssertNil(FTSelector.validationError("#row >> <数量>:rightButton"))
+    }
+
+    func testBracketedBaseMalformedIsRejected() {
+        // `<` 始まりは括弧形式の予約。読めない形を黙って生ラベルにしない(notExist の緑化防止)
+        for text in ["<通知:rightSwitch", "<>:right(通知)", "<通知>rightSwitch", "<注意>",
+                     "<通知>:rigthSwitch"] {
+            XCTAssertNotNil(FTSelector.validationError(text), "見逃した: \(text)")
+        }
+        // `<` で始まる生ラベルは = エスケープで書く(serialize も同じ形を出す)
+        XCTAssertEqual(FTSelector.parse("=<注意>").primary, FlowLocator(label: "<注意>"))
+        XCTAssertEqual(FTSelector.serialize(FlowLocator(label: "<注意>")), "=<注意>")
+        XCTAssertNil(FTSelector.validationError("=<注意>"))
+    }
+
+    /// serialize は囲みを付けない(囲みは人が読みやすくするための任意記法)
+    func testSerializeDoesNotBracket() {
+        var locator = FlowLocator(label: "変更", type: "button")
+        locator.relative = [FlowRelativeStep(direction: .right, filter: [FlowLocator(label: "数量")])]
+        let serialized = FTSelector.serialize(locator)
+        XCTAssertEqual(serialized, ".button&&変更:right(数量)")
+        XCTAssertEqual(FTSelector.parse(serialized).primary, locator)
+        XCTAssertNil(FTSelector.validationError(serialized))
+    }
+
+    func testRelativeStepsChain() {
+        XCTAssertEqual(FTSelector.parse("見出し:right:belowButton").primary.relative,
+                       [step(.right), step(.below, type: "button")])
+    }
+
+    func testRelativeSelectorCombinesWithScopeAndFilters() {
+        let locator = FTSelector.parse("#row >> 数量&&.staticText:rightButton").primary
+        XCTAssertEqual(locator.scope, [FlowLocator(id: "row")])
+        XCTAssertEqual(locator.label, "数量")
+        XCTAssertEqual(locator.type, "staticText")
+        XCTAssertEqual(locator.relative, [step(.right, type: "button")])
+    }
+
+    func testFallbackSeparatorInsideArgumentIsNotSplit() {
+        let selector = FTSelector.parse("氏名:right(#a||保存)")
         XCTAssertTrue(selector.fallbacks.isEmpty)
-        XCTAssertEqual(selector.primary.anchor?.first?.id, "a")
+        XCTAssertEqual(selector.primary.relative?.first?.filter?.first?.id, "a")
     }
 
     func testEscapeKeepsSyntaxCharactersAsLabel() {
         XCTAssertEqual(FTSelector.parse("=A >> B").primary, FlowLocator(label: "A >> B"))
         XCTAssertEqual(FTSelector.parse("=x:right(y)").primary, FlowLocator(label: "x:right(y)"))
+        XCTAssertEqual(FTSelector.parse("=A && B").primary, FlowLocator(label: "A && B"))
+        XCTAssertEqual(FTSelector.parse("=*星*").primary, FlowLocator(label: "*星*"))
     }
 
-    func testMalformedDirectionFallsBackToLabel() {
-        // 土台が空 / アンカーが空 は構文として解釈しない(パースは失敗しない契約。
+    func testMalformedRelativeFallsBackToLabel() {
+        // 基準が空 / 引数が空 は構文として解釈しない(パースは失敗しない契約。
         // 誤りとしては validationError が捕まえる = testValidationRejects... を参照)
-        XCTAssertEqual(FTSelector.parse(":right(氏名)").primary.label, ":right(氏名)")
-        XCTAssertEqual(FTSelector.parse(".button:right()").primary.type, "button:right()")
+        XCTAssertEqual(FTSelector.parse(":rightSwitch").primary.label, ":rightSwitch")
+        XCTAssertEqual(FTSelector.parse("氏名:right()").primary.label, "氏名:right()")
     }
+
+    // MARK: - 往復
 
     func testSerializeRoundTrip() {
-        for text in ["#login_btn", "ログイン", ".button[2]", ".switch#S1", ".switch=名前",
-                     "#list >> .clickable[2]", "#page >> #list >> ラベル", ".button:right(氏名)",
-                     ".switch:left(通知)", ".button:above(合計)", ".button:below(合計)",
-                     "#list >> .clickable:right(合計)", "=#raw"] {
+        for text in ["#login_btn", "ログイン", ".button[2]", ".switch#S1", ".switch&&名前",
+                     "*許可*", "許可*", "*許可", "textMatches=^許.$", ".button&&*保存*",
+                     "notify=off", "notify=*", "#a:below(.button&&項目&&[2])",
+                     "#save&&.button", ".textField&&value=太郎", ".switch&&checked=true",
+                     "*保存*&&.button&&enabled=false", "placeholderContains=氏名",
+                     "#list >> [3]", "#list >> [1]", "*行*&&[2]",
+                     "#list >> .clickable[2]", "#page >> #list >> ラベル",
+                     "氏名:rightButton", "通知:rightSwitch", "通知:right", "数量:right(2)",
+                     "数量:rightButton(2)", "数量:right(保存||#btn)", "見出し:right:belowButton",
+                     "#row >> 数量&&.staticText:rightButton", "見出し:below(#list >> .button)",
+                     "<通知>:rightSwitch", "#row >> <数量>:rightButton",
+                     "=#raw", "=A >> B"] {
             let parsed = FTSelector.parse(text)
             let serialized = FTSelector.serialize(primary: parsed.primary,
                                                   fallbacks: parsed.fallbacks)
             XCTAssertEqual(FTSelector.parse(serialized).primary, parsed.primary,
                            "往復で壊れた: \(text) → \(serialized)")
+            XCTAssertNil(FTSelector.validationError(serialized),
+                         "直列化したら構文エラーになった: \(text) → \(serialized)")
         }
+    }
+
+    func testSerializeKeepsShorthandForms() {
+        XCTAssertEqual(FTSelector.serialize(FlowLocator(id: "a")), "#a")
+        XCTAssertEqual(FTSelector.serialize(FlowLocator(id: "a", type: "switch")), ".switch#a")
+        XCTAssertEqual(FTSelector.serialize(FlowLocator(label: "名前", type: "switch")), ".switch&&名前")
+        XCTAssertEqual(FTSelector.serialize(FlowLocator(type: "button", index: 1)), ".button[2]")
+        XCTAssertEqual(FTSelector.serialize(FlowLocator(label: "保存", labelMatch: .contains)),
+                       "*保存*")
+        XCTAssertEqual(FTSelector.serialize(FlowLocator(id: "a", type: "button", enabled: true)),
+                       ".button&&#a&&enabled=true")
     }
 
     func testSerializeEscapesLabelsContainingSyntax() {
         let locator = FlowLocator(label: "A >> B")
         XCTAssertEqual(FTSelector.serialize(locator), "=A >> B")
         XCTAssertEqual(FTSelector.parse(FTSelector.serialize(locator)).primary, locator)
+        // 検証が拒否するパターン(未知マーカー・方向名の書き損じ)もエスケープする
+        // (しないと serialize の出力=ヒール提案・生成コードがそのまま構文エラーで落ちる)
+        for text in ["a:rigth(b)", "予定:AM(補足)", "高さ:righ", "x:near(y)"] {
+            let escaped = FTSelector.serialize(FlowLocator(label: text))
+            XCTAssertEqual(escaped, "=\(text)", text)
+            XCTAssertEqual(FTSelector.parse(escaped).primary, FlowLocator(label: text), text)
+            XCTAssertNil(FTSelector.validationError(escaped), text)
+        }
+        // 合成中は `=` エスケープが使えないので完全形 text= に落とす
+        let starred = FlowLocator(label: "*星*", type: "button")
+        XCTAssertEqual(FTSelector.serialize(starred), ".button&&text=*星*")
+        XCTAssertEqual(FTSelector.parse(FTSelector.serialize(starred)).primary, starred)
     }
 
-    func testSummaryShowsScopeAndDirection() {
-        let locator = FTSelector.parse("#list >> .clickable:right(合計)").primary
-        XCTAssertEqual(locator.summary, "id=list >> clickable:right(label=合計)")
+    func testSummaryShowsScopeAndRelativeSteps() {
+        let locator = FTSelector.parse("#list >> 合計:rightLabel").primary
+        XCTAssertEqual(locator.summary, "id=list >> text=合計:right(staticText)")
     }
 
     // MARK: - 構文検証(パースが黙って label に落とす誤りを実行前に落とす)
 
     func testValidationAcceptsValidSelectors() {
-        for text in ["#login_btn", "ログイン", ".button[2]", ".switch#S1", ".switch=名前",
-                     "#list >> .clickable[2]", ".button:right(氏名)", ".switch:below(#a||通知)",
-                     "=x:rigth(y)", "=A >> B", "合計: 1,200円", "#a||ラベル"] {
+        for text in ["#login_btn", "ログイン", ".button[2]", ".switch#S1", ".switch&&名前",
+                     "*許可*", "許可*", "*許可", "textContains=許可", "textMatches=^許.$",
+                     "#save&&.button", ".switch&&checked=true", "value=太郎",
+                     "#list >> .clickable[2]", "#list >> [3]", "#list >> pos=3",
+                     "氏名:rightButton", "通知:right", "数量:right(2)", "数量:right(.button)",
+                     "見出し:right:belowButton", "氏名:right(#a||保存)",
+                     "=x:rigth(y)", "=A >> B", "合計: 1,200円", "設定=オン", "#a||ラベル",
+                     "notify=off", "notify=*", "*qty=*"] {
             XCTAssertNil(FTSelector.validationError(text), "誤検出: \(text)")
         }
     }
 
     func testValidationRejectsUnknownMarker() {
-        // Shirates 等の他ツール記法・綴り誤りが「そんなラベルは無い」で緑になるのを防ぐ
-        for text in [".button:rigth(氏名)", ".button:near(氏名)", ".button:descendant(#a)",
-                     "#list >> .clickable:sibling(合計)"] {
+        // 他ツール記法・綴り誤りが「そんなラベルは無い」で緑になるのを防ぐ
+        for text in ["氏名:rigth(合計)", "氏名:near(合計)", ".button:descendant(#a)",
+                     "#list >> .clickable:sibling(合計)",
+                     // 括弧が無い綴り誤りも落とす(ラベル扱いになると notExist が必ず成功する)
+                     "氏名:rightFoo", "氏名:righ", "氏名:RightSwitch"] {
             XCTAssertNotNil(FTSelector.validationError(text), "見逃した: \(text)")
         }
     }
 
     func testValidationRejectsMalformedSyntax() {
-        for text in [".button:right(", ".button:right(氏名))", ".button:right()", ":right(氏名)",
-                     ".button:right(氏名)の右", ".button[abc]", ".button[0]"] {
+        for text in ["氏名:right(", "氏名:right(合計))", "氏名:right()", ":rightSwitch",
+                     "氏名:right(合計)の右", ".button[abc]", ".button[0]", "[2]", "pos=2", "**",
+                     ".button&&", "&&.button", "pos=0", "checked=yes", "text="] {
             XCTAssertNotNil(FTSelector.validationError(text), "見逃した: \(text)")
         }
+    }
+
+    func testValidationRejectsUnknownFilterName() {
+        for text in ["textContans=許可", ".button&&valu=太郎", "checkd=true",
+                     // 相対セレクタの引数の中も同じ規則で見る
+                     "氏名:right(textContans=保存)"] {
+            XCTAssertNotNil(FTSelector.validationError(text), "見逃した: \(text)")
+        }
+    }
+
+    func testValidationRejectsDuplicateFilter() {
+        XCTAssertNotNil(FTSelector.validationError("*保存*&&text=保存"))
+        XCTAssertNotNil(FTSelector.validationError("#a&&id=b"))
+    }
+
+    /// 型名に `=` は使えない。パースは `=` 以降を型名の一部として黙って読む(never-match)ため、
+    /// 実行前エラー+書き換え案で必ず落とす
+    func testValidationRejectsEqualsInTypeName() {
+        for (text, rewrite) in [(".switch=名前", ".switch&&名前"),
+                                (".button=*保存*", ".button&&*保存*"),
+                                // 先頭大文字も同じエラーで小文字化した案を出す(二段の案内をさせない)
+                                (".Button=変更", ".button&&変更"),
+                                // `=` が `#` より前なら id 短縮形ではなく廃止記法(`#` はラベルの一部)
+                                (".button=A#B", ".button&&A#B"),
+                                // 相対セレクタの基準に書いた場合も基準の検証で捕まる
+                                (".button=変更:left(数量)", ".button&&変更"),
+                                (".button=項目:below(#btn_allow)", ".button&&項目")] {
+            let error = FTSelector.validationError(text)
+            XCTAssertNotNil(error, "見逃した: \(text)")
+            XCTAssertTrue(error?.contains("型名") ?? false, "案内が無い: \(text)")
+            XCTAssertTrue(error?.contains(rewrite) ?? false,
+                          "書き換え案 \(rewrite) が無い: \(String(describing: error))")
+        }
+        // `.型#id` の短縮形は存続(誤検出しない)
+        XCTAssertNil(FTSelector.validationError(".button#btn_allow"))
+        XCTAssertEqual(FTSelector.parse(".button&&A#B").primary,
+                       FlowLocator(label: "A#B", type: "button"))
+    }
+
+    func testValidationRejectsUppercaseTypeName() {
+        XCTAssertNotNil(FTSelector.validationError(".Button"))
+        XCTAssertNotNil(FTSelector.validationError("#list >> .Clickable[2]"))
     }
 }

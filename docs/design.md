@@ -559,8 +559,40 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
   `ElementInfo.normalizedType` がデコード時に畳むため、スナップショット表示・セレクタ記法・
   生成コード・ヒール提案の綴りが一致する(3ブリッジの wire 形式は不変 = 版上げ不要)。
   先頭大文字で書くと `validationError` が実行前に落とす
-- セレクタ式は文字列1本: `#id` / `ラベル` / `.型[n]`(n は 1 オリジン。1番目は [1] 省略で `.型`、明記も可)/ `.型#id` / `.型=ラベル`、`||` でフォールバック連鎖
-- **スコープ `祖先 >> 子孫`**(2026-07-26): `#list >> .clickable[2]` は `#list` で解決した要素の**子孫だけ**を
+- セレクタ式は文字列1本。**フィルタを `&&` で AND 合成**し、`||` でフォールバック連鎖する
+  (2026-07-26 に Shirates(Classic) の記法へ寄せた。優先順位は `&&` > `>>` > `||`)。
+  短縮形と完全形の対応:
+
+  | 短縮形 | 完全形 | 意味 |
+  |---|---|---|
+  | `ラベル` | `text=ラベル` | **完全一致**(暗黙の部分一致フォールバックは無い) |
+  | `*語*` / `語*` / `*語` | `textContains=` / `textStartsWith=` / `textEndsWith=` | 部分一致 |
+  | — | `textMatches=^…$` | 正規表現(**部分一致**。全体一致は `^…$`) |
+  | `#id` | `id=` | id(常に完全一致) |
+  | `.型` | `type=` | 型(先頭小文字) |
+  | `[n]` | `pos=n` | 候補内の順番(1 オリジン) |
+  | — | `value=` / `placeholder=` | 値・プレースホルダ(`Contains`/`StartsWith`/`EndsWith`/`Matches` も同じ規則で使える) |
+  | — | `checked=true\|false` / `enabled=true\|false` | 状態(`checked=false` は「オンでない」= 状態を持たない要素も含む) |
+
+  `.型#id` = `.型&&#id`、`.型[n]` = `.型&&[n]` の短縮形。
+  **型名に `=` は使えない**(`=` は text= 等のフィルタ名と先頭エスケープに使う)。`.型=ラベル` と
+  書くと `=` 以降が型名の一部として never-match になるため、validationError(typeEqualsError)が
+  実行前に `.型&&ラベル` を案内して落とす。
+  `[n]` は**型に限らずどの組み合わせにも効く**(`#list >> [3]` / `*行*&&[2]`)。
+  絞り込み条件が1つも無い節(`[2]` 単独)はスコープの中でしか書けない
+- **型エイリアス**: `.input` = `textField|secureTextField` / `.widget` = OS を跨いで保証される役割型
+  (`button` `staticText` `textField` `secureTextField` `switch`)。
+  **役割不明の `clickable` は `.widget` に入れない**(容器やリスト行を掴まないため)。
+  1つの実型で足りる名前(`.label` → `.staticText` 等)はエイリアスにしない = 語彙を増やさない
+- **素の文字列は完全一致だけ**。部分一致を暗黙のフォールバックにすると
+  **短いラベルが長いラベルに黙って当たる**(`許可` が `通知を許可` に当たる / 別項目の要約にも
+  当たって「曖昧解決不能」で throw)ため、部分一致は `*語*` 等で明示させる。
+  解決に失敗し**部分一致なら在る**ときは失敗メッセージが `"*語*" と書くと拾える` を出す
+  (`StepExecutor.partialMatchHint`)
+- **`名前=値` の生ラベル**(SUT の状態表示 `notify=off` 等)はそのまま書ける。
+  既知のフィルタ名と紛らわしい名前(前方一致関係・大小文字違い・6文字以上で1文字違い)のときだけ
+  `validationError` が落とす(`textContans=x` の綴り誤りがラベル扱いで黙って緑になるのを防ぐ)
+- **スコープ `祖先 >> 子孫`**: `#list >> .clickable[2]` は `#list` で解決した要素の**子孫だけ**を
   候補にし、序数もスコープ内で数える(画面クロム・スクロール位置で序数がずれる問題への対処)。多段可。
   子孫判定は「スナップショットは pre-order + 元ツリーの depth」という 3 ブリッジ共通の規約に依存する
   (`StepExecutor.descendants`。中間ノードのフィルタや上限打ち切りは pre-order を崩さないので保たれる)。
@@ -585,30 +617,49 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
   回帰は 4 SUT 共通の `#list_rows >> …`(`Projects/E2E/Scenarios/11_*.swift`・
   `Projects/E2E-*/Scenarios/12_セレクタ拡張.swift`)。
   `notExist` / `countIs` も 4 フレームワーク全てで同一に動く(同実測)
-- **方向 `.型:right(セレクタ)`**(`:left` / `:above` / `:below` も同型。2026-07-26 に旧 `:near` を
-  置換): アンカーから見て指定方向にある候補だけに絞る。**id が付いていないアプリで
-  「〇〇の右のスイッチ」を指すための主力記法**(id があるなら `#id` が常に優先)。
-  判定規則は3条件のみで調整値を持たない(`StepExecutor.pickDirectional` が唯一の解釈者):
-  ①候補の中心がアンカー frame をその軸方向へ伸ばした帯に入る ②候補の中心がアンカーの中心より
-  その方向にある ③満たす中で方向軸の中心間距離が最小(同距離はツリー順で先頭)。
-  **条件を満たす候補が無ければ解決失敗**(旧 `:near` の「最も近いものを必ず返す」を廃止した理由:
-  レイアウトが変わったときに黙って別要素を掴むため)。アンカーはスコープの外から解決し
-  (隣接ラベルは容器の外にあることが普通)、アンカー自身は候補から除く。アンカー側にも `||` 連鎖可。
-  画面外要素は frame が丸められる環境があるため**可視要素にのみ**有効
-- **構文検証 `FTSelector.validationError`**(2026-07-26): パースは失敗しない契約のままなので、
-  `:rigth(x)` のような綴り誤り・他ツール記法(`:near` `:parent` 等)・`[abc]` `[0]` の序数・
-  括弧の不整合は**別経路で検出して落とす**。放置すると誤記が label 扱いになり、`notExist` /
-  `countIs(x, 0)` が**必ず成功**する(黙って緑になる唯一の経路)。呼ぶのは `FTRuntime.perform`
-  (dry-run でもデバイスに触る前に判定)と `ifCanSelect`(perform を通らないため個別に)
-- `||` と `>>` の分割は**括弧の外だけ**(`:right(...)` の中は割らない)。`>>` は `||` より強く結合する。
-  ラベルに `>>` や `:方向(` を含めるときは `=` エスケープ(`=A >> B`)。パースは失敗しない契約は不変
+- **相対セレクタ `基準:rightSwitch`**(`right` / `left` / `above` / `below` × 型別接尾辞
+  `Button` / `Input` / `Label` / `Image` / `Switch` / `Widget`。Shirates 準拠で**基準が先**):
+  基準から見て指定方向にある候補だけに絞る。**id が付いていないアプリで「〇〇の右のスイッチ」を
+  指すための主力記法**(id があるなら `#id` が常に優先)。
+  - 引数は3形。`通知:rightSwitch` = 型別 / `数量:right(2)` = 近い順の2番目 /
+    `#a:below(.button&&項目)` = 任意のフィルタ式(`||` 連鎖も可 = 先に**方向解決まで成功した**節を採る)
+  - **基準は `<...>` で囲める**(Shirates の正典形 `<text1>:rightButton`。囲みは構文糖でパース結果は
+    囲まない形と同一で、serialize は付けない)。`<` 始まりの節は括弧形式の予約なので、読めない形は
+    生ラベルに落とさず検証エラーにする(`<` で始まる生ラベルは `=` エスケープ)。
+    スコープは括弧の外(`#row >> <数量>:rightButton`)
+  - 接尾辞なしの `:right` の既定フィルタは `.widget`(役割が確定した要素だけ = 容器を掴まない)
+  - **連鎖できる**(`見出し:right:belowButton`)。各ステップの結果が次の基準になる
+  - 判定規則は3条件のみで調整値を持たない(`StepExecutor.directionalCandidates` が唯一の解釈者):
+    ①候補の中心が基準 frame をその軸方向へ伸ばした帯に入る ②候補の中心が基準の中心よりその方向に
+    ある ③満たすものを方向軸の中心間距離の昇順に並べ、序数(既定 1)番目を採る(同距離はツリー順)
+  - **条件を満たす候補が無ければ解決失敗**(「最も近いものを必ず返す」ことはしない。
+    レイアウトが変わったときに黙って別要素を掴むため)。基準自身は候補から除く
+  - **スコープは節の中の基準にも対象にも効く**(`#row >> 数量:rightButton` は容器の中だけで解決する)
+  - 画面外要素は frame が丸められる環境があるため**可視要素にのみ**有効
+- **構文検証 `FTSelector.validationError`**: パースは失敗しない契約のままなので、
+  `:rigth(x)` のような綴り誤り・他ツール記法(`:near` `:parent` 等)・未知のフィルタ名
+  (`textContans=`)・型名の `=`・`[abc]` `[0]` の序数・括弧の不整合・条件が空の節は
+  **別経路で検出して落とす**。放置すると誤記が label 扱いになり、`notExist` / `countIs(x, 0)` が
+  **必ず成功**する(黙って緑になる唯一の経路)。呼ぶのは `FTRuntime.perform`
+  (dry-run でもデバイスに触る前に判定)と `ifCanSelect`(perform を通らないため個別に)。
+  **既知の残穴**: 括弧を伴わない綴り誤り(`基準:rigthSwitch`)は
+  方向名との前方一致・大小文字違いに当たらないと検出できない
+- `||` と `>>` と `&&` の分割は**括弧の外だけ**(`:right(...)` の中は割らない)。
+  結合の強さは `&&` > `>>` > `||`。ラベルに `>>` `&&` `:right` `*` を含めるときは `=` エスケープ
+  (`=A >> B`)。パースは失敗しない契約は不変
 - **木構造セレクタ(`:parent` / `:child` / `:sibling` 等)は実装しない**(2026-07-26 決定)。
   `祖先 >> 子孫` のスコープでほぼ代替でき、語彙を増やすと生成側の誤用が増えるため。再提案しない
-- **label マッチは完全一致優先→無ければ部分一致(`contains`)**(`StepExecutor.matchDetailed` が
-  一致品質 exact/substring を返す)。短いラベルが長いラベルに誤マッチする(`ラベル"許可"` が
-  `"通知を許可"` に当たる)。区別したい要素が同一画面に共存するときは `#id` か `.型=ラベル` で
-  型を絞る。id マッチは常に完全一致。**hybrid の tap アクションでは primary が substring 止まりなら
-  fallback を照会し、fallback の exact を優先**(§performance-tuning「フォールバック検証の偽陽性」)
+- **フローベース相対セレクタ(Shirates の `:flow` / `:input` / `:label` / `:inner` / `:vflow`)は
+  実装しない**(2026-07-26 決定・再提案しない)。「ウィジェットを垂直位置でグループ分けし各行を
+  左→右に走査」する規則は、**同じ行とみなす閾値という根拠の無い調整値**を1つ要求する
+  (中心 y の差 20pt か 10pt かで掴む要素が変わり、iOS/Android の frame の 2〜3pt 差でも割れる)。
+  相対セレクタが調整値ゼロなのは帯を**基準自身の frame** から取っているからで、この性質を壊さない。
+  ツリー順(pre-order)で定義すれば調整値は不要だが、ツリーの形はフレームワークごとに違うので
+  「見た目の次の入力欄」と食い違う。**方向セレクタで取れなかった実例が出てから**再検討する
+- **一致品質(exact/substring)は記法ではなく掴んだ要素で決まる**(`StepExecutor.quality`)。
+  `*ログイン*` が `"ログインに失敗しました"` を掴めば substring、`"ログイン"` を掴めば exact。
+  読み手は**hybrid の tap アクションだけ**で、primary が substring 止まりなら fallback を照会し
+  fallback の exact を優先する(§performance-tuning「フォールバック検証の偽陽性」)
 - **inapp の type は Compose Multiplatform でも通る**(2026-07-21 更新。それ以前は XCUITest 切替が
   必要だった)。Compose は「フォーカスアンカーの OverlayInputView(入力セレクタ非応答)」と
   「実際のキーボード受け口 IntermediateTextInputUIView(UIKeyInput 準拠・isFirstResponder)」が
@@ -644,12 +695,19 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
   (`exist` の poll と対称)。可視性(occlusion)は見ない — ツリーから消えたことが唯一の判定。
   hybrid では **不在を確定する側でだけ** `fallbackDriver` を1回照会する(pass 経路の固定費 1 回。
   システム UI のダイアログが primary の snapshot に映らないため。miss 毎に払う `exist` 側とは事情が逆)
-- **`isChecked` / `isNotChecked`**(2026-07-26)は `ElementInfo.checked` を見る。取得元は
-  **iOS = accessibility の selected trait**(`XCUIElementSnapshot.isSelected` / in-app は
+- **`isChecked` / `isNotChecked`**(セレクタの `checked=` も同じ源)は `ElementInfo.checked` を見る。
+  取得元は **iOS = accessibility の selected trait**(`XCUIElementSnapshot.isSelected` / in-app は
   `UIAccessibilityTraits.selected`)、**Android = `AccessibilityNodeInfo.isChecked`**。
   Compose iOS は Switch の `value` を出さない(実測)ので selected trait が唯一の経路。
   **true のときだけ送る**(省略 = オフ、または状態を持たない要素)。
-  型が OS で揃わない checkbox / radio でも**状態は型と独立に取れる**のがこの API の要点
+  **iOS 側は UI 実装依存**(2026-07-26 の 4 SUT 実測): Compose は selected trait を出すので取れるが、
+  **SwiftUI/UIKit と Flutter の checkbox は出さない** → `checked` が nil のままで
+  `isChecked` / `checked=true` が当たらない。**Android 側は 4 SUT とも取れる**。
+  iOS も含めて確実に見たいならアプリ側の echo Text を `textIs` で見る
+- **状態フィルタ(`checked=` / `enabled=`)は型ではなく `#id` と併用する**(2026-07-26 実測)。
+  同じ役割の要素でも型は SUT で割れるため(コントロール画面の無効ボタンは CMP では `button`、
+  View/XML では `clickable`)、`.button&&enabled=false` のような型との AND は SUT 固有の式になる。
+  `#btn_always_disabled&&enabled=false` なら 4 SUT 共通で通る
 - **`isEnabled` / `isDisabled`** は `ElementInfo.enabled`(3 ブリッジとも埋めている)を見る。
   タイムアウトまで状態変化を待つ。「見つからない」と「状態が違う」を別メッセージで返す
 - **`countIs`** は候補の個数。`||` は他コマンドと同じ「解決できる方」= **候補が1件以上見つかった

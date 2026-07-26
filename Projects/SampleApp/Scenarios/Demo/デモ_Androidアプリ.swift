@@ -22,7 +22,7 @@ class デモ_Androidアプリ {
                     launchApp()
                 }.expectation {
                     exist("#breadcrumb_text")
-                    exist(".StaticText=ダウンロード||.StaticText=Downloads")
+                    exist(".staticText&&ダウンロード||.staticText&&Downloads")
                 }
             }
             scene(2, "ルート一覧から画像フォルダへ切り替える") {
@@ -30,7 +30,7 @@ class デモ_Androidアプリ {
                     tap("ルートを表示||Show roots")
                     tap("画像||Images")
                 }.expectation {
-                    exist(".StaticText=画像||.StaticText=Images")
+                    exist(".staticText&&画像||.staticText&&Images")
                 }
             }
         }

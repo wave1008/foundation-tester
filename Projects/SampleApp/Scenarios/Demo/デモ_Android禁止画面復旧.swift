@@ -29,7 +29,7 @@ class デモ_Android禁止画面復旧 {
                     tap("セキュリティとプライバシー||Security & privacy")
                 }.expectation {
                     // SafetyCenter(別パッケージ)のタイトル。設定タスクの前面が別パッケージへ移った証拠
-                    exist(".Other=セキュリティとプライバシー||.Other=Security & privacy")
+                    exist(".other&&セキュリティとプライバシー||.other&&Security & privacy")
                 }
             }
             scene(3, "launchApp で設定へ復帰する(自己復旧)") {

@@ -102,7 +102,7 @@ class デモ_iOS設定2 {
                     tap("#com.apple.settings.gameCenter||Game Center")
                 }.expectation {
                     // サインイン状態は個体差があるため exist のみ
-                    exist(".Switch#SignIn||.Switch=Game Center")
+                    exist(".switch#SignIn||.switch&&Game Center")
                 }
             }
             scene(4, "設定トップへ戻れる") {
@@ -125,7 +125,7 @@ class デモ_iOS設定2 {
                     scrollTo("#com.apple.settings.standBy||スタンバイ")
                     tap("#com.apple.settings.standBy||スタンバイ")
                 }.expectation {
-                    exist(".Switch#AMBIENT_MODE_ENABLED")
+                    exist(".switch#AMBIENT_MODE_ENABLED")
                     exist("#ALWAYS_ON_DISPLAY_OPTIONS||画面表示")
                 }
             }
@@ -135,7 +135,7 @@ class デモ_iOS設定2 {
                     wait(1)  // 戻りアニメの整定待ち(デモ_iOS設定.S0030 と同パターンの予防)
                     tap("#com.apple.settings.siri||Siri")
                 }.expectation {
-                    exist(".NavigationBar#Siri")
+                    exist(".navigationBar#Siri")
                 }
             }
             scene(3, "設定トップへ戻れる") {
@@ -196,7 +196,7 @@ class デモ_iOS設定2 {
                     wait(1)  // スクロールのバウンス整定待ち(整定前 tap は隣接行に流れる)
                     tap("#com.apple.settings.general.fonts||フォント")
                 }.expectation {
-                    exist(".NavigationBar#フォント")  // 遷移完了の速いアンカー(過渡期の空振り対策)
+                    exist(".navigationBar#フォント")  // 遷移完了の速いアンカー(過渡期の空振り対策)
                     exist("システムフォント||マイフォント")
                 }
             }

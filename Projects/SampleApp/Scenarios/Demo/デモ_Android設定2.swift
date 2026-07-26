@@ -105,7 +105,7 @@ class デモ_Android設定2 {
                 action {
                     swipe(.up)
                 }.expectation {
-                    exist(".Switch#switchWidget")
+                    exist(".switch#switchWidget")
                 }
             }
         }

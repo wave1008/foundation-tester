@@ -40,10 +40,10 @@ class デモ_Android時計 {
             }
             scene(2, "アラームがある場合のみスイッチを2回タップして元に戻す") {
                 action {
-                    ifCanSelect(".Switch#onoff", waitSeconds: 1) {
-                        tap(".Switch#onoff")
+                    ifCanSelect(".switch#onoff", waitSeconds: 1) {
+                        tap(".switch#onoff")
                         wait(1)  // ON 直後のスナックバー表示の整定待ち
-                        tap(".Switch#onoff")
+                        tap(".switch#onoff")
                     }
                 }.expectation {
                     exist("#alarm_recycler_view")
