@@ -1,5 +1,6 @@
 import Foundation
 import FoundationModels
+import FTCore
 
 public enum FMDoctor {
 
@@ -38,7 +39,9 @@ public enum FMDoctor {
                 available: false,
                 detail: "オンデバイスモデル: 実呼び出しに失敗しました"
                     + "(availability は available。モデル資産や Apple Intelligence の状態を確認してください)"
-                    + "\n   エラー: \(String("\(error)".prefix(300)))")
+                    // 入れ子を畳んでから出す。LanguageModelError の最上位は常に
+                    // `Code=-1 "The operation couldn't be completed."` で、真因は入れ子の中にしかない
+                    + "\n   エラー: \(FMHealth.describe(error))")
         }
     }
 

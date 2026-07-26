@@ -60,6 +60,47 @@ ftester bridge up --platform ios --device <名前>     # ここで再ビルド�
   スクリプトからバックグラウンド実行すると /dev/null が即 EOF になり、
   **1行も出さずに正常終了**する(「監視が何も返さない」ように見える罠)
 
+## FM(Foundation Models)が全滅したら
+
+occlusion-guard・自己修復・screenIs は FM 失敗時に nil を返して**素通りする**(呼び出し側が握りつぶす)。
+run 終了時の「FM 呼び出しが全て失敗しました」警告と結果 JSON の `fm` フィールドだけが手がかり。
+
+- **切り分けの起点は `ftester doctor`**。availability は「端末が対応しているか」しか見ておらず、
+  資産側の理由で全滅していても `available` を返すので、**実呼び出し(checkLive)の結果で判断する**
+- **エラーは入れ子。最上位だけ見ても何も分からない**。`LanguageModelError(-1)` は常に
+  「The operation couldn't be completed.」で、真因は `NSMultipleUnderlyingErrors` の奥にある。
+  `FMHealth.describe` が `←` 区切りで畳んで出すので、そちらを読む
+- **2026-07-27 に観測した全滅の連鎖**(M2 Ultra / macOS 27 beta):
+
+  ```
+  FoundationModels.LanguageModelError(-1)
+   ← com.apple.SensitiveContentAnalysisML(15)          sanitizeText 失敗
+   ← CombinedTextSanitizerBackend.BackendError(1)
+   ← ModelManagerServices.ModelManagerError(1001)      安全ガードレールのモデルがロードできない
+  ```
+
+  落ちているのは**本体の LLM ではなく安全ガードレール**(`com.apple.fm.language.instruct_300m.safety`)。
+  ガードレールは**テキストのみの呼び出しでも必ず通る**ので、これが死ぬと画像添付の有無に関係なく
+  **FM 機能が全滅**する。アセット記述子はディスク上に存在しており、欠落ではなくロード失敗
+- **飽和(スループット不足)とは別物**。飽和なら成功が混じるが、この事象は**失敗率 100%** になる。
+  結果 JSON の `fm.failures / fm.calls` で必ず区別すること
+- **並列 run 中に発生しやすい**。modelmanagerd が `unloadIfNeededToMakeRoom` で
+  安全モデルを積み降ろしし続けた直後に落ちた(実測: 14 ワーカーが一斉に occlusion-guard を叩いた
+  E2E の途中で成功→全滅に転じ、以後プロセスを変えても回復しない)。ホスト RAM の枯渇ではない
+  (192GB 中 57GB 空き)。**FM はホスト全体で直列化される**(performance-tuning §FM)ので、
+  並列に投げてもスループットは増えず、この積み降ろしだけが増える
+- **回復手段は現時点で「マシン再起動」しか確認できていない**(再起動直後は成功する。
+  ただし数分〜十数分の並列実行で再発する)。`GenerativeExperiencesSafetyInferenceProvider` は
+  root 権限のため一般ユーザーでは kill できない。ログでの確認:
+
+  ```
+  /usr/bin/log show --last 15m --style compact \
+    --predicate 'eventMessage CONTAINS[c] "End sanitizeText"'
+  ```
+
+  (`log` は shell 関数に食われることがあるので**絶対パスで叩く**。自分の述語文字列が
+  `log` プロセス自身のログに出て**偽の成功行**に見えるので、プロセス名まで確認すること)
+
 ## デバイス供給の競合(モニターと run が同じデバイスを取り合う)
 
 拡張のモニターは watchdog で `device-up` を投げる。run と同じデバイス群を使うので競合し得る。

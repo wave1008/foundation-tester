@@ -113,7 +113,7 @@ public struct OcclusionVerifier {
             // nil を返すと呼び出し側(StepExecutor.occlusionFlip)はガードを素通りさせる。
             // 記録しないと「FM 全滅で無効」と「疑わしい要素が無く正常」が区別できない
             FMHealth.record(kind: "occlusion", ms: Self.elapsedMs(startedAt), ok: false,
-                            error: "occlusion: \(error)")
+                            error: "occlusion: \(FMHealth.describe(error))")
             return nil
         }
     }
