@@ -92,6 +92,16 @@ private fun ControlsContent() {
                 modifier = Modifier.testTag("slider_volume"))
             Text("volume=${volume.roundToInt()}", modifier = Modifier.testTag("txt_slider"))
 
+            // enabled=false のまま a11y ツリーに残す(消すと isDisabled が「見つかりません」になる)
+            Button(onClick = {}, enabled = false,
+                modifier = Modifier.testTag("btn_always_disabled")) {
+                Text("無効ボタン")
+            }
+            Button(onClick = {}, enabled = agree,
+                modifier = Modifier.testTag("btn_toggle_target")) {
+                Text("切替対象")
+            }
+
             Button(onClick = {
                 notify = false
                 agree = false

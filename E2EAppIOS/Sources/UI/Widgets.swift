@@ -6,6 +6,8 @@ struct TaggedButton: View {
     let tag: String
     let label: String
     var fillWidth: Bool = false
+    /// false でも a11y ツリーには残す(消すと isDisabled が「見つかりません」になる)
+    var enabled: Bool = true
     let action: () -> Void
 
     var body: some View {
@@ -14,6 +16,7 @@ struct TaggedButton: View {
                 .frame(maxWidth: fillWidth ? .infinity : nil, minHeight: 48)
         }
         .buttonStyle(.borderedProminent)
+        .disabled(!enabled)
         .accessibilityIdentifier(tag)
     }
 }

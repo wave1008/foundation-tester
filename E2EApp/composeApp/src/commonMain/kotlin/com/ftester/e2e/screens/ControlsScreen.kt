@@ -85,6 +85,10 @@ fun ControlsScreen() {
         )
         TaggedText(Tags.TXT_SLIDER, "volume=${volume.roundToInt()}")
 
+        // enabled=false のまま a11y ツリーに残す(消すと isDisabled が「見つかりません」になる)
+        TaggedButton(Tags.BTN_ALWAYS_DISABLED, "無効ボタン", enabled = false) {}
+        TaggedButton(Tags.BTN_TOGGLE_TARGET, "切替対象", enabled = agree) {}
+
         TaggedButton(Tags.BTN_CONTROLS_RESET, "コントロールリセット") {
             notify = false
             agree = false

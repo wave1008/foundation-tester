@@ -101,6 +101,8 @@ enum Tags {
     static let txtRadio = "txt_radio"
     static let sliderVolume = "slider_volume"
     static let txtSlider = "txt_slider"
+    static let btnAlwaysDisabled = "btn_always_disabled"
+    static let btnToggleTarget = "btn_toggle_target"
     static let btnControlsReset = "btn_controls_reset"
 
     // ライフサイクル

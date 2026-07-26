@@ -376,6 +376,9 @@ class _ControlsScreenState extends State<ControlsScreen> {
           ),
         ),
         TaggedText(Tags.txtSlider, 'volume=${_volume.round()}'),
+        // enabled=false のままセマンティクスツリーに残す(消すと isDisabled が「見つかりません」になる)
+        TaggedButton(Tags.btnAlwaysDisabled, '無効ボタン', enabled: false, onTap: () {}),
+        TaggedButton(Tags.btnToggleTarget, '切替対象', enabled: _agree, onTap: () {}),
         TaggedButton(Tags.btnControlsReset, 'コントロールリセット',
             onTap: () => setState(() {
                   _notify = false;
