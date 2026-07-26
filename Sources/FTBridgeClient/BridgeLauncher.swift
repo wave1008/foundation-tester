@@ -332,6 +332,40 @@ public struct BridgeLauncher {
         return ports.sorted()
     }
 
+    /// portsMatching を複数 UDID 分まとめて引く(`ps` は 1 回だけ)。
+    /// **/status に未応答=announce 前のランナーもここには映る**のが要点。provision の
+    /// 「同一デバイスに 2 本目の XCUITest ランナーを立てない」判定はこれを使う
+    /// (announce 済みブリッジしか見ない scanRunningBridges では、別プロセスが起動した直後の
+    /// ランナーが見えず、空きポートに 2 本目を立てて OS の 1 デバイス 1 ランナー制約で全滅する)。
+    public static func portsByUDID(_ udids: [String], repoRoot: URL) -> [String: [UInt16]] {
+        let stateDir = repoRoot.appendingPathComponent(".ftester")
+        guard !udids.isEmpty,
+              let entries = try? FileManager.default.contentsOfDirectory(
+                at: stateDir, includingPropertiesForKeys: nil) else { return [:] }
+        var portByPID: [Int32: UInt16] = [:]
+        for entry in entries where entry.lastPathComponent.hasPrefix("bridge-")
+            && entry.pathExtension == "pid" {
+            guard let pidString = try? String(contentsOf: entry, encoding: .utf8),
+                  let pid = Int32(pidString.trimmingCharacters(in: .whitespacesAndNewlines)),
+                  let port = UInt16(entry.deletingPathExtension().lastPathComponent
+                      .replacingOccurrences(of: "bridge-", with: "")) else { continue }
+            portByPID[pid] = port
+        }
+        guard !portByPID.isEmpty else { return [:] }
+        // portsMatching と同じ理由で `ps` は全列挙 1 回(`ps -p <pid列>` はゴミ pid 1 つで全滅する)
+        guard let ps = try? Shell.run(["ps", "-ax", "-o", "pid=,command="]) else { return [:] }
+        var result: [String: [UInt16]] = [:]
+        for line in ps.output.split(whereSeparator: \.isNewline) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard let space = trimmed.firstIndex(of: " "),
+                  let pid = Int32(trimmed[..<space]), let port = portByPID[pid] else { continue }
+            for udid in udids where trimmed.contains(udid) {
+                result[udid, default: []].append(port)
+            }
+        }
+        return result.mapValues { $0.sorted() }
+    }
+
     /// 指定シミュレータ(UDID)を対象にするブリッジプロセスを pid ファイルから探して全て停止する。
     /// 特定はプロセスの起動引数(-destination ... id=<UDID>)照合。/status 無応答のゾンビ
     /// xcodebuild は HTTP スキャンに映らないがこれなら殺せる(生きた XCUITest セッションを残すと

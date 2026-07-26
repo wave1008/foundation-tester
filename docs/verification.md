@@ -60,6 +60,26 @@ ftester bridge up --platform ios --device <名前>     # ここで再ビルド�
   スクリプトからバックグラウンド実行すると /dev/null が即 EOF になり、
   **1行も出さずに正常終了**する(「監視が何も返さない」ように見える罠)
 
+## デバイス供給の競合(モニターと run が同じデバイスを取り合う)
+
+拡張のモニターは watchdog で `device-up` を投げる。run と同じデバイス群を使うので競合し得る。
+**マシン再起動直後**(全デバイスが落ち、拡張も run も同時に供給を始める)が最も踏みやすい。
+
+- **XCUITest ランナーは 1 デバイス 1 本が OS 制約**。2 本目は永久に announce せず、
+  そのデバイスのシナリオが全滅する
+- 供給側の防御は2段:
+  1. `BridgeProvisioner.planBridge` が **announce 前のランナーも見て `.adopt`(起動せず待つ)**
+     に落とす(検出は `BridgeLauncher.portsByUDID` = プロセス引数の `-destination id=<UDID>` 照合。
+     `scanRunningBridges` は /status 応答済みしか映らないのでこれだけでは足りない)。
+     引き取ったランナーが応答しなければ止めて同じポートで立て直す(親を失ったゾンビ対策)
+  2. run は**供給フェーズ(install・凍結triage)の間も run-lease を保つ**(`SupplyLeaseHolder`)。
+     `RunOrchestrator` の lease はシナリオ実行中しか書かれないため、その手前に watchdog の
+     `device-up` が割り込む穴が空いていた
+- それでも手で確実に避けたいときは `ftester.autoRepairBridge` を false にするか、
+  E2E 前にモニターパネルを閉じる
+- **Android エミュレータは run が自動起動しない**(iOS シミュレータは供給が起こす)。
+  再起動後は `ftester devices up --project <名> --profile <名>` を先に回す
+
 ## macOS / Xcode ベータの整合
 
 - macOS ベータを更新したら Xcode も同じベータへ揃えてフルリビルド。FoundationModels の ABI 不整合で
