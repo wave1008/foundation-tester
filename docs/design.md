@@ -4,7 +4,7 @@ macOS 27 の Foundation Models framework(オンデバイス 3B モデル)を最�
 iOS / Android 両対応のアプリ E2E テストツール。iOS を先行実装し、Android は同じ
 `AppDriver` 抽象の上に後続実装した(経緯・時系列は §7, §8 参照)。
 
-- 作成日: 2026-07-07 / 最終更新: 2026-07-19
+- 作成日: 2026-07-07 / 最終更新: 2026-07-26
 - ステータス: iOS / Android とも実装済み・運用中(GUI 入口は VSCode 拡張に一本化)
 - 決定事項: ハイブリッド型 / 自作 XCUITest ブリッジ+自作 Android ブリッジ / シミュレータ優先 / Swift + FoundationModels
 
@@ -337,6 +337,8 @@ ftester bridge up|down|status [--platform ios|android] [--device ...] [--serial 
 ftester run [--project P] [--profile 名] [--scenario id...] \
     [--heal] [--report-dir ...] [--ports 8123,8124] [--skip-build]
                                            # Swift シナリオの決定的実行(プロファイル実行は§11)
+ftester draft-scenario [--project P] [--testbase 資料.md] [--app ...] [--no-fm] [--dry-run]
+                                           # テスト設計資料からシナリオ下書きを生成(§17)
 ftester project create|list|sync          # テストプロジェクトの作成・一覧・Package.swift 再整合(§11)
 ftester profile list                      # 実行プロファイルの一覧と現在マシンでの解決チェック(§11)
 ftester machine set|show                  # このマシンの名前(マシンプロファイルの選択キー)の登録・確認
@@ -547,6 +549,17 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
   (既定 `waitSeconds:0` で即時 1 回判定。待つなら `waitSeconds:` を渡す)。
   `wait(1)` の出番はセレクタで待てない整定(アニメ中の座標ずれ等・下記知見の iOS シート例)に限る
 - セレクタ式は文字列1本: `#id` / `ラベル` / `.Type[n]`(n は 1 オリジン。1番目は [1] 省略で `.Type`、明記も可)/ `.Type#id` / `.Type=ラベル`、`||` でフォールバック連鎖
+- **スコープ `祖先 >> 子孫`**(2026-07-26): `#list >> .Cell[2]` は `#list` で解決した要素の**子孫だけ**を
+  候補にし、序数もスコープ内で数える(画面クロム・スクロール位置で序数がずれる問題への対処)。多段可。
+  子孫判定は「スナップショットは pre-order + 元ツリーの depth」という 3 ブリッジ共通の規約に依存する
+  (`StepExecutor.descendants`。中間ノードのフィルタや上限打ち切りは pre-order を崩さないので保たれる)。
+  **スコープ付きロケータはアサーションのフォールバック連鎖から除外されない**(id/label 無しの
+  type+index でも容器に錨があるため。`FlowLocator.isWeakForAssert`)
+- **近接 `.Type:near(セレクタ)`**(2026-07-26): 候補のうちアンカー要素の frame 中心に最も近いものを選ぶ。
+  同一ラベルが複数ある画面で「〇〇の隣の編集ボタン」を指すための記法。アンカーはスコープの外から
+  解決する(隣接ラベルは容器の外にあることが普通のため)。アンカー側にも `||` 連鎖を書ける
+- `||` と `>>` の分割は**括弧の外だけ**(`:near(...)` の中は割らない)。`>>` は `||` より強く結合する。
+  ラベルに `>>` や `:near(` を含めるときは `=` エスケープ(`=A >> B`)。パースは失敗しない契約は不変
 - **label マッチは完全一致優先→無ければ部分一致(`contains`)**(`StepExecutor.matchDetailed` が
   一致品質 exact/substring を返す)。短いラベルが長いラベルに誤マッチする(`ラベル"許可"` が
   `"通知を許可"` に当たる)。区別したい要素が同一画面に共存するときは `#id` か `.Type=ラベル` で
@@ -580,6 +593,32 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
   プライマリは対象 OS/ロケールの実ラベルに合わせて維持する
 - **`exist`/`textIs`/`valueIs` は非スクロール**(現在画面のみ判定)。一覧の折り返し下にある項目は
   直前に `scrollTo(セレクタ, maxSwipes:)` で送ってから確認する
+
+### 否定・状態・個数のアサーション(2026-07-26)
+
+- **`notExist`** は「消えるまで待つ」。初回で不在なら即成功、在ればタイムアウトまで消滅を待つ
+  (`exist` の poll と対称)。可視性(occlusion)は見ない — ツリーから消えたことが唯一の判定。
+  hybrid では **不在を確定する側でだけ** `fallbackDriver` を1回照会する(pass 経路の固定費 1 回。
+  システム UI のダイアログが primary の snapshot に映らないため。miss 毎に払う `exist` 側とは事情が逆)
+- **`isEnabled` / `isDisabled`** は `ElementInfo.enabled`(3 ブリッジとも埋めている)を見る。
+  タイムアウトまで状態変化を待つ。「見つからない」と「状態が違う」を別メッセージで返す
+- **`countIs`** は候補の個数。`||` は他コマンドと同じ「解決できる方」= **候補が1件以上見つかった
+  最初の節だけ**を数える(候補集合の合併ではない)。スコープと併用してリスト件数を数えるのが主用途
+
+### 共通ステップとライフサイクル(2026-07-26)
+
+- **`group("名前") { }`** は記録の見え方だけを変える(実行・失敗セマンティクスは素の列と同一)。
+  内側のステップ説明に `[名前]`(入れ子は `[外/内]`)を前置する。前置は `FTDriveCore.recordStep` の
+  1 点でだけ行い、**修正提案の description は素のまま**(ソース行との照合に使うため)。
+  拡張のステップ表から編集できるよう `StepCommandText.parse` が前置を剥がす(要同期)
+- **`setUp()` / `tearDown()`**: 同じクラスに引数なし・非async・非throws で書くと `@TestClass` マクロが
+  各 `@Test` の run クロージャに織り込む(基底クラスからの継承は見ない)。ライフサイクル無しの
+  クラスの生成コードは従来どおり(`X().method()` の 1 式のまま)
+  - **setUp の失敗はシナリオごと中断**する。`scene(n)` の入口は `sceneAborted` を毎回 false に戻すため、
+    scene をまたいで効く `scenarioAborted` へ昇格させている(ここを外すと setUp 失敗が無視される)
+  - **tearDown は失敗後でも実行**する(中断フラグを一時解除 → 実行後に「元の中断」と「片付け中の失敗」の
+    OR で復元)。片付けが飛ぶと後続シナリオを汚すため。ただし**画面凍結・ユーザー中断(debug stop)では
+    実行しない**(前者は別デバイスで振り直すので無駄、後者は「止めた」のに片付けで再び止まるのが不合理)
 
 ### 実行アーキテクチャ
 
@@ -1317,3 +1356,30 @@ CoreSimulator.framework を直接叩き、`SimulatorCatalog.devices()` が直叩
   (Tests/FTBridgeClientTests/SimulatorCatalogCoreSimTests.swift、FT_LIVE_SIM=1)
 - ステップ実行(tap ~490ms)は XCUITest エンジン内部コストでこの施策の対象外。
   HID 注入バイパスは評価済み不採用(backboardd クラッシュ)・再提案しない
+
+## 17. テストベースからのシナリオ下書き生成(2026-07-26)
+
+`Projects/<name>/docs/testbases/*.md`(テスト設計の元資料)を Swift DSL シナリオの**下書き**に
+落とす。`ftester draft-scenario`。ライブ操作の記録生成(§10 の gen-scenario)は実セレクタを持つが、
+こちらは設計資料しか無いのでセレクタは全て TODO プレースホルダになる。
+
+### 17.1 二段構え(FM → 決定的パーサ)
+
+| 層 | 実装 | 役割 |
+|---|---|---|
+| 構造化(FM) | `FTAgent/TestbaseDrafter` | 資料 → `ScenarioDraft`(scene の並び + CAE ごとの自然言語手順)。1呼び出し1セッション |
+| 構造化(決定的) | `FTCore/TestbaseOutline.parse` | 見出し(`#`=説明 / `##`=scene)・`### 前提`・行頭ラベル(`前提:`/`Given:`)・「〜こと」で CAE に振り分け |
+| レンダリング | `FTDSL/ScenarioDraftCodeGen` | 手順文 → コマンド候補(語彙の包含判定のみ・**FM 不使用=決定的**)+ Swift ソース |
+
+**FM が不可用・失敗・出し損ないのときは決定的パーサへ落ちる**(`--no-fm` で常に決定的)。
+4K 制約のため FM へ渡すのは先頭 2400 文字だけで、超過時は警告する(全文要約より「頭から確実に」)。
+
+### 17.2 生成物の性質(壊さないこと)
+
+- 生成クラスには **`@Deleted` を付ける** → 一括実行から外れる(一覧には残る)。人が TODO を実セレクタへ
+  置き換えてから `@Deleted` を外す運用。出力先は `Scenarios/Drafts/`(SPM ターゲットに含まれるので
+  **下書きもコンパイル対象**。`ScenarioCodeGen.writeValidated` でビルド検証し、失敗時は `_disabled/` へ隔離)
+- プレースホルダは `#TODO` = **決して解決できない id**。埋め忘れたまま `@Deleted` を外すと
+  「ロケータを解決できません」で確実に落ちる(空実装で緑になる方が危険なので意図的)
+- 手順文は必ずコマンド行の末尾コメントに残す(写像が外れても元の意図が読める)
+- `--name` 明示時は重複回避の連番が付かないため、同名ファイルがあれば上書きせずエラーにする

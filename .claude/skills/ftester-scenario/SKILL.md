@@ -173,9 +173,11 @@ testbase(SC/TC 等の仕様書)を根拠にシナリオを書く場合、実行�
 |---|---|
 | タップ/入力 | `tap(sel, optional:, timeout:)` / `type(text)`(直前フォーカス)/ `type(sel, text)` / `press(sel, duration:)`(長押し) |
 | スワイプ/スクロール | `swipe(.up/.down/.left/.right)` / `scrollTo(sel, direction:, maxSwipes:)` |
-| 検証 | `exist(sel)` / `textIs(sel, 期待)` / `valueIs(sel, 期待)` / `screenIs(名)`。exist は `.textIs()/.valueIs()` チェーン可 |
+| 検証 | `exist(sel)` / `notExist(sel)` / `textIs(sel, 期待)` / `valueIs(sel, 期待)` / `isEnabled(sel)` / `isDisabled(sel)` / `countIs(sel, 個数)` / `screenIs(名)`。exist は `.textIs()/.valueIs()` チェーン可 |
 | アプリ制御 | `launchApp(bundleID?)` / `relaunchApp()` / `terminateApp()` / `home()` / `appSwitcher()` |
 | 待機/分岐 | `wait(秒)` / `ifCanSelect(sel, waitSeconds:) { … }.ifElse { … }` / `ios { }` / `android { }` / `procedure("名") { try await … }` |
+| まとまり | `group("ログイン") { … }`(記録に `[ログイン]` を前置するだけ。実行・失敗の扱いは素の列と同じ) |
+| 前後処理 | テストクラスに `func setUp()` / `func tearDown()`(引数なし)を書くと各 `@Test` の前後で自動実行 |
 
 - `optional: true` = 見つからなくても失敗にしない。`timeout:` = ロケータ再試行の上限秒(0=即諦め、
   省略=約0.7秒)。出るか不定な optional ステップの空振り短縮に使う。
@@ -199,7 +201,12 @@ testbase(SC/TC 等の仕様書)を根拠にシナリオを書く場合、実行�
 - `ラベル` — label(**完全一致優先 → 無ければ部分一致**)
 - `.Type` / `.Type[2]` — 型(+順番、**1 オリジン**。1番目は [1] 省略可)
 - `.Type#id` / `.Type=ラベル` — 型で絞る
+- `祖先 >> 子孫` — **スコープ**。`#list >> .Cell[2]` = `#list` の子孫だけを候補にし、序数もその中で数える
+  (画面クロム・スクロール位置で `.Type[n]` がずれる問題の対処。多段可)
+- `.Type:near(セレクタ)` — **近接**。候補のうちアンカーに最も近いものを選ぶ
+  (`項目:near(#合計)` のように、同じラベルが複数ある画面で隣接要素から選び分ける)
 - `=ラベル` — `#` や `.` で始まる**生ラベル**を label として扱うエスケープ
+  (`>>` や `:near(` を含むラベルもこれで書く)
 - 例: `tap("#login_btn||ログイン||.Button")` = id → ラベル → 型の順で解決を試みる
 
 ### セレクタ選定の罠(そのまま踏む。design.md §10 実測)
@@ -213,6 +220,7 @@ testbase(SC/TC 等の仕様書)を根拠にシナリオを書く場合、実行�
   `.Type[n]`(順序依存で脆い)でしか指せない**。position で採取し、指定にコメントを添える。id があれば
   頑健なので、テスト容易性の改善提案(主要導線への accessibilityIdentifier 付与)も併せて伝えてよい。
   - **`.Type[n]` は画面状態で指す要素が変わる**(一覧では削除ボタン、空表示では別ボタン/タブ 等)。
+    容器の id があるなら `#容器 >> .Type[n]` でスコープを付けると画面クロムやスクロール位置の影響を切れる。
     破壊的・index 指定の tap は、**意図した状態のみ出るマーカーで `ifCanSelect` ガード**してから撃つ。
   - **件数不定の一括操作は DSL にループが無い**ので、この**ガード付き反復を上限回数ぶん並べて**表現する
     (空になればガードが空振りして残りは無害。上限は想定最大件数に合わせる)。
