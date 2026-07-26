@@ -188,7 +188,17 @@ Android(`BridgeRouter.handleSwipe`)は縦 0.3h↔0.7h・横 0.2w↔0.8w(y=0.5h)�
 | `#txt_radio` | Text | `plan=<A\|B\|C>` 初期 `plan=A` | |
 | `#slider_volume` | Slider | (ラベルなし) | 0..100・steps で 25 刻み |
 | `#txt_slider` | Text | `volume=<n>` 初期 `volume=50` | |
+| `#btn_always_disabled` | Button | `無効ボタン` | **常に disabled**。押しても何も起きない |
+| `#btn_toggle_target` | Button | `切替対象` | **`#cb_agree` が true のときだけ enabled**(初期 disabled)。押しても何も起きない |
 | `#btn_controls_reset` | Button | `コントロールリセット` | 全て初期値へ |
+
+**disabled の 2 ボタンは `isEnabled`/`isDisabled` の検証材料**(ftester 側の唯一の disabled 供給源)。
+- **無効でもアクセシビリティツリーから消さない**(消えると「要素が見つかりません」になり
+  「無効であること」を検証できない)。無効化は enabled 属性だけで表現する。
+- `#btn_toggle_target` は既存の `#cb_agree` を有効化スイッチとして流用する(新しいトグルを増やさない)。
+  「同意したら次へ進める」という実アプリで最も多い disabled パターンの再現でもある。
+- どちらも**タップ対象にしない**(無効ボタンへの tap の挙動は OS/フレームワークで割れるため、
+  シナリオは状態検証だけに使う)。
 
 Switch/Checkbox/RadioButton は**ラベル Text 自体をタップ対象にしない**(tag 付きのコントロール本体だけを
 タップ対象にする)。ラベルとコントロールが別要素になるよう Row で並べる。

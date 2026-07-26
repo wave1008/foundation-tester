@@ -98,6 +98,8 @@ class Tags {
   static const txtRadio = 'txt_radio';
   static const sliderVolume = 'slider_volume';
   static const txtSlider = 'txt_slider';
+  static const btnAlwaysDisabled = 'btn_always_disabled';
+  static const btnToggleTarget = 'btn_toggle_target';
   static const btnControlsReset = 'btn_controls_reset';
 
   // ライフサイクル

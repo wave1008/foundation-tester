@@ -99,6 +99,8 @@ object Tags {
     const val TXT_RADIO = "txt_radio"
     const val SLIDER_VOLUME = "slider_volume"
     const val TXT_SLIDER = "txt_slider"
+    const val BTN_ALWAYS_DISABLED = "btn_always_disabled"
+    const val BTN_TOGGLE_TARGET = "btn_toggle_target"
     const val BTN_CONTROLS_RESET = "btn_controls_reset"
 
     // ライフサイクル

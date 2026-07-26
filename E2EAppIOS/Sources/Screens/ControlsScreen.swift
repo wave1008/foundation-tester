@@ -41,6 +41,10 @@ struct ControlsScreen: View {
                 .accessibilityIdentifier(Tags.sliderVolume)
             TaggedText(tag: Tags.txtSlider, text: "volume=\(Int(volume.rounded()))")
 
+            // enabled=false のまま a11y ツリーに残す(消すと isDisabled が「見つかりません」になる)
+            TaggedButton(tag: Tags.btnAlwaysDisabled, label: "無効ボタン", enabled: false) {}
+            TaggedButton(tag: Tags.btnToggleTarget, label: "切替対象", enabled: agree) {}
+
             TaggedButton(tag: Tags.btnControlsReset, label: "コントロールリセット") {
                 notify = false
                 agree = false

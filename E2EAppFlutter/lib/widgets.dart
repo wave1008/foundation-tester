@@ -16,18 +16,22 @@ Widget tagged(String tag, Widget child, {bool button = false}) =>
     MergeSemantics(child: Semantics(identifier: tag, button: button, child: child));
 
 class TaggedButton extends StatelessWidget {
-  const TaggedButton(this.tag, this.label, {required this.onTap, this.fillWidth = false, super.key});
+  const TaggedButton(this.tag, this.label,
+      {required this.onTap, this.fillWidth = false, this.enabled = true, super.key});
 
   final String tag;
   final String label;
   final VoidCallback onTap;
   final bool fillWidth;
 
+  /// false でもセマンティクスツリーには残す(消すと isDisabled が「見つかりません」になる)
+  final bool enabled;
+
   @override
   Widget build(BuildContext context) => tagged(
         tag,
         ElevatedButton(
-          onPressed: onTap,
+          onPressed: enabled ? onTap : null,
           style: ElevatedButton.styleFrom(
             minimumSize: Size(fillWidth ? double.infinity : 0, 48),
           ),
