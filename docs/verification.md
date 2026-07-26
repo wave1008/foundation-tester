@@ -39,6 +39,19 @@ ftester bridge up --platform ios --device <名前>     # ここで再ビルド�
   (最大 288/分)。指標が個体を分離できるかは「異常機 vs 健全機」を並べて初めて言える
   (このケースの結論と全数データは performance-tuning.md §7)
 
+## 検証スクリプトそのものの罠
+
+- **エラーを保存・表示するときは切り詰める前に入れ子を畳む**。`prefix(N)` で素の description を
+  切ると**真因が構造的に落ちる**(最上位は「The operation couldn't be completed.」のような
+  定型文で、原因は `NSUnderlyingError` / `NSMultipleUnderlyingErrors` の奥にある)。
+  実害: FM の全滅原因が 300 文字の切り捨てで数日間まったく見えなかった(`FMHealth.describe` 参照)
+- **zsh は未クォート変数を単語分割しない**。`for x in "a b" "c d"; do set -- $x; ...` は
+  bash の感覚だと 2 引数に割れるが zsh では割れず、`$1` に全体が入る。
+  実害: SUT×プロファイルの再検証ループが全件「プロジェクトが見つかりません」で空振りした
+- **`log` は絶対パスで叩く**(`/usr/bin/log`)。shell 関数に食われて
+  「too many arguments」になる。さらに**自分の述語文字列が `log` プロセス自身のログに出て
+  偽の一致行になる**ので、必ずプロセス名まで確認する
+
 ## `Scripts/e2e.sh`(ftester 自身の E2E)
 
 - SUT(`E2EApp/` 他)の鮮度を見て必要なら再ビルドし、各プロファイルを順に回す。オプション:
@@ -67,6 +80,14 @@ run 終了時の「FM 呼び出しが全て失敗しました」警告と結果 
 
 - **切り分けの起点は `ftester doctor`**。availability は「端末が対応しているか」しか見ておらず、
   資産側の理由で全滅していても `available` を返すので、**実呼び出し(checkLive)の結果で判断する**
+- **FM 依存の変更は「FM を呼ぶシナリオ」で検証する**。occlusion-guard は
+  `OcclusionSuspicion` が疑いを立てたときだけ発火するので、シナリオを選ばないと `fm: null` で
+  **空振りする**(実害: 02_id指定・05_テキスト入力 で2回続けて空振りし、検証したつもりになった)。
+  実測で FM 呼び出しが最も多いのは `ジェスチャが正しく検出されること`。
+  確認は結果 JSON の `fm` フィールドで行う(警告が出ない = 成功、ではない。**呼ばれていない**かもしれない)
+- **occlusion-guard は長期間 死んだままでも E2E は緑になる**。実績値では
+  6066 呼び出し中 5673 失敗(**93.5%**)で、成功を含む run は 582 中 58 だけだった。
+  つまり**「緑」は基本的にツリー一致の緑**で、視覚検証を含むとは限らない
 - **エラーは入れ子。最上位だけ見ても何も分からない**。`LanguageModelError(-1)` は常に
   「The operation couldn't be completed.」で、真因は `NSMultipleUnderlyingErrors` の奥にある。
   `FMHealth.describe` が `←` 区切りで畳んで出すので、そちらを読む
@@ -183,6 +204,9 @@ FM は死んだら**再起動まで回復しない**ので、死んだ後も呼�
      `device-up` が割り込む穴が空いていた
 - それでも手で確実に避けたいときは `ftester.autoRepairBridge` を false にするか、
   E2E 前にモニターパネルを閉じる
+- **`.adopt` は健全な環境では通らない**(announce 前のランナーが残っていないと発火しない)ので、
+  E2E が緑でも「退行が無い」以上のことは言えない。実際の発火は再起動・拡張再起動を跨いだときに
+  自然と起きる。**通らない経路を「E2E 緑」で検証済みと書かないこと**
 - **Android エミュレータは run が自動起動しない**(iOS シミュレータは供給が起こす)。
   再起動後は `ftester devices up --project <名> --profile <名>` を先に回す
 
