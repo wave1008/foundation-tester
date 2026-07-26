@@ -25,6 +25,7 @@ struct FTester: AsyncParsableCommand {
             Screenshot.self,
             Terminate.self,
             RunScenarios.self,
+            RunFileCommand.self,
             DraftScenarioCommand.self,
             ProjectCommand.self,
             MachineCommand.self,
