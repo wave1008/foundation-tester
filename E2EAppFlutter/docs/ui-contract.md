@@ -38,20 +38,18 @@ Flutter の semantics ツリーは**支援技術が要求したときだけ**構
 | 要素 | iOS | Android |
 |---|---|---|
 | ボタン(`button: true` を持つノード) | `button` | `button` |
-| **テキスト** | `staticText` | **`other`** |
+| **テキスト** | `staticText` | `staticText`(2026-07-26 の正規化以降。葉+contentDesc を写像。それ以前は `other`) |
 | `Switch` | `switch` | `switch` |
 | `Checkbox` | `switch` | (同左) |
 | `Radio` | `button` | (同左) |
 | `Slider`(A の理由で素の Semantics) | `other` | `other` |
 | `TextField`(`obscureText` 含む) | `textField` | `textField` |
 
-Flutter は canvas 描画で、Android 側の className が `android.view.View` のままになるため
-テキストが `staticText` に写像されない。
-→ **型セレクタを使ってよいのは `button` だけ**。テキストの検証は必ず `#id` + `textIs` で書く。
-→ **id の無いテキストは Android のスナップショットに出ない**(`android.view.View` + resource-id 無しは
-  ブリッジの `shouldInclude` が落とす)。つまり Flutter/Android では**ラベルをアンカーにした方向セレクタが
-  使えない**(`Projects/E2E-Flutter/Scenarios/13_ID無し画面.swift` を iOS 限定にしている理由)。
-  ブリッジの型正規化(docs/design.md §10 のフェーズ2)で解消予定。
+Flutter は canvas 描画で Android 側の className が `android.view.View` のままになるため、
+ブリッジが **葉 + contentDesc → `staticText`** の規則で写像している(docs/design.md §10)。
+→ 型セレクタは `button` / `switch` / `staticText` / `textField` が使える。
+→ **id の無いテキストもスナップショットに出る**(2026-07-26 以降)。ラベルをアンカーにした
+  方向セレクタが Android でも使える(`Projects/E2E-Flutter/Scenarios/13_ID無し画面.swift`)。
 → `obscureText: true` は **`secureTextField` にならない**(ネイティブ SUT と違い型で区別できない)。
 → **iOS の in-app エンジンではテキスト欄は `other`**(Flutter のフィールドは UITextField ではないため。
   `#id` 指定なら両エンジン同一に動く)。

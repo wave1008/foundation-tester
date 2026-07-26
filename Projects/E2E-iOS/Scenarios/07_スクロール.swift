@@ -53,9 +53,9 @@ class スクロールで折り返し下の要素に到達できること {
                     exist("#row_01")
                 }
             }
-            scene(2, ".cell=行 03 でラベル指定タップできる(ラベルは Cell 側に集約してある)") {
+            scene(2, ".clickable=行 03 でラベル指定タップできる(ラベルは Cell 側に集約してある)") {
                 action {
-                    tap(".cell=行 03")
+                    tap(".clickable=行 03")
                 }.expectation {
                     textIs("#txt_row_selected", "selected=row_03")
                 }

@@ -139,7 +139,9 @@ enum InAppSnapshot {
             enabled: enabled,
             frame: FTRect(x: frame.origin.x, y: frame.origin.y,
                           width: frame.width, height: frame.height),
-            depth: depth)
+            depth: depth,
+            // XCUITest 版と同じ経路(UIAccessibilityTraits.selected)。false は送らない
+            checked: traits.contains(.selected) ? true : nil)
     }
 
     // 空の UITextField は accessibilityValue が placeholder を返すため value に漏れる。
@@ -196,7 +198,7 @@ enum InAppSnapshot {
         case .textView: return "TextView"
         case .image: return "Image"
         case .adjustable: return "Slider"
-        case .cell: return "Cell"
+        case .cell: return "Clickable"
         case .link: return "Link"
         case .searchField: return "SearchField"
         case .picker: return "Picker"

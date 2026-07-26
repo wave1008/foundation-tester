@@ -503,10 +503,17 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
 
    | 要素 | CMP(iOS) | CMP(Android) | SwiftUI/UIKit | View/XML | Flutter(iOS) | Flutter(Android) |
    |---|---|---|---|---|---|---|
-   | ボタン | `button` | `cell` | `button` | `button` | `button` | `button` |
-   | テキスト | `staticText` | `staticText` | `staticText` | `staticText` | `staticText` | **`other`** |
+   | ボタン | `button` | `button` | `button` | `button` | `button` | `button` |
+   | スイッチ | `switch` | `switch` | `switch` | `switch` | `switch` | `switch` |
+   | テキスト | `staticText` | `staticText` | `staticText` | `staticText` | `staticText` | `staticText` |
    | パスワード欄 | `textField` | `secureTextField` | `secureTextField` | `secureTextField` | `textField` | `textField` |
-   | リスト行 | `button` | `cell` | `cell`(UITableView) | `cell` | `button` | `button` |
+   | チェックボックス | `button` | `checkBox` | `button` | `checkBox` | `switch` | `checkBox` |
+   | リスト行 | `button` | `clickable` | `clickable`(UITableView) | `clickable` | `button` | `button` |
+
+   ボタン・スイッチ・テキストが揃っているのは 2026-07-26 の役割正規化の結果(それ以前は
+   CMP(Android)のボタン/スイッチが `cell`[現 `clickable` の旧名]、Flutter(Android)の
+   テキストが `other` だった)。**チェックボックスとリスト行は揃わない** — iOS 側の a11y が
+   役割を出さないため(下記「型は役割に正規化する」)
 
    id 露出の作法もフレームワークごとに違う: Compose は `testTagsAsResourceId`(Android のみ・
    ダイアログには再適用が必要)、View 系は `android:id`(**実行時に resource-id を作れないため
@@ -553,7 +560,7 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
   生成コード・ヒール提案の綴りが一致する(3ブリッジの wire 形式は不変 = 版上げ不要)。
   先頭大文字で書くと `validationError` が実行前に落とす
 - セレクタ式は文字列1本: `#id` / `ラベル` / `.型[n]`(n は 1 オリジン。1番目は [1] 省略で `.型`、明記も可)/ `.型#id` / `.型=ラベル`、`||` でフォールバック連鎖
-- **スコープ `祖先 >> 子孫`**(2026-07-26): `#list >> .cell[2]` は `#list` で解決した要素の**子孫だけ**を
+- **スコープ `祖先 >> 子孫`**(2026-07-26): `#list >> .clickable[2]` は `#list` で解決した要素の**子孫だけ**を
   候補にし、序数もスコープ内で数える(画面クロム・スクロール位置で序数がずれる問題への対処)。多段可。
   子孫判定は「スナップショットは pre-order + 元ツリーの depth」という 3 ブリッジ共通の規約に依存する
   (`StepExecutor.descendants`。中間ノードのフィルタや上限打ち切りは pre-order を崩さないので保たれる)。
@@ -637,6 +644,12 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
   (`exist` の poll と対称)。可視性(occlusion)は見ない — ツリーから消えたことが唯一の判定。
   hybrid では **不在を確定する側でだけ** `fallbackDriver` を1回照会する(pass 経路の固定費 1 回。
   システム UI のダイアログが primary の snapshot に映らないため。miss 毎に払う `exist` 側とは事情が逆)
+- **`isChecked` / `isNotChecked`**(2026-07-26)は `ElementInfo.checked` を見る。取得元は
+  **iOS = accessibility の selected trait**(`XCUIElementSnapshot.isSelected` / in-app は
+  `UIAccessibilityTraits.selected`)、**Android = `AccessibilityNodeInfo.isChecked`**。
+  Compose iOS は Switch の `value` を出さない(実測)ので selected trait が唯一の経路。
+  **true のときだけ送る**(省略 = オフ、または状態を持たない要素)。
+  型が OS で揃わない checkbox / radio でも**状態は型と独立に取れる**のがこの API の要点
 - **`isEnabled` / `isDisabled`** は `ElementInfo.enabled`(3 ブリッジとも埋めている)を見る。
   タイムアウトまで状態変化を待つ。「見つからない」と「状態が違う」を別メッセージで返す
 - **`countIs`** は候補の個数。`||` は他コマンドと同じ「解決できる方」= **候補が1件以上見つかった
@@ -750,10 +763,18 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
 - **`.型[n]` の n は「現在画面に見えている同型要素のツリー順」**。圧縮スナップショットは画面外要素を
   含まないため、序数は**スクロール位置と画面クロム(戻るボタン・下部タブ)に依存する**。
   レイアウト変更で黙ってずれるので、序数セレクタは実スナップショットで採取してから書く
-- **型名は OS で異なる**(2026-07-22・Compose Multiplatform の同一アプリで実測)。Compose の Button は
-  iOS = `button` / Android = `cell`(Android は className が `android.widget.Button` にならず
-  `SnapshotBuilder.mappedType` の既定側へ落ちる)。**型を使うセレクタは `ios {}` / `android {}` で分ける**。
-  `#id`(testTag)とラベルは両 OS 共通で引ける
+- **型は「役割」に正規化する**(2026-07-26)。ブリッジが返す型はネイティブのクラス名ではなく役割で、
+  **OS を跨いで保証されるのは `button` / `staticText` / `textField` / `secureTextField` / `switch` の5つ**。
+  Android 側の正規化規則は 3 つ(`SnapshotBuilder`):
+  ① clickable なノードが**同一 bounds の無名 `android.widget.Button` 子**を持てば `button`
+     (Compose は Role.Button をこの形でしか出さない。testTag が付く当のノードは `android.view.View`)
+  ② `checkable` な汎用ノードは `switch`(Compose の Role.Switch は legacy className を持たない)
+  ③ 葉 + contentDesc のみの汎用ノードは `staticText`(Flutter は canvas 描画でテキストも
+     `android.view.View`。これが無いと **id を振っていないテキストが丸ごと落ち**、ラベルを
+     アンカーにした方向セレクタが使えない)
+- **`checkBox` / `slider` / リスト行は揃えられない**(iOS 側が役割を出さない: Compose の Checkbox/Radio は
+  iOS で `button`、Slider は `other`。2026-07-26 に同一アプリ・同一画面で実測)。**型で指さず `#id` を使う**。
+  これは「情報が無い側に合わせるしかない」ケースで、ブリッジ実装では解消できない
 - **Android は「別ウィンドウ」に描画される UI(`AlertDialog` 等)にテスト用 id が出ない**
   (2026-07-22 実測)。`testTagsAsResourceId` はルートに1回付ければ子孫全体に効くが、ダイアログは
   ルートの子孫ではないため効かず、**ダイアログ内だけ `#id` が全滅する**(ラベルは引ける)。

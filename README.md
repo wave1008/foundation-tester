@@ -294,7 +294,7 @@ class ログインテスト {
 | `ログイン` | ラベル(完全一致 → 部分一致) |
 | `.button` / `.button[2]` | 型+順番(**1 オリジン**。`.button[2]` = 2番目の Button。1番目は `[1]` を省略して `.button` と書く。`[1]` と明記しても可) |
 | `.switch#ID` / `.switch=ラベル` | 型と id/label の併用(値検証などで型を絞る) |
-| `#list >> .cell[2]` | **スコープ**(祖先 >> 子孫)。序数はスコープ内で数えるので画面クロムやスクロール位置でずれない |
+| `#list >> .clickable[2]` | **スコープ**(祖先 >> 子孫)。序数はスコープ内で数えるので画面クロムやスクロール位置でずれない |
 | `.switch:right(通知)` | **方向アンカー**(`:left` / `:above` / `:below` も同型)。アンカーの帯に入り、その方向にある最も近い候補。該当が無ければ失敗する(id が無い要素を隣のラベルから指す) |
 | `=#で始まる生ラベル` | `=` エスケープで label 扱い(`>>` や `:right(` を含むラベルもこれで書く) |
 
@@ -302,7 +302,7 @@ class ログインテスト {
 (黙ってラベル扱いにしない。誤記が `notExist` を素通りして緑になるのを防ぐため)。
 
 **コマンド**: `tap` `type` `press` `swipe` `scrollTo` / `exist` `notExist` `textIs` `valueIs`
-`isEnabled` `isDisabled` `countIs` / `screenIs`(FM 視覚検証)/
+`isEnabled` `isDisabled` `isChecked` `isNotChecked` `countIs` / `screenIs`(FM 視覚検証)/
 `launchApp` `relaunchApp` `terminateApp` `wait` /
 分岐 `ifCanSelect { }.ifElse { }`・`ios { }`・`android { }` / 任意コード `procedure("...") { try await ... }` /
 まとまり `group("ログイン") { ... }`
@@ -311,7 +311,7 @@ class ログインテスト {
 - **スコープ `>>` はアプリが容器を a11y ツリーに公開している必要がある**(`#id` と同じ要件で
   フレームワーク非依存。4 SUT × iOS/Android で実測)。畳まれた容器(Flutter の `MergeSemantics` 等)は
   子孫が消えるためスコープに使えない
-- `countIs("#list >> .cell", 3)` はリスト件数の検証。タイムアウトまで個数の変化を待つ
+- `countIs("#list >> .clickable", 3)` はリスト件数の検証。タイムアウトまで個数の変化を待つ
 - テストクラスに `func setUp()` / `func tearDown()` を書くと各 `@Test` の前後で自動実行される。
   **tearDown は失敗後でも実行される**(片付けが飛ぶと後続シナリオを汚すため)
 

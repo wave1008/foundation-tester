@@ -49,6 +49,12 @@ public enum StepDescription {
         case "isDisabled":
             guard let selector = unquote(rest) else { return nil }
             return "\"\(objectPhrase(ofSelector: selectorOverride ?? selector))\"が操作不可であること"
+        case "isChecked":
+            guard let selector = unquote(rest) else { return nil }
+            return "\"\(objectPhrase(ofSelector: selectorOverride ?? selector))\"がオンであること"
+        case "isNotChecked":
+            guard let selector = unquote(rest) else { return nil }
+            return "\"\(objectPhrase(ofSelector: selectorOverride ?? selector))\"がオフであること"
         case "countIs":
             guard let (selector, count) = unquotedTail(rest, separator: "\" == ") else { return nil }
             return "\"\(objectPhrase(ofSelector: selectorOverride ?? selector))\"が\(count)件あること"
@@ -121,6 +127,10 @@ public enum StepDescription {
                 return "\"\(objectPhrase(ofStep: step))\"が操作可能であること"
             case "disabled":
                 return "\"\(objectPhrase(ofStep: step))\"が操作不可であること"
+            case "checked":
+                return "\"\(objectPhrase(ofStep: step))\"がオンであること"
+            case "notChecked":
+                return "\"\(objectPhrase(ofStep: step))\"がオフであること"
             case "count":
                 return "\"\(objectPhrase(ofStep: step))\"が\(step.expectedCount ?? 0)件あること"
             case "textEquals":

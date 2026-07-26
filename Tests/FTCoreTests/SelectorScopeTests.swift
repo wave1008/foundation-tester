@@ -25,11 +25,11 @@ final class SelectorScopeTests: XCTestCase {
         [
             node(0, "other", depth: 0),
             node(1, "other", depth: 1, id: "header"),
-            node(2, "cell", depth: 2, label: "先頭"),
+            node(2, "clickable", depth: 2, label: "先頭"),
             node(3, "other", depth: 1, id: "list"),
-            node(4, "cell", depth: 2, label: "りんご"),
-            node(5, "cell", depth: 2, label: "みかん"),
-            node(6, "cell", depth: 2, label: "ぶどう"),
+            node(4, "clickable", depth: 2, label: "りんご"),
+            node(5, "clickable", depth: 2, label: "みかん"),
+            node(6, "clickable", depth: 2, label: "ぶどう"),
         ]
     }
 
@@ -45,10 +45,10 @@ final class SelectorScopeTests: XCTestCase {
 
     func testScopeMakesOrdinalRelativeToContainer() {
         // スコープ無しの .Cell[2] は画面全体の 2 番目(= ヘッダ配下を含むので "りんご")
-        let global = FlowLocator(type: "cell", index: 1)
+        let global = FlowLocator(type: "clickable", index: 1)
         XCTAssertEqual(StepExecutor.matchDetailed(global, elements: tree)?.0.label, "りんご")
         // スコープ付きは容器の中で数えるので "みかん"
-        let scoped = FlowLocator(type: "cell", index: 1, scope: [FlowLocator(id: "list")])
+        let scoped = FlowLocator(type: "clickable", index: 1, scope: [FlowLocator(id: "list")])
         XCTAssertEqual(StepExecutor.matchDetailed(scoped, elements: tree)?.0.label, "みかん")
     }
 
@@ -61,7 +61,7 @@ final class SelectorScopeTests: XCTestCase {
     }
 
     func testUnresolvableScopeYieldsNoMatch() {
-        let scoped = FlowLocator(type: "cell", scope: [FlowLocator(id: "存在しない")])
+        let scoped = FlowLocator(type: "clickable", scope: [FlowLocator(id: "存在しない")])
         XCTAssertNil(StepExecutor.matchDetailed(scoped, elements: tree))
     }
 
@@ -134,15 +134,15 @@ final class SelectorScopeTests: XCTestCase {
     }
 
     func testDirectionWithUnresolvableAnchorFails() {
-        let locator = FlowLocator(type: "cell", anchor: [FlowLocator(id: "居ない")], direction: .right)
+        let locator = FlowLocator(type: "clickable", anchor: [FlowLocator(id: "居ない")], direction: .right)
         XCTAssertNil(StepExecutor.matchDetailed(locator, elements: tree))
     }
 
     func testCandidatesCountsWithinScope() {
-        let all = StepExecutor.candidates(FlowLocator(type: "cell"), elements: tree)
+        let all = StepExecutor.candidates(FlowLocator(type: "clickable"), elements: tree)
         XCTAssertEqual(all?.matches.count, 4)
         let scoped = StepExecutor.candidates(
-            FlowLocator(type: "cell", scope: [FlowLocator(id: "list")]), elements: tree)
+            FlowLocator(type: "clickable", scope: [FlowLocator(id: "list")]), elements: tree)
         XCTAssertEqual(scoped?.matches.count, 3)
         // 条件が空(id/label/type すべて nil)のロケータは「数えられない」= nil
         XCTAssertNil(StepExecutor.candidates(FlowLocator(), elements: tree))
@@ -159,13 +159,13 @@ final class SelectorScopeTests: XCTestCase {
     }
 
     func testScopedTypeLocatorIsNotWeakForAssert() {
-        XCTAssertTrue(FlowLocator(type: "cell", index: 1).isWeakForAssert)
+        XCTAssertTrue(FlowLocator(type: "clickable", index: 1).isWeakForAssert)
         XCTAssertFalse(FlowLocator(id: "a").isWeakForAssert)
         XCTAssertFalse(FlowLocator(label: "a").isWeakForAssert)
         // スコープ付き・方向アンカー付きは錨があるのでアサーションのフォールバックから除外しない
-        XCTAssertFalse(FlowLocator(type: "cell", index: 1,
+        XCTAssertFalse(FlowLocator(type: "clickable", index: 1,
                                    scope: [FlowLocator(id: "list")]).isWeakForAssert)
-        XCTAssertFalse(FlowLocator(type: "cell", anchor: [FlowLocator(label: "合計")],
+        XCTAssertFalse(FlowLocator(type: "clickable", anchor: [FlowLocator(label: "合計")],
                                    direction: .right).isWeakForAssert)
     }
 }

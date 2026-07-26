@@ -49,6 +49,10 @@ final class SnapshotBuilder {
         boolean password;
         Rect bounds = new Rect();
         int depth;
+        /** 子孫から引き継いだ役割クラス名(Compose の Role マーカー。adoptRoleFromMarkerChildren 参照) */
+        String roleClassName = "";
+        /** 子を持つか(テキスト昇格・Flutter のテキスト判定で「葉かどうか」を見るため) */
+        boolean hasChildren;
     }
 
     private SnapshotBuilder() {}
@@ -73,6 +77,8 @@ final class SnapshotBuilder {
         List<UINode> nodes = new ArrayList<>();
         // uiautomator dump の XML は hierarchy=depth1、root ノード=depth2 相当
         collect(root, 2, nodes);
+        markChildren(nodes);
+        adoptRoleFromMarkerChildren(nodes);
 
         // リスト行のテキスト昇格: クリック可能な無名コンテナに最初の子孫テキストを写す
         // (AndroidDriver.snapshot() と同一ループ)
@@ -141,6 +147,44 @@ final class SnapshotBuilder {
         return cs == null ? "" : cs.toString();
     }
 
+    /** pre-order なので「次のノードの depth が自分より深い」= 子を持つ */
+    private static void markChildren(List<UINode> nodes) {
+        for (int i = 0; i < nodes.size(); i++) {
+            UINode node = nodes.get(i);
+            node.hasChildren = i + 1 < nodes.size() && nodes.get(i + 1).depth > node.depth;
+        }
+    }
+
+    /**
+     * Compose(CMP / Android の ComposeView)は Role.Button 等を **同一 bounds の無名子ノード**
+     * (className=android.widget.Button・text/id 無し・clickable=false)として出し、testTag が付いた
+     * 当の clickable ノードは android.view.View のままにする。そのままだと既定分岐に落ちて `Cell` に
+     * なり、iOS(AX trait で Button になる)と型が食い違う。ここで子の役割を親へ引き上げて揃える。
+     * 2026-07-26 に E2EApp(CMP)と E2EAppAndroid(ComposeView)の実スナップショットで確認。
+     */
+    private static void adoptRoleFromMarkerChildren(List<UINode> nodes) {
+        for (int i = 0; i < nodes.size(); i++) {
+            UINode node = nodes.get(i);
+            if (!node.clickable || !isGenericContainer(node.className)) continue;
+            for (int j = i + 1; j < nodes.size() && nodes.get(j).depth > node.depth; j++) {
+                UINode child = nodes.get(j);
+                // マーカーの条件: 親と同じ矩形・名前を持たない・自身は操作対象でない
+                if (!child.bounds.equals(node.bounds)) continue;
+                if (!child.text.isEmpty() || !child.contentDesc.isEmpty()
+                        || !child.resourceID.isEmpty() || child.clickable) continue;
+                if (isGenericContainer(child.className)) continue;
+                node.roleClassName = child.className;
+                break;
+            }
+        }
+    }
+
+    /** 役割を持たない汎用コンテナ(Compose/Flutter が canvas 描画で使う)か */
+    private static boolean isGenericContainer(String className) {
+        return className.equals("android.view.View") || className.equals("android.view.ViewGroup")
+                || className.endsWith("Layout") || className.isEmpty();
+    }
+
     // MARK: - フィルタと変換(AndroidDriver.shouldInclude / makeInfo / mappedType の移植)
 
     private static boolean shouldInclude(UINode node, Rect screen) {
@@ -201,6 +245,8 @@ final class SnapshotBuilder {
         if (value != null) info.put("value", value);
         if (isInput && !node.hint.isEmpty()) info.put("placeholder", node.hint);
         info.put("enabled", node.enabled);
+        // checked は true のときだけ送る(iOS の isSelected と同じ意味・同じ省略規約)
+        if (node.checked) info.put("checked", true);
         info.put("frame", rectJSON(node.bounds));
         info.put("depth", node.depth);
         return info;
@@ -217,7 +263,8 @@ final class SnapshotBuilder {
 
     /** Android クラス名 → iOS 側と共通の型語彙(AndroidDriver.UINode.mappedType と同一) */
     private static String mappedType(UINode node) {
-        String className = node.className;
+        // 役割マーカー子から引き上げたクラス名を優先する(Compose の Button/Switch はこちらにしか出ない)
+        String className = node.roleClassName.isEmpty() ? node.className : node.roleClassName;
         int dot = className.lastIndexOf('.');
         String name = dot >= 0 ? className.substring(dot + 1) : className;
         if (node.password) return "SecureTextField";
@@ -255,7 +302,19 @@ final class SnapshotBuilder {
             case "WebView":
                 return "WebView";
             default:
-                if (node.clickable) return "Cell";
+                // ここから下は「className が役割を語らない」ケース(Compose / Flutter の canvas 描画)。
+                // iOS 側が返す型に寄せるための推定。順序に意味がある(checkable → clickable → 葉テキスト)
+                //
+                // checkable な汎用ノード = Compose の Switch(Role.Switch は legacy className を持たない)。
+                // Checkbox / RadioButton は className が出るので上の case で先に確定している
+                if (node.checkable) return "Switch";
+                // 役割が確定しない clickable 容器(リスト行・カード)。iOS のセルと同じ語にする
+                if (node.clickable) return "Clickable";
+                // Flutter(Android)はテキストも android.view.View で、contentDesc にだけ文字が入る。
+                // 葉であることを条件にする(子を持つ汎用コンテナを StaticText にしないため)。
+                // これが無いと id を振っていないテキストがスナップショットから丸ごと落ち、
+                // ラベルをアンカーにした方向セレクタが使えない(2026-07-26 実測)
+                if (!node.hasChildren && !node.contentDesc.isEmpty()) return "StaticText";
                 return "Other";
         }
     }

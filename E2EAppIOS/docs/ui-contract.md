@@ -16,17 +16,17 @@ tag 定数は `Sources/Tags.swift` に集約する(値は共通契約の表と b
 | 画面 | 実装 | ツリー上の型 |
 |---|---|---|
 | テキスト入力 | `UITextField` / `UITextView`(UIViewRepresentable) | `textField` / `secureTextField` / `textView` |
-| スクロール | `UITableView`(UIViewRepresentable) | `table` + 行ごとに `cell` |
+| スクロール | `UITableView`(UIViewRepresentable) | `table` + 行ごとに `clickable` |
 | それ以外 | SwiftUI | `button` / `staticText` / `switch` / `slider` / `other` |
 
 ## Compose 版との差分(実スナップショットで採取。2026-07-23・iPhone 17 Pro/iOS 27.0)
 
 | 項目 | Compose 版 | iOS ネイティブ版 |
 |---|---|---|
-| ボタンの型 | iOS `button` / Android `cell` | `button`(OS 差なし = `ios{}`/`android{}` 分岐が不要) |
+| ボタンの型 | `button`(2026-07-26 の正規化で Android も一致) | `button` |
 | テキストの型 | `staticText` | `staticText` |
 | 入力欄の型 | `textField` のみ | `textField` / `secureTextField` / `textView` に分かれる |
-| リスト行 | `button`(LazyColumn) | `cell`(UITableView)+ 親に `table` |
+| リスト行 | `button`(LazyColumn) | `clickable`(UITableView)+ 親に `table` |
 | チェックボックス | `checkBox` | `button`(iOS ネイティブに Checkbox は無い) |
 | ラジオ | `checkBox` | `button`(同上) |
 | ダイアログ見出し | `#txt_dialog_title` で引ける | **id が付かない**。ラベル `確認` で引く(下記) |
@@ -49,8 +49,8 @@ tag 定数は `Sources/Tags.swift` に集約する(値は共通契約の表と b
 
 ### UITableView の a11y 上の癖(採取済み)
 
-- 既定ではセルのテキストが**独立した StaticText** として出て `cell` 側が無ラベルになる。
-  ラベルセレクタ(`.cell=行 03`)を引けるよう、`textLabel?.isAccessibilityElement = false` +
+- 既定ではセルのテキストが**独立した StaticText** として出て `clickable` 側が無ラベルになる。
+  ラベルセレクタ(`.clickable=行 03`)を引けるよう、`textLabel?.isAccessibilityElement = false` +
   `cell.accessibilityLabel` へ集約している(`Sources/UIKitViews/RowTableView.swift`)
 - **可視範囲＋数行しかセルを実体化しない**。画面外の行は `#id` ごとツリーに存在しない
   (= `scrollTo` なしの `exist` が落ちる契約の検証材料。Compose の LazyColumn と同じ挙動)

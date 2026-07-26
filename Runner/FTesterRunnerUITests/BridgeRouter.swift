@@ -326,7 +326,10 @@ final class BridgeRouter {
             enabled: node.isEnabled,
             frame: FTRect(x: frame.origin.x, y: frame.origin.y,
                           width: frame.width, height: frame.height),
-            depth: depth)
+            depth: depth,
+            // Compose iOS は Switch の value を出さないため isSelected が唯一の checked 経路
+            // (SwiftUI/Flutter も同じ trait が立つ。2026-07-26 実測)。false は送らない
+            checked: node.isSelected ? true : nil)
     }
 
     private func valueString(_ node: XCUIElementSnapshot) -> String? {
@@ -345,7 +348,9 @@ final class BridgeRouter {
         case .`switch`: return "Switch"
         case .toggle: return "Toggle"
         case .slider: return "Slider"
-        case .cell: return "Cell"
+        // UITableView/UICollectionView のセル。Android の「役割不明の clickable 容器」と
+        // 同じバケツに入れるため名前を揃える(型語彙の唯一の正は E2EApp/docs/ui-contract.md)
+        case .cell: return "Clickable"
         case .link: return "Link"
         case .image: return "Image"
         case .icon: return "Icon"

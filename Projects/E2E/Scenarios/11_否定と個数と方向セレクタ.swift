@@ -1,8 +1,7 @@
 // 11_否定と個数と方向セレクタ.swift
-// ftester 機能: notExist / countIs / isEnabled / isDisabled / 方向セレクタ `:below(...)` `:above(...)` /
+// ftester 機能: notExist / countIs / isEnabled / isDisabled / isChecked / isNotChecked / 方向セレクタ `:below(...)` `:above(...)` /
 // 共通ステップ group / クラスの setUp・tearDown の検証。
-// 型を使うセレクタは OS で型名が違う(Compose の Button は iOS=Button / Android=Cell)ため
-// ios {} / android {} で分ける(ui-contract.md 全体規約)。
+// 型を使うセレクタは OS 共通で書ける(ブリッジが役割へ正規化するため。ui-contract.md 全体規約)。
 
 import FTDSL
 
@@ -70,8 +69,7 @@ class 否定と個数と方向セレクタが正しく動くこと {
                     tap("#nav_selector")
                 }.expectation {
                     // 同一ラベル `項目` のボタンは3つ(内側の Text と混ざらないよう型で絞る)
-                    ios { countIs(".button=項目", 3) }
-                    android { countIs(".cell=項目", 3) }
+                    countIs(".button=項目", 3)
                     countIs("#btn_item_1", 1)
                     countIs("存在しないラベル", 0)
                 }
@@ -79,14 +77,12 @@ class 否定と個数と方向セレクタが正しく動くこと {
             scene(5, "方向セレクタで同一ラベル群をアンカーで選び分ける") {
                 action {
                     // 縦一列に並ぶので上下で選ぶ。`許可` の下にある最初の `項目` = 1 番目
-                    ios { tap(".button=項目:below(#btn_allow)") }
-                    android { tap(".cell=項目:below(#btn_allow)") }
+                    tap(".button=項目:below(#btn_allow)")
                 }.expectation {
                     textIs("#txt_selector_result", "result=item1")
                 }.action {
                     // `結果クリア` の上にある最も近い `項目` = 3 番目
-                    ios { tap(".button=項目:above(#btn_selector_reset)") }
-                    android { tap(".cell=項目:above(#btn_selector_reset)") }
+                    tap(".button=項目:above(#btn_selector_reset)")
                 }.expectation {
                     textIs("#txt_selector_result", "result=item3")
                 }
@@ -109,15 +105,19 @@ class 否定と個数と方向セレクタが正しく動くこと {
                     // #btn_always_disabled は常に無効、#btn_toggle_target は #cb_agree 連動(初期 off)
                     isDisabled("#btn_always_disabled")
                     isDisabled("#btn_toggle_target")
+                    // 状態は型と独立に取れるので、型が OS で揃わない checkbox でも使える
+                    isNotChecked("#cb_agree")
                 }.action {
                     tap("#cb_agree")
                 }.expectation {
                     textIs("#txt_cb_agree", "agree=true")
+                    isChecked("#cb_agree")
                     isEnabled("#btn_toggle_target")
                     isDisabled("#btn_always_disabled")
                 }.action {
                     tap("#cb_agree")
                 }.expectation {
+                    isNotChecked("#cb_agree")
                     isDisabled("#btn_toggle_target")
                 }
             }
@@ -130,8 +130,7 @@ class 否定と個数と方向セレクタが正しく動くこと {
                     exist("#list_rows >> #row_02")
                     countIs("#list_rows >> #row_02", 1)
                     // 序数もスコープ内で数える(容器の外の同型要素に影響されない)
-                    ios { exist("#list_rows >> .button[2]").textIs("行 02") }
-                    android { exist("#list_rows >> .cell[2]").textIs("行 02") }
+                    exist("#list_rows >> .button[2]").textIs("行 02")
                     // スコープ外(固定ヘッダ)の要素はスコープ内からは解決できない
                     notExist("#list_rows >> #txt_row_selected")
                 }

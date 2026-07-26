@@ -5,11 +5,9 @@
 // **この SUT に置く意味**: 方向判定は frame(座標)に依存するので、レイアウトの実装が変われば
 // 当たり外れが変わる。記法が4フレームワーク共通で通ることを確かめる。
 // Flutter は Switch/Button とも iOS/Android 同型(<SUT>/docs/ui-contract.md 表 B)なので型の分岐は不要。
-// **本体を ios {} で括っているのは Flutter/Android の制約**: id の無いテキストがスナップショットに
-// 出ない(className=android.view.View + resource-id 無し → ブリッジの shouldInclude が落とす)ため、
-// アンカーになるラベル(`通知` 等)が引けない。クラスごと platform: "ios" に固定すると
-// android プロファイルの一括実行で「担当ワーカーがありません」= 失敗になるので、この形にしてある。
-// ブリッジの型正規化(docs/design.md §10 のフェーズ2)で解消したら android {} 側も同じ検証に揃える。
+// **id の無いテキストは 2026-07-26 のブリッジ型正規化まで Android のスナップショットに出なかった**
+// (className=android.view.View → 既定分岐)。葉+contentDesc を StaticText に写像したことで
+// 両 OS 同一のシナリオで書けるようになった経緯がある(docs/design.md §10)。
 
 import FTDSL
 
@@ -27,48 +25,42 @@ class ID無し画面を方向セレクタで操作できること {
                     // 画面タイトルはシェル要素で id があるため両 OS で引ける
                     textIs("#txt_screen_title", "ID なし")
                     // 状態表示は id が無いので部分一致(`notify=` ⊂ `notify=off`)で引く
-                    ios {
-                        textIs("notify=", "notify=off")
-                        textIs("location=", "location=off")
-                        textIs("qty=", "qty=0")
-                    }
+                    textIs("notify=", "notify=off")
+                    textIs("location=", "location=off")
+                    textIs("qty=", "qty=0")
                 }
             }
             scene(2, "行1のスイッチだけが切り替わる(帯判定が隣の行を拾わない)") {
                 action {
-                    ios { tap(".switch:right(通知)") }
+                    tap(".switch:right(通知)")
                 }.expectation {
-                    ios {
-                        textIs("notify=", "notify=on")
-                        textIs("location=", "location=off")
-                    }
+                    textIs("notify=", "notify=on")
+                    textIs("location=", "location=off")
                 }
             }
             scene(3, "行2のスイッチを同じ記法で切り替える") {
                 action {
-                    ios { tap(".switch:right(位置情報)") }
+                    tap(".switch:right(位置情報)")
                 }.expectation {
-                    ios {
-                        textIs("location=", "location=on")
-                        textIs("notify=", "notify=on")
-                    }
+                    textIs("location=", "location=on")
+                    textIs("notify=", "notify=on")
                 }
             }
             scene(4, "同一ラベルのボタンを左右で選び分ける") {
                 action {
-                    ios { tap(".button=変更:right(数量)") }
+                    tap(".button=変更:right(数量)")
                 }.expectation {
-                    ios { textIs("qty=", "qty=1") }
+                    textIs("qty=", "qty=1")
                 }.action {
-                    ios { tap(".button=変更:left(数量)") }
+                    tap(".button=変更:left(数量)")
                 }.expectation {
-                    ios { textIs("qty=", "qty=0") }
+                    textIs("qty=", "qty=0")
                 }
             }
             scene(5, "方向が違えば解決しない(最も近いものを勝手に選ばない)") {
                 expectation {
                     // 通知ラベルの左にスイッチは無い。`:near` 時代はここで右のスイッチを拾っていた
-                    ios { notExist(".switch:left(通知)") }
+                    notExist(".switch:left(通知)")
                 }
             }
         }
