@@ -101,6 +101,29 @@ run 終了時の「FM 呼び出しが全て失敗しました」警告と結果 
   (`log` は shell 関数に食われることがあるので**絶対パスで叩く**。自分の述語文字列が
   `log` プロセス自身のログに出て**偽の成功行**に見えるので、プロセス名まで確認すること)
 
+## FM 呼び出しの直列化(FMLock)
+
+FM は**ホスト全体で直列化される資源**(スループットは並列度によらず約1回/秒)。並列ワーカーから
+同時に投げても速くならず、modelmanagerd のモデル積み降ろし(`unloadIfNeededToMakeRoom`)だけが
+増える。そこで呼び出し側でも待ち行列を作る(`FMLock`。~/Library/Caches/ftester/fm.lock への flock)。
+
+- **リポジトリ単位ではなくホスト単位**。別リポジトリの ftester とも直列化する
+- **全ての FM 呼び出しがこのロックを通る**のが不変条件(occlusion / heal / screenIs / triage /
+  ScenarioNamer / TestbaseDrafter)。新しい FM 呼び出しを足すときは必ず通すこと。
+  監査は `grep -n "LanguageModelSession" Sources/FTAgent/*.swift`(FMDoctor は可用性判定なので対象外)
+- **取れなければ FM をスキップする**(既定 20 秒)。全ワーカーが並ぶと最後尾の待ちが積み上がり
+  シナリオの壁時計タイムアウトを超えうるため、この安全弁は外せない。スキップは**失敗とは別に
+  数える**(`FMHealth.recordSkip`。失敗率の分母を汚さない)
+- **A/B 計測の殺しスイッチ**: `FT_FM_SERIALIZE=0` で無効化(acquire が常に true = 素通り)
+
+  ```bash
+  FT_FM_SERIALIZE=0 Scripts/e2e.sh   # 直列化なし
+  Scripts/e2e.sh                      # 直列化あり(既定)
+  ```
+
+- **A/B は1回の再起動では取れない**。片方の実行で FM を殺すと、もう片方が死んだ状態から
+  始まってしまう(FM は一度落ちるとプロセスを変えても回復しない)。**アーム毎に再起動する**こと
+
 ## デバイス供給の競合(モニターと run が同じデバイスを取り合う)
 
 拡張のモニターは watchdog で `device-up` を投げる。run と同じデバイス群を使うので競合し得る。
