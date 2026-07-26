@@ -137,6 +137,7 @@ swift run ftester run --profile ios           # 実行プロファイル(ブリ�
 | `doctor` | FM・Xcode・シミュレータ・adb の事前診断 |
 | `bridge up / down / status` | iOS ブリッジ(常駐 XCUITest ランナー)の管理 |
 | `run [--scenario <id>...]` | シナリオの決定的実行(`--project`、`--profile` プロファイル実行、`--folder` フォルダ指定、`--failed` 失敗のみ、`--heal` 自己修復、`--report-dir`、`--ports` 並列、`--skip-build`) |
+| `run-file <path.swift>...` | Package.swift に**登録していない** .swift をそのまま実行(プロファイル・レポート・自己修復は `--project` のものを借りる。`--profile`、`--scenario`、`--heal`、`--ports`) |
 | `project create / list / sync` | テストプロジェクトの作成・一覧・Package.swift 再整合 |
 | `devices up / down` | 実行プロファイルのデバイスを一括起動・停止(ブリッジ供給込み) |
 | `results list / summary / flaky / trend / devices / slow / insights` | 実行結果の集約・分析(reports/ を横断) |
@@ -307,6 +308,22 @@ class ログインテスト {
 結合の強さは `&&` > `>>` > `||`。綴り誤りや未対応記法(`:near` `:parent` 等)、未知のフィルタ名、
 `[abc]` のような序数、閉じない括弧は**実行前に構文エラー**になる
 (黙ってラベル扱いにしない。誤記が `notExist` を素通りして緑になるのを防ぐため)。
+
+**型付きセレクタ(併設)**: 同じ意味を型で書ける。綴り誤りは**コンパイルエラー**になり、補完も効く。
+文字列版と同じロケータに畳まれるだけなので、混在させても実行・レポート・自己修復は変わらない。
+
+```swift
+tap(.id("login_btn").or(.text("ログイン")))       // #login_btn||ログイン
+tap(.id("list").find(.type(.cell).nth(2)))      // #list >> .cell[2]
+tap(.text("通知").right(.switch))                // 通知:rightSwitch
+exist(.type(.button).text("保存", .contains))    // .button&&textContains=保存
+```
+
+`.id` `.text(_, .exact|.contains|.startsWith|.endsWith|.matches)` `.value` `.placeholder` `.type`
+`.checked` `.enabled` `.nth`(1 オリジン)/ 合成 `.or` `.find` / 相対 `.right` `.left` `.above` `.below`
+(`matching:` で任意フィルタ、`nth:` で近い順)。型名は `.button` `.staticText` `.textField`
+`.secureTextField` `.switch` と `.input` `.widget` `.cell` `.image` `.clickable`、語彙外は `.custom("…")`。
+フィルタは常に「現在の対象」に効く(相対の**後**ならその相対先、前なら基準)。
 
 **コマンド**: `tap` `type` `press` `swipe` `scrollTo` / `exist` `notExist` `textIs` `valueIs`
 `isEnabled` `isDisabled` `isChecked` `isNotChecked` `countIs` `textContains` `textMatches` / `screenIs`(FM 視覚検証)/
