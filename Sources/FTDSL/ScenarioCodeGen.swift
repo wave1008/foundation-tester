@@ -125,6 +125,14 @@ public enum ScenarioCodeGen {
             case "textEquals":
                 let g = step.occlusionGuard == false ? ", requireVisible: false" : ""
                 return "textIs(\(literal(selector)), \(literal(step.expected ?? ""))\(timeoutArg(step))\(g))"
+            case "notExists":
+                return "notExist(\(literal(selector))\(timeoutArg(step)))"
+            case "enabled":
+                return "isEnabled(\(literal(selector))\(timeoutArg(step)))"
+            case "disabled":
+                return "isDisabled(\(literal(selector))\(timeoutArg(step)))"
+            case "count":
+                return "countIs(\(literal(selector)), \(step.expectedCount ?? 0)\(timeoutArg(step)))"
             case "screenMatches":
                 return "screenIs(\(literal(step.expected ?? "")))"
             default:

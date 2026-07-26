@@ -32,7 +32,7 @@ public struct Flow: Codable, Sendable {
 public struct FlowStep: Codable, Sendable {
     /// tap / type / swipe / press / scrollTo(要素が見つかるまでスクロール)
     public var action: String?
-    /// exists / valueEquals / screenMatches
+    /// exists / notExists / valueEquals / textEquals / enabled / disabled / count / screenMatches
     public var assert: String?
     public var locator: FlowLocator?
     /// ロケータ解決の代替チェーン(id > label > type+index)
@@ -46,6 +46,8 @@ public struct FlowStep: Codable, Sendable {
     public var timeout: Int?
     /// scrollTo のスクロール回数上限(省略時 8)
     public var maxSwipes: Int?
+    /// count アサーションの期待個数(DSL の countIs)。他のステップでは nil
+    public var expectedCount: Int?
     /// true のとき、ロケータが解決できなくても失敗にせずスキップする
     /// (パスワード保存シート等、出るかどうか不定なシステムダイアログの処理用)
     public var optional: Bool?
@@ -59,6 +61,7 @@ public struct FlowStep: Codable, Sendable {
     public init(action: String? = nil, assert: String? = nil, locator: FlowLocator? = nil,
                 fallbacks: [FlowLocator]? = nil, text: String? = nil, direction: String? = nil,
                 expected: String? = nil, timeout: Int? = nil, maxSwipes: Int? = nil,
+                expectedCount: Int? = nil,
                 optional: Bool? = nil, note: String? = nil, occlusionGuard: Bool? = nil) {
         self.action = action
         self.assert = assert
@@ -69,6 +72,7 @@ public struct FlowStep: Codable, Sendable {
         self.expected = expected
         self.timeout = timeout
         self.maxSwipes = maxSwipes
+        self.expectedCount = expectedCount
         self.optional = optional
         self.note = note
         self.occlusionGuard = occlusionGuard
@@ -85,18 +89,36 @@ public struct FlowLocator: Codable, Equatable, Sendable {
     /// 残らないため、その場合はこのフィールドのみ設定し summary でそのまま返す
     /// (RunOrchestrator.ScenarioRunner.stepResult(from:) 参照)。プロセス内解決時は nil のまま
     public var raw: String?
+    /// 祖先スコープ(外→内)。セレクタ式 `#list >> .Cell[2]` の `#list` 側。
+    /// この連鎖で解決した要素の**子孫だけ**を候補にする。index([n])もスコープ内の順序で数えるため、
+    /// 画面クロム(戻るボタン・タブ)やスクロール位置に序数が影響されなくなる。
+    public var scope: [FlowLocator]?
+    /// 近接アンカー(セレクタ式 `.Button:near(ラベル)`)。要素数 0 or 1(構造体の自己再帰を
+    /// 配列で回避しているだけで、意味は Optional)。候補のうちアンカー frame 中心に最も近いものを選ぶ。
+    public var near: [FlowLocator]?
 
     public init(id: String? = nil, label: String? = nil, type: String? = nil, index: Int? = nil,
-                raw: String? = nil) {
+                raw: String? = nil, scope: [FlowLocator]? = nil, near: [FlowLocator]? = nil) {
         self.id = id
         self.label = label
         self.type = type
         self.index = index
         self.raw = raw
+        self.scope = scope
+        self.near = near
     }
 
     public var summary: String {
         if let raw { return raw }
+        var text = baseSummary
+        if let anchor = near?.first { text += ":near(\(anchor.summary))" }
+        if let scope, !scope.isEmpty {
+            text = scope.map(\.summary).joined(separator: " >> ") + " >> " + text
+        }
+        return text
+    }
+
+    private var baseSummary: String {
         if let id { return "id=\(id)" }
         if let label { return "label=\(label)" }
         // 表示は 1 オリジン、1番目は [1] を省略(セレクタ式の表記と揃える。内部 index は 0 オリジン)
@@ -105,6 +127,13 @@ public struct FlowLocator: Codable, Equatable, Sendable {
             return ordinal > 1 ? "\(type)[\(ordinal)]" : type
         }
         return "(空)"
+    }
+
+    /// 「id も label も無い」= 単独では別画面の要素に誤マッチしやすいロケータか。
+    /// アサーションのフォールバック連鎖から除外する判定に使う(StepExecutor.resolveDetailed)。
+    /// scope 付きは容器に錨を打っているので type+index でも除外しない。
+    public var isWeakForAssert: Bool {
+        id == nil && label == nil && (scope?.isEmpty ?? true)
     }
 }
 
@@ -156,6 +185,7 @@ public extension FlowStep {
         if let assert {
             if assert == "screenMatches" { return "assert screenMatches \"\(expected ?? "")\"" }
             if assert == "valueEquals" { return "assert valueEquals \(locatorSummary) == \"\(expected ?? "")\"" }
+            if assert == "count" { return "assert count \(locatorSummary) == \(expectedCount ?? 0)" }
             return "assert \(assert) \(locatorSummary)"
         }
         return "(空ステップ)"

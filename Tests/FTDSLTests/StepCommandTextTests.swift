@@ -169,4 +169,36 @@ final class StepCommandTextTests: XCTestCase {
             XCTAssertEqual($0 as? StepCommandTextError, .sourceNotRewritable("customHelper"))
         }
     }
+    func testParseNewAssertVerbs() {
+        XCTAssertEqual(StepCommandText.parse("notExist \"#dialog\""),
+                       .init(verb: "notExist", strings: ["#dialog"], optionalFlag: false, word: nil))
+        XCTAssertEqual(StepCommandText.parse("isEnabled \"#send\""),
+                       .init(verb: "isEnabled", strings: ["#send"], optionalFlag: false, word: nil))
+        XCTAssertEqual(StepCommandText.parse("isDisabled \"#send\""),
+                       .init(verb: "isDisabled", strings: ["#send"], optionalFlag: false, word: nil))
+        XCTAssertEqual(StepCommandText.parse("countIs \"#list >> .Cell\" == 3"),
+                       .init(verb: "countIs", strings: ["#list >> .Cell"],
+                             optionalFlag: false, word: "3"))
+        // 期待値が整数でない countIs は解釈しない(編集不可のまま扱う)
+        XCTAssertNil(StepCommandText.parse("countIs \"#list\" == 三"))
+    }
+
+    func testGroupPrefixIsStrippedForEditing() {
+        // group("ログイン") { } 内のステップ表示("[ログイン] tap ...")も表から編集できる
+        XCTAssertEqual(StepCommandText.parse("[ログイン] tap \"#login\""),
+                       .init(verb: "tap", strings: ["#login"], optionalFlag: false, word: nil))
+        XCTAssertEqual(StepCommandText.parse("[外/内] tap \"#login\" (optional)"),
+                       .init(verb: "tap", strings: ["#login"], optionalFlag: true, word: nil))
+    }
+
+    func testApplyNewAssertVerbs() {
+        XCTAssertEqual(try StepCommandText.apply(display: "notExist \"#a\"",
+                                                 toCode: "notExist(\"#b\", timeout: 2)"),
+                       "notExist(\"#a\", timeout: 2)")
+        // 動詞が変わる編集は呼び出しを作り直す
+        XCTAssertEqual(try StepCommandText.apply(display: "countIs \"#list\" == 2",
+                                                 toCode: "exist(\"#list\")"),
+                       "countIs(\"#list\", 2)")
+    }
+
 }
