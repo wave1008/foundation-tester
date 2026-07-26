@@ -66,11 +66,8 @@ public final class FMReplayDelegate: ReplayDelegate {
 
     public func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealProposal? {
         // FM はホスト全体で直列化される資源(FMLock 参照)
-        guard await FMLock.acquire() else {
-            FMHealth.recordSkip()
-            return nil
-        }
-        defer { FMLock.release() }
+        guard await FMGate.enter() else { return nil }
+        defer { FMGate.leave() }
         let rendered = SnapshotRenderer.render(snapshot)
         let session = LanguageModelSession(instructions: """
         あなたは UI テストのロケータ修復者です。アプリの UI 変更で見つからなくなった要素の
@@ -137,11 +134,8 @@ public final class FMReplayDelegate: ReplayDelegate {
     public func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)? {
         guard let cgImage = Self.cgImage(fromPNG: screenshotPNG) else { return nil }
         // FM はホスト全体で直列化される資源(FMLock 参照)
-        guard await FMLock.acquire() else {
-            FMHealth.recordSkip()
-            return nil
-        }
-        defer { FMLock.release() }
+        guard await FMGate.enter() else { return nil }
+        defer { FMGate.leave() }
         let session = LanguageModelSession(instructions: """
         あなたは UI テストの画面検証者です。スクリーンショットを見て、
         期待する状態と一致しているかを厳密に判定します。
@@ -200,11 +194,8 @@ public final class FMReplayDelegate: ReplayDelegate {
         """
         // FM はホスト全体で直列化される資源(FMLock 参照)。マルチモーダル→テキストの
         // 2 回分をまとめて 1 回の取得で回す(間で他ワーカーに割り込ませない)
-        guard await FMLock.acquire() else {
-            FMHealth.recordSkip()
-            return nil
-        }
-        defer { FMLock.release() }
+        guard await FMGate.enter() else { return nil }
+        defer { FMGate.leave() }
         // マルチモーダル失敗時のフォールバックとしてテキストのみでも再試行する
         if let png = screenshotPNG, let cgImage = Self.cgImage(fromPNG: png) {
             let response = try? await LanguageModelSession(instructions: instructions).respond(

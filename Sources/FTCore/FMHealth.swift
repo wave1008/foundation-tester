@@ -60,7 +60,7 @@ public enum FMHealth {
     public struct Snapshot: Sendable {
         public let successes: Int
         public let failures: Int
-        /// 直列化ロック(FMLock)を timeout まで取れず**呼ばずに諦めた**回数。
+        /// ゲート(FMGate)で止められ**呼ばずに諦めた**回数(ブレーカ作動中 or ロック待ち超過)。
         /// 失敗(FM が答えを返せなかった)とは別物なので分けて数える
         public let skipped: Int
         /// 最初に観測した失敗の内容(以降は捨てる。同一原因が連続するため)
@@ -89,6 +89,8 @@ public enum FMHealth {
         if !ok, firstError == nil, let error {
             firstError = String(error.prefix(300))
         }
+        // サーキットブレーカへの通知はここに集約する(呼び出し側に増やさない)
+        if ok { FMBreaker.recordSuccess() } else { FMBreaker.recordFailure() }
     }
 
     /// NSError の入れ子(NSUnderlyingError / NSMultipleUnderlyingErrors)を辿って
@@ -113,7 +115,7 @@ public enum FMHealth {
         return parts.joined(separator: " ← ")
     }
 
-    /// FMLock を取れず FM を呼ばずに諦めた 1 件を記録する(失敗にはしない)
+    /// FMGate で止められ FM を呼ばずに諦めた 1 件を記録する(失敗にはしない)
     public static func recordSkip() {
         lock.lock()
         defer { lock.unlock() }
@@ -163,8 +165,9 @@ public enum FMHealth {
         guard s.failures > 0 || s.skipped > 0 else { return nil }
         var text: String
         if s.failures == 0 {
-            return "⚠️ FM 呼び出し \(s.skipped) 件を直列化の待ち時間超過でスキップしました"
-                + "(該当ステップのガードは素通りしています)"
+            return "⚠️ FM 呼び出し \(s.skipped) 件をスキップしました"
+                + "(サーキットブレーカ作動中 or 直列化の待ち時間超過。"
+                + "該当ステップのガードは素通りしています)"
         }
         if s.allFailed {
             text = "⚠️ FM 呼び出しが全て失敗しました(\(s.failures)件)。"
@@ -175,7 +178,8 @@ public enum FMHealth {
                 + "該当ステップのガードは素通りしています"
         }
         if s.skipped > 0 {
-            text += "。さらに \(s.skipped) 件は直列化の待ち時間超過でスキップしました"
+            text += "。さらに \(s.skipped) 件はスキップしました"
+                + "(サーキットブレーカ作動中 or 直列化の待ち時間超過)"
         }
         if let e = s.firstError { text += "\n   最初のエラー: \(e)" }
         return text
