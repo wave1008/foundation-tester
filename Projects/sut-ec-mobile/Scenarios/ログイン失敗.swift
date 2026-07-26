@@ -13,15 +13,22 @@ import FTDSL
 @TestClass(app: "com.sutec.mobile")  // iOS(xcuitest)/Android(inapp)対応。#id は両プラットフォーム共通
 class ログイン失敗が表示されること {
 
+    // このテストは**ログアウト状態**が前提。アプリのデータは launchApp で消えないため、
+    // 前のシナリオのセッションが残っているとアカウント画面がプロフィール表示になり
+    // #btn_login が存在しない(実害: この前提が無くて 07/27 に解決失敗で落ちた)。
+    // setUp の失敗はシナリオごと中断されるので、前提が崩れたまま本体が走ることはない
+    func setUp() {
+        launchApp()
+        ifCanSelect("#btn_back") { tap("#btn_back") }
+        tap("#tab_account")
+        ifCanSelect("#btn_logout") { tap("#btn_logout") }
+    }
+
     @Test("誤った資格情報ではログインできずエラーが出る")
     func S0010() {
         scenario {
             scene(1, "ログイン画面を開く") {
-                condition {
-                    launchApp()
-                }.action {
-                    ifCanSelect("#btn_back") { tap("#btn_back") }
-                    tap("#tab_account")
+                action {
                     tap("#btn_login", timeout: 5)  // アカウントの「ログイン / 登録」。セッション判定は非同期のため待つ
                 }.expectation {
                     exist("#field_email")

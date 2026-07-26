@@ -10,16 +10,20 @@ import FTDSL
 @TestClass(app: "com.sutec.mobile")  // iOS/Android 両対応(#id は testTag→resource-id/accessibilityId で共通)
 class 言語を切り替えられること {
 
+    // 状態の正規化(各 @Test の前に毎回実行される)。launchApp は直前画面から再開するため、
+    // 既知の開始点へ揃えてからテスト本体を走らせる
+    func setUp() {
+        launchApp()
+        // 押し込み画面から再開した場合に戻す(id なので言語非依存)
+        ifCanSelect("#btn_back") { tap("#btn_back") }
+        tap("#tab_account")
+    }
+
     @Test("日本語とEnglishを切り替えられる")
     func S0010() {
         scenario {
             scene(1, "アカウントを開き日本語を基準化") {
-                condition {
-                    launchApp()
-                }.action {
-                    // 押し込み画面から再開した場合に戻す(id なので言語非依存)
-                    ifCanSelect("#btn_back") { tap("#btn_back") }
-                    tap("#tab_account")
+                action {
                     // 前回残留が English でも日本語へ正規化(既に日本語なら無害)
                     tap("#btn_toggle_language_ja")
                 }.expectation {

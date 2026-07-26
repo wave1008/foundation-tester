@@ -19,17 +19,21 @@ import FTDSL
 @TestClass(app: "com.sutec.mobile")  // iOS/Android 両対応(#id は testTag→accessibilityId/resource-id で共通)
 class UIベンチマークの密度チップが正しいこと {
 
+    // 状態の正規化(各 @Test の前に毎回実行される)。launchApp は直前画面から再開するため、
+    // 既知の開始点へ揃えてからテスト本体を走らせる
+    func setUp() {
+        launchApp()
+        // launchApp が benchmark/day 画面から再開する場合に備え、タブが見える状態へ正規化。
+        // Scaffold ルート testTag は AX に出ないため leaf 要素で在圏判定する。
+        ifCanSelect("#slot_00") { tap("#btn_back") }              // 日詳細に居たら戻る
+        ifCanSelect("#benchmark_cell_count") { tap("#btn_back") } // カレンダーに居たら戻る
+    }
+
     @Test("全4プリセットでセル数(総日数)が正しい")
     func S0010() {
         scenario {
             scene(1, "アカウント → UIベンチマーク到達") {
-                condition {
-                    launchApp()
-                }.action {
-                    // launchApp が benchmark/day 画面から再開する場合に備え、タブが見える状態へ正規化。
-                    // Scaffold ルート testTag は AX に出ないため leaf 要素で在圏判定する。
-                    ifCanSelect("#slot_00") { tap("#btn_back") }              // 日詳細に居たら戻る
-                    ifCanSelect("#benchmark_cell_count") { tap("#btn_back") } // カレンダーに居たら戻る
+                action {
                     tap("#tab_account")
                     tap("#btn_benchmark")
                 }.expectation {

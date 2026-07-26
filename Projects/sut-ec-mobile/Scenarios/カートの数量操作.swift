@@ -13,6 +13,13 @@ class カートの数量を操作できること {
         ifCanSelect("#btn_remove_fashion_5", waitSeconds: 1) { tap("#btn_remove_fashion_5") }
     }
 
+    // 2 本の @Test がどちらも「空カート + 腕時計1点」から始まるので前提整備は setUp に置く
+    // (各 @Test の前に毎回実行される)。着地の確認は各シナリオの scene 1 で行う
+    func setUp() {
+        launchApp()
+        resetAndAddOneWatch()
+    }
+
     /// 空カートを作り、腕時計を1点だけ入れてカート画面に着地する
     private func resetAndAddOneWatch() {
         tap("#tab_cart")
@@ -26,12 +33,8 @@ class カートの数量を操作できること {
     @Test("カートで数量を増やすと合計が再計算される")
     func S0010() {
         scenario {
-            scene(1, "空カートに腕時計を1点追加") {
-                condition {
-                    launchApp()
-                }.action {
-                    resetAndAddOneWatch()
-                }.expectation {
+            scene(1, "空カートに腕時計を1点追加できている(setUp の着地確認)") {
+                expectation {
                     exist("合計")
                     exist("¥18,000")  // 1点=¥18,000
                 }
@@ -60,12 +63,8 @@ class カートの数量を操作できること {
     @Test("数量1から減らすとカートから削除される")
     func S0020() {
         scenario {
-            scene(1, "空カートに腕時計を1点追加") {
-                condition {
-                    launchApp()
-                }.action {
-                    resetAndAddOneWatch()
-                }.expectation {
+            scene(1, "空カートに腕時計を1点追加できている(setUp の着地確認)") {
+                expectation {
                     exist("合計")
                 }
             }
