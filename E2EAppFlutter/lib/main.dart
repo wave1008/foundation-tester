@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'screens/noid_screen.dart';
 import 'screens/screens.dart';
 import 'screens/screens2.dart';
 import 'tags.dart';
@@ -42,7 +43,18 @@ Future<void> main() async {
   runApp(const E2EApp());
 }
 
-enum Screen { selector, input, gesture, scroll, async, dialog, lifecycle, heal, diagnostics }
+enum Screen {
+  selector,
+  input,
+  gesture,
+  scroll,
+  async,
+  dialog,
+  lifecycle,
+  heal,
+  diagnostics,
+  noid
+}
 
 enum AppTab { home, controls, about }
 
@@ -102,6 +114,8 @@ class _AppShellState extends State<AppShell> {
             return '自己修復';
           case Screen.diagnostics:
             return '診断';
+          case Screen.noid:
+            return 'ID なし';
         }
     }
   }
@@ -140,6 +154,8 @@ class _AppShellState extends State<AppShell> {
             return const HealScreen();
           case Screen.diagnostics:
             return const DiagnosticsScreen();
+          case Screen.noid:
+            return const NoIdScreen();
         }
     }
   }

@@ -18,7 +18,7 @@ final class FTRuntimeLifecycleTests: XCTestCase {
             SnapshotResponse(
                 sessionBundleID: nil,
                 screen: FTRect(x: 0, y: 0, width: 400, height: 800),
-                elements: [ElementInfo(ref: 1, type: "Button", identifier: "cleanup", label: nil,
+                elements: [ElementInfo(ref: 1, type: "button", identifier: "cleanup", label: nil,
                                        value: nil, placeholder: nil, enabled: true,
                                        frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: 0)],
                 truncatedCount: 0)
@@ -53,6 +53,42 @@ final class FTRuntimeLifecycleTests: XCTestCase {
     private func isFailed(_ status: StepResult.Status) -> Bool {
         if case .failed = status { return true }
         return false
+    }
+
+    /// 構文誤りはデバイスに触る前(dry-run でも)に落とす。放置すると誤記が label 扱いになり、
+    /// notExist / countIs(x,0) が必ず成功する = 黙って緑になる
+    func testInvalidSelectorFailsEvenInDryRun() {
+        let core = makeCore(driver: StubDriver(), dryRun: true)
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        scenario {
+            scene(1, "s") {
+                action { tap(".Button:near(合計)") }
+            }
+        }
+        let recorded = steps(core)
+        XCTAssertTrue(isFailed(recorded[0].status), "未知の記法が dry-run を素通りした")
+    }
+
+    /// ifCanSelect は perform を通らないため個別に検証する。構文誤りが「不成立」に化けると
+    /// ブロックが飛んだまま緑になる
+    func testInvalidSelectorInIfCanSelectFails() {
+        let core = makeCore(driver: StubDriver(), dryRun: false)
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        var executed = false
+        scenario {
+            scene(1, "s") {
+                action {
+                    ifCanSelect(".Button:rigth(#cleanup)") { executed = true }
+                }
+            }
+        }
+        let recorded = steps(core)
+        XCTAssertTrue(isFailed(recorded[0].status), "綴り誤りが不成立扱いになった")
+        XCTAssertFalse(executed)
     }
 
     func testGroupPrefixesStepDescriptions() {

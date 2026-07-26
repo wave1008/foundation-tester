@@ -53,9 +53,9 @@ class スクロールで折り返し下の要素に到達できること {
                     exist("#row_01")
                 }
             }
-            scene(2, ".Cell=行 03 で引く(行内 TextView にも同じ文字列が出るため型限定が必要)") {
+            scene(2, ".cell=行 03 で引く(行内 TextView にも同じ文字列が出るため型限定が必要)") {
                 action {
-                    tap(".Cell=行 03")
+                    tap(".cell=行 03")
                 }.expectation {
                     textIs("#txt_row_selected", "selected=row_03")
                 }

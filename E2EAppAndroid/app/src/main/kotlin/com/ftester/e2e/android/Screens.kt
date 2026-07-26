@@ -23,6 +23,7 @@ fun buildHomeScreen(activity: Activity, parent: ViewGroup, onNavigate: (Screen) 
     v.findViewById<Button>(R.id.nav_lifecycle).setOnClickListener { onNavigate(Screen.LIFECYCLE) }
     v.findViewById<Button>(R.id.nav_heal).setOnClickListener { onNavigate(Screen.HEAL) }
     v.findViewById<Button>(R.id.nav_diagnostics).setOnClickListener { onNavigate(Screen.DIAGNOSTICS) }
+    v.findViewById<Button>(R.id.nav_noid).setOnClickListener { onNavigate(Screen.NOID) }
     return v
 }
 

@@ -67,10 +67,10 @@ class テキスト入力が正しくechoされること {
                     textIs("#txt_echo_password", "password=")
                 }
             }
-            scene(2, ".SecureTextField[1] は #field_password に解決される") {
+            scene(2, ".secureTextField[1] は #field_password に解決される") {
                 action {
-                    tap(".SecureTextField[1]")
-                    type(".SecureTextField[1]", "pw0001")
+                    tap(".secureTextField[1]")
+                    type(".secureTextField[1]", "pw0001")
                 }.expectation {
                     textIs("#txt_echo_password", "password=pw0001")
                 }

@@ -338,6 +338,15 @@ public func ifCanSelect(_ selector: String, waitSeconds: Int = 0,
                         file: StaticString = #filePath, line: UInt = #line,
                         _ body: () -> Void) -> FTBranch {
     let core = FTRuntime.requireCore(command: "ifCanSelect")
+    // 構文誤りは「不成立」と区別できない(どちらもブロックを飛ばして緑になる)ため、
+    // perform を通らないこのコマンドでも実行前に検証する
+    if let error = FTSelector.validationError(selector) {
+        let reason = "セレクタの構文が不正です: \(error)"
+        core.recordStep(description: "ifCanSelect \"\(selector)\"", status: .failed(reason),
+                        file: "\(file)", line: Int(line))
+        core.handleFailure(stepDescription: "ifCanSelect \"\(selector)\"", reason: reason)
+        return FTBranch(taken: false)
+    }
     let found = core.canSelect(FTSelector.parse(selector), waitSeconds: waitSeconds)
     core.recordStep(description: "ifCanSelect \"\(selector)\" → \(found ? "実行" : "不成立")",
                     status: .passed, file: "\(file)", line: Int(line))

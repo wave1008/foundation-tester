@@ -33,7 +33,7 @@ final class AssertKindsTests: XCTestCase {
         func terminate() async throws {}
     }
 
-    private func node(_ ref: Int, type: String = "Button", id: String? = nil,
+    private func node(_ ref: Int, type: String = "button", id: String? = nil,
                       label: String? = nil, enabled: Bool = true, depth: Int = 1) -> ElementInfo {
         ElementInfo(ref: ref, type: type, identifier: id, label: label, value: nil,
                     placeholder: nil, enabled: enabled,
@@ -128,22 +128,22 @@ final class AssertKindsTests: XCTestCase {
 
     func testCountMatchesWithinScope() async {
         let elements = [
-            node(0, type: "Other", depth: 0),
-            node(1, type: "Other", id: "list", depth: 1),
-            node(2, type: "Cell", depth: 2),
-            node(3, type: "Cell", depth: 2),
-            node(4, type: "Cell", depth: 1),   // list の外
+            node(0, type: "other", depth: 0),
+            node(1, type: "other", id: "list", depth: 1),
+            node(2, type: "cell", depth: 2),
+            node(3, type: "cell", depth: 2),
+            node(4, type: "cell", depth: 1),   // list の外
         ]
-        let scoped = FlowLocator(type: "Cell", scope: [FlowLocator(id: "list")])
+        let scoped = FlowLocator(type: "cell", scope: [FlowLocator(id: "list")])
         let outcome = await StepExecutor(driver: ScriptedDriver(frames: [elements]))
             .execute(FlowStep(assert: "count", locator: scoped, timeout: 0, expectedCount: 2))
         XCTAssertTrue(isPassed(outcome.status))
     }
 
     func testCountFailureReportsActual() async {
-        let elements = [node(1, type: "Cell"), node(2, type: "Cell")]
+        let elements = [node(1, type: "cell"), node(2, type: "cell")]
         let outcome = await StepExecutor(driver: ScriptedDriver(frames: [elements]))
-            .execute(FlowStep(assert: "count", locator: FlowLocator(type: "Cell"),
+            .execute(FlowStep(assert: "count", locator: FlowLocator(type: "cell"),
                               timeout: 0, expectedCount: 3))
         let reason = failureReason(outcome.status)
         XCTAssertEqual(reason?.contains("期待 3"), true)
@@ -152,33 +152,33 @@ final class AssertKindsTests: XCTestCase {
 
     func testCountWaitsForListToFill() async {
         let driver = ScriptedDriver(frames: [
-            [node(1, type: "Cell")],
-            [node(1, type: "Cell"), node(2, type: "Cell")],
+            [node(1, type: "cell")],
+            [node(1, type: "cell"), node(2, type: "cell")],
         ])
         let outcome = await StepExecutor(driver: driver)
-            .execute(FlowStep(assert: "count", locator: FlowLocator(type: "Cell"),
+            .execute(FlowStep(assert: "count", locator: FlowLocator(type: "cell"),
                               timeout: 5, expectedCount: 2))
         XCTAssertTrue(isPassed(outcome.status))
     }
 
     func testCountWithoutExpectedCountIsSkipped() async {
         let outcome = await StepExecutor(driver: ScriptedDriver(frames: [[]]))
-            .execute(FlowStep(assert: "count", locator: FlowLocator(type: "Cell"), timeout: 0))
+            .execute(FlowStep(assert: "count", locator: FlowLocator(type: "cell"), timeout: 0))
         if case .skipped = outcome.status {} else { XCTFail("skipped を期待: \(outcome.status)") }
     }
     func testCountUsesFirstResolvingClauseNotUnion() async {
         // `||` は他コマンドと同じ「解決できる方」= 候補が見つかった最初の節だけを数える
-        let elements = [node(1, type: "Cell", id: "row"), node(2, type: "Row"), node(3, type: "Row")]
-        let step = FlowStep(assert: "count", locator: FlowLocator(type: "Cell"),
-                            fallbacks: [FlowLocator(type: "Row")], timeout: 0, expectedCount: 1)
+        let elements = [node(1, type: "cell", id: "row"), node(2, type: "row"), node(3, type: "row")]
+        let step = FlowStep(assert: "count", locator: FlowLocator(type: "cell"),
+                            fallbacks: [FlowLocator(type: "row")], timeout: 0, expectedCount: 1)
         let outcome = await StepExecutor(driver: ScriptedDriver(frames: [elements])).execute(step)
-        XCTAssertTrue(isPassed(outcome.status), "先に見つかった .Cell の 1 件で判定する(合計 3 ではない)")
+        XCTAssertTrue(isPassed(outcome.status), "先に見つかった .cell の 1 件で判定する(合計 3 ではない)")
     }
 
     func testCountFallsBackToNextClauseWhenPrimaryHasNoCandidate() async {
-        let elements = [node(1, type: "Row"), node(2, type: "Row")]
-        let step = FlowStep(assert: "count", locator: FlowLocator(type: "Cell"),
-                            fallbacks: [FlowLocator(type: "Row")], timeout: 0, expectedCount: 2)
+        let elements = [node(1, type: "row"), node(2, type: "row")]
+        let step = FlowStep(assert: "count", locator: FlowLocator(type: "cell"),
+                            fallbacks: [FlowLocator(type: "row")], timeout: 0, expectedCount: 2)
         let outcome = await StepExecutor(driver: ScriptedDriver(frames: [elements])).execute(step)
         XCTAssertTrue(isPassed(outcome.status))
     }

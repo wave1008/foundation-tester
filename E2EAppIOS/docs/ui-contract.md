@@ -15,20 +15,20 @@ tag 定数は `Sources/Tags.swift` に集約する(値は共通契約の表と b
 
 | 画面 | 実装 | ツリー上の型 |
 |---|---|---|
-| テキスト入力 | `UITextField` / `UITextView`(UIViewRepresentable) | `TextField` / `SecureTextField` / `TextView` |
-| スクロール | `UITableView`(UIViewRepresentable) | `Table` + 行ごとに `Cell` |
-| それ以外 | SwiftUI | `Button` / `StaticText` / `Switch` / `Slider` / `Other` |
+| テキスト入力 | `UITextField` / `UITextView`(UIViewRepresentable) | `textField` / `secureTextField` / `textView` |
+| スクロール | `UITableView`(UIViewRepresentable) | `table` + 行ごとに `cell` |
+| それ以外 | SwiftUI | `button` / `staticText` / `switch` / `slider` / `other` |
 
 ## Compose 版との差分(実スナップショットで採取。2026-07-23・iPhone 17 Pro/iOS 27.0)
 
 | 項目 | Compose 版 | iOS ネイティブ版 |
 |---|---|---|
-| ボタンの型 | iOS `Button` / Android `Cell` | `Button`(OS 差なし = `ios{}`/`android{}` 分岐が不要) |
-| テキストの型 | `StaticText` | `StaticText` |
-| 入力欄の型 | `TextField` のみ | `TextField` / `SecureTextField` / `TextView` に分かれる |
-| リスト行 | `Button`(LazyColumn) | `Cell`(UITableView)+ 親に `Table` |
-| チェックボックス | `Checkbox` | `Button`(iOS ネイティブに Checkbox は無い) |
-| ラジオ | `RadioButton` | `Button`(同上) |
+| ボタンの型 | iOS `button` / Android `cell` | `button`(OS 差なし = `ios{}`/`android{}` 分岐が不要) |
+| テキストの型 | `staticText` | `staticText` |
+| 入力欄の型 | `textField` のみ | `textField` / `secureTextField` / `textView` に分かれる |
+| リスト行 | `button`(LazyColumn) | `cell`(UITableView)+ 親に `table` |
+| チェックボックス | `checkBox` | `button`(iOS ネイティブに Checkbox は無い) |
+| ラジオ | `checkBox` | `button`(同上) |
 | ダイアログ見出し | `#txt_dialog_title` で引ける | **id が付かない**。ラベル `確認` で引く(下記) |
 | id の露出 | Android はルートで `exposeTestTagsAsResourceId()` 必須 | `.accessibilityIdentifier` がそのまま `#id` |
 
@@ -36,7 +36,7 @@ tag 定数は `Sources/Tags.swift` に集約する(値は共通契約の表と b
 
 見えている Button のツリー順は Compose 版と**同じ**:
 戻る(1) 許可(2) 通知を許可(3) 項目(4,5,6) 共通ラベル(7) 別名(8) 結果クリア(9) タブ(10-12)。
-→ 3番目の『項目』= `.Button[6]`。レイアウトを変えたら採取し直す。
+→ 3番目の『項目』= `.button[6]`。レイアウトを変えたら採取し直す。
 
 ### ダイアログ(`.alert` = UIAlertController)
 
@@ -45,12 +45,12 @@ tag 定数は `Sources/Tags.swift` に集約する(値は共通契約の表と b
   `.accessibilityIdentifier` を付けても捨てられる(message 側に置いても同じ。実測で確認済み)
   → **`#txt_dialog_title` は存在しない**。見出しの検証はラベル `確認` で行う
 - ボタンは同一 id のノードが**2つ**出る(SwiftUI の内部構造)。`#id` 指定は先頭に解決されるため実害なし。
-  ただし `.Button[n]` の序数はダイアログ表示中ずれる
+  ただし `.button[n]` の序数はダイアログ表示中ずれる
 
 ### UITableView の a11y 上の癖(採取済み)
 
-- 既定ではセルのテキストが**独立した StaticText** として出て `Cell` 側が無ラベルになる。
-  ラベルセレクタ(`.Cell=行 03`)を引けるよう、`textLabel?.isAccessibilityElement = false` +
+- 既定ではセルのテキストが**独立した StaticText** として出て `cell` 側が無ラベルになる。
+  ラベルセレクタ(`.cell=行 03`)を引けるよう、`textLabel?.isAccessibilityElement = false` +
   `cell.accessibilityLabel` へ集約している(`Sources/UIKitViews/RowTableView.swift`)
 - **可視範囲＋数行しかセルを実体化しない**。画面外の行は `#id` ごとツリーに存在しない
   (= `scrollTo` なしの `exist` が落ちる契約の検証材料。Compose の LazyColumn と同じ挙動)
@@ -65,7 +65,7 @@ tag 定数は `Sources/Tags.swift` に集約する(値は共通契約の表と b
 
 ### Toggle / Slider
 
-- `Toggle` は同一 frame の `Switch` ノードが2つ出る(id 付き1つ + id 無し1つ)。`#id` 指定なら実害なし
+- `Toggle` は同一 frame の `switch` ノードが2つ出る(id 付き1つ + id 無し1つ)。`#id` 指定なら実害なし
 - `Slider` の value は `"50%"`(パーセント表記)。値検証は echo Text(`#txt_slider`)で行う契約
 
 ## ビルド

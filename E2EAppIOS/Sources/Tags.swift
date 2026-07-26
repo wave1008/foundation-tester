@@ -23,6 +23,7 @@ enum Tags {
     static let navLifecycle = "nav_lifecycle"
     static let navHeal = "nav_heal"
     static let navDiagnostics = "nav_diagnostics"
+    static let navNoid = "nav_noid"
 
     // セレクタ
     static let selectorResult = "txt_selector_result"

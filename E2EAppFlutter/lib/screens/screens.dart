@@ -14,6 +14,8 @@ class HomeScreen extends StatelessWidget {
         const TaggedText(Tags.homeMarker, 'E2E ホーム'),
         TaggedButton(Tags.navSelector, 'セレクタ',
             fillWidth: true, onTap: () => onNavigate(Screen.selector)),
+        TaggedButton(Tags.navNoid, 'ID なし',
+            fillWidth: true, onTap: () => onNavigate(Screen.noid)),
         TaggedButton(Tags.navInput, 'テキスト入力',
             fillWidth: true, onTap: () => onNavigate(Screen.input)),
         TaggedButton(Tags.navGesture, 'ジェスチャ',

@@ -51,6 +51,6 @@ public enum SnapshotRenderer {
     }
 
     public static let textInputTypes: Set<String> = [
-        "TextField", "SecureTextField", "TextView", "SearchField",
+        "textField", "secureTextField", "textView", "searchField",
     ]
 }

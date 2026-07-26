@@ -126,19 +126,19 @@ private final class SequenceVisibilityDelegate: ReplayDelegate {
 final class StepExecutorTests: XCTestCase {
     /// occlusion-guard 対象になり得るテキスト要素(StaticText + 文字を含む label)
     private func textElement(id: String, label: String) -> ElementInfo {
-        ElementInfo(ref: 1, type: "StaticText", identifier: id, label: label, value: nil,
+        ElementInfo(ref: 1, type: "staticText", identifier: id, label: label, value: nil,
                     placeholder: nil, enabled: true,
                     frame: FTRect(x: 0, y: 0, width: 100, height: 20), depth: 0)
     }
 
     private func element(ref: Int, id: String) -> ElementInfo {
-        ElementInfo(ref: ref, type: "Button", identifier: id, label: nil, value: nil,
+        ElementInfo(ref: ref, type: "button", identifier: id, label: nil, value: nil,
                    placeholder: nil, enabled: true,
                    frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: 0)
     }
 
     private func labeled(ref: Int, label: String) -> ElementInfo {
-        ElementInfo(ref: ref, type: "Button", identifier: nil, label: label, value: nil,
+        ElementInfo(ref: ref, type: "button", identifier: nil, label: label, value: nil,
                    placeholder: nil, enabled: true,
                    frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: 0)
     }
@@ -211,20 +211,20 @@ final class StepExecutorTests: XCTestCase {
     /// #2 修正: textEquals の期待値(ユーザーリテラル)は結合 `, ` 規則を外す(句読点入りテキストを守る)
     func testEligibilityAllowsCommaInUserText() {
         // 実 label(exist)では `, ` を結合セマンティクスとして除外
-        XCTAssertFalse(OcclusionEligibility.eligible(type: "StaticText", label: "A, B").ok)
+        XCTAssertFalse(OcclusionEligibility.eligible(type: "staticText", label: "A, B").ok)
         // ユーザー期待値(textEquals)では除外しない
-        XCTAssertTrue(OcclusionEligibility.eligible(type: "StaticText", label: "Hello, World",
+        XCTAssertTrue(OcclusionEligibility.eligible(type: "staticText", label: "Hello, World",
                                                     isUserText: true).ok)
         // 型・絵文字の規則は isUserText でも維持
-        XCTAssertFalse(OcclusionEligibility.eligible(type: "Button", label: "x", isUserText: true).ok)
-        XCTAssertFalse(OcclusionEligibility.eligible(type: "StaticText", label: "📱",
+        XCTAssertFalse(OcclusionEligibility.eligible(type: "button", label: "x", isUserText: true).ok)
+        XCTAssertFalse(OcclusionEligibility.eligible(type: "staticText", label: "📱",
                                                      isUserText: true).ok)
     }
 
     /// #1 修正: フォールバックドライバ(システムUI)由来の textEquals 一致は座標系が食い違うためガードしない
     func testTextEqualsSkipsGuardForFallbackDriverMatch() async throws {
         let log = CallLog()
-        let match = ElementInfo(ref: 1, type: "StaticText", identifier: "msg", label: "OK",
+        let match = ElementInfo(ref: 1, type: "staticText", identifier: "msg", label: "OK",
                                 value: nil, placeholder: nil, enabled: true,
                                 frame: FTRect(x: 0, y: 0, width: 100, height: 20), depth: 0)
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])   // 常に空
@@ -244,7 +244,7 @@ final class StepExecutorTests: XCTestCase {
     func testTextEqualsClearsStaleOcclusionOnMismatch() async throws {
         let log = CallLog()
         func el(_ label: String) -> ElementInfo {
-            ElementInfo(ref: 1, type: "StaticText", identifier: "msg", label: label, value: nil,
+            ElementInfo(ref: 1, type: "staticText", identifier: "msg", label: label, value: nil,
                         placeholder: nil, enabled: true,
                         frame: FTRect(x: 0, y: 0, width: 100, height: 20), depth: 0)
         }
@@ -266,7 +266,7 @@ final class StepExecutorTests: XCTestCase {
     /// スキップせず、覆われていれば occlusion 失敗へ反転する(修正前は素通り pass していた)。
     func testExistsWithCommaLabelStillGuards() async throws {
         let log = CallLog()
-        let el = ElementInfo(ref: 1, type: "StaticText", identifier: nil, label: "Hello, World",
+        let el = ElementInfo(ref: 1, type: "staticText", identifier: nil, label: "Hello, World",
                              value: nil, placeholder: nil, enabled: true,
                              frame: FTRect(x: 0, y: 0, width: 100, height: 20), depth: 0)
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[el]])

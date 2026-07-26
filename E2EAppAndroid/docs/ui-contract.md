@@ -14,31 +14,31 @@
 
 | 画面 | 実装 | ツリー上の型 |
 |---|---|---|
-| コントロール | `ComposeView`(material3) | Switch/Button → `Cell`、Checkbox/RadioButton → `CheckBox`、Slider → `Slider` |
-| スクロール | `RecyclerView` + clickable な行 ViewGroup | `CollectionView` + `Cell` |
-| テキスト入力 | `EditText` | `TextField` / `SecureTextField`(password のみ) |
-| それ以外 | View/XML | `Button` / `StaticText` / `Switch` / `ScrollView` |
+| コントロール | `ComposeView`(material3) | Switch/Button → `cell`、Checkbox/RadioButton → `checkBox`、Slider → `slider` |
+| スクロール | `RecyclerView` + clickable な行 ViewGroup | `collectionView` + `cell` |
+| テキスト入力 | `EditText` | `textField` / `secureTextField`(password のみ) |
+| それ以外 | View/XML | `button` / `staticText` / `switch` / `scrollView` |
 
 ## 実スナップショットで採取した型(2026-07-23・Pixel 9/Android 15)
 
 | 要素 | 型 | 備考 |
 |---|---|---|
-| `android.widget.Button` | `Button` | View 側のボタん全部 |
-| `TextView` | `StaticText` | |
-| `EditText`(通常) | `TextField` | `textMultiLine` も `TextField`(iOS ネイティブは `TextView` になる) |
-| `EditText`(textPassword) | `SecureTextField` | |
-| `SwitchCompat` | `Switch` | ダイアログ画面・自己修復画面 |
-| Compose `Switch` / `Button` | **`Cell`** | className が android.widget.* にならず既定 clickable 側に落ちる |
-| Compose `Checkbox` / `RadioButton` | `CheckBox` | ラジオも `CheckBox` に丸められる |
-| Compose `Slider` | `Slider` | |
-| `RecyclerView` | `CollectionView` | |
-| 行(clickable ViewGroup) | `Cell` | |
+| `android.widget.Button` | `button` | View 側のボタん全部 |
+| `TextView` | `staticText` | |
+| `EditText`(通常) | `textField` | `textMultiLine` も `textField`(iOS ネイティブは `textView` になる) |
+| `EditText`(textPassword) | `secureTextField` | |
+| `SwitchCompat` | `switch` | ダイアログ画面・自己修復画面 |
+| Compose `Switch` / `Button` | **`cell`** | className が android.widget.* にならず既定 clickable 側に落ちる |
+| Compose `Checkbox` / `RadioButton` | `checkBox` | ラジオも `checkBox` に丸められる |
+| Compose `Slider` | `slider` | |
+| `RecyclerView` | `collectionView` | |
+| 行(clickable ViewGroup) | `cell` | |
 
 ### セレクタ画面の序数(シナリオ 04 が依存)
 
 見えている Button のツリー順は Compose 版・iOS ネイティブ版と**同じ**:
 戻る(1) 許可(2) 通知を許可(3) 項目(4,5,6) 共通ラベル(7) 別名(8) 結果クリア(9) タブ(10-12)。
-→ 3番目の『項目』= `.Button[6]`。
+→ 3番目の『項目』= `.button[6]`。
 
 ## Android 固有の罠(すべて実測で踏んだもの)
 
@@ -57,9 +57,9 @@ View 側は `android:id` が自動的に resource-id として出るが、Compos
 ### 3. `importantForAccessibility="no"` では消えない
 
 ブリッジの UiAutomation は not-important view も含めて走査するため、行内の TextView は
-`importantForAccessibility="no"` を付けても `StaticText` としてツリーに残る。
+`importantForAccessibility="no"` を付けても `staticText` としてツリーに残る。
 結果として行ラベル「行 03」は **Cell と StaticText の2要素**に出る。
-→ ラベル指定は**型限定**(`.Cell=行 03`)で一意化する契約にしてある。
+→ ラベル指定は**型限定**(`.cell=行 03`)で一意化する契約にしてある。
 
 ### 4. 縦 LinearLayout の `layout_weight` は幅に効かない
 

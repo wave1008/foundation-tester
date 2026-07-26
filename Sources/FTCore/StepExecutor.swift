@@ -892,21 +892,19 @@ public final class StepExecutor {
     }
 
     /// ロケータに一致する要素を 1 つ選ぶ。選択規則:
-    /// near 指定あり = アンカーに最も近い候補 / type+index のみ = index 番目 / それ以外 = 先頭。
+    /// 方向アンカーあり = pickDirectional / type+index のみ = index 番目 / それ以外 = 先頭。
     public static func matchDetailed(_ locator: FlowLocator, elements: [ElementInfo])
         -> (ElementInfo, MatchQuality)? {
         guard let found = candidates(locator, elements: elements), !found.matches.isEmpty else {
             return nil
         }
-        if let anchorChain = locator.near, !anchorChain.isEmpty {
+        if let direction = locator.direction, let anchorChain = locator.anchor, !anchorChain.isEmpty {
             // アンカーはスコープの外にあることが普通(隣接ラベル等)なので全要素から解決する。
             // 連鎖は `||` と同じく「先に解決できたもの」を採り、1つも解決できなければ不一致
             guard let anchor = anchorChain.lazy
                 .compactMap({ matchDetailed($0, elements: elements)?.0 }).first else { return nil }
-            let nearest = found.matches.min {
-                distance($0.frame, anchor.frame) < distance($1.frame, anchor.frame)
-            }
-            return nearest.map { ($0, found.quality) }
+            return pickDirectional(found.matches, anchor: anchor, direction: direction)
+                .map { ($0, found.quality) }
         }
         // index が意味を持つのは type だけで絞ったとき(id/label 指定時は先頭)。
         // 既存の記法・挙動をそのまま踏襲する
@@ -961,10 +959,42 @@ public final class StepExecutor {
         return result
     }
 
-    /// frame 中心間のユークリッド距離(:near の近さの尺度)
-    private static func distance(_ a: FTRect, _ b: FTRect) -> Double {
-        let dx = a.centerX - b.centerX
-        let dy = a.centerY - b.centerY
-        return (dx * dx + dy * dy).squareRoot()
+    /// 方向セレクタ(`.Switch:right(通知)`)の選択規則。**この 1 箇所が唯一の解釈者**で、
+    /// 仕様は次の3条件のみ(調整値・閾値を持たない = 同じ画面なら常に同じ要素を返す):
+    ///  1. 帯: 候補の中心が、アンカーの frame をその軸方向に無限に伸ばした帯に入る
+    ///     (right/left なら中心 y が anchor の y..y+height、above/below なら中心 x が x..x+width)
+    ///  2. 向き: 候補の中心がアンカーの中心よりその方向にある
+    ///  3. 最近: 条件を満たす中で方向軸の中心間距離が最小。同距離はツリー順で先頭
+    /// 条件を満たす候補が無ければ **nil = 解決失敗**(「最も近いものを返す」はしない。
+    /// レイアウトが変わったときに黙って別要素を掴ませないため)。
+    /// アンカー自身は候補から除く。画面外要素は frame が丸められる環境があるため可視要素にのみ有効。
+    static func pickDirectional(_ candidates: [ElementInfo], anchor: ElementInfo,
+                                direction: FlowDirection) -> ElementInfo? {
+        let base = anchor.frame
+        var best: (element: ElementInfo, distance: Double)?
+        for candidate in candidates where candidate.ref != anchor.ref {
+            let frame = candidate.frame
+            let inBand: Bool
+            let ahead: Bool
+            let distance: Double
+            switch direction {
+            case .right, .left:
+                inBand = frame.centerY >= base.y && frame.centerY <= base.y + base.height
+                ahead = direction == .right
+                    ? frame.centerX > base.centerX : frame.centerX < base.centerX
+                distance = abs(frame.centerX - base.centerX)
+            case .above, .below:
+                inBand = frame.centerX >= base.x && frame.centerX <= base.x + base.width
+                ahead = direction == .below
+                    ? frame.centerY > base.centerY : frame.centerY < base.centerY
+                distance = abs(frame.centerY - base.centerY)
+            }
+            guard inBand, ahead else { continue }
+            // 厳密に近いときだけ更新 = 同距離は先に現れた(ツリー順が先の)ものが残る
+            if best == nil || distance < best!.distance {
+                best = (candidate, distance)
+            }
+        }
+        return best?.element
     }
 }

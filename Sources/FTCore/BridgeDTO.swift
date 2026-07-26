@@ -100,6 +100,10 @@ public struct LaunchRequest: Codable {
 public struct ElementInfo: Codable, Sendable {
     /// set-of-mark 参照番号(スナップショット毎に振り直す)
     public var ref: Int
+    /// 型名。**ホスト側では常に先頭小文字**(`button` / `staticText`)。
+    /// ブリッジは歴史的経緯で `Button` を送ってくるので、デコード時に normalizedType で畳む。
+    /// セレクタ記法 `.button` と、スナップショット表示・生成コードの型名を一致させるための唯一の変換点
+    /// (3ブリッジの wire 形式は変えない = APK versionCode もプロトコル版も上げなくてよい)。
     public var type: String
     public var identifier: String?
     public var label: String?
@@ -112,7 +116,7 @@ public struct ElementInfo: Codable, Sendable {
     public init(ref: Int, type: String, identifier: String?, label: String?, value: String?,
                 placeholder: String?, enabled: Bool, frame: FTRect, depth: Int) {
         self.ref = ref
-        self.type = type
+        self.type = Self.normalizedType(type)
         self.identifier = identifier
         self.label = label
         self.value = value
@@ -120,6 +124,25 @@ public struct ElementInfo: Codable, Sendable {
         self.enabled = enabled
         self.frame = frame
         self.depth = depth
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        ref = try container.decode(Int.self, forKey: .ref)
+        type = Self.normalizedType(try container.decode(String.self, forKey: .type))
+        identifier = try container.decodeIfPresent(String.self, forKey: .identifier)
+        label = try container.decodeIfPresent(String.self, forKey: .label)
+        value = try container.decodeIfPresent(String.self, forKey: .value)
+        placeholder = try container.decodeIfPresent(String.self, forKey: .placeholder)
+        enabled = try container.decode(Bool.self, forKey: .enabled)
+        frame = try container.decode(FTRect.self, forKey: .frame)
+        depth = try container.decode(Int.self, forKey: .depth)
+    }
+
+    /// 先頭 1 文字だけ小文字化する(`StaticText` → `staticText`)。冪等なので二重適用しても安全
+    public static func normalizedType(_ type: String) -> String {
+        guard let first = type.first, first.isUppercase else { return type }
+        return first.lowercased() + type.dropFirst()
     }
 }
 
