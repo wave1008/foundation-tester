@@ -8,6 +8,8 @@ DerivedData/
 Runner/FTesterRunner.xcodeproj
 reports/
 results/
+# ftester run-file の一時ステージ先(実行の前後で消える。残骸はコミットしない)
+Projects/*/Scenarios/_runfile/
 bench-results/
 *.log
 .vscode/
