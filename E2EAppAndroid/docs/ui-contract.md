@@ -14,8 +14,8 @@
 
 | 画面 | 実装 | ツリー上の型 |
 |---|---|---|
-| コントロール | `ComposeView`(material3) | Switch/Button → `cell`、Checkbox/RadioButton → `checkBox`、Slider → `slider` |
-| スクロール | `RecyclerView` + clickable な行 ViewGroup | `collectionView` + `cell` |
+| コントロール | `ComposeView`(material3) | Switch → `switch`、Button → `button`、Checkbox/RadioButton → `checkBox`、Slider → `slider` |
+| スクロール | `RecyclerView` + clickable な行 ViewGroup | `collectionView` + `clickable` |
 | テキスト入力 | `EditText` | `textField` / `secureTextField`(password のみ) |
 | それ以外 | View/XML | `button` / `staticText` / `switch` / `scrollView` |
 
@@ -28,11 +28,11 @@
 | `EditText`(通常) | `textField` | `textMultiLine` も `textField`(iOS ネイティブは `textView` になる) |
 | `EditText`(textPassword) | `secureTextField` | |
 | `SwitchCompat` | `switch` | ダイアログ画面・自己修復画面 |
-| Compose `Switch` / `Button` | **`cell`** | className が android.widget.* にならず既定 clickable 側に落ちる |
+| Compose `Switch` / `Button` | `switch` / `button` | className は `android.view.View` のまま。ブリッジが checkable と同一 bounds の Button マーカー子から役割を復元する(2026-07-26 正規化。それ以前は両方 `cell` = 現 `clickable` の旧名) |
 | Compose `Checkbox` / `RadioButton` | `checkBox` | ラジオも `checkBox` に丸められる |
 | Compose `Slider` | `slider` | |
 | `RecyclerView` | `collectionView` | |
-| 行(clickable ViewGroup) | `cell` | |
+| 行(clickable ViewGroup) | `clickable` | |
 
 ### セレクタ画面の序数(シナリオ 04 が依存)
 
@@ -59,7 +59,7 @@ View 側は `android:id` が自動的に resource-id として出るが、Compos
 ブリッジの UiAutomation は not-important view も含めて走査するため、行内の TextView は
 `importantForAccessibility="no"` を付けても `staticText` としてツリーに残る。
 結果として行ラベル「行 03」は **Cell と StaticText の2要素**に出る。
-→ ラベル指定は**型限定**(`.cell=行 03`)で一意化する契約にしてある。
+→ ラベル指定は**型限定**(`.clickable=行 03`)で一意化する契約にしてある。
 
 ### 4. 縦 LinearLayout の `layout_weight` は幅に効かない
 

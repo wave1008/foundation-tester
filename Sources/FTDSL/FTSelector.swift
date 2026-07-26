@@ -4,7 +4,7 @@
 //   .button / .button[2]             → type(+順番。**型名は先頭小文字**)
 //   .switch#PHOTOS_UPLOAD_...        → type + id
 //   .switch=Resource Upload ...      → type + label
-//   #list >> .cell[2]                → スコープ(祖先 >> 子孫。[n] はスコープ内で数える)
+//   #list >> .clickable[2]                → スコープ(祖先 >> 子孫。[n] はスコープ内で数える)
 //   .switch:right(通知)              → 方向アンカー(アンカーの右にある候補だけ。左/上/下も同型)
 // [n] は 1 オリジン(.textField[1] = 1番目の textField。内部の FlowLocator.index は 0 オリジン)。
 // パースは失敗しない(解釈できない節は label として扱う)。**構文の誤り(未知のマーカー・綴り誤り・
@@ -12,7 +12,7 @@
 // `.button:rigth(x)` が黙ってラベル扱いになり、notExist 等が空振りで緑になるため。
 // run 開始時と dry-run が呼ぶ)。
 // `||` と `>>` の分割は括弧の外だけ(`:right(...)` の中は割らない)。`>>` は `||` より強く結合する
-// (`#a >> .cell || #b` = (#a >> .cell) か #b)。ラベルに `>>`/`:方向(` を含めたいときは `=` エスケープ。
+// (`#a >> .clickable || #b` = (#a >> .clickable) か #b)。ラベルに `>>`/`:方向(` を含めたいときは `=` エスケープ。
 
 import Foundation
 import FTCore

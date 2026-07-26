@@ -110,11 +110,16 @@ public struct ElementInfo: Codable, Sendable {
     public var value: String?
     public var placeholder: String?
     public var enabled: Bool
+    /// チェック状態(true のときだけ送る = 省略は「オフ、または状態を持たない要素」)。
+    /// 取得元は iOS=`isSelected`(Compose iOS は Switch の value を出さないためこちらが唯一の経路)/
+    /// Android=`AccessibilityNodeInfo.isChecked`。isChecked / isNotChecked が唯一の読み手
+    public var checked: Bool?
     public var frame: FTRect
     public var depth: Int
 
     public init(ref: Int, type: String, identifier: String?, label: String?, value: String?,
-                placeholder: String?, enabled: Bool, frame: FTRect, depth: Int) {
+                placeholder: String?, enabled: Bool, frame: FTRect, depth: Int,
+                checked: Bool? = nil) {
         self.ref = ref
         self.type = Self.normalizedType(type)
         self.identifier = identifier
@@ -122,6 +127,7 @@ public struct ElementInfo: Codable, Sendable {
         self.value = value
         self.placeholder = placeholder
         self.enabled = enabled
+        self.checked = checked
         self.frame = frame
         self.depth = depth
     }
@@ -135,6 +141,7 @@ public struct ElementInfo: Codable, Sendable {
         value = try container.decodeIfPresent(String.self, forKey: .value)
         placeholder = try container.decodeIfPresent(String.self, forKey: .placeholder)
         enabled = try container.decode(Bool.self, forKey: .enabled)
+        checked = try container.decodeIfPresent(Bool.self, forKey: .checked)
         frame = try container.decode(FTRect.self, forKey: .frame)
         depth = try container.decode(Int.self, forKey: .depth)
     }

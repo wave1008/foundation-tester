@@ -783,6 +783,34 @@ public final class StepExecutor {
                 ? .failed("要素は\(wantEnabled ? "無効" : "有効")です: \(step.locatorSummary)")
                 : .failed("要素が見つかりません: \(step.locatorSummary)")
 
+        case "checked", "notChecked":
+            // checked は true のときだけブリッジが送る(省略 = オフ / 状態を持たない要素)。
+            // 「状態が違う」と「見つからない」を別メッセージにするのは enabled と同じ規律
+            let wantChecked = assert == "checked"
+            let deadline = Date().addingTimeInterval(TimeInterval(step.timeout ?? 5))
+            var backoff = PollBackoff()
+            var found = false
+            while true {
+                let start = clock.now
+                let snapshot = try await driver.snapshot()
+                phase.snapshotMs += Self.ms(clock.now - start)
+                if let (element, fallback) = Self.resolve(step: step, in: snapshot,
+                                                          strictForAssert: true) {
+                    found = true
+                    if (element.checked == true) == wantChecked {
+                        if let fallback { return .passedViaFallback(fallback) }
+                        return .passed
+                    }
+                }
+                if Date() >= deadline { break }
+                let waitStart = clock.now
+                try await Task.sleep(for: backoff.nextDelay())
+                phase.waitMs += Self.ms(clock.now - waitStart)
+            }
+            return found
+                ? .failed("要素は\(wantChecked ? "オフ" : "オン")です: \(step.locatorSummary)")
+                : .failed("要素が見つかりません: \(step.locatorSummary)")
+
         case "count":
             guard let expectedCount = step.expectedCount else {
                 return .skipped("expectedCount が未指定")

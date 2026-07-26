@@ -117,10 +117,10 @@ class セレクタの型と序数とフォールバックが解決できるこ�
                     textIs("#txt_radio", "plan=A")
                 }
             }
-            scene(2, "Compose の Button は .cell=ラベル で引ける(.button では引けない)") {
+            scene(2, "Compose の Button は .clickable=ラベル で引ける(.button では引けない)") {
                 action {
                     tap("#radio_b")
-                    tap(".cell=コントロールリセット")
+                    tap(".clickable=コントロールリセット")
                 }.expectation {
                     textIs("#txt_radio", "plan=A")
                 }

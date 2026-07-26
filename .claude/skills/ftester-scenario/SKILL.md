@@ -173,7 +173,7 @@ testbase(SC/TC 等の仕様書)を根拠にシナリオを書く場合、実行�
 |---|---|
 | タップ/入力 | `tap(sel, optional:, timeout:)` / `type(text)`(直前フォーカス)/ `type(sel, text)` / `press(sel, duration:)`(長押し) |
 | スワイプ/スクロール | `swipe(.up/.down/.left/.right)` / `scrollTo(sel, direction:, maxSwipes:)` |
-| 検証 | `exist(sel)` / `notExist(sel)` / `textIs(sel, 期待)` / `valueIs(sel, 期待)` / `isEnabled(sel)` / `isDisabled(sel)` / `countIs(sel, 個数)` / `screenIs(名)`。exist は `.textIs()/.valueIs()` チェーン可 |
+| 検証 | `exist(sel)` / `notExist(sel)` / `textIs(sel, 期待)` / `valueIs(sel, 期待)` / `isEnabled(sel)` / `isDisabled(sel)` / `isChecked(sel)` / `isNotChecked(sel)` / `countIs(sel, 個数)` / `screenIs(名)`。exist は `.textIs()/.valueIs()` チェーン可 |
 | アプリ制御 | `launchApp(bundleID?)` / `relaunchApp()` / `terminateApp()` / `home()` / `appSwitcher()` |
 | 待機/分岐 | `wait(秒)` / `ifCanSelect(sel, waitSeconds:) { … }.ifElse { … }` / `ios { }` / `android { }` / `procedure("名") { try await … }` |
 | まとまり | `group("ログイン") { … }`(記録に `[ログイン]` を前置するだけ。実行・失敗の扱いは素の列と同じ) |
@@ -203,7 +203,7 @@ testbase(SC/TC 等の仕様書)を根拠にシナリオを書く場合、実行�
   **型名は先頭小文字**(`.button` / `.staticText`)。スナップショットが返す綴りと同じ。
   先頭大文字で書くと実行前に構文エラーになる
 - `.型#id` / `.型=ラベル` — 型で絞る
-- `祖先 >> 子孫` — **スコープ**。`#list >> .cell[2]` = `#list` の子孫だけを候補にし、序数もその中で数える
+- `祖先 >> 子孫` — **スコープ**。`#list >> .clickable[2]` = `#list` の子孫だけを候補にし、序数もその中で数える
   (画面クロム・スクロール位置で `.型[n]` がずれる問題の対処。多段可)。
   **容器がアプリ側で a11y ツリーに公開されている必要がある**(`#id` と同じ性質の要件で、
   フレームワークの差ではない)。公開されていない/畳まれている容器はスコープに使えないので、

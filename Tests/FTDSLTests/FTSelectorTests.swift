@@ -20,8 +20,8 @@ final class FTSelectorTests: XCTestCase {
     }
 
     func testScopeParsing() {
-        let scoped = FTSelector.parse("#list >> .cell[2]").primary
-        XCTAssertEqual(scoped.type, "cell")
+        let scoped = FTSelector.parse("#list >> .clickable[2]").primary
+        XCTAssertEqual(scoped.type, "clickable")
         XCTAssertEqual(scoped.index, 1)
         XCTAssertEqual(scoped.scope, [FlowLocator(id: "list")])
     }
@@ -45,9 +45,9 @@ final class FTSelectorTests: XCTestCase {
     }
 
     func testScopeBindsTighterThanFallbackChain() {
-        let selector = FTSelector.parse("#list >> .cell || #fallback")
+        let selector = FTSelector.parse("#list >> .clickable || #fallback")
         XCTAssertEqual(selector.primary.scope, [FlowLocator(id: "list")])
-        XCTAssertEqual(selector.primary.type, "cell")
+        XCTAssertEqual(selector.primary.type, "clickable")
         XCTAssertEqual(selector.fallbacks, [FlowLocator(id: "fallback")])
     }
 
@@ -71,9 +71,9 @@ final class FTSelectorTests: XCTestCase {
 
     func testSerializeRoundTrip() {
         for text in ["#login_btn", "ログイン", ".button[2]", ".switch#S1", ".switch=名前",
-                     "#list >> .cell[2]", "#page >> #list >> ラベル", ".button:right(氏名)",
+                     "#list >> .clickable[2]", "#page >> #list >> ラベル", ".button:right(氏名)",
                      ".switch:left(通知)", ".button:above(合計)", ".button:below(合計)",
-                     "#list >> .cell:right(合計)", "=#raw"] {
+                     "#list >> .clickable:right(合計)", "=#raw"] {
             let parsed = FTSelector.parse(text)
             let serialized = FTSelector.serialize(primary: parsed.primary,
                                                   fallbacks: parsed.fallbacks)
@@ -89,15 +89,15 @@ final class FTSelectorTests: XCTestCase {
     }
 
     func testSummaryShowsScopeAndDirection() {
-        let locator = FTSelector.parse("#list >> .cell:right(合計)").primary
-        XCTAssertEqual(locator.summary, "id=list >> cell:right(label=合計)")
+        let locator = FTSelector.parse("#list >> .clickable:right(合計)").primary
+        XCTAssertEqual(locator.summary, "id=list >> clickable:right(label=合計)")
     }
 
     // MARK: - 構文検証(パースが黙って label に落とす誤りを実行前に落とす)
 
     func testValidationAcceptsValidSelectors() {
         for text in ["#login_btn", "ログイン", ".button[2]", ".switch#S1", ".switch=名前",
-                     "#list >> .cell[2]", ".button:right(氏名)", ".switch:below(#a||通知)",
+                     "#list >> .clickable[2]", ".button:right(氏名)", ".switch:below(#a||通知)",
                      "=x:rigth(y)", "=A >> B", "合計: 1,200円", "#a||ラベル"] {
             XCTAssertNil(FTSelector.validationError(text), "誤検出: \(text)")
         }
@@ -106,7 +106,7 @@ final class FTSelectorTests: XCTestCase {
     func testValidationRejectsUnknownMarker() {
         // Shirates 等の他ツール記法・綴り誤りが「そんなラベルは無い」で緑になるのを防ぐ
         for text in [".button:rigth(氏名)", ".button:near(氏名)", ".button:descendant(#a)",
-                     "#list >> .cell:sibling(合計)"] {
+                     "#list >> .clickable:sibling(合計)"] {
             XCTAssertNotNil(FTSelector.validationError(text), "見逃した: \(text)")
         }
     }

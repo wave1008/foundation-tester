@@ -3,6 +3,23 @@
 CLAUDE.md「ビルド・検証」からの詳細分。コマンドと最重要ゲートは CLAUDE.md 側に残し、
 ここには**頻度は低いが踏むと痛い罠と判定規律**を置く。読者は保守者(Claude Code)。
 
+## iOS ランナー(Runner/)を変えたら xctestrun を消す
+
+`BridgeProvisioner` は **xctestrun が既に在れば build-for-testing を飛ばす**
+(`findXCTestRun() == nil` のときだけビルド)。そのため `Runner/FTesterRunnerUITests/` や
+ランナーにコンパイルされる `Sources/FTCore/BridgeDTO.swift` を変えても、
+`bridge down` → `bridge up` だけでは**古いランナーが起動し続ける**。
+症状は「新フィールドが常に nil」「新機能だけ落ちる」。手順:
+
+```
+ftester bridge down --all --platform ios
+find .ftester/DerivedData -name "*.xctestrun" -delete
+ftester bridge up --platform ios --device <名前>     # ここで再ビルドが走る
+```
+
+(2026-07-26 に isChecked 追加で実際に踏んだ。Android ブリッジ側は versionCode 照合で
+自動再インストールされるため、この問題は iOS 側だけに出る)
+
 ## flake・性能の判定規律(1回の結果で断じない)
 
 - **flake の修正は「1回グリーン」で判定しない**。flake は確率的で、低負荷なら偶然通る。

@@ -212,6 +212,24 @@ public func isDisabled(_ selector: String, timeout: Int? = nil,
                   file: file, line: line)
 }
 
+/// スイッチ・チェックボックス・ラジオが**オン**であることの検証。タイムアウトまで状態変化を待つ。
+/// 取得元は iOS=accessibility の selected trait / Android=isChecked(ElementInfo.checked)。
+/// **型が OS で揃わない要素(checkbox/radio)でも使える** — 状態は型と独立に取れるため
+public func isChecked(_ selector: String, timeout: Int? = nil,
+                      file: StaticString = #filePath, line: UInt = #line) {
+    enabledAssert("checked", verb: "isChecked", selector: selector, timeout: timeout,
+                  file: file, line: line)
+}
+
+/// スイッチ・チェックボックス・ラジオが**オフ**であることの検証。
+/// 状態を持たない要素(ただのボタン等)も「オフ」として通る(ブリッジは true のときだけ送るため)
+public func isNotChecked(_ selector: String, timeout: Int? = nil,
+                         file: StaticString = #filePath, line: UInt = #line) {
+    enabledAssert("notChecked", verb: "isNotChecked", selector: selector, timeout: timeout,
+                  file: file, line: line)
+}
+
+/// enabled/disabled/checked/notChecked の共通実装(アサート名だけが違う)
 private func enabledAssert(_ assert: String, verb: String, selector: String, timeout: Int?,
                            file: StaticString, line: UInt) {
     let core = FTRuntime.requireCore(command: verb)

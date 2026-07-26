@@ -30,8 +30,7 @@ class セレクタの型と序数とフォールバックが解決できるこ�
             }
             scene(2, ".button[6] で3番目の『項目』(#btn_item_3)に着地") {
                 action {
-                    ios { tap(".button[6]") }
-                    android { tap(".cell[6]") }
+                    tap(".button[6]")
                 }.expectation {
                     textIs("#txt_selector_result", "result=item3")
                 }
@@ -53,8 +52,7 @@ class セレクタの型と序数とフォールバックが解決できるこ�
             }
             scene(2, ".型#id で #btn_allow に着地") {
                 action {
-                    ios { tap(".button#btn_allow") }
-                    android { tap(".cell#btn_allow") }
+                    tap(".button#btn_allow")
                 }.expectation {
                     textIs("#txt_selector_result", "result=allow")
                 }
@@ -98,8 +96,7 @@ class セレクタの型と序数とフォールバックが解決できるこ�
             }
             scene(2, ".型=共通ラベル は #txt_shared_label(Text)ではなく #btn_shared_label(button)に着地") {
                 action {
-                    ios { tap(".button=共通ラベル") }
-                    android { tap(".cell=共通ラベル") }
+                    tap(".button=共通ラベル")
                 }.expectation {
                     textIs("#txt_selector_result", "result=shared")
                 }

@@ -14,9 +14,12 @@ tag 定数は `composeApp/src/commonMain/kotlin/com/ftester/e2e/Tags.kt` に集�
   を**必ず再適用する**。忘れると Android だけダイアログ内の `#id` が全滅する(ラベルは引ける)。
 - **型名は先頭小文字**(`.button` / `.staticText`)。ホスト側で正規化しており、スナップショット表示・
   セレクタ記法・生成コードで綴りが一致する(先頭大文字で書くと構文エラー)。
-- **要素の型は OS で異なる**(実スナップショットで採取): Compose の Button は
-  iOS = `button` / Android = `cell`。型を使うセレクタ(`.型[n]` / `.型#id` / `.型=ラベル`)は
-  `ios {}` / `android {}` で分ける。`#id` とラベルは共通。
+- **OS を跨いで保証される型は `button` / `staticText` / `textField` / `secureTextField` / `switch` の5つ**
+  (2026-07-26 のブリッジ役割正規化以降。それ以前は Compose の Button が Android で `cell` になり
+  `ios {}` / `android {}` の分岐が必要だった)。この5つは型セレクタを OS 共通で書ける。
+- **`checkBox` / `slider` / リスト行は型で指さない**。iOS 側の a11y が役割を出さず
+  (Compose の Checkbox/Radio は iOS で `button`、Slider は `other`)、ブリッジでも揃えられない。
+  これらは `#id` で指す。`#id` とラベルは全プラットフォーム共通。
 - **ラベルはハードコード**(文字列リソース/ロケール依存にしない)。端末ロケールが ja/en どちらでも
   同じ文字列が出る = フリートのロケール差でシナリオが壊れない。
 - **入力する値は ASCII のみ**(IME を介さない `type` の対象にするため)。
@@ -25,6 +28,8 @@ tag 定数は `composeApp/src/commonMain/kotlin/com/ftester/e2e/Tags.kt` に集�
 - **状態表示は必ず `key=value` 形式の Text にする**(`textIs` で完全一致検証できる)。
   Switch/Checkbox の AX value は OS で表現が違うため、値検証は原則この echo Text で行う
   (`valueIs` の OS 依存挙動は `ios {}` / `android {}` 節でのみ確認する)。
+  **オン/オフだけなら `isChecked` / `isNotChecked` が OS 共通で使える**(2026-07-26。
+  iOS=selected trait / Android=isChecked。echo Text の無い実アプリでも検証できる)。
 - **プロセス起動時は必ずホームタブのルートに戻る**(画面遷移状態を永続化しない)。
   `launchApp` はアプリのデータを消さないため、ナビ状態のリセットはアプリ側の責務
   (docs/design.md §10 の知見)。永続化するのは下表の「永続」印の付いた値だけ。
