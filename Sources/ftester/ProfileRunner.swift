@@ -59,8 +59,17 @@ enum ProfileRunner {
             _ = await AndroidGpuRecovery.recoverCpuFallbackDevices(
                 devices: resolved.androidDevices, locale: resolved.locale) { print($0) }
         }
+        // run-lease(.ftester/run-<key>.lease)。best-effort: リポジトリ外実行等で root が
+        // 取れない場合は書かない(monitor 側の inRun 判定が false になるだけで安全)
+        let leaseStateDir = (try? RepoRoot.find())?.appendingPathComponent(".ftester")
+        // 供給フェーズ(install・凍結triage)の間も lease を保つ。RunOrchestrator の lease は
+        // シナリオ実行中しか書かれず、その手前に device-up が割り込む穴が空くため
+        let supplyLease = leaseStateDir.map { SupplyLeaseHolder(stateDir: $0) }
+        defer { supplyLease?.release() }
+
         await ProfileWorkerFactory.preparePhysicalAndroidDevices(resolved: resolved) { print($0) }
         var workers = try ProfileWorkerFactory.buildAndroidWorkers(resolved: resolved)
+        supplyLease?.hold(keys: workers.compactMap { $0.connection.serial ?? $0.connection.udid })
         let beforeBlankCheck = workers.count
         let triage = await ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers(workers) { print($0) }
         workers = triage.workers
@@ -78,10 +87,6 @@ enum ProfileRunner {
             ? "ios" : "android"
         print("🚀 Android \(workers.count) ワーカーで開始"
             + (hasLateIOS ? "(iOS はブリッジ供給完了後に合流)" : "") + "\n")
-
-        // run-lease(.ftester/run-<key>.lease)。best-effort: リポジトリ外実行等で root が
-        // 取れない場合は書かない(monitor 側の inRun 判定が false になるだけで安全)
-        let leaseStateDir = (try? RepoRoot.find())?.appendingPathComponent(".ftester")
 
         // record:true のときだけ VideoRecordingConfig を注入(runDir が無ければ録画自体しない)
         let recordingConfig: VideoRecordingConfig? = {
@@ -186,6 +191,8 @@ enum ProfileRunner {
                     var ws = try await ProfileWorkerFactory.buildIOSWorkers(
                         resolved: resolved, repoRoot: repoRoot) { print($0) }
                     PhaseLog.mark("ios-workers-built")
+                    supplyLease?.hold(
+                        keys: ws.compactMap { $0.connection.serial ?? $0.connection.udid })
                     ws = (try? await ProfileWorkerFactory.installIfNeeded(
                         apps: resolved.apps, workers: ws, forceAndroidInstall: false) { print($0) }) ?? ws
                     PhaseLog.mark("ios-workers-installed")

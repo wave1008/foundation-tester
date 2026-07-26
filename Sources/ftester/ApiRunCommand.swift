@@ -140,6 +140,11 @@ struct ApiRunCommand: AsyncParsableCommand {
         // iOS は RunOrchestrator の lateWorkers として供給完了後に合流する(実測: 供給待ちで
         // 全ワーカーの開始が 10s→81s に悪化した対策。2026-07-18)。
         let triageBox = BlankTriageBox()
+        // 供給フェーズ(install・凍結triage)の間も run-lease を保つ。RunOrchestrator の lease は
+        // シナリオ実行中しか書かれず、その手前に device-up が割り込む穴が空くため
+        let supplyLease = (try? RepoRoot.find())
+            .map { SupplyLeaseHolder(stateDir: $0.appendingPathComponent(".ftester")) }
+        defer { supplyLease?.release() }
         let androidWorkersTask: Task<[RunWorker], Error>?
         var iosWorkersTask: Task<[RunWorker], Never>?
         if let resolvedProfile, !dryRun, debugOptions == nil {
@@ -167,6 +172,8 @@ struct ApiRunCommand: AsyncParsableCommand {
                 await ProfileWorkerFactory.preparePhysicalAndroidDevices(
                     resolved: resolved) { logStderr($0) }
                 var workers = try ProfileWorkerFactory.buildAndroidWorkers(resolved: resolved)
+                supplyLease?.hold(
+                    keys: workers.compactMap { $0.connection.serial ?? $0.connection.udid })
                 // 凍結機は修復→不発なら guest reboot 待ちで本 run に復帰・それでも駄目な個体のみ除外
                 // (CLI の ProfileRunner と同じ。全滅しても throw せず
                 // 空で返す=iOS の合流を殺さない。android シナリオはワーカー不在ドレインで失敗確定)
@@ -186,6 +193,8 @@ struct ApiRunCommand: AsyncParsableCommand {
                     do {
                         var workers = try await ProfileWorkerFactory.buildIOSWorkers(
                             resolved: resolved, repoRoot: try RepoRoot.find()) { logStderr($0) }
+                        supplyLease?.hold(
+                            keys: workers.compactMap { $0.connection.serial ?? $0.connection.udid })
                         workers = (try? await ProfileWorkerFactory.installIfNeeded(
                             apps: resolved.apps, workers: workers,
                             forceAndroidInstall: false) { logStderr($0) }) ?? workers
@@ -330,6 +339,10 @@ struct ApiRunCommand: AsyncParsableCommand {
 
         var blankTriage: (repaired: [String], excluded: [String]) = ([], [])
         var workers: [RunWorker] = []
+        // 供給フェーズ(install・凍結triage)の間も run-lease を保つ(理由は並列経路の同処理を参照)
+        let supplyLease = (try? RepoRoot.find())
+            .map { SupplyLeaseHolder(stateDir: $0.appendingPathComponent(".ftester")) }
+        defer { supplyLease?.release() }
         if !dryRun {
             let deviceList = resolved.devices
                 .map { "\($0.name)(\($0.platform))" }.joined(separator: ", ")
@@ -351,6 +364,8 @@ struct ApiRunCommand: AsyncParsableCommand {
             }
             workers = try await ProfileWorkerFactory.buildWorkers(
                 resolved: resolved, repoRoot: try RepoRoot.find()) { logStderr($0) }
+            supplyLease?.hold(
+                keys: workers.compactMap { $0.connection.serial ?? $0.connection.udid })
             // android ワーカーのみ判定対象(iOS はそのまま通る)。凍結機は修復→guest reboot 待ちで
             // 本 run に復帰・それでも駄目な個体のみ除外
             let triage = await ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers(workers) { logStderr($0) }

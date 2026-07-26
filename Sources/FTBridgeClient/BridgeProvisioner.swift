@@ -122,6 +122,10 @@ public struct BridgeProvisioner {
     /// 実処理(停止・起動)は並列実行フェーズが担う。ポート採番はプランニングで確定済み。
     enum EnginePlan {
         case reuse(port: UInt16)
+        /// **別プロセスが起動した直後で /status 未応答**の xcuitest ランナーを引き取る
+        /// (起動はせず announce を待つだけ)。同一デバイスに 2 本目を立てないための経路で、
+        /// 待っても応答しなければ executeBridge がそのランナーを止めて同じポートで起動し直す
+        case adopt(port: UInt16)
         /// stopStalePort: 起動前に停止すべき旧版 xcuitest ブリッジのポート。
         /// needsInstall: inapp の autoInstall 差し替え(インストールファイルが更新済み)。
         /// reclaimInApp: このポートに stale な .inapp(ウェッジ等の残留 in-app ブリッジ)が
@@ -131,6 +135,7 @@ public struct BridgeProvisioner {
         var port: UInt16 {
             switch self {
             case .reuse(let port): return port
+            case .adopt(let port): return port
             case .launch(let port, _, _, _): return port
             }
         }
@@ -199,6 +204,20 @@ public struct BridgeProvisioner {
         let appIsCurrent = await checkInstalledAppCurrency(
             targets: targets, bundleID: bundleID, preinstallAppPath: preinstallAppPath)
 
+        // 3.5. 起動済みだが /status 未応答(= announce 前)の xcuitest ランナー。
+        // announce 済みしか映らない running では拾えないため、プロセス引数(-destination id=<UDID>)
+        // 照合で別に採る。**別プロセスが起動した直後のランナー**がここに出る = 同じデバイスに
+        // 2 本目を立てると OS の 1 デバイス 1 ランナー制約で全滅するので、引き取って待つ
+        let startingByUDID = BridgeLauncher
+            .portsByUDID(targets.map { $0.sim.udid }, repoRoot: repoRoot)
+            .mapValues { $0.filter { !running.keys.contains($0) } }
+            .filter { !$0.value.isEmpty }
+        if !startingByUDID.isEmpty {
+            let summary = startingByUDID.values.flatMap { $0 }.sorted()
+                .map(String.init).joined(separator: ", ")
+            safeLog("→ 起動中ブリッジ(応答待ち): port \(summary)")
+        }
+
         // 4. プランニング(直列・await なし)。ポート採番の一意性(usedPorts/claimed)のため
         // 全デバイスを必ず直列で処理する
         var usedPorts = Set(running.keys)
@@ -213,18 +232,21 @@ public struct BridgeProvisioner {
                     engine: "inapp", preferred: target.spec.port, name: target.name,
                     sim: target.sim, bundleID: bundleID, appIsCurrent: appIsCurrent,
                     preinstallAppPath: preinstallAppPath,
-                    running: running, claimed: &claimed, usedPorts: &usedPorts)))
+                    running: running, starting: startingByUDID,
+                    claimed: &claimed, usedPorts: &usedPorts)))
                 bridges.append(("xcuitest", try planBridge(
                     engine: "xcuitest", preferred: nil, name: target.name,
                     sim: target.sim, bundleID: bundleID, appIsCurrent: appIsCurrent,
                     preinstallAppPath: preinstallAppPath,
-                    running: running, claimed: &claimed, usedPorts: &usedPorts)))
+                    running: running, starting: startingByUDID,
+                    claimed: &claimed, usedPorts: &usedPorts)))
             } else {
                 bridges.append((engine, try planBridge(
                     engine: engine, preferred: target.spec.port, name: target.name,
                     sim: target.sim, bundleID: bundleID, appIsCurrent: appIsCurrent,
                     preinstallAppPath: preinstallAppPath,
-                    running: running, claimed: &claimed, usedPorts: &usedPorts)))
+                    running: running, starting: startingByUDID,
+                    claimed: &claimed, usedPorts: &usedPorts)))
             }
             plans.append(DevicePlan(index: index, name: target.name, sim: target.sim,
                                     engine: engine, bridges: bridges))
@@ -309,6 +331,7 @@ public struct BridgeProvisioner {
                             bundleID: String?, appIsCurrent: [String: Bool],
                             preinstallAppPath: String?,
                             running: [UInt16: RunningBridge],
+                            starting: [String: [UInt16]] = [:],
                             claimed: inout Set<UInt16>,
                             usedPorts: inout Set<UInt16>) throws -> EnginePlan {
         // autoInstall(preinstallAppPath)付き inapp は「インストールファイルが更新されているとき
@@ -341,6 +364,15 @@ public struct BridgeProvisioner {
            })?.key {
             claimed.insert(port)
             return .reuse(port: port)
+        }
+        // 起動中(announce 前)の xcuitest ランナーがこのデバイスに居るなら引き取る。
+        // pid ファイルを持つのは xcuitest だけ(inapp は .inapp 状態ファイル)なので engine は自明。
+        // **新しい空きポートで 2 本目を立てない**のがこの分岐の目的
+        if engine == "xcuitest",
+           let port = (starting[sim.udid] ?? []).first(where: { !claimed.contains($0) }) {
+            claimed.insert(port)
+            usedPorts.insert(port)
+            return .adopt(port: port)
         }
         // 再利用できない同一 UDID の旧ブリッジは止めてから新規起動する
         // (放置するとポートを握ったまま残り、xcuitest は /status が旧版のまま応答し続け、
@@ -445,6 +477,28 @@ public struct BridgeProvisioner {
         case .reuse(let port):
             log("✅ \(name): 稼働中 \(engine) ブリッジを再利用(port \(port), \(sim.name))")
             return port
+        case .adopt(let port):
+            // 別プロセスが起動した直後のランナー。起動はせず announce だけ待つ
+            log("→ \(name): 起動中の \(engine) ブリッジを引き取ります(port \(port), \(sim.name))...")
+            let launcher = BridgeLauncher(repoRoot: repoRoot, device: sim.udid, port: port,
+                                          physical: sim.physical)
+            do {
+                try await launcher.waitUntilReady(host: BridgeEndpoint(port: port).host,
+                                                  log: { log("\(name): \($0)") })
+                log("✅ \(name): 起動中だった \(engine) ブリッジを引き取りました(port \(port))")
+                return port
+            } catch {
+                // 親を失ったゾンビ(再起動・kill で announce しないまま残ったランナー)。
+                // 放置すると同じデバイスで何度でも待たされるので、止めてから同じポートで立て直す
+                log("⚠️ \(name): 起動中ブリッジ(port \(port))が応答しないため停止して起動し直します")
+                try? await launcher.stopAndWait()
+                return try await executeBridge(
+                    engine: engine,
+                    plan: .launch(port: port, needsInstall: false,
+                                  stopStalePort: nil, reclaimInApp: false),
+                    name: name, sim: sim, bundleID: bundleID,
+                    preinstallAppPath: preinstallAppPath, log: log)
+            }
         case .launch(let port, let needsInstall, let stopStalePort, let reclaimInApp):
             if let stopStalePort {
                 // inapp(pid ファイル無し・.inapp 状態ファイルあり)は simctl terminate で、

@@ -20,14 +20,53 @@ final class PlanBridgeTests: XCTestCase {
     }
 
     private func plan(running: [UInt16: BridgeProvisioner.RunningBridge],
-                      sim: SimDeviceInfo) throws -> BridgeProvisioner.EnginePlan {
+                      sim: SimDeviceInfo,
+                      starting: [String: [UInt16]] = [:]) throws -> BridgeProvisioner.EnginePlan {
         let provisioner = BridgeProvisioner(repoRoot: repoRoot, portRange: 8123...8130)
         var claimed: Set<UInt16> = []
         var used = Set(running.keys)
         return try provisioner.planBridge(
             engine: "xcuitest", preferred: nil, name: sim.name, sim: sim, bundleID: nil,
-            appIsCurrent: [:], preinstallAppPath: nil, running: running,
+            appIsCurrent: [:], preinstallAppPath: nil, running: running, starting: starting,
             claimed: &claimed, usedPorts: &used)
+    }
+
+    /// **別プロセスが起動した直後(= /status 未応答)のランナーは running に映らない**。
+    /// ここで新しい空きポートを採ると同一デバイスに 2 本目が立ち、OS の 1 デバイス 1 ランナー
+    /// 制約でどちらも上がらない(再起動直後に実害化)。引き取って announce を待つのが正しい
+    func testAdoptsStartingRunnerInsteadOfLaunchingSecond() throws {
+        let sim = SimDeviceInfo(udid: "UDID-A", name: "iPhone 17 Pro", os: "iOS 27.0", booted: true)
+        let running: [UInt16: BridgeProvisioner.RunningBridge] = [
+            8123: .init(udid: "UDID-OTHER", name: "iPhone 17 Pro", engine: "xcuitest",
+                        protocolVersion: BridgeAPI.bridgeProtocolVersion, sessionBundleID: nil),
+        ]
+        guard case .adopt(let port) = try plan(running: running, sim: sim,
+                                               starting: ["UDID-A": [8128]]) else {
+            return XCTFail("起動中ランナーは adopt するはず(新規ポートで 2 本目を立てない)")
+        }
+        XCTAssertEqual(port, 8128)
+    }
+
+    /// announce 済みの再利用が優先(adopt は再利用できないときの経路)
+    func testReuseWinsOverAdopt() throws {
+        let sim = SimDeviceInfo(udid: "UDID-A", name: "iPhone 17 Pro", os: "iOS 27.0", booted: true)
+        let running: [UInt16: BridgeProvisioner.RunningBridge] = [
+            8125: .init(udid: "UDID-A", name: "iPhone 17 Pro", engine: "xcuitest",
+                        protocolVersion: BridgeAPI.bridgeProtocolVersion, sessionBundleID: nil),
+        ]
+        guard case .reuse(let port) = try plan(running: running, sim: sim,
+                                               starting: ["UDID-A": [8128]]) else {
+            return XCTFail("announce 済みブリッジがあれば reuse")
+        }
+        XCTAssertEqual(port, 8125)
+    }
+
+    /// 別デバイスの起動中ランナーは引き取らない(自分のデバイスの分だけ見る)
+    func testIgnoresStartingRunnerOfOtherDevice() throws {
+        let sim = SimDeviceInfo(udid: "UDID-A", name: "iPhone 17 Pro", os: "iOS 27.0", booted: true)
+        guard case .launch = try plan(running: [:], sim: sim, starting: ["UDID-B": [8128]]) else {
+            return XCTFail("別デバイスの起動中ランナーは無関係なので launch するはず")
+        }
     }
 
     /// 同名 sim 複数 booted で udid=nil に落ちた稼働ブリッジは、名前一致で再利用する(二重起動回避)。
