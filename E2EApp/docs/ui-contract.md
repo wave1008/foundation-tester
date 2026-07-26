@@ -17,6 +17,9 @@ tag 定数は `composeApp/src/commonMain/kotlin/com/ftester/e2e/Tags.kt` に集�
 - **OS を跨いで保証される型は `button` / `staticText` / `textField` / `secureTextField` / `switch` の5つ**
   (2026-07-26 のブリッジ役割正規化以降。それ以前は Compose の Button が Android で `cell` になり
   `ios {}` / `android {}` の分岐が必要だった)。この5つは型セレクタを OS 共通で書ける。
+  **iOS の3エンジン間でも揃っている**: in-app は traits の `.toggleButton`(実測 0x20000000000001 =
+  `.button` と併用。UIKit/SwiftUI/Compose 共通)で `switch` を出す。ここが抜けると in-app だけ
+  `switch` が `button` になり、`:rightSwitch` が xcuitest とだけ食い違う(2026-07-27 に実害)。
 - **`checkBox` / `slider` / リスト行は型で指さない**。iOS 側の a11y が役割を出さず
   (Compose の Checkbox/Radio は iOS で `button`、Slider は `other`)、ブリッジでも揃えられない。
   これらは `#id` で指す。`#id` とラベルは全プラットフォーム共通。

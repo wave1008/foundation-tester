@@ -214,6 +214,13 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
 実装(計12)、Android ブリッジは `POST /locale` を追加(計10。§4.5)、InApp ブリッジは
 共通コアのみ(計9)。
 
+**in-app dylib は「古いまま注入される」事故が起きやすい**(2026-07-27 に実害):
+`InAppBridge/build/` は gitignore・手動ビルドなので、ブリッジのソースを直しても
+再ビルドしなければ**古いバイナリが注入され続ける**。実際に isChecked 追加と型の役割正規化
+(b8a408c)が反映されず、ios-inapp / ios-heal だけ「checked が取れない」「switch 型が出ない」で
+落ち続けた。`InAppLauncher.buildIfNeeded` は**存在ではなく鮮度**(`InAppBridge/Sources/*` +
+`build.sh` + 共有 DTO の mtime)で判定する — 存在チェックに戻してはいけない。
+
 ### 4.4 スナップショットの圧縮(4K コンテキストへの最重要対策)
 
 `XCUIApplication.snapshot()`(`XCUIElementSnapshot`)を再帰走査して:
@@ -559,6 +566,11 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
 - tap/type/press は `optional:`(見つからなくても失敗にしない)に加え `timeout:`
   (ロケータ解決の再試行待ち上限秒。0=リトライなし。省略時は既定の約0.7秒)を取る。
   出るか不定な optional ステップの空振り短縮用(performance-tuning §5)
+- `press(duration:)` は長押し秒数(既定 `FlowStep.defaultPressDuration` = 1 秒)。
+  ブリッジの `/press` は当初から duration を受け取っていたが、**ホスト側の `FlowStep` に
+  duration が無く StepExecutor が 1.0 固定で呼んでいたため、DSL の引数と拡張のパラメーター編集が
+  黙って無効化されていた**(2026-07-27 修正)。既定値と同じときは `FlowStep.duration` を nil の
+  ままにする(生成コード・ヒールキャッシュを既定ケースで太らせない)
 - **要素の出現待ちは暗黙**: `tap` はロケータ解決を再試行(省略時 約0.7秒)し、
   `exist`/`textIs`/`valueIs` は既定タイムアウト(5秒・`--default-timeout` で上書き)まで
   スナップショットを取り直してポーリング再判定する。遷移後の検証直前に固定 `wait` を足すのは冗長で、
@@ -699,6 +711,37 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
 - **`exist`/`textIs`/`valueIs` は非スクロール**(現在画面のみ判定)。一覧の折り返し下にある項目は
   直前に `scrollTo(セレクタ, maxSwipes:)` で送ってから確認する
 
+### 型付きセレクタ(Sel。2026-07-27)
+
+セレクタ式は文字列1本なので、綴り誤りをコンパイラが捕まえられない(実行前の `validationError` が
+唯一の防波堤)。これを型で潰す**併設経路**として `Sel`(Sources/FTDSL/Sel.swift)を追加した。
+**文字列版は一切変えていない**(署名・ステップ説明文・記録すべて同じ)。
+
+```swift
+tap(.id("login_btn"))                            // #login_btn
+tap(.id("login_btn").or(.text("ログイン")))        // #login_btn||ログイン
+tap(.id("list").find(.type(.cell).nth(2)))       // #list >> .cell[2]
+tap(.text("通知").right(.switch))                 // 通知:rightSwitch
+textIs(.id("txt_result"), "dialog=none")
+```
+
+- **引数の型が具体型なので先頭ドットで書ける**(`tap(.id(...))`)。`some FTSelectorConvertible`
+  のような総称にすると leading-dot が効かなくなるため、各コマンドは String 版と `Sel` 版の
+  **2 つの具体オーバーロード**を持ち、共通の impl(FTSelector を取る)へ畳む
+- 組み立てるのは**文字列版と同じ `FlowLocator`**。解決・実行・レポート・ヒールは完全に共通で、
+  実行エンジンは分岐しない(`SelTests` が全構文について「文字列版と同じ FlowLocator になること」を固定)
+- フィルタ系メソッド(`text`/`type`/`nth` 等)は常に「**現在の対象**」に AND する:
+  相対ステップより前なら基準(アンカー)、後ならそのステップの対象。`nth` も同様に、
+  相対ステップの後では ordinal(近い順)になる
+- `exact` は match モードを**持たせない**(文字列版 `parseNamedFilter` と同じ正規化)。
+  揃えないと同じ意味のセレクタが型付き版だけ別構造になり、比較・往復・ヒールキャッシュが割れる
+- 表示テキスト(レポート・ヒールキャッシュのキー)は `FTSelector.serialize` で**記法へ戻す**。
+  `FlowLocator.summary` は表示用で型が `.button` ではなく `button`(=ラベル)に化けるため使わない
+- 型付き経路は `FTSelector.structured` が立ち、実行時の構文検証を**通さない**
+  (綴りはコンパイラが保証済み。かつラベルに `>>` 等の予約文字が入っても再パースで別物にならない)
+- 型名は `SelType` の静的メンバ(OS 共通契約の5型 + エイリアス + 頻出型)。語彙に無いものは
+  `.custom("...")`(先頭小文字へ正規化)
+
 ### 否定・状態・個数のアサーション(2026-07-26)
 
 - **`notExist`** は「消えるまで待つ」。初回で不在なら即成功、在ればタイムアウトまで消滅を待つ
@@ -770,6 +813,17 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
   セマフォで橋渡し(FTSync)。ブロックするのは専用スレッドのみで協調プールは塞がない
 - 失敗セマンティクス: コマンド NG → 同一 scene 内の以降のコマンドは自動スキップ → 次の scene へ
   (throw を使わない Shirates 的中断)
+- **登録不要の単発実行**: `ftester run-file <path.swift>`(Sources/ftester/RunFileCommand.swift)。
+  `ftester project create/sync` で Package.swift へ登録していない .swift をそのまま実行する。
+  実装は「対象プロジェクトの `Scenarios/_runfile/` へコピー → 通常どおり `RunScenarios` へ委譲 →
+  実行後に撤去」だけで、**ビルド・プロファイル・レポート・ヒール・並列は通常 run と完全に同一**。
+  - シナリオを**解釈実行**する軽量モードは採らない。実行エンジンが2本になると意味論が必ず分岐し、
+    生 Swift・`procedure`・ホスト言語の制御構造という DSL 最大の資産を単発実行だけ失う
+  - ファイルが既に登録済みターゲットの中にあるならコピーしない(重複クラス定義になる)。
+    `_disabled/` はコンパイル対象外なので、退避したままの単発実行はステージ側に回る
+  - 実行するシナリオはファイル内の `@TestClass` から拾う(`--scenario` で明示も可)
+  - `_runfile/` は実行の前後で消す。SIGKILL 等で残った場合は次の run-file の開始時掃除まで
+    そのプロジェクトの通常 run にも混ざる(.gitignore 済み)
 
 ### 自己修復の再設計(ヒールキャッシュ)
 

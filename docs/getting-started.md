@@ -210,6 +210,13 @@ ftester run --project MyApp --profile ios   # ブリッジ供給・自動イン�
 
 （外部構成では `ftester` = `../foundation-tester/.build/debug/ftester`、clone 構成は `swift run ftester run …`。）
 
+書き捨ての1本を試すだけなら、プロジェクトに登録せずそのまま実行できます（プロファイル・レポート・
+自己修復は `--project` のものを借ります）:
+
+```bash
+ftester run-file ~/tmp/新しい画面.swift --project MyApp --profile ios
+```
+
 ## 更新のしかた（新しい修正版が出たとき）
 
 Claude Code なら `/ftester-update` が構成を判定して自動実行します。手動は次の順:
