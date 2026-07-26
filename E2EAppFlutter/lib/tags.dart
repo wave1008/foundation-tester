@@ -60,6 +60,7 @@ class Tags {
   // スクロール
   static const txtRowSelected = 'txt_row_selected';
   static const btnScrollTop = 'btn_scroll_top';
+  static const listRows = 'list_rows';
   static const rowCount = 40;
 
   /// 行 tag。n は 1..rowCount。ゼロ詰め("row_01")= ラベルの部分一致衝突回避と対。

@@ -11,7 +11,7 @@ struct RowTableView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> UITableView {
         let table = UITableView()
-        table.accessibilityIdentifier = "tbl_rows"
+        table.accessibilityIdentifier = Tags.listRows
         table.dataSource = context.coordinator
         table.delegate = context.coordinator
         table.rowHeight = 56  // 56pt 未満は高密度スクロールで frame が崩れ tap が外れる(契約 §全体規約)

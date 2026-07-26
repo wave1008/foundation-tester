@@ -123,14 +123,16 @@ class 否定と個数と近接セレクタが正しく動くこと {
             scene(8, "スコープ(>>)は祖先の子孫だけを対象にする") {
                 condition {
                     tap("#tab_home")
+                    tap("#nav_scroll")
                 }.expectation {
-                    // 依存する構造(この SUT の実測。iOS/Android とも 2026-07-26 に確認):
-                    // Compose の Button/Cell は内側に同じ文字列の Text を1つ持つ
-                    // (iOS=Button depth+1 / Android=Cell depth+1)。ここが変わるとこの scene だけ落ちる。
-                    exist("#nav_selector >> .StaticText")
-                    countIs("#nav_selector >> .StaticText", 1)
-                    // スコープ外の要素はスコープ内からは解決できない
-                    notExist("#nav_selector >> #txt_home_marker")
+                    // #list_rows は行を包む容器(ui-contract.md)。スコープはその子孫だけを見る
+                    exist("#list_rows >> #row_02")
+                    countIs("#list_rows >> #row_02", 1)
+                    // 序数もスコープ内で数える(容器の外の同型要素に影響されない)
+                    ios { exist("#list_rows >> .Button[2]").textIs("行 02") }
+                    android { exist("#list_rows >> .Cell[2]").textIs("行 02") }
+                    // スコープ外(固定ヘッダ)の要素はスコープ内からは解決できない
+                    notExist("#list_rows >> #txt_row_selected")
                 }
             }
         }

@@ -555,21 +555,25 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
   (`StepExecutor.descendants`。中間ノードのフィルタや上限打ち切りは pre-order を崩さないので保たれる)。
   **スコープ付きロケータはアサーションのフォールバック連鎖から除外されない**(id/label 無しの
   type+index でも容器に錨があるため。`FlowLocator.isWeakForAssert`)
-- **スコープが効くかは UI フレームワークで割れる**(4 SUT 実測・2026-07-26)。成立条件は
-  「容器が snapshot に要素として残る」かつ「子孫が実際に depth で入れ子になる」の両方:
+- **スコープはプラットフォーム非依存**(4 SUT × iOS/Android 実測・2026-07-26)。成立条件は
+  「**アプリが容器を a11y ツリーに公開している**」ことだけで、フレームワークの差ではない
+  (`#id` が「アプリが identifier を付けていること」を要求するのと同じ性質の要件)。
+  容器の公開方法だけがフレームワークごとに違う:
 
-  | フレームワーク | 入れ子の実態 | `>>` |
-  |---|---|---|
-  | Compose Multiplatform(iOS/Android) | Button/Cell の内側に同文字列の Text | ○ |
-  | SwiftUI + UIKit | Button は子を持たないが UITableView の Cell は子 Text を持つ | ○(容器を選ぶ) |
-  | View/XML(Android) | Cell の下に TextView が素直に入れ子 | ○ |
-  | **Flutter(iOS/Android)** | **セマンティクスを畳むため行が葉になる = 子孫が無い** | **×** |
+  | フレームワーク | 容器の公開方法 |
+  |---|---|
+  | Compose Multiplatform | `LazyColumn` 等に `testTag` |
+  | SwiftUI + UIKit | `UITableView` の `accessibilityIdentifier` |
+  | View/XML | `RecyclerView` の `android:id` |
+  | Flutter | `Semantics(container: true, explicitChildNodes: true)`。**`MergeSemantics` で包まない** |
 
-  Flutter では `>>` の対象になる容器が存在しない(`#row_01 >> .StaticText` は 0 件)。
-  同じ Compose でも**コンテナ種別で違う**: Button/Cell は子を入れ子にするが、Box(`#pad_swipe`)は
-  iOS で子 Text が同じ depth に平坦化される。**スコープは実スナップショットで入れ子を確認してから書く**。
-  回帰は `Projects/E2E*/Scenarios/12_セレクタ拡張.swift`(Flutter 版は「解決できない」ことを固定している)。
-  なお `notExist` / `countIs` / `:near` は 4 フレームワーク全てで同一に動く(同実測)
+  **畳むと子孫が消えてスコープ対象が無くなる**のが唯一の落とし穴(Flutter の `MergeSemantics`、
+  Compose の Box+重ね置き `#pad_swipe` は iOS で子 Text が同 depth に平坦化される)。
+  当初「Flutter では使えない」と判断したが、SUT が `MergeSemantics` で畳んでいただけで、
+  容器を非マージで公開したら iOS/Android とも入れ子になった(=**フレームワークの制約ではない**)。
+  回帰は 4 SUT 共通の `#list_rows >> …`(`Projects/E2E/Scenarios/11_*.swift`・
+  `Projects/E2E-*/Scenarios/12_セレクタ拡張.swift`)。
+  `notExist` / `countIs` / `:near` も 4 フレームワーク全てで同一に動く(同実測)
 - **近接 `.Type:near(セレクタ)`**(2026-07-26): 候補のうちアンカー要素の frame 中心に最も近いものを選ぶ。
   同一ラベルが複数ある画面で「〇〇の隣の編集ボタン」を指すための記法。アンカーはスコープの外から
   解決する(隣接ラベルは容器の外にあることが普通のため)。アンカー側にも `||` 連鎖を書ける
