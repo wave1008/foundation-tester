@@ -2,6 +2,7 @@
 
 import Foundation
 import FoundationModels
+import FTCore
 
 @Generable
 struct ScenarioNameSuggestion {
@@ -36,6 +37,9 @@ public enum ScenarioNamer {
     /// appName: アプリ表示名 or bundle。FM 不可用/失敗時は nil を返す(呼び出し側が既定名にフォールバック)。
     public static func suggest(summary: String, appName: String) async -> ScenarioNaming? {
         guard FMDoctor.check().available else { return nil }
+        // FM はホスト全体で直列化される資源(FMLock 参照)。取れなければ既定名にフォールバック
+        guard await FMLock.acquire() else { return nil }
+        defer { FMLock.release() }
         do {
             let session = LanguageModelSession(instructions: instructions)
             let prompt = "アプリ: \(appName)\n\n操作内容:\n\(summary)"

@@ -60,6 +60,9 @@ public enum FMHealth {
     public struct Snapshot: Sendable {
         public let successes: Int
         public let failures: Int
+        /// 直列化ロック(FMLock)を timeout まで取れず**呼ばずに諦めた**回数。
+        /// 失敗(FM が答えを返せなかった)とは別物なので分けて数える
+        public let skipped: Int
         /// 最初に観測した失敗の内容(以降は捨てる。同一原因が連続するため)
         public let firstError: String?
 
@@ -76,6 +79,7 @@ public enum FMHealth {
     private static let lock = NSLock()
     private static var samples: [String: [Sample]] = [:]
     private static var firstError: String?
+    private static var skipped = 0
 
     /// FM 呼び出し1件を記録する。kind は "occlusion" / "heal" / "screenIs"
     public static func record(kind: String, ms: Double, ok: Bool, error: String? = nil) {
@@ -109,12 +113,20 @@ public enum FMHealth {
         return parts.joined(separator: " ← ")
     }
 
+    /// FMLock を取れず FM を呼ばずに諦めた 1 件を記録する(失敗にはしない)
+    public static func recordSkip() {
+        lock.lock()
+        defer { lock.unlock() }
+        skipped += 1
+    }
+
     public static func snapshot() -> Snapshot {
         lock.lock()
         defer { lock.unlock() }
         let all = samples.values.flatMap { $0 }
         return Snapshot(successes: all.filter { $0.ok }.count,
                         failures: all.filter { !$0.ok }.count,
+                        skipped: skipped,
                         firstError: firstError)
     }
 
@@ -142,13 +154,18 @@ public enum FMHealth {
         defer { lock.unlock() }
         samples.removeAll()
         firstError = nil
+        skipped = 0
     }
 
     /// 実行後に出す失敗警告(1行目=要約、2行目=最初のエラー)。失敗が無ければ nil
     public static func warningText() -> String? {
         let s = snapshot()
-        guard s.failures > 0 else { return nil }
+        guard s.failures > 0 || s.skipped > 0 else { return nil }
         var text: String
+        if s.failures == 0 {
+            return "⚠️ FM 呼び出し \(s.skipped) 件を直列化の待ち時間超過でスキップしました"
+                + "(該当ステップのガードは素通りしています)"
+        }
         if s.allFailed {
             text = "⚠️ FM 呼び出しが全て失敗しました(\(s.failures)件)。"
                 + "occlusion-guard(exist の既定 requireVisible)・自己修復・screenIs は"
@@ -156,6 +173,9 @@ public enum FMHealth {
         } else {
             text = "⚠️ FM 呼び出しの一部が失敗しました(失敗\(s.failures)件 / 成功\(s.successes)件)。"
                 + "該当ステップのガードは素通りしています"
+        }
+        if s.skipped > 0 {
+            text += "。さらに \(s.skipped) 件は直列化の待ち時間超過でスキップしました"
         }
         if let e = s.firstError { text += "\n   最初のエラー: \(e)" }
         return text
