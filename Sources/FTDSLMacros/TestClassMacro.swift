@@ -40,6 +40,18 @@ public struct TestClassMacro {
         }
     }
 
+    /// 同一クラス内に「引数なし・非async・非throws」の指定名メソッドがあるか
+    /// (setUp / tearDown のライフサイクル検出。基底クラスからの継承は見ない = 同じクラスに書く)
+    static func hasLifecycleMethod(_ name: String, in declaration: some DeclGroupSyntax) -> Bool {
+        declaration.memberBlock.members.contains { member in
+            guard let fn = member.decl.as(FunctionDeclSyntax.self), fn.name.text == name else {
+                return false
+            }
+            return fn.signature.parameterClause.parameters.isEmpty
+                && fn.signature.effectSpecifiers == nil
+        }
+    }
+
     /// 型宣言のメンバーから @Test メソッドを収集する
     static func scenarioMethods(in declaration: some DeclGroupSyntax,
                                 context: some MacroExpansionContext) -> [ScenarioMethod] {
@@ -127,13 +139,25 @@ extension TestClassMacro: ExtensionMacro {
         // クラスに @Deleted が付いていれば全シナリオが削除済み扱い
         let classDeleted = hasDeleted(cls.attributes)
 
+        // setUp/tearDown があれば run クロージャに織り込む。ftRunSetUp/ftRunTearDown で包むのは
+        // 記録のセクション分けと、失敗時の扱い(setUp 失敗=シナリオ中断 / tearDown=失敗後も実行)のため
+        let hasSetUp = hasLifecycleMethod("setUp", in: declaration)
+        let hasTearDown = hasLifecycleMethod("tearDown", in: declaration)
         let entries = methods.map { m in
             let deletedArg = (classDeleted || m.deleted) ? "\n                deleted: true," : ""
+            // ライフサイクル無しのときは従来どおり 1 式のまま(生成コードを増やさない)
+            var body = "\(className)().\(m.name)()"
+            if hasSetUp || hasTearDown {
+                body = "let ftInstance = \(className)(); "
+                if hasSetUp { body += "FTDSL.ftRunSetUp { ftInstance.setUp() }; " }
+                body += "ftInstance.\(m.name)()"
+                if hasTearDown { body += "; FTDSL.ftRunTearDown { ftInstance.tearDown() }" }
+            }
             return """
                         FTDSL.FTScenarioDescriptor(
                             name: \(literalString(m.name)),
                             title: \(m.titleExpr ?? "\"\""),\(deletedArg)
-                            run: { \(className)().\(m.name)() }),
+                            run: { \(body) }),
             """
         }.joined(separator: "\n")
 

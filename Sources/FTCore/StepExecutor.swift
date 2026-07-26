@@ -4,7 +4,8 @@
 // - ロケータ解決失敗は指数バックオフ(100→200→400ms、計3回)で再試行してからヒールへ
 //   (UI 遷移直後対策。ヒール発動までの総待機は計700ms)。step.timeout 指定時はアクションも
 //   その秒数を予算にリトライ(0 = リトライなし。省略時=nilは従来の3回固定のまま)
-// - アサーションでは type+index のみのフォールバックを使わない(別画面要素への偽陽性防止)
+// - アサーションでは type+index のみのフォールバックを使わない(別画面要素への偽陽性防止)。
+//   ただしスコープ付き(`#list >> .Cell[2]`)は容器に錨があるので除外しない(FlowLocator.isWeakForAssert)
 // - optional ステップは要素未発見でも失敗にせずスキップ(自己修復の対象外)
 // - 自己修復は delegate 提案の confidence == "high" のみ採用
 // - 操作後の整定待ちはドライバ側に委譲(Android: ブリッジの a11y 静穏検知 / iOS: XCUITest の
@@ -720,6 +721,97 @@ public final class StepExecutor {
                 ? .failed("\(subject)が一致しません: 期待 \"\(expected)\"、実際 \"\(lastActual ?? "nil")\"")
                 : .failed("要素が見つかりません: \(step.locatorSummary)")
 
+        case "notExists":
+            // 「消えるまで待つ」。初回で不在なら即 pass、在るならタイムアウトまで消滅を待つ。
+            // 可視性(occlusion)は見ない: ツリーから消えたことが唯一の判定。
+            let deadline = Date().addingTimeInterval(TimeInterval(step.timeout ?? 5))
+            var backoff = PollBackoff()
+            while true {
+                let start = clock.now
+                let snapshot = try await driver.snapshot()
+                phase.snapshotMs += Self.ms(clock.now - start)
+                if Self.resolve(step: step, in: snapshot, strictForAssert: true) == nil {
+                    // primary で不在 = pass だが、hybrid ではシステム UI(別プロセスのダイアログ)が
+                    // primary の snapshot に映らない。不在を確定する側でだけ fallbackDriver を1回照会する
+                    // (pass 経路の固定費 1 回のみ。miss 毎に払う exists 側の間引きとは事情が逆)
+                    if let fb = fallbackDriver {
+                        let fbStart = clock.now
+                        let fsnap = try await fb.snapshot()
+                        phase.snapshotMs += Self.ms(clock.now - fbStart)
+                        if Self.resolve(step: step, in: fsnap, strictForAssert: true) != nil {
+                            if Date() >= deadline {
+                                return .failed("要素がまだ存在します(システム UI): \(step.locatorSummary)")
+                            }
+                            let waitStart = clock.now
+                            try await Task.sleep(for: backoff.nextDelay())
+                            phase.waitMs += Self.ms(clock.now - waitStart)
+                            continue
+                        }
+                    }
+                    return .passed
+                }
+                if Date() >= deadline { break }
+                let waitStart = clock.now
+                try await Task.sleep(for: backoff.nextDelay())
+                phase.waitMs += Self.ms(clock.now - waitStart)
+            }
+            return .failed("要素がまだ存在します: \(step.locatorSummary)(timeout \(step.timeout ?? 5)s)")
+
+        case "enabled", "disabled":
+            let wantEnabled = assert == "enabled"
+            let deadline = Date().addingTimeInterval(TimeInterval(step.timeout ?? 5))
+            var backoff = PollBackoff()
+            var found = false
+            while true {
+                let start = clock.now
+                let snapshot = try await driver.snapshot()
+                phase.snapshotMs += Self.ms(clock.now - start)
+                if let (element, fallback) = Self.resolve(step: step, in: snapshot,
+                                                          strictForAssert: true) {
+                    found = true
+                    if element.enabled == wantEnabled {
+                        if let fallback { return .passedViaFallback(fallback) }
+                        return .passed
+                    }
+                }
+                if Date() >= deadline { break }
+                let waitStart = clock.now
+                try await Task.sleep(for: backoff.nextDelay())
+                phase.waitMs += Self.ms(clock.now - waitStart)
+            }
+            return found
+                ? .failed("要素は\(wantEnabled ? "無効" : "有効")です: \(step.locatorSummary)")
+                : .failed("要素が見つかりません: \(step.locatorSummary)")
+
+        case "count":
+            guard let expectedCount = step.expectedCount else {
+                return .skipped("expectedCount が未指定")
+            }
+            guard let locator = step.locator else {
+                return .skipped("ロケータが未指定")
+            }
+            // `||` は他コマンドと同じ「解決できる方」の意味にする = 候補が1件以上見つかった最初の節を
+            // 数える(集合の合併ではない)。どの節も 0 件なら 0 件として判定する
+            let chain = [locator] + (step.fallbacks ?? [])
+            let deadline = Date().addingTimeInterval(TimeInterval(step.timeout ?? 5))
+            var backoff = PollBackoff()
+            var actual = 0
+            while true {
+                let start = clock.now
+                let snapshot = try await driver.snapshot()
+                phase.snapshotMs += Self.ms(clock.now - start)
+                actual = chain.lazy
+                    .compactMap { Self.candidates($0, elements: snapshot.elements)?.matches.count }
+                    .first { $0 > 0 } ?? 0
+                if actual == expectedCount { return .passed }
+                if Date() >= deadline { break }
+                let waitStart = clock.now
+                try await Task.sleep(for: backoff.nextDelay())
+                phase.waitMs += Self.ms(clock.now - waitStart)
+            }
+            return .failed("個数が一致しません: 期待 \(expectedCount)、実際 \(actual)"
+                           + "(\(locator.summary))")
+
         case "screenMatches":
             guard let expected = step.expected, !expected.isEmpty else {
                 return .skipped("expected が未指定")
@@ -778,7 +870,7 @@ public final class StepExecutor {
         var chain: [(FlowLocator, isPrimary: Bool)] = []
         if let locator = step.locator { chain.append((locator, true)) }
         for fallback in step.fallbacks ?? [] {
-            if strictForAssert, fallback.id == nil, fallback.label == nil { continue }
+            if strictForAssert, fallback.isWeakForAssert { continue }
             chain.append((fallback, false))
         }
 
@@ -796,24 +888,83 @@ public final class StepExecutor {
 
     public static func matchDetailed(_ locator: FlowLocator, in snapshot: SnapshotResponse)
         -> (ElementInfo, MatchQuality)? {
-        // type は絞り込み条件として id/label と併用できる
-        // (同じ id が Cell/Switch/Button に付くことがあり、値検証では型の指定が必要)
-        var candidates = snapshot.elements
-        if let type = locator.type {
-            candidates = candidates.filter { $0.type == type }
-        }
-        if let id = locator.id {
-            return candidates.first { $0.identifier == id }.map { ($0, .exact) }
-        }
-        if let label = locator.label {
-            if let exact = candidates.first(where: { $0.label == label }) { return (exact, .exact) }
-            if let sub = candidates.first(where: { ($0.label ?? "").contains(label) }) { return (sub, .substring) }
+        matchDetailed(locator, elements: snapshot.elements)
+    }
+
+    /// ロケータに一致する要素を 1 つ選ぶ。選択規則:
+    /// near 指定あり = アンカーに最も近い候補 / type+index のみ = index 番目 / それ以外 = 先頭。
+    public static func matchDetailed(_ locator: FlowLocator, elements: [ElementInfo])
+        -> (ElementInfo, MatchQuality)? {
+        guard let found = candidates(locator, elements: elements), !found.matches.isEmpty else {
             return nil
         }
-        if locator.type != nil {
-            let index = locator.index ?? 0
-            return index < candidates.count ? (candidates[index], .exact) : nil
+        if let anchorChain = locator.near, !anchorChain.isEmpty {
+            // アンカーはスコープの外にあることが普通(隣接ラベル等)なので全要素から解決する。
+            // 連鎖は `||` と同じく「先に解決できたもの」を採り、1つも解決できなければ不一致
+            guard let anchor = anchorChain.lazy
+                .compactMap({ matchDetailed($0, elements: elements)?.0 }).first else { return nil }
+            let nearest = found.matches.min {
+                distance($0.frame, anchor.frame) < distance($1.frame, anchor.frame)
+            }
+            return nearest.map { ($0, found.quality) }
         }
+        // index が意味を持つのは type だけで絞ったとき(id/label 指定時は先頭)。
+        // 既存の記法・挙動をそのまま踏襲する
+        if locator.id == nil, locator.label == nil, locator.type != nil {
+            let index = locator.index ?? 0
+            return index < found.matches.count ? (found.matches[index], found.quality) : nil
+        }
+        return (found.matches[0], found.quality)
+    }
+
+    /// ロケータに一致する全要素(スナップショットのツリー順)と label 一致品質。
+    /// 一致ゼロなら matches が空、そもそも条件が空(id/label/type すべて nil)なら nil。
+    public static func candidates(_ locator: FlowLocator, elements: [ElementInfo])
+        -> (matches: [ElementInfo], quality: MatchQuality)? {
+        // スコープ(`#list >> ...`)を外側から順に適用し、候補をその要素の子孫だけに狭める
+        var pool = elements
+        for scopeLocator in locator.scope ?? [] {
+            guard let (container, _) = matchDetailed(scopeLocator, elements: pool) else {
+                return ([], .exact)
+            }
+            pool = descendants(of: container, in: elements)
+        }
+        // type は絞り込み条件として id/label と併用できる
+        // (同じ id が Cell/Switch/Button に付くことがあり、値検証では型の指定が必要)
+        if let type = locator.type {
+            pool = pool.filter { $0.type == type }
+        }
+        if let id = locator.id {
+            return (pool.filter { $0.identifier == id }, .exact)
+        }
+        if let label = locator.label {
+            let exact = pool.filter { $0.label == label }
+            if !exact.isEmpty { return (exact, .exact) }
+            return (pool.filter { ($0.label ?? "").contains(label) }, .substring)
+        }
+        if locator.type != nil { return (pool, .exact) }
         return nil
+    }
+
+    /// 要素の子孫(スナップショットは pre-order + 元ツリーの depth を保つため、
+    /// 直後から depth がその要素以下になるまでが子孫。3 ブリッジとも同じ規約で組み立てる
+    /// [BridgeRouter.collect / InAppSnapshot.collect / SnapshotBuilder.collect]。
+    /// 中間ノードのフィルタや上限打ち切りは pre-order を崩さないのでこの判定は保たれる)
+    public static func descendants(of element: ElementInfo, in elements: [ElementInfo]) -> [ElementInfo] {
+        guard let start = elements.firstIndex(where: { $0.ref == element.ref }) else { return [] }
+        var result: [ElementInfo] = []
+        var index = elements.index(after: start)
+        while index < elements.endIndex, elements[index].depth > element.depth {
+            result.append(elements[index])
+            index = elements.index(after: index)
+        }
+        return result
+    }
+
+    /// frame 中心間のユークリッド距離(:near の近さの尺度)
+    private static func distance(_ a: FTRect, _ b: FTRect) -> Double {
+        let dx = a.centerX - b.centerX
+        let dy = a.centerY - b.centerY
+        return (dx * dx + dy * dy).squareRoot()
     }
 }

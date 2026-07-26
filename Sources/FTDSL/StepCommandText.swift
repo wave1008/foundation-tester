@@ -41,6 +41,12 @@ public enum StepCommandText {
     /// (セル編集の可否判定にも使う)
     public static func parse(_ display: String) -> Parsed? {
         var text = display.trimmingCharacters(in: .whitespaces)
+        // group("名前") { } 内のステップは説明に `[名前]` が前置される(FTDriveCore.recordStep と同期)。
+        // 表からの編集を維持するため剥がす(生成し直す側はコマンド呼び出しだけを書くので前置は復元不要)
+        if text.hasPrefix("["), let close = text.firstIndex(of: "]") {
+            let rest = text[text.index(after: close)...].drop(while: { $0 == " " })
+            if !rest.isEmpty { text = String(rest) }
+        }
         var optionalFlag = false
         if text.hasSuffix(" (optional)") {
             optionalFlag = true
@@ -71,9 +77,18 @@ public enum StepCommandText {
             // scrollTo に optional 引数は無い(付けるとコンパイル不能コードを生むため拒否)
             guard !optionalFlag, let selector = unquote(rest) else { return nil }
             return Parsed(verb: verb, strings: [selector], optionalFlag: false, word: nil)
-        case "exist", "screenIs", "procedure":
+        case "exist", "notExist", "isEnabled", "isDisabled", "screenIs", "procedure":
             guard !optionalFlag, let value = unquote(rest) else { return nil }
             return Parsed(verb: verb, strings: [value], optionalFlag: false, word: nil)
+        case "countIs":
+            // countIs "セレクタ" == 3(期待値はクォート無しの整数)
+            guard !optionalFlag, rest.hasPrefix("\""),
+                  let separator = rest.range(of: "\" == ") else { return nil }
+            let selector = String(rest[rest.index(after: rest.startIndex)..<separator.lowerBound])
+            let countText = String(rest[separator.upperBound...])
+            guard let count = Int(countText), count >= 0 else { return nil }
+            return Parsed(verb: verb, strings: [selector], optionalFlag: false,
+                          word: String(count))
         case "type":
             if let (selector, input) = unquotePair(rest, separator: "\" \"") {
                 return Parsed(verb: verb, strings: [selector, input],
@@ -159,7 +174,8 @@ public enum StepCommandText {
     /// 呼び出し全体の生成し直しを許すソース関数(これ以外は生 Swift とみなして触らない。
     /// procedure はブロックを伴うため文字列リテラル置換のみ=ここに含めない)
     internal static let renewableFuncs: Set<String> = [
-        "tap", "type", "press", "swipe", "scrollTo", "exist", "textIs", "valueIs",
+        "tap", "type", "press", "swipe", "scrollTo", "exist", "notExist", "isEnabled",
+        "isDisabled", "countIs", "textIs", "valueIs",
         "screenIs", "launchApp", "relaunchApp", "terminateApp", "wait",
     ]
 
@@ -172,8 +188,10 @@ public enum StepCommandText {
         case "scrollTo":
             // scrollTo に optional 引数は無い(parse も optionalFlag 付きを受理しない)
             return "scrollTo(\(literal(parsed.strings[0])))"
-        case "exist", "screenIs":
+        case "exist", "notExist", "isEnabled", "isDisabled", "screenIs":
             return "\(parsed.verb)(\(literal(parsed.strings[0])))"
+        case "countIs":
+            return "countIs(\(literal(parsed.strings[0])), \(parsed.word ?? "0"))"
         case "type" where parsed.strings.count == 1:
             // ロケータなしの type("text")
             return "type(\(literal(parsed.strings[0]))\(optionalArg))"

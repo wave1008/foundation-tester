@@ -40,6 +40,18 @@ public enum StepDescription {
         case "exist":
             guard let selector = unquote(rest) else { return nil }
             return "\"\(objectPhrase(ofSelector: selectorOverride ?? selector))\"が(覆われず)見えていること"
+        case "notExist":
+            guard let selector = unquote(rest) else { return nil }
+            return "\"\(objectPhrase(ofSelector: selectorOverride ?? selector))\"が表示されていないこと"
+        case "isEnabled":
+            guard let selector = unquote(rest) else { return nil }
+            return "\"\(objectPhrase(ofSelector: selectorOverride ?? selector))\"が操作可能であること"
+        case "isDisabled":
+            guard let selector = unquote(rest) else { return nil }
+            return "\"\(objectPhrase(ofSelector: selectorOverride ?? selector))\"が操作不可であること"
+        case "countIs":
+            guard let (selector, count) = unquotedTail(rest, separator: "\" == ") else { return nil }
+            return "\"\(objectPhrase(ofSelector: selectorOverride ?? selector))\"が\(count)件あること"
         case "type":
             if let (selector, input) = unquotePair(rest, separator: "\" \"") {
                 return "\"\(objectPhrase(ofSelector: selectorOverride ?? selector))\""
@@ -103,6 +115,14 @@ public enum StepDescription {
                 return step.occlusionGuard == true
                     ? "\"\(objectPhrase(ofStep: step))\"が(覆われず)見えていること"
                     : "\"\(objectPhrase(ofStep: step))\"が表示されること"
+            case "notExists":
+                return "\"\(objectPhrase(ofStep: step))\"が表示されていないこと"
+            case "enabled":
+                return "\"\(objectPhrase(ofStep: step))\"が操作可能であること"
+            case "disabled":
+                return "\"\(objectPhrase(ofStep: step))\"が操作不可であること"
+            case "count":
+                return "\"\(objectPhrase(ofStep: step))\"が\(step.expectedCount ?? 0)件あること"
             case "textEquals":
                 return "\"\(objectPhrase(ofStep: step))\"のテキストが\"\(step.expected ?? "")\"であること"
             case "valueEquals":
@@ -152,6 +172,14 @@ public enum StepDescription {
         let inner = text.dropFirst().dropLast()
         guard let range = inner.range(of: separator) else { return nil }
         return (String(inner[..<range.lowerBound]), String(inner[range.upperBound...]))
+    }
+
+    /// `"A"<separator>B` → (A, B)。末尾がクォートでない形(countIs "sel" == 3)用
+    private static func unquotedTail(_ text: String, separator: String) -> (String, String)? {
+        guard text.hasPrefix("\""), let range = text.range(of: separator) else { return nil }
+        let head = String(text[text.index(after: text.startIndex)..<range.lowerBound])
+        let tail = String(text[range.upperBound...])
+        return tail.isEmpty ? nil : (head, tail)
     }
 
     /// 1.0 → "1"、0.5 → "0.5"(wait の表示用)

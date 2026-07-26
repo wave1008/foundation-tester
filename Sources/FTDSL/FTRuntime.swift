@@ -124,6 +124,8 @@ public final class FTDriveCore {
 
     // 実行状態(DSL スレッドからのみ触る)
     var currentSection: String?
+    /// group("名前") { } の入れ子。記録時にステップ説明へ `[外/内]` を前置する
+    var groupStack: [String] = []
     var sceneAborted = false
     var scenarioAborted = false
     var abortScenarioOnSceneFailure = false
@@ -211,6 +213,41 @@ public final class FTDriveCore {
         currentSection = name
         body()
         currentSection = previous
+    }
+
+    /// 名前付きの共通ステップ(group)。記録上の見え方だけを変え、実行・失敗セマンティクスは素の列と同じ
+    func runGroup(_ title: String, _ body: () -> Void) {
+        groupStack.append(title)
+        body()
+        groupStack.removeLast()
+    }
+
+    /// setUp / tearDown の実行。
+    /// allowAfterFailure=false(setUp): 中で失敗したらシナリオごと中断する。scene(n) の入口は
+    ///   sceneAborted を毎回 false に戻すため、scene をまたいで効く scenarioAborted へ昇格させる。
+    /// allowAfterFailure=true(tearDown): 中断中でも片付けが走るよう一度フラグを解除し、
+    ///   実行後に「元の中断」と「片付け中の失敗」の OR で復元する(どちらも握りつぶさない)。
+    /// 画面凍結(deviceFrozen)とユーザー中断(debug の stop)では両方とも実行しない —
+    /// 前者は別デバイスで振り直すので死んだデバイスへの操作が無駄、後者は「止めた」のに
+    /// 片付けで再びブレークポイントに掛かるのが不合理なため。
+    func runLifecycle(_ name: String, allowAfterFailure: Bool, _ body: () -> Void) {
+        guard !deviceFrozen, !stoppedByUser else { return }
+        let previousSection = currentSection
+        let savedSceneAborted = sceneAborted
+        let savedScenarioAborted = scenarioAborted
+        currentSection = name
+        if allowAfterFailure {
+            sceneAborted = false
+            scenarioAborted = false
+        }
+        body()
+        if allowAfterFailure {
+            sceneAborted = savedSceneAborted || sceneAborted
+            scenarioAborted = savedScenarioAborted || scenarioAborted
+        } else if sceneAborted {
+            scenarioAborted = true
+        }
+        currentSection = previousSection
     }
 
     // MARK: - ステップ実行
@@ -433,8 +470,13 @@ public final class FTDriveCore {
                     durationMs: Int? = nil, snapshotMs: Int? = nil,
                     actionMs: Int? = nil, waitMs: Int? = nil, at: String? = nil) {
         stepCounter += 1
+        // group の名前はここでだけ前置する(修正提案の description は素のまま = ソース行との照合に使うため)。
+        // 前置形式は StepCommandText.parse が剥がして表からの編集を維持する(要同期)
+        let displayed = groupStack.isEmpty
+            ? description
+            : "[\(groupStack.joined(separator: "/"))] \(description)"
         let record = DSLStepRecord(index: stepCounter, section: currentSection,
-                                   description: description, status: status,
+                                   description: displayed, status: status,
                                    file: relativePath(file), line: line, durationMs: durationMs)
         appendToCurrentScene(record)
 
@@ -443,7 +485,7 @@ public final class FTDriveCore {
         event.scene = self.record.scenes.last?.number
         event.section = currentSection
         event.index = record.index
-        event.description = description
+        event.description = displayed
         let (statusText, detail) = status.eventStatus
         event.status = statusText
         event.detail = detail

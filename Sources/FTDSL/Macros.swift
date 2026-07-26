@@ -12,6 +12,10 @@
 /// テストクラスに付与する。@Test メソッドを走査してシナリオ一覧を生成し、
 /// objc ランタイム発見用の登録クラス(__FTReg_<クラス名>)を追加する。
 /// 付与先クラスには引数なし init() が必要(シナリオ毎に新しいインスタンスが作られる)。
+///
+/// 同じクラスに `func setUp()` / `func tearDown()`(引数なし・非async・非throws)を書くと、
+/// 各 @Test の前後で自動実行される(基底クラスからの継承は見ない)。
+/// setUp の失敗はそのシナリオを中断し、tearDown は**失敗後でも実行される**。
 @attached(extension, conformances: FTTestClassDefinition, names: named(ftDescriptor))
 @attached(peer, names: prefixed(__FTReg_))
 public macro TestClass(app: String, platform: String? = nil) =

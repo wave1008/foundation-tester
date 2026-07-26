@@ -302,4 +302,63 @@ final class TestClassMacroTests: XCTestCase {
             macroSpecs: macros
         )
     }
+    func testSetUpとTearDownがrunに織り込まれる() {
+        assertMacroExpansion(
+            """
+            @TestClass(app: "com.example.app")
+            class T {
+                func setUp() {
+                }
+                func tearDown() {
+                }
+                @Test("t")
+                func S0010() {
+                }
+            }
+            """,
+            expandedSource:
+            """
+            class T {
+                func setUp() {
+                }
+                func tearDown() {
+                }
+                func S0010() {
+                }
+            }
+
+            final class __FTReg_T: FTDSL.FTScenarioRegistration {
+                override class var descriptor: FTDSL.FTTestClassDescriptor {
+                    T.ftDescriptor
+                }
+            }
+
+            extension T: FTDSL.FTTestClassDefinition {
+                public static var ftDescriptor: FTDSL.FTTestClassDescriptor {
+                    FTDSL.FTTestClassDescriptor(
+                        className: "T",
+                        app: "com.example.app",
+                        platform: nil,
+                        scenarios: [
+                        FTDSL.FTScenarioDescriptor(
+                            name: "S0010",
+                            title: "t",
+                            run: {
+                                let ftInstance = T();
+                                FTDSL.ftRunSetUp {
+                                    ftInstance.setUp()
+                                };
+                                ftInstance.S0010();
+                                FTDSL.ftRunTearDown {
+                                    ftInstance.tearDown()
+                                }
+                            }),
+                        ])
+                }
+            }
+            """,
+            macroSpecs: macros
+        )
+    }
+
 }

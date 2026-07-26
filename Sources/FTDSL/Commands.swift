@@ -184,6 +184,60 @@ public func valueIs(_ selector: String, _ expected: String, timeout: Int? = nil,
                  selectorText: selector, file: file, line: line)
 }
 
+/// 不在検証。**消えるまで待つ**(初回で不在なら即成功、在ればタイムアウトまで消滅を待つ)。
+/// exist の裏返しであり、ダイアログ・ローディング・トーストが閉じたことの確認に使う。
+/// 可視性(occlusion)は見ない — ツリーから消えたことが判定基準。
+public func notExist(_ selector: String, timeout: Int? = nil,
+                     file: StaticString = #filePath, line: UInt = #line) {
+    let core = FTRuntime.requireCore(command: "notExist")
+    let parsed = FTSelector.parse(selector)
+    let step = FlowStep(assert: "notExists", locator: parsed.primary,
+                        fallbacks: parsed.fallbacks.isEmpty ? nil : parsed.fallbacks,
+                        timeout: timeout ?? core.defaultTimeout)
+    core.perform(step: step, description: "notExist \"\(selector)\"",
+                 selectorText: selector, file: file, line: line)
+}
+
+/// 要素が操作可能(enabled)であることの検証。タイムアウトまで状態変化を待つ
+public func isEnabled(_ selector: String, timeout: Int? = nil,
+                      file: StaticString = #filePath, line: UInt = #line) {
+    enabledAssert("enabled", verb: "isEnabled", selector: selector, timeout: timeout,
+                  file: file, line: line)
+}
+
+/// 要素が操作不可(disabled)であることの検証。タイムアウトまで状態変化を待つ
+public func isDisabled(_ selector: String, timeout: Int? = nil,
+                       file: StaticString = #filePath, line: UInt = #line) {
+    enabledAssert("disabled", verb: "isDisabled", selector: selector, timeout: timeout,
+                  file: file, line: line)
+}
+
+private func enabledAssert(_ assert: String, verb: String, selector: String, timeout: Int?,
+                           file: StaticString, line: UInt) {
+    let core = FTRuntime.requireCore(command: verb)
+    let parsed = FTSelector.parse(selector)
+    let step = FlowStep(assert: assert, locator: parsed.primary,
+                        fallbacks: parsed.fallbacks.isEmpty ? nil : parsed.fallbacks,
+                        timeout: timeout ?? core.defaultTimeout)
+    core.perform(step: step, description: "\(verb) \"\(selector)\"",
+                 selectorText: selector, file: file, line: line)
+}
+
+/// 一致する要素の個数を検証する(リスト件数の確認など)。タイムアウトまで個数の変化を待つ。
+/// `||` は他コマンドと同じ「解決できる方を使う」= **候補が見つかった最初の節だけ**を数える
+/// (候補集合の合併ではない)。スコープと併用すると容器の中だけ数えられる:
+/// countIs("#list >> .Cell", 3)
+public func countIs(_ selector: String, _ expected: Int, timeout: Int? = nil,
+                    file: StaticString = #filePath, line: UInt = #line) {
+    let core = FTRuntime.requireCore(command: "countIs")
+    let parsed = FTSelector.parse(selector)
+    let step = FlowStep(assert: "count", locator: parsed.primary,
+                        fallbacks: parsed.fallbacks.isEmpty ? nil : parsed.fallbacks,
+                        timeout: timeout ?? core.defaultTimeout, expectedCount: expected)
+    core.perform(step: step, description: "countIs \"\(selector)\" == \(expected)",
+                 selectorText: selector, file: file, line: line)
+}
+
 /// 画面全体の検証(自然言語+Foundation Models のマルチモーダル判定)
 public func screenIs(_ expected: String,
                      file: StaticString = #filePath, line: UInt = #line) {
@@ -308,6 +362,28 @@ public func ios(_ body: () -> Void) {
 /// プラットフォームが Android のときのみブロックを実行する
 public func android(_ body: () -> Void) {
     if FTRuntime.requireCore(command: "android").platform == "android" { body() }
+}
+
+// MARK: - 共通ステップ・ライフサイクル
+
+/// 複数コマンドを名前付きのまとまりとして記録する(ログイン手順などの共通サブルーチン用)。
+/// 実行順・失敗セマンティクスは素のコマンド列と全く同じで、変わるのは記録の見え方だけ:
+/// 内側のステップの説明に `[名前]` が前置される(入れ子は `[外/内]`)。
+/// 再利用は普通の Swift 関数で行い、その中身をこれで包む。
+public func group(_ title: String, _ body: () -> Void) {
+    FTRuntime.requireCore(command: "group").runGroup(title, body)
+}
+
+/// @TestClass マクロが setUp() の呼び出しを包むために生成する(利用者が直接書くものではない)。
+/// setUp 内の失敗はシナリオ全体を中断させる(前提が崩れた状態で本体を走らせない)。
+public func ftRunSetUp(_ body: () -> Void) {
+    FTRuntime.requireCore(command: "setUp").runLifecycle("setUp", allowAfterFailure: false, body)
+}
+
+/// @TestClass マクロが tearDown() の呼び出しを包むために生成する(利用者が直接書くものではない)。
+/// **失敗後でも実行される**(片付けが飛ぶと後続シナリオを汚すため)。中断フラグは実行後に復元する。
+public func ftRunTearDown(_ body: () -> Void) {
+    FTRuntime.requireCore(command: "tearDown").runLifecycle("tearDown", allowAfterFailure: true, body)
 }
 
 /// 任意の Swift コード(データセットアップ等)を 1 ステップとして実行・記録する。
