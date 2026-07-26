@@ -44,8 +44,11 @@ public enum StepCommandParams {
         defaultValue: "false",
         help: "オンにすると要素が見つからなくても NG にせずスキップします")
 
+    /// 既定値は FlowStep.defaultPressDuration が唯一の生成元(DSL の既定引数・実行時の
+    /// フォールバックと揃える。ずれると「既定なので省略」の判定が食い違って往復が壊れる)
     private static let durationSpec = StepParamSpec(
-        name: "duration", label: "長押し時間(秒)", kind: .double, defaultValue: "1",
+        name: "duration", label: "長押し時間(秒)", kind: .double,
+        defaultValue: StepCommandText.formatSeconds(FlowStep.defaultPressDuration),
         help: "長押しする秒数(既定 1 秒)")
 
     private static let directionSpec = StepParamSpec(
