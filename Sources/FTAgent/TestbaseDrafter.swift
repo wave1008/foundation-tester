@@ -46,8 +46,8 @@ public enum TestbaseDrafter {
     public static func draft(markdown: String, fallbackTitle: String) async -> ScenarioDraft? {
         guard FMDoctor.check().available else { return nil }
         // FM はホスト全体で直列化される資源(FMLock 参照)。取れなければ parse へフォールバック
-        guard await FMLock.acquire() else { return nil }
-        defer { FMLock.release() }
+        guard await FMGate.enter() else { return nil }
+        defer { FMGate.leave() }
         let input = String(markdown.prefix(maxInputCharacters))
         do {
             let session = LanguageModelSession(instructions: instructions)

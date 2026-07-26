@@ -89,11 +89,8 @@ public struct OcclusionVerifier {
                          prompt: () -> String) async -> Result? {
         // FM はホスト全体で直列化される資源。並列に投げても速くならず modelmanagerd の
         // モデル積み降ろしだけが増えるので、呼び出し側で待ち行列を作る(FMLock 参照)
-        guard await FMLock.acquire() else {
-            FMHealth.recordSkip()
-            return nil
-        }
-        defer { FMLock.release() }
+        guard await FMGate.enter() else { return nil }
+        defer { FMGate.leave() }
         let session = LanguageModelSession(instructions: instructions)
         let startedAt = Date()
         do {
