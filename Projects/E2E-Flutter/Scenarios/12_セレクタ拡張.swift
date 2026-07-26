@@ -1,8 +1,7 @@
 // 12_セレクタ拡張.swift
 // ftester 機能: notExist / countIs / 近接セレクタ `:near(...)` / スコープ `祖先 >> 子孫`。
 // **この SUT に置く意味**: セレクタ解決は a11y ツリーの形に依存するので、フレームワークが
-// 変われば同じ記法でも当たり外れが変わる。とくにスコープは「容器が要素として残り、かつ
-// 子孫が深さで入れ子になる」ことが条件で、ここがフレームワーク差の出どころ(Flutter は葉しか残らずスコープ対象の容器が無い)。
+// 変われば同じ記法でも当たり外れが変わる。記法は4フレームワーク共通で通ることを確かめる。
 
 import FTDSL
 
@@ -52,17 +51,16 @@ class セレクタ拡張が正しく解決できること {
                     textIs("#txt_selector_result", "result=item3")
                 }
             }
-            scene(4, "スコープ(>>)はこの SUT では対象が無い(既知の制約)") {
+            scene(4, "スコープ(>>)は祖先の子孫だけを対象にする") {
                 condition {
                     tap("#btn_back")
                     tap("#nav_scroll")
                 }.expectation {
-                    exist("#row_01")
-                    // **Flutter は既知の制約**: セマンティクスを畳むため行が葉になり、
-                    // スコープの対象になる子孫が存在しない(iOS/Android とも実測。2026-07-26)。
-                    // 「解決できない」ことを固定して、将来ツリーの形が変わったら気づけるようにする。
-                    notExist("#row_01 >> .StaticText")
-                    countIs("#row_01 >> .StaticText", 0)
+                    // #list_rows は行を包む容器(ui-contract.md)。スコープはその子孫だけを見る
+                    exist("#list_rows >> #row_02")
+                    countIs("#list_rows >> #row_02", 1)
+                    // スコープ外(固定ヘッダ)の要素はスコープ内からは解決できない
+                    notExist("#list_rows >> #txt_row_selected")
                 }
             }
         }

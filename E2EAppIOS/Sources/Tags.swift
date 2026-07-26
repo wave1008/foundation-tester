@@ -62,6 +62,7 @@ enum Tags {
     // スクロール
     static let txtRowSelected = "txt_row_selected"
     static let btnScrollTop = "btn_scroll_top"
+    static let listRows = "list_rows"
 
     static let rowCount = 40
 

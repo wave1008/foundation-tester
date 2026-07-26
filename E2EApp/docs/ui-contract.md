@@ -145,9 +145,18 @@ Android(`BridgeRouter.handleSwipe`)は縦 0.3h↔0.7h・横 0.2w↔0.8w(y=0.5h)�
 |---|---|---|---|
 | `#txt_row_selected` | Text | `selected=<v>` 初期 `selected=-` | 固定ヘッダ(スクロールしない) |
 | `#btn_scroll_top` | Button | `先頭へ` | 固定ヘッダ |
-| `#row_01` … `#row_40` | Button | `行 01` … `行 40` | 高さ 56dp 以上・ゼロ詰め |
+| `#list_rows` | (容器) | (ラベルなし) | 行を包むスクロール容器。**スコープセレクタ `#list_rows >> …` の対象** |
+| `#row_01` … `#row_40` | Button | `行 01` … `行 40` | 高さ 56dp 以上・ゼロ詰め・**`#list_rows` の子孫** |
 
 行タップで `selected=row_NN`。`#row_40` は `scrollTo` の到達目標。
+
+**`#list_rows` は「容器を公開する」ことそのものが契約**(スコープセレクタの検証材料)。
+子孫が a11y ツリー上で**実際に入れ子になる**形で公開すること — 畳んで葉にしない:
+- Compose: `LazyColumn` に `testTag`(iOS/Android とも子が入れ子になる。実測)
+- SwiftUI/UIKit: `UITableView` の `accessibilityIdentifier`(セルが子)
+- View/XML: `RecyclerView` の `android:id`
+- **Flutter: `Semantics(container: true, explicitChildNodes: true)`。`tagged()`(=`MergeSemantics`)で
+  包んではいけない** — 畳むと子孫が消えてスコープの対象が無くなる(2026-07-26 実測)
 
 ## 非同期表示画面(タイトル `非同期表示`)
 
