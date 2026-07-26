@@ -503,10 +503,10 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
 
    | 要素 | CMP(iOS) | CMP(Android) | SwiftUI/UIKit | View/XML | Flutter(iOS) | Flutter(Android) |
    |---|---|---|---|---|---|---|
-   | ボタン | `Button` | `Cell` | `Button` | `Button` | `Button` | `Button` |
-   | テキスト | `StaticText` | `StaticText` | `StaticText` | `StaticText` | `StaticText` | **`Other`** |
-   | パスワード欄 | `TextField` | `SecureTextField` | `SecureTextField` | `SecureTextField` | `TextField` | `TextField` |
-   | リスト行 | `Button` | `Cell` | `Cell`(UITableView) | `Cell` | `Button` | `Button` |
+   | ボタン | `button` | `cell` | `button` | `button` | `button` | `button` |
+   | テキスト | `staticText` | `staticText` | `staticText` | `staticText` | `staticText` | **`other`** |
+   | パスワード欄 | `textField` | `secureTextField` | `secureTextField` | `secureTextField` | `textField` | `textField` |
+   | リスト行 | `button` | `cell` | `cell`(UITableView) | `cell` | `button` | `button` |
 
    id 露出の作法もフレームワークごとに違う: Compose は `testTagsAsResourceId`(Android のみ・
    ダイアログには再適用が必要)、View 系は `android:id`(**実行時に resource-id を作れないため
@@ -548,8 +548,12 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
   足りなければ各コマンドの `timeout:` を上げるのが本筋。例外は `ifCanSelect`
   (既定 `waitSeconds:0` で即時 1 回判定。待つなら `waitSeconds:` を渡す)。
   `wait(1)` の出番はセレクタで待てない整定(アニメ中の座標ずれ等・下記知見の iOS シート例)に限る
-- セレクタ式は文字列1本: `#id` / `ラベル` / `.Type[n]`(n は 1 オリジン。1番目は [1] 省略で `.Type`、明記も可)/ `.Type#id` / `.Type=ラベル`、`||` でフォールバック連鎖
-- **スコープ `祖先 >> 子孫`**(2026-07-26): `#list >> .Cell[2]` は `#list` で解決した要素の**子孫だけ**を
+- **型名は先頭小文字**(`.button` / `.staticText`)。ブリッジは `Button` を送ってくるが
+  `ElementInfo.normalizedType` がデコード時に畳むため、スナップショット表示・セレクタ記法・
+  生成コード・ヒール提案の綴りが一致する(3ブリッジの wire 形式は不変 = 版上げ不要)。
+  先頭大文字で書くと `validationError` が実行前に落とす
+- セレクタ式は文字列1本: `#id` / `ラベル` / `.型[n]`(n は 1 オリジン。1番目は [1] 省略で `.型`、明記も可)/ `.型#id` / `.型=ラベル`、`||` でフォールバック連鎖
+- **スコープ `祖先 >> 子孫`**(2026-07-26): `#list >> .cell[2]` は `#list` で解決した要素の**子孫だけ**を
   候補にし、序数もスコープ内で数える(画面クロム・スクロール位置で序数がずれる問題への対処)。多段可。
   子孫判定は「スナップショットは pre-order + 元ツリーの depth」という 3 ブリッジ共通の規約に依存する
   (`StepExecutor.descendants`。中間ノードのフィルタや上限打ち切りは pre-order を崩さないので保たれる)。
@@ -573,15 +577,29 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
   容器を非マージで公開したら iOS/Android とも入れ子になった(=**フレームワークの制約ではない**)。
   回帰は 4 SUT 共通の `#list_rows >> …`(`Projects/E2E/Scenarios/11_*.swift`・
   `Projects/E2E-*/Scenarios/12_セレクタ拡張.swift`)。
-  `notExist` / `countIs` / `:near` も 4 フレームワーク全てで同一に動く(同実測)
-- **近接 `.Type:near(セレクタ)`**(2026-07-26): 候補のうちアンカー要素の frame 中心に最も近いものを選ぶ。
-  同一ラベルが複数ある画面で「〇〇の隣の編集ボタン」を指すための記法。アンカーはスコープの外から
-  解決する(隣接ラベルは容器の外にあることが普通のため)。アンカー側にも `||` 連鎖を書ける
-- `||` と `>>` の分割は**括弧の外だけ**(`:near(...)` の中は割らない)。`>>` は `||` より強く結合する。
-  ラベルに `>>` や `:near(` を含めるときは `=` エスケープ(`=A >> B`)。パースは失敗しない契約は不変
+  `notExist` / `countIs` も 4 フレームワーク全てで同一に動く(同実測)
+- **方向 `.型:right(セレクタ)`**(`:left` / `:above` / `:below` も同型。2026-07-26 に旧 `:near` を
+  置換): アンカーから見て指定方向にある候補だけに絞る。**id が付いていないアプリで
+  「〇〇の右のスイッチ」を指すための主力記法**(id があるなら `#id` が常に優先)。
+  判定規則は3条件のみで調整値を持たない(`StepExecutor.pickDirectional` が唯一の解釈者):
+  ①候補の中心がアンカー frame をその軸方向へ伸ばした帯に入る ②候補の中心がアンカーの中心より
+  その方向にある ③満たす中で方向軸の中心間距離が最小(同距離はツリー順で先頭)。
+  **条件を満たす候補が無ければ解決失敗**(旧 `:near` の「最も近いものを必ず返す」を廃止した理由:
+  レイアウトが変わったときに黙って別要素を掴むため)。アンカーはスコープの外から解決し
+  (隣接ラベルは容器の外にあることが普通)、アンカー自身は候補から除く。アンカー側にも `||` 連鎖可。
+  画面外要素は frame が丸められる環境があるため**可視要素にのみ**有効
+- **構文検証 `FTSelector.validationError`**(2026-07-26): パースは失敗しない契約のままなので、
+  `:rigth(x)` のような綴り誤り・他ツール記法(`:near` `:parent` 等)・`[abc]` `[0]` の序数・
+  括弧の不整合は**別経路で検出して落とす**。放置すると誤記が label 扱いになり、`notExist` /
+  `countIs(x, 0)` が**必ず成功**する(黙って緑になる唯一の経路)。呼ぶのは `FTRuntime.perform`
+  (dry-run でもデバイスに触る前に判定)と `ifCanSelect`(perform を通らないため個別に)
+- `||` と `>>` の分割は**括弧の外だけ**(`:right(...)` の中は割らない)。`>>` は `||` より強く結合する。
+  ラベルに `>>` や `:方向(` を含めるときは `=` エスケープ(`=A >> B`)。パースは失敗しない契約は不変
+- **木構造セレクタ(`:parent` / `:child` / `:sibling` 等)は実装しない**(2026-07-26 決定)。
+  `祖先 >> 子孫` のスコープでほぼ代替でき、語彙を増やすと生成側の誤用が増えるため。再提案しない
 - **label マッチは完全一致優先→無ければ部分一致(`contains`)**(`StepExecutor.matchDetailed` が
   一致品質 exact/substring を返す)。短いラベルが長いラベルに誤マッチする(`ラベル"許可"` が
-  `"通知を許可"` に当たる)。区別したい要素が同一画面に共存するときは `#id` か `.Type=ラベル` で
+  `"通知を許可"` に当たる)。区別したい要素が同一画面に共存するときは `#id` か `.型=ラベル` で
   型を絞る。id マッチは常に完全一致。**hybrid の tap アクションでは primary が substring 止まりなら
   fallback を照会し、fallback の exact を優先**(§performance-tuning「フォールバック検証の偽陽性」)
 - **inapp の type は Compose Multiplatform でも通る**(2026-07-21 更新。それ以前は XCUITest 切替が
@@ -729,11 +747,11 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
   snapshot するので、実際の損失は最大1ステップ)。ref を使わない操作(snapshot/screenshot/swipe/
   座標指定 tap/press/drag/home/appSwitcher)だけ 1 回再試行する。
   in-app/hybrid 経路には入れない(InAppDriver の 409 は意味が違う)
-- **`.Type[n]` の n は「現在画面に見えている同型要素のツリー順」**。圧縮スナップショットは画面外要素を
+- **`.型[n]` の n は「現在画面に見えている同型要素のツリー順」**。圧縮スナップショットは画面外要素を
   含まないため、序数は**スクロール位置と画面クロム(戻るボタン・下部タブ)に依存する**。
   レイアウト変更で黙ってずれるので、序数セレクタは実スナップショットで採取してから書く
 - **型名は OS で異なる**(2026-07-22・Compose Multiplatform の同一アプリで実測)。Compose の Button は
-  iOS = `Button` / Android = `Cell`(Android は className が `android.widget.Button` にならず
+  iOS = `button` / Android = `cell`(Android は className が `android.widget.Button` にならず
   `SnapshotBuilder.mappedType` の既定側へ落ちる)。**型を使うセレクタは `ios {}` / `android {}` で分ける**。
   `#id`(testTag)とラベルは両 OS 共通で引ける
 - **Android は「別ウィンドウ」に描画される UI(`AlertDialog` 等)にテスト用 id が出ない**

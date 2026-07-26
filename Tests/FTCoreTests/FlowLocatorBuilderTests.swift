@@ -14,32 +14,32 @@ final class FlowLocatorBuilderTests: XCTestCase {
     }
 
     func testIdOmitsTypeIndexFallback() {
-        let email = element(ref: 1, type: "TextField", identifier: "email")
-        let other = element(ref: 2, type: "TextField")
+        let email = element(ref: 1, type: "textField", identifier: "email")
+        let other = element(ref: 2, type: "textField")
         let (primary, fallbacks) = FlowLocatorBuilder.chain(for: email, in: [email, other])
         XCTAssertEqual(primary, FlowLocator(id: "email"))
         XCTAssertTrue(fallbacks.isEmpty)
     }
 
     func testIdKeepsLabelButNotTypeIndex() {
-        let el = element(ref: 1, type: "TextField", identifier: "email", label: "メール")
+        let el = element(ref: 1, type: "textField", identifier: "email", label: "メール")
         let (primary, fallbacks) = FlowLocatorBuilder.chain(for: el, in: [el])
         XCTAssertEqual(primary, FlowLocator(id: "email"))
         XCTAssertEqual(fallbacks, [FlowLocator(label: "メール")])
     }
 
     func testNoIdKeepsLabelThenTypeIndex() {
-        let first = element(ref: 1, type: "TextField")
-        let el = element(ref: 2, type: "TextField", label: "メール")
+        let first = element(ref: 1, type: "textField")
+        let el = element(ref: 2, type: "textField", label: "メール")
         let (primary, fallbacks) = FlowLocatorBuilder.chain(for: el, in: [first, el])
         XCTAssertEqual(primary, FlowLocator(label: "メール"))
-        XCTAssertEqual(fallbacks, [FlowLocator(type: "TextField", index: 1)])
+        XCTAssertEqual(fallbacks, [FlowLocator(type: "textField", index: 1)])
     }
 
     func testNoIdNoLabelFallsBackToTypeIndex() {
-        let el = element(ref: 1, type: "Button")
+        let el = element(ref: 1, type: "button")
         let (primary, fallbacks) = FlowLocatorBuilder.chain(for: el, in: [el])
-        XCTAssertEqual(primary, FlowLocator(type: "Button", index: 0))
+        XCTAssertEqual(primary, FlowLocator(type: "button", index: 0))
         XCTAssertTrue(fallbacks.isEmpty)
     }
 }

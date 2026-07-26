@@ -12,8 +12,10 @@ tag 定数は `composeApp/src/commonMain/kotlin/com/ftester/e2e/Tags.kt` に集�
   **罠**: ダイアログ(`AlertDialog` 等)は**別ウィンドウ**に描画されるためルートの
   `exposeTestTagsAsResourceId()` が届かない。ダイアログにも `modifier = Modifier.exposeTestTagsAsResourceId()`
   を**必ず再適用する**。忘れると Android だけダイアログ内の `#id` が全滅する(ラベルは引ける)。
-- **要素の型名は OS で異なる**(実スナップショットで採取): Compose の Button は
-  iOS = `Button` / Android = `Cell`。型を使うセレクタ(`.Type[n]` / `.Type#id` / `.Type=ラベル`)は
+- **型名は先頭小文字**(`.button` / `.staticText`)。ホスト側で正規化しており、スナップショット表示・
+  セレクタ記法・生成コードで綴りが一致する(先頭大文字で書くと構文エラー)。
+- **要素の型は OS で異なる**(実スナップショットで採取): Compose の Button は
+  iOS = `button` / Android = `cell`。型を使うセレクタ(`.型[n]` / `.型#id` / `.型=ラベル`)は
   `ios {}` / `android {}` で分ける。`#id` とラベルは共通。
 - **ラベルはハードコード**(文字列リソース/ロケール依存にしない)。端末ロケールが ja/en どちらでも
   同じ文字列が出る = フリートのロケール差でシナリオが壊れない。
@@ -48,6 +50,7 @@ tag 定数は `composeApp/src/commonMain/kotlin/com/ftester/e2e/Tags.kt` に集�
 |---|---|---|---|
 | `#txt_home_marker` | Text | `E2E ホーム` | ホーム着地の判定 |
 | `#nav_selector` | Button | `セレクタ` | |
+| `#nav_noid` | Button | `ID なし` | **2番目に置く**(末尾だと下部タブに重なり、タップがタブに吸われる。iOS ネイティブ SUT で実測) |
 | `#nav_input` | Button | `テキスト入力` | |
 | `#nav_gesture` | Button | `ジェスチャ` | |
 | `#nav_scroll` | Button | `スクロール` | |
@@ -62,7 +65,7 @@ tag 定数は `composeApp/src/commonMain/kotlin/com/ftester/e2e/Tags.kt` に集�
 
 ## セレクタ画面(タイトル `セレクタ`)
 
-`tap` のセレクタ記法(`#id` / ラベル / `.Type[n]` / `.Type#id` / `.Type=label` / `||`)を網羅する。
+`tap` のセレクタ記法(`#id` / ラベル / `.型[n]` / `.型#id` / `.型=label` / `||`)を網羅する。
 
 | tag | 種別 | ラベル/テキスト | タップ時の結果 |
 |---|---|---|---|
@@ -79,7 +82,7 @@ tag 定数は `composeApp/src/commonMain/kotlin/com/ftester/e2e/Tags.kt` に集�
 | `#txt_offscreen` | Text | `画面外テキスト` | 画面外(要 `scrollTo`) |
 
 - `#btn_item_1..3` は**同一ラベル `項目` の3連**。ラベル指定は曖昧解決不能になり、
-  `.Type[n]` か `#id` でしか引けない(= 序数セレクタの検証材料)。
+  `.型[n]` か `#id` でしか引けない(= 序数セレクタの検証材料)。
   **序数はこの画面の見えている Button 全体のツリー順**: 戻る(1) 許可(2) 通知を許可(3)
   項目(4,5,6) 共通ラベル(7) 別名(8) 結果クリア(9) タブ(10-12)。この並びを変えるとシナリオ 04 が壊れる。
 - `#btn_alias_new` は `#btn_alias_old||#btn_alias_new` のフォールバック連鎖検証に使う
@@ -252,6 +255,32 @@ FM が修復できるかを検証する。
 
 `#btn_crash_confirm` はブリッジ切断・クラッシュレポート添付の検証専用。
 通常実行に載せる `Scenarios/` 直下には置かず `_disabled/` に置く。
+
+## ID なし画面(タイトル `ID なし`)
+
+**この画面の要素には testTag / accessibilityIdentifier を一切付けない**(付けたら契約違反)。
+id を公開しないアプリを模し、**方向セレクタ(`:right` / `:left` / `:above` / `:below`)だけで
+操作・検証できること**を保証するための画面。到達用のナビ `#nav_noid` とシェル(`#btn_back` 等)には
+id がある(そこまで無いとテストが書けないため)。
+
+| 位置 | 種別 | ラベル/テキスト | 備考 |
+|---|---|---|---|
+| 見出し | Text | `設定` | `:below(設定)` のアンカー |
+| 行1 左 | Text | `通知` | |
+| 行1 右 | Switch | (無ラベル) | `.switch:right(通知)` で指す。初期 off |
+| 行1 下 | Text | `notify=off` / `notify=on` | 部分一致 `notify=` で引く |
+| 行2 左 | Text | `位置情報` | |
+| 行2 右 | Switch | (無ラベル) | `.switch:right(位置情報)`。初期 off |
+| 行2 下 | Text | `location=off` / `location=on` | |
+| 行3 左 | Button | `変更` | qty を -1(下限 0) |
+| 行3 中 | Text | `数量` | 左右ボタンのアンカー |
+| 行3 右 | Button | `変更` | qty を +1 |
+| 行3 下 | Text | `qty=<n>` 初期 `qty=0` | |
+
+- **行1/行2 のスイッチは同じ型・同じ(無)ラベル**なので、行を跨いで取り違えないこと(帯判定)が
+  この画面の主目的。行の高さは 48dp 以上を確保し、行同士を縦に十分離す。
+- **行3 の `変更` は左右で同一ラベル**。`:left(数量)` / `:right(数量)` でしか区別できない。
+- 状態は `key=value` の Text で echo する(全体規約と同じ)。値の永続化はしない。
 
 ## 情報タブ(タイトル `情報`)
 

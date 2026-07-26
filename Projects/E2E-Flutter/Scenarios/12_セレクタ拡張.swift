@@ -1,5 +1,5 @@
 // 12_セレクタ拡張.swift
-// ftester 機能: notExist / countIs / 近接セレクタ `:near(...)` / スコープ `祖先 >> 子孫`。
+// ftester 機能: notExist / countIs / 方向セレクタ `:below(...)` `:above(...)` / スコープ `祖先 >> 子孫`。
 // **この SUT に置く意味**: セレクタ解決は a11y ツリーの形に依存するので、フレームワークが
 // 変われば同じ記法でも当たり外れが変わる。記法は4フレームワーク共通で通ることを確かめる。
 
@@ -8,7 +8,7 @@ import FTDSL
 @TestClass(app: "com.ftester.e2e.flutter")
 class セレクタ拡張が正しく解決できること {
 
-    @Test("否定・個数・近接・スコープの各セレクタが期待どおり解決する")
+    @Test("否定・個数・方向・スコープの各セレクタが期待どおり解決する")
     func S0010() {
         scenario {
             scene(1, "notExist は未配置の要素を不在と判定し、消えるまで待つ") {
@@ -34,19 +34,19 @@ class セレクタ拡張が正しく解決できること {
                     tap("#btn_back")
                     tap("#nav_selector")
                 }.expectation {
-                    countIs(".Button=項目", 3)
+                    countIs(".button=項目", 3)
                     countIs("#btn_item_1", 1)
                     countIs("存在しないラベル", 0)
                 }
             }
-            scene(3, "近接セレクタで同一ラベル群をアンカーで選び分ける") {
+            scene(3, "方向セレクタで同一ラベル群をアンカーで選び分ける") {
                 action {
-                    tap(".Button=項目:near(#btn_allow)")
+                    tap(".button=項目:below(#btn_allow)")
                 }.expectation {
-                    // `許可` に最も近い `項目` は 1 番目(ui-contract.md の並び順)
+                    // 縦一列なので上下で選ぶ。`許可` の下にある最初の `項目` は 1 番目(ui-contract.md の並び順)
                     textIs("#txt_selector_result", "result=item1")
                 }.action {
-                    tap(".Button=項目:near(#btn_selector_reset)")
+                    tap(".button=項目:above(#btn_selector_reset)")
                 }.expectation {
                     textIs("#txt_selector_result", "result=item3")
                 }

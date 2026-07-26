@@ -292,11 +292,14 @@ class ログインテスト {
 |---|---|
 | `#login_btn` | accessibility id |
 | `ログイン` | ラベル(完全一致 → 部分一致) |
-| `.Button` / `.Button[2]` | 型+順番(**1 オリジン**。`.Button[2]` = 2番目の Button。1番目は `[1]` を省略して `.Button` と書く。`[1]` と明記しても可) |
-| `.Switch#ID` / `.Switch=ラベル` | 型と id/label の併用(値検証などで型を絞る) |
-| `#list >> .Cell[2]` | **スコープ**(祖先 >> 子孫)。序数はスコープ内で数えるので画面クロムやスクロール位置でずれない |
-| `.Button:near(合計)` | **近接アンカー**。候補のうちアンカーに最も近いものを選ぶ(同一ラベルの選び分け) |
-| `=#で始まる生ラベル` | `=` エスケープで label 扱い(`>>` や `:near(` を含むラベルもこれで書く) |
+| `.button` / `.button[2]` | 型+順番(**1 オリジン**。`.button[2]` = 2番目の Button。1番目は `[1]` を省略して `.button` と書く。`[1]` と明記しても可) |
+| `.switch#ID` / `.switch=ラベル` | 型と id/label の併用(値検証などで型を絞る) |
+| `#list >> .cell[2]` | **スコープ**(祖先 >> 子孫)。序数はスコープ内で数えるので画面クロムやスクロール位置でずれない |
+| `.switch:right(通知)` | **方向アンカー**(`:left` / `:above` / `:below` も同型)。アンカーの帯に入り、その方向にある最も近い候補。該当が無ければ失敗する(id が無い要素を隣のラベルから指す) |
+| `=#で始まる生ラベル` | `=` エスケープで label 扱い(`>>` や `:right(` を含むラベルもこれで書く) |
+
+綴り誤りや未対応記法(`:near` `:parent` 等)、`[abc]` のような序数、閉じない括弧は**実行前に構文エラー**になる
+(黙ってラベル扱いにしない。誤記が `notExist` を素通りして緑になるのを防ぐため)。
 
 **コマンド**: `tap` `type` `press` `swipe` `scrollTo` / `exist` `notExist` `textIs` `valueIs`
 `isEnabled` `isDisabled` `countIs` / `screenIs`(FM 視覚検証)/
@@ -308,7 +311,7 @@ class ログインテスト {
 - **スコープ `>>` はアプリが容器を a11y ツリーに公開している必要がある**(`#id` と同じ要件で
   フレームワーク非依存。4 SUT × iOS/Android で実測)。畳まれた容器(Flutter の `MergeSemantics` 等)は
   子孫が消えるためスコープに使えない
-- `countIs("#list >> .Cell", 3)` はリスト件数の検証。タイムアウトまで個数の変化を待つ
+- `countIs("#list >> .cell", 3)` はリスト件数の検証。タイムアウトまで個数の変化を待つ
 - テストクラスに `func setUp()` / `func tearDown()` を書くと各 `@Test` の前後で自動実行される。
   **tearDown は失敗後でも実行される**(片付けが飛ぶと後続シナリオを汚すため)
 
@@ -334,7 +337,7 @@ condition {
 - **自己修復とヒールキャッシュ**: `--heal` 時、壊れたセレクタは FM が修復して続行し、
   結果は `Projects/<name>/.ftester/heal-cache.json` に保存される。**2回目以降は FM なしで決定的に通過**し、
   レポートに「`Projects/SampleApp/Scenarios/LoginTest.swift:17` — セレクタ "#email_input" を
-  "#email||.TextField[0]" に変更してください」のようなソース位置付き修正提案を出し続ける
+  "#email||.textField[0]" に変更してください」のようなソース位置付き修正提案を出し続ける
   (ソースの自動書換はしない。人がソースを直すとキー不一致でキャッシュは自然に無効化される)
 - **dry-run**: `swift run ftester-scenarios-<プロジェクト名> run --scenario <id> --dry-run` で
   デバイスに触れずステップ列挙だけ行える(Shirates の No-Load-Run 相当。レビュー・生成コードの確認用)

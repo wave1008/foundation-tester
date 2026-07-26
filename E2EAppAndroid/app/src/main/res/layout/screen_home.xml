@@ -21,6 +21,12 @@
             android:layout_height="wrap_content"
             android:minHeight="48dp"
             android:text="セレクタ" />
+        <Button
+            android:id="@+id/nav_noid"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minHeight="48dp"
+            android:text="ID なし" />
 
         <Button
             android:id="@+id/nav_input"
@@ -77,5 +83,6 @@
             android:layout_height="wrap_content"
             android:minHeight="48dp"
             android:text="診断" />
+
     </LinearLayout>
 </ScrollView>

@@ -28,6 +28,7 @@ import com.ftester.e2e.screens.HealScreen
 import com.ftester.e2e.screens.HomeScreen
 import com.ftester.e2e.screens.InputScreen
 import com.ftester.e2e.screens.LifecycleScreen
+import com.ftester.e2e.screens.NoIdScreen
 import com.ftester.e2e.screens.ScrollScreen
 import com.ftester.e2e.screens.SelectorScreen
 import com.ftester.e2e.ui.TaggedButton
@@ -36,7 +37,8 @@ import com.ftester.e2e.util.LaunchCounter
 import com.ftester.e2e.util.exposeTestTagsAsResourceId
 
 enum class Screen {
-    HOME, SELECTOR, INPUT, GESTURE, SCROLL, ASYNC, DIALOG, LIFECYCLE, HEAL, DIAGNOSTICS, CONTROLS, ABOUT
+    HOME, SELECTOR, INPUT, GESTURE, SCROLL, ASYNC, DIALOG, LIFECYCLE, HEAL, DIAGNOSTICS,
+    NOID, CONTROLS, ABOUT
 }
 
 private enum class Tab { HOME, CONTROLS, ABOUT }
@@ -55,6 +57,7 @@ private fun titleFor(tab: Tab, homeChild: Screen?): String = when (tab) {
         Screen.LIFECYCLE -> "ライフサイクル"
         Screen.HEAL -> "自己修復"
         Screen.DIAGNOSTICS -> "診断"
+        Screen.NOID -> "ID なし"
         else -> "ホーム"
     }
 }
@@ -107,6 +110,7 @@ fun App() {
                         Screen.LIFECYCLE -> LifecycleScreen()
                         Screen.HEAL -> HealScreen()
                         Screen.DIAGNOSTICS -> DiagnosticsScreen()
+                        Screen.NOID -> NoIdScreen()
                         else -> HomeScreen(onNavigate = { screen -> homeChild = screen })
                     }
                 }

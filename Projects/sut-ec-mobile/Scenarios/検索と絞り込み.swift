@@ -4,7 +4,7 @@
 // キーワード検索は IME 確定/submit の発火条件が不透明でフレーク源のため本シナリオでは扱わない
 // (別途 UI 側の確定タイミングが固まってから)。
 // カテゴリチップは #chip_category_<id>(fashion/electronics)で指す。ラベル依存を排し
-// iOS/Android 共通・i18n 非依存にした(旧: ".Button=ファッション" のラベル完全一致)。
+// iOS/Android 共通・i18n 非依存にした(旧: ".button=ファッション" のラベル完全一致)。
 // セレクタは iPhone 17 Pro(iOS 27.0)/ja_JP・修正版ビルドで採取。
 
 import FTDSL

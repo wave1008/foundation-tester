@@ -21,6 +21,7 @@ object Tags {
     const val NAV_LIFECYCLE = "nav_lifecycle"
     const val NAV_HEAL = "nav_heal"
     const val NAV_DIAGNOSTICS = "nav_diagnostics"
+    const val NAV_NOID = "nav_noid"
 
     // セレクタ
     const val SELECTOR_RESULT = "txt_selector_result"

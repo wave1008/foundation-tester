@@ -8,7 +8,7 @@ final class OcclusionSuspicionTests: XCTestCase {
     private let screen = FTRect(x: 0, y: 0, width: 400, height: 800)
 
     private func el(_ ref: Int, _ frame: FTRect) -> ElementInfo {
-        ElementInfo(ref: ref, type: "StaticText", identifier: nil, label: "x", value: nil,
+        ElementInfo(ref: ref, type: "staticText", identifier: nil, label: "x", value: nil,
                     placeholder: nil, enabled: true, frame: frame, depth: 0)
     }
 

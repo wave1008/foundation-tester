@@ -31,28 +31,32 @@ Flutter の semantics ツリーは**支援技術が要求したときだけ**構
 スナップショットが 0 要素になり、アプリ全体でどのセレクタも解決できなくなる
 (画面自体は正常に描画されるので気付きにくい)。Slider は increase/decrease の子ノードを
 持つため、畳むとブリッジが読める形にならない。
-→ Slider だけは `Semantics(identifier: ...)` 単体で包む(型は `Other` になる)。
+→ Slider だけは `Semantics(identifier: ...)` 単体で包む(型は `other` になる)。
 
 ### B. 型語彙が OS で非対称
 
 | 要素 | iOS | Android |
 |---|---|---|
-| ボタン(`button: true` を持つノード) | `Button` | `Button` |
-| **テキスト** | `StaticText` | **`Other`** |
-| `Switch` | `Switch` | `Switch` |
-| `Checkbox` | `Switch` | (同左) |
-| `Radio` | `Button` | (同左) |
-| `Slider`(A の理由で素の Semantics) | `Other` | `Other` |
-| `TextField`(`obscureText` 含む) | `TextField` | `TextField` |
+| ボタン(`button: true` を持つノード) | `button` | `button` |
+| **テキスト** | `staticText` | **`other`** |
+| `Switch` | `switch` | `switch` |
+| `Checkbox` | `switch` | (同左) |
+| `Radio` | `button` | (同左) |
+| `Slider`(A の理由で素の Semantics) | `other` | `other` |
+| `TextField`(`obscureText` 含む) | `textField` | `textField` |
 
 Flutter は canvas 描画で、Android 側の className が `android.view.View` のままになるため
-テキストが `StaticText` に写像されない。
-→ **型セレクタを使ってよいのは `Button` だけ**。テキストの検証は必ず `#id` + `textIs` で書く。
-→ `obscureText: true` は **`SecureTextField` にならない**(ネイティブ SUT と違い型で区別できない)。
-→ **iOS の in-app エンジンではテキスト欄は `Other`**(Flutter のフィールドは UITextField ではないため。
+テキストが `staticText` に写像されない。
+→ **型セレクタを使ってよいのは `button` だけ**。テキストの検証は必ず `#id` + `textIs` で書く。
+→ **id の無いテキストは Android のスナップショットに出ない**(`android.view.View` + resource-id 無しは
+  ブリッジの `shouldInclude` が落とす)。つまり Flutter/Android では**ラベルをアンカーにした方向セレクタが
+  使えない**(`Projects/E2E-Flutter/Scenarios/13_ID無し画面.swift` を iOS 限定にしている理由)。
+  ブリッジの型正規化(docs/design.md §10 のフェーズ2)で解消予定。
+→ `obscureText: true` は **`secureTextField` にならない**(ネイティブ SUT と違い型で区別できない)。
+→ **iOS の in-app エンジンではテキスト欄は `other`**(Flutter のフィールドは UITextField ではないため。
   `#id` 指定なら両エンジン同一に動く)。
 
-### C. リストの行はデフォルトで `StaticText`
+### C. リストの行はデフォルトで `staticText`
 
 `InkWell` は `onTap` アクションを持つだけで button フラグは立たない。
 `Semantics(button: true)` を明示しないと行が型で区別できない(`tagged(..., button: true)`)。
@@ -97,7 +101,7 @@ Semantics として出る → **`#txt_dialog_title` が両 OS で引ける**
 
 見えている Button のツリー順は他の SUT と**同じ**:
 戻る(1) 許可(2) 通知を許可(3) 項目(4,5,6) 共通ラベル(7) 別名(8) 結果クリア(9) タブ(10-12)。
-→ 3番目の『項目』= `.Button[6]`。**iOS/Android 両方で同じ並び**であることを実測で確認済み。
+→ 3番目の『項目』= `.button[6]`。**iOS/Android 両方で同じ並び**であることを実測で確認済み。
 
 ## ビルド
 

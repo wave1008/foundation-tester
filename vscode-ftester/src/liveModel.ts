@@ -347,9 +347,9 @@ export function frameToDisplayRect(frame: LiveRect, screen: LiveSize, display: L
 }
 
 /** テキスト入力系の型語彙(タップ→入力欄フォーカス判定に使う)。契約: Sources/FTCore/
- * SnapshotRendering.swift の textInputTypes と同一(iOS の BridgeRouter/InAppSnapshot と
- * Android の SnapshotBuilder が同じ語彙へ正規化する)。変更したら Swift 側も追随させること。 */
-const TEXT_INPUT_TYPES: ReadonlySet<string> = new Set(["TextField", "SecureTextField", "TextView", "SearchField"]);
+ * SnapshotRendering.swift の textInputTypes と同一。型名は**先頭小文字**(ホスト側の
+ * ElementInfo.normalizedType が畳む。api の JSON もこの形)。変更したら Swift 側も追随させること。 */
+const TEXT_INPUT_TYPES: ReadonlySet<string> = new Set(["textField", "secureTextField", "textView", "searchField"]);
 
 /** 要素がテキスト入力欄(タップするとキーボード入力対象になる)かどうか。 */
 export function isTextInputElement(element: LiveElement): boolean {

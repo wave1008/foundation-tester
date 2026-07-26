@@ -263,6 +263,15 @@ public final class FTDriveCore {
             recordStep(description: description, status: status, file: filePath, line: Int(line))
             return status
         }
+        // 構文検証はデバイスに触る前(dry-run でも)に行う。パースは失敗しない契約のため、
+        // `:rigth(x)` のような誤りは「そんなラベルは無い」に化け、notExist/countIs(x,0) では
+        // 緑になってしまう。ここで落とすのが唯一の防波堤(FTSelector.validationError 参照)
+        if let selectorText, let error = FTSelector.validationError(selectorText) {
+            let status = StepResult.Status.failed("セレクタの構文が不正です: \(error)")
+            recordStep(description: description, status: status, file: filePath, line: Int(line))
+            handleFailure(stepDescription: description, reason: "セレクタの構文が不正です: \(error)")
+            return status
+        }
         if dryRun {
             // 実機に触れず計測はほぼ 0ms だが、NDJSON 配線を検証できるよう durationMs は必ず付与する
             let clock = ContinuousClock()
@@ -516,7 +525,8 @@ public final class FTDriveCore {
         emit(event)
     }
 
-    private func handleFailure(stepDescription: String, reason: String) {
+    /// perform を通らないコマンド(ifCanSelect の構文エラー)からも呼ぶため internal
+    func handleFailure(stepDescription: String, reason: String) {
         sceneAborted = true
         if abortScenarioOnSceneFailure { scenarioAborted = true }
 

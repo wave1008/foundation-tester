@@ -83,9 +83,9 @@ class スクロールで折り返し下の要素に到達できること {
                     exist("#row_01")
                 }
             }
-            scene(2, ".Button=行 03 でラベル指定タップできる") {
+            scene(2, ".button=行 03 でラベル指定タップできる") {
                 action {
-                    tap(".Button=行 03")
+                    tap(".button=行 03")
                 }.expectation {
                     textIs("#txt_row_selected", "selected=row_03")
                 }

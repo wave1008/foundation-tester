@@ -1,5 +1,5 @@
-// 11_否定と個数と近接セレクタ.swift
-// ftester 機能: notExist / countIs / isEnabled / isDisabled / 近接セレクタ `:near(...)` /
+// 11_否定と個数と方向セレクタ.swift
+// ftester 機能: notExist / countIs / isEnabled / isDisabled / 方向セレクタ `:below(...)` `:above(...)` /
 // 共通ステップ group / クラスの setUp・tearDown の検証。
 // 型を使うセレクタは OS で型名が違う(Compose の Button は iOS=Button / Android=Cell)ため
 // ios {} / android {} で分ける(ui-contract.md 全体規約)。
@@ -7,7 +7,7 @@
 import FTDSL
 
 @TestClass(app: "com.ftester.e2e")
-class 否定と個数と近接セレクタが正しく動くこと {
+class 否定と個数と方向セレクタが正しく動くこと {
 
     // 各 @Test の前に自動実行される。セッションカウンタを1つ進めておき、
     // 「本体より前に走った」ことを scene 1 で観測する
@@ -22,7 +22,7 @@ class 否定と個数と近接セレクタが正しく動くこと {
         tap("#tab_home")
     }
 
-    @Test("否定・個数・状態アサーションと近接セレクタ・共通ステップ")
+    @Test("否定・個数・状態アサーションと方向セレクタ・共通ステップ")
     func S0010() {
         scenario {
             scene(1, "setUp が本体より前に実行されている") {
@@ -70,22 +70,23 @@ class 否定と個数と近接セレクタが正しく動くこと {
                     tap("#nav_selector")
                 }.expectation {
                     // 同一ラベル `項目` のボタンは3つ(内側の Text と混ざらないよう型で絞る)
-                    ios { countIs(".Button=項目", 3) }
-                    android { countIs(".Cell=項目", 3) }
+                    ios { countIs(".button=項目", 3) }
+                    android { countIs(".cell=項目", 3) }
                     countIs("#btn_item_1", 1)
                     countIs("存在しないラベル", 0)
                 }
             }
-            scene(5, "近接セレクタで同一ラベル群をアンカーで選び分ける") {
+            scene(5, "方向セレクタで同一ラベル群をアンカーで選び分ける") {
                 action {
-                    ios { tap(".Button=項目:near(#btn_allow)") }
-                    android { tap(".Cell=項目:near(#btn_allow)") }
+                    // 縦一列に並ぶので上下で選ぶ。`許可` の下にある最初の `項目` = 1 番目
+                    ios { tap(".button=項目:below(#btn_allow)") }
+                    android { tap(".cell=項目:below(#btn_allow)") }
                 }.expectation {
-                    // `許可` に最も近い `項目` は 1 番目(ui-contract.md の並び順)
                     textIs("#txt_selector_result", "result=item1")
                 }.action {
-                    ios { tap(".Button=項目:near(#btn_selector_reset)") }
-                    android { tap(".Cell=項目:near(#btn_selector_reset)") }
+                    // `結果クリア` の上にある最も近い `項目` = 3 番目
+                    ios { tap(".button=項目:above(#btn_selector_reset)") }
+                    android { tap(".cell=項目:above(#btn_selector_reset)") }
                 }.expectation {
                     textIs("#txt_selector_result", "result=item3")
                 }
@@ -129,8 +130,8 @@ class 否定と個数と近接セレクタが正しく動くこと {
                     exist("#list_rows >> #row_02")
                     countIs("#list_rows >> #row_02", 1)
                     // 序数もスコープ内で数える(容器の外の同型要素に影響されない)
-                    ios { exist("#list_rows >> .Button[2]").textIs("行 02") }
-                    android { exist("#list_rows >> .Cell[2]").textIs("行 02") }
+                    ios { exist("#list_rows >> .button[2]").textIs("行 02") }
+                    android { exist("#list_rows >> .cell[2]").textIs("行 02") }
                     // スコープ外(固定ヘッダ)の要素はスコープ内からは解決できない
                     notExist("#list_rows >> #txt_row_selected")
                 }

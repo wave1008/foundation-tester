@@ -93,25 +93,32 @@ public struct FlowLocator: Codable, Equatable, Sendable {
     /// この連鎖で解決した要素の**子孫だけ**を候補にする。index([n])もスコープ内の順序で数えるため、
     /// 画面クロム(戻るボタン・タブ)やスクロール位置に序数が影響されなくなる。
     public var scope: [FlowLocator]?
-    /// 近接アンカー(セレクタ式 `.Button:near(ラベル)`)。要素数 0 or 1(構造体の自己再帰を
-    /// 配列で回避しているだけで、意味は Optional)。候補のうちアンカー frame 中心に最も近いものを選ぶ。
-    public var near: [FlowLocator]?
+    /// 方向アンカー(セレクタ式 `.Switch:right(通知)` の `通知` 側)。`||` 連鎖を書けるので配列。
+    /// `direction` と対で意味を持ち、片方だけでは無視される。アンカーはスコープの外から解決する
+    /// (隣接ラベルは容器の外にあることが普通のため)。
+    public var anchor: [FlowLocator]?
+    /// アンカーから見てどちら側の候補に限定するか(StepExecutor.pickDirectional が唯一の解釈者)
+    public var direction: FlowDirection?
 
     public init(id: String? = nil, label: String? = nil, type: String? = nil, index: Int? = nil,
-                raw: String? = nil, scope: [FlowLocator]? = nil, near: [FlowLocator]? = nil) {
+                raw: String? = nil, scope: [FlowLocator]? = nil,
+                anchor: [FlowLocator]? = nil, direction: FlowDirection? = nil) {
         self.id = id
         self.label = label
         self.type = type
         self.index = index
         self.raw = raw
         self.scope = scope
-        self.near = near
+        self.anchor = anchor
+        self.direction = direction
     }
 
     public var summary: String {
         if let raw { return raw }
         var text = baseSummary
-        if let anchor = near?.first { text += ":near(\(anchor.summary))" }
+        if let direction, let anchor = anchor?.first {
+            text += ":\(direction.rawValue)(\(anchor.summary))"
+        }
         if let scope, !scope.isEmpty {
             text = scope.map(\.summary).joined(separator: " >> ") + " >> " + text
         }
@@ -131,10 +138,16 @@ public struct FlowLocator: Codable, Equatable, Sendable {
 
     /// 「id も label も無い」= 単独では別画面の要素に誤マッチしやすいロケータか。
     /// アサーションのフォールバック連鎖から除外する判定に使う(StepExecutor.resolveDetailed)。
-    /// scope 付きは容器に錨を打っているので type+index でも除外しない。
+    /// scope / 方向アンカー付きは錨を打っているので type+index でも除外しない。
     public var isWeakForAssert: Bool {
-        id == nil && label == nil && (scope?.isEmpty ?? true)
+        id == nil && label == nil && (scope?.isEmpty ?? true) && (anchor?.isEmpty ?? true)
     }
+}
+
+/// 方向セレクタの向き(`.Switch:right(通知)`)。アンカーから見た候補の位置を限定する。
+/// 判定規則は StepExecutor.pickDirectional に1箇所だけ置く(記法↔意味の対応表は docs/design.md §10)
+public enum FlowDirection: String, Codable, Equatable, Sendable {
+    case right, left, above, below
 }
 
 public enum FlowLocatorBuilder {
