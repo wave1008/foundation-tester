@@ -297,6 +297,14 @@ private func existImpl(_ selector: FTSelector, timeout: Int?, requireVisible: Bo
 
 /// テキスト一致検証。既定で可視性も確認(一致かつ実際に見えていること)。
 /// 可視性を問わずテキスト一致だけ見たい場合は requireVisible: false。
+///
+/// **テキスト検証コマンドに `scroll:` は足さない**(ユーザー決定 2026-07-27)。
+/// これらは**静止した画面のテキストを詳細に検証する**ためのもので、条件を満たすまで自動で
+/// スクロールする挙動は望まれていない。`exist` / `tap` が `scroll:` を持つのは「在るか」を
+/// 探す・操作するコマンドだから。**一貫性を理由に対称化しないこと**
+/// (下の textContains / textMatches / textStartsWith / textEndsWith / textIsNot /
+/// textIsEmpty / textIsNotEmpty / valueIs も同じ)。
+/// 画面外のテキストを見たいときは直前に `scrollTo` で送る(docs/design.md §10)
 public func textIs(_ selector: String, _ expected: String, timeout: Int? = nil,
                    requireVisible: Bool = true,
                    file: StaticString = #filePath, line: UInt = #line) {
