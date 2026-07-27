@@ -1,5 +1,7 @@
-// tilePaneHeight は再代入される状態。書き込みは applyTilePaneHeight のみ(このモジュール内)。
-// tabs.js の switchTab からは読み取り専用で参照する。
+// desiredTilePaneHeight=ユーザー意図(ドラッグ・host復元のみで更新、永続化対象)、
+// tilePaneHeight=表示用クランプ済み値。分離しないと、パネル表示切替中の一時的に小さい
+// レイアウトで resize が走った際にユーザー意図まで最小値へ潰される(実害: エディタ開閉で
+// セパレーターが最小位置にリセット)。tabs.js からは reapplyTilePaneHeight を呼ぶ。
 
 import { vscode, persistedState } from './vscodeApi.js';
 import { toolbar, banner, devicesPanel, tilePane, splitter } from './domRefs.js';
@@ -17,10 +19,11 @@ function defaultTilePaneHeight() {
   return Math.round((available > 0 ? available : window.innerHeight) / 2);
 }
 
-export let tilePaneHeight =
+let desiredTilePaneHeight =
   typeof persistedState.tilePaneHeight === 'number' && persistedState.tilePaneHeight > 0
     ? persistedState.tilePaneHeight
     : defaultTilePaneHeight();
+let tilePaneHeight = desiredTilePaneHeight;
 
 // document.body.clientHeight だとタブバー分ずれるため、「デバイス」タブパネル自身の
 // clientHeight を基準にする。
@@ -35,38 +38,56 @@ function clampTilePaneHeight(height) {
   return Math.min(Math.max(height, MIN_PANE_HEIGHT), maxHeight);
 }
 
-export function applyTilePaneHeight(height) {
-  // 「デバイス」タブ非表示(display:none)の間はdevicesPanel.clientHeightが0になり、誤って
-  // 最小値にクランプしてしまうため何もせず抜ける(タブ復帰時にswitchTabが呼び直す)。
-  if (devicesPanel.clientHeight === 0 || devicesPanel.offsetParent === null) {
-    return;
-  }
-  tilePaneHeight = clampTilePaneHeight(height);
+// 「デバイス」タブ非表示(display:none)の間はdevicesPanel.clientHeightが0になり、誤って
+// 最小値にクランプしてしまうため何もせず抜ける(タブ復帰時にswitchTabが呼び直す)。
+function splitAreaHidden() {
+  return devicesPanel.clientHeight === 0 || devicesPanel.offsetParent === null;
+}
+
+function renderTilePaneHeight() {
+  tilePaneHeight = clampTilePaneHeight(desiredTilePaneHeight);
   tilePane.style.height = tilePaneHeight + 'px';
   relayoutTiles();
+}
+
+// 明示操作(ドラッグ)用: desired を更新してから描画する。
+export function applyTilePaneHeight(height) {
+  if (splitAreaHidden()) {
+    return;
+  }
+  desiredTilePaneHeight = clampTilePaneHeight(height);
+  renderTilePaneHeight();
+}
+
+// resize・タブ復帰用: desired は変えず現レイアウトへ再クランプするだけ。一時的に狭い
+// レイアウトでもユーザー意図を失わず、広がれば desired まで戻る。
+export function reapplyTilePaneHeight() {
+  if (splitAreaHidden()) {
+    return;
+  }
+  renderTilePaneHeight();
 }
 
 function persistTilePaneHeight() {
   // getState はパネルを閉じると失われるため、同一セッション内の即時復元用の setState に加えて
   // host(workspaceState)へも保存する(パネル再作成後は "tilePaneHeight" メッセージで復元される。
   // 契約: monitorModel.ts の setTilePaneHeight / tilePaneHeight)。
-  vscode.setState(Object.assign({}, vscode.getState(), { tilePaneHeight }));
-  vscode.postMessage({ type: 'setTilePaneHeight', value: tilePaneHeight });
+  vscode.setState(Object.assign({}, vscode.getState(), { tilePaneHeight: desiredTilePaneHeight }));
+  vscode.postMessage({ type: 'setTilePaneHeight', value: desiredTilePaneHeight });
 }
 
-// host からの復元値(sendInitialState)を反映する。「デバイス」タブ非表示中は applyTilePaneHeight が
-// no-op のため、モジュール変数を直接更新して次の switchTab で反映されるようにする(tilePaneHeight は
-// live binding で tabs.js が参照する)。
+// host からの復元値(sendInitialState)を反映する。「デバイス」タブ非表示中は描画が no-op のため、
+// desired だけ更新して次の switchTab の reapplyTilePaneHeight で反映されるようにする。
 export function setTilePaneHeight(height) {
   if (typeof height !== 'number' || !(height > 0)) {
     return;
   }
-  tilePaneHeight = height;
-  applyTilePaneHeight(height);
+  desiredTilePaneHeight = height;
+  reapplyTilePaneHeight();
 }
 
-applyTilePaneHeight(tilePaneHeight);
-window.addEventListener('resize', () => applyTilePaneHeight(tilePaneHeight));
+reapplyTilePaneHeight();
+window.addEventListener('resize', () => reapplyTilePaneHeight());
 
 let splitterPointerId = null;
 let splitterStartY = 0;

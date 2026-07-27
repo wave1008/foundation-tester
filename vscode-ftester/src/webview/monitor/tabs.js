@@ -1,11 +1,11 @@
 // switchTabはcloseDeviceOpMenu(deviceTiles.js)・closeMachineDeviceMenu(machineProfilesTab.js)・
-// applyTilePaneHeight/tilePaneHeight(splitter.js)のimportに依存する。
+// reapplyTilePaneHeight(splitter.js)のimportに依存する。
 
 import { vscode } from './vscodeApi.js';
 import { devicesPanel } from './domRefs.js';
 import { closeDeviceOpMenu } from './deviceTiles.js';
 import { closeMachineDeviceMenu } from './machineProfilesTab.js';
-import { applyTilePaneHeight, tilePaneHeight } from './splitter.js';
+import { reapplyTilePaneHeight } from './splitter.js';
 
 export const TAB_IDS = ['devices', 'profiles', 'processes', 'recordings', 'settings'];
 const tabButtons = {
@@ -39,7 +39,7 @@ export function switchTab(tab) {
   }
   if (tab === 'devices') {
     // 非表示中はclientHeight=0のガードで何もしなかった分を再クランプする(splitter.js参照)。
-    applyTilePaneHeight(tilePaneHeight);
+    reapplyTilePaneHeight();
   }
   // processesTab.js の初回活性化フック(常駐プロセス即時更新)が依存する。
   document.dispatchEvent(new CustomEvent('ft-tab-activated', { detail: { tab } }));
