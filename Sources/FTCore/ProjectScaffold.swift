@@ -84,6 +84,40 @@ public enum ProjectScaffold {
             to: dir.appendingPathComponent("SKILL.md"), atomically: true, encoding: .utf8)
     }
 
+    /// 受け手のパッケージに `.vscode/settings.json` を書く(ftester init から呼ぶ)。
+    /// `ftester.project`/`ftester.binaryPath` を自動設定し、受け手の手動設定を不要にする。
+    /// 既存ファイルが JSON としてパースできない(VSCode の settings.json は JSONC のことがある)場合は
+    /// 触らず警告のみ出して false を返す(init 全体を失敗させない)
+    public static func writeVSCodeSettings(
+        packageRoot: URL, ftesterPath: String?, projectName: String
+    ) throws -> Bool {
+        let dir = packageRoot.appendingPathComponent(".vscode")
+        let url = dir.appendingPathComponent("settings.json")
+
+        var settings: [String: Any] = [:]
+        if FileManager.default.fileExists(atPath: url.path) {
+            let data = try Data(contentsOf: url)
+            guard let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                let warning = "⚠️ \(url.path) を JSON として解析できなかったため、"
+                    + "ftester.project/ftester.binaryPath の自動設定をスキップしました(手動で設定してください)\n"
+                FileHandle.standardError.write(Data(warning.utf8))
+                return false
+            }
+            settings = parsed
+        }
+
+        settings["ftester.project"] = projectName
+        if let ftesterPath {
+            settings["ftester.binaryPath"] = "\(ftesterPath)/.build/debug/ftester"
+        }
+
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let data = try JSONSerialization.data(
+            withJSONObject: settings, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
+        try data.write(to: url)
+        return true
+    }
+
     static func recipientSetupSkill(projectName name: String) -> String {
         let appRef = name.lowercased()
         return """
@@ -110,9 +144,13 @@ public enum ProjectScaffold {
 
         ## 手順
 
-        ### 0. 🧑 前提の確認
-        次を人間に確認する。未達なら停止して依頼(代行不可):
-        - macOS 27+ / Apple Intelligence 有効(System 設定)/ Xcode 27+ 導入済み / iOS シミュレータ runtime を1つ以上
+        ### 0. 前提の機械判定と一括質問
+        環境は機械判定する(人間に「入っているか」を聞かない)。失敗した項目だけ 🧑 停止して対処を依頼(代行不可):
+        - macOS 27+: `sw_vers -productVersion` / Xcode 27+: `xcodebuild -version`(license 未同意エラーで
+          落ちたら 🧑 に `sudo xcodebuild -license accept` を依頼)
+        - Apple Intelligence: `ftester doctor --fm-only`(exit 0 で可。無効なら 🧑 に System 設定での有効化を依頼)
+
+        セットアップ値は 🧑 に冒頭の1回でまとめて質問する(以降のステップで再質問しない):
         - ビルド済みの対象アプリ(.app / .apk)のパス、使うシミュレータ名、マシン名
           → **これらは人間に聞く。他リポジトリを勝手に探索して埋めない**(バージョン・パスの推測は事故のもと)。
 
