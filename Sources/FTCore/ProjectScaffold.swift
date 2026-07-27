@@ -201,7 +201,9 @@ public enum ProjectScaffold {
         環境は機械判定する(人間に「入っているか」を聞かない)。失敗した項目だけ 🧑 停止して対処を依頼(代行不可):
         - macOS 27+: `sw_vers -productVersion` / Xcode 27+: `xcodebuild -version`(license 未同意エラーで
           落ちたら 🧑 に `sudo xcodebuild -license accept` を依頼)
-        - Apple Intelligence: `ftester doctor --fm-only`(exit 0 で可。無効なら 🧑 に System 設定での有効化を依頼)
+        - Apple Intelligence: `ftester doctor --fm-only`(exit 0 で可。**exit 1 でも中断せず続行** —
+          FM は heal・視覚検証・シナリオ生成にだけ必要な任意機能。使いたくなったら System 設定で
+          有効化して本コマンドが ✅ になればそのまま使える。完了報告に要有効化の旨を残す)
 
         セットアップ値は 🧑 に冒頭の1回でまとめて質問する(以降のステップで再質問しない):
         - 使うシミュレータ名、マシン名
