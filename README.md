@@ -300,9 +300,9 @@ class ログインテスト {
 | `.switch#ID` / `.switch&&ラベル` | 型と id/label の併用(値検証などで型を絞る) |
 | `#save&&.button&&enabled=true` | **`&&` で AND 合成**。属性は `text` `value` `placeholder` `id` `type` `pos` `checked` `enabled` |
 | `(保存\|OK)` / `text=(保存\|OK)` | **フィルタ内 OR**。`保存\|\|OK` と等価(相対の引数では `:right((保存\|OK))` と括弧を自分で書く) |
-| `.button&&text!=キャンセル` | **否定フィルタ**(完全形のみ)。`textContains!=` 等も可。**否定だけの節は書けない** |
+| `.button&&text!=キャンセル` / `.button&&!キャンセル` | **否定フィルタ**(`!値` は短縮形)。`textContains!=` `!#id` `!.button` も可。**否定だけの節・序数の否定は書けない** |
 | `.input` / `.widget` | 型エイリアス(`.input` = textField\|secureTextField / `.widget` = OS 共通の役割型5つ) |
-| `#list >> .clickable[2]` | **スコープ**(祖先 >> 子孫)。序数はスコープ内で数えるので画面クロムやスクロール位置でずれない |
+| `#list >> .clickable[2]` | **スコープ**(祖先 >> 子孫)。序数はスコープ内で数えるので画面クロムやスクロール位置でずれない。**容器がアプリの a11y ツリーに公開されている必要**があり、畳まれた容器(Flutter の `MergeSemantics` 等)は子孫が消えるため使えない |
 | `通知:rightSwitch` | **相対セレクタ**(**基準が先**)。基準の帯に入り、その方向にある最も近い候補。該当が無ければ失敗する(id が無い要素を隣のラベルから指す) |
 | `数量:right(2)` / `#a:below(.button&&項目)` / `見出し:right:belowButton` | 序数 / 任意フィルタ / 連鎖 |
 | `<変更&&.button>:right(数量)` | 基準の `<...>` 囲み(Shirates 正典形・任意。基準の範囲を目で追いやすくする) |
@@ -328,35 +328,19 @@ exist(.type(.button).text("保存", .contains))    // .button&&textContains=保�
 `.secureTextField` `.switch` と `.input` `.widget` `.cell` `.image` `.clickable`、語彙外は `.custom("…")`。
 フィルタは常に「現在の対象」に効く(相対の**後**ならその相対先、前なら基準)。
 
-**コマンド**: `tap` `type` `press` `swipe` `scrollTo` / `exist` `notExist` `textIs` `valueIs`
-`isEnabled` `isDisabled` `isChecked` `isNotChecked` `countIs` /
-`textContains` `textMatches` `textStartsWith` `textEndsWith` `textIsNot` `textIsEmpty` `textIsNotEmpty` /
-`screenIs`(FM 視覚検証)/ `launchApp` `relaunchApp` `terminateApp` `wait` /
-分岐 `ifCanSelect { }.ifElse { }`・`ios { }`・`android { }` / 繰り返し `repeatWhileCanSelect` `doUntilTrue` /
-割り込み `onInterrupt("#promo_modal", dismiss: "#btn_close")` /
-任意コード `procedure("...") { try await ... }` / まとまり `group("ログイン") { ... }`
+**コマンド**の一覧・引数・挙動は **docs/commands.md** を参照(操作 `tap` `type` `press` `swipe` /
+スクロール `scrollTo`・`scrollDown` 系・`withScrollDown { }` / 検証 `exist` `notExist` `countIs`・
+`textIs`/`valueIs` の全対称(否定 `…Not`・`…IsEmpty`・`…MatchesDateFormat`)・`screenIs`(FM 視覚検証)/
+素の値の検証 `thisIs` 系 / アプリ制御・待機・分岐・反復 / `procedure` `group` `irregularHandler` 等)。
+特に効く規約だけ抜粋:
 
-- `notExist` は**消えるまで待つ**(初回で不在なら即成功)。ダイアログ・ローディングが閉じたことの確認に使う
-- **スコープ `>>` はアプリが容器を a11y ツリーに公開している必要がある**(`#id` と同じ要件で
-  フレームワーク非依存。4 SUT × iOS/Android で実測)。畳まれた容器(Flutter の `MergeSemantics` 等)は
-  子孫が消えるためスコープに使えない
-- `countIs("#list >> .clickable", 3)` はリスト件数の検証。タイムアウトまで個数の変化を待つ
-  (`||` は和集合の総数。同じ要素が複数の節にマッチしても1度だけ数える)。
-  **数えるのはツリー上の件数**で可視性は見ない(`exist` と違う)。
-  **ラベルで数えるときは型で絞る**(`.button&&項目`)— ボタンとその内側のラベルは別要素として
-  両方ツリーに載るため、型を付けないと 1 個のボタンを 2 件数える
-- 一覧の折り返し下にある項目は `tap("設定", scroll: .up)` / `exist("システム", scroll: .up)` で
-  **スクロールしながら探す**(`scrollTo` を先に流すのと同じ。省略時は現在画面のみ)。
-  **方向は指の動き**なので、下にある要素へ届かせたいときは `.up`(`swipe` と同じ語彙)
-- `textIsNot` / `textIsEmpty` / `textIsNotEmpty` は**可視性を見ない**(「見えていないこと」は
-  画面照合できないため)。値の変化待ちに使う
-- `doUntilTrue("在庫が補充される") { try await stockCount() > 0 }` はアプリ・外部の状態待ち。
-  画面要素の出現待ちは各コマンドの `timeout:` を使う
-- **出るか不定のアプリ内メッセージ**(お知らせ・キャンペーン)は `onInterrupt` を setUp で1回宣言すると、
-  以降どのステップでも出た時点で自動的に閉じる(各所に `ifCanSelect` を書かなくてよい)。
-  閉じたことはステップの注記に残る。**OS 側のダイアログは書かなくてよい**(ツール側で吸収する)
-- テストクラスに `func setUp()` / `func tearDown()` を書くと各 `@Test` の前後で自動実行される。
-  **tearDown は失敗後でも実行される**(片付けが飛ぶと後続シナリオを汚すため)
+- **要素の出現待ちは暗黙**(`wait` は原則不要。足りなければ各コマンドの `timeout:` を上げる)
+- 折り返しの下は `tap("設定", scroll: .down)` / `exist(…, scroll: .down)` で**スクロールしながら探す**
+  (方向はコンテンツ基準。`swipe(.up)` だけは指の動き)。**テキスト検証は自動スクロールしない**
+- **出るか不定のアプリ内メッセージ**は `irregularHandler` を setUp で1回宣言すると自動で閉じる
+  (OS 側のダイアログは書かなくてよい — ツール側で吸収する)
+- テストクラスの `func setUp()` / `func tearDown()` は各 `@Test` の前後で自動実行。
+  **tearDown は失敗後でも実行される**
 
 **イレギュラー処理・データセットアップはコードでそのまま書ける**のが YAML 時代との最大の違い:
 
@@ -372,8 +356,8 @@ condition {
 }
 ```
 
-- 失敗セマンティクス: コマンド NG → 同一 scene 内の以降のコマンドは自動スキップし、
-  次の scene へ進む(`abortScenarioOnFailure()` でシナリオ中断に変更可)。
+- 失敗セマンティクス: コマンド NG → **シナリオ中断**(以降のステップは scene を跨いですべてスキップ。
+  tearDown だけは失敗後でも実行される)。
   ブロック内の生 Swift コードはスキップされないため、失敗後に走らせたくない処理は `procedure { }` に包む
 - レポートは成否問わず `Projects/<name>/reports/scenario-*.md` に出力(scene → CAE → ステップ階層、
   トリアージ、失敗スクリーンショット、**修正提案**)

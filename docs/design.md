@@ -599,7 +599,7 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
   | — | `value=` / `placeholder=` | 値・プレースホルダ(`Contains`/`StartsWith`/`EndsWith`/`Matches` も同じ規則で使える) |
   | — | `checked=true\|false` / `enabled=true\|false` | 状態(`checked=false` は「オンでない」= 状態を持たない要素も含む) |
   | `(a\|b)` | `text=(a\|b)` | **フィルタ内 OR**(Shirates 準拠。下記) |
-  | — | `属性!=値` | **否定フィルタ**(下記) |
+  | `!値` | `属性!=値` | **否定フィルタ**(下記。短縮形は `!保存` / `!#id` / `!.button`) |
 
   `.型#id` = `.型&&#id`、`.型[n]` = `.型&&[n]` の短縮形。
   **型名に `=` は使えない**(`=` は text= 等のフィルタ名と先頭エスケープに使う)。`.型=ラベル` と
@@ -628,11 +628,17 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
   引数の括弧なので `|` の囲みにならない)。展開数の上限は 32(超えると validationError)。
   **既知の非対応**: `(a|b)&&[2]` は「各節の 2 番目」であって「和集合の 2 番目」ではない
   (Shirates は後者。節ごとに `[n]` を持つ ftester の構造をそのまま使うため)
-- **否定フィルタ `属性!=値`**(2026-07-27): `FlowLocator.not` に「属性1つだけのロケータ」を
-  並べ、肯定フィルタで絞ったあとに引く(`StepExecutor.candidates`)。一致方法も使える
-  (`textContains!=済`)。**否定だけの節は validationError で落とす**(「〇〇以外の全要素」は
-  容器やレイアウトノードまで掴む)。`pos` は否定できない。Shirates の `!ラベル` 短縮形は
-  `=` エスケープ・部分一致記法と紛らわしいので採らない(完全形のみ)
+- **否定フィルタ `属性!=値` と短縮形 `!値`**(2026-07-27): `FlowLocator.not` に
+  「属性1つだけのロケータ」を並べ、肯定フィルタで絞ったあとに引く(`StepExecutor.candidates`)。
+  一致方法も使える(`textContains!=済`)。**短縮形は Shirates 準拠**で、中身を肯定と同じ経路で
+  解釈して `not` に入れるだけ(`!保存` = `text!=保存` / `!#id` / `!.button`)。
+  `=` エスケープ(`=!先頭が感嘆符のラベル`)で回避できるので記法の衝突は起きない。
+  **否定だけの節は validationError で落とす**(「〇〇以外の全要素」は容器やレイアウトノードまで掴む)。
+  **`pos` は否定できない**(完全形 `pos!=n`・短縮形 `![2]` の両方を実行前に落とす。
+  候補集合を絞れず黙って無視されるため)。
+  **否定は「同じ条件を2回書いている」の重複検査から外す**(`attributeName` が nil を返す)。
+  肯定の text と否定を並べるのは正当な使い方で、外さないと `.button&&項目&&!#btn_item_2` が
+  構文エラーになる(2026-07-27 に E2E で検出)
 - **スコープ `祖先 >> 子孫`**: `#list >> .clickable[2]` は `#list` で解決した要素の**子孫だけ**を
   候補にし、序数もスコープ内で数える(画面クロム・スクロール位置で序数がずれる問題への対処)。多段可。
   子孫判定は「スナップショットは pre-order + 元ツリーの depth」という 3 ブリッジ共通の規約に依存する
@@ -728,14 +734,34 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
   一切当たらない)。ja-JP フリートでは日本語プライマリが唯一の頼りで、OS 改名で陳腐化すると即ハード失敗する
   (英語ロケール機なら英語 FB で延命するため「たまに緑」に見えて切り分けを誤らせる)。
   プライマリは対象 OS/ロケールの実ラベルに合わせて維持する
-- **`exist`/`textIs`/`valueIs` は非スクロール**(現在画面のみ判定)。一覧の折り返し下にある項目は
-  直前に `scrollTo(セレクタ, maxSwipes:)` で送ってから確認する
+- **既定は非スクロール**(現在画面のみ判定)。一覧の折り返し下にある項目は
+  `tap`/`exist` の `scroll:` 引数(または `withScrollDown { }`)で探索するか、
+  直前に `scrollTo(セレクタ, maxSwipes:)` で送ってから確認する。
+  テキスト検証(`textIs` 等)は探索手段を持たない(次項)
 - **テキスト検証コマンド(`textIs` / `valueIs` / `textContains` / `textMatches` /
   `textStartsWith` / `textEndsWith` / `textIsNot` / `textIsEmpty` / `textIsNotEmpty`)に
   `scroll:` を足さない**(ユーザー決定 2026-07-27)。これらは**静止した画面のテキストを詳細に
   検証する**ためのもので、条件を満たすまで自動でスクロールする挙動は**望まれていない**。
   `exist` と `tap` が `scroll:` を持つのは「在るか」を探す・操作するコマンドだから。
   一貫性を理由に対称化しないこと(**再提案しない**)
+
+### Shirates(Classic) 準拠の方針と承認済みの差分(2026-07-27)
+
+**コマンド名・引数名・既定値・挙動は Shirates(Classic) をそのまま踏襲する**。独自の「改良」を
+しない — 差分を作るときは実装前にユーザーへ提示して判断を仰ぐ(経緯: 独自アレンジを重ねて
+指摘を受けた)。迷ったら `~/github/ldi-github/shirates-core` のソースを読んでから書く。
+以下は**提示済み・承認済みの差分**の全リスト(これ以外の挙動差は準拠漏れ = バグとして扱う):
+
+| 差分 | 理由 |
+|---|---|
+| `FTScrollDirection` に `None` が無い | 「スクロールしない」は引数の省略(Optional)が担う |
+| スクロールに scrollFrame・マージン・時間指定が無い | ブリッジのスワイプが全画面固定のため |
+| `(a\|b)&&[2]` は「各節の2番目」(Shirates は和集合の2番目) | 節ごとに `[n]` を持つ ftester の構造をそのまま使う |
+| `!` 短縮形で序数を否定できない(`![2]`) | 候補集合を絞れず黙って無視されるため実行前エラーにする |
+| テキスト検証(`textIs` 等)に `scroll:` が無い | ユーザー決定(上記「再提案しない」項) |
+| `thisIs` 系が素の値にも直接生える(`FTValue` 転送) | Swift は非 Optional に `Any?` 拡張が生えない(言語制約の吸収であり挙動差ではない) |
+| 相対セレクタの引数の `(a\|b)` は括弧を自分で書く | `:right(...)` の括弧が引数の括弧で `\|` の囲みにならないため |
+| フローベース相対セレクタ(`:flow` 等)を持たない | 根拠の無い調整値を要求する(上記 2026-07-26 決定・再提案しない) |
 
 ### 型付きセレクタ(Sel。2026-07-27)
 
@@ -810,10 +836,23 @@ textIs(.id("txt_result"), "dialog=none")
   (可視性ガードつき)。`textMatches` は**部分一致の正規表現**(全体一致は `^...$`)。
   occlusion-guard には**実際に一致した部分文字列**を渡す(パターン文字列は画面に出ないため。
   `StepExecutor.matchedText` が唯一の判定者)
-- **`textIsNot` / `textIsEmpty` / `textIsNotEmpty`**(2026-07-27。セレクタ側の 5 モードに対する
-  アサーション側の非対称を埋めるもの): 要素は在る前提でタイムアウトまで**テキストの変化を待つ**。
-  **可視性(occlusion)は見ない** — 「見えていないこと」「空であること」は画面照合できないため
-  (`requireVisible` 引数も持たせない)。「見つからない」と「条件不成立」は別メッセージ
+- **否定・`value` 側の全対称**(2026-07-27。Shirates 準拠): `text*` の各モードに `*Not` を、
+  さらに `text*` の全てに `value*` を対で持つ(`textIsNot` `textContainsNot` `textStartsWithNot`
+  `textEndsWithNot` `textMatchesNot` `textIsEmpty` `textIsNotEmpty` `textMatchesDateFormat` と、
+  同名の `value…` 一式)。判定は `StepExecutor.negativeAssertSatisfied` に**1箇所だけ**置く。
+  要素は在る前提でタイムアウトまで**値の変化を待つ**。
+  **否定系と Empty 系は可視性(occlusion)を見ない** — 「見えていないこと」「空であること」は
+  画面照合できないため(`requireVisible` 引数も持たせない)。「見つからない」と「条件不成立」は
+  別メッセージ。`*MatchesDateFormat` は `DateFormatter`(`en_US_POSIX` 固定)で解釈できるかを見る
+- **`thisIs` 系**(`ValueAssertions.swift`。`Optional where Wrapped == Any` の拡張):
+  **デバイスに触れない**値の検証(API 応答・計算結果)。`thisIs/thisIsNot/thisIsTrue/thisIsFalse/
+  thisIsEmpty/thisIsNotEmpty/thisIsBlank/thisIsNotBlank/thisContains(Not)/thisStartsWith(Not)/
+  thisEndsWith(Not)/thisMatches(Not)/thisMatchesDateFormat/thisIsGreaterThan(OrEqual)/
+  thisIsLessThan(OrEqual)`。1件=1ステップとして記録し、失敗は DSL コマンドと同じくシナリオを中断する
+  (`FTDriveCore.handleFailure` を通す)。`FTElement.idIs` も同じ意味で「解決した要素の id」を見る。
+  **Swift 固有の事情**: Shirates は `Any?` の拡張だが、Swift は非 Optional の値に Optional の拡張が
+  生えない(`"abc".thisIs(…)` が型解決できない)。実装は `Any?` 側に1つだけ置き、
+  素の値へは `FTValue` プロトコルの転送メソッドで生やす(利用者に `let v: Any? =` を書かせない)
 - **`repeatWhileCanSelect(sel, max:)`** はセレクタが解決できる限り本体を繰り返す(上限 max)。
   各周回は `group` と同じ規約で `[名前 #n]` を前置して記録する。上限到達は失敗にしないが、
   **打ち切ったことは記録に出す**(`→ 10 回(上限に達したため打ち切り。まだ残っている可能性があります)`)。
@@ -825,15 +864,49 @@ textIs(.id("txt_result"), "dialog=none")
   action が throw したら**リトライせず**即 NG(状態待ちと実行時エラーを混ぜない)。
   dry-run は performCustom の既定どおり body を実行しない
 - **`tap(scroll:)` / `press(scroll:)` / `type(scroll:)` / `exist(scroll:)`**
-  (2026-07-27。Shirates の `tapWithScrollDown` 相当):
+  (2026-07-27。Shirates の `tapWithScrollDown` 相当。別名も併設 = 下記「スクロールの語彙」):
   コマンド名の変種を増やさず引数で表す。**探索は同じステップに畳む**(`FlowStep.direction` /
   `maxSwipes` を tap/exists 自身に載せ、`StepExecutor.runScrollSearch` が解決前に走る)。
   実体は `scrollTo` コマンドと共有するので挙動は1箇所にしかない。
+  探索終端の空打ちドラッグ(iOS)は**触る点が手前の要素に取られないときだけ**打つ
+  (`pointIsTakenByFrontElement`。取られると覆っている要素が反応する。
+  verification.md「スクロールした直後のタップ」)。
   **別ステップにしない理由**: 利用者が書いたのは1コマンドなので記録も1行にする。
   合成ステップは**ソース行を持たない**ためステップ表から編集できず、説明の要る状態になる
   (2026-07-27 に一度その形で入れて、直した)。
   見つからなければ「N 回スクロールしても要素が見つかりません」で失敗(optional なら skipped)。
   既定のスワイプ上限は `FlowStep.defaultMaxSwipes`
+
+### スクロールの語彙(2026-07-27。Shirates 準拠)
+
+**DSL のスクロールは全て「コンテンツ基準」**(`FTScrollDirection`。`.down` = 下に読み進める =
+指は上へ動く)。**唯一の例外が `swipe(.up)`** で、これは生のジェスチャなので指の動き
+(`FTSwipeDirection`)のまま。両者の写像は `FTScrollDirection.swipe` の**1箇所だけ**に置く
+(`FlowStep.direction` はブリッジへ渡るジェスチャ側の語彙。DSL 引数を保存しないので、
+コード生成 `ScenarioCodeGen` は逆写像して `direction: .down` を書き戻す)。
+
+- **コマンド**: `scrollDown/Up/Right/Left(repeat:)`(1画面ずつ)/
+  `scrollToBottom/Top/RightEdge/LeftEdge(maxSwipes:)`(画面が変化しなくなるまで。
+  `StepExecutor` の `scroll` / `scrollToEdge` アクション)/ `scrollTo(セレクタ, direction:maxSwipes:)`
+- **端の判定は「静止してから比較」+「2回連続で変化なし」**(`settledSignature`)。
+  フリングの減速中に撮ると動いていないように見え、さらに Android では次のスワイプが
+  **フリングの停止だけに消費されて 1 回空振りする**。1回の不変化で打ち切ると途中で止まる
+  (2026-07-27 実測: `scrollToTop` が row_22 付近で停止した)。署名は型・ラベル・**x と y**
+  (横スクロールでは y が動かない)。ref はスナップショット毎に振り直されるので使わない
+- **`maxSwipes` は暴走を止める上限で終了条件ではない**(端用の既定は `defaultMaxEdgeSwipes` = 50)。
+  上限で抜けたときは**ステップに注記を出す**(黙って成功にすると「scrollToBottom したのに
+  末尾が無い」の原因が読めない)
+- `scrollDown(repeat: N)` は**各スワイプの間で静止を待つ**(待たないと同じ理由で空振りし、
+  N 画面ぶん進まない)
+- **ブロック**: `withScrollDown { }` 系は `FTDriveCore.scrollContextStack` に積み、
+  ブロック内の `tap`/`type`/`press`/`exist` が `scroll:` 未指定なら**その向きで探索**する。
+  `withoutScroll { }` と `tapWithoutScroll` / `existWithoutScroll` は積んだ文脈を1段打ち消す。
+  明示の `scroll:` 引数が常に最優先(`FTDriveCore.effectiveScroll`)
+- **`textIs` 等の検証コマンドに `scroll:` は持たせない**(ユーザー決定 2026-07-27)。
+  静止した画面を詳細に検証するためのもので、条件が揃うまで自動でスクロールする挙動は望まれていない。
+  **再提案しない**
+- Shirates の `scrollFrame` / マージン / 時間指定は**持たない**(ブリッジのスワイプが全画面固定のため。
+  ユーザー了承済みの差分)
 
 ### 失敗時に返す情報(2026-07-26)
 
@@ -869,7 +942,7 @@ textIs(.id("txt_result"), "dialog=none")
 
 ### 割り込みハンドラ(アプリ内メッセージ。2026-07-27)
 
-- **`onInterrupt("#promo_modal", dismiss: "#btn_promo_close")`** を宣言すると、以降どのステップでも
+- **`irregularHandler("#promo_modal", dismiss: "#btn_promo_close")`** を宣言すると、以降どのステップでも
   出た時点で閉じてから本来の操作を続ける(`StepExecutor.dismissInterruption`)。
   各所に `ifCanSelect` を撒く必要がなくなる
 - **宣言の寿命はシナリオ1本**(ハンドラは `FTDriveCore` が持つ = 1プロセス1シナリオ)。
@@ -913,8 +986,11 @@ textIs(.id("txt_result"), "dialog=none")
   起動し、NDJSON イベント(FTCore/ScenarioEvent)を受信。ビルドはホスト側で1回だけ
 - シナリオ本体は**専用スレッドで同期実行**し、async の StepExecutor/AppDriver へは
   セマフォで橋渡し(FTSync)。ブロックするのは専用スレッドのみで協調プールは塞がない
-- 失敗セマンティクス: コマンド NG → 同一 scene 内の以降のコマンドは自動スキップ → 次の scene へ
-  (throw を使わない Shirates 的中断)
+- 失敗セマンティクス: コマンド NG → **シナリオ全体を中断**(以降のステップは scene を跨いで
+  すべて skipped。throw を使わない Shirates 的中断)。tearDown だけは失敗後でも実行される。
+  2026-07-27 変更(ユーザー決定): 以前は scene 単位のスキップで次の scene へ進んでいたが、
+  失敗後の画面状態は不定で、続けても壊れた前提の擬陽性/擬陰性を生むだけのため廃止
+  (`abortScenarioOnFailure()` も既定化に伴い撤去)
 - **登録不要の単発実行**: `ftester run-file <path.swift>`(Sources/ftester/RunFileCommand.swift)。
   `ftester project create/sync` で Package.swift へ登録していない .swift をそのまま実行する。
   実装は「対象プロジェクトの `Scenarios/_runfile/` へコピー → 通常どおり `RunScenarios` へ委譲 →
