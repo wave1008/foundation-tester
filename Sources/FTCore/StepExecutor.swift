@@ -1523,7 +1523,7 @@ public final class StepExecutor {
             let types = Set(FlowTypeAlias.expand(type))
             pool = pool.filter { types.contains($0.type) }
         }
-        if let id = locator.id { pool = pool.filter { $0.identifier == id } }
+        narrow(locator.id, locator.idMatch) { $0.identifier }
         narrow(locator.label, locator.labelMatch) { $0.label }
         narrow(locator.value, locator.valueMatch) { $0.value }
         narrow(locator.placeholder, locator.placeholderMatch) { $0.placeholder }

@@ -111,6 +111,23 @@ final class SelectorScopeTests: XCTestCase {
         XCTAssertEqual(refs(FlowLocator(label: "^許.$", labelMatch: .matches)), [2])
     }
 
+    /// id も text と同じ一致方法(startsWith/contains/endsWith/matches)で絞れる
+    func testIdExplicitPartialMatchModes() {
+        let elements = [
+            node(1, "button", depth: 1, id: "btn_save"),
+            node(2, "button", depth: 1, id: "save"),
+        ]
+        func refs(_ locator: FlowLocator) -> [Int] {
+            StepExecutor.candidates(locator, elements: elements)?.map(\.ref) ?? []
+        }
+        XCTAssertEqual(refs(FlowLocator(id: "save", idMatch: .contains)), [1, 2])
+        XCTAssertEqual(refs(FlowLocator(id: "btn", idMatch: .startsWith)), [1])
+        XCTAssertEqual(refs(FlowLocator(id: "save", idMatch: .endsWith)), [1, 2])
+        XCTAssertEqual(refs(FlowLocator(id: "^save$", idMatch: .matches)), [2])
+        // 完全一致(idMatch なし)は従来どおり厳密一致のまま
+        XCTAssertEqual(refs(FlowLocator(id: "save")), [2])
+    }
+
     /// 一致品質は記法ではなく**掴んだ要素**で決まる(ハイブリッドの fallback 優先判定の入力)
     func testQualityIsJudgedByMatchedElement() {
         let partial = FlowLocator(label: "許可", labelMatch: .contains)

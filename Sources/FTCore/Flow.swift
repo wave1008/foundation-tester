@@ -152,6 +152,8 @@ public struct FlowRelativeStep: Codable, Equatable, Sendable {
 /// 設定されているフィールドだけが条件になる(nil = 条件にしない)。
 public struct FlowLocator: Codable, Equatable, Sendable {
     public var id: String?
+    /// id の一致方法(nil = exact)。text 系の labelMatch と同じ規約
+    public var idMatch: FlowMatchMode?
     public var label: String?
     /// label の一致方法(nil = exact)。値だけ設定して mode を nil にすると完全一致になる
     public var labelMatch: FlowMatchMode?
@@ -187,13 +189,15 @@ public struct FlowLocator: Codable, Equatable, Sendable {
     /// 「〇〇以外の全要素」は容器やレイアウトノードまで掴んで事故になるため)
     public var not: [FlowLocator]?
 
-    public init(id: String? = nil, label: String? = nil, labelMatch: FlowMatchMode? = nil,
+    public init(id: String? = nil, idMatch: FlowMatchMode? = nil,
+                label: String? = nil, labelMatch: FlowMatchMode? = nil,
                 value: String? = nil, valueMatch: FlowMatchMode? = nil,
                 placeholder: String? = nil, placeholderMatch: FlowMatchMode? = nil,
                 type: String? = nil, checked: Bool? = nil, enabled: Bool? = nil,
                 index: Int? = nil, raw: String? = nil, scope: [FlowLocator]? = nil,
                 relative: [FlowRelativeStep]? = nil, not: [FlowLocator]? = nil) {
         self.id = id
+        self.idMatch = idMatch
         self.label = label
         self.labelMatch = labelMatch
         self.value = value
@@ -236,7 +240,7 @@ public struct FlowLocator: Codable, Equatable, Sendable {
 
     private var baseSummary: String {
         var parts: [String] = []
-        if let id { parts.append("id=\(id)") }
+        if let id { parts.append("\((idMatch ?? .exact).filterName("id"))=\(id)") }
         if let label { parts.append("\((labelMatch ?? .exact).filterName("text"))=\(label)") }
         if let value { parts.append("\((valueMatch ?? .exact).filterName("value"))=\(value)") }
         if let placeholder {

@@ -1,5 +1,7 @@
 // セレクタ式のパース。文字列 1 本を `||` で分割し、各節を FlowLocator に写像する。
-//   #login_btn                     → id
+//   #login_btn                     → id(**完全一致**)
+//   #login_* / #*_btn / #*login*   → id 部分一致(`#` 短縮形だけ `*` を展開する。
+//                                     `id=` 完全形はワイルドカード展開しない。text= と同じ非対称)
 //   ログイン                        → text(**完全一致**。部分一致は下の `*` 記法で明示する)
 //   *ログイン* / ログイン* / *ログイン → 部分一致(contains / startsWith / endsWith)
 //   textMatches=^ログイン.*$         → 正規表現(部分一致。全体一致は ^...$)
@@ -22,9 +24,9 @@
 // (同じ要素が複数の節にマッチしても1度だけ)。詳しくは StepExecutor.unionCandidates。
 // 優先順位は `&&` > `>>` > `||`。分割はいずれも括弧の外だけ(`:right(...)` の中は割らない)。
 // パースは失敗しない(解釈できない節は text として扱う)。**構文の誤り(未知のマーカー・綴り誤り・
-// 先頭大文字の型名・不正な序数・未知のフィルタ名)は validationError が別経路で落とす**(パースだけだと
-// `.button:rigth(x)` が黙ってラベル扱いになり、notExist 等が空振りで緑になるため。
-// run 開始時と dry-run が呼ぶ)。
+// 先頭大文字の型名・不正な序数・既知名と紛らわしいフィルタ名の綴り誤り)は validationError が
+// 別経路で落とす**(パースだけだと `.button:rigth(x)` が黙ってラベル扱いになり、notExist 等が
+// 空振りで緑になるため。run 開始時と dry-run が呼ぶ)。
 // ラベルに `>>` `&&` `:right` `*` 等を含めたいときは先頭 `=` でエスケープ。
 
 import Foundation
@@ -93,8 +95,18 @@ public struct FTSelector {
         return table
     }()
 
-    /// 文字列属性以外のフィルタ名(短縮形を持つものも完全形で書ける)
-    static let otherFilters: Set<String> = ["id", "type", "pos", "checked", "enabled"]
+    /// id フィルタ名 → 一致方法。名前は FlowMatchMode.filterName が唯一の生成元
+    /// (`id` / `idStartsWith` / `idContains` / `idEndsWith` / `idMatches`。Shirates 準拠)
+    static let idFilters: [String: FlowMatchMode] = {
+        var table: [String: FlowMatchMode] = [:]
+        for mode in [FlowMatchMode.exact, .startsWith, .contains, .endsWith, .matches] {
+            table[mode.filterName("id")] = mode
+        }
+        return table
+    }()
+
+    /// id・文字列属性以外のフィルタ名(短縮形を持つものも完全形で書ける)
+    static let otherFilters: Set<String> = ["type", "pos", "checked", "enabled"]
 
     // MARK: - パース
 
@@ -371,7 +383,10 @@ public struct FTSelector {
 
     static func merge(_ source: FlowLocator, into target: inout FlowLocator) {
         if let not = source.not, !not.isEmpty { target.not = (target.not ?? []) + not }
-        if let id = source.id { target.id = id }
+        if let id = source.id {
+            target.id = id
+            target.idMatch = source.idMatch
+        }
         if let label = source.label {
             target.label = label
             target.labelMatch = source.labelMatch
@@ -406,7 +421,7 @@ public struct FTSelector {
             // 生ラベルのエスケープ(# や . で始まるラベルを text として扱う)
             return FlowLocator(label: String(token.dropFirst()))
         }
-        if token.hasPrefix("#") { return FlowLocator(id: String(token.dropFirst())) }
+        if token.hasPrefix("#") { return idLocator(String(token.dropFirst())) }
         if token.hasPrefix("."), token.count > 1 { return parseTypeFilter(String(token.dropFirst())) }
         if token.hasPrefix("["), token.hasSuffix("]"),
            let ordinal = Int(token.dropFirst().dropLast()), ordinal >= 1 {
@@ -439,8 +454,11 @@ public struct FTSelector {
     static func parseTypeFilter(_ body: String) -> FlowLocator {
         if let hashIndex = body.firstIndex(of: "#") {
             let type = String(body[body.startIndex..<hashIndex])
-            let id = String(body[body.index(after: hashIndex)...])
-            return FlowLocator(id: id, type: type.isEmpty ? nil : type)
+            // `#` 以降は単独の `#` 短縮形と同じ `*` 展開(挙動を割ると `.button#foo*` が
+            // 黙って literal 完全一致 = never-match になる)
+            var locator = idLocator(String(body[body.index(after: hashIndex)...]))
+            locator.type = type.isEmpty ? nil : type
+            return locator
         }
         if body.hasSuffix("]"), let bracketIndex = body.firstIndex(of: "[") {
             let type = String(body[body.startIndex..<bracketIndex])
@@ -475,8 +493,11 @@ public struct FTSelector {
             case .placeholder: return FlowLocator(placeholder: value, placeholderMatch: mode)
             }
         }
+        if let idMode = idFilters[name] {
+            // id= 完全形は `#` 短縮形と違いワイルドカード展開しない(text= と同じ非対称)
+            return FlowLocator(id: value, idMatch: idMode == .exact ? nil : idMode)
+        }
         switch name {
-        case "id": return FlowLocator(id: value)
         case "type": return FlowLocator(type: value)
         case "pos": return Int(value).map { FlowLocator(index: max(0, $0 - 1)) }
         case "checked": return boolValue(value).map { FlowLocator(checked: $0) }
@@ -490,14 +511,26 @@ public struct FTSelector {
     }
 
     static func isFilterName(_ name: String) -> Bool {
-        textFilters[name] != nil || otherFilters.contains(name)
+        textFilters[name] != nil || idFilters[name] != nil || otherFilters.contains(name)
     }
+
+    /// エラーメッセージ用の既知フィルタ名一覧(五十音・アルファベット順ではなく列挙順)
+    static var knownFilterNamesDescription: String {
+        (textFilters.keys.sorted() + idFilters.keys.sorted() + otherFilters.sorted())
+            .joined(separator: " / ")
+    }
+
+    /// フィルタ名の「基底名」(属性名 + otherFilters)。text/value/placeholder/id は
+    /// filterName の生成元、type/pos/checked/enabled はそのまま完全形
+    static let baseFilterNames = ["text", "value", "placeholder", "id"] + otherFilters
 
     /// フィルタ名の「書き損じ」と断定できるか。**素の文字列に `名前=値` はよく現れる**ので
     /// (SUT の状態表示 `notify=off` など)、既知名と紛らわしいものだけを落とす。
-    /// 判定は3規則: ①前方一致関係(3文字以上) ②大小文字だけ違う ③6文字以上で1文字違い
+    /// 判定は4規則: ①前方一致関係(3文字以上) ②大小文字だけ違う ③6文字以上で1文字違い
+    /// ④基底名(text/value/placeholder/id/type/pos/checked/enabled)を接頭辞に持ち、
+    /// 直後が ASCII 大文字(`idPrefix` `textFoo` 等。`identifier` のような小文字継続は対象外)
     static func isNearMissFilterName(_ name: String) -> Bool {
-        let known = Array(textFilters.keys) + Array(otherFilters)
+        let known = Array(textFilters.keys) + Array(idFilters.keys) + Array(otherFilters)
         let lowered = name.lowercased()
         for candidate in known {
             if candidate.lowercased() == lowered { return true }
@@ -505,6 +538,10 @@ public struct FTSelector {
             if shared >= 3, name.hasPrefix(candidate) || candidate.hasPrefix(name) { return true }
             if name.count >= 6, abs(candidate.count - name.count) <= 1,
                editDistanceIsAtMostOne(name, candidate) { return true }
+        }
+        for base in baseFilterNames where name.count > base.count && name.hasPrefix(base) {
+            let next = name[name.index(name.startIndex, offsetBy: base.count)]
+            if next.isASCII, next.isUppercase { return true }
         }
         return false
     }
@@ -527,6 +564,13 @@ public struct FTSelector {
     static func textLocator(_ raw: String) -> FlowLocator {
         let parsed = partialMatch(raw)
         return FlowLocator(label: parsed.text, labelMatch: parsed.mode == .exact ? nil : parsed.mode)
+    }
+
+    /// `#` 短縮形の値。text の素トークンと同じ `*` 記法(partialMatch)を適用する
+    /// (`id=` 完全形はワイルドカード展開しない。text= と同じ非対称)
+    static func idLocator(_ raw: String) -> FlowLocator {
+        let parsed = partialMatch(raw)
+        return FlowLocator(id: parsed.text, idMatch: parsed.mode == .exact ? nil : parsed.mode)
     }
 
     static func partialMatch(_ raw: String) -> (text: String, mode: FlowMatchMode) {
@@ -634,7 +678,9 @@ public struct FTSelector {
     /// entry は属性1つだけが設定されている前提(parseNegatedFilter がそう作る)
     private static func serializeNot(_ entries: [FlowLocator]) -> [String] {
         entries.compactMap { entry in
-            if let id = entry.id { return "id!=\(id)" }
+            if let id = entry.id {
+                return "\((entry.idMatch ?? .exact).filterName("id"))!=\(id)"
+            }
             if let label = entry.label {
                 return "\((entry.labelMatch ?? .exact).filterName("text"))!=\(label)"
             }
@@ -658,16 +704,18 @@ public struct FTSelector {
         let negations = serializeNot(locator.not ?? [])
         let single = tokenCount(locator) == 1 && negations.isEmpty
         if let type = locator.type {
-            // 型 + もう1条件だけなら短縮形にする(除外条件があるときは後ろに続くので畳まない)
-            if let id = locator.id, tokenCount(locator) == 2, negations.isEmpty {
-                return ".\(type)#\(id)"
+            // 型 + もう1条件だけなら短縮形にする(除外条件があるときは後ろに続くので畳まない)。
+            // idToken が `#` 形を返すときだけ畳める(`id=` 形は `.型` と合成できないため)
+            if locator.id != nil, tokenCount(locator) == 2, negations.isEmpty {
+                let token = idToken(locator)
+                if token.hasPrefix("#") { return ".\(type)\(token)" }
             }
             if let index = locator.index, index > 0, tokenCount(locator) == 2, negations.isEmpty {
                 return ".\(type)[\(index + 1)]"
             }
             tokens.append(".\(type)")
         }
-        if let id = locator.id { tokens.append("#\(id)") }
+        if locator.id != nil { tokens.append(idToken(locator)) }
         if locator.label != nil { tokens.append(textToken(locator, standalone: single)) }
         if let value = locator.value {
             tokens.append("\((locator.valueMatch ?? .exact).filterName("value"))=\(value)")
@@ -697,6 +745,27 @@ public struct FTSelector {
         if locator.enabled != nil { count += 1 }
         if let index = locator.index, index > 0 { count += 1 }
         return count
+    }
+
+    /// id フィルタ 1 個分。`*` 記法で書ける(値自体が `*` を含まない)ならそちらを優先し、
+    /// そうでなければ完全形 `idStartsWith=...` に落とす(textToken と同じ流儀)。
+    /// 完全一致でも値自体が先頭/末尾 `*` を持つなら `#` 短縮形は使わない
+    /// (再パースでワイルドカードに化けるため。textToken の needsEscape と同じ理由)
+    private static func idToken(_ locator: FlowLocator) -> String {
+        guard let id = locator.id else { return "" }
+        let mode = locator.idMatch ?? .exact
+        if mode == .exact {
+            return (id.hasPrefix("*") || id.hasSuffix("*")) ? "id=\(id)" : "#\(id)"
+        }
+        if !id.contains("*") {
+            switch mode {
+            case .contains: return "#*\(id)*"
+            case .startsWith: return "#\(id)*"
+            case .endsWith: return "#*\(id)"
+            default: break
+            }
+        }
+        return "\(mode.filterName("id"))=\(id)"
     }
 
     /// text フィルタ 1 個分。standalone(節に他の条件が無い)なら `=` エスケープが使えるが、
@@ -902,6 +971,7 @@ public struct FTSelector {
             case .placeholder: return "placeholder"
             }
         }
+        if idFilters[name] != nil { return "id" }
         return name == "pos" ? nil : name
     }
 
@@ -958,8 +1028,7 @@ public struct FTSelector {
             // 既知名と紛らわしくない `名前!=値` は素の文字列(SUT の表示 `count!=0` 等)として通す。
             // 判定規則は肯定形(namedFilterError)と同じ
             guard isNearMissFilterName(name) else { return nil }
-            let known = (textFilters.keys.sorted() + otherFilters.sorted()).joined(separator: " / ")
-            return "否定できないフィルタ名 \"\(name)\" です: \"\(token)\"。使えるのは \(known)"
+            return "否定できないフィルタ名 \"\(name)\" です: \"\(token)\"。使えるのは \(knownFilterNamesDescription)"
         }
         if name == "pos" { return "pos は否定できません: \"\(token)\"" }
         if value.isEmpty { return "フィルタ \"\(name)!=\" の値が空です" }
@@ -1001,8 +1070,7 @@ public struct FTSelector {
         }
         // 既知名と紛らわしくない `名前=値` は素の文字列(SUT の状態表示 `notify=off` 等)として通す
         guard isNearMissFilterName(name) else { return nil }
-        let known = (textFilters.keys.sorted() + otherFilters.sorted()).joined(separator: " / ")
-        return "未知のフィルタ名 \"\(name)\" です: \"\(token)\"。使えるのは \(known)"
+        return "未知のフィルタ名 \"\(name)\" です: \"\(token)\"。使えるのは \(knownFilterNamesDescription)"
             + "(ラベルとして書きたいときは先頭に = を付けてエスケープ)"
     }
 
