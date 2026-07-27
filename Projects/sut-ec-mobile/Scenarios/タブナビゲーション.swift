@@ -23,6 +23,14 @@ class タブが正しく遷移すること {
         ifCanSelect("#btn_remove_fashion_5", waitSeconds: 1) { tap("#btn_remove_fashion_5") }
     }
 
+    // カートは実行を跨いで累積する。緑経路の後始末 scene に加えて tearDown でも空へ戻す —
+    // 失敗はシナリオ全体を中断するので、後始末 scene は失敗時に実行されない
+    func tearDown() {
+        ifCanSelect("#btn_back") { tap("#btn_back") }
+        ifCanSelect("#tab_cart") { tap("#tab_cart") }
+        emptyCart()
+    }
+
     @Test("下部タブが各セクションへ正しく着地する")
     func S0010() {
         scenario {

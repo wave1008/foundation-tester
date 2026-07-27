@@ -16,6 +16,19 @@ class お気に入りを登録解除できること {
         launchApp()
     }
 
+    // お気に入りは実行を跨いで永続する。緑経路の後始末は scene 4 が担い、失敗時はここで外す
+    // (失敗はシナリオ全体を中断するので scene 4 は実行されない)。一覧の♡は iOS inapp で
+    // 効かないため(scene 4 と同じ理由)、詳細に入って #btn_wishlist_toggle で外す
+    func tearDown() {
+        ifCanSelect("#btn_back") { tap("#btn_back") }
+        ifCanSelect("#tab_wishlist") { tap("#tab_wishlist") }
+        ifCanSelect("#product_card_fashion_5", waitSeconds: 1) {
+            tap("#product_card_fashion_5")
+            tap("#btn_wishlist_toggle", timeout: 5)
+            tap("#btn_back")
+        }
+    }
+
     @Test("商品をお気に入りに登録してタブで確認できる")
     func S0010() {
         scenario {

@@ -7,7 +7,7 @@
 //
 // 擬陽性対策（維持）: カートはセッションを跨いで保持され累積する。単なる存在確認だと前回残留で緑になり
 // 追加失敗を見逃す。→ 冒頭で全行削除して「空」を基準化し（scene1）、追加後の存在確認を意味あるものにする。
-// 末尾で追加分を削除して副作用を残さない（scene4）。
+// 末尾で追加分を削除して副作用を残さない（scene4 + 失敗時は tearDown）。
 
 import FTDSL
 
@@ -24,6 +24,14 @@ class カートに商品を追加できること {
     /// 各行の削除ボタンは id=btn_remove_<productId> で一意。空カートなら空振りして無害。本スイートはこの1商品のみ扱う。
     private func emptyCart() {
         ifCanSelect("#btn_remove_fashion_5", waitSeconds: 1) { tap("#btn_remove_fashion_5") }
+    }
+
+    // カートは実行を跨いで累積する。緑経路の後始末 scene に加えて tearDown でも空へ戻す —
+    // 失敗はシナリオ全体を中断するので、後始末 scene は失敗時に実行されない
+    func tearDown() {
+        ifCanSelect("#btn_back") { tap("#btn_back") }
+        ifCanSelect("#tab_cart") { tap("#tab_cart") }
+        emptyCart()
     }
 
     @Test("おすすめの商品をカートに追加できる")

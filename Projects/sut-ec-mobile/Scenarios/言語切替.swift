@@ -2,7 +2,9 @@
 // testbase: TC-90(SC-90)言語トグル即時反映(日本語↔English)。
 // アカウント画面の言語トグル(日本語 / English)で UI 表示言語が切り替わることを検証する。
 // トグルボタンのラベルは常に「日本語」「English」(切替先の言語名)なので、どちらのモードでも id で押せる。
-// 言語設定は永続する(実行を跨ぐ)ため、末尾で必ず日本語へ戻す(他シナリオは日本語ラベルを前提)。
+// 言語設定は永続する(実行を跨ぐ)ため、必ず日本語へ戻す(他シナリオは日本語ラベルを前提)。
+// 戻しは scene 3(緑経路の往復検証を兼ねる)に加えて tearDown でも行う — 失敗はシナリオ全体を
+// 中断するので、scene 3 だけだと失敗時に English が残り後続シナリオが全滅する。
 // 入力を伴わないので inapp/xcuitest どちらでも動く。セレクタは修正版ビルドで採取。
 
 import FTDSL
@@ -17,6 +19,14 @@ class 言語を切り替えられること {
         // 押し込み画面から再開した場合に戻す(id なので言語非依存)
         ifCanSelect("#btn_back") { tap("#btn_back") }
         tap("#tab_account")
+    }
+
+    // 失敗後でも必ず日本語へ戻す(tearDown は失敗後でも実行される)。ボタンは id 指定なので
+    // English のままでも押せる。既に日本語なら押しても無害(トグルではなく選択)
+    func tearDown() {
+        ifCanSelect("#btn_back") { tap("#btn_back") }
+        ifCanSelect("#tab_account") { tap("#tab_account") }
+        ifCanSelect("#btn_toggle_language_ja", waitSeconds: 1) { tap("#btn_toggle_language_ja") }
     }
 
     @Test("日本語とEnglishを切り替えられる")
