@@ -730,6 +730,12 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
   プライマリは対象 OS/ロケールの実ラベルに合わせて維持する
 - **`exist`/`textIs`/`valueIs` は非スクロール**(現在画面のみ判定)。一覧の折り返し下にある項目は
   直前に `scrollTo(セレクタ, maxSwipes:)` で送ってから確認する
+- **テキスト検証コマンド(`textIs` / `valueIs` / `textContains` / `textMatches` /
+  `textStartsWith` / `textEndsWith` / `textIsNot` / `textIsEmpty` / `textIsNotEmpty`)に
+  `scroll:` を足さない**(ユーザー決定 2026-07-27)。これらは**静止した画面のテキストを詳細に
+  検証する**ためのもので、条件を満たすまで自動でスクロールする挙動は**望まれていない**。
+  `exist` と `tap` が `scroll:` を持つのは「在るか」を探す・操作するコマンドだから。
+  一貫性を理由に対称化しないこと(**再提案しない**)
 
 ### 型付きセレクタ(Sel。2026-07-27)
 
