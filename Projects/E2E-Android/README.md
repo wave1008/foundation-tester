@@ -37,7 +37,7 @@ ftester run --project E2E-Android --profile android
 | `04_セレクタ_型と序数.swift` | `.Type[n]` / `.Type#id` / `.Type=ラベル` / `\|\|`。**同一アプリ内で View=`Button` / Compose=`Cell`** の食い違い |
 | `05_テキスト入力.swift` | `type` と入力値 echo。`SecureTextField` はパスワード欄だけ |
 | `06_ジェスチャ.swift` | `tap` 連打 / `press`(長押し)と通常タップの区別 / `swipe` 4方向 |
-| `07_スクロール.swift` | `scrollTo`(RecyclerView)と「`exist`/`textIs` は非スクロール」の契約 |
+| `07_スクロール.swift` | `scrollTo`(RecyclerView)と「`scroll:` を付けない探索・検証は現在画面のみ」の契約 |
 | `08_待機とタイムアウト.swift` | 暗黙待ち(既定タイムアウト再試行)と `timeout:` 引数 |
 | `09_条件分岐とダイアログ.swift` | `ifCanSelect` と `optional:`。カスタムビュー AlertDialog の id 解決 |
 | `10_ライフサイクルとコントロール.swift` | `relaunchApp` によるプロセス内/永続状態の分離、Compose コントロールの状態遷移 |

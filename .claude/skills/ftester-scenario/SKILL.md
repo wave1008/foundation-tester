@@ -102,7 +102,7 @@ class ログインできること {
                 action {
                     tap("#email"); type("me@example.com")
                     tap("#password"); type("secret")
-                    tap("#login_btn||ログイン")       // id 優先、ラベルをフォールバック
+                    tap("#login_btn||ログイン")       // id か ラベル(節の順で先に見つかった方)
                 }.expectation {
                     exist("ようこそ")                 // 着地画面の実ラベル
                 }
@@ -140,8 +140,8 @@ class ログインできること {
 testbase(SC/TC 等の仕様書)を根拠にシナリオを書く場合、実行結果が仕様に従わない箇所の扱いを標準化する:
 
 - **仕様違反は緑にしない**。テストを実挙動に寄せて通す(=仕様違反を緑で隠す)ことはせず、**仕様どおりの
-  期待のまま RED(失敗)**にして追跡する(緑で隠すと退行検知にならない)。後始末は別 scene に分けて残す
-  (scene NG でも次 scene は実行されるため残留を防げる)。
+  期待のまま RED(失敗)**にして追跡する(緑で隠すと退行検知にならない)。後始末は `tearDown` に置く
+  (失敗でシナリオは中断するが、tearDown だけは失敗後でも実行されるため残留を防げる)。
 - **バグは1件1ファイルで専用フォルダに起票**する(詳細=個別ファイル)。置き場所:
   `Projects/<proj>/issues/defects/`。命名・テンプレート・凡例は同フォルダ `README.md`(`D-<連番2桁>-<slug>.md`)。
   **状態の一覧は同フォルダ `INDEX.md`(対応状況ダッシュボード)**に集約し、起票・状態変更時は個別ファイルと
@@ -163,8 +163,8 @@ testbase(SC/TC 等の仕様書)を根拠にシナリオを書く場合、実行�
   - チェーンで書く: `condition { … }.action { … }.expectation { … }`。不要な層は省略可。
 - コマンドは**同期・非 throw のモジュールレベル関数**。`try`/`await`/`{ it in }` 不要。カレント
   コンテキストを暗黙参照する。
-- 失敗セマンティクス: コマンド NG → その scene の以降はスキップ → 次の scene へ(throw しない)。
-  scene 全体を即中断したいときは `abortScenarioOnFailure()`。
+- 失敗セマンティクス: コマンド NG → **シナリオ中断**(以降のステップは scene を跨いですべてスキップ。
+  throw しない。`tearDown` だけは失敗後でも実行される)。
 - `@Deleted("理由")` をクラス/メソッドに付けると論理削除(一括実行から除外・完全一致 ID でのみ実行可)。
 
 ### コマンド
@@ -172,11 +172,15 @@ testbase(SC/TC 等の仕様書)を根拠にシナリオを書く場合、実行�
 | 分類 | コマンド |
 |---|---|
 | タップ/入力 | `tap(sel, optional:, timeout:)` / `type(text)`(直前フォーカス)/ `type(sel, text)` / `press(sel, duration:)`(長押し) |
-| スワイプ/スクロール | `swipe(.up/.down/.left/.right)` / `scrollTo(sel, direction:, maxSwipes:)` |
-| 検証 | `exist(sel)` / `notExist(sel)` / `textIs(sel, 期待)` / `textContains(sel, 部分文字列)` / `textMatches(sel, 正規表現)` / `valueIs(sel, 期待)` / `isEnabled(sel)` / `isDisabled(sel)` / `isChecked(sel)` / `isNotChecked(sel)` / `countIs(sel, 個数)` / `screenIs(名)`。exist は `.textIs()/.valueIs()` チェーン可 |
+| スワイプ/スクロール | `swipe(.up/.down/.left/.right)`(**指の動き**。生のジェスチャ)/ 以下は**コンテンツ基準**(`.down` = 下に読み進める): `scrollTo(sel, direction:, maxSwipes:)` / `scrollDown(repeat:)` `scrollUp` `scrollRight` `scrollLeft` / `scrollToBottom(maxSwipes:)` `scrollToTop` `scrollToRightEdge` `scrollToLeftEdge` |
+| スクロールしながら探す | `tap(sel, scroll: .down)` / `exist(sel, scroll: .down)`(別名 `tapWithScrollDown` / `existWithScrollDown`)/ ブロックで囲む `withScrollDown { … }` と、1コマンドだけ打ち消す `tapWithoutScroll` `existWithoutScroll` `withoutScroll { … }` |
+| 検証 | `exist(sel)` / `notExist(sel)` / `isEnabled(sel)` / `isDisabled(sel)` / `isChecked(sel)` / `isNotChecked(sel)` / `countIs(sel, 個数)` / `screenIs(名)`。exist は `.textIs()/.valueIs()/.idIs()` チェーン可 |
+| テキスト・値の検証 | `textIs` `textContains` `textStartsWith` `textEndsWith` `textMatches`(正規表現)`textMatchesDateFormat` `textIsEmpty` `textIsNotEmpty` と、**それぞれの否定** `textIsNot` `textContainsNot` … / `value…` も同名で一式。**これらに `scroll:` は無い**(静止画面の検証用。画面外は先に `scrollTo`) |
+| 画面に依らない値の検証 | `thisIs` `thisIsNot` `thisIsTrue` `thisContains` `thisMatchesDateFormat` `thisIsGreaterThan` …(API 応答・計算結果に直接生える。失敗は1ステップとして記録される) |
 | アプリ制御 | `launchApp(bundleID?)` / `relaunchApp()` / `terminateApp()` / `home()` / `appSwitcher()` |
 | 待機/分岐 | `wait(秒)` / `ifCanSelect(sel, waitSeconds:) { … }.ifElse { … }` / `ios { }` / `android { }` / `procedure("名") { try await … }` |
-| 反復 | `repeatWhileCanSelect(sel, max: n) { … }`(解決できる限り繰り返す。上限到達は失敗にしない) |
+| 反復 | `repeatWhileCanSelect(sel, max: n) { … }`(解決できる限り繰り返す。上限到達は失敗にしない)/ `doUntilTrue("名", waitSeconds:) { 条件 }`(**アプリ・外部の状態待ち専用**。要素の出現待ちは各コマンドの `timeout:`) |
+| 割り込み | `irregularHandler("#promo_modal", dismiss: "#btn_close")` を setUp で宣言すると、出るか不定の**アプリ内メッセージ**を出た時点で自動的に閉じる(OS のダイアログはツール側が吸収するので書かない) |
 | まとまり | `group("ログイン") { … }`(記録に `[ログイン]` を前置するだけ。実行・失敗の扱いは素の列と同じ) |
 | 前後処理 | テストクラスに `func setUp()` / `func tearDown()`(引数なし)を書くと各 `@Test` の前後で自動実行 |
 
@@ -194,9 +198,9 @@ testbase(SC/TC 等の仕様書)を根拠にシナリオを書く場合、実行�
   プロファイルだけ。Android は常に inapp で type 可。type の前の `tap(入力欄)` は両 OS 共通で入れておく
   (Android inapp のフォーカス確立に必要)。
 - 同じ手順を関数に切り出して使い回してよい(private func。例: 不定ダイアログの `dismiss…IfAny()`)。
-- `procedure` は任意 Swift(データ準備等)を1ステップとして記録。throw すると NG 扱いで scene 中断。
+- `procedure` は任意 Swift(データ準備等)を1ステップとして記録。throw すると NG 扱いでシナリオ中断。
 
-### セレクタ式(文字列1本・`||` でフォールバック連鎖)
+### セレクタ式(文字列1本・`||` は候補の和)
 
 - `#id` — id 完全一致(最も頑健。可能なら第一候補)
 - `ラベル` — label(**完全一致のみ**。完全形 `text=ラベル`)
@@ -233,7 +237,13 @@ testbase(SC/TC 等の仕様書)を根拠にシナリオを書く場合、実行�
 - **綴り誤り・未対応記法は実行前にエラー**になる(`:near` `:parent` 等の他ツール記法、未知の
   フィルタ名 `textContans=`、型名の `=`、`[abc]`、閉じない括弧)。
   黙ってラベル扱いにはならないので、通れば構文は正しい
-- 例: `tap("#login_btn||ログイン||.button")` = id → ラベル → 型の順で解決を試みる
+- `A||B` — **候補の和集合**(Shirates 準拠)。`tap` は節の順で最初の候補に着地するので
+  「id 優先・ラベルは代替」の書き方はそのまま通る。`countIs` は**和の総数**(同じ要素が複数の節に
+  当たっても1度だけ)。例: `tap("#login_btn||ログイン||.button")`
+- `(a|b)` — **フィルタ内 OR**。`保存||OK` と等価(`.button&&(許可|項目)` のように型と併用できる)。
+  相対の引数では括弧を自分で書く(`:right((保存|OK))`)
+- `!値` / `属性!=値` — **否定**(`.button&&!キャンセル` = キャンセル以外のボタン)。
+  `!#id` `!.型` も可。**否定だけの節は書けない**(「〇〇以外の全要素」は容器まで掴むため)
 
 ### セレクタ選定の罠(そのまま踏む。design.md §10 実測)
 
@@ -250,8 +260,9 @@ testbase(SC/TC 等の仕様書)を根拠にシナリオを書く場合、実行�
     破壊的・index 指定の tap は、**意図した状態のみ出るマーカーで `ifCanSelect` ガード**してから撃つ。
   - **件数不定の一括操作は `repeatWhileCanSelect(sel, max: n) { … }`** を使う(セレクタが解決
     できる限り繰り返す。上限到達は失敗にしない)。上限は想定最大件数に合わせる。
-- **`exist`/`textIs`/`valueIs` は非スクロール**(現在画面のみ)。折り返し下の項目は先に
-  `scrollTo(sel, maxSwipes:)` で送ってから確認する。
+- **既定は現在画面のみ**(非スクロール)。折り返しの下にある項目は `tap(sel, scroll: .down)` /
+  `exist(sel, scroll: .down)` で探索するか、先に `scrollTo(sel, maxSwipes:)` で送る。
+  **テキスト検証(`textIs` 等)は自動でスクロールしない**ので、先に送ってから確認する。
 - **`wait` が要るのはアニメーション整定だけ**。要素は在るのにタップ座標がアニメ中でずれる場合
   (メニュー展開・シート表示・表示切替の直後の `tap` 等)に限って `wait(1)` を挟む。**要素の出現待ちには
   使わない**(上記の暗黙ポーリングで足りる。`exist` 前の `wait` は削る)。

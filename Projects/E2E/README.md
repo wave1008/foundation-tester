@@ -97,10 +97,15 @@ E2E のシナリオは全て `@TestClass(app: "com.ftester.e2e")` で `platform:
 | `04_セレクタ_型と序数.swift` | `.Type[n]` / `.Type#id` / `.Type=ラベル` / `\|\|` フォールバック連鎖(序数は下記の注意を参照) |
 | `05_テキスト入力.swift` | `type` と入力値 echo(単一行/パスワード/送信/クリア) |
 | `06_ジェスチャ.swift` | `tap` 連打 / `press`(長押し)と通常タップの区別 / `swipe` 4方向 |
-| `07_スクロール.swift` | `scrollTo` と「`exist`/`textIs` は非スクロール」の契約 |
+| `07_スクロール.swift` | `scrollTo` と「`scroll:` を付けない探索・検証は現在画面のみ」の契約 |
 | `08_待機とタイムアウト.swift` | 暗黙待ち(既定タイムアウト再試行)と `timeout:` 引数 |
 | `09_条件分岐とダイアログ.swift` | `ifCanSelect` と `optional:` |
 | `10_ライフサイクルとプラットフォーム分岐.swift` | `relaunchApp` によるプロセス内/永続状態の分離、`ios {}` / `android {}` |
+| `11_否定と個数と方向セレクタ.swift` | `notExist` / `countIs` / `isEnabled`〜`isNotChecked` / 相対セレクタ `:below`・`:above` / `group` / setUp・tearDown |
+| `13_ID無し画面.swift` | id の無い画面を相対セレクタ(`基準:rightSwitch` 等)だけで操作・検証 |
+| `14_部分一致と反復.swift` | `textContains` / `textMatches`(動的文字列)と `repeatWhileCanSelect`(件数不定の一括操作) |
+| `15_型付きセレクタ.swift` | 型付きセレクタ(Sel)が文字列版と同じ要素に着地すること |
+| `16_フィルタORと否定と対称アサーション.swift` | `\|\|` の和集合 / `(a\|b)` / 否定 `!=`・`!` / 対称アサーション / `scroll:` / スクロールコマンド群 / `withScrollDown` / `thisIs` 系 / `doUntilTrue` |
 
 ## `_disabled/`(通常実行に含めない)
 
