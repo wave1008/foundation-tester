@@ -264,6 +264,7 @@ public final class StepExecutor {
         let clock = ContinuousClock()
         let start = clock.now
         var phase = PhaseAccumulator()
+        interruptNote = nil   // 「1ステップにつき1回だけ」の起点(dismissInterruption が見る)
         do {
             if let action = step.action {
                 let outcome = try await executeAction(action, step: step, cached: cached, phase: &phase)
@@ -272,14 +273,15 @@ public final class StepExecutor {
                                    timing: StepTiming(durationMs: Self.ms(clock.now - start),
                                                       snapshotMs: phase.snapshotMs,
                                                       actionMs: phase.actionMs, waitMs: phase.waitMs),
-                                   driverFallback: outcome.driverFallback)
+                                   driverFallback: noteWithInterrupt(outcome.driverFallback))
             }
             if let assert = step.assert {
                 let status = try await executeAssert(assert, step: step, phase: &phase)
                 return StepOutcome(status: status,
                                    timing: StepTiming(durationMs: Self.ms(clock.now - start),
                                                       snapshotMs: phase.snapshotMs,
-                                                      actionMs: phase.actionMs, waitMs: phase.waitMs))
+                                                      actionMs: phase.actionMs, waitMs: phase.waitMs),
+                                   driverFallback: noteWithInterrupt(nil))
             }
             return StepOutcome(status: .skipped("action も assert もないステップ"))
         } catch {
@@ -307,12 +309,26 @@ public final class StepExecutor {
 
     // MARK: - アクション
 
+    /// このステップで閉じた割り込み(execute が記録の注記に載せる)。
+    /// **1ステップにつき1回だけ**発火させるための状態でもある(閉じても消えない相手に対して
+    /// アサーションのポーリングごとにタップし続けるのを防ぐ)
+    private var interruptNote: String?
+
+    /// 割り込みを閉じたことを既存の注記に合流させる(driverFallback と同じ枠で見せる)
+    private func noteWithInterrupt(_ base: String?) -> String? {
+        guard let interruptNote else { return base }
+        let note = "割り込み \(interruptNote) を閉じました"
+        return base.map { "\($0) / \(note)" } ?? note
+    }
+
     /// 宣言された割り込み(アプリ内メッセージ等)が現在の画面に出ていれば閉じる。
-    /// 閉じたら「何を閉じたか」を返す(呼び手が記録に残す。**黙って閉じない**)。
+    /// **アクションでも検証でも**呼ぶ(割り込みは待機中にこそ出るため、アクション側だけだと
+    /// `exist`/`textIs` の待ち中に出たものを閉じられない)。既に1回閉じていれば何もしない。
     /// スナップショットは呼び手が持っているものを使い、閉じた後だけ取り直す
+    /// (**追加のスナップショットを取らない** = 宣言が無ければコストゼロ)
     private func dismissInterruption(in snapshot: inout SnapshotResponse,
-                                     phase: inout PhaseAccumulator) async throws -> String? {
-        guard !interruptHandlers.isEmpty else { return nil }
+                                     phase: inout PhaseAccumulator) async throws {
+        guard !interruptHandlers.isEmpty, interruptNote == nil else { return }
         let clock = ContinuousClock()
         for handler in interruptHandlers {
             guard Self.match(handler.detect, in: snapshot) != nil,
@@ -323,9 +339,9 @@ public final class StepExecutor {
             let shotStart = clock.now
             snapshot = try await driver.snapshot()
             phase.snapshotMs += Self.ms(clock.now - shotStart)
-            return handler.detect.summary
+            interruptNote = handler.detect.summary
+            return
         }
-        return nil
     }
 
     private func executeAction(_ action: String, step: FlowStep,
@@ -409,7 +425,7 @@ public final class StepExecutor {
         // 宣言された割り込み(アプリ内メッセージ等)が出ていれば先に閉じる。**解決を試みる前**に
         // 行う: 覆われているだけで要素自体は解決できてしまい、タップが吸われる形があるため
         // (層3 の coveringHint と同じ事象。あちらは診断、こちらは宣言があるときの自動処理)
-        let dismissed = try await dismissInterruption(in: &snapshot, phase: &phase)
+        try await dismissInterruption(in: &snapshot, phase: &phase)
         var resolved = Self.resolve(step: step, in: snapshot)
         if resolved == nil {
             if let timeout = step.timeout {
@@ -556,11 +572,6 @@ public final class StepExecutor {
             }
         default:
             return StepOutcome(status: .skipped("未知のアクション: \(action)"))
-        }
-        // 割り込みを閉じたことは**必ず記録に出す**(黙って閉じると、出続けている異常に気付けない)
-        if let dismissed {
-            let note = "割り込み \(dismissed) を閉じました"
-            driverFallback = driverFallback.map { "\($0) / \(note)" } ?? note
         }
         return StepOutcome(status: status, healedStep: healedStep, healedByCache: healedByCache,
                            driverFallback: driverFallback)
@@ -733,8 +744,9 @@ public final class StepExecutor {
             // timeout==0 でも初回照会は必ず1回行う(ループ後段の deadline チェックで離脱)。
             while true {
                 var start = clock.now
-                let snapshot = try await driver.snapshot()
+                var snapshot = try await driver.snapshot()
                 phase.snapshotMs += Self.ms(clock.now - start)
+                try await dismissInterruption(in: &snapshot, phase: &phase)
                 // アサーションでは type+index のみのフォールバックを使わない。
                 // 別画面の無関係な要素にマッチして偽陽性になる(実測済み)
                 if let d = Self.resolveDetailed(step: step, in: snapshot, strictForAssert: true) {
@@ -795,8 +807,9 @@ public final class StepExecutor {
             // timeout==0 でも初回照会は必ず1回行う(ループ後段の deadline チェックで離脱)。
             while true {
                 var start = clock.now
-                let snapshot = try await driver.snapshot()
+                var snapshot = try await driver.snapshot()
                 phase.snapshotMs += Self.ms(clock.now - start)
+                try await dismissInterruption(in: &snapshot, phase: &phase)
                 var candidate = Self.resolve(step: step, in: snapshot, strictForAssert: true)
                 var fromFallbackDriver = false
                 if candidate == nil { primaryMisses += 1 }
@@ -874,8 +887,9 @@ public final class StepExecutor {
             var backoff = PollBackoff()
             while true {
                 let start = clock.now
-                let snapshot = try await driver.snapshot()
+                var snapshot = try await driver.snapshot()
                 phase.snapshotMs += Self.ms(clock.now - start)
+                try await dismissInterruption(in: &snapshot, phase: &phase)
                 if Self.resolve(step: step, in: snapshot, strictForAssert: true) == nil {
                     // primary で不在 = pass だが、hybrid ではシステム UI(別プロセスのダイアログ)が
                     // primary の snapshot に映らない。不在を確定する側でだけ fallbackDriver を1回照会する
@@ -918,8 +932,9 @@ public final class StepExecutor {
             var lastScreen = FTRect(x: 0, y: 0, width: 0, height: 0)
             while true {
                 let start = clock.now
-                let snapshot = try await driver.snapshot()
+                var snapshot = try await driver.snapshot()
                 phase.snapshotMs += Self.ms(clock.now - start)
+                try await dismissInterruption(in: &snapshot, phase: &phase)
                 if let (element, fallback) = Self.resolve(step: step, in: snapshot,
                                                           strictForAssert: true) {
                     found = true
@@ -964,8 +979,9 @@ public final class StepExecutor {
             var found = false
             while true {
                 let start = clock.now
-                let snapshot = try await driver.snapshot()
+                var snapshot = try await driver.snapshot()
                 phase.snapshotMs += Self.ms(clock.now - start)
+                try await dismissInterruption(in: &snapshot, phase: &phase)
                 if let (element, fallback) = Self.resolve(step: step, in: snapshot,
                                                           strictForAssert: true) {
                     found = true
@@ -992,8 +1008,9 @@ public final class StepExecutor {
             var found = false
             while true {
                 let start = clock.now
-                let snapshot = try await driver.snapshot()
+                var snapshot = try await driver.snapshot()
                 phase.snapshotMs += Self.ms(clock.now - start)
+                try await dismissInterruption(in: &snapshot, phase: &phase)
                 if let (element, fallback) = Self.resolve(step: step, in: snapshot,
                                                           strictForAssert: true) {
                     found = true
@@ -1026,8 +1043,9 @@ public final class StepExecutor {
             var actual = 0
             while true {
                 let start = clock.now
-                let snapshot = try await driver.snapshot()
+                var snapshot = try await driver.snapshot()
                 phase.snapshotMs += Self.ms(clock.now - start)
+                try await dismissInterruption(in: &snapshot, phase: &phase)
                 actual = Self.unionCandidates(chain, elements: snapshot.elements).count
                 if actual == expectedCount { return .passed }
                 if Date() >= deadline { break }

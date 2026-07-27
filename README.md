@@ -342,8 +342,9 @@ exist(.type(.button).text("保存", .contains))    // .button&&textContains=保�
   子孫が消えるためスコープに使えない
 - `countIs("#list >> .clickable", 3)` はリスト件数の検証。タイムアウトまで個数の変化を待つ
   (`||` は和集合の総数。同じ要素が複数の節にマッチしても1度だけ数える)
-- 一覧の折り返し下にある項目は `tap("設定", scroll: .down)` / `exist("システム", scroll: .down)` で
-  **スクロールしながら探す**(`scrollTo` を先に流すのと同じ。省略時は現在画面のみ)
+- 一覧の折り返し下にある項目は `tap("設定", scroll: .up)` / `exist("システム", scroll: .up)` で
+  **スクロールしながら探す**(`scrollTo` を先に流すのと同じ。省略時は現在画面のみ)。
+  **方向は指の動き**なので、下にある要素へ届かせたいときは `.up`(`swipe` と同じ語彙)
 - `textIsNot` / `textIsEmpty` / `textIsNotEmpty` は**可視性を見ない**(「見えていないこと」は
   画面照合できないため)。値の変化待ちに使う
 - `doUntilTrue("在庫が補充される") { try await stockCount() > 0 }` はアプリ・外部の状態待ち。
