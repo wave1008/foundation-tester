@@ -5,6 +5,11 @@
 # .claude/skills/ に ftester-setup / ftester-update / ftester-profiles / ftester-scenario スキルを置く
 # (この時点では repo を clone しない):
 #   curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install-skill.sh | sh
+#
+# 注: Claude Code なら plugin 導入(ターミナルで claude plugin marketplace add wave1008/foundation-tester →
+# claude plugin install ftester@foundation-tester --scope user。スキル自動更新つき・正典 .claude/skills/ を参照。
+# /plugin スラッシュコマンドは VSCode 拡張パネルでは使えない)が推奨。
+# 本スクリプトはプラグイン機構を使えない環境向けのフォールバック(コピーなので自動更新なし)。
 # 以後 Claude Code で /ftester-setup(初回導入)・/ftester-update(更新)・
 # /ftester-profiles(プロファイル一括作成)・/ftester-scenario(シナリオ作成)を呼べる。
 # clone/build/install は各スキル本体が行う(大きな取得/ビルドの前にユーザーがレビューできるようにするため)。

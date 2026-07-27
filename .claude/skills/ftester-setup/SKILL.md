@@ -34,15 +34,24 @@ description: foundation-tester を使いたい受け手を、自分の iOS/Andro
 
 ## 手順
 
-### 0. 🧑 人間チェックポイント（前提）
+### 0. 前提の機械判定と一括質問
 
-先に次を人間に確認する。未達なら停止して依頼する（エージェントでは実施不可）:
+**環境は機械判定する（人間に「入っているか」を聞かない）**。失敗した項目だけ 🧑 停止して対処を依頼する
+（導入・license 同意はエージェントでは代行不可）:
 
-- macOS 27+ か
-- Xcode 27+ 導入済み・`sudo xcodebuild -license accept` 済みか
-- （初回のみ）テスト対象アプリのビルド済み `.app` / `.apk` のパス、マシン名
-  → **人間に聞く。他リポジトリを勝手に探索して埋めない**（バージョン・パスの推測は事故のもと）。
+- macOS 27+: `sw_vers -productVersion`
+- Xcode 27+: `xcodebuild -version`（コマンド自体が license 未同意エラーで落ちたら 🧑 に
+  `sudo xcodebuild -license accept` を依頼。sudo は代行不可）
+- 初回セットアップ: `xcodebuild -checkFirstLaunchStatus`（exit 0 以外なら 🧑 に `xcodebuild -runFirstLaunch` を依頼）
 
+**セットアップ値は 🧑 に冒頭の1回でまとめて質問する**（以降のステップで散発的に再質問しない）:
+
+- プロジェクト名（英数字 `^[A-Za-z0-9_][A-Za-z0-9_-]*$`）とアプリの bundle ID（→ステップ4で使う）
+- テスト対象アプリのビルド済み `.app` / `.apk` のパス（→ステップ6で使う）
+- マシン名（→ステップ5で使う）
+
+→ **これらは人間に聞く。他リポジトリを勝手に探索して埋めない**（バージョン・パスの推測は事故のもと。
+探索で見つけた候補を既定値として提示するのも避ける）。
 （シミュレータは step 5 で自動採取・自動選択するのでここでは聞かない。）
 
 ### 0.5 入り方の判定と TOOL_ROOT の取得
@@ -95,8 +104,7 @@ tag も clone で取得できる)。
 
 ### 4. 自分のプロジェクトを作る(構成で分岐)
 
-プロジェクト名（英数字 `^[A-Za-z0-9_][A-Za-z0-9_-]*$`）とアプリの bundle ID を🧑に確認して、
-**WORK_DIR(カレント)で**作る:
+ステップ0で確認したプロジェクト名と bundle ID を使い、**WORK_DIR(カレント)で**作る:
 
 - **外部パッケージ構成(既定)**: `ftester init` で WORK_DIR を ftester テストパッケージにする。
   TOOL_ROOT を SPM のローカルパス依存として引き、最初のプロジェクトを登録する:
@@ -106,7 +114,8 @@ tag も clone で取得できる)。
   --ftester-path ../foundation-tester --name <ProjectName> --app <bundleID>
 ```
 
-  → WORK_DIR に `Package.swift`(空マーカー区間 + ftester 依存)と `Projects/<ProjectName>/` が生成され、
+  → WORK_DIR に `Package.swift`(空マーカー区間 + ftester 依存)と `Projects/<ProjectName>/`、
+  `.vscode/settings.json`(`ftester.binaryPath`・`ftester.project`。拡張の手動設定を不要にする)が生成され、
   受け手専用の `/ftester-setup` スキルが `.claude/skills/` に上書きされる(次回以降の実行はそちらを使う。
   この実行はロード済み手順のまま継続してよい)。ローカルパス依存なので `swift build` はネットワーク不要・
   TOOL_ROOT を `git pull` すれば ftester 側も更新される。git 依存にしたい場合のみ `--ftester-url
@@ -193,9 +202,10 @@ CLI が無ければ上の WORK_DIR `.mcp.json` 方式で十分。
 
 - VSCode で **WORK_DIR** を開く（外部構成: あなたのテストパッケージのフォルダ。clone 構成:
   `foundation-tester` フォルダ）
-- **外部パッケージ構成のときは** 設定 `ftester.binaryPath` を TOOL_ROOT の CLI に向ける
-  （ワークスペース相対で `../foundation-tester/.build/debug/ftester`、または絶対パス。拡張は設定値が
-  実在すればそれを、無ければ PATH の `ftester` を使う）。clone 構成では既定 `.build/debug/ftester` のままでよい
+- 拡張の設定操作は原則不要（外部パッケージ構成では `ftester init` が `.vscode/settings.json` に
+  `ftester.binaryPath`・`ftester.project` を生成済み。init が「マージできず未更新」警告を出していた場合のみ
+  🧑 に手動設定を依頼: `ftester.binaryPath` = `../foundation-tester/.build/debug/ftester` または絶対パス。
+  clone 構成では既定 `.build/debug/ftester` のままでよい）
 - `Developer: Reload Window` を実行（インストール・設定だけでは反映されない）
 - プロジェクトが複数あるなら設定 `ftester.project` を `<ProjectName>` にするか、拡張の選択で選ぶ
 - ftester パネル（Test Explorer / デバイスモニター等）を開く

@@ -40,21 +40,37 @@ UI は VSCode 拡張(`vscode-ftester/`)に一本化している(セットアッ�
 ## インストール(使う: Claude Code に任せる)
 
 **自分のアプリのテストを書くだけ**なら、Claude Code に一式(clone → ビルド → 拡張導入 → プロジェクト設定)を
-任せられる。空のフォルダで次の1行を実行してスキルを導入し、Claude Code で `/ftester-setup` を呼ぶだけ:
+任せられる。ターミナルで次の2コマンドでプラグインを導入し(user スコープなので VSCode の Claude Code 拡張
+にも反映される)、テスト用の新規フォルダを VSCode で開いて `/ftester:ftester-setup` を呼ぶだけ:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install-skill.sh | sh
+claude plugin marketplace add wave1008/foundation-tester
+claude plugin install ftester@foundation-tester --scope user
 ```
 
-- この1行が `.claude/skills/` に **`ftester-setup`(初回導入)・`ftester-update`(更新)・
-  `ftester-profiles`(マシン/アプリ/実行プロファイルの一括作成)・`ftester-scenario`(テストシナリオ作成)** の各スキルを置く
-  (この時点では clone しない=大きな取得の前にレビューできる)。版を固定するなら `FTESTER_REF=<tag>` を前置。
-- `/ftester-setup`(既定=**外部パッケージ構成**): foundation-tester を横に `git clone` → `swift build`
+(`claude` CLI が無ければ `brew install claude-code`。ターミナルから入れるのは **VSCode 拡張パネルでは
+`/plugin` スラッシュコマンドが使えない**ため。ターミナル対話セッションやデスクトップアプリなら
+`/plugin marketplace add …` → `/plugin install …` でも同じ。詳細は
+[docs/getting-started.md](docs/getting-started.md))
+
+- プラグインは **`ftester-setup`(初回導入)・`ftester-update`(更新)・`ftester-profiles`(マシン/アプリ/実行
+  プロファイルの一括作成)・`ftester-scenario`(テストシナリオ作成)・`ftester-mcp`(MCP のみ登録)** の各スキルを
+  提供する(スキルはマーケットプレイス経由で自動更新。導入時点では clone しない=大きな取得の前にレビュー
+  できる)。版を固定するなら `claude plugin marketplace add https://github.com/wave1008/foundation-tester.git#<tag>`。
+- プラグイン機構を使えない場合の代替(スキルをカレントの `.claude/skills/` にコピー。自動更新なし・
+  呼び出し名は `/ftester-setup` 等の名前空間なし。版固定は `FTESTER_REF=<tag>` を前置):
+
+  ```bash
+  curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install-skill.sh | sh
+  ```
+
+- `/ftester:ftester-setup`(既定=**外部パッケージ構成**): foundation-tester を横に `git clone` → `swift build`
   (ツールの CLI)→ `npm run install-local`(VSCode 拡張)→ **いま開いているディレクトリ**を `ftester init` で
-  テストパッケージ化(あなたのプロジェクトは自分のディレクトリの `Projects/` に住み、ツールの clone とは分離)。
-  仕上げに `/ftester-profiles` を呼んでプロファイルを作る。検証ゲートと人間チェックポイント付き。
-- 以後、修正版の取り込みは `/ftester-update`、テスト対象やデバイスの追加は `/ftester-profiles`、
-  テストシナリオ(.swift)の作成は `/ftester-scenario`。
+  テストパッケージ化(あなたのプロジェクトは自分のディレクトリの `Projects/` に住み、ツールの clone とは分離。
+  拡張設定 `.vscode/settings.json` も自動生成)。仕上げに `/ftester:ftester-profiles` を呼んでプロファイルを
+  作る。検証ゲートと人間チェックポイント付き。
+- 以後、修正版の取り込みは `/ftester:ftester-update`、テスト対象やデバイスの追加は `/ftester:ftester-profiles`、
+  テストシナリオ(.swift)の作成は `/ftester:ftester-scenario`。
 - 手順の全体像・手動でのやり方・トラブルシュートは [docs/getting-started.md](docs/getting-started.md)。
 
 > **配布はソースビルド前提**(バイナリ配布はしない)。ツール本体(CLI)も VSCode 拡張(.vsix)も、この clone から
@@ -142,7 +158,7 @@ swift run ftester run --profile ios           # 実行プロファイル(ブリ�
 | `devices up / down` | 実行プロファイルのデバイスを一括起動・停止(ブリッジ供給込み) |
 | `results list / summary / flaky / trend / devices / slow / insights` | 実行結果の集約・分析(reports/ を横断) |
 | `draft-scenario` | テストベース(`docs/testbases/*.md`)からシナリオの下書きを生成(`--testbase`、`--app`、`--platform`、`--no-fm` で FM 不使用、`--dry-run`) |
-| `init` | 外部パッケージ構成の scaffold(受け手ディレクトリを ftester テストパッケージ化。curl 入口の `/ftester-setup` 既定経路) |
+| `init` | 外部パッケージ構成の scaffold(受け手ディレクトリを ftester テストパッケージ化。スキル入口 `/ftester-setup` の既定経路) |
 | `profile list` | 実行プロファイルの一覧と現在マシンでの解決チェック |
 | `machine set / show` | このマシンの名前(マシンプロファイルの選択キー)の登録・確認 |
 | `install <パッケージパス>` | .app / .apk のインストール |
