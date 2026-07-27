@@ -309,6 +309,12 @@ FM は死んだら**再起動まで回復しない**ので、死んだ後も呼�
 (sut-ec-mobile は localhost:8090 の dev サーバ。停止中はアプリが非同期例外でクラッシュする)。
 apps プロファイルの healthCheckURL が実行開始時に警告を出す。
 
+バックエンド停止の症状は 2 種が混在する(実測 2026-07-27): SUT の SIGABRT クラッシュ
+(未処理コルーチン例外。`~/Library/Logs/DiagnosticReports/` に .ips が積まれる)と、
+エラー画面のまま要素が解決できない大量失敗。**決め手は失敗レポートの「失敗時点の要素一覧」**
+(エラー画面 `#view_error`「読み込みに失敗しました」が写っていればバックエンド起因で確定)。
+.ips が積まれていてもツールや OS beta を疑う前に `/health` を確認する。
+
 ## Android 凍結まわりの検証の罠
 
 - **画面 OFF(KEYCODE_SLEEP)はフェイク凍結として万能ではない**: screencap は実凍結と同一の
@@ -590,3 +596,14 @@ devicepoll の要点:
   大きく外れたら解像度判定(shrinkThreshold)かビットレートを疑う
 - Android screenrecord は180秒上限のセグメントループ。停止は**デバイス側プロセスへ kill -2**
   (ホストの adb クライアント kill ではファイルが壊れる)。iOS simctl は SIGINT 停止・SIGKILL 禁止
+- **ホストの HW エンコーダ(AVE)無応答でファイナライズがハングし得る**(実害 2026-07-27:
+  macOS 27 beta で 5 並列エクスポート+モニターの simstream 5 本の負荷中、`finishWriting` →
+  `VTCompressionSessionInvalidate` → RemoteVideoEncoder の同期 XPC が AVE 応答待ちのまま止まり、
+  全シナリオ成功後に run が終わらなかった)。保護は VideoRecordingCoordinator に実装済み:
+  クリップ 1 本ごとに期限 `max(60s, ソース総尺)`・1 本でも期限超過したらその run の残りクリップを
+  断念(警告 1 回)・エクスポート同時実行は 2 本。期限側は敗者 task を放置する
+  (`cancelWriting` は固着した VT セッションのロックで共倒れし得るため呼ばない)
+- **「全シナリオ完了済みなのに run が終わらない」の診断**: `sample <ftester の pid>` を取り、
+  `VTCompressionSessionInvalidate` / `RemoteVideoEncoder_EncodeFrame` が居れば上記のエンコーダ
+  無応答(相手側の VTEncoderXPCService プロセスも `AVE_UCRecv` で待っている)。ツールは期限で
+  自力離脱するので待てばよい。頻発するなら OS 再起動でしか AVE は復旧しない

@@ -1242,6 +1242,12 @@ H.264 に再エンコード。VFR ソースの区間頭フレーム欠落は直�
 契約は `recordings/index.json`(schemaVersion 2。VideoRecordingCoordinator.swift・
 RecordingIndex.swift・RecordingWallClock.swift)。録画自体の失敗は run を失敗させない。
 
+ファイナライズのエクスポートは同時 2 本に制限し、クリップ 1 本ごとに期限 `max(60秒, ソース総尺)`
+を切る(ホスト HW エンコーダ[AVE]の無応答で `finishWriting` が永久待ちし run がハングした実害
+2026-07-27 への保護)。期限超過はエンコーダ無応答とみなして**その run の残りクリップを断念**し、
+run 自体は完了させる。期限側は敗者 task に触れず放置する(`cancelWriting` は固着した VT セッション
+のロックで共倒れし得る)。診断手順は docs/verification.md「録画(record:true)の検証」。
+
 録画の付随設定(すべて `record: true` のときのみ意味を持つ): `recordFailuresOnly`(既定 false)
 は true で成功したシナリオのクリップを保存せず失敗(frozen 含む)分のみ残す。`recordBitrateKbps`
 (既定 1500)は再エンコードの bitrate(kbps)で AVVideoAverageBitRateKey と Android screenrecord
