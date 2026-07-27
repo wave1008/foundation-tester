@@ -146,35 +146,118 @@ final class FTInAppBridge {
 
     private func handleTap(_ body: Data) throws -> InAppHTTPServer.Response {
         let req = try decode(TapRequest.self, body)
-        // ref 指定で activate 不発により合成タッチへ落ちたときだけ true にする(note 用)。
-        // 座標指定の経路や activate 成功の通常経路は無言 no-op になり得ないので対象外。
-        var fellBackToSynthTapForRef = false
+        if let ref = req.ref {
+            let note = try tapByRef(ref, req: req)
+            return .json(OKResponse(note: note))
+        }
         try performWithSettle { window in
-            // ref 指定はまず保持要素を accessibilityActivate(要素のデフォルトアクション=ボタン発火・
-            // セル選択等を確実に起こす。合成タッチはジェスチャ認識器を発火できないため)。
-            if let ref = req.ref,
-               let node = self.nodes.object(forKey: NSNumber(value: ref)) as? NSObject,
-               node.accessibilityActivate() {
-                return
-            }
-            let p = try self.resolvePoint(ref: req.ref, x: req.x, y: req.y)
+            let p = try self.resolvePoint(ref: nil, x: req.x, y: req.y)
             // 座標指定は直近 snapshot で point を含む最小要素を activate(SwiftUI の活性化要素は
             // 合成 AX ノードで hitTest の view 階層には無いため、snapshot 要素から解決する)。
             // 合成タッチはジェスチャを発火しないので座標タップが無言 no-op になるのを防ぐ。無ければ合成タッチ。
-            if req.ref == nil, self.activateSnapshotNode(containing: p) { return }
-            // ref 指定で要素はあるが accessibilityActivate が false(デフォルトアクション不発)のときも
-            // ここに落ちる。FTSynthTap は成否を返さないため、要素が実際に反応したかは検知できず
+            if self.activateSnapshotNode(containing: p) { return }
+            FTSynthTap(window, p)
+        }
+        return .json(OKResponse())
+    }
+
+    /// ref 指定タップ。accessibilityActivate(要素のデフォルトアクション=ボタン発火・セル選択等を
+    /// 確実に起こす)を最優先し、不発なら**整定を待って要素を取り直し再 activate**、それでも不発なら
+    /// 合成タッチ(従来のフォールバック)。戻り値は観測用 note(通常経路は nil)。
+    ///
+    /// 再試行を挟む理由(2026-07-27 sut-ec-mobile お気に入り一覧で実測):
+    /// Compose iOS は**画面遷移直後、要素が AX ツリーに載っていても activate がまだ配線されておらず
+    /// false を返す**ことがある。その瞬間の合成タッチも無反応(成否も検知できない)で、タップが
+    /// 黙って空振りする。1〜2 秒後の再操作は成功するため、アニメーション整定を待ってから
+    /// 取り直すと救える。待ちはメインをブロックしない(asyncAfter / InAppSettle)。
+    /// 再試行は activate が false のときだけ発生するので、通常経路のコストはゼロ。
+    private func tapByRef(_ ref: Int, req: TapRequest) throws -> String? {
+        let sem = DispatchSemaphore(value: 0)
+        var thrown: Error?
+        var note: String?
+
+        func finish(_ window: UIWindow) {
+            InAppSettle.waitOnMain { sem.signal() }
+        }
+        func synthFallback(_ window: UIWindow) {
+            // FTSynthTap は成否を返さないため、要素が実際に反応したかは検知できず
             // 無言 no-op になり得る(throw は追加しない: 誤検知で正常系を壊す方が害が大きい)。
             // 反応しない場合は accessibilityIdentifier(testTag)を付けるか engine=xcuitest を検討
             // (hybrid の XCUITest フォールバックは springboard 参照でアプリ要素には効かない)。
-            // OKResponse.note で観測可能にする(下記)。
-            if req.ref != nil { fellBackToSynthTapForRef = true }
-            FTSynthTap(window, p)
+            note = "activate 不発 → 合成タッチ(要素が反応しない場合は testTag 付与か engine=xcuitest を検討)"
+            do {
+                let p = try self.resolvePoint(ref: ref, x: req.x, y: req.y)
+                FTSynthTap(window, p)
+            } catch {
+                thrown = error
+                sem.signal()
+                return
+            }
+            finish(window)
         }
-        let note = fellBackToSynthTapForRef
-            ? "activate 不発 → 合成タッチ(要素が反応しない場合は testTag 付与か engine=xcuitest を検討)"
-            : nil
-        return .json(OKResponse(note: note))
+        func retry(_ remaining: Int, stale: NSObject, window: UIWindow) {
+            if let fresh = self.refreshedNode(matching: stale, ref: ref, window: window),
+               fresh.accessibilityActivate() {
+                note = "activate 不発 → 要素を取り直して再実行"
+                finish(window)
+                return
+            }
+            guard remaining > 1 else {
+                synthFallback(window)
+                return
+            }
+            // AX ツリーの配線はアニメ整定より遅れることがあるため、固定の小休止で1回だけ粘る
+            DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(250)) {
+                retry(remaining - 1, stale: stale, window: window)
+            }
+        }
+
+        DispatchQueue.main.async {
+            guard let window = self.keyWindow() else {
+                thrown = InAppError(409, "キーウィンドウがありません")
+                sem.signal()
+                return
+            }
+            guard let node = self.nodes.object(forKey: NSNumber(value: ref)) as? NSObject else {
+                synthFallback(window)   // 保持ノードが無い(従来と同じく座標へ)
+                return
+            }
+            if node.accessibilityActivate() {
+                finish(window)
+                return
+            }
+            // 遷移アニメーションが終わるのを待ってから取り直す(イベント駆動・上限 800ms)
+            InAppSettle.waitOnMain(capMs: 800) {
+                retry(2, stale: node, window: window)
+            }
+        }
+        // 最悪ケース: 整定 800ms + 再試行2回(+250ms) + アクション後整定 2500ms
+        _ = sem.wait(timeout: .now() + .seconds(8))
+        if let thrown { throw thrown }
+        return note
+    }
+
+    /// 不発だった保持ノードの代わりを、取り直したツリーから探す(id 一致 → 無 id なら frame+label 一致)。
+    /// 不発ノードでも identifier/label プロパティは読める(参照は生きている)のでキーに使う。
+    /// **self.nodes/frames は更新しない** — この tap リクエスト内の座標解決は元の snapshot が前提のため
+    private func refreshedNode(matching stale: NSObject, ref: Int, window: UIWindow) -> NSObject? {
+        guard let originalFrame = frames[ref] else { return nil }
+        let fresh = InAppSnapshot.capture(window: window)
+        func distance(_ frame: FTRect) -> CGFloat {
+            abs(frame.x - originalFrame.origin.x) + abs(frame.y - originalFrame.origin.y)
+        }
+        if let id = FTAccessibilityIdentifier(stale), !id.isEmpty {
+            // 同 id が複数あるときだけ frame で近い方に絞る(通常 testTag は一意)
+            let best = fresh.elements.filter { $0.identifier == id }
+                .min { distance($0.frame) < distance($1.frame) }
+            return best.flatMap { fresh.nodes[$0.ref] }
+        }
+        // id 無しは frame(±2pt)と label の一致で同定する
+        let label = stale.accessibilityLabel
+        let candidate = fresh.elements.first {
+            $0.label == label && distance($0.frame) <= 2
+        }
+        return candidate.flatMap { fresh.nodes[$0.ref] }
     }
 
     /// point を含む最小フレームの snapshot 要素を accessibilityActivate する(座標→要素解決)。
