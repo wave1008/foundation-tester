@@ -1,6 +1,7 @@
 # リリース手順(git タグ発行)
 
-git タグ(semver)は**版ピン用**に使う(clone 時の `git checkout <tag>` や `ftester init --ftester-version`)。
+git タグ(semver)は**版ピン用**に使う(clone 時の `git checkout <tag>`、`ftester init --ftester-version`、
+Claude Code プラグイン導入の `claude plugin marketplace add <repo URL>#<tag>`)。
 配布そのものは git clone + `swift build` / `npm run install-local`(docs/getting-started.md)であり、
 タグは必須ではないが、特定版に固定したい受け手のために発行する。
 
@@ -8,7 +9,7 @@ git タグ(semver)は**版ピン用**に使う(clone 時の `git checkout <tag>`
 
 | 版 | 置き場所 | いつ上げる | 参照する側 |
 |---|---|---|---|
-| **git タグ**(例 `0.1.0`) | `git tag` | ftester 本体(CLI/Swift パッケージ)をリリースするたび | `git checkout <tag>` / `ftester init --ftester-version` |
+| **git タグ**(例 `0.1.0`) | `git tag` | ftester 本体(CLI/Swift パッケージ)をリリースするたび | `git checkout <tag>` / `ftester init --ftester-version` / `claude plugin marketplace add …#<tag>` |
 | **拡張の version** | `vscode-ftester/package.json` | 拡張の挙動を変えたとき | VSIX(別途 publish。Marketplace 等) |
 | **プロトコル版** | `Sources/FTCore/ProtocolVersion.swift` | 拡張↔CLI の JSON/NDJSON 契約を**後方非互換に**変えたときだけ +1 | 起動時の版照合(compatCheck.ts) |
 

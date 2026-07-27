@@ -4,11 +4,31 @@
 Claude Code に一連を任せる場合は `/ftester-setup` スキルを実行してください
 （このドキュメントはその土台であり、手動でも同じ手順を踏めます）。
 
-**最短経路（Claude Code）**: 次の1行で `ftester-setup`（初回導入）・`ftester-update`（更新）・
-`ftester-profiles`（マシン/アプリ/実行プロファイルの一括作成）・`ftester-scenario`（テストシナリオ作成）の
-各スキルを `.claude/skills/` に導入します。
-あとは Claude Code で `/ftester-setup` を呼ぶと、ツールの clone → ビルド → あなたのプロジェクト作成 →
-プロファイル設定までを自動で行います（以後の更新は `/ftester-update`）。
+**最短経路（Claude Code プラグイン・推奨）**: ターミナルで次の2コマンドを実行すると、
+`ftester-setup`（初回導入）・`ftester-update`（更新）・`ftester-profiles`（マシン/アプリ/実行プロファイルの
+一括作成）・`ftester-scenario`（テストシナリオ作成）・`ftester-mcp`（MCP のみ登録）の各スキルが
+プラグインとして入ります（スキルはマーケットプレイス経由で**自動更新**。`claude` CLI が無ければ
+`brew install claude-code`）:
+
+```bash
+claude plugin marketplace add wave1008/foundation-tester
+claude plugin install ftester@foundation-tester --scope user
+```
+
+user スコープなので、プラグインは **VSCode の Claude Code 拡張にもそのまま反映**されます
+（開いているウィンドウへは Reload Window で反映）。あとはテスト専用の**新規ディレクトリ**を VSCode で
+開いて Claude Code パネルから `/ftester:ftester-setup` を呼ぶ（または「ftester をセットアップして」と
+依頼する）と、ツールの clone → ビルド → あなたのプロジェクト作成 → プロファイル設定までを自動で行います
+（以後の更新は `/ftester:ftester-update`）。版を固定したい場合は
+`claude plugin marketplace add https://github.com/wave1008/foundation-tester.git#<タグ>`。
+
+> 導入コマンドをターミナルで実行するのは、**VSCode 拡張のパネルでは `/plugin` スラッシュコマンドが
+> 使えない**ためです（「/plugin isn't available in this environment.」になる）。ターミナルの対話
+> セッションやデスクトップアプリで導入するなら `/plugin marketplace add wave1008/foundation-tester` →
+> `/plugin install ftester@foundation-tester` でも同じです。
+
+プラグイン機構を使えない場合の代替（スキルをカレントの `.claude/skills/` にコピーする。自動更新なし・
+呼び出し名は `/ftester-setup` 等の名前空間なし）:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install-skill.sh | sh
@@ -68,7 +88,8 @@ clone 構成では同一です。
 
 ## セットアップ手順（手動）
 
-Claude Code に任せるなら上の curl → `/ftester-setup` が下記を自動で行います。以下は手動での同等手順です。
+Claude Code に任せるなら、上のプラグイン(または curl)で入れた `/ftester-setup` が下記を自動で行います。
+以下は手動での同等手順です。
 
 ### 1. 前提（人間がやる）
 
@@ -100,7 +121,8 @@ swift run ftester doctor         # 環境検証。赤が出たら潰してから
   --ftester-path ../foundation-tester --name MyApp --app com.mycompany.myapp
 ```
 
-  → WORK_DIR に `Package.swift`（ftester をローカルパス依存で引く）と `Projects/MyApp/` が生成されます。
+  → WORK_DIR に `Package.swift`（ftester をローカルパス依存で引く）と `Projects/MyApp/`、
+  `.vscode/settings.json`（拡張の `ftester.binaryPath`/`ftester.project` を自動設定）が生成されます。
   ローカルパス依存なので `swift build` はネットワーク不要・TOOL_ROOT を `git pull` すれば ftester も更新されます。
   以降 `ftester …` は `../foundation-tester/.build/debug/ftester …` を指します。
 
@@ -191,10 +213,12 @@ npm run install-local           # .vsix 化 → インストール → 到達確
 その後 **VSCode で WORK_DIR を開き**（外部構成: あなたのテストパッケージのフォルダ／clone 構成:
 `foundation-tester` フォルダ）、**`Developer: Reload Window`** を実行します（インストールだけでは反映されません）。
 
-- **外部パッケージ構成では** 設定 `ftester.binaryPath` を TOOL_ROOT の CLI に向けます
-  （ワークスペース相対 `../foundation-tester/.build/debug/ftester` または絶対パス。設定値が実在すればそれを、
+- **外部パッケージ構成では** `ftester init` が WORK_DIR の `.vscode/settings.json` に
+  `ftester.binaryPath`（TOOL_ROOT の CLI）と `ftester.project` を生成済みなので、通常は設定操作は不要です
+  （既存の settings.json がコメント付き等でマージできなかった場合は init が警告を出すので手動設定:
+  ワークスペース相対 `../foundation-tester/.build/debug/ftester` または絶対パス。設定値が実在すればそれを、
   無ければ PATH の `ftester` を使う）。clone 構成では既定 `.build/debug/ftester` のままで可。
-- プロジェクトが複数あるときは `ftester.project` を `MyApp` にするか、拡張のプロファイル選択から選びます。
+- プロジェクトが複数あるときは `ftester.project` を切り替えるか、拡張のプロファイル選択から選びます。
 
 ### 6. シナリオを書いて実行
 

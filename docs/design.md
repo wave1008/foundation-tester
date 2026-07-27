@@ -1673,13 +1673,31 @@ trigger)は CLI エントリでしか分からないため、`RunRecorder` を C
 
 **現状(正典)**: onboarding の既定は**外部パッケージ構成**(受け手ディレクトリを `ftester init` で
 テストパッケージ化し、Projects は受け手側に住む。foundation-tester は横に clone した「ツール」=
-TOOL_ROOT)。clone 構成(クローンの中で直接シナリオを管理)は保守者/PoC 向け。入口は curl ワンライナー
-(`Scripts/install-skill.sh` が `/ftester-setup`・`/ftester-update`・`/ftester-profiles` を .claude/skills/ へ導入)
-→ Claude Code の `/ftester-setup`(構成を自動判定し、curl 入口=受け手ディレクトリは外部構成へ分岐、
-クローン内は clone 構成)。CLI・VSCode 拡張とも TOOL_ROOT の clone から `swift build` /
+TOOL_ROOT)。clone 構成(クローンの中で直接シナリオを管理)は保守者/PoC 向け。入口は **Claude Code
+プラグイン**(ターミナルで `claude plugin marketplace add wave1008/foundation-tester` →
+`claude plugin install ftester@foundation-tester --scope user`。受け手は VSCode の Claude Code 拡張前提で、
+拡張パネルでは /plugin スラッシュコマンドが使えないため CLI 形式が正。
+スキルはマーケットプレイス経由で自動更新・版固定は `#<tag>`)、フォールバックが curl ワンライナー
+(`Scripts/install-skill.sh` がスキルを .claude/skills/ へコピー。自動更新なし)→ いずれも
+`/ftester-setup`(プラグインでは `/ftester:ftester-setup`)が構成を自動判定し、受け手ディレクトリは
+外部構成へ分岐、クローン内は clone 構成。CLI・VSCode 拡張とも TOOL_ROOT の clone から `swift build` /
 `npm run install-local` でビルドする(バイナリ配布はしない)。mint は廃止(VSIX はバイナリ配布しないため
-clone がどのみち必須で、CLI だけ mint 経由にすると二重取得になるだけだったため)。以下は外部パッケージ構成
-(`ftester init`)の実装詳細。
+clone がどのみち必須で、CLI だけ mint 経由にすると二重取得になるだけだったため)。
+
+**配布アダプタの方針(他エージェントツールへの将来展開)**: 導入 runbook の正典は
+`.claude/skills/<name>/SKILL.md`(ツール中立の markdown 手順書。特定エージェント専用機能に依存させない)。
+Claude Code 向けは `.claude-plugin/`(plugin.json の `skills` が正典ディレクトリを**参照するだけ**の薄い
+アダプタ。複製しない。整合は `vscode-ftester/test/claudePlugin.test.mjs` が検証)。他ツール(Codex/Cursor 等)へ
+展開するときも、同じ runbook を各ツールの規約位置から参照/変換する薄いアダプタを足す(runbook 本体は共有し、
+ツールごとに手順書を複製しない)。
+**ローカル検証の罠**: `/plugin` は VSCode 拡張パネルでは使えない(ターミナル CLI かデスクトップアプリ)。
+`claude plugin marketplace add <ローカルパス>` は git clone ではなく**作業ツリーを丸ごとコピー**する
+(gitignore を無視するため `.build/` 約8GB も入りキャッシュが約13GBに膨れる)。検証後は
+`claude plugin uninstall ftester@foundation-tester` + `claude plugin marketplace remove foundation-tester`
+で登録を外し、**キャッシュ実体は remove 後も残る**(実測)ので
+`~/.claude/plugins/cache/foundation-tester` を手動削除する。GitHub 経由の本番導入は git clone なので
+生成物は含まれない。
+以下は外部パッケージ構成(`ftester init`)の実装詳細。
 
 受け手が foundation-tester を clone せず、**自分の Swift パッケージが ftester を SPM 依存として引いて**
 自分のアプリのシナリオを書ける構成(以下「外部パッケージ構成」)。clone してその中でシナリオを管理する構成を「clone 構成」と呼ぶ。
