@@ -367,6 +367,12 @@ ftester snapshot [--json] | tap | type | swipe | press | screenshot
 
 実行結果はシナリオ実行毎に `Projects/<name>/reports/scenario-*.md`(§10)へ自動出力される。
 集約・分析は別レイヤの `ftester results list/summary/flaky/trend/devices/slow/insights`(§14)で行う。
+
+- **`bridge up` が起動するのは xcuitest ブリッジ(iOS)/デバイス内サーバ(Android)のみ**(in-app ブリッジを
+  起動する経路は無い)。プロセスは常駐し、停止は `bridge down` か `devices down` を要する
+- **`run --profile` は終了時にブリッジを停止しない**(常駐を残すのが仕様。次の run が版一致なら再利用する。
+  詳細・トラブルシュートは docs/getting-started.md「ブリッジの起動・再利用・停止」)
+
 CLI/MCP/VSCode 拡張はいずれも同じ `ftester api ...` 系サブコマンドを経由して呼び出す共通実装(§11.4 参照)。
 
 ---
@@ -593,14 +599,19 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
   | `ラベル` | `text=ラベル` | **完全一致**(暗黙の部分一致フォールバックは無い) |
   | `*語*` / `語*` / `*語` | `textContains=` / `textStartsWith=` / `textEndsWith=` | 部分一致 |
   | — | `textMatches=^…$` | 正規表現(**部分一致**。全体一致は `^…$`) |
-  | `#id` | `id=` | id(常に完全一致) |
+  | `#id` | `id=` | id(完全一致) |
+  | `#foo*` / `#*foo*` / `#*foo` | `idStartsWith=` / `idContains=` / `idEndsWith=` | id の部分一致(Shirates 準拠) |
+  | — | `idMatches=^…$` | id の正規表現(**部分一致**。全体一致は `^…$`) |
   | `.型` | `type=` | 型(先頭小文字) |
   | `[n]` | `pos=n` | 候補内の順番(1 オリジン) |
-  | — | `value=` / `placeholder=` | 値・プレースホルダ(`Contains`/`StartsWith`/`EndsWith`/`Matches` も同じ規則で使える) |
+  | — | `value=` / `placeholder=` | 値・プレースホルダ(`text`/`id` と同じく `Contains`/`StartsWith`/`EndsWith`/`Matches` が使える) |
   | — | `checked=true\|false` / `enabled=true\|false` | 状態(`checked=false` は「オンでない」= 状態を持たない要素も含む) |
   | `(a\|b)` | `text=(a\|b)` | **フィルタ内 OR**(Shirates 準拠。下記) |
   | `!値` | `属性!=値` | **否定フィルタ**(下記。短縮形は `!保存` / `!#id` / `!.button`) |
 
+  一致方法(`Contains`/`StartsWith`/`EndsWith`/`Matches`)を持つのは `text`/`value`/`placeholder`/`id`
+  の4属性のみで、`type`/`pos`/`checked`/`enabled` は完全一致だけ。id の否定も text 系と対称
+  (`idContains!=` `!#id` が使える)。
   `.型#id` = `.型&&#id`、`.型[n]` = `.型&&[n]` の短縮形。
   **型名に `=` は使えない**(`=` は text= 等のフィルタ名と先頭エスケープに使う)。`.型=ラベル` と
   書くと `=` 以降が型名の一部として never-match になるため、validationError(typeEqualsError)が
@@ -617,9 +628,12 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
   解決に失敗し**部分一致なら在る**ときは失敗メッセージが `"*語*" と書くと拾える` を出す
   (`StepExecutor.partialMatchHint`)
 - **`名前=値` の生ラベル**(SUT の状態表示 `notify=off` 等)はそのまま書ける。
-  既知のフィルタ名と紛らわしい名前(前方一致関係・大小文字違い・6文字以上で1文字違い)のときだけ
+  既知のフィルタ名と紛らわしい名前(前方一致関係・大小文字違い・6文字以上で1文字違い・
+  既知の基底名〈`text` `value` `placeholder` `id` `type` `pos` `checked` `enabled`〉を接頭辞に持ち
+  直後が大文字で続く名前〈`idPrefix=` `textFoo=` 等〉)のときだけ
   `validationError` が落とす(`textContans=x` の綴り誤りがラベル扱いで黙って緑になるのを防ぐ)。
-  `名前!=値` にも同じ規則を使う(`count!=0` は素のラベル)
+  `名前!=値` にも同じ規則を使う(`count!=0` は素のラベル)。
+  **既知の残穴**: 小文字で続く未知名(`identifier=5` 等)は生ラベルと区別できず素通りする
 - **フィルタ内 OR `(a|b)`**(2026-07-27。Shirates 準拠): トークン単位の文字列置換で
   **パース時に節へ展開する**(`(保存|OK)&&.button` → `保存&&.button || OK&&.button`)。
   `||` が和集合になったのでこの等価が成立し、照合・serialize・ヒールは一切変更が要らない。
@@ -685,8 +699,9 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
   - **スコープは節の中の基準にも対象にも効く**(`#row >> 数量:rightButton` は容器の中だけで解決する)
   - 画面外要素は frame が丸められる環境があるため**可視要素にのみ**有効
 - **構文検証 `FTSelector.validationError`**: パースは失敗しない契約のままなので、
-  `:rigth(x)` のような綴り誤り・他ツール記法(`:near` `:parent` 等)・未知のフィルタ名
-  (`textContans=`)・型名の `=`・`[abc]` `[0]` の序数・括弧の不整合・条件が空の節は
+  `:rigth(x)` のような綴り誤り・他ツール記法(`:near` `:parent` 等)・
+  既知フィルタ名と紛らわしい未知のフィルタ名(`textContans=` 等。判定規則は前述の「生ラベル」項)・
+  型名の `=`・`[abc]` `[0]` の序数・括弧の不整合・条件が空の節は
   **別経路で検出して落とす**。放置すると誤記が label 扱いになり、`notExist` / `countIs(x, 0)` が
   **必ず成功**する(黙って緑になる唯一の経路)。呼ぶのは `FTRuntime.perform`
   (dry-run でもデバイスに触る前に判定)と `ifCanSelect`(perform を通らないため個別に)。
@@ -772,6 +787,7 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
 | `thisIs` 系が素の値にも直接生える(`FTValue` 転送) | Swift は非 Optional に `Any?` 拡張が生えない(言語制約の吸収であり挙動差ではない) |
 | 相対セレクタの引数の `(a\|b)` は括弧を自分で書く | `:right(...)` の括弧が引数の括弧で `\|` の囲みにならないため |
 | フローベース相対セレクタ(`:flow` 等)を持たない | 根拠の無い調整値を要求する(上記 2026-07-26 決定・再提案しない) |
+| `pressEnter` の iOS 実装がソフトキー tap ではなく `typeText("\n")`(xcuitest)/`insertText("\n")`(inapp) | キーボード要素をスナップショットから除外しているため tap できない。観測できる挙動(Return キー相当)は同等 |
 
 ### 型付きセレクタ(Sel。2026-07-27)
 
@@ -1315,7 +1331,8 @@ DeviceBooter.defaultLocale(実行プロファイルの locale が届くのは wi
    BridgeLauncher(xctestrun FT_PORT 注入)で起動・waitUntilReady。シミュレータの新規作成はしない
    (同名複数の曖昧時は UDID 明記を推奨)。Android は AndroidDeviceCatalog で avd 照合。
    コールド起動は「プランニング(ポート採番、直列)→ 共有ビルド(dylib/xctestrun、直列)→
-   起動(デバイス単位で並列。hybrid の 2 ブリッジはデバイス内直列)」(performance-tuning §3.2)
+   起動(デバイス単位で並列。hybrid の 2 ブリッジはデバイス内直列)」(performance-tuning §3.2)。
+   **run は終了時にブリッジを停止しない**(常駐を残すのが仕様。次の run が再利用する)
 4. **自動インストール**: `appPath` あり+`autoInstall`(既定 true)→ オーケストレータ投入前に
    各ワーカーへ並行 install(差分判定=installedIsCurrent も並列。失敗ワーカーは離脱、
    残ワーカーがキューを引き継ぐ)

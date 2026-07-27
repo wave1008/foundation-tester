@@ -310,13 +310,14 @@ class ログインテスト {
 
 | 記法 | 意味 |
 |---|---|
-| `#login_btn` | accessibility id(常に完全一致) |
+| `#login_btn` | accessibility id(完全一致) |
+| `#login*` / `#*login*` / `#*btn` | id の前方一致 / 部分一致 / 後方一致(完全形は `idStartsWith=` `idContains=` `idEndsWith=`) |
 | `ログイン` | ラベル(**完全一致のみ**。完全形は `text=ログイン`) |
 | `*ログイン*` / `ログイン*` / `*ログイン` | 部分一致 / 前方一致 / 後方一致(完全形は `textContains=` `textStartsWith=` `textEndsWith=`) |
-| `textMatches=^行 [0-9]+$` | 正規表現(**部分一致**。全体一致は `^…$` を書く) |
+| `textMatches=^行 [0-9]+$` / `idMatches=^row_[0-9]+$` | 正規表現(**部分一致**。全体一致は `^…$` を書く) |
 | `.button` / `.button[2]` | 型+順番(**1 オリジン**。`.button[2]` = 2番目の Button。1番目は `[1]` を省略して `.button` と書く。`[1]` と明記しても可) |
 | `.switch#ID` / `.switch&&ラベル` | 型と id/label の併用(値検証などで型を絞る) |
-| `#save&&.button&&enabled=true` | **`&&` で AND 合成**。属性は `text` `value` `placeholder` `id` `type` `pos` `checked` `enabled` |
+| `#save&&.button&&enabled=true` | **`&&` で AND 合成**。属性は `text` `value` `placeholder` `id` `type` `pos` `checked` `enabled`。一致方法(`Contains`/`StartsWith`/`EndsWith`/`Matches`)を持つのは `text`/`value`/`placeholder`/`id` の4属性のみ、`type`/`pos`/`checked`/`enabled` は完全一致のみ |
 | `(保存\|OK)` / `text=(保存\|OK)` | **フィルタ内 OR**。`保存\|\|OK` と等価(相対の引数では `:right((保存\|OK))` と括弧を自分で書く) |
 | `.button&&text!=キャンセル` / `.button&&!キャンセル` | **否定フィルタ**(`!値` は短縮形)。`textContains!=` `!#id` `!.button` も可。**否定だけの節・序数の否定は書けない** |
 | `.input` / `.widget` | 型エイリアス(`.input` = textField\|secureTextField / `.widget` = OS 共通の役割型5つ) |
@@ -326,9 +327,12 @@ class ログインテスト {
 | `<変更&&.button>:right(数量)` | 基準の `<...>` 囲み(Shirates 正典形・任意。基準の範囲を目で追いやすくする) |
 | `=#で始まる生ラベル` | `=` エスケープで label 扱い(`>>` `&&` `:right` `*` を含むラベルもこれで書く) |
 
-結合の強さは `&&` > `>>` > `||`。綴り誤りや未対応記法(`:near` `:parent` 等)、未知のフィルタ名、
+結合の強さは `&&` > `>>` > `||`。綴り誤りや未対応記法(`:near` `:parent` 等)、
 `[abc]` のような序数、閉じない括弧は**実行前に構文エラー**になる
 (黙ってラベル扱いにしない。誤記が `notExist` を素通りして緑になるのを防ぐため)。
+**未知のフィルタ名**(`名前=値`)は生ラベルとして書ける(`notify=off` 等)が、既知フィルタ名と
+紛らわしいとき(前方一致関係・大小文字違い・6文字以上で1文字違い・既知の基底名の直後に
+大文字が続く形 `idPrefix=` 等)だけ実行前エラーになる。
 
 **型付きセレクタ(併設)**: 同じ意味を型で書ける。綴り誤りは**コンパイルエラー**になり、補完も効く。
 文字列版と同じロケータに畳まれるだけなので、混在させても実行・レポート・自己修復は変わらない。
@@ -346,7 +350,7 @@ exist(.type(.button).text("保存", .contains))    // .button&&textContains=保�
 `.secureTextField` `.switch` と `.input` `.widget` `.cell` `.image` `.clickable`、語彙外は `.custom("…")`。
 フィルタは常に「現在の対象」に効く(相対の**後**ならその相対先、前なら基準)。
 
-**コマンド**の一覧・引数・挙動は **docs/commands.md** を参照(操作 `tap` `type` `press` `swipe` /
+**コマンド**の一覧・引数・挙動は **docs/commands.md** を参照(操作 `tap` `type` `press` `swipe` `pressEnter` /
 スクロール `scrollTo`・`scrollDown` 系・`withScrollDown { }` / 検証 `exist` `notExist` `countIs`・
 `textIs`/`valueIs` の全対称(否定 `…Not`・`…IsEmpty`・`…MatchesDateFormat`)・`screenIs`(FM 視覚検証)/
 素の値の検証 `thisIs` 系 / アプリ制御・待機・分岐・反復 / `procedure` `group` `irregularHandler` 等)。
