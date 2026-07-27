@@ -86,8 +86,8 @@ export const panelsStrings = {
     en: "Use the fast in-app engine (iOS)",
   },
   "panels.runProfile.iosFastInputLabel": {
-    ja: "高速入力(整定前タップのフレークリスク)",
-    en: "Fast input (risk of tapping before settle)",
+    ja: "高速入力を有効にする(アニメーションの完了を待たずに操作するため、テストが不安定になることがあります)",
+    en: "Enable fast input (acts without waiting for animations, which may make tests unstable)",
   },
   "panels.runProfile.androidSectionTitle": { ja: "Android", en: "Android" },
   "panels.runProfile.wipeOnBloatLabel": {
