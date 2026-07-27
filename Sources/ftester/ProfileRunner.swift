@@ -17,6 +17,7 @@ enum ProfileRunner {
     /// 戻り値: 実行サマリ(失敗数+劣化ワーカー)
     static func run(project: TestProject, profileName: String, items: [ScenarioRunItem],
                     healOverride: Bool?, reportDirOverride: String?,
+                    quiet: Bool = false,
                     recorder: RunRecorder? = nil) async throws -> RunSummary {
         let runClockStart = Date()
         // 1. マシン決定 → プロファイル合成(実行プロファイル自身の machine 指定があれば最優先)
@@ -211,19 +212,28 @@ enum ProfileRunner {
         PhaseLog.mark("orchestrator-setup")
         async let summary = orchestrator.run(items: items, defaultPlatform: defaultPlatform)
 
-        // シナリオ毎にバッファして完了時に一括表示(並列時のステップ行の混線防止)
+        // シナリオ毎にバッファして完了時に一括表示(並列時のステップ行の混線防止)。
+        // quiet: 成功シナリオは結果1行のみ・失敗シナリオはバッファ全体(失敗詳細)を出す
         var buffers: [URL: [String]] = [:]
+        var names: [URL: String] = [:]
         var timing = ScenarioTimingTracker()
         for await event in orchestrator.events {
             timing.record(event)
             let lines = RunLogFormatter.lines(for: event)
             switch event {
-            case .flowStarted(_, let url, _, _), .step(_, let url, _), .flowHealed(_, let url),
-                 .flowRequeued(_, let url, _, _, _):
+            case .flowStarted(_, let url, let flowName, _):
+                names[url] = flowName
                 buffers[url, default: []].append(contentsOf: lines)
-            case .flowFinished(_, let url, _, _, _, _):
+            case .step(_, let url, _), .flowHealed(_, let url), .flowRequeued(_, let url, _, _, _):
+                buffers[url, default: []].append(contentsOf: lines)
+            case .flowFinished(_, let url, let passed, _, _, _):
                 let all = (buffers.removeValue(forKey: url) ?? []) + lines
-                print(all.joined(separator: "\n"))
+                if quiet {
+                    print(passed ? "✅ \(names[url] ?? url.lastPathComponent)"
+                                 : "❌ \(names[url] ?? url.lastPathComponent)\n" + all.joined(separator: "\n"))
+                } else {
+                    print(all.joined(separator: "\n"))
+                }
             default:
                 if !lines.isEmpty { print(lines.joined(separator: "\n")) }
             }

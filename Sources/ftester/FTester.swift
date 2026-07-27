@@ -526,6 +526,9 @@ struct RunScenarios: AsyncParsableCommand {
     @Flag(name: .customLong("skip-build"), help: "実行前の swift build をスキップする")
     var skipBuild = false
 
+    @Flag(help: "ステップ行を抑制しサマリのみ出力する(CI/エージェント向け)")
+    var quiet = false
+
     @Flag(name: .customLong("fast-input"),
           help: "iOS xcuitest ブリッジの高速入力(quiescence 待ちスキップ)を有効化する(実行プロファイルの iosFastInput でも指定可)")
     var fastInput = false
@@ -589,7 +592,8 @@ struct RunScenarios: AsyncParsableCommand {
         if let profile {
             let runSummary = try await ProfileRunner.run(
                 project: testProject, profileName: profile, items: items,
-                healOverride: heal ? true : nil, reportDirOverride: reportDir, recorder: recorder)
+                healOverride: heal ? true : nil, reportDirOverride: reportDir,
+                quiet: quiet, recorder: recorder)
             let failedCount = runSummary.failed
             PhaseLog.mark("profile-run-done")
             recorder.finish(total: items.count, passed: items.count - failedCount, failed: failedCount,
@@ -705,10 +709,25 @@ struct RunScenarios: AsyncParsableCommand {
             _ = try await driver.status()
             let worker = RunWorker(label: platform, platform: platform,
                                    driver: driver, connection: connection)
+            // quiet: 全行をバッファし、成功なら結果1行のみ・失敗ならバッファ全体(失敗詳細)を出す
+            var buffer: [String] = []
             let outcome = await ScenarioRunner.runOne(
                 project: project, item: item, worker: worker, fm: FMConfig(heal: heal),
                 reportDir: URL(fileURLWithPath: reportDir), recorder: recorder) { event in
-                for line in RunLogFormatter.lines(for: event) { print(line) }
+                let lines = RunLogFormatter.lines(for: event)
+                if quiet {
+                    buffer.append(contentsOf: lines)
+                } else {
+                    for line in lines { print(line) }
+                }
+            }
+            if quiet {
+                if outcome == .passed {
+                    print("✅ \(item.info.id)")
+                } else {
+                    print("❌ \(item.info.id)")
+                    print(buffer.joined(separator: "\n"))
+                }
             }
             if outcome != .passed { failedCount += 1 }
         }
@@ -751,16 +770,26 @@ struct RunScenarios: AsyncParsableCommand {
                                            recorder: recorder)
         async let summary = orchestrator.run(items: items, defaultPlatform: defaultPlatform)
 
-        // シナリオ毎にバッファして完了時に一括表示(並列時のステップ行の混線防止)
+        // シナリオ毎にバッファして完了時に一括表示(並列時のステップ行の混線防止)。
+        // quiet: 成功シナリオは結果1行のみ・失敗シナリオはバッファ全体(失敗詳細)を出す
         var buffers: [URL: [String]] = [:]
+        var names: [URL: String] = [:]
         for await event in orchestrator.events {
             let lines = RunLogFormatter.lines(for: event)
             switch event {
-            case .flowStarted(_, let url, _, _), .step(_, let url, _), .flowHealed(_, let url):
+            case .flowStarted(_, let url, let flowName, _):
+                names[url] = flowName
                 buffers[url, default: []].append(contentsOf: lines)
-            case .flowFinished(_, let url, _, _, _, _):
+            case .step(_, let url, _), .flowHealed(_, let url):
+                buffers[url, default: []].append(contentsOf: lines)
+            case .flowFinished(_, let url, let passed, _, _, _):
                 let all = (buffers.removeValue(forKey: url) ?? []) + lines
-                print(all.joined(separator: "\n"))
+                if quiet {
+                    print(passed ? "✅ \(names[url] ?? url.lastPathComponent)"
+                                 : "❌ \(names[url] ?? url.lastPathComponent)\n" + all.joined(separator: "\n"))
+                } else {
+                    print(all.joined(separator: "\n"))
+                }
             default:
                 if !lines.isEmpty { print(lines.joined(separator: "\n")) }
             }
