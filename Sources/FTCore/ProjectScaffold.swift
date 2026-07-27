@@ -123,7 +123,7 @@ public enum ProjectScaffold {
         return """
         ---
         name: ftester-setup
-        description: この ftester テストパッケージのセットアップを仕上げて実行できる状態にする。環境検証(doctor)・この Mac のデバイス定義(マシンプロファイル)・対象アプリのパス設定・デバイス不要の動作確認までを、検証ゲートと人間チェックポイント付きで行う。「セットアップして」「動かせるようにして」「テストを実行できるようにして」等の依頼で使う。
+        description: この ftester テストパッケージのセットアップを仕上げて実行できる状態にする。環境検証(doctor)・この Mac のデバイス定義(マシンプロファイル)・デバイス不要の動作確認までを、検証ゲートと人間チェックポイント付きで行う。「セットアップして」「動かせるようにして」「テストを実行できるようにして」等の依頼で使う。
         ---
 
         # ftester セットアップ(このパッケージ)
@@ -138,8 +138,9 @@ public enum ProjectScaffold {
         - 各ステップの後に検証ゲート(exit code / doctor)を通す。緑になるまで次へ進まない。
         - 人間チェックポイント(🧑)では**停止して依頼・確認する**(エージェントでは代行不可)。
         - **Bundle ID・アプリの `.app`/`.apk` パス等のセットアップ値は、兄弟ディレクトリや別リポジトリを
-          勝手に `find`/`grep` で探索して確定してはならない。必ず人間に質問して答えを得る**
-          (探索で見つけた候補を既定値として提示するのも避ける)。
+          勝手に `find`/`grep` で探索して確定してはならない。値は人間から得る**(`appPath` のように
+          **聞かない**値は、人間が自発的に示すまで未設定のままにする。探索で見つけた候補を
+          既定値として提示するのも避ける)。
         - 失敗は握りつぶさず、doctor 出力や stderr をそのままユーザーに見せて相談する。
 
         ## 手順
@@ -151,8 +152,10 @@ public enum ProjectScaffold {
         - Apple Intelligence: `ftester doctor --fm-only`(exit 0 で可。無効なら 🧑 に System 設定での有効化を依頼)
 
         セットアップ値は 🧑 に冒頭の1回でまとめて質問する(以降のステップで再質問しない):
-        - ビルド済みの対象アプリ(.app / .apk)のパス、使うシミュレータ名、マシン名
+        - 使うシミュレータ名、マシン名
           → **これらは人間に聞く。他リポジトリを勝手に探索して埋めない**(バージョン・パスの推測は事故のもと)。
+
+        **対象アプリ(.app / .apk)のパスは聞かない**(→ステップ3。後から設定できる)。
 
         ### 1. 環境検証
         `ftester doctor` を実行し、結果を要約して見せる。赤(未導入・無効)が残る項目は 0 に戻って対処を依頼。
@@ -166,10 +169,12 @@ public enum ProjectScaffold {
         { "ios": { "devices": [ { "name": "メイン機", "simulator": "iPhone 17 Pro", "os": "27.0" } ] } }
         ```
 
-        ### 3. 対象アプリのパス
-        🧑 `Projects/\(name)/profiles/apps/\(appRef).json` を、あなたのビルド済みアプリへ向ける
+        ### 3. 対象アプリのパス(appPath)は設定しない
+        `appPath` はセットアップでは**聞かない・書かない**(未設定なら `autoInstall` は無効のまま =
+        インストール済みのアプリをそのまま使う)。自動インストールが必要になったら、後から
+        `Projects/\(name)/profiles/apps/\(appRef).json` の `appPath` をビルド済みアプリへ向ける
         (`appName`/`autoInstall` は common、bundle ID(`app`)と `appPath` は ios/android セクション)。
-        **bundle ID と appPath は人間に確認した値を書く。別リポジトリを覗いて確定値を書き込まない**:
+        **ユーザーが自発的にパスを伝えてきた場合のみ書く。別リポジトリを覗いて確定値を書き込まない**:
 
         ```json
         { "common": { "appName": "\(name)", "autoInstall": true },
@@ -320,8 +325,8 @@ public enum ProjectScaffold {
     ```
     """
 
-    // common で有効なのは appName(表示名)のみ。app/appPath/autoInstall は廃止済みのため
-    // platform(ios/android)セクションに書く(AppProfileSection.merging 参照)
+    // 置き場所は固定: appName/autoInstall は common、app(ID)/appPath は platform セクション
+    // (AppProfileSection.merging 参照)
     public static func appProfileTemplate(appName: String, app: String) -> String {
         """
         {
