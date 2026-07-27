@@ -2,7 +2,7 @@
 // 型付きセレクタ。文字列セレクタ式(記法の唯一の正は FTSelector.swift 冒頭)と**同じ FlowLocator**を
 // 組み立てるだけの併設経路で、解決・実行・レポート・ヒールの経路は文字列版と完全に共通
 // (実行エンジンを分岐させない)。記法との対応:
-//   .id("x")                           #x
+//   .id("x") / .id("x", .startsWith)   #x / #x*
 //   .text("保存") / .text("保存", .contains)   保存 / *保存*
 //   .type(.button).nth(2)              .button[2]
 //   .id("a").or(.text("保存"))          #a||保存
@@ -69,7 +69,9 @@ public struct Sel: Sendable, Equatable {
 
     // MARK: - 起点(static)
 
-    public static func id(_ id: String) -> Sel { Sel(FlowLocator()).id(id) }
+    public static func id(_ id: String, _ match: FlowMatchMode = .exact) -> Sel {
+        Sel(FlowLocator()).id(id, match)
+    }
 
     public static func text(_ text: String, _ match: FlowMatchMode = .exact) -> Sel {
         Sel(FlowLocator()).text(text, match)
@@ -91,7 +93,9 @@ public struct Sel: Sendable, Equatable {
 
     // MARK: - フィルタ(現在の対象へ AND)
 
-    public func id(_ id: String) -> Sel { updatingTarget { $0.id = id } }
+    public func id(_ id: String, _ match: FlowMatchMode = .exact) -> Sel {
+        updatingTarget { $0.id = id; $0.idMatch = Self.stored(match) }
+    }
 
     public func text(_ text: String, _ match: FlowMatchMode = .exact) -> Sel {
         updatingTarget { $0.label = text; $0.labelMatch = Self.stored(match) }

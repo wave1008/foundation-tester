@@ -86,6 +86,56 @@ final class FTSelectorTests: XCTestCase {
                        FlowLocator(label: "notify=", labelMatch: .startsWith))
     }
 
+    // MARK: - id の部分一致(Shirates 準拠。`#` 短縮形だけワイルドカード展開)
+
+    func testIdPartialMatchShorthands() {
+        XCTAssertEqual(FTSelector.parse("#foo*").primary,
+                       FlowLocator(id: "foo", idMatch: .startsWith))
+        XCTAssertEqual(FTSelector.parse("#*foo*").primary,
+                       FlowLocator(id: "foo", idMatch: .contains))
+        XCTAssertEqual(FTSelector.parse("#*foo").primary,
+                       FlowLocator(id: "foo", idMatch: .endsWith))
+        // 完全一致(idMatch は nil = exact)
+        XCTAssertNil(FTSelector.parse("#foo").primary.idMatch)
+    }
+
+    func testIdFilterFullForms() {
+        XCTAssertEqual(FTSelector.parse("id=foo").primary, FlowLocator(id: "foo"))
+        XCTAssertEqual(FTSelector.parse("idStartsWith=foo").primary,
+                       FlowLocator(id: "foo", idMatch: .startsWith))
+        XCTAssertEqual(FTSelector.parse("idContains=foo").primary,
+                       FlowLocator(id: "foo", idMatch: .contains))
+        XCTAssertEqual(FTSelector.parse("idEndsWith=foo").primary,
+                       FlowLocator(id: "foo", idMatch: .endsWith))
+        XCTAssertEqual(FTSelector.parse("idMatches=^p_\\d+$").primary,
+                       FlowLocator(id: "^p_\\d+$", idMatch: .matches))
+    }
+
+    /// `id=` 完全形は `#` 短縮形と違いワイルドカード展開しない(text= と同じ非対称)
+    func testIdFullFormDoesNotExpandWildcard() {
+        XCTAssertEqual(FTSelector.parse("id=foo*").primary, FlowLocator(id: "foo*"))
+        XCTAssertNil(FTSelector.parse("id=foo*").primary.idMatch)
+    }
+
+    func testIdMatchCombinesWithOtherFilters() {
+        XCTAssertEqual(FTSelector.parse(".button&&idContains=save").primary,
+                       FlowLocator(id: "save", idMatch: .contains, type: "button"))
+    }
+
+    /// `.型#id` 短縮形の `#` 以降も単独 `#` と同じ `*` 展開(割れると `.button#foo*` が never-match)
+    func testTypeIdShorthandExpandsWildcard() {
+        XCTAssertEqual(FTSelector.parse(".button#foo*").primary,
+                       FlowLocator(id: "foo", idMatch: .startsWith, type: "button"))
+        XCTAssertEqual(FTSelector.parse(".button#*foo*").primary,
+                       FlowLocator(id: "foo", idMatch: .contains, type: "button"))
+        // serialize は `#` 形に畳めるときだけ `.型#...` へ戻す(往復同一)
+        XCTAssertEqual(FTSelector.serialize(FlowLocator(id: "foo", idMatch: .startsWith, type: "button")),
+                       ".button#foo*")
+        XCTAssertEqual(FTSelector.parse(FTSelector.serialize(
+            FlowLocator(id: "foo", idMatch: .startsWith, type: "button"))).primary,
+                       FlowLocator(id: "foo", idMatch: .startsWith, type: "button"))
+    }
+
     // MARK: - スコープ
 
     func testScopeParsing() {
@@ -248,7 +298,9 @@ final class FTSelectorTests: XCTestCase {
                      "数量:rightButton(2)", "数量:right(保存||#btn)", "見出し:right:belowButton",
                      "#row >> 数量&&.staticText:rightButton", "見出し:below(#list >> .button)",
                      "<通知>:rightSwitch", "#row >> <数量>:rightButton",
-                     "=#raw", "=A >> B"] {
+                     "=#raw", "=A >> B",
+                     "#foo*", "#*foo*", "#*foo", "idStartsWith=foo", "idMatches=^p_\\d+$",
+                     ".button&&idContains=save", ".button&&idContains!=save", ".button&&!#foo*"] {
             let parsed = FTSelector.parse(text)
             let serialized = FTSelector.serialize(primary: parsed.primary,
                                                   fallbacks: parsed.fallbacks)
@@ -268,6 +320,18 @@ final class FTSelectorTests: XCTestCase {
                        "*保存*")
         XCTAssertEqual(FTSelector.serialize(FlowLocator(id: "a", type: "button", enabled: true)),
                        ".button&&#a&&enabled=true")
+        // id の部分一致は `#` 短縮形へ畳む(値自体が `*` を含まないとき)
+        XCTAssertEqual(FTSelector.serialize(FlowLocator(id: "foo", idMatch: .startsWith)), "#foo*")
+        XCTAssertEqual(FTSelector.serialize(FlowLocator(id: "foo", idMatch: .contains)), "#*foo*")
+        XCTAssertEqual(FTSelector.serialize(FlowLocator(id: "foo", idMatch: .endsWith)), "#*foo")
+        // matches は正規表現なので `#` 短縮形が無い(text 系と同じ)
+        XCTAssertEqual(FTSelector.serialize(FlowLocator(id: "^p_\\d+$", idMatch: .matches)),
+                       "idMatches=^p_\\d+$")
+        // 値自体が先頭/末尾 `*` を持つ完全一致は `#` 短縮形にすると再パースでワイルドカードに
+        // 化けるので完全形に落とす
+        XCTAssertEqual(FTSelector.serialize(FlowLocator(id: "foo*")), "id=foo*")
+        XCTAssertEqual(FTSelector.parse(FTSelector.serialize(FlowLocator(id: "foo*"))).primary,
+                       FlowLocator(id: "foo*"))
     }
 
     func testSerializeEscapesLabelsContainingSyntax() {
@@ -303,7 +367,11 @@ final class FTSelectorTests: XCTestCase {
                      "氏名:rightButton", "通知:right", "数量:right(2)", "数量:right(.button)",
                      "見出し:right:belowButton", "氏名:right(#a||保存)",
                      "=x:rigth(y)", "=A >> B", "合計: 1,200円", "設定=オン", "#a||ラベル",
-                     "notify=off", "notify=*", "*qty=*"] {
+                     "notify=off", "notify=*", "*qty=*",
+                     "#foo*", "#*foo*", "#*foo", "idStartsWith=foo", "idContains=foo",
+                     "idEndsWith=foo", "idMatches=^p_\\d+$", ".button&&idContains!=save",
+                     // 既知名と紛らわしくない `名前=値` は素の文字列のまま(id と前方一致しない)
+                     "identifier=5"] {
             XCTAssertNil(FTSelector.validationError(text), "誤検出: \(text)")
         }
     }
@@ -321,7 +389,7 @@ final class FTSelectorTests: XCTestCase {
     func testValidationRejectsMalformedSyntax() {
         for text in ["氏名:right(", "氏名:right(合計))", "氏名:right()", ":rightSwitch",
                      "氏名:right(合計)の右", ".button[abc]", ".button[0]", "[2]", "pos=2", "**",
-                     ".button&&", "&&.button", "pos=0", "checked=yes", "text="] {
+                     ".button&&", "&&.button", "pos=0", "checked=yes", "text=", "id="] {
             XCTAssertNotNil(FTSelector.validationError(text), "見逃した: \(text)")
         }
     }
@@ -334,9 +402,20 @@ final class FTSelectorTests: XCTestCase {
         }
     }
 
+    /// 未知名が既知の基底名を接頭辞に持ち、直後が ASCII 大文字なら near-miss(規則④)。
+    /// `identifier` のような小文字継続の生ラベルは巻き込まない(testValidationAcceptsValidSelectors 参照)
+    func testValidationRejectsBaseNamePrefixedUppercaseContinuation() {
+        for text in ["idPrefix=x", "idIs=x", "textFoo=x", "valueX=x", ".button&&idPrefix!=x"] {
+            XCTAssertNotNil(FTSelector.validationError(text), "見逃した: \(text)")
+        }
+    }
+
     func testValidationRejectsDuplicateFilter() {
         XCTAssertNotNil(FTSelector.validationError("*保存*&&text=保存"))
         XCTAssertNotNil(FTSelector.validationError("#a&&id=b"))
+        // idContains= 等の一致方法違いも「id」属性として重複判定に入る(text 系と同じ規律)
+        XCTAssertNotNil(FTSelector.validationError("#a&&idContains=b"))
+        XCTAssertNotNil(FTSelector.validationError("idStartsWith=a&&idEndsWith=b"))
     }
 
     /// 型名に `=` は使えない。パースは `=` 以降を型名の一部として黙って読む(never-match)ため、
@@ -440,6 +519,8 @@ final class FTSelectorTests: XCTestCase {
                        [FlowLocator(label: "済", labelMatch: .contains)])
         XCTAssertEqual(FTSelector.parse(".button&&id!=btn_x").primary.not,
                        [FlowLocator(id: "btn_x")])
+        XCTAssertEqual(FTSelector.parse(".button&&idContains!=save").primary.not,
+                       [FlowLocator(id: "save", idMatch: .contains)])
         XCTAssertEqual(FTSelector.parse(".button&&enabled!=false").primary.not,
                        [FlowLocator(enabled: false)])
     }
@@ -474,6 +555,7 @@ final class FTSelectorTests: XCTestCase {
     func testNegationShorthandMatchesFullForm() {
         for (short, full) in [(".button&&!キャンセル", ".button&&text!=キャンセル"),
                               (".cell&&!#row_1", ".cell&&id!=row_1"),
+                              (".cell&&!#save*", ".cell&&idStartsWith!=save"),
                               ("#list >> .cell&&!.image", "#list >> .cell&&type!=image")] {
             XCTAssertNil(FTSelector.validationError(short), short)
             XCTAssertEqual(FTSelector.parse(short).primary,

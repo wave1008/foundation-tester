@@ -18,6 +18,10 @@ final class SelTests: XCTestCase {
 
     func testFilters() {
         assertSame(.id("login_btn"), "#login_btn")
+        assertSame(.id("login", .startsWith), "#login*")
+        assertSame(.id("login", .contains), "#*login*")
+        assertSame(.id("login", .endsWith), "#*login")
+        assertSame(.id("^p_\\d+$", .matches), "idMatches=^p_\\d+$")
         assertSame(.text("ログイン"), "ログイン")
         assertSame(.text("ログイン", .contains), "*ログイン*")
         assertSame(.text("ログイン", .startsWith), "ログイン*")
@@ -26,6 +30,7 @@ final class SelTests: XCTestCase {
         assertSame(.type(.button), ".button")
         assertSame(.type(.button).nth(2), ".button[2]")
         assertSame(.type(.switch).id("PHOTOS_UPLOAD"), ".switch#PHOTOS_UPLOAD")
+        assertSame(.type(.switch).id("PHOTOS", .startsWith), ".switch&&#PHOTOS*")
         assertSame(.type(.switch).text("Resource Upload"), ".switch&&Resource Upload")
         assertSame(.type(.button).value("太郎").enabled(true), ".button&&value=太郎&&enabled=true")
         assertSame(.placeholder("メールアドレス"), "placeholder=メールアドレス")
@@ -76,6 +81,7 @@ final class SelTests: XCTestCase {
     func testTextIsReparseableCanonicalForm() {
         let cases: [Sel] = [
             .id("login_btn"),
+            .id("login", .startsWith),
             .type(.button).nth(2),
             .id("list").find(.type(.clickable).nth(2)),
             .text("通知").right(.switch),
@@ -109,6 +115,14 @@ final class SelTests: XCTestCase {
         XCTAssertEqual(sel.ftSelector.primary,
                        FTSelector.parse(".button&&text!=キャンセル").primary)
         XCTAssertEqual(sel.ftSelector.text, ".button&&text!=キャンセル")
+    }
+
+    /// id の否定も同じ構造(idContains!=)になる
+    func testNotBuildsSameLocatorAsNotationForId() {
+        let sel = Sel.type(.button).not(.id("save", .contains))
+        XCTAssertEqual(sel.ftSelector.primary,
+                       FTSelector.parse(".button&&idContains!=save").primary)
+        XCTAssertEqual(sel.ftSelector.text, ".button&&idContains!=save")
     }
 
     /// 相対ステップの後に書いた否定は**対象**に効く(他のフィルタ系メソッドと同じ規律)
