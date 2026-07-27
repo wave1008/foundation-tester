@@ -62,6 +62,30 @@ public func action(_ body: () -> Void) -> CAEChain { CAEChain().action(body) }
 @discardableResult
 public func expectation(_ body: () -> Void) -> CAEChain { CAEChain().expectation(body) }
 
+/// **出たら閉じてほしいアプリ内メッセージ**を宣言する(お知らせダイアログ・キャンペーン等)。
+/// setUp か scenario の冒頭で1回書けば、以降どのステップでも出た時点で自動的に閉じる
+/// (各所に `ifCanSelect` を撒く必要がなくなる)。
+///
+///     onInterrupt("#promo_modal", dismiss: "#btn_promo_close")
+///     onInterrupt("#btn_announce_close")   // 検出したものをそのままタップする場合
+///
+/// **閉じ方はアプリ作者しか知らない**のでツールは推測しない = 宣言が無ければ何もしない。
+/// 閉じたことは必ずステップの注記に残る(黙って閉じると、出続けている異常に気付けないため)。
+/// 追加のスナップショットは取らない(操作前に持っているものへ照合するだけ)ので正常系のコストはゼロ。
+/// **OS 側のダイアログ(権限・IME の案内等)はここに書かない** — ツール側で吸収する範囲
+public func onInterrupt(_ detect: String, dismiss: String? = nil) {
+    let core = FTRuntime.requireCore(command: "onInterrupt")
+    let detectSelector = FTSelector.parse(detect)
+    let dismissSelector = dismiss.map { FTSelector.parse($0) } ?? detectSelector
+    core.addInterruptHandler(detect: detectSelector.primary, dismiss: dismissSelector.primary)
+}
+
+public func onInterrupt(_ detect: Sel, dismiss: Sel? = nil) {
+    let core = FTRuntime.requireCore(command: "onInterrupt")
+    core.addInterruptHandler(detect: detect.ftSelector.primary,
+                             dismiss: (dismiss ?? detect).ftSelector.primary)
+}
+
 /// scene 失敗時に後続 scene も実行しない(データ依存の scene 連鎖用)
 public func abortScenarioOnFailure(_ enabled: Bool = true) {
     FTRuntime.requireCore(command: "abortScenarioOnFailure").abortScenarioOnSceneFailure = enabled

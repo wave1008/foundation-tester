@@ -200,6 +200,23 @@ public final class StepExecutor {
     private var cachedShotAt: ContinuousClock.Instant?
     /// 白フレーム確定時に呼ぶ。FTDriveCore が凍結中断+deviceFrozen emit を行う
     public var onDeviceFrozen: (@Sendable () -> Void)?
+    /// 割り込みハンドラ(アプリ内メッセージ・自前のお知らせダイアログ用)。
+    /// **閉じ方はアプリ作者しか知らない**ので、ツールが推測せずプロジェクト側で1回宣言してもらう
+    /// (DSL の `onInterrupt`)。detect が現在のスナップショットで解決できたら dismiss をタップし、
+    /// 取り直してから本来の操作を続ける。宣言が無ければ何もしない = 正常系のコストはゼロ
+    /// (**追加のスナップショットを取らない**。既に手元にあるものへ照合するだけ)
+    public struct InterruptHandler: Sendable {
+        public let detect: FlowLocator
+        public let dismiss: FlowLocator
+        public init(detect: FlowLocator, dismiss: FlowLocator) {
+            self.detect = detect
+            self.dismiss = dismiss
+        }
+    }
+
+    /// 宣言順に評価する。1ステップにつき**1回だけ**発火する(閉じても消えない相手で無限に回らないため)
+    public var interruptHandlers: [InterruptHandler] = []
+
     /// スクロール探索の直後に「空打ち」の極小ドラッグを入れるか(**iOS だけ true**)。
     /// iOS(Compose)のスクロール容器は次の1タッチを消費してタップが効かないため必要だが、
     /// **Android では 2pt のドラッグがクリックとして発火してしまう**(タップしていないのに
@@ -290,6 +307,27 @@ public final class StepExecutor {
 
     // MARK: - アクション
 
+    /// 宣言された割り込み(アプリ内メッセージ等)が現在の画面に出ていれば閉じる。
+    /// 閉じたら「何を閉じたか」を返す(呼び手が記録に残す。**黙って閉じない**)。
+    /// スナップショットは呼び手が持っているものを使い、閉じた後だけ取り直す
+    private func dismissInterruption(in snapshot: inout SnapshotResponse,
+                                     phase: inout PhaseAccumulator) async throws -> String? {
+        guard !interruptHandlers.isEmpty else { return nil }
+        let clock = ContinuousClock()
+        for handler in interruptHandlers {
+            guard Self.match(handler.detect, in: snapshot) != nil,
+                  let target = Self.match(handler.dismiss, in: snapshot) else { continue }
+            let start = clock.now
+            try await driver.tap(ref: target.ref)
+            phase.actionMs += Self.ms(clock.now - start)
+            let shotStart = clock.now
+            snapshot = try await driver.snapshot()
+            phase.snapshotMs += Self.ms(clock.now - shotStart)
+            return handler.detect.summary
+        }
+        return nil
+    }
+
     private func executeAction(_ action: String, step: FlowStep,
                                cached: [FlowLocator] = [],
                                phase: inout PhaseAccumulator) async throws -> StepOutcome {
@@ -368,6 +406,10 @@ public final class StepExecutor {
         var start = clock.now
         var snapshot = try await driver.snapshot()
         phase.snapshotMs += Self.ms(clock.now - start)
+        // 宣言された割り込み(アプリ内メッセージ等)が出ていれば先に閉じる。**解決を試みる前**に
+        // 行う: 覆われているだけで要素自体は解決できてしまい、タップが吸われる形があるため
+        // (層3 の coveringHint と同じ事象。あちらは診断、こちらは宣言があるときの自動処理)
+        let dismissed = try await dismissInterruption(in: &snapshot, phase: &phase)
         var resolved = Self.resolve(step: step, in: snapshot)
         if resolved == nil {
             if let timeout = step.timeout {
@@ -515,6 +557,11 @@ public final class StepExecutor {
         default:
             return StepOutcome(status: .skipped("未知のアクション: \(action)"))
         }
+        // 割り込みを閉じたことは**必ず記録に出す**(黙って閉じると、出続けている異常に気付けない)
+        if let dismissed {
+            let note = "割り込み \(dismissed) を閉じました"
+            driverFallback = driverFallback.map { "\($0) / \(note)" } ?? note
+        }
         return StepOutcome(status: status, healedStep: healedStep, healedByCache: healedByCache,
                            driverFallback: driverFallback)
     }
@@ -659,6 +706,18 @@ public final class StepExecutor {
                        + " observed=\"\(v.observedText)\"")
     }
 
+    /// 失敗メッセージに「対象を覆っているアプリ内要素」を添える(あれば)。
+    /// **アプリ内メッセージ・モーダルの検出はこれが唯一の手段**(同一プロセスなので
+    /// AndroidForegroundWindows では捕まらない)。FM が落ちていても効く幾何判定。
+    /// 過検出寄りなので**判定は変えず、文言を足すだけ**にする(ステップの成否には触らない)
+    static func coveringHint(element: ElementInfo?, elements: [ElementInfo], screen: FTRect) -> String {
+        guard let element,
+              let cover = OcclusionSuspicion.covering(element: element, in: elements, screen: screen)
+        else { return "" }
+        let label = cover.identifier.map { "#\($0)" } ?? cover.label.map { "\"\($0)\"" } ?? cover.type
+        return "(対象は \(label) に覆われています。操作がそこへ吸われた可能性があります)"
+    }
+
     private func executeAssert(_ assert: String, step: FlowStep,
                                phase: inout PhaseAccumulator) async throws -> StepResult.Status {
         let clock = ContinuousClock()
@@ -729,6 +788,10 @@ public final class StepExecutor {
             var backoff = PollBackoff()
             var primaryMisses = 0
             var lastOcclusion: StepResult.Status?   // occlusion-guard: 可視化待ち(exists と同契約)
+            // 失敗メッセージに「覆っている要素」を添えるための直近の観測(coveringHint 参照)
+            var lastElement: ElementInfo?
+            var lastElements: [ElementInfo] = []
+            var lastScreen = FTRect(x: 0, y: 0, width: 0, height: 0)
             // timeout==0 でも初回照会は必ず1回行う(ループ後段の deadline チェックで離脱)。
             while true {
                 var start = clock.now
@@ -751,6 +814,9 @@ public final class StepExecutor {
                     found = true
                     let actual = assert == "valueEquals" ? element.value : element.label
                     lastActual = actual
+                    lastElement = element
+                    lastElements = snapshot.elements
+                    lastScreen = snapshot.screen
                     // 一致したテキスト。occlusion-guard には**実際に一致した文字列**を渡す
                     // (textMatches の期待値は正規表現で、そのまま画面と照合しても意味がないため)
                     let matched = Self.matchedText(actual, expected: expected, assert: assert)
@@ -796,7 +862,9 @@ public final class StepExecutor {
             default: relation = "が一致しません"
             }
             return found
-                ? .failed("\(subject)\(relation): 期待 \"\(expected)\"、実際 \"\(lastActual ?? "nil")\"")
+                ? .failed("\(subject)\(relation): 期待 \"\(expected)\"、実際 \"\(lastActual ?? "nil")\""
+                          + Self.coveringHint(element: lastElement, elements: lastElements,
+                                              screen: lastScreen))
                 : .failed("要素が見つかりません: \(step.locatorSummary)")
 
         case "notExists":
@@ -845,6 +913,9 @@ public final class StepExecutor {
             var backoff = PollBackoff()
             var found = false
             var lastActual: String?
+            var lastElement: ElementInfo?
+            var lastElements: [ElementInfo] = []
+            var lastScreen = FTRect(x: 0, y: 0, width: 0, height: 0)
             while true {
                 let start = clock.now
                 let snapshot = try await driver.snapshot()
@@ -854,6 +925,9 @@ public final class StepExecutor {
                     found = true
                     let actual = element.label
                     lastActual = actual
+                    lastElement = element
+                    lastElements = snapshot.elements
+                    lastScreen = snapshot.screen
                     let satisfied: Bool
                     switch assert {
                     case "textIsEmpty": satisfied = (actual ?? "").isEmpty
@@ -871,14 +945,16 @@ public final class StepExecutor {
                 phase.waitMs += Self.ms(clock.now - waitStart)
             }
             guard found else { return .failed("要素が見つかりません: \(step.locatorSummary)") }
+            let hint = Self.coveringHint(element: lastElement, elements: lastElements,
+                                         screen: lastScreen)
             switch assert {
             case "textIsEmpty":
-                return .failed("テキストが空ではありません: 実際 \"\(lastActual ?? "nil")\"")
+                return .failed("テキストが空ではありません: 実際 \"\(lastActual ?? "nil")\"" + hint)
             case "textIsNotEmpty":
-                return .failed("テキストが空です: \(step.locatorSummary)")
+                return .failed("テキストが空です: \(step.locatorSummary)" + hint)
             default:
                 return .failed("テキストが期待値と一致しています(不一致を期待): "
-                               + "\"\(lastActual ?? "nil")\"")
+                               + "\"\(lastActual ?? "nil")\"" + hint)
             }
 
         case "enabled", "disabled":

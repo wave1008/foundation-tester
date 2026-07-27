@@ -371,4 +371,169 @@ final class AssertKindsTests: XCTestCase {
         XCTAssertTrue(isPassed(outcome.status))
         XCTAssertEqual(driver.snapshotCallCount, 1)
     }
+
+    // MARK: - アプリ内メッセージに覆われたときの失敗メッセージ
+
+    /// 同一プロセスのモーダル(アプリ内メッセージ)は別 window 検出では捕まらない。
+    /// 幾何判定で「誰が覆っているか」を失敗メッセージに添える
+    func testFailureMentionsCoveringInAppElement() async {
+        // #txt_result(上)を、記載順で後 = 手前寄りの #promo_modal が全面的に覆う
+        let target = ElementInfo(ref: 1, type: "staticText", identifier: "txt_result",
+                                 label: "result=old", value: nil, placeholder: nil, enabled: true,
+                                 frame: FTRect(x: 10, y: 100, width: 200, height: 40), depth: 1)
+        let modal = ElementInfo(ref: 2, type: "other", identifier: "promo_modal",
+                                label: "キャンペーンのお知らせ", value: nil, placeholder: nil,
+                                enabled: true,
+                                frame: FTRect(x: 0, y: 0, width: 400, height: 800), depth: 1)
+        let step = FlowStep(assert: "textEquals", locator: FlowLocator(id: "txt_result"),
+                            expected: "result=new", timeout: 0, occlusionGuard: false)
+        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [[target, modal]]))
+            .execute(step)
+        let reason = failureReason(outcome.status)
+        XCTAssertEqual(reason?.contains("#promo_modal"), true, reason ?? "")
+        XCTAssertEqual(reason?.contains("覆われています"), true, reason ?? "")
+    }
+
+    /// 覆いが無ければ従来どおりのメッセージ(余計な文言を足さない)
+    func testFailureHasNoCoveringHintWhenNothingOverlaps() async {
+        let target = ElementInfo(ref: 1, type: "staticText", identifier: "txt_result",
+                                 label: "result=old", value: nil, placeholder: nil, enabled: true,
+                                 frame: FTRect(x: 10, y: 100, width: 200, height: 40), depth: 1)
+        let other = ElementInfo(ref: 2, type: "staticText", identifier: "txt_other", label: "別",
+                                value: nil, placeholder: nil, enabled: true,
+                                frame: FTRect(x: 10, y: 400, width: 200, height: 40), depth: 1)
+        let step = FlowStep(assert: "textEquals", locator: FlowLocator(id: "txt_result"),
+                            expected: "result=new", timeout: 0, occlusionGuard: false)
+        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [[target, other]]))
+            .execute(step)
+        XCTAssertEqual(failureReason(outcome.status)?.contains("覆われています"), false)
+    }
+
+    // MARK: - 割り込みハンドラ(アプリ内メッセージ)
+
+    /// tap を記録するドライバ(どの ref が叩かれたかを検証する)
+    private final class TapRecordingDriver: AppDriver {
+        var frames: [[ElementInfo]]
+        private(set) var snapshotCallCount = 0
+        private(set) var tapped: [Int] = []
+        init(frames: [[ElementInfo]]) { self.frames = frames }
+
+        func status() async throws -> StatusResponse {
+            StatusResponse(ready: true, device: "fake", osVersion: "-", sessionBundleID: nil)
+        }
+        func install(packagePath: String) async throws {}
+        func launch(bundleID: String) async throws {}
+        func snapshot() async throws -> SnapshotResponse {
+            snapshotCallCount += 1
+            let index = min(snapshotCallCount - 1, max(0, frames.count - 1))
+            return SnapshotResponse(sessionBundleID: nil,
+                                    screen: FTRect(x: 0, y: 0, width: 400, height: 800),
+                                    elements: frames.isEmpty ? [] : frames[index],
+                                    truncatedCount: 0)
+        }
+        func tap(ref: Int) async throws { tapped.append(ref) }
+        func tap(x: Double, y: Double) async throws {}
+        func type(ref: Int?, text: String) async throws {}
+        func swipe(_ direction: FTSwipeDirection) async throws {}
+        func press(ref: Int, duration: Double) async throws {}
+        func screenshot() async throws -> Data { Data() }
+        func terminate() async throws {}
+    }
+
+    /// 宣言した割り込みが出ていたら、本来の操作の前に閉じる。閉じたことは注記に残る
+    func testInterruptHandlerDismissesBeforeActing() async {
+        let modal = node(9, id: "promo_modal", label: "お知らせ")
+        let close = node(8, id: "btn_promo_close", label: "閉じる")
+        let target = node(1, id: "btn_submit", label: "送信")
+        let driver = TapRecordingDriver(frames: [[modal, close, target], [target]])
+        let executor = StepExecutor(driver: driver)
+        executor.interruptHandlers = [
+            .init(detect: FlowLocator(id: "promo_modal"), dismiss: FlowLocator(id: "btn_promo_close")),
+        ]
+        let outcome = await executor.execute(
+            FlowStep(action: "tap", locator: FlowLocator(id: "btn_submit")))
+        XCTAssertTrue(isPassed(outcome.status))
+        // 閉じる → 本来の対象、の順に叩く
+        XCTAssertEqual(driver.tapped, [8, 1])
+        XCTAssertEqual(outcome.driverFallback?.contains("割り込み"), true)
+    }
+
+    /// 宣言が無ければ何もしない(追加のスナップショットも取らない)
+    func testNoInterruptHandlerMeansNoExtraWork() async {
+        let target = node(1, id: "btn_submit")
+        let driver = TapRecordingDriver(frames: [[target]])
+        let outcome = await StepExecutor(driver: driver)
+            .execute(FlowStep(action: "tap", locator: FlowLocator(id: "btn_submit")))
+        XCTAssertTrue(isPassed(outcome.status))
+        XCTAssertEqual(driver.tapped, [1])
+        XCTAssertEqual(driver.snapshotCallCount, 1)
+        XCTAssertNil(outcome.driverFallback)
+    }
+
+    /// 宣言していても出ていなければ発火しない
+    func testInterruptHandlerDoesNotFireWhenAbsent() async {
+        let target = node(1, id: "btn_submit")
+        let driver = TapRecordingDriver(frames: [[target]])
+        let executor = StepExecutor(driver: driver)
+        executor.interruptHandlers = [
+            .init(detect: FlowLocator(id: "promo_modal"), dismiss: FlowLocator(id: "btn_promo_close")),
+        ]
+        let outcome = await executor.execute(
+            FlowStep(action: "tap", locator: FlowLocator(id: "btn_submit")))
+        XCTAssertEqual(driver.tapped, [1])
+        XCTAssertNil(outcome.driverFallback)
+        XCTAssertTrue(isPassed(outcome.status))
+    }
+
+    /// 覆いで対象が解決できない形でも、閉じてから解決できる
+    func testInterruptHandlerUnblocksResolution() async {
+        let modal = node(9, id: "promo_modal", label: "お知らせ")
+        let close = node(8, id: "btn_promo_close", label: "閉じる")
+        let target = node(1, id: "btn_submit", label: "送信")
+        // 1枚目に対象は居ない(モーダルが画面を占有)。閉じた後の2枚目で現れる
+        let driver = TapRecordingDriver(frames: [[modal, close], [target]])
+        let executor = StepExecutor(driver: driver)
+        executor.interruptHandlers = [
+            .init(detect: FlowLocator(id: "promo_modal"), dismiss: FlowLocator(id: "btn_promo_close")),
+        ]
+        let outcome = await executor.execute(
+            FlowStep(action: "tap", locator: FlowLocator(id: "btn_submit")))
+        XCTAssertTrue(isPassed(outcome.status))
+        XCTAssertEqual(driver.tapped, [8, 1])
+    }
+
+    /// 否定・空判定の失敗にも覆いのヒントを添える(textEquals 系と同じ契約)
+    func testNegativeAssertFailureMentionsCoveringElement() async {
+        let target = ElementInfo(ref: 1, type: "staticText", identifier: "txt_status",
+                                 label: "処理中", value: nil, placeholder: nil, enabled: true,
+                                 frame: FTRect(x: 10, y: 100, width: 200, height: 40), depth: 1)
+        let modal = ElementInfo(ref: 2, type: "other", identifier: "announce_modal",
+                                label: "お知らせ", value: nil, placeholder: nil, enabled: true,
+                                frame: FTRect(x: 0, y: 0, width: 400, height: 800), depth: 1)
+        let step = FlowStep(assert: "textNotEquals", locator: FlowLocator(id: "txt_status"),
+                            expected: "処理中", timeout: 0)
+        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [[target, modal]]))
+            .execute(step)
+        XCTAssertEqual(failureReason(outcome.status)?.contains("#announce_modal"), true)
+    }
+
+    /// 複数宣言しても**1ステップで発火するのは最初に当たった1つだけ**
+    /// (閉じても消えない相手で無限に回らないための契約)
+    func testInterruptHandlersFireOncePerStepInDeclarationOrder() async {
+        let first = node(9, id: "modal_a", label: "A")
+        let second = node(8, id: "modal_b", label: "B")
+        let target = node(1, id: "btn_submit", label: "送信")
+        // 閉じても両方残り続ける画面(2枚目以降も同じ)= 何度でも発火し得る状況
+        let driver = TapRecordingDriver(frames: [[first, second, target]])
+        let executor = StepExecutor(driver: driver)
+        executor.interruptHandlers = [
+            .init(detect: FlowLocator(id: "modal_a"), dismiss: FlowLocator(id: "modal_a")),
+            .init(detect: FlowLocator(id: "modal_b"), dismiss: FlowLocator(id: "modal_b")),
+        ]
+        let outcome = await executor.execute(
+            FlowStep(action: "tap", locator: FlowLocator(id: "btn_submit")))
+        XCTAssertTrue(isPassed(outcome.status))
+        // 宣言順で最初の modal_a(ref 9)だけを閉じ、そのあと本来の対象(ref 1)
+        XCTAssertEqual(driver.tapped, [9, 1])
+    }
 }

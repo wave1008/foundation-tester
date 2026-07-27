@@ -152,6 +152,12 @@ public final class FTDriveCore {
 
     /// --debug 時のブレークポイント/一時停止制御。nil なら通常実行(dry-run でも有効)
     public var debugControl: ScenarioDebugControl?
+    /// DSL の `onInterrupt` が宣言した割り込み(アプリ内メッセージ)を実行器へ渡す
+    func addInterruptHandler(detect: FlowLocator, dismiss: FlowLocator) {
+        executor.interruptHandlers.append(
+            StepExecutor.InterruptHandler(detect: detect, dismiss: dismiss))
+    }
+
     /// 失敗時に「アプリより手前にある別プロセスの window」を問い合わせる(Android のみ設定される)。
     /// adb を叩くので FTAndroid を見られる FTScenarioRunner が注入する(FTDSL は FTAndroid に依存しない)
     public var foregroundOverlays: (@Sendable () -> [String])?

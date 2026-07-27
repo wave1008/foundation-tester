@@ -55,4 +55,38 @@ final class OcclusionSuspicionTests: XCTestCase {
         XCTAssertTrue(OcclusionSuspicion.geometric(
             element: target, in: [target], screen: screen, looseMatch: true))
     }
+
+    // MARK: - covering(誰が覆っているか)
+
+    /// 失敗メッセージ用。**どの要素が覆っているか**まで返す(geometric は真偽だけ)
+    func testCoveringReturnsTheOverlappingElement() {
+        let target = el(1, FTRect(x: 0, y: 100, width: 400, height: 40))
+        let overlay = el(2, FTRect(x: 0, y: 90, width: 400, height: 200))
+        XCTAssertEqual(
+            OcclusionSuspicion.covering(element: target, in: [target, overlay], screen: screen)?.ref, 2)
+    }
+
+    /// 重なりが閾値未満なら覆っていない扱い(geometric の判定と同じ規則を共有する)
+    func testCoveringIgnoresSmallOverlap() {
+        let target = el(1, FTRect(x: 0, y: 100, width: 400, height: 40))
+        let grazing = el(2, FTRect(x: 0, y: 135, width: 400, height: 40))   // 5/40 = 0.125
+        XCTAssertNil(OcclusionSuspicion.covering(element: target, in: [target, grazing], screen: screen))
+    }
+
+    /// 記載順で**前**にある要素は奥にいるとみなす(手前寄りだけを occluder にする)
+    func testCoveringIgnoresElementsBehindTheTarget() {
+        let behind = el(1, FTRect(x: 0, y: 90, width: 400, height: 200))
+        let target = el(2, FTRect(x: 0, y: 100, width: 400, height: 40))
+        XCTAssertNil(OcclusionSuspicion.covering(element: target, in: [behind, target], screen: screen))
+    }
+
+    /// クランプ ghost は飛ばし、本物の occluder を返す(geometric と同じ除外規則)
+    func testCoveringSkipsClampGhostAndReturnsGenuineOne() {
+        let target = el(1, FTRect(x: 0, y: 750, width: 400, height: 40))
+        let ghost = FTRect(x: 0, y: 760, width: 400, height: 40)
+        let genuine = el(5, FTRect(x: 0, y: 740, width: 400, height: 60))
+        let elements = [target, el(2, ghost), el(3, ghost), el(4, ghost), genuine]
+        XCTAssertEqual(
+            OcclusionSuspicion.covering(element: target, in: elements, screen: screen)?.ref, 5)
+    }
 }

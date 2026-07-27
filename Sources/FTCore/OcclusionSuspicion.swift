@@ -20,16 +20,28 @@ public enum OcclusionSuspicion {
         if t.x < -0.5 || t.y < -0.5
             || t.x + t.width > screen.width + 0.5
             || t.y + t.height > screen.height + 0.5 { return true }
+        return covering(element: element, in: elements, screen: screen,
+                        overlapFraction: overlapFraction) != nil
+    }
+
+    /// 対象を覆っている「手前寄りの別要素」。無ければ nil。
+    /// **失敗メッセージ用**(アプリ内メッセージ・モーダルの特定)。同一プロセスの覆いは
+    /// `AndroidForegroundWindows`(別プロセスの window)では捕まらないので、判定はこちらが担う。
+    /// 判定規則は geometric と共有する = 「FM へ回すか」と「誰が覆っているか」がずれない。
+    /// **過検出寄り**(記載順は z 順の保証ではない)なので、ステップを落とす根拠には使わないこと
+    public static func covering(element: ElementInfo, in elements: [ElementInfo],
+                                screen: FTRect, overlapFraction: Double = 0.4) -> ElementInfo? {
+        let t = element.frame
         let area = max(1, t.width * t.height)
-        guard let selfIndex = elements.firstIndex(where: { $0.ref == element.ref }) else { return false }
+        guard let selfIndex = elements.firstIndex(where: { $0.ref == element.ref }) else { return nil }
         for (i, other) in elements.enumerated() where i > selfIndex {   // 記載順で後=手前寄り
             guard intersectionArea(t, other.frame) / area >= overlapFraction else { continue }
             // Compose-iOS の frame クランプで画面外行が画面端の同一座標へ潰れて生じる ghost スタックは
             // occluder とみなさない(見えている端要素へ余分な FM を誘発する。docs compose-ios-ax-frame-clamp)。
             if isClampGhost(other.frame, in: elements, screen: screen) { continue }
-            return true
+            return other
         }
-        return false
+        return nil
     }
 
     static func intersectionArea(_ a: FTRect, _ b: FTRect) -> Double {
