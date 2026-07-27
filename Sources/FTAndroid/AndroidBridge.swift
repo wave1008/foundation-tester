@@ -150,6 +150,7 @@ extension AndroidDriver {
 
         noticePersistentSettingsOnPhysicalDevice()
         disableAnimations()
+        disableStylusHandwriting()
         allowHiddenAPIReflection()
         try installBridgeIfNeeded()
         _ = try? adb(["shell", "am", "force-stop", Self.bridgePackage])
@@ -189,6 +190,22 @@ extension AndroidDriver {
         let message = "⚠️ Android アニメーション設定の無効化に失敗しました(\(failed.joined(separator: ", ")))。"
             + "有効なままだと静穏判定後に screenshot が古い絵を掴むことがあります\n"
         FileHandle.standardError.write(Data(message.utf8))
+    }
+
+    /// IME(Gboard)のスタイラス手書き機能を切る。**目的はプロモ画面の抑止**:
+    /// 入力欄にフォーカスすると「タッチペンを試してみる」の教育用シートが**別プロセスの window として**
+    /// アプリの上に出ることがあり、送信ボタン等を覆う。ブリッジの a11y ツリーには他プロセスの window が
+    /// 出ないため、覆われたまま tap が成功扱いになり「✅ なのに何も起きない」になる
+    /// (2026-07-27 に 05_テキスト入力 の間欠失敗として実際に踏んだ。失敗時スクショで確定)。
+    /// 失敗は非致命(disableAnimations と同方針)
+    private func disableStylusHandwriting() {
+        guard (try? adb(["shell", "settings", "put", "secure",
+                         "stylus_handwriting_enabled", "0"]))?.status == 0 else {
+            let message = "⚠️ stylus_handwriting_enabled の無効化に失敗しました"
+                + "(IME のスタイラス案内がアプリを覆い、タップが空振りすることがあります)\n"
+            FileHandle.standardError.write(Data(message.utf8))
+            return
+        }
     }
 
     /// ブリッジの /locale(BridgeRouter.java handleLocale)が使う隠し API 反射の許可。
