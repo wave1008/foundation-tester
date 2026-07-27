@@ -36,7 +36,7 @@ export type LaneAction =
   | { readonly type: "workerRunning"; readonly workerId: string; readonly running: boolean }
   /** シナリオ1本ぶんの FM 呼び出し実測(hostCharts.js の FM グラフが積む)。FM を使った
    *  シナリオでのみ発生する。FM はホスト全体で直列化する共有資源なので実行コストの指標になる。 */
-  | { readonly type: "fmUsage"; readonly calls: number; readonly totalMs: number }
+  | { readonly type: "fmUsage"; readonly calls: number; readonly totalMs: number; readonly failures: number }
   /** runFinished。全体の完了表示に使う。totalSeconds はここでクライアント側計算(runStartedAtMs 起点、
    * NDJSON に対応フィールドが無いため)。testSeconds/scenarioTotalSeconds は event からの素通し。 */
   | {
@@ -275,7 +275,12 @@ export function reduceLaneEvent(state: RunLaneState, event: RunEvent, nowMs: num
         actions.push({ type: "workerRunning", workerId: event.worker, running: false });
       }
       if (event.fm && event.fm.calls > 0) {
-        actions.push({ type: "fmUsage", calls: event.fm.calls, totalMs: event.fm.totalMs });
+        actions.push({
+          type: "fmUsage",
+          calls: event.fm.calls,
+          totalMs: event.fm.totalMs,
+          failures: event.fm.failures ?? 0,
+        });
       }
       return actions;
     }
