@@ -139,7 +139,7 @@ Package.swift のターゲット `ftester-scenarios-MyApp` が自動生成・登
 ### 4. プロファイル（マシン/アプリ/実行）を用意する
 
 以降のプロファイルは **WORK_DIR の `Projects/MyApp/profiles/`** に住みます。Claude Code なら
-`/ftester-profiles` がこの3つを一括作成します（iOS/Android を選び、アプリの表示名・ID・パスを聞き、
+`/ftester-profiles` がこの3つを一括作成します（iOS/Android を選び、アプリの表示名・ID を聞き（パスは聞かない）、
 デバイスは利用可能な最新 OS の仮想デバイスを自動採用（無ければ作成）または指定に従う）。手動なら以下。
 
 **マシンプロファイル**（このPCのデバイス定義。`Projects/MyApp/profiles/machines/<マシン名>.json`）:
