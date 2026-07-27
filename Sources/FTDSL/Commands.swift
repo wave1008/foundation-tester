@@ -63,8 +63,9 @@ public func action(_ body: () -> Void) -> CAEChain { CAEChain().action(body) }
 public func expectation(_ body: () -> Void) -> CAEChain { CAEChain().expectation(body) }
 
 /// **出たら閉じてほしいアプリ内メッセージ**を宣言する(お知らせダイアログ・キャンペーン等)。
-/// setUp か scenario の冒頭で1回書けば、以降どのステップでも出た時点で自動的に閉じる
-/// (各所に `ifCanSelect` を撒く必要がなくなる)。
+/// 以降どのステップでも、出た時点で閉じてから本来の操作を続ける(アクションでも検証でも効く。
+/// 各所に `ifCanSelect` を撒く必要がなくなる)。
+/// **宣言の寿命はシナリオ1本**なので `setUp()` に書くのが定石(各 `@Test` の前に自動で入る)。
 ///
 ///     onInterrupt("#promo_modal", dismiss: "#btn_promo_close")
 ///     onInterrupt("#btn_announce_close")   // 検出したものをそのままタップする場合
@@ -113,7 +114,9 @@ private func perform(_ command: String, _ selector: FTSelector, step: FlowStep,
 /// timeout: 要素解決を待つ上限秒(0 = 初回スナップショットのみ。出るか不定な optional の
 /// 空振り ~0.7s を数十msに短縮)。省略時は既定の再試行(約0.7秒)
 /// scroll: 指定するとタップ前に**その方向へスクロールしながら要素を探す**
-/// (Shirates の tapWithScrollDown 相当。省略時は現在画面だけを見る)
+/// (Shirates の tapWithScrollDown 相当。省略時は現在画面だけを見る)。
+/// **方向は指の動き**なので、画面の下にある要素へ届かせたいときは `.up`
+/// (`swipe` / `scrollTo(direction:)` と同じ語彙)
 public func tap(_ selector: String, optional: Bool = false, timeout: Int? = nil,
                 scroll: FTSwipeDirection? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
                 file: StaticString = #filePath, line: UInt = #line) {
@@ -259,7 +262,8 @@ private func scrollToImpl(_ selector: FTSelector, direction: FTSwipeDirection, m
 /// 覆われ/切れ/不在で見えていないかを FM で確認する(見えなければ失敗)。ツリー存在だけ見たい
 /// (高速・アイコン等)場合は requireVisible: false。FM 未配線時は guard は素通り(存在のみと同じ)。
 /// scroll: 指定すると検証前に**その方向へスクロールしながら要素を探す**
-/// (Shirates の existWithScrollDown 相当。省略時は現在画面だけを見る)
+/// (Shirates の existWithScrollDown 相当。省略時は現在画面だけを見る)。
+/// **方向は指の動き**なので、画面の下にある要素へ届かせたいときは `.up`
 @discardableResult
 public func exist(_ selector: String, timeout: Int? = nil, requireVisible: Bool = true,
                   scroll: FTSwipeDirection? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,

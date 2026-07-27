@@ -536,4 +536,39 @@ final class AssertKindsTests: XCTestCase {
         // 宣言順で最初の modal_a(ref 9)だけを閉じ、そのあと本来の対象(ref 1)
         XCTAssertEqual(driver.tapped, [9, 1])
     }
+
+    /// **検証コマンドでも発火する**(割り込みは待機中にこそ出るので、アクション側だけでは足りない)
+    func testInterruptHandlerFiresDuringAssertion() async {
+        let modal = node(9, id: "promo_modal", label: "お知らせ")
+        let close = node(8, id: "btn_promo_close", label: "閉じる")
+        let target = node(1, type: "staticText", id: "txt_result", label: "result=ok")
+        // モーダルが出ている間は結果テキストが読めない → 閉じた後の2枚目で読める
+        let driver = TapRecordingDriver(frames: [[modal, close], [target]])
+        let executor = StepExecutor(driver: driver)
+        executor.interruptHandlers = [
+            .init(detect: FlowLocator(id: "promo_modal"), dismiss: FlowLocator(id: "btn_promo_close")),
+        ]
+        let outcome = await executor.execute(
+            FlowStep(assert: "textEquals", locator: FlowLocator(id: "txt_result"),
+                     expected: "result=ok", timeout: 5, occlusionGuard: false))
+        XCTAssertTrue(isPassed(outcome.status))
+        XCTAssertEqual(driver.tapped, [8])
+        XCTAssertEqual(outcome.driverFallback?.contains("割り込み"), true)
+    }
+
+    /// ポーリングを何周しても**タップは1回だけ**(閉じても消えない相手でタップの雨を降らせない)
+    func testInterruptHandlerTapsOnceEvenWhenModalNeverGoesAway() async {
+        let modal = node(9, id: "promo_modal", label: "お知らせ")
+        let close = node(8, id: "btn_promo_close", label: "閉じる")
+        // 何度閉じても消えない = 全フレームに出続ける。対象は最後まで現れない
+        let driver = TapRecordingDriver(frames: [[modal, close]])
+        let executor = StepExecutor(driver: driver)
+        executor.interruptHandlers = [
+            .init(detect: FlowLocator(id: "promo_modal"), dismiss: FlowLocator(id: "btn_promo_close")),
+        ]
+        let outcome = await executor.execute(
+            FlowStep(assert: "exists", locator: FlowLocator(id: "txt_result"), timeout: 1))
+        XCTAssertFalse(isPassed(outcome.status))
+        XCTAssertEqual(driver.tapped, [8], "ポーリングのたびに叩かないこと")
+    }
 }

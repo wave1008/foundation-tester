@@ -835,9 +835,14 @@ textIs(.id("txt_result"), "dialog=none")
 
 ### 割り込みハンドラ(アプリ内メッセージ。2026-07-27)
 
-- **`onInterrupt("#promo_modal", dismiss: "#btn_promo_close")`** をプロジェクトで1回宣言すると、
-  以降どのステップでも出た時点で閉じてから本来の操作を続ける(`StepExecutor.dismissInterruption`)。
+- **`onInterrupt("#promo_modal", dismiss: "#btn_promo_close")`** を宣言すると、以降どのステップでも
+  出た時点で閉じてから本来の操作を続ける(`StepExecutor.dismissInterruption`)。
   各所に `ifCanSelect` を撒く必要がなくなる
+- **宣言の寿命はシナリオ1本**(ハンドラは `FTDriveCore` が持つ = 1プロセス1シナリオ)。
+  `setUp()` に書けば各 `@Test` の前に自動で入るので実質1箇所で済む。
+  setUp を持たないクラスでは `@Test` ごとに書く
+- **アクションでも検証でも発火する**。割り込みは `exist` / `textIs` の**待機中にこそ出る**ので、
+  アクション側だけだと宣言した意味が半分失われる(ポーリングの各周回で照合する)
 - **閉じ方はアプリ作者しか知らないのでツールは推測しない**。宣言が無ければ何もしない。
   OS 側のダイアログ(権限・IME の案内)は**ここに書かせない** — ツールが吸収する範囲
   (デバイス設定での抑止 + 別 window の検出)。両者を混ぜると責任の所在がぼやける
