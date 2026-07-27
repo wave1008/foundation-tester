@@ -22,5 +22,6 @@
   "heal": false,
   "reportDir": "reports",
   "machine": "LDIPC96",
-  "wipeDataOnBloat": true
+  "wipeDataOnBloat": true,
+  "recoverCpuFallbackToGpu": true
 }

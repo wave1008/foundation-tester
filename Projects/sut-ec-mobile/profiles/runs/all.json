@@ -37,5 +37,6 @@
   "machine": "LDIPC96",
   "iosInappEngine": true,
   "wipeDataOnBloat": true,
-  "record": true
+  "record": true,
+  "recoverCpuFallbackToGpu": true
 }
