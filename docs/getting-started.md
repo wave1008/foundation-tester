@@ -63,7 +63,7 @@ clone 構成では同一です。
 
 | 対象 | 要件 | 誰がやるか |
 |---|---|---|
-| 共通 | macOS 27+、Apple Intelligence 有効（Foundation Models）。**システム言語は英語**（下記） | **人間のみ**（System 設定で有効化・モデル DL） |
+| 共通 | macOS 27+。Apple Intelligence（Foundation Models）は**任意** — heal・FM 視覚検証・シナリオ生成に使う。無効でもインストール・決定的実行は可能で、**後から有効化すればそのまま使える**（有効化時は**システム言語英語**、下記） | **人間のみ**（System 設定で有効化・モデル DL） |
 | iOS | Xcode 27+、iOS シミュレータ runtime、xcodegen | Xcode 導入は**人間**／`brew install xcodegen` は自動可 |
 | Android（任意） | Android SDK（adb）、エミュレータまたは実機 | 人間（SDK 導入）＋自動（ブリッジ APK ビルド） |
 | 拡張ビルド | Node.js v24 系 / npm v11 系 | 自動可 |
@@ -93,7 +93,8 @@ Claude Code に任せるなら、上のプラグイン(または curl)で入れ�
 
 ### 1. 前提（人間がやる）
 
-macOS 27+ / Apple Intelligence 有効 / Xcode 27+ 導入済み / iOS シミュレータ runtime を1つ以上導入。
+macOS 27+ / Xcode 27+ 導入済み / iOS シミュレータ runtime を1つ以上導入。Apple Intelligence の有効化は
+**任意**（FM 機能を使う場合。後からでも可）。
 Xcode を初めて入れたら `sudo xcodebuild -license accept` も実行しておく。
 
 ### 2. ツール（foundation-tester）を用意する

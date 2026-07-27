@@ -33,7 +33,7 @@ UI は VSCode 拡張(`vscode-ftester/`)に一本化している(セットアッ�
 
 | 対象 | 要件 |
 |---|---|
-| 共通 | macOS 27+、Apple Intelligence 有効(Foundation Models) |
+| 共通 | macOS 27+。Apple Intelligence(Foundation Models)は**任意** — heal・FM 視覚検証・シナリオ生成に使う。後から有効化すればそのまま使える |
 | iOS | Xcode 27+、iOS シミュレータ、[xcodegen](https://github.com/yonaskolb/XcodeGen)(`brew install xcodegen`) |
 | Android(任意) | Android SDK(adb)、エミュレータまたは実機 |
 

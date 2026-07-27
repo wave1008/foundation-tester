@@ -119,22 +119,26 @@ tag も clone で取得できる)。
 **TOOL_ROOT で** `swift build`（初回は数分）。**exit code で成否を判定**（パイプで grep に繋がない）。
 これで `TOOL_ROOT/.build/debug/ftester`(CLI 本体)が揃う。以降 `ftester` はこのバイナリを指す。
 
-### 2.5 Apple Intelligence 自動判定ゲート（人間に聞かない）
+### 2.5 Apple Intelligence 自動判定（人間に聞かない・**不可でも続行**）
 
 **TOOL_ROOT で** `swift run ftester doctor --fm-only` を実行する。これは `SystemLanguageModel.default.availability`
 （オンデバイス FM／Apple Intelligence の可否）だけを見て **exit code で返す**（可=0／不可=1）。
-オンデバイス FM はこのツールの頭脳なので、ここが緑でないと以降は無意味。**人間に「有効か」を聞かない**：
+**FM は必須ではない** — 使うのは heal（自己修復）・FM 視覚検証（`screenIs` 等）・シナリオ生成/探索
+（`/ftester-scenario` の頭脳）だけで、決定的なシナリオ実行・VSCode 拡張・MCP のデバイス操作・dry-run は
+FM 無しで動く。**人間に「有効か」を聞かない**：
 
 - **exit 0**（`✅ 利用可能`）→ 次へ。
-- **exit 1 で `Apple Intelligence が無効`** → 🧑 停止して依頼する：System 設定 → Apple Intelligence & Siri
-  でオンにしてもらう。有効化後に本コマンドを再実行（ビルドはキャッシュ済みで即座）。
-- **exit 1 で `モデルのダウンロード中`** → 数分待って再実行（DL 完了で 0 になる）。
-- **exit 1 で `このデバイスは対象外`** → このマシンではオンデバイス FM を使えない。🧑 に伝えて相談。
+- **exit 1**（無効／ダウンロード中／対象外）→ **セットアップは中断せず続行する**。有効化のための
+  停止・待機・質問はしない。理由を控えておき、ステップ9の完了報告に
+  「Apple Intelligence 要有効化（FM 機能を使う場合）」として残す：後から System 設定 →
+  Apple Intelligence & Siri でオンにし、`ftester doctor --fm-only` が ✅ になれば heal・視覚検証・
+  シナリオ生成がそのまま使えるようになる（セットアップのやり直しは不要）。
 
 ### 3. 環境検証ゲート
 
-**TOOL_ROOT で** `swift run ftester doctor` を実行し、出力をユーザーに要約して見せる（FM/AI は 2.5 で判定済み）。
-赤（未導入・無効）が残る項目は、ステップ0に戻って人間に対処を依頼してから再実行。全緑で次へ。
+**TOOL_ROOT で** `swift run ftester doctor` を実行し、出力をユーザーに要約して見せる（FM/AI は 2.5 で判定済み。
+**FM の赤はここでも続行してよい** — 2.5 の方針どおり完了報告に残すだけ）。
+それ以外の赤（未導入・無効）が残る項目は、ステップ0に戻って人間に対処を依頼してから再実行。次へ。
 
 ### 4. 自分のプロジェクトを作る(構成で分岐)
 
