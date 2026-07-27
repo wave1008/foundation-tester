@@ -267,6 +267,26 @@ cd <TOOL_ROOT>/vscode-ftester && npm install && npm run install-local
 > すると衝突を避けられます。git 依存（`.package(url:…)`）で引いている場合のみ、WORK_DIR の `from:` 版を
 > 上げて `swift package update` します（ローカルパス依存では不要）。
 
+## アンインストール
+
+導入物は3層あり、それぞれ外す場所が違います（不要なものだけ選んで実施）:
+
+- **Claude Code プラグイン（`/ftester:*` スキル）**: ターミナルで実行します
+  （**VSCode の GUI からは外せません**。拡張ビューに出るのは下の VSCode 拡張だけです）:
+
+  ```bash
+  claude plugin uninstall ftester@foundation-tester
+  claude plugin marketplace remove foundation-tester   # マーケットプレイス登録ごと外す場合
+  ```
+
+  キャッシュの実体が残ることがあるので、残っていたら `~/.claude/plugins/cache/foundation-tester` を
+  削除します。curl（フォールバック）で導入した場合は、代わりに各ディレクトリの
+  `.claude/skills/ftester-*` を削除します。
+- **VSCode 拡張（vscode-ftester）**: VSCode の拡張ビューからアンインストール。
+- **ツール本体（TOOL_ROOT の clone）**: `foundation-tester` ディレクトリを削除。マシン名の登録が不要なら
+  `~/.config/ftester/config.json` も削除します。あなたの WORK_DIR（`Projects/` のシナリオ・プロファイル）は
+  ツールと分離したあなたの資産なので、消すかどうかは自由です。
+
 ## トラブルシュート
 
 - **まず `ftester doctor`**（clone 構成は `swift run ftester doctor`）。FM 可用性・Xcode・xcodegen・
