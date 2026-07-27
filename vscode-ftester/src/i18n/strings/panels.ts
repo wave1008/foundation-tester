@@ -73,10 +73,7 @@ export const panelsStrings = {
   "panels.runProfile.machineLabel": { ja: "使用するマシンプロファイル", en: "Machine profile to use" },
   "panels.runProfile.appLabel": { ja: "アプリ", en: "App" },
   "panels.runProfile.fmSectionTitle": { ja: "FM(Foundation Model)", en: "FM (Foundation Model)" },
-  "panels.runProfile.fmLabel": {
-    ja: "FM(Foundation Model)の機能を使用する",
-    en: "Use FM (Foundation Model) features",
-  },
+  "panels.runProfile.fmLabel": { ja: "FMの機能を使用する", en: "Use FM features" },
   "panels.runProfile.healLabel": { ja: "自己修復(heal)を有効にする", en: "Enable self-heal" },
   "panels.runProfile.falsePositiveCheckLabel": { ja: "偽陽性検証を有効にする", en: "Enable false-positive verification" },
   "panels.runProfile.screenIsLabel": { ja: "screenIsを有効にする", en: "Enable screenIs" },
