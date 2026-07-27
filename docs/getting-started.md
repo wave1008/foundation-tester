@@ -127,6 +127,10 @@ swift run ftester doctor         # 環境検証。赤が出たら潰してから
   --ftester-path ../foundation-tester --name MyApp --app com.mycompany.myapp
 ```
 
+  bundle ID がまだ分からない場合は `--app` を省略してください（プレースホルダ `com.example.myapp` で
+  作成されます。実IDが要るのはアプリ起動時だけなので、判明したら `profiles/apps/myapp.json` の `app` を
+  差し替えれば OK です）。
+
   → WORK_DIR に `Package.swift`（ftester をローカルパス依存で引く）と `Projects/MyApp/`、
   `.vscode/settings.json`（拡張の `ftester.binaryPath`/`ftester.project` を自動設定）が生成されます。
   ローカルパス依存なので `swift build` はネットワーク不要・TOOL_ROOT を `git pull` すれば ftester も更新されます。
