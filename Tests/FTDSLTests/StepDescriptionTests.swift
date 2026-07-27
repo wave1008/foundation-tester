@@ -87,6 +87,12 @@ final class StepDescriptionTests: XCTestCase {
         XCTAssertEqual(StepDescription.describe(command: "terminate"), "アプリを終了する")
     }
 
+    func testPressEnter() {
+        XCTAssertEqual(StepDescription.describe(command: "pressEnter"), "Enterキーを押す")
+        XCTAssertEqual(StepDescription.describe(step: FlowStep(action: "pressEnter")),
+                       "Enterキーを押す")
+    }
+
     func testWait() {
         XCTAssertEqual(StepDescription.describe(command: "wait 1.0s"), "1秒待機する")
         XCTAssertEqual(StepDescription.describe(command: "wait 0.5s"), "0.5秒待機する")
@@ -167,6 +173,11 @@ final class StepDescriptionTests: XCTestCase {
                             note: "FM の理由文")
         let lines = ScenarioCodeGen.render(step: step, indent: "")
         XCTAssertEqual(lines, ["tap(\"設定\")  // FM の理由文"])
+    }
+
+    func testCodeGenWritesPressEnter() {
+        let lines = ScenarioCodeGen.render(step: FlowStep(action: "pressEnter"), indent: "")
+        XCTAssertEqual(lines, ["pressEnter()"])
     }
 
     func testCodeGenOmitsCommentWhenNoNote() {

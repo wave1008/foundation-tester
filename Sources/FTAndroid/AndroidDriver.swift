@@ -208,7 +208,43 @@ public final class AndroidDriver: AppDriver {
         // (InputInjector.setTextAppendingAt)は「タップ点にある editable ノードそのもの」へ
         // SET_TEXT + 期限内リトライするため、誤爆が構造的に起きない。
         // v10-v12 のブリッジ側修正がここの分解のせいで一度も実行されていなかった(2026-07-23)。
-        try await withBridge { try await $0.type(ref: ref, text: text) }
+        //
+        // 末尾の改行1つは ACTION_SET_TEXT では文字として入るだけで IME アクションにならないため、
+        // 分離して本文の SET_TEXT 後に Enter キーイベントを送る(pressEnter と同じ経路。文中の
+        // 改行はそのまま文字として本文に残す)
+        let (main, hasTrailingNewline) = Self.splitTrailingNewline(text)
+        guard hasTrailingNewline else {
+            try await withBridge { try await $0.type(ref: ref, text: text) }
+            return
+        }
+        // 本文が空でも ref があれば SET_TEXT を通し、対象ノードへのフォーカス確立を維持する
+        try await withBridge { try await $0.type(ref: ref, text: main) }
+        try await pressEnter()
+    }
+
+    /// 末尾の改行1つだけを分離する(text 全体が "\n" のときは分離しない=本文なしの pressEnter 相当に
+    /// 潰さない)。戻り値: (本文, 末尾に改行があったか)
+    static func splitTrailingNewline(_ text: String) -> (String, Bool) {
+        guard text != "\n", text.hasSuffix("\n") else { return (text, false) }
+        return (String(text.dropLast()), true)
+    }
+
+    /// Enter キーを押す(フォーカス中の入力欄への IME アクション相当)。gRPC KeyboardEvent.key は
+    /// w3c 名(home()/openAppSwitcher() と同じ振り分け)。"Enter" は w3c UIEvents キー値だが
+    /// emulator gRPC 側の対応は未確認 — EmulatorControl.perform は失敗時 false を返すだけなので、
+    /// 未対応でも adb フォールバックへ落ちるだけで安全(他の namedKeypress と同じ契約)
+    public func pressEnter() async throws {
+        if let serial, await EmulatorControl.namedKeypress(serial: serial, key: "Enter") {
+            // gRPC 成功
+        } else {
+            let result = try adb(["shell", "input", "keyevent", "66"])
+            guard result.status == 0 else {
+                throw DriverError.badResponse(status: Int(result.status),
+                    body: "Enter キーを送れませんでした: \(result.tail)")
+            }
+        }
+        // keyevent は遷移完了を待たないため、直後の snapshot 用の整定待ち(home() と同様)
+        try await Task.sleep(nanoseconds: 800_000_000)
     }
 
     public func swipe(_ direction: FTSwipeDirection) async throws {

@@ -555,6 +555,41 @@ public struct BridgeLauncher {
             return da < db
         }
     }
+
+    /// ランナーのソースが xctestrun より新しいか(InAppLauncher.needsBuild と対の鮮度判定)。
+    /// これが無いと prepareSharedBuilds は「xctestrun 不在」しか見ず、ソース変更後も旧バイナリを
+    /// 起動し続ける(旧版検知 → 停止 → 同じ旧バイナリで再起動、の毎 run ループになる。2026-07-28 実害)
+    static func runnerNeedsRebuild(repoRoot: URL, xctestrun: URL) -> Bool {
+        guard let built = (try? xctestrun.resourceValues(forKeys: [.contentModificationDateKey]))?
+                .contentModificationDate,
+              let newest = newestRunnerSourceTimestamp(repoRoot: repoRoot) else { return true }
+        return newest > built
+    }
+
+    /// ランナーのビルド入力の最終更新時刻。入力集合は Runner/project.yml の sources と対
+    /// (FTesterRunnerUITests/ + FTesterRunnerApp/ + project.yml + 共有 DTO の BridgeDTO.swift)。
+    /// 取得できない場合は nil = 「判定不能」として再ビルドさせる(古いまま走らせるより安全)
+    static func newestRunnerSourceTimestamp(repoRoot: URL) -> Date? {
+        var inputs = [
+            repoRoot.appendingPathComponent("Runner/project.yml"),
+            repoRoot.appendingPathComponent("Sources/FTCore/BridgeDTO.swift"),
+        ]
+        for dir in ["Runner/FTesterRunnerUITests", "Runner/FTesterRunnerApp"] {
+            let dirURL = repoRoot.appendingPathComponent(dir)
+            guard let entries = try? FileManager.default.contentsOfDirectory(
+                at: dirURL, includingPropertiesForKeys: [.contentModificationDateKey]) else {
+                return nil
+            }
+            inputs.append(contentsOf: entries.filter { !$0.hasDirectoryPath })
+        }
+        var newest = Date.distantPast
+        for url in inputs {
+            guard let date = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
+                    .contentModificationDate else { return nil }
+            newest = max(newest, date)
+        }
+        return newest
+    }
 }
 
 public enum LauncherError: Error, LocalizedError {

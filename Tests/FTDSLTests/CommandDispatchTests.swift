@@ -11,6 +11,7 @@ final class CommandDispatchTests: XCTestCase {
     private final class RecordingDriver: AppDriver {
         private(set) var tapped: [Int] = []
         private(set) var pressed: [(ref: Int, duration: Double)] = []
+        private(set) var pressEnterCount = 0
 
         func status() async throws -> StatusResponse {
             StatusResponse(ready: true, device: "stub", osVersion: "-", sessionBundleID: nil)
@@ -29,6 +30,7 @@ final class CommandDispatchTests: XCTestCase {
         func tap(ref: Int) async throws { tapped.append(ref) }
         func tap(x: Double, y: Double) async throws {}
         func type(ref: Int?, text: String) async throws {}
+        func pressEnter() async throws { pressEnterCount += 1 }
         func swipe(_ direction: FTSwipeDirection) async throws {}
         func press(ref: Int, duration: Double) async throws {
             pressed.append((ref, duration))
@@ -102,6 +104,25 @@ final class CommandDispatchTests: XCTestCase {
 
         XCTAssertEqual(core.finalRecord.scenes.flatMap(\.steps).map(\.description),
                        ["tap \"#cleanup\""])
+    }
+
+    /// pressEnter はロケータを持たず、フォーカス中の要素へ直接 driver.pressEnter() が届くこと
+    /// (StepExecutor のロケータ解決を経由しない経路。type(ref: nil) と同じ扱い)
+    func testPressEnterReachesDriverAndIsRecorded() {
+        let driver = RecordingDriver()
+        let core = makeCore(driver: driver)
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        scenario {
+            scene(1, "s") {
+                action { pressEnter() }
+            }
+        }
+
+        XCTAssertEqual(driver.pressEnterCount, 1)
+        XCTAssertEqual(core.finalRecord.scenes.flatMap(\.steps).map(\.description), ["pressEnter"])
+        XCTAssertTrue(core.finalRecord.passed)
     }
 
     /// checked を報告しない要素(ただのボタン等)への isNotChecked は**何を書いても成功する**。

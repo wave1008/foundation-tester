@@ -6,7 +6,7 @@
 // ハンドラは InAppHTTPServer の accept ループ(バックグラウンド)で呼ばれる。UIKit 参照や
 // タッチ合成はメインへホップし、アクションは実行後に整定(InAppSettle)を待ってから応答する。
 //
-// 実装エンドポイント: /status /snapshot /tap /type /swipe /press /screenshot。
+// 実装エンドポイント: /status /snapshot /tap /type /pressEnter /swipe /press /screenshot。
 // /session はアプリ再起動を伴うためホスト側(BridgeProvisioner)が simctl launch+注入で担う。
 
 import Foundation
@@ -64,6 +64,7 @@ final class FTInAppBridge {
             case ("GET", "/snapshot"): return try handleSnapshot()
             case ("POST", "/tap"): return try handleTap(req.body)
             case ("POST", "/type"): return try handleType(req.body)
+            case ("POST", "/pressEnter"): return try handlePressEnter()
             case ("POST", "/swipe"): return try handleSwipe(req.body)
             case ("POST", "/press"): return try handlePress(req.body)
             case ("GET", "/screenshot"): return try handleScreenshot()
@@ -106,6 +107,9 @@ final class FTInAppBridge {
                 osVersion: "\(device.systemName) \(device.systemVersion)",
                 sessionBundleID: Bundle.main.bundleIdentifier,
                 engine: "inapp",
+                // 版申告が無いと旧 dylib のままの稼働中ブリッジが再利用され、新エンドポイントが
+                // 404 になる(BridgeProvisioner.planBridge が再利用可否をこの版で判定する)
+                protocolVersion: BridgeAPI.bridgeProtocolVersion,
                 applicationState: state,
                 uiFramework: self.uiFramework,
                 // 合成タッチは「時間・移動を伴うジェスチャ」を駆動できない。これは Compose 固有ではなく
@@ -281,8 +285,20 @@ final class FTInAppBridge {
                 FTSynthTap(window, p)
             }
         }
+        // 末尾の改行1つだけ分離して別の insertText 呼び出しにする: Compose は呼び出し単位の文字列が
+        // "\n" **完全一致**のときだけ IME アクション(改行/送信)に変換する上流実装のため、
+        // 「本文+改行」を1回で渡すと素通りしてしまう。文中の改行は本文側にそのまま残る
+        let (main, hasTrailingNewline) = Self.splitTrailingNewline(req.text)
         var inserted = false
-        try performWithSettle { _ in inserted = FTInsertTextIntoFirstResponder(req.text) }
+        try performWithSettle { _ in
+            if hasTrailingNewline {
+                inserted = FTInsertTextIntoFirstResponder(main)
+                let newlineInserted = FTInsertTextIntoFirstResponder("\n")
+                inserted = inserted || newlineInserted
+            } else {
+                inserted = FTInsertTextIntoFirstResponder(req.text)
+            }
+        }
         guard inserted else {
             // hybrid の XCUITest フォールバック(SystemUIDriver)は springboard 参照のシステム UI 専用で
             // アプリの入力欄を解決できない(2026-07-20 実証)。ここで hybrid を案内しないこと。
@@ -292,6 +308,30 @@ final class FTInAppBridge {
                 + "engine=xcuitest の実行プロファイル(iosInappEngine: false)で実行してください。"
                 + "入力欄が AX ツリーに現れない(accessibilityIdentifier/testTag 未設定)場合は"
                 + "アプリ側で testTag を付けてください。診断: \(FTFirstResponderDiagnostics())")
+        }
+        return .json(OKResponse())
+    }
+
+    /// 末尾の改行1つだけを分離する(text 全体が "\n" のときは分離しない。AndroidDriver の
+    /// 同名ヘルパと同じ規則)。戻り値: (本文, 末尾に改行があったか)
+    private static func splitTrailingNewline(_ text: String) -> (String, Bool) {
+        guard text != "\n", text.hasSuffix("\n") else { return (text, false) }
+        return (String(text.dropLast()), true)
+    }
+
+    private func handlePressEnter() throws -> InAppHTTPServer.Response {
+        var inserted = false
+        try performWithSettle { _ in inserted = FTPressEnterOnComposeFirstResponder() }
+        guard inserted else {
+            // UITextField/UITextView への insertText("\n") は改行文字が入るだけで return イベントを
+            // 発火しないため、in-app エンジンでの Enter 相当は Compose の入力受け口でしか扱えない。
+            // UIKit 入力欄・フォーカス無しはどちらも 409 とし、ホストを xcuitest の
+            // typeText("\n")(Return キー相当)へ回す
+            throw InAppError(409, "in-app エンジンでの Enter 押下は Compose Multiplatform の入力欄"
+                + "(insertText(\"\\n\") が IME アクションに変換される)でのみ有効です。"
+                + "UIKit の入力欄(UITextField/UITextView)、またはフォーカスされた入力欄が無い場合は"
+                + "engine=xcuitest の実行プロファイル(iosInappEngine: false)で実行してください。"
+                + "診断: \(FTFirstResponderDiagnostics())")
         }
         return .json(OKResponse())
     }

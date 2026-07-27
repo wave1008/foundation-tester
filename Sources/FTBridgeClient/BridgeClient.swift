@@ -154,6 +154,10 @@ public final class BridgeClient: AppDriver {
                                            timeout: interactionTimeout)
     }
 
+    public func pressEnter() async throws {
+        let _: OKResponse = try await post("/pressEnter", body: OKResponse(), timeout: interactionTimeout)
+    }
+
     public func swipe(_ direction: FTSwipeDirection) async throws {
         let _: OKResponse = try await post("/swipe", body: SwipeRequest(direction: direction, fast: fastFlag),
                                            timeout: interactionTimeout)

@@ -19,6 +19,12 @@ public protocol AppDriver {
     func tap(ref: Int) async throws
     func tap(x: Double, y: Double) async throws
     func type(ref: Int?, text: String) async throws
+    /// フォーカス中の入力欄で Enter を押す(ref なし。Shirates pressEnter 相当)。
+    /// iOS はソフトキー tap ができない(キーボード要素を snapshot から除外しているため)代替経路を
+    /// ドライバごとに持つ: xcuitest は typeText("\n")、inapp は Compose 入力欄への insertText("\n")
+    /// (design.md 承認済み差分)。inapp が 409(UIKit 入力欄・フォーカス無し)を返したときの
+    /// xcuitest フォールバックは StepExecutor が担う
+    func pressEnter() async throws
     func swipe(_ direction: FTSwipeDirection) async throws
     /// 2点間ドラッグ(座標は snapshot の screen と同じ座標系)。pressSeconds=押下静止時間、
     /// durationSeconds=移動時間(実機ジェスチャの速度・長押しに反映される)。
@@ -96,5 +102,9 @@ public extension AppDriver {
 
     func press(x: Double, y: Double, duration: Double) async throws {
         throw DriverError.badResponse(status: 501, body: "このドライバは座標ロングプレスに対応していません")
+    }
+
+    func pressEnter() async throws {
+        throw DriverError.badResponse(status: 501, body: "このドライバは Enter キー押下に対応していません")
     }
 }

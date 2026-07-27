@@ -33,7 +33,7 @@ final class BridgeRouter {
     private let decoder = JSONDecoder()
 
     // 画面を変えうる操作。直後の snapshot だけ整定確認する(handleSnapshot の settlePending)
-    private static let mutatingPaths: Set<String> = ["/session", "/tap", "/type", "/swipe", "/drag", "/press", "/appswitcher", "/home"]
+    private static let mutatingPaths: Set<String> = ["/session", "/tap", "/type", "/pressEnter", "/swipe", "/drag", "/press", "/appswitcher", "/home"]
 
     func handle(_ request: BridgeHTTPServer.Request) -> BridgeHTTPServer.Response {
         do {
@@ -44,6 +44,7 @@ final class BridgeRouter {
             case ("GET", "/snapshot"): response = try handleSnapshot()
             case ("POST", "/tap"): response = try handleTap(request.body)
             case ("POST", "/type"): response = try handleType(request.body)
+            case ("POST", "/pressEnter"): response = try handlePressEnter()
             case ("POST", "/swipe"): response = try handleSwipe(request.body)
             case ("POST", "/drag"): response = try handleDrag(request.body)
             case ("POST", "/press"): response = try handlePress(request.body)
@@ -170,6 +171,15 @@ final class BridgeRouter {
             coordinate(app, try resolvePoint(ref: ref, x: nil, y: nil)).tap()
         }
         app.typeText(req.text)
+        return .json(OKResponse())
+    }
+
+    /// typeText("\n") は XCUITest 内部で Return キー相当に落ちる(ソフトキーボードの改行/送信
+    /// アクションを駆動する唯一の経路。ftester はキーボード要素を snapshot から除外しているため
+    /// 実ソフトキー tap はできない)
+    private func handlePressEnter() throws -> BridgeHTTPServer.Response {
+        let app = try requireApp()
+        app.typeText("\n")
         return .json(OKResponse())
     }
 

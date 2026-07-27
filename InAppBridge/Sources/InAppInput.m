@@ -208,6 +208,23 @@ BOOL FTInsertTextIntoFirstResponder(NSString *text) {
     return NO;
 }
 
+BOOL FTPressEnterOnComposeFirstResponder(void) {
+    for (UIView *v in ftTextReceivers()) {
+        if (!v.isFirstResponder) continue;
+        if ([v isKindOfClass:[UITextField class]] || [v isKindOfClass:[UITextView class]]) {
+            return NO;  // UIKit 系: type の "\n" 分割経路(改行は文字として入るだけ)に任せ、
+                        // IME アクション相当は xcuitest の typeText("\n") へ回す
+        }
+        if ([v conformsToProtocol:@protocol(UIKeyInput)]) {
+            [(id<UIKeyInput>)v insertText:@"\n"];
+        } else {
+            ((void (*)(id, SEL, NSString *))objc_msgSend)(v, @selector(insertText:), @"\n");
+        }
+        return YES;
+    }
+    return NO;
+}
+
 // ウィンドウ木から insertText: に応答するビューを収集(Compose 等は first responder と
 // 実際の入力受け口が別オブジェクトのため)
 static void ftCollectTextReceivers(UIView *root, NSMutableArray<UIView *> *out) {

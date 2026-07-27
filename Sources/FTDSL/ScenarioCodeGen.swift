@@ -103,6 +103,8 @@ public enum ScenarioCodeGen {
                 return "appSwitcher()"
             case "terminate":
                 return "terminateApp()"
+            case "pressEnter":
+                return "pressEnter()"
             case "scrollTo":
                 var args = [literal(selector)]
                 // FlowStep.direction は**ジェスチャ(指の動き)**。DSL はコンテンツ基準なので写像して出す

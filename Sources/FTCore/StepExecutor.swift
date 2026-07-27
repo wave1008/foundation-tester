@@ -515,6 +515,25 @@ public final class StepExecutor {
             return StepOutcome(status: .passed)
         }
 
+        // pressEnter もロケータを持たない(フォーカス中の入力欄への Enter 押下)ので、type(ref: nil)
+        // と同じ理由でロケータ解決を挟まない。409(inapp が Compose 以外の入力欄/フォーカス無しで
+        // 出す。InAppBridge.handlePressEnter 参照)は type のロケータ版と同じ形で
+        // typeDriver(xcuitest)へフォールバックする
+        if action == "pressEnter" {
+            let start = clock.now
+            do {
+                try await driver.pressEnter()
+            } catch {
+                guard case DriverError.badResponse(let code, _) = error, code == 409,
+                      let td = typeDriver else { throw error }
+                try await td.pressEnter()
+                phase.actionMs += Self.ms(clock.now - start)
+                return StepOutcome(status: .passed, driverFallback: "XCUITest へフォールバック")
+            }
+            phase.actionMs += Self.ms(clock.now - start)
+            return StepOutcome(status: .passed)
+        }
+
         // `tap(scroll:)` / `press(scroll:)` 等の内蔵スクロール探索。**別ステップにしない**のは
         // 利用者が書いたのは1コマンドだから(記録に scrollTo 行が増えると、書いていない行が
         // 現れ、しかもソース行を持たないためステップ表から編集できない)。

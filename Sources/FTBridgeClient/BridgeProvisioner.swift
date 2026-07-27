@@ -359,7 +359,9 @@ public struct BridgeProvisioner {
         if !(engine == "inapp" && inappNeedsInstall),
            let port = running.first(where: {
             sameDevice($0.value) && $0.value.engine == engine && !claimed.contains($0.key)
-                && (engine != "xcuitest" || $0.value.protocolVersion == BridgeAPI.bridgeProtocolVersion)
+                // inapp も版一致を要求する(旧 dylib のまま suspend/常駐しているブリッジを
+                // 再利用すると新エンドポイントが 404 になり、フォールバックも効かない)
+                && $0.value.protocolVersion == BridgeAPI.bridgeProtocolVersion
                 && (engine != "inapp" || $0.value.sessionBundleID == bundleID)
            })?.key {
             claimed.insert(port)
@@ -387,10 +389,12 @@ public struct BridgeProvisioner {
             usedPorts.remove(stale.key)
             stopStalePort = stale.key
         }
-        // 別アプリに注入された同一デバイスの inapp ブリッジ(上の再利用条件から漏れたもの)
+        // 別アプリに注入された・または旧版のままの同一デバイスの inapp ブリッジ
+        // (上の再利用条件から漏れたもの)
         if engine == "inapp", let stale = running.first(where: {
             sameDevice($0.value) && $0.value.engine == "inapp" && !claimed.contains($0.key)
-                && $0.value.sessionBundleID != bundleID
+                && ($0.value.sessionBundleID != bundleID
+                    || $0.value.protocolVersion != BridgeAPI.bridgeProtocolVersion)
         }) {
             claimed.insert(stale.key)
             stopStalePort = stale.key
@@ -440,9 +444,15 @@ public struct BridgeProvisioner {
                 let launcher = BridgeLauncher(repoRoot: repoRoot, device: xcui.sim.udid,
                                               port: xcui.port, physical: xcui.sim.physical)
                 try launcher.generateProjectIfNeeded()
-                if try launcher.findXCTestRun() == nil {
+                let existing = try launcher.findXCTestRun()
+                if existing == nil {
                     log("→ build-for-testing(\(xcui.sim.physical ? "実機" : "シミュレータ")向け"
                         + "・初回は数分かかります)...")
+                    try launcher.buildForTesting()
+                } else if let existing,
+                          BridgeLauncher.runnerNeedsRebuild(repoRoot: repoRoot, xctestrun: existing) {
+                    // ソース変更後の旧 xctestrun を起動し続けない(BridgeLauncher.runnerNeedsRebuild 参照)
+                    log("→ ランナーのソースが更新されているため build-for-testing を再実行します...")
                     try launcher.buildForTesting()
                 }
             }

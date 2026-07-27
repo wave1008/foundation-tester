@@ -26,6 +26,7 @@ public final class SystemUIDriver: AppDriver {
 
     public func tap(ref: Int) async throws { try await client.tap(ref: ref) }
     public func type(ref: Int?, text: String) async throws { try await client.type(ref: ref, text: text) }
+    public func pressEnter() async throws { try await client.pressEnter() }
     public func press(ref: Int, duration: Double) async throws { try await client.press(ref: ref, duration: duration) }
     public func tap(x: Double, y: Double) async throws { try await client.tap(x: x, y: y) }
     public func swipe(_ direction: FTSwipeDirection) async throws { try await client.swipe(direction) }

@@ -50,6 +50,8 @@ final class StepCommandTextTests: XCTestCase {
                              optionalFlag: false, word: nil))
         XCTAssertEqual(StepCommandText.parse("terminate"),
                        .init(verb: "terminate", strings: [], optionalFlag: false, word: nil))
+        XCTAssertEqual(StepCommandText.parse("pressEnter"),
+                       .init(verb: "pressEnter", strings: [], optionalFlag: false, word: nil))
     }
 
     func testParseRejectsUnknownAndRuntimeOnlyForms() {
@@ -125,6 +127,17 @@ final class StepCommandTextTests: XCTestCase {
             "launchApp(\"com.example.app\")")
         XCTAssertEqual(
             try StepCommandText.apply(display: "terminate", toCode: "wait(1)"),
+            "terminateApp()")
+        XCTAssertEqual(
+            try StepCommandText.apply(display: "pressEnter", toCode: "wait(1)"),
+            "pressEnter()")
+    }
+
+    /// "pressEnter" がソース側の動詞としても編集可能集合(renewableFuncs)に入っていること
+    /// (入っていなければ sourceNotRewritable を投げる)
+    func testApplyRegeneratesFromPressEnterSourceLine() throws {
+        XCTAssertEqual(
+            try StepCommandText.apply(display: "terminate", toCode: "pressEnter()"),
             "terminateApp()")
     }
 

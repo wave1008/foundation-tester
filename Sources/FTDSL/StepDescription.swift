@@ -21,7 +21,11 @@ public enum StepDescription {
 
         guard let spaceIndex = text.firstIndex(of: " ") else {
             // 引数なしコマンド
-            return text == "terminate" ? "アプリを終了する" : nil
+            switch text {
+            case "terminate": return "アプリを終了する"
+            case "pressEnter": return "Enterキーを押す"
+            default: return nil
+            }
         }
         let verb = String(text[..<spaceIndex])
         let rest = String(text[text.index(after: spaceIndex)...])
@@ -119,6 +123,8 @@ public enum StepDescription {
                 return "\"\(objectPhrase(ofStep: step))\"に\"\(step.text ?? "")\"を入力する"
             case "swipe":
                 return swipePhrase(direction: step.direction ?? "up")
+            case "pressEnter":
+                return "Enterキーを押す"
             default:
                 return nil
             }

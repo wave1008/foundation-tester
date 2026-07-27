@@ -18,6 +18,14 @@ void FTSynthPress(UIWindow *window, CGPoint point, double duration);
 /// 現在の first responder が UIKeyInput なら text を挿入する。挿入できたら YES。
 BOOL FTInsertTextIntoFirstResponder(NSString *text);
 
+/// pressEnter 用: insertText: に応答する first responder のうち、**UITextField/UITextView 系
+/// ではないもの**(Compose Multiplatform の入力受け口等)にだけ "\n" を挿入する。Compose は
+/// insertText 呼び出し1回の文字列が "\n" と完全一致するときだけ IME アクションに変換するが、
+/// UITextField/UITextView への insertText("\n") は改行文字が入るだけで return イベントを
+/// 発火しない。UIKit 系 first responder・フォーカス無しはどちらも NO(呼び出し側が
+/// xcuitest の typeText("\n") へ回す判断をする)。
+BOOL FTPressEnterOnComposeFirstResponder(void);
+
 /// type 失敗(409)時の診断: first responder の実クラスと入力プロトコル対応状況
 NSString *FTFirstResponderDiagnostics(void);
 
