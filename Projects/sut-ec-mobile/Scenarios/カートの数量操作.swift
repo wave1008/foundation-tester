@@ -20,6 +20,14 @@ class カートの数量を操作できること {
         resetAndAddOneWatch()
     }
 
+    // カートは実行を跨いで累積するため、失敗後でも必ず空へ戻す(tearDown は失敗後でも実行される。
+    // 失敗はシナリオ全体を中断するので、後始末をシナリオ内の scene に置いても実行されない)
+    func tearDown() {
+        ifCanSelect("#btn_back") { tap("#btn_back") }
+        ifCanSelect("#tab_cart") { tap("#tab_cart") }
+        emptyCart()
+    }
+
     /// 空カートを作り、腕時計を1点だけ入れてカート画面に着地する
     private func resetAndAddOneWatch() {
         tap("#tab_cart")
@@ -59,7 +67,7 @@ class カートの数量を操作できること {
     // TC-42(SC-42)準拠: 数量1で − → 明細が自動削除される、を期待する。
     // 【現状 RED / 不具合 D-01】実装は数量1で #btn_qty_decrement が disabled で削除されない
     // (削除はゴミ箱のみ)。仕様違反のため本テストは意図的に RED。修正(1→0自動削除の実装)で緑化する。
-    // scene3 の後始末は scene2 が NG でも次 scene として実行されるため残留は残さない。
+    // 失敗はシナリオ全体を中断するため、残留の後始末はシナリオ内ではなく tearDown が担う。
     @Test("数量1から減らすとカートから削除される")
     func S0020() {
         scenario {
@@ -73,13 +81,6 @@ class カートの数量を操作できること {
                     tap("#btn_qty_decrement")  // 期待: 1→0 で自動削除
                 }.expectation {
                     exist("カートは空です")  // 現状は削除されず RED(不具合 D-01)
-                }
-            }
-            scene(3, "後始末: 残っていればゴミ箱で削除") {
-                action {
-                    ifCanSelect("#btn_remove_fashion_5", waitSeconds: 1) { tap("#btn_remove_fashion_5") }
-                }.expectation {
-                    exist("カートは空です")
                 }
             }
         }

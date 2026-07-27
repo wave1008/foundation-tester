@@ -29,6 +29,12 @@ class UIベンチマークの密度チップが正しいこと {
         ifCanSelect("#benchmark_cell_count") { tap("#btn_back") } // カレンダーに居たら戻る
     }
 
+    // 年数は rememberSaveable で保持される。緑経路は scene 6 が 3年へ戻すが、失敗は
+    // シナリオ全体を中断して scene 6 に届かないため、カレンダーに居る失敗時はここで戻す
+    func tearDown() {
+        ifCanSelect("#chip_years_3", waitSeconds: 1) { tap("#chip_years_3") }
+    }
+
     @Test("全4プリセットでセル数(総日数)が正しい")
     func S0010() {
         scenario {

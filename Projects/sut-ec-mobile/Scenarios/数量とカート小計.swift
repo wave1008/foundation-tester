@@ -22,6 +22,14 @@ class 数量を指定してカートに追加できること {
         ifCanSelect("#btn_remove_fashion_5", waitSeconds: 1) { tap("#btn_remove_fashion_5") }
     }
 
+    // カートは実行を跨いで累積する。緑経路の後始末 scene に加えて tearDown でも空へ戻す —
+    // 失敗はシナリオ全体を中断するので、後始末 scene は失敗時に実行されない
+    func tearDown() {
+        ifCanSelect("#btn_back") { tap("#btn_back") }
+        ifCanSelect("#tab_cart") { tap("#tab_cart") }
+        emptyCart()
+    }
+
     @Test("数量を3にして追加すると小計に反映される")
     func S0010() {
         scenario {
