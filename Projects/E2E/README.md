@@ -85,7 +85,7 @@ E2E のシナリオは全て `@TestClass(app: "com.ftester.e2e")` で `platform:
 |---|---|---|
 | `ios`(xcuitest・iPhone 17 Pro/iOS 27.0) | ✅ 18/18 | 176s |
 | `android`(Pixel 9/Android 15) | ✅ 18/18 | 82s |
-| `ios-inapp` | ❌ 3件失敗(既知。上表のエンジン差分) | — |
+| `ios-inapp`(2026-07-27 再測) | ✅ 25/25(XCUITest フォールバック+activate 再試行の導入後) | — |
 
 ## シナリオ一覧
 

@@ -708,6 +708,16 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
   `*ログイン*` が `"ログインに失敗しました"` を掴めば substring、`"ログイン"` を掴めば exact。
   読み手は**hybrid の tap アクションだけ**で、primary が substring 止まりなら fallback を照会し
   fallback の exact を優先する(§performance-tuning「フォールバック検証の偽陽性」)
+- **inapp の tap は activate 不発時に「整定待ち→要素取り直し→再 activate」で粘る**(2026-07-27)。
+  Compose iOS は**画面遷移直後、要素が AX ツリーに載っていても accessibilityActivate がまだ
+  配線されておらず false を返す**ことがあり、その瞬間の合成タッチも無反応(成否検知不能)で
+  タップが黙って空振りする(実測: sut-ec-mobile お気に入り一覧→詳細で 2/15 失敗)。
+  `InAppBridge.tapByRef` が InAppSettle(イベント駆動・cap 800ms)で遷移の整定を待ってから
+  ツリーを取り直して再 activate し(+250ms でもう1回)、それでも不発なら従来どおり合成タッチへ。
+  待ちはメインをブロックしない(asyncAfter)ので遷移自体は進む。**再試行は activate false の
+  ときだけ**発生し通常経路のコストはゼロ。恒常的に activate false の要素(合成タッチで動くもの)は
+  最大 ~1s 遅くなるが正しさ優先。レポート注記「要素を取り直して再実行」で観測できる。
+  修正後: シナリオ×15 + フルスイート×3 で失敗ゼロ・救済発火4回
 - **inapp の type は Compose Multiplatform でも通る**(2026-07-21 更新。それ以前は XCUITest 切替が
   必要だった)。Compose は「フォーカスアンカーの OverlayInputView(入力セレクタ非応答)」と
   「実際のキーボード受け口 IntermediateTextInputUIView(UIKeyInput 準拠・isFirstResponder)」が
