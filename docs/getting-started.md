@@ -200,7 +200,8 @@ npm run install-local           # .vsix 化 → インストール → 到達確
 - Claude Code なら `/ftester-scenario` が、対象アプリをライブ操作して実セレクタを採取しながら
   シナリオ（`.swift`）を1本作成し、コンパイル検証まで通します。
 - 手書きするなら `Projects/MyApp/Scenarios/` に `.swift` を置く（`_Main.swift` は編集不要のエントリポイント。
-  DSL はリポジトリの [README.md](../README.md) 「Swift DSL」節を参照）。
+  DSL はリポジトリの [README.md](../README.md) 「Swift DSL」節（セレクタ記法）と
+  [docs/commands.md](commands.md)（全コマンドの引数・挙動）を参照）。
 - または拡張の **ライブ操作パネルで操作を録画**するとシナリオを生成できる（`ftester api gen-scenario`）。
 - 実行は拡張の Test Explorer、または CLI（**WORK_DIR で**）:
 
