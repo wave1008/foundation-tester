@@ -147,9 +147,17 @@ public struct StepOutcome: Sendable {
     /// 返す直前に都度 Date() から採る(failed 以外にも付くが、永続化するのは失敗ステップのみ。
     /// ScenarioEvent.at / FailedStepRecord.at 参照)
     public let at: String
+    /// checked / notChecked のとき、**掴んだ要素が実際に checked を報告したか**。
+    /// ブリッジは true のときだけ送るので、nil のままなら「オフ」か「状態を持たない要素」の
+    /// 区別が付かない = `isNotChecked` が何を指しても通ってしまう。呼び手(FTDriveCore)が
+    /// シナリオ横断で集計し、一度も観測できなければ run 終了時に警告する
+    public let observedChecked: Bool?
 
     public init(status: StepResult.Status, healedStep: FlowStep? = nil, healedByCache: Bool = false,
-               timing: StepTiming? = nil, driverFallback: String? = nil, at: String = ISO8601Millis.string(from: Date())) {
+               timing: StepTiming? = nil, driverFallback: String? = nil,
+               observedChecked: Bool? = nil,
+               at: String = ISO8601Millis.string(from: Date())) {
+        self.observedChecked = observedChecked
         self.status = status
         self.healedStep = healedStep
         self.healedByCache = healedByCache
@@ -265,6 +273,7 @@ public final class StepExecutor {
         let start = clock.now
         var phase = PhaseAccumulator()
         interruptNote = nil   // 「1ステップにつき1回だけ」の起点(dismissInterruption が見る)
+        observedCheckedThisStep = nil
         do {
             if let action = step.action {
                 let outcome = try await executeAction(action, step: step, cached: cached, phase: &phase)
@@ -281,7 +290,8 @@ public final class StepExecutor {
                                    timing: StepTiming(durationMs: Self.ms(clock.now - start),
                                                       snapshotMs: phase.snapshotMs,
                                                       actionMs: phase.actionMs, waitMs: phase.waitMs),
-                                   driverFallback: noteWithInterrupt(nil))
+                                   driverFallback: noteWithInterrupt(nil),
+                                   observedChecked: observedCheckedThisStep)
             }
             return StepOutcome(status: .skipped("action も assert もないステップ"))
         } catch {
@@ -311,6 +321,9 @@ public final class StepExecutor {
 
     /// 内蔵スクロール探索が XCUITest 経由の swipe に落ちたときの注記(execute が載せる)
     private var scrollSearchNote: String?
+    /// checked / notChecked が**実際に checked を観測したか**(execute が StepOutcome に載せる)。
+    /// executeAssert は Status しか返さないためインスタンス変数で受け渡す
+    private var observedCheckedThisStep: Bool?
 
     /// このステップで閉じた割り込み(execute が記録の注記に載せる)。
     /// **1ステップにつき1回だけ**発火させるための状態でもある(閉じても消えない相手に対して
@@ -1061,6 +1074,8 @@ public final class StepExecutor {
                 if let (element, fallback) = Self.resolve(step: step, in: snapshot,
                                                           strictForAssert: true) {
                     found = true
+                    // ブリッジは true のときだけ送る = 観測できたのは「オンだった」ときだけ
+                    if element.checked == true { observedCheckedThisStep = true }
                     if (element.checked == true) == wantChecked {
                         if let fallback { return .passedViaFallback(fallback) }
                         return .passed

@@ -146,6 +146,13 @@ public final class FTDriveCore {
     /// ifCanSelect のセレクタ → 一度でも成立したか。**一度も成立しなかったものだけ**警告する
     /// (交互に出るダイアログのように「出ないこともある」のが正しい用途があるため)
     var branchOutcomes: [String: Bool] = [:]
+    /// `isNotChecked` で通ったセレクタ → 最初に見た説明。**checked を一度も観測できなかったもの**は
+    /// 「状態を持たない要素を指していて、何を書いても通っていた」疑いがある(ブリッジは
+    /// checked を true のときだけ送るため、オフと未対応が区別できない)。
+    /// iOS の SwiftUI / Flutter の checkbox は selected trait を出さない = 常に通る(design.md)
+    var notCheckedOnlySelectors: [String: String] = [:]
+    /// checked を実際に観測できたセレクタ(観測できたなら状態を持つ要素だと分かる)
+    var checkedObservedSelectors: Set<String> = []
 
     /// true = デバイスに触れず全コマンドを記録のみで通過させる(ステップ列挙・コード生成の検証用)
     let dryRun: Bool
@@ -209,6 +216,17 @@ public final class FTDriveCore {
     func runScene(_ number: Int, _ title: String, _ body: () -> Void) {
         sceneAborted = false
         currentSection = nil
+        // scene 番号は利用者が手で振るのでコピペで重複しやすい。重複するとレポートに
+        // 同じ番号が並び、どちらの結果か読み手が判別できなくなる。**警告に留める**
+        // (失敗にはしない = 既存シナリオを止めない。番号は実行順にも結果にも影響しない)
+        if record.scenes.contains(where: { $0.number == number }) {
+            emit(.log("⚠️ scene \(number) が重複しています(\"\(title)\")。"
+                      + "レポートで同じ番号が並び、どちらの結果か判別できません"))
+            addSuggestion(FixSuggestion(
+                isStrong: false,
+                message: "scene \(number) が重複しています(\"\(title)\")。番号を振り直してください"),
+                emitEvent: false, file: "", line: 0)
+        }
         record.scenes.append(SceneRecordData(number: number, title: title))
 
         var event = ScenarioEvent(kind: "sceneStarted")
@@ -378,6 +396,8 @@ public final class FTDriveCore {
         }
 
         trackIDResolution(step: step, status: status, description: description)
+        trackCheckedObservation(step: step, status: status, outcome: outcome,
+                                selectorText: selectorText, description: description)
 
         if case .failed(let reason) = status {
             handleFailure(stepDescription: description, reason: reason)
@@ -410,6 +430,27 @@ public final class FTDriveCore {
         }
     }
 
+    /// `isNotChecked` が「状態を持たない要素」を指していないかを覚える。
+    /// notExist の id typo と同じ構造の穴(**何を指しても成功する**)なので、同じく run 終了時に警告する
+    private func trackCheckedObservation(step: FlowStep, status: StepResult.Status,
+                                         outcome: StepOutcome?, selectorText: String?,
+                                         description: String) {
+        guard let assert = step.assert, assert == "checked" || assert == "notChecked",
+              let key = selectorText else { return }
+        if outcome?.observedChecked == true {
+            checkedObservedSelectors.insert(key)
+            notCheckedOnlySelectors[key] = nil
+            return
+        }
+        guard assert == "notChecked", !checkedObservedSelectors.contains(key) else { return }
+        switch status {
+        case .passed, .passedViaFallback, .healed:
+            if notCheckedOnlySelectors[key] == nil { notCheckedOnlySelectors[key] = description }
+        case .failed, .skipped:
+            break
+        }
+    }
+
     /// dry-run 判定(repeatWhileCanSelect が空回りしないよう1周で切るために参照する)
     public var isDryRun: Bool { dryRun }
 
@@ -429,6 +470,17 @@ public final class FTDriveCore {
                 message: "`#\(id)` はこのシナリオ中で一度も解決できませんでした"
                     + "(\(description))。否定アサーションは id の綴り誤りでも成功するため、"
                     + "実在する id か確認してください"),
+                emitEvent: false, file: "", line: 0)
+        }
+        for (selector, description) in notCheckedOnlySelectors.sorted(by: { $0.key < $1.key })
+        where !checkedObservedSelectors.contains(selector) {
+            addSuggestion(FixSuggestion(
+                isStrong: false,
+                message: "`\(selector)` は isNotChecked で成功しましたが、"
+                    + "このシナリオ中で一度も checked 状態を観測していません(\(description))。"
+                    + "チェック状態を持たない要素(ただのボタン等)や、状態を報告しない実装"
+                    + "(iOS の SwiftUI / Flutter の checkbox)を指していると**何を書いても成功します**。"
+                    + "オンにしてから isChecked も併せて検証してください"),
                 emitEvent: false, file: "", line: 0)
         }
         for (selector, met) in branchOutcomes.sorted(by: { $0.key < $1.key }) where !met {
