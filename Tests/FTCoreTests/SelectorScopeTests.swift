@@ -301,6 +301,42 @@ final class SelectorScopeTests: XCTestCase {
         XCTAssertEqual(StepExecutor.resolvedCandidates(toLeft, elements: rows)?.count, 0)
     }
 
+    /// `||` は候補集合の和(Shirates 準拠)。順序は「節の順 → 節内のツリー順」で、重複は先勝ち
+    func testUnionCandidatesKeepsClauseOrderAndDeduplicates() {
+        let elements = [
+            node(1, "button", depth: 1, id: "save", label: "保存"),
+            node(2, "switch", depth: 1, id: "sw"),
+            node(3, "button", depth: 1, id: "cancel"),
+        ]
+        let union = StepExecutor.unionCandidates(
+            [FlowLocator(type: "switch"), FlowLocator(type: "button")], elements: elements)
+        XCTAssertEqual(union.map(\.identifier), ["sw", "save", "cancel"])
+        // 同じ要素を指す節が並んでも1度だけ
+        let overlapping = StepExecutor.unionCandidates(
+            [FlowLocator(id: "save"), FlowLocator(label: "保存")], elements: elements)
+        XCTAssertEqual(overlapping.map(\.identifier), ["save"])
+    }
+
+    /// 相対セレクタの `||` も和集合。節ごとに方向解決せず、**合わせてから最も近い1つ**を採る
+    func testRelativeUnionPicksNearestAcrossClauses() {
+        let elements = [
+            node(1, "staticText", depth: 1, label: "通知", x: 0, y: 0, width: 40, height: 40),
+            node(2, "switch", depth: 1, id: "near_switch", x: 50, y: 0, width: 40, height: 40),
+            node(3, "button", depth: 1, id: "far_button", x: 200, y: 0, width: 40, height: 40),
+        ]
+        var locator = FlowLocator(label: "通知")
+        locator.relative = [FlowRelativeStep(
+            direction: .right,
+            filter: [FlowLocator(type: "button"), FlowLocator(type: "switch")], ordinal: nil)]
+        XCTAssertEqual(StepExecutor.matchDetailed(locator, elements: elements)?.0.identifier,
+                       "near_switch", "節の順ではなく距離で決まる")
+        // 序数は和集合に対して数える
+        var second = locator
+        second.relative?[0].ordinal = 2
+        XCTAssertEqual(StepExecutor.matchDetailed(second, elements: elements)?.0.identifier,
+                       "far_button")
+    }
+
     func testCandidatesCountsWithinScope() {
         let all = StepExecutor.candidates(FlowLocator(type: "clickable"), elements: tree)
         XCTAssertEqual(all?.count, 4)
@@ -332,5 +368,49 @@ final class SelectorScopeTests: XCTestCase {
         XCTAssertNil(StepExecutor.partialMatchHint(for: FlowLocator(label: "許可",
                                                                     labelMatch: .contains),
                                                    in: elements))
+    }
+
+    // MARK: - 否定フィルタ(`text!=`)
+
+    func testNegationExcludesMatchingElements() {
+        let elements = [
+            node(1, "button", depth: 1, id: "save", label: "保存"),
+            node(2, "button", depth: 1, id: "cancel", label: "キャンセル"),
+            node(3, "staticText", depth: 1, label: "キャンセル"),
+        ]
+        let locator = FlowLocator(type: "button", not: [FlowLocator(label: "キャンセル")])
+        XCTAssertEqual(StepExecutor.candidates(locator, elements: elements)?.map(\.identifier),
+                       ["save"])
+    }
+
+    func testNegationAppliesAfterPositiveFiltersAndStacks() {
+        let elements = [
+            node(1, "button", depth: 1, id: "a", label: "追加"),
+            node(2, "button", depth: 1, id: "b", label: "削除"),
+            node(3, "button", depth: 1, id: "c", label: "編集"),
+        ]
+        let locator = FlowLocator(type: "button",
+                                  not: [FlowLocator(label: "削除"), FlowLocator(label: "編集")])
+        XCTAssertEqual(StepExecutor.candidates(locator, elements: elements)?.map(\.identifier),
+                       ["a"])
+    }
+
+    func testNegationHonoursMatchMode() {
+        let elements = [
+            node(1, "cell", depth: 1, id: "r1", label: "注文 済"),
+            node(2, "cell", depth: 1, id: "r2", label: "注文 未"),
+        ]
+        let locator = FlowLocator(type: "cell",
+                                  not: [FlowLocator(label: "済", labelMatch: .contains)])
+        XCTAssertEqual(StepExecutor.candidates(locator, elements: elements)?.map(\.identifier),
+                       ["r2"])
+    }
+
+    /// 失敗メッセージに出る summary も `属性!=値` で見せる(セレクタ式と同じ読み方にする)
+    func testNegationAppearsInSummary() {
+        let locator = FlowLocator(type: "button", not: [FlowLocator(label: "キャンセル")])
+        XCTAssertEqual(locator.summary, "button&&text!=キャンセル")
+        let typed = FlowLocator(id: "row", not: [FlowLocator(type: "image")])
+        XCTAssertEqual(typed.summary, "id=row&&type!=image")
     }
 }

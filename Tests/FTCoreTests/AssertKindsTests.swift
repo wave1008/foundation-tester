@@ -233,16 +233,25 @@ final class AssertKindsTests: XCTestCase {
             .execute(FlowStep(assert: "count", locator: FlowLocator(type: "clickable"), timeout: 0))
         if case .skipped = outcome.status {} else { XCTFail("skipped を期待: \(outcome.status)") }
     }
-    func testCountUsesFirstResolvingClauseNotUnion() async {
-        // `||` は他コマンドと同じ「解決できる方」= 候補が見つかった最初の節だけを数える
+    func testCountUsesUnionOfClauses() async {
+        // `||` は候補集合の和(Shirates 準拠)。全節を合わせて数える
         let elements = [node(1, type: "clickable", id: "row"), node(2, type: "row"), node(3, type: "row")]
         let step = FlowStep(assert: "count", locator: FlowLocator(type: "clickable"),
-                            fallbacks: [FlowLocator(type: "row")], timeout: 0, expectedCount: 1)
+                            fallbacks: [FlowLocator(type: "row")], timeout: 0, expectedCount: 3)
         let outcome = await StepExecutor(driver: ScriptedDriver(frames: [elements])).execute(step)
-        XCTAssertTrue(isPassed(outcome.status), "先に見つかった .clickable の 1 件で判定する(合計 3 ではない)")
+        XCTAssertTrue(isPassed(outcome.status), ".clickable 1 件 + .row 2 件 = 3 件")
     }
 
-    func testCountFallsBackToNextClauseWhenPrimaryHasNoCandidate() async {
+    func testCountDeduplicatesElementMatchedByMultipleClauses() async {
+        // 同じ要素が複数の節にマッチしても1度だけ数える(Shirates の filterBySelector と同じ)
+        let elements = [node(1, type: "button", id: "save", label: "保存"), node(2, type: "button")]
+        let step = FlowStep(assert: "count", locator: FlowLocator(id: "save"),
+                            fallbacks: [FlowLocator(label: "保存")], timeout: 0, expectedCount: 1)
+        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [elements])).execute(step)
+        XCTAssertTrue(isPassed(outcome.status), "#save と 保存 は同じ要素なので 1 件")
+    }
+
+    func testCountIncludesLaterClauseWhenPrimaryHasNoCandidate() async {
         let elements = [node(1, type: "row"), node(2, type: "row")]
         let step = FlowStep(assert: "count", locator: FlowLocator(type: "clickable"),
                             fallbacks: [FlowLocator(type: "row")], timeout: 0, expectedCount: 2)
@@ -250,4 +259,84 @@ final class AssertKindsTests: XCTestCase {
         XCTAssertTrue(isPassed(outcome.status))
     }
 
+    // MARK: - アサーションの対称化(前方/後方一致・否定・空判定)
+
+    func testTextStartsWithAndEndsWith() async {
+        let elements = [node(1, id: "msg", label: "合計 1,200 円")]
+        for (assert, expected, shouldPass) in [
+            ("textStartsWith", "合計", true), ("textStartsWith", "1,200", false),
+            ("textEndsWith", "円", true), ("textEndsWith", "合計", false),
+        ] as [(String, String, Bool)] {
+            let step = FlowStep(assert: assert, locator: FlowLocator(id: "msg"),
+                                expected: expected, timeout: 0, occlusionGuard: false)
+            let outcome = await StepExecutor(driver: ScriptedDriver(frames: [elements]))
+                .execute(step)
+            XCTAssertEqual(isPassed(outcome.status), shouldPass, "\(assert) \(expected)")
+        }
+    }
+
+    func testTextStartsWithFailureMessageNamesTheRelation() async {
+        let step = FlowStep(assert: "textStartsWith", locator: FlowLocator(id: "msg"),
+                            expected: "合計", timeout: 0, occlusionGuard: false)
+        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [[node(1, id: "msg", label: "小計 500 円")]]))
+            .execute(step)
+        XCTAssertEqual(failureReason(outcome.status)?.contains("で始まりません"), true)
+    }
+
+    func testTextIsNotWaitsForValueToChange() async {
+        let driver = ScriptedDriver(frames: [
+            [node(1, id: "status", label: "処理中")],
+            [node(1, id: "status", label: "完了")],
+        ])
+        let step = FlowStep(assert: "textNotEquals", locator: FlowLocator(id: "status"),
+                            expected: "処理中", timeout: 5)
+        let outcome = await StepExecutor(driver: driver).execute(step)
+        XCTAssertTrue(isPassed(outcome.status))
+        XCTAssertEqual(driver.snapshotCallCount, 2)
+    }
+
+    func testTextIsNotFailsWhileValueMatches() async {
+        let step = FlowStep(assert: "textNotEquals", locator: FlowLocator(id: "status"),
+                            expected: "処理中", timeout: 0)
+        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [[node(1, id: "status", label: "処理中")]]))
+            .execute(step)
+        XCTAssertEqual(failureReason(outcome.status)?.contains("一致しています"), true)
+    }
+
+    func testTextIsEmptyAndNotEmpty() async {
+        let blank = [node(1, id: "input", label: "")]
+        let filled = [node(1, id: "input", label: "太郎")]
+        for (assert, elements, shouldPass) in [
+            ("textIsEmpty", blank, true), ("textIsEmpty", filled, false),
+            ("textIsNotEmpty", filled, true), ("textIsNotEmpty", blank, false),
+        ] as [(String, [ElementInfo], Bool)] {
+            let step = FlowStep(assert: assert, locator: FlowLocator(id: "input"), timeout: 0)
+            let outcome = await StepExecutor(driver: ScriptedDriver(frames: [elements]))
+                .execute(step)
+            XCTAssertEqual(isPassed(outcome.status), shouldPass, assert)
+        }
+    }
+
+    func testEmptyAssertionsDistinguishMissingElement() async {
+        let step = FlowStep(assert: "textIsNotEmpty", locator: FlowLocator(id: "居ない"), timeout: 0)
+        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [[node(1, id: "other")]]))
+            .execute(step)
+        XCTAssertEqual(failureReason(outcome.status)?.contains("要素が見つかりません"), true)
+    }
+
+    /// tap(scroll:, optional: true) が伝える optional は scrollTo 経路でも同契約
+    /// (見つからないときは失敗ではなくスキップ)
+    func testScrollToHonoursOptional() async {
+        let elements = [[node(1, id: "other")]]
+        let optionalStep = FlowStep(action: "scrollTo", locator: FlowLocator(id: "居ない"),
+                                    direction: "down", maxSwipes: 1, optional: true)
+        let skipped = await StepExecutor(driver: ScriptedDriver(frames: elements))
+            .execute(optionalStep)
+        if case .skipped = skipped.status {} else { XCTFail("skipped を期待: \(skipped.status)") }
+        let requiredStep = FlowStep(action: "scrollTo", locator: FlowLocator(id: "居ない"),
+                                    direction: "down", maxSwipes: 1)
+        let failed = await StepExecutor(driver: ScriptedDriver(frames: elements))
+            .execute(requiredStep)
+        XCTAssertEqual(failureReason(failed.status)?.contains("スクロールしても"), true)
+    }
 }

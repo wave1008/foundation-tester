@@ -8,6 +8,7 @@
 //   .id("a").or(.text("保存"))          #a||保存
 //   .id("list").find(.type(.cell).nth(2))     #list >> .cell[2]
 //   .text("通知").right(.switch)        通知:rightSwitch
+//   .type(.button).not(.text("キャンセル"))     .button&&text!=キャンセル
 //
 // フィルタ系メソッド(text/type/nth 等)は常に「**現在の対象**」へ AND する: 相対ステップより前なら
 // 基準(アンカー)、後ならその相対ステップの対象。nth も同様で、相対ステップ後は ordinal(近い順)に
@@ -116,6 +117,13 @@ public struct Sel: Sendable, Equatable {
 
     public func enabled(_ enabled: Bool = true) -> Sel { updatingTarget { $0.enabled = enabled } }
 
+    /// 除外条件(記法の `text!=キャンセル`)。引数に設定された属性を持つ要素を候補から取り除く。
+    /// **肯定条件と併用する**(否定だけでは容器やレイアウトノードまで掴むため、文字列版では
+    /// 検証エラーになる形。型付き版も同じ意味で使う)
+    public func not(_ other: Sel) -> Sel {
+        updatingTarget { $0.not = ($0.not ?? []) + [other.primary] }
+    }
+
     /// 候補内の順番(**1 オリジン**。記法の `[n]` と同じ)。相対ステップの後なら近い順の ordinal
     public func nth(_ n: Int) -> Sel {
         precondition(n >= 1, "nth は 1 オリジンです: \(n)")
@@ -131,7 +139,8 @@ public struct Sel: Sendable, Equatable {
 
     // MARK: - 合成
 
-    /// フォールバック(記法の `||`)。**解決できた最初の節だけ**が使われる(候補の合併ではない)
+    /// 候補集合の和(記法の `||`)。要素を1つ選ぶときは**この順**に先に見つかった方が使われるので、
+    /// `#id` → ラベルのヒール連鎖としても書ける。countIs は和集合の総数を数える
     public func or(_ other: Sel) -> Sel {
         Sel(primary, fallbacks: fallbacks + [other.primary] + other.fallbacks)
     }

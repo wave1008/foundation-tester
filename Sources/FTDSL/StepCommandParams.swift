@@ -63,6 +63,18 @@ public enum StepCommandParams {
         name: "timeout", label: "タイムアウト(秒)", kind: .int, defaultValue: "",
         help: "要素の出現を待つ秒数。空欄 = 実行プロファイルの既定値を使う")
 
+    /// tap / exist のスクロール探索。**空欄 = 引数なし = スクロールしない**
+    /// (scrollTo の directionSpec は既定 up で意味が違う。別インスタンスにするのはこのため)
+    private static let scrollSpec = StepParamSpec(
+        name: "scroll", label: "スクロールして探す", kind: .direction, defaultValue: "",
+        help: "指定するとその方向へスクロールしながら要素を探してから実行します。空欄 = 現在画面のみ")
+
+    /// 既定値は FlowStep.defaultMaxSwipes が唯一の生成元(DSL の既定引数と揃える)
+    private static let scrollMaxSwipesSpec = StepParamSpec(
+        name: "maxSwipes", label: "スワイプ回数の上限", kind: .int,
+        defaultValue: String(FlowStep.defaultMaxSwipes),
+        help: "「スクロールして探す」を指定したときに諦めるまでのスワイプ回数(既定 8 回)")
+
     /// textIs / valueIs の可視性確認。既定 true(見えていることも確認)。false で一致のみ。
     private static let requireVisibleSpec = StepParamSpec(
         name: "requireVisible", label: "見えていることも確認", kind: .bool, defaultValue: "true",
@@ -78,11 +90,14 @@ public enum StepCommandParams {
     /// 含めない(表示表現の「 (optional)」サフィックス側で編集するため。二重管理回避)
     public static func specs(forVerb verb: String) -> [StepParamSpec] {
         switch verb {
-        case "tap": return [actionTimeoutSpec]
+        case "tap": return [actionTimeoutSpec, scrollSpec, scrollMaxSwipesSpec]
         case "type": return [optionalSpec, actionTimeoutSpec]
         case "press": return [durationSpec, optionalSpec, actionTimeoutSpec]
         case "scrollTo": return [directionSpec, maxSwipesSpec]
-        case "exist", "textIs", "valueIs": return [timeoutSpec, requireVisibleSpec]
+        case "exist": return [timeoutSpec, requireVisibleSpec, scrollSpec, scrollMaxSwipesSpec]
+        case "textIs", "valueIs": return [timeoutSpec, requireVisibleSpec]
+        // textContains 系・否定系は従来どおりパラメーター編集の対象外(表示表現の編集だけ。
+        // 増やすと render も揃える必要があり、ここは既存の粒度に合わせる)
         default: return []
         }
     }
@@ -164,6 +179,7 @@ public enum StepCommandParams {
             var arguments = StepCommandText.literal(parsed.strings[0])
             if parsed.optionalFlag { arguments += ", optional: true" }
             arguments += try actionTimeoutArg(params)
+            arguments += try scrollArgs(params)
             return "tap(\(arguments))"
         case "type":
             let optional = try optionalArg(parsed, params)
@@ -196,7 +212,8 @@ public enum StepCommandParams {
         case "exist":
             let timeout = try timeoutArg(params)
             let visArg = try requireVisibleArg(params)
-            return "exist(\(StepCommandText.literal(parsed.strings[0]))\(timeout)\(visArg))"
+            let scroll = try scrollArgs(params)
+            return "exist(\(StepCommandText.literal(parsed.strings[0]))\(timeout)\(visArg)\(scroll))"
         case "textIs", "valueIs":
             let timeout = try timeoutArg(params)
             let visArg = try requireVisibleArg(params)
@@ -221,6 +238,23 @@ public enum StepCommandParams {
     private static func requireVisibleArg(_ params: [String: String]) throws -> String {
         let on = try boolValue(value(params, requireVisibleSpec), name: "requireVisible")
         return on ? "" : ", requireVisible: false"
+    }
+
+    /// tap / exist のスクロール探索。scroll が空欄なら maxSwipes も出さない
+    /// (スクロールしない呼び出しに maxSwipes だけ残ると意味の無い引数になる)
+    private static func scrollArgs(_ params: [String: String]) throws -> String {
+        let direction = value(params, scrollSpec)
+        if direction.isEmpty { return "" }
+        guard directions.contains(direction) else {
+            throw StepCommandParamsError.invalidValue(
+                label: "scroll", reason: "up / down / left / right のいずれか、または空欄で指定してください")
+        }
+        var text = ", scroll: .\(direction)"
+        let maxSwipes = try intValue(value(params, scrollMaxSwipesSpec), name: "maxSwipes")
+        if String(maxSwipes) != scrollMaxSwipesSpec.defaultValue {
+            text += ", maxSwipes: \(maxSwipes)"
+        }
+        return text
     }
 
     /// exist / textIs / valueIs の timeout(空文字 = 省略 = プロファイル既定)
