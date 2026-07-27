@@ -136,6 +136,20 @@ swift run ftester project create MyApp --app com.mycompany.myapp
 Package.swift のターゲット `ftester-scenarios-MyApp` が自動生成・登録されます（手編集不要）。
 プロジェクト名は SPM ターゲット名になるため `^[A-Za-z0-9_][A-Za-z0-9_-]*$`（英数字）。
 
+#### git 管理（何をコミットするか）
+
+WORK_DIR を自分の git リポジトリで管理する場合の方針です。`ftester init` は WORK_DIR の
+`.gitignore` を自動整備します（無ければ作成・あれば欠けている行だけ追記。冪等）:
+`.build/`（SwiftPM ビルド成果物。1GB 超になる）と `Projects/*/reports/`（実行レポート）。
+
+| | 方針 |
+|---|---|
+| `Package.swift`・`Projects/`（Scenarios・profiles・docs/testbases）・`.claude/`・`.gitignore` | **コミットする**（テスト資産そのもの） |
+| `Package.resolved` | **コミット推奨**（ftester の推移依存の版固定。再現ビルドに効く） |
+| `.vscode/settings.json` | コミット可（`ftester.binaryPath` が相対パス＝「TOOL_ROOT を兄弟に clone」の規約をチームで揃える前提。絶対パスで init した場合はマシン固有） |
+| `.mcp.json` | マシン固有（TOOL_ROOT の**絶対パス**を含む）。コミットするならチームでパス規約を揃える |
+| `.build/`・`Projects/*/reports/` | **コミットしない**（.gitignore が ignore 済み） |
+
 ### 4. プロファイル（マシン/アプリ/実行）を用意する
 
 以降のプロファイルは **WORK_DIR の `Projects/MyApp/profiles/`** に住みます。Claude Code なら

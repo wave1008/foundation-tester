@@ -76,4 +76,64 @@ final class ProjectScaffoldTests: XCTestCase {
         let data = try Data(contentsOf: settingsURL)
         return try XCTUnwrap(try JSONSerialization.jsonObject(with: data) as? [String: Any])
     }
+
+    // MARK: - ensureGitignore
+
+    private var gitignoreURL: URL {
+        packageRoot.appendingPathComponent(".gitignore")
+    }
+
+    func testGitignoreFreshCreatesBothEntries() throws {
+        let added = try ProjectScaffold.ensureGitignore(packageRoot: packageRoot)
+        XCTAssertEqual(added, [".build/", "Projects/*/reports/"])
+        let content = try String(contentsOf: gitignoreURL, encoding: .utf8)
+        XCTAssertTrue(content.contains(".build/"))
+        XCTAssertTrue(content.contains("Projects/*/reports/"))
+        XCTAssertTrue(content.hasSuffix("\n"))
+    }
+
+    func testGitignoreSecondCallIsIdempotent() throws {
+        _ = try ProjectScaffold.ensureGitignore(packageRoot: packageRoot)
+        let before = try String(contentsOf: gitignoreURL, encoding: .utf8)
+
+        let added = try ProjectScaffold.ensureGitignore(packageRoot: packageRoot)
+        XCTAssertEqual(added, [])
+        let after = try String(contentsOf: gitignoreURL, encoding: .utf8)
+        XCTAssertEqual(before, after, "既に揃っていればファイルは不変")
+    }
+
+    func testGitignoreAppendsOnlyMissingEntry() throws {
+        let existing = "*.log\n.build\n"
+        try existing.write(to: gitignoreURL, atomically: true, encoding: .utf8)
+
+        let added = try ProjectScaffold.ensureGitignore(packageRoot: packageRoot)
+        XCTAssertEqual(added, ["Projects/*/reports/"])
+
+        let content = try String(contentsOf: gitignoreURL, encoding: .utf8)
+        XCTAssertTrue(content.contains("*.log"), "既存行は保持")
+        XCTAssertTrue(content.contains(".build"), "既存行は保持")
+        XCTAssertTrue(content.contains("# ftester"))
+        XCTAssertTrue(content.contains("Projects/*/reports/"))
+    }
+
+    func testGitignoreAppendDoesNotMergeWithMissingTrailingNewline() throws {
+        let existing = "*.log"
+        try existing.write(to: gitignoreURL, atomically: true, encoding: .utf8)
+
+        _ = try ProjectScaffold.ensureGitignore(packageRoot: packageRoot)
+
+        let lines = try String(contentsOf: gitignoreURL, encoding: .utf8)
+            .split(separator: "\n", omittingEmptySubsequences: false)
+        XCTAssertEqual(lines.first, "*.log", "元の最終行が追記と連結されない")
+    }
+
+    func testGitignoreRecognizesAlternateSpellingsAsPresent() throws {
+        let existing = "/.build/\n./Projects/*/reports\n"
+        try existing.write(to: gitignoreURL, atomically: true, encoding: .utf8)
+
+        let added = try ProjectScaffold.ensureGitignore(packageRoot: packageRoot)
+        XCTAssertEqual(added, [])
+        let content = try String(contentsOf: gitignoreURL, encoding: .utf8)
+        XCTAssertEqual(content, existing, "変則表記でも既にあると判定し不変")
+    }
 }

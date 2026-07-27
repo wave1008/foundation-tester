@@ -74,6 +74,15 @@ struct InitCommand: AsyncParsableCommand {
             // VSCode 拡張が ftester.project/ftester.binaryPath を手動設定なしで解決できるように
             let wroteVSCodeSettings = try ProjectScaffold.writeVSCodeSettings(
                 packageRoot: cwd, ftesterPath: ftesterPath, projectName: projectName)
+            // .build/(~1.7GB)等が git status の未追跡ノイズにならないように。失敗しても init は続行
+            var addedGitignoreEntries: [String] = []
+            do {
+                addedGitignoreEntries = try ProjectScaffold.ensureGitignore(packageRoot: cwd)
+            } catch {
+                let warning = "⚠️ .gitignore の自動整備に失敗しました(手動で .build/ 等を追加してください): "
+                    + "\(error.localizedDescription)\n"
+                FileHandle.standardError.write(Data(warning.utf8))
+            }
             print("✅ 受け手パッケージを作成しました: \(packageName)")
             print("   依存:         \(dependencyLine)")
             print("   プロジェクト: Projects/\(projectName)/(Scenarios/ に @TestClass の .swift を追加)")
@@ -82,6 +91,9 @@ struct InitCommand: AsyncParsableCommand {
             print("   実行:         ftester run --project \(projectName) --profile ios")
             if wroteVSCodeSettings {
                 print("   VSCode 拡張:  .vscode/settings.json に ftester.project/ftester.binaryPath を自動設定しました")
+            }
+            if !addedGitignoreEntries.isEmpty {
+                print("   .gitignore:   \(addedGitignoreEntries.joined(separator: " ")) を追記しました(.build/ 等の未追跡ノイズ対策)")
             }
             print("   Claude Code:  このフォルダを開いて /ftester-setup でデバイス設定〜実行まで駆動できます")
         } catch {
