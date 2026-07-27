@@ -30,8 +30,9 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 | コマンド | 説明 |
 |---|---|
 | `tap(sel, optional:timeout:scroll:maxSwipes:)` | タップ |
-| `type("文字列")` | **フォーカス中の要素**へ入力(直前に `tap(入力欄)` でフォーカスしてから使う) |
-| `type(sel, "文字列", optional:timeout:scroll:maxSwipes:)` | 要素を指定して入力。日本語もそのまま入る(IME 切替なし) |
+| `type("文字列")` | **フォーカス中の要素**へ入力(直前に `tap(入力欄)` でフォーカスしてから使う)。末尾が改行のときはその改行を分離して Enter(IME アクション)として送る(文中の改行はそのまま文字として入力) |
+| `type(sel, "文字列", optional:timeout:scroll:maxSwipes:)` | 要素を指定して入力。日本語もそのまま入る(IME 切替なし)。末尾改行の扱いは上記と同じ |
+| `pressEnter()` | フォーカス中の入力へ Enter/IME アクション(検索・実行・改行)を発火(Shirates(Classic) 準拠) |
 | `press(sel, duration: 1.0, optional:timeout:scroll:maxSwipes:)` | 長押し(duration は秒) |
 | `swipe(.up / .down / .left / .right)` | 画面全体をスワイプ(**指の動き**) |
 

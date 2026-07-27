@@ -268,6 +268,25 @@ ftester run --project MyApp --profile ios   # ブリッジ供給・自動イン�
 ftester run-file ~/tmp/新しい画面.swift --project MyApp --profile ios
 ```
 
+**exit code**: 失敗があれば `1`、全成功なら `0`。実行対象が0件のとき（`--failed` で対象なし・全件
+`@Deleted`）も `0`。引数不正などの使い方誤りは swift-argument-parser の既定で `64`。
+
+**`--quiet`**: ステップ行を抑制し、シナリオ結果1行＋失敗メッセージ＋最終サマリだけを出力する
+（CI・エージェント向け）。機械可読な出力が要るときは NDJSON を返す `ftester api run` を使う。
+
+## ブリッジの起動・再利用・停止
+
+- `ftester bridge up` が起動するのは **xcuitest ブリッジ（iOS）／デバイス内サーバ（Android）のみ**。
+  in-app ブリッジを起動する経路は `bridge up` には無い。プロセスは常駐する（CLI 終了後も残る）。
+  停止は `ftester bridge down [--port|--all]` か `ftester devices down`。
+- `ftester run --profile ...` は必要なブリッジを**自前で供給**する: in-app ブリッジは毎回自分で起動し、
+  既存の xcuitest ブリッジはプロトコル版が一致すれば再利用、版違い・別アプリの残骸は停止して立て直す。
+  **run は終了時にブリッジを停止しない**（常駐を残すのが仕様。次の run が再利用する）。
+- `--profile` 無しの `ftester run` はブリッジを供給しない（事前に `bridge up` が必要）。
+- ポートが 8123→8128→8129 のように増えるのは正常: hybrid エンジンは1デバイスで2ポート
+  （inapp＋xcuitest）使い、`.ftester/bridge-*.pid`／`.inapp` の残骸があるポートは避けて採番するため。
+  まとめて掃除するには `ftester bridge down --all`。
+
 ## 更新のしかた（新しい修正版が出たとき）
 
 Claude Code なら `/ftester-update` が構成を判定して自動実行します。手動は次の順:
