@@ -1089,6 +1089,7 @@ public final class StepExecutor {
             var backoff = PollBackoff()
             var actual = 0
             var breakdown: [(clause: FlowLocator, elements: [ElementInfo])] = []
+            var nestingHint = ""
             while true {
                 let start = clock.now
                 var snapshot = try await driver.snapshot()
@@ -1096,6 +1097,8 @@ public final class StepExecutor {
                 try await dismissInterruption(in: &snapshot, phase: &phase)
                 breakdown = Self.unionByClause(chain, elements: snapshot.elements)
                 actual = breakdown.reduce(0) { $0 + $1.elements.count }
+                nestingHint = Self.nestingHint(breakdown.flatMap(\.elements),
+                                               in: snapshot.elements)
                 if actual == expectedCount { return .passed }
                 if Date() >= deadline { break }
                 let waitStart = clock.now
@@ -1109,7 +1112,8 @@ public final class StepExecutor {
                 ? "内訳: " + breakdown.map { "\($0.clause.summary) \($0.elements.count)件" }
                     .joined(separator: " / ")
                 : step.locatorSummary
-            return .failed("個数が一致しません: 期待 \(expectedCount)、実際 \(actual)(\(detail))")
+            return .failed("個数が一致しません: 期待 \(expectedCount)、実際 \(actual)(\(detail))"
+                           + nestingHint)
 
         case "screenMatches":
             guard let expected = step.expected, !expected.isEmpty else {
@@ -1263,6 +1267,41 @@ public final class StepExecutor {
     public static func unionCandidates(_ chain: [FlowLocator], elements: [ElementInfo])
         -> [ElementInfo] {
         unionByClause(chain, elements: elements).flatMap(\.elements)
+    }
+
+    /// 「親子で重ねて数えている」ときだけ付ける案内。**直し方(型で絞る)まで書く** —
+    /// これを知らないと `countIs("項目", 3)` が 6 を返す理由に辿り着けない(実際に踏んだ)
+    static func nestingHint(_ matched: [ElementInfo], in all: [ElementInfo]) -> String {
+        let outer = outermostCount(matched, in: all)
+        guard outer != matched.count, outer > 0 else { return "" }
+        // 外側だけに残る型が1つなら、そのまま書ける形で提案する
+        let matchedRefs = Set(matched.map(\.ref))
+        var nested: Set<Int> = []
+        for element in matched {
+            for descendant in descendants(of: element, in: all)
+            where matchedRefs.contains(descendant.ref) { nested.insert(descendant.ref) }
+        }
+        let outerTypes = Set(matched.filter { !nested.contains($0.ref) }.map(\.type))
+        let suggestion = outerTypes.count == 1 ? "(例 `.\(outerTypes.first!)&&…`)" : ""
+        return "。**親子で同じ要素を重ねて数えています** — 型で絞ると \(outer) 件"
+            + suggestion + "。ボタンとその内側のラベルは別要素として両方ツリーに載ります"
+    }
+
+    /// 数えた要素の中に**親子関係のもの**(ボタンとその内側の Text 等)が混ざっていないか。
+    /// 返すのは「子孫を除いた件数」で、元の件数と違えばラベルだけで数えている疑いが濃い。
+    /// **フレームワーク一般の性質**(Compose / SwiftUI / Flutter とも、ボタンとラベルが
+    /// 別要素として両方ツリーに載る)なので、利用者は必ず一度は踏む。型で絞れば解決する
+    public static func outermostCount(_ matched: [ElementInfo], in all: [ElementInfo]) -> Int {
+        guard matched.count > 1 else { return matched.count }
+        let matchedRefs = Set(matched.map(\.ref))
+        var nested: Set<Int> = []
+        for element in matched {
+            for descendant in descendants(of: element, in: all)
+            where descendant.ref != element.ref && matchedRefs.contains(descendant.ref) {
+                nested.insert(descendant.ref)
+            }
+        }
+        return matched.count - nested.count
     }
 
     /// 和集合を**節ごとの寄与に分けて**返す(countIs の失敗メッセージの内訳用)。

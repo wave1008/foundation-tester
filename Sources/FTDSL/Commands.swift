@@ -160,22 +160,27 @@ public func type(_ text: String, optional: Bool = false,
 /// timeout: 要素解決を待つ上限秒(0 = 初回スナップショットのみ。出るか不定な optional の
 /// 空振り ~0.7s を数十msに短縮)。省略時は既定の再試行(約0.7秒)
 public func type(_ selector: String, _ text: String, optional: Bool = false, timeout: Int? = nil,
+                 scroll: FTSwipeDirection? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
                  file: StaticString = #filePath, line: UInt = #line) {
     typeImpl(FTSelector.parse(selector), text, optional: optional, timeout: timeout,
-             file: file, line: line)
+             scroll: scroll, maxSwipes: maxSwipes, file: file, line: line)
 }
 
 public func type(_ selector: Sel, _ text: String, optional: Bool = false, timeout: Int? = nil,
+                 scroll: FTSwipeDirection? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
                  file: StaticString = #filePath, line: UInt = #line) {
     typeImpl(selector.ftSelector, text, optional: optional, timeout: timeout,
-             file: file, line: line)
+             scroll: scroll, maxSwipes: maxSwipes, file: file, line: line)
 }
 
 private func typeImpl(_ selector: FTSelector, _ text: String, optional: Bool, timeout: Int?,
+                      scroll: FTSwipeDirection?, maxSwipes: Int,
                       file: StaticString, line: UInt) {
     let step = FlowStep(action: "type", locator: selector.primary,
                         fallbacks: selector.stepFallbacks,
-                        text: text, timeout: timeout, optional: optional ? true : nil)
+                        text: text, direction: scroll?.rawValue, timeout: timeout,
+                        maxSwipes: scroll == nil ? nil : maxSwipes,
+                        optional: optional ? true : nil)
     perform("type", selector, step: step,
             description: "type \"\(selector.text)\" \"\(text)\"", file: file, line: line)
 }
@@ -185,23 +190,27 @@ private func typeImpl(_ selector: FTSelector, _ text: String, optional: Bool, ti
 /// duration: 長押しする秒数
 public func press(_ selector: String, duration: Double = FlowStep.defaultPressDuration,
                   optional: Bool = false, timeout: Int? = nil,
+                  scroll: FTSwipeDirection? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
                   file: StaticString = #filePath, line: UInt = #line) {
     pressImpl(FTSelector.parse(selector), duration: duration, optional: optional, timeout: timeout,
-              file: file, line: line)
+              scroll: scroll, maxSwipes: maxSwipes, file: file, line: line)
 }
 
 public func press(_ selector: Sel, duration: Double = FlowStep.defaultPressDuration,
                   optional: Bool = false, timeout: Int? = nil,
+                  scroll: FTSwipeDirection? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
                   file: StaticString = #filePath, line: UInt = #line) {
     pressImpl(selector.ftSelector, duration: duration, optional: optional, timeout: timeout,
-              file: file, line: line)
+              scroll: scroll, maxSwipes: maxSwipes, file: file, line: line)
 }
 
 private func pressImpl(_ selector: FTSelector, duration: Double, optional: Bool, timeout: Int?,
+                       scroll: FTSwipeDirection?, maxSwipes: Int,
                        file: StaticString, line: UInt) {
     let step = FlowStep(action: "press", locator: selector.primary,
                         fallbacks: selector.stepFallbacks,
-                        timeout: timeout,
+                        direction: scroll?.rawValue, timeout: timeout,
+                        maxSwipes: scroll == nil ? nil : maxSwipes,
                         // 既定値は載せない(生成コード・ヒールキャッシュを既定ケースで太らせない)
                         duration: duration == FlowStep.defaultPressDuration ? nil : duration,
                         optional: optional ? true : nil)
@@ -819,7 +828,12 @@ private func repeatWhileCanSelectImpl(_ selector: FTSelector, max: Int, waitSeco
         // dry-run は canSelect が常に true を返すため、1 周だけ回してステップ列挙に留める
         if core.isDryRun { break }
     }
-    core.recordStep(description: "repeatWhileCanSelect \"\(selector.text)\" → \(iterations) 回",
+    // **上限で止まったのか、出尽くしたのかを区別できるようにする**。`→ 10 回` だけだと
+    // 「ちょうど 10 件だった」のか「まだ残っているのに打ち切った」のかが記録から読めない
+    // (成功扱いにする契約は変えない = 上限到達を失敗にはしない)
+    let reachedMax = iterations >= max && max > 0 && !core.isDryRun
+    let suffix = reachedMax ? "(上限に達したため打ち切り。まだ残っている可能性があります)" : ""
+    core.recordStep(description: "repeatWhileCanSelect \"\(selector.text)\" → \(iterations) 回\(suffix)",
                     status: .passed, file: "\(file)", line: Int(line))
 }
 
