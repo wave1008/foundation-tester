@@ -197,7 +197,7 @@ public enum ScenarioOutcome: Sendable, Equatable {
 public enum ScenarioRunner {
     /// 戻り値: 実行結果。進捗は onEvent で通知される
     public static func runOne(project: TestProject, item: ScenarioRunItem, worker: RunWorker,
-                              healingEnabled: Bool, reportDir: URL,
+                              fm: FMConfig, reportDir: URL,
                               defaultTimeout: Int? = nil,
                               scenarioTimeout: Int? = nil,
                               debug: ScenarioDebugOptions? = nil,
@@ -217,7 +217,7 @@ public enum ScenarioRunner {
         var frozen = false
         let passed = await ScenarioHost.run(
             project: project, scenarioID: item.info.id, connection: worker.connection,
-            heal: healingEnabled, reportDir: reportDir.path,
+            fm: fm, reportDir: reportDir.path,
             defaultTimeout: defaultTimeout, scenarioTimeout: scenarioTimeout,
             debug: debug, recording: recording) { event in
             switch event.kind {
@@ -315,7 +315,7 @@ public final class RunOrchestrator {
     public let events: AsyncStream<RunEvent>
     private let continuation: AsyncStream<RunEvent>.Continuation
     private let workers: [RunWorker]
-    private let healingEnabled: Bool
+    private let fm: FMConfig
     private let reportDir: URL
     private let project: TestProject
     private let defaultTimeout: Int?
@@ -383,7 +383,7 @@ public final class RunOrchestrator {
         await degraded.add("\(label): \(message)")
     }
 
-    public init(project: TestProject, workers: [RunWorker], healingEnabled: Bool,
+    public init(project: TestProject, workers: [RunWorker], fm: FMConfig,
                 reportDir: URL, defaultTimeout: Int? = nil, scenarioTimeout: Int? = nil,
                 debug: ScenarioDebugOptions? = nil, recorder: RunRecorder? = nil,
                 recordingConfig: VideoRecordingConfig? = nil,
@@ -400,7 +400,7 @@ public final class RunOrchestrator {
                 lateWorkers: (platforms: Set<String>, provider: @Sendable () async -> [RunWorker])? = nil) {
         (self.events, self.continuation) = AsyncStream.makeStream(of: RunEvent.self)
         self.workers = workers
-        self.healingEnabled = healingEnabled
+        self.fm = fm
         self.reportDir = reportDir
         self.project = project
         self.defaultTimeout = defaultTimeout
@@ -694,7 +694,7 @@ public final class RunOrchestrator {
                 workerLabel: worker.label, scenarioID: item.info.id, at: Date())
             let outcome = await ScenarioRunner.runOne(
                 project: project, item: item, worker: worker,
-                healingEnabled: healingEnabled, reportDir: reportDir,
+                fm: fm, reportDir: reportDir,
                 defaultTimeout: defaultTimeout, scenarioTimeout: scenarioTimeout, debug: debug,
                 recorder: recorder,
                 onEvent: { [continuation] in continuation.yield($0) })

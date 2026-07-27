@@ -179,14 +179,39 @@ public struct RunDeviceRef: Codable, Sendable, Equatable {
     static let knownKeys: Set<String> = ["name"]
 }
 
+/// FM 機能の実行時トグル(実行プロファイル由来の実効値)。enabled=false のとき他フラグも
+/// resolve 側で false に落とす(利用側は個別フラグだけ見ればよい)
+public struct FMConfig: Sendable, Equatable {
+    /// FM を使用するか(false = heal/偽陽性検証/screenIs/triage を一切呼ばない)
+    public var enabled: Bool
+    public var heal: Bool
+    /// 偽陽性検証(occlusion guard)
+    public var falsePositiveCheck: Bool
+    public var screenIs: Bool
+
+    public init(enabled: Bool = true, heal: Bool = false,
+                falsePositiveCheck: Bool = true, screenIs: Bool = true) {
+        self.enabled = enabled
+        self.heal = heal
+        self.falsePositiveCheck = falsePositiveCheck
+        self.screenIs = screenIs
+    }
+}
+
 /// 実行プロファイル(profiles/runs/<name>.json)
 public struct RunProfileDocument: Codable, Sendable, Equatable {
     /// apps/<app>.json への参照
     public var app: String?
     /// 実行に使うデバイス(name 参照。iOS/Android 混在可 = 両OS同時実行)
     public var devices: [RunDeviceRef]?
-    /// FM によるロケータ自己修復を許可するか(既定 false)
+    /// FM 機能を使用するか(既定 true)。false なら heal/偽陽性検証/screenIs/triage を一切呼ばない
+    public var fm: Bool?
+    /// FM によるロケータ自己修復を許可するか(既定 true)
     public var heal: Bool?
+    /// 偽陽性検証(occlusion guard)を有効にするか(既定 true)
+    public var falsePositiveCheck: Bool?
+    /// screenIs(screenMatches)を有効にするか(既定 true。無効時は該当ステップを skip)
+    public var screenIs: Bool?
     /// レポート出力先(プロジェクトルート相対 or 絶対。既定 "reports")
     public var reportDir: String?
     /// DSL コマンドの既定タイムアウト秒(省略時は DSL 側の既定値)
@@ -241,7 +266,8 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     /// Android は screenrecord 自体の --size 指定も省略する(録画元から既にフル解像度になる)
     public var recordFullResolution: Bool?
 
-    public init(app: String? = nil, devices: [RunDeviceRef]? = nil, heal: Bool? = nil,
+    public init(app: String? = nil, devices: [RunDeviceRef]? = nil, fm: Bool? = nil,
+                heal: Bool? = nil, falsePositiveCheck: Bool? = nil, screenIs: Bool? = nil,
                 reportDir: String? = nil, defaultTimeout: Int? = nil, scenarioTimeout: Int? = nil,
                 machine: String? = nil, iosInappEngine: Bool? = nil,
                 wipeDataOnBloat: Bool? = nil, wipeDataThresholdGB: Double? = nil,
@@ -251,7 +277,10 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
                 recordFullResolution: Bool? = nil) {
         self.app = app
         self.devices = devices
+        self.fm = fm
         self.heal = heal
+        self.falsePositiveCheck = falsePositiveCheck
+        self.screenIs = screenIs
         self.reportDir = reportDir
         self.defaultTimeout = defaultTimeout
         self.scenarioTimeout = scenarioTimeout
@@ -269,7 +298,8 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     }
 
     static let knownKeys: Set<String> = [
-        "app", "devices", "heal", "reportDir", "defaultTimeout", "scenarioTimeout",
+        "app", "devices", "fm", "heal", "falsePositiveCheck", "screenIs",
+        "reportDir", "defaultTimeout", "scenarioTimeout",
         "machine", "iosInappEngine", "wipeDataOnBloat", "wipeDataThresholdGB",
         "recoverCpuFallbackToGpu", "locale",
         "iosFastInput", "record", "recordFailuresOnly", "recordBitrateKbps", "recordFullResolution",
@@ -320,7 +350,10 @@ public struct ResolvedProfile: Sendable {
     /// platform("ios"/"android")→ アプリ情報(デバイスがある platform のみ)
     public let apps: [String: ResolvedAppTarget]
     public let devices: [ResolvedDevice]
-    public let heal: Bool
+    /// FM 機能の実効設定(RunProfileDocument の fm/heal/falsePositiveCheck/screenIs を合成)
+    public let fm: FMConfig
+    /// FM によるロケータ自己修復を許可するか(fm.heal のエイリアス。既存呼び出し互換のため維持)
+    public var heal: Bool { fm.heal }
     /// 絶対パス解決済み
     public let reportDir: URL
     public let defaultTimeout: Int?
@@ -662,6 +695,15 @@ public enum ProfileResolver {
             throw ProfileError.invalidLocale(run: runName)
         }
 
+        // fm:false は他の3フラグを無条件に false へ落とす(利用側は個別フラグだけ見ればよい契約。
+        // FMConfig の doc コメント参照)
+        let fmEnabled = runDoc.fm ?? true
+        let fm = FMConfig(
+            enabled: fmEnabled,
+            heal: fmEnabled && (runDoc.heal ?? true),
+            falsePositiveCheck: fmEnabled && (runDoc.falsePositiveCheck ?? true),
+            screenIs: fmEnabled && (runDoc.screenIs ?? true))
+
         return ResolvedProfile(
             project: project,
             runName: runName,
@@ -669,7 +711,7 @@ public enum ProfileResolver {
             appName: appProfile.resolvedAppName ?? appRef,
             apps: apps,
             devices: devices,
-            heal: runDoc.heal ?? false,
+            fm: fm,
             reportDir: reportDir,
             defaultTimeout: runDoc.defaultTimeout,
             scenarioTimeout: runDoc.scenarioTimeout,

@@ -244,7 +244,7 @@ final class MCPServer {
             throw MCPError("シナリオが見つかりません: \(id)(利用可能: \(all.map(\.id).joined(separator: ", ")))")
         }
 
-        var heal = args["heal"] as? Bool ?? false
+        var fm = FMConfig(heal: args["heal"] as? Bool ?? false)
         var reportDir = project.reportsDir.path
         var defaultTimeout: Int?
         var connection: DriverConnection
@@ -258,7 +258,11 @@ final class MCPServer {
             let resolved = try ProfileResolver.resolve(
                 project: project, runName: profileName, machineName: machine.name)
             prologue.append(contentsOf: resolved.warnings.map { "⚠️ \($0)" })
-            heal = args["heal"] as? Bool ?? resolved.heal
+            fm = resolved.fm
+            // heal 引数は master(fm.enabled)が有効な場合のみ ON にする override(未指定は resolved のまま)
+            if let healArg = args["heal"] as? Bool {
+                fm.heal = healArg && fm.enabled
+            }
             reportDir = resolved.reportDir.path
             defaultTimeout = resolved.defaultTimeout
             let platform = info.platform ?? resolved.devices.first?.platform ?? "ios"
@@ -290,7 +294,7 @@ final class MCPServer {
         var lines: [String] = prologue
         _ = await ScenarioHost.run(project: project, scenarioID: info.id,
                                    connection: connection,
-                                   heal: heal, reportDir: reportDir,
+                                   fm: fm, reportDir: reportDir,
                                    defaultTimeout: defaultTimeout) { event in
             lines.append(contentsOf: ScenarioLogFormatter.lines(for: event))
         }
@@ -345,7 +349,7 @@ final class MCPServer {
             "id": ["type": "string", "description": "シナリオ ID(クラス名.メソッド名。ft_list_scenarios で確認)"],
             "project": ["type": "string", "description": "テストプロジェクト名(省略時は既定プロジェクト)"],
             "profile": ["type": "string", "description": "実行プロファイル名(profiles/runs/。接続先・heal・レポート先を解決)"],
-            "heal": ["type": "boolean", "description": "ロケータ自己修復を許可(既定 false)"],
+            "heal": ["type": "boolean", "description": "ロケータ自己修復の上書き(省略時: profile 指定ならその設定、無指定なら false。profile の fm:false 時は true でも無効)"],
             "port": ["type": "integer", "description": "iOS ブリッジのポート(既定 8123)"],
             "serial": ["type": "string", "description": "Android デバイスのシリアル"],
         ], required: ["id"]),

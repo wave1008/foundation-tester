@@ -1224,9 +1224,17 @@ platform フィールドは持たず、**iOS/Android のデバイス名を混在
 ```json
 { "app": "sampleapp",
   "devices": [ { "name": "メイン機" }, { "name": "サブ機" }, { "name": "エミュ1" } ],
-  "heal": false, "reportDir": "reports", "defaultTimeout": 5,
+  "fm": true, "heal": false, "reportDir": "reports", "defaultTimeout": 5,
   "wipeDataOnBloat": true, "wipeDataThresholdGB": 8 }
 ```
+
+`fm`(既定 true)は FM(Foundation Models)機能の親スイッチ。false にすると自己修復(heal)・
+偽陽性検証(exist 等の FM 視覚照合)・`screenIs`・失敗時トリアージを含む FM 呼び出しを一切行わない
+(子ランナーへは `--no-fm` 等で伝搬し、delegate 自体を作らない)。個別トグルは `heal` /
+`falsePositiveCheck`(偽陽性検証)/ `screenIs`(**いずれも既定 true**。親が false なら個別指定に
+関わらず無効)。screenIs を無効にした run では該当ステップは skip(素通り)になり、FM 利用不可時と
+同じ扱い。UI はデバイスタブの実行プロファイル設定「FM(Foundation Model)」セクション
+(親チェックボックス ON のときだけ個別トグルを表示)。
 
 `wipeDataOnBloat`(既定 true)は実行開始時に Android AVD の wipe 対象
 (userdata/cache/snapshots)合計が `wipeDataThresholdGB`(既定 8。**Play イメージは wipe 直後の

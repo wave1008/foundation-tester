@@ -14,7 +14,7 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 |---|---|
 | `optional: true` | 要素が見つからなくても失敗にせずスキップする(既定 false。tap / type / press / tapWithoutScroll のみ) |
 | `timeout: 秒` | ロケータ解決の再試行上限。**操作系の省略時は約 0.7 秒**、**検証系の省略時は 5 秒**(実行プロファイルの `defaultTimeout` で変更可)。`0` = 初回スナップショットのみ(出るか不定な optional の空振り短縮に) |
-| `requireVisible: false` | FM による可視性確認(覆われ・見切れの検出)を省く。既定 true(FM 未配線時は自動で素通り) |
+| `requireVisible: false` | FM による可視性確認(覆われ・見切れの検出)を省く。既定 true(FM 未配線時と、実行プロファイルで `fm:false` / `falsePositiveCheck:false` の場合は自動で素通り) |
 | `scroll: .down` / `maxSwipes:` | 実行前に**その方向へスクロールしながら要素を探す**(後述「スクロール」)。省略時は現在画面のみ |
 
 - **要素の出現待ちは暗黙**。操作は解決を再試行し、検証はタイムアウトまでポーリング再判定するので、
@@ -66,7 +66,7 @@ withScrollDown {
 | `countIs(sel, 個数, timeout:)` | 候補の個数。**ツリー上の件数**で可視性は見ない。`\|\|` は和集合の総数(重複は 1 度だけ)。**ラベルで数えるときは型で絞る**(`.button&&項目` — ボタンと内側のラベルは別要素として両方載るため) |
 | `isEnabled(sel)` / `isDisabled(sel)` | 有効/無効の検証(タイムアウトまで状態変化を待つ) |
 | `isChecked(sel)` / `isNotChecked(sel)` | チェック状態の検証。iOS はアプリの実装により checked が取れないことがある(取れないままだと run 終了時に警告が出る) |
-| `screenIs("画面の説明文")` | FM による**見た目の**画面検証(スクリーンショットと説明文の照合) |
+| `screenIs("画面の説明文")` | FM による**見た目の**画面検証(スクリーンショットと説明文の照合)。実行プロファイルで `fm:false` / `screenIs:false` の場合はスキップ(素通り) |
 
 ## テキスト・値の検証
 

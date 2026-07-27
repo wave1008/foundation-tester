@@ -38,10 +38,25 @@
         }
       }
     },
+    "fm": {
+      "type": "boolean",
+      "description": "FM(Foundation Model)の機能を使用するか。false で自己修復・偽陽性検証・screenIs・失敗時トリアージを含む FM 呼び出しを行わない(既定 true)。",
+      "default": true
+    },
     "heal": {
       "type": "boolean",
-      "description": "FM によるロケータ自己修復を許可するか(既定 false)。",
-      "default": false
+      "description": "FM によるロケータ自己修復を許可するか(既定 true)。",
+      "default": true
+    },
+    "falsePositiveCheck": {
+      "type": "boolean",
+      "description": "FM による偽陽性検証(occlusion guard)を有効にするか(既定 true)。",
+      "default": true
+    },
+    "screenIs": {
+      "type": "boolean",
+      "description": "screenIs コマンド(FM による画面判定)を有効にするか(既定 true)。",
+      "default": true
     },
     "reportDir": {
       "type": "string",

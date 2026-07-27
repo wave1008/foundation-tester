@@ -21,7 +21,11 @@ const runProfileEditor = document.getElementById('run-profile-editor');
 const runProfileMachine = document.getElementById('run-profile-machine');
 const runProfileApp = document.getElementById('run-profile-app');
 const runProfileDevices = document.getElementById('run-profile-devices');
+const runProfileFm = document.getElementById('run-profile-fm');
+const runProfileFmOptions = document.getElementById('run-profile-fm-options');
 const runProfileHeal = document.getElementById('run-profile-heal');
+const runProfileFalsePositiveCheck = document.getElementById('run-profile-false-positive-check');
+const runProfileScreenIs = document.getElementById('run-profile-screen-is');
 const runProfileIosInappEngine = document.getElementById('run-profile-ios-inapp-engine');
 const runProfileIosFastInput = document.getElementById('run-profile-ios-fast-input');
 const runProfileWipeDataOnBloat = document.getElementById('run-profile-wipe-data-on-bloat');
@@ -44,7 +48,7 @@ let runProfileNames = [];
 let runProfileApps = [];
 // 編集対象の実行プロファイル名(一覧が0件なら null)。
 let selectedRunProfile = null;
-// 直近ロード(runProfileData ok:true)時点の10フィールド値。null の間はフォーム非表示。
+// 直近ロード(runProfileData ok:true)時点の19フィールド値。null の間はフォーム非表示。
 let runProfileOriginalFields = null;
 // 現在チェック済みのデバイス名(表示順。チェックボックス操作・machine切替の引き継ぎの正)。
 let runProfileCheckedNames = [];
@@ -192,7 +196,7 @@ export function applyRunProfileData(message) {
   renderRunProfileEditor(message.fields);
 }
 
-// ロード済みの10フィールド値でフォームを作り直す(編集途中の値は破棄する)。
+// ロード済みの19フィールド値でフォームを作り直す(編集途中の値は破棄する)。
 function renderRunProfileEditor(fields) {
   runProfileOriginalFields = fields;
   runProfileSubmitting = false;
@@ -202,7 +206,11 @@ function renderRunProfileEditor(fields) {
   renderRunProfileAppSelect(fields.app);
   runProfileCheckedNames = fields.devices.slice();
   renderRunProfileDevices();
+  runProfileFm.checked = fields.fm;
   runProfileHeal.checked = fields.heal;
+  runProfileFalsePositiveCheck.checked = fields.falsePositiveCheck;
+  runProfileScreenIs.checked = fields.screenIs;
+  updateFmOptionsVisibility();
   runProfileIosInappEngine.checked = fields.iosInappEngine;
   runProfileIosFastInput.checked = fields.iosFastInput;
   runProfileWipeDataOnBloat.checked = fields.wipeDataOnBloat;
@@ -341,7 +349,18 @@ runProfileMachine.addEventListener('change', () => {
   onRunProfileFormInput();
 });
 runProfileApp.addEventListener('change', onRunProfileFormInput);
+// fm ON のときだけ配下のサブオプション(heal/falsePositiveCheck/screenIs)を表示する
+// (値そのものは fm の状態に関わらず保持・保存する)。
+function updateFmOptionsVisibility() {
+  runProfileFmOptions.style.display = runProfileFm.checked ? '' : 'none';
+}
+runProfileFm.addEventListener('change', () => {
+  updateFmOptionsVisibility();
+  onRunProfileFormInput();
+});
 runProfileHeal.addEventListener('change', onRunProfileFormInput);
+runProfileFalsePositiveCheck.addEventListener('change', onRunProfileFormInput);
+runProfileScreenIs.addEventListener('change', onRunProfileFormInput);
 runProfileIosInappEngine.addEventListener('change', onRunProfileFormInput);
 runProfileIosFastInput.addEventListener('change', onRunProfileFormInput);
 runProfileWipeDataOnBloat.addEventListener('change', onRunProfileFormInput);
@@ -378,7 +397,10 @@ function runProfileValuesEqual(fields) {
     runProfileMachine.value === fields.machine &&
     runProfileApp.value === fields.app &&
     runProfileDevicesEqual(runProfileCheckedNames, fields.devices) &&
+    runProfileFm.checked === fields.fm &&
     runProfileHeal.checked === fields.heal &&
+    runProfileFalsePositiveCheck.checked === fields.falsePositiveCheck &&
+    runProfileScreenIs.checked === fields.screenIs &&
     runProfileIosInappEngine.checked === fields.iosInappEngine &&
     runProfileIosFastInput.checked === fields.iosFastInput &&
     runProfileWipeDataOnBloat.checked === fields.wipeDataOnBloat &&
@@ -406,7 +428,10 @@ function onRunProfileFormInput() {
 function setRunProfileControlsEnabled(enabled) {
   runProfileMachine.disabled = !enabled;
   runProfileApp.disabled = !enabled;
+  runProfileFm.disabled = !enabled;
   runProfileHeal.disabled = !enabled;
+  runProfileFalsePositiveCheck.disabled = !enabled;
+  runProfileScreenIs.disabled = !enabled;
   runProfileIosInappEngine.disabled = !enabled;
   runProfileIosFastInput.disabled = !enabled;
   runProfileWipeDataOnBloat.disabled = !enabled;
@@ -479,7 +504,10 @@ runProfileConfirm.addEventListener('click', () => {
       machine: runProfileMachine.value.trim(),
       app: runProfileApp.value.trim(),
       devices: runProfileCheckedNames.slice(),
+      fm: runProfileFm.checked,
       heal: runProfileHeal.checked,
+      falsePositiveCheck: runProfileFalsePositiveCheck.checked,
+      screenIs: runProfileScreenIs.checked,
       iosInappEngine: runProfileIosInappEngine.checked,
       iosFastInput: runProfileIosFastInput.checked,
       wipeDataOnBloat: runProfileWipeDataOnBloat.checked,

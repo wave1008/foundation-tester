@@ -706,7 +706,7 @@ struct RunScenarios: AsyncParsableCommand {
             let worker = RunWorker(label: platform, platform: platform,
                                    driver: driver, connection: connection)
             let outcome = await ScenarioRunner.runOne(
-                project: project, item: item, worker: worker, healingEnabled: heal,
+                project: project, item: item, worker: worker, fm: FMConfig(heal: heal),
                 reportDir: URL(fileURLWithPath: reportDir), recorder: recorder) { event in
                 for line in RunLogFormatter.lines(for: event) { print(line) }
             }
@@ -746,7 +746,7 @@ struct RunScenarios: AsyncParsableCommand {
         }
 
         let orchestrator = RunOrchestrator(project: project, workers: workers,
-                                           healingEnabled: heal,
+                                           fm: FMConfig(heal: heal),
                                            reportDir: URL(fileURLWithPath: reportDir),
                                            recorder: recorder)
         async let summary = orchestrator.run(items: items, defaultPlatform: defaultPlatform)

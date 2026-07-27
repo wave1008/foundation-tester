@@ -127,6 +127,19 @@ private final class SequenceVisibilityDelegate: ReplayDelegate {
     }
 }
 
+/// screenMatches 検証用: verifyScreen が常に pass を返し、呼び出し回数を数える
+/// (screenIsEnabled=false で呼ばれないことの検証用)
+private final class CountingScreenDelegate: ReplayDelegate {
+    private(set) var verifyScreenCalls = 0
+    func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealProposal? { nil }
+    func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)? {
+        verifyScreenCalls += 1
+        return (true, "ok")
+    }
+    func triage(goal: String?, stepDescription: String, failureReason: String,
+                snapshot: SnapshotResponse?, screenshotPNG: Data?) async -> TriageInfo? { nil }
+}
+
 final class StepExecutorTests: XCTestCase {
     /// occlusion-guard 対象になり得るテキスト要素(StaticText + 文字を含む label)
     private func textElement(id: String, label: String) -> ElementInfo {
@@ -344,6 +357,55 @@ final class StepExecutorTests: XCTestCase {
             XCTFail("一致かつ覆われ=occlusion 失敗のはず"); return
         }
         XCTAssertTrue(msg.contains("occlusion"), "occlusion 失敗を返すこと: \(msg)")
+    }
+
+    /// occlusionGuardEnabled=false(実行プロファイルの falsePositiveCheck:false)は per-step の
+    /// occlusionGuard:true より優先して occlusion-guard 自体を止める(FM を呼ばず pass)
+    func testOcclusionGuardMasterSwitchOffSkipsGuard() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[textElement(id: "msg", label: "こんにちは")]])
+        let delegate = FakeVisibilityDelegate(visible: false)
+        let executor = StepExecutor(driver: primary, delegate: delegate,
+                                    occlusionGuardEnabled: false)
+        let step = FlowStep(assert: "exists", locator: FlowLocator(id: "msg"),
+                            timeout: 1, occlusionGuard: true)
+
+        guard case .passed = await executor.execute(step).status else {
+            XCTFail("マスタースイッチ OFF ならツリー一致だけで pass のはず"); return
+        }
+        XCTAssertEqual(delegate.visibleCalls, 0, "マスタースイッチ OFF で FM を呼んではいけない")
+    }
+
+    /// screenIsEnabled=false(実行プロファイルの screenIs:false)は screenMatches を skip し、
+    /// delegate の verifyScreen を呼ばない
+    func testScreenMatchesSkippedWhenScreenIsDisabled() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log)
+        let delegate = CountingScreenDelegate()
+        let executor = StepExecutor(driver: primary, delegate: delegate, screenIsEnabled: false)
+        let step = FlowStep(assert: "screenMatches", expected: "ホーム画面")
+
+        guard case .skipped(let msg) = await executor.execute(step).status else {
+            XCTFail("screenIs 無効なら skip のはず"); return
+        }
+        XCTAssertTrue(msg.contains("screenIs が無効"), "skip 理由に無効化を明示すること: \(msg)")
+        XCTAssertEqual(delegate.verifyScreenCalls, 0, "無効時は verifyScreen を呼んではいけない")
+        XCTAssertEqual(primary.screenshotCallCount, 0, "無効時はスクショも撮らないはず")
+    }
+
+    /// screenIsEnabled 既定(true)では screenMatches が delegate の判定どおりに動く(退行検知)
+    func testScreenMatchesRunsWhenScreenIsEnabled() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log)
+        let delegate = CountingScreenDelegate()
+        let executor = StepExecutor(driver: primary, delegate: delegate)
+        let step = FlowStep(assert: "screenMatches", expected: "ホーム画面")
+
+        guard case .passed = await executor.execute(step).status else {
+            XCTFail("delegate が pass を返せば pass のはず"); return
+        }
+        XCTAssertEqual(delegate.verifyScreenCalls, 1)
     }
 
     /// 素の exist(occlusionGuard 未指定)は、隠れ判定 delegate が居ても FM を呼ばず pass(オプトイン)

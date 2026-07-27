@@ -304,7 +304,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             let scenarioStart = Date()
             let passed = await ScenarioHost.run(
                 project: project, scenarioID: info.id, connection: connection,
-                heal: heal, reportDir: reportDirPath, defaultTimeout: defaultTimeout,
+                fm: FMConfig(heal: heal), reportDir: reportDirPath, defaultTimeout: defaultTimeout,
                 scenarioTimeout: scenarioTimeout,
                 dryRun: dryRun, debug: debugOptions, recording: recording) { event in
                 // host 発の log イベント等、scenario 未設定のものは現在のシナリオ ID を補う
@@ -332,9 +332,11 @@ struct ApiRunCommand: AsyncParsableCommand {
         recorder: RunRecorder?
     ) async throws -> RunOutcome {
         let profileName = resolved.runName
-        let effectiveHeal = heal ? true : resolved.heal
+        // --heal は master(fm.enabled)が有効な場合のみ heal を ON にする(false は resolved の値を維持)
+        var fm = resolved.fm
+        if heal { fm.heal = fm.enabled }
         // dry-run は FM を使わないため警告(と実呼び出し ~1s)を抑止する
-        await ProfileRunner.warnIfHealDegraded(heal: effectiveHeal && !dryRun) { logStderr($0) }
+        await ProfileRunner.warnIfHealDegraded(heal: fm.heal && !dryRun) { logStderr($0) }
         let reportDirPath = (reportDir.map { URL(fileURLWithPath: $0) } ?? resolved.reportDir).path
 
         var blankTriage: (repaired: [String], excluded: [String]) = ([], [])
@@ -416,7 +418,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             let scenarioStart = Date()
             let passed = await ScenarioHost.run(
                 project: project, scenarioID: info.id, connection: connection,
-                heal: effectiveHeal, reportDir: reportDirPath,
+                fm: fm, reportDir: reportDirPath,
                 defaultTimeout: resolved.defaultTimeout,
                 scenarioTimeout: resolved.scenarioTimeout, dryRun: dryRun,
                 debug: debugOptions, recording: recording) { event in
@@ -446,8 +448,10 @@ struct ApiRunCommand: AsyncParsableCommand {
         workers: [RunWorker], iosWorkersTask: Task<[RunWorker], Never>?, recorder: RunRecorder?
     ) async throws -> RunOutcome {
         let repoRoot = try RepoRoot.find()
-        let effectiveHeal = heal ? true : resolved.heal
-        await ProfileRunner.warnIfHealDegraded(heal: effectiveHeal) { logStderr($0) }
+        // --heal は master(fm.enabled)が有効な場合のみ heal を ON にする(false は resolved の値を維持)
+        var fm = resolved.fm
+        if heal { fm.heal = fm.enabled }
+        await ProfileRunner.warnIfHealDegraded(heal: fm.heal) { logStderr($0) }
         let reportDirURL = reportDir.map { URL(fileURLWithPath: $0) } ?? resolved.reportDir
 
         // workersReady はレーン構成の全置換(runLaneModel.applyWorkers が lanes.clear する)ため
@@ -489,7 +493,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         }()
 
         let orchestrator = RunOrchestrator(
-            project: project, workers: workers, healingEnabled: effectiveHeal,
+            project: project, workers: workers, fm: fm,
             reportDir: reportDirURL, defaultTimeout: resolved.defaultTimeout,
             scenarioTimeout: resolved.scenarioTimeout, recorder: recorder,
             recordingConfig: recordingConfig,

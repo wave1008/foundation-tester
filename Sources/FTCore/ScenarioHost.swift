@@ -199,7 +199,7 @@ public enum ScenarioHost {
     @discardableResult
     public static func run(project: TestProject, scenarioID: String,
                            connection: DriverConnection,
-                           heal: Bool, reportDir: String, defaultTimeout: Int? = nil,
+                           fm: FMConfig = FMConfig(), reportDir: String, defaultTimeout: Int? = nil,
                            scenarioTimeout: Int? = nil,
                            dryRun: Bool = false,
                            debug: ScenarioDebugOptions? = nil,
@@ -233,7 +233,10 @@ public enum ScenarioHost {
                     "--platform", connection.platform,
                     "--report-dir", reportDir, "--json",
                     "--project-dir", project.rootURL.path]
-        if heal { args.append("--heal") }
+        if fm.heal { args.append("--heal") }
+        if !fm.enabled { args.append("--no-fm") }
+        if !fm.falsePositiveCheck { args.append("--no-false-positive-check") }
+        if !fm.screenIs { args.append("--no-screen-is") }
         if dryRun { args.append("--dry-run") }
         if let port = connection.port { args += ["--port", String(port)] }
         if let serial = connection.serial { args += ["--serial", serial] }
@@ -390,7 +393,7 @@ public enum ScenarioHost {
         // dry-run は NullDriver 固定のため接続情報は使われない(platform はダミー)
         let passed = await run(project: project, scenarioID: scenarioID,
                                connection: DriverConnection(platform: "ios"),
-                               heal: false, reportDir: tempDir.path,
+                               fm: FMConfig(heal: false), reportDir: tempDir.path,
                                dryRun: true) { events.append($0) }
         guard passed else {
             let detail = events.compactMap(\.message).suffix(5).joined(separator: "\n")
