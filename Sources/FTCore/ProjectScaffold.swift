@@ -118,6 +118,55 @@ public enum ProjectScaffold {
         return true
     }
 
+    /// 受け手のパッケージの .gitignore に SwiftPM ビルド成果物と実行レポートの ignore を冪等に足す
+    /// (ftester init から呼ぶ)。無ければ作成、あれば欠けている行だけ追記。戻り値は追記した行(全部揃って
+    /// いれば空 = 何も書かない)
+    @discardableResult
+    public static func ensureGitignore(packageRoot: URL) throws -> [String] {
+        let entries = [".build/", "Projects/*/reports/"]
+        let url = packageRoot.appendingPathComponent(".gitignore")
+
+        // 先頭の "/"・"./"、末尾の "/" を無視して同一視する(.build / /.build/ / .build/ はどれも同じ扱い)
+        func normalize(_ line: String) -> String {
+            var s = line.trimmingCharacters(in: .whitespaces)
+            if s.hasPrefix("./") {
+                s.removeFirst(2)
+            } else if s.hasPrefix("/") {
+                s.removeFirst()
+            }
+            if s.hasSuffix("/") {
+                s.removeLast()
+            }
+            return s
+        }
+
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            try (entries.joined(separator: "\n") + "\n").write(
+                to: url, atomically: true, encoding: .utf8)
+            return entries
+        }
+
+        let existing = try String(contentsOf: url, encoding: .utf8)
+        let existingNormalized = Set(existing.split(separator: "\n", omittingEmptySubsequences: false)
+            .map(String.init)
+            .compactMap { line -> String? in
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                guard !trimmed.isEmpty, !trimmed.hasPrefix("#") else { return nil }
+                return normalize(trimmed)
+            })
+
+        let missing = entries.filter { !existingNormalized.contains(normalize($0)) }
+        guard !missing.isEmpty else { return [] }
+
+        var content = existing
+        if !content.hasSuffix("\n") {
+            content += "\n"
+        }
+        content += "# ftester\n" + missing.joined(separator: "\n") + "\n"
+        try content.write(to: url, atomically: true, encoding: .utf8)
+        return missing
+    }
+
     static func recipientSetupSkill(projectName name: String) -> String {
         let appRef = name.lowercased()
         return """
@@ -194,6 +243,12 @@ public enum ProjectScaffold {
         ftester api list-scenarios --project \(name)
         ftester api run --project \(name) --scenario <クラス名> --dry-run --skip-build
         ```
+
+        ### 5.5 git 管理(このパッケージを自分のリポジトリで管理する場合)
+        `.gitignore` は init が整備済み(`.build/`・`Projects/*/reports/`)。コミットするのは
+        Package.swift・Projects/(シナリオ・プロファイル)・.claude/・.gitignore。Package.resolved は
+        コミット推奨(依存の版固定)。.vscode/settings.json は binaryPath が相対ならコミット可。
+        .mcp.json は絶対パスを含むためマシン固有(コミットするならチームでパス規約を揃える)。
 
         ### 6. MCP サーバの登録(Claude Code から ft_* ツールを使う。任意)
         Claude Code がアプリを直接操作してシナリオを生成したいとき登録する(VSCode 拡張とは別の消費面)。

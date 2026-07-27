@@ -128,6 +128,12 @@ tag も clone で取得できる)。
 - **clone 構成**: TOOL_ROOT(=WORK_DIR)で `swift run ftester project create <ProjectName> --app <bundleID>`。
   `Projects/<ProjectName>/` と Package.swift のターゲット登録が生成されたことを確認する。
 
+**検証ゲート(init 後の .gitignore)**: WORK_DIR が git リポジトリ(既存 repo 直下を含む)なら、
+`.gitignore` に `.build/` と `Projects/*/reports/` があることを確認する(`ftester init` が自動整備する。
+欠けていればこの2行を追記)。`git status` に `.build/` の未追跡ノイズが出ないことまで見る。
+何をコミットすべきか(Package.resolved・`.vscode/settings.json`・`Projects/` 等)は
+docs/getting-started.md「git 管理(何をコミットするか)」の方針を受け手に案内する。
+
 ### 5. マシンプロファイル（このPC）
 
 以降のプロファイル編集は **WORK_DIR の `Projects/<ProjectName>/`** に対して行う。
