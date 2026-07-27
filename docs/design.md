@@ -820,6 +820,14 @@ textIs(.id("txt_result"), "dialog=none")
   成功するため、構文検証では捕まらないこの穴の最後の砦
 - **`ifCanSelect` の不成立は `.skipped` で記録**し、最後まで不成立だった分岐は同じく警告に出す
   (`.passed` にすると「セレクタが腐って毎回飛んでいる」状態が緑のまま見えなくなる)
+- **アプリより手前にある別プロセスの window を失敗時に添える**(Android のみ。2026-07-27)。
+  `AndroidForegroundWindows` が `dumpsys window windows` を z 順に読み、アプリの window より
+  手前で `isVisible=true` かつ別パッケージのものを返す。**アプリの a11y ツリーには他プロセスの
+  window が出ない**ため、覆われていても要素一覧は正常に見え、`tap` は成功扱いで返る
+  (この穴に実際に2度落ちた。docs/verification.md「操作は ✅ なのに画面が変わらないとき」)。
+  常時可視の装飾(StatusBar / Taskbar / NavigationBar / 画面装飾)とアプリ自身の別 window は
+  除外し、アプリの window を特定できないときは黙る(誤った断定をしない)。
+  配線は `FTScenarioRunner` からの closure 注入(FTDSL は FTAndroid に依存しないため)
 
 ### 共通ステップとライフサイクル(2026-07-26)
 

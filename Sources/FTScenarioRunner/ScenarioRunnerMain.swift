@@ -292,6 +292,14 @@ struct RunScenario: AsyncParsableCommand {
                                physical: physical,
                                emit: emit)
 
+        // 失敗時に「アプリより手前の別 window」を添える(Android のみ。adb を叩くのでここで注入する)
+        if runPlatform == "android", let serial {
+            let package = testClass.app
+            core.foregroundOverlays = {
+                AndroidForegroundWindows.query(package: package, serial: serial)
+            }
+        }
+
         if debug {
             let control = ScenarioDebugControl(breakpoints: breakpoint,
                                                pauseOnStart: pauseOnStart)

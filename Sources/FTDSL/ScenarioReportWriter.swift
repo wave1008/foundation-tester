@@ -51,6 +51,13 @@ public enum ScenarioReportWriter {
                 md += "- 修正案: \(triage.suggestedFix)\n"
             }
 
+            if !scene.failureForegroundWindows.isEmpty {
+                // 要素一覧より前に置く: アプリが覆われていたなら、要素の中身を読む前にこれが答え
+                md += "\n> ⚠️ **アプリより手前に別の window があります**: "
+                md += scene.failureForegroundWindows.joined(separator: ", ")
+                md += "。操作がそこに吸われ、`tap` が成功扱いのまま何も起きていない可能性があります"
+                md += "(アプリの要素一覧には他プロセスの window は現れません)。\n"
+            }
             if let elements = scene.failureElements, !elements.isEmpty {
                 // 直すための一次情報。スクショより先に置く(モデルは PNG から #id を読めない)
                 md += "\n<details><summary>失敗時点の要素一覧</summary>\n\n```\n"
