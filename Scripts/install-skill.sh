@@ -2,7 +2,7 @@
 # foundation-tester ブートストラップスキル導入器。
 #
 # 何も入れていないユーザーが、空ディレクトリで次を実行すると、カレントの
-# .claude/skills/ に ftester-setup / ftester-update / ftester-profiles / ftester-scenario スキルを置く
+# .claude/skills/ に ftester-setup / ftester-update / ftester-profiles / ftester-scenario / ftester-mcp スキルを置く
 # (この時点では repo を clone しない):
 #   curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install-skill.sh | sh
 #
@@ -21,7 +21,7 @@ set -eu
 REF="${FTESTER_REF:-main}"
 REPO="wave1008/foundation-tester"
 BASE="https://raw.githubusercontent.com/${REPO}/${REF}/.claude/skills"
-SKILLS="ftester-setup ftester-update ftester-profiles ftester-scenario"
+SKILLS="ftester-setup ftester-update ftester-profiles ftester-scenario ftester-mcp"
 
 command -v curl >/dev/null 2>&1 || { echo "エラー: curl が必要です" >&2; exit 1; }
 
@@ -56,11 +56,12 @@ for name in ${SKILLS}; do
 done
 
 cat <<'EOF'
-✅ ftester-setup / ftester-update / ftester-profiles / ftester-scenario スキルを .claude/skills/ に導入しました。
+✅ ftester-setup / ftester-update / ftester-profiles / ftester-scenario / ftester-mcp スキルを .claude/skills/ に導入しました。
 次の手順:
   1. このフォルダを Claude Code で開く(既に開いているなら再読込)
   2. /ftester-setup を実行する(初回導入: clone → build → install)
      以後、修正版の取り込みは /ftester-update
      マシン/アプリ/実行プロファイルの一括作成は /ftester-profiles
      テストシナリオ(.swift)の作成は /ftester-scenario
+     MCP サーバ(ft_* ツール)だけの登録は /ftester-mcp
 EOF

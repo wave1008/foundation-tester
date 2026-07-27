@@ -179,8 +179,11 @@ public enum ProjectScaffold {
 
         このパッケージは `ftester init` で作られた ftester テストプロジェクト。ftester CLI は foundation-tester
         を clone して `swift build` 済みであることが前提(未ビルドなら
-        `git clone https://github.com/wave1008/foundation-tester.git` して `swift build` し、
-        `.build/debug/ftester` を PATH に入れる)。
+        `git clone https://github.com/wave1008/foundation-tester.git ../foundation-tester` して
+        `swift build`。clone 先は任意 — 既定はこのパッケージの**隣**で、パッケージの下にネストさせない)。
+        TOOL_ROOT = Package.swift の `.package(path:)` が指す clone。以降 `ftester ...` は
+        `<TOOL_ROOT>/.build/debug/ftester ...`(既定 `../foundation-tester/.build/debug/ftester ...`)を
+        指す(PATH 登録は不要)。
         自分のアプリのシナリオを書いて実行できる状態まで仕上げる。
 
         ## 原則
@@ -261,7 +264,7 @@ public enum ProjectScaffold {
           "mcpServers": {
             "ftester": {
               "command": "bash",
-              "args": ["-lc", "cd <CLONE_ABS> && swift build --product ftester-mcp >/dev/null 2>&1 && exec <CLONE_ABS>/.build/debug/ftester-mcp"]
+              "args": ["-lc", "cd \\"<CLONE_ABS>\\" && swift build --product ftester-mcp >/dev/null 2>&1 && exec \\"<CLONE_ABS>/.build/debug/ftester-mcp\\""]
             }
           }
         }

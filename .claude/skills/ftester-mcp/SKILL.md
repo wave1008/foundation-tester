@@ -16,7 +16,9 @@ rebuild-on-start なので更新後も版ズレしない)。ここは登録に�
 
 - **各ステップの後に検証ゲート**(exit code / 到達確認)。緑になるまで次へ進まない。
 - **人間チェックポイント(🧑)では停止して依頼・確認する**。承認・Reload はエージェントでは代行できない。
-- **冪等に**: 既に済んでいる状態(clone 済み・`.mcp.json` に `ftester` 済み)を検出したらスキップする。
+- **冪等に**: 既に済んでいる状態(clone 済み・`.mcp.json` の `ftester` が**同じ TOOL_ROOT** を指す)を
+  検出したらスキップする。`ftester` キーが**別のパス**を指していたら、スキップせず今回の TOOL_ROOT で
+  上書きし、旧パスを 🧑 に報告する(clone 先の分裂防止)。
 - 失敗したら握りつぶさず、stderr をそのままユーザーに見せて相談する。
 - **探索禁止**: 兄弟ディレクトリや別リポジトリを勝手に `find`/`grep` して値を埋めない。必要な値は人間に聞く。
 
@@ -32,13 +34,15 @@ rebuild-on-start なので更新後も版ズレしない)。ここは登録に�
   ステップ2は不要 —— ステップ1(ビルド)と3(人間チェックポイント)だけでよい。
 
 - **無い = 外部パッケージ構成(既定)**: WORK_DIR = このカレント。ツールを供給するため foundation-tester を
-  **兄弟ディレクトリ**に clone する(受け手ディレクトリの中にネストさせない)。既にあればスキップ:
+  clone する。**clone 先は既定で兄弟ディレクトリ**(受け手ディレクトリの中にネストさせない)。
+  ユーザーが clone 先を指定していればそちらへ(以降の `../foundation-tester` はそのパスに読み替える)。
+  既にあればスキップ:
 
 ```
 git clone https://github.com/wave1008/foundation-tester.git ../foundation-tester
 ```
 
-  → TOOL_ROOT = `../foundation-tester`。以降 `ABS_TOOL_ROOT=$(cd ../foundation-tester && pwd)` で
+  → TOOL_ROOT = clone 先(既定 `../foundation-tester`)。以降 `ABS_TOOL_ROOT=$(cd <TOOL_ROOT> && pwd)` で
   **絶対パス**を得ておく(受け手がどの cwd で Claude Code を開いても解決できるように)。
 
 版を固定したい場合は 🧑 に確認して TOOL_ROOT で `git checkout <tag>`。
@@ -68,7 +72,7 @@ clone 構成ならこのステップは不要(同梱 `.mcp.json` が効く)。�
   "mcpServers": {
     "ftester": {
       "command": "bash",
-      "args": ["-lc", "cd <ABS_TOOL_ROOT> && swift build --product ftester-mcp >/dev/null 2>&1 && exec <ABS_TOOL_ROOT>/.build/debug/ftester-mcp"]
+      "args": ["-lc", "cd \"<ABS_TOOL_ROOT>\" && swift build --product ftester-mcp >/dev/null 2>&1 && exec \"<ABS_TOOL_ROOT>/.build/debug/ftester-mcp\""]
     }
   }
 }
@@ -83,7 +87,7 @@ clone 構成ならこのステップは不要(同梱 `.mcp.json` が効く)。�
 「全プロジェクトで使いたい」場合のみ、代わりに user スコープ登録を案内する(claude CLI が PATH に要る):
 
 ```
-claude mcp add ftester --scope user -- bash -lc 'cd <ABS_TOOL_ROOT> && swift build --product ftester-mcp >/dev/null 2>&1 && exec <ABS_TOOL_ROOT>/.build/debug/ftester-mcp'
+claude mcp add ftester --scope user -- bash -lc 'cd "<ABS_TOOL_ROOT>" && swift build --product ftester-mcp >/dev/null 2>&1 && exec "<ABS_TOOL_ROOT>/.build/debug/ftester-mcp"'
 ```
 
 CLI が無ければ上の WORK_DIR `.mcp.json` 方式で十分。
