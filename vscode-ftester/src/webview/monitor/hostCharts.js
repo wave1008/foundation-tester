@@ -46,13 +46,21 @@ const HM_ALL_ENTRIES = [hmEntries.cpu, hmEntries.gpu, hmEntries.fm, hmEntries.me
 // FM は割合ではなく件数。実行開始からの累計と、hostMetrics tick 間の増分を持つ。
 // スパークラインは他系列と同じ 0..1 座標系なので、直近バッファ内の最大増分で正規化する
 // (固定上限だと実測レンジ[0〜数件/秒]で潰れて読めないため)。
-const fmState = { total: 0, totalMs: 0, pendingCalls: 0, lastDelta: 0 };
+// failures は FM 死活の検知用。FM 失敗は呼び出し側(occlusion-guard/heal/screenIs)が
+// 握りつぶして素通りする契約なので、ここで可視化しないと全滅が正常時と区別できない。
+const fmState = { total: 0, totalMs: 0, failures: 0, pendingCalls: 0, lastDelta: 0 };
+
+// FMHealth.Snapshot.allFailed と同じ判定: 1回以上呼ばれ、かつ全て失敗
+function fmIsDead() {
+  return fmState.failures > 0 && fmState.failures >= fmState.total;
+}
 
 /** 新しい実行の開始(runStarted → cleared)で累計を捨てる。これを呼ばないと
  *  パネルを開いている限り実行をまたいで積算され、「今回の実行の回数」に見えない。 */
 export function resetFmUsage() {
   fmState.total = 0;
   fmState.totalMs = 0;
+  fmState.failures = 0;
   fmState.pendingCalls = 0;
   fmState.lastDelta = 0;
   hmEntries.fm.samples.length = 0;
@@ -61,7 +69,7 @@ export function resetFmUsage() {
 }
 
 /** シナリオ完了イベント(runEvent)から FM 実測を受け取る。tick を待って系列へ積む。 */
-export function recordFmCalls(calls, totalMs) {
+export function recordFmCalls(calls, totalMs, failures) {
   if (typeof calls !== 'number' || calls <= 0) {
     return;
   }
@@ -70,6 +78,9 @@ export function recordFmCalls(calls, totalMs) {
   if (typeof totalMs === 'number') {
     fmState.totalMs += totalMs;
   }
+  if (typeof failures === 'number' && failures > 0) {
+    fmState.failures += failures;
+  }
   // 数値とツールチップはここで即時更新する。スパークラインだけは他系列と時間軸を揃えるため
   // hostMetrics の tick を待つ。tick 任せにすると host-metrics プロセスが落ちている間
   // 件数が全く出なくなる(FM の供給元は runEvent で、hostMetrics とは独立)
@@ -77,12 +88,25 @@ export function recordFmCalls(calls, totalMs) {
 }
 
 function hmRenderFmLabel() {
-  hmEntries.fm.value.textContent = String(fmState.total);
-  hmEntries.fm.el.title = t('wvMonitor2.hostCharts.fmTitle', {
+  const dead = fmIsDead();
+  const partial = !dead && fmState.failures > 0;
+  hmEntries.fm.el.classList.toggle('hm-fm-dead', dead);
+  hmEntries.fm.el.classList.toggle('hm-fm-warn', partial);
+  hmEntries.fm.value.textContent = (dead ? '✕' : partial ? '⚠' : '') + String(fmState.total);
+  let title = t('wvMonitor2.hostCharts.fmTitle', {
     total: String(fmState.total),
     totalSec: (fmState.totalMs / 1000).toFixed(1),
     delta: String(fmState.lastDelta),
   });
+  if (dead) {
+    title += '\n' + t('wvMonitor2.hostCharts.fmDeadLine', { failures: String(fmState.failures) });
+  } else if (partial) {
+    title += '\n' + t('wvMonitor2.hostCharts.fmWarnLine', {
+      failures: String(fmState.failures),
+      successes: String(fmState.total - fmState.failures),
+    });
+  }
+  hmEntries.fm.el.title = title;
 }
 
 function hmPushSample(entry, ratio) {
@@ -114,7 +138,9 @@ function hmDraw(entry) {
   if (samples.length < 2) {
     return;
   }
-  const color = HM_COLORS[hmIsLightTheme() ? 'light' : 'dark'][entry.colorKey];
+  const palette = HM_COLORS[hmIsLightTheme() ? 'light' : 'dark'];
+  // FM 全滅中はスパークラインも失敗の系列だと分かるよう赤(cpu と同色)で描く
+  const color = entry === hmEntries.fm && fmIsDead() ? palette.cpu : palette[entry.colorKey];
   // 件数系列はバッファ内の最大値を上端に取る(全て 0 のときは平坦に描く)
   const scale = entry.countScale
     ? Math.max(1, ...samples.filter((v) => v !== null))

@@ -142,6 +142,14 @@ export const webviewMonitorBStrings = {
     ja: "FM 呼び出し {total}回 / 計{totalSec}秒(直近1秒 {delta}回)",
     en: "FM calls {total} / {totalSec}s total (last 1s: {delta})",
   },
+  "wvMonitor2.hostCharts.fmDeadLine": {
+    ja: "✕ FM 全滅: {failures}回すべて失敗(偽陽性検証・自己修復・screenIs はこの実行では無効)",
+    en: "✕ FM dead: all {failures} calls failed (occlusion verify / heal / screenIs are disabled in this run)",
+  },
+  "wvMonitor2.hostCharts.fmWarnLine": {
+    ja: "⚠ FM 失敗 {failures}回 / 成功 {successes}回(失敗したステップのガードは素通り)",
+    en: "⚠ FM failures {failures} / successes {successes} (guards on failed steps passed through)",
+  },
   "wvMonitor2.hostCharts.memTitle": {
     ja: "メモリ使用量 {used} / {total} GB({percent})",
     en: "Memory usage {used} / {total} GB ({percent})",

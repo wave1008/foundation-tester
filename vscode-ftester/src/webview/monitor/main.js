@@ -118,7 +118,7 @@ window.addEventListener('message', (event) => {
       // FM 実測はシナリオ完了時にしか来ない(hostMetrics ストリームには乗らない)。
       // hostCharts 側が次の tick で系列へ積む
       if (message.action && message.action.type === 'fmUsage') {
-        recordFmCalls(message.action.calls, message.action.totalMs);
+        recordFmCalls(message.action.calls, message.action.totalMs, message.action.failures);
       }
       if (message.action && message.action.type === 'cleared') {
         resetFmUsage();
