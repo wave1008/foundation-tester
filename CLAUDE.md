@@ -39,8 +39,11 @@
 - 実行ファイル差し替えは `swift build --product <名>`。`--target` はリンクせず旧バイナリを実行する(事故実績)
 - **DSL コマンド・`StepExecutor`・ドライバ・ブリッジ(`InAppBridge`/`Runner`/`AndroidRunner`)・
   セレクタ/スナップショット/ヒール(`FTAgent`)を変えたら `Scripts/e2e.sh`**(ユニットテストはデバイス
-  境界のバグを1つも捕まえない)。**ブリッジのスナップショット/型写像を触ったら SUT を絞らず全部**回す
-  (フレームワーク差の退行は SUT を跨がないと出ない)。詳細は docs/verification.md
+  境界のバグを1つも捕まえない)。**ブリッジのスナップショット/型写像と、StepExecutor の
+  操作合成(タップ/ドラッグ/スクロール探索の終端処理)を触ったら SUT を絞らず全部**回す
+  (フレームワーク差の退行は SUT を跨がないと出ない。実害: 探索終端の空打ちドラッグは CMP では
+  無害・SwiftUI ではタブバーが反応し、E2E-iOS を回すまで 5/5 の回帰に気付けなかった)。
+  詳細は docs/verification.md
 - **flake の修正は1回グリーンで判定しない・単発の観測で性能を断じない**(反復+負荷で叩く。実害と
   手順は docs/verification.md)
 - `ftester api` の JSON/NDJSON 契約を後方非互換に変えたら `Sources/FTCore/ProtocolVersion.swift` と `vscode-ftester/src/protocolVersion.ts` の版を +1(両者一致必須・`protocolVersion.test.mjs` が検出。拡張は起動時に照合し不一致を警告)
