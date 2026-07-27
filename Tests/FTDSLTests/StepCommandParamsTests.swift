@@ -63,8 +63,9 @@ final class StepCommandParamsTests: XCTestCase {
     func testParseFillsOmittedArgumentsWithDefaults() {
         XCTAssertEqual(StepCommandParams.parse(code: "exist(\"WiFi\")", verb: "exist"),
                        ["timeout": "", "requireVisible": "true", "scroll": "", "maxSwipes": "8"])
+        // direction はコンテンツ基準で既定 down(BridgeDTO.FTScrollDirection と同期)
         XCTAssertEqual(StepCommandParams.parse(code: "scrollTo(\"x\")", verb: "scrollTo"),
-                       ["direction": "up", "maxSwipes": "8"])
+                       ["direction": "down", "maxSwipes": "8"])
         XCTAssertEqual(StepCommandParams.parse(code: "type(\"a\", \"b\")", verb: "type"),
                        ["optional": "false", "timeout": "", "scroll": "", "maxSwipes": "8"])
     }
@@ -162,17 +163,17 @@ final class StepCommandParamsTests: XCTestCase {
     }
 
     func testApplyOmitsDefaultValues() throws {
-        // 既定値と等しい引数は出力しない(direction: .up / maxSwipes: 8 は省略)
+        // 既定値と等しい引数は出力しない(direction: .down / maxSwipes: 8 は省略)
         XCTAssertEqual(
             try StepCommandParams.apply(display: "scrollTo \"x\"",
-                                        params: ["direction": "up", "maxSwipes": "8"],
-                                        toCode: "scrollTo(\"y\", direction: .up)"),
+                                        params: ["direction": "down", "maxSwipes": "8"],
+                                        toCode: "scrollTo(\"y\", direction: .down)"),
             "scrollTo(\"x\")")
         XCTAssertEqual(
             try StepCommandParams.apply(display: "scrollTo \"x\"",
-                                        params: ["direction": "down", "maxSwipes": "3"],
+                                        params: ["direction": "up", "maxSwipes": "3"],
                                         toCode: "scrollTo(\"x\")"),
-            "scrollTo(\"x\", direction: .down, maxSwipes: 3)")
+            "scrollTo(\"x\", direction: .up, maxSwipes: 3)")
     }
 
     func testApplyRendersPressDurationAndOptional() throws {

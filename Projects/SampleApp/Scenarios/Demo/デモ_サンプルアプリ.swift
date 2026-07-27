@@ -80,7 +80,7 @@ class デモ_サンプルアプリ {
             }
             scene(3, "先頭まで戻る") {
                 action {
-                    scrollTo("#item_りんご", direction: .down, maxSwipes: 10)
+                    scrollTo("#item_りんご", direction: .up, maxSwipes: 10)
                 }.expectation {
                     exist("#item_りんご")
                     exist("#welcome_text||ようこそ")

@@ -70,6 +70,9 @@ public struct FlowStep: Codable, Sendable {
     /// スクロール探索(`scrollTo` / `tap(scroll:)` / `exist(scroll:)`)の既定スワイプ上限。
     /// DSL の既定引数と StepCommandParams.maxSwipesSpec はこの1つに揃える
     public static let defaultMaxSwipes = 8
+    /// 端まで送る(scrollToBottom 等)の上限。**終了条件は「画面が変わらなくなること」**で、
+    /// これは暴走を止める安全網にすぎないので探索(8)より大きく取る
+    public static let defaultMaxEdgeSwipes = 50
 
     public init(action: String? = nil, assert: String? = nil, locator: FlowLocator? = nil,
                 fallbacks: [FlowLocator]? = nil, text: String? = nil, direction: String? = nil,

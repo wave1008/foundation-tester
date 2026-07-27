@@ -702,4 +702,62 @@ final class AssertKindsTests: XCTestCase {
         let outcome = await StepExecutor(driver: ScriptedDriver(frames: [elements])).execute(step)
         XCTAssertEqual(failureReason(outcome.status)?.contains("親子で"), false)
     }
+
+    // MARK: - Shirates 準拠で増えたアサート(2026-07-27)
+
+    private func valued(_ ref: Int, id: String, value: String) -> ElementInfo {
+        ElementInfo(ref: ref, type: "textField", identifier: id, label: nil, value: value,
+                    placeholder: nil, enabled: true,
+                    frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: 1)
+    }
+
+    /// value 系は label ではなく value を見る(text 系と同じ判定器を共有する)
+    func testValueAssertionsReadValue() async {
+        let elements = [valued(1, id: "input", value: "合計 1,200円")]
+        for (assert, expected, shouldPass) in [
+            ("valueContains", "1,200", true), ("valueContains", "9,999", false),
+            ("valueStartsWith", "合計", true), ("valueEndsWith", "円", true),
+            ("valueContainsNot", "ドル", true), ("valueContainsNot", "円", false),
+        ] as [(String, String, Bool)] {
+            let step = FlowStep(assert: assert, locator: FlowLocator(id: "input"),
+                                expected: expected, timeout: 0)
+            let outcome = await StepExecutor(driver: ScriptedDriver(frames: [elements]))
+                .execute(step)
+            XCTAssertEqual(isPassed(outcome.status), shouldPass, "\(assert) \(expected)")
+        }
+    }
+
+    /// 否定の失敗理由は「どの関係で成立してしまったか」まで書く
+    func testNegativeAssertFailureNamesTheRelation() async {
+        let step = FlowStep(assert: "textContainsNot", locator: FlowLocator(id: "status"),
+                            expected: "エラー", timeout: 0)
+        let outcome = await StepExecutor(
+            driver: ScriptedDriver(frames: [[node(1, id: "status", label: "エラー 404")]]))
+            .execute(step)
+        XCTAssertEqual(failureReason(outcome.status)?.contains("を含んでいます"), true)
+    }
+
+    /// Empty 系以外で expected が無いのは書き間違い(空文字と比べて必ず落とさない)
+    func testNegativeAssertWithoutExpectedIsSkipped() async {
+        let step = FlowStep(assert: "textContainsNot", locator: FlowLocator(id: "status"),
+                            timeout: 0)
+        let outcome = await StepExecutor(
+            driver: ScriptedDriver(frames: [[node(1, id: "status", label: "x")]])).execute(step)
+        if case .skipped = outcome.status {} else { XCTFail("skipped ではない: \(outcome.status)") }
+    }
+
+    /// idIs は解決した要素の id を見る(セレクタに #id を足す形ではないので実際の id を出せる)
+    func testIdEqualsReportsActualIdentifier() async {
+        let elements = [node(1, id: "btn_ok", label: "OK")]
+        let pass = FlowStep(assert: "idEquals", locator: FlowLocator(label: "OK"),
+                            expected: "btn_ok", timeout: 0, occlusionGuard: false)
+        let passed = await StepExecutor(driver: ScriptedDriver(frames: [elements])).execute(pass)
+        XCTAssertTrue(isPassed(passed.status))
+
+        let fail = FlowStep(assert: "idEquals", locator: FlowLocator(label: "OK"),
+                            expected: "btn_cancel", timeout: 0, occlusionGuard: false)
+        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [elements])).execute(fail)
+        XCTAssertEqual(failureReason(outcome.status)?.contains("btn_ok"), true)
+        XCTAssertEqual(failureReason(outcome.status)?.contains("id"), true)
+    }
 }

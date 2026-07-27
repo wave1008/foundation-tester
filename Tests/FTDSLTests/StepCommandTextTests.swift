@@ -239,4 +239,46 @@ final class StepCommandTextTests: XCTestCase {
         XCTAssertEqual(StepCommandText.parse("tap \"設定\"")?.verb, "tap")
         XCTAssertNotNil(StepCommandText.parse("scrollTo \"設定\""))
     }
+
+    // MARK: - Shirates 準拠で増えた動詞(2026-07-27)
+
+    func testParsesValueAndNegativeAssertions() {
+        XCTAssertEqual(StepCommandText.parse("valueContains \"#t\" ~ \"円\"")?.strings,
+                       ["#t", "円"])
+        XCTAssertEqual(StepCommandText.parse("textContainsNot \"#t\" != \"エラー\"")?.strings,
+                       ["#t", "エラー"])
+        XCTAssertEqual(StepCommandText.parse("valueIsNotEmpty \"#input\"")?.strings, ["#input"])
+        XCTAssertEqual(
+            StepCommandText.parse("textMatchesDateFormat \"#d\" ~ \"yyyy/MM/dd\"")?.strings,
+            ["#d", "yyyy/MM/dd"])
+        // 区切り記号が動詞と食い違う表示は解釈しない(== と != を取り違えない)
+        XCTAssertNil(StepCommandText.parse("textIsNot \"#t\" == \"処理中\""))
+    }
+
+    func testRendersValueAndNegativeAssertions() throws {
+        XCTAssertEqual(
+            try StepCommandText.apply(display: "valueContainsNot \"#t\" != \"円\"",
+                                      toCode: "valueIs(\"#t\", \"1,200円\")"),
+            "valueContainsNot(\"#t\", \"円\")")
+        XCTAssertEqual(
+            try StepCommandText.apply(display: "valueIsEmpty \"#input\"",
+                                      toCode: "exist(\"#input\")"),
+            "valueIsEmpty(\"#input\")")
+    }
+
+    /// スクロールは引数なし(`scrollDown`)と回数つき(`scrollDown ×3`)の2表示
+    func testParsesAndRendersScrollCommands() throws {
+        XCTAssertEqual(StepCommandText.parse("scrollDown")?.verb, "scrollDown")
+        XCTAssertEqual(StepCommandText.parse("scrollDown ×3")?.word, "3")
+        XCTAssertEqual(StepCommandText.parse("scrollToBottom")?.verb, "scrollToBottom")
+        // ×1 は表示に出ないので、表示としても受け付けない(往復で形が割れないように)
+        XCTAssertNil(StepCommandText.parse("scrollDown ×1"))
+
+        XCTAssertEqual(
+            try StepCommandText.apply(display: "scrollUp ×2", toCode: "scrollDown()"),
+            "scrollUp(repeat: 2)")
+        XCTAssertEqual(
+            try StepCommandText.apply(display: "scrollToTop", toCode: "scrollDown(repeat: 3)"),
+            "scrollToTop()")
+    }
 }

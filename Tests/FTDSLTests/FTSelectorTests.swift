@@ -468,4 +468,36 @@ final class FTSelectorTests: XCTestCase {
         XCTAssertNil(FTSelector.validationError("count!=0"))
         XCTAssertEqual(FTSelector.parse("count!=0").primary, FlowLocator(label: "count!=0"))
     }
+
+    // MARK: - 否定の短縮形 `!値`(Shirates 準拠)
+
+    func testNegationShorthandMatchesFullForm() {
+        for (short, full) in [(".button&&!キャンセル", ".button&&text!=キャンセル"),
+                              (".cell&&!#row_1", ".cell&&id!=row_1"),
+                              ("#list >> .cell&&!.image", "#list >> .cell&&type!=image")] {
+            XCTAssertNil(FTSelector.validationError(short), short)
+            XCTAssertEqual(FTSelector.parse(short).primary,
+                           FTSelector.parse(full).primary, short)
+            // 表示は完全形へ正規化する(記法を1つに保つ)
+            XCTAssertEqual(FTSelector.serialize(FTSelector.parse(short).primary), full, short)
+        }
+    }
+
+    /// 否定は肯定と同じ属性に重ねて書ける(重複条件の検査から外す)
+    func testNegationDoesNotCollideWithPositiveFilter() {
+        for text in [".button&&項目&&!#btn_item_2",
+                     ".button&&項目&&!#btn_item_1&&!#btn_item_2",
+                     ".button&&*許可*&&!許可",
+                     ".button&&項目&&id!=btn_item_2"] {
+            XCTAssertNil(FTSelector.validationError(text), text)
+        }
+    }
+
+    func testNegationShorthandValidation() {
+        XCTAssertNotNil(FTSelector.validationError("!キャンセル"))       // 否定だけの節
+        XCTAssertNotNil(FTSelector.validationError(".button&&![2]"))   // 序数は否定できない
+        XCTAssertNotNil(FTSelector.validationError(".button&&!textContans=x"))
+        // `=` エスケープで「!」始まりのラベルはそのまま書ける
+        XCTAssertEqual(FTSelector.parse("=!注意").primary, FlowLocator(label: "!注意"))
+    }
 }

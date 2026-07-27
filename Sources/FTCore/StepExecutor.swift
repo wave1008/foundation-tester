@@ -210,7 +210,7 @@ public final class StepExecutor {
     public var onDeviceFrozen: (@Sendable () -> Void)?
     /// 割り込みハンドラ(アプリ内メッセージ・自前のお知らせダイアログ用)。
     /// **閉じ方はアプリ作者しか知らない**ので、ツールが推測せずプロジェクト側で1回宣言してもらう
-    /// (DSL の `onInterrupt`)。detect が現在のスナップショットで解決できたら dismiss をタップし、
+    /// (DSL の `irregularHandler`)。detect が現在のスナップショットで解決できたら dismiss をタップし、
     /// 取り直してから本来の操作を続ける。宣言が無ければ何もしない = 正常系のコストはゼロ
     /// (**追加のスナップショットを取らない**。既に手元にあるものへ照合するだけ)
     public struct InterruptHandler: Sendable {
@@ -400,11 +400,16 @@ public final class StepExecutor {
                     //     消費してしまい、タップもプレスも効かない(待っても解けない。2回目は効く)。
                     //     クリックにならない 2pt のドラッグでその1回ぶんを肩代わりする
                     //  2. **静止待ち**: 空打ちでリストが微動するので、止まってから返す
-                    if releasesScrollTouch {
-                        let centerX: Double = element.frame.x + element.frame.width / 2
-                        let centerY: Double = element.frame.y + element.frame.height / 2
-                        try? await driver.drag(fromX: centerX, fromY: centerY,
-                                               toX: centerX + 2, toY: centerY,
+                    // **触る点が他の要素に取られるなら打たない**。空打ちは手前の要素
+                    // (タブバー等)に届き、そのボタンが反応してしまう
+                    // (2026-07-27 実測: E2E-iOS の #txt_offscreen はタブバーの帯の中に出るため、
+                    // 空打ちでホームタブへ切り替わっていた)
+                    let x: Double = element.frame.x + element.frame.width / 2
+                    let y: Double = element.frame.y + element.frame.height / 2
+                    if releasesScrollTouch,
+                       !Self.pointIsTakenByFrontElement(x: x, y: y, of: element,
+                                                        in: snapshot.elements) {
+                        try? await driver.drag(fromX: x, fromY: y, toX: x + 2, toY: y,
                                                pressSeconds: 0.05, durationSeconds: 0.05)
                     }
                     try await settleAfterScroll(step: step, found: element, phase: &phase)
@@ -428,6 +433,48 @@ public final class StepExecutor {
             let direction = FTSwipeDirection(rawValue: step.direction ?? "") ?? .up
             let viaXCUITest = try await swipeWithFallback(direction, phase: &phase)
             return StepOutcome(status: .passed, driverFallback: viaXCUITest ? "XCUITest へフォールバック" : nil)
+        }
+
+        // スクロールだけ行う(Shirates の scrollDown 等)。maxSwipes を繰り返し回数として使う
+        if action == "scroll" {
+            let direction = FTSwipeDirection(rawValue: step.direction ?? "") ?? .up
+            let times = max(1, step.maxSwipes ?? 1)
+            var viaXCUITest = false
+            for index in 0..<times {
+                if try await swipeWithFallback(direction, phase: &phase) { viaXCUITest = true }
+                // 続けて投げるとフリングの停止だけに消費されて空振りする(Android 実測)。
+                // 「repeat 回ぶん送る」を守るため、次のスワイプ前に静止を待つ
+                if index < times - 1 { _ = try await settledSignature(phase: &phase) }
+            }
+            return StepOutcome(status: .passed,
+                               driverFallback: viaXCUITest ? "XCUITest へフォールバック" : nil)
+        }
+
+        // 端まで送る(Shirates の scrollToBottom 等)。**画面が変化しなくなったら端**とみなす。
+        // 比較は**静止してから**行う(フリングの減速中に撮ると動いていないように見える)。
+        // さらに **2 回続けて変化なし**を条件にする — Android では次のスワイプがフリングの
+        // 停止だけに消費されて 1 回空振りすることがあり、1 回で打ち切ると途中で止まる
+        // (2026-07-27 実測: scrollToTop が row_22 付近で停止した)
+        if action == "scrollToEdge" {
+            let direction = FTSwipeDirection(rawValue: step.direction ?? "") ?? .up
+            var viaXCUITest = false
+            var previous: String?
+            var unchanged = 0
+            var reachedEdge = false
+            let limit = max(1, step.maxSwipes ?? FlowStep.defaultMaxEdgeSwipes)
+            for _ in 0..<limit {
+                let signature = try await settledSignature(phase: &phase)
+                unchanged = signature == previous ? unchanged + 1 : 0
+                if unchanged >= 2 { reachedEdge = true; break }
+                previous = signature
+                if try await swipeWithFallback(direction, phase: &phase) { viaXCUITest = true }
+            }
+            // 上限で抜けたら**端に着いたとは限らない**。黙って成功にすると
+            // 「scrollToBottom したのに末尾が無い」の原因が読めなくなる
+            let note = reachedEdge ? nil
+                : "上限 \(limit) 回で打ち切り(まだ端ではない可能性があります)"
+            return StepOutcome(status: .passed,
+                               driverFallback: viaXCUITest ? "XCUITest へフォールバック" : note)
         }
 
         // 要素が見つかるまでスクロール(見つかったら成功。操作はしない)
@@ -687,9 +734,50 @@ public final class StepExecutor {
         }
     }
 
+    /// その座標のタッチが**対象ではなく手前の別要素に渡る**か。スナップショットは pre-order
+    /// (後 = 手前寄り)なので、対象より後ろにあって点を含む要素が居れば取られ得る。
+    /// 対象の子孫は同じ見た目の一部なので除く。空打ちドラッグの安全判定に使う
+    static func pointIsTakenByFrontElement(x: Double, y: Double, of element: ElementInfo,
+                                           in elements: [ElementInfo]) -> Bool {
+        guard let index = elements.firstIndex(where: { $0.ref == element.ref }) else { return false }
+        let ownRefs = Set(descendants(of: element, in: elements).map(\.ref))
+        return elements[elements.index(after: index)...].contains { other in
+            guard !ownRefs.contains(other.ref) else { return false }
+            let f = other.frame
+            return x >= f.x && x <= f.x + f.width && y >= f.y && y <= f.y + f.height
+        }
+    }
+
     /// スクロール静止待ちの上限(回数 × 間隔 = 最大 600ms)。フリングの減速はこの範囲で収まる
     static let scrollSettleMaxPolls = 6
     static let scrollSettleIntervalMs = 100
+
+    /// 画面が静止するまで待ち、そのときの要素配置の署名を返す(scrollToEdge の到達判定)。
+    /// **横スクロールでは y が動かない**ので x と y の両方を入れる。
+    /// ref は取り直しで振り直されるため使わない(型・ラベル・座標だけで比較する)
+    private func settledSignature(
+        phase: inout PhaseAccumulator) async throws -> String {
+        func signature(_ snapshot: SnapshotResponse) -> String {
+            snapshot.elements
+                .map { "\($0.type)|\($0.label ?? "")|\($0.frame.x),\($0.frame.y)" }
+                .joined(separator: ",")
+        }
+        let clock = ContinuousClock()
+        var start = clock.now
+        var previous = signature(try await driver.snapshot())
+        phase.snapshotMs += Self.ms(clock.now - start)
+        for _ in 0..<Self.scrollSettleMaxPolls {
+            let waitStart = clock.now
+            try await Task.sleep(for: .milliseconds(Self.scrollSettleIntervalMs))
+            phase.waitMs += Self.ms(clock.now - waitStart)
+            start = clock.now
+            let current = signature(try await driver.snapshot())
+            phase.snapshotMs += Self.ms(clock.now - start)
+            if current == previous { return current }
+            previous = current
+        }
+        return previous
+    }
 
 
     private func swipeWithFallback(_ direction: FTSwipeDirection,
@@ -850,7 +938,9 @@ public final class StepExecutor {
             return .failed("要素が見つかりません: \(step.locatorSummary)(timeout \(step.timeout ?? 5)s)")
 
         case "valueEquals", "textEquals", "textContains", "textMatches",
-             "textStartsWith", "textEndsWith":
+             "textStartsWith", "textEndsWith", "textMatchesDateFormat",
+             "valueContains", "valueMatches", "valueStartsWith", "valueEndsWith",
+             "valueMatchesDateFormat", "idEquals":
             guard let expected = step.expected else {
                 return .skipped("expected が未指定")
             }
@@ -885,7 +975,10 @@ public final class StepExecutor {
                 }
                 if let (element, fallback) = candidate {
                     found = true
-                    let actual = assert == "valueEquals" ? element.value : element.label
+                    // id は画面に描かれないので occlusion-guard は掛からない(DSL 側が
+                    // occlusionGuard: false を立てる)
+                    let actual = assert == "idEquals" ? element.identifier
+                        : (assert.hasPrefix("value") ? element.value : element.label)
                     lastActual = actual
                     lastElement = element
                     lastElements = snapshot.elements
@@ -925,13 +1018,18 @@ public final class StepExecutor {
                 cachedScreenshot = nil   // 待機中に画面が変わり得る → 次周回は取り直す
             }
             if let lastOcclusion { return lastOcclusion }   // 覆われ続けた
-            let subject = assert == "valueEquals" ? "値" : "テキスト"
+            let subject = assert == "idEquals" ? "id"
+                : (assert.hasPrefix("value") ? "値" : "テキスト")
             let relation: String
             switch assert {
             case "textContains": relation = "を含みません"
             case "textMatches": relation = "に一致しません(正規表現)"
-            case "textStartsWith": relation = "で始まりません"
-            case "textEndsWith": relation = "で終わりません"
+            case "textStartsWith", "valueStartsWith": relation = "で始まりません"
+            case "textEndsWith", "valueEndsWith": relation = "で終わりません"
+            case "textMatchesDateFormat", "valueMatchesDateFormat":
+                relation = "が日付書式に一致しません"
+            case "valueContains": relation = "を含みません"
+            case "valueMatches": relation = "に一致しません(正規表現)"
             default: relation = "が一致しません"
             }
             return found
@@ -977,10 +1075,15 @@ public final class StepExecutor {
             }
             return .failed("要素がまだ存在します: \(step.locatorSummary)(timeout \(step.timeout ?? 5)s)")
 
-        case "textNotEquals", "textIsEmpty", "textIsNotEmpty":
+        case "textNotEquals", "textIsEmpty", "textIsNotEmpty",
+             "textStartsWithNot", "textContainsNot", "textEndsWithNot", "textMatchesNot",
+             "valueNotEquals", "valueIsEmpty", "valueIsNotEmpty",
+             "valueStartsWithNot", "valueContainsNot", "valueEndsWithNot", "valueMatchesNot":
             // 否定・空判定は occlusion-guard を掛けない(「見えていないこと」は画面照合できない)。
             // 要素自体は在ることが前提で、タイムアウトまでテキストの変化を待つ
-            if assert == "textNotEquals", step.expected == nil {
+            // Empty 系だけが期待値を取らない(それ以外で未指定なら空文字と比べて必ず落ちる)
+            if !assert.hasSuffix("IsEmpty"), !assert.hasSuffix("IsNotEmpty"),
+               step.expected == nil {
                 return .skipped("expected が未指定")
             }
             let deadline = Date().addingTimeInterval(TimeInterval(step.timeout ?? 5))
@@ -998,17 +1101,13 @@ public final class StepExecutor {
                 if let (element, fallback) = Self.resolve(step: step, in: snapshot,
                                                           strictForAssert: true) {
                     found = true
-                    let actual = element.label
+                    let actual = assert.hasPrefix("value") ? element.value : element.label
                     lastActual = actual
                     lastElement = element
                     lastElements = snapshot.elements
                     lastScreen = snapshot.screen
-                    let satisfied: Bool
-                    switch assert {
-                    case "textIsEmpty": satisfied = (actual ?? "").isEmpty
-                    case "textIsNotEmpty": satisfied = !(actual ?? "").isEmpty
-                    default: satisfied = actual != step.expected
-                    }
+                    let satisfied = Self.negativeAssertSatisfied(assert, actual: actual,
+                                                                  expected: step.expected)
                     if satisfied {
                         if let fallback { return .passedViaFallback(fallback) }
                         return .passed
@@ -1022,14 +1121,27 @@ public final class StepExecutor {
             guard found else { return .failed("要素が見つかりません: \(step.locatorSummary)") }
             let hint = Self.coveringHint(element: lastElement, elements: lastElements,
                                          screen: lastScreen)
+            let subject = assert.hasPrefix("value") ? "値" : "テキスト"
             switch assert {
-            case "textIsEmpty":
-                return .failed("テキストが空ではありません: 実際 \"\(lastActual ?? "nil")\"" + hint)
-            case "textIsNotEmpty":
-                return .failed("テキストが空です: \(step.locatorSummary)" + hint)
+            case "textIsEmpty", "valueIsEmpty":
+                return .failed("\(subject)が空ではありません: 実際 \"\(lastActual ?? "nil")\"" + hint)
+            case "textIsNotEmpty", "valueIsNotEmpty":
+                return .failed("\(subject)が空です: \(step.locatorSummary)" + hint)
             default:
-                return .failed("テキストが期待値と一致しています(不一致を期待): "
-                               + "\"\(lastActual ?? "nil")\"" + hint)
+                // 否定の種類ごとに何が成立してしまったのかを書く(「条件不成立」だけだと
+                // 期待値のどの関係で引っかかったのか読めない)
+                let expected = step.expected ?? ""
+                let relation: String
+                switch assert {
+                case "textContainsNot", "valueContainsNot": relation = "\"\(expected)\" を含んでいます"
+                case "textStartsWithNot", "valueStartsWithNot":
+                    relation = "\"\(expected)\" で始まっています"
+                case "textEndsWithNot", "valueEndsWithNot": relation = "\"\(expected)\" で終わっています"
+                case "textMatchesNot", "valueMatchesNot":
+                    relation = "正規表現 \"\(expected)\" に一致しています"
+                default: relation = "一致しています"
+                }
+                return .failed("\(subject)が\(relation): 実際 \"\(lastActual ?? "nil")\"" + hint)
             }
 
         case "enabled", "disabled":
@@ -1396,18 +1508,45 @@ public final class StepExecutor {
         return pool
     }
 
+    /// 否定系アサート(`*Not` / `*IsEmpty` / `*IsNotEmpty`)の判定。
+    /// **可視性は見ない**(見えていないことは画面照合できない)。text/value の別は呼び手が解決済み
+    static func negativeAssertSatisfied(_ assert: String, actual: String?,
+                                        expected: String?) -> Bool {
+        let text = actual ?? ""
+        switch assert {
+        case "textIsEmpty", "valueIsEmpty": return text.isEmpty
+        case "textIsNotEmpty", "valueIsNotEmpty": return !text.isEmpty
+        case "textStartsWithNot", "valueStartsWithNot":
+            return !text.hasPrefix(expected ?? "")
+        case "textContainsNot", "valueContainsNot":
+            return !text.contains(expected ?? "")
+        case "textEndsWithNot", "valueEndsWithNot":
+            return !text.hasSuffix(expected ?? "")
+        case "textMatchesNot", "valueMatchesNot":
+            return text.range(of: expected ?? "", options: .regularExpression) == nil
+        default:   // textNotEquals / valueNotEquals
+            return actual != expected
+        }
+    }
+
     /// アサート種別ごとの一致判定。戻り値は「画面上で実際に一致した文字列」(occlusion-guard 用)、
     /// 不一致なら nil。textMatches は**部分一致の正規表現**(^...$ を書けば全体一致になる)
     static func matchedText(_ actual: String?, expected: String, assert: String) -> String? {
         guard let actual else { return nil }
         switch assert {
-        case "textContains":
+        case "textContains", "valueContains":
             return actual.contains(expected) ? expected : nil
-        case "textStartsWith":
+        case "textStartsWith", "valueStartsWith":
             return actual.hasPrefix(expected) ? expected : nil
-        case "textEndsWith":
+        case "textEndsWith", "valueEndsWith":
             return actual.hasSuffix(expected) ? expected : nil
-        case "textMatches":
+        case "textMatchesDateFormat", "valueMatchesDateFormat":
+            // 日付書式(`yyyy/MM/dd` 等)。DateFormatter で往復できたら一致とみなす
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.dateFormat = expected
+            return formatter.date(from: actual) != nil ? actual : nil
+        case "textMatches", "valueMatches":
             guard let range = actual.range(of: expected, options: .regularExpression) else {
                 return nil
             }

@@ -51,9 +51,10 @@ public enum StepCommandParams {
         defaultValue: StepCommandText.formatSeconds(FlowStep.defaultPressDuration),
         help: "長押しする秒数(既定 1 秒)")
 
+    /// scrollTo の方向。**コンテンツ基準**(既定 down = 下に読み進める。Shirates と同じ)
     private static let directionSpec = StepParamSpec(
-        name: "direction", label: "方向", kind: .direction, defaultValue: "up",
-        help: "スクロールする方向(既定 up)")
+        name: "direction", label: "方向", kind: .direction, defaultValue: "down",
+        help: "スクロールする方向。down = 下に読み進める(既定)")
 
     private static let maxSwipesSpec = StepParamSpec(
         name: "maxSwipes", label: "最大スワイプ回数", kind: .int, defaultValue: "8",
@@ -67,7 +68,7 @@ public enum StepCommandParams {
     /// (scrollTo の directionSpec は既定 up で意味が違う。別インスタンスにするのはこのため)
     private static let scrollSpec = StepParamSpec(
         name: "scroll", label: "スクロールして探す", kind: .direction, defaultValue: "",
-        help: "指定するとその方向へスクロールしながら要素を探してから実行します。空欄 = 現在画面のみ")
+        help: "指定するとその方向へスクロールしながら要素を探してから実行します(down = 下に読み進める)。空欄 = 現在画面のみ")
 
     /// 既定値は FlowStep.defaultMaxSwipes が唯一の生成元(DSL の既定引数と揃える)
     private static let scrollMaxSwipesSpec = StepParamSpec(
@@ -223,8 +224,8 @@ public enum StepCommandParams {
             return "\(parsed.verb)(\(StepCommandText.literal(parsed.strings[0])), "
                 + "\(StepCommandText.literal(parsed.strings[1]))\(timeout)\(visArg))"
         default:
-            // specs が空の動詞(swipe / wait / launch / relaunch / terminate / screenIs)に
-            // パラメーターは無い。StepCommandText.apply(リテラル置換 or 再生成)に委ねる
+            // specs が空の動詞(swipe / wait / launch / screenIs / scrollDown 系・否定系 等)に
+            // パラメーター編集は無い。StepCommandText.apply(リテラル置換 or 再生成)に委ねる
             return try StepCommandText.apply(display: display, toCode: code)
         }
     }

@@ -223,7 +223,7 @@ class デモ_Android設定 {
             }
             scene(3, "先頭(ネットワークとインターネット)まで戻す") {
                 action {
-                    scrollTo("ネットワークとインターネット||Network & internet", direction: .down, maxSwipes: 20)
+                    scrollTo("ネットワークとインターネット||Network & internet", direction: .up, maxSwipes: 20)
                 }.expectation {
                     exist("ネットワークとインターネット||Network & internet")
                 }
