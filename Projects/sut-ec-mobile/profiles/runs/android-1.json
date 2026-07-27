@@ -10,5 +10,6 @@
   "machine": "M2Ultra",
   "iosInappEngine": true,
   "wipeDataOnBloat": true,
-  "record": true
+  "record": true,
+  "recoverCpuFallbackToGpu": true
 }

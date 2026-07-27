@@ -22,5 +22,6 @@
   "heal": false,
   "reportDir": "reports",
   "machine": "M2Ultra",
-  "wipeDataOnBloat": true
+  "wipeDataOnBloat": true,
+  "recoverCpuFallbackToGpu": true
 }
