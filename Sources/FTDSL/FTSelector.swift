@@ -391,6 +391,17 @@ public struct FTSelector {
     }
 
     static func parseFilter(_ token: String) -> FlowLocator {
+        // `!` の短縮形(Shirates 準拠): `!保存` = text!=保存 / `!#id` / `!.button`。
+        // 中身は完全形と同じ経路で解釈し、結果を not に入れる(序数 `![2]` は
+        // tokenError が実行前に拒否する = 候補集合を絞れないため)
+        if token.hasPrefix("!"), token.count > 1 {
+            let inner = String(token.dropFirst())
+            // `!=` を含む完全形(`text!=x`)はここではなく parseNegatedFilter が扱う
+            if !inner.hasPrefix("=") {
+                let positive = parseFilter(inner)
+                if !positive.hasNoFilter { return FlowLocator(not: [positive]) }
+            }
+        }
         if token.hasPrefix("=") {
             // 生ラベルのエスケープ(# や . で始まるラベルを text として扱う)
             return FlowLocator(label: String(token.dropFirst()))
@@ -406,8 +417,7 @@ public struct FTSelector {
         return textLocator(token)
     }
 
-    /// `名前!=値`(否定フィルタ)。**完全形だけ**を受け付ける(Shirates の `!ラベル` 短縮形は
-    /// `=` エスケープ・部分一致記法と紛らわしいので採らない)。
+    /// `名前!=値`(否定フィルタ)の完全形。短縮形 `!値` は parseFilter が先に受ける。
     /// 中身は肯定と同じロケータで、それを `not` に1件入れた形にする
     static func parseNegatedFilter(_ token: String) -> FlowLocator? {
         guard let eqIndex = token.firstIndex(of: "="), eqIndex > token.startIndex else { return nil }
@@ -876,6 +886,8 @@ public struct FTSelector {
     /// 否定は肯定と別の条件(`text=A&&text!=B` は矛盾ではない)なので `!` を付けて区別する。
     /// **否定同士の重複は見ない**(`text!=A&&text!=B` は正当な絞り込み)
     private static func attributeName(_ token: String) -> String? {
+        // 否定は同じ属性を何度でも書ける(`!#a&&!#b`)。短縮形・完全形とも重複判定から外す
+        if token.hasPrefix("!") { return nil }
         if token.hasPrefix("#") { return "id" }
         if token.hasPrefix(".") { return token.contains("#") ? "id" : "type" }
         if token.hasPrefix("[") { return nil }
@@ -895,6 +907,16 @@ public struct FTSelector {
 
     private static func tokenError(_ token: String) -> String? {
         if token.hasPrefix("=") { return nil }
+        // `!` 短縮形は中身を同じ規則で検査する(`!textContans=x` の綴り誤りを見逃さない)
+        if token.hasPrefix("!"), token.count > 1, !token.hasPrefix("!=") {
+            let inner = String(token.dropFirst())
+            // 序数の否定は候補集合を絞れず**黙って無視される**ので、書けたことにしない
+            // (完全形の `pos!=n` を弾いているのと同じ理由)
+            if inner.hasPrefix("["), inner.hasSuffix("]") {
+                return "序数は否定できません: \"\(token)\""
+            }
+            return tokenError(inner)
+        }
         if token.allSatisfy({ $0 == "*" }) {
             return "部分一致の中身が空です: \"\(token)\"(`*語*` のように書く)"
         }

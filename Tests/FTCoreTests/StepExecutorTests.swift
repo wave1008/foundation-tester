@@ -805,4 +805,36 @@ final class StepExecutorTests: XCTestCase {
             return
         }
     }
+
+    // MARK: - スクロール探索終端の空打ち可否(pointIsTakenByFrontElement)
+
+    private func framed(ref: Int, id: String, x: Double, y: Double,
+                        width: Double, height: Double, depth: Int = 0) -> ElementInfo {
+        ElementInfo(ref: ref, type: "button", identifier: id, label: nil, value: nil,
+                    placeholder: nil, enabled: true,
+                    frame: FTRect(x: x, y: y, width: width, height: height), depth: depth)
+    }
+
+    /// 対象の中心が**後ろに並ぶ(=手前寄りの)要素**に入るなら空打ちしない。
+    /// 実害: タブバーの帯に出た要素へ空打ちしてホームタブが反応した(docs/verification.md)
+    func testPointTakenByFrontElement() {
+        let target = framed(ref: 1, id: "txt", x: 16, y: 815, width: 111, height: 20)
+        let tabBar = framed(ref: 2, id: "tab_home", x: 0, y: 778, width: 134, height: 62)
+        XCTAssertTrue(StepExecutor.pointIsTakenByFrontElement(
+            x: 71, y: 825, of: target, in: [target, tabBar]))
+
+        // 手前に何も無ければ打ってよい
+        let apart = framed(ref: 3, id: "other", x: 300, y: 0, width: 50, height: 50)
+        XCTAssertFalse(StepExecutor.pointIsTakenByFrontElement(
+            x: 71, y: 825, of: target, in: [target, apart]))
+
+        // 対象より**前**(奥)にある要素は数えない(pre-order で後 = 手前寄りの規約)
+        XCTAssertFalse(StepExecutor.pointIsTakenByFrontElement(
+            x: 71, y: 825, of: target, in: [tabBar, target]))
+
+        // 対象自身の子孫(内側の Text 等)は同じ見た目の一部なので数えない
+        let child = framed(ref: 4, id: "txt_inner", x: 20, y: 818, width: 60, height: 14, depth: 1)
+        XCTAssertFalse(StepExecutor.pointIsTakenByFrontElement(
+            x: 71, y: 825, of: target, in: [target, child]))
+    }
 }

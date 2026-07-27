@@ -64,7 +64,7 @@ class デモ_iOSアプリ {
             }
             scene(4, "先頭まで戻る") {
                 action {
-                    scrollTo("John Appleseed", direction: .down, maxSwipes: 8)
+                    scrollTo("John Appleseed", direction: .up, maxSwipes: 8)
                 }.expectation {
                     exist("John Appleseed")
                 }

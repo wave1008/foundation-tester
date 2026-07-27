@@ -105,8 +105,11 @@ public enum ScenarioCodeGen {
                 return "terminateApp()"
             case "scrollTo":
                 var args = [literal(selector)]
-                if let direction = step.direction, direction != "up" {
-                    args.append("direction: .\(direction)")
+                // FlowStep.direction は**ジェスチャ(指の動き)**。DSL はコンテンツ基準なので写像して出す
+                if let swipe = step.direction.flatMap(FTSwipeDirection.init(rawValue:)),
+                   let scroll = FTScrollDirection.allCases.first(where: { $0.swipe == swipe }),
+                   scroll != .down {
+                    args.append("direction: .\(scroll.rawValue)")
                 }
                 if let maxSwipes = step.maxSwipes, maxSwipes != 8 {
                     args.append("maxSwipes: \(maxSwipes)")

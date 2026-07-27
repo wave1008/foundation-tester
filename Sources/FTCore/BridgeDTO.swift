@@ -214,8 +214,26 @@ public struct TypeRequest: Codable {
     }
 }
 
+/// **ジェスチャの向き**(指の動き)。ブリッジの /swipe はこれを受ける
 public enum FTSwipeDirection: String, Codable, CaseIterable {
     case up, down, left, right
+}
+
+/// **スクロールの向き**(コンテンツ基準。標準用語どおり `.down` = 下に読み進める)。
+/// Shirates の `ScrollDirection` と同じ構成(`None` は ftester では Optional が担うため持たない)。
+/// **指の動きとは逆**なので、ジェスチャへの写像はここに1箇所だけ置く
+public enum FTScrollDirection: String, Codable, CaseIterable, Sendable {
+    case down, up, right, left
+
+    /// このスクロールを起こすための指の動き(`.down` に読み進めるには指を上へ動かす)
+    public var swipe: FTSwipeDirection {
+        switch self {
+        case .down: return .up
+        case .up: return .down
+        case .right: return .left
+        case .left: return .right
+        }
+    }
 }
 
 public struct SwipeRequest: Codable {

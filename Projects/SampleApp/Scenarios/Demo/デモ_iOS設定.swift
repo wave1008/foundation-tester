@@ -170,14 +170,14 @@ class デモ_iOS設定 {
             }
             scene(2, "中間(アクセシビリティ)まで戻る") {
                 action {
-                    scrollTo("#com.apple.settings.accessibility||アクセシビリティ||Accessibility", direction: .down, maxSwipes: 15)
+                    scrollTo("#com.apple.settings.accessibility||アクセシビリティ||Accessibility", direction: .up, maxSwipes: 15)
                 }.expectation {
                     exist("#com.apple.settings.accessibility||アクセシビリティ||Accessibility")
                 }
             }
             scene(3, "先頭(一般)まで戻る") {
                 action {
-                    scrollTo("#com.apple.settings.general||一般||General", direction: .down, maxSwipes: 15)
+                    scrollTo("#com.apple.settings.general||一般||General", direction: .up, maxSwipes: 15)
                 }.expectation {
                     exist("#com.apple.settings.general||一般||General")
                 }

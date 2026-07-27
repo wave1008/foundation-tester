@@ -175,4 +175,19 @@ final class StepDescriptionTests: XCTestCase {
         let lines = ScenarioCodeGen.render(step: step, indent: "")
         XCTAssertEqual(lines, ["tap(\"設定\")"])
     }
+
+    /// FlowStep.direction はジェスチャ(指の動き)、DSL の direction はコンテンツ基準。
+    /// 生成コードは**コンテンツ基準**で書き戻す(往復させると向きが反転する退行を防ぐ)
+    func testCodeGenWritesScrollDirectionInContentTerms() {
+        func generated(_ swipe: String) -> String {
+            ScenarioCodeGen.render(
+                step: FlowStep(action: "scrollTo", locator: FlowLocator(id: "row_40"),
+                               direction: swipe, maxSwipes: 15),
+                indent: "").first ?? ""
+        }
+        // 指が上 = 下に読み進める = 既定なので direction は書かない
+        XCTAssertEqual(generated("up"), "scrollTo(\"#row_40\", maxSwipes: 15)")
+        XCTAssertEqual(generated("down"), "scrollTo(\"#row_40\", direction: .up, maxSwipes: 15)")
+        XCTAssertEqual(generated("left"), "scrollTo(\"#row_40\", direction: .right, maxSwipes: 15)")
+    }
 }

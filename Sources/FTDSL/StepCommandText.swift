@@ -63,6 +63,10 @@ public enum StepCommandText {
             if !optionalFlag, text == "launch" || text == "relaunch" {
                 return Parsed(verb: text, strings: [], optionalFlag: false, word: nil)
             }
+            // 引数なしのスクロール(scrollDown / scrollToBottom …)
+            if !optionalFlag, scrollVerbs.contains(text) || scrollToEdgeVerbs.contains(text) {
+                return Parsed(verb: text, strings: [], optionalFlag: false, word: nil)
+            }
             return nil
         }
         let verb = String(text[..<spaceIndex])
@@ -77,8 +81,7 @@ public enum StepCommandText {
             // scrollTo に optional 引数は無い(付けるとコンパイル不能コードを生むため拒否)
             guard !optionalFlag, let selector = unquote(rest) else { return nil }
             return Parsed(verb: verb, strings: [selector], optionalFlag: false, word: nil)
-        case "exist", "notExist", "isEnabled", "isDisabled", "isChecked", "isNotChecked",
-             "textIsEmpty", "textIsNotEmpty", "screenIs", "procedure":
+        case _ where unaryAsserts.contains(verb):
             guard !optionalFlag, let value = unquote(rest) else { return nil }
             return Parsed(verb: verb, strings: [value], optionalFlag: false, word: nil)
         case "countIs":
@@ -98,29 +101,21 @@ public enum StepCommandText {
             // ロケータなしの type "text"(フォーカス中要素へ入力)
             guard let input = unquote(rest) else { return nil }
             return Parsed(verb: verb, strings: [input], optionalFlag: optionalFlag, word: nil)
-        case "textIs", "valueIs":
+        // 2引数の検証。区切り記号は Commands.swift の operatorText と同期
+        // (完全一致 `==` / 部分一致・書式 `~` / 否定 `!=`)
+        case _ where binaryAssertOperators[verb] != nil:
             guard !optionalFlag,
-                  let (selector, expected) = unquotePair(rest, separator: "\" == \"") else {
+                  let (selector, expected) = unquotePair(
+                    rest, separator: "\" \(binaryAssertOperators[verb]!) \"") else {
                 return nil
             }
             return Parsed(verb: verb, strings: [selector, expected],
                           optionalFlag: false, word: nil)
-        case "textContains", "textMatches", "textStartsWith", "textEndsWith":
-            // 説明文の区切りは `\" ~ \"`(textIs の `==` と区別する。Commands.swift と同期)
-            guard !optionalFlag,
-                  let (selector, expected) = unquotePair(rest, separator: "\" ~ \"") else {
-                return nil
-            }
-            return Parsed(verb: verb, strings: [selector, expected],
-                          optionalFlag: false, word: nil)
-        case "textIsNot":
-            // 否定の区切りは `\" != \"`(Commands.swift の operatorText と同期)
-            guard !optionalFlag,
-                  let (selector, expected) = unquotePair(rest, separator: "\" != \"") else {
-                return nil
-            }
-            return Parsed(verb: verb, strings: [selector, expected],
-                          optionalFlag: false, word: nil)
+        case _ where scrollVerbs.contains(verb):
+            // scrollDown ×3(1回のときは回数を表示しない = 無スペース側で受ける)
+            guard !optionalFlag, rest.hasPrefix("×"),
+                  let times = Int(rest.dropFirst()), times > 1 else { return nil }
+            return Parsed(verb: verb, strings: [], optionalFlag: false, word: String(times))
         case "swipe":
             guard !optionalFlag, ["up", "down", "left", "right"].contains(rest) else {
                 return nil
@@ -190,12 +185,43 @@ public enum StepCommandText {
 
     /// 呼び出し全体の生成し直しを許すソース関数(これ以外は生 Swift とみなして触らない。
     /// procedure はブロックを伴うため文字列リテラル置換のみ=ここに含めない)
-    internal static let renewableFuncs: Set<String> = [
-        "tap", "type", "press", "swipe", "scrollTo", "exist", "notExist", "isEnabled",
-        "isDisabled", "isChecked", "isNotChecked", "countIs", "textIs", "valueIs",
-        "textContains", "textMatches", "textStartsWith", "textEndsWith", "textIsNot",
-        "textIsEmpty", "textIsNotEmpty",
-        "screenIs", "launchApp", "relaunchApp", "terminateApp", "wait",
+    internal static let renewableFuncs: Set<String> =
+        unaryAsserts.subtracting(["procedure"])
+        .union(binaryAssertOperators.keys)
+        .union(scrollVerbs).union(scrollToEdgeVerbs)
+        .union([
+            "tap", "type", "press", "swipe", "scrollTo", "countIs",
+            "launchApp", "relaunchApp", "terminateApp", "wait",
+        ])
+
+    /// セレクタ1つだけを取る検証(procedure はブロックを伴うので生成し直しの対象外)
+    internal static let unaryAsserts: Set<String> = [
+        "exist", "notExist", "isEnabled", "isDisabled", "isChecked", "isNotChecked",
+        "textIsEmpty", "textIsNotEmpty", "valueIsEmpty", "valueIsNotEmpty",
+        "screenIs", "procedure",
+    ]
+
+    /// セレクタ+期待値を取る検証と、表示に現れる区切り記号(Commands.swift の operatorText と同期)
+    internal static let binaryAssertOperators: [String: String] = [
+        "textIs": "==", "valueIs": "==",
+        "textContains": "~", "textMatches": "~", "textStartsWith": "~", "textEndsWith": "~",
+        "textMatchesDateFormat": "~",
+        "valueContains": "~", "valueMatches": "~", "valueStartsWith": "~", "valueEndsWith": "~",
+        "valueMatchesDateFormat": "~",
+        "textIsNot": "!=", "textContainsNot": "!=", "textMatchesNot": "!=",
+        "textStartsWithNot": "!=", "textEndsWithNot": "!=",
+        "valueIsNot": "!=", "valueContainsNot": "!=", "valueMatchesNot": "!=",
+        "valueStartsWithNot": "!=", "valueEndsWithNot": "!=",
+    ]
+
+    /// 回数指定(`repeat:`)を取るスクロール
+    internal static let scrollVerbs: Set<String> = [
+        "scrollDown", "scrollUp", "scrollRight", "scrollLeft",
+    ]
+
+    /// 端まで送るスクロール(表示に引数は出ない)
+    internal static let scrollToEdgeVerbs: Set<String> = [
+        "scrollToBottom", "scrollToTop", "scrollToRightEdge", "scrollToLeftEdge",
     ]
 
     /// 解釈結果から正規形の呼び出しコードを生成する
@@ -207,18 +233,21 @@ public enum StepCommandText {
         case "scrollTo":
             // scrollTo に optional 引数は無い(parse も optionalFlag 付きを受理しない)
             return "scrollTo(\(literal(parsed.strings[0])))"
-        case "exist", "notExist", "isEnabled", "isDisabled", "isChecked", "isNotChecked",
-             "textIsEmpty", "textIsNotEmpty", "screenIs":
+        case _ where unaryAsserts.contains(parsed.verb) && parsed.verb != "procedure":
             return "\(parsed.verb)(\(literal(parsed.strings[0])))"
         case "countIs":
             return "countIs(\(literal(parsed.strings[0])), \(parsed.word ?? "0"))"
         case "type" where parsed.strings.count == 1:
             // ロケータなしの type("text")
             return "type(\(literal(parsed.strings[0]))\(optionalArg))"
-        case "type", "textIs", "valueIs", "textContains", "textMatches",
-             "textStartsWith", "textEndsWith", "textIsNot":
+        case _ where parsed.verb == "type" || binaryAssertOperators[parsed.verb] != nil:
             return "\(parsed.verb)(\(literal(parsed.strings[0])), "
                 + "\(literal(parsed.strings[1]))\(optionalArg))"
+        case _ where scrollVerbs.contains(parsed.verb):
+            let times = parsed.word.flatMap(Int.init) ?? 1
+            return times > 1 ? "\(parsed.verb)(repeat: \(times))" : "\(parsed.verb)()"
+        case _ where scrollToEdgeVerbs.contains(parsed.verb):
+            return "\(parsed.verb)()"
         case "swipe":
             return "swipe(.\(parsed.word ?? "up"))"
         case "wait":

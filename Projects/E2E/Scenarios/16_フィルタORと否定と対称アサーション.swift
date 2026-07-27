@@ -1,7 +1,9 @@
 // 16_フィルタORと否定と対称アサーション.swift
-// ftester 機能: `||` の候補集合の和 / フィルタ内 OR `(a|b)` / 否定フィルタ `!=` /
+// ftester 機能: `||` の候補集合の和 / フィルタ内 OR `(a|b)` / 否定フィルタ `!=` と短縮形 `!` /
 // 対称化したテキスト検証(textStartsWith / textEndsWith / textIsNot / textIsNotEmpty) /
-// スクロール探索の引数 `scroll:` / doUntilTrue。
+// スクロール探索の引数 `scroll:` と Shirates 準拠のスクロールコマンド
+// (scrollToTop / scrollToBottom / scrollDown(repeat:) / withScrollDown / existWithoutScroll) /
+// thisIs 系 / doUntilTrue。
 // いずれもホスト側(セレクタ解決・DSL)の機能なので、記法の意味そのものは
 // Tests/FTDSLTests/FTSelectorTests.swift と Tests/FTCoreTests/{SelectorScopeTests,AssertKindsTests}.swift
 // が固定している。この場は「実機のスナップショットで解決し、タップ・検証まで届くこと」だけを見る。
@@ -79,7 +81,7 @@ class フィルタORと否定と対称アサーションが実機で動くこと
             scene(6, "`exist(scroll:)` は画面外の要素を探索してから検証する") {
                 expectation {
                     // 折り返しの下にある要素。scroll を付けない exist は現在画面しか見ない(07 参照)
-                    exist("#txt_offscreen", scroll: .up, maxSwipes: 12)
+                    exist("#txt_offscreen", scroll: .down, maxSwipes: 12)
                 }
             }
             scene(7, "`tap(scroll:)` は探索してからタップする(scrollTo を前置するのと同じ)") {
@@ -91,14 +93,68 @@ class フィルタORと否定と対称アサーションが実機で動くこと
                     // 狙うのは一覧末尾(07 と同じ `#row_40`)。中間行も通るようになったが
                     // (docs/verification.md「スクロールした直後のタップ」)、Android 側に
                     // 変更前からある行リサイクル起因の不安定さが残るため末尾を使う
-                    tap("#row_40", scroll: .up, maxSwipes: 15)
+                    tap("#row_40", scroll: .down, maxSwipes: 15)
                 }.expectation {
                     // #txt_row_selected は固定ヘッダなのでスクロール後も見える(07 と同じ理由)。
                     // **スクロール後に元の位置へ戻って検証しない**(戻す向きの操作は不安定)
                     textIs("#txt_row_selected", "selected=row_40")
                 }
             }
-            scene(8, "doUntilTrue は条件が成立するまで繰り返す") {
+            scene(8, "`scrollToBottom` / `scrollToTop` は端まで送る") {
+                action {
+                    scrollToTop(maxSwipes: 20)
+                }.expectation {
+                    // 端まで戻っていれば先頭行が**探索なしで**見えている
+                    existWithoutScroll("#row_01")
+                }
+            }
+            scene(9, "`scrollDown(repeat:)` は指定回数ぶん1画面ずつ送る") {
+                action {
+                    scrollDown(repeat: 2)
+                }.expectation {
+                    // 遅延生成の一覧なので、送った先では先頭行がツリーから消える
+                    notExist("#row_01", timeout: 2)
+                }
+            }
+            scene(10, "`withScrollDown { }` はブロック内をスクロール探索にする") {
+                condition {
+                    scrollToTop(maxSwipes: 20)
+                }.action {
+                    withScrollDown {
+                        // 明示の scroll: を書かなくても探索される(狙いは 07 と同じ末尾行)
+                        tap("#row_40")
+                        // 固定ヘッダは現在画面にあるので、探索を打ち消して確認する
+                        existWithoutScroll("#txt_row_selected")
+                    }
+                }.expectation {
+                    textIs("#txt_row_selected", "selected=row_40")
+                }
+            }
+            scene(11, "否定の短縮形 `!` は完全形と同じ意味") {
+                condition {
+                    tap("#tab_home")
+                    tap("#nav_selector")
+                }.expectation {
+                    countIs(".button&&項目&&!#btn_item_2", 2)
+                    countIs(".button&&*許可*&&!許可", 1)
+                }.action {
+                    tap(".button&&項目&&!#btn_item_1&&!#btn_item_2")
+                }.expectation {
+                    textIs("#txt_selector_result", "result=item3")
+                }
+            }
+            scene(12, "`thisIs` 系は画面に触れない値を検証する") {
+                expectation {
+                    // API 応答・計算結果をそのまま検証できる(素の値に直接生える)
+                    let 合計 = "合計 1,200円"
+                    合計.thisContains("1,200")
+                    合計.thisStartsWith("合計")
+                    合計.thisEndsWithNot("ドル")
+                    (10 * 3).thisIs(30)
+                    "2026/07/27".thisMatchesDateFormat("yyyy/MM/dd")
+                }
+            }
+            scene(13, "doUntilTrue は条件が成立するまで繰り返す") {
                 action {
                     // アプリ・外部の状態待ち用。画面要素の出現待ちは各コマンドの timeout: を使う
                     var 試行回数 = 0

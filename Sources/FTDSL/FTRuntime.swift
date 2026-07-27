@@ -133,9 +133,7 @@ public final class FTDriveCore {
     var currentSection: String?
     /// group("名前") { } の入れ子。記録時にステップ説明へ `[外/内]` を前置する
     var groupStack: [String] = []
-    var sceneAborted = false
     var scenarioAborted = false
-    var abortScenarioOnSceneFailure = false
     var stepCounter = 0
     /// シナリオ中に **1 度でも解決できた** `#id`。否定アサーション(notExist / countIs 0 /
     /// ifCanSelect)だけで使われ、かつ最後まで一度も解決できなかった id は typo の可能性が高い
@@ -154,12 +152,32 @@ public final class FTDriveCore {
     /// checked を実際に観測できたセレクタ(観測できたなら状態を持つ要素だと分かる)
     var checkedObservedSelectors: Set<String> = []
 
+    /// `withScrollDown { }` 等が積む既定のスクロール向き(Shirates の CodeExecutionContext.scrollDirection 相当)。
+    /// 各コマンドの `scroll:` が明示されていればそちらが勝つ。`.none` は withoutScroll { } の明示的な打ち消し
+    enum ScrollContext { case none, direction(FTScrollDirection) }
+    var scrollContextStack: [ScrollContext] = []
+
+    /// コマンドが使うスクロール向き。明示 > ブロックの文脈 > 無し
+    func effectiveScroll(_ explicit: FTScrollDirection?) -> FTScrollDirection? {
+        if let explicit { return explicit }
+        switch scrollContextStack.last {
+        case .direction(let d): return d
+        case .none?, nil: return nil
+        }
+    }
+
+    func runWithScrollContext(_ context: ScrollContext, _ body: () -> Void) {
+        scrollContextStack.append(context)
+        body()
+        scrollContextStack.removeLast()
+    }
+
     /// true = デバイスに触れず全コマンドを記録のみで通過させる(ステップ列挙・コード生成の検証用)
     let dryRun: Bool
 
     /// --debug 時のブレークポイント/一時停止制御。nil なら通常実行(dry-run でも有効)
     public var debugControl: ScenarioDebugControl?
-    /// DSL の `onInterrupt` が宣言した割り込み(アプリ内メッセージ)を実行器へ渡す
+    /// DSL の `irregularHandler` が宣言した割り込み(アプリ内メッセージ)を実行器へ渡す
     func addInterruptHandler(detect: FlowLocator, dismiss: FlowLocator) {
         executor.interruptHandlers.append(
             StepExecutor.InterruptHandler(detect: detect, dismiss: dismiss))
@@ -214,7 +232,6 @@ public final class FTDriveCore {
     // MARK: - scene / CAE ブロック
 
     func runScene(_ number: Int, _ title: String, _ body: () -> Void) {
-        sceneAborted = false
         currentSection = nil
         // scene 番号は利用者が手で振るのでコピペで重複しやすい。重複するとレポートに
         // 同じ番号が並び、どちらの結果か読み手が判別できなくなる。**警告に留める**
@@ -267,8 +284,7 @@ public final class FTDriveCore {
     }
 
     /// setUp / tearDown の実行。
-    /// allowAfterFailure=false(setUp): 中で失敗したらシナリオごと中断する。scene(n) の入口は
-    ///   sceneAborted を毎回 false に戻すため、scene をまたいで効く scenarioAborted へ昇格させる。
+    /// allowAfterFailure=false(setUp): 中で失敗したら本体と同じくシナリオ中断(handleFailure)。
     /// allowAfterFailure=true(tearDown): 中断中でも片付けが走るよう一度フラグを解除し、
     ///   実行後に「元の中断」と「片付け中の失敗」の OR で復元する(どちらも握りつぶさない)。
     /// 画面凍結(deviceFrozen)とユーザー中断(debug の stop)では両方とも実行しない —
@@ -277,19 +293,14 @@ public final class FTDriveCore {
     func runLifecycle(_ name: String, allowAfterFailure: Bool, _ body: () -> Void) {
         guard !deviceFrozen, !stoppedByUser else { return }
         let previousSection = currentSection
-        let savedSceneAborted = sceneAborted
         let savedScenarioAborted = scenarioAborted
         currentSection = name
         if allowAfterFailure {
-            sceneAborted = false
             scenarioAborted = false
         }
         body()
         if allowAfterFailure {
-            sceneAborted = savedSceneAborted || sceneAborted
             scenarioAborted = savedScenarioAborted || scenarioAborted
-        } else if sceneAborted {
-            scenarioAborted = true
         }
         currentSection = previousSection
     }
@@ -304,7 +315,7 @@ public final class FTDriveCore {
                  file: StaticString, line: UInt) -> StepResult.Status {
         let filePath = relativePath("\(file)")
         debugCheckpoint(description: description, file: filePath, line: Int(line))
-        if sceneAborted || scenarioAborted {
+        if scenarioAborted {
             let status = StepResult.Status.skipped(skipReason)
             recordStep(description: description, status: status, file: filePath, line: Int(line))
             return status
@@ -514,11 +525,10 @@ public final class FTDriveCore {
     /// 任意の async 処理を 1 ステップとして実行・記録する(launch / procedure / wait 等)
     @discardableResult
     func performCustom(description: String, file: StaticString, line: UInt,
-                       abortsScenario: Bool = false,
                        _ body: @escaping () async throws -> Void) -> StepResult.Status {
         let filePath = relativePath("\(file)")
         debugCheckpoint(description: description, file: filePath, line: Int(line))
-        if sceneAborted || scenarioAborted {
+        if scenarioAborted {
             let status = StepResult.Status.skipped(skipReason)
             recordStep(description: description, status: status, file: filePath, line: Int(line))
             return status
@@ -552,7 +562,6 @@ public final class FTDriveCore {
                    durationMs: elapsedMs, at: ISO8601Millis.string(from: Date()))
 
         if case .failed(let reason) = status {
-            if abortsScenario { scenarioAborted = true }
             handleFailure(stepDescription: description, reason: reason)
         }
         return status
@@ -561,7 +570,7 @@ public final class FTDriveCore {
     /// 停止条件に合致したら paused イベントを流してブロックし、再開コマンドを待つ。
     /// stop コマンドはシナリオ中断(以降のステップは skipped)として扱う
     private func debugCheckpoint(description: String, file: String, line: Int) {
-        guard let debug = debugControl, !sceneAborted, !scenarioAborted else { return }
+        guard let debug = debugControl, !scenarioAborted else { return }
         let result = debug.checkpoint(file: file, line: line) {
             var event = ScenarioEvent(kind: "paused")
             event.scenario = scenarioID
@@ -581,14 +590,14 @@ public final class FTDriveCore {
     }
 
     /// スキップ記録の理由(デバッグの stop による中断は表示を分ける)
-    private var skipReason: String {
-        stoppedByUser ? "ユーザー操作で中断" : "scene NG のため未実行"
+    var skipReason: String {
+        stoppedByUser ? "ユーザー操作で中断" : "失敗のため未実行"
     }
 
     /// 分岐評価(記録のみ、実行はしない): セレクタが現在画面で解決できるか
     func canSelect(_ selector: FTSelector, waitSeconds: Int) -> Bool {
         if dryRun { return true }  // dry-run では分岐内側も記録するため常に成立扱い
-        if sceneAborted || scenarioAborted { return false }
+        if scenarioAborted { return false }
         let step = FlowStep(locator: selector.primary,
                             fallbacks: selector.fallbacks.isEmpty ? nil : selector.fallbacks)
         let driver = self.driver
@@ -664,8 +673,9 @@ public final class FTDriveCore {
 
     /// perform を通らないコマンド(ifCanSelect の構文エラー)からも呼ぶため internal
     func handleFailure(stepDescription: String, reason: String) {
-        sceneAborted = true
-        if abortScenarioOnSceneFailure { scenarioAborted = true }
+        // 失敗したら**シナリオ全体を中断**する(Shirates と同じ。scene を跨いで続行しない。
+        // tearDown だけは runLifecycle(allowAfterFailure:) がこのフラグを一時解除して実行する)
+        scenarioAborted = true
 
         // 失敗時のスクリーンショット+トリアージ(FM 利用可時のみ)。Android は画面凍結(白フレーム)で
         // 証跡が無効になり得るため、blank を検知したら最大3回撮り直して回復を待つ(iOS は対象外)。

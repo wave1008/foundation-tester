@@ -71,6 +71,33 @@ final class FTRuntimeLifecycleTests: XCTestCase {
         XCTAssertTrue(isFailed(recorded[0].status), "未知の記法が dry-run を素通りした")
     }
 
+    /// thisIs 系は perform を通らないため個別に検証する。dry-run と失敗後の扱いを
+    /// DSL コマンドと揃えないと、列挙だけのはずの dry-run に ❌ が出る/失敗後も検証が走る
+    func testValueAssertionsFollowDryRunAndAbortSemantics() {
+        let dry = makeCore(driver: StubDriver(), dryRun: true)
+        FTRuntime.bootstrap(core: dry, dslThread: Thread.current)
+        scenario {
+            scene(1, "s") { action { "abc".thisIs("zzz") } }
+        }
+        XCTAssertFalse(isFailed(steps(dry)[0].status), "dry-run で実値を判定した")
+        FTRuntime.tearDown()
+
+        let live = makeCore(driver: StubDriver(), dryRun: false)
+        FTRuntime.bootstrap(core: live, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+        scenario {
+            scene(1, "s") {
+                action {
+                    "abc".thisIs("zzz")   // ここで失敗 → シナリオ中断
+                    "abc".thisIs("abc")   // 後続はスキップ(実行しない)
+                }
+            }
+        }
+        let recorded = steps(live)
+        XCTAssertTrue(isFailed(recorded[0].status))
+        XCTAssertTrue(isSkipped(recorded[1].status), "失敗後も検証が走った")
+    }
+
     /// ifCanSelect は perform を通らないため個別に検証する。構文誤りが「不成立」に化けると
     /// ブロックが飛んだまま緑になる
     func testInvalidSelectorInIfCanSelectFails() {
@@ -115,6 +142,29 @@ final class FTRuntimeLifecycleTests: XCTestCase {
         ])
     }
 
+    /// 失敗したら**次の scene も実行しない**(2026-07-27 変更。以前は scene 単位でスキップし
+    /// 次の scene へ進んでいた)。失敗後の画面状態は不定で、続けても壊れた前提の擬陽性/擬陰性を
+    /// 量産するだけのため、シナリオ全体を中断する
+    func testFailureAbortsWholeScenario() {
+        let driver = StubDriver()
+        let core = makeCore(driver: driver, dryRun: false)
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        scenario {
+            scene(1, "失敗する") {
+                action { exist("#missing", timeout: 0, requireVisible: false) }
+            }
+            scene(2, "実行されない") {
+                action { tap("#cleanup") }
+            }
+        }
+        let recorded = steps(core)
+        XCTAssertTrue(isFailed(recorded[0].status))
+        XCTAssertTrue(isSkipped(recorded[1].status), "失敗後の scene が実行された")
+        XCTAssertTrue(driver.tapped.isEmpty)
+    }
+
     func testTearDownRunsAfterSceneFailure() {
         let driver = StubDriver()
         let core = makeCore(driver: driver, dryRun: false)
@@ -125,7 +175,7 @@ final class FTRuntimeLifecycleTests: XCTestCase {
             scene(1, "s") {
                 action {
                     exist("#missing", timeout: 0, requireVisible: false)
-                    tap("#cleanup")   // scene 失敗後なのでスキップされる
+                    tap("#cleanup")   // 失敗後なのでスキップされる
                 }
             }
         }
@@ -133,7 +183,7 @@ final class FTRuntimeLifecycleTests: XCTestCase {
 
         let recorded = steps(core)
         XCTAssertTrue(isFailed(recorded[0].status))
-        XCTAssertTrue(isSkipped(recorded[1].status), "scene 内の後続はスキップされる(既存の契約)")
+        XCTAssertTrue(isSkipped(recorded[1].status), "失敗後の後続はスキップされる")
         XCTAssertEqual(recorded[2].section, "tearDown")
         XCTAssertFalse(isSkipped(recorded[2].status), "片付けは失敗後でも実行する")
         XCTAssertEqual(driver.tapped, [1], "tearDown の tap だけが実際に発火する")
@@ -166,8 +216,6 @@ final class FTRuntimeLifecycleTests: XCTestCase {
         let recorded = steps(core)
         XCTAssertEqual(recorded[0].section, "setUp")
         XCTAssertTrue(isFailed(recorded[0].status))
-        // scene(n) の入口は sceneAborted を毎回リセットするので、シナリオ中断へ昇格していないと
-        // ここが実行されてしまう(この期待が本テストの主眼)
         XCTAssertTrue(recorded.dropFirst().allSatisfy { isSkipped($0.status) })
     }
 
