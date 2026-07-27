@@ -54,6 +54,10 @@ tag 定数は `Sources/Tags.swift` に集約する(値は共通契約の表と b
   `cell.accessibilityLabel` へ集約している(`Sources/UIKitViews/RowTableView.swift`)
 - **可視範囲＋数行しかセルを実体化しない**。画面外の行は `#id` ごとツリーに存在しない
   (= `scrollTo` なしの `exist` が落ちる契約の検証材料。Compose の LazyColumn と同じ挙動)
+- ただし**行ラベルの StaticText は全 40 行ぶんツリーに残る**(id 無し・frame は先頭行相当に
+  クランプ。2026-07-27 実測)。**ラベルの部分一致で不在検証はできない**
+  (`notExist("*行 3*")` は画面外の `行 30`〜`行 39` に正当に当たる。シナリオ 14 は
+  `textContainsNot("#row_03", …)` で同じ契約を検証している)
 - **画面外要素の frame は下端バンドにクランプされて報告される**(design.md §4.6 の既知制約)。
   Compose 固有ではなく **UIKit のスクロールコンテナでも起きる**。行高を 56pt 以上にして回避している
 
