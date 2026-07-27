@@ -1,5 +1,6 @@
 // 05_テキスト入力.swift
-// ftester 機能: `type` コマンドと入力値の echo 検証(単一行/パスワード/送信/クリア)。
+// ftester 機能: `type` コマンドと入力値の echo 検証(単一行/パスワード/送信/クリア)、
+// および `valueIs` / `valueContains` / `valueIsNotEmpty`(入力欄自体の値の直接検証)。
 // SUT の入力欄は EditText。inputType=textPassword の欄だけ `SecureTextField` になり、
 // 複数行(textMultiLine)も `TextField` のまま(iOS ネイティブが TextView になるのと違う)。
 
@@ -75,6 +76,28 @@ class テキスト入力が正しくechoされること {
                     type(".secureTextField[1]", "pw0001")
                 }.expectation {
                     textIs("#txt_echo_password", "password=pw0001")
+                }
+            }
+        }
+    }
+
+    @Test("valueIs / valueContains / valueIsNotEmpty で入力欄自体の値を直接検証できる")
+    func S0030() {
+        scenario {
+            scene(1, "単一行に ASCII を入力した直後の値を検証する") {
+                condition {
+                    launchApp()
+                    tap("#nav_input")
+                    tap("#field_single")
+                    type("#field_single", "hello123")
+                }.expectation {
+                    // 空欄状態の valueIsEmpty は検証しない: 空の EditText は hint(プレースホルダ)が
+                    // 値として読めてしまうことがあり、意図せず偽陽性/偽陰性になり得るため
+                    valueIs("#field_single", "hello123")
+                    valueContains("#field_single", "hello")
+                    valueIsNotEmpty("#field_single")
+                    // exist の戻り値にも同じ検証をチェーンできる
+                    exist("#field_single").valueIs("hello123")
                 }
             }
         }

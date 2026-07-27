@@ -27,6 +27,13 @@ class テキスト入力が正しくechoされること {
                 }.expectation {
                     textIs("#txt_echo_single", "single=hello123")
                     textIs("#txt_echo_length", "len=8")
+                    // value* は入力欄自身の値を見る(text* は echo Text 側)。
+                    // 空欄の valueIsEmpty は書かない: iOS は空欄の value に placeholder
+                    // (「単一行」)が返るため空文字と区別できない
+                    valueIs("#field_single", "hello123")
+                    valueContains("#field_single", "hello")
+                    valueIsNotEmpty("#field_single")
+                    exist("#field_single").valueIs("hello123")
                 }
             }
             scene(3, "パスワード欄も平文で echo される") {

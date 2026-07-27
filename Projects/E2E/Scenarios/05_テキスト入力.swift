@@ -1,5 +1,6 @@
 // 05_テキスト入力.swift
-// ftester 機能: `type` コマンドと入力値の echo 検証(単一行/パスワード/送信/クリア)。
+// ftester 機能: `type` コマンドと入力値の echo 検証(単一行/パスワード/送信/クリア)、
+// value* 検証系(valueIs / valueContains / valueIsNotEmpty、exist チェーンの .valueIs)。
 
 import FTDSL
 
@@ -27,6 +28,12 @@ class テキスト入力が正しくechoされること {
                 }.expectation {
                     textIs("#txt_echo_single", "single=hello123")
                     textIs("#txt_echo_length", "len=8")
+                    // value* は入力欄自体の値を見る(text* は echo Text)。非空欄なら OS 間で割れない
+                    // (空欄の valueIsEmpty は書かない: iOS は空欄の value に placeholder が返るため)
+                    valueIs("#field_single", "hello123")
+                    valueContains("#field_single", "hello1")
+                    valueIsNotEmpty("#field_single")
+                    exist("#field_single").valueIs("hello123")
                 }
             }
             scene(3, "パスワード欄も平文で echo される") {
