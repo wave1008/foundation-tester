@@ -440,8 +440,19 @@ public enum ScenarioHost {
         return Int(seconds) * 1000 + Int(attoseconds / 1_000_000_000_000_000)
     }
 
-    /// カレントディレクトリから上に辿って Package.swift を持つディレクトリを探す
+    /// カレントディレクトリから上に辿って Package.swift を持つディレクトリを探す。
+    /// `FT_PACKAGE_ROOT` が設定されていれば cwd 探索より優先する(外部パッケージ構成で MCP サーバの
+    /// cwd がクローン側に固定される場合の明示的な指定手段)。設定されているが Package.swift が
+    /// 無ければ cwd 探索へフォールバックせず nil を返す(誤設定を黙って別ルートで動かすと診断不能になる)
     public static func packageRoot() -> URL? {
+        if let override = ProcessInfo.processInfo.environment["FT_PACKAGE_ROOT"] {
+            let dir = URL(fileURLWithPath: override)
+            if FileManager.default.fileExists(
+                atPath: dir.appendingPathComponent("Package.swift").path) {
+                return dir
+            }
+            return nil
+        }
         var dir = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
         for _ in 0..<10 {
             if FileManager.default.fileExists(

@@ -72,7 +72,7 @@ clone 構成ならこのステップは不要(同梱 `.mcp.json` が効く)。�
   "mcpServers": {
     "ftester": {
       "command": "bash",
-      "args": ["-lc", "cd \"<ABS_TOOL_ROOT>\" && swift build --product ftester-mcp >/dev/null 2>&1 && exec \"<ABS_TOOL_ROOT>/.build/debug/ftester-mcp\""]
+      "args": ["-lc", "WD=\"$PWD\"; cd \"<ABS_TOOL_ROOT>\" && swift build --product ftester-mcp >/dev/null 2>&1 && cd \"$WD\" && exec \"<ABS_TOOL_ROOT>/.build/debug/ftester-mcp\""]
     }
   }
 }
@@ -83,11 +83,16 @@ clone 構成ならこのステップは不要(同梱 `.mcp.json` が効く)。�
 - `bash -lc`(ログインシェル)は、デスクトップ版 Claude Code が最小 PATH でサーバを起こしても
   swift/Xcode ツールチェインを引けるようにするため。
 - rebuild-on-start なので `/ftester-update` 後も版ズレしない(無変更なら増分ビルドは即座)。
+- **ビルドのため TOOL_ROOT へ `cd` した後、`exec` 前に元の WORK_DIR へ戻す**(`WD="$PWD"; cd ... ;
+  cd "$WD"`)。cwd は `ftester-mcp` がパッケージルートを特定する入力(`packageRoot()` の探索基準)。
+  cd したまま exec すると外部パッケージ構成で受け手の `Projects/` が見えなくなる。
+- cwd = パッケージルートが前提。cd 制御ができない起動経路では代わりに環境変数 `FT_PACKAGE_ROOT`
+  でパッケージルートを明示指定できる(未設定なら cwd 探索、無効なパスなら診断のため探索フォールバックせず失敗する)。
 
 「全プロジェクトで使いたい」場合のみ、代わりに user スコープ登録を案内する(claude CLI が PATH に要る):
 
 ```
-claude mcp add ftester --scope user -- bash -lc 'cd "<ABS_TOOL_ROOT>" && swift build --product ftester-mcp >/dev/null 2>&1 && exec "<ABS_TOOL_ROOT>/.build/debug/ftester-mcp"'
+claude mcp add ftester --scope user -- bash -lc 'WD="$PWD"; cd "<ABS_TOOL_ROOT>" && swift build --product ftester-mcp >/dev/null 2>&1 && cd "$WD" && exec "<ABS_TOOL_ROOT>/.build/debug/ftester-mcp"'
 ```
 
 CLI が無ければ上の WORK_DIR `.mcp.json` 方式で十分。

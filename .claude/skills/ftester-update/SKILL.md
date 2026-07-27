@@ -110,6 +110,39 @@ cd <TOOL_ROOT>/vscode-ftester && npm install && npm run install-local
 （clone 構成なら `cd vscode-ftester && ...`。）`install-local` はパッケージ→インストール→到達確認まで一括。
 **exit code で成否判定**。
 
+### 5.5 MCP 登録テンプレートの更新（旧 `.mcp.json` の cwd 罠を修正）
+
+旧版のセットアップ手順で書かれた `.mcp.json` の `ftester` エントリは、`args` が
+`cd "<ABS_TOOL_ROOT>" && swift build --product ftester-mcp >/dev/null 2>&1 && exec "<ABS_TOOL_ROOT>/.build/debug/ftester-mcp"`
+の形（**ビルドのため TOOL_ROOT へ `cd` したまま `exec` する**）になっていることがある。この形だと
+`ftester-mcp` の cwd が TOOL_ROOT のクローン側に固定されたままになり、`packageRoot()`（cwd から上に
+`Package.swift` を探す）が WORK_DIR の受け手パッケージではなくクローン側を見つけてしまい、外部パッケージ
+構成で受け手の `Projects/` が見えなくなる（新版のテンプレートは exec 前に元の cwd へ戻る）。
+
+- **WORK_DIR の `.mcp.json`**（外部パッケージ構成のみ。clone 構成は同梱 `.mcp.json` を直接編集しない
+  ―― 本体側で管理される）を確認する。`mcpServers.ftester.args` に `swift build --product ftester-mcp`
+  を含み、かつ `cd "$WD"`（または `WD=`）を**含まない**なら旧テンプレート。次の形へ書き換える
+  （`<ABS_TOOL_ROOT>` は既存値をそのまま使う。他のキーは変更しない）:
+
+```json
+{
+  "mcpServers": {
+    "ftester": {
+      "command": "bash",
+      "args": ["-lc", "WD=\"$PWD\"; cd \"<ABS_TOOL_ROOT>\" && swift build --product ftester-mcp >/dev/null 2>&1 && cd \"$WD\" && exec \"<ABS_TOOL_ROOT>/.build/debug/ftester-mcp\""]
+    }
+  }
+}
+```
+
+- **user スコープ登録**（`claude mcp add ftester --scope user ...` で入れた場合）: `claude mcp list` /
+  `claude mcp get ftester` で同じ旧パターン（cd 後 exec 前に戻っていない）が無いか確認する。あれば
+  一度 `claude mcp remove ftester --scope user` してから、新テンプレート（上と同じ `WD="$PWD"; cd ... ;
+  cd "$WD" && exec ...`）で `claude mcp add ftester --scope user -- bash -lc '...'` を再登録する。
+  CLI が PATH に無ければこのステップはスキップし、WORK_DIR `.mcp.json` 方式への案内に留める。
+- 書き換え後は 🧑 チェックポイント（次のステップ）で Reload Window すれば反映される
+  （登録がそもそも無い場合はこのステップは何もしない ―― MCP 未使用の受け手には無関係）。
+
 ### 6. 🧑 人間チェックポイント（反映）
 
 ユーザーに依頼する（代行不可）:
