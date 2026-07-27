@@ -899,4 +899,27 @@ final class StepExecutorTests: XCTestCase {
         XCTAssertFalse(StepExecutor.pointIsTakenByFrontElement(
             x: 71, y: 825, of: target, in: [target, child]))
     }
+
+    /// 画面下端の a11y 空白帯(タブ frame の下〜画面下端)では空打ちしない。
+    /// 実測座標(2026-07-28・E2E-iOS): タブ frame 下端 840・画面高 874 のとき、帯内 y=841.8 は
+    /// a11y 上どの要素にも覆われないが実タブが反応した(07/16 の間欠フレークの根因)
+    func testEmptyDragAvoidsBottomUncoveredBand() {
+        let screen = FTRect(x: 0, y: 0, width: 402, height: 874)
+        let tabBar = framed(ref: 2, id: "tab_home", x: 0, y: 778, width: 134, height: 62)
+
+        // 失敗の実測ケース: 中心 y=841.8 はタブ frame(〜840)の外だが下端帯の中 → 打たない
+        let low = framed(ref: 1, id: "txt", x: 16, y: 831.7, width: 111.3, height: 20.3)
+        XCTAssertFalse(StepExecutor.emptyDragIsSafe(
+            x: 71.7, y: 841.8, of: low, in: [low, tabBar], screen: screen))
+
+        // タブ frame 内は従来どおり pointIsTakenByFrontElement が拒否する
+        let inBand = framed(ref: 1, id: "txt", x: 16, y: 815.7, width: 111.3, height: 20.3)
+        XCTAssertFalse(StepExecutor.emptyDragIsSafe(
+            x: 71.7, y: 825.8, of: inBand, in: [inBand, tabBar], screen: screen))
+
+        // 帯より上で手前要素も無ければ打ってよい(通常のリスト内)
+        let mid = framed(ref: 1, id: "row", x: 16, y: 700, width: 370, height: 56)
+        XCTAssertTrue(StepExecutor.emptyDragIsSafe(
+            x: 201, y: 728, of: mid, in: [mid, tabBar], screen: screen))
+    }
 }
