@@ -418,8 +418,8 @@ public final class StepExecutor {
                     let x: Double = element.frame.x + element.frame.width / 2
                     let y: Double = element.frame.y + element.frame.height / 2
                     if releasesScrollTouch,
-                       !Self.pointIsTakenByFrontElement(x: x, y: y, of: element,
-                                                        in: snapshot.elements) {
+                       Self.emptyDragIsSafe(x: x, y: y, of: element,
+                                            in: snapshot.elements, screen: snapshot.screen) {
                         try? await driver.drag(fromX: x, fromY: y, toX: x + 2, toY: y,
                                                pressSeconds: 0.05, durationSeconds: 0.05)
                     }
@@ -744,6 +744,23 @@ public final class StepExecutor {
             previous = element.frame
         }
     }
+
+    /// スクロール探索終端の空打ちドラッグを (x,y) に打ってよいか。打たない条件は2つ
+    /// (どちらも「空打ちが別の UI に渡って画面が変わる」実害の再発防止):
+    /// 1. 対象より手前の要素が点を取る(タブバー等。pointIsTakenByFrontElement)
+    /// 2. 点が**画面下端の帯**にある。タブバーの実ヒット域は a11y frame の下(ホームインジケータ域
+    ///    =画面下端)まで伸びるのに、その帯は a11y 上は空白で 1 が効かない
+    ///    (実測 2026-07-28: タブ frame 下端 840・画面高 874 で、帯内 y=841.8 への空打ちで
+    ///    #tab_home が反応しホームへ遷移。E2E-iOS 07/16 の間欠フレークの根因)
+    static func emptyDragIsSafe(x: Double, y: Double, of element: ElementInfo,
+                                in elements: [ElementInfo], screen: FTRect) -> Bool {
+        if pointIsTakenByFrontElement(x: x, y: y, of: element, in: elements) { return false }
+        if y >= screen.y + screen.height - Self.bottomUncoveredBand { return false }
+        return true
+    }
+
+    /// 画面下端の a11y 空白帯の高さ(pt)。実測の空白(874-840=34)+整定位置のブレの余裕
+    static let bottomUncoveredBand: Double = 48
 
     /// その座標のタッチが**対象ではなく手前の別要素に渡る**か。スナップショットは pre-order
     /// (後 = 手前寄り)なので、対象より後ろにあって点を含む要素が居れば取られ得る。
