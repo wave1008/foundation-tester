@@ -669,4 +669,37 @@ final class AssertKindsTests: XCTestCase {
                             fallbacks: [FlowLocator(label: "b")])
         XCTAssertEqual(step.locatorSummary, "id=a || text=b")
     }
+
+    /// 親子で同じラベルを重ねて数えたときは、**直し方(型で絞る)まで**メッセージに出す。
+    /// これを知らないと countIs("項目", 3) が 6 を返す理由に辿り着けない
+    func testCountFailureHintsNestedDuplicates() async {
+        func el(_ ref: Int, _ type: String, _ depth: Int, _ frame: FTRect) -> ElementInfo {
+            ElementInfo(ref: ref, type: type, identifier: nil, label: "項目", value: nil,
+                        placeholder: nil, enabled: true, frame: frame, depth: depth)
+        }
+        // ボタン(親)とその内側の Text(子)が3組。ラベルだけで数えると 6 件になる
+        var elements: [ElementInfo] = []
+        for i in 0..<3 {
+            let y = Double(i) * 60
+            elements.append(el(i * 2 + 1, "button", 1, FTRect(x: 0, y: y, width: 200, height: 50)))
+            elements.append(el(i * 2 + 2, "staticText", 2, FTRect(x: 10, y: y + 10, width: 100, height: 20)))
+        }
+        let step = FlowStep(assert: "count", locator: FlowLocator(label: "項目"),
+                            timeout: 0, expectedCount: 3)
+        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [elements])).execute(step)
+        let reason = failureReason(outcome.status)
+        XCTAssertEqual(reason?.contains("実際 6"), true, reason ?? "")
+        XCTAssertEqual(reason?.contains("親子で同じ要素を重ねて数えています"), true, reason ?? "")
+        XCTAssertEqual(reason?.contains("型で絞ると 3 件"), true, reason ?? "")
+        XCTAssertEqual(reason?.contains(".button"), true, reason ?? "")
+    }
+
+    /// 入れ子が無ければヒントは出さない(余計な文言を足さない)
+    func testCountFailureHasNoNestingHintWhenFlat() async {
+        let elements = [node(1, type: "button", label: "項目"), node(2, type: "button", label: "項目")]
+        let step = FlowStep(assert: "count", locator: FlowLocator(label: "項目"),
+                            timeout: 0, expectedCount: 3)
+        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [elements])).execute(step)
+        XCTAssertEqual(failureReason(outcome.status)?.contains("親子で"), false)
+    }
 }

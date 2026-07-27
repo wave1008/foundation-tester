@@ -91,8 +91,9 @@ public enum StepCommandParams {
     public static func specs(forVerb verb: String) -> [StepParamSpec] {
         switch verb {
         case "tap": return [actionTimeoutSpec, scrollSpec, scrollMaxSwipesSpec]
-        case "type": return [optionalSpec, actionTimeoutSpec]
-        case "press": return [durationSpec, optionalSpec, actionTimeoutSpec]
+        case "type": return [optionalSpec, actionTimeoutSpec, scrollSpec, scrollMaxSwipesSpec]
+        case "press": return [durationSpec, optionalSpec, actionTimeoutSpec,
+                              scrollSpec, scrollMaxSwipesSpec]
         case "scrollTo": return [directionSpec, maxSwipesSpec]
         case "exist": return [timeoutSpec, requireVisibleSpec, scrollSpec, scrollMaxSwipesSpec]
         case "textIs", "valueIs": return [timeoutSpec, requireVisibleSpec]
@@ -187,8 +188,9 @@ public enum StepCommandParams {
             if parsed.strings.count == 1 {
                 return "type(\(StepCommandText.literal(parsed.strings[0]))\(optional)\(timeout))"
             }
+            let scroll = try scrollArgs(params)
             return "type(\(StepCommandText.literal(parsed.strings[0])), "
-                + "\(StepCommandText.literal(parsed.strings[1]))\(optional)\(timeout))"
+                + "\(StepCommandText.literal(parsed.strings[1]))\(optional)\(timeout)\(scroll))"
         case "press":
             var arguments = StepCommandText.literal(parsed.strings[0])
             let duration = try doubleValue(value(params, durationSpec), name: "duration")
@@ -197,6 +199,7 @@ public enum StepCommandParams {
             }
             arguments += try optionalArg(parsed, params)
             arguments += try actionTimeoutArg(params)
+            arguments += try scrollArgs(params)
             return "press(\(arguments))"
         case "scrollTo":
             var arguments = StepCommandText.literal(parsed.strings[0])

@@ -13,9 +13,9 @@ final class StepCommandParamsTests: XCTestCase {
         XCTAssertEqual(StepCommandParams.specs(forVerb: "scrollTo").map(\.name),
                        ["direction", "maxSwipes"])
         XCTAssertEqual(StepCommandParams.specs(forVerb: "press").map(\.name),
-                       ["duration", "optional", "timeout"])
+                       ["duration", "optional", "timeout", "scroll", "maxSwipes"])
         XCTAssertEqual(StepCommandParams.specs(forVerb: "type").map(\.name),
-                       ["optional", "timeout"])
+                       ["optional", "timeout", "scroll", "maxSwipes"])
         XCTAssertEqual(StepCommandParams.specs(forVerb: "tap").map(\.name),
                        ["timeout", "scroll", "maxSwipes"])
     }
@@ -66,7 +66,7 @@ final class StepCommandParamsTests: XCTestCase {
         XCTAssertEqual(StepCommandParams.parse(code: "scrollTo(\"x\")", verb: "scrollTo"),
                        ["direction": "up", "maxSwipes": "8"])
         XCTAssertEqual(StepCommandParams.parse(code: "type(\"a\", \"b\")", verb: "type"),
-                       ["optional": "false", "timeout": ""])
+                       ["optional": "false", "timeout": "", "scroll": "", "maxSwipes": "8"])
     }
 
     func testParseEnumAndMultipleKeywords() {
@@ -77,13 +77,13 @@ final class StepCommandParamsTests: XCTestCase {
         XCTAssertEqual(
             StepCommandParams.parse(code: "press(\"x\", duration: 0.5, optional: true)",
                                     verb: "press"),
-            ["duration": "0.5", "optional": "true", "timeout": ""])
+            ["duration": "0.5", "optional": "true", "timeout": "", "scroll": "", "maxSwipes": "8"])
     }
 
     func testParseFormatsIntegralDoubleWithoutDecimalPoint() {
         XCTAssertEqual(StepCommandParams.parse(code: "press(\"x\", duration: 2.0)",
                                                verb: "press"),
-                       ["duration": "2", "optional": "false", "timeout": ""])
+                       ["duration": "2", "optional": "false", "timeout": "", "scroll": "", "maxSwipes": "8"])
     }
 
     func testParseEmptySpecsVerbReturnsEmptyValues() {
@@ -108,10 +108,10 @@ final class StepCommandParamsTests: XCTestCase {
         XCTAssertEqual(StepCommandParams.parse(code: "tap(\"x\", timeout: 3)", verb: "tap"),
                        ["timeout": "3", "scroll": "", "maxSwipes": "8"])
         XCTAssertEqual(StepCommandParams.parse(code: "type(\"a\", \"b\", timeout: 0)", verb: "type"),
-                       ["optional": "false", "timeout": "0"])
+                       ["optional": "false", "timeout": "0", "scroll": "", "maxSwipes": "8"])
         XCTAssertEqual(
             StepCommandParams.parse(code: "press(\"x\", duration: 0.5, timeout: 2)", verb: "press"),
-            ["duration": "0.5", "optional": "false", "timeout": "2"])
+            ["duration": "0.5", "optional": "false", "timeout": "2", "scroll": "", "maxSwipes": "8"])
     }
 
     func testParseKeepsEscapedLiteral() {

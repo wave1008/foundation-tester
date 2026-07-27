@@ -789,11 +789,17 @@ textIs(.id("txt_result"), "dialog=none")
   `#btn_always_disabled&&enabled=false` なら 4 SUT 共通で通る
 - **`isEnabled` / `isDisabled`** は `ElementInfo.enabled`(3 ブリッジとも埋めている)を見る。
   タイムアウトまで状態変化を待つ。「見つからない」と「状態が違う」を別メッセージで返す
-- **`countIs`** は候補の個数。`||` は**候補集合の和**を数える(同じ要素が複数の節にマッチしても
-  1度だけ)。スコープと併用してリスト件数を数えるのが主用途。
+- **`countIs`** は**ツリー上の**候補の個数。**可視性は見ない**(覆われた要素も折り返しの下の
+  要素も1件に数える)。`exist` が既定で可視性まで確認するのと**意図的に違う**: 件数ぶん FM を
+  直列で呼ぶことになり(ホスト全体で約1回/秒)、リスト検証が実用的な速度でなくなるため。
+  `requireVisible` 引数も持たせない。`||` は**候補集合の和**を数える(同じ要素が複数の節に
+  マッチしても1度だけ)。スコープと併用してリスト件数を数えるのが主用途。
   **失敗時は節ごとの内訳を出す**(`実際 4(内訳: text=許可 2件 / text=別名 2件)`)。
   総数だけだと「どの節が想定より多く拾ったのか」が分からず、直すのに snapshot の取り直しが要る。
-  重複は先に現れた節に数えるので**内訳の合計は必ず表示件数と一致する**(`StepExecutor.unionByClause`)
+  重複は先に現れた節に数えるので**内訳の合計は必ず表示件数と一致する**(`StepExecutor.unionByClause`)。
+  **親子で同じ条件に当たっているとき**(ボタンとその内側の Text)は、直し方まで添える
+  (`型で絞ると 3 件(例 .button&&…)`)。フレームワーク一般の性質で利用者は必ず一度は踏むが、
+  メッセージが無いと `countIs("項目", 3)` が 6 を返す理由に辿り着けない(`StepExecutor.nestingHint`)
 - **失敗メッセージのロケータ表示は節を `||` で連ねる**(`FlowStep.locatorSummary`)。
   以前は他の節を `(fallback: …)` と呼んでいたが、`||` が和集合になった今は
   「片方だけ使われる」という誤った期待を与えるため用語ごと直した(2026-07-27)
@@ -809,14 +815,17 @@ textIs(.id("txt_result"), "dialog=none")
   **可視性(occlusion)は見ない** — 「見えていないこと」「空であること」は画面照合できないため
   (`requireVisible` 引数も持たせない)。「見つからない」と「条件不成立」は別メッセージ
 - **`repeatWhileCanSelect(sel, max:)`** はセレクタが解決できる限り本体を繰り返す(上限 max)。
-  各周回は `group` と同じ規約で `[名前 #n]` を前置して記録する。上限到達は失敗にしない。
+  各周回は `group` と同じ規約で `[名前 #n]` を前置して記録する。上限到達は失敗にしないが、
+  **打ち切ったことは記録に出す**(`→ 10 回(上限に達したため打ち切り。まだ残っている可能性があります)`)。
+  これが無いと「ちょうど 10 件だった」のか「まだ残っている」のかが後から読めない。
   dry-run は canSelect が常に true を返すため **1 周だけ**回してステップ列挙に留める
 - **`doUntilTrue(title, waitSeconds:intervalSeconds:maxLoopCount:)`**(2026-07-27。Shirates 準拠の名前):
   任意の Swift 条件が true になるまで繰り返す。**アプリ・外部の状態待ち専用**で、要素の出現待ちは
   各コマンドの `timeout:` を使う(こちらは記録が1ステップに畳まれ、失敗時の情報が減るため)。
   action が throw したら**リトライせず**即 NG(状態待ちと実行時エラーを混ぜない)。
   dry-run は performCustom の既定どおり body を実行しない
-- **`tap(scroll:)` / `exist(scroll:)`**(2026-07-27。Shirates の `tapWithScrollDown` 相当):
+- **`tap(scroll:)` / `press(scroll:)` / `type(scroll:)` / `exist(scroll:)`**
+  (2026-07-27。Shirates の `tapWithScrollDown` 相当):
   コマンド名の変種を増やさず引数で表す。**探索は同じステップに畳む**(`FlowStep.direction` /
   `maxSwipes` を tap/exists 自身に載せ、`StepExecutor.runScrollSearch` が解決前に走る)。
   実体は `scrollTo` コマンドと共有するので挙動は1箇所にしかない。
