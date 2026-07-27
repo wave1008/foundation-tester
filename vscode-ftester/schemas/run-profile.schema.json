@@ -50,8 +50,8 @@
     },
     "falsePositiveCheck": {
       "type": "boolean",
-      "description": "FM による偽陽性検証(occlusion guard)を有効にするか(既定 true)。",
-      "default": true
+      "description": "FM による偽陽性検証(occlusion guard)を有効にするか(既定 false)。",
+      "default": false
     },
     "screenIs": {
       "type": "boolean",

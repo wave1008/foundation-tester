@@ -152,8 +152,9 @@ occlusion-guard と同型(instructions + 画像 Attachment + `@Generable`)の FM
 「アサーション毎に発火」は起きない。FM は失敗シナリオと長時間シナリオに偏る
 (heal は失敗時のみ走るため)。
 
-- 発火が増えて律速になったら: `occlusionInkThreshold` を上げる / 一括実行では occlusion-guard を
-  切り重要シナリオだけ `exist(requireVisible: true)` にする(per-step の逃げ道は `requireVisible: false`)
+- 偽陽性検証(occlusion-guard)は 2026-07-28 から**実行プロファイル既定 OFF**
+  (`falsePositiveCheck: true` でオプトイン)。有効化した run で発火が増えて律速になったら:
+  `occlusionInkThreshold` を上げる(per-step の逃げ道は `requireVisible: false`)
 - **失敗シナリオを直すと FM コストも自動的に減る**(発生源が偏っているため)
 
 ### 3.6 プラットフォーム別レーン稼働の偏り(2026-07-22 実測・M2 Ultra)

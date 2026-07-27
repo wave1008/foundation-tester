@@ -128,12 +128,12 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
                 <label for="run-profile-heal">${t("panels.runProfile.healLabel")}</label>
               </div>
               <div class="modal-row profile-checkbox-row">
-                <input type="checkbox" id="run-profile-false-positive-check">
-                <label for="run-profile-false-positive-check">${t("panels.runProfile.falsePositiveCheckLabel")}</label>
-              </div>
-              <div class="modal-row profile-checkbox-row">
                 <input type="checkbox" id="run-profile-screen-is">
                 <label for="run-profile-screen-is">${t("panels.runProfile.screenIsLabel")}</label>
+              </div>
+              <div class="modal-row profile-checkbox-row">
+                <input type="checkbox" id="run-profile-false-positive-check">
+                <label for="run-profile-false-positive-check">${t("panels.runProfile.falsePositiveCheckLabel")}</label>
               </div>
             </div>
           </div>

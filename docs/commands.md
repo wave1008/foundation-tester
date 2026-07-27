@@ -14,7 +14,7 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 |---|---|
 | `optional: true` | 要素が見つからなくても失敗にせずスキップする(既定 false。tap / type / press / tapWithoutScroll のみ) |
 | `timeout: 秒` | ロケータ解決の再試行上限。**操作系の省略時は約 0.7 秒**、**検証系の省略時は 5 秒**(実行プロファイルの `defaultTimeout` で変更可)。`0` = 初回スナップショットのみ(出るか不定な optional の空振り短縮に) |
-| `requireVisible: false` | FM による可視性確認(覆われ・見切れの検出)を省く。既定 true(FM 未配線時と、実行プロファイルで `fm:false` / `falsePositiveCheck:false` の場合は自動で素通り) |
+| `requireVisible: false` | FM による可視性確認(覆われ・見切れの検出)を省く。既定 true だが、FM 照合が実際に走るのは実行プロファイルで `falsePositiveCheck: true`(既定 false)にした run のみ(FM 未配線時・`fm:false` 時も自動で素通り) |
 | `scroll: .down` / `maxSwipes:` | 実行前に**その方向へスクロールしながら要素を探す**(後述「スクロール」)。省略時は現在画面のみ |
 
 - **要素の出現待ちは暗黙**。操作は解決を再試行し、検証はタイムアウトまでポーリング再判定するので、
@@ -61,7 +61,7 @@ withScrollDown {
 
 | コマンド | 説明 |
 |---|---|
-| `exist(sel, timeout:requireVisible:scroll:maxSwipes:)` | 存在検証。既定で**実際に見えていること**も確認する。戻り値にチェーン可(後述) |
+| `exist(sel, timeout:requireVisible:scroll:maxSwipes:)` | 存在検証。偽陽性検証を有効にした run(実行プロファイル `falsePositiveCheck: true`)では**実際に見えていること**も確認する。戻り値にチェーン可(後述) |
 | `notExist(sel, timeout:)` | **消えるまで待つ**(初回で不在なら即成功)。ダイアログ・ローディングが閉じた確認に |
 | `countIs(sel, 個数, timeout:)` | 候補の個数。**ツリー上の件数**で可視性は見ない。`\|\|` は和集合の総数(重複は 1 度だけ)。**ラベルで数えるときは型で絞る**(`.button&&項目` — ボタンと内側のラベルは別要素として両方載るため) |
 | `isEnabled(sel)` / `isDisabled(sel)` | 有効/無効の検証(タイムアウトまで状態変化を待つ) |
