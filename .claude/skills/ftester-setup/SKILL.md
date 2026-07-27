@@ -19,7 +19,8 @@ description: foundation-tester を使いたい受け手を、自分の iOS/Andro
 
 以降、**TOOL_ROOT** = foundation-tester クローン(swift build / doctor / 拡張ビルドを行う場所。CLI は
 `TOOL_ROOT/.build/debug/ftester`)、**WORK_DIR** = `Projects/` が住む作業ディレクトリ、と呼ぶ。
-外部構成では WORK_DIR = このカレント・TOOL_ROOT = `../foundation-tester`。clone 構成では両者は同一(クローン)。
+外部構成では WORK_DIR = このカレント・TOOL_ROOT = clone 先(**既定は隣の `../foundation-tester`**。
+ユーザーが指定すればそのパス)。clone 構成では両者は同一(クローン)。
 
 ## 進め方の原則
 
@@ -37,6 +38,27 @@ description: foundation-tester を使いたい受け手を、自分の iOS/Andro
 
 ### 0. 前提の機械判定と一括質問
 
+**最初に導入済み判定(再実行ガード)**: カレントに `Package.swift` があり `Sources/FTScenarioRunner/` が
+**無い**場合、質問をする前に `Package.swift` の**中身**で二分する(ファイルの有無だけで判定しない —
+受け手が自分のアプリの既存リポジトリで実行したケースと区別がつかない):
+
+- **ftester マーカー(`// === ftester projects begin`)か foundation-tester への `.package` 依存が無い** =
+  ftester と無関係の Swift パッケージ。ここには導入できない(`ftester init` が拒否する)。**中止**して、
+  テスト専用の新規ディレクトリで実行し直すよう 🧑 に案内する。
+- **ある** = 外部パッケージ構成が確立済み。このセットアップは**実行済み。ここで中止**し、
+  用途別に案内する:
+  - ツールの更新 → `/ftester-update`
+  - デバイス・アプリ・実行プロファイルの追加 → `/ftester-profiles`
+  - シナリオの作成 → `/ftester-scenario`
+  - **再インストール**(clone 先の変更・導入のやり直し)→ **まずアンインストールを 🧑 に案内**し、
+    完了を確認してから `/ftester-setup` を再実行する。手順は docs/getting-started.md「アンインストール」
+    (3層+ WORK_DIR 側の生成物削除。`Projects/` は資産なので残してよい)。アンインストール前に
+    セットアップを続行しない。`Package.swift` 等の部分的な書き換えで済まさない(1箇所でも残すと
+    旧 clone と新 clone に分裂し、更新が旧側に当たり続ける)
+
+別の clone 先の指定があっても init をやり直さない(`Package.swift` の依存とズレるスプリットブレイン防止)。
+clone 構成(両方ある)の再実行は従来どおり冪等スキップで続行してよい。
+
 **環境は機械判定する（人間に「入っているか」を聞かない）**。失敗した項目だけ 🧑 停止して対処を依頼する
 （導入・license 同意はエージェントでは代行不可）:
 
@@ -49,6 +71,9 @@ description: foundation-tester を使いたい受け手を、自分の iOS/Andro
 
 - プロジェクト名（英数字 `^[A-Za-z0-9_][A-Za-z0-9_-]*$`）とアプリの bundle ID（→ステップ4で使う）
 - マシン名（→ステップ5で使う）
+- ツール（foundation-tester）の clone 先（**任意**。既定は WORK_DIR の隣 `../foundation-tester`。
+  AskUserQuestion では「隣（推奨）」を先頭の選択肢にし、任意パスは Other で受ける。
+  指定があればそのパスが TOOL_ROOT（→ステップ0.5）。外部パッケージ構成のみ関係）
 
 **ビルド済み `.app`/`.apk` のパス（`appPath`）はセットアップでは聞かない**（→ステップ6。
 後から `profiles/apps/` を編集して設定できる）。
@@ -72,7 +97,10 @@ description: foundation-tester を使いたい受け手を、自分の iOS/Andro
 git clone https://github.com/wave1008/foundation-tester.git ../foundation-tester
 ```
 
-  → TOOL_ROOT = `../foundation-tester`。build / doctor / 拡張ビルドは TOOL_ROOT で、`ftester init` と
+  → TOOL_ROOT = `../foundation-tester`。**ステップ0で clone 先の指定があればそちらへ clone し、
+  以降この runbook の `../foundation-tester` はそのパスに読み替える**(指定先に clone 済みならスキップして
+  それを TOOL_ROOT にする)。WORK_DIR 配下へのネストは非推奨(init の .gitignore 整備の対象外で
+  git ノイズになる)。build / doctor / 拡張ビルドは TOOL_ROOT で、`ftester init` と
   プロファイル設定は WORK_DIR(カレント)で行う。**カレントに `Package.swift` があってはいけない**
   (`ftester init` が拒否する。既存 repo の直下ではなく、テスト専用の新規ディレクトリで実行する)。
 
@@ -122,7 +150,10 @@ tag も clone で取得できる)。
   受け手専用の `/ftester-setup` スキルが `.claude/skills/` に上書きされる(次回以降の実行はそちらを使う。
   この実行はロード済み手順のまま継続してよい)。ローカルパス依存なので `swift build` はネットワーク不要・
   TOOL_ROOT を `git pull` すれば ftester 側も更新される。git 依存にしたい場合のみ `--ftester-url
-  https://github.com/wave1008/foundation-tester.git --ftester-version <ver>` を使う(`--ftester-path` と排他)。
+  https://github.com/wave1008/foundation-tester.git --ftester-version <ver>` を使う(`--ftester-path` と排他。
+  **git 依存では `.vscode/settings.json` の `ftester.binaryPath` が自動設定されない** — CLI・拡張は
+  ローカル clone からのビルドが別途必要なので、拡張を使うなら path 依存を推奨し、git 依存を選んだら
+  binaryPath の手動設定を 🧑 に案内する)。
   以降このスキル内で `ftester ...` と書いたら `../foundation-tester/.build/debug/ftester ...` を実行する。
 
 - **clone 構成**: TOOL_ROOT(=WORK_DIR)で `swift run ftester project create <ProjectName> --app <bundleID>`。
@@ -185,15 +216,18 @@ products 未宣言でも `swift build --product ftester-mcp` は暗黙 product �
   TOOL_ROOT を**絶対パス**で埋める（受け手がどの cwd で開いても解決できる）:
 
   1. `ABS_TOOL_ROOT=$(cd ../foundation-tester && pwd)` で絶対パスを得る。
-  2. WORK_DIR の `.mcp.json` に次の `ftester` サーバを追加する（既存 `.mcp.json` があれば
-     `mcpServers.ftester` キーだけをマージし、他のサーバは温存する）。`<ABS_TOOL_ROOT>` は 1 の実値に置換:
+  2. WORK_DIR の `.mcp.json` に次の `ftester` サーバを書く（既存 `.mcp.json` があれば
+     `mcpServers.ftester` キーは**この TOOL_ROOT の値で上書き**し、他のサーバは温存する。
+     既存の `ftester` が**別のパス**を指していたら、上書きした旨と旧パスを 🧑 に報告する —
+     旧 clone を残すと clone 先が分裂するため。不要なら削除は getting-started「アンインストール」）。
+     `<ABS_TOOL_ROOT>` は 1 の実値に置換（パスに空白があっても壊れないよう引用符は保持）:
 
 ```json
 {
   "mcpServers": {
     "ftester": {
       "command": "bash",
-      "args": ["-lc", "cd <ABS_TOOL_ROOT> && swift build --product ftester-mcp >/dev/null 2>&1 && exec <ABS_TOOL_ROOT>/.build/debug/ftester-mcp"]
+      "args": ["-lc", "cd \"<ABS_TOOL_ROOT>\" && swift build --product ftester-mcp >/dev/null 2>&1 && exec \"<ABS_TOOL_ROOT>/.build/debug/ftester-mcp\""]
     }
   }
 }

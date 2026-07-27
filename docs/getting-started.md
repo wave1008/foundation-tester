@@ -100,14 +100,20 @@ Xcode を初めて入れたら `sudo xcodebuild -license accept` も実行して
 
 ```bash
 brew install xcodegen            # iOS ブリッジ生成に必要
-git clone https://github.com/wave1008/foundation-tester.git
-cd foundation-tester
+mkdir -p ~/my-app-tests && cd ~/my-app-tests   # テスト専用ディレクトリ(WORK_DIR)を先に作って入る(名前は例)
+# WORK_DIR の「隣」に clone する(WORK_DIR の下にネストさせない)
+git clone https://github.com/wave1008/foundation-tester.git ../foundation-tester
+cd ../foundation-tester
 swift build                      # 初回は数分。→ .build/debug/ftester ほか（これが TOOL_ROOT）
 swift run ftester doctor         # 環境検証。赤が出たら潰してから次へ
 ```
 
-- **外部パッケージ構成**: この clone は「ツール」。テスト用の新規ディレクトリの**隣**に置くのが自然です
-  （例 `../foundation-tester`）。以降の作業は自分のディレクトリ（WORK_DIR）で行います。
+- **外部パッケージ構成**: この clone は「ツール」。**既定はテスト用ディレクトリの隣**（`../foundation-tester`）。
+  置き場所は任意に選べます（共有のツール置き場など）。その場合、以降の `../foundation-tester` は
+  そのパスに読み替え、`ftester init --ftester-path` にもそのパスを渡してください（以降は Package.swift の
+  依存宣言から自動解決されます）。WORK_DIR の**中**にネストさせるのだけは避けてください
+  （`.gitignore` 整備の対象外で git がノイズまみれになります）。
+  以降の作業は自分のディレクトリ（WORK_DIR）で行います。
 - **clone 構成**: この clone の中で以降を進めます（TOOL_ROOT = WORK_DIR = このディレクトリ）。
 
 ### 3. 自分のプロジェクトを作る
@@ -300,6 +306,18 @@ cd <TOOL_ROOT>/vscode-ftester && npm install && npm run install-local
 - **ツール本体（TOOL_ROOT の clone）**: `foundation-tester` ディレクトリを削除。マシン名の登録が不要なら
   `~/.config/ftester/config.json` も削除します。あなたの WORK_DIR（`Projects/` のシナリオ・プロファイル）は
   ツールと分離したあなたの資産なので、消すかどうかは自由です。
+- **受け手パッケージ側の生成物（WORK_DIR。再インストールする場合はここまで消す）**: `ftester init` が
+  生成した `Package.swift`・`Package.resolved`・`.vscode/settings.json` の `ftester.*` 設定・
+  `.mcp.json` の `mcpServers.ftester`・`.claude/skills/ftester-setup/`（受け手専用スキル）を削除します
+  （`.vscode/settings.json`・`.mcp.json` に他の設定が同居している場合はキーだけ除去）。
+  `Projects/` は残してかまいません。残して再インストールした場合、`ftester init` が Package.swift に
+  登録するのは `--name` の1プロジェクトだけなので、複数あるときは `ftester project sync` で残りを
+  再登録します。
+
+**再インストール**（clone 先の変更・導入のやり直し）は、上記のアンインストール（少なくとも
+「受け手パッケージ側の生成物」）を済ませてから `/ftester-setup` をやり直してください。生成物が
+残ったまま再セットアップすると、記録された clone 先（`Package.swift`・`.vscode/settings.json`・
+`.mcp.json`）が新旧に分裂し、更新が旧 clone に当たり続ける事故になります。
 
 ## トラブルシュート
 

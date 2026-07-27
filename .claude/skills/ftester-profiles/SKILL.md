@@ -14,8 +14,9 @@ description: ftester のマシンプロファイル・アプリプロファイ�
 - **プロジェクトと WORK_DIR**: プロファイルは `WORK_DIR/Projects/<プロジェクト>/profiles/` に住む。
   Projects/ が1つならそれ。複数なら🧑どのプロジェクトかを確認する。
 - **ftester CLI の在り処**: clone 構成は `swift run ftester ...`、外部パッケージ構成は
-  `../foundation-tester/.build/debug/ftester ...`(setup と同じ TOOL_ROOT/WORK_DIR。判定は
-  `Sources/FTScenarioRunner/` の有無)。以降 `ftester` はこれを指す。
+  `<TOOL_ROOT>/.build/debug/ftester ...`(TOOL_ROOT は WORK_DIR/Package.swift の `.package(path:)` から
+  解決。無ければ既定の `../foundation-tester`。判定は `Sources/FTScenarioRunner/` の有無)。
+  以降 `ftester` はこれを指す。
 - **原則**: 各書き込みの後に検証ゲート(`ftester profile list`)を通す。🧑 は停止して確認する。
   「それ以外のパラメータは既定」— 明示的に聞いた値以外は書かない(未指定=デフォルト)。
 
@@ -55,6 +56,10 @@ description: ftester のマシンプロファイル・アプリプロファイ�
 マシン名(プロファイルのファイル名)を決める: `ftester machine show` の登録名 → `FT_MACHINE` →
 `profiles/machines/` に .json が1つならそれ → いずれも無ければ `scutil --get ComputerName` を整えた名前で
 `ftester machine set "<名>"` して登録。プロファイルは `profiles/machines/<マシン名>.json`。
+
+**既にそのマシンプロファイルへ `<plat>` のデバイスが登録済みなら、新規の選定・作成はしない**
+(/ftester-setup のステップ5が自動作成済みのケース。二重登録を防ぐ)。既存デバイスの論理名を
+ステップ6で参照する。ユーザーが機種/OS を明示指定し、既存に合うものが無いときだけ追加する。
 
 デバイスを選定/作成する。**論理名は ios/android 横断で一意**にする(重複したら末尾に連番)。
 
@@ -100,6 +105,11 @@ ftester api create-device --project <プロジェクト> --machine <マシン名
 > 既存デバイスを使う場合は直接編集で追記、作成する場合は create-device が追記する。二重登録しないこと。
 
 ### 5. アプリプロファイルを作る
+
+**init 由来の `apps/<プロジェクト名小文字>.json` が既にあり、その `app`(ID)が今回のアプリIDと
+一致するなら、新しい appRef を作らずそのファイルを更新して使う**(`appName` 等の不足フィールドを
+補う。appRef はそのファイル名。参照されないプロファイルの残骸を作らない)。別のアプリを足すとき
+だけ新規 appRef で作る。
 
 `profiles/apps/<appRef>.json` を書く。**フィールドの置き場所は固定**(`AppProfileSection.merging`):
 `appName`=common、`autoInstall`=common のみ、`app`(ID)と `appPath`=platform セクションのみ。

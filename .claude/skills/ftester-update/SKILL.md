@@ -33,14 +33,18 @@ setup のステップ 0.5 と対称。カレントか祖先に `Package.swift` �
 **両方**があるかで判定する(この2つが揃うのは foundation-tester クローンだけ):
 
 - **両方ある = clone 構成**: TOOL_ROOT = WORK_DIR = そのディレクトリ。ステップ1へ。
-- **`Package.swift` はあるが `Sources/FTScenarioRunner/` が無い = 外部パッケージ構成**: WORK_DIR =
+- **`Package.swift` はあるが `Sources/FTScenarioRunner/` が無い**: まず中身を確認する。
+  **ftester マーカー(`// === ftester projects begin`)も foundation-tester への `.package` 依存も
+  無ければ、それは ftester と無関係の Swift パッケージ = 未セットアップ** → 停止して `/ftester-setup` を
+  案内する(更新を試みない)。あれば**外部パッケージ構成**: WORK_DIR =
   そのディレクトリ。TOOL_ROOT は WORK_DIR/Package.swift の依存宣言から決める:
   - `.package(path: "<パス>")`（ローカルパス依存・setup 既定）→ その `<パス>` が TOOL_ROOT。
     見つからなければ兄弟 `../foundation-tester` を既定とする。
   - `.package(url: "...", from: "<版>")`（git 依存）→ ローカル clone を pull するのではなく
     **版の付け替え**で更新する(ステップ3の「git 依存」)。
 - **`Package.swift` が無い**: カレント直下の `foundation-tester/` を探す（curl でスキルだけ親ワークスペースに
-  入れた場合。あれば `cd foundation-tester` で clone 構成扱い）。無ければ**未セットアップ** → 停止して
+  入れた場合の**旧ネスト配置の救済**。現行の既定は兄弟 `../foundation-tester` で、新規にネスト配置を
+  作らない。あれば `cd foundation-tester` で clone 構成扱い）。無ければ**未セットアップ** → 停止して
   `/ftester-setup`（初回導入）を案内する。
 
 以降 `ftester ...` は、clone 構成では `swift run ftester ...`、外部構成では
