@@ -37,6 +37,10 @@ public struct SceneRecordData: Sendable {
     /// 失敗時点の要素一覧(SnapshotRenderer の1要素1行テキスト)。スクリーンショットからは
     /// `#id` を読み取れないため、直すための情報はこちらが本体(レポートに折りたたみで載せる)
     public var failureElements: String?
+    /// 失敗時にアプリより手前にあった**別プロセスの window**(手前が先)。
+    /// これが空でないなら「操作がそこに吸われて ✅ のまま何も起きなかった」を第一に疑う
+    /// (アプリの a11y ツリーには他プロセスの window が出ないため、要素一覧では気付けない)
+    public var failureForegroundWindows: [String] = []
 
     public var passed: Bool {
         steps.allSatisfy {
@@ -148,6 +152,9 @@ public final class FTDriveCore {
 
     /// --debug 時のブレークポイント/一時停止制御。nil なら通常実行(dry-run でも有効)
     public var debugControl: ScenarioDebugControl?
+    /// 失敗時に「アプリより手前にある別プロセスの window」を問い合わせる(Android のみ設定される)。
+    /// adb を叩くので FTAndroid を見られる FTScenarioRunner が注入する(FTDSL は FTAndroid に依存しない)
+    public var foregroundOverlays: (@Sendable () -> [String])?
     /// stop コマンドで中断した場合 true。expectation 未到達なので成功扱いにしない
     public private(set) var stoppedByUser = false
     /// スクショ時に画面凍結を検知して中断した場合 true。別デバイス再実行対象
@@ -642,6 +649,14 @@ public final class FTDriveCore {
             record.scenes[record.scenes.count - 1].evidenceBlank = evidenceBlank
             record.scenes[record.scenes.count - 1].failureElements = elementsText
             if evidenceBlank { markDeviceFrozen() }
+        }
+        // アプリが別プロセスの window に覆われていたなら、それが第一の容疑
+        // (要素一覧・スクショだけでは「なぜ操作が効かなかったのか」に辿り着けない)
+        let overlays = foregroundOverlays?() ?? []
+        if !overlays.isEmpty, !record.scenes.isEmpty {
+            record.scenes[record.scenes.count - 1].failureForegroundWindows = overlays
+            emit(.log("⚠️ アプリより手前に別の window があります: \(overlays.joined(separator: ", "))"
+                      + "(操作がそこに吸われた可能性があります)"))
         }
     }
 
