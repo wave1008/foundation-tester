@@ -333,6 +333,7 @@ exist(.type(.button).text("保存", .contains))    // .button&&textContains=保�
 `textContains` `textMatches` `textStartsWith` `textEndsWith` `textIsNot` `textIsEmpty` `textIsNotEmpty` /
 `screenIs`(FM 視覚検証)/ `launchApp` `relaunchApp` `terminateApp` `wait` /
 分岐 `ifCanSelect { }.ifElse { }`・`ios { }`・`android { }` / 繰り返し `repeatWhileCanSelect` `doUntilTrue` /
+割り込み `onInterrupt("#promo_modal", dismiss: "#btn_close")` /
 任意コード `procedure("...") { try await ... }` / まとまり `group("ログイン") { ... }`
 
 - `notExist` は**消えるまで待つ**(初回で不在なら即成功)。ダイアログ・ローディングが閉じたことの確認に使う
@@ -347,6 +348,9 @@ exist(.type(.button).text("保存", .contains))    // .button&&textContains=保�
   画面照合できないため)。値の変化待ちに使う
 - `doUntilTrue("在庫が補充される") { try await stockCount() > 0 }` はアプリ・外部の状態待ち。
   画面要素の出現待ちは各コマンドの `timeout:` を使う
+- **出るか不定のアプリ内メッセージ**(お知らせ・キャンペーン)は `onInterrupt` を setUp で1回宣言すると、
+  以降どのステップでも出た時点で自動的に閉じる(各所に `ifCanSelect` を書かなくてよい)。
+  閉じたことはステップの注記に残る。**OS 側のダイアログは書かなくてよい**(ツール側で吸収する)
 - テストクラスに `func setUp()` / `func tearDown()` を書くと各 `@Test` の前後で自動実行される。
   **tearDown は失敗後でも実行される**(片付けが飛ぶと後続シナリオを汚すため)
 
