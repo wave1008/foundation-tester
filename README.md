@@ -178,9 +178,11 @@ Projects/SampleApp/
 
 ```jsonc
 // profiles/runs/all.json
+// FM 機能のトグル: fm(親スイッチ)/ heal / screenIs は既定 true、
+// falsePositiveCheck(偽陽性検証)だけ既定 false(詳細は docs/design.md §11.2)
 { "app": "sampleapp",
   "devices": [ { "name": "メイン機" }, { "name": "サブ機" }, { "name": "エミュ1" } ],
-  "heal": false, "reportDir": "reports", "defaultTimeout": 5 }
+  "fm": true, "heal": true, "reportDir": "reports", "defaultTimeout": 5 }
 
 // profiles/machines/M1 Max.json — マシン毎に UDID/AVD などの実体を書く
 // (avd は AVD の ID と表示名のどちらでも可)
@@ -361,7 +363,8 @@ condition {
   ブロック内の生 Swift コードはスキップされないため、失敗後に走らせたくない処理は `procedure { }` に包む
 - レポートは成否問わず `Projects/<name>/reports/scenario-*.md` に出力(scene → CAE → ステップ階層、
   トリアージ、失敗スクリーンショット、**修正提案**)
-- **自己修復とヒールキャッシュ**: `--heal` 時、壊れたセレクタは FM が修復して続行し、
+- **自己修復とヒールキャッシュ**: 自己修復が有効な実行(実行プロファイルの `heal`。既定 ON、
+  CLI は `--heal` で上書き)では、壊れたセレクタは FM が修復して続行し、
   結果は `Projects/<name>/.ftester/heal-cache.json` に保存される。**2回目以降は FM なしで決定的に通過**し、
   レポートに「`Projects/SampleApp/Scenarios/LoginTest.swift:17` — セレクタ "#email_input" を
   "#email||.textField[0]" に変更してください」のようなソース位置付き修正提案を出し続ける

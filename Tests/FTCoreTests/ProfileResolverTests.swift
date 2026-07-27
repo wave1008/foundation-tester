@@ -927,13 +927,13 @@ final class ProfileResolverTests: XCTestCase {
 
     // MARK: - FM トグル(fm/heal/falsePositiveCheck/screenIs)
 
-    func testFMTogglesDefaultToAllEnabledWhenUnspecified() throws {
+    func testFMTogglesDefaultsWhenUnspecified() throws {
         try writeStandardFixture()  // "all" は heal:true 明示。fm/falsePositiveCheck/screenIs は未指定
         let resolved = try ProfileResolver.resolve(
             project: project, runName: "all", machineName: "M1 Max(64GB)")
         XCTAssertTrue(resolved.fm.enabled)
         XCTAssertTrue(resolved.fm.heal, "heal 明示 true")
-        XCTAssertTrue(resolved.fm.falsePositiveCheck, "省略時は既定 true のはず")
+        XCTAssertFalse(resolved.fm.falsePositiveCheck, "偽陽性検証は既定 false(オプトイン)のはず")
         XCTAssertTrue(resolved.fm.screenIs, "省略時は既定 true のはず")
     }
 
@@ -949,7 +949,7 @@ final class ProfileResolverTests: XCTestCase {
         let resolved = try ProfileResolver.resolve(project: project, runName: "r", machineName: "m")
         XCTAssertTrue(resolved.fm.enabled)
         XCTAssertTrue(resolved.fm.heal, "heal の既定は true(既定 false→true への変更)")
-        XCTAssertTrue(resolved.fm.falsePositiveCheck)
+        XCTAssertFalse(resolved.fm.falsePositiveCheck, "偽陽性検証の既定は false")
         XCTAssertTrue(resolved.fm.screenIs)
         XCTAssertTrue(resolved.heal, "heal エイリアスも同じ値を返す")
     }
@@ -968,17 +968,18 @@ final class ProfileResolverTests: XCTestCase {
         XCTAssertFalse(resolved.fm.screenIs)
     }
 
-    func testIndividualSubFlagsCanBeDisabledWithoutAffectingOthers() throws {
+    func testIndividualSubFlagsFollowExplicitValues() throws {
         try writeStandardFixture()
+        // 既定と逆向きの明示指定(heal/screenIs=OFF・falsePositiveCheck=ON)が個別に効くこと
         try write("""
         { "app": "sampleapp", "devices": [ { "name": "メイン機" } ],
-          "heal": false, "falsePositiveCheck": false, "screenIs": false }
+          "heal": false, "falsePositiveCheck": true, "screenIs": false }
         """, to: project.runsDir, name: "subsoff")
         let resolved = try ProfileResolver.resolve(
             project: project, runName: "subsoff", machineName: "M1 Max(64GB)")
         XCTAssertTrue(resolved.fm.enabled, "fm 自体は既定 true のまま")
         XCTAssertFalse(resolved.fm.heal)
-        XCTAssertFalse(resolved.fm.falsePositiveCheck)
+        XCTAssertTrue(resolved.fm.falsePositiveCheck, "明示 true で有効化できること")
         XCTAssertFalse(resolved.fm.screenIs)
     }
 

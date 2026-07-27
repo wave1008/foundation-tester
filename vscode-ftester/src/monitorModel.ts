@@ -1225,7 +1225,7 @@ export function buildRunProfileTemplate(
   template.devices = devices;
   template.fm = true;
   template.heal = true;
-  template.falsePositiveCheck = true;
+  template.falsePositiveCheck = false;
   template.screenIs = true;
   template.iosInappEngine = true;
   template.wipeDataOnBloat = true;
@@ -1299,7 +1299,7 @@ export interface RunProfileFormFields {
  * defaultTimeout/wipeDataThresholdGB/recordBitrateKbps は number ならそのまま String() 化する
  * (0.5 のようなスキーマ違反値もそのまま表示し、整数化はしない)。record/recordFailuresOnly/
  * recordFullResolution/iosFastInput は既定 false、recordBitrateKbps は既定 ""(未設定=CLI側既定1500)。
- * fm/heal/falsePositiveCheck/screenIs はスキーマ既定と合わせ既定 true。
+ * fm/heal/screenIs はスキーマ既定と合わせ既定 true、falsePositiveCheck は既定 false。
  */
 export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFields | null {
   // 配列も typeof "object" だが、トップレベルとしては不正なので弾く(他の同様関数と同じ判定)。
@@ -1313,7 +1313,7 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
   const locale = typeof source.locale === "string" ? source.locale : "";
   const fm = typeof source.fm === "boolean" ? source.fm : true;
   const heal = typeof source.heal === "boolean" ? source.heal : true;
-  const falsePositiveCheck = typeof source.falsePositiveCheck === "boolean" ? source.falsePositiveCheck : true;
+  const falsePositiveCheck = typeof source.falsePositiveCheck === "boolean" ? source.falsePositiveCheck : false;
   const screenIs = typeof source.screenIs === "boolean" ? source.screenIs : true;
   const iosInappEngine = typeof source.iosInappEngine === "boolean" ? source.iosInappEngine : true;
   const iosFastInput = typeof source.iosFastInput === "boolean" ? source.iosFastInput : false;

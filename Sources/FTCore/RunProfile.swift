@@ -185,12 +185,12 @@ public struct FMConfig: Sendable, Equatable {
     /// FM を使用するか(false = heal/偽陽性検証/screenIs/triage を一切呼ばない)
     public var enabled: Bool
     public var heal: Bool
-    /// 偽陽性検証(occlusion guard)
+    /// 偽陽性検証(occlusion guard)。プロファイル既定 false(FM コストと誤反転リスクのためオプトイン)
     public var falsePositiveCheck: Bool
     public var screenIs: Bool
 
     public init(enabled: Bool = true, heal: Bool = false,
-                falsePositiveCheck: Bool = true, screenIs: Bool = true) {
+                falsePositiveCheck: Bool = false, screenIs: Bool = true) {
         self.enabled = enabled
         self.heal = heal
         self.falsePositiveCheck = falsePositiveCheck
@@ -208,7 +208,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     public var fm: Bool?
     /// FM によるロケータ自己修復を許可するか(既定 true)
     public var heal: Bool?
-    /// 偽陽性検証(occlusion guard)を有効にするか(既定 true)
+    /// 偽陽性検証(occlusion guard)を有効にするか(既定 false)
     public var falsePositiveCheck: Bool?
     /// screenIs(screenMatches)を有効にするか(既定 true。無効時は該当ステップを skip)
     public var screenIs: Bool?
@@ -701,7 +701,7 @@ public enum ProfileResolver {
         let fm = FMConfig(
             enabled: fmEnabled,
             heal: fmEnabled && (runDoc.heal ?? true),
-            falsePositiveCheck: fmEnabled && (runDoc.falsePositiveCheck ?? true),
+            falsePositiveCheck: fmEnabled && (runDoc.falsePositiveCheck ?? false),
             screenIs: fmEnabled && (runDoc.screenIs ?? true))
 
         return ResolvedProfile(

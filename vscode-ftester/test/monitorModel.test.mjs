@@ -652,7 +652,7 @@ test("buildRunProfileTemplate: apps/devices 候補ありなら先頭のappと全
     devices: [{ name: "シミュ1" }, { name: "エミュ1" }],
     fm: true,
     heal: true,
-    falsePositiveCheck: true,
+    falsePositiveCheck: false,
     screenIs: true,
     iosInappEngine: true,
     wipeDataOnBloat: true,
@@ -669,7 +669,7 @@ test("buildRunProfileTemplate: 候補が無ければ app は空文字、devices 
     devices: [{ name: "" }],
     fm: true,
     heal: true,
-    falsePositiveCheck: true,
+    falsePositiveCheck: false,
     screenIs: true,
     iosInappEngine: true,
     wipeDataOnBloat: true,
@@ -686,7 +686,7 @@ test("buildRunProfileTemplate: machine が空文字なら machine キー自体�
     devices: [{ name: "シミュ1" }],
     fm: true,
     heal: true,
-    falsePositiveCheck: true,
+    falsePositiveCheck: false,
     screenIs: true,
     iosInappEngine: true,
     wipeDataOnBloat: true,
@@ -1896,7 +1896,7 @@ test("parseRunProfileForForm: 正常な値は19フィールドをそのまま読
   });
 });
 
-test("parseRunProfileForForm: 欠落キーは既定値(machine/app/reportDir/locale/recordBitrateKbps=''、devices=[]、fm/heal/falsePositiveCheck/screenIs=true、iosInappEngine=true、defaultTimeout=''、wipeDataOnBloat=true、wipeDataThresholdGB=''、record/recordFailuresOnly/recordFullResolution/iosFastInput/recoverCpuFallbackToGpu=false)", () => {
+test("parseRunProfileForForm: 欠落キーは既定値(machine/app/reportDir/locale/recordBitrateKbps=''、devices=[]、fm/heal/screenIs=true、falsePositiveCheck=false、iosInappEngine=true、defaultTimeout=''、wipeDataOnBloat=true、wipeDataThresholdGB=''、record/recordFailuresOnly/recordFullResolution/iosFastInput/recoverCpuFallbackToGpu=false)", () => {
   const parsed = parseRunProfileForForm({});
   assert.deepEqual(parsed, {
     machine: "",
@@ -1904,7 +1904,7 @@ test("parseRunProfileForForm: 欠落キーは既定値(machine/app/reportDir/loc
     devices: [],
     fm: true,
     heal: true,
-    falsePositiveCheck: true,
+    falsePositiveCheck: false,
     screenIs: true,
     iosInappEngine: true,
     iosFastInput: false,
@@ -1949,7 +1949,7 @@ test("parseRunProfileForForm: 型不正のキーは既定値扱い(machine が�
     devices: [],
     fm: true,
     heal: true,
-    falsePositiveCheck: true,
+    falsePositiveCheck: false,
     screenIs: true,
     iosInappEngine: true,
     iosFastInput: false,
@@ -1966,13 +1966,20 @@ test("parseRunProfileForForm: 型不正のキーは既定値扱い(machine が�
   });
 });
 
-test("parseRunProfileForForm: fm/heal/falsePositiveCheck/screenIs は boolean ならそのまま返し、欠落/非 boolean は既定値 true", () => {
-  for (const key of ["fm", "heal", "falsePositiveCheck", "screenIs"]) {
+test("parseRunProfileForForm: fm/heal/screenIs は boolean ならそのまま返し、欠落/非 boolean は既定値 true", () => {
+  for (const key of ["fm", "heal", "screenIs"]) {
     assert.equal(parseRunProfileForForm({ [key]: false })[key], false);
     assert.equal(parseRunProfileForForm({ [key]: true })[key], true);
     assert.equal(parseRunProfileForForm({})[key], true);
     assert.equal(parseRunProfileForForm({ [key]: "false" })[key], true);
   }
+});
+
+test("parseRunProfileForForm: falsePositiveCheck は boolean ならそのまま返し、欠落/非 boolean は既定値 false", () => {
+  assert.equal(parseRunProfileForForm({ falsePositiveCheck: true }).falsePositiveCheck, true);
+  assert.equal(parseRunProfileForForm({ falsePositiveCheck: false }).falsePositiveCheck, false);
+  assert.equal(parseRunProfileForForm({}).falsePositiveCheck, false);
+  assert.equal(parseRunProfileForForm({ falsePositiveCheck: "true" }).falsePositiveCheck, false);
 });
 
 test("parseRunProfileForForm: iosFastInput は boolean ならそのまま返し、欠落/非 boolean は既定値 false", () => {

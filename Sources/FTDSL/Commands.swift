@@ -401,7 +401,8 @@ private func scrollToImpl(_ selector: FTSelector, direction: FTScrollDirection, 
 /// (timeout 省略時は実行プロファイルの defaultTimeout、それも無ければ 5 秒)
 /// 存在検証。既定で可視性も確認(= 実際に見えていることも確認): ツリー存在に加え、要素が別要素に
 /// 覆われ/切れ/不在で見えていないかを FM で確認する(見えなければ失敗)。ツリー存在だけ見たい
-/// (高速・アイコン等)場合は requireVisible: false。FM 未配線時は guard は素通り(存在のみと同じ)。
+/// (高速・アイコン等)場合は requireVisible: false。FM 未配線時と、実行プロファイルの
+/// falsePositiveCheck が無効(既定)の run では guard は素通り(存在のみと同じ)。
 /// scroll: 指定すると検証前に**その方向へスクロールしながら要素を探す**
 /// (Shirates の existWithScrollDown 相当。省略時は現在画面だけを見る)。
 /// 方向は**コンテンツ基準**(`.down` = 下に読み進める)

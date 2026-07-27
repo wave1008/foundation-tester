@@ -826,7 +826,8 @@ textIs(.id("txt_result"), "dialog=none")
 - **`isEnabled` / `isDisabled`** は `ElementInfo.enabled`(3 ブリッジとも埋めている)を見る。
   タイムアウトまで状態変化を待つ。「見つからない」と「状態が違う」を別メッセージで返す
 - **`countIs`** は**ツリー上の**候補の個数。**可視性は見ない**(覆われた要素も折り返しの下の
-  要素も1件に数える)。`exist` が既定で可視性まで確認するのと**意図的に違う**: 件数ぶん FM を
+  要素も1件に数える)。`exist` が(偽陽性検証を有効にした run で)可視性まで確認するのと
+  **意図的に違う**: 件数ぶん FM を
   直列で呼ぶことになり(ホスト全体で約1回/秒)、リスト検証が実用的な速度でなくなるため。
   `requireVisible` 引数も持たせない。`||` は**候補集合の和**を数える(同じ要素が複数の節に
   マッチしても1度だけ)。スコープと併用してリスト件数を数えるのが主用途。
@@ -1111,7 +1112,8 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
   ルートの子孫ではないため効かず、**ダイアログ内だけ `#id` が全滅する**(ラベルは引ける)。
   アプリ側でダイアログにも `Modifier.semantics { testTagsAsResourceId = true }` を再適用させる。
   iOS は testTag が自動で accessibilityIdentifier になるため起きない(Android 固有)
-- **`exist`/`textIs` は既定 `requireVisible: true` なので、ソフトキーボードに覆われた要素は
+- **偽陽性検証を有効にした run(実行プロファイル `falsePositiveCheck: true`。既定 OFF)では、
+  `exist`/`textIs` は既定 `requireVisible: true` のため、ソフトキーボードに覆われた要素は
   「偽陽性(occlusion)」で失敗する**。入力を伴う画面では検証対象・操作対象を入力欄より**上**に置く
   (Projects/E2E のテキスト入力画面がこの配置。2026-07-22 実測)
 - **inapp ブリッジは注入先アプリのプロセス内常駐**なので、アプリがクラッシュ/終了すると HTTP が
@@ -1230,11 +1232,11 @@ platform フィールドは持たず、**iOS/Android のデバイス名を混在
 
 `fm`(既定 true)は FM(Foundation Models)機能の親スイッチ。false にすると自己修復(heal)・
 偽陽性検証(exist 等の FM 視覚照合)・`screenIs`・失敗時トリアージを含む FM 呼び出しを一切行わない
-(子ランナーへは `--no-fm` 等で伝搬し、delegate 自体を作らない)。個別トグルは `heal` /
-`falsePositiveCheck`(偽陽性検証)/ `screenIs`(**いずれも既定 true**。親が false なら個別指定に
-関わらず無効)。screenIs を無効にした run では該当ステップは skip(素通り)になり、FM 利用不可時と
-同じ扱い。UI はデバイスタブの実行プロファイル設定「FM(Foundation Model)」セクション
-(親チェックボックス ON のときだけ個別トグルを表示)。
+(子ランナーへは `--no-fm` 等で伝搬し、delegate 自体を作らない)。個別トグルは `heal` / `screenIs`
+(既定 true)と `falsePositiveCheck`(偽陽性検証。**既定 false** — FM コストと誤反転リスクのため
+オプトイン)。親が false なら個別指定に関わらず全て無効。screenIs を無効にした run では該当ステップは
+skip(素通り)になり、FM 利用不可時と同じ扱い。UI はデバイスタブの実行プロファイル設定
+「FM(Foundation Model)」セクション(親チェックボックス ON のときだけ個別トグルを表示)。
 
 `wipeDataOnBloat`(既定 true)は実行開始時に Android AVD の wipe 対象
 (userdata/cache/snapshots)合計が `wipeDataThresholdGB`(既定 8。**Play イメージは wipe 直後の
