@@ -310,6 +310,17 @@ appProfileCancel.addEventListener('click', () => {
   requestAppProfileLoad();
 });
 
+// Enter=確定 / Esc=キャンセル(runProfilesTab.js の同名ブロックと同じ方針)。
+document.getElementById('app-profile-section').addEventListener('keydown', (event) => {
+  if (event.key === 'Enter' && !event.target.closest('button') && !appProfileConfirm.disabled) {
+    event.preventDefault();
+    appProfileConfirm.click();
+  } else if (event.key === 'Escape' && appProfileDirty && !appProfileCancel.disabled) {
+    event.preventDefault();
+    appProfileCancel.click();
+  }
+});
+
 // ok:trueなら続けてhostからappProfileDataが来てフォームが最新化される。ok:falseはエラー表示のみ。
 export function applyAppProfileSaveResult(message) {
   if (message.profile !== selectedAppProfile) {

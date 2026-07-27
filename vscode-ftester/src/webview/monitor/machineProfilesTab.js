@@ -526,6 +526,21 @@ editorCancel.addEventListener('click', () => {
   rebuildEditorForSelection();
 });
 
+// Enter=確定 / Esc=キャンセル(runProfilesTab.js の同名ブロックと同じ方針)。
+// デバイス右クリックメニュー表示中の Esc はメニュー閉じ(既存リスナー)に譲る。
+document.getElementById('machine-profile-section').addEventListener('keydown', (event) => {
+  if (machineDeviceMenuEntry) {
+    return;
+  }
+  if (event.key === 'Enter' && !event.target.closest('button') && !editorConfirm.disabled) {
+    event.preventDefault();
+    editorConfirm.click();
+  } else if (event.key === 'Escape' && editorDirty && !editorCancel.disabled) {
+    event.preventDefault();
+    editorCancel.click();
+  }
+});
+
 // 複製元: src/monitorModel.ts の updateDeviceInMachineProfile の検証部分(CSP により import 不可
 // のため複製。ロジック変更時は両方に反映すること)。
 function validateDeviceEditorFields(name) {

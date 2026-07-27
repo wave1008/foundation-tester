@@ -534,6 +534,19 @@ runProfileCancel.addEventListener('click', () => {
   requestRunProfileLoad();
 });
 
+// Enter=確定 / Esc=キャンセル。フォーカスがセクション内にある間だけ効く(セクション要素で
+// bubbling を受けるためモーダル側の document レベル Esc リスナーとは衝突しない)。
+// button 上の Enter はそのボタン自身の activation に任せる。
+document.getElementById('run-profile-section').addEventListener('keydown', (event) => {
+  if (event.key === 'Enter' && !event.target.closest('button') && !runProfileConfirm.disabled) {
+    event.preventDefault();
+    runProfileConfirm.click();
+  } else if (event.key === 'Escape' && runProfileDirty && !runProfileCancel.disabled) {
+    event.preventDefault();
+    runProfileCancel.click();
+  }
+});
+
 // ok:trueなら続けてhostからrunProfileDataが来てフォームが最新化される。ok:falseはエラー表示のみ。
 export function applyRunProfileSaveResult(message) {
   if (message.profile !== selectedRunProfile) {

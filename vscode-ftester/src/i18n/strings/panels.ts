@@ -79,8 +79,8 @@ export const panelsStrings = {
   "panels.runProfile.screenIsLabel": { ja: "screenIsを有効にする", en: "Enable screenIs" },
   "panels.runProfile.iosSectionTitle": { ja: "iOS", en: "iOS" },
   "panels.runProfile.inappEngineLabel": {
-    ja: "高速なinappエンジンを使用する(iOS)",
-    en: "Use the fast in-app engine (iOS)",
+    ja: "高速なinappエンジンを使用する",
+    en: "Use the fast in-app engine",
   },
   "panels.runProfile.iosFastInputLabel": {
     ja: "高速入力を有効にする(アニメーションの完了を待たずに操作するため、テストが不安定になることがあります)",
@@ -97,6 +97,7 @@ export const panelsStrings = {
     en: "Recover CPU fallback to GPU at run start (about 1 min per affected device)",
   },
   "panels.runProfile.recordSectionTitle": { ja: "録画", en: "Recording" },
+  "panels.runProfile.miscSectionTitle": { ja: "misc", en: "misc" },
   "panels.runProfile.recordLabel": { ja: "録画する", en: "Record video" },
   "panels.runProfile.recordFailuresOnlyLabel": {
     ja: "OKになったテストの録画は保存しない",
