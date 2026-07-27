@@ -12,7 +12,7 @@ public enum BridgeAPI {
     /// ブリッジ HTTP API のプロトコルバージョン。エンドポイントやリクエスト/レスポンスの形を
     /// 変えたら必ず +1 する。/status で返され、旧ビルドのランナーの自動再起動判定に使う
     /// (nil = この定数導入前のビルド = 旧版扱い)。
-    public static let bridgeProtocolVersion = 1
+    public static let bridgeProtocolVersion = 2
 }
 
 /// CGRect の代わりに使うプラットフォーム非依存の矩形(エンコード形式を固定する)

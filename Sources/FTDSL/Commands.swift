@@ -153,6 +153,14 @@ public func type(_ text: String, optional: Bool = false,
         .perform(step: step, description: "type \"\(text)\"", file: file, line: line)
 }
 
+/// フォーカス中の入力欄で Enter を押す(IME の改行/送信アクション相当。Shirates pressEnter 対応。
+/// ref なし=ブリッジがフォーカス中要素へ作用する)。
+public func pressEnter(file: StaticString = #filePath, line: UInt = #line) {
+    let step = FlowStep(action: "pressEnter")
+    FTRuntime.requireCore(command: "pressEnter")
+        .perform(step: step, description: "pressEnter", file: file, line: line)
+}
+
 /// timeout: 要素解決を待つ上限秒(0 = 初回スナップショットのみ。出るか不定な optional の
 /// 空振り ~0.7s を数十msに短縮)。省略時は既定の再試行(約0.7秒)
 public func type(_ selector: String, _ text: String, optional: Bool = false, timeout: Int? = nil,

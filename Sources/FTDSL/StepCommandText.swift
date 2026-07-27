@@ -58,6 +58,10 @@ public enum StepCommandText {
             return optionalFlag ? nil
                 : Parsed(verb: "terminate", strings: [], optionalFlag: false, word: nil)
         }
+        if text == "pressEnter" {
+            return optionalFlag ? nil
+                : Parsed(verb: "pressEnter", strings: [], optionalFlag: false, word: nil)
+        }
         guard let spaceIndex = text.firstIndex(of: " ") else {
             // launch / relaunch はバンドル省略も受け付ける(クラス既定のアプリを起動)
             if !optionalFlag, text == "launch" || text == "relaunch" {
@@ -191,7 +195,7 @@ public enum StepCommandText {
         .union(scrollVerbs).union(scrollToEdgeVerbs)
         .union([
             "tap", "type", "press", "swipe", "scrollTo", "countIs",
-            "launchApp", "relaunchApp", "terminateApp", "wait",
+            "launchApp", "relaunchApp", "terminateApp", "wait", "pressEnter",
         ])
 
     /// セレクタ1つだけを取る検証(procedure はブロックを伴うので生成し直しの対象外)
@@ -258,6 +262,8 @@ public enum StepCommandText {
                 ? "\(name)()" : "\(name)(\(literal(parsed.strings[0])))"
         case "terminate":
             return "terminateApp()"
+        case "pressEnter":
+            return "pressEnter()"
         default:
             // procedure など: 構成が変わる編集は受け付けない(ブロック行を壊さない)
             throw StepCommandTextError.blockCommand

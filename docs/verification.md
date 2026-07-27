@@ -3,13 +3,18 @@
 CLAUDE.md「ビルド・検証」からの詳細分。コマンドと最重要ゲートは CLAUDE.md 側に残し、
 ここには**頻度は低いが踏むと痛い罠と判定規律**を置く。読者は保守者(Claude Code)。
 
-## iOS ランナー(Runner/)を変えたら xctestrun を消す
+## iOS ランナー(Runner/)の再ビルドは供給時に自動化済み(2026-07-28)
 
-`BridgeProvisioner` は **xctestrun が既に在れば build-for-testing を飛ばす**
-(`findXCTestRun() == nil` のときだけビルド)。そのため `Runner/FTesterRunnerUITests/` や
-ランナーにコンパイルされる `Sources/FTCore/BridgeDTO.swift` を変えても、
-`bridge down` → `bridge up` だけでは**古いランナーが起動し続ける**。
-症状は「新フィールドが常に nil」「新機能だけ落ちる」。手順:
+`BridgeProvisioner.prepareSharedBuilds` はランナーのソース
+(`Runner/FTesterRunnerUITests/`・`Runner/FTesterRunnerApp/`・`Runner/project.yml`・
+共有 DTO の `Sources/FTCore/BridgeDTO.swift`)が xctestrun より新しければ
+build-for-testing を自動で再実行する(`BridgeLauncher.runnerNeedsRebuild`。
+InAppLauncher.needsBuild と対の mtime 判定)。稼働中の旧ランナーは
+`BridgeAPI.bridgeProtocolVersion` の /status 照合(xcuitest・inapp とも)で停止→立て直される。
+以前は「xctestrun が在れば build を飛ばす」実装で、Runner 変更後に旧ランナーが起動し続ける罠が
+あった(2026-07-26 に isChecked 追加で実害・2026-07-28 に /pressEnter 追加で再発し自動化)。
+**残る罠**: mtime 判定なので、`git checkout` 等でソースの mtime が動かない巻き戻しは検知できない。
+疑わしいときは従来の手動手順が今も有効:
 
 ```
 ftester bridge down --all --platform ios
@@ -17,8 +22,7 @@ find .ftester/DerivedData -name "*.xctestrun" -delete
 ftester bridge up --platform ios --device <名前>     # ここで再ビルドが走る
 ```
 
-(2026-07-26 に isChecked 追加で実際に踏んだ。Android ブリッジ側は versionCode 照合で
-自動再インストールされるため、この問題は iOS 側だけに出る)
+(Android ブリッジ側は versionCode 照合で自動再インストールされるため、この問題は iOS 側だけに出る)
 
 ## flake・性能の判定規律(1回の結果で断じない)
 

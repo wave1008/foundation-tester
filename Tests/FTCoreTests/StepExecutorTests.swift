@@ -89,6 +89,17 @@ private final class FakeAppDriver: AppDriver {
     func screenshot() async throws -> Data { screenshotCallCount += 1; return Data() }
 
     func terminate() async throws {}
+
+    /// 非 nil なら pressEnter() がこのエラーを throw する(409 リアクティブ切替の検証用)
+    var pressEnterError: Error?
+
+    func pressEnter() async throws {
+        if let pressEnterError {
+            log.entries.append("\(name).pressEnter(throws)")
+            throw pressEnterError
+        }
+        log.entries.append("\(name).pressEnter")
+    }
 }
 
 /// occlusion-guard 検証用の最小 delegate。verifyElementVisible だけ意味を持たせる。
@@ -859,6 +870,78 @@ final class StepExecutorTests: XCTestCase {
         primary.typeError = DriverError.badResponse(status: 409, body: "no first responder")
         let executor = StepExecutor(driver: primary)
         let step = FlowStep(action: "type", locator: FlowLocator(id: "field_email"), text: "hi")
+
+        let outcome = await executor.execute(step)
+
+        guard case .failed = outcome.status else {
+            XCTFail("typeDriver 無しでの 409 失敗を期待したが \(outcome.status) だった")
+            return
+        }
+    }
+
+    // MARK: - pressEnter(ロケータ無し。type(ref: nil) と同じくロケータ解決を挟まない経路)
+
+    func testPressEnterCallsDriverDirectlyWithoutSnapshot() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log)
+        let executor = StepExecutor(driver: primary)
+        let step = FlowStep(action: "pressEnter")
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("pressEnter の passed を期待したが \(outcome.status) だった")
+            return
+        }
+        XCTAssertEqual(log.entries, ["primary.pressEnter"], "ロケータ解決(snapshot)を挟んではいけない")
+    }
+
+    /// 409(inapp が Compose 以外の入力欄/フォーカス無しで返す)はリアクティブに typeDriver へ
+    /// 切り替えること(type の 409 フォールバックと同じ形)
+    func testPressEnter409FallsBackToTypeDriverReactively() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log)
+        primary.pressEnterError = DriverError.badResponse(status: 409, body: "not compose")
+        let typeDriver = FakeAppDriver(name: "typedriver", log: log)
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver)
+        let step = FlowStep(action: "pressEnter")
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("409 からの typeDriver 切替による passed を期待したが \(outcome.status) だった")
+            return
+        }
+        XCTAssertEqual(outcome.driverFallback, "XCUITest へフォールバック")
+        XCTAssertEqual(log.entries, ["primary.pressEnter(throws)", "typedriver.pressEnter"])
+    }
+
+    /// 409 以外のエラーは typeDriver へ切り替えず、そのまま失敗させること
+    func testPressEnterNon409DoesNotUseTypeDriver() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log)
+        primary.pressEnterError = DriverError.badResponse(status: 500, body: "server error")
+        let typeDriver = FakeAppDriver(name: "typedriver", log: log)
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver)
+        let step = FlowStep(action: "pressEnter")
+
+        let outcome = await executor.execute(step)
+
+        guard case .failed = outcome.status else {
+            XCTFail("409 以外は失敗のままを期待したが \(outcome.status) だった")
+            return
+        }
+        XCTAssertFalse(log.entries.contains { $0.hasPrefix("typedriver") },
+                       "409 以外で typeDriver を照会してはいけない: \(log.entries)")
+    }
+
+    /// typeDriver が無い場合、409 はそのまま伝播して失敗させること
+    func testPressEnter409WithoutTypeDriverPropagates() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log)
+        primary.pressEnterError = DriverError.badResponse(status: 409, body: "not compose")
+        let executor = StepExecutor(driver: primary)
+        let step = FlowStep(action: "pressEnter")
 
         let outcome = await executor.execute(step)
 

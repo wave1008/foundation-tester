@@ -44,6 +44,9 @@ public final class InAppDriver: AppDriver {
     public func type(ref: Int?, text: String) async throws {
         try await withCrashContext { try await client.type(ref: ref, text: text) }
     }
+    public func pressEnter() async throws {
+        try await withCrashContext { try await client.pressEnter() }
+    }
     public func swipe(_ direction: FTSwipeDirection) async throws {
         try await withCrashContext { try await client.swipe(direction) }
     }

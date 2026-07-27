@@ -56,6 +56,13 @@ private final class FakeAppDriver: AppDriver {
     func screenshot() async throws -> Data { Data() }
     private(set) var terminateCallCount = 0
     func terminate() async throws { terminateCallCount += 1 }
+
+    private(set) var pressEnterCallCount = 0
+    var pressEnterShouldFail: [Bool] = []
+    func pressEnter() async throws {
+        defer { pressEnterCallCount += 1 }
+        if shouldFail(pressEnterShouldFail, callCount: pressEnterCallCount) { throw Self.sessionLost }
+    }
 }
 
 final class SessionRecoveryDriverTests: XCTestCase {
@@ -125,6 +132,20 @@ final class SessionRecoveryDriverTests: XCTestCase {
 
         XCTAssertTrue(fake.activateCalls.isEmpty, "launch 前は回復対象の bundleID が無い")
         XCTAssertEqual(fake.snapshotCallCount, 1, "再試行しない")
+    }
+
+    /// pressEnter は ref を使わない(フォーカス中要素へ作用する)ので tap(x:y:) と同じ扱い:
+    /// 409 → activate → 1回だけ再試行する
+    func testPressEnterRecoversAfterSingle409() async throws {
+        let fake = FakeAppDriver()
+        fake.pressEnterShouldFail = [true, false]
+        let driver = SessionRecoveryDriver(base: fake)
+        try await driver.launch(bundleID: "com.example.app")
+
+        try await driver.pressEnter()
+
+        XCTAssertEqual(fake.activateCalls, ["com.example.app"])
+        XCTAssertEqual(fake.pressEnterCallCount, 2)
     }
 
     func testRetryAlsoFailingDoesNotLoop() async throws {
