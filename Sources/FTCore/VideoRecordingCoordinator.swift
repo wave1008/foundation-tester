@@ -70,7 +70,27 @@ actor VideoRecordingCoordinator {
         var passed: Bool?
     }
 
+    /// クリップ切り出し関数(テスト注入用。既定は VideoRecordingFinalizer.extractClip)
+    typealias ClipExtractor = @Sendable (
+        _ sourceFiles: [URL], _ clipStartMs: Int, _ clipEndMs: Int,
+        _ bitrateKbps: Int, _ fullResolution: Bool, _ outputURL: URL) async -> Bool
+
     private let config: VideoRecordingConfig
+    /// セッション生成の差し替え(テスト注入用。引数は worker, recordingsDir, sourceStem)
+    private let makeSession: ((RunWorker, URL, String) -> (any DeviceVideoRecorderSession)?)?
+    private let extractClip: ClipExtractor
+    /// ソース総尺(ms)→ エクスポート期限(秒)
+    private let exportDeadline: @Sendable (Int) -> Double
+
+    /// エクスポートの同時実行上限。ハードウェアエンコーダ(AVE)の同時セッション数を抑える緩和策
+    /// (ハングさせない保証は期限+exportsAbandoned 側が持つ)
+    private static let maxConcurrentExports = 2
+    private var runningExports = 0
+    private var exportWaiters: [CheckedContinuation<Void, Never>] = []
+    /// エクスポートが期限超過したら true にし、この run の残りのクリップを断念する
+    /// (無応答エンコーダへ投げ続けるとクリップ数 × 期限の待ちが積み上がるため)
+    private var exportsAbandoned = false
+
     private var active: [String: ActiveEntry] = [:]  // key = worker.label(物理ワーカー単位)
     /// key = worker.label。superviseWorker の revive で worker.label が変わっても、
     /// 古いラベルの区間は stop()/finish() 時にそのラベルの録画ソースに対して処理されるだけで矛盾しない
@@ -81,8 +101,20 @@ actor VideoRecordingCoordinator {
     private var clipFileNameCounts: [String: Int] = [:]
     private var entries: [RecordingIndexEntry] = []
 
-    init(config: VideoRecordingConfig) {
+    init(config: VideoRecordingConfig,
+         makeSession: ((RunWorker, URL, String) -> (any DeviceVideoRecorderSession)?)? = nil,
+         extractClip: ClipExtractor? = nil,
+         exportDeadline: (@Sendable (Int) -> Double)? = nil) {
         self.config = config
+        self.makeSession = makeSession
+        self.extractClip = extractClip ?? {
+            await VideoRecordingFinalizer.extractClip(
+                sourceFiles: $0, clipStartMs: $1, clipEndMs: $2,
+                bitrateKbps: $3, fullResolution: $4, to: $5)
+        }
+        // extractClip は毎回ソース全域を読み直す設計のため、期限はクリップ長でなくソース総尺に
+        // 比例させる(床 60 秒は負荷時の正当な遅延を誤タイムアウトさせないための余裕)
+        self.exportDeadline = exportDeadline ?? { max(60, Double($0) / 1000) }
     }
 
     /// worker.label(物理ワーカー)ごとにセッションを開始する。revive 後の新ワーカーは
@@ -96,6 +128,22 @@ actor VideoRecordingCoordinator {
         // クリップの最終ファイル名(scenarioID 由来)とは別名前空間(ソースは切り出し後に削除される一時物)
         let sourceStem = "src-\(uniqueSourceStem(for: workerID))"
 
+        let session: (any DeviceVideoRecorderSession)?
+        if let makeSession {
+            session = makeSession(worker, recordingsDir, sourceStem)
+        } else {
+            session = Self.defaultSession(worker: worker, config: config,
+                                          recordingsDir: recordingsDir, sourceStem: sourceStem)
+        }
+        guard let session else { return false }
+        guard await session.start() else { return false }
+        active[worker.label] = ActiveEntry(session: session, workerID: workerID, platform: worker.platform)
+        return true
+    }
+
+    private static func defaultSession(worker: RunWorker, config: VideoRecordingConfig,
+                                       recordingsDir: URL,
+                                       sourceStem: String) -> (any DeviceVideoRecorderSession)? {
         let session: (any DeviceVideoRecorderSession)?
         switch worker.platform {
         case "ios":
@@ -116,10 +164,7 @@ actor VideoRecordingCoordinator {
         default:
             session = nil
         }
-        guard let session else { return false }
-        guard await session.start() else { return false }
-        active[worker.label] = ActiveEntry(session: session, workerID: workerID, platform: worker.platform)
-        return true
+        return session
     }
 
     /// RunOrchestrator のワーカーループが ScenarioRunner.runOne 呼び出し直前に通知する
@@ -165,7 +210,9 @@ actor VideoRecordingCoordinator {
         guard !intervals.isEmpty,
               let recordingRange = RecordingWallClock.wallClockRange(of: source.segments) else { return }
 
+        let sourceTotalMs = source.segments.reduce(0) { $0 + $1.durationMs }
         for interval in intervals {
+            if exportsAbandoned { break }
             if Self.shouldSkip(failuresOnly: config.failuresOnly, passed: interval.passed) { continue }
 
             // クリップの壁時計範囲 = [max(シナリオ開始, 録画開始), min(シナリオ終了, 録画終了)]
@@ -182,10 +229,34 @@ actor VideoRecordingCoordinator {
             let fileStem = uniqueClipStem(for: interval.scenarioID)
             let file = "\(RecordingIndexIO.directoryName)/\(fileStem).mp4"
             let outputURL = config.runDir.appendingPathComponent(file)
-            guard await VideoRecordingFinalizer.extractClip(
-                sourceFiles: source.files, clipStartMs: clipStartMs, clipEndMs: clipEndMs,
-                bitrateKbps: config.bitrateKbps, fullResolution: config.fullResolution,
-                to: outputURL) else {
+
+            await acquireExportSlot()
+            if exportsAbandoned {  // スロット待ちの間に他のエクスポートが期限超過した場合
+                releaseExportSlot()
+                break
+            }
+            let deadline = exportDeadline(sourceTotalMs)
+            let extract = extractClip
+            let (files, bitrate, full) = (source.files, config.bitrateKbps, config.fullResolution)
+            let outcome: Bool? = await raceWithDeadline(
+                seconds: deadline, onTimeout: Bool?.none) {
+                await extract(files, clipStartMs, clipEndMs, bitrate, full, outputURL)
+            }
+            releaseExportSlot()
+            guard let ok = outcome else {
+                // 期限超過。放置した敗者 task の writer/reader には触らない(固着した VT セッションの
+                // ロックで cancelWriting ごと共倒れし得る)。リークは finalize=run 終盤限定で
+                // プロセス終了時に回収される。書きかけ .mp4 は index.json が参照しないため無害
+                // (敗者 task がまだ書いている可能性があるので削除もしない)
+                if !exportsAbandoned {
+                    exportsAbandoned = true
+                    FileHandle.standardError.write(Data(
+                        ("⚠️ [recording] \(interval.scenarioID): クリップ切り出しが\(Int(deadline))秒で"
+                         + "完了しません。エンコーダ無応答とみなし、この run の残りのクリップを断念します\n").utf8))
+                }
+                break
+            }
+            guard ok else {
                 FileHandle.standardError.write(Data(
                     "⚠️ [recording] \(interval.scenarioID): クリップの切り出しに失敗しました\n".utf8))
                 continue
@@ -203,6 +274,25 @@ actor VideoRecordingCoordinator {
     /// 終わった等)は安全側に倒して保存対象に残す。actor 外(単体テスト)からも呼べるよう static/nonisolated
     static func shouldSkip(failuresOnly: Bool, passed: Bool?) -> Bool {
         failuresOnly && passed == true
+    }
+
+    /// エクスポート実行スロットの取得/返却。actor 再入で並走する複数 finalize の同時実行を
+    /// maxConcurrentExports に制限する。期限超過時もスロットは返却する(敗者 task が裏で動いて
+    /// いても、exportsAbandoned が新規エクスポートを止めるため実同時数は超過しない)
+    private func acquireExportSlot() async {
+        if runningExports < Self.maxConcurrentExports {
+            runningExports += 1
+            return
+        }
+        await withCheckedContinuation { exportWaiters.append($0) }
+    }
+
+    private func releaseExportSlot() {
+        if exportWaiters.isEmpty {
+            runningExports -= 1
+        } else {
+            exportWaiters.removeFirst().resume()  // スロットを引き継ぐ(runningExports は不変)
+        }
     }
 
     private func uniqueSourceStem(for workerID: String) -> String {
