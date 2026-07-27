@@ -251,28 +251,33 @@ products 未宣言でも `swift build --product ftester-mcp` は暗黙 product �
 （`claude mcp add ftester --scope user -- bash -lc '...'`・claude CLI が PATH に要る）を案内する。
 CLI が無ければ上の WORK_DIR `.mcp.json` 方式で十分。
 
-### 8. 🧑 人間チェックポイント（反映と起動）
+### 8. 続けてプロファイル一括作成へ（/ftester-profiles）
 
-ユーザーに依頼する（エージェントでは代行不可）:
+機械作業が済んだら（1〜7.5）、**続けて `/ftester-profiles` スキルを呼び出す**
+（マシン/アプリ/実行プロファイルの一括作成）。**この時点で VSCode の反映操作（Reload Window 等）を
+ユーザーに求めたり、完了したか質問したりしない** — ここまでユーザーが操作するタイミングは一度も
+無いので、完了しているはずがない。反映はステップ9で最後にまとめて案内する。
+
+### 9. 🧑 最後に: 反映操作の案内（ここで終了）
+
+すべての機械作業の完了を要約して報告し、**これからユーザーが行う操作**として次を案内して終了する
+（「完了しましたか?」のような確認質問でフローを塞がない。問題があれば教えてください、で締める）:
 
 - VSCode で **WORK_DIR** を開く（外部構成: あなたのテストパッケージのフォルダ。clone 構成:
   `foundation-tester` フォルダ）
-- 拡張の設定操作は原則不要（外部パッケージ構成では `ftester init` が `.vscode/settings.json` に
-  `ftester.binaryPath`・`ftester.project` を生成済み。init が「マージできず未更新」警告を出していた場合のみ
-  🧑 に手動設定を依頼: `ftester.binaryPath` = `../foundation-tester/.build/debug/ftester` または絶対パス。
-  clone 構成では既定 `.build/debug/ftester` のままでよい）
 - `Developer: Reload Window` を実行（インストール・設定だけでは反映されない）
-- プロジェクトが複数あるなら設定 `ftester.project` を `<ProjectName>` にするか、拡張の選択で選ぶ
 - ftester パネル（Test Explorer / デバイスモニター等）を開く
 - （7.5 で `.mcp.json` を書いた場合）Claude Code が **ftester MCP サーバの承認**を求めたら許可する
   → `ft_*` ツールが使え、`/ftester-scenario` が MCP 経由で動く
 
-### 9. 続けてプロファイル一括作成へ（/ftester-profiles）
+拡張の設定操作は原則不要（外部パッケージ構成では `ftester init` が `.vscode/settings.json` に
+`ftester.binaryPath`・`ftester.project` を生成済み。init が「マージできず未更新」警告を出していた場合のみ
+手動設定を案内: `ftester.binaryPath` = `../foundation-tester/.build/debug/ftester` または絶対パス。
+clone 構成では既定 `.build/debug/ftester` のままでよい）。プロジェクトが複数あるなら設定
+`ftester.project` を `<ProjectName>` にするか、拡張の選択で選ぶことも添える。
 
-初期セットアップ（1〜8）が完了したら、**続けて `/ftester-profiles` スキルを呼び出す**
-（マシン/アプリ/実行プロファイルの一括作成）。`/ftester-profiles` が完了したら、**そこで処理を終了する**。
-指示にない追加作業を自分の判断で始めない（コミット・push・別プロファイルやシナリオの追加作成・
-最適化提案などをこちらから勝手に行わない）。
+案内したら**そこで処理を終了する**。指示にない追加作業を自分の判断で始めない（コミット・push・
+別プロファイルやシナリオの追加作成・最適化提案などをこちらから勝手に行わない）。
 
 ## 完了後
 
