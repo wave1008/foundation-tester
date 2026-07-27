@@ -103,4 +103,39 @@ final class CommandDispatchTests: XCTestCase {
         XCTAssertEqual(core.finalRecord.scenes.flatMap(\.steps).map(\.description),
                        ["tap \"#cleanup\""])
     }
+
+    /// checked を報告しない要素(ただのボタン等)への isNotChecked は**何を書いても成功する**。
+    /// notExist の id typo と同じ構造の穴なので、run 終了時の警告で気付けるようにする
+    func testIsNotCheckedOnStatelessElementIsWarned() {
+        let core = makeCore(driver: RecordingDriver())   // checked を返さない要素だけの画面
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        scenario {
+            scene(1, "s") {
+                // XCTestCase.expectation と衝突するのでここでは action を使う(区分は本題でない)
+                action { isNotChecked("#cleanup") }
+            }
+        }
+        core.warnAboutNeverResolvedIDs()
+        let messages = core.finalRecord.fixSuggestions.map(\.message)
+        XCTAssertEqual(messages.contains { $0.contains("一度も checked 状態を観測していません") }, true,
+                       "\(messages)")
+    }
+
+    /// scene 番号の重複は**警告する**(失敗にはしない = 既存シナリオを止めない)
+    func testDuplicateSceneNumberIsWarned() {
+        let core = makeCore(driver: RecordingDriver())
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        scenario {
+            scene(1, "最初") { action { tap("#cleanup") } }
+            scene(1, "重複") { action { tap("#cleanup") } }
+        }
+        let messages = core.finalRecord.fixSuggestions.map(\.message)
+        XCTAssertEqual(messages.contains { $0.contains("scene 1 が重複しています") }, true, "\(messages)")
+        // 実行自体は止めない(2 scene とも記録される)
+        XCTAssertEqual(core.finalRecord.scenes.count, 2)
+    }
 }
