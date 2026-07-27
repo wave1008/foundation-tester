@@ -131,35 +131,21 @@ public func tap(_ selector: Sel, optional: Bool = false, timeout: Int? = nil,
             scroll: scroll, maxSwipes: maxSwipes, file: file, line: line)
 }
 
+/// `scroll:` は**同じステップに畳む**(別の scrollTo ステップを作らない)。
+/// 利用者が書いたのは1コマンドなので記録も1行にする — 書いていない行が現れると、
+/// その行はソース行を持たないためステップ表から編集できず、説明の要る状態になる。
+/// 探索の実体は StepExecutor.runScrollSearch(scrollTo コマンドと共有)
 private func tapImpl(_ selector: FTSelector, optional: Bool, timeout: Int?,
                      scroll: FTSwipeDirection?, maxSwipes: Int,
                      file: StaticString, line: UInt) {
-    scrollSearch(selector, direction: scroll, maxSwipes: maxSwipes, optional: optional,
-                 file: file, line: line)
     let step = FlowStep(action: "tap", locator: selector.primary,
                         fallbacks: selector.stepFallbacks,
-                        timeout: timeout, optional: optional ? true : nil)
+                        direction: scroll?.rawValue,
+                        timeout: timeout, maxSwipes: scroll == nil ? nil : maxSwipes,
+                        optional: optional ? true : nil)
     perform("tap", selector, step: step,
             description: "tap \"\(selector.text)\"" + (optional ? " (optional)" : ""),
             file: file, line: line)
-}
-
-/// `scroll:` 引数の共通実装。**別ステップとして** scrollTo を先に流す
-/// (記録に「探した」ことを残し、失敗理由が「スクロールしても無い」と分かるようにする)。
-/// optional は scrollTo にも伝える(空振りで scene を落とさないため。StepExecutor の
-/// scrollTo 経路が同じ契約で skipped を返す)。
-/// **説明文の末尾 `(探索)` は必須**: この1ステップはソース行を持たない(呼び出し元は
-/// `tap(..., scroll:)` の1行)ため、StepCommandText.parse に解釈させてはいけない。
-/// 解釈できるとステップ表からの編集が `tap(...)` 行を `scrollTo(...)` に書き換えてしまう
-private func scrollSearch(_ selector: FTSelector, direction: FTSwipeDirection?, maxSwipes: Int,
-                          optional: Bool, file: StaticString, line: UInt) {
-    guard let direction else { return }
-    let step = FlowStep(action: "scrollTo", locator: selector.primary,
-                        fallbacks: selector.stepFallbacks,
-                        direction: direction.rawValue, maxSwipes: maxSwipes,
-                        optional: optional ? true : nil)
-    perform("scrollTo", selector, step: step,
-            description: "scrollTo \"\(selector.text)\" (探索)", file: file, line: line)
 }
 
 /// フォーカス中の要素にテキストを送信する(直前の tap でフォーカスした欄など。ロケータ指定なし)。
@@ -284,12 +270,13 @@ public func exist(_ selector: Sel, timeout: Int? = nil, requireVisible: Bool = t
 private func existImpl(_ selector: FTSelector, timeout: Int?, requireVisible: Bool,
                        scroll: FTSwipeDirection?, maxSwipes: Int,
                        file: StaticString, line: UInt) -> FTElement {
-    scrollSearch(selector, direction: scroll, maxSwipes: maxSwipes, optional: false,
-                 file: file, line: line)
     let core = FTRuntime.requireCore(command: "exist")
     let step = FlowStep(assert: "exists", locator: selector.primary,
                         fallbacks: selector.stepFallbacks,
-                        timeout: timeout ?? core.defaultTimeout, occlusionGuard: requireVisible)
+                        direction: scroll?.rawValue,
+                        timeout: timeout ?? core.defaultTimeout,
+                        maxSwipes: scroll == nil ? nil : maxSwipes,
+                        occlusionGuard: requireVisible)
     perform("exist", selector, step: step, description: "exist \"\(selector.text)\"",
             file: file, line: line)
     return FTElement(selector: selector)

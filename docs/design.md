@@ -811,9 +811,14 @@ textIs(.id("txt_result"), "dialog=none")
   action が throw したら**リトライせず**即 NG(状態待ちと実行時エラーを混ぜない)。
   dry-run は performCustom の既定どおり body を実行しない
 - **`tap(scroll:)` / `exist(scroll:)`**(2026-07-27。Shirates の `tapWithScrollDown` 相当):
-  コマンド名の変種を増やさず引数で表す。実装は**別ステップの `scrollTo` を先に流す**だけ
-  (記録に「探した」ことが残り、失敗理由が「スクロールしても無い」と読める)。
-  `optional` は scrollTo にも伝える。既定のスワイプ上限は `FlowStep.defaultMaxSwipes`
+  コマンド名の変種を増やさず引数で表す。**探索は同じステップに畳む**(`FlowStep.direction` /
+  `maxSwipes` を tap/exists 自身に載せ、`StepExecutor.runScrollSearch` が解決前に走る)。
+  実体は `scrollTo` コマンドと共有するので挙動は1箇所にしかない。
+  **別ステップにしない理由**: 利用者が書いたのは1コマンドなので記録も1行にする。
+  合成ステップは**ソース行を持たない**ためステップ表から編集できず、説明の要る状態になる
+  (2026-07-27 に一度その形で入れて、直した)。
+  見つからなければ「N 回スクロールしても要素が見つかりません」で失敗(optional なら skipped)。
+  既定のスワイプ上限は `FlowStep.defaultMaxSwipes`
 
 ### 失敗時に返す情報(2026-07-26)
 

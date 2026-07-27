@@ -571,4 +571,55 @@ final class AssertKindsTests: XCTestCase {
         XCTAssertFalse(isPassed(outcome.status))
         XCTAssertEqual(driver.tapped, [8], "ポーリングのたびに叩かないこと")
     }
+
+    // MARK: - 内蔵スクロール探索(tap(scroll:) / exist(scroll:))
+
+    /// スクロールして見つけてからタップするまでを**1ステップ**で行う
+    /// (以前は scrollTo ステップを別に合成していた)
+    func testTapWithScrollSearchesThenTapsInOneStep() async {
+        let target = node(1, id: "row_40", label: "行 40")
+        // 1・2枚目は未発見(スワイプ)、3枚目で現れる
+        let driver = TapRecordingDriver(frames: [[node(9, id: "other")], [node(9, id: "other")],
+                                                 [target]])
+        let step = FlowStep(action: "tap", locator: FlowLocator(id: "row_40"),
+                            direction: "up", maxSwipes: 5)
+        let outcome = await StepExecutor(driver: driver).execute(step)
+        XCTAssertTrue(isPassed(outcome.status))
+        XCTAssertEqual(driver.tapped, [1])
+    }
+
+    /// スクロールしても見つからなければ、その旨で失敗する(optional なら skipped)
+    func testTapWithScrollFailsWithScrollMessage() async {
+        let driver = TapRecordingDriver(frames: [[node(9, id: "other")]])
+        let step = FlowStep(action: "tap", locator: FlowLocator(id: "row_40"),
+                            direction: "up", maxSwipes: 2)
+        let outcome = await StepExecutor(driver: driver).execute(step)
+        XCTAssertEqual(failureReason(outcome.status)?.contains("スクロールしても"), true)
+        XCTAssertTrue(driver.tapped.isEmpty)
+
+        let optionalStep = FlowStep(action: "tap", locator: FlowLocator(id: "row_40"),
+                                    direction: "up", maxSwipes: 2, optional: true)
+        let skipped = await StepExecutor(driver: TapRecordingDriver(frames: [[node(9, id: "o")]]))
+            .execute(optionalStep)
+        if case .skipped = skipped.status {} else { XCTFail("skipped を期待: \(skipped.status)") }
+    }
+
+    /// exist(scroll:) も同じく1ステップ。探索して見つかれば検証が通る
+    func testExistWithScrollSearchesInOneStep() async {
+        let target = node(1, id: "txt_offscreen", label: "画面外テキスト")
+        let driver = ScriptedDriver(frames: [[node(9, id: "other")], [target]])
+        let step = FlowStep(assert: "exists", locator: FlowLocator(id: "txt_offscreen"),
+                            direction: "up", timeout: 0, maxSwipes: 3, occlusionGuard: false)
+        let outcome = await StepExecutor(driver: driver).execute(step)
+        XCTAssertTrue(isPassed(outcome.status))
+    }
+
+    /// scroll を指定しなければ探索しない(現在画面のみ = 従来の契約)
+    func testExistWithoutScrollDoesNotSearch() async {
+        let driver = ScriptedDriver(frames: [[node(9, id: "other")], [node(1, id: "txt_offscreen")]])
+        let step = FlowStep(assert: "exists", locator: FlowLocator(id: "txt_offscreen"),
+                            timeout: 0, occlusionGuard: false)
+        let outcome = await StepExecutor(driver: driver).execute(step)
+        XCTAssertFalse(isPassed(outcome.status))
+    }
 }

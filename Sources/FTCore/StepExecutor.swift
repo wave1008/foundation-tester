@@ -309,16 +309,19 @@ public final class StepExecutor {
 
     // MARK: - アクション
 
+    /// 内蔵スクロール探索が XCUITest 経由の swipe に落ちたときの注記(execute が載せる)
+    private var scrollSearchNote: String?
+
     /// このステップで閉じた割り込み(execute が記録の注記に載せる)。
     /// **1ステップにつき1回だけ**発火させるための状態でもある(閉じても消えない相手に対して
     /// アサーションのポーリングごとにタップし続けるのを防ぐ)
     private var interruptNote: String?
 
-    /// 割り込みを閉じたことを既存の注記に合流させる(driverFallback と同じ枠で見せる)
+    /// ステップ横断の注記(内蔵スクロール探索・割り込み)を既存の driverFallback へ合流させる
     private func noteWithInterrupt(_ base: String?) -> String? {
-        guard let interruptNote else { return base }
-        let note = "割り込み \(interruptNote) を閉じました"
-        return base.map { "\($0) / \(note)" } ?? note
+        var parts = [base, scrollSearchNote].compactMap { $0 }
+        if let interruptNote { parts.append("割り込み \(interruptNote) を閉じました") }
+        return parts.isEmpty ? nil : parts.joined(separator: " / ")
     }
 
     /// 宣言された割り込み(アプリ内メッセージ等)が現在の画面に出ていれば閉じる。
@@ -344,6 +347,64 @@ public final class StepExecutor {
         }
     }
 
+    struct ScrollSearchResult {
+        let found: Bool
+        /// 解決に使ったフォールバック節(プライマリで解決したら nil)
+        let fallback: FlowLocator?
+        /// 1回でも XCUITest 経由で swipe したか(記録の注記に載せる)
+        let viaXCUITest: Bool
+    }
+
+    static func scrollNotFoundMessage(_ step: FlowStep) -> String {
+        "\(max(0, step.maxSwipes ?? FlowStep.defaultMaxSwipes)) 回スクロールしても"
+            + "要素が見つかりません: \(step.locatorSummary)"
+    }
+
+    /// **スクロール探索の本体**。`scrollTo` コマンドと、`tap(scroll:)` / `exist(scroll:)` の
+    /// 内蔵探索が共有する(同じ挙動を2箇所に書かない)。見つけたら静止させてから返すので、
+    /// 呼び手はそのまま解決・操作してよい
+    private func runScrollSearch(step: FlowStep,
+                                 phase: inout PhaseAccumulator) async throws -> ScrollSearchResult {
+        let clock = ContinuousClock()
+        let direction = FTSwipeDirection(rawValue: step.direction ?? "") ?? .up
+        // 負値だと 0...(-1) が ClosedRange 生成で trap(クラッシュ)するため 0 で下限クランプ
+        let maxSwipes = max(0, step.maxSwipes ?? FlowStep.defaultMaxSwipes)
+        var viaXCUITest = false
+        for attempt in 0...maxSwipes {
+            let start = clock.now
+            var snapshot = try await driver.snapshot()
+            phase.snapshotMs += Self.ms(clock.now - start)
+            try await dismissInterruption(in: &snapshot, phase: &phase)
+            // スクロール探索でも type+index フォールバックは偽陽性のもとなので使わない
+            if let (element, fallback) = Self.resolve(step: step, in: snapshot, strictForAssert: true) {
+                // **スワイプしたなら静止を待つ**。フリングの慣性でリストは減速しながら動き続けており、
+                // 見つけた瞬間に返すと次の操作が別の要素を掴む
+                // (実測 2026-07-27: Android は #row_30 を狙って #row_37 をタップした)。
+                // スワイプしていない周回(attempt == 0)は静止しているので追加コストを払わない
+                if attempt > 0 {
+                    // 順序に意味がある(逆にすると Android で誤タップが再発する。2026-07-27 実測):
+                    //  1. **空打ちの極小ドラッグ**: iOS(Compose)のスクロール容器は次の1タッチを
+                    //     消費してしまい、タップもプレスも効かない(待っても解けない。2回目は効く)。
+                    //     クリックにならない 2pt のドラッグでその1回ぶんを肩代わりする
+                    //  2. **静止待ち**: 空打ちでリストが微動するので、止まってから返す
+                    if releasesScrollTouch {
+                        let centerX: Double = element.frame.x + element.frame.width / 2
+                        let centerY: Double = element.frame.y + element.frame.height / 2
+                        try? await driver.drag(fromX: centerX, fromY: centerY,
+                                               toX: centerX + 2, toY: centerY,
+                                               pressSeconds: 0.05, durationSeconds: 0.05)
+                    }
+                    try await settleAfterScroll(step: step, found: element, phase: &phase)
+                }
+                return ScrollSearchResult(found: true, fallback: fallback, viaXCUITest: viaXCUITest)
+            }
+            if attempt < maxSwipes {
+                if try await swipeWithFallback(direction, phase: &phase) { viaXCUITest = true }
+            }
+        }
+        return ScrollSearchResult(found: false, fallback: nil, viaXCUITest: viaXCUITest)
+    }
+
     private func executeAction(_ action: String, step: FlowStep,
                                cached: [FlowLocator] = [],
                                phase: inout PhaseAccumulator) async throws -> StepOutcome {
@@ -358,55 +419,20 @@ public final class StepExecutor {
 
         // 要素が見つかるまでスクロール(見つかったら成功。操作はしない)
         if action == "scrollTo" {
-            let direction = FTSwipeDirection(rawValue: step.direction ?? "") ?? .up
-            // 負値だと 0...(-1) が ClosedRange 生成で trap(クラッシュ)するため 0 で下限クランプ。
-            let maxSwipes = max(0, step.maxSwipes ?? 8)
-            // ループ内で1回でも XCUITest 経由の swipe が発生したら最終 outcome に記録する
-            var viaXCUITest = false
-            for attempt in 0...maxSwipes {
-                let start = clock.now
-                let snapshot = try await driver.snapshot()
-                phase.snapshotMs += Self.ms(clock.now - start)
-                // スクロール探索でも type+index フォールバックは偽陽性のもとなので使わない
-                if let (element, fallback) = Self.resolve(step: step, in: snapshot, strictForAssert: true) {
-                    // **スワイプしたなら静止を待つ**。フリングの慣性でリストは減速しながら動き続けており、
-                    // 見つけた瞬間に返すと次のステップ(tap 等)が別の要素を掴む
-                    // (実測 2026-07-27: Android は #row_30 を狙って #row_37 をタップした)。
-                    // スワイプしていない周回(attempt == 0)は静止しているので追加コストを払わない
-                    if attempt > 0 {
-                        // スワイプで探し当てた直後は、そのまま操作しても効かない/別要素を掴む。
-                        // 順序に意味がある(逆にすると Android で誤タップが再発する。2026-07-27 実測):
-                        //  1. **空打ちの極小ドラッグ**: iOS(Compose)のスクロール容器は次の1タッチを
-                        //     消費してしまい、タップもプレスも効かない(待っても解けない。2回目は効く)。
-                        //     クリックにならない 2pt のドラッグでその1回ぶんを肩代わりする
-                        //  2. **静止待ち**: 空打ちでリストが微動するので、止まってから返す
-                        //     (Android はフリングの慣性が残り、待たないと別の行を叩く)
-                        if releasesScrollTouch {
-                            let centerX: Double = element.frame.x + element.frame.width / 2
-                            let centerY: Double = element.frame.y + element.frame.height / 2
-                            try? await driver.drag(fromX: centerX, fromY: centerY,
-                                                   toX: centerX + 2, toY: centerY,
-                                                   pressSeconds: 0.05, durationSeconds: 0.05)
-                        }
-                        try await settleAfterScroll(step: step, found: element, phase: &phase)
-                    }
-                    if let fallback {
-                        return StepOutcome(status: .passedViaFallback(fallback),
-                                           driverFallback: viaXCUITest ? "XCUITest へフォールバック" : nil)
-                    }
-                    return StepOutcome(status: .passed, driverFallback: viaXCUITest ? "XCUITest へフォールバック" : nil)
+            let result = try await runScrollSearch(step: step, phase: &phase)
+            let note = result.viaXCUITest ? "XCUITest へフォールバック" : nil
+            guard result.found else {
+                // optional は他のアクションと同契約(出るか不定の要素をスクロール探索したとき、
+                // 空振りで scene を落とさない)。tap(scroll:) が optional を伝えてくる
+                if step.optional == true {
+                    return StepOutcome(status: .skipped("要素が見つからないため省略(optional)"))
                 }
-                if attempt < maxSwipes {
-                    if try await swipeWithFallback(direction, phase: &phase) { viaXCUITest = true }
-                }
+                return StepOutcome(status: .failed(Self.scrollNotFoundMessage(step)))
             }
-            // optional は他のアクションと同契約(出るか不定の要素をスクロール探索したとき、
-            // 空振りで scene を落とさない)。tap(scroll:) が optional を伝えてくる
-            if step.optional == true {
-                return StepOutcome(status: .skipped("要素が見つからないため省略(optional)"))
+            if let fallback = result.fallback {
+                return StepOutcome(status: .passedViaFallback(fallback), driverFallback: note)
             }
-            return StepOutcome(status: .failed(
-                "\(maxSwipes) 回スクロールしても要素が見つかりません: \(step.locatorSummary)"))
+            return StepOutcome(status: .passed, driverFallback: note)
         }
 
         // ロケータ指定のない type はフォーカス中の要素へ送る(直前の tap でフォーカスした欄など)。
@@ -416,6 +442,21 @@ public final class StepExecutor {
             try await driver.type(ref: nil, text: step.text ?? "")
             phase.actionMs += Self.ms(clock.now - start)
             return StepOutcome(status: .passed)
+        }
+
+        // `tap(scroll:)` / `press(scroll:)` 等の内蔵スクロール探索。**別ステップにしない**のは
+        // 利用者が書いたのは1コマンドだから(記録に scrollTo 行が増えると、書いていない行が
+        // 現れ、しかもソース行を持たないためステップ表から編集できない)。
+        // 探索は runScrollSearch が静止まで面倒を見るので、以降は通常の解決へ進んでよい
+        if step.direction != nil, step.locator != nil {
+            let result = try await runScrollSearch(step: step, phase: &phase)
+            if result.viaXCUITest { scrollSearchNote = "XCUITest へフォールバック" }
+            guard result.found else {
+                if step.optional == true {
+                    return StepOutcome(status: .skipped("要素が見つからないため省略(optional)"))
+                }
+                return StepOutcome(status: .failed(Self.scrollNotFoundMessage(step)))
+            }
         }
 
         // ロケータ解決の再試行(ファイル冒頭のセマンティクス参照: 最大3回、計700ms)
@@ -734,6 +775,12 @@ public final class StepExecutor {
         let clock = ContinuousClock()
         switch assert {
         case "exists":
+            // `exist(scroll:)` の内蔵探索(アクション側と同じ理由で別ステップにしない)
+            if step.direction != nil, step.locator != nil {
+                let result = try await runScrollSearch(step: step, phase: &phase)
+                if result.viaXCUITest { scrollSearchNote = "XCUITest へフォールバック" }
+                guard result.found else { return .failed(Self.scrollNotFoundMessage(step)) }
+            }
             let deadline = Date().addingTimeInterval(TimeInterval(step.timeout ?? 5))
             var backoff = PollBackoff()
             var primaryMisses = 0
