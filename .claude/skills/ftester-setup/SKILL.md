@@ -241,7 +241,7 @@ products 未宣言でも `swift build --product ftester-mcp` は暗黙 product �
   "mcpServers": {
     "ftester": {
       "command": "bash",
-      "args": ["-lc", "cd \"<ABS_TOOL_ROOT>\" && swift build --product ftester-mcp >/dev/null 2>&1 && exec \"<ABS_TOOL_ROOT>/.build/debug/ftester-mcp\""]
+      "args": ["-lc", "WD=\"$PWD\"; cd \"<ABS_TOOL_ROOT>\" && swift build --product ftester-mcp >/dev/null 2>&1 && cd \"$WD\" && exec \"<ABS_TOOL_ROOT>/.build/debug/ftester-mcp\""]
     }
   }
 }
@@ -250,6 +250,8 @@ products 未宣言でも `swift build --product ftester-mcp` は暗黙 product �
   rebuild-on-start なので `/ftester-update` 後も版ズレしない（無変更なら増分ビルドは即座）。build 出力は
   `/dev/null`（JSON-RPC は stdout 専用・混ぜると壊れる）。`bash -lc`（ログインシェル）はデスクトップ版
   Claude Code が最小 PATH でサーバを起こしても swift/Xcode ツールチェインを引けるようにするため。
+  **ビルドのため TOOL_ROOT へ `cd` した後、`exec` 前に元の WORK_DIR へ戻す**（cwd は `ftester-mcp` が
+  パッケージルートを特定する入力。cd したままだと外部パッケージ構成で受け手の `Projects/` が見えなくなる）。
 
 「全プロジェクトで使いたい」場合のみ、代わりに user スコープ登録
 （`claude mcp add ftester --scope user -- bash -lc '...'`・claude CLI が PATH に要る）を案内する。

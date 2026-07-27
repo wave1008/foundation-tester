@@ -269,7 +269,7 @@ public enum ProjectScaffold {
           "mcpServers": {
             "ftester": {
               "command": "bash",
-              "args": ["-lc", "cd \\"<CLONE_ABS>\\" && swift build --product ftester-mcp >/dev/null 2>&1 && exec \\"<CLONE_ABS>/.build/debug/ftester-mcp\\""]
+              "args": ["-lc", "WD=\\"$PWD\\"; cd \\"<CLONE_ABS>\\" && swift build --product ftester-mcp >/dev/null 2>&1 && cd \\"$WD\\" && exec \\"<CLONE_ABS>/.build/debug/ftester-mcp\\""]
             }
           }
         }
@@ -278,6 +278,8 @@ public enum ProjectScaffold {
         rebuild-on-start なので clone を `git pull` しても版ズレしない。build 出力は `/dev/null`
         (JSON-RPC は stdout 専用)。Claude Code はプロジェクトスコープの MCP を初回に承認確認する
         → 許可すると `ft_*` ツールが使え、`/ftester-scenario` が MCP 経由で動く。
+        **ビルドのため clone へ `cd` した後、`exec` 前に元のパッケージルートへ戻す**(cwd は
+        `ftester-mcp` がパッケージルートを特定する入力。cd したままだと `Projects/` が見えなくなる)。
 
         ## 更新(新しい版が出たとき)
         clone した foundation-tester で `git pull`(または `git checkout <新version>`)して `swift build`
