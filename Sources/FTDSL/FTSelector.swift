@@ -7,12 +7,19 @@
 //   .switch#PHOTOS_UPLOAD          → 型 + id(`.switch&&#PHOTOS_UPLOAD` の短縮形)
 //   .switch&&Resource Upload       → 型 + text(`&&` は条件の連結。`.型=…` という書き方は無い)
 //   .button&&value=太郎&&enabled=true → `&&` で条件を AND 合成(フィルタは全部これで書ける)
+//   (保存|OK) / text=(保存|OK)        → フィルタ内 OR。`保存||OK` と等価(パース時に節へ展開する)。
+//                                     相対の引数では括弧を自分で書く(`:right((保存|OK))`)
+//   .button&&text!=キャンセル          → 否定フィルタ(完全形のみ。否定だけの節は書けない)
 //   #list >> .clickable[2]         → スコープ(祖先 >> 子孫。[n] はスコープ内で数える)
 //   通知:rightSwitch               → 相対(**基準が先・対象が後**)。`:right(.switch)` と同じ
 //   通知:right(2)                  → 基準の右にある2番目に近いウィジェット
 //   通知:right:belowButton         → 相対ステップの連鎖
 //   <変更&&.button>:right(数量)     → 基準の `<...>` 囲み(任意。基準の範囲を明示したいとき)
 // [n] / pos=n は 1 オリジン(内部の FlowLocator.index は 0 オリジン)。
+// `||` は**候補集合の和**(Shirates 準拠。`#id||ラベル` は「id にマッチする要素とラベルにマッチする
+// 要素を合わせた集合」)。要素を1つ選ぶコマンドは和集合の先頭 = **節の順→節内のツリー順**で採るので、
+// ヒール連鎖(`#id||ラベル`)の優先順位は保たれる。countIs は和集合の総数を数える
+// (同じ要素が複数の節にマッチしても1度だけ)。詳しくは StepExecutor.unionCandidates。
 // 優先順位は `&&` > `>>` > `||`。分割はいずれも括弧の外だけ(`:right(...)` の中は割らない)。
 // パースは失敗しない(解釈できない節は text として扱う)。**構文の誤り(未知のマーカー・綴り誤り・
 // 先頭大文字の型名・不正な序数・未知のフィルタ名)は validationError が別経路で落とす**(パースだけだと
@@ -44,7 +51,8 @@ public struct FTSelector {
         let clauses = splitTopLevel(text, separator: "||")
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
-        let locators = clauses.map(parseClause)
+        // 1節が `(a|b)` を含むと複数のロケータへ展開される(`||` と同じ和集合になる)
+        let locators = clauses.flatMap(parseClauses)
         guard let first = locators.first else {
             return FTSelector(text: text, primary: FlowLocator(label: text), fallbacks: [])
         }
@@ -90,28 +98,47 @@ public struct FTSelector {
 
     // MARK: - パース
 
-    static func parseClause(_ clause: String) -> FlowLocator {
+    /// 1節を 1 つ以上のロケータへ。**複数になるのは `(a|b)` を含むときだけ**で、
+    /// 展開結果は `||` の節と同じ扱い(候補集合の和)になる
+    static func parseClauses(_ clause: String) -> [FlowLocator] {
         let trimmed = clause.trimmingCharacters(in: .whitespaces)
         // `=` エスケープは最優先(生ラベルに `>>` や `:right` を含められる唯一の手段)
-        if trimmed.hasPrefix("=") { return FlowLocator(label: String(trimmed.dropFirst())) }
+        if trimmed.hasPrefix("=") { return [FlowLocator(label: String(trimmed.dropFirst()))] }
         let segments = splitTopLevel(trimmed, separator: ">>")
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
-        guard segments.count > 1, let last = segments.last else { return parseSegment(trimmed) }
-        var target = parseSegment(last)
-        target.scope = segments.dropLast().map(parseSegment)
-        return target
+        guard segments.count > 1, let last = segments.last else { return parseSegments(trimmed) }
+        // スコープの各段も `(a|b)` で展開され得るので、全段 × 対象の直積を作る
+        let scopeVariants = segments.dropLast().map(parseSegments)
+        let targets = parseSegments(last)
+        var result: [FlowLocator] = []
+        for scope in cartesian(scopeVariants) {
+            for target in targets {
+                var copy = target
+                copy.scope = scope
+                result.append(copy)
+                if result.count >= maxExpansion { return result }
+            }
+        }
+        return result
+    }
+
+    /// 単一のロケータが要る場所(検証・比較)向け。展開結果の先頭を返す
+    static func parseClause(_ clause: String) -> FlowLocator {
+        parseClauses(clause).first ?? FlowLocator(label: clause)
     }
 
     /// `>>` で割った 1 区間。相対ステップ(`:rightSwitch` 等)を末尾から剥がし、
-    /// 残りを `&&` 区切りのフィルタ列としてパースする
-    static func parseSegment(_ segment: String) -> FlowLocator {
+    /// 残りを `&&` 区切りのフィルタ列としてパースする(`(a|b)` があれば複数返る)
+    static func parseSegments(_ segment: String) -> [FlowLocator] {
         let trimmed = segment.trimmingCharacters(in: .whitespaces)
-        if trimmed.hasPrefix("=") { return FlowLocator(label: String(trimmed.dropFirst())) }
+        if trimmed.hasPrefix("=") { return [FlowLocator(label: String(trimmed.dropFirst()))] }
         let split = splitRelativeChain(trimmed)
-        var locator = parseFilters(split.base)
-        if !split.steps.isEmpty { locator.relative = split.steps }
-        return locator
+        return parseFilterVariants(split.base).map { locator in
+            var copy = locator
+            if !split.steps.isEmpty { copy.relative = split.steps }
+            return copy
+        }
     }
 
     /// 相対ステップ列を切り出す。1つでも解釈できない形があれば**全体を素の文字列として返す**
@@ -230,7 +257,7 @@ public struct FTSelector {
                 let parsed = splitTopLevel(arg, separator: "||")
                     .map { $0.trimmingCharacters(in: .whitespaces) }
                     .filter { !$0.isEmpty }
-                    .map(parseClause)
+                    .flatMap(parseClauses)
                 guard !parsed.isEmpty else { return nil }
                 // 型別ショートハンドと引数を併記した `:rightSwitch(保存)` は型で絞ったうえで引数を AND
                 filter = command.type == nil
@@ -260,7 +287,12 @@ public struct FTSelector {
         return copy
     }
 
-    /// `&&` 区切りのフィルタ列を 1 つの FlowLocator へ畳む(全て AND)
+    /// 1つの節から作られるロケータ数の上限(`(a|b)&&(c|d)` の直積が爆発しないように)。
+    /// 超える式は validationError が実行前に落とす
+    static let maxExpansion = 32
+
+    /// `&&` 区切りのフィルタ列を 1 つの FlowLocator へ畳む(全て AND)。
+    /// `(a|b)` は展開しない = **検証と比較のための単一形**(実行に使うのは parseFilterVariants)
     static func parseFilters(_ text: String) -> FlowLocator {
         var locator = FlowLocator()
         for token in splitTopLevel(text, separator: "&&")
@@ -271,7 +303,74 @@ public struct FTSelector {
         return locator
     }
 
+    /// `&&` 列を、フィルタ内 OR(`(a|b)`)を展開したロケータ列にする。
+    /// 展開は**トークン単位の文字列置換**で行い、各組み合わせを通常どおり AND で畳む
+    /// (`(保存|OK)&&.button` = `保存&&.button || OK&&.button`。Shirates のドキュメントが
+    /// 「等価」と書いている形そのもの)。`||` が和集合になったのでこの等価が成立する
+    static func parseFilterVariants(_ text: String) -> [FlowLocator] {
+        let tokens = splitTopLevel(text, separator: "&&")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        guard !tokens.isEmpty else { return [FlowLocator()] }
+        return cartesian(tokens.map(expandGroups)).map { combination in
+            var locator = FlowLocator()
+            for token in combination { merge(parseFilter(token), into: &locator) }
+            return locator
+        }
+    }
+
+    /// トークン内の `(a|b)` を展開する。グループでない括弧(`保存(推奨)` のような
+    /// ラベルの一部)は `|` を含まないので触らない。`=` エスケープ済みトークンも触らない
+    static func expandGroups(_ token: String) -> [String] {
+        guard !token.hasPrefix("="), let group = firstGroup(in: token) else { return [token] }
+        let prefix = String(token[token.startIndex..<group.open])
+        let suffix = String(token[token.index(after: group.close)...])
+        let inner = String(token[token.index(after: group.open)..<group.close])
+        var result: [String] = []
+        for alternative in splitTopLevel(inner, separator: "|") {
+            // 残りのグループも展開する(`(a|b)(c|d)` のような多段も直積になる)
+            result.append(contentsOf: expandGroups(prefix + alternative + suffix))
+            if result.count >= maxExpansion { break }
+        }
+        return result
+    }
+
+    /// トークン内で最初に現れる「`|` を含む括弧」= OR グループ
+    static func firstGroup(in token: String) -> (open: String.Index, close: String.Index)? {
+        var index = token.startIndex
+        while index < token.endIndex {
+            guard token[index] == "(", let close = matchingParen(token, open: index) else {
+                index = token.index(after: index)
+                continue
+            }
+            let inner = token[token.index(after: index)..<close]
+            if splitTopLevel(String(inner), separator: "|").count > 1 {
+                return (index, close)
+            }
+            index = token.index(after: close)
+        }
+        return nil
+    }
+
+    /// 各要素の候補列から直積を作る(先頭の要素が最も外側 = 左のグループから順に変わる)
+    static func cartesian<T>(_ groups: [[T]]) -> [[T]] {
+        var result: [[T]] = [[]]
+        for group in groups {
+            var next: [[T]] = []
+            for prefix in result {
+                for item in group {
+                    next.append(prefix + [item])
+                    if next.count >= maxExpansion { break }
+                }
+                if next.count >= maxExpansion { break }
+            }
+            result = next.isEmpty ? result : next
+        }
+        return result
+    }
+
     static func merge(_ source: FlowLocator, into target: inout FlowLocator) {
+        if let not = source.not, !not.isEmpty { target.not = (target.not ?? []) + not }
         if let id = source.id { target.id = id }
         if let label = source.label {
             target.label = label
@@ -302,8 +401,25 @@ public struct FTSelector {
            let ordinal = Int(token.dropFirst().dropLast()), ordinal >= 1 {
             return FlowLocator(index: ordinal - 1)
         }
+        if let negated = parseNegatedFilter(token) { return negated }
         if let named = parseNamedFilter(token) { return named }
         return textLocator(token)
+    }
+
+    /// `名前!=値`(否定フィルタ)。**完全形だけ**を受け付ける(Shirates の `!ラベル` 短縮形は
+    /// `=` エスケープ・部分一致記法と紛らわしいので採らない)。
+    /// 中身は肯定と同じロケータで、それを `not` に1件入れた形にする
+    static func parseNegatedFilter(_ token: String) -> FlowLocator? {
+        guard let eqIndex = token.firstIndex(of: "="), eqIndex > token.startIndex else { return nil }
+        let bangIndex = token.index(before: eqIndex)
+        guard token[bangIndex] == "!" else { return nil }
+        let name = String(token[token.startIndex..<bangIndex])
+        let value = String(token[token.index(after: eqIndex)...])
+        // pos は「n 番目でない」に意味が無いので否定できない(検証がエラーにする)
+        guard name != "pos", let inner = namedFilterLocator(name: name, value: value) else {
+            return nil
+        }
+        return FlowLocator(not: [inner])
     }
 
     /// `.型` / `.型#id` / `.型[n]`(いずれも `&&` 合成の短縮形)。
@@ -333,6 +449,12 @@ public struct FTSelector {
         guard let eqIndex = token.firstIndex(of: "=") else { return nil }
         let name = String(token[token.startIndex..<eqIndex])
         let value = String(token[token.index(after: eqIndex)...])
+        return namedFilterLocator(name: name, value: value)
+    }
+
+    /// `名前=値` を 1 属性だけ設定したロケータへ。肯定(parseNamedFilter)と
+    /// 否定(parseNegatedFilter の中身)が共有する唯一の変換
+    static func namedFilterLocator(name: String, value: String) -> FlowLocator? {
         guard isFilterName(name) else { return nil }
         if let text = textFilters[name] {
             // exact は mode を持たせない(既定と同じ構造に正規化して往復・比較を1つに保つ)
@@ -495,18 +617,42 @@ public struct FTSelector {
         locator.id == nil && locator.label == nil && locator.value == nil
             && locator.placeholder == nil && locator.checked == nil && locator.enabled == nil
             && locator.index == nil && (locator.relative?.isEmpty ?? true)
-            && (locator.scope?.isEmpty ?? true)
+            && (locator.scope?.isEmpty ?? true) && (locator.not?.isEmpty ?? true)
+    }
+
+    /// 除外条件を `属性!=値` のトークン列へ(パースの逆写像)。
+    /// entry は属性1つだけが設定されている前提(parseNegatedFilter がそう作る)
+    private static func serializeNot(_ entries: [FlowLocator]) -> [String] {
+        entries.compactMap { entry in
+            if let id = entry.id { return "id!=\(id)" }
+            if let label = entry.label {
+                return "\((entry.labelMatch ?? .exact).filterName("text"))!=\(label)"
+            }
+            if let value = entry.value {
+                return "\((entry.valueMatch ?? .exact).filterName("value"))!=\(value)"
+            }
+            if let placeholder = entry.placeholder {
+                return "\((entry.placeholderMatch ?? .exact).filterName("placeholder"))!=\(placeholder)"
+            }
+            if let type = entry.type { return "type!=\(type)" }
+            if let checked = entry.checked { return "checked!=\(checked)" }
+            if let enabled = entry.enabled { return "enabled!=\(enabled)" }
+            return nil
+        }
     }
 
     /// 属性フィルタ列。よく使う組み合わせは短縮形(`#id` / `.型#id` / `.型[n]`)へ畳み、
     /// それ以外は `&&` で連ねる
     private static func serializeFilters(_ locator: FlowLocator) -> String {
         var tokens: [String] = []
-        let single = tokenCount(locator) == 1
+        let negations = serializeNot(locator.not ?? [])
+        let single = tokenCount(locator) == 1 && negations.isEmpty
         if let type = locator.type {
-            // 型 + もう1条件だけなら短縮形にする
-            if let id = locator.id, tokenCount(locator) == 2 { return ".\(type)#\(id)" }
-            if let index = locator.index, index > 0, tokenCount(locator) == 2 {
+            // 型 + もう1条件だけなら短縮形にする(除外条件があるときは後ろに続くので畳まない)
+            if let id = locator.id, tokenCount(locator) == 2, negations.isEmpty {
+                return ".\(type)#\(id)"
+            }
+            if let index = locator.index, index > 0, tokenCount(locator) == 2, negations.isEmpty {
                 return ".\(type)[\(index + 1)]"
             }
             tokens.append(".\(type)")
@@ -522,9 +668,10 @@ public struct FTSelector {
         if let checked = locator.checked { tokens.append("checked=\(checked)") }
         if let enabled = locator.enabled { tokens.append("enabled=\(enabled)") }
         // 1番目は普段は省略するが、序数しか条件が無い節(`#list >> [1]`)では書かないと式が空になる
-        if let index = locator.index, index > 0 || tokens.isEmpty {
+        if let index = locator.index, index > 0 || (tokens.isEmpty && negations.isEmpty) {
             tokens.append("[\(index + 1)]")
         }
+        tokens.append(contentsOf: negations)
         return tokens.joined(separator: "&&")
     }
 
@@ -577,9 +724,16 @@ public struct FTSelector {
         if firstRelativeMarker(in: label) != nil { return true }
         if unknownMarker(in: label) != nil { return true }
         if malformedRelativeName(in: label) != nil { return true }
-        // `名前=値` はフィルタ名と紛らわしいときだけエスケープが要る(`notify=off` はそのままでよい)
+        // `(a|b)` はフィルタ内 OR に読まれるのでラベルとしては書けない
+        if firstGroup(in: label) != nil { return true }
+        // `名前=値` / `名前!=値` はフィルタ名と紛らわしいときだけエスケープが要る
+        // (`notify=off` はそのままでよい)
         if let eqIndex = label.firstIndex(of: "=") {
-            let name = String(label[label.startIndex..<eqIndex])
+            var nameEnd = eqIndex
+            if nameEnd > label.startIndex, label[label.index(before: nameEnd)] == "!" {
+                nameEnd = label.index(before: nameEnd)
+            }
+            let name = String(label[label.startIndex..<nameEnd])
             if isAsciiIdentifier(name), isFilterName(name) || isNearMissFilterName(name) {
                 return true
             }
@@ -701,20 +855,32 @@ public struct FTSelector {
         }
         // 絞り込み条件が1つも無い節(`[2]` だけ等)はスコープの中でしか意味を持たない
         let locator = parseFilters(text)
+        if locator.hasNoFilter, !(locator.not?.isEmpty ?? true) {
+            // 「〇〇以外の全要素」は容器・レイアウトノードまで掴む。肯定条件との併用を促す
+            return "否定条件(`!=`)だけの節は使えません: \"\(text)\""
+                + "(`.button&&text!=キャンセル` のように絞り込み条件と併用する)"
+        }
         if locator.hasNoFilter, !(isScoped && isTarget) {
             return locator.index == nil
                 ? "条件が空の節があります: \"\(text)\""
                 : "序数だけの節は `祖先 >> [n]` の形でしか使えません: \"\(text)\""
         }
+        // 展開後のロケータ数(`(a|b)&&(c|d)` の直積)は実行前に上限で止める
+        if parseFilterVariants(text).count >= maxExpansion {
+            return "`(a|b)` の組み合わせが多すぎます(上限 \(maxExpansion)): \"\(text)\""
+        }
         return nil
     }
 
-    /// 節の中で重複を検出するための条件名(index は重複しても無害なので対象外)
+    /// 節の中で重複を検出するための条件名(index は重複しても無害なので対象外)。
+    /// 否定は肯定と別の条件(`text=A&&text!=B` は矛盾ではない)なので `!` を付けて区別する。
+    /// **否定同士の重複は見ない**(`text!=A&&text!=B` は正当な絞り込み)
     private static func attributeName(_ token: String) -> String? {
         if token.hasPrefix("#") { return "id" }
         if token.hasPrefix(".") { return token.contains("#") ? "id" : "type" }
         if token.hasPrefix("[") { return nil }
         guard let eqIndex = token.firstIndex(of: "=") else { return "text" }
+        if eqIndex > token.startIndex, token[token.index(before: eqIndex)] == "!" { return nil }
         let name = String(token[token.startIndex..<eqIndex])
         guard isFilterName(name) else { return "text" }
         if let text = textFilters[name] {
@@ -732,12 +898,53 @@ public struct FTSelector {
         if token.allSatisfy({ $0 == "*" }) {
             return "部分一致の中身が空です: \"\(token)\"(`*語*` のように書く)"
         }
+        if let error = groupError(token) { return error }
         if token.hasPrefix("["), token.hasSuffix("]") {
             return ordinalError(token, inner: String(token.dropFirst().dropLast()))
         }
+        if let error = negatedFilterError(token) { return error }
         if let error = typeEqualsError(token) { return error }
         if let error = namedFilterError(token) { return error }
         return ordinalError(token) ?? typeCaseError(token)
+    }
+
+    /// フィルタ内 OR(`(a|b)`)の中身が空でないか。空の選択肢を通すと「ラベルが空の要素」に
+    /// 一致するロケータが黙って生まれる(`(保存|)` や `(a||b)` の書き損じ)
+    private static func groupError(_ token: String) -> String? {
+        guard !token.hasPrefix("="), let group = firstGroup(in: token) else { return nil }
+        let inner = String(token[token.index(after: group.open)..<group.close])
+        let alternatives = splitTopLevel(inner, separator: "|")
+        if alternatives.contains(where: { $0.trimmingCharacters(in: .whitespaces).isEmpty }) {
+            return "`(a|b)` の選択肢が空です: \"\(token)\"(区切りは `|` ひとつ)"
+        }
+        // 残りのグループも見る(先頭グループを潰した形で再帰)
+        let rest = String(token[token.startIndex..<group.open])
+            + (alternatives.first ?? "") + String(token[token.index(after: group.close)...])
+        return groupError(rest)
+    }
+
+    /// `名前!=値` の検証。名前が既知でない・値が空・pos の否定はここで落とす
+    /// (通さないと丸ごとラベル扱いになり notExist / countIs(x,0) が黙って成功する)
+    private static func negatedFilterError(_ token: String) -> String? {
+        guard !token.hasPrefix("."), !token.hasPrefix("#"),
+              let eqIndex = token.firstIndex(of: "="), eqIndex > token.startIndex,
+              token[token.index(before: eqIndex)] == "!" else { return nil }
+        let name = String(token[token.startIndex..<token.index(before: eqIndex)])
+        let value = String(token[token.index(after: eqIndex)...])
+        guard isAsciiIdentifier(name) else { return nil }
+        guard isFilterName(name) else {
+            // 既知名と紛らわしくない `名前!=値` は素の文字列(SUT の表示 `count!=0` 等)として通す。
+            // 判定規則は肯定形(namedFilterError)と同じ
+            guard isNearMissFilterName(name) else { return nil }
+            let known = (textFilters.keys.sorted() + otherFilters.sorted()).joined(separator: " / ")
+            return "否定できないフィルタ名 \"\(name)\" です: \"\(token)\"。使えるのは \(known)"
+        }
+        if name == "pos" { return "pos は否定できません: \"\(token)\"" }
+        if value.isEmpty { return "フィルタ \"\(name)!=\" の値が空です" }
+        if name == "checked" || name == "enabled", boolValue(value) == nil {
+            return "\(name) は true / false で書きます: \"\(token)\""
+        }
+        return nil
     }
 
     /// `.型=ラベル` の検出。パースは `=` 以降を型名の一部として黙って読む(never-match)ため、

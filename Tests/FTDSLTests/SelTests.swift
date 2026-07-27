@@ -102,4 +102,20 @@ final class SelTests: XCTestCase {
         XCTAssertEqual(SelType.custom("Cell").name, "cell")
         XCTAssertEqual(SelType.custom("cell").name, "cell")
     }
+
+    /// 否定は記法(`text!=`)と同じ構造を作り、往復もする
+    func testNotBuildsSameLocatorAsNotation() {
+        let sel = Sel.type(.button).not(.text("キャンセル"))
+        XCTAssertEqual(sel.ftSelector.primary,
+                       FTSelector.parse(".button&&text!=キャンセル").primary)
+        XCTAssertEqual(sel.ftSelector.text, ".button&&text!=キャンセル")
+    }
+
+    /// 相対ステップの後に書いた否定は**対象**に効く(他のフィルタ系メソッドと同じ規律)
+    func testNotAppliesToRelativeTarget() {
+        let sel = Sel.text("通知").right(.button).not(.text("編集"))
+        let step = sel.ftSelector.primary.relative?.first
+        XCTAssertEqual(step?.filter?.first?.not, [FlowLocator(label: "編集")])
+        XCTAssertNil(sel.ftSelector.primary.not)
+    }
 }

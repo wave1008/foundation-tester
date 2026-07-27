@@ -367,4 +367,105 @@ final class FTSelectorTests: XCTestCase {
         XCTAssertNotNil(FTSelector.validationError(".Button"))
         XCTAssertNotNil(FTSelector.validationError("#list >> .Clickable[2]"))
     }
+
+    // MARK: - フィルタ内 OR `(a|b)`(Shirates 準拠。パース時に節へ展開する)
+
+    func testFilterGroupExpandsToClauses() {
+        let selector = FTSelector.parse("(保存|OK)")
+        XCTAssertEqual(selector.primary, FlowLocator(label: "保存"))
+        XCTAssertEqual(selector.fallbacks, [FlowLocator(label: "OK")])
+        // `||` で書いたものと同じ構造になる(ドキュメントが「等価」と書いている形)
+        XCTAssertEqual(FTSelector.parse("保存||OK").primary, selector.primary)
+        XCTAssertEqual(FTSelector.parse("保存||OK").fallbacks, selector.fallbacks)
+    }
+
+    func testFilterGroupCombinesWithOtherConditions() {
+        let selector = FTSelector.parse(".button&&(保存|OK)")
+        XCTAssertEqual(selector.primary, FlowLocator(label: "保存", type: "button"))
+        XCTAssertEqual(selector.fallbacks, [FlowLocator(label: "OK", type: "button")])
+    }
+
+    func testFilterGroupWorksForNamedFiltersAndShorthands() {
+        XCTAssertEqual(FTSelector.parse("text=(a|b)").fallbacks, [FlowLocator(label: "b")])
+        XCTAssertEqual(FTSelector.parse("(#a|#b)").fallbacks, [FlowLocator(id: "b")])
+        // 部分一致記法とも併用できる(トークン単位の置換なので `*` が両方に付く)
+        XCTAssertEqual(FTSelector.parse("*(a|b)*").primary,
+                       FlowLocator(label: "a", labelMatch: .contains))
+    }
+
+    func testFilterGroupInScopeAndRelativeArgument() {
+        let scoped = FTSelector.parse("(#l1|#l2) >> .cell")
+        XCTAssertEqual(scoped.fallbacks.count, 1)
+        XCTAssertEqual(scoped.primary.scope, [FlowLocator(id: "l1")])
+        XCTAssertEqual(scoped.fallbacks[0].scope, [FlowLocator(id: "l2")])
+        // 相対セレクタの引数の中では、グループの括弧を**自分で書く**
+        // (`:right(...)` の括弧は引数の括弧なので、`:right(a|b)` の `|` は区切りにならない)
+        let relative = FTSelector.parse("通知:right((保存|OK))")
+        XCTAssertEqual(relative.primary.relative?.first?.filter,
+                       [FlowLocator(label: "保存"), FlowLocator(label: "OK")])
+    }
+
+    func testGroupParenthesesWithoutPipeStayLiteral() {
+        // `|` を含まない括弧はラベルの一部(展開しない)
+        let selector = FTSelector.parse("保存(推奨)")
+        XCTAssertEqual(selector.primary, FlowLocator(label: "保存(推奨)"))
+        XCTAssertTrue(selector.fallbacks.isEmpty)
+    }
+
+    func testValidationRejectsEmptyGroupAlternative() {
+        XCTAssertNotNil(FTSelector.validationError("(保存|)"))
+        XCTAssertNotNil(FTSelector.validationError("(a||b)"))
+        XCTAssertNil(FTSelector.validationError("(保存|OK)"))
+    }
+
+    func testGroupLabelNeedsEscapeOnSerialize() {
+        // `(a|b)` そのものをラベルにしたいときは `=` エスケープ。serialize も同じ形に戻す
+        let escaped = FTSelector.parse("=(a|b)")
+        XCTAssertEqual(escaped.primary, FlowLocator(label: "(a|b)"))
+        XCTAssertTrue(escaped.fallbacks.isEmpty)
+        XCTAssertEqual(FTSelector.serialize(escaped.primary), "=(a|b)")
+    }
+
+    // MARK: - 否定フィルタ `!=`
+
+    func testNegationFilterParsesIntoNot() {
+        let locator = FTSelector.parse(".button&&text!=キャンセル").primary
+        XCTAssertEqual(locator.type, "button")
+        XCTAssertEqual(locator.not, [FlowLocator(label: "キャンセル")])
+        XCTAssertNil(locator.label)
+    }
+
+    func testNegationSupportsMatchModesAndOtherAttributes() {
+        XCTAssertEqual(FTSelector.parse(".cell&&textContains!=済").primary.not,
+                       [FlowLocator(label: "済", labelMatch: .contains)])
+        XCTAssertEqual(FTSelector.parse(".button&&id!=btn_x").primary.not,
+                       [FlowLocator(id: "btn_x")])
+        XCTAssertEqual(FTSelector.parse(".button&&enabled!=false").primary.not,
+                       [FlowLocator(enabled: false)])
+    }
+
+    func testNegationRoundTrips() {
+        for text in [".button&&text!=キャンセル", ".cell&&textContains!=済",
+                     "#list >> .cell&&text!=空", ".button&&text!=A&&text!=B"] {
+            XCTAssertNil(FTSelector.validationError(text), text)
+            let locator = FTSelector.parse(text).primary
+            XCTAssertEqual(FTSelector.serialize(locator), text, text)
+        }
+    }
+
+    func testValidationRejectsNegationOnlyClauseAndBadNames() {
+        XCTAssertNotNil(FTSelector.validationError("text!=キャンセル"))     // 否定だけ
+        // 綴り誤りの判定規則は肯定形と同じ(前方一致関係にある `textContans` は落ちるが、
+        // `txet` のような入れ替え誤りは既知の残穴として通る = isNearMissFilterName の規律)
+        XCTAssertNotNil(FTSelector.validationError(".button&&textContans!=x"))
+        XCTAssertNotNil(FTSelector.validationError(".button&&pos!=2"))     // pos は否定不可
+        XCTAssertNotNil(FTSelector.validationError(".button&&enabled!=yes"))
+        XCTAssertNotNil(FTSelector.validationError(".button&&text!="))     // 値が空
+    }
+
+    func testPlainLabelWithBangEqualsStaysLiteral() {
+        // SUT の表示に現れる `x!=y` は素の文字列(フィルタ名でなければ素通し)
+        XCTAssertNil(FTSelector.validationError("count!=0"))
+        XCTAssertEqual(FTSelector.parse("count!=0").primary, FlowLocator(label: "count!=0"))
+    }
 }

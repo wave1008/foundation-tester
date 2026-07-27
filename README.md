@@ -265,7 +265,7 @@ class ログインテスト {
                 }.action {
                     type("#email", "test@example.com")
                     type("#password", "password123")
-                    tap("#login_btn||ログイン")          // || = フォールバック連鎖
+                    tap("#login_btn||ログイン")          // || = 候補集合の和(節の順に先に見つかった方)
                     tap("今はしない", optional: true)     // optional = 無ければスキップ
                 }.expectation {
                     exist("#welcome_text||ようこそ")
@@ -287,7 +287,8 @@ class ログインテスト {
 }
 ```
 
-**セレクタ式**(`||` でフォールバック連鎖。優先度: id > label > type+index):
+**セレクタ式**(`||` は**候補集合の和**。要素を1つ選ぶときは節の順に先に見つかった方を使うので、
+`#id||ラベル` はヒール連鎖としても働く。優先度: id > label > type+index):
 
 | 記法 | 意味 |
 |---|---|
@@ -298,6 +299,8 @@ class ログインテスト {
 | `.button` / `.button[2]` | 型+順番(**1 オリジン**。`.button[2]` = 2番目の Button。1番目は `[1]` を省略して `.button` と書く。`[1]` と明記しても可) |
 | `.switch#ID` / `.switch&&ラベル` | 型と id/label の併用(値検証などで型を絞る) |
 | `#save&&.button&&enabled=true` | **`&&` で AND 合成**。属性は `text` `value` `placeholder` `id` `type` `pos` `checked` `enabled` |
+| `(保存\|OK)` / `text=(保存\|OK)` | **フィルタ内 OR**。`保存\|\|OK` と等価(相対の引数では `:right((保存\|OK))` と括弧を自分で書く) |
+| `.button&&text!=キャンセル` | **否定フィルタ**(完全形のみ)。`textContains!=` 等も可。**否定だけの節は書けない** |
 | `.input` / `.widget` | 型エイリアス(`.input` = textField\|secureTextField / `.widget` = OS 共通の役割型5つ) |
 | `#list >> .clickable[2]` | **スコープ**(祖先 >> 子孫)。序数はスコープ内で数えるので画面クロムやスクロール位置でずれない |
 | `通知:rightSwitch` | **相対セレクタ**(**基準が先**)。基準の帯に入り、その方向にある最も近い候補。該当が無ければ失敗する(id が無い要素を隣のラベルから指す) |
@@ -326,16 +329,24 @@ exist(.type(.button).text("保存", .contains))    // .button&&textContains=保�
 フィルタは常に「現在の対象」に効く(相対の**後**ならその相対先、前なら基準)。
 
 **コマンド**: `tap` `type` `press` `swipe` `scrollTo` / `exist` `notExist` `textIs` `valueIs`
-`isEnabled` `isDisabled` `isChecked` `isNotChecked` `countIs` `textContains` `textMatches` / `screenIs`(FM 視覚検証)/
-`launchApp` `relaunchApp` `terminateApp` `wait` /
-分岐 `ifCanSelect { }.ifElse { }`・`ios { }`・`android { }` / 任意コード `procedure("...") { try await ... }` /
-まとまり `group("ログイン") { ... }`
+`isEnabled` `isDisabled` `isChecked` `isNotChecked` `countIs` /
+`textContains` `textMatches` `textStartsWith` `textEndsWith` `textIsNot` `textIsEmpty` `textIsNotEmpty` /
+`screenIs`(FM 視覚検証)/ `launchApp` `relaunchApp` `terminateApp` `wait` /
+分岐 `ifCanSelect { }.ifElse { }`・`ios { }`・`android { }` / 繰り返し `repeatWhileCanSelect` `doUntilTrue` /
+任意コード `procedure("...") { try await ... }` / まとまり `group("ログイン") { ... }`
 
 - `notExist` は**消えるまで待つ**(初回で不在なら即成功)。ダイアログ・ローディングが閉じたことの確認に使う
 - **スコープ `>>` はアプリが容器を a11y ツリーに公開している必要がある**(`#id` と同じ要件で
   フレームワーク非依存。4 SUT × iOS/Android で実測)。畳まれた容器(Flutter の `MergeSemantics` 等)は
   子孫が消えるためスコープに使えない
 - `countIs("#list >> .clickable", 3)` はリスト件数の検証。タイムアウトまで個数の変化を待つ
+  (`||` は和集合の総数。同じ要素が複数の節にマッチしても1度だけ数える)
+- 一覧の折り返し下にある項目は `tap("設定", scroll: .down)` / `exist("システム", scroll: .down)` で
+  **スクロールしながら探す**(`scrollTo` を先に流すのと同じ。省略時は現在画面のみ)
+- `textIsNot` / `textIsEmpty` / `textIsNotEmpty` は**可視性を見ない**(「見えていないこと」は
+  画面照合できないため)。値の変化待ちに使う
+- `doUntilTrue("在庫が補充される") { try await stockCount() > 0 }` はアプリ・外部の状態待ち。
+  画面要素の出現待ちは各コマンドの `timeout:` を使う
 - テストクラスに `func setUp()` / `func tearDown()` を書くと各 `@Test` の前後で自動実行される。
   **tearDown は失敗後でも実行される**(片付けが飛ぶと後続シナリオを汚すため)
 

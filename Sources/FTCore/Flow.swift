@@ -67,6 +67,10 @@ public struct FlowStep: Codable, Sendable {
     /// (StepCommandParams.durationSpec)・実行時のフォールバックはこの1つに揃える
     public static let defaultPressDuration: Double = 1.0
 
+    /// スクロール探索(`scrollTo` / `tap(scroll:)` / `exist(scroll:)`)の既定スワイプ上限。
+    /// DSL の既定引数と StepCommandParams.maxSwipesSpec はこの1つに揃える
+    public static let defaultMaxSwipes = 8
+
     public init(action: String? = nil, assert: String? = nil, locator: FlowLocator? = nil,
                 fallbacks: [FlowLocator]? = nil, text: String? = nil, direction: String? = nil,
                 expected: String? = nil, timeout: Int? = nil, maxSwipes: Int? = nil,
@@ -174,13 +178,18 @@ public struct FlowLocator: Codable, Equatable, Sendable {
     /// 相対ステップ列(`通知:right:belowButton`)。空でなければ、この FlowLocator の属性フィルタは
     /// **対象ではなく基準(アンカー)**を指す。最終結果は最後のステップの解決結果
     public var relative: [FlowRelativeStep]?
+    /// 除外条件(セレクタ式の `text!=キャンセル`)。**1要素につき属性1つだけ**設定された
+    /// FlowLocator が並ぶ(パースの構造上そうなる)。どれかに一致した要素を候補から取り除く。
+    /// **単独では条件にならない**(hasNoFilter に数えない = 否定だけの節は検証で落とす。
+    /// 「〇〇以外の全要素」は容器やレイアウトノードまで掴んで事故になるため)
+    public var not: [FlowLocator]?
 
     public init(id: String? = nil, label: String? = nil, labelMatch: FlowMatchMode? = nil,
                 value: String? = nil, valueMatch: FlowMatchMode? = nil,
                 placeholder: String? = nil, placeholderMatch: FlowMatchMode? = nil,
                 type: String? = nil, checked: Bool? = nil, enabled: Bool? = nil,
                 index: Int? = nil, raw: String? = nil, scope: [FlowLocator]? = nil,
-                relative: [FlowRelativeStep]? = nil) {
+                relative: [FlowRelativeStep]? = nil, not: [FlowLocator]? = nil) {
         self.id = id
         self.label = label
         self.labelMatch = labelMatch
@@ -195,6 +204,7 @@ public struct FlowLocator: Codable, Equatable, Sendable {
         self.raw = raw
         self.scope = scope
         self.relative = relative
+        self.not = not
     }
 
     /// 属性フィルタが1つも無いか(= 候補を絞れない節)
@@ -234,6 +244,17 @@ public struct FlowLocator: Codable, Equatable, Sendable {
         if let enabled { parts.append("enabled=\(enabled)") }
         // 表示は 1 オリジン、1番目は省略(セレクタ式の表記と揃える。内部 index は 0 オリジン)
         if let index, index > 0 { parts.append("[\(index + 1)]") }
+        // 除外条件は各エントリの属性1つを `属性!=値` で見せる(セレクタ式の記法と同じ)。
+        // 最初の `=` だけを `!=` に替える(値が `=` を含んでも壊さない)。
+        // 型だけの entry は baseSummary が名前を付けない(`button`)ので補う
+        for entry in not ?? [] {
+            let inner = entry.baseSummary
+            if let separator = inner.firstIndex(of: "=") {
+                parts.append(inner[..<separator] + "!=" + inner[inner.index(after: separator)...])
+            } else {
+                parts.append("type!=\(inner)")
+            }
+        }
         return parts.isEmpty ? "(空)" : parts.joined(separator: "&&")
     }
 

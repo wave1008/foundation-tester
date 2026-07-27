@@ -318,6 +318,11 @@ public final class StepExecutor {
                     if try await swipeWithFallback(direction, phase: &phase) { viaXCUITest = true }
                 }
             }
+            // optional は他のアクションと同契約(出るか不定の要素をスクロール探索したとき、
+            // 空振りで scene を落とさない)。tap(scroll:) が optional を伝えてくる
+            if step.optional == true {
+                return StepOutcome(status: .skipped("要素が見つからないため省略(optional)"))
+            }
             return StepOutcome(status: .failed(
                 "\(maxSwipes) 回スクロールしても要素が見つかりません: \(step.locatorSummary)"))
         }
@@ -658,7 +663,8 @@ public final class StepExecutor {
             if let lastOcclusion { return lastOcclusion }
             return .failed("要素が見つかりません: \(step.locatorSummary)(timeout \(step.timeout ?? 5)s)")
 
-        case "valueEquals", "textEquals", "textContains", "textMatches":
+        case "valueEquals", "textEquals", "textContains", "textMatches",
+             "textStartsWith", "textEndsWith":
             guard let expected = step.expected else {
                 return .skipped("expected が未指定")
             }
@@ -730,6 +736,8 @@ public final class StepExecutor {
             switch assert {
             case "textContains": relation = "を含みません"
             case "textMatches": relation = "に一致しません(正規表現)"
+            case "textStartsWith": relation = "で始まりません"
+            case "textEndsWith": relation = "で終わりません"
             default: relation = "が一致しません"
             }
             return found
@@ -771,6 +779,52 @@ public final class StepExecutor {
                 phase.waitMs += Self.ms(clock.now - waitStart)
             }
             return .failed("要素がまだ存在します: \(step.locatorSummary)(timeout \(step.timeout ?? 5)s)")
+
+        case "textNotEquals", "textIsEmpty", "textIsNotEmpty":
+            // 否定・空判定は occlusion-guard を掛けない(「見えていないこと」は画面照合できない)。
+            // 要素自体は在ることが前提で、タイムアウトまでテキストの変化を待つ
+            if assert == "textNotEquals", step.expected == nil {
+                return .skipped("expected が未指定")
+            }
+            let deadline = Date().addingTimeInterval(TimeInterval(step.timeout ?? 5))
+            var backoff = PollBackoff()
+            var found = false
+            var lastActual: String?
+            while true {
+                let start = clock.now
+                let snapshot = try await driver.snapshot()
+                phase.snapshotMs += Self.ms(clock.now - start)
+                if let (element, fallback) = Self.resolve(step: step, in: snapshot,
+                                                          strictForAssert: true) {
+                    found = true
+                    let actual = element.label
+                    lastActual = actual
+                    let satisfied: Bool
+                    switch assert {
+                    case "textIsEmpty": satisfied = (actual ?? "").isEmpty
+                    case "textIsNotEmpty": satisfied = !(actual ?? "").isEmpty
+                    default: satisfied = actual != step.expected
+                    }
+                    if satisfied {
+                        if let fallback { return .passedViaFallback(fallback) }
+                        return .passed
+                    }
+                }
+                if Date() >= deadline { break }
+                let waitStart = clock.now
+                try await Task.sleep(for: backoff.nextDelay())
+                phase.waitMs += Self.ms(clock.now - waitStart)
+            }
+            guard found else { return .failed("要素が見つかりません: \(step.locatorSummary)") }
+            switch assert {
+            case "textIsEmpty":
+                return .failed("テキストが空ではありません: 実際 \"\(lastActual ?? "nil")\"")
+            case "textIsNotEmpty":
+                return .failed("テキストが空です: \(step.locatorSummary)")
+            default:
+                return .failed("テキストが期待値と一致しています(不一致を期待): "
+                               + "\"\(lastActual ?? "nil")\"")
+            }
 
         case "enabled", "disabled":
             let wantEnabled = assert == "enabled"
@@ -833,8 +887,8 @@ public final class StepExecutor {
             guard let locator = step.locator else {
                 return .skipped("ロケータが未指定")
             }
-            // `||` は他コマンドと同じ「解決できる方」の意味にする = 候補が1件以上見つかった最初の節を
-            // 数える(集合の合併ではない)。どの節も 0 件なら 0 件として判定する
+            // `||` は**候補集合の和**(Shirates 準拠)。全節の候補を合わせ、同じ要素は1度だけ数える。
+            // 節の優先順位が効くのは要素を1つ選ぶときだけで、数えるときは節を跨いで合計する
             let chain = [locator] + (step.fallbacks ?? [])
             let deadline = Date().addingTimeInterval(TimeInterval(step.timeout ?? 5))
             var backoff = PollBackoff()
@@ -843,9 +897,7 @@ public final class StepExecutor {
                 let start = clock.now
                 let snapshot = try await driver.snapshot()
                 phase.snapshotMs += Self.ms(clock.now - start)
-                actual = chain.lazy
-                    .compactMap { Self.resolvedCandidates($0, elements: snapshot.elements)?.count }
-                    .first { $0 > 0 } ?? 0
+                actual = Self.unionCandidates(chain, elements: snapshot.elements).count
                 if actual == expectedCount { return .passed }
                 if Date() >= deadline { break }
                 let waitStart = clock.now
@@ -968,25 +1020,53 @@ public final class StepExecutor {
         return element.label == label ? .exact : .substring
     }
 
-    /// 相対ステップ1つ分。フィルタ連鎖は `||` と同じく「**方向解決まで成功した**最初の節」を採る
-    /// (候補は在るが方向条件を満たさない、で次の節へ落ちる)。
+    /// 相対ステップ1つ分。フィルタ連鎖は `||` と同じく**候補集合の和**(Shirates 準拠)で、
+    /// 節ごとに方向解決するのではなく**全節の候補を合わせてから方向で並べる**
+    /// (`:right(.button||.switch)` = 「両者のうち最も近い1つ」。節の順は同着の並びにだけ効く)。
     /// フィルタ省略時は `.widget`(役割が確定した要素だけ = 容器やレイアウトノードを掴まない)
     static func resolveRelative(_ step: FlowRelativeStep, from anchor: ElementInfo,
                                 pool: [ElementInfo]) -> (element: ElementInfo, quality: MatchQuality)? {
         let filters = (step.filter?.isEmpty ?? true)
             ? [FlowLocator(type: "widget")] : step.filter!
+        var union: [(element: ElementInfo, filter: FlowLocator)] = []
+        var seen: Set<Int> = []
         for filter in filters {
-            guard let matches = resolvedCandidates(filter, elements: pool), !matches.isEmpty else { continue }
-            let ordered = directionalCandidates(matches, anchor: anchor, direction: step.direction)
-            // 序数は `:right(2)` が本線。`:right(.button&&[2])` と書いた場合も同じ意味にする。
-            // ただしフィルタ自身が相対セレクタなら index は既に基準の選択で消費済み
-            let filterIndex = (filter.relative?.isEmpty ?? true) ? filter.index : nil
-            let ordinal = step.ordinal ?? ((filterIndex ?? 0) + 1)
-            guard ordinal >= 1, ordinal <= ordered.count else { continue }
-            let picked = ordered[ordinal - 1]
-            return (picked, quality(of: picked, for: filter))
+            for element in resolvedCandidates(filter, elements: pool) ?? [] {
+                guard seen.insert(element.ref).inserted else { continue }
+                union.append((element, filter))
+            }
         }
-        return nil
+        guard !union.isEmpty else { return nil }
+        let ordered = directionalCandidates(union.map(\.element), anchor: anchor,
+                                            direction: step.direction)
+        // 序数は `:right(2)` が本線。`:right(.button&&[2])` はパースが step.ordinal へ畳むので、
+        // ここに残る節ごとの `[n]` は「節で違う値を手書きした」場合だけ = 最初の1つを和集合の序数に使う。
+        // 節自身が相対セレクタのときの index は基準の選択で消費済みなので見ない
+        let filterIndex = filters.first { ($0.relative?.isEmpty ?? true) && $0.index != nil }?.index
+        let ordinal = step.ordinal ?? ((filterIndex ?? 0) + 1)
+        guard ordinal >= 1, ordinal <= ordered.count else { return nil }
+        let picked = ordered[ordinal - 1]
+        // 一致品質は**掴んだ要素を出した節**で判定する(和集合なので節は要素ごとに違う)
+        let filter = union.first { $0.element.ref == picked.ref }?.filter ?? filters[0]
+        return (picked, quality(of: picked, for: filter))
+    }
+
+    /// 節連鎖(`||`)が指す候補集合。**Shirates 準拠の和集合**で、順序は「節の順 → 節内のツリー順」、
+    /// 同一要素(ref)は先に現れた節のものだけを残す(Shirates の filterBySelector と同じ規則)。
+    /// 要素を1つ選ぶ経路(resolveDetailed)が「最初に解決した節」を採るのと優先順位が一致するので、
+    /// `#id||ラベル` のヒール連鎖は和集合にしても先頭が変わらない。
+    /// **節ごとの `[n]` はここでは見ない**(集合を数える用途では `.button[2]` も全 button を指す)
+    public static func unionCandidates(_ chain: [FlowLocator], elements: [ElementInfo])
+        -> [ElementInfo] {
+        var result: [ElementInfo] = []
+        var seen: Set<Int> = []
+        for locator in chain {
+            for element in resolvedCandidates(locator, elements: elements) ?? [] {
+                guard seen.insert(element.ref).inserted else { continue }
+                result.append(element)
+            }
+        }
+        return result
     }
 
     /// 節が指す候補集合。**相対ステップ付きは解決結果の 0 or 1 件**になる
@@ -1038,6 +1118,13 @@ public final class StepExecutor {
         // checked は true のときだけ送られる = false は「オフ、または状態を持たない要素」
         if let checked = locator.checked { pool = pool.filter { ($0.checked ?? false) == checked } }
         if let enabled = locator.enabled { pool = pool.filter { $0.enabled == enabled } }
+        // 除外条件(`text!=キャンセル`)は**肯定フィルタで絞ったあと**に引く。
+        // 否定だけの節は上の hasNoFilter で既に nil を返しているので、ここには来ない
+        for exclusion in locator.not ?? [] {
+            let excluded = Set(candidates(exclusion, elements: pool)?.map(\.ref) ?? [])
+            if excluded.isEmpty { continue }
+            pool = pool.filter { !excluded.contains($0.ref) }
+        }
         return pool
     }
 
@@ -1048,6 +1135,10 @@ public final class StepExecutor {
         switch assert {
         case "textContains":
             return actual.contains(expected) ? expected : nil
+        case "textStartsWith":
+            return actual.hasPrefix(expected) ? expected : nil
+        case "textEndsWith":
+            return actual.hasSuffix(expected) ? expected : nil
         case "textMatches":
             guard let range = actual.range(of: expected, options: .regularExpression) else {
                 return nil

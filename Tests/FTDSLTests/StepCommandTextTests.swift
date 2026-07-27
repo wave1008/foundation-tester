@@ -201,4 +201,42 @@ final class StepCommandTextTests: XCTestCase {
                        "countIs(\"#list\", 2)")
     }
 
+    // MARK: - 対称化したアサーション・スクロール引数
+
+    func testParsesNewTextAssertions() {
+        XCTAssertEqual(StepCommandText.parse("textStartsWith \"#t\" ~ \"合計\"")?.strings,
+                       ["#t", "合計"])
+        XCTAssertEqual(StepCommandText.parse("textEndsWith \"#t\" ~ \"円\"")?.strings,
+                       ["#t", "円"])
+        XCTAssertEqual(StepCommandText.parse("textIsNot \"#t\" != \"処理中\"")?.strings,
+                       ["#t", "処理中"])
+        XCTAssertEqual(StepCommandText.parse("textIsEmpty \"#input\"")?.strings, ["#input"])
+        XCTAssertEqual(StepCommandText.parse("textIsNotEmpty \"#input\"")?.strings, ["#input"])
+    }
+
+    func testRendersNewTextAssertionsWhenVerbChanges() throws {
+        XCTAssertEqual(
+            try StepCommandText.apply(display: "textStartsWith \"#t\" ~ \"合計\"",
+                                      toCode: "textIs(\"#t\", \"合計 1,200円\")"),
+            "textStartsWith(\"#t\", \"合計\")")
+        XCTAssertEqual(
+            try StepCommandText.apply(display: "textIsEmpty \"#input\"",
+                                      toCode: "exist(\"#input\")"),
+            "textIsEmpty(\"#input\")")
+    }
+
+    /// 表示に現れない `scroll:` は文字列リテラル置換の経路で保存される
+    func testScrollArgumentIsPreservedOnLiteralEdit() throws {
+        XCTAssertEqual(
+            try StepCommandText.apply(display: "tap \"設定\"",
+                                      toCode: "tap(\"表示\", scroll: .down)"),
+            "tap(\"設定\", scroll: .down)")
+    }
+
+    /// scroll: が合成する探索ステップは**ソース行を持たない**ので、表からの編集対象にしない
+    /// (解釈できると tap 行が scrollTo 行に書き換えられる)
+    func testSynthesizedScrollSearchStepIsNotEditable() {
+        XCTAssertNil(StepCommandText.parse("scrollTo \"設定\" (探索)"))
+        XCTAssertNotNil(StepCommandText.parse("scrollTo \"設定\""))
+    }
 }

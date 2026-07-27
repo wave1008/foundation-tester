@@ -78,7 +78,7 @@ public enum StepCommandText {
             guard !optionalFlag, let selector = unquote(rest) else { return nil }
             return Parsed(verb: verb, strings: [selector], optionalFlag: false, word: nil)
         case "exist", "notExist", "isEnabled", "isDisabled", "isChecked", "isNotChecked",
-             "screenIs", "procedure":
+             "textIsEmpty", "textIsNotEmpty", "screenIs", "procedure":
             guard !optionalFlag, let value = unquote(rest) else { return nil }
             return Parsed(verb: verb, strings: [value], optionalFlag: false, word: nil)
         case "countIs":
@@ -105,10 +105,18 @@ public enum StepCommandText {
             }
             return Parsed(verb: verb, strings: [selector, expected],
                           optionalFlag: false, word: nil)
-        case "textContains", "textMatches":
+        case "textContains", "textMatches", "textStartsWith", "textEndsWith":
             // 説明文の区切りは `\" ~ \"`(textIs の `==` と区別する。Commands.swift と同期)
             guard !optionalFlag,
                   let (selector, expected) = unquotePair(rest, separator: "\" ~ \"") else {
+                return nil
+            }
+            return Parsed(verb: verb, strings: [selector, expected],
+                          optionalFlag: false, word: nil)
+        case "textIsNot":
+            // 否定の区切りは `\" != \"`(Commands.swift の operatorText と同期)
+            guard !optionalFlag,
+                  let (selector, expected) = unquotePair(rest, separator: "\" != \"") else {
                 return nil
             }
             return Parsed(verb: verb, strings: [selector, expected],
@@ -185,7 +193,8 @@ public enum StepCommandText {
     internal static let renewableFuncs: Set<String> = [
         "tap", "type", "press", "swipe", "scrollTo", "exist", "notExist", "isEnabled",
         "isDisabled", "isChecked", "isNotChecked", "countIs", "textIs", "valueIs",
-        "textContains", "textMatches",
+        "textContains", "textMatches", "textStartsWith", "textEndsWith", "textIsNot",
+        "textIsEmpty", "textIsNotEmpty",
         "screenIs", "launchApp", "relaunchApp", "terminateApp", "wait",
     ]
 
@@ -199,14 +208,15 @@ public enum StepCommandText {
             // scrollTo に optional 引数は無い(parse も optionalFlag 付きを受理しない)
             return "scrollTo(\(literal(parsed.strings[0])))"
         case "exist", "notExist", "isEnabled", "isDisabled", "isChecked", "isNotChecked",
-             "screenIs":
+             "textIsEmpty", "textIsNotEmpty", "screenIs":
             return "\(parsed.verb)(\(literal(parsed.strings[0])))"
         case "countIs":
             return "countIs(\(literal(parsed.strings[0])), \(parsed.word ?? "0"))"
         case "type" where parsed.strings.count == 1:
             // ロケータなしの type("text")
             return "type(\(literal(parsed.strings[0]))\(optionalArg))"
-        case "type", "textIs", "valueIs", "textContains", "textMatches":
+        case "type", "textIs", "valueIs", "textContains", "textMatches",
+             "textStartsWith", "textEndsWith", "textIsNot":
             return "\(parsed.verb)(\(literal(parsed.strings[0])), "
                 + "\(literal(parsed.strings[1]))\(optionalArg))"
         case "swipe":

@@ -5,7 +5,7 @@ final class StepCommandParamsTests: XCTestCase {
 
     func testSpecsForVerbs() {
         XCTAssertEqual(StepCommandParams.specs(forVerb: "exist").map(\.name),
-                       ["timeout", "requireVisible"])
+                       ["timeout", "requireVisible", "scroll", "maxSwipes"])
         XCTAssertEqual(StepCommandParams.specs(forVerb: "textIs").map(\.name),
                        ["timeout", "requireVisible"])
         XCTAssertEqual(StepCommandParams.specs(forVerb: "valueIs").map(\.name),
@@ -16,7 +16,8 @@ final class StepCommandParamsTests: XCTestCase {
                        ["duration", "optional", "timeout"])
         XCTAssertEqual(StepCommandParams.specs(forVerb: "type").map(\.name),
                        ["optional", "timeout"])
-        XCTAssertEqual(StepCommandParams.specs(forVerb: "tap").map(\.name), ["timeout"])
+        XCTAssertEqual(StepCommandParams.specs(forVerb: "tap").map(\.name),
+                       ["timeout", "scroll", "maxSwipes"])
     }
 
     func testSpecsEmptyForVerbsWithoutHiddenParams() {
@@ -28,21 +29,21 @@ final class StepCommandParamsTests: XCTestCase {
     func testParseKeywordArgument() {
         XCTAssertEqual(StepCommandParams.parse(code: "exist(\"WiFi\", timeout: 15)",
                                                verb: "exist"),
-                       ["timeout": "15", "requireVisible": "true"])
+                       ["timeout": "15", "requireVisible": "true", "scroll": "", "maxSwipes": "8"])
     }
 
     func testExistRequireVisibleOptOut() {
         // exist も既定 requireVisible=true。false でツリー存在のみ
         XCTAssertEqual(
             StepCommandParams.parse(code: "exist(\"#ok\")", verb: "exist"),
-            ["timeout": "", "requireVisible": "true"])
+            ["timeout": "", "requireVisible": "true", "scroll": "", "maxSwipes": "8"])
         XCTAssertEqual(
             StepCommandParams.parse(code: "exist(\"#ok\", requireVisible: false)", verb: "exist"),
-            ["timeout": "", "requireVisible": "false"])
+            ["timeout": "", "requireVisible": "false", "scroll": "", "maxSwipes": "8"])
         XCTAssertEqual(
             StepCommandParams.parse(code: "exist(\"#ok\", timeout: 2, requireVisible: false)",
                                     verb: "exist"),
-            ["timeout": "2", "requireVisible": "false"])
+            ["timeout": "2", "requireVisible": "false", "scroll": "", "maxSwipes": "8"])
     }
 
     func testTextIsRequireVisibleOptOut() {
@@ -61,7 +62,7 @@ final class StepCommandParamsTests: XCTestCase {
 
     func testParseFillsOmittedArgumentsWithDefaults() {
         XCTAssertEqual(StepCommandParams.parse(code: "exist(\"WiFi\")", verb: "exist"),
-                       ["timeout": "", "requireVisible": "true"])
+                       ["timeout": "", "requireVisible": "true", "scroll": "", "maxSwipes": "8"])
         XCTAssertEqual(StepCommandParams.parse(code: "scrollTo(\"x\")", verb: "scrollTo"),
                        ["direction": "up", "maxSwipes": "8"])
         XCTAssertEqual(StepCommandParams.parse(code: "type(\"a\", \"b\")", verb: "type"),
@@ -92,20 +93,20 @@ final class StepCommandParamsTests: XCTestCase {
     func testParseTapIgnoresOptionalAndReturnsTimeoutDefault() {
         // tap の optional は specList に無いが、ソースに存在しても素通しする(落とし穴対応)
         XCTAssertEqual(StepCommandParams.parse(code: "tap(\"OK\", optional: true)", verb: "tap"),
-                       ["timeout": ""])
+                       ["timeout": "", "scroll": "", "maxSwipes": "8"])
     }
 
     func testParseTapWithOptionalAndTimeout() {
         XCTAssertEqual(
             StepCommandParams.parse(code: "tap(\"x\", optional: true, timeout: 0)", verb: "tap"),
-            ["timeout": "0"])
+            ["timeout": "0", "scroll": "", "maxSwipes": "8"])
     }
 
     func testParseActionTimeoutDefaultsAndExplicit() {
         XCTAssertEqual(StepCommandParams.parse(code: "tap(\"x\")", verb: "tap"),
-                       ["timeout": ""])
+                       ["timeout": "", "scroll": "", "maxSwipes": "8"])
         XCTAssertEqual(StepCommandParams.parse(code: "tap(\"x\", timeout: 3)", verb: "tap"),
-                       ["timeout": "3"])
+                       ["timeout": "3", "scroll": "", "maxSwipes": "8"])
         XCTAssertEqual(StepCommandParams.parse(code: "type(\"a\", \"b\", timeout: 0)", verb: "type"),
                        ["optional": "false", "timeout": "0"])
         XCTAssertEqual(
@@ -116,7 +117,7 @@ final class StepCommandParamsTests: XCTestCase {
     func testParseKeepsEscapedLiteral() {
         XCTAssertEqual(StepCommandParams.parse(code: #"exist("a\"b", timeout: 5)"#,
                                                verb: "exist"),
-                       ["timeout": "5", "requireVisible": "true"])
+                       ["timeout": "5", "requireVisible": "true", "scroll": "", "maxSwipes": "8"])
     }
 
     func testParseRejectsVariableArgument() {
