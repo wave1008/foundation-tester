@@ -31,7 +31,10 @@ description: ftester のマシンプロファイル・アプリプロファイ�
 次の2つを聞く(自由入力):
 
 - **アプリの表示名**(`appName`。例 `SUTStore`)
-- **アプリID**(iOS は bundle ID、Android はパッケージ名。例 `com.sutec.mobile`)
+- **アプリID**(iOS は bundle ID、Android はパッケージ名。例 `com.sutec.mobile`。
+  **分からなくても中断しない**: init 由来プロファイルの既存値(プレースホルダ `com.example.myapp` 含む)の
+  まま進め、実行前に `profiles/apps/` の `app` を実IDへ差し替える必要があることを 🧑 に伝えて
+  ステップ7の報告にも残す)
 
 **パッケージパス(`appPath`)は聞かない**。ユーザーが自発的に伝えてきた場合のみ使う
 (ビルド済み `.app`/`.apk`。相対は WORK_DIR 基準・`~`・絶対可)。未指定なら省略する

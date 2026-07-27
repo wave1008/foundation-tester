@@ -69,7 +69,10 @@ clone 構成(両方ある)の再実行は従来どおり冪等スキップで続
 
 **セットアップ値は 🧑 に冒頭の1回でまとめて質問する**（以降のステップで散発的に再質問しない）:
 
-- プロジェクト名（英数字 `^[A-Za-z0-9_][A-Za-z0-9_-]*$`）とアプリの bundle ID（→ステップ4で使う）
+- プロジェクト名（英数字 `^[A-Za-z0-9_][A-Za-z0-9_-]*$`）とアプリの bundle ID（→ステップ4で使う。
+  **分からなくても中断しない**: 選択肢に「まだ分からない(後で設定)」を含め、その場合は
+  プレースホルダ `com.example.myapp` のまま続行する。実IDが要るのは実行(launch)時だけで、
+  セットアップ完了後に `profiles/apps/<projectname>.json` の `app` を差し替えれば済む →ステップ6）
 - マシン名（→ステップ5で使う）
 - ツール（foundation-tester）の clone 先（**任意**。既定は WORK_DIR の隣 `../foundation-tester`。
   AskUserQuestion では「隣（推奨）」を先頭の選択肢にし、任意パスは Other で受ける。
@@ -145,6 +148,8 @@ tag も clone で取得できる)。
   --ftester-path ../foundation-tester --name <ProjectName> --app <bundleID>
 ```
 
+  bundle ID が未確定なら `--app` を**省略**する(既定のプレースホルダ `com.example.myapp` で作成される)。
+
   → WORK_DIR に `Package.swift`(空マーカー区間 + ftester 依存)と `Projects/<ProjectName>/`、
   `.vscode/settings.json`(`ftester.binaryPath`・`ftester.project`。拡張の手動設定を不要にする)が生成され、
   受け手専用の `/ftester-setup` スキルが `.claude/skills/` に上書きされる(次回以降の実行はそちらを使う。
@@ -183,7 +188,12 @@ docs/getting-started.md「git 管理(何をコミットするか)」の方針を
 
 - 利用可能な iOS シミュレータが **0 件のときだけ** 🧑 停止し、Xcode で runtime/デバイスの導入を依頼する。
 
-### 6. アプリのパス（appPath）は設定しない
+### 6. アプリのパス（appPath）と未確定の bundle ID は後から設定する
+
+bundle ID をプレースホルダで続行した場合は、`Projects/<ProjectName>/profiles/apps/<projectname>.json` の
+`app`(ios/android セクション)を実IDへ差し替えるまでアプリの起動(launch)が失敗することを 🧑 に伝える
+(セットアップ・dry-run はプレースホルダのままで完走できる)。ステップ9の完了報告にも「bundle ID 要設定」を
+残す。
 
 `appPath` はセットアップでは**聞かない・書かない**（未設定なら `autoInstall` は無効のまま =
 インストール済みのアプリをそのまま使う）。自動インストールが必要になったら、後から
