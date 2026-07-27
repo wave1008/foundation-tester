@@ -233,10 +233,10 @@ final class StepCommandTextTests: XCTestCase {
             "tap(\"設定\", scroll: .down)")
     }
 
-    /// scroll: が合成する探索ステップは**ソース行を持たない**ので、表からの編集対象にしない
-    /// (解釈できると tap 行が scrollTo 行に書き換えられる)
-    func testSynthesizedScrollSearchStepIsNotEditable() {
-        XCTAssertNil(StepCommandText.parse("scrollTo \"設定\" (探索)"))
+    /// `scroll:` は同じステップに畳んだので、表示は素の `tap "…"` のまま
+    /// (合成ステップが無くなったため、探索用の特別な表示表現も無い)
+    func testScrollSearchHasNoSyntheticStepDisplay() {
+        XCTAssertEqual(StepCommandText.parse("tap \"設定\"")?.verb, "tap")
         XCTAssertNotNil(StepCommandText.parse("scrollTo \"設定\""))
     }
 }
