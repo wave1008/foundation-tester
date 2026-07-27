@@ -622,4 +622,51 @@ final class AssertKindsTests: XCTestCase {
         let outcome = await StepExecutor(driver: driver).execute(step)
         XCTAssertFalse(isPassed(outcome.status))
     }
+
+    // MARK: - countIs の失敗メッセージ
+
+    /// 節が複数あるときは**どの節が何件拾ったか**まで出す(和集合の総数だけでは直せない)
+    func testCountFailureShowsPerClauseBreakdown() async {
+        let elements = [node(1, type: "button", label: "許可"), node(2, type: "staticText", label: "許可"),
+                        node(3, type: "button", label: "別名"), node(4, type: "staticText", label: "別名")]
+        let step = FlowStep(assert: "count", locator: FlowLocator(label: "許可"),
+                            fallbacks: [FlowLocator(label: "別名")], timeout: 0, expectedCount: 2)
+        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [elements])).execute(step)
+        let reason = failureReason(outcome.status)
+        XCTAssertEqual(reason?.contains("実際 4"), true, reason ?? "")
+        XCTAssertEqual(reason?.contains("内訳"), true, reason ?? "")
+        XCTAssertEqual(reason?.contains("text=許可 2件"), true, reason ?? "")
+        XCTAssertEqual(reason?.contains("text=別名 2件"), true, reason ?? "")
+    }
+
+    /// 内訳の合計は必ず表示件数と一致する(重複は先に現れた節に数える)
+    func testCountBreakdownSumsToTotalWhenClausesOverlap() {
+        let shared = ElementInfo(ref: 1, type: "button", identifier: "save", label: "保存",
+                                 value: nil, placeholder: nil, enabled: true,
+                                 frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: 1)
+        let byClause = StepExecutor.unionByClause(
+            [FlowLocator(id: "save"), FlowLocator(label: "保存")], elements: [shared])
+        XCTAssertEqual(byClause.map(\.elements.count), [1, 0])
+        XCTAssertEqual(byClause.reduce(0) { $0 + $1.elements.count },
+                       StepExecutor.unionCandidates(
+                        [FlowLocator(id: "save"), FlowLocator(label: "保存")], elements: [shared]).count)
+    }
+
+    /// 単一節なら従来どおりロケータだけ(内訳は付けない)
+    func testCountFailureKeepsSimpleMessageForSingleClause() async {
+        let step = FlowStep(assert: "count", locator: FlowLocator(type: "button"),
+                            timeout: 0, expectedCount: 3)
+        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [[node(1, type: "button")]]))
+            .execute(step)
+        let reason = failureReason(outcome.status)
+        XCTAssertEqual(reason?.contains("内訳"), false, reason ?? "")
+        XCTAssertEqual(reason?.contains("button"), true, reason ?? "")
+    }
+
+    /// 失敗メッセージのロケータ表示は**節を `||` で連ねる**(旧: `(fallback: …)`)
+    func testLocatorSummaryJoinsClausesWithOrOperator() {
+        let step = FlowStep(assert: "exists", locator: FlowLocator(id: "a"),
+                            fallbacks: [FlowLocator(label: "b")])
+        XCTAssertEqual(step.locatorSummary, "id=a || text=b")
+    }
 }

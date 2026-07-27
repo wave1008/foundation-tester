@@ -1088,20 +1088,28 @@ public final class StepExecutor {
             let deadline = Date().addingTimeInterval(TimeInterval(step.timeout ?? 5))
             var backoff = PollBackoff()
             var actual = 0
+            var breakdown: [(clause: FlowLocator, elements: [ElementInfo])] = []
             while true {
                 let start = clock.now
                 var snapshot = try await driver.snapshot()
                 phase.snapshotMs += Self.ms(clock.now - start)
                 try await dismissInterruption(in: &snapshot, phase: &phase)
-                actual = Self.unionCandidates(chain, elements: snapshot.elements).count
+                breakdown = Self.unionByClause(chain, elements: snapshot.elements)
+                actual = breakdown.reduce(0) { $0 + $1.elements.count }
                 if actual == expectedCount { return .passed }
                 if Date() >= deadline { break }
                 let waitStart = clock.now
                 try await Task.sleep(for: backoff.nextDelay())
                 phase.waitMs += Self.ms(clock.now - waitStart)
             }
-            return .failed("個数が一致しません: 期待 \(expectedCount)、実際 \(actual)"
-                           + "(\(locator.summary))")
+            // 節が複数あるときは**どの節が何件拾ったか**まで出す。和集合の総数だけだと
+            // 「どれが想定より多く拾ったのか」が分からず、セレクタを直すのに snapshot を
+            // 取り直す往復が要る(実例: ラベルで数えてボタンの内側の Text も拾っていた)
+            let detail = breakdown.count > 1
+                ? "内訳: " + breakdown.map { "\($0.clause.summary) \($0.elements.count)件" }
+                    .joined(separator: " / ")
+                : step.locatorSummary
+            return .failed("個数が一致しません: 期待 \(expectedCount)、実際 \(actual)(\(detail))")
 
         case "screenMatches":
             guard let expected = step.expected, !expected.isEmpty else {
@@ -1254,13 +1262,23 @@ public final class StepExecutor {
     /// **節ごとの `[n]` はここでは見ない**(集合を数える用途では `.button[2]` も全 button を指す)
     public static func unionCandidates(_ chain: [FlowLocator], elements: [ElementInfo])
         -> [ElementInfo] {
-        var result: [ElementInfo] = []
+        unionByClause(chain, elements: elements).flatMap(\.elements)
+    }
+
+    /// 和集合を**節ごとの寄与に分けて**返す(countIs の失敗メッセージの内訳用)。
+    /// 重複は先に現れた節に数えるので、**各節の件数の合計 = 和集合の総数**になる
+    /// (合計が表示件数と合わないと、内訳がかえって混乱のもとになる)
+    public static func unionByClause(_ chain: [FlowLocator], elements: [ElementInfo])
+        -> [(clause: FlowLocator, elements: [ElementInfo])] {
+        var result: [(clause: FlowLocator, elements: [ElementInfo])] = []
         var seen: Set<Int> = []
         for locator in chain {
+            var mine: [ElementInfo] = []
             for element in resolvedCandidates(locator, elements: elements) ?? [] {
                 guard seen.insert(element.ref).inserted else { continue }
-                result.append(element)
+                mine.append(element)
             }
+            result.append((locator, mine))
         }
         return result
     }

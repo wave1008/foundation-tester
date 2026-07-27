@@ -345,12 +345,13 @@ public extension FlowStep {
         return "(空ステップ)"
     }
 
+    /// 失敗メッセージ・ヒールプロンプト用のロケータ表示。**節は `||` で連ねる**(セレクタ式と同じ形)。
+    /// 以前は他の節を「fallback」と呼んでいたが、`||` は**候補集合の和**なので
+    /// 「片方だけ使われる」という誤った期待を与える(2026-07-27 に用語ごと直した)
     var locatorSummary: String {
         var parts: [String] = []
         if let locator { parts.append(locator.summary) }
-        if let fallbacks, !fallbacks.isEmpty {
-            parts.append("(fallback: \(fallbacks.map(\.summary).joined(separator: " → ")))")
-        }
-        return parts.isEmpty ? "(ロケータなし)" : parts.joined(separator: " ")
+        parts.append(contentsOf: (fallbacks ?? []).map(\.summary))
+        return parts.isEmpty ? "(ロケータなし)" : parts.joined(separator: " || ")
     }
 }
