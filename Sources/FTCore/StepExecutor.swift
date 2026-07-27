@@ -200,6 +200,11 @@ public final class StepExecutor {
     private var cachedShotAt: ContinuousClock.Instant?
     /// 白フレーム確定時に呼ぶ。FTDriveCore が凍結中断+deviceFrozen emit を行う
     public var onDeviceFrozen: (@Sendable () -> Void)?
+    /// スクロール探索の直後に「空打ち」の極小ドラッグを入れるか(**iOS だけ true**)。
+    /// iOS(Compose)のスクロール容器は次の1タッチを消費してタップが効かないため必要だが、
+    /// **Android では 2pt のドラッグがクリックとして発火してしまう**(タップしていないのに
+    /// 行が選択される = 二重実行。2026-07-27 実測)。プラットフォームで分ける唯一の理由
+    private let releasesScrollTouch: Bool
 
     /// 画面が変わり得る操作の直後に呼び、スクショ再利用キャッシュを捨てる(performCustom から呼ぶ)。
     public func invalidateScreenshotCache() { cachedScreenshot = nil }
@@ -222,7 +227,9 @@ public final class StepExecutor {
                 typeDriver: AppDriver? = nil, preferTypeDriver: Bool = false,
                 typeDriverGestures: Set<String> = [],
                 delegate: ReplayDelegate? = nil, healingEnabled: Bool = false,
-                occlusionGuard: Bool = false, occlusionInkThreshold: Double = 12) {
+                occlusionGuard: Bool = false, occlusionInkThreshold: Double = 12,
+                releasesScrollTouch: Bool = false) {
+        self.releasesScrollTouch = releasesScrollTouch
         self.driver = driver
         self.fallbackDriver = fallbackDriver
         self.typeDriver = typeDriver
@@ -307,7 +314,28 @@ public final class StepExecutor {
                 let snapshot = try await driver.snapshot()
                 phase.snapshotMs += Self.ms(clock.now - start)
                 // スクロール探索でも type+index フォールバックは偽陽性のもとなので使わない
-                if let (_, fallback) = Self.resolve(step: step, in: snapshot, strictForAssert: true) {
+                if let (element, fallback) = Self.resolve(step: step, in: snapshot, strictForAssert: true) {
+                    // **スワイプしたなら静止を待つ**。フリングの慣性でリストは減速しながら動き続けており、
+                    // 見つけた瞬間に返すと次のステップ(tap 等)が別の要素を掴む
+                    // (実測 2026-07-27: Android は #row_30 を狙って #row_37 をタップした)。
+                    // スワイプしていない周回(attempt == 0)は静止しているので追加コストを払わない
+                    if attempt > 0 {
+                        // スワイプで探し当てた直後は、そのまま操作しても効かない/別要素を掴む。
+                        // 順序に意味がある(逆にすると Android で誤タップが再発する。2026-07-27 実測):
+                        //  1. **空打ちの極小ドラッグ**: iOS(Compose)のスクロール容器は次の1タッチを
+                        //     消費してしまい、タップもプレスも効かない(待っても解けない。2回目は効く)。
+                        //     クリックにならない 2pt のドラッグでその1回ぶんを肩代わりする
+                        //  2. **静止待ち**: 空打ちでリストが微動するので、止まってから返す
+                        //     (Android はフリングの慣性が残り、待たないと別の行を叩く)
+                        if releasesScrollTouch {
+                            let centerX: Double = element.frame.x + element.frame.width / 2
+                            let centerY: Double = element.frame.y + element.frame.height / 2
+                            try? await driver.drag(fromX: centerX, fromY: centerY,
+                                                   toX: centerX + 2, toY: centerY,
+                                                   pressSeconds: 0.05, durationSeconds: 0.05)
+                        }
+                        try await settleAfterScroll(step: step, found: element, phase: &phase)
+                    }
                     if let fallback {
                         return StepOutcome(status: .passedViaFallback(fallback),
                                            driverFallback: viaXCUITest ? "XCUITest へフォールバック" : nil)
@@ -525,6 +553,33 @@ public final class StepExecutor {
     /// swipe を通常ドライバ→(typeDriverGestures 申告/ラッチ済みなら最初から、501 ならキャッチしてから)
     /// typeDriver の順で試す。swipe は ref を使わないので要素再解決は不要。
     /// 戻り値: true = typeDriver(XCUITest)経由で実行した
+    /// スクロール探索で要素を見つけた直後、**その要素の frame が動かなくなるまで**待つ。
+    /// 連続2回同じ frame なら静止とみなす。見失った場合・上限に達した場合はそのまま抜ける
+    /// (探索自体は成功しているので、ここで失敗にはしない = 判定を1箇所に保つ)。
+    /// 上限はフリングの減速が収まる実測レンジに合わせた固定値で、調整ノブにはしない
+    private func settleAfterScroll(step: FlowStep, found: ElementInfo,
+                                   phase: inout PhaseAccumulator) async throws {
+        let clock = ContinuousClock()
+        var previous = found.frame
+        for _ in 0..<Self.scrollSettleMaxPolls {
+            let waitStart = clock.now
+            try await Task.sleep(for: .milliseconds(Self.scrollSettleIntervalMs))
+            phase.waitMs += Self.ms(clock.now - waitStart)
+            let start = clock.now
+            let snapshot = try await driver.snapshot()
+            phase.snapshotMs += Self.ms(clock.now - start)
+            guard let (element, _) = Self.resolve(step: step, in: snapshot,
+                                                  strictForAssert: true) else { return }
+            if element.frame == previous { return }
+            previous = element.frame
+        }
+    }
+
+    /// スクロール静止待ちの上限(回数 × 間隔 = 最大 600ms)。フリングの減速はこの範囲で収まる
+    static let scrollSettleMaxPolls = 6
+    static let scrollSettleIntervalMs = 100
+
+
     private func swipeWithFallback(_ direction: FTSwipeDirection,
                                    phase: inout PhaseAccumulator) async throws -> Bool {
         let clock = ContinuousClock()

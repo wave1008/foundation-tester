@@ -339,4 +339,36 @@ final class AssertKindsTests: XCTestCase {
             .execute(requiredStep)
         XCTAssertEqual(failureReason(failed.status)?.contains("スクロールしても"), true)
     }
+
+    // MARK: - スクロール探索の静止待ち
+
+    /// フリングの慣性で動いている間は返さない(次のステップが別要素を掴むのを防ぐ)。
+    /// frame が連続2回同じになったら静止とみなす
+    func testScrollToWaitsUntilFoundElementStopsMoving() async {
+        func row(_ y: Double) -> ElementInfo {
+            ElementInfo(ref: 1, type: "button", identifier: "row_30", label: "行 30",
+                        value: nil, placeholder: nil, enabled: true,
+                        frame: FTRect(x: 0, y: y, width: 100, height: 50), depth: 1)
+        }
+        // 1回目: 未発見 → スワイプ。2回目で発見(y=300)、その後 200 → 100 → 100(静止)
+        let driver = ScriptedDriver(frames: [
+            [node(9, id: "other")], [row(300)], [row(200)], [row(100)], [row(100)],
+        ])
+        let step = FlowStep(action: "scrollTo", locator: FlowLocator(id: "row_30"),
+                            direction: "up", maxSwipes: 5)
+        let outcome = await StepExecutor(driver: driver).execute(step)
+        XCTAssertTrue(isPassed(outcome.status))
+        // 発見(2回目)のあと、静止を確認するまで snapshot を追加で撮る
+        XCTAssertEqual(driver.snapshotCallCount, 5)
+    }
+
+    /// スワイプせずに見つかったときは静止待ちを挟まない(既存の速度を落とさない)
+    func testScrollToSkipsSettleWhenFoundWithoutSwiping() async {
+        let driver = ScriptedDriver(frames: [[node(1, id: "row_30")]])
+        let step = FlowStep(action: "scrollTo", locator: FlowLocator(id: "row_30"),
+                            direction: "up", maxSwipes: 5)
+        let outcome = await StepExecutor(driver: driver).execute(step)
+        XCTAssertTrue(isPassed(outcome.status))
+        XCTAssertEqual(driver.snapshotCallCount, 1)
+    }
 }

@@ -174,7 +174,8 @@ public final class FTDriveCore {
         self.executor = StepExecutor(driver: driver, fallbackDriver: fallbackDriver,
                                      typeDriver: typeDriver, preferTypeDriver: preferTypeDriver,
                                      typeDriverGestures: typeDriverGestures,
-                                     delegate: delegate, healingEnabled: healingEnabled)
+                                     delegate: delegate, healingEnabled: healingEnabled,
+                                     releasesScrollTouch: platform == "ios")
         self.scenarioID = scenarioID
         self.scenarioTitle = scenarioTitle
         self.dryRun = dryRun
