@@ -151,6 +151,7 @@ extension AndroidDriver {
         noticePersistentSettingsOnPhysicalDevice()
         disableAnimations()
         disableStylusHandwriting()
+        hideErrorDialogs()
         allowHiddenAPIReflection()
         try installBridgeIfNeeded()
         _ = try? adb(["shell", "am", "force-stop", Self.bridgePackage])
@@ -169,13 +170,16 @@ extension AndroidDriver {
             "Android ブリッジが起動しません(adb logcat -s FTBridge を確認してください)")
     }
 
-    /// 実機に対する disableAnimations / allowHiddenAPIReflection は端末のグローバル設定を
-    /// **永続的に**書き換える(使い捨てのエミュレータと違い、run 後も戻らない)。テスト安定に
-    /// 必要なので実行はするが、黙って変えないようコールド起動時に 1 回だけ知らせる。
+    /// 実機に対する設定変更は端末のグローバル設定を**永続的に**書き換える(使い捨ての
+    /// エミュレータと違い、run 後も戻らない)。テスト安定に必要なので実行はするが、
+    /// 黙って変えないようコールド起動時に 1 回だけ知らせる。
+    /// **設定を増やしたらこの文面にも足すこと**(黙って変えない、が規律の本体)。
     /// 実機判定は serial の emulator- 前置(ApiMonitorCommand のヘルス除外と同じ規則)
     private func noticePersistentSettingsOnPhysicalDevice() {
         guard let serial, !serial.hasPrefix("emulator-") else { return }
-        let message = "ℹ️ \(serial): アニメーション無効化と hidden_api_policy=1 を端末に適用します"
+        let message = "ℹ️ \(serial): 次の設定を端末に適用します — アニメーション無効化 / "
+            + "hidden_api_policy=1 / スタイラス手書き無効化(IME の案内がアプリを覆うため) / "
+            + "クラッシュ・ANR ダイアログ非表示"
             + "(実機では設定が永続します。戻す場合は開発者オプションから)\n"
         FileHandle.standardError.write(Data(message.utf8))
     }
@@ -190,6 +194,22 @@ extension AndroidDriver {
         let message = "⚠️ Android アニメーション設定の無効化に失敗しました(\(failed.joined(separator: ", ")))。"
             + "有効なままだと静穏判定後に screenshot が古い絵を掴むことがあります\n"
         FileHandle.standardError.write(Data(message.utf8))
+    }
+
+    /// クラッシュ/ANR ダイアログを出さない。**アプリを覆って次のシナリオまで巻き込む**のを防ぐ
+    /// (「アプリが繰り返し停止しています」が残ると、同じデバイスに割り当てられた後続シナリオの
+    /// タップを全部吸う)。クラッシュ自体は隠れない — プロセスが落ちれば次の操作が
+    /// 「アプリが起動していません」で落ちるので、検知は失われない。
+    /// A/B 実測(2026-07-27・Pixel 9 / Android 15): `am crash` 後の window に
+    /// エラーダイアログが 0 のとき 3 行 → 1 のとき 0 行。失敗は非致命
+    private func hideErrorDialogs() {
+        guard (try? adb(["shell", "settings", "put", "global",
+                         "hide_error_dialogs", "1"]))?.status == 0 else {
+            let message = "⚠️ hide_error_dialogs の設定に失敗しました"
+                + "(クラッシュ/ANR ダイアログが残り、後続シナリオのタップを吸うことがあります)\n"
+            FileHandle.standardError.write(Data(message.utf8))
+            return
+        }
     }
 
     /// IME(Gboard)のスタイラス手書き機能を切る。**目的はプロモ画面の抑止**:
