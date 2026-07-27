@@ -925,6 +925,63 @@ final class ProfileResolverTests: XCTestCase {
         XCTAssertTrue(resolved.warnings.isEmpty, "model は既知キー: \(resolved.warnings)")
     }
 
+    // MARK: - FM トグル(fm/heal/falsePositiveCheck/screenIs)
+
+    func testFMTogglesDefaultToAllEnabledWhenUnspecified() throws {
+        try writeStandardFixture()  // "all" は heal:true 明示。fm/falsePositiveCheck/screenIs は未指定
+        let resolved = try ProfileResolver.resolve(
+            project: project, runName: "all", machineName: "M1 Max(64GB)")
+        XCTAssertTrue(resolved.fm.enabled)
+        XCTAssertTrue(resolved.fm.heal, "heal 明示 true")
+        XCTAssertTrue(resolved.fm.falsePositiveCheck, "省略時は既定 true のはず")
+        XCTAssertTrue(resolved.fm.screenIs, "省略時は既定 true のはず")
+    }
+
+    func testHealDefaultsToTrueWhenFullyUnspecified() throws {
+        try write("""
+        { "ios": { "app": "com.example.app" } }
+        """, to: project.appsDir, name: "app6")
+        try write("""
+        { "ios": { "devices": [ { "name": "d", "simulator": "iPhone Air" } ] } }
+        """, to: project.machinesDir, name: "m")
+        try write(#"{ "app": "app6", "devices": [ { "name": "d" } ] }"#,
+                  to: project.runsDir, name: "r")
+        let resolved = try ProfileResolver.resolve(project: project, runName: "r", machineName: "m")
+        XCTAssertTrue(resolved.fm.enabled)
+        XCTAssertTrue(resolved.fm.heal, "heal の既定は true(既定 false→true への変更)")
+        XCTAssertTrue(resolved.fm.falsePositiveCheck)
+        XCTAssertTrue(resolved.fm.screenIs)
+        XCTAssertTrue(resolved.heal, "heal エイリアスも同じ値を返す")
+    }
+
+    func testFMFalseDisablesAllSubFlagsEvenIfExplicitlyTrue() throws {
+        try writeStandardFixture()
+        try write("""
+        { "app": "sampleapp", "devices": [ { "name": "メイン機" } ],
+          "fm": false, "heal": true, "falsePositiveCheck": true, "screenIs": true }
+        """, to: project.runsDir, name: "fmoff")
+        let resolved = try ProfileResolver.resolve(
+            project: project, runName: "fmoff", machineName: "M1 Max(64GB)")
+        XCTAssertFalse(resolved.fm.enabled)
+        XCTAssertFalse(resolved.fm.heal, "fm:false は個別の heal:true より優先される")
+        XCTAssertFalse(resolved.fm.falsePositiveCheck)
+        XCTAssertFalse(resolved.fm.screenIs)
+    }
+
+    func testIndividualSubFlagsCanBeDisabledWithoutAffectingOthers() throws {
+        try writeStandardFixture()
+        try write("""
+        { "app": "sampleapp", "devices": [ { "name": "メイン機" } ],
+          "heal": false, "falsePositiveCheck": false, "screenIs": false }
+        """, to: project.runsDir, name: "subsoff")
+        let resolved = try ProfileResolver.resolve(
+            project: project, runName: "subsoff", machineName: "M1 Max(64GB)")
+        XCTAssertTrue(resolved.fm.enabled, "fm 自体は既定 true のまま")
+        XCTAssertFalse(resolved.fm.heal)
+        XCTAssertFalse(resolved.fm.falsePositiveCheck)
+        XCTAssertFalse(resolved.fm.screenIs)
+    }
+
     func testValidateMachineProfileReportsPhysicalErrors() throws {
         let data = #"""
         { "ios": { "devices": [ { "name": "実機", "kind": "physical", "engine": "inapp" } ] },

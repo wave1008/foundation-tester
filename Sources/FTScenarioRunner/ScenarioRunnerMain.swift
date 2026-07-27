@@ -117,6 +117,15 @@ struct RunScenario: AsyncParsableCommand {
     @Flag(help: "FM によるロケータ自己修復を許可する")
     var heal = false
 
+    @Flag(name: .customLong("no-fm"), help: "FM 機能(heal/偽陽性検証/screenIs/triage)を一切使わない")
+    var noFM = false
+
+    @Flag(name: .customLong("no-false-positive-check"), help: "偽陽性検証(occlusion guard)を無効化する")
+    var noFalsePositiveCheck = false
+
+    @Flag(name: .customLong("no-screen-is"), help: "screenIs(screenMatches)を無効化する")
+    var noScreenIs = false
+
     @Option(name: .customLong("report-dir"), help: "レポート出力先ディレクトリ")
     var reportDir: String = "reports"
 
@@ -263,7 +272,9 @@ struct RunScenario: AsyncParsableCommand {
             }
         }
 
-        let delegate = LazyFMDelegate()  // 遅延初期化の理由は class doc 参照
+        // noFM: delegate を nil にすると heal/screenIs/occlusion-guard/triage は
+        // ReplayDelegate 既定実装(nil)に落ち、揃って無効化される(LazyFMDelegate class doc 参照)
+        let delegate: ReplayDelegate? = noFM ? nil : LazyFMDelegate()
 
         let emit: (ScenarioEvent) -> Void = json
             ? { print($0.encodedLine()) }
@@ -283,7 +294,9 @@ struct RunScenario: AsyncParsableCommand {
         let deviceIdentifier = runPlatform == "android" ? serial : udid
         let core = FTDriveCore(driver: driver, platform: runPlatform, app: testClass.app,
                                scenarioID: scenarioID, scenarioTitle: descriptor.title,
-                               delegate: delegate, healingEnabled: heal, dryRun: dryRun,
+                               delegate: delegate, healingEnabled: heal && !noFM,
+                               falsePositiveCheckEnabled: !noFalsePositiveCheck,
+                               screenIsEnabled: !noScreenIs, dryRun: dryRun,
                                healCacheURL: healCacheURL, defaultTimeout: defaultTimeout,
                                fallbackDriver: fallbackDriver,
                                typeDriver: typeDriver, preferTypeDriver: preferTypeDriver,

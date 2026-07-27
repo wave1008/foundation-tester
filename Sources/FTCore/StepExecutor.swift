@@ -192,9 +192,17 @@ public final class StepExecutor {
     private var gestureFallbackLatched = false
     public var delegate: ReplayDelegate?
     public var healingEnabled: Bool
+    /// 実行プロファイルの falsePositiveCheck に対応するマスタースイッチ(既定 true)。false なら
+    /// occlusionGuard/perStepGuard の値に関わらず occlusion-guard 自体を無効化する
+    public var occlusionGuardEnabled: Bool
+    /// 実行プロファイルの screenIs に対応するマスタースイッチ(既定 true)。false なら
+    /// screenMatches ステップを skip する
+    public var screenIsEnabled: Bool
     /// [PoC occlusion-guard] true のとき、exists/textEquals がツリー一致で pass した直後に
     /// FM で「その要素がスクショ上で実際に見えているか」を1回照合し、覆われ/切れ/減光/不在なら
     /// 偽陽性として失敗へ反転する。delegate が verifyElementVisible を実装していなければ無効。
+    /// occlusionGuardEnabled(実行プロファイル由来のマスタースイッチ)とは別物: こちらは
+    /// exist の requireVisible 既定値由来のステップ既定(step.occlusionGuard が per-step 指定)
     public var occlusionGuard: Bool
     /// [PoC occlusion-guard] 事前フィルタの閾値。対象 frame 領域の輝度 stddev がこの値以上なら
     /// 「明瞭にインクあり=見えている」とみなし FM を省略する(疑いのある低インク領域だけ FM へ回す)。
@@ -253,6 +261,7 @@ public final class StepExecutor {
                 typeDriverGestures: Set<String> = [],
                 delegate: ReplayDelegate? = nil, healingEnabled: Bool = false,
                 occlusionGuard: Bool = false, occlusionInkThreshold: Double = 12,
+                occlusionGuardEnabled: Bool = true, screenIsEnabled: Bool = true,
                 releasesScrollTouch: Bool = false) {
         self.releasesScrollTouch = releasesScrollTouch
         self.driver = driver
@@ -264,6 +273,8 @@ public final class StepExecutor {
         self.healingEnabled = healingEnabled
         self.occlusionGuard = occlusionGuard
         self.occlusionInkThreshold = occlusionInkThreshold
+        self.occlusionGuardEnabled = occlusionGuardEnabled
+        self.screenIsEnabled = screenIsEnabled
     }
 
     /// cached: ヒールキャッシュ由来のロケータ連鎖。解決順は
@@ -828,8 +839,9 @@ public final class StepExecutor {
                               screen: FTRect, looseMatch: Bool, perStepGuard: Bool?,
                               expectedIsUserText: Bool = false,
                               phase: inout PhaseAccumulator) async throws -> StepResult.Status? {
-        // 有効化はステップ指定(DSL の visible())優先、無ければ executor 既定
-        guard (perStepGuard ?? occlusionGuard), let delegate else { return nil }
+        // 有効化はステップ指定(DSL の visible())優先、無ければ executor 既定。
+        // occlusionGuardEnabled はどちらより上位の実行プロファイル由来マスタースイッチ
+        guard occlusionGuardEnabled, (perStepGuard ?? occlusionGuard), let delegate else { return nil }
         // 退化 frame(サイズ 0・クランプで潰れた等)は視覚照合の意味がないのでスキップ(素通り)
         guard element.frame.width >= 1, element.frame.height >= 1, !expectedText.isEmpty else { return nil }
         // 足切り: label が verbatim 描画されない要素(アイコン/画像/絵文字/結合セマンティクス)は
@@ -1243,6 +1255,9 @@ public final class StepExecutor {
                            + nestingHint)
 
         case "screenMatches":
+            guard screenIsEnabled else {
+                return .skipped("screenIs が無効(実行プロファイルの設定)")
+            }
             guard let expected = step.expected, !expected.isEmpty else {
                 return .skipped("expected が未指定")
             }

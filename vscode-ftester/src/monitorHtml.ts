@@ -116,9 +116,26 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
             <label>${t("panels.common.devices")}</label>
             <div id="run-profile-devices" class="run-profile-devices"></div>
           </div>
-          <div class="modal-row profile-checkbox-row">
-            <input type="checkbox" id="run-profile-heal">
-            <label for="run-profile-heal">${t("panels.runProfile.healLabel")}</label>
+          <div class="run-profile-section-group">
+            <div class="run-profile-section-title">${t("panels.runProfile.fmSectionTitle")}</div>
+            <div class="modal-row profile-checkbox-row">
+              <input type="checkbox" id="run-profile-fm">
+              <label for="run-profile-fm">${t("panels.runProfile.fmLabel")}</label>
+            </div>
+            <div id="run-profile-fm-options" class="run-profile-fm-options" style="display: none;">
+              <div class="modal-row profile-checkbox-row">
+                <input type="checkbox" id="run-profile-heal">
+                <label for="run-profile-heal">${t("panels.runProfile.healLabel")}</label>
+              </div>
+              <div class="modal-row profile-checkbox-row">
+                <input type="checkbox" id="run-profile-false-positive-check">
+                <label for="run-profile-false-positive-check">${t("panels.runProfile.falsePositiveCheckLabel")}</label>
+              </div>
+              <div class="modal-row profile-checkbox-row">
+                <input type="checkbox" id="run-profile-screen-is">
+                <label for="run-profile-screen-is">${t("panels.runProfile.screenIsLabel")}</label>
+              </div>
+            </div>
           </div>
           <div class="modal-row">
             <label for="run-profile-default-timeout">defaultTimeout</label>

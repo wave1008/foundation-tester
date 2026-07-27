@@ -31,8 +31,12 @@ enum ProfileRunner {
             project: project, runName: profileName, machineName: machine.name)
         for warning in resolved.warnings { print("⚠️ \(warning)") }
 
-        let heal = healOverride ?? resolved.heal
-        await Self.warnIfHealDegraded(heal: heal) { print($0) }
+        // CLI の --heal override は master(fm.enabled)が有効な場合のみ heal を ON にする。
+        // healOverride==false は明示 OFF、nil は profile の値をそのまま使う
+        var fm = resolved.fm
+        if healOverride == true { fm.heal = fm.enabled }
+        if healOverride == false { fm.heal = false }
+        await Self.warnIfHealDegraded(heal: fm.heal) { print($0) }
         let reportDir = reportDirOverride.map { URL(fileURLWithPath: $0) } ?? resolved.reportDir
         if resolved.iosFastInput { setenv("FT_FAST_INPUT", "1", 1) }  // BridgeClient.fastInput 参照
         let deviceList = resolved.devices
@@ -98,7 +102,7 @@ enum ProfileRunner {
         }()
 
         let orchestrator = RunOrchestrator(
-            project: project, workers: workers, healingEnabled: heal,
+            project: project, workers: workers, fm: fm,
             reportDir: reportDir, defaultTimeout: resolved.defaultTimeout,
             scenarioTimeout: resolved.scenarioTimeout, recorder: recorder,
             recordingConfig: recordingConfig,

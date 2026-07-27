@@ -57,7 +57,7 @@ final class ScenarioHostDebugTests: XCTestCase {
             await ScenarioHost.run(
                 project: project, scenarioID: "ログイン画面.S0010",
                 connection: DriverConnection(platform: "ios"),
-                heal: false, reportDir: tempDir.path,
+                fm: FMConfig(heal: false), reportDir: tempDir.path,
                 dryRun: true, debug: options) { event in
                 if event.kind == "paused" {
                     probe.recordPause(index: event.index ?? 0)

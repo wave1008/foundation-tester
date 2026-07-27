@@ -955,10 +955,12 @@ button.profile-jump-link:hover:not(:disabled) {
   font-weight: 600;
   color: var(--vscode-descriptionForeground);
 }
-.run-profile-record-options {
+.run-profile-record-options,
+.run-profile-fm-options {
   padding-left: 20px;
 }
-.run-profile-record-options .modal-row:last-child {
+.run-profile-record-options .modal-row:last-child,
+.run-profile-fm-options .modal-row:last-child {
   margin-bottom: 0;
 }
 /* .tile-name は白文字前提のため、背景色を必ず持たせる(中立色)。 */

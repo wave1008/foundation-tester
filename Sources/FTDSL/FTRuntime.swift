@@ -194,6 +194,7 @@ public final class FTDriveCore {
     public init(driver: AppDriver, platform: String, app: String,
                 scenarioID: String, scenarioTitle: String,
                 delegate: ReplayDelegate?, healingEnabled: Bool,
+                falsePositiveCheckEnabled: Bool = true, screenIsEnabled: Bool = true,
                 dryRun: Bool = false,
                 healCacheURL: URL? = nil,
                 defaultTimeout: Int? = nil,
@@ -213,6 +214,8 @@ public final class FTDriveCore {
                                      typeDriver: typeDriver, preferTypeDriver: preferTypeDriver,
                                      typeDriverGestures: typeDriverGestures,
                                      delegate: delegate, healingEnabled: healingEnabled,
+                                     occlusionGuardEnabled: falsePositiveCheckEnabled,
+                                     screenIsEnabled: screenIsEnabled,
                                      releasesScrollTouch: platform == "ios")
         self.scenarioID = scenarioID
         self.scenarioTitle = scenarioTitle
