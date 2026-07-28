@@ -261,7 +261,20 @@ struct ApiLiveServe: AsyncParsableCommand {
             guard FileManager.default.fileExists(atPath: path) else {
                 throw ServeCommandError.invalidArguments("パッケージファイルが見つかりません: \(path)")
             }
+            // 中身が同じなら入れ直さない(run 側 BridgeProvisioner と同じ規律)。
+            // 再インストールはアプリを終了させ、記録開始のたびに状態が消えるため
+            if driverOptions.platform == "ios", let udid,
+               let bundleID = Self.bundleID(inAppBundle: path),
+               InstalledAppCheck.simulatorAppIsCurrent(
+                   udid: udid, bundleID: bundleID, appPath: path) {
+                logStderr("→ install: スキップ(インストール済みと内容が同じ): \(bundleID)")
+                return
+            }
             try await driver.install(packagePath: path)
+            if driverOptions.platform == "ios", let udid,
+               let bundleID = Self.bundleID(inAppBundle: path) {
+                InstalledAppCheck.recordInstalled(udid: udid, bundleID: bundleID, appPath: path)
+            }
         default:
             throw ServeCommandError.invalidArguments("未知の cmd です: \(command.cmd)")
         }
@@ -383,6 +396,17 @@ private struct ApiLiveActionResultEvent: Encodable {
         try container.encode(kind, forKey: .kind)
         try container.encode(ok, forKey: .ok)
         try container.encode(error, forKey: .error)
+    }
+}
+
+extension ApiLiveServe {
+    /// .app/Info.plist の CFBundleIdentifier。取れなければ nil(= 差分判定をあきらめて素直に入れる)
+    static func bundleID(inAppBundle path: String) -> String? {
+        let plist = URL(fileURLWithPath: path).appendingPathComponent("Info.plist")
+        guard let data = try? Data(contentsOf: plist),
+              let object = try? PropertyListSerialization.propertyList(from: data, format: nil)
+                as? [String: Any] else { return nil }
+        return object["CFBundleIdentifier"] as? String
     }
 }
 

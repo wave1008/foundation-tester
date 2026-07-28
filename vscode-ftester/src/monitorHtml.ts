@@ -229,7 +229,8 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
         <div id="app-profile-placeholder" class="profile-detail-placeholder" style="display: none;"></div>
         <div id="app-profile-editor" class="app-profile-editor" style="display: none;">
           <!-- common.app/appPathは廃止済み(ランタイムが無視するため入力欄なし)。
-               autoInstallは共通でのみ設定可能(既定OFF)。 -->
+               autoInstallは共通でのみ設定可能。**未指定の既定はパッケージパスの有無**
+               (RunProfile.swift の resolve と同期。片方だけ変えない)。 -->
           <div class="app-profile-group-title">${t("panels.appProfile.commonGroupTitle")}</div>
           <div class="modal-row">
             <label for="app-profile-common-app-name">${t("panels.appProfile.displayNameLabel")}</label>
@@ -239,6 +240,7 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
             <input type="checkbox" id="app-profile-common-auto-install">
             <label for="app-profile-common-auto-install">${t("panels.appProfile.autoInstallLabel")}</label>
           </div>
+          <div class="modal-row profile-hint">${t("panels.appProfile.autoInstallHint")}</div>
 
           <div class="app-profile-group-title app-profile-group-title-ios">iOS</div>
           <div class="modal-row">
