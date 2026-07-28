@@ -943,16 +943,6 @@ button.profile-jump-link:hover:not(:disabled) {
   display: flex;
   flex-direction: column;
 }
-.required-badge {
-  display: inline-block;
-  margin-left: 6px;
-  padding: 1px 5px;
-  font-size: 10px;
-  border-radius: 3px;
-  vertical-align: middle;
-  background-color: var(--vscode-inputValidation-errorBackground, rgba(241, 76, 76, 0.15));
-  color: var(--vscode-errorForeground, #f14c4c);
-}
 /* ラベルが長い("使用するマシンプロファイル"等)ため #id で .modal-row > label の
    flex:0 0 90px をソース順に依存せず上書きする(具体度をID分上げる)。 */
 #run-profile-editor .modal-row > label {

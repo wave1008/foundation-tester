@@ -115,7 +115,7 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
         <div id="run-profile-placeholder" class="profile-detail-placeholder" style="display: none;"></div>
         <div id="run-profile-editor" class="run-profile-editor" style="display: none;">
           <div class="modal-row">
-            <label for="run-profile-machine">${t("panels.runProfile.machineLabel")}<span class="required-badge">${t("panels.common.required")}</span></label>
+            <label for="run-profile-machine">${t("panels.runProfile.machineLabel")}</label>
             <select id="run-profile-machine"></select>
           </div>
           <div class="modal-row">

@@ -41,7 +41,6 @@ export const panelsStrings = {
   "panels.common.cancel": { ja: "キャンセル", en: "Cancel" },
   "panels.common.runLog": { ja: "実行ログ", en: "Run Log" },
   "panels.common.port": { ja: "ポート", en: "Port" },
-  "panels.common.required": { ja: "必須", en: "Required" },
 
   "panels.toolbar.runProfileSelectTitle": {
     ja: "以後のテスト実行・デバッグ実行と、このモニターの監視対象デバイスに使う実行プロファイル(ftester.profile 設定)",
