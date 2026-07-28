@@ -1,6 +1,6 @@
 # はじめに（インストール）
 
-Ftesterは iOS / Android アプリのテスツールです。
+Ftester は iOS / Android アプリのテストツールです。
 
 ## 配布方針
 macOS や Xcodeのベータ版を前提としているので現時点ではバイナリ配布はしません。Claude Codeのプラグインを使用し、リポジトリを clone してビルドすることでインストールします。
@@ -20,9 +20,9 @@ macOS や Xcodeのベータ版を前提としているので現時点ではバ�
 
 Ftesterのインストールをスムーズに行うため、事前に以下の作業を実施してください。
 
-- XCode
-  - Xcode本体をインストールします
-  - テストで使用したいSimlatorを作成して起動しておいてください
+- Xcode
+  - Xcode 本体をインストールします
+  - テストで使用したい Simulator を作成して起動しておいてください
 - Android Studio
   - Android Studio本体をインストールします
   - テストで使用したいAVDを作成して起動しておいてください
@@ -67,7 +67,7 @@ claude plugin update ftester@foundation-tester
 2. Claude Codeの新しいセッションを開始し、 `/ftester-update` を実行します
 
 
-## 4. Ftesterのアンインストール
+## 5. Ftesterのアンインストール
 
 ### プラグインのアンインストール
 
@@ -96,6 +96,6 @@ pgrep -fl 'ftester-mcp|/ftester (api|run|bridge|devices)|ftester-(simstream|andr
 pkill  -f 'ftester-mcp|/ftester (api|run|bridge|devices)|ftester-(simstream|androidstream|devicepoll)|xcodebuild.*FTesterRunner'
 ```
 
-## 7. トラブルシュート
+## 6. トラブルシュート
 
 - 問題が発生した場合、Claude Codeに相談してください

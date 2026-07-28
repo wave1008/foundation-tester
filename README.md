@@ -40,55 +40,36 @@ UI は VSCode 拡張(`vscode-ftester/`)に一本化している(セットアッ�
 > macOS 26 では FM の**視覚検証だけ**が使えない(画像入力 API が macOS 27+)。
 > occlusion-guard(偽陽性チェック)と `screenIs` は自動で無効になり、他は制限なく動く。
 
-## インストール(使う: Claude Code に任せる)
+## インストール(使う: 自分のアプリのテストを書く)
 
-**自分のアプリのテストを書くだけ**なら、Claude Code に一式(clone → ビルド → 拡張導入 → プロジェクト設定)を
-任せられる。ターミナルで次の2コマンドでプラグインを導入し(user スコープなので VSCode の Claude Code 拡張
-にも反映される)、テスト用の新規フォルダを VSCode で開いて `/ftester:ftester-setup` を呼ぶだけ:
+**Claude Code に任せる(推奨)**: ターミナルでプラグインを入れ、テスト用の新規フォルダを VSCode で開いて
+`/ftester:ftester-setup` を呼ぶ(`claude` CLI が無ければ `brew install claude-code`):
 
 ```bash
 claude plugin marketplace add wave1008/foundation-tester
 claude plugin install ftester@foundation-tester --scope user
 ```
 
-(`claude` CLI が無ければ `brew install claude-code`。ターミナルから入れるのは **VSCode 拡張パネルでは
-`/plugin` スラッシュコマンドが使えない**ため。ターミナル対話セッションやデスクトップアプリなら
-`/plugin marketplace add …` → `/plugin install …` でも同じ。詳細は
-[docs/getting-started.md](docs/getting-started.md))
+**エージェント無しで入れる**: 同じ機械作業を1コマンドで行うインストーラ(冪等):
 
-- プラグインは **`ftester-setup`(初回導入)・`ftester-update`(更新)・`ftester-profiles`(マシン/アプリ/実行
-  プロファイルの一括作成)・`ftester-scenario`(テストシナリオ作成)・`ftester-mcp`(MCP のみ登録)** の各スキルを
-  提供する(スキルはマーケットプレイス経由で自動更新。導入時点では clone しない=大きな取得の前にレビュー
-  できる)。版を固定するなら `claude plugin marketplace add https://github.com/wave1008/foundation-tester.git#<tag>`。
-- プラグイン機構を使えない場合の代替(スキルをカレントの `.claude/skills/` にコピー。自動更新なし・
-  呼び出し名は `/ftester-setup` 等の名前空間なし。版固定は `FTESTER_REF=<tag>` を前置):
+```bash
+mkdir -p ~/my-app-tests && cd ~/my-app-tests
+curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install.sh \
+  | bash -s -- --name MyApp --app com.example.myapp
+```
 
-  ```bash
-  curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install-skill.sh | sh
-  ```
+- プラグインが提供するスキル: `ftester-setup`(初回導入)・`ftester-update`(更新)・`ftester-profiles`
+  (マシン/アプリ/実行プロファイル)・`ftester-scenario`(シナリオ作成)・`ftester-mcp`(MCP のみ)。
+  版を固定するなら `claude plugin marketplace add https://github.com/wave1008/foundation-tester.git#<tag>`。
+  プラグイン機構が無い環境向けの代替は
+  `curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install-skill.sh | sh`。
+- 既定は**外部パッケージ構成**: ツール(この clone)と、あなたの `Projects/` が住むテスト用フォルダを分ける。
+- 事前準備・インストール・更新・アンインストールの手順は [docs/getting-started.md](docs/getting-started.md)。
+  導入後の使い方(プロファイル・シナリオ・実行)は本 README の以降の節と [docs/commands.md](docs/commands.md)。
 
-- `/ftester:ftester-setup`(既定=**外部パッケージ構成**): foundation-tester を横に `git clone` → `swift build`
-  (ツールの CLI)→ `npm run install-local`(VSCode 拡張)→ **いま開いているディレクトリ**を `ftester init` で
-  テストパッケージ化(あなたのプロジェクトは自分のディレクトリの `Projects/` に住み、ツールの clone とは分離。
-  拡張設定 `.vscode/settings.json` も自動生成)。仕上げに `/ftester:ftester-profiles` を呼んでプロファイルを
-  作る。検証ゲートと人間チェックポイント付き。
-- 以後、修正版の取り込みは `/ftester:ftester-update`、テスト対象やデバイスの追加は `/ftester:ftester-profiles`、
-  テストシナリオ(.swift)の作成は `/ftester:ftester-scenario`。
-- **Claude Code を使わない/エージェント無しで入れたい**なら、同じ機械作業を1コマンドで行うインストーラがある
-  (clone → `swift build` → プロジェクト作成 → VSCode 拡張 → `.mcp.json` → 検証ゲート。冪等):
-
-  ```bash
-  mkdir -p ~/my-app-tests && cd ~/my-app-tests
-  curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install.sh \
-    | bash -s -- --name MyApp --app com.example.myapp
-  ```
-
-  スキル(`/ftester-setup`)も内部でこれを呼び、失敗したステップだけ runbook で手当てする。
-- 手順の全体像・手動でのやり方・トラブルシュートは [docs/getting-started.md](docs/getting-started.md)。
-
-> **配布はソースビルド前提**(バイナリ配布はしない)。ツール本体(CLI)も VSCode 拡張(.vsix)も、この clone から
-> `swift build` / `npm run install-local` でビルドして入れる。下記「セットアップ(クローン直後)」は、その clone 内で
-> **手動で同じ手順を踏む/本体を改造する**場合の詳細。リリース手順は [docs/releasing.md](docs/releasing.md)。
+> **配布はソースビルド前提**(バイナリ配布はしない)。CLI も VSCode 拡張(.vsix)も clone から
+> `swift build` / `npm run install-local` でビルドして入れる。下記「セットアップ(クローン直後)」は
+> **その clone 内で作業する/本体を改造する**場合の手順。リリースは [docs/releasing.md](docs/releasing.md)。
 
 ## セットアップ(新しい環境へクローンした直後)
 
