@@ -5,6 +5,12 @@ description: foundation-tester の MCP サーバ(ftester-mcp)だけを Claude Co
 
 # ftester MCP 登録 runbook
 
+> **この手順書が古い可能性がある**: プラグイン経由で導入している場合、この文書は
+> `~/.claude/plugins/cache/` のスナップショットから読まれており `git pull` では更新されない。
+> **clone(TOOL_ROOT)が既にあるなら `<TOOL_ROOT>/.claude/skills/ftester-mcp/SKILL.md` を読み、
+> 内容が違えばそちらを正とする**。更新は `/plugin marketplace update foundation-tester` →
+> `/plugin update ftester@foundation-tester`(2つとも要る・Claude Code の再起動で反映)。
+
 Claude Code から `ft_*` ツール(`ft_tap`/`ft_screenshot`/`ft_snapshot`/`ft_run_scenario` 等)を使うための
 **MCP サーバ(`ftester-mcp`)だけ**を登録する。VSCode 拡張(.vsix)・`ftester init`(プロジェクト作成)・
 プロファイル設定は**やらない**。それらまで含むフル導入は `/ftester-setup`。

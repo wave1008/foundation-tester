@@ -396,10 +396,24 @@ public enum ScenarioHost {
                                fm: FMConfig(heal: false), reportDir: tempDir.path,
                                dryRun: true) { events.append($0) }
         guard passed else {
-            let detail = events.compactMap(\.message).suffix(5).joined(separator: "\n")
-            throw ScenarioHostError.dryRunFailed(detail.isEmpty ? "dry-run が失敗しました" : detail)
+            throw ScenarioHostError.dryRunFailed(dryRunFailureDetail(events))
         }
         return events
+    }
+
+    /// dry-run 失敗時にユーザーへ見せる本文を組み立てる。
+    /// **失敗理由は step イベントの `detail`** に載る(`message` は kind == log =
+    /// 利用者の print 専用)。message だけを見ると、セレクタの構文エラーのように
+    /// 利用者が何も print しない失敗で本文が丸ごと落ち「dry-run が失敗しました」しか
+    /// 出ない(2026-07-28 実害。api steps だけ原因が読めず run では読めた)
+    static func dryRunFailureDetail(_ events: [ScenarioEvent]) -> String {
+        let failures = events.filter { $0.status == "failed" }.compactMap { event -> String? in
+            guard let detail = event.detail else { return nil }
+            return event.description.map { "\($0): \(detail)" } ?? detail
+        }
+        let logs = events.compactMap(\.message)
+        let detail = (failures + logs).suffix(5).joined(separator: "\n")
+        return detail.isEmpty ? "dry-run が失敗しました" : detail
     }
 
     /// FileHandle を行単位の AsyncStream にする。readabilityHandler ベースで
