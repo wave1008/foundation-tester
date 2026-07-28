@@ -91,10 +91,31 @@ clone 構成では同一です。
 > **無言で素通り**します（テストは緑のまま機能だけ無効）。実行時に警告が出ますが、
 > 事前に doctor で確認するのが確実です。
 
-## セットアップ手順（手動）
+## セットアップ手順
 
-Claude Code に任せるなら、上のプラグイン(または curl)で入れた `/ftester-setup` が下記を自動で行います。
-以下は手動での同等手順です。
+Claude Code に任せるなら、上のプラグイン(または curl)で入れた `/ftester-setup` が下記を自動で行います
+（`/ftester-setup` は中でこのインストーラを呼び、失敗したステップだけ手当てします）。
+
+### インストーラ（1コマンド）
+
+```bash
+mkdir -p ~/my-app-tests && cd ~/my-app-tests   # テスト専用ディレクトリ(WORK_DIR)。名前は例
+curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install.sh \
+  | bash -s -- --name MyApp --app com.example.myapp
+```
+
+clone（TOOL_ROOT は既定で WORK_DIR の隣）・`swift build`・プロジェクト作成・VSCode 拡張・`.mcp.json`・
+検証ゲートまでを行います。**冪等**なので何度実行しても安全です（済んだ手順は skip）。
+クローン済みなら `bash <TOOL_ROOT>/Scripts/install.sh --work-dir <WORK_DIR> --name MyApp`。
+主なオプション: `--tool-root <dir>`（clone 先）/ `--skip-extension` / `--skip-project`（MCP だけ）/
+`--skip-mcp` / `--no-doctor`。終了コードは **0=完了 / 2=任意ステップのみ未完 / 1=必須ステップで停止**
+（停止時は `[fail]` 行に対応する下記の手順番号が出ます）。
+
+デバイス・アプリ・実行プロファイルの作成はインストーラの担当外です（Claude Code の `/ftester-profiles`、
+または下記「4. プロファイル」を手動で）。
+
+以下は**インストーラを使わない場合の手動手順**です（インストーラが停止したときは、対応する番号の
+手順だけを手で通してから再実行してください）。
 
 ### 1. 前提（人間がやる）
 
@@ -310,6 +331,12 @@ cd <WORK_DIR> && swift build --product ftester-scenarios-MyApp
 # 3) 拡張を入れ直す（TOOL_ROOT で）→ 最後に VSCode で Developer: Reload Window（人間）
 cd <TOOL_ROOT>/vscode-ftester && npm install && npm run install-local
 ```
+
+`git pull`（1 の前半）だけ済ませれば、残りの **TOOL_ROOT の再ビルドと 3)（拡張の入れ直し・`.mcp.json` の
+TOOL_ROOT 追従）・検証ゲート**はインストーラの再実行でも通せます（冪等）:
+`bash <TOOL_ROOT>/Scripts/install.sh --work-dir <WORK_DIR> --skip-project`
+（`--skip-project` は既存の `Projects/` に触らないため。**2 の受け手側ビルドと `ftester project sync` は
+インストーラの担当外**ですが、シナリオは実行時に自動ビルドされるので通常は不要です）
 
 **Claude Code プラグイン（`/ftester:*` スキル）は `git pull` では更新されません。** プラグインの
 スキルは `~/.claude/plugins/cache/` のスナップショットから読まれ、**自動更新もされない**ため、

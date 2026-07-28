@@ -74,6 +74,16 @@ claude plugin install ftester@foundation-tester --scope user
   作る。検証ゲートと人間チェックポイント付き。
 - 以後、修正版の取り込みは `/ftester:ftester-update`、テスト対象やデバイスの追加は `/ftester:ftester-profiles`、
   テストシナリオ(.swift)の作成は `/ftester:ftester-scenario`。
+- **Claude Code を使わない/エージェント無しで入れたい**なら、同じ機械作業を1コマンドで行うインストーラがある
+  (clone → `swift build` → プロジェクト作成 → VSCode 拡張 → `.mcp.json` → 検証ゲート。冪等):
+
+  ```bash
+  mkdir -p ~/my-app-tests && cd ~/my-app-tests
+  curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install.sh \
+    | bash -s -- --name MyApp --app com.example.myapp
+  ```
+
+  スキル(`/ftester-setup`)も内部でこれを呼び、失敗したステップだけ runbook で手当てする。
 - 手順の全体像・手動でのやり方・トラブルシュートは [docs/getting-started.md](docs/getting-started.md)。
 
 > **配布はソースビルド前提**(バイナリ配布はしない)。ツール本体(CLI)も VSCode 拡張(.vsix)も、この clone から

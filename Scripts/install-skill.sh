@@ -60,6 +60,9 @@ cat <<'EOF'
 次の手順:
   1. このフォルダを Claude Code で開く(既に開いているなら再読込)
   2. /ftester-setup を実行する(初回導入: clone → build → install)
+     エージェントを使わないなら同じ機械作業を1コマンドで:
+       curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install.sh \
+         | bash -s -- --name <ProjectName>
      以後、修正版の取り込みは /ftester-update
      マシン/アプリ/実行プロファイルの一括作成は /ftester-profiles
      テストシナリオ(.swift)の作成は /ftester-scenario
