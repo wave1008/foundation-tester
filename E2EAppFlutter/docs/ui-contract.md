@@ -83,20 +83,26 @@ Flutter の `AlertDialog` は Navigator のオーバーレイなので、見出�
 Semantics として出る → **`#txt_dialog_title` が両 OS で引ける**
 (iOS ネイティブ SUT は UIAlertController が id を捨てるため引けない。ここが SUT 間の差)。
 
-### H2. iOS では IME アクション(`#txt_ime_action`)を駆動できない(2026-07-28 実測で確定)
+### H2. iOS の IME アクション(`#txt_ime_action`)は engine の私有 API へ配送している
 
-`pressEnter()` も `type("…\n")` も **Flutter の iOS では発火しない**。両エンジンとも塞がっている:
+**`insertText:@"\n"` は使えない**(2026-07-28 実測): Flutter engine は改行を握り潰し、
+**文字として挿入もされず**(`len` が増えない)**アクションも出ない**。
+`FlutterTextInputView` は `UITextField` 派生ではないので `FTPressEnterOnComposeFirstResponder` の
+UIKit 除外にも当たらず、そのままでは 200 が返って**成功に見えるのに何も起きない**という最悪の形になる。
 
-- **in-app**: 入力受け口 `FlutterTextInputView` は `UITextField` 派生ではないので
-  `FTPressEnterOnComposeFirstResponder` の除外に当たらず `insertText:@"\n"` が届くが、
-  Flutter engine はこれを `onSubmitted` に変換しない(`ime=0` のまま)
-- **xcuitest フォールバック**: hybrid では **in-app の合成タッチが立てたフォーカスに XCUITest から
-  到達できない**(`hasKeyboardFocus` の要素が見つからず `typeText("\n")` が無言 no-op)。
-  engine=xcuitest 単独なら最初から XCUITest がタップ・入力するので発火する
+そこで in-app は engine の配送口を直接呼ぶ(`InAppInput.m` の `ftFlutterPerformInputAction`):
 
-そのため `Projects/E2E-Flutter/Scenarios/18_Enterキー.swift` は **`platform: "android"` に限定**して
-ある(Android は a11y の `ACTION_IME_ENTER` で通る)。Flutter iOS アプリで送信キーを打ちたい
-利用者には engine=xcuitest プロファイルを案内すること。
+- `[view textInputDelegate]` → `flutterTextInputView:performAction:withClient:` に
+  `[view textInputClient]` を添えて送る(いずれも `FlutterTextInputView` の getter が実在)
+- アクション値は `view.returnKeyType`(UIKit の**公開** enum)から逆写像する。engine 側が Dart の
+  `textInputAction` から `returnKeyType` を作っているため復元になる。**未知の値は写像せず失敗扱い**
+- **私有 API なので各段で存在確認し、1つでも欠けたら 409 に縮退する**(推測で続行しない)。
+  Flutter 更新で壊れたらシナリオ 18 が赤くなる ―― それが唯一の検知手段
+
+**xcuitest フォールバックは hybrid では効かない**: in-app の合成タッチが立てたフォーカスに
+XCUITest から到達できない(`hasKeyboardFocus` の要素が見つからず `typeText("\n")` が無言 no-op)。
+だから in-app 側で完結させる必要がある。engine=xcuitest 単独なら最初から XCUITest が
+タップ・入力するので従来どおり発火する。
 
 ### H. `resizeToAvoidBottomInset: false`
 

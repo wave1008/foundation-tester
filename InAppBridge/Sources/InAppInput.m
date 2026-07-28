@@ -208,6 +208,40 @@ BOOL FTInsertTextIntoFirstResponder(NSString *text) {
     return NO;
 }
 
+/// Flutter の入力受け口へ IME アクションを配送する。**engine の私有 API を叩く**ので、
+/// 各段で存在確認し1つでも欠けたら NO を返す(= 呼び出し側が 409 で「xcuitest を使え」と案内する
+/// 既知の縮退へ落ちる。Flutter 更新で黙って誤動作させないため、推測で続行しない)。
+/// insertText:@"\n" が使えないのは engine が改行を握り潰すため(文字も入らずアクションも出ない)。
+/// アクション値は view が保持する returnKeyType(UIKit の公開 enum)から復元する
+/// ―― engine 側が Dart の textInputAction から returnKeyType を作っているので逆写像になる。
+static BOOL ftFlutterPerformInputAction(UIView *v) {
+    if (![v respondsToSelector:@selector(textInputDelegate)]) return NO;
+    if (![v respondsToSelector:@selector(textInputClient)]) return NO;
+    if (![v respondsToSelector:@selector(returnKeyType)]) return NO;
+    id delegate = ((id (*)(id, SEL))objc_msgSend)(v, @selector(textInputDelegate));
+    SEL perform = @selector(flutterTextInputView:performAction:withClient:);
+    if (!delegate || ![delegate respondsToSelector:perform]) return NO;
+
+    // FlutterTextInputAction(engine の enum)。未知の returnKeyType は写像せず NO を返す
+    UIReturnKeyType returnKey = ((UIReturnKeyType (*)(id, SEL))objc_msgSend)(v, @selector(returnKeyType));
+    NSInteger action;
+    switch (returnKey) {
+        case UIReturnKeyDone: action = 1; break;
+        case UIReturnKeyGo: action = 2; break;
+        case UIReturnKeySend: action = 3; break;
+        case UIReturnKeySearch: action = 4; break;
+        case UIReturnKeyNext: action = 5; break;
+        case UIReturnKeyContinue: action = 6; break;
+        case UIReturnKeyJoin: action = 7; break;
+        case UIReturnKeyRoute: action = 8; break;
+        case UIReturnKeyEmergencyCall: action = 9; break;
+        default: return NO;
+    }
+    int client = ((int (*)(id, SEL))objc_msgSend)(v, @selector(textInputClient));
+    ((void (*)(id, SEL, id, NSInteger, int))objc_msgSend)(delegate, perform, v, action, client);
+    return YES;
+}
+
 BOOL FTPressEnterOnComposeFirstResponder(void) {
     for (UIView *v in ftTextReceivers()) {
         if (!v.isFirstResponder) continue;
@@ -224,6 +258,9 @@ BOOL FTPressEnterOnComposeFirstResponder(void) {
             }
             [field sendActionsForControlEvents:UIControlEventEditingDidEndOnExit];
             return YES;
+        }
+        if ([NSStringFromClass(v.class) hasPrefix:@"FlutterTextInputView"]) {
+            return ftFlutterPerformInputAction(v);
         }
         if ([v conformsToProtocol:@protocol(UIKeyInput)]) {
             [(id<UIKeyInput>)v insertText:@"\n"];

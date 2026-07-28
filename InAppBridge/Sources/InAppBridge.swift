@@ -321,26 +321,16 @@ final class FTInAppBridge {
     }
 
     private func handlePressEnter() throws -> InAppHTTPServer.Response {
-        // Flutter の入力受け口(FlutterTextInputView)は UITextField/UITextView の派生ではないため
-        // FTPressEnterOnComposeFirstResponder の除外に当たらず insertText("\n") が通って 200 を
-        // 返してしまうが、Flutter engine はこれを onSubmitted(IME アクション)に変換せず何も起きない
-        // (ホストは 200 を成功と見なし xcuitest へフォールバックしない)。ここで先に 409 にして回す。
-        if uiFramework == "flutter" {
-            throw InAppError(409, "in-app エンジンでの Enter 押下は Flutter の入力欄では効きません"
-                + "(insertText(\"\\n\") が onSubmitted に変換されない)。"
-                + "engine=xcuitest の実行プロファイル(iosInappEngine: false)で実行してください。"
-                + "診断: \(FTFirstResponderDiagnostics())")
-        }
         var inserted = false
         try performWithSettle { _ in inserted = FTPressEnterOnComposeFirstResponder() }
         guard inserted else {
-            // UITextField/UITextView への insertText("\n") は改行文字が入るだけで return イベントを
-            // 発火しないため、in-app エンジンでの Enter 相当は Compose の入力受け口でしか扱えない。
-            // UIKit 入力欄・フォーカス無しはどちらも 409 とし、ホストを xcuitest の
-            // typeText("\n")(Return キー相当)へ回す
-            throw InAppError(409, "in-app エンジンでの Enter 押下は Compose Multiplatform の入力欄"
-                + "(insertText(\"\\n\") が IME アクションに変換される)でのみ有効です。"
-                + "UIKit の入力欄(UITextField/UITextView)、またはフォーカスされた入力欄が無い場合は"
+            // 受け口ごとに機構が違い、吸収は FTPressEnterOnComposeFirstResponder の1箇所にある
+            // (Compose = insertText("\n") / UITextField = Return の再現 / Flutter = engine への
+            // アクション配送)。ここへ来るのはフォーカスが無いか、Flutter の私有 API が
+            // 版差で欠けた場合。xcuitest 経路は in-app が立てたフォーカスに届かないため、
+            // hybrid では救済されない(engine=xcuitest 単独プロファイルを案内する)
+            throw InAppError(409, "in-app エンジンで Enter を発火できませんでした。"
+                + "フォーカスされた入力欄が無いか、対応していない入力実装です。"
                 + "engine=xcuitest の実行プロファイル(iosInappEngine: false)で実行してください。"
                 + "診断: \(FTFirstResponderDiagnostics())")
         }
