@@ -175,8 +175,8 @@ export const panelsStrings = {
 
   "panels.settings.pollingModeLabel": { ja: "ポーリングモードを使用する", en: "Use polling mode" },
   "panels.settings.pollingModeHint": {
-    ja: "オンにすると画面を映像ストリーミングせず、従来のポーリング(定期スクリーンショット)で更新します。ストリーミングが不安定なときの回避用です。",
-    en: "When enabled, the screen updates via traditional polling (periodic screenshots) instead of video streaming. Use this as a workaround when streaming is unstable.",
+    ja: "画面のストリーミングが不安定なときの回避用です。",
+    en: "A workaround for when screen streaming is unstable.",
   },
   // 設定タブ「更新」セクション(静的ラベル)。動的な状態表示は webviewMonitorB.ts の wvMonitor2.update.*
   "panels.settings.updateLabel": { ja: "更新", en: "Updates" },
