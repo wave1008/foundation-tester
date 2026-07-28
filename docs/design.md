@@ -757,10 +757,12 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
   (`textFieldShouldReturn:` + `EditingDidEndOnExit`。SwiftUI の `onSubmit` もこの経路)。
   UITextView は Return = 改行挿入なのでそのまま `insertText("\n")`。
   **`type` の末尾改行もこの関数を通す**(「type の末尾改行 = pressEnter」が契約なので分岐を割らない)。
-  **Flutter iOS だけは駆動できない**: engine が `insertText("\n")` を `onSubmitted` に変換せず、
-  hybrid の xcuitest フォールバックも **in-app の合成タッチが立てたフォーカスに届かない**
-  (`hasKeyboardFocus` の要素が見つからない)。engine=xcuitest 単独なら通る
-  (E2EAppFlutter/docs/ui-contract.md。E2E-Flutter のシナリオ 18 は android 限定)
+  **Flutter は engine の私有 API へアクションを配送する**: `insertText("\n")` は engine に
+  握り潰され(文字も入らずアクションも出ないのに 200 が返る最悪の形)、hybrid の xcuitest
+  フォールバックも **in-app の合成タッチが立てたフォーカスに届かない**ため、in-app で完結させるしかない。
+  `[view textInputDelegate]` → `flutterTextInputView:performAction:withClient:` を
+  `returnKeyType`(UIKit の公開 enum)からの逆写像で呼ぶ。**私有 API なので各段で存在確認し、
+  欠けたら 409 に縮退する**(E2EAppFlutter/docs/ui-contract.md。退行の検知はシナリオ 18 が唯一)
 - **Android の Enter はキーイベントでは届かない**(2026-07-28 実測): ソフトキーボードが出ていると
   `input keyevent 66`(gRPC の名前付き "Enter" も同じ)は **View/XML の `EditText` に到達しない**
   (IME が消費する)。`adb shell ime disable <id>` で IME を止めると同じキーで発火する。
