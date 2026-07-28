@@ -7,7 +7,11 @@ let swift5Mode: [SwiftSetting] = [.swiftLanguageMode(.v5)]
 let package = Package(
     name: "foundation-tester",
     platforms: [
-        .macOS("27.0"),  // Foundation Models のマルチモーダル(Attachment)が macOS 27+
+        // FoundationModels 本体(テキスト生成・Generable)は macOS 26+。
+        // マルチモーダル(Attachment)だけが macOS 27+ なので、その呼び出しは
+        // #available で分岐する(FTAgent/OcclusionVerifier.swift・ReplayAssist.swift)。
+        // ここを 27 に上げると macOS 26 でビルドすら通らなくなる。
+        .macOS("26.0"),
     ],
     // 外部パッケージ(ftester init が生成する受け手の Package.swift)が依存する公開 product。
     // 受け手のシナリオターゲットは .product(name: "FTScenarioRunner"/"FTDSL", package: "foundation-tester")
