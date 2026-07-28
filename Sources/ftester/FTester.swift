@@ -76,7 +76,20 @@ struct Doctor: AsyncParsableCommand {
     @Flag(name: .long, help: "Apple Intelligence / オンデバイス FM の可否だけを確認し exit code で返す")
     var fmOnly = false
 
+    // ルート解決だけを見る高速ゲート。FM(実呼び出しで数秒・環境によっては失敗)に依存させない
+    // ため独立させてある。パス取り違えの切り分けはこれ単体で完結する
+    @Flag(name: .long, help: "ツール本体/シナリオパッケージのルート解決だけを確認し exit code で返す")
+    var rootsOnly = false
+
     func run() async throws {
+        if rootsOnly {
+            // ツール本体が解決できない = ブリッジが起動不能なので非0。シナリオパッケージ側は
+            // パッケージ外から実行しても正当なので警告どまり(exit code に反映しない)
+            let toolRootResolved = printRoots()
+            if !toolRootResolved { throw ExitCode(1) }
+            return
+        }
+
         // availability だけでは実呼び出しの可否が分からない(FMDoctor.checkLive の doc 参照)。
         // doctor は「本当に使えるか」を答える場所なので実呼び出しで確認する
         let fm = await FMDoctor.checkLive()
@@ -92,20 +105,7 @@ struct Doctor: AsyncParsableCommand {
         let vision = FMDoctor.visionReport
         print(vision.available ? "✅ \(vision.detail)" : "⚠️ \(vision.detail)")
 
-        // 2つのルートを明示する。外部パッケージ構成では別ディレクトリになり、取り違えると
-        // 「InAppBridge/build.sh が無い」「Projects/ が見えない」で詰まる(実害あり)
-        switch Result(catching: { try RepoRoot.find() }) {
-        case .success(let root):
-            print("✅ ツール本体(ブリッジ資産): \(root.path)")
-        case .failure(let error):
-            print("❌ ツール本体のルートを特定できません: \(error.localizedDescription)")
-        }
-        if let packageRoot = ScenarioHost.packageRoot() {
-            print("✅ シナリオのパッケージ(Projects/): \(packageRoot.path)")
-        } else {
-            print("⚠️ シナリオのパッケージ(Package.swift)が cwd の上方に見つかりません"
-                + "(FT_PACKAGE_ROOT で明示指定できます)")
-        }
+        _ = printRoots()
 
         let xcode = try Shell.run(["xcodebuild", "-version"])
         let xcodeLine = xcode.output.split(separator: "\n").first.map(String.init) ?? "不明"
@@ -191,6 +191,26 @@ struct Doctor: AsyncParsableCommand {
         } else {
             print("⚠️ adb が見つかりません(Android を使う場合は ANDROID_HOME を設定)")
         }
+    }
+
+    /// 2つのルートを表示し、ツール本体を解決できたかを返す。外部パッケージ構成では別ディレクトリに
+    /// なり、取り違えると「InAppBridge/build.sh が無い」「Projects/ が見えない」で詰まる(実害あり)
+    private func printRoots() -> Bool {
+        var resolved = false
+        switch Result(catching: { try RepoRoot.find() }) {
+        case .success(let root):
+            print("✅ ツール本体(ブリッジ資産): \(root.path)")
+            resolved = true
+        case .failure(let error):
+            print("❌ ツール本体のルートを特定できません: \(error.localizedDescription)")
+        }
+        if let packageRoot = ScenarioHost.packageRoot() {
+            print("✅ シナリオのパッケージ(Projects/): \(packageRoot.path)")
+        } else {
+            print("⚠️ シナリオのパッケージ(Package.swift)が cwd の上方に見つかりません"
+                + "(FT_PACKAGE_ROOT で明示指定できます)")
+        }
+        return resolved
     }
 }
 

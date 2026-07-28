@@ -372,7 +372,8 @@ clone 内で直接スキルを使っている構成なら `git pull` で更新�
 ## トラブルシュート
 
 - **まず `ftester doctor`**（clone 構成は `swift run ftester doctor`）。FM 可用性・Xcode・xcodegen・
-  シミュレータ・adb の状態を一覧します。FM の可否だけを exit code で見たいときは `ftester doctor --fm-only`。
+  シミュレータ・adb の状態を一覧します。FM の可否だけを exit code で見たいときは `ftester doctor --fm-only`、
+  **パスの解決結果だけ**を FM 判定抜きで見たいときは `ftester doctor --roots-only`。
 - `xcodegen: No such file or directory` → `brew install xcodegen`。
 - 「マシン名が未登録です」→ `ftester machine set "<マシン名>"`、かつ同名の machines/ JSON を用意。
 - 全バイナリが dyld クラッシュ → macOS と Xcode のベータ世代を揃えて `swift build` し直す。
@@ -391,7 +392,8 @@ clone 内で直接スキルを使っている構成なら `git pull` で更新�
 - **`ft_*` が「`<WORK_DIR>/InAppBridge/build.sh` が無い」等でツール本体のファイルを見失う** →
   ftester は2つのルートを使い分けます: **ツール本体**(TOOL_ROOT。`Runner/`・`InAppBridge/` などブリッジ
   資産の在り処)と**シナリオのパッケージ**(WORK_DIR。`Projects/` の在り処)。外部パッケージ構成では別物です。
-  `ftester doctor` の冒頭が両方を表示するので、まずそこで解決結果を確認してください。ツール本体が
+  **`ftester doctor --roots-only`** が両方の解決結果だけを即座に表示します(FM 判定を挟まないので
+  Apple Intelligence の状態に左右されません。ツール本体を解決できなければ exit code 1)。ツール本体が
   正しく解決されないとき(バイナリを別の場所へコピーした・特殊な起動経路など)は、環境変数
   `FT_TOOL_ROOT` にクローンのルートを指定すれば固定できます(`.mcp.json` の `env` に書けます。
   シナリオ側のパッケージを固定したいときは `FT_PACKAGE_ROOT`)。どちらも**指定先が無効なら
