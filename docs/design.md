@@ -766,7 +766,8 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
   変換される。**UITextField は変換されない**ので UIKit が Return で行うこと自体を再現する
   (`textFieldShouldReturn:` + `EditingDidEndOnExit`。SwiftUI の `onSubmit` もこの経路)。
   UITextView は Return = 改行挿入なのでそのまま `insertText("\n")`。
-  **`type` の末尾改行もこの関数を通す**(「type の末尾改行 = pressEnter」が契約なので分岐を割らない)。
+  **この関数を通るのは `pressEnter` だけ**(`type` の `\n` は上記のとおり XCUITest へ回るので
+  in-app の `handleType` には届かない。engine=inapp 単独=xcuiPort 無しのときだけ来る)。
   **Flutter は engine の私有 API へアクションを配送する**: `insertText("\n")` は engine に
   握り潰され(文字も入らずアクションも出ないのに 200 が返る最悪の形)、hybrid の xcuitest
   フォールバックも **in-app の合成タッチが立てたフォーカスに届かない**ため、in-app で完結させるしかない。
@@ -818,7 +819,7 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
 | `thisIs` 系が素の値にも直接生える(`FTValue` 転送) | Swift は非 Optional に `Any?` 拡張が生えない(言語制約の吸収であり挙動差ではない) |
 | 相対セレクタの引数の `(a\|b)` は括弧を自分で書く | `:right(...)` の括弧が引数の括弧で `\|` の囲みにならないため |
 | フローベース相対セレクタ(`:flow` 等)を持たない | 根拠の無い調整値を要求する(上記 2026-07-26 決定・再提案しない) |
-| `pressEnter` の iOS 実装がソフトキー tap ではなく `typeText("\n")`(xcuitest)/`insertText("\n")`(inapp) | キーボード要素をスナップショットから除外しているため tap できない。観測できる挙動(Return キー相当)は同等 |
+| `pressEnter` の iOS 実装がソフトキー tap ではない(xcuitest = `typeText("\n")` / inapp = 受け口ごとに Compose は `insertText("\n")`・UIKit は delegate 再現・Flutter は engine への配送) | キーボード要素をスナップショットから除外しているため tap できない。受け口で機構が違うのは iOS 側の事情(上記「iOS の Enter は…」)。観測できる挙動(Return キー相当)はいずれも同等 |
 
 ### 型付きセレクタ(Sel。2026-07-27)
 
@@ -1576,7 +1577,7 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
     discard+requeue+離脱へ流す(理由表示「デバイス消失(offline/未検出)」)。`isDeviceFrozen`/`isDeviceUnreachable`
     の注入は `ProfileRunner`・`ApiRunCommand` の両並列経路で行う
 - **劣化ワーカーの可視化**(`RunSummary.degradedWorkers`。2026-07-18): 連鎖失敗が結果 JSON を掘るまで見えなかった
-  問題への観測性。RunOrchestrator が離脱(凍結/消失/連続失敗/接続不能)を `DegradedWorkerCollector` で集約し
+  問題への観測性。RunOrchestrator が離脱(凍結/消失/連続失敗/接続不能)を `NoteCollector`(`degraded`)で集約し
   `RunSummary.degradedWorkers`(「label: 理由」)に載せる。`RunRecorder.finish` 経由で run.json の `degradedWorkers`
   に永続化(空は nil 省略)し、CLI(ProfileRunner の print / ApiRunCommand の logStderr)にも末尾サマリを出す
 - **動的ワーカープール(復帰デバイスの再参加)**(`RunOrchestrator.superviseWorker`。2026-07-18): 従来ワーカー集合は
@@ -1628,7 +1629,7 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
 
 - **監視と実行の協調(run-lease)**(2026-07-18): monitor(watchdog)と run は別プロセスで無協調のため、
   watchdog が実行中デバイスに破壊的再起動をかけて run のワーカーを壊していた。対策として run→monitor 方向の
-  lease を追加(`Sources/FTBridgeClient/RunLease.swift`=`MonitorLease` と対。`run-<key>.lease`)。`ftester api run`
+  lease を追加(`Sources/FTBridgeClient/RunLease.swift`。`run-<key>.lease`)。`ftester api run`
   (RunOrchestrator)がワーカー担当デバイス(serial/udid)へ 5s ハートビートで write、離脱・完了時に remove
   (FTCore→FTBridgeClient は循環のため `writeRunLease`/`removeRunLease` クロージャ注入。`RunLeaseKeys` actor で
   管理)。`ftester api monitor` が `RunLease.isFresh` を読んでデバイスイベントに `inRun` を載せ、拡張の
@@ -1639,20 +1640,17 @@ adb 接続は生きているがゲスト側が不健全(Wi-Fi 無効・ゲスト
 ## 13. 実行の相乗りガードと launch 事前検査(2026-07-16)
 
 デモ凍結事故(ライブモニター稼働中のシムへ外部 run が相乗り→ launch ハング→ 60s watchdog で
-ランナー死→ストリーム凍結)の再発防止として2つのガードを入れた。
+ランナー死→ストリーム凍結)の再発防止として2つのガードを入れた。**うち占有ガードは後に撤去した**(13.1)。
 
-### 13.1 MonitorLease(占有ガード、B1)
+### 13.1 MonitorLease(占有ガード、B1)は撤去済み(2026-07-24)
 
-「このデバイスはモニターが現役で見ている」をプロセス横断で判定するハートビート lease。
+「モニターが見ているデバイスへの外部 run を lease で拒否する」占有ガードを一度入れたが、
+**テスト実行をモニターより優先する**方針(ユーザー決定)により全廃した。
+`MonitorLease` の実装も `.ftester/monitor-*.lease` も現在は**存在しない**。
+モニターは受動ビューアで、run に割り込まれても respawn で復帰する。**再提案しない**。
 
-- **書き手**: `ftester api monitor` が監視サイクル毎に `.ftester/monitor-<key>.lease` を更新
-  (key: iOS=シミュレータ UDID / Android=adb serial。中身=モニター pid、mtime=ハートビート)。
-  終了時に削除するが、消し忘れても pid 死亡または mtime 15s 超で自動失効(stale lease 無害化)
-- **読み手**: 外部 run(`ft_run_scenario`)のみ。iOS は `BridgeProvisioner.provision(externalRun:force:)`
-  内、Android は provision を通らないため MCPServer でインライン判定。fresh lease があれば
-  明確なエラーで拒否、`force` で上書き可。内部パス(device-up・プロファイル run)は
-  `externalRun=false` 既定で挙動不変(デモ自身の run はモニターと共存する設計のため)
-- 実装: `Sources/FTBridgeClient/MonitorLease.swift`(判定3条件: ファイル存在+pid 生存+mtime 15s 以内)
+run → monitor 方向の `RunLease`(§12 の「監視と実行の協調」)は別物で**現役**
+(watchdog が実行中デバイスを破壊的に再起動するのを抑える)。混同しないこと。
 
 ### 13.2 launch 事前検査(LaunchPreflightDriver)
 

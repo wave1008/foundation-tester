@@ -535,6 +535,9 @@ window/transition/animator の `*_scale` はチューニングノブではなく
        (XCUITest attach 経路 1.0〜1.3s の約1/4)。hybrid の Compose 検出時 attach 優先
        (preferTypeDriver)は廃止し、409→attach フォールバックのみを安全網として残す。
        ログイン系シナリオ 18.9→15.3s(−19%)。
+       **2026-07-28 追記**: `\n` を含む text だけは attach 経路(XCUITest)へ回す。改行の意味を
+       OS 既定(Return キー押下)に揃えるためで、その入力だけこの高速化の対象外になる
+       (`\n` を含まない通常の入力は従来どおり in-app。docs/design.md)。
      - ✅ **FT_PHASE_LOG=1 のフェーズ計測**(採用 2026-07-21): run の固定費内訳を stderr に出す
        計測点(PhaseLog.swift)。実測: CLI 側固定費はほぼゼロ(0.05s)で、ラン毎オーバーヘッドの
        実体は iOS ワーカー合流(ブリッジ再利用スキャン 0.55s+インストール差分判定)。
