@@ -22,7 +22,18 @@ public final class AppAttachDriver: AppDriver {
     }
 
     public func tap(ref: Int) async throws { try await client.tap(ref: ref) }
-    public func type(ref: Int?, text: String) async throws { try await client.type(ref: ref, text: text) }
+    /// ref 無し(フォーカス中要素への入力)は swipe と同じ回復を入れる(下の swipe のコメント参照)。
+    /// **ref 有りには入れない**: activate が refFrames をクリアするため再試行時に別要素を指す
+    public func type(ref: Int?, text: String) async throws {
+        guard ref == nil else { return try await client.type(ref: ref, text: text) }
+        do {
+            try await client.type(ref: nil, text: text)
+        } catch let error as DriverError {
+            guard case .badResponse(let code, _) = error, code == 409 else { throw error }
+            try await client.activate(bundleID: bundleID)
+            try await client.type(ref: nil, text: text)
+        }
+    }
     /// pressEnter も ref を使わないので swipe と同じ回復を入れる(下の swipe のコメント参照)。
     /// in-app が 409 を返して初めてここへ来るため、attach 前=セッション無しに当たりやすい
     public func pressEnter() async throws {

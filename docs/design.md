@@ -751,6 +751,16 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
   見られないため type の受け皿にできない**(実測: snapshot は SBSwitcherWindow 等8要素のみ)。
   用途を混ぜないこと。engine=inapp 単独(xcuiPort 無し)ではこの経路は無く、409 メッセージが
   xcuitest プロファイルへ誘導する
+- **`type` の `\n` は iOS では XCUITest 経路へ回す**(2026-07-28。`StepExecutor` の type 2経路):
+  `typeText` は改行を **Return キー押下**として発火するので **iOS 既定の挙動そのもの**になり、
+  「改行を入れるか確定アクションを撃つか」をフィールドが決める。in-app の `insertText` は改行の解釈が
+  フレームワーク任せで OS 既定と揃わない(Compose は完全一致 `"\n"` だけアクション化、Flutter は握り潰す)。
+  **`\n` を含まない入力は両経路で結果が同じ**なので、この振り分けは**エンジン間の観測可能な差を生まない**
+  (エンジンはツール内部の最適化であり、シナリオから見えてはいけない)。判定は `typeDriver` の有無だけで
+  行い、プラットフォーム判定は書かない(`typeDriver` は iOS hybrid でしか設定されないため自動的に
+  iOS 限定。条件を二重に持つと将来ずれる)。**ロケータ無しの `type`** も同じ規則で回るが、ref が無く
+  attach 前だと 409 になるため `AppAttachDriver.type(ref: nil)` に activate 再試行を入れてある
+  (ref 有りには入れない — activate が refFrames をクリアする)
 - **iOS の Enter はフレームワークごとに受け口が違う**(2026-07-28 実測。吸収は
   `FTPressEnterOnComposeFirstResponder` の1箇所): Compose は `insertText("\n")` が IME アクションに
   変換される。**UITextField は変換されない**ので UIKit が Return で行うこと自体を再現する

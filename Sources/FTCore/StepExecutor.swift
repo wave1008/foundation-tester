@@ -510,7 +510,14 @@ public final class StepExecutor {
         // ref: nil = ブリッジがフォーカス中要素へ入力(iOS/Android とも)。ロケータ解決を挟まない。
         if action == "type", step.locator == nil, step.fallbacks?.isEmpty ?? true {
             let start = clock.now
-            try await driver.type(ref: nil, text: step.text ?? "")
+            let text = step.text ?? ""
+            // ロケータ有り type(下記 case "type")と同じ規則: "\n" を含むときだけ
+            // typeDriver(XCUITest)へ回し、iOS の Return キー既定挙動に揃える(理由は同 case のコメント参照)。
+            if text.contains("\n"), let td = typeDriver {
+                try await td.type(ref: nil, text: text)
+            } else {
+                try await driver.type(ref: nil, text: text)
+            }
             phase.actionMs += Self.ms(clock.now - start)
             return StepOutcome(status: .passed)
         }
@@ -664,7 +671,12 @@ public final class StepExecutor {
             // activate 不発→合成タッチ)。失敗ではないので driverFallback に載せて可視化するだけ
             if let note = actingDriver.lastActionNote { driverFallback = note }
         case "type":
-            if let td = typeDriver, preferTypeDriver,
+            // "\n" を含む入力だけ typeDriver(XCUITest)を優先する: typeText は改行を Return
+            // キー押下として発火し iOS 既定の挙動と揃うが、in-app の insertText は改行の解釈が
+            // フレームワーク任せで揃わない。"\n" を含まない入力は両経路で結果が同じなので、この
+            // 振り分けはエンジン間の観測可能な挙動差を生まない。
+            let text = step.text ?? ""
+            if let td = typeDriver, preferTypeDriver || text.contains("\n"),
                try await typeViaTypeDriver(td, step: step, phase: &phase) {
                 return StepOutcome(status: .passed, healedStep: healedStep, healedByCache: healedByCache)
             }
