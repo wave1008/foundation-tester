@@ -44,8 +44,8 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
     <button id="tab-processes" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-processes">${t("panels.tabs.processes")}</button>
     <button id="tab-recordings" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-recordings">${t("panels.tabs.recordings")}</button>
     <button id="tab-settings" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-settings">${t("panels.tabs.settings")}</button>
-    <!-- 更新があるときだけ現れる右寄せボタン(タブに関係なく常に見える位置)。押すと設定タブへ
-         切り替えて進行ログを見せる。対向: settingsTab.js -->
+    <!-- 更新があるときだけ現れるボタン(タブの並びの直後。タブに関係なく常に見える)。
+         押すと設定タブへ切り替える。対向: settingsTab.js -->
     <button id="tabbar-update" class="tabbar-update" type="button" style="display: none;">${t("panels.settings.updateRunButton")}</button>
   </div>
 
