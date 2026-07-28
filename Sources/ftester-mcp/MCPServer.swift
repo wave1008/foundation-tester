@@ -175,7 +175,10 @@ final class MCPServer {
             throw MCPError("プロファイル \(profileName) に \(platform) のデバイスがありません")
         }
         if platform == "ios" {
-            let provisioner = BridgeProvisioner(repoRoot: root(of: project))
+            // ブリッジ資産(InAppBridge/・Runner/)を持つ**ツール本体**のルート。受け手パッケージの
+            // ルート(root(of:))を渡してはいけない — 外部パッケージ構成では別ディレクトリで、
+            // InAppBridge/build.sh が無く provision が必ず落ちる(.ftester の状態も CLI と食い違う)
+            let provisioner = BridgeProvisioner(repoRoot: try RepoRoot.find())
             // bundleID/preinstallAppPath は inapp ブリッジのコールドスタートに必須。
             // 稼働中ブリッジ再利用時は使われないため、欠落しても露見しにくい(実際に欠落バグが起きた)
             let iosApp = resolved.apps["ios"]
@@ -374,11 +377,6 @@ final class MCPServer {
             lines.append(contentsOf: ScenarioLogFormatter.lines(for: event))
         }
         return text(lines.joined(separator: "\n"))
-    }
-
-    private func root(of project: TestProject) -> URL {
-        ScenarioHost.packageRoot() ?? project.rootURL
-            .deletingLastPathComponent().deletingLastPathComponent()
     }
 
     // MARK: - ツール定義

@@ -1809,10 +1809,15 @@ Claude Code 向けは `.claude-plugin/`(plugin.json の `skills` が正典ディ
   (`Sources/FTScenarioRunner` の有無)で自動判定し、`PackageManifestEditor` が内部=target 参照 /
   外部=`.product` 参照のスタンザを生成する(`project sync` も同じ判定)。
 - **repoRoot の二役分離**: シナリオビルドは `ScenarioHost.packageRoot()`(= 受け手パッケージ。Package.swift
-  のみ上方探索)。ブリッジ資産(`Runner/`・`InAppBridge/`)は `RepoRoot.find()`。後者の解決順は
+  のみ上方探索。`FT_PACKAGE_ROOT` で明示指定可)。ブリッジ資産(`Runner/`・`InAppBridge/`)は
+  `RepoRoot.find()`。後者の解決順は ⓪ `FT_TOOL_ROOT`(明示指定。無効なら探索へ落とさず失敗)
   ① 実行ディレクトリ上方の Package.swift+Runner/(clone 構成)② 受け手パッケージの `.build/checkouts/*/Runner/`
-  (外部パッケージ構成の git 依存。swift build が展開・CLI の導入方法に依らず永続)③ `#filePath` からのツールソース
-  (local path 依存 / 自前ビルド)。下流(BridgeProvisioner/DevicesCommand/InApp/LiveBridge)は無変更。
+  (外部パッケージ構成の git 依存。swift build が展開・CLI の導入方法に依らず永続)③ 実行中バイナリの位置
+  (`<TOOL_ROOT>/.build/debug/ftester-mcp` 等。cwd が受け手パッケージに固定される MCP・path 依存で
+  checkouts が無い構成はここ)④ `#filePath` からのツールソース(自前ビルド)。
+  **受け手パッケージのルートを渡してはいけない**(実害: MCP の profile 経路が `packageRoot()` を
+  BridgeProvisioner へ渡しており、外部パッケージ構成で `InAppBridge/build.sh` が無く全 `ft_*` が
+  失敗した)。両ルートの解決結果は `ftester doctor` が表示する。
 - **mint 配布(採用していたが廃止)**: `mint install wave1008/foundation-tester@<ver>`。**罠(記録)**: mint は
   temp でビルドしてバイナリのみ残しソースを消すため CLI の `#filePath` は死ぬ → ブリッジは上記②(受け手の
   checkout)で解決する必要があった。よって外部パッケージ構成は **git 依存必須**(ブリッジ用に Runner/ を含む

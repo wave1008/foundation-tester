@@ -249,7 +249,8 @@ products 未宣言でも `swift build --product ftester-mcp` は暗黙 product �
   "mcpServers": {
     "ftester": {
       "command": "bash",
-      "args": ["-lc", "WD=\"$PWD\"; cd \"<ABS_TOOL_ROOT>\" && swift build --product ftester-mcp >/dev/null 2>&1 && cd \"$WD\" && exec \"<ABS_TOOL_ROOT>/.build/debug/ftester-mcp\""]
+      "args": ["-lc", "WD=\"$PWD\"; cd \"<ABS_TOOL_ROOT>\" && swift build --product ftester-mcp >/dev/null 2>&1 && cd \"$WD\" && exec \"<ABS_TOOL_ROOT>/.build/debug/ftester-mcp\""],
+      "env": { "FT_TOOL_ROOT": "<ABS_TOOL_ROOT>" }
     }
   }
 }
@@ -260,6 +261,9 @@ products 未宣言でも `swift build --product ftester-mcp` は暗黙 product �
   Claude Code が最小 PATH でサーバを起こしても swift/Xcode ツールチェインを引けるようにするため。
   **ビルドのため TOOL_ROOT へ `cd` した後、`exec` 前に元の WORK_DIR へ戻す**（cwd は `ftester-mcp` が
   パッケージルートを特定する入力。cd したままだと外部パッケージ構成で受け手の `Projects/` が見えなくなる）。
+  `env.FT_TOOL_ROOT` は**ブリッジ資産（`Runner/`・`InAppBridge/`）のルート**の明示指定（cwd が指す
+  受け手パッケージ＝`Projects/` 側とは別物）。省略しても自動解決するが、明示すると解決に依存しない。
+  `<ABS_TOOL_ROOT>` は3箇所とも同じ絶対パス。
 
 「全プロジェクトで使いたい」場合のみ、代わりに user スコープ登録
 （`claude mcp add ftester --scope user -- bash -lc '...'`・claude CLI が PATH に要る）を案内する。

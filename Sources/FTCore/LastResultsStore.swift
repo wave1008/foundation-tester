@@ -8,8 +8,9 @@ import Foundation
 
 public enum LastResultsStore {
 
-    /// リポジトリ直下 .ftester/last-results/<projectName>/。
-    /// 導出は MCPServer.swift root(of:) と同一(packageRoot 優先、無ければ rootURL から2階層遡る)。
+    /// 受け手パッケージ直下 .ftester/last-results/<projectName>/(packageRoot 優先、
+    /// 無ければ rootURL から2階層遡る)。Projects/ を持つ側が正で、ツール本体の
+    /// RepoRoot.find()(ブリッジ資産の在り処)とは別物。
     static func stateDir(project: TestProject) -> URL {
         let root = ScenarioHost.packageRoot() ?? project.rootURL
             .deletingLastPathComponent().deletingLastPathComponent()

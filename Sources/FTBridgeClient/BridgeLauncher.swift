@@ -628,15 +628,33 @@ public enum LauncherError: Error, LocalizedError {
     }
 }
 
+/// Bundle(for:) にモジュールの所在を教えるためだけの型(削除するとバンドル解決が main へ落ちる)
+private final class BundleToken {}
+
 public enum RepoRoot {
     /// ブリッジ資産(Runner/・InAppBridge/・Sources/FTCore/BridgeDTO.swift など)を持つルートを返す。
     /// = ツール本体(foundation-tester)のソースルート。シナリオがビルドされる受け手のパッケージ
     /// (ScenarioHost.packageRoot())とは別物で、外部パッケージ構成では両者が食い違う。
     public static func find() throws -> URL {
+        // 0. 明示指定(FT_TOOL_ROOT)。cwd も実行ファイルの位置も当てにできない起動経路
+        //    (MCP クライアントが任意の cwd でサーバを起こす等)のための逃げ道。
+        //    設定されているのに Runner/ が無ければ探索へフォールバックせず失敗する
+        //    (誤設定を黙って別ルートで動かすと診断不能になる。FT_PACKAGE_ROOT と同じ規律)
+        if let override = ProcessInfo.processInfo.environment["FT_TOOL_ROOT"], !override.isEmpty {
+            let dir = URL(fileURLWithPath: (override as NSString).expandingTildeInPath)
+            guard hasRunner(dir) else {
+                throw LauncherError.commandFailed(
+                    "repo root detection",
+                    "FT_TOOL_ROOT=\(override) にブリッジ資産(Runner/project.yml)がありません。"
+                        + "foundation-tester のクローンのルートを指定してください")
+            }
+            return dir
+        }
         // 1. clone 構成: 実行ディレクトリの上方に Package.swift + Runner/ があればそれ(ツール repo 内実行)。
         //    外部パッケージ構成: 受け手パッケージ(Runner/ 無し)なら、その SPM checkout に foundation-tester が
         //    展開されているのでそれを使う(.build/checkouts/*/Runner/。ftester CLI がどこでビルドされたかに
         //    依らず解決可 = ビルド元のソースツリーが既に無い場合でも #filePath に頼らず済む)。
+        //    ※ path 依存(.package(path:))では checkouts が作られないので 2 で解決する。
         var dir = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
         for _ in 0..<10 {
             if FileManager.default.fileExists(atPath: dir.appendingPathComponent("Package.swift").path) {
@@ -647,14 +665,19 @@ public enum RepoRoot {
             if parent.path == dir.path { break }
             dir = parent
         }
-        // 2. 最後のフォールバック: #filePath(コンパイル時に焼かれる自ソースの絶対パス)からツールソース
+        // 2. 実行中バイナリの位置から(<TOOL_ROOT>/.build/debug/ftester-mcp 等)。cwd が受け手パッケージに
+        //    固定される MCP サーバはここで解決される。symlink 解決が必須
+        //    (.build/debug は out/Products/Debug への symlink)。
+        if let executableRoot = executableRoot() { return executableRoot }
+        // 3. 最後のフォールバック: #filePath(コンパイル時に焼かれる自ソースの絶対パス)からツールソース
         //    へ。SPM local path 依存(--ftester-path)や自前ビルドではソースがそのパスに実在する。
-        //    ※ ビルド元のソースが既に削除・移動されていれば #filePath は死んでいる(上の checkout 経由で解決)。
+        //    ※ ビルド元のソースが既に削除・移動されていれば #filePath は死んでいる(上の 1/2 で解決)。
         if let toolRoot = toolSourceRoot() { return toolRoot }
         throw LauncherError.commandFailed(
             "repo root detection",
             "ブリッジ資産(Runner/)が見つかりません。ツール本体 foundation-tester のソースが必要です"
-                + "(外部パッケージ構成では受け手パッケージの .build/checkouts か --ftester-path のソースが使われます)")
+                + "(外部パッケージ構成では受け手パッケージの .build/checkouts か --ftester-path のソースが使われます)。"
+                + "クローンのルートを環境変数 FT_TOOL_ROOT で明示指定することもできます")
     }
 
     private static func hasRunner(_ dir: URL) -> Bool {
@@ -667,6 +690,27 @@ public enum RepoRoot {
         guard let entries = try? FileManager.default.contentsOfDirectory(
             at: checkouts, includingPropertiesForKeys: nil) else { return nil }
         return entries.first(where: hasRunner)
+    }
+
+    /// 実行中バイナリの実体パス(symlink 解決済み)から上方に辿り、Runner/ を持つルートを探す。
+    /// 先頭は**このモジュールを含むバンドル**(通常は実行ファイル本体、テストでは .xctest)。
+    /// Bundle.main はホストが別実行ファイル(xctest 等)のとき別の場所を指すため単独では足りない。
+    static func executableRoot() -> URL? {
+        let candidates = [
+            Bundle(for: BundleToken.self).executableURL,
+            Bundle.main.executableURL,
+            CommandLine.arguments.first.map { URL(fileURLWithPath: $0) },
+        ].compactMap { $0 }
+        for candidate in candidates {
+            var dir = candidate.resolvingSymlinksInPath().deletingLastPathComponent()
+            for _ in 0..<10 {
+                if hasRunner(dir) { return dir }
+                let parent = dir.deletingLastPathComponent()
+                if parent.path == dir.path { break }
+                dir = parent
+            }
+        }
+        return nil
     }
 
     /// #filePath(このソースの絶対パス)から上方に辿り、Runner/ を持つツールソースルートを探す。
