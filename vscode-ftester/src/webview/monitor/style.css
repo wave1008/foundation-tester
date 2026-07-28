@@ -969,14 +969,23 @@ button.profile-jump-link:hover:not(:disabled) {
   color: var(--vscode-descriptionForeground);
 }
 /* 「録画」セクション。見出し+チェックボックス+サブオプション(record ON の間だけ表示)。 */
-.run-profile-section-group {
-  margin-bottom: 10px;
+/* セクションの枠と左上のタブ状見出しは**プロファイルタブと設定タブで共通**(片方だけ変えない)。
+   枠 = .run-profile-section-group / .settings-group、見出し = 下の -title 2つ。 */
+.run-profile-section-group,
+.settings-group {
   padding: 8px 10px;
   border: 1px solid var(--ft-control-border);
   border-radius: 4px;
 }
+.run-profile-section-group {
+  margin-bottom: 10px;
+}
 /* uppercase は付けない(「iOS」「Android」等の固有表記が IOS/ANDROID に化ける実害があった)。 */
-.run-profile-section-title {
+.run-profile-section-title,
+.settings-section-title {
+  /* 設定タブ側は <label> にも付く(言語セレクタの for)。inline のままだと幅・負マージンが
+     効かないので block を明示する。 */
+  display: block;
   /* グループ枠の padding(8px 10px)を負マージンで打ち消し、枠の左上に貼り付くタブ状の帯。
      幅は文字に追従し、右端は clip-path で斜めに落とす(角丸は clip-path で消えるため付けない)。
      グレーはプロファイル帯(0.18)より薄くして階層を付ける。 */
@@ -1648,17 +1657,13 @@ input[type="text"]::placeholder {
   max-width: 720px;
   display: flex;
   flex-direction: column;
-  gap: 22px; /* 設定グループ間の余白 */
+  gap: 12px; /* 枠線が区切りになるので、枠なし時(22px)より詰める */
 }
 /* 1設定 = ラベル→コントロール→説明 の縦積み。 */
 .settings-group {
   display: flex;
   flex-direction: column;
   gap: 6px;
-}
-.settings-label {
-  font-weight: 600;
-  color: var(--vscode-foreground);
 }
 .settings-item {
   display: flex;

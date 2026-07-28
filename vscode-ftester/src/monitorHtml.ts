@@ -454,7 +454,7 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
       <!-- 更新セクション。判定は Scripts/update-check.sh、取り込みは Scripts/update.sh
            (拡張は実行して結果を出すだけ)。対向: settingsTab.js / monitorUpdateController.ts -->
       <div class="settings-group">
-        <div class="settings-label">${t("panels.settings.updateLabel")}</div>
+        <div class="settings-section-title">${t("panels.settings.updateLabel")}</div>
         <div class="settings-update-statusline">
           <span id="settings-update-spinner" class="settings-update-spinner" style="display: none;" aria-hidden="true"></span>
           <span id="settings-update-status" class="settings-update-status">${t("panels.settings.updateChecking")}</span>
@@ -464,7 +464,7 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
         </div>
       </div>
       <div class="settings-group">
-        <label class="settings-label" for="settings-language">${t("panels.settings.languageLabel")}</label>
+        <label class="settings-section-title" for="settings-language">${t("panels.settings.languageLabel")}</label>
         <select id="settings-language" class="settings-select">
           <option value="auto">${t("panels.settings.languageAuto")}</option>
           <option value="ja">${t("panels.settings.languageJa")}</option>
@@ -472,6 +472,7 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
         </select>
       </div>
       <div class="settings-group">
+        <div class="settings-section-title">${t("panels.settings.deviceScreenSectionTitle")}</div>
         <label class="settings-item"><input type="checkbox" id="settings-polling-mode"> ${t("panels.settings.pollingModeLabel")}</label>
         <div class="settings-hint">${t("panels.settings.pollingModeHint")}</div>
       </div>
