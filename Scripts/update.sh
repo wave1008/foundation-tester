@@ -162,6 +162,12 @@ fi
 
 echo ""
 echo "──────── 次にやること ────────"
+# install.sh には --no-next-steps を渡しているので、ログの場所はここで案内する
+# (更新の詳細ログを人が後から確認できるように)。名前が install-<日時>.log なので
+# **辞書順の最後が最新**。`ls | head` は使わない(pipefail 下の SIGPIPE 誤判定)
+update_logs=("$WORK_DIR"/.ftester/install-*.log)
+last_log="${update_logs[${#update_logs[@]} - 1]}"
+[ -f "$last_log" ] && echo "・詳細ログ: $last_log"
 echo "・VSCode で Developer: Reload Window(拡張の反映に必須。モニターパネルは開き直す)"
 [ "$PLUGIN_RESULT" = "ok" ] && echo "・Claude Code を再起動(更新したスキルは再起動まで旧版のまま)"
 [ "$PLUGIN_RESULT" = "stale" ] && echo "・プラグインが HEAD と一致しません。claude plugin marketplace update → plugin update を手で実行"

@@ -80,8 +80,10 @@ bash <TOOL_ROOT>/Scripts/update.sh
 捨てた内容は出力に出る)。**これを人に確認しない** — 残したい場合だけ `--keep-local`。
 clone 構成では従来どおり確認が出る。
 
-生ログ(swift build・npm・vsce)は画面に出ず `<WORK_DIR>/.ftester/install-*.log` にだけ入る。
-**画面の結果表がすべてなので、ログを grep で漁らない**(必要なら `--verbose`)。
+進行は**各ステップ1行ずつ**出る(数分かかる工程には経過時間が付く)。生ログ(swift build・npm・
+vsce)は画面に出ず `<WORK_DIR>/.ftester/install-*.log` にだけ入り、**場所は開始時と最後の
+「次にやること」に出る**。**画面に出た行がすべてなので、ログを grep で漁らない**
+(人が全文を見たいと言った場合だけ `--verbose` で再実行するか、そのパスを案内する)。
 
 - **exit 1** → 中断。出力の `[fail]` 行(と `→ SKILL.md ステップ N`)の原因を解決して再実行する。
 - **exit 2** → 任意ステップのみ未完(`[warn]`)。CLI は使える。warn の内容だけ手当てする。
