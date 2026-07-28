@@ -217,7 +217,8 @@ code --install-extension vscode-ftester-<version>.vsix
   実行開始時に自動で前面に出します(webview には持たせない — 検索・コピー・スクロールが
   VSCode 標準のまま使え、パネルを閉じても残るため)。
 - 完了すると**モーダルで再読み込みを促します**(見落とすと旧版のまま使い続けることになるため)。
-  「再読み込み」で `workbench.action.reloadWindow` を実行します。失敗時はエラー通知で OUTPUT を案内します。
+  「再読み込み」で `workbench.action.reloadWindow` を実行します(閉じても更新自体は完了しており、
+  あとで Developer: Reload Window でも反映できます)。失敗時はエラー通知で OUTPUT を案内します。
 
 判定も取り込みもスクリプトに委譲しており、拡張側は実行して結果を表示するだけです
 (CLI・Claude Code のスキル・拡張で同じ1実装を使う)。
