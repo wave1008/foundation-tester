@@ -127,7 +127,10 @@ fi
 if ! xcodebuild -checkFirstLaunchStatus >/dev/null 2>&1; then
   die "前提" "Xcode の初回セットアップが未了です(xcodebuild -runFirstLaunch を実行してください)" 0
 fi
-record "前提" ok "macOS $(sw_vers -productVersion) / $(xcodebuild -version | head -n 1)"
+xcode_version="$(xcodebuild -version 2>/dev/null)"
+# `xcodebuild -version | head -1` はダメ(pipefail 下で SIGPIPE を失敗と誤判定する。preflight.sh の
+# first_line のコメント参照)。パラメータ展開で1行目を取る
+record "前提" ok "macOS $(sw_vers -productVersion) / ${xcode_version%%$'\n'*}"
 
 # ---- 0.5 TOOL_ROOT(SKILL ステップ0.5) ----------------------------------------
 # クローン内から実行されたならそれが TOOL_ROOT(curl | bash では $0 が読めないので clone へ倒す)

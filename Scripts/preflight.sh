@@ -23,6 +23,11 @@ kv()  { printf '%s=%s\n' "$1" "$2"; }
 blocked_reasons=()
 missing=()
 
+# **`cmd | head` を条件式や値の取得に使わない**(このスクリプトは pipefail)。head が先に閉じると
+# 上流が SIGPIPE(141)で死に、pipefail がそれを失敗として拾う。実害: 正常に動く Xcode を
+# `xcode=unusable` と誤判定し、受け手に無関係な license 同意を案内した(2026-07-29)
+first_line() { printf '%s' "${1%%$'\n'*}"; }
+
 # ---- 構成の判定(SKILL ステップ0 の再実行ガード / 0.5 の構成判定) ---------------
 # clone 構成 = Package.swift と Sources/FTScenarioRunner が揃う(この2つが揃うのはクローンだけ)
 # 外部パッケージ構成 = Package.swift の中身に ftester マーカーか foundation-tester 依存がある
@@ -113,10 +118,10 @@ kv xcode_select_path "$xcode_select_path"
 xcode_usable=0
 if xcode_out="$(xcodebuild -version 2>&1)"; then
   xcode_usable=1
-  kv xcode "$(printf '%s' "$xcode_out" | head -n 1)"
+  kv xcode "$(first_line "$xcode_out")"
 else
   kv xcode unusable
-  kv xcode_error "$(printf '%s' "$xcode_out" | head -n 1)"
+  kv xcode_error "$(first_line "$xcode_out")"
   installed_xcode="$(ls -d /Applications/Xcode*.app 2>/dev/null | head -n 1)"
   case "$xcode_out" in
     *license*|*License*)
@@ -128,7 +133,7 @@ else
         blocked_reasons+=("Xcode 本体が見つかりません(CommandLineTools だけ) → App Store から Xcode を導入し \`sudo xcode-select -s /Applications/Xcode.app\`")
       fi ;;
     *)
-      blocked_reasons+=("xcodebuild が使えません: $(printf '%s' "$xcode_out" | head -n 1)") ;;
+      blocked_reasons+=("xcodebuild が使えません: $(first_line "$xcode_out")") ;;
   esac
 fi
 # xcodebuild 自体が使えないときは初回セットアップの可否を判定できない(必ず失敗して
