@@ -223,6 +223,13 @@ let package = Package(
             dependencies: ["FTAndroid", "FTCore", "FTBridgeClient"],
             swiftSettings: swift5Mode
         ),
+        // ftester-mcp は executableTarget だが @testable import 可能(モジュール名は c99name の
+        // ftester_mcp)。toolDefinitions のスキーマ宣言と drivers キャッシュキーの純関数のみ対象
+        .testTarget(
+            name: "FTesterMCPTests",
+            dependencies: ["ftester-mcp"],
+            swiftSettings: swift5Mode
+        ),
         .testTarget(
             name: "FTDSLTests",
             // swift-syntax 2 プロダクトは swiftbuild バックエンド対策。FTDSLTests→FTDSL→FTDSLMacros
