@@ -132,6 +132,9 @@ public final class FMReplayDelegate: ReplayDelegate {
     // MARK: Verifier(マルチモーダル)
 
     public func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)? {
+        // Attachment(画像入力)は macOS 27+。26 では判定不能(nil)= screenMatches は skip。
+        // 通常は StepExecutor が FMVisionSupport で手前で止めるので、ここは保険
+        guard #available(macOS 27, *) else { return nil }
         guard let cgImage = Self.cgImage(fromPNG: screenshotPNG) else { return nil }
         // FM はホスト全体で直列化される資源(FMLock 参照)
         guard await FMGate.enter() else { return nil }
@@ -197,7 +200,8 @@ public final class FMReplayDelegate: ReplayDelegate {
         guard await FMGate.enter() else { return nil }
         defer { FMGate.leave() }
         // マルチモーダル失敗時のフォールバックとしてテキストのみでも再試行する
-        if let png = screenshotPNG, let cgImage = Self.cgImage(fromPNG: png) {
+        // (Attachment は macOS 27+。26 では常にテキストのみの経路を通る)
+        if #available(macOS 27, *), let png = screenshotPNG, let cgImage = Self.cgImage(fromPNG: png) {
             let response = try? await LanguageModelSession(instructions: instructions).respond(
                 generating: TriageSuggestion.self,
                 options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 300)

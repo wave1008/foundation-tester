@@ -76,6 +76,9 @@ withScrollDown {
 | `isChecked(sel)` / `isNotChecked(sel)` | チェック状態の検証。iOS はアプリの実装により checked が取れないことがある(取れないままだと run 終了時に警告が出る) |
 | `screenIs("画面の説明文")` | FM による**見た目の**画面検証(スクリーンショットと説明文の照合)。実行プロファイルで `fm:false` / `screenIs:false` の場合はスキップ(素通り) |
 
+> `screenIs` と偽陽性検証(`requireVisible` / `falsePositiveCheck`)は FM に画像を渡すため
+> **macOS 27+ が必要**。macOS 26 では自動でスキップ/素通りになる(現在の可否は `ftester doctor`)。
+
 ## テキスト・値の検証
 
 `text…` はラベル(表示文字列)、`value…` は入力欄などの値を見る。全コマンド

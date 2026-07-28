@@ -272,6 +272,9 @@ enum ProfileRunner {
         if !fm.available {
             log("⚠️ heal が有効ですが FM の実呼び出しに失敗するため、"
                 + "自己修復・occlusion-guard・screenIs はこの実行では無効です")
+        } else if !FMVisionSupport.isSupported {
+            log("⚠️ \(FMVisionSupport.requirement): occlusion-guard・screenIs はこの実行では無効です"
+                + "(自己修復・トリアージは有効)")
         }
     }
 }

@@ -10,6 +10,7 @@
 // 切り分けには必ず上記のダンプを使うこと(2026-07-23、これを取り違えて誤った結論を出した)。
 //
 // ビルド: xcrun swiftc -O Scripts/occlusion-repro.swift -o /tmp/occlusion-repro
+//         (画像添付は macOS 27+ の API。macOS 26 ではコンパイルできない = occlusion 自体が無効)
 // 実行:   /tmp/occlusion-repro <png> [回数] [期待テキスト]
 //         /tmp/occlusion-repro <png> --crop x,y,w,h [回数] [期待テキスト]
 //         期待テキスト省略時は <png> と同名の .txt を読む。

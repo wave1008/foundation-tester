@@ -63,13 +63,18 @@ clone 構成では同一です。
 
 | 対象 | 要件 | 誰がやるか |
 |---|---|---|
-| 共通 | macOS 27+。Apple Intelligence（Foundation Models）は**任意** — heal・FM 視覚検証・シナリオ生成に使う。無効でもインストール・決定的実行は可能で、**後から有効化すればそのまま使える**（有効化時は**システム言語英語**、下記） | **人間のみ**（System 設定で有効化・モデル DL） |
-| iOS | Xcode 27+、iOS シミュレータ runtime、xcodegen | Xcode 導入は**人間**／`brew install xcodegen` は自動可 |
+| 共通 | macOS 26+（**視覚検証だけ macOS 27+**、下記）。Apple Intelligence（Foundation Models）は**任意** — heal・FM 視覚検証・シナリオ生成に使う。無効でもインストール・決定的実行は可能で、**後から有効化すればそのまま使える**（有効化時は**システム言語英語**、下記） | **人間のみ**（System 設定で有効化・モデル DL） |
+| iOS | Xcode 26+、iOS シミュレータ runtime、xcodegen | Xcode 導入は**人間**／`brew install xcodegen` は自動可 |
 | Android（任意） | Android SDK（adb）、エミュレータまたは実機 | 人間（SDK 導入）＋自動（ブリッジ APK ビルド） |
 | 拡張ビルド | Node.js v24 系 / npm v11 系 | 自動可 |
 
 > macOS ベータを使う場合は **Xcode を同じベータへ揃えてフルリビルド**すること。
 > FoundationModels の ABI 不整合で全バイナリが dyld クラッシュします。
+
+> **macOS 26 での制限**: FM の**視覚検証だけ**が使えません（FM への画像入力 API が macOS 27+）。
+> `screenIs` は skip、occlusion-guard（`falsePositiveCheck`）は素通りになります。
+> heal・トリアージ・シナリオ生成（テキスト系）と、決定的な実行はすべて動きます。
+> 現在の状態は `ftester doctor` の2行目（「FM の視覚検証（画像入力）」）で確認できます。
 
 > **Apple Intelligence が設定に出てこない場合**: システム言語が日本語（ja-JP）だと
 > Apple Intelligence の設定項目自体が現れないことがあります（macOS 27.0 beta で確認）。
@@ -93,7 +98,7 @@ Claude Code に任せるなら、上のプラグイン(または curl)で入れ�
 
 ### 1. 前提（人間がやる）
 
-macOS 27+ / Xcode 27+ 導入済み / iOS シミュレータ runtime を1つ以上導入。Apple Intelligence の有効化は
+macOS 26+ / Xcode 26+ 導入済み / iOS シミュレータ runtime を1つ以上導入。Apple Intelligence の有効化は
 **任意**（FM 機能を使う場合。後からでも可）。
 Xcode を初めて入れたら `sudo xcodebuild -license accept` も実行しておく。
 
@@ -175,7 +180,7 @@ xcrun simctl list devices available     # 使えるシミュレータ名を確�
 ```
 
 ```json
-{ "ios": { "devices": [ { "name": "メイン機", "simulator": "iPhone 17 Pro", "os": "27.0" } ] } }
+{ "ios": { "devices": [ { "name": "メイン機", "simulator": "iPhone 17 Pro" } ] } }
 ```
 
 > `name`（例「メイン機」）は runs プロファイルから参照されるため ios/android 横断で一意に。

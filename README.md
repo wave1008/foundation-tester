@@ -33,9 +33,12 @@ UI は VSCode 拡張(`vscode-ftester/`)に一本化している(セットアッ�
 
 | 対象 | 要件 |
 |---|---|
-| 共通 | macOS 27+。Apple Intelligence(Foundation Models)は**任意** — heal・FM 視覚検証・シナリオ生成に使う。後から有効化すればそのまま使える |
-| iOS | Xcode 27+、iOS シミュレータ、[xcodegen](https://github.com/yonaskolb/XcodeGen)(`brew install xcodegen`) |
+| 共通 | macOS 26+。Apple Intelligence(Foundation Models)は**任意** — heal・FM 視覚検証・シナリオ生成に使う。後から有効化すればそのまま使える |
+| iOS | Xcode 26+、iOS シミュレータ、[xcodegen](https://github.com/yonaskolb/XcodeGen)(`brew install xcodegen`) |
 | Android(任意) | Android SDK(adb)、エミュレータまたは実機 |
+
+> macOS 26 では FM の**視覚検証だけ**が使えない(画像入力 API が macOS 27+)。
+> occlusion-guard(偽陽性チェック)と `screenIs` は自動で無効になり、他は制限なく動く。
 
 ## インストール(使う: Claude Code に任せる)
 
