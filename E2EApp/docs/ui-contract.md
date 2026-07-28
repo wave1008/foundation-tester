@@ -107,16 +107,29 @@ tag 定数は `composeApp/src/commonMain/kotlin/com/ftester/e2e/Tags.kt` に集�
 
 | tag | 種別 | ラベル/テキスト | 備考 |
 |---|---|---|---|
-| `#field_single` | TextField | placeholder `単一行` | singleLine |
+| `#field_single` | TextField | placeholder `単一行` | singleLine・**IME アクション = 検索**(発火で `#txt_ime_action` を +1) |
 | `#field_password` | TextField | placeholder `パスワード` | PasswordVisualTransformation |
 | `#field_multiline` | TextField | placeholder `複数行` | 3行程度 |
 | `#txt_echo_single` | Text | `single=<v>` 初期 `single=` | |
 | `#txt_echo_password` | Text | `password=<v>` 初期 `password=` | 平文で echo(検証用) |
 | `#txt_echo_multiline` | Text | `multiline=<v>` 初期 `multiline=` | 改行は `\n` を空白に置換して1行表示 |
 | `#txt_echo_length` | Text | `len=<n>` 初期 `len=0` | `#field_single` の文字数 |
+| `#txt_ime_action` | Text | `ime=<n>` 初期 `ime=0` | `#field_single` の IME アクション発火回数 |
 | `#btn_input_submit` | Button | `送信` | `#txt_input_submitted` を更新 |
 | `#txt_input_submitted` | Text | `submitted=<v>` 初期 `submitted=-` | |
-| `#btn_input_clear` | Button | `入力クリア` | 3フィールドと echo を初期状態へ |
+| `#btn_input_clear` | Button | `入力クリア` | 3フィールドと echo を初期状態へ(`ime=0` を含む) |
+
+**IME アクション(`#field_single`)**: Enter / 送信キーで発火し `#txt_ime_action` が +1 される
+(シナリオ 18 が `pressEnter()` と `type("…\n")` の両方で検証する)。
+
+- **改行は本文に入らない**: 発火しても `#txt_echo_single` / `#txt_echo_length` は変わらない
+  (singleLine のフィールドとして 4 SUT 共通。`len` が増えたら改行が文字として入っている = バグ)
+- **発火後のフォーカス・キーボードの状態は SUT ごとに異なる**(UIKit は resignFirstResponder、
+  Compose/Flutter は保持)。**シナリオは発火後に必ず tap し直してから次の入力をする**
+- **Android の発火経路は2つある**。ftester は a11y の `ACTION_IME_ENTER`(actionId は
+  フィールドの imeOptions = `IME_ACTION_SEARCH`・`KeyEvent` は **null**)を優先し、
+  旧ブリッジ・API 30 未満では `keyevent 66`(actionId は **`IME_NULL`**・`KeyEvent` あり)に落ちる。
+  **両方の actionId を受理**しないと片方の経路で発火しない(E2EAppAndroid/docs/ui-contract.md)
 
 **配置の制約(すべて実測で確定。崩すと入力シナリオが落ちる)**: この画面のレイアウトは
 **ソフトキーボードに支配される**。iPhone 17 Pro(iOS 27.0・高さ 874)でキーボード表示中に

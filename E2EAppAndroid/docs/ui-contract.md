@@ -80,7 +80,26 @@ View 側は `android:id` が自動的に resource-id として出るが、Compos
 (EditText の文字列など)まで復元し、`relaunchApp` 後の初期状態が前回実行に汚染される。
 EditText 側にも `android:saveEnabled="false"` を付けてある。
 
-### 7. ダイアログ表示中は `screen` が別ウィンドウのサイズになる
+### 7. IME アクションの発火経路は2つ。キーイベントはソフトキーボードに吸われる
+
+`pressEnter()`(と `type` の末尾改行)は **a11y の `ACTION_IME_ENTER`** を優先し、旧ブリッジ・
+API 30 未満のときだけ `keyevent 66` に落ちる。`OnEditorActionListener` への届き方が経路で違う:
+
+| 経路 | actionId | KeyEvent |
+|---|---|---|
+| a11y `ACTION_IME_ENTER`(既定) | フィールドの imeOptions = `IME_ACTION_SEARCH` | **null** |
+| `keyevent 66`(フォールバック) | `IME_NULL` | あり |
+
+**両方の actionId を受理**しないと片方の経路で取りこぼす。数えるのは `event == null`(a11y 経路)
+または `KeyEvent.ACTION_UP` のときだけ(キーイベント経路で DOWN/UP の両方が来ても二重に数えない)。
+実装は `Screens.kt` の `buildInputScreen`。
+
+**罠(実測 2026-07-28)**: ソフトキーボードが出ていると `keyevent 66` は **View/XML の `EditText` に
+そもそも届かない**(IME が消費する)。`adb shell ime disable <id>` で IME を止めると同じキーで発火する
+ことを確認済み。**Compose の入力欄は同条件でも発火する**ので、CMP SUT だけ見ていると気付けない
+(実際シナリオ 18 は CMP で緑・View/XML で赤になった)。ftester が a11y 経路を既定にしたのはこのため。
+
+### 8. ダイアログ表示中は `screen` が別ウィンドウのサイズになる
 
 ダイアログを開いた状態のスナップショットは `screen: 1024x427` のようにダイアログ側の
 ウィンドウ寸法を返す。座標系は絶対座標のままなので tap には影響しないが、

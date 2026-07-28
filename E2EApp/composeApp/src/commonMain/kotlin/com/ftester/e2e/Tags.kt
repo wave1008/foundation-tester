@@ -44,6 +44,7 @@ object Tags {
     const val ECHO_PASSWORD = "txt_echo_password"
     const val ECHO_MULTILINE = "txt_echo_multiline"
     const val ECHO_LENGTH = "txt_echo_length"
+    const val IME_ACTION = "txt_ime_action"
     const val BTN_INPUT_SUBMIT = "btn_input_submit"
     const val TXT_INPUT_SUBMITTED = "txt_input_submitted"
     const val BTN_INPUT_CLEAR = "btn_input_clear"

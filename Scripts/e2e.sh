@@ -13,6 +13,10 @@
 #   Scripts/e2e.sh                 # 全 SUT・全プロファイル(鮮度を見て必要なら SUT を再ビルド)
 #   Scripts/e2e.sh --cmp           # SUT を絞る(--ios-native / --android-native / --flutter も同様。併記可)
 #   Scripts/e2e.sh --ios           # OS を絞る(--android も同様)
+#   Scripts/e2e.sh --ios-inapp     # iOS を in-app エンジン(ios-inapp プロファイル)で回す。
+#                                   # 既定は ios-xcuitest だけなので、**利用者の既定エンジン
+#                                   # (hybrid = in-app 優先)の経路はこれを付けないと1本も通らない**。
+#                                   # 入力・スナップショット・型写像など in-app ブリッジを触ったら必須
 #   Scripts/e2e.sh --rebuild       # SUT を必ず再ビルドしてから実行
 #   Scripts/e2e.sh --record        # 各プロファイルの一時コピー(<名前>-record-tmp.json。実行後に削除)に
 #                                   # record:true を付けて実行し、録画パイプラインの整合を
@@ -35,12 +39,15 @@ RUN_IOS=1
 RUN_ANDROID=1
 RECORD=0
 SUTS=""
+# iOS の実行プロファイル。--ios-inapp で in-app エンジン側へ切り替える(E2E-Android には無い)
+IOS_PROFILE="ios-xcuitest"
 
 for arg in "$@"; do
   case "$arg" in
     --rebuild) FORCE_REBUILD=1 ;;
     --ios) RUN_ANDROID=0 ;;
     --android) RUN_IOS=0 ;;
+    --ios-inapp) IOS_PROFILE="ios-inapp" ;;
     --record) RECORD=1 ;;
     --cmp|--ios-native|--android-native|--flutter) SUTS="$SUTS ${arg#--}" ;;
     *) echo "不明な引数: $arg" >&2; exit 2 ;;
@@ -108,7 +115,7 @@ for sut in $SUTS; do
       if [ "$RUN_ANDROID" = 1 ] && needs_rebuild "$APP/dist/android/ft-e2e-debug.apk" "$APP/composeApp/src"; then
         echo "→ SUT cmp(Android)を再ビルドします..."; "$APP/scripts/build-android.sh"
       fi
-      [ "$RUN_IOS" = 1 ] && run_profile E2E ios-xcuitest
+      [ "$RUN_IOS" = 1 ] && run_profile E2E "$IOS_PROFILE"
       [ "$RUN_ANDROID" = 1 ] && run_profile E2E android
       ;;
     ios-native)
@@ -117,7 +124,7 @@ for sut in $SUTS; do
       if needs_rebuild "$APP/dist/ios-simulator/FTE2EIOS.app" "$APP/Sources"; then
         echo "→ SUT ios-native を再ビルドします..."; "$APP/scripts/build-ios.sh"
       fi
-      run_profile E2E-iOS ios-xcuitest
+      run_profile E2E-iOS "$IOS_PROFILE"
       ;;
     android-native)
       [ "$RUN_ANDROID" = 1 ] || continue
@@ -135,7 +142,7 @@ for sut in $SUTS; do
       if [ "$RUN_ANDROID" = 1 ] && needs_rebuild "$APP/dist/android/ft-e2e-flutter-debug.apk" "$APP/lib" "$APP/android/app"; then
         echo "→ SUT flutter(Android)を再ビルドします..."; "$APP/scripts/build-android.sh"
       fi
-      [ "$RUN_IOS" = 1 ] && run_profile E2E-Flutter ios-xcuitest
+      [ "$RUN_IOS" = 1 ] && run_profile E2E-Flutter "$IOS_PROFILE"
       [ "$RUN_ANDROID" = 1 ] && run_profile E2E-Flutter android
       ;;
   esac
