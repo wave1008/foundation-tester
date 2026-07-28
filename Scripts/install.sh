@@ -8,7 +8,8 @@
 # やること: clone(既存クローンは git pull --ff-only で更新)/ swift build /
 #           ftester init(または project create)/ .gitignore 整備 / VSCode 拡張 / .mcp.json /
 #           検証ゲート。**冪等**(済んだ手順は skip)。
-# やらないこと: プロファイル作成(→ /ftester-profiles)・appPath や bundle ID の探索
+#           --machine と --app-name があればプロファイル作成(profile setup --auto-device)も。
+# やらないこと: appPath や bundle ID の探索
 #           (値は引数で受けるだけ。スキルの「探索禁止」原則と対)。
 #
 # 契約: 各手順は .claude/skills/ftester-setup/SKILL.md のステップ番号と 1:1。失敗時は
@@ -23,6 +24,8 @@ WORK_DIR="$PWD"
 TOOL_ROOT_ARG=""
 PROJECT_NAME=""
 APP_ID=""
+APP_NAME=""
+MACHINE=""
 PLATFORM="both"
 DO_EXTENSION=1
 DO_PROJECT=1
@@ -36,8 +39,10 @@ usage() {
 
   --work-dir <dir>   Projects/ を置く受け手ディレクトリ(既定: カレント)
   --name <name>      作成するプロジェクト名(英数字・_・-。省略時はディレクトリ名から生成)
-  --app <bundleID>   対象アプリの bundle ID / パッケージ名(省略可。後から差し替え可)
+  --app <bundleID>   対象アプリの bundle ID / パッケージ名(--app-id も可。省略可・後から差し替え可)
   --platform <p>     実行プロファイルの雛形を作る対象: ios / android / both(既定 both)
+  --app-name <名>    アプリの表示名。--machine と併せて渡すとプロファイル作成まで行う
+  --machine <名>     このマシンの名前(machines/<名>.json。未登録なら登録もする)
   --tool-root <dir>  foundation-tester クローンの場所(既定: <work-dir>/../foundation-tester)
   --no-clone         クローンが無くても取得しない(既存クローン必須)
   --skip-extension   VSCode 拡張のインストールを行わない
@@ -46,9 +51,10 @@ usage() {
   --no-doctor        最後の環境レポート(ftester doctor)を省く
   -h, --help         このヘルプ
 
-やること: clone(既存なら git pull。ローカル変更は確認のうえ破棄・断れば中止)/ swift build / プロジェクト作成 / .gitignore 整備 / VSCode 拡張 /
-         .mcp.json / 検証ゲート
-         (冪等。済んだ手順は skip)。デバイス・アプリ・実行プロファイルの作成は担当外(/ftester-profiles)
+やること: clone(既存なら git pull。ローカル変更は確認のうえ破棄・断れば中止)/ swift build /
+         プロジェクト作成 / .gitignore 整備 / VSCode 拡張 / .mcp.json / 検証ゲート。
+         **--machine と --app-name を渡すとプロファイル作成(--auto-device)まで行う**
+         (冪等。済んだ手順は skip)
 終了コード: 0=完了 / 2=任意ステップのみ未完(CLI と MCP は使える) / 1=必須ステップで停止
          (停止時は [fail] 行に原因と、手作業で通す手順の番号が出る)
 EOF
@@ -58,8 +64,10 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --work-dir) WORK_DIR="${2:?--work-dir に値が必要です}"; shift 2 ;;
     --name) PROJECT_NAME="${2:?--name に値が必要です}"; shift 2 ;;
-    --app) APP_ID="${2:?--app に値が必要です}"; shift 2 ;;
+    --app|--app-id) APP_ID="${2:?--app に値が必要です}"; shift 2 ;;
     --platform) PLATFORM="${2:?--platform に値が必要です}"; shift 2 ;;
+    --app-name) APP_NAME="${2:?--app-name に値が必要です}"; shift 2 ;;
+    --machine) MACHINE="${2:?--machine に値が必要です}"; shift 2 ;;
     --tool-root) TOOL_ROOT_ARG="${2:?--tool-root に値が必要です}"; shift 2 ;;
     --no-clone) ALLOW_CLONE=0; shift ;;
     --skip-extension) DO_EXTENSION=0; shift ;;
@@ -356,6 +364,24 @@ PY
     esac
   else
     soft_fail "MCP" ".mcp.json のマージに失敗($merge_out)" 7.5
+  fi
+fi
+
+# ---- 5. プロファイル(SKILL ステップ5。--machine と --app-name があるときだけ) ----------
+# デバイス選定は profile setup --auto-device に任せる(エージェントが simctl / emulator を
+# 個別に叩くと承認回数が増える)。失敗しても導入自体は完了しているので warn 止まり
+if [ "$DO_PROJECT" = "0" ]; then
+  record "プロファイル" skip "--skip-project"
+elif [ -z "$MACHINE" ] || [ -z "$APP_NAME" ]; then
+  record "プロファイル" skip "--machine と --app-name が無いので作成しません(/ftester-profiles で作成)"
+else
+  echo "==> ftester profile setup(--auto-device)"
+  if ( cd "$WORK_DIR" && "$FT" profile setup --platform "$PLATFORM" --auto-device \
+        --machine "$MACHINE" --app-name "$APP_NAME" \
+        ${PROJECT_NAME:+--project "$PROJECT_NAME"} --app-id "${APP_ID:-com.example.myapp}" ); then
+    record "プロファイル" ok "machines/$MACHINE.json + apps + runs($PLATFORM)"
+  else
+    soft_fail "プロファイル" "profile setup に失敗(デバイスが無い等。/ftester-profiles でやり直せます)" 5
   fi
 fi
 

@@ -105,11 +105,12 @@ clone 構成(両方ある)の再実行は従来どおり冪等スキップで続
 |---|---|---|
 | プロジェクト名（英数字 `^[A-Za-z0-9_][A-Za-z0-9_-]*$`。SPM ターゲット名になる） | Project | カレントフォルダ名から作った候補（推奨）/ `MyAppTests` / Other=自由入力 |
 | テスト対象アプリの bundle ID | Bundle ID | 「まだ分からない（後で設定）」/ Other=自由入力 |
-| このマシンの名前（machines/<名>.json のファイル名になる） | Machine | `scutil --get ComputerName` を英数字に整えた名前（推奨）/ preflight の `machine_registered=`（あれば）/ Other |
+| テスト対象アプリの表示名（プロファイルの `appName`） | App | フォルダ名から作った候補 / Other=自由入力 |
 | テスト対象のプラットフォーム | Platform | iOS / Android / 両方 |
 
-（clone 先は既定の隣 `../foundation-tester` を使う。preflight が別の場所に既存クローンを見つけた場合、
-または受け手が指定した場合だけ、追加で 1 問聞く。）
+**マシン名と clone 先は聞かない**（マシン名は preflight の `machine_registered=` があればそれ、
+無ければ `computer_name=`。clone 先は preflight の `tool_root=`。どちらも完了報告で伝えれば足りる)。
+受け手が別の clone 先を明示した場合だけ追加で 1 問聞く。
 
 - bundle ID は**分からなくても中断しない**。「まだ分からない」ならプレースホルダ `com.example.myapp` の
   まま続行する（実IDが要るのは実行(launch)時だけ。後から `profiles/apps/<projectname>.json` の `app` を
@@ -156,7 +157,7 @@ tag も clone で取得できる)。
 
 ### 0.7 インストーラで機械作業を一括実行（**まずこれを試す**）
 
-ステップ **0.5・1・2・2.5・3・4・7・7.5** はインストーラが一括で行う（冪等。済んだ手順は skip される。
+ステップ **0.5・1・2・2.5・3・4・5・7・7.5** はインストーラが一括で行う（冪等。済んだ手順は skip される。
 **既存クローンは `git pull --ff-only` で更新してから使う** — ローカル変更があれば
 **端末で破棄の可否を尋ね、破棄しないなら中止する**（古いクローンのまま build させないため。
 端末が無い＝エージェント実行では尋ねられないので必ず中止 `[fail]` になる。その場合は 🧑 に
@@ -165,29 +166,40 @@ tag も clone で取得できる)。
 ステップ0で聞いた値を引数で渡すだけで、**探索はしない**（appPath・bundle ID を勝手に埋めない設計）。
 
 ```
-bash <TOOL_ROOT>/Scripts/install.sh --work-dir <WORK_DIR> --name <ProjectName> \
-  --platform <ios|android|both> [--app <bundleID>]
+curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install.sh | bash -s -- \
+  --name <ProjectName> --platform <ios|android|both> --machine <マシン名> --app-name "<表示名>" [--app-id <bundleID>]
 ```
 
-- **curl 形を既定にする**（クローンの `Scripts/install.sh` は pull されるまで古く、新しい引数を渡すと
-  「不明なオプション」で落ちる。curl 形なら常に最新が動き、その中でクローンを pull する）:
-  `curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install.sh | bash -s -- --name <ProjectName> --platform <ios|android|both>`
-  （clone 先を変えるなら `--tool-root <dir>`。ステップ0で指定があればそれを渡す。
-  オフラインなど curl が使えないときだけ上のローカルパス形を使う）
+**`--machine` と `--app-name` を渡すとプロファイル作成(`profile setup --auto-device`)まで1回で終わる**
+(ステップ5・8 が不要になる。デバイスは自動選定)。値はすべてステップ0の回答と preflight の出力から作る。
+
+- **curl 形を使う**（クローンの `Scripts/install.sh` は pull されるまで古く、新しい引数を渡すと
+  「不明なオプション」で落ちる。curl 形なら常に最新が動き、その中でクローンを pull する）。
+  clone 先を変えるなら `--tool-root <dir>`。オフラインなど curl が使えないときだけ
+  `bash <TOOL_ROOT>/Scripts/install.sh --work-dir <WORK_DIR> …` を使う。
 - clone 構成（TOOL_ROOT = WORK_DIR）でもそのまま使える（`--work-dir` にクローンを渡す。
   `ftester init` ではなく `project create` 経路になり、`.mcp.json` は同梱のものが使われる）。
 
 **出力の読み方**（行頭の `[ok]` / `[skip]` / `[warn]` / `[fail]` が機械可読部）:
 
-- **exit 0** → 機械作業は完了。**ステップ5へ**（プロファイルはインストーラの担当外）。
+- **exit 0** → 機械作業は完了（プロファイルまで済んでいれば `[ok] プロファイル` が出る）。**ステップ6へ**。
 - **exit 2** → 必須は通ったが任意ステップが未完（`[warn]` 行）。CLI と MCP は使える。
   warn 行が指す**下のステップ番号の手順だけ**を手で通し、原因を直してから同じ引数で再実行する。
 - **exit 1** → 必須ステップで停止（`[fail]` 行に「→ SKILL.md ステップ N」が出る）。
   **N の手順を読んで原因を解決し、同じ引数で再実行する**（済んだ手順は skip されるので巻き戻らない）。
   解決に人間の操作が要るもの（Xcode の license 同意・`-runFirstLaunch`・Homebrew 導入）は 🧑 に依頼する。
 
-**以降のステップ1〜4・7・7.5 は「インストーラが失敗したときの手作業手順」**（成功したなら読み飛ばしてよい）。
-ステップ **5・6・8・9 はインストーラの担当外**なので必ず実施する。
+**以降のステップ1〜5・7・7.5 は「インストーラが失敗したときの手作業手順」**（成功したなら読み飛ばしてよい）。
+必ず実施するのは **6（appPath/bundle ID の案内）・9（反映操作の案内）** だけ。
+
+**インストーラの出力に載っている情報を、別コマンドで取り直さない**（承認が増えるだけ）:
+
+| 取り直しがちなもの | 既にどこに出ているか |
+|---|---|
+| TOOL_ROOT の絶対パス（`cd … && pwd`） | preflight の `tool_root=` / インストーラの `[ok] 構成` |
+| `.mcp.json` の内容（`cat`） | インストーラの `[ok] MCP` |
+| `ftester doctor --roots-only` | インストーラが検証ゲートとして実行済み（`[ok] ルート解決`) |
+| `ftester profile list` | `profile setup` が解決結果を表示済み（`[ok] プロファイル`） |
 
 ### 1. xcodegen
 
@@ -342,12 +354,15 @@ CLI が無ければ上の WORK_DIR `.mcp.json` 方式で十分。
 **ツール本体 = TOOL_ROOT / シナリオのパッケージ = WORK_DIR** と表示されること（逆・同一なら
 `.mcp.json` の値か開く場所が違う）。FM 判定を挟まないので即座に返る。
 
-### 8. 続けてプロファイル一括作成へ（/ftester-profiles）
+### 8. プロファイル（済んでいなければ /ftester-profiles）
 
-機械作業が済んだら（1〜7.5）、**続けて `/ftester-profiles` スキルを呼び出す**
-（マシン/アプリ/実行プロファイルの一括作成）。**この時点で VSCode の反映操作（Reload Window 等）を
-ユーザーに求めたり、完了したか質問したりしない** — ここまでユーザーが操作するタイミングは一度も
-無いので、完了しているはずがない。反映はステップ9で最後にまとめて案内する。
+インストーラの結果に **`[ok] プロファイル`** が出ていれば作成済み。**ここは飛ばす**。
+`[skip]`（`--machine`/`--app-name` を渡さなかった）や `[warn]`（デバイスが無い等で失敗）のときだけ、
+**続けて `/ftester-profiles` を呼ぶ**。その際、**ステップ0で聞いた値（プロジェクト名・アプリ表示名・
+アプリID・プラットフォーム）とマシン名をそのまま渡し、聞き直させない**。
+
+**この時点で VSCode の反映操作（Reload Window 等）をユーザーに求めたり、完了したか質問したりしない** —
+ここまでユーザーが操作するタイミングは一度も無いので、完了しているはずがない。反映はステップ9で最後にまとめて案内する。
 
 ### 9. 🧑 最後に: 反映操作の案内（ここで終了）
 
