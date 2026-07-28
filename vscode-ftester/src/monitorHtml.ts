@@ -451,6 +451,17 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
 
   <div id="panel-settings" class="tab-panel" role="tabpanel" aria-labelledby="tab-settings" style="display: none;">
     <div class="settings-body">
+      <!-- 更新セクション。判定は Scripts/update-check.sh、取り込みは Scripts/update.sh
+           (拡張は実行して結果を出すだけ)。対向: settingsTab.js / monitorUpdateController.ts -->
+      <div class="settings-group">
+        <div class="settings-label">${t("panels.settings.updateLabel")}</div>
+        <div id="settings-update-status" class="settings-update-status">${t("panels.settings.updateChecking")}</div>
+        <div class="settings-update-actions">
+          <button id="settings-update-check" class="secondary" type="button">${t("panels.settings.updateCheckButton")}</button>
+        </div>
+        <div class="settings-hint">${t("panels.settings.updateHint")}</div>
+        <pre id="settings-update-log" class="settings-update-log" style="display: none;"></pre>
+      </div>
       <div class="settings-group">
         <label class="settings-label" for="settings-language">${t("panels.settings.languageLabel")}</label>
         <select id="settings-language" class="settings-select">
@@ -463,17 +474,6 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
       <div class="settings-group">
         <label class="settings-item"><input type="checkbox" id="settings-polling-mode"> ${t("panels.settings.pollingModeLabel")}</label>
         <div class="settings-hint">${t("panels.settings.pollingModeHint")}</div>
-      </div>
-      <!-- 更新セクション。判定は Scripts/update-check.sh、取り込みは Scripts/update.sh
-           (拡張は実行して結果を出すだけ)。対向: settingsTab.js / monitorUpdateController.ts -->
-      <div class="settings-group">
-        <div class="settings-label">${t("panels.settings.updateLabel")}</div>
-        <div id="settings-update-status" class="settings-update-status">${t("panels.settings.updateChecking")}</div>
-        <div class="settings-update-actions">
-          <button id="settings-update-check" class="secondary" type="button">${t("panels.settings.updateCheckButton")}</button>
-        </div>
-        <div class="settings-hint">${t("panels.settings.updateHint")}</div>
-        <pre id="settings-update-log" class="settings-update-log" style="display: none;"></pre>
       </div>
     </div>
   </div>
