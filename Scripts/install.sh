@@ -32,6 +32,7 @@ DO_PROJECT=1
 DO_MCP=1
 DO_DOCTOR=1
 ALLOW_CLONE=1
+ALLOW_PULL=1
 
 usage() {
   cat <<'EOF'
@@ -45,6 +46,7 @@ usage() {
   --machine <名>     このマシンの名前(machines/<名>.json。未登録なら登録もする)
   --tool-root <dir>  foundation-tester クローンの場所(既定: <work-dir>/../foundation-tester)
   --no-clone         クローンが無くても取得しない(既存クローン必須)
+  --no-pull          既存クローンを更新しない(版を固定したいとき・本体の開発中)
   --skip-extension   VSCode 拡張のインストールを行わない
   --skip-project     プロジェクト(Projects/<name>/)を作らない(MCP だけ入れるとき)
   --skip-mcp         .mcp.json の生成/マージを行わない
@@ -70,6 +72,7 @@ while [ $# -gt 0 ]; do
     --machine) MACHINE="${2:?--machine に値が必要です}"; shift 2 ;;
     --tool-root) TOOL_ROOT_ARG="${2:?--tool-root に値が必要です}"; shift 2 ;;
     --no-clone) ALLOW_CLONE=0; shift ;;
+    --no-pull) ALLOW_PULL=0; shift ;;
     --skip-extension) DO_EXTENSION=0; shift ;;
     --skip-project) DO_PROJECT=0; shift ;;
     --skip-mcp) DO_MCP=0; shift ;;
@@ -163,7 +166,9 @@ if [ -d "$TOOL_ROOT_RAW/.git" ] || [ -f "$TOOL_ROOT_RAW/Package.swift" ]; then
   # 既存クローンは更新してから使う(古いまま build して「入れ直したのに直らない」を防ぐ)。
   # マージコミットを勝手に作らないため ff-only。版固定(detached)は意図的とみなして触らない。
   # ローカル変更は**人に確認してから**破棄する(黙って捨てない)
-  if [ ! -d "$TOOL_ROOT/.git" ]; then
+  if [ "$ALLOW_PULL" = "0" ]; then
+    record "clone" skip "既存クローンをそのまま使用(--no-pull): $TOOL_ROOT"
+  elif [ ! -d "$TOOL_ROOT/.git" ]; then
     record "clone" skip "既存ディレクトリを使用(git 管理外): $TOOL_ROOT"
   elif ! branch="$(git -C "$TOOL_ROOT" symbolic-ref --short -q HEAD)"; then
     record "clone" skip "既存クローンを使用(版固定: $(git -C "$TOOL_ROOT" describe --tags --always 2>/dev/null))"
@@ -430,14 +435,20 @@ if [ "$DO_DOCTOR" = "1" ]; then
   ( cd "$WORK_DIR" && "$FT" doctor ) || true
 fi
 
+NEXT_PROFILES=""
+case " ${STEPS[*]} " in
+  *"プロファイル|ok"*) : ;;
+  *) NEXT_PROFILES="・プロファイル(マシン/アプリ/実行)の作成 → Claude Code で /ftester-profiles
+" ;;
+esac
+
 print_summary
 
 cat <<EOF
 
 ──────── 次にやること ────────
-1. プロファイル(マシン/アプリ/実行)の作成 → Claude Code で /ftester-profiles
-2. VSCode で $WORK_DIR を開き、Developer: Reload Window(拡張の反映に必須)
-3. Claude Code が ftester MCP サーバの承認を求めたら許可する(ft_* が使えるようになる)
+${NEXT_PROFILES}・VSCode で $WORK_DIR を開き、Developer: Reload Window(拡張の反映に必須)
+・Claude Code が ftester MCP サーバの承認を求めたら許可する(ft_* が使えるようになる)
 EOF
 
 if [ "$SOFT_FAILED" = "1" ]; then
