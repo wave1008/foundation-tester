@@ -127,6 +127,35 @@ soft_fail() {
 
 abspath() { (cd "$1" 2>/dev/null && pwd); }
 
+# package-lock.json は package.json の version を内包する。版上げのときに lock を更新し忘れると、
+# 受け手の `npm install` が **version 行だけ**を書き換え、クローンが dirty になって
+# **次の更新が pull ガードで必ず止まる**(実害。2026-07-29)。version 行だけの差分は生成物と
+# みなして黙って復元する。**それ以外の差分(依存の追加・更新)には触らない**。
+# 根治は保守者側の版上げを `npm version --no-git-tag-version` にすること(CLAUDE.md)
+restore_lock_version_churn() {
+  local lock="vscode-ftester/package-lock.json" pkg="vscode-ftester/package.json" stat want added
+  [ -d "$TOOL_ROOT/.git" ] || return 0
+  git -C "$TOOL_ROOT" diff --quiet -- "$lock" 2>/dev/null && return 0
+  # package.json も変わっているなら**保守者の版上げ**(npm version)。lock はそれに追随した正しい
+  # 状態なので巻き戻さない
+  git -C "$TOOL_ROOT" diff --quiet -- "$pkg" 2>/dev/null || return 0
+  # 差分が「ルートの version 2行」ちょうどでなければ人の変更(依存の追加・更新)とみなす。
+  # `| head` は使わない(pipefail 下で SIGPIPE を失敗と誤判定する。preflight.sh と同じ罠)
+  stat="$(git -C "$TOOL_ROOT" diff --numstat -- "$lock" 2>/dev/null | awk '{print $1"/"$2; exit}')"
+  [ "$stat" = "2/2" ] || return 0
+  # 増えた側が package.json の version と一致するときだけ = npm install が同期しただけ
+  want="$(awk -F'"' '/"version":/{print $4; exit}' "$TOOL_ROOT/$pkg" 2>/dev/null)"
+  added="$(git -C "$TOOL_ROOT" diff -U0 -- "$lock" 2>/dev/null \
+    | awk -F'"' '/^\+[[:space:]]*"version":/{print $4}' | sort -u || true)"
+  [ -n "$want" ] && [ "$added" = "$want" ] || return 0
+  if git -C "$TOOL_ROOT" checkout -- "$lock" 2>/dev/null; then
+    echo "・package-lock.json の版差分を復元しました(npm install が書き換えた生成物)"
+  fi
+  # **必ず 0 で返す** ―― set -e 下で素の呼び出しをしているので、非0で返すと install.sh が
+  # [fail] を1行も出さずに死ぬ(復元できなくても、下の dirty ガードが人に確認すればよい)
+  return 0
+}
+
 # ---- 0. 前提(SKILL ステップ0) -------------------------------------------------
 [ -d "$WORK_DIR" ] || die "前提" "--work-dir が存在しません: $WORK_DIR" 0
 WORK_DIR="$(abspath "$WORK_DIR")"
@@ -188,6 +217,8 @@ if [ -d "$TOOL_ROOT_RAW/.git" ] || [ -f "$TOOL_ROOT_RAW/Package.swift" ]; then
   elif ! branch="$(git -C "$TOOL_ROOT" symbolic-ref --short -q HEAD)"; then
     record "clone" skip "既存クローンを使用(版固定: $(git -C "$TOOL_ROOT" describe --tags --always 2>/dev/null))"
   else
+    # 前回の更新が残した npm の版差分を先に片付ける(これを残すと下の dirty ガードで止まる)
+    restore_lock_version_churn
     if [ -n "$(git -C "$TOOL_ROOT" status --porcelain 2>/dev/null)" ]; then
       echo "⚠️ 既存クローンにローカル変更があります: $TOOL_ROOT"
       git -C "$TOOL_ROOT" status --short | head -20
@@ -341,6 +372,8 @@ else
   else
     soft_fail "拡張" "npm install / install-local が失敗(CLI と MCP は使えます)" 7
   fi
+  # npm install が書き換えた版差分をここでも片付ける(次回の更新を止めないため。冪等)
+  restore_lock_version_churn
 fi
 
 # ---- 7.5 MCP サーバ登録(SKILL ステップ7.5) -----------------------------------
