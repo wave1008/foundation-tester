@@ -49,8 +49,14 @@ export class MonitorUpdateController {
 
   constructor(private readonly deps: MonitorUpdateDeps) {}
 
-  /** パネルを開いたとき/「更新を確認」を押されたときに呼ぶ。 */
-  async check(): Promise<void> {
+  /**
+   * 更新の有無を確認して状態を送る。
+   * `prompt` は**人が「更新を確認」を押したときだけ** true にする ―― 更新が見つかったら
+   * その場で適用するかを聞く(押した本人はもう「更新するか」を考えている。状態行を更新して
+   * 終わると、タブバーのボタンを探させることになる)。パネルを開いたときの自動確認や
+   * 更新実行後の取り直しでは聞かない。
+   */
+  async check(options?: { readonly prompt?: boolean }): Promise<void> {
     if (this.running) {
       return; // 更新実行中は状態を上書きしない
     }
@@ -67,7 +73,21 @@ export class MonitorUpdateController {
       verdict === "up-to-date" || verdict === "update-available" || verdict === "pinned"
         ? verdict
         : "unknown";
-    this.postStatus(state, fields.local_head ?? "", fields.remote_head ?? "", fields.reason ?? "");
+    const localHead = fields.local_head ?? "";
+    const remoteHead = fields.remote_head ?? "";
+    this.postStatus(state, localHead, remoteHead, fields.reason ?? "");
+    if (options?.prompt && state === "update-available") {
+      const proceed = t("monitor.update.confirmButton");
+      const picked = await vscode.window.showInformationMessage(
+        t("monitor.update.foundMessage", { local: localHead.slice(0, 8), remote: remoteHead.slice(0, 8) }),
+        { modal: true, detail: t("monitor.update.confirmDetail") },
+        proceed,
+      );
+      if (picked === proceed) {
+        // ここが確認そのものなので、runUpdate の確認は通さない(二重に聞かない)。
+        await this.startUpdate(this.scriptPath("update.sh"));
+      }
+    }
   }
 
   /** 「更新する」を押されたとき。update.sh を実行し、出力は OUTPUT(ftester)へ1行ずつ出す。 */
@@ -84,8 +104,16 @@ export class MonitorUpdateController {
     // プロファイル削除など他の破壊的操作も同じ方式)。数分かかるうえ拡張自身を入れ替えるため。
     const proceed = t("monitor.update.confirmButton");
     const choice = await vscode.window.showWarningMessage(
-      t("monitor.update.confirmMessage"), { modal: true }, proceed);
+      t("monitor.update.confirmMessage"), { modal: true, detail: t("monitor.update.confirmDetail") }, proceed);
     if (choice !== proceed) {
+      return;
+    }
+    await this.startUpdate(script);
+  }
+
+  /** 確認を通ったあとの実行本体。確認の出し方が2通りある(ボタン / 確認後の勧め)ので分ける。 */
+  private async startUpdate(script: string | undefined): Promise<void> {
+    if (!script || this.running) {
       return;
     }
     this.running = true;
