@@ -16,8 +16,11 @@
 #       「→ SKILL.md ステップ N」を出すので、エージェントはそこだけ手作業で直して再実行する
 #       (この対応表を崩すときは SKILL.md 側も一緒に直す)。
 # ログ: 全出力を <WORK_DIR>/.ftester/install-<日時>.log にも落とす(実行ごとに別ファイル)。
-#       **画面には結果表と `==>` の見出しだけ**を出す(swift build・npm・vsce の生ログはファイルへ。
-#       画面に出すと呼び出し元のエージェントで切られ、結果を探す grep が承認を増やす)。--verbose で従来。
+#       画面に出すのは**各ステップの1行(その場で逐次)+ 見出し + 最後の集計**だけ。
+#       swift build・npm・vsce の生ログはファイルへ(画面に出すと呼び出し元のエージェントで
+#       切られ、結果を探す grep が承認を増やす)。--verbose で従来どおり画面にも出す。
+#       **無音の時間を作らない**のが逐次表示の目的(クローン〜ビルドは数分。人が「止まった」と
+#       誤解して中断するのを防ぐ)。数分かかる工程には経過時間を付ける。
 # 終了コード: 0=完了 / 1=必須ステップの失敗 / 2=任意ステップのみ失敗(CLI は使える)
 set -euo pipefail
 
@@ -97,24 +100,53 @@ done
 STEPS=()
 SOFT_FAILED=0
 
-record() { STEPS+=("$1|$2|$3"); }
+status_icon() {
+  case "$1" in
+    ok) printf '✅' ;;
+    skip) printf '⏭️ ' ;;
+    warn) printf '⚠️ ' ;;
+    fail) printf '❌' ;;
+    *) printf '・' ;;
+  esac
+}
+
+# 行頭の [status] は機械可読用(エージェントが warn/fail を拾う)。書式を変えるときは
+# SKILL.md の「インストーラの読み方」も直す
+step_line() { printf '%s [%s] %s: %s\n' "$(status_icon "$2")" "$2" "$1" "$3"; }
+
+# **その場でも1行出す**。生ログを画面に出さない(既定)ので、結果を最後にまとめて出すだけだと
+# クローン〜ビルドの数分間まったく無音になり、人が「止まったのか」を判断できない
+record() {
+  STEPS+=("$1|$2|$3")
+  step_line "$1" "$2" "$3"
+}
+
+# 経過時間つきの表示に使う(数分かかる工程がどれだけかかったかを人が見て判断できるように)
+elapsed_since() {
+  local s=$(( SECONDS - $1 ))
+  if [ "$s" -ge 60 ]; then printf '%d分%d秒' $((s / 60)) $((s % 60)); else printf '%d秒' "$s"; fi
+}
 
 print_summary() {
-  echo ""
-  echo "──────── インストール結果 ────────"
-  local entry name status detail icon
+  local entry name status detail ok=0 skip=0 attn=0
   for entry in "${STEPS[@]}"; do
     IFS='|' read -r name status detail <<<"$entry"
     case "$status" in
-      ok) icon="✅" ;;
-      skip) icon="⏭️ " ;;
-      warn) icon="⚠️ " ;;
-      fail) icon="❌" ;;
-      *) icon="・" ;;
+      ok) ok=$((ok + 1)) ;;
+      skip) skip=$((skip + 1)) ;;
+      *) attn=$((attn + 1)) ;;
     esac
-    # 行頭の [status] は機械可読用(エージェントが warn/fail を拾う)。書式を変えるときは
-    # SKILL.md の「インストーラの読み方」も直す
-    echo "${icon} [${status}] ${name}: ${detail}"
+  done
+  echo ""
+  echo "──────── インストール結果 ────────"
+  printf '✅ 完了 %d / ⏭️ 省略 %d / ⚠️ 要対応 %d\n' "$ok" "$skip" "$attn"
+  # 各ステップの1行は実行時に出している。ここで全行を再掲すると同じ表が画面に2つ並ぶので、
+  # **要対応(warn/fail)だけ**を再掲する。--verbose のときは生ログに埋もれるので全行を出す
+  for entry in "${STEPS[@]}"; do
+    IFS='|' read -r name status detail <<<"$entry"
+    if [ "$VERBOSE" = "1" ] || [ "$status" = "warn" ] || [ "$status" = "fail" ]; then
+      step_line "$name" "$status" "$detail"
+    fi
   done
 }
 
@@ -176,6 +208,7 @@ if mkdir -p "$WORK_DIR/.ftester" 2>/dev/null; then
   LOG_FILE="$WORK_DIR/.ftester/install-$(date +%Y%m%d-%H%M%S).log"
   exec > >(tee -a "$LOG_FILE") 2>&1
   echo "==> ログ: $LOG_FILE"
+  echo "    (ビルドの詳細は画面に出ません。別のターミナルで tail -f '$LOG_FILE' で追えます)"
 fi
 
 # 生ログ(swift build・npm・vsce)の行き先。既定は**ログファイルだけ**に落とす ―― 画面に出すと
@@ -289,8 +322,9 @@ if [ -d "$TOOL_ROOT_RAW/.git" ] || [ -f "$TOOL_ROOT_RAW/Package.swift" ]; then
       esac
     fi
     echo "==> git pull(既存クローン $TOOL_ROOT の更新)"
+    step_started=$SECONDS
     if git -C "$TOOL_ROOT" pull --ff-only >>"$RAW_SINK" 2>&1; then
-      record "clone" ok "既存クローンを更新: $TOOL_ROOT ($branch $(git -C "$TOOL_ROOT" rev-parse --short HEAD))"
+      record "clone" ok "既存クローンを更新: $TOOL_ROOT ($branch $(git -C "$TOOL_ROOT" rev-parse --short HEAD), $(elapsed_since $step_started))"
     else
       soft_fail "clone" "git pull に失敗(既存クローンのまま続行。ネットワークか履歴の分岐を確認)" 0.5
     fi
@@ -298,10 +332,11 @@ if [ -d "$TOOL_ROOT_RAW/.git" ] || [ -f "$TOOL_ROOT_RAW/Package.swift" ]; then
 else
   [ "$ALLOW_CLONE" = "1" ] || die "clone" "クローンがありません: $TOOL_ROOT_RAW(--no-clone 指定)" 0.5
   echo "==> clone: $REPO_URL → $TOOL_ROOT_RAW"
+  step_started=$SECONDS
   git clone "$REPO_URL" "$TOOL_ROOT_RAW" >>"$RAW_SINK" 2>&1 \
     || { show_log_tail; die "clone" "git clone に失敗しました" 0.5; }
   TOOL_ROOT="$(abspath "$TOOL_ROOT_RAW")"
-  record "clone" ok "$TOOL_ROOT"
+  record "clone" ok "$TOOL_ROOT ($(elapsed_since $step_started))"
 fi
 
 [ -f "$TOOL_ROOT/Package.swift" ] && [ -d "$TOOL_ROOT/Sources/FTScenarioRunner" ] \
@@ -333,12 +368,13 @@ fi
 # ---- 2. ビルド(SKILL ステップ2) ----------------------------------------------
 # 変数名の直後に日本語を置くときは必ず ${} で囲む(マルチバイト先頭バイトが変数名に食われる)
 echo "==> swift build(${TOOL_ROOT}。初回は数分)"
+step_started=$SECONDS
 ( cd "$TOOL_ROOT" && swift build ) >>"$RAW_SINK" 2>&1 \
   || { show_log_tail; die "ビルド" "swift build に失敗しました" 2; }
 [ -x "$FT" ] || die "ビルド" "CLI が生成されていません: $FT" 2
 # MCP サーバは .mcp.json が起動のたびにビルドし直すが、初回だけ先に通しておく(初回起動の失敗回避)
 ( cd "$TOOL_ROOT" && swift build --product ftester-mcp ) >/dev/null 2>&1 || true
-record "ビルド" ok "$FT"
+record "ビルド" ok "$FT ($(elapsed_since $step_started))"
 
 # ---- 4 の前: Bash 許可リストの補修(承認回数を減らす) --------------------------
 # **毎回呼ぶ**。許可リストは従来 `ftester init` でしか書かれず、更新は --skip-project で init を
@@ -422,8 +458,9 @@ elif ! command -v npm >/dev/null 2>&1; then
   soft_fail "拡張" "npm がありません(Node.js を入れてから vscode-ftester で npm run install-local)" 7
 else
   echo "==> VSCode 拡張のビルドとインストール"
+  step_started=$SECONDS
   if ( cd "$TOOL_ROOT/vscode-ftester" && npm install && npm run install-local ) >>"$RAW_SINK" 2>&1; then
-    record "拡張" ok "インストール済み(反映は Reload Window)"
+    record "拡張" ok "インストール済み(反映は Reload Window。$(elapsed_since $step_started))"
   else
     show_log_tail
     soft_fail "拡張" "npm install / install-local が失敗(CLI と MCP は使えます)" 7

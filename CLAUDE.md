@@ -17,14 +17,17 @@
   出してエージェントを手作業手順へ戻す設計)。**片方だけ変えない** — 手順の追加・番号の変更は両方に入れる。
   **スキルからは curl 形で呼ぶ**(クローン側の Scripts/ は pull されるまで古く、新しい引数は
   「不明なオプション」で落ちる)。全出力は `<WORK_DIR>/.ftester/install-<日時>.log` に残る。
-  **画面は結果表だけ・生ログはファイルへ**(`--verbose` で従来。54KB 出すとエージェント側で
-  切られ、結果を探す grep が承認を増やす)。**外部構成ではクローンのローカル変更を自動破棄**
+  **画面は各ステップ1行(逐次)+ 集計だけ・生ログはファイルへ**(`--verbose` で従来。54KB 出すと
+  エージェント側で切られ、結果を探す grep が承認を増やす)。**逐次表示は人のためのもの** ——
+  数分の無音は「止まった」と誤解され中断される。最後の再掲は warn/fail だけ(全行だと表が2つ並ぶ)。**外部構成ではクローンのローカル変更を自動破棄**
   (reset --hard + `clean -fd`。`-x` は付けない = .build/ を消さない。`--keep-local` で従来)。
   **毎回 `ftester api ensure-settings` で Bash 許可リストを補修する**(init 経由だけだと
   `--skip-project` の更新で既存の受け手に永久に届かない)
 - 受け手の更新: `Scripts/update.sh`(install.sh を再実行 + project sync + プラグイン更新と版照合。
   `.claude/skills/ftester-update/SKILL.md` と 1:1)。**先に update-check.sh を呼び up-to-date なら
-  即終了**(全工程は更新が無くても約30秒。入れ直しは `--force`)。doctor は既定で出さない
+  即終了**(全工程は更新が無くても約30秒。入れ直しは `--force`)。**ログの場所は最後の
+  「次にやること」にも出す**(install.sh には `--no-next-steps` を渡すため、こちらで案内しないと
+  人が後から詳細を確認できない)。doctor は既定で出さない
   (`--doctor`。結果表と情報が重複し8秒かかる)。**スキルのステップ0は `.ftester/state.json` の
   Read で TOOL_ROOT を採る**(コマンドを打たない = 承認が要らない。無ければ preflight に落ちる)
 - 更新の有無だけ判定: `Scripts/update-check.sh`(読み取りのみ。**fetch せず `git ls-remote`** で
