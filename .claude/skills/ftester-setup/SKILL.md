@@ -210,7 +210,7 @@ FM 無しで動く。**人間に「有効か」を聞かない**：
 `.gitignore` に `.build/` と `Projects/*/reports/` があることを確認する(`ftester init` が自動整備する。
 欠けていればこの2行を追記)。`git status` に `.build/` の未追跡ノイズが出ないことまで見る。
 何をコミットすべきか(Package.resolved・`.vscode/settings.json`・`Projects/` 等)は
-docs/getting-started.md「git 管理(何をコミットするか)」の方針を受け手に案内する。
+docs/getting-started.md「インストールの次にやること」の git 管理の方針を受け手に案内する。
 
 ### 5. マシンプロファイル（このPC）
 
@@ -336,4 +336,4 @@ clone 構成では既定 `.build/debug/ftester` のままでよい）。プロ�
 外部パッケージ構成では、以後の `/ftester-setup`(デバイス定義・アプリパス・動作確認)は `ftester init` が
 WORK_DIR に置いた**受け手専用スキル**が担う。更新（新しい修正版が出たとき）は `/ftester-update` を使う
 （TOOL_ROOT で git pull → swift build 再ビルド → 依存版を揃える → 拡張再インストール → Reload Window）。
-手動手順は docs/getting-started.md「更新のしかた」。
+手動手順は docs/getting-started.md「更新」。

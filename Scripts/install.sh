@@ -42,6 +42,11 @@ usage() {
   --skip-mcp         .mcp.json の生成/マージを行わない
   --no-doctor        最後の環境レポート(ftester doctor)を省く
   -h, --help         このヘルプ
+
+やること: clone / swift build / プロジェクト作成 / .gitignore 整備 / VSCode 拡張 / .mcp.json / 検証ゲート
+         (冪等。済んだ手順は skip)。デバイス・アプリ・実行プロファイルの作成は担当外(/ftester-profiles)
+終了コード: 0=完了 / 2=任意ステップのみ未完(CLI と MCP は使える) / 1=必須ステップで停止
+         (停止時は [fail] 行に原因と、手作業で通す手順の番号が出る)
 EOF
 }
 
