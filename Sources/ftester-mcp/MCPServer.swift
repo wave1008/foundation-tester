@@ -92,19 +92,45 @@ final class MCPServer {
 
     // MARK: - ドライバ
 
+    // ft_* は home/appSwitcher/drag/座標 press を含むため in-app ブリッジは使わない
+    // (XCUIBridgeResolver: in-app を掴んだら同じデバイスの XCUITest ブリッジへ振り替え、無ければ起動)。
+    // profile 指定時は resolveProfileTarget が ft_run_scenario と同じデバイスを解決し、iOS は
+    // provision 後のポートを XCUIBridgeResolver へ渡して同じ振り替えを通す
     private func driver(_ args: [String: Any]) async throws -> AppDriver {
+        if let profileName = args["profile"] as? String {
+            let key = Self.driverCacheKey(profile: profileName, project: args["project"] as? String,
+                                          platform: args["platform"] as? String)
+            if let cached = drivers[key] { return cached }
+            let project = try ScenarioHost.project(named: args["project"] as? String)
+            var prologue: [String] = []
+            // profile 指定の初回はブリッジ provision を伴い、コールドスタートは分単位かかりうる
+            // (既存ブリッジ再利用時は数秒。進捗は stderr に出る)
+            let (_, _, target) = try await resolveProfileTarget(
+                project: project, profileName: profileName,
+                platformArg: args["platform"] as? String, prologue: &prologue)
+            prologue.forEach(Self.logStderr)
+            let created: AppDriver
+            switch target {
+            case .ios(let provisioned, _):
+                let resolution = await XCUIBridgeResolver.resolve(
+                    preferred: provisioned.port, repoRoot: try? RepoRoot.find(),
+                    logger: { Self.logStderr($0) })
+                created = BridgeClient(port: resolution.endpoint.port, host: resolution.endpoint.host)
+            case .android(let serial, _):
+                created = try AndroidDriver(serial: serial)
+            }
+            drivers[key] = created
+            return created
+        }
+
         let platform = (args["platform"] as? String)
             ?? ProcessInfo.processInfo.environment["FTESTER_PLATFORM"]
             ?? "ios"
-        // ポートもキーに含める(別ポート指定で同じドライバを使い回さない)
-        let key = "\(platform):\(args["port"] as? Int ?? 0)"
+        let key = Self.driverCacheKey(platform: platform, port: args["port"] as? Int, serial: args["serial"] as? String)
         if let cached = drivers[key] { return cached }
         let created: AppDriver
         switch platform {
         case "ios":
-            // ft_* は home/appSwitcher/drag/座標 press を含むため in-app ブリッジは使わない
-            // (XCUIBridgeResolver: in-app を掴んだら同じデバイスの XCUITest ブリッジへ振り替え、
-            // 無ければ起動する)。解決は platform ごとに1度だけ = drivers キャッシュで再利用
             let port = (args["port"] as? Int).map(UInt16.init) ?? BridgeAPI.defaultPort
             let resolution = await XCUIBridgeResolver.resolve(
                 preferred: port, repoRoot: try? RepoRoot.find(),
@@ -117,6 +143,54 @@ final class MCPServer {
         }
         drivers[key] = created
         return created
+    }
+
+    /// drivers キャッシュのキー生成。profile / project / port / serial の違いを別ドライバとして扱う
+    static func driverCacheKey(profile: String, project: String?, platform: String?) -> String {
+        "profile:\(project ?? ""):\(profile):\(platform ?? "")"
+    }
+
+    static func driverCacheKey(platform: String, port: Int?, serial: String?) -> String {
+        "direct:\(platform):\(port ?? 0):\(serial ?? "")"
+    }
+
+    private enum ResolvedDriverTarget {
+        case ios(ProvisionedIOSDevice, iosApp: ResolvedAppTarget?)
+        case android(serial: String, deviceName: String)
+    }
+
+    /// profile からデバイスを解決する(ft_run_scenario と直接操作系で共通)。iOS は
+    /// BridgeProvisioner.provision を伴うため、初回コールドスタートは分単位かかりうる
+    private func resolveProfileTarget(
+        project: TestProject, profileName: String, platformArg: String?, prologue: inout [String]
+    ) async throws -> (platform: String, resolved: ResolvedProfile, target: ResolvedDriverTarget) {
+        let machine = try ProfileResolver.determineMachine(
+            project: project, registered: LocalConfig.currentMachineName(),
+            runProfileName: profileName)
+        let resolved = try ProfileResolver.resolve(
+            project: project, runName: profileName, machineName: machine.name)
+        prologue.append(contentsOf: resolved.warnings.map { "⚠️ \($0)" })
+        let platform = platformArg ?? resolved.devices.first?.platform ?? "ios"
+        guard let device = resolved.devices.first(where: { $0.platform == platform }) else {
+            throw MCPError("プロファイル \(profileName) に \(platform) のデバイスがありません")
+        }
+        if platform == "ios" {
+            let provisioner = BridgeProvisioner(repoRoot: root(of: project))
+            // bundleID/preinstallAppPath は inapp ブリッジのコールドスタートに必須。
+            // 稼働中ブリッジ再利用時は使われないため、欠落しても露見しにくい(実際に欠落バグが起きた)
+            let iosApp = resolved.apps["ios"]
+            // provision の進捗クロージャは @escaping のため inout の prologue を直接キャプチャできない
+            var provisionLog: [String] = []
+            let provisioned = try await provisioner.provision(
+                devices: [(device.name, device.spec)],
+                bundleID: iosApp?.bundleID,
+                preinstallAppPath: iosApp?.autoInstall == true ? iosApp?.appPath : nil) { provisionLog.append($0) }
+            prologue.append(contentsOf: provisionLog)
+            return (platform, resolved, .ios(provisioned[0], iosApp: iosApp))
+        } else {
+            let serial = try AndroidDeviceCatalog.resolveSerial(spec: device.spec)
+            return (platform, resolved, .android(serial: serial, deviceName: device.name))
+        }
     }
 
     // MARK: - ツール実装
@@ -266,12 +340,9 @@ final class MCPServer {
 
         if let profileName = args["profile"] as? String {
             // 接続先はシナリオの platform に合う先頭デバイス。プロファイル自身の machine 指定が最優先
-            let machine = try ProfileResolver.determineMachine(
-                project: project, registered: LocalConfig.currentMachineName(),
-                runProfileName: profileName)
-            let resolved = try ProfileResolver.resolve(
-                project: project, runName: profileName, machineName: machine.name)
-            prologue.append(contentsOf: resolved.warnings.map { "⚠️ \($0)" })
+            let (_, resolved, target) = try await resolveProfileTarget(
+                project: project, profileName: profileName,
+                platformArg: info.platform, prologue: &prologue)
             fm = resolved.fm
             // heal 引数は master(fm.enabled)が有効な場合のみ ON にする override(未指定は resolved のまま)
             if let healArg = args["heal"] as? Bool {
@@ -279,23 +350,11 @@ final class MCPServer {
             }
             reportDir = resolved.reportDir.path
             defaultTimeout = resolved.defaultTimeout
-            let platform = info.platform ?? resolved.devices.first?.platform ?? "ios"
-            guard let device = resolved.devices.first(where: { $0.platform == platform }) else {
-                throw MCPError("プロファイル \(profileName) に \(platform) のデバイスがありません")
-            }
-            if platform == "ios" {
-                let provisioner = BridgeProvisioner(repoRoot: root(of: project))
-                // bundleID/preinstallAppPath は inapp ブリッジのコールドスタートに必須。
-                // 稼働中ブリッジ再利用時は使われないため、欠落しても露見しにくい(実際に欠落バグが起きた)
-                let iosApp = resolved.apps["ios"]
-                let provisioned = try await provisioner.provision(
-                    devices: [(device.name, device.spec)],
-                    bundleID: iosApp?.bundleID,
-                    preinstallAppPath: iosApp?.autoInstall == true ? iosApp?.appPath : nil) { prologue.append($0) }
-                connection = ProfileWorkerFactory.iosConnection(device: provisioned[0], iosApp: iosApp)
-            } else {
-                let serial = try AndroidDeviceCatalog.resolveSerial(spec: device.spec)
-                connection = DriverConnection(platform: "android", serial: serial, deviceName: device.name)
+            switch target {
+            case .ios(let provisioned, let iosApp):
+                connection = ProfileWorkerFactory.iosConnection(device: provisioned, iosApp: iosApp)
+            case .android(let serial, let deviceName):
+                connection = DriverConnection(platform: "android", serial: serial, deviceName: deviceName)
             }
         } else {
             let platform = info.platform ?? (args["platform"] as? String ?? "ios")
@@ -325,6 +384,27 @@ final class MCPServer {
     static let platformProperty: [String: Any] = [
         "type": "string", "enum": ["ios", "android"],
         "description": "対象プラットフォーム(省略時 ios)",
+    ]
+    static let portProperty: [String: Any] = [
+        "type": "integer", "description": "iOS ブリッジのポート(既定 8123)",
+    ]
+    static let serialProperty: [String: Any] = [
+        "type": "string", "description": "Android デバイスのシリアル",
+    ]
+    static let profileProperty: [String: Any] = [
+        "type": "string",
+        "description": "実行プロファイル名。指定すると ft_run_scenario と同じデバイスへ接続する(profiles/runs/)",
+    ]
+    static let projectProperty: [String: Any] = [
+        "type": "string", "description": "テストプロジェクト名(省略時は既定プロジェクト)",
+    ]
+    /// 全ツール共通のデバイス選択プロパティ。tool() が無条件で足す
+    static let commonDeviceProperties: [(String, [String: Any])] = [
+        ("platform", platformProperty),
+        ("port", portProperty),
+        ("serial", serialProperty),
+        ("profile", profileProperty),
+        ("project", projectProperty),
     ]
 
     static let toolDefinitions: [[String: Any]] = [
@@ -374,8 +454,11 @@ final class MCPServer {
     static func tool(_ name: String, _ description: String,
                      _ properties: [String: Any], required: [String] = []) -> [String: Any] {
         var props = properties
-        // ドライバ選択は全ツール共通
-        props["platform"] = platformProperty
+        // デバイス選択は全ツール共通。個別宣言があればそちらを優先する
+        // (ft_run_scenario は profile/port/serial/project により詳細な説明文を持つ)
+        for (key, value) in commonDeviceProperties where props[key] == nil {
+            props[key] = value
+        }
         var schema: [String: Any] = ["type": "object", "properties": props]
         if !required.isEmpty { schema["required"] = required }
         return ["name": name, "description": description, "inputSchema": schema]
