@@ -89,7 +89,7 @@ const RUN_EVENT_KINDS: ReadonlySet<string> = new Set<RunEventKind>([
 
 /** 並列実行(`--profile` 指定時)のワーカー(デバイス)1台分の情報。 */
 export interface WorkerInfo {
-  /** モニタータイルの device id と同一規則("ios:シミュ1" / "android:エミュ1")。 */
+  /** モニタータイルの device id と同一規則("ios:simulator1" / "android:emulator1")。 */
   id: string;
   name: string;
   platform: "ios" | "android";

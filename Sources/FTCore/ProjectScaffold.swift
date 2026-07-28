@@ -20,8 +20,7 @@ public enum ProjectScaffold {
     /// 名前検証 → 雛形生成 → Package.swift マーカー区間更新までを一括で行う
     /// (ftester project create から使う)
     @discardableResult
-    public static func createAndRegister(name: String, app: String, repoRoot: URL,
-                                         machineName: String? = nil) throws -> TestProject {
+    public static func createAndRegister(name: String, app: String, repoRoot: URL) throws -> TestProject {
         guard ProjectStore.isValidName(name) else {
             throw ProjectStoreError.invalidName(name)
         }
@@ -31,7 +30,7 @@ public enum ProjectScaffold {
         guard !FileManager.default.fileExists(atPath: project.rootURL.path) else {
             throw ProjectScaffoldError.alreadyExists(project.rootURL)
         }
-        try create(project: project, app: app, machineName: machineName)
+        try create(project: project, app: app)
         try PackageManifestEditor.updateProjects(
             manifestURL: repoRoot.appendingPathComponent("Package.swift"),
             projectNames: ProjectStore.all(repoRoot: repoRoot).map(\.name),
@@ -224,7 +223,7 @@ public enum ProjectScaffold {
         - 🧑 `Projects/\(name)/profiles/machines/<マシン名>.json` に使うデバイスを列挙(雛形は同ディレクトリの README.md):
 
         ```json
-        { "ios": { "devices": [ { "name": "メイン機", "simulator": "iPhone 17 Pro" } ] } }
+        { "ios": { "devices": [ { "name": "simulator1", "simulator": "iPhone 17 Pro" } ] } }
         ```
 
         ### 3. 対象アプリのパス(appPath)は設定しない
@@ -292,8 +291,7 @@ public enum ProjectScaffold {
     }
 
     /// プロジェクト雛形を生成する(ディレクトリは存在しない前提。Package.swift の更新は呼び出し側)
-    public static func create(project: TestProject, app: String,
-                              machineName: String? = nil) throws {
+    public static func create(project: TestProject, app: String) throws {
         let fm = FileManager.default
         for dir in [project.generatedDir, project.disabledDir,
                     project.appsDir, project.machinesDir, project.runsDir,
@@ -317,18 +315,13 @@ public enum ProjectScaffold {
         try appProfileTemplate(appName: project.name, app: app).write(
             to: project.appsDir.appendingPathComponent("\(appRef).json"),
             atomically: true, encoding: .utf8)
-        if let machineName {
-            try machineProfileTemplate.write(
-                to: project.machinesDir.appendingPathComponent("\(machineName).json"),
-                atomically: true, encoding: .utf8)
-        }
-        try runProfileTemplate(app: appRef, deviceNames: ["メイン機"]).write(
+        try runProfileTemplate(app: appRef, deviceNames: ["simulator1"]).write(
             to: project.runsDir.appendingPathComponent("ios.json"),
             atomically: true, encoding: .utf8)
-        try runProfileTemplate(app: appRef, deviceNames: ["エミュ1"]).write(
+        try runProfileTemplate(app: appRef, deviceNames: ["emulator1"]).write(
             to: project.runsDir.appendingPathComponent("android.json"),
             atomically: true, encoding: .utf8)
-        try runProfileTemplate(app: appRef, deviceNames: ["メイン機", "エミュ1"]).write(
+        try runProfileTemplate(app: appRef, deviceNames: ["simulator1", "emulator1"]).write(
             to: project.runsDir.appendingPathComponent("all.json"),
             atomically: true, encoding: .utf8)
     }
@@ -383,13 +376,13 @@ public enum ProjectScaffold {
     {
       "ios": {
         "devices": [
-          { "name": "メイン機", "simulator": "iPhone 17 Pro" },
+          { "name": "simulator1", "simulator": "iPhone 17 Pro" },
           { "name": "サブ機", "simulator": "iPhone Air", "udid": "XXXX-XXXX" }
         ]
       },
       "android": {
         "devices": [
-          { "name": "エミュ1", "avd": "Pixel 9(Android 16)" },
+          { "name": "emulator1", "avd": "Pixel 9(Android 16)" },
           { "name": "エミュ2", "avd": "Pixel_8_Android_14" }
         ]
       }
@@ -417,20 +410,6 @@ public enum ProjectScaffold {
 
     // os は書かない(名前一致の最新ランタイムに解決される)。版を固定するとホストの Xcode に
     // 無いランタイムを指して解決不能になる(macOS/Xcode の世代差で実際に起きる)
-    public static let machineProfileTemplate = """
-    {
-      "ios": {
-        "devices": [
-          { "name": "メイン機", "simulator": "iPhone 17 Pro" }
-        ]
-      },
-      "android": {
-        "devices": [
-          { "name": "エミュ1", "avd": "Pixel_9" }
-        ]
-      }
-    }
-    """
 
     public static func runProfileTemplate(app: String, deviceNames: [String]) -> String {
         let devices = deviceNames

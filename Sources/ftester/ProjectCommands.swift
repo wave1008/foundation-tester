@@ -36,8 +36,7 @@ struct ProjectCommand: AsyncParsableCommand {
         func run() async throws {
             let root = try ftesterRepoRoot()
             let project = try ProjectScaffold.createAndRegister(
-                name: name, app: app, repoRoot: root,
-                machineName: LocalConfig.currentMachineName())
+                name: name, app: app, repoRoot: root)
 
             print("✅ プロジェクトを作成しました: Projects/\(name)/")
             print("   シナリオ置き場: Projects/\(name)/Scenarios/(@TestClass の .swift を追加)")

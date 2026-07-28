@@ -67,8 +67,7 @@ struct InitCommand: AsyncParsableCommand {
 
         do {
             let project = try ProjectScaffold.createAndRegister(
-                name: projectName, app: app, repoRoot: cwd,
-                machineName: LocalConfig.currentMachineName())
+                name: projectName, app: app, repoRoot: cwd)
             // 受け手が自分のプロジェクトを Claude Code で開いて /ftester-setup で残りを駆動できるように
             try ProjectScaffold.writeRecipientSkill(packageRoot: cwd, projectName: projectName)
             // VSCode 拡張が ftester.project/ftester.binaryPath を手動設定なしで解決できるように
