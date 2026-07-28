@@ -165,4 +165,39 @@ final class PlanBridgeTests: XCTestCase {
             return XCTFail("注入先不明の inapp ブリッジは reuse しないはず")
         }
     }
+
+    /// **旧版の inapp ブリッジは同一アプリでも再利用しない**。dylib を作り直しても
+    /// bridgeProtocolVersion を上げ忘れると稼働中の旧ブリッジが掴まれ、追加した
+    /// エンドポイントが 404 になる/変えた挙動が反映されない(調査中に実際に踏んだ)。
+    /// xcuitest 側だけが版ゲートを持っていた時期があるので、inapp 側の退行をここで止める
+    func testInAppDoesNotReuseStaleProtocolVersion() throws {
+        let sim = SimDeviceInfo(udid: "UDID-A", name: "iPhone 17 Pro", os: "iOS 27.0", booted: true)
+        let running: [UInt16: BridgeProvisioner.RunningBridge] = [
+            8125: .init(udid: "UDID-A", name: "iPhone 17 Pro", engine: "inapp",
+                        protocolVersion: BridgeAPI.bridgeProtocolVersion - 1,
+                        sessionBundleID: "com.example.appA"),
+        ]
+        guard case .launch(let port, _, let stopStalePort, _) =
+                try planInApp(bundleID: "com.example.appA", running: running, sim: sim) else {
+            return XCTFail("旧版の inapp ブリッジは同一アプリでも reuse せず launch のはず")
+        }
+        XCTAssertNotEqual(port, 8125, "旧版が握っているポートを新規起動に使わない")
+        XCTAssertEqual(stopStalePort, 8125, "旧版の inapp ブリッジは停止対象にする")
+    }
+
+    /// 版を申告しない inapp ブリッジ(この定数導入前のビルド)も同じ扱いにする。
+    func testInAppDoesNotReuseBridgeWithoutProtocolVersion() throws {
+        let sim = SimDeviceInfo(udid: "UDID-A", name: "iPhone 17 Pro", os: "iOS 27.0", booted: true)
+        let running: [UInt16: BridgeProvisioner.RunningBridge] = [
+            8125: .init(udid: "UDID-A", name: "iPhone 17 Pro", engine: "inapp",
+                        protocolVersion: nil,
+                        sessionBundleID: "com.example.appA"),
+        ]
+        guard case .launch(let port, _, let stopStalePort, _) =
+                try planInApp(bundleID: "com.example.appA", running: running, sim: sim) else {
+            return XCTFail("版申告の無い inapp ブリッジは reuse せず launch のはず")
+        }
+        XCTAssertNotEqual(port, 8125)
+        XCTAssertEqual(stopStalePort, 8125)
+    }
 }
