@@ -914,7 +914,9 @@ public final class StepExecutor {
                               phase: inout PhaseAccumulator) async throws -> StepResult.Status? {
         // 有効化はステップ指定(DSL の visible())優先、無ければ executor 既定。
         // occlusionGuardEnabled はどちらより上位の実行プロファイル由来マスタースイッチ
-        guard occlusionGuardEnabled, (perStepGuard ?? occlusionGuard), let delegate else { return nil }
+        // FMVisionSupport が false(macOS 26)なら FM に画像を渡せないため、スクショを撮る前に素通り。
+        guard occlusionGuardEnabled, (perStepGuard ?? occlusionGuard), let delegate,
+              FMVisionSupport.isSupported else { return nil }
         // 退化 frame(サイズ 0・クランプで潰れた等)は視覚照合の意味がないのでスキップ(素通り)
         guard element.frame.width >= 1, element.frame.height >= 1, !expectedText.isEmpty else { return nil }
         // 足切り: label が verbatim 描画されない要素(アイコン/画像/絵文字/結合セマンティクス)は
@@ -1336,6 +1338,10 @@ public final class StepExecutor {
             }
             guard let delegate else {
                 return .skipped("FM 検証が無効(Foundation Models 利用不可)")
+            }
+            // スクショを撮る前に落とす(画像を渡せない環境では検証自体が成立しない)
+            guard FMVisionSupport.isSupported else {
+                return .skipped("画面検証が無効(\(FMVisionSupport.requirement))")
             }
             var start = clock.now
             var screenshot = try await driver.screenshot()

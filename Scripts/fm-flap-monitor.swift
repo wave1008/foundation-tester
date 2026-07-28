@@ -14,6 +14,7 @@
 // ガードレール緩和は回避策にならない(= 根因はもっと手前)。健全時(TVP)は何も言えない。
 //
 // ビルド: xcrun swiftc -O Scripts/fm-flap-monitor.swift -o /tmp/fm-flap-monitor
+//         (vision プローブの画像添付は macOS 27+ の API。macOS 26 ではコンパイルできない)
 // 実行:   /tmp/fm-flap-monitor [間隔秒=60] >> ~/Library/Logs/ftester/fm-flap.ndjson
 //         1行 = 1プローブ結果(NDJSON)。state は3文字 T/t=text V/v=vision P/p=permissive の生死
 //         (2026-07-26 に permissive を追加。それ以前のログは2文字)。state が変わった行には "transition": true が付き、

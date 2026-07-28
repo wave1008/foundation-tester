@@ -1,6 +1,6 @@
 # foundation-tester 設計書
 
-macOS 27 の Foundation Models framework(オンデバイス 3B モデル)を最大限活用する、
+Foundation Models framework(オンデバイス 3B モデル。macOS 26+、視覚検証は 27+)を最大限活用する、
 iOS / Android 両対応のアプリ E2E テストツール。iOS を先行実装し、Android は同じ
 `AppDriver` 抽象の上に後続実装した(経緯・時系列は §7, §8 参照)。
 
@@ -12,7 +12,7 @@ iOS / Android 両対応のアプリ E2E テストツール。iOS を先行実装
 
 ## 1. 背景と方針
 
-### 1.1 Foundation Models framework(macOS 27 / WWDC 2026)の前提
+### 1.1 Foundation Models framework(macOS 26+ / 画像入力は macOS 27 = WWDC 2026)の前提
 
 | 機能 | 内容 | 本ツールでの用途 |
 |---|---|---|
@@ -131,7 +131,7 @@ protocol AppDriver {
 
 ```
 foundation-tester/
-├── Package.swift                  # CLI とライブラリ (macOS 27+)。マーカー区間にプロジェクト毎の
+├── Package.swift                  # CLI とライブラリ (macOS 26+。視覚系のみ 27+)。マーカー区間にプロジェクト毎の
 │                                  # executableTarget を自動生成(§11。ftester project create/sync)
 ├── Sources/
 │   ├── ftester/                   # CLI エントリポイント(+ ProjectCommands / ProfileRunner / Api*Command)
@@ -422,9 +422,12 @@ FM がアプリを自律探索してシナリオを生成する explore モー�
 
 ## 8.6 M3実装で得た知見
 
-- **マルチモーダルAPI**(macOS 27): `Attachment(cgImage)` が `PromptRepresentable` なので
+- **マルチモーダルAPI**(macOS 27+): `Attachment(cgImage)` が `PromptRepresentable` なので
   Promptビルダーに画像を直接混ぜられる。`session.respond(generating:options:) { "説明文"; Attachment(cgImage) }`。
-  Package の最低プラットフォームを macOS 27 に上げる必要がある
+  **Attachment だけが macOS 27+ で、FM 本体(テキスト・`@Generable`)は macOS 26+**。Package の最低は
+  macOS 26 に置き、視覚系(occlusion-guard / screenIs)を実行時に落とす:
+  判定の単一点は `FTCore/FMVisionSupport.swift`(StepExecutor が呼ぶ前に skip/素通りへ)で、
+  実 API 側は `FTAgent` の `#available(macOS 27, *)` が保険。triage はテキストのみで継続する
 - **screenMatches(視覚検証)は実用レベル**: 「果物の商品名と価格が並ぶリスト」の一致/不一致を
   スクリーンショットから正しく判定し、不一致時は理由(エラーメッセージの存在)も説明できた
 - **アサーションに type+index フォールバックは危険**(実測で偽陽性発生): 別画面の無関係な要素に

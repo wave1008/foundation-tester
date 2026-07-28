@@ -87,6 +87,11 @@ struct Doctor: AsyncParsableCommand {
             return
         }
 
+        // 視覚系だけが落ちる環境(macOS 26)を区別して見せる。exit code には反映しない
+        // (テキスト系は動くため、セットアップを止める理由にはならない)
+        let vision = FMDoctor.visionReport
+        print(vision.available ? "✅ \(vision.detail)" : "⚠️ \(vision.detail)")
+
         let xcode = try Shell.run(["xcodebuild", "-version"])
         let xcodeLine = xcode.output.split(separator: "\n").first.map(String.init) ?? "不明"
         print(xcode.status == 0 ? "✅ \(xcodeLine)" : "❌ xcodebuild が見つかりません")
@@ -583,6 +588,9 @@ struct RunScenarios: AsyncParsableCommand {
 
         if FMDoctor.check().available == false {
             print("⚠️ Foundation Models 利用不可: 自己修復・screenIs・トリアージは無効です")
+        } else if !FMVisionSupport.isSupported {
+            print("⚠️ \(FMVisionSupport.requirement): screenIs・occlusion-guard は無効です"
+                  + "(自己修復・トリアージは有効)")
         }
 
         PhaseLog.mark("fm-doctor")

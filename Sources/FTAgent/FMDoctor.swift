@@ -45,6 +45,17 @@ public enum FMDoctor {
         }
     }
 
+    /// 画像入力(Attachment)の可否。FM 本体が使えても macOS 26 では視覚系
+    /// (occlusion-guard / screenIs)だけが無効になるため、テキスト系とは別に報告する。
+    public static var visionReport: Report {
+        FMVisionSupport.isSupported
+            ? Report(available: true, detail: "FM の視覚検証(画像入力): 利用可能")
+            : Report(available: false,
+                     detail: "FM の視覚検証(画像入力): 利用不可(\(FMVisionSupport.requirement))"
+                         + "。occlusion-guard(偽陽性チェック)と screenIs は無効です"
+                         + "(heal・トリアージ・シナリオ命名はテキストのみで動作します)")
+    }
+
     static func describe(_ reason: SystemLanguageModel.Availability.UnavailableReason) -> String {
         switch reason {
         case .deviceNotEligible:

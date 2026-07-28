@@ -87,6 +87,9 @@ public struct OcclusionVerifier {
 
     private func respond(instructions: String, image: CGImage, expectedText: String,
                          prompt: () -> String) async -> Result? {
+        // Attachment(画像入力)は macOS 27+。26 では判定不能(nil)= ガードは素通り。
+        // 通常は StepExecutor.occlusionFlip が FMVisionSupport で手前で止めるので、ここは保険
+        guard #available(macOS 27, *) else { return nil }
         // FM はホスト全体で直列化される資源。並列に投げても速くならず modelmanagerd の
         // モデル積み降ろしだけが増えるので、呼び出し側で待ち行列を作る(FMLock 参照)
         guard await FMGate.enter() else { return nil }

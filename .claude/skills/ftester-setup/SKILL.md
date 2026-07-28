@@ -69,8 +69,9 @@ clone 構成(両方ある)の再実行は従来どおり冪等スキップで続
 **環境は機械判定する（人間に「入っているか」を聞かない）**。失敗した項目だけ 🧑 停止して対処を依頼する
 （導入・license 同意はエージェントでは代行不可）:
 
-- macOS 27+: `sw_vers -productVersion`
-- Xcode 27+: `xcodebuild -version`（コマンド自体が license 未同意エラーで落ちたら 🧑 に
+- macOS 26+: `sw_vers -productVersion`（macOS 26 では FM の視覚検証 = occlusion-guard / screenIs
+  だけが使えない。画像入力が macOS 27+ のため。中断せず続行し、完了報告にその旨を残す）
+- Xcode 26+: `xcodebuild -version`（コマンド自体が license 未同意エラーで落ちたら 🧑 に
   `sudo xcodebuild -license accept` を依頼。sudo は代行不可）
 - 初回セットアップ: `xcodebuild -checkFirstLaunchStatus`（exit 0 以外なら 🧑 に `xcodebuild -runFirstLaunch` を依頼）
 
@@ -194,7 +195,7 @@ docs/getting-started.md「git 管理(何をコミットするか)」の方針を
   横断で一意に:
 
 ```json
-{ "ios": { "devices": [ { "name": "メイン機", "simulator": "iPhone 17 Pro", "os": "27.0" } ] } }
+{ "ios": { "devices": [ { "name": "メイン機", "simulator": "iPhone 17 Pro" } ] } }
 ```
 
 - 利用可能な iOS シミュレータが **0 件のときだけ** 🧑 停止し、Xcode で runtime/デバイスの導入を依頼する。

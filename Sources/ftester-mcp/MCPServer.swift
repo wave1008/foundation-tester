@@ -265,7 +265,9 @@ final class MCPServer {
 
         case "ft_doctor":
             let fm = await FMDoctor.checkLive()
-            return text((fm.available ? "✅ " : "❌ ") + fm.detail)
+            let vision = FMDoctor.visionReport
+            return text((fm.available ? "✅ " : "❌ ") + fm.detail
+                + "\n" + (vision.available ? "✅ " : "⚠️ ") + vision.detail)
 
         default:
             throw MCPError("未知のツール: \(tool)")

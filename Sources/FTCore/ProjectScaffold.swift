@@ -60,7 +60,9 @@ public enum ProjectScaffold {
         let package = Package(
             name: "\(packageName)",
             platforms: [
-                .macOS("27.0"),  // Foundation Models(ftester のランタイム要件)
+                // ftester 本体の Package.swift と一致させる(本体より低いと解決に失敗する)。
+                // Foundation Models の視覚検証だけは macOS 27+ で有効になる
+                .macOS("26.0"),
             ],
             dependencies: [
                 \(dependencyLine)
@@ -199,11 +201,13 @@ public enum ProjectScaffold {
 
         ### 0. 前提の機械判定と一括質問
         環境は機械判定する(人間に「入っているか」を聞かない)。失敗した項目だけ 🧑 停止して対処を依頼(代行不可):
-        - macOS 27+: `sw_vers -productVersion` / Xcode 27+: `xcodebuild -version`(license 未同意エラーで
+        - macOS 26+: `sw_vers -productVersion` / Xcode 26+: `xcodebuild -version`(license 未同意エラーで
           落ちたら 🧑 に `sudo xcodebuild -license accept` を依頼)
         - Apple Intelligence: `ftester doctor --fm-only`(exit 0 で可。**exit 1 でも中断せず続行** —
           FM は heal・視覚検証・シナリオ生成にだけ必要な任意機能。使いたくなったら System 設定で
           有効化して本コマンドが ✅ になればそのまま使える。完了報告に要有効化の旨を残す)
+          なお **macOS 26 では FM の視覚検証(occlusion-guard / screenIs)だけが使えない**
+          (画像入力は macOS 27+)。他の機能は制限なく動く
 
         セットアップ値は 🧑 に冒頭の1回でまとめて質問する(以降のステップで再質問しない):
         - 使うシミュレータ名、マシン名
@@ -220,7 +224,7 @@ public enum ProjectScaffold {
         - 🧑 `Projects/\(name)/profiles/machines/<マシン名>.json` に使うデバイスを列挙(雛形は同ディレクトリの README.md):
 
         ```json
-        { "ios": { "devices": [ { "name": "メイン機", "simulator": "iPhone 17 Pro", "os": "27.0" } ] } }
+        { "ios": { "devices": [ { "name": "メイン機", "simulator": "iPhone 17 Pro" } ] } }
         ```
 
         ### 3. 対象アプリのパス(appPath)は設定しない
@@ -372,11 +376,14 @@ public enum ProjectScaffold {
     実行時のマシン選択: FT_MACHINE 環境変数 > `ftester machine set` の登録名 >
     ここに .json が 1 つだけならそれを自動採用。
 
+    iOS の `os`(例 `"26.0"`)は任意。**書かなければ名前一致の最新ランタイム**に解決されるので、
+    複数ランタイムを使い分けるとき以外は省略する(このマシンに無い版を書くと解決不能になる)。
+
     ```json
     {
       "ios": {
         "devices": [
-          { "name": "メイン機", "simulator": "iPhone 17 Pro", "os": "27.0" },
+          { "name": "メイン機", "simulator": "iPhone 17 Pro" },
           { "name": "サブ機", "simulator": "iPhone Air", "udid": "XXXX-XXXX" }
         ]
       },
@@ -408,11 +415,13 @@ public enum ProjectScaffold {
         """
     }
 
+    // os は書かない(名前一致の最新ランタイムに解決される)。版を固定するとホストの Xcode に
+    // 無いランタイムを指して解決不能になる(macOS/Xcode の世代差で実際に起きる)
     public static let machineProfileTemplate = """
     {
       "ios": {
         "devices": [
-          { "name": "メイン機", "simulator": "iPhone 17 Pro", "os": "27.0" }
+          { "name": "メイン機", "simulator": "iPhone 17 Pro" }
         ]
       },
       "android": {
