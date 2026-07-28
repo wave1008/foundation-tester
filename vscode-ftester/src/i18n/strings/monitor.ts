@@ -256,11 +256,6 @@ export const monitorStrings = {
     ja: "ftester に更新があります({local} → {remote})。今すぐ更新しますか?",
     en: "An ftester update is available ({local} -> {remote}). Update now?",
   },
-  // 上の2つ(ボタン経由・確認経由)で共通の本文。
-  "monitor.update.confirmDetail": {
-    ja: "git pull・再ビルド・拡張の再インストールを行います(数分)。進行と詳細は OUTPUT の ftester に出ます。完了後はウィンドウの再読み込みが必要です。",
-    en: "This runs git pull, rebuild, and extension reinstall (a few minutes). Progress and details go to the ftester OUTPUT channel. A window reload is required afterwards.",
-  },
   // 更新実行中の進捗通知(withProgress)のタイトル。パネル非表示でも進行が見えるように出す。
   "monitor.update.progressTitle": { ja: "ftester を更新しています", en: "Updating ftester" },
   // 更新の完了/失敗。ログ行は OUTPUT へ、通知は再読み込みの導線として出す。

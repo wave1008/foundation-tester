@@ -80,7 +80,7 @@ export class MonitorUpdateController {
       const proceed = t("monitor.update.confirmButton");
       const picked = await vscode.window.showInformationMessage(
         t("monitor.update.foundMessage", { local: localHead.slice(0, 8), remote: remoteHead.slice(0, 8) }),
-        { modal: true, detail: t("monitor.update.confirmDetail") },
+        { modal: true },
         proceed,
       );
       if (picked === proceed) {
@@ -104,7 +104,7 @@ export class MonitorUpdateController {
     // プロファイル削除など他の破壊的操作も同じ方式)。数分かかるうえ拡張自身を入れ替えるため。
     const proceed = t("monitor.update.confirmButton");
     const choice = await vscode.window.showWarningMessage(
-      t("monitor.update.confirmMessage"), { modal: true, detail: t("monitor.update.confirmDetail") }, proceed);
+      t("monitor.update.confirmMessage"), { modal: true }, proceed);
     if (choice !== proceed) {
       return;
     }
