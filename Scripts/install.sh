@@ -307,9 +307,14 @@ else
 fi
 
 # ---- 4 の検証ゲート: .gitignore(SKILL ステップ4) -----------------------------
-if [ -d "$WORK_DIR/.git" ]; then
+# clone 構成(WORK_DIR = クローン自身)では触らない。リポジトリの .gitignore は本体が管理しており、
+# ここで追記すると**クローンが dirty になり、次回の更新が pull ガードで止まる**
+if [ "$LAYOUT" = "clone" ]; then
+  record ".gitignore" skip "clone 構成(リポジトリ側で管理)"
+elif [ -d "$WORK_DIR/.git" ]; then
   added=""
-  for line in ".build/" "Projects/*/reports/"; do
+  # 対の実装: FTCore.ProjectScaffold.ensureGitignore(ftester init が使う)。片方だけ変えない
+  for line in ".build/" ".ftester/" "Projects/*/reports/"; do
     if ! grep -qxF "$line" "$WORK_DIR/.gitignore" 2>/dev/null; then
       printf '%s\n' "$line" >> "$WORK_DIR/.gitignore"
       added="$added $line"

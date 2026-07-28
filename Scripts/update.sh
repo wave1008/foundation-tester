@@ -110,6 +110,10 @@ if [ "$DO_PLUGIN" = "1" ] && command -v claude >/dev/null 2>&1; then
   else
     PLUGIN_RESULT="none"
   fi
+elif [ "$DO_PLUGIN" = "1" ]; then
+  echo ""
+  echo "・claude CLI が無いためプラグイン(スキル)は更新していません"
+  echo "  (clone 内で直接スキルを使う構成なら git pull で更新済み)"
 fi
 
 echo ""

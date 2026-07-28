@@ -169,6 +169,11 @@ E2E-iOS を回すまで気付かなかった)。**距離を伸ばしても・画
 
 ## 受け手フロー(preflight / install.sh)の検証
 
+- **更新は `Scripts/update.sh`**(install.sh を再実行 + `project sync` + プラグイン更新と版照合)。
+  clone 構成でこれを回すとき、**受け手向けの整備がクローン自身に効かないこと**を確かめる
+  (実害: install.sh の `.gitignore` 追記がリポジトリを dirty にし、次の更新が pull ガードで
+  止まる。現在は clone 構成では skip する。`.gitignore` の項目は `ProjectScaffold.ensureGitignore`
+  と対 — 片方だけ変えない)
 - **クローンを dirty にしたまま `install.sh` を試すと必ず止まる**(ローカル変更の破棄を尋ね、
   端末が無い実行では中止する仕様)。本体を触りながら試すときは **`--no-pull`** を付ける
 - 実行の記録は `<WORK_DIR>/.ftester/install-<日時>.log`(実行ごとに別ファイル)。
