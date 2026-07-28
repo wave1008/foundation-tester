@@ -77,6 +77,18 @@ struct InitCommand: AsyncParsableCommand {
             // VSCode 拡張が ftester.project/ftester.binaryPath を手動設定なしで解決できるように
             let wroteVSCodeSettings = try ProjectScaffold.writeVSCodeSettings(
                 packageRoot: cwd, ftesterPath: ftesterPath, projectName: projectName)
+            // ftester のコマンドを毎回 Bash 承認させないための許可リスト(ftester 由来のみ)。
+            // 失敗しても init は続行する
+            var addedClaudeAllows: [String] = []
+            do {
+                addedClaudeAllows = try ProjectScaffold.writeClaudeSettings(
+                    packageRoot: cwd, toolRoot: ftesterPath.map {
+                        URL(fileURLWithPath: $0, relativeTo: cwd).standardizedFileURL.path
+                    })
+            } catch {
+                FileHandle.standardError.write(Data(("⚠️ .claude/settings.json の整備に失敗しました: "
+                    + "\(error.localizedDescription)\n").utf8))
+            }
             // .build/(~1.7GB)等が git status の未追跡ノイズにならないように。失敗しても init は続行
             var addedGitignoreEntries: [String] = []
             do {
@@ -94,6 +106,10 @@ struct InitCommand: AsyncParsableCommand {
             print("   実行:         ftester run --project \(projectName) --profile ios")
             if wroteVSCodeSettings {
                 print("   VSCode 拡張:  .vscode/settings.json に ftester.project/ftester.binaryPath を自動設定しました")
+            }
+            if !addedClaudeAllows.isEmpty {
+                print("   Claude Code:  .claude/settings.json に ftester コマンドの実行許可を追加しました"
+                      + "(承認プロンプトを減らすため。不要なら削除してください)")
             }
             if !addedGitignoreEntries.isEmpty {
                 print("   .gitignore:   \(addedGitignoreEntries.joined(separator: " ")) を追記しました(.build/ 等の未追跡ノイズ対策)")

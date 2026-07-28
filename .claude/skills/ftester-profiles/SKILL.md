@@ -63,82 +63,40 @@ description: ftester のマシンプロファイル・アプリプロファイ�
 **指定がなければ既定**: そのマシンで **利用可能な最新 OS** の仮想デバイスを使う。無ければ作成する
 (下のステップ4のアルゴリズム)。論理名の既定は iOS `simulator1` / Android `emulator1`(scaffold の runs 雛形と対)。
 
-### 4. デバイスを決める(選ぶ / 無ければ作る)
+### 4. プロファイルを作る(**1コマンド。JSON は手書きしない**)
 
-マシン名(プロファイルのファイル名)を決める: `ftester machine show` の登録名 → `FT_MACHINE` →
-`profiles/machines/` に .json が1つならそれ → いずれも無ければ `scutil --get ComputerName` を整えた名前で
-`ftester machine set "<名>"` して登録。プロファイルは `profiles/machines/<マシン名>.json`。
-
-**既にそのマシンプロファイルへ `<plat>` のデバイスが登録済みなら、新規の選定・作成はしない**
-(/ftester-setup のステップ5が自動作成済みのケース。二重登録を防ぐ)。既存デバイスの論理名を
-ステップ6で参照する。ユーザーが機種/OS を明示指定し、既存に合うものが無いときだけ追加する。
-
-デバイスを選定/作成する。**論理名は ios/android 横断で一意**にする(重複したら末尾に連番)。
-
-#### 4-a. 最新 OS の判定(権威は device-catalog。simctl の一覧は未ソートなので使わない)
+マシン/アプリ/実行の3ファイルは `ftester profile setup` が整合させて書く(冪等・再実行可)。
+**デバイスの選定もコマンドに任せる**(`--auto-device`)。`ftester machine show` /
+`ftester api device-catalog` / `simctl list` / `emulator -list-avds` を別々に叩かない
+(承認回数が増えるだけで、選定規則はコマンド側に入っている):
 
 ```
-ftester api device-catalog
+ftester profile setup --project <プロジェクト> --platform <ios|android|both> --auto-device \
+  --machine <マシン名> --app-id <アプリID> --app-name "<表示名>" [--app-path <パッケージパス>] [--app-ref <ref>]
 ```
 
-- iOS: `ios.runtimes[0]`(最新ランタイム。`identifier`/`version`)、`ios.deviceTypes[0]`(既定機種。
-  `identifier`/`name`)。
-- Android: `android.systemImages[0]`(最新イメージ。`package`)、`android.models[0]`(既定機種。`id`)。
+- `--auto-device` の選定規則: **iOS = 最新 OS の既存シミュレータ(名前に "Pro" を含むものを優先)** /
+  **Android = config.ini の API レベルが最大の既存 AVD**。0台なら作成方法を示してエラーになる。
+- `--platform both` で iOS と Android を1回で作る(論理名は simulator1 / emulator1)。
+- `--machine` が未登録なら**同時に登録**する(`ftester machine set` を別途打たない)。
+- 機種/OS をユーザーが指定した場合だけ `--auto-device` を外し、実体を明示する
+  (iOS: `--simulator "<機種名>" --os <version>` か `--udid`、Android: `--avd <avdID>` か `--serial`)。
+- 仮想デバイスを**新規作成**する必要があるとき(0台・指定に合うものが無い)は
+  `ftester api create-device`(→ 下の 4-b)で作ってから、`profile setup --device-name <作った名前>` を呼ぶ。
+- `--app-path` は入力があったときだけ渡す(渡すと `autoInstall` が有効になる)。
 
-ユーザーが機種/OS を **指定した** 場合は、その指定に合う `identifier`/`package`/`id` を catalog から選ぶ。
-
-#### 4-b. 既存の仮想デバイスがあれば使う / 無ければ作成する
-
-- **iOS**:
-  - `xcrun simctl list devices available -j` の `devices["<最新ランタイムの identifier>"]` を見る。
-    - 1台以上あれば1つ選ぶ(名前に "Pro" を含むものを優先、無ければ先頭)。機種名・version・udid を
-      控えておき、ステップ5の `profile setup` に渡す(`--simulator`/`--os`/`--udid`。
-      `udid` があれば `simulator`/`os` より優先される)。
-    - 0台なら **作成**する(下記 create-device)。
-- **Android**:
-  - `emulator -list-avds` に AVD があれば1つ選ぶ(新しめを優先)。AVD ID を控えて
-    ステップ5の `profile setup --avd <avdID>` に渡す。
-  - 無ければ **作成**する。`android.models` が空の環境では device 定義 id が採れないため、
-    `avdmanager list device` を見て🧑に機種 id を確認する。
-
-**作成(create-device)** は、対象のマシンプロファイルが既に存在している必要がある。無ければ先に
-`ftester profile setup`(ステップ5)を1回実行して作る、または空のデバイス配列
-(`{ "<plat>": { "devices": [] } }`)を置く。その後:
+#### 4-b. 新規作成が要るとき(create-device)
 
 ```
 ftester api create-device --project <プロジェクト> --machine <マシン名> \
   --platform <plat> --name "<論理名>" --model "<機種 identifier/id>" --os "<ランタイム identifier / システムイメージ package>"
 ```
 
-- iOS: `--model` = `deviceTypes[i].identifier`、`--os` = `runtimes[i].identifier`。
-- Android: `--model` = `models[i].id`、`--os` = `systemImages[i].package`。
-- create-device はシミュレータ/AVD を新規作成し、マシンプロファイルへ自動で追記する
-  (NDJSON `finished` の `ok` を確認。失敗時 exit 1)。
+`--model` / `--os` の値は `ftester api device-catalog` の
+`ios.deviceTypes[i].identifier` / `ios.runtimes[i].identifier`(Android は `android.models[i].id` /
+`android.systemImages[i].package`)。**このカタログ取得は新規作成のときだけ**行う。
 
-> **マシンプロファイルへの追記は自分でしない**。既存デバイスを使う場合はステップ5の
-> `ftester profile setup` に実体(`--simulator`/`--udid`/`--avd`/`--serial`)を渡す。作成する場合は
-> create-device が追記済みなので、ステップ5では `--device-name` だけ渡す(二重登録を防ぐ)。
-
-### 5. プロファイルを書く(**手書きしない**)
-
-マシン/アプリ/実行の3ファイルは **`ftester profile setup` が1コマンドで整合させて書く**。
-JSON を手で書くと machines の `name` と runs の参照名がずれる・指示していないプラットフォームの
-run が残る、という不整合が起きるため、**エージェントが JSON を直接書かない**こと(冪等・再実行可)。
-
-```
-ftester profile setup --project <プロジェクト> --platform <plat> \
-  --device-name <論理名> [--simulator "<機種名>" --os <version> | --udid <UDID> | --avd <avdID> | --serial <シリアル>] \
-  --app-id <アプリID> --app-name "<表示名>" [--app-path <パッケージパス>] [--machine <マシン名>] [--app-ref <ref>]
-```
-
-- **ステップ4で create-device が作った/既存を選んだ場合**は実体の指定を省ける(`--device-name` だけ)。
-  その名前が machines に無ければエラーになる(黙って別物を作らない)。
-- `--app-path` は入力があったときだけ渡す(渡すと `autoInstall` が有効になる)。
-- `--app-ref` 省略時はプロジェクト名の小文字。既存の `apps/<ref>.json` があればマージする
-  (未知キーは温存)。`--machine` 省略時は登録名 → `machines/` が1つならそれ。
-- 書いた実行プロファイルが解決できるかまでコマンド内で検証し、解決結果を表示する。
-
-### 6. 検証ゲート
+### 5. 検証ゲート
 
 ```
 ftester profile list --project <プロジェクト>

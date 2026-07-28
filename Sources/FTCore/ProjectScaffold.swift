@@ -86,6 +86,50 @@ public enum ProjectScaffold {
             to: dir.appendingPathComponent("SKILL.md"), atomically: true, encoding: .utf8)
     }
 
+    /// 受け手のパッケージに `.claude/settings.json` を書く(ftester init から呼ぶ)。
+    /// **ftester の CLI とスクリプトだけ**を許可リストに載せ、セットアップ〜実行のたびに
+    /// Bash の承認を求められる状態を避ける(承認回数を減らしたいという受け手の要望。2026-07-29)。
+    /// 既存の設定は温存し、重複しないエントリだけ足す(他ツールの許可を消さない)。
+    /// 追加するのはこのツール由来のコマンドに限る — 汎用の `Bash(*)` は絶対に書かない。
+    @discardableResult
+    public static func writeClaudeSettings(packageRoot: URL, toolRoot: String?) throws -> [String] {
+        let ftester = (toolRoot.map { "\($0)/.build/debug/ftester" }) ?? "ftester"
+        var entries = [
+            "Bash(\(ftester):*)",
+            "Bash(xcrun simctl list:*)",
+        ]
+        if let toolRoot {
+            entries.append("Bash(bash \(toolRoot)/Scripts/preflight.sh:*)")
+            entries.append("Bash(bash \(toolRoot)/Scripts/install.sh:*)")
+        }
+
+        let dir = packageRoot.appendingPathComponent(".claude")
+        let url = dir.appendingPathComponent("settings.json")
+        var settings: [String: Any] = [:]
+        if FileManager.default.fileExists(atPath: url.path) {
+            let data = try Data(contentsOf: url)
+            guard let parsed = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+                FileHandle.standardError.write(Data(("⚠️ \(url.path) を JSON として解析できなかったため、"
+                    + "Bash 許可リストの追記をスキップしました\n").utf8))
+                return []
+            }
+            settings = parsed
+        }
+        var permissions = (settings["permissions"] as? [String: Any]) ?? [:]
+        var allow = (permissions["allow"] as? [String]) ?? []
+        let added = entries.filter { !allow.contains($0) }
+        guard !added.isEmpty else { return [] }
+        allow.append(contentsOf: added)
+        permissions["allow"] = allow
+        settings["permissions"] = permissions
+
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let data = try JSONSerialization.data(
+            withJSONObject: settings, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
+        try data.write(to: url, options: .atomic)
+        return added
+    }
+
     /// 受け手のパッケージに `.vscode/settings.json` を書く(ftester init から呼ぶ)。
     /// `ftester.project`/`ftester.binaryPath` を自動設定し、受け手の手動設定を不要にする。
     /// 既存ファイルが JSON としてパースできない(VSCode の settings.json は JSONC のことがある)場合は

@@ -318,7 +318,8 @@ public enum DeviceBooter {
     // MARK: - Android
 
     /// emulator バイナリの場所: ANDROID_HOME/ANDROID_SDK_ROOT → adb からの相対
-    static func findEmulatorBinary() throws -> String {
+    /// (`ftester profile setup --auto-device` が AVD 一覧を取るのにも使う)
+    public static func findEmulatorBinary() throws -> String {
         let fm = FileManager.default
         for env in ["ANDROID_HOME", "ANDROID_SDK_ROOT"] {
             if let root = ProcessInfo.processInfo.environment[env] {
