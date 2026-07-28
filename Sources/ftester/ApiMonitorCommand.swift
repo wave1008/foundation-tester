@@ -602,7 +602,7 @@ struct MonitorTarget {
     let spec: DeviceSpec
 
     var name: String { spec.name }
-    /// VSCode 拡張側の識別子("ios:シミュ1" 等。論理名ベースなのでポート・serial の
+    /// VSCode 拡張側の識別子("ios:simulator1" 等。論理名ベースなのでポート・serial の
     /// 再割当をまたいで安定する)
     var id: String { "\(platform):\(spec.name)" }
 }

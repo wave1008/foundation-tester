@@ -6,7 +6,7 @@ import Foundation
 import FTCore
 
 public struct ProvisionedIOSDevice: Sendable {
-    /// マシンプロファイル上の論理名(例: メイン機)
+    /// マシンプロファイル上の論理名(例: simulator1)
     public let name: String
     public let udid: String
     public let simulatorName: String

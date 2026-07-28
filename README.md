@@ -191,13 +191,13 @@ Projects/SampleApp/
 // FM 機能のトグル: fm(親スイッチ)/ heal / screenIs は既定 true、
 // falsePositiveCheck(偽陽性検証)だけ既定 false(詳細は docs/design.md §11.2)
 { "app": "sampleapp",
-  "devices": [ { "name": "メイン機" }, { "name": "サブ機" }, { "name": "エミュ1" } ],
+  "devices": [ { "name": "simulator1" }, { "name": "サブ機" }, { "name": "emulator1" } ],
   "fm": true, "heal": true, "reportDir": "reports", "defaultTimeout": 5 }
 
 // profiles/machines/M1 Max.json — マシン毎に UDID/AVD などの実体を書く
 // (avd は AVD の ID と表示名のどちらでも可)
-{ "ios":     { "devices": [ { "name": "メイン機", "simulator": "iPhone 17 Pro", "os": "27.0" } ] },
-  "android": { "devices": [ { "name": "エミュ1", "avd": "Pixel 9(Android 16)" } ] } }
+{ "ios":     { "devices": [ { "name": "simulator1", "simulator": "iPhone 17 Pro", "os": "27.0" } ] },
+  "android": { "devices": [ { "name": "emulator1", "avd": "Pixel 9(Android 16)" } ] } }
 ```
 
 ```bash
