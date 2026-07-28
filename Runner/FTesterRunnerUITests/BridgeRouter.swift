@@ -176,10 +176,21 @@ final class BridgeRouter {
 
     /// typeText("\n") は XCUITest 内部で Return キー相当に落ちる(ソフトキーボードの改行/送信
     /// アクションを駆動する唯一の経路。ftester はキーボード要素を snapshot から除外しているため
-    /// 実ソフトキー tap はできない)
+    /// 実ソフトキー tap はできない)。
+    ///
+    /// hybrid(ios-inapp)では in-app 側が合成タッチでタップ・入力してフォーカスを立てているため、
+    /// app 全体への typeText("\n") はフォーカス中の入力欄に届かないことがある。キーボード
+    /// フォーカスを持つ要素を探し、見つかればそこへ typeText する。見つからない場合(engine=xcuitest
+    /// 単独等、in-app がフォーカスを立てていないケース)は従来どおり app 全体へ送る。
     private func handlePressEnter() throws -> BridgeHTTPServer.Response {
         let app = try requireApp()
-        app.typeText("\n")
+        let focused = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "hasKeyboardFocus == true")).firstMatch
+        if focused.exists {
+            focused.typeText("\n")
+        } else {
+            app.typeText("\n")
+        }
         return .json(OKResponse())
     }
 

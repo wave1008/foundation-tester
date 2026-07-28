@@ -285,16 +285,17 @@ final class FTInAppBridge {
                 FTSynthTap(window, p)
             }
         }
-        // 末尾の改行1つだけ分離して別の insertText 呼び出しにする: Compose は呼び出し単位の文字列が
-        // "\n" **完全一致**のときだけ IME アクション(改行/送信)に変換する上流実装のため、
-        // 「本文+改行」を1回で渡すと素通りしてしまう。文中の改行は本文側にそのまま残る
+        // 末尾の改行1つは本文と分けて **pressEnter と同じ経路**へ流す(「type の末尾改行 = pressEnter」が
+        // 契約。Compose は "\n" 完全一致の insertText でだけ IME アクションに変換し、UITextField は
+        // insertText では発火せず delegate 経由が要る ―― その差の吸収は
+        // FTPressEnterOnComposeFirstResponder に1箇所だけ置く)。文中の改行は本文側にそのまま残る
         let (main, hasTrailingNewline) = Self.splitTrailingNewline(req.text)
         var inserted = false
         try performWithSettle { _ in
             if hasTrailingNewline {
                 inserted = FTInsertTextIntoFirstResponder(main)
-                let newlineInserted = FTInsertTextIntoFirstResponder("\n")
-                inserted = inserted || newlineInserted
+                let enterFired = FTPressEnterOnComposeFirstResponder()
+                inserted = inserted || enterFired
             } else {
                 inserted = FTInsertTextIntoFirstResponder(req.text)
             }
@@ -320,6 +321,16 @@ final class FTInAppBridge {
     }
 
     private func handlePressEnter() throws -> InAppHTTPServer.Response {
+        // Flutter の入力受け口(FlutterTextInputView)は UITextField/UITextView の派生ではないため
+        // FTPressEnterOnComposeFirstResponder の除外に当たらず insertText("\n") が通って 200 を
+        // 返してしまうが、Flutter engine はこれを onSubmitted(IME アクション)に変換せず何も起きない
+        // (ホストは 200 を成功と見なし xcuitest へフォールバックしない)。ここで先に 409 にして回す。
+        if uiFramework == "flutter" {
+            throw InAppError(409, "in-app エンジンでの Enter 押下は Flutter の入力欄では効きません"
+                + "(insertText(\"\\n\") が onSubmitted に変換されない)。"
+                + "engine=xcuitest の実行プロファイル(iosInappEngine: false)で実行してください。"
+                + "診断: \(FTFirstResponderDiagnostics())")
+        }
         var inserted = false
         try performWithSettle { _ in inserted = FTPressEnterOnComposeFirstResponder() }
         guard inserted else {

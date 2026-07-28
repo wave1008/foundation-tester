@@ -229,11 +229,23 @@ public final class AndroidDriver: AppDriver {
         return (String(text.dropLast()), true)
     }
 
-    /// Enter キーを押す(フォーカス中の入力欄への IME アクション相当)。gRPC KeyboardEvent.key は
-    /// w3c 名(home()/openAppSwitcher() と同じ振り分け)。"Enter" は w3c UIEvents キー値だが
-    /// emulator gRPC 側の対応は未確認 — EmulatorControl.perform は失敗時 false を返すだけなので、
-    /// 未対応でも adb フォールバックへ落ちるだけで安全(他の namedKeypress と同じ契約)
+    /// Enter キーを押す(フォーカス中の入力欄への IME アクション相当)。ブリッジの /pressEnter
+    /// (ACTION_IME_ENTER)を優先する: ソフトキーボード表示中の View/XML EditText では keyevent 66
+    /// が IME に吸われ OnEditorActionListener に届かない(Compose は独自のキーイベント処理経路の
+    /// ため keyevent でも発火する。実機実測で確認済み)。404(旧ブリッジ未実装)/409(フォーカス無し
+    /// 等)/501(API 30未満)は下のキーイベント経路へフォールバックする。bridgeConnectionRefused
+    /// 等それ以外のエラーは握り潰さずそのまま投げる。
     public func pressEnter() async throws {
+        do {
+            try await withBridge { try await $0.pressEnter() }
+            return
+        } catch let error as DriverError {
+            guard case .badResponse(let status, _) = error,
+                  status == 404 || status == 409 || status == 501 else { throw error }
+        }
+        // gRPC KeyboardEvent.key は w3c 名(home()/openAppSwitcher() と同じ振り分け)。"Enter" は
+        // w3c UIEvents キー値だが emulator gRPC 側の対応は未確認 — EmulatorControl.perform は
+        // 失敗時 false を返すだけなので、未対応でも adb フォールバックへ落ちるだけで安全
         if let serial, await EmulatorControl.namedKeypress(serial: serial, key: "Enter") {
             // gRPC 成功
         } else {
@@ -243,7 +255,8 @@ public final class AndroidDriver: AppDriver {
                     body: "Enter キーを送れませんでした: \(result.tail)")
             }
         }
-        // keyevent は遷移完了を待たないため、直後の snapshot 用の整定待ち(home() と同様)
+        // keyevent は遷移完了を待たないため、直後の snapshot 用の整定待ち(home() と同様)。
+        // ブリッジ経路はサーバ側 settle() 込みで応答するため不要
         try await Task.sleep(nanoseconds: 800_000_000)
     }
 

@@ -75,6 +75,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
                 case "POST /type": return handleType(body(request));
                 case "POST /swipe": return handleSwipe(body(request));
                 case "POST /press": return handlePress(body(request));
+                case "POST /pressEnter": return handlePressEnter();
                 case "GET /screenshot": return handleScreenshot();
                 case "POST /session": return handleLaunch(body(request));
                 case "POST /terminate": return handleTerminate();
@@ -200,6 +201,21 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         double[] center = resolvePoint(body);
         double duration = body.optDouble("duration", 1.0);
         InputInjector.press(ua(), center[0], center[1], duration);
+        settle();
+        return ok();
+    }
+
+    /**
+     * フォーカス中の入力欄へ IME の Enter アクションを直接発火する(ACTION_IME_ENTER、API 30+)。
+     * ソフトキーボード表示中の View/XML EditText では keyevent 66 が IME に吸われ届かないため、
+     * ホスト側 AndroidDriver.pressEnter() はこのエンドポイントを優先し、404/409/501 でだけ
+     * 既存のキーイベント経路へフォールバックする(実装は InputInjector.pressImeEnter 参照)。
+     */
+    private BridgeHttpServer.Response handlePressEnter() {
+        if (Build.VERSION.SDK_INT < 30) {
+            throw new BridgeException(501, "ACTION_IME_ENTER は API 30 未満では未対応です");
+        }
+        InputInjector.pressImeEnter(ua());
         settle();
         return ok();
     }

@@ -23,7 +23,17 @@ public final class AppAttachDriver: AppDriver {
 
     public func tap(ref: Int) async throws { try await client.tap(ref: ref) }
     public func type(ref: Int?, text: String) async throws { try await client.type(ref: ref, text: text) }
-    public func pressEnter() async throws { try await client.pressEnter() }
+    /// pressEnter も ref を使わないので swipe と同じ回復を入れる(下の swipe のコメント参照)。
+    /// in-app が 409 を返して初めてここへ来るため、attach 前=セッション無しに当たりやすい
+    public func pressEnter() async throws {
+        do {
+            try await client.pressEnter()
+        } catch let error as DriverError {
+            guard case .badResponse(let code, _) = error, code == 409 else { throw error }
+            try await client.activate(bundleID: bundleID)
+            try await client.pressEnter()
+        }
+    }
     public func press(ref: Int, duration: Double) async throws { try await client.press(ref: ref, duration: duration) }
     public func tap(x: Double, y: Double) async throws { try await client.tap(x: x, y: y) }
 
