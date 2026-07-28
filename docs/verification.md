@@ -71,6 +71,11 @@ E2E-Android(View/XML)を回して初めて赤くなり、a11y の `ACTION_IME_EN
   切ると**真因が構造的に落ちる**(最上位は「The operation couldn't be completed.」のような
   定型文で、原因は `NSUnderlyingError` / `NSMultipleUnderlyingErrors` の奥にある)。
   実害: FM の全滅原因が 300 文字の切り捨てで数日間まったく見えなかった(`FMHealth.describe` 参照)
+- **pipefail 下で `cmd | head` を条件式・値の取得に使わない**。head が1行読んで先に閉じると
+  上流が **SIGPIPE(141)** で死に、pipefail がそれを失敗として拾う。1行目が欲しいだけなら
+  変数へ入れてからパラメータ展開で切る(`${out%%$'\n'*}`)。実害: `if x="$(xcodebuild -version | head -1)"`
+  が正常な Xcode を `unusable` と判定し、受け手に無関係な license 同意を案内した(2026-07-29)。
+  **矛盾する出力は誤判定の兆候**(このときは `xcode=unusable` と `xcode_first_launch=done` が同時に出ていた)
 - **zsh は未クォート変数を単語分割しない**。`for x in "a b" "c d"; do set -- $x; ...` は
   bash の感覚だと 2 引数に割れるが zsh では割れず、`$1` に全体が入る。
   実害: SUT×プロファイルの再検証ループが全件「プロジェクトが見つかりません」で空振りした
@@ -161,6 +166,18 @@ E2E-iOS を回すまで気付かなかった)。**距離を伸ばしても・画
 - **フレームワーク差の退行は SUT を跨がないと出ない**。ブリッジのスナップショット/型写像
   (`SnapshotBuilder`・`BridgeRouter`)を触ったら SUT を絞らず全部回す。片方だけ通って
   もう片方が黙って空振りする類の退行が実際に出る(Compose の Button は `Cell`、View/XML は `Button` 等)
+
+## 受け手フロー(preflight / install.sh)の検証
+
+- **クローンを dirty にしたまま `install.sh` を試すと必ず止まる**(ローカル変更の破棄を尋ね、
+  端末が無い実行では中止する仕様)。本体を触りながら試すときは **`--no-pull`** を付ける
+- 実行の記録は `<WORK_DIR>/.ftester/install-<日時>.log`(実行ごとに別ファイル)。
+  端末出力を追わずに後から失敗を追える
+- **スキルが渡す新しい引数は、受け手のクローンが pull されるまで存在しない**。
+  スキルからは **curl 形**(常に main の最新が走り、その中でクローンを pull する)で呼ぶ。
+  実害: `--platform` を渡した初回が「不明なオプション」で落ちた(2026-07-29)
+- 個別コマンドを叩いて確かめる前に、**preflight と install.sh の出力に既にあるか**を見る
+  (`tool_root=` / `[ok] MCP` / `[ok] ルート解決` / `[ok] プロファイル`)。取り直しは承認回数を増やすだけ
 
 ## 常駐プロセスの掃除
 
