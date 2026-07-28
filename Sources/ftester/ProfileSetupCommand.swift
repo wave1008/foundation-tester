@@ -78,12 +78,29 @@ struct ProfileSetupCommand: AsyncParsableCommand {
         default: throw ValidationError("--platform は ios / android / both のいずれかです: \(platform)")
         }
         // 1回の呼び出しで両方作れるようにする(承認回数を減らすため。値は各プラットフォームで解決)
+        var deviceNames: [String] = []
         for target in platforms {
-            try await setUp(platform: target)
+            deviceNames.append(try await setUp(platform: target))
+        }
+        // scaffold が作る all.json は machine もデバイスの実在も知らないまま残る。
+        // 両方作ったときはここで揃える(拡張の編集画面で「(未指定)」にならないように)
+        if platforms.count > 1 {
+            let testProject = try ScenarioHost.project(named: project)
+            let allURL = testProject.runsDir.appendingPathComponent("all.json")
+            if FileManager.default.fileExists(atPath: allURL.path) {
+                let machineName = try resolveMachineName(project: testProject)
+                try ProfileWriter.json(ProfileWriter.runProfile(
+                    appRef: appRef ?? testProject.name.lowercased(),
+                    deviceNames: deviceNames, machine: machineName))
+                    .write(to: allURL, options: .atomic)
+                print("   実行:   profiles/runs/all.json … devices=[\(deviceNames.joined(separator: ", "))]")
+            }
         }
     }
 
-    private func setUp(platform: String) async throws {
+    /// 作成/更新したデバイスの論理名を返す(all.json をまとめるのに使う)
+    @discardableResult
+    private func setUp(platform: String) async throws -> String {
         let testProject = try ScenarioHost.project(named: project)
         let machineName = try resolveMachineName(project: testProject)
         let deviceName = self.deviceName ?? ProfileWriter.defaultDeviceName(platform: platform)
@@ -158,7 +175,8 @@ struct ProfileSetupCommand: AsyncParsableCommand {
         // ---- 実行プロファイル(マシン側の論理名をそのまま参照する) ----
         try fm.createDirectory(at: testProject.runsDir, withIntermediateDirectories: true)
         let runURL = testProject.runsDir.appendingPathComponent("\(runName).json")
-        try ProfileWriter.json(ProfileWriter.runProfile(appRef: appRef, deviceNames: [deviceName]))
+        try ProfileWriter.json(ProfileWriter.runProfile(
+            appRef: appRef, deviceNames: [deviceName], machine: machineName))
             .write(to: runURL, options: .atomic)
 
         print("✅ プロファイルを作成しました(プロジェクト \(testProject.name))")
@@ -175,6 +193,7 @@ struct ProfileSetupCommand: AsyncParsableCommand {
         let devices = resolved.devices.map { "\($0.name)(\($0.platform))" }.joined(separator: ", ")
         print("   解決: \(resolved.appName) @ \(machineName) / \(devices)")
         print("   実行するには: ftester run --project \(testProject.name) --profile \(runName)")
+        return deviceName
     }
 
     private func readObject(_ url: URL) throws -> [String: Any] {

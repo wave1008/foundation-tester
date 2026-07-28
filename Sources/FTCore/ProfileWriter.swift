@@ -71,14 +71,20 @@ public enum ProfileWriter {
     }
 
     /// 実行プロファイル。devices はマシンプロファイル側の論理名をそのまま参照する
-    /// (この一致が崩れると ProfileResolver が「デバイスが見つかりません」で落ちる)
-    public static func runProfile(appRef: String, deviceNames: [String]) -> [String: Any] {
-        [
+    /// (この一致が崩れると ProfileResolver が「デバイスが見つかりません」で落ちる)。
+    /// machine は**書いたときのマシン名**を明示する。CLI は登録名でも解決できるが、
+    /// 拡張の実行プロファイル編集は machine が無いとデバイスを一覧できない(「(未指定)」表示)。
+    /// 別マシンで使い回すときは machines/<名>.json を用意するか、この行を消して登録名解決に戻す
+    public static func runProfile(appRef: String, deviceNames: [String],
+                                  machine: String? = nil) -> [String: Any] {
+        var profile: [String: Any] = [
             "app": appRef,
             "devices": deviceNames.map { ["name": $0] },
             "heal": false,
             "reportDir": "reports",
         ]
+        if let machine { profile["machine"] = machine }
+        return profile
     }
 
     /// 人が読む前提のファイルなので、キー順を固定して整形する(差分が安定する)

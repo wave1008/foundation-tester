@@ -72,6 +72,16 @@ final class ProfileWriterTests: XCTestCase {
         XCTAssertEqual(run["app"] as? String, "myapp")
         XCTAssertEqual((run["devices"] as? [[String: String]])?.first?["name"], "simulator1")
         XCTAssertEqual(run["heal"] as? Bool, false)
+        XCTAssertNil(run["machine"], "指定が無ければ書かない(登録名での解決に任せる)")
+    }
+
+    /// machine を書かないと拡張の実行プロファイル編集が「(未指定)」になりデバイスを選べない
+    func testRunProfileRecordsMachineWhenGiven() {
+        let run = ProfileWriter.runProfile(
+            appRef: "myapp", deviceNames: ["simulator1", "emulator1"], machine: "MyMac")
+        XCTAssertEqual(run["machine"] as? String, "MyMac")
+        XCTAssertEqual((run["devices"] as? [[String: String]])?.compactMap { $0["name"] },
+                       ["simulator1", "emulator1"])
     }
 
     func testDefaultDeviceNameMatchesScaffold() {
