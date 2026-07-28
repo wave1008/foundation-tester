@@ -13,6 +13,13 @@ InAppLauncher.needsBuild と対の mtime 判定)。稼働中の旧ランナー�
 `BridgeAPI.bridgeProtocolVersion` の /status 照合(xcuitest・inapp とも)で停止→立て直される。
 以前は「xctestrun が在れば build を飛ばす」実装で、Runner 変更後に旧ランナーが起動し続ける罠が
 あった(2026-07-26 に isChecked 追加で実害・2026-07-28 に /pressEnter 追加で再発し自動化)。
+**Xcode/SDK の更新も検知する**(2026-07-29): 判定にツールチェーンの指紋
+(`xcodebuild -version` + iphonesimulator SDK ビルド版。`ToolchainFingerprint`)を含め、
+成果物の隣(`<DerivedData>/.toolchain`・`InAppBridge/build/.toolchain`)に記録する。
+**Xcode を上げてもソースの mtime は動かない**ため、これが無いと旧 Xcode のランナー/旧 SDK の
+dylib が使われ続ける(macOS・Xcode がベータのうちは頻発する)。in-app dylib
+(`InAppLauncher.needsBuild`)も同じ判定。
+
 **残る罠**: mtime 判定なので、`git checkout` 等でソースの mtime が動かない巻き戻しは検知できない。
 疑わしいときは従来の手動手順が今も有効:
 
