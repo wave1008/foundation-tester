@@ -80,6 +80,25 @@ public struct BridgeLauncher {
         guard result.status == 0 else {
             throw LauncherError.commandFailed("xcodebuild build-for-testing", result.tail)
         }
+        ToolchainFingerprint.store(at: Self.runnerFingerprintPath(derivedDataPath: derivedDataPath))
+    }
+
+    /// ランナーをどの Xcode/SDK で作ったかの記録(DerivedData 配下 = 成果物と一緒に消える場所)
+    static func runnerFingerprintPath(derivedDataPath: URL) -> URL {
+        derivedDataPath.appendingPathComponent(".toolchain")
+    }
+
+    /// xctestrun から上方向に .toolchain を探す(<DerivedData>/Build/Products/ の 3 階層想定 + 余裕)
+    static func findRunnerFingerprint(near xctestrun: URL) -> URL? {
+        var dir = xctestrun.deletingLastPathComponent()
+        for _ in 0..<4 {
+            let candidate = dir.appendingPathComponent(".toolchain")
+            if FileManager.default.fileExists(atPath: candidate.path) { return candidate }
+            let parent = dir.deletingLastPathComponent()
+            if parent.path == dir.path { break }
+            dir = parent
+        }
+        return nil
     }
 
     /// 実機ビルドは署名が要る。team は ~/.config/ftester/config.json の developmentTeam か
@@ -559,11 +578,18 @@ public struct BridgeLauncher {
     /// ランナーのソースが xctestrun より新しいか(InAppLauncher.needsBuild と対の鮮度判定)。
     /// これが無いと prepareSharedBuilds は「xctestrun 不在」しか見ず、ソース変更後も旧バイナリを
     /// 起動し続ける(旧版検知 → 停止 → 同じ旧バイナリで再起動、の毎 run ループになる。2026-07-28 実害)
-    static func runnerNeedsRebuild(repoRoot: URL, xctestrun: URL) -> Bool {
+    static func runnerNeedsRebuild(repoRoot: URL, xctestrun: URL,
+                                   toolchain: String? = ToolchainFingerprint.current()) -> Bool {
         guard let built = (try? xctestrun.resourceValues(forKeys: [.contentModificationDateKey]))?
                 .contentModificationDate,
               let newest = newestRunnerSourceTimestamp(repoRoot: repoRoot) else { return true }
-        return newest > built
+        if newest > built { return true }
+        // Xcode/SDK を上げてもソースの mtime は動かない。指紋が変わっていたら作り直す
+        // (旧 Xcode のランナーを新ランタイムに載せると実行中に「Application is not running」で落ちる)
+        // 指紋は DerivedData ルートに置く。xctestrun からの相対位置は Xcode の出力レイアウトに
+        // 依存するので、決め打ちせず上方向に探す(見つからなければ「旧版の成果物」= 作り直す)
+        guard let fingerprint = findRunnerFingerprint(near: xctestrun) else { return true }
+        return !ToolchainFingerprint.matches(storedAt: fingerprint, current: toolchain)
     }
 
     /// ランナーのビルド入力の最終更新時刻。入力集合は Runner/project.yml の sources と対

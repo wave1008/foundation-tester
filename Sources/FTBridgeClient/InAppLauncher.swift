@@ -42,13 +42,23 @@ public struct InAppLauncher {
         guard result.status == 0 else {
             throw InAppLauncherError.buildFailed(result.tail)
         }
+        ToolchainFingerprint.store(at: Self.fingerprintPath(repoRoot: repoRoot))
+    }
+
+    /// dylib をどの Xcode/SDK で作ったかの記録(build/ 配下 = dylib と一緒に消える場所)
+    static func fingerprintPath(repoRoot: URL) -> URL {
+        repoRoot.appendingPathComponent("InAppBridge/build/.toolchain")
     }
 
     /// dylib が無い / 入力より古い / 判定不能 なら true(再ビルドが要る)
-    static func needsBuild(repoRoot: URL) -> Bool {
+    static func needsBuild(repoRoot: URL, toolchain: String? = ToolchainFingerprint.current()) -> Bool {
         guard let built = modifiedAt(dylibPath(repoRoot: repoRoot)),
               let newest = newestSourceTimestamp(repoRoot: repoRoot) else { return true }
-        return newest > built
+        if newest > built { return true }
+        // Xcode/SDK を上げてもソースの mtime は動かない。指紋が変わっていたら作り直す
+        // (旧 SDK でリンクした dylib を新ランタイムへ注入すると実行時に落ちる)
+        return !ToolchainFingerprint.matches(
+            storedAt: fingerprintPath(repoRoot: repoRoot), current: toolchain)
     }
 
     /// dylib の入力(build.sh がコンパイルするソース一式 + build.sh 自身)の最終更新時刻。
