@@ -48,22 +48,36 @@ final class ProfileWriterTests: XCTestCase {
             appID: "com.example.myapp", appPath: "~/builds/MyApp.app")
         let common = object["common"] as? [String: Any]
         XCTAssertEqual(common?["appName"] as? String, "MyApp")
-        XCTAssertEqual(common?["autoInstall"] as? Bool, true)
+        XCTAssertNil(common?["autoInstall"],
+                     "書かない(未指定 = appPath の有無で決まる。false を焼き付けない)")
         XCTAssertNil(common?["app"], "app は platform セクションにだけ置く")
         let ios = object["ios"] as? [String: Any]
         XCTAssertEqual(ios?["app"] as? String, "com.example.myapp")
         XCTAssertEqual(ios?["appPath"] as? String, "~/builds/MyApp.app")
     }
 
-    /// appPath が無ければ autoInstall は false(インストール済みアプリを使う)
-    func testAppProfileWithoutPathDisablesAutoInstall() {
+    /// appPath を外したら残骸を残さない。autoInstall も書かない(あとで appPath を足したときに
+    /// 「false が焼き付いていて入らない」を作らないため)
+    func testAppProfileWithoutPathLeavesNoResidue() {
         let withPath = ProfileWriter.mergingAppProfile(
             into: [:], platform: "android", appName: "A", appID: "com.a", appPath: "~/a.apk")
         let withoutPath = ProfileWriter.mergingAppProfile(
             into: withPath, platform: "android", appName: "A", appID: "com.a", appPath: nil)
-        XCTAssertEqual((withoutPath["common"] as? [String: Any])?["autoInstall"] as? Bool, false)
-        XCTAssertNil((withoutPath["android"] as? [String: Any])?["appPath"],
-                     "指定が無くなったら残骸を残さない")
+        XCTAssertNil((withoutPath["common"] as? [String: Any])?["autoInstall"])
+        XCTAssertNil((withoutPath["android"] as? [String: Any])?["appPath"])
+    }
+
+    /// 利用者が明示した autoInstall は温存する(こちらの都合で消さない)
+    func testAppProfileKeepsExplicitAutoInstall() {
+        var object = ProfileWriter.mergingAppProfile(
+            into: [:], platform: "ios", appName: "A", appID: "com.a", appPath: "~/a.app")
+        var common = object["common"] as? [String: Any] ?? [:]
+        common["autoInstall"] = false          // 利用者が opt-out した状態
+        object["common"] = common
+        let updated = ProfileWriter.mergingAppProfile(
+            into: object, platform: "ios", appName: "A", appID: "com.a", appPath: "~/a.app")
+        XCTAssertEqual((updated["common"] as? [String: Any])?["autoInstall"] as? Bool, false,
+                       "利用者の明示指定を消さない")
     }
 
     /// runs は machines 側の論理名をそのまま参照する(ここがずれると解決できない)

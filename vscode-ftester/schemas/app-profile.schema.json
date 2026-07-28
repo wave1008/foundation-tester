@@ -30,8 +30,7 @@
         },
         "autoInstall": {
           "type": "boolean",
-          "description": "実行前に appPath を自動インストールするか(既定 false=無効)。common でのみ指定可(ios/android 側の autoInstall は廃止)。",
-          "default": false
+          "description": "実行前に appPath を自動インストールするか。**未指定の既定は appPath の有無**(パスがあれば有効・中身が変わったときだけ入れ直す)。止めたいときだけ false を明示する。common でのみ指定可(ios/android 側の autoInstall は廃止)。"
         },
         "healthCheckURL": {
           "type": "string",

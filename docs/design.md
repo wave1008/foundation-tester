@@ -1324,7 +1324,11 @@ executableTarget `ftester-scenarios-<name>`(path: `Projects/<name>/Scenarios`)�
 - 実機の要件と罠(iOS の署名・LAN/USB 経路、Android の画面ロック)は docs/verification.md
 
 **実行プロファイル** `runs/<name>.json` — アプリ+デバイス名リスト+実行時設定。
-platform フィールドは持たず、**iOS/Android のデバイス名を混在させれば両OS同時実行**になる:
+platform フィールドは持たず、**iOS/Android のデバイス名を混在させれば両OS同時実行**になる。
+`machine` は使うマシンプロファイル名の明示指定(未指定なら登録名などから解決)。
+**`ftester profile setup` は書いたときのマシン名を必ず残す** — 拡張の実行プロファイル編集は
+`machine` が無いと「(未指定)」になりデバイスを選べないため。別マシンへ持ち出すときは
+同名の `machines/<名>.json` を用意するか、この行を消して登録名解決に戻す:
 
 ```json
 { "app": "sampleapp",
@@ -1420,9 +1424,11 @@ DeviceBooter.defaultLocale(実行プロファイルの locale が届くのは wi
    コールド起動は「プランニング(ポート採番、直列)→ 共有ビルド(dylib/xctestrun、直列)→
    起動(デバイス単位で並列。hybrid の 2 ブリッジはデバイス内直列)」(performance-tuning §3.2)。
    **run は終了時にブリッジを停止しない**(常駐を残すのが仕様。次の run が再利用する)
-4. **自動インストール**: `appPath` あり+`autoInstall`(既定 true)→ オーケストレータ投入前に
-   各ワーカーへ並行 install(差分判定=installedIsCurrent も並列。失敗ワーカーは離脱、
-   残ワーカーがキューを引き継ぐ)
+4. **自動インストール**: `appPath` あり+`autoInstall`(**未指定の既定は appPath の有無**。
+   `false` 明示で opt-out)→ オーケストレータ投入前に各ワーカーへ並行 install
+   (差分判定=installedIsCurrent も並列。失敗ワーカーは離脱、残ワーカーがキューを引き継ぐ)。
+   **ライブ操作(記録開始)の install も同じ差分判定**を通す(`ApiLiveServe`。無条件に入れ直すと
+   記録のたびにアプリが終了し、状態が消える)
 5. RunOrchestrator で並列実行。ワーカーラベル=デバイスの論理名。レポートは
    `Projects/<P>/reports/`、ヒールキャッシュは `--project-dir` 経由で `Projects/<P>/.ftester/` に分離
    - **シナリオの振り分けは platform 別の静的分配**(ワークスティールではない)。

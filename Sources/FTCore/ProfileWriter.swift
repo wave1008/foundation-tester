@@ -55,8 +55,9 @@ public enum ProfileWriter {
         var object = object
         var common = (object["common"] as? [String: Any]) ?? [:]
         common["appName"] = appName
-        // appPath が無ければ自動インストールできない(インストール済みアプリを使う)
-        common["autoInstall"] = appPath != nil
+        // **autoInstall は触らない**。未指定なら appPath の有無から決まる(ProfileResolver)ので
+        // 書く必要が無く、false を焼き付けるとあとから appPath を足しても入らない設定が残る。
+        // 既にある値は利用者の明示指定(opt-out)なので消さない
         object["common"] = common
 
         var section = (object[platform] as? [String: Any]) ?? [:]
