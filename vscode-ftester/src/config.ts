@@ -9,6 +9,9 @@ export type Platform = "ios" | "android";
 /** モニターのデバイスタイル表示範囲(設定 ftester.monitorDeviceFilter)。既定は "all"。 */
 export type MonitorDeviceFilter = "all" | "running";
 
+/** 起動時の更新チェック(設定 ftester.updateCheck)。既定は "auto"。 */
+export type UpdateCheckMode = "auto" | "off";
+
 export interface FtesterConfig {
   /** ワークスペースルート基準の絶対パスに解決済みの CLI バイナリパス。 */
   binaryPath: string;
@@ -60,6 +63,9 @@ export interface FtesterConfig {
   /** true の場合、テスト実行(Run Test、非dry-run)開始時にライブ操作パネル(livePanel.ts)を
    * エディタの右側(ViewColumn.Beside)へ自動表示する。 */
   liveControlOnRun: boolean;
+  /** "auto": 起動時に upstream の更新有無を確認し、あれば通知する(updateCheck.ts)。"off": 確認しない。
+   * 確認するだけで取り込みはしない(取り込みは /ftester-update)。 */
+  updateCheck: UpdateCheckMode;
 }
 
 /** ワークスペースルート(Package.swift のあるフォルダ)を解決する。開いていなければ undefined。 */
@@ -97,6 +103,7 @@ export function readConfig(workspaceRoot: string): FtesterConfig {
     autoRepairBridge: configuration.get<boolean>("autoRepairBridge", true),
     autoRepairDeviceHealth: configuration.get<boolean>("autoRepairDeviceHealth", false),
     liveControlOnRun: configuration.get<boolean>("liveControlOnRun", true),
+    updateCheck: configuration.get<string>("updateCheck", "auto") === "off" ? "off" : "auto",
   };
 }
 

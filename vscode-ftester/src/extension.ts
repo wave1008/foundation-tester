@@ -28,6 +28,7 @@ import { RunEventBus } from "./runEventBus";
 import { isRunActive, registerRunHandler } from "./runHandler";
 import { registerStepsView } from "./stepsView";
 import { FtesterTestTree, unhideAllTests } from "./testTree";
+import { checkFtesterUpdate } from "./updateCheck";
 import { ScenarioFileWatcher } from "./watcher";
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -61,6 +62,19 @@ export function activate(context: vscode.ExtensionContext): void {
   // CLI ↔ 拡張のプロトコル版照合(compatCheck.ts)。activate をブロックしない fire-and-forget。
   void checkFtesterCompat(getConfig().binaryPath, workspaceRoot, outputChannel, (proc) => {
     context.subscriptions.push({ dispose: () => proc.kill() });
+  }).catch((error) => {
+    outputChannel.appendLine(`[ftester] ${error instanceof Error ? error.message : String(error)}`);
+  });
+
+  // upstream の更新有無の確認(updateCheck.ts)。同じく fire-and-forget。通知するだけで取り込まない。
+  void checkFtesterUpdate({
+    workspaceRoot,
+    enabled: getConfig().updateCheck === "auto",
+    outputChannel,
+    globalState: context.globalState,
+    registerChild: (proc) => {
+      context.subscriptions.push({ dispose: () => proc.kill() });
+    },
   }).catch((error) => {
     outputChannel.appendLine(`[ftester] ${error instanceof Error ? error.message : String(error)}`);
   });

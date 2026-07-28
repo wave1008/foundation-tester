@@ -46,6 +46,16 @@ curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scr
   停止して `/ftester-setup` を案内する。**`ls` や `find` で周辺を探し回らない**
   (受け手の個人ディレクトリを覗くことになるうえ、答えは preflight に出ている)。
 
+### 0.5 更新の有無だけ聞かれた場合(「更新ある?」)
+
+```
+bash <TOOL_ROOT>/Scripts/update-check.sh
+```
+
+読み取りのみ(fetch もしない)。`verdict=` が `update-available`(exit 3)なら 0.7 へ進む。
+`up-to-date`(0)なら**何もせず終える**。`pinned`(0・版固定/ローカル変更あり)と `unknown`(1・オフライン等)は
+理由(`reason=`)をそのまま伝え、勝手に取り込まない。VSCode 拡張も同じスクリプトで起動時に自動確認する。
+
 ### 0.7 更新スクリプト(**まずこれを試す**。以降のステップを一括で行う)
 
 ```

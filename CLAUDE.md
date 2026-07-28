@@ -19,6 +19,10 @@
   「不明なオプション」で落ちる)。全出力は `<WORK_DIR>/.ftester/install-<日時>.log` に残る
 - 受け手の更新: `Scripts/update.sh`(install.sh を再実行 + project sync + プラグイン更新と版照合。
   `.claude/skills/ftester-update/SKILL.md` と 1:1)
+- 更新の有無だけ判定: `Scripts/update-check.sh`(読み取りのみ。**fetch せず `git ls-remote`** で
+  upstream と比較し up-to-date=0 / update-available=3 / pinned=0 / unknown=1。取り込みはしない)。
+  VSCode 拡張が起動時に1日1回呼ぶ(`src/updateCheck.ts`・設定 `ftester.updateCheck`)。
+  **TOOL_ROOT の解決規則は preflight.sh / update.sh / `src/toolRootResolve.ts` と同じ**(4箇所。片方だけ変えない)
 - DSL コマンドリファレンス(全コマンドの引数・挙動。利用者向け): docs/commands.md
 - リリース(git タグ発行と版ピンの関係。配布はソースビルド前提): docs/releasing.md(`Scripts/release.sh`)
 - 設計書(アーキテクチャ・Swift DSL 仕様・セレクタ記法・プロファイル): docs/design.md
