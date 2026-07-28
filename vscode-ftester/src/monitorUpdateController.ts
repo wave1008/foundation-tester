@@ -6,6 +6,9 @@
 //
 // 制約: 更新は**自分自身(拡張)を入れ替える**。完了しても Reload Window までは旧版が動き続ける
 // (webview もその時点で作り直される)ので、終了時に必ず再読み込みを促す。
+//
+// ログの出し先は **VSCode の OUTPUT(ftester チャンネル)**。webview に持たせない ——
+// 検索・コピー・スクロールが VSCode 標準のまま使え、パネルを閉じても残るため。
 
 import { spawn } from "node:child_process";
 import * as fs from "node:fs";
@@ -67,7 +70,7 @@ export class MonitorUpdateController {
     this.postStatus(state, fields.local_head ?? "", fields.remote_head ?? "", fields.reason ?? "");
   }
 
-  /** 「更新する」を押されたとき。update.sh の出力を1行ずつ webview へ流す。 */
+  /** 「更新する」を押されたとき。update.sh を実行し、出力は OUTPUT(ftester)へ1行ずつ出す。 */
   async runUpdate(): Promise<void> {
     if (this.running) {
       return;
@@ -86,18 +89,39 @@ export class MonitorUpdateController {
       return;
     }
     this.running = true;
-    this.deps.post({ type: "updateLogReset" });
     this.postStatus("running");
-    this.deps.post({ type: "updateLog", line: t("monitor.update.startLog") });
-    const result = await this.run(
-      "bash",
-      [script, "--work-dir", this.deps.workspaceRoot, "--tool-root", this.toolRoot()!],
-      true,
+    // 実行のたびに OUTPUT を前面に出す(押した結果がどこに出るのかを迷わせない)。
+    this.deps.outputChannel.show(true);
+    this.deps.outputChannel.appendLine(t("monitor.update.startLog"));
+    // パネルを見ていなくても進行が分かるよう、VSCode 側の進捗通知も出す(数分かかるため)。
+    // 中断は用意しない —— 途中で殺すと pull 済み・ビルド未了の半端な状態が残る
+    const result = await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: t("monitor.update.progressTitle"), cancellable: false },
+      (progress) =>
+        this.run("bash", [script, "--work-dir", this.deps.workspaceRoot, "--tool-root", this.toolRoot()!], true,
+          // 見出し行(`==> …`)だけを進捗の説明に出す。全行だと読めない速さで流れる
+          (line) => {
+            if (line.startsWith("==>")) {
+              progress.report({ message: line.slice(3).trim() });
+            }
+          }),
     );
     this.running = false;
-    this.deps.post({ type: "updateFinished", exitCode: result.exitCode ?? -1 });
+    const exitCode = result.exitCode ?? -1;
     // 成否に関わらず状態を取り直す(失敗しても pull だけ通っていることがある)
     await this.check();
+    if (exitCode === 0) {
+      this.deps.outputChannel.appendLine(t("monitor.update.finishedOkLog"));
+      // **入れ替えた拡張は再読み込みまで有効にならない**ので、その場で再読み込みを提案する。
+      const reload = t("monitor.update.reloadButton");
+      const picked = await vscode.window.showInformationMessage(t("monitor.update.finishedOk"), reload);
+      if (picked === reload) {
+        await vscode.commands.executeCommand("workbench.action.reloadWindow");
+      }
+    } else {
+      this.deps.outputChannel.appendLine(t("monitor.update.finishedFailedLog", { code: String(exitCode) }));
+      void vscode.window.showErrorMessage(t("monitor.update.finishedFailed", { code: String(exitCode) }));
+    }
   }
 
   private toolRoot(): string | undefined {
@@ -123,6 +147,7 @@ export class MonitorUpdateController {
     command: string,
     args: string[],
     stream: boolean,
+    onLine?: (line: string) => void,
   ): Promise<{ stdout: string; exitCode: number | null }> {
     return new Promise((resolve) => {
       let proc;
@@ -152,7 +177,8 @@ export class MonitorUpdateController {
         const lines = pending.split("\n");
         pending = lines.pop() ?? "";
         for (const line of lines) {
-          this.deps.post({ type: "updateLog", line });
+          this.deps.outputChannel.appendLine(line);
+          onLine?.(line);
         }
       };
       proc.stdout.on("data", emit);
@@ -160,7 +186,7 @@ export class MonitorUpdateController {
       proc.on("error", () => resolve({ stdout, exitCode: -1 }));
       proc.on("close", (exitCode) => {
         if (stream && pending.length > 0) {
-          this.deps.post({ type: "updateLog", line: pending });
+          this.deps.outputChannel.appendLine(pending);
         }
         resolve({ stdout, exitCode });
       });

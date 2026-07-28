@@ -2,8 +2,9 @@
 // ディスパッチャに組み込む。対向: src/monitorModel.ts の setPollingMode/pollingMode・
 // setLanguage/language メッセージ、処理は src/monitorPanel.ts。常駐プロセス一覧は processesTab.js を参照。
 //
-// 更新セクション: checkUpdate/runUpdate を送り、updateStatus/updateLog/updateFinished を受ける
-// (実処理は src/monitorUpdateController.ts → Scripts/update-check.sh / update.sh)。
+// 更新セクション: checkUpdate/runUpdate を送り、updateStatus を受ける(実処理は
+// src/monitorUpdateController.ts → Scripts/update-check.sh / update.sh)。
+// **実行ログはここには出さない** — VSCode の OUTPUT(ftester チャンネル)へ出す。
 
 import { vscode } from './vscodeApi.js';
 import { t } from '../i18n.js';
@@ -12,11 +13,11 @@ import { switchTab } from './tabs.js';
 const pollingModeCheckbox = document.getElementById('settings-polling-mode');
 const languageSelect = document.getElementById('settings-language');
 const updateStatus = document.getElementById('settings-update-status');
+const updateSpinner = document.getElementById('settings-update-spinner');
 const updateCheckButton = document.getElementById('settings-update-check');
 // 「更新する」は設定タブではなく**タブバーの右端**にある(どのタブを見ていても目に入る)。
 // 更新があるときだけ表示する — 押せない状態のボタンを常時見せても情報にならないため。
 const updateRunButton = document.getElementById('tabbar-update');
-const updateLog = document.getElementById('settings-update-log');
 
 pollingModeCheckbox.addEventListener('change', () => {
   vscode.postMessage({ type: 'setPollingMode', value: pollingModeCheckbox.checked });
@@ -35,10 +36,14 @@ updateCheckButton.addEventListener('click', () => {
 // 確認ダイアログは**ホスト側**(monitorUpdateController.ts の showWarningMessage modal)。
 // webview では window.confirm/alert が効かない(VSCode の制約。他タブの削除確認も同じ方式)。
 updateRunButton.addEventListener('click', () => {
-  // 進行ログは設定タブに出るので、押したら必ずそこへ移動する(押した結果が見えないのを防ぐ)。
+  // 進行は OUTPUT パネル(ホスト側が前面に出す)と、この状態行のスピナーで見せる。
+  // どのタブから押しても状態が見えるよう設定タブへ移動する。
   switchTab('settings');
   vscode.postMessage({ type: 'runUpdate' });
 });
+
+// 実行中はラベルを差し替えるので、初期ラベル(拡張側 t() で描画済み)を控えておく。
+const updateRunLabel = updateRunButton.textContent;
 
 function shortSha(value) {
   return typeof value === 'string' ? value.slice(0, 8) : '';
@@ -51,6 +56,10 @@ function applyUpdateStatus(message) {
   // 「更新する」は**更新があるときだけ**出す。実行中は押せない状態で残す(消すと進行が分からない)。
   updateRunButton.style.display = message.state === 'update-available' || running ? 'block' : 'none';
   updateRunButton.disabled = running;
+  updateRunButton.classList.toggle('busy', running);
+  updateRunButton.textContent = running ? t('wvMonitor2.update.runningButton') : updateRunLabel;
+  // 待たされる2状態(確認中・更新中)だけスピナーを回す。
+  updateSpinner.style.display = running || message.state === 'checking' ? 'block' : 'none';
   updateStatus.classList.remove('available', 'attention');
 
   switch (message.state) {
@@ -84,28 +93,12 @@ function applyUpdateStatus(message) {
   }
 }
 
-function appendUpdateLog(line) {
-  updateLog.style.display = 'block';
-  updateLog.textContent += `${line}\n`;
-  updateLog.scrollTop = updateLog.scrollHeight; // 末尾に追従(進行が見えるように)
-}
-
 export function applySettings(message) {
   if (message.type === 'pollingMode') {
     pollingModeCheckbox.checked = !!message.value;
   } else if (message.type === 'language') {
     languageSelect.value = message.value;
-  } else if (message.type === 'updateLogReset') {
-    updateLog.textContent = '';
-    updateLog.style.display = 'block';
   } else if (message.type === 'updateStatus') {
     applyUpdateStatus(message);
-  } else if (message.type === 'updateLog') {
-    appendUpdateLog(message.line);
-  } else if (message.type === 'updateFinished') {
-    // 成功しても**このウィンドウを再読み込みするまで旧版が動き続ける**(拡張自身を入れ替えたため)。
-    appendUpdateLog(message.exitCode === 0
-      ? t('wvMonitor2.update.finishedOk')
-      : t('wvMonitor2.update.finishedFailed', { code: String(message.exitCode) }));
   }
 }

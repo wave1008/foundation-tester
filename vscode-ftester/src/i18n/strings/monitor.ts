@@ -251,6 +251,26 @@ export const monitorStrings = {
     en: "Update ftester? It runs git pull, rebuild, and extension reinstall, and takes a few minutes.",
   },
   "monitor.update.confirmButton": { ja: "更新する", en: "Update" },
+  // 更新実行中の進捗通知(withProgress)のタイトル。パネル非表示でも進行が見えるように出す。
+  "monitor.update.progressTitle": { ja: "ftester を更新しています", en: "Updating ftester" },
+  // 更新の完了/失敗。ログ行は OUTPUT へ、通知は再読み込みの導線として出す。
+  "monitor.update.finishedOkLog": {
+    ja: "==> 更新が完了しました。反映するにはウィンドウの再読み込みが必要です。",
+    en: "==> Update complete. A window reload is required to apply it.",
+  },
+  "monitor.update.finishedOk": {
+    ja: "ftester の更新が完了しました。反映するにはウィンドウを再読み込みしてください。",
+    en: "The ftester update is complete. Reload the window to apply it.",
+  },
+  "monitor.update.reloadButton": { ja: "再読み込み", en: "Reload window" },
+  "monitor.update.finishedFailedLog": {
+    ja: "==> 更新に失敗しました(終了コード {code})。上の [fail] 行を確認してください。",
+    en: "==> Update failed (exit code {code}). Check the [fail] line above.",
+  },
+  "monitor.update.finishedFailed": {
+    ja: "ftester の更新に失敗しました(終了コード {code})。詳細は OUTPUT の ftester を確認してください。",
+    en: "The ftester update failed (exit code {code}). See the ftester OUTPUT channel for details.",
+  },
   // 設定タブ「更新」実行時、ログ領域の1行目(monitorUpdateController.ts)。
   "monitor.update.startLog": {
     ja: "==> 更新を開始します(Scripts/update.sh)",
