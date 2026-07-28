@@ -129,6 +129,27 @@ final class InputInjector {
         }
     }
 
+    /**
+     * フォーカス中の入力欄へ IME の「実行」アクションを直接発火する(ACTION_IME_ENTER、API 30+)。
+     * keyevent 66 はソフトキーボード表示中の View/XML EditText では IME に吸われ
+     * OnEditorActionListener に届かない(Compose は独自のキーイベント処理経路のため keyevent でも
+     * 発火する。実機実測で確認済み)。呼び出し元 BridgeRouter が API レベルを判定してから呼ぶこと
+     * (この関数自体は SDK_INT を見ない)。
+     */
+    static void pressImeEnter(UiAutomation ua) {
+        AccessibilityNodeInfo root = SnapshotBuilder.waitForRoot(ua, 2000);
+        AccessibilityNodeInfo focus = root == null ? null
+                : root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
+        if (focus == null) {
+            throw new BridgeRouter.BridgeException(409,
+                    "入力フォーカスを持つ要素がありません(先に ref 指定でタップしてください)");
+        }
+        // ホストがキーイベント経路へフォールバックできるよう、失敗は 409 で返す(500 にしない)
+        if (!focus.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.getId())) {
+            throw new BridgeRouter.BridgeException(409, "IME の Enter アクションを実行できませんでした");
+        }
+    }
+
     private static MotionEvent event(long downTime, long eventTime, int action, double x, double y) {
         MotionEvent e = MotionEvent.obtain(downTime, eventTime, action, (float) x, (float) y, 0);
         e.setSource(InputDevice.SOURCE_TOUCHSCREEN);

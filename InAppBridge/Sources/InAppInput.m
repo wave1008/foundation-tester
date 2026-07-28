@@ -211,9 +211,19 @@ BOOL FTInsertTextIntoFirstResponder(NSString *text) {
 BOOL FTPressEnterOnComposeFirstResponder(void) {
     for (UIView *v in ftTextReceivers()) {
         if (!v.isFirstResponder) continue;
-        if ([v isKindOfClass:[UITextField class]] || [v isKindOfClass:[UITextView class]]) {
-            return NO;  // UIKit 系: type の "\n" 分割経路(改行は文字として入るだけ)に任せ、
-                        // IME アクション相当は xcuitest の typeText("\n") へ回す
+        if ([v isKindOfClass:[UITextField class]]) {
+            // UITextField への insertText:@"\n" は改行が文字として入るだけで return を発火しない。
+            // xcuitest への 409 フォールバックも使えない(フォーカスを立てたのは in-app の合成タッチで、
+            // XCUITest からは keyboard focus を持つ要素として見えず typeText が無言 no-op になる)。
+            // そこで UIKit が Return で行うこと自体を再現する: delegate の textFieldShouldReturn: と
+            // EditingDidEndOnExit(SwiftUI の onSubmit もこの経路)
+            UITextField *field = (UITextField *)v;
+            id<UITextFieldDelegate> delegate = field.delegate;
+            if ([delegate respondsToSelector:@selector(textFieldShouldReturn:)]) {
+                [delegate textFieldShouldReturn:field];
+            }
+            [field sendActionsForControlEvents:UIControlEventEditingDidEndOnExit];
+            return YES;
         }
         if ([v conformsToProtocol:@protocol(UIKeyInput)]) {
             [(id<UIKeyInput>)v insertText:@"\n"];

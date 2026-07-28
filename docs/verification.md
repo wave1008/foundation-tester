@@ -24,6 +24,21 @@ ftester bridge up --platform ios --device <名前>     # ここで再ビルド�
 
 (Android ブリッジ側は versionCode 照合で自動再インストールされるため、この問題は iOS 側だけに出る)
 
+## in-app エンジンは `--ios-inapp` を付けないと1本も回らない
+
+`Scripts/e2e.sh` の iOS は既定で **`ios-xcuitest` プロファイルだけ**を回す。一方
+**利用者の既定エンジンは hybrid(in-app 優先)**(`RunProfile` の `iosInappEngine ?? true`)なので、
+既定の E2E は「利用者が普段通らない経路」しか見ていない。in-app ブリッジ(入力・スナップショット・
+型写像・ジェスチャ申告)を触ったら **`Scripts/e2e.sh --ios-inapp`** を追加で回すこと。
+
+## 入力・キー系は Compose だけで検証しない(フレームワークで経路が割れる)
+
+Compose の入力欄は独自のキーイベント処理を持つため、**他フレームワークで死んでいる経路でも緑になる**。
+実害(2026-07-28): Android の `pressEnter` はソフトキーボードが出ていると `keyevent 66` が
+View/XML の `EditText` に届かない(IME が消費する)のに、CMP SUT の E2E は通っていた。
+E2E-Android(View/XML)を回して初めて赤くなり、a11y の `ACTION_IME_ENTER` 経路へ作り直した
+(design.md §実装で得た知見)。**入力・キー・IME 系を触ったら E2E-Android と E2E-iOS を必ず含める**。
+
 ## flake・性能の判定規律(1回の結果で断じない)
 
 - **flake の修正は「1回グリーン」で判定しない**。flake は確率的で、低負荷なら偶然通る。

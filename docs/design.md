@@ -751,6 +751,25 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
   見られないため type の受け皿にできない**(実測: snapshot は SBSwitcherWindow 等8要素のみ)。
   用途を混ぜないこと。engine=inapp 単独(xcuiPort 無し)ではこの経路は無く、409 メッセージが
   xcuitest プロファイルへ誘導する
+- **iOS の Enter はフレームワークごとに受け口が違う**(2026-07-28 実測。吸収は
+  `FTPressEnterOnComposeFirstResponder` の1箇所): Compose は `insertText("\n")` が IME アクションに
+  変換される。**UITextField は変換されない**ので UIKit が Return で行うこと自体を再現する
+  (`textFieldShouldReturn:` + `EditingDidEndOnExit`。SwiftUI の `onSubmit` もこの経路)。
+  UITextView は Return = 改行挿入なのでそのまま `insertText("\n")`。
+  **`type` の末尾改行もこの関数を通す**(「type の末尾改行 = pressEnter」が契約なので分岐を割らない)。
+  **Flutter iOS だけは駆動できない**: engine が `insertText("\n")` を `onSubmitted` に変換せず、
+  hybrid の xcuitest フォールバックも **in-app の合成タッチが立てたフォーカスに届かない**
+  (`hasKeyboardFocus` の要素が見つからない)。engine=xcuitest 単独なら通る
+  (E2EAppFlutter/docs/ui-contract.md。E2E-Flutter のシナリオ 18 は android 限定)
+- **Android の Enter はキーイベントでは届かない**(2026-07-28 実測): ソフトキーボードが出ていると
+  `input keyevent 66`(gRPC の名前付き "Enter" も同じ)は **View/XML の `EditText` に到達しない**
+  (IME が消費する)。`adb shell ime disable <id>` で IME を止めると同じキーで発火する。
+  **Compose の入力欄は同条件でも発火する**ため、Compose だけで検証すると気付けない。
+  そこで `pressEnter`(と `type` の末尾改行)は **a11y の `ACTION_IME_ENTER`**(ブリッジの
+  `/pressEnter` → `InputInjector.pressImeEnter`)を既定にし、404/409/501 のときだけキーイベントへ
+  落とす。Shirates も Android は `mobile: performEditorAction` = エディタアクション直実行で、機構は同じ。
+  受け側に届く actionId が経路で違う(a11y = フィールドの imeOptions / キーイベント = `IME_NULL`)ので、
+  SUT 側は**両方受理**する必要がある(E2EAppAndroid/docs/ui-contract.md)
 - **短いラベルは別項目の要約(summary)にも contains 一致し「曖昧解決不能」で throw する**:
   例 `"ディスプレイ"` は行 `"ディスプレイとタップ"` と、無関係な `"ユーザー補助"` の要約
   `"ディスプレイ、操作、音声"` の両方に当たる。実 UI の完全ラベルに寄せる(`"ディスプレイとタップ"`)か
