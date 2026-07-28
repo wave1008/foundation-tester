@@ -15,6 +15,7 @@
 # 契約: 各手順は .claude/skills/ftester-setup/SKILL.md のステップ番号と 1:1。失敗時は
 #       「→ SKILL.md ステップ N」を出すので、エージェントはそこだけ手作業で直して再実行する
 #       (この対応表を崩すときは SKILL.md 側も一緒に直す)。
+# ログ: 全出力を <WORK_DIR>/.ftester/install-<日時>.log にも落とす(実行ごとに別ファイル)。
 # 終了コード: 0=完了 / 1=必須ステップの失敗 / 2=任意ステップのみ失敗(CLI は使える)
 set -euo pipefail
 
@@ -112,6 +113,7 @@ die() {
   echo ""
   echo "❌ 中断しました。→ .claude/skills/ftester-setup/SKILL.md ステップ $3 を手作業で通してから、"
   echo "   同じ引数で install.sh を再実行してください(済んだ手順は skip されます)。" >&2
+  [ -n "${LOG_FILE:-}" ] && echo "   ログ: $LOG_FILE"
   exit 1
 }
 
@@ -125,6 +127,16 @@ abspath() { (cd "$1" 2>/dev/null && pwd); }
 # ---- 0. 前提(SKILL ステップ0) -------------------------------------------------
 [ -d "$WORK_DIR" ] || die "前提" "--work-dir が存在しません: $WORK_DIR" 0
 WORK_DIR="$(abspath "$WORK_DIR")"
+
+# ここから先の出力をすべてログにも落とす(失敗の報告に丸ごと添付できるようにする)。
+# 実行のたびに別ファイル(前回の記録を上書きしない)。人への質問は /dev/tty へ直接書くので
+# tee の影響を受けない。ログを作れない場合でもインストールは続行する
+LOG_FILE=""
+if mkdir -p "$WORK_DIR/.ftester" 2>/dev/null; then
+  LOG_FILE="$WORK_DIR/.ftester/install-$(date +%Y%m%d-%H%M%S).log"
+  exec > >(tee -a "$LOG_FILE") 2>&1
+  echo "==> ログ: $LOG_FILE"
+fi
 
 [ "$(uname -s)" = "Darwin" ] || die "前提" "macOS 専用です(iOS シミュレータが要る)" 0
 command -v git >/dev/null 2>&1 || die "前提" "git が見つかりません" 0
@@ -449,6 +461,8 @@ cat <<EOF
 ──────── 次にやること ────────
 ${NEXT_PROFILES}・VSCode で $WORK_DIR を開き、Developer: Reload Window(拡張の反映に必須)
 ・Claude Code が ftester MCP サーバの承認を求めたら許可する(ft_* が使えるようになる)
+
+インストールログ: ${LOG_FILE:-(出力できませんでした)}
 EOF
 
 if [ "$SOFT_FAILED" = "1" ]; then
