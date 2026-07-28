@@ -92,6 +92,21 @@ struct Doctor: AsyncParsableCommand {
         let vision = FMDoctor.visionReport
         print(vision.available ? "✅ \(vision.detail)" : "⚠️ \(vision.detail)")
 
+        // 2つのルートを明示する。外部パッケージ構成では別ディレクトリになり、取り違えると
+        // 「InAppBridge/build.sh が無い」「Projects/ が見えない」で詰まる(実害あり)
+        switch Result(catching: { try RepoRoot.find() }) {
+        case .success(let root):
+            print("✅ ツール本体(ブリッジ資産): \(root.path)")
+        case .failure(let error):
+            print("❌ ツール本体のルートを特定できません: \(error.localizedDescription)")
+        }
+        if let packageRoot = ScenarioHost.packageRoot() {
+            print("✅ シナリオのパッケージ(Projects/): \(packageRoot.path)")
+        } else {
+            print("⚠️ シナリオのパッケージ(Package.swift)が cwd の上方に見つかりません"
+                + "(FT_PACKAGE_ROOT で明示指定できます)")
+        }
+
         let xcode = try Shell.run(["xcodebuild", "-version"])
         let xcodeLine = xcode.output.split(separator: "\n").first.map(String.init) ?? "不明"
         print(xcode.status == 0 ? "✅ \(xcodeLine)" : "❌ xcodebuild が見つかりません")

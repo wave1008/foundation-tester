@@ -134,11 +134,16 @@ cd <TOOL_ROOT>/vscode-ftester && npm install && npm run install-local
   "mcpServers": {
     "ftester": {
       "command": "bash",
-      "args": ["-lc", "WD=\"$PWD\"; cd \"<ABS_TOOL_ROOT>\" && swift build --product ftester-mcp >/dev/null 2>&1 && cd \"$WD\" && exec \"<ABS_TOOL_ROOT>/.build/debug/ftester-mcp\""]
+      "args": ["-lc", "WD=\"$PWD\"; cd \"<ABS_TOOL_ROOT>\" && swift build --product ftester-mcp >/dev/null 2>&1 && cd \"$WD\" && exec \"<ABS_TOOL_ROOT>/.build/debug/ftester-mcp\""],
+      "env": { "FT_TOOL_ROOT": "<ABS_TOOL_ROOT>" }
     }
   }
 }
 ```
+
+  `env.FT_TOOL_ROOT`（ブリッジ資産 `Runner/`・`InAppBridge/` のルート＝TOOL_ROOT の明示指定）が
+  無い旧エントリは、追加しておく（`<ABS_TOOL_ROOT>` は既存 `args` の値と同じ）。無くても自動解決するが、
+  明示しておくと起動経路に依存しない。
 
 - **user スコープ登録**（`claude mcp add ftester --scope user ...` で入れた場合）: `claude mcp list` /
   `claude mcp get ftester` で同じ旧パターン（cd 後 exec 前に戻っていない）が無いか確認する。あれば

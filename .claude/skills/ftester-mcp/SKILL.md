@@ -79,13 +79,17 @@ clone 構成ならこのステップは不要(同梱 `.mcp.json` が効く)。�
   "mcpServers": {
     "ftester": {
       "command": "bash",
-      "args": ["-lc", "WD=\"$PWD\"; cd \"<ABS_TOOL_ROOT>\" && swift build --product ftester-mcp >/dev/null 2>&1 && cd \"$WD\" && exec \"<ABS_TOOL_ROOT>/.build/debug/ftester-mcp\""]
+      "args": ["-lc", "WD=\"$PWD\"; cd \"<ABS_TOOL_ROOT>\" && swift build --product ftester-mcp >/dev/null 2>&1 && cd \"$WD\" && exec \"<ABS_TOOL_ROOT>/.build/debug/ftester-mcp\""],
+      "env": { "FT_TOOL_ROOT": "<ABS_TOOL_ROOT>" }
     }
   }
 }
 ```
 
-- `<ABS_TOOL_ROOT>` は**絶対パス**(相対だと開く cwd 次第で解決できない)。
+- `<ABS_TOOL_ROOT>` は**絶対パス**(相対だと開く cwd 次第で解決できない)。3箇所すべて同じ値。
+- `env.FT_TOOL_ROOT` は**ブリッジ資産(`Runner/`・`InAppBridge/`)のルート**の明示指定
+  (cwd は受け手パッケージ = `Projects/` 側を指すため別物)。省略しても実行ファイルの位置から
+  自動解決するが、明示しておくと解決に依存しない。
 - build 出力は `/dev/null`(JSON-RPC は stdout 専用・混ぜると壊れる)。
 - `bash -lc`(ログインシェル)は、デスクトップ版 Claude Code が最小 PATH でサーバを起こしても
   swift/Xcode ツールチェインを引けるようにするため。
@@ -99,7 +103,7 @@ clone 構成ならこのステップは不要(同梱 `.mcp.json` が効く)。�
 「全プロジェクトで使いたい」場合のみ、代わりに user スコープ登録を案内する(claude CLI が PATH に要る):
 
 ```
-claude mcp add ftester --scope user -- bash -lc 'WD="$PWD"; cd "<ABS_TOOL_ROOT>" && swift build --product ftester-mcp >/dev/null 2>&1 && cd "$WD" && exec "<ABS_TOOL_ROOT>/.build/debug/ftester-mcp"'
+claude mcp add ftester --scope user -e FT_TOOL_ROOT=<ABS_TOOL_ROOT> -- bash -lc 'WD="$PWD"; cd "<ABS_TOOL_ROOT>" && swift build --product ftester-mcp >/dev/null 2>&1 && cd "$WD" && exec "<ABS_TOOL_ROOT>/.build/debug/ftester-mcp"'
 ```
 
 CLI が無ければ上の WORK_DIR `.mcp.json` 方式で十分。

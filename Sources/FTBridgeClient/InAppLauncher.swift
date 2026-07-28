@@ -33,6 +33,11 @@ public struct InAppLauncher {
     public func buildIfNeeded() throws {
         guard Self.needsBuild(repoRoot: repoRoot) else { return }
         let script = repoRoot.appendingPathComponent("InAppBridge/build.sh").path
+        // script 不在は「repoRoot が受け手パッケージを指している」典型症状。bash の
+        // "No such file or directory" だけでは原因に辿り着けないので、ここで言い当てる
+        guard FileManager.default.fileExists(atPath: script) else {
+            throw InAppLauncherError.repoRootInvalid(repoRoot.path)
+        }
         let result = try Shell.run(["bash", script])
         guard result.status == 0 else {
             throw InAppLauncherError.buildFailed(result.tail)
@@ -122,6 +127,7 @@ public struct InAppLauncher {
 
 public enum InAppLauncherError: Error, LocalizedError {
     case dylibMissing(String)
+    case repoRootInvalid(String)
     case buildFailed(String)
     case bootFailed(String)
     case launchFailed(String)
@@ -131,6 +137,11 @@ public enum InAppLauncherError: Error, LocalizedError {
         switch self {
         case .dylibMissing(let path):
             return "in-app ブリッジの dylib が見つかりません(InAppBridge/build.sh でビルド): \(path)"
+        case .repoRootInvalid(let root):
+            return "\(root) に InAppBridge/build.sh がありません。"
+                + "ここはツール本体(foundation-tester のクローン)のルートである必要があります"
+                + "(シナリオ側パッケージのルートではありません)。"
+                + "解決できないときは環境変数 FT_TOOL_ROOT にクローンのルートを指定してください"
         case .buildFailed(let tail):
             return "InAppBridge/build.sh が失敗しました:\n\(tail)"
         case .bootFailed(let tail):
