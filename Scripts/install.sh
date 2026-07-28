@@ -32,6 +32,7 @@ DO_EXTENSION=1
 DO_PROJECT=1
 DO_MCP=1
 DO_DOCTOR=1
+DO_NEXT_STEPS=1
 ALLOW_CLONE=1
 ALLOW_PULL=1
 
@@ -52,6 +53,7 @@ usage() {
   --skip-project     プロジェクト(Projects/<name>/)を作らない(MCP だけ入れるとき)
   --skip-mcp         .mcp.json の生成/マージを行わない
   --no-doctor        最後の環境レポート(ftester doctor)を省く
+  --no-next-steps    「次にやること」を出さない(update.sh など呼び出し元が案内する場合)
   -h, --help         このヘルプ
 
 やること: clone(既存なら git pull。ローカル変更は確認のうえ破棄・断れば中止)/ swift build /
@@ -78,6 +80,7 @@ while [ $# -gt 0 ]; do
     --skip-project) DO_PROJECT=0; shift ;;
     --skip-mcp) DO_MCP=0; shift ;;
     --no-doctor) DO_DOCTOR=0; shift ;;
+    --no-next-steps) DO_NEXT_STEPS=0; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "不明なオプション: $1" >&2; usage >&2; exit 1 ;;
   esac
@@ -456,7 +459,7 @@ esac
 
 print_summary
 
-cat <<EOF
+[ "$DO_NEXT_STEPS" = "1" ] && cat <<EOF
 
 ──────── 次にやること ────────
 ${NEXT_PROFILES}・VSCode で $WORK_DIR を開き、Developer: Reload Window(拡張の反映に必須)
