@@ -46,6 +46,7 @@ enum Tags {
     static let echoPassword = "txt_echo_password"
     static let echoMultiline = "txt_echo_multiline"
     static let echoLength = "txt_echo_length"
+    static let imeAction = "txt_ime_action"
     static let btnInputSubmit = "btn_input_submit"
     static let txtInputSubmitted = "txt_input_submitted"
     static let btnInputClear = "btn_input_clear"

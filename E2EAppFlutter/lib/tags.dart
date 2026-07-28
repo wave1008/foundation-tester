@@ -44,6 +44,7 @@ class Tags {
   static const echoPassword = 'txt_echo_password';
   static const echoMultiline = 'txt_echo_multiline';
   static const echoLength = 'txt_echo_length';
+  static const imeAction = 'txt_ime_action';
   static const btnInputSubmit = 'btn_input_submit';
   static const txtInputSubmitted = 'txt_input_submitted';
   static const btnInputClear = 'btn_input_clear';

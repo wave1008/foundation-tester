@@ -10,15 +10,17 @@ struct InputScreen: View {
     @State private var password = ""
     @State private var multiline = ""
     @State private var submitted = "-"
+    @State private var imeCount = 0
 
     var body: some View {
         ScreenColumn(scrollable: false) {
             TaggedText(tag: Tags.echoSingle, text: "single=\(single)")
             TaggedText(tag: Tags.echoPassword, text: "password=\(password)")
             TaggedText(tag: Tags.echoLength, text: "len=\(single.count)")
+            TaggedText(tag: Tags.imeAction, text: "ime=\(imeCount)")
             TaggedText(tag: Tags.txtInputSubmitted, text: "submitted=\(submitted)")
 
-            UIKitTextField(tag: Tags.fieldSingle, placeholder: "単一行", text: $single)
+            UIKitTextField(tag: Tags.fieldSingle, placeholder: "単一行", text: $single, onSubmit: { imeCount += 1 })
                 .frame(height: 44)
             UIKitTextField(tag: Tags.fieldPassword, placeholder: "パスワード", isSecure: true, text: $password)
                 .frame(height: 44)
@@ -30,6 +32,7 @@ struct InputScreen: View {
                     password = ""
                     multiline = ""
                     submitted = "-"
+                    imeCount = 0
                 }
             }
 

@@ -67,6 +67,18 @@ tag 定数は `Sources/Tags.swift` に集約する(値は共通契約の表と b
 `#radio_b` と `#radio_c` が同じ `Circle` ラベルで衝突する。
 チェック/ラジオの Image は `.accessibilityHidden(true)` で隠してある。
 
+### `#field_single` の IME アクション(`pressEnter`)
+
+`#field_single` は UIKit の `UITextField`。`insertText("\n")` では改行が文字として入るだけで
+return が発火しないため、in-app ブリッジは **UIKit が Return で行うこと自体を再現する**
+(`delegate` の `textFieldShouldReturn:` + `EditingDidEndOnExit`。
+`InAppBridge/Sources/InAppInput.m` の `FTPressEnterOnComposeFirstResponder`)。
+この SUT の `Coordinator` は `textFieldShouldReturn:` で `onSubmit` を呼ぶので `#txt_ime_action` が進む。
+
+**xcuitest フォールバックには頼れない**(2026-07-28 実測): hybrid で 409 を返すと
+`typeText("\n")` へ回るが、フォーカスを立てたのは in-app の合成タッチなので **XCUITest からは
+keyboard focus を持つ要素として見えず無言 no-op になる**。だから in-app 側で完結させている。
+
 ### Toggle / Slider
 
 - `Toggle` は同一 frame の `switch` ノードが2つ出る(id 付き1つ + id 無し1つ)。`#id` 指定なら実害なし

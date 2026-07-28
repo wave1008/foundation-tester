@@ -3,8 +3,10 @@ package com.ftester.e2e.android
 import android.app.Activity
 import android.text.Editable
 import android.text.TextWatcher
+import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.inputmethod.EditorInfo
 import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
@@ -52,7 +54,9 @@ fun buildInputScreen(activity: Activity, parent: ViewGroup): View {
     val echoPassword = v.findViewById<TextView>(R.id.txt_echo_password)
     val echoMultiline = v.findViewById<TextView>(R.id.txt_echo_multiline)
     val echoLength = v.findViewById<TextView>(R.id.txt_echo_length)
+    val imeAction = v.findViewById<TextView>(R.id.txt_ime_action)
     val submitted = v.findViewById<TextView>(R.id.txt_input_submitted)
+    var imeCount = 0
 
     single.onTextChanged {
         echoSingle.text = "single=$it"
@@ -62,6 +66,22 @@ fun buildInputScreen(activity: Activity, parent: ViewGroup): View {
     password.onTextChanged { echoPassword.text = "password=$it" }
     multiline.onTextChanged { echoMultiline.text = "multiline=${it.replace("\n", " ")}" }
 
+    single.setOnEditorActionListener { _, actionId, event ->
+        // ハードウェア Enter(ftester ドライバ経由)は actionId=IME_NULL で届く。ソフトキーボード
+        // の検索キー押下は actionId=IME_ACTION_SEARCH。両方受理する。
+        val fired = actionId == EditorInfo.IME_ACTION_SEARCH || actionId == EditorInfo.IME_NULL
+        if (fired) {
+            // **UP のみ数える**。TextView はハードウェア Enter の onKeyDown ではフラグを立てるだけで
+            // リスナを呼ばず、onKeyUp で IME_NULL を渡して1回だけ呼ぶ。DOWN で数えると1回も数えない
+            // (実測 2026-07-28: DOWN 判定で ime=0 のまま E2E が落ちた)
+            if (event == null || event.action == KeyEvent.ACTION_UP) {
+                imeCount++
+                imeAction.text = "ime=$imeCount"
+            }
+        }
+        fired
+    }
+
     v.findViewById<Button>(R.id.btn_input_submit).setOnClickListener {
         submitted.text = "submitted=${single.text}"
     }
@@ -70,6 +90,8 @@ fun buildInputScreen(activity: Activity, parent: ViewGroup): View {
         password.setText("")
         multiline.setText("")
         submitted.text = "submitted=-"
+        imeCount = 0
+        imeAction.text = "ime=0"
     }
     return v
 }

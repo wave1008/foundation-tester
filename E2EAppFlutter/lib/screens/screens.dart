@@ -93,6 +93,7 @@ class _InputScreenState extends State<InputScreen> {
   final _password = TextEditingController();
   final _multiline = TextEditingController();
   String _submitted = '-';
+  int _imeCount = 0;
 
   @override
   void dispose() {
@@ -107,12 +108,15 @@ class _InputScreenState extends State<InputScreen> {
         TaggedText(Tags.echoSingle, 'single=${_single.text}'),
         TaggedText(Tags.echoPassword, 'password=${_password.text}'),
         TaggedText(Tags.echoLength, 'len=${_single.text.length}'),
+        TaggedText(Tags.imeAction, 'ime=$_imeCount'),
         TaggedText(Tags.txtInputSubmitted, 'submitted=$_submitted'),
         tagged(
           Tags.fieldSingle,
           TextField(
             controller: _single,
+            textInputAction: TextInputAction.search,
             onChanged: (_) => setState(() {}),
+            onSubmitted: (_) => setState(() => _imeCount++),
             decoration: const InputDecoration(hintText: '単一行'),
           ),
         ),
@@ -136,7 +140,10 @@ class _InputScreenState extends State<InputScreen> {
               _single.clear();
               _password.clear();
               _multiline.clear();
-              setState(() => _submitted = '-');
+              setState(() {
+                _submitted = '-';
+                _imeCount = 0;
+              });
             }),
           ),
         ]),

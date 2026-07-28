@@ -3,6 +3,8 @@ package com.ftester.e2e.screens
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -13,6 +15,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import com.ftester.e2e.Tags
 import com.ftester.e2e.ui.ScreenColumn
@@ -32,11 +35,14 @@ fun InputScreen() {
     var password by remember { mutableStateOf("") }
     var multiline by remember { mutableStateOf("") }
     var submitted by remember { mutableStateOf("-") }
+    // #field_single の IME アクション(検索)発火回数のみを数える。
+    var imeCount by remember { mutableStateOf(0) }
 
     ScreenColumn(scrollable = false) {
         TaggedText(Tags.ECHO_SINGLE, "single=$single")
         TaggedText(Tags.ECHO_PASSWORD, "password=$password")
         TaggedText(Tags.ECHO_LENGTH, "len=${single.length}")
+        TaggedText(Tags.IME_ACTION, "ime=$imeCount")
         TaggedText(Tags.TXT_INPUT_SUBMITTED, "submitted=$submitted")
 
         OutlinedTextField(
@@ -44,6 +50,8 @@ fun InputScreen() {
             onValueChange = { single = it },
             modifier = Modifier.fillMaxWidth().testTag(Tags.FIELD_SINGLE),
             singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            keyboardActions = KeyboardActions(onSearch = { imeCount++ }),
             placeholder = { Text("単一行") }
         )
         OutlinedTextField(
@@ -64,6 +72,7 @@ fun InputScreen() {
                 password = ""
                 multiline = ""
                 submitted = "-"
+                imeCount = 0
             }
         }
 

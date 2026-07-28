@@ -11,6 +11,7 @@ struct UIKitTextField: UIViewRepresentable {
     let placeholder: String
     var isSecure: Bool = false
     @Binding var text: String
+    var onSubmit: (() -> Void)? = nil
 
     func makeUIView(context: Context) -> UITextField {
         let field = UITextField()
@@ -22,6 +23,7 @@ struct UIKitTextField: UIViewRepresentable {
         field.autocapitalizationType = .none
         // ASCII 直接入力を前提にする(IME を介す type は契約外。ui-contract.md §全体規約)。
         field.keyboardType = .asciiCapable
+        field.returnKeyType = .search
         field.delegate = context.coordinator
         field.addTarget(context.coordinator, action: #selector(Coordinator.changed(_:)), for: .editingChanged)
         field.setContentHuggingPriority(.defaultLow, for: .horizontal)
@@ -30,6 +32,7 @@ struct UIKitTextField: UIViewRepresentable {
 
     func updateUIView(_ uiView: UITextField, context: Context) {
         context.coordinator.text = $text
+        context.coordinator.onSubmit = onSubmit
         if uiView.text != text { uiView.text = text }
     }
 
@@ -37,6 +40,7 @@ struct UIKitTextField: UIViewRepresentable {
 
     final class Coordinator: NSObject, UITextFieldDelegate {
         var text: Binding<String>
+        var onSubmit: (() -> Void)?
         init(text: Binding<String>) { self.text = text }
 
         @objc func changed(_ sender: UITextField) {
@@ -44,6 +48,7 @@ struct UIKitTextField: UIViewRepresentable {
         }
 
         func textFieldShouldReturn(_ textField: UITextField) -> Bool {
+            onSubmit?()
             textField.resignFirstResponder()
             return true
         }

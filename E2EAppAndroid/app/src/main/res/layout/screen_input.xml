@@ -27,6 +27,12 @@
         android:text="len=0" />
 
     <TextView
+        android:id="@+id/txt_ime_action"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="ime=0" />
+
+    <TextView
         android:id="@+id/txt_input_submitted"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
@@ -38,6 +44,7 @@
         android:layout_height="wrap_content"
         android:hint="単一行"
         android:inputType="text"
+        android:imeOptions="actionSearch"
         android:saveEnabled="false"
         android:importantForAutofill="no" />
 
