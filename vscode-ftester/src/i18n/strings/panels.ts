@@ -172,6 +172,7 @@ export const panelsStrings = {
   "panels.processes.colParentProcess": { ja: "親プロセス", en: "Parent Process" },
   "panels.processes.colNote": { ja: "補足", en: "Note" },
 
+  "panels.settings.deviceScreenSectionTitle": { ja: "デバイス画面", en: "Device screen" },
   "panels.settings.pollingModeLabel": { ja: "ポーリングモードを使用する", en: "Use polling mode" },
   "panels.settings.pollingModeHint": {
     ja: "デバイス画面のストリーミングが不安定なときの回避用です。",
