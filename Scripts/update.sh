@@ -6,6 +6,8 @@
 #
 # やること: install.sh(pull → swift build → 拡張 → .mcp.json → 検証ゲート)を再実行し、
 #           更新固有の作業を足す: ftester project sync / Claude Code プラグインの更新と版照合。
+#           **先に update-check.sh で判定し、up-to-date なら何もせず終える**(全工程は更新が
+#           無くても約30秒かかる。壊れた導入を入れ直すときは --force)。
 # やらないこと: プロファイルの作り直し(既存を尊重)・受け手パッケージの作成(それは install.sh)。
 #
 # 契約: 手順は .claude/skills/ftester-update/SKILL.md と 1:1。片方だけ変えない。
@@ -17,6 +19,8 @@ WORK_DIR="$PWD"
 TOOL_ROOT_ARG=""
 PASS_THROUGH=()
 DO_PLUGIN=1
+ALLOW_PULL=1
+FORCE=0
 
 usage() {
   cat <<'EOF'
@@ -25,12 +29,14 @@ usage() {
   --work-dir <dir>   Projects/ がある受け手ディレクトリ(既定: カレント)
   --tool-root <dir>  foundation-tester クローンの場所(既定: <work-dir>/../foundation-tester)
   --no-pull          クローンを更新しない(版を固定したいとき・本体の開発中)
+  --force            更新が無くても全工程を実行する(壊れた導入の入れ直し)
   --skip-extension   VSCode 拡張の再インストールを行わない
   --skip-plugin      Claude Code プラグイン(スキル)の更新を行わない
   -h, --help         このヘルプ
 
 やること: install.sh の再実行(git pull → swift build → 拡張 → .mcp.json → 検証ゲート)
          + ftester project sync + プラグインの更新と版照合
+         **更新が無ければ何もせず終える**(判定は update-check.sh。全部やるなら --force)
 EOF
 }
 
@@ -38,7 +44,8 @@ while [ $# -gt 0 ]; do
   case "$1" in
     --work-dir) WORK_DIR="${2:?--work-dir に値が必要です}"; shift 2 ;;
     --tool-root) TOOL_ROOT_ARG="${2:?--tool-root に値が必要です}"; PASS_THROUGH+=(--tool-root "$2"); shift 2 ;;
-    --no-pull) PASS_THROUGH+=(--no-pull); shift ;;
+    --no-pull) ALLOW_PULL=0; PASS_THROUGH+=(--no-pull); shift ;;
+    --force) FORCE=1; shift ;;
     --skip-extension) PASS_THROUGH+=(--skip-extension); shift ;;
     --skip-plugin) DO_PLUGIN=0; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -69,6 +76,21 @@ if [ -z "$TOOL_ROOT" ]; then
   exit 1
 fi
 
+# ---- 0.5 更新が無いなら何もしない ---------------------------------------------
+# 以降の工程は「更新が無くても」約30秒かかる(swift build の no-op 18s + doctor 8s + 拡張の
+# 再パッケージ 4s。M2 Ultra 実測)。1秒で済む判定を先に置く。
+# **up-to-date のときだけ止める** ―― pinned/unknown(版固定・オフライン)は判定できないだけなので
+# 従来どおり進む。取りこぼしを疑うとき(前回が途中で失敗した等)は --force
+if [ "$FORCE" = "0" ] && [ "$ALLOW_PULL" = "1" ] && [ -f "$TOOL_ROOT/Scripts/update-check.sh" ]; then
+  check_out="$(bash "$TOOL_ROOT/Scripts/update-check.sh" --tool-root "$TOOL_ROOT" 2>/dev/null || true)"
+  case "$check_out" in
+    *"verdict=up-to-date"*)
+      echo "✅ 最新です($(git -C "$TOOL_ROOT" rev-parse --short HEAD 2>/dev/null))。取り込む変更はありません。"
+      echo "   前回が途中で失敗した・入れ直したい場合は --force を付けて再実行してください。"
+      exit 0 ;;
+  esac
+fi
+
 # ---- 1〜2・5・5.5: install.sh に委譲(pull・build・拡張・.mcp.json・検証ゲート・ログ) -------
 # --skip-project: 既存の Projects/ を触らない(更新でプロジェクトを作り直さない)
 echo "==> install.sh を再実行(pull → build → 拡張 → .mcp.json → 検証)"
@@ -93,18 +115,31 @@ fi
 # `git pull` ではスキルは更新されない(~/.claude/plugins/cache/ のスナップショットを読むため)。
 # marketplace → plugin の順が必須(先に marketplace を更新しないと古い定義を見る)
 PLUGIN_RESULT="skip"
+plugin_installed_version() {
+  claude plugin list 2>/dev/null \
+    | awk '/ftester@foundation-tester/{f=1} f&&/Version:/{print $2; exit}'
+}
 if [ "$DO_PLUGIN" = "1" ] && command -v claude >/dev/null 2>&1; then
   if claude plugin list 2>/dev/null | grep -q "ftester@foundation-tester"; then
     echo ""
     echo "==> Claude Code プラグイン(スキル)の更新"
+    # 更新前の版を控える。**入れ替わっていなければ Claude Code の再起動は要らない**
+    # (「一致した」だけで再起動を案内すると、不要な人間作業を毎回1つ増やす)
+    plugin_before="$(plugin_installed_version)"
     claude plugin marketplace update foundation-tester >/dev/null 2>&1
     claude plugin update ftester@foundation-tester >/dev/null 2>&1
     # 「実行した」ではなく「HEAD と一致した」で判定する
-    plugin_version="$(claude plugin list 2>/dev/null \
-      | awk '/ftester@foundation-tester/{f=1} f&&/Version:/{print $2; exit}')"
+    plugin_version="$(plugin_installed_version)"
+    # 空だと下の case のパターンが `*` になり、**何であれ「一致」と誤判定する**(false green)
+    [ -n "$plugin_version" ] || plugin_version="(取得できず)"
     head_sha="$(git -C "$TOOL_ROOT" rev-parse HEAD 2>/dev/null)"
     case "$head_sha" in
-      "$plugin_version"*) PLUGIN_RESULT="ok"; echo "✅ プラグイン: $plugin_version(HEAD と一致)" ;;
+      "$plugin_version"*)
+        if [ "$plugin_version" = "$plugin_before" ]; then
+          PLUGIN_RESULT="unchanged"; echo "✅ プラグイン: $plugin_version(更新前と同じ・再起動不要)"
+        else
+          PLUGIN_RESULT="ok"; echo "✅ プラグイン: $plugin_before → $plugin_version(HEAD と一致)"
+        fi ;;
       *) PLUGIN_RESULT="stale"; echo "⚠️ プラグイン: $plugin_version(HEAD ${head_sha:0:12} と不一致)" ;;
     esac
   else

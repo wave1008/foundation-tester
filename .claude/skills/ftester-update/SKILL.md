@@ -64,7 +64,10 @@ bash <TOOL_ROOT>/Scripts/update.sh
 ```
 
 (カレントが WORK_DIR でなければ `--work-dir <WORK_DIR>`。クローンの場所が既定と違うなら `--tool-root <dir>`。
-オプション: `--skip-extension` / `--skip-plugin` / `--no-pull`。)
+オプション: `--skip-extension` / `--skip-plugin` / `--no-pull` / `--force`。)
+
+**更新が無ければ「✅ 最新です」だけ出して即終了する**(全工程は更新が無くても約30秒かかるため。
+判定は update-check.sh)。**前回が途中で失敗した・入れ直したいときだけ `--force`** を付ける。
 
 中で `install.sh` を再実行するので、**git pull(ローカル変更は確認のうえ破棄・断れば中止)・
 swift build・VSCode 拡張・`.mcp.json` の追従・検証ゲート・ログ**はそちらの規律がそのまま効く。
