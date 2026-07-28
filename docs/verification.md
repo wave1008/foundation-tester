@@ -326,6 +326,26 @@ FM は死んだら**再起動まで回復しない**ので、死んだ後も呼�
   `/status` の `sessionBundleID` で「どのアプリのブリッジか」まで見ること(別 SUT のブリッジが
   生きていても対象アプリには使えない)
 
+## ワーカーが「ブリッジ接続不能のため離脱しました」で落ちたら
+
+**まず XCUITest ランナーのクラッシュを疑う**(2026-07-28 に真因確定・修正済み)。
+`~/Library/Logs/DiagnosticReports/FTesterRunnerUITests-Runner-*.ips` が積まれていれば確定。
+スタックが `Issue.record` → `Event.post` → `SwiftTestingInteropRecordHandler` の**再帰**で
+数千段になっていれば、XCUI の操作失敗を起点にしたツールチェーン不具合(design.md
+「XCUITest ランナーは『操作の失敗』でプロセスごと落ちる」)。
+
+- **ホスト側の症状は2種**。`The request timed out` / `The network connection was lost`
+  (ランナー死=処理中の HTTP が返らない)と、**離脱せずに「12 回スクロールしても見つかりません」**
+  (別アプリを掴んで無言で空振り)。後者は失敗レポートの要素一覧が**対象アプリの画面のまま**なので
+  「スワイプが効いていないだけ」に見える
+- ランナー側の決め手は `.ftester/bridge-<xcuiPort>.log` の
+  `Failed to application <bundleID> is not running`。**その bundleID が対象アプリと違えば**
+  セッションの取り違え(使い回した XCUITest ブリッジが前のプロジェクトのアプリを指したまま)
+- **再現条件は「複数 SUT を連続で回す」**。`Scripts/e2e.sh --ios --ios-inapp --cmp` のように
+  SUT を1つに絞ると出ない(プロジェクトを跨いだセッション残留が起きないため)。
+  切り分けは必ずフル構成で、**A/B は変更を `git stash` して同じ条件で並べる**
+  (実測: ベースライン フル×2 = 各1件離脱、修正後 フル×2 = 0件)
+
 ## テストが「Application is not running」で全滅したら
 
 ランナーや自分の変更を疑う前に **SUT のバックエンド死活を確認**する
