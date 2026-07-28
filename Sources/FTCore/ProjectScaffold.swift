@@ -169,7 +169,7 @@ public enum ProjectScaffold {
     /// いれば空 = 何も書かない)
     @discardableResult
     public static func ensureGitignore(packageRoot: URL) throws -> [String] {
-        let entries = [".build/", "Projects/*/reports/"]
+        let entries = [".build/", ".ftester/", "Projects/*/reports/"]
         let url = packageRoot.appendingPathComponent(".gitignore")
 
         // 先頭の "/"・"./"、末尾の "/" を無視して同一視する(.build / /.build/ / .build/ はどれも同じ扱い)

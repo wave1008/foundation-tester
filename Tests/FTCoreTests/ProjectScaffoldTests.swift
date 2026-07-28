@@ -85,7 +85,7 @@ final class ProjectScaffoldTests: XCTestCase {
 
     func testGitignoreFreshCreatesBothEntries() throws {
         let added = try ProjectScaffold.ensureGitignore(packageRoot: packageRoot)
-        XCTAssertEqual(added, [".build/", "Projects/*/reports/"])
+        XCTAssertEqual(added, [".build/", ".ftester/", "Projects/*/reports/"])
         let content = try String(contentsOf: gitignoreURL, encoding: .utf8)
         XCTAssertTrue(content.contains(".build/"))
         XCTAssertTrue(content.contains("Projects/*/reports/"))
@@ -107,7 +107,7 @@ final class ProjectScaffoldTests: XCTestCase {
         try existing.write(to: gitignoreURL, atomically: true, encoding: .utf8)
 
         let added = try ProjectScaffold.ensureGitignore(packageRoot: packageRoot)
-        XCTAssertEqual(added, ["Projects/*/reports/"])
+        XCTAssertEqual(added, [".ftester/", "Projects/*/reports/"])
 
         let content = try String(contentsOf: gitignoreURL, encoding: .utf8)
         XCTAssertTrue(content.contains("*.log"), "既存行は保持")
@@ -128,7 +128,7 @@ final class ProjectScaffoldTests: XCTestCase {
     }
 
     func testGitignoreRecognizesAlternateSpellingsAsPresent() throws {
-        let existing = "/.build/\n./Projects/*/reports\n"
+        let existing = "/.build/\n.ftester\n./Projects/*/reports\n"
         try existing.write(to: gitignoreURL, atomically: true, encoding: .utf8)
 
         let added = try ProjectScaffold.ensureGitignore(packageRoot: packageRoot)
