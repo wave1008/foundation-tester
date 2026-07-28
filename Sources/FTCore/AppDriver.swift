@@ -64,6 +64,19 @@ public enum DriverError: Error, LocalizedError {
         }
     }
 
+    /// 「このエンジンでは原理的に実行できない」応答か = XCUITest へ回してよいか。
+    /// **501 と「ルート不明の 404」だけ**。
+    /// - 409 は含めない: キーウィンドウ不在・セッション消失といった一時的競合にも使われ、
+    ///   フォールバック判定に使うと「アプリが前面に無い」状況を隠して別画面を操作しかねない
+    /// - 404 は in-app では ref 不明(スナップショット取り直しが要る本物の失敗)にも使われるため、
+    ///   ルート不明を表す本文前置でだけ拾う(両ブリッジとも "not found: METHOD PATH" 書式。
+    ///   InAppBridge.handle / Runner の BridgeRouter.handle と同期が必要)
+    public static func isEngineIncapable(_ error: Error) -> Bool {
+        guard let driverError = error as? DriverError,
+              case .badResponse(let status, let body) = driverError else { return false }
+        return status == 501 || (status == 404 && body.hasPrefix("not found:"))
+    }
+
     /// URLError のうち、接続そのものが成立しなかったことが確実なものだけを true とする
     /// (タイムアウト・キャンセル等、届いた可能性が残るものは false = 安全のためリトライしない)。
     /// .networkConnectionLost は接続確立後の切断でも出る=届いて処理された可能性が残るため含めない

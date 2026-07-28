@@ -24,7 +24,14 @@ public final class InAppDriver: AppDriver {
     }
 
     public func terminate() async throws {
-        guard let bundleID = lastBundleID else { return }
+        // launchApp を経ずに terminateApp が来る経路がある(tearDown だけで終了する等)。
+        // その場合は**注入先アプリ**を対象にする: in-app ブリッジは対象アプリのプロセス内に
+        // 常駐しているので、/status.sessionBundleID が「今動いているアプリ」の唯一の情報源。
+        // ブリッジ無応答 = 対象アプリが既に居ない → 何もせず成功にする
+        // (未起動 terminate を成功として扱う XCUITest 側 handleTerminate と同じ冪等性)
+        var target = lastBundleID
+        if target == nil { target = try? await client.status(timeout: 3).sessionBundleID }
+        guard let bundleID = target else { return }
         launcher.terminate(bundleID: bundleID)
     }
 
@@ -53,6 +60,26 @@ public final class InAppDriver: AppDriver {
     public func press(ref: Int, duration: Double) async throws {
         try await withCrashContext { try await client.press(ref: ref, duration: duration) }
     }
+    // in-app では原理的に実行できない操作(自プロセス外・座標ジェスチャ)。hybrid では StepExecutor /
+    // FTDriveCore が XCUITest 側へ回すのでここへは来ない。engine=inapp 単独だけがここに到達するため、
+    // 既定実装の汎用メッセージではなく構成の直し方を示す(501 = このエンジンでは未対応)
+    public func home() async throws { throw Self.inappOnly("home") }
+    public func openAppSwitcher() async throws { throw Self.inappOnly("appSwitcher") }
+    public func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
+                     pressSeconds: Double, durationSeconds: Double) async throws {
+        throw Self.inappOnly("drag")
+    }
+    public func press(x: Double, y: Double, duration: Double) async throws {
+        throw Self.inappOnly("座標指定の press")
+    }
+
+    private static func inappOnly(_ action: String) -> DriverError {
+        .badResponse(status: 501,
+                     body: "\(action) は in-app エンジンでは実行できません"
+                         + "(アプリのプロセス内からは他アプリ・システム UI を操作できません)。"
+                         + "実行プロファイルを hybrid か xcuitest にしてください")
+    }
+
     public func screenshot() async throws -> Data { try await withCrashContext { try await client.screenshot() } }
     public var lastActionNote: String? { client.lastActionNote }
 

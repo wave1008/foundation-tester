@@ -187,9 +187,14 @@ public final class StepExecutor {
     /// バウンス由来の非決定性で scrollTo 直後のタップが flake した(2026-07-23 実害)。
     /// type 用の preferTypeDriver(廃止済み・常に false)とは別物。
     public var typeDriverGestures: Set<String>
-    /// swipe/press が 501 を1回でも受けたら true。以降は直接 typeDriver へ(scrollTo は
-    /// 最大 maxSwipes 回 swipe するため、毎回 501 を往復させないため)
+    /// swipe/press が「このエンジンでは不可」を1回でも受けたら true。以降は直接 typeDriver へ
+    /// (scrollTo は最大 maxSwipes 回 swipe するため、毎回往復させないため)
     private var gestureFallbackLatched = false
+    /// drag(スクロール探索直後の空打ち)専用のラッチ。**gestureFallbackLatched と共有しない**:
+    /// in-app は drag を一切実装しないので必ず 501 になるが、swipe は UIKit なら
+    /// contentOffset 経路で決定的に効く。共有すると drag の 501 だけで全 swipe が XCUITest 実
+    /// スワイプ化し、バウンス由来の flake を持ち込む(typeDriverGestures の注意書きと同じ理由)
+    private var dragFallbackLatched = false
     public var delegate: ReplayDelegate?
     public var healingEnabled: Bool
     /// 実行プロファイルの falsePositiveCheck に対応するマスタースイッチ(既定 true)。false なら
@@ -420,8 +425,7 @@ public final class StepExecutor {
                     if releasesScrollTouch,
                        Self.emptyDragIsSafe(x: x, y: y, of: element,
                                             in: snapshot.elements, screen: snapshot.screen) {
-                        try? await driver.drag(fromX: x, fromY: y, toX: x + 2, toY: y,
-                                               pressSeconds: 0.05, durationSeconds: 0.05)
+                        await emptyDrag(x: x, y: y)
                     }
                     try await settleAfterScroll(step: step, found: element, phase: &phase)
                 }
@@ -705,10 +709,9 @@ public final class StepExecutor {
                     ref: element.ref, duration: step.duration ?? FlowStep.defaultPressDuration)
                 phase.actionMs += Self.ms(clock.now - start)
             } catch {
-                // 501 = inapp(Compose)が press(長押し)に未対応(InAppBridge.swift 側で 501 化済み)。
-                // 409 はキーウィンドウ不在等の一時的競合と同じコードのため取り違える。
-                guard case DriverError.badResponse(let code, _) = error, code == 501,
-                      let td = typeDriver else { throw error }
+                // 「このエンジンでは不可」(501 / ルート不明 404)だけ XCUITest へ回す。
+                // 409 を含めない理由は DriverError.isEngineIncapable 参照
+                guard DriverError.isEngineIncapable(error), let td = typeDriver else { throw error }
                 guard try await pressViaTypeDriver(td, step: step, phase: &phase) else { throw error }
                 gestureFallbackLatched = true
                 driverFallback = "XCUITest へフォールバック"
@@ -839,6 +842,29 @@ public final class StepExecutor {
     }
 
 
+    /// スクロール探索直後の「空打ち」極小ドラッグ(呼ぶ条件は呼び出し側の判定を参照)。
+    /// **in-app エンジンは drag を一切実装しない**(501)ため、hybrid では typeDriver=XCUITest へ
+    /// 回さないとこの対策が丸ごと不発になる(= Compose の容器がタッチを1回吸ったままになり、
+    /// 直後の tap/press が空振りする)。空打ちは補助でありこれ自体の失敗はステップの失敗にしない
+    /// (両経路とも失敗したら黙って進む = 従来の `try?` と同じ扱い)
+    private func emptyDrag(x: Double, y: Double) async {
+        func drag(_ target: AppDriver) async throws {
+            try await target.drag(fromX: x, fromY: y, toX: x + 2, toY: y,
+                                  pressSeconds: 0.05, durationSeconds: 0.05)
+        }
+        if dragFallbackLatched, let td = typeDriver {
+            try? await drag(td)
+            return
+        }
+        do {
+            try await drag(driver)
+        } catch {
+            guard DriverError.isEngineIncapable(error), let td = typeDriver else { return }
+            dragFallbackLatched = true
+            try? await drag(td)
+        }
+    }
+
     private func swipeWithFallback(_ direction: FTSwipeDirection,
                                    phase: inout PhaseAccumulator) async throws -> Bool {
         let clock = ContinuousClock()
@@ -854,10 +880,9 @@ public final class StepExecutor {
             phase.actionMs += Self.ms(clock.now - start)
             return false
         } catch {
-            // 501 = inapp(Compose)が swipe に未対応(InAppBridge.swift 側で 501 化済み)。
-            // 409 はキーウィンドウ不在等の一時的競合と同じコードのため取り違える。
-            guard case DriverError.badResponse(let code, _) = error, code == 501,
-                  let td = typeDriver else { throw error }
+            // 「このエンジンでは不可」(501 / ルート不明 404)だけ XCUITest へ回す。
+            // 409 を含めない理由は DriverError.isEngineIncapable 参照
+            guard DriverError.isEngineIncapable(error), let td = typeDriver else { throw error }
             let start = clock.now
             try await td.swipe(direction)
             phase.actionMs += Self.ms(clock.now - start)

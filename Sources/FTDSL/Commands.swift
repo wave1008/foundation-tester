@@ -1126,7 +1126,7 @@ public func terminateApp(file: StaticString = #filePath, line: UInt = #line) {
 /// ホーム画面へ戻る
 public func home(file: StaticString = #filePath, line: UInt = #line) {
     let core = FTRuntime.requireCore(command: "home")
-    let driver = core.driver
+    let driver = core.systemDriver
     core.performCustom(description: "home", file: file, line: line) {
         try await driver.home()
     }
@@ -1135,7 +1135,7 @@ public func home(file: StaticString = #filePath, line: UInt = #line) {
 /// アプリスイッチャー(タスク一覧)を開く
 public func appSwitcher(file: StaticString = #filePath, line: UInt = #line) {
     let core = FTRuntime.requireCore(command: "appSwitcher")
-    let driver = core.driver
+    let driver = core.systemDriver
     core.performCustom(description: "appSwitcher", file: file, line: line) {
         try await driver.openAppSwitcher()
     }
