@@ -103,7 +103,10 @@ clone 構成(両方ある)の再実行は従来どおり冪等スキップで続
 | プロジェクト名（英数字 `^[A-Za-z0-9_][A-Za-z0-9_-]*$`。SPM ターゲット名になる） | Project | カレントフォルダ名から作った候補（推奨）/ `MyAppTests` / Other=自由入力 |
 | テスト対象アプリの bundle ID | Bundle ID | 「まだ分からない（後で設定）」/ Other=自由入力 |
 | このマシンの名前（machines/<名>.json のファイル名になる） | Machine | `scutil --get ComputerName` を英数字に整えた名前（推奨）/ preflight の `machine_registered=`（あれば）/ Other |
-| ツール（foundation-tester）の clone 先 | Clone先 | 隣 `../foundation-tester`（推奨）/ preflight の `tool_root=`（既存クローンがあれば）/ Other |
+| テスト対象のプラットフォーム | Platform | iOS / Android / 両方 |
+
+（clone 先は既定の隣 `../foundation-tester` を使う。preflight が別の場所に既存クローンを見つけた場合、
+または受け手が指定した場合だけ、追加で 1 問聞く。）
 
 - bundle ID は**分からなくても中断しない**。「まだ分からない」ならプレースホルダ `com.example.myapp` の
   まま続行する（実IDが要るのは実行(launch)時だけ。後から `profiles/apps/<projectname>.json` の `app` を
@@ -157,7 +160,8 @@ tag も clone で取得できる)。
 ステップ0で聞いた値を引数で渡すだけで、**探索はしない**（appPath・bundle ID を勝手に埋めない設計）。
 
 ```
-bash <TOOL_ROOT>/Scripts/install.sh --work-dir <WORK_DIR> --name <ProjectName> [--app <bundleID>]
+bash <TOOL_ROOT>/Scripts/install.sh --work-dir <WORK_DIR> --name <ProjectName> \
+  --platform <ios|android|both> [--app <bundleID>]
 ```
 
 - **クローンがまだ無いとき**は clone から丸ごとやる（TOOL_ROOT は既定で WORK_DIR の隣に作られる）:
@@ -243,23 +247,22 @@ FM 無しで動く。**人間に「有効か」を聞かない**：
 コミット、`.build/` と `Projects/*/reports/` は ignore(init が整備済み)。`.mcp.json` は TOOL_ROOT の
 絶対パスを含むためマシン固有。
 
-### 5. マシンプロファイル（このPC）
+### 5. プロファイル（マシン/アプリ/実行）
 
-以降のプロファイル編集は **WORK_DIR の `Projects/<ProjectName>/`** に対して行う。
+**JSON を手で書かない**。`ftester machine set "<マシン名>"`（ステップ0で聞いた名前）で登録したうえで、
+デバイスの選定と3プロファイルの作成は `/ftester-profiles` に任せる（同じ論理名で machines と runs を
+揃えて書き、解決できるかまで検証する `ftester profile setup` を使う）。ステップ8でそれを呼ぶ。
 
-- `ftester machine set "<マシン名>"` を実行（machines/ が1つだけなら自動採用が効くので省略可。
-  複数マシンを1クローンで扱う時のみ必須。登録先は `~/.config/ftester/config.json` でグローバル）。
-- `xcrun simctl list devices available` で使えるシミュレータを採取し、**シミュレータはユーザーに聞かず
-  自動選択**する（既定：利用可能な中で最新 iOS の iPhone。Pro があれば優先、無ければ先頭の iPhone）。
-  `Projects/<ProjectName>/profiles/machines/<マシン名>.json` を自動作成し、選んだ名前を要約報告する
-  （後から編集可。雛形は同ディレクトリの README.md）。`name` は runs から参照されるため ios/android
-  横断で一意に:
+`/ftester-profiles` を使わず自分で通すなら、デバイスを選び（`ftester api device-catalog` /
+`xcrun simctl list devices available` / `emulator -list-avds`。無ければ `ftester api create-device`）、
 
-```json
-{ "ios": { "devices": [ { "name": "メイン機", "simulator": "iPhone 17 Pro" } ] } }
+```
+ftester profile setup --project <ProjectName> --platform <plat> \
+  --simulator "<機種名>" --os <version> --app-id <bundleID> --app-name "<表示名>"
 ```
 
-- 利用可能な iOS シミュレータが **0 件のときだけ** 🧑 停止し、Xcode で runtime/デバイスの導入を依頼する。
+を実行する（Android は `--avd <avdID>`）。利用可能な iOS シミュレータが **0 件のときだけ** 🧑 停止し、
+Xcode で runtime/デバイスの導入を依頼する。
 
 ### 6. アプリのパス（appPath）と未確定の bundle ID は後から設定する
 

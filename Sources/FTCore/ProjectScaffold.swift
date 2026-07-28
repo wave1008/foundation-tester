@@ -20,7 +20,8 @@ public enum ProjectScaffold {
     /// 名前検証 → 雛形生成 → Package.swift マーカー区間更新までを一括で行う
     /// (ftester project create から使う)
     @discardableResult
-    public static func createAndRegister(name: String, app: String, repoRoot: URL) throws -> TestProject {
+    public static func createAndRegister(name: String, app: String, repoRoot: URL,
+                                         platforms: [String] = ["ios", "android"]) throws -> TestProject {
         guard ProjectStore.isValidName(name) else {
             throw ProjectStoreError.invalidName(name)
         }
@@ -30,7 +31,7 @@ public enum ProjectScaffold {
         guard !FileManager.default.fileExists(atPath: project.rootURL.path) else {
             throw ProjectScaffoldError.alreadyExists(project.rootURL)
         }
-        try create(project: project, app: app)
+        try create(project: project, app: app, platforms: platforms)
         try PackageManifestEditor.updateProjects(
             manifestURL: repoRoot.appendingPathComponent("Package.swift"),
             projectNames: ProjectStore.all(repoRoot: repoRoot).map(\.name),
@@ -291,7 +292,10 @@ public enum ProjectScaffold {
     }
 
     /// プロジェクト雛形を生成する(ディレクトリは存在しない前提。Package.swift の更新は呼び出し側)
-    public static func create(project: TestProject, app: String) throws {
+    /// platforms は雛形を作る実行プロファイル(runs/<plat>.json)の対象。指示していない
+    /// プラットフォームの run を残すとデバイス名の不整合として現れるので、必要なものだけ作る
+    public static func create(project: TestProject, app: String,
+                              platforms: [String] = ["ios", "android"]) throws {
         let fm = FileManager.default
         for dir in [project.generatedDir, project.disabledDir,
                     project.appsDir, project.machinesDir, project.runsDir,
@@ -315,15 +319,19 @@ public enum ProjectScaffold {
         try appProfileTemplate(appName: project.name, app: app).write(
             to: project.appsDir.appendingPathComponent("\(appRef).json"),
             atomically: true, encoding: .utf8)
-        try runProfileTemplate(app: appRef, deviceNames: ["simulator1"]).write(
-            to: project.runsDir.appendingPathComponent("ios.json"),
-            atomically: true, encoding: .utf8)
-        try runProfileTemplate(app: appRef, deviceNames: ["emulator1"]).write(
-            to: project.runsDir.appendingPathComponent("android.json"),
-            atomically: true, encoding: .utf8)
-        try runProfileTemplate(app: appRef, deviceNames: ["simulator1", "emulator1"]).write(
-            to: project.runsDir.appendingPathComponent("all.json"),
-            atomically: true, encoding: .utf8)
+        let deviceName = ["ios": "simulator1", "android": "emulator1"]
+        for platform in platforms {
+            guard let device = deviceName[platform] else { continue }
+            try runProfileTemplate(app: appRef, deviceNames: [device]).write(
+                to: project.runsDir.appendingPathComponent("\(platform).json"),
+                atomically: true, encoding: .utf8)
+        }
+        // all は両プラットフォームを作ったときだけ(片方しか無い all は解決できない)
+        if platforms.contains("ios"), platforms.contains("android") {
+            try runProfileTemplate(app: appRef, deviceNames: ["simulator1", "emulator1"]).write(
+                to: project.runsDir.appendingPathComponent("all.json"),
+                atomically: true, encoding: .utf8)
+        }
     }
 
     static let mainSwift = """

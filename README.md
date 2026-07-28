@@ -152,7 +152,8 @@ swift run ftester run --profile ios           # 実行プロファイル(ブリ�
 | `devices up / down` | 実行プロファイルのデバイスを一括起動・停止(ブリッジ供給込み) |
 | `results list / summary / flaky / trend / devices / slow / insights` | 実行結果の集約・分析(reports/ を横断) |
 | `draft-scenario` | テストベース(`docs/testbases/*.md`)からシナリオの下書きを生成(`--testbase`、`--app`、`--platform`、`--no-fm` で FM 不使用、`--dry-run`) |
-| `init` | 外部パッケージ構成の scaffold(受け手ディレクトリを ftester テストパッケージ化。スキル入口 `/ftester-setup` の既定経路) |
+| `init` | 外部パッケージ構成の scaffold(`--platform` で作る run 雛形を絞る)(受け手ディレクトリを ftester テストパッケージ化。スキル入口 `/ftester-setup` の既定経路) |
+| `profile setup` | マシン/アプリ/実行プロファイルを整合させて作成(冪等。`--platform`、`--device-name`、`--simulator`/`--avd`、`--app-id`) |
 | `profile list` | 実行プロファイルの一覧と現在マシンでの解決チェック |
 | `machine set / show` | このマシンの名前(マシンプロファイルの選択キー)の登録・確認 |
 | `install <パッケージパス>` | .app / .apk のインストール |

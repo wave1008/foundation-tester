@@ -23,6 +23,7 @@ WORK_DIR="$PWD"
 TOOL_ROOT_ARG=""
 PROJECT_NAME=""
 APP_ID=""
+PLATFORM="both"
 DO_EXTENSION=1
 DO_PROJECT=1
 DO_MCP=1
@@ -36,6 +37,7 @@ usage() {
   --work-dir <dir>   Projects/ を置く受け手ディレクトリ(既定: カレント)
   --name <name>      作成するプロジェクト名(英数字・_・-。省略時はディレクトリ名から生成)
   --app <bundleID>   対象アプリの bundle ID / パッケージ名(省略可。後から差し替え可)
+  --platform <p>     実行プロファイルの雛形を作る対象: ios / android / both(既定 both)
   --tool-root <dir>  foundation-tester クローンの場所(既定: <work-dir>/../foundation-tester)
   --no-clone         クローンが無くても取得しない(既存クローン必須)
   --skip-extension   VSCode 拡張のインストールを行わない
@@ -57,6 +59,7 @@ while [ $# -gt 0 ]; do
     --work-dir) WORK_DIR="${2:?--work-dir に値が必要です}"; shift 2 ;;
     --name) PROJECT_NAME="${2:?--name に値が必要です}"; shift 2 ;;
     --app) APP_ID="${2:?--app に値が必要です}"; shift 2 ;;
+    --platform) PLATFORM="${2:?--platform に値が必要です}"; shift 2 ;;
     --tool-root) TOOL_ROOT_ARG="${2:?--tool-root に値が必要です}"; shift 2 ;;
     --no-clone) ALLOW_CLONE=0; shift ;;
     --skip-extension) DO_EXTENSION=0; shift ;;
@@ -236,6 +239,8 @@ project_exists() {
 # 省略可能な引数は配列で渡す(空文字列を引数として渡さないため)
 APP_ARGS=()
 [ -n "$APP_ID" ] && APP_ARGS=(--app "$APP_ID")
+# 指示していないプラットフォームの run を作らない(machines と runs の名前不整合の温床)
+PLATFORM_ARGS=(--platform "$PLATFORM")
 NAME_ARGS=()
 [ -n "$PROJECT_NAME" ] && NAME_ARGS=(--name "$PROJECT_NAME")
 
@@ -246,8 +251,8 @@ elif project_exists; then
 elif [ "$LAYOUT" = "clone" ]; then
   [ -n "$PROJECT_NAME" ] || die "プロジェクト" "clone 構成では --name が必須です" 4
   echo "==> ftester project create $PROJECT_NAME"
-  ( cd "$WORK_DIR" && "$FT" project create "$PROJECT_NAME" "${APP_ARGS[@]+"${APP_ARGS[@]}"}" ) \
-    || die "プロジェクト" "project create に失敗しました" 4
+  ( cd "$WORK_DIR" && "$FT" project create "$PROJECT_NAME" "${APP_ARGS[@]+"${APP_ARGS[@]}"}" \
+      "${PLATFORM_ARGS[@]}" ) || die "プロジェクト" "project create に失敗しました" 4
   record "プロジェクト" ok "Projects/$PROJECT_NAME"
 elif [ -f "$WORK_DIR/Package.swift" ]; then
   # ftester と無関係の既存パッケージへの導入は事故になる(init も拒否する)
@@ -256,14 +261,14 @@ elif [ -f "$WORK_DIR/Package.swift" ]; then
   # 受け手パッケージは確立済み。プロジェクトだけ追加する
   [ -n "$PROJECT_NAME" ] || die "プロジェクト" "既存パッケージへの追加には --name が必要です" 4
   echo "==> ftester project create $PROJECT_NAME"
-  ( cd "$WORK_DIR" && "$FT" project create "$PROJECT_NAME" "${APP_ARGS[@]+"${APP_ARGS[@]}"}" ) \
-    || die "プロジェクト" "project create に失敗しました" 4
+  ( cd "$WORK_DIR" && "$FT" project create "$PROJECT_NAME" "${APP_ARGS[@]+"${APP_ARGS[@]}"}" \
+      "${PLATFORM_ARGS[@]}" ) || die "プロジェクト" "project create に失敗しました" 4
   record "プロジェクト" ok "Projects/$PROJECT_NAME(既存パッケージへ追加)"
 else
   # 新規の受け手パッケージ。TOOL_ROOT はローカルパス依存で引く(git 依存は手動・SKILL ステップ4参照)
   echo "==> ftester init($WORK_DIR)"
   ( cd "$WORK_DIR" && "$FT" init --ftester-path "$TOOL_ROOT" \
-      "${NAME_ARGS[@]+"${NAME_ARGS[@]}"}" "${APP_ARGS[@]+"${APP_ARGS[@]}"}" ) \
+      "${NAME_ARGS[@]+"${NAME_ARGS[@]}"}" "${APP_ARGS[@]+"${APP_ARGS[@]}"}" "${PLATFORM_ARGS[@]}" ) \
     || die "プロジェクト" "ftester init に失敗しました" 4
   record "プロジェクト" ok "受け手パッケージを作成${PROJECT_NAME:+(Projects/$PROJECT_NAME)}"
 fi
