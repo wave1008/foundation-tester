@@ -32,51 +32,52 @@ description: 既に foundation-tester をセットアップ済みの受け手が
 
 ## 手順
 
-### 0. 構成の判定と TOOL_ROOT / WORK_DIR の確定
+### 0. 状態判定(1コマンド。**周辺ディレクトリを探索しない**)
 
-setup のステップ 0.5 と対称。カレントか祖先に `Package.swift` と `Sources/FTScenarioRunner/` の
-**両方**があるかで判定する(この2つが揃うのは foundation-tester クローンだけ):
+```
+curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/preflight.sh | bash
+```
 
-- **両方ある = clone 構成**: TOOL_ROOT = WORK_DIR = そのディレクトリ。ステップ1へ。
-- **`Package.swift` はあるが `Sources/FTScenarioRunner/` が無い**: まず中身を確認する。
-  **ftester マーカー(`// === ftester projects begin`)も foundation-tester への `.package` 依存も
-  無ければ、それは ftester と無関係の Swift パッケージ = 未セットアップ** → 停止して `/ftester-setup` を
-  案内する(更新を試みない)。あれば**外部パッケージ構成**: WORK_DIR =
-  そのディレクトリ。TOOL_ROOT は WORK_DIR/Package.swift の依存宣言から決める:
-  - `.package(path: "<パス>")`（ローカルパス依存・setup 既定）→ その `<パス>` が TOOL_ROOT。
-    見つからなければ兄弟 `../foundation-tester` を既定とする。
-  - `.package(url: "...", from: "<版>")`（git 依存）→ ローカル clone を pull するのではなく
-    **版の付け替え**で更新する(ステップ3の「git 依存」)。
-- **`Package.swift` が無い**: カレント直下の `foundation-tester/` を探す（curl でスキルだけ親ワークスペースに
-  入れた場合の**旧ネスト配置の救済**。現行の既定は兄弟 `../foundation-tester` で、新規にネスト配置を
-  作らない。あれば `cd foundation-tester` で clone 構成扱い）。無ければ**未セットアップ** → 停止して
-  `/ftester-setup`（初回導入）を案内する。
+出力の `layout=` / `tool_root=` / `tool_root_exists=` / `projects=` で構成と場所が決まる。
 
-以降 `ftester ...` は、clone 構成では `swift run ftester ...`、外部構成では
-`TOOL_ROOT/.build/debug/ftester ...`(例 `../foundation-tester/.build/debug/ftester ...`)を指す。
+- `layout=clone` → TOOL_ROOT = WORK_DIR = カレント。
+- `layout=external-installed` → WORK_DIR = カレント、TOOL_ROOT = 出力の `tool_root=`。
+- `layout=external-new`(= 未導入。`Package.swift` が無い/ftester のものでない)→ **更新するものが無い**。
+  停止して `/ftester-setup` を案内する。**`ls` や `find` で周辺を探し回らない**
+  (受け手の個人ディレクトリを覗くことになるうえ、答えは preflight に出ている)。
+
+### 0.7 更新スクリプト(**まずこれを試す**。以降のステップを一括で行う)
+
+```
+bash <TOOL_ROOT>/Scripts/update.sh
+```
+
+(カレントが WORK_DIR でなければ `--work-dir <WORK_DIR>`。クローンの場所が既定と違うなら `--tool-root <dir>`。
+オプション: `--skip-extension` / `--skip-plugin` / `--no-pull`。)
+
+中で `install.sh` を再実行するので、**git pull(ローカル変更は確認のうえ破棄・断れば中止)・
+swift build・VSCode 拡張・`.mcp.json` の追従・検証ゲート・ログ**はそちらの規律がそのまま効く。
+更新固有の作業として **`ftester project sync`(clone 構成)** と
+**Claude Code プラグインの更新+HEAD との版照合**を行う。
+
+- **exit 1** → 中断。出力の `[fail]` 行(と `→ SKILL.md ステップ N`)の原因を解決して再実行する。
+- **exit 2** → 任意ステップのみ未完(`[warn]`)。CLI は使える。warn の内容だけ手当てする。
+- プラグインが `⚠️ HEAD と不一致` のときは `claude plugin marketplace update` →
+  `claude plugin update` を手で実行する(**順序が重要**。marketplace を先に更新しないと古い定義を見る)。
+
+**以降のステップ1〜5.7 は「スクリプトが失敗したときの手作業手順」**(成功したなら読み飛ばし、
+ステップ6の人間チェックポイントへ)。**スクリプトの出力にある情報を別コマンドで取り直さない**
+(構成・TOOL_ROOT は preflight、pull/build/拡張/検証の結果は install.sh の `[ok]` 行にある)。
 
 ### 1. 取り込み（TOOL_ROOT）
 
-TOOL_ROOT で:
-
-```
-git pull
-```
-
-- 衝突が出たら停止して報告する。clone 構成では受け手の `Projects/` が git 管理下にあると衝突しやすい
-  （その場合は Projects/ を git 管理外か別リポジトリにするよう案内する）。外部構成では `Projects/` は
-  WORK_DIR 側なので TOOL_ROOT の pull とは衝突しない。
-- 版を固定したい場合は `git checkout <新version>`。
+TOOL_ROOT で `git pull`。衝突が出たら停止して報告する(clone 構成では受け手の `Projects/` が
+git 管理下にあると衝突しやすい。その場合は Projects/ を git 管理外か別リポジトリにするよう案内する)。
+版を固定したい場合は `git checkout <新version>`。
 
 ### 2. 再ビルド（TOOL_ROOT）
 
-TOOL_ROOT で:
-
-```
-swift build
-```
-
-CLI 本体・拡張ランタイム・FTScenarioRunner ソースが更新される。
+TOOL_ROOT で `swift build`。CLI 本体・拡張ランタイム・FTScenarioRunner ソースが更新される。
 
 - 🧑 **macOS/Xcode のベータ世代が変わっていた場合**は、Xcode を同じベータへ揃えてから
   フルリビルドが必要（FoundationModels の ABI 不整合で全バイナリが dyld クラッシュする）。
@@ -84,19 +85,15 @@ CLI 本体・拡張ランタイム・FTScenarioRunner ソースが更新され�
 
 ### 3. 受け手側の反映
 
-- **clone 構成**: `swift run ftester project sync`（Projects/ ↔ Package.swift マーカー再整合。
-  upstream でプロジェクト構成が変わっても整合させる）。
+- **clone 構成**: `ftester project sync`（Projects/ ↔ Package.swift マーカー再整合）。
 - **外部パッケージ構成**:
-  - `.package(path:)`（ローカルパス依存・既定）: pull 済みソースを SPM が直接見るため、**WORK_DIR で**
-    `swift build --product ftester-scenarios-<自分のプロジェクト>` で再ビルドすれば反映される
-    （念のため先に `swift package resolve`）。バージョン付け替えは不要。
-  - `.package(url: from:)`（git 依存）: WORK_DIR/Package.swift の `from:` を新 version へ上げ、WORK_DIR で
-    `swift package update`（または `swift package resolve`）。CLI・拡張も同じ版へ揃える。
-  - 受け手の `Projects/` 構成を自分で変えた場合のみ `ftester project sync`（WORK_DIR に対して）。
+  - `.package(path:)`（既定）: pull 済みソースを SPM が直接見るため反映済み。シナリオは実行時に
+    自動ビルドされる（明示するなら WORK_DIR で `swift build --product ftester-scenarios-<名>`）。
+  - `.package(url: from:)`（git 依存）: WORK_DIR/Package.swift の `from:` を新 version へ上げ、
+    WORK_DIR で `swift package update`。CLI・拡張も同じ版へ揃える。
 
-**版の一致が要る**: CLI と拡張と（git 依存なら）FTScenarioRunner の版を揃える。protocol 契約を跨ぐ更新では
-拡張が起動時に `ftester api version` で照合し不一致を警告する（`compatCheck.ts`）。path 依存は pull で
-自動的に揃うが、url 依存は付け替え漏れに注意。
+**版の一致が要る**: CLI と拡張と（git 依存なら）FTScenarioRunner の版を揃える。protocol 契約を跨ぐ
+更新では拡張が起動時に `ftester api version` で照合し不一致を警告する（`compatCheck.ts`）。
 
 ### 4. 環境検証（TOOL_ROOT）
 
