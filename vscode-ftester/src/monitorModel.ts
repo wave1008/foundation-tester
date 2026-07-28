@@ -372,6 +372,16 @@ export type MonitorToWebviewMessage =
   // 設定タブの表示言語セレクタ(#settings-language)の現在値(ftester.language 設定の生値)。ready 直後に
   // 送る。webview 側は settingsTab.js の applySettings。切替は setLanguage と対。
   | { readonly type: "language"; readonly value: "auto" | "ja" | "en" }
+  // 設定タブ「更新」セクションの状態。パネル ready 直後と checkUpdate/runUpdate の前後に送る。
+  // 判定そのものは Scripts/update-check.sh(拡張は解釈するだけ)。対向: settingsTab.js の applyUpdate。
+  | { readonly type: "updateStatus"; readonly state: string; readonly localHead: string;
+      readonly remoteHead: string; readonly reason: string }
+  // 更新の実行を開始した(確認を通った)。webview はログ領域を空にして表示する。
+  | { readonly type: "updateLogReset" }
+  // 更新実行中(update.sh)の出力1行。数分かかるので進行を見せるために逐次送る。
+  | { readonly type: "updateLog"; readonly line: string }
+  // 更新実行の終了。exitCode 0 以外は失敗(ログに [fail] 行が出ている)。
+  | { readonly type: "updateFinished"; readonly exitCode: number }
   // 設定タブ「常駐プロセス」一覧。refreshResidentProcesses 受信時と killAllResidentProcesses 完了後に送る。
   // 対向: settingsTab.js の applyResidentMessage。
   | { readonly type: "residentProcesses"; readonly items: readonly ResidentProcess[]; readonly ts: number }
@@ -576,6 +586,10 @@ export type MonitorFromWebviewMessage =
   // 設定タブの表示言語セレクタ変更(settingsTab.js)。monitorPanel.ts が ftester.language 設定(Global)を
   // 更新する。反映は extension.ts の onDidChangeConfiguration ハンドラ(ツリー再翻訳 + 再読み込み案内)。
   | { readonly type: "setLanguage"; readonly value: "auto" | "ja" | "en" }
+  // 設定タブ「更新」の「更新を確認」ボタン(settingsTab.js)。monitorPanel.ts が update-check.sh を実行する。
+  | { readonly type: "checkUpdate" }
+  // 設定タブ「更新」の「更新する」ボタン。monitorPanel.ts が update.sh を実行し、出力を updateLog で流す。
+  | { readonly type: "runUpdate" }
   | { readonly type: "refreshResidentProcesses" }
   | { readonly type: "killAllResidentProcesses" }
   // デバイスタブのスプリッターをドラッグ終了した時のタイルペイン高さ(px)。monitorPanel.ts が
@@ -790,6 +804,8 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
       return value.value === "auto" || value.value === "ja" || value.value === "en";
     case "refreshResidentProcesses":
     case "killAllResidentProcesses":
+    case "checkUpdate":
+    case "runUpdate":
       return true;
     case "setTilePaneHeight":
       return typeof value.value === "number" && value.value > 0;

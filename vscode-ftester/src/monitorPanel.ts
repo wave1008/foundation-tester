@@ -44,6 +44,7 @@ import { PANEL_TITLE, renderHtml } from "./monitorHtml";
 import { type HostMetricsToWebviewMessage, MonitorProcessManager } from "./monitorProcessManager";
 import { MonitorProfilesController } from "./monitorProfilesController";
 import { MonitorRecordingsController } from "./monitorRecordingsController";
+import { MonitorUpdateController } from "./monitorUpdateController";
 import { TYPE_ORDER, parseAndroidBridges, parseResidentProcesses, type ResidentProcess } from "./residentProcesses";
 import type { RunBusMessage, RunEventBus } from "./runEventBus";
 import {
@@ -128,7 +129,8 @@ export function registerMonitorPanel(
   context.subscriptions.push(
     controller,
     statusItem,
-    vscode.commands.registerCommand("ftester.showDeviceMonitor", () => controller.show()),
+    // 引数のタブ名は更新通知(updateCheck.ts)が "settings" を渡す。省略時は現在のタブのまま。
+    vscode.commands.registerCommand("ftester.showDeviceMonitor", (tab?: string) => controller.show(tab)),
   );
 }
 
@@ -142,6 +144,7 @@ class MonitorPanelController implements vscode.Disposable {
   private readonly healthWatchdog: MonitorHealthWatchdog;
   private readonly deviceStream: MonitorDeviceStreamController;
   private readonly recordings: MonitorRecordingsController;
+  private readonly update: MonitorUpdateController;
 
   /** パネル再作成時にhydrateLaneUi()で流し込むため、実行を跨いで保持する。 */
   private readonly laneState = createRunLaneState();
@@ -199,6 +202,11 @@ class MonitorPanelController implements vscode.Disposable {
     this.profiles = new MonitorProfilesController(this.deps);
     this.deviceOps = new MonitorDeviceOps(this.deps);
     this.recordings = new MonitorRecordingsController(this.deps);
+    this.update = new MonitorUpdateController({
+      workspaceRoot: this.workspaceRoot,
+      outputChannel: this.outputChannel,
+      post: (message) => this.post(message as never),
+    });
     // enqueueLifecycleJob 委譲のため deviceOps より後に生成する。
     this.bridgeWatchdog = new MonitorBridgeWatchdog({
       post: (message) => this.post(message),
@@ -496,6 +504,12 @@ class MonitorPanelController implements vscode.Disposable {
       case "nameInputCancel":
         this.profiles.cancelNameInput(message.id);
         break;
+      case "checkUpdate":
+        void this.update.check();
+        break;
+      case "runUpdate":
+        void this.update.runUpdate();
+        break;
       case "setPollingMode":
         this.pollingMode = message.value;
         void this.workspaceState.update("monitor.pollingMode", message.value);
@@ -564,6 +578,9 @@ class MonitorPanelController implements vscode.Disposable {
     if (this.tilePaneHeight !== undefined) {
       this.post({ type: "tilePaneHeight", value: this.tilePaneHeight });
     }
+    // 設定タブの更新セクション。ネットワークに出るので ready のたびに1回だけ(webview 再読込は稀)。
+    // 失敗しても他の初期化を止めない fire-and-forget
+    void this.update.check();
     if (this.pendingInitialTab) {
       this.post({ type: "switchTab", tab: this.pendingInitialTab });
       this.pendingInitialTab = undefined;
