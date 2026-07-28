@@ -33,6 +33,8 @@ description: foundation-tester を使いたい受け手を、自分の iOS/Andro
 
 - **各ステップの後に検証ゲートを通す**（exit code / doctor / 到達確認）。緑になるまで次へ進まない。
 - **人間チェックポイント（🧑）では必ず停止して依頼・確認する**。エージェントでは代行できない。
+- **人に何かを聞くときは必ず AskUserQuestion（ダイアログ）を使う**。チャットに質問文を書いて
+  答えを待たない（テキストで聞くと見落とされ、フローが止まる）。自由入力は Other で受ける。
 - **セットアップ値は探索せず人間に聞く**：Bundle ID・App ID・ビルド済み `.app`/`.apk` のパス・
   テスト対象アプリの所在などを、兄弟ディレクトリや別リポジトリを勝手に `find`/`grep` で探索して
   確定してはならない。値は人間から得る（`appPath` のように**聞かない**値は、人間が自発的に示すまで
@@ -45,7 +47,23 @@ description: foundation-tester を使いたい受け手を、自分の iOS/Andro
 
 ### 0. 前提の機械判定と一括質問
 
-**最初に導入済み判定(再実行ガード)**: カレントに `Package.swift` があり `Sources/FTScenarioRunner/` が
+**まず状態判定スクリプトを実行する**(構成・既存クローン・環境を1回で判定する。読み取りのみ):
+
+```
+curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/preflight.sh | bash
+```
+
+(クローンがあるなら `bash <TOOL_ROOT>/Scripts/preflight.sh`。**カレント = WORK_DIR 候補**を判定する。)
+出力は `key=value` 行 + 判定。**終了コードで分岐する**:
+
+- **0 = ready** → 未導入。ステップ0の質問へ進む。`tool_root_exists=` / `cli_built=` で既存クローンの有無も分かる。
+- **2 = installed** → 導入済み。**セットアップを続けない**(下の再実行ガードと同じ扱い)。用途別に案内する。
+- **1 = blocked** → 導入不可。出力の理由(無関係な Package.swift・macOS/Xcode・license・初回セットアップ)を
+  そのまま 🧑 に見せて対処を依頼する。sudo や Xcode 導入は代行できない。
+
+以下は同じ判定を手で行う場合の内訳(スクリプトが使えないとき)。
+
+**導入済み判定(再実行ガード)**: カレントに `Package.swift` があり `Sources/FTScenarioRunner/` が
 **無い**場合、質問をする前に `Package.swift` の**中身**で二分する(ファイルの有無だけで判定しない —
 受け手が自分のアプリの既存リポジトリで実行したケースと区別がつかない):
 
@@ -75,16 +93,23 @@ clone 構成(両方ある)の再実行は従来どおり冪等スキップで続
   `sudo xcodebuild -license accept` を依頼。sudo は代行不可）
 - 初回セットアップ: `xcodebuild -checkFirstLaunchStatus`（exit 0 以外なら 🧑 に `xcodebuild -runFirstLaunch` を依頼）
 
-**セットアップ値は 🧑 に冒頭の1回でまとめて質問する**（以降のステップで散発的に再質問しない）:
+**セットアップ値は 🧑 に冒頭の1回でまとめて質問する**（以降のステップで散発的に再質問しない）。
+**必ず AskUserQuestion（ダイアログ）で聞く。チャットに箇条書きで質問文を書いて答えを待ってはいけない**
+（実際にテキストで聞いてしまい、ユーザーがダイアログを受け取れなかった事故がある）。
+**1回の AskUserQuestion 呼び出しに次の4問をまとめる**（各問に選択肢を用意する。自由入力は Other で受ける）:
 
-- プロジェクト名（英数字 `^[A-Za-z0-9_][A-Za-z0-9_-]*$`）とアプリの bundle ID（→ステップ4で使う。
-  **分からなくても中断しない**: 選択肢に「まだ分からない(後で設定)」を含め、その場合は
-  プレースホルダ `com.example.myapp` のまま続行する。実IDが要るのは実行(launch)時だけで、
-  セットアップ完了後に `profiles/apps/<projectname>.json` の `app` を差し替えれば済む →ステップ6）
-- マシン名（→ステップ5で使う）
-- ツール（foundation-tester）の clone 先（**任意**。既定は WORK_DIR の隣 `../foundation-tester`。
-  AskUserQuestion では「隣（推奨）」を先頭の選択肢にし、任意パスは Other で受ける。
-  指定があればそのパスが TOOL_ROOT（→ステップ0.5）。外部パッケージ構成のみ関係）
+| 質問 | header | 選択肢（先頭を推奨にする） |
+|---|---|---|
+| プロジェクト名（英数字 `^[A-Za-z0-9_][A-Za-z0-9_-]*$`。SPM ターゲット名になる） | Project | カレントフォルダ名から作った候補（推奨）/ `MyAppTests` / Other=自由入力 |
+| テスト対象アプリの bundle ID | Bundle ID | 「まだ分からない（後で設定）」/ Other=自由入力 |
+| このマシンの名前（machines/<名>.json のファイル名になる） | Machine | `scutil --get ComputerName` を英数字に整えた名前（推奨）/ preflight の `machine_registered=`（あれば）/ Other |
+| ツール（foundation-tester）の clone 先 | Clone先 | 隣 `../foundation-tester`（推奨）/ preflight の `tool_root=`（既存クローンがあれば）/ Other |
+
+- bundle ID は**分からなくても中断しない**。「まだ分からない」ならプレースホルダ `com.example.myapp` の
+  まま続行する（実IDが要るのは実行(launch)時だけ。後から `profiles/apps/<projectname>.json` の `app` を
+  差し替えれば済む →ステップ6）。
+- 選択肢の候補は preflight の出力とカレントのフォルダ名から作る。**他リポジトリを探索して埋めない**。
+- clone 先は外部パッケージ構成のみ関係（→ステップ0.5）。指定があればそのパスが TOOL_ROOT。
 
 **ビルド済み `.app`/`.apk` のパス（`appPath`）はセットアップでは聞かない**（→ステップ6。
 後から `profiles/apps/` を編集して設定できる）。
