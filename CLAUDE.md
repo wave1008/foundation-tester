@@ -47,6 +47,7 @@
 - **flake の修正は1回グリーンで判定しない・単発の観測で性能を断じない**(反復+負荷で叩く。実害と
   手順は docs/verification.md)
 - `ftester api` の JSON/NDJSON 契約を後方非互換に変えたら `Sources/FTCore/ProtocolVersion.swift` と `vscode-ftester/src/protocolVersion.ts` の版を +1(両者一致必須・`protocolVersion.test.mjs` が検出。拡張は起動時に照合し不一致を警告)
+- **ブリッジの挙動・エンドポイントを変えたら版を上げる**(上げないと**稼働中の旧ブリッジが再利用され、変更が反映されないまま緑になる**。実害2回)。iOS = `Sources/FTCore/BridgeDTO.swift` の `bridgeProtocolVersion`(in-app dylib と XCUITest ランナーの共通定数)/ Android = `AndroidRunner/build.sh` の `VERSION_CODE` と `AndroidBridge.swift` の `expectedBridgeVersionCode` を**同時に**(`AndroidBridgeVersionSyncTests` が不一致を検出。「上げ忘れ」自体は検出できないので人間の規律)
 
 ## 実装の委譲
 
