@@ -381,7 +381,7 @@ ftester snapshot [--json] | tap | type | swipe | press | screenshot
 - **`bridge up` が起動するのは xcuitest ブリッジ(iOS)/デバイス内サーバ(Android)のみ**(in-app ブリッジを
   起動する経路は無い)。プロセスは常駐し、停止は `bridge down` か `devices down` を要する
 - **`run --profile` は終了時にブリッジを停止しない**(常駐を残すのが仕様。次の run が版一致なら再利用する。
-  詳細・トラブルシュートは docs/getting-started.md「ブリッジの起動・再利用・停止」)
+  利用者向けの要点は docs/getting-started.md「インストールの次にやること」)
 
 CLI/MCP/VSCode 拡張はいずれも同じ `ftester api ...` 系サブコマンドを経由して呼び出す共通実装(§11.4 参照)。
 
