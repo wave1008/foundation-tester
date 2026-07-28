@@ -44,6 +44,9 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
     <button id="tab-processes" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-processes">${t("panels.tabs.processes")}</button>
     <button id="tab-recordings" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-recordings">${t("panels.tabs.recordings")}</button>
     <button id="tab-settings" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-settings">${t("panels.tabs.settings")}</button>
+    <!-- 更新があるときだけ現れる右寄せボタン(タブに関係なく常に見える位置)。押すと設定タブへ
+         切り替えて進行ログを見せる。対向: settingsTab.js -->
+    <button id="tabbar-update" class="tabbar-update" type="button" style="display: none;">${t("panels.settings.updateRunButton")}</button>
   </div>
 
   <div id="panel-devices" class="tab-panel" role="tabpanel" aria-labelledby="tab-devices">
@@ -468,7 +471,6 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
         <div id="settings-update-status" class="settings-update-status">${t("panels.settings.updateChecking")}</div>
         <div class="settings-update-actions">
           <button id="settings-update-check" class="secondary" type="button">${t("panels.settings.updateCheckButton")}</button>
-          <button id="settings-update-run" type="button">${t("panels.settings.updateRunButton")}</button>
         </div>
         <div class="settings-hint">${t("panels.settings.updateHint")}</div>
         <pre id="settings-update-log" class="settings-update-log" style="display: none;"></pre>

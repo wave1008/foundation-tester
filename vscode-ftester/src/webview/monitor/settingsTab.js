@@ -7,12 +7,15 @@
 
 import { vscode } from './vscodeApi.js';
 import { t } from '../i18n.js';
+import { switchTab } from './tabs.js';
 
 const pollingModeCheckbox = document.getElementById('settings-polling-mode');
 const languageSelect = document.getElementById('settings-language');
 const updateStatus = document.getElementById('settings-update-status');
 const updateCheckButton = document.getElementById('settings-update-check');
-const updateRunButton = document.getElementById('settings-update-run');
+// 「更新する」は設定タブではなく**タブバーの右端**にある(どのタブを見ていても目に入る)。
+// 更新があるときだけ表示する — 押せない状態のボタンを常時見せても情報にならないため。
+const updateRunButton = document.getElementById('tabbar-update');
 const updateLog = document.getElementById('settings-update-log');
 
 pollingModeCheckbox.addEventListener('change', () => {
@@ -32,6 +35,8 @@ updateCheckButton.addEventListener('click', () => {
 // 確認ダイアログは**ホスト側**(monitorUpdateController.ts の showWarningMessage modal)。
 // webview では window.confirm/alert が効かない(VSCode の制約。他タブの削除確認も同じ方式)。
 updateRunButton.addEventListener('click', () => {
+  // 進行ログは設定タブに出るので、押したら必ずそこへ移動する(押した結果が見えないのを防ぐ)。
+  switchTab('settings');
   vscode.postMessage({ type: 'runUpdate' });
 });
 
@@ -41,10 +46,11 @@ function shortSha(value) {
 
 function applyUpdateStatus(message) {
   const running = message.state === 'running';
-  // 実行中は両方止める(二重起動と、更新の最中に判定を走らせるのを防ぐ)。
+  // 実行中は確認を止める(更新の最中に判定を走らせない)。
   updateCheckButton.disabled = running || message.state === 'checking';
-  updateRunButton.disabled = running || message.state === 'checking'
-    || message.state === 'unavailable' || message.state === 'pinned';
+  // 「更新する」は**更新があるときだけ**出す。実行中は押せない状態で残す(消すと進行が分からない)。
+  updateRunButton.style.display = message.state === 'update-available' || running ? 'block' : 'none';
+  updateRunButton.disabled = running;
   updateStatus.classList.remove('available', 'attention');
 
   switch (message.state) {
