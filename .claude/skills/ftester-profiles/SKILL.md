@@ -8,8 +8,9 @@ description: ftester のマシンプロファイル・アプリプロファイ�
 > **この手順書が古い可能性がある**: プラグイン経由で導入している場合、この文書は
 > `~/.claude/plugins/cache/` のスナップショットから読まれており `git pull` では更新されない。
 > **clone(TOOL_ROOT)が既にあるなら `<TOOL_ROOT>/.claude/skills/ftester-profiles/SKILL.md` を読み、
-> 内容が違えばそちらを正とする**。更新は `/plugin marketplace update foundation-tester` →
-> `/plugin update ftester@foundation-tester`(2つとも要る・Claude Code の再起動で反映)。
+> 内容が違えばそちらを正とする**。更新は `claude plugin marketplace update foundation-tester` →
+> `claude plugin update ftester@foundation-tester`(2つとも要る・Claude Code の再起動で反映)。
+> **`/plugin` スラッシュコマンドは VSCode 拡張・Agent SDK 環境では提供されない**ので CLI 形を使う。
 
 1つのアプリ×1プラットフォーム分の **マシン/アプリ/実行プロファイルの三点セット** を作る。
 既存プロジェクト(`ftester project create` / `ftester init` 済み)に対して実行する。未セットアップなら

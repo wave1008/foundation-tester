@@ -309,15 +309,22 @@ cd <TOOL_ROOT>/vscode-ftester && npm install && npm run install-local
 **Claude Code プラグイン（`/ftester:*` スキル）は `git pull` では更新されません。** プラグインの
 スキルは `~/.claude/plugins/cache/` のスナップショットから読まれ、**自動更新もされない**ため、
 ツール本体だけ新しくなってスキル（手順書）が取り残されます。プラグイン経由で導入している場合は
-Claude Code で次の2つを実行してください（**2つとも必要**・順序も重要です）:
+次の2つを実行してください（**2つとも必要**・順序も重要です）:
 
-```
-/plugin marketplace update foundation-tester
-/plugin update ftester@foundation-tester
+```bash
+claude plugin marketplace update foundation-tester
+claude plugin update ftester@foundation-tester
 ```
 
 marketplace を先に更新しないと、`plugin update` が古い定義を見ます。反映には Claude Code の
-再起動が要ります。導入済みかは `claude plugin list` で `ftester@foundation-tester` が出るかで判ります。
+再起動が要ります。`/ftester-update` はこの2つを代行するので、通常は手で打つ必要はありません。
+
+> `/plugin marketplace update` のような**スラッシュコマンド形は VSCode 拡張や Agent SDK の環境では
+> 提供されず**（`/plugin isn't available in this environment.`）、上の `claude` CLI 形ならどの環境でも
+> 動きます。CLI 形はエージェントからも実行できます。
+
+導入済みかと**キャッシュが最新か**は `claude plugin list` で判ります。`Version:` は git commit SHA
+（先頭12桁）なので、TOOL_ROOT の `git rev-parse HEAD` が同じ SHA で始まっていれば最新です。
 clone 内で直接スキルを使っている構成なら `git pull` で更新されるので、この操作は不要です。
 
 > 外部パッケージ構成なら、あなたの `Projects/` はツールのクローンと別ディレクトリなので `git pull` の衝突は

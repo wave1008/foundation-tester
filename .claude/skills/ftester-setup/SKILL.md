@@ -8,8 +8,9 @@ description: foundation-tester を使いたい受け手を、自分の iOS/Andro
 > **この手順書が古い可能性がある**: プラグイン経由で導入している場合、この文書は
 > `~/.claude/plugins/cache/` のスナップショットから読まれており `git pull` では更新されない。
 > **clone(TOOL_ROOT)が既にあるなら `<TOOL_ROOT>/.claude/skills/ftester-setup/SKILL.md` を読み、
-> 内容が違えばそちらを正とする**。更新は `/plugin marketplace update foundation-tester` →
-> `/plugin update ftester@foundation-tester`(2つとも要る・Claude Code の再起動で反映)。
+> 内容が違えばそちらを正とする**。更新は `claude plugin marketplace update foundation-tester` →
+> `claude plugin update ftester@foundation-tester`(2つとも要る・Claude Code の再起動で反映)。
+> **`/plugin` スラッシュコマンドは VSCode 拡張・Agent SDK 環境では提供されない**ので CLI 形を使う。
 
 受け手を、**自分のアプリのシナリオを書いて実行できる状態**まで導く。
 全体像・背景は docs/getting-started.md。ここはエージェントが順に実行するための手順書。
