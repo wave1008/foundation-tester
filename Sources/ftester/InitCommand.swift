@@ -19,6 +19,9 @@ struct InitCommand: AsyncParsableCommand {
     @Option(help: "対象アプリの bundle ID / パッケージ名")
     var app: String = "com.example.myapp"
 
+    @Option(help: "実行プロファイルの雛形を作る対象: ios / android / both(既定 both)")
+    var platform: String = "both"
+
     @Option(name: .customLong("ftester-path"),
             help: "ローカルの foundation-tester へのパス(.package(path:) で依存。PoC 向け)")
     var ftesterPath: String?
@@ -67,7 +70,8 @@ struct InitCommand: AsyncParsableCommand {
 
         do {
             let project = try ProjectScaffold.createAndRegister(
-                name: projectName, app: app, repoRoot: cwd)
+                name: projectName, app: app, repoRoot: cwd,
+                platforms: try Self.platforms(from: platform))
             // 受け手が自分のプロジェクトを Claude Code で開いて /ftester-setup で残りを駆動できるように
             try ProjectScaffold.writeRecipientSkill(packageRoot: cwd, projectName: projectName)
             // VSCode 拡張が ftester.project/ftester.binaryPath を手動設定なしで解決できるように
@@ -109,5 +113,16 @@ struct InitCommand: AsyncParsableCommand {
             s = "_" + s
         }
         return s.isEmpty ? "App" : s
+    }
+}
+
+extension InitCommand {
+    /// --platform の値を scaffold へ渡す配列にする(both = 両方)
+    static func platforms(from value: String) throws -> [String] {
+        switch value {
+        case "both": return ["ios", "android"]
+        case "ios", "android": return [value]
+        default: throw ValidationError("--platform は ios / android / both のいずれかです: \(value)")
+        }
     }
 }

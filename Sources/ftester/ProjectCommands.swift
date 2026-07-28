@@ -33,10 +33,14 @@ struct ProjectCommand: AsyncParsableCommand {
         @Option(help: "対象アプリの bundle ID / パッケージ名")
         var app: String = "com.example.myapp"
 
+        @Option(help: "実行プロファイルの雛形を作る対象: ios / android / both(既定 both)")
+        var platform: String = "both"
+
         func run() async throws {
             let root = try ftesterRepoRoot()
             let project = try ProjectScaffold.createAndRegister(
-                name: name, app: app, repoRoot: root)
+                name: name, app: app, repoRoot: root,
+                platforms: try InitCommand.platforms(from: platform))
 
             print("✅ プロジェクトを作成しました: Projects/\(name)/")
             print("   シナリオ置き場: Projects/\(name)/Scenarios/(@TestClass の .swift を追加)")
@@ -246,8 +250,8 @@ struct MachineCommand: AsyncParsableCommand {
 struct ProfileCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "profile",
-        abstract: "実行プロファイル(profiles/runs/)の一覧と整合チェック",
-        subcommands: [List.self])
+        abstract: "プロファイル(apps/machines/runs)の作成・一覧・整合チェック",
+        subcommands: [ProfileSetupCommand.self, List.self])
 
     struct List: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
