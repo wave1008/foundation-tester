@@ -108,6 +108,9 @@ clone 構成(両方ある)の再実行は従来どおり冪等スキップで続
 git clone https://github.com/wave1008/foundation-tester.git ../foundation-tester
 ```
 
+  ※ **clone 自体はステップ0.7 のインストーラが行う**ので、ここでは clone 先(TOOL_ROOT)を決めるだけでよい
+  (既に clone 済みならそれを使う)。上のコマンドはインストーラを使わないときの手順。
+
   → TOOL_ROOT = `../foundation-tester`。**ステップ0で clone 先の指定があればそちらへ clone し、
   以降この runbook の `../foundation-tester` はそのパスに読み替える**(指定先に clone 済みならスキップして
   それを TOOL_ROOT にする)。WORK_DIR 配下へのネストは非推奨(init の .gitignore 整備の対象外で
@@ -117,6 +120,33 @@ git clone https://github.com/wave1008/foundation-tester.git ../foundation-tester
 
 版を固定したい場合は 🧑 に確認して TOOL_ROOT で `git checkout <tag>`(配布はソースビルド前提なので
 tag も clone で取得できる)。
+
+### 0.7 インストーラで機械作業を一括実行（**まずこれを試す**）
+
+ステップ **0.5・1・2・2.5・3・4・7・7.5** はインストーラが一括で行う（冪等。済んだ手順は skip される）。
+ステップ0で聞いた値を引数で渡すだけで、**探索はしない**（appPath・bundle ID を勝手に埋めない設計）。
+
+```
+bash <TOOL_ROOT>/Scripts/install.sh --work-dir <WORK_DIR> --name <ProjectName> [--app <bundleID>]
+```
+
+- **クローンがまだ無いとき**は clone から丸ごとやる（TOOL_ROOT は既定で WORK_DIR の隣に作られる）:
+  `curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install.sh | bash -s -- --name <ProjectName>`
+  （clone 先を変えるなら `--tool-root <dir>`。ステップ0で指定があればそれを渡す）
+- clone 構成（TOOL_ROOT = WORK_DIR）でもそのまま使える（`--work-dir` にクローンを渡す。
+  `ftester init` ではなく `project create` 経路になり、`.mcp.json` は同梱のものが使われる）。
+
+**出力の読み方**（行頭の `[ok]` / `[skip]` / `[warn]` / `[fail]` が機械可読部）:
+
+- **exit 0** → 機械作業は完了。**ステップ5へ**（プロファイルはインストーラの担当外）。
+- **exit 2** → 必須は通ったが任意ステップが未完（`[warn]` 行）。CLI と MCP は使える。
+  warn 行が指す**下のステップ番号の手順だけ**を手で通し、原因を直してから同じ引数で再実行する。
+- **exit 1** → 必須ステップで停止（`[fail]` 行に「→ SKILL.md ステップ N」が出る）。
+  **N の手順を読んで原因を解決し、同じ引数で再実行する**（済んだ手順は skip されるので巻き戻らない）。
+  解決に人間の操作が要るもの（Xcode の license 同意・`-runFirstLaunch`・Homebrew 導入）は 🧑 に依頼する。
+
+**以降のステップ1〜4・7・7.5 は「インストーラが失敗したときの手作業手順」**（成功したなら読み飛ばしてよい）。
+ステップ **5・6・8・9 はインストーラの担当外**なので必ず実施する。
 
 ### 1. xcodegen
 

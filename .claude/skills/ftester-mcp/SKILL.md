@@ -54,6 +54,23 @@ git clone https://github.com/wave1008/foundation-tester.git ../foundation-tester
 
 版を固定したい場合は 🧑 に確認して TOOL_ROOT で `git checkout <tag>`。
 
+### 0.7 インストーラで一括実行(**まずこれを試す**)
+
+ステップ1・2とその検証ゲートはインストーラが一括で行う(冪等)。MCP だけ入れるので
+**プロジェクト作成と VSCode 拡張は抑止**する:
+
+```
+bash <TOOL_ROOT>/Scripts/install.sh --work-dir <WORK_DIR> --skip-project --skip-extension
+```
+
+クローンがまだ無ければ clone から:
+`curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install.sh | bash -s -- --skip-project --skip-extension`
+
+出力は行頭の `[ok]` / `[skip]` / `[warn]` / `[fail]` で読む。**exit 0 ならステップ3(承認)へ**。
+**exit 1 は `[fail]` 行の「→ SKILL.md ステップ N」の手順を手で通して原因を解決し、同じ引数で再実行**
+(N は `/ftester-setup` スキルのステップ番号。このスキルのステップ1・2にも同じ内容がある)。
+以降のステップ1・2は**インストーラが失敗したときの手作業手順**。
+
 ### 1. ftester-mcp をビルド(疎通確認)
 
 **TOOL_ROOT で** `swift build --product ftester-mcp` を実行する(初回は数分。products 未宣言でも暗黙 product
