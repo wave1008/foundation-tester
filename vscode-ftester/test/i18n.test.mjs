@@ -28,6 +28,7 @@ import { webviewMonitorBStrings } from "../src/i18n/strings/webviewMonitorB";
 import { webviewDashboardStrings } from "../src/i18n/strings/webviewDashboard";
 import { recordingsStrings } from "../src/i18n/strings/recordings";
 import { laneStrings } from "../src/i18n/strings/lane";
+import { updateStrings } from "../src/i18n/strings/update";
 
 const ROOT = process.cwd();
 
@@ -42,6 +43,7 @@ const DICTS = [
   { name: "workbench", prefix: "workbench.", dict: workbenchStrings, side: "ext" },
   { name: "exploreHeal", prefix: "exploreHeal.", dict: exploreHealStrings, side: "ext" },
   { name: "compat", prefix: "compat.", dict: compatStrings, side: "ext" },
+  { name: "update", prefix: "update.", dict: updateStrings, side: "ext" },
   { name: "webviewMonitorA", prefix: "wvMonitor.", dict: webviewMonitorAStrings, side: "webview" },
   { name: "webviewMonitorB", prefix: "wvMonitor2.", dict: webviewMonitorBStrings, side: "webview" },
   { name: "webviewDashboard", prefix: "wvDashboard.", dict: webviewDashboardStrings, side: "webview" },
@@ -149,6 +151,16 @@ test("辞書: ファイル横断でキーが重複しない", () => {
       seen.set(key, name);
     }
   }
+});
+
+// DICTS に載せ忘れた辞書は、パリティも namespace 前置も検査されないまま通る(残存日本語の走査は
+// strings/ を丸ごと除外するため気付けない)。ファイルの存在で漏れを検出する。
+test("辞書: src/i18n/strings/ の全ファイルが DICTS に登録されている", () => {
+  const registered = new Set(DICTS.map((d) => `${d.name}.ts`));
+  const files = readdirSync(path.join(ROOT, "src", "i18n", "strings"))
+    .filter((f) => f.endsWith(".ts"));
+  const missing = files.filter((f) => !registered.has(f));
+  assert.deepEqual(missing, [], `DICTS 未登録の辞書: ${missing.join(", ")}(test/i18n.test.mjs に追加)`);
 });
 
 test("残存日本語: 文字列/テンプレートリテラルに未変換の日本語が無い", () => {

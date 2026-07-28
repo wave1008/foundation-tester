@@ -455,6 +455,20 @@ if [ "$DO_DOCTOR" = "1" ]; then
   ( cd "$WORK_DIR" && "$FT" doctor ) || true
 fi
 
+# ---- 導入時点の版を記録(判定には使わない。更新が反映されないときの切り分け用) ----------
+# 更新チェック本体(Scripts/update-check.sh)は git を直接見るのでこのファイルに依存しない。
+# ここに書くのは「いつ・どの版を入れたか」だけ。書けなくてもインストールは成功扱い
+if [ -d "$WORK_DIR/.ftester" ]; then
+  cat >"$WORK_DIR/.ftester/state.json" 2>/dev/null <<EOF || true
+{
+  "installedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+  "toolRoot": "$TOOL_ROOT",
+  "toolRootHead": "$(git -C "$TOOL_ROOT" rev-parse HEAD 2>/dev/null)",
+  "toolRootRef": "$(git -C "$TOOL_ROOT" symbolic-ref --short -q HEAD 2>/dev/null || echo detached)"
+}
+EOF
+fi
+
 NEXT_PROFILES=""
 case " ${STEPS[*]} " in
   *"プロファイル|ok"*) : ;;
@@ -470,6 +484,8 @@ print_summary
 ${NEXT_PROFILES}・VSCode で $WORK_DIR を開き、Developer: Reload Window(拡張の反映に必須)
 ・Claude Code が ftester MCP サーバの承認を求めたら許可する(ft_* が使えるようになる)
 
+更新: VSCode 拡張が起動時に自動で確認します(設定 ftester.updateCheck で無効化可)。
+      手動で確認 → bash $TOOL_ROOT/Scripts/update-check.sh / 取り込み → /ftester-update
 インストールログ: ${LOG_FILE:-(出力できませんでした)}
 EOF
 

@@ -2,7 +2,7 @@
   "name": "vscode-ftester",
   "displayName": "ftester",
   "description": "%ftester.extension.description%",
-  "version": "0.0.406",
+  "version": "0.0.407",
   "private": true,
   "publisher": "wave1008",
   "license": "MIT",
@@ -150,6 +150,15 @@
           ],
           "default": "auto",
           "description": "%ftester.config.language.description%"
+        },
+        "ftester.updateCheck": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "off"
+          ],
+          "default": "auto",
+          "description": "%ftester.config.updateCheck.description%"
         }
       }
     },

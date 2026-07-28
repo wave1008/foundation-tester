@@ -301,7 +301,7 @@ public enum ProjectScaffold {
         ```
 
         ### 5.5 git 管理(このパッケージを自分のリポジトリで管理する場合)
-        `.gitignore` は init が整備済み(`.build/`・`Projects/*/reports/`)。コミットするのは
+        `.gitignore` は init が整備済み(`.build/`・`.ftester/`・`Projects/*/reports/`)。コミットするのは
         Package.swift・Projects/(シナリオ・プロファイル)・.claude/・.gitignore。Package.resolved は
         コミット推奨(依存の版固定)。.vscode/settings.json は binaryPath が相対ならコミット可。
         .mcp.json は絶対パスを含むためマシン固有(コミットするならチームでパス規約を揃える)。

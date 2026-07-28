@@ -20,6 +20,7 @@
   "ftester.config.autoRepairDeviceHealth.description": "Android エミュレータのゲスト OS 異常(Wi-Fi 無効・時計のずれ)を検出したとき、Wi-Fi 再有効化→再起動の順で自動修復を試みます。",
   "ftester.config.showOnlyFailedTests.description": "Test Explorer のツリーを失敗したテストだけに絞り込みます(未実施・成功のテストは非表示)。Test Explorer タイトルバーのフィルターボタンでも切り替えられます。",
   "ftester.config.language.description": "拡張の UI 表示言語。auto は VS Code の表示言語に追従します(ja 系なら日本語、それ以外は英語)。",
+  "ftester.config.updateCheck.description": "auto: 起動時(1日1回まで)に foundation-tester の更新有無を確認し、あれば通知します。確認するだけで取り込みは行いません(取り込みは /ftester-update)。off: 確認しません。",
   "ftester.view.ftesterSteps.name": "ftester ステップ",
   "ftester.debugger.project.description": "対象のテストプロジェクト名(Projects/<name> の <name>)。省略時は ftester.project 設定や自動判定で補完されます。",
   "ftester.debugger.scenario.description": "デバッグ実行するシナリオ ID(クラス名.メソッド名)。1件のみ指定できます。",
