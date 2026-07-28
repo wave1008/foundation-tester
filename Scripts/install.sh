@@ -5,8 +5,9 @@
 #   curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install.sh \
 #     | bash -s -- --name <ProjectName>          # clone から丸ごと(TOOL_ROOT は隣に作られる)
 #
-# やること: clone / swift build / ftester init(または project create)/ .gitignore 整備 /
-#           VSCode 拡張 / .mcp.json / 検証ゲート。**冪等**(済んだ手順は skip)。
+# やること: clone(既存クローンは git pull --ff-only で更新)/ swift build /
+#           ftester init(または project create)/ .gitignore 整備 / VSCode 拡張 / .mcp.json /
+#           検証ゲート。**冪等**(済んだ手順は skip)。
 # やらないこと: プロファイル作成(→ /ftester-profiles)・appPath や bundle ID の探索
 #           (値は引数で受けるだけ。スキルの「探索禁止」原則と対)。
 #
@@ -43,7 +44,8 @@ usage() {
   --no-doctor        最後の環境レポート(ftester doctor)を省く
   -h, --help         このヘルプ
 
-やること: clone / swift build / プロジェクト作成 / .gitignore 整備 / VSCode 拡張 / .mcp.json / 検証ゲート
+やること: clone(既存なら git pull。ローカル変更は確認のうえ破棄・断れば中止)/ swift build / プロジェクト作成 / .gitignore 整備 / VSCode 拡張 /
+         .mcp.json / 検証ゲート
          (冪等。済んだ手順は skip)。デバイス・アプリ・実行プロファイルの作成は担当外(/ftester-profiles)
 終了コード: 0=完了 / 2=任意ステップのみ未完(CLI と MCP は使える) / 1=必須ステップで停止
          (停止時は [fail] 行に原因と、手作業で通す手順の番号が出る)
@@ -142,7 +144,47 @@ fi
 
 if [ -d "$TOOL_ROOT_RAW/.git" ] || [ -f "$TOOL_ROOT_RAW/Package.swift" ]; then
   TOOL_ROOT="$(abspath "$TOOL_ROOT_RAW")" || die "clone" "TOOL_ROOT を解決できません: $TOOL_ROOT_RAW" 0.5
-  record "clone" skip "既存クローンを使用: $TOOL_ROOT"
+  # 既存クローンは更新してから使う(古いまま build して「入れ直したのに直らない」を防ぐ)。
+  # マージコミットを勝手に作らないため ff-only。版固定(detached)は意図的とみなして触らない。
+  # ローカル変更は**人に確認してから**破棄する(黙って捨てない)
+  if [ ! -d "$TOOL_ROOT/.git" ]; then
+    record "clone" skip "既存ディレクトリを使用(git 管理外): $TOOL_ROOT"
+  elif ! branch="$(git -C "$TOOL_ROOT" symbolic-ref --short -q HEAD)"; then
+    record "clone" skip "既存クローンを使用(版固定: $(git -C "$TOOL_ROOT" describe --tags --always 2>/dev/null))"
+  else
+    if [ -n "$(git -C "$TOOL_ROOT" status --porcelain 2>/dev/null)" ]; then
+      echo "⚠️ 既存クローンにローカル変更があります: $TOOL_ROOT"
+      git -C "$TOOL_ROOT" status --short | head -20
+      answer=""
+      # curl | bash では stdin がスクリプト自身なので、質問と回答は端末から直接行う。
+      # 制御端末が無い(エージェント・CI)と /dev/tty は存在しても open に失敗するので、
+      # test -r ではなく実際に書けたかで判定する。聞けない場合は破棄せず中止する(黙って捨てない・
+      # 古いクローンのまま進めない)
+      if { printf "上記のローカル変更を破棄して最新へ更新しますか? [y/N]: " > /dev/tty; } 2>/dev/null; then
+        read -r answer < /dev/tty 2>/dev/null || answer=""
+      fi
+      case "$answer" in
+        [yY]*)
+          # 追跡ファイルの変更だけを戻す。未追跡は消さない(clone 構成では Projects/ が
+          # 未追跡のことがあり、git clean で受け手の資産を巻き込む)
+          git -C "$TOOL_ROOT" reset --hard >/dev/null \
+            || die "clone" "ローカル変更の破棄(git reset --hard)に失敗しました" 0.5
+          echo "   → ローカル変更を破棄しました"
+          ;;
+        *)
+          # 古いクローンのまま build すると「入れ直したのに直らない」になるため中止する
+          die "clone" "ローカル変更を破棄しないため中止しました。変更を退避(git stash / commit)するか、"\
+"$TOOL_ROOT で git reset --hard してから再実行してください" 0.5
+          ;;
+      esac
+    fi
+    echo "==> git pull(既存クローン $TOOL_ROOT の更新)"
+    if git -C "$TOOL_ROOT" pull --ff-only; then
+      record "clone" ok "既存クローンを更新: $TOOL_ROOT ($branch $(git -C "$TOOL_ROOT" rev-parse --short HEAD))"
+    else
+      soft_fail "clone" "git pull に失敗(既存クローンのまま続行。ネットワークか履歴の分岐を確認)" 0.5
+    fi
+  fi
 else
   [ "$ALLOW_CLONE" = "1" ] || die "clone" "クローンがありません: $TOOL_ROOT_RAW(--no-clone 指定)" 0.5
   echo "==> clone: $REPO_URL → $TOOL_ROOT_RAW"
