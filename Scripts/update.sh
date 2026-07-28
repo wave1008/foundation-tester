@@ -21,6 +21,7 @@ PASS_THROUGH=()
 DO_PLUGIN=1
 ALLOW_PULL=1
 FORCE=0
+DO_DOCTOR=0
 
 usage() {
   cat <<'EOF'
@@ -32,6 +33,9 @@ usage() {
   --force            更新が無くても全工程を実行する(壊れた導入の入れ直し)
   --skip-extension   VSCode 拡張の再インストールを行わない
   --skip-plugin      Claude Code プラグイン(スキル)の更新を行わない
+  --doctor           最後に環境レポート(ftester doctor)を出す(既定は出さない)
+  --keep-local       クローンのローカル変更を自動で破棄しない
+  --verbose          swift build / npm の生ログも画面に出す
   -h, --help         このヘルプ
 
 やること: install.sh の再実行(git pull → swift build → 拡張 → .mcp.json → 検証ゲート)
@@ -46,6 +50,9 @@ while [ $# -gt 0 ]; do
     --tool-root) TOOL_ROOT_ARG="${2:?--tool-root に値が必要です}"; PASS_THROUGH+=(--tool-root "$2"); shift 2 ;;
     --no-pull) ALLOW_PULL=0; PASS_THROUGH+=(--no-pull); shift ;;
     --force) FORCE=1; shift ;;
+    --doctor) DO_DOCTOR=1; shift ;;
+    --keep-local) PASS_THROUGH+=(--keep-local); shift ;;
+    --verbose) PASS_THROUGH+=(--verbose); shift ;;
     --skip-extension) PASS_THROUGH+=(--skip-extension); shift ;;
     --skip-plugin) DO_PLUGIN=0; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -94,6 +101,8 @@ fi
 # ---- 1〜2・5・5.5: install.sh に委譲(pull・build・拡張・.mcp.json・検証ゲート・ログ) -------
 # --skip-project: 既存の Projects/ を触らない(更新でプロジェクトを作り直さない)
 echo "==> install.sh を再実行(pull → build → 拡張 → .mcp.json → 検証)"
+# --no-doctor が既定: 結果表に Apple Intelligence の warn 行が出るので情報が重複し、8秒かかる
+[ "$DO_DOCTOR" = "1" ] || PASS_THROUGH+=(--no-doctor)
 bash "$TOOL_ROOT/Scripts/install.sh" --work-dir "$WORK_DIR" --skip-project --no-next-steps \
   "${PASS_THROUGH[@]+"${PASS_THROUGH[@]}"}"
 INSTALL_STATUS=$?

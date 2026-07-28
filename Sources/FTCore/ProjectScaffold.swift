@@ -99,8 +99,11 @@ public enum ProjectScaffold {
             "Bash(xcrun simctl list:*)",
         ]
         if let toolRoot {
-            entries.append("Bash(bash \(toolRoot)/Scripts/preflight.sh:*)")
-            entries.append("Bash(bash \(toolRoot)/Scripts/install.sh:*)")
+            // 更新系も載せる。**更新のたびに承認を求められると、更新1回で承認が数回に膨らむ**
+            // (2026-07-29 の受け手実測で6回)。補修は install.sh が毎回 `api ensure-settings` で行う
+            for script in ["preflight.sh", "install.sh", "update.sh", "update-check.sh"] {
+                entries.append("Bash(bash \(toolRoot)/Scripts/\(script):*)")
+            }
         }
 
         let dir = packageRoot.appendingPathComponent(".claude")
