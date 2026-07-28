@@ -214,6 +214,16 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
 実装(計12)、Android ブリッジは `POST /locale` を追加(計10。§4.5)、InApp ブリッジは
 共通コアのみ(計9)。
 
+**エラーの status はホスト側の分岐に使われる契約**(ブリッジ実装とホストで同期が必要。
+`DriverError.isEngineIncapable` / `AppAttachDriver` / `SessionRecoveryDriver`):
+
+| status | 意味 | ホストの反応 |
+|---|---|---|
+| `501` / `404`(本文 `not found:`) | このエンジンでは**原理的に不可** | XCUITest へフォールバック(§10 の「in-app で不可・XCUITest で可」) |
+| `404`(ref 不明) | スナップショット取り直しが要る本物の失敗 | 失敗(フォールバックしない。本文前置で 501 系と区別) |
+| `409` | 一時的競合(キーウィンドウ不在・セッション消失) | セッション消失だけ `SessionRecoveryDriver` が張り直す。**フォールバック判定に使わない** |
+| `503` | セッションはあるが**対象アプリが起動していない** | `AppAttachDriver` が activate して1回再試行 |
+
 **in-app dylib は「古いまま注入される」事故が起きやすい**(2026-07-27 に実害):
 `InAppBridge/build/` は gitignore・手動ビルドなので、ブリッジのソースを直しても
 再ビルドしなければ**古いバイナリが注入され続ける**。実際に isChecked 追加と型の役割正規化
@@ -1130,6 +1140,47 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
   なお `type` の事前ルーティング(`preferTypeDriver`)は別物で廃止済み — Compose でも inapp の
   type が可能かつ高速(266ms vs attach 1.0〜1.3s)なため。ジェスチャは inapp が**不可能**なので
   トレードオフの向きが逆になり、事前ルーティングが常に得になる
+- **「in-app で不可・XCUITest で可」は常に XCUITest へ回す**(2026-07-28 にユーザー決定で一般化)。
+  判定は `DriverError.isEngineIncapable` の1箇所: **501 と「ルート不明の 404」(本文 `not found:` 前置)
+  だけ**。**409 は含めない**(上記の理由。in-app の 404 には ref 不明もあるため本文で見分ける)。
+  対象は3つ:
+  - `home` / `appSwitcher`: in-app は自プロセス外を触れないので**原理的に不可**。hybrid では
+    501 の往復を作らず最初から XCUITest へ直行する(`FTDriveCore.systemDriver`)。XCUITest 側の
+    `/home`・`/appswitcher` は**セッション不要**なので attach も activate も挟まない
+  - `drag`(スクロール探索直後の**空打ち極小ドラッグ**): in-app は drag を実装しない。回さないと
+    Compose の容器がタッチを1回吸ったままになり直後の tap が空振りする。**ラッチは swipe と共有
+    しない**(`dragFallbackLatched`。共有すると drag の 501 だけで全 swipe が XCUITest 実スワイプ化し、
+    バウンス由来の flake を持ち込む)。空打ちは補助なので両経路の失敗はステップの失敗にしない
+  - `swipe` / `press`: 既存の申告+事後キャッチ(上記 2〜3)。判定だけ共通化した
+- **live / MCP(`ft_*`)は in-app ブリッジを使わない**(2026-07-28 ユーザー決定)。これらは
+  `StepExecutor` を通らず `home`/`appSwitcher`/`drag`/座標 `press` を直接叩くため、in-app だと
+  素の 501 になる。`XCUIBridgeResolver` が接続先の `/status.engine == "inapp"` を検知したら
+  **同じデバイス(名前で相関)の XCUITest ブリッジへ振り替え**、無ければ空きポートに起動する
+  (デバイス名が一意に定まらない・起動に失敗したときは指定ポートのまま + 理由を stderr へ)
+- **XCUITest ランナーは「操作の失敗」でプロセスごと落ちる**(Xcode 27 beta のツールチェーン不具合。
+  2026-07-28 にクラッシュレポートで確定)。XCUI の失敗は `_XCUIFailWithError` が issue を記録するが、
+  ブリッジのハンドラは **main queue 上 = テストメソッドのスタックの外**で動く
+  (`BridgeHTTPServer.dispatchToMain`)ため XCUITest が「現在のテスト」を特定できず
+  `XCTFallbackIssueHandler` へ回り、そこから XCTest↔swift-testing 相互運用が**無限再帰**して
+  スタックオーバーフロー(実測 950 段超)で SIGSEGV する。**`continueAfterFailure` も
+  `FTCatchObjCException` も効かない**(issue がテストケースに届かない / ObjC 例外ではない)。
+  ランナーが死ぬとブリッジが消え、**その run のワーカーが離脱**して振り直しになる。対処は2層:
+  1. **ランナー**: 操作系(tap/type/pressEnter/swipe/drag/press)は `requireLiveApp()` で
+     `app.state` を確認し、起動していなければ XCUI に触れず **503** を返す
+     (409 はセッション消失専用・501/404 はフォールバック判定に使用済みのため空いている 503)。
+     snapshot/screenshot には入れない(`state` は IPC で毎回コスト・取得系は issue を出さない)
+  2. **ホスト**: `AppAttachDriver` が ref 無し操作の前に `ensureAttached()` で
+     **セッションを自分の bundleID へ揃える**(1インスタンス=1シナリオにつき1回)。
+     XCUITest ブリッジは run 内で使い回されるため、セッションが**前のプロジェクトのアプリ**を
+     指したまま来ることがある(実測: E2E-iOS の次に回った E2E-Flutter の `scrollTo` が
+     `com.ftester.e2e.ios` を掴み、それが未起動で上記クラッシュに至った)。
+     409/503 は「attach し直せば通る」として activate+1回再試行
+
+  効果(`--ios --ios-inapp` フル構成): 離脱がベースライン 2回中2件 → **2回中0件**。
+  追加の activate は1シナリオ1回・ジェスチャを XCUITest へ回すときだけなので、
+  **run 時間に有意差なし**(3 SUT の合計で ±1s 以内・2026-07-28 実測)。
+  なお**トリガは他にもあり得る**(要素が hittable でない等の XCUI 失敗)。恒久対策は
+  ランナーから swift-testing を外せるかの調査が要る(未着手)
 - **XCUITest のセッション消失は snapshot 境界でだけ自動回復する**(`SessionRecoveryDriver`)。
   ランナー再起動で `BridgeRouter.requireApp()` が 409 を返すと以前は全操作が落ちていた。
   この経路の 409 はセッション消失専用(409 を投げる箇所が1つしかない)なので状態コードだけで判定でき、
