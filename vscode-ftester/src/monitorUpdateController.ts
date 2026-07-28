@@ -145,7 +145,7 @@ export class MonitorUpdateController {
       // (更新を実行した直後という文脈があり、割り込みが正当な唯一の場面)。
       const reload = t("monitor.update.reloadButton");
       const picked = await vscode.window.showInformationMessage(
-        t("monitor.update.finishedOk"), { modal: true, detail: t("monitor.update.finishedOkDetail") }, reload);
+        t("monitor.update.finishedOk"), { modal: true }, reload);
       if (picked === reload) {
         await vscode.commands.executeCommand("workbench.action.reloadWindow");
       }
