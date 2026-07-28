@@ -34,6 +34,7 @@
   "ftester.debugger.serial.description": "Android device serial number (uses the ftester.serial setting if omitted).",
   "ftester.debugger.initialConfig.name": "ftester: Debug Scenario",
   "ftester.command.refreshScenarios.title": "ftester: Reload Scenarios",
+  "ftester.command.checkForUpdate.title": "ftester: Check for Updates",
   "ftester.command.selectProject.title": "ftester: Select Project",
   "ftester.command.showSteps.title": "ftester: Show Step List",
   "ftester.command.refreshSteps.title": "ftester: Refresh Step List",

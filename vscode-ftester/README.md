@@ -198,6 +198,28 @@ code --install-extension vscode-ftester-<version>.vsix
 | `ftester.autoRepairDeviceHealth` | boolean | `false` | Android エミュレータのゲスト OS 異常(Wi-Fi 無効・時計のずれ)を検出したとき、Wi-Fi 再有効化→再起動の順で自動修復を試みる |
 | `ftester.showOnlyFailedTests` | boolean | `false` | Test Explorer のツリーを失敗したテストだけに絞り込む(未実施・成功のテストは非表示)。Test Explorer タイトルバーのフィルターボタンでも切り替えられる |
 | `ftester.language` | `"auto"` \| `"ja"` \| `"en"` | `"auto"` | 拡張の UI 表示言語。`auto` は VS Code の表示言語に追従する(ja 系なら日本語、それ以外は英語)。詳細は下記「表示言語(i18n)」 |
+| `ftester.updateCheck` | `"auto"` \| `"off"` | `"auto"` | 起動時(1日1回まで)に foundation-tester の更新有無を確認し、あれば通知する。**確認するだけで取り込みはしない**。詳細は下記「更新チェック」 |
+
+## 更新チェック
+
+`auto` の間、拡張は起動時に `<TOOL_ROOT>/Scripts/update-check.sh` を実行し、upstream に未取得の
+コミットがあれば通知します(`src/updateCheck.ts`)。判定は `git ls-remote` だけで行い、**`git fetch`
+も `git pull` もしません**(ローカルのリポジトリを一切変更しない)。取り込みは `/ftester-update`
+または `Scripts/update.sh` で、最後に Reload Window が要ります。
+
+通知は起動のたびには出ません。前回チェックから24時間未満なら実行そのものをせず、「この版は通知
+しない」を押した upstream の版は次の版が出るまで黙ります(記録は**クローン単位**。別クローンを
+開いた側のチェックを止めないため)。オフライン・未クローン・版固定(detached HEAD)は黙って
+スキップし、理由は出力パネル `ftester` に1行だけ残ります。
+
+今すぐ確認したいときはコマンド **「ftester: 更新を確認」**(`ftester.checkForUpdate`)。こちらは
+**間隔・「通知しない」・`updateCheck: off` をすべて無視して必ず結果を返します**(最新なら「最新
+です」と答える)。明示的に押したのに黙るのは誤動作に見えるため、自動チェックとはここだけ挙動が
+違います。
+
+なお通知に出る理由(`update-check.sh` の `reason=`)は**表示言語に関わらず英語**です
+(スクリプト側の契約。日本語 UI では「更新を確認できませんでした: cannot reach upstream (…)」の
+ように枠だけ日本語になります)。
 
 ## 表示言語(i18n)
 

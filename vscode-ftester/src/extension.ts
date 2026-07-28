@@ -28,7 +28,7 @@ import { RunEventBus } from "./runEventBus";
 import { isRunActive, registerRunHandler } from "./runHandler";
 import { registerStepsView } from "./stepsView";
 import { FtesterTestTree, unhideAllTests } from "./testTree";
-import { checkFtesterUpdate } from "./updateCheck";
+import { checkFtesterUpdate, checkFtesterUpdateNow } from "./updateCheck";
 import { ScenarioFileWatcher } from "./watcher";
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -290,6 +290,17 @@ function registerCommands(
     }),
     vscode.commands.registerCommand("ftester.refreshScenarios", () => {
       void testTree.refresh();
+    }),
+    // 手動の更新確認。自動チェック(activate 冒頭)と違い、間隔も却下も設定 off も無視して必ず答える。
+    vscode.commands.registerCommand("ftester.checkForUpdate", () => {
+      void checkFtesterUpdateNow({
+        workspaceRoot,
+        outputChannel,
+        globalState: context.globalState,
+        registerChild: (proc) => {
+          context.subscriptions.push({ dispose: () => proc.kill() });
+        },
+      });
     }),
     // TEST EXPLORER の右クリック物理削除。対向: package.json testing/item/context(z_delete)、
     // ftester api delete-scenario。テストアイテム id は class:<folder>/<class> か <Class>.<Method>。

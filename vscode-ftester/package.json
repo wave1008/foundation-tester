@@ -2,7 +2,7 @@
   "name": "vscode-ftester",
   "displayName": "ftester",
   "description": "%ftester.extension.description%",
-  "version": "0.0.407",
+  "version": "0.0.408",
   "private": true,
   "publisher": "wave1008",
   "license": "MIT",
@@ -256,6 +256,10 @@
         "command": "ftester.refreshScenarios",
         "title": "%ftester.command.refreshScenarios.title%",
         "category": "ftester"
+      },
+      {
+        "command": "ftester.checkForUpdate",
+        "title": "%ftester.command.checkForUpdate.title%"
       },
       {
         "command": "ftester.selectProject",
