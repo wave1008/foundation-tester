@@ -209,8 +209,9 @@ FM 無しで動く。**人間に「有効か」を聞かない**：
 **検証ゲート(init 後の .gitignore)**: WORK_DIR が git リポジトリ(既存 repo 直下を含む)なら、
 `.gitignore` に `.build/` と `Projects/*/reports/` があることを確認する(`ftester init` が自動整備する。
 欠けていればこの2行を追記)。`git status` に `.build/` の未追跡ノイズが出ないことまで見る。
-何をコミットすべきか(Package.resolved・`.vscode/settings.json`・`Projects/` 等)は
-docs/getting-started.md「インストールの次にやること」の git 管理の方針を受け手に案内する。
+何をコミットすべきかを受け手に案内する: `Package.swift`・`Package.resolved`・`Projects/`・`.gitignore` は
+コミット、`.build/` と `Projects/*/reports/` は ignore(init が整備済み)。`.mcp.json` は TOOL_ROOT の
+絶対パスを含むためマシン固有。
 
 ### 5. マシンプロファイル（このPC）
 

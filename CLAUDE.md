@@ -9,7 +9,7 @@
 
 ## ドキュメント
 
-- 使い方(クローン→ビルド→自分のアプリを登録→実行。受け手向け): docs/getting-started.md
+- 受け手向けの導入(事前準備・インストール・更新・アンインストールだけ。使い方は README とスキル): docs/getting-started.md
 - 受け手の一括導入: `Scripts/install.sh`(clone〜検証ゲートを冪等に実行)。**各手順は
   `.claude/skills/ftester-setup/SKILL.md` のステップ番号と 1:1**(失敗時に「→ SKILL.md ステップ N」を
   出してエージェントを手作業手順へ戻す設計)。**片方だけ変えない** — 手順の追加・番号の変更は両方に入れる

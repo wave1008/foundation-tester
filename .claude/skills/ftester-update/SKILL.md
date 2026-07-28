@@ -64,7 +64,7 @@ git pull
 ```
 
 - 衝突が出たら停止して報告する。clone 構成では受け手の `Projects/` が git 管理下にあると衝突しやすい
-  （getting-started.md は Projects/ を管理外/別リポジトリにすることを推奨）。外部構成では `Projects/` は
+  （その場合は Projects/ を git 管理外か別リポジトリにするよう案内する）。外部構成では `Projects/` は
   WORK_DIR 側なので TOOL_ROOT の pull とは衝突しない。
 - 版を固定したい場合は `git checkout <新version>`。
 
