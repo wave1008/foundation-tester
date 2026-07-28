@@ -505,7 +505,8 @@ class MonitorPanelController implements vscode.Disposable {
         this.profiles.cancelNameInput(message.id);
         break;
       case "checkUpdate":
-        void this.update.check();
+        // 人が押した確認なので、更新が見つかったらその場で適用するか聞く(prompt)。
+        void this.update.check({ prompt: true });
         break;
       case "runUpdate":
         void this.update.runUpdate();
