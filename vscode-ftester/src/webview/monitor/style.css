@@ -1687,7 +1687,38 @@ input[type="text"]::placeholder {
   line-height: 1.5;
   color: var(--vscode-descriptionForeground);
 }
-/* 更新セクション(設定タブ)。状態1行 → ボタン → 説明 → 実行ログ の縦積み。 */
+/* 更新セクション(設定タブ)。状態1行 → ボタン → 説明 の縦積み(実行ログは OUTPUT へ)。 */
+.settings-update-statusline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+/* 確認中・更新中のインジケーター。デバイスタイルの起動スピナーと同じ形・同じ keyframes を使う
+   (数分かかる更新で「進んでいる」ことを示す。ログ行だけだと止まったように見える)。 */
+.settings-update-spinner {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, var(--vscode-foreground) 25%, transparent);
+  border-top-color: var(--vscode-charts-blue, #3794ff);
+  animation: ft-placeholder-spin 1s linear infinite;
+}
+/* タブバーの「更新する」も実行中はスピナーを持つ(設定タブを見ていなくても進行が分かる)。 */
+#tabbar .tabbar-update.busy::before {
+  content: '';
+  display: inline-block;
+  box-sizing: border-box;
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  vertical-align: -1px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: currentColor;
+  animation: ft-placeholder-spin 1s linear infinite;
+}
 .settings-update-status {
   color: var(--vscode-foreground);
 }
@@ -1696,20 +1727,6 @@ input[type="text"]::placeholder {
 .settings-update-actions {
   display: flex;
   gap: 8px;
-}
-/* 数分ぶんの出力が入るので高さを固定してスクロールさせる(パネル全体を押し広げない)。 */
-.settings-update-log {
-  margin: 4px 0 0;
-  padding: 8px 10px;
-  max-height: 220px;
-  overflow: auto;
-  white-space: pre-wrap;
-  word-break: break-all;
-  font-family: var(--vscode-editor-font-family, monospace);
-  font-size: 12px;
-  line-height: 1.5;
-  background-color: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.1));
-  border-radius: 3px;
 }
 /* パネル全体を縦flexで満たし、#resident-list(表のスクロール領域)を余白いっぱいに伸ばす。 */
 .processes-body {

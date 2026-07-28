@@ -455,12 +455,14 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
            (拡張は実行して結果を出すだけ)。対向: settingsTab.js / monitorUpdateController.ts -->
       <div class="settings-group">
         <div class="settings-label">${t("panels.settings.updateLabel")}</div>
-        <div id="settings-update-status" class="settings-update-status">${t("panels.settings.updateChecking")}</div>
+        <div class="settings-update-statusline">
+          <span id="settings-update-spinner" class="settings-update-spinner" style="display: none;" aria-hidden="true"></span>
+          <span id="settings-update-status" class="settings-update-status">${t("panels.settings.updateChecking")}</span>
+        </div>
         <div class="settings-update-actions">
           <button id="settings-update-check" class="secondary" type="button">${t("panels.settings.updateCheckButton")}</button>
         </div>
         <div class="settings-hint">${t("panels.settings.updateHint")}</div>
-        <pre id="settings-update-log" class="settings-update-log" style="display: none;"></pre>
       </div>
       <div class="settings-group">
         <label class="settings-label" for="settings-language">${t("panels.settings.languageLabel")}</label>

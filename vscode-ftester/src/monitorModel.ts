@@ -374,14 +374,9 @@ export type MonitorToWebviewMessage =
   | { readonly type: "language"; readonly value: "auto" | "ja" | "en" }
   // 設定タブ「更新」セクションの状態。パネル ready 直後と checkUpdate/runUpdate の前後に送る。
   // 判定そのものは Scripts/update-check.sh(拡張は解釈するだけ)。対向: settingsTab.js の applyUpdate。
+  // **実行ログは webview に送らない**(VSCode の OUTPUT へ出す。monitorUpdateController.ts 冒頭)。
   | { readonly type: "updateStatus"; readonly state: string; readonly localHead: string;
       readonly remoteHead: string; readonly reason: string }
-  // 更新の実行を開始した(確認を通った)。webview はログ領域を空にして表示する。
-  | { readonly type: "updateLogReset" }
-  // 更新実行中(update.sh)の出力1行。数分かかるので進行を見せるために逐次送る。
-  | { readonly type: "updateLog"; readonly line: string }
-  // 更新実行の終了。exitCode 0 以外は失敗(ログに [fail] 行が出ている)。
-  | { readonly type: "updateFinished"; readonly exitCode: number }
   // 設定タブ「常駐プロセス」一覧。refreshResidentProcesses 受信時と killAllResidentProcesses 完了後に送る。
   // 対向: settingsTab.js の applyResidentMessage。
   | { readonly type: "residentProcesses"; readonly items: readonly ResidentProcess[]; readonly ts: number }
@@ -588,7 +583,7 @@ export type MonitorFromWebviewMessage =
   | { readonly type: "setLanguage"; readonly value: "auto" | "ja" | "en" }
   // 設定タブ「更新」の「更新を確認」ボタン(settingsTab.js)。monitorPanel.ts が update-check.sh を実行する。
   | { readonly type: "checkUpdate" }
-  // 設定タブ「更新」の「更新する」ボタン。monitorPanel.ts が update.sh を実行し、出力を updateLog で流す。
+  // 設定タブ「更新」の「更新する」ボタン。monitorPanel.ts が update.sh を実行し、出力は OUTPUT へ出す。
   | { readonly type: "runUpdate" }
   | { readonly type: "refreshResidentProcesses" }
   | { readonly type: "killAllResidentProcesses" }

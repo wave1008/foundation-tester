@@ -161,6 +161,7 @@ export const webviewMonitorBStrings = {
     ja: "更新中です(数分かかります。完了までウィンドウを閉じないでください)",
     en: "Updating (this takes a few minutes; keep this window open)",
   },
+  "wvMonitor2.update.runningButton": { ja: "更新中…", en: "Updating..." },
   "wvMonitor2.update.upToDate": { ja: "最新です({local})", en: "Up to date ({local})" },
   "wvMonitor2.update.available": {
     ja: "更新があります({local} → {remote})",
@@ -175,12 +176,4 @@ export const webviewMonitorBStrings = {
     en: "Cannot check: no foundation-tester clone found",
   },
   "wvMonitor2.update.unknown": { ja: "確認できませんでした: {reason}", en: "Could not check: {reason}" },
-  "wvMonitor2.update.finishedOk": {
-    ja: "✅ 更新が完了しました。反映するには「Developer: Reload Window」を実行してください。",
-    en: "✅ Update complete. Run \"Developer: Reload Window\" to apply it.",
-  },
-  "wvMonitor2.update.finishedFailed": {
-    ja: "❌ 更新に失敗しました(終了コード {code})。上のログの [fail] 行を確認してください。",
-    en: "❌ Update failed (exit code {code}). Check the [fail] line in the log above.",
-  },
 } satisfies MessageDict;
