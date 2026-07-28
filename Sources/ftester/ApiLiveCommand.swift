@@ -90,8 +90,8 @@ struct ApiLiveServe: AsyncParsableCommand {
         // SERVE_REQUEST_TIMEOUT_MS(20秒)にして、通常は拡張の kill→respawn を先に効かせる。
         ResidentProcessGuard.startCommandWatchdog(maxSeconds: 30, logLabel: "live serve")
 
-        let driver = try driverOptions.makeDriver()
-        let starter = makeAutoStarter()
+        let (driver, port) = try await makeDriverAvoidingInApp()
+        let starter = makeAutoStarter(port: port)
         if let starter {
             Task { await starter.checkAndRestartIfStale() }
         }
@@ -134,13 +134,33 @@ struct ApiLiveServe: AsyncParsableCommand {
         }
     }
 
+    /// live は home/appSwitcher/drag/座標 press を扱うため **in-app ブリッジを使わない**。
+    /// 指定ポートが in-app なら同じデバイスの XCUITest ブリッジへ振り替える(XCUIBridgeResolver)。
+    /// 戻り値のポートは以後の自動起動・再起動が同じ宛先を見るために返す
+    private func makeDriverAvoidingInApp() async throws -> (AppDriver, UInt16) {
+        guard driverOptions.platform == "ios" else {
+            return (try driverOptions.makeDriver(), driverOptions.port)
+        }
+        // **autoStart:false**(= 走査までで止める)。serve は常駐で、拡張は応答が無いと
+        // kill→respawn するため、起動時に build-for-testing(分単位)でブロックしてはいけない。
+        // hybrid は in-app と XCUITest を両方張るので走査だけで必ず見つかる。
+        // 見つからないのは engine=inapp 単独のときで、そのときは理由を stderr に出して素通しする
+        let resolution = await XCUIBridgeResolver.resolve(
+            preferred: driverOptions.port, repoRoot: try? RepoRoot.find(), autoStart: false,
+            logger: { message in
+                FileHandle.standardError.write(Data(("[live serve] " + message + "\n").utf8))
+            })
+        return (BridgeClient(port: resolution.endpoint.port, host: resolution.endpoint.host),
+                resolution.endpoint.port)
+    }
+
     /// platform=ios かつ --udid 指定時のみ自動起動を有効化する。RepoRoot.find() の失敗は
     /// serve 自体を止めず自動起動なしで続行する(--udid 未指定時と同じ扱いに落とす)
-    private func makeAutoStarter() -> LiveBridgeAutoStarter? {
+    private func makeAutoStarter(port: UInt16) -> LiveBridgeAutoStarter? {
         guard driverOptions.platform == "ios", let udid else { return nil }
         do {
             let repoRoot = try RepoRoot.find()
-            return LiveBridgeAutoStarter(repoRoot: repoRoot, udid: udid, port: driverOptions.port)
+            return LiveBridgeAutoStarter(repoRoot: repoRoot, udid: udid, port: port)
         } catch {
             logStderr("リポジトリルートが見つからないためブリッジ自動起動を無効化します: " +
                 error.localizedDescription)

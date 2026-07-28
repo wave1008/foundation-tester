@@ -92,21 +92,30 @@ final class MCPServer {
 
     // MARK: - ドライバ
 
-    private func driver(_ args: [String: Any]) throws -> AppDriver {
+    private func driver(_ args: [String: Any]) async throws -> AppDriver {
         let platform = (args["platform"] as? String)
             ?? ProcessInfo.processInfo.environment["FTESTER_PLATFORM"]
             ?? "ios"
-        if let cached = drivers[platform] { return cached }
+        // ポートもキーに含める(別ポート指定で同じドライバを使い回さない)
+        let key = "\(platform):\(args["port"] as? Int ?? 0)"
+        if let cached = drivers[key] { return cached }
         let created: AppDriver
         switch platform {
         case "ios":
-            created = BridgeClient()
+            // ft_* は home/appSwitcher/drag/座標 press を含むため in-app ブリッジは使わない
+            // (XCUIBridgeResolver: in-app を掴んだら同じデバイスの XCUITest ブリッジへ振り替え、
+            // 無ければ起動する)。解決は platform ごとに1度だけ = drivers キャッシュで再利用
+            let port = (args["port"] as? Int).map(UInt16.init) ?? BridgeAPI.defaultPort
+            let resolution = await XCUIBridgeResolver.resolve(
+                preferred: port, repoRoot: try? RepoRoot.find(),
+                logger: { Self.logStderr($0) })
+            created = BridgeClient(port: resolution.endpoint.port, host: resolution.endpoint.host)
         case "android":
             created = try AndroidDriver(serial: args["serial"] as? String)
         default:
             throw MCPError("platform は ios / android のいずれかです: \(platform)")
         }
-        drivers[platform] = created
+        drivers[key] = created
         return created
     }
 
@@ -135,7 +144,7 @@ final class MCPServer {
             return text(SnapshotRenderer.render(snapshot))
 
         case "ft_tap":
-            let d = try driver(args)
+            let d = try await driver(args)
             if let ref = args["ref"] as? Int {
                 try await d.tap(ref: ref)
                 return text("tap [\(ref)] 完了。画面が変わった可能性があるため ft_snapshot で再取得してください")
@@ -191,6 +200,11 @@ final class MCPServer {
 
     private func text(_ string: String) -> [[String: Any]] {
         [["type": "text", "text": string]]
+    }
+
+    /// stdout は JSON-RPC 専用(混ぜるとクライアントのパースが壊れる)。診断は必ず stderr へ
+    private static func logStderr(_ message: String) {
+        FileHandle.standardError.write(Data(("[ftester-mcp] " + message + "\n").utf8))
     }
 
     /// シナリオ一覧(自動ビルド込み。コンパイルエラーはそのまま返す=エージェントが直せる)
