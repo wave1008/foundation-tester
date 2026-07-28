@@ -112,9 +112,12 @@ export class MonitorUpdateController {
     await this.check();
     if (exitCode === 0) {
       this.deps.outputChannel.appendLine(t("monitor.update.finishedOkLog"));
-      // **入れ替えた拡張は再読み込みまで有効にならない**ので、その場で再読み込みを提案する。
+      // **入れ替えた拡張は再読み込みまで有効にならない**ので、その場で再読み込みを促す。
+      // トースト通知だと見落として旧版のまま使い続けるため、**モーダルで出す**
+      // (更新を実行した直後という文脈があり、割り込みが正当な唯一の場面)。
       const reload = t("monitor.update.reloadButton");
-      const picked = await vscode.window.showInformationMessage(t("monitor.update.finishedOk"), reload);
+      const picked = await vscode.window.showInformationMessage(
+        t("monitor.update.finishedOk"), { modal: true, detail: t("monitor.update.finishedOkDetail") }, reload);
       if (picked === reload) {
         await vscode.commands.executeCommand("workbench.action.reloadWindow");
       }

@@ -262,6 +262,11 @@ export const monitorStrings = {
     ja: "ftester の更新が完了しました。反映するにはウィンドウを再読み込みしてください。",
     en: "The ftester update is complete. Reload the window to apply it.",
   },
+  // モーダルの本文(detail)。閉じても更新自体は済んでいることを明示する。
+  "monitor.update.finishedOkDetail": {
+    ja: "拡張と CLI を入れ替えました。ウィンドウを再読み込みするまで、この画面では更新前の拡張が動き続けます(あとで「Developer: Reload Window」でも反映できます)。",
+    en: "The extension and CLI have been replaced. Until you reload the window, this window keeps running the previous extension (you can also apply it later via \"Developer: Reload Window\").",
+  },
   "monitor.update.reloadButton": { ja: "再読み込み", en: "Reload window" },
   "monitor.update.finishedFailedLog": {
     ja: "==> 更新に失敗しました(終了コード {code})。上の [fail] 行を確認してください。",
