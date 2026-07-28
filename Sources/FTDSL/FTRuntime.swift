@@ -114,6 +114,11 @@ public final class FTRuntime {
 
 public final class FTDriveCore {
     let driver: AppDriver
+    /// home / appSwitcher 用のドライバ。**in-app エンジンは自プロセス外を触れないので原理的に
+    /// 実行できない**(501)。hybrid では 501 の往復を作らず最初から XCUITest 側へ直行する
+    /// (XCUITest ブリッジの /home・/appswitcher はセッション不要)。
+    /// hybrid 以外(xcuitest / Android / inapp 単独)は primary のまま = 挙動不変
+    var systemDriver: AppDriver { executor.typeDriver ?? driver }
     public let platform: String
     /// 実機か。白フレーム=画面凍結の推定はエミュレータ固有の病理(GPU 合成バッファ固着)なので、
     /// 実機では「画面が消灯しているだけ」を凍結と誤断しないためにこれで抑止する

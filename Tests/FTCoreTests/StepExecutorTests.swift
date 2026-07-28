@@ -85,6 +85,19 @@ private final class FakeAppDriver: AppDriver {
         log.entries.append("\(name).press(ref:\(ref))")
     }
 
+    /// 非 nil なら drag がこのエラーを throw する(空打ちドラッグの XCUITest 切替の検証用)。
+    /// **実装しないと AppDriver 既定の 501 になる**ので、フォールバック先の検証には実装が要る
+    var dragError: Error?
+
+    func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
+              pressSeconds: Double, durationSeconds: Double) async throws {
+        if let dragError {
+            log.entries.append("\(name).drag(throws)")
+            throw dragError
+        }
+        log.entries.append("\(name).drag")
+    }
+
     private(set) var screenshotCallCount = 0
     func screenshot() async throws -> Data { screenshotCallCount += 1; return Data() }
 
@@ -1082,6 +1095,60 @@ final class StepExecutorTests: XCTestCase {
         let child = framed(ref: 4, id: "txt_inner", x: 20, y: 818, width: 60, height: 14, depth: 1)
         XCTAssertFalse(StepExecutor.pointIsTakenByFrontElement(
             x: 71, y: 825, of: target, in: [target, child]))
+    }
+
+    /// 空打ちドラッグは in-app が未対応(501)なら typeDriver(XCUITest)へ回すこと。
+    /// 回さないと Compose のスクロール容器がタッチを1回吸ったままになり直後の tap が空振りする
+    func testEmptyDragFallsBackToTypeDriverWhenEngineIncapable() async throws {
+        let log = CallLog()
+        let row = framed(ref: 1, id: "row_40", x: 16, y: 300, width: 370, height: 56)
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[], [row]])
+        primary.dragError = DriverError.badResponse(status: 501, body: "未対応")
+        let typeDriver = FakeAppDriver(name: "typedriver", log: log)
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver,
+                                    releasesScrollTouch: true)
+        let step = FlowStep(action: "scrollTo", locator: FlowLocator(id: "row_40"), maxSwipes: 2)
+
+        guard case .passed = await executor.execute(step).status else {
+            XCTFail("2回目の snapshot で見つかるので pass のはず"); return
+        }
+        XCTAssertTrue(log.entries.contains("primary.drag(throws)"), "まず primary を試すこと: \(log.entries)")
+        XCTAssertTrue(log.entries.contains("typedriver.drag"),
+                      "501 なら typeDriver へ回すこと: \(log.entries)")
+    }
+
+    /// drag のラッチは swipe に波及しないこと。in-app は drag だけ不可・swipe は
+    /// contentOffset 経路で効くため、共有すると全 swipe が XCUITest 実スワイプ化して flake る
+    func testDragFallbackDoesNotLatchSwipeToTypeDriver() async throws {
+        let log = CallLog()
+        let row = framed(ref: 1, id: "row_40", x: 16, y: 300, width: 370, height: 56)
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[], [row]])
+        primary.dragError = DriverError.badResponse(status: 501, body: "未対応")
+        let typeDriver = FakeAppDriver(name: "typedriver", log: log)
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver,
+                                    releasesScrollTouch: true)
+        _ = await executor.execute(
+            FlowStep(action: "scrollTo", locator: FlowLocator(id: "row_40"), maxSwipes: 2))
+        log.entries.removeAll()
+
+        _ = await executor.execute(FlowStep(action: "swipe", direction: "up"))
+
+        XCTAssertEqual(log.entries, ["primary.swipe"],
+                       "drag の 501 で swipe まで typeDriver へ回してはいけない: \(log.entries)")
+    }
+
+    /// フォールバック判定は 501 と「ルート不明の 404」だけ。409(一時的競合)と
+    /// ref 不明の 404 を含めると、前面不在や古い ref を隠して別画面を操作しかねない
+    func testIsEngineIncapableClassification() {
+        XCTAssertTrue(DriverError.isEngineIncapable(
+            DriverError.badResponse(status: 501, body: "in-app エンジンでは press が効きません")))
+        XCTAssertTrue(DriverError.isEngineIncapable(
+            DriverError.badResponse(status: 404, body: "not found: POST /drag")))
+        XCTAssertFalse(DriverError.isEngineIncapable(
+            DriverError.badResponse(status: 404, body: "参照番号 [3] は未知です")))
+        XCTAssertFalse(DriverError.isEngineIncapable(
+            DriverError.badResponse(status: 409, body: "キーウィンドウがありません")))
+        XCTAssertFalse(DriverError.isEngineIncapable(DriverError.bridgeUnreachable("timeout")))
     }
 
     /// 画面下端の a11y 空白帯(タブ frame の下〜画面下端)では空打ちしない。

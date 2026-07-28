@@ -37,15 +37,64 @@ final class CommandDispatchTests: XCTestCase {
         }
         func screenshot() async throws -> Data { Data() }
         func terminate() async throws {}
+
+        private(set) var homeCount = 0
+        private(set) var appSwitcherCount = 0
+        func home() async throws { homeCount += 1 }
+        func openAppSwitcher() async throws { appSwitcherCount += 1 }
     }
 
-    private func makeCore(driver: AppDriver) -> FTDriveCore {
+    private func makeCore(driver: AppDriver, typeDriver: AppDriver? = nil) -> FTDriveCore {
         FTDriveCore(driver: driver, platform: "ios", app: "com.example.app",
                     scenarioID: "T.S0010", scenarioTitle: "t",
                     delegate: nil, healingEnabled: false, dryRun: false,
                     healCacheURL: URL(fileURLWithPath: NSTemporaryDirectory())
                         .appendingPathComponent("ft-dispatch-test.json"),
+                    typeDriver: typeDriver,
                     emit: { _ in })
+    }
+
+    /// hybrid(typeDriver あり = primary が in-app)では home/appSwitcher を **最初から**
+    /// XCUITest 側へ出すこと。in-app は自プロセス外を触れず 501 になるため往復させない
+    func testHomeAndAppSwitcherGoToXCUITestOnHybrid() {
+        let primary = RecordingDriver()
+        let xcui = RecordingDriver()
+        let core = makeCore(driver: primary, typeDriver: xcui)
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        scenario {
+            scene(1, "s") {
+                action {
+                    home()
+                    appSwitcher()
+                }
+            }
+        }
+
+        XCTAssertEqual([xcui.homeCount, xcui.appSwitcherCount], [1, 1],
+                       "hybrid では XCUITest 側へ直行すべき")
+        XCTAssertEqual([primary.homeCount, primary.appSwitcherCount], [0, 0],
+                       "in-app 側は 501 になるだけなので撃ってはいけない")
+    }
+
+    /// typeDriver 無し(xcuitest / Android / inapp 単独)は従来どおり primary へ出すこと
+    func testHomeAndAppSwitcherUsePrimaryWithoutTypeDriver() {
+        let primary = RecordingDriver()
+        let core = makeCore(driver: primary)
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        scenario {
+            scene(1, "s") {
+                action {
+                    home()
+                    appSwitcher()
+                }
+            }
+        }
+
+        XCTAssertEqual([primary.homeCount, primary.appSwitcherCount], [1, 1])
     }
 
     func testPressDurationReachesDriver() {
