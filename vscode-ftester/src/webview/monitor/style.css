@@ -36,10 +36,10 @@ body {
   background-color: var(--vscode-editorGroupHeader-tabsBackground, transparent);
   border-bottom: 1px solid var(--vscode-tab-border, var(--vscode-panel-border, transparent));
 }
-/* 更新ボタンはタブ群の右端へ寄せる(タブではないので .tab-button の枠線・角丸は継がない)。
+/* 更新ボタンは最後のタブ(設定)のすぐ右に置く(タブではないので .tab-button の枠線・角丸は継がない)。
    更新があるときだけ display:block になる(settingsTab.js)。 */
 #tabbar .tabbar-update {
-  margin: 4px 8px 4px auto;
+  margin: 4px 8px;
   padding: 3px 12px;
   align-self: center;
 }
