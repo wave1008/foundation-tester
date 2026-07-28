@@ -313,6 +313,25 @@ ftester run-file ~/tmp/新しい画面.swift --project MyApp --profile ios
   （inapp＋xcuitest）使い、`.ftester/bridge-*.pid`／`.inapp` の残骸があるポートは避けて採番するため。
   まとめて掃除するには `ftester bridge down --all`。
 
+### ディレクトリを削除する / 残ったプロセスを消す
+
+`.build` や `.ftester` を消しても作り直されるのは、**生きているプロセスが作り直しているから**です
+（MCP サーバは起動のたびに `swift build` する設定なので、`ft_*` を呼ぶたびに `.build` が戻ります）。
+この順序で行ってください:
+
+1. **VSCode を終了する**。MCP サーバ・デバイスモニター・画面ストリームは VSCode の子プロセスなので、
+   これで止まります（開いたままだと消しても作り直されます）。
+2. **ディレクトリを削除する**（`rm -rf <TOOL_ROOT>`、または `.build` と `.ftester` だけ）。
+3. **残ったプロセスを消す**。VSCode を終了しても残るのは **XCUITest ランナー**です
+   （実行をまたいで再利用するため親から切り離してあります）。ターミナルで:
+
+```bash
+# 残っているか確認
+pgrep -fl 'ftester-mcp|/ftester (api|run|bridge|devices)|ftester-(simstream|androidstream|devicepoll)|xcodebuild.*FTesterRunner'
+# 消す（それでも残るなら pkill -9 -f '…' で同じパターンを）
+pkill -f 'ftester-mcp|/ftester (api|run|bridge|devices)|ftester-(simstream|androidstream|devicepoll)|xcodebuild.*FTesterRunner'
+```
+
 ## 更新のしかた（新しい修正版が出たとき）
 
 Claude Code なら `/ftester-update` が構成を判定して自動実行します。手動は次の順:
@@ -380,7 +399,9 @@ clone 内で直接スキルを使っている構成なら `git pull` で更新�
   削除します。curl（フォールバック）で導入した場合は、代わりに各ディレクトリの
   `.claude/skills/ftester-*` を削除します。
 - **VSCode 拡張（vscode-ftester）**: VSCode の拡張ビューからアンインストール。
-- **ツール本体（TOOL_ROOT の clone）**: `foundation-tester` ディレクトリを削除。マシン名の登録が不要なら
+- **ツール本体（TOOL_ROOT の clone）**: **VSCode を終了してから** `foundation-tester` ディレクトリを削除
+  （開いたままだと MCP サーバが `.build` を作り直します）。削除後に残るプロセスの消し方は
+  「ディレクトリを削除する / 残ったプロセスを消す」。マシン名の登録が不要なら
   `~/.config/ftester/config.json` も削除します。あなたの WORK_DIR（`Projects/` のシナリオ・プロファイル）は
   ツールと分離したあなたの資産なので、消すかどうかは自由です。
 - **受け手パッケージ側の生成物（WORK_DIR。再インストールする場合はここまで消す）**: `ftester init` が
@@ -416,6 +437,10 @@ clone 内で直接スキルを使っている構成なら `git pull` で更新�
   (dev サーバ・モックAPI 等)は**自分のターミナルで起動しておく**と再起動をまたいで生き残ります。
   サーバが落ちた状態だとアプリが読み込み失敗の画面になり、要素が解決できずシナリオが大量に落ちる
   ため、`ロケータを解決できません` が急に増えたらまずサーバの死活を確認してください。
+- **`.build`（や `.ftester`）を削除しても復活する** → 生きているプロセスが作り直しています
+  （MCP サーバは rebuild-on-start、拡張はパネル表示中に子プロセスを respawn、XCUITest ブリッジは
+  VSCode 終了でも残る）。**VSCode を終了してから消す**のが要点です。手順と、残ったプロセスの
+  消し方は「ディレクトリを削除する / 残ったプロセスを消す」。
 - **`ft_*` が「`<WORK_DIR>/InAppBridge/build.sh` が無い」等でツール本体のファイルを見失う** →
   ftester は2つのルートを使い分けます: **ツール本体**(TOOL_ROOT。`Runner/`・`InAppBridge/` などブリッジ
   資産の在り処)と**シナリオのパッケージ**(WORK_DIR。`Projects/` の在り処)。外部パッケージ構成では別物です。
