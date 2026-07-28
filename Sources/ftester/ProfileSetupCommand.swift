@@ -63,7 +63,17 @@ struct ProfileSetupCommand: AsyncParsableCommand {
     func run() async throws {
         let platforms: [String]
         switch platform {
-        case "both": platforms = ["ios", "android"]
+        case "both":
+            platforms = ["ios", "android"]
+            // 同じ名前を両プラットフォームに使うと、後の1回が前の1回を上書き/重複エラーになる
+            if run != nil {
+                throw ValidationError("--platform both と --run は併用できません"
+                    + "(実行プロファイル名がプラットフォームごとに要ります)")
+            }
+            if deviceName != nil {
+                throw ValidationError("--platform both と --device-name は併用できません"
+                    + "(論理名は ios/android 横断で一意にする必要があります)")
+            }
         case "ios", "android": platforms = [platform]
         default: throw ValidationError("--platform は ios / android / both のいずれかです: \(platform)")
         }
@@ -110,7 +120,14 @@ struct ProfileSetupCommand: AsyncParsableCommand {
                 print("   自動選択(android): \(picked)")
             }
         }
-        if serial != nil || (platform == "ios" && udid != nil && simulator == nil) {
+        // 実機判定を誤ると実機向けの準備処理が走って run が壊れる。iOS はカタログ上の
+        // physical フラグ、Android は serial の形(emulator-XXXX はエミュレータ)で決める
+        if platform == "ios", let udid,
+           let known = try? SimulatorCatalog.devices().first(where: { $0.udid == udid }),
+           known.physical {
+            device["kind"] = "physical"
+        }
+        if platform == "android", let serial, DevicePicker.isPhysicalAndroidSerial(serial) {
             device["kind"] = "physical"
         }
 
@@ -173,12 +190,12 @@ struct ProfileSetupCommand: AsyncParsableCommand {
     /// 最新 OS の中で "Pro" を優先する(無ければ先頭)。作成はしない(重い・失敗理由が増える)
     static func pickSimulator() throws -> SimDeviceInfo {
         let simulators = try SimulatorCatalog.devices().filter { !$0.physical }
-        guard let newestOS = simulators.first?.os else {
+        guard let index = DevicePicker.pickSimulatorIndex(
+            simulators.map { (name: $0.name, os: $0.os) }) else {
             throw ValidationError("利用できるシミュレータがありません"
                 + "(Xcode で runtime/デバイスを導入するか ftester api create-device で作成してください)")
         }
-        let sameOS = simulators.filter { $0.os == newestOS }
-        return sameOS.first(where: { $0.name.contains("Pro") }) ?? sameOS[0]
+        return simulators[index]
     }
 
     /// 既存 AVD から1台選ぶ。config.ini の image.sysdir.1 に含まれる API レベルが最大のもの
@@ -188,27 +205,17 @@ struct ProfileSetupCommand: AsyncParsableCommand {
         let result = try Shell.run([binary, "-list-avds"])
         let avds = result.output.split(separator: "\n").map(String.init)
             .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-        guard !avds.isEmpty else {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let candidates = avds.map { avd -> (name: String, apiLevel: Int) in
+            let config = home.appendingPathComponent(".android/avd/\(avd).avd/config.ini")
+            let text = (try? String(contentsOf: config, encoding: .utf8)) ?? ""
+            return (avd, DevicePicker.apiLevel(fromConfigINI: text))
+        }
+        guard let picked = DevicePicker.pickAVD(candidates) else {
             throw ValidationError("利用できる AVD がありません"
                 + "(Android Studio で作成するか ftester api create-device で作成してください)")
         }
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        func apiLevel(_ avd: String) -> Int {
-            let config = home.appendingPathComponent(".android/avd/\(avd).avd/config.ini")
-            guard let text = try? String(contentsOf: config, encoding: .utf8) else { return -1 }
-            for line in text.split(separator: "\n") where line.hasPrefix("image.sysdir.1") {
-                if let range = line.range(of: "android-"),
-                   case let digits = line[range.upperBound...].prefix(while: \.isNumber),
-                   let level = Int(digits) {
-                    return level
-                }
-            }
-            return -1
-        }
-        return avds.sorted { lhs, rhs in
-            let (l, r) = (apiLevel(lhs), apiLevel(rhs))
-            return l == r ? lhs < rhs : l > r
-        }[0]
+        return picked
     }
 
     private func resolveMachineName(project: TestProject) throws -> String {
