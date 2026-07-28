@@ -58,8 +58,11 @@ curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scr
 
 - **0 = ready** → 未導入。ステップ0の質問へ進む。`tool_root_exists=` / `cli_built=` で既存クローンの有無も分かる。
 - **2 = installed** → 導入済み。**セットアップを続けない**(下の再実行ガードと同じ扱い)。用途別に案内する。
-- **1 = blocked** → 導入不可。出力の理由(無関係な Package.swift・macOS/Xcode・license・初回セットアップ)を
-  そのまま 🧑 に見せて対処を依頼する。sudo や Xcode 導入は代行できない。
+- **1 = blocked** → 導入不可。**出力の理由行をそのまま 🧑 に見せて対処を依頼する**(理由ごとに対処が違い、
+  `xcode_error=` と `xcode_select_path=` から切り分け済みの具体的なコマンドが出る。
+  license 未同意なら `sudo xcodebuild -license accept`、CommandLineTools が選択されているなら
+  `sudo xcode-select -s /Applications/Xcode.app`)。**自分で原因を推測して別のコマンドを案内しない**。
+  sudo や Xcode 導入は代行できない。
 
 以下は同じ判定を手で行う場合の内訳(スクリプトが使えないとき)。
 

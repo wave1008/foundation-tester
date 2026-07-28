@@ -120,7 +120,9 @@ command -v git >/dev/null 2>&1 || die "前提" "git が見つかりません" 0
 command -v swift >/dev/null 2>&1 || die "前提" "swift が見つかりません(Xcode を導入してください)" 0
 
 if ! xcodebuild -version >/dev/null 2>&1; then
-  die "前提" "xcodebuild が使えません(未導入か license 未同意。sudo xcodebuild -license accept は代行不可)" 0
+  # 原因の切り分け(license 未同意 / xcode-select が CommandLineTools / Xcode 未導入)は
+  # preflight.sh に一本化してある。ここでは同じ判定を二重に持たない
+  die "前提" "xcodebuild が使えません。原因と対処は Scripts/preflight.sh が切り分けます(license 未同意・xcode-select が CommandLineTools を指す・Xcode 未導入。いずれも sudo が要るので人間が実行)" 0
 fi
 if ! xcodebuild -checkFirstLaunchStatus >/dev/null 2>&1; then
   die "前提" "Xcode の初回セットアップが未了です(xcodebuild -runFirstLaunch を実行してください)" 0
