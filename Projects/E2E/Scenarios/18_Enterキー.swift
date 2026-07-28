@@ -51,6 +51,20 @@ class EnterキーでIMEアクションが発火すること {
                     textIs("#txt_echo_length", "len=3")
                 }
             }
+            scene(4, "ロケータ無しの type でも末尾改行が IME アクションになる") {
+                condition {
+                    tap("#btn_input_clear")
+                }.action {
+                    // ロケータ無し = フォーカス中の要素へ入力。iOS はここも XCUITest 経路へ回る
+                    // (ref が無いので attach 済みでないと 409。AppAttachDriver が activate して再試行する)
+                    tap("#field_single")
+                    type("pqr\n")
+                }.expectation {
+                    textIs("#txt_ime_action", "ime=1")
+                    textIs("#txt_echo_single", "single=pqr")
+                    textIs("#txt_echo_length", "len=3")
+                }
+            }
         }
     }
 }

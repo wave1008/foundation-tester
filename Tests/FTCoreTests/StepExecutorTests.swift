@@ -685,6 +685,107 @@ final class StepExecutorTests: XCTestCase {
                       "typeDriver が解決できないとき primary.type すべき: \(log.entries)")
     }
 
+    // MARK: - type の "\n" 振り分け(iOS Return 既定挙動への統一)
+
+    /// ロケータ有り: text に "\n" を含めば preferTypeDriver=false でも typeDriver を優先すること
+    func testTypeRoutesToTypeDriverWhenTextContainsNewline() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[element(ref: 1, id: "field_note")]])
+        let typeDriver = FakeAppDriver(name: "typedriver", log: log,
+                                       snapshotElements: [[element(ref: 2, id: "field_note")]])
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, preferTypeDriver: false)
+        let step = FlowStep(action: "type", locator: FlowLocator(id: "field_note"), text: "hi\n")
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("typeDriver 経由での passed を期待したが \(outcome.status) だった")
+            return
+        }
+        XCTAssertTrue(log.entries.contains("typedriver.type(ref:2)"))
+        XCTAssertFalse(log.entries.contains { $0.hasPrefix("primary.type") },
+                       "\\n を含む text は primary を試さず typeDriver へ回すべき: \(log.entries)")
+    }
+
+    /// ロケータ有り: text に "\n" が無ければ preferTypeDriver=false のとき従来どおり primary を使うこと
+    func testTypeUsesPrimaryWhenTextHasNoNewline() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[element(ref: 1, id: "field_note")]])
+        let typeDriver = FakeAppDriver(name: "typedriver", log: log,
+                                       snapshotElements: [[element(ref: 2, id: "field_note")]])
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, preferTypeDriver: false)
+        let step = FlowStep(action: "type", locator: FlowLocator(id: "field_note"), text: "hi")
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("primary 経由での passed を期待したが \(outcome.status) だった")
+            return
+        }
+        XCTAssertTrue(log.entries.contains("primary.type(ref:1)"))
+        XCTAssertFalse(log.entries.contains { $0.hasPrefix("typedriver.type") },
+                       "\\n を含まない text で typeDriver を照会してはいけない: \(log.entries)")
+    }
+
+    /// ロケータ無し: text に "\n" を含み typeDriver があれば typeDriver(ref: nil)へ回すこと。
+    /// snapshot を挟まない経路なので呼び出しは type 単発のみ
+    func testTypeWithoutLocatorRoutesToTypeDriverWhenTextContainsNewline() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log)
+        let typeDriver = FakeAppDriver(name: "typedriver", log: log)
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver)
+        let step = FlowStep(action: "type", text: "hi\n")
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("typeDriver 経由での passed を期待したが \(outcome.status) だった")
+            return
+        }
+        XCTAssertEqual(log.entries, ["typedriver.type(ref:nil)"],
+                       "ロケータ無し + \\n は typeDriver(ref: nil)へ直接回すべき: \(log.entries)")
+    }
+
+    /// ロケータ無し: typeDriver が無い(Android 相当)なら "\n" を含んでいても primary へ素通しすること
+    func testTypeWithoutLocatorUsesPrimaryWhenNoTypeDriver() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log)
+        let executor = StepExecutor(driver: primary)
+        let step = FlowStep(action: "type", text: "hi\n")
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("primary 経由での passed を期待したが \(outcome.status) だった")
+            return
+        }
+        XCTAssertEqual(log.entries, ["primary.type(ref:nil)"],
+                       "typeDriver 無しでは \\n を含んでいても primary へ素通しすべき: \(log.entries)")
+    }
+
+    /// 文中(末尾でない)の "\n" でも typeDriver へ回ること(末尾限定のロジックにしない)
+    func testTypeRoutesToTypeDriverWhenNewlineIsMidString() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[element(ref: 1, id: "field_note")]])
+        let typeDriver = FakeAppDriver(name: "typedriver", log: log,
+                                       snapshotElements: [[element(ref: 2, id: "field_note")]])
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver, preferTypeDriver: false)
+        let step = FlowStep(action: "type", locator: FlowLocator(id: "field_note"), text: "line1\nline2")
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("typeDriver 経由での passed を期待したが \(outcome.status) だった")
+            return
+        }
+        XCTAssertTrue(log.entries.contains("typedriver.type(ref:2)"))
+        XCTAssertFalse(log.entries.contains { $0.hasPrefix("primary.type") },
+                       "文中の \\n でも typeDriver へ回すべき(末尾限定ではない): \(log.entries)")
+    }
+
     // MARK: - ジェスチャのドライバフォールバック(Compose)
 
     /// 501(このエンジンでは未対応)なら swipe を typeDriver へ切り替え、driverFallback を記録すること
