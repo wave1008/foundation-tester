@@ -134,15 +134,27 @@ class フィルタORと否定と対称アサーションが実機で動くこと
                     existWithoutScroll("#row_01")
                 }
             }
-            scene(4, "`scrollDown(repeat:)` は指定回数ぶん1画面ずつ送る") {
-                action {
+        }
+    }
+
+    // **S0020 から更に分けた**: 5 scene 版は p90 92.7s(8 run 実績)で watchdog 90s を恒常的に
+    // 超えていた(2026-07-28)。最遅は下の `withScrollDown`(単独 24s)。この SUT だけ
+    // スクロールが重いのは 07 と同じ事情で、CMP 版は1本のままでよい
+    @Test("scrollDown(repeat:) と withScrollDown")
+    func S0030() {
+        scenario {
+            scene(1, "`scrollDown(repeat:)` は指定回数ぶん1画面ずつ送る") {
+                condition {
+                    launchApp()
+                    tap("#nav_scroll")
+                }.action {
                     scrollDown(repeat: 2)
                 }.expectation {
                     // 遅延生成の一覧なので、送った先では先頭行がツリーから消える
                     notExist("#row_01", timeout: 2)
                 }
             }
-            scene(5, "`withScrollDown { }` はブロック内をスクロール探索にする") {
+            scene(2, "`withScrollDown { }` はブロック内をスクロール探索にする") {
                 condition {
                     scrollToTop(maxSwipes: 20)
                 }.action {
