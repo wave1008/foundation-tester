@@ -154,7 +154,7 @@ final class BridgeRouter {
 
     private func handleTap(_ body: Data) throws -> BridgeHTTPServer.Response {
         let req = try decode(TapRequest.self, body)
-        let app = try requireApp()
+        let app = try requireLiveApp()
         let point = try resolvePoint(ref: req.ref, x: req.x, y: req.y)
         try FastInput.with(req.fast) {
             coordinate(app, point).tap()
@@ -164,7 +164,7 @@ final class BridgeRouter {
 
     private func handleType(_ body: Data) throws -> BridgeHTTPServer.Response {
         let req = try decode(TypeRequest.self, body)
-        let app = try requireApp()
+        let app = try requireLiveApp()
         if let ref = req.ref {
             // tap() が quiescence まで待つため追加待ちは不要(旧: 固定400ms・keyboards クエリは
             // キーボードが別プロセス扱いのため常にタイムアウトし逆効果だった。2026-07-12実測)
@@ -183,7 +183,7 @@ final class BridgeRouter {
     /// フォーカスを持つ要素を探し、見つかればそこへ typeText する。見つからない場合(engine=xcuitest
     /// 単独等、in-app がフォーカスを立てていないケース)は従来どおり app 全体へ送る。
     private func handlePressEnter() throws -> BridgeHTTPServer.Response {
-        let app = try requireApp()
+        let app = try requireLiveApp()
         let focused = app.descendants(matching: .any)
             .matching(NSPredicate(format: "hasKeyboardFocus == true")).firstMatch
         if focused.exists {
@@ -196,7 +196,7 @@ final class BridgeRouter {
 
     private func handleSwipe(_ body: Data) throws -> BridgeHTTPServer.Response {
         let req = try decode(SwipeRequest.self, body)
-        let app = try requireApp()
+        let app = try requireLiveApp()
         FastInput.with(req.fast) {
             switch req.direction {
             case .up: app.swipeUp()
@@ -212,7 +212,7 @@ final class BridgeRouter {
     /// velocity=距離÷移動時間で「ゆっくりドラッグ(慣性なし)〜フリック」を再現する
     private func handleDrag(_ body: Data) throws -> BridgeHTTPServer.Response {
         let req = try decode(DragRequest.self, body)
-        let app = try requireApp()
+        let app = try requireLiveApp()
         let from = coordinate(app, CGPoint(x: req.fromX, y: req.fromY))
         let to = coordinate(app, CGPoint(x: req.toX, y: req.toY))
         let press = max(req.press ?? 0.05, 0.05)
@@ -231,7 +231,7 @@ final class BridgeRouter {
 
     private func handlePress(_ body: Data) throws -> BridgeHTTPServer.Response {
         let req = try decode(PressRequest.self, body)
-        let app = try requireApp()
+        let app = try requireLiveApp()
         let point = try resolvePoint(ref: req.ref, x: req.x, y: req.y)
         try FastInput.with(req.fast) {
             coordinate(app, point).press(forDuration: req.duration)
@@ -398,6 +398,32 @@ final class BridgeRouter {
     }
 
     // MARK: - Helpers
+
+    /// **操作系(tap/type/pressEnter/swipe/drag/press)専用**の生存確認。
+    ///
+    /// XCUI の操作が失敗すると `_XCUIFailWithError` が issue を記録するが、ハンドラは
+    /// **main queue 上 = テストメソッドのスタックの外**で動く(BridgeHTTPServer.dispatchToMain)。
+    /// XCUITest は「現在のテスト」を特定できず `XCTFallbackIssueHandler` へ回し、そこから
+    /// Xcode 27 beta の XCTest↔swift-testing 相互運用が**無限再帰してランナーごと落ちる**
+    /// (2026-07-28 実測: 950 段超のスタックオーバーフローで SIGSEGV。`Failed to application
+    /// ... is not running` が起点)。**`continueAfterFailure` も FTCatchObjCException も効かない**
+    /// (issue がテストケースに届かない / ObjC 例外ではない)。
+    /// ランナーが死ぬとブリッジが消えて run 全体のワーカーが離脱するため、**XCUI に触れる前**に
+    /// 弾いて HTTP エラーで返す。
+    ///
+    /// - snapshot/screenshot には入れない: `state` は IPC で毎回コストがかかるうえ、
+    ///   これらは失敗しても issue を出さない(取得系)
+    /// - **503 であることに意味がある**: 409 はセッション消失専用(`SessionRecoveryDriver` が
+    ///   activate で復帰を試み、in-app では dylib 無しでアプリが起動してブリッジが戻らなくなる)、
+    ///   501/404 は「このエンジンでは不可」= XCUITest へのフォールバック判定に使われている
+    private func requireLiveApp() throws -> XCUIApplication {
+        let app = try requireApp()
+        guard app.state != .notRunning, app.state != .unknown else {
+            throw BridgeError(503, "対象アプリ(\(sessionBundleID ?? "?"))が起動していないため操作できません"
+                + "(前のステップで終了/クラッシュした可能性。ホストは /session で起動し直してください)")
+        }
+        return app
+    }
 
     private func requireApp() throws -> XCUIApplication {
         guard let app else {
