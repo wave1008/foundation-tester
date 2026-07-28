@@ -6,6 +6,8 @@
 
 import ArgumentParser
 import Foundation
+import FTAndroid
+import FTBridgeClient
 import FTCore
 
 struct ProfileSetupCommand: AsyncParsableCommand {
@@ -16,7 +18,7 @@ struct ProfileSetupCommand: AsyncParsableCommand {
     @Option(help: "テストプロジェクト名(省略時: Projects/ が 1 つならそれ / 既定プロジェクト)")
     var project: String?
 
-    @Option(help: "対象プラットフォーム: ios / android")
+    @Option(help: "対象プラットフォーム: ios / android / both")
     var platform: String
 
     @Option(help: "マシンプロファイル名(省略時: 登録名 → machines/ が 1 つならそれ)")
@@ -55,10 +57,23 @@ struct ProfileSetupCommand: AsyncParsableCommand {
     @Option(help: "実行プロファイル名(profiles/runs/<名>.json。省略時: プラットフォーム名)")
     var run: String?
 
+    @Flag(help: "デバイスを自動で選ぶ(iOS: 最新 OS の既存シミュレータ / Android: API が最も高い既存 AVD)")
+    var autoDevice = false
+
     func run() async throws {
-        guard platform == "ios" || platform == "android" else {
-            throw ValidationError("--platform は ios / android のいずれかです: \(platform)")
+        let platforms: [String]
+        switch platform {
+        case "both": platforms = ["ios", "android"]
+        case "ios", "android": platforms = [platform]
+        default: throw ValidationError("--platform は ios / android / both のいずれかです: \(platform)")
         }
+        // 1回の呼び出しで両方作れるようにする(承認回数を減らすため。値は各プラットフォームで解決)
+        for target in platforms {
+            try await setUp(platform: target)
+        }
+    }
+
+    private func setUp(platform: String) async throws {
         let testProject = try ScenarioHost.project(named: project)
         let machineName = try resolveMachineName(project: testProject)
         let deviceName = self.deviceName ?? ProfileWriter.defaultDeviceName(platform: platform)
@@ -79,9 +94,21 @@ struct ProfileSetupCommand: AsyncParsableCommand {
             if let simulator { device["simulator"] = simulator }
             if let os { device["os"] = os }
             if let udid { device["udid"] = udid }
+            if device.count == 1, autoDevice {
+                let picked = try Self.pickSimulator()
+                device["simulator"] = picked.name
+                device["os"] = picked.os
+                device["udid"] = picked.udid
+                print("   自動選択(ios): \(picked.name) / \(picked.os) / \(picked.udid)")
+            }
         } else {
             if let avd { device["avd"] = avd }
             if let serial { device["serial"] = serial }
+            if device.count == 1, autoDevice {
+                let picked = try Self.pickAVD()
+                device["avd"] = picked
+                print("   自動選択(android): \(picked)")
+            }
         }
         if serial != nil || (platform == "ios" && udid != nil && simulator == nil) {
             device["kind"] = "physical"
@@ -142,8 +169,59 @@ struct ProfileSetupCommand: AsyncParsableCommand {
         return object
     }
 
+    /// 既存シミュレータから1台選ぶ。SimulatorCatalog は 起動中 → OS 降順 → 名前順 なので、
+    /// 最新 OS の中で "Pro" を優先する(無ければ先頭)。作成はしない(重い・失敗理由が増える)
+    static func pickSimulator() throws -> SimDeviceInfo {
+        let simulators = try SimulatorCatalog.devices().filter { !$0.physical }
+        guard let newestOS = simulators.first?.os else {
+            throw ValidationError("利用できるシミュレータがありません"
+                + "(Xcode で runtime/デバイスを導入するか ftester api create-device で作成してください)")
+        }
+        let sameOS = simulators.filter { $0.os == newestOS }
+        return sameOS.first(where: { $0.name.contains("Pro") }) ?? sameOS[0]
+    }
+
+    /// 既存 AVD から1台選ぶ。config.ini の image.sysdir.1 に含まれる API レベルが最大のもの
+    /// (名前の見た目では新旧を判定できない。同点なら名前順で決定的に)
+    static func pickAVD() throws -> String {
+        let binary = try DeviceBooter.findEmulatorBinary()
+        let result = try Shell.run([binary, "-list-avds"])
+        let avds = result.output.split(separator: "\n").map(String.init)
+            .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        guard !avds.isEmpty else {
+            throw ValidationError("利用できる AVD がありません"
+                + "(Android Studio で作成するか ftester api create-device で作成してください)")
+        }
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        func apiLevel(_ avd: String) -> Int {
+            let config = home.appendingPathComponent(".android/avd/\(avd).avd/config.ini")
+            guard let text = try? String(contentsOf: config, encoding: .utf8) else { return -1 }
+            for line in text.split(separator: "\n") where line.hasPrefix("image.sysdir.1") {
+                if let range = line.range(of: "android-"),
+                   case let digits = line[range.upperBound...].prefix(while: \.isNumber),
+                   let level = Int(digits) {
+                    return level
+                }
+            }
+            return -1
+        }
+        return avds.sorted { lhs, rhs in
+            let (l, r) = (apiLevel(lhs), apiLevel(rhs))
+            return l == r ? lhs < rhs : l > r
+        }[0]
+    }
+
     private func resolveMachineName(project: TestProject) throws -> String {
-        if let machine, !machine.isEmpty { return machine }
+        if let machine, !machine.isEmpty {
+            // 未登録なら同時に登録する(別途 ftester machine set を打たせない)
+            if LocalConfig.currentMachineName()?.isEmpty ?? true {
+                var config = LocalConfig.load()
+                config.machineName = machine
+                try config.save()
+                print("   マシン名を登録しました: \(machine)(~/.config/ftester/config.json)")
+            }
+            return machine
+        }
         // machines/ が空の初回は登録名(ftester machine set)を使う。それも無ければ聞く側の責務
         if let registered = LocalConfig.currentMachineName(), !registered.isEmpty {
             return registered

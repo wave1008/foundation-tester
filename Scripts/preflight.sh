@@ -103,6 +103,10 @@ else
   kv machine_registered ""
 fi
 
+# ---- セットアップ質問の候補値(エージェントが別コマンドを都度実行しないで済むように) ----------
+kv computer_name "$(scutil --get ComputerName 2>/dev/null | tr ' ' '-' | tr -cd 'A-Za-z0-9_-')"
+kv folder_name "$(basename "$WORK_DIR" | tr -cd 'A-Za-z0-9_-')"
+
 # ---- 環境(SKILL ステップ0 の機械判定) -----------------------------------------
 os="$(sw_vers -productVersion 2>/dev/null || echo unknown)"
 kv macos "$os"

@@ -114,7 +114,9 @@ clone 構成(両方ある)の再実行は従来どおり冪等スキップで続
 - bundle ID は**分からなくても中断しない**。「まだ分からない」ならプレースホルダ `com.example.myapp` の
   まま続行する（実IDが要るのは実行(launch)時だけ。後から `profiles/apps/<projectname>.json` の `app` を
   差し替えれば済む →ステップ6）。
-- 選択肢の候補は preflight の出力とカレントのフォルダ名から作る。**他リポジトリを探索して埋めない**。
+- **選択肢の候補は preflight の出力をそのまま使う**(`folder_name=` → プロジェクト名、
+  `computer_name=` → マシン名、`machine_registered=` → 既存の登録名)。
+  `scutil` や `basename` を別途実行しない(承認回数が増えるだけ)。**他リポジトリを探索して埋めない**。
 - clone 先は外部パッケージ構成のみ関係（→ステップ0.5）。指定があればそのパスが TOOL_ROOT。
 
 **ビルド済み `.app`/`.apk` のパス（`appPath`）はセットアップでは聞かない**（→ステップ6。
@@ -167,9 +169,11 @@ bash <TOOL_ROOT>/Scripts/install.sh --work-dir <WORK_DIR> --name <ProjectName> \
   --platform <ios|android|both> [--app <bundleID>]
 ```
 
-- **クローンがまだ無いとき**は clone から丸ごとやる（TOOL_ROOT は既定で WORK_DIR の隣に作られる）:
-  `curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install.sh | bash -s -- --name <ProjectName>`
-  （clone 先を変えるなら `--tool-root <dir>`。ステップ0で指定があればそれを渡す）
+- **curl 形を既定にする**（クローンの `Scripts/install.sh` は pull されるまで古く、新しい引数を渡すと
+  「不明なオプション」で落ちる。curl 形なら常に最新が動き、その中でクローンを pull する）:
+  `curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install.sh | bash -s -- --name <ProjectName> --platform <ios|android|both>`
+  （clone 先を変えるなら `--tool-root <dir>`。ステップ0で指定があればそれを渡す。
+  オフラインなど curl が使えないときだけ上のローカルパス形を使う）
 - clone 構成（TOOL_ROOT = WORK_DIR）でもそのまま使える（`--work-dir` にクローンを渡す。
   `ftester init` ではなく `project create` 経路になり、`.mcp.json` は同梱のものが使われる）。
 
@@ -252,20 +256,18 @@ FM 無しで動く。**人間に「有効か」を聞かない**：
 
 ### 5. プロファイル（マシン/アプリ/実行）
 
-**JSON を手で書かない**。`ftester machine set "<マシン名>"`（ステップ0で聞いた名前）で登録したうえで、
-デバイスの選定と3プロファイルの作成は `/ftester-profiles` に任せる（同じ論理名で machines と runs を
-揃えて書き、解決できるかまで検証する `ftester profile setup` を使う）。ステップ8でそれを呼ぶ。
-
-`/ftester-profiles` を使わず自分で通すなら、デバイスを選び（`ftester api device-catalog` /
-`xcrun simctl list devices available` / `emulator -list-avds`。無ければ `ftester api create-device`）、
+**JSON を手で書かない・デバイス調査のコマンドを個別に叩かない**。作成は `/ftester-profiles`
+（ステップ8で呼ぶ）に任せる。自分で通すなら1コマンドで済む:
 
 ```
-ftester profile setup --project <ProjectName> --platform <plat> \
-  --simulator "<機種名>" --os <version> --app-id <bundleID> --app-name "<表示名>"
+ftester profile setup --project <ProjectName> --platform <ios|android|both> --auto-device \
+  --machine <マシン名> --app-id <bundleID> --app-name "<表示名>"
 ```
 
-を実行する（Android は `--avd <avdID>`）。利用可能な iOS シミュレータが **0 件のときだけ** 🧑 停止し、
-Xcode で runtime/デバイスの導入を依頼する。
+`--auto-device` が既存デバイスを選び（iOS=最新 OS の中で "Pro" 優先 / Android=API 最大の AVD）、
+`--machine` が未登録なら同時に登録し、machines/apps/runs を同じ論理名で書いて解決まで検証する。
+機種を指定したいときだけ `--simulator "<機種名>" --os <version>` / `--avd <avdID>` を明示する。
+利用可能なデバイスが **0 台のときだけ** 🧑 停止し、Xcode / Android Studio での導入を依頼する。
 
 ### 6. アプリのパス（appPath）と未確定の bundle ID は後から設定する
 
