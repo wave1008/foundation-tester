@@ -183,10 +183,6 @@ export const panelsStrings = {
   "panels.settings.updateChecking": { ja: "確認しています…", en: "Checking..." },
   "panels.settings.updateCheckButton": { ja: "更新を確認", en: "Check for updates" },
   "panels.settings.updateRunButton": { ja: "更新する", en: "Update now" },
-  "panels.settings.updateHint": {
-    ja: "更新があるときはタブの右隣に「更新する」が出ます。更新は git pull・再ビルド・拡張の再インストールまで行い(数分)、進行と詳細は OUTPUT の ftester に出ます。完了後はウィンドウの再読み込みが必要です。",
-    en: "When an update is available, an \"Update now\" button appears next to the tabs. Updating runs git pull, rebuild, and extension reinstall (a few minutes); progress and details go to the ftester OUTPUT channel. A window reload is required afterwards.",
-  },
   "panels.settings.languageLabel": { ja: "表示言語", en: "Display language" },
   "panels.settings.languageAuto": { ja: "自動(VS Code に追従)", en: "Auto (follow VS Code)" },
   "panels.settings.languageJa": { ja: "日本語", en: "日本語" },
