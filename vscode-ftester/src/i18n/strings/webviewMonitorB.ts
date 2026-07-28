@@ -154,4 +154,33 @@ export const webviewMonitorBStrings = {
     ja: "メモリ使用量 {used} / {total} GB({percent})",
     en: "Memory usage {used} / {total} GB ({percent})",
   },
+  // 設定タブ「更新」セクションの動的表示(settingsTab.js)。判定は Scripts/update-check.sh。
+  // {reason} はスクリプトが出す英語(言語に関わらず英語。update-check.sh 冒頭の契約)
+  "wvMonitor2.update.checking": { ja: "確認しています…", en: "Checking..." },
+  "wvMonitor2.update.running": {
+    ja: "更新中です(数分かかります。完了までウィンドウを閉じないでください)",
+    en: "Updating (this takes a few minutes; keep this window open)",
+  },
+  "wvMonitor2.update.upToDate": { ja: "最新です({local})", en: "Up to date ({local})" },
+  "wvMonitor2.update.available": {
+    ja: "更新があります({local} → {remote})",
+    en: "Update available ({local} -> {remote})",
+  },
+  "wvMonitor2.update.pinned": {
+    ja: "更新チェックの対象外です: {reason}",
+    en: "Out of scope for update checks: {reason}",
+  },
+  "wvMonitor2.update.unavailable": {
+    ja: "foundation-tester のクローンが見つからないため確認できません",
+    en: "Cannot check: no foundation-tester clone found",
+  },
+  "wvMonitor2.update.unknown": { ja: "確認できませんでした: {reason}", en: "Could not check: {reason}" },
+  "wvMonitor2.update.finishedOk": {
+    ja: "✅ 更新が完了しました。反映するには「Developer: Reload Window」を実行してください。",
+    en: "✅ Update complete. Run \"Developer: Reload Window\" to apply it.",
+  },
+  "wvMonitor2.update.finishedFailed": {
+    ja: "❌ 更新に失敗しました(終了コード {code})。上のログの [fail] 行を確認してください。",
+    en: "❌ Update failed (exit code {code}). Check the [fail] line in the log above.",
+  },
 } satisfies MessageDict;

@@ -200,12 +200,23 @@ code --install-extension vscode-ftester-<version>.vsix
 | `ftester.language` | `"auto"` \| `"ja"` \| `"en"` | `"auto"` | 拡張の UI 表示言語。`auto` は VS Code の表示言語に追従する(ja 系なら日本語、それ以外は英語)。詳細は下記「表示言語(i18n)」 |
 | `ftester.updateCheck` | `"auto"` \| `"off"` | `"auto"` | 起動時(1日1回まで)に foundation-tester の更新有無を確認し、あれば通知する。**確認するだけで取り込みはしない**。詳細は下記「更新チェック」 |
 
-## 更新チェック
+## 更新チェックと更新(設定タブ)
 
-`auto` の間、拡張は起動時に `<TOOL_ROOT>/Scripts/update-check.sh` を実行し、upstream に未取得の
-コミットがあれば通知します(`src/updateCheck.ts`)。判定は `git ls-remote` だけで行い、**`git fetch`
-も `git pull` もしません**(ローカルのリポジトリを一切変更しない)。取り込みは `/ftester-update`
-または `Scripts/update.sh` で、最後に Reload Window が要ります。
+**更新の状態確認と実行は「設定」タブの「更新」セクション**にあります(`src/monitorUpdateController.ts`)。
+
+- **更新を確認**: `<TOOL_ROOT>/Scripts/update-check.sh` を実行し、状態を1行で表示します
+  (最新 / 更新があります / 対象外 / 確認できませんでした)。パネルを開いた時にも自動で1回走ります。
+- **更新する**: 確認ダイアログのあと `<TOOL_ROOT>/Scripts/update.sh` を実行し、**出力を1行ずつ
+  その場に流します**(git pull → 再ビルド → 拡張の再インストール → プラグイン更新。数分)。
+  完了後は **Developer: Reload Window** が必要です(拡張自身を入れ替えるため、それまでは旧版が動きます)。
+
+判定も取り込みもスクリプトに委譲しており、拡張側は実行して結果を表示するだけです
+(CLI・Claude Code のスキル・拡張で同じ1実装を使う)。
+
+`auto` の間は起動時(1日1回まで)にも確認し、更新があれば通知を出します(`src/updateCheck.ts`)。
+判定は `git ls-remote` だけで行い、**`git fetch` も `git pull` もしません**(ローカルのリポジトリを
+一切変更しない)。**通知は実行手段を持たず、「設定タブを開く」ボタンで上のセクションへ誘導します**
+(更新の入口を1箇所に保つため)。
 
 通知は起動のたびには出ません。前回チェックから24時間未満なら実行そのものをせず、「この版は通知
 しない」を押した upstream の版は次の版が出るまで黙ります(記録は**クローン単位**。別クローンを

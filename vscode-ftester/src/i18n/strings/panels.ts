@@ -178,6 +178,15 @@ export const panelsStrings = {
     ja: "オンにすると画面を映像ストリーミングせず、従来のポーリング(定期スクリーンショット)で更新します。ストリーミングが不安定なときの回避用です。",
     en: "When enabled, the screen updates via traditional polling (periodic screenshots) instead of video streaming. Use this as a workaround when streaming is unstable.",
   },
+  // 設定タブ「更新」セクション(静的ラベル)。動的な状態表示は webviewMonitorB.ts の wvMonitor2.update.*
+  "panels.settings.updateLabel": { ja: "更新", en: "Updates" },
+  "panels.settings.updateChecking": { ja: "確認しています…", en: "Checking..." },
+  "panels.settings.updateCheckButton": { ja: "更新を確認", en: "Check for updates" },
+  "panels.settings.updateRunButton": { ja: "更新する", en: "Update now" },
+  "panels.settings.updateHint": {
+    ja: "更新は git pull・再ビルド・拡張の再インストールまで行います(数分)。完了後はウィンドウの再読み込みが必要です。",
+    en: "Updating runs git pull, rebuild, and extension reinstall (a few minutes). Reload the window afterwards.",
+  },
   "panels.settings.languageLabel": { ja: "表示言語", en: "Display language" },
   "panels.settings.languageAuto": { ja: "自動(VS Code に追従)", en: "Auto (follow VS Code)" },
   "panels.settings.languageJa": { ja: "日本語", en: "日本語" },

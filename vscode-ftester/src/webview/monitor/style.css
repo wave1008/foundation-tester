@@ -1680,6 +1680,30 @@ input[type="text"]::placeholder {
   line-height: 1.5;
   color: var(--vscode-descriptionForeground);
 }
+/* 更新セクション(設定タブ)。状態1行 → ボタン → 説明 → 実行ログ の縦積み。 */
+.settings-update-status {
+  color: var(--vscode-foreground);
+}
+.settings-update-status.available { color: var(--vscode-charts-blue, #3794ff); font-weight: 600; }
+.settings-update-status.attention { color: var(--vscode-descriptionForeground); }
+.settings-update-actions {
+  display: flex;
+  gap: 8px;
+}
+/* 数分ぶんの出力が入るので高さを固定してスクロールさせる(パネル全体を押し広げない)。 */
+.settings-update-log {
+  margin: 4px 0 0;
+  padding: 8px 10px;
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-family: var(--vscode-editor-font-family, monospace);
+  font-size: 12px;
+  line-height: 1.5;
+  background-color: var(--vscode-textCodeBlock-background, rgba(128, 128, 128, 0.1));
+  border-radius: 3px;
+}
 /* パネル全体を縦flexで満たし、#resident-list(表のスクロール領域)を余白いっぱいに伸ばす。 */
 .processes-body {
   flex: 1 1 auto;

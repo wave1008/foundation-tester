@@ -164,7 +164,7 @@ export async function checkFtesterUpdate(deps: UpdateCheckDeps): Promise<void> {
     return;
   }
 
-  await notifyAvailable(decision, { toolRoot, outputChannel, globalState, dismissedKey });
+  await notifyAvailable(decision, { outputChannel, globalState, dismissedKey });
 }
 
 /**
@@ -222,12 +222,7 @@ export async function checkFtesterUpdateNow(deps: Omit<UpdateCheckDeps, "enabled
     case "available":
       await notifyAvailable(
         { kind: "notify", localHead: outcome.localHead, remoteHead: outcome.remoteHead },
-        {
-          toolRoot,
-          outputChannel,
-          globalState,
-          dismissedKey: stateKey(STATE_DISMISSED_HEAD, toolRoot),
-        },
+        { outputChannel, globalState, dismissedKey: stateKey(STATE_DISMISSED_HEAD, toolRoot) },
       );
   }
 }
@@ -236,7 +231,6 @@ export async function checkFtesterUpdateNow(deps: Omit<UpdateCheckDeps, "enabled
 async function notifyAvailable(
   decision: Extract<UpdateDecision, { kind: "notify" }>,
   ctx: {
-    toolRoot: string;
     outputChannel: vscode.OutputChannel;
     globalState: vscode.Memento;
     dismissedKey: string;
@@ -248,12 +242,12 @@ async function notifyAvailable(
       remote: decision.remoteHead.slice(0, 8),
     }),
   );
-  const howTo = t("update.notice.howToButton");
+  const open = t("update.notice.openSettingsButton");
   const dismiss = t("update.notice.dismissButton");
-  const picked = await vscode.window.showInformationMessage(t("update.notice.message"), howTo, dismiss);
-  if (picked === howTo) {
-    ctx.outputChannel.appendLine(t("update.steps.log", { toolRoot: ctx.toolRoot }));
-    ctx.outputChannel.show(true);
+  const picked = await vscode.window.showInformationMessage(t("update.notice.message"), open, dismiss);
+  if (picked === open) {
+    // 更新の実行口は設定タブに1つだけ置く(通知に手順を書くと、実行手段が2箇所に散る)。
+    await vscode.commands.executeCommand("ftester.showDeviceMonitor", "settings");
   } else if (picked === dismiss) {
     await ctx.globalState.update(ctx.dismissedKey, decision.remoteHead);
   }

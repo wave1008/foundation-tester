@@ -186,6 +186,10 @@ window.addEventListener('message', (event) => {
       break;
     case 'pollingMode':
     case 'language':
+    case 'updateStatus':
+    case 'updateLog':
+    case 'updateLogReset':
+    case 'updateFinished':
       applySettings(message);
       break;
     case 'residentProcesses':

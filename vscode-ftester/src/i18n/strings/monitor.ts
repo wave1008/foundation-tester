@@ -245,4 +245,15 @@ export const monitorStrings = {
     ja: "ポーリングへ戻します。",
     en: "Falling back to polling.",
   },
+  // 設定タブ「更新する」の確認(モーダル)。webview では confirm が効かないのでホスト側で出す。
+  "monitor.update.confirmMessage": {
+    ja: "ftester を更新します。git pull・再ビルド・拡張の再インストールを行い、数分かかります。続けますか?",
+    en: "Update ftester? It runs git pull, rebuild, and extension reinstall, and takes a few minutes.",
+  },
+  "monitor.update.confirmButton": { ja: "更新する", en: "Update" },
+  // 設定タブ「更新」実行時、ログ領域の1行目(monitorUpdateController.ts)。
+  "monitor.update.startLog": {
+    ja: "==> 更新を開始します(Scripts/update.sh)",
+    en: "==> Starting the update (Scripts/update.sh)",
+  },
 } satisfies MessageDict;
