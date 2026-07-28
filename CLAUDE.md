@@ -14,7 +14,9 @@
   ready=0 / installed=2 / blocked=1 を返す。SKILL.md ステップ0・0.5 と 1:1)
 - 受け手の一括導入: `Scripts/install.sh`(clone〜検証ゲートを冪等に実行)。**各手順は
   `.claude/skills/ftester-setup/SKILL.md` のステップ番号と 1:1**(失敗時に「→ SKILL.md ステップ N」を
-  出してエージェントを手作業手順へ戻す設計)。**片方だけ変えない** — 手順の追加・番号の変更は両方に入れる
+  出してエージェントを手作業手順へ戻す設計)。**片方だけ変えない** — 手順の追加・番号の変更は両方に入れる。
+  **スキルからは curl 形で呼ぶ**(クローン側の Scripts/ は pull されるまで古く、新しい引数は
+  「不明なオプション」で落ちる)。全出力は `<WORK_DIR>/.ftester/install-<日時>.log` に残る
 - DSL コマンドリファレンス(全コマンドの引数・挙動。利用者向け): docs/commands.md
 - リリース(git タグ発行と版ピンの関係。配布はソースビルド前提): docs/releasing.md(`Scripts/release.sh`)
 - 設計書(アーキテクチャ・Swift DSL 仕様・セレクタ記法・プロファイル): docs/design.md
@@ -55,6 +57,18 @@
   手順は docs/verification.md)
 - `ftester api` の JSON/NDJSON 契約を後方非互換に変えたら `Sources/FTCore/ProtocolVersion.swift` と `vscode-ftester/src/protocolVersion.ts` の版を +1(両者一致必須・`protocolVersion.test.mjs` が検出。拡張は起動時に照合し不一致を警告)
 - **ブリッジの挙動・エンドポイントを変えたら版を上げる**(上げないと**稼働中の旧ブリッジが再利用され、変更が反映されないまま緑になる**。実害2回)。iOS = `Sources/FTCore/BridgeDTO.swift` の `bridgeProtocolVersion`(in-app dylib と XCUITest ランナーの共通定数)/ Android = `AndroidRunner/build.sh` の `VERSION_CODE` と `AndroidBridge.swift` の `expectedBridgeVersionCode` を**同時に**(`AndroidBridgeVersionSyncTests` が不一致を検出。「上げ忘れ」自体は検出できないので人間の規律)
+
+## 受け手フローの設計方針(スキル・スクリプト・CLI の分担)
+
+- **機械作業はスクリプト/CLI に寄せ、スキルには判断だけ残す**。エージェントに JSON を書かせる・
+  値を集めさせると、実行のたびに結果が揺れる(machines と runs の名前不一致・指示していない
+  プラットフォームの生成・二度聞き)。決まった手順は `Scripts/*.sh` か `ftester` のサブコマンドにする
+- **承認回数はコストとして数える**。値の収集は preflight の出力に寄せ、デバイス選定は
+  `profile setup --auto-device`、繰り返す実行は `ftester init` が書く `.claude/settings.json` の
+  許可(ftester 由来のコマンドのみ)で吸収する。**出力済みの情報を別コマンドで取り直さない**
+- **人に聞くのは AskUserQuestion(ダイアログ)だけ**。チャットに質問文を書くと見落とされてフローが止まる
+- **実機・シミュレータが要る判断は純粋ロジックへ切り出して単体テストで固める**
+  (例: `DevicePicker`・`ProfileWriter`・`ToolchainFingerprint`)。実機でしか出ない部分だけを E2E に残す
 
 ## 実装の委譲
 
