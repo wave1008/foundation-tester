@@ -34,6 +34,7 @@
   "ftester.debugger.serial.description": "Android デバイスのシリアル番号(省略時は ftester.serial 設定を使用)。",
   "ftester.debugger.initialConfig.name": "ftester: シナリオをデバッグ",
   "ftester.command.refreshScenarios.title": "ftester: シナリオを再読込",
+  "ftester.command.checkForUpdate.title": "ftester: 更新を確認",
   "ftester.command.selectProject.title": "ftester: プロジェクトを選択",
   "ftester.command.showSteps.title": "ftester: ステップ一覧を表示",
   "ftester.command.refreshSteps.title": "ftester: ステップ一覧を再取得",

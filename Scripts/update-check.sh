@@ -14,6 +14,11 @@
 #   3 = update-available  … upstream に未取得のコミットがある。取り込みは /ftester-update
 #   1 = unknown           … 判定できない(オフライン・認証不可・クローン不明)。呼び出し側は黙る
 #
+# **`reason=` の値は言語に関わらず英語で書く**。VSCode 拡張の通知に `{reason}` としてそのまま
+# 埋め込まれるため、ここを日本語にすると英語 UI の利用者に日英が混在して見える(ja UI では
+# 「更新を確認できませんでした: <英語>」になる。これは承知のうえで統一している)。
+# 末尾の人向けサマリ行だけは日本語(preflight.sh / install.sh と同じ扱い)。
+#
 # 取り込みを自動でやらないのは、更新が pull だけで終わらないため(再ビルド + 拡張の再インストール +
 # プラグイン更新 + Reload Window。実体は Scripts/update.sh / スキルは /ftester-update)。加えて
 # install.sh は既存クローンのローカル変更を「確認のうえ破棄」する作りで、無確認の取り込みは
@@ -55,7 +60,7 @@ kv()  { printf '%s=%s\n' "$1" "$2"; }
 # それを失敗として拾う)。preflight.sh の same-name ヘルパーと同じ理由
 first_line() { printf '%s' "${1%%$'\n'*}"; }
 
-finish() { # <verdict> <exit code> [理由]
+finish() { # <verdict> <exit code> [reason(英語)]
   kv verdict "$1"
   [ -n "${3:-}" ] && kv reason "$3"
   say ""
@@ -94,25 +99,25 @@ fi
 
 if [ -z "$tool_root" ]; then
   kv tool_root ""
-  finish unknown 1 "foundation-tester のクローンが見つかりません"
+  finish unknown 1 "no foundation-tester clone found"
 fi
 kv tool_root "$tool_root"
 
-command -v git >/dev/null 2>&1 || finish unknown 1 "git がありません"
+command -v git >/dev/null 2>&1 || finish unknown 1 "git is not available"
 if [ ! -d "$tool_root/.git" ]; then
-  finish pinned 0 "クローンが git 管理下にありません($tool_root)"
+  finish pinned 0 "clone is not under git ($tool_root)"
 fi
 
 # ---- ローカル側の状態 ----------------------------------------------------------
 branch="$(git -C "$tool_root" symbolic-ref --short -q HEAD)"
 if [ -z "$branch" ]; then
   kv branch detached
-  finish pinned 0 "版を固定しています(detached HEAD: $(git -C "$tool_root" describe --tags --always 2>/dev/null))"
+  finish pinned 0 "version pinned (detached HEAD: $(git -C "$tool_root" describe --tags --always 2>/dev/null))"
 fi
 kv branch "$branch"
 
 local_head="$(git -C "$tool_root" rev-parse HEAD 2>/dev/null)"
-[ -n "$local_head" ] || finish unknown 1 "HEAD を解決できません"
+[ -n "$local_head" ] || finish unknown 1 "cannot resolve HEAD"
 kv local_head "$local_head"
 
 if [ -n "$(git -C "$tool_root" status --porcelain 2>/dev/null)" ]; then
@@ -131,7 +136,7 @@ kv remote_ref "$remote_ref"
 
 # ---- upstream 側の HEAD(ls-remote。.git を変更しない) -------------------------
 tmp="$(mktemp -t ftester-update-check 2>/dev/null)"
-[ -n "$tmp" ] || finish unknown 1 "一時ファイルを作成できません"
+[ -n "$tmp" ] || finish unknown 1 "cannot create a temporary file"
 trap 'rm -f "$tmp"' EXIT
 
 # GIT_TERMINAL_PROMPT=0 / BatchMode=yes が無いと、認証を求められたときに端末の無い呼び出し元
@@ -141,17 +146,20 @@ GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=10
 git_pid=$!
 ( sleep "$TIMEOUT_SEC"; kill -TERM "$git_pid" ) >/dev/null 2>&1 &
 watchdog=$!
-wait "$git_pid"; git_rc=$?
+# watchdog が git を撃つと、シェルがジョブの死亡通知("Terminated: 15")を stderr に出す。
+# **wait ごと stderr を捨てる**(通知はここで刈り取られる。中括弧はサブシェルを作らないので
+# git_rc はそのまま使える)
+{ wait "$git_pid"; git_rc=$?; } 2>/dev/null
 kill "$watchdog" >/dev/null 2>&1
 wait "$watchdog" >/dev/null 2>&1
 
 if [ "$git_rc" != "0" ]; then
-  finish unknown 1 "upstream に問い合わせできません(オフライン・認証不可・タイムアウト ${TIMEOUT_SEC}s)"
+  finish unknown 1 "cannot reach upstream (offline, auth required, or timed out after ${TIMEOUT_SEC}s)"
 fi
 remote_head="$(first_line "$(cat "$tmp")")"
 remote_head="${remote_head%%$'\t'*}"
 if [ -z "$remote_head" ]; then
-  finish unknown 1 "upstream に $remote_ref がありません"
+  finish unknown 1 "$remote_ref not found on upstream"
 fi
 kv remote_head "$remote_head"
 

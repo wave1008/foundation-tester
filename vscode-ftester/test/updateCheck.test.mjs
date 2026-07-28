@@ -10,7 +10,14 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 
-import { CHECK_INTERVAL_MS, checkFtesterUpdate, decideUpdateNotice, isCheckDue, parseKeyValues } from "../src/updateCheck";
+import {
+  CHECK_INTERVAL_MS,
+  checkFtesterUpdate,
+  decideManualOutcome,
+  decideUpdateNotice,
+  isCheckDue,
+  parseKeyValues,
+} from "../src/updateCheck";
 import { declaredPackagePath, resolveToolRoot } from "../src/toolRootResolve";
 
 const SAMPLE = [
@@ -36,8 +43,8 @@ test("parseKeyValues: key=value 行だけを拾い、人向けの行は無視す
 });
 
 test("parseKeyValues: 値に = を含む行は最初の = で分ける", () => {
-  const fields = parseKeyValues("reason=upstream に問い合わせできません(a=b)");
-  assert.equal(fields.reason, "upstream に問い合わせできません(a=b)");
+  const fields = parseKeyValues("reason=cannot reach upstream (a=b)");
+  assert.equal(fields.reason, "cannot reach upstream (a=b)");
 });
 
 test("decideUpdateNotice: update-available なら通知する", () => {
@@ -62,6 +69,36 @@ test("decideUpdateNotice: 却下済みの版は黙るが、次の版が出たら
 
 test("decideUpdateNotice: remote_head が無ければ通知しない(通知しても何も示せない)", () => {
   assert.equal(decideUpdateNotice({ verdict: "update-available" }, undefined).kind, "silent");
+});
+
+test("decideManualOutcome: 4つの verdict をそのまま返す(黙る選択肢が無い)", () => {
+  assert.deepEqual(decideManualOutcome({ verdict: "up-to-date" }), { kind: "upToDate" });
+  // reason は update-check.sh 側の契約で ja/en どちらでも英語(通知に素通しするため)。
+  assert.deepEqual(decideManualOutcome({ verdict: "pinned", reason: "version pinned" }), {
+    kind: "pinned",
+    reason: "version pinned",
+  });
+  assert.deepEqual(decideManualOutcome({ verdict: "unknown", reason: "cannot reach upstream" }), {
+    kind: "unknown",
+    reason: "cannot reach upstream",
+  });
+  assert.deepEqual(decideManualOutcome(parseKeyValues(SAMPLE)), {
+    kind: "available",
+    localHead: "aaaaaaaabbbbbbbb",
+    remoteHead: "ccccccccdddddddd",
+  });
+});
+
+test("decideManualOutcome: 却下済みの版でも隠さない(自動チェックとの唯一の差)", () => {
+  const fields = parseKeyValues(SAMPLE);
+  // 自動側は dismissedHead 一致で黙るが、手動は dismissedHead を見ない。
+  assert.equal(decideUpdateNotice(fields, "ccccccccdddddddd").kind, "silent");
+  assert.equal(decideManualOutcome(fields).kind, "available");
+});
+
+test("decideManualOutcome: verdict 行が無い出力は unknown に落とす", () => {
+  assert.deepEqual(decideManualOutcome({}), { kind: "unknown", reason: "no verdict" });
+  assert.equal(decideManualOutcome({ verdict: "update-available" }).kind, "unknown");
 });
 
 test("isCheckDue: 未記録なら実行し、間隔未満は実行しない", () => {

@@ -28,6 +28,32 @@ export const updateStrings = {
     ja: "[ftester] 更新チェック: 通知なし({reason})。",
     en: "[ftester] Update check: nothing to report ({reason}).",
   },
+  "update.manual.checking": {
+    ja: "ftester の更新を確認しています…",
+    en: "Checking for ftester updates...",
+  },
+  "update.manual.upToDate": {
+    ja: "ftester は最新です。",
+    en: "ftester is up to date.",
+  },
+  // {reason} は update-check.sh の reason= がそのまま入る。**あちらは ja/en どちらでも英語**
+  // (スクリプト冒頭の契約)。訳すのは枠の文だけ。
+  "update.manual.pinned": {
+    ja: "更新チェックの対象外です: {reason}",
+    en: "This clone is out of scope for update checks: {reason}",
+  },
+  "update.manual.unknown": {
+    ja: "更新を確認できませんでした: {reason}",
+    en: "Could not check for updates: {reason}",
+  },
+  "update.manual.noToolRoot": {
+    ja: "foundation-tester のクローンが見つかりません(未導入か、既定の場所にありません)。",
+    en: "No foundation-tester clone was found (not installed, or not in the expected location).",
+  },
+  "update.manual.noScript": {
+    ja: "このクローンには Scripts/update-check.sh がありません(更新チェックより前の版です)。先に /ftester-update で更新してください。",
+    en: "This clone has no Scripts/update-check.sh (it predates the update check). Update it first with /ftester-update.",
+  },
   "update.check.spawnFailedLog": {
     ja: "[ftester] 更新チェックの起動に失敗しました: {error}",
     en: "[ftester] Failed to launch the update check: {error}",

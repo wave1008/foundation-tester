@@ -22,6 +22,9 @@
 - 更新の有無だけ判定: `Scripts/update-check.sh`(読み取りのみ。**fetch せず `git ls-remote`** で
   upstream と比較し up-to-date=0 / update-available=3 / pinned=0 / unknown=1。取り込みはしない)。
   VSCode 拡張が起動時に1日1回呼ぶ(`src/updateCheck.ts`・設定 `ftester.updateCheck`)。
+  **手動コマンド `ftester.checkForUpdate` は間隔・却下・設定 off を無視して必ず結果を返す**
+  (自動は更新があるときだけ喋る。明示操作で黙るのは誤動作に見えるため。両者の差はここだけ)。
+  **`reason=` は ja/en どちらでも英語**(拡張の通知に素通しするため。枠だけ訳す)。
   **TOOL_ROOT の解決規則は preflight.sh / update.sh / `src/toolRootResolve.ts` と同じ**(4箇所。片方だけ変えない)
 - DSL コマンドリファレンス(全コマンドの引数・挙動。利用者向け): docs/commands.md
 - リリース(git タグ発行と版ピンの関係。配布はソースビルド前提): docs/releasing.md(`Scripts/release.sh`)
