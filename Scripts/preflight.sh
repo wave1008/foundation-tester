@@ -106,17 +106,40 @@ case "$os" in
   *) blocked_reasons+=("macOS 26 以上が必要です(現在 $os)") ;;
 esac
 
-if xcode_line="$(xcodebuild -version 2>/dev/null | head -n 1)"; then
-  kv xcode "$xcode_line"
+# xcodebuild が使えない理由は3つあり、対処がまったく違う(まとめて「license 未同意」と案内すると
+# 受け手が無駄な作業をする)。エラー本文と xcode-select の指す先で切り分ける
+xcode_select_path="$(xcode-select -p 2>/dev/null || echo unknown)"
+kv xcode_select_path "$xcode_select_path"
+xcode_usable=0
+if xcode_out="$(xcodebuild -version 2>&1)"; then
+  xcode_usable=1
+  kv xcode "$(printf '%s' "$xcode_out" | head -n 1)"
 else
-  kv xcode "unusable"
-  blocked_reasons+=("xcodebuild が使えません(未導入か license 未同意。sudo xcodebuild -license accept は人間が実行)")
+  kv xcode unusable
+  kv xcode_error "$(printf '%s' "$xcode_out" | head -n 1)"
+  installed_xcode="$(ls -d /Applications/Xcode*.app 2>/dev/null | head -n 1)"
+  case "$xcode_out" in
+    *license*|*License*)
+      blocked_reasons+=("Xcode の license に同意していません → 人間が \`sudo xcodebuild -license accept\`") ;;
+    *"requires Xcode"*|*"active developer directory"*)
+      if [ -n "$installed_xcode" ]; then
+        blocked_reasons+=("xcode-select が CommandLineTools を指しています($xcode_select_path) → 人間が \`sudo xcode-select -s $installed_xcode\`")
+      else
+        blocked_reasons+=("Xcode 本体が見つかりません(CommandLineTools だけ) → App Store から Xcode を導入し \`sudo xcode-select -s /Applications/Xcode.app\`")
+      fi ;;
+    *)
+      blocked_reasons+=("xcodebuild が使えません: $(printf '%s' "$xcode_out" | head -n 1)") ;;
+  esac
 fi
-if xcodebuild -checkFirstLaunchStatus >/dev/null 2>&1; then
+# xcodebuild 自体が使えないときは初回セットアップの可否を判定できない(必ず失敗して
+# 「初回セットアップが未了」という誤った理由が増えるので、上を直してから見る)
+if [ "$xcode_usable" = "0" ]; then
+  kv xcode_first_launch unknown
+elif xcodebuild -checkFirstLaunchStatus >/dev/null 2>&1; then
   kv xcode_first_launch done
 else
   kv xcode_first_launch required
-  blocked_reasons+=("Xcode の初回セットアップが未了です(xcodebuild -runFirstLaunch)")
+  blocked_reasons+=("Xcode の初回セットアップが未了です → 人間が \`xcodebuild -runFirstLaunch\`")
 fi
 
 command -v git  >/dev/null 2>&1 && kv git yes  || { kv git no;  blocked_reasons+=("git がありません"); }
