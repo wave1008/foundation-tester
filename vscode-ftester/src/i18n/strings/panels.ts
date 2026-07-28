@@ -174,8 +174,8 @@ export const panelsStrings = {
 
   "panels.settings.pollingModeLabel": { ja: "ポーリングモードを使用する", en: "Use polling mode" },
   "panels.settings.pollingModeHint": {
-    ja: "画面のストリーミングが不安定なときの回避用です。",
-    en: "A workaround for when screen streaming is unstable.",
+    ja: "デバイス画面のストリーミングが不安定なときの回避用です。",
+    en: "A workaround for when device screen streaming is unstable.",
   },
   // 設定タブ「更新」セクション(静的ラベル)。動的な状態表示は webviewMonitorB.ts の wvMonitor2.update.*
   "panels.settings.updateLabel": { ja: "更新", en: "Updates" },
