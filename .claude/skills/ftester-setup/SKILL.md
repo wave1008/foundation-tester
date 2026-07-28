@@ -269,6 +269,10 @@ products 未宣言でも `swift build --product ftester-mcp` は暗黙 product �
 （`claude mcp add ftester --scope user -- bash -lc '...'`・claude CLI が PATH に要る）を案内する。
 CLI が無ければ上の WORK_DIR `.mcp.json` 方式で十分。
 
+**検証ゲート**: **WORK_DIR で** `<ABS_TOOL_ROOT>/.build/debug/ftester doctor --roots-only` が exit 0 で、
+**ツール本体 = TOOL_ROOT / シナリオのパッケージ = WORK_DIR** と表示されること（逆・同一なら
+`.mcp.json` の値か開く場所が違う）。FM 判定を挟まないので即座に返る。
+
 ### 8. 続けてプロファイル一括作成へ（/ftester-profiles）
 
 機械作業が済んだら（1〜7.5）、**続けて `/ftester-profiles` スキルを呼び出す**

@@ -108,6 +108,15 @@ claude mcp add ftester --scope user -e FT_TOOL_ROOT=<ABS_TOOL_ROOT> -- bash -lc 
 
 CLI が無ければ上の WORK_DIR `.mcp.json` 方式で十分。
 
+**検証ゲート**: **WORK_DIR で**(承認前でもここは確認できる)
+
+```
+<ABS_TOOL_ROOT>/.build/debug/ftester doctor --roots-only
+```
+
+exit 0 で、**ツール本体 = TOOL_ROOT / シナリオのパッケージ = WORK_DIR** と表示されること
+(この2つが逆・同一なら `.mcp.json` の値か開く場所が違う)。FM 判定を挟まないので即座に返る。
+
 ### 3. 🧑 人間チェックポイント(承認と反映)
 
 エージェントでは代行不可。ユーザーに依頼する:

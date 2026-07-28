@@ -1817,7 +1817,8 @@ Claude Code 向けは `.claude-plugin/`(plugin.json の `skills` が正典ディ
   checkouts が無い構成はここ)④ `#filePath` からのツールソース(自前ビルド)。
   **受け手パッケージのルートを渡してはいけない**(実害: MCP の profile 経路が `packageRoot()` を
   BridgeProvisioner へ渡しており、外部パッケージ構成で `InAppBridge/build.sh` が無く全 `ft_*` が
-  失敗した)。両ルートの解決結果は `ftester doctor` が表示する。
+  失敗した)。両ルートの解決結果は `ftester doctor --roots-only`(FM 判定に依存しない独立ゲート・
+  ツール本体を解決できなければ exit 1)と `ftester doctor` が表示する。
 - **mint 配布(採用していたが廃止)**: `mint install wave1008/foundation-tester@<ver>`。**罠(記録)**: mint は
   temp でビルドしてバイナリのみ残しソースを消すため CLI の `#filePath` は死ぬ → ブリッジは上記②(受け手の
   checkout)で解決する必要があった。よって外部パッケージ構成は **git 依存必須**(ブリッジ用に Runner/ を含む
