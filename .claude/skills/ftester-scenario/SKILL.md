@@ -5,6 +5,12 @@ description: セットアップ済みのプロジェクトに、Swift DSL のテ
 
 # ftester シナリオ作成 runbook
 
+> **この手順書が古い可能性がある**: プラグイン経由で導入している場合、この文書は
+> `~/.claude/plugins/cache/` のスナップショットから読まれており `git pull` では更新されない。
+> **clone(TOOL_ROOT)が既にあるなら `<TOOL_ROOT>/.claude/skills/ftester-scenario/SKILL.md` を読み、
+> 内容が違えばそちらを正とする**。更新は `/plugin marketplace update foundation-tester` →
+> `/plugin update ftester@foundation-tester`(2つとも要る・Claude Code の再起動で反映)。
+
 既存プロジェクト(`ftester init` / `ftester project create` 済み・アプリ/デバイス/実行プロファイルが
 ある)に、**1本のテストシナリオ .swift** を作る。DSL の正典は docs/design.md §10「Swift DSL」と
 README.md「Swift DSL」節。ここはエージェントが順に実行するための手順書。

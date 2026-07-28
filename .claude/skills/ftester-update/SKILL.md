@@ -8,6 +8,11 @@ description: 既に foundation-tester をセットアップ済みの受け手が
 セットアップ済みの環境に upstream の修正版を取り込む。初回導入は `/ftester-setup`。
 背景・手動手順は docs/getting-started.md の「更新のしかた」。
 
+> **この手順書自体が古い可能性がある。** プラグイン経由で導入している場合、この文書は
+> `~/.claude/plugins/cache/` の**スナップショット**から読まれており、`git pull` では更新されない。
+> **ステップ0 で TOOL_ROOT が確定したら、`<TOOL_ROOT>/.claude/skills/ftester-update/SKILL.md`
+> を読み、内容が違えばそちらを正として以降を進める**(clone 側が唯一の正)。
+
 **構成は setup と同じ2通り。まず判定する(ステップ0):**
 
 - **clone 構成**: foundation-tester クローンの中で直接使う。ツールも Projects も同じ場所。
@@ -143,6 +148,29 @@ cd <TOOL_ROOT>/vscode-ftester && npm install && npm run install-local
 - 書き換え後は 🧑 チェックポイント（次のステップ）で Reload Window すれば反映される
   （登録がそもそも無い場合はこのステップは何もしない ―― MCP 未使用の受け手には無関係）。
 
+### 5.7 Claude Code プラグイン（スキル）の更新
+
+**`git pull` ではスキルは更新されない。** プラグイン経由で導入している場合、スキルは
+`~/.claude/plugins/cache/foundation-tester/ftester/<版>/.claude/skills/` のスナップショットから
+読まれており、**自動更新もされない**。ツール本体だけ新しくなり手順書が取り残される
+（「更新したのに直らない」の正体）。
+
+プラグイン導入かどうかは `claude plugin list`（または `/plugin`）で `ftester@foundation-tester`
+が出るかで判る。出るなら 🧑 **ユーザーに次の2コマンドを依頼する**（マーケットプレイスの再取得と
+プラグイン本体の更新で、**2つとも要る**）:
+
+```
+/plugin marketplace update foundation-tester
+/plugin update ftester@foundation-tester
+```
+
+- **順序が重要**: marketplace を先に更新しないと、plugin update が古い定義を見る。
+- 反映には Claude Code の再起動（またはセッション開始し直し）が要る。
+- 版は `plugin.json` に `version` を持たせず **git commit SHA** を版として使っているので、
+  push 済みの変更は上記2コマンドで必ず取り込まれる。
+- プラグインを使わず clone 内で直接スキルを使っている構成なら、このステップは不要
+  （`git pull` で `.claude/skills/` ごと更新される）。
+
 ### 6. 🧑 人間チェックポイント（反映）
 
 ユーザーに依頼する（代行不可）:
@@ -151,6 +179,7 @@ cd <TOOL_ROOT>/vscode-ftester && npm install && npm run install-local
   開いている窓**で行う。`ftester.binaryPath` が TOOL_ROOT の CLI
   （`../foundation-tester/.build/debug/ftester` 等）を指しているか併せて確認。
 - デバイスモニター等のパネルは**開き直す**（retainContextWhenHidden で古い HTML が残るため）。
+- プラグイン導入なら 5.7 の2コマンドと Claude Code の再起動（スキルの反映）。
 
 ### 7. 動作確認
 
