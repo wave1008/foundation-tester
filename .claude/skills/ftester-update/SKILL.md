@@ -155,21 +155,41 @@ cd <TOOL_ROOT>/vscode-ftester && npm install && npm run install-local
 読まれており、**自動更新もされない**。ツール本体だけ新しくなり手順書が取り残される
 （「更新したのに直らない」の正体）。
 
-プラグイン導入かどうかは `claude plugin list`（または `/plugin`）で `ftester@foundation-tester`
-が出るかで判る。出るなら 🧑 **ユーザーに次の2コマンドを依頼する**（マーケットプレイスの再取得と
-プラグイン本体の更新で、**2つとも要る**）:
+**`claude` CLI で代行する**（`/plugin` スラッシュコマンドは **VSCode 拡張・Agent SDK 環境では
+提供されず** `/plugin isn't available in this environment.` になる。CLI 形ならどの環境でも動き、
+かつエージェントが実行できるので人間チェックポイントにしない）。
 
-```
-/plugin marketplace update foundation-tester
-/plugin update ftester@foundation-tester
+まず導入の有無と現在の版を見る（未導入なら以降スキップ。clone 内で直接スキルを使う構成も不要 ――
+`git pull` で `.claude/skills/` ごと更新されるため）:
+
+```bash
+claude plugin list
 ```
 
-- **順序が重要**: marketplace を先に更新しないと、plugin update が古い定義を見る。
-- 反映には Claude Code の再起動（またはセッション開始し直し）が要る。
-- 版は `plugin.json` に `version` を持たせず **git commit SHA** を版として使っているので、
+`ftester@foundation-tester` が出れば導入済み。**`Version:` は git commit SHA（先頭12桁）**なので、
+TOOL_ROOT の HEAD と突き合わせればキャッシュの鮮度を機械判定できる:
+
+```bash
+PV=$(claude plugin list | awk '/ftester@foundation-tester/{f=1} f&&/Version:/{print $2; exit}')
+HEAD=$(git -C "<TOOL_ROOT>" rev-parse HEAD)
+case "$HEAD" in "$PV"*) echo "最新";; *) echo "古い（要更新）: plugin=$PV head=$HEAD";; esac
+```
+
+古ければ**この2つを順に実行する**（マーケットプレイスの再取得とプラグイン本体の更新で、**2つとも要る**）:
+
+```bash
+claude plugin marketplace update foundation-tester
+claude plugin update ftester@foundation-tester
+```
+
+- **順序が重要**: marketplace を先に更新しないと、`plugin update` が古い定義を見る。
+- 成功すると `Plugin "ftester" updated from <旧SHA> to <新SHA>` と出る。
+  **実行後にもう一度上の突き合わせを行い、HEAD と一致することを検証ゲートにする**
+  （「実行した」ではなく「一致した」で判定する）。
+- **反映には Claude Code の再起動が要る**（ステップ6の人間チェックポイントに含める）。
+  再起動するまで、このセッションで読まれるスキルは古いままである点に注意。
+- 版は `plugin.json` に `version` を持たせず **git commit SHA** を使っているので、
   push 済みの変更は上記2コマンドで必ず取り込まれる。
-- プラグインを使わず clone 内で直接スキルを使っている構成なら、このステップは不要
-  （`git pull` で `.claude/skills/` ごと更新される）。
 
 ### 6. 🧑 人間チェックポイント（反映）
 
@@ -179,7 +199,8 @@ cd <TOOL_ROOT>/vscode-ftester && npm install && npm run install-local
   開いている窓**で行う。`ftester.binaryPath` が TOOL_ROOT の CLI
   （`../foundation-tester/.build/debug/ftester` 等）を指しているか併せて確認。
 - デバイスモニター等のパネルは**開き直す**（retainContextWhenHidden で古い HTML が残るため）。
-- プラグイン導入なら 5.7 の2コマンドと Claude Code の再起動（スキルの反映）。
+- プラグインを更新した場合（5.7）は **Claude Code の再起動**。更新コマンド自体は 5.7 で代行済みなので、
+  ここで依頼するのは再起動だけ（再起動するまでスキルは旧版のまま読まれる）。
 
 ### 7. 動作確認
 
