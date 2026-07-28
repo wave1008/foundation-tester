@@ -187,10 +187,6 @@ export const panelsStrings = {
   "panels.settings.languageAuto": { ja: "自動(VS Code に追従)", en: "Auto (follow VS Code)" },
   "panels.settings.languageJa": { ja: "日本語", en: "日本語" },
   "panels.settings.languageEn": { ja: "English", en: "English" },
-  "panels.settings.languageHint": {
-    ja: "拡張の UI 表示言語(設定 ftester.language)。変更後、完全に反映するにはウィンドウの再読み込みが必要です。",
-    en: "UI display language for the extension (setting: ftester.language). Reload the window after changing it to fully apply.",
-  },
 
   "panels.deviceMenu.liveControl": { ja: "ライブ操作", en: "Live Control" },
   "panels.deviceMenu.restartWithGpu": { ja: "GPUで再起動", en: "Restart with GPU" },

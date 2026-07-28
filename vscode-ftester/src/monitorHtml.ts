@@ -470,7 +470,6 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
           <option value="ja">${t("panels.settings.languageJa")}</option>
           <option value="en">${t("panels.settings.languageEn")}</option>
         </select>
-        <div class="settings-hint">${t("panels.settings.languageHint")}</div>
       </div>
       <div class="settings-group">
         <label class="settings-item"><input type="checkbox" id="settings-polling-mode"> ${t("panels.settings.pollingModeLabel")}</label>
