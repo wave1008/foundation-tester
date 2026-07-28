@@ -14,7 +14,7 @@ import Foundation
 
 /// アプリケーションプロファイルの 1 セクション。フィールドごとに有効な記述場所が異なる
 /// (対応表は merging 参照): appName = common→platform マージ / app・appPath = platform のみ /
-/// autoInstall = common のみ
+/// autoInstall = common のみ(未指定なら appPath の有無で決まる。false 明示で opt-out)
 public struct AppProfileSection: Codable, Sendable, Equatable {
     /// ユーザーがアプリを識別するための表示名(レポート/ログで使用)
     public var appName: String?
@@ -44,7 +44,7 @@ public struct AppProfileSection: Codable, Sendable, Equatable {
     /// common(self)と platform セクション(other)の合成(section(for:)専用)。フィールドごとに
     /// 採用元が異なる: appName = common→platform 後勝ち(表示名は共通定義が自然なため) /
     /// app・appPath = platform のみ(OS ごとに実体が異なるため) /
-    /// autoInstall = common のみ(インストール可否は OS 間で揃えるべき運用設定のため)。
+    /// autoInstall = common のみ(未指定なら appPath の有無で決まる。false 明示で opt-out)(インストール可否は OS 間で揃えるべき運用設定のため)。
     /// 廃止側のセクションに書かれた値はここで黙って無視される(validate が警告を出す)。
     /// other が nil(platform セクション自体が無い)場合も同じ規則で合成するため、
     /// early return せず常に other?.field / self.field を明示的に選ぶ
@@ -676,9 +676,10 @@ public enum ProfileResolver {
             apps[platform] = ResolvedAppTarget(
                 bundleID: bundleID,
                 appPath: section.appPath.map { resolvePath($0, base: repoRoot) },
-                // autoInstall 未指定時の既定は false(無効)。appPath 指定+未指定のまま
-                // 実行前インストールされてしまう事故を避けるため、明示指定を必須とする
-                autoInstall: section.autoInstall ?? false,
+                // **appPath があれば既定で有効**。パスを書いたのに入らない(既定 false)方が
+                // 事故で、警告を出さないと気付けない設計だった。止めたいときだけ
+                // autoInstall: false を明示する(opt-out)。実インストールは中身が変わったときだけ
+                autoInstall: section.autoInstall ?? (section.appPath != nil),
                 healthCheckURL: section.healthCheckURL)
         }
 
@@ -914,8 +915,8 @@ public enum ProfileResolver {
         let rules: [(section: String, key: String, moveTo: String, hint: String)] = [
             ("common", "app", "ios/android", ""),
             ("common", "appPath", "ios/android", ""),
-            ("ios", "autoInstall", "common", "(既定は無効)"),
-            ("android", "autoInstall", "common", "(既定は無効)"),
+            ("ios", "autoInstall", "common", "(appPath があれば既定で有効)"),
+            ("android", "autoInstall", "common", "(appPath があれば既定で有効)"),
         ]
         return rules.compactMap { rule in
             guard let section = json[rule.section] as? [String: Any],

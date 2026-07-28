@@ -1005,6 +1005,16 @@ button.profile-jump-link:hover:not(:disabled) {
 .tile-name-unknown {
   background-color: var(--vscode-descriptionForeground, #8a8a8a);
 }
+/* チェックボックスの下に置く補足(既定値の説明)。ラベル列の幅指定に巻き込まれないよう
+   modal-row の grid から外して全幅にする。 */
+#app-profile-editor .profile-hint,
+#run-profile-editor .profile-hint {
+  display: block;
+  margin: -2px 0 8px 24px;
+  opacity: 0.75;
+  font-size: 0.9em;
+}
+
 /* .profile-checkbox-row 限定で上の 170px 上書きをさらに打ち消す(定義順が後のため有効)。 */
 #run-profile-editor .profile-checkbox-row > label,
 #app-profile-editor .profile-checkbox-row > label {

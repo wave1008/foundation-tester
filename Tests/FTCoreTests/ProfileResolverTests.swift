@@ -98,7 +98,24 @@ final class ProfileResolverTests: XCTestCase {
         XCTAssertEqual(resolved.apps["android"]?.bundleID, "com.example.android")
         XCTAssertNil(resolved.apps["ios"], "デバイスの無い platform のアプリは解決しない")
         XCTAssertEqual(resolved.apps["android"]?.autoInstall, false,
-                       "autoInstall の既定は false(無効)")
+                       "appPath が無ければ入れようがないので既定は無効")
+    }
+
+    /// false を明示したときだけ止まる(opt-out)
+    func testExplicitFalseOptsOutEvenWithAppPath() throws {
+        try write("""
+        { "common": { "appName": "アプリ", "autoInstall": false },
+          "android": { "app": "com.example.android", "appPath": "builds/app.apk" } }
+        """, to: project.appsDir, name: "app4")
+        try write("""
+        { "android": { "devices": [ { "name": "d1", "avd": "Pixel_9" } ] } }
+        """, to: project.machinesDir, name: "m")
+        try write("""
+        { "app": "app4", "devices": [ { "name": "d1" } ] }
+        """, to: project.runsDir, name: "r")
+
+        let resolved = try ProfileResolver.resolve(project: project, runName: "r", machineName: "m")
+        XCTAssertEqual(resolved.apps["android"]?.autoInstall, false)
     }
 
     // MARK: - common セクションの app / appPath 廃止
@@ -218,7 +235,8 @@ final class ProfileResolverTests: XCTestCase {
         XCTAssertEqual(resolved.apps["ios"]?.autoInstall, false)
     }
 
-    func testAutoInstallUnspecifiedDefaultsToDisabled() throws {
+    /// **appPath があれば既定で有効**(パスを書いたのに入らない方が事故だった)
+    func testAutoInstallUnspecifiedFollowsAppPath() throws {
         try write("""
         { "ios": { "app": "com.example.app", "appPath": "a.app" } }
         """, to: project.appsDir, name: "app3")
@@ -229,13 +247,15 @@ final class ProfileResolverTests: XCTestCase {
                   to: project.runsDir, name: "r")
 
         let resolved = try ProfileResolver.resolve(project: project, runName: "r", machineName: "m")
-        XCTAssertEqual(resolved.apps["ios"]?.autoInstall, false,
-                       "未指定時の既定は false(無効)")
+        XCTAssertEqual(resolved.apps["ios"]?.autoInstall, true,
+                       "appPath があるので既定で有効")
     }
 
+    /// platform セクションの autoInstall は無視される(置き場所は common に一本化)。
+    /// ここでは false を置いても効かない = appPath 由来の既定(有効)のままになる
     func testAutoInstallInPlatformSectionIsIgnored() throws {
         try write("""
-        { "ios": { "app": "com.example.app", "appPath": "a.app", "autoInstall": true } }
+        { "ios": { "app": "com.example.app", "appPath": "a.app", "autoInstall": false } }
         """, to: project.appsDir, name: "app3")
         try write("""
         { "ios": { "devices": [ { "name": "d", "simulator": "iPhone Air" } ] } }
@@ -244,7 +264,7 @@ final class ProfileResolverTests: XCTestCase {
                   to: project.runsDir, name: "r")
 
         let resolved = try ProfileResolver.resolve(project: project, runName: "r", machineName: "m")
-        XCTAssertEqual(resolved.apps["ios"]?.autoInstall, false,
+        XCTAssertEqual(resolved.apps["ios"]?.autoInstall, true,
                        "platform セクションの autoInstall は無視されるはず")
     }
 

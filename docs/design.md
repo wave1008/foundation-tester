@@ -1255,7 +1255,8 @@ executableTarget `ftester-scenarios-<name>`(path: `Projects/<name>/Scenarios`)�
 `Projects/<name>/profiles/` 配下。共通設定の継承ではなく**部品の参照合成**で表現する。
 
 **アプリケーションプロファイル** `apps/<name>.json` — common(共通)→ ios/android の後勝ちマージ。
-`appName`(表示名)と `autoInstall` は **common のみ**採用、bundle ID(`app`)と `appPath` は
+`appName`(表示名)と `autoInstall` は **common のみ**採用(`autoInstall` の未指定時の既定は
+`appPath` の有無 — パスを書いたのに入らない事故を避ける。止めたいときだけ `false` を明示する)、bundle ID(`app`)と `appPath` は
 **ios/android セクションのみ**採用(common に書くと merging で無視され validate が警告する):
 
 ```json
