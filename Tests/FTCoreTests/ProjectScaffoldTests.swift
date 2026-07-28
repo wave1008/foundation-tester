@@ -208,6 +208,36 @@ final class ProjectScaffoldTests: XCTestCase {
         }
     }
 
+    /// 更新系スクリプトも許可対象に入れる(入っていないと更新のたびに承認が増える。
+    /// 既存の受け手には `ftester api ensure-settings` = install.sh 経由で後から届く)
+    func testClaudeSettingsAllowsUpdateScripts() throws {
+        let added = try ProjectScaffold.writeClaudeSettings(packageRoot: packageRoot,
+                                                            toolRoot: "/tools/ft")
+        for script in ["preflight.sh", "install.sh", "update.sh", "update-check.sh"] {
+            XCTAssertTrue(added.contains("Bash(bash /tools/ft/Scripts/\(script):*)"),
+                          "\(script) が許可リストに無い")
+        }
+    }
+
+    /// 既に一部だけ入っている受け手(旧版で init した)に、足りないものだけが追加される
+    func testClaudeSettingsAddsOnlyMissingEntries() throws {
+        try FileManager.default.createDirectory(
+            at: claudeSettingsURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try #"{"permissions":{"allow":["Bash(bash /tools/ft/Scripts/install.sh:*)"]}}"#
+            .write(to: claudeSettingsURL, atomically: true, encoding: .utf8)
+
+        let added = try ProjectScaffold.writeClaudeSettings(packageRoot: packageRoot,
+                                                            toolRoot: "/tools/ft")
+        XCTAssertFalse(added.contains("Bash(bash /tools/ft/Scripts/install.sh:*)"), "既存は再追加しない")
+        XCTAssertTrue(added.contains("Bash(bash /tools/ft/Scripts/update.sh:*)"))
+
+        let data = try Data(contentsOf: claudeSettingsURL)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let permissions = try XCTUnwrap(object["permissions"] as? [String: Any])
+        let allow = try XCTUnwrap(permissions["allow"] as? [String])
+        XCTAssertEqual(allow.filter { $0.contains("install.sh") }.count, 1, "重複しない")
+    }
+
     func testClaudeSettingsMergesWithExistingSettings() throws {
         try FileManager.default.createDirectory(
             at: claudeSettingsURL.deletingLastPathComponent(), withIntermediateDirectories: true)

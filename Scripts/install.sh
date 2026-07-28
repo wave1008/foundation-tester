@@ -16,6 +16,8 @@
 #       「→ SKILL.md ステップ N」を出すので、エージェントはそこだけ手作業で直して再実行する
 #       (この対応表を崩すときは SKILL.md 側も一緒に直す)。
 # ログ: 全出力を <WORK_DIR>/.ftester/install-<日時>.log にも落とす(実行ごとに別ファイル)。
+#       **画面には結果表と `==>` の見出しだけ**を出す(swift build・npm・vsce の生ログはファイルへ。
+#       画面に出すと呼び出し元のエージェントで切られ、結果を探す grep が承認を増やす)。--verbose で従来。
 # 終了コード: 0=完了 / 1=必須ステップの失敗 / 2=任意ステップのみ失敗(CLI は使える)
 set -euo pipefail
 
@@ -35,6 +37,8 @@ DO_DOCTOR=1
 DO_NEXT_STEPS=1
 ALLOW_CLONE=1
 ALLOW_PULL=1
+VERBOSE=0
+KEEP_LOCAL=0
 
 usage() {
   cat <<'EOF'
@@ -54,9 +58,11 @@ usage() {
   --skip-mcp         .mcp.json の生成/マージを行わない
   --no-doctor        最後の環境レポート(ftester doctor)を省く
   --no-next-steps    「次にやること」を出さない(update.sh など呼び出し元が案内する場合)
+  --keep-local       クローンのローカル変更を自動で破棄しない(外部構成の既定は自動破棄)
+  --verbose          swift build / npm の生ログも画面に出す(既定はログファイルのみ)
   -h, --help         このヘルプ
 
-やること: clone(既存なら git pull。ローカル変更は確認のうえ破棄・断れば中止)/ swift build /
+やること: clone(既存なら git pull。外部構成ならローカル変更は自動破棄)/ swift build /
          プロジェクト作成 / .gitignore 整備 / VSCode 拡張 / .mcp.json / 検証ゲート。
          **--machine と --app-name を渡すとプロファイル作成(--auto-device)まで行う**
          (冪等。済んだ手順は skip)
@@ -80,6 +86,8 @@ while [ $# -gt 0 ]; do
     --skip-project) DO_PROJECT=0; shift ;;
     --skip-mcp) DO_MCP=0; shift ;;
     --no-doctor) DO_DOCTOR=0; shift ;;
+    --keep-local) KEEP_LOCAL=1; shift ;;
+    --verbose) VERBOSE=1; shift ;;
     --no-next-steps) DO_NEXT_STEPS=0; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "不明なオプション: $1" >&2; usage >&2; exit 1 ;;
@@ -170,6 +178,24 @@ if mkdir -p "$WORK_DIR/.ftester" 2>/dev/null; then
   echo "==> ログ: $LOG_FILE"
 fi
 
+# 生ログ(swift build・npm・vsce)の行き先。既定は**ログファイルだけ**に落とす ―― 画面に出すと
+# 数万行になり、呼び出し元のエージェントでは「出力が大きすぎる」で切られて、結果表を探すのに
+# grep を何度も打つ羽目になる(2026-07-29 の受け手実測で 54KB・grep 4回)。
+# --verbose では従来どおり画面にも出す(/dev/stdout は上の tee 経由でログにも入る)。
+# ログを作れなかった場合は捨てずに画面へ出す(失敗の手がかりを失わないため)
+if [ "$VERBOSE" = "1" ] || [ -z "$LOG_FILE" ]; then
+  RAW_SINK="/dev/stdout"
+else
+  RAW_SINK="$LOG_FILE"
+fi
+# 失敗したときだけ、生ログの末尾を画面に出す(quiet でも原因が分かるように)
+show_log_tail() {
+  if [ "$RAW_SINK" != "/dev/stdout" ] && [ -f "$LOG_FILE" ]; then
+    echo "── 失敗直前のログ(末尾40行。全文は $LOG_FILE) ──"
+    tail -40 "$LOG_FILE"
+  fi
+}
+
 [ "$(uname -s)" = "Darwin" ] || die "前提" "macOS 専用です(iOS シミュレータが要る)" 0
 command -v git >/dev/null 2>&1 || die "前提" "git が見つかりません" 0
 command -v swift >/dev/null 2>&1 || die "前提" "swift が見つかりません(Xcode を導入してください)" 0
@@ -219,6 +245,23 @@ if [ -d "$TOOL_ROOT_RAW/.git" ] || [ -f "$TOOL_ROOT_RAW/Package.swift" ]; then
   else
     # 前回の更新が残した npm の版差分を先に片付ける(これを残すと下の dirty ガードで止まる)
     restore_lock_version_churn
+    # **外部パッケージ構成ではクローンに受け手の資産が無い**(Projects/・プロファイル・.mcp.json は
+    # すべて WORK_DIR 側)。そこに出る差分は生成物か上流コードの改変だけなので、聞かずに捨てる
+    # ―― 聞くと更新1回あたりの承認が3手増える(ダイアログ + reset + 再実行。受け手実測)。
+    # 捨てた内容は画面とログに残す(追跡分は reset、未追跡は clean。どちらも下の行を参照)。
+    # clone 構成(保守者・資産が同居)と --keep-local は従来どおり人に確認する
+    if [ "$WORK_DIR" != "$TOOL_ROOT" ] && [ "$KEEP_LOCAL" = "0" ] \
+       && [ -n "$(git -C "$TOOL_ROOT" status --porcelain 2>/dev/null)" ]; then
+      echo "⚠️ クローンのローカル変更を破棄して更新します(外部構成のため。残したいなら --keep-local):"
+      git -C "$TOOL_ROOT" status --short
+      git -C "$TOOL_ROOT" reset --hard >/dev/null \
+        || die "clone" "ローカル変更の破棄(git reset --hard)に失敗しました" 0.5
+      # **未追跡も消す** ―― reset は追跡分しか戻さず、残った未追跡ファイルは下のガードで止まるうえ、
+      # 上流に同名ファイルが増えると `pull --ff-only` 自体が失敗する。`-x` は付けない
+      # (.gitignore 対象 = .build/・node_modules・.vsix は消さない。消すと再ビルドで数分かかる)。
+      # clone 構成では受け手の Projects/ が未追跡のことがあるので**外部構成に限る**(この分岐の条件)
+      git -C "$TOOL_ROOT" clean -fd >/dev/null 2>&1 || true
+    fi
     if [ -n "$(git -C "$TOOL_ROOT" status --porcelain 2>/dev/null)" ]; then
       echo "⚠️ 既存クローンにローカル変更があります: $TOOL_ROOT"
       git -C "$TOOL_ROOT" status --short | head -20
@@ -246,7 +289,7 @@ if [ -d "$TOOL_ROOT_RAW/.git" ] || [ -f "$TOOL_ROOT_RAW/Package.swift" ]; then
       esac
     fi
     echo "==> git pull(既存クローン $TOOL_ROOT の更新)"
-    if git -C "$TOOL_ROOT" pull --ff-only; then
+    if git -C "$TOOL_ROOT" pull --ff-only >>"$RAW_SINK" 2>&1; then
       record "clone" ok "既存クローンを更新: $TOOL_ROOT ($branch $(git -C "$TOOL_ROOT" rev-parse --short HEAD))"
     else
       soft_fail "clone" "git pull に失敗(既存クローンのまま続行。ネットワークか履歴の分岐を確認)" 0.5
@@ -255,7 +298,8 @@ if [ -d "$TOOL_ROOT_RAW/.git" ] || [ -f "$TOOL_ROOT_RAW/Package.swift" ]; then
 else
   [ "$ALLOW_CLONE" = "1" ] || die "clone" "クローンがありません: $TOOL_ROOT_RAW(--no-clone 指定)" 0.5
   echo "==> clone: $REPO_URL → $TOOL_ROOT_RAW"
-  git clone "$REPO_URL" "$TOOL_ROOT_RAW" || die "clone" "git clone に失敗しました" 0.5
+  git clone "$REPO_URL" "$TOOL_ROOT_RAW" >>"$RAW_SINK" 2>&1 \
+    || { show_log_tail; die "clone" "git clone に失敗しました" 0.5; }
   TOOL_ROOT="$(abspath "$TOOL_ROOT_RAW")"
   record "clone" ok "$TOOL_ROOT"
 fi
@@ -289,11 +333,22 @@ fi
 # ---- 2. ビルド(SKILL ステップ2) ----------------------------------------------
 # 変数名の直後に日本語を置くときは必ず ${} で囲む(マルチバイト先頭バイトが変数名に食われる)
 echo "==> swift build(${TOOL_ROOT}。初回は数分)"
-( cd "$TOOL_ROOT" && swift build ) || die "ビルド" "swift build に失敗しました" 2
+( cd "$TOOL_ROOT" && swift build ) >>"$RAW_SINK" 2>&1 \
+  || { show_log_tail; die "ビルド" "swift build に失敗しました" 2; }
 [ -x "$FT" ] || die "ビルド" "CLI が生成されていません: $FT" 2
 # MCP サーバは .mcp.json が起動のたびにビルドし直すが、初回だけ先に通しておく(初回起動の失敗回避)
 ( cd "$TOOL_ROOT" && swift build --product ftester-mcp ) >/dev/null 2>&1 || true
 record "ビルド" ok "$FT"
+
+# ---- 4 の前: Bash 許可リストの補修(承認回数を減らす) --------------------------
+# **毎回呼ぶ**。許可リストは従来 `ftester init` でしか書かれず、更新は --skip-project で init を
+# 回さないため、エントリを増やしても**既存の受け手には一生届かなかった**(実害: 更新のたびに
+# update.sh の承認が出る)。冪等・追加のみ・ftester 由来のコマンドだけ(ProjectScaffold が保証)
+if perms_out="$( "$FT" api ensure-settings --work-dir "$WORK_DIR" --tool-root "$TOOL_ROOT" 2>&1 )"; then
+  record "許可リスト" ok "$perms_out"
+else
+  record "許可リスト" warn "補修できませんでした(承認が増えるだけで動作には影響しません)"
+fi
 
 # ---- 4. プロジェクト作成(SKILL ステップ4) ------------------------------------
 project_exists() {
@@ -367,9 +422,10 @@ elif ! command -v npm >/dev/null 2>&1; then
   soft_fail "拡張" "npm がありません(Node.js を入れてから vscode-ftester で npm run install-local)" 7
 else
   echo "==> VSCode 拡張のビルドとインストール"
-  if ( cd "$TOOL_ROOT/vscode-ftester" && npm install && npm run install-local ); then
+  if ( cd "$TOOL_ROOT/vscode-ftester" && npm install && npm run install-local ) >>"$RAW_SINK" 2>&1; then
     record "拡張" ok "インストール済み(反映は Reload Window)"
   else
+    show_log_tail
     soft_fail "拡張" "npm install / install-local が失敗(CLI と MCP は使えます)" 7
   fi
   # npm install が書き換えた版差分をここでも片付ける(次回の更新を止めないため。冪等)

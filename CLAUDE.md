@@ -16,10 +16,17 @@
   `.claude/skills/ftester-setup/SKILL.md` のステップ番号と 1:1**(失敗時に「→ SKILL.md ステップ N」を
   出してエージェントを手作業手順へ戻す設計)。**片方だけ変えない** — 手順の追加・番号の変更は両方に入れる。
   **スキルからは curl 形で呼ぶ**(クローン側の Scripts/ は pull されるまで古く、新しい引数は
-  「不明なオプション」で落ちる)。全出力は `<WORK_DIR>/.ftester/install-<日時>.log` に残る
+  「不明なオプション」で落ちる)。全出力は `<WORK_DIR>/.ftester/install-<日時>.log` に残る。
+  **画面は結果表だけ・生ログはファイルへ**(`--verbose` で従来。54KB 出すとエージェント側で
+  切られ、結果を探す grep が承認を増やす)。**外部構成ではクローンのローカル変更を自動破棄**
+  (reset --hard + `clean -fd`。`-x` は付けない = .build/ を消さない。`--keep-local` で従来)。
+  **毎回 `ftester api ensure-settings` で Bash 許可リストを補修する**(init 経由だけだと
+  `--skip-project` の更新で既存の受け手に永久に届かない)
 - 受け手の更新: `Scripts/update.sh`(install.sh を再実行 + project sync + プラグイン更新と版照合。
   `.claude/skills/ftester-update/SKILL.md` と 1:1)。**先に update-check.sh を呼び up-to-date なら
-  即終了**(全工程は更新が無くても約30秒。入れ直しは `--force`)
+  即終了**(全工程は更新が無くても約30秒。入れ直しは `--force`)。doctor は既定で出さない
+  (`--doctor`。結果表と情報が重複し8秒かかる)。**スキルのステップ0は `.ftester/state.json` の
+  Read で TOOL_ROOT を採る**(コマンドを打たない = 承認が要らない。無ければ preflight に落ちる)
 - 更新の有無だけ判定: `Scripts/update-check.sh`(読み取りのみ。**fetch せず `git ls-remote`** で
   upstream と比較し up-to-date=0 / update-available=3 / pinned=0 / unknown=1。取り込みはしない)。
   VSCode 拡張が起動時に1日1回呼ぶ(`src/updateCheck.ts`・設定 `ftester.updateCheck`)。
@@ -79,8 +86,12 @@
   値を集めさせると、実行のたびに結果が揺れる(machines と runs の名前不一致・指示していない
   プラットフォームの生成・二度聞き)。決まった手順は `Scripts/*.sh` か `ftester` のサブコマンドにする
 - **承認回数はコストとして数える**。値の収集は preflight の出力に寄せ、デバイス選定は
-  `profile setup --auto-device`、繰り返す実行は `ftester init` が書く `.claude/settings.json` の
-  許可(ftester 由来のコマンドのみ)で吸収する。**出力済みの情報を別コマンドで取り直さない**
+  `profile setup --auto-device`、繰り返す実行は `.claude/settings.json` の許可(ftester 由来の
+  コマンドのみ。`api ensure-settings` が毎回補修)で吸収する。**出力済みの情報を別コマンドで
+  取り直さない**。承認は3方向から増えるので全部潰す:
+  **①聞かなくてよい確認**(答えが決まっているならスクリプトが決める。例: 外部構成のクローンの
+  ローカル変更 = 受け手の資産ではないので自動破棄)/ **②許可リストに無いコマンド**(スクリプトを
+  足したら許可も足す)/ **③巨大な出力**(切られてエージェントが grep を打つ。生ログはファイルへ)
 - **人に聞くのは AskUserQuestion(ダイアログ)だけ**。チャットに質問文を書くと見落とされてフローが止まる
 - **実機・シミュレータが要る判断は純粋ロジックへ切り出して単体テストで固める**
   (例: `DevicePicker`・`ProfileWriter`・`ToolchainFingerprint`)。実機でしか出ない部分だけを E2E に残す

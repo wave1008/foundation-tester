@@ -32,17 +32,20 @@ description: 既に foundation-tester をセットアップ済みの受け手が
 
 ## 手順
 
-### 0. 状態判定(1コマンド。**周辺ディレクトリを探索しない**)
+### 0. TOOL_ROOT の確定(**まず Read。コマンドを打たない**)
 
-```
-curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/preflight.sh | bash
-```
+`<カレント>/.ftester/state.json` を **Read** し、`toolRoot` を採る(install.sh が導入時に書く)。
+Read は承認が要らないので、これで**更新フロー全体の承認を1回(0.7 の update.sh)に抑えられる**。
 
-出力の `layout=` / `tool_root=` / `tool_root_exists=` / `projects=` で構成と場所が決まる。
+- `Sources/FTScenarioRunner/` がカレントにある → **clone 構成**。TOOL_ROOT = WORK_DIR = カレント。
+- `state.json` があり `toolRoot` が実在 → **外部構成**。WORK_DIR = カレント、TOOL_ROOT = その値。
+- **どちらでもない**(state.json が無い = 旧版で導入した、または未導入)→ このときだけ preflight を打つ:
 
-- `layout=clone` → TOOL_ROOT = WORK_DIR = カレント。
-- `layout=external-installed` → WORK_DIR = カレント、TOOL_ROOT = 出力の `tool_root=`。
-- `layout=external-new`(= 未導入。`Package.swift` が無い/ftester のものでない)→ **更新するものが無い**。
+  ```
+  curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/preflight.sh | bash
+  ```
+
+  `layout=external-installed` なら `tool_root=` を採る。`layout=external-new` は**未導入**なので
   停止して `/ftester-setup` を案内する。**`ls` や `find` で周辺を探し回らない**
   (受け手の個人ディレクトリを覗くことになるうえ、答えは preflight に出ている)。
 
@@ -69,10 +72,16 @@ bash <TOOL_ROOT>/Scripts/update.sh
 **更新が無ければ「✅ 最新です」だけ出して即終了する**(全工程は更新が無くても約30秒かかるため。
 判定は update-check.sh)。**前回が途中で失敗した・入れ直したいときだけ `--force`** を付ける。
 
-中で `install.sh` を再実行するので、**git pull(ローカル変更は確認のうえ破棄・断れば中止)・
-swift build・VSCode 拡張・`.mcp.json` の追従・検証ゲート・ログ**はそちらの規律がそのまま効く。
-更新固有の作業として **`ftester project sync`(clone 構成)** と
-**Claude Code プラグインの更新+HEAD との版照合**を行う。
+中で `install.sh` を再実行するので、**git pull・swift build・VSCode 拡張・`.mcp.json` の追従・
+検証ゲート・ログ**はそちらの規律がそのまま効く。更新固有の作業として
+**`ftester project sync`(clone 構成)** と **Claude Code プラグインの更新+HEAD との版照合**を行う。
+
+**外部構成ではクローンのローカル変更を自動で破棄する**(クローンに受け手の資産は無い。
+捨てた内容は出力に出る)。**これを人に確認しない** — 残したい場合だけ `--keep-local`。
+clone 構成では従来どおり確認が出る。
+
+生ログ(swift build・npm・vsce)は画面に出ず `<WORK_DIR>/.ftester/install-*.log` にだけ入る。
+**画面の結果表がすべてなので、ログを grep で漁らない**(必要なら `--verbose`)。
 
 - **exit 1** → 中断。出力の `[fail]` 行(と `→ SKILL.md ステップ N`)の原因を解決して再実行する。
 - **exit 2** → 任意ステップのみ未完(`[warn]`)。CLI は使える。warn の内容だけ手当てする。
