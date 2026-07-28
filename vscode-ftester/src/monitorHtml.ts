@@ -462,7 +462,6 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
         <div class="settings-update-actions">
           <button id="settings-update-check" class="secondary" type="button">${t("panels.settings.updateCheckButton")}</button>
         </div>
-        <div class="settings-hint">${t("panels.settings.updateHint")}</div>
       </div>
       <div class="settings-group">
         <label class="settings-label" for="settings-language">${t("panels.settings.languageLabel")}</label>
