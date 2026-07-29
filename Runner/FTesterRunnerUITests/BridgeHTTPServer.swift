@@ -49,6 +49,26 @@ final class BridgeHTTPServer {
     private var serverFD: Int32 = -1
     private(set) var isRunning = false
 
+    /// 最終リクエスト時刻(ProcessInfo.systemUptime = 単調クロック。壁時計の NTP ジャンプで
+    /// TTL を誤爆させない)。accept スレッドが書き、テストスレッド(FTesterBridgeTests の
+    /// 常駐ループ)が idleSeconds で読むため lock で守る。
+    private let lastRequestLock = NSLock()
+    private var lastRequestUptime: TimeInterval = ProcessInfo.processInfo.systemUptime
+
+    /// 最終リクエストからの経過秒。TTL 自主終了の判定に使う(心拍は全リクエスト。
+    /// パース失敗した接続も「誰かが話しかけている」ので心拍に数える)
+    var idleSeconds: TimeInterval {
+        lastRequestLock.lock()
+        defer { lastRequestLock.unlock() }
+        return ProcessInfo.processInfo.systemUptime - lastRequestUptime
+    }
+
+    private func markRequest() {
+        lastRequestLock.lock()
+        lastRequestUptime = ProcessInfo.processInfo.systemUptime
+        lastRequestLock.unlock()
+    }
+
     /// 1リクエストの handler(main スレッド上の XCUITest 操作)の壁時計上限(秒)。超過は
     /// "Wait for app to idle" 等で main が恒久ブロックした状態で、main は復帰不能。クライアントの
     /// per-endpoint 上限(interaction 20s / session 45s)より長く、シナリオ watchdog(90s)より短く
@@ -147,6 +167,7 @@ final class BridgeHTTPServer {
                 if isRunning { usleep(10_000) }
                 continue
             }
+            markRequest()
             // 応答途中でホストが切断した際の write() の SIGPIPE(既定でランナープロセス終了)を防ぐ。
             // InAppHTTPServer と同じ防御(あちらは対象アプリ、こちらは XCUITest ランナーがクラッシュする)。
             var noSigPipe: Int32 = 1

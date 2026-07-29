@@ -246,6 +246,8 @@ E2E-iOS を回すまで気付かなかった)。**距離を伸ばしても・画
   順序と掃除の1行(`pgrep -fl` / `pkill -f`)は docs/getting-started.md「アンインストール」
 - 再ビルド後の検証前に旧バイナリの常駐プロセス(monitor/host-metrics)を kill する
   (生き残って検証を汚す・旧ブリッジを自動再起動する。docs/performance-tuning.md §7)
+- ブリッジには無通信 TTL(既定2時間。design.md §4.1)があるが、**検証の掃除で TTL を
+  当てにしない**(旧版ブリッジには入っていない・モニターのポーリングが心拍になり失効しない)
 - **調査で `ftester api monitor` を手で回すときは stdin を開いたままにする**
   (`tail -f /dev/null | ftester api monitor ...`)。**stdin の EOF が終了指示**なので、
   スクリプトからバックグラウンド実行すると /dev/null が即 EOF になり、

@@ -189,6 +189,14 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
 - シミュレータはホストとネットワークスタックを共有するため、テスト内で
   `127.0.0.1:8123` に listen すればホストの `localhost:8123` から直接届く。
   ポート番号は CLI が空きポートを選んで環境変数で注入する。
+- **無通信 TTL(2026-07-30)**: 最終リクエストから `FT_BRIDGE_TTL` 秒(既定 7200・`0` で無効)
+  無通信のブリッジは自主終了する(iOS/Android 共通。忘れられたゾンビのデバイス占有防止)。
+  心拍は**全リクエスト**(/status 含む)なので、モニターのポーリングが続く限り失効しない。
+  既定値の定義は `BridgeAPI.bridgeTTLSecondsDefault`(Java 側と `AndroidBridgeVersionSyncTests`
+  が同期を検出)。in-app ブリッジは対象外(対象アプリと運命を共にする。ゾンビ対策は
+  provision の reclaim 側)。自主終了はホスト側の pid ファイルを消せないため、provision が
+  採番前に死んだランナーの pid ファイルを回収する(`BridgeLauncher.sweepStalePidFiles`。
+  残すと `assignPort` が使用中とみなし採番がドリフトする)。
 
 ### 4.2 HTTP サーバ実装
 

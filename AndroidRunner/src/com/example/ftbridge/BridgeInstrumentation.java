@@ -13,7 +13,11 @@ import android.util.Log;
 
 public class BridgeInstrumentation extends Instrumentation {
     static final String TAG = "FTBridge";
+    // 無通信 TTL の既定値(秒)。同期相手: Sources/FTCore/BridgeDTO.swift の
+    // BridgeAPI.bridgeTTLSecondsDefault(AndroidBridgeVersionSyncTests が不一致を検出)
+    static final int TTL_DEFAULT_SECONDS = 7200;
     private int port = 8123;
+    private int ttlSeconds = TTL_DEFAULT_SECONDS;
 
     @Override
     public void onCreate(Bundle arguments) {
@@ -21,16 +25,36 @@ public class BridgeInstrumentation extends Instrumentation {
         if (arguments != null && arguments.getString("port") != null) {
             port = Integer.parseInt(arguments.getString("port"));
         }
+        if (arguments != null) {
+            ttlSeconds = parseTTL(arguments.getString("ttl"));
+        }
         start();
+    }
+
+    // Swift 側 BridgeAPI.resolvedBridgeTTLSeconds と同じ規則:
+    // 0 = 無効(無期限)、未指定・非整数・負 = 既定値
+    static int parseTTL(String raw) {
+        if (raw == null) return TTL_DEFAULT_SECONDS;
+        try {
+            int value = Integer.parseInt(raw);
+            return value >= 0 ? value : TTL_DEFAULT_SECONDS;
+        } catch (NumberFormatException e) {
+            return TTL_DEFAULT_SECONDS;
+        }
     }
 
     @Override
     public void onStart() {
-        Log.i(TAG, "bridge starting on 127.0.0.1:" + port);
+        Log.i(TAG, "bridge starting on 127.0.0.1:" + port
+                + " ttl=" + (ttlSeconds > 0 ? ttlSeconds + "s" : "off"));
         BridgeRouter router = new BridgeRouter(this);
         // iOS ランナーと同じく逐次処理(1接続ずつ)。UI 操作が自然に直列化される。
-        // finish() は呼ばない = 常駐(停止は am force-stop com.example.ftbridge)
-        BridgeHttpServer.run(port, router);
+        // finish() は呼ばない = 常駐(停止は am force-stop com.example.ftbridge、
+        // または無通信 TTL の自主終了)
+        BridgeHttpServer.run(port, ttlSeconds, router);
+        // run が戻るのは TTL 満了かソケット死。onStart の return だけでは
+        // プロセスが残る(サーバ無しのゾンビ)ため exit で確実に終わらせる
         Log.i(TAG, "bridge stopped");
+        System.exit(0);
     }
 }

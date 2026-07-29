@@ -57,11 +57,34 @@ final class BridgeHttpServer {
 
     private BridgeHttpServer() {}
 
-    /** accept ループ(ブロッキング)。ソケット生成失敗時のみ戻る */
-    static void run(int port, Handler handler) {
+    /** accept ループ(ブロッキング)。TTL 満了かソケット生成失敗で戻る(呼び出し元が exit する)。
+     *  ttlSeconds: 無通信の上限秒。0 以下 = 無期限。心拍は全リクエスト(パース失敗も含む)。
+     *  時刻は elapsedRealtime(単調クロック。壁時計の NTP ジャンプで誤爆させない)。 */
+    static void run(int port, int ttlSeconds, Handler handler) {
         try (ServerSocket server = new ServerSocket(port, 16, InetAddress.getLoopbackAddress())) {
+            // accept を定期的に起こして idle を判定する(単一スレッドなので排他不要)
+            server.setSoTimeout(60_000);
+            long lastRequestMillis = android.os.SystemClock.elapsedRealtime();
             while (true) {
-                try (Socket sock = server.accept()) {
+                if (ttlSeconds > 0) {
+                    long idleMillis = android.os.SystemClock.elapsedRealtime() - lastRequestMillis;
+                    if (idleMillis > ttlSeconds * 1000L) {
+                        Log.i(BridgeInstrumentation.TAG,
+                                "bridge idle " + (idleMillis / 1000) + "s > ttl " + ttlSeconds
+                                + "s; self-terminating");
+                        return;
+                    }
+                }
+                Socket accepted;
+                try {
+                    accepted = server.accept();
+                } catch (java.net.SocketTimeoutException e) {
+                    // 定期起床(soTimeout)。TTL 判定に戻るだけの正常経路なのでログしない。
+                    // 下の受信タイムアウト(15s・異常系でログする)と混ぜないため accept だけ分ける
+                    continue;
+                }
+                lastRequestMillis = android.os.SystemClock.elapsedRealtime();
+                try (Socket sock = accepted) {
                     // 相手が Content-Length 分を送り切らずに待つと、単スレッドの accept ループが
                     // read で無限ブロックしブリッジ全体が wedge する。受信タイムアウトで離脱させる(15s)。
                     sock.setSoTimeout(15000);

@@ -181,6 +181,10 @@ public struct BridgeProvisioner {
         await provisionLock.acquire()
         defer { provisionLock.release() }
 
+        // TTL 自主終了などで残った死んだランナーの pid ファイルを採番前に回収する
+        // (assignPort は pid ファイルの有無だけで使用中とみなすため、放置すると採番がドリフトする)
+        BridgeLauncher.sweepStalePidFiles(repoRoot: repoRoot)
+
         let catalog = try SimulatorCatalog.devices()
 
         // 1. デバイス指定 → シミュレータ実体(UDID)
