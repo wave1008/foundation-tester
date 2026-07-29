@@ -541,7 +541,7 @@ document.getElementById('machine-profile-section').addEventListener('keydown', (
   }
 });
 
-// 複製元: src/monitorModel.ts の updateDeviceInMachineProfile の検証部分(CSP により import 不可
+// 複製元: src/monitorProfileForms.ts の updateDeviceInMachineProfile の検証部分(CSP により import 不可
 // のため複製。ロジック変更時は両方に反映すること)。
 function validateDeviceEditorFields(name) {
   if (name.length === 0) {

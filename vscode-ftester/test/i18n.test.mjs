@@ -67,7 +67,7 @@ function placeholders(text) {
 const RESIDUAL_ALLOWLIST = [
   // 不変条件違反時の内部 throw(UI に出さない。バグ検出用。batch C 報告)。
   {
-    file: "src/monitorModel.ts",
+    file: "src/monitorDeviceLifecycle.ts",
     text: "finishDeviceLifecycleJob: 実行中に該当ジョブがありません(完了通知が重複した可能性)",
   },
 ];

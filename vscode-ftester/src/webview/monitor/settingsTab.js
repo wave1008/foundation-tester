@@ -1,5 +1,5 @@
 // モニターパネル「設定」タブ(#panel-settings)。main.js が applySettings を message
-// ディスパッチャに組み込む。対向: src/monitorModel.ts の setPollingMode/pollingMode・
+// ディスパッチャに組み込む。対向: src/monitorWebviewMessages.ts の setPollingMode/pollingMode・
 // setLanguage/language メッセージ、処理は src/monitorPanel.ts。常駐プロセス一覧は processesTab.js を参照。
 //
 // 更新セクション: checkUpdate/runUpdate を送り、updateStatus を受ける(実処理は

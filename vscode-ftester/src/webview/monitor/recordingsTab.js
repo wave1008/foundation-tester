@@ -1,5 +1,5 @@
 // モニターパネル「録画」タブ(#panel-recordings)。セッション一覧→再生ビューの2ビュー構成。
-// 対向: src/monitorModel.ts の recordingsSessions/recordingsSession(拡張→webview)・
+// 対向: src/monitorWebviewMessages.ts の recordingsSessions/recordingsSession(拡張→webview)・
 // recordingsRefresh/recordingsOpen(webview→拡張)、処理は src/monitorRecordingsController.ts。
 // エラー一覧の動画内オフセット(offsetMs)は拡張側(recordingsModel.ts)で計算済みのものを使うだけ。
 //

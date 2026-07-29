@@ -3,7 +3,8 @@
 // (+ その中で参照する PANEL_TITLE)を持つ。webview 資産(スタイル・スクリプト)自体は
 // src/webview/monitor/{style.css,main.js} に分離されており、esbuild が
 // media/monitor/ にバンドルしたものを renderHtml() が webview.asWebviewUri で読み込む。
-// HTML 本文は renderHtml() 内にインライン生成する。
+// HTML 本文はタブ/セクション単位の render*() ヘルパーに分割されており、renderHtml() は
+// CSP/nonce の組み立てと各ヘルパーの連結だけを行う。
 
 import { randomBytes } from "node:crypto";
 import * as vscode from "vscode";
@@ -38,7 +39,35 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
 <link rel="stylesheet" href="${styleUri}">
 </head>
 <body>
-  <div id="tabbar" role="tablist">
+  ${renderTabBar()}
+
+  ${renderDevicesPanel()}
+
+  ${renderProfilesPanel()}
+
+  ${renderProcessesPanel()}
+
+  ${renderRecordingsPanel()}
+
+  ${renderSettingsPanel()}
+
+  ${renderDeviceOpMenu()}
+
+  ${renderMachineDeviceMenu()}
+
+  ${renderDeviceAddOverlay()}
+
+  ${renderNameInputOverlay()}
+
+  ${renderDevicePickOverlay()}
+
+  <script nonce="${nonce}" src="${scriptUri}"></script>
+</body>
+</html>`;
+}
+
+function renderTabBar(): string {
+  return `<div id="tabbar" role="tablist">
     <button id="tab-devices" class="tab-button active" type="button" role="tab" aria-selected="true" aria-controls="panel-devices">${t("panels.tabs.devices")}</button>
     <button id="tab-profiles" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-profiles">${t("panels.tabs.profiles")}</button>
     <button id="tab-processes" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-processes">${t("panels.tabs.processes")}</button>
@@ -47,9 +76,11 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
     <!-- 更新があるときだけ現れるボタン(タブの並びの直後。タブに関係なく常に見える)。
          押すと設定タブへ切り替える。対向: settingsTab.js -->
     <button id="tabbar-update" class="tabbar-update" type="button" style="display: none;">${t("panels.settings.updateRunButton")}</button>
-  </div>
+  </div>`;
+}
 
-  <div id="panel-devices" class="tab-panel" role="tabpanel" aria-labelledby="tab-devices">
+function renderDevicesPanel(): string {
+  return `<div id="panel-devices" class="tab-panel" role="tabpanel" aria-labelledby="tab-devices">
     <div id="toolbar" class="toolbar">
       <label class="profile-label">${t("panels.common.runProfile")}
         <select id="profile-select" title="${t("panels.toolbar.runProfileSelectTitle")}" disabled></select>
@@ -83,16 +114,11 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
       <div id="lanes-placeholder" class="lanes-placeholder">${t("panels.devices.lanesPlaceholder")}</div>
       <div id="lanes-grid" class="lanes-grid" style="display: none;"></div>
     </div>
-  </div>
+  </div>`;
+}
 
-  <div id="panel-profiles" class="tab-panel" role="tabpanel" aria-labelledby="tab-profiles" style="display: none;">
-    <div id="profile-jump-header" class="profile-jump-header">
-      <button type="button" class="profile-jump-link" data-target="run-profile-section">${t("panels.common.runProfile")}</button>
-      <button type="button" class="profile-jump-link" data-target="app-profile-section">${t("panels.common.appProfile")}</button>
-      <button type="button" class="profile-jump-link" data-target="machine-profile-section">${t("panels.common.machineProfile")}</button>
-    </div>
-
-    <div id="run-profile-section" class="profile-section run-profile-section">
+function renderRunProfileSection(): string {
+  return `<div id="run-profile-section" class="profile-section run-profile-section">
       <div class="profile-toolbar">
         <span class="profile-toolbar-title">${t("panels.common.runProfile")}</span>
         <select id="run-profile-select" style="display: none;"></select>
@@ -211,9 +237,11 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
           </div>
         </div>
       </div>
-    </div>
+    </div>`;
+}
 
-    <div id="app-profile-section" class="profile-section app-profile-section">
+function renderAppProfileSection(): string {
+  return `<div id="app-profile-section" class="profile-section app-profile-section">
       <div class="profile-toolbar">
         <span class="profile-toolbar-title">${t("panels.common.appProfile")}</span>
         <select id="app-profile-select" style="display: none;"></select>
@@ -275,9 +303,11 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
 
         </div>
       </div>
-    </div>
+    </div>`;
+}
 
-    <div id="machine-profile-section" class="profile-section">
+function renderMachineProfileSection(): string {
+  return `<div id="machine-profile-section" class="profile-section">
       <div class="profile-toolbar">
         <span class="profile-toolbar-title">${t("panels.common.machineProfile")}</span>
         <select id="machine-select" style="display: none;"></select>
@@ -360,10 +390,27 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
           </div>
         </div>
       </div>
-    </div>
-  </div>
+    </div>`;
+}
 
-  <div id="panel-processes" class="tab-panel" role="tabpanel" aria-labelledby="tab-processes" style="display: none;">
+function renderProfilesPanel(): string {
+  return `<div id="panel-profiles" class="tab-panel" role="tabpanel" aria-labelledby="tab-profiles" style="display: none;">
+    <div id="profile-jump-header" class="profile-jump-header">
+      <button type="button" class="profile-jump-link" data-target="run-profile-section">${t("panels.common.runProfile")}</button>
+      <button type="button" class="profile-jump-link" data-target="app-profile-section">${t("panels.common.appProfile")}</button>
+      <button type="button" class="profile-jump-link" data-target="machine-profile-section">${t("panels.common.machineProfile")}</button>
+    </div>
+
+    ${renderRunProfileSection()}
+
+    ${renderAppProfileSection()}
+
+    ${renderMachineProfileSection()}
+  </div>`;
+}
+
+function renderProcessesPanel(): string {
+  return `<div id="panel-processes" class="tab-panel" role="tabpanel" aria-labelledby="tab-processes" style="display: none;">
     <div class="processes-body">
       <div class="processes-title">${t("panels.processes.title")}</div>
       <div id="resident-updated" class="resident-updated"></div>
@@ -380,9 +427,11 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
         </table>
       </div>
     </div>
-  </div>
+  </div>`;
+}
 
-  <div id="panel-recordings" class="tab-panel" role="tabpanel" aria-labelledby="tab-recordings" style="display: none;">
+function renderRecordingsPanel(): string {
+  return `<div id="panel-recordings" class="tab-panel" role="tabpanel" aria-labelledby="tab-recordings" style="display: none;">
     <div id="recordings-list-view" class="recordings-list-view">
       <div class="recordings-toolbar">
         <span class="recordings-toolbar-title">${t("panels.recordings.sessionsTitle")}</span>
@@ -447,9 +496,11 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
         </div>
       </div>
     </div>
-  </div>
+  </div>`;
+}
 
-  <div id="panel-settings" class="tab-panel" role="tabpanel" aria-labelledby="tab-settings" style="display: none;">
+function renderSettingsPanel(): string {
+  return `<div id="panel-settings" class="tab-panel" role="tabpanel" aria-labelledby="tab-settings" style="display: none;">
     <div class="settings-body">
       <!-- 更新セクション。判定は Scripts/update-check.sh、取り込みは Scripts/update.sh
            (拡張は実行して結果を出すだけ)。対向: settingsTab.js / monitorUpdateController.ts -->
@@ -477,23 +528,29 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
         <div class="settings-hint">${t("panels.settings.pollingModeHint")}</div>
       </div>
     </div>
-  </div>
+  </div>`;
+}
 
-  <!-- アイコンはcodicon "vm-running"/"play"/"debug-stop"のインラインSVG。
+function renderDeviceOpMenu(): string {
+  return `<!-- アイコンはcodicon "vm-running"/"play"/"debug-stop"のインラインSVG。
        #device-op-menu-itemはup/down両方のアイコンを持ち、data-op(deviceTiles.jsが設定)でCSS表示切替。 -->
   <div id="device-op-menu" class="device-op-menu" role="menu">
     <button id="device-op-menu-live" class="device-op-menu-item" type="button" role="menuitem"><svg class="op-icon" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="M6.607 14C6.79 14.357 7.017 14.689 7.275 15H3.5C3.224 15 3 14.776 3 14.5C3 14.224 3.224 14 3.5 14H5V12H3C1.895 12 1 11.105 1 10V3C1 1.895 1.895 1 3 1H13C14.105 1 15 1.895 15 3V7.293C14.69 7.036 14.357 6.816 14 6.633V3C14 2.448 13.552 2 13 2H3C2.448 2 2 2.448 2 3V10C2 10.552 2.448 11 3 11H6.024C5.994 11.332 6.004 11.666 6.034 12H6V14H6.607ZM16 11.5C16 12.39 15.736 13.26 15.242 14C14.748 14.74 14.045 15.317 13.222 15.657C12.4 15.998 11.495 16.087 10.622 15.913C9.749 15.739 8.947 15.311 8.318 14.681C7.689 14.052 7.26 13.25 7.086 12.377C6.912 11.504 7.001 10.599 7.342 9.777C7.683 8.955 8.259 8.252 8.999 7.757C9.739 7.264 10.609 7 11.499 7C12.692 7 13.837 7.474 14.681 8.318C15.525 9.162 16 10.307 16 11.5ZM13.97 11.499C13.97 11.41 13.946 11.323 13.901 11.246C13.856 11.17 13.791 11.106 13.713 11.063L10.743 9.413C10.667 9.371 10.581 9.349 10.494 9.35C10.407 9.351 10.322 9.375 10.247 9.419C10.171 9.463 10.109 9.526 10.066 9.602C10.023 9.677 10 9.763 10 9.85V13.15C10 13.237 10.023 13.322 10.066 13.398C10.11 13.474 10.172 13.537 10.247 13.581C10.322 13.625 10.407 13.649 10.494 13.65C10.581 13.65 10.667 13.629 10.743 13.587L13.713 11.937C13.791 11.892 13.856 11.829 13.901 11.752C13.946 11.676 13.97 11.588 13.97 11.499Z"/></svg><span>${t("panels.deviceMenu.liveControl")}</span></button>
     <button id="device-op-menu-item" class="device-op-menu-item" type="button" role="menuitem"><svg class="op-icon op-icon-up" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4.74514 3.06414C4.41183 2.87665 4 3.11751 4 3.49993V12.5002C4 12.8826 4.41182 13.1235 4.74512 12.936L12.7454 8.43601C13.0852 8.24486 13.0852 7.75559 12.7454 7.56443L4.74514 3.06414ZM3 3.49993C3 2.35268 4.2355 1.63011 5.23541 2.19257L13.2357 6.69286C14.2551 7.26633 14.2551 8.73415 13.2356 9.30759L5.23537 13.8076C4.23546 14.37 3 13.6474 3 12.5002V3.49993Z"/></svg><svg class="op-icon op-icon-down" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M12.5 3.5V12.5H3.5V3.5H12.5ZM12.5 2H3.5C2.672 2 2 2.672 2 3.5V12.5C2 13.328 2.672 14 3.5 14H12.5C13.328 14 14 13.328 14 12.5V3.5C14 2.672 13.328 2 12.5 2Z"/></svg><span id="device-op-menu-item-label"></span></button>
     <!-- CPU 描画フォールバックを解除して host GPU で再起動。deviceTiles.js が CPU バッジのタイルでのみ表示。 -->
     <button id="device-op-menu-gpu" class="device-op-menu-item" type="button" role="menuitem"><svg class="op-icon" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M4.681 3H2V2h3.5l.5.5V6H5V4a5 5 0 1 0 4.53-.635l.418-.909A6 6 0 1 1 4.681 3z"/></svg><span>${t("panels.deviceMenu.restartWithGpu")}</span></button>
-  </div>
+  </div>`;
+}
 
-  <!-- #device-op-menuとスタイルのみ共用する別要素。「除去」はプロファイルから外すだけで本体は削除しない。 -->
+function renderMachineDeviceMenu(): string {
+  return `<!-- #device-op-menuとスタイルのみ共用する別要素。「除去」はプロファイルから外すだけで本体は削除しない。 -->
   <div id="machine-device-menu" class="device-op-menu" role="menu">
     <button id="machine-device-menu-item" class="device-op-menu-item" type="button" role="menuitem">${t("panels.deviceMenu.remove")}</button>
-  </div>
+  </div>`;
+}
 
-  <div id="device-add-overlay" class="modal-overlay">
+function renderDeviceAddOverlay(): string {
+  return `<div id="device-add-overlay" class="modal-overlay">
     <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="device-add-title">
       <div id="device-add-title" class="modal-title">${t("panels.deviceAdd.title")}</div>
       <div class="modal-row">
@@ -537,9 +594,11 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
         <button id="dlg-ok" type="button">OK</button>
       </div>
     </div>
-  </div>
+  </div>`;
+}
 
-  <!-- 実行/アプリ/マシンプロファイルの追加・コピー・名前変更で共通利用(showInputBox相当)。
+function renderNameInputOverlay(): string {
+  return `<!-- 実行/アプリ/マシンプロファイルの追加・コピー・名前変更で共通利用(showInputBox相当)。
        拡張側nameInputOpenでtitle/初期値/検証パラメータ(noun/dupLabel/existing/caseInsensitiveDup)を
        受け取り、OK/キャンセルはnameInputConfirm/nameInputCancelをid付きで返す(拡張側pendingNameInputと突合)。 -->
   <div id="name-input-overlay" class="modal-overlay">
@@ -554,9 +613,11 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
         <button id="name-input-ok" type="button">OK</button>
       </div>
     </div>
-  </div>
+  </div>`;
+}
 
-  <!-- 中身(#device-pick-ios-body/-android-body)はJSがinstalledDevices受信時に組み立てる。
+function renderDevicePickOverlay(): string {
+  return `<!-- 中身(#device-pick-ios-body/-android-body)はJSがinstalledDevices受信時に組み立てる。
        チェックボックスは「選択」ではなく登録状態そのもの(登録済み=初期チェック、disabled化しない)。
        OKは初期状態からの差分がある間だけ有効(JS側)。「+」(device-pick-add-new)はこのモーダルを
        閉じずに#device-add-overlayを重ねて開く(z-indexは#device-add-overlayのCSSルール参照)。 -->
@@ -583,9 +644,5 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
         <button id="device-pick-ok" type="button" disabled>OK</button>
       </div>
     </div>
-  </div>
-
-  <script nonce="${nonce}" src="${scriptUri}"></script>
-</body>
-</html>`;
+  </div>`;
 }

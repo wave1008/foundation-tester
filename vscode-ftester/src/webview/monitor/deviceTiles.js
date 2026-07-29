@@ -52,7 +52,7 @@ const WIPE_STATUS_LABEL = {
   failed: { label: t('wvMonitor.footer.wipeFailed'), warn: true },
 };
 
-// src/monitorModel.ts の deviceOpMenuItem の複製(webview は CSP で import 不可のため)。変更時は
+// src/monitorDeviceLifecycle.ts の deviceOpMenuItem の複製(webview は CSP で import 不可のため)。変更時は
 // 両方を同期すること。busy は { op, status }('queued'|'running')または undefined。
 // physical: 実機は端末そのものを起動・停止しない(DeviceBooter の実機分岐)。操作対象は
 // **ブリッジだけ**なのでラベルで明示する(「起動/停止」だと端末の電源だと誤解される)。
@@ -680,7 +680,7 @@ export function applyDeviceOpBusy(message) {
   renderFrame(entry);
 }
 
-// 契約: { type: 'deviceDownFinished', name }(monitorModel.ts / monitorDeviceOps.ts の api devices-down)。
+// 契約: { type: 'deviceDownFinished', name }(monitorWebviewMessages.ts / monitorDeviceOps.ts の api devices-down)。
 // 一括 down で1台の停止が完了した通知。down 中はモニターが pause で state 更新を出さないため、この
 // タイルだけ offline を先行反映して「未起動」へ倒す(次の devices 反映=resume 後に本物の state で
 // 上書きされる)。opBusy も解除する。offline を立てることで renderFrame が凍結フレームを出さない
@@ -791,7 +791,7 @@ export function setBusy(busy, bulkOp) {
 
 const PROFILE_NONE_LABEL = t('wvMonitor.profile.none');
 const PROFILE_RUNNING_LABEL = t('wvMonitor.profile.running');
-// src/monitorModel.ts の RUNNING_DEVICES_PROFILE_VALUE の複製(webview は CSP で import 不可)。
+// src/monitorDeviceModel.ts の RUNNING_DEVICES_PROFILE_VALUE の複製(webview は CSP で import 不可)。
 // 変更時は両方揃える。実行プロファイルではなく表示フィルタで、送信先の分解は
 // monitorProfilesController.selectProfile が行う。
 const PROFILE_RUNNING_VALUE = '@running';
