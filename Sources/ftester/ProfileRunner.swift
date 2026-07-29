@@ -245,6 +245,20 @@ enum ProfileRunner {
         print("⏱ トータル: \(String(format: "%.1f", totalSeconds))s / "
             + "テスト実時間: \(testStr)s / シナリオ合計: \(scenarioTotalStr)s")
 
+        // プラットフォーム別のレーン稼働。台数を増やす前にここを見る(遊休レーンがあるなら
+        // 増やすのではなく配分を変える。docs/performance-tuning.md §3.6)
+        // 単一プラットフォームでも「レーンが遊休している」ことは読めるので出す(台数過多の検知)。
+        // 逐次実行(1レーン)だけは自明なので黙る。
+        let utilizations = timing.laneUtilizations
+        if utilizations.count > 1 || utilizations.contains(where: { $0.lanes > 1 }) {
+            let cells = utilizations.map {
+                "\($0.platform) \($0.lanes)レーン 稼働\(Int(($0.utilization * 100).rounded()))%"
+                + " 最終終了\(String(format: "%.1f", $0.lastFinishSeconds))s"
+            }
+            print("📊 レーン稼働: " + cells.joined(separator: " / "))
+            if let advice = LaneBalanceAdvice.message(for: utilizations) { print(advice) }
+        }
+
         let finalSummary = await summary
         if !finalSummary.degradedWorkers.isEmpty {
             print("⚠️ 劣化・離脱したワーカー(\(finalSummary.degradedWorkers.count)):")
