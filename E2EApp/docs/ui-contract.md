@@ -20,6 +20,7 @@ tag 定数は `composeApp/src/commonMain/kotlin/com/ftester/e2e/Tags.kt` に集�
   **iOS の3エンジン間でも揃っている**: in-app は traits の `.toggleButton`(実測 0x20000000000001 =
   `.button` と併用。UIKit/SwiftUI/Compose 共通)で `switch` を出す。ここが抜けると in-app だけ
   `switch` が `button` になり、`:rightSwitch` が xcuitest とだけ食い違う(2026-07-27 に実害)。
+- **WebView 画面だけは別規約**(`#id` が効かない・`link` / `webView` 型が出る)。§WebView 画面を参照。
 - **`checkBox` / `slider` / リスト行は型で指さない**。iOS 側の a11y が役割を出さず
   (Compose の Checkbox/Radio は iOS で `button`、Slider は `other`)、ブリッジでも揃えられない。
   これらは `#id` で指す。`#id` とラベルは全プラットフォーム共通。
@@ -65,6 +66,7 @@ tag 定数は `composeApp/src/commonMain/kotlin/com/ftester/e2e/Tags.kt` に集�
 | `#nav_selector` | Button | `セレクタ` | |
 | `#nav_noid` | Button | `ID なし` | **2番目に置く**(末尾だと下部タブに重なり、タップがタブに吸われる。iOS ネイティブ SUT で実測) |
 | `#nav_input` | Button | `テキスト入力` | |
+| `#nav_webview` | Button | `WebView` | **末尾に置かない**(`#nav_noid` と同じ理由でタップがタブに吸われる) |
 | `#nav_gesture` | Button | `ジェスチャ` | |
 | `#nav_scroll` | Button | `スクロール` | |
 | `#nav_async` | Button | `非同期表示` | |
@@ -73,7 +75,7 @@ tag 定数は `composeApp/src/commonMain/kotlin/com/ftester/e2e/Tags.kt` に集�
 | `#nav_heal` | Button | `自己修復` | |
 | `#nav_diagnostics` | Button | `診断` | |
 
-ナビ行は縦に並べる。9 行 + マーカーが 1 画面に収まらない場合はスクロール可にする
+ナビ行は縦に並べる。10 行 + マーカーが 1 画面に収まらない場合はスクロール可にする
 (`#nav_diagnostics` は `scrollTo` の対象になり得る)。
 
 ## セレクタ画面(タイトル `セレクタ`)
@@ -308,6 +310,56 @@ id がある(そこまで無いとテストが書けないため)。
   この画面の主目的。行の高さは 48dp 以上を確保し、行同士を縦に十分離す。
 - **行3 の `変更` は左右で同一ラベル**。`数量:leftButton` / `数量:rightButton` でしか区別できない。
 - 状態は `key=value` の Text で echo する(全体規約と同じ)。値の永続化はしない。
+
+## WebView 画面(タイトル `WebView`)
+
+ネイティブの WebView(iOS=WKWebView / Android=android.webkit.WebView)に**同じ HTML** を
+読ませる画面。HTML の唯一の正は **`E2EApp/docs/webview.html`**(4 SUT がその写しを持つ。
+iOS/CMP は文字列定数、Android/Flutter はアセット)。ネットワークは使わない。
+
+**この画面だけ規約が違う。読む前に必ずここを読むこと**:
+
+- **`#id` は使えない**(確定仕様。将来も `#id` には載せない)。HTML の `id` 属性は
+  iOS/Android とも a11y の identifier に現れない(2026-07-29 に4経路で実測)。
+  Android は **Chromium が `viewIdResourceName` にも extras bundle にも HTML id を出さない**
+  (WebView 124 / Android 15 で実測、2026-07-29)。**指せるのは表示テキストと `aria-label` と型だけ**。
+  だから他の画面と違い、以下の表は tag ではなく**ラベル**を主キーにしている。
+- **コンテナも `#wv_container` では引けない**(Android の WebView ノードは resource-id を
+  持たない)。スコープを切るときは型セレクタ `.webView` を使う。
+- **リンクは2要素に分かれて出る**(`.link` と、その中の `.staticText`。両 OS 共通)。
+  同じラベルが2つ並ぶので、**ラベル単独では曖昧解決不能**。`.link&&WebView リンク` のように
+  型で絞る。
+- **iOS は中身が出るまで約 2.3 秒かかる**(WebContent プロセスの a11y 起動待ち。内蔵 HTML で
+  この値なので、実ページ+通信ではさらに延びる)。`timeout: 0` のアサーションは書かない。
+- **Android は操作後のテキスト更新が a11y に 4〜8 秒遅れて届く**(Chromium が DOM 変更の
+  a11y イベントを遅らせる。CMP / Flutter の interop 埋め込みで実測)。**ブリッジ側で
+  WebView 内ノードだけ `refresh()` してから読む**ようにしたので利用者側の対処は不要
+  (`AndroidRunner` の `SnapshotBuilder.collect`)。シナリオはこの修正の退行検知を兼ねて
+  **既定 timeout のまま**書く。
+- **iOS in-app は DOM を直接読む**(a11y ツリーは別プロセス提供で見えないため)。
+  SwiftUI / UIKit ホストではこの経路が使われ、WebView 画面でも 1 手 4ms 程度で動く。
+  **Compose / Flutter ホストは interop がタッチと入力を横取りする**ため DOM 経路を使わず、
+  画面ごと XCUITest へ委譲する(`WebViewDelegatingDriver`)。どちらも利用者の書き分けは要らない。
+
+| ラベル/テキスト | 型 | タップ時の結果 | 備考 |
+|---|---|---|---|
+| `WebView 見出し` | staticText | (タップ不可) | 着地判定の基準 |
+| `WebView 本文` | staticText | (タップ不可) | |
+| `WebView リンク` | link | `wv_result=link` | 同ラベルの staticText と重複して出る |
+| (placeholder `WebView 入力`) | textField | | ラベルが無いので `placeholder=WebView 入力` で指す。入力値は ASCII のみ |
+| `送信` | button | `wv_result=<入力値>` | |
+| `WebView アリアラベル` | button | `wv_result=aria` | ラベルは `aria-label` 由来(表示テキストは `●`) |
+| `wv_result=<v>` 初期 `wv_result=-` | staticText | (タップ不可) | 状態の echo |
+| `WebView 行 01`〜`WebView 行 30` | staticText | (タップ不可) | 行の高さ 56px 以上 |
+| `WebView 画面外テキスト` | staticText | (タップ不可) | 画面外(要 `scrollTo`) |
+
+到達は `#nav_webview`(ホームのナビ。ここはネイティブなので id が効く)。
+**CMP は interop 埋め込み**(Android=`AndroidView`、iOS=`UIKitView`)。iOS 側は
+`UIKitInteropProperties(isNativeAccessibilityEnabled = true)` が**必須**で、これが無いと
+Compose の a11y ツリーが interop ビューを1ノードに畳み、中身が一切見えない(2026-07-29 実測)。
+初回表示は SUT により 0〜8 秒かかる(ネイティブ Android=即時 / iOS=約2.3秒 /
+CMP Android=約6秒 / Flutter Android=約8秒)。
+**行は `行 01` 形式のゼロ詰め**(`*行 1*` が `行 12` に contains 一致する事故を避ける。他画面と同じ)。
 
 ## 情報タブ(タイトル `情報`)
 

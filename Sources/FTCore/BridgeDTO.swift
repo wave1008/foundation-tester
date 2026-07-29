@@ -15,7 +15,13 @@ public enum BridgeAPI {
     /// 4: 操作系が「対象アプリ未起動」に 503 を返すようになった(2026-07-28)。エンドポイントの
     /// 増減ではないが**版を上げる**: 旧ランナーが稼働中だと再利用され、XCUI の操作失敗で
     /// プロセスごと落ちる不具合(design.md 参照)を踏み続けるため、確実に入れ替える
-    public static let bridgeProtocolVersion = 4
+    /// 5: snapshot が WKWebView を型 "WebView" として返すようになった(2026-07-29)。
+    /// ホストはこの要素の有無で「XCUITest へ委譲する画面か」を判定する(WebViewDelegatingDriver)
+    /// ため、旧ランナーが再利用されると**委譲が起きないまま緑になる**。確実に入れ替える
+    /// 6: in-app が WKWebView の中身を DOM から読んで返すようになった(2026-07-29)。
+    /// 旧 dylib が再利用されると中身が空のまま = XCUITest へ委譲され続け、
+    /// 速度改善が入っていないのに緑になる
+    public static let bridgeProtocolVersion = 6
 }
 
 /// CGRect の代わりに使うプラットフォーム非依存の矩形(エンコード形式を固定する)
@@ -119,10 +125,14 @@ public struct ElementInfo: Codable, Sendable {
     public var checked: Bool?
     public var frame: FTRect
     public var depth: Int
+    /// **DOM から読んだ Web コンテンツか**(true のときだけ送る)。in-app ブリッジが WKWebView の
+    /// 中身を読めたときに立てる。ホストは「in-app で中身が読めているか」をこれで判定する
+    /// (幾何で判定すると WebView と同じ矩形を持つ interop 容器を中身と誤認する。2026-07-29 実害)
+    public var web: Bool?
 
     public init(ref: Int, type: String, identifier: String?, label: String?, value: String?,
                 placeholder: String?, enabled: Bool, frame: FTRect, depth: Int,
-                checked: Bool? = nil) {
+                checked: Bool? = nil, web: Bool? = nil) {
         self.ref = ref
         self.type = Self.normalizedType(type)
         self.identifier = identifier
@@ -133,6 +143,7 @@ public struct ElementInfo: Codable, Sendable {
         self.checked = checked
         self.frame = frame
         self.depth = depth
+        self.web = web
     }
 
     public init(from decoder: Decoder) throws {
@@ -147,6 +158,7 @@ public struct ElementInfo: Codable, Sendable {
         checked = try container.decodeIfPresent(Bool.self, forKey: .checked)
         frame = try container.decode(FTRect.self, forKey: .frame)
         depth = try container.decode(Int.self, forKey: .depth)
+        web = try container.decodeIfPresent(Bool.self, forKey: .web)
     }
 
     /// 先頭 1 文字だけ小文字化する(`StaticText` → `staticText`)。冪等なので二重適用しても安全
@@ -162,12 +174,27 @@ public struct SnapshotResponse: Codable, Sendable {
     public var elements: [ElementInfo]
     /// 上限超過で切り捨てた要素数(FMへのプロンプトにも明記する)
     public var truncatedCount: Int
+    /// このスナップショットで**取りこぼしがある**ことの申告(例: クロスオリジン iframe は
+    /// main frame の JS から読めない)。旧ブリッジは返さない → nil 許容。
+    /// 黙って要素ゼロにしないための経路で、ホストは lastActionNote として記録に載せる
+    public var note: String?
+    /// WebView の中身を**どの経路で読んだか**の申告。`"dom"` = in-app が DOM を JS で走査 /
+    /// `"delegated"` = XCUITest へ画面ごと委譲(ホスト側の WebViewDelegatingDriver が入れる)。
+    /// **要素の形から推測してはいけない**: Android は webView 型を出すが web フラグを持たないため、
+    /// 推測すると「XCUITest へ委譲」と名乗って Android のデバッグを誤誘導する(2026-07-29 実害)。
+    /// 経路を知っているのは snapshot を返した本人だけなので、そこに申告させる。
+    /// 追加 optional フィールドのみなので bridgeProtocolVersion は据え置き(TapRequest.fast と同じ方針。
+    /// 旧ブリッジは返さず nil = 申告なし = 注記も出ない、で安全に縮退する)
+    public var webViewPath: String?
 
-    public init(sessionBundleID: String?, screen: FTRect, elements: [ElementInfo], truncatedCount: Int) {
+    public init(sessionBundleID: String?, screen: FTRect, elements: [ElementInfo],
+                truncatedCount: Int, note: String? = nil, webViewPath: String? = nil) {
         self.sessionBundleID = sessionBundleID
         self.screen = screen
         self.elements = elements
         self.truncatedCount = truncatedCount
+        self.note = note
+        self.webViewPath = webViewPath
     }
 }
 

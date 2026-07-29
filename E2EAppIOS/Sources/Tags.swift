@@ -23,6 +23,9 @@ enum Tags {
     static let navLifecycle = "nav_lifecycle"
     static let navHeal = "nav_heal"
     static let navDiagnostics = "nav_diagnostics"
+    // WebView 対応スパイク(Phase 0)の暫定 tag。契約化は Phase 1
+    static let navWebview = "nav_webview"
+    static let webviewContainer = "wv_container"
     static let navNoid = "nav_noid"
 
     // セレクタ

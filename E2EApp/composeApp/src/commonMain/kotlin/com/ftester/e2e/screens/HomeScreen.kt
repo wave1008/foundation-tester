@@ -16,6 +16,7 @@ fun HomeScreen(onNavigate: (Screen) -> Unit) {
         TaggedButton(Tags.NAV_SELECTOR, "セレクタ", modifier = Modifier.fillMaxWidth()) { onNavigate(Screen.SELECTOR) }
         TaggedButton(Tags.NAV_INPUT, "テキスト入力", modifier = Modifier.fillMaxWidth()) { onNavigate(Screen.INPUT) }
         TaggedButton(Tags.NAV_NOID, "ID なし", modifier = Modifier.fillMaxWidth()) { onNavigate(Screen.NOID) }
+        TaggedButton(Tags.NAV_WEBVIEW, "WebView", modifier = Modifier.fillMaxWidth()) { onNavigate(Screen.WEBVIEW) }
         TaggedButton(Tags.NAV_GESTURE, "ジェスチャ", modifier = Modifier.fillMaxWidth()) { onNavigate(Screen.GESTURE) }
         TaggedButton(Tags.NAV_SCROLL, "スクロール", modifier = Modifier.fillMaxWidth()) { onNavigate(Screen.SCROLL) }
         TaggedButton(Tags.NAV_ASYNC, "非同期表示", modifier = Modifier.fillMaxWidth()) { onNavigate(Screen.ASYNC) }

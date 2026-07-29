@@ -258,6 +258,67 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
   quiescence API を使えば event-driven 化できるが未採用)。inapp エンジンは tap 側の `InAppSettle`
   (アニメ整定をイベント駆動で待つ)が既に遷移を待つため対象外。
 
+### 4.4.1 WebView の中身(2026-07-29)
+
+WebView(iOS=WKWebView / Android=android.webkit.WebView)の中身は、経路ごとに見え方が違う。
+
+| 経路 | 中身の取得 | 備考 |
+|---|---|---|
+| Android ブリッジ | a11y の仮想ツリー | リンクは Chromium の `chromeRole`(非ローカライズ)で `link` に正規化。**WebView 内ノードだけ `refresh()`** してから読む(DOM 変更の a11y 反映が 4〜8 秒遅れる実測への対処) |
+| iOS xcuitest | a11y ツリー | 中身が現れるまで **約 2.3 秒**(WebContent プロセスの a11y 起動待ち) |
+| iOS in-app(uikit ホスト) | **DOM を JS で走査** | `InAppWebViewDOM` + `WebViewDOM.javaScript`。1往復・隔離ワールド |
+| iOS in-app(Compose / Flutter ホスト) | 取らない | interop が合成タッチと `insertText` を横取りし、**読めても操作が届かない**。画面ごと XCUITest へ委譲 |
+
+- **a11y ツリーは in-app からは見えない**(Web コンテンツの AX は WebContent プロセスが提供する)。
+  そこで in-app は `evaluateJavaScript` で DOM を1往復読み、a11y 経路と同じ DTO へ写す。
+  可視性(display/visibility/aria-hidden/0px/画面外/`elementFromPoint` の被り)は JS 側で自前判定する。
+- **操作は DOM でやらない**。`element.click()` や value 代入は user activation・IME・`:active` を壊すので、
+  DOM から得た矩形を画面座標へ変換して**合成タッチ**を打つ(ref に AX ノードを紐付けない =
+  `tapByRef` が座標へ落ちる、という既存経路をそのまま使う)。
+- **DOM 由来の要素は `ElementInfo.web = true`** で申告する。ホスト(`WebViewDelegatingDriver`)は
+  これを見て委譲要否を決める。**幾何で「中に何か居るか」を見てはいけない**: Compose iOS の
+  interop 容器は WebView と同じ矩形を持つため、中身と誤認して委譲が止まる(2026-07-29 実害)。
+- **効果**(E2E-iOS / ios-inapp・4 run で再現): WebView 画面の検証 1 手が **450ms → 4ms**、
+  シナリオ全体 **27.2s → 10.3〜11.0s**。委譲中は XCUITest 経由で 1 手 378ms かかっていた。
+- **クロスオリジン iframe は読めない**(main frame の JS からは触れない)。数を数えて
+  `SnapshotResponse.note` で申告する(黙って要素ゼロにしない)。
+- 殺しスイッチ `FT_WEBVIEW_DOM=off`(ホストの環境変数。`SIMCTL_CHILD_` で注入先へ引き渡す)。
+- **DOM 経路の可否は WKWebView 単位で決める**(`WebViewDOM.isInteropHosted`)。祖先に
+  `FlutterView` / `FlutterTouchInterceptingView` / `androidx.compose.ui.*` が居れば interop 配下 =
+  読めても操作が届かないので使わない。**アプリ単位で判定してはいけない**: UIKit アプリの
+  Flutter add-to-app や CMP 画面混在では、アプリは uikit なのに中の WebView だけ interop 配下になる
+  (逆に1画面のためにアプリ全体で DOM 経路を捨てることにもなる)。目印は実測の祖先チェーンから採った
+  (SwiftUI の `UIKitPlatformViewHost` は "PlatformView" を含むので雑な部分一致は禁物)。
+
+**hitTest による名前非依存の判定は不採用**(2026-07-29 に実測。再提案しないこと):
+WebView 中心点の `window.hitTest` が当の WebView かその子孫を返すかで interop を見分けられないか
+測ったが、**3構成を分離できない**。Flutter は名前に反して**ヒットテストを WebView へ通し**
+(`FlutterTouchInterceptingView` はジェスチャレコグナイザ側でタッチを食う)、
+selfOrDescendant=true になってネイティブと区別が付かない。CMP だけは `OverlayInputView` が
+ヒットテストを奪うので false になる。祖先のジェスチャレコグナイザ数も
+ネイティブ 6 / CMP 9 / Flutter 12 で閾値に使えない。よってクラス名の目印を維持し、
+取りこぼしは**失敗文言の注記**(`StepExecutor.webViewPathHint`)で追跡可能にする方針とする。
+
+**失敗文言に経路を添える**(`SnapshotResponse.webViewPath`)。DOM 経路の未検出は
+「無反応タップが成功として記録され、2ステップ先で別の文言で落ちる」形で出るため、
+落ちた側に経路を書かないと追跡コストが跳ね上がる。**経路は snapshot を返したドライバが名乗る**:
+要素の形から推測すると、webView 型を出すが web フラグを持たない **Android が
+「XCUITest へ委譲」を名乗る**(2026-07-29 実害)。申告が無ければ何も足さない。
+
+**`#id` は WebView 内では使えない(確定仕様)**。DOM 経路だけは HTML id を取れるが、
+iOS in-app の uikit ホストでしか成立せず(4 SUT 中1)、Android は Chromium が
+`viewIdResourceName` にも extras にも id を出さない(WebView 124 / Android 15 実測)。
+CDP を使えば取れるが `setWebContentsDebuggingEnabled(true)` = 対象アプリの協力が要る。
+一様化の経路が無いため保留ではなく確定仕様とし、`identifier` は付けない。
+将来必要になっても **`#id` に相乗りさせない**: `css=` のような別記法にし、使えない構成では
+エンジン名とホスト名を挙げて即座に失敗させる(`#id` の意味を構成ごとに変えない)。
+
+**未着手の副産物**(Android の a11y から取れることが分かっているが今回は実装しない):
+`AccessibilityNodeInfo` の extras にある `targetUrl`(リンクの href。同ラベルのリンクを
+区別する手段になり得る)と `offscreen` / `unclippedBottom`(まだ画面外に続きがあることを
+事前に知れる → WebView の `scrollTo` が 7.1 秒かかっている件で、盲目的スワイプの回数を
+減らせる可能性がある)。
+
 ### 4.5 Android ブリッジ(対になる実装。AndroidRunner/)
 
 iOS ブリッジと同じ WDA 方式を Android の instrumentation として自作したもの。

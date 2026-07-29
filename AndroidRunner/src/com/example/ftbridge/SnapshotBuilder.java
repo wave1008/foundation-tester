@@ -51,6 +51,10 @@ final class SnapshotBuilder {
         int depth;
         /** 子孫から引き継いだ役割クラス名(Compose の Role マーカー。adoptRoleFromMarkerChildren 参照) */
         String roleClassName = "";
+        /** WebView 内ノードの Blink ロール名(非ローカライズ。EXTRA_CHROME_ROLE 参照)。web 以外は空 */
+        String chromeRole = "";
+        /** WebView の入れ子(Chromium の仮想ルート)。実 View 側だけ残すため除外する */
+        boolean nestedWebView;
         /** 子を持つか(テキスト昇格・Flutter のテキスト判定で「葉かどうか」を見るため) */
         boolean hasChildren;
     }
@@ -76,7 +80,7 @@ final class SnapshotBuilder {
 
         List<UINode> nodes = new ArrayList<>();
         // uiautomator dump の XML は hierarchy=depth1、root ノード=depth2 相当
-        collect(root, 2, nodes);
+        collect(root, 2, nodes, false);
         markChildren(nodes);
         adoptRoleFromMarkerChildren(nodes);
 
@@ -119,11 +123,23 @@ final class SnapshotBuilder {
     }
 
     /** preorder 走査。不可視ノードはサブツリーごと除外(uiautomator dump と同じ) */
-    private static void collect(AccessibilityNodeInfo node, int depth, List<UINode> out) {
+    private static void collect(AccessibilityNodeInfo node, int depth, List<UINode> out,
+                                boolean insideWebView) {
         if (node == null || !node.isVisibleToUser()) return;
+
+        // **WebView 内だけキャッシュを捨てて取り直す**。Chromium は DOM 変更の a11y イベントを
+        // 遅れて出すことがあり(CMP / Flutter の interop 埋め込みで実測 4〜8 秒、負荷時はさらに)、
+        // そのあいだ getText() は**変更前の文字列**を返し続ける。tap は効いているのに
+        // textIs だけが古い値で落ちる、という最も追いにくい失敗になる(2026-07-29 実測)。
+        // refresh() は1ノード1 IPC なので WebView の外では呼ばない(通常画面のコストを増やさない)
+        if (insideWebView) node.refresh();
 
         UINode n = new UINode();
         n.className = charSeq(node.getClassName());
+        // WebView は「実 View + Chromium の仮想ルート」の2段で出る(2026-07-29 実測)。
+        // 外側だけ残さないと `.webView[1]` がどちらを指すか読めなくなる
+        boolean isWebView = n.className.equals("android.webkit.WebView");
+        n.nestedWebView = isWebView && insideWebView;
         // ヒント表示中の text は値ではない → placeholder として別枠で返す(iOS と同じ意味論)
         n.text = node.isShowingHintText() ? "" : charSeq(node.getText());
         n.hint = charSeq(node.getHintText());
@@ -134,17 +150,30 @@ final class SnapshotBuilder {
         n.checked = node.isChecked();
         n.enabled = node.isEnabled();
         n.password = node.isPassword();
+        n.chromeRole = chromeRole(node);
         node.getBoundsInScreen(n.bounds);
         n.depth = depth;
         out.add(n);
 
         for (int i = 0; i < node.getChildCount(); i++) {
-            collect(node.getChild(i), depth + 1, out);
+            collect(node.getChild(i), depth + 1, out, insideWebView || isWebView);
         }
     }
 
     private static String charSeq(CharSequence cs) {
         return cs == null ? "" : cs.toString();
+    }
+
+    /**
+     * WebView 内ノードだけが持つ Blink のロール名(Chromium が extras に載せる)。
+     * **roleDescription は端末ロケールで訳される**ので使わない(フリートのロケール差でシナリオが
+     * 壊れる)。こちらは "link" / "heading" 等の非ローカライズ値。web 以外のノードでは空。
+     */
+    private static final String EXTRA_CHROME_ROLE = "AccessibilityNodeInfo.chromeRole";
+
+    private static String chromeRole(AccessibilityNodeInfo node) {
+        android.os.Bundle extras = node.getExtras();
+        return extras == null ? "" : charSeq(extras.getCharSequence(EXTRA_CHROME_ROLE));
     }
 
     /** pre-order なので「次のノードの depth が自分より深い」= 子を持つ */
@@ -189,9 +218,12 @@ final class SnapshotBuilder {
 
     private static boolean shouldInclude(UINode node, Rect screen) {
         if (node.bounds.width() < 2 || node.bounds.height() < 2) return false;
+        if (node.nestedWebView) return false;
 
-        // 画面の大半を覆うコンテナは除外(FM の誤タップ誘発対策)
-        if (!node.clickable && screen.width() > 0) {
+        String type = mappedType(node);
+        // 画面の大半を覆うコンテナは除外(FM の誤タップ誘発対策)。WebView は全画面が普通で、
+        // かつスコープ起点として要るので対象外にする
+        if (!node.clickable && screen.width() > 0 && !type.equals("WebView")) {
             double ratio = (double) (node.bounds.width() * node.bounds.height())
                     / ((double) screen.width() * screen.height());
             if (ratio > 0.85) return false;
@@ -199,10 +231,13 @@ final class SnapshotBuilder {
 
         boolean hasText = !node.text.isEmpty() || !node.contentDesc.isEmpty() || !node.resourceID.isEmpty();
         if (node.clickable || node.checkable) return true;
-        String type = mappedType(node);
         switch (type) {
             case "TextField":
             case "SecureTextField":
+                return true;
+            // WebView コンテナは resource-id を持たない(レイアウトで付けても a11y ノードには
+            // 出ない。2026-07-29 実測)。既定分岐だと落ちてスコープ起点にできないので明示的に残す
+            case "WebView":
                 return true;
             case "StaticText":
             case "Image":
@@ -263,6 +298,9 @@ final class SnapshotBuilder {
 
     /** Android クラス名 → iOS 側と共通の型語彙(AndroidDriver.UINode.mappedType と同一) */
     private static String mappedType(UINode node) {
+        // WebView 内はリンクが android.view.View(=既定分岐で Clickable)に落ち、iOS の Link と
+        // 食い違う。Chromium の非ローカライズなロール名で先に確定させる(chromeRole 参照)
+        if (node.chromeRole.equals("link")) return "Link";
         // 役割マーカー子から引き上げたクラス名を優先する(Compose の Button/Switch はこちらにしか出ない)
         String className = node.roleClassName.isEmpty() ? node.className : node.roleClassName;
         int dot = className.lastIndexOf('.');

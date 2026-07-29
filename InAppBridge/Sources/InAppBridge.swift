@@ -11,6 +11,7 @@
 
 import Foundation
 import UIKit
+import WebKit
 
 @_cdecl("FTInAppBridgeStart")
 public func FTInAppBridgeStart() {
@@ -128,7 +129,7 @@ final class FTInAppBridge {
     }
 
     private func handleSnapshot() throws -> InAppHTTPServer.Response {
-        try mainSync {
+        let base: InAppSnapshot.Result = try mainSync {
             guard let window = self.keyWindow() else {
                 throw InAppError(409, "キーウィンドウがありません")
             }
@@ -136,16 +137,116 @@ final class FTInAppBridge {
             // 0 要素になる(_AXSSetAutomationEnabled は Flutter engine に効かない)。冪等・非 Flutter は no-op。
             // 起動直後は FlutterViewController が未生成のことがあるため boot 時でなく snapshot ごとに呼ぶ
             FTEnsureFlutterSemantics()
-            let result = InAppSnapshot.capture(window: window)
-            self.frames = result.frames
-            self.nodes.removeAllObjects()
-            for (ref, node) in result.nodes { self.nodes.setObject(node, forKey: NSNumber(value: ref)) }
-            return .json(SnapshotResponse(
-                sessionBundleID: Bundle.main.bundleIdentifier,
-                screen: result.screen,
-                elements: result.elements,
-                truncatedCount: result.truncated))
+            return InAppSnapshot.capture(window: window)
         }
+
+        // **mainSync の外で行う**: WKWebView の DOM 読みは evaluateJavaScript の完了を待つが、
+        // その完了はメインキューへ配送されるため、メインを保持したまま待つとデッドロックする
+        let merged = mergeWebViewDOM(into: base)
+
+        mainSync {
+            self.frames = merged.frames
+            self.nodes.removeAllObjects()
+            for (ref, node) in merged.nodes { self.nodes.setObject(node, forKey: NSNumber(value: ref)) }
+        }
+        return .json(SnapshotResponse(
+            sessionBundleID: Bundle.main.bundleIdentifier,
+            screen: base.screen,
+            elements: merged.elements,
+            truncatedCount: merged.truncated,
+            note: merged.note,
+            webViewPath: merged.webViewPath))
+    }
+
+    /// 自分自身から window までのクラス名(interop 判定用。UIKit 参照だがメイン外でも
+    /// 参照だけなら安全 = superview チェーンは snapshot 取得時点で確定している)
+    private static func ancestorClassNames(of view: UIView) -> [String] {
+        var names: [String] = []
+        var cursor: UIView? = view
+        while let current = cursor {
+            names.append(NSStringFromClass(type(of: current)))
+            cursor = current.superview
+        }
+        return names
+    }
+
+    private struct MergedSnapshot {
+        var elements: [ElementInfo]
+        var frames: [Int: CGRect]
+        var nodes: [Int: NSObject]
+        var truncated: Int
+        var note: String?
+        /// BridgeDTO の SnapshotResponse.webViewPath。DOM を読めたときだけ "dom"
+        var webViewPath: String?
+    }
+
+    /// WebView コンテナの**直後**に DOM 由来の要素を差し込み、ref を採番し直す
+    /// (文書順 = a11y 経路と同じ並びにする。並びが変わると `.型[n]` の意味が変わる)。
+    ///
+    /// DOM 要素には **AX ノードを紐付けない**。tapByRef はノードが無いと座標タップへ落ちるので、
+    /// それがそのまま「DOM の矩形へ合成タッチを打つ」動作になる(DOM 側で click させない理由は
+    /// InAppWebViewDOM の冒頭コメント参照)。
+    ///
+    /// DOM が読めなかった WebView は素通し = 従来どおりコンテナだけが出る。
+    /// ホスト側(WebViewDelegatingDriver)はそれを見て XCUITest へ委譲する。
+    private func mergeWebViewDOM(into base: InAppSnapshot.Result) -> MergedSnapshot {
+        // **uikit(SwiftUI / UIKit)ホストだけ**。Compose / Flutter は WebView を interop
+        // (UIKitView / platform view)で埋め込み、合成タッチと insertText を横取りする:
+        // DOM は読めるのに**タップも入力も Web コンテンツへ届かない**(2026-07-29 実測。
+        // CMP はリンクタップが無反応、Flutter は入力が入らない)。読めるが操作できない状態が
+        // 一番たちが悪いので、この2つは従来どおり画面ごと XCUITest へ委譲する
+        let containers = base.elements.filter { $0.type == "webView" }   // FT_TEMP: 診断のため全ホストで採る
+        guard !containers.isEmpty else {
+            return MergedSnapshot(elements: base.elements, frames: base.frames,
+                                  nodes: base.nodes, truncated: base.truncated, note: nil,
+                                  webViewPath: nil)
+        }
+        let screen = CGRect(x: base.screen.x, y: base.screen.y,
+                            width: base.screen.width, height: base.screen.height)
+        var domByRef: [Int: InAppWebViewDOM.Captured] = [:]
+        var note: String?
+        for container in containers {
+            guard let webView = base.nodes[container.ref] as? WKWebView,
+                  // interop(Compose / Flutter)配下の WebView は DOM を読んでも操作が届かない
+                  // ため読まない = 従来どおり画面ごと XCUITest へ委譲される。
+                  // **アプリ単位ではなく WebView 単位で見る**(isInteropHosted のコメント参照)
+                  !WebViewDOM.isInteropHosted(ancestorClassNames: Self.ancestorClassNames(of: webView)),
+                  let captured = InAppWebViewDOM.capture(webView: webView, screen: screen)
+            else { continue }
+            domByRef[container.ref] = captured
+            if note == nil { note = captured.note }
+        }
+        guard !domByRef.isEmpty else {
+            // 読めなかった = ホスト側が XCUITest へ委譲する。経路は委譲した側が名乗る
+            return MergedSnapshot(elements: base.elements, frames: base.frames,
+                                  nodes: base.nodes, truncated: base.truncated, note: nil,
+                                  webViewPath: nil)
+        }
+
+        var elements: [ElementInfo] = []
+        var frames: [Int: CGRect] = [:]
+        var nodes: [Int: NSObject] = [:]
+        var truncated = base.truncated
+        func append(_ info: ElementInfo, frame: CGRect?, node: NSObject?) {
+            guard elements.count < BridgeAPI.maxSnapshotElements else {
+                truncated += 1
+                return
+            }
+            var copy = info
+            copy.ref = elements.count + 1
+            elements.append(copy)
+            if let frame { frames[copy.ref] = frame }
+            if let node { nodes[copy.ref] = node }
+        }
+        for info in base.elements {
+            append(info, frame: base.frames[info.ref], node: base.nodes[info.ref])
+            guard let dom = domByRef[info.ref] else { continue }
+            for (index, element) in dom.elements.enumerated() {
+                append(element, frame: dom.frames[index], node: nil)
+            }
+        }
+        return MergedSnapshot(elements: elements, frames: frames, nodes: nodes,
+                              truncated: truncated, note: note, webViewPath: "dom")
     }
 
     private func handleTap(_ body: Data) throws -> InAppHTTPServer.Response {

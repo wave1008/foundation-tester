@@ -103,9 +103,16 @@ public struct InAppLauncher {
         // --terminate-running-process で terminate+launch を1コールに(simctl 往復を2→1)。
         // Shell.run は /usr/bin/env 経由なので、先頭に NAME=VALUE を置けば launch されるアプリへ
         // SIMCTL_CHILD_* が伝わる(dylib 注入とブリッジポートの指定)。
-        let result = try Shell.run([
+        // DOM 経路の殺しスイッチはホスト側の環境変数で受けて注入先へ引き渡す
+        // (dylib はアプリのプロセスで動くので、そこへ伝えないと効かない)
+        var env = [
             "SIMCTL_CHILD_DYLD_INSERT_LIBRARIES=\(dylib.path)",
             "SIMCTL_CHILD_FT_PORT=\(port)",
+        ]
+        if let webViewDOM = ProcessInfo.processInfo.environment["FT_WEBVIEW_DOM"] {
+            env.append("SIMCTL_CHILD_FT_WEBVIEW_DOM=\(webViewDOM)")
+        }
+        let result = try Shell.run(env + [
             "xcrun", "simctl", "launch", "--terminate-running-process", udid, bundleID,
         ])
         guard result.status == 0 else {

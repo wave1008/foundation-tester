@@ -22,6 +22,9 @@ object Tags {
     const val NAV_HEAL = "nav_heal"
     const val NAV_DIAGNOSTICS = "nav_diagnostics"
     const val NAV_NOID = "nav_noid"
+    const val NAV_WEBVIEW = "nav_webview"
+    // WebView コンテナ。**Android では a11y に出ない**(契約 §WebView 画面)
+    const val WV_CONTAINER = "wv_container"
 
     // セレクタ
     const val SELECTOR_RESULT = "txt_selector_result"

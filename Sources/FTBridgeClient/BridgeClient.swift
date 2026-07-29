@@ -134,7 +134,11 @@ public final class BridgeClient: AppDriver {
     }
 
     public func snapshot() async throws -> SnapshotResponse {
-        try await get("/snapshot", timeout: sessionTimeout)
+        let response: SnapshotResponse = try await get("/snapshot", timeout: sessionTimeout)
+        // 取りこぼしの申告(クロスオリジン iframe 等)は記録に載せる。
+        // **無申告なら触らない**: 直前アクションの note を消してしまわないため
+        if let note = response.note { lastActionNote = note }
+        return response
     }
 
     public func tap(ref: Int) async throws {

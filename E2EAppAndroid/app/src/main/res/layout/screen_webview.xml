@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- WebView 画面(契約: E2EApp/docs/ui-contract.md)。
+     wv_container の id は a11y ノードには出ない(WebView は Chromium の仮想ノードに置き換わる)。
+     テストからは `.webView` 型で指す。 -->
+<WebView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/wv_container"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent" />

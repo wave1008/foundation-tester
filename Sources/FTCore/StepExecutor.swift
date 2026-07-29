@@ -663,7 +663,9 @@ public final class StepExecutor {
             // (レポート側の全要素一覧は ScenarioReportWriter が別途出す)
             let hint = Self.candidateHint(for: step, in: snapshot)
             return StepOutcome(status: .failed(
-                "ロケータを解決できません: \(step.locatorSummary)" + (hint.map { "。\($0)" } ?? "")))
+                "ロケータを解決できません: \(step.locatorSummary)" + (hint.map { "。\($0)" } ?? "")
+                    + Self.truncationHint(snapshot)
+                    + Self.webViewPathHint(snapshot)))
         }
 
         switch action {
@@ -958,6 +960,41 @@ public final class StepExecutor {
         return "(対象は \(label) に覆われています。操作がそこへ吸われた可能性があります)"
     }
 
+    /// スナップショットが上限で打ち切られていたときの注記。**要素数の上限に当たると
+    /// 「見つかりません」と区別が付かない**(実在するのに送られていないだけ)ため、
+    /// 失敗文言に必ず添える。WebView は1画面に要素が数百並ぶことがあり最も当たりやすい
+    static func truncationHint(_ snapshot: SnapshotResponse?) -> String {
+        guard let snapshot, snapshot.truncatedCount > 0 else { return "" }
+        let webView = snapshot.elements.contains { $0.type == "webView" }
+            ? "。WebView 画面では中身の要素が多く、上限に当たりやすいです(スコープを `.webView >> ...` で絞るか、対象の近くまでスクロールしてください)"
+            : ""
+        return "(スナップショットは \(snapshot.elements.count) 要素で打ち切られています"
+            + "。あと \(snapshot.truncatedCount) 要素が省かれました\(webView))"
+    }
+
+    /// WebView 画面での失敗に「どの経路で読んだ画面か」を添える。
+    ///
+    /// **DOM 経路の未検出は無反応タップとして現れる**: 合成タッチが interop(Compose/Flutter 等)に
+    /// 横取りされてもタップは成功として記録され、2ステップ先の検証が別の文言で落ちる。
+    /// 原因が離れているので、失敗した側に経路を書いておかないと追跡コストが跳ね上がる。
+    /// 目印(`WebViewDOM.isInteropHosted`)は React Native / Capacitor / Flutter のクラス名変更で
+    /// いつでも取りこぼし得るため、この注記は「目印が正しい間も」必要。
+    static func webViewPathHint(_ snapshot: SnapshotResponse?) -> String {
+        // **要素の形から推測しない**。Android は webView 型を出すが web フラグを持たないため、
+        // 推測すると「XCUITest へ委譲」と名乗って Android のデバッグを誤誘導する(2026-07-29 実害)。
+        // 申告が無いドライバ(Android・engine=xcuitest 単独・旧ブリッジ)では何も足さない
+        switch snapshot?.webViewPath {
+        case "dom":
+            return "(WebView の中身は DOM 経路で読みました。タップは DOM の矩形へ合成タッチで打つため、"
+                + "interop 越しに埋め込まれた WebView では**無反応でも成功として記録されます**。"
+                + "直前の操作が効いていない可能性を疑ってください)"
+        case "delegated":
+            return "(WebView の中身は XCUITest へ委譲して読みました)"
+        default:
+            return ""
+        }
+    }
+
     private func executeAssert(_ assert: String, step: FlowStep,
                                phase: inout PhaseAccumulator) async throws -> StepResult.Status {
         let clock = ContinuousClock()
@@ -976,12 +1013,14 @@ public final class StepExecutor {
             // スナックバー等)が消えるのを timeout まで待ってから失敗にする(即失敗の脆さを回避)。
             // 最後に観測した occlusion 失敗を保持し、可視化されなければこれを返す。
             var lastOcclusion: StepResult.Status?
+            var lastSnapshot: SnapshotResponse?
             // timeout==0 でも初回照会は必ず1回行う(ループ後段の deadline チェックで離脱)。
             while true {
                 var start = clock.now
                 var snapshot = try await driver.snapshot()
                 phase.snapshotMs += Self.ms(clock.now - start)
                 try await dismissInterruption(in: &snapshot, phase: &phase)
+                lastSnapshot = snapshot
                 // アサーションでは type+index のみのフォールバックを使わない。
                 // 別画面の無関係な要素にマッチして偽陽性になる(実測済み)
                 if let d = Self.resolveDetailed(step: step, in: snapshot, strictForAssert: true) {
@@ -1022,7 +1061,9 @@ public final class StepExecutor {
             }
             // timeout: 覆われ続けた occlusion があればそれを、無ければ未発見を返す
             if let lastOcclusion { return lastOcclusion }
-            return .failed("要素が見つかりません: \(step.locatorSummary)(timeout \(step.timeout ?? 5)s)")
+            return .failed("要素が見つかりません: \(step.locatorSummary)(timeout \(step.timeout ?? 5)s)"
+                           + Self.truncationHint(lastSnapshot)
+                           + Self.webViewPathHint(lastSnapshot))
 
         case "valueEquals", "textEquals", "textContains", "textMatches",
              "textStartsWith", "textEndsWith", "textMatchesDateFormat",
@@ -1041,12 +1082,15 @@ public final class StepExecutor {
             var lastElement: ElementInfo?
             var lastElements: [ElementInfo] = []
             var lastScreen = FTRect(x: 0, y: 0, width: 0, height: 0)
+            /// 失敗文言に WebView の経路を添えるために最後のスナップショットを保持する
+            var lastSnapshot: SnapshotResponse?
             // timeout==0 でも初回照会は必ず1回行う(ループ後段の deadline チェックで離脱)。
             while true {
                 var start = clock.now
                 var snapshot = try await driver.snapshot()
                 phase.snapshotMs += Self.ms(clock.now - start)
                 try await dismissInterruption(in: &snapshot, phase: &phase)
+                lastSnapshot = snapshot
                 var candidate = Self.resolve(step: step, in: snapshot, strictForAssert: true)
                 var fromFallbackDriver = false
                 if candidate == nil { primaryMisses += 1 }
@@ -1122,8 +1166,10 @@ public final class StepExecutor {
             return found
                 ? .failed("\(subject)\(relation): 期待 \"\(expected)\"、実際 \"\(lastActual ?? "nil")\""
                           + Self.coveringHint(element: lastElement, elements: lastElements,
-                                              screen: lastScreen))
-                : .failed("要素が見つかりません: \(step.locatorSummary)")
+                                              screen: lastScreen)
+                          + Self.webViewPathHint(lastSnapshot))
+                : .failed("要素が見つかりません: \(step.locatorSummary)"
+                          + Self.webViewPathHint(lastSnapshot))
 
         case "notExists":
             // 「消えるまで待つ」。初回で不在なら即 pass、在るならタイムアウトまで消滅を待つ。

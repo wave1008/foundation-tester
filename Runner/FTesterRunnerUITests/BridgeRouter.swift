@@ -281,10 +281,21 @@ final class BridgeRouter {
 
     private func collect(_ node: XCUIElementSnapshot, depth: Int, screen: CGRect,
                          elements: inout [ElementInfo], frames: inout [Int: CGRect],
-                         truncated: inout Int) {
+                         truncated: inout Int, insideWebView: Bool = false) {
         // キーボードはキー1つ1つが Button として大量に写り込むため、サブツリーごと除外
         // (4Kトークン対策。入力は /type がキーイベント合成で行うので情報として不要)
         if node.elementType == .keyboard || node.elementType == .key { return }
+        // WebView は入れ子で複数出る(Compose iOS の interop ラッパで実測3重)。外側だけ残さないと
+        // `.webView[1]` がどれを指すか読めない。Android ブリッジの nestedWebView と同じ規則
+        let isWebView = node.elementType == .webView
+        if isWebView && insideWebView {
+            for child in node.children {
+                collect(child, depth: depth, screen: screen,
+                        elements: &elements, frames: &frames, truncated: &truncated,
+                        insideWebView: true)
+            }
+            return
+        }
         if shouldInclude(node, screen: screen) {
             if elements.count < BridgeAPI.maxSnapshotElements {
                 let ref = elements.count + 1
@@ -296,7 +307,8 @@ final class BridgeRouter {
         }
         for child in node.children {
             collect(child, depth: depth + 1, screen: screen,
-                    elements: &elements, frames: &frames, truncated: &truncated)
+                    elements: &elements, frames: &frames, truncated: &truncated,
+                    insideWebView: insideWebView || isWebView)
         }
     }
 
@@ -326,8 +338,9 @@ final class BridgeRouter {
         // 表示要素はテキストを持つ場合のみ
         case .staticText, .image:
             return hasText
-        // 画面構造の手がかり
-        case .navigationBar, .tabBar, .alert, .sheet:
+        // 画面構造の手がかり。webView は `.webView >> ...` のスコープ起点になるため
+        // identifier が無くても残す(Web コンテンツは id を一切持たない = 唯一の絞り込み手段)
+        case .navigationBar, .tabBar, .alert, .sheet, .webView:
             return true
         // その他(Other/Group/ScrollView 等)は identifier 付きのみ
         default:
@@ -389,6 +402,7 @@ final class BridgeRouter {
         case .alert: return "Alert"
         case .sheet: return "Sheet"
         case .scrollView: return "ScrollView"
+        case .webView: return "WebView"
         case .table: return "Table"
         case .collectionView: return "CollectionView"
         case .window: return "Window"

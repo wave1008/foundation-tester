@@ -26,6 +26,7 @@ fun buildHomeScreen(activity: Activity, parent: ViewGroup, onNavigate: (Screen) 
     v.findViewById<Button>(R.id.nav_heal).setOnClickListener { onNavigate(Screen.HEAL) }
     v.findViewById<Button>(R.id.nav_diagnostics).setOnClickListener { onNavigate(Screen.DIAGNOSTICS) }
     v.findViewById<Button>(R.id.nav_noid).setOnClickListener { onNavigate(Screen.NOID) }
+    v.findViewById<Button>(R.id.nav_webview).setOnClickListener { onNavigate(Screen.WEBVIEW) }
     return v
 }
 
