@@ -2,7 +2,7 @@
   "name": "vscode-ftester",
   "displayName": "ftester",
   "description": "%ftester.extension.description%",
-  "version": "0.0.429",
+  "version": "0.0.434",
   "private": true,
   "publisher": "wave1008",
   "license": "MIT",
@@ -67,6 +67,17 @@
           "type": "boolean",
           "default": true,
           "description": "%ftester.config.buildBeforeRun.description%"
+        },
+        "ftester.lptScheduling": {
+          "type": "boolean",
+          "default": true,
+          "description": "%ftester.config.lptScheduling.description%"
+        },
+        "ftester.lptHistoryRuns": {
+          "type": "number",
+          "default": 5,
+          "minimum": 1,
+          "description": "%ftester.config.lptHistoryRuns.description%"
         },
         "ftester.heal": {
           "type": "boolean",

@@ -135,3 +135,87 @@ test("切替後にデバイスパネルが実際に display:none になってい
   clickTab(document, "devices");
   assert.equal(document.getElementById("panel-devices").style.display, "flex");
 });
+
+test("設定タブ: LPT チェックボックスの操作が setLptScheduling として送られる", (t) => {
+  const { window, document, posted } = createWebview();
+  t.after(() => window.close());
+
+  const checkbox = document.getElementById("settings-lpt");
+  assert.ok(checkbox, "スケジューリングセクションのチェックボックスがある");
+
+  // 拡張からの現在値反映(既定 ON)
+  window.dispatchEvent(new window.MessageEvent("message", {
+    data: { type: "lptScheduling", value: true },
+  }));
+  assert.equal(checkbox.checked, true);
+
+  posted.length = 0;
+  checkbox.checked = false;
+  checkbox.dispatchEvent(new window.Event("change", { bubbles: true }));
+
+  // jsdom は別 realm なので deepEqual は参照等価性で落ちる。フィールドで比べる
+  const messages = posted.filter((m) => m?.type === "setLptScheduling");
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].value, false);
+});
+
+test("設定タブ: LPT 実績件数は既定値でも値として入る(空欄にしない)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+
+  window.dispatchEvent(new window.MessageEvent("message", {
+    data: { type: "lptHistoryRuns", value: 5, default: 5 },
+  }));
+
+  const input = document.getElementById("settings-lpt-history");
+  assert.ok(input, "LPT チェックボックスの下に件数入力がある");
+  assert.equal(input.value, "5", "実際に使う件数が常に見えている");
+  assert.equal(input.placeholder, "5", "入力を消した一瞬の保険として既定値も出す");
+});
+
+test("設定タブ: 既定と異なる値は入力欄に表示される", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+
+  window.dispatchEvent(new window.MessageEvent("message", {
+    data: { type: "lptHistoryRuns", value: 50, default: 5 },
+  }));
+
+  const input = document.getElementById("settings-lpt-history");
+  assert.equal(input.value, "50");
+  assert.equal(input.placeholder, "5");
+});
+
+test("設定タブ: 件数を入れると setLptHistoryRuns が送られる", (t) => {
+  const { window, document, posted } = createWebview();
+  t.after(() => window.close());
+  posted.length = 0;
+
+  const input = document.getElementById("settings-lpt-history");
+  input.value = "50";
+  input.dispatchEvent(new window.Event("change", { bubbles: true }));
+
+  const messages = posted.filter((m) => m?.type === "setLptHistoryRuns");
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].value, 50);
+});
+
+test("設定タブ: 空欄・不正値は null(既定へ戻す)を送り入力欄に既定値を入れ直す", (t) => {
+  const { window, document, posted } = createWebview();
+  t.after(() => window.close());
+  const input = document.getElementById("settings-lpt-history");
+  window.dispatchEvent(new window.MessageEvent("message", {
+    data: { type: "lptHistoryRuns", value: 5, default: 5 },
+  }));
+
+  for (const raw of ["", "0", "-3", "abc", "2.5"]) {
+    posted.length = 0;
+    input.value = raw;
+    input.dispatchEvent(new window.Event("change", { bubbles: true }));
+
+    const messages = posted.filter((m) => m?.type === "setLptHistoryRuns");
+    assert.equal(messages.length, 1, `"${raw}" で1件送る`);
+    assert.equal(messages[0].value, null, `"${raw}" は既定へ戻す`);
+    assert.equal(input.value, "5", `"${raw}" は入力欄に既定値を入れ直す`);
+  }
+});

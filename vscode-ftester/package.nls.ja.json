@@ -7,6 +7,8 @@
   "ftester.config.port.description": "ブリッジ接続ポート。0 の場合は指定しません(既定値を使用。ftester.profile が空の場合のみ使用)。",
   "ftester.config.serial.description": "Android デバイスのシリアル番号。空の場合は指定しません(ftester.profile が空の場合のみ使用)。",
   "ftester.config.buildBeforeRun.description": "CLI 呼び出し前に Swift ビルドを行うかどうか。false の場合は CLI 呼び出しに --skip-build を付与します。",
+  "ftester.config.lptScheduling.description": "過去の実測が長いシナリオから先に投入します(LPT)。短いものが末尾の隙間を埋めるため、デバイス台数を増やさずに実行時間が縮みます。実績が無いシナリオは先頭に回します。オフにするとシナリオ ID 順で投入します。",
+  "ftester.config.lptHistoryRuns.description": "LPT スケジューリングが実績として読み込む run の件数(新しい方から)。大きくすると代表性は上がりますが、実行のたびに読む結果ファイルが増えます。",
   "ftester.config.heal.description": "実行時に FM によるロケータ自己修復(--heal)を有効にします。実行完了後、修復候補があれば確認パネルが開き、承認するとソースに反映されます。",
   "ftester.config.monitorInterval.description": "デバイスモニター(ftester: デバイスモニターを表示)の更新間隔(秒)。0.5 未満は 0.5 として扱われます。",
   "ftester.config.monitorMaxWidth.description": "デバイスモニターのフレーム画像の長辺ピクセル数。大きいほど鮮明になりますが転送量が増えます(240〜1600)。",

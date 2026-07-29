@@ -189,6 +189,8 @@ window.addEventListener('message', (event) => {
       activateTab(message.tab);
       break;
     case 'pollingMode':
+    case 'lptScheduling':
+    case 'lptHistoryRuns':
     case 'language':
     case 'updateStatus':
       applySettings(message);

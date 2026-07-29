@@ -231,6 +231,10 @@ export type MonitorToWebviewMessage =
   // setPollingMode 受信直後(monitorPanel.ts)の両方で送る。webview 側は settingsTab.js の
   // applySettings へそのまま渡す(setPollingMode と対の契約)。
   | { readonly type: "pollingMode"; readonly value: boolean }
+  // 設定タブのスケジューリング section。ftester.lptScheduling の現在値(拡張→webview)
+  | { readonly type: "lptScheduling"; readonly value: boolean }
+  // LPT の実績走査 run 数。default は設定タブの初期値・空欄時の戻り先に使う
+  | { readonly type: "lptHistoryRuns"; readonly value: number; readonly default: number }
   // 設定タブの表示言語セレクタ(#settings-language)の現在値(ftester.language 設定の生値)。ready 直後に
   // 送る。webview 側は settingsTab.js の applySettings。切替は setLanguage と対。
   | { readonly type: "language"; readonly value: "auto" | "ja" | "en" }
@@ -438,6 +442,11 @@ export type MonitorFromWebviewMessage =
   | { readonly type: "checkUpdate" }
   // 設定タブ「更新」の「更新する」ボタン。monitorPanel.ts が update.sh を実行し、出力は OUTPUT へ出す。
   | { readonly type: "runUpdate" }
+  // LPT 投入順の切替(webview→拡張)。ホストは ftester.lptScheduling 設定を更新し、
+  // run 時に false なら ftester api run へ --no-lpt を渡す(src/runHandler.ts)
+  | { readonly type: "setLptScheduling"; readonly value: boolean }
+  // null = 既定へ戻す(入力欄を空にした場合)
+  | { readonly type: "setLptHistoryRuns"; readonly value: number | null }
   | { readonly type: "refreshResidentProcesses" }
   // タブ切替でデバイスタイルが display:none になったことの通知。ホストは配信helperを止める
   // (対向: src/webview/monitor/tabs.js の switchTab)。パネル自体の表示可否とは別軸で、
@@ -657,6 +666,14 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
       return value.value === "auto" || value.value === "ja" || value.value === "en";
     case "devicesTabVisible":
       return typeof value.visible === "boolean";
+    case "setLptScheduling":
+      return typeof value.value === "boolean";
+    case "setLptHistoryRuns":
+      // 0 や負値・小数を通すと走査件数が壊れる(CLI 側でも 1 に丸めるが、ここで弾く)
+      return (
+        value.value === null ||
+        (typeof value.value === "number" && Number.isInteger(value.value) && value.value >= 1)
+      );
     case "refreshResidentProcesses":
     case "killAllResidentProcesses":
     case "checkUpdate":

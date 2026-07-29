@@ -26,6 +26,10 @@ export interface FtesterConfig {
   buildBeforeRun: boolean;
   /** true の場合、実行(非dry-run)・デバッグ実行の CLI 呼び出しに --heal を付与する。 */
   heal: boolean;
+  /** LPT 投入順(過去実績の長い順)。false のとき ftester api run へ --no-lpt を渡す。 */
+  lptScheduling: boolean;
+  /** LPT が実績として読む run 数(新しい方から)。 */
+  lptHistoryRuns: number;
   /** デバイスモニターの更新間隔(秒)。0.5 未満は 0.5 に切り上げる(`ftester api monitor --interval`)。 */
   monitorInterval: number;
   /** モニターのフレーム画像の長辺px(240〜1600にクランプ。`ftester api monitor --max-width`)。 */
@@ -92,6 +96,8 @@ export function readConfig(workspaceRoot: string): FtesterConfig {
     serial: configuration.get<string>("serial", ""),
     buildBeforeRun: configuration.get<boolean>("buildBeforeRun", true),
     heal: configuration.get<boolean>("heal", false),
+    lptScheduling: configuration.get<boolean>("lptScheduling", true),
+    lptHistoryRuns: Math.max(1, Math.floor(configuration.get<number>("lptHistoryRuns", 5))),
     monitorInterval: Math.max(0.5, configuration.get<number>("monitorInterval", 2)),
     monitorMaxWidth: Math.min(1600, Math.max(240, configuration.get<number>("monitorMaxWidth", 960))),
     monitorDeviceFilter: configuration.get<string>("monitorDeviceFilter", "all") === "running" ? "running" : "all",

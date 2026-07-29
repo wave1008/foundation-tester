@@ -1691,6 +1691,14 @@ input[type="text"]::placeholder {
   max-width: 320px;
   padding: 4px 8px; /* グローバル select より高さを確保しクリックしやすく */
 }
+/* ラベルと入力を1行に並べる設定項目(チェックボックス行と違い入力が右に付く)。 */
+.settings-item-inline {
+  cursor: default;
+}
+.settings-number {
+  width: 80px;
+  padding: 4px 8px; /* .settings-select と同じ高さに揃える */
+}
 .settings-hint {
   font-size: 12px;
   line-height: 1.5;

@@ -496,6 +496,12 @@ async function executeRun(
   }
 
   const args = ["api", "run", "--project", resolution.project];
+  // 既定は LPT(CLI 側の既定も ON)。設定でオフのときだけ明示的に切る
+  if (!config.lptScheduling) {
+    args.push("--no-lpt");
+  } else {
+    args.push("--lpt-history-runs", String(config.lptHistoryRuns));
+  }
   for (const id of targets.keys()) {
     args.push("--scenario", id);
   }

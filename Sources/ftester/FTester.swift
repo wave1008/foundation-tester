@@ -562,6 +562,14 @@ struct RunScenarios: AsyncParsableCommand {
     @Flag(help: "FM によるロケータ自己修復を許可する")
     var heal = false
 
+    @Flag(name: .customLong("no-lpt"),
+          help: "LPT 投入順(過去実績の長い順)を無効にし、シナリオ ID 順で投入する")
+    var noLPT = false
+
+    @Option(name: .customLong("lpt-history-runs"),
+            help: "LPT の実績として読む run 数(新しい方から。既定 5)")
+    var lptHistoryRuns: Int?
+
     @Flag(help: "前回失敗したシナリオだけを実行する(結果は実行のたびに .ftester/last-results/ に記録される)")
     var failed = false
 
@@ -628,6 +636,9 @@ struct RunScenarios: AsyncParsableCommand {
             print("実行対象がありません(全シナリオが削除済み @Deleted)")
             return
         }
+        // LPT 投入順の適用は実行経路ごとに行う(実効 platform が確定してからでないと
+        // 別 platform の実績で並べてしまう): --profile は ProfileRunner.run、--ports は runParallel。
+        // 逐次実行は並列度が無いので並べ替えない
         let items = selected.map { ScenarioRunItem(info: $0) }
 
         if FMDoctor.check().available == false {
@@ -645,7 +656,9 @@ struct RunScenarios: AsyncParsableCommand {
             let runSummary = try await ProfileRunner.run(
                 project: testProject, profileName: profile, items: items,
                 healOverride: heal ? true : nil, reportDirOverride: reportDir,
-                quiet: quiet, recorder: recorder)
+                quiet: quiet, lpt: !noLPT,
+                lptHistoryRuns: lptHistoryRuns ?? LPTOrdering.defaultHistoryRuns,
+                recorder: recorder)
             let failedCount = runSummary.failed
             PhaseLog.mark("profile-run-done")
             recorder.finish(total: items.count, passed: items.count - failedCount, failed: failedCount,
@@ -788,10 +801,14 @@ struct RunScenarios: AsyncParsableCommand {
 
     // MARK: - 並列実行(iOS はポート毎のワーカー、Android は専用ワーカー)
 
-    private func runParallel(_ items: [ScenarioRunItem], project: TestProject,
+    private func runParallel(_ rawItems: [ScenarioRunItem], project: TestProject,
                              iosPorts: [UInt16], reportDir: String,
                              recorder: RunRecorder?) async -> Int {
         let defaultPlatform = driverOptions.platform
+        let items = LPTOrdering.apply(rawItems, project: project, defaultPlatform: defaultPlatform,
+                                      enabled: !noLPT,
+                                      historyRuns: lptHistoryRuns ?? LPTOrdering.defaultHistoryRuns,
+                                      log: { print($0) })
         let androidItems = items.filter { ($0.info.platform ?? defaultPlatform) == "android" }
         let portList = iosPorts.map(String.init).joined(separator: ", ")
         print("🚀 並列実行: iOS \(iosPorts.count) ワーカー(port: \(portList))"

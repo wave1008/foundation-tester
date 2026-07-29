@@ -15,10 +15,14 @@ enum ProfileRunner {
     private static let REVIVE_TIMEOUT: TimeInterval = 90
 
     /// 戻り値: 実行サマリ(失敗数+劣化ワーカー)
-    static func run(project: TestProject, profileName: String, items: [ScenarioRunItem],
+    /// - lpt: LPT 投入順を使うか。並べ替えは defaultPlatform が確定してからでないと
+    ///   別 platform の実績で並べてしまうため、この関数の中で行う(呼び出し側では順序を触らない)。
+    static func run(project: TestProject, profileName: String, items rawItems: [ScenarioRunItem],
                     healOverride: Bool?, reportDirOverride: String?,
-                    quiet: Bool = false,
+                    quiet: Bool = false, lpt: Bool = true,
+                    lptHistoryRuns: Int = LPTOrdering.defaultHistoryRuns,
                     recorder: RunRecorder? = nil) async throws -> RunSummary {
+        var items = rawItems
         let runClockStart = Date()
         // 1. マシン決定 → プロファイル合成(実行プロファイル自身の machine 指定があれば最優先)
         PhaseLog.mark("profile-runner-start")
@@ -90,6 +94,9 @@ enum ProfileRunner {
         // 3. 両OS同時並列実行(platform 別キューは RunOrchestrator がそのまま担う)
         let defaultPlatform = (hasLateIOS || workers.contains { $0.platform == "ios" })
             ? "ios" : "android"
+        // 長いシナリオを先に流すと末尾の遊休が減る(実績は platform 別。--no-lpt で従来の ID 順)
+        items = LPTOrdering.apply(items, project: project, defaultPlatform: defaultPlatform,
+                                  enabled: lpt, historyRuns: lptHistoryRuns, log: { print($0) })
         print("🚀 Android \(workers.count) ワーカーで開始"
             + (hasLateIOS ? "(iOS はブリッジ供給完了後に合流)" : "") + "\n")
 
