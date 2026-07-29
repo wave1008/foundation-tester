@@ -92,6 +92,11 @@
   既定スイートでは最後まで表面化しなかった)。詳細は docs/verification.md
 - **flake の修正は1回グリーンで判定しない・単発の観測で性能を断じない**(反復+負荷で叩く。実害と
   手順は docs/verification.md)
+- **単体テストが緑でも実データで1回動かすまで信用しない**。テストは書いた本人の前提を共有するので、
+  前提が誤っていると実装とテストが同じ誤りを持ったまま緑になる(実害3件は docs/verification.md)
+- **新しいテストは「破ったら落ちる」ことを1回確かめる**(production を1行壊して実行→復元)。
+  この確認だけで無力なテストが4件見つかった実績がある。検出できない変異が出たらテストを境界へ
+  寄せる(要素数を増やす・既定値でなく限界値で呼ぶ)。詳細は docs/verification.md
 - **LPT の実績 run 数の既定値は3箇所(`LPTOrdering.defaultHistoryRuns` / `package.json` の
   `ftester.lptHistoryRuns.default` / `monitorPanel.ts` が webview へ送る default)で一致必須**
   (`lptDefaultSync.test.mjs` が検出。設定タブは default を初期値として入力欄に入れ、空欄・不正値の
