@@ -92,6 +92,19 @@ function osOptionsFor(platform) {
   }));
 }
 
+// カタログは ok:true のままプラットフォーム単位で部分的に欠ける(例: Android は system-images だけ
+// 読めて、avdmanager 不在でモデル定義が空)。error/空リストを出さないと「空のドロップダウンだけが
+// 出て理由が分からない」になり、そのまま OK を押しても作成側で同じ理由で失敗する。
+function platformIssue(platform) {
+  if (!deviceCatalog) {
+    return { blocked: true, message: '' };
+  }
+  const side = platform === 'ios' ? deviceCatalog.ios : deviceCatalog.android;
+  const blocked = modelOptionsFor(platform).length === 0 || osOptionsFor(platform).length === 0;
+  // side.error は CLI 由来の理由文(訳さず素通しする。枠だけ i18n)
+  return { blocked, message: side.error || (blocked ? t('wvMonitor.deviceAdd.catalogEmpty') : '') };
+}
+
 function selectedOptionLabel(select) {
   const opt = select.options[select.selectedIndex];
   return opt ? opt.textContent : '';
@@ -126,10 +139,17 @@ function applyPlatformAvailability() {
   }
 }
 
+// 選択中プラットフォームの選択肢とエラー表示・OK 可否を1箇所で同期する(プラットフォーム切替でも
+// カタログ受信直後でも同じ結果になるよう、呼び出し側で dlgError/dlgOk を触らない)。
 function refreshModelAndOsOptions() {
-  fillSelect(dlgModel, modelOptionsFor(getDialogPlatform()));
-  fillSelect(dlgOs, osOptionsFor(getDialogPlatform()));
+  const platform = getDialogPlatform();
+  fillSelect(dlgModel, modelOptionsFor(platform));
+  fillSelect(dlgOs, osOptionsFor(platform));
   refreshAutoName();
+  const issue = platformIssue(platform);
+  dlgError.classList.remove('info');
+  dlgError.textContent = issue.message;
+  dlgOk.disabled = issue.blocked;
 }
 
 dlgPlatformIos.addEventListener('change', () => refreshModelAndOsOptions());
@@ -187,12 +207,10 @@ export function applyDeviceCatalog(message) {
     return;
   }
   deviceCatalog = message.catalog;
-  dlgError.classList.remove('info');
-  dlgError.textContent = '';
   setDialogControlsEnabled(true);
   applyPlatformAvailability();
+  // dlgError / dlgOk は refreshModelAndOsOptions が選択中プラットフォームに応じて設定する
   refreshModelAndOsOptions();
-  dlgOk.disabled = false;
 }
 
 export function applyCreateDeviceResult(message) {

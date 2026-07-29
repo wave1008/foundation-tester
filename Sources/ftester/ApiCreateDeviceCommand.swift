@@ -225,7 +225,7 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
         name: String
     ) throws -> (deviceEntry: [String: Any], resultEntry: ApiCreateDeviceEntry) {
         guard let avdmanagerURL = AndroidSDKLocator.findAVDManager() else {
-            throw CreateDeviceError("avdmanager が見つかりません(cmdline-tools をインストールしてください)")
+            throw CreateDeviceError(AndroidSDKLocator.avdManagerMissingMessage)
         }
 
         // AVD ID はデバイス名から機械的に生成する(avdmanager -n の制約に合わせて英数字・._- のみ)。

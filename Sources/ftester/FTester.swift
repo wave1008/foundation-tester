@@ -178,6 +178,14 @@ struct Doctor: AsyncParsableCommand {
             } else {
                 print("   ❌ ブリッジAPK が見つかりません(AndroidRunner/build.sh で生成)")
             }
+            // AVD の新規作成(モニターの「デバイスを追加」/ api create-device)にだけ要る。
+            // 既存 AVD で実行するぶんには不要なので警告どまり
+            if let avdmanager = AndroidSDKLocator.findAVDManager() {
+                print("   ✅ avdmanager: \(avdmanager.path)")
+            } else {
+                print("   ⚠️ \(AndroidSDKLocator.avdManagerMissingMessage)。"
+                      + "AVD の新規作成ができません(既存 AVD での実行には影響しません)")
+            }
             for line in connected {
                 guard let serial = line.split(separator: "\t").first.map(String.init) else { continue }
                 // 高速スナップショット用ブリッジ(未導入でも初回操作時に自動導入・起動される)

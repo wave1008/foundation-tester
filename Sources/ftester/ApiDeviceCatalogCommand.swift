@@ -117,7 +117,7 @@ struct ApiDeviceCatalogCommand: AsyncParsableCommand {
         guard let avdmanagerURL = AndroidSDKLocator.findAVDManager() else {
             return ApiAndroidCatalog(
                 available: true,
-                error: "avdmanager が見つかりません(cmdline-tools をインストールしてください)",
+                error: AndroidSDKLocator.avdManagerMissingMessage,
                 models: [], systemImages: systemImages)
         }
 
