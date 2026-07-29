@@ -281,7 +281,7 @@ ftester profile setup --project <ProjectName> --platform <ios|android|both> --au
   --machine <マシン名> --app-id <bundleID> --app-name "<表示名>"
 ```
 
-`--auto-device` が既存デバイスを選び（iOS=最新 OS の中で "Pro" 優先 / Android=API 最大の AVD）、
+`--auto-device` が既存デバイスを選び（iOS=最新 OS の中で "Pro" 優先・**iPad は除外** / Android=API 最大の AVD）、
 `--machine` が未登録なら同時に登録し、machines/apps/runs を同じ論理名で書いて解決まで検証する。
 機種を指定したいときだけ `--simulator "<機種名>" --os <version>` / `--avd <avdID>` を明示する。
 利用可能なデバイスが **0 台のときだけ** 🧑 停止し、Xcode / Android Studio での導入を依頼する。

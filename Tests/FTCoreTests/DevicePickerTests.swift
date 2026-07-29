@@ -59,6 +59,39 @@ final class DevicePickerTests: XCTestCase {
         XCTAssertNil(DevicePicker.pickSimulatorIndex([]))
     }
 
+    /// iPad は自動選定の対象外。"Pro" 優先の規則があるので、除外しないと最新 OS の
+    /// iPad Pro を掴む(iPhone より前に並んでいても選ばない)
+    func testExcludesIPad() {
+        let devices = [
+            (name: "iPad Pro 13-inch (M4)", os: "iOS 27.0"),
+            (name: "iPhone 17", os: "iOS 27.0"),
+            (name: "iPad mini (A17 Pro)", os: "iOS 27.0"),
+        ]
+        let index = DevicePicker.pickSimulatorIndex(devices)
+        XCTAssertEqual(index.map { devices[$0].name }, "iPhone 17")
+    }
+
+    /// iPad しか無ければ選ばない(呼び出し側が「明示指定してください」と案内する)
+    func testReturnsNilWhenOnlyIPads() {
+        XCTAssertNil(DevicePicker.pickSimulatorIndex([
+            (name: "iPad Pro 13-inch (M4)", os: "iOS 27.0"),
+            (name: "iPad Air 11-inch (M3)", os: "iOS 26.2"),
+        ]))
+        XCTAssertTrue(DevicePicker.isIPad(name: "iPad Pro 13-inch (M4)"))
+        XCTAssertFalse(DevicePicker.isIPad(name: "iPhone 17 Pro"))
+    }
+
+    /// iPad を除いた後で最新 OS を決める(iPad だけが最新 OS でも、iPhone の最新に落ちる)
+    func testNewestOSIsComputedAfterExcludingIPad() {
+        let devices = [
+            (name: "iPad Pro 13-inch (M4)", os: "iOS 27.0"),
+            (name: "iPhone 16", os: "iOS 26.2"),
+            (name: "iPhone 16 Pro", os: "iOS 26.2"),
+        ]
+        let index = DevicePicker.pickSimulatorIndex(devices)
+        XCTAssertEqual(index.map { devices[$0].name }, "iPhone 16 Pro")
+    }
+
     // MARK: - AVD 選定
 
     func testPicksHighestAPILevel() {

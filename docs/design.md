@@ -1288,6 +1288,11 @@ executableTarget `ftester-scenarios-<name>`(path: `Projects/<name>/Scenarios`)�
 - Android: `avd`(AVD の ID と表示名(config.ini の avd.ini.displayname)のどちらでも可。
   起動中エミュレータの AVD 名と照合して adb serial に解決。未起動はヒント付きエラー。
   **エミュレータの** serial 直指定は廃止 — serial は起動順で変わるためプロファイルに書かない)
+- `ftester profile setup --auto-device` の選定規則(`DevicePicker`)— iOS は**最新 OS の
+  既存シミュレータ**(名前に "Pro" を含むものを優先)、Android は config.ini の **API レベルが
+  最大の既存 AVD**。**iOS は iPad を候補から除外する**(除外しないと "Pro" 優先が iPad Pro を
+  掴む)。除外が効くのは自動選定だけで、`--simulator`/`--udid` や `api create-device` で
+  iPad を明示指定する経路は従来どおり通る
 
 **実機**(`kind: "physical"`。省略時は `"virtual"` = シミュレータ/エミュレータ)。
 識別子は iOS が `udid`、Android が `serial`(実機の serial は起動順で変わらないので直接書く):
