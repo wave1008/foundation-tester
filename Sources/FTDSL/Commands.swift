@@ -129,7 +129,7 @@ public func tap(_ selector: Sel, optional: Bool = false, timeout: Double? = nil,
 
 /// `scroll:` は**同じステップに畳む**(別の scrollTo ステップを作らない)。
 /// 利用者が書いたのは1コマンドなので記録も1行にする — 書いていない行が現れると、
-/// その行はソース行を持たないためステップ表から編集できず、説明の要る状態になる。
+/// その行はソース行を持たないためジャンプも修正提案の照合もできず、説明の要る状態になる。
 /// 探索の実体は StepExecutor.runScrollSearch(scrollTo コマンドと共有)
 private func tapImpl(_ selector: FTSelector, optional: Bool, timeout: Double?,
                      scroll: FTScrollDirection?, maxSwipes: Int,
