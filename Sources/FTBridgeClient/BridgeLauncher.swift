@@ -251,6 +251,12 @@ public struct BridgeLauncher {
             // 状態ファイルがあれば simctl terminate で後始末する
             let inappPath = InAppBridgeState.url(stateDir: stateDir, port: port)
             guard FileManager.default.fileExists(atPath: inappPath.path) else {
+                // 状態ファイルが無くても**ポートで応答していれば**別クローン/別ワークスペースの
+                // ブリッジ。「起動していません」は事実と食い違うので言い分ける
+                if let status = Self.probeForeignBridge(port: port) {
+                    throw LauncherError.notOwnedByThisRepo(
+                        port: port, device: status.device, protocolVersion: status.protocolVersion)
+                }
                 throw LauncherError.notRunning
             }
             InAppBridgeState.terminateAndRemove(at: inappPath)
@@ -260,6 +266,29 @@ public struct BridgeLauncher {
         // 死亡確認してから pid ファイルを消す。即削除すると assignPort がそのポートを空きと誤認し、
         // まだ生きているプロセスとの同ポート再起動で bindFailed(48) を招く(stopAndWait と同じ理由)。
         Self.confirmDeathThenRemovePidFile(pid: pid, pidPath: pidPath, timeout: 5)
+    }
+
+    /// ポートで応答しているブリッジの /status を同期で1回だけ引く(このリポジトリの管理外か判定用)。
+    /// stop() が同期メソッドなので URLSession の async は使わず、セマフォで待つ。
+    /// 到達しなければ nil(= 本当に起動していない)。
+    public static func probeForeignBridge(port: UInt16, timeout: TimeInterval = 1.5)
+        -> (device: String?, protocolVersion: Int?)? {
+        guard let url = URL(string: "http://127.0.0.1:\(port)/status") else { return nil }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = timeout
+        let semaphore = DispatchSemaphore(value: 0)
+        var result: (String?, Int?)?
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = timeout
+        URLSession(configuration: config).dataTask(with: request) { data, _, _ in
+            defer { semaphore.signal() }
+            guard let data,
+                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            else { return }
+            result = (object["device"] as? String, object["protocolVersion"] as? Int)
+        }.resume()
+        _ = semaphore.wait(timeout: .now() + timeout + 0.5)
+        return result
     }
 
     /// SIGTERM 済みの pid の消滅を timeout まで待ち、生き残れば SIGKILL してから pid ファイルを削除する。
@@ -622,6 +651,9 @@ public enum LauncherError: Error, LocalizedError {
     case commandFailed(String, String)
     case xctestrunNotFound(String)
     case notRunning
+    /// ポートでブリッジが応答しているのに、このリポジトリの状態ファイル(.ftester/)に記録が無い。
+    /// 別クローン・別ワークスペースが起動したブリッジを掴んでいる状態。
+    case notOwnedByThisRepo(port: UInt16, device: String?, protocolVersion: Int?)
     case timedOut(String, String)
     /// bindFailed(48) 検知(waitUntilReady のログ監視)。holder は判明していれば占有プロセスの説明
     case portInUse(port: UInt16, holder: String?)
@@ -636,6 +668,17 @@ public enum LauncherError: Error, LocalizedError {
             return "xctestrun が見つかりません(先に build-for-testing が必要): \(path)"
         case .notRunning:
             return "ブリッジは起動していません(.ftester/bridge.pid なし)"
+        case .notOwnedByThisRepo(let port, let device, let version):
+            // 「起動していません」と言うと事実と食い違う(実際は応答している)。実害: 別クローンの
+            // 旧版ブリッジがポートとシミュレータを 7 時間握り、原因の切り分けに時間を要した
+            let target = device.map { "デバイス \($0)" } ?? "デバイス不明"
+            let ver = version.map { "protocolVersion \($0)" } ?? "版不明"
+            return "port \(port) のブリッジはこのリポジトリの管理下にありません"
+                + "(\(target) / \(ver))。応答はしているので停止対象は存在します。"
+                + "**別のクローン・別ワークスペースが起動したブリッジ**です。"
+                + "そちらで停止するか、`lsof -ti :\(port)` のプロセスを止めてください"
+                + "(iOS は xcodebuild を止めた後 `xcrun simctl terminate <udid> "
+                + "com.example.ftrunner.uitests.xctrunner` まで行う)"
         case .timedOut(let lastError, let log):
             return "ブリッジの起動がタイムアウトしました(最後のエラー: \(lastError))。ログ: \(log)"
         case .portInUse(let port, let holder):

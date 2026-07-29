@@ -111,6 +111,8 @@ struct Doctor: AsyncParsableCommand {
         let xcodeLine = xcode.output.split(separator: "\n").first.map(String.init) ?? "不明"
         print(xcode.status == 0 ? "✅ \(xcodeLine)" : "❌ xcodebuild が見つかりません")
 
+        await reportUnmanagedBridges()
+
         // ランナーをビルドした Xcode と現在選択中の Xcode の一致確認。Xcode(beta)更新後に
         // 旧ビルドのランナーを使う・逆に新ビルドのランナーを旧ランタイムに載せると、アプリが
         // 実行中に「Application is not running」でクラッシュする(2026-07-21 実害)。
@@ -204,6 +206,43 @@ struct Doctor: AsyncParsableCommand {
 
     /// 2つのルートを表示し、ツール本体を解決できたかを返す。外部パッケージ構成では別ディレクトリに
     /// なり、取り違えると「InAppBridge/build.sh が無い」「Projects/ が見えない」で詰まる(実害あり)
+    /// このリポジトリの管理下に無いブリッジ(別クローン起動 / 版が古い)を報告する。**停止はしない**。
+    ///
+    /// 放置すると**ポートとシミュレータを握ったまま永久に残る**: provision の stale 掃除は
+    /// 供給対象デバイスの分しか見ない(BridgeProvisioner の sameDevice 条件)ので、
+    /// プロファイル外のデバイスに残った旧版ブリッジは誰も片付けない。
+    /// 実害: protocolVersion 4 のランナーが 7 時間 22 分ポート 8127 とシミュレータを占有した。
+    private func reportUnmanagedBridges() async {
+        guard let root = try? RepoRoot.find() else { return }
+        let stateDir = root.appendingPathComponent(".ftester")
+        var findings: [String] = []
+        for port in BridgeAPI.defaultPort...(BridgeAPI.defaultPort + 31) {
+            guard let status = BridgeLauncher.probeForeignBridge(port: port, timeout: 0.4)
+            else { continue }
+            let hasPid = FileManager.default.fileExists(
+                atPath: stateDir.appendingPathComponent("bridge-\(port).pid").path)
+            let hasInApp = FileManager.default.fileExists(
+                atPath: InAppBridgeState.url(stateDir: stateDir, port: port).path)
+            let stale = status.protocolVersion != BridgeAPI.bridgeProtocolVersion
+            guard !(hasPid || hasInApp) || stale else { continue }
+            let device = status.device ?? "デバイス不明"
+            let version = status.protocolVersion.map(String.init) ?? "?"
+            let reason = (hasPid || hasInApp)
+                ? "版が古い(v\(version) / 期待 v\(BridgeAPI.bridgeProtocolVersion))"
+                : "このリポジトリの状態ファイルに記録が無い(別クローンが起動した可能性)"
+            findings.append("   - port \(port): \(device) — \(reason)")
+        }
+        if findings.isEmpty {
+            print("✅ 管理外・旧版のブリッジはありません")
+        } else {
+            print("⚠️ 再利用されないブリッジが残っています(ポートとデバイスを占有します):")
+            findings.forEach { print($0) }
+            print("   停止: 起動元のクローンで `ftester bridge down --port <N>`。"
+                + "分からなければ `lsof -ti :<N>` のプロセスを止めたうえで、"
+                + "iOS は `xcrun simctl terminate <udid> com.example.ftrunner.uitests.xctrunner` まで行う")
+        }
+    }
+
     private func printRoots() -> Bool {
         var resolved = false
         switch Result(catching: { try RepoRoot.find() }) {
