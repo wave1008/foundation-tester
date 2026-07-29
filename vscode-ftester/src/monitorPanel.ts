@@ -154,6 +154,18 @@ class MonitorPanelController implements vscode.Disposable {
   /** show(tab) が新規作成時に指定したタブ。sendInitialState() で switchTab を post した後クリアする
    * (html設定直後の postMessage は webview 側リスナー登録前に届き握りつぶされるため。show() 参照)。 */
   private pendingInitialTab: string | undefined;
+  /** WebviewPanel.visible(他エディタタブの裏に隠れていないか)。 */
+  private panelVisible = true;
+  /** モニター内タブが「デバイス」か(デバイスタイルが display:none でないか)。
+   * webview から devicesTabVisible で届く。初期値 true は起動直後の一瞬だけで、
+   * webview の初期 switchTab が必ず正しい値を送ってくる。 */
+  private devicesTabVisible = true;
+
+  /** 配信helperを動かすのはパネルが見えていて かつ デバイスタブが開いているときだけ。
+   * どちらか一方でも欠けると H.264 のエンコード/デコードが丸ごと無駄になる。 */
+  private applyDeviceStreamVisibility(): void {
+    this.deviceStream.setVisible(this.panelVisible && this.devicesTabVisible);
+  }
   /** 設定タブ「ポーリングモードを使用する」の現在値(ワークスペース単位で永続化)。 */
   private pollingMode: boolean;
   /** デバイスタブのスプリッター位置(タイルペイン高さ px)。未設定(パネル未ドラッグ)は undefined。
@@ -307,7 +319,10 @@ class MonitorPanelController implements vscode.Disposable {
     panel.webview.onDidReceiveMessage((message: unknown) => this.handleWebviewMessage(message));
     // パネルが他タブの裏に隠れている間はストリーミング helper を止める(isPanelActive とは別軸:
     // こちらは実際の表示可否。再表示後は次の monitorDevices イベントで再構築される)。
-    panel.onDidChangeViewState((event) => this.deviceStream.setVisible(event.webviewPanel.visible));
+    panel.onDidChangeViewState((event) => {
+      this.panelVisible = event.webviewPanel.visible;
+      this.applyDeviceStreamVisibility();
+    });
     panel.onDidDispose(() => {
       this.panel = undefined;
       this.processManager.stopMonitorProcess();
@@ -408,6 +423,10 @@ class MonitorPanelController implements vscode.Disposable {
         this.deviceStream.restartAllStreams();
         this.processManager.restartAll();
         break;
+      case "devicesTabVisible":
+        this.devicesTabVisible = message.visible;
+        this.applyDeviceStreamVisibility();
+        return;
       case "refreshResidentProcesses":
         void this.refreshResidentProcesses();
         break;
