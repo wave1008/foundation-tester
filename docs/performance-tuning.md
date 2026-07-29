@@ -226,6 +226,44 @@ A/B 実測(E2E-Android 31シナリオ・Android 8レーン・交互に3回ずつ
 
 効果はレーン数とシナリオ長のばらつきに比例する。1レーンや、全シナリオが同じ長さなら効かない。
 
+### 3.8 操作直後の整定を固定 sleep から収束判定へ(2026-07-30 実装)
+
+XCUITest ランナーは「画面を変えうる操作(`/session` `/tap` `/type` `/pressEnter` `/swipe`
+`/drag` `/press` `/appswitcher` `/home`)の直後の snapshot だけ」整定を挟む。ここが
+**固定 350ms の `Thread.sleep`** だった。tap quiescence が非同期 push 遷移の完了前に返るため、
+素で撮ると遷移前ツリーを掴む(実測 50%)ことへの対策だが、**必要量はマシン性能・並列負荷・
+アニメーション長に依存する**ので 1 つの定数では合わない。実際、外形計測では両方向に外れていた:
+
+| 操作 | 旧実装(固定 350ms)の妥当性 |
+|---|---|
+| タブ遷移(離散) | **過剰**。素の取得 29〜118ms で既に安定(staleness 0/8) |
+| スワイプ(慣性) | **不足**。ガード後もフレームが動き続ける(y が 6 回連続で変化) |
+
+**置換**: 「ツリーの署名(ラベル・型・矩形)が**連続 2 回一致**するまで撮り直す」収束判定にした
+(`BridgeRouter.captureSettled`)。成立の根拠は**連続取得でツリーが毎回更新されること**を
+実測で確認したこと(同条件で署名 6 回中 6 種)。XCUITest の snapshot キャッシュは取得をまたいで
+居座らない。
+
+| ケース | 旧(固定 350ms) | 新(収束判定) |
+|---|---|---|
+| タブ遷移 | 0.386〜0.403s | **0.174〜0.202s** |
+| スワイプ | 0.386〜0.400s | **0.183〜0.206s** |
+
+**2 つの定数の意味**:
+- `minSettle` = 0.12s … 遷移の立ち上がりを待つ床。**無いと早抜けする**(遷移が始まる前に
+  2 回撮ると「遷移前のツリーで一致」して stale を掴む)
+- `budget` = 0.35s … 入口からの総経過の上限。**旧定数と同じ値に置くのが要点**で、
+  収束しない画面(スクロール慣性・スピナー)でも従来より遅くならないことを担保する。
+  最初 0.8s で試したところ Flutter のスクロール慣性が収束せず **0.72〜0.83s と旧実装より遅く
+  なった**(スクロール後の静止はホスト側 `settleAfterScroll` が担うので、ここで粘る必要はない)
+
+**残存リスク**: `minSettle` だけは固定待ちなので環境依存が残る。遷移開始がこれより遅い機械では
+誤って「静止」と判定しうる。アサーション経路は `PollBackoff` の撮り直しに吸収されるが、
+**snapshot の frame をタップ座標に使う経路(スクロール探索の終端)は吸収されない**。
+
+検証: 全 4 SUT × 両エンジンの E2E で **273 シナリオ全成功・振り直し 0 件**。
+ブリッジ変更なので `bridgeProtocolVersion` を 6 → 7 へ。
+
 ## 4. 計測基盤の使い方(チューニングの必須手順)
 
 **変更前にベースライン、変更後に同条件で再計測、summary.md を比較する。**
@@ -339,6 +377,7 @@ print('呼び出し', sum(f['calls'] for f in fs), '合計秒', sum(f['totalMs']
 | fallback 照会の間引き | StepExecutor.swift(executeAssert) | primary 2回目以降・偶数回ミスのみ | hybrid の SystemUIDriver 照会(springboard 再session+XCUITest snapshot=数百ms)の頻度。実在するシステムUI要素の検知遅れは最大バックオフ1段+1周期 |
 | LPT 投入順 | `ftester.lptScheduling` / `--no-lpt` | ON | 過去実績の長い順に投入する(§3.7)。OFF でシナリオ ID 順。レーン数とシナリオ長のばらつきが無いと効かない |
 | LPT の実績 run 数 | `ftester.lptHistoryRuns` / `--lpt-history-runs` | 5 | 実績として読む run の件数(新しい方から)。増やすと代表値は安定するが毎 run の読み込みファイルが増える。実測で 1 プロジェクト 3,500〜4,500 件の結果 JSON があるため全件走査はしない |
+| 操作直後の整定(iOS) | `BridgeRouter.captureSettled` の minSettle / budget | 0.12s / 0.35s | ツリーが連続2回一致するまで撮り直す(§3.8)。minSettle は早抜け防止の床、budget は収束しない画面の打ち切り。budget を上げるとスクロール慣性で待ち切ってしまい旧実装より遅くなる(0.8s で実測 0.72〜0.83s) |
 | ビルドスキップ判定 | FTCore/BuildFingerprint.swift | mtime+size+toolchain | §3.2。強制再ビルドは `.ftester/build-fingerprint-*.txt` を削除 |
 | `ftester.streamCodec` | VSCode 設定(package.json) | h264 | 画面配信コーデック。h264=HWエンコード/デコード(低負荷)、mjpeg=互換(WebCodecs 問題時の退避先。デバイス単位の自動フォールバックあり) |
 | 描画間引き(66ms) | vscode-ftester/src/webview/monitor/h264Decoder.js | 約15fps | h264 の canvas 描画間隔。デコード自体は全チャンク必須(P フレーム連鎖)なので下げても復号コストは減らない |
@@ -558,9 +597,14 @@ window/transition/animator の `*_scale` はチューニングノブではなく
   負荷連動延長、ランナー起動の直列化、タイムアウト後も起動継続中なら待ち直す再確認ループ。
   現状 2 台までは安定しているため優先度低(3.1 の実測により 2+2 が sweet spot で、
   3 台以上を常用する動機も当面ない)
-- **iOS の「XCUITest 税」と高速化エンジン**: XCUITest 経路の残り時間は「XCUITest 税」
-  = snapshot が毎回 testmanagerd 経由 IPC で全属性取得(~250ms)+イベント合成前の
-  暗黙 quiescence 待ち。施策は 2 系統:
+- **iOS の「XCUITest 税」と高速化エンジン**: 施策は 2 系統:
+
+  **「税 = snapshot ~250ms」は旧説(2026-07-30 に外形計測で否定)**。ホスト側から HTTP 越しに
+  測ると素の snapshot 取得は **29〜118ms**(要素 5〜22 個・M2 Ultra アイドル)で、支配項では
+  なかった。実体は**操作直後の snapshot に掛けていた固定 350ms の整定待ち**で、
+  `Runner/FTesterRunnerUITests/BridgeRouter.swift` の `handleSnapshot` にあった
+  (ランナー内のコメントも「app.snapshot() は ~0.45s」と書いていたが、これは
+  **350ms ガード込みの値を素のコストと取り違えた誤り**だった)。→ §3.8 で置換済み。
   1. **税の減額(XCUITest 経路内)**。3 施策のうち採否が分かれた:
      - ✅ **Reduce Motion 自動設定**(採用): `BridgeLauncher.enableReduceMotion()` が
        コールド起動時のみ `simctl spawn <device> defaults write com.apple.Accessibility

@@ -27,7 +27,9 @@ final class BridgeRouter {
     // 直前の要求が画面を変えうる操作(tap/swipe/press/type/drag/session)だったか。
     // XCUITest の tap quiescence は非同期 push 遷移の完了前に返ることがあり、直後 snapshot が
     // 遷移前ツリーを掴む(実測 50% / bridge-8123)。操作直後の snapshot に限り整定確認する。
-    // app.snapshot() は ~0.45s と高コストなので、連続 snapshot には課さない(false のまま)。
+    // **取得そのものは高コストではない**: ホスト側から HTTP 越しの外形計測で 29〜118ms
+    // (要素 5〜22 個・M2 Ultra アイドル・2026-07-30)。以前ここに「~0.45s と高コスト」と
+    // 書いていたのは **350ms ガード込みの値を素のコストと取り違えた誤り**だった。
     private var settlePending = false
 
     private let decoder = JSONDecoder()
@@ -122,15 +124,11 @@ final class BridgeRouter {
 
     private func handleSnapshot() throws -> BridgeHTTPServer.Response {
         let app = try requireApp()
-        // 操作直後のみ整定してから取得する。XCUITest の tap quiescence は非同期 push 遷移の完了前に
-        // 返り、かつ直近 snapshot をキャッシュするため、直後の素取得は遷移前ツリーを返す(実測 50%)。
-        // 短い待機後に取り直すと遷移完了後の fresh ツリーになる(要 sleep: キャッシュ失効 + 遷移完了。
-        // 実測 350ms で staleness 0/10。連続 snapshot(settlePending=false)は 0.45s のまま非課金)。
-        if settlePending {
-            settlePending = false
-            Thread.sleep(forTimeInterval: 0.35)
-        }
-        let cap = try captureOnce(app)
+        // 操作直後のみ整定してから取得する(captureSettled)。XCUITest の tap quiescence は
+        // 非同期 push 遷移の完了前に返るため、直後の素取得は遷移前ツリーを返す(実測 50%)。
+        // 連続 snapshot(settlePending=false)は整定不要なので素取得のまま。
+        let cap = try settlePending ? captureSettled(app) : captureOnce(app)
+        settlePending = false
 
         refFrames = cap.frames
         return .json(SnapshotResponse(
@@ -139,6 +137,64 @@ final class BridgeRouter {
                            width: cap.screen.width, height: cap.screen.height),
             elements: cap.elements,
             truncatedCount: cap.truncated))
+    }
+
+    /// 整定してから取得する(操作直後の 1 回だけ)。
+    ///
+    /// **固定 sleep をやめた理由**(2026-07-30 実測): 旧実装は一律 350ms 待っていたが、
+    /// 必要量はマシン性能・並列負荷・アニメーション長に依存するため 1 つの定数では合わない。
+    /// 外形計測では、タブ遷移は 350ms 待たずとも 1 回目から安定していた一方(= 過剰)、
+    /// **スワイプ直後は 350ms 後もフレームが動き続けていた**(= 不足。y が 6 回連続で変化)。
+    ///
+    /// **成立の根拠**: 連続取得でツリーは毎回更新される(同条件で署名 6 回中 6 種)。
+    /// XCUITest の snapshot キャッシュは取得をまたいで居座らないため、
+    /// 「連続 2 回一致 = 静止」で判定できる。
+    ///
+    /// 早抜け防止に **minSettle** を置く: 遷移がまだ始まっていない時点で 2 回撮ると
+    /// 「遷移前のツリーで一致」して stale を掴む。最初の 1 回はここを待ってから撮る。
+    /// 収束しない画面(スピナー・常時アニメーション)のために **budget** で必ず打ち切る。
+    ///
+    /// **残存リスク**: minSettle だけは固定待ちなので環境依存が残る。遷移の開始が
+    /// minSettle より遅い機械では、2 回とも遷移前のツリーを撮って「一致 = 静止」と
+    /// 誤判定しうる。「操作前のツリーと違うこと」を条件に足せば消せるが、画面を変えない
+    /// 操作(no-op なタップ等)で必ず budget を使い切るので採らない。
+    /// アサーション経路は StepExecutor 側が PollBackoff で撮り直すため、この誤判定は
+    /// 「1 周ぶん遅くなる」に吸収される。吸収されないのは snapshot の frame を
+    /// タップ座標に使う経路(スクロール探索の終端)。
+    private func captureSettled(_ app: XCUIApplication) throws -> Captured {
+        // budget は**入口からの総経過**の上限。旧実装の固定 350ms と同等に置くことで
+        // 「収束しない画面(スクロール慣性・スピナー)でも従来より遅くならない」を担保する。
+        // 実測(2026-07-30): Flutter のスクロール慣性は 800ms でも収束しなかったので、
+        // 待ち切る設計にはしない。スクロール後の静止は**ホスト側の settleAfterScroll**
+        // (frame が連続 2 回同じ・最大 600ms)が担うので、ここで粘る必要はない。
+        let minSettle: TimeInterval = 0.12   // 遷移の立ち上がりを待つ床(取得 1 回ぶん相当)
+        let budget: TimeInterval = 0.35
+        let deadline = Date().addingTimeInterval(budget)
+
+        Thread.sleep(forTimeInterval: minSettle)
+        var previous = try captureOnce(app)
+        var previousSignature = Self.signature(previous)
+        while Date() < deadline {
+            let current = try captureOnce(app)
+            let signature = Self.signature(current)
+            if signature == previousSignature { return current }
+            previous = current
+            previousSignature = signature
+        }
+        return previous   // budget 切れ。previous は常に直近の取得(収束はしていない)
+    }
+
+    /// 静止判定の署名。ラベル・型・矩形が全て同じなら「動いていない」とみなす
+    /// (スクロール中は y が変わるので frame を必ず含める)。
+    private static func signature(_ captured: Captured) -> String {
+        var text = ""
+        text.reserveCapacity(captured.elements.count * 24)
+        for element in captured.elements {
+            let frame = element.frame
+            text += "\(element.label ?? "")|\(element.type)|"
+            text += "\(Int(frame.x)),\(Int(frame.y)),\(Int(frame.width)),\(Int(frame.height));"
+        }
+        return text
     }
 
     private func captureOnce(_ app: XCUIApplication) throws -> Captured {
