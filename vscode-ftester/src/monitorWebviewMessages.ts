@@ -439,6 +439,10 @@ export type MonitorFromWebviewMessage =
   // 設定タブ「更新」の「更新する」ボタン。monitorPanel.ts が update.sh を実行し、出力は OUTPUT へ出す。
   | { readonly type: "runUpdate" }
   | { readonly type: "refreshResidentProcesses" }
+  // タブ切替でデバイスタイルが display:none になったことの通知。ホストは配信helperを止める
+  // (対向: src/webview/monitor/tabs.js の switchTab)。パネル自体の表示可否とは別軸で、
+  // ホスト側は両方の AND を deviceStream.setVisible へ渡す
+  | { readonly type: "devicesTabVisible"; readonly visible: boolean }
   | { readonly type: "killAllResidentProcesses" }
   // デバイスタブのスプリッターをドラッグ終了した時のタイルペイン高さ(px)。monitorPanel.ts が
   // workspaceState へ永続化し、パネル再作成時に "tilePaneHeight" メッセージで復元する。
@@ -651,6 +655,8 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
       return typeof value.value === "boolean";
     case "setLanguage":
       return value.value === "auto" || value.value === "ja" || value.value === "en";
+    case "devicesTabVisible":
+      return typeof value.visible === "boolean";
     case "refreshResidentProcesses":
     case "killAllResidentProcesses":
     case "checkUpdate":

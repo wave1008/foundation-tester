@@ -41,6 +41,9 @@ export function switchTab(tab) {
     // 非表示中はclientHeight=0のガードで何もしなかった分を再クランプする(splitter.js参照)。
     reapplyTilePaneHeight();
   }
+  // デバイスタイルが display:none の間は配信helperとデコードが無駄になるのでホストへ知らせる
+  // (対向: src/monitorWebviewMessages.ts の devicesTabVisible / monitorPanel.ts)。
+  vscode.postMessage({ type: 'devicesTabVisible', visible: tab === 'devices' });
   // processesTab.js の初回活性化フック(常駐プロセス即時更新)が依存する。
   document.dispatchEvent(new CustomEvent('ft-tab-activated', { detail: { tab } }));
 }
