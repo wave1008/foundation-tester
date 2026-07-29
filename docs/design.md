@@ -1351,7 +1351,7 @@ executableTarget `ftester-scenarios-<name>`(path: `Projects/<name>/Scenarios`)�
 ```json
 { "ios":     { "devices": [ { "name": "simulator1", "simulator": "iPhone 17 Pro", "os": "27.0" } ] },
   "android": { "devices": [ { "name": "emulator1", "avd": "Pixel_9" },
-                            { "name": "エミュ2", "avd": "Pixel 8(Android 14)" } ] } }
+                            { "name": "emulator2", "avd": "Pixel 8(Android 14)" } ] } }
 ```
 
 - デバイス名は 1 ファイル内(ios+android 横断)で一意(重複はロード時エラー)
@@ -1408,7 +1408,7 @@ platform フィールドは持たず、**iOS/Android のデバイス名を混在
 
 ```json
 { "app": "sampleapp",
-  "devices": [ { "name": "simulator1" }, { "name": "サブ機" }, { "name": "emulator1" } ],
+  "devices": [ { "name": "simulator1" }, { "name": "simulator2" }, { "name": "emulator1" } ],
   "fm": true, "heal": false, "reportDir": "reports", "defaultTimeout": 5,
   "wipeDataOnBloat": true, "wipeDataThresholdGB": 8 }
 ```

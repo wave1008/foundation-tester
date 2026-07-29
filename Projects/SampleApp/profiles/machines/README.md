@@ -13,14 +13,14 @@ Android の `avd` は AVD の ID("Pixel_9_Android_16")と表示名("Pixel 9(Andr
 {
   "ios": {
     "devices": [
-      { "name": "メイン機", "simulator": "iPhone 17 Pro", "os": "27.0" },
-      { "name": "サブ機", "simulator": "iPhone Air", "udid": "XXXX-XXXX" }
+      { "name": "simulator1", "simulator": "iPhone 17 Pro", "os": "27.0" },
+      { "name": "simulator2", "simulator": "iPhone Air", "udid": "XXXX-XXXX" }
     ]
   },
   "android": {
     "devices": [
-      { "name": "エミュ1", "avd": "Pixel 9(Android 16)" },
-      { "name": "エミュ2", "avd": "Pixel_8_Android_14" }
+      { "name": "emulator1", "avd": "Pixel 9(Android 16)" },
+      { "name": "emulator2", "avd": "Pixel_8_Android_14" }
     ]
   }
 }

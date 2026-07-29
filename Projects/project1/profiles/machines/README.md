@@ -11,14 +11,14 @@
 {
   "ios": {
     "devices": [
-      { "name": "メイン機", "simulator": "iPhone 17 Pro", "os": "27.0" },
-      { "name": "サブ機", "simulator": "iPhone Air", "udid": "XXXX-XXXX" }
+      { "name": "simulator1", "simulator": "iPhone 17 Pro", "os": "27.0" },
+      { "name": "simulator2", "simulator": "iPhone Air", "udid": "XXXX-XXXX" }
     ]
   },
   "android": {
     "devices": [
-      { "name": "エミュ1", "avd": "Pixel_9" },
-      { "name": "エミュ2", "serial": "emulator-5556" }
+      { "name": "emulator1", "avd": "Pixel_9" },
+      { "name": "emulator2", "serial": "emulator-5556" }
     ]
   }
 }

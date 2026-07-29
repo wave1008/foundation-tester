@@ -432,13 +432,13 @@ public enum ProjectScaffold {
       "ios": {
         "devices": [
           { "name": "simulator1", "simulator": "iPhone 17 Pro" },
-          { "name": "サブ機", "simulator": "iPhone Air", "udid": "XXXX-XXXX" }
+          { "name": "simulator2", "simulator": "iPhone Air", "udid": "XXXX-XXXX" }
         ]
       },
       "android": {
         "devices": [
           { "name": "emulator1", "avd": "Pixel 9(Android 16)" },
-          { "name": "エミュ2", "avd": "Pixel_8_Android_14" }
+          { "name": "emulator2", "avd": "Pixel_8_Android_14" }
         ]
       }
     }
