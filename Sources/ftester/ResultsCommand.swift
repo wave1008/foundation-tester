@@ -53,7 +53,8 @@ private func printResultsJSON<T: Encodable>(_ value: T) throws {
 }
 
 /// startedAt(ISO8601 UTC)をローカルタイムゾーンの人間可読表示に変換する。パース不能ならそのまま返す
-private func formatLocal(_ iso8601: String) -> String {
+// formatLocal / SimpleTable は FTesterTests から検証するため internal(private へ戻さない)。
+func formatLocal(_ iso8601: String) -> String {
     guard let date = ISO8601DateFormatter().date(from: iso8601) else { return iso8601 }
     let formatter = DateFormatter()
     formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
@@ -62,7 +63,7 @@ private func formatLocal(_ iso8601: String) -> String {
 }
 
 /// 日本語混じりでも桁数(character count)基準で揃える簡易テーブル(半角想定・厳密な幅計算はしない)
-private enum SimpleTable {
+enum SimpleTable {
     static func render(headers: [String], rows: [[String]]) -> String {
         let columnCount = headers.count
         var widths = headers.map(\.count)

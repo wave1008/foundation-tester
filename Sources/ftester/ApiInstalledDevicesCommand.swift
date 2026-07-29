@@ -68,7 +68,8 @@ struct ApiInstalledDevicesCommand: AsyncParsableCommand {
     }
 
     /// SimDeviceInfo.os は "iOS 27.0" 形式。出力の os はバージョン番号のみ("27.0")に正規化する
-    private static func normalizeOS(_ os: String) -> String {
+    /// FTesterTests から検証するため internal。
+    static func normalizeOS(_ os: String) -> String {
         os.hasPrefix("iOS ") ? String(os.dropFirst("iOS ".count)) : os
     }
 
