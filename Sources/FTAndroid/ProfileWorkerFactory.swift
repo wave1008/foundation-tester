@@ -201,7 +201,8 @@ public enum ProfileWorkerFactory {
             let serial = try AndroidDeviceCatalog.resolveSerial(spec: device.spec)
             let driver = try AndroidDriver(serial: serial)
             return RunWorker(
-                label: "\(device.name)(android:\(serial))", platform: "android",
+                label: RunWorker.makeLabel(deviceName: device.name, platform: "android", id: serial),
+                platform: "android",
                 driver: driver,
                 connection: DriverConnection(platform: "android", serial: serial,
                                              deviceName: device.name,
@@ -230,7 +231,8 @@ public enum ProfileWorkerFactory {
     /// 実機は宛先ホスト(LAN or iproxy)と UDID を持たせる(install が devicectl 経路に入る)
     private static func makeIOSWorker(device: ProvisionedIOSDevice, iosApp: ResolvedAppTarget?) -> RunWorker {
         RunWorker(
-            label: "\(device.name)(ios:\(device.port))", platform: "ios",
+            label: RunWorker.makeLabel(deviceName: device.name, platform: "ios", id: "\(device.port)"),
+            platform: "ios",
             driver: BridgeClient(port: device.port, host: device.host,
                                  physicalUDID: device.physical ? device.udid : nil),
             connection: iosConnection(device: device, iosApp: iosApp),
@@ -285,7 +287,8 @@ public enum ProfileWorkerFactory {
                 }
                 guard reachable else { return nil }
                 return RunWorker(
-                    label: "\(device.name)(android:\(serial))", platform: "android",
+                    label: RunWorker.makeLabel(deviceName: device.name, platform: "android", id: serial),
+                platform: "android",
                     driver: driver,
                     connection: DriverConnection(platform: "android", serial: serial,
                                                  deviceName: device.name,

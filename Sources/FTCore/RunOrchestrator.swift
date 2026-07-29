@@ -26,7 +26,13 @@ public struct ScenarioRunItem: Identifiable, Sendable {
 
 /// 並列ワーカー定義。platform が一致するシナリオだけをキューから消化する
 public struct RunWorker {
-    public let label: String              // 例: "ios:8123" / "android:emulator-5554"
+    /// 表示・イベント上の識別子。形式は2系統ある:
+    ///   プロファイル経路 = `makeLabel` の "<デバイス名>(<platform>:<serial|port>)"
+    ///   非プロファイル経路(--port/--serial)= "ios:<port>" / "android"
+    /// **RunEvent は platform を運ばない**ので、label から platform を戻す必要がある側は
+    /// 必ず `RunWorker.platform(fromLabel:)` を使うこと(デバイス名自体が "(" や ":" を含むため、
+    /// 素朴な split は壊れる。実際に稼働率集計がデバイス名を platform と誤認した)
+    public let label: String
     public let platform: String           // "ios" / "android"
     public let driver: AppDriver          // ウォームアップ・接続確認用
     public let connection: DriverConnection  // サブプロセスへ渡す接続情報
@@ -34,6 +40,31 @@ public struct RunWorker {
     /// ProfileWorkerFactory 経由で構築されたワーカーのみ設定される(ftester api run の
     /// workersReady イベントの id 構築に使う。--ports 等の非プロファイル経路では nil)
     public let logicalName: String?
+
+    /// 既知の platform 名。label から platform を戻すときの照合に使う。
+    public static let knownPlatforms: Set<String> = ["ios", "android"]
+
+    /// プロファイル経路の label を組み立てる(解析側の `platform(fromLabel:)` と対。片方だけ変えない)。
+    public static func makeLabel(deviceName: String, platform: String, id: String) -> String {
+        "\(deviceName)(\(platform):\(id))"
+    }
+
+    /// label から platform を戻す。デバイス名が "(" や ":" を含みうるため、
+    /// 末尾の "(<platform>:<id>)" を優先して見る。既知の platform 名に一致しない場合は nil。
+    public static func platform(fromLabel label: String) -> String? {
+        func head(_ text: Substring) -> String {
+            String(text.split(separator: ":", maxSplits: 1).first ?? text)
+        }
+        // プロファイル経路: 末尾の括弧群 "(<platform>:<id>)"
+        if label.hasSuffix(")"), let open = label.lastIndex(of: "(") {
+            let inner = label[label.index(after: open)..<label.index(before: label.endIndex)]
+            let candidate = head(inner)
+            if knownPlatforms.contains(candidate) { return candidate }
+        }
+        // 非プロファイル経路: "ios:<port>" / "android"
+        let candidate = head(label[...])
+        return knownPlatforms.contains(candidate) ? candidate : nil
+    }
 
     public init(label: String, platform: String, driver: AppDriver, connection: DriverConnection,
                 logicalName: String? = nil) {

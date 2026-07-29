@@ -966,34 +966,86 @@ final class BlankTriageBox: @unchecked Sendable {
 /// flowSkipped は無視 = 0秒扱い)。逐次実行では recordSequential(start:finish:) を
 /// シナリオ毎に直接呼ぶ(同時に1件しか走らないため URL キー付けは不要)。ProfileRunner.swift
 /// からも同一ターゲット内で参照
+/// プラットフォーム 1 つ分のレーン稼働。分母は run 全体の壁時計(= そのプラットフォームが
+/// 「run が続いている間どれだけ遊休だったか」を表す)。docs/performance-tuning.md §3.6 の
+/// 「台数を増やす前に、プラットフォーム別の稼働率と最終終了時刻を見る」を実行後に読める形にしたもの。
+struct LaneUtilization {
+    let platform: String
+    /// 実際にシナリオを1本でも実行したワーカー数
+    let lanes: Int
+    /// そのプラットフォームの全レーンの実行時間の総和
+    let busySeconds: Double
+    /// run 全体の開始から、そのプラットフォームの最後のシナリオが終わるまで
+    let lastFinishSeconds: Double
+    /// busy ÷ (lanes × run 全体の壁時計)。1.0 = 全レーンが最後まで詰まっていた
+    let utilization: Double
+}
+
 struct ScenarioTimingTracker {
     private var firstStart: Date?
     private var lastFinish: Date?
-    private var startedAt: [URL: Date] = [:]
+    private var startedAt: [URL: (at: Date, worker: String)] = [:]
     private var scenarioTotal: TimeInterval = 0
     private var hasScenario = false
+    /// platform → (稼働したワーカー label, 実行時間の総和, 最後の終了時刻)
+    private var lanesByPlatform: [String: Set<String>] = [:]
+    private var busyByPlatform: [String: TimeInterval] = [:]
+    private var lastFinishByPlatform: [String: Date] = [:]
 
-    mutating func record(_ event: RunEvent) {
+    /// ワーカー label から platform を戻す。形式の正は RunWorker.platform(fromLabel:)
+    /// (デバイス名が "(" や ":" を含むため素朴な split は壊れる)。
+    /// 解釈できない label は "?" に寄せる(集計から落とさない)。
+    private static func platform(ofWorker label: String) -> String {
+        RunWorker.platform(fromLabel: label) ?? "?"
+    }
+
+    /// at はテストから時刻を固定するための注入点(既定は実時刻)。
+    mutating func record(_ event: RunEvent, at now: Date = Date()) {
         switch event {
-        case .flowStarted(_, let flowURL, _, _):
-            let now = Date()
-            if firstStart == nil { firstStart = now }
-            startedAt[flowURL] = now
+        case .flowStarted(let worker, let flowURL, _, _):
+            // min/max で受ける(実運用のイベントは時系列順だが、順序に依存しない方が安全。
+            // 依存すると集計が壁時計より短い分母を掴んで稼働率が 100% を超える)
+            firstStart = min(firstStart ?? now, now)
+            startedAt[flowURL] = (now, worker)
             hasScenario = true
-        case .flowFinished(_, let flowURL, _, _, _, _):
-            let now = Date()
-            lastFinish = now
+        case .flowFinished(let worker, let flowURL, _, _, _, _):
+            lastFinish = max(lastFinish ?? now, now)
+            let platform = Self.platform(ofWorker: worker)
+            lastFinishByPlatform[platform] = max(lastFinishByPlatform[platform] ?? now, now)
+            lanesByPlatform[platform, default: []].insert(worker)
             if let start = startedAt.removeValue(forKey: flowURL) {
-                scenarioTotal += now.timeIntervalSince(start)
+                let elapsed = now.timeIntervalSince(start.at)
+                scenarioTotal += elapsed
+                // 実行したのは開始時のワーカー(振り直しで別デバイスに移ることがある)
+                let busyPlatform = Self.platform(ofWorker: start.worker)
+                busyByPlatform[busyPlatform, default: 0] += elapsed
+                lanesByPlatform[busyPlatform, default: []].insert(start.worker)
             }
         default:
             break
         }
     }
 
+    /// プラットフォーム別のレーン稼働(platform 名の昇順)。run が空なら空配列。
+    var laneUtilizations: [LaneUtilization] {
+        guard let firstStart, let lastFinish else { return [] }
+        let runSpan = lastFinish.timeIntervalSince(firstStart)
+        return lanesByPlatform.keys.sorted().compactMap { platform in
+            let lanes = lanesByPlatform[platform]?.count ?? 0
+            guard lanes > 0 else { return nil }
+            let busy = busyByPlatform[platform] ?? 0
+            let denominator = Double(lanes) * runSpan
+            return LaneUtilization(
+                platform: platform, lanes: lanes, busySeconds: busy,
+                lastFinishSeconds: (lastFinishByPlatform[platform] ?? firstStart)
+                    .timeIntervalSince(firstStart),
+                utilization: denominator > 0 ? busy / denominator : 0)
+        }
+    }
+
     mutating func recordSequential(start: Date, finish: Date) {
-        if firstStart == nil { firstStart = start }
-        lastFinish = finish
+        firstStart = min(firstStart ?? start, start)
+        lastFinish = max(lastFinish ?? finish, finish)
         scenarioTotal += finish.timeIntervalSince(start)
         hasScenario = true
     }
