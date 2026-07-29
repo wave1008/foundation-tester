@@ -596,7 +596,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         var timing = ScenarioTimingTracker()
         for await event in orchestrator.events {
             timing.record(event)
-            for line in ndjsonLines(for: event, itemByURL: itemByURL, workerID: workerID) {
+            for line in Self.ndjsonLines(for: event, itemByURL: itemByURL, workerID: workerID) {
                 writeLine(line)
             }
         }
@@ -637,7 +637,9 @@ struct ApiRunCommand: AsyncParsableCommand {
     ///   FlowLocator.summary(サブプロセス発の raw テキスト)を入れる
     /// - fixSuggestion に伴う合成 step(StepResult.synthetic == true)は次の .fixSuggestion で
     ///   kind:"fixSuggestion" として別途出すためここでは除外する
-    private func ndjsonLines(
+    // 拡張との NDJSON 契約そのもの(vscode-ftester/src/model.ts・runReducer.ts が対向)。
+    // 純関数なので static。FTesterTests が RunEvent → 行の写像を全 kind ぶん固めている。
+    static func ndjsonLines(
         for event: RunEvent, itemByURL: [URL: ScenarioRunItem], workerID: WorkerIDMap
     ) -> [String] {
         switch event {

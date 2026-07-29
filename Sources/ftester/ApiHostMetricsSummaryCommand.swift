@@ -124,7 +124,8 @@ struct ApiHostMetricsSummaryCommand: ParsableCommand {
 
     // MARK: - 集計
 
-    private static func summarize(
+    // summarize / doubleStat と下の出力モデル3型は FTesterTests から検証するため internal。
+    static func summarize(
         _ samples: [[String: Any]], logPath: String, runID: String?,
         sinceEpoch: Double?, untilEpoch: Double?
     ) -> HostMetricsSummaryReport {
@@ -157,7 +158,7 @@ struct ApiHostMetricsSummaryCommand: ParsableCommand {
                 totalBytes: memTotal))
     }
 
-    private static func doubleStat(_ values: [Double]) -> MetricStat {
+    static func doubleStat(_ values: [Double]) -> MetricStat {
         guard !values.isEmpty else { return MetricStat(avg: nil, peak: nil, min: nil, count: 0) }
         return MetricStat(
             avg: values.reduce(0, +) / Double(values.count),
@@ -170,7 +171,7 @@ struct ApiHostMetricsSummaryCommand: ParsableCommand {
 /// 省略可能なフィールドは JSON 上で null を明示する(自動合成の Encodable は Optional を
 /// encodeIfPresent で「キーごと省略」してしまい null にならないため、この方針の型は全て
 /// 手書き encode(to:) にする。Sources/FTCore/HostMetricsSampler.swift の HostMetricsSample と同方針)
-private struct MetricStat {
+struct MetricStat {
     let avg: Double?
     let peak: Double?
     let min: Double?
@@ -189,7 +190,7 @@ extension MetricStat: Encodable {
     }
 }
 
-private struct MemStat {
+struct MemStat {
     let avgUsedBytes: Double?
     let peakUsedBytes: Int?
     let totalBytes: Int?
@@ -206,7 +207,7 @@ extension MemStat: Encodable {
     }
 }
 
-private struct HostMetricsSummaryReport {
+struct HostMetricsSummaryReport {
     let kind = "hostMetricsSummary"
     let logPath: String
     /// --project/--run で解決できたときのみ非 nil(--log 直指定、または run 未検出のときは nil)

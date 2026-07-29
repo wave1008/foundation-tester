@@ -309,7 +309,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
     }
 
     /// connected からの降格を確定させるまでに要する連続失敗回数(1回の失敗では降格しない)
-    private static let connectedDowngradeMissThreshold = 3
+    static let connectedDowngradeMissThreshold = 3
 
     /// Android ヘルスプローブ(adb 経由)の再実行間隔(秒)。毎サイクル叩くと adb 負荷が
     /// 高いため低頻度化する
@@ -324,7 +324,9 @@ struct ApiMonitorCommand: AsyncParsableCommand {
     /// だったデバイスが今回そうでない場合は即降格させず、connectedDowngradeMissThreshold 回連続
     /// するまで connected 維持(接続情報も直前値を保持しスクショ取得を試み続ける)。
     /// それ以外の遷移(booted/offline 間)は debounce 不要のため即時反映。
-    private static func debounce(
+    // debounce / androidState は副作用を持たない判定ロジック。FTesterTests から検証するため
+    // internal(タイルの点滅・実機の状態判定はデバイス無しで壊せる)。private へ戻さないこと。
+    static func debounce(
         _ observed: [DeviceRuntimeState],
         confirmed: inout [String: ConfirmedDeviceState],
         onDowngrade logDowngrade: (String) -> Void
@@ -423,7 +425,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
 
     /// Android: AVD起動+ブート完了 → connected。AVD起動のみ(ブート未完了)→ booted
     /// (ブリッジAPKインストールを試みさせないため)。AVD未起動 → offline
-    private static func androidState(
+    static func androidState(
         target: MonitorTarget, runningAVDs: [String: String],
         connectedSerials: Set<String>, bootCompleted: [String: Bool]
     ) -> DeviceRuntimeState {
@@ -647,8 +649,9 @@ struct DeviceRuntimeState {
     }
 }
 
-/// サイクルをまたいで保持する「直近の確定状態」(debounce 用)。1 デバイス分
-private struct ConfirmedDeviceState {
+/// サイクルをまたいで保持する「直近の確定状態」(debounce 用)。1 デバイス分。
+/// internal: debounce と一緒に FTesterTests から検証する(private へ戻さない)。
+struct ConfirmedDeviceState {
     let state: String  // connected / booted / offline(debounce 後の確定値)
     let detail: String
     let iosPort: UInt16?

@@ -96,6 +96,9 @@ struct ApiDeviceCatalogCommand: AsyncParsableCommand {
     }
 
     /// 並び順を保ったまま key の重複を排除する(先勝ち)
+    // 以降のパース/整列ヘルパーと ApiAndroidModel / ApiAndroidSystemImage は private ではなく
+    // internal。FTesterTests から直接叩いて固めている(avdmanager の出力形式と整列規則は
+    // 実機なしで壊れるとフリート一覧が静かに空になる)。private へ戻さないこと。
     private static func uniqued<T>(_ items: [T], by key: KeyPath<T, String>) -> [T] {
         var seen = Set<String>()
         return items.filter { seen.insert($0[keyPath: key]).inserted }
@@ -147,7 +150,7 @@ struct ApiDeviceCatalogCommand: AsyncParsableCommand {
 
     /// avdmanager list device の出力(ブロック形式)をパースする:
     /// `id: NN or "id_string"` 行の後、次の id 行が現れるまでの間にある最初の `Name: 表示名` 行と対にする
-    private static func parseDeviceDefinitions(_ output: String) -> [ApiAndroidModel] {
+    static func parseDeviceDefinitions(_ output: String) -> [ApiAndroidModel] {
         var models: [(id: String, name: String)] = []
         var pendingID: String?
         for rawLine in output.split(separator: "\n", omittingEmptySubsequences: false) {
@@ -170,7 +173,7 @@ struct ApiDeviceCatalogCommand: AsyncParsableCommand {
     }
 
     /// `    id: 26 or "pixel_9_pro"` から id_string("pixel_9_pro")を取り出す
-    private static func extractDeviceID(from line: String) -> String? {
+    static func extractDeviceID(from line: String) -> String? {
         let trimmed = line.trimmingCharacters(in: .whitespaces)
         guard trimmed.hasPrefix("id:") else { return nil }
         guard let firstQuote = trimmed.firstIndex(of: "\""),
@@ -182,7 +185,7 @@ struct ApiDeviceCatalogCommand: AsyncParsableCommand {
 
     /// models の並び順: Pixel系(id が "pixel" で始まる)を先頭に、id 中の数値の降順
     /// (同数値内は名前昇順)。その後にその他を名前昇順
-    private static func modelSortsBefore(_ lhs: ApiAndroidModel, _ rhs: ApiAndroidModel) -> Bool {
+    static func modelSortsBefore(_ lhs: ApiAndroidModel, _ rhs: ApiAndroidModel) -> Bool {
         let lhsPixel = lhs.id.hasPrefix("pixel")
         let rhsPixel = rhs.id.hasPrefix("pixel")
         if lhsPixel != rhsPixel { return lhsPixel }
@@ -196,7 +199,7 @@ struct ApiDeviceCatalogCommand: AsyncParsableCommand {
 
     /// 文字列中の最初の連続数字を Int にする(無ければ 0。"pixel"/"pixel_c" 等の無番機種を
     /// 同グループの末尾へ寄せるための sentinel として使う)
-    private static func firstNumber(in text: String) -> Int {
+    static func firstNumber(in text: String) -> Int {
         var digits = ""
         var started = false
         for ch in text {
@@ -249,7 +252,7 @@ struct ApiDeviceCatalogCommand: AsyncParsableCommand {
 
     /// systemImages の並び順: apiLevel 降順 → tag 優先順(google_apis > google_apis_playstore >
     /// default > その他名前順)→ 同一 tag 内は abi(arm64-v8a 優先)
-    private static func systemImageSortsBefore(
+    static func systemImageSortsBefore(
         _ lhs: ApiAndroidSystemImage, _ rhs: ApiAndroidSystemImage
     ) -> Bool {
         if lhs.apiLevel != rhs.apiLevel { return lhs.apiLevel > rhs.apiLevel }
@@ -263,7 +266,7 @@ struct ApiDeviceCatalogCommand: AsyncParsableCommand {
         return lhs.abi < rhs.abi
     }
 
-    private static func tagRank(_ tag: String) -> Int {
+    static func tagRank(_ tag: String) -> Int {
         switch tag {
         case "google_apis": return 0
         case "google_apis_playstore": return 1
@@ -340,12 +343,12 @@ private struct ApiAndroidCatalog: Encodable {
     }
 }
 
-private struct ApiAndroidModel: Encodable {
+struct ApiAndroidModel: Encodable {
     let id: String
     let name: String
 }
 
-private struct ApiAndroidSystemImage: Encodable {
+struct ApiAndroidSystemImage: Encodable {
     let abi: String
     let apiLevel: Int
     let package: String
