@@ -99,6 +99,10 @@ ftester api create-device --project <プロジェクト> --machine <マシン名
 `ios.deviceTypes[i].identifier` / `ios.runtimes[i].identifier`(Android は `android.models[i].id` /
 `android.systemImages[i].package`)。**このカタログ取得は新規作成のときだけ**行う。
 
+Android のシステムイメージは同じ OS バージョンでも Play Store 版(`...;google_apis_playstore;...`)と
+Google APIs 版(`...;google_apis;...`)がある。**指定が無ければ `google_apis` を選ぶ**
+(モニターの「デバイスを追加」の既定と揃える。Play ストアが要るテストのときだけ playstore 版)。
+
 Android で `android.models` が空(`android.errorCode` = `avdmanager-missing`)なら cmdline-tools が
 未導入。`ftester api install-cmdline-tools` で導入できる(約150MB・数分)。**勝手に走らせず**
 AskUserQuestion で導入の可否を聞いてから実行し、終わったら device-catalog を取り直す。

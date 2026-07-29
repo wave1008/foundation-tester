@@ -66,6 +66,10 @@ export const webviewMonitorAStrings = {
     ja: "この OS 種別で選べるモデル/OSバージョンがありません。",
     en: "No models or OS versions are available for this OS type.",
   },
+  "wvMonitor.deviceAdd.noImageForService": {
+    ja: "選択したサービスのシステムイメージがありません(別のサービスを選ぶか、Android Studio の SDK Manager で追加してください)。",
+    en: "No system image for the selected services (pick another one, or add it in Android Studio's SDK Manager).",
+  },
   "wvMonitor.deviceAdd.installing": {
     ja: "導入中... (進捗は OUTPUT の ftester)",
     en: "Installing... (progress in the ftester OUTPUT channel)",

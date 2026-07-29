@@ -507,6 +507,16 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
         <label for="dlg-model">${t("panels.deviceAdd.modelLabel")}</label>
         <select id="dlg-model"></select>
       </div>
+      <!-- Android のみ。値は system-images のタグそのもの(JS が dlg-os の絞り込みに使う)。
+           2択に限っているため他タグ(default = AOSP、*_atd 等)のイメージは選べない。
+           選べるようにするならここに option を足すだけでよい(絞り込みはタグ一致のみ)。 -->
+      <div class="modal-row" id="dlg-service-row" hidden>
+        <label for="dlg-service">${t("panels.deviceAdd.servicesLabel")}</label>
+        <select id="dlg-service">
+          <option value="google_apis_playstore">Google Play Store</option>
+          <option value="google_apis" selected>Google APIs</option>
+        </select>
+      </div>
       <div class="modal-row">
         <label for="dlg-os">${t("panels.deviceAdd.osVersionLabel")}</label>
         <select id="dlg-os"></select>
