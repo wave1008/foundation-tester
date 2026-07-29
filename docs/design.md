@@ -999,7 +999,14 @@ textIs(.id("txt_result"), "dialog=none")
 - **再取得しない**(値の出所は最初の `exist` に固定)。最新の値が要るなら `exist` を書き直す
 - 型は `String?`。`ValueAssertions` の `FTValue`(`Optional: FTValue where Wrapped: FTValue`)に
   乗るので `exist("#total").text.thisContains("1,200")` がそのまま書ける
-- `checked` / `enabled` は**足していない**(語彙を増やさない。`isChecked` / `isEnabled` で検証できる)
+- `checked` / `enabled` の**値**は足していない(語彙を増やさない。検証は `.isChecked` / `.isEnabled` で足りる)
+- **チェーンは網羅する**(2026-07-30): セレクタを取り「その要素」を検証する自由関数は
+  **すべて同名で `FTElement` にも生やす**。一部だけだと「どれがチェーンできるか」に規則が無く、
+  書いてみてコンパイルエラーで気付くことになる。例外は要素を1つに定めない
+  `notExist` / `countIs` / `screenIs` のみ。**検証コマンドを足すときは両方に足す** —
+  取りこぼしは `vscode-ftester/test/ftElementChainSync.test.mjs` が検出し、
+  繋ぎ先の取り違え(`textContains` が `textStartsWith` を呼ぶ等)は
+  `Tests/FTDSLTests/FTElementChainTests.swift` が実行して検出する(**形と挙動で担当が違う**)
 
 ### 否定・状態・個数のアサーション(2026-07-26)
 
