@@ -80,6 +80,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
                 case "POST /session": return handleLaunch(body(request));
                 case "POST /terminate": return handleTerminate();
                 case "POST /locale": return handleLocale(body(request));
+                case "POST /settle": return handleSettle();
                 default:
                     return BridgeHttpServer.Response.error(404,
                             "not found: " + request.method + " " + request.path);
@@ -134,6 +135,19 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         String session = pkg != null ? pkg : sessionBundleID;
         if (session != null) o.put("sessionBundleID", session);
         return BridgeHttpServer.Response.json(200, o.toString());
+    }
+
+    /**
+     * 画面の静穏を待つだけのエンドポイント(状態は変えない)。
+     *
+     * ホストが adb/gRPC でブリッジを経由せずに画面を変える経路(activate の monkey intent、
+     * KEYCODE_HOME / APP_SWITCH / ENTER の keyevent)は、このブリッジの settle() を通らないため
+     * 従来はホスト側で固定 800ms 待っていた。固定待ちはマシン性能・負荷・アニメーション長で
+     * 過不足が出るので、a11y イベント駆動の QuietWaiter をホストから呼べるようにする。
+     */
+    private BridgeHttpServer.Response handleSettle() {
+        settle();
+        return ok();
     }
 
     private BridgeHttpServer.Response handleSnapshot() throws JSONException {

@@ -38,7 +38,7 @@ final class BridgeRouteContractTests: XCTestCase {
     private static let androidRoutes: Set<String> = [
         "GET /screenshot", "GET /snapshot", "GET /status",
         "POST /locale", "POST /press", "POST /pressEnter",
-        "POST /session", "POST /swipe", "POST /tap",
+        "POST /session", "POST /settle", "POST /swipe", "POST /tap",
         "POST /terminate", "POST /type",
     ]
 

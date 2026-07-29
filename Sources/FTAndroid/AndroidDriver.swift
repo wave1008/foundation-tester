@@ -117,6 +117,22 @@ public final class AndroidDriver: AppDriver {
     }
 
     /// 状態を保持したまま前面化する。ブリッジの launch(force-stop+再起動)は使わず adb 直で
+
+    /// ブリッジを経由せず画面を変えた後の整定。**ブリッジの QuietWaiter(a11y イベント駆動)**を
+    /// 呼ぶ(プッシュ型。performance-tuning.md §2 の第1原則)。
+    ///
+    /// 旧実装は一律 800ms の固定 sleep だった。固定値はマシン性能・並列負荷・アニメーション長で
+    /// 過不足が出る(iOS 側で同じ問題を実測した。§3.8)。ブリッジが応答しない・旧版(v19 未満)で
+    /// ルートが無い等で失敗したときだけ、従来と同じ 800ms へ落ちる(整定ゼロで進むと直後の
+    /// snapshot が遷移前の画面を掴むため、黙って素通ししない)。
+    private func settleViaBridge() async {
+        do {
+            try await withBridge { try await $0.settle() }
+        } catch {
+            try? await Task.sleep(nanoseconds: 800_000_000)
+        }
+    }
+
     /// ランチャー intent を送る(起動中ならタスクが前面に来るだけ)。
     public func activate(bundleID: String) async throws {
         let result = try adb(["shell", "monkey", "-p", bundleID,
@@ -126,8 +142,8 @@ public final class AndroidDriver: AppDriver {
                 body: "アプリを前面化できませんでした: \(result.tail)")
         }
         // monkey は intent 送信のみで遷移完了を待たないため、直後の snapshot が遷移前の画面を
-        // 掴まない程度の整定待ち
-        try await Task.sleep(nanoseconds: 800_000_000)
+        // 掴まないよう整定を待つ(settleViaBridge)
+        await settleViaBridge()
         restoreStateIfNeeded()  // 状態保持の前面化なので refs は維持(空の状態で persist して消さない)
         currentPackage = bundleID
         persistState()
@@ -146,7 +162,7 @@ public final class AndroidDriver: AppDriver {
             }
         }
         // keyevent は遷移完了を待たないため、直後の snapshot 用の整定待ち(activate と同様)
-        try await Task.sleep(nanoseconds: 800_000_000)
+        await settleViaBridge()
     }
 
     /// ホーム画面に戻る。gRPC "GoHome" 優先・adb keyevent フォールバック。
@@ -161,7 +177,7 @@ public final class AndroidDriver: AppDriver {
             }
         }
         // keyevent は遷移完了を待たないため、直後の snapshot 用の整定待ち(openAppSwitcher と同様)
-        try await Task.sleep(nanoseconds: 800_000_000)
+        await settleViaBridge()
     }
 
     public func snapshot() async throws -> SnapshotResponse {
@@ -257,7 +273,7 @@ public final class AndroidDriver: AppDriver {
         }
         // keyevent は遷移完了を待たないため、直後の snapshot 用の整定待ち(home() と同様)。
         // ブリッジ経路はサーバ側 settle() 込みで応答するため不要
-        try await Task.sleep(nanoseconds: 800_000_000)
+        await settleViaBridge()
     }
 
     public func swipe(_ direction: FTSwipeDirection) async throws {

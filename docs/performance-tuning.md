@@ -279,6 +279,29 @@ XCUITest ランナーは「画面を変えうる操作(`/session` `/tap` `/type`
 検証: 各段とも全 4 SUT × 両エンジンの E2E で **273 シナリオ全成功・振り直し 0 件**。
 ブリッジ変更なので `bridgeProtocolVersion` を 6 → 7 →(整定対象の変更で)8 へ。
 
+### 3.9 Android の固定 sleep 800ms×4 をブリッジの静穏待ちへ(2026-07-30 実装)
+
+`AndroidDriver` の 4 経路(`activate` の monkey intent / `home` `openAppSwitcher` の keyevent /
+`pressEnter` の adb・gRPC フォールバック)は**ブリッジを経由しない**ため、ブリッジ側の
+`settle()`(QuietWaiter = a11y イベント駆動)が走らない。そこを一律 **800ms の固定 sleep** で
+代替していた — 2026-07-12 に固定 sleep を静穏検知へ置換したときの取り残し。
+
+**ブリッジに `POST /settle` を足して、ホストから QuietWaiter を呼べるようにした**。
+これで 4 経路ともプッシュ型(§2 の第1原則)になる。iOS 側(§3.8)がポーリング型の収束判定
+だったのに対し、Android は元から a11y イベントの静穏検知があるのでそれを使うだけで済む。
+
+- 実測: 静止画面での `/settle` は **約 0.21s**(`QuietWaiter.QUIET_MS` = 200ms が床)。
+  **800ms → 0.21s**。動いている画面では静穏するまで待つので、遅い環境・重い画面でも不足しない
+- **ブリッジが応答しない・旧版(v19 未満)でルートが無い場合だけ従来の 800ms へ落ちる**
+  (整定ゼロで素通しすると直後の snapshot が遷移前の画面を掴むため)
+- `/snapshot` は settle しない(従来どおり)。整定するのは mutating 系ハンドラと今回の `/settle` だけ
+
+APK 変更なので `AndroidRunner/build.sh` の `VERSION_CODE` と
+`AndroidBridge.swift` の `expectedBridgeVersionCode` を 18 → 19、`prebuilt/ftbridge.apk` を再ビルド。
+**ルート追加は `BridgeRouteContractTests` が検出した**(期待値の更新は版数を上げた後に行う)。
+
+検証: 全 4 SUT × 両エンジンの E2E で 273 シナリオ全成功・振り直し 0 件。
+
 ## 4. 計測基盤の使い方(チューニングの必須手順)
 
 **変更前にベースライン、変更後に同条件で再計測、summary.md を比較する。**
@@ -392,6 +415,7 @@ print('呼び出し', sum(f['calls'] for f in fs), '合計秒', sum(f['totalMs']
 | fallback 照会の間引き | StepExecutor.swift(executeAssert) | primary 2回目以降・偶数回ミスのみ | hybrid の SystemUIDriver 照会(springboard 再session+XCUITest snapshot=数百ms)の頻度。実在するシステムUI要素の検知遅れは最大バックオフ1段+1周期 |
 | LPT 投入順 | `ftester.lptScheduling` / `--no-lpt` | ON | 過去実績の長い順に投入する(§3.7)。OFF でシナリオ ID 順。レーン数とシナリオ長のばらつきが無いと効かない |
 | LPT の実績 run 数 | `ftester.lptHistoryRuns` / `--lpt-history-runs` | 5 | 実績として読む run の件数(新しい方から)。増やすと代表値は安定するが毎 run の読み込みファイルが増える。実測で 1 プロジェクト 3,500〜4,500 件の結果 JSON があるため全件走査はしない |
+| 操作直後の整定(Android) | ブリッジ `/settle`(QuietWaiter) | QUIET_MS=200ms | ブリッジを経由しない経路(activate/home/appSwitcher/pressEnter フォールバック)の整定(§3.9)。旧実装は固定 800ms。ブリッジ不達時のみ 800ms へフォールバック |
 | 操作直後の整定(iOS) | `BridgeRouter.captureSettled` の minSettle / budget | 0.12s / 0.35s | ツリーが連続2回一致するまで撮り直す(§3.8)。minSettle は早抜け防止の床、budget は収束しない画面の打ち切り。budget を上げるとスクロール慣性で待ち切ってしまい旧実装より遅くなる(0.8s で実測 0.72〜0.83s) |
 | ビルドスキップ判定 | FTCore/BuildFingerprint.swift | mtime+size+toolchain | §3.2。強制再ビルドは `.ftester/build-fingerprint-*.txt` を削除 |
 | `ftester.streamCodec` | VSCode 設定(package.json) | h264 | 画面配信コーデック。h264=HWエンコード/デコード(低負荷)、mjpeg=互換(WebCodecs 問題時の退避先。デバイス単位の自動フォールバックあり) |
