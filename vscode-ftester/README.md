@@ -185,6 +185,8 @@ code --install-extension vscode-ftester-<version>.vsix
 | `ftester.port` | number | `0` | ブリッジ接続ポート。`0` は未指定(CLI 既定値を使用)。`ftester.profile` が空のときだけ使われる |
 | `ftester.serial` | string | `""` | Android デバイスのシリアル番号。空は未指定。`ftester.profile` が空のときだけ使われる |
 | `ftester.buildBeforeRun` | boolean | `true` | CLI 呼び出し前に Swift ビルドを行うかどうか。`false` なら CLI 呼び出しに `--skip-build` を付与する |
+| `ftester.lptScheduling` | boolean | `true` | 過去の実測が長いシナリオから先に投入する(LPT)。短いものが末尾の隙間を埋めるため、デバイス台数を増やさずに実行時間が縮む。実績が無いシナリオは先頭に回す。オフにするとシナリオ ID 順で投入する(CLI の `--no-lpt` 相当)。モニターの「設定」タブ→スケジューリングからも切り替えられる |
+| `ftester.lptHistoryRuns` | number | `5` | LPT が実績として読み込む run の件数(新しい方から)。実績は platform ごとに集計される。大きくすると代表値の安定性は上がるが、実行のたびに読む結果ファイルが増える。設定タブでは常に実際に使う件数が入力欄に入る(空欄や不正値を入れると既定値に戻る) |
 | `ftester.heal` | boolean | `false` | 実行時に FM によるロケータ自己修復(`--heal`)を有効にする。実行完了後、修復候補があれば確認パネルが開き、承認するとソースに反映される(詳細は下記「自己修復(heal)と修復候補の確定」) |
 | `ftester.monitorInterval` | number | `2` | デバイスモニターの更新間隔(秒)。`0.5` 未満は `0.5` として扱われる |
 | `ftester.monitorMaxWidth` | number | `960` | デバイスモニターのフレーム画像の長辺px(240〜1600)。大きいほど鮮明だが転送量が増える |

@@ -2856,3 +2856,24 @@ test("devicesTabVisible: boolean の visible だけ受け付ける", () => {
   assert.equal(isMonitorFromWebviewMessage({ type: "devicesTabVisible", visible: "true" }), false);
   assert.equal(isMonitorFromWebviewMessage({ type: "devicesTabVisible", visible: 1 }), false);
 });
+
+test("setLptScheduling: boolean の value だけ受け付ける", () => {
+  // 設定タブ「スケジューリング」の切替(対向: src/webview/monitor/settingsTab.js)。
+  // ホストは ftester.lptScheduling を更新し、false のとき api run へ --no-lpt を渡す。
+  assert.equal(isMonitorFromWebviewMessage({ type: "setLptScheduling", value: true }), true);
+  assert.equal(isMonitorFromWebviewMessage({ type: "setLptScheduling", value: false }), true);
+  assert.equal(isMonitorFromWebviewMessage({ type: "setLptScheduling" }), false);
+  assert.equal(isMonitorFromWebviewMessage({ type: "setLptScheduling", value: "true" }), false);
+});
+
+test("setLptHistoryRuns: 1以上の整数か null だけ受け付ける", () => {
+  // 0・負値・小数を通すと実績の走査件数が壊れる(CLI 側でも 1 に丸めるが入口で弾く)
+  assert.equal(isMonitorFromWebviewMessage({ type: "setLptHistoryRuns", value: 20 }), true);
+  assert.equal(isMonitorFromWebviewMessage({ type: "setLptHistoryRuns", value: 1 }), true);
+  assert.equal(isMonitorFromWebviewMessage({ type: "setLptHistoryRuns", value: null }), true);
+  assert.equal(isMonitorFromWebviewMessage({ type: "setLptHistoryRuns", value: 0 }), false);
+  assert.equal(isMonitorFromWebviewMessage({ type: "setLptHistoryRuns", value: -1 }), false);
+  assert.equal(isMonitorFromWebviewMessage({ type: "setLptHistoryRuns", value: 2.5 }), false);
+  assert.equal(isMonitorFromWebviewMessage({ type: "setLptHistoryRuns", value: "20" }), false);
+  assert.equal(isMonitorFromWebviewMessage({ type: "setLptHistoryRuns" }), false);
+});

@@ -173,6 +173,19 @@ export const panelsStrings = {
   "panels.processes.colNote": { ja: "補足", en: "Note" },
 
   "panels.settings.deviceScreenSectionTitle": { ja: "デバイス画面", en: "Device screen" },
+  "panels.settings.schedulingSectionTitle": { ja: "スケジューリング", en: "Scheduling" },
+  "panels.settings.lptSchedulingLabel": {
+    ja: "LPT スケジューリングを有効にする",
+    en: "Enable LPT scheduling",
+  },
+  "panels.settings.lptSchedulingHint": {
+    ja: "過去の実測が長いシナリオから順に投入しトータルの時間を短縮します。実績が無いシナリオは先頭に回します。",
+    en: "Dispatches scenarios longest-first based on measured history to shorten total time. Scenarios with no history go first.",
+  },
+  "panels.settings.lptHistoryRunsLabel": {
+    ja: "直近 N 件までの履歴を使用する",
+    en: "Use history from the latest N runs",
+  },
   "panels.settings.pollingModeLabel": { ja: "ポーリングモードを使用する", en: "Use polling mode" },
   "panels.settings.pollingModeHint": {
     ja: "デバイス画面のストリーミングが不安定なときの回避用です。",

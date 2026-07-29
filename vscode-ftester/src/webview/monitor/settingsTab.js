@@ -11,6 +11,10 @@ import { t } from '../i18n.js';
 import { switchTab } from './tabs.js';
 
 const pollingModeCheckbox = document.getElementById('settings-polling-mode');
+const lptCheckbox = document.getElementById('settings-lpt');
+const lptHistoryInput = document.getElementById('settings-lpt-history');
+// 拡張から届く既定値(空欄・不正値のときに戻す値)。届くまでは null。
+let lptHistoryDefault = null;
 const languageSelect = document.getElementById('settings-language');
 const updateStatus = document.getElementById('settings-update-status');
 const updateSpinner = document.getElementById('settings-update-spinner');
@@ -21,6 +25,26 @@ const updateRunButton = document.getElementById('tabbar-update');
 
 pollingModeCheckbox.addEventListener('change', () => {
   vscode.postMessage({ type: 'setPollingMode', value: pollingModeCheckbox.checked });
+});
+
+// LPT 投入順。拡張側が ftester.lptScheduling 設定を更新し、次の run から効く
+// (実行中の run の順序は変わらない)。
+lptCheckbox.addEventListener('change', () => {
+  vscode.postMessage({ type: 'setLptScheduling', value: lptCheckbox.checked });
+});
+
+// 実績走査の run 数。**入力欄には常に実際に使う件数を入れる**(既定でも空欄にしない)。
+// 空欄や不正値のときは null を送って拡張側の設定を消し、UI にも既定値を入れ直す。
+lptHistoryInput.addEventListener('change', () => {
+  const raw = lptHistoryInput.value.trim();
+  // parseInt は "2.5" を 2 に切り詰めて黙って別の値にしてしまうので Number() で厳密に見る
+  const parsed = Number(raw);
+  const valid = raw !== '' && Number.isInteger(parsed) && parsed >= 1;
+  if (!valid) {
+    // 空欄のままにせず既定値を入れ直す(UI 上は常に実際に使う件数が見えている状態にする)
+    lptHistoryInput.value = lptHistoryDefault === null ? '' : String(lptHistoryDefault);
+  }
+  vscode.postMessage({ type: 'setLptHistoryRuns', value: valid ? parsed : null });
 });
 
 // 表示言語の変更。拡張側が ftester.language 設定を更新し、完全反映には再読み込みが要る
@@ -96,6 +120,14 @@ function applyUpdateStatus(message) {
 export function applySettings(message) {
   if (message.type === 'pollingMode') {
     pollingModeCheckbox.checked = !!message.value;
+  } else if (message.type === 'lptScheduling') {
+    lptCheckbox.checked = !!message.value;
+  } else if (message.type === 'lptHistoryRuns') {
+    // 実際に使う件数を常に値として入れる(既定でも空欄にしない)。placeholder は
+    // 入力を消した一瞬に既定値が見えるようにするための保険。
+    lptHistoryDefault = message.default;
+    lptHistoryInput.placeholder = String(message.default);
+    lptHistoryInput.value = String(message.value);
   } else if (message.type === 'language') {
     languageSelect.value = message.value;
   } else if (message.type === 'updateStatus') {

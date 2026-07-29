@@ -67,6 +67,14 @@ struct ApiRunCommand: AsyncParsableCommand {
     @Flag(name: .customLong("skip-build"), help: "実行前の swift build をスキップする")
     var skipBuild = false
 
+    @Flag(name: .customLong("no-lpt"),
+          help: "LPT 投入順(過去実績の長い順)を無効にし、シナリオ ID 順で投入する")
+    var noLPT = false
+
+    @Option(name: .customLong("lpt-history-runs"),
+            help: "LPT の実績として読む run 数(新しい方から。既定 5)")
+    var lptHistoryRuns: Int?
+
     @Option(help: "対象プラットフォーム: ios / android(既定 ios。--profile とは同時指定不可)")
     var platform: String?
 
@@ -471,7 +479,12 @@ struct ApiRunCommand: AsyncParsableCommand {
         let defaultPlatform = (!resolved.iosDevices.isEmpty
             || workers.contains { $0.platform == "ios" }) ? "ios" : "android"
 
-        let items = selected.map { ScenarioRunItem(info: $0) }
+        // 長いシナリオを先に流すと末尾の遊休が減る(LPTOrdering。--no-lpt で従来の ID 順)
+        let items = LPTOrdering.apply(selected.map { ScenarioRunItem(info: $0) },
+                                      project: project, defaultPlatform: defaultPlatform,
+                                      enabled: !noLPT,
+                                      historyRuns: lptHistoryRuns ?? LPTOrdering.defaultHistoryRuns,
+                                      log: { logStderr($0) })
         // RunEvent の flowURL(scenario:// URL)→ 元の ScenarioInfo の逆引き。
         // RunEvent は scenario ID・title を毎回運んでくれないため、変換時にここから補う
         let itemByURL = Dictionary(uniqueKeysWithValues: items.map { ($0.url, $0) })

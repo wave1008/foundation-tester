@@ -178,6 +178,54 @@ SampleApp 76シナリオを `ios-5-android-5`(10台)で実行したときのレ�
 - 一般則: **台数を増やす前に、プラットフォーム別の稼働率と最終終了時刻を見る**。
   遊休しているレーンがあるなら、増やすのではなく配分を変える
 
+### 3.7 LPT 投入順(2026-07-29 実装)
+
+シナリオの投入順は既定でシナリオ ID 順(= クラス名順)で、実行時間とは無関係だった。並列ワーカーは
+空き次第キューの先頭から取るため、長いシナリオが最後に残ると 1 レーンだけが延々と走り、壁時計が
+その 1 本に引きずられる。過去実績(結果 JSON の `durationMs` 中央値)の降順に投入する
+**LPT(Longest Processing Time first)** を既定にした。
+
+A/B 実測(E2E-Android 31シナリオ・Android 8レーン・交互に3回ずつ):
+
+| | テスト実時間 | レーン稼働 | 成功率 |
+|---|---|---|---|
+| LPT あり(既定) | 30.8 / 30.5 / **30.5s** | 64〜66% | 31/31 ×3 |
+| LPT なし(`--no-lpt`) | 38.2 / 38.3 / **37.5s** | 52% | 31/31 ×3 |
+
+**中央値で −20%**(38.2 → 30.5s)。シナリオ合計(= 総仕事量)は 158.6〜163.2s と両者ほぼ同じで、
+順序だけで縮んでいる。※この A/B は platform 別集計を入れる前・単一 platform(Android のみ)での
+測定。その後の修正で順序判断は良くなる方向にしか変わらないが、**混在プロファイルでの再測はしていない**。
+
+- 実装: 並べ替えの規則は `Sources/FTCore/LPTScheduler.swift`(純関数)、実績の読み込みは
+  `Sources/ftester/LPTOrdering.swift`
+- **実績が無いシナリオは先頭**に置く(未知を末尾に回すと、それが長かったときに狙いがそのまま裏返る)
+- 無効化: `--no-lpt`、または VSCode 設定 `ftester.lptScheduling`(モニターの設定タブ
+  「スケジューリング」。既定 ON)
+- 実績の読む件数: `--lpt-history-runs <N>` / 設定 `ftester.lptHistoryRuns`(既定 5。
+  モニターの設定タブ「スケジューリング」の入力欄には常に実際に使う件数が入る)。
+  **既定値は Swift の `LPTOrdering.defaultHistoryRuns`・`package.json`・`monitorPanel.ts` が
+  webview へ送る default の3箇所にあり、`lptDefaultSync.test.mjs` が一致を検証する**
+  (設定タブは常に実際に使う件数を入力欄に入れ、空欄・不正値のときは既定値へ戻す)
+
+**実装時に踏んだ罠(いずれも実データで初めて出た)**:
+
+1. **実績は platform ごとに集計する**。`RunResultsQuery.scenarioSummary` は `scenarioID` だけで
+   まとめるため、同じシナリオを iOS/Android 両プロファイルで走らせる構成(Projects/E2E 等)では
+   1 つの `results/` に両方の記録が溜まり、iOS が数倍遅いぶん中央値が中間へ均されて順序判断が歪む。
+   LPT は `(scenarioID, platform)` で集計し、各シナリオが走る platform
+   (`info.platform ?? defaultPlatform`)の値で並べる。
+2. **並べ替えは `defaultPlatform` が確定してから行う**。`--profile` の実効 platform は
+   ProfileRunner がワーカー構成から決めるため、items 構築時点では分からない。適用位置は
+   `ProfileRunner.run` / `runParallel` / `ApiRunCommand` の各確定後(逐次実行は並列度が無いので適用しない)。
+3. **実行中の run 自身の空ディレクトリが履歴枠を食う**。`RunRecorder.begin` が結果ディレクトリを
+   先に作るので、新しい順に N 件取ると 1 枠が空で潰れる(`--lpt-history-runs 1` だと実績ゼロで
+   LPT が丸ごと効かなくなる)。`RunResultsStore.scanRecords(maxRuns:)` は
+   **「レコードが取れた run」を N 件数える**(中断された run の空ディレクトリも同じ理由で飛ばす)。
+4. `durationMs=0` の skipped 合成レコード(platform 不一致)は実績から除く。混ぜると
+   「最短のシナリオ」と誤認して末尾へ回る。
+
+効果はレーン数とシナリオ長のばらつきに比例する。1レーンや、全シナリオが同じ長さなら効かない。
+
 ## 4. 計測基盤の使い方(チューニングの必須手順)
 
 **変更前にベースライン、変更後に同条件で再計測、summary.md を比較する。**
@@ -289,6 +337,8 @@ print('呼び出し', sum(f['calls'] for f in fs), '合計秒', sum(f['totalMs']
 | `defaultTimeout` | FTRuntime(runs プロファイルで上書き可) | 5s | 検証系の待ち上限。失敗するテストの所要を支配 |
 | `timeout:`(tap/type/press) | DSL 引数(FTDSL/Commands.swift) | nil | アクションのロケータ解決待ち上限秒。nil=従来の3回リトライ(計700ms)、**0=リトライなし(optional の空振り ~750ms→数十msに短縮する opt-in ノブ)**。遅れて出る要素を拾えなくなるので optional 以外では基本使わない |
 | fallback 照会の間引き | StepExecutor.swift(executeAssert) | primary 2回目以降・偶数回ミスのみ | hybrid の SystemUIDriver 照会(springboard 再session+XCUITest snapshot=数百ms)の頻度。実在するシステムUI要素の検知遅れは最大バックオフ1段+1周期 |
+| LPT 投入順 | `ftester.lptScheduling` / `--no-lpt` | ON | 過去実績の長い順に投入する(§3.7)。OFF でシナリオ ID 順。レーン数とシナリオ長のばらつきが無いと効かない |
+| LPT の実績 run 数 | `ftester.lptHistoryRuns` / `--lpt-history-runs` | 5 | 実績として読む run の件数(新しい方から)。増やすと代表値は安定するが毎 run の読み込みファイルが増える。実測で 1 プロジェクト 3,500〜4,500 件の結果 JSON があるため全件走査はしない |
 | ビルドスキップ判定 | FTCore/BuildFingerprint.swift | mtime+size+toolchain | §3.2。強制再ビルドは `.ftester/build-fingerprint-*.txt` を削除 |
 | `ftester.streamCodec` | VSCode 設定(package.json) | h264 | 画面配信コーデック。h264=HWエンコード/デコード(低負荷)、mjpeg=互換(WebCodecs 問題時の退避先。デバイス単位の自動フォールバックあり) |
 | 描画間引き(66ms) | vscode-ftester/src/webview/monitor/h264Decoder.js | 約15fps | h264 の canvas 描画間隔。デコード自体は全チャンク必須(P フレーム連鎖)なので下げても復号コストは減らない |

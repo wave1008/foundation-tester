@@ -7,6 +7,8 @@
   "ftester.config.port.description": "Bridge connection port. If 0, no port is specified (the default is used; used only when ftester.profile is empty).",
   "ftester.config.serial.description": "Android device serial number. If empty, no serial is specified (used only when ftester.profile is empty).",
   "ftester.config.buildBeforeRun.description": "Whether to run a Swift build before invoking the CLI. If false, --skip-build is passed to the CLI invocation.",
+  "ftester.config.lptScheduling.description": "Dispatches scenarios longest-first based on measured history (LPT). Short scenarios fill the tail gaps, so wall-clock time shrinks without adding devices. Scenarios with no history go first. When off, scenarios are dispatched in scenario ID order.",
+  "ftester.config.lptHistoryRuns.description": "How many recent runs LPT scheduling reads as duration history. Larger values are more representative but read more result files on every run.",
   "ftester.config.heal.description": "Enables FM-based locator self-healing (--heal) during execution. After execution completes, if there are repair candidates a confirmation panel opens, and approving it applies the changes to the source.",
   "ftester.config.monitorInterval.description": "Update interval (seconds) for the device monitor (ftester: Show Device Monitor). Values below 0.5 are treated as 0.5.",
   "ftester.config.monitorMaxWidth.description": "Long-edge pixel size of the device monitor's frame images. Larger values are sharper but increase transfer volume (240-1600).",

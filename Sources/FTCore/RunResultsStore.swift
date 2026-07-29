@@ -142,38 +142,56 @@ public enum RunResultsStore {
         return results.sorted { $0.runID < $1.runID }
     }
 
-    public static func scanRecords(resultsDir: URL, since: Date? = nil, until: Date? = nil) -> [ScenarioRunRecord] {
+    /// - maxRuns: 新しい方から何 run 分だけ読むか(nil = 全件)。結果 JSON は run ×シナリオ数で
+    ///   増え続け、実測でも 1 プロジェクト 3,500〜4,500 件に達する。代表値が要るだけの用途
+    ///   (LPT の投入順)は上限を付けて I/O を抑える。runID は先頭がタイムスタンプなので
+    ///   ディレクトリ名の辞書順降順 = 新しい順になる。
+    public static func scanRecords(resultsDir: URL, since: Date? = nil, until: Date? = nil,
+                                   maxRuns: Int? = nil) -> [ScenarioRunRecord] {
         let decoder = JSONDecoder()
         let formatter = ISO8601DateFormatter()
         var results: [ScenarioRunRecord] = []
         var skipped = 0
+        var targetRunDirs: [URL] = []
         for monthDir in relevantMonthDirs(resultsDir: resultsDir, since: since, until: until) {
-            for runDir in runDirs(in: monthDir) {
-                let scenariosDir = runDir.appendingPathComponent("scenarios")
-                guard let files = try? FileManager.default.contentsOfDirectory(
-                    at: scenariosDir, includingPropertiesForKeys: nil,
-                    options: [.skipsHiddenFiles]) else {
+            targetRunDirs += runDirs(in: monthDir)
+        }
+        if maxRuns != nil {
+            // 新しい順に見て「レコードが取れた run」を数える。実行中の run 自身のディレクトリは
+            // scanRecords の時点でまだ空(RunRecorder.begin が先に作る)なので、単純に先頭 N 件を
+            // 取ると枠を1つ食われる(maxRuns=1 だと実績ゼロになり LPT が丸ごと効かなくなる)。
+            // 中断された run の空ディレクトリも同じ理由で飛ばす。
+            targetRunDirs.sort { $0.lastPathComponent > $1.lastPathComponent }
+        }
+        var runsWithRecords = 0
+        for runDir in targetRunDirs {
+            if let maxRuns, runsWithRecords >= maxRuns { break }
+            let before = results.count
+            let scenariosDir = runDir.appendingPathComponent("scenarios")
+            guard let files = try? FileManager.default.contentsOfDirectory(
+                at: scenariosDir, includingPropertiesForKeys: nil,
+                options: [.skipsHiddenFiles]) else {
+                continue
+            }
+            for file in files where file.pathExtension == "json" {
+                guard let data = try? Data(contentsOf: file),
+                      let record = try? decoder.decode(ScenarioRunRecord.self, from: data) else {
+                    skipped += 1
                     continue
                 }
-                for file in files where file.pathExtension == "json" {
-                    guard let data = try? Data(contentsOf: file),
-                          let record = try? decoder.decode(ScenarioRunRecord.self, from: data) else {
-                        skipped += 1
-                        continue
-                    }
-                    guard record.schemaVersion <= RunRecordSchema.current else {
-                        skipped += 1
-                        continue
-                    }
-                    if let since, let started = formatter.date(from: record.startedAt), started < since {
-                        continue
-                    }
-                    if let until, let started = formatter.date(from: record.startedAt), started > until {
-                        continue
-                    }
-                    results.append(record)
+                guard record.schemaVersion <= RunRecordSchema.current else {
+                    skipped += 1
+                    continue
                 }
+                if let since, let started = formatter.date(from: record.startedAt), started < since {
+                    continue
+                }
+                if let until, let started = formatter.date(from: record.startedAt), started > until {
+                    continue
+                }
+                results.append(record)
             }
+            if results.count > before { runsWithRecords += 1 }
         }
         warnSkipped(skipped, kind: "scenario record")
         return results.sorted { $0.runID == $1.runID ? $0.scenarioID < $1.scenarioID : $0.runID < $1.runID }

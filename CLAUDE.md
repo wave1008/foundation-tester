@@ -92,6 +92,10 @@
   既定スイートでは最後まで表面化しなかった)。詳細は docs/verification.md
 - **flake の修正は1回グリーンで判定しない・単発の観測で性能を断じない**(反復+負荷で叩く。実害と
   手順は docs/verification.md)
+- **LPT の実績 run 数の既定値は3箇所(`LPTOrdering.defaultHistoryRuns` / `package.json` の
+  `ftester.lptHistoryRuns.default` / `monitorPanel.ts` が webview へ送る default)で一致必須**
+  (`lptDefaultSync.test.mjs` が検出。設定タブは default を初期値として入力欄に入れ、空欄・不正値の
+  ときもそこへ戻すので、ズレると表示された件数と実際に走る件数が食い違う)
 - `ftester api` の JSON/NDJSON 契約を後方非互換に変えたら `Sources/FTCore/ProtocolVersion.swift` と `vscode-ftester/src/protocolVersion.ts` の版を +1(両者一致必須・`protocolVersion.test.mjs` が検出。拡張は起動時に照合し不一致を警告)
 - **ブリッジの挙動・エンドポイントを変えたら版を上げる**(上げないと**稼働中の旧ブリッジが再利用され、変更が反映されないまま緑になる**。実害2回)。iOS = `Sources/FTCore/BridgeDTO.swift` の `bridgeProtocolVersion`(in-app dylib と XCUITest ランナーの共通定数)/ Android = `AndroidRunner/build.sh` の `VERSION_CODE` と `AndroidBridge.swift` の `expectedBridgeVersionCode` を**同時に**(`AndroidBridgeVersionSyncTests` が定数間の不一致と、**コミット済み `prebuilt/ftbridge.apk` が
   定数と別版のまま=APK 作り直し忘れ**を検出)。**ルート表を変えたら `BridgeRouteContractTests` が落ちる**ので、

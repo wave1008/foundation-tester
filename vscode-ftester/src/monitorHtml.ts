@@ -523,6 +523,15 @@ function renderSettingsPanel(): string {
         </select>
       </div>
       <div class="settings-group">
+        <div class="settings-section-title">${t("panels.settings.schedulingSectionTitle")}</div>
+        <label class="settings-item"><input type="checkbox" id="settings-lpt"> ${t("panels.settings.lptSchedulingLabel")}</label>
+        <div class="settings-hint">${t("panels.settings.lptSchedulingHint")}</div>
+        <label class="settings-item settings-item-inline" for="settings-lpt-history">
+          ${t("panels.settings.lptHistoryRunsLabel")}
+          <input type="number" id="settings-lpt-history" class="settings-number" min="1" step="1">
+        </label>
+      </div>
+      <div class="settings-group">
         <div class="settings-section-title">${t("panels.settings.deviceScreenSectionTitle")}</div>
         <label class="settings-item"><input type="checkbox" id="settings-polling-mode"> ${t("panels.settings.pollingModeLabel")}</label>
         <div class="settings-hint">${t("panels.settings.pollingModeHint")}</div>

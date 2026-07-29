@@ -540,6 +540,19 @@ class MonitorPanelController implements vscode.Disposable {
         // (livePanel.ts)は独立プロセスのため、こちらは次のデバイス選択/表示状態変化で追いつく。
         this.deviceStream.reapply();
         break;
+      case "setLptHistoryRuns":
+        // null = 入力欄が空・不正値 → 設定を消して既定へ戻す(webview 側は入力欄に既定値を入れ直す)
+        void vscode.workspace
+          .getConfiguration("ftester")
+          .update("lptHistoryRuns", message.value ?? undefined, vscode.ConfigurationTarget.Global);
+        return;
+      case "setLptScheduling":
+        // 次の run から効く(実行中の run の順序は変わらない)。CLI へは runHandler.ts が
+        // false のとき --no-lpt を渡す。
+        void vscode.workspace
+          .getConfiguration("ftester")
+          .update("lptScheduling", message.value, vscode.ConfigurationTarget.Global);
+        return;
       case "setLanguage":
         // ftester.language 設定(Global)を更新。反映(ツリー再翻訳 + 再読み込み案内)は
         // extension.ts の onDidChangeConfiguration ハンドラが担う。
@@ -594,6 +607,17 @@ class MonitorPanelController implements vscode.Disposable {
     // webview再読込がジョブ実行中に起きた場合にボタン無効状態・タイルのバッジを復元するため。
     this.deviceOps.resendQueueStatus();
     this.post({ type: "pollingMode", value: this.pollingMode });
+    this.post({
+      type: "lptScheduling",
+      value: vscode.workspace.getConfiguration("ftester").get<boolean>("lptScheduling", true),
+    });
+    // default は設定タブの初期値・空欄時の戻り先に使う(Swift 側 LPTOrdering.defaultHistoryRuns と
+    // package.json の既定値に一致させること。lptDefaultSync.test.mjs が検証)
+    this.post({
+      type: "lptHistoryRuns",
+      value: vscode.workspace.getConfiguration("ftester").get<number>("lptHistoryRuns", 5),
+      default: 5,
+    });
     this.post({
       type: "language",
       value: vscode.workspace.getConfiguration("ftester").get<"auto" | "ja" | "en">("language", "auto"),
