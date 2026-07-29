@@ -23,6 +23,11 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 - **失敗セマンティクス**: コマンド NG → **シナリオ中断**(以降のステップは scene を跨いですべてスキップ。
   `tearDown` だけは失敗後でも実行される)。ブロック内の**生 Swift コードはスキップされない**
   ため、失敗後に走らせたくない処理は `procedure { }` に包む
+- **1 コマンド(1 ステップ)の壁時計上限は 120 秒**。超えると NG になり、**その処理はキャンセルされる**
+  (途中で止まる。放置すると諦めたはずの操作が後続ステップの最中に効いてしまうため)。
+  効くのは `procedure { }` / `doUntilTrue` / `wait` のような長い処理で、
+  **`doUntilTrue(waitSeconds:)` にこれより長い値を書いても待てない**。
+  長い処理はステップを分けるか、外部プロセスに逃がして完了だけを待つ形にする
 - スクロールの方向は**すべてコンテンツ基準**(`.down` = 下に読み進める = 指は上へ動く)。
   **例外は `swipe` だけ**(生のジェスチャなので指の動き)
 
@@ -185,7 +190,7 @@ let 合計 = try await fetchTotal()        // procedure { } 内で取得した�
 | `ifCanSelect(sel, waitSeconds: 0) { … }.ifElse { … }` | セレクタが解決できたらブロック実行。**既定は即時 1 回判定**(待つなら `waitSeconds:`。小数可)。出るか不定のダイアログの無害化に |
 | `ios { … }` / `android { … }` | 対象 OS のときだけ実行 |
 | `repeatWhileCanSelect(sel, max: 10, waitSeconds: 0) { … }` | セレクタが解決できる限り繰り返す(件数不定の一括操作に)。上限到達は失敗にしないが記録に残る |
-| `doUntilTrue("説明", waitSeconds: 10, intervalSeconds: 0.5, maxLoopCount: 100) { 条件 }` | 条件(`() async throws -> Bool`)が true になるまで繰り返す。**アプリ・外部の状態待ち専用**(要素の出現待ちは各コマンドの `timeout:`)。throw したらリトライせず即 NG |
+| `doUntilTrue("説明", waitSeconds: 10, intervalSeconds: 0.5, maxLoopCount: 100) { 条件 }` | 条件(`() async throws -> Bool`)が true になるまで繰り返す。**アプリ・外部の状態待ち専用**(要素の出現待ちは各コマンドの `timeout:`)。throw したらリトライせず即 NG。`waitSeconds` は下記の 120 秒上限を超えられない |
 
 ## 構造化・前後処理・割り込み
 

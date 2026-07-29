@@ -12,7 +12,10 @@
 import Foundation
 
 public enum FMGate {
-    /// FM を 1 回呼んでよいか。true を返したら**必ず leave() を呼ぶ**(defer 推奨)。
+    /// FM を 1 回呼んでよいか。true を返したら **`defer { leave() }` で必ず返す**(推奨ではなく必須)。
+    /// FTSync のコマンド上限(既定120秒)は超過時に op を cancel するので、**この後の任意の await 点で
+    /// 巻き戻り得る**。素の `leave()` を末尾に置くと巻き戻りで飛ばされ、**ホスト全体で直列化される
+    /// FM ロックを掴んだまま**になる = 他ワーカーの FM が acquire 上限まで待たされる。
     /// false のときは呼び出し側が nil を返してガードを素通りさせる(失敗時と同じ振る舞い)
     public static func enter() async -> Bool {
         if FMBreaker.isOpen {
