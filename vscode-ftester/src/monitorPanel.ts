@@ -459,6 +459,9 @@ class MonitorPanelController implements vscode.Disposable {
       case "deviceCatalogRequest":
         this.deviceOps.runDeviceCatalog();
         break;
+      case "installCmdlineToolsRequest":
+        this.deviceOps.runInstallCmdlineTools();
+        break;
       case "createDevice":
         this.deviceOps.runCreateDevice(message);
         break;

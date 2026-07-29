@@ -11,7 +11,7 @@ macOS や Xcodeのベータ版を前提としているので現時点ではバ�
 |---|---|
 | 共通 | macOS 26+ |
 | iOS | Xcode 26+、iOS シミュレータ runtime、xcodegen |
-| Android（任意） | Android SDK（adb）、エミュレータまたは実機、Android SDK Command-line Tools（AVD を ftester から新規作成する場合） |
+| Android（任意） | Android SDK（adb）、エミュレータまたは実機 |
 | 拡張ビルド | Node.js v24 系 / npm v11 系 |
 
 一部の機能（視覚検証）は macOS 27+ で利用可能です
@@ -26,9 +26,9 @@ Ftesterのインストールをスムーズに行うため、事前に以下の�
 - Android Studio
   - Android Studio本体をインストールします
   - テストで使用したいAVDを作成して起動しておいてください
-  - AVD を ftester 側（モニターの「デバイスを追加」）から作りたい場合は、SDK Manager →
-    SDK Tools → 「Android SDK Command-line Tools (latest)」を追加しておいてください
-    （未導入だと機種の一覧が空になります）
+  - AVD を ftester 側（モニターの「デバイスを追加」）から作るには Android SDK Command-line Tools
+    が要ります。未導入なら同じダイアログの「Command-line Tools を導入」ボタン（または
+    `ftester api install-cmdline-tools`）から入れられるので、事前準備は不要です
 
 ## 3. Ftesterのインストール
 

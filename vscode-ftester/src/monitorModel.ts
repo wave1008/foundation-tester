@@ -264,6 +264,14 @@ export type MonitorToWebviewMessage =
       readonly catalog: DeviceCatalog | null;
       readonly error: string | null;
     }
+  // 「デバイスを追加」の Android モデル一覧が空(avdmanager 不在)のとき出る導入ボタンへの応答。
+  // 進捗は CLI の stderr → OUTPUT へ流れるのでここには載せない。ok:true なら webview は
+  // カタログを再取得する。
+  | {
+      readonly type: "installCmdlineToolsResult";
+      readonly ok: boolean;
+      readonly error: string | null;
+    }
   | {
       readonly type: "createDeviceResult";
       readonly ok: boolean;
@@ -496,6 +504,9 @@ export type MonitorFromWebviewMessage =
   | { readonly type: "machineProfileRename"; readonly machine: string }
   // デバイス追加モーダルを開いた直後に送る、`ftester api device-catalog` の再取得リクエスト。
   | { readonly type: "deviceCatalogRequest" }
+  // 同モーダルで Android のモデル一覧が空(errorCode: "avdmanager-missing")のときだけ出る
+  // 導入ボタン。応答は installCmdlineToolsResult。
+  | { readonly type: "installCmdlineToolsRequest" }
   // デバイス追加モーダルの OK クリック。全フィールドは空文字だと「未選択/未入力」を意味するため、
   // selectProfile と違い非空文字列を必須として検証する。
   | {
@@ -687,6 +698,7 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
       return typeof value.profile === "string" && value.profile !== "";
     case "machineProfileRefresh":
     case "deviceCatalogRequest":
+    case "installCmdlineToolsRequest":
     case "machineProfileAdd":
     case "installedDevicesRequest":
       return true;
@@ -1709,9 +1721,15 @@ export interface AndroidCatalogSystemImage {
   readonly versionName: string;
 }
 
+/** Sources/ftester/ApiDeviceCatalogCommand.swift の ApiAndroidCatalog.errorCode と対。
+ * 文言ではなくこれで分岐する(webview は avdmanager-missing のときだけ導入ボタンを出す)。 */
+export type AndroidCatalogErrorCode = "sdk-missing" | "avdmanager-missing" | "avdmanager-failed";
+
 export interface AndroidCatalog {
   readonly available: boolean;
   readonly error: string | null;
+  /** 旧 CLI は送ってこないため省略可(その場合ボタンは出さず理由文だけ出す)。 */
+  readonly errorCode?: AndroidCatalogErrorCode | null;
   readonly models: readonly AndroidCatalogModel[];
   readonly systemImages: readonly AndroidCatalogSystemImage[];
 }
@@ -1779,6 +1797,8 @@ function isAndroidCatalog(value: unknown): value is AndroidCatalog {
     isRecord(value) &&
     typeof value.available === "boolean" &&
     (value.error === null || typeof value.error === "string") &&
+    // 未知のコードは「知らない理由」として扱えるよう string を通す(分岐側が既知値だけ見る)
+    (value.errorCode === undefined || value.errorCode === null || typeof value.errorCode === "string") &&
     Array.isArray(value.models) &&
     value.models.every(isAndroidCatalogModel) &&
     Array.isArray(value.systemImages) &&

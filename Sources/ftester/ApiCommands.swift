@@ -22,7 +22,8 @@ struct ApiCommand: AsyncParsableCommand {
                       ApiHostMetricsSummaryCommand.self,
                       ApiGenScenarioCommand.self, ApiDeleteScenarioCommand.self,
                       ApiResultsCommand.self, ApiVersionCommand.self,
-                      ApiRepairDisplayCommand.self, ApiEnsureSettingsCommand.self])
+                      ApiRepairDisplayCommand.self, ApiEnsureSettingsCommand.self,
+                      ApiInstallCmdlineToolsCommand.self])
 }
 
 struct ApiListScenarios: AsyncParsableCommand {

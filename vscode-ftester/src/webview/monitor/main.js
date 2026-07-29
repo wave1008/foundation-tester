@@ -52,6 +52,7 @@ import {
 } from './runProfilesTab.js';
 import {
   applyDeviceCatalog,
+  applyInstallCmdlineToolsResult,
   applyCreateDeviceResult,
   applyInstalledDevices,
   applyMachineDevicesSyncResult,
@@ -141,6 +142,9 @@ window.addEventListener('message', (event) => {
       break;
     case 'deviceCatalog':
       applyDeviceCatalog(message);
+      break;
+    case 'installCmdlineToolsResult':
+      applyInstallCmdlineToolsResult(message);
       break;
     case 'createDeviceResult':
       applyCreateDeviceResult(message);

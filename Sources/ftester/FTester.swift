@@ -184,7 +184,8 @@ struct Doctor: AsyncParsableCommand {
                 print("   ✅ avdmanager: \(avdmanager.path)")
             } else {
                 print("   ⚠️ \(AndroidSDKLocator.avdManagerMissingMessage)。"
-                      + "AVD の新規作成ができません(既存 AVD での実行には影響しません)")
+                      + "AVD の新規作成ができません(既存 AVD での実行には影響しません)。"
+                      + AndroidSDKLocator.avdManagerInstallHint)
             }
             for line in connected {
                 guard let serial = line.split(separator: "\t").first.map(String.init) else { continue }

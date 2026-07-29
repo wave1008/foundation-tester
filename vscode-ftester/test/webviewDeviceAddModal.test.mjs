@@ -50,10 +50,10 @@ before(async () => {
 });
 
 /** window.close() を忘れると main.js の setInterval が残ってプロセスが終わらない */
-function createWebview() {
+function createWebview(onPost = () => {}) {
   const dom = new JSDOM(panelHtml, { runScripts: "outside-only", pretendToBeVisual: true, url: "https://localhost/" });
   const { window } = dom;
-  window.acquireVsCodeApi = () => ({ postMessage: () => {}, setState: () => {}, getState: () => undefined });
+  window.acquireVsCodeApi = () => ({ postMessage: onPost, setState: () => {}, getState: () => undefined });
   window.HTMLElement.prototype.scrollIntoView = () => {};
   window.eval(webviewBundle);
   return { window, document: window.document };
@@ -75,6 +75,12 @@ function openDeviceAddModal(window, document) {
   document.getElementById("device-pick-add-new").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
 }
 
+function switchTo(window, document, platform) {
+  const radio = document.getElementById(`dlg-platform-${platform}`);
+  radio.checked = true;
+  radio.dispatchEvent(new window.Event("change", { bubbles: true }));
+}
+
 const AVDMANAGER_MISSING = "avdmanager が見つかりません(...)";
 
 /** Android は systemImages だけ読めてモデル定義が空(= avdmanager 不在)、iOS は正常なカタログ */
@@ -83,6 +89,7 @@ function catalogWithoutAndroidModels() {
     android: {
       available: true,
       error: AVDMANAGER_MISSING,
+      errorCode: "avdmanager-missing",
       models: [],
       systemImages: [{
         abi: "arm64-v8a", apiLevel: 36, package: "system-images;android-36;google_apis_playstore;arm64-v8a",
@@ -146,6 +153,101 @@ test("欠けた側が初期選択でもカタログ受信の時点で理由が�
   assert.equal(document.getElementById("dlg-platform-android").checked, true);
   assert.equal(document.getElementById("dlg-error").textContent, AVDMANAGER_MISSING);
   assert.equal(document.getElementById("dlg-ok").disabled, true);
+});
+
+test("avdmanager 不在のときだけ導入ボタンを出す", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  openDeviceAddModal(window, document);
+  applyCatalog(window, catalogWithoutAndroidModels());
+
+  const row = document.getElementById("dlg-install-row");
+  assert.equal(row.hidden, true, "iOS 側では出さない");
+
+  switchTo(window, document, "android");
+  assert.equal(row.hidden, false);
+
+  // 同じ「モデルが空」でも別原因(avdmanager が動かない)なら導入では直らないので出さない
+  const other = catalogWithoutAndroidModels();
+  other.android.errorCode = "avdmanager-failed";
+  other.android.error = "java が見つかりません";
+  applyCatalog(window, other);
+  assert.equal(row.hidden, true);
+  assert.equal(document.getElementById("dlg-error").textContent, "java が見つかりません");
+});
+
+test("導入ボタンは押下でリクエストを送り、成功でカタログを取り直す", (t) => {
+  const posted = [];
+  const { window, document } = createWebview((message) => posted.push(message));
+  t.after(() => window.close());
+  openDeviceAddModal(window, document);
+  applyCatalog(window, catalogWithoutAndroidModels());
+  switchTo(window, document, "android");
+
+  document.getElementById("dlg-install").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  assert.equal(posted.filter((m) => m.type === "installCmdlineToolsRequest").length, 1);
+  assert.equal(document.getElementById("dlg-platform-ios").disabled, true, "導入中は選択を止める");
+  // CLI が固まってもモーダルが閉じられなくならないよう、キャンセルは生かしておく
+  assert.equal(document.getElementById("dlg-cancel").disabled, false);
+
+  // 二重起動しない(完了までボタンは無効)
+  document.getElementById("dlg-install").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  assert.equal(posted.filter((m) => m.type === "installCmdlineToolsRequest").length, 1);
+
+  const before = posted.filter((m) => m.type === "deviceCatalogRequest").length;
+  post(window, { type: "installCmdlineToolsResult", ok: true, error: null });
+  assert.equal(posted.filter((m) => m.type === "deviceCatalogRequest").length, before + 1,
+    "成功したらカタログを取り直す");
+
+  // 取り直した結果 avdmanager が入っていれば、理由もボタンも消える
+  const fixed = catalogWithoutAndroidModels();
+  fixed.android.error = null;
+  fixed.android.errorCode = null;
+  fixed.android.models = [{ id: "pixel_9", name: "Pixel 9" }];
+  applyCatalog(window, fixed);
+  assert.equal(document.getElementById("dlg-install-row").hidden, true);
+  assert.equal(document.getElementById("dlg-error").textContent, "");
+  assert.equal(document.getElementById("dlg-ok").disabled, false);
+});
+
+test("導入中に閉じても、完了後に開き直せば再び押せる", (t) => {
+  const posted = [];
+  const { window, document } = createWebview((message) => posted.push(message));
+  t.after(() => window.close());
+  openDeviceAddModal(window, document);
+  applyCatalog(window, catalogWithoutAndroidModels());
+  switchTo(window, document, "android");
+  document.getElementById("dlg-install").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+
+  document.getElementById("dlg-cancel").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  assert.equal(document.getElementById("device-add-overlay").classList.contains("visible"), false);
+
+  // 閉じている間に終わった応答でも状態は解除する(でなければボタンは無効のまま固まる)
+  post(window, { type: "installCmdlineToolsResult", ok: false, error: "通信に失敗しました" });
+  openDeviceAddModal(window, document);
+  applyCatalog(window, catalogWithoutAndroidModels());
+  switchTo(window, document, "android");
+  assert.equal(document.getElementById("dlg-install").disabled, false);
+
+  const before = posted.filter((m) => m.type === "installCmdlineToolsRequest").length;
+  document.getElementById("dlg-install").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  assert.equal(posted.filter((m) => m.type === "installCmdlineToolsRequest").length, before + 1);
+});
+
+test("導入に失敗したら理由を出して操作を戻す", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  openDeviceAddModal(window, document);
+  applyCatalog(window, catalogWithoutAndroidModels());
+  switchTo(window, document, "android");
+  document.getElementById("dlg-install").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+
+  post(window, { type: "installCmdlineToolsResult", ok: false, error: "sha1 が一致しません" });
+  assert.equal(document.getElementById("dlg-error").textContent, "sha1 が一致しません");
+  assert.equal(document.getElementById("dlg-cancel").disabled, false, "閉じられる状態に戻る");
+  assert.equal(document.getElementById("dlg-install").disabled, false, "再試行できる");
+  assert.equal(document.getElementById("dlg-install-row").hidden, false);
+  assert.equal(document.getElementById("dlg-ok").disabled, true, "モデルは空のままなので作成はさせない");
 });
 
 test("error が無くても両リストが空なら OK は無効(理由は既定文)", (t) => {

@@ -108,6 +108,7 @@ struct ApiDeviceCatalogCommand: AsyncParsableCommand {
             return ApiAndroidCatalog(
                 available: false,
                 error: "Android SDK が見つかりません(ANDROID_HOME / ANDROID_SDK_ROOT を確認してください)",
+                errorCode: "sdk-missing",
                 models: [], systemImages: [])
         }
 
@@ -117,7 +118,11 @@ struct ApiDeviceCatalogCommand: AsyncParsableCommand {
         guard let avdmanagerURL = AndroidSDKLocator.findAVDManager() else {
             return ApiAndroidCatalog(
                 available: true,
-                error: AndroidSDKLocator.avdManagerMissingMessage,
+                // 拡張はこの文言の隣に導入ボタンを出す。CLI/スキルから叩いたときのために
+                // 解決手段も添える(ボタンを持たない読み手のほうが多い)
+                error: AndroidSDKLocator.avdManagerMissingMessage + "。"
+                    + AndroidSDKLocator.avdManagerInstallHint,
+                errorCode: "avdmanager-missing",
                 models: [], systemImages: systemImages)
         }
 
@@ -126,15 +131,17 @@ struct ApiDeviceCatalogCommand: AsyncParsableCommand {
             result = try Shell.run([avdmanagerURL.path, "list", "device"])
         } catch {
             return ApiAndroidCatalog(available: true, error: error.localizedDescription,
+                                     errorCode: "avdmanager-failed",
                                      models: [], systemImages: systemImages)
         }
         guard result.status == 0 else {
             return ApiAndroidCatalog(available: true, error: result.tail,
+                                     errorCode: "avdmanager-failed",
                                      models: [], systemImages: systemImages)
         }
 
         let models = Self.parseDeviceDefinitions(result.output)
-        return ApiAndroidCatalog(available: true, error: nil, models: models,
+        return ApiAndroidCatalog(available: true, error: nil, errorCode: nil, models: models,
                                  systemImages: systemImages)
     }
 
@@ -308,21 +315,26 @@ private struct ApiIOSRuntime: Encodable {
     let version: String
 }
 
-/// Android カタログ。error は省略可能フィールドとして明示的に null を encode する
+/// Android カタログ。error は省略可能フィールドとして明示的に null を encode する。
+/// errorCode は error の機械可読版(拡張が「導入ボタンを出すか」を判断する。文言では分岐させない)
 private struct ApiAndroidCatalog: Encodable {
     let available: Bool
     let error: String?
+    /// "sdk-missing" / "avdmanager-missing" / "avdmanager-failed" / 正常時 nil。
+    /// vscode-ftester/src/monitorModel.ts の AndroidCatalogErrorCode と対。片方だけ変えない
+    let errorCode: String?
     let models: [ApiAndroidModel]
     let systemImages: [ApiAndroidSystemImage]
 
     private enum CodingKeys: String, CodingKey {
-        case available, error, models, systemImages
+        case available, error, errorCode, models, systemImages
     }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(available, forKey: .available)
         try container.encode(error, forKey: .error)
+        try container.encode(errorCode, forKey: .errorCode)
         try container.encode(models, forKey: .models)
         try container.encode(systemImages, forKey: .systemImages)
     }

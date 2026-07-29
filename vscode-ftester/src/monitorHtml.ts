@@ -516,6 +516,12 @@ export function renderHtml(webview: vscode.Webview, extensionUri: vscode.Uri): s
         <input type="text" id="dlg-name">
       </div>
       <div id="dlg-error" class="modal-error"></div>
+      <!-- avdmanager 不在(errorCode: "avdmanager-missing")のときだけ JS が表示する導入ボタン。
+           数分かかるので押下後はラベルを進行中に変え、詳細な進捗は OUTPUT へ出す。 -->
+      <div class="modal-row" id="dlg-install-row" hidden>
+        <button id="dlg-install" class="secondary" type="button">${t("panels.deviceAdd.installCmdlineTools")}</button>
+        <span class="modal-hint">${t("panels.deviceAdd.installCmdlineToolsHint")}</span>
+      </div>
       <div class="modal-buttons">
         <button id="dlg-cancel" class="secondary" type="button">${t("panels.common.cancel")}</button>
         <button id="dlg-ok" type="button">OK</button>
