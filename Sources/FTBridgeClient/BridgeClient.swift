@@ -194,6 +194,13 @@ public final class BridgeClient: AppDriver {
         return data
     }
 
+    /// 画面の静穏だけ待つ(状態は変えない)。**Android ブリッジ専用**(v19 以降)。
+    /// ホストが adb/gRPC でブリッジを経由せず画面を変えた後、固定 sleep の代わりに使う。
+    /// iOS ブリッジにはこのルートが無いので呼ばないこと(404 になる)。
+    public func settle() async throws {
+        let _: OKResponse = try await post("/settle", body: OKResponse(), timeout: interactionTimeout)
+    }
+
     public func terminate() async throws {
         let _: OKResponse = try await post("/terminate", body: OKResponse(),
                                            timeout: sessionTimeout)
