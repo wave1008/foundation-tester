@@ -62,6 +62,10 @@ export const webviewMonitorAStrings = {
   "wvMonitor.deviceAdd.nameDuplicate": { ja: "「{name}」は既に存在します。", en: "\"{name}\" already exists." },
   "wvMonitor.deviceAdd.catalogLoading": { ja: "カタログを読み込み中...", en: "Loading catalog..." },
   "wvMonitor.deviceAdd.catalogFailed": { ja: "カタログの取得に失敗しました。", en: "Failed to load the catalog." },
+  "wvMonitor.deviceAdd.catalogEmpty": {
+    ja: "この OS 種別で選べるモデル/OSバージョンがありません。",
+    en: "No models or OS versions are available for this OS type.",
+  },
   "wvMonitor.deviceAdd.createFailed": { ja: "デバイスの作成に失敗しました。", en: "Failed to create the device." },
   "wvMonitor.deviceAdd.creating": { ja: "作成中...", en: "Creating..." },
 
