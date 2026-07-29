@@ -21,7 +21,7 @@ public enum BridgeAPI {
     /// 6: in-app が WKWebView の中身を DOM から読んで返すようになった(2026-07-29)。
     /// 旧 dylib が再利用されると中身が空のまま = XCUITest へ委譲され続け、
     /// 速度改善が入っていないのに緑になる
-    public static let bridgeProtocolVersion = 6
+    public static let bridgeProtocolVersion = 7
 }
 
 /// CGRect の代わりに使うプラットフォーム非依存の矩形(エンコード形式を固定する)
