@@ -71,7 +71,7 @@ export function reapplyTilePaneHeight() {
 function persistTilePaneHeight() {
   // getState はパネルを閉じると失われるため、同一セッション内の即時復元用の setState に加えて
   // host(workspaceState)へも保存する(パネル再作成後は "tilePaneHeight" メッセージで復元される。
-  // 契約: monitorModel.ts の setTilePaneHeight / tilePaneHeight)。
+  // 契約: monitorWebviewMessages.ts の setTilePaneHeight / tilePaneHeight)。
   vscode.setState(Object.assign({}, vscode.getState(), { tilePaneHeight: desiredTilePaneHeight }));
   vscode.postMessage({ type: 'setTilePaneHeight', value: desiredTilePaneHeight });
 }

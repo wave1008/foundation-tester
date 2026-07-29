@@ -1,5 +1,5 @@
 // モニターパネル「プロセス」タブ(#panel-processes)。main.js が applyResidentMessage を message
-// ディスパッチャに組み込む。対向: src/monitorModel.ts の refreshResidentProcesses/
+// ディスパッチャに組み込む。対向: src/monitorWebviewMessages.ts の refreshResidentProcesses/
 // killAllResidentProcesses/residentProcesses/residentKillResult、処理は src/monitorPanel.ts。
 
 import { vscode } from './vscodeApi.js';

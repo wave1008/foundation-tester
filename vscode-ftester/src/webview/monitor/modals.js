@@ -10,7 +10,7 @@ import { selectedMachine, findMachine, allDeviceNamesForSelectedMachine, btnDevi
 
 // ---- デバイス追加モーダル ---------------------------------------------------
 
-// 複製元: src/monitorModel.ts の validateNewDeviceName(CSP により import 不可のため複製。
+// 複製元: src/monitorProfileForms.ts の validateNewDeviceName(CSP により import 不可のため複製。
 // ロジック変更時は両方に反映すること)。
 function validateNewDeviceName(name, existing) {
   const trimmed = name.trim();
