@@ -114,8 +114,12 @@ exist("#total")
     .idIs("total")        // 解決した要素の id 検証
 ```
 
-チェーンで使えるもの: `.textIs` `.valueIs` `.textStartsWith` `.textEndsWith` `.textIsNot`
-`.textIsNotEmpty` `.idIs`。
+**セレクタを取って「その要素」を検証するコマンドはすべてチェーンできる**（`textIs` / `textContains` /
+`textMatches` などテキストの全対称、`valueIs` 以下の value の全対称、`isEnabled` / `isDisabled` /
+`isChecked` / `isNotChecked`、それに掴んだ要素の id を見る `.idIs`）。引数は自由関数版と同じです。
+
+チェーンできないのは**要素を1つに定めないコマンド**だけです（`notExist` / `countIs` / `screenIs`）。
+これらは掴んだ要素に対する検証ではないためです。
 
 ### 掴んだ要素の値を読む(`.text` / `.value` / `.id`)
 
