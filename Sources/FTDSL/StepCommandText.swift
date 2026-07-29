@@ -4,6 +4,7 @@
 // 文字列リテラルだけを置換し、表示に現れない引数(timeout: / duration: 等)を完全保存する。
 // 動詞や構成が変わったときだけ呼び出し全体を生成し直す(procedure 等のブロック行の種類変更は不可)。
 
+import FTCore
 import Foundation
 
 public enum StepCommandTextError: Error, LocalizedError, Equatable {
@@ -340,11 +341,8 @@ public enum StepCommandText {
         return (String(inner[..<range.lowerBound]), String(inner[range.upperBound...]))
     }
 
-    /// 2.0 → "2"、0.5 → "0.5"(wait の生成用。StepDescription.formatSeconds と同じ)
+    /// 2.0 → "2"、0.5 → "0.5"(wait の生成用)。実装は FTSeconds.format に委譲(唯一の生成元)
     internal static func formatSeconds(_ seconds: Double) -> String {
-        if seconds == seconds.rounded(), abs(seconds) < 1e15 {
-            return String(Int(seconds))
-        }
-        return String(seconds)
+        FTSeconds.format(seconds)
     }
 }

@@ -210,11 +210,8 @@ public enum StepDescription {
         return tail.isEmpty ? nil : (head, tail)
     }
 
-    /// 1.0 → "1"、0.5 → "0.5"(wait の表示用)
+    /// 1.0 → "1"、0.5 → "0.5"(wait の表示用)。実装は FTSeconds.format に委譲(唯一の生成元)
     private static func formatSeconds(_ seconds: Double) -> String {
-        if seconds == seconds.rounded(), abs(seconds) < 1e15 {
-            return String(Int(seconds))
-        }
-        return String(seconds)
+        FTSeconds.format(seconds)
     }
 }

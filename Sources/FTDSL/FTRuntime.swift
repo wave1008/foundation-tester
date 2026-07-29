@@ -84,30 +84,57 @@ public struct ScenarioRecordData: Sendable {
 public final class FTRuntime {
     public static let shared = FTRuntime()
 
-    var core: FTDriveCore?
-    var dslThread: Thread?
+    /// core / dslThread を守る。**DSL スレッド以外からも読まれる**(誤って別スレッドから呼ばれた
+    /// DSL コマンド)ので、tearDown の書き込みと競らせない — 素の Optional への同時読み書きは
+    /// 実際に落ち得る(ThreadSanitizer で検出済み)。
+    /// **FTDriveCore.stateLock より先に取り、握ったまま core を呼ばない**(ロック順序を一方向に保つ)
+    private let lock = NSLock()
+    private var core: FTDriveCore?
+    private var dslThread: Thread?
 
     /// ランナーがシナリオ実行前に呼ぶ
     public static func bootstrap(core: FTDriveCore, dslThread: Thread) {
+        shared.lock.lock()
+        defer { shared.lock.unlock() }
         shared.core = core
         shared.dslThread = dslThread
     }
 
     public static func tearDown() {
+        shared.lock.lock()
+        defer { shared.lock.unlock() }
         shared.core = nil
         shared.dslThread = nil
     }
 
-    /// コマンド実装から呼ぶ。未初期化・スレッド違反は即座に分かりやすく落とす
+    private var current: (core: FTDriveCore?, thread: Thread?) {
+        lock.lock()
+        defer { lock.unlock() }
+        return (core, dslThread)
+    }
+
+    /// コマンド実装から呼ぶ。core 未初期化は fatalError のままにする(記録先そのものが無く
+    /// レポートを残す手段が無いため、ここだけは違反を握りつぶさず落とす)。
+    /// DSL スレッド外からの呼び出しは fatalError にせず、core に1回だけ失敗ステップを記録させて
+    /// シナリオを中断する(1プロセス=1シナリオなので、ここで落とすとレポートごと消えるため)
     static func requireCore(command: String) -> FTDriveCore {
-        guard let core = shared.core else {
-            fatalError("FTDSL: \(command) はシナリオ実行中にのみ呼び出せます(ftester-scenarios run 経由で実行してください)")
+        let (core, thread) = shared.current   // lock は抜けてから core を触る(ロック順序)
+        guard let core else {
+            fatalError("FTDSL: \(command) はシナリオ実行外で呼び出されました"
+                + "(ftester-scenarios run 経由のシナリオ実行中にのみ呼び出せます)")
         }
-        if let thread = shared.dslThread, Thread.current !== thread {
-            fatalError("FTDSL: \(command) は DSL スレッド外(Task や別スレッド内)から呼び出せません。非同期処理は procedure { } に包んでください")
+        if let thread, Thread.current !== thread {
+            core.recordThreadViolation(command: command)
         }
         return core
     }
+}
+
+/// perform() の内部戻り値。status は既存呼び出し元がそのまま使い、element は exist 系
+/// (FTElement.text/value/id)だけが読む
+struct PerformResult {
+    let status: StepResult.Status
+    let element: ElementInfo?
 }
 
 // MARK: - ドライブコア(コマンドの実体)
@@ -130,15 +157,38 @@ public final class FTDriveCore {
     let emit: (ScenarioEvent) -> Void
     let healCache: HealCache
     /// 検証コマンド(exist/textIs 等)の既定タイムアウト秒(実行プロファイルで変更可)
-    public let defaultTimeout: Int
+    public let defaultTimeout: Double
 
     private(set) var record: ScenarioRecordData
 
-    // 実行状態(DSL スレッドからのみ触る)
+    /// **`record`(シナリオ結果)と `scenarioAborted` / `deviceFrozen` の全アクセスを直列化する**。
+    /// DSL スレッド以外からも触られる: ①誤って別スレッドから呼ばれた DSL コマンド
+    /// (FTRuntime.requireCore のスレッド違反検知)②`executor.onDeviceFrozen` コールバック
+    /// (FTSync の detached Task 上で走る)。`record.scenes` の append と
+    /// `record.scenes[last]` への代入が競ると配列が壊れ、**レポートを残すどころかプロセスが落ちる**。
+    /// **再帰ロック**にしてあるのは、ロック下の処理が `scenarioAborted`(同じロックを取る)を
+    /// 触るため(markDeviceFrozen)。他の実行状態(groupStack/scrollContextStack 等)は
+    /// DSL スレッド専有が前提でロック不要
+    private let stateLock = NSRecursiveLock()
+
+    /// record / 中断フラグを触る処理はすべてこれで包む(上記 stateLock の契約)
+    private func withState<T>(_ body: () -> T) -> T {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return body()
+    }
+
+    // 実行状態(DSL スレッドからのみ触る。scenarioAborted は例外 = stateLock 経由)
     var currentSection: String?
     /// group("名前") { } の入れ子。記録時にステップ説明へ `[外/内]` を前置する
     var groupStack: [String] = []
-    var scenarioAborted = false
+    private var _scenarioAborted = false
+    var scenarioAborted: Bool {
+        get { stateLock.lock(); defer { stateLock.unlock() }; return _scenarioAborted }
+        set { stateLock.lock(); defer { stateLock.unlock() }; _scenarioAborted = newValue }
+    }
+    /// スレッド違反の記録は 1 run につき 1 回だけ(stateLock 経由。recordThreadViolation 参照)
+    private var threadViolationRecorded = false
     var stepCounter = 0
     /// シナリオ中に **1 度でも解決できた** `#id`。否定アサーション(notExist / countIs 0 /
     /// ifCanSelect)だけで使われ、かつ最後まで一度も解決できなかった id は typo の可能性が高い
@@ -202,7 +252,7 @@ public final class FTDriveCore {
                 falsePositiveCheckEnabled: Bool = true, screenIsEnabled: Bool = true,
                 dryRun: Bool = false,
                 healCacheURL: URL? = nil,
-                defaultTimeout: Int? = nil,
+                defaultTimeout: Double? = nil,
                 fallbackDriver: AppDriver? = nil,
                 typeDriver: AppDriver? = nil,
                 preferTypeDriver: Bool = false,
@@ -235,7 +285,9 @@ public final class FTDriveCore {
         self.executor.onDeviceFrozen = { [weak self] in self?.markDeviceFrozen() }
     }
 
-    public var finalRecord: ScenarioRecordData { record }
+    /// ランナーがシナリオ終了後に読む。**違反スレッドがまだ記録している可能性がある**ので
+    /// stateLock 経由で値をコピーして返す(stateLock の契約参照)
+    public var finalRecord: ScenarioRecordData { withState { record } }
 
     // MARK: - scene / CAE ブロック
 
@@ -244,7 +296,7 @@ public final class FTDriveCore {
         // scene 番号は利用者が手で振るのでコピペで重複しやすい。重複するとレポートに
         // 同じ番号が並び、どちらの結果か読み手が判別できなくなる。**警告に留める**
         // (失敗にはしない = 既存シナリオを止めない。番号は実行順にも結果にも影響しない)
-        if record.scenes.contains(where: { $0.number == number }) {
+        if withState({ record.scenes.contains(where: { $0.number == number }) }) {
             emit(.log("⚠️ scene \(number) が重複しています(\"\(title)\")。"
                       + "レポートで同じ番号が並び、どちらの結果か判別できません"))
             addSuggestion(FixSuggestion(
@@ -252,7 +304,7 @@ public final class FTDriveCore {
                 message: "scene \(number) が重複しています(\"\(title)\")。番号を振り直してください"),
                 emitEvent: false, file: "", line: 0)
         }
-        record.scenes.append(SceneRecordData(number: number, title: title))
+        withState { record.scenes.append(SceneRecordData(number: number, title: title)) }
 
         var event = ScenarioEvent(kind: "sceneStarted")
         event.scenario = scenarioID
@@ -268,7 +320,7 @@ public final class FTDriveCore {
         }
 
         currentSection = nil
-        let passed = record.scenes.last?.passed ?? false
+        let passed = withState { record.scenes.last?.passed ?? false }
         var finished = ScenarioEvent(kind: "sceneFinished")
         finished.scenario = scenarioID
         finished.scene = number
@@ -315,18 +367,20 @@ public final class FTDriveCore {
 
     // MARK: - ステップ実行
 
-    /// コマンドの共通実行経路。selectorText はヒールキャッシュのキーと修正提案の表示に使う
+    /// コマンドの共通実行経路。selectorText はヒールキャッシュのキーと修正提案の表示に使う。
+    /// 戻り値は status に加え**照合済み要素**も運ぶ(FTElement.text/value/id の元。
+    /// exist 系の呼び出し元だけが element を読み、他は捨てる)
     @discardableResult
     /// validateSelector: false = 型付きセレクタ(Sel)由来なので構文検証を飛ばす(FTSelector.structured)
     func perform(step: FlowStep, description: String, selectorText: String? = nil,
                  validateSelector: Bool = true,
-                 file: StaticString, line: UInt) -> StepResult.Status {
+                 file: StaticString, line: UInt) -> PerformResult {
         let filePath = relativePath("\(file)")
         debugCheckpoint(description: description, file: filePath, line: Int(line))
         if scenarioAborted {
             let status = StepResult.Status.skipped(skipReason)
             recordStep(description: description, status: status, file: filePath, line: Int(line))
-            return status
+            return PerformResult(status: status, element: nil)
         }
         // 構文検証はデバイスに触る前(dry-run でも)に行う。パースは失敗しない契約のため、
         // `:rigth(x)` のような誤りは「そんなラベルは無い」に化け、notExist/countIs(x,0) では
@@ -335,7 +389,7 @@ public final class FTDriveCore {
             let status = StepResult.Status.failed("セレクタの構文が不正です: \(error)")
             recordStep(description: description, status: status, file: filePath, line: Int(line))
             handleFailure(stepDescription: description, reason: "セレクタの構文が不正です: \(error)")
-            return status
+            return PerformResult(status: status, element: nil)
         }
         if dryRun {
             // 実機に触れず計測はほぼ 0ms だが、NDJSON 配線を検証できるよう durationMs は必ず付与する
@@ -343,7 +397,7 @@ public final class FTDriveCore {
             let start = clock.now
             recordStep(description: description, status: .passed, file: filePath, line: Int(line),
                        durationMs: continuousClockMilliseconds(clock.now - start))
-            return .passed
+            return PerformResult(status: .passed, element: nil)
         }
 
         // 解決順: プライマリ → フォールバック → キャッシュ → FM ヒール(StepExecutor 内)
@@ -421,7 +475,7 @@ public final class FTDriveCore {
         if case .failed(let reason) = status {
             handleFailure(stepDescription: description, reason: reason)
         }
-        return status
+        return PerformResult(status: status, element: outcome?.resolvedElement)
     }
 
     /// `#id` が「解決できた」のか「否定側でしか使われていない」のかを覚える。
@@ -515,11 +569,11 @@ public final class FTDriveCore {
                                description: String? = nil,
                                file: String, line: Int,
                                oldSelector: String? = nil, newSelector: String? = nil) {
-        record.fixSuggestions.append(suggestion)
+        withState { record.fixSuggestions.append(suggestion) }
         guard emitEvent else { return }
         var event = ScenarioEvent(kind: "fixSuggestion")
         event.scenario = scenarioID
-        event.scene = record.scenes.last?.number
+        event.scene = withState { record.scenes.last?.number }
         // 対象コマンドの description(例: tap "旧セレクタ")。修復候補の説明生成に使う
         event.description = description
         event.detail = suggestion.message
@@ -582,7 +636,7 @@ public final class FTDriveCore {
         let result = debug.checkpoint(file: file, line: line) {
             var event = ScenarioEvent(kind: "paused")
             event.scenario = scenarioID
-            event.scene = record.scenes.last?.number
+            event.scene = withState { record.scenes.last?.number }
             event.section = currentSection
             event.index = stepCounter + 1
             event.description = description
@@ -602,25 +656,50 @@ public final class FTDriveCore {
         stoppedByUser ? "ユーザー操作で中断" : "失敗のため未実行"
     }
 
-    /// 分岐評価(記録のみ、実行はしない): セレクタが現在画面で解決できるか
-    func canSelect(_ selector: FTSelector, waitSeconds: Int) -> Bool {
+    /// 分岐評価(記録のみ、実行はしない): セレクタが現在画面で解決できるか。
+    /// waitSeconds: 0 = 即時1回判定(repeat-while が最低1回は回る契約は変えない)
+    func canSelect(_ selector: FTSelector, waitSeconds: Double) -> Bool {
         if dryRun { return true }  // dry-run では分岐内側も記録するため常に成立扱い
         if scenarioAborted { return false }
         let step = FlowStep(locator: selector.primary,
                             fallbacks: selector.fallbacks.isEmpty ? nil : selector.fallbacks)
         let driver = self.driver
-        let deadline = Date().addingTimeInterval(TimeInterval(waitSeconds))
+        let deadline = Date().addingTimeInterval(waitSeconds)
         repeat {
             let snapshot = FTSync.run { try? await driver.snapshot() } ?? nil
             if let snapshot,
                StepExecutor.resolve(step: step, in: snapshot, strictForAssert: true) != nil {
                 return true
             }
-            if Date() < deadline {
-                Thread.sleep(forTimeInterval: 0.5)
+            // サブ秒の待ちが 0.5 秒刻みに丸められないよう、残り時間と 0.25 秒の小さい方で待つ
+            let remaining = deadline.timeIntervalSinceNow
+            if remaining > 0 {
+                Thread.sleep(forTimeInterval: min(remaining, 0.25))
             }
         } while Date() < deadline
         return false
+    }
+
+    // MARK: - スレッド安全性(DSL スレッド外からの誤呼び出し対策)
+
+    /// DSL スレッド外(Task/別スレッド)から呼ばれたことを FTRuntime.requireCore が検知したときに呼ぶ。
+    /// 1 run につき1回だけ失敗ステップを記録してシナリオを中断する(2回目以降は静かに
+    /// 中断状態を維持するだけ = ループ内の誤用で記録が溢れない)。
+    /// handleFailure は呼ばない(スクリーンショット・FM トリアージを別スレッドから走らせないため)。
+    /// stateLock は再入しない(recordStep が別途取得するので、ここでは _scenarioAborted を直接触る)
+    func recordThreadViolation(command: String) {
+        let firstViolation: Bool = {
+            stateLock.lock()
+            defer { stateLock.unlock() }
+            if threadViolationRecorded { return false }
+            threadViolationRecorded = true
+            _scenarioAborted = true
+            return true
+        }()
+        guard firstViolation else { return }
+        let reason = "DSL コマンド \"\(command)\" が DSL スレッド外(Task や別スレッド内)から"
+            + "呼び出されました。非同期処理は procedure { } に包んでください"
+        recordStep(description: "スレッド違反: \(command)", status: .failed(reason), file: "", line: 0)
     }
 
     // MARK: - 記録
@@ -628,10 +707,15 @@ public final class FTDriveCore {
     /// durationMs/snapshotMs/actionMs/waitMs: ステップの時間内訳(単位ミリ秒)。
     /// StepExecutor 経由のステップ(tap/exist 等)は 4 つとも渡され、performCustom 経由
     /// (launchApp/wait/procedure 等)は durationMs のみ、それ以外(skip・dry-run 等)は
-    /// 全て nil のまま(=計測なし)になる
+    /// 全て nil のまま(=計測なし)になる。
+    /// **DSL スレッドと違反スレッドが同時に呼び得るため stateLock で直列化する**(stepCounter/
+    /// record 追記/emit を含む一体の操作。emit は呼び出し側が print 等で組んでおり FTDriveCore へ
+    /// 再入しないことを確認済み = デッドロックしない)
     func recordStep(description: String, status: StepResult.Status, file: String, line: Int,
                     durationMs: Int? = nil, snapshotMs: Int? = nil,
                     actionMs: Int? = nil, waitMs: Int? = nil, at: String? = nil) {
+        stateLock.lock()
+        defer { stateLock.unlock() }
         stepCounter += 1
         // group の名前はここでだけ前置する(修正提案の description は素のまま = ソース行との照合に使うため)。
         // 前置形式は StepCommandText.parse が剥がして表からの編集を維持する(要同期)
@@ -670,10 +754,15 @@ public final class FTDriveCore {
         record.scenes[record.scenes.count - 1].steps.append(step)
     }
 
+    /// executor のコールバック(FTSync の detached Task 上)からも呼ばれるので状態は withState 経由
     private func markDeviceFrozen() {
-        guard !deviceFrozen else { return }
-        deviceFrozen = true
-        scenarioAborted = true
+        let first = withState { () -> Bool in
+            guard !deviceFrozen else { return false }
+            deviceFrozen = true
+            scenarioAborted = true
+            return true
+        }
+        guard first else { return }
         var event = ScenarioEvent(kind: "deviceFrozen")
         event.scenario = scenarioID
         emit(event)
@@ -719,18 +808,26 @@ public final class FTDriveCore {
                                                 screenshotPNG: screenshot)
             return (screenshot, triage, evidenceBlank, elementsText)
         }
-        if let (screenshot, triage, evidenceBlank, elementsText) = context, !record.scenes.isEmpty {
-            record.scenes[record.scenes.count - 1].failureScreenshot = screenshot
-            record.scenes[record.scenes.count - 1].triage = triage
-            record.scenes[record.scenes.count - 1].evidenceBlank = evidenceBlank
-            record.scenes[record.scenes.count - 1].failureElements = elementsText
+        if let (screenshot, triage, evidenceBlank, elementsText) = context {
+            withState {
+                guard !record.scenes.isEmpty else { return }
+                record.scenes[record.scenes.count - 1].failureScreenshot = screenshot
+                record.scenes[record.scenes.count - 1].triage = triage
+                record.scenes[record.scenes.count - 1].evidenceBlank = evidenceBlank
+                record.scenes[record.scenes.count - 1].failureElements = elementsText
+            }
             if evidenceBlank { markDeviceFrozen() }
         }
         // アプリが別プロセスの window に覆われていたなら、それが第一の容疑
         // (要素一覧・スクショだけでは「なぜ操作が効かなかったのか」に辿り着けない)
         let overlays = foregroundOverlays?() ?? []
-        if !overlays.isEmpty, !record.scenes.isEmpty {
+        guard !overlays.isEmpty else { return }
+        let recorded = withState { () -> Bool in
+            guard !record.scenes.isEmpty else { return false }
             record.scenes[record.scenes.count - 1].failureForegroundWindows = overlays
+            return true
+        }
+        if recorded {
             emit(.log("⚠️ アプリより手前に別の window があります: \(overlays.joined(separator: ", "))"
                       + "(操作がそこに吸われた可能性があります)"))
         }

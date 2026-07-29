@@ -133,3 +133,168 @@ final class SelTests: XCTestCase {
         XCTAssertNil(sel.ftSelector.primary.not)
     }
 }
+
+/// tapWithScrollDown/Up/Right/Left・tapWithoutScroll・existWithScrollDown/Up・existWithoutScroll の
+/// Sel オーバーロード。実装は String 版と同じ経路(tap(_:Sel,scroll:)/exist(_:Sel,scroll:))へ
+/// 委譲するだけなので、ここでは「委譲そのものが正しいか」(スクロール方向の転記ミス等)を、
+/// 実際にドライバまで実行して確認する(SelTests 本体は FlowLocator 比較だけで済むが、
+/// これらはコマンド分岐そのものが検証対象なので CommandDispatchTests と同じ実行スタイルを取る)。
+final class SelScrollVariantDispatchTests: XCTestCase {
+
+    /// 初期スナップショットには対象が無く、`revealDirection` と同じ向きにスワイプされて初めて現れる。
+    /// 違う方向にスワイプされ続けても maxSwipes まで現れないので、方向の転記ミスは即座に見つかる
+    /// (対象が見つからずタイムアウト/未タップのまま終わる)
+    private final class ScrollRevealDriver: AppDriver {
+        private(set) var tapped: [Int] = []
+        private(set) var swipes: [FTSwipeDirection] = []
+        private var revealed = false
+        private let revealDirection: FTSwipeDirection
+
+        init(revealDirection: FTSwipeDirection) { self.revealDirection = revealDirection }
+
+        func status() async throws -> StatusResponse {
+            StatusResponse(ready: true, device: "stub", osVersion: "-", sessionBundleID: nil)
+        }
+        func install(packagePath: String) async throws {}
+        func launch(bundleID: String) async throws {}
+        func snapshot() async throws -> SnapshotResponse {
+            let elements = revealed
+                ? [ElementInfo(ref: 1, type: "button", identifier: "target", label: "対象",
+                               value: nil, placeholder: nil, enabled: true,
+                               frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: 0)]
+                : []
+            return SnapshotResponse(sessionBundleID: nil,
+                                    screen: FTRect(x: 0, y: 0, width: 400, height: 800),
+                                    elements: elements, truncatedCount: 0)
+        }
+        func tap(ref: Int) async throws { tapped.append(ref) }
+        func tap(x: Double, y: Double) async throws {}
+        func type(ref: Int?, text: String) async throws {}
+        func swipe(_ direction: FTSwipeDirection) async throws {
+            swipes.append(direction)
+            if direction == revealDirection { revealed = true }
+        }
+        func press(ref: Int, duration: Double) async throws {}
+        func screenshot() async throws -> Data { Data() }
+        func terminate() async throws {}
+    }
+
+    private func makeCore(driver: AppDriver) -> FTDriveCore {
+        FTDriveCore(driver: driver, platform: "ios", app: "com.example.app",
+                    scenarioID: "T.S0030", scenarioTitle: "t",
+                    delegate: nil, healingEnabled: false, dryRun: false,
+                    healCacheURL: URL(fileURLWithPath: NSTemporaryDirectory())
+                        .appendingPathComponent("ft-sel-scroll-test.json"),
+                    emit: { _ in })
+    }
+
+    private func run(driver: AppDriver, _ body: () -> Void) {
+        let core = makeCore(driver: driver)
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+        scenario { scene(1, "s") { action { body() } } }
+    }
+
+    /// tapWithScrollDown はコンテンツ `.down` = 指を上へ動かす(FTScrollDirection.swipe 参照)
+    func testTapWithScrollDownSelUsesSameDirectionAsStringVersion() {
+        let byString = ScrollRevealDriver(revealDirection: .up)
+        run(driver: byString) { tapWithScrollDown("#target") }
+        XCTAssertEqual(byString.tapped, [1], "String 版が正しい方向で見つけられていない")
+
+        let bySel = ScrollRevealDriver(revealDirection: .up)
+        run(driver: bySel) { tapWithScrollDown(.id("target")) }
+        XCTAssertEqual(bySel.tapped, [1], "Sel 版がString版と異なる方向でスクロールしている")
+    }
+
+    func testTapWithScrollUpSelUsesSameDirectionAsStringVersion() {
+        let byString = ScrollRevealDriver(revealDirection: .down)
+        run(driver: byString) { tapWithScrollUp("#target") }
+        XCTAssertEqual(byString.tapped, [1])
+
+        let bySel = ScrollRevealDriver(revealDirection: .down)
+        run(driver: bySel) { tapWithScrollUp(.id("target")) }
+        XCTAssertEqual(bySel.tapped, [1], "Sel 版がString版と異なる方向でスクロールしている")
+    }
+
+    func testTapWithScrollRightSelUsesSameDirectionAsStringVersion() {
+        let byString = ScrollRevealDriver(revealDirection: .left)
+        run(driver: byString) { tapWithScrollRight("#target") }
+        XCTAssertEqual(byString.tapped, [1])
+
+        let bySel = ScrollRevealDriver(revealDirection: .left)
+        run(driver: bySel) { tapWithScrollRight(.id("target")) }
+        XCTAssertEqual(bySel.tapped, [1], "Sel 版がString版と異なる方向でスクロールしている")
+    }
+
+    func testTapWithScrollLeftSelUsesSameDirectionAsStringVersion() {
+        let byString = ScrollRevealDriver(revealDirection: .right)
+        run(driver: byString) { tapWithScrollLeft("#target") }
+        XCTAssertEqual(byString.tapped, [1])
+
+        let bySel = ScrollRevealDriver(revealDirection: .right)
+        run(driver: bySel) { tapWithScrollLeft(.id("target")) }
+        XCTAssertEqual(bySel.tapped, [1], "Sel 版がString版と異なる方向でスクロールしている")
+    }
+
+    /// withScroll* の外側文脈があっても tapWithoutScroll は一切スワイプしない
+    /// (String 版・Sel 版とも、対象が現在画面に無ければタップされないまま終わる)
+    func testTapWithoutScrollSelDoesNotScrollEvenInsideOuterScrollContext() {
+        let stringDriver = ScrollRevealDriver(revealDirection: .up)
+        run(driver: stringDriver) {
+            withScrollDown { tapWithoutScroll("#target", timeout: 0) }
+        }
+        XCTAssertTrue(stringDriver.swipes.isEmpty, "String 版がスクロールしてしまった")
+        XCTAssertTrue(stringDriver.tapped.isEmpty)
+
+        let selDriver = ScrollRevealDriver(revealDirection: .up)
+        run(driver: selDriver) {
+            withScrollDown { tapWithoutScroll(.id("target"), timeout: 0) }
+        }
+        XCTAssertTrue(selDriver.swipes.isEmpty, "Sel 版がスクロールしてしまった")
+        XCTAssertTrue(selDriver.tapped.isEmpty)
+    }
+
+    func testExistWithScrollDownSelUsesSameDirectionAsStringVersion() {
+        let byString = ScrollRevealDriver(revealDirection: .up)
+        var stringElement: FTElement!
+        run(driver: byString) { stringElement = existWithScrollDown("#target") }
+        XCTAssertEqual(stringElement.id, "target")
+
+        let bySel = ScrollRevealDriver(revealDirection: .up)
+        var selElement: FTElement!
+        run(driver: bySel) { selElement = existWithScrollDown(.id("target")) }
+        XCTAssertEqual(selElement.id, "target", "Sel 版がString版と異なる方向でスクロールしている")
+    }
+
+    func testExistWithScrollUpSelUsesSameDirectionAsStringVersion() {
+        let byString = ScrollRevealDriver(revealDirection: .down)
+        var stringElement: FTElement!
+        run(driver: byString) { stringElement = existWithScrollUp("#target") }
+        XCTAssertEqual(stringElement.id, "target")
+
+        let bySel = ScrollRevealDriver(revealDirection: .down)
+        var selElement: FTElement!
+        run(driver: bySel) { selElement = existWithScrollUp(.id("target")) }
+        XCTAssertEqual(selElement.id, "target", "Sel 版がString版と異なる方向でスクロールしている")
+    }
+
+    /// withScroll* の外側文脈があっても existWithoutScroll は一切スワイプせず、
+    /// 現在画面に無ければ「空の FTElement」(id も nil)を返す
+    func testExistWithoutScrollSelDoesNotScrollEvenInsideOuterScrollContext() {
+        let stringDriver = ScrollRevealDriver(revealDirection: .up)
+        var stringElement: FTElement!
+        run(driver: stringDriver) {
+            withScrollDown { stringElement = existWithoutScroll("#target", timeout: 0) }
+        }
+        XCTAssertTrue(stringDriver.swipes.isEmpty, "String 版がスクロールしてしまった")
+        XCTAssertNil(stringElement.id)
+
+        let selDriver = ScrollRevealDriver(revealDirection: .up)
+        var selElement: FTElement!
+        run(driver: selDriver) {
+            withScrollDown { selElement = existWithoutScroll(.id("target"), timeout: 0) }
+        }
+        XCTAssertTrue(selDriver.swipes.isEmpty, "Sel 版がスクロールしてしまった")
+        XCTAssertNil(selElement.id, "Sel 版のフォールバック FTElement が空でない")
+    }
+}

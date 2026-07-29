@@ -5,15 +5,16 @@
 (`#id` `ラベル` `*部分一致*` `.型[n]` `&&` `||` `(a|b)` `!` `>>` `:rightSwitch` など)は
 README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirates(Classic) に準拠している。
 
-引数の `sel` はセレクタ式(文字列)。ほぼ全コマンドに**型付きセレクタ(`Sel`)版**も併設されている
-(`tap(.id("login_btn"))` 等。意味は文字列版と同一)。
+引数の `sel` はセレクタ式(文字列)。**セレクタを取る全コマンドに型付きセレクタ(`Sel`)版が併設**
+されている(`tap(.id("login_btn"))` 等。意味・記録・ヒールは文字列版と同一で、`tapWithScrollDown`
+`existWithoutScroll` のような別名族も両方で書ける)。
 
 ## 共通の引数と挙動
 
 | 引数 | 意味 |
 |---|---|
 | `optional: true` | 要素が見つからなくても失敗にせずスキップする(既定 false。tap / type / press / tapWithoutScroll のみ) |
-| `timeout: 秒` | ロケータ解決の再試行上限。**操作系の省略時は約 0.7 秒**、**検証系の省略時は 5 秒**(実行プロファイルの `defaultTimeout` で変更可)。`0` = 初回スナップショットのみ(出るか不定な optional の空振り短縮に) |
+| `timeout: 秒` | ロケータ解決の再試行上限。**小数可**(`timeout: 1.2`)。**操作系の省略時は約 0.7 秒**、**検証系の省略時は 5 秒**(実行プロファイルの `defaultTimeout` で変更可。これも小数可)。`0` = 初回スナップショットのみ(出るか不定な optional の空振り短縮に) |
 | `requireVisible: false` | FM による可視性確認(覆われ・見切れの検出)を省く。既定 true だが、FM 照合が実際に走るのは実行プロファイルで `falsePositiveCheck: true`(既定 false)にした run のみ(FM 未配線時・`fm:false` 時も自動で素通り) |
 | `scroll: .down` / `maxSwipes:` | 実行前に**その方向へスクロールしながら要素を探す**(後述「スクロール」)。省略時は現在画面のみ |
 
@@ -111,6 +112,37 @@ exist("#total")
 チェーンで使えるもの: `.textIs` `.valueIs` `.textStartsWith` `.textEndsWith` `.textIsNot`
 `.textIsNotEmpty` `.idIs`。
 
+### 掴んだ要素の値を読む(`.text` / `.value` / `.id`)
+
+`exist` の戻り値からは**値そのもの**も取り出せる。期待値をシナリオに書き切れないとき
+(注文番号を控えて後の画面で照合する・画面に出ている合計を計算に使う)に使う。
+
+```swift
+var 注文番号: String?
+
+scene(2, "注文を確定して注文番号を控える") {
+    action { tap("#btn_order") }
+    .expectation {
+        textStartsWith("#txt_order_id", "注文番号:")   // ← 先に**値を確定させてから**読む
+        注文番号 = exist("#txt_order_id").text
+    }
+}
+scene(3, "確認画面にも同じ注文番号が出る") {
+    action { tap("#tab_orders") }
+    .expectation { textIs("#txt_confirm_order_id", 注文番号 ?? "") }
+}
+
+exist("#txt_total").text.thisContains("1,200")   // thisIs 系へそのまま繋がる
+```
+
+- 値は **`exist` が照合した時点のもの**で、`.text` を読んでも**画面を取り直さない**
+  (追加のデバイス往復もステップ記録も発生しない)。最新の値が要るなら `exist` を書き直す
+- **更新途中の画面をいきなり読まない**。要素自体は先に存在するので `exist` は即座に成功し、
+  **古い値を掴む**。上の例のように `textIs` / `textStartsWith` 等で値を確定させてから読む
+- **要素を掴めなかったとき・失敗後にスキップされたとき・dry-run では nil**
+  (「掴めなかったのに値が読める」状態を作らないため)
+- `.text` は要素の表示テキスト(ラベル)、`.value` は値、`.id` は identifier
+
 ## 画面に依らない値の検証(thisIs 系)
 
 API 応答・計算結果など**デバイスに触れない値**の検証。文字列・数値・Bool・Optional に直接生え、
@@ -150,7 +182,7 @@ let 合計 = try await fetchTotal()        // procedure { } 内で取得した�
 | コマンド | 説明 |
 |---|---|
 | `wait(秒)` | 固定待ち。**要素の出現待ちには使わない**(暗黙待ちで足りる)。出番はセレクタで待てない整定(アニメ中の座標ずれ等)だけ |
-| `ifCanSelect(sel, waitSeconds: 0) { … }.ifElse { … }` | セレクタが解決できたらブロック実行。**既定は即時 1 回判定**(待つなら `waitSeconds:`)。出るか不定のダイアログの無害化に |
+| `ifCanSelect(sel, waitSeconds: 0) { … }.ifElse { … }` | セレクタが解決できたらブロック実行。**既定は即時 1 回判定**(待つなら `waitSeconds:`。小数可)。出るか不定のダイアログの無害化に |
 | `ios { … }` / `android { … }` | 対象 OS のときだけ実行 |
 | `repeatWhileCanSelect(sel, max: 10, waitSeconds: 0) { … }` | セレクタが解決できる限り繰り返す(件数不定の一括操作に)。上限到達は失敗にしないが記録に残る |
 | `doUntilTrue("説明", waitSeconds: 10, intervalSeconds: 0.5, maxLoopCount: 100) { 条件 }` | 条件(`() async throws -> Bool`)が true になるまで繰り返す。**アプリ・外部の状態待ち専用**(要素の出現待ちは各コマンドの `timeout:`)。throw したらリトライせず即 NG |

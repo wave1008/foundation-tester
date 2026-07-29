@@ -465,7 +465,7 @@ function validateRunProfileFields() {
     return t('wvMonitor2.runProfile.validation.deviceRequired');
   }
   const timeout = runProfileDefaultTimeout.value.trim();
-  if (timeout !== '' && (!/^\d+$/.test(timeout) || Number(timeout) <= 0)) {
+  if (timeout !== '' && (!/^\d+(\.\d+)?$/.test(timeout) || Number(timeout) <= 0)) {
     return t('wvMonitor2.runProfile.validation.timeoutInvalid');
   }
   const threshold = runProfileWipeThreshold.value.trim();

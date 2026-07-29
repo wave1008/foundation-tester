@@ -229,7 +229,7 @@ public enum ScenarioRunner {
     /// 戻り値: 実行結果。進捗は onEvent で通知される
     public static func runOne(project: TestProject, item: ScenarioRunItem, worker: RunWorker,
                               fm: FMConfig, reportDir: URL,
-                              defaultTimeout: Int? = nil,
+                              defaultTimeout: Double? = nil,
                               scenarioTimeout: Int? = nil,
                               debug: ScenarioDebugOptions? = nil,
                               recorder: RunRecorder? = nil,
@@ -349,7 +349,7 @@ public final class RunOrchestrator {
     private let fm: FMConfig
     private let reportDir: URL
     private let project: TestProject
-    private let defaultTimeout: Int?
+    private let defaultTimeout: Double?
     private let scenarioTimeout: Int?
     /// デバッグ実行(ブレークポイント・ステップ実行)。呼び出し側が単一シナリオ実行時のみ指定する
     private let debug: ScenarioDebugOptions?
@@ -415,7 +415,7 @@ public final class RunOrchestrator {
     }
 
     public init(project: TestProject, workers: [RunWorker], fm: FMConfig,
-                reportDir: URL, defaultTimeout: Int? = nil, scenarioTimeout: Int? = nil,
+                reportDir: URL, defaultTimeout: Double? = nil, scenarioTimeout: Int? = nil,
                 debug: ScenarioDebugOptions? = nil, recorder: RunRecorder? = nil,
                 recordingConfig: VideoRecordingConfig? = nil,
                 isDeviceFrozen: (@Sendable (String) async -> Bool)? = nil,

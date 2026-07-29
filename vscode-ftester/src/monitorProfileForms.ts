@@ -203,7 +203,7 @@ export type RunProfileUpdateResult =
 /**
  * runs/<name>.json を、フォームの18フィールドの内容で更新した新オブジェクトを組み立てる
  * (未知キー保持のイミュータブルな方針。profileObject が非オブジェクトなら ok:false)。
- * defaultTimeout は空文字ならキー削除、正の整数文字列以外はエラー。
+ * defaultTimeout は空文字ならキー削除、正の数(小数許容)文字列以外はエラー。
  * wipeDataThresholdGB は空文字ならキー削除、正の数(小数許容)文字列以外はエラー。
  * recordBitrateKbps は空文字ならキー削除、正の整数文字列以外はエラー。
  * devices は fields.devices の順に並べ直し、既存 devices 配列の同名エントリ(未知キー込み)を
@@ -250,7 +250,7 @@ export function updateRunProfileInObject(
   const timeoutTrimmed = fields.defaultTimeout.trim();
   if (timeoutTrimmed.length === 0) {
     delete result.defaultTimeout;
-  } else if (!/^\d+$/.test(timeoutTrimmed) || Number(timeoutTrimmed) <= 0) {
+  } else if (!/^\d+(\.\d+)?$/.test(timeoutTrimmed) || Number(timeoutTrimmed) <= 0) {
     return { ok: false, error: t("monitor.runProfile.defaultTimeoutInvalid") };
   } else {
     result.defaultTimeout = Number(timeoutTrimmed);

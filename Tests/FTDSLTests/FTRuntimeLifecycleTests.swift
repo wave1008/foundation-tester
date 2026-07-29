@@ -231,4 +231,122 @@ final class FTRuntimeLifecycleTests: XCTestCase {
         XCTAssertEqual(driver.tapped, [1, 1])
         XCTAssertTrue(core.finalRecord.passed)
     }
+
+    // MARK: - 値の読み出し(FTElement.text/value/id)
+
+    /// 掴めなかった場合は .text/.value/.id が nil のまま(値の有無で「見つかった」を判定できるように)
+    func testExistNotFoundLeavesValuesNil() {
+        let core = makeCore(driver: StubDriver(), dryRun: false)
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        var element: FTElement!
+        scenario {
+            scene(1, "s") {
+                action { element = exist("#missing", timeout: 0, requireVisible: false) }
+            }
+        }
+        XCTAssertNil(element.text)
+        XCTAssertNil(element.value)
+        XCTAssertNil(element.id)
+    }
+
+    /// 失敗後にスキップされた exist も値は nil(実行していないので読める値が無い)
+    func testExistAfterFailureReturnsNilValues() {
+        let core = makeCore(driver: StubDriver(), dryRun: false)
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        var element: FTElement!
+        scenario {
+            scene(1, "s") {
+                action {
+                    exist("#missing", timeout: 0, requireVisible: false)   // 失敗 → シナリオ中断
+                    element = exist("#cleanup")   // 中断後なのでスキップされる
+                }
+            }
+        }
+        XCTAssertTrue(isSkipped(steps(core)[1].status))
+        XCTAssertNil(element.text)
+        XCTAssertNil(element.id)
+    }
+
+    /// dry-run はデバイスに触れないため値は読めない(列挙専用の契約は変えない)
+    func testExistInDryRunReturnsNilValues() {
+        let core = makeCore(driver: StubDriver(), dryRun: true)
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        var element: FTElement!
+        scenario {
+            scene(1, "s") { action { element = exist("#cleanup") } }
+        }
+        XCTAssertNil(element.text)
+        XCTAssertNil(element.id)
+    }
+
+    // MARK: - DSL スレッド外からの誤呼び出し(procedure { } で包み忘れた Task 等)
+
+    /// スレッド違反は fatalError にせず、失敗ステップを1件だけ記録してシナリオを中断する。
+    /// 以降のコマンドは既存の skip 経路に乗り、2回目以降の違反で記録が増えないこと・
+    /// プロセスが生きたまま結果を持ち帰れることを固定する
+    func testThreadViolationIsRecordedOnceAndAbortsWithoutCrashing() {
+        let driver = StubDriver()
+        let core = makeCore(driver: driver, dryRun: false)
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        let violatingThread = Thread {
+            // ループから呼ばれた体で2回呼ぶ。2回目以降で記録が増えないことを見る
+            tap("#cleanup")
+            tap("#cleanup")
+        }
+        violatingThread.start()
+        while !violatingThread.isFinished {
+            Thread.sleep(forTimeInterval: 0.01)
+        }
+
+        let recorded = steps(core)
+        XCTAssertEqual(recorded.filter { isFailed($0.status) }.count, 1,
+                       "スレッド違反の記録が1回に固定されていない")
+        XCTAssertTrue(recorded.contains { isSkipped($0.status) },
+                      "違反後のコマンドが skipped として記録されていない")
+        XCTAssertTrue(driver.tapped.isEmpty,
+                      "違反スレッドから実際にドライバへ操作が飛んでしまった(プロセスは生きているべきだが実行はしない)")
+    }
+
+    // MARK: - 秒粒度(小数 timeout / waitSeconds)
+
+    /// timeout に 1.2 のような小数を渡せること自体が Int → Double 移行の固定点
+    /// (型が Int に戻ると本テストがコンパイルできなくなる)。実行結果も通常どおりであることを見る
+    func testFractionalTimeoutCompilesAndPassesThroughNormally() {
+        let core = makeCore(driver: StubDriver(), dryRun: false)
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        scenario {
+            scene(1, "s") {
+                action { exist("#cleanup", timeout: 1.2) }
+            }
+        }
+        XCTAssertTrue(core.finalRecord.passed)
+    }
+
+    /// ifCanSelect(waitSeconds: 0.3) が 0.5 秒刻みに丸められないこと。
+    /// 丸められる旧実装(Thread.sleep(0.5) 固定)だと不成立確定までの実測が ~0.5s 以上になるが、
+    /// 新実装は残り時間と 0.25s の小さい方で待つため ~0.3s で確定する
+    func testIfCanSelectDoesNotRoundFractionalWaitSecondsTo0Point5() {
+        let core = makeCore(driver: StubDriver(), dryRun: false)
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        let start = Date()
+        scenario {
+            scene(1, "s") {
+                action { ifCanSelect("#definitely_missing", waitSeconds: 0.3) {} }
+            }
+        }
+        let elapsed = Date().timeIntervalSince(start)
+        XCTAssertLessThan(elapsed, 0.48, "0.5 秒刻みに丸められている(実測 \(elapsed)s)")
+    }
 }

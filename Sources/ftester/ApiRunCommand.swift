@@ -42,8 +42,8 @@ struct ApiRunCommand: AsyncParsableCommand {
     var reportDir: String?
 
     @Option(name: .customLong("default-timeout"),
-            help: "検証コマンド(exist/textIs 等)の既定タイムアウト秒(省略時 5。--profile 指定時は profile の defaultTimeout が優先される)")
-    var defaultTimeout: Int?
+            help: "検証コマンド(exist/textIs 等)の既定タイムアウト秒(小数可。省略時 5。--profile 指定時は profile の defaultTimeout が優先される)")
+    var defaultTimeout: Double?
 
     @Option(name: .customLong("scenario-timeout"),
             help: "シナリオ単位の壁時計タイムアウト秒(ホスト側 watchdog。超過で子を強制終了し失敗扱い。省略時 90。--profile 指定時は profile の scenarioTimeout が優先される)")

@@ -365,7 +365,11 @@ exist(.type(.button).text("保存", .contains))    // .button&&textContains=保�
 素の値の検証 `thisIs` 系 / アプリ制御・待機・分岐・反復 / `procedure` `group` `irregularHandler` 等)。
 特に効く規約だけ抜粋:
 
-- **要素の出現待ちは暗黙**(`wait` は原則不要。足りなければ各コマンドの `timeout:` を上げる)
+- **要素の出現待ちは暗黙**(`wait` は原則不要。足りなければ各コマンドの `timeout:` を上げる。
+  秒は**小数可** — `timeout: 1.2` / `waitSeconds: 0.5`)
+- **画面の値は `exist` の戻り値から読める**(`exist("#txt_total").text` / `.value` / `.id`)。
+  期待値を書き切れないとき(控えた注文番号を後の画面で照合する等)に使う。
+  値は `exist` した時点のもので**再取得しない**ので、更新途中の画面は先に `textIs` 等で確定させてから読む
 - 折り返しの下は `tap("設定", scroll: .down)` / `exist(…, scroll: .down)` で**スクロールしながら探す**
   (方向はコンテンツ基準。`swipe(.up)` だけは指の動き)。**テキスト検証は自動スクロールしない**
 - **出るか不定のアプリ内メッセージ**は `irregularHandler` を setUp で1回宣言すると自動で閉じる

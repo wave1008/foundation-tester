@@ -64,8 +64,8 @@
       "default": "reports"
     },
     "defaultTimeout": {
-      "type": "integer",
-      "description": "DSL コマンドの既定タイムアウト秒(省略時は DSL 側の既定値)。",
+      "type": "number",
+      "description": "DSL コマンドの既定タイムアウト秒(小数可。省略時は DSL 側の既定値)。",
       "minimum": 0
     },
     "scenarioTimeout": {

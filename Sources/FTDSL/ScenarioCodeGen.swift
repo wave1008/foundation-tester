@@ -160,7 +160,7 @@ public enum ScenarioCodeGen {
     }
 
     static func timeoutArg(_ step: FlowStep) -> String {
-        if let timeout = step.timeout, timeout != 5 { return ", timeout: \(timeout)" }
+        if let timeout = step.timeout, timeout != 5 { return ", timeout: \(FTSeconds.format(timeout))" }
         return ""
     }
 
