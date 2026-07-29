@@ -382,11 +382,121 @@ public final class StepExecutor {
         let fallback: FlowLocator?
         /// 1回でも XCUITest 経由で swipe したか(記録の注記に載せる)
         let viaXCUITest: Bool
+        /// スクロールヒントで置き換えた長距離ドラッグの回数(記録の注記に載せる)
+        let hintJumps: Int
+    }
+
+    /// スクロール探索の注記(XCUITest フォールバック / ヒント跳躍)。無ければ nil
+    static func scrollSearchNote(_ result: ScrollSearchResult) -> String? {
+        var parts: [String] = []
+        if result.viaXCUITest { parts.append("XCUITest へフォールバック") }
+        if result.hintJumps > 0 { parts.append("スクロールヒントで長距離ドラッグ \(result.hintJumps) 回") }
+        return parts.isEmpty ? nil : parts.joined(separator: " / ")
     }
 
     static func scrollNotFoundMessage(_ step: FlowStep) -> String {
         "\(max(0, step.maxSwipes ?? FlowStep.defaultMaxSwipes)) 回スクロールしても"
             + "要素が見つかりません: \(step.locatorSummary)"
+    }
+
+    /// スクロールヒント(WebView の画面外ノード・実座標付き)から「あと何 px 先か」を出す。
+    ///
+    /// **なぜ**: スクロール探索の支配項はスワイプ1回のジェスチャ時間(Android 実測 1.05s / 974px。
+    /// スナップショットは 25ms)。距離が分かれば、固定幅スワイプ N 回を少数の長距離ドラッグに
+    /// 置き換えられる(1500px を 0.44s)。ヒントは Android の WebView だけが供給する
+    /// (Chromium が全ドキュメントをツリーに載せる。ネイティブのリストは画面外を載せないため、
+    /// **ヒントが無いことは不在の根拠にならない** = 従来ループの代替であって不在の即断には使わない)。
+    ///
+    /// 戻り値: 正 = 指を上へ(内容を下へ読み進める)動かす px。ヒント不一致・方向不一致・
+    /// 水平方向・既に画面内なら nil(呼び手は従来のスワイプに落ちる)。
+    /// 呼び手はスナップショットごとに再計算する(ドラッグの実移動はフリングで揺れるが、
+    /// 毎回測り直す自己補正で収束する。較正は持たない)
+    static func offscreenJump(step: FlowStep, snapshot: SnapshotResponse,
+                              finger: FTSwipeDirection) -> Double? {
+        guard finger == .up || finger == .down,
+              let hints = snapshot.offscreen, !hints.isEmpty else { return nil }
+        let pseudo = SnapshotResponse(sessionBundleID: nil, screen: snapshot.screen,
+                                      elements: hints, truncatedCount: 0)
+        guard let (hint, _) = Self.resolve(step: step, in: pseudo, strictForAssert: true) else {
+            return nil
+        }
+        let screen = snapshot.screen
+        // 着地目標: 要素の上端を画面の 40% 位置へ(中央より上 = 下端の固定要素・タブに重ねない)
+        let jump = hint.frame.y - (screen.y + screen.height * 0.4)
+        // 方向が合っているときだけ(逆向きのヒントで往復しない。ドラッグ過走の戻しは
+        // ここではなく通常ループの資格 = 見えたら resolve が拾う、に任せる)
+        if finger == .up, jump > screen.height * 0.3 { return jump }
+        if finger == .down, jump < -screen.height * 0.3 { return jump }
+        return nil
+    }
+
+    /// スクロールヒントの端(その方向にまだ続く実座標の限界)までの距離。scrollToEdge 用。
+    /// 正 = 指を上へ。ヒントがその方向に無ければ nil(従来の署名ループへ)
+    static func offscreenEdgeJump(snapshot: SnapshotResponse,
+                                  finger: FTSwipeDirection) -> Double? {
+        guard finger == .up || finger == .down,
+              let hints = snapshot.offscreen, !hints.isEmpty else { return nil }
+        let screen = snapshot.screen
+        // 閾値は小さくてよい(100px): 端スクロールは行き過ぎても端で止まる(クランプされる)ので
+        // 過走が無害。scrollTo(offscreenJump)の 30% 閾値とは安全条件が違う
+        switch finger {
+        case .up:
+            // 下端: いちばん下のヒント下端が画面下端に来るまでの残り
+            guard let maxBottom = hints.map({ $0.frame.y + $0.frame.height }).max() else { return nil }
+            let jump = maxBottom - (screen.y + screen.height)
+            return jump > 100 ? jump : nil
+        case .down:
+            // 上端: いちばん上のヒント上端(負)が画面上端に来るまでの残り
+            guard let minTop = hints.map({ $0.frame.y }).min() else { return nil }
+            let jump = minTop - screen.y
+            return jump < -100 ? jump : nil
+        default:
+            return nil
+        }
+    }
+
+    /// 長距離ドラッグの1ジェスチャ分の始点・終点(純粋関数・単体テスト対象)。
+    /// container(webView の可視矩形)内で、上下 15% のマージンを避けて縦線上を動かす。
+    /// 1ジェスチャで賄えない距離は呼び手のループ(スナップショット→再計算)が刻む
+    static func dragGesture(jump: Double, container: FTRect)
+        -> (fromX: Double, fromY: Double, toX: Double, toY: Double)? {
+        let margin = container.height * 0.15
+        let usable = container.height - margin * 2
+        guard usable > 100 else { return nil }
+        // 0.9 掛け: フリング分の過走を抑える(過走しても次周回の再計算で戻るが、往復は遅い)
+        let distance = min(abs(jump) * 0.9, usable)
+        guard distance > 50 else { return nil }
+        let x = container.x + container.width / 2
+        if jump > 0 {   // 指を上へ
+            let fromY = container.y + container.height - margin
+            return (x, fromY, x, fromY - distance)
+        }
+        let fromY = container.y + margin
+        return (x, fromY, x, fromY + distance)
+    }
+
+    /// ヒント跳躍のドラッグ実行。ゆっくり終える(pressSeconds でフリングを抑えつつ、
+    /// 距離に応じた duration)。失敗したら false(呼び手は従来のスワイプへ落ちる)
+    private func hintDrag(jump: Double, container: FTRect,
+                          phase: inout PhaseAccumulator) async -> Bool {
+        guard let g = Self.dragGesture(jump: jump, container: container) else { return false }
+        let clock = ContinuousClock()
+        let start = clock.now
+        let duration = min(max(abs(g.toY - g.fromY) / 2500, 0.3), 0.7)
+        do {
+            try await driver.drag(fromX: g.fromX, fromY: g.fromY, toX: g.toX, toY: g.toY,
+                                  pressSeconds: 0.08, durationSeconds: duration)
+            phase.actionMs += Self.ms(clock.now - start)
+            return true
+        } catch {
+            phase.actionMs += Self.ms(clock.now - start)
+            return false   // drag 未対応ドライバ等 → このヒントは諦めて通常スワイプ
+        }
+    }
+
+    /// スナップショット中の webView コンテナ(ヒントのドラッグ領域)。無ければ nil
+    static func webViewContainer(in snapshot: SnapshotResponse) -> FTRect? {
+        snapshot.elements.first(where: { $0.type == "webView" })?.frame
     }
 
     /// **スクロール探索の本体**。`scrollTo` コマンドと、`tap(scroll:)` / `exist(scroll:)` の
@@ -399,6 +509,7 @@ public final class StepExecutor {
         // 負値だと 0...(-1) が ClosedRange 生成で trap(クラッシュ)するため 0 で下限クランプ
         let maxSwipes = max(0, step.maxSwipes ?? FlowStep.defaultMaxSwipes)
         var viaXCUITest = false
+        var hintJumps = 0
         for attempt in 0...maxSwipes {
             let start = clock.now
             var snapshot = try await driver.snapshot()
@@ -429,13 +540,23 @@ public final class StepExecutor {
                     }
                     try await settleAfterScroll(step: step, found: element, phase: &phase)
                 }
-                return ScrollSearchResult(found: true, fallback: fallback, viaXCUITest: viaXCUITest)
+                return ScrollSearchResult(found: true, fallback: fallback, viaXCUITest: viaXCUITest,
+                                          hintJumps: hintJumps)
             }
             if attempt < maxSwipes {
+                // ヒント跳躍: 距離が分かるときは固定幅スワイプでなく長距離ドラッグで寄せる。
+                // ドラッグ後は静止を待たず次周回のスナップショット(25ms)で測り直す(自己補正)
+                if let jump = Self.offscreenJump(step: step, snapshot: snapshot, finger: direction),
+                   let container = Self.webViewContainer(in: snapshot),
+                   await hintDrag(jump: jump, container: container, phase: &phase) {
+                    hintJumps += 1
+                    continue
+                }
                 if try await swipeWithFallback(direction, phase: &phase) { viaXCUITest = true }
             }
         }
-        return ScrollSearchResult(found: false, fallback: nil, viaXCUITest: viaXCUITest)
+        return ScrollSearchResult(found: false, fallback: nil, viaXCUITest: viaXCUITest,
+                                  hintJumps: hintJumps)
     }
 
     private func executeAction(_ action: String, step: FlowStep,
@@ -459,7 +580,7 @@ public final class StepExecutor {
                 if try await swipeWithFallback(direction, phase: &phase) { viaXCUITest = true }
                 // 続けて投げるとフリングの停止だけに消費されて空振りする(Android 実測)。
                 // 「repeat 回ぶん送る」を守るため、次のスワイプ前に静止を待つ
-                if index < times - 1 { _ = try await settledSignature(phase: &phase) }
+                if index < times - 1 { _ = try await settledSignature(phase: &phase).signature }
             }
             return StepOutcome(status: .passed,
                                driverFallback: viaXCUITest ? "XCUITest へフォールバック" : nil)
@@ -477,25 +598,36 @@ public final class StepExecutor {
             var unchanged = 0
             var reachedEdge = false
             let limit = max(1, step.maxSwipes ?? FlowStep.defaultMaxEdgeSwipes)
+            var hintJumps = 0
             for _ in 0..<limit {
-                let signature = try await settledSignature(phase: &phase)
-                unchanged = signature == previous ? unchanged + 1 : 0
+                let settled = try await settledSignature(phase: &phase)
+                unchanged = settled.signature == previous ? unchanged + 1 : 0
                 if unchanged >= 2 { reachedEdge = true; break }
-                previous = signature
+                previous = settled.signature
+                // ヒント跳躍(WebView): 端までの残り距離が分かるときは長距離ドラッグで寄せる。
+                // 端の確定は従来どおり署名の不変化で行う(ヒントは近道であって判定ではない)
+                if let jump = Self.offscreenEdgeJump(snapshot: settled.snapshot, finger: direction),
+                   let container = Self.webViewContainer(in: settled.snapshot),
+                   await hintDrag(jump: jump, container: container, phase: &phase) {
+                    hintJumps += 1
+                    continue
+                }
                 if try await swipeWithFallback(direction, phase: &phase) { viaXCUITest = true }
             }
             // 上限で抜けたら**端に着いたとは限らない**。黙って成功にすると
             // 「scrollToBottom したのに末尾が無い」の原因が読めなくなる
-            let note = reachedEdge ? nil
-                : "上限 \(limit) 回で打ち切り(まだ端ではない可能性があります)"
+            var notes: [String] = []
+            if !reachedEdge { notes.append("上限 \(limit) 回で打ち切り(まだ端ではない可能性があります)") }
+            if viaXCUITest { notes.append("XCUITest へフォールバック") }
+            if hintJumps > 0 { notes.append("スクロールヒントで長距離ドラッグ \(hintJumps) 回") }
             return StepOutcome(status: .passed,
-                               driverFallback: viaXCUITest ? "XCUITest へフォールバック" : note)
+                               driverFallback: notes.isEmpty ? nil : notes.joined(separator: " / "))
         }
 
         // 要素が見つかるまでスクロール(見つかったら成功。操作はしない)
         if action == "scrollTo" {
             let result = try await runScrollSearch(step: step, phase: &phase)
-            let note = result.viaXCUITest ? "XCUITest へフォールバック" : nil
+            let note = Self.scrollSearchNote(result)
             guard result.found else {
                 // optional は他のアクションと同契約(出るか不定の要素をスクロール探索したとき、
                 // 空振りで scene を落とさない)。tap(scroll:) が optional を伝えてくる
@@ -551,7 +683,7 @@ public final class StepExecutor {
         // 探索は runScrollSearch が静止まで面倒を見るので、以降は通常の解決へ進んでよい
         if step.direction != nil, step.locator != nil {
             let result = try await runScrollSearch(step: step, phase: &phase)
-            if result.viaXCUITest { scrollSearchNote = "XCUITest へフォールバック" }
+            scrollSearchNote = Self.scrollSearchNote(result)
             guard result.found else {
                 if step.optional == true {
                     return StepOutcome(status: .skipped("要素が見つからないため省略(optional)"))
@@ -818,9 +950,11 @@ public final class StepExecutor {
 
     /// 画面が静止するまで待ち、そのときの要素配置の署名を返す(scrollToEdge の到達判定)。
     /// **横スクロールでは y が動かない**ので x と y の両方を入れる。
-    /// ref は取り直しで振り直されるため使わない(型・ラベル・座標だけで比較する)
+    /// ref は取り直しで振り直されるため使わない(型・ラベル・座標だけで比較する)。
+    /// 静止時点のスナップショットも返す(scrollToEdge のヒント跳躍が再利用する。
+    /// 別途撮り直すと iOS xcuitest では1周 約380ms の追加になるため)
     private func settledSignature(
-        phase: inout PhaseAccumulator) async throws -> String {
+        phase: inout PhaseAccumulator) async throws -> (signature: String, snapshot: SnapshotResponse) {
         func signature(_ snapshot: SnapshotResponse) -> String {
             snapshot.elements
                 .map { "\($0.type)|\($0.label ?? "")|\($0.frame.x),\($0.frame.y)" }
@@ -828,19 +962,21 @@ public final class StepExecutor {
         }
         let clock = ContinuousClock()
         var start = clock.now
-        var previous = signature(try await driver.snapshot())
+        var last = try await driver.snapshot()
+        var previous = signature(last)
         phase.snapshotMs += Self.ms(clock.now - start)
         for _ in 0..<Self.scrollSettleMaxPolls {
             let waitStart = clock.now
             try await Task.sleep(for: .milliseconds(Self.scrollSettleIntervalMs))
             phase.waitMs += Self.ms(clock.now - waitStart)
             start = clock.now
-            let current = signature(try await driver.snapshot())
+            last = try await driver.snapshot()
+            let current = signature(last)
             phase.snapshotMs += Self.ms(clock.now - start)
-            if current == previous { return current }
+            if current == previous { return (current, last) }
             previous = current
         }
-        return previous
+        return (previous, last)
     }
 
 
@@ -1003,7 +1139,7 @@ public final class StepExecutor {
             // `exist(scroll:)` の内蔵探索(アクション側と同じ理由で別ステップにしない)
             if step.direction != nil, step.locator != nil {
                 let result = try await runScrollSearch(step: step, phase: &phase)
-                if result.viaXCUITest { scrollSearchNote = "XCUITest へフォールバック" }
+                scrollSearchNote = Self.scrollSearchNote(result)
                 guard result.found else { return .failed(Self.scrollNotFoundMessage(step)) }
             }
             let deadline = Date().addingTimeInterval(TimeInterval(step.timeout ?? 5))

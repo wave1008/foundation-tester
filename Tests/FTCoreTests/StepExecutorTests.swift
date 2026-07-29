@@ -1236,4 +1236,102 @@ final class StepExecutorTests: XCTestCase {
                                      truncatedCount: 0)
         XCTAssertEqual(StepExecutor.webViewPathHint(plain), "")
     }
+
+    // MARK: - スクロールヒント(WebView の画面外ノードによる長距離ドラッグ)
+
+    private func hintSnapshot(screen: FTRect, elements: [ElementInfo] = [],
+                              hints: [ElementInfo]) -> SnapshotResponse {
+        SnapshotResponse(sessionBundleID: nil, screen: screen, elements: elements,
+                         truncatedCount: 0, offscreen: hints)
+    }
+
+    private func hint(_ label: String, y: Double, height: Double = 100) -> ElementInfo {
+        ElementInfo(ref: 0, type: "StaticText", identifier: nil, label: label, value: nil,
+                    placeholder: nil, enabled: true,
+                    frame: FTRect(x: 42, y: y, width: 1000, height: height), depth: 0)
+    }
+
+    private func scrollStep(_ label: String) -> FlowStep {
+        FlowStep(action: "scrollTo", locator: FlowLocator(label: label), direction: "up", maxSwipes: 15)
+    }
+
+    /// 下方向のヒント一致 → 正のジャンプ(指を上へ)。目標は要素上端が画面の 40% 位置
+    func testOffscreenJumpTowardsBelow() {
+        let screen = FTRect(x: 0, y: 0, width: 1080, height: 2400)
+        let snapshot = hintSnapshot(screen: screen, hints: [hint("画面外テキスト", y: 7000)])
+        let jump = StepExecutor.offscreenJump(step: scrollStep("画面外テキスト"),
+                                              snapshot: snapshot, finger: .up)
+        XCTAssertEqual(jump ?? -1, 7000 - 2400 * 0.4, accuracy: 0.5)
+    }
+
+    /// 方向が合わないヒントは使わない(逆向きに引き返して往復しない)
+    func testOffscreenJumpIgnoresWrongDirection() {
+        let screen = FTRect(x: 0, y: 0, width: 1080, height: 2400)
+        let above = hintSnapshot(screen: screen, hints: [hint("画面外テキスト", y: -3000)])
+        XCTAssertNil(StepExecutor.offscreenJump(step: scrollStep("画面外テキスト"),
+                                                snapshot: above, finger: .up))
+        XCTAssertNotNil(StepExecutor.offscreenJump(step: scrollStep("画面外テキスト"),
+                                                   snapshot: above, finger: .down))
+    }
+
+    /// ヒントに無いラベル・水平方向・ヒント無しは nil(従来のスワイプへ)
+    func testOffscreenJumpFallsBackToSwipe() {
+        let screen = FTRect(x: 0, y: 0, width: 1080, height: 2400)
+        let snapshot = hintSnapshot(screen: screen, hints: [hint("別の要素", y: 7000)])
+        XCTAssertNil(StepExecutor.offscreenJump(step: scrollStep("画面外テキスト"),
+                                                snapshot: snapshot, finger: .up))
+        XCTAssertNil(StepExecutor.offscreenJump(step: scrollStep("別の要素"),
+                                                snapshot: snapshot, finger: .left))
+        let empty = SnapshotResponse(sessionBundleID: nil, screen: screen, elements: [],
+                                     truncatedCount: 0)
+        XCTAssertNil(StepExecutor.offscreenJump(step: scrollStep("別の要素"),
+                                                snapshot: empty, finger: .up))
+    }
+
+    /// もう画面のすぐ近く(30% 以内)なら跳ばない(通常ループの1スワイプで足りる。
+    /// 近距離のドラッグはフリング過走で行き過ぎるリスクの方が大きい)
+    func testOffscreenJumpSkipsNearTargets() {
+        let screen = FTRect(x: 0, y: 0, width: 1080, height: 2400)
+        let near = hintSnapshot(screen: screen, hints: [hint("画面外テキスト", y: 2400 * 0.4 + 500)])
+        XCTAssertNil(StepExecutor.offscreenJump(step: scrollStep("画面外テキスト"),
+                                                snapshot: near, finger: .up))
+    }
+
+    /// 端までの残り: 下端はヒント最下端まで、上端はヒント最上端まで
+    func testOffscreenEdgeJump() {
+        let screen = FTRect(x: 0, y: 0, width: 1080, height: 2400)
+        let below = hintSnapshot(screen: screen,
+                                 hints: [hint("a", y: 5000), hint("b", y: 7000, height: 200)])
+        XCTAssertEqual(StepExecutor.offscreenEdgeJump(snapshot: below, finger: .up) ?? -1,
+                       7200 - 2400, accuracy: 0.5)
+        XCTAssertNil(StepExecutor.offscreenEdgeJump(snapshot: below, finger: .down),
+                     "上方向にヒントが無ければ跳ばない")
+        // 端の閾値は 100px(過走が端でクランプされるため scrollTo の 30% より攻められる)
+        let close = hintSnapshot(screen: screen, hints: [hint("a", y: 2400 + 50, height: 100)])
+        XCTAssertNotNil(StepExecutor.offscreenEdgeJump(snapshot: close, finger: .up))
+        let above = hintSnapshot(screen: screen, hints: [hint("a", y: -2510)])
+        XCTAssertEqual(StepExecutor.offscreenEdgeJump(snapshot: above, finger: .down) ?? 1,
+                       -2510, accuracy: 0.5)
+    }
+
+    /// ドラッグの始点・終点: コンテナ内・上下 15% マージン・距離は 0.9 掛けと可動域でクランプ
+    func testDragGestureGeometry() {
+        let container = FTRect(x: 0, y: 332, width: 1080, height: 1900)
+        // 指を上へ: 下端マージンから上へ
+        let up = StepExecutor.dragGesture(jump: 1000, container: container)
+        XCTAssertNotNil(up)
+        XCTAssertEqual(up!.fromX, 540)
+        XCTAssertEqual(up!.fromY, 332 + 1900 - 285, accuracy: 0.5)   // マージン 15% = 285
+        XCTAssertEqual(up!.fromY - up!.toY, 900, accuracy: 0.5)      // 1000 * 0.9
+        // 長距離は可動域(70%)でクランプ
+        let far = StepExecutor.dragGesture(jump: 10000, container: container)
+        XCTAssertEqual(far!.fromY - far!.toY, 1900 * 0.7, accuracy: 0.5)
+        // 指を下へ: 上端マージンから下へ
+        let down = StepExecutor.dragGesture(jump: -1000, container: container)
+        XCTAssertEqual(down!.toY - down!.fromY, 900, accuracy: 0.5)
+        // 潰れたコンテナ・極小距離は nil
+        XCTAssertNil(StepExecutor.dragGesture(jump: 1000,
+                                              container: FTRect(x: 0, y: 0, width: 100, height: 120)))
+        XCTAssertNil(StepExecutor.dragGesture(jump: 40, container: container))
+    }
 }
