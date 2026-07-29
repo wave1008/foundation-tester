@@ -44,8 +44,8 @@ export const webviewMonitorBStrings = {
     en: "Select at least one device.",
   },
   "wvMonitor2.runProfile.validation.timeoutInvalid": {
-    ja: "defaultTimeout は正の整数で入力してください。",
-    en: "Enter defaultTimeout as a positive integer.",
+    ja: "defaultTimeout は正の数(秒)で入力してください。",
+    en: "Enter defaultTimeout as a positive number (seconds).",
   },
   "wvMonitor2.runProfile.validation.wipeThresholdInvalid": {
     ja: "Wipe Data しきい値は正の数(GB)で入力してください。",

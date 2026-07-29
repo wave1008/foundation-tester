@@ -652,10 +652,34 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
   非表示切替可)、全実行・フォルダ実行・クラス名指定の一括実行から除外される。
   完全一致 ID の明示指定でのみ実行可能。コードは残るため復活はアノテーションを外すだけ
 - コマンド(tap/type/exist/…)は**同期・非 throw のモジュールレベル自由関数**。
-  `try await` も `{ it in }` も不要。カレント実行コンテキストを暗黙参照する
+  `try await` も `{ it in }` も不要。カレント実行コンテキストを暗黙参照する。
+  **DSL スレッド外(Task / 別スレッド)からの呼び出しは fatalError にしない**(2026-07-29)。
+  1プロセス=1シナリオなので落とすと**レポートごと消える**。`FTDriveCore.recordThreadViolation` が
+  失敗ステップを**1 run につき1回だけ**記録してシナリオを中断し、以降は既存の skip 経路へ乗せる
+  (`handleFailure` は呼ばない = スクショ・FM トリアージを別スレッドから走らせない)。
+  **core 未初期化だけは fatalError のまま**(記録先そのものが無くレポートを残す手段がない)
+- **上と対になるロックが2つある**(どちらも「落とさずレポートを残す」ための最低条件。
+  排他しないと `record.scenes` の append と `record.scenes[last]` への代入が競って
+  **レポートを残すどころかプロセスが落ちる**):
+  - `FTDriveCore.stateLock`(**再帰**): `record` 全体・`scenarioAborted`・`deviceFrozen`。
+    DSL スレッド以外に、①違反スレッド ②`executor.onDeviceFrozen`(FTSync の detached Task 上)
+    が触る。再帰にしてあるのはロック下の処理が `scenarioAborted` を触るため(`markDeviceFrozen`)
+  - `FTRuntime.lock`: `core` / `dslThread`。**tearDown の書き込みと違反スレッドの読みが競る**
+    (素の Optional への同時読み書きは実際に落ち得る)。
+    **`stateLock` より先に取り、握ったまま core を呼ばない**(ロック順序を一方向に保つ)
+  - **他の実行状態(`groupStack` / `scrollContextStack` / `currentSection`)は DSL スレッド専有のまま**で、
+    違反スレッドが中断検知の前に触り得るのは受容した残存リスク(記録の見え方が乱れるだけで
+    結果は壊れない)。検証は `swift test --sanitize=thread --filter FTDSLTests`
+    (**ロックの正しさは目視では担保できない**。触ったら必ず TSan を通すこと)
 - tap/type/press は `optional:`(見つからなくても失敗にしない)に加え `timeout:`
   (ロケータ解決の再試行待ち上限秒。0=リトライなし。省略時は既定の約0.7秒)を取る。
   出るか不定な optional ステップの空振り短縮用(performance-tuning §5)
+- **秒は全て小数(Double)**(2026-07-29。`timeout:` / `waitSeconds:` / `defaultTimeout` /
+  `--default-timeout`。`FlowStep.timeout` も `Double?`)。`timeout: 1.2` が書ける。
+  表示は `FTSeconds.format`(FTCore)が唯一の生成元で `5.0s` ではなく `5s`・`1.2s` と出す
+  (`StepCommandText.formatSeconds` / `StepDescription.formatSeconds` はここへ委譲)。
+  `ifCanSelect` のポーリングは残り時間と 0.25 秒の小さい方で待つ(**0.5 秒固定だとサブ秒の待ちが
+  丸められる**)。`waitSeconds: 0` = 即時1回判定の契約は不変
 - `press(duration:)` は長押し秒数(既定 `FlowStep.defaultPressDuration` = 1 秒)。
   ブリッジの `/press` は当初から duration を受け取っていたが、**ホスト側の `FlowStep` に
   duration が無く StepExecutor が 1.0 固定で呼んでいたため、DSL の引数と拡張のパラメーター編集が
@@ -922,6 +946,11 @@ textIs(.id("txt_result"), "dialog=none")
 - **引数の型が具体型なので先頭ドットで書ける**(`tap(.id(...))`)。`some FTSelectorConvertible`
   のような総称にすると leading-dot が効かなくなるため、各コマンドは String 版と `Sel` 版の
   **2 つの具体オーバーロード**を持ち、共通の impl(FTSelector を取る)へ畳む
+- **セレクタを取るコマンドは String / Sel が1対1**(2026-07-29 に非対称を解消)。
+  Shirates 由来の別名族(`tapWithScrollDown/Up/Right/Left` `tapWithoutScroll`
+  `existWithScrollDown/Up` `existWithoutScroll`)にも Sel 版がある。**片方だけ足さない** —
+  `Sel` を選ぶと別名族が使えない状態は「型付き経路を選ぶと機能が減る」ことを意味し、
+  生成側を Sel 既定に寄せられなくなる
 - 組み立てるのは**文字列版と同じ `FlowLocator`**。解決・実行・レポート・ヒールは完全に共通で、
   実行エンジンは分岐しない(`SelTests` が全構文について「文字列版と同じ FlowLocator になること」を固定)
 - フィルタ系メソッド(`text`/`type`/`nth` 等)は常に「**現在の対象**」に AND する:
@@ -935,6 +964,26 @@ textIs(.id("txt_result"), "dialog=none")
   (綴りはコンパイラが保証済み。かつラベルに `>>` 等の予約文字が入っても再パースで別物にならない)
 - 型名は `SelType` の静的メンバ(OS 共通契約の5型 + エイリアス + 頻出型)。語彙に無いものは
   `.custom("...")`(先頭小文字へ正規化)
+
+### 掴んだ要素の値の読み出し(2026-07-29)
+
+`exist` の戻り値 `FTElement` から `.text` / `.value` / `.id` で**値そのもの**を取れる
+(Shirates の `TestElement.text` 相当)。これが無いと期待値をシナリオに書き切るしかなく、
+「注文番号を控えて後の画面で照合」「画面の合計を読んで計算に使う」が書けなかった。
+
+- **新しいコマンドを足さない**。`exist` が既に解決した要素を持ち帰るだけなので、
+  **追加のデバイス往復もステップ記録も発生しない**(`CommandDispatchTests` が
+  「exist 1 回 = スナップショット 1 回」を固定している)
+- 経路: `StepExecutor.resolvedElementThisStep`(`observedCheckedThisStep` と**同じ受け渡し形**)
+  → `StepOutcome.resolvedElement` → `FTDriveCore.perform` が返す `PerformResult.element` →
+  `FTElement.matched`。**成功時しか立てない** — 失敗・スキップ・dry-run・
+  対象が1つに定まらない assert(`notExist` / `countIs` / `screenIs`)では nil。
+  アクション(tap 等)は解決時点で立ててしまうので `execute` が `isSuccess` で落とす
+  (「掴めなかったのに値が読める」を作らないための契約)
+- **再取得しない**(値の出所は最初の `exist` に固定)。最新の値が要るなら `exist` を書き直す
+- 型は `String?`。`ValueAssertions` の `FTValue`(`Optional: FTValue where Wrapped: FTValue`)に
+  乗るので `exist("#total").text.thisContains("1,200")` がそのまま書ける
+- `checked` / `enabled` は**足していない**(語彙を増やさない。`isChecked` / `isEnabled` で検証できる)
 
 ### 否定・状態・個数のアサーション(2026-07-26)
 

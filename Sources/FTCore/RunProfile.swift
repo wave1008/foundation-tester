@@ -214,8 +214,8 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     public var screenIs: Bool?
     /// レポート出力先(プロジェクトルート相対 or 絶対。既定 "reports")
     public var reportDir: String?
-    /// DSL コマンドの既定タイムアウト秒(省略時は DSL 側の既定値)
-    public var defaultTimeout: Int?
+    /// DSL コマンドの既定タイムアウト秒(小数可。省略時は DSL 側の既定値)
+    public var defaultTimeout: Double?
     /// シナリオ単位の壁時計タイムアウト秒(ホスト側 watchdog。子には渡さない。省略時 90)。
     /// defaultTimeout(子内部の検証待ち)とは別物
     public var scenarioTimeout: Int?
@@ -268,7 +268,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
 
     public init(app: String? = nil, devices: [RunDeviceRef]? = nil, fm: Bool? = nil,
                 heal: Bool? = nil, falsePositiveCheck: Bool? = nil, screenIs: Bool? = nil,
-                reportDir: String? = nil, defaultTimeout: Int? = nil, scenarioTimeout: Int? = nil,
+                reportDir: String? = nil, defaultTimeout: Double? = nil, scenarioTimeout: Int? = nil,
                 machine: String? = nil, iosInappEngine: Bool? = nil,
                 wipeDataOnBloat: Bool? = nil, wipeDataThresholdGB: Double? = nil,
                 recoverCpuFallbackToGpu: Bool? = nil,
@@ -356,7 +356,7 @@ public struct ResolvedProfile: Sendable {
     public var heal: Bool { fm.heal }
     /// 絶対パス解決済み
     public let reportDir: URL
-    public let defaultTimeout: Int?
+    public let defaultTimeout: Double?
     /// シナリオ単位の壁時計タイムアウト秒(ホスト側 watchdog。nil=未指定→run 側で既定 90 を適用)
     public let scenarioTimeout: Int?
     /// 実行開始時に Android AVD 肥大化を Wipe Data するか(既定 true)

@@ -275,11 +275,30 @@ final class StepCommandParamsTests: XCTestCase {
     }
 
     func testApplyThrowsInvalidValueForActionTimeout() {
+        // timeout は小数対応(.double)なので不正値の理由は「数値」(整数限定の maxSwipes とは別文言)
         XCTAssertThrowsError(try StepCommandParams.apply(
             display: "tap \"x\"", params: ["timeout": "abc"], toCode: "tap(\"x\")")) { error in
             XCTAssertEqual(error as? StepCommandParamsError,
-                           .invalidValue(label: "timeout", reason: "整数で入力してください"))
+                           .invalidValue(label: "timeout", reason: "数値で入力してください"))
         }
+    }
+
+    /// 小数の timeout が parse → apply で往復すること(1.2 は既定値・整数と区別され出力される)
+    func testTimeoutRoundTripsFractionalSeconds() throws {
+        XCTAssertEqual(
+            StepCommandParams.parse(code: "exist(\"WiFi\", timeout: 1.2)", verb: "exist"),
+            ["timeout": "1.2", "requireVisible": "true", "scroll": "", "maxSwipes": "8"])
+        XCTAssertEqual(
+            try StepCommandParams.apply(display: "exist \"WiFi\"", params: ["timeout": "1.2"],
+                                        toCode: "exist(\"WiFi\")"),
+            "exist(\"WiFi\", timeout: 1.2)")
+        XCTAssertEqual(
+            StepCommandParams.parse(code: "tap(\"x\", timeout: 0.5)", verb: "tap"),
+            ["timeout": "0.5", "scroll": "", "maxSwipes": "8"])
+        XCTAssertEqual(
+            try StepCommandParams.apply(display: "tap \"x\"", params: ["timeout": "0.5"],
+                                        toCode: "tap(\"x\")"),
+            "tap(\"x\", timeout: 0.5)")
     }
 
     func testApplyRejectsBlockLineWithParams() {

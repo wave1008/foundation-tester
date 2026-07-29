@@ -42,8 +42,8 @@ export const monitorStrings = {
     en: "The run profile format is invalid.",
   },
   "monitor.runProfile.defaultTimeoutInvalid": {
-    ja: "defaultTimeout は正の整数で入力してください。",
-    en: "Enter defaultTimeout as a positive integer.",
+    ja: "defaultTimeout は正の数(秒)で入力してください。",
+    en: "Enter defaultTimeout as a positive number (seconds).",
   },
   "monitor.runProfile.wipeThresholdInvalid": {
     ja: "wipeDataThresholdGB は正の数(GB)で入力してください。",

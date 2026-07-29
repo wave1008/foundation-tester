@@ -134,8 +134,8 @@ struct RunScenario: AsyncParsableCommand {
     var projectDir: String?
 
     @Option(name: .customLong("default-timeout"),
-            help: "検証コマンド(exist/textIs 等)の既定タイムアウト秒(省略時 5)")
-    var defaultTimeout: Int?
+            help: "検証コマンド(exist/textIs 等)の既定タイムアウト秒(小数可。省略時 5)")
+    var defaultTimeout: Double?
 
     @Flag(help: "NDJSON イベントを出力する(ホスト連携用)")
     var json = false

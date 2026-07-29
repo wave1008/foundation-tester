@@ -137,7 +137,7 @@ extension StepExecutor {
             scrollSearchNote = Self.scrollSearchNote(result)
             guard result.found else { return .failed(Self.scrollNotFoundMessage(step)) }
         }
-        let deadline = Date().addingTimeInterval(TimeInterval(step.timeout ?? 5))
+        let deadline = Date().addingTimeInterval(step.timeout ?? 5)
         var backoff = PollBackoff()
         var primaryMisses = 0
         // occlusion-guard: 要素が見つかっても覆われている場合、過渡的オーバーレイ(ローディング/
@@ -164,6 +164,7 @@ extension StepExecutor {
                     expectedIsUserText: step.locator?.label != nil, phase: &phase) {
                     lastOcclusion = flip   // 覆われている: 可視化を待つ(下の sleep へ)
                 } else {
+                    resolvedElementThisStep = d.element
                     if let fallback = d.usedFallback { return .passedViaFallback(fallback) }
                     return .passed
                 }
@@ -178,7 +179,8 @@ extension StepExecutor {
                     start = clock.now
                     let fsnap = try await fb.snapshot()
                     phase.snapshotMs += Self.ms(clock.now - start)
-                    if let (_, fallback) = Self.resolve(step: step, in: fsnap, strictForAssert: true) {
+                    if let (element, fallback) = Self.resolve(step: step, in: fsnap, strictForAssert: true) {
+                        resolvedElementThisStep = element
                         if let fallback { return .passedViaFallback(fallback) }
                         return .passed
                     }
@@ -192,7 +194,7 @@ extension StepExecutor {
         }
         // timeout: 覆われ続けた occlusion があればそれを、無ければ未発見を返す
         if let lastOcclusion { return lastOcclusion }
-        return .failed("要素が見つかりません: \(step.locatorSummary)(timeout \(step.timeout ?? 5)s)"
+        return .failed("要素が見つかりません: \(step.locatorSummary)(timeout \(FTSeconds.format(step.timeout ?? 5))s)"
                        + Self.truncationHint(lastSnapshot)
                        + Self.webViewPathHint(lastSnapshot))
     }
@@ -204,7 +206,7 @@ extension StepExecutor {
         guard let expected = step.expected else {
             return .skipped("expected が未指定")
         }
-        let deadline = Date().addingTimeInterval(TimeInterval(step.timeout ?? 5))
+        let deadline = Date().addingTimeInterval(step.timeout ?? 5)
         var lastActual: String?
         var found = false
         var backoff = PollBackoff()
@@ -255,6 +257,7 @@ extension StepExecutor {
                     // フォールバックドライバ(システムUI/springboard)由来の要素は primary の座標系・
                     // スクショと食い違うためガードを掛けない(exist の fsnap 経路と同契約)。
                     if fromFallbackDriver {
+                        resolvedElementThisStep = element
                         if let fallback { return .passedViaFallback(fallback) }
                         return .passed
                     }
@@ -265,6 +268,7 @@ extension StepExecutor {
                         expectedIsUserText: true, phase: &phase) {
                         lastOcclusion = flip   // 覆われている: 可視化を待つ
                     } else {
+                        resolvedElementThisStep = element
                         if let fallback { return .passedViaFallback(fallback) }
                         return .passed
                     }
@@ -314,7 +318,7 @@ extension StepExecutor {
         let clock = ContinuousClock()
         // 「消えるまで待つ」。初回で不在なら即 pass、在るならタイムアウトまで消滅を待つ。
         // 可視性(occlusion)は見ない: ツリーから消えたことが唯一の判定。
-        let deadline = Date().addingTimeInterval(TimeInterval(step.timeout ?? 5))
+        let deadline = Date().addingTimeInterval(step.timeout ?? 5)
         var backoff = PollBackoff()
         while true {
             let start = clock.now
@@ -346,7 +350,7 @@ extension StepExecutor {
             try await Task.sleep(for: backoff.nextDelay())
             phase.waitMs += Self.ms(clock.now - waitStart)
         }
-        return .failed("要素がまだ存在します: \(step.locatorSummary)(timeout \(step.timeout ?? 5)s)")
+        return .failed("要素がまだ存在します: \(step.locatorSummary)(timeout \(FTSeconds.format(step.timeout ?? 5))s)")
     }
 
     private func executeAssertNegativeTextComparison(
@@ -360,7 +364,7 @@ extension StepExecutor {
            step.expected == nil {
             return .skipped("expected が未指定")
         }
-        let deadline = Date().addingTimeInterval(TimeInterval(step.timeout ?? 5))
+        let deadline = Date().addingTimeInterval(step.timeout ?? 5)
         var backoff = PollBackoff()
         var found = false
         var lastActual: String?
@@ -429,7 +433,7 @@ extension StepExecutor {
         phase: inout PhaseAccumulator) async throws -> StepResult.Status {
         let clock = ContinuousClock()
         let wantEnabled = assert == "enabled"
-        let deadline = Date().addingTimeInterval(TimeInterval(step.timeout ?? 5))
+        let deadline = Date().addingTimeInterval(step.timeout ?? 5)
         var backoff = PollBackoff()
         var found = false
         while true {
@@ -441,6 +445,7 @@ extension StepExecutor {
                                                       strictForAssert: true) {
                 found = true
                 if element.enabled == wantEnabled {
+                    resolvedElementThisStep = element
                     if let fallback { return .passedViaFallback(fallback) }
                     return .passed
                 }
@@ -462,7 +467,7 @@ extension StepExecutor {
         // checked は true のときだけブリッジが送る(省略 = オフ / 状態を持たない要素)。
         // 「状態が違う」と「見つからない」を別メッセージにするのは enabled と同じ規律
         let wantChecked = assert == "checked"
-        let deadline = Date().addingTimeInterval(TimeInterval(step.timeout ?? 5))
+        let deadline = Date().addingTimeInterval(step.timeout ?? 5)
         var backoff = PollBackoff()
         var found = false
         while true {
@@ -476,6 +481,7 @@ extension StepExecutor {
                 // ブリッジは true のときだけ送る = 観測できたのは「オンだった」ときだけ
                 if element.checked == true { observedCheckedThisStep = true }
                 if (element.checked == true) == wantChecked {
+                    resolvedElementThisStep = element
                     if let fallback { return .passedViaFallback(fallback) }
                     return .passed
                 }
@@ -502,7 +508,7 @@ extension StepExecutor {
         // `||` は**候補集合の和**(Shirates 準拠)。全節の候補を合わせ、同じ要素は1度だけ数える。
         // 節の優先順位が効くのは要素を1つ選ぶときだけで、数えるときは節を跨いで合計する
         let chain = [locator] + (step.fallbacks ?? [])
-        let deadline = Date().addingTimeInterval(TimeInterval(step.timeout ?? 5))
+        let deadline = Date().addingTimeInterval(step.timeout ?? 5)
         var backoff = PollBackoff()
         var actual = 0
         var breakdown: [(clause: FlowLocator, elements: [ElementInfo])] = []

@@ -199,7 +199,7 @@ public enum ScenarioHost {
     @discardableResult
     public static func run(project: TestProject, scenarioID: String,
                            connection: DriverConnection,
-                           fm: FMConfig = FMConfig(), reportDir: String, defaultTimeout: Int? = nil,
+                           fm: FMConfig = FMConfig(), reportDir: String, defaultTimeout: Double? = nil,
                            scenarioTimeout: Int? = nil,
                            dryRun: Bool = false,
                            debug: ScenarioDebugOptions? = nil,
@@ -247,7 +247,7 @@ public enum ScenarioHost {
         if let deviceName = connection.deviceName { args += ["--device-name", deviceName] }
         if connection.physical { args.append("--physical") }
         if let host = connection.host { args += ["--bridge-host", host] }
-        if let defaultTimeout { args += ["--default-timeout", String(defaultTimeout)] }
+        if let defaultTimeout { args += ["--default-timeout", FTSeconds.format(defaultTimeout)] }
         if let debug {
             args.append("--debug")
             if debug.pauseOnStart { args.append("--pause-on-start") }

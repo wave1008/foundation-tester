@@ -95,11 +95,12 @@ extension FTSelector {
     var stepFallbacks: [FlowLocator]? { fallbacks.isEmpty ? nil : fallbacks }
 }
 
-/// 型付きセレクタ由来なら構文検証を飛ばす(FTSelector.structured)
+/// 型付きセレクタ由来なら構文検証を飛ばす(FTSelector.structured)。
+/// 戻り値は status に加え**照合済み要素**も運ぶ(exist 系だけが使い、他は status のみ見て捨てる)
 @discardableResult
 private func perform(_ command: String, _ selector: FTSelector, step: FlowStep,
                      description: String,
-                     file: StaticString, line: UInt) -> StepResult.Status {
+                     file: StaticString, line: UInt) -> PerformResult {
     FTRuntime.requireCore(command: command)
         .perform(step: step, description: description, selectorText: selector.text,
                  validateSelector: !selector.structured, file: file, line: line)
@@ -112,14 +113,14 @@ private func perform(_ command: String, _ selector: FTSelector, step: FlowStep,
 /// scroll: 指定するとタップ前に**その方向へスクロールしながら要素を探す**
 /// (Shirates の tapWithScrollDown 相当。省略時は現在画面だけを見る)。
 /// 方向は**コンテンツ基準**(標準用語どおり `.down` = 下に読み進める。Shirates の ScrollDirection と同じ)
-public func tap(_ selector: String, optional: Bool = false, timeout: Int? = nil,
+public func tap(_ selector: String, optional: Bool = false, timeout: Double? = nil,
                 scroll: FTScrollDirection? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
                 file: StaticString = #filePath, line: UInt = #line) {
     tapImpl(FTSelector.parse(selector), optional: optional, timeout: timeout,
             scroll: scroll, maxSwipes: maxSwipes, file: file, line: line)
 }
 
-public func tap(_ selector: Sel, optional: Bool = false, timeout: Int? = nil,
+public func tap(_ selector: Sel, optional: Bool = false, timeout: Double? = nil,
                 scroll: FTScrollDirection? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
                 file: StaticString = #filePath, line: UInt = #line) {
     tapImpl(selector.ftSelector, optional: optional, timeout: timeout,
@@ -130,7 +131,7 @@ public func tap(_ selector: Sel, optional: Bool = false, timeout: Int? = nil,
 /// 利用者が書いたのは1コマンドなので記録も1行にする — 書いていない行が現れると、
 /// その行はソース行を持たないためステップ表から編集できず、説明の要る状態になる。
 /// 探索の実体は StepExecutor.runScrollSearch(scrollTo コマンドと共有)
-private func tapImpl(_ selector: FTSelector, optional: Bool, timeout: Int?,
+private func tapImpl(_ selector: FTSelector, optional: Bool, timeout: Double?,
                      scroll: FTScrollDirection?, maxSwipes: Int,
                      file: StaticString, line: UInt) {
     let scroll = FTRuntime.requireCore(command: "tap").effectiveScroll(scroll)
@@ -163,21 +164,21 @@ public func pressEnter(file: StaticString = #filePath, line: UInt = #line) {
 
 /// timeout: 要素解決を待つ上限秒(0 = 初回スナップショットのみ。出るか不定な optional の
 /// 空振り ~0.7s を数十msに短縮)。省略時は既定の再試行(約0.7秒)
-public func type(_ selector: String, _ text: String, optional: Bool = false, timeout: Int? = nil,
+public func type(_ selector: String, _ text: String, optional: Bool = false, timeout: Double? = nil,
                  scroll: FTScrollDirection? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
                  file: StaticString = #filePath, line: UInt = #line) {
     typeImpl(FTSelector.parse(selector), text, optional: optional, timeout: timeout,
              scroll: scroll, maxSwipes: maxSwipes, file: file, line: line)
 }
 
-public func type(_ selector: Sel, _ text: String, optional: Bool = false, timeout: Int? = nil,
+public func type(_ selector: Sel, _ text: String, optional: Bool = false, timeout: Double? = nil,
                  scroll: FTScrollDirection? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
                  file: StaticString = #filePath, line: UInt = #line) {
     typeImpl(selector.ftSelector, text, optional: optional, timeout: timeout,
              scroll: scroll, maxSwipes: maxSwipes, file: file, line: line)
 }
 
-private func typeImpl(_ selector: FTSelector, _ text: String, optional: Bool, timeout: Int?,
+private func typeImpl(_ selector: FTSelector, _ text: String, optional: Bool, timeout: Double?,
                       scroll: FTScrollDirection?, maxSwipes: Int,
                       file: StaticString, line: UInt) {
     let scroll = FTRuntime.requireCore(command: "type").effectiveScroll(scroll)
@@ -194,7 +195,7 @@ private func typeImpl(_ selector: FTSelector, _ text: String, optional: Bool, ti
 /// 空振り ~0.7s を数十msに短縮)。省略時は既定の再試行(約0.7秒)
 /// duration: 長押しする秒数
 public func press(_ selector: String, duration: Double = FlowStep.defaultPressDuration,
-                  optional: Bool = false, timeout: Int? = nil,
+                  optional: Bool = false, timeout: Double? = nil,
                   scroll: FTScrollDirection? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
                   file: StaticString = #filePath, line: UInt = #line) {
     pressImpl(FTSelector.parse(selector), duration: duration, optional: optional, timeout: timeout,
@@ -202,14 +203,14 @@ public func press(_ selector: String, duration: Double = FlowStep.defaultPressDu
 }
 
 public func press(_ selector: Sel, duration: Double = FlowStep.defaultPressDuration,
-                  optional: Bool = false, timeout: Int? = nil,
+                  optional: Bool = false, timeout: Double? = nil,
                   scroll: FTScrollDirection? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
                   file: StaticString = #filePath, line: UInt = #line) {
     pressImpl(selector.ftSelector, duration: duration, optional: optional, timeout: timeout,
               scroll: scroll, maxSwipes: maxSwipes, file: file, line: line)
 }
 
-private func pressImpl(_ selector: FTSelector, duration: Double, optional: Bool, timeout: Int?,
+private func pressImpl(_ selector: FTSelector, duration: Double, optional: Bool, timeout: Double?,
                        scroll: FTScrollDirection?, maxSwipes: Int,
                        file: StaticString, line: UInt) {
     let scroll = FTRuntime.requireCore(command: "press").effectiveScroll(scroll)
@@ -332,7 +333,17 @@ public func tapWithScrollDown(_ selector: String, maxSwipes: Int = FlowStep.defa
     tap(selector, scroll: .down, maxSwipes: maxSwipes, file: file, line: line)
 }
 
+public func tapWithScrollDown(_ selector: Sel, maxSwipes: Int = FlowStep.defaultMaxSwipes,
+                              file: StaticString = #filePath, line: UInt = #line) {
+    tap(selector, scroll: .down, maxSwipes: maxSwipes, file: file, line: line)
+}
+
 public func tapWithScrollUp(_ selector: String, maxSwipes: Int = FlowStep.defaultMaxSwipes,
+                            file: StaticString = #filePath, line: UInt = #line) {
+    tap(selector, scroll: .up, maxSwipes: maxSwipes, file: file, line: line)
+}
+
+public func tapWithScrollUp(_ selector: Sel, maxSwipes: Int = FlowStep.defaultMaxSwipes,
                             file: StaticString = #filePath, line: UInt = #line) {
     tap(selector, scroll: .up, maxSwipes: maxSwipes, file: file, line: line)
 }
@@ -342,13 +353,30 @@ public func tapWithScrollRight(_ selector: String, maxSwipes: Int = FlowStep.def
     tap(selector, scroll: .right, maxSwipes: maxSwipes, file: file, line: line)
 }
 
+public func tapWithScrollRight(_ selector: Sel, maxSwipes: Int = FlowStep.defaultMaxSwipes,
+                               file: StaticString = #filePath, line: UInt = #line) {
+    tap(selector, scroll: .right, maxSwipes: maxSwipes, file: file, line: line)
+}
+
 public func tapWithScrollLeft(_ selector: String, maxSwipes: Int = FlowStep.defaultMaxSwipes,
                               file: StaticString = #filePath, line: UInt = #line) {
     tap(selector, scroll: .left, maxSwipes: maxSwipes, file: file, line: line)
 }
 
+public func tapWithScrollLeft(_ selector: Sel, maxSwipes: Int = FlowStep.defaultMaxSwipes,
+                              file: StaticString = #filePath, line: UInt = #line) {
+    tap(selector, scroll: .left, maxSwipes: maxSwipes, file: file, line: line)
+}
+
 /// withScroll* の中でも**この1コマンドだけ**スクロールしない
-public func tapWithoutScroll(_ selector: String, optional: Bool = false, timeout: Int? = nil,
+public func tapWithoutScroll(_ selector: String, optional: Bool = false, timeout: Double? = nil,
+                             file: StaticString = #filePath, line: UInt = #line) {
+    FTRuntime.requireCore(command: "tapWithoutScroll").runWithScrollContext(.none) {
+        tap(selector, optional: optional, timeout: timeout, file: file, line: line)
+    }
+}
+
+public func tapWithoutScroll(_ selector: Sel, optional: Bool = false, timeout: Double? = nil,
                              file: StaticString = #filePath, line: UInt = #line) {
     FTRuntime.requireCore(command: "tapWithoutScroll").runWithScrollContext(.none) {
         tap(selector, optional: optional, timeout: timeout, file: file, line: line)
@@ -362,13 +390,25 @@ public func existWithScrollDown(_ selector: String, maxSwipes: Int = FlowStep.de
 }
 
 @discardableResult
+public func existWithScrollDown(_ selector: Sel, maxSwipes: Int = FlowStep.defaultMaxSwipes,
+                                file: StaticString = #filePath, line: UInt = #line) -> FTElement {
+    exist(selector, scroll: .down, maxSwipes: maxSwipes, file: file, line: line)
+}
+
+@discardableResult
 public func existWithScrollUp(_ selector: String, maxSwipes: Int = FlowStep.defaultMaxSwipes,
                               file: StaticString = #filePath, line: UInt = #line) -> FTElement {
     exist(selector, scroll: .up, maxSwipes: maxSwipes, file: file, line: line)
 }
 
 @discardableResult
-public func existWithoutScroll(_ selector: String, timeout: Int? = nil,
+public func existWithScrollUp(_ selector: Sel, maxSwipes: Int = FlowStep.defaultMaxSwipes,
+                              file: StaticString = #filePath, line: UInt = #line) -> FTElement {
+    exist(selector, scroll: .up, maxSwipes: maxSwipes, file: file, line: line)
+}
+
+@discardableResult
+public func existWithoutScroll(_ selector: String, timeout: Double? = nil,
                                requireVisible: Bool = true,
                                file: StaticString = #filePath, line: UInt = #line) -> FTElement {
     var element: FTElement?
@@ -377,6 +417,19 @@ public func existWithoutScroll(_ selector: String, timeout: Int? = nil,
                         file: file, line: line)
     }
     return element ?? FTElement(selector: FTSelector.parse(selector))
+}
+
+/// フォールバックは selector.ftSelector から作る(空の FTElement に文字列版と同じ FlowLocator を持たせるため)
+@discardableResult
+public func existWithoutScroll(_ selector: Sel, timeout: Double? = nil,
+                               requireVisible: Bool = true,
+                               file: StaticString = #filePath, line: UInt = #line) -> FTElement {
+    var element: FTElement?
+    FTRuntime.requireCore(command: "existWithoutScroll").runWithScrollContext(.none) {
+        element = exist(selector, timeout: timeout, requireVisible: requireVisible,
+                        file: file, line: line)
+    }
+    return element ?? FTElement(selector: selector.ftSelector)
 }
 
 /// 要素が見つかるまでスクロールする(見つかったら成功。タップはしない)
@@ -415,7 +468,7 @@ private func scrollToImpl(_ selector: FTSelector, direction: FTScrollDirection, 
 /// (Shirates の existWithScrollDown 相当。省略時は現在画面だけを見る)。
 /// 方向は**コンテンツ基準**(`.down` = 下に読み進める)
 @discardableResult
-public func exist(_ selector: String, timeout: Int? = nil, requireVisible: Bool = true,
+public func exist(_ selector: String, timeout: Double? = nil, requireVisible: Bool = true,
                   scroll: FTScrollDirection? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
                   file: StaticString = #filePath, line: UInt = #line) -> FTElement {
     existImpl(FTSelector.parse(selector), timeout: timeout, requireVisible: requireVisible,
@@ -423,7 +476,7 @@ public func exist(_ selector: String, timeout: Int? = nil, requireVisible: Bool 
 }
 
 @discardableResult
-public func exist(_ selector: Sel, timeout: Int? = nil, requireVisible: Bool = true,
+public func exist(_ selector: Sel, timeout: Double? = nil, requireVisible: Bool = true,
                   scroll: FTScrollDirection? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
                   file: StaticString = #filePath, line: UInt = #line) -> FTElement {
     existImpl(selector.ftSelector, timeout: timeout, requireVisible: requireVisible,
@@ -431,7 +484,7 @@ public func exist(_ selector: Sel, timeout: Int? = nil, requireVisible: Bool = t
 }
 
 @discardableResult
-private func existImpl(_ selector: FTSelector, timeout: Int?, requireVisible: Bool,
+private func existImpl(_ selector: FTSelector, timeout: Double?, requireVisible: Bool,
                        scroll: FTScrollDirection?, maxSwipes: Int,
                        file: StaticString, line: UInt) -> FTElement {
     let core = FTRuntime.requireCore(command: "exist")
@@ -442,9 +495,9 @@ private func existImpl(_ selector: FTSelector, timeout: Int?, requireVisible: Bo
                         timeout: timeout ?? core.defaultTimeout,
                         maxSwipes: scroll == nil ? nil : maxSwipes,
                         occlusionGuard: requireVisible)
-    perform("exist", selector, step: step, description: "exist \"\(selector.text)\"",
-            file: file, line: line)
-    return FTElement(selector: selector)
+    let result = perform("exist", selector, step: step, description: "exist \"\(selector.text)\"",
+                        file: file, line: line)
+    return FTElement(selector: selector, matched: result.element)
 }
 
 /// テキスト一致検証。既定で可視性も確認(一致かつ実際に見えていること)。
@@ -457,7 +510,7 @@ private func existImpl(_ selector: FTSelector, timeout: Int?, requireVisible: Bo
 /// (下の textContains / textMatches / textStartsWith / textEndsWith / textIsNot /
 /// textIsEmpty / textIsNotEmpty / valueIs も同じ)。
 /// 画面外のテキストを見たいときは直前に `scrollTo` で送る(docs/design.md §10)
-public func textIs(_ selector: String, _ expected: String, timeout: Int? = nil,
+public func textIs(_ selector: String, _ expected: String, timeout: Double? = nil,
                    requireVisible: Bool = true,
                    file: StaticString = #filePath, line: UInt = #line) {
     textAssert("textEquals", verb: "textIs", selector: FTSelector.parse(selector),
@@ -465,7 +518,7 @@ public func textIs(_ selector: String, _ expected: String, timeout: Int? = nil,
                operatorText: "==", file: file, line: line)
 }
 
-public func textIs(_ selector: Sel, _ expected: String, timeout: Int? = nil,
+public func textIs(_ selector: Sel, _ expected: String, timeout: Double? = nil,
                    requireVisible: Bool = true,
                    file: StaticString = #filePath, line: UInt = #line) {
     textAssert("textEquals", verb: "textIs", selector: selector.ftSelector,
@@ -475,7 +528,7 @@ public func textIs(_ selector: Sel, _ expected: String, timeout: Int? = nil,
 
 /// 値一致検証。既定で可視性も確認(一致かつ実際に見えていること)。
 /// 可視性を問わず値一致だけ見たい場合は requireVisible: false。
-public func valueIs(_ selector: String, _ expected: String, timeout: Int? = nil,
+public func valueIs(_ selector: String, _ expected: String, timeout: Double? = nil,
                     requireVisible: Bool = true,
                     file: StaticString = #filePath, line: UInt = #line) {
     textAssert("valueEquals", verb: "valueIs", selector: FTSelector.parse(selector),
@@ -483,7 +536,7 @@ public func valueIs(_ selector: String, _ expected: String, timeout: Int? = nil,
                operatorText: "==", file: file, line: line)
 }
 
-public func valueIs(_ selector: Sel, _ expected: String, timeout: Int? = nil,
+public func valueIs(_ selector: Sel, _ expected: String, timeout: Double? = nil,
                     requireVisible: Bool = true,
                     file: StaticString = #filePath, line: UInt = #line) {
     textAssert("valueEquals", verb: "valueIs", selector: selector.ftSelector,
@@ -493,7 +546,7 @@ public func valueIs(_ selector: Sel, _ expected: String, timeout: Int? = nil,
 
 /// テキストの**部分一致**検証(動的な数値・日時を含む表示に使う)。
 /// 完全一致は textIs。可視性の確認は「一致した部分文字列」で行う
-public func textContains(_ selector: String, _ expected: String, timeout: Int? = nil,
+public func textContains(_ selector: String, _ expected: String, timeout: Double? = nil,
                          requireVisible: Bool = true,
                          file: StaticString = #filePath, line: UInt = #line) {
     textAssert("textContains", verb: "textContains", selector: FTSelector.parse(selector),
@@ -501,7 +554,7 @@ public func textContains(_ selector: String, _ expected: String, timeout: Int? =
                file: file, line: line)
 }
 
-public func textContains(_ selector: Sel, _ expected: String, timeout: Int? = nil,
+public func textContains(_ selector: Sel, _ expected: String, timeout: Double? = nil,
                          requireVisible: Bool = true,
                          file: StaticString = #filePath, line: UInt = #line) {
     textAssert("textContains", verb: "textContains", selector: selector.ftSelector,
@@ -510,7 +563,7 @@ public func textContains(_ selector: Sel, _ expected: String, timeout: Int? = ni
 }
 
 /// テキストの**前方一致**検証。可視性の確認は「一致した部分文字列」で行う
-public func textStartsWith(_ selector: String, _ expected: String, timeout: Int? = nil,
+public func textStartsWith(_ selector: String, _ expected: String, timeout: Double? = nil,
                            requireVisible: Bool = true,
                            file: StaticString = #filePath, line: UInt = #line) {
     textAssert("textStartsWith", verb: "textStartsWith", selector: FTSelector.parse(selector),
@@ -518,7 +571,7 @@ public func textStartsWith(_ selector: String, _ expected: String, timeout: Int?
                file: file, line: line)
 }
 
-public func textStartsWith(_ selector: Sel, _ expected: String, timeout: Int? = nil,
+public func textStartsWith(_ selector: Sel, _ expected: String, timeout: Double? = nil,
                            requireVisible: Bool = true,
                            file: StaticString = #filePath, line: UInt = #line) {
     textAssert("textStartsWith", verb: "textStartsWith", selector: selector.ftSelector,
@@ -527,7 +580,7 @@ public func textStartsWith(_ selector: Sel, _ expected: String, timeout: Int? = 
 }
 
 /// テキストの**後方一致**検証。可視性の確認は「一致した部分文字列」で行う
-public func textEndsWith(_ selector: String, _ expected: String, timeout: Int? = nil,
+public func textEndsWith(_ selector: String, _ expected: String, timeout: Double? = nil,
                          requireVisible: Bool = true,
                          file: StaticString = #filePath, line: UInt = #line) {
     textAssert("textEndsWith", verb: "textEndsWith", selector: FTSelector.parse(selector),
@@ -535,7 +588,7 @@ public func textEndsWith(_ selector: String, _ expected: String, timeout: Int? =
                file: file, line: line)
 }
 
-public func textEndsWith(_ selector: Sel, _ expected: String, timeout: Int? = nil,
+public func textEndsWith(_ selector: Sel, _ expected: String, timeout: Double? = nil,
                          requireVisible: Bool = true,
                          file: StaticString = #filePath, line: UInt = #line) {
     textAssert("textEndsWith", verb: "textEndsWith", selector: selector.ftSelector,
@@ -546,14 +599,14 @@ public func textEndsWith(_ selector: Sel, _ expected: String, timeout: Int? = ni
 /// テキストが期待値と**一致しない**ことの検証(タイムアウトまで変化を待つ)。
 /// 「その要素が無いこと」は notExist、「別の値になったこと」はこちら。
 /// 否定なので**可視性は見ない**(見えていないことは画面照合できない)
-public func textIsNot(_ selector: String, _ expected: String, timeout: Int? = nil,
+public func textIsNot(_ selector: String, _ expected: String, timeout: Double? = nil,
                       file: StaticString = #filePath, line: UInt = #line) {
     textAssert("textNotEquals", verb: "textIsNot", selector: FTSelector.parse(selector),
                expected: expected, timeout: timeout, requireVisible: false,
                operatorText: "!=", file: file, line: line)
 }
 
-public func textIsNot(_ selector: Sel, _ expected: String, timeout: Int? = nil,
+public func textIsNot(_ selector: Sel, _ expected: String, timeout: Double? = nil,
                       file: StaticString = #filePath, line: UInt = #line) {
     textAssert("textNotEquals", verb: "textIsNot", selector: selector.ftSelector,
                expected: expected, timeout: timeout, requireVisible: false,
@@ -561,33 +614,33 @@ public func textIsNot(_ selector: Sel, _ expected: String, timeout: Int? = nil,
 }
 
 /// テキストが空であることの検証(要素は在ることが前提。タイムアウトまで変化を待つ)
-public func textIsEmpty(_ selector: String, timeout: Int? = nil,
+public func textIsEmpty(_ selector: String, timeout: Double? = nil,
                         file: StaticString = #filePath, line: UInt = #line) {
     emptyAssert("textIsEmpty", verb: "textIsEmpty", selector: FTSelector.parse(selector),
                 timeout: timeout, file: file, line: line)
 }
 
-public func textIsEmpty(_ selector: Sel, timeout: Int? = nil,
+public func textIsEmpty(_ selector: Sel, timeout: Double? = nil,
                         file: StaticString = #filePath, line: UInt = #line) {
     emptyAssert("textIsEmpty", verb: "textIsEmpty", selector: selector.ftSelector,
                 timeout: timeout, file: file, line: line)
 }
 
 /// テキストが空でないことの検証(値は問わず「何か表示されている」ことだけを見る)
-public func textIsNotEmpty(_ selector: String, timeout: Int? = nil,
+public func textIsNotEmpty(_ selector: String, timeout: Double? = nil,
                            file: StaticString = #filePath, line: UInt = #line) {
     emptyAssert("textIsNotEmpty", verb: "textIsNotEmpty", selector: FTSelector.parse(selector),
                 timeout: timeout, file: file, line: line)
 }
 
-public func textIsNotEmpty(_ selector: Sel, timeout: Int? = nil,
+public func textIsNotEmpty(_ selector: Sel, timeout: Double? = nil,
                            file: StaticString = #filePath, line: UInt = #line) {
     emptyAssert("textIsNotEmpty", verb: "textIsNotEmpty", selector: selector.ftSelector,
                 timeout: timeout, file: file, line: line)
 }
 
 /// textIsEmpty / textIsNotEmpty の共通実装(期待値を取らないアサート)
-private func emptyAssert(_ assert: String, verb: String, selector: FTSelector, timeout: Int?,
+private func emptyAssert(_ assert: String, verb: String, selector: FTSelector, timeout: Double?,
                          file: StaticString, line: UInt) {
     let core = FTRuntime.requireCore(command: verb)
     let step = FlowStep(assert: assert, locator: selector.primary,
@@ -598,14 +651,14 @@ private func emptyAssert(_ assert: String, verb: String, selector: FTSelector, t
 }
 
 /// テキストが指定文字列で**始まらない**ことの検証。否定なので**可視性は見ない**
-public func textStartsWithNot(_ selector: String, _ expected: String, timeout: Int? = nil,
+public func textStartsWithNot(_ selector: String, _ expected: String, timeout: Double? = nil,
                               file: StaticString = #filePath, line: UInt = #line) {
     textAssert("textStartsWithNot", verb: "textStartsWithNot", selector: FTSelector.parse(selector),
                expected: expected, timeout: timeout, requireVisible: false,
                operatorText: "!=", file: file, line: line)
 }
 
-public func textStartsWithNot(_ selector: Sel, _ expected: String, timeout: Int? = nil,
+public func textStartsWithNot(_ selector: Sel, _ expected: String, timeout: Double? = nil,
                               file: StaticString = #filePath, line: UInt = #line) {
     textAssert("textStartsWithNot", verb: "textStartsWithNot", selector: selector.ftSelector,
                expected: expected, timeout: timeout, requireVisible: false,
@@ -613,14 +666,14 @@ public func textStartsWithNot(_ selector: Sel, _ expected: String, timeout: Int?
 }
 
 /// テキストが指定文字列を**含まない**ことの検証。否定なので**可視性は見ない**
-public func textContainsNot(_ selector: String, _ expected: String, timeout: Int? = nil,
+public func textContainsNot(_ selector: String, _ expected: String, timeout: Double? = nil,
                             file: StaticString = #filePath, line: UInt = #line) {
     textAssert("textContainsNot", verb: "textContainsNot", selector: FTSelector.parse(selector),
                expected: expected, timeout: timeout, requireVisible: false,
                operatorText: "!=", file: file, line: line)
 }
 
-public func textContainsNot(_ selector: Sel, _ expected: String, timeout: Int? = nil,
+public func textContainsNot(_ selector: Sel, _ expected: String, timeout: Double? = nil,
                             file: StaticString = #filePath, line: UInt = #line) {
     textAssert("textContainsNot", verb: "textContainsNot", selector: selector.ftSelector,
                expected: expected, timeout: timeout, requireVisible: false,
@@ -628,14 +681,14 @@ public func textContainsNot(_ selector: Sel, _ expected: String, timeout: Int? =
 }
 
 /// テキストが指定文字列で**終わらない**ことの検証。否定なので**可視性は見ない**
-public func textEndsWithNot(_ selector: String, _ expected: String, timeout: Int? = nil,
+public func textEndsWithNot(_ selector: String, _ expected: String, timeout: Double? = nil,
                             file: StaticString = #filePath, line: UInt = #line) {
     textAssert("textEndsWithNot", verb: "textEndsWithNot", selector: FTSelector.parse(selector),
                expected: expected, timeout: timeout, requireVisible: false,
                operatorText: "!=", file: file, line: line)
 }
 
-public func textEndsWithNot(_ selector: Sel, _ expected: String, timeout: Int? = nil,
+public func textEndsWithNot(_ selector: Sel, _ expected: String, timeout: Double? = nil,
                             file: StaticString = #filePath, line: UInt = #line) {
     textAssert("textEndsWithNot", verb: "textEndsWithNot", selector: selector.ftSelector,
                expected: expected, timeout: timeout, requireVisible: false,
@@ -643,14 +696,14 @@ public func textEndsWithNot(_ selector: Sel, _ expected: String, timeout: Int? =
 }
 
 /// テキストが正規表現に**一致しない**ことの検証。否定なので**可視性は見ない**
-public func textMatchesNot(_ selector: String, _ expected: String, timeout: Int? = nil,
+public func textMatchesNot(_ selector: String, _ expected: String, timeout: Double? = nil,
                            file: StaticString = #filePath, line: UInt = #line) {
     textAssert("textMatchesNot", verb: "textMatchesNot", selector: FTSelector.parse(selector),
                expected: expected, timeout: timeout, requireVisible: false,
                operatorText: "!=", file: file, line: line)
 }
 
-public func textMatchesNot(_ selector: Sel, _ expected: String, timeout: Int? = nil,
+public func textMatchesNot(_ selector: Sel, _ expected: String, timeout: Double? = nil,
                            file: StaticString = #filePath, line: UInt = #line) {
     textAssert("textMatchesNot", verb: "textMatchesNot", selector: selector.ftSelector,
                expected: expected, timeout: timeout, requireVisible: false,
@@ -658,7 +711,7 @@ public func textMatchesNot(_ selector: Sel, _ expected: String, timeout: Int? = 
 }
 
 /// テキストが日付書式(`yyyy/MM/dd` 等)に一致することの検証
-public func textMatchesDateFormat(_ selector: String, _ expected: String, timeout: Int? = nil,
+public func textMatchesDateFormat(_ selector: String, _ expected: String, timeout: Double? = nil,
                                   requireVisible: Bool = true,
                                   file: StaticString = #filePath, line: UInt = #line) {
     textAssert("textMatchesDateFormat", verb: "textMatchesDateFormat", selector: FTSelector.parse(selector),
@@ -666,7 +719,7 @@ public func textMatchesDateFormat(_ selector: String, _ expected: String, timeou
                operatorText: "~", file: file, line: line)
 }
 
-public func textMatchesDateFormat(_ selector: Sel, _ expected: String, timeout: Int? = nil,
+public func textMatchesDateFormat(_ selector: Sel, _ expected: String, timeout: Double? = nil,
                                   requireVisible: Bool = true,
                                   file: StaticString = #filePath, line: UInt = #line) {
     textAssert("textMatchesDateFormat", verb: "textMatchesDateFormat", selector: selector.ftSelector,
@@ -675,14 +728,14 @@ public func textMatchesDateFormat(_ selector: Sel, _ expected: String, timeout: 
 }
 
 /// 値が期待値と**一致しない**ことの検証。否定なので**可視性は見ない**
-public func valueIsNot(_ selector: String, _ expected: String, timeout: Int? = nil,
+public func valueIsNot(_ selector: String, _ expected: String, timeout: Double? = nil,
                        file: StaticString = #filePath, line: UInt = #line) {
     textAssert("valueNotEquals", verb: "valueIsNot", selector: FTSelector.parse(selector),
                expected: expected, timeout: timeout, requireVisible: false,
                operatorText: "!=", file: file, line: line)
 }
 
-public func valueIsNot(_ selector: Sel, _ expected: String, timeout: Int? = nil,
+public func valueIsNot(_ selector: Sel, _ expected: String, timeout: Double? = nil,
                        file: StaticString = #filePath, line: UInt = #line) {
     textAssert("valueNotEquals", verb: "valueIsNot", selector: selector.ftSelector,
                expected: expected, timeout: timeout, requireVisible: false,
@@ -690,7 +743,7 @@ public func valueIsNot(_ selector: Sel, _ expected: String, timeout: Int? = nil,
 }
 
 /// 値の前方一致検証
-public func valueStartsWith(_ selector: String, _ expected: String, timeout: Int? = nil,
+public func valueStartsWith(_ selector: String, _ expected: String, timeout: Double? = nil,
                             requireVisible: Bool = true,
                             file: StaticString = #filePath, line: UInt = #line) {
     textAssert("valueStartsWith", verb: "valueStartsWith", selector: FTSelector.parse(selector),
@@ -698,7 +751,7 @@ public func valueStartsWith(_ selector: String, _ expected: String, timeout: Int
                operatorText: "~", file: file, line: line)
 }
 
-public func valueStartsWith(_ selector: Sel, _ expected: String, timeout: Int? = nil,
+public func valueStartsWith(_ selector: Sel, _ expected: String, timeout: Double? = nil,
                             requireVisible: Bool = true,
                             file: StaticString = #filePath, line: UInt = #line) {
     textAssert("valueStartsWith", verb: "valueStartsWith", selector: selector.ftSelector,
@@ -707,14 +760,14 @@ public func valueStartsWith(_ selector: Sel, _ expected: String, timeout: Int? =
 }
 
 /// 値が指定文字列で**始まらない**ことの検証。否定なので**可視性は見ない**
-public func valueStartsWithNot(_ selector: String, _ expected: String, timeout: Int? = nil,
+public func valueStartsWithNot(_ selector: String, _ expected: String, timeout: Double? = nil,
                                file: StaticString = #filePath, line: UInt = #line) {
     textAssert("valueStartsWithNot", verb: "valueStartsWithNot", selector: FTSelector.parse(selector),
                expected: expected, timeout: timeout, requireVisible: false,
                operatorText: "!=", file: file, line: line)
 }
 
-public func valueStartsWithNot(_ selector: Sel, _ expected: String, timeout: Int? = nil,
+public func valueStartsWithNot(_ selector: Sel, _ expected: String, timeout: Double? = nil,
                                file: StaticString = #filePath, line: UInt = #line) {
     textAssert("valueStartsWithNot", verb: "valueStartsWithNot", selector: selector.ftSelector,
                expected: expected, timeout: timeout, requireVisible: false,
@@ -722,7 +775,7 @@ public func valueStartsWithNot(_ selector: Sel, _ expected: String, timeout: Int
 }
 
 /// 値の部分一致検証
-public func valueContains(_ selector: String, _ expected: String, timeout: Int? = nil,
+public func valueContains(_ selector: String, _ expected: String, timeout: Double? = nil,
                           requireVisible: Bool = true,
                           file: StaticString = #filePath, line: UInt = #line) {
     textAssert("valueContains", verb: "valueContains", selector: FTSelector.parse(selector),
@@ -730,7 +783,7 @@ public func valueContains(_ selector: String, _ expected: String, timeout: Int? 
                operatorText: "~", file: file, line: line)
 }
 
-public func valueContains(_ selector: Sel, _ expected: String, timeout: Int? = nil,
+public func valueContains(_ selector: Sel, _ expected: String, timeout: Double? = nil,
                           requireVisible: Bool = true,
                           file: StaticString = #filePath, line: UInt = #line) {
     textAssert("valueContains", verb: "valueContains", selector: selector.ftSelector,
@@ -739,14 +792,14 @@ public func valueContains(_ selector: Sel, _ expected: String, timeout: Int? = n
 }
 
 /// 値が指定文字列を**含まない**ことの検証。否定なので**可視性は見ない**
-public func valueContainsNot(_ selector: String, _ expected: String, timeout: Int? = nil,
+public func valueContainsNot(_ selector: String, _ expected: String, timeout: Double? = nil,
                              file: StaticString = #filePath, line: UInt = #line) {
     textAssert("valueContainsNot", verb: "valueContainsNot", selector: FTSelector.parse(selector),
                expected: expected, timeout: timeout, requireVisible: false,
                operatorText: "!=", file: file, line: line)
 }
 
-public func valueContainsNot(_ selector: Sel, _ expected: String, timeout: Int? = nil,
+public func valueContainsNot(_ selector: Sel, _ expected: String, timeout: Double? = nil,
                              file: StaticString = #filePath, line: UInt = #line) {
     textAssert("valueContainsNot", verb: "valueContainsNot", selector: selector.ftSelector,
                expected: expected, timeout: timeout, requireVisible: false,
@@ -754,7 +807,7 @@ public func valueContainsNot(_ selector: Sel, _ expected: String, timeout: Int? 
 }
 
 /// 値の後方一致検証
-public func valueEndsWith(_ selector: String, _ expected: String, timeout: Int? = nil,
+public func valueEndsWith(_ selector: String, _ expected: String, timeout: Double? = nil,
                           requireVisible: Bool = true,
                           file: StaticString = #filePath, line: UInt = #line) {
     textAssert("valueEndsWith", verb: "valueEndsWith", selector: FTSelector.parse(selector),
@@ -762,7 +815,7 @@ public func valueEndsWith(_ selector: String, _ expected: String, timeout: Int? 
                operatorText: "~", file: file, line: line)
 }
 
-public func valueEndsWith(_ selector: Sel, _ expected: String, timeout: Int? = nil,
+public func valueEndsWith(_ selector: Sel, _ expected: String, timeout: Double? = nil,
                           requireVisible: Bool = true,
                           file: StaticString = #filePath, line: UInt = #line) {
     textAssert("valueEndsWith", verb: "valueEndsWith", selector: selector.ftSelector,
@@ -771,14 +824,14 @@ public func valueEndsWith(_ selector: Sel, _ expected: String, timeout: Int? = n
 }
 
 /// 値が指定文字列で**終わらない**ことの検証。否定なので**可視性は見ない**
-public func valueEndsWithNot(_ selector: String, _ expected: String, timeout: Int? = nil,
+public func valueEndsWithNot(_ selector: String, _ expected: String, timeout: Double? = nil,
                              file: StaticString = #filePath, line: UInt = #line) {
     textAssert("valueEndsWithNot", verb: "valueEndsWithNot", selector: FTSelector.parse(selector),
                expected: expected, timeout: timeout, requireVisible: false,
                operatorText: "!=", file: file, line: line)
 }
 
-public func valueEndsWithNot(_ selector: Sel, _ expected: String, timeout: Int? = nil,
+public func valueEndsWithNot(_ selector: Sel, _ expected: String, timeout: Double? = nil,
                              file: StaticString = #filePath, line: UInt = #line) {
     textAssert("valueEndsWithNot", verb: "valueEndsWithNot", selector: selector.ftSelector,
                expected: expected, timeout: timeout, requireVisible: false,
@@ -786,7 +839,7 @@ public func valueEndsWithNot(_ selector: Sel, _ expected: String, timeout: Int? 
 }
 
 /// 値の正規表現一致検証(部分一致)
-public func valueMatches(_ selector: String, _ expected: String, timeout: Int? = nil,
+public func valueMatches(_ selector: String, _ expected: String, timeout: Double? = nil,
                          requireVisible: Bool = true,
                          file: StaticString = #filePath, line: UInt = #line) {
     textAssert("valueMatches", verb: "valueMatches", selector: FTSelector.parse(selector),
@@ -794,7 +847,7 @@ public func valueMatches(_ selector: String, _ expected: String, timeout: Int? =
                operatorText: "~", file: file, line: line)
 }
 
-public func valueMatches(_ selector: Sel, _ expected: String, timeout: Int? = nil,
+public func valueMatches(_ selector: Sel, _ expected: String, timeout: Double? = nil,
                          requireVisible: Bool = true,
                          file: StaticString = #filePath, line: UInt = #line) {
     textAssert("valueMatches", verb: "valueMatches", selector: selector.ftSelector,
@@ -803,14 +856,14 @@ public func valueMatches(_ selector: Sel, _ expected: String, timeout: Int? = ni
 }
 
 /// 値が正規表現に**一致しない**ことの検証。否定なので**可視性は見ない**
-public func valueMatchesNot(_ selector: String, _ expected: String, timeout: Int? = nil,
+public func valueMatchesNot(_ selector: String, _ expected: String, timeout: Double? = nil,
                             file: StaticString = #filePath, line: UInt = #line) {
     textAssert("valueMatchesNot", verb: "valueMatchesNot", selector: FTSelector.parse(selector),
                expected: expected, timeout: timeout, requireVisible: false,
                operatorText: "!=", file: file, line: line)
 }
 
-public func valueMatchesNot(_ selector: Sel, _ expected: String, timeout: Int? = nil,
+public func valueMatchesNot(_ selector: Sel, _ expected: String, timeout: Double? = nil,
                             file: StaticString = #filePath, line: UInt = #line) {
     textAssert("valueMatchesNot", verb: "valueMatchesNot", selector: selector.ftSelector,
                expected: expected, timeout: timeout, requireVisible: false,
@@ -818,7 +871,7 @@ public func valueMatchesNot(_ selector: Sel, _ expected: String, timeout: Int? =
 }
 
 /// 値が日付書式に一致することの検証
-public func valueMatchesDateFormat(_ selector: String, _ expected: String, timeout: Int? = nil,
+public func valueMatchesDateFormat(_ selector: String, _ expected: String, timeout: Double? = nil,
                                    requireVisible: Bool = true,
                                    file: StaticString = #filePath, line: UInt = #line) {
     textAssert("valueMatchesDateFormat", verb: "valueMatchesDateFormat", selector: FTSelector.parse(selector),
@@ -826,7 +879,7 @@ public func valueMatchesDateFormat(_ selector: String, _ expected: String, timeo
                operatorText: "~", file: file, line: line)
 }
 
-public func valueMatchesDateFormat(_ selector: Sel, _ expected: String, timeout: Int? = nil,
+public func valueMatchesDateFormat(_ selector: Sel, _ expected: String, timeout: Double? = nil,
                                    requireVisible: Bool = true,
                                    file: StaticString = #filePath, line: UInt = #line) {
     textAssert("valueMatchesDateFormat", verb: "valueMatchesDateFormat", selector: selector.ftSelector,
@@ -835,26 +888,26 @@ public func valueMatchesDateFormat(_ selector: Sel, _ expected: String, timeout:
 }
 
 /// 値の空判定。否定・空判定は**可視性を見ない**
-public func valueIsEmpty(_ selector: String, timeout: Int? = nil,
+public func valueIsEmpty(_ selector: String, timeout: Double? = nil,
                          file: StaticString = #filePath, line: UInt = #line) {
     emptyAssert("valueIsEmpty", verb: "valueIsEmpty", selector: FTSelector.parse(selector),
                 timeout: timeout, file: file, line: line)
 }
 
-public func valueIsEmpty(_ selector: Sel, timeout: Int? = nil,
+public func valueIsEmpty(_ selector: Sel, timeout: Double? = nil,
                          file: StaticString = #filePath, line: UInt = #line) {
     emptyAssert("valueIsEmpty", verb: "valueIsEmpty", selector: selector.ftSelector,
                 timeout: timeout, file: file, line: line)
 }
 
 /// 値の空判定。否定・空判定は**可視性を見ない**
-public func valueIsNotEmpty(_ selector: String, timeout: Int? = nil,
+public func valueIsNotEmpty(_ selector: String, timeout: Double? = nil,
                             file: StaticString = #filePath, line: UInt = #line) {
     emptyAssert("valueIsNotEmpty", verb: "valueIsNotEmpty", selector: FTSelector.parse(selector),
                 timeout: timeout, file: file, line: line)
 }
 
-public func valueIsNotEmpty(_ selector: Sel, timeout: Int? = nil,
+public func valueIsNotEmpty(_ selector: Sel, timeout: Double? = nil,
                             file: StaticString = #filePath, line: UInt = #line) {
     emptyAssert("valueIsNotEmpty", verb: "valueIsNotEmpty", selector: selector.ftSelector,
                 timeout: timeout, file: file, line: line)
@@ -862,7 +915,7 @@ public func valueIsNotEmpty(_ selector: Sel, timeout: Int? = nil,
 
 /// テキストの**正規表現一致**検証(部分一致。全体一致にしたいときは `^...$` を書く)。
 /// 可視性の確認は「実際に一致した部分文字列」で行う(パターン文字列は画面に出ないため)
-public func textMatches(_ selector: String, _ pattern: String, timeout: Int? = nil,
+public func textMatches(_ selector: String, _ pattern: String, timeout: Double? = nil,
                         requireVisible: Bool = true,
                         file: StaticString = #filePath, line: UInt = #line) {
     textAssert("textMatches", verb: "textMatches", selector: FTSelector.parse(selector),
@@ -870,7 +923,7 @@ public func textMatches(_ selector: String, _ pattern: String, timeout: Int? = n
                file: file, line: line)
 }
 
-public func textMatches(_ selector: Sel, _ pattern: String, timeout: Int? = nil,
+public func textMatches(_ selector: Sel, _ pattern: String, timeout: Double? = nil,
                         requireVisible: Bool = true,
                         file: StaticString = #filePath, line: UInt = #line) {
     textAssert("textMatches", verb: "textMatches", selector: selector.ftSelector,
@@ -881,7 +934,7 @@ public func textMatches(_ selector: Sel, _ pattern: String, timeout: Int? = nil,
 /// textIs / valueIs / textContains / textMatches の共通実装。
 /// operatorText は説明文の記号だけを分ける(完全一致系は `==`、部分一致系は `~`)
 private func textAssert(_ assert: String, verb: String, selector: FTSelector, expected: String,
-                        timeout: Int?, requireVisible: Bool, operatorText: String = "~",
+                        timeout: Double?, requireVisible: Bool, operatorText: String = "~",
                         file: StaticString, line: UInt) {
     let core = FTRuntime.requireCore(command: verb)
     let step = FlowStep(assert: assert, locator: selector.primary,
@@ -896,17 +949,17 @@ private func textAssert(_ assert: String, verb: String, selector: FTSelector, ex
 /// 不在検証。**消えるまで待つ**(初回で不在なら即成功、在ればタイムアウトまで消滅を待つ)。
 /// exist の裏返しであり、ダイアログ・ローディング・トーストが閉じたことの確認に使う。
 /// 可視性(occlusion)は見ない — ツリーから消えたことが判定基準。
-public func notExist(_ selector: String, timeout: Int? = nil,
+public func notExist(_ selector: String, timeout: Double? = nil,
                      file: StaticString = #filePath, line: UInt = #line) {
     notExistImpl(FTSelector.parse(selector), timeout: timeout, file: file, line: line)
 }
 
-public func notExist(_ selector: Sel, timeout: Int? = nil,
+public func notExist(_ selector: Sel, timeout: Double? = nil,
                      file: StaticString = #filePath, line: UInt = #line) {
     notExistImpl(selector.ftSelector, timeout: timeout, file: file, line: line)
 }
 
-private func notExistImpl(_ selector: FTSelector, timeout: Int?,
+private func notExistImpl(_ selector: FTSelector, timeout: Double?,
                           file: StaticString, line: UInt) {
     let core = FTRuntime.requireCore(command: "notExist")
     let step = FlowStep(assert: "notExists", locator: selector.primary,
@@ -917,26 +970,26 @@ private func notExistImpl(_ selector: FTSelector, timeout: Int?,
 }
 
 /// 要素が操作可能(enabled)であることの検証。タイムアウトまで状態変化を待つ
-public func isEnabled(_ selector: String, timeout: Int? = nil,
+public func isEnabled(_ selector: String, timeout: Double? = nil,
                       file: StaticString = #filePath, line: UInt = #line) {
     enabledAssert("enabled", verb: "isEnabled", selector: FTSelector.parse(selector),
                   timeout: timeout, file: file, line: line)
 }
 
-public func isEnabled(_ selector: Sel, timeout: Int? = nil,
+public func isEnabled(_ selector: Sel, timeout: Double? = nil,
                       file: StaticString = #filePath, line: UInt = #line) {
     enabledAssert("enabled", verb: "isEnabled", selector: selector.ftSelector,
                   timeout: timeout, file: file, line: line)
 }
 
 /// 要素が操作不可(disabled)であることの検証。タイムアウトまで状態変化を待つ
-public func isDisabled(_ selector: String, timeout: Int? = nil,
+public func isDisabled(_ selector: String, timeout: Double? = nil,
                        file: StaticString = #filePath, line: UInt = #line) {
     enabledAssert("disabled", verb: "isDisabled", selector: FTSelector.parse(selector),
                   timeout: timeout, file: file, line: line)
 }
 
-public func isDisabled(_ selector: Sel, timeout: Int? = nil,
+public func isDisabled(_ selector: Sel, timeout: Double? = nil,
                        file: StaticString = #filePath, line: UInt = #line) {
     enabledAssert("disabled", verb: "isDisabled", selector: selector.ftSelector,
                   timeout: timeout, file: file, line: line)
@@ -945,13 +998,13 @@ public func isDisabled(_ selector: Sel, timeout: Int? = nil,
 /// スイッチ・チェックボックス・ラジオが**オン**であることの検証。タイムアウトまで状態変化を待つ。
 /// 取得元は iOS=accessibility の selected trait / Android=isChecked(ElementInfo.checked)。
 /// **型が OS で揃わない要素(checkbox/radio)でも使える** — 状態は型と独立に取れるため
-public func isChecked(_ selector: String, timeout: Int? = nil,
+public func isChecked(_ selector: String, timeout: Double? = nil,
                       file: StaticString = #filePath, line: UInt = #line) {
     enabledAssert("checked", verb: "isChecked", selector: FTSelector.parse(selector),
                   timeout: timeout, file: file, line: line)
 }
 
-public func isChecked(_ selector: Sel, timeout: Int? = nil,
+public func isChecked(_ selector: Sel, timeout: Double? = nil,
                       file: StaticString = #filePath, line: UInt = #line) {
     enabledAssert("checked", verb: "isChecked", selector: selector.ftSelector,
                   timeout: timeout, file: file, line: line)
@@ -959,20 +1012,20 @@ public func isChecked(_ selector: Sel, timeout: Int? = nil,
 
 /// スイッチ・チェックボックス・ラジオが**オフ**であることの検証。
 /// 状態を持たない要素(ただのボタン等)も「オフ」として通る(ブリッジは true のときだけ送るため)
-public func isNotChecked(_ selector: String, timeout: Int? = nil,
+public func isNotChecked(_ selector: String, timeout: Double? = nil,
                          file: StaticString = #filePath, line: UInt = #line) {
     enabledAssert("notChecked", verb: "isNotChecked", selector: FTSelector.parse(selector),
                   timeout: timeout, file: file, line: line)
 }
 
-public func isNotChecked(_ selector: Sel, timeout: Int? = nil,
+public func isNotChecked(_ selector: Sel, timeout: Double? = nil,
                          file: StaticString = #filePath, line: UInt = #line) {
     enabledAssert("notChecked", verb: "isNotChecked", selector: selector.ftSelector,
                   timeout: timeout, file: file, line: line)
 }
 
 /// enabled/disabled/checked/notChecked の共通実装(アサート名だけが違う)
-private func enabledAssert(_ assert: String, verb: String, selector: FTSelector, timeout: Int?,
+private func enabledAssert(_ assert: String, verb: String, selector: FTSelector, timeout: Double?,
                            file: StaticString, line: UInt) {
     let core = FTRuntime.requireCore(command: verb)
     let step = FlowStep(assert: assert, locator: selector.primary,
@@ -986,17 +1039,17 @@ private func enabledAssert(_ assert: String, verb: String, selector: FTSelector,
 /// `||` は**候補集合の和**を数える(Shirates 準拠。同じ要素が複数の節にマッチしても1度だけ)。
 /// スコープと併用すると容器の中だけ数えられる:
 /// countIs("#list >> .Cell", 3)
-public func countIs(_ selector: String, _ expected: Int, timeout: Int? = nil,
+public func countIs(_ selector: String, _ expected: Int, timeout: Double? = nil,
                     file: StaticString = #filePath, line: UInt = #line) {
     countIsImpl(FTSelector.parse(selector), expected, timeout: timeout, file: file, line: line)
 }
 
-public func countIs(_ selector: Sel, _ expected: Int, timeout: Int? = nil,
+public func countIs(_ selector: Sel, _ expected: Int, timeout: Double? = nil,
                     file: StaticString = #filePath, line: UInt = #line) {
     countIsImpl(selector.ftSelector, expected, timeout: timeout, file: file, line: line)
 }
 
-private func countIsImpl(_ selector: FTSelector, _ expected: Int, timeout: Int?,
+private func countIsImpl(_ selector: FTSelector, _ expected: Int, timeout: Double?,
                          file: StaticString, line: UInt) {
     let core = FTRuntime.requireCore(command: "countIs")
     let step = FlowStep(assert: "count", locator: selector.primary,
@@ -1017,9 +1070,25 @@ public func screenIs(_ expected: String,
 /// exist の戻り値。検証をチェーンできる
 public struct FTElement {
     let selector: FTSelector
+    /// exist が照合した時点の要素(**再取得しない**。追加のデバイス往復は発生させない)。
+    /// 掴めなかった・失敗後スキップ・dry-run では nil。以降の .textIs 等のチェーンは
+    /// 再照合しても matched は更新しない(値の出所は最初の exist に固定)
+    let matched: ElementInfo?
+
+    init(selector: FTSelector, matched: ElementInfo? = nil) {
+        self.selector = selector
+        self.matched = matched
+    }
+
+    /// 掴んだ要素の表示テキスト(label)
+    public var text: String? { matched?.label }
+    /// 掴んだ要素の value
+    public var value: String? { matched?.value }
+    /// 掴んだ要素の identifier
+    public var id: String? { matched?.identifier }
 
     @discardableResult
-    public func textIs(_ expected: String, timeout: Int? = nil, requireVisible: Bool = true,
+    public func textIs(_ expected: String, timeout: Double? = nil, requireVisible: Bool = true,
                        file: StaticString = #filePath, line: UInt = #line) -> FTElement {
         textAssert("textEquals", verb: "textIs", selector: selector, expected: expected,
                    timeout: timeout, requireVisible: requireVisible, operatorText: "==",
@@ -1028,7 +1097,7 @@ public struct FTElement {
     }
 
     @discardableResult
-    public func valueIs(_ expected: String, timeout: Int? = nil, requireVisible: Bool = true,
+    public func valueIs(_ expected: String, timeout: Double? = nil, requireVisible: Bool = true,
                         file: StaticString = #filePath, line: UInt = #line) -> FTElement {
         textAssert("valueEquals", verb: "valueIs", selector: selector, expected: expected,
                    timeout: timeout, requireVisible: requireVisible, operatorText: "==",
@@ -1037,7 +1106,7 @@ public struct FTElement {
     }
 
     @discardableResult
-    public func textStartsWith(_ expected: String, timeout: Int? = nil,
+    public func textStartsWith(_ expected: String, timeout: Double? = nil,
                                requireVisible: Bool = true,
                                file: StaticString = #filePath, line: UInt = #line) -> FTElement {
         textAssert("textStartsWith", verb: "textStartsWith", selector: selector,
@@ -1047,7 +1116,7 @@ public struct FTElement {
     }
 
     @discardableResult
-    public func textEndsWith(_ expected: String, timeout: Int? = nil,
+    public func textEndsWith(_ expected: String, timeout: Double? = nil,
                              requireVisible: Bool = true,
                              file: StaticString = #filePath, line: UInt = #line) -> FTElement {
         textAssert("textEndsWith", verb: "textEndsWith", selector: selector,
@@ -1057,7 +1126,7 @@ public struct FTElement {
     }
 
     @discardableResult
-    public func textIsNot(_ expected: String, timeout: Int? = nil,
+    public func textIsNot(_ expected: String, timeout: Double? = nil,
                           file: StaticString = #filePath, line: UInt = #line) -> FTElement {
         textAssert("textNotEquals", verb: "textIsNot", selector: selector, expected: expected,
                    timeout: timeout, requireVisible: false, operatorText: "!=",
@@ -1069,7 +1138,7 @@ public struct FTElement {
     /// **セレクタに `#id` を足す形にはしない** — `||` を含む式で結合が変わるうえ、
     /// 落ちたときに「見つからない」としか言えず**実際の id** を出せないため
     @discardableResult
-    public func idIs(_ expected: String, timeout: Int? = nil,
+    public func idIs(_ expected: String, timeout: Double? = nil,
                      file: StaticString = #filePath, line: UInt = #line) -> FTElement {
         let core = FTRuntime.requireCore(command: "idIs")
         let step = FlowStep(assert: "idEquals", locator: selector.primary,
@@ -1082,7 +1151,7 @@ public struct FTElement {
     }
 
     @discardableResult
-    public func textIsNotEmpty(_ timeout: Int? = nil,
+    public func textIsNotEmpty(_ timeout: Double? = nil,
                                file: StaticString = #filePath, line: UInt = #line) -> FTElement {
         emptyAssert("textIsNotEmpty", verb: "textIsNotEmpty", selector: selector,
                     timeout: timeout, file: file, line: line)
@@ -1145,7 +1214,7 @@ public func appSwitcher(file: StaticString = #filePath, line: UInt = #line) {
 public func wait(_ seconds: Double,
                  file: StaticString = #filePath, line: UInt = #line) {
     FTRuntime.requireCore(command: "wait")
-        .performCustom(description: "wait \(seconds)s", file: file, line: line) {
+        .performCustom(description: "wait \(FTSeconds.format(seconds))s", file: file, line: line) {
             try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
         }
 }
@@ -1155,7 +1224,7 @@ public func wait(_ seconds: Double,
 /// セレクタが解決できる場合のみブロックを実行する(出るかどうか不定なダイアログ処理用)。
 /// 戻り値の .ifElse { } で不成立時の処理を書ける
 @discardableResult
-public func ifCanSelect(_ selector: String, waitSeconds: Int = 0,
+public func ifCanSelect(_ selector: String, waitSeconds: Double = 0,
                         file: StaticString = #filePath, line: UInt = #line,
                         _ body: () -> Void) -> FTBranch {
     ifCanSelectImpl(FTSelector.parse(selector), waitSeconds: waitSeconds,
@@ -1163,14 +1232,14 @@ public func ifCanSelect(_ selector: String, waitSeconds: Int = 0,
 }
 
 @discardableResult
-public func ifCanSelect(_ selector: Sel, waitSeconds: Int = 0,
+public func ifCanSelect(_ selector: Sel, waitSeconds: Double = 0,
                         file: StaticString = #filePath, line: UInt = #line,
                         _ body: () -> Void) -> FTBranch {
     ifCanSelectImpl(selector.ftSelector, waitSeconds: waitSeconds, file: file, line: line, body)
 }
 
 @discardableResult
-private func ifCanSelectImpl(_ selector: FTSelector, waitSeconds: Int,
+private func ifCanSelectImpl(_ selector: FTSelector, waitSeconds: Double,
                              file: StaticString, line: UInt,
                              _ body: () -> Void) -> FTBranch {
     let core = FTRuntime.requireCore(command: "ifCanSelect")
@@ -1224,7 +1293,7 @@ public func android(_ body: () -> Void) {
 /// **各周回のステップ説明には `[名前 #n]` が前置される**(group と同じ記録規約)。
 /// 上限に達しても失敗にはしない(消化しきれなかったことは記録に残る)。
 /// 本体が要素を減らさないと上限まで空回りするので、max は想定最大件数に合わせる
-public func repeatWhileCanSelect(_ selector: String, max: Int = 10, waitSeconds: Int = 0,
+public func repeatWhileCanSelect(_ selector: String, max: Int = 10, waitSeconds: Double = 0,
                                  title: String? = nil,
                                  file: StaticString = #filePath, line: UInt = #line,
                                  _ body: () -> Void) {
@@ -1232,7 +1301,7 @@ public func repeatWhileCanSelect(_ selector: String, max: Int = 10, waitSeconds:
                              title: title, file: file, line: line, body)
 }
 
-public func repeatWhileCanSelect(_ selector: Sel, max: Int = 10, waitSeconds: Int = 0,
+public func repeatWhileCanSelect(_ selector: Sel, max: Int = 10, waitSeconds: Double = 0,
                                  title: String? = nil,
                                  file: StaticString = #filePath, line: UInt = #line,
                                  _ body: () -> Void) {
@@ -1240,7 +1309,7 @@ public func repeatWhileCanSelect(_ selector: Sel, max: Int = 10, waitSeconds: In
                              title: title, file: file, line: line, body)
 }
 
-private func repeatWhileCanSelectImpl(_ selector: FTSelector, max: Int, waitSeconds: Int,
+private func repeatWhileCanSelectImpl(_ selector: FTSelector, max: Int, waitSeconds: Double,
                                       title: String?,
                                       file: StaticString, line: UInt,
                                       _ body: () -> Void) {
@@ -1315,7 +1384,7 @@ public func doUntilTrue(_ title: String, waitSeconds: Double = 10, intervalSecon
                 }
                 if Date() >= deadline {
                     throw FTCommandError.message(
-                        "doUntilTrue \"\(title)\" が \(waitSeconds)s で成立しませんでした"
+                        "doUntilTrue \"\(title)\" が \(FTSeconds.format(waitSeconds))s で成立しませんでした"
                         + "(\(loops) 回試行)")
                 }
                 try await Task.sleep(nanoseconds: UInt64(intervalSeconds * 1_000_000_000))

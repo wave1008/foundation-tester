@@ -152,12 +152,17 @@ public struct StepOutcome: Sendable {
     /// 区別が付かない = `isNotChecked` が何を指しても通ってしまう。呼び手(FTDriveCore)が
     /// シナリオ横断で集計し、一度も観測できなければ run 終了時に警告する
     public let observedChecked: Bool?
+    /// 成功時に実際に照合した要素(exist/textIs 等の assert・tap/type/press 等のアクションで解決した
+    /// 要素)。失敗時は常に nil(掴めなかったのに値が読める状態を作らない)。notExists/count/
+    /// screenMatches のように要素が1つに定まらない assert も nil のまま
+    public let resolvedElement: ElementInfo?
 
     public init(status: StepResult.Status, healedStep: FlowStep? = nil, healedByCache: Bool = false,
                timing: StepTiming? = nil, driverFallback: String? = nil,
-               observedChecked: Bool? = nil,
+               observedChecked: Bool? = nil, resolvedElement: ElementInfo? = nil,
                at: String = ISO8601Millis.string(from: Date())) {
         self.observedChecked = observedChecked
+        self.resolvedElement = resolvedElement
         self.status = status
         self.healedStep = healedStep
         self.healedByCache = healedByCache
@@ -293,6 +298,7 @@ public final class StepExecutor {
         var phase = PhaseAccumulator()
         interruptNote = nil   // 「1ステップにつき1回だけ」の起点(dismissInterruption が見る)
         observedCheckedThisStep = nil
+        resolvedElementThisStep = nil
         do {
             if let action = step.action {
                 let outcome = try await executeAction(action, step: step, cached: cached, phase: &phase)
@@ -301,7 +307,11 @@ public final class StepExecutor {
                                    timing: StepTiming(durationMs: Self.ms(clock.now - start),
                                                       snapshotMs: phase.snapshotMs,
                                                       actionMs: phase.actionMs, waitMs: phase.waitMs),
-                                   driverFallback: noteWithInterrupt(outcome.driverFallback))
+                                   driverFallback: noteWithInterrupt(outcome.driverFallback),
+                                   // アクションは**解決した時点**で立てる(操作の成否より前)ため、
+                                   // 失敗した操作の要素を持ち帰らないようここで落とす
+                                   resolvedElement: Self.isSuccess(outcome.status)
+                                       ? resolvedElementThisStep : nil)
             }
             if let assert = step.assert {
                 let status = try await executeAssert(assert, step: step, phase: &phase)
@@ -310,7 +320,8 @@ public final class StepExecutor {
                                                       snapshotMs: phase.snapshotMs,
                                                       actionMs: phase.actionMs, waitMs: phase.waitMs),
                                    driverFallback: noteWithInterrupt(nil),
-                                   observedChecked: observedCheckedThisStep)
+                                   observedChecked: observedCheckedThisStep,
+                                   resolvedElement: resolvedElementThisStep)
             }
             return StepOutcome(status: .skipped("action も assert もないステップ"))
         } catch {
@@ -346,6 +357,18 @@ public final class StepExecutor {
     /// executeAssert は Status しか返さないためインスタンス変数で受け渡す
     /// (StepExecutor+Assert.swift の executeAssertChecked から書くため internal)。
     var observedCheckedThisStep: Bool?
+    /// exist/textIs 等の assert・tap/type/press 等のアクションが**成功時**に実際に照合した要素
+    /// (execute が StepOutcome.resolvedElement に載せる)。observedCheckedThisStep と同じ受け渡し形
+    /// (StepExecutor+Assert.swift の各 executeAssert* から書くため internal)。失敗時は立てない。
+    var resolvedElementThisStep: ElementInfo?
+
+    /// 「掴めた」と言い切れる状態か(StepOutcome.resolvedElement を載せてよいかの判定)
+    static func isSuccess(_ status: StepResult.Status) -> Bool {
+        switch status {
+        case .passed, .passedViaFallback, .healed: return true
+        case .failed, .skipped: return false
+        }
+    }
 
     /// このステップで閉じた割り込み(execute が記録の注記に載せる)。
     /// **1ステップにつき1回だけ**発火させるための状態でもある(閉じても消えない相手に対して
@@ -807,6 +830,7 @@ public final class StepExecutor {
                     + Self.truncationHint(snapshot)
                     + Self.webViewPathHint(snapshot)))
         }
+        resolvedElementThisStep = element
 
         switch action {
         case "tap":

@@ -81,6 +81,18 @@ final class ProfileResolverTests: XCTestCase {
         XCTAssertEqual(resolved.devices[2].spec.avd, "Pixel_9")
     }
 
+    /// defaultTimeout が小数(秒未満)でも解決できること(Int→Double 化の回帰ガード)。
+    /// 整数 JSON との後方互換は testResolveMixedPlatforms(8)で別途固定済み
+    func testResolveAcceptsFractionalDefaultTimeout() throws {
+        try writeStandardFixture()
+        try write("""
+        { "app": "sampleapp", "devices": [ { "name": "メイン機" } ], "defaultTimeout": 1.5 }
+        """, to: project.runsDir, name: "fractional")
+        let resolved = try ProfileResolver.resolve(
+            project: project, runName: "fractional", machineName: "M1 Max(64GB)")
+        XCTAssertEqual(resolved.defaultTimeout, 1.5)
+    }
+
     func testAppSectionOverridesCommon() throws {
         // common.app は廃止済みで resolve では無視される(validate は警告のみ)
         try write("""

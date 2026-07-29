@@ -339,7 +339,7 @@ final class MCPServer {
 
         var fm = FMConfig(heal: args["heal"] as? Bool ?? false)
         var reportDir = project.reportsDir.path
-        var defaultTimeout: Int?
+        var defaultTimeout: Double?
         var connection: DriverConnection
         var prologue: [String] = []
 

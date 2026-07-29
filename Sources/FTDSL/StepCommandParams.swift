@@ -61,8 +61,8 @@ public enum StepCommandParams {
         help: "見つからないときに諦めるまでのスワイプ回数(既定 8 回)")
 
     private static let timeoutSpec = StepParamSpec(
-        name: "timeout", label: "タイムアウト(秒)", kind: .int, defaultValue: "",
-        help: "要素の出現を待つ秒数。空欄 = 実行プロファイルの既定値を使う")
+        name: "timeout", label: "タイムアウト(秒)", kind: .double, defaultValue: "",
+        help: "要素の出現を待つ秒数(小数可)。空欄 = 実行プロファイルの既定値を使う")
 
     /// tap / exist のスクロール探索。**空欄 = 引数なし = スクロールしない**
     /// (scrollTo の directionSpec は既定 up で意味が違う。別インスタンスにするのはこのため)
@@ -84,8 +84,8 @@ public enum StepCommandParams {
     /// tap/type/press のロケータ解決待ち(検証系の timeoutSpec とは別インスタンス。
     /// name は同じ "timeout" だが意味・help・使い所が異なる)
     private static let actionTimeoutSpec = StepParamSpec(
-        name: "timeout", label: "要素解決の待ち(秒)", kind: .int, defaultValue: "",
-        help: "見つからないとき再試行する上限秒。0 = 再試行しない(optional の空振りを速くする)。空欄 = 既定(約0.7秒)")
+        name: "timeout", label: "要素解決の待ち(秒)", kind: .double, defaultValue: "",
+        help: "見つからないとき再試行する上限秒(小数可)。0 = 再試行しない(optional の空振りを速くする)。空欄 = 既定(約0.7秒)")
 
     /// 動詞ごとの編集できるキーワード引数(シグネチャ順)。tap は timeout のみ持ち optional は
     /// 含めない(表示表現の「 (optional)」サフィックス側で編集するため。二重管理回避)
@@ -265,16 +265,16 @@ public enum StepCommandParams {
     private static func timeoutArg(_ params: [String: String]) throws -> String {
         let text = value(params, timeoutSpec)
         if text.isEmpty { return "" }
-        let timeout = try intValue(text, name: "timeout")
-        return ", timeout: \(timeout)"
+        let timeout = try doubleValue(text, name: "timeout")
+        return ", timeout: \(StepCommandText.formatSeconds(timeout))"
     }
 
     /// tap / type / press の timeout(空文字 = 省略 = 既定の再試行)
     private static func actionTimeoutArg(_ params: [String: String]) throws -> String {
         let text = value(params, actionTimeoutSpec)
         if text.isEmpty { return "" }
-        let timeout = try intValue(text, name: "timeout")
-        return ", timeout: \(timeout)"
+        let timeout = try doubleValue(text, name: "timeout")
+        return ", timeout: \(StepCommandText.formatSeconds(timeout))"
     }
 
     // MARK: - 値の検証(内部)

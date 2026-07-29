@@ -12,6 +12,8 @@ final class CommandDispatchTests: XCTestCase {
         private(set) var tapped: [Int] = []
         private(set) var pressed: [(ref: Int, duration: Double)] = []
         private(set) var pressEnterCount = 0
+        /// exist が値を読むために追加のデバイス往復をしないことの確認用(1回の exist で 1 回のはず)
+        private(set) var snapshotCount = 0
 
         func status() async throws -> StatusResponse {
             StatusResponse(ready: true, device: "stub", osVersion: "-", sessionBundleID: nil)
@@ -19,11 +21,12 @@ final class CommandDispatchTests: XCTestCase {
         func install(packagePath: String) async throws {}
         func launch(bundleID: String) async throws {}
         func snapshot() async throws -> SnapshotResponse {
-            SnapshotResponse(
+            snapshotCount += 1
+            return SnapshotResponse(
                 sessionBundleID: nil,
                 screen: FTRect(x: 0, y: 0, width: 400, height: 800),
                 elements: [ElementInfo(ref: 1, type: "button", identifier: "cleanup", label: "片付け",
-                                       value: nil, placeholder: nil, enabled: true,
+                                       value: "1200", placeholder: nil, enabled: true,
                                        frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: 0)],
                 truncatedCount: 0)
         }
@@ -207,5 +210,28 @@ final class CommandDispatchTests: XCTestCase {
         XCTAssertEqual(messages.contains { $0.contains("scene 1 が重複しています") }, true, "\(messages)")
         // 実行自体は止めない(2 scene とも記録される)
         XCTAssertEqual(core.finalRecord.scenes.count, 2)
+    }
+
+    /// exist が照合した要素の label/value/identifier が FTElement.text/value/id へ生で届くこと。
+    /// 追加のデバイス往復は発生しない(exist 1 回につきスナップショット取得は 1 回のまま)
+    func testExistExposesMatchedElementAttributes() {
+        let driver = RecordingDriver()
+        let core = makeCore(driver: driver)
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        var element: FTElement!
+        scenario {
+            scene(1, "s") {
+                action { element = exist("#cleanup") }
+            }
+        }
+
+        XCTAssertEqual(element.text, "片付け")
+        XCTAssertEqual(element.value, "1200")
+        XCTAssertEqual(element.id, "cleanup")
+        // 読み出し自体も含め、追加のデバイス往復(スナップショット取得)を起こさない
+        XCTAssertEqual(driver.snapshotCount, 1, "exist 1 回に対しスナップショットが複数回取られている")
+        XCTAssertTrue(core.finalRecord.passed)
     }
 }

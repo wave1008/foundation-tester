@@ -71,4 +71,45 @@ class 型付きセレクタが文字列版と同じ要素に着地すること {
             }
         }
     }
+
+    /// Shirates 由来のスクロール別名族は String 版と Sel 版が1対1(design.md §型付きセレクタ)。
+    /// 委譲先の方向を取り違えても**コンパイルは通る**ので、実際に届くことをここで固定する
+    /// (方向の転記ミス自体は SelScrollVariantDispatchTests がユニットで押さえる)
+    @Test("スクロール別名族の Sel 版が文字列版と同じ挙動になる")
+    func S0030() {
+        scenario {
+            scene(1, "スクロール画面を開く") {
+                condition {
+                    launchApp()
+                    tap(.id("nav_scroll"))
+                }.expectation {
+                    exist(.id("row_01"))
+                }
+            }
+            scene(2, "tapWithScrollDown の Sel 版で折り返し下の行まで送ってタップする") {
+                action {
+                    tapWithScrollDown(.id("row_40"), maxSwipes: 15)
+                }.expectation {
+                    // 固定ヘッダなのでスクロール後も見える
+                    textIs(.id("txt_row_selected"), "selected=row_40")
+                }
+            }
+            scene(3, "existWithScrollUp の Sel 版で先頭へ戻りながら確認する") {
+                expectation {
+                    existWithScrollUp(.id("row_01"), maxSwipes: 15)
+                }
+            }
+            scene(4, "withScrollDown の中でも *WithoutScroll の Sel 版は現在画面だけを見る") {
+                action {
+                    withScrollDown {
+                        // 固定ヘッダは常に現在画面にある = スクロールせずに解決できる
+                        existWithoutScroll(.id("txt_row_selected"))
+                        tapWithoutScroll(.id("btn_scroll_top"))
+                    }
+                }.expectation {
+                    exist(.id("row_01"))
+                }
+            }
+        }
+    }
 }
