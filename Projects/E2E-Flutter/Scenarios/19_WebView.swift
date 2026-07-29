@@ -55,14 +55,33 @@ class WebViewの中身を操作できること {
                     textIs("wv_result=*", "wv_result=aria")
                 }
             }
-            scene(5, "Web コンテンツ内をスクロール探索できる") {
+            scene(5, "CSS transform された要素も正しい座標でタップできる") {
+                action {
+                    // rect が transform 込みで来ないと 60px ずれて外れる(契約の座標検証材料)
+                    tap("変形ボタン")
+                }.expectation {
+                    textIs("wv_result=*", "wv_result=transform")
+                }
+            }
+            scene(6, "Web コンテンツ内をスクロール探索できる") {
                 action {
                     scrollTo("WebView 画面外テキスト", maxSwipes: 15)
                 }.expectation {
                     exist("WebView 画面外テキスト")
                 }
             }
-            scene(6, "WebView から離れるとネイティブ側の操作に戻れる") {
+            scene(7, "position:fixed の要素はスクロール後も正しい座標でタップできる") {
+                action {
+                    // fixed は viewport 相対のまま。rect をスクロール量でずらす実装だとここで外れる
+                    tap("固定ボタン")
+                    // 結果の echo はページ先頭にあり、直前の scrollTo で画面外に出ている。
+                    // 先頭へ戻さないと textIs が「要素が見つかりません」になる(全 SUT で実測)
+                    scrollToTop()
+                }.expectation {
+                    textIs("wv_result=*", "wv_result=fixed")
+                }
+            }
+            scene(8, "WebView から離れるとネイティブ側の操作に戻れる") {
                 action {
                     tap("#btn_back")
                 }.expectation {

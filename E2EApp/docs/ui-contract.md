@@ -349,6 +349,8 @@ iOS/CMP は文字列定数、Android/Flutter はアセット)。ネットワー�
 | (placeholder `WebView 入力`) | textField | | ラベルが無いので `placeholder=WebView 入力` で指す。入力値は ASCII のみ |
 | `送信` | button | `wv_result=<入力値>` | |
 | `WebView アリアラベル` | button | `wv_result=aria` | ラベルは `aria-label` 由来(表示テキストは `●`) |
+| `変形ボタン` | button | `wv_result=transform` | `transform: translate(60px, 0)`。**座標検証の材料**(rect が transform 込みで来ないとタップが外れる。移動量は半幅より大きくしてある) |
+| `固定ボタン` | button | `wv_result=fixed` | `position: fixed`(右下)。**スクロール後**も正しい座標で当たることの検証材料。全幅要素の中心を覆わない位置に置く |
 | `wv_result=<v>` 初期 `wv_result=-` | staticText | (タップ不可) | 状態の echo |
 | `WebView 行 01`〜`WebView 行 30` | staticText | (タップ不可) | 行の高さ 56px 以上 |
 | `WebView 画面外テキスト` | staticText | (タップ不可) | 画面外(要 `scrollTo`) |

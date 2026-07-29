@@ -27,9 +27,16 @@
 <p><input id="wv_input" type="text" placeholder="WebView 入力"></p>
 <p><button id="wv_submit" onclick="setResult(document.getElementById('wv_input').value)">送信</button></p>
 <p><button id="wv_aria" aria-label="WebView アリアラベル" onclick="setResult('aria')"><span aria-hidden="true">&#9679;</span></button></p>
+<!-- 座標検証の材料(DOM 経路は getBoundingClientRect を画面座標へ写す。transform を無視すると
+     60px 右へずれてタップが外れる = ボタン半幅より大きい移動量にしてある。動かすと退行検知が消える -->
+<p><button id="wv_transform" style="transform: translate(60px, 0)" onclick="setResult('transform')">変形ボタン</button></p>
 <p id="wv_result">wv_result=-</p>
 <div id="wv_rows"></div>
 <p id="wv_offscreen">WebView 画面外テキスト</p>
+<!-- 座標検証の材料: fixed はスクロール後も viewport 相対のまま(rect をスクロール量で
+     ずらす実装だと、スクロール後のタップが外れる)。右下に置く = 全幅要素の中心を覆わない
+     (DOM 経路の可視判定は中心点の elementFromPoint。中央に置くと行や本文を不可視にしてしまう) -->
+<button id="wv_fixed" style="position: fixed; right: 8px; bottom: 8px;" onclick="setResult('fixed')">固定ボタン</button>
 <script>
   function setResult(value) {
     document.getElementById('wv_result').textContent = 'wv_result=' + value;
