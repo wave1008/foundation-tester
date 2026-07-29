@@ -91,10 +91,20 @@ function catalogWithoutAndroidModels() {
       error: AVDMANAGER_MISSING,
       errorCode: "avdmanager-missing",
       models: [],
-      systemImages: [{
-        abi: "arm64-v8a", apiLevel: 36, package: "system-images;android-36;google_apis_playstore;arm64-v8a",
-        tag: "google_apis_playstore", versionName: "Android 16",
-      }],
+      systemImages: [
+        {
+          abi: "arm64-v8a", apiLevel: 36, package: "system-images;android-36;google_apis_playstore;arm64-v8a",
+          tag: "google_apis_playstore", versionName: "Android 16",
+        },
+        {
+          abi: "arm64-v8a", apiLevel: 36, package: "system-images;android-36;google_apis;arm64-v8a",
+          tag: "google_apis", versionName: "Android 16",
+        },
+        {
+          abi: "arm64-v8a", apiLevel: 35, package: "system-images;android-35;google_apis;arm64-v8a",
+          tag: "google_apis", versionName: "Android 15",
+        },
+      ],
     },
     ios: {
       available: true,
@@ -114,6 +124,96 @@ function applyCatalog(window, catalog) {
   post(window, { type: "deviceCatalog", ok: true, catalog, error: null });
 }
 
+/** avdmanager もある正常な Android カタログ(モデルまで揃っている) */
+function readyCatalog() {
+  const catalog = catalogWithoutAndroidModels();
+  catalog.android.error = null;
+  catalog.android.errorCode = null;
+  catalog.android.models = [{ id: "pixel_9", name: "Pixel 9" }];
+  return catalog;
+}
+
+function optionLabels(document, id) {
+  return [...document.getElementById(id).options].map((o) => o.textContent);
+}
+
+test("サービスは Android のときだけ出て、既定は Google APIs", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  openDeviceAddModal(window, document);
+  applyCatalog(window, readyCatalog());
+
+  const row = document.getElementById("dlg-service-row");
+  assert.equal(row.hidden, true, "iOS では出さない");
+
+  switchTo(window, document, "android");
+  assert.equal(row.hidden, false);
+  assert.deepEqual(optionLabels(document, "dlg-service"), ["Google Play Store", "Google APIs"]);
+  assert.equal(document.getElementById("dlg-service").value, "google_apis", "既定は Google APIs");
+});
+
+test("サービスで OS バージョンを絞り込む(ラベルにタグは出さない)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  openDeviceAddModal(window, document);
+  applyCatalog(window, readyCatalog());
+  switchTo(window, document, "android");
+
+  assert.deepEqual(optionLabels(document, "dlg-os"),
+    ["Android 16(API 36) / arm64-v8a", "Android 15(API 35) / arm64-v8a"]);
+  assert.equal(document.getElementById("dlg-os").value,
+    "system-images;android-36;google_apis;arm64-v8a");
+
+  const service = document.getElementById("dlg-service");
+  service.value = "google_apis_playstore";
+  service.dispatchEvent(new window.Event("change", { bubbles: true }));
+
+  assert.deepEqual(optionLabels(document, "dlg-os"), ["Android 16(API 36) / arm64-v8a"],
+    "Play Store 版があるのは API 36 だけ");
+  assert.equal(document.getElementById("dlg-os").value,
+    "system-images;android-36;google_apis_playstore;arm64-v8a");
+  assert.equal(document.getElementById("dlg-ok").disabled, false);
+});
+
+test("選んだサービスのイメージが無ければ理由を出して OK を止める", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  openDeviceAddModal(window, document);
+  const catalog = readyCatalog();
+  // google_apis 版だけ持っている環境で Play Store を選んだ状態
+  catalog.android.systemImages = catalog.android.systemImages.filter((s) => s.tag === "google_apis");
+  applyCatalog(window, catalog);
+  switchTo(window, document, "android");
+
+  const service = document.getElementById("dlg-service");
+  service.value = "google_apis_playstore";
+  service.dispatchEvent(new window.Event("change", { bubbles: true }));
+
+  assert.equal(document.getElementById("dlg-os").options.length, 0);
+  assert.match(document.getElementById("dlg-error").textContent, /選択したサービスのシステムイメージ/);
+  assert.equal(document.getElementById("dlg-ok").disabled, true);
+});
+
+test("作成には選んだサービスのシステムイメージを渡す", (t) => {
+  const posted = [];
+  const { window, document } = createWebview((message) => posted.push(message));
+  t.after(() => window.close());
+  openDeviceAddModal(window, document);
+  applyCatalog(window, readyCatalog());
+  switchTo(window, document, "android");
+  const service = document.getElementById("dlg-service");
+  service.value = "google_apis_playstore";
+  service.dispatchEvent(new window.Event("change", { bubbles: true }));
+
+  document.getElementById("dlg-ok").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  const create = posted.find((m) => m.type === "createDevice");
+  assert.equal(create.platform, "android");
+  assert.equal(create.model, "pixel_9");
+  assert.equal(create.os, "system-images;android-36;google_apis_playstore;arm64-v8a");
+  // 名前はモデルと OS ラベルから自動生成される(サービスはラベルに含めない)
+  assert.equal(create.name, "Pixel 9(Android 16(API 36) / arm64-v8a)");
+});
+
 test("モデルが空のプラットフォームでは理由を出し OK を押させない", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
@@ -129,7 +229,7 @@ test("モデルが空のプラットフォームでは理由を出し OK を押�
   document.getElementById("dlg-platform-android").dispatchEvent(new window.Event("change", { bubbles: true }));
 
   assert.equal(document.getElementById("dlg-model").options.length, 0, "モデルは空のまま");
-  assert.equal(document.getElementById("dlg-os").options.length, 1, "OS バージョンは読めている");
+  assert.equal(document.getElementById("dlg-os").options.length, 2, "OS バージョンは読めている");
   assert.equal(document.getElementById("dlg-error").textContent, AVDMANAGER_MISSING,
     "CLI 由来の理由文をそのまま見せる");
   assert.equal(document.getElementById("dlg-ok").disabled, true, "作成できない状態で OK を押させない");

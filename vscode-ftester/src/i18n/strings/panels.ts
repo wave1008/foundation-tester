@@ -196,6 +196,7 @@ export const panelsStrings = {
   "panels.deviceAdd.osTypeLabel": { ja: "OS種別", en: "OS Type" },
   "panels.deviceAdd.modelLabel": { ja: "モデル", en: "Model" },
   "panels.deviceAdd.osVersionLabel": { ja: "OSバージョン", en: "OS Version" },
+  "panels.deviceAdd.servicesLabel": { ja: "サービス", en: "Services" },
   "panels.deviceAdd.nameLabel": { ja: "デバイス名", en: "Device Name" },
   "panels.deviceAdd.installCmdlineTools": {
     ja: "Command-line Tools を導入",

@@ -27,6 +27,8 @@ const deviceAddOverlay = document.getElementById('device-add-overlay');
 const dlgPlatformIos = document.getElementById('dlg-platform-ios');
 const dlgPlatformAndroid = document.getElementById('dlg-platform-android');
 const dlgModel = document.getElementById('dlg-model');
+const dlgServiceRow = document.getElementById('dlg-service-row');
+const dlgService = document.getElementById('dlg-service');
 const dlgOs = document.getElementById('dlg-os');
 const dlgName = document.getElementById('dlg-name');
 const dlgError = document.getElementById('dlg-error');
@@ -39,6 +41,9 @@ let deviceAddOpen = false;
 let deviceAddCreating = false;
 // cmdline-tools の導入中(数分)。deviceAddCreating と同じくモーダルを閉じさせない。
 let installingCmdlineTools = false;
+// 「サービス」の既定(monitorHtml.ts の #dlg-service の selected と一致させる)。Play Store 版は
+// Play 保護の分だけ重く、テスト用途では Google APIs で足りることが多いためこちらを既定にする。
+const DEFAULT_ANDROID_SERVICE = 'google_apis';
 // deviceCatalogRequest の応答(deviceCatalog.ok:true の catalog)。未着/失敗中は null。
 let deviceCatalog = null;
 // デバイス名をユーザーが手で編集したか(true の間は自動生成に追従しない)。
@@ -60,6 +65,7 @@ function setDialogControlsEnabled(enabled) {
   dlgPlatformIos.disabled = !enabled;
   dlgPlatformAndroid.disabled = !enabled;
   dlgModel.disabled = !enabled;
+  dlgService.disabled = !enabled;
   dlgOs.disabled = !enabled;
   dlgName.disabled = !enabled;
 }
@@ -83,6 +89,8 @@ function modelOptionsFor(platform) {
     : deviceCatalog.android.models.map((m) => ({ value: m.id, label: m.name }));
 }
 
+// Android の OS バージョンは「サービス」(system-images のタグ)で絞る。タグはラベルから外す
+// (選択済みの値と重複するため)。
 function osOptionsFor(platform) {
   if (!deviceCatalog) {
     return [];
@@ -90,10 +98,12 @@ function osOptionsFor(platform) {
   if (platform === 'ios') {
     return deviceCatalog.ios.runtimes.map((r) => ({ value: r.identifier, label: r.name }));
   }
-  return deviceCatalog.android.systemImages.map((s) => ({
-    value: s.package,
-    label: s.versionName + '(API ' + s.apiLevel + ') ' + s.tag + ' / ' + s.abi,
-  }));
+  return deviceCatalog.android.systemImages
+    .filter((s) => s.tag === dlgService.value)
+    .map((s) => ({
+      value: s.package,
+      label: s.versionName + '(API ' + s.apiLevel + ') / ' + s.abi,
+    }));
 }
 
 // カタログは ok:true のままプラットフォーム単位で部分的に欠ける(例: Android は system-images だけ
@@ -104,11 +114,20 @@ function platformIssue(platform) {
     return { blocked: true, message: '' };
   }
   const side = platform === 'ios' ? deviceCatalog.ios : deviceCatalog.android;
-  const blocked = modelOptionsFor(platform).length === 0 || osOptionsFor(platform).length === 0;
+  const models = modelOptionsFor(platform);
+  const oses = osOptionsFor(platform);
+  const blocked = models.length === 0 || oses.length === 0;
+  // カタログ自体は取れているのに OS だけ空 = 選択中サービスのイメージが無いだけ(サービスを
+  // 変えれば解決するので、カタログが空という言い方をしない)
+  const serviceOnly = platform === 'android' && models.length > 0
+    && deviceCatalog.android.systemImages.length > 0;
   // side.error は CLI 由来の理由文(訳さず素通しする。枠だけ i18n)
   return {
     blocked,
-    message: side.error || (blocked ? t('wvMonitor.deviceAdd.catalogEmpty') : ''),
+    message: side.error
+      || (blocked
+        ? t(serviceOnly ? 'wvMonitor.deviceAdd.noImageForService' : 'wvMonitor.deviceAdd.catalogEmpty')
+        : ''),
     // 導入で解消できる欠け方のときだけボタンを出す(文言では分岐しない)
     installable: platform === 'android' && side.errorCode === 'avdmanager-missing',
   };
@@ -152,6 +171,7 @@ function applyPlatformAvailability() {
 // カタログ受信直後でも同じ結果になるよう、呼び出し側で dlgError/dlgOk を触らない)。
 function refreshModelAndOsOptions() {
   const platform = getDialogPlatform();
+  dlgServiceRow.hidden = platform !== 'android';
   fillSelect(dlgModel, modelOptionsFor(platform));
   fillSelect(dlgOs, osOptionsFor(platform));
   refreshAutoName();
@@ -164,6 +184,9 @@ function refreshModelAndOsOptions() {
 
 dlgPlatformIos.addEventListener('change', () => refreshModelAndOsOptions());
 dlgPlatformAndroid.addEventListener('change', () => refreshModelAndOsOptions());
+// サービスを変えると選べる OS バージョンが変わる(モデルは変わらないが、空になったときの
+// 理由表示と OK 可否も refreshModelAndOsOptions が面倒を見る)
+dlgService.addEventListener('change', () => refreshModelAndOsOptions());
 dlgModel.addEventListener('change', () => refreshAutoName());
 dlgOs.addEventListener('change', () => refreshAutoName());
 dlgName.addEventListener('input', () => {
@@ -185,6 +208,7 @@ function openDeviceAddModal() {
   deviceAddCreating = false;
   dlgNameDirty = false;
   dlgName.value = '';
+  dlgService.value = DEFAULT_ANDROID_SERVICE;
   requestDeviceCatalog();
   dlgOk.textContent = 'OK';
   dlgCancel.disabled = false;
