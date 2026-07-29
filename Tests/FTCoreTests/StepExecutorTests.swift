@@ -895,7 +895,7 @@ final class StepExecutorTests: XCTestCase {
     }
 
     /// FlowStep.duration は主経路にもフォールバック経路にも届くこと(旧実装は両方 1.0 固定で、
-    /// DSL の press(duration:)と拡張のパラメーター編集が黙って無効化されていた)
+    /// DSL の press(duration:)が黙って無効化されていた)
     func testPressDurationIsPassedThroughBothPaths() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log,

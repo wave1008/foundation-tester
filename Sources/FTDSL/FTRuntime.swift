@@ -717,8 +717,7 @@ public final class FTDriveCore {
         stateLock.lock()
         defer { stateLock.unlock() }
         stepCounter += 1
-        // group の名前はここでだけ前置する(修正提案の description は素のまま = ソース行との照合に使うため)。
-        // 前置形式は StepCommandText.parse が剥がして表からの編集を維持する(要同期)
+        // group の名前はここでだけ前置する(修正提案の description は素のまま = ソース行との照合に使うため)
         let displayed = groupStack.isEmpty
             ? description
             : "[\(groupStack.joined(separator: "/"))] \(description)"

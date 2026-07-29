@@ -710,7 +710,7 @@ public final class StepExecutor {
 
         // `tap(scroll:)` / `press(scroll:)` 等の内蔵スクロール探索。**別ステップにしない**のは
         // 利用者が書いたのは1コマンドだから(記録に scrollTo 行が増えると、書いていない行が
-        // 現れ、しかもソース行を持たないためステップ表から編集できない)。
+        // 現れ、しかもソース行を持たないためジャンプも修正提案の照合もできない)。
         // 探索は runScrollSearch が静止まで面倒を見るので、以降は通常の解決へ進んでよい
         if step.direction != nil, step.locator != nil {
             let result = try await runScrollSearch(step: step, phase: &phase)

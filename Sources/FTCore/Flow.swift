@@ -47,8 +47,8 @@ public struct FlowStep: Codable, Sendable {
     /// scrollTo のスクロール回数上限(省略時 8)
     public var maxSwipes: Int?
     /// press の長押し秒数(nil = defaultPressDuration)。**ブリッジの /press は元から duration を
-    /// 受け取っており**、ここが nil だった間だけホスト側で 1.0 に潰れていた(DSL の press(duration:)と
-    /// 拡張のパラメーター編集が無効化されていた)。既定値と同じなら nil のまま置く
+    /// 受け取っており**、ここが nil だった間だけホスト側で 1.0 に潰れていた
+    /// (DSL の press(duration:)が無効化されていた)。既定値と同じなら nil のまま置く
     /// (生成コード・JSON を既定ケースで太らせないため)
     public var duration: Double?
     /// count アサーションの期待個数(DSL の countIs)。他のステップでは nil
@@ -63,12 +63,12 @@ public struct FlowStep: Codable, Sendable {
     /// nil = executor 既定(StepExecutor.occlusionGuard)に従う。
     public var occlusionGuard: Bool?
 
-    /// press の既定の長押し秒数。DSL の `press(duration:)` 既定値・拡張のパラメーター既定値
-    /// (StepCommandParams.durationSpec)・実行時のフォールバックはこの1つに揃える
+    /// press の既定の長押し秒数。DSL の `press(duration:)` 既定値・実行時のフォールバック・
+    /// 生成コード(ScenarioCodeGen が既定値と同じなら出力しない)はこの1つに揃える
     public static let defaultPressDuration: Double = 1.0
 
     /// スクロール探索(`scrollTo` / `tap(scroll:)` / `exist(scroll:)`)の既定スワイプ上限。
-    /// DSL の既定引数と StepCommandParams.maxSwipesSpec はこの1つに揃える
+    /// DSL の既定引数はこの1つに揃える
     public static let defaultMaxSwipes = 8
     /// 端まで送る(scrollToBottom 等)の上限。**終了条件は「画面が変わらなくなること」**で、
     /// これは暴走を止める安全網にすぎないので探索(8)より大きく取る

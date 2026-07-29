@@ -687,13 +687,13 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
 - **秒は全て小数(Double)**(2026-07-29。`timeout:` / `waitSeconds:` / `defaultTimeout` /
   `--default-timeout`。`FlowStep.timeout` も `Double?`)。`timeout: 1.2` が書ける。
   表示は `FTSeconds.format`(FTCore)が唯一の生成元で `5.0s` ではなく `5s`・`1.2s` と出す
-  (`StepCommandText.formatSeconds` / `StepDescription.formatSeconds` はここへ委譲)。
+  (`StepDescription.formatSeconds` はここへ委譲)。
   `ifCanSelect` のポーリングは残り時間と 0.25 秒の小さい方で待つ(**0.5 秒固定だとサブ秒の待ちが
   丸められる**)。`waitSeconds: 0` = 即時1回判定の契約は不変
 - `press(duration:)` は長押し秒数(既定 `FlowStep.defaultPressDuration` = 1 秒)。
   ブリッジの `/press` は当初から duration を受け取っていたが、**ホスト側の `FlowStep` に
-  duration が無く StepExecutor が 1.0 固定で呼んでいたため、DSL の引数と拡張のパラメーター編集が
-  黙って無効化されていた**(2026-07-27 修正)。既定値と同じときは `FlowStep.duration` を nil の
+  duration が無く StepExecutor が 1.0 固定で呼んでいたため、DSL の引数が黙って無効化されていた**
+  (2026-07-27 修正)。既定値と同じときは `FlowStep.duration` を nil の
   ままにする(生成コード・ヒールキャッシュを既定ケースで太らせない)
 - **要素の出現待ちは暗黙**: `tap` はロケータ解決を再試行(省略時 約0.7秒)し、
   `exist`/`textIs`/`valueIs` は既定タイムアウト(5秒・`--default-timeout` で上書き)まで
@@ -1080,7 +1080,7 @@ textIs(.id("txt_result"), "dialog=none")
   (`pointIsTakenByFrontElement`。取られると覆っている要素が反応する。
   verification.md「スクロールした直後のタップ」)。
   **別ステップにしない理由**: 利用者が書いたのは1コマンドなので記録も1行にする。
-  合成ステップは**ソース行を持たない**ためステップ表から編集できず、説明の要る状態になる
+  合成ステップは**ソース行を持たない**ためジャンプも修正提案の照合もできず、説明の要る状態になる
   (2026-07-27 に一度その形で入れて、直した)。
   見つからなければ「N 回スクロールしても要素が見つかりません」で失敗(optional なら skipped)。
   既定のスワイプ上限は `FlowStep.defaultMaxSwipes`
@@ -1174,8 +1174,7 @@ textIs(.id("txt_result"), "dialog=none")
 
 - **`group("名前") { }`** は記録の見え方だけを変える(実行・失敗セマンティクスは素の列と同一)。
   内側のステップ説明に `[名前]`(入れ子は `[外/内]`)を前置する。前置は `FTDriveCore.recordStep` の
-  1 点でだけ行い、**修正提案の description は素のまま**(ソース行との照合に使うため)。
-  拡張のステップ表から編集できるよう `StepCommandText.parse` が前置を剥がす(要同期)
+  1 点でだけ行い、**修正提案の description は素のまま**(ソース行との照合に使うため)
 - **`setUp()` / `tearDown()`**: 同じクラスに引数なし・非async・非throws で書くと `@TestClass` マクロが
   各 `@Test` の run クロージャに織り込む(基底クラスからの継承は見ない)。ライフサイクル無しの
   クラスの生成コードは従来どおり(`X().method()` の 1 式のまま)

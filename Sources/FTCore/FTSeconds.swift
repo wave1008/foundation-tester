@@ -1,6 +1,6 @@
 // FTSeconds.swift
-// 秒数を人にもコードにも出せる文字列表現の唯一の生成元。FTDSL の StepCommandText.formatSeconds /
-// StepDescription.formatSeconds はここへ委譲する(同じ変換を複数箇所に持たない)。
+// 秒数を人にもコードにも出せる文字列表現の唯一の生成元(表示・生成コードの双方)。
+// FTDSL の StepDescription.formatSeconds はここへ委譲する(同じ変換を複数箇所に持たない)。
 
 import Foundation
 

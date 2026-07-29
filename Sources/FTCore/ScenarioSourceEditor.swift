@@ -205,63 +205,6 @@ public enum ScenarioSourceEditor {
         return lines.joined(separator: "\n")
     }
 
-    /// 指定行(1 起点)のコード部分(インデントと行末 // コメントを除いた部分)を取り出す
-    /// (ステップ表のコマンド編集のプリフィル用)。コードの無い行(空行・コメントのみ)はエラー
-    public static func commandCode(inSource source: String, line: Int) throws -> String {
-        let lines = source.components(separatedBy: "\n")
-        guard line >= 1, line <= lines.count else {
-            throw ScenarioSourceEditError.lineOutOfRange(line)
-        }
-        let target = lines[line - 1]
-        let codeEnd = ScenarioSourceComments.trailingCommentStart(inLine: target)
-            ?? target.endIndex
-        let code = target[..<codeEnd].trimmingCharacters(in: .whitespaces)
-        guard !code.isEmpty else {
-            throw ScenarioSourceEditError.commandNotFound(line)
-        }
-        return code
-    }
-
-    /// 指定行(1 起点)のコード部分を書き換える(ステップ表のコマンド編集の確定反映用)。
-    /// インデント・「//」前の空白・行末コメントは元の形を保つ。
-    /// code は 1 行・非空・// コメントを含まないこと(説明列の対応関係を壊さないため)
-    public static func setCommandCode(inSource source: String, line: Int,
-                                      code: String) throws -> String {
-        if code.contains("\n") || code.contains("\r") {
-            throw ScenarioSourceEditError.invalidCommand("コマンドは 1 行で入力してください")
-        }
-        let newCode = code.trimmingCharacters(in: .whitespaces)
-        if newCode.isEmpty {
-            throw ScenarioSourceEditError.invalidCommand("コマンドを入力してください")
-        }
-        if ScenarioSourceComments.trailingCommentStart(inLine: newCode) != nil {
-            throw ScenarioSourceEditError.invalidCommand(
-                "// コメントは含められません(説明は説明列のソースコメントで編集してください)")
-        }
-        var lines = source.components(separatedBy: "\n")
-        guard line >= 1, line <= lines.count else {
-            throw ScenarioSourceEditError.lineOutOfRange(line)
-        }
-        let target = lines[line - 1]
-        let codeEnd = ScenarioSourceComments.trailingCommentStart(inLine: target)
-            ?? target.endIndex
-        let codePart = target[..<codeEnd]
-        let indentEnd = codePart.firstIndex { $0 != " " && $0 != "\t" } ?? codePart.endIndex
-        guard indentEnd < codePart.endIndex else {
-            throw ScenarioSourceEditError.commandNotFound(line)
-        }
-        // コード末尾〜コメント間の空白は元の形のまま残す
-        var trailingStart = codePart.endIndex
-        while trailingStart > indentEnd {
-            let previous = target.index(before: trailingStart)
-            guard target[previous] == " " || target[previous] == "\t" else { break }
-            trailingStart = previous
-        }
-        lines[line - 1] = String(target[..<indentEnd]) + newCode
-            + String(target[trailingStart...])
-        return lines.joined(separator: "\n")
-    }
-
     // MARK: - ソース位置(VSCode拡張等の外部ツール向け)
 
     /// class 宣言の行番号(1 起点)。見つからなければ nil
