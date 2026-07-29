@@ -1173,4 +1173,67 @@ final class StepExecutorTests: XCTestCase {
         XCTAssertTrue(StepExecutor.emptyDragIsSafe(
             x: 201, y: 728, of: mid, in: [mid, tabBar], screen: screen))
     }
+
+    /// 要素数の上限で打ち切られたスナップショットは「見つかりません」と区別が付かない。
+    /// 失敗文言に必ず打ち切りを添える(WebView 画面は要素が多く最も当たりやすい)
+    func testTruncationHint() {
+        let screen = FTRect(x: 0, y: 0, width: 400, height: 800)
+        func snapshot(_ elements: [ElementInfo], truncated: Int) -> SnapshotResponse {
+            SnapshotResponse(sessionBundleID: nil, screen: screen,
+                             elements: elements, truncatedCount: truncated)
+        }
+        let button = framed(ref: 1, id: "btn", x: 0, y: 0, width: 10, height: 10)
+
+        XCTAssertEqual(StepExecutor.truncationHint(nil), "")
+        XCTAssertEqual(StepExecutor.truncationHint(snapshot([button], truncated: 0)), "",
+                       "打ち切られていなければ何も足さない")
+
+        let hint = StepExecutor.truncationHint(snapshot([button], truncated: 30))
+        XCTAssertTrue(hint.contains("30"), hint)
+        XCTAssertFalse(hint.contains("WebView"), "WebView が無い画面で WebView の話をしない")
+
+        let webView = ElementInfo(ref: 2, type: "WebView", identifier: nil, label: nil, value: nil,
+                                  placeholder: nil, enabled: true,
+                                  frame: screen, depth: 0)
+        let webHint = StepExecutor.truncationHint(snapshot([button, webView], truncated: 30))
+        XCTAssertTrue(webHint.contains("WebView"), webHint)
+    }
+
+    /// WebView 画面の失敗には**どの経路で読んだか**を添える。DOM 経路の未検出は
+    /// 「無反応タップが成功として記録され、2ステップ先で別の文言で落ちる」形で出るため、
+    /// 落ちた側に経路が書いていないと原因まで辿れない。
+    /// **経路はドライバの申告(webViewPath)だけで決める**。要素の形から推測すると
+    /// Android(webView 型は出るが web フラグは持たない)が XCUITest 委譲を名乗る
+    func testWebViewPathHint() {
+        let screen = FTRect(x: 0, y: 0, width: 400, height: 800)
+        let webView = ElementInfo(ref: 1, type: "WebView", identifier: nil, label: nil, value: nil,
+                                  placeholder: nil, enabled: true, frame: screen, depth: 0)
+        let content = ElementInfo(ref: 2, type: "StaticText", identifier: nil, label: "本文",
+                                  value: nil, placeholder: nil, enabled: true,
+                                  frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: 0)
+        func snapshot(_ path: String?) -> SnapshotResponse {
+            SnapshotResponse(sessionBundleID: nil, screen: screen, elements: [webView, content],
+                             truncatedCount: 0, webViewPath: path)
+        }
+
+        XCTAssertEqual(StepExecutor.webViewPathHint(nil), "")
+
+        let dom = StepExecutor.webViewPathHint(snapshot("dom"))
+        XCTAssertTrue(dom.contains("DOM 経路"), dom)
+        XCTAssertTrue(dom.contains("無反応"), "無反応タップの可能性まで書くこと: \(dom)")
+
+        let delegated = StepExecutor.webViewPathHint(snapshot("delegated"))
+        XCTAssertTrue(delegated.contains("XCUITest"), delegated)
+        XCTAssertFalse(delegated.contains("無反応"), "委譲側は合成タッチを使わないので警告しない")
+
+        // **Android**: WebView 要素は出るが経路の申告は無い。XCUITest を名乗ってはいけない
+        // (Android に XCUITest は存在せず、デバッグ中の人を誤誘導する)
+        let android = StepExecutor.webViewPathHint(snapshot(nil))
+        XCTAssertEqual(android, "", "申告が無ければ何も足さない: \(android)")
+
+        // 通常画面(WebView 要素すら無い)も当然そのまま
+        let plain = SnapshotResponse(sessionBundleID: nil, screen: screen, elements: [content],
+                                     truncatedCount: 0)
+        XCTAssertEqual(StepExecutor.webViewPathHint(plain), "")
+    }
 }

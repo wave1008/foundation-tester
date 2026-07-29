@@ -105,6 +105,21 @@ API 30 未満のときだけ `keyevent 66` に落ちる。`OnEditorActionListene
 ウィンドウ寸法を返す。座標系は絶対座標のままなので tap には影響しないが、
 画面比率で撃つ `swipe` をダイアログ表示中に使ってはいけない。
 
+### WebView 画面(SUT 固有の実測)
+
+- WebView ノードは **resource-id を持たない**(レイアウトで `@+id/wv_container` を付けても
+  a11y ノードには出ない)。`.webView` 型で指す。
+- 実 View と Chromium の仮想ルートで **WebView が2重に出る**ため、ブリッジが内側を落として
+  1つに畳んでいる(SnapshotBuilder の `nestedWebView`)。
+- リンクは className が `android.view.View` で、そのままだと `clickable` になる。
+  Chromium の `AccessibilityNodeInfo.chromeRole`(非ローカライズ)を見て `link` に正規化している。
+  **roleDescription は端末ロケールで訳されるので使わない**。
+- 中身は即座に見える(ネイティブ WebView)。ただし `loadDataWithBaseURL` を使う SUT
+  (CMP / Flutter)は初回 6〜8 秒かかる。
+- **DOM 変更の a11y 反映が 4〜8 秒遅れる**(CMP / Flutter で実測。タップは効いているのに
+  `textIs` だけ古い値で落ちる)。ブリッジが WebView 内ノードを `refresh()` してから読むことで
+  1 秒未満に短縮している(コストは snapshot 1 回あたり +20ms)。
+
 ## ビルド
 
 ```sh

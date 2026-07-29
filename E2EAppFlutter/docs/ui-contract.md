@@ -122,6 +122,16 @@ XCUITest から到達できない(`hasKeyboardFocus` の要素が見つからず
 戻る(1) 許可(2) 通知を許可(3) 項目(4,5,6) 共通ラベル(7) 別名(8) 結果クリア(9) タブ(10-12)。
 → 3番目の『項目』= `.button[6]`。**iOS/Android 両方で同じ並び**であることを実測で確認済み。
 
+### WebView 画面(SUT 固有の実測)
+
+- `webview_flutter` を platform view として合成する。**iOS/Android とも中身は見える**が、
+  初回表示が 4 SUT で最も遅い(**Android 実測 約8秒**)。シナリオは `timeout:` を長めに取る。
+- iOS のコンテナ identifier は Flutter が付ける `platform_view[0]`(SUT 固有なので当てにしない。
+  `.webView` 型で指す)。
+- **iOS in-app では DOM 経路を使わない**。platform view が合成タッチと `insertText` を横取りし、
+  読めても操作が届かないため(2026-07-29 実測: 入力が Web の input に入らない)。
+  in-app/hybrid では WebView 画面だけ XCUITest へ委譲される。
+
 ## ビルド
 
 ```sh

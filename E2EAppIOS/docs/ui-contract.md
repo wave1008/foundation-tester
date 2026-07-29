@@ -84,6 +84,15 @@ keyboard focus を持つ要素として見えず無言 no-op になる**。だ�
 - `Toggle` は同一 frame の `switch` ノードが2つ出る(id 付き1つ + id 無し1つ)。`#id` 指定なら実害なし
 - `Slider` の value は `"50%"`(パーセント表記)。値検証は echo Text(`#txt_slider`)で行う契約
 
+### WebView 画面(SUT 固有の実測)
+
+- コンテナ(`WKWebView`)は xcuitest / in-app とも `webView` 型 + `#wv_container`。
+  **in-app は a11y ツリーでは中身を見られない**(Web コンテンツの a11y は WebContent プロセスが
+  提供する)ため、**DOM を JS で読む**(`InAppWebViewDOM`)。この SUT は uikit ホストなので
+  DOM 経路が有効 = WebView 画面でも in-app の速度が出る。
+- 中身が a11y に現れるまで **約 2.3 秒**(内蔵 HTML・2026-07-29 実測)。
+- HTML の `id` は **identifier に来ない**。`aria-label` は label に来る。
+
 ## ビルド
 
 ```sh

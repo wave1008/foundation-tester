@@ -24,7 +24,11 @@ enum InAppSnapshot {
         var frames: [Int: CGRect] = [:]
         var nodes: [Int: NSObject] = [:]
         var truncated = 0
-        collect(window, depth: 0, screen: screen,
+        // 同じオブジェクトが2経路から届くことがある(Compose iOS の interop は WKWebView を
+        // accessibilityElements と subviews の両方から見せ、同じ WebView が2度出た。2026-07-29 実測)。
+        // 重複すると同じラベルが並んでセレクタが曖昧になり、DOM も2回読むことになる
+        var visited = Set<ObjectIdentifier>()
+        collect(window, depth: 0, screen: screen, visited: &visited,
                 elements: &elements, frames: &frames, nodes: &nodes, truncated: &truncated)
         return Result(
             screen: FTRect(x: screen.origin.x, y: screen.origin.y,
@@ -33,8 +37,10 @@ enum InAppSnapshot {
     }
 
     private static func collect(_ node: NSObject, depth: Int, screen: CGRect,
+                                visited: inout Set<ObjectIdentifier>,
                                 elements: inout [ElementInfo], frames: inout [Int: CGRect],
                                 nodes: inout [Int: NSObject], truncated: inout Int) {
+        guard visited.insert(ObjectIdentifier(node)).inserted else { return }
         // 非表示サブツリーは丸ごと除外
         if let view = node as? UIView, view.isHidden || view.alpha < 0.01
             || view.accessibilityElementsHidden { return }
@@ -54,12 +60,16 @@ enum InAppSnapshot {
             }
         }
 
+        // WKWebView の内部(WKScrollView/WKContentView)は AX を別プロセスが持つため走査しても
+        // 何も採れない。降りるだけ無駄なので葉として閉じる(中身は InAppWebViewDOM が DOM から読む)
+        if type == .webView { return }
+
         // AX 子の探索: isAccessibilityElement な要素は葉として扱いサブツリーに降りない。
         // それ以外は accessibilityElements(あれば)を、無ければ subviews を辿る。
         if let view = node as? UIView, view.isAccessibilityElement { return }
         let children = axChildren(node)
         for child in children {
-            collect(child, depth: depth + 1, screen: screen,
+            collect(child, depth: depth + 1, screen: screen, visited: &visited,
                     elements: &elements, frames: &frames, nodes: &nodes, truncated: &truncated)
         }
     }
@@ -108,7 +118,7 @@ enum InAppSnapshot {
             return Included(frame: frame)
         case .staticText, .image:
             return hasText ? Included(frame: frame) : nil
-        case .navigationBar, .tabBar, .alert:
+        case .navigationBar, .tabBar, .alert, .webView:
             return Included(frame: frame)
         case .keyboardKey:
             return nil
@@ -169,9 +179,20 @@ enum InAppSnapshot {
         case cell, link, searchField, picker, navigationBar, tabBar, alert, keyboardKey, other
         /// switch は予約語なので toggle と命名(型名は "Switch" = XCUITest 版と同じ語彙)
         case toggle
+        /// WKWebView。**a11y ツリー経由では中身が一切見えない**(Web コンテンツの AX は別プロセスが
+        /// 提供する。2026-07-29 実測)。中身は InAppWebViewDOM が DOM から読んでここへ差し込む。
+        /// コンテナ自体は識別子が無くても必ず出す(スコープ起点 `.webView` + ホスト側の委譲判定)
+        case webView
     }
 
+    /// WebKit をリンクせずに WKWebView を判定する(dylib の依存を増やさない)。
+    /// クラス取得は1回だけ(走査で全ノードに当たるため)
+    private static let webViewClass: AnyClass? = NSClassFromString("WKWebView")
+
     private static func elementType(_ node: NSObject) -> UIKitType {
+        // trait 判定より先に置く: WKWebView は内部に別の trait を持つ子を抱えており、
+        // 後ろに置くと other に落ちてホストが webview 画面だと気付けない
+        if let webViewClass, node.isKind(of: webViewClass) { return .webView }
         if let tf = node as? UITextField { return tf.isSecureTextEntry ? .secureTextField : .textField }
         if node is UITextView { return .textView }
         // セルは trait を持たないため、クラスで判定しないと .other に落ちて `.Cell` セレクタが
@@ -215,6 +236,7 @@ enum InAppSnapshot {
         case .tabBar: return "TabBar"
         case .alert: return "Alert"
         case .keyboardKey: return "KeyboardKey"
+        case .webView: return "WebView"
         case .other: return "Other"
         }
     }

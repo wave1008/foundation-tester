@@ -683,3 +683,20 @@ devicepoll の要点:
   `VTCompressionSessionInvalidate` / `RemoteVideoEncoder_EncodeFrame` が居れば上記のエンコーダ
   無応答(相手側の VTEncoderXPCService プロセスも `AVE_UCRecv` で待っている)。ツールは期限で
   自力離脱するので待てばよい。頻発するなら OS 再起動でしか AVE は復旧しない
+
+### WebView を触ったときの検証
+
+- **`--ios-inapp` を必ず回す**。利用者の既定エンジンは hybrid = in-app 優先で、WebView の中身は
+  in-app だけ **DOM 経路**(`InAppWebViewDOM`)を通る。既定の e2e.sh は iOS を xcuitest でしか
+  回さないため、この経路が丸ごと未検証のまま緑になる。
+- **SUT を絞らない**。WebView の埋め込み方がフレームワークごとに違い、退行が SUT を跨がないと出ない:
+  ネイティブ(WKWebView 直)/ CMP(UIKitView interop)/ Flutter(platform view)。
+  実例: CMP と Flutter は interop が合成タッチと `insertText` を横取りするため DOM 経路を使わない
+  (uikit ホストのみ有効)。この分岐は E2E でしか壊れているとわからない。
+- **効果測定は `FT_WEBVIEW_DOM=off` との A/B** で取る。比較は
+  `Projects/E2E-iOS/results/runs/<run>/scenarios/WebViewの中身を操作できること.S0010.json` の
+  `timeline`(scene 2 以降の exist/textIs の中央値)と `scenes[0].durationMs`。
+- **ブリッジ版を上げ忘れない**。iOS = `bridgeProtocolVersion`、Android = `VERSION_CODE` +
+  `expectedBridgeVersionCode`。上げないと稼働中の旧ブリッジが再利用され、**変更が入っていないのに緑**になる。
+  開発中に同じ版のまま APK/dylib を差し替えるときは、明示的に `adb uninstall com.example.ftbridge` /
+  アプリ再注入で入れ直すこと(実際に1度踏んだ)。

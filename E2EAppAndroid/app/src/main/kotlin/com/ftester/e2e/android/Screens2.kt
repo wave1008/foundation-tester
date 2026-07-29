@@ -221,3 +221,13 @@ fun buildDiagnosticsScreen(activity: Activity, parent: ViewGroup): View {
     }
     return v
 }
+
+// HTML の正本は E2EApp/docs/webview.html(4 SUT 共通)。assets/webview.html はその写し。
+// JS 必須(送信ボタンと行の生成が JS)。ネットワークは使わない = フリートの回線状態に依存しない
+fun buildWebviewScreen(activity: Activity, parent: ViewGroup): View {
+    val v = activity.layoutInflater.inflate(R.layout.screen_webview, parent, false) as android.webkit.WebView
+    @Suppress("SetJavaScriptEnabled")
+    v.settings.javaScriptEnabled = true
+    v.loadUrl("file:///android_asset/webview.html")
+    return v
+}

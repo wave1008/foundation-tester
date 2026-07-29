@@ -21,7 +21,9 @@ mkdir -p "$OUT"
 # 共有 DTO(唯一の定義元)+ in-app 実装をまとめて1モジュールにコンパイル
 SWIFT_SOURCES=(
   "$ROOT/Sources/FTCore/BridgeDTO.swift"
+  "$ROOT/Sources/FTCore/WebViewDOMSnapshot.swift"
   Sources/InAppHTTPServer.swift
+  Sources/InAppWebViewDOM.swift
   Sources/InAppSnapshot.swift
   Sources/InAppSettle.swift
   Sources/InAppBridge.swift
@@ -47,6 +49,6 @@ echo "→ link dylib..."
 xcrun --sdk iphonesimulator clang -dynamiclib -o "$DYLIB" \
   "$OUT/ftinapp.o" "$OUT/boot.o" "$OUT/InAppInput.o" \
   -isysroot "$SDK" -target "$TARGET" \
-  -framework UIKit -framework Foundation -framework IOKit
+  -framework UIKit -framework Foundation -framework IOKit -framework WebKit
 
 echo "✅ $DYLIB"

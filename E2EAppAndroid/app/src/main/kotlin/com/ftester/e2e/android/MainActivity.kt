@@ -7,7 +7,7 @@ import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 
-enum class Screen { SELECTOR, INPUT, GESTURE, SCROLL, ASYNC, DIALOG, LIFECYCLE, HEAL, DIAGNOSTICS, NOID }
+enum class Screen { SELECTOR, INPUT, GESTURE, SCROLL, ASYNC, DIALOG, LIFECYCLE, HEAL, DIAGNOSTICS, NOID, WEBVIEW }
 
 private enum class Tab { HOME, CONTROLS, ABOUT }
 
@@ -74,6 +74,7 @@ class MainActivity : AppCompatActivity() {
                 Screen.HEAL -> buildHealScreen(this, container)
                 Screen.DIAGNOSTICS -> buildDiagnosticsScreen(this, container)
                 Screen.NOID -> buildNoIdScreen(this, container)
+                Screen.WEBVIEW -> buildWebviewScreen(this, container)
             }
         }
         container.addView(view)
@@ -94,6 +95,7 @@ class MainActivity : AppCompatActivity() {
             Screen.HEAL -> "自己修復"
             Screen.DIAGNOSTICS -> "診断"
             Screen.NOID -> "ID なし"
+            Screen.WEBVIEW -> "WebView"
         }
     }
 }

@@ -21,6 +21,7 @@ class Tags {
   static const navLifecycle = 'nav_lifecycle';
   static const navHeal = 'nav_heal';
   static const navDiagnostics = 'nav_diagnostics';
+  static const navWebview = 'nav_webview';
   static const navNoid = 'nav_noid';
 
   // セレクタ

@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'screens/noid_screen.dart';
 import 'screens/screens.dart';
 import 'screens/screens2.dart';
+import 'screens/webview_screen.dart';
 import 'tags.dart';
 import 'widgets.dart';
 
@@ -53,7 +54,8 @@ enum Screen {
   lifecycle,
   heal,
   diagnostics,
-  noid
+  noid,
+  webview
 }
 
 enum AppTab { home, controls, about }
@@ -116,6 +118,8 @@ class _AppShellState extends State<AppShell> {
             return '診断';
           case Screen.noid:
             return 'ID なし';
+          case Screen.webview:
+            return 'WebView';
         }
     }
   }
@@ -156,6 +160,8 @@ class _AppShellState extends State<AppShell> {
             return const DiagnosticsScreen();
           case Screen.noid:
             return const NoIdScreen();
+          case Screen.webview:
+            return const WebViewScreen();
         }
     }
   }

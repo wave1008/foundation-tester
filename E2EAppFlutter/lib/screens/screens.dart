@@ -18,6 +18,8 @@ class HomeScreen extends StatelessWidget {
             fillWidth: true, onTap: () => onNavigate(Screen.noid)),
         TaggedButton(Tags.navInput, 'テキスト入力',
             fillWidth: true, onTap: () => onNavigate(Screen.input)),
+        TaggedButton(Tags.navWebview, 'WebView',
+            fillWidth: true, onTap: () => onNavigate(Screen.webview)),
         TaggedButton(Tags.navGesture, 'ジェスチャ',
             fillWidth: true, onTap: () => onNavigate(Screen.gesture)),
         TaggedButton(Tags.navScroll, 'スクロール',

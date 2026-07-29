@@ -9,6 +9,7 @@ struct HomeScreen: View {
             TaggedButton(tag: Tags.navSelector, label: "セレクタ", fillWidth: true) { onNavigate(.selector) }
             TaggedButton(tag: Tags.navInput, label: "テキスト入力", fillWidth: true) { onNavigate(.input) }
             TaggedButton(tag: Tags.navNoid, label: "ID なし", fillWidth: true) { onNavigate(.noid) }
+            TaggedButton(tag: Tags.navWebview, label: "WebView", fillWidth: true) { onNavigate(.webview) }
             TaggedButton(tag: Tags.navGesture, label: "ジェスチャ", fillWidth: true) { onNavigate(.gesture) }
             TaggedButton(tag: Tags.navScroll, label: "スクロール", fillWidth: true) { onNavigate(.scroll) }
             TaggedButton(tag: Tags.navAsync, label: "非同期表示", fillWidth: true) { onNavigate(.async) }

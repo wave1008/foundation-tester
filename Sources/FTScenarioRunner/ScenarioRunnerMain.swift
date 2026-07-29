@@ -221,10 +221,15 @@ struct RunScenario: AsyncParsableCommand {
                     } else {
                         // in-app は launch=simctl 再起動+dylib 注入(自己再起動できないため)
                         let repoRoot = try RepoRoot.find()
-                        driver = InAppDriver(repoRoot: repoRoot, udid: udid ?? "booted", port: port)
+                        let inapp = InAppDriver(repoRoot: repoRoot, udid: udid ?? "booted", port: port)
                         if engine == "hybrid", let xcuiPort {
                             fallbackDriver = SystemUIDriver(port: xcuiPort)
-                            typeDriver = AppAttachDriver(port: xcuiPort, bundleID: testClass.app)
+                            let attach = AppAttachDriver(port: xcuiPort, bundleID: testClass.app)
+                            typeDriver = attach
+                            // WebView 画面だけドライバごと XCUITest へ委譲する(in-app は WKWebView の
+                            // 中身を原理的に採れない)。attach は typeDriver と**同じインスタンス**を
+                            // 使う: activate/attached 状態を1本にしないと余計な activate が挟まる
+                            driver = WebViewDelegatingDriver(primary: inapp, delegated: attach)
                             // 2026-07-21 から Compose も inapp で type 可能
                             // (IntermediateTextInputUIView への insertText。InAppInput.m 参照。
                             // 実測 266ms vs attach 1.0〜1.3s)。attach 優先は廃止し、
@@ -239,6 +244,8 @@ struct RunScenario: AsyncParsableCommand {
                             // typeDriverGestures のコメント参照)
                             typeDriverGestures = Set(probeStatus?.unsupportedActions ?? [])
                                 .intersection(["swipe", "press"])
+                        } else {
+                            driver = inapp
                         }
                     }
                 } else {
@@ -267,7 +274,9 @@ struct RunScenario: AsyncParsableCommand {
             // InAppDriver は注入先アプリが suspend 中だと status がハングし(上記 suspend 対策参照)、
             // かつ冒頭 launchApp の relaunch で必ず bridge を張り直すため pre-flight の接続確認はしない。
             // XCUITest / Android の常駐ドライバのみ、接続不能を早期に分かりやすく失敗させる。
-            if !(driver is InAppDriver) {
+            // WebViewDelegatingDriver は status を in-app へ流すので同じ理由で外す(包んだ途端に
+            // suspend ハングが復活する)
+            if !(driver is InAppDriver) && !(driver is WebViewDelegatingDriver) {
                 _ = try await driver.status()
             }
         }
