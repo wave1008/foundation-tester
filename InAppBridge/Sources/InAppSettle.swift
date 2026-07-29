@@ -55,8 +55,11 @@ enum InAppSettle {
     }
 
     private static func layerAnimating(_ layer: CALayer) -> Bool {
-        let chrome = isDecorativeChrome(layer)
-        for key in layer.animationKeys() ?? [] {
+        let keys = layer.animationKeys() ?? []
+        // chrome 判定は keys が空だと結果を使わない。実測でレイヤの 99% が空で、settle 1回は
+        // ツリー全層を約27回歩くため、無条件に計算すると中央値 1.9ms を捨てる(2026-07-30 計測)
+        let chrome = keys.isEmpty ? false : isDecorativeChrome(layer)
+        for key in keys {
             // 無限反復(カーソル点滅・スピナー)と iOS27 Liquid Glass のモーフ(match-*/punchout。
             // タブバー等が常時走らせる装飾で UI 整定信号ではない)は無視。数えると必ず cap 張り付き。
             if chrome || key.contains("match") || key.contains("punchout") { continue }
