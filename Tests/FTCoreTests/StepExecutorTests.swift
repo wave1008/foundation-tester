@@ -816,7 +816,10 @@ final class StepExecutorTests: XCTestCase {
             return
         }
         XCTAssertEqual(outcome.driverFallback, "XCUITest へフォールバック")
-        XCTAssertEqual(log.entries, ["primary.swipe(throws)", "typedriver.swipe"])
+        // 末尾に続く primary.snapshot は swipe 後の静止待ち(settledSignature)
+        XCTAssertEqual(Array(log.entries.prefix(2)), ["primary.swipe(throws)", "typedriver.swipe"])
+        XCTAssertTrue(log.entries.dropFirst(2).allSatisfy { $0 == "primary.snapshot" },
+                      "静止待ち以外が混ざっている: \(log.entries)")
     }
 
     /// 409(キーウィンドウ不在等の一時的な競合)ではジェスチャを切り替えないこと。
@@ -849,7 +852,9 @@ final class StepExecutorTests: XCTestCase {
         let outcome = await executor.execute(FlowStep(action: "swipe", direction: "up"))
 
         XCTAssertEqual(outcome.driverFallback, "XCUITest へフォールバック")
-        XCTAssertEqual(log.entries, ["typedriver.swipe"], "primary を無駄打ちしてはいけない")
+        XCTAssertEqual(log.entries.first, "typedriver.swipe", "primary を無駄打ちしてはいけない")
+        XCTAssertTrue(log.entries.dropFirst().allSatisfy { $0 == "primary.snapshot" },
+                      "swipe 後は静止待ちの snapshot だけが続くはず: \(log.entries)")
     }
 
     /// **アクション別ルーティング**: press だけの申告(uikit)で swipe まで typeDriver へ回さないこと。
@@ -865,7 +870,11 @@ final class StepExecutorTests: XCTestCase {
         let outcome = await executor.execute(FlowStep(action: "swipe", direction: "up"))
 
         XCTAssertNil(outcome.driverFallback, "press だけの申告で swipe を typeDriver へ回さない")
-        XCTAssertEqual(log.entries, ["primary.swipe"], "swipe は primary(in-app)で実行するはず")
+        // swipe 後の snapshot は静止待ち(settledSignature)。ランナーが /swipe を整定対象から
+        // 外したぶんをホスト側で持つため、swipe の**あとに** primary の snapshot が続くのが正
+        XCTAssertEqual(log.entries.first, "primary.swipe", "swipe は primary(in-app)で実行するはず")
+        XCTAssertTrue(log.entries.dropFirst().allSatisfy { $0 == "primary.snapshot" },
+                      "静止待ち以外の呼び出しが混ざっている: \(log.entries)")
     }
 
     /// press の 501 切替は ref を typeDriver 側 snapshot で取り直すこと(ref はブリッジごとに別名前空間)
@@ -1133,8 +1142,10 @@ final class StepExecutorTests: XCTestCase {
 
         _ = await executor.execute(FlowStep(action: "swipe", direction: "up"))
 
-        XCTAssertEqual(log.entries, ["primary.swipe"],
+        XCTAssertEqual(log.entries.first, "primary.swipe",
                        "drag の 501 で swipe まで typeDriver へ回してはいけない: \(log.entries)")
+        XCTAssertTrue(log.entries.dropFirst().allSatisfy { $0 == "primary.snapshot" },
+                      "swipe 後は静止待ちの snapshot だけが続くはず: \(log.entries)")
     }
 
     /// フォールバック判定は 501 と「ルート不明の 404」だけ。409(一時的競合)と

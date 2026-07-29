@@ -599,6 +599,9 @@ public final class StepExecutor {
         if action == "swipe" {
             let direction = FTSwipeDirection(rawValue: step.direction ?? "") ?? .up
             let viaXCUITest = try await swipeWithFallback(direction, phase: &phase)
+            // 慣性が止まるまで待つ。ランナー側は /swipe を整定対象から外している(そこで待っても
+            // budget 内に収束しないため)ので、直後に tap する書き方をここで支える
+            _ = try await settledSignature(phase: &phase)
             return StepOutcome(status: .passed, driverFallback: viaXCUITest ? "XCUITest へフォールバック" : nil)
         }
 
@@ -610,8 +613,10 @@ public final class StepExecutor {
             for index in 0..<times {
                 if try await swipeWithFallback(direction, phase: &phase) { viaXCUITest = true }
                 // 続けて投げるとフリングの停止だけに消費されて空振りする(Android 実測)。
-                // 「repeat 回ぶん送る」を守るため、次のスワイプ前に静止を待つ
-                if index < times - 1 { _ = try await settledSignature(phase: &phase).signature }
+                // 「repeat 回ぶん送る」を守るため、次のスワイプ前に静止を待つ。
+                // 最後の1回の後も待つ: ランナーは /swipe を整定対象から外しているので、
+                // 直後に tap する書き方をここで支える(index 条件を外した理由)
+                _ = try await settledSignature(phase: &phase).signature
             }
             return StepOutcome(status: .passed,
                                driverFallback: viaXCUITest ? "XCUITest へフォールバック" : nil)

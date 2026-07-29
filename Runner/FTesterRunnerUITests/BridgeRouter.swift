@@ -34,8 +34,15 @@ final class BridgeRouter {
 
     private let decoder = JSONDecoder()
 
-    // 画面を変えうる操作。直後の snapshot だけ整定確認する(handleSnapshot の settlePending)
-    private static let mutatingPaths: Set<String> = ["/session", "/tap", "/type", "/pressEnter", "/swipe", "/drag", "/press", "/appswitcher", "/home"]
+    // 画面を変えうる操作。直後の snapshot だけ整定確認する(handleSnapshot の settlePending)。
+    //
+    // **/swipe と /drag は入れない**(2026-07-30)。スクロール慣性は budget 内で収束しないので
+    // ここで待っても整定したツリーにはならず、待ち時間だけ捨てることになる(実測: 収束せず
+    // budget 打ち切り)。スクロール探索は `for attempt in 0...maxSwipes` で毎周 snapshot を
+    // 撮るため、その全てにこの待ちが乗っていた。
+    // **スクロール後の静止はホスト側が担う**: 探索終端は StepExecutor.settleAfterScroll、
+    // 明示的な swipe/scroll コマンドは同 settledSignature(どちらも「連続2回一致」で待つ)。
+    private static let mutatingPaths: Set<String> = ["/session", "/tap", "/type", "/pressEnter", "/press", "/appswitcher", "/home"]
 
     func handle(_ request: BridgeHTTPServer.Request) -> BridgeHTTPServer.Response {
         do {
