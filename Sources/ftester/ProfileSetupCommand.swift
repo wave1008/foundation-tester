@@ -57,7 +57,7 @@ struct ProfileSetupCommand: AsyncParsableCommand {
     @Option(help: "実行プロファイル名(profiles/runs/<名>.json。省略時: プラットフォーム名)")
     var run: String?
 
-    @Flag(help: "デバイスを自動で選ぶ(iOS: 最新 OS の既存シミュレータ / Android: API が最も高い既存 AVD)")
+    @Flag(help: "デバイスを自動で選ぶ(iOS: 最新 OS の既存シミュレータ・iPad は除外 / Android: API が最も高い既存 AVD)")
     var autoDevice = false
 
     func run() async throws {
@@ -206,11 +206,17 @@ struct ProfileSetupCommand: AsyncParsableCommand {
     }
 
     /// 既存シミュレータから1台選ぶ。SimulatorCatalog は 起動中 → OS 降順 → 名前順 なので、
-    /// 最新 OS の中で "Pro" を優先する(無ければ先頭)。作成はしない(重い・失敗理由が増える)
+    /// 最新 OS の中で "Pro" を優先する(無ければ先頭)。**iPad は自動選定の対象外**。
+    /// 作成はしない(重い・失敗理由が増える)
     static func pickSimulator() throws -> SimDeviceInfo {
         let simulators = try SimulatorCatalog.devices().filter { !$0.physical }
         guard let index = DevicePicker.pickSimulatorIndex(
             simulators.map { (name: $0.name, os: $0.os) }) else {
+            if simulators.contains(where: { DevicePicker.isIPad(name: $0.name) }) {
+                throw ValidationError("自動選定できるシミュレータがありません"
+                    + "(iPad は自動選定の対象外です)。iPhone を導入するか、"
+                    + "--simulator/--udid で明示指定してください")
+            }
             throw ValidationError("利用できるシミュレータがありません"
                 + "(Xcode で runtime/デバイスを導入するか ftester api create-device で作成してください)")
         }

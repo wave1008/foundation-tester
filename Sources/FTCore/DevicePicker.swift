@@ -26,14 +26,22 @@ public enum DevicePicker {
         return false
     }
 
-    /// シミュレータを1台選ぶ: **最新 OS** の中で名前に "Pro" を含むものを優先し、無ければ先頭。
-    /// 入力の並び順に依存しない(SimulatorCatalog は「起動中」を先頭に寄せるため、
+    /// iPad か(シミュレータ名は既定で機種名そのもの: "iPad Pro 13-inch (M4)")
+    public static func isIPad(name: String) -> Bool {
+        name.lowercased().contains("ipad")
+    }
+
+    /// シミュレータを1台選ぶ: **iPad を除外**した上で(除外しないと下の "Pro" 優先が iPad Pro を
+    /// 掴む)、**最新 OS** の中で名前に "Pro" を含むものを優先し、無ければ先頭。iPhone が
+    /// 無ければ nil。入力の並び順に依存しない(SimulatorCatalog は「起動中」を先頭に寄せるため、
     /// 先頭を最新 OS とみなすと**古い OS の起動中デバイス**を掴む)。
     /// 同点のときは入力順を保つ(呼び出し側の並び = 起動中優先 を尊重する)
     public static func pickSimulatorIndex(_ devices: [(name: String, os: String)]) -> Int? {
-        guard !devices.isEmpty else { return nil }
-        guard let newestOS = devices.map(\.os).max(by: { isNewer($1, than: $0) }) else { return nil }
-        let candidates = devices.enumerated().filter { $0.element.os == newestOS }
+        let phones = devices.enumerated().filter { !isIPad(name: $0.element.name) }
+        guard !phones.isEmpty else { return nil }
+        guard let newestOS = phones.map(\.element.os).max(by: { isNewer($1, than: $0) })
+        else { return nil }
+        let candidates = phones.filter { $0.element.os == newestOS }
         return (candidates.first { $0.element.name.contains("Pro") } ?? candidates[0]).offset
     }
 

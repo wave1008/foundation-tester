@@ -78,7 +78,7 @@ ftester profile setup --project <プロジェクト> --platform <ios|android|bot
   --machine <マシン名> --app-id <アプリID> --app-name "<表示名>" [--app-path <パッケージパス>] [--app-ref <ref>]
 ```
 
-- `--auto-device` の選定規則: **iOS = 最新 OS の既存シミュレータ(名前に "Pro" を含むものを優先)** /
+- `--auto-device` の選定規則: **iOS = 最新 OS の既存シミュレータ(iPad は除外・名前に "Pro" を含むものを優先)** /
   **Android = config.ini の API レベルが最大の既存 AVD**。0台なら作成方法を示してエラーになる。
 - `--platform both` で iOS と Android を1回で作る(論理名は simulator1 / emulator1)。
 - `--machine` が未登録なら**同時に登録**する(`ftester machine set` を別途打たない)。
