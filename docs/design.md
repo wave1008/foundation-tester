@@ -313,11 +313,21 @@ CDP を使えば取れるが `setWebContentsDebuggingEnabled(true)` = 対象ア�
 将来必要になっても **`#id` に相乗りさせない**: `css=` のような別記法にし、使えない構成では
 エンジン名とホスト名を挙げて即座に失敗させる(`#id` の意味を構成ごとに変えない)。
 
-**未着手の副産物**(Android の a11y から取れることが分かっているが今回は実装しない):
-`AccessibilityNodeInfo` の extras にある `targetUrl`(リンクの href。同ラベルのリンクを
-区別する手段になり得る)と `offscreen` / `unclippedBottom`(まだ画面外に続きがあることを
-事前に知れる → WebView の `scrollTo` が 7.1 秒かかっている件で、盲目的スワイプの回数を
-減らせる可能性がある)。
+**スクロールヒント(Android の WebView・2026-07-29 実装)**: Chromium は**全ドキュメントの
+ノードをツリーに載せる**(画面外は extras の `offscreen=true`・実座標は `unclippedTop/Bottom`。
+`isVisibleToUser` は true のままなので明示的に除外しないと通常要素に漏れる)。ブリッジはこれを
+`SnapshotResponse.offscreen`(実座標付き・ref=0)として返し、ホストのスクロール探索が
+「目的の要素がどの方向・何 px 先か」を知って、固定幅スワイプ(実測 1.05s / 974px)を
+少数の長距離ドラッグ(0.44s / 1500px+)へ置き換える(`StepExecutor.offscreenJump` /
+`offscreenEdgeJump` / `dragGesture`)。較正は持たず、毎スナップショット(25ms)で測り直す
+自己補正。**ヒントは要素解決に使わない**(見えない要素へ exist/tap が当たる)し、
+**不在の根拠にもしない**(ネイティブのリストは画面外を載せないため)。
+効果(scrollTo 中央値・android プロファイル): ネイティブ 10.2s→3.7s / CMP 8.7s→5.9s /
+Flutter は中立(9.5s。ドラッグ後の再計測サイクルが重く相殺。退行はない)。
+iOS には効かない(XCUITest は画面外ノードを出さず、in-app の DOM 経路は既に 1.1s)。
+
+**未着手の副産物**: `AccessibilityNodeInfo` extras の `targetUrl`(リンクの href。
+同ラベルのリンクを区別する手段になり得る)。
 
 ### 4.5 Android ブリッジ(対になる実装。AndroidRunner/)
 

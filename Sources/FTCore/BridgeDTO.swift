@@ -178,6 +178,12 @@ public struct SnapshotResponse: Codable, Sendable {
     /// main frame の JS から読めない)。旧ブリッジは返さない → nil 許容。
     /// 黙って要素ゼロにしないための経路で、ホストは lastActionNote として記録に載せる
     public var note: String?
+    /// WebView 内の**画面外**ノード(スクロールヒント)。frame はクランプ前の実座標
+    /// (Chromium は全ドキュメントをツリーに載せる。Android ブリッジ v18 以降のみ・他は nil)。
+    /// スクロール探索が「目的の要素がどの方向・何 px 先か」を知り、盲目的スワイプを
+    /// 長距離ドラッグへ置き換えるために使う(StepExecutor.offscreenJump)。
+    /// **要素解決には決して使わない**(見えない要素へ exist/tap が当たる)。ref は全て 0
+    public var offscreen: [ElementInfo]?
     /// WebView の中身を**どの経路で読んだか**の申告。`"dom"` = in-app が DOM を JS で走査 /
     /// `"delegated"` = XCUITest へ画面ごと委譲(ホスト側の WebViewDelegatingDriver が入れる)。
     /// **要素の形から推測してはいけない**: Android は webView 型を出すが web フラグを持たないため、
@@ -188,13 +194,15 @@ public struct SnapshotResponse: Codable, Sendable {
     public var webViewPath: String?
 
     public init(sessionBundleID: String?, screen: FTRect, elements: [ElementInfo],
-                truncatedCount: Int, note: String? = nil, webViewPath: String? = nil) {
+                truncatedCount: Int, note: String? = nil, webViewPath: String? = nil,
+                offscreen: [ElementInfo]? = nil) {
         self.sessionBundleID = sessionBundleID
         self.screen = screen
         self.elements = elements
         self.truncatedCount = truncatedCount
         self.note = note
         self.webViewPath = webViewPath
+        self.offscreen = offscreen
     }
 }
 

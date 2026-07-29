@@ -55,6 +55,13 @@ final class SnapshotBuilder {
         String chromeRole = "";
         /** WebView の入れ子(Chromium の仮想ルート)。実 View 側だけ残すため除外する */
         boolean nestedWebView;
+        /** WebView 内の画面外ノード(Chromium は全ドキュメントをツリーに載せる。2026-07-29 実測)。
+         *  isVisibleToUser は true のまま offscreen extra だけが立つ。bounds は可視域へ
+         *  クランプされ、実座標は unclippedTop/Bottom が持つ */
+        boolean offscreen;
+        /** クランプ前の実座標(offscreen のときだけ有効。無い側は Integer.MIN_VALUE) */
+        int unclippedTop = Integer.MIN_VALUE;
+        int unclippedBottom = Integer.MIN_VALUE;
         /** 子を持つか(テキスト昇格・Flutter のテキスト判定で「葉かどうか」を見るため) */
         boolean hasChildren;
     }
@@ -113,12 +120,32 @@ final class SnapshotBuilder {
             elements.put(makeInfo(node, ref));
         }
 
+        // WebView 内の画面外ノード(スクロールヒント)。ホストのスクロール探索が
+        // 「目的の要素がどの方向・何 px 先か」を事前に知り、盲目的スワイプを長距離ドラッグに
+        // 置き換えるために使う(StepExecutor.offscreenJump)。実座標は
+        // 下方向 = (bounds.top 実 / unclippedBottom 実)、上方向 = (unclippedTop 実 / bounds.bottom 実)。
+        // **通常の elements には決して混ぜない**(見えない要素へ exist/tap が当たる)
+        JSONArray offscreen = new JSONArray();
+        for (UINode node : nodes) {
+            if (!node.offscreen || offscreen.length() >= MAX_ELEMENTS) continue;
+            int realTop = node.unclippedTop != Integer.MIN_VALUE ? node.unclippedTop : node.bounds.top;
+            int realBottom = node.unclippedBottom != Integer.MIN_VALUE ? node.unclippedBottom : node.bounds.bottom;
+            if (realBottom <= realTop) continue;   // 実座標を復元できないノードはヒントにしない
+            Rect real = new Rect(node.bounds.left, realTop, node.bounds.right, realBottom);
+            Rect saved = node.bounds;
+            node.bounds = real;
+            JSONObject info = makeInfo(node, 0);   // ref=0: タップ対象にならない(座標表にも入れない)
+            node.bounds = saved;
+            offscreen.put(info);
+        }
+
         String pkg = root.getPackageName() == null ? null : root.getPackageName().toString();
         JSONObject response = new JSONObject();
         if (pkg != null) response.put("sessionBundleID", pkg);
         response.put("screen", rectJSON(screen));
         response.put("elements", elements);
         response.put("truncatedCount", truncated);
+        if (offscreen.length() > 0) response.put("offscreen", offscreen);
         return new Result(response.toString(), centers, screen);
     }
 
@@ -151,6 +178,17 @@ final class SnapshotBuilder {
         n.enabled = node.isEnabled();
         n.password = node.isPassword();
         n.chromeRole = chromeRole(node);
+        if (insideWebView) {
+            android.os.Bundle extras = node.getExtras();
+            if (extras != null) {
+                Object off = extras.get("AccessibilityNodeInfo.offscreen");
+                n.offscreen = Boolean.TRUE.equals(off);
+                Object top = extras.get("AccessibilityNodeInfo.unclippedTop");
+                Object bottom = extras.get("AccessibilityNodeInfo.unclippedBottom");
+                if (top instanceof Integer) n.unclippedTop = (Integer) top;
+                if (bottom instanceof Integer) n.unclippedBottom = (Integer) bottom;
+            }
+        }
         node.getBoundsInScreen(n.bounds);
         n.depth = depth;
         out.add(n);
@@ -219,6 +257,9 @@ final class SnapshotBuilder {
     private static boolean shouldInclude(UINode node, Rect screen) {
         if (node.bounds.width() < 2 || node.bounds.height() < 2) return false;
         if (node.nestedWebView) return false;
+        // 画面外ノードは通常要素にしない(exist/tap が見えない要素に当たる)。
+        // 現状もクランプで高さが負になり偶然落ちるが、Chromium の挙動依存なので明示する
+        if (node.offscreen) return false;
 
         String type = mappedType(node);
         // 画面の大半を覆うコンテナは除外(FM の誤タップ誘発対策)。WebView は全画面が普通で、
