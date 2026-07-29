@@ -1501,6 +1501,18 @@ DeviceBooter.defaultLocale(実行プロファイルの locale が届くのは wi
   (`deviceStream.ts` の `handleProtocolDesync`)。タイル側もヘッダ由来の寸法を信用せず
   **デコードできた画像の実寸だけ**でアスペクト比を決める(壊れたフレーム1枚でタイル幅が
   異常に広がったまま戻らない実害。2026-07-26)
+- **実寸は `VideoFrame.close()` の前に控える**: close 後の VideoFrame は `displayWidth/Height` が
+  0 を返す(WebCodecs 仕様の detach)。0 を弾く実装だったため H.264 タイルはアスペクト比を
+  一度も採れず既定値(0.4615)のままだった(実害。2026-07-29)。以後は寸法が変わるたび
+  `onDimensions` で枠へ反映する(初回だけだと解像度変更で古い比率が残る)
+- **screenrecord のレターボックス補正(Android)**: screenrecord は**エンコーダ上限を超える画面を
+  縮めた動画へレターボックス投影する**(黒帯が映像に焼き込まれるため、タイルは帯ごと表示する。
+  実害: 1280x2856 の Pixel 10 Pro で左右に黒帯。1080x2424 では起きない)。`ftester-androidstream` は
+  起動時に 1 秒の `screenrecord --verbose` プローブ(出力先 `/dev/null`)で
+  `Content area is <w>x<h> at offset x=<x> y=<y>` を読み、offset が 0 でないときだけ実内容の領域を
+  `--size` に渡す。**プローブが返す領域はエンコーダが受け付けたサイズ以下**なので `--size` 明示で
+  configure が落ちない(自前でサイズを推定すると拒否され得る。しかも `--size` 指定時の
+  screenrecord は 1280x720 への自動フォールバックをせず即エラー終了する)。費用は約 1.2 秒/helper 起動
 
 ### 12.2 ブリッジ死の検知と自己修復
 

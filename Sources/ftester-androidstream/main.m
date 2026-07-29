@@ -272,6 +272,50 @@ static NSString *ftScreenRecordTimeLimit(NSString *adbPath, NSString *serial) {
     return (text.intValue >= 34) ? @"0" : @"180";
 }
 
+/// screenrecord --verbose の "Content area is <w>x<h> at offset x=<x> y=<y>" を読み、
+/// レターボックス(offset != 0)のときだけ「実内容の領域」を "<w>x<h>" で返す(帯なしは nil)。
+/// 返す値は偶数へ丸める(奇数幅はエンコーダが拒否し得る。丸めによるアスペクト誤差は 0.2% 未満)。
+static NSString *ftContentSizeFromVerbose(NSString *output) {
+    for (NSString *line in [output componentsSeparatedByString:@"\n"]) {
+        int cw = 0, ch = 0, ox = 0, oy = 0;
+        if (sscanf(line.UTF8String, " Content area is %dx%d at offset x=%d y=%d", &cw, &ch, &ox, &oy) != 4) continue;
+        if (cw <= 0 || ch <= 0) return nil;
+        if (ox == 0 && oy == 0) return nil;  // 帯なし = 指定不要(既定挙動のままにする)
+        return [NSString stringWithFormat:@"%dx%d", cw & ~1, ch & ~1];
+    }
+    return nil;
+}
+
+/// screenrecord は**エンコーダが受け付けるサイズまで動画を縮め、画面をその中へレターボックス
+/// 投影する**(黒帯は映像に焼き込まれる。タイルの枠は映像の実寸に追従するので画面の左右に
+/// 黒帯が出る。実害: 1280x2856 の Pixel 10 Pro。1080x2424 では起きない)。
+/// 起動時に 1 秒の --verbose プローブで実内容の領域を取り、帯が入る端末でだけ --size に渡す。
+/// **プローブが返した領域はエンコーダが受け付けたサイズ以下**なので、--size 明示で configure が
+/// 落ちる恐れがない(自前でサイズを推定すると拒否され得る。--size 指定時の screenrecord は
+/// 1280x720 への自動フォールバックをせず即エラー終了する)。出力先が /dev/null でも
+/// --output-format=h264 なら raw 書き込みで通る(2026-07-29 実測)。
+static NSString *ftLetterboxFreeSize(NSString *adbPath, NSString *serial) {
+    NSTask *probe = [[NSTask alloc] init];
+    probe.executableURL = [NSURL fileURLWithPath:adbPath];
+    // exec-out は screenrecord の stderr を落とすため shell で実行し、stdout/stderr を同じ pipe へ束ねる
+    probe.arguments = @[@"-s", serial, @"shell", @"screenrecord", @"--verbose",
+                        @"--output-format=h264", @"--time-limit", @"1", @"/dev/null"];
+    NSPipe *pipe = [NSPipe pipe];
+    probe.standardOutput = pipe;
+    probe.standardError = pipe;
+    NSError *err = nil;
+    if (![probe launchAndReturnError:&err]) return nil;
+    // ハングした端末で起動を止めないための保険(プローブ自体は通常 1〜2 秒)
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(10.0 * NSEC_PER_SEC)),
+                   dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+        if (probe.isRunning) [probe terminate];
+    });
+    NSData *data = [pipe.fileHandleForReading readDataToEndOfFile];
+    [probe waitUntilExit];
+    NSString *text = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+    return text.length > 0 ? ftContentSizeFromVerbose(text) : nil;
+}
+
 static NSString *ftResolveAdbPath(NSString *cliAdb) {
     NSMutableArray<NSString *> *candidates = [NSMutableArray array];
     if (cliAdb.length > 0) [candidates addObject:cliAdb];
@@ -360,8 +404,15 @@ int main(int argc, char **argv) {
     // (ftScreenRecordTimeLimit のコメント参照)。有限値のときは期限切れで screenrecord が
     // 終了するが、拡張側の常駐監視が helper を再起動するので配信は続く
     NSString *timeLimit = ftScreenRecordTimeLimit(adbPath, serial);
-    fprintf(stderr, "[androidstream] screenrecord --time-limit %s\n", timeLimit.UTF8String);
-    task.arguments = @[@"-s", serial, @"exec-out", @"screenrecord", @"--output-format=h264", @"--time-limit", timeLimit, @"-"];
+    // 帯なしの端末では nil = --size を渡さない(既定挙動のまま。ftLetterboxFreeSize のコメント参照)
+    NSString *contentSize = ftLetterboxFreeSize(adbPath, serial);
+    fprintf(stderr, "[androidstream] screenrecord --time-limit %s%s%s\n", timeLimit.UTF8String,
+            contentSize ? " --size " : "", contentSize ? contentSize.UTF8String : "");
+    NSMutableArray<NSString *> *recordArgs = [@[@"-s", serial, @"exec-out", @"screenrecord",
+                                                @"--output-format=h264", @"--time-limit", timeLimit] mutableCopy];
+    if (contentSize) { [recordArgs addObjectsFromArray:@[@"--size", contentSize]]; }
+    [recordArgs addObject:@"-"];
+    task.arguments = recordArgs;
     NSPipe *outPipe = [NSPipe pipe];
     NSPipe *errPipe = [NSPipe pipe];
     task.standardOutput = outPipe;

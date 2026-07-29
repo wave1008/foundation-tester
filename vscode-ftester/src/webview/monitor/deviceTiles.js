@@ -630,14 +630,14 @@ export function applyH264Chunk(message) {
     entry.canvasEl = entry.canvasEl || document.createElement('canvas');
     entry.h264Renderer = createH264Renderer({
       canvas: entry.canvasEl,
-      onFirstFrame: (dims) => {
+      onFirstFrame: () => {
         entry.usingH264 = true;
-        // デコード後の実寸(VideoFrame)なのでそのまま採用してよい
-        if (dims.width > 0 && dims.height > 0) {
-          setTileAspect(entry, dims.width / dims.height);
-        }
         renderMeta(entry);
         renderFrame(entry);
+      },
+      // デコード後の実寸(VideoFrame)なのでそのまま採用してよい
+      onDimensions: (dims) => {
+        setTileAspect(entry, dims.width / dims.height);
       },
       onFrameRendered: () => {
         ackStreamRendered(entry);

@@ -25,7 +25,9 @@ function findAvcCodecString(data) {
 
 // onFrameRendered(省略可): canvas へ 1 フレーム描画するたびに呼ぶ(描画間引き後=最大 ~15fps)。
 // deviceTiles.js がポーリング抑止の streamRendered ack に使う(liveTab.js は未使用)。
-export function createH264Renderer({ canvas, onError, onFirstFrame, onFrameRendered }) {
+// onDimensions(省略可): デコード実寸が変わるたびに { width, height } で呼ぶ(初回も含む)。
+// deviceTiles.js がタイル枠のアスペクト比に使う(初回だけだと解像度変更で枠が古い比率のまま残る)。
+export function createH264Renderer({ canvas, onError, onFirstFrame, onFrameRendered, onDimensions }) {
   const ctx = canvas.getContext('2d');
   let decoder = null;
   let state = 'idle'; // idle -> configuring -> ready、または errored/disposed で以後何もしない
@@ -103,10 +105,17 @@ export function createH264Renderer({ canvas, onError, onFirstFrame, onFrameRende
       return;
     }
     lastDrawTime = now;
+    // close() 後の VideoFrame は displayWidth/Height が 0 を返す(WebCodecs 仕様の detach)。
+    // 実寸はここで控えてから描画・close すること
+    const width = frame.displayWidth;
+    const height = frame.displayHeight;
     try {
-      if (canvas.width !== frame.displayWidth || canvas.height !== frame.displayHeight) {
-        canvas.width = frame.displayWidth;
-        canvas.height = frame.displayHeight;
+      if (canvas.width !== width || canvas.height !== height) {
+        canvas.width = width;
+        canvas.height = height;
+        if (onDimensions && width > 0 && height > 0) {
+          onDimensions({ width, height });
+        }
       }
       ctx.drawImage(frame, 0, 0, canvas.width, canvas.height);
     } finally {
@@ -114,7 +123,7 @@ export function createH264Renderer({ canvas, onError, onFirstFrame, onFrameRende
     }
     if (!firstFrameSent) {
       firstFrameSent = true;
-      onFirstFrame({ width: frame.displayWidth, height: frame.displayHeight });
+      onFirstFrame({ width, height });
     }
     if (onFrameRendered) {
       onFrameRendered();
