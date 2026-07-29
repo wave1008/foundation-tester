@@ -564,6 +564,16 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
   Pro Max(440pt)でそのまま通る(実測済み)
 - 実測(M1 Max): 3フロー(iOS×2 + Android×1)逐次 55.2秒 → iOS 2ワーカー+Android 1ワーカー並列で
   31.2秒。壁時間は最長フローに漸近する(理想スケーリング)
+- **期限付き実行(`withDeadline` / `raceWithDeadline`)に `withTaskGroup` を使わない**: 構造化並行は
+  スコープ終端で**敗者 task の完了を待つ**ため、ウェッジした op(無応答ブリッジ・固着した VT セッション)
+  から離脱できず期限そのものが効かなくなる。だから非構造化 Task + 1回限りガード
+  (`DeadlineGuard` / `RecordingRaceGuard`)で組む。
+  **その代償が前方参照の競合**: op 勝利時に満期スリーパーを cancel するには task 参照を前方参照する
+  必要があり、`Task { }` の本体は囲みの同期区間と**並行に開始し得る**ので素の `var` では競合する
+  (「代入は同期区間で完了するのでレースしない」は成り立たない。ThreadSanitizer で実測・2026-07-30 修正)。
+  `DeadlineTaskBox` は lock で守り、**代入前に来た cancel を覚えて後から適用する**
+  (取りこぼすとスリーパーが seconds 秒居座り、この箱を置いた目的が消える)。
+  前方参照を持たない `RecordingSupport.raceWithDeadline` にはこの箱が要らない
 - **CLI での `Task.detached` fire-and-forget はプロセス終了と競合する**: 短命 CLI(ftester run 等)で
   副作用(adb reboot 等)を detached Task に逃がすと、直後に throw → プロセス即終了する経路で
   **発行前にプロセスが死ぬ**(まさに副作用が最も必要なエラー経路で消える)。発行が速い外部コマンドは

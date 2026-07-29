@@ -153,10 +153,37 @@ private actor DeadlineGuard {
     }
 }
 
-/// withDeadline の満期スレッパー task 参照を保持する箱(op 勝利時に cancel するための前方参照用)。
-/// 代入は op の初回 await より前(同期区間)で完了するため実質レースしない。
-private final class DeadlineTaskBox: @unchecked Sendable {
-    var task: Task<Void, Never>?
+/// withDeadline の満期スリーパー task 参照を保持する箱(op 勝利時に cancel するための前方参照用)。
+/// **代入(生成側)と参照(opTask 側)は並行に走る**: `Task { }` の本体は囲みの同期区間と
+/// 並行に開始し得るので「代入は op の初回 await より前に完了する」は成り立たない
+/// (ThreadSanitizer が実測で競合を報告。2026-07-30)。素の `var` だと競合そのものに加え、
+/// **代入前に op が勝つと cancel を取りこぼしスリーパーが seconds 秒居座る**
+/// (この箱を置いた目的が消える)ため、**先に来た cancel を覚えて後から来た task に適用する**。
+/// `@unchecked Sendable` の根拠は lock(素の可変参照ではない)。
+/// 同型の RecordingSupport.raceWithDeadline は前方参照を持たない = この箱が要らない
+final class DeadlineTaskBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var task: Task<Void, Never>?
+    private var cancelRequested = false
+
+    /// 生成側から1回だけ渡す。既に cancel 済みならその場で cancel する
+    func hold(_ task: Task<Void, Never>) {
+        lock.lock()
+        let cancelNow = cancelRequested
+        self.task = task
+        lock.unlock()
+        // cancel はロックの外で呼ぶ(並行ランタイムへの呼び出しをロック下に置かない)
+        if cancelNow { task.cancel() }
+    }
+
+    /// op 勝利側から呼ぶ。task 未設定でも記憶しておき hold 時に適用する
+    func cancel() {
+        lock.lock()
+        cancelRequested = true
+        let task = self.task
+        lock.unlock()
+        task?.cancel()
+    }
 }
 
 /// 並列ワーカーからの文字列記録の収集(劣化ワーカー・振り直し監査)。run() が summary に畳む。
@@ -476,17 +503,17 @@ public final class RunOrchestrator {
             let opTask = Task {
                 let result = try? await op()
                 if await settled.claim() {
-                    timeoutBox.task?.cancel()
+                    timeoutBox.cancel()
                     cont.resume(returning: result)
                 }
             }
-            timeoutBox.task = Task {
+            timeoutBox.hold(Task {
                 try? await Task.sleep(nanoseconds: UInt64(max(0, seconds) * 1_000_000_000))
                 if await settled.claim() {
                     opTask.cancel()
                     cont.resume(returning: nil)
                 }
-            }
+            })
         }
     }
 

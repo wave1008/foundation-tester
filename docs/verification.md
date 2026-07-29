@@ -102,6 +102,23 @@ E2E-Android(View/XML)を回して初めて赤くなり、a11y の `ACTION_IME_EN
 同値の安定化を外しても現在の挙動は変わらない(実測: 200要素・同値混在で順序保持)。この種の
 「将来への保険」はコメントにその旨を書き、無理にテストを作らない。
 
+## 排他は TSan で見る(2026-07-29)
+
+共有状態のロック(`FTDriveCore.stateLock` / `FTRuntime.lock` [契約は docs/design.md §10] や
+`DeadlineTaskBox`)を触ったら **`swift test --sanitize=thread`** を通す。
+**排他の正しさは目視レビューでは担保できない** — 実際に 2 件、レビューを通り抜けた競合を TSan が
+検出した: ①`FTRuntime.shared.core` を tearDown が書き替える裏で違反スレッドが読む
+②`RunOrchestrator.withDeadline` の満期 task 参照(**「代入は同期区間で完了するのでレースしない」と
+コメントに書いてあったが `Task { }` の本体は囲みの同期区間と並行に開始し得るので成り立たない**)。
+通常の `swift test` は緑のまま素通りする。
+
+**2つの罠**:
+- **計装バイナリが `.build/debug` に残る**。TSan の後に E2E を回すと、シナリオが全部成功しても
+  終了時に `Abort trap: 6` で落ちる(実害あり)。普通に `swift build` し直し
+  `otool -L .build/debug/ftester | grep -c tsan` が 0 になることを確認する
+- **`Thread.sleep` のポーリング待ちは同期とみなされない**。実際には順序が付いていても
+  `As if synchronized via sleep` 付きで報告されることがある(報告を読むときに見分ける)
+
 ## 検証スクリプトそのものの罠
 
 - **エラーを保存・表示するときは切り詰める前に入れ子を畳む**。`prefix(N)` で素の description を
