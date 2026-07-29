@@ -190,12 +190,9 @@ final class FTInAppBridge {
     /// DOM が読めなかった WebView は素通し = 従来どおりコンテナだけが出る。
     /// ホスト側(WebViewDelegatingDriver)はそれを見て XCUITest へ委譲する。
     private func mergeWebViewDOM(into base: InAppSnapshot.Result) -> MergedSnapshot {
-        // **uikit(SwiftUI / UIKit)ホストだけ**。Compose / Flutter は WebView を interop
-        // (UIKitView / platform view)で埋め込み、合成タッチと insertText を横取りする:
-        // DOM は読めるのに**タップも入力も Web コンテンツへ届かない**(2026-07-29 実測。
-        // CMP はリンクタップが無反応、Flutter は入力が入らない)。読めるが操作できない状態が
-        // 一番たちが悪いので、この2つは従来どおり画面ごと XCUITest へ委譲する
-        let containers = base.elements.filter { $0.type == "webView" }   // FT_TEMP: 診断のため全ホストで採る
+        // interop 配下かどうかの選別はコンテナごとに下のループで行う(アプリ単位にしない理由も
+        // そちらのコメント参照)。ここでは全コンテナを候補にするだけ
+        let containers = base.elements.filter { $0.type == "webView" }
         guard !containers.isEmpty else {
             return MergedSnapshot(elements: base.elements, frames: base.frames,
                                   nodes: base.nodes, truncated: base.truncated, note: nil,
