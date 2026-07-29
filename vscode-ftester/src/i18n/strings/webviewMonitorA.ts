@@ -66,6 +66,14 @@ export const webviewMonitorAStrings = {
     ja: "この OS 種別で選べるモデル/OSバージョンがありません。",
     en: "No models or OS versions are available for this OS type.",
   },
+  "wvMonitor.deviceAdd.installing": {
+    ja: "導入中... (進捗は OUTPUT の ftester)",
+    en: "Installing... (progress in the ftester OUTPUT channel)",
+  },
+  "wvMonitor.deviceAdd.installFailed": {
+    ja: "Command-line Tools の導入に失敗しました。",
+    en: "Failed to install the Command-line Tools.",
+  },
   "wvMonitor.deviceAdd.createFailed": { ja: "デバイスの作成に失敗しました。", en: "Failed to create the device." },
   "wvMonitor.deviceAdd.creating": { ja: "作成中...", en: "Creating..." },
 

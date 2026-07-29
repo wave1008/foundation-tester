@@ -197,6 +197,14 @@ export const panelsStrings = {
   "panels.deviceAdd.modelLabel": { ja: "モデル", en: "Model" },
   "panels.deviceAdd.osVersionLabel": { ja: "OSバージョン", en: "OS Version" },
   "panels.deviceAdd.nameLabel": { ja: "デバイス名", en: "Device Name" },
+  "panels.deviceAdd.installCmdlineTools": {
+    ja: "Command-line Tools を導入",
+    en: "Install Command-line Tools",
+  },
+  "panels.deviceAdd.installCmdlineToolsHint": {
+    ja: "約150MBをダウンロードします(数分)",
+    en: "Downloads about 150 MB (a few minutes)",
+  },
 
   "panels.devicePick.title": { ja: "既存のデバイスから選択", en: "Select from Existing Devices" },
   "panels.devicePick.addNewTitle": { ja: "デバイスを新規作成", en: "Create New Device" },

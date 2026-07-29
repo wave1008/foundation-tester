@@ -1211,6 +1211,15 @@ input[type="text"]::placeholder {
   justify-content: flex-end;
   gap: 8px;
 }
+/* .modal-row の display:flex は UA の [hidden]{display:none} に勝つため、hidden 属性で
+   隠す行にはこの打ち消しが要る(#dlg-install-row が常時見えてしまう)。 */
+.modal-row[hidden] {
+  display: none;
+}
+.modal-hint {
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+}
 /* ---- 「+既存から選択」モーダル(#device-pick-overlay) ----
    大量のインストール済みデバイス前提: iOS/Android を2カラムに分け各カラムを独立スクロール
    (max-height 50vh)。通常の .modal-dialog(400px)より広い min-width で2カラム分の幅を確保。 */

@@ -851,6 +851,84 @@ export class MonitorDeviceOps {
   }
 
   /**
+   * `ftester api install-cmdline-tools` を実行して Android SDK Command-line Tools を導入する。
+   * 148MB のダウンロードを伴い数分かかるため、進捗(CLI の stderr)は貯めずに行単位で OUTPUT へ流す。
+   * 結果は stdout 末尾の単発 JSON。多重実行は webview 側のボタン無効化で抑止する。
+   */
+  runInstallCmdlineTools(): void {
+    const config = this.deps.getConfig();
+    const cmd = "install-cmdline-tools";
+
+    let proc: PipeProcess;
+    try {
+      proc = spawn(config.binaryPath, ["api", cmd], {
+        cwd: this.deps.workspaceRoot,
+        shell: false,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+    } catch (error) {
+      const message = t("deviceOps.cmdStartFailed", { cmd, error: String(error) });
+      this.deps.outputChannel.appendLine(`[ftester] ${message}`);
+      this.deps.post({ type: "installCmdlineToolsResult", ok: false, error: message });
+      return;
+    }
+
+    let stdout = "";
+    let stderrTail = "";
+    proc.stdout.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString("utf8");
+    });
+    // 行が途中で切れて届くので、改行までバッファしてから1行ずつ出す
+    proc.stderr.on("data", (chunk: Buffer) => {
+      stderrTail += chunk.toString("utf8");
+      const lines = stderrTail.split("\n");
+      stderrTail = lines.pop() ?? "";
+      for (const line of lines) {
+        this.deps.outputChannel.appendLine(`[${cmd}] ${line}`);
+      }
+    });
+
+    let responded = false;
+    const respond = (ok: boolean, error: string | null): void => {
+      if (responded) {
+        return;
+      }
+      responded = true;
+      if (stderrTail.trim().length > 0) {
+        this.deps.outputChannel.appendLine(`[${cmd}] ${stderrTail.trim()}`);
+        stderrTail = "";
+      }
+      this.deps.post({ type: "installCmdlineToolsResult", ok, error });
+    };
+
+    proc.on("error", (error) => {
+      const message = t("deviceOps.cmdRuntimeError", { cmd, error: error.message });
+      this.deps.outputChannel.appendLine(`[ftester] ${message}`);
+      respond(false, message);
+    });
+    proc.on("close", (exitCode) => {
+      // 失敗時も stdout に ok:false の JSON が出る(理由文はそちらが具体的)。読めた方を優先する
+      let parsed: { ok?: unknown; error?: unknown } | null = null;
+      try {
+        parsed = JSON.parse(stdout.trim().split("\n").pop() ?? "") as { ok?: unknown; error?: unknown };
+      } catch {
+        parsed = null;
+      }
+      if (parsed !== null && typeof parsed === "object" && typeof parsed.ok === "boolean") {
+        const error = typeof parsed.error === "string" ? parsed.error : null;
+        if (!parsed.ok) {
+          this.deps.outputChannel.appendLine(`[ftester] ${cmd}: ${error ?? "failed"}`);
+        }
+        respond(parsed.ok, parsed.ok ? null : error);
+        return;
+      }
+      const message = t("deviceOps.cmdFailedExitCode", { cmd, exitCode: String(exitCode) });
+      this.deps.outputChannel.appendLine(`[ftester] ${message}`);
+      respond(false, message);
+    });
+  }
+
+  /**
    * `ftester api installed-devices` を短命プロセスとして実行し、結果を webview へ返す
    * (「+既存から選択」モーダルが開いた直後の installedDevicesRequest への応答。runDeviceCatalog と
    * 全く同じ短命 spawn パターン — 単発 JSON 1行の出力を全量蓄積して close 時にまとめて

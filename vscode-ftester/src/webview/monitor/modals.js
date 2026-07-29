@@ -32,9 +32,13 @@ const dlgName = document.getElementById('dlg-name');
 const dlgError = document.getElementById('dlg-error');
 const dlgCancel = document.getElementById('dlg-cancel');
 const dlgOk = document.getElementById('dlg-ok');
+const dlgInstallRow = document.getElementById('dlg-install-row');
+const dlgInstall = document.getElementById('dlg-install');
 
 let deviceAddOpen = false;
 let deviceAddCreating = false;
+// cmdline-tools の導入中(数分)。deviceAddCreating と同じくモーダルを閉じさせない。
+let installingCmdlineTools = false;
 // deviceCatalogRequest の応答(deviceCatalog.ok:true の catalog)。未着/失敗中は null。
 let deviceCatalog = null;
 // デバイス名をユーザーが手で編集したか(true の間は自動生成に追従しない)。
@@ -102,7 +106,12 @@ function platformIssue(platform) {
   const side = platform === 'ios' ? deviceCatalog.ios : deviceCatalog.android;
   const blocked = modelOptionsFor(platform).length === 0 || osOptionsFor(platform).length === 0;
   // side.error は CLI 由来の理由文(訳さず素通しする。枠だけ i18n)
-  return { blocked, message: side.error || (blocked ? t('wvMonitor.deviceAdd.catalogEmpty') : '') };
+  return {
+    blocked,
+    message: side.error || (blocked ? t('wvMonitor.deviceAdd.catalogEmpty') : ''),
+    // 導入で解消できる欠け方のときだけボタンを出す(文言では分岐しない)
+    installable: platform === 'android' && side.errorCode === 'avdmanager-missing',
+  };
 }
 
 function selectedOptionLabel(select) {
@@ -150,6 +159,7 @@ function refreshModelAndOsOptions() {
   dlgError.classList.remove('info');
   dlgError.textContent = issue.message;
   dlgOk.disabled = issue.blocked;
+  dlgInstallRow.hidden = !issue.installable;
 }
 
 dlgPlatformIos.addEventListener('change', () => refreshModelAndOsOptions());
@@ -173,21 +183,29 @@ function openDeviceAddModal() {
   deviceAddFromPicker = devicePickOpen;
   deviceAddOpen = true;
   deviceAddCreating = false;
-  deviceCatalog = null;
   dlgNameDirty = false;
   dlgName.value = '';
+  requestDeviceCatalog();
+  dlgOk.textContent = 'OK';
+  dlgCancel.disabled = false;
+  deviceAddOverlay.classList.add('visible');
+}
+
+// カタログ取得中の見た目(モーダルを開いた直後と、cmdline-tools 導入成功後の再取得で共通)
+function requestDeviceCatalog() {
+  deviceCatalog = null;
   dlgModel.textContent = '';
   dlgOs.textContent = '';
   dlgError.classList.add('info');
   dlgError.textContent = t('wvMonitor.deviceAdd.catalogLoading');
+  dlgInstallRow.hidden = true;
   setDialogControlsEnabled(false);
   dlgOk.disabled = true;
-  dlgOk.textContent = 'OK';
-  dlgCancel.disabled = false;
-  deviceAddOverlay.classList.add('visible');
   vscode.postMessage({ type: 'deviceCatalogRequest' });
 }
 
+// 導入中(数分)は閉じられる: CLI が固まってもモーダルが永久に閉じなくなるのを避ける。
+// 二重起動は installingCmdlineTools(モジュール状態・開閉をまたぐ)とボタン無効化で止める。
 function closeDeviceAddModal() {
   if (!deviceAddOpen || deviceAddCreating) {
     return;
@@ -211,6 +229,42 @@ export function applyDeviceCatalog(message) {
   applyPlatformAvailability();
   // dlgError / dlgOk は refreshModelAndOsOptions が選択中プラットフォームに応じて設定する
   refreshModelAndOsOptions();
+}
+
+// avdmanager が無いときだけ出る導入ボタン。完了まで数分かかるため、押下後はモーダル全体を
+// 固め(閉じるのも止め)、進捗は OUTPUT 側で見せる。
+dlgInstall.addEventListener('click', () => {
+  if (installingCmdlineTools) {
+    return;
+  }
+  installingCmdlineTools = true;
+  dlgInstall.disabled = true;
+  dlgOk.disabled = true;
+  setDialogControlsEnabled(false);
+  dlgError.classList.add('info');
+  dlgError.textContent = t('wvMonitor.deviceAdd.installing');
+  vscode.postMessage({ type: 'installCmdlineToolsRequest' });
+});
+
+export function applyInstallCmdlineToolsResult(message) {
+  // 状態の解除だけは閉じていても必ず行う(閉じている間に終わると、次に開いたとき
+  // ボタンが無効のまま二度と押せなくなる)
+  installingCmdlineTools = false;
+  dlgInstall.disabled = false;
+  if (!deviceAddOpen) {
+    return; // 表示の更新だけ捨てる(applyDeviceCatalog と同じ方針)
+  }
+  dlgCancel.disabled = false;
+  if (message.ok) {
+    // 導入できたので取り直す。モデルが並べば dlgInstallRow は自動で隠れる
+    requestDeviceCatalog();
+    return;
+  }
+  setDialogControlsEnabled(true);
+  applyPlatformAvailability();
+  refreshModelAndOsOptions();
+  dlgError.classList.remove('info');
+  dlgError.textContent = message.error || t('wvMonitor.deviceAdd.installFailed');
 }
 
 export function applyCreateDeviceResult(message) {

@@ -99,8 +99,9 @@ ftester api create-device --project <プロジェクト> --machine <マシン名
 `ios.deviceTypes[i].identifier` / `ios.runtimes[i].identifier`(Android は `android.models[i].id` /
 `android.systemImages[i].package`)。**このカタログ取得は新規作成のときだけ**行う。
 
-Android で `android.models` が空のときは avdmanager 不在(cmdline-tools 未導入)で、AVD の新規作成は
-できない。`android.error` をそのままユーザーに見せて導入を促し、既存 AVD を使うか導入後に再実行する。
+Android で `android.models` が空(`android.errorCode` = `avdmanager-missing`)なら cmdline-tools が
+未導入。`ftester api install-cmdline-tools` で導入できる(約150MB・数分)。**勝手に走らせず**
+AskUserQuestion で導入の可否を聞いてから実行し、終わったら device-catalog を取り直す。
 
 ### 5. 検証ゲート
 
