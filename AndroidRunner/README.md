@@ -21,7 +21,9 @@ iOS 側 `Runner/FTesterRunnerUITests/BridgeRouter.swift`)なので、ホスト�
 - 起動: `adb shell "am instrument -w -e port 8123 com.example.ftbridge/.BridgeInstrumentation </dev/null >/dev/null 2>&1 &"`
   - **-w は必須**(UiAutomationConnection は am プロセス側に生成される)。
     デバイス内でバックグラウンド化するので adb 切断後も常駐する
-- 停止: `adb shell am force-stop com.example.ftbridge`(`ftester bridge down --platform android`)
+- 停止: `adb shell am force-stop com.example.ftbridge`(`ftester bridge down --platform android`)。
+  加えて `-e ttl <秒>` の無通信 TTL(design.md §4.1)で自主終了する。判定は accept の
+  60s 周期起床なので検出は最大 +60s 遅れる(2h の既定に対して許容)
 - 注意: ブリッジ稼働中は `uiautomator dump` が使えない(a11y 接続は実質1本。dump 側が
   Killed される)
 - 整定待ち: `/tap` `/type` `/swipe` `/press` `/session` は操作注入後、対象パッケージ由来の

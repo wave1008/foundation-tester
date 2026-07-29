@@ -8,6 +8,7 @@
 
 import XCTest
 import FTAndroid
+import FTCore
 
 final class AndroidBridgeVersionSyncTests: XCTestCase {
 
@@ -37,6 +38,24 @@ final class AndroidBridgeVersionSyncTests: XCTestCase {
                        "AndroidRunner/build.sh の VERSION_CODE と "
                        + "AndroidDriver.expectedBridgeVersionCode は同時に上げること"
                        + "(片方だけだと稼働中の旧ブリッジが再利用され新機能が効かない)")
+    }
+
+    /// 無通信 TTL の既定値が Swift(BridgeAPI.bridgeTTLSecondsDefault)と
+    /// Java(BridgeInstrumentation.TTL_DEFAULT_SECONDS)で一致するか。
+    func testJavaTTLDefaultMatchesHostConstant() throws {
+        let java = repoRoot.appendingPathComponent(
+            "AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java")
+        let text = try String(contentsOf: java, encoding: .utf8)
+        let pattern = #"TTL_DEFAULT_SECONDS\s*=\s*(\d+)\s*;"#
+        guard let match = text.range(of: pattern, options: .regularExpression),
+              let value = Int(text[match].replacingOccurrences(
+                of: #"[^\d]"#, with: "", options: .regularExpression)) else {
+            throw XCTSkip("BridgeInstrumentation.java から TTL_DEFAULT_SECONDS を読めません")
+        }
+        XCTAssertEqual(value, BridgeAPI.bridgeTTLSecondsDefault,
+                       "TTL の既定値は BridgeAPI.bridgeTTLSecondsDefault と "
+                       + "BridgeInstrumentation.TTL_DEFAULT_SECONDS を同時に変えること"
+                       + "(片方だけだと iOS と Android でゾンビの寿命が食い違う)")
     }
 
     /// コミット済み APK が定数と同じ版か。上の2定数だけ上げて APK を作り直し忘れる事故を検出する。

@@ -21,7 +21,21 @@ public enum BridgeAPI {
     /// 6: in-app が WKWebView の中身を DOM から読んで返すようになった(2026-07-29)。
     /// 旧 dylib が再利用されると中身が空のまま = XCUITest へ委譲され続け、
     /// 速度改善が入っていないのに緑になる
-    public static let bridgeProtocolVersion = 8
+    /// 9: 無通信 TTL で自主終了するようになった(2026-07-30)。旧ランナーが再利用されると
+    /// ゾンビ化防止が効かないまま残るため入れ替える
+    public static let bridgeProtocolVersion = 9
+
+    /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
+    /// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java の
+    /// TTL_DEFAULT_SECONDS(AndroidBridgeVersionSyncTests が不一致を検出)
+    public static let bridgeTTLSecondsDefault = 7200
+
+    /// FT_BRIDGE_TTL(秒)の唯一の解釈者。0 = 無効(無期限)、未設定・空・非整数・負 = 既定値。
+    /// Java 側 BridgeInstrumentation.parseTTL も同じ規則
+    public static func resolvedBridgeTTLSeconds(_ raw: String?) -> Int {
+        guard let raw, let value = Int(raw), value >= 0 else { return bridgeTTLSecondsDefault }
+        return value
+    }
 }
 
 /// CGRect の代わりに使うプラットフォーム非依存の矩形(エンコード形式を固定する)

@@ -175,6 +175,9 @@ public struct BridgeLauncher {
         func inject(into target: inout [String: Any]) {
             var env = target["EnvironmentVariables"] as? [String: Any] ?? [:]
             env["FT_PORT"] = String(port)
+            // 無通信 TTL。ホストで解決してから数値文字列で渡す(ランナー側は再解釈するだけ)
+            env["FT_BRIDGE_TTL"] = String(BridgeAPI.resolvedBridgeTTLSeconds(
+                ProcessInfo.processInfo.environment["FT_BRIDGE_TTL"]))
             // 実機はデバイス内ループバックがホストから見えないので全インターフェースに開く。
             // 同期相手: Runner/FTesterRunnerUITests/BridgeHTTPServer.swift の start()
             if physical { env["FT_BIND_ALL"] = "1" }
@@ -455,6 +458,29 @@ public struct BridgeLauncher {
                 .replacingOccurrences(of: "bridge-", with: ""))
         }
         return stopped.sorted()
+    }
+
+    /// 死んだランナーの pid ファイルを掃除する(停止はしない)。TTL 自主終了(design.md §4.1)は
+    /// ホスト側の pid ファイルを消せないため、放置すると assignPort がそのポートを使用中と
+    /// みなし採番がドリフトする。provision のプランニング前(ProvisionLock 内)から呼ぶ
+    public static func sweepStalePidFiles(repoRoot: URL) {
+        let stateDir = repoRoot.appendingPathComponent(".ftester")
+        guard let entries = try? FileManager.default.contentsOfDirectory(
+            at: stateDir, includingPropertiesForKeys: nil) else { return }
+        for entry in entries where entry.lastPathComponent.hasPrefix("bridge-")
+            && entry.pathExtension == "pid" {
+            let port = entry.deletingPathExtension().lastPathComponent
+                .replacingOccurrences(of: "bridge-", with: "")
+            // stopAll と同じ同定(PID 再利用対策): 当該ポートのランナーが生きているときだけ残す
+            if let pidString = try? String(contentsOf: entry, encoding: .utf8),
+               let pid = Int32(pidString.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                let ps = try? Shell.run(["ps", "-ww", "-p", String(pid), "-o", "command="])
+                if let ps, ps.status == 0, ps.output.contains("FTesterRunner-\(port).xctestrun") {
+                    continue
+                }
+            }
+            try? FileManager.default.removeItem(at: entry)
+        }
     }
 
     /// .ftester/bridge-*.pid(xcuitest)と bridge-*.inapp(dylib 注入)を走査して全ブリッジを

@@ -22,12 +22,20 @@ final class FTesterBridgeTests: XCTestCase {
         // 実機は FT_BIND_ALL=1 で 0.0.0.0 に開く(BridgeHTTPServer.start 参照)。
         // 127.0.0.1 決め打ちで出すと実機の切り分け時に誤誘導する
         let bindHost = ProcessInfo.processInfo.environment["FT_BIND_ALL"] == "1" ? "0.0.0.0" : "127.0.0.1"
-        NSLog("[ftester] bridge listening on %@:%d", bindHost, Int(port))
+        // 無通信 TTL(0 = 無期限)。忘れられたブリッジのデバイス占有を防ぐ(design.md §4.1)
+        let ttl = BridgeAPI.resolvedBridgeTTLSeconds(ProcessInfo.processInfo.environment["FT_BRIDGE_TTL"])
+        NSLog("[ftester] bridge listening on %@:%d ttl=%@", bindHost, Int(port),
+              ttl > 0 ? "\(ttl)s" : "off")
 
         // 接続処理は accept スレッドで行われる。ここでは RunLoop を回し続けて
         // テストを終わらせない(イベント合成等が必要とするランループも回る)。
         while server.isRunning {
             RunLoop.current.run(until: Date(timeIntervalSinceNow: 0.25))
+            if ttl > 0, server.idleSeconds > TimeInterval(ttl) {
+                NSLog("[ftester] bridge idle %.0fs > ttl %ds; self-terminating",
+                      server.idleSeconds, ttl)
+                server.stop()
+            }
         }
     }
 }
