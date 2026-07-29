@@ -62,7 +62,10 @@
   **要素の testTag/`#id`/ラベルの唯一の正は `E2EApp/docs/ui-contract.md`**(全 SUT とシナリオがこれを参照。
   片方だけ変えない。`uiContractSync.test.mjs` が「SUT 側の `#id` が母体に実在するか」を検出)。
   **型語彙・OS/フレームワーク固有の罠だけ**は各 SUT の `<SUT>/docs/ui-contract.md` に置く
-  (同じ `#id` でも型は SUT ごとに違う。例: ボタンは CMP/Android で `Cell`、View/XML なら `Button`)
+  (同じ `#id` でも型は SUT ごとに違う。例: ボタンは CMP/Android で `Cell`、View/XML なら `Button`)。
+  **4 SUT のシナリオはほぼ同内容だが共通化しない**(2026-07-29 ユーザー決定・可読性優先)。
+  差分は16ファイル中の過半が2〜10行で、DSL 変更のたび4箇所を編集することになるが、共通化すると
+  SUT 固有の差(型語彙・フレームワーク固有の罠)が表現しにくくなる。**共通化を再提案しない**
 
 ## ビルド・検証
 
