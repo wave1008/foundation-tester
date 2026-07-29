@@ -14,7 +14,8 @@
   ready=0 / installed=2 / blocked=1 を返す。SKILL.md ステップ0・0.5 と 1:1)
 - 受け手の一括導入: `Scripts/install.sh`(clone〜検証ゲートを冪等に実行)。**各手順は
   `.claude/skills/ftester-setup/SKILL.md` のステップ番号と 1:1**(失敗時に「→ SKILL.md ステップ N」を
-  出してエージェントを手作業手順へ戻す設計)。**片方だけ変えない** — 手順の追加・番号の変更は両方に入れる。
+  出してエージェントを手作業手順へ戻す設計)。**片方だけ変えない** — 手順の追加・番号の変更は両方に入れる
+  (`installStepSync.test.mjs` が「install.sh が指すステップが SKILL.md に実在するか」を検出)。
   **スキルからは curl 形で呼ぶ**(クローン側の Scripts/ は pull されるまで古く、新しい引数は
   「不明なオプション」で落ちる)。全出力は `<WORK_DIR>/.ftester/install-<日時>.log` に残る。
   **画面は各ステップ1行(逐次)+ 集計だけ・生ログはファイルへ**(`--verbose` で従来。54KB 出すと
@@ -42,7 +43,8 @@
   **webview で `window.confirm` は効かない** — 破壊的操作の確認はホスト側の
   `showWarningMessage({modal:true})`(プロファイル削除と同じ方式)。
   **`reason=` は ja/en どちらでも英語**(拡張の通知に素通しするため。枠だけ訳す)。
-  **TOOL_ROOT の解決規則は preflight.sh / update.sh / `src/toolRootResolve.ts` と同じ**(4箇所。片方だけ変えない)
+  **TOOL_ROOT の解決規則は preflight.sh / update.sh / `src/toolRootResolve.ts` と同じ**(4箇所。片方だけ変えない。
+  `toolRootContract.test.mjs` が規則の3語(クローン判別マーカー・既定の隣・Package.swift の宣言)の欠落を検出)
 - DSL コマンドリファレンス(全コマンドの引数・挙動。利用者向け): docs/commands.md
 - リリース(git タグ発行と版ピンの関係。配布はソースビルド前提): docs/releasing.md(`Scripts/release.sh`)
 - 設計書(アーキテクチャ・Swift DSL 仕様・セレクタ記法・プロファイル): docs/design.md
@@ -58,7 +60,8 @@
   | `E2EAppFlutter/` | Flutter | Projects/E2E-Flutter | ios + android |
 
   **要素の testTag/`#id`/ラベルの唯一の正は `E2EApp/docs/ui-contract.md`**(全 SUT とシナリオがこれを参照。
-  片方だけ変えない)。**型語彙・OS/フレームワーク固有の罠だけ**は各 SUT の `<SUT>/docs/ui-contract.md` に置く
+  片方だけ変えない。`uiContractSync.test.mjs` が「SUT 側の `#id` が母体に実在するか」を検出)。
+  **型語彙・OS/フレームワーク固有の罠だけ**は各 SUT の `<SUT>/docs/ui-contract.md` に置く
   (同じ `#id` でも型は SUT ごとに違う。例: ボタンは CMP/Android で `Cell`、View/XML なら `Button`)
 
 ## ビルド・検証
@@ -87,7 +90,10 @@
 - **flake の修正は1回グリーンで判定しない・単発の観測で性能を断じない**(反復+負荷で叩く。実害と
   手順は docs/verification.md)
 - `ftester api` の JSON/NDJSON 契約を後方非互換に変えたら `Sources/FTCore/ProtocolVersion.swift` と `vscode-ftester/src/protocolVersion.ts` の版を +1(両者一致必須・`protocolVersion.test.mjs` が検出。拡張は起動時に照合し不一致を警告)
-- **ブリッジの挙動・エンドポイントを変えたら版を上げる**(上げないと**稼働中の旧ブリッジが再利用され、変更が反映されないまま緑になる**。実害2回)。iOS = `Sources/FTCore/BridgeDTO.swift` の `bridgeProtocolVersion`(in-app dylib と XCUITest ランナーの共通定数)/ Android = `AndroidRunner/build.sh` の `VERSION_CODE` と `AndroidBridge.swift` の `expectedBridgeVersionCode` を**同時に**(`AndroidBridgeVersionSyncTests` が不一致を検出。「上げ忘れ」自体は検出できないので人間の規律)
+- **ブリッジの挙動・エンドポイントを変えたら版を上げる**(上げないと**稼働中の旧ブリッジが再利用され、変更が反映されないまま緑になる**。実害2回)。iOS = `Sources/FTCore/BridgeDTO.swift` の `bridgeProtocolVersion`(in-app dylib と XCUITest ランナーの共通定数)/ Android = `AndroidRunner/build.sh` の `VERSION_CODE` と `AndroidBridge.swift` の `expectedBridgeVersionCode` を**同時に**(`AndroidBridgeVersionSyncTests` が定数間の不一致と、**コミット済み `prebuilt/ftbridge.apk` が
+  定数と別版のまま=APK 作り直し忘れ**を検出)。**ルート表を変えたら `BridgeRouteContractTests` が落ちる**ので、
+  そこで版を上げてから期待値を更新する(版を上げること自体は強制できない=最後は人間の規律。ルートが同じで
+  ハンドラの挙動だけ変えた場合も検出できない)
 
 ## 受け手フローの設計方針(スキル・スクリプト・CLI の分担)
 
