@@ -332,6 +332,32 @@ final class FTRuntimeLifecycleTests: XCTestCase {
         XCTAssertTrue(core.finalRecord.passed)
     }
 
+    /// **FTSync のコマンド上限は doUntilTrue の waitSeconds より先に効く**
+    /// (docs/commands.md「1 コマンドの壁時計上限は 120 秒」。上限より長い待ちは書いても待てない)。
+    /// 上限を縮めて同じ関係を再現する — 逆転すると doUntilTrue 側のメッセージで落ちるので区別できる
+    func testDoUntilTrueCannotWaitLongerThanTheCommandTimeout() {
+        let core = makeCore(driver: StubDriver(), dryRun: false)
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        let savedTimeout = FTSync.commandTimeout
+        FTSync.commandTimeout = 0.3
+        defer {
+            FTSync.commandTimeout = savedTimeout
+            FTRuntime.tearDown()
+        }
+
+        scenario {
+            scene(1, "s") {
+                action { doUntilTrue("成立しない条件", waitSeconds: 30) { false } }
+            }
+        }
+
+        guard case .failed(let reason) = steps(core)[0].status else {
+            return XCTFail("上限を超えても NG になっていない: \(steps(core)[0].status)")
+        }
+        XCTAssertTrue(reason.contains("処理がタイムアウトしました"),
+                      "waitSeconds(30s)が先に効いてしまっている: \(reason)")
+    }
+
     /// ifCanSelect(waitSeconds: 0.3) が 0.5 秒刻みに丸められないこと。
     /// 丸められる旧実装(Thread.sleep(0.5) 固定)だと不成立確定までの実測が ~0.5s 以上になるが、
     /// 新実装は残り時間と 0.25s の小さい方で待つため ~0.3s で確定する

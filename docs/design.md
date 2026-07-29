@@ -1193,7 +1193,15 @@ textIs(.id("txt_result"), "dialog=none")
 - **1 プロセス = 1 シナリオ実行**のサブプロセス方式。ホスト(CLI/GUI/MCP)は ScenarioHost 経由で
   起動し、NDJSON イベント(FTCore/ScenarioEvent)を受信。ビルドはホスト側で1回だけ
 - シナリオ本体は**専用スレッドで同期実行**し、async の StepExecutor/AppDriver へは
-  セマフォで橋渡し(FTSync)。ブロックするのは専用スレッドのみで協調プールは塞がない
+  セマフォで橋渡し(FTSync)。ブロックするのは専用スレッドのみで協調プールは塞がない。
+  **上限(既定120秒)で諦めたら op を必ず cancel する**(2026-07-30)。放置すると諦めたはずの
+  tap/snapshot が**後続ステップの最中にブリッジへ着弾**し、記録に残らないまま画面を動かす
+  = 原因不明の一発ずれになる。cancel は届く(通信は `URLSession.data(for:)`、待ちは
+  `Task.sleep`。どちらも cancel 対応)。cancel を見ない処理(Process 実行等)は走り切るだけで悪化しない。
+  **副作用: op は任意の await 点で巻き戻り得る**ので、掴んだ資源の解放は `defer` に置くこと
+  (契約は `FMGate.enter()` のコメント。ここを崩すとホスト全体の FM ロックが漏れる)。
+  この上限は `procedure` / `doUntilTrue` にも効き、`doUntilTrue(waitSeconds:)` に 120 秒より
+  長い値を書いても待てない(利用者向けの記述は docs/commands.md)
 - 失敗セマンティクス: コマンド NG → **シナリオ全体を中断**(以降のステップは scene を跨いで
   すべて skipped。throw を使わない Shirates 的中断)。tearDown だけは失敗後でも実行される。
   2026-07-27 変更(ユーザー決定): 以前は scene 単位のスキップで次の scene へ進んでいたが、
