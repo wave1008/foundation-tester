@@ -183,7 +183,7 @@ export function sortMonitorDevices(devices: readonly MonitorDevice[]): MonitorDe
 
 // ---- 「起動中のデバイス」(動的プロファイル)------------------------------------------------
 // 実行プロファイルではなく表示フィルタ: 監視スコープは「プロファイルなし」(= 全デバイス)のまま、
-// タイルに出すのを起動中(offline 以外)だけに絞る。選択時は ftester.profile="" +
+// タイルに出すのを起動中(タイルが「未起動」表示にならないもの)だけに絞る。選択時は ftester.profile="" +
 // ftester.monitorDeviceFilter="running" の2設定に分解して保存する(この値自体は ftester.profile へ
 // 保存しない — CLI の --profile へ渡ると実行プロファイル未検出で落ちるため)。
 // 同期相手: src/webview/monitor/deviceTiles.js(同名の複製定数。webview は CSP で import 不可)
@@ -192,10 +192,22 @@ export function sortMonitorDevices(devices: readonly MonitorDevice[]): MonitorDe
  * validateNewRunProfileName が "@" 始まりを予約済みとして弾くため衝突しない。 */
 export const RUNNING_DEVICES_PROFILE_VALUE = "@running";
 
-/** filter="running" なら起動中(offline 以外)のみに絞る。"all" は素通し(元の順序を保つ)。 */
+/** iOS 実機の state==="booted" は「端末は繋がっているがブリッジが1本も無い」の意味
+ * (ApiMonitorCommand.iosState。シミュレータの booted=起動済みとは意味が違う)。実機のブリッジは
+ * 自動供給されず run かタイルのメニューからしか起動しないので、この状態は待っても変わらない
+ * =タイルも「未起動」表示になる。android 実機の booted は本当にブート途中なので対象外。
+ * 同期相手: src/webview/monitor/deviceTiles.js の bridgeNotRunning(同じ判定の複製)。 */
+function iosPhysicalWithoutBridge(device: MonitorDevice): boolean {
+  return device.kind === "physical" && device.platform === "ios" && device.state === "booted";
+}
+
+/** filter="running" なら起動中のみに絞る(offline と、未起動表示になる iOS 実機のブリッジ不在を除外)。
+ * "all" は素通し(元の順序を保つ)。 */
 export function filterMonitorDevices(
   devices: readonly MonitorDevice[],
   filter: MonitorDeviceFilter,
 ): readonly MonitorDevice[] {
-  return filter === "running" ? devices.filter((device) => device.state !== "offline") : devices;
+  return filter === "running"
+    ? devices.filter((device) => device.state !== "offline" && !iosPhysicalWithoutBridge(device))
+    : devices;
 }
