@@ -17,9 +17,9 @@ enum BackendHealthCheck {
                 group.addTask { (urlString, await reachable(urlString)) }
             }
             for await (urlString, ok) in group where !ok {
-                log("⚠️ バックエンド死活確認に失敗: \(urlString) に到達できません。"
-                    + "アプリがクラッシュ・シナリオが全滅する可能性があります"
-                    + "(サーバの起動を確認してください。apps プロファイル healthCheckURL)")
+                log("⚠️ Backend health check failed: cannot reach \(urlString)."
+                    + " The app may crash and every scenario may fail"
+                    + " (make sure the server is running — apps profile healthCheckURL)")
             }
         }
     }

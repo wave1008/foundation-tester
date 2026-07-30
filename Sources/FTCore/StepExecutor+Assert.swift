@@ -45,7 +45,7 @@ extension StepExecutor {
         // observedText は原因切り分けの鍵: 空なら「FM に画像が渡っていない/白紙を見た」
         // (SCA 劣化で添付が落ちる仮説・起動遷移画面)、期待どおりの文字列なら「読めたのに
         // 覆われていると答えた」= 純粋な判定誤り。これが無くて切り分けに窮した(2026-07-23)。
-        return .failed("偽陽性(occlusion): ツリー上に存在するが視覚的に見えない [\(v.state)] \(v.reason)"
+        return .failed("false positive (occlusion): present in the tree but not visually visible [\(v.state)] \(v.reason)"
                        + " observed=\"\(v.observedText)\"")
     }
 
@@ -58,7 +58,7 @@ extension StepExecutor {
               let cover = OcclusionSuspicion.covering(element: element, in: elements, screen: screen)
         else { return "" }
         let label = cover.identifier.map { "#\($0)" } ?? cover.label.map { "\"\($0)\"" } ?? cover.type
-        return "(対象は \(label) に覆われています。操作がそこへ吸われた可能性があります)"
+        return " (the target is covered by \(label); the interaction may have been swallowed by it)"
     }
 
     /// スナップショットが上限で打ち切られていたときの注記。**要素数の上限に当たると
@@ -67,10 +67,10 @@ extension StepExecutor {
     static func truncationHint(_ snapshot: SnapshotResponse?) -> String {
         guard let snapshot, snapshot.truncatedCount > 0 else { return "" }
         let webView = snapshot.elements.contains { $0.type == "webView" }
-            ? "。WebView 画面では中身の要素が多く、上限に当たりやすいです(スコープを `.webView >> ...` で絞るか、対象の近くまでスクロールしてください)"
+            ? ". WebView screens hold many elements and hit this limit easily (narrow the scope with `.webView >> ...`, or scroll closer to the target)"
             : ""
-        return "(スナップショットは \(snapshot.elements.count) 要素で打ち切られています"
-            + "。あと \(snapshot.truncatedCount) 要素が省かれました\(webView))"
+        return " (the snapshot was truncated at \(snapshot.elements.count) elements"
+            + "; \(snapshot.truncatedCount) more were omitted\(webView))"
     }
 
     /// WebView 画面での失敗に「どの経路で読んだ画面か」を添える。
@@ -86,11 +86,11 @@ extension StepExecutor {
         // 申告が無いドライバ(Android・engine=xcuitest 単独・旧ブリッジ)では何も足さない
         switch snapshot?.webViewPath {
         case "dom":
-            return "(WebView の中身は DOM 経路で読みました。タップは DOM の矩形へ合成タッチで打つため、"
-                + "interop 越しに埋め込まれた WebView では**無反応でも成功として記録されます**。"
-                + "直前の操作が効いていない可能性を疑ってください)"
+            return " (WebView contents were read through the DOM path. Taps are synthesized onto DOM rects, so "
+                + "a WebView embedded through interop **records success even when nothing responds**. "
+                + "Suspect that the preceding interaction had no effect.)"
         case "delegated":
-            return "(WebView の中身は XCUITest へ委譲して読みました)"
+            return " (WebView contents were read by delegating to XCUITest)"
         default:
             return ""
         }
@@ -124,7 +124,7 @@ extension StepExecutor {
         case "screenMatches":
             return try await executeAssertScreenMatches(step: step, phase: &phase)
         default:
-            return .skipped("未知のアサーション: \(assert)")
+            return .skipped("unknown assertion: \(assert)")
         }
     }
 
@@ -194,7 +194,7 @@ extension StepExecutor {
         }
         // timeout: 覆われ続けた occlusion があればそれを、無ければ未発見を返す
         if let lastOcclusion { return lastOcclusion }
-        return .failed("要素が見つかりません: \(step.locatorSummary)(timeout \(FTSeconds.format(step.timeout ?? 5))s)"
+        return .failed("element not found: \(step.locatorSummary) (timeout \(FTSeconds.format(step.timeout ?? 5))s)"
                        + Self.truncationHint(lastSnapshot)
                        + Self.webViewPathHint(lastSnapshot))
     }
@@ -204,7 +204,7 @@ extension StepExecutor {
         phase: inout PhaseAccumulator) async throws -> StepResult.Status {
         let clock = ContinuousClock()
         guard let expected = step.expected else {
-            return .skipped("expected が未指定")
+            return .skipped("expected was not specified")
         }
         let deadline = Date().addingTimeInterval(step.timeout ?? 5)
         var lastActual: String?
@@ -286,14 +286,14 @@ extension StepExecutor {
         }
         if let lastOcclusion { return lastOcclusion }   // 覆われ続けた
         let subject = assert == "idEquals" ? "id"
-            : (assert.hasPrefix("value") ? "値" : "テキスト")
+            : (assert.hasPrefix("value") ? "value" : "text")
         let relation = Self.textMismatchRelation(assert)
         return found
-            ? .failed("\(subject)\(relation): 期待 \"\(expected)\"、実際 \"\(lastActual ?? "nil")\""
+            ? .failed("\(subject) \(relation): expected \"\(expected)\", actual \"\(lastActual ?? "nil")\""
                       + Self.coveringHint(element: lastElement, elements: lastElements,
                                           screen: lastScreen)
                       + Self.webViewPathHint(lastSnapshot))
-            : .failed("要素が見つかりません: \(step.locatorSummary)"
+            : .failed("element not found: \(step.locatorSummary)"
                       + Self.webViewPathHint(lastSnapshot))
     }
 
@@ -301,15 +301,15 @@ extension StepExecutor {
     /// 純粋関数(判定ロジックとは無関係。単体テストしやすいよう分離)。
     private static func textMismatchRelation(_ assert: String) -> String {
         switch assert {
-        case "textContains": return "を含みません"
-        case "textMatches": return "に一致しません(正規表現)"
-        case "textStartsWith", "valueStartsWith": return "で始まりません"
-        case "textEndsWith", "valueEndsWith": return "で終わりません"
+        case "textContains": return "does not contain"
+        case "textMatches": return "does not match (regex)"
+        case "textStartsWith", "valueStartsWith": return "does not start with"
+        case "textEndsWith", "valueEndsWith": return "does not end with"
         case "textMatchesDateFormat", "valueMatchesDateFormat":
-            return "が日付書式に一致しません"
-        case "valueContains": return "を含みません"
-        case "valueMatches": return "に一致しません(正規表現)"
-        default: return "が一致しません"
+            return "does not match the date format"
+        case "valueContains": return "does not contain"
+        case "valueMatches": return "does not match (regex)"
+        default: return "does not equal"
         }
     }
 
@@ -335,7 +335,7 @@ extension StepExecutor {
                     phase.snapshotMs += Self.ms(clock.now - fbStart)
                     if Self.resolve(step: step, in: fsnap, strictForAssert: true) != nil {
                         if Date() >= deadline {
-                            return .failed("要素がまだ存在します(システム UI): \(step.locatorSummary)")
+                            return .failed("element still exists (system UI): \(step.locatorSummary)")
                         }
                         let waitStart = clock.now
                         try await Task.sleep(for: backoff.nextDelay())
@@ -350,7 +350,7 @@ extension StepExecutor {
             try await Task.sleep(for: backoff.nextDelay())
             phase.waitMs += Self.ms(clock.now - waitStart)
         }
-        return .failed("要素がまだ存在します: \(step.locatorSummary)(timeout \(FTSeconds.format(step.timeout ?? 5))s)")
+        return .failed("element still exists: \(step.locatorSummary) (timeout \(FTSeconds.format(step.timeout ?? 5))s)")
     }
 
     private func executeAssertNegativeTextComparison(
@@ -362,7 +362,7 @@ extension StepExecutor {
         // Empty 系だけが期待値を取らない(それ以外で未指定なら空文字と比べて必ず落ちる)
         if !assert.hasSuffix("IsEmpty"), !assert.hasSuffix("IsNotEmpty"),
            step.expected == nil {
-            return .skipped("expected が未指定")
+            return .skipped("expected was not specified")
         }
         let deadline = Date().addingTimeInterval(step.timeout ?? 5)
         var backoff = PollBackoff()
@@ -396,21 +396,21 @@ extension StepExecutor {
             try await Task.sleep(for: backoff.nextDelay())
             phase.waitMs += Self.ms(clock.now - waitStart)
         }
-        guard found else { return .failed("要素が見つかりません: \(step.locatorSummary)") }
+        guard found else { return .failed("element not found: \(step.locatorSummary)") }
         let hint = Self.coveringHint(element: lastElement, elements: lastElements,
                                      screen: lastScreen)
-        let subject = assert.hasPrefix("value") ? "値" : "テキスト"
+        let subject = assert.hasPrefix("value") ? "value" : "text"
         switch assert {
         case "textIsEmpty", "valueIsEmpty":
-            return .failed("\(subject)が空ではありません: 実際 \"\(lastActual ?? "nil")\"" + hint)
+            return .failed("\(subject) is not empty: actual \"\(lastActual ?? "nil")\"" + hint)
         case "textIsNotEmpty", "valueIsNotEmpty":
-            return .failed("\(subject)が空です: \(step.locatorSummary)" + hint)
+            return .failed("\(subject) is empty: \(step.locatorSummary)" + hint)
         default:
             // 否定の種類ごとに何が成立してしまったのかを書く(「条件不成立」だけだと
             // 期待値のどの関係で引っかかったのか読めない)
             let expected = step.expected ?? ""
             let relation = Self.negativeAssertViolationRelation(assert, expected: expected)
-            return .failed("\(subject)が\(relation): 実際 \"\(lastActual ?? "nil")\"" + hint)
+            return .failed("\(subject) \(relation): actual \"\(lastActual ?? "nil")\"" + hint)
         }
     }
 
@@ -418,13 +418,13 @@ extension StepExecutor {
     /// 純粋関数(判定ロジックとは無関係。単体テストしやすいよう分離)。
     private static func negativeAssertViolationRelation(_ assert: String, expected: String) -> String {
         switch assert {
-        case "textContainsNot", "valueContainsNot": return "\"\(expected)\" を含んでいます"
+        case "textContainsNot", "valueContainsNot": return "contains \"\(expected)\""
         case "textStartsWithNot", "valueStartsWithNot":
-            return "\"\(expected)\" で始まっています"
-        case "textEndsWithNot", "valueEndsWithNot": return "\"\(expected)\" で終わっています"
+            return "starts with \"\(expected)\""
+        case "textEndsWithNot", "valueEndsWithNot": return "ends with \"\(expected)\""
         case "textMatchesNot", "valueMatchesNot":
-            return "正規表現 \"\(expected)\" に一致しています"
-        default: return "一致しています"
+            return "matches the regex \"\(expected)\""
+        default: return "equals it"
         }
     }
 
@@ -456,8 +456,8 @@ extension StepExecutor {
             phase.waitMs += Self.ms(clock.now - waitStart)
         }
         return found
-            ? .failed("要素は\(wantEnabled ? "無効" : "有効")です: \(step.locatorSummary)")
-            : .failed("要素が見つかりません: \(step.locatorSummary)")
+            ? .failed("the element is \(wantEnabled ? "disabled" : "enabled"): \(step.locatorSummary)")
+            : .failed("element not found: \(step.locatorSummary)")
     }
 
     private func executeAssertChecked(
@@ -492,18 +492,18 @@ extension StepExecutor {
             phase.waitMs += Self.ms(clock.now - waitStart)
         }
         return found
-            ? .failed("要素は\(wantChecked ? "オフ" : "オン")です: \(step.locatorSummary)")
-            : .failed("要素が見つかりません: \(step.locatorSummary)")
+            ? .failed("the element is \(wantChecked ? "off" : "on"): \(step.locatorSummary)")
+            : .failed("element not found: \(step.locatorSummary)")
     }
 
     private func executeAssertCount(step: FlowStep,
                                     phase: inout PhaseAccumulator) async throws -> StepResult.Status {
         let clock = ContinuousClock()
         guard let expectedCount = step.expectedCount else {
-            return .skipped("expectedCount が未指定")
+            return .skipped("expectedCount was not specified")
         }
         guard let locator = step.locator else {
-            return .skipped("ロケータが未指定")
+            return .skipped("no locator specified")
         }
         // `||` は**候補集合の和**(Shirates 準拠)。全節の候補を合わせ、同じ要素は1度だけ数える。
         // 節の優先順位が効くのは要素を1つ選ぶときだけで、数えるときは節を跨いで合計する
@@ -532,10 +532,10 @@ extension StepExecutor {
         // 「どれが想定より多く拾ったのか」が分からず、セレクタを直すのに snapshot を
         // 取り直す往復が要る(実例: ラベルで数えてボタンの内側の Text も拾っていた)
         let detail = breakdown.count > 1
-            ? "内訳: " + breakdown.map { "\($0.clause.summary) \($0.elements.count)件" }
+            ? "breakdown: " + breakdown.map { "\($0.clause.summary) \($0.elements.count)" }
                 .joined(separator: " / ")
             : step.locatorSummary
-        return .failed("個数が一致しません: 期待 \(expectedCount)、実際 \(actual)(\(detail))"
+        return .failed("count mismatch: expected \(expectedCount), actual \(actual) (\(detail))"
                        + nestingHint)
     }
 
@@ -543,17 +543,17 @@ extension StepExecutor {
         step: FlowStep, phase: inout PhaseAccumulator) async throws -> StepResult.Status {
         let clock = ContinuousClock()
         guard screenIsEnabled else {
-            return .skipped("screenIs が無効(実行プロファイルの設定)")
+            return .skipped("screenIs is disabled (run profile setting)")
         }
         guard let expected = step.expected, !expected.isEmpty else {
-            return .skipped("expected が未指定")
+            return .skipped("expected was not specified")
         }
         guard let delegate else {
-            return .skipped("FM 検証が無効(Foundation Models 利用不可)")
+            return .skipped("FM verification is disabled (Foundation Models unavailable)")
         }
         // スクショを撮る前に落とす(画像を渡せない環境では検証自体が成立しない)
         guard FMVisionSupport.isSupported else {
-            return .skipped("画面検証が無効(\(FMVisionSupport.requirement))")
+            return .skipped("screen verification is disabled (\(FMVisionSupport.requirement))")
         }
         var start = clock.now
         var screenshot = try await driver.screenshot()
@@ -570,13 +570,13 @@ extension StepExecutor {
             }
             if BlankFrameDetector.isUniformBlank(pngData: screenshot) {
                 onDeviceFrozen?()
-                return .skipped("画面凍結(白フレーム)のため中断・別デバイスへ振り直し")
+                return .skipped("aborted due to a frozen display (blank frame) — requeued onto another device")
             }
         }
         guard let verdict = await delegate.verifyScreen(expected: expected, screenshotPNG: screenshot) else {
-            return .skipped("画面検証を実行できませんでした")
+            return .skipped("could not run screen verification")
         }
         if verdict.pass { return .passed }
-        return .failed("画面が期待と一致しません: \(verdict.reason)")
+        return .failed("the screen does not match the expectation: \(verdict.reason)")
     }
 }

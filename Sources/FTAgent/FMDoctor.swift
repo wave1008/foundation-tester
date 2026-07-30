@@ -16,9 +16,9 @@ public enum FMDoctor {
         let model = SystemLanguageModel.default
         switch model.availability {
         case .available:
-            return Report(available: true, detail: "オンデバイスモデル: 利用可能")
+            return Report(available: true, detail: "On-device model: available")
         case .unavailable(let reason):
-            return Report(available: false, detail: "オンデバイスモデル: 利用不可 (\(describe(reason)))")
+            return Report(available: false, detail: "On-device model: unavailable (\(describe(reason)))")
         }
     }
 
@@ -33,15 +33,15 @@ public enum FMDoctor {
             _ = try await LanguageModelSession().respond(
                 to: "OK とだけ答えてください。",
                 options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 8))
-            return Report(available: true, detail: "オンデバイスモデル: 利用可能(実呼び出しで確認)")
+            return Report(available: true, detail: "On-device model: available (confirmed by a live call)")
         } catch {
             return Report(
                 available: false,
-                detail: "オンデバイスモデル: 実呼び出しに失敗しました"
-                    + "(availability は available。モデル資産や Apple Intelligence の状態を確認してください)"
+                detail: "On-device model: a live call failed"
+                    + " (availability reports available — check the model assets and the state of Apple Intelligence)"
                     // 入れ子を畳んでから出す。LanguageModelError の最上位は常に
                     // `Code=-1 "The operation couldn't be completed."` で、真因は入れ子の中にしかない
-                    + "\n   エラー: \(FMHealth.describe(error))")
+                    + "\n   Error: \(FMHealth.describe(error))")
         }
     }
 
@@ -49,23 +49,23 @@ public enum FMDoctor {
     /// (occlusion-guard / screenIs)だけが無効になるため、テキスト系とは別に報告する。
     public static var visionReport: Report {
         FMVisionSupport.isSupported
-            ? Report(available: true, detail: "FM の視覚検証(画像入力): 利用可能")
+            ? Report(available: true, detail: "FM visual verification (image input): available")
             : Report(available: false,
-                     detail: "FM の視覚検証(画像入力): 利用不可(\(FMVisionSupport.requirement))"
-                         + "。occlusion-guard(偽陽性チェック)と screenIs は無効です"
-                         + "(heal・トリアージ・シナリオ命名はテキストのみで動作します)")
+                     detail: "FM visual verification (image input): unavailable (\(FMVisionSupport.requirement))"
+                         + ". occlusion-guard (false-positive check) and screenIs are disabled"
+                         + " (heal, triage and scenario naming keep working — they are text-only)")
     }
 
     static func describe(_ reason: SystemLanguageModel.Availability.UnavailableReason) -> String {
         switch reason {
         case .deviceNotEligible:
-            return "このデバイスは対象外です"
+            return "this device is not eligible"
         case .appleIntelligenceNotEnabled:
-            return "Apple Intelligence が無効です。システム設定から有効にしてください"
+            return "Apple Intelligence is off — enable it in System Settings"
         case .modelNotReady:
-            return "モデルのダウンロード中です。しばらく待って再実行してください"
+            return "the model is still downloading — wait a moment and retry"
         @unknown default:
-            return "不明な理由: \(reason)"
+            return "unknown reason: \(reason)"
         }
     }
 }

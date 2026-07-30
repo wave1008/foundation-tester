@@ -140,7 +140,7 @@ public struct StepOutcome: Sendable {
     /// (実行エラー時も catch 節でこの時点までの計測値を積んで返す)
     public let timing: StepTiming?
     /// ドライバが通常と違う経路を通ったときの注記。FTRuntime が説明文に括弧書きでそのまま付けるため
-    /// 表示済み文言で持つ(例 "XCUITest へフォールバック" / "activate 不発 → 合成タッチ(...)")。
+    /// 表示済み文言で持つ(例 "fell back to XCUITest" / "activate 不発 → 合成タッチ(...)")。
     /// ロケータのフォールバック(.passedViaFallback)とは別物で、セレクタ更新の提案は出さない。
     public let driverFallback: String?
     /// このステップの結果が確定した壁時計時刻(ISO8601+ミリ秒)。execute(_:cached:) が
@@ -323,9 +323,9 @@ public final class StepExecutor {
                                    observedChecked: observedCheckedThisStep,
                                    resolvedElement: resolvedElementThisStep)
             }
-            return StepOutcome(status: .skipped("action も assert もないステップ"))
+            return StepOutcome(status: .skipped("step has neither an action nor an assertion"))
         } catch {
-            return StepOutcome(status: .failed("実行エラー: \(error.localizedDescription)"),
+            return StepOutcome(status: .failed("execution error: \(error.localizedDescription)"),
                                timing: StepTiming(durationMs: Self.ms(clock.now - start),
                                                   snapshotMs: phase.snapshotMs,
                                                   actionMs: phase.actionMs, waitMs: phase.waitMs))
@@ -378,7 +378,7 @@ public final class StepExecutor {
     /// ステップ横断の注記(内蔵スクロール探索・割り込み)を既存の driverFallback へ合流させる
     private func noteWithInterrupt(_ base: String?) -> String? {
         var parts = [base, scrollSearchNote].compactMap { $0 }
-        if let interruptNote { parts.append("割り込み \(interruptNote) を閉じました") }
+        if let interruptNote { parts.append("dismissed the interruption \(interruptNote)") }
         return parts.isEmpty ? nil : parts.joined(separator: " / ")
     }
 
@@ -419,14 +419,14 @@ public final class StepExecutor {
     /// スクロール探索の注記(XCUITest フォールバック / ヒント跳躍)。無ければ nil
     static func scrollSearchNote(_ result: ScrollSearchResult) -> String? {
         var parts: [String] = []
-        if result.viaXCUITest { parts.append("XCUITest へフォールバック") }
-        if result.hintJumps > 0 { parts.append("スクロールヒントで長距離ドラッグ \(result.hintJumps) 回") }
+        if result.viaXCUITest { parts.append("fell back to XCUITest") }
+        if result.hintJumps > 0 { parts.append("\(result.hintJumps) long drag(s) from scroll hints") }
         return parts.isEmpty ? nil : parts.joined(separator: " / ")
     }
 
     static func scrollNotFoundMessage(_ step: FlowStep) -> String {
-        "\(max(0, step.maxSwipes ?? FlowStep.defaultMaxSwipes)) 回スクロールしても"
-            + "要素が見つかりません: \(step.locatorSummary)"
+        "element not found after \(max(0, step.maxSwipes ?? FlowStep.defaultMaxSwipes)) scroll(s)"
+            + ": \(step.locatorSummary)"
     }
 
     /// スクロールヒント(WebView の画面外ノード・実座標付き)から「あと何 px 先か」を出す。
@@ -602,7 +602,7 @@ public final class StepExecutor {
             // 慣性が止まるまで待つ。ランナー側は /swipe を整定対象から外している(そこで待っても
             // budget 内に収束しないため)ので、直後に tap する書き方をここで支える
             _ = try await settledSignature(phase: &phase)
-            return StepOutcome(status: .passed, driverFallback: viaXCUITest ? "XCUITest へフォールバック" : nil)
+            return StepOutcome(status: .passed, driverFallback: viaXCUITest ? "fell back to XCUITest" : nil)
         }
 
         // スクロールだけ行う(Shirates の scrollDown 等)。maxSwipes を繰り返し回数として使う
@@ -619,7 +619,7 @@ public final class StepExecutor {
                 _ = try await settledSignature(phase: &phase).signature
             }
             return StepOutcome(status: .passed,
-                               driverFallback: viaXCUITest ? "XCUITest へフォールバック" : nil)
+                               driverFallback: viaXCUITest ? "fell back to XCUITest" : nil)
         }
 
         // 端まで送る(Shirates の scrollToBottom 等)。**画面が変化しなくなったら端**とみなす。
@@ -653,9 +653,9 @@ public final class StepExecutor {
             // 上限で抜けたら**端に着いたとは限らない**。黙って成功にすると
             // 「scrollToBottom したのに末尾が無い」の原因が読めなくなる
             var notes: [String] = []
-            if !reachedEdge { notes.append("上限 \(limit) 回で打ち切り(まだ端ではない可能性があります)") }
-            if viaXCUITest { notes.append("XCUITest へフォールバック") }
-            if hintJumps > 0 { notes.append("スクロールヒントで長距離ドラッグ \(hintJumps) 回") }
+            if !reachedEdge { notes.append("stopped at the limit of \(limit) (may not have reached the edge yet)") }
+            if viaXCUITest { notes.append("fell back to XCUITest") }
+            if hintJumps > 0 { notes.append("\(hintJumps) long drag(s) from scroll hints") }
             return StepOutcome(status: .passed,
                                driverFallback: notes.isEmpty ? nil : notes.joined(separator: " / "))
         }
@@ -668,7 +668,7 @@ public final class StepExecutor {
                 // optional は他のアクションと同契約(出るか不定の要素をスクロール探索したとき、
                 // 空振りで scene を落とさない)。tap(scroll:) が optional を伝えてくる
                 if step.optional == true {
-                    return StepOutcome(status: .skipped("要素が見つからないため省略(optional)"))
+                    return StepOutcome(status: .skipped("skipped because the element was not found (optional)"))
                 }
                 return StepOutcome(status: .failed(Self.scrollNotFoundMessage(step)))
             }
@@ -707,7 +707,7 @@ public final class StepExecutor {
                       let td = typeDriver else { throw error }
                 try await td.pressEnter()
                 phase.actionMs += Self.ms(clock.now - start)
-                return StepOutcome(status: .passed, driverFallback: "XCUITest へフォールバック")
+                return StepOutcome(status: .passed, driverFallback: "fell back to XCUITest")
             }
             phase.actionMs += Self.ms(clock.now - start)
             return StepOutcome(status: .passed)
@@ -722,7 +722,7 @@ public final class StepExecutor {
             scrollSearchNote = Self.scrollSearchNote(result)
             guard result.found else {
                 if step.optional == true {
-                    return StepOutcome(status: .skipped("要素が見つからないため省略(optional)"))
+                    return StepOutcome(status: .skipped("skipped because the element was not found (optional)"))
                 }
                 return StepOutcome(status: .failed(Self.scrollNotFoundMessage(step)))
             }
@@ -813,7 +813,7 @@ public final class StepExecutor {
         } else if step.optional == true {
             // 出るかどうか不定な要素(システムダイアログ等)。無ければ何もしないで先へ進む。
             // 自己修復の対象にもしない(別要素への誤リダイレクトを防ぐ)
-            return StepOutcome(status: .skipped("要素が見つからないため省略(optional)"))
+            return StepOutcome(status: .skipped("skipped because the element was not found (optional)"))
         } else if healingEnabled, let delegate,
                   let proposal = await delegate.healLocator(step: step, snapshot: snapshot),
                   proposal.confidence == "high" {
@@ -823,7 +823,7 @@ public final class StepExecutor {
             var healed = step
             healed.locator = primary
             healed.fallbacks = fallbacks.isEmpty ? nil : fallbacks
-            healed.note = (step.note.map { $0 + " / " } ?? "") + "自己修復: \(proposal.rationale)"
+            healed.note = (step.note.map { $0 + " / " } ?? "") + "self-healed: \(proposal.rationale)"
             healedStep = healed
             status = .healed(primary)
         } else {
@@ -831,7 +831,7 @@ public final class StepExecutor {
             // (レポート側の全要素一覧は ScenarioReportWriter が別途出す)
             let hint = Self.candidateHint(for: step, in: snapshot)
             return StepOutcome(status: .failed(
-                "ロケータを解決できません: \(step.locatorSummary)" + (hint.map { "。\($0)" } ?? "")
+                "cannot resolve the locator: \(step.locatorSummary)" + (hint.map { ". \($0)" } ?? "")
                     + Self.truncationHint(snapshot)
                     + Self.webViewPathHint(snapshot)))
         }
@@ -866,13 +866,13 @@ public final class StepExecutor {
                       let td = typeDriver else { throw error }
                 guard try await typeViaTypeDriver(td, step: step, phase: &phase) else { throw error }
                 // セレクタは正しくドライバが変わっただけ = .passedViaFallback(ロケータ用)は立てない
-                driverFallback = "XCUITest へフォールバック"
+                driverFallback = "fell back to XCUITest"
             }
         case "press":
             if typeDriverGestures.contains("press") || gestureFallbackLatched, let td = typeDriver,
                try await pressViaTypeDriver(td, step: step, phase: &phase) {
                 return StepOutcome(status: .passed, healedStep: healedStep, healedByCache: healedByCache,
-                                   driverFallback: "XCUITest へフォールバック")
+                                   driverFallback: "fell back to XCUITest")
             }
             do {
                 start = clock.now
@@ -885,10 +885,10 @@ public final class StepExecutor {
                 guard DriverError.isEngineIncapable(error), let td = typeDriver else { throw error }
                 guard try await pressViaTypeDriver(td, step: step, phase: &phase) else { throw error }
                 gestureFallbackLatched = true
-                driverFallback = "XCUITest へフォールバック"
+                driverFallback = "fell back to XCUITest"
             }
         default:
-            return StepOutcome(status: .skipped("未知のアクション: \(action)"))
+            return StepOutcome(status: .skipped("unknown action: \(action)"))
         }
         return StepOutcome(status: status, healedStep: healedStep, healedByCache: healedByCache,
                            driverFallback: driverFallback)
@@ -1208,9 +1208,9 @@ public final class StepExecutor {
             where matchedRefs.contains(descendant.ref) { nested.insert(descendant.ref) }
         }
         let outerTypes = Set(matched.filter { !nested.contains($0.ref) }.map(\.type))
-        let suggestion = outerTypes.count == 1 ? "(例 `.\(outerTypes.first!)&&…`)" : ""
-        return "。**親子で同じ要素を重ねて数えています** — 型で絞ると \(outer) 件"
-            + suggestion + "。ボタンとその内側のラベルは別要素として両方ツリーに載ります"
+        let suggestion = outerTypes.count == 1 ? " (e.g. `.\(outerTypes.first!)&&…`)" : ""
+        return ". **Parent and child are being counted as the same element** — narrowing by type gives \(outer)"
+            + suggestion + ". A button and the label inside it are separate elements and both appear in the tree"
     }
 
     /// 数えた要素の中に**親子関係のもの**(ボタンとその内側の Text 等)が混ざっていないか。
@@ -1395,7 +1395,7 @@ public final class StepExecutor {
                 }
                 return parts.joined(separator: " ")
             }
-            hints.append("近い候補: \(summaries.joined(separator: " / "))")
+            hints.append("near matches: \(summaries.joined(separator: " / "))")
         }
         if let hint = partialMatchHint(for: locator, in: elements) { hints.append(hint) }
         // 候補の区切りが " / " なので、ヒント同士は別の記号で割る(読み手が機械でも人でも混ざらない)
@@ -1409,7 +1409,7 @@ public final class StepExecutor {
               (locator.labelMatch ?? .exact) == .exact,
               !elements.contains(where: { $0.label == label }),
               elements.contains(where: { ($0.label ?? "").contains(label) }) else { return nil }
-        return "部分一致なら在る: \"*\(label)*\" と書くと拾える"
+        return "present as a partial match: writing \"*\(label)*\" would find it"
     }
 
     /// 要素の子孫(スナップショットは pre-order + 元ツリーの depth を保つため、

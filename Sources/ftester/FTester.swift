@@ -69,16 +69,16 @@ struct DriverOptions: ParsableArguments {
 
 struct Doctor: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
-        abstract: "Foundation Models・Xcode・シミュレータの事前チェック")
+        abstract: "Preflight checks for Foundation Models, Xcode and simulators")
 
     // FM/Apple Intelligence の可否だけを判定して exit code に反映する高速ゲート。
     // setup スキルがビルド直後に人間へ聞かずに自動判定するために使う(FM 不可なら非0で終了)。
-    @Flag(name: .long, help: "Apple Intelligence / オンデバイス FM の可否だけを確認し exit code で返す")
+    @Flag(name: .long, help: "Only check Apple Intelligence / on-device FM availability and report it via exit code")
     var fmOnly = false
 
     // ルート解決だけを見る高速ゲート。FM(実呼び出しで数秒・環境によっては失敗)に依存させない
     // ため独立させてある。パス取り違えの切り分けはこれ単体で完結する
-    @Flag(name: .long, help: "ツール本体/シナリオパッケージのルート解決だけを確認し exit code で返す")
+    @Flag(name: .long, help: "Only check tool-root / scenario-package root resolution and report it via exit code")
     var rootsOnly = false
 
     func run() async throws {
@@ -108,8 +108,8 @@ struct Doctor: AsyncParsableCommand {
         _ = printRoots()
 
         let xcode = try Shell.run(["xcodebuild", "-version"])
-        let xcodeLine = xcode.output.split(separator: "\n").first.map(String.init) ?? "不明"
-        print(xcode.status == 0 ? "✅ \(xcodeLine)" : "❌ xcodebuild が見つかりません")
+        let xcodeLine = xcode.output.split(separator: "\n").first.map(String.init) ?? "unknown"
+        print(xcode.status == 0 ? "✅ \(xcodeLine)" : "❌ xcodebuild not found")
 
         await reportUnmanagedBridges()
 
@@ -132,9 +132,9 @@ struct Doctor: AsyncParsableCommand {
                let runnerXcodeBuild = dict["DTXcodeBuild"] as? String,
                !core(runnerXcodeBuild).isEmpty,
                !xcode.output.contains(core(runnerXcodeBuild)) {
-                print("⚠️ XCUITest ランナーは別の Xcode(build \(runnerXcodeBuild))でビルドされています。"
-                    + "Xcode 更新後はランタイム導入(xcodebuild -downloadPlatform iOS)とフルリビルドで"
-                    + "整合させてください(不整合はアプリが実行中にクラッシュします)")
+                print("⚠️ The XCUITest runner was built with a different Xcode (build \(runnerXcodeBuild)). "
+                    + "After updating Xcode, install the runtime (xcodebuild -downloadPlatform iOS) and do a full rebuild "
+                    + "to bring them back in sync (a mismatch crashes the app mid-run)")
             }
         }
 
@@ -143,9 +143,9 @@ struct Doctor: AsyncParsableCommand {
             .filter { $0.contains("(Booted)") }
             .map { $0.trimmingCharacters(in: .whitespaces) }
         if booted.isEmpty {
-            print("⚠️  起動中のシミュレータがありません(bridge up が自動起動します)")
+            print("⚠️  No booted simulators (bridge up will boot one automatically)")
         } else {
-            print("✅ 起動中のシミュレータ: \(booted.joined(separator: ", "))")
+            print("✅ Booted simulators: \(booted.joined(separator: ", "))")
         }
 
         if let bootedDevices = try? SimulatorCatalog.devices().filter(\.booted) {
@@ -158,8 +158,8 @@ struct Doctor: AsyncParsableCommand {
                 let enabled = read?.status == 0
                     && read?.output.trimmingCharacters(in: .whitespacesAndNewlines) == "1"
                 if !enabled {
-                    print("     ⚠️ \(device.name): Reduce Motion が無効です。"
-                          + "アニメーション待ちで遅くなります(次回ブリッジ起動時に自動で有効になります)")
+                    print("     ⚠️ \(device.name): Reduce Motion is off. "
+                          + "Runs are slower because of animation waits (it is enabled automatically on the next bridge start)")
                 }
             }
         }
@@ -167,18 +167,18 @@ struct Doctor: AsyncParsableCommand {
         let xcodegen = try Shell.run(["which", "xcodegen"])
         print(xcodegen.status == 0
               ? "✅ xcodegen: \(xcodegen.output.trimmingCharacters(in: .whitespacesAndNewlines))"
-              : "❌ xcodegen が必要です: brew install xcodegen")
+              : "❌ xcodegen is required: brew install xcodegen")
 
         if let android = try? AndroidDriver() {
             let devices = try Shell.run([android.adbPath, "devices"])
             let connected = devices.output.split(separator: "\n").dropFirst()
                 .filter { $0.contains("\tdevice") }
             print("✅ adb: \(android.adbPath)"
-                  + (connected.isEmpty ? "(接続デバイスなし)" : "(\(connected.count) 台接続)"))
+                  + (connected.isEmpty ? " (no devices connected)" : " (\(connected.count) connected)"))
             if let apk = try? AndroidDriver.locateBridgeAPK() {
-                print("   ✅ ブリッジAPK: \(apk.path)")
+                print("   ✅ Bridge APK: \(apk.path)")
             } else {
-                print("   ❌ ブリッジAPK が見つかりません(AndroidRunner/build.sh で生成)")
+                print("   ❌ Bridge APK not found (generate it with AndroidRunner/build.sh)")
             }
             // AVD の新規作成(モニターの「デバイスを追加」/ api create-device)にだけ要る。
             // 既存 AVD で実行するぶんには不要なので警告どまり
@@ -186,7 +186,7 @@ struct Doctor: AsyncParsableCommand {
                 print("   ✅ avdmanager: \(avdmanager.path)")
             } else {
                 print("   ⚠️ \(AndroidSDKLocator.avdManagerMissingMessage)。"
-                      + "AVD の新規作成ができません(既存 AVD での実行には影響しません)。"
+                      + "New AVDs cannot be created (running on existing AVDs is unaffected). "
                       + AndroidSDKLocator.avdManagerInstallHint)
             }
             for line in connected {
@@ -200,7 +200,7 @@ struct Doctor: AsyncParsableCommand {
                 }
             }
         } else {
-            print("⚠️ adb が見つかりません(Android を使う場合は ANDROID_HOME を設定)")
+            print("⚠️ adb not found (set ANDROID_HOME if you use Android)")
         }
     }
 
@@ -232,7 +232,7 @@ struct Doctor: AsyncParsableCommand {
             let version = status.protocolVersion.map(String.init) ?? "?"
             let label = "port \(port): \(status.device)(v\(version))"
             // 「いつから放置か」の診断(自己申告の idleSeconds。この probe 自体は数えない)
-            let idle = status.idleSeconds.map { $0 >= 60 ? "・無通信 \(Int($0 / 60))分" : "" } ?? ""
+            let idle = status.idleSeconds.map { $0 >= 60 ? ", idle \(Int($0 / 60))m" : "" } ?? ""
 
             switch UnmanagedBridgeTriage.decide(
                 ownerRepo: status.ownerRepo,
@@ -247,22 +247,22 @@ struct Doctor: AsyncParsableCommand {
                 // 自分の資産の旧版。in-app はアプリごと終了、xcuitest は pid ファイル経由で停止
                 if hasInApp {
                     InAppBridgeState.terminateAndRemove(at: inAppPath)
-                    reaped.append("\(label) — 旧版(期待 v\(BridgeAPI.bridgeProtocolVersion))の自リポジトリ資産")
+                    reaped.append("\(label) — stale version (expected v\(BridgeAPI.bridgeProtocolVersion)) owned by this repo")
                 } else if let pid = Self.pidFromFile(pidPath), BridgeLauncher.reapRunnerProcess(pid: pid) {
                     try? FileManager.default.removeItem(at: pidPath)
-                    reaped.append("\(label) — 旧版(期待 v\(BridgeAPI.bridgeProtocolVersion))の自リポジトリ資産")
+                    reaped.append("\(label) — stale version (expected v\(BridgeAPI.bridgeProtocolVersion)) owned by this repo")
                 } else if let pid = status.ownerPid.map(Int32.init), BridgeLauncher.reapRunnerProcess(pid: pid) {
                     try? FileManager.default.removeItem(at: pidPath)
-                    reaped.append("\(label) — 旧版(期待 v\(BridgeAPI.bridgeProtocolVersion))の自リポジトリ資産")
+                    reaped.append("\(label) — stale version (expected v\(BridgeAPI.bridgeProtocolVersion)) owned by this repo")
                 } else {
-                    findings.append("   - \(label) — 旧版だが停止できませんでした(`lsof -ti :\(port)` を確認)")
+                    findings.append("   - \(label) — stale version but could not be stopped (check `lsof -ti :\(port)`)")
                 }
             case .reapOrphan(let owner):
                 if let pid = status.ownerPid.map(Int32.init), BridgeLauncher.reapRunnerProcess(pid: pid) {
-                    reaped.append("\(label) — 起動元が消滅(\(owner))")
+                    reaped.append("\(label) — its owner is gone (\(owner))")
                 } else {
-                    findings.append("   - \(label) — 起動元が消滅(\(owner))。ownerPid で停止できず。"
-                        + "`lsof -ti :\(port)` のプロセスを止めてください")
+                    findings.append("   - \(label) — its owner is gone (\(owner)) and it could not be stopped via ownerPid. "
+                        + "Kill the process shown by `lsof -ti :\(port)`")
                 }
             case .reportForeign(let owner):
                 findings.append("   - \(label)\(idle) — 別ワークスペースの所有: \(owner)。"
@@ -274,13 +274,13 @@ struct Doctor: AsyncParsableCommand {
             }
         }
         if !reaped.isEmpty {
-            print("✂️ 再利用されないブリッジを停止しました:")
+            print("✂️ Stopped bridges that will not be reused:")
             reaped.forEach { print("   - \($0)") }
         }
         if findings.isEmpty {
-            if reaped.isEmpty { print("✅ 管理外・旧版のブリッジはありません") }
+            if reaped.isEmpty { print("✅ No unmanaged or stale bridges") }
         } else {
-            print("⚠️ 再利用されないブリッジが残っています(ポートとデバイスを占有します):")
+            print("⚠️ Bridges that will not be reused are still running (they hold ports and devices):")
             findings.forEach { print($0) }
         }
     }
@@ -294,16 +294,16 @@ struct Doctor: AsyncParsableCommand {
         var resolved = false
         switch Result(catching: { try RepoRoot.find() }) {
         case .success(let root):
-            print("✅ ツール本体(ブリッジ資産): \(root.path)")
+            print("✅ Tool root (bridge assets): \(root.path)")
             resolved = true
         case .failure(let error):
-            print("❌ ツール本体のルートを特定できません: \(error.localizedDescription)")
+            print("❌ Cannot determine the tool root: \(error.localizedDescription)")
         }
         if let packageRoot = ScenarioHost.packageRoot() {
-            print("✅ シナリオのパッケージ(Projects/): \(packageRoot.path)")
+            print("✅ Scenario package (Projects/): \(packageRoot.path)")
         } else {
-            print("⚠️ シナリオのパッケージ(Package.swift)が cwd の上方に見つかりません"
-                + "(FT_PACKAGE_ROOT で明示指定できます)")
+            print("⚠️ No scenario package (Package.swift) found above the current directory"
+                + " (set FT_PACKAGE_ROOT to point at it explicitly)")
         }
         return resolved
     }

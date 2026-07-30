@@ -298,18 +298,18 @@ extension AndroidDriver {
     /// doctor / bridge status 用の1行サマリ
     public func bridgeDoctorSummary() -> String {
         guard let version = installedBridgeVersionCode() else {
-            return "ブリッジ未導入(初回操作時に自動導入)"
+            return "bridge not installed (installed automatically on first use)"
         }
-        var summary = "ブリッジ v\(version)"
+        var summary = "bridge v\(version)"
         if version != Self.expectedBridgeVersionCode {
-            summary += "(要更新 → v\(Self.expectedBridgeVersionCode)、次回操作時に自動更新)"
+            summary += " (update required → v\(Self.expectedBridgeVersionCode); updated automatically on next use)"
         }
         let pid = (try? adb(["shell", "pidof", Self.bridgePackage]))?
             .output.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if pid.isEmpty {
-            summary += " 停止中(初回操作時に自動起動)"
+            summary += " stopped (started automatically on first use)"
         } else {
-            summary += " 稼働中(pid \(pid)"
+            summary += " running (pid \(pid)"
                 + (findExistingForward().map { ", forward tcp:\($0)" } ?? "") + ")"
         }
         return summary

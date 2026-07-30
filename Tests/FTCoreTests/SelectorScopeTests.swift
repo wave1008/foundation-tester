@@ -379,7 +379,7 @@ final class SelectorScopeTests: XCTestCase {
     func testPartialMatchHintSuggestsWildcard() {
         let elements = [node(1, "staticText", depth: 1, label: "通知を許可")]
         let hint = StepExecutor.partialMatchHint(for: FlowLocator(label: "許可"), in: elements)
-        XCTAssertEqual(hint, "部分一致なら在る: \"*許可*\" と書くと拾える")
+        XCTAssertEqual(hint, "present as a partial match: writing \"*許可*\" would find it")
         XCTAssertNil(StepExecutor.partialMatchHint(for: FlowLocator(label: "通知を許可"),
                                                    in: elements))
         XCTAssertNil(StepExecutor.partialMatchHint(for: FlowLocator(label: "許可",
