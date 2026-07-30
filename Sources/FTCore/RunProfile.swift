@@ -400,9 +400,9 @@ public enum ProfileFileKind: String, CaseIterable, Sendable {
 
     public var label: String {
         switch self {
-        case .app: return "アプリ"
-        case .machine: return "マシン"
-        case .run: return "実行"
+        case .app: return "app"
+        case .machine: return "machine"
+        case .run: return "run"
         }
     }
 }
@@ -434,58 +434,58 @@ public enum ProfileError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .runProfileNotFound(let name, let available):
-            return "実行プロファイルが見つかりません: \(name)"
-                + availableHint(available, empty: "profiles/runs/ が空です")
+            return "run profile not found: \(name)"
+                + availableHint(available, empty: "profiles/runs/ is empty")
         case .appProfileNotFound(let name, let available):
-            return "アプリケーションプロファイルが見つかりません: \(name)"
-                + availableHint(available, empty: "profiles/apps/ が空です")
+            return "app profile not found: \(name)"
+                + availableHint(available, empty: "profiles/apps/ is empty")
         case .machineProfileNotFound(let machine, let available):
-            return "マシンプロファイルが見つかりません: \(machine)"
-                + availableHint(available, empty: "profiles/machines/ が空です")
+            return "machine profile not found: \(machine)"
+                + availableHint(available, empty: "profiles/machines/ is empty")
         case .runSpecifiedMachineNotFound(let run, let machine, let available):
-            return "実行プロファイル \(run) が指定するマシンプロファイル「\(machine)」が見つかりません"
-                + availableHint(available, empty: "profiles/machines/ が空です")
+            return "the machine profile \"\(machine)\" referenced by run profile \(run) was not found"
+                + availableHint(available, empty: "profiles/machines/ is empty")
         case .machineUndetermined(let available):
-            return "マシン名が未登録です。ftester machine set \"<マシン名>\" で登録するか "
-                + "FT_MACHINE 環境変数を設定してください"
-                + availableHint(available, empty: "profiles/machines/ が空です")
+            return "no machine name is registered. Register one with: ftester machine set \"<name>\", "
+                + "or set the FT_MACHINE environment variable"
+                + availableHint(available, empty: "profiles/machines/ is empty")
         case .decodeFailed(let url, let detail):
-            return "プロファイルを読み込めません: \(url.path)\n\(detail)"
+            return "cannot load the profile: \(url.path)\n\(detail)"
         case .missingAppReference(let run):
-            return "実行プロファイル \(run) に \"app\"(apps/ への参照)がありません"
+            return "run profile \(run) has no \"app\" (a reference into apps/)"
         case .missingDevices(let run):
-            return "実行プロファイル \(run) に \"devices\" がありません"
+            return "run profile \(run) has no \"devices\""
         case .duplicateDeviceName(let name, let machine):
-            return "マシンプロファイル \(machine) でデバイス名が重複しています: \(name)"
-                + "(name は ios/android 横断で一意にしてください)"
+            return "duplicate device name in machine profile \(machine): \(name)"
+                + " (names must be unique across ios and android)"
         case .noDevicesResolved(let run, let machine, let requested, let available):
-            return "実行プロファイル \(run) のデバイスがマシン \(machine) で 1 台も解決できません"
-                + "(要求: \(requested.joined(separator: ", ")) / "
-                + "定義済み: \(available.isEmpty ? "なし" : available.joined(separator: ", ")))"
+            return "none of the devices in run profile \(run) resolve on machine \(machine)"
+                + " (requested: \(requested.joined(separator: ", ")) / "
+                + "defined: \(available.isEmpty ? "none" : available.joined(separator: ", ")))"
         case .missingBundleID(let platform, let appProfile):
             // common の app は廃止(merging 参照)のため、案内は platform セクション限定
-            return "アプリケーションプロファイル \(appProfile) に \(platform) の \"app\""
-                + "(bundle ID / パッケージ名)がありません(\(platform) セクションに記述)"
+            return "app profile \(appProfile) has no \"app\" (bundle ID / package name) for \(platform)"
+                + " (add it in the \(platform) section)"
         case .invalidWipeDataThreshold(let run):
-            return "実行プロファイル \(run) の wipeDataThresholdGB は正の数(GB)で指定してください"
+            return "wipeDataThresholdGB in run profile \(run) must be a positive number (GB)"
         case .invalidLocale(let run):
-            return "実行プロファイル \(run) の locale は ja_JP のような形式で指定してください"
+            return "locale in run profile \(run) must look like ja_JP"
         case .physicalDeviceMissingIdentifier(let name, let platform, let machine):
             let field = platform == "ios" ? "udid" : "serial"
             let how = platform == "ios"
-                ? "xcrun devicectl list devices の Identifier 列または UDID"
-                : "adb devices の左列"
-            return "マシンプロファイル \(machine) のデバイス \"\(name)\" は kind=physical ですが "
-                + "\"\(field)\" がありません(\(how)を指定してください)"
+                ? "the Identifier column of xcrun devicectl list devices, or the UDID"
+                : "the left column of adb devices"
+            return "device \"\(name)\" in machine profile \(machine) is kind=physical but has no "
+                + "\"\(field)\" (set it to \(how))"
         case .physicalDeviceUnsupportedEngine(let name, let engine, let machine):
-            return "マシンプロファイル \(machine) のデバイス \"\(name)\" は kind=physical のため "
-                + "engine=\(engine) は使えません(dylib 注入は実機不可。engine は省略するか "
-                + "\"xcuitest\" にしてください)"
+            return "device \"\(name)\" in machine profile \(machine) is kind=physical, so "
+                + "engine=\(engine) cannot be used (dylib injection is impossible on physical devices; "
+                + "omit engine or set it to \"xcuitest\")"
         }
     }
 
     private func availableHint(_ available: [String], empty: String) -> String {
-        available.isEmpty ? "(\(empty))" : "(利用可能: \(available.joined(separator: ", ")))"
+        available.isEmpty ? " (\(empty))" : " (available: \(available.joined(separator: ", ")))"
     }
 }
 
@@ -644,14 +644,14 @@ public enum ProfileResolver {
                     if device.platform == "ios", runDoc.iosInappEngine != nil,
                        let explicit = device.spec.engine {
                         warnings.append(
-                            "デバイス \"\(ref.name)\" はマシンプロファイルで engine=\(explicit) を"
-                            + "明示しているため iosInappEngine の指定は適用されません")
+                            "device \"\(ref.name)\" explicitly sets engine=\(explicit) in the machine profile, "
+                            + "so the iosInappEngine setting does not apply to it")
                     }
                     devices.append(device)
                 }
             } else {
                 warnings.append(
-                    "デバイス \"\(ref.name)\" はマシン \(machineName) に定義がないためスキップします")
+                    "device \"\(ref.name)\" is not defined on machine \(machineName) — skipping it")
             }
         }
         guard !devices.isEmpty else {
@@ -767,7 +767,7 @@ public enum ProfileResolver {
         kind: ProfileFileKind, data: Data, context: String, project: TestProject
     ) -> (errors: [String], warnings: [String]) {
         guard let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
-            return (["JSON として解析できません(構文エラー)"], [])
+            return (["cannot parse as JSON (syntax error)"], [])
         }
         var errors: [String] = []
         var warnings: [String] = []
@@ -775,7 +775,7 @@ public enum ProfileResolver {
         switch kind {
         case .app:
             if (try? decoder.decode(AppProfile.self, from: data)) == nil {
-                errors.append("アプリケーションプロファイルとして読み込めません(型不一致)")
+                errors.append("cannot load as an app profile (type mismatch)")
             }
             warnings += checkAppProfileKeys(json, context: context)
             warnings += checkDeprecatedSectionKeys(json, context: context)
@@ -785,29 +785,29 @@ public enum ProfileResolver {
                 for (platform, list) in [("ios", machine.ios), ("android", machine.android)] {
                     for spec in list?.devices ?? [] {
                         if !seen.insert(spec.name).inserted {
-                            errors.append("デバイス名が重複しています: \(spec.name)"
-                                          + "(name は ios/android 横断で一意にしてください)")
+                            errors.append("duplicate device name: \(spec.name)"
+                                          + " (names must be unique across ios and android)")
                         }
                         errors += physicalDeviceErrors(spec, platform: platform)
                     }
                 }
             } else {
-                errors.append("マシンプロファイルとして読み込めません(型不一致)")
+                errors.append("cannot load as a machine profile (type mismatch)")
             }
             warnings += checkMachineProfileKeys(json, context: context)
         case .run:
             if let doc = try? decoder.decode(RunProfileDocument.self, from: data) {
-                if doc.app == nil { errors.append("\"app\"(apps/ への参照)がありません") }
-                if (doc.devices ?? []).isEmpty { errors.append("\"devices\" がありません") }
+                if doc.app == nil { errors.append("no \"app\" (a reference into apps/)") }
+                if (doc.devices ?? []).isEmpty { errors.append("no \"devices\"") }
                 if let threshold = doc.wipeDataThresholdGB, threshold <= 0 {
-                    errors.append("\"wipeDataThresholdGB\" は正の数(GB)で指定してください")
+                    errors.append("\"wipeDataThresholdGB\" must be a positive number (GB)")
                 }
                 let locale = (doc.locale ?? "ja_JP").trimmingCharacters(in: .whitespacesAndNewlines)
                 if !isValidLocale(locale) {
-                    errors.append("\"locale\" は ja_JP のような形式で指定してください")
+                    errors.append("\"locale\" must look like ja_JP")
                 }
             } else {
-                errors.append("実行プロファイルとして読み込めません(型不一致)")
+                errors.append("cannot load as a run profile (type mismatch)")
             }
             warnings += checkKeys(json, allowed: RunProfileDocument.knownKeys, context: context)
             warnings += checkDeviceRefKeys(json, context: context)
@@ -827,11 +827,11 @@ public enum ProfileResolver {
         let field = platform == "ios" ? "udid" : "serial"
         let identifier = platform == "ios" ? spec.udid : spec.serial
         if (identifier?.trimmingCharacters(in: .whitespaces) ?? "").isEmpty {
-            errors.append("デバイス \"\(spec.name)\" は kind=physical ですが \"\(field)\" がありません")
+            errors.append("device \"\(spec.name)\" is kind=physical but has no \"\(field)\"")
         }
         if platform == "ios", let engine = spec.engine, engine != "xcuitest" {
-            errors.append("デバイス \"\(spec.name)\" は kind=physical のため engine=\(engine) は"
-                          + "使えません(実機は dylib 注入不可)")
+            errors.append("device \"\(spec.name)\" is kind=physical, so engine=\(engine) cannot be"
+                          + " used (dylib injection is impossible on physical devices)")
         }
         return errors
     }
@@ -872,7 +872,7 @@ public enum ProfileResolver {
     private static func checkKeys(_ json: [String: Any], allowed: Set<String>,
                                   context: String) -> [String] {
         json.keys.filter { !allowed.contains($0) }.sorted().map {
-            "\(context): 未知のキー \"\($0)\" は無視されます"
+            "\(context): unknown key \"\($0)\" is ignored"
         }
     }
 
@@ -890,19 +890,19 @@ public enum ProfileResolver {
     private static func checkRunMachineField(
         _ json: [String: Any], project: TestProject
     ) -> (errors: [String], warnings: [String]) {
-        let unspecifiedWarning = "machine が未指定です(使用するマシンプロファイルの明示指定を推奨)"
+        let unspecifiedWarning = "machine is not specified (explicitly naming the machine profile is recommended)"
         guard let raw = json["machine"], !(raw is NSNull) else {
             return ([], [unspecifiedWarning])
         }
         guard let machineName = raw as? String else {
-            return (["\"machine\" は文字列で指定してください"], [])
+            return (["\"machine\" must be a string"], [])
         }
         let trimmed = machineName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             return ([], [unspecifiedWarning])
         }
         guard machineNames(project: project).contains(trimmed) else {
-            return (["\"machine\" が指すマシンプロファイル「\(trimmed)」が見つかりません"], [])
+            return (["the machine profile \"\(trimmed)\" referenced by \"machine\" was not found"], [])
         }
         return ([], [])
     }
@@ -915,14 +915,14 @@ public enum ProfileResolver {
         let rules: [(section: String, key: String, moveTo: String, hint: String)] = [
             ("common", "app", "ios/android", ""),
             ("common", "appPath", "ios/android", ""),
-            ("ios", "autoInstall", "common", "(appPath があれば既定で有効)"),
-            ("android", "autoInstall", "common", "(appPath があれば既定で有効)"),
+            ("ios", "autoInstall", "common", " (enabled by default when appPath is set)"),
+            ("android", "autoInstall", "common", " (enabled by default when appPath is set)"),
         ]
         return rules.compactMap { rule in
             guard let section = json[rule.section] as? [String: Any],
                   section[rule.key] != nil else { return nil }
-            return "\(context) \(rule.section): \"\(rule.key)\" は廃止されました。"
-                + "\(rule.moveTo) セクションで指定してください\(rule.hint)"
+            return "\(context) \(rule.section): \"\(rule.key)\" is deprecated."
+                + " Specify it in the \(rule.moveTo) section instead\(rule.hint)"
         }
     }
 

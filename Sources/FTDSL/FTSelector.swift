@@ -849,7 +849,7 @@ public struct FTSelector {
     /// **検証もここを共有する**(引数の中の綴り誤り・スコープを見逃さないため)
     private static func clauseError(_ clause: String) -> String? {
         let trimmed = clause.trimmingCharacters(in: .whitespaces)
-        if trimmed.isEmpty { return "空の節があります(`>>` や `||` の前後を確認)" }
+        if trimmed.isEmpty { return "there is an empty clause (check around `>>` and `||`)" }
         // `=` エスケープは全体が生ラベル = 構文解釈しない
         if trimmed.hasPrefix("=") { return nil }
         let segments = splitTopLevel(trimmed, separator: ">>")
@@ -869,14 +869,14 @@ public struct FTSelector {
             if char == "(" { depth += 1 }
             if char == ")" {
                 depth -= 1
-                if depth < 0 { return "括弧が閉じる側で余っています: \"\(text)\"" }
+                if depth < 0 { return "unbalanced closing parenthesis: \"\(text)\"" }
             }
         }
-        return depth > 0 ? "括弧が閉じていません: \"\(text)\"" : nil
+        return depth > 0 ? "unclosed parenthesis: \"\(text)\"" : nil
     }
 
     private static func segmentError(_ segment: String, isScoped: Bool, isTarget: Bool) -> String? {
-        if segment.isEmpty { return "空の節があります(`>>` や `||` の前後を確認)" }
+        if segment.isEmpty { return "there is an empty clause (check around `>>` and `||`)" }
         if segment.hasPrefix("=") { return nil }
         // `:名前(` の形をした未知のマーカー(綴り誤り・他ツール記法の混入)
         if let unknown = unknownMarker(in: segment) { return unknownMarkerError(unknown, segment) }
@@ -890,14 +890,14 @@ public struct FTSelector {
         // (`<通知>:rigthSwitch` のような書き損じ・閉じ忘れが notExist で緑になるのを防ぐ。
         // `<` で始まる生ラベルは `=` エスケープで書く)
         if split.steps.isEmpty, segment.hasPrefix("<") {
-            return "`<` 始まりの節は `<基準>:方向型` の形でしか使えません: \"\(segment)\"。"
-                + "閉じ `>` と直後の `:方向` を確認(スコープは括弧の外・ラベルなら先頭に = を付ける)"
+            return "a clause starting with `<` can only take the form `<anchor>:directionType`: \"\(segment)\"."
+                + " Check the closing `>` and the `:direction` right after it (scopes go outside the brackets; escape a label with a leading =)"
         }
         // 相対セレクタに見えるのに読めない = 基準が空・引数が空・後ろに余分な文字。
         // 放置すると丸ごとラベル扱いになり notExist が必ず成功する
         if split.steps.isEmpty, firstRelativeMarker(in: segment) != nil {
-            return "相対セレクタとして読めません: \"\(segment)\"。"
-                + "`基準:方向型` の形で書く(基準・引数が空でないか、後ろに余分な文字が無いか確認)"
+            return "cannot parse as a relative selector: \"\(segment)\"."
+                + " Write it as `anchor:directionType` (check that the anchor and argument are non-empty and nothing trails)"
         }
         if !split.steps.isEmpty {
             if let error = filterListError(split.base, isScoped: isScoped, isTarget: false) {
@@ -921,14 +921,14 @@ public struct FTSelector {
         let tokens = splitTopLevel(text, separator: "&&")
             .map { $0.trimmingCharacters(in: .whitespaces) }
         if tokens.contains(where: { $0.isEmpty }) {
-            return "`&&` の前後に条件がありません: \"\(text)\""
+            return "missing a condition before or after `&&`: \"\(text)\""
         }
         var seen: Set<String> = []
         for token in tokens {
             if let error = tokenError(token) { return error }
             if let attribute = attributeName(token) {
                 if !seen.insert(attribute).inserted {
-                    return "同じ条件を2回書いています(\(attribute)): \"\(text)\""
+                    return "the same condition is written twice (\(attribute)): \"\(text)\""
                 }
             }
         }
@@ -936,17 +936,17 @@ public struct FTSelector {
         let locator = parseFilters(text)
         if locator.hasNoFilter, !(locator.not?.isEmpty ?? true) {
             // 「〇〇以外の全要素」は容器・レイアウトノードまで掴む。肯定条件との併用を促す
-            return "否定条件(`!=`)だけの節は使えません: \"\(text)\""
-                + "(`.button&&text!=キャンセル` のように絞り込み条件と併用する)"
+            return "a clause with only negative conditions (`!=`) is not allowed: \"\(text)\""
+                + " (combine it with a narrowing condition, e.g. `.button&&text!=Cancel`)"
         }
         if locator.hasNoFilter, !(isScoped && isTarget) {
             return locator.index == nil
-                ? "条件が空の節があります: \"\(text)\""
-                : "序数だけの節は `祖先 >> [n]` の形でしか使えません: \"\(text)\""
+                ? "there is a clause with no conditions: \"\(text)\""
+                : "an ordinal-only clause is only allowed as `ancestor >> [n]`: \"\(text)\""
         }
         // 展開後のロケータ数(`(a|b)&&(c|d)` の直積)は実行前に上限で止める
         if parseFilterVariants(text).count >= maxExpansion {
-            return "`(a|b)` の組み合わせが多すぎます(上限 \(maxExpansion)): \"\(text)\""
+            return "too many `(a|b)` combinations (limit \(maxExpansion)): \"\(text)\""
         }
         return nil
     }
@@ -983,12 +983,12 @@ public struct FTSelector {
             // 序数の否定は候補集合を絞れず**黙って無視される**ので、書けたことにしない
             // (完全形の `pos!=n` を弾いているのと同じ理由)
             if inner.hasPrefix("["), inner.hasSuffix("]") {
-                return "序数は否定できません: \"\(token)\""
+                return "an ordinal cannot be negated: \"\(token)\""
             }
             return tokenError(inner)
         }
         if token.allSatisfy({ $0 == "*" }) {
-            return "部分一致の中身が空です: \"\(token)\"(`*語*` のように書く)"
+            return "the partial match is empty: \"\(token)\" (write it like `*word*`)"
         }
         if let error = groupError(token) { return error }
         if token.hasPrefix("["), token.hasSuffix("]") {
@@ -1007,7 +1007,7 @@ public struct FTSelector {
         let inner = String(token[token.index(after: group.open)..<group.close])
         let alternatives = splitTopLevel(inner, separator: "|")
         if alternatives.contains(where: { $0.trimmingCharacters(in: .whitespaces).isEmpty }) {
-            return "`(a|b)` の選択肢が空です: \"\(token)\"(区切りは `|` ひとつ)"
+            return "an `(a|b)` alternative is empty: \"\(token)\" (the separator is a single `|`)"
         }
         // 残りのグループも見る(先頭グループを潰した形で再帰)
         let rest = String(token[token.startIndex..<group.open])
@@ -1028,12 +1028,12 @@ public struct FTSelector {
             // 既知名と紛らわしくない `名前!=値` は素の文字列(SUT の表示 `count!=0` 等)として通す。
             // 判定規則は肯定形(namedFilterError)と同じ
             guard isNearMissFilterName(name) else { return nil }
-            return "否定できないフィルタ名 \"\(name)\" です: \"\(token)\"。使えるのは \(knownFilterNamesDescription)"
+            return "the filter \"\(name)\" cannot be negated: \"\(token)\". Allowed: \(knownFilterNamesDescription)"
         }
-        if name == "pos" { return "pos は否定できません: \"\(token)\"" }
-        if value.isEmpty { return "フィルタ \"\(name)!=\" の値が空です" }
+        if name == "pos" { return "pos cannot be negated: \"\(token)\"" }
+        if value.isEmpty { return "the value of filter \"\(name)!=\" is empty" }
         if name == "checked" || name == "enabled", boolValue(value) == nil {
-            return "\(name) は true / false で書きます: \"\(token)\""
+            return "\(name) must be true or false: \"\(token)\""
         }
         return nil
     }
@@ -1049,7 +1049,7 @@ public struct FTSelector {
         let label = String(token[token.index(after: eqIndex)...])
         var corrected = type.isEmpty ? "" : ".\(ElementInfo.normalizedType(type))"
         if !label.isEmpty { corrected += corrected.isEmpty ? label : "&&\(label)" }
-        return "型名に \"=\" は使えません(条件の連結は `&&`): \"\(token)\" → \"\(corrected)\""
+        return "\"=\" is not allowed in a type name (join conditions with `&&`): \"\(token)\" → \"\(corrected)\""
     }
 
     /// `名前=値` の名前が ASCII 識別子なのに既知のフィルタ名でない = 綴り誤り。
@@ -1061,25 +1061,25 @@ public struct FTSelector {
         guard isAsciiIdentifier(name) else { return nil }
         if isFilterName(name) {
             let value = String(token[token.index(after: eqIndex)...])
-            if value.isEmpty { return "フィルタ \"\(name)=\" の値が空です" }
+            if value.isEmpty { return "the value of filter \"\(name)=\" is empty" }
             if name == "checked" || name == "enabled", boolValue(value) == nil {
-                return "\(name) は true / false で書きます: \"\(token)\""
+                return "\(name) must be true or false: \"\(token)\""
             }
             if name == "pos" { return ordinalError(token, inner: value) }
             return nil
         }
         // 既知名と紛らわしくない `名前=値` は素の文字列(SUT の状態表示 `notify=off` 等)として通す
         guard isNearMissFilterName(name) else { return nil }
-        return "未知のフィルタ名 \"\(name)\" です: \"\(token)\"。使えるのは \(knownFilterNamesDescription)"
-            + "(ラベルとして書きたいときは先頭に = を付けてエスケープ)"
+        return "unknown filter name \"\(name)\": \"\(token)\". Allowed: \(knownFilterNamesDescription)"
+            + " (to write it as a label, escape it with a leading =)"
     }
 
     private static func unknownMarkerError(_ marker: String, _ segment: String) -> String {
         let known = directions.map { ":\($0.name)" }.joined(separator: " / ")
         let suffixes = relativeTypes.map { $0.suffix }.joined(separator: " / ")
-        return "未知のセレクタ構文 \"\(marker)\" です: \"\(segment)\"。"
-            + "使えるのは \(known)(型別は末尾に \(suffixes))"
-            + "。ラベルに含めたいときは先頭に = を付けてエスケープ"
+        return "unknown selector syntax \"\(marker)\": \"\(segment)\"."
+            + " Allowed: \(known) (type variants end with \(suffixes))"
+            + ". To include it in a label, escape it with a leading ="
     }
 
     /// 型名は先頭小文字(`.button`)。スナップショットが返す型名と同じ綴りに揃えてある
@@ -1089,7 +1089,7 @@ public struct FTSelector {
         let body = token.dropFirst()
         guard let first = body.first, first.isUppercase else { return nil }
         let corrected = first.lowercased() + body.dropFirst()
-        return "型名は先頭小文字で書きます: \"\(token)\" → \".\(corrected)\""
+        return "type names start with a lowercase letter: \"\(token)\" → \".\(corrected)\""
     }
 
     /// `.型[n]` の n が 1 以上の整数か。`[abc]` や `[0]` は型名の一部として黙って解釈され、
@@ -1103,9 +1103,9 @@ public struct FTSelector {
 
     private static func ordinalError(_ token: String, inner: String) -> String? {
         guard let ordinal = Int(inner) else {
-            return "序数は整数で書きます(1 オリジン): \"\(token)\""
+            return "ordinals must be integers (1-origin): \"\(token)\""
         }
-        return ordinal >= 1 ? nil : "序数は 1 以上です(1 オリジン): \"\(token)\""
+        return ordinal >= 1 ? nil : "ordinals must be 1 or greater (1-origin): \"\(token)\""
     }
 
     /// `:` の後ろが方向名で始まるのに既知のコマンドでないもの(`:rightFoo` `:righ`)。
