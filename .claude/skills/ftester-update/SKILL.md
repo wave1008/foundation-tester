@@ -5,6 +5,11 @@ description: 既に foundation-tester をセットアップ済みの受け手が
 
 # ftester 更新 runbook
 
+> **ユーザーへの質問(AskUserQuestion)・報告・チェックポイントはユーザーの言語で行う**。
+> この手順書は日本語だが、読者はエージェントであり利用者の言語とは独立している
+> (英語話者にはダイアログ・報告文をすべて英語で出す)。
+
+
 セットアップ済みの環境に upstream の修正版を取り込む。初回導入は `/ftester-setup`。
 背景・手動手順は docs/getting-started.md の「更新」。
 
