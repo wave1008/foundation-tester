@@ -93,4 +93,33 @@ class ライフサイクルとコントロールが正しく働くこと {
             }
         }
     }
+
+    @Test("clearAppData でアプリのデータが消える")
+    func S0030() {
+        scenario {
+            // clearAppData はアプリを残しデータだけ消す(iOS はシミュレータ専用)
+            scene(1, "入力して echo に値が残る") {
+                condition {
+                    launchApp()
+                }.action {
+                    tap("#nav_input")
+                    tap("#field_single")
+                    type("#field_single", "persist99")
+                    tap("#btn_input_submit")
+                }.expectation {
+                    textIs("#txt_input_submitted", "submitted=persist99")
+                }
+            }
+            scene(2, "clearAppData 後に起動すると初期状態に戻る") {
+                action {
+                    clearAppData()
+                    launchApp()
+                    tap("#nav_input")
+                }.expectation {
+                    textIs("#txt_input_submitted", "submitted=-")
+                    textIs("#txt_echo_single", "single=")
+                }
+            }
+        }
+    }
 }
