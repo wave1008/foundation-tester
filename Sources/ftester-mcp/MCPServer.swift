@@ -25,22 +25,34 @@ struct FTesterMCP {
 final class MCPServer {
 
     private var drivers: [String: AppDriver] = [:]
-    private let out = FileHandle.standardOutput
+    /// 応答の書き出し口。**stdout は JSON-RPC 専用**(診断を混ぜるとクライアントのパースが壊れる)
+    private let write: (Data) -> Void
+    /// ドライバ生成の差し替え口。nil = 実デバイスを解決する(既定)
+    private let makeDriver: ((_ args: [String: Any]) async throws -> AppDriver)?
+
+    init(write: @escaping (Data) -> Void = { FileHandle.standardOutput.write($0) },
+         makeDriver: ((_ args: [String: Any]) async throws -> AppDriver)? = nil) {
+        self.write = write
+        self.makeDriver = makeDriver
+    }
 
     // MARK: - メインループ(stdio: 改行区切り JSON-RPC)
 
     func run() async {
         while let line = readLine(strippingNewline: true) {
-            guard !line.isEmpty,
-                  let data = line.data(using: .utf8),
-                  let message = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
-                continue
-            }
+            // **壊れた行でループを抜けない**: 1行の不正でサーバが死ぬとセッションごと落ちる
+            guard let message = Self.parseMessage(line) else { continue }
             await handle(message)
         }
     }
 
-    private func handle(_ message: [String: Any]) async {
+    /// 1行を JSON-RPC メッセージとして解釈する。空行・非 JSON・JSON オブジェクトでないものは nil
+    static func parseMessage(_ line: String) -> [String: Any]? {
+        guard !line.isEmpty, let data = line.data(using: .utf8) else { return nil }
+        return (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+    }
+
+    func handle(_ message: [String: Any]) async {
         let method = message["method"] as? String ?? ""
         let id = message["id"]
 
@@ -87,7 +99,7 @@ final class MCPServer {
     private func send(_ object: [String: Any]) {
         guard var data = try? JSONSerialization.data(withJSONObject: object) else { return }
         data.append(0x0A)
-        out.write(data)
+        write(data)
     }
 
     // MARK: - ドライバ
@@ -97,6 +109,7 @@ final class MCPServer {
     // profile 指定時は resolveProfileTarget が ft_run_scenario と同じデバイスを解決し、iOS は
     // provision 後のポートを XCUIBridgeResolver へ渡して同じ振り替えを通す
     private func driver(_ args: [String: Any]) async throws -> AppDriver {
+        if let makeDriver { return try await makeDriver(args) }
         if let profileName = args["profile"] as? String {
             let key = Self.driverCacheKey(profile: profileName, project: args["project"] as? String,
                                           platform: args["platform"] as? String)
@@ -198,7 +211,7 @@ final class MCPServer {
 
     // MARK: - ツール実装
 
-    private func call(tool: String, args: [String: Any]) async throws -> [[String: Any]] {
+    func call(tool: String, args: [String: Any]) async throws -> [[String: Any]] {
         switch tool {
         case "ft_status":
             let status = try await driver(args).status()
