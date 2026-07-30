@@ -74,7 +74,7 @@ bash <TOOL_ROOT>/Scripts/update.sh
 (カレントが WORK_DIR でなければ `--work-dir <WORK_DIR>`。クローンの場所が既定と違うなら `--tool-root <dir>`。
 オプション: `--skip-extension` / `--skip-plugin` / `--no-pull` / `--force`。)
 
-**更新が無ければ「✅ 最新です」だけ出して即終了する**(全工程は更新が無くても約30秒かかるため。
+**更新が無ければ「✅ Up to date」だけ出して即終了する**(全工程は更新が無くても約30秒かかるため。
 判定は update-check.sh)。**前回が途中で失敗した・入れ直したいときだけ `--force`** を付ける。
 
 中で `install.sh` を再実行するので、**git pull・swift build・VSCode 拡張・`.mcp.json` の追従・
@@ -90,7 +90,7 @@ vsce)は画面に出ず `<WORK_DIR>/.ftester/install-*.log` にだけ入り、**
 「次にやること」に出る**。**画面に出た行がすべてなので、ログを grep で漁らない**
 (人が全文を見たいと言った場合だけ `--verbose` で再実行するか、そのパスを案内する)。
 
-- **exit 1** → 中断。出力の `[fail]` 行(と `→ SKILL.md ステップ N`)の原因を解決して再実行する。
+- **exit 1** → 中断。出力の `[fail]` 行(と `→ SKILL.md step N`)の原因を解決して再実行する。
 - **exit 2** → 任意ステップのみ未完(`[warn]`)。CLI は使える。warn の内容だけ手当てする。
 - プラグインが `⚠️ HEAD と不一致` のときは `claude plugin marketplace update` →
   `claude plugin update` を手で実行する(**順序が重要**。marketplace を先に更新しないと古い定義を見る)。

@@ -188,14 +188,14 @@ curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scr
 **出力の読み方**（行頭の `[ok]` / `[skip]` / `[warn]` / `[fail]` が機械可読部）:
 
 各ステップは**終わった時点で1行ずつ**出る（数分かかる工程には経過時間が付く）。最後の
-「インストール結果」は**集計と warn/fail の再掲だけ**なので、`[ok]` 行を見たいときは
+「Install results」は**集計と warn/fail の再掲だけ**なので、`[ok]` 行を見たいときは
 出力全体から拾う（同じ書式）。`swift build` などの生ログは画面に出ず
 `<WORK_DIR>/.ftester/install-<日時>.log` にある。**ログを grep で漁らない**（必要なら `--verbose`）。
 
 - **exit 0** → 機械作業は完了（プロファイルまで済んでいれば `[ok] プロファイル` が出る）。**ステップ6へ**。
 - **exit 2** → 必須は通ったが任意ステップが未完（`[warn]` 行）。CLI と MCP は使える。
   warn 行が指す**下のステップ番号の手順だけ**を手で通し、原因を直してから同じ引数で再実行する。
-- **exit 1** → 必須ステップで停止（`[fail]` 行に「→ SKILL.md ステップ N」が出る）。
+- **exit 1** → 必須ステップで停止（`[fail]` 行に「→ SKILL.md step N」が出る）。
   **N の手順を読んで原因を解決し、同じ引数で再実行する**（済んだ手順は skip されるので巻き戻らない）。
   解決に人間の操作が要るもの（Xcode の license 同意・`-runFirstLaunch`・Homebrew 導入）は 🧑 に依頼する。
 

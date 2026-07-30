@@ -36,20 +36,20 @@ TIMEOUT_SEC="${FTESTER_UPDATE_CHECK_TIMEOUT:-20}"
 
 usage() {
   cat <<'EOF'
-使い方: update-check.sh [--tool-root <dir>]
+Usage: update-check.sh [--tool-root <dir>]
 
-  --tool-root <dir>  foundation-tester クローンの場所(省略時はカレントから解決)
-  -h, --help         このヘルプ
+  --tool-root <dir>  Location of the foundation-tester clone (resolved from the current directory when omitted)
+  -h, --help         This help
 
-終了コード: 0=最新/対象外(verdict= で区別) / 3=更新あり / 1=判定不能
+Exit codes: 0=up to date / not applicable (see verdict=) / 3=update available / 1=cannot tell
 EOF
 }
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --tool-root) TOOL_ROOT_ARG="${2:?--tool-root に値が必要です}"; shift 2 ;;
+    --tool-root) TOOL_ROOT_ARG="${2:?--tool-root requires a value}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
-    *) echo "不明なオプション: $1" >&2; usage >&2; exit 1 ;;
+    *) echo "unknown option: $1" >&2; usage >&2; exit 1 ;;
   esac
 done
 
@@ -60,18 +60,18 @@ kv()  { printf '%s=%s\n' "$1" "$2"; }
 # それを失敗として拾う)。preflight.sh の same-name ヘルパーと同じ理由
 first_line() { printf '%s' "${1%%$'\n'*}"; }
 
-finish() { # <verdict> <exit code> [reason(英語)]
+finish() { # <verdict> <exit code> [reason (English)]
   kv verdict "$1"
   [ -n "${3:-}" ] && kv reason "$3"
   say ""
   case "$1" in
-    up-to-date) say "✅ 最新です。" ;;
+    up-to-date) say "✅ Up to date." ;;
     update-available)
-      say "🆕 更新があります(ローカル ${local_head:0:8} → upstream ${remote_head:0:8})。"
-      say "   取り込み → Claude Code で /ftester-update / 手動なら bash $tool_root/Scripts/update.sh"
-      say "   (git pull だけでは CLI も拡張もスキルも入れ替わりません)" ;;
-    pinned) say "⏭️ 更新チェックの対象外です: ${3:-}" ;;
-    *) say "❔ 判定できませんでした: ${3:-}" ;;
+      say "🆕 An update is available (local ${local_head:0:8} → upstream ${remote_head:0:8})."
+      say "   Apply it → /ftester-update in Claude Code / manually: bash $tool_root/Scripts/update.sh"
+      say "   (git pull alone does not refresh the CLI, the extension or the skills)" ;;
+    pinned) say "⏭️ Not applicable for update checks: ${3:-}" ;;
+    *) say "❔ Could not tell: ${3:-}" ;;
   esac
   exit "$2"
 }
