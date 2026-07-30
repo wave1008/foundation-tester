@@ -30,7 +30,7 @@ class ログインテスト {
             }
             scene(2, "誤ったパスワードはエラー表示") {
                 condition {
-                    relaunchApp()
+                    restartApp()
                 }.action {
                     tap("#email")
                     type("test@example.com")

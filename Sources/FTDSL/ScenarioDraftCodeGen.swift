@@ -115,7 +115,7 @@ public enum ScenarioDraftCodeGen {
             return indent + "scrollTo(\(literal(placeholder)))\(comment)"
         }
         if contains(text, ["再起動", "起動し直"]) {
-            return indent + "relaunchApp()\(comment)"
+            return indent + "restartApp()\(comment)"
         }
         if contains(text, ["起動", "launch"]) {
             return indent + "launchApp()\(comment)"

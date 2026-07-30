@@ -1515,13 +1515,14 @@ public func launchApp(_ bundleID: String? = nil,
     }
 }
 
-/// アプリを終了してから起動し直す(scene 間の状態リセット用)
-public func relaunchApp(_ bundleID: String? = nil,
-                        file: StaticString = #filePath, line: UInt = #line) {
-    let core = FTRuntime.requireCore(command: "relaunchApp")
+/// アプリを終了してから起動し直す(scene 間の状態リセット用)。**データは消えない**
+/// (消したいときは clearAppData)
+public func restartApp(_ bundleID: String? = nil,
+                       file: StaticString = #filePath, line: UInt = #line) {
+    let core = FTRuntime.requireCore(command: "restartApp")
     let bundle = bundleID ?? core.appBundleID
     let driver = core.driver
-    core.performCustom(description: "relaunch \(bundle)", file: file, line: line) {
+    core.performCustom(description: "restart \(bundle)", file: file, line: line) {
         try? await driver.terminate()
         try await driver.launch(bundleID: bundle)
     }

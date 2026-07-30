@@ -1,5 +1,5 @@
 // 10_ライフサイクルとコントロール.swift
-// ftester 機能: `relaunchApp`(terminate+launch でのプロセス内状態リセット・永続カウンタは残る)と、
+// ftester 機能: `restartApp`(terminate+launch でのプロセス内状態リセット・永続カウンタは残る)と、
 // ネイティブ UI コントロール(Switch / Slider / トグルボタン)の状態遷移検証。
 // Compose 版 10 の `ios {}` / `android {}` 分岐に相当する部分は、この SUT が iOS 専用のため
 // platform: "ios" 固定で置き換えている。
@@ -9,7 +9,7 @@ import FTDSL
 @TestClass(app: "com.ftester.e2e.ios", platform: "ios")
 class ライフサイクルとコントロールが正しく働くこと {
 
-    @Test("relaunchApp でプロセス内カウンタはリセットされ永続カウンタは加算される")
+    @Test("restartApp でプロセス内カウンタはリセットされ永続カウンタは加算される")
     func S0010() {
         scenario {
             scene(1, "ライフサイクル画面を開き永続カウンタを基準化") {
@@ -30,9 +30,9 @@ class ライフサイクルとコントロールが正しく働くこと {
                     textIs("#txt_session_count", "session=2")
                 }
             }
-            scene(3, "relaunchApp 後: session はリセット・launch は+1・ホームのルートに戻る") {
+            scene(3, "restartApp 後: session はリセット・launch は+1・ホームのルートに戻る") {
                 action {
-                    relaunchApp()
+                    restartApp()
                 }.expectation {
                     exist("#txt_home_marker")
                 }.action {

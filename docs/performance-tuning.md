@@ -882,7 +882,7 @@ window/transition/animator の `*_scale` はチューニングノブではなく
      解決不能だったが、原因は `as? UIAccessibilityIdentification` キャスト(SwiftUI の
      `AccessibilityNode`/`UIKitTextField` はセレクタに応答するがプロトコル準拠を宣言しない)。
      **セレクタ直接呼び出し(`FTAccessibilityIdentifier`)に修正して解決**。`ログインテスト.S0010`
-     (`#email`/`#password`/`#login_error` 等の id 単独セレクタ+relaunchApp+エラーパス+textIs)が
+     (`#email`/`#password`/`#login_error` 等の id 単独セレクタ+restartApp+エラーパス+textIs)が
      in-app 経由で passed=True。
      **軽微項目=すべて解決**: (a) 空 TextField の value に placeholder が乗る微差 → 実テキスト(.text)が
      空なら value=nil に修正(非空 SecureTextField は accessibilityValue のマスクを維持し実パスワードは

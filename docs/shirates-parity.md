@@ -39,7 +39,7 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | `tapWithoutScroll` | 同名 | ✅ |
 | `select` / `selectWithScroll*` / `selectWithoutScroll` | `exist` が解決要素(`FTElement`)を返す | 🟡 |
 | `canSelect` / `canSelectWithScroll*` / `canSelectNot` | 単独コマンドは無い(`ifCanSelect` / `repeatWhileCanSelect` に内包) | 🟡 |
-| `existAll` / `canSelectAll` / `dontExistAll` | — | ❌ 一括検証(生成トークンとレポート行数が減る) |
+| `existAll` / `canSelectAll` / `dontExistAll` | — | ➖ **実装しない**(ユーザー決定 2026-07-31)。`exist` のチェーンで書く方が保守しやすく、要素ごとに `timeout:` / `scroll:` 等のオプションも指定できる。**再提案しない** |
 | `scanElements` / `*InScanResults` | — | ❌ |
 | `tapAppIcon` | — | ❌ |
 | `tapCenterOfScreen` / `tapTopOfScreen` / `tapCenterOf` / `tapOffset` / `tapDefault` | — | ❌ |
@@ -155,7 +155,7 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | Shirates | ftester | |
 |---|---|---|
 | `launchApp` / `terminateApp` | 同名 | ✅ |
-| `restartApp` | `relaunchApp` | 🟡 **名前が違う** |
+| `restartApp` | `restartApp` | 🟡 **名前が違う** |
 | `installApp` / `removeApp` / `isAppInstalled` / `launchAppByShell` | CLI 側(`ftester install`)。DSL には無い | ❌ |
 | `goPreviousApp` | `appSwitcher()`(スイッチャーを開くだけ) | 🟡 |
 | `internetOn/Off` / `wiFiOn/Off` / `mobileOn/Off` | — | ❌ |
@@ -207,15 +207,14 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 
 ---
 
-## 準拠漏れ(承認済み差分の表に無い名前の相違)
+## 名前の相違(判断済み)
 
-方針は「コマンド名は Shirates をそのまま踏襲」なので、次の2つは**準拠漏れ**として扱う
-(直すか差分として承認するかは未決):
+方針は「コマンド名は Shirates をそのまま踏襲」。相違は次のとおり処理した:
 
 | ftester | Shirates | |
 |---|---|---|
-| `notExist` | `dontExist` | 名前が違う |
-| `relaunchApp` | `restartApp` | 名前が違う |
+| `restartApp` | `restartApp` | ✅ **揃えた**(旧名 `relaunchApp` から改名。2026-07-31) |
+| `notExist` | `dontExist` | ➖ **`notExist` を維持**(ユーザー決定 2026-07-31)。`notExist` は否定の意味が読み取りやすく、`exist` との対称も保てる。**再提案しない** |
 
 また `press` の意味が反転している: Shirates の `press*` はハードキー/キーボード
 (`pressBack` `pressEnter` …)で、長押しは `tap(holdSeconds:)`。ftester は `press(sel, duration:)`
@@ -235,5 +234,4 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | 項目 | 理由 | 規模 |
 |---|---|---|
 | **祖先方向の相対セレクタ**(`:parent`) | id を持つのが子ラベルだけの行を「行として」検証できない。タップは座標が最前面に当たるので、効くのは主に行単位の状態検証 | 中 |
-| `existAll([...])` / `dontExistAll([...])` | capability gap ではない(N 行に展開できる)が、スナップショットから生成しやすい形で、生成トークンとレポート行数が減る | 小 |
 | `notExist` の別名族・`existWithScrollLeft/Right` | 引数で書けるので優先度は低い(人間のタイプ量削減が目的の糖衣) | 小 |

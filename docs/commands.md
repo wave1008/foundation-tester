@@ -187,7 +187,7 @@ let 合計 = try await fetchTotal()        // procedure { } 内で取得した�
 | コマンド | 説明 |
 |---|---|
 | `launchApp(bundleID?)` | 起動(省略時は `@TestClass(app:)` のアプリ)。起動済みなら前面化 |
-| `relaunchApp(bundleID?)` | 終了してから起動(プロセス内状態のリセットに) |
+| `restartApp(bundleID?)` | 終了してから起動(プロセス内状態のリセットに) |
 | `terminateApp()` | 終了 |
 | `clearAppData(bundleID?)` | アプリは残しデータだけ消す(再インストール不要)。初回起動・オンボーディング・権限ダイアログの再現に使う。**権限(iOS の TCC / Android の実行時権限)も未許可へ戻す**ので、権限ダイアログが再び出る。**iOS はシミュレータ専用**(実機は失敗する)。Android は `pm clear` 相当。**キーチェーン(iOS)/ Keystore(Android)に置いた値は消えない** — オンボーディング判定をそこに置いているアプリは初回起動が再現しない |
 | `home()` | ホーム画面へ |

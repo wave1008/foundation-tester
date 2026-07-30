@@ -1,5 +1,5 @@
 // 10_ライフサイクルとプラットフォーム分岐.swift
-// ftester 機能: `relaunchApp`(terminate+launch でのプロセス内状態リセット・永続カウンタは残る)と
+// ftester 機能: `restartApp`(terminate+launch でのプロセス内状態リセット・永続カウンタは残る)と
 // `ios {}` / `android {}` によるプラットフォーム分岐。
 // Flutter は1つのコードから両OSのバイナリが出るため、同一シナリオが両OSで回る唯一の新規 SUT。
 
@@ -8,7 +8,7 @@ import FTDSL
 @TestClass(app: "com.ftester.e2e.flutter")
 class ライフサイクルとプラットフォーム分岐が正しく働くこと {
 
-    @Test("relaunchApp でプロセス内カウンタはリセットされ永続カウンタは加算される")
+    @Test("restartApp でプロセス内カウンタはリセットされ永続カウンタは加算される")
     func S0010() {
         scenario {
             scene(1, "ライフサイクル画面を開き永続カウンタを基準化") {
@@ -40,9 +40,9 @@ class ライフサイクルとプラットフォーム分岐が正しく働く�
                     textIs("#txt_session_count", "session=2")
                 }
             }
-            scene(3, "relaunchApp 後: session はリセット・launch は+1・ホームのルートに戻る") {
+            scene(3, "restartApp 後: session はリセット・launch は+1・ホームのルートに戻る") {
                 action {
-                    relaunchApp()
+                    restartApp()
                 }.expectation {
                     exist("#txt_home_marker")
                 }.action {

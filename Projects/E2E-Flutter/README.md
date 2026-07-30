@@ -47,7 +47,7 @@ ftester run --project E2E-Flutter --profile android
 | `07_スクロール.swift` | `scrollTo` と「`scroll:` を付けない探索・検証は現在画面のみ」の契約 |
 | `08_待機とタイムアウト.swift` | 暗黙待ち(既定タイムアウト再試行)と `timeout:` 引数 |
 | `09_条件分岐とダイアログ.swift` | `ifCanSelect` と `optional:` |
-| `10_ライフサイクルとプラットフォーム分岐.swift` | `relaunchApp`、`ios {}` / `android {}`、コントロールの状態遷移 |
+| `10_ライフサイクルとプラットフォーム分岐.swift` | `restartApp`、`ios {}` / `android {}`、コントロールの状態遷移 |
 
 ## `_disabled/`(通常実行に含めない)
 

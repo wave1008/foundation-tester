@@ -54,7 +54,7 @@ final class ScenarioDraftCodeGenTests: XCTestCase {
         XCTAssertTrue(ScenarioDraftCodeGen.commandLine(forAction: "下までスクロールする", indent: indent)
             .hasPrefix("scrollTo(\"#TODO\")"))
         XCTAssertTrue(ScenarioDraftCodeGen.commandLine(forAction: "アプリを再起動する", indent: indent)
-            .hasPrefix("relaunchApp()"))
+            .hasPrefix("restartApp()"))
         XCTAssertTrue(ScenarioDraftCodeGen.commandLine(forAction: "ボタンを押す", indent: indent)
             .hasPrefix("tap(\"#TODO\")"))
     }
