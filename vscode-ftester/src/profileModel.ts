@@ -4,7 +4,7 @@
 // (profileDiagnostics.ts と test/profileModel.test.mjs の両方から使うため)。
 //
 // stdout 1行JSON contract:
-//   {"machine":"M1 Max"|null,"project":"SampleApp","results":[
+//   {"machine":"M2 Ultra"|null,"project":"SampleApp","results":[
 //     {"kind":"apps"|"machines"|"runs","name":"sampleapp","path":"/絶対/パス.json",
 //      "errors":["..."],"warnings":["..."]}, ...
 //   ]}

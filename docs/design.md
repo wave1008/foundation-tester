@@ -1462,7 +1462,7 @@ executableTarget `ftester-scenarios-<name>`(path: `Projects/<name>/Scenarios`)�
 アプリが非同期処理でクラッシュし「Application is not running」で全滅して原因が見えにくいため
 (2026-07-21 実害)、入口で気づけるようにする。
 
-**マシンプロファイル** `machines/<マシン名>.json` — ファイル名がマシン名(`M1 Max(64GB).json` 等)。
+**マシンプロファイル** `machines/<マシン名>.json` — ファイル名がマシン名(`M2 Ultra(192GB).json` 等)。
 1 ファイルに ios / android セクションを書き、そのマシンで使えるデバイスを `name` 付きで列挙。
 マシン別ファイルなので UDID / AVD などマシン固有の実体をそのまま書ける:
 

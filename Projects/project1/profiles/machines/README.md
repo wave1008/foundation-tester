@@ -1,6 +1,6 @@
 # profiles/machines
 
-マシンプロファイル(ファイル名 = マシン名。例: `M1 Max(64GB).json`)。
+マシンプロファイル(ファイル名 = マシン名。例: `M2 Ultra(192GB).json`)。
 このマシンで使えるデバイスを ios / android セクションに `name` 付きで列挙する。
 実行プロファイル(runs/)はデバイスを `name` で参照するため、name は ios/android 横断で一意にすること。
 
