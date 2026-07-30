@@ -72,7 +72,7 @@ bash <TOOL_ROOT>/Scripts/install.sh --work-dir <WORK_DIR> --skip-project --skip-
 `curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install.sh | bash -s -- --skip-project --skip-extension`
 
 出力は行頭の `[ok]` / `[skip]` / `[warn]` / `[fail]` で読む。**exit 0 ならステップ3(承認)へ**。
-**exit 1 は `[fail]` 行の「→ SKILL.md ステップ N」の手順を手で通して原因を解決し、同じ引数で再実行**
+**exit 1 は `[fail]` 行の「→ SKILL.md step N」の手順を手で通して原因を解決し、同じ引数で再実行**
 (N は `/ftester-setup` スキルのステップ番号。このスキルのステップ1・2にも同じ内容がある)。
 以降のステップ1・2は**インストーラが失敗したときの手作業手順**。
 

@@ -40,7 +40,7 @@ if [ -f "$WORK_DIR/Package.swift" ]; then
     layout="external-installed"
   else
     layout="foreign-package"
-    blocked_reasons+=("カレントは ftester と無関係の Swift パッケージです(テスト専用の新規ディレクトリで実行してください)")
+    blocked_reasons+=("the current directory is a Swift package unrelated to ftester (run this in a fresh, test-only directory)")
   fi
 fi
 kv work_dir "$WORK_DIR"
@@ -112,7 +112,7 @@ os="$(sw_vers -productVersion 2>/dev/null || echo unknown)"
 kv macos "$os"
 case "$os" in
   2[6-9].*|[3-9][0-9].*) : ;;
-  *) blocked_reasons+=("macOS 26 以上が必要です(現在 $os)") ;;
+  *) blocked_reasons+=("macOS 26 or newer is required (currently $os)") ;;
 esac
 
 # xcodebuild が使えない理由は3つあり、対処がまったく違う(まとめて「license 未同意」と案内すると
@@ -129,15 +129,15 @@ else
   installed_xcode="$(ls -d /Applications/Xcode*.app 2>/dev/null | head -n 1)"
   case "$xcode_out" in
     *license*|*License*)
-      blocked_reasons+=("Xcode の license に同意していません → 人間が \`sudo xcodebuild -license accept\`") ;;
+      blocked_reasons+=("the Xcode license has not been accepted → a human must run \`sudo xcodebuild -license accept\`") ;;
     *"requires Xcode"*|*"active developer directory"*)
       if [ -n "$installed_xcode" ]; then
-        blocked_reasons+=("xcode-select が CommandLineTools を指しています($xcode_select_path) → 人間が \`sudo xcode-select -s $installed_xcode\`")
+        blocked_reasons+=("xcode-select points at CommandLineTools ($xcode_select_path) → a human must run \`sudo xcode-select -s $installed_xcode\`")
       else
-        blocked_reasons+=("Xcode 本体が見つかりません(CommandLineTools だけ) → App Store から Xcode を導入し \`sudo xcode-select -s /Applications/Xcode.app\`")
+        blocked_reasons+=("Xcode itself is missing (only CommandLineTools) → install Xcode from the App Store, then \`sudo xcode-select -s /Applications/Xcode.app\`")
       fi ;;
     *)
-      blocked_reasons+=("xcodebuild が使えません: $(first_line "$xcode_out")") ;;
+      blocked_reasons+=("xcodebuild is unusable: $(first_line "$xcode_out")") ;;
   esac
 fi
 # xcodebuild 自体が使えないときは初回セットアップの可否を判定できない(必ず失敗して
@@ -148,14 +148,14 @@ elif xcodebuild -checkFirstLaunchStatus >/dev/null 2>&1; then
   kv xcode_first_launch done
 else
   kv xcode_first_launch required
-  blocked_reasons+=("Xcode の初回セットアップが未了です → 人間が \`xcodebuild -runFirstLaunch\`")
+  blocked_reasons+=("Xcode first-launch setup is incomplete → a human must run \`xcodebuild -runFirstLaunch\`")
 fi
 
-command -v git  >/dev/null 2>&1 && kv git yes  || { kv git no;  blocked_reasons+=("git がありません"); }
-command -v swift >/dev/null 2>&1 && kv swift yes || { kv swift no; blocked_reasons+=("swift がありません(Xcode を導入してください)"); }
+command -v git  >/dev/null 2>&1 && kv git yes  || { kv git no;  blocked_reasons+=("git is missing"); }
+command -v swift >/dev/null 2>&1 && kv swift yes || { kv swift no; blocked_reasons+=("swift is missing (install Xcode)"); }
 # 以下は install.sh が自動導入・スキップできるので blocked にはしない
-command -v xcodegen >/dev/null 2>&1 && kv xcodegen yes || { kv xcodegen no; missing+=("xcodegen(install.sh が brew で導入)"); }
-command -v npm >/dev/null 2>&1 && kv npm yes || { kv npm no; missing+=("npm(VSCode 拡張のビルドに必要)"); }
+command -v xcodegen >/dev/null 2>&1 && kv xcodegen yes || { kv xcodegen no; missing+=("xcodegen (install.sh installs it via brew)"); }
+command -v npm >/dev/null 2>&1 && kv npm yes || { kv npm no; missing+=("npm (needed to build the VSCode extension)"); }
 command -v adb >/dev/null 2>&1 && kv adb yes || kv adb no
 command -v claude >/dev/null 2>&1 && kv claude_cli yes || kv claude_cli no
 
@@ -172,18 +172,18 @@ kv verdict "$verdict"
 say ""
 case "$verdict" in
   ready)
-    say "✅ 未導入です。ここに導入できます($layout)。"
-    say "   Claude Code: /ftester-setup / 手動: Scripts/install.sh --name <ProjectName>"
-    [ "${#missing[@]}" -gt 0 ] && printf '   未導入(自動で入るもの): %s\n' "${missing[*]}"
+    say "✅ Not installed. It can be installed here ($layout)."
+    say "   Claude Code: /ftester-setup / manual: Scripts/install.sh --name <ProjectName>"
+    [ "${#missing[@]}" -gt 0 ] && printf '   Missing (installed automatically): %s\n' "${missing[*]}"
     exit 0 ;;
   installed)
-    say "ℹ️ 導入済みです(外部パッケージ構成)。セットアップをやり直さないでください。"
-    say "   更新 → /ftester-update / プロファイル追加 → /ftester-profiles / シナリオ → /ftester-scenario"
-    say "   入れ直すなら先にアンインストール(docs/getting-started.md「アンインストール」)。"
-    say "   途中まで作られているものは上の projects= / mcp_registered= / vscode_extension= を参照。"
+    say "ℹ️ Already installed (external-package layout). Do not run setup again."
+    say "   Update → /ftester-update / add profiles → /ftester-profiles / scenarios → /ftester-scenario"
+    say "   To reinstall, uninstall first (docs/getting-started.md, the uninstall section)."
+    say "   See projects= / mcp_registered= / vscode_extension= above for what already exists."
     exit 2 ;;
   *)
-    say "❌ このままでは導入できません:"
+    say "❌ Cannot install as things stand:"
     for reason in "${blocked_reasons[@]}"; do say "   ・$reason"; done
     exit 1 ;;
 esac

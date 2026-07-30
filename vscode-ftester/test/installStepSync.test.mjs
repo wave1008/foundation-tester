@@ -30,8 +30,8 @@ function skillSteps(source) {
 /** install.sh が参照するステップ番号(見出しコメント・die/soft_fail の第3引数・本文の言及)。 */
 function installSteps(source) {
   const steps = new Set();
-  // 「SKILL ステップ0.5」「SKILL.md ステップ7.5」などの明示的な言及
-  for (const m of source.matchAll(/SKILL(?:\.md)?\s*ステップ\s*(\d+(?:\.\d+)?)/g)) {
+  // 「SKILL ステップ0.5」「SKILL.md step 7.5」などの明示的な言及(install.sh の出力は英語 = step、コメントは日本語 = ステップ)
+  for (const m of source.matchAll(/SKILL(?:\.md)?\s*(?:ステップ|step)\s*(\d+(?:\.\d+)?)/gi)) {
     steps.add(m[1]);
   }
   // die / soft_fail の行末に置かれた第3引数(= ステップ番号)

@@ -25,29 +25,29 @@ DO_DOCTOR=0
 
 usage() {
   cat <<'EOF'
-使い方: update.sh [オプション]
+Usage: update.sh [options]
 
-  --work-dir <dir>   Projects/ がある受け手ディレクトリ(既定: カレント)
-  --tool-root <dir>  foundation-tester クローンの場所(既定: <work-dir>/../foundation-tester)
-  --no-pull          クローンを更新しない(版を固定したいとき・本体の開発中)
-  --force            更新が無くても全工程を実行する(壊れた導入の入れ直し)
-  --skip-extension   VSCode 拡張の再インストールを行わない
-  --skip-plugin      Claude Code プラグイン(スキル)の更新を行わない
-  --doctor           最後に環境レポート(ftester doctor)を出す(既定は出さない)
-  --keep-local       クローンのローカル変更を自動で破棄しない
-  --verbose          swift build / npm の生ログも画面に出す
-  -h, --help         このヘルプ
+  --work-dir <dir>   Consumer directory that holds Projects/ (default: current directory)
+  --tool-root <dir>  Location of the foundation-tester clone (default: <work-dir>/../foundation-tester)
+  --no-pull          Do not update the clone (to pin a version, or while developing the tool)
+  --force            Run everything even without an update (to redo a broken install)
+  --skip-extension   Do not reinstall the VSCode extension
+  --skip-plugin      Do not update the Claude Code plugin (skills)
+  --doctor           Print the environment report (ftester doctor) at the end (off by default)
+  --keep-local       Do not auto-discard local changes in the clone
+  --verbose          Also print the raw swift build / npm logs to the screen
+  -h, --help         This help
 
-やること: install.sh の再実行(git pull → swift build → 拡張 → .mcp.json → 検証ゲート)
-         + ftester project sync + プラグインの更新と版照合
-         **更新が無ければ何もせず終える**(判定は update-check.sh。全部やるなら --force)
+What it does: re-runs install.sh (git pull → swift build → extension → .mcp.json → verification gates)
+         + ftester project sync + plugin update with version cross-check
+         **Exits without doing anything when there is no update** (decided by update-check.sh; use --force to run everything)
 EOF
 }
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --work-dir) WORK_DIR="${2:?--work-dir に値が必要です}"; shift 2 ;;
-    --tool-root) TOOL_ROOT_ARG="${2:?--tool-root に値が必要です}"; PASS_THROUGH+=(--tool-root "$2"); shift 2 ;;
+    --work-dir) WORK_DIR="${2:?--work-dir requires a value}"; shift 2 ;;
+    --tool-root) TOOL_ROOT_ARG="${2:?--tool-root requires a value}"; PASS_THROUGH+=(--tool-root "$2"); shift 2 ;;
     --no-pull) ALLOW_PULL=0; PASS_THROUGH+=(--no-pull); shift ;;
     --force) FORCE=1; shift ;;
     --doctor) DO_DOCTOR=1; shift ;;
@@ -56,11 +56,11 @@ while [ $# -gt 0 ]; do
     --skip-extension) PASS_THROUGH+=(--skip-extension); shift ;;
     --skip-plugin) DO_PLUGIN=0; shift ;;
     -h|--help) usage; exit 0 ;;
-    *) echo "不明なオプション: $1" >&2; usage >&2; exit 1 ;;
+    *) echo "unknown option: $1" >&2; usage >&2; exit 1 ;;
   esac
 done
 
-WORK_DIR="$(cd "$WORK_DIR" 2>/dev/null && pwd)" || { echo "エラー: --work-dir が存在しません" >&2; exit 1; }
+WORK_DIR="$(cd "$WORK_DIR" 2>/dev/null && pwd)" || { echo "error: --work-dir does not exist" >&2; exit 1; }
 
 # TOOL_ROOT の解決は install.sh と同じ規則(Package.swift の .package(path:) → 既定の隣)。
 # ここでは project sync とプラグイン照合に要るので先に決めておく
@@ -77,9 +77,9 @@ resolve_tool_root() {
 }
 TOOL_ROOT="$(resolve_tool_root)"
 if [ -z "$TOOL_ROOT" ]; then
-  echo "❌ foundation-tester のクローンが見つかりません(WORK_DIR=$WORK_DIR)。" >&2
-  echo "   未導入なら /ftester-setup(または Scripts/install.sh)。場所が違うなら --tool-root で指定してください。" >&2
-  echo "   **周辺ディレクトリを探索しないこと** — 見つからない場合は人に聞く。" >&2
+  echo "❌ No foundation-tester clone found (WORK_DIR=$WORK_DIR)." >&2
+  echo "   If not installed yet: /ftester-setup (or Scripts/install.sh). If it lives elsewhere, pass --tool-root." >&2
+  echo "   **Do not go hunting through nearby directories** — ask the human instead." >&2
   exit 1
 fi
 
@@ -92,22 +92,22 @@ if [ "$FORCE" = "0" ] && [ "$ALLOW_PULL" = "1" ] && [ -f "$TOOL_ROOT/Scripts/upd
   check_out="$(bash "$TOOL_ROOT/Scripts/update-check.sh" --tool-root "$TOOL_ROOT" 2>/dev/null || true)"
   case "$check_out" in
     *"verdict=up-to-date"*)
-      echo "✅ 最新です($(git -C "$TOOL_ROOT" rev-parse --short HEAD 2>/dev/null))。取り込む変更はありません。"
-      echo "   前回が途中で失敗した・入れ直したい場合は --force を付けて再実行してください。"
+      echo "✅ Up to date ($(git -C "$TOOL_ROOT" rev-parse --short HEAD 2>/dev/null)). Nothing to pull in."
+      echo "   If the last run failed midway, or to redo the install, re-run with --force."
       exit 0 ;;
   esac
 fi
 
 # ---- 1〜2・5・5.5: install.sh に委譲(pull・build・拡張・.mcp.json・検証ゲート・ログ) -------
 # --skip-project: 既存の Projects/ を触らない(更新でプロジェクトを作り直さない)
-echo "==> install.sh を再実行(pull → build → 拡張 → .mcp.json → 検証)"
+echo "==> Re-running install.sh (pull → build → extension → .mcp.json → verification)"
 # --no-doctor が既定: 結果表に Apple Intelligence の warn 行が出るので情報が重複し、8秒かかる
 [ "$DO_DOCTOR" = "1" ] || PASS_THROUGH+=(--no-doctor)
 bash "$TOOL_ROOT/Scripts/install.sh" --work-dir "$WORK_DIR" --skip-project --no-next-steps \
   "${PASS_THROUGH[@]+"${PASS_THROUGH[@]}"}"
 INSTALL_STATUS=$?
 if [ "$INSTALL_STATUS" = "1" ]; then
-  echo "❌ 更新を中断しました(上の [fail] を解消してから再実行してください)" >&2
+  echo "❌ Update aborted (fix the [fail] above, then re-run)" >&2
   exit 1
 fi
 
@@ -116,8 +116,8 @@ fi
 FT="$TOOL_ROOT/.build/debug/ftester"
 if [ "$WORK_DIR" = "$TOOL_ROOT" ] && [ -x "$FT" ]; then
   echo ""
-  echo "==> ftester project sync(Projects/ ↔ Package.swift の再整合)"
-  ( cd "$WORK_DIR" && "$FT" project sync ) || echo "⚠️ project sync に失敗しました(手で確認してください)"
+  echo "==> ftester project sync (resyncing Projects/ ↔ Package.swift)"
+  ( cd "$WORK_DIR" && "$FT" project sync ) || echo "⚠️ project sync failed (check it by hand)"
 fi
 
 # ---- 5.7. Claude Code プラグイン(スキル)の更新 ---------------------------------
@@ -131,7 +131,7 @@ plugin_installed_version() {
 if [ "$DO_PLUGIN" = "1" ] && command -v claude >/dev/null 2>&1; then
   if claude plugin list 2>/dev/null | grep -q "ftester@foundation-tester"; then
     echo ""
-    echo "==> Claude Code プラグイン(スキル)の更新"
+    echo "==> Updating the Claude Code plugin (skills)"
     # 更新前の版を控える。**入れ替わっていなければ Claude Code の再起動は要らない**
     # (「一致した」だけで再起動を案内すると、不要な人間作業を毎回1つ増やす)
     plugin_before="$(plugin_installed_version)"
@@ -140,35 +140,35 @@ if [ "$DO_PLUGIN" = "1" ] && command -v claude >/dev/null 2>&1; then
     # 「実行した」ではなく「HEAD と一致した」で判定する
     plugin_version="$(plugin_installed_version)"
     # 空だと下の case のパターンが `*` になり、**何であれ「一致」と誤判定する**(false green)
-    [ -n "$plugin_version" ] || plugin_version="(取得できず)"
+    [ -n "$plugin_version" ] || plugin_version="(unavailable)"
     head_sha="$(git -C "$TOOL_ROOT" rev-parse HEAD 2>/dev/null)"
     case "$head_sha" in
       "$plugin_version"*)
         if [ "$plugin_version" = "$plugin_before" ]; then
-          PLUGIN_RESULT="unchanged"; echo "✅ プラグイン: $plugin_version(更新前と同じ・再起動不要)"
+          PLUGIN_RESULT="unchanged"; echo "✅ Plugin: $plugin_version (same as before — no restart needed)"
         else
-          PLUGIN_RESULT="ok"; echo "✅ プラグイン: $plugin_before → $plugin_version(HEAD と一致)"
+          PLUGIN_RESULT="ok"; echo "✅ Plugin: $plugin_before → $plugin_version (matches HEAD)"
         fi ;;
-      *) PLUGIN_RESULT="stale"; echo "⚠️ プラグイン: $plugin_version(HEAD ${head_sha:0:12} と不一致)" ;;
+      *) PLUGIN_RESULT="stale"; echo "⚠️ Plugin: $plugin_version (does not match HEAD ${head_sha:0:12})" ;;
     esac
   else
     PLUGIN_RESULT="none"
   fi
 elif [ "$DO_PLUGIN" = "1" ]; then
   echo ""
-  echo "・claude CLI が無いためプラグイン(スキル)は更新していません"
-  echo "  (clone 内で直接スキルを使う構成なら git pull で更新済み)"
+  echo "・The claude CLI is missing, so the plugin (skills) was not updated"
+  echo "  (if the skills are used directly from the clone, git pull already updated them)"
 fi
 
 echo ""
-echo "──────── 次にやること ────────"
+echo "──────── Next steps ────────"
 # install.sh には --no-next-steps を渡しているので、ログの場所はここで案内する
 # (更新の詳細ログを人が後から確認できるように)。名前が install-<日時>.log なので
 # **辞書順の最後が最新**。`ls | head` は使わない(pipefail 下の SIGPIPE 誤判定)
 update_logs=("$WORK_DIR"/.ftester/install-*.log)
 last_log="${update_logs[${#update_logs[@]} - 1]}"
-[ -f "$last_log" ] && echo "・詳細ログ: $last_log"
-echo "・VSCode で Developer: Reload Window(拡張の反映に必須。モニターパネルは開き直す)"
-[ "$PLUGIN_RESULT" = "ok" ] && echo "・Claude Code を再起動(更新したスキルは再起動まで旧版のまま)"
-[ "$PLUGIN_RESULT" = "stale" ] && echo "・プラグインが HEAD と一致しません。claude plugin marketplace update → plugin update を手で実行"
+[ -f "$last_log" ] && echo "・Detailed log: $last_log"
+echo "・In VSCode, run Developer: Reload Window (required for the extension; reopen the monitor panel)"
+[ "$PLUGIN_RESULT" = "ok" ] && echo "・Restart Claude Code (updated skills stay stale until a restart)"
+[ "$PLUGIN_RESULT" = "stale" ] && echo "・The plugin does not match HEAD. Run claude plugin marketplace update → plugin update by hand"
 exit "$INSTALL_STATUS"
