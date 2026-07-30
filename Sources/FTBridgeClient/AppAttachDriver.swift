@@ -78,6 +78,33 @@ public final class AppAttachDriver: AppDriver {
     public func press(ref: Int, duration: Double) async throws { try await client.press(ref: ref, duration: duration) }
     public func tap(x: Double, y: Double) async throws { try await client.tap(x: x, y: y) }
 
+    /// ref 無し(フォーカス中要素のクリア)は type と同じ回復を入れる。ref 有りには入れない
+    /// (activate が refFrames をクリアするため再試行時に別要素を指す)
+    public func clearInput(ref: Int?) async throws {
+        guard ref == nil else { return try await client.clearInput(ref: ref) }
+        try await ensureAttached()
+        do {
+            try await client.clearInput(ref: nil)
+        } catch {
+            guard Self.isRecoverableSession(error) else { throw error }
+            try await client.activate(bundleID: bundleID)
+            try await client.clearInput(ref: nil)
+        }
+    }
+
+    /// back は drag と同じ扱い(座標操作でセッションが要る。BridgeClient.back() は内部で
+    /// snapshot+drag するため home/appSwitcher のようなセッション不要経路ではない)
+    public func back() async throws {
+        try await ensureAttached()
+        do {
+            try await client.back()
+        } catch {
+            guard Self.isRecoverableSession(error) else { throw error }
+            try await client.activate(bundleID: bundleID)
+            try await client.back()
+        }
+    }
+
     /// swipe は ref を使わないので、事前に attach を揃え(ensureAttached)、それでも
     /// 409/503 なら activate して1回だけ再試行する。snapshot() を経ずに swipe が先に来るシナリオ
     /// (scrollTo が最初の操作)が

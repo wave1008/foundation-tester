@@ -26,6 +26,8 @@ public enum StepDescription {
             switch text {
             case "terminate": return "terminate the app"
             case "pressEnter": return "press the Enter key"
+            case "back": return "go back"
+            case "clearInput": return "clear the focused input"
             default: return nil
             }
         }
@@ -106,6 +108,17 @@ public enum StepDescription {
             return isJapanese(input)
                 ? "フォーカス中の要素に\"\(input)\"を入力する"
                 : "type \"\(input)\" into the focused element"
+        case "clearInput":
+            guard let selector = unquote(rest) else { return nil }
+            let obj = object(selector)
+            return isJapanese(obj) ? "\"\(obj)\"を空にする" : "clear \"\(obj)\""
+        case "swipeElementToElement":
+            guard let (from, to) = unquotePair(rest, separator: "\" → \"") else { return nil }
+            let fromObj = object(from)
+            let toObj = objectPhrase(ofSelector: to)
+            return isJapanese(fromObj, toObj)
+                ? "\"\(fromObj)\"から\"\(toObj)\"へドラッグする"
+                : "drag \"\(fromObj)\" to \"\(toObj)\""
         case "textIs":
             guard let (selector, expected) = unquotePair(rest, separator: "\" == \"") else {
                 return nil
@@ -170,6 +183,15 @@ public enum StepDescription {
                 return swipePhrase(direction: step.direction ?? "up")
             case "pressEnter":
                 return "press the Enter key"
+            case "clearInput":
+                if step.locator == nil { return "clear the focused input" }
+                return isJapanese(obj) ? "\"\(obj)\"を空にする" : "clear \"\(obj)\""
+            case "swipeElementToElement":
+                guard let endLocator = step.endLocator else { return nil }
+                let toObj = endLocator.label ?? FTSelector.serialize(primary: endLocator, fallbacks: [])
+                return isJapanese(obj, toObj)
+                    ? "\"\(obj)\"から\"\(toObj)\"へドラッグする"
+                    : "drag \"\(obj)\" to \"\(toObj)\""
             default:
                 return nil
             }

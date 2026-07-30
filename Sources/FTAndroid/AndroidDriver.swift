@@ -180,6 +180,18 @@ public final class AndroidDriver: AppDriver {
         await settleViaBridge()
     }
 
+    /// 前の画面へ戻る。**gRPC "GoBack" は使わない** — 成功を返すのにキーが届かない
+    /// (2026-07-30 実機で確認。KEY_WAKEUP 不発と同型の無音 no-op)。adb keyevent 直行。
+    public func back() async throws {
+        let result = try adb(["shell", "input", "keyevent", "KEYCODE_BACK"])
+        guard result.status == 0 else {
+            throw DriverError.badResponse(status: Int(result.status),
+                body: "failed to go back: \(result.tail)")
+        }
+        // keyevent は遷移完了を待たないため、直後の snapshot 用の整定待ち(home() と同様)
+        await settleViaBridge()
+    }
+
     public func snapshot() async throws -> SnapshotResponse {
         restoreStateIfNeeded()  // 別プロセス実行時に refCenters 等を引き継ぐ(persistState で消さないため)
         let snapshot = try await withBridge { try await $0.snapshot() }
@@ -203,6 +215,10 @@ public final class AndroidDriver: AppDriver {
 
     public func tap(x: Double, y: Double) async throws {
         try await withBridge { try await $0.tap(x: x, y: y) }
+    }
+
+    public func clearInput(ref: Int?) async throws {
+        try await withBridge { try await $0.clearInput(ref: ref) }
     }
 
     /// ブリッジ snapshot の結果をホスト側 ref テーブルにも写す(CLI プロセス跨ぎの手動駆動を保つ)

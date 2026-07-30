@@ -73,6 +73,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
                 case "GET /snapshot": return handleSnapshot();
                 case "POST /tap": return handleTap(body(request));
                 case "POST /type": return handleType(body(request));
+                case "POST /clear": return handleClear(body(request));
                 case "POST /swipe": return handleSwipe(body(request));
                 case "POST /press": return handlePress(body(request));
                 case "POST /pressEnter": return handlePressEnter();
@@ -189,6 +190,20 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
             InputInjector.setTextAppendingAt(ua(), center[0], center[1], text, 2000);
         } else {
             InputInjector.setTextAppending(ua(), text);
+        }
+        settle();
+        return ok();
+    }
+
+    /** ref あり = その要素を空文字へ全置換(BridgeDTO.ClearRequest 参照)。ref なしはフォーカス欄。
+     *  対象なし/SET_TEXT 拒否は 409(ホストの typeDriver フォールバックの合図。500 にしない) */
+    private BridgeHttpServer.Response handleClear(JSONObject body) {
+        if (body.has("ref")) {
+            double[] center = centerOf(body.optInt("ref"));
+            InputInjector.tap(ua(), center[0], center[1]);
+            InputInjector.clearTextAt(ua(), center[0], center[1], 2000);
+        } else {
+            InputInjector.clearFocused(ua());
         }
         settle();
         return ok();

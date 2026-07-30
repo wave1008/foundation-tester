@@ -37,6 +37,8 @@ public struct FlowStep: Codable, Sendable {
     public var locator: FlowLocator?
     /// ロケータ解決の代替チェーン(id > label > type+index)
     public var fallbacks: [FlowLocator]?
+    /// swipeElementToElement の終点。ヒール・フォールバック連鎖の対象は始点(locator)のみ
+    public var endLocator: FlowLocator?
     public var text: String?
     public var direction: String?
     /// screenMatches 用の期待状態(自然言語。マルチモーダル画面検証に使う)
@@ -49,7 +51,7 @@ public struct FlowStep: Codable, Sendable {
     /// press の長押し秒数(nil = defaultPressDuration)。**ブリッジの /press は元から duration を
     /// 受け取っており**、ここが nil だった間だけホスト側で 1.0 に潰れていた
     /// (DSL の press(duration:)が無効化されていた)。既定値と同じなら nil のまま置く
-    /// (生成コード・JSON を既定ケースで太らせないため)
+    /// (生成コード・JSON を既定ケースで太らせないため)。swipeElementToElement では移動時間(秒)
     public var duration: Double?
     /// count アサーションの期待個数(DSL の countIs)。他のステップでは nil
     public var expectedCount: Int?
@@ -74,8 +76,13 @@ public struct FlowStep: Codable, Sendable {
     /// これは暴走を止める安全網にすぎないので探索(8)より大きく取る
     public static let defaultMaxEdgeSwipes = 50
 
+    /// swipePointToPoint / swipeElementToElement の既定の移動時間(秒)。
+    /// shirates-core の Const.SWIPE_DURATION_SECONDS 準拠。DSL の既定引数はこの1つに揃える
+    public static let defaultSwipeDurationSeconds: Double = 1.5
+
     public init(action: String? = nil, assert: String? = nil, locator: FlowLocator? = nil,
-                fallbacks: [FlowLocator]? = nil, text: String? = nil, direction: String? = nil,
+                fallbacks: [FlowLocator]? = nil, endLocator: FlowLocator? = nil,
+                text: String? = nil, direction: String? = nil,
                 expected: String? = nil, timeout: Double? = nil, maxSwipes: Int? = nil,
                 duration: Double? = nil,
                 expectedCount: Int? = nil,
@@ -84,6 +91,7 @@ public struct FlowStep: Codable, Sendable {
         self.assert = assert
         self.locator = locator
         self.fallbacks = fallbacks
+        self.endLocator = endLocator
         self.text = text
         self.direction = direction
         self.expected = expected

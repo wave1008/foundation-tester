@@ -713,6 +713,58 @@ public final class StepExecutor {
             return StepOutcome(status: .passed)
         }
 
+        // clearInput もロケータ無しならフォーカス中欄へ作用する(type(ref: nil) と同じくロケータ解決を
+        // 挟まない)。対象なし(409)またはこのエンジンでは未対応(isEngineIncapable)なら
+        // typeDriver(xcuitest)へフォールバックする
+        if action == "clearInput", step.locator == nil, step.fallbacks?.isEmpty ?? true {
+            // 事後検証(ブリッジが 200 を返しても実際に消えていない「嘘の成功」を潰す)の下ごしらえ。
+            // ref が無いので、クリア前にフォーカス要素を覚えておき、クリア後の突き合わせは
+            // identifier/frame で行う(residualClearValue(of:in:) 参照)。見つからなければ検証不能として
+            // 後段をスキップする(検証できないことを失敗にしない)。追加 snapshot は clearInput の
+            // ときだけなので他コマンドの固定費は増えない
+            var snapStart = clock.now
+            let beforeSnapshot = try await driver.snapshot()
+            phase.snapshotMs += Self.ms(clock.now - snapStart)
+            let focusedBefore = beforeSnapshot.elements.first { $0.focused == true }
+
+            let start = clock.now
+            do {
+                try await driver.clearInput(ref: nil)
+            } catch {
+                guard Self.isClearInputFallback(error), let td = typeDriver else { throw error }
+                try await td.clearInput(ref: nil)
+                phase.actionMs += Self.ms(clock.now - start)
+                // フォールバック経路も同じ事後検証を通す(検証されるパスに例外を作らない)
+                if let focusedBefore,
+                   let residual = try await residualClearValue(td, focusedBefore: focusedBefore,
+                                                               phase: &phase) {
+                    return StepOutcome(status: .failed(
+                        "clearInput reported success but the value remained: \"\(residual)\""))
+                }
+                return StepOutcome(status: .passed, driverFallback: "fell back to XCUITest")
+            }
+            phase.actionMs += Self.ms(clock.now - start)
+
+            if let focusedBefore,
+               let residual = try await residualClearValue(driver, focusedBefore: focusedBefore,
+                                                           phase: &phase) {
+                guard let td = typeDriver else {
+                    return StepOutcome(status: .failed(
+                        "clearInput reported success but the value remained: \"\(residual)\""))
+                }
+                let retryStart = clock.now
+                try await td.clearInput(ref: nil)
+                phase.actionMs += Self.ms(clock.now - retryStart)
+                if let residual2 = try await residualClearValue(td, focusedBefore: focusedBefore,
+                                                                phase: &phase) {
+                    return StepOutcome(status: .failed(
+                        "clearInput reported success but the value remained: \"\(residual2)\""))
+                }
+                return StepOutcome(status: .passed, driverFallback: "fell back to XCUITest")
+            }
+            return StepOutcome(status: .passed)
+        }
+
         // `tap(scroll:)` / `press(scroll:)` 等の内蔵スクロール探索。**別ステップにしない**のは
         // 利用者が書いたのは1コマンドだから(記録に scrollTo 行が増えると、書いていない行が
         // 現れ、しかもソース行を持たないためジャンプも修正提案の照合もできない)。
@@ -887,6 +939,74 @@ public final class StepExecutor {
                 gestureFallbackLatched = true
                 driverFallback = "fell back to XCUITest"
             }
+        case "clearInput":
+            if let td = typeDriver, preferTypeDriver,
+               try await clearViaTypeDriver(td, step: step, phase: &phase) {
+                return StepOutcome(status: .passed, healedStep: healedStep, healedByCache: healedByCache)
+            }
+            do {
+                start = clock.now
+                try await actingDriver.clearInput(ref: element.ref)
+                phase.actionMs += Self.ms(clock.now - start)
+                // 事後検証: ブリッジが 200 を返しても実際に消えていない(嘘の成功)場合の保険。
+                // 同じ driver で snapshot を撮り直し、同じ locator を再解決して value を見る
+                if let residual = try await residualClearValue(actingDriver, step: step,
+                                                              before: element.value, phase: &phase) {
+                    guard let td = typeDriver,
+                          try await clearViaTypeDriver(td, step: step, phase: &phase) else {
+                        return StepOutcome(status: .failed(
+                            "clearInput reported success but the value remained: \"\(residual)\""))
+                    }
+                    if let residual2 = try await residualClearValue(td, step: step,
+                                                                   before: element.value,
+                                                                   phase: &phase) {
+                        return StepOutcome(status: .failed(
+                            "clearInput reported success but the value remained: \"\(residual2)\""))
+                    }
+                    driverFallback = "fell back to XCUITest"
+                }
+            } catch {
+                guard Self.isClearInputFallback(error), let td = typeDriver else { throw error }
+                guard try await clearViaTypeDriver(td, step: step, phase: &phase) else { throw error }
+                // フォールバック経路も同じ事後検証を通す(**どのパスなら検証されるかに例外を作らない**。
+                // 規則が無いと将来の変更で無検証の穴が復活する)
+                if let residual = try await residualClearValue(td, step: step,
+                                                              before: element.value, phase: &phase) {
+                    return StepOutcome(status: .failed(
+                        "clearInput reported success but the value remained: \"\(residual)\""))
+                }
+                driverFallback = "fell back to XCUITest"
+            }
+        case "swipeElementToElement":
+            guard let endLocator = step.endLocator else {
+                return StepOutcome(status: .failed("swipeElementToElement requires an end locator"))
+            }
+            var endStep = step
+            endStep.locator = endLocator
+            endStep.fallbacks = nil
+            guard let (endElement, _) = Self.resolve(step: endStep, in: snapshot) else {
+                let hint = Self.candidateHint(for: endStep, in: snapshot)
+                return StepOutcome(status: .failed(
+                    "cannot resolve the end locator: \(endStep.locatorSummary)"
+                        + (hint.map { ". \($0)" } ?? "")))
+            }
+            let swipeDuration = step.duration ?? FlowStep.defaultSwipeDurationSeconds
+            do {
+                start = clock.now
+                try await actingDriver.drag(fromX: element.frame.centerX, fromY: element.frame.centerY,
+                                            toX: endElement.frame.centerX, toY: endElement.frame.centerY,
+                                            pressSeconds: 0.05, durationSeconds: swipeDuration)
+                phase.actionMs += Self.ms(clock.now - start)
+            } catch {
+                // in-app エンジンは drag を一切実装しない(501)ため、hybrid では typeDriver=XCUITest
+                // で始点・終点を取り直す(ref はブリッジごとに別名前空間)
+                guard DriverError.isEngineIncapable(error), let td = typeDriver else { throw error }
+                guard try await dragViaTypeDriver(td, step: step, endStep: endStep,
+                                                  durationSeconds: swipeDuration, phase: &phase) else {
+                    throw error
+                }
+                driverFallback = "fell back to XCUITest"
+            }
         default:
             return StepOutcome(status: .skipped("unknown action: \(action)"))
         }
@@ -921,6 +1041,134 @@ public final class StepExecutor {
         start = clock.now
         try await td.press(ref: resolved.element.ref,
                            duration: step.duration ?? FlowStep.defaultPressDuration)
+        phase.actionMs += Self.ms(clock.now - start)
+        return true
+    }
+
+    /// clearInput のフォールバック判定: 409(対象なし/フォーカス無し。type の 409 と同じ一時的競合)
+    /// または isEngineIncapable(このエンジンでは未対応)なら typeDriver へ回してよい
+    private static func isClearInputFallback(_ error: Error) -> Bool {
+        if DriverError.isEngineIncapable(error) { return true }
+        if case DriverError.badResponse(let status, _) = error, status == 409 { return true }
+        return false
+    }
+
+    /// typeDriver で clearInput を試みる。ref はブリッジごとに別名前空間なので typeDriver 側 snapshot で
+    /// 取り直す(typeViaTypeDriver と同じ理由)。解決できなければ false(呼び出し側で再スロー)。
+    private func clearViaTypeDriver(_ td: AppDriver, step: FlowStep,
+                                    phase: inout PhaseAccumulator) async throws -> Bool {
+        let clock = ContinuousClock()
+        var start = clock.now
+        let snapshot = try await td.snapshot()
+        phase.snapshotMs += Self.ms(clock.now - start)
+        guard let resolved = Self.resolveDetailed(step: step, in: snapshot) else { return false }
+        start = clock.now
+        try await td.clearInput(ref: resolved.element.ref)
+        phase.actionMs += Self.ms(clock.now - start)
+        return true
+    }
+
+    /// clearInput 事後検証: 残っている値(nil = 消えている/判定不能)。
+    /// **`placeholder` フィールドとの一致では判定できない**ので「クリア前の値からの変化」で見る:
+    /// 空欄の `value` に placeholder 文字列が入る実装があり(iOS 全般 / **Android の CMP は
+    /// `placeholder` を送らないまま value に入れる** ―― 2026-07-30 実測)、一致判定は素通りする。
+    /// **層3は保険なので誤検出ゼロに倒す**(検出漏れは層2 = 受け口側の読み返しが拾う):
+    /// 値が変わっていれば消えたと見なし、`before` が空/placeholder なら「消すものが無かった」
+    /// として検証しない
+    private static func residualClearValue(before: String?, after: String?,
+                                          placeholder: String?) -> String? {
+        guard let before, !before.isEmpty, before != placeholder else { return nil }
+        guard let after, !after.isEmpty, after != placeholder else { return nil }
+        return after == before ? after : nil
+    }
+
+    /// clearInput(ref あり)の事後検証。渡された snapshot 内で同じ step(locator)を解決し直して
+    /// クリア前の値と比べる。解決できない(要素が消えた等)ときは検証不能なので nil
+    /// (検証できないことを失敗にしない)
+    private static func residualClearValue(step: FlowStep, before: String?,
+                                          in snapshot: SnapshotResponse) -> String? {
+        guard let (found, _) = Self.resolve(step: step, in: snapshot) else { return nil }
+        return Self.residualClearValue(before: before, after: found.value,
+                                       placeholder: found.placeholder)
+    }
+
+    /// clearInput(ref あり)の事後検証: 同じ driver で snapshot を撮り直してから残存値を見る。
+    /// **単発では判定しない**(ロケータ解決の再試行と同じ規律で最大3回・計約700ms):
+    /// Android の `ACTION_SET_TEXT` は a11y ツリーへの反映が数十〜数百ms遅れ、1発勝負では
+    /// 消えているのに古い値を読んで誤検出する(2026-07-30 実測。textIs がポーリングで
+    /// 吸収しているのと同じ事情)
+    private func residualClearValue(_ driver: AppDriver, step: FlowStep, before: String?,
+                                    phase: inout PhaseAccumulator) async throws -> String? {
+        let clock = ContinuousClock()
+        var backoff = PollBackoff()
+        var residual: String?
+        for attempt in 0..<3 {
+            if attempt > 0 {
+                let waitStart = clock.now
+                try await Task.sleep(for: backoff.nextDelay())
+                phase.waitMs += Self.ms(clock.now - waitStart)
+            }
+            let start = clock.now
+            let snapshot = try await driver.snapshot()
+            phase.snapshotMs += Self.ms(clock.now - start)
+            residual = Self.residualClearValue(step: step, before: before, in: snapshot)
+            if residual == nil { return nil }
+        }
+        return residual
+    }
+
+    /// clearInput(ref なし)の事後検証: クリア前に覚えた要素を撮り直した snapshot で突き合わせる。
+    /// ref あり版と同じ理由でポーリングする(単発では反映遅れを誤検出する)
+    private func residualClearValue(_ driver: AppDriver, focusedBefore: ElementInfo,
+                                    phase: inout PhaseAccumulator) async throws -> String? {
+        let clock = ContinuousClock()
+        var backoff = PollBackoff()
+        var residual: String?
+        for attempt in 0..<3 {
+            if attempt > 0 {
+                let waitStart = clock.now
+                try await Task.sleep(for: backoff.nextDelay())
+                phase.waitMs += Self.ms(clock.now - waitStart)
+            }
+            let start = clock.now
+            let snapshot = try await driver.snapshot()
+            phase.snapshotMs += Self.ms(clock.now - start)
+            residual = Self.residualClearValue(of: focusedBefore, in: snapshot)
+            if residual == nil { return nil }
+        }
+        return residual
+    }
+
+    /// clearInput(ref なし)の事後検証。クリア前に覚えた要素をクリア後の snapshot で同一要素として
+    /// 突き合わせる。**identifier 優先、無ければ frame 一致**(ref はスナップショット毎に振り直され
+    /// フォールバック後は driver も変わるため使えない)。見つからなければ検証不能なので nil
+    private static func residualClearValue(of before: ElementInfo, in snapshot: SnapshotResponse) -> String? {
+        let match: ElementInfo?
+        if let identifier = before.identifier {
+            match = snapshot.elements.first { $0.identifier == identifier }
+        } else {
+            match = snapshot.elements.first { $0.frame == before.frame }
+        }
+        guard let match else { return nil }
+        return Self.residualClearValue(before: before.value, after: match.value,
+                                       placeholder: match.placeholder)
+    }
+
+    /// typeDriver で始点・終点を取り直してドラッグする(ref はブリッジごとに別名前空間なので、
+    /// typeViaTypeDriver と同じ理由で両方とも撮り直す)。解決できなければ false(呼び出し側で再スロー)。
+    private func dragViaTypeDriver(_ td: AppDriver, step: FlowStep, endStep: FlowStep,
+                                   durationSeconds: Double,
+                                   phase: inout PhaseAccumulator) async throws -> Bool {
+        let clock = ContinuousClock()
+        var start = clock.now
+        let snapshot = try await td.snapshot()
+        phase.snapshotMs += Self.ms(clock.now - start)
+        guard let (from, _) = Self.resolve(step: step, in: snapshot),
+              let (to, _) = Self.resolve(step: endStep, in: snapshot) else { return false }
+        start = clock.now
+        try await td.drag(fromX: from.frame.centerX, fromY: from.frame.centerY,
+                          toX: to.frame.centerX, toY: to.frame.centerY,
+                          pressSeconds: 0.05, durationSeconds: durationSeconds)
         phase.actionMs += Self.ms(clock.now - start)
         return true
     }

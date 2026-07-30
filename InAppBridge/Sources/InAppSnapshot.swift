@@ -151,7 +151,9 @@ enum InAppSnapshot {
                           width: frame.width, height: frame.height),
             depth: depth,
             // XCUITest 版と同じ経路(UIAccessibilityTraits.selected)。false は送らない
-            checked: traits.contains(.selected) ? true : nil)
+            checked: traits.contains(.selected) ? true : nil,
+            // clearInput 事後検証用(ElementInfo.focused 参照)。true のときだけ送る
+            focused: (node as? UIResponder)?.isFirstResponder == true ? true : nil)
     }
 
     // 空の UITextField は accessibilityValue が placeholder を返すため value に漏れる。

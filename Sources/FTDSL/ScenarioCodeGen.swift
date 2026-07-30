@@ -97,12 +97,26 @@ public enum ScenarioCodeGen {
                 return "swipe(.\(step.direction ?? "up"))"
             case "home":
                 return "home()"
+            case "back":
+                return "back()"
             case "appSwitcher":
                 return "appSwitcher()"
             case "terminate":
                 return "terminateApp()"
             case "pressEnter":
                 return "pressEnter()"
+            case "clearInput":
+                if step.locator == nil {
+                    return "clearInput()"
+                }
+                return "clearInput(\(literal(selector))\(optionalArg(step)))"
+            case "swipeElementToElement":
+                guard let endLocator = step.endLocator else { return nil }
+                var args = [literal(selector), literal(FTSelector.serialize(primary: endLocator, fallbacks: []))]
+                if let duration = step.duration {
+                    args.append("durationSeconds: \(FTSeconds.format(duration))")
+                }
+                return "swipeElementToElement(\(args.joined(separator: ", ")))"
             case "scrollTo":
                 var args = [literal(selector)]
                 // FlowStep.direction は**ジェスチャ(指の動き)**。DSL はコンテンツ基準なので写像して出す

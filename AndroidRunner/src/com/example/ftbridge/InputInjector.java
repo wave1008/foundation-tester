@@ -91,6 +91,43 @@ final class InputInjector {
         }
     }
 
+    /**
+     * タップした点(x,y)にある editable ノードを空文字へ全置換する(/clear の ref 経路。
+     * ノード探索・フォーカス猶予の規律は setTextAppendingAt と同一)。
+     * 期限内に成功しなければ 409(ホストの typeDriver フォールバックの合図。BridgeDTO.ClearRequest 参照。
+     * setTextAppendingAt の 500 とは意図的に異なる)。
+     */
+    static void clearTextAt(UiAutomation ua, double x, double y, long timeoutMs) {
+        long start = SystemClock.uptimeMillis();
+        long deadline = start + timeoutMs;
+        long focusGraceUntil = start + timeoutMs / 2;
+        String lastState = "対象ノード未発見";
+        Rect bounds = new Rect();
+        while (true) {
+            AccessibilityNodeInfo root = ua.getRootInActiveWindow();
+            AccessibilityNodeInfo target = root == null ? null : editableAt(root, (int) x, (int) y, bounds);
+            if (target != null) {
+                boolean focused = target.isFocused();
+                if (focused || SystemClock.uptimeMillis() >= focusGraceUntil) {
+                    Bundle args = new Bundle();
+                    args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "");
+                    if (target.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) {
+                        return;
+                    }
+                    lastState = "SET_TEXT 拒否(input connection 未確立の可能性)";
+                } else {
+                    lastState = "対象ノードは未フォーカス";
+                }
+            }
+            if (SystemClock.uptimeMillis() >= deadline) {
+                throw new BridgeRouter.BridgeException(409,
+                        "タップしたフィールドをクリアできませんでした(" + lastState + "、"
+                        + timeoutMs + "ms 待機)");
+            }
+            SystemClock.sleep(20);
+        }
+    }
+
     /** 点(x,y)を bounds に含む editable ノード(最深一致)。無ければ null。 */
     private static AccessibilityNodeInfo editableAt(AccessibilityNodeInfo root, int x, int y, Rect tmp) {
         AccessibilityNodeInfo best = null;
@@ -125,6 +162,27 @@ final class InputInjector {
         args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, combined);
         if (!focus.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) {
             throw new BridgeRouter.BridgeException(500,
+                    "ACTION_SET_TEXT を受け付けないフィールドです(WebView 等)");
+        }
+    }
+
+    /**
+     * フォーカス中の入力欄を空文字へ全置換する(/clear の ref なし経路)。
+     * 対象なし/SET_TEXT 拒否は 409(setTextAppending の 500 とは意図的に異なる。
+     * BridgeDTO.ClearRequest の記載どおりホストの typeDriver フォールバックの合図とする)。
+     */
+    static void clearFocused(UiAutomation ua) {
+        AccessibilityNodeInfo root = SnapshotBuilder.waitForRoot(ua, 2000);
+        AccessibilityNodeInfo focus = root == null ? null
+                : root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
+        if (focus == null) {
+            throw new BridgeRouter.BridgeException(409,
+                    "入力フォーカスを持つ要素がありません(先に ref 指定でタップしてください)");
+        }
+        Bundle args = new Bundle();
+        args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "");
+        if (!focus.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) {
+            throw new BridgeRouter.BridgeException(409,
                     "ACTION_SET_TEXT を受け付けないフィールドです(WebView 等)");
         }
     }

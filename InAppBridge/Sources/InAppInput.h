@@ -29,6 +29,10 @@ BOOL FTPressEnterOnComposeFirstResponder(void);
 /// type 失敗(409)時の診断: first responder の実クラスと入力プロトコル対応状況
 NSString *FTFirstResponderDiagnostics(void);
 
+/// 現在の first responder のテキストを空にする。クリアできたら YES。first responder が
+/// 無い/どの入力プロトコルにも該当しない場合は NO(呼び出し側は 409 で xcuitest フォールバックへ)。
+BOOL FTClearTextInFirstResponder(void);
+
 /// アクセシビリティを自動化用に活性化する(_AXSSetAutomationEnabled)。これをしないと
 /// SwiftUI の AX ツリーが materialize されず、accessibilityFrame が zero・label が空になる
 /// (XCUITest は起動時にこれを行っている)。起動時に1回呼ぶ。失敗は非致命。

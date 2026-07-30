@@ -59,6 +59,7 @@ public final class SessionRecoveryDriver: AppDriver {
 
     public func openAppSwitcher() async throws { try await withRecovery { try await base.openAppSwitcher() } }
     public func home() async throws { try await withRecovery { try await base.home() } }
+    public func back() async throws { try await withRecovery { try await base.back() } }
     public func snapshot() async throws -> SnapshotResponse { try await withRecovery { try await base.snapshot() } }
     public func tap(x: Double, y: Double) async throws { try await withRecovery { try await base.tap(x: x, y: y) } }
     public func swipe(_ direction: FTSwipeDirection) async throws {
@@ -102,6 +103,14 @@ public final class SessionRecoveryDriver: AppDriver {
     public func type(ref: Int?, text: String) async throws {
         do {
             try await base.type(ref: ref, text: text)
+        } catch {
+            try await recoverAndRethrow(error)
+        }
+    }
+
+    public func clearInput(ref: Int?) async throws {
+        do {
+            try await base.clearInput(ref: ref)
         } catch {
             try await recoverAndRethrow(error)
         }
