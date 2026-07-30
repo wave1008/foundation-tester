@@ -141,4 +141,53 @@ class ライフサイクルとプラットフォーム分岐が正しく働く�
             }
         }
     }
+
+    @Test("clearAppData でアプリのデータが消える")
+    func S0040() {
+        scenario {
+            // clearAppData はアプリを残しデータだけ消す(iOS はシミュレータ専用)
+            scene(1, "入力して echo に値が残る") {
+                condition {
+                    launchApp()
+                }.expectation {
+                    // Flutter は起動直後の数百 ms、a11y ツリーは完成しているのに**ポインタ入力を
+                    // 取りこぼす**ことがある(初回タップが成功扱いのまま黙って無反応になる。
+                    // Android で実測)。ここで1往復させ、着地を確認してから操作する。
+                    //
+                    // requireVisible: false = これは可視性の**検証**ではなく同期のための1往復。
+                    // FM はホスト全体で直列化(約1回/秒)されるため、全 launchApp で FM を
+                    // 呼ぶとコストだけが乗る。**可視性の検証と、occlusion-guard の誤判定を
+                    // 検出する役目は 01_起動と画面遷移 が既定(true)のまま担う**
+                    // (README「既知の ftester 欠陥」参照。ここで guard を切っても検出器は死なない)。
+                    exist("#txt_home_marker", requireVisible: false)
+                }.action {
+                    tap("#nav_input")
+                    // Android は input connection が張られるまで ACTION_SET_TEXT を受け付けない
+                    // (500「ACTION_SET_TEXT を受け付けないフィールドです」で落ちる)。Flutter は
+                    // この接続確立が tap 応答より遅れるため、tap と type の間に1往復挟んで待つ。
+                    tap("#field_single")
+                }.expectation {
+                    exist("#field_single")
+                }.action {
+                    type("#field_single", "persist99")
+                    tap("#btn_input_submit")
+                }.expectation {
+                    textIs("#txt_input_submitted", "submitted=persist99")
+                }
+            }
+            scene(2, "clearAppData 後に起動すると初期状態に戻る") {
+                action {
+                    clearAppData()
+                    launchApp()
+                }.expectation {
+                    exist("#txt_home_marker", requireVisible: false)
+                }.action {
+                    tap("#nav_input")
+                }.expectation {
+                    textIs("#txt_input_submitted", "submitted=-")
+                    textIs("#txt_echo_single", "single=")
+                }
+            }
+        }
+    }
 }
