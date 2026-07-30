@@ -259,6 +259,15 @@ test("isMonitorFromWebviewMessage: streamStall は scope=live なら device 不�
   assert.equal(isMonitorFromWebviewMessage({ type: "streamStall", device: "" }), false);
 });
 
+test("isMonitorFromWebviewMessage: setTileAutoFit は boolean value のみ受理する", () => {
+  // case 漏れで default:false に落ちると、auto-fit トグルの永続化(monitorPanel.ts の
+  // workspaceState 保存)へ一切届かず「記憶されない」実害になる(2026-07-30 に実発生)。
+  assert.equal(isMonitorFromWebviewMessage({ type: "setTileAutoFit", value: true }), true);
+  assert.equal(isMonitorFromWebviewMessage({ type: "setTileAutoFit", value: false }), true);
+  assert.equal(isMonitorFromWebviewMessage({ type: "setTileAutoFit" }), false);
+  assert.equal(isMonitorFromWebviewMessage({ type: "setTileAutoFit", value: "true" }), false);
+});
+
 test("isMonitorFromWebviewMessage: deviceOp は name(string)+op(up/down)が揃っていれば true", () => {
   assert.equal(isMonitorFromWebviewMessage({ type: "deviceOp", name: "シミュ1", op: "up" }), true);
   assert.equal(isMonitorFromWebviewMessage({ type: "deviceOp", name: "シミュ1", op: "down" }), true);
