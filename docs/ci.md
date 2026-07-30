@@ -8,7 +8,10 @@
 - **macOS ランナーが必要**(iOS シミュレータ / Android エミュレータが要るため)。
   実デバイスフリートを使うなら self-hosted、シミュレータだけなら GitHub ホストの macOS ランナーでも動く
 - **Apple Intelligence は不要**。CI に無くても heal・screenIs・偽陽性検証が自動スキップされるだけで、
-  決定的実行(タップ・検証)は全機能動く(`ftester run` が起動時に ⚠️ を1行出す)
+  決定的実行(タップ・検証)は全機能動く(`ftester run` が起動時に ⚠️ を1行出す)。
+  **ただし `screenIs`・`requireVisible` を使うシナリオは、FM 無しでは検証されずに素通り(pass)になる**
+  (run 末尾の FM 警告が申告する)。画面照合を CI でも効かせたいなら
+  Apple Intelligence 有効の self-hosted ランナーを使う
 - Xcode・(Android を回すなら)Android SDK がランナーに導入済みであること。
   状態判定は `Scripts/preflight.sh`(読み取りのみ)
 
