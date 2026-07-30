@@ -1620,6 +1620,60 @@ final class StepExecutorTests: XCTestCase {
                       "swipe 後は静止待ちの snapshot だけが続くはず: \(log.entries)")
     }
 
+    // MARK: - scrollToEdge の端判定(静止署名)
+
+    /// 静止画面なのにラベルだけが取得のたびに振れても、端に着いたと判定して止まること。
+    /// 実機(E2E-iOS/ios-xcuitest・2026-07-31)の再現: SwiftUI List では画面外の再利用セルが
+    /// 別の行のラベルを名乗り A↔B で交互に振れる(frame は 1pt も動かない)。署名にラベルを
+    /// 入れていた頃はこれで永久に収束せず、scrollToTop が毎回 maxSwipes 上限まで回って 44〜55s
+    /// かかっていた。**署名からラベルを外すと落ちる**ので、この防波堤を消さないこと
+    func testScrollToEdgeStopsWhenOnlyLabelsFlapBetweenSnapshots() async throws {
+        let log = CallLog()
+        // frame は全スナップショットで同一。ラベルだけが1要素ぶん交互に入れ替わる
+        func frame(_ label: String) -> [ElementInfo] {
+            [ElementInfo(ref: 1, type: "cell", identifier: "row_01", label: label, value: nil,
+                         placeholder: nil, enabled: true,
+                         frame: FTRect(x: 16, y: 100, width: 370, height: 56), depth: 0)]
+        }
+        // 上限まで回った場合でも尽きない長さを与える(尽きると最後が繰り返され交互でなくなる)
+        let flapping = (0..<200).map { frame($0.isMultiple(of: 2) ? "行 12" : "行 21") }
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: flapping)
+        let executor = StepExecutor(driver: primary)
+        let step = FlowStep(action: "scrollToEdge", direction: "up", maxSwipes: 20)
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else { XCTFail("scrollToEdge は pass のはず"); return }
+        XCTAssertNil(outcome.driverFallback,
+                     "端に着いたと判定できていれば上限打ち切りの注記は付かない: \(outcome.driverFallback ?? "-")")
+        let swipes = log.entries.filter { $0 == "primary.swipe" }.count
+        XCTAssertLessThanOrEqual(swipes, 3,
+                                 "連続2回不変で端と判定して止まるはず(実際は \(swipes) 回スワイプ)")
+    }
+
+    /// 端に着く前(スクロールで frame が動いている間)は止まらないこと。
+    /// 上の防波堤を「常に即 break」で通してしまう実装を落とす対の検証
+    func testScrollToEdgeKeepsSwipingWhileFramesStillMove() async throws {
+        let log = CallLog()
+        func frame(_ y: Double) -> [ElementInfo] {
+            [ElementInfo(ref: 1, type: "cell", identifier: "row_01", label: "行 01", value: nil,
+                         placeholder: nil, enabled: true,
+                         frame: FTRect(x: 16, y: y, width: 370, height: 56), depth: 0)]
+        }
+        // 毎回 y が動き続ける = 端に着かない。上限まで回って注記が付く
+        let moving = (0..<200).map { frame(Double($0) * 10) }
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: moving)
+        let executor = StepExecutor(driver: primary)
+        let step = FlowStep(action: "scrollToEdge", direction: "up", maxSwipes: 3)
+
+        let outcome = await executor.execute(step)
+
+        XCTAssertEqual(log.entries.filter { $0 == "primary.swipe" }.count, 3,
+                       "動き続ける間は上限まで送ること: \(log.entries)")
+        XCTAssertEqual(outcome.driverFallback, "stopped at the limit of 3 (may not have reached the edge yet)",
+                       "端に着いていないことを注記すること")
+    }
+
     // MARK: - notExist(scroll:) の内蔵探索(exist(scroll:) の裏返し)
 
     /// スクロール探索を尽くしても見つからなければ、現在のビューポート(最終フレーム)でも
