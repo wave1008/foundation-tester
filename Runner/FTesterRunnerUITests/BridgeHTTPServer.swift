@@ -63,9 +63,20 @@ final class BridgeHTTPServer {
         return ProcessInfo.processInfo.systemUptime - lastRequestUptime
     }
 
+    /// 直前のリクエストまでの無通信秒数(/status の idleSeconds 申告用。
+    /// handler 実行時点では markRequest 済みで idleSeconds が 0 に戻っているため別に持つ)
+    private var previousIdleUptime: TimeInterval = 0
+    var idleBeforeLastRequest: TimeInterval {
+        lastRequestLock.lock()
+        defer { lastRequestLock.unlock() }
+        return previousIdleUptime
+    }
+
     private func markRequest() {
         lastRequestLock.lock()
-        lastRequestUptime = ProcessInfo.processInfo.systemUptime
+        let now = ProcessInfo.processInfo.systemUptime
+        previousIdleUptime = now - lastRequestUptime
+        lastRequestUptime = now
         lastRequestLock.unlock()
     }
 

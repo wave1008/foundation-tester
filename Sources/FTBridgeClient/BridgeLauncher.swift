@@ -178,6 +178,8 @@ public struct BridgeLauncher {
             // 無通信 TTL。ホストで解決してから数値文字列で渡す(ランナー側は再解釈するだけ)
             env["FT_BRIDGE_TTL"] = String(BridgeAPI.resolvedBridgeTTLSeconds(
                 ProcessInfo.processInfo.environment["FT_BRIDGE_TTL"]))
+            // 起動元の自己申告(/status の ownerRepo。doctor の刈り取り判定が依存)
+            env["FT_OWNER_REPO"] = repoRoot.path
             // 実機はデバイス内ループバックがホストから見えないので全インターフェースに開く。
             // 同期相手: Runner/FTesterRunnerUITests/BridgeHTTPServer.swift の start()
             if physical { env["FT_BIND_ALL"] = "1" }
@@ -275,23 +277,31 @@ public struct BridgeLauncher {
     /// stop() が同期メソッドなので URLSession の async は使わず、セマフォで待つ。
     /// 到達しなければ nil(= 本当に起動していない)。
     public static func probeForeignBridge(port: UInt16, timeout: TimeInterval = 1.5)
-        -> (device: String?, protocolVersion: Int?)? {
+        -> StatusResponse? {
         guard let url = URL(string: "http://127.0.0.1:\(port)/status") else { return nil }
         var request = URLRequest(url: url)
         request.timeoutInterval = timeout
         let semaphore = DispatchSemaphore(value: 0)
-        var result: (String?, Int?)?
+        var result: StatusResponse?
         let config = URLSessionConfiguration.ephemeral
         config.timeoutIntervalForRequest = timeout
         URLSession(configuration: config).dataTask(with: request) { data, _, _ in
             defer { semaphore.signal() }
-            guard let data,
-                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-            else { return }
-            result = (object["device"] as? String, object["protocolVersion"] as? Int)
+            guard let data else { return }
+            result = try? JSONDecoder().decode(StatusResponse.self, from: data)
         }.resume()
         _ = semaphore.wait(timeout: .now() + timeout + 0.5)
         return result
+    }
+
+    /// doctor の刈り取り用: pid が FTesterRunner のランナーであることを ps で確認してから
+    /// SIGTERM する(PID 再利用で無関係なプロセスを撃たないため)。戻り値 = 停止したか
+    public static func reapRunnerProcess(pid: Int32) -> Bool {
+        let ps = try? Shell.run(["ps", "-ww", "-p", String(pid), "-o", "command="])
+        guard let ps, ps.status == 0, ps.output.contains("FTesterRunner") else { return false }
+        kill(pid, SIGTERM)
+        confirmDeaths(pids: [pid], timeout: 5)
+        return true
     }
 
     /// SIGTERM 済みの pid の消滅を timeout まで待ち、生き残れば SIGKILL してから pid ファイルを削除する。

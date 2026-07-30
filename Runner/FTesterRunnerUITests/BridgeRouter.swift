@@ -32,6 +32,10 @@ final class BridgeRouter {
     // 書いていたのは **350ms ガード込みの値を素のコストと取り違えた誤り**だった。
     private var settlePending = false
 
+    /// /status の idleSeconds 申告用(FTesterBridgeTests がサーバ生成後に配線する。
+    /// サーバ⇔ルーターの生成順の都合でコンストラクタ注入にしない)
+    var idleSecondsProvider: (() -> TimeInterval)?
+
     private let decoder = JSONDecoder()
 
     // 画面を変えうる操作。直後の snapshot だけ整定確認する(handleSnapshot の settlePending)。
@@ -86,7 +90,11 @@ final class BridgeRouter {
             sessionBundleID: sessionBundleID,
             engine: "xcuitest",
             protocolVersion: BridgeAPI.bridgeProtocolVersion,
-            fastInputAvailable: FastInput.available))
+            fastInputAvailable: FastInput.available,
+            // 起動元の自己申告(doctor の刈り取り判定が依存。BridgeDTO の各フィールド参照)
+            ownerRepo: ProcessInfo.processInfo.environment["FT_OWNER_REPO"],
+            ownerPid: Int(ProcessInfo.processInfo.processIdentifier),
+            idleSeconds: idleSecondsProvider.map { $0() }))
     }
 
     private func handleLaunch(_ body: Data) throws -> BridgeHTTPServer.Response {

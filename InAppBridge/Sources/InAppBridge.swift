@@ -124,7 +124,9 @@ final class FTInAppBridge {
                 // flutter も swipe を申告する: UIScrollView が存在しないため in-app の
                 // contentOffset 経路が無く、常に 501 になる(往復を省くため最初から XCUITest へ)
                 unsupportedActions: ["compose", "flutter"].contains(self.uiFramework)
-                    ? ["swipe", "press"] : ["press"]))
+                    ? ["swipe", "press"] : ["press"],
+                // 起動元の自己申告(InAppLauncher が SIMCTL_CHILD_FT_OWNER_REPO で注入)
+                ownerRepo: ProcessInfo.processInfo.environment["FT_OWNER_REPO"]))
         }
     }
 

@@ -134,6 +134,9 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         if (versionCode > 0) o.put("bridgeVersionCode", versionCode);
         String session = pkg != null ? pkg : sessionBundleID;
         if (session != null) o.put("sessionBundleID", session);
+        // 起動元の自己申告(doctor の診断用。BridgeDTO.StatusResponse の同名フィールド参照)
+        if (BridgeInstrumentation.ownerRepo != null) o.put("ownerRepo", BridgeInstrumentation.ownerRepo);
+        o.put("idleSeconds", BridgeHttpServer.lastIdleSeconds);
         return BridgeHttpServer.Response.json(200, o.toString());
     }
 

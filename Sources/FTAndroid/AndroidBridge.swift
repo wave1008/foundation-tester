@@ -15,7 +15,7 @@ extension AndroidDriver {
     /// デバイス側の listen ポート(全デバイス共通。デバイス毎に独立 loopback なので衝突しない)
     static let bridgeDevicePort: UInt16 = 8123
     /// AndroidRunner/build.sh の VERSION_CODE と同期(不一致なら自動で再インストール)
-    public static let expectedBridgeVersionCode = 20
+    public static let expectedBridgeVersionCode = 21
 
     enum BridgeState {
         case active(BridgeClient)
@@ -158,8 +158,11 @@ extension AndroidDriver {
         // -w 必須(UiAutomationConnection は am プロセス側に生成される)。
         // デバイス内でバックグラウンド化するので adb 切断後も常駐する
         let ttl = BridgeAPI.resolvedBridgeTTLSeconds(ProcessInfo.processInfo.environment["FT_BRIDGE_TTL"])
+        // 起動元の自己申告(/status の ownerRepo。doctor の診断用)。シングルクォートで
+        // スペースを含むパスを守る(パス中の ' は稀なので非対応)
+        let owner = (try? RepoRoot.find()).map { " -e owner '\($0.path)'" } ?? ""
         _ = try adb(["shell",
-                     "am instrument -w -e port \(Self.bridgeDevicePort) -e ttl \(ttl) "
+                     "am instrument -w -e port \(Self.bridgeDevicePort) -e ttl \(ttl)\(owner) "
                      + "\(Self.bridgeComponent) </dev/null >/dev/null 2>&1 &"])
 
         // ready 待ち(200ms 間隔・最大 10 秒)。起動直後は導入したての APK なので版照合は不要

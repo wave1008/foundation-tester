@@ -101,6 +101,8 @@ public struct InAppLauncher {
         var env = [
             "SIMCTL_CHILD_DYLD_INSERT_LIBRARIES=\(dylib.path)",
             "SIMCTL_CHILD_FT_PORT=\(port)",
+            // 起動元の自己申告(/status の ownerRepo。doctor の刈り取り判定が依存)
+            "SIMCTL_CHILD_FT_OWNER_REPO=\(repoRoot.path)",
         ]
         if let webViewDOM = ProcessInfo.processInfo.environment["FT_WEBVIEW_DOM"] {
             env.append("SIMCTL_CHILD_FT_WEBVIEW_DOM=\(webViewDOM)")
