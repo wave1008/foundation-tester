@@ -1,17 +1,15 @@
-# CI で回す(JUnit 出力と GitHub Actions の例)
+# CI で回す(JUnit 出力と Jenkins の例)
 
 シナリオは LLM なしの決定的実行なので CI に向く(exit code と JUnit XML で結果を機械処理できる)。
 このドキュメントは**受け手パッケージを CI で回す**ための最小構成。
 
 ## 前提
 
-- **macOS ランナーが必要**(iOS シミュレータ / Android エミュレータが要るため)。
-  実運用の主想定は self-hosted の Mac(Jenkins 常駐機・AWS EC2 Mac インスタンス等)。
-  GitHub Actions を使う場合も **macOS ランナー限定**(`runs-on: macos-15` 等。実体は
-  Apple ハードウェア上の macOS VM で、Xcode とシミュレータ入り)。ubuntu/windows ランナーでは
-  iOS シミュレータは動かない。GitHub ホストの macOS ランナーで足りるのはシミュレータ実行まで
-  (実機フリート・Apple Intelligence は self-hosted が要る)。
-  いずれも**ログイン済みの GUI セッションのユーザーで実行する**(シミュレータ実行の一般則。
+- **サポートするのは self-hosted の Mac**(Jenkins 常駐機・AWS EC2 Mac インスタンス等。
+  iOS シミュレータ / Android エミュレータが要るため macOS 必須)。
+  **GitHub ホストランナー(GitHub Actions の `macos-*` 等)はサポート外**
+  (実体が macOS VM のため FM が使えず、動作検証もしていない)
+- **ログイン済みの GUI セッションのユーザーで実行する**(シミュレータ実行の一般則。
   LaunchDaemon や ssh 直のヘッドレス実行はシミュレータが不安定になる)
 - **Apple Intelligence は不要**。CI に無くても heal・screenIs・偽陽性検証が自動スキップされるだけで、
   決定的実行(タップ・検証)は全機能動く(`ftester run` が起動時に ⚠️ を1行出す)。
@@ -39,42 +37,6 @@ ftester run --profile ios-xcuitest --quiet --junit reports/junit.xml
   スクリーンショット・FM トリアージ)が出る。**artifact に上げておく**と JUnit の
   `report:` 行から辿れる
 
-## GitHub Actions の例(self-hosted macOS)
-
-```yaml
-jobs:
-  e2e:
-    runs-on: [self-hosted, macOS]
-    steps:
-      - uses: actions/checkout@v4            # 受け手パッケージ(Projects/ を含む)
-      - name: Install / update foundation-tester
-        run: |
-          bash ../foundation-tester/Scripts/install.sh \
-            --work-dir "$PWD" --skip-extension --skip-mcp --no-doctor
-      - name: Run scenarios
-        run: |
-          ../foundation-tester/.build/debug/ftester run \
-            --profile ios-xcuitest --quiet --junit reports/junit.xml
-      - name: Publish test report
-        uses: mikepenz/action-junit-report@v4    # 任意の JUnit 取り込みアクションで可
-        if: always()
-        with:
-          report_paths: reports/junit.xml
-      - name: Upload failure evidence
-        uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: ftester-reports
-          path: |
-            reports/junit.xml
-            Projects/*/reports/
-```
-
-- デバイスの供給(シミュレータ起動・ブリッジ)は `--profile` 実行が自動で行う。
-  連続ジョブでは稼働中ブリッジが再利用される(コールドスタートは初回だけ数分)
-- ジョブ間で環境を掃除したいときは `ftester devices down`(全ブリッジ停止 + シミュレータ/
-  エミュレータ全終了)をジョブ末尾に置く
-
 ## Jenkins の例
 
 ```groovy
@@ -95,6 +57,11 @@ pipeline {
 }
 ```
 
+- デバイスの供給(シミュレータ起動・ブリッジ)は `--profile` 実行が自動で行う。
+  連続ジョブでは稼働中ブリッジが再利用される(コールドスタートは初回だけ数分)
+- ジョブ間で環境を掃除したいときは `ftester devices down`(全ブリッジ停止 + シミュレータ/
+  エミュレータ全終了)をジョブ末尾に置く
+
 ## Apple Intelligence を CI で使う(任意)
 
 **ランナーの実体がベアメタルか VM かで可否が決まる**(Virtualization.framework は ANE を
@@ -105,7 +72,7 @@ pipeline {
 |---|---|
 | 物理 Mac(Jenkins 常駐機等) | ✅ 可(本プロジェクトの開発機で実証済み) |
 | AWS EC2 Mac(ベアメタル) | 原理的に可のはず(未検証)。macOS 27 の画像入力は GA 版 AMI 提供後。macOS 26 AMI ならテキスト系(heal・トリアージ)まで |
-| macOS VM(GitHub ホストランナー・Tart/Anka 等) | ❌ 不可の公算大(ANE 非公開)。FM 系は自動スキップで走る |
+| macOS VM(Tart/Anka 等の VM 構成。サポート外の GitHub ホストランナーも同類) | ❌ 不可の公算大(ANE 非公開)。FM 系は自動スキップで走る |
 
 ベアメタルで有効化する場合の条件と罠:
 
