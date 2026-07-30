@@ -31,7 +31,7 @@ public enum FMDoctor {
         guard base.available else { return base }
         do {
             _ = try await LanguageModelSession().respond(
-                to: "OK とだけ答えてください。",
+                to: "Answer with just OK.",
                 options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 8))
             return Report(available: true, detail: "On-device model: available (confirmed by a live call)")
         } catch {

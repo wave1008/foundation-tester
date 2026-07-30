@@ -4,11 +4,31 @@ import FTCore
 
 final class StepDescriptionTests: XCTestCase {
 
+    // MARK: - 言語は内容に追従する(2026-07-30 ユーザー決定)
+
+    /// 同じコマンドでも、内容(ラベル・期待値・入力値)に日本語があれば日本語文・
+    /// 無ければ英語文になる。片方だけ変えるとこのテストが境界のドリフトを検出する
+    func testLanguageFollowsContent() {
+        XCTAssertEqual(StepDescription.describe(command: "tap \"ログイン\""),
+                       "\"ログイン\"をタップする")
+        XCTAssertEqual(StepDescription.describe(command: "tap \"Login\""), "tap \"Login\"")
+        // 目的語はラテンでも、期待値が日本語なら日本語文
+        XCTAssertEqual(
+            StepDescription.describe(command: "textIs \"#title\" == \"ホーム\""),
+            "\"#title\"のテキストが\"ホーム\"であること")
+        XCTAssertEqual(
+            StepDescription.describe(command: "textIs \"#title\" == \"Home\""),
+            "\"#title\" text is \"Home\"")
+        // 半角カナも日本語として扱う
+        XCTAssertEqual(StepDescription.describe(command: "tap \"ﾛｸﾞｲﾝ\""),
+                       "\"ﾛｸﾞｲﾝ\"をタップする")
+    }
+
     // MARK: - ユーザー指定の変換例(完全一致)
 
     func testUserSpecifiedExamples() {
         XCTAssertEqual(StepDescription.describe(command: "launch com.android.settings"),
-                       "com.android.settingsアプリを起動する")
+                       "launch the com.android.settings app")
         XCTAssertEqual(StepDescription.describe(command: "tap \"ネットワークとインターネット\""),
                        "\"ネットワークとインターネット\"をタップする")
         XCTAssertEqual(
@@ -24,7 +44,7 @@ final class StepDescriptionTests: XCTestCase {
 
     func testType() {
         XCTAssertEqual(StepDescription.describe(command: "type \"#email\" \"a@b.c\""),
-                       "\"#email\"に\"a@b.c\"を入力する")
+                       "type \"a@b.c\" into \"#email\"")
     }
 
     func testTypeFocusedElementForm() {
@@ -36,7 +56,7 @@ final class StepDescriptionTests: XCTestCase {
     func testTypeWithSpaceInText() {
         // テキストに空白があっても最初の「" "」で区切る(セレクタに " は含まれない前提)
         XCTAssertEqual(StepDescription.describe(command: "type \"#q\" \"hello world\""),
-                       "\"#q\"に\"hello world\"を入力する")
+                       "type \"hello world\" into \"#q\"")
     }
 
     func testPress() {
@@ -45,10 +65,10 @@ final class StepDescriptionTests: XCTestCase {
     }
 
     func testSwipeAllDirections() {
-        XCTAssertEqual(StepDescription.describe(command: "swipe up"), "上にスワイプする")
-        XCTAssertEqual(StepDescription.describe(command: "swipe down"), "下にスワイプする")
-        XCTAssertEqual(StepDescription.describe(command: "swipe left"), "左にスワイプする")
-        XCTAssertEqual(StepDescription.describe(command: "swipe right"), "右にスワイプする")
+        XCTAssertEqual(StepDescription.describe(command: "swipe up"), "swipe up")
+        XCTAssertEqual(StepDescription.describe(command: "swipe down"), "swipe down")
+        XCTAssertEqual(StepDescription.describe(command: "swipe left"), "swipe left")
+        XCTAssertEqual(StepDescription.describe(command: "swipe right"), "swipe right")
         XCTAssertNil(StepDescription.describe(command: "swipe diagonal"))
     }
 
@@ -70,7 +90,7 @@ final class StepDescriptionTests: XCTestCase {
 
     func testValueIs() {
         XCTAssertEqual(StepDescription.describe(command: "valueIs \"#switch\" == \"1\""),
-                       "\"#switch\"の値が\"1\"であること")
+                       "\"#switch\" value is \"1\"")
     }
 
     func testScreenIs() {
@@ -80,23 +100,23 @@ final class StepDescriptionTests: XCTestCase {
 
     func testLaunchAndRelaunch() {
         XCTAssertEqual(StepDescription.describe(command: "relaunch com.example.app"),
-                       "com.example.appアプリを再起動する")
+                       "relaunch the com.example.app app")
     }
 
     func testTerminate() {
-        XCTAssertEqual(StepDescription.describe(command: "terminate"), "アプリを終了する")
+        XCTAssertEqual(StepDescription.describe(command: "terminate"), "terminate the app")
     }
 
     func testPressEnter() {
-        XCTAssertEqual(StepDescription.describe(command: "pressEnter"), "Enterキーを押す")
+        XCTAssertEqual(StepDescription.describe(command: "pressEnter"), "press the Enter key")
         XCTAssertEqual(StepDescription.describe(step: FlowStep(action: "pressEnter")),
-                       "Enterキーを押す")
+                       "press the Enter key")
     }
 
     func testWait() {
-        XCTAssertEqual(StepDescription.describe(command: "wait 1.0s"), "1秒待機する")
-        XCTAssertEqual(StepDescription.describe(command: "wait 0.5s"), "0.5秒待機する")
-        XCTAssertEqual(StepDescription.describe(command: "wait 3.0s"), "3秒待機する")
+        XCTAssertEqual(StepDescription.describe(command: "wait 1.0s"), "wait 1s")
+        XCTAssertEqual(StepDescription.describe(command: "wait 0.5s"), "wait 0.5s")
+        XCTAssertEqual(StepDescription.describe(command: "wait 3.0s"), "wait 3s")
     }
 
     func testNonTargetCommandsReturnNil() {
@@ -137,7 +157,7 @@ final class StepDescriptionTests: XCTestCase {
         XCTAssertEqual(
             StepDescription.describe(command: "exist \"旧ラベル\"",
                                      selectorOverride: "#id_only"),
-            "\"#id_only\"が(覆われず)見えていること")
+            "\"#id_only\" is visible (not covered)")
     }
 
     // MARK: - describe(step:)(コード生成用)
@@ -149,10 +169,10 @@ final class StepDescriptionTests: XCTestCase {
 
         let exist = FlowStep(assert: "exists", locator: FlowLocator(id: "collapsing_toolbar"))
         XCTAssertEqual(StepDescription.describe(step: exist),
-                       "\"#collapsing_toolbar\"が表示されること")
+                       "\"#collapsing_toolbar\" is shown")
 
         let type = FlowStep(action: "type", locator: FlowLocator(id: "email"), text: "a@b.c")
-        XCTAssertEqual(StepDescription.describe(step: type), "\"#email\"に\"a@b.c\"を入力する")
+        XCTAssertEqual(StepDescription.describe(step: type), "type \"a@b.c\" into \"#email\"")
 
         // ロケータなし = フォーカス中の要素へ入力
         XCTAssertEqual(StepDescription.describe(step: FlowStep(action: "type", text: "あいう")),

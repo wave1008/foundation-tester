@@ -42,7 +42,7 @@ final class ScenarioDraftCodeGenTests: XCTestCase {
             DraftScene(number: 1, title: "s", condition: ["商品が3件登録済みである"], action: ["押す"]),
         ])
         let code = render(draft)
-        XCTAssertTrue(code.contains("// TODO: 前提「商品が3件登録済みである」"))
+        XCTAssertTrue(code.contains("// TODO: prepare the precondition 「商品が3件登録済みである」"))
     }
 
     func testActionMapping() {
@@ -103,6 +103,6 @@ final class ScenarioDraftCodeGenTests: XCTestCase {
         XCTAssertFalse(ScenarioDraftCodeGen.isAppLaunch("設定画面を表示する"))
 
         let line = ScenarioDraftCodeGen.commandLine(forCondition: "カートタブを開く", indent: "")
-        XCTAssertTrue(line.hasPrefix("// TODO: 前提"), "画面内操作は TODO コメントに落とす: \(line)")
+        XCTAssertTrue(line.hasPrefix("// TODO: prepare the precondition"), "画面内操作は TODO コメントに落とす: \(line)")
     }
 }

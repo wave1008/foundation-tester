@@ -17,7 +17,7 @@ enum RepairConfidence {
 
 @Generable
 struct LocatorRepairSuggestion {
-    @Guide(description: "The element that should stand in for the broken locator. Copy exactly one label (inside 「」) or id= string from the current element list, verbatim")
+    @Guide(description: "The element that should stand in for the broken locator. Copy exactly one label (the quoted string) or id= value from the current element list, verbatim")
     var elementText: String
 
     @Guide(description: "Confidence that the replacement plays the same role as the original")
@@ -70,18 +70,18 @@ public final class FMReplayDelegate: ReplayDelegate {
         defer { FMGate.leave() }
         let rendered = SnapshotRenderer.render(snapshot)
         let session = LanguageModelSession(instructions: """
-        あなたは UI テストのロケータ修復者です。アプリの UI 変更で見つからなくなった要素の
-        代役を、現在の画面の要素一覧から選びます。役割・意味が同じ要素だけを選び、
-        確信が持てない場合は confidence を low にしてください。
+        You repair locators for UI tests. An element can no longer be found after a UI change;
+        pick its stand-in from the current element list. Choose only an element with the same
+        role and meaning, and set confidence to low when unsure.
         """)
         let prompt = """
-        見つからなくなったステップ: \(step.summary)
+        Step whose element is missing: \(step.summary)
         \(step.note.map { "Intent of this step: \($0)" } ?? "")
 
-        現在の画面の要素一覧:
+        Elements on the current screen:
         \(rendered)
 
-        このステップの対象として最も適切な要素を1つ選んでください。
+        Pick the single element that best matches this step's target.
         """
         let healStartedAt = Date()
         do {
@@ -140,8 +140,8 @@ public final class FMReplayDelegate: ReplayDelegate {
         guard await FMGate.enter() else { return nil }
         defer { FMGate.leave() }
         let session = LanguageModelSession(instructions: """
-        あなたは UI テストの画面検証者です。スクリーンショットを見て、
-        期待する状態と一致しているかを厳密に判定します。
+        You verify screens for UI tests. Look at the screenshot and judge strictly
+        whether it matches the expected state.
         """)
         let screenStartedAt = Date()
         do {

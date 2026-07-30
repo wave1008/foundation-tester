@@ -15,7 +15,7 @@ public enum ScenarioCodeGen {
             lines.append("// goal: \(goal.replacingOccurrences(of: "\n", with: " "))")
         }
         if flow.dirty == true {
-            lines.append("// TODO: 探索が未完了のまま生成されています。手直ししてから実行してください")
+            lines.append("// TODO: generated while exploration was still incomplete — review before running")
         }
         lines.append("")
         lines.append("import FTDSL")
@@ -69,7 +69,7 @@ public enum ScenarioCodeGen {
     /// 自明な説明はコメント規約で不可のため)
     static func render(step: FlowStep, indent: String) -> [String] {
         guard var line = command(for: step) else {
-            return [indent + "// (未対応ステップ: \(step.summary))"]
+            return [indent + "// (unsupported step: \(step.summary))"]
         }
         if let comment = step.note, !comment.isEmpty {
             line += "  // \(comment.replacingOccurrences(of: "\n", with: " "))"
@@ -211,7 +211,7 @@ public enum ScenarioCodeGen {
         public var errorDescription: String? {
             switch self {
             case .buildFailed(let quarantined, let detail):
-                return "生成コードのビルドに失敗したため \(quarantined.path) に隔離しました。\n\(detail)"
+                return "the generated code failed to build and was quarantined to \(quarantined.path).\n\(detail)"
             }
         }
     }

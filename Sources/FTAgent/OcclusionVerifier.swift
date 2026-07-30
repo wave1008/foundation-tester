@@ -26,16 +26,16 @@ enum VisibilityState {
 
 @Generable
 struct VisibilityVerdict {
-    @Guide(description: "期待テキストが覆われず・切れず・減光されず明瞭に読めるなら true。少しでも隠れ/欠け/判読困難があれば false")
+    @Guide(description: "true when the expected text is clearly readable — not covered, not cut off, not dimmed. false on any occlusion, clipping or illegibility")
     var visible: Bool
 
-    @Guide(description: "見え方の分類")
+    @Guide(description: "Classification of how it appears")
     var state: VisibilityState
 
-    @Guide(description: "実際に読み取れた文字列。読めなければ空文字")
+    @Guide(description: "The text actually read; empty when unreadable")
     var observedText: String
 
-    @Guide(description: "判定理由(日本語で1文)")
+    @Guide(description: "Reason for the verdict, in one English sentence")
     var reason: String
 }
 
@@ -69,17 +69,17 @@ public struct OcclusionVerifier {
               let crop = full.cropping(to: clamped) else { return nil }
 
         let instructions = """
-        あなたは UI テストの視覚検証者です。渡される画像は、ある UI 要素の周辺だけを切り出したものです。
-        目的は「その要素が別の要素・オーバーレイ・ローディング表示・減光レイヤーに覆われて見えないか」
-        (occlusion)だけを見抜くことです。次を厳守してください:
-        - テキストは末尾が「…」で省略されたり、途中で折り返し(改行)されることがあります。
-          省略・折り返しは正常であり visible=true とします。期待テキストの先頭部分が読めれば十分です。
-        - visible=false にするのは次の場合だけ: (a)領域が別の不透明要素/オーバーレイに覆われている、
-          (b)真っ白/真っ黒/単色で文字が全く無い、(c)期待テキストとは無関係の別文字列だけが描かれている。
-        - 多少の減光でも判読できるなら visible=true。推測で補完しないこと。
+        You visually verify UI tests. The image you receive is a crop around one UI element.
+        Your only job is to detect occlusion: whether the element is hidden behind another
+        element, an overlay, a loading indicator or a dimming layer. Follow these rules strictly:
+        - Text may be truncated with an ellipsis or wrapped onto multiple lines. Truncation and
+          wrapping are normal — return visible=true. Reading the beginning of the expected text is enough.
+        - Return visible=false ONLY when: (a) the area is covered by another opaque element/overlay,
+          (b) it is blank/black/solid-colour with no text at all, or (c) only unrelated text is drawn.
+        - Slight dimming is visible=true as long as the text is legible. Never fill gaps by guessing.
         """
         return await respond(instructions: instructions, image: crop, expectedText: expectedText) {
-            "期待テキスト(末尾は省略や折り返しがあり得る): \"\(expectedText)\"\nこのテキスト(またはその先頭部分)が、覆われず判読できる状態で描画されていますか。"
+            "Expected text (may be truncated or wrapped at the end): \"\(expectedText)\"\nIs this text (or its beginning) drawn unoccluded and legible?"
         }
     }
 
