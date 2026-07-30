@@ -5,6 +5,11 @@ description: foundation-tester の MCP サーバ(ftester-mcp)だけを Claude Co
 
 # ftester MCP 登録 runbook
 
+> **ユーザーへの質問(AskUserQuestion)・報告・チェックポイントはユーザーの言語で行う**。
+> この手順書は日本語だが、読者はエージェントであり利用者の言語とは独立している
+> (英語話者にはダイアログ・報告文をすべて英語で出す)。
+
+
 > **この手順書が古い可能性がある**: プラグイン経由で導入している場合、この文書は
 > `~/.claude/plugins/cache/` のスナップショットから読まれており `git pull` では更新されない。
 > **clone(TOOL_ROOT)が既にあるなら `<TOOL_ROOT>/.claude/skills/ftester-mcp/SKILL.md` を読み、
