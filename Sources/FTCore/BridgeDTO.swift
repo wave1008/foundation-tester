@@ -23,7 +23,9 @@ public enum BridgeAPI {
     /// 速度改善が入っていないのに緑になる
     /// 9: 無通信 TTL で自主終了するようになった(2026-07-30)。旧ランナーが再利用されると
     /// ゾンビ化防止が効かないまま残るため入れ替える
-    public static let bridgeProtocolVersion = 9
+    /// 10: /status が起動元(ownerRepo/ownerPid)を自己申告するようになった(2026-07-30)。
+    /// doctor の確定ゾンビ自動停止が申告に依存するため、確実に入れ替える
+    public static let bridgeProtocolVersion = 10
 
     /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
     /// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java の
@@ -84,11 +86,21 @@ public struct StatusResponse: Codable, Sendable {
     /// 「compose なら swipe 不可」のような知識をホストへ散らかさず、事情を知っている
     /// ブリッジ側に集約するための申告。返さない実装は nil(=制約なしとみなす)。
     public var unsupportedActions: [String]?
+    /// 起動元リポジトリのルートパス(iOS=FT_OWNER_REPO 環境変数 / Android=-e owner)。
+    /// doctor の刈り取り判定が依存: パスが実在しなければ確定ゾンビとして自動停止できる。
+    /// 旧ブリッジは返さない → nil 許容(=起動元不明・報告のみ)
+    public var ownerRepo: String?
+    /// ランナープロセスの pid(iOS のみ。ホスト上のプロセスなので doctor が直接停止できる)。
+    /// Android は device 内 pid になり意味が違うため返さない
+    public var ownerPid: Int?
+    /// このリクエストの直前の無通信秒数(「いつから放置されていたか」の診断用)
+    public var idleSeconds: Double?
 
     public init(ready: Bool, device: String, osVersion: String, sessionBundleID: String?,
                 engine: String? = nil, protocolVersion: Int? = nil, applicationState: String? = nil,
                 uiFramework: String? = nil, bridgeVersionCode: Int? = nil,
-                fastInputAvailable: Bool? = nil, unsupportedActions: [String]? = nil) {
+                fastInputAvailable: Bool? = nil, unsupportedActions: [String]? = nil,
+                ownerRepo: String? = nil, ownerPid: Int? = nil, idleSeconds: Double? = nil) {
         self.ready = ready
         self.device = device
         self.osVersion = osVersion
@@ -100,6 +112,9 @@ public struct StatusResponse: Codable, Sendable {
         self.bridgeVersionCode = bridgeVersionCode
         self.fastInputAvailable = fastInputAvailable
         self.unsupportedActions = unsupportedActions
+        self.ownerRepo = ownerRepo
+        self.ownerPid = ownerPid
+        self.idleSeconds = idleSeconds
     }
 }
 

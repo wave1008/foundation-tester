@@ -197,6 +197,12 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
   provision の reclaim 側)。自主終了はホスト側の pid ファイルを消せないため、provision が
   採番前に死んだランナーの pid ファイルを回収する(`BridgeLauncher.sweepStalePidFiles`。
   残すと `assignPort` が使用中とみなし採番がドリフトする)。
+- **起動元の自己申告と doctor の刈り取り(2026-07-30)**: 3ブリッジとも `/status` で起動元
+  (`ownerRepo`。iOS xcuitest はホスト上で停止できる `ownerPid` も)と直前の無通信秒数
+  (`idleSeconds`)を申告する(注入経路: xctestrun 環境変数 / `-e owner` / SIMCTL_CHILD)。
+  doctor は管理外ブリッジの処遇を `UnmanagedBridgeTriage`(唯一の判定者)で決める:
+  **自動停止は「自リポジトリの旧版」「起動元リポジトリが消滅した確定ゾンビ」の2行だけ**。
+  実在する別ワークスペースの所有物と起動元不明(旧ブリッジ)は報告のみ(他人の資産を殺さない)。
 
 ### 4.2 HTTP サーバ実装
 

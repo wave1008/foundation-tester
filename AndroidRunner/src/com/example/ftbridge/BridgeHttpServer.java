@@ -55,6 +55,9 @@ final class BridgeHttpServer {
         Response handle(Request request);
     }
 
+    /** 直前のリクエストまでの無通信秒数(/status の idleSeconds 申告用。accept 時に更新) */
+    static volatile double lastIdleSeconds;
+
     private BridgeHttpServer() {}
 
     /** accept ループ(ブロッキング)。TTL 満了かソケット生成失敗で戻る(呼び出し元が exit する)。
@@ -83,6 +86,8 @@ final class BridgeHttpServer {
                     // 下の受信タイムアウト(15s・異常系でログする)と混ぜないため accept だけ分ける
                     continue;
                 }
+                lastIdleSeconds =
+                        (android.os.SystemClock.elapsedRealtime() - lastRequestMillis) / 1000.0;
                 lastRequestMillis = android.os.SystemClock.elapsedRealtime();
                 try (Socket sock = accepted) {
                     // 相手が Content-Length 分を送り切らずに待つと、単スレッドの accept ループが

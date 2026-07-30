@@ -18,6 +18,7 @@ final class FTesterBridgeTests: XCTestCase {
         FastInput.installSwizzle()  // 高速入力(quiescence スキップ)。失敗しても通常動作
         let router = BridgeRouter()
         let server = BridgeHTTPServer(port: port) { router.handle($0) }
+        router.idleSecondsProvider = { [weak server] in server?.idleBeforeLastRequest ?? 0 }
         try server.start()
         // 実機は FT_BIND_ALL=1 で 0.0.0.0 に開く(BridgeHTTPServer.start 参照)。
         // 127.0.0.1 決め打ちで出すと実機の切り分け時に誤誘導する

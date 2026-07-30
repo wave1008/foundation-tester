@@ -206,41 +206,88 @@ struct Doctor: AsyncParsableCommand {
 
     /// 2つのルートを表示し、ツール本体を解決できたかを返す。外部パッケージ構成では別ディレクトリに
     /// なり、取り違えると「InAppBridge/build.sh が無い」「Projects/ が見えない」で詰まる(実害あり)
-    /// このリポジトリの管理下に無いブリッジ(別クローン起動 / 版が古い)を報告する。**停止はしない**。
+    /// このリポジトリの管理下に無いブリッジ(別クローン起動 / 版が古い)の報告と、
+    /// **証拠が決定的なものだけ**の自動停止(処遇は UnmanagedBridgeTriage が唯一の判定者):
+    /// 自リポジトリの旧版・起動元リポジトリが消滅したゾンビ → 停止 /
+    /// 別の実在ワークスペースの所有・起動元不明 → 報告のみ(他人の資産を勝手に殺さない)。
     ///
     /// 放置すると**ポートとシミュレータを握ったまま永久に残る**: provision の stale 掃除は
     /// 供給対象デバイスの分しか見ない(BridgeProvisioner の sameDevice 条件)ので、
     /// プロファイル外のデバイスに残った旧版ブリッジは誰も片付けない。
-    /// 実害: protocolVersion 4 のランナーが 7 時間 22 分ポート 8127 とシミュレータを占有した。
+    /// 実害: protocolVersion 4 のランナーが 7 時間 22 分ポート 8127 とシミュレータを占有した
+    /// (無通信 TTL 導入後は最長でも TTL で消えるが、旧版ブリッジには TTL が無い)。
     private func reportUnmanagedBridges() async {
         guard let root = try? RepoRoot.find() else { return }
         let stateDir = root.appendingPathComponent(".ftester")
         var findings: [String] = []
+        var reaped: [String] = []
         for port in BridgeAPI.defaultPort...(BridgeAPI.defaultPort + 31) {
             guard let status = BridgeLauncher.probeForeignBridge(port: port, timeout: 0.4)
             else { continue }
-            let hasPid = FileManager.default.fileExists(
-                atPath: stateDir.appendingPathComponent("bridge-\(port).pid").path)
-            let hasInApp = FileManager.default.fileExists(
-                atPath: InAppBridgeState.url(stateDir: stateDir, port: port).path)
+            let pidPath = stateDir.appendingPathComponent("bridge-\(port).pid")
+            let inAppPath = InAppBridgeState.url(stateDir: stateDir, port: port)
+            let hasPid = FileManager.default.fileExists(atPath: pidPath.path)
+            let hasInApp = FileManager.default.fileExists(atPath: inAppPath.path)
             let stale = status.protocolVersion != BridgeAPI.bridgeProtocolVersion
-            guard !(hasPid || hasInApp) || stale else { continue }
-            let device = status.device ?? "デバイス不明"
             let version = status.protocolVersion.map(String.init) ?? "?"
-            let reason = (hasPid || hasInApp)
-                ? "版が古い(v\(version) / 期待 v\(BridgeAPI.bridgeProtocolVersion))"
-                : "このリポジトリの状態ファイルに記録が無い(別クローンが起動した可能性)"
-            findings.append("   - port \(port): \(device) — \(reason)")
+            let label = "port \(port): \(status.device)(v\(version))"
+            // 「いつから放置か」の診断(自己申告の idleSeconds。この probe 自体は数えない)
+            let idle = status.idleSeconds.map { $0 >= 60 ? "・無通信 \(Int($0 / 60))分" : "" } ?? ""
+
+            switch UnmanagedBridgeTriage.decide(
+                ownerRepo: status.ownerRepo,
+                ownerExists: status.ownerRepo.map {
+                    FileManager.default.fileExists(atPath: $0) } ?? false,
+                isOwnRepo: status.ownerRepo == root.path,
+                hasStateFile: hasPid || hasInApp,
+                stale: stale) {
+            case .skipHealthy:
+                continue
+            case .reapOwnStale:
+                // 自分の資産の旧版。in-app はアプリごと終了、xcuitest は pid ファイル経由で停止
+                if hasInApp {
+                    InAppBridgeState.terminateAndRemove(at: inAppPath)
+                    reaped.append("\(label) — 旧版(期待 v\(BridgeAPI.bridgeProtocolVersion))の自リポジトリ資産")
+                } else if let pid = Self.pidFromFile(pidPath), BridgeLauncher.reapRunnerProcess(pid: pid) {
+                    try? FileManager.default.removeItem(at: pidPath)
+                    reaped.append("\(label) — 旧版(期待 v\(BridgeAPI.bridgeProtocolVersion))の自リポジトリ資産")
+                } else if let pid = status.ownerPid.map(Int32.init), BridgeLauncher.reapRunnerProcess(pid: pid) {
+                    try? FileManager.default.removeItem(at: pidPath)
+                    reaped.append("\(label) — 旧版(期待 v\(BridgeAPI.bridgeProtocolVersion))の自リポジトリ資産")
+                } else {
+                    findings.append("   - \(label) — 旧版だが停止できませんでした(`lsof -ti :\(port)` を確認)")
+                }
+            case .reapOrphan(let owner):
+                if let pid = status.ownerPid.map(Int32.init), BridgeLauncher.reapRunnerProcess(pid: pid) {
+                    reaped.append("\(label) — 起動元が消滅(\(owner))")
+                } else {
+                    findings.append("   - \(label) — 起動元が消滅(\(owner))。ownerPid で停止できず。"
+                        + "`lsof -ti :\(port)` のプロセスを止めてください")
+                }
+            case .reportForeign(let owner):
+                findings.append("   - \(label)\(idle) — 別ワークスペースの所有: \(owner)。"
+                    + "そちらのクローンで `ftester bridge down --port \(port)`")
+            case .reportUnknown:
+                findings.append("   - \(label)\(idle) — 起動元不明(自己申告の無い旧ブリッジ)。"
+                    + "`lsof -ti :\(port)` のプロセスを止めたうえで、iOS は "
+                    + "`xcrun simctl terminate <udid> com.example.ftrunner.uitests.xctrunner` まで行う")
+            }
+        }
+        if !reaped.isEmpty {
+            print("✂️ 再利用されないブリッジを停止しました:")
+            reaped.forEach { print("   - \($0)") }
         }
         if findings.isEmpty {
-            print("✅ 管理外・旧版のブリッジはありません")
+            if reaped.isEmpty { print("✅ 管理外・旧版のブリッジはありません") }
         } else {
             print("⚠️ 再利用されないブリッジが残っています(ポートとデバイスを占有します):")
             findings.forEach { print($0) }
-            print("   停止: 起動元のクローンで `ftester bridge down --port <N>`。"
-                + "分からなければ `lsof -ti :<N>` のプロセスを止めたうえで、"
-                + "iOS は `xcrun simctl terminate <udid> com.example.ftrunner.uitests.xctrunner` まで行う")
         }
+    }
+
+    private static func pidFromFile(_ url: URL) -> Int32? {
+        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return nil }
+        return Int32(text.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
     private func printRoots() -> Bool {

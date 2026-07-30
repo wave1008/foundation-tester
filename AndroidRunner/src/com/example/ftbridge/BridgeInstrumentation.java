@@ -16,6 +16,9 @@ public class BridgeInstrumentation extends Instrumentation {
     // 無通信 TTL の既定値(秒)。同期相手: Sources/FTCore/BridgeDTO.swift の
     // BridgeAPI.bridgeTTLSecondsDefault(AndroidBridgeVersionSyncTests が不一致を検出)
     static final int TTL_DEFAULT_SECONDS = 7200;
+    /** 起動元リポジトリ(-e owner)。/status の ownerRepo として申告する(doctor の診断用)。
+     *  未指定 = 申告しない(旧ホスト起動) */
+    static String ownerRepo;
     private int port = 8123;
     private int ttlSeconds = TTL_DEFAULT_SECONDS;
 
@@ -27,6 +30,7 @@ public class BridgeInstrumentation extends Instrumentation {
         }
         if (arguments != null) {
             ttlSeconds = parseTTL(arguments.getString("ttl"));
+            ownerRepo = arguments.getString("owner");
         }
         start();
     }
