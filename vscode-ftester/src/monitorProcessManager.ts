@@ -227,7 +227,8 @@ export class MonitorProcessManager {
           };
         }
         // monitorFrame は state==connected のデバイスにしか来ない(ApiMonitorCommand.swift)ため、
-        // "running" フィルタで消える対象=offline とは重ならない。フレーム側の絞り込みは不要。
+        // "running" フィルタで消える対象(offline / ブリッジ不在の iOS 実機=booted)とは重ならない。
+        // フレーム側の絞り込みは不要。
         if (value.kind === "monitorFrame" && this.deps.isDeviceStreaming(value.device)) {
           // 生成側(suppressFrames)でも止めているが、送信中フレームとの競合・再起動直後の残りを
           // 吸収する安全弁としてここでも間引く(monitorDeviceStreamController.ts 冒頭コメント参照)。

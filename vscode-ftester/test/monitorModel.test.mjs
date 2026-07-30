@@ -520,6 +520,9 @@ const SIM1 = { id: "ios:シミュ1", name: "シミュ1", platform: "ios", state:
 const SIM2 = { id: "ios:シミュ2", name: "シミュ2", platform: "ios", state: "booted", detail: "" };
 const SIM3_OFFLINE = { id: "ios:シミュ3", name: "シミュ3", platform: "ios", state: "offline", detail: "" };
 const EMU1 = { id: "android:エミュ1", name: "エミュ1", platform: "android", state: "connected", detail: "" };
+const IPHONE_PHYSICAL_NO_BRIDGE = {
+  id: "ios:実機1", name: "実機1", platform: "ios", state: "booted", detail: "", kind: "physical",
+};
 
 test("filterMonitorDevices: filter='all' は素通し(同一内容・順序)", () => {
   const devices = [SIM1, SIM3_OFFLINE, EMU1];
@@ -537,6 +540,21 @@ test("filterMonitorDevices: booted(ブート完了待ち)は起動中として�
 test("filterMonitorDevices: 全て offline なら空配列", () => {
   assert.deepEqual(filterMonitorDevices([SIM3_OFFLINE], "running"), []);
   assert.deepEqual(filterMonitorDevices([], "running"), []);
+});
+
+// iOS 実機の booted = ブリッジ不在(タイルは「未起動」表示)。起動中扱いにすると
+// 「(起動中のデバイス)」に未起動の実機が居座る
+test("filterMonitorDevices: booted の iOS 実機(ブリッジ不在)は除外する", () => {
+  assert.deepEqual(filterMonitorDevices([SIM1, IPHONE_PHYSICAL_NO_BRIDGE, EMU1], "running"), [SIM1, EMU1]);
+  assert.deepEqual(filterMonitorDevices([IPHONE_PHYSICAL_NO_BRIDGE], "all"), [IPHONE_PHYSICAL_NO_BRIDGE]);
+});
+
+test("filterMonitorDevices: connected の iOS 実機・booted の Android 実機は残す", () => {
+  const iosConnected = { ...IPHONE_PHYSICAL_NO_BRIDGE, state: "connected" };
+  const androidBooting = {
+    id: "android:実機A", name: "実機A", platform: "android", state: "booted", detail: "", kind: "physical",
+  };
+  assert.deepEqual(filterMonitorDevices([iosConnected, androidBooting], "running"), [iosConnected, androidBooting]);
 });
 
 test("RUNNING_DEVICES_PROFILE_VALUE: webview 側の複製定数(deviceTiles.js)と一致する", () => {
