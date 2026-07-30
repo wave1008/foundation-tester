@@ -30,11 +30,19 @@
 
 `ftester run --host <mac>` の流れ:
 
-1. 適合チェック(git revision・ToolchainFingerprint・ProtocolVersion。不一致は fail fast)
-2. 転送(rsync: シナリオ・プロファイル・アプリバイナリ。アプリはハッシュでキャッシュ)
-3. リモートで `install.sh`(冪等)→ `ftester run --quiet --junit`
-4. NDJSON をストリームバックし、手元の CLI/拡張が通常表示
-5. 成果物回収(reports/・JUnit・results DB・録画)
+1. 適合チェック(§7。不一致は fail fast)
+2. 転送(rsync: シナリオ・プロファイル・アプリバイナリ。アプリはハッシュでキャッシュ)。
+   **リモートは外部構成(WORK_DIR 分離)前提・rsync 先はリモートの WORK_DIR**。
+   クローン内に置くと install.sh の外部構成自動破棄(`reset --hard` + `clean -fd`)で
+   次回実行時に消える
+3. リモートで `install.sh`(冪等)→ 実行。転送後はリモートで scenario ターゲットの
+   swift build が走る(コールドは数分。`clean -fd` に `-x` を付けない= .build 温存の
+   既存設計が増分ビルドを効かせる)
+4. **ストリームバックの実体は用途で分ける**: CLI/CI は `ftester run --quiet --junit` の
+   出力中継、拡張(レーン表示)連携は `ftester api run` の NDJSON 中継
+   (`ftester run` は人間向け出力で NDJSON を喋らない。ApiRunCommand が唯一の機械可読契約)
+5. 成果物回収(reports/・JUnit・results DB・録画)。**JUnit 内 `report:` 行は
+   リモートの絶対パス**なので回収後のローカルパスへ書き換える
 
 ## 4. 全体アーキテクチャ
 
@@ -72,16 +80,23 @@ WindowServer・ユーザー空間サービスへのアクセスが変わる。Li
 | コンパイル・オーケストレーション・results・update | 不要 | 純粋にプロセスとファイル |
 
 - **execution plane = session agent(LaunchAgent)**。責務は「ジョブを受けて
-  `ftester run` を spawn し NDJSON を中継する」だけに限定する。判断・プロビジョニングは
-  ftester 本体に残す(CLAUDE.md「機械作業はスクリプト/CLI へ」と同じ方針)
+  `ftester run` を spawn し出力を中継する」だけに限定する。判断・プロビジョニングは
+  ftester 本体に残す(CLAUDE.md「機械作業はスクリプト/CLI へ」と同じ方針)。
+  加えて**ジョブは直列化(1本ずつ)** — 同一リモートへの同時ディスパッチは
+  デバイス割当が競合する(単一マシンには無かった失敗モード)。並行受付は
+  Phase 3 の分散スケジューリング側の課題として送る
 - **運用前提: 自動ログイン有効 + スクリーンロック/スリープ無効 + LaunchAgent 自動起動**。
   再起動しても人手なしで Aqua が立ち、待ち受けに戻る。Jenkins の Mac agent
   (ログイン項目/LaunchAgent 起動)や EC2 Mac の CI 運用と同型で、
   **CI 前提を採った時点でどのみち必要になる運用**。追加負担は増えない
 - 自動ログイン+ロック無効は物理アクセスに無防備。ラボ機/EC2 では通例許容されるが、
   導入時に方針として明示する
-- 即席経路(素振り用): SSH から `launchctl asuser <uid>` でコンソールユーザーの
-  Aqua セッションへ注入。常設には脆いので Phase 0 限定
+- 即席経路(素振り用・**検証対象の仮説**): SSH から `launchctl asuser <uid>` で
+  コンソールユーザーのセッションへ注入。ただし asuser は Mach bootstrap 名前空間の
+  切替だけで **WindowServer への完全なアクセスは保証されない**(GUI 系がこれだけでは
+  動かない事例は既知)。成立可否は §9 の検証項目。不成立時の代替は
+  `launchctl bootstrap gui/<uid>` 経由、またはスプール監視型 LaunchAgent
+  (= Phase 2 の session agent が Phase 1 に繰り上がる)
 
 ## 6. Android ヘッドレスレーン(条件付き)
 
@@ -102,6 +117,13 @@ ios を含まず FM も使わないジョブは、Aqua 不要のまま(SSH 直�
   ProtocolVersion** を照合し、不一致は**黙って走らせず fail fast**(このリポジトリの
   「片方だけ変えない」規律をマシン間に広げると、スキューは恒常的なバグ族になるため
   入口で遮断する)
+- **rev 一致の意味 = 両者が同一 upstream コミットにいること**。ローカルの未コミットの
+  ツール変更はリモートに載らない(ツール開発中の変更をリモートで試す用途はスコープ外)
+- ProtocolVersion は「**ローカルの拡張 ↔ リモートの CLI**」という新しい版ペアにも適用
+  される(§3 の `api run` NDJSON 中継時。既存の起動時照合をホスト単位に拡張)
+- リモートの **TOOL_ROOT 解決は既存4箇所の規則を再利用**する(preflight.sh / update.sh /
+  toolRootResolve.ts / Package.swift 宣言。`toolRootContract.test.mjs` の対象)。
+  ディスパッチ用の独自解決を新設しない
 
 ## 8. マルチマシン分散(後段)
 
@@ -115,6 +137,7 @@ ios を含まず FM も使わないジョブは、Aqua 不要のまま(SSH 直�
 
 | 項目 | 確認方法 |
 |---|---|
+| **`launchctl asuser` で Aqua 到達が成立するか**(シミュレータ・XCUITest・FM が動くか) | localhost へ SSH → asuser で自セッションに注入して run。不成立なら §5 の代替(gui domain bootstrap / スプール監視 LaunchAgent)へ切替 |
 | FM のヘッドレス/ロック中挙動 | ロック状態で `ftester doctor --fm-only` を反復(availability は嘘をつくので実呼び出し) |
 | Android `-no-window` の凍結挙動 | §6 の対照実験 |
 | SSH ディスパッチの体験成立 | 手動 SSH + `launchctl asuser` で隣の Mac に run を投げ、成果物回収まで通す |
@@ -127,24 +150,31 @@ ios を含まず FM も使わないジョブは、Aqua 不要のまま(SSH 直�
 ### Phase 0: 素振り・検証(実装なし)
 
 - 手動 SSH + `launchctl asuser` で隣の Mac へ run を投げる(転送→install.sh→run→回収を手作業)
-- §9 の未検証4項目を実測
+- §9 の未検証5項目を実測(先頭は asuser の成立可否 — Phase 1 の到達経路を決める)
 - **ゲート**: 対話的分散・共有の需要が実在するか/ジョブ粒度の体験が成立するかをユーザーが判断
 
 ### Phase 1: `ftester run --host <mac>`(単一リモート・ジョブ粒度)
 
-- 適合チェック(§7)・rsync 転送・リモート実行・NDJSON ストリームバック・成果物回収
-- Aqua への到達は Phase 0 と同じ `launchctl asuser` 経路(常設化は Phase 2)
+- 適合チェック(§7)・rsync 転送・リモート実行・出力ストリームバック(§3 の用途分け)・
+  成果物回収(JUnit の `report:` パス書き換え含む)
+- Aqua への到達は Phase 0 で成立を確認した経路を使う。`launchctl asuser` が不成立
+  だった場合は **Phase 2 の session agent をここへ繰り上げる**(計画の分岐点)
 - 純粋ロジック(適合判定・転送対象の算出・回収パス書き換え)は切り出して単体テスト。
   SSH 越しの結合は E2E に残す
 - 新スクリプト/サブコマンドを足したら Bash 許可リストにも足す(承認3方向の②)
-- **ゲート**: 実デバイスの run 1本が手元 CLI から見えて成果物が開けること
+- **ゲート**: 実デバイスの run 1本が手元 CLI から見えて成果物が開けること。
+  加えて**2回目以降のディスパッチ所要(転送+増分ビルド)を計測**し、体験成立の
+  判断材料にする(コールドビルド数分は初回のみか、を確認)
 
 ### Phase 2: session agent 常設化 + 運用ドキュメント
 
-- LaunchAgent 版 session agent(受けて spawn して中継するだけ)
+- LaunchAgent 版 session agent(受けて spawn して中継するだけ+**ジョブ直列化**[§5])
+- **control(Background)→ execution(Aqua)の受け渡し IPC をここで決める**
+  (候補: スプールディレクトリ監視 vs localhost ソケット。設計判断として記録する)
 - ランナー機セットアップ手順の文書化(自動ログイン・ロック無効・LaunchAgent・
   セキュリティ注意)。ci.md のランナー前提と整合させる
-- **ゲート**: ランナー機の再起動後、人手なしで受付可能に戻ること
+- **ゲート**: ランナー機の再起動後、人手なしで受付可能に戻ること。同時ディスパッチ
+  2本が直列化されること
 
 ### Phase 3: マルチマシン分散
 
