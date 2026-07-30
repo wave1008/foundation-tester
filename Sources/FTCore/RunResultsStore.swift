@@ -146,8 +146,16 @@ public enum RunResultsStore {
     ///   増え続け、実測でも 1 プロジェクト 3,500〜4,500 件に達する。代表値が要るだけの用途
     ///   (LPT の投入順)は上限を付けて I/O を抑える。runID は先頭がタイムスタンプなので
     ///   ディレクトリ名の辞書順降順 = 新しい順になる。
+    /// - countingPlatform: maxRuns を数えるとき、この platform のレコードを含む run だけを 1 枠と
+    ///   みなす(nil = platform を問わない)。**同じ results/ に複数 platform の run が混ざる
+    ///   プロジェクト(iOS と Android を別プロファイルで回す E2E 等)で必要**。枠を platform 非対応で
+    ///   数えると、他 platform の run と 1 シナリオだけの run で窓が埋まり、対象 platform の直近フル run
+    ///   が窓から押し出されて実績ゼロになる(実害: E2E-Flutter/android の投入順が崩れ壁時計 +10s。
+    ///   docs/performance-tuning.md §3.7)。返すレコード自体は絞らない(呼び出し側が platform 別に
+    ///   集計するので、混在 run の他 platform 分は無害)。
     public static func scanRecords(resultsDir: URL, since: Date? = nil, until: Date? = nil,
-                                   maxRuns: Int? = nil) -> [ScenarioRunRecord] {
+                                   maxRuns: Int? = nil,
+                                   countingPlatform: String? = nil) -> [ScenarioRunRecord] {
         let decoder = JSONDecoder()
         let formatter = ISO8601DateFormatter()
         var results: [ScenarioRunRecord] = []
@@ -164,8 +172,14 @@ public enum RunResultsStore {
             targetRunDirs.sort { $0.lastPathComponent > $1.lastPathComponent }
         }
         var runsWithRecords = 0
+        var runDirsInspected = 0
         for runDir in targetRunDirs {
             if let maxRuns, runsWithRecords >= maxRuns { break }
+            // countingPlatform 指定時は枠が埋まるまで遡るため、対象 platform が長く走っていないと
+            // 窓の全 run を読みかねない。maxRuns の 8 倍で打ち切る(3 プロファイル交互でも
+            // 5 枠は 15 run 程で埋まる)。打ち切った場合は集まった分だけで並べる = 従来と同じ安全側。
+            if let maxRuns, countingPlatform != nil, runDirsInspected >= maxRuns * 8 { break }
+            runDirsInspected += 1
             let before = results.count
             let scenariosDir = runDir.appendingPathComponent("scenarios")
             guard let files = try? FileManager.default.contentsOfDirectory(
@@ -191,7 +205,13 @@ public enum RunResultsStore {
                 }
                 results.append(record)
             }
-            if results.count > before { runsWithRecords += 1 }
+            if let countingPlatform {
+                if results[before...].contains(where: { $0.platform == countingPlatform }) {
+                    runsWithRecords += 1
+                }
+            } else if results.count > before {
+                runsWithRecords += 1
+            }
         }
         warnSkipped(skipped, kind: "scenario record")
         return results.sorted { $0.runID == $1.runID ? $0.scenarioID < $1.scenarioID : $0.runID < $1.runID }

@@ -59,6 +59,29 @@ final class RunResultsStoreTests: XCTestCase {
         XCTAssertEqual(records[0].runID, runID)
     }
 
+    /// countingPlatform を指定すると、maxRuns の枠は「その platform のレコードを含む run」だけで
+    /// 数える(混在 results/ で対象 platform の実績が窓から押し出されるのを防ぐ)。
+    func testMaxRunsCountsOnlyRunsWithTheGivenPlatform() {
+        // 新しい ios の run を2件、古い android の run を1件
+        for (i, platform) in ["ios", "ios", "android"].enumerated() {
+            let runID = String(format: "2026010%d-000000Z-mach-100%d", 3 - i, i)
+            let runDir = RunResultsStore.runDir(resultsDir: resultsDir, runID: runID)
+            var record = makeScenarioRecord(scenarioID: "S\(i)", runID: runID)
+            record.platform = platform
+            RunResultsStore.writeScenario(record, runDir: runDir, fileName: "S\(i)")
+        }
+
+        // platform 非対応の数え方だと新しい ios 2件で枠が尽き、android は読めない
+        let blind = RunResultsStore.scanRecords(resultsDir: resultsDir, maxRuns: 2)
+        XCTAssertFalse(blind.contains { $0.platform == "android" },
+                       "従来の数え方では android が窓の外(この前提が崩れたらテストの意味が無い)")
+
+        let aware = RunResultsStore.scanRecords(resultsDir: resultsDir, maxRuns: 2,
+                                                countingPlatform: "android")
+        XCTAssertTrue(aware.contains { $0.platform == "android" },
+                      "android の実績を含む run を2件ぶん探すので窓に入る")
+    }
+
     func testSchemaVersionTooNewIsSkipped() {
         let runID = "20260101-000000Z-mach-0002"
         let runDir = RunResultsStore.runDir(resultsDir: resultsDir, runID: runID)

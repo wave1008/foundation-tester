@@ -7,7 +7,9 @@
 //   - 直近 historyDays 日: 古い実績はアプリもシナリオも変わっていて代表値にならない
 //   - 直近 maxRuns run: 結果 JSON は run × シナリオ数で増え続ける(実測で 1 プロジェクト
 //     3,500〜4,500 件)。毎 run 全件読むと run の固定費になるため上限を付ける
-//     (中央値の代表性は直近 5 run で十分)
+//     (中央値の代表性は直近 5 run で十分)。**枠は対象 platform の実績を含む run だけで数える**
+//     (混在プロジェクトで他 platform の run に窓を食われると実績ゼロになる。
+//     RunResultsStore.scanRecords の countingPlatform)
 
 import FTCore
 import Foundation
@@ -38,8 +40,11 @@ enum LPTOrdering {
         let resultsDir = RunResultsStore.resultsDir(projectRoot: project.rootURL)
         let since = Date().addingTimeInterval(-historyDays * 24 * 60 * 60)
         let maxRuns = max(1, historyRuns)
+        // 窓は defaultPlatform のレコードを含む run で数える(混在プロジェクトで対象 platform の
+        // 実績が窓から押し出されるのを防ぐ。RunResultsStore.scanRecords の countingPlatform 参照)
         let records = RunResultsStore.scanRecords(resultsDir: resultsDir, since: since,
-                                                  maxRuns: maxRuns)
+                                                  maxRuns: maxRuns,
+                                                  countingPlatform: defaultPlatform)
         guard !records.isEmpty else { return items }
 
         let durations = LPTScheduler.durations(from: records)
@@ -52,7 +57,8 @@ enum LPTOrdering {
             known.contains("\($0.info.id)\u{1}\($0.info.platform ?? defaultPlatform)")
         }.count
         log("🔀 LPT 投入順: 実績あり \(withHistory)/\(items.count) 件"
-            + "(直近\(Int(historyDays))日・最大\(maxRuns) run・platform 別中央値の降順。実績なしは先頭)")
+            + "(直近\(Int(historyDays))日・\(defaultPlatform) の実績がある最大\(maxRuns) run"
+            + "・platform 別中央値の降順。実績なしは先頭)")
         return ordered
     }
 }
