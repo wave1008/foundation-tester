@@ -188,7 +188,8 @@ class MonitorPanelController implements vscode.Disposable {
   ) {
     this.pollingMode = workspaceState.get<boolean>("monitor.pollingMode", false);
     this.tilePaneHeight = workspaceState.get<number>("monitor.tilePaneHeight");
-    this.tileAutoFit = workspaceState.get<boolean>("monitor.tileAutoFit", false);
+    // 既定 ON(webview 側 splitter.js の「!== false」と揃える。片方だけ変えない)。
+    this.tileAutoFit = workspaceState.get<boolean>("monitor.tileAutoFit", true);
     this.deps = {
       workspaceRoot: this.workspaceRoot,
       getConfig: this.getConfig,

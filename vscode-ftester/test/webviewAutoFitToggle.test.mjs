@@ -4,8 +4,10 @@
 // jsdom にはレイアウトが無い(clientHeight/offsetParent が 0/null)ため、高さの計算自体は
 // tileFitModel.test.mjs が受け持つ。ここで見るのは計算に入る前の配線だけ:
 // - ボタンがグラフより右・ツールバー右端にあり、テキストを持たない(アイコンのみ)
+// - 既定は ON(明示的に OFF を保存していた場合だけ OFF で始まる)
 // - 押下で ON/OFF が入れ替わり、状態が host へ永続化される
-// - ON のまま手動でセパレーターをドラッグしたら OFF になる(要件)
+// - ON のまま手動でセパレーターをドラッグしたら「一時停止」(ON のまま・.suspended 表示・
+//   永続化しない)になり、台数変化(devices の増減)で自動的に再開する(要件 2026-07-30)
 // - host からの復元値(tileAutoFit)がボタン表示に反映される
 
 import assert from "node:assert/strict";
@@ -90,6 +92,18 @@ function isOn(document) {
   return button.classList.contains("toggled") && button.getAttribute("aria-pressed") === "true";
 }
 
+function isSuspended(document) {
+  return autoFitButton(document).classList.contains("suspended");
+}
+
+function sendDevices(window, count) {
+  const devices = Array.from({ length: count }, (_, i) => ({
+    id: `d${i}`, name: `Dev ${i}`, platform: "ios", state: "booted", kind: "virtual",
+    udid: `UDID-${i}`, recording: false,
+  }));
+  window.dispatchEvent(new window.MessageEvent("message", { data: { type: "devices", devices } }));
+}
+
 function click(window, element) {
   element.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
 }
@@ -121,35 +135,23 @@ test("ボタンはホストグラフより後ろ・ツールバー最後の要�
   assert.ok(button.getAttribute("title"), "アイコンのみなので title で意味を伝える");
 });
 
-test("初期状態は OFF(手動でセパレーターを動かせる従来動作)", (t) => {
+test("初期状態は ON(既定。押さなくても台数変化でフィットする)", (t) => {
   const { window, document } = createWebview();
   t.after(() => window.close());
-  assert.equal(isOn(document), false);
-  assert.equal(autoFitButton(document).getAttribute("aria-pressed"), "false");
+  assert.equal(isOn(document), true);
+  assert.equal(isSuspended(document), false);
 });
 
-test("押すと ON になり host へ永続化される", (t) => {
+test("押すと OFF になり host へ永続化・その時点の高さも手動位置として保存される", (t) => {
   const { window, document, posted, getState } = createWebview();
   t.after(() => window.close());
   posted.length = 0;
 
   click(window, autoFitButton(document));
 
-  assert.equal(isOn(document), true);
-  assert.deepEqual(autoFitValues(posted), [true]);
-  assert.equal(getState().tileAutoFit, true, "パネル再表示用に webview 側にも残す");
-});
-
-test("もう一度押すと OFF になり、その時点の高さも手動位置として保存される", (t) => {
-  const { window, document, posted } = createWebview();
-  t.after(() => window.close());
-  click(window, autoFitButton(document));
-  posted.length = 0;
-
-  click(window, autoFitButton(document));
-
   assert.equal(isOn(document), false);
   assert.deepEqual(autoFitValues(posted), [false]);
+  assert.equal(getState().tileAutoFit, false, "パネル再表示用に webview 側にも残す");
   assert.equal(
     posted.filter((m) => m?.type === "setTilePaneHeight").length,
     1,
@@ -157,44 +159,78 @@ test("もう一度押すと OFF になり、その時点の高さも手動位置
   );
 });
 
-test("ON のまま手動でセパレーターをドラッグすると OFF になる", (t) => {
-  const { window, document, posted } = createWebview();
+test("OFF からもう一度押すと ON に戻り host へ永続化される", (t) => {
+  const { window, document, posted, getState } = createWebview();
   t.after(() => window.close());
   click(window, autoFitButton(document));
   posted.length = 0;
 
-  dragSplitter(window, document, 40);
+  click(window, autoFitButton(document));
 
-  assert.equal(isOn(document), false, "手動調整が自動再計算で戻されないよう解除する");
-  assert.deepEqual(autoFitValues(posted), [false]);
+  assert.equal(isOn(document), true);
+  assert.deepEqual(autoFitValues(posted), [true]);
+  assert.equal(getState().tileAutoFit, true);
 });
 
-test("動かさなかったドラッグ(0px)では ON のまま", (t) => {
+test("ON のまま手動でセパレーターをドラッグすると一時停止(ON のまま・永続化しない)", (t) => {
   const { window, document, posted } = createWebview();
   t.after(() => window.close());
-  click(window, autoFitButton(document));
+  posted.length = 0;
+
+  dragSplitter(window, document, 40);
+
+  assert.equal(isOn(document), true, "OFF にはしない(台数変化で再開するため)");
+  assert.equal(isSuspended(document), true, "一時停止は .suspended 表示で区別する");
+  assert.deepEqual(autoFitValues(posted), [], "一時停止は永続化しない(再表示では ON に戻る)");
+});
+
+test("動かさなかったドラッグ(0px)では一時停止しない", (t) => {
+  const { window, document, posted } = createWebview();
+  t.after(() => window.close());
   posted.length = 0;
 
   dragSplitter(window, document, 0);
 
   assert.equal(isOn(document), true);
+  assert.equal(isSuspended(document), false);
   assert.deepEqual(autoFitValues(posted), []);
 });
 
-test("解除の postMessage はドラッグ1回につき1度だけ", (t) => {
+test("一時停止中に台数が変わると自動で再開する(要件: 台数変化で自動フィット)", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window, 2);
+  dragSplitter(window, document, 40);
+  assert.equal(isSuspended(document), true);
+
+  sendDevices(window, 3);
+
+  assert.equal(isSuspended(document), false, "台数変化はドラッグの一時停止を解除する");
+  assert.equal(isOn(document), true);
+});
+
+test("台数が変わらない devices サイクルでは一時停止のまま", (t) => {
+  const { window, document } = createWebview();
+  t.after(() => window.close());
+  sendDevices(window, 2);
+  dragSplitter(window, document, 40);
+
+  sendDevices(window, 2);
+
+  assert.equal(isSuspended(document), true, "毎サイクルの devices で手動位置を奪わない");
+});
+
+test("明示的に OFF にしたら台数が変わっても ON へ戻らない", (t) => {
   const { window, document, posted } = createWebview();
   t.after(() => window.close());
+  sendDevices(window, 2);
   click(window, autoFitButton(document));
   posted.length = 0;
 
-  const splitter = document.getElementById("splitter");
-  splitter.dispatchEvent(pointerEvent(window, "pointerdown", { y: 100 }));
-  for (const y of [110, 120, 130, 140]) {
-    splitter.dispatchEvent(pointerEvent(window, "pointermove", { y }));
-  }
-  splitter.dispatchEvent(pointerEvent(window, "pointerup", { y: 140 }));
+  sendDevices(window, 3);
 
-  assert.deepEqual(autoFitValues(posted), [false]);
+  assert.equal(isOn(document), false, "完全 OFF はトグルの明示操作のみが支配する");
+  assert.deepEqual(autoFitValues(posted), []);
 });
 
 test("host からの復元値(tileAutoFit)がボタン表示に反映される", (t) => {
@@ -208,8 +244,8 @@ test("host からの復元値(tileAutoFit)がボタン表示に反映される",
   assert.equal(isOn(document), false);
 });
 
-test("webview の保存状態が ON ならパネル再表示時も ON で始まる", (t) => {
-  const { window, document } = createWebview({ tileAutoFit: true });
+test("webview の保存状態が OFF ならパネル再表示時も OFF で始まる", (t) => {
+  const { window, document } = createWebview({ tileAutoFit: false });
   t.after(() => window.close());
-  assert.equal(isOn(document), true);
+  assert.equal(isOn(document), false);
 });

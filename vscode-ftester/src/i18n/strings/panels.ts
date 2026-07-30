@@ -50,8 +50,8 @@ export const panelsStrings = {
   "panels.toolbar.stopAll": { ja: "全て終了", en: "Stop All" },
   "panels.toolbar.restartMonitor": { ja: "モニター再起動", en: "Restart Monitor" },
   "panels.toolbar.autoFitTitle": {
-    ja: "自動フィット: 全デバイスが横幅に収まる高さへ境界線を自動調整(手動で動かすと解除)",
-    en: "Auto-fit: adjust the divider so all devices fit the width (dragging it turns this off)",
+    ja: "自動フィット: 全デバイスが横幅に収まる高さへ境界線を自動調整。手動で動かすと一時停止し、台数が変わると再開",
+    en: "Auto-fit: adjust the divider so all devices fit the width. Dragging pauses it; it resumes when the device count changes",
   },
   "panels.hostMetrics.memTitle": { ja: "メモリ使用量", en: "Memory usage" },
   "panels.hostMetrics.cpuTitle": { ja: "CPU負荷", en: "CPU load" },

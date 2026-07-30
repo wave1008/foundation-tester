@@ -185,6 +185,10 @@ button.secondary:hover:not(:disabled) {
 .toolbar-auto-fit {
   margin-left: auto;
 }
+/* ドラッグによる一時停止中(splitter.js。台数が変わると自動で再開)。ON 表示のまま減光で区別する。 */
+.toolbar-auto-fit.toggled.suspended {
+  opacity: 0.55;
+}
 .host-metric {
   display: flex;
   align-items: center;
