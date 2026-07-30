@@ -185,6 +185,45 @@ final class LPTOrderingTests: XCTestCase {
         XCTAssertEqual(logs.count, 1)
     }
 
+    func testOtherPlatformRunsDoNotConsumeTheWindow() throws {
+        // 実害(2026-07-30): E2E / E2E-Flutter は iOS と Android を別プロファイルで回すので
+        // 同じ results/ に両 platform の run が溜まる。履歴枠を platform 非対応で数えていたため
+        // iOS の run と 1 シナリオだけの run で窓が埋まり、android の直近フル run が押し出されて
+        // 実績 1/31・2/29 まで落ち、投入順が ID 順同然へ戻った(実行スパン +6s / +10s)。
+        try writeRecord(scenarioID: "長", durationMs: 30_000, platform: "android",
+                        runID: "20260729-000001Z-TEST-0001")
+        try writeRecord(scenarioID: "短", durationMs: 1_000, platform: "android",
+                        runID: "20260729-000001Z-TEST-0001")
+        // android の run より新しい ios の run を、既定の枠数ちょうど積む(枠を食う条件の境界)
+        for i in 1...LPTOrdering.defaultHistoryRuns {
+            try writeRecord(scenarioID: "長", durationMs: 90_000, platform: "ios",
+                            runID: String(format: "20260729-10%04dZ-TEST-1%03d", i, i))
+        }
+
+        let (result, logs) = apply([item("短"), item("長")])
+        XCTAssertEqual(ids(result), ["長", "短"], "ios の run で窓を埋めても android の実績で並べる")
+        XCTAssertTrue(logs[0].contains("2/2"),
+                      "android の実績が2件とも窓に入っている: \(logs[0])")
+    }
+
+    func testWindowScanIsBoundedWhenPlatformHasNoRecentRuns() throws {
+        // 対象 platform を遡る走査は maxRuns の8倍で打ち切る(片 platform だけ長期間回していない
+        // プロジェクトで窓の全 run を読まないための頭打ち)。打ち切ったら実績なし = 元の順序へ
+        // 安全側に倒れる。上限を外すとこのテストは「実績あり」に変わって落ちる。
+        try writeRecord(scenarioID: "長", durationMs: 30_000, platform: "android",
+                        runID: "20260729-000001Z-TEST-0001")
+        try writeRecord(scenarioID: "短", durationMs: 1_000, platform: "android",
+                        runID: "20260729-000001Z-TEST-0001")
+        for i in 1...(LPTOrdering.defaultHistoryRuns * 8 + 1) {
+            try writeRecord(scenarioID: "ios専用", durationMs: 90_000, platform: "ios",
+                            runID: String(format: "20260729-10%04dZ-TEST-1%03d", i, i))
+        }
+
+        let (result, logs) = apply([item("短"), item("長")])
+        XCTAssertEqual(ids(result), ["短", "長"], "打ち切ったら並べ替えない(元の順序)")
+        XCTAssertTrue(logs[0].contains("0/2"), "android の実績は窓に入らない: \(logs[0])")
+    }
+
     func testOldRecordsOutsideTheWindowAreIgnored() throws {
         // 直近30日の外の実績は代表値にならない(アプリもシナリオも変わっている)
         try writeRecord(scenarioID: "長", durationMs: 30_000, startedAt: "2020-01-01T00:00:00Z")
