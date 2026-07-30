@@ -10,10 +10,10 @@ import FTCore
 struct ApiApplyHeal: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "apply-heal",
-        abstract: "自己修復の修復候補(stdin の JSON)をシナリオソースへ確定反映し、ヒール"
-            + "キャッシュから該当キーを削除する(結果は 1 行 JSON で stdout に出力。診断は stderr のみ)")
+        abstract: "Apply a self-heal candidate (JSON on stdin) to the scenario source for good and remove"
+            + " the matching key from the heal cache (result as one line of JSON on stdout; diagnostics on stderr only)")
 
-    @Option(help: "テストプロジェクト名(省略時: Projects/ が 1 つならそれ / 既定プロジェクト)")
+    @Option(help: "Test project name (defaults to the only one in Projects/, or the default project)")
     var project: String?
 
     func run() async throws {

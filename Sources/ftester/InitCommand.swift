@@ -10,32 +10,32 @@ import FTCore
 struct InitCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "init",
-        abstract: "受け手のパッケージを作成する"
-            + "(ftester を SPM 依存として引く Package.swift + 最初のテストプロジェクト)")
+        abstract: "Create the consumer package"
+            + " (a Package.swift that depends on ftester via SPM, plus a first test project)")
 
-    @Option(help: "プロジェクト名(SPM ターゲット名。省略時: カレントディレクトリ名から生成)")
+    @Option(help: "Project name (becomes an SPM target name; defaults to one derived from the current directory)")
     var name: String?
 
-    @Option(help: "対象アプリの bundle ID / パッケージ名")
+    @Option(help: "Bundle ID / package name of the app under test")
     var app: String = "com.example.myapp"
 
-    @Option(help: "実行プロファイルの雛形を作る対象: ios / android / both(既定 both)")
+    @Option(help: "Which run profiles to scaffold: ios / android / both (default both)")
     var platform: String = "both"
 
     @Option(name: .customLong("ftester-path"),
-            help: "ローカルの foundation-tester へのパス(.package(path:) で依存。PoC 向け)")
+            help: "Path to a local foundation-tester (depends via .package(path:); for PoCs)")
     var ftesterPath: String?
 
     @Option(name: .customLong("ftester-url"),
-            help: "foundation-tester の git URL(.package(url:from:) で依存。--ftester-path と排他)")
+            help: "git URL of foundation-tester (depends via .package(url:from:); mutually exclusive with --ftester-path)")
     var ftesterURL: String?
 
     @Option(name: .customLong("ftester-version"),
-            help: "git 依存時の最小バージョン(--ftester-url と併用。--ftester-branch 指定時は無視)")
+            help: "Minimum version for the git dependency (used with --ftester-url; ignored when --ftester-branch is given)")
     var ftesterVersion: String = "0.0.1"
 
     @Option(name: .customLong("ftester-branch"),
-            help: "git 依存をタグではなくブランチで引く(--ftester-url と併用。タグ未発行時・検証用)")
+            help: "Track a branch instead of a tag for the git dependency (used with --ftester-url; for testing before a tag exists)")
     var ftesterBranch: String?
 
     func run() async throws {

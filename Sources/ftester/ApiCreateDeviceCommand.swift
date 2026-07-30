@@ -12,20 +12,20 @@ import FTCore
 struct ApiCreateDeviceCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "create-device",
-        abstract: "シミュレータ/AVDを新規作成しマシンプロファイルへデバイスを追記する"
-            + "(NDJSON: log* → finished を stdout に出力。診断は stderr のみ。"
-            + "ok:false のときは exit code 1)")
+        abstract: "Create a new simulator/AVD and append the device to the machine profile"
+            + " (NDJSON: log* -> finished on stdout; diagnostics on stderr only;"
+            + " exit code 1 when ok:false)")
 
-    @Option(help: "テストプロジェクト名(省略時: Projects/ が 1 つならそれ / 既定プロジェクト)")
+    @Option(help: "Test project name (defaults to the only one in Projects/, or the default project)")
     var project: String?
 
-    @Option(help: "マシン名(省略時: FT_MACHINE / 登録名 / machines/ が 1 つならそれ)")
+    @Option(help: "Machine name (defaults to FT_MACHINE, the registered name, or the only entry in machines/)")
     var machine: String?
 
-    @Option(help: "プラットフォーム(ios / android)")
+    @Option(help: "Platform (ios / android)")
     var platform: String
 
-    @Option(help: "デバイスの論理名(マシンプロファイルの ios/android 横断で一意な name になる)")
+    @Option(help: "Logical device name (must be unique across ios and android in the machine profile)")
     var name: String
 
     @Option(help: ArgumentHelp(

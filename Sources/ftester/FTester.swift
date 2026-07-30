@@ -10,7 +10,7 @@ import FTDSL
 struct FTester: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "ftester",
-        abstract: "macOS用 iOS/Android アプリテストツール",
+        abstract: "iOS/Android app testing tool for macOS",
         subcommands: [
             InitCommand.self,
             Doctor.self,
@@ -38,13 +38,13 @@ struct FTester: AsyncParsableCommand {
 }
 
 struct DriverOptions: ParsableArguments {
-    @Option(help: "対象プラットフォーム: ios / android")
+    @Option(help: "Target platform: ios / android")
     var platform: String = "ios"
 
-    @Option(name: .long, help: "ブリッジのポート番号(iOS のみ)")
+    @Option(name: .long, help: "Bridge port number (iOS only)")
     var port: UInt16 = BridgeAPI.defaultPort
 
-    @Option(help: "Android デバイスのシリアル(adb -s。省略時は唯一の接続デバイス)")
+    @Option(help: "Android device serial (adb -s; defaults to the only connected device)")
     var serial: String?
 
     /// FTAgent/FTCore はこの抽象のみに依存(BridgeClient/AndroidDriver を直接見ない)
@@ -313,23 +313,23 @@ struct Doctor: AsyncParsableCommand {
 
 struct Bridge: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
-        abstract: "XCUITest ブリッジ(ランナー)の管理",
+        abstract: "Manage the XCUITest bridge (runner)",
         subcommands: [Up.self, Down.self, Status.self])
 
     struct Up: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "ブリッジを起動して常駐させる(iOS: シミュレータのランナー / Android: デバイス内サーバ)")
+            abstract: "Start the bridge and keep it resident (iOS: a simulator runner / Android: an on-device server)")
 
-        @Option(help: "シミュレータのデバイス名(iOS のみ)")
+        @Option(help: "Simulator device name (iOS only)")
         var device: String = "iPhone 17 Pro"
 
-        @Flag(help: "build-for-testing をスキップ(ビルド済みの場合、iOS のみ)")
+        @Flag(help: "Skip build-for-testing when it is already built (iOS only)")
         var skipBuild = false
 
-        @Flag(help: "SampleApp のビルド・インストールもあわせて行う(iOS のみ)")
+        @Flag(help: "Also build and install SampleApp (iOS only)")
         var withSampleApp = false
 
-        @Flag(help: "--device を iOS 実機の UDID として扱う(xcrun devicectl list devices の Identifier)")
+        @Flag(help: "Treat --device as the UDID of a physical iOS device (the Identifier from xcrun devicectl list devices)")
         var physical = false
 
         @OptionGroup var driverOptions: DriverOptions
@@ -391,18 +391,18 @@ struct Bridge: AsyncParsableCommand {
     }
 
     struct Down: AsyncParsableCommand {
-        static let configuration = CommandConfiguration(abstract: "ブリッジを停止する")
+        static let configuration = CommandConfiguration(abstract: "Stop the bridge")
 
-        @Option(name: .long, help: "停止するブリッジのポート(iOS のみ)")
+        @Option(name: .long, help: "Port of the bridge to stop (iOS only)")
         var port: UInt16 = BridgeAPI.defaultPort
 
-        @Flag(help: "全ポートのブリッジを停止する(iOS のみ)")
+        @Flag(help: "Stop the bridges on every port (iOS only)")
         var all = false
 
-        @Option(help: "対象プラットフォーム: ios / android")
+        @Option(help: "Target platform: ios / android")
         var platform: String = "ios"
 
-        @Option(help: "Android デバイスのシリアル(省略時は接続中の全デバイス)")
+        @Option(help: "Android device serial (defaults to every connected device)")
         var serial: String?
 
         func run() async throws {
@@ -428,7 +428,7 @@ struct Bridge: AsyncParsableCommand {
     }
 
     struct Status: AsyncParsableCommand {
-        static let configuration = CommandConfiguration(abstract: "ブリッジの状態を確認する")
+        static let configuration = CommandConfiguration(abstract: "Show the bridge status")
 
         @OptionGroup var driverOptions: DriverOptions
 
@@ -467,9 +467,9 @@ enum AndroidBridgeCLI {
 
 struct Install: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
-        abstract: "パッケージファイルからアプリをインストールする(iOS: .app バンドル / Android: .apk)")
+        abstract: "Install an app from a package file (iOS: .app bundle / Android: .apk)")
 
-    @Argument(help: "パッケージファイルのパス(iOS: .app バンドル / Android: .apk)")
+    @Argument(help: "Path to the package file (iOS: .app bundle / Android: .apk)")
     var packagePath: String
 
     @OptionGroup var driverOptions: DriverOptions
@@ -484,9 +484,9 @@ struct Install: AsyncParsableCommand {
 }
 
 struct Launch: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(abstract: "対象アプリを起動する")
+    static let configuration = CommandConfiguration(abstract: "Launch the app under test")
 
-    @Argument(help: "アプリの bundle identifier(例: com.example.sampleapp)")
+    @Argument(help: "App bundle identifier (e.g. com.example.sampleapp)")
     var bundleID: String
 
     @OptionGroup var driverOptions: DriverOptions
@@ -499,9 +499,9 @@ struct Launch: AsyncParsableCommand {
 
 struct Snapshot: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
-        abstract: "現在画面のアクセシビリティツリー(圧縮済み)を表示する")
+        abstract: "Print the accessibility tree of the current screen (compressed)")
 
-    @Flag(help: "生の JSON を出力する")
+    @Flag(help: "Print the raw JSON")
     var json = false
 
     @OptionGroup var driverOptions: DriverOptions
@@ -519,15 +519,15 @@ struct Snapshot: AsyncParsableCommand {
 }
 
 struct Tap: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(abstract: "要素または座標をタップする")
+    static let configuration = CommandConfiguration(abstract: "Tap an element or a coordinate")
 
-    @Option(help: "snapshot の参照番号")
+    @Option(help: "Reference number from snapshot")
     var ref: Int?
 
-    @Option(help: "X座標(pt)")
+    @Option(help: "X coordinate (pt)")
     var x: Double?
 
-    @Option(help: "Y座標(pt)")
+    @Option(help: "Y coordinate (pt)")
     var y: Double?
 
     @OptionGroup var driverOptions: DriverOptions
@@ -548,12 +548,12 @@ struct Tap: AsyncParsableCommand {
 struct TypeCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "type",
-        abstract: "テキストを入力する(--ref 指定時はタップしてから入力)")
+        abstract: "Type text (with --ref, taps the element first)")
 
-    @Option(help: "入力先要素の参照番号(省略時はフォーカス中の要素)")
+    @Option(help: "Reference number of the target field (defaults to the focused element)")
     var ref: Int?
 
-    @Argument(help: "入力する文字列")
+    @Argument(help: "Text to type")
     var text: String
 
     @OptionGroup var driverOptions: DriverOptions
@@ -565,9 +565,9 @@ struct TypeCommand: AsyncParsableCommand {
 }
 
 struct Swipe: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(abstract: "スワイプする")
+    static let configuration = CommandConfiguration(abstract: "Swipe")
 
-    @Argument(help: "方向: up / down / left / right")
+    @Argument(help: "Direction: up / down / left / right")
     var direction: String
 
     @OptionGroup var driverOptions: DriverOptions
@@ -582,12 +582,12 @@ struct Swipe: AsyncParsableCommand {
 }
 
 struct Press: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(abstract: "要素を長押しする")
+    static let configuration = CommandConfiguration(abstract: "Long-press an element")
 
-    @Option(help: "参照番号")
+    @Option(help: "Reference number")
     var ref: Int
 
-    @Option(help: "長押し秒数")
+    @Option(help: "Press duration in seconds")
     var duration: Double = 1.0
 
     @OptionGroup var driverOptions: DriverOptions
@@ -599,9 +599,9 @@ struct Press: AsyncParsableCommand {
 }
 
 struct Screenshot: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(abstract: "スクリーンショットを保存する")
+    static let configuration = CommandConfiguration(abstract: "Save a screenshot")
 
-    @Option(name: .shortAndLong, help: "出力先 PNG パス")
+    @Option(name: .shortAndLong, help: "Output PNG path")
     var output: String = "screenshot.png"
 
     @OptionGroup var driverOptions: DriverOptions
@@ -614,7 +614,7 @@ struct Screenshot: AsyncParsableCommand {
 }
 
 struct Terminate: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(abstract: "対象アプリを終了する")
+    static let configuration = CommandConfiguration(abstract: "Terminate the app under test")
 
     @OptionGroup var driverOptions: DriverOptions
 
@@ -629,51 +629,51 @@ struct Terminate: AsyncParsableCommand {
 struct RunScenarios: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "run",
-        abstract: "Swift DSL シナリオ(Projects/<name>/Scenarios/)を実行する(失敗時のみ FM が介入)")
+        abstract: "Run Swift DSL scenarios (Projects/<name>/Scenarios/). FM only steps in on failure")
 
-    @Option(help: "テストプロジェクト名(省略時: Projects/ が 1 つならそれ / 既定プロジェクト)")
+    @Option(help: "Test project name (defaults to the only one in Projects/, or the default project)")
     var project: String?
 
-    @Option(help: "実行プロファイル名(profiles/runs/<名前>.json。デバイス供給・自動インストール込みで実行)")
+    @Option(help: "Run profile name (profiles/runs/<name>.json). Includes device provisioning and auto-install")
     var profile: String?
 
     @Option(name: .customLong("scenario"), parsing: .upToNextOption,
-            help: "実行するシナリオ ID(クラス名.メソッド名。クラス名のみで全シナリオ。複数可。省略時は全件。削除済み @Deleted は完全一致指定のときだけ実行)")
+            help: "Scenario IDs to run (Class.method; a class name alone runs all of its scenarios). Repeatable; defaults to all. @Deleted scenarios run only on an exact match")
     var scenarios: [String] = []
 
     @Option(name: .customLong("folder"), parsing: .upToNextOption,
-            help: "実行するシナリオのフォルダ名(Scenarios/ 直下のサブフォルダ。複数可。--scenario・--failed と併用可)")
+            help: "Scenario folders to run (subfolders directly under Scenarios/). Repeatable; can be combined with --scenario and --failed")
     var folders: [String] = []
 
-    @Flag(help: "FM によるロケータ自己修復を許可する")
+    @Flag(help: "Allow FM-based locator self-healing")
     var heal = false
 
     @Flag(name: .customLong("no-lpt"),
-          help: "LPT 投入順(過去実績の長い順)を無効にし、シナリオ ID 順で投入する")
+          help: "Disable LPT ordering (longest past runtime first) and dispatch in scenario ID order")
     var noLPT = false
 
     @Option(name: .customLong("lpt-history-runs"),
-            help: "LPT の実績として読む run 数(新しい方から。既定 5)")
+            help: "Number of past runs to read for LPT ordering (newest first, default 5)")
     var lptHistoryRuns: Int?
 
-    @Flag(help: "前回失敗したシナリオだけを実行する(結果は実行のたびに .ftester/last-results/ に記録される)")
+    @Flag(help: "Run only the scenarios that failed last time (results are recorded in .ftester/last-results/ on every run)")
     var failed = false
 
     @Option(name: .customLong("report-dir"),
-            help: "レポート出力先ディレクトリ(省略時: Projects/<name>/reports)")
+            help: "Directory to write reports to (defaults to Projects/<name>/reports)")
     var reportDir: String?
 
-    @Option(help: "iOS シナリオを並列実行するブリッジのポート一覧(カンマ区切り。例: 8123,8124。各ポートは別デバイスで bridge up 済みであること)")
+    @Option(help: "Comma-separated bridge ports for running iOS scenarios in parallel (e.g. 8123,8124). Each port must already have bridge up on a separate device")
     var ports: String?
 
-    @Flag(name: .customLong("skip-build"), help: "実行前の swift build をスキップする")
+    @Flag(name: .customLong("skip-build"), help: "Skip the swift build before running")
     var skipBuild = false
 
-    @Flag(help: "ステップ行を抑制しサマリのみ出力する(CI/エージェント向け)")
+    @Flag(help: "Suppress step lines and print only the summary (for CI and agents)")
     var quiet = false
 
     @Flag(name: .customLong("fast-input"),
-          help: "iOS xcuitest ブリッジの高速入力(quiescence 待ちスキップ)を有効化する(実行プロファイルの iosFastInput でも指定可)")
+          help: "Enable fast input on the iOS xcuitest bridge (skips the quiescence wait). Can also be set via iosFastInput in the run profile")
     var fastInput = false
 
     @OptionGroup var driverOptions: DriverOptions

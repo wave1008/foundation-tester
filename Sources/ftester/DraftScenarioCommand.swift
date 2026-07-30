@@ -11,27 +11,27 @@ import FTDSL
 struct DraftScenarioCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "draft-scenario",
-        abstract: "テストベース(docs/testbases/*.md)からシナリオの下書きを生成する")
+        abstract: "Generate a scenario draft from a test base (docs/testbases/*.md)")
 
-    @Option(help: "テストプロジェクト名(省略時: Projects/ が 1 つならそれ / 既定プロジェクト)")
+    @Option(help: "Test project name (defaults to the only one in Projects/, or the default project)")
     var project: String?
 
-    @Option(help: "テストベースのファイルパス(省略時: プロジェクトの docs/testbases/ が 1 ファイルならそれ)")
+    @Option(help: "Path to the test base file (defaults to the only file in the project docs/testbases/)")
     var testbase: String?
 
-    @Option(help: "生成するテストクラス名(省略時はテストベースの見出しから作る)")
+    @Option(help: "Name of the generated test class (defaults to one derived from the test base heading)")
     var name: String?
 
-    @Option(help: "対象アプリの bundle ID(省略時はアプリプロファイルから解決)")
+    @Option(help: "Bundle ID of the app under test (defaults to the value from the app profile)")
     var app: String?
 
-    @Option(help: "対象プラットフォーム: ios / android(省略時は両OS対応)")
+    @Option(help: "Target platform: ios / android (defaults to both)")
     var platform: String?
 
-    @Flag(help: "Foundation Models を使わず、Markdown の見出し・箇条書きだけで構造化する")
+    @Flag(help: "Structure the draft from the Markdown headings and bullets alone, without Foundation Models")
     var noFm = false
 
-    @Flag(help: "ファイルに書かず、生成されるコードを標準出力に出す")
+    @Flag(help: "Print the generated code to stdout instead of writing a file")
     var dryRun = false
 
     func run() async throws {

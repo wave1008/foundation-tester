@@ -17,13 +17,13 @@ import FTCore
 struct ApiListDevices: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "list-devices",
-        abstract: "マシンプロファイルの全デバイスと現在状態を1回判定してJSONでstdoutに出力する"
-            + "(診断は stderr のみ)")
+        abstract: "Evaluate every device in the machine profile and its current state once, and print it"
+            + " as JSON on stdout (diagnostics on stderr only)")
 
-    @Option(help: "テストプロジェクト名(省略時: Projects/ が 1 つならそれ / 既定プロジェクト)")
+    @Option(help: "Test project name (defaults to the only one in Projects/, or the default project)")
     var project: String?
 
-    @Option(help: "実行プロファイル名(machine 解決に使う。指定時はそのプロファイルの machine を最優先。省略時は FT_MACHINE / 登録マシン / machines が 1 つならそれ)")
+    @Option(help: "Run profile name, used to resolve the machine. When given, that profile's machine wins; otherwise FT_MACHINE, the registered machine, or the only entry in machines/")
     var profile: String?
 
     func run() async throws {

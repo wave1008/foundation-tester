@@ -11,8 +11,8 @@ import FTCore
 struct ApiDeviceCatalogCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "device-catalog",
-        abstract: "新規デバイス作成向けカタログ(iOS機種/ランタイム、Android AVDデバイス定義/"
-            + "システムイメージ)を取得しJSONでstdoutに出力する(診断は stderr のみ)")
+        abstract: "Collect the catalog for creating new devices (iOS models/runtimes, Android AVD device"
+            + " definitions/system images) and print it as JSON on stdout (diagnostics on stderr only)")
 
     func run() async throws {
         let output = ApiDeviceCatalogOutput(

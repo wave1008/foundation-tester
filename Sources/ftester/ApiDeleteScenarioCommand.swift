@@ -13,18 +13,18 @@ import FTCore
 struct ApiDeleteScenarioCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "delete-scenario",
-        abstract: "テストクラス(.swiftファイル)またはテスト関数(@Testメソッド)を物理削除する")
+        abstract: "Delete a test class (.swift file) or a test function (@Test method) from disk")
 
-    @Option(name: .customLong("file"), help: "対象の .swift 絶対パス")
+    @Option(name: .customLong("file"), help: "Absolute path of the target .swift file")
     var file: String
 
-    @Option(name: .customLong("class"), help: "対象クラス名(メソッド範囲の限定に使う)")
+    @Option(name: .customLong("class"), help: "Target class name (used to scope the method search)")
     var className: String
 
-    @Option(name: .customLong("method"), help: "削除する @Test メソッド名。指定時はファイルを削除せず関数のみ除去")
+    @Option(name: .customLong("method"), help: "Name of the @Test method to delete. When given, only the function is removed and the file is kept")
     var method: String?
 
-    @Flag(name: .customLong("delete-file"), help: "ファイルごと削除する(クラス削除)。--method とは併用しない")
+    @Flag(name: .customLong("delete-file"), help: "Delete the whole file (removing the class). Not to be combined with --method")
     var deleteFile = false
 
     func run() async throws {

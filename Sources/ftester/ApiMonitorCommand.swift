@@ -37,21 +37,21 @@ import UniformTypeIdentifiers
 struct ApiMonitorCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "monitor",
-        abstract: "マシンプロファイルの全デバイス(--profile 指定時はそのプロファイルが参照する"
-            + "デバイスのみ)を一定間隔で監視し、状態とスクリーンショットを"
-            + "NDJSON(monitorDevices/monitorFrame/monitorError)で stdout に流し続ける"
-            + "(診断は stderr のみ。stdin の EOF または SIGTERM/SIGINT で終了)")
+        abstract: "Poll every device in the machine profile (or, with --profile, only the devices that"
+            + " profile references) at a fixed interval and stream their state and screenshots as"
+            + " NDJSON (monitorDevices/monitorFrame/monitorError) on stdout"
+            + " (diagnostics on stderr only; exits on stdin EOF or SIGTERM/SIGINT)")
 
-    @Option(help: "テストプロジェクト名(省略時: Projects/ が 1 つならそれ / 既定プロジェクト)")
+    @Option(help: "Test project name (defaults to the only one in Projects/, or the default project)")
     var project: String?
 
-    @Option(help: "監視サイクルの間隔(秒。既定 2.0)")
+    @Option(help: "Interval between monitor cycles in seconds (default 2.0)")
     var interval: Double = 2.0
 
-    @Option(name: .customLong("max-width"), help: "スクリーンショットの長辺の最大幅(px。既定 480)")
+    @Option(name: .customLong("max-width"), help: "Maximum size of the screenshot long edge in px (default 480)")
     var maxWidth: Int = 480
 
-    @Option(help: "実行プロファイル名(指定時はそのプロファイルが参照するデバイスのみ監視する。省略時は マシンプロファイルの全デバイス)")
+    @Option(help: "Run profile name (when given, only the devices that profile references are monitored; otherwise every device in the machine profile)")
     var profile: String?
 
     func run() async throws {

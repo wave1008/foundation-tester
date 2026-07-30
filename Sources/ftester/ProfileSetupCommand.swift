@@ -13,51 +13,51 @@ import FTCore
 struct ProfileSetupCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "setup",
-        abstract: "マシン/アプリ/実行プロファイルを整合させて作成する(冪等)")
+        abstract: "Create machine, app and run profiles consistently (idempotent)")
 
-    @Option(help: "テストプロジェクト名(省略時: Projects/ が 1 つならそれ / 既定プロジェクト)")
+    @Option(help: "Test project name (defaults to the only one in Projects/, or the default project)")
     var project: String?
 
-    @Option(help: "対象プラットフォーム: ios / android / both")
+    @Option(help: "Target platform: ios / android / both")
     var platform: String
 
-    @Option(help: "マシンプロファイル名(省略時: 登録名 → machines/ が 1 つならそれ)")
+    @Option(help: "Machine profile name (defaults to the registered name, or the only entry in machines/)")
     var machine: String?
 
-    @Option(help: "デバイスの論理名(省略時: ios=simulator1 / android=emulator1)")
+    @Option(help: "Logical device name (defaults to ios=simulator1 / android=emulator1)")
     var deviceName: String?
 
-    @Option(help: "iOS: シミュレータの機種名(例 \"iPhone 17 Pro\")")
+    @Option(help: "iOS: simulator model name (e.g. \"iPhone 17 Pro\")")
     var simulator: String?
 
-    @Option(help: "iOS: OS バージョン(例 27.0)")
+    @Option(help: "iOS: OS version (e.g. 27.0)")
     var os: String?
 
-    @Option(help: "iOS: シミュレータ/実機の UDID(指定すると機種名より優先される)")
+    @Option(help: "iOS: UDID of a simulator or physical device (takes precedence over the model name)")
     var udid: String?
 
     @Option(help: "Android: AVD ID")
     var avd: String?
 
-    @Option(help: "Android: 実機のシリアル(adb devices の左列)")
+    @Option(help: "Android: serial of a physical device (the left column of adb devices)")
     var serial: String?
 
-    @Option(help: "アプリプロファイル名(profiles/apps/<ref>.json。省略時: プロジェクト名の小文字)")
+    @Option(help: "App profile name (profiles/apps/<ref>.json; defaults to the lowercased project name)")
     var appRef: String?
 
-    @Option(help: "アプリの表示名(省略時: プロジェクト名)")
+    @Option(help: "Display name of the app (defaults to the project name)")
     var appName: String?
 
-    @Option(name: .customLong("app-id"), help: "アプリの bundle ID / パッケージ名")
+    @Option(name: .customLong("app-id"), help: "App bundle ID / package name")
     var appID: String
 
-    @Option(help: "ビルド済み .app/.apk のパス(指定すると autoInstall が有効になる)")
+    @Option(help: "Path to a built .app/.apk (setting it enables autoInstall)")
     var appPath: String?
 
-    @Option(help: "実行プロファイル名(profiles/runs/<名>.json。省略時: プラットフォーム名)")
+    @Option(help: "Run profile name (profiles/runs/<name>.json; defaults to the platform name)")
     var run: String?
 
-    @Flag(help: "デバイスを自動で選ぶ(iOS: 最新 OS の既存シミュレータ・iPad は除外 / Android: API が最も高い既存 AVD)")
+    @Flag(help: "Pick a device automatically (iOS: an existing simulator on the newest OS, excluding iPads / Android: the existing AVD with the highest API level)")
     var autoDevice = false
 
     func run() async throws {

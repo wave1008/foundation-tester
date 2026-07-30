@@ -9,8 +9,8 @@ import FTAndroid
 struct ApiInstallCmdlineToolsCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "install-cmdline-tools",
-        abstract: "Android SDK Command-line Tools(avdmanager)を $ANDROID_SDK/cmdline-tools/latest "
-            + "へ導入する(進捗は stderr・結果は JSON で stdout)")
+        abstract: "Install the Android SDK Command-line Tools (avdmanager) into $ANDROID_SDK/cmdline-tools/latest "
+            + "(progress on stderr, result as JSON on stdout)")
 
     func run() async throws {
         var output: ApiInstallCmdlineToolsOutput

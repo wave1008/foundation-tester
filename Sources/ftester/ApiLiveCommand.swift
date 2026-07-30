@@ -62,7 +62,7 @@ import FTCore
 struct ApiLiveCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "live",
-        abstract: "VSCode拡張のライブ操作パネル向け常駐 CLI(serve のみ。ファイル冒頭のプロトコル参照)",
+        abstract: "Resident CLI for the live-control panel of the VSCode extension (serve only; see the protocol at the top of the file)",
         subcommands: [ApiLiveServe.self])
 }
 
@@ -71,13 +71,13 @@ struct ApiLiveCommand: AsyncParsableCommand {
 struct ApiLiveServe: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "serve",
-        abstract: "ライブ操作パネル向けに常駐し、stdin の NDJSON コマンドを逐次処理する"
-            + "(ApiLiveCommand.swift 冒頭のプロトコル参照。診断は stderr のみ)")
+        abstract: "Stay resident for the live-control panel and process NDJSON commands from stdin"
+            + " (see the protocol at the top of ApiLiveCommand.swift; diagnostics on stderr only)")
 
-    @Option(name: .customLong("max-width"), help: "スクリーンショットの長辺の最大幅(px。0以下=原寸。既定 0)")
+    @Option(name: .customLong("max-width"), help: "Maximum size of the screenshot long edge in px (0 or less = original size; default 0)")
     var maxWidth: Int = 0
 
-    @Option(help: "接続失敗時に XCUITest ブリッジを自動起動するためのシミュレータ UDID(iOS のみ。省略時は自動起動しない)")
+    @Option(help: "Simulator UDID used to auto-start the XCUITest bridge when the connection fails (iOS only; no auto-start when omitted)")
     var udid: String?
 
     @OptionGroup var driverOptions: DriverOptions

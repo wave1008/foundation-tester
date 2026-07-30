@@ -17,8 +17,8 @@ import FTCore
 struct ApiInstalledDevicesCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "installed-devices",
-        abstract: "インストール済みのiOSシミュレータとAndroid AVDを取得しJSONでstdoutに出力する"
-            + "(診断は stderr のみ)")
+        abstract: "Collect the installed iOS simulators and Android AVDs and print them as JSON on stdout"
+            + " (diagnostics on stderr only)")
 
     func run() async throws {
         let output = ApiInstalledDevicesOutput(
