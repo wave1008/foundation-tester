@@ -286,7 +286,7 @@ class ログインテスト {
                 }
             }
             scene(2, "誤ったパスワードはエラー表示") {
-                condition { relaunchApp() }
+                condition { restartApp() }
                 .action {
                     type("#email", "test@example.com")
                     type("#password", "wrong")

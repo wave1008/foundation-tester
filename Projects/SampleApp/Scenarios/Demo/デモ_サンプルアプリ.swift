@@ -1,7 +1,7 @@
 // デモ_サンプルアプリ.swift
 // 4台並列デモ用(自作 SampleApp)。ログイン・タブ・リスト・コンテキストメニューを網羅する。
 // セレクタは SampleApp/Sources/*.swift の accessibilityIdentifier と1対1(ソースが正)。
-// ログイン状態はプロセス内 @State のみ(relaunchApp でログイン画面へリセットされる)。
+// ログイン状態はプロセス内 @State のみ(restartApp でログイン画面へリセットされる)。
 // 各関数は ensureLoggedIn(ifCanSelect)で自己完結にし、実行順に依存しない。
 
 import FTDSL
@@ -34,7 +34,7 @@ class デモ_サンプルアプリ {
         scenario {
             scene(1, "誤ったパスワードでエラーが表示される") {
                 condition {
-                    relaunchApp()  // 前の関数のログイン状態を捨てて必ずログイン画面から
+                    restartApp()  // 前の関数のログイン状態を捨てて必ずログイン画面から
                 }.action {
                     type("#email", "test@example.com")
                     type("#password", "wrong-pass")
@@ -45,7 +45,7 @@ class デモ_サンプルアプリ {
             }
             scene(2, "正しいパスワードでログインできる") {
                 condition {
-                    relaunchApp()  // 入力欄はクリア不可(type は追記)のため再起動でリセット
+                    restartApp()  // 入力欄はクリア不可(type は追記)のため再起動でリセット
                 }.action {
                     type("#email", "test@example.com")
                     type("#password", "password123")
@@ -187,7 +187,7 @@ class デモ_サンプルアプリ {
             }
             scene(2, "再起動でログイン画面へ戻る") {
                 action {
-                    relaunchApp()
+                    restartApp()
                 }.expectation {
                     exist("#app_title||サンプルショップ")
                     exist("#email")

@@ -984,6 +984,8 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
 | `pressEnter` の iOS 実装がソフトキー tap ではない(xcuitest = `typeText("\n")` / inapp = 受け口ごとに Compose は `insertText("\n")`・UIKit は delegate 再現・Flutter は engine への配送) | キーボード要素をスナップショットから除外しているため tap できない。受け口で機構が違うのは iOS 側の事情(上記「iOS の Enter は…」)。観測できる挙動(Return キー相当)はいずれも同等 |
 | `back()` は Shirates の `pressBack`(Android 専用)を home()/appSwitcher() と同列の OS 差吸収コマンドとして両 OS 提供(iOS はエッジスワイプ) | iOS に物理バックが無く、コマンド語彙を OS で割らない方針 |
 | `swipePointToPoint` / `swipeElementToElement` に withOffset・offsetY・intervalSeconds・repeat・safeMode・marginRatio・adjust が無い | ブリッジの drag が単発ジェスチャのため(scrollFrame と同じ事情) |
+| `notExist`(Shirates は `dontExist`) | 否定の意味が読み取りやすく `exist` との対称も保てる(ユーザー決定 2026-07-31・**再提案しない**) |
+| `existAll` / `dontExistAll` を持たない | `exist` のチェーンで書く方が保守しやすく、要素ごとに `timeout:` / `scroll:` を指定できる(ユーザー決定 2026-07-31・**再提案しない**) |
 | `clearInput` がソフトキー/Appium clear 機構ではない(xcuitest=末尾タップ+delete 連打 / inapp=first responder のテキスト置換 / Android=ACTION_SET_TEXT "") | キーボード要素を snapshot から除外しているため(pressEnter と同じ事情) |
 | キーボード可視の取得元が OS で違う(iOS=snapshot のフラグ / Android=dumpsys の InputMethod window) | IME が別プロセスの window でアプリの a11y ツリーに出ないため |
 

@@ -146,9 +146,9 @@ public enum StepDescription {
         case "launch":
             guard !rest.isEmpty else { return nil }
             return isJapanese(rest) ? "\(rest)アプリを起動する" : "launch the \(rest) app"
-        case "relaunch":
+        case "restart":
             guard !rest.isEmpty else { return nil }
-            return isJapanese(rest) ? "\(rest)アプリを再起動する" : "relaunch the \(rest) app"
+            return isJapanese(rest) ? "\(rest)アプリを再起動する" : "restart the \(rest) app"
         case "clearAppData":
             guard !rest.isEmpty else { return nil }
             return isJapanese(rest) ? "\(rest)のアプリデータを消去する" : "clear app data for \(rest)"

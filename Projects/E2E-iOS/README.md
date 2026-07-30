@@ -85,7 +85,7 @@ simctl terminate する(ログに「別アプリに注入された in-app ブリ
 | `07_スクロール.swift` | `scrollTo` と「`scroll:` を付けない探索・検証は現在画面のみ」の契約。`.Cell=行 03` のラベル解決 |
 | `08_待機とタイムアウト.swift` | 暗黙待ち(既定タイムアウト再試行)と `timeout:` 引数 |
 | `09_条件分岐とダイアログ.swift` | `ifCanSelect` と `optional:`。UIAlertController のボタン id 解決 |
-| `10_ライフサイクルとコントロール.swift` | `relaunchApp` によるプロセス内/永続状態の分離、Switch/ラジオ/Slider の状態遷移 |
+| `10_ライフサイクルとコントロール.swift` | `restartApp` によるプロセス内/永続状態の分離、Switch/ラジオ/Slider の状態遷移 |
 
 ## `_disabled/`(通常実行に含めない)
 

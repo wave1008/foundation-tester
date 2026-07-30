@@ -199,7 +199,7 @@ testbase(SC/TC 等の仕様書)を根拠にシナリオを書く場合、実行�
 | 検証 | `exist(sel)` / `notExist(sel)` / `isEnabled(sel)` / `isDisabled(sel)` / `isChecked(sel)` / `isNotChecked(sel)` / `countIs(sel, 個数)` / `screenIs(名)`。exist は `.textIs()/.valueIs()/.idIs()` チェーン可 |
 | テキスト・値の検証 | `textIs` `textContains` `textStartsWith` `textEndsWith` `textMatches`(正規表現)`textMatchesDateFormat` `textIsEmpty` `textIsNotEmpty` と、**それぞれの否定** `textIsNot` `textContainsNot` … / `value…` も同名で一式。**これらに `scroll:` は無い**(静止画面の検証用。画面外は先に `scrollTo`) |
 | 画面に依らない値の検証 | `thisIs` `thisIsNot` `thisIsTrue` `thisContains` `thisMatchesDateFormat` `thisIsGreaterThan` …(API 応答・計算結果に直接生える。失敗は1ステップとして記録される) |
-| アプリ制御 | `launchApp(bundleID?)` / `relaunchApp()` / `terminateApp()` / `home()` / `appSwitcher()` |
+| アプリ制御 | `launchApp(bundleID?)` / `restartApp()` / `terminateApp()` / `home()` / `appSwitcher()` |
 | 待機/分岐 | `wait(秒)` / `ifCanSelect(sel, waitSeconds:) { … }.ifElse { … }` / `ios { }` / `android { }` / `procedure("名") { try await … }` |
 | 反復 | `repeatWhileCanSelect(sel, max: n) { … }`(解決できる限り繰り返す。上限到達は失敗にしない)/ `doUntilTrue("名", waitSeconds:) { 条件 }`(**アプリ・外部の状態待ち専用**。要素の出現待ちは各コマンドの `timeout:`) |
 | 割り込み | `irregularHandler("#promo_modal", dismiss: "#btn_close")` を setUp で宣言すると、出るか不定の**アプリ内メッセージ**を出た時点で自動的に閉じる(OS のダイアログはツール側が吸収するので書かない) |

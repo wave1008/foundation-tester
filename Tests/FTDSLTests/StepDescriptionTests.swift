@@ -98,9 +98,9 @@ final class StepDescriptionTests: XCTestCase {
                        "画面が\"ホーム画面が表示されている\"であること")
     }
 
-    func testLaunchAndRelaunch() {
-        XCTAssertEqual(StepDescription.describe(command: "relaunch com.example.app"),
-                       "relaunch the com.example.app app")
+    func testLaunchAndRestart() {
+        XCTAssertEqual(StepDescription.describe(command: "restart com.example.app"),
+                       "restart the com.example.app app")
     }
 
     func testTerminate() {

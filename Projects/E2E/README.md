@@ -100,7 +100,7 @@ E2E のシナリオは全て `@TestClass(app: "com.ftester.e2e")` で `platform:
 | `07_スクロール.swift` | `scrollTo` と「`scroll:` を付けない探索・検証は現在画面のみ」の契約 |
 | `08_待機とタイムアウト.swift` | 暗黙待ち(既定タイムアウト再試行)と `timeout:` 引数 |
 | `09_条件分岐とダイアログ.swift` | `ifCanSelect` と `optional:` |
-| `10_ライフサイクルとプラットフォーム分岐.swift` | `relaunchApp` によるプロセス内/永続状態の分離、`ios {}` / `android {}` |
+| `10_ライフサイクルとプラットフォーム分岐.swift` | `restartApp` によるプロセス内/永続状態の分離、`ios {}` / `android {}` |
 | `11_否定と個数と方向セレクタ.swift` | `notExist` / `countIs` / `isEnabled`〜`isNotChecked` / 相対セレクタ `:below`・`:above` / `group` / setUp・tearDown |
 | `13_ID無し画面.swift` | id の無い画面を相対セレクタ(`基準:rightSwitch` 等)だけで操作・検証 |
 | `14_部分一致と反復.swift` | `textContains` / `textMatches`(動的文字列)と `repeatWhileCanSelect`(件数不定の一括操作) |

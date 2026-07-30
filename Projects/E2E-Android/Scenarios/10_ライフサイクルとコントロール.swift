@@ -1,5 +1,5 @@
 // 10_ライフサイクルとコントロール.swift
-// ftester 機能: `relaunchApp`(terminate+launch でのプロセス内状態リセット・永続カウンタは残る)と、
+// ftester 機能: `restartApp`(terminate+launch でのプロセス内状態リセット・永続カウンタは残る)と、
 // **ComposeView 側**のコントロール(Switch / Checkbox / RadioButton / Slider)の状態遷移検証。
 // この画面だけ Compose なので、型は View 側と異なる(Switch/Button → `Cell`、
 // Checkbox/RadioButton → `CheckBox`)。値検証は型に依存しない echo Text で行う契約。
@@ -9,7 +9,7 @@ import FTDSL
 @TestClass(app: "com.ftester.e2e.android", platform: "android")
 class ライフサイクルとコントロールが正しく働くこと {
 
-    @Test("relaunchApp でプロセス内カウンタはリセットされ永続カウンタは加算される")
+    @Test("restartApp でプロセス内カウンタはリセットされ永続カウンタは加算される")
     func S0010() {
         scenario {
             scene(1, "ライフサイクル画面を開き永続カウンタを基準化") {
@@ -30,9 +30,9 @@ class ライフサイクルとコントロールが正しく働くこと {
                     textIs("#txt_session_count", "session=2")
                 }
             }
-            scene(3, "relaunchApp 後: session はリセット・launch は+1・ホームのルートに戻る") {
+            scene(3, "restartApp 後: session はリセット・launch は+1・ホームのルートに戻る") {
                 action {
-                    relaunchApp()
+                    restartApp()
                 }.expectation {
                     exist("#txt_home_marker")
                 }.action {
