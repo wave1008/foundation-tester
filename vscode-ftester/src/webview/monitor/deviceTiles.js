@@ -107,11 +107,12 @@ function setTileAspect(entry, aspect) {
   if (entry.tileAspect === value) { return; }
   entry.tileAspect = value;
   entry.tile.style.setProperty('--tile-aspect', value);
-  notifyTileLayoutChanged();
+  notifyTileLayoutChanged('aspect');
 }
 
 // auto-fit(splitter.js)へ「タイル構成が変わった=ちょうど収まる高さが変わった」ことを伝える。
-// 通知するのは台数変化とアスペクト比確定の2箇所だけ。relayoutTiles からは通知しない
+// 通知するのは台数変化('deviceCount')とアスペクト比確定('aspect')の2箇所だけ。reason は
+// splitter.js がドラッグ一時停止の解除判定に使う。relayoutTiles からは通知しない
 // (auto-fit の再計算が relayoutTiles を呼ぶため、通知すると無限ループになる)。
 let tileLayoutObserver = null;
 
@@ -119,9 +120,9 @@ export function setTileLayoutObserver(observer) {
   tileLayoutObserver = observer;
 }
 
-function notifyTileLayoutChanged() {
+function notifyTileLayoutChanged(reason) {
   if (tileLayoutObserver) {
-    tileLayoutObserver();
+    tileLayoutObserver(reason);
   }
 }
 
@@ -583,7 +584,7 @@ export function applyDevices(devices) {
   // devices は数秒ごとのポーリングで届くため、台数が変わったときだけ通知する
   // (毎サイクル通知すると auto-fit の再計測が無駄に走る)。
   if (tiles.size !== previousTileCount) {
-    notifyTileLayoutChanged();
+    notifyTileLayoutChanged('deviceCount');
   }
   syncLanesToDevices(devices);
   updateLaneVisibility();
