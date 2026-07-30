@@ -95,6 +95,9 @@ function renderDevicesPanel(): string {
         <span class="host-metric" id="hm-gpu" title="${t("panels.hostMetrics.gpuTitle")}"><span class="hm-label">GPU</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
         <span class="host-metric" id="hm-fm" title="${t("panels.hostMetrics.fmTitle")}"><span class="hm-label">FM</span><canvas class="hm-canvas" width="72" height="22"></canvas><span class="hm-value">–</span></span>
       </div>
+      <!-- グラフの右・ツールバー右端。ON の間、タイル高さを「全デバイスが横幅にちょうど収まる」
+           高さへ自動調整する(状態と再計算契機は splitter.js)。左右の縁へ向かう両矢印の自作SVG。 -->
+      <button id="btn-auto-fit" class="icon-button toolbar-auto-fit" type="button" aria-pressed="false" title="${t("panels.toolbar.autoFitTitle")}"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M1 3h1v10H1zM14 3h1v10h-1zM5 7.5h6v1H5zM6 5.5L3 8l3 2.5zM13 8l-3-2.5v5z"/></svg></button>
     </div>
     <div id="banner" class="banner"></div>
 

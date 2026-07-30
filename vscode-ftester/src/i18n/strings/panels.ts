@@ -49,6 +49,10 @@ export const panelsStrings = {
   "panels.toolbar.startAllDevices": { ja: "デバイスを全て起動", en: "Start All Devices" },
   "panels.toolbar.stopAll": { ja: "全て終了", en: "Stop All" },
   "panels.toolbar.restartMonitor": { ja: "モニター再起動", en: "Restart Monitor" },
+  "panels.toolbar.autoFitTitle": {
+    ja: "自動フィット: 全デバイスが横幅に収まる高さへ境界線を自動調整(手動で動かすと解除)",
+    en: "Auto-fit: adjust the divider so all devices fit the width (dragging it turns this off)",
+  },
   "panels.hostMetrics.memTitle": { ja: "メモリ使用量", en: "Memory usage" },
   "panels.hostMetrics.cpuTitle": { ja: "CPU負荷", en: "CPU load" },
   "panels.hostMetrics.gpuTitle": { ja: "GPU負荷", en: "GPU load" },

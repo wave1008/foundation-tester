@@ -252,6 +252,9 @@ export type MonitorToWebviewMessage =
   // webview の getState はパネルを閉じると失われるため host 側で永続化する(setTilePaneHeight と対の契約)。
   // webview 側は splitter.js の setTilePaneHeight へ渡す。
   | { readonly type: "tilePaneHeight"; readonly value: number }
+  // デバイスタブの auto-fit トグルの状態(true = 全デバイスが横幅に収まる高さへ自動調整)。
+  // 永続化の理由と経路は tilePaneHeight と同じ(setTileAutoFit と対の契約)。
+  | { readonly type: "tileAutoFit"; readonly value: boolean }
   // ブリッジ突然死の自動修復ウォッチドッグ(monitorBridgeWatchdog.ts)の状態遷移通知。name は
   // deviceOpBusy と同じ名前空間(デバイス論理名)。webview 側はタイルのバッジ表示に使う。
   | {
@@ -456,6 +459,9 @@ export type MonitorFromWebviewMessage =
   // デバイスタブのスプリッターをドラッグ終了した時のタイルペイン高さ(px)。monitorPanel.ts が
   // workspaceState へ永続化し、パネル再作成時に "tilePaneHeight" メッセージで復元する。
   | { readonly type: "setTilePaneHeight"; readonly value: number }
+  // auto-fit トグルの切替(ボタン押下・手動ドラッグによる自動 OFF)。monitorPanel.ts が
+  // workspaceState へ永続化し、パネル再作成時に "tileAutoFit" メッセージで復元する。
+  | { readonly type: "setTileAutoFit"; readonly value: boolean }
   // webview 側 WebCodecs が未対応/デコード失敗したときに1回送られてくる(受け手: monitorPanel.ts の
   // codecError ハンドラ→monitorDeviceStreamController.fallbackToMjpeg/monitorLiveController.fallbackToMjpeg)。
   // scope="tile" は device 必須(対象タイルを1つ特定するため)、scope="live" は選択中デバイスに

@@ -107,6 +107,22 @@ function setTileAspect(entry, aspect) {
   if (entry.tileAspect === value) { return; }
   entry.tileAspect = value;
   entry.tile.style.setProperty('--tile-aspect', value);
+  notifyTileLayoutChanged();
+}
+
+// auto-fit(splitter.js)へ「タイル構成が変わった=ちょうど収まる高さが変わった」ことを伝える。
+// 通知するのは台数変化とアスペクト比確定の2箇所だけ。relayoutTiles からは通知しない
+// (auto-fit の再計算が relayoutTiles を呼ぶため、通知すると無限ループになる)。
+let tileLayoutObserver = null;
+
+export function setTileLayoutObserver(observer) {
+  tileLayoutObserver = observer;
+}
+
+function notifyTileLayoutChanged() {
+  if (tileLayoutObserver) {
+    tileLayoutObserver();
+  }
 }
 
 // タイル実測高さから --tile-image-h を算出(タイル幅はこの高さ×アスペクト比で決まる)。
@@ -516,6 +532,7 @@ function clearTileError(entry) {
 }
 
 export function applyDevices(devices) {
+  const previousTileCount = tiles.size;
   const seen = new Set();
   for (const device of devices) {
     seen.add(device.id);
@@ -563,6 +580,11 @@ export function applyDevices(devices) {
   }
   emptyMessage.style.display = tiles.size === 0 ? 'flex' : 'none';
   relayoutTiles();
+  // devices は数秒ごとのポーリングで届くため、台数が変わったときだけ通知する
+  // (毎サイクル通知すると auto-fit の再計測が無駄に走る)。
+  if (tiles.size !== previousTileCount) {
+    notifyTileLayoutChanged();
+  }
   syncLanesToDevices(devices);
   updateLaneVisibility();
 }
