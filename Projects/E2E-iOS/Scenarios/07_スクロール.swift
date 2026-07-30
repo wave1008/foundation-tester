@@ -103,4 +103,20 @@ class スクロールで折り返し下の要素に到達できること {
             }
         }
     }
+
+    @Test("notExist(scroll:) で不在をスクロール探索できる")
+    func S0050() {
+        scenario {
+            scene(1, "スクロール画面を開く") {
+                condition {
+                    launchApp()
+                }.action {
+                    tap("#nav_scroll")
+                }.expectation {
+                    // #row_99 は存在しない行(#row_01〜#row_40 の範囲外)。スクロールしても見つからないことを検証する
+                    notExist("#row_99", scroll: .down, maxSwipes: 3)
+                }
+            }
+        }
+    }
 }

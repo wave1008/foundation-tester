@@ -136,4 +136,27 @@ class テキスト入力が正しくechoされること {
             }
         }
     }
+
+    @Test("キーボードの表示状態を検証できる")
+    func S0050() {
+        scenario {
+            scene(1, "入力欄をタップするとキーボードが出る") {
+                condition {
+                    launchApp()
+                }.action {
+                    tap("#nav_input")
+                    tap("#field_single")
+                }.expectation {
+                    keyboardIsShown()
+                }
+            }
+            scene(2, "hideKeyboard で閉じる") {
+                action {
+                    hideKeyboard()
+                }.expectation {
+                    keyboardIsNotShown()
+                }
+            }
+        }
+    }
 }
