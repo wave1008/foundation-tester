@@ -21,7 +21,7 @@ public enum ScenarioRunnerMain {
 struct Root: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "ftester-scenarios",
-        abstract: "Swift DSL シナリオの一覧と実行(ftester run から呼ばれるランナー)",
+        abstract: "List and run Swift DSL scenarios (the runner invoked by ftester run)",
         subcommands: [ListScenarios.self, RunScenario.self]
     )
 }
@@ -30,9 +30,9 @@ struct Root: AsyncParsableCommand {
 
 struct ListScenarios: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
-        commandName: "list", abstract: "シナリオ一覧を表示する")
+        commandName: "list", abstract: "List the scenarios")
 
-    @Flag(help: "JSON で出力する")
+    @Flag(help: "Print as JSON")
     var json = false
 
     func run() async throws {
@@ -76,83 +76,83 @@ struct ListScenarios: AsyncParsableCommand {
 
 struct RunScenario: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
-        commandName: "run", abstract: "シナリオを 1 つ実行する")
+        commandName: "run", abstract: "Run a single scenario")
 
-    @Option(help: "シナリオ ID(クラス名.メソッド名)")
+    @Option(help: "Scenario ID (Class.method)")
     var scenario: String
 
-    @Option(help: "対象プラットフォーム: ios / android")
+    @Option(help: "Target platform: ios / android")
     var platform: String = "ios"
 
-    @Option(help: "ブリッジのポート番号(iOS のみ)")
+    @Option(help: "Bridge port number (iOS only)")
     var port: UInt16 = BridgeAPI.defaultPort
 
-    @Option(help: "Android デバイスのシリアル(adb -s。省略時は唯一の接続デバイス)")
+    @Option(help: "Android device serial (adb -s; defaults to the only connected device)")
     var serial: String?
 
-    @Option(help: "iOS 駆動エンジン: xcuitest(既定)/ inapp(dylib 注入)/ hybrid(in-app+XCUITest)")
+    @Option(help: "iOS engine: xcuitest (default) / inapp (dylib injection) / hybrid (in-app + XCUITest)")
     var engine: String?
 
-    @Option(help: "iOS: シミュレータ UDID(inapp/hybrid の再起動、xcuitest の launch 事前検査に使用)")
+    @Option(help: "iOS: simulator UDID (used to relaunch for inapp/hybrid and for the xcuitest launch preflight)")
     var udid: String?
 
-    @Option(name: .customLong("xcui-port"), help: "iOS: hybrid のフォールバック用 XCUITest ブリッジのポート")
+    @Option(name: .customLong("xcui-port"), help: "iOS: port of the XCUITest bridge used as the hybrid fallback")
     var xcuiPort: UInt16?
 
     @Option(name: .customLong("inapp-app"),
-            help: "iOS: provision 時に in-app ブリッジを注入したアプリの bundleID(suspend 時の注入先判定用)")
+            help: "iOS: bundleID of the app the in-app bridge was injected into during provisioning (used to identify the target while suspended)")
     var inappApp: String?
 
     @Option(name: .customLong("device-name"),
-            help: "実行プロファイル上のデバイス論理名(レポートヘッダ表示用。orchestrator から渡される)")
+            help: "Logical device name from the run profile (shown in the report header; passed in by the orchestrator)")
     var deviceName: String?
 
-    @Flag(help: "対象が実機(simctl 依存の高速 launch・未インストール事前検査を無効化する)")
+    @Flag(help: "The target is a physical device (disables the simctl-based fast launch and the not-installed preflight)")
     var physical = false
 
     @Option(name: .customLong("bridge-host"),
-            help: "iOS ブリッジの宛先ホスト(既定 127.0.0.1。実機は LAN IP か iproxy のループバック)")
+            help: "Host of the iOS bridge (default 127.0.0.1; for physical devices use the LAN IP or the iproxy loopback)")
     var bridgeHost: String?
 
-    @Flag(help: "FM によるロケータ自己修復を許可する")
+    @Flag(help: "Allow FM-based locator self-healing")
     var heal = false
 
-    @Flag(name: .customLong("no-fm"), help: "FM 機能(heal/偽陽性検証/screenIs/triage)を一切使わない")
+    @Flag(name: .customLong("no-fm"), help: "Do not use any FM feature (heal / false-positive check / screenIs / triage)")
     var noFM = false
 
-    @Flag(name: .customLong("no-false-positive-check"), help: "偽陽性検証(occlusion guard)を無効化する")
+    @Flag(name: .customLong("no-false-positive-check"), help: "Disable the false-positive check (occlusion guard)")
     var noFalsePositiveCheck = false
 
-    @Flag(name: .customLong("no-screen-is"), help: "screenIs(screenMatches)を無効化する")
+    @Flag(name: .customLong("no-screen-is"), help: "Disable screenIs (screenMatches)")
     var noScreenIs = false
 
-    @Option(name: .customLong("report-dir"), help: "レポート出力先ディレクトリ")
+    @Option(name: .customLong("report-dir"), help: "Directory to write reports to")
     var reportDir: String = "reports"
 
     @Option(name: .customLong("project-dir"),
-            help: "テストプロジェクトのルート(ヒールキャッシュ等の状態保存先。省略時はカレント)")
+            help: "Root of the test project (where state such as the heal cache is stored; defaults to the current directory)")
     var projectDir: String?
 
     @Option(name: .customLong("default-timeout"),
-            help: "検証コマンド(exist/textIs 等)の既定タイムアウト秒(小数可。省略時 5)")
+            help: "Default timeout in seconds for assertions such as exist/textIs (decimals allowed, default 5)")
     var defaultTimeout: Double?
 
-    @Flag(help: "NDJSON イベントを出力する(ホスト連携用)")
+    @Flag(help: "Emit NDJSON events (for the host)")
     var json = false
 
     @Flag(name: .customLong("dry-run"),
-          help: "デバイスに触れず全コマンドを記録のみで通過させる(ステップ列挙・レビュー用)")
+          help: "Record every command without touching a device (for listing and reviewing steps)")
     var dryRun = false
 
-    @Flag(help: "stdin から一時停止・再開の制御コマンド(NDJSON)を受け付ける(デバッグ実行用)")
+    @Flag(help: "Accept pause/resume control commands (NDJSON) on stdin (for debug runs)")
     var debug = false
 
     @Option(name: .customLong("breakpoint"),
-            help: "ブレークポイント(<file>:<line>。--debug 時のみ有効、複数指定可)")
+            help: "Breakpoint (<file>:<line>). Only effective with --debug; repeatable")
     var breakpoint: [String] = []
 
     @Flag(name: .customLong("pause-on-start"),
-          help: "最初のステップの手前で一時停止して開始する(--debug 時のみ有効)")
+          help: "Start paused before the first step (only effective with --debug)")
     var pauseOnStart = false
 
     func run() async throws {

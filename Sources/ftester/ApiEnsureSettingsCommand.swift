@@ -12,12 +12,12 @@ import FTCore
 struct ApiEnsureSettingsCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "ensure-settings",
-        abstract: "受け手パッケージの .claude/settings.json に ftester 由来の Bash 許可を補う(冪等)")
+        abstract: "Top up the ftester-related Bash permissions in the consumer package .claude/settings.json (idempotent)")
 
-    @Option(help: "受け手パッケージのルート(Projects/ がある場所。既定: カレント)")
+    @Option(help: "Root of the consumer package (where Projects/ lives; defaults to the current directory)")
     var workDir: String?
 
-    @Option(help: "foundation-tester クローンの場所(許可するコマンドの絶対パスに使う)")
+    @Option(help: "Location of the foundation-tester clone (used for the absolute paths of the allowed commands)")
     var toolRoot: String?
 
     func run() async throws {

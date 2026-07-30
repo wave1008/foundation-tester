@@ -14,21 +14,21 @@ import FTCore
 struct DevicesCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "devices",
-        abstract: "マシンプロファイルのデバイス群の起動・停止",
+        abstract: "Start and stop the devices in the machine profile",
         subcommands: [Up.self, Down.self])
 
     struct Up: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "全デバイスを起動する(最大2台同時。起動済みはスキップ。"
-                + "--profile 指定時はそのプロファイルが参照するデバイスのみ)")
+            abstract: "Start every device (at most two at a time; already-running devices are skipped."
+                + " With --profile, only the devices that profile references)")
 
-        @Option(help: "テストプロジェクト名(省略時: Projects/ が 1 つならそれ / 既定プロジェクト)")
+        @Option(help: "Test project name (defaults to the only one in Projects/, or the default project)")
         var project: String?
 
-        @Option(help: "実行プロファイル名(指定時はそのプロファイルが参照するデバイスのみ起動する。省略時はマシンプロファイルの全デバイス)")
+        @Option(help: "Run profile name (when given, only the devices that profile references are started; otherwise every device in the machine profile)")
         var profile: String?
 
-        @Flag(name: .customLong("no-bridge"), help: "iOS ブリッジの供給を行わない")
+        @Flag(name: .customLong("no-bridge"), help: "Do not provision the iOS bridge")
         var noBridge = false
 
         func run() async throws {
@@ -46,13 +46,13 @@ struct DevicesCommand: AsyncParsableCommand {
 
     struct Down: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "全ブリッジを停止し、シミュレータとエミュレータを全て終了する(Android 実機は対象外。"
-                + "--profile 指定時はそのプロファイルが参照するデバイスのみを個別に停止する)")
+            abstract: "Stop every bridge and shut down all simulators and emulators (physical Android devices are"
+                + " excluded). With --profile, only the devices that profile references are stopped individually)")
 
-        @Option(help: "テストプロジェクト名(--profile 指定時のみ使用。省略時: Projects/ が 1 つならそれ / 既定プロジェクト)")
+        @Option(help: "Test project name (only used with --profile; defaults to the only one in Projects/, or the default project)")
         var project: String?
 
-        @Option(help: "実行プロファイル名(指定時はそのプロファイルが参照するデバイスのみを個別に停止する。省略時は従来どおり全ブリッジ停止+シミュレータ全終了+全エミュレータ終了)")
+        @Option(help: "Run profile name (when given, only the devices that profile references are stopped individually; otherwise every bridge is stopped and all simulators and emulators are shut down)")
         var profile: String?
 
         func run() async throws {

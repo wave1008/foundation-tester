@@ -11,25 +11,25 @@ import FTCore
 struct ApiHostMetricsSummaryCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "host-metrics-summary",
-        abstract: "ホスト負荷(既定: --project/--run で run の記録を解決。--log 指定時はそのファイルを直接読む)の時間窓集計を JSON で stdout に出力する")
+        abstract: "Print a time-window aggregation of host load as JSON on stdout (by default the run record is resolved from --project/--run; with --log that file is read directly)")
 
-    @Option(name: .customLong("log"), help: "集計対象の NDJSON パスを直接指定する(省略時は --project/--run から解決)")
+    @Option(name: .customLong("log"), help: "Path of the NDJSON to aggregate (resolved from --project/--run when omitted)")
     var logPath: String?
 
-    @Option(help: "テストプロジェクト名(省略時: Projects/ が 1 つならそれ / 既定プロジェクト。--log 指定時は無視)")
+    @Option(help: "Test project name (defaults to the only one in Projects/, or the default project; ignored with --log)")
     var project: String?
 
     // プロパティ名は `run` にできない(ParsableCommand の必須メソッド run() と衝突し
     // "invalid redeclaration of 'run()'" になる)。CLI 上のフラグ名は --run のまま。
-    @Option(name: .customLong("run"), help: "runID または \"latest\"(既定 latest。--log 指定時は無視)")
+    @Option(name: .customLong("run"), help: "A runID or \"latest\" (default latest; ignored with --log)")
     var runArg = "latest"
 
     @Option(name: .customLong("since"),
-            help: "集計開始。duration(例 10m/2h/90s/1d)または unix epoch 秒。省略時は全件")
+            help: "Start of the window: a duration (e.g. 10m/2h/90s/1d) or unix epoch seconds. Defaults to everything")
     var since: String?
 
     @Option(name: .customLong("until"),
-            help: "集計終了。duration(例 10m/2h/90s/1d)または unix epoch 秒。省略時は現在まで")
+            help: "End of the window: a duration (e.g. 10m/2h/90s/1d) or unix epoch seconds. Defaults to now")
     var until: String?
 
     func run() throws {

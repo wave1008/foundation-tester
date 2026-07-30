@@ -9,25 +9,25 @@ import FTCore
 struct ApiResultsCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "results",
-        abstract: "実行結果DB(results/)の集計(runs/summary/flaky/devices/daily/trend/slow/insights/matrix)を"
-            + "まとめてJSONでstdoutに出力する(診断は stderr のみ)")
+        abstract: "Aggregate the run-results database (results/) — runs/summary/flaky/devices/daily/trend/slow/insights/matrix —"
+            + " and print it all as JSON on stdout (diagnostics on stderr only)")
 
-    @Option(help: "テストプロジェクト名(省略時: Projects/ が 1 つならそれ / 既定プロジェクト)")
+    @Option(help: "Test project name (defaults to the only one in Projects/, or the default project)")
     var project: String?
 
-    @Option(help: "期間の開始。30d/12h のような相対指定、または YYYY-MM-DD(省略時は 90d)")
+    @Option(help: "Start of the period: a relative value such as 30d/12h, or YYYY-MM-DD (default 90d)")
     var since: String = "90d"
 
-    @Option(help: "runs に含める件数(runID 降順)")
+    @Option(help: "Number of entries to include in runs (descending by runID)")
     var limit: Int = 50
 
-    @Option(name: .customLong("min-runs"), help: "flaky 判定の対象にする最小実行回数")
+    @Option(name: .customLong("min-runs"), help: "Minimum number of runs before a scenario is considered for flakiness")
     var minRuns: Int = 5
 
-    @Option(help: "指定時のみ trend(実行履歴)を出力するシナリオID")
+    @Option(help: "Scenario ID whose trend (run history) to output; omitted unless given")
     var scenario: String?
 
-    @Option(name: .customLong("matrix-runs"), help: "直近何 run 分のシナリオ×run成否マトリクスを出力するか(0でmatrix省略)")
+    @Option(name: .customLong("matrix-runs"), help: "How many recent runs to include in the scenario-by-run pass/fail matrix (0 omits the matrix)")
     var matrixRuns: Int = 20
 
     func run() throws {

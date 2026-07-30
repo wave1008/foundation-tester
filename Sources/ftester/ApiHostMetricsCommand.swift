@@ -15,14 +15,14 @@ import IOKit
 struct ApiHostMetricsCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "host-metrics",
-        abstract: "ホストMacのCPU/GPU負荷とメモリ使用量を一定間隔でサンプリングし"
-            + "NDJSON(hostMetrics)でstdoutに流し続ける(診断は stderr のみ。"
-            + "stdin の EOF または SIGTERM/SIGINT で終了)")
+        abstract: "Sample the host Mac CPU/GPU load and memory usage at a fixed interval and stream them"
+            + " as NDJSON (hostMetrics) on stdout (diagnostics on stderr only;"
+            + " exits on stdin EOF or SIGTERM/SIGINT)")
 
-    @Option(help: "サンプリング間隔(秒。既定 1.0)")
+    @Option(help: "Sampling interval in seconds (default 1.0)")
     var interval: Double = 1.0
 
-    @Option(name: .customLong("log"), help: "サンプルを追記する NDJSON ファイルのパス(省略時: 保存しない。stdout のみ)")
+    @Option(name: .customLong("log"), help: "Path of an NDJSON file to append samples to (when omitted nothing is saved; stdout only)")
     var logPath: String?
 
     func run() async throws {

@@ -10,7 +10,7 @@ import FTCore
 struct ResultsCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "results",
-        abstract: "実行結果 DB(results/)を集計・分析する",
+        abstract: "Aggregate and analyse the run-results database (results/)",
         subcommands: [
             ResultsListCommand.self,
             ResultsSummaryCommand.self,
@@ -24,13 +24,13 @@ struct ResultsCommand: AsyncParsableCommand {
 
 /// results サブコマンド共通オプション
 struct ResultsQueryOptions: ParsableArguments {
-    @Option(help: "テストプロジェクト名(省略時: Projects/ が 1 つならそれ / 既定プロジェクト)")
+    @Option(help: "Test project name (defaults to the only one in Projects/, or the default project)")
     var project: String?
 
-    @Option(help: "期間の開始。30d/12h のような相対指定、または YYYY-MM-DD(省略時は 90d)")
+    @Option(help: "Start of the period: a relative value such as 30d/12h, or YYYY-MM-DD (default 90d)")
     var since: String = "90d"
 
-    @Flag(help: "結果を JSON(1 行)で出力する")
+    @Flag(help: "Print the result as a single line of JSON")
     var json = false
 
     /// プロジェクト・resultsDir・since の Date を解決する。--since 形式不正はここで弾く
@@ -88,11 +88,11 @@ enum SimpleTable {
 // MARK: - list
 
 struct ResultsListCommand: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(commandName: "list", abstract: "run 一覧を新しい順に表示する")
+    static let configuration = CommandConfiguration(commandName: "list", abstract: "List runs, newest first")
 
     @OptionGroup var options: ResultsQueryOptions
 
-    @Option(help: "表示件数")
+    @Option(help: "Number of rows to show")
     var limit: Int = 20
 
     func run() throws {
@@ -127,11 +127,11 @@ struct ResultsListCommand: AsyncParsableCommand {
 
 struct ResultsSummaryCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
-        commandName: "summary", abstract: "シナリオ別の実行回数・成功率・所要時間を集計する(成功率昇順)")
+        commandName: "summary", abstract: "Aggregate run count, pass rate and duration per scenario (lowest pass rate first)")
 
     @OptionGroup var options: ResultsQueryOptions
 
-    @Option(help: "対象シナリオ ID(省略時は全シナリオ)")
+    @Option(help: "Scenario ID to report on (defaults to all scenarios)")
     var scenario: String?
 
     func run() throws {
@@ -164,11 +164,11 @@ struct ResultsSummaryCommand: AsyncParsableCommand {
 
 struct ResultsFlakyCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
-        commandName: "flaky", abstract: "pass/fail が混在する不安定なシナリオを不安定度順に表示する")
+        commandName: "flaky", abstract: "List scenarios that both pass and fail, most flaky first")
 
     @OptionGroup var options: ResultsQueryOptions
 
-    @Option(name: .customLong("min-runs"), help: "対象にする最小実行回数")
+    @Option(name: .customLong("min-runs"), help: "Minimum number of runs to include a scenario")
     var minRuns: Int = 5
 
     func run() throws {
@@ -197,11 +197,11 @@ struct ResultsFlakyCommand: AsyncParsableCommand {
 // MARK: - trend
 
 struct ResultsTrendCommand: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(commandName: "trend", abstract: "1 シナリオの実行履歴を時系列(古い順)で表示する")
+    static let configuration = CommandConfiguration(commandName: "trend", abstract: "Show the run history of a single scenario in chronological order")
 
     @OptionGroup var options: ResultsQueryOptions
 
-    @Option(help: "対象シナリオ ID")
+    @Option(help: "Scenario ID")
     var scenario: String
 
     func run() throws {
@@ -240,7 +240,7 @@ struct ResultsTrendCommand: AsyncParsableCommand {
 
 struct ResultsDevicesCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
-        commandName: "devices", abstract: "worker(デバイス)別・platform 別に実行回数・成功率を集計する")
+        commandName: "devices", abstract: "Aggregate run count and pass rate per worker (device) and per platform")
 
     @OptionGroup var options: ResultsQueryOptions
 
@@ -278,11 +278,11 @@ struct ResultsDevicesCommand: AsyncParsableCommand {
 
 struct ResultsSlowCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
-        commandName: "slow", abstract: "平均所要時間が長いシナリオを遅い順に表示する")
+        commandName: "slow", abstract: "List scenarios by average duration, slowest first")
 
     @OptionGroup var options: ResultsQueryOptions
 
-    @Option(help: "表示件数")
+    @Option(help: "Number of rows to show")
     var limit: Int = 10
 
     func run() throws {
@@ -319,7 +319,7 @@ struct ResultsSlowCommand: AsyncParsableCommand {
 struct ResultsInsightsCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "insights",
-        abstract: "回帰・連続失敗・インフラ起因失敗・セレクタ陳腐化など注意が必要な現象を検出する")
+        abstract: "Detect things worth attention: regressions, consecutive failures, infrastructure-caused failures and stale selectors")
 
     @OptionGroup var options: ResultsQueryOptions
 

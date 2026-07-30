@@ -16,7 +16,7 @@ import FTCore
 struct ApiListApps: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "list-apps",
-        abstract: "デバイスのインストール済みアプリ一覧をJSONでstdoutに出力する(診断は stderr のみ)")
+        abstract: "Print the list of apps installed on the device as JSON on stdout (diagnostics on stderr only)")
 
     @OptionGroup var driverOptions: DriverOptions
 

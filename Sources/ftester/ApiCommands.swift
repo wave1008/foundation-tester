@@ -10,7 +10,7 @@ import FTDSL
 struct ApiCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "api",
-        abstract: "VSCode拡張等の外部ツール向け機械可読 API(stdout に JSON を出力)",
+        abstract: "Machine-readable API for external tools such as the VSCode extension (JSON on stdout)",
         subcommands: [ApiListScenarios.self, ApiSteps.self, ApiRunCommand.self,
                       ApiMonitorCommand.self, ApiApplyHeal.self, ApiListDevices.self,
                       ApiListApps.self, ApiDeviceUp.self, ApiDeviceDown.self, ApiDevicesUp.self,
@@ -29,13 +29,13 @@ struct ApiCommand: AsyncParsableCommand {
 struct ApiListScenarios: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "list-scenarios",
-        abstract: "シナリオ一覧をソース位置(ファイル・行番号)付きの JSON で stdout に出力する"
-            + "(診断・警告は stderr のみ)")
+        abstract: "Print the scenario list as JSON on stdout, including source locations (file and line)"
+            + " (diagnostics and warnings go to stderr only)")
 
-    @Option(help: "テストプロジェクト名(省略時: Projects/ が 1 つならそれ / 既定プロジェクト)")
+    @Option(help: "Test project name (defaults to the only one in Projects/, or the default project)")
     var project: String?
 
-    @Flag(name: .customLong("skip-build"), help: "実行前の swift build をスキップする")
+    @Flag(name: .customLong("skip-build"), help: "Skip the swift build before running")
     var skipBuild = false
 
     func run() async throws {
@@ -220,16 +220,16 @@ private struct ApiListScenariosOutput: Encodable {
 struct ApiSteps: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "steps",
-        abstract: "シナリオを dry-run してステップ表相当の JSON を stdout に出力する"
-            + "(診断・警告は stderr のみ)")
+        abstract: "Dry-run a scenario and print the equivalent of its step table as JSON on stdout"
+            + " (diagnostics and warnings go to stderr only)")
 
-    @Option(help: "テストプロジェクト名(省略時: Projects/ が 1 つならそれ / 既定プロジェクト)")
+    @Option(help: "Test project name (defaults to the only one in Projects/, or the default project)")
     var project: String?
 
-    @Option(help: "対象シナリオ ID(クラス名.メソッド名)")
+    @Option(help: "Scenario ID (Class.method)")
     var scenario: String
 
-    @Flag(name: .customLong("skip-build"), help: "実行前の swift build をスキップする")
+    @Flag(name: .customLong("skip-build"), help: "Skip the swift build before running")
     var skipBuild = false
 
     func run() async throws {

@@ -13,13 +13,13 @@ import FTDSL
 struct ApiGenScenarioCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "gen-scenario",
-        abstract: "記録した操作(--steps の一時 JSON)から Swift シナリオを生成し、NDJSON"
-            + "(genStarted → scenarioGenerated | error)で stdout に流す(診断は stderr のみ)")
+        abstract: "Generate a Swift scenario from recorded interactions (the temporary JSON given to --steps)"
+            + " and stream NDJSON (genStarted -> scenarioGenerated | error) on stdout (diagnostics on stderr only)")
 
-    @Option(help: "テストプロジェクト名(省略時: Projects/ が 1 つならそれ / 既定プロジェクト)")
+    @Option(help: "Test project name (defaults to the only one in Projects/, or the default project)")
     var project: String?
 
-    @Option(name: .customLong("steps"), help: "記録した操作を書き出した一時 JSON ファイルのパス")
+    @Option(name: .customLong("steps"), help: "Path of the temporary JSON file the recorded interactions were written to")
     var stepsPath: String
 
     func run() async throws {

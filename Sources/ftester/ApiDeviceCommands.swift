@@ -12,19 +12,19 @@ import FTCore
 struct ApiDeviceUp: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "device-up",
-        abstract: "マシンプロファイル記載のデバイス1台を起動する(NDJSON: log* → finished を"
-            + "stdout に出力。診断は stderr のみ。ok:false のときは exit code 1)")
+        abstract: "Start one device listed in the machine profile (NDJSON: log* -> finished on "
+            + "stdout; diagnostics on stderr only; exit code 1 when ok:false)")
 
-    @Option(help: "デバイスの論理名(マシンプロファイルの ios/android どちらかの name)")
+    @Option(help: "Logical device name (a name under ios or android in the machine profile)")
     var name: String
 
-    @Option(help: "テストプロジェクト名(省略時: Projects/ が 1 つならそれ / 既定プロジェクト)")
+    @Option(help: "Test project name (defaults to the only one in Projects/, or the default project)")
     var project: String?
 
-    @Option(help: "実行プロファイル名(machine 解決に使う。指定時はそのプロファイルの machine を最優先。省略時は FT_MACHINE / 登録マシン / machines が 1 つならそれ)")
+    @Option(help: "Run profile name, used to resolve the machine. When given, that profile's machine wins; otherwise FT_MACHINE, the registered machine, or the only entry in machines/")
     var profile: String?
 
-    @Option(help: "Android の GPU 描画モード(host / swiftshader_indirect。既定 host。凍結個体の CPU 描画フォールバック用)")
+    @Option(help: "Android GPU rendering mode (host / swiftshader_indirect; default host). Used as the CPU-rendering fallback for devices that freeze")
     var gpu: String?
 
     func run() async throws {
@@ -54,24 +54,24 @@ struct ApiDeviceUp: AsyncParsableCommand {
 struct ApiDevicesUp: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "devices-up",
-        abstract: "マシンプロファイルの全デバイスを起動する(NDJSON: log/deviceStarting/deviceFinished → "
-            + "finished を stdout に出力。診断は stderr のみ)")
+        abstract: "Start every device in the machine profile (NDJSON: log/deviceStarting/deviceFinished -> "
+            + "finished on stdout; diagnostics on stderr only)")
 
-    @Option(help: "テストプロジェクト名(省略時: Projects/ が 1 つならそれ / 既定プロジェクト)")
+    @Option(help: "Test project name (defaults to the only one in Projects/, or the default project)")
     var project: String?
 
-    @Option(help: "実行プロファイル名(指定時はそのプロファイルが参照するデバイスのみ起動する)")
+    @Option(help: "Run profile name (when given, only the devices that profile references are started)")
     var profile: String?
 
-    @Flag(name: .customLong("no-bridge"), help: "iOS ブリッジの供給を行わない")
+    @Flag(name: .customLong("no-bridge"), help: "Do not provision the iOS bridge")
     var noBridge = false
 
     @Option(name: .customLong("cpu-render"), parsing: .upToNextOption,
-            help: "swiftshader_indirect(CPU 描画)で起動するデバイス論理名(凍結フォールバック中の個体の維持用。複数指定可。watchdog の per-device フォールバックと同期相手: vscode-ftester/src/monitorDeviceOps.ts)")
+            help: "Logical names of devices to start with swiftshader_indirect (CPU rendering), keeping devices that are on the freeze fallback. Repeatable. Kept in sync with the watchdog per-device fallback: vscode-ftester/src/monitorDeviceOps.ts")
     var cpuRender: [String] = []
 
     @Option(name: .customLong("restart"), parsing: .upToNextOption,
-            help: "起動済みでもスキップせず down→up で再起動するデバイス論理名(CPU 描画フォールバック機の GPU 復帰用。複数指定可。未起動機のブートと同一キューで2台ずつ並行処理される)")
+            help: "Logical names of devices to restart with down->up even if already running, to bring CPU-rendering devices back onto the GPU. Repeatable; processed two at a time in the same queue as booting stopped devices")
     var restart: [String] = []
 
     func run() async throws {
@@ -116,18 +116,18 @@ struct ApiDevicesUp: AsyncParsableCommand {
 struct ApiDevicesRestart: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "devices-restart",
-        abstract: "指定した複数デバイスを down→up で再起動する(2台ずつ並行。NDJSON: "
-            + "log/deviceStopping/deviceStarting/deviceFinished → finished を stdout に出力。"
-            + "診断は stderr のみ。ok:false のときは exit code 1)")
+        abstract: "Restart the given devices with down->up, two at a time (NDJSON: "
+            + "log/deviceStopping/deviceStarting/deviceFinished -> finished on stdout; "
+            + "diagnostics on stderr only; exit code 1 when ok:false)")
 
     @Option(name: .customLong("name"), parsing: .upToNextOption,
-            help: "再起動するデバイスの論理名(マシンプロファイルの ios/android どちらか。複数指定可)")
+            help: "Logical names of the devices to restart (under ios or android in the machine profile). Repeatable")
     var name: [String] = []
 
-    @Option(help: "テストプロジェクト名(省略時: Projects/ が 1 つならそれ / 既定プロジェクト)")
+    @Option(help: "Test project name (defaults to the only one in Projects/, or the default project)")
     var project: String?
 
-    @Option(help: "実行プロファイル名(指定時はそのプロファイルが参照するデバイスのみ対象)")
+    @Option(help: "Run profile name (when given, only the devices that profile references are affected)")
     var profile: String?
 
     func run() async throws {
@@ -214,15 +214,16 @@ struct ApiDevicesRestart: AsyncParsableCommand {
 struct ApiDevicesDown: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "devices-down",
-        abstract: "マシンプロファイルの全デバイスを停止する(NDJSON: log/deviceStopping/deviceFinished → "
-            + "finished を stdout に出力。診断は stderr のみ。ok:false のときは exit code 1)。"
-            + "--profile 指定時はそのプロファイルが参照するデバイスのみ。停止ロジックは DevicesCommand.Down "
-            + "の shutdownProfile と同一(ios→android 逐次の shutdownOne)で、per-device 進捗を足しただけ")
+        abstract: "Stop every device in the machine profile (NDJSON: log/deviceStopping/deviceFinished -> "
+            + "finished on stdout; diagnostics on stderr only; exit code 1 when ok:false). "
+            + "With --profile, only the devices that profile references. The shutdown logic is identical "
+            + "to shutdownProfile in DevicesCommand.Down (sequential ios->android shutdownOne) with "
+            + "per-device progress added")
 
-    @Option(help: "テストプロジェクト名(省略時: Projects/ が 1 つならそれ / 既定プロジェクト)")
+    @Option(help: "Test project name (defaults to the only one in Projects/, or the default project)")
     var project: String?
 
-    @Option(help: "実行プロファイル名(指定時はそのプロファイルが参照するデバイスのみ停止する)")
+    @Option(help: "Run profile name (when given, only the devices that profile references are stopped)")
     var profile: String?
 
     func run() async throws {
@@ -273,16 +274,16 @@ struct ApiDevicesDown: AsyncParsableCommand {
 struct ApiDeviceDown: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "device-down",
-        abstract: "マシンプロファイル記載のデバイス1台を停止する(NDJSON: log* → finished を"
-            + "stdout に出力。診断は stderr のみ。ok:false のときは exit code 1)")
+        abstract: "Stop one device listed in the machine profile (NDJSON: log* -> finished on "
+            + "stdout; diagnostics on stderr only; exit code 1 when ok:false)")
 
-    @Option(help: "デバイスの論理名(マシンプロファイルの ios/android どちらかの name)")
+    @Option(help: "Logical device name (a name under ios or android in the machine profile)")
     var name: String
 
-    @Option(help: "テストプロジェクト名(省略時: Projects/ が 1 つならそれ / 既定プロジェクト)")
+    @Option(help: "Test project name (defaults to the only one in Projects/, or the default project)")
     var project: String?
 
-    @Option(help: "実行プロファイル名(machine 解決に使う。指定時はそのプロファイルの machine を最優先。省略時は FT_MACHINE / 登録マシン / machines が 1 つならそれ)")
+    @Option(help: "Run profile name, used to resolve the machine. When given, that profile's machine wins; otherwise FT_MACHINE, the registered machine, or the only entry in machines/")
     var profile: String?
 
     func run() async throws {

@@ -11,9 +11,9 @@ import FTAndroid
 struct ApiRepairDisplayCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "repair-display",
-        abstract: "エミュレータの表示凍結を sleep/wake で修復し結果を JSON で stdout に出力する")
+        abstract: "Recover a frozen emulator display with sleep/wake and print the result as JSON on stdout")
 
-    @Option(help: "対象デバイスの adb serial(例 emulator-5554)")
+    @Option(help: "adb serial of the target device (e.g. emulator-5554)")
     var serial: String
 
     func run() async throws {

@@ -9,7 +9,7 @@ import FTCore
 struct ApiVersionCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "version",
-        abstract: "プロトコル版を {\"protocol\": <版>} の JSON で stdout に出力する")
+        abstract: "Print the protocol version as {\"protocol\": <version>} JSON on stdout")
 
     func run() async throws {
         let output = ApiVersionOutput(protocol: ftesterProtocolVersion)

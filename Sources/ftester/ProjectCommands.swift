@@ -20,20 +20,20 @@ func ftesterRepoRoot() throws -> URL {
 struct ProjectCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "project",
-        abstract: "テストプロジェクト(Projects/<name>/)の管理",
+        abstract: "Manage test projects (Projects/<name>/)",
         subcommands: [Create.self, List.self, Sync.self, LintSelectors.self])
 
     struct Create: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "テストプロジェクトの雛形を作成して Package.swift に登録する")
+            abstract: "Scaffold a test project and register it in Package.swift")
 
-        @Argument(help: "プロジェクト名(SPM ターゲット名になるため英数字・_・- のみ)")
+        @Argument(help: "Project name (becomes an SPM target name, so only letters, digits, _ and -)")
         var name: String
 
-        @Option(help: "対象アプリの bundle ID / パッケージ名")
+        @Option(help: "Bundle ID / package name of the app under test")
         var app: String = "com.example.myapp"
 
-        @Option(help: "実行プロファイルの雛形を作る対象: ios / android / both(既定 both)")
+        @Option(help: "Which run profiles to scaffold: ios / android / both (default both)")
         var platform: String = "both"
 
         func run() async throws {
@@ -52,7 +52,7 @@ struct ProjectCommand: AsyncParsableCommand {
 
     struct List: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "テストプロジェクトの一覧と Package.swift 登録状態を表示する")
+            abstract: "List test projects and whether they are registered in Package.swift")
 
         func run() async throws {
             let root = try ftesterRepoRoot()
@@ -85,8 +85,8 @@ struct ProjectCommand: AsyncParsableCommand {
 
     struct Sync: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "Projects/ の走査結果で Package.swift のマーカー区間を再生成する"
-                + "(手動コピーや git pull 後の整合用)")
+            abstract: "Regenerate the marker section of Package.swift from a scan of Projects/"
+                + " (to resync after a manual copy or a git pull)")
 
         func run() async throws {
             let root = try ftesterRepoRoot()
@@ -97,13 +97,13 @@ struct ProjectCommand: AsyncParsableCommand {
     struct LintSelectors: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
             commandName: "lint-selectors",
-            abstract: "シナリオの #id セレクタと契約書(ui-contract.md)のドリフトを検査する"
-                + "(対象は #id のみ。ラベルはローカライズで揺れるため対象外)")
+            abstract: "Check for drift between the #id selectors in scenarios and the contract (ui-contract.md)"
+                + " (only #id; labels are excluded because localisation makes them vary)")
 
-        @Option(help: "テストプロジェクト名(省略時の解決は他コマンドと同じ)")
+        @Option(help: "Test project name (resolved the same way as in the other commands)")
         var project: String?
 
-        @Option(help: "契約 md のパス(省略時: Projects/<name>/docs/ui-contract.md。無ければエラー)")
+        @Option(help: "Path to the contract markdown (defaults to Projects/<name>/docs/ui-contract.md; an error if missing)")
         var contract: String?
 
         func run() async throws {
@@ -192,14 +192,14 @@ struct ProjectCommand: AsyncParsableCommand {
 struct MachineCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "machine",
-        abstract: "このマシンの名前(profiles/machines/<マシン名>.json の選択キー)を管理する",
+        abstract: "Manage this machine's name (the key that selects profiles/machines/<name>.json)",
         subcommands: [SetName.self, Show.self])
 
     struct SetName: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
-            commandName: "set", abstract: "このマシンの名前を登録する")
+            commandName: "set", abstract: "Register this machine's name")
 
-        @Argument(help: "マシン名(例: \"M1 Max(64GB)\")")
+        @Argument(help: "Machine name (e.g. \"M1 Max(64GB)\")")
         var name: String
 
         func run() async throws {
@@ -213,9 +213,9 @@ struct MachineCommand: AsyncParsableCommand {
 
     struct Show: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
-            commandName: "show", abstract: "現在のマシン名と適用状態を表示する")
+            commandName: "show", abstract: "Show the current machine name and how it resolves")
 
-        @Option(help: "テストプロジェクト名(マシンプロファイルの有無の確認用)")
+        @Option(help: "Test project name (used to check whether a machine profile exists)")
         var project: String?
 
         func run() async throws {
@@ -250,14 +250,14 @@ struct MachineCommand: AsyncParsableCommand {
 struct ProfileCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "profile",
-        abstract: "プロファイル(apps/machines/runs)の作成・一覧・整合チェック",
+        abstract: "Create, list and validate profiles (apps/machines/runs)",
         subcommands: [ProfileSetupCommand.self, List.self])
 
     struct List: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "実行プロファイルと部品プロファイルを一覧し、現在マシンでの解決結果を表示する")
+            abstract: "List run profiles and their component profiles, and show how they resolve on this machine")
 
-        @Option(help: "テストプロジェクト名(省略時: Projects/ が 1 つならそれ / 既定プロジェクト)")
+        @Option(help: "Test project name (defaults to the only one in Projects/, or the default project)")
         var project: String?
 
         func run() async throws {

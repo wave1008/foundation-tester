@@ -12,16 +12,16 @@ import FTCore
 struct ApiValidateProfile: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "validate-profile",
-        abstract: "プロファイルJSON(apps/machines/runs)を検証し、結果をJSONでstdoutに出力する"
-            + "(検証エラーがあってもexit 0。ファイルI/O等の運用エラーのみ非0。診断はstderrのみ)")
+        abstract: "Validate the profile JSON (apps/machines/runs) and print the result as JSON on stdout"
+            + " (validation errors still exit 0; only operational errors such as file I/O exit non-zero; diagnostics on stderr only)")
 
-    @Option(help: "テストプロジェクト名(省略時: Projects/ が 1 つならそれ / 既定プロジェクト)")
+    @Option(help: "Test project name (defaults to the only one in Projects/, or the default project)")
     var project: String?
 
-    @Option(help: "絞り込む種別: apps / machines / runs(省略時は全種別)")
+    @Option(help: "Kind to filter by: apps / machines / runs (defaults to all kinds)")
     var kind: String?
 
-    @Option(help: "絞り込むプロファイル名(拡張子なし。--kind 省略時は全種別から同名を探す)")
+    @Option(help: "Profile name to filter by, without the extension (without --kind, all kinds are searched for that name)")
     var name: String?
 
     func run() async throws {
