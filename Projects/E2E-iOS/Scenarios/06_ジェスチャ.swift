@@ -86,4 +86,22 @@ class ジェスチャが正しく検出されること {
             }
         }
     }
+
+    @Test("swipePointToPoint が座標スワイプとして認識される")
+    func S0020() {
+        scenario {
+            scene(1, "座標指定で上スワイプする") {
+                condition {
+                    launchApp()
+                }.action {
+                    tap("#nav_gesture")
+                    // x=200 は中央列(#pad_swipe の幅の約半分)。ui-contract の配置制約により
+                    // 操作要素は幅45%以内・中央行(y=0.5h)を避けて置かれるため、この列は空いている保証がある。
+                    swipePointToPoint(startX: 200, startY: 550, endX: 200, endY: 250, durationSeconds: 0.3)
+                }.expectation {
+                    textIs("#txt_swipe_dir", "swipe=up")
+                }
+            }
+        }
+    }
 }

@@ -61,4 +61,38 @@ class テキスト入力が正しくechoされること {
             }
         }
     }
+
+    @Test("clearInput が入力欄を空にする")
+    func S0020() {
+        scenario {
+            scene(1, "単一行に入力する") {
+                condition {
+                    launchApp()
+                }.action {
+                    tap("#nav_input")
+                    tap("#field_single")
+                    type("#field_single", "hello123")
+                }.expectation {
+                    textIs("#txt_echo_length", "len=8")
+                }
+            }
+            scene(2, "セレクタ指定の clearInput で単一行が空になる") {
+                action {
+                    clearInput("#field_single")
+                }.expectation {
+                    textIs("#txt_echo_single", "single=")
+                    textIs("#txt_echo_length", "len=0")
+                }
+            }
+            scene(3, "無引数の clearInput はフォーカス中の入力欄(パスワード)を空にする") {
+                action {
+                    tap("#field_password")
+                    type("#field_password", "secret42")
+                    clearInput()
+                }.expectation {
+                    textIs("#txt_echo_password", "password=")
+                }
+            }
+        }
+    }
 }

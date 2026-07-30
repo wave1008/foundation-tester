@@ -107,4 +107,26 @@ class 条件分岐とダイアログ操作が正しく働くこと {
             }
         }
     }
+
+    @Test("back でダイアログが閉じる")
+    func S0040() {
+        scenario {
+            scene(1, "ダイアログを開いて back で閉じる") {
+                condition {
+                    launchApp()
+                }.action {
+                    tap("#nav_dialog")
+                    tap("#btn_show_dialog")
+                }.expectation {
+                    exist("#btn_dialog_ok")
+                }.action {
+                    // View/XML の AlertDialog は cancelable 既定 true なので back で閉じる。
+                    // キーボード非表示の画面遷移直後なので back の1回目がダイアログに届く
+                    back()
+                }.expectation {
+                    notExist("#btn_dialog_ok")
+                }
+            }
+        }
+    }
 }

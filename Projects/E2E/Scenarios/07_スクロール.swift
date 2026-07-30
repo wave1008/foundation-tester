@@ -61,4 +61,22 @@ class スクロールで折り返し下の要素に到達できること {
             }
         }
     }
+
+    @Test("swipeElementToElement でリストがスクロールする")
+    func S0030() {
+        scenario {
+            scene(1, "初期画面内の行を始点・終点にドラッグして送る") {
+                condition {
+                    launchApp()
+                }.action {
+                    // 始点・終点とも初期画面内で見えている行にする(#row_08 より下へ変えない):
+                    // 画面外要素は frame がクランプされ座標がずれる既知の罠があるため
+                    tap("#nav_scroll")
+                    swipeElementToElement("#row_08", "#row_02", durationSeconds: 0.5)
+                }.expectation {
+                    notExist("#row_01", timeout: 5)
+                }
+            }
+        }
+    }
 }

@@ -86,4 +86,21 @@ class スクロールで折り返し下の要素に到達できること {
             }
         }
     }
+
+    @Test("swipeElementToElement でリストがスクロールする")
+    func S0040() {
+        scenario {
+            scene(1, "行間ドラッグでリストがスクロールする") {
+                condition {
+                    launchApp()
+                }.action {
+                    tap("#nav_scroll")
+                    // #row_08 は scrollTo なしでも初期画面内に見えている行(これより下へ変えない)
+                    swipeElementToElement("#row_08", "#row_02", durationSeconds: 0.5)
+                }.expectation {
+                    notExist("#row_01", timeout: 5)
+                }
+            }
+        }
+    }
 }
