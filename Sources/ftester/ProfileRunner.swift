@@ -30,7 +30,7 @@ enum ProfileRunner {
             project: project, registered: LocalConfig.currentMachineName(),
             runProfileName: profileName)
         if machine.auto {
-            print("→ マシンプロファイル自動採用: \(machine.name)(machines/ が 1 つのため)")
+            print("→ Using machine profile \(machine.name) automatically (it is the only one in machines/)")
         }
         let resolved = try ProfileResolver.resolve(
             project: project, runName: profileName, machineName: machine.name)
@@ -46,8 +46,8 @@ enum ProfileRunner {
         if resolved.iosFastInput { setenv("FT_FAST_INPUT", "1", 1) }  // BridgeClient.fastInput 参照
         let deviceList = resolved.devices
             .map { "\($0.name)(\($0.platform))" }.joined(separator: ", ")
-        print("🧩 プロファイル \(profileName): \(resolved.appName) @ \(resolved.machineName)")
-        print("   デバイス: \(deviceList)")
+        print("🧩 Profile \(profileName): \(resolved.appName) @ \(resolved.machineName)")
+        print("   Devices: \(deviceList)")
 
         // 1.5. Android AVD 肥大化チェック(超過分は Wipe Data。buildWorkers 前に実行)
         var wipedAndroid: [String] = []
@@ -84,7 +84,7 @@ enum ProfileRunner {
         workers = triage.workers
         if workers.isEmpty && beforeBlankCheck > 0 {
             throw ProfileWorkerFactory.InstallError(
-                message: "実行可能なデバイスがありません(全 Android デバイスが白化)")
+                message: "no usable devices (every Android device went blank)")
         }
         workers = try await ProfileWorkerFactory.installIfNeeded(
             apps: resolved.apps, workers: workers,
@@ -97,8 +97,8 @@ enum ProfileRunner {
         // 長いシナリオを先に流すと末尾の遊休が減る(実績は platform 別。--no-lpt で従来の ID 順)
         items = LPTOrdering.apply(items, project: project, defaultPlatform: defaultPlatform,
                                   enabled: lpt, historyRuns: lptHistoryRuns, log: { print($0) })
-        print("🚀 Android \(workers.count) ワーカーで開始"
-            + (hasLateIOS ? "(iOS はブリッジ供給完了後に合流)" : "") + "\n")
+        print("🚀 Starting with \(workers.count) Android worker(s)"
+            + (hasLateIOS ? " (iOS joins once bridge provisioning finishes)" : "") + "\n")
 
         // record:true のときだけ VideoRecordingConfig を注入(runDir が無ければ録画自体しない)
         let recordingConfig: VideoRecordingConfig? = {
@@ -180,7 +180,7 @@ enum ProfileRunner {
                 guard let udid = retired.connection.udid else { return }  // udid は iOS のみ
                 let stopped = BridgeLauncher.stopMatching(udid: udid, repoRoot: repoRoot)
                 if !stopped.isEmpty {
-                    print("🔧 旧ブリッジを停止しました: port \(stopped.joined(separator: ", "))")
+                    print("🔧 Stopped stale bridges: port \(stopped.joined(separator: ", "))")
                 }
             },
             reviveWorker: { retired in
@@ -208,11 +208,11 @@ enum ProfileRunner {
                     ws = (try? await ProfileWorkerFactory.installIfNeeded(
                         apps: resolved.apps, workers: ws, forceAndroidInstall: false) { print($0) }) ?? ws
                     PhaseLog.mark("ios-workers-installed")
-                    print("🚀 iOS \(ws.count) ワーカーが合流")
+                    print("🚀 \(ws.count) iOS worker(s) joined")
                     return ws
                 } catch {
                     // iOS 供給失敗は run 全体を落とさない(iOS シナリオはワーカー不在ドレインで失敗確定)
-                    print("❌ iOS ワーカー構築に失敗しました: \(error.localizedDescription)")
+                    print("❌ Failed to build iOS workers: \(error.localizedDescription)")
                     return []
                 }
             }) : nil)
@@ -249,8 +249,8 @@ enum ProfileRunner {
         let totalSeconds = Date().timeIntervalSince(runClockStart)
         let testStr = timing.testSeconds.map { String(format: "%.1f", $0) } ?? "-"
         let scenarioTotalStr = timing.scenarioTotalSeconds.map { String(format: "%.1f", $0) } ?? "-"
-        print("⏱ トータル: \(String(format: "%.1f", totalSeconds))s / "
-            + "テスト実時間: \(testStr)s / シナリオ合計: \(scenarioTotalStr)s")
+        print("⏱ Total: \(String(format: "%.1f", totalSeconds))s / "
+            + "test time: \(testStr)s / scenario sum: \(scenarioTotalStr)s")
 
         // プラットフォーム別のレーン稼働。台数を増やす前にここを見る(遊休レーンがあるなら
         // 増やすのではなく配分を変える。docs/performance-tuning.md §3.6)
@@ -259,20 +259,20 @@ enum ProfileRunner {
         let utilizations = timing.laneUtilizations
         if utilizations.count > 1 || utilizations.contains(where: { $0.lanes > 1 }) {
             let cells = utilizations.map {
-                "\($0.platform) \($0.lanes)レーン 稼働\(Int(($0.utilization * 100).rounded()))%"
-                + " 最終終了\(String(format: "%.1f", $0.lastFinishSeconds))s"
+                "\($0.platform) \($0.lanes) lane(s), \(Int(($0.utilization * 100).rounded()))% busy"
+                + ", last finished at \(String(format: "%.1f", $0.lastFinishSeconds))s"
             }
-            print("📊 レーン稼働: " + cells.joined(separator: " / "))
+            print("📊 Lane utilisation: " + cells.joined(separator: " / "))
             if let advice = LaneBalanceAdvice.message(for: utilizations) { print(advice) }
         }
 
         let finalSummary = await summary
         if !finalSummary.degradedWorkers.isEmpty {
-            print("⚠️ 劣化・離脱したワーカー(\(finalSummary.degradedWorkers.count)):")
+            print("⚠️ Degraded or dropped workers (\(finalSummary.degradedWorkers.count)):")
             for entry in finalSummary.degradedWorkers { print("   - \(entry)") }
         }
         if !finalSummary.freezeRetries.isEmpty {
-            print("🔁 結果取り消し+振り直し(\(finalSummary.freezeRetries.count)):")
+            print("🔁 Results discarded and requeued (\(finalSummary.freezeRetries.count)):")
             for entry in finalSummary.freezeRetries { print("   - \(entry)") }
         }
         // run 前の blank triage(orchestrator は関与しない)を summary に載せ替えて返す
@@ -291,11 +291,11 @@ enum ProfileRunner {
         guard heal else { return }
         let fm = await FMDoctor.checkLive()
         if !fm.available {
-            log("⚠️ heal が有効ですが FM の実呼び出しに失敗するため、"
-                + "自己修復・occlusion-guard・screenIs はこの実行では無効です")
+            log("⚠️ heal is enabled but live FM calls are failing, so "
+                + "self-healing, occlusion-guard and screenIs are disabled for this run")
         } else if !FMVisionSupport.isSupported {
-            log("⚠️ \(FMVisionSupport.requirement): occlusion-guard・screenIs はこの実行では無効です"
-                + "(自己修復・トリアージは有効)")
+            log("⚠️ \(FMVisionSupport.requirement): occlusion-guard and screenIs are disabled for this run"
+                + " (self-healing and triage stay enabled)")
         }
     }
 }

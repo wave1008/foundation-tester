@@ -19,69 +19,69 @@ import FTCore
 struct ApiRunCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "run",
-        abstract: "シナリオを実行し、NDJSON イベント(runStarted → 各種 ScenarioEvent → "
-            + "runFinished)を stdout に流す(--profile 指定時は --dry-run/--debug 以外"
-            + "ワーカー並列実行。診断は stderr のみ。--debug 時は stdin の制御"
-            + "コマンドをそのままランナーへ渡す)")
+        abstract: "Run scenarios and stream NDJSON events (runStarted -> ScenarioEvent... -> "
+            + "runFinished) on stdout. With --profile, runs workers in parallel except for "
+            + "--dry-run/--debug. Diagnostics go to stderr only. With --debug, control "
+            + "commands from stdin are passed straight through to the runner")
 
-    @Option(help: "テストプロジェクト名(省略時: Projects/ が 1 つならそれ / 既定プロジェクト)")
+    @Option(help: "Test project name (defaults to the only one in Projects/, or the default project)")
     var project: String?
 
-    @Option(help: "実行プロファイル名(profiles/runs/<名前>.json。デバイス供給・自動インストール込みで実行する。--platform/--port/--serial とは同時指定不可)")
+    @Option(help: "Run profile name (profiles/runs/<name>.json). Includes device provisioning and auto-install. Cannot be combined with --platform/--port/--serial")
     var profile: String?
 
     @Option(name: .customLong("scenario"), parsing: .upToNextOption,
-            help: "実行するシナリオ ID(クラス名.メソッド名。クラス名のみで全シナリオ。複数可。1 つ以上必須。削除済み @Deleted は完全一致指定のときだけ実行)")
+            help: "Scenario IDs to run (Class.method; a class name alone runs all of its scenarios). Repeatable, at least one required. @Deleted scenarios run only on an exact match")
     var scenarios: [String] = []
 
-    @Flag(help: "FM によるロケータ自己修復を許可する(--profile 指定時は profile の heal より優先されるのは true のときだけ)")
+    @Flag(help: "Allow FM-based locator self-healing (with --profile it overrides the profile heal setting only when true)")
     var heal = false
 
     @Option(name: .customLong("report-dir"),
-            help: "レポート出力先ディレクトリ(省略時: Projects/<name>/reports。--profile 指定時は profile の reportDir を上書き)")
+            help: "Directory to write reports to (defaults to Projects/<name>/reports; with --profile it overrides the profile reportDir)")
     var reportDir: String?
 
     @Option(name: .customLong("default-timeout"),
-            help: "検証コマンド(exist/textIs 等)の既定タイムアウト秒(小数可。省略時 5。--profile 指定時は profile の defaultTimeout が優先される)")
+            help: "Default timeout in seconds for assertions such as exist/textIs (decimals allowed, default 5; with --profile the profile defaultTimeout wins)")
     var defaultTimeout: Double?
 
     @Option(name: .customLong("scenario-timeout"),
-            help: "シナリオ単位の壁時計タイムアウト秒(ホスト側 watchdog。超過で子を強制終了し失敗扱い。省略時 90。--profile 指定時は profile の scenarioTimeout が優先される)")
+            help: "Per-scenario wall-clock timeout in seconds (host-side watchdog; on overrun the child is killed and the scenario fails. Default 90; with --profile the profile scenarioTimeout wins)")
     var scenarioTimeout: Int?
 
     @Flag(name: .customLong("dry-run"),
-          help: "デバイスに触れず全コマンドを記録のみで通過させる(ステップ列挙・レビュー用。--profile 指定時はワーカー構築も省略する)")
+          help: "Record every command without touching a device (for listing and reviewing steps; with --profile it also skips worker construction)")
     var dryRun = false
 
-    @Flag(help: "stdin から一時停止・再開の制御コマンド(NDJSON)を受け付ける(--scenario を 1 件指定したときだけ使える)")
+    @Flag(help: "Accept pause/resume control commands (NDJSON) on stdin (only usable with exactly one --scenario)")
     var debug = false
 
     @Option(name: .customLong("breakpoint"),
-            help: "ブレークポイント(<file>:<line>。--debug 時のみ有効。複数指定可)")
+            help: "Breakpoint (<file>:<line>). Only effective with --debug; repeatable")
     var breakpoints: [String] = []
 
     @Flag(name: .customLong("pause-on-start"),
-          help: "最初のステップの手前で一時停止して開始する(--debug 時のみ有効)")
+          help: "Start paused before the first step (only effective with --debug)")
     var pauseOnStart = false
 
-    @Flag(name: .customLong("skip-build"), help: "実行前の swift build をスキップする")
+    @Flag(name: .customLong("skip-build"), help: "Skip the swift build before running")
     var skipBuild = false
 
     @Flag(name: .customLong("no-lpt"),
-          help: "LPT 投入順(過去実績の長い順)を無効にし、シナリオ ID 順で投入する")
+          help: "Disable LPT ordering (longest past runtime first) and dispatch in scenario ID order")
     var noLPT = false
 
     @Option(name: .customLong("lpt-history-runs"),
-            help: "LPT の実績として読む run 数(新しい方から。既定 5)")
+            help: "Number of past runs to read for LPT ordering (newest first, default 5)")
     var lptHistoryRuns: Int?
 
-    @Option(help: "対象プラットフォーム: ios / android(既定 ios。--profile とは同時指定不可)")
+    @Option(help: "Target platform: ios / android (default ios; cannot be combined with --profile)")
     var platform: String?
 
-    @Option(name: .long, help: "ブリッジのポート番号(iOS のみ。--profile とは同時指定不可)")
+    @Option(name: .long, help: "Bridge port number (iOS only; cannot be combined with --profile)")
     var port: UInt16?
 
-    @Option(help: "Android デバイスのシリアル(adb -s。省略時は唯一の接続デバイス。--profile とは同時指定不可)")
+    @Option(help: "Android device serial (adb -s; defaults to the only connected device. Cannot be combined with --profile)")
     var serial: String?
 
     func run() async throws {
@@ -90,13 +90,13 @@ struct ApiRunCommand: AsyncParsableCommand {
         setvbuf(stdout, nil, _IOLBF, 0)
 
         guard !scenarios.isEmpty else {
-            throw ValidationError("--scenario を1つ以上指定してください")
+            throw ValidationError("specify at least one --scenario")
         }
         if debug && scenarios.count != 1 {
-            throw ValidationError("--debug は --scenario を1件だけ指定したときに使えます")
+            throw ValidationError("--debug can only be used with exactly one --scenario")
         }
         if profile != nil && (platform != nil || port != nil || serial != nil) {
-            throw ValidationError("--profile と --platform/--port/--serial は同時に指定できません")
+            throw ValidationError("--profile cannot be combined with --platform/--port/--serial")
         }
 
         let testProject = try ScenarioHost.project(named: project)
@@ -129,7 +129,7 @@ struct ApiRunCommand: AsyncParsableCommand {
                 project: testProject, registered: LocalConfig.currentMachineName(),
                 runProfileName: profile)
             if machine.auto {
-                logStderr("→ マシンプロファイル自動採用: \(machine.name)(machines/ が 1 つのため)")
+                logStderr("→ Using machine profile \(machine.name) automatically (it is the only one in machines/)")
             }
             let resolved = try ProfileResolver.resolve(
                 project: testProject, runName: profile, machineName: machine.name)
@@ -160,8 +160,8 @@ struct ApiRunCommand: AsyncParsableCommand {
             androidWorkersTask = Task {
                 let deviceList = resolved.devices
                     .map { "\($0.name)(\($0.platform))" }.joined(separator: ", ")
-                logStderr("🧩 プロファイル \(resolved.runName): \(resolved.appName) @ \(resolved.machineName)")
-                logStderr("   デバイス: \(deviceList)")
+                logStderr("🧩 Profile \(resolved.runName): \(resolved.appName) @ \(resolved.machineName)")
+                logStderr("   Devices: \(deviceList)")
                 var wipedAndroid: [String] = []
                 if resolved.wipeDataOnBloat {
                     wipedAndroid = await AndroidDataWiper.wipeBloatedAVDs(
@@ -192,7 +192,7 @@ struct ApiRunCommand: AsyncParsableCommand {
                     apps: resolved.apps, workers: workers,
                     forceAndroidInstall: !wipedAndroid.isEmpty) { logStderr($0) }
                 if !workers.isEmpty {
-                    logStderr("🚀 Android \(workers.count) ワーカーで開始(iOS はブリッジ供給完了後に合流)")
+                    logStderr("🚀 Starting with \(workers.count) Android worker(s) (iOS joins once bridge provisioning finishes)")
                 }
                 return workers
             }
@@ -206,12 +206,12 @@ struct ApiRunCommand: AsyncParsableCommand {
                         workers = (try? await ProfileWorkerFactory.installIfNeeded(
                             apps: resolved.apps, workers: workers,
                             forceAndroidInstall: false) { logStderr($0) }) ?? workers
-                        logStderr("🚀 iOS \(workers.count) ワーカーが合流")
+                        logStderr("🚀 \(workers.count) iOS worker(s) joined")
                         return workers
                     } catch {
                         // iOS 供給失敗は run 全体を落とさない(iOS シナリオはワーカー不在として
                         // ドレインで失敗確定し、Android の結果は生きる)
-                        logStderr("❌ iOS ワーカー構築に失敗しました: \(error.localizedDescription)")
+                        logStderr("❌ Failed to build iOS workers: \(error.localizedDescription)")
                         return []
                     }
                 }
@@ -222,18 +222,18 @@ struct ApiRunCommand: AsyncParsableCommand {
 
         // ビルドはホスト側で 1 回だけ(サブプロセスは自らビルドしない)
         if !skipBuild {
-            logStderr("→ シナリオをビルド(\(testProject.name))...")
+            logStderr("→ Building scenarios (\(testProject.name))...")
             try ScenarioHost.build(project: testProject) { logStderr($0) }
         }
 
         let all = try ScenarioHost.list(project: testProject)
         guard !all.isEmpty else {
             throw ValidationError(
-                "シナリオがありません(Projects/\(testProject.name)/Scenarios/ に @TestClass を追加してください)")
+                "no scenarios (add a @TestClass under Projects/\(testProject.name)/Scenarios/)")
         }
         let selected = try RunScenarios.resolve(scenarios, from: all)
         guard !selected.isEmpty else {
-            throw ValidationError("実行対象がありません(全シナリオが削除済み @Deleted)")
+            throw ValidationError("nothing to run (every scenario is marked @Deleted)")
         }
 
         // dry-run/debug は実測にならない(dry-run はデバイス未接続、debug は人間介入前提)ため記録しない
@@ -273,11 +273,11 @@ struct ApiRunCommand: AsyncParsableCommand {
                          blankRepairs: outcome.blankRepairs,
                          blankExclusions: outcome.blankExclusions)
         if !outcome.degradedWorkers.isEmpty {
-            logStderr("⚠️ 劣化・離脱したワーカー(\(outcome.degradedWorkers.count)):")
+            logStderr("⚠️ Degraded or dropped workers (\(outcome.degradedWorkers.count)):")
             for entry in outcome.degradedWorkers { logStderr("   - \(entry)") }
         }
         if !outcome.freezeRetries.isEmpty {
-            logStderr("🔁 結果取り消し+振り直し(\(outcome.freezeRetries.count)):")
+            logStderr("🔁 Results discarded and requeued (\(outcome.freezeRetries.count)):")
             for entry in outcome.freezeRetries { logStderr("   - \(entry)") }
         }
         emitLine(ApiRunFinishedEvent(passed: outcome.passed, failed: outcome.failed,
@@ -356,8 +356,8 @@ struct ApiRunCommand: AsyncParsableCommand {
         if !dryRun {
             let deviceList = resolved.devices
                 .map { "\($0.name)(\($0.platform))" }.joined(separator: ", ")
-            logStderr("🧩 プロファイル \(profileName): \(resolved.appName) @ \(resolved.machineName)")
-            logStderr("   デバイス: \(deviceList)")
+            logStderr("🧩 Profile \(profileName): \(resolved.appName) @ \(resolved.machineName)")
+            logStderr("   Devices: \(deviceList)")
             var wipedAndroid: [String] = []
             if resolved.wipeDataOnBloat {
                 wipedAndroid = await AndroidDataWiper.wipeBloatedAVDs(
@@ -409,9 +409,9 @@ struct ApiRunCommand: AsyncParsableCommand {
                 recordingWorker = "\(worker.platform):\(worker.logicalName ?? worker.label)"
             } else {
                 let workerList = workers.isEmpty
-                    ? "なし" : workers.map(\.label).joined(separator: ", ")
-                let reason = "platform \"\(scenarioPlatform)\" に対応するワーカーがありません"
-                    + "(プロファイル \(profileName) のワーカー: \(workerList))"
+                    ? "none" : workers.map(\.label).joined(separator: ", ")
+                let reason = "no worker matches platform \"\(scenarioPlatform)\""
+                    + " (workers in profile \(profileName): \(workerList))"
                 logStderr("⚠️ \(info.id): \(reason)")
                 emitMissingWorkerFailure(info: info, reason: reason)
                 recorder?.recordSkipped(scenarioID: info.id, title: info.title,
@@ -469,7 +469,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         if iosWorkersTask != nil {
             readyInfo += resolved.iosDevices.map {
                 ApiWorkerInfo(id: "ios:\($0.name)", name: $0.name, platform: "ios",
-                              detail: "ブリッジ供給中...")
+                              detail: "provisioning the bridge...")
             }
         }
         emitLine(ApiWorkersReadyEvent(workers: readyInfo))
@@ -576,7 +576,7 @@ struct ApiRunCommand: AsyncParsableCommand {
                 guard let udid = retired.connection.udid else { return }  // udid は iOS のみ
                 let stopped = BridgeLauncher.stopMatching(udid: udid, repoRoot: repoRoot)
                 if !stopped.isEmpty {
-                    logStderr("🔧 旧ブリッジを停止しました: port \(stopped.joined(separator: ", "))")
+                    logStderr("🔧 Stopped stale bridges: port \(stopped.joined(separator: ", "))")
                 }
             },
             reviveWorker: { retired in
@@ -681,7 +681,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         case .workerFailed(let worker, let message):
             var log = ScenarioEvent(kind: "log")
             log.worker = workerID.id(for: worker)
-            log.message = "❌ ワーカー \(log.worker ?? worker) が離脱しました: \(message)"
+            log.message = "❌ Worker \(log.worker ?? worker) dropped out: \(message)"
             return [log.encodedLine()]
 
         case .workerLog(let worker, let message):
@@ -791,7 +791,7 @@ struct ApiRunCommand: AsyncParsableCommand {
 
             var step = ScenarioEvent(kind: "step")
             step.scenario = info?.id
-            step.description = "ワーカー未検出"
+            step.description = "worker not found"
             step.status = "failed"
             step.detail = reason
 
@@ -813,7 +813,7 @@ struct ApiRunCommand: AsyncParsableCommand {
 
         var step = ScenarioEvent(kind: "step")
         step.scenario = info.id
-        step.description = "ワーカー未検出"
+        step.description = "worker not found"
         step.status = "failed"
         step.detail = reason
         writeLine(step.encodedLine())

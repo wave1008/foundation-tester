@@ -301,7 +301,7 @@ public enum ScenarioRunner {
                 // 意味は StepResult.synthetic 参照)
                 onEvent(.step(worker: worker.label, flowURL: item.url,
                               result: StepResult(index: event.index ?? 0,
-                                                 description: "💡 修正提案: \(event.detail ?? "")",
+                                                 description: "💡 Suggested fix: \(event.detail ?? "")",
                                                  status: .passed, synthetic: true)))
                 onEvent(.fixSuggestion(worker: worker.label, flowURL: item.url,
                                        scenarioID: event.scenario ?? item.info.id,
@@ -578,7 +578,7 @@ public final class RunOrchestrator {
         // 担当ワーカーのない platform のシナリオは即スキップ(失敗扱い)
         for (platform, list) in grouped where !workerPlatforms.contains(platform) {
             for item in list {
-                let reason = "担当ワーカーがありません(platform: \(platform))"
+                let reason = "no worker available (platform: \(platform))"
                 continuation.yield(.flowSkipped(flowURL: item.url, reason: reason))
                 recorder?.recordSkipped(scenarioID: item.info.id, title: item.info.title,
                                         platform: platform, worker: nil, reason: reason)
@@ -633,7 +633,7 @@ public final class RunOrchestrator {
         // ワーカー全滅でキューに残ったシナリオは失敗扱い
         for (platform, queue) in queues {
             while let item = await queue.next() {
-                let reason = "実行できるワーカーがありません"
+                let reason = "no usable workers"
                 continuation.yield(.flowSkipped(flowURL: item.url, reason: reason))
                 recorder?.recordSkipped(scenarioID: item.info.id, title: item.info.title,
                                         platform: platform, worker: nil, reason: reason)
@@ -660,18 +660,18 @@ public final class RunOrchestrator {
             recorder?.discardLast(scenarioID: item.info.id)
         }
         if let attempt = await queue.requeue(item) {
-            await retries.add("\(item.info.id): \(reason)(\(worker.label) から振り直し \(attempt)/\(MAX_FREEZE_RETRIES))")
+            await retries.add("\(item.info.id): \(reason) (requeued from \(worker.label), \(attempt)/\(MAX_FREEZE_RETRIES))")
             continuation.yield(.flowRequeued(worker: worker.label, flowURL: item.url,
                                              reason: reason, attempt: attempt,
                                              limit: MAX_FREEZE_RETRIES))
             return true
         }
-        await retries.add("\(item.info.id): \(reason)(\(worker.label)、上限到達で失敗確定)")
+        await retries.add("\(item.info.id): \(reason) (\(worker.label); retry limit reached, recorded as failed)")
         recorder?.recordSkipped(scenarioID: item.info.id, title: item.info.title,
             platform: worker.platform, worker: worker.label,
-            reason: "\(reason)が解消せず再実行上限に到達しました")
+            reason: "\(reason) did not clear and the retry limit was reached")
         continuation.yield(.flowSkipped(flowURL: item.url,
-            reason: "\(reason)が解消せず再実行上限に到達しました"))
+            reason: "\(reason) did not clear and the retry limit was reached"))
         return false
     }
 
@@ -695,16 +695,16 @@ public final class RunOrchestrator {
                     return totalFailed
                 }
                 continuation.yield(.workerLog(worker: retired.label,
-                    message: "🔧 ワーカー復帰を試みます(\(revives + 1)/\(MAX_WORKER_REVIVES)。"
-                        + "ブリッジ再作成のため数十秒かかることがあります)..."))
+                    message: "🔧 Trying to revive the worker (\(revives + 1)/\(MAX_WORKER_REVIVES); "
+                        + "recreating the bridge can take tens of seconds)..."))
                 guard let newWorker = await revive(retired) else {
                     continuation.yield(.workerLog(worker: retired.label,
-                        message: "⛔ ワーカーを復帰できませんでした"))
+                        message: "⛔ Could not revive the worker"))
                     return totalFailed
                 }
                 revives += 1
                 continuation.yield(.workerLog(worker: newWorker.label,
-                    message: "✅ ワーカーが復帰しました。実行を再開します"))
+                    message: "✅ Worker revived — resuming the run"))
                 continuation.yield(.workerReady(worker: newWorker.label))
                 current = newWorker
             }
@@ -714,7 +714,7 @@ public final class RunOrchestrator {
     private func runWorker(_ worker: RunWorker, queue: ScenarioQueue) async -> WorkerExit {
         // 期限付き(ウェッジしたブリッジで 120s×N 待たないため。withDeadline 参照)。
         guard await withDeadline(seconds: 10, { try await worker.driver.status() }) != nil else {
-            await reportWorkerFailed(worker.label, "接続できません(status 応答なし)")
+            await reportWorkerFailed(worker.label, "cannot connect (no response to status)")
             // leaseKey 未取得(まだ何もしていない)なので releaseLease は呼ばない。
             // 接続不能もデバイス使用不能の一種として復帰トライの対象にする(監視側の再起動待ち等)。
             return .retired(failed: 0, worker: worker)
@@ -767,33 +767,33 @@ public final class RunOrchestrator {
             // まず消失(adb offline/未検出。安価な adb devices 1回)、次に画面凍結(screencap プローブ)。
             // iOS はブリッジ /status の生存確認(ブリッジのウェッジ=シナリオ途中から全ステップが
             // 接続エラーになる実害があり、Android のプローブでは拾えない)。
-            var unusableReason: String? = outcome == .frozen ? "画面凍結" : nil
+            var unusableReason: String? = outcome == .frozen ? "a frozen screen" : nil
             if unusableReason == nil, outcome == .failed, worker.platform == "android",
                let serial = worker.connection.serial {
                 if await deviceUnreachable(serial) {
                     // 消失判定(adb devices)は実機でも有効。USB 抜け・WiFi 断の検知に使える
-                    unusableReason = "デバイス消失(offline/未検出)"
+                    unusableReason = "the device disappeared (offline/not found)"
                 } else if !worker.connection.physical, await deviceFrozen(serial) {
                     // 凍結判定はエミュレータ限定(閾値が解像度依存。ProfileWorkerFactory の
                     // excludeOrRepairBlankScreenWorkers と同じ理由)
-                    unusableReason = "画面凍結"
+                    unusableReason = "a frozen screen"
                 }
             }
             if unusableReason == nil, outcome == .failed, worker.platform == "ios",
                await bridgeUnreachable(worker) {
-                unusableReason = "ブリッジ接続不能"
+                unusableReason = "an unreachable bridge"
             }
             // サーキットブレーカ: 凍結/消失に当てはまらなくても連続失敗が閾値に達したら不調ワーカーとして離脱。
             if unusableReason == nil {
                 consecutiveFailures += 1
                 if consecutiveFailures >= WORKER_FAILURE_CIRCUIT_THRESHOLD {
-                    unusableReason = "ワーカー連続失敗(\(consecutiveFailures)回)"
+                    unusableReason = "\(consecutiveFailures) consecutive worker failures"
                 }
             }
             if let reason = unusableReason {
                 let requeued = await discardAndRequeue(item, worker: worker, queue: queue, reason: reason)
                 if !requeued { failed += 1 }
-                await reportWorkerFailed(worker.label, "\(reason)のため離脱しました")
+                await reportWorkerFailed(worker.label, "dropped out because of \(reason)")
                 await releaseLease(leaseKey)
                 await stopRecording(worker, leaseKey: leaseKey)
                 return .retired(failed: failed, worker: worker)
@@ -835,35 +835,35 @@ public enum RunLogFormatter {
             // 構造化フィールドとして参照できる)
             return []
         case .workerFailed(let worker, let message):
-            return ["❌ ワーカー \(worker) が離脱しました: \(message)"]
+            return ["❌ Worker \(worker) dropped out: \(message)"]
         case .workerLog(let worker, let message):
             return ["ℹ️ [\(worker)] \(message)"]
         case .flowRequeued(_, _, let reason, let attempt, let limit):
-            return ["  🔁 \(reason)のため別デバイスで再実行します(\(attempt)/\(limit))"]
+            return ["  🔁 Re-running on another device because of \(reason) (\(attempt)/\(limit))"]
         case .flowStarted(let worker, _, let flowName, let isDirty):
             var lines = ["▶ \(flowName) [\(worker)]"]
-            if isDirty { lines.append("  ⚠️ このフローは dirty(要レビュー)状態です") }
+            if isDirty { lines.append("  ⚠️ This flow is dirty (needs review)") }
             return lines
         case .step(_, _, let result):
             return lines(for: result)
         case .flowPaused(_, _, let index, let description, _, _):
-            return ["  ⏸ \(index). \(description) の手前で一時停止中"]
+            return ["  ⏸ Paused before \(index). \(description)"]
         case .flowHealed:
-            return ["  🔧 修復したロケータでフローを更新しました(dirty: true — 要レビュー)"]
+            return ["  🔧 Updated the flow with healed locators (dirty: true — needs review)"]
         case .fixSuggestion:
             return []
         case .flowFinished(_, _, let passed, let triage, let reportURL, _):
             var lines: [String] = []
             if passed {
-                lines.append("  → ✅ 成功")
+                lines.append("  → ✅ passed")
             } else {
                 if let triage {
-                    lines.append("  → 🔍 トリアージ: [\(triage.failureClass)] \(triage.summary)")
+                    lines.append("  → 🔍 Triage: [\(triage.failureClass)] \(triage.summary)")
                 }
                 if let reportURL {
-                    lines.append("  → ❌ 失敗 — レポート: \(reportURL.path)")
+                    lines.append("  → ❌ failed — report: \(reportURL.path)")
                 } else {
-                    lines.append("  → ❌ 失敗")
+                    lines.append("  → ❌ failed")
                 }
             }
             lines.append("")
@@ -871,7 +871,7 @@ public enum RunLogFormatter {
         case .flowSkipped(let flowURL, let reason):
             let name = flowURL.lastPathComponent.removingPercentEncoding
                 ?? flowURL.lastPathComponent
-            return ["⚠️ \(name) を実行できません: \(reason)", ""]
+            return ["⚠️ Cannot run \(name): \(reason)", ""]
         }
     }
 
@@ -889,7 +889,7 @@ public enum RunLogFormatter {
         case .failed(let reason):
             return ["  ❌ \(step.index). \(description)", "     \(reason)"]
         case .skipped(let reason):
-            return ["  ⚠️ \(step.index). \(description)(スキップ: \(reason))"]
+            return ["  ⚠️ \(step.index). \(description) (skipped: \(reason))"]
         }
     }
 }

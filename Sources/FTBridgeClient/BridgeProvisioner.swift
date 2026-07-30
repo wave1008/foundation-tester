@@ -49,24 +49,24 @@ public enum BridgeProvisionerError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .noFreePort(let scanned):
-            return "空きポートがありません(走査範囲: \(scanned.lowerBound)〜\(scanned.upperBound))"
+            return "no free port (scanned \(scanned.lowerBound)-\(scanned.upperBound))"
         case .notReady(let port, let underlying):
             // localizedDescription を使う。素の enum を補間すると
             // addressNotAnnounced(port: 8133, logPath: "...", blocker: Optional("..."))
             // のような内部表現がそのままユーザーに出る(実害。2026-07-25)
-            return "ブリッジが時間内に準備できませんでした(port \(port)): "
+            return "the bridge did not become ready in time (port \(port)): "
                 + underlying.localizedDescription
         case .inAppNeedsBundleID(let name):
-            return "\(name): engine=inapp のブリッジ起動にはアプリの bundleID が必要です。"
-                + "apps プロファイルの ios.app を設定してください"
-                + "(device/live 等 bundleID を渡さない経路は engine=inapp 非対応です)"
+            return "\(name): starting an engine=inapp bridge requires the app bundleID. "
+                + "Set ios.app in the apps profile"
+                + " (paths that do not pass a bundleID, such as device/live, do not support engine=inapp)"
         case .appNotInstalled(_, let bundleID, let udid):
             // device 名は provision() の離脱ログが行頭に付けるためここには含めない
-            return "\(bundleID) が未インストールのため離脱します(engine=inapp は事前インストール必須)。"
-                + "`xcrun simctl install \(udid) <app>` で導入するか、"
-                + "apps プロファイルに appPath+autoInstall を設定してください"
+            return "\(bundleID) is not installed, so this device drops out (engine=inapp requires it up front). "
+                + "Install it with `xcrun simctl install \(udid) <app>`, "
+                + "or set appPath + autoInstall in the apps profile"
         case .preinstallFailed(let device, let detail):
-            return "\(device): アプリの自動インストールに失敗しました:\n\(detail)"
+            return "\(device): automatic app install failed:\n\(detail)"
         }
     }
 }
@@ -200,7 +200,7 @@ public struct BridgeProvisioner {
         let running = await scanRunningBridges(catalog: catalog)
         if !running.isEmpty {
             let summary = running.keys.sorted().map(String.init).joined(separator: ", ")
-            safeLog("→ 稼働中ブリッジ: port \(summary)")
+            safeLog("→ Running bridges: port \(summary)")
         }
 
         // 3. inapp/hybrid の autoInstall 差分判定(バンドル深比較で遅い)を並列に事前評価
@@ -219,7 +219,7 @@ public struct BridgeProvisioner {
         if !startingByUDID.isEmpty {
             let summary = startingByUDID.values.flatMap { $0 }.sorted()
                 .map(String.init).joined(separator: ", ")
-            safeLog("→ 起動中ブリッジ(応答待ち): port \(summary)")
+            safeLog("→ Starting bridges (waiting for a response): port \(summary)")
         }
 
         // 4. プランニング(直列・await なし)。ポート採番の一意性(usedPorts/claimed)のため
@@ -450,13 +450,13 @@ public struct BridgeProvisioner {
                 try launcher.generateProjectIfNeeded()
                 let existing = try launcher.findXCTestRun()
                 if existing == nil {
-                    log("→ build-for-testing(\(xcui.sim.physical ? "実機" : "シミュレータ")向け"
-                        + "・初回は数分かかります)...")
+                    log("→ build-for-testing (for \(xcui.sim.physical ? "a physical device" : "the simulator")"
+                        + "; the first run takes several minutes)...")
                     try launcher.buildForTesting()
                 } else if let existing,
                           BridgeLauncher.runnerNeedsRebuild(repoRoot: repoRoot, xctestrun: existing) {
                     // ソース変更後の旧 xctestrun を起動し続けない(BridgeLauncher.runnerNeedsRebuild 参照)
-                    log("→ ランナーのソースが更新されているため build-for-testing を再実行します...")
+                    log("→ Runner sources changed — re-running build-for-testing...")
                     try launcher.buildForTesting()
                 }
             }
@@ -489,22 +489,22 @@ public struct BridgeProvisioner {
                                log: @escaping (String) -> Void) async throws -> UInt16 {
         switch plan {
         case .reuse(let port):
-            log("✅ \(name): 稼働中 \(engine) ブリッジを再利用(port \(port), \(sim.name))")
+            log("✅ \(name): reusing the running \(engine) bridge (port \(port), \(sim.name))")
             return port
         case .adopt(let port):
             // 別プロセスが起動した直後のランナー。起動はせず announce だけ待つ
-            log("→ \(name): 起動中の \(engine) ブリッジを引き取ります(port \(port), \(sim.name))...")
+            log("→ \(name): taking over the starting \(engine) bridge (port \(port), \(sim.name))...")
             let launcher = BridgeLauncher(repoRoot: repoRoot, device: sim.udid, port: port,
                                           physical: sim.physical)
             do {
                 try await launcher.waitUntilReady(host: BridgeEndpoint(port: port).host,
                                                   log: { log("\(name): \($0)") })
-                log("✅ \(name): 起動中だった \(engine) ブリッジを引き取りました(port \(port))")
+                log("✅ \(name): took over the \(engine) bridge that was starting (port \(port))")
                 return port
             } catch {
                 // 親を失ったゾンビ(再起動・kill で announce しないまま残ったランナー)。
                 // 放置すると同じデバイスで何度でも待たされるので、止めてから同じポートで立て直す
-                log("⚠️ \(name): 起動中ブリッジ(port \(port))が応答しないため停止して起動し直します")
+                log("⚠️ \(name): the starting bridge (port \(port)) is not responding — stopping and restarting it")
                 try? await launcher.stopAndWait()
                 return try await executeBridge(
                     engine: engine,
@@ -520,16 +520,16 @@ public struct BridgeProvisioner {
                 let stalePath = InAppBridgeState.url(
                     stateDir: repoRoot.appendingPathComponent(".ftester"), port: stopStalePort)
                 if FileManager.default.fileExists(atPath: stalePath.path) {
-                    log("→ \(name): 別アプリに注入された in-app ブリッジ(port \(stopStalePort))を終了して起動し直します")
+                    log("→ \(name): terminating an in-app bridge injected into a different app (port \(stopStalePort)) and restarting")
                     InAppBridgeState.terminateAndRemove(at: stalePath)
                 } else {
-                    log("→ \(name): 旧ビルドのブリッジ(port \(stopStalePort))を停止して起動し直します")
+                    log("→ \(name): stopping a bridge from an older build (port \(stopStalePort)) and restarting")
                     do {
                         try await BridgeLauncher(repoRoot: repoRoot, device: sim.udid,
                                                  port: stopStalePort,
                                                  physical: sim.physical).stopAndWait()
                     } catch {
-                        log("⚠️ \(name): 旧ブリッジの停止に失敗しました(port \(stopStalePort)): \(error.localizedDescription)")
+                        log("⚠️ \(name): failed to stop the stale bridge (port \(stopStalePort)): \(error.localizedDescription)")
                     }
                 }
             }
@@ -543,17 +543,17 @@ public struct BridgeProvisioner {
                     port: port, stateDir: stateDir,
                     derivedDataPath: stateDir.appendingPathComponent("DerivedData")) {
                 case .stopped(let holder):
-                    log("🔧 \(name): ポート \(port) の残留 in-app ブリッジを停止しました(\(holder))")
+                    log("🔧 \(name): stopped a leftover in-app bridge on port \(port) (\(holder))")
                 case .notFound:
                     break
                 case .foreign(let holder):
                     // 起動は bindFailed → portInUse 経路が拾って明示エラーになる
-                    log("⚠️ \(name): ポート \(port) は無関係プロセスが使用中です(\(holder))")
+                    log("⚠️ \(name): port \(port) is held by an unrelated process (\(holder))")
                 }
                 try? FileManager.default.removeItem(
                     at: InAppBridgeState.url(stateDir: stateDir, port: port))
             }
-            log("→ \(name): \(engine) ブリッジ起動(port \(port), \(sim.name) \(sim.os))...")
+            log("→ \(name): starting the \(engine) bridge (port \(port), \(sim.name) \(sim.os))...")
             if engine == "inapp" {
                 // planBridge が bundleID 必須を検証済み(ここは保険)
                 guard let bundleID else {
@@ -598,7 +598,7 @@ public struct BridgeProvisioner {
                         try? launcher.stop()
                         throw error
                     }
-                    log("→ \(name): 実機ブリッジへ \(endpoint.host):\(port) で接続します")
+                    log("→ \(name): connecting to the physical-device bridge at \(endpoint.host):\(port)")
                 }
                 do {
                     try await launcher.waitUntilReady(host: endpoint.host,
@@ -624,7 +624,7 @@ public struct BridgeProvisioner {
                         throw BridgeProvisionerError.notReady(
                             port: port, underlying: LauncherError.portInUse(port: port, holder: nil))
                     }
-                    log("🔧 \(name): ポート \(port) の残留プロセスを停止して再試行します(\(description))")
+                    log("🔧 \(name): stopping a leftover process on port \(port) and retrying (\(description))")
                     // 1 回だけ同一ポートで再試行する(無限ループ禁止。再失敗はここで諦める)
                     do {
                         try await Task.detached(priority: .userInitiated) {
@@ -641,7 +641,7 @@ public struct BridgeProvisioner {
                     throw BridgeProvisionerError.notReady(port: port, underlying: error)
                 }
             }
-            log("✅ \(name): \(engine) ブリッジ準備完了(port \(port))")
+            log("✅ \(name): \(engine) bridge ready (port \(port))")
             return port
         }
     }
@@ -668,7 +668,7 @@ public struct BridgeProvisioner {
             if case .stopped(let holder) = PortHolder.stopIfOwnedBridge(
                 port: orphanPort, stateDir: stateDir,
                 derivedDataPath: stateDir.appendingPathComponent("DerivedData")) {
-                log("🔧 \(name): 同一デバイスの残留 in-app ブリッジ(port \(orphanPort))を停止しました(\(holder))")
+                log("🔧 \(name): stopped a leftover in-app bridge on the same device (port \(orphanPort)) (\(holder))")
             }
             try? FileManager.default.removeItem(at: entry)
         }
@@ -683,12 +683,12 @@ public struct BridgeProvisioner {
                                     log: @escaping (String) -> Void) throws {
         if let preinstallAppPath {
             guard needsInstall else { return }
-            log("→ \(deviceName): \(bundleID) をインストールします(autoInstall: 内容が更新されています)...")
+            log("→ \(deviceName): installing \(bundleID) (autoInstall: the contents changed)...")
             let install = try Shell.run(["xcrun", "simctl", "install", sim.udid, preinstallAppPath])
             guard install.status == 0 else {
                 throw BridgeProvisionerError.preinstallFailed(device: deviceName, detail: install.tail)
             }
-            log("✅ \(deviceName): インストール完了")
+            log("✅ \(deviceName): install complete")
             return
         }
         let check = try Shell.run(["xcrun", "simctl", "get_app_container", sim.udid, bundleID])

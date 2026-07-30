@@ -33,7 +33,7 @@ final class ScenarioHostDryRunDetailTests: XCTestCase {
         let detail = ScenarioHost.dryRunFailureDetail(events)
         XCTAssertTrue(detail.contains("未知のフィルタ名"), "構文エラー本文が落ちてはいけない: \(detail)")
         XCTAssertTrue(detail.contains("idPrefix"), "どのセレクタかが分かること: \(detail)")
-        XCTAssertNotEqual(detail, "dry-run が失敗しました")
+        XCTAssertNotEqual(detail, "dry-run failed")
     }
 
     /// ステップ説明を前置して「どの操作で落ちたか」が分かる
@@ -62,7 +62,7 @@ final class ScenarioHostDryRunDetailTests: XCTestCase {
     /// 手がかりが1つも無いときだけ既定文言へ落ちる
     func testFallsBackWhenNothingToShow() {
         let events = [step(status: "passed", description: "tap \"#foo\"", detail: nil)]
-        XCTAssertEqual(ScenarioHost.dryRunFailureDetail(events), "dry-run が失敗しました")
+        XCTAssertEqual(ScenarioHost.dryRunFailureDetail(events), "dry-run failed")
     }
 
     /// 大量の失敗でも末尾5件に収める(出力が溢れない)
