@@ -43,6 +43,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
     private final QuietWaiter quietWaiter = new QuietWaiter();
     /** 直近スナップショットの ref → 中心座標(iOS ランナーの refFrames と同じ役割) */
     private Map<Integer, double[]> refCenters = new HashMap<>();
+    private Map<Integer, String> refIds = new HashMap<>();
     private Rect lastScreen = new Rect();
     private String sessionBundleID;
     /** 自 APK の versionCode(/status で申告)。取得失敗時は 0 = 申告しない */
@@ -166,6 +167,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
             result = SnapshotBuilder.build(ua());
         }
         refCenters = result.refCenters;
+        refIds = result.refIds;
         lastScreen = result.screen;
         return BridgeHttpServer.Response.json(200, result.json);
     }
@@ -183,11 +185,12 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         }
         String text = body.optString("text");
         if (body.has("ref")) {
-            double[] center = centerOf(body.optInt("ref"));
+            int ref = body.optInt("ref");
+            double[] center = centerOf(ref);
             InputInjector.tap(ua(), center[0], center[1]);
             // 確認と注入を統合した経路(InputInjector.setTextAppendingAt のコメント参照)。
-            // タップした点を含むフォーカスノードにだけ SET_TEXT し、他フィールドへ誤爆しない
-            InputInjector.setTextAppendingAt(ua(), center[0], center[1], text, 2000);
+            // resource-id を渡す: キーボードの開閉で座標がズレても同じ要素を追跡し直すため
+            InputInjector.setTextAppendingAt(ua(), center[0], center[1], refIds.get(ref), text, 4000);
         } else {
             InputInjector.setTextAppending(ua(), text);
         }
@@ -199,9 +202,10 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
      *  対象なし/SET_TEXT 拒否は 409(ホストの typeDriver フォールバックの合図。500 にしない) */
     private BridgeHttpServer.Response handleClear(JSONObject body) {
         if (body.has("ref")) {
-            double[] center = centerOf(body.optInt("ref"));
+            int ref = body.optInt("ref");
+            double[] center = centerOf(ref);
             InputInjector.tap(ua(), center[0], center[1]);
-            InputInjector.clearTextAt(ua(), center[0], center[1], 2000);
+            InputInjector.clearTextAt(ua(), center[0], center[1], refIds.get(ref), 4000);
         } else {
             InputInjector.clearFocused(ua());
         }

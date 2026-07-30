@@ -8,8 +8,10 @@ import android.graphics.Rect;
 import android.os.Bundle;
 import android.os.SystemClock;
 import android.view.InputDevice;
+import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
+import android.view.accessibility.AccessibilityWindowInfo;
 
 final class InputInjector {
 
@@ -46,41 +48,89 @@ final class InputInjector {
     }
 
     /**
-     * タップした点(x,y)にある **editable ノードそのもの** へ追記する(ACTION_SET_TEXT は全置換
-     * なので既存テキストと連結)。findFocus には依存しない:
-     * - 「何かしらのフォーカス」待ち(v9)は、別フィールドが既にフォーカスを持つ場合に即通過して
-     *   旧フィールドへ誤追記した(hello123secret42 事故)
-     * - 「点を含むフォーカスノードへ注入」(v10/v11)でも再発した。Compose の a11y フォーカス報告は
-     *   実フォーカスと非同期にずれることがあり、フォーカスノード経由である限り誤配のレースが残る
-     * 点にあるノードを毎試行フレッシュに解決して直接 SET_TEXT するため、誤爆は構造的に起きない。
-     * フォーカス到達を優先して待つが、期限の半分を過ぎたらフォーカス未報告でも対象ノードへ
-     * SET_TEXT を試みる(SetText は semantics ノード直アクションでフォーカス必須ではない)。
-     * 期限内に成功しなければ 500(他フィールドへは決して書かない)。
+     * タップした点(x,y)にある editable ノードへ追記する。追跡は resource-id 優先
+     * (shortId が null のときだけ点)。**キーボードの開閉で adjustResize が走ると座標は
+     * 当てにならない**ため、点だけを頼ると別ノードに化ける。
+     *
+     * 規律(2026-07-31 の実測から。破ると値が壊れる):
+     * - **combined は最初の確定読みから1回だけ作る**。再発火は常に同じ値(構造的に冪等)。
+     *   後の読みから作り直すと、パスワード欄のマスク文字列を値として書き込む・遅延適用と
+     *   重なって二重追記する(どちらも実害を観測した)
+     * - **SET_TEXT はフォーカスが立っているときだけ撃つ**。未フォーカスの Compose 欄は
+     *   受理(true)しても反映しない。立たないときは座標でなく ACTION_CLICK で立て直す
+     *   (座標ズレと無縁)。猶予後の未フォーカス発火は最後の1回だけ・検証付き
+     * - **パスワード欄の読みはマスクされる**ので、適用確認は長さ一致で行う
+     * - performAction / ノード読みは try/catch で「取り直し」に変換する(レイアウト変化中の
+     *   ノードは内部で NPE を投げる。ACTION_FOCUS 事件と同じ機構)
+     * 期限内に確認できなければ 500(他フィールドへは決して書かない)。
      */
-    static void setTextAppendingAt(UiAutomation ua, double x, double y, String text, long timeoutMs) {
+    static void setTextAppendingAt(UiAutomation ua, double x, double y, String shortId,
+                                   String text, long timeoutMs) {
         long start = SystemClock.uptimeMillis();
         long deadline = start + timeoutMs;
         long focusGraceUntil = start + timeoutMs / 2;
+        long lastClickAt = 0;
+        long firstFireAt = 0;         // 最初に SET_TEXT を受理させた時刻(未反映の張り直し判定用)
         String lastState = "対象ノード未発見";
+        String combined = null;       // 最初の確定読みから1回だけ作る(上記の規律)
+        boolean masked = false;
+        boolean blindFired = false;   // 猶予後の未フォーカス発火は1回だけ
         Rect bounds = new Rect();
         while (true) {
-            AccessibilityNodeInfo root = ua.getRootInActiveWindow();
-            AccessibilityNodeInfo target = root == null ? null : editableAt(root, (int) x, (int) y, bounds);
-            if (target != null) {
-                boolean focused = target.isFocused();
-                if (focused || SystemClock.uptimeMillis() >= focusGraceUntil) {
+            try {
+                AccessibilityNodeInfo root = ua.getRootInActiveWindow();
+                AccessibilityNodeInfo target = root == null ? null
+                        : findEditable(root, shortId, (int) x, (int) y, bounds);
+                if (target != null) {
                     CharSequence existing = target.isShowingHintText() ? "" : target.getText();
-                    String combined = (existing == null ? "" : existing.toString()) + text;
-                    Bundle args = new Bundle();
-                    args.putCharSequence(
-                            AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, combined);
-                    if (target.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) {
+                    String current = existing == null ? "" : existing.toString();
+                    if (combined != null && applied(current, combined, masked)) {
                         return;
                     }
-                    lastState = "SET_TEXT 拒否(input connection 未確立の可能性)";
-                } else {
-                    lastState = "対象ノードは未フォーカス";
+                    boolean focused = target.isFocused();
+                    // フォーカス済みでも受理→未反映が続くことがある(高負荷で観測)。原因は
+                    // **前のアプリインスタンスに紐づいた IME セッションの残留**で、focused でも
+                    // semantic action が捨てられる。700ms 反映されなければ IME を閉じて
+                    // (BACK。IME window が見えているときだけ = 画面を戻さない)最新 bounds の
+                    // 中心を実タップし、セッションを張り直す。ACTION_CLICK では張り直らない(実測)
+                    if (focused && firstFireAt != 0
+                            && SystemClock.uptimeMillis() - firstFireAt >= 700
+                            && SystemClock.uptimeMillis() - lastClickAt >= 700) {
+                        reconnectInput(ua, target);
+                        lastClickAt = SystemClock.uptimeMillis();
+                        firstFireAt = 0;
+                    }
+                    if (focused || (SystemClock.uptimeMillis() >= focusGraceUntil && !blindFired)) {
+                        if (combined == null) {
+                            masked = target.isPassword();
+                            combined = current + text;
+                        }
+                        Bundle args = new Bundle();
+                        args.putCharSequence(
+                                AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, combined);
+                        if (target.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) {
+                            if (firstFireAt == 0) firstFireAt = SystemClock.uptimeMillis();
+                            lastState = focused ? "SET_TEXT は受理されたが値が反映されない"
+                                                : "未フォーカスの SET_TEXT が反映されない";
+                            if (!focused) blindFired = true;
+                        } else {
+                            lastState = "SET_TEXT 拒否(input connection 未確立の可能性)";
+                        }
+                    } else if (!focused && SystemClock.uptimeMillis() - lastClickAt >= 200) {
+                        // フォーカスが立たない(タップがキーボードに吸われた等)。ACTION_CLICK は
+                        // ノード直アクションなので座標ズレと無縁にフォーカスを要求できる
+                        if (!target.isVisibleToUser()) {
+                            target.performAction(AccessibilityNodeInfo.AccessibilityAction
+                                    .ACTION_SHOW_ON_SCREEN.getId(), null);
+                        }
+                        target.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+                        lastClickAt = SystemClock.uptimeMillis();
+                        lastState = "未フォーカス(ACTION_CLICK でフォーカス要求中)";
+                    }
                 }
+            } catch (RuntimeException e) {
+                // レイアウト変化中のノードは内部で NPE 等を投げる → 次周回で取り直す
+                lastState = "ノードが無効化された(" + e.getClass().getSimpleName() + ")";
             }
             if (SystemClock.uptimeMillis() >= deadline) {
                 throw new BridgeRouter.BridgeException(500,
@@ -92,32 +142,125 @@ final class InputInjector {
     }
 
     /**
-     * タップした点(x,y)にある editable ノードを空文字へ全置換する(/clear の ref 経路。
-     * ノード探索・フォーカス猶予の規律は setTextAppendingAt と同一)。
-     * 期限内に成功しなければ 409(ホストの typeDriver フォールバックの合図。BridgeDTO.ClearRequest 参照。
+     * 腐った input connection の張り直し: IME window が**見えているときだけ** BACK で閉じ
+     * (見えていないのに撃つと画面が戻る)、対象の**最新 bounds** の中心を実タップする。
+     * 残留 IME セッション(前のアプリインスタンス由来)は ACTION_CLICK では張り直らない(実測)。
+     */
+    private static void reconnectInput(UiAutomation ua, AccessibilityNodeInfo target) {
+        if (imeWindowVisible(ua)) {
+            long downTime = SystemClock.uptimeMillis();
+            injectKey(ua, new KeyEvent(downTime, downTime, KeyEvent.ACTION_DOWN,
+                    KeyEvent.KEYCODE_BACK, 0));
+            injectKey(ua, new KeyEvent(downTime, SystemClock.uptimeMillis(),
+                    KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BACK, 0));
+            SystemClock.sleep(150);
+        }
+        Rect fresh = new Rect();
+        target.getBoundsInScreen(fresh);
+        tap(ua, fresh.exactCenterX(), fresh.exactCenterY());
+    }
+
+    private static boolean imeWindowVisible(UiAutomation ua) {
+        for (AccessibilityWindowInfo w : ua.getWindows()) {
+            if (w.getType() == AccessibilityWindowInfo.TYPE_INPUT_METHOD) return true;
+        }
+        return false;
+    }
+
+    private static void injectKey(UiAutomation ua, KeyEvent e) {
+        ua.injectInputEvent(e, true);
+    }
+
+    /** 適用確認。マスク欄(パスワード)は読みが伏せ字になるため長さ一致で見る */
+    private static boolean applied(String current, String combined, boolean masked) {
+        if (combined.equals(current)) return true;
+        return masked && current.length() == combined.length();
+    }
+
+    /** resource-id(短縮形)優先でノードを探す。id が無い/見つからないときだけ点で探す */
+    private static AccessibilityNodeInfo findEditable(AccessibilityNodeInfo root, String shortId,
+                                                      int x, int y, Rect tmp) {
+        if (shortId != null) {
+            AccessibilityNodeInfo byId = editableById(root, shortId);
+            if (byId != null) return byId;
+        }
+        return editableAt(root, x, y, tmp);
+    }
+
+    /** 短縮 resource-id が一致する editable ノード(SnapshotBuilder.shortResourceId と同じ規則) */
+    private static AccessibilityNodeInfo editableById(AccessibilityNodeInfo node, String shortId) {
+        if (node == null) return null;
+        String id = node.getViewIdResourceName();
+        if (id != null && node.isEditable()) {
+            int idx = id.indexOf("id/");
+            String shortened = idx >= 0 ? id.substring(idx + 3) : id;
+            if (shortId.equals(shortened)) return node;
+        }
+        for (int i = 0; i < node.getChildCount(); i++) {
+            AccessibilityNodeInfo found = editableById(node.getChild(i), shortId);
+            if (found != null) return found;
+        }
+        return null;
+    }
+
+    /**
+     * タップした点(x,y)にある editable ノードを空文字へ全置換する(/clear の ref 経路)。
+     * 追跡・フォーカスゲート・try/catch の規律は setTextAppendingAt と同一(そちらのコメント参照)。
+     * 空への置換は冪等なので combined の1回構築は不要。マスク欄も「空」の読みは "" になる。
+     * 期限内に確認できなければ 409(ホストの typeDriver フォールバックの合図。
      * setTextAppendingAt の 500 とは意図的に異なる)。
      */
-    static void clearTextAt(UiAutomation ua, double x, double y, long timeoutMs) {
+    static void clearTextAt(UiAutomation ua, double x, double y, String shortId, long timeoutMs) {
         long start = SystemClock.uptimeMillis();
         long deadline = start + timeoutMs;
         long focusGraceUntil = start + timeoutMs / 2;
+        long lastClickAt = 0;
+        long firstFireAt = 0;
         String lastState = "対象ノード未発見";
+        boolean blindFired = false;
         Rect bounds = new Rect();
         while (true) {
-            AccessibilityNodeInfo root = ua.getRootInActiveWindow();
-            AccessibilityNodeInfo target = root == null ? null : editableAt(root, (int) x, (int) y, bounds);
-            if (target != null) {
-                boolean focused = target.isFocused();
-                if (focused || SystemClock.uptimeMillis() >= focusGraceUntil) {
-                    Bundle args = new Bundle();
-                    args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "");
-                    if (target.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) {
+            try {
+                AccessibilityNodeInfo root = ua.getRootInActiveWindow();
+                AccessibilityNodeInfo target = root == null ? null
+                        : findEditable(root, shortId, (int) x, (int) y, bounds);
+                if (target != null) {
+                    CharSequence remaining = target.isShowingHintText() ? "" : target.getText();
+                    if (remaining == null || remaining.length() == 0) {
                         return;
                     }
-                    lastState = "SET_TEXT 拒否(input connection 未確立の可能性)";
-                } else {
-                    lastState = "対象ノードは未フォーカス";
+                    boolean focused = target.isFocused();
+                    if (focused && firstFireAt != 0
+                            && SystemClock.uptimeMillis() - firstFireAt >= 700
+                            && SystemClock.uptimeMillis() - lastClickAt >= 700) {
+                        reconnectInput(ua, target);   // setTextAppendingAt と同じ張り直し
+                        lastClickAt = SystemClock.uptimeMillis();
+                        firstFireAt = 0;
+                    }
+                    if (focused || (SystemClock.uptimeMillis() >= focusGraceUntil && !blindFired)) {
+                        Bundle args = new Bundle();
+                        args.putCharSequence(
+                                AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "");
+                        if (target.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) {
+                            if (firstFireAt == 0) firstFireAt = SystemClock.uptimeMillis();
+                            lastState = focused ? "SET_TEXT は受理されたが値が残っている"
+                                                : "未フォーカスの SET_TEXT が反映されない";
+                            if (!focused) blindFired = true;
+                        } else {
+                            lastState = "SET_TEXT 拒否(input connection 未確立の可能性)";
+                        }
+                    } else if (!focused && SystemClock.uptimeMillis() - lastClickAt >= 200) {
+                        if (!target.isVisibleToUser()) {
+                            target.performAction(AccessibilityNodeInfo.AccessibilityAction
+                                    .ACTION_SHOW_ON_SCREEN.getId(), null);
+                        }
+                        target.performAction(AccessibilityNodeInfo.ACTION_CLICK);
+                        lastClickAt = SystemClock.uptimeMillis();
+                        lastState = "未フォーカス(ACTION_CLICK でフォーカス要求中)";
+                    }
                 }
+            } catch (RuntimeException e) {
+                lastState = "ノードが無効化された(" + e.getClass().getSimpleName() + ")";
             }
             if (SystemClock.uptimeMillis() >= deadline) {
                 throw new BridgeRouter.BridgeException(409,
@@ -145,24 +288,46 @@ final class InputInjector {
     }
 
     /**
-     * フォーカス中の入力フィールドへ追記する(iOS の typeText / adb input text と同じ追記意味論)。
-     * ACTION_SET_TEXT は全置換なので既存テキストと連結して渡す。日本語などの非 ASCII も入る。
+     * フォーカス中の入力欄へ追記する(/type の ref なし経路)。
+     * combined の1回構築・マスク長さ判定・try/catch は setTextAppendingAt と同じ規律
+     * (そちらのコメント参照。読みから作り直すとマスク文字列の書き込み・二重追記になる)。
      */
     static void setTextAppending(UiAutomation ua, String text) {
-        AccessibilityNodeInfo root = SnapshotBuilder.waitForRoot(ua, 2000);
-        AccessibilityNodeInfo focus = root == null ? null
-                : root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
-        if (focus == null) {
-            throw new BridgeRouter.BridgeException(500,
-                    "入力フォーカスを持つ要素がありません(先に ref 指定でタップしてください)");
-        }
-        CharSequence existing = focus.isShowingHintText() ? "" : focus.getText();
-        String combined = (existing == null ? "" : existing.toString()) + text;
-        Bundle args = new Bundle();
-        args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, combined);
-        if (!focus.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) {
-            throw new BridgeRouter.BridgeException(500,
-                    "ACTION_SET_TEXT を受け付けないフィールドです(WebView 等)");
+        long deadline = SystemClock.uptimeMillis() + 2000;
+        String lastState = "入力フォーカスを持つ要素がありません(先に ref 指定でタップしてください)";
+        String combined = null;
+        boolean masked = false;
+        while (true) {
+            try {
+                AccessibilityNodeInfo root = SnapshotBuilder.waitForRoot(ua, 500);
+                AccessibilityNodeInfo focus = root == null ? null
+                        : root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
+                if (focus != null) {
+                    CharSequence existing = focus.isShowingHintText() ? "" : focus.getText();
+                    String current = existing == null ? "" : existing.toString();
+                    if (combined != null && applied(current, combined, masked)) {
+                        return;
+                    }
+                    if (combined == null) {
+                        masked = focus.isPassword();
+                        combined = current + text;
+                    }
+                    Bundle args = new Bundle();
+                    args.putCharSequence(
+                            AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, combined);
+                    if (focus.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) {
+                        lastState = "SET_TEXT は受理されたが値が反映されない";
+                    } else {
+                        lastState = "ACTION_SET_TEXT を受け付けないフィールドです(WebView 等)";
+                    }
+                }
+            } catch (RuntimeException e) {
+                lastState = "ノードが無効化された(" + e.getClass().getSimpleName() + ")";
+            }
+            if (SystemClock.uptimeMillis() >= deadline) {
+                throw new BridgeRouter.BridgeException(500, lastState + "(2000ms 待機)");
+            }
+            SystemClock.sleep(20);
         }
     }
 
