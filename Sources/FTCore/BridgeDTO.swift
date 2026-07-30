@@ -35,7 +35,9 @@ public enum BridgeAPI {
     /// 23: XCUITest ランナーの /clear が「フォーカス欄が無い」「消し切れなかった」を
     /// **409 でなく 422** で返すようになった(2026-07-31)。旧ブリッジを再利用すると 409 のまま
     /// = ホストがセッション消失と誤断定して無用な activate を撃ち、誤った理由でステップを落とす
-    public static let bridgeProtocolVersion = 23
+    /// 24: /clear が 2 周固定をやめ、空になるまで(deadline 付きで)叩くようになった(2026-07-31)。
+    /// 旧ランナーが再利用されると高負荷での取りこぼしフレークが残ったままになる
+    public static let bridgeProtocolVersion = 24
 
     /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
     /// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java の

@@ -274,8 +274,16 @@ final class BridgeRouter {
 
     /// hasKeyboardFocus な要素を探して末尾へカーソルを送ってから delete を打つ。**文中をタップして
     /// delete すると左側の一部しか消えない**ため、必ず frame の右端近くをタップしてカーソルを
-    /// 末尾に揃える。1回で消し切れないことがある(delete 中に IME/バリデーションが割り込む等)ため
-    /// 最大2周する。
+    /// 末尾に揃える。
+    ///
+    /// **周回数を固定しないこと**(2026-07-31 実測)。高負荷では `typeText` が打鍵を取りこぼし、
+    /// 送った delete が全部は入らない —— 実測の失敗3件はいずれも
+    /// `"hello123"(8打鍵)→"hel"`、`"hel"(3打鍵)→"h"` と、**毎周 6 割前後しか入らない**。
+    /// 2周固定だった頃はここで打ち切られ「値が残っています」で落ちていた(高負荷で約 2%)。
+    /// 残り文字数は単調に減るので、**空になるまで回せば収束する**。
+    /// 上限は周回数ではなく deadline と「進捗なし」で持つ:
+    /// 進捗なしを数えるのは、delete では消えない欄(入力を書き戻すバリデーション等)で
+    /// deadline いっぱい叩き続けないため。通常は1周で終わるので速度は変わらない。
     ///
     /// **失敗は 409 ではなく 422**(2026-07-31 修正)。ここは「セッションはあるが今のこの画面では
     /// クリアできない」であって、`requireApp` のセッション消失とは別物。409 で返していた頃は
@@ -300,17 +308,33 @@ final class BridgeRouter {
             throw BridgeError(422, "フォーカスされた入力欄がありません(hasKeyboardFocus な要素が"
                 + "見つかりません)。対象を先に tap するか ref を指定してください")
         }
-        for _ in 0..<2 {
-            guard let text = Self.remainingText(of: focused), !text.isEmpty else { break }
+        let deadline = Date().addingTimeInterval(Self.clearBudgetSeconds)
+        var previous: String?
+        var stagnantRounds = 0
+        var rounds = 0
+        while let text = Self.remainingText(of: focused), !text.isEmpty {
+            // 「打っても減らない」が続いたら delete では消せない欄。deadline まで叩かず抜ける
+            stagnantRounds = (text == previous) ? stagnantRounds + 1 : 0
+            if stagnantRounds >= Self.clearMaxStagnantRounds || Date() >= deadline { break }
+            previous = text
+            rounds += 1
             let frame = focused.frame
             coordinate(app, CGPoint(x: frame.maxX - 4, y: frame.midY)).tap()
             focused.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: text.count))
         }
-        guard Self.remainingText(of: focused) == nil else {
-            throw BridgeError(422, "入力欄をクリアしきれませんでした(値が残っています)")
+        if let residual = Self.remainingText(of: focused) {
+            // 残った値そのものは出さない(パスワード欄も通る経路)。長さと周回数だけ出す
+            throw BridgeError(422, "入力欄をクリアしきれませんでした"
+                + "(\(rounds) 周叩いても \(residual.count) 文字残っています)")
         }
         return .json(OKResponse())
     }
+
+    /// クリアの打ち切り時間(秒)。実測では 8 文字が 3 周で空になるので、
+    /// 長文でも収まるだけの余裕を持たせた上限
+    private static let clearBudgetSeconds: TimeInterval = 8
+    /// 残り文字数が変わらない周回の許容数。1周まるごと打鍵が落ちることがあるので 1 では早すぎる
+    private static let clearMaxStagnantRounds = 4
 
     /// value が placeholder と一致/空なら nil(クリア済み扱い)を返す
     private static func remainingText(of element: XCUIElement) -> String? {
