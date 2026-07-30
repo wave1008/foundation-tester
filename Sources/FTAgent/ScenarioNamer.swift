@@ -6,9 +6,9 @@ import FTCore
 
 @Generable
 struct ScenarioNameSuggestion {
-    @Guide(description: "テストクラス名向けの簡潔でシンプルな日本語名。操作対象の画面名や機能名を優先する(15文字以内、拡張子・引用符・記号を含めない)")
+    @Guide(description: "テストクラス名向けの簡潔な名前(操作内容と同じ言語で。画面名や機能名を優先、15文字以内、拡張子・引用符・記号を含めない)")
     var name: String
-    @Guide(description: "この操作列が何を確認するテストかを表す簡潔な日本語の説明文(1文、40文字以内)")
+    @Guide(description: "この操作列が何を確認するテストかを表す簡潔な説明文(操作内容と同じ言語で。1文、40文字以内)")
     var description: String
 }
 
@@ -24,9 +24,14 @@ public struct ScenarioNaming: Sendable {
 
 public enum ScenarioNamer {
 
+    // 生成物(クラス名・説明)はユーザー資産なので**入力の言語に追従**させる(2026-07-30 決定)。
+    // ただし @Guide の言語が出力言語を支配する実測があるため(ReplayAssist.swift の記録参照)、
+    // 日本語 @Guide を維持したまま指示で表明する形。英語入力への追従が実際に必要になったら
+    // @Generable を言語別に分けて入力言語で選ぶこと
     static let instructions = """
     あなたはモバイルアプリの UI テスト記録から、テストシナリオのクラス名と説明を作る係です。
     渡される操作の要約(1行ずつ)とアプリ名から、次の2つを作ってください。
+    **name と description は操作内容(ラベル等)と同じ言語で書いてください。**
     - name: テストクラス名向けの簡潔な名詞句。操作対象の画面名・機能名を優先する。
       15文字以内、ファイル拡張子(.swift 等)や引用符・記号を含めない、
       「〜のテスト」「〜シナリオ」のような冗長な接尾辞は付けない。

@@ -1,7 +1,9 @@
-// DSL コマンド → 自然言語(日本語)の説明文生成。
+// DSL コマンド → 自然言語の説明文生成。
 // ヒール確認 UI の説明提案・ステップ一覧「説明」列の補完・コード生成の行末コメントが使う。
-// 操作は「〜する」、検証は「〜こと」。目的語はセレクタ式のラベル成分
-// (最初の label 節)を優先し、無ければセレクタ文字列をそのまま使う。
+// **文の言語はステップの内容に追従する**(2026-07-30 ユーザー決定): ラベル・期待値・入力値の
+// どれかに日本語が含まれれば日本語文(操作は「〜する」、検証は「〜こと」)、含まれなければ
+// 英語文。内容を持たないコマンド(terminate/swipe/wait 等)は英語 = 定型文の既定。
+// 目的語はセレクタ式のラベル成分(最初の label 節)を優先し、無ければセレクタ文字列をそのまま使う。
 // 生成できないコマンド(ifCanSelect / procedure / 未知)は nil を返し、呼び出し側でフォールバックする。
 
 import Foundation
@@ -20,87 +22,122 @@ public enum StepDescription {
         }
 
         guard let spaceIndex = text.firstIndex(of: " ") else {
-            // 引数なしコマンド
+            // 引数なしコマンド(内容が無いので常に英語)
             switch text {
-            case "terminate": return "アプリを終了する"
-            case "pressEnter": return "Enterキーを押す"
+            case "terminate": return "terminate the app"
+            case "pressEnter": return "press the Enter key"
             default: return nil
             }
         }
         let verb = String(text[..<spaceIndex])
         let rest = String(text[text.index(after: spaceIndex)...])
 
+        func object(_ selector: String) -> String {
+            objectPhrase(ofSelector: selectorOverride ?? selector)
+        }
+
         switch verb {
         case "tap":
             guard let selector = unquote(rest) else { return nil }
-            return "\"\(objectPhrase(ofSelector: selectorOverride ?? selector))\"をタップする"
+            let obj = object(selector)
+            return isJapanese(obj) ? "\"\(obj)\"をタップする" : "tap \"\(obj)\""
         case "press":
             guard let selector = unquote(rest) else { return nil }
-            return "\"\(objectPhrase(ofSelector: selectorOverride ?? selector))\"を長押しする"
+            let obj = object(selector)
+            return isJapanese(obj) ? "\"\(obj)\"を長押しする" : "long-press \"\(obj)\""
         case "scrollTo":
             guard let selector = unquote(rest) else { return nil }
-            return "\"\(objectPhrase(ofSelector: selectorOverride ?? selector))\""
-                + "が表示されるまでスクロールする"
+            let obj = object(selector)
+            return isJapanese(obj)
+                ? "\"\(obj)\"が表示されるまでスクロールする"
+                : "scroll until \"\(obj)\" is visible"
         case "exist":
             guard let selector = unquote(rest) else { return nil }
-            return "\"\(objectPhrase(ofSelector: selectorOverride ?? selector))\"が(覆われず)見えていること"
+            let obj = object(selector)
+            return isJapanese(obj)
+                ? "\"\(obj)\"が(覆われず)見えていること"
+                : "\"\(obj)\" is visible (not covered)"
         case "notExist":
             guard let selector = unquote(rest) else { return nil }
-            return "\"\(objectPhrase(ofSelector: selectorOverride ?? selector))\"が表示されていないこと"
+            let obj = object(selector)
+            return isJapanese(obj) ? "\"\(obj)\"が表示されていないこと" : "\"\(obj)\" is not shown"
         case "isEnabled":
             guard let selector = unquote(rest) else { return nil }
-            return "\"\(objectPhrase(ofSelector: selectorOverride ?? selector))\"が操作可能であること"
+            let obj = object(selector)
+            return isJapanese(obj) ? "\"\(obj)\"が操作可能であること" : "\"\(obj)\" is enabled"
         case "isDisabled":
             guard let selector = unquote(rest) else { return nil }
-            return "\"\(objectPhrase(ofSelector: selectorOverride ?? selector))\"が操作不可であること"
+            let obj = object(selector)
+            return isJapanese(obj) ? "\"\(obj)\"が操作不可であること" : "\"\(obj)\" is disabled"
         case "textContains":
             guard let (selector, expected) = unquotePair(rest, separator: "\" ~ \"") else { return nil }
-            return "\"\(objectPhrase(ofSelector: selectorOverride ?? selector))\"が"
-                + "\"\(expected)\"を含むこと"
+            let obj = object(selector)
+            return isJapanese(obj, expected)
+                ? "\"\(obj)\"が\"\(expected)\"を含むこと"
+                : "\"\(obj)\" contains \"\(expected)\""
         case "textMatches":
             guard let (selector, pattern) = unquotePair(rest, separator: "\" ~ \"") else { return nil }
-            return "\"\(objectPhrase(ofSelector: selectorOverride ?? selector))\"が"
-                + "正規表現 \"\(pattern)\" に一致すること"
+            let obj = object(selector)
+            return isJapanese(obj, pattern)
+                ? "\"\(obj)\"が正規表現 \"\(pattern)\" に一致すること"
+                : "\"\(obj)\" matches the regex \"\(pattern)\""
         case "isChecked":
             guard let selector = unquote(rest) else { return nil }
-            return "\"\(objectPhrase(ofSelector: selectorOverride ?? selector))\"がオンであること"
+            let obj = object(selector)
+            return isJapanese(obj) ? "\"\(obj)\"がオンであること" : "\"\(obj)\" is on"
         case "isNotChecked":
             guard let selector = unquote(rest) else { return nil }
-            return "\"\(objectPhrase(ofSelector: selectorOverride ?? selector))\"がオフであること"
+            let obj = object(selector)
+            return isJapanese(obj) ? "\"\(obj)\"がオフであること" : "\"\(obj)\" is off"
         case "countIs":
             guard let (selector, count) = unquotedTail(rest, separator: "\" == ") else { return nil }
-            return "\"\(objectPhrase(ofSelector: selectorOverride ?? selector))\"が\(count)件あること"
+            let obj = object(selector)
+            return isJapanese(obj)
+                ? "\"\(obj)\"が\(count)件あること"
+                : "there are \(count) \"\(obj)\""
         case "type":
             if let (selector, input) = unquotePair(rest, separator: "\" \"") {
-                return "\"\(objectPhrase(ofSelector: selectorOverride ?? selector))\""
-                    + "に\"\(input)\"を入力する"
+                let obj = object(selector)
+                return isJapanese(obj, input)
+                    ? "\"\(obj)\"に\"\(input)\"を入力する"
+                    : "type \"\(input)\" into \"\(obj)\""
             }
             guard let input = unquote(rest) else { return nil }
-            return "フォーカス中の要素に\"\(input)\"を入力する"
+            return isJapanese(input)
+                ? "フォーカス中の要素に\"\(input)\"を入力する"
+                : "type \"\(input)\" into the focused element"
         case "textIs":
             guard let (selector, expected) = unquotePair(rest, separator: "\" == \"") else {
                 return nil
             }
-            return "\"\(objectPhrase(ofSelector: selectorOverride ?? selector))\""
-                + "のテキストが\"\(expected)\"であること"
+            let obj = object(selector)
+            return isJapanese(obj, expected)
+                ? "\"\(obj)\"のテキストが\"\(expected)\"であること"
+                : "\"\(obj)\" text is \"\(expected)\""
         case "valueIs":
             guard let (selector, expected) = unquotePair(rest, separator: "\" == \"") else {
                 return nil
             }
-            return "\"\(objectPhrase(ofSelector: selectorOverride ?? selector))\""
-                + "の値が\"\(expected)\"であること"
+            let obj = object(selector)
+            return isJapanese(obj, expected)
+                ? "\"\(obj)\"の値が\"\(expected)\"であること"
+                : "\"\(obj)\" value is \"\(expected)\""
         case "screenIs":
             guard let expected = unquote(rest) else { return nil }
-            return "画面が\"\(expected)\"であること"
+            return isJapanese(expected)
+                ? "画面が\"\(expected)\"であること"
+                : "the screen matches \"\(expected)\""
         case "launch":
-            return rest.isEmpty ? nil : "\(rest)アプリを起動する"
+            guard !rest.isEmpty else { return nil }
+            return isJapanese(rest) ? "\(rest)アプリを起動する" : "launch the \(rest) app"
         case "relaunch":
-            return rest.isEmpty ? nil : "\(rest)アプリを再起動する"
+            guard !rest.isEmpty else { return nil }
+            return isJapanese(rest) ? "\(rest)アプリを再起動する" : "relaunch the \(rest) app"
         case "swipe":
             return swipePhrase(direction: rest)
         case "wait":
             guard rest.hasSuffix("s"), let seconds = Double(rest.dropLast()) else { return nil }
-            return "\(formatSeconds(seconds))秒待機する"
+            return "wait \(formatSeconds(seconds))s"
         default:
             return nil  // ifCanSelect / procedure(タイトルが既に自然言語) / 未知コマンドは対象外
         }
@@ -108,23 +145,31 @@ public enum StepDescription {
 
     /// FlowStep から生成する(コード生成用)。生成できなければ nil
     public static func describe(step: FlowStep) -> String? {
+        let obj = objectPhrase(ofStep: step)
         if let action = step.action {
             switch action {
             case "tap":
-                return "\"\(objectPhrase(ofStep: step))\"をタップする"
+                return isJapanese(obj) ? "\"\(obj)\"をタップする" : "tap \"\(obj)\""
             case "press":
-                return "\"\(objectPhrase(ofStep: step))\"を長押しする"
+                return isJapanese(obj) ? "\"\(obj)\"を長押しする" : "long-press \"\(obj)\""
             case "scrollTo":
-                return "\"\(objectPhrase(ofStep: step))\"が表示されるまでスクロールする"
+                return isJapanese(obj)
+                    ? "\"\(obj)\"が表示されるまでスクロールする"
+                    : "scroll until \"\(obj)\" is visible"
             case "type":
+                let input = step.text ?? ""
                 if step.locator == nil {
-                    return "フォーカス中の要素に\"\(step.text ?? "")\"を入力する"
+                    return isJapanese(input)
+                        ? "フォーカス中の要素に\"\(input)\"を入力する"
+                        : "type \"\(input)\" into the focused element"
                 }
-                return "\"\(objectPhrase(ofStep: step))\"に\"\(step.text ?? "")\"を入力する"
+                return isJapanese(obj, input)
+                    ? "\"\(obj)\"に\"\(input)\"を入力する"
+                    : "type \"\(input)\" into \"\(obj)\""
             case "swipe":
                 return swipePhrase(direction: step.direction ?? "up")
             case "pressEnter":
-                return "Enterキーを押す"
+                return "press the Enter key"
             default:
                 return nil
             }
@@ -132,36 +177,70 @@ public enum StepDescription {
         if let assert = step.assert {
             switch assert {
             case "exists":
-                return step.occlusionGuard == true
-                    ? "\"\(objectPhrase(ofStep: step))\"が(覆われず)見えていること"
-                    : "\"\(objectPhrase(ofStep: step))\"が表示されること"
+                if step.occlusionGuard == true {
+                    return isJapanese(obj)
+                        ? "\"\(obj)\"が(覆われず)見えていること"
+                        : "\"\(obj)\" is visible (not covered)"
+                }
+                return isJapanese(obj) ? "\"\(obj)\"が表示されること" : "\"\(obj)\" is shown"
             case "notExists":
-                return "\"\(objectPhrase(ofStep: step))\"が表示されていないこと"
+                return isJapanese(obj) ? "\"\(obj)\"が表示されていないこと" : "\"\(obj)\" is not shown"
             case "enabled":
-                return "\"\(objectPhrase(ofStep: step))\"が操作可能であること"
+                return isJapanese(obj) ? "\"\(obj)\"が操作可能であること" : "\"\(obj)\" is enabled"
             case "disabled":
-                return "\"\(objectPhrase(ofStep: step))\"が操作不可であること"
+                return isJapanese(obj) ? "\"\(obj)\"が操作不可であること" : "\"\(obj)\" is disabled"
             case "textContains":
-                return "\"\(objectPhrase(ofStep: step))\"が\"\(step.expected ?? "")\"を含むこと"
+                let expected = step.expected ?? ""
+                return isJapanese(obj, expected)
+                    ? "\"\(obj)\"が\"\(expected)\"を含むこと"
+                    : "\"\(obj)\" contains \"\(expected)\""
             case "textMatches":
-                return "\"\(objectPhrase(ofStep: step))\"が正規表現 \"\(step.expected ?? "")\" に一致すること"
+                let expected = step.expected ?? ""
+                return isJapanese(obj, expected)
+                    ? "\"\(obj)\"が正規表現 \"\(expected)\" に一致すること"
+                    : "\"\(obj)\" matches the regex \"\(expected)\""
             case "checked":
-                return "\"\(objectPhrase(ofStep: step))\"がオンであること"
+                return isJapanese(obj) ? "\"\(obj)\"がオンであること" : "\"\(obj)\" is on"
             case "notChecked":
-                return "\"\(objectPhrase(ofStep: step))\"がオフであること"
+                return isJapanese(obj) ? "\"\(obj)\"がオフであること" : "\"\(obj)\" is off"
             case "count":
-                return "\"\(objectPhrase(ofStep: step))\"が\(step.expectedCount ?? 0)件あること"
+                let count = step.expectedCount ?? 0
+                return isJapanese(obj)
+                    ? "\"\(obj)\"が\(count)件あること"
+                    : "there are \(count) \"\(obj)\""
             case "textEquals":
-                return "\"\(objectPhrase(ofStep: step))\"のテキストが\"\(step.expected ?? "")\"であること"
+                let expected = step.expected ?? ""
+                return isJapanese(obj, expected)
+                    ? "\"\(obj)\"のテキストが\"\(expected)\"であること"
+                    : "\"\(obj)\" text is \"\(expected)\""
             case "valueEquals":
-                return "\"\(objectPhrase(ofStep: step))\"の値が\"\(step.expected ?? "")\"であること"
+                let expected = step.expected ?? ""
+                return isJapanese(obj, expected)
+                    ? "\"\(obj)\"の値が\"\(expected)\"であること"
+                    : "\"\(obj)\" value is \"\(expected)\""
             case "screenMatches":
-                return "画面が\"\(step.expected ?? "")\"であること"
+                let expected = step.expected ?? ""
+                return isJapanese(expected)
+                    ? "画面が\"\(expected)\"であること"
+                    : "the screen matches \"\(expected)\""
             default:
                 return nil
             }
         }
         return nil
+    }
+
+    /// 説明文の言語判定: どれかに日本語(かな・カナ・CJK 漢字)が含まれれば日本語文。
+    /// テスト対象が日本語 UI のときだけ日本語の枠を使い、#id やラテン文字だけのステップに
+    /// 日本語の枠を付けない(2026-07-30「内容由来の文は入力の言語に追従」)
+    static func isJapanese(_ values: String...) -> Bool {
+        values.contains { value in
+            value.unicodeScalars.contains { scalar in
+                (0x3040...0x30FF).contains(scalar.value)        // ひらがな・カタカナ
+                    || (0x4E00...0x9FFF).contains(scalar.value) // CJK 漢字
+                    || (0xFF66...0xFF9D).contains(scalar.value) // 半角カナ
+            }
+        }
     }
 
     /// セレクタ式の目的語(テスト対象): 最初のラベル節のラベル、無ければセレクタ文字列そのまま
@@ -178,11 +257,9 @@ public enum StepDescription {
     }
 
     private static func swipePhrase(direction: String) -> String? {
+        // 内容を持たないので常に英語(定型文)
         switch direction {
-        case "up": return "上にスワイプする"
-        case "down": return "下にスワイプする"
-        case "left": return "左にスワイプする"
-        case "right": return "右にスワイプする"
+        case "up", "down", "left", "right": return "swipe \(direction)"
         default: return nil
         }
     }
