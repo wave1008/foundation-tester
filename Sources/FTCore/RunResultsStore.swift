@@ -54,6 +54,27 @@ public enum RunResultsStore {
         return url
     }
 
+    /// 1 run のシナリオ記録を全て読む(--junit などの run 直後の集計用)。
+    /// 壊れたファイル・新しすぎる schemaVersion は黙って飛ばす(scanRecords と同じ規律)。
+    /// 順序はファイル名昇順(決定的。表示順は呼び出し側でソートし直してよい)
+    public static func records(runDir: URL) -> [ScenarioRunRecord] {
+        let dir = runDir.appendingPathComponent("scenarios")
+        guard let files = try? FileManager.default.contentsOfDirectory(
+            at: dir, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) else {
+            return []
+        }
+        let decoder = JSONDecoder()
+        return files
+            .filter { $0.pathExtension == "json" }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+            .compactMap { file in
+                guard let data = try? Data(contentsOf: file),
+                      let record = try? decoder.decode(ScenarioRunRecord.self, from: data),
+                      record.schemaVersion <= RunRecordSchema.current else { return nil }
+                return record
+            }
+    }
+
     /// discardLast(凍結再実行時の取り消し)専用。fileName は writeScenario と同じ規約
     /// (拡張子なし・dir 計算も一致させる)。存在しなければ何もしない
     public static func removeScenario(runDir: URL, fileName: String) {

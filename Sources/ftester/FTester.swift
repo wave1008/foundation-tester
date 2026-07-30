@@ -672,6 +672,9 @@ struct RunScenarios: AsyncParsableCommand {
     @Flag(help: "Suppress step lines and print only the summary (for CI and agents)")
     var quiet = false
 
+    @Option(help: "Write a JUnit XML report of this run to the given path (for CI test reporting)")
+    var junit: String?
+
     @Flag(name: .customLong("fast-input"),
           help: "Enable fast input on the iOS xcuitest bridge (skips the quiescence wait). Can also be set via iosFastInput in the run profile")
     var fastInput = false
@@ -753,6 +756,7 @@ struct RunScenarios: AsyncParsableCommand {
                             blankRepairs: runSummary.blankRepairs,
                             blankExclusions: runSummary.blankExclusions)
             PhaseLog.mark("recorder-finish")
+            try writeJUnitIfRequested(project: testProject, recorder: recorder)
             print(failedCount == 0
                   ? "✅ All \(items.count) scenario(s) passed"
                   : "❌ \(failedCount) of \(items.count) scenario(s) failed")
@@ -777,12 +781,31 @@ struct RunScenarios: AsyncParsableCommand {
                                             recorder: recorder)
         }
         recorder.finish(total: items.count, passed: items.count - failedCount, failed: failedCount)
+        try writeJUnitIfRequested(project: testProject, recorder: recorder)
 
         print(failedCount == 0
               ? "✅ All \(items.count) scenario(s) passed"
               : "❌ \(failedCount) of \(items.count) scenario(s) failed")
         if failedCount > 0 {
             throw ExitCode(1)
+        }
+    }
+
+    /// --junit: run の記録(runDir/scenarios/*.json)から JUnit XML を書き出す。
+    /// **ExitCode(1) を投げる前に呼ぶ**(失敗 run こそ CI がレポートを要る)。
+    /// 書き込み失敗は run の成否を変えない(warn のみ。CI 側はファイル欠如で気付ける)
+    private func writeJUnitIfRequested(project: TestProject, recorder: RunRecorder) throws {
+        guard let junit else { return }
+        let records = RunResultsStore.records(runDir: recorder.runDir)
+        let xml = JUnitReportWriter.xml(project: project.name, records: records)
+        let url = URL(fileURLWithPath: junit)
+        do {
+            try FileManager.default.createDirectory(
+                at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try xml.write(to: url, atomically: true, encoding: .utf8)
+            print("📄 JUnit report: \(junit) (\(records.count) testcase(s))")
+        } catch {
+            print("⚠️ Failed to write the JUnit report: \(junit) (\(error.localizedDescription))")
         }
     }
 

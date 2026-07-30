@@ -494,6 +494,12 @@ vscode-ftester/    VSCode 拡張(UI 入口。詳細は vscode-ftester/README.md)
 docs/              設計書・実装知見
 ```
 
+## CI で回す
+
+`ftester run --profile <名前> --quiet --junit reports/junit.xml` が exit code(0/1)と
+JUnit XML を出す。macOS ランナー前提・Apple Intelligence 不要(FM 系は自動スキップ)。
+GitHub Actions の例と flaky の扱いは [docs/ci.md](docs/ci.md)。
+
 ## パフォーマンス(実測値)
 
 | 操作 | 実測 | 補足 |
