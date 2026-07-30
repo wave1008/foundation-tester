@@ -46,7 +46,9 @@ enum InAppSnapshot {
             || view.accessibilityElementsHidden { return }
 
         let type = elementType(node)
-        // キーボードのキーは大量に写り込むため除外(入力は /type が担うので情報として不要)
+        // キーボードのキーは大量に写り込むため除外(入力は /type が担うので情報として不要)。
+        // **キーボードの表示判定はここではできない**(キーウィンドウの外に載るため。
+        // 判定は InAppBridge.keyboardWindowVisible)
         if type == .keyboardKey { return }
 
         if let info = shouldInclude(node, type: type, screen: screen) {

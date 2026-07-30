@@ -101,6 +101,7 @@ public final class WebViewDelegatingDriver: AppDriver {
     }
     public func pressEnter() async throws { try await screenDriver.pressEnter() }
     public func clearInput(ref: Int?) async throws { try await screenDriver.clearInput(ref: ref) }
+    public func hideKeyboard() async throws { try await screenDriver.hideKeyboard() }
     public func swipe(_ direction: FTSwipeDirection) async throws {
         try await screenDriver.swipe(direction)
     }

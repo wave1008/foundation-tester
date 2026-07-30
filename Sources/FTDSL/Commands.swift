@@ -1044,22 +1044,32 @@ private func textAssert(_ assert: String, verb: String, selector: FTSelector, ex
 /// 不在検証。**消えるまで待つ**(初回で不在なら即成功、在ればタイムアウトまで消滅を待つ)。
 /// exist の裏返しであり、ダイアログ・ローディング・トーストが閉じたことの確認に使う。
 /// 可視性(occlusion)は見ない — ツリーから消えたことが判定基準。
+/// scroll: 指定すると**その方向へスクロールしながら探し、見つかったら不在検証を即失敗させる**
+/// (exist(scroll:) の裏返し。見つからなければ従来どおり現在のビューポートでの消滅待ちへ進む)
 public func notExist(_ selector: String, timeout: Double? = nil,
+                     scroll: FTScrollDirection? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
                      file: StaticString = #filePath, line: UInt = #line) {
-    notExistImpl(FTSelector.parse(selector), timeout: timeout, file: file, line: line)
+    notExistImpl(FTSelector.parse(selector), timeout: timeout,
+                scroll: scroll, maxSwipes: maxSwipes, file: file, line: line)
 }
 
 public func notExist(_ selector: Sel, timeout: Double? = nil,
+                     scroll: FTScrollDirection? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
                      file: StaticString = #filePath, line: UInt = #line) {
-    notExistImpl(selector.ftSelector, timeout: timeout, file: file, line: line)
+    notExistImpl(selector.ftSelector, timeout: timeout,
+                scroll: scroll, maxSwipes: maxSwipes, file: file, line: line)
 }
 
 private func notExistImpl(_ selector: FTSelector, timeout: Double?,
+                          scroll: FTScrollDirection?, maxSwipes: Int,
                           file: StaticString, line: UInt) {
     let core = FTRuntime.requireCore(command: "notExist")
+    let scroll = core.effectiveScroll(scroll)
     let step = FlowStep(assert: "notExists", locator: selector.primary,
                         fallbacks: selector.stepFallbacks,
-                        timeout: timeout ?? core.defaultTimeout)
+                        direction: scroll?.swipe.rawValue,
+                        timeout: timeout ?? core.defaultTimeout,
+                        maxSwipes: scroll == nil ? nil : maxSwipes)
     perform("notExist", selector, step: step, description: "notExist \"\(selector.text)\"",
             file: file, line: line)
 }
@@ -1160,6 +1170,23 @@ public func screenIs(_ expected: String,
     let step = FlowStep(assert: "screenMatches", expected: expected)
     FTRuntime.requireCore(command: "screenIs")
         .perform(step: step, description: "screenIs \"\(expected)\"", file: file, line: line)
+}
+
+/// キーボードが表示されていることの検証。開閉はアニメーションを伴うためタイムアウトまでポーリングする
+/// (1回のスナップショット照会だとフレークする)
+public func keyboardIsShown(timeout: Double? = nil,
+                            file: StaticString = #filePath, line: UInt = #line) {
+    let core = FTRuntime.requireCore(command: "keyboardIsShown")
+    let step = FlowStep(assert: "keyboardShown", timeout: timeout ?? core.defaultTimeout)
+    core.perform(step: step, description: "keyboardIsShown", file: file, line: line)
+}
+
+/// キーボードが表示されていないことの検証(タイムアウトまでポーリング。理由は keyboardIsShown 参照)
+public func keyboardIsNotShown(timeout: Double? = nil,
+                               file: StaticString = #filePath, line: UInt = #line) {
+    let core = FTRuntime.requireCore(command: "keyboardIsNotShown")
+    let step = FlowStep(assert: "keyboardNotShown", timeout: timeout ?? core.defaultTimeout)
+    core.perform(step: step, description: "keyboardIsNotShown", file: file, line: line)
 }
 
 /// exist の戻り値。検証をチェーンできる。
@@ -1523,6 +1550,16 @@ public func back(file: StaticString = #filePath, line: UInt = #line) {
     let driver = core.systemDriver
     core.performCustom(description: "back", file: file, line: line) {
         try await driver.back()
+    }
+}
+
+/// フォーカス中の入力のキーボードを閉じる(冪等: 非表示中でも成功扱い)。
+/// home/back と違い**アプリ内**のフォーカス操作なので systemDriver ではなく driver を使う
+public func hideKeyboard(file: StaticString = #filePath, line: UInt = #line) {
+    let core = FTRuntime.requireCore(command: "hideKeyboard")
+    let driver = core.driver
+    core.performCustom(description: "hideKeyboard", file: file, line: line) {
+        try await driver.hideKeyboard()
     }
 }
 

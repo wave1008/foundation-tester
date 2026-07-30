@@ -28,6 +28,9 @@ public enum StepDescription {
             case "pressEnter": return "press the Enter key"
             case "back": return "go back"
             case "clearInput": return "clear the focused input"
+            case "hideKeyboard": return "hide the keyboard"
+            case "keyboardIsShown": return "the keyboard is shown"
+            case "keyboardIsNotShown": return "the keyboard is not shown"
             default: return nil
             }
         }
@@ -183,6 +186,8 @@ public enum StepDescription {
                 return swipePhrase(direction: step.direction ?? "up")
             case "pressEnter":
                 return "press the Enter key"
+            case "hideKeyboard":
+                return "hide the keyboard"
             case "clearInput":
                 if step.locator == nil { return "clear the focused input" }
                 return isJapanese(obj) ? "\"\(obj)\"を空にする" : "clear \"\(obj)\""
@@ -245,6 +250,10 @@ public enum StepDescription {
                 return isJapanese(expected)
                     ? "画面が\"\(expected)\"であること"
                     : "the screen matches \"\(expected)\""
+            case "keyboardShown":
+                return "the keyboard is shown"
+            case "keyboardNotShown":
+                return "the keyboard is not shown"
             default:
                 return nil
             }

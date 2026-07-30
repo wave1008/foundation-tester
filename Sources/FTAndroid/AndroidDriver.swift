@@ -22,6 +22,11 @@ public final class AndroidDriver: AppDriver {
     private var screen: FTRect = FTRect(x: 0, y: 0, width: 0, height: 0)
     private var currentPackage: String?
 
+    /// captureKeyboardStateOnNextSnapshot() が立てるフラグ。dumpsys window windows は固定費が
+    /// 大きいため毎 snapshot では叩かず、StepExecutor が keyboardShown/keyboardNotShown アサートの
+    /// 直前に立てたときだけ払う(snapshot() 側で読み捨てる)
+    private var captureKeyboardOnNextSnapshot = false
+
     private struct PersistedState: Codable {
         var centers: [Int: [Double]]
         var screen: FTRect
@@ -194,9 +199,23 @@ public final class AndroidDriver: AppDriver {
 
     public func snapshot() async throws -> SnapshotResponse {
         restoreStateIfNeeded()  // 別プロセス実行時に refCenters 等を引き継ぐ(persistState で消さないため)
-        let snapshot = try await withBridge { try await $0.snapshot() }
+        var snapshot = try await withBridge { try await $0.snapshot() }
         syncLocalState(from: snapshot)
+        // IME は別プロセスの window でアプリの a11y ツリーに出ないため、オンデバイスのブリッジでは
+        // 判定できずホスト側で dumpsys を引いて補う(AndroidForegroundWindows.keyboardVisible)。
+        // dumpsys は固定費が大きいため毎 snapshot では叩かず、captureKeyboardStateOnNextSnapshot() で
+        // 立てたときだけ払う(採らなかった snapshot は keyboardShown == nil = 不明のまま)
+        if captureKeyboardOnNextSnapshot {
+            captureKeyboardOnNextSnapshot = false
+            if let dumpsys = try? adb(["shell", "dumpsys", "window", "windows"]).output {
+                snapshot.keyboardShown = AndroidForegroundWindows.keyboardVisible(dumpsys: dumpsys)
+            }
+        }
         return snapshot
+    }
+
+    public func captureKeyboardStateOnNextSnapshot() {
+        captureKeyboardOnNextSnapshot = true
     }
 
     /// システムロケールの永続変更(ブリッジ /locale。ブート完了後に呼ぶこと)。
@@ -219,6 +238,24 @@ public final class AndroidDriver: AppDriver {
 
     public func clearInput(ref: Int?) async throws {
         try await withBridge { try await $0.clearInput(ref: ref) }
+    }
+
+    /// ソフトキーボードを閉じる(DSL の hideKeyboard)。ブリッジの /hidekeyboard
+    /// (BridgeRouter.handleHideKeyboard、ESCAPE キー注入)経由。adb keyevent 直行にしない
+    /// (back() と違い、ESCAPE は IME にだけ吸われる想定でアプリの画面遷移を起こさない)
+    /// ソフトキーボードを閉じる。**ESCAPE は効かない**(2026-07-30 実機で確認。ブリッジの
+    /// /hidekeyboard は撃っても IME が閉じない)ので、唯一効く BACK キーを使う。
+    /// **BACK は出ていないときに撃つと画面が戻ってしまう**ため、必ず dumpsys で可視を確かめてから
+    /// 撃つ(hideKeyboard は冪等が契約。出ていなければ no-op)
+    public func hideKeyboard() async throws {
+        guard let dumpsys = try? adb(["shell", "dumpsys", "window", "windows"]).output,
+              AndroidForegroundWindows.keyboardVisible(dumpsys: dumpsys) else { return }
+        let result = try adb(["shell", "input", "keyevent", "KEYCODE_BACK"])
+        guard result.status == 0 else {
+            throw DriverError.badResponse(status: Int(result.status),
+                body: "failed to hide the keyboard: \(result.tail)")
+        }
+        await settleViaBridge()
     }
 
     /// ブリッジ snapshot の結果をホスト側 ref テーブルにも写す(CLI プロセス跨ぎの手動駆動を保つ)

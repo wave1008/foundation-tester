@@ -46,7 +46,7 @@ final class BridgeRouter {
     // 撮るため、その全てにこの待ちが乗っていた。
     // **スクロール後の静止はホスト側が担う**: 探索終端は StepExecutor.settleAfterScroll、
     // 明示的な swipe/scroll コマンドは同 settledSignature(どちらも「連続2回一致」で待つ)。
-    private static let mutatingPaths: Set<String> = ["/session", "/tap", "/type", "/clear", "/pressEnter", "/press", "/appswitcher", "/home"]
+    private static let mutatingPaths: Set<String> = ["/session", "/tap", "/type", "/clear", "/pressEnter", "/hidekeyboard", "/press", "/appswitcher", "/home"]
 
     func handle(_ request: BridgeHTTPServer.Request) -> BridgeHTTPServer.Response {
         do {
@@ -59,6 +59,7 @@ final class BridgeRouter {
             case ("POST", "/type"): response = try handleType(request.body)
             case ("POST", "/clear"): response = try handleClear(request.body)
             case ("POST", "/pressEnter"): response = try handlePressEnter()
+            case ("POST", "/hidekeyboard"): response = try handleHideKeyboard()
             case ("POST", "/swipe"): response = try handleSwipe(request.body)
             case ("POST", "/drag"): response = try handleDrag(request.body)
             case ("POST", "/press"): response = try handlePress(request.body)
@@ -136,6 +137,9 @@ final class BridgeRouter {
         let frames: [Int: CGRect]
         let truncated: Int
         let screen: CGRect
+        /// SnapshotResponse.keyboardShown 用。**Captured に載せる**: 整定ループは captureOnce を
+        /// 複数回まわして「返す1回」を選ぶので、インスタンス変数だと返却ツリーと1回ズレる
+        let sawKeyboard: Bool
     }
 
     private func handleSnapshot() throws -> BridgeHTTPServer.Response {
@@ -152,7 +156,8 @@ final class BridgeRouter {
             screen: FTRect(x: cap.screen.origin.x, y: cap.screen.origin.y,
                            width: cap.screen.width, height: cap.screen.height),
             elements: withFocusedFlag(cap.elements, app: app),
-            truncatedCount: cap.truncated))
+            truncatedCount: cap.truncated,
+            keyboardShown: cap.sawKeyboard ? true : nil))
     }
 
     /// フォーカス中要素の申告(clearInput 事後検証用。ElementInfo.focused 参照)。
@@ -237,9 +242,12 @@ final class BridgeRouter {
         var elements: [ElementInfo] = []
         var frames: [Int: CGRect] = [:]
         var truncated = 0
+        var sawKeyboard = false
         collect(root, depth: 0, screen: screen,
-                elements: &elements, frames: &frames, truncated: &truncated)
-        return Captured(elements: elements, frames: frames, truncated: truncated, screen: screen)
+                elements: &elements, frames: &frames, truncated: &truncated,
+                sawKeyboard: &sawKeyboard)
+        return Captured(elements: elements, frames: frames, truncated: truncated, screen: screen,
+                        sawKeyboard: sawKeyboard)
     }
 
     private func handleTap(_ body: Data) throws -> BridgeHTTPServer.Response {
@@ -317,6 +325,13 @@ final class BridgeRouter {
             app.typeText("\n")
         }
         return .json(OKResponse())
+    }
+
+    /// **iOS ではキーボードを閉じられない**(docs/design.md に不採用の記録)。Esc は不発で、
+    /// app.keyboards は別プロセス扱いでタイムアウトする(handleType のコメント参照)。
+    /// **嘘の成功を返さない**ため 501 を返す
+    private func handleHideKeyboard() throws -> BridgeHTTPServer.Response {
+        .error("hideKeyboard は iOS では未対応(Android のみ)。閉じたい場合は pressEnter を使う", status: 501)
     }
 
     private func handleSwipe(_ body: Data) throws -> BridgeHTTPServer.Response {
@@ -406,9 +421,12 @@ final class BridgeRouter {
 
     private func collect(_ node: XCUIElementSnapshot, depth: Int, screen: CGRect,
                          elements: inout [ElementInfo], frames: inout [Int: CGRect],
-                         truncated: inout Int, insideWebView: Bool = false) {
+                         truncated: inout Int, sawKeyboard: inout Bool,
+                         insideWebView: Bool = false) {
         // キーボードはキー1つ1つが Button として大量に写り込むため、サブツリーごと除外
-        // (4Kトークン対策。入力は /type がキーイベント合成で行うので情報として不要)
+        // (4Kトークン対策。入力は /type がキーイベント合成で行うので情報として不要)。
+        // 除外前に検知だけ記録する(SnapshotResponse.keyboardShown)
+        if node.elementType == .keyboard { sawKeyboard = true }
         if node.elementType == .keyboard || node.elementType == .key { return }
         // WebView は入れ子で複数出る(Compose iOS の interop ラッパで実測3重)。外側だけ残さないと
         // `.webView[1]` がどれを指すか読めない。Android ブリッジの nestedWebView と同じ規則
@@ -417,7 +435,7 @@ final class BridgeRouter {
             for child in node.children {
                 collect(child, depth: depth, screen: screen,
                         elements: &elements, frames: &frames, truncated: &truncated,
-                        insideWebView: true)
+                        sawKeyboard: &sawKeyboard, insideWebView: true)
             }
             return
         }
@@ -433,7 +451,7 @@ final class BridgeRouter {
         for child in node.children {
             collect(child, depth: depth + 1, screen: screen,
                     elements: &elements, frames: &frames, truncated: &truncated,
-                    insideWebView: insideWebView || isWebView)
+                    sawKeyboard: &sawKeyboard, insideWebView: insideWebView || isWebView)
         }
     }
 

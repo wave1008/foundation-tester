@@ -9,6 +9,7 @@
 //   {"cmd":"tap","x":<Double>,"y":<Double>}             座標(pt)をタップ
 //   {"cmd":"type","text":<String>,"ref":<Int省略可>}     テキスト入力(ref省略時はフォーカス中の要素)
 //   {"cmd":"clear","ref":<Int省略可>}                    入力欄をクリア(ref省略時はフォーカス中の要素)
+//   {"cmd":"hideKeyboard"}                              フォーカス中の入力のソフトキーボードを閉じる
 //   {"cmd":"swipe","direction":"up"|"down"|"left"|"right"}
 //   {"cmd":"drag","fromX":..,"fromY":..,"toX":..,"toY":..,"press":<秒省略可>,"duration":<秒省略可>}
 //                                                        2点間ドラッグ(座標はpt。press=押下静止時間、duration=移動時間)
@@ -223,6 +224,8 @@ struct ApiLiveServe: AsyncParsableCommand {
             try await driver.type(ref: command.ref, text: text)
         case "clear":
             try await driver.clearInput(ref: command.ref)
+        case "hideKeyboard":
+            try await driver.hideKeyboard()
         case "swipe":
             guard let raw = command.direction, let direction = FTSwipeDirection(rawValue: raw) else {
                 throw ServeCommandError.invalidArguments(

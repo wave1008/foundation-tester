@@ -99,6 +99,8 @@ public enum ScenarioCodeGen {
                 return "home()"
             case "back":
                 return "back()"
+            case "hideKeyboard":
+                return "hideKeyboard()"
             case "appSwitcher":
                 return "appSwitcher()"
             case "terminate":
@@ -146,7 +148,8 @@ public enum ScenarioCodeGen {
                 let g = step.occlusionGuard == false ? ", requireVisible: false" : ""
                 return "textIs(\(literal(selector)), \(literal(step.expected ?? ""))\(timeoutArg(step))\(g))"
             case "notExists":
-                return "notExist(\(literal(selector))\(timeoutArg(step)))"
+                // `exist` 側(exists ケース)はまだ scroll 再構成に未対応(別課題。exists は触らない)
+                return "notExist(\(literal(selector))\(timeoutArg(step))\(notExistScrollArgs(step)))"
             case "enabled":
                 return "isEnabled(\(literal(selector))\(timeoutArg(step)))"
             case "disabled":
@@ -155,11 +158,37 @@ public enum ScenarioCodeGen {
                 return "countIs(\(literal(selector)), \(step.expectedCount ?? 0)\(timeoutArg(step)))"
             case "screenMatches":
                 return "screenIs(\(literal(step.expected ?? "")))"
+            case "keyboardShown":
+                return "keyboardIsShown(\(bareTimeoutArg(step)))"
+            case "keyboardNotShown":
+                return "keyboardIsNotShown(\(bareTimeoutArg(step)))"
             default:
                 return nil
             }
         }
         return nil
+    }
+
+    /// `notExist(scroll:)` 生成用: FlowStep.direction(**ジェスチャ**)を FTScrollDirection へ逆写像し、
+    /// `scroll:`/`maxSwipes:` 引数を再構成する。scrollTo ケースの写像と同じ規則だが、notExist の
+    /// scroll 既定は「探索しない」(nil)なので scrollTo と違い `.down` を特別扱いしない
+    private static func notExistScrollArgs(_ step: FlowStep) -> String {
+        guard let swipe = step.direction.flatMap(FTSwipeDirection.init(rawValue:)),
+              let scroll = FTScrollDirection.allCases.first(where: { $0.swipe == swipe }) else {
+            return ""
+        }
+        var args = ", scroll: .\(scroll.rawValue)"
+        if let maxSwipes = step.maxSwipes, maxSwipes != FlowStep.defaultMaxSwipes {
+            args += ", maxSwipes: \(maxSwipes)"
+        }
+        return args
+    }
+
+    /// timeoutArg は「他の引数の後に続ける」前提で先頭カンマを持つ。keyboardIsShown/
+    /// keyboardIsNotShown は timeout が唯一の引数なので、その場合だけカンマを落とす
+    private static func bareTimeoutArg(_ step: FlowStep) -> String {
+        let arg = timeoutArg(step)
+        return arg.isEmpty ? "" : String(arg.dropFirst(2))
     }
 
     static func selectorText(for step: FlowStep) -> String {

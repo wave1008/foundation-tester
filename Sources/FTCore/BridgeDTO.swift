@@ -30,7 +30,9 @@ public enum BridgeAPI {
     /// 16: /clear が結果を読み返して確認する(**空に見えることを成功の根拠にしない**)ようになり、
     /// snapshot が focused を返すようになった(2026-07-30)。ホスト側の事後検証が focused に
     /// 依存するため、旧ブリッジの再利用を確実に断つ
-    public static let bridgeProtocolVersion = 19
+    /// 20: POST /hidekeyboard を追加し、snapshot が keyboardShown を返すようになった(2026-07-30)。
+    /// 旧ブリッジは 404 と nil を返し、keyboardIsShown が「状態不明」で失敗し続けるため入れ替える
+    public static let bridgeProtocolVersion = 22
 
     /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
     /// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java の
@@ -233,10 +235,17 @@ public struct SnapshotResponse: Codable, Sendable {
     /// 追加 optional フィールドのみなので bridgeProtocolVersion は据え置き(TapRequest.fast と同じ方針。
     /// 旧ブリッジは返さず nil = 申告なし = 注記も出ない、で安全に縮退する)
     public var webViewPath: String?
+    /// **ソフトキーボードが表示中か**(true のときだけ送る = checked/web/focused と同じ省略規約。
+    /// 省略は「非表示、または不明」)。要素単位ではなくスナップショット全体の状態。
+    /// 取得元は iOS xcuitest=ツリー走査中に `.keyboard` ノードを見たか / iOS in-app=同走査中に
+    /// `.keyboardKey` ノードを見たか / Android=オンデバイスのブリッジではなくホスト側の
+    /// `AndroidDriver.snapshot()` が `dumpsys window windows` から算出(dumpsys の固定費を避けるため
+    /// `captureKeyboardStateOnNextSnapshot()` で立てた回だけ。それ以外は nil)。
+    public var keyboardShown: Bool?
 
     public init(sessionBundleID: String?, screen: FTRect, elements: [ElementInfo],
                 truncatedCount: Int, note: String? = nil, webViewPath: String? = nil,
-                offscreen: [ElementInfo]? = nil) {
+                offscreen: [ElementInfo]? = nil, keyboardShown: Bool? = nil) {
         self.sessionBundleID = sessionBundleID
         self.screen = screen
         self.elements = elements
@@ -244,6 +253,7 @@ public struct SnapshotResponse: Codable, Sendable {
         self.note = note
         self.webViewPath = webViewPath
         self.offscreen = offscreen
+        self.keyboardShown = keyboardShown
     }
 }
 
