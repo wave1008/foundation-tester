@@ -103,7 +103,7 @@ actor AndroidScreenVideoRecorder: DeviceVideoRecorderSession {
         do {
             try process.run()
         } catch {
-            warn("screenrecord を起動できません: \(error.localizedDescription)")
+            warn("cannot start screenrecord: \(error.localizedDescription)")
             return false
         }
         currentProcess = process
@@ -128,9 +128,9 @@ actor AndroidScreenVideoRecorder: DeviceVideoRecorderSession {
             consecutiveShortSegments += 1
             if consecutiveShortSegments >= Self.crashLoopMaxConsecutive {
                 gaveUp = true
-                warn("セグメントが \(Int(Self.crashLoopThresholdSeconds))秒未満で "
-                    + "\(consecutiveShortSegments) 回連続して終了したため録画を諦めます"
-                    + "(それまでに撮れた分は保存します)")
+                warn("segments ended under \(Int(Self.crashLoopThresholdSeconds))s "
+                    + "\(consecutiveShortSegments) times in a row — giving up on recording"
+                    + " (keeping what was captured so far)")
                 return
             }
         } else {

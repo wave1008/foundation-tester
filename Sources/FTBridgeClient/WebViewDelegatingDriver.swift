@@ -54,7 +54,7 @@ public final class WebViewDelegatingDriver: AppDriver {
         }
 
         delegating = true
-        note = "WebView 画面のため XCUITest へ委譲"
+        note = "WebView screen — delegated to XCUITest"
         var snapshot = try await delegated.snapshot()
         // 経路は**返した本人が名乗る**(StepExecutor が失敗文言に添える。要素の形から
         // 推測させると Android が「XCUITest へ委譲」を名乗る事故になる)

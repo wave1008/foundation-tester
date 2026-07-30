@@ -69,7 +69,7 @@ public final class AndroidDriver: AppDriver {
         for path in candidates where FileManager.default.isExecutableFile(atPath: path) {
             return path
         }
-        throw DriverError.bridgeUnreachable("adb が見つかりません(ANDROID_HOME を設定してください)")
+        throw DriverError.bridgeUnreachable("adb not found (set ANDROID_HOME)")
     }
 
     // MARK: - adb helpers
@@ -101,7 +101,7 @@ public final class AndroidDriver: AppDriver {
         let result = try adb(["install", "-r", packagePath])
         guard result.output.contains("Success") else {
             throw DriverError.badResponse(status: Int(result.status),
-                body: "アプリのインストールに失敗しました: \(result.tail)")
+                body: "failed to install the app: \(result.tail)")
         }
     }
 
@@ -139,7 +139,7 @@ public final class AndroidDriver: AppDriver {
                               "-c", "android.intent.category.LAUNCHER", "1"])
         guard result.status == 0 else {
             throw DriverError.badResponse(status: Int(result.status),
-                body: "アプリを前面化できませんでした: \(result.tail)")
+                body: "failed to bring the app to the foreground: \(result.tail)")
         }
         // monkey は intent 送信のみで遷移完了を待たないため、直後の snapshot が遷移前の画面を
         // 掴まないよう整定を待つ(settleViaBridge)
@@ -158,7 +158,7 @@ public final class AndroidDriver: AppDriver {
             let result = try adb(["shell", "input", "keyevent", "KEYCODE_APP_SWITCH"])
             guard result.status == 0 else {
                 throw DriverError.badResponse(status: Int(result.status),
-                    body: "タスク一覧を開けませんでした: \(result.tail)")
+                    body: "failed to open the app switcher: \(result.tail)")
             }
         }
         // keyevent は遷移完了を待たないため、直後の snapshot 用の整定待ち(activate と同様)
@@ -173,7 +173,7 @@ public final class AndroidDriver: AppDriver {
             let result = try adb(["shell", "input", "keyevent", "KEYCODE_HOME"])
             guard result.status == 0 else {
                 throw DriverError.badResponse(status: Int(result.status),
-                    body: "ホーム画面に戻れませんでした: \(result.tail)")
+                    body: "failed to go to the home screen: \(result.tail)")
             }
         }
         // keyevent は遷移完了を待たないため、直後の snapshot 用の整定待ち(openAppSwitcher と同様)
@@ -196,7 +196,7 @@ public final class AndroidDriver: AppDriver {
     public func tap(ref: Int) async throws {
         restoreStateIfNeeded()
         guard let center = refCenters[ref] else {
-            throw DriverError.badResponse(status: 404, body: "参照番号 [\(ref)] は未知です。先に snapshot を実行してください")
+            throw DriverError.badResponse(status: 404, body: "unknown reference number [\(ref)]. Take a snapshot first")
         }
         try await tap(x: center.0, y: center.1)
     }
@@ -268,7 +268,7 @@ public final class AndroidDriver: AppDriver {
             let result = try adb(["shell", "input", "keyevent", "66"])
             guard result.status == 0 else {
                 throw DriverError.badResponse(status: Int(result.status),
-                    body: "Enter キーを送れませんでした: \(result.tail)")
+                    body: "failed to send the Enter key: \(result.tail)")
             }
         }
         // keyevent は遷移完了を待たないため、直後の snapshot 用の整定待ち(home() と同様)。
@@ -299,14 +299,14 @@ public final class AndroidDriver: AppDriver {
                               String(durationMs)])
         guard result.status == 0 else {
             throw DriverError.badResponse(status: Int(result.status),
-                body: "ドラッグに失敗しました: \(result.tail)")
+                body: "drag failed: \(result.tail)")
         }
     }
 
     public func press(ref: Int, duration: Double) async throws {
         restoreStateIfNeeded()
         guard let center = refCenters[ref] else {
-            throw DriverError.badResponse(status: 404, body: "参照番号 [\(ref)] は未知です。先に snapshot を実行してください")
+            throw DriverError.badResponse(status: 404, body: "unknown reference number [\(ref)]. Take a snapshot first")
         }
         // tap(ref:) と同じくホスト側で座標解決してブリッジへは x/y で送る(ブリッジ再起動で
         // ブリッジ側 ref 表だけが消えてもずれない。注入経路は従来と同じ InputInjector.press)。
@@ -326,7 +326,7 @@ public final class AndroidDriver: AppDriver {
         let result = try adb(["shell", "input", "swipe", px, py, px, py, String(durationMs)])
         guard result.status == 0 else {
             throw DriverError.badResponse(status: Int(result.status),
-                body: "ロングプレスに失敗しました: \(result.tail)")
+                body: "long-press failed: \(result.tail)")
         }
     }
 

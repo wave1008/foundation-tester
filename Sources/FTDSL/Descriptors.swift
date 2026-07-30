@@ -52,7 +52,7 @@ public protocol FTTestClassDefinition {
 /// objc ランタイム発見用の基底クラス。@TestClass が __FTReg_<クラス名> サブクラスを生成する
 open class FTScenarioRegistration: NSObject {
     open class var descriptor: FTTestClassDescriptor {
-        fatalError("FTScenarioRegistration.descriptor を override してください")
+        fatalError("override FTScenarioRegistration.descriptor")
     }
 }
 

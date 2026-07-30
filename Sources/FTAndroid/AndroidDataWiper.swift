@@ -39,15 +39,15 @@ public enum AndroidDataWiper {
             // 実機に AVD ディレクトリは無い(警告も出さない。毎 run のノイズにしかならない)
             if device.spec.isPhysical { continue }
             guard let avd = device.spec.avd else {
-                log("⚠️ \(device.name): avd 未指定のため Wipe Data 判定をスキップします")
+                log("⚠️ \(device.name): no avd set — skipping the Wipe Data check")
                 continue
             }
             let avdID = AndroidDeviceCatalog.canonicalAVDID(avd)
             // <id>.avd 直組みは不可(ini の path が別名ディレクトリを指すことがある。カタログ側コメント参照)
             let avdDir = AndroidDeviceCatalog.avdContentDirectory(id: avdID)
             guard FileManager.default.fileExists(atPath: avdDir.path) else {
-                log("⚠️ \(device.name): AVD ディレクトリが見つからないため "
-                    + "Wipe Data 判定をスキップします(\(avdDir.path))")
+                log("⚠️ \(device.name): AVD directory not found — "
+                    + "skipping the Wipe Data check (\(avdDir.path))")
                 continue
             }
             let targets = wipeTargets(avdDir: avdDir)
@@ -60,17 +60,17 @@ public enum AndroidDataWiper {
         guard !candidates.isEmpty else { return [] }
 
         let list = candidates.map { "\($0.device.name)(\($0.sizeGB)GB)" }.joined(separator: ", ")
-        log("🧹 Wipe Data 対象 \(candidates.count) 台(しきい値 "
-            + String(format: "%.1f", thresholdGB) + "GB 超過): \(list)")
-        log("   ゲストは初期化されます(1台ずつ停止→削除→再ブート。再構築のため1台あたり数分。"
-            + "ロケール \(locale) は再ブート後に自動適用)")
+        log("🧹 Wipe Data targets: \(candidates.count) device(s) (over the "
+            + String(format: "%.1f", thresholdGB) + "GB threshold): \(list)")
+        log("   Guests will be reset (stop → wipe → reboot, one at a time; rebuilding takes minutes per device. "
+            + "Locale \(locale) is re-applied automatically after the reboot)")
 
         var wiped: [String] = []
         for (index, candidate) in candidates.enumerated() {
             let name = candidate.device.name
             let progress = "\(index + 1)/\(candidates.count)"
             do {
-                log("🧹 \(name): Wipe Data 実施中(\(progress))— エミュレータ停止中...")
+                log("🧹 \(name): wiping data (\(progress)) — stopping the emulator...")
                 status?(name, "stopping")
                 let running = try await stopIfRunning(avdID: candidate.avdID,
                                                       deviceName: name, log: log)
@@ -85,8 +85,8 @@ public enum AndroidDataWiper {
                 wiped.append(name)
 
                 if running == .wasRunning {
-                    log("🧹 \(name): データ削除完了(解放 \(candidate.sizeGB)GB)。"
-                        + "再ブート中(初回ブートは再構築のため数分かかります)...")
+                    log("🧹 \(name): data wiped (freed \(candidate.sizeGB)GB). "
+                        + "Rebooting (the first boot rebuilds and takes minutes)...")
                     status?(name, "rebooting")
                     let serial = try await DeviceBooter.startEmulator(avd: candidate.avdID,
                                                                       locale: locale)
@@ -94,14 +94,14 @@ public enum AndroidDataWiper {
                     // Play イメージでは -change-locale が無効のため、ブリッジ /locale で適用する
                     await DeviceBooter.applyLocale(serial: serial, locale: locale,
                                                    deviceName: name, log: log)
-                    log("✅ \(name): Wipe Data 完了(\(progress))")
+                    log("✅ \(name): Wipe Data finished (\(progress))")
                 } else {
-                    log("✅ \(name): Wipe Data 完了(\(progress)、解放 \(candidate.sizeGB)GB。"
-                        + "未起動のため再ブートなし)")
+                    log("✅ \(name): Wipe Data finished (\(progress), freed \(candidate.sizeGB)GB; "
+                        + "not running, so no reboot)")
                 }
                 status?(name, "done")
             } catch {
-                log("❌ \(name): Wipe Data 失敗 — \(error.localizedDescription)")
+                log("❌ \(name): Wipe Data failed — \(error.localizedDescription)")
                 status?(name, "failed")
             }
         }
@@ -129,7 +129,7 @@ public enum AndroidDataWiper {
             if !connected.contains(serial) { return .wasRunning }
             try? await Task.sleep(nanoseconds: 500_000_000)
         }
-        log("❌ \(deviceName): エミュレータ停止を確認できないため Wipe Data を中止します(\(serial))")
+        log("❌ \(deviceName): could not confirm the emulator stopped — aborting Wipe Data (\(serial))")
         return .failedToStop
     }
 

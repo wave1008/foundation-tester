@@ -174,9 +174,9 @@ public enum AndroidHealthProbe {
                                              log: (String) -> Void) async -> Bool {
         guard await isBlankObserved(serial: serial) else { return false }
         if await repairBlankDisplay(serial: serial) {
-            log("🔧 実行中の画面凍結を sleep/wake で修復しました(\(serial))")
+            log("🔧 Recovered a mid-run frozen screen with sleep/wake (\(serial))")
         } else {
-            log("⚠️ 実行中の画面凍結を修復できませんでした(\(serial))")
+            log("⚠️ Could not recover the mid-run frozen screen (\(serial))")
         }
         return true
     }

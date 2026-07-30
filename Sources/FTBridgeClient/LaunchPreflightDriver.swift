@@ -14,12 +14,12 @@ public enum LaunchPreflightError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .appNotInstalled(let bundleID, let udid):
-            return "アプリ \(bundleID) はシミュレータ(\(udid))にインストールされていません"
-                + "(未インストールのまま launch すると XCUITest ランナーがハングするため事前検査で中断)。"
-                + "実行プロファイル(apps/<名>.json の appPath+autoInstall)でのインストールを確認してください。"
+            return "app \(bundleID) is not installed on the simulator (\(udid))"
+                + " (launching while uninstalled hangs the XCUITest runner, so the preflight aborts). "
+                + "Check the install via the run profile (appPath + autoInstall in apps/<name>.json). "
         case .checkFailed(let bundleID, let detail):
-            return "アプリ \(bundleID) のインストール事前検査(simctl get_app_container)を実行できませんでした"
-                + "(未インストールかどうかは不明)。Xcode コマンドラインツールの状態を確認してください: \(detail)"
+            return "could not run the install preflight (simctl get_app_container) for app \(bundleID)"
+                + " (whether it is installed is unknown). Check the Xcode command-line tools: \(detail)"
         }
     }
 }

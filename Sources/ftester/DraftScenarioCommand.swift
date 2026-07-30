@@ -36,25 +36,25 @@ struct DraftScenarioCommand: AsyncParsableCommand {
 
     func run() async throws {
         if let platform, !["ios", "android"].contains(platform) {
-            throw ValidationError("platform は ios / android のいずれかです: \(platform)")
+            throw ValidationError("platform must be ios or android: \(platform)")
         }
         let testProject = try ScenarioHost.project(named: project)
         let source = try resolveTestbase(in: testProject)
         let markdown = try String(contentsOf: source, encoding: .utf8)
         guard !markdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw ValidationError("テストベースが空です: \(source.path)")
+            throw ValidationError("the test base is empty: \(source.path)")
         }
         let fallbackTitle = source.deletingPathExtension().lastPathComponent
 
         var draft: ScenarioDraft?
         if !noFm {
             if markdown.count > TestbaseDrafter.maxInputCharacters {
-                print("⚠️ テストベースが長いため先頭 \(TestbaseDrafter.maxInputCharacters) 文字だけを FM に渡します"
-                      + "(残りは下書きに反映されません。分割するか --no-fm を使ってください)")
+                print("⚠️ The test base is long, so only the first \(TestbaseDrafter.maxInputCharacters) characters go to FM"
+                      + " (the rest is not reflected in the draft; split the file or use --no-fm)")
             }
             draft = await TestbaseDrafter.draft(markdown: markdown, fallbackTitle: fallbackTitle)
             if draft == nil {
-                print("⚠️ Foundation Models で構造化できなかったため、見出し・箇条書きから機械的に組み立てます")
+                print("⚠️ Foundation Models could not structure it — assembling mechanically from headings and bullets")
             }
         }
         let outline = draft ?? TestbaseOutline.parse(markdown: markdown, fallbackTitle: fallbackTitle)
@@ -76,15 +76,15 @@ struct DraftScenarioCommand: AsyncParsableCommand {
         // --name 明示時は重複回避の連番が付かない = 既存ファイルを黙って上書きしうるので止める
         let target = dir.appendingPathComponent("\(className).swift")
         if FileManager.default.fileExists(atPath: target.path) {
-            throw ValidationError("同名の下書きが既にあります: \(target.path)"
-                                  + "(--name で別名にするか、既存を消してください)")
+            throw ValidationError("a draft with the same name already exists: \(target.path)"
+                                  + " (pick another name with --name, or delete the existing one)")
         }
         let url = try ScenarioCodeGen.writeValidated(
             code: code, className: className, dir: dir,
             quarantineDir: testProject.disabledDir, project: testProject)
-        print("✅ 下書きを生成しました: \(url.path)")
-        print("   scene \(outline.scenes.count) 件 / セレクタは \(ScenarioDraftCodeGen.placeholder) のまま")
-        print("   次: 実機で ft_snapshot して実セレクタに置き換え → クラスの @Deleted を外す")
+        print("✅ Generated the draft: \(url.path)")
+        print("   \(outline.scenes.count) scene(s) / selectors are still \(ScenarioDraftCodeGen.placeholder)")
+        print("   Next: ft_snapshot on a device, replace with real selectors, then remove the class @Deleted")
     }
 
     /// --testbase 明示 > docs/testbases/ に 1 ファイル > 候補を並べてエラー
@@ -92,18 +92,18 @@ struct DraftScenarioCommand: AsyncParsableCommand {
         if let testbase {
             let url = URL(fileURLWithPath: (testbase as NSString).expandingTildeInPath)
             guard FileManager.default.fileExists(atPath: url.path) else {
-                throw ValidationError("テストベースが見つかりません: \(url.path)")
+                throw ValidationError("test base not found: \(url.path)")
             }
             return url
         }
         let candidates = TestbaseOutline.candidates(in: project.testbasesDir)
         if candidates.count == 1 { return candidates[0] }
         if candidates.isEmpty {
-            throw ValidationError("テストベースがありません: \(project.testbasesDir.path)"
-                                  + "(--testbase でパスを指定することもできます)")
+            throw ValidationError("no test bases in: \(project.testbasesDir.path)"
+                                  + " (a path can also be given with --testbase)")
         }
         let list = candidates.map { "  - \($0.lastPathComponent)" }.joined(separator: "\n")
-        throw ValidationError("テストベースが複数あります。--testbase で選んでください:\n\(list)")
+        throw ValidationError("multiple test bases exist. Pick one with --testbase:\n\(list)")
     }
 
     /// --app 明示 > アプリプロファイル(指定 platform → ios → android の順で最初に見つかった bundle ID)
@@ -122,7 +122,7 @@ struct DraftScenarioCommand: AsyncParsableCommand {
                 }
             }
         }
-        throw ValidationError("対象アプリを特定できません。--app で bundle ID を指定するか、"
-                              + "\(project.appsDir.path) にアプリプロファイルを用意してください")
+        throw ValidationError("cannot determine the app under test. Give a bundle ID with --app, "
+                              + "or add an app profile under \(project.appsDir.path)")
     }
 }

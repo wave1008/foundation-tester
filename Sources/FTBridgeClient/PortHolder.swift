@@ -84,6 +84,6 @@ public enum PortHolder {
         }
         // 解放を確認できないまま .stopped を返すと、呼び出し元が見込みのない同一ポート再試行
         // (ランナー起動〜bindFailed 検知まで数分)へ進んでしまう
-        return .foreign(description: description + "(停止後もポートが解放されません)")
+        return .foreign(description: description + " (the port is not released even after stopping)")
     }
 }

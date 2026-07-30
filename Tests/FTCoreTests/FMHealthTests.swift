@@ -45,7 +45,7 @@ final class FMHealthTests: XCTestCase {
 
         let warning = FMHealth.warningText()
         XCTAssertNotNil(warning)
-        XCTAssertTrue(warning!.contains("無効でした"), warning!)
+        XCTAssertTrue(warning!.contains("disabled for this run"), warning!)
         XCTAssertTrue(warning!.contains("ModelManagerError 1001"), warning!)
         // firstError は最初の1件だけ保持する(同一原因が連続するため)
         XCTAssertEqual(snap.firstError, "ModelManagerError 1001")
@@ -56,7 +56,7 @@ final class FMHealthTests: XCTestCase {
         FMHealth.record(kind: "occlusion", ms: 1000, ok: true)
         FMHealth.record(kind: "screenIs", ms: 50, ok: false, error: "boom")
         XCTAssertFalse(FMHealth.snapshot().allFailed)
-        XCTAssertTrue(FMHealth.warningText()!.contains("一部が失敗"))
+        XCTAssertTrue(FMHealth.warningText()!.contains("Some FM calls failed"))
     }
 
     /// 用途別に内訳が取れる(occlusion が支配的かを実行後に判定するため)

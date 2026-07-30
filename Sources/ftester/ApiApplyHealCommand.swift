@@ -19,7 +19,7 @@ struct ApiApplyHeal: AsyncParsableCommand {
     func run() async throws {
         let testProject = try ScenarioHost.project(named: project)
         guard let packageRoot = ScenarioHost.packageRoot() else {
-            throw ValidationError("リポジトリルートを特定できません(リポジトリ内で実行してください)")
+            throw ValidationError("cannot determine the repository root (run this inside the repository)")
         }
 
         let stdinData = FileHandle.standardInput.readDataToEndOfFile()
@@ -27,7 +27,7 @@ struct ApiApplyHeal: AsyncParsableCommand {
         do {
             input = try JSONDecoder().decode(ApiApplyHealInput.self, from: stdinData)
         } catch {
-            throw ValidationError("stdin の JSON を解析できません: \(error.localizedDescription)")
+            throw ValidationError("cannot parse the JSON on stdin: \(error.localizedDescription)")
         }
 
         let fixes = input.fixes.map {
@@ -45,7 +45,7 @@ struct ApiApplyHeal: AsyncParsableCommand {
                 ? URL(fileURLWithPath: file) : packageRoot.appendingPathComponent(file)
             guard let source = try? String(contentsOf: url, encoding: .utf8) else {
                 for fix in fileFixes {
-                    failures.append(HealFixFailure(id: fix.id, message: "ファイルを読み込めません"))
+                    failures.append(HealFixFailure(id: fix.id, message: "cannot read the file"))
                 }
                 continue
             }
@@ -59,7 +59,7 @@ struct ApiApplyHeal: AsyncParsableCommand {
                 for fix in result.applied {
                     failures.append(HealFixFailure(
                         id: fix.id,
-                        message: "書き込みに失敗しました(\(error.localizedDescription))"))
+                        message: "failed to write (\(error.localizedDescription))"))
                 }
             }
         }

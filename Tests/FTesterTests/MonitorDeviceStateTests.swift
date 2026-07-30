@@ -65,7 +65,7 @@ final class MonitorDeviceStateTests: XCTestCase {
     func testEmulatorWithoutAVDIsOfflineWithReason() {
         let result = state(emulator(avd: nil))
         XCTAssertEqual(result.state, "offline")
-        XCTAssertEqual(result.detail, "avd が未設定です")
+        XCTAssertEqual(result.detail, "avd is not set")
     }
 
     func testEmulatorMatchesAVDByCanonicalID() {
@@ -96,7 +96,7 @@ final class MonitorDeviceStateTests: XCTestCase {
     func testPhysicalDeviceWithoutSerialReportsMissingSerial() {
         let result = state(physical(serial: nil))
         XCTAssertEqual(result.state, "offline")
-        XCTAssertEqual(result.detail, "serial が未設定です")
+        XCTAssertEqual(result.detail, "serial is not set")
     }
 
     func testPhysicalDeviceIsBootedUntilBootCompleted() {

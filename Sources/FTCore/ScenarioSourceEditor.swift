@@ -20,17 +20,17 @@ public enum ScenarioSourceEditError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .invalidName(let reason):
-            return "名前が不正です: \(reason)"
+            return "invalid name: \(reason)"
         case .classNotFound(let name):
-            return "class \(name) の宣言が見つかりません(再読込してください)"
+            return "class declaration not found: \(name) (reload and retry)"
         case .methodNotFound(let name):
-            return "func \(name) の宣言が見つかりません(再読込してください)"
+            return "func declaration not found: \(name) (reload and retry)"
         case .lineOutOfRange(let line):
-            return "行番号が範囲外です: \(line) 行目(ソースが変更された可能性があります)"
+            return "line number out of range: line \(line) (the source may have changed)"
         case .selectorNotFound(let selector):
-            return "セレクタが見つかりません(ソースが変更された可能性があります): \"\(selector)\""
+            return "selector not found (the source may have changed): \"\(selector)\""
         case .selectorAmbiguous(let selector):
-            return "セレクタが同じ行に複数回出現するため、置換対象を一意に決定できません: \"\(selector)\""
+            return "the selector appears more than once on the line, so the replacement target is ambiguous: \"\(selector)\""
         }
     }
 }
@@ -72,7 +72,7 @@ public enum ScenarioSourceEditor {
     public static func setTrailingComment(inSource source: String, line: Int,
                                           comment: String) throws -> String {
         if comment.contains("\n") || comment.contains("\r") {
-            throw ScenarioSourceEditError.invalidName("説明は 1 行で入力してください")
+            throw ScenarioSourceEditError.invalidName("the description must be a single line")
         }
         var lines = source.components(separatedBy: "\n")
         guard line >= 1, line <= lines.count else {

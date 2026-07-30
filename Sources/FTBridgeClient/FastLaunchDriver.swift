@@ -24,7 +24,7 @@ public final class FastLaunchDriver: AppDriver {
         let result = try Shell.run(["xcrun", "simctl", "launch", udid, bundleID])
         guard result.status == 0 else {
             throw DriverError.badResponse(status: Int(result.status),
-                body: "simctl launch に失敗しました(fast-input の高速 launch): \(result.tail)")
+                body: "simctl launch failed (the fast-input fast launch): \(result.tail)")
         }
         // activate = プロキシ接続+前面化+初回整定(冒頭コメントの attachOnly 不採用理由を参照)
         try await base.activate(bundleID: bundleID)

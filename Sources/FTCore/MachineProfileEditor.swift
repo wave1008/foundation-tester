@@ -17,7 +17,7 @@ public enum MachineProfileEditorError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .duplicateDeviceName(let name):
-            return "デバイス名が重複しています: \(name)(name は ios/android 横断で一意にしてください)"
+            return "duplicate device name: \(name) (names must be unique across ios and android)"
         }
     }
 }

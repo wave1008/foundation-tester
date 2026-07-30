@@ -130,7 +130,7 @@ public struct Sel: Sendable, Equatable {
 
     /// 候補内の順番(**1 オリジン**。記法の `[n]` と同じ)。相対ステップの後なら近い順の ordinal
     public func nth(_ n: Int) -> Sel {
-        precondition(n >= 1, "nth は 1 オリジンです: \(n)")
+        precondition(n >= 1, "nth is 1-origin: \(n)")
         var copy = self
         if var steps = copy.primary.relative, !steps.isEmpty {
             steps[steps.count - 1].ordinal = n > 1 ? n : nil
@@ -236,7 +236,7 @@ public struct Sel: Sendable, Equatable {
     }
 
     private func appendingStep(_ step: FlowRelativeStep) -> Sel {
-        precondition((step.ordinal ?? 1) >= 1, "nth は 1 オリジンです")
+        precondition((step.ordinal ?? 1) >= 1, "nth is 1-origin")
         var copy = self
         copy.primary.relative = (copy.primary.relative ?? []) + [step]
         return copy

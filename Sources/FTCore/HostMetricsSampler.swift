@@ -36,7 +36,7 @@ public final class HostMetricsLog {
         }
         let opened = open(path, O_WRONLY | O_CREAT | O_APPEND, 0o644)
         guard opened >= 0 else {
-            logFailure("ログファイルを開けません: \(path)(errno \(errno))。ログ記録は無効化します")
+            logFailure("cannot open the log file: \(path) (errno \(errno)). Logging disabled")
             return nil
         }
         self.fd = opened
@@ -49,7 +49,7 @@ public final class HostMetricsLog {
         let data = Array((line + "\n").utf8)
         let written = data.withUnsafeBufferPointer { write(fd, $0.baseAddress, $0.count) }
         guard written >= 0 else {
-            logIfNeeded("ログファイルへの書き込みに失敗しました: \(path)(errno \(errno))")
+            logIfNeeded("failed to write to the log file: \(path) (errno \(errno))")
             return
         }
         bytesWritten += Int64(written)
@@ -62,14 +62,14 @@ public final class HostMetricsLog {
     /// ロック区間は必ず LOCK_UN で抜ける(失敗しても継続できるよう既存 fd は極力温存する)。
     private func rotate() {
         guard flock(fd, LOCK_EX) == 0 else {
-            logIfNeeded("ログローテのロックに失敗しました: \(path)(errno \(errno))")
+            logIfNeeded("failed to lock for log rotation: \(path) (errno \(errno))")
             return
         }
         defer { flock(fd, LOCK_UN) }
 
         var st = stat()
         guard fstat(fd, &st) == 0 else {
-            logIfNeeded("ログローテ前の fstat に失敗しました: \(path)(errno \(errno))")
+            logIfNeeded("fstat before log rotation failed: \(path) (errno \(errno))")
             return
         }
         guard Int64(st.st_size) >= Self.capBytes else {
@@ -80,14 +80,14 @@ public final class HostMetricsLog {
 
         close(fd)
         guard rename(path, path + ".1") == 0 else {
-            logIfNeeded("ログローテの rename に失敗しました: \(path)(errno \(errno))")
+            logIfNeeded("rename during log rotation failed: \(path) (errno \(errno))")
             let reopened = open(path, O_WRONLY | O_CREAT | O_APPEND, 0o644)
             if reopened >= 0 { fd = reopened }
             return
         }
         let reopened = open(path, O_WRONLY | O_CREAT | O_APPEND, 0o644)
         guard reopened >= 0 else {
-            logIfNeeded("ログローテ後の再オープンに失敗しました: \(path)(errno \(errno))")
+            logIfNeeded("failed to reopen after log rotation: \(path) (errno \(errno))")
             return
         }
         fd = reopened
@@ -143,7 +143,7 @@ public final class CPUSampler {
         let result = host_processor_info(
             mach_host_self(), PROCESSOR_CPU_LOAD_INFO, &processorCount, &infoArray, &infoCount)
         guard result == KERN_SUCCESS, let infoArray else {
-            log("host_processor_info に失敗しました(kern_return_t \(result))。CPU負荷は取得できません")
+            log("host_processor_info failed (kern_return_t \(result)). CPU load is unavailable")
             return nil
         }
         defer {
@@ -188,14 +188,14 @@ public final class GPUSampler {
     public func sample() -> Double? {
         var iterator: io_iterator_t = 0
         guard let matching = IOServiceMatching("IOAccelerator") else {
-            logIfNeeded("IOServiceMatching(IOAccelerator) に失敗しました。GPU負荷は取得できません")
+            logIfNeeded("IOServiceMatching(IOAccelerator) failed. GPU load is unavailable")
             return nil
         }
         let matchResult = IOServiceGetMatchingServices(kIOMainPortDefault, matching, &iterator)
         guard matchResult == KERN_SUCCESS else {
             logIfNeeded(
-                "IOServiceGetMatchingServices(IOAccelerator) に失敗しました" +
-                "(kern_return_t \(matchResult))。GPU負荷は取得できません")
+                "IOServiceGetMatchingServices(IOAccelerator) failed" +
+                " (kern_return_t \(matchResult)). GPU load is unavailable")
             return nil
         }
         defer { IOObjectRelease(iterator) }
@@ -243,7 +243,7 @@ public final class MemorySampler {
     public func sample() -> Result? {
         var pageSize: vm_size_t = 0
         guard host_page_size(mach_host_self(), &pageSize) == KERN_SUCCESS else {
-            logIfNeeded("host_page_size の取得に失敗しました。メモリ使用量は取得できません")
+            logIfNeeded("host_page_size failed. Memory usage is unavailable")
             return nil
         }
         var info = vm_statistics64_data_t()
@@ -256,8 +256,8 @@ public final class MemorySampler {
         }
         guard result == KERN_SUCCESS else {
             logIfNeeded(
-                "host_statistics64(HOST_VM_INFO64) に失敗しました(kern_return_t \(result))。" +
-                "メモリ使用量は取得できません")
+                "host_statistics64(HOST_VM_INFO64) failed (kern_return_t \(result)). " +
+                "Memory usage is unavailable")
             return nil
         }
         let usedPages = UInt64(info.active_count) + UInt64(info.wire_count)

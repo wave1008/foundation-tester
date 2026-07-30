@@ -40,13 +40,13 @@ public enum SimulatorCatalogError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .simctlFailed(let detail):
-            return "simctl list devices に失敗しました: \(detail)"
+            return "simctl list devices failed: \(detail)"
         case .udidNotFound(let udid):
-            return "UDID のシミュレータが見つかりません: \(udid)(xcrun simctl list devices で確認)"
+            return "no simulator with that UDID: \(udid) (check xcrun simctl list devices)"
         case .nameNotFound(let name, let os, let available):
             let osText = os.map { "(\($0))" } ?? ""
-            return "シミュレータが見つかりません: \(name)\(osText)"
-                + "(利用可能: \(available.isEmpty ? "なし" : available.joined(separator: ", ")))"
+            return "simulator not found: \(name)\(osText)"
+                + " (available: \(available.isEmpty ? "none" : available.joined(separator: ", ")))"
         }
     }
 }

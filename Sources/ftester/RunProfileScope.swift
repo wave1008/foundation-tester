@@ -42,17 +42,17 @@ enum RunProfileScope {
         let missingNames = requestedNames.subtracting(allNames)
         if !missingNames.isEmpty {
             warn(
-                "⚠️ 実行プロファイル \(runProfileName) が参照するデバイスのうち、マシンプロファイル " +
-                "\(machineName) に見つからないものがあります: \(missingNames.sorted().joined(separator: ", "))")
+                "⚠️ Some devices referenced by run profile \(runProfileName) are missing from machine profile " +
+                "\(machineName): \(missingNames.sorted().joined(separator: ", "))")
         }
 
         let filteredIOS = iosDevices.filter { requestedNames.contains($0.name) }
         let filteredAndroid = androidDevices.filter { requestedNames.contains($0.name) }
         guard !filteredIOS.isEmpty || !filteredAndroid.isEmpty else {
             throw ValidationError(
-                "実行プロファイル \(runProfileName) が参照するデバイス" +
-                "(\(deviceRefs.map(\.name).joined(separator: ", ")))が" +
-                "マシンプロファイル \(machineName) に 1 台も見つかりません")
+                "none of the devices referenced by run profile \(runProfileName) " +
+                "(\(deviceRefs.map(\.name).joined(separator: ", "))) " +
+                "exist in machine profile \(machineName)")
         }
         return MachineProfile(
             ios: filteredIOS.isEmpty ? nil : MachineDeviceList(devices: filteredIOS),

@@ -60,7 +60,7 @@ struct ApiListScenarios: AsyncParsableCommand {
             let methodName = Self.methodName(of: info.id)
 
             guard let sourceURL = classFileMap[className] else {
-                logStderr("⚠️ シナリオのソースファイルが見つかりません: \(info.id)")
+                logStderr("⚠️ Scenario source file not found: \(info.id)")
                 scenarioOutputs.append(ApiScenarioInfo(
                     id: info.id, title: info.title, app: info.app, platform: info.platform,
                     deleted: info.deleted, file: nil, classLine: nil, methodLine: nil,
@@ -76,7 +76,7 @@ struct ApiListScenarios: AsyncParsableCommand {
                 sourceCache[sourceURL] = loaded
                 source = loaded
             } else {
-                logStderr("⚠️ ソースを読み込めません: \(sourceURL.path)")
+                logStderr("⚠️ Cannot read the source: \(sourceURL.path)")
                 source = nil
             }
 
@@ -86,12 +86,12 @@ struct ApiListScenarios: AsyncParsableCommand {
                 classLine = ScenarioSourceEditor.classDeclarationLine(
                     inSource: source, className: className)
                 if classLine == nil {
-                    logStderr("⚠️ class 宣言が見つかりません: \(className)(\(sourceURL.path))")
+                    logStderr("⚠️ class declaration not found: \(className) (\(sourceURL.path))")
                 }
                 methodLine = ScenarioSourceEditor.methodDeclarationLine(
                     inSource: source, className: className, method: methodName)
                 if methodLine == nil {
-                    logStderr("⚠️ func 宣言が見つかりません: \(info.id)(\(sourceURL.path))")
+                    logStderr("⚠️ func declaration not found: \(info.id) (\(sourceURL.path))")
                 }
             }
 

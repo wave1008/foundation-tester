@@ -16,16 +16,16 @@ public enum ScenarioFoldersError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .invalidName(let reason):
-            return "フォルダ名が不正です: \(reason)"
+            return "invalid folder name: \(reason)"
         case .alreadyExists(let name):
-            return "同名のフォルダまたはファイルが既にあります: \(name)"
+            return "a folder or file with the same name already exists: \(name)"
         case .notFound(let name):
-            return "フォルダが見つかりません: \(name)"
+            return "folder not found: \(name)"
         case .notEmpty(let name):
-            return "フォルダが空ではないため削除できません: \(name)"
+            return "the folder is not empty and cannot be deleted: \(name)"
         case .destinationOccupied(let file, let folder):
-            let dest = folder.map { "フォルダ \($0)" } ?? "Scenarios 直下"
-            return "\(dest) に同名のファイルが既にあります: \(file)"
+            let dest = folder.map { "folder \($0)" } ?? "the top of Scenarios"
+            return "a file with the same name already exists in \(dest): \(file)"
         }
     }
 }
@@ -87,16 +87,16 @@ public enum ScenarioFolders {
     /// フォルダ名の検証。戻り値: エラーメッセージ(nil = 有効)
     public static func validateName(_ name: String) -> String? {
         if name.isEmpty {
-            return "フォルダ名を入力してください"
+            return "enter a folder name"
         }
         if name.contains("/") || name.contains(":") {
-            return "「/」「:」は使えません"
+            return "\"/\" and \":\" are not allowed"
         }
         if name.hasPrefix(".") {
-            return "先頭に「.」は使えません"
+            return "it cannot start with \".\""
         }
         if reservedNames.contains(name) {
-            return "\(name) は予約されています(コンパイル対象外の退避場所)"
+            return "\(name) is reserved (the quarantine area excluded from compilation)"
         }
         return nil
     }

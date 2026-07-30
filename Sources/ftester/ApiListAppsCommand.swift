@@ -28,7 +28,7 @@ struct ApiListApps: AsyncParsableCommand {
         case "android":
             apps = try Self.androidApps(serial: driverOptions.serial)
         default:
-            throw ValidationError("platform は ios / android のいずれかです: \(driverOptions.platform)")
+            throw ValidationError("platform must be ios or android: \(driverOptions.platform)")
         }
 
         let output = ApiListAppsOutput(apps: apps, platform: driverOptions.platform)
@@ -46,19 +46,19 @@ struct ApiListApps: AsyncParsableCommand {
         let udid = try bootedSimulatorUDID(named: status.device)
         let result = try Shell.run(["xcrun", "simctl", "listapps", udid])
         guard result.status == 0 else {
-            throw ValidationError("simctl listapps が失敗しました: \(result.tail)")
+            throw ValidationError("simctl listapps failed: \(result.tail)")
         }
         guard let data = result.output.data(using: .utf8) else {
-            throw ValidationError("simctl listapps の出力を読み取れません")
+            throw ValidationError("cannot read the simctl listapps output")
         }
         let raw: Any
         do {
             raw = try PropertyListSerialization.propertyList(from: data, options: [], format: nil)
         } catch {
-            throw ValidationError("simctl listapps の出力をパースできませんでした: \(error)")
+            throw ValidationError("cannot parse the simctl listapps output: \(error)")
         }
         guard let apps = raw as? [String: [String: Any]] else {
-            throw ValidationError("simctl listapps の出力形式が想定外です")
+            throw ValidationError("unexpected simctl listapps output format")
         }
 
         let entries = apps.compactMap { id, info -> ApiAppEntry? in
@@ -79,11 +79,11 @@ struct ApiListApps: AsyncParsableCommand {
     private static func bootedSimulatorUDID(named name: String) throws -> String {
         let matches = try SimulatorCatalog.devices().filter { $0.booted && $0.name == name }
         guard let first = matches.first else {
-            throw ValidationError("起動中のシミュレータが見つかりません: \(name)")
+            throw ValidationError("no booted simulator found: \(name)")
         }
         if matches.count > 1 {
             FileHandle.standardError.write(
-                Data("同名の起動中シミュレータが複数あります。\(first.udid) を使用します: \(name)\n".utf8))
+                Data("Multiple booted simulators share this name. Using \(first.udid): \(name)\n".utf8))
         }
         return first.udid
     }

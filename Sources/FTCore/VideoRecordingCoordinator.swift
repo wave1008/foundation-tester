@@ -251,14 +251,14 @@ actor VideoRecordingCoordinator {
                 if !exportsAbandoned {
                     exportsAbandoned = true
                     FileHandle.standardError.write(Data(
-                        ("⚠️ [recording] \(interval.scenarioID): クリップ切り出しが\(Int(deadline))秒で"
-                         + "完了しません。エンコーダ無応答とみなし、この run の残りのクリップを断念します\n").utf8))
+                        ("⚠️ [recording] \(interval.scenarioID): clip extraction did not finish within \(Int(deadline))s. "
+                         + "Treating the encoder as unresponsive and giving up on the remaining clips of this run\n").utf8))
                 }
                 break
             }
             guard ok else {
                 FileHandle.standardError.write(Data(
-                    "⚠️ [recording] \(interval.scenarioID): クリップの切り出しに失敗しました\n".utf8))
+                    "⚠️ [recording] \(interval.scenarioID): clip extraction failed\n".utf8))
                 continue
             }
             let clipSegments = RecordingWallClock.intersect(

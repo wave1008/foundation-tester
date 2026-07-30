@@ -35,7 +35,7 @@ struct ApiDeviceUp: AsyncParsableCommand {
         case "host"?, "swiftshader_indirect"?:
             resolvedGpu = gpu!
         default:
-            FileHandle.standardError.write(Data("⚠️ 未知の --gpu 値のため host にフォールバック: \(gpu!)\n".utf8))
+            FileHandle.standardError.write(Data("⚠️ Unknown --gpu value — falling back to host: \(gpu!)\n".utf8))
             resolvedGpu = "host"
         }
         try await ApiDeviceOperation.run(name: name, project: project, profile: profile) { spec, platform, log in
@@ -133,7 +133,7 @@ struct ApiDevicesRestart: AsyncParsableCommand {
     func run() async throws {
         setvbuf(stdout, nil, _IOLBF, 0)
         guard !name.isEmpty else {
-            throw ValidationError("--name を1つ以上指定してください")
+            throw ValidationError("specify at least one --name")
         }
         do {
             let machineProfile = try MachineProfileLoad.load(
@@ -145,7 +145,7 @@ struct ApiDevicesRestart: AsyncParsableCommand {
             for deviceName in name {
                 guard let found = ApiDeviceOperation.findDevice(name: deviceName, in: machineProfile) else {
                     ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent(
-                        ok: false, error: "デバイスが見つかりません: \(deviceName)"))
+                        ok: false, error: "device not found: \(deviceName)"))
                     throw ExitCode(1)
                 }
                 items.append(RestartItem(spec: found.spec, platform: found.platform))
@@ -317,7 +317,7 @@ private enum ApiDeviceOperation {
             project: testProject, registered: LocalConfig.currentMachineName(),
             runProfileName: profile)
         if machine.auto {
-            logStderr("→ マシンプロファイル自動採用: \(machine.name)(machines/ が 1 つのため)")
+            logStderr("→ Using machine profile \(machine.name) automatically (it is the only one in machines/)")
         }
         let machineURL = testProject.machinesDir.appendingPathComponent("\(machine.name).json")
         guard FileManager.default.fileExists(atPath: machineURL.path) else {
@@ -334,7 +334,7 @@ private enum ApiDeviceOperation {
         }
 
         guard let found = findDevice(name: name, in: machineProfile) else {
-            emitFinished(ok: false, error: "デバイスが見つかりません: \(name)(マシン \(machine.name))")
+            emitFinished(ok: false, error: "device not found: \(name) (machine \(machine.name))")
             throw ExitCode(1)
         }
 

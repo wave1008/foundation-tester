@@ -43,13 +43,13 @@ struct ApiHostMetricsSummaryCommand: ParsableCommand {
         let candidatePaths = [resolvedLogPath + ".1", resolvedLogPath]
         let existingPaths = candidatePaths.filter { FileManager.default.fileExists(atPath: $0) }
         if existingPaths.isEmpty {
-            logStderr("ログファイルが見つかりません: \(resolvedLogPath)")
+            logStderr("log file not found: \(resolvedLogPath)")
         }
 
         var samples: [[String: Any]] = []
         for path in existingPaths {
             guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else {
-                logStderr("読み込みに失敗しました: \(path)")
+                logStderr("failed to read: \(path)")
                 continue
             }
             for line in String(decoding: data, as: UTF8.self)
@@ -87,7 +87,7 @@ struct ApiHostMetricsSummaryCommand: ParsableCommand {
 
         let meta = (runArg == "latest") ? allRuns.last : allRuns.first { $0.runID == runArg }
         guard let meta else {
-            logStderr("run が見つかりません(project=\(testProject.name) run=\(runArg))")
+            logStderr("run not found (project=\(testProject.name) run=\(runArg))")
             return ("(no run found for project=\(testProject.name) run=\(runArg))", nil)
         }
 
@@ -101,7 +101,7 @@ struct ApiHostMetricsSummaryCommand: ParsableCommand {
         if let range = raw.range(of: #"^([0-9]+(?:\.[0-9]+)?)([smhd])$"#, options: .regularExpression) {
             let matched = raw[range]
             guard let value = Double(matched.dropLast()) else {
-                throw ValidationError("不正な duration です: \(raw)")
+                throw ValidationError("invalid duration: \(raw)")
             }
             let unitSeconds: Double
             switch matched.last! {
@@ -115,7 +115,7 @@ struct ApiHostMetricsSummaryCommand: ParsableCommand {
         }
         if let epoch = Double(raw) { return epoch }
         throw ValidationError(
-            "--since/--until は duration(例 10m/2h/90s/1d)または unix epoch 秒で指定してください: \(raw)")
+            "--since/--until must be a duration (e.g. 10m/2h/90s/1d) or unix epoch seconds: \(raw)")
     }
 
     private func logStderr(_ message: String) {

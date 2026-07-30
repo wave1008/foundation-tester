@@ -41,7 +41,7 @@ struct ApiGenScenarioCommand: AsyncParsableCommand {
             let data = try Data(contentsOf: URL(fileURLWithPath: stepsPath))
             recorded = try JSONDecoder().decode(RecordedSteps.self, from: data)
         } catch {
-            emitError("記録ファイルの読み込みに失敗しました: \(error.localizedDescription)")
+            emitError("failed to read the recording file: \(error.localizedDescription)")
             return
         }
 
@@ -68,10 +68,10 @@ struct ApiGenScenarioCommand: AsyncParsableCommand {
                 quarantineDir: testProject.disabledDir, project: testProject)
             emitLine(ApiGenScenarioGeneratedEvent(file: fileURL.path, className: className))
         } catch let error as ScenarioCodeGen.CodeGenError {
-            logStderr("⚠️ 生成コードのビルド検証に失敗したため隔離しました: \(error.localizedDescription)")
+            logStderr("⚠️ The generated code failed build verification and was quarantined: \(error.localizedDescription)")
             emitError(error.localizedDescription)
         } catch {
-            emitError("シナリオの書き込みに失敗しました: \(error.localizedDescription)")
+            emitError("failed to write the scenario: \(error.localizedDescription)")
         }
     }
 

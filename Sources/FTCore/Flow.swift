@@ -262,7 +262,7 @@ public struct FlowLocator: Codable, Equatable, Sendable {
                 parts.append("type!=\(inner)")
             }
         }
-        return parts.isEmpty ? "(空)" : parts.joined(separator: "&&")
+        return parts.isEmpty ? "(empty)" : parts.joined(separator: "&&")
     }
 
     /// 「id も label も無い」= 単独では別画面の要素に誤マッチしやすいロケータか。
@@ -349,7 +349,7 @@ public extension FlowStep {
             if assert == "count" { return "assert count \(locatorSummary) == \(expectedCount ?? 0)" }
             return "assert \(assert) \(locatorSummary)"
         }
-        return "(空ステップ)"
+        return "(empty step)"
     }
 
     /// 失敗メッセージ・ヒールプロンプト用のロケータ表示。**節は `||` で連ねる**(セレクタ式と同じ形)。
@@ -359,6 +359,6 @@ public extension FlowStep {
         var parts: [String] = []
         if let locator { parts.append(locator.summary) }
         parts.append(contentsOf: (fallbacks ?? []).map(\.summary))
-        return parts.isEmpty ? "(ロケータなし)" : parts.joined(separator: " || ")
+        return parts.isEmpty ? "(no locator)" : parts.joined(separator: " || ")
     }
 }

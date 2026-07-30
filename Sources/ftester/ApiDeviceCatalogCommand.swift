@@ -54,7 +54,7 @@ struct ApiDeviceCatalogCommand: AsyncParsableCommand {
                 as? [String: Any],
               let rawDeviceTypes = deviceTypesJSON["devicetypes"] as? [[String: Any]] else {
             return ApiIOSCatalog(
-                available: false, error: "simctl list devicetypes の出力を解析できません",
+                available: false, error: "cannot parse the simctl list devicetypes output",
                 deviceTypes: [], runtimes: [])
         }
         guard let runtimesData = runtimesResult.output.data(using: .utf8),
@@ -62,7 +62,7 @@ struct ApiDeviceCatalogCommand: AsyncParsableCommand {
                 as? [String: Any],
               let rawRuntimes = runtimesJSON["runtimes"] as? [[String: Any]] else {
             return ApiIOSCatalog(
-                available: false, error: "simctl list runtimes の出力を解析できません",
+                available: false, error: "cannot parse the simctl list runtimes output",
                 deviceTypes: [], runtimes: [])
         }
 
@@ -110,7 +110,7 @@ struct ApiDeviceCatalogCommand: AsyncParsableCommand {
         guard let sdkRoot = AndroidSDKLocator.findSDKRoot() else {
             return ApiAndroidCatalog(
                 available: false,
-                error: "Android SDK が見つかりません(ANDROID_HOME / ANDROID_SDK_ROOT を確認してください)",
+                error: "Android SDK not found (check ANDROID_HOME / ANDROID_SDK_ROOT)",
                 errorCode: "sdk-missing",
                 models: [], systemImages: [])
         }

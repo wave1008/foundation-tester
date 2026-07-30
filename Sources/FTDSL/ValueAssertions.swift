@@ -24,9 +24,9 @@ extension Optional where Wrapped == Any {
             return
         }
         core.recordStep(description: description,
-                        status: passed ? .passed : .failed("\(description) が成立しません"),
+                        status: passed ? .passed : .failed("\(description) did not hold"),
                         file: "\(file)", line: Int(line))
-        if !passed { core.handleFailure(stepDescription: description, reason: "\(description) が成立しません") }
+        if !passed { core.handleFailure(stepDescription: description, reason: "\(description) did not hold") }
     }
 
     fileprivate var stringValue: String? {

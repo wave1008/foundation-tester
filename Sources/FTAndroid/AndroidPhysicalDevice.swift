@@ -41,13 +41,13 @@ public enum AndroidPhysicalDevice {
         let deadline = Date().addingTimeInterval(unlockTimeoutSeconds)
         while Date() < deadline {
             if hasResumedActivity(adb: adb, serial: serial) {
-                log("✔ \(serial): 画面点灯・ロック解除・消灯抑止を適用しました")
+                log("✔ \(serial): screen woken, unlocked and kept awake")
                 return
             }
             try? await Task.sleep(nanoseconds: 500_000_000)
         }
-        log("⚠️ \(serial): ロック画面を解除できませんでした"
-            + "(画面ロックが PIN/パターンだと adb からは解除できません。ロックなしに設定してください)")
+        log("⚠️ \(serial): could not unlock the lock screen"
+            + " (a PIN/pattern lock cannot be cleared over adb — set the device to no lock)")
     }
 
     /// dumpsys power の mWakefulness(Awake / Dozing / Asleep)。取得できなければ Awake 扱い

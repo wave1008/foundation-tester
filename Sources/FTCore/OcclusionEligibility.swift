@@ -21,19 +21,19 @@ public enum OcclusionEligibility {
         // 接尾辞照合は大小無視(`secureTextField` が `textField` を、ベンダ接頭辞付きの型が素の型を含む)
         let lowered = type.lowercased()
         guard textTypes.contains(where: { lowered == $0.lowercased() || lowered.hasSuffix($0.lowercased()) }) else {
-            return Verdict(ok: false, reason: "非テキスト型:\(type)")
+            return Verdict(ok: false, reason: "non-text type: \(type)")
         }
         // 結合セマンティクス(コンテナが子を連結した label)。`, ` 区切りは複数要素の合成。
         // ユーザー期待値(textEquals)には当てない(正当な句読点を誤除外するため)。
         if !isUserText, label.contains(", ") {
-            return Verdict(ok: false, reason: "結合label")
+            return Verdict(ok: false, reason: "merged label")
         }
         // 記号/絵文字のみ(判読すべき「文字」が無い)。文字=Unicode の letter か number を1つ以上要求。
         let hasWordChar = label.unicodeScalars.contains {
             CharacterSet.letters.contains($0) || CharacterSet.decimalDigits.contains($0)
         }
         if !hasWordChar {
-            return Verdict(ok: false, reason: "文字なし(絵文字/記号)")
+            return Verdict(ok: false, reason: "no text (emoji/symbols)")
         }
         return Verdict(ok: true, reason: "")
     }

@@ -10,7 +10,7 @@ import FTCore
 /// リポジトリルート(Package.swift を持つディレクトリ)
 func ftesterRepoRoot() throws -> URL {
     guard let root = ScenarioHost.packageRoot() else {
-        throw ValidationError("Package.swift が見つかりません(リポジトリ内で実行してください)")
+        throw ValidationError("Package.swift not found (run this inside the repository)")
     }
     return root
 }
@@ -42,11 +42,11 @@ struct ProjectCommand: AsyncParsableCommand {
                 name: name, app: app, repoRoot: root,
                 platforms: try InitCommand.platforms(from: platform))
 
-            print("✅ プロジェクトを作成しました: Projects/\(name)/")
-            print("   シナリオ置き場: Projects/\(name)/Scenarios/(@TestClass の .swift を追加)")
-            print("   プロファイル:   Projects/\(name)/profiles/{apps,machines,runs}/")
-            print("   ビルド:         swift build --product \(project.productName)")
-            print("   実行:           ftester run --project \(name) --profile ios")
+            print("✅ Created the project: Projects/\(name)/")
+            print("   Scenarios:  Projects/\(name)/Scenarios/ (add .swift files with @TestClass)")
+            print("   Profiles:   Projects/\(name)/profiles/{apps,machines,runs}/")
+            print("   Build:      swift build --product \(project.productName)")
+            print("   Run:        ftester run --project \(name) --profile ios")
         }
     }
 
@@ -58,7 +58,7 @@ struct ProjectCommand: AsyncParsableCommand {
             let root = try ftesterRepoRoot()
             let projects = ProjectStore.all(repoRoot: root)
             guard !projects.isEmpty else {
-                print("プロジェクトがありません(ftester project create <name> で作成)")
+                print("No projects (create one with: ftester project create <name>)")
                 return
             }
             let registered = (try? PackageManifestEditor.registeredProjects(
@@ -67,18 +67,18 @@ struct ProjectCommand: AsyncParsableCommand {
             for project in projects {
                 var notes: [String] = []
                 if !registered.contains(project.name) {
-                    notes.append("⚠️ Package.swift 未登録(ftester project sync を実行)")
+                    notes.append("⚠️ not registered in Package.swift (run: ftester project sync)")
                 }
-                if project.name == defaultName { notes.append("既定") }
+                if project.name == defaultName { notes.append("default") }
                 let runs = ProfileResolver.runProfileNames(project: project)
-                let runsText = runs.isEmpty ? "実行プロファイルなし"
+                let runsText = runs.isEmpty ? "no run profiles"
                                             : "runs: \(runs.joined(separator: ", "))"
                 print("・ \(project.name)(\(runsText))"
                       + (notes.isEmpty ? "" : " — \(notes.joined(separator: " / "))"))
             }
             for name in registered where !projects.contains(where: { $0.name == name }) {
-                print("・ \(name) — ⚠️ Package.swift に登録済みだが Projects/\(name)/ がありません"
-                      + "(ftester project sync で除去)")
+                print("・ \(name) — ⚠️ registered in Package.swift but Projects/\(name)/ does not exist"
+                      + " (remove it with: ftester project sync)")
             }
         }
     }
@@ -113,11 +113,11 @@ struct ProjectCommand: AsyncParsableCommand {
                 ?? testProject.docsDir.appendingPathComponent("ui-contract.md")
             guard FileManager.default.fileExists(atPath: contractURL.path) else {
                 throw ValidationError(
-                    "契約ファイルが見つかりません(\(contractURL.path))。"
-                    + "--contract で契約 md のパスを指定してください")
+                    "contract file not found (\(contractURL.path)). "
+                    + "Point at the contract markdown with --contract")
             }
             guard let contractText = try? String(contentsOf: contractURL, encoding: .utf8) else {
-                throw ValidationError("契約ファイルの読み込みに失敗しました: \(contractURL.path)")
+                throw ValidationError("failed to read the contract file: \(contractURL.path)")
             }
 
             let files = ScenarioFolders.swiftFiles(under: testProject.scenariosDir)
@@ -142,7 +142,7 @@ struct ProjectCommand: AsyncParsableCommand {
             }
 
             if !unknown.isEmpty {
-                print("❌ 契約に無い #id セレクタが見つかりました:")
+                print("❌ Found #id selectors that are not in the contract:")
                 let hits = occurrences
                     .filter { unknown.contains($0.id) }
                     .sorted { $0.file.path != $1.file.path ? $0.file.path < $1.file.path
@@ -154,15 +154,15 @@ struct ProjectCommand: AsyncParsableCommand {
 
             if !unusedContractIDs.isEmpty {
                 let sorted = unusedContractIDs.sorted()
-                print("ℹ️ 契約にあるがシナリオから未使用の #id(\(sorted.count) 件): "
+                print("ℹ️ #ids in the contract but unused by scenarios (\(sorted.count)): "
                       + sorted.map { "#\($0)" }.joined(separator: ", "))
             }
 
             guard unknown.isEmpty else {
                 throw ExitCode(1)
             }
-            print("✅ セレクタドリフトはありません(\(files.count) ファイル / \(usedIDs.count) セレクタ"
-                  + " / 契約 \(contractIDs.count) id)")
+            print("✅ No selector drift (\(files.count) file(s) / \(usedIDs.count) selector(s)"
+                  + " / \(contractIDs.count) contract id(s))")
         }
     }
 
@@ -178,10 +178,10 @@ struct ProjectCommand: AsyncParsableCommand {
             let added = names.filter { !before.contains($0) }
             let removed = before.filter { !names.contains($0) }
             if added.isEmpty && removed.isEmpty {
-                print("✅ Package.swift は最新です(\(names.count) プロジェクト)")
+                print("✅ Package.swift is up to date (\(names.count) project(s))")
             } else {
-                if !added.isEmpty { print("✅ 登録: \(added.joined(separator: ", "))") }
-                if !removed.isEmpty { print("✅ 除去: \(removed.joined(separator: ", "))") }
+                if !added.isEmpty { print("✅ Registered: \(added.joined(separator: ", "))") }
+                if !removed.isEmpty { print("✅ Removed: \(removed.joined(separator: ", "))") }
             }
         }
     }
@@ -206,8 +206,8 @@ struct MachineCommand: AsyncParsableCommand {
             var config = LocalConfig.load()
             config.machineName = name
             try config.save()
-            print("✅ マシン名を登録しました: \(name)")
-            print("   保存先: \(LocalConfig.url().path)")
+            print("✅ Registered this machine's name: \(name)")
+            print("   Stored at: \(LocalConfig.url().path)")
         }
     }
 
@@ -222,24 +222,24 @@ struct MachineCommand: AsyncParsableCommand {
             let env = ProcessInfo.processInfo.environment["FT_MACHINE"]
             let config = LocalConfig.load()
             if let env, !env.isEmpty {
-                print("マシン名: \(env)(FT_MACHINE 環境変数)")
+                print("Machine name: \(env) (from the FT_MACHINE environment variable)")
             } else if let name = config.machineName {
-                print("マシン名: \(name)")
+                print("Machine name: \(name)")
             } else {
-                print("マシン名: 未登録(ftester machine set \"<マシン名>\" で登録)")
+                print("Machine name: unregistered (register with: ftester machine set \"<name>\")")
             }
-            print("設定ファイル: \(LocalConfig.url().path)")
+            print("Config file: \(LocalConfig.url().path)")
 
             guard let testProject = try? ScenarioHost.project(named: project) else { return }
             let machines = ProfileResolver.machineNames(project: testProject)
             let current = LocalConfig.currentMachineName()
-            print("プロジェクト \(testProject.name) のマシンプロファイル: "
-                  + (machines.isEmpty ? "なし" : machines.joined(separator: ", ")))
+            print("Machine profiles of project \(testProject.name): "
+                  + (machines.isEmpty ? "none" : machines.joined(separator: ", ")))
             if let current {
                 print(machines.contains(current)
-                      ? "→ \(current) のプロファイルが適用されます"
-                      : "→ ⚠️ \(current) のプロファイルがありません"
-                        + "(profiles/machines/\(current).json を作成してください)")
+                      ? "→ The \(current) profile applies"
+                      : "→ ⚠️ No profile for \(current)"
+                        + " (create profiles/machines/\(current).json)")
             }
         }
     }
@@ -262,27 +262,27 @@ struct ProfileCommand: AsyncParsableCommand {
 
         func run() async throws {
             let testProject = try ScenarioHost.project(named: project)
-            print("プロジェクト: \(testProject.name)")
-            print("アプリ:   \(list(ProfileResolver.appProfileNames(project: testProject)))")
-            print("マシン:   \(list(ProfileResolver.machineNames(project: testProject)))")
+            print("Project: \(testProject.name)")
+            print("Apps:     \(list(ProfileResolver.appProfileNames(project: testProject)))")
+            print("Machines: \(list(ProfileResolver.machineNames(project: testProject)))")
 
             let runs = ProfileResolver.runProfileNames(project: testProject)
             guard !runs.isEmpty else {
-                print("実行プロファイルがありません(profiles/runs/ に .json を追加)")
+                print("No run profiles (add .json files under profiles/runs/)")
                 return
             }
 
             let ambientMachine = try? ProfileResolver.determineMachine(
                 project: testProject, registered: LocalConfig.currentMachineName())
             if let ambientMachine {
-                print("マシン名: \(ambientMachine.name)\(ambientMachine.auto ? "(自動採用)" : "")")
+                print("Machine name: \(ambientMachine.name)\(ambientMachine.auto ? " (picked automatically)" : "")")
             } else {
-                print("マシン名: 未決定(machine を明示指定していない実行プロファイルは解決チェック"
-                    + "をスキップ。ftester machine set で登録するか、実行プロファイルに machine "
-                    + "を指定してください)")
+                print("Machine name: undecided (resolution checks are skipped for run profiles without an "
+                    + "explicit machine. Register one with ftester machine set, or set machine "
+                    + "in the run profile)")
             }
 
-            print("実行プロファイル:")
+            print("Run profiles:")
             for run in runs {
                 do {
                     // 実行プロファイル自身の machine 指定があれば最優先する(determineMachine の
@@ -298,7 +298,7 @@ struct ProfileCommand: AsyncParsableCommand {
                     print("・ \(run) — \(resolved.appName) / \(devices) @ \(resolved.machineName)")
                     for warning in resolved.warnings { print("    ⚠️ \(warning)") }
                 } catch ProfileError.machineUndetermined {
-                    print("・ \(run) — マシン名が未決定のため解決チェックをスキップしました")
+                    print("・ \(run) — skipped the resolution check because the machine name is undecided")
                 } catch {
                     print("・ \(run) — ❌ \(error.localizedDescription)")
                 }
@@ -306,7 +306,7 @@ struct ProfileCommand: AsyncParsableCommand {
         }
 
         private func list(_ names: [String]) -> String {
-            names.isEmpty ? "なし" : names.joined(separator: ", ")
+            names.isEmpty ? "none" : names.joined(separator: ", ")
         }
     }
 }

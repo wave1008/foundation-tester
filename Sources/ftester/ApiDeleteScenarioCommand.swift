@@ -29,7 +29,7 @@ struct ApiDeleteScenarioCommand: AsyncParsableCommand {
 
     func run() async throws {
         guard FileManager.default.fileExists(atPath: file) else {
-            throw ValidationError("ファイルが見つかりません: \(file)")
+            throw ValidationError("file not found: \(file)")
         }
         // メソッド削除は該当関数の記述だけを除去し、ファイルは絶対に残す(最後の1メソッドでも空クラスを残す)。
         // --method が来た時点でファイル削除経路には決して入らない(誤削除防止)。
@@ -41,7 +41,7 @@ struct ApiDeleteScenarioCommand: AsyncParsableCommand {
             return
         }
         guard deleteFile else {
-            throw ValidationError("削除対象が指定されていません(関数削除は --method、クラス削除は --delete-file)")
+            throw ValidationError("nothing to delete was specified (--method for a function, --delete-file for the class)")
         }
         try FileManager.default.removeItem(atPath: file)  // クラス削除 = ファイル削除
     }

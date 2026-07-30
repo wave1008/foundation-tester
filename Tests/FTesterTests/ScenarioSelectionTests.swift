@@ -61,8 +61,8 @@ final class ScenarioSelectionTests: XCTestCase {
         let onlyDeleted = [info("下書き.S0010", deleted: true)]
         XCTAssertThrowsError(try RunScenarios.resolve(["下書き"], from: onlyDeleted)) { error in
             let message = "\(error)"
-            XCTAssertTrue(message.contains("削除済み"), message)
-            XCTAssertTrue(message.contains("完全指定"), "回避方法を示すこと: \(message)")
+            XCTAssertTrue(message.contains("deleted"), message)
+            XCTAssertTrue(message.contains("exact Class.method"), "回避方法を示すこと: \(message)")
         }
     }
 
@@ -119,7 +119,7 @@ final class ScenarioSelectionTests: XCTestCase {
             try RunScenarios.filterByFolders(infos, folders: ["存在しない"], scenariosDir: dir)
         ) { error in
             let message = "\(error)"
-            XCTAssertTrue(message.contains("存在しない"), message)
+            XCTAssertTrue(message.contains("存在しない"), "見つからないフォルダ名をエコーすること: \(message)")
             XCTAssertTrue(message.contains("ログイン"), "利用可能なフォルダを出すこと: \(message)")
         }
     }

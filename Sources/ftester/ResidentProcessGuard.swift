@@ -29,7 +29,7 @@ enum ResidentProcessGuard {
         timer.schedule(deadline: .now() + 5, repeating: 5)
         timer.setEventHandler {
             guard getppid() != initialParentPID else { return }
-            logStderr(logLabel, "親プロセスの終了を検知したため終了します(watchdog)")
+            logStderr(logLabel, "Parent process exited — shutting down (watchdog)")
             exit(0)
         }
         timer.resume()
@@ -47,7 +47,7 @@ enum ResidentProcessGuard {
 
         let queue = DispatchQueue(label: "ftester-resident-process-guard-forced-exit")
         queue.asyncAfter(deadline: .now() + afterSeconds) {
-            logStderr(logLabel, "終了指示から\(Int(afterSeconds))秒経過しても停止しないため強制終了します")
+            logStderr(logLabel, "Still running \(Int(afterSeconds))s after the stop request — force-quitting")
             exit(0)
         }
     }
@@ -76,7 +76,7 @@ enum ResidentProcessGuard {
                 / 1_000_000_000
             if elapsed > maxSeconds {
                 logStderr(logLabel,
-                    "1コマンドの処理が\(Int(maxSeconds))秒を超えて停止したため強制終了します(command watchdog)")
+                    "A single command stalled for over \(Int(maxSeconds))s — force-quitting (command watchdog)")
                 exit(0)
             }
         }

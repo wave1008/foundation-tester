@@ -38,10 +38,10 @@ enum LaneBalanceAdvice {
               idlest.lanes > 1 else { return nil }
 
         let idleSeconds = busiest.lastFinishSeconds - idlest.lastFinishSeconds
-        return "💡 \(idlest.platform) は \(String(format: "%.1f", idleSeconds))s 早く終わっています"
-            + "(稼働\(Int((idlest.utilization * 100).rounded()))%)。"
-            + "壁時計は \(busiest.platform) が決めているため、"
-            + "\(idlest.platform) の台数を \(busiest.platform) へ振り替えると縮みます"
-            + "(台数を増やすのではなく配分を変える)"
+        return "💡 \(idlest.platform) finishes \(String(format: "%.1f", idleSeconds))s early"
+            + " (\(Int((idlest.utilization * 100).rounded()))% busy). "
+            + "The wall clock is set by \(busiest.platform), so "
+            + "moving devices from \(idlest.platform) to \(busiest.platform) shortens the run"
+            + " (rebalance the split rather than adding devices)"
     }
 }

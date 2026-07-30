@@ -53,11 +53,11 @@ public enum CmdlineToolsInstaller {
         do {
             document = try XMLDocument(data: xml)
         } catch {
-            throw InstallError("リポジトリ定義(XML)を解析できません: \(error.localizedDescription)")
+            throw InstallError("cannot parse the repository definition (XML): \(error.localizedDescription)")
         }
         guard let package = try document.nodes(
             forXPath: "//remotePackage[@path='cmdline-tools;latest']").first as? XMLElement else {
-            throw InstallError("リポジトリ定義に cmdline-tools;latest がありません")
+            throw InstallError("the repository definition has no cmdline-tools;latest")
         }
         let revision = (package.elements(forName: "revision").first?.children ?? [])
             .compactMap { $0.stringValue }.joined(separator: ".")
@@ -77,7 +77,7 @@ public enum CmdlineToolsInstaller {
             }
         }
         guard let fallback else {
-            throw InstallError("cmdline-tools;latest に macOS(\(hostArch))向けアーカイブがありません")
+            throw InstallError("cmdline-tools;latest has no archive for macOS (\(hostArch))")
         }
         return fallback
     }
@@ -99,16 +99,16 @@ public enum CmdlineToolsInstaller {
     /// (呼び出し側が stderr / OUTPUT へ流す)。既に avdmanager があれば何もしない。
     public static func install(progress: @escaping (String) -> Void) async throws -> InstallResult {
         guard let sdkRoot = AndroidSDKLocator.findSDKRoot() else {
-            throw InstallError("Android SDK が見つかりません"
-                + "(ANDROID_HOME / ANDROID_SDK_ROOT を確認してください)")
+            throw InstallError("Android SDK not found"
+                + " (check ANDROID_HOME / ANDROID_SDK_ROOT)")
         }
         if let existing = AndroidSDKLocator.findAVDManager() {
             return InstallResult(alreadyInstalled: true, avdmanagerPath: existing.path, revision: "")
         }
 
-        progress("==> リポジトリ定義を取得: \(repositoryURL.absoluteString)")
+        progress("==> Fetching the repository definition: \(repositoryURL.absoluteString)")
         let (xml, xmlResponse) = try await URLSession.shared.data(from: repositoryURL)
-        try checkHTTP(xmlResponse, what: "リポジトリ定義")
+        try checkHTTP(xmlResponse, what: "repository definition")
         let archive = try selectArchive(xml: xml)
         progress("==> cmdline-tools \(archive.revision) "
             + "(\(archive.size / 1_048_576) MB): \(archive.absoluteURL.lastPathComponent)")
@@ -122,20 +122,20 @@ public enum CmdlineToolsInstaller {
         let zip = work.appendingPathComponent("cmdline-tools.zip")
         try await download(archive: archive, to: zip, progress: progress)
 
-        progress("==> sha1 を検証")
+        progress("==> Verifying sha1")
         try verifySHA1(of: zip, expected: archive.sha1)
 
-        progress("==> 展開")
+        progress("==> Extracting")
         let extracted = work.appendingPathComponent("extracted")
-        try run("/usr/bin/ditto", ["-x", "-k", zip.path, extracted.path], what: "展開")
+        try run("/usr/bin/ditto", ["-x", "-k", zip.path, extracted.path], what: "extraction")
         // zip の最上位は "cmdline-tools/"(bin/ lib/ source.properties を含む)
         let payload = extracted.appendingPathComponent("cmdline-tools")
         guard FileManager.default.fileExists(atPath: payload.appendingPathComponent("bin").path) else {
-            throw InstallError("展開結果に cmdline-tools/bin がありません(アーカイブ形式が変わった可能性)")
+            throw InstallError("no cmdline-tools/bin in the extracted archive (the format may have changed)")
         }
 
         let destination = sdkRoot.appendingPathComponent("cmdline-tools/latest")
-        progress("==> 配置: \(destination.path)")
+        progress("==> Placing: \(destination.path)")
         try FileManager.default.createDirectory(
             at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
         // ここに来る = avdmanager が無い。壊れた latest が残っている場合だけ退避してから置き換える
@@ -143,14 +143,14 @@ public enum CmdlineToolsInstaller {
             let backup = destination.appendingPathExtension("broken")
             try? FileManager.default.removeItem(at: backup)
             try FileManager.default.moveItem(at: destination, to: backup)
-            progress("    既存の latest を \(backup.lastPathComponent) へ退避しました")
+            progress("    Moved the existing latest aside to \(backup.lastPathComponent)")
         }
         try FileManager.default.moveItem(at: payload, to: destination)
 
         guard let avdmanager = AndroidSDKLocator.findAVDManager() else {
-            throw InstallError("配置後も avdmanager を解決できません: \(destination.path)")
+            throw InstallError("avdmanager still cannot be resolved after placement: \(destination.path)")
         }
-        progress("==> 動作確認: avdmanager list device")
+        progress("==> Sanity check: avdmanager list device")
         try verifyAVDManager(at: avdmanager)
         return InstallResult(alreadyInstalled: false, avdmanagerPath: avdmanager.path,
                              revision: archive.revision)
@@ -169,7 +169,7 @@ public enum CmdlineToolsInstaller {
         let written = (try? FileManager.default.attributesOfItem(atPath: destination.path))
             .flatMap { $0[.size] as? Int } ?? -1
         guard written == archive.size else {
-            throw InstallError("ダウンロードが不完全です(\(written)/\(archive.size) バイト)")
+            throw InstallError("the download is incomplete (\(written)/\(archive.size) bytes)")
         }
     }
 
@@ -219,7 +219,7 @@ public enum CmdlineToolsInstaller {
                         didFinishDownloadingTo location: URL) {
             if let response = downloadTask.response as? HTTPURLResponse,
                !(200..<300).contains(response.statusCode) {
-                moveError = InstallError("アーカイブの取得に失敗しました(HTTP \(response.statusCode))")
+                moveError = InstallError("failed to fetch the archive (HTTP \(response.statusCode))")
                 return
             }
             do {
@@ -250,7 +250,7 @@ public enum CmdlineToolsInstaller {
         }
         let actual = hasher.finalize().map { String(format: "%02x", $0) }.joined()
         guard actual.caseInsensitiveCompare(expected) == .orderedSame else {
-            throw InstallError("sha1 が一致しません(期待 \(expected) / 実際 \(actual))")
+            throw InstallError("sha1 mismatch (expected \(expected) / actual \(actual))")
         }
     }
 
@@ -260,22 +260,22 @@ public enum CmdlineToolsInstaller {
         let result = try Shell.run([avdmanager.path, "list", "device"])
         guard result.status == 0 else {
             let java = (try? Shell.run(["/usr/bin/which", "java"]))?.status == 0
-            throw InstallError("avdmanager を実行できません: \(result.tail)"
-                + (java ? "" : "(java が PATH にありません。JDK を導入してください)"))
+            throw InstallError("cannot run avdmanager: \(result.tail)"
+                + (java ? "" : " (java is not on PATH; install a JDK)"))
         }
     }
 
     private static func checkHTTP(_ response: URLResponse, what: String) throws {
         guard let http = response as? HTTPURLResponse else { return }
         guard (200..<300).contains(http.statusCode) else {
-            throw InstallError("\(what)の取得に失敗しました(HTTP \(http.statusCode))")
+            throw InstallError("failed to fetch the \(what) (HTTP \(http.statusCode))")
         }
     }
 
     private static func run(_ path: String, _ arguments: [String], what: String) throws {
         let result = try Shell.run([path] + arguments)
         guard result.status == 0 else {
-            throw InstallError("\(what)に失敗しました: \(result.tail)")
+            throw InstallError("\(what) failed: \(result.tail)")
         }
     }
 }

@@ -10,7 +10,7 @@ public enum ProjectScaffoldError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .alreadyExists(let url):
-            return "プロジェクトは既に存在します: \(url.path)"
+            return "the project already exists: \(url.path)"
         }
     }
 }
@@ -112,8 +112,8 @@ public enum ProjectScaffold {
         if FileManager.default.fileExists(atPath: url.path) {
             let data = try Data(contentsOf: url)
             guard let parsed = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
-                FileHandle.standardError.write(Data(("⚠️ \(url.path) を JSON として解析できなかったため、"
-                    + "Bash 許可リストの追記をスキップしました\n").utf8))
+                FileHandle.standardError.write(Data(("⚠️ Could not parse \(url.path) as JSON — "
+                    + "skipped appending the Bash permission list\n").utf8))
                 return []
             }
             settings = parsed
@@ -147,8 +147,8 @@ public enum ProjectScaffold {
         if FileManager.default.fileExists(atPath: url.path) {
             let data = try Data(contentsOf: url)
             guard let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                let warning = "⚠️ \(url.path) を JSON として解析できなかったため、"
-                    + "ftester.project/ftester.binaryPath の自動設定をスキップしました(手動で設定してください)\n"
+                let warning = "⚠️ Could not parse \(url.path) as JSON — "
+                    + "skipped the automatic ftester.project/ftester.binaryPath setup (set them by hand)\n"
                 FileHandle.standardError.write(Data(warning.utf8))
                 return false
             }

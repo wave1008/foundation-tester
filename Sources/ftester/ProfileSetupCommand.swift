@@ -67,15 +67,15 @@ struct ProfileSetupCommand: AsyncParsableCommand {
             platforms = ["ios", "android"]
             // 同じ名前を両プラットフォームに使うと、後の1回が前の1回を上書き/重複エラーになる
             if run != nil {
-                throw ValidationError("--platform both と --run は併用できません"
-                    + "(実行プロファイル名がプラットフォームごとに要ります)")
+                throw ValidationError("--platform both cannot be combined with --run"
+                    + " (each platform needs its own run profile name)")
             }
             if deviceName != nil {
-                throw ValidationError("--platform both と --device-name は併用できません"
-                    + "(論理名は ios/android 横断で一意にする必要があります)")
+                throw ValidationError("--platform both cannot be combined with --device-name"
+                    + " (logical names must be unique across ios and android)")
             }
         case "ios", "android": platforms = [platform]
-        default: throw ValidationError("--platform は ios / android / both のいずれかです: \(platform)")
+        default: throw ValidationError("--platform must be one of ios / android / both: \(platform)")
         }
         // 1回の呼び出しで両方作れるようにする(承認回数を減らすため。値は各プラットフォームで解決)
         var deviceNames: [String] = []
@@ -93,7 +93,7 @@ struct ProfileSetupCommand: AsyncParsableCommand {
                     appRef: appRef ?? testProject.name.lowercased(),
                     deviceNames: deviceNames, machine: machineName))
                     .write(to: allURL, options: .atomic)
-                print("   実行:   profiles/runs/all.json … devices=[\(deviceNames.joined(separator: ", "))]")
+                print("   Run:     profiles/runs/all.json … devices=[\(deviceNames.joined(separator: ", "))]")
             }
         }
     }
@@ -126,7 +126,7 @@ struct ProfileSetupCommand: AsyncParsableCommand {
                 device["simulator"] = picked.name
                 device["os"] = picked.os
                 device["udid"] = picked.udid
-                print("   自動選択(ios): \(picked.name) / \(picked.os) / \(picked.udid)")
+                print("   Auto-picked (ios): \(picked.name) / \(picked.os) / \(picked.udid)")
             }
         } else {
             if let avd { device["avd"] = avd }
@@ -134,7 +134,7 @@ struct ProfileSetupCommand: AsyncParsableCommand {
             if device.count == 1, autoDevice {
                 let picked = try Self.pickAVD()
                 device["avd"] = picked
-                print("   自動選択(android): \(picked)")
+                print("   Auto-picked (android): \(picked)")
             }
         }
         // 実機判定を誤ると実機向けの準備処理が走って run が壊れる。iOS はカタログ上の
@@ -152,16 +152,16 @@ struct ProfileSetupCommand: AsyncParsableCommand {
             let updatedMachine = try ProfileWriter.upsertingDevice(
                 inProfileObject: machineObject, platform: platform, device: device)
             try ProfileWriter.json(updatedMachine).write(to: machineURL, options: .atomic)
-            machineDetail = "\(platform) に \(deviceName) を登録"
+            machineDetail = "registered \(deviceName) under \(platform)"
         } else {
             guard MachineProfileEditor.deviceNames(inProfileObject: machineObject)
                 .contains(deviceName) else {
                 throw ValidationError(
-                    "デバイス \(deviceName) が machines/\(machineName).json にありません。"
-                    + "実体を指定する(iOS: --simulator/--udid, Android: --avd/--serial)か、"
-                    + "先に ftester api create-device で作成してください")
+                    "device \(deviceName) is not in machines/\(machineName).json. "
+                    + "Point at a concrete device (iOS: --simulator/--udid, Android: --avd/--serial), "
+                    + "or create one first with ftester api create-device")
             }
-            machineDetail = "\(deviceName) は登録済み(変更なし)"
+            machineDetail = "\(deviceName) is already registered (unchanged)"
         }
 
         // ---- アプリプロファイル ----
@@ -179,10 +179,10 @@ struct ProfileSetupCommand: AsyncParsableCommand {
             appRef: appRef, deviceNames: [deviceName], machine: machineName))
             .write(to: runURL, options: .atomic)
 
-        print("✅ プロファイルを作成しました(プロジェクト \(testProject.name))")
-        print("   マシン: profiles/machines/\(machineName).json … \(machineDetail)")
-        print("   アプリ: profiles/apps/\(appRef).json … \(appID)")
-        print("   実行:   profiles/runs/\(runName).json … app=\(appRef) devices=[\(deviceName)]")
+        print("✅ Created the profiles (project \(testProject.name))")
+        print("   Machine: profiles/machines/\(machineName).json … \(machineDetail)")
+        print("   App:     profiles/apps/\(appRef).json … \(appID)")
+        print("   Run:     profiles/runs/\(runName).json … app=\(appRef) devices=[\(deviceName)]")
 
         // 検証ゲート: 書いた実行プロファイルが実際に解決できることまで確認する
         let resolved = try ProfileResolver.resolve(
@@ -191,8 +191,8 @@ struct ProfileSetupCommand: AsyncParsableCommand {
             print("⚠️ \(warning)")
         }
         let devices = resolved.devices.map { "\($0.name)(\($0.platform))" }.joined(separator: ", ")
-        print("   解決: \(resolved.appName) @ \(machineName) / \(devices)")
-        print("   実行するには: ftester run --project \(testProject.name) --profile \(runName)")
+        print("   Resolved: \(resolved.appName) @ \(machineName) / \(devices)")
+        print("   To run: ftester run --project \(testProject.name) --profile \(runName)")
         return deviceName
     }
 
@@ -200,7 +200,7 @@ struct ProfileSetupCommand: AsyncParsableCommand {
         guard FileManager.default.fileExists(atPath: url.path) else { return [:] }
         let data = try Data(contentsOf: url)
         guard let object = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
-            throw ValidationError("JSON として解析できません(手で直してから再実行してください): \(url.path)")
+            throw ValidationError("cannot parse as JSON (fix it by hand and run again): \(url.path)")
         }
         return object
     }
@@ -213,12 +213,12 @@ struct ProfileSetupCommand: AsyncParsableCommand {
         guard let index = DevicePicker.pickSimulatorIndex(
             simulators.map { (name: $0.name, os: $0.os) }) else {
             if simulators.contains(where: { DevicePicker.isIPad(name: $0.name) }) {
-                throw ValidationError("自動選定できるシミュレータがありません"
-                    + "(iPad は自動選定の対象外です)。iPhone を導入するか、"
-                    + "--simulator/--udid で明示指定してください")
+                throw ValidationError("no simulator is eligible for auto-selection"
+                    + " (iPads are excluded). Install an iPhone simulator, "
+                    + "or specify one explicitly with --simulator/--udid")
             }
-            throw ValidationError("利用できるシミュレータがありません"
-                + "(Xcode で runtime/デバイスを導入するか ftester api create-device で作成してください)")
+            throw ValidationError("no simulators available"
+                + " (install a runtime/device via Xcode, or create one with ftester api create-device)")
         }
         return simulators[index]
     }
@@ -237,8 +237,8 @@ struct ProfileSetupCommand: AsyncParsableCommand {
             return (avd, DevicePicker.apiLevel(fromConfigINI: text))
         }
         guard let picked = DevicePicker.pickAVD(candidates) else {
-            throw ValidationError("利用できる AVD がありません"
-                + "(Android Studio で作成するか ftester api create-device で作成してください)")
+            throw ValidationError("no AVDs available"
+                + " (create one in Android Studio, or with ftester api create-device)")
         }
         return picked
     }
@@ -250,7 +250,7 @@ struct ProfileSetupCommand: AsyncParsableCommand {
                 var config = LocalConfig.load()
                 config.machineName = machine
                 try config.save()
-                print("   マシン名を登録しました: \(machine)(~/.config/ftester/config.json)")
+                print("   Registered this machine's name: \(machine) (~/.config/ftester/config.json)")
             }
             return machine
         }

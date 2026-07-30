@@ -56,7 +56,7 @@ struct ListScenarios: AsyncParsableCommand {
             print(String(data: data, encoding: .utf8)!)
         } else {
             guard !classes.isEmpty else {
-                print("シナリオがありません(プロジェクトの Scenarios/ に @TestClass を追加してください)")
+                print("No scenarios (add a @TestClass under the project Scenarios/)")
                 return
             }
             for testClass in classes {
@@ -64,7 +64,7 @@ struct ListScenarios: AsyncParsableCommand {
                 print("\(testClass.className) [\(platform)] app=\(testClass.app)")
                 for scenario in testClass.scenarios {
                     let title = scenario.title.isEmpty ? "" : " — \(scenario.title)"
-                    let deleted = scenario.deleted ? "(削除済み)" : ""
+                    let deleted = scenario.deleted ? " (deleted)" : ""
                     print("  ・ \(testClass.className).\(scenario.name)\(title)\(deleted)")
                 }
             }
@@ -165,7 +165,7 @@ struct RunScenario: AsyncParsableCommand {
             let available = ScenarioDiscovery.allTestClasses()
                 .flatMap { c in c.scenarios.map { "\(c.className).\($0.name)" } }
             FileHandle.standardError.write(Data(
-                ("シナリオが見つかりません: \(scenario)\n利用可能: \(available.joined(separator: ", "))\n")
+                ("scenario not found: \(scenario)\navailable: \(available.joined(separator: ", "))\n")
                     .utf8))
             throw ExitCode(64)
         }
@@ -210,11 +210,11 @@ struct RunScenario: AsyncParsableCommand {
                     if let injected, injected != testClass.app {
                         guard engine == "hybrid", let xcuiPort else {
                             throw ValidationError(
-                                "シナリオ \(scenarioID) の対象アプリ \(testClass.app) は in-app ブリッジの"
-                                + "注入先 \(injected) と異なるため engine=inapp では実行できません。"
-                                + "engine 明示のないデバイス(実行プロファイルの iosInappEngine 既定ON="
-                                + "hybrid)で実行すると XCUITest 経由で自動駆動されます"
-                                + "(engine=inapp 明示デバイスには iosInappEngine は適用されません)")
+                                "scenario \(scenarioID) targets \(testClass.app), which differs from the app the "
+                                + "in-app bridge is injected into (\(injected)), so it cannot run with engine=inapp. "
+                                + "On a device without an explicit engine (run-profile iosInappEngine defaults "
+                                + "to hybrid) it is driven automatically via XCUITest"
+                                + " (iosInappEngine does not apply to devices that explicitly set engine=inapp)")
                         }
                         let client = BridgeClient(port: xcuiPort, host: bridgeHost ?? BridgeEndpoint.loopbackHost)
                         driver = udid.map { LaunchPreflightDriver(base: client, udid: $0) } ?? client
@@ -269,7 +269,7 @@ struct RunScenario: AsyncParsableCommand {
             case "android":
                 driver = try AndroidDriver(serial: serial)
             default:
-                throw ValidationError("platform は ios / android のいずれかです: \(runPlatform)")
+                throw ValidationError("platform must be ios or android: \(runPlatform)")
             }
             // InAppDriver は注入先アプリが suspend 中だと status がハングし(上記 suspend 対策参照)、
             // かつ冒頭 launchApp の relaunch で必ず bridge を張り直すため pre-flight の接続確認はしない。
@@ -432,7 +432,7 @@ final class LazyFMDelegate: ReplayDelegate {
 
 struct NullDriver: AppDriver {
     struct Unavailable: Error, LocalizedError {
-        var errorDescription: String? { "dry-run 中はドライバを使えません" }
+        var errorDescription: String? { "the driver is unavailable during a dry-run" }
     }
 
     func status() async throws -> StatusResponse {

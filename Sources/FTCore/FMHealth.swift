@@ -165,23 +165,23 @@ public enum FMHealth {
         guard s.failures > 0 || s.skipped > 0 else { return nil }
         var text: String
         if s.failures == 0 {
-            return "⚠️ FM 呼び出し \(s.skipped) 件をスキップしました"
-                + "(サーキットブレーカ作動中 or 直列化の待ち時間超過。"
-                + "該当ステップのガードは素通りしています)"
+            return "⚠️ Skipped \(s.skipped) FM call(s)"
+                + " (circuit breaker open, or the serialisation wait ran out. "
+                + "The guards on those steps passed through unchecked)"
         }
         if s.allFailed {
-            text = "⚠️ FM 呼び出しが全て失敗しました(\(s.failures)件)。"
-                + "occlusion-guard(exist の既定 requireVisible)・自己修復・screenIs は"
-                + "この実行では無効でした(失敗は握りつぶされ pass 扱いになります)"
+            text = "⚠️ Every FM call failed (\(s.failures)). "
+                + "occlusion-guard (the default requireVisible of exist), self-healing and screenIs were "
+                + "effectively disabled for this run (failures are swallowed and treated as pass)"
         } else {
-            text = "⚠️ FM 呼び出しの一部が失敗しました(失敗\(s.failures)件 / 成功\(s.successes)件)。"
-                + "該当ステップのガードは素通りしています"
+            text = "⚠️ Some FM calls failed (\(s.failures) failed / \(s.successes) succeeded). "
+                + "The guards on those steps passed through unchecked"
         }
         if s.skipped > 0 {
-            text += "。さらに \(s.skipped) 件はスキップしました"
-                + "(サーキットブレーカ作動中 or 直列化の待ち時間超過)"
+            text += ". A further \(s.skipped) were skipped"
+                + " (circuit breaker open, or the serialisation wait ran out)"
         }
-        if let e = s.firstError { text += "\n   最初のエラー: \(e)" }
+        if let e = s.firstError { text += "\n   First error: \(e)" }
         return text
     }
 

@@ -41,7 +41,7 @@ actor LiveBridgeAutoStarter {
     func noteConnectionRefused() -> String {
         if case .idle = state {
             state = .starting
-            logStderr("接続拒否を検知したためブリッジを自動起動します(udid: \(udid), port: \(port))")
+            logStderr("Connection refused — auto-starting the bridge (udid: \(udid), port: \(port))")
             let repoRoot = self.repoRoot
             let udid = self.udid
             let port = self.port
@@ -66,8 +66,8 @@ actor LiveBridgeAutoStarter {
         if status.ready && status.protocolVersion == BridgeAPI.bridgeProtocolVersion { return }
         guard case .idle = state else { return }
         state = .starting
-        let actual = status.protocolVersion.map(String.init) ?? "なし"
-        logStderr("旧ビルドのブリッジ(port \(port))を検知したため再起動します" +
+        let actual = status.protocolVersion.map(String.init) ?? "none"
+        logStderr("Detected a bridge from an older build (port \(port)) — restarting it" +
             "(version: \(actual) → \(BridgeAPI.bridgeProtocolVersion))")
         let repoRoot = self.repoRoot
         let udid = self.udid
@@ -84,11 +84,11 @@ actor LiveBridgeAutoStarter {
         case .idle:
             return ""
         case .starting:
-            return "(XCUITest ブリッジを自動起動しています。初回はビルドに数分かかります。" +
-                "準備でき次第この画面は自動復帰します)"
+            return "(Auto-starting the XCUITest bridge. The first build takes several minutes. " +
+                "This screen recovers automatically once it is ready.)"
         case .failed(let detail):
-            return "(ブリッジの自動起動に失敗しました: \(detail)。" +
-                "`ftester bridge up --device \(udid) --port \(port)` を実行してください)"
+            return "(Bridge auto-start failed: \(detail). " +
+                "Run `ftester bridge up --device \(udid) --port \(port)`.)"
         }
     }
 
@@ -97,17 +97,17 @@ actor LiveBridgeAutoStarter {
         case .success:
             state = .idle
             consecutiveFailures = 0
-            logStderr("ブリッジの自動起動に成功しました(udid: \(udid), port: \(port))")
+            logStderr("Bridge auto-start succeeded (udid: \(udid), port: \(port))")
         case .failure(let error):
             consecutiveFailures += 1
             let detail = error.localizedDescription
             if consecutiveFailures >= Self.maxConsecutiveFailures {
                 state = .failed(detail)
-                logStderr("ブリッジの自動起動が\(consecutiveFailures)回連続で失敗したため停止します: " +
+                logStderr("Bridge auto-start failed \(consecutiveFailures) times in a row — giving up: " +
                     "\(detail)")
             } else {
                 state = .idle  // 次の noteConnectionRefused で再試行を許可する
-                logStderr("ブリッジの自動起動に失敗しました(\(consecutiveFailures)回目、再試行可): \(detail)")
+                logStderr("Bridge auto-start failed (attempt \(consecutiveFailures), will retry): \(detail)")
             }
         }
     }
@@ -154,8 +154,8 @@ private enum AutoStarterError: Error, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .staleStopFailed(let port):
-            return "旧ブリッジを停止できません(pid ファイルなし)。" +
-                "`ftester bridge down --port \(port)` を実行してください"
+            return "cannot stop the stale bridge (no pid file). " +
+                "Run `ftester bridge down --port \(port)`"
         }
     }
 }

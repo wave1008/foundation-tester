@@ -38,7 +38,7 @@ struct ResultsQueryOptions: ParsableArguments {
         let testProject = try ScenarioHost.project(named: project)
         let resultsDir = RunResultsStore.resultsDir(projectRoot: testProject.rootURL)
         guard let sinceDate = RunResultsQuery.parseSince(since) else {
-            throw ValidationError("--since の形式が不正です: \(since)(例: 30d, 12h, 2026-06-01)")
+            throw ValidationError("invalid --since format: \(since) (e.g. 30d, 12h, 2026-06-01)")
         }
         return (testProject, resultsDir, sinceDate)
     }
@@ -105,16 +105,16 @@ struct ResultsListCommand: AsyncParsableCommand {
             return
         }
         guard !rows.isEmpty else {
-            print("該当する run がありません")
+            print("No matching runs")
             return
         }
-        let headers = ["runID", "日時", "trigger", "profile", "machine", "passed/failed/total"]
+        let headers = ["runID", "time", "trigger", "profile", "machine", "passed/failed/total"]
         let tableRows = rows.map { meta -> [String] in
             let counts: String
             if let total = meta.total, let passed = meta.passed, let failed = meta.failed {
                 counts = "\(passed)/\(failed)/\(total)"
             } else {
-                counts = "(未完了)"
+                counts = "(incomplete)"
             }
             return [meta.runID, formatLocal(meta.startedAt), meta.trigger,
                     meta.profile ?? "-", meta.machine, counts]
@@ -145,10 +145,10 @@ struct ResultsSummaryCommand: AsyncParsableCommand {
             return
         }
         guard !rows.isEmpty else {
-            print("該当するシナリオがありません")
+            print("No matching scenarios")
             return
         }
-        let headers = ["シナリオID", "実行回数", "成功率", "平均ms", "中央値ms", "最終実行", "最終結果"]
+        let headers = ["scenario", "runs", "pass rate", "avg ms", "median ms", "last run", "last result"]
         let tableRows = rows.map { row -> [String] in
             [row.scenarioID, String(row.runs), String(format: "%.1f%%", row.successRate),
              row.avgDurationMs.map { String(format: "%.0f", $0) } ?? "-",
@@ -181,10 +181,10 @@ struct ResultsFlakyCommand: AsyncParsableCommand {
             return
         }
         guard !rows.isEmpty else {
-            print("不安定なシナリオはありません(--min-runs \(minRuns) 以上・pass/fail 混在が対象)")
+            print("No flaky scenarios (candidates need --min-runs \(minRuns)+ and mixed pass/fail)")
             return
         }
-        let headers = ["シナリオID", "実行回数", "失敗率", "遷移スコア", "直近の結果(新→旧)"]
+        let headers = ["scenario", "runs", "fail rate", "flip score", "recent results (new→old)"]
         let tableRows = rows.map { row -> [String] in
             [row.scenarioID, String(row.runs), String(format: "%.1f%%", row.failureRate),
              String(format: "%.2f", row.flakinessScore),
@@ -214,7 +214,7 @@ struct ResultsTrendCommand: AsyncParsableCommand {
             return
         }
         guard !rows.isEmpty else {
-            print("該当する実行履歴がありません: \(scenario)")
+            print("No run history for: \(scenario)")
             return
         }
         // バーはスキップ合成レコードを除いた最大 durationMs を 20 文字とした相対値
@@ -254,19 +254,19 @@ struct ResultsDevicesCommand: AsyncParsableCommand {
             return
         }
         guard !report.byWorker.isEmpty else {
-            print("該当する実行がありません")
+            print("No matching runs")
             return
         }
-        print("[worker 別]")
+        print("[per worker]")
         print(SimpleTable.render(
-            headers: ["worker", "実行回数", "成功率", "平均ms"],
+            headers: ["worker", "runs", "pass rate", "avg ms"],
             rows: report.byWorker.map { row in
                 [row.worker, String(row.runs), String(format: "%.1f%%", row.successRate),
                  row.avgDurationMs.map { String(format: "%.0f", $0) } ?? "-"]
             }))
-        print("\n[platform 別]")
+        print("\n[per platform]")
         print(SimpleTable.render(
-            headers: ["platform", "実行回数", "成功率", "平均ms"],
+            headers: ["platform", "runs", "pass rate", "avg ms"],
             rows: report.byPlatform.map { row in
                 [row.platform, String(row.runs), String(format: "%.1f%%", row.successRate),
                  row.avgDurationMs.map { String(format: "%.0f", $0) } ?? "-"]
@@ -295,10 +295,10 @@ struct ResultsSlowCommand: AsyncParsableCommand {
             return
         }
         guard !rows.isEmpty else {
-            print("該当するシナリオがありません")
+            print("No matching scenarios")
             return
         }
-        let headers = ["シナリオID", "実行回数", "平均ms", "p90ms", "悪化率", "最遅scene"]
+        let headers = ["scenario", "runs", "avg ms", "p90 ms", "regression", "slowest scene"]
         let tableRows = rows.map { row -> [String] in
             let delta = row.deltaPct.map { String(format: "%+.0f%%", $0) } ?? "-"
             let slowestScene: String
@@ -334,7 +334,7 @@ struct ResultsInsightsCommand: AsyncParsableCommand {
             return
         }
         guard !rows.isEmpty else {
-            print("注意が必要な現象はありません")
+            print("Nothing needs attention")
             return
         }
         for row in rows {

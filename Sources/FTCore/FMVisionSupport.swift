@@ -18,5 +18,5 @@ public enum FMVisionSupport {
     }()
 
     /// 無効理由(ユーザー向け文言。skip 理由・doctor 出力で共用)
-    public static let requirement = "FM の画像入力は macOS 27+ が必要"
+    public static let requirement = "FM image input requires macOS 27+"
 }

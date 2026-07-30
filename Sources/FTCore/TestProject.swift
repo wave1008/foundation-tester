@@ -43,18 +43,18 @@ public enum ProjectStoreError: Error, LocalizedError {
         switch self {
         case .notFound(let name, let available):
             let hint = available.isEmpty
-                ? "(Projects/ が空です。ftester project create で作成してください)"
-                : "(利用可能: \(available.joined(separator: ", ")))"
-            return "プロジェクトが見つかりません: \(name) \(hint)"
+                ? "(Projects/ is empty — create one with ftester project create)"
+                : "(available: \(available.joined(separator: ", ")))"
+            return "project not found: \(name) \(hint)"
         case .noProjects(let dir):
-            return "プロジェクトがありません(\(dir.path))。ftester project create <name> で作成してください"
+            return "no projects (\(dir.path)). Create one with: ftester project create <name>"
         case .ambiguous(let available):
-            return "プロジェクトが複数あります。--project で指定するか、"
-                + "ftester machine set / LocalConfig の defaultProject を設定してください"
-                + "(候補: \(available.joined(separator: ", ")))"
+            return "multiple projects exist. Pick one with --project, "
+                + "or set defaultProject via ftester machine set / LocalConfig"
+                + " (candidates: \(available.joined(separator: ", ")))"
         case .invalidName(let name):
-            return "プロジェクト名が不正です: \(name)(使用可能: 英数字・_・- で、先頭は英数字か _。"
-                + "SPM のターゲット名になるため日本語は使えません)"
+            return "invalid project name: \(name) (allowed: letters, digits, _ and -, starting with a letter, digit or _. "
+                + "It becomes an SPM target name, so Japanese is not allowed)"
         }
     }
 }
