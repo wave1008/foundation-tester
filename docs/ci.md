@@ -7,7 +7,10 @@
 
 - **macOS ランナーが必要**(iOS シミュレータ / Android エミュレータが要るため)。
   実運用の主想定は self-hosted の Mac(Jenkins 常駐機・AWS EC2 Mac インスタンス等)。
-  シミュレータだけなら GitHub ホストの macOS ランナーでも動く。
+  GitHub Actions を使う場合も **macOS ランナー限定**(`runs-on: macos-15` 等。実体は
+  Apple ハードウェア上の macOS VM で、Xcode とシミュレータ入り)。ubuntu/windows ランナーでは
+  iOS シミュレータは動かない。GitHub ホストの macOS ランナーで足りるのはシミュレータ実行まで
+  (実機フリート・Apple Intelligence は self-hosted が要る)。
   いずれも**ログイン済みの GUI セッションのユーザーで実行する**(シミュレータ実行の一般則。
   LaunchDaemon や ssh 直のヘッドレス実行はシミュレータが不安定になる)
 - **Apple Intelligence は不要**。CI に無くても heal・screenIs・偽陽性検証が自動スキップされるだけで、
