@@ -331,7 +331,7 @@ XCUITest ランナーは「画面を変えうる操作(`/session` `/tap` `/type`
 
 APK 変更なので `AndroidRunner/build.sh` の `VERSION_CODE` と
 `AndroidBridge.swift` の `expectedBridgeVersionCode` を 18 → 19、`prebuilt/ftbridge.apk` を再ビルド。
-**ルート追加は `BridgeRouteContractTests` が検出した**(期待値の更新は版数を上げた後に行う)。
+**ルート追加は `BridgeContractTests` が検出した**(期待値の更新は版数を上げた後に行う)。
 
 検証: 全 4 SUT × 両エンジンの E2E で 273 シナリオ全成功・振り直し 0 件。
 

@@ -62,19 +62,12 @@ public struct InAppLauncher {
     }
 
     /// dylib の入力(build.sh がコンパイルするソース一式 + build.sh 自身)の最終更新時刻。
-    /// 共有 DTO(Sources/FTCore/BridgeDTO.swift)も入力なので必ず含める(build.sh の SWIFT_SOURCES と対)。
+    /// 一覧は BridgeSourceSet.inApp が唯一の定義元(ここに再掲するとズレる。実害: 共有 DTO の
+    /// WebViewDOMSnapshot.swift が build.sh の SWIFT_SOURCES にあるのにこちらから漏れていた)。
     /// 取得できない場合は nil = 「判定不能」として再ビルドさせる(古いまま走らせるより安全)
     static func newestSourceTimestamp(repoRoot: URL) -> Date? {
-        var inputs = [
-            repoRoot.appendingPathComponent("InAppBridge/build.sh"),
-            repoRoot.appendingPathComponent("Sources/FTCore/BridgeDTO.swift"),
-        ]
-        let sourcesDir = repoRoot.appendingPathComponent("InAppBridge/Sources")
-        guard let entries = try? FileManager.default.contentsOfDirectory(
-            at: sourcesDir, includingPropertiesForKeys: [.contentModificationDateKey]) else {
-            return nil
-        }
-        inputs += entries
+        guard let paths = try? BridgeSourceSet.inApp.files(repoRoot: repoRoot) else { return nil }
+        let inputs = paths.map { repoRoot.appendingPathComponent($0) }
         let dates = inputs.compactMap(modifiedAt)
         return dates.count == inputs.count ? dates.max() : nil
     }
