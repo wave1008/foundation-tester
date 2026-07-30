@@ -6,7 +6,7 @@
 // ハンドラは InAppHTTPServer の accept ループ(バックグラウンド)で呼ばれる。UIKit 参照や
 // タッチ合成はメインへホップし、アクションは実行後に整定(InAppSettle)を待ってから応答する。
 //
-// 実装エンドポイント: /status /snapshot /tap /type /pressEnter /swipe /press /screenshot。
+// 実装エンドポイント: /status /snapshot /tap /type /clear /pressEnter /swipe /press /screenshot。
 // /session はアプリ再起動を伴うためホスト側(BridgeProvisioner)が simctl launch+注入で担う。
 
 import Foundation
@@ -65,6 +65,7 @@ final class FTInAppBridge {
             case ("GET", "/snapshot"): return try handleSnapshot()
             case ("POST", "/tap"): return try handleTap(req.body)
             case ("POST", "/type"): return try handleType(req.body)
+            case ("POST", "/clear"): return try handleClear(req.body)
             case ("POST", "/pressEnter"): return try handlePressEnter()
             case ("POST", "/swipe"): return try handleSwipe(req.body)
             case ("POST", "/press"): return try handlePress(req.body)
@@ -406,6 +407,27 @@ final class FTInAppBridge {
             throw InAppError(409, "フォーカスされた入力欄がありません。対象を先に tap してください。"
                 + "tap 済みでも発生する場合、入力欄が UIKit 非依存(Compose Multiplatform/Flutter 等)の"
                 + "アプリは inapp では first responder を張れず type できません。"
+                + "engine=xcuitest の実行プロファイル(iosInappEngine: false)で実行してください。"
+                + "入力欄が AX ツリーに現れない(accessibilityIdentifier/testTag 未設定)場合は"
+                + "アプリ側で testTag を付けてください。診断: \(FTFirstResponderDiagnostics())")
+        }
+        return .json(OKResponse())
+    }
+
+    private func handleClear(_ body: Data) throws -> InAppHTTPServer.Response {
+        let req = try decode(ClearRequest.self, body)
+        if req.ref != nil {
+            try performWithSettle { window in
+                let p = try self.resolvePoint(ref: req.ref, x: nil, y: nil)
+                FTSynthTap(window, p)
+            }
+        }
+        var cleared = false
+        try performWithSettle { _ in cleared = FTClearTextInFirstResponder() }
+        guard cleared else {
+            throw InAppError(409, "フォーカスされた入力欄がありません。対象を先に tap してください。"
+                + "tap 済みでも発生する場合、入力欄が UIKit 非依存(Compose Multiplatform/Flutter 等)の"
+                + "アプリは inapp では first responder を張れずクリアできません。"
                 + "engine=xcuitest の実行プロファイル(iosInappEngine: false)で実行してください。"
                 + "入力欄が AX ツリーに現れない(accessibilityIdentifier/testTag 未設定)場合は"
                 + "アプリ側で testTag を付けてください。診断: \(FTFirstResponderDiagnostics())")

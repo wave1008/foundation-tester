@@ -162,6 +162,13 @@ public func pressEnter(file: StaticString = #filePath, line: UInt = #line) {
         .perform(step: step, description: "pressEnter", file: file, line: line)
 }
 
+/// フォーカス中の入力欄を空にする(ref なし。ブリッジがフォーカス中要素へ作用する)。
+public func clearInput(file: StaticString = #filePath, line: UInt = #line) {
+    let step = FlowStep(action: "clearInput")
+    FTRuntime.requireCore(command: "clearInput")
+        .perform(step: step, description: "clearInput", file: file, line: line)
+}
+
 /// timeout: 要素解決を待つ上限秒(0 = 初回スナップショットのみ。出るか不定な optional の
 /// 空振り ~0.7s を数十msに短縮)。省略時は既定の再試行(約0.7秒)
 public func type(_ selector: String, _ text: String, optional: Bool = false, timeout: Double? = nil,
@@ -189,6 +196,37 @@ private func typeImpl(_ selector: FTSelector, _ text: String, optional: Bool, ti
                         optional: optional ? true : nil)
     perform("type", selector, step: step,
             description: "type \"\(selector.text)\" \"\(text)\"", file: file, line: line)
+}
+
+/// timeout: 要素解決を待つ上限秒(0 = 初回スナップショットのみ。出るか不定な optional の
+/// 空振り ~0.7s を数十msに短縮)。省略時は既定の再試行(約0.7秒)
+/// scroll: 指定するとクリア前に**その方向へスクロールしながら要素を探す**
+public func clearInput(_ selector: String, optional: Bool = false, timeout: Double? = nil,
+                       scroll: FTScrollDirection? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
+                       file: StaticString = #filePath, line: UInt = #line) {
+    clearInputImpl(FTSelector.parse(selector), optional: optional, timeout: timeout,
+                   scroll: scroll, maxSwipes: maxSwipes, file: file, line: line)
+}
+
+public func clearInput(_ selector: Sel, optional: Bool = false, timeout: Double? = nil,
+                       scroll: FTScrollDirection? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
+                       file: StaticString = #filePath, line: UInt = #line) {
+    clearInputImpl(selector.ftSelector, optional: optional, timeout: timeout,
+                   scroll: scroll, maxSwipes: maxSwipes, file: file, line: line)
+}
+
+private func clearInputImpl(_ selector: FTSelector, optional: Bool, timeout: Double?,
+                            scroll: FTScrollDirection?, maxSwipes: Int,
+                            file: StaticString, line: UInt) {
+    let scroll = FTRuntime.requireCore(command: "clearInput").effectiveScroll(scroll)
+    let step = FlowStep(action: "clearInput", locator: selector.primary,
+                        fallbacks: selector.stepFallbacks,
+                        direction: scroll?.swipe.rawValue, timeout: timeout,
+                        maxSwipes: scroll == nil ? nil : maxSwipes,
+                        optional: optional ? true : nil)
+    perform("clearInput", selector, step: step,
+            description: "clearInput \"\(selector.text)\"" + (optional ? " (optional)" : ""),
+            file: file, line: line)
 }
 
 /// timeout: 要素解決を待つ上限秒(0 = 初回スナップショットのみ。出るか不定な optional の
@@ -230,6 +268,63 @@ public func swipe(_ direction: FTSwipeDirection,
     let step = FlowStep(action: "swipe", direction: direction.rawValue)
     FTRuntime.requireCore(command: "swipe")
         .perform(step: step, description: "swipe \(direction.rawValue)", file: file, line: line)
+}
+
+/// 2点間ドラッグ(座標は snapshot の screen と同じ座標系。iOS = pt / Android = px)。
+/// スライダー・並べ替え等、要素ではなく座標で操作したいときに使う。既定 1.5 秒は
+/// Shirates(shirates-core Const.SWIPE_DURATION_SECONDS)準拠
+public func swipePointToPoint(startX: Double, startY: Double, endX: Double, endY: Double,
+                              durationSeconds: Double = FlowStep.defaultSwipeDurationSeconds,
+                              file: StaticString = #filePath, line: UInt = #line) {
+    let core = FTRuntime.requireCore(command: "swipePointToPoint")
+    let driver = core.driver
+    let typeDriver = core.executor.typeDriver
+    core.performCustom(
+        description: "swipePointToPoint (\(startX), \(startY)) → (\(endX), \(endY))",
+        file: file, line: line) {
+        do {
+            try await driver.drag(fromX: startX, fromY: startY, toX: endX, toY: endY,
+                                  pressSeconds: 0.05, durationSeconds: durationSeconds)
+        } catch {
+            // in-app エンジンは drag を一切実装しない(501)。hybrid では typeDriver(XCUITest)へ回す
+            guard DriverError.isEngineIncapable(error), let typeDriver else { throw error }
+            try await typeDriver.drag(fromX: startX, fromY: startY, toX: endX, toY: endY,
+                                      pressSeconds: 0.05, durationSeconds: durationSeconds)
+        }
+    }
+}
+
+/// 要素間のドラッグ(スライダー・並べ替え・部分領域のスクロール等、要素を掴んで動かす操作用)。
+/// **終点(to)はヒール・自己修復の対象外**(始点だけが解決連鎖を持つ)
+public func swipeElementToElement(_ from: String, _ to: String,
+                                  durationSeconds: Double = FlowStep.defaultSwipeDurationSeconds,
+                                  timeout: Double? = nil,
+                                  file: StaticString = #filePath, line: UInt = #line) {
+    swipeElementToElementImpl(FTSelector.parse(from), FTSelector.parse(to),
+                              durationSeconds: durationSeconds, timeout: timeout,
+                              file: file, line: line)
+}
+
+public func swipeElementToElement(_ from: Sel, _ to: Sel,
+                                  durationSeconds: Double = FlowStep.defaultSwipeDurationSeconds,
+                                  timeout: Double? = nil,
+                                  file: StaticString = #filePath, line: UInt = #line) {
+    swipeElementToElementImpl(from.ftSelector, to.ftSelector,
+                              durationSeconds: durationSeconds, timeout: timeout,
+                              file: file, line: line)
+}
+
+private func swipeElementToElementImpl(_ from: FTSelector, _ to: FTSelector,
+                                       durationSeconds: Double, timeout: Double?,
+                                       file: StaticString, line: UInt) {
+    let step = FlowStep(action: "swipeElementToElement", locator: from.primary,
+                        fallbacks: from.stepFallbacks, endLocator: to.primary,
+                        timeout: timeout,
+                        duration: durationSeconds == FlowStep.defaultSwipeDurationSeconds
+                            ? nil : durationSeconds)
+    perform("swipeElementToElement", from, step: step,
+            description: "swipeElementToElement \"\(from.text)\" → \"\(to.text)\"",
+            file: file, line: line)
 }
 
 // MARK: - スクロール(Shirates 準拠のコマンド名)
@@ -1419,6 +1514,15 @@ public func home(file: StaticString = #filePath, line: UInt = #line) {
     let driver = core.systemDriver
     core.performCustom(description: "home", file: file, line: line) {
         try await driver.home()
+    }
+}
+
+/// 前の画面へ戻る(Android = 戻るキー / iOS = 左端エッジスワイプ。Shirates の pressBack 相当)
+public func back(file: StaticString = #filePath, line: UInt = #line) {
+    let core = FTRuntime.requireCore(command: "back")
+    let driver = core.systemDriver
+    core.performCustom(description: "back", file: file, line: line) {
+        try await driver.back()
     }
 }
 

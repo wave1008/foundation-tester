@@ -208,6 +208,114 @@ BOOL FTInsertTextIntoFirstResponder(NSString *text) {
     return NO;
 }
 
+// アプリが Flutter か。**clear の可否はこの粒度で判定する**(受け口のクラス名は secure 欄など
+// 構成で変わり取りこぼすため。2026-07-30 実測)
+static BOOL ftIsFlutterApp(void) {
+    return NSClassFromString(@"FlutterViewController") != nil;
+}
+
+// Flutter の入力受け口か。**engine 配送(pressEnter)は受け口そのものを特定する必要がある**ため
+// こちらはクラス名で見る。secure 欄はサブクラスで別名なので prefix 一致では足りない
+static BOOL ftIsFlutterTextInput(id responder) {
+    NSString *name = NSStringFromClass([responder class]);
+    return [name hasPrefix:@"Flutter"] && [name containsString:@"TextInput"];
+}
+
+// 受け口に残っているテキストの長さ。**「空に見えること」を成功の根拠にしてよい受け口だけ**
+// 長さを返し、状態を別レイヤに持つ実装(Flutter = Dart 側)は NSNotFound = 判定不能を返す
+// (view のローカル状態は空でも実体に値が残る = 嘘の成功になるため。2026-07-30 実測)。
+// 呼び出し側は `== 0` で判定するので、NSNotFound は自動的に「空とは言えない」側へ倒れる
+static NSUInteger ftRemainingTextLength(id responder) {
+    if ([responder isKindOfClass:[UITextField class]]) return ((UITextField *)responder).text.length;
+    if ([responder isKindOfClass:[UITextView class]]) return ((UITextView *)responder).text.length;
+    // Flutter は Dart 側が真の状態を持つ = ここでは読めない(層2 の要点。判定粒度の理由は
+    // ftIsFlutterApp 参照)
+    if (ftIsFlutterApp()) return NSNotFound;
+    if ([responder conformsToProtocol:@protocol(UITextInput)]) {
+        id<UITextInput> ti = (id<UITextInput>)responder;
+        UITextPosition *begin = ti.beginningOfDocument;
+        UITextPosition *end = ti.endOfDocument;
+        UITextRange *range = (begin && end) ? [ti textRangeFromPosition:begin toPosition:end] : nil;
+        if (range) return [ti textInRange:range].length;
+    }
+    if ([responder conformsToProtocol:@protocol(UIKeyInput)]) {
+        return ((id<UIKeyInput>)responder).hasText ? 1 : 0;
+    }
+    return NSNotFound;
+}
+
+// FTInsertTextIntoFirstResponder と同じ探索順(isFirstResponder な insertText: 受け口を優先、
+// 無ければ sendAction 捕捉/ビュー木探索の first responder)で対象を1つ選ぶ
+static id _Nullable ftClearTarget(void) {
+    for (UIView *v in ftTextReceivers()) {
+        if (v.isFirstResponder) return v;
+    }
+    return ftCurrentFirstResponder();
+}
+
+BOOL FTClearTextInFirstResponder(void) {
+    id responder = ftClearTarget();
+    if (!responder) return NO;
+    // **Flutter アプリでは in-app では消せない**(docs/design.md に不採用の記録)。
+    // 判定はアプリ粒度: 受け口の実クラスでは判定しきれない(secure 欄は別クラスで、名前は
+    // 版・構成で変わる。2026-07-30 実測で取りこぼした)。Flutter はテキスト状態を Dart 側が
+    // 持つというアプリ単位の性質なのでこの粒度が正しい。NO = 409 → xcuitest フォールバック
+    // (**実測で機能する**。ref 有/無とも確認済み)
+    if (ftIsFlutterApp()) return NO;
+
+    if ([responder isKindOfClass:[UITextField class]]) {
+        UITextField *field = (UITextField *)responder;
+        field.text = @"";
+        // .text 代入は UIControlEventEditingChanged/通知を自動発火しない(insertText: と違い
+        // 内部キー入力経路を通らないため)。SwiftUI/UIKit の変更監視経路を明示的に補う
+        [field sendActionsForControlEvents:UIControlEventEditingChanged];
+        [NSNotificationCenter.defaultCenter postNotificationName:UITextFieldTextDidChangeNotification
+                                                           object:field];
+        return YES;
+    }
+    if ([responder isKindOfClass:[UITextView class]]) {
+        UITextView *view = (UITextView *)responder;
+        view.text = @"";
+        [NSNotificationCenter.defaultCenter postNotificationName:UITextViewTextDidChangeNotification
+                                                           object:view];
+        if ([view.delegate respondsToSelector:@selector(textViewDidChange:)]) {
+            [view.delegate textViewDidChange:view];
+        }
+        return YES;
+    }
+    // UITextField/UITextView 以外の UITextInput 準拠(Compose の IntermediateTextInputUIView 等)。
+    // insertText: だけでは追記になるため、全文書レンジを取って replaceRange:withText:@"" する。
+    // **replaceRange が通っても消えたとは限らない**(状態を別レイヤに持つ実装)。必ず読み返して
+    // 確認し、残っていたら下の deleteBackward 経路(キー入力経路)へ落とす
+    if ([responder conformsToProtocol:@protocol(UITextInput)]) {
+        id<UITextInput> ti = (id<UITextInput>)responder;
+        UITextPosition *begin = ti.beginningOfDocument;
+        UITextPosition *end = ti.endOfDocument;
+        UITextRange *range = (begin && end) ? [ti textRangeFromPosition:begin toPosition:end] : nil;
+        if (range) {
+            [ti replaceRange:range withText:@""];
+            if (ftRemainingTextLength(responder) == 0) return YES;
+        }
+    }
+    // UITextInput の replaceRange が効かない/レンジが取れない実装向け(UIKeyInput 専用)。
+    // カーソルが先頭にあると deleteBackward が減らないため上限を設け、残ったら NO
+    // (= 呼び出し側が 409 で xcuitest を案内する既知の縮退。嘘の成功を返さないことが要点)
+    if ([responder conformsToProtocol:@protocol(UIKeyInput)]) {
+        id<UIKeyInput> ki = (id<UIKeyInput>)responder;
+        NSInteger attempts = 0;
+        NSUInteger remaining = ftRemainingTextLength(responder);
+        // NSNotFound(長さを読めない実装)は「空でない」とも言えないので即 NO
+        // (空打ちの deleteBackward を 10000 回撃たない)
+        while (remaining != NSNotFound && remaining > 0 && attempts < 10000) {
+            [ki deleteBackward];
+            attempts++;
+            remaining = ftRemainingTextLength(responder);
+        }
+        return remaining == 0;
+    }
+    return NO;
+}
+
 /// Flutter の入力受け口へ IME アクションを配送する。**engine の私有 API を叩く**ので、
 /// 各段で存在確認し1つでも欠けたら NO を返す(= 呼び出し側が 409 で「xcuitest を使え」と案内する
 /// 既知の縮退へ落ちる。Flutter 更新で黙って誤動作させないため、推測で続行しない)。
@@ -259,7 +367,8 @@ BOOL FTPressEnterOnComposeFirstResponder(void) {
             [field sendActionsForControlEvents:UIControlEventEditingDidEndOnExit];
             return YES;
         }
-        if ([NSStringFromClass(v.class) hasPrefix:@"FlutterTextInputView"]) {
+        // secure 欄はサブクラス(別名)なので prefix 一致では取りこぼす(ftIsFlutterTextInput 参照)
+        if (ftIsFlutterTextInput(v)) {
             return ftFlutterPerformInputAction(v);
         }
         if ([v conformsToProtocol:@protocol(UIKeyInput)]) {

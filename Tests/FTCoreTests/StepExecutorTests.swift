@@ -88,9 +88,13 @@ private final class FakeAppDriver: AppDriver {
     /// 非 nil なら drag がこのエラーを throw する(空打ちドラッグの XCUITest 切替の検証用)。
     /// **実装しないと AppDriver 既定の 501 になる**ので、フォールバック先の検証には実装が要る
     var dragError: Error?
+    /// 直近の drag 呼び出しに渡った引数(swipeElementToElement/swipePointToPoint の座標配線確認用)
+    private(set) var lastDragArgs: (fromX: Double, fromY: Double, toX: Double, toY: Double,
+                                    pressSeconds: Double, durationSeconds: Double)?
 
     func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
               pressSeconds: Double, durationSeconds: Double) async throws {
+        lastDragArgs = (fromX, fromY, toX, toY, pressSeconds, durationSeconds)
         if let dragError {
             log.entries.append("\(name).drag(throws)")
             throw dragError
@@ -112,6 +116,21 @@ private final class FakeAppDriver: AppDriver {
             throw pressEnterError
         }
         log.entries.append("\(name).pressEnter")
+    }
+
+    /// 非 nil なら clearInput(ref:) がこのエラーを throw する(409/501 切替の検証用)
+    var clearInputError: Error?
+
+    func clearInput(ref: Int?) async throws {
+        if let clearInputError {
+            log.entries.append("\(name).clearInput(throws)")
+            throw clearInputError
+        }
+        log.entries.append("\(name).clearInput(ref:\(ref.map(String.init) ?? "nil"))")
+    }
+
+    func back() async throws {
+        log.entries.append("\(name).back")
     }
 }
 
@@ -182,6 +201,15 @@ final class StepExecutorTests: XCTestCase {
         ElementInfo(ref: ref, type: "button", identifier: nil, label: label, value: nil,
                    placeholder: nil, enabled: true,
                    frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: 0)
+    }
+
+    /// clearInput の事後検証テスト用の入力欄。value/placeholder/focused を個別に指定できる
+    private func inputField(ref: Int, id: String? = nil, value: String? = nil,
+                            placeholder: String? = nil, focused: Bool? = nil,
+                            frame: FTRect = FTRect(x: 0, y: 0, width: 100, height: 20)) -> ElementInfo {
+        ElementInfo(ref: ref, type: "textField", identifier: id, label: nil, value: value,
+                   placeholder: placeholder, enabled: true, frame: frame, depth: 0,
+                   focused: focused)
     }
 
     /// occlusionGuard 付き exists(exist の既定): delegate が「隠れ」を返すと偽陽性として失敗へ反転する
@@ -1072,6 +1100,276 @@ final class StepExecutorTests: XCTestCase {
             XCTFail("typeDriver 無しでの 409 失敗を期待したが \(outcome.status) だった")
             return
         }
+    }
+
+    // MARK: - clearInput
+
+    /// clearInput(セレクタあり) → 解決した ref で driver.clearInput が呼ばれること
+    func testClearInputWithSelectorUsesResolvedRef() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[element(ref: 7, id: "field_note")]])
+        let executor = StepExecutor(driver: primary)
+        let step = FlowStep(action: "clearInput", locator: FlowLocator(id: "field_note"))
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("clearInput の passed を期待したが \(outcome.status) だった"); return
+        }
+        XCTAssertTrue(log.entries.contains("primary.clearInput(ref:7)"),
+                      "解決した ref でクリアすべき: \(log.entries)")
+    }
+
+    /// clearInput(ロケータなし) → clearInput(ref: nil)。pre-snapshot(実装2の事後検証の下ごしらえ。
+    /// フォーカス要素の有無を見るために必ず撮る)はフォーカス要素が無いので、後段の事後検証は
+    /// スキップして従来どおり成功する
+    func testClearInputWithoutLocatorClearsFocusedElement() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log)
+        let executor = StepExecutor(driver: primary)
+        let step = FlowStep(action: "clearInput")
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("clearInput の passed を期待したが \(outcome.status) だった"); return
+        }
+        XCTAssertEqual(log.entries, ["primary.snapshot", "primary.clearInput(ref:nil)"],
+                       "ロケータ解決は挟まないが、事後検証の下ごしらえの pre-snapshot は1回撮る")
+    }
+
+    /// clearInput で primary が 409(対象なし)→ typeDriver 側の clearInput が呼ばれ、
+    /// ステータスは passed + driverFallback になること
+    func testClearInput409FallsBackToTypeDriverReactively() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[element(ref: 1, id: "field_note")]])
+        primary.clearInputError = DriverError.badResponse(status: 409, body: "no focused input")
+        let typeDriver = FakeAppDriver(name: "typedriver", log: log,
+                                       snapshotElements: [[element(ref: 2, id: "field_note")]])
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver)
+        let step = FlowStep(action: "clearInput", locator: FlowLocator(id: "field_note"))
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("409 からの typeDriver 切替による passed を期待したが \(outcome.status) だった"); return
+        }
+        XCTAssertEqual(outcome.driverFallback, "fell back to XCUITest")
+        // 末尾の typedriver.snapshot は事後検証(フォールバック経路にも例外を作らない契約)
+        XCTAssertEqual(log.entries, [
+            "primary.snapshot",
+            "primary.clearInput(throws)",
+            "typedriver.snapshot",
+            "typedriver.clearInput(ref:2)",
+            "typedriver.snapshot",
+        ])
+    }
+
+    /// ロケータ無し版でも 409 は typeDriver(ref: nil)へフォールバックすること(pressEnter と同じ形)。
+    /// pre-snapshot(実装2の下ごしらえ)は 409 の前に必ず1回撮る
+    func testClearInputWithoutLocator409FallsBackToTypeDriver() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log)
+        primary.clearInputError = DriverError.badResponse(status: 409, body: "no focused input")
+        let typeDriver = FakeAppDriver(name: "typedriver", log: log)
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver)
+        let step = FlowStep(action: "clearInput")
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("409 からの typeDriver 切替による passed を期待したが \(outcome.status) だった"); return
+        }
+        XCTAssertEqual(outcome.driverFallback, "fell back to XCUITest")
+        XCTAssertEqual(log.entries,
+                       ["primary.snapshot", "primary.clearInput(throws)", "typedriver.clearInput(ref:nil)"])
+    }
+
+    // MARK: - clearInput の事後検証(実装2: ブリッジが 200 を返しても消えていない場合の保険)
+
+    /// clearInput(セレクタあり)成功後、同じ driver の snapshot で値が残っていることが分かったら
+    /// typeDriver へフォールバックし、そちらで消えていれば passed になること
+    func testClearInputWithSelectorFallsBackWhenResidualValueRemains() async throws {
+        let log = CallLog()
+        // **残存 = クリア前後で同じ値**(値が変わっていれば消えたと見なす契約。placeholder が
+        // value に出る実装があるため一致判定では見ない)
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [
+            [inputField(ref: 7, id: "field_note", value: "residual")],
+            [inputField(ref: 7, id: "field_note", value: "residual")],
+        ])
+        let typeDriver = FakeAppDriver(name: "typedriver", log: log, snapshotElements: [
+            [inputField(ref: 2, id: "field_note", value: "residual")],
+            [inputField(ref: 2, id: "field_note", value: nil)],
+        ])
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver)
+        let step = FlowStep(action: "clearInput", locator: FlowLocator(id: "field_note"))
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("残存値検出→フォールバック成功による passed を期待したが \(outcome.status) だった"); return
+        }
+        XCTAssertEqual(outcome.driverFallback, "fell back to XCUITest")
+        XCTAssertTrue(log.entries.contains("primary.clearInput(ref:7)"))
+        XCTAssertTrue(log.entries.contains("typedriver.clearInput(ref:2)"),
+                      "残存値が消えるまで typeDriver へフォールバックすべき: \(log.entries)")
+    }
+
+    /// clearInput(セレクタあり)で primary・typeDriver 双方とも値が残っていれば failed になり、
+    /// メッセージに残存値を含めること
+    func testClearInputWithSelectorFailsWhenValueRemainsAfterFallback() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [
+            [inputField(ref: 7, id: "field_note", value: "still there")],
+            [inputField(ref: 7, id: "field_note", value: "still there")],
+        ])
+        let typeDriver = FakeAppDriver(name: "typedriver", log: log, snapshotElements: [
+            [inputField(ref: 2, id: "field_note", value: "still there")],
+            [inputField(ref: 2, id: "field_note", value: "still there")],
+        ])
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver)
+        let step = FlowStep(action: "clearInput", locator: FlowLocator(id: "field_note"))
+
+        let outcome = await executor.execute(step)
+
+        guard case .failed(let message) = outcome.status else {
+            XCTFail("両ドライバとも残存値がある場合は failed を期待したが \(outcome.status) だった"); return
+        }
+        XCTAssertTrue(message.contains("still there"), "残った値をメッセージに含めるべき: \(message)")
+    }
+
+    /// clearInput(セレクタあり)成功後、value が placeholder と一致(= iOS の空欄が value に
+    /// placeholder を返す実測仕様。空欄扱い)なら typeDriver へフォールバックしないこと
+    func testClearInputWithSelectorSkipsFallbackWhenValueMatchesPlaceholder() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [
+            [inputField(ref: 7, id: "field_note", value: "old")],
+            [inputField(ref: 7, id: "field_note", value: "type here", placeholder: "type here")],
+        ])
+        let typeDriver = FakeAppDriver(name: "typedriver", log: log)
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver)
+        let step = FlowStep(action: "clearInput", locator: FlowLocator(id: "field_note"))
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("空(placeholder 一致)なら passed を期待したが \(outcome.status) だった"); return
+        }
+        XCTAssertNil(outcome.driverFallback, "フォールバックしてはいけない: \(log.entries)")
+        XCTAssertEqual(typeDriver.snapshotCallCount, 0, "typeDriver 側は一切呼ばれないはず")
+    }
+
+    /// clearInput(ロケータなし)成功後、クリア前に覚えたフォーカス要素を事後 snapshot で identifier
+    /// で突き合わせ、値が残っていれば typeDriver へフォールバックすること
+    func testClearInputWithoutLocatorMatchesFocusedElementByIdentifierAndFallsBack() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [
+            [inputField(ref: 1, id: "field_note", value: "residual", focused: true)],
+            [inputField(ref: 1, id: "field_note", value: "residual", focused: true)],
+        ])
+        let typeDriver = FakeAppDriver(name: "typedriver", log: log)
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver)
+        let step = FlowStep(action: "clearInput")
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("残存値検出→typeDriver フォールバックによる passed を期待したが \(outcome.status) だった");
+            return
+        }
+        XCTAssertEqual(outcome.driverFallback, "fell back to XCUITest")
+        XCTAssertTrue(log.entries.contains("typedriver.clearInput(ref:nil)"),
+                      "残存値が消えるまで typeDriver へフォールバックすべき: \(log.entries)")
+    }
+
+    /// clearInput(ロケータなし)成功時、フォーカス要素が特定できなければ事後検証をスキップし
+    /// 従来どおり成功すること(検証できないことを失敗にしない)
+    func testClearInputWithoutLocatorSkipsVerificationWhenNoFocusedElement() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [
+            [inputField(ref: 1, id: "other_field", value: "unrelated")],
+        ])
+        let executor = StepExecutor(driver: primary)
+        let step = FlowStep(action: "clearInput")
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("検証不能時は passed を期待したが \(outcome.status) だった"); return
+        }
+        XCTAssertNil(outcome.driverFallback)
+        XCTAssertEqual(primary.snapshotCallCount, 1,
+                       "フォーカス要素が無ければ事後 snapshot は撮らないはず: \(log.entries)")
+    }
+
+    // MARK: - swipeElementToElement
+
+    /// 両要素の中心座標で drag が呼ばれること。duration 省略時は既定 1.5 秒が渡ること
+    func testSwipeElementToElementDragsBetweenCenters() async throws {
+        let log = CallLog()
+        let from = framed(ref: 1, id: "handle_from", x: 0, y: 100, width: 20, height: 20)
+        let to = framed(ref: 2, id: "handle_to", x: 200, y: 300, width: 40, height: 40)
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[from, to]])
+        let executor = StepExecutor(driver: primary)
+        let step = FlowStep(action: "swipeElementToElement", locator: FlowLocator(id: "handle_from"),
+                            endLocator: FlowLocator(id: "handle_to"))
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("swipeElementToElement の passed を期待したが \(outcome.status) だった"); return
+        }
+        XCTAssertEqual(log.entries, ["primary.snapshot", "primary.drag"])
+        XCTAssertEqual(primary.lastDragArgs?.fromX, 10)
+        XCTAssertEqual(primary.lastDragArgs?.fromY, 110)
+        XCTAssertEqual(primary.lastDragArgs?.toX, 220)
+        XCTAssertEqual(primary.lastDragArgs?.toY, 320)
+        XCTAssertEqual(primary.lastDragArgs?.durationSeconds, FlowStep.defaultSwipeDurationSeconds)
+    }
+
+    /// 終点が見つからないときは failed(メッセージに "end locator" を含む)
+    func testSwipeElementToElementFailsWhenEndLocatorNotFound() async throws {
+        let log = CallLog()
+        let from = element(ref: 1, id: "handle_from")
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[from]])
+        let executor = StepExecutor(driver: primary)
+        let step = FlowStep(action: "swipeElementToElement", locator: FlowLocator(id: "handle_from"),
+                            endLocator: FlowLocator(id: "handle_missing"))
+
+        let outcome = await executor.execute(step)
+
+        guard case .failed(let msg) = outcome.status else {
+            XCTFail("終点未解決での失敗を期待したが \(outcome.status) だった"); return
+        }
+        XCTAssertTrue(msg.contains("end locator"), "失敗理由に end locator を含むこと: \(msg)")
+    }
+
+    /// in-app 相当(drag が 501)なら始点・終点の両方を typeDriver 側で取り直して drag すること
+    func testSwipeElementToElementFallsBackToTypeDriverWhenEngineIncapable() async throws {
+        let log = CallLog()
+        let from = framed(ref: 1, id: "handle_from", x: 0, y: 100, width: 20, height: 20)
+        let to = framed(ref: 2, id: "handle_to", x: 200, y: 300, width: 40, height: 40)
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[from, to]])
+        primary.dragError = DriverError.badResponse(status: 501, body: "in-app では drag が効きません")
+        let typeFrom = framed(ref: 3, id: "handle_from", x: 0, y: 100, width: 20, height: 20)
+        let typeTo = framed(ref: 4, id: "handle_to", x: 200, y: 300, width: 40, height: 40)
+        let typeDriver = FakeAppDriver(name: "typedriver", log: log, snapshotElements: [[typeFrom, typeTo]])
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver)
+        let step = FlowStep(action: "swipeElementToElement", locator: FlowLocator(id: "handle_from"),
+                            endLocator: FlowLocator(id: "handle_to"))
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("501 からの typeDriver 切替による passed を期待したが \(outcome.status) だった"); return
+        }
+        XCTAssertEqual(outcome.driverFallback, "fell back to XCUITest")
+        XCTAssertTrue(log.entries.contains("primary.drag(throws)"), "まず primary を試すこと: \(log.entries)")
+        XCTAssertTrue(log.entries.contains("typedriver.drag"), "501 なら typeDriver へ回すこと: \(log.entries)")
+        XCTAssertEqual(typeDriver.lastDragArgs?.fromX, 10)
+        XCTAssertEqual(typeDriver.lastDragArgs?.toX, 220)
     }
 
     // MARK: - スクロール探索終端の空打ち可否(pointIsTakenByFrontElement)

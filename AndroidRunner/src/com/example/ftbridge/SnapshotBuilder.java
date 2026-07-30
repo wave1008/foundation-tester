@@ -45,6 +45,8 @@ final class SnapshotBuilder {
         boolean clickable;
         boolean checkable;
         boolean checked;
+        /** clearInput 事後検証用(BridgeDTO.ElementInfo.focused 参照) */
+        boolean focused;
         boolean enabled = true;
         boolean password;
         Rect bounds = new Rect();
@@ -175,6 +177,7 @@ final class SnapshotBuilder {
         n.clickable = node.isClickable();
         n.checkable = node.isCheckable();
         n.checked = node.isChecked();
+        n.focused = node.isFocused();
         n.enabled = node.isEnabled();
         n.password = node.isPassword();
         n.chromeRole = chromeRole(node);
@@ -323,6 +326,8 @@ final class SnapshotBuilder {
         info.put("enabled", node.enabled);
         // checked は true のときだけ送る(iOS の isSelected と同じ意味・同じ省略規約)
         if (node.checked) info.put("checked", true);
+        // focused も同じ省略規約(clearInput 事後検証用。BridgeDTO.ElementInfo.focused 参照)
+        if (node.focused) info.put("focused", true);
         info.put("frame", rectJSON(node.bounds));
         info.put("depth", node.depth);
         return info;

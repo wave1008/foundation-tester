@@ -46,7 +46,7 @@ final class BridgeRouter {
     // 撮るため、その全てにこの待ちが乗っていた。
     // **スクロール後の静止はホスト側が担う**: 探索終端は StepExecutor.settleAfterScroll、
     // 明示的な swipe/scroll コマンドは同 settledSignature(どちらも「連続2回一致」で待つ)。
-    private static let mutatingPaths: Set<String> = ["/session", "/tap", "/type", "/pressEnter", "/press", "/appswitcher", "/home"]
+    private static let mutatingPaths: Set<String> = ["/session", "/tap", "/type", "/clear", "/pressEnter", "/press", "/appswitcher", "/home"]
 
     func handle(_ request: BridgeHTTPServer.Request) -> BridgeHTTPServer.Response {
         do {
@@ -57,6 +57,7 @@ final class BridgeRouter {
             case ("GET", "/snapshot"): response = try handleSnapshot()
             case ("POST", "/tap"): response = try handleTap(request.body)
             case ("POST", "/type"): response = try handleType(request.body)
+            case ("POST", "/clear"): response = try handleClear(request.body)
             case ("POST", "/pressEnter"): response = try handlePressEnter()
             case ("POST", "/swipe"): response = try handleSwipe(request.body)
             case ("POST", "/drag"): response = try handleDrag(request.body)
@@ -150,8 +151,26 @@ final class BridgeRouter {
             sessionBundleID: sessionBundleID,
             screen: FTRect(x: cap.screen.origin.x, y: cap.screen.origin.y,
                            width: cap.screen.width, height: cap.screen.height),
-            elements: cap.elements,
+            elements: withFocusedFlag(cap.elements, app: app),
             truncatedCount: cap.truncated))
+    }
+
+    /// フォーカス中要素の申告(clearInput 事後検証用。ElementInfo.focused 参照)。
+    /// captureOnce の snapshot ツリーは `hasKeyboardFocus` を持たない(値は KVC 専用の
+    /// ライブクエリでしか読めない)ため、**要素ごとに追加クエリを撃つのではなく**
+    /// フォーカス要素だけ1回引いて frame 一致で突き合わせる(handleClear と同じ経路)。
+    /// 見つからなければ全要素 focused なしのまま返す
+    private func withFocusedFlag(_ elements: [ElementInfo], app: XCUIApplication) -> [ElementInfo] {
+        let focused = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "hasKeyboardFocus == true")).firstMatch
+        guard focused.exists else { return elements }
+        let frame = focused.frame
+        let focusedFrame = FTRect(x: frame.origin.x, y: frame.origin.y,
+                                  width: frame.width, height: frame.height)
+        guard let index = elements.firstIndex(where: { $0.frame == focusedFrame }) else { return elements }
+        var out = elements
+        out[index].focused = true
+        return out
     }
 
     /// 整定してから取得する(操作直後の 1 回だけ)。
@@ -243,6 +262,41 @@ final class BridgeRouter {
         }
         app.typeText(req.text)
         return .json(OKResponse())
+    }
+
+    /// hasKeyboardFocus な要素を探して末尾へカーソルを送ってから delete を打つ。**文中をタップして
+    /// delete すると左側の一部しか消えない**ため、必ず frame の右端近くをタップしてカーソルを
+    /// 末尾に揃える。1回で消し切れないことがある(delete 中に IME/バリデーションが割り込む等)ため
+    /// 最大2周する。
+    private func handleClear(_ body: Data) throws -> BridgeHTTPServer.Response {
+        let req = try decode(ClearRequest.self, body)
+        let app = try requireLiveApp()
+        if let ref = req.ref {
+            coordinate(app, try resolvePoint(ref: ref, x: nil, y: nil)).tap()
+        }
+        let focused = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "hasKeyboardFocus == true")).firstMatch
+        guard focused.exists else {
+            throw BridgeError(409, "フォーカスされた入力欄がありません(hasKeyboardFocus な要素が"
+                + "見つかりません)。対象を先に tap するか ref を指定してください")
+        }
+        for _ in 0..<2 {
+            guard let text = Self.remainingText(of: focused), !text.isEmpty else { break }
+            let frame = focused.frame
+            coordinate(app, CGPoint(x: frame.maxX - 4, y: frame.midY)).tap()
+            focused.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: text.count))
+        }
+        guard Self.remainingText(of: focused) == nil else {
+            throw BridgeError(409, "入力欄をクリアしきれませんでした(値が残っています)")
+        }
+        return .json(OKResponse())
+    }
+
+    /// value が placeholder と一致/空なら nil(クリア済み扱い)を返す
+    private static func remainingText(of element: XCUIElement) -> String? {
+        guard let value = element.value as? String, !value.isEmpty else { return nil }
+        if let placeholder = element.placeholderValue, value == placeholder { return nil }
+        return value
     }
 
     /// typeText("\n") は XCUITest 内部で Return キー相当に落ちる(ソフトキーボードの改行/送信

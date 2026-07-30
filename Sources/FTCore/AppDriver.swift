@@ -15,10 +15,15 @@ public protocol AppDriver {
     func openAppSwitcher() async throws
     /// ホーム画面に戻る。
     func home() async throws
+    /// 前の画面へ戻る。Android は戻るキー、iOS は左端エッジスワイプ(pop ジェスチャ)と、
+    /// ドライバごとに機構が違う。
+    func back() async throws
     func snapshot() async throws -> SnapshotResponse
     func tap(ref: Int) async throws
     func tap(x: Double, y: Double) async throws
     func type(ref: Int?, text: String) async throws
+    /// 入力欄をクリアする(ref なし = フォーカス中の欄)。DSL の clearInput
+    func clearInput(ref: Int?) async throws
     /// フォーカス中の入力欄で Enter を押す(ref なし。Shirates pressEnter 相当)。
     /// iOS はソフトキー tap ができない(キーボード要素を snapshot から除外しているため)代替経路を
     /// ドライバごとに持つ: xcuitest は typeText("\n")、inapp は Compose 入力欄への insertText("\n")
@@ -106,6 +111,14 @@ public extension AppDriver {
 
     func home() async throws {
         throw DriverError.badResponse(status: 501, body: "This driver does not support the home button")
+    }
+
+    func back() async throws {
+        throw DriverError.badResponse(status: 501, body: "This driver does not support going back")
+    }
+
+    func clearInput(ref: Int?) async throws {
+        throw DriverError.badResponse(status: 501, body: "This driver does not support clearing input")
     }
 
     func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,

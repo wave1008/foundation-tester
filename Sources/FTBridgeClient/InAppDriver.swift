@@ -54,6 +54,9 @@ public final class InAppDriver: AppDriver {
     public func pressEnter() async throws {
         try await withCrashContext { try await client.pressEnter() }
     }
+    public func clearInput(ref: Int?) async throws {
+        try await withCrashContext { try await client.clearInput(ref: ref) }
+    }
     public func swipe(_ direction: FTSwipeDirection) async throws {
         try await withCrashContext { try await client.swipe(direction) }
     }
@@ -64,6 +67,7 @@ public final class InAppDriver: AppDriver {
     // FTDriveCore が XCUITest 側へ回すのでここへは来ない。engine=inapp 単独だけがここに到達するため、
     // 既定実装の汎用メッセージではなく構成の直し方を示す(501 = このエンジンでは未対応)
     public func home() async throws { throw Self.inappOnly("home") }
+    public func back() async throws { throw Self.inappOnly("back") }
     public func openAppSwitcher() async throws { throw Self.inappOnly("appSwitcher") }
     public func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
                      pressSeconds: Double, durationSeconds: Double) async throws {

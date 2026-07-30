@@ -162,6 +162,20 @@ public final class BridgeClient: AppDriver {
         let _: OKResponse = try await post("/pressEnter", body: OKResponse(), timeout: interactionTimeout)
     }
 
+    public func clearInput(ref: Int?) async throws {
+        let _: OKResponse = try await post("/clear", body: ClearRequest(ref: ref),
+                                           timeout: interactionTimeout)
+    }
+
+    /// エッジスワイプ = iOS の戻る操作(pop ジェスチャ)。ブリッジに /back ルートは無い(版上げ回避。
+    /// /drag で表現する)。スワイプバック無効の画面では効かない
+    public func back() async throws {
+        let screen = try await snapshot().screen
+        try await drag(fromX: screen.x + 1, fromY: screen.y + screen.height * 0.5,
+                       toX: screen.x + screen.width * 0.65, toY: screen.y + screen.height * 0.5,
+                       pressSeconds: 0.05, durationSeconds: 0.25)
+    }
+
     public func swipe(_ direction: FTSwipeDirection) async throws {
         let _: OKResponse = try await post("/swipe", body: SwipeRequest(direction: direction, fast: fastFlag),
                                            timeout: interactionTimeout)

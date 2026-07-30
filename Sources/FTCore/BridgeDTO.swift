@@ -25,7 +25,12 @@ public enum BridgeAPI {
     /// ゾンビ化防止が効かないまま残るため入れ替える
     /// 10: /status が起動元(ownerRepo/ownerPid)を自己申告するようになった(2026-07-30)。
     /// doctor の確定ゾンビ自動停止が申告に依存するため、確実に入れ替える
-    public static let bridgeProtocolVersion = 10
+    /// 11: POST /clear(入力欄のクリア。DSL の clearInput)を追加(2026-07-30)。
+    /// 旧ブリッジは 404 "not found:" を返し、ホスト側が「未対応」と誤判定し続けるため入れ替える
+    /// 16: /clear が結果を読み返して確認する(**空に見えることを成功の根拠にしない**)ようになり、
+    /// snapshot が focused を返すようになった(2026-07-30)。ホスト側の事後検証が focused に
+    /// 依存するため、旧ブリッジの再利用を確実に断つ
+    public static let bridgeProtocolVersion = 19
 
     /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
     /// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java の
@@ -158,10 +163,15 @@ public struct ElementInfo: Codable, Sendable {
     /// 中身を読めたときに立てる。ホストは「in-app で中身が読めているか」をこれで判定する
     /// (幾何で判定すると WebView と同じ矩形を持つ interop 容器を中身と誤認する。2026-07-29 実害)
     public var web: Bool?
+    /// **入力フォーカスを持つか**(true のときだけ送る = checked/web と同じ省略規約)。
+    /// clearInput(ref なし)の事後検証(StepExecutor)が、クリア前後のスナップショットで
+    /// 同一要素を突き合わせるための唯一の手がかり。取得元: iOS xcuitest=`hasKeyboardFocus` /
+    /// iOS in-app=`isFirstResponder` / Android=`AccessibilityNodeInfo.isFocused`
+    public var focused: Bool?
 
     public init(ref: Int, type: String, identifier: String?, label: String?, value: String?,
                 placeholder: String?, enabled: Bool, frame: FTRect, depth: Int,
-                checked: Bool? = nil, web: Bool? = nil) {
+                checked: Bool? = nil, web: Bool? = nil, focused: Bool? = nil) {
         self.ref = ref
         self.type = Self.normalizedType(type)
         self.identifier = identifier
@@ -173,6 +183,7 @@ public struct ElementInfo: Codable, Sendable {
         self.frame = frame
         self.depth = depth
         self.web = web
+        self.focused = focused
     }
 
     public init(from decoder: Decoder) throws {
@@ -188,6 +199,7 @@ public struct ElementInfo: Codable, Sendable {
         frame = try container.decode(FTRect.self, forKey: .frame)
         depth = try container.decode(Int.self, forKey: .depth)
         web = try container.decodeIfPresent(Bool.self, forKey: .web)
+        focused = try container.decodeIfPresent(Bool.self, forKey: .focused)
     }
 
     /// 先頭 1 文字だけ小文字化する(`StaticText` → `staticText`)。冪等なので二重適用しても安全
@@ -278,6 +290,17 @@ public struct TypeRequest: Codable {
     public init(ref: Int? = nil, text: String) {
         self.ref = ref
         self.text = text
+    }
+}
+
+/// POST /clear(入力欄のクリア。DSL の clearInput)。3ブリッジ共通。
+/// ref あり = その要素へフォーカスを立ててからクリア(/type の ref 経路と同じ点解決)。
+/// ref なし = フォーカス中の入力欄をクリア。対象が無ければ 409(/type の 409 と同じ扱いで
+/// ホストは typeDriver へフォールバックする)
+public struct ClearRequest: Codable {
+    public var ref: Int?
+    public init(ref: Int? = nil) {
+        self.ref = ref
     }
 }
 

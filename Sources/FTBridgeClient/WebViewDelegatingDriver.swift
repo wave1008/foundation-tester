@@ -100,6 +100,7 @@ public final class WebViewDelegatingDriver: AppDriver {
         try await screenDriver.type(ref: ref, text: text)
     }
     public func pressEnter() async throws { try await screenDriver.pressEnter() }
+    public func clearInput(ref: Int?) async throws { try await screenDriver.clearInput(ref: ref) }
     public func swipe(_ direction: FTSwipeDirection) async throws {
         try await screenDriver.swipe(direction)
     }
@@ -143,6 +144,10 @@ public final class WebViewDelegatingDriver: AppDriver {
     public func openAppSwitcher() async throws {
         resetDelegation()
         try await delegated.openAppSwitcher()
+    }
+    public func back() async throws {
+        resetDelegation()
+        try await delegated.back()
     }
     /// スクリーンショットは同じ画面を写すので安い in-app 側で撮る(WKWebView の描画も写る)
     public func screenshot() async throws -> Data { try await primary.screenshot() }

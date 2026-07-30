@@ -39,8 +39,12 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 | `type("文字列")` | **フォーカス中の要素**へ入力(直前に `tap(入力欄)` でフォーカスしてから使う)。改行の扱いは下記 |
 | `type(sel, "文字列", optional:timeout:scroll:maxSwipes:)` | 要素を指定して入力。日本語もそのまま入る(IME 切替なし)。改行の扱いは下記 |
 | `pressEnter()` | フォーカス中の入力へ Enter/IME アクション(検索・実行・改行)を発火(Shirates(Classic) 準拠) |
+| `clearInput()` | フォーカス中の入力欄を空にする |
+| `clearInput(sel, optional:timeout:scroll:maxSwipes:)` | 要素を指定して入力欄を空にする(`type` は追記なので、書き換えるならまず `clearInput`)。**Flutter の iOS は in-app エンジンでは消せず XCUITest 経由になる**(自動フォールバック。1〜2秒かかる) |
 | `press(sel, duration: 1.0, optional:timeout:scroll:maxSwipes:)` | 長押し(duration は秒) |
 | `swipe(.up / .down / .left / .right)` | 画面全体をスワイプ(**指の動き**) |
+| `swipePointToPoint(startX:startY:endX:endY:durationSeconds: 1.5)` | 2点間ドラッグ(座標は snapshot の screen と同じ座標系。iOS = pt / Android = px) |
+| `swipeElementToElement(開始sel, 終点sel, durationSeconds: 1.5)` | 要素間のドラッグ(スライダー・並べ替え・部分領域のドラッグ用)。**終点はヒール対象外**(始点だけがヒール・フォールバック連鎖を持つ) |
 
 **`type` の中の `\n`**: **OS 既定の挙動**になる。iOS は Return キー押下として届くので、
 複数行の欄なら改行が入り、単一行の欄なら確定アクション(検索・完了など)が発火する
@@ -184,6 +188,7 @@ let 合計 = try await fetchTotal()        // procedure { } 内で取得した�
 | `relaunchApp(bundleID?)` | 終了してから起動(プロセス内状態のリセットに) |
 | `terminateApp()` | 終了 |
 | `home()` | ホーム画面へ |
+| `back()` | 前の画面へ戻る(Android = 戻るキー / iOS = 左端エッジスワイプ)。**Android はキーボードが開いていると1回目がキーボードを閉じるのに消費される**(OS 仕様)。**iOS はスワイプバック対応のナビゲーション(NavigationStack 等)を持つ画面でのみ戻れる**(独自ナビのアプリには効かない。アプリ内の戻るボタンを `tap` する) |
 | `appSwitcher()` | アプリスイッチャーを開く |
 
 ## 待機・分岐・反復

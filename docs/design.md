@@ -952,6 +952,31 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
 | 相対セレクタの引数の `(a\|b)` は括弧を自分で書く | `:right(...)` の括弧が引数の括弧で `\|` の囲みにならないため |
 | フローベース相対セレクタ(`:flow` 等)を持たない | 根拠の無い調整値を要求する(上記 2026-07-26 決定・再提案しない) |
 | `pressEnter` の iOS 実装がソフトキー tap ではない(xcuitest = `typeText("\n")` / inapp = 受け口ごとに Compose は `insertText("\n")`・UIKit は delegate 再現・Flutter は engine への配送) | キーボード要素をスナップショットから除外しているため tap できない。受け口で機構が違うのは iOS 側の事情(上記「iOS の Enter は…」)。観測できる挙動(Return キー相当)はいずれも同等 |
+| `back()` は Shirates の `pressBack`(Android 専用)を home()/appSwitcher() と同列の OS 差吸収コマンドとして両 OS 提供(iOS はエッジスワイプ) | iOS に物理バックが無く、コマンド語彙を OS で割らない方針 |
+| `swipePointToPoint` / `swipeElementToElement` に withOffset・offsetY・intervalSeconds・repeat・safeMode・marginRatio・adjust が無い | ブリッジの drag が単発ジェスチャのため(scrollFrame と同じ事情) |
+| `clearInput` がソフトキー/Appium clear 機構ではない(xcuitest=末尾タップ+delete 連打 / inapp=first responder のテキスト置換 / Android=ACTION_SET_TEXT "") | キーボード要素を snapshot から除外しているため(pressEnter と同じ事情) |
+
+### `clearInput` の受け口ごとの機構と Flutter の縮退(2026-07-30)
+
+嘘の成功(消えていないのに 200)を構造的に潰すため**3層**で守る:
+
+1. **実行**: 受け口ごとに機構が違う。UITextField/UITextView は `.text = ""` + 変更通知の明示発火
+   (`.text` 代入は `insertText:` と違い `EditingChanged`/通知を自動発火しない)/ その他 UITextInput
+   (Compose の `IntermediateTextInputUIView` 等)は全文書レンジへ `replaceRange:withText:@""`
+2. **受け口の自己検証**: 置換後に**読み返して**空を確認する。読み返せない受け口
+   (`ftRemainingTextLength` が `NSNotFound`)は**空に見えても成功を主張しない** → 409
+3. **ホストの事後検証**: `StepExecutor` が clear 後に値を確認し、残っていれば typeDriver へ、
+   それでも残れば失敗。ref 無し版は `ElementInfo.focused` で対象を突き合わせる
+   (`focused` を足したのはこのため。特定できないときは検証をスキップ = 検証不能を失敗にしない)
+
+**Flutter iOS の in-app は非対応**(409 → xcuitest フォールバック)。**engine への editing state 配送は
+評価のうえ不採用**(3回の実機実測):`flutterTextInputView:updateEditingClient:withState:` は実在し
+(ランタイムのメソッド列挙で確認)、client も state のキー集合も正しいが、**Dart 側の
+`TextEditingController` は空にならない**。`replaceRange` も view のローカル状態しか変えない
+(併用すると engine への旧値の再通知が同期配送を上書きする挙動も観測)。**推測で私有 API を
+積み増さない**方針(pressEnter の Flutter 対応と同じ規律)に従い、409 で既知の縮退へ落とす。
+**pressEnter と違い clear は xcuitest フォールバックが届く**(ref 有/無とも実測。1.1〜2.2s)ので
+機能は成立する。**再提案しない**(やるなら Flutter engine 側の公開経路が増えたとき)。
 
 ### 型付きセレクタ(Sel。2026-07-27)
 

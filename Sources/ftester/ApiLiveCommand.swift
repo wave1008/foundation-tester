@@ -8,6 +8,7 @@
 //   {"cmd":"tap","ref":<Int>}                           snapshot の参照番号をタップ
 //   {"cmd":"tap","x":<Double>,"y":<Double>}             座標(pt)をタップ
 //   {"cmd":"type","text":<String>,"ref":<Int省略可>}     テキスト入力(ref省略時はフォーカス中の要素)
+//   {"cmd":"clear","ref":<Int省略可>}                    入力欄をクリア(ref省略時はフォーカス中の要素)
 //   {"cmd":"swipe","direction":"up"|"down"|"left"|"right"}
 //   {"cmd":"drag","fromX":..,"fromY":..,"toX":..,"toY":..,"press":<秒省略可>,"duration":<秒省略可>}
 //                                                        2点間ドラッグ(座標はpt。press=押下静止時間、duration=移動時間)
@@ -16,6 +17,7 @@
 //   {"cmd":"activate","bundle":<String>}               状態を保持したまま前面切替(未起動なら起動)
 //   {"cmd":"appSwitcher"}                               アプリスイッチャー(タスク一覧)を開く
 //   {"cmd":"home"}                                       ホーム画面に戻る
+//   {"cmd":"back"}                                       前の画面へ戻る
 //   {"cmd":"terminate"}                                 対象アプリを終了
 //   {"cmd":"install","path":<String>}                   パッケージファイル(iOS: .app / Android: .apk)
 //                                                        からインストール
@@ -219,6 +221,8 @@ struct ApiLiveServe: AsyncParsableCommand {
                 throw ServeCommandError.invalidArguments("type requires text")
             }
             try await driver.type(ref: command.ref, text: text)
+        case "clear":
+            try await driver.clearInput(ref: command.ref)
         case "swipe":
             guard let raw = command.direction, let direction = FTSwipeDirection(rawValue: raw) else {
                 throw ServeCommandError.invalidArguments(
@@ -252,6 +256,8 @@ struct ApiLiveServe: AsyncParsableCommand {
             try await driver.openAppSwitcher()
         case "home":
             try await driver.home()
+        case "back":
+            try await driver.back()
         case "terminate":
             try await driver.terminate()
         case "install":

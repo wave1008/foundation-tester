@@ -70,6 +70,8 @@ public final class LaunchPreflightDriver: AppDriver {
     public func tap(x: Double, y: Double) async throws { try await base.tap(x: x, y: y) }
     public func type(ref: Int?, text: String) async throws { try await base.type(ref: ref, text: text) }
     public func pressEnter() async throws { try await base.pressEnter() }
+    public func clearInput(ref: Int?) async throws { try await base.clearInput(ref: ref) }
+    public func back() async throws { try await base.back() }
     public func swipe(_ direction: FTSwipeDirection) async throws { try await base.swipe(direction) }
 
     public func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
