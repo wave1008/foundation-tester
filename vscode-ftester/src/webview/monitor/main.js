@@ -62,7 +62,7 @@ import { applySettings } from './settingsTab.js';
 import { applyResidentMessage } from './processesTab.js';
 import { applyRecordingsSessions, applyRecordingsSession } from './recordingsTab.js';
 import { activateTab, TAB_IDS, switchTab } from './tabs.js';
-import { setTilePaneHeight } from './splitter.js';
+import { setTilePaneHeight, setTileAutoFit } from './splitter.js';
 
 window.addEventListener('message', (event) => {
   const message = event.data;
@@ -207,6 +207,9 @@ window.addEventListener('message', (event) => {
       break;
     case 'tilePaneHeight':
       setTilePaneHeight(message.value);
+      break;
+    case 'tileAutoFit':
+      setTileAutoFit(message.value);
       break;
     default:
       break;

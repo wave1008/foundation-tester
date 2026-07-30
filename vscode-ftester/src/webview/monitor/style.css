@@ -156,6 +156,13 @@ button.secondary:hover:not(:disabled) {
 .icon-button:hover:not(:disabled) {
   background-color: var(--vscode-toolbar-hoverBackground, rgba(90, 93, 94, 0.31));
 }
+/* トグルONの表示。VSCode 検索ボックスのオプションボタンと同じ配色トークン。border は
+   .icon-button で none のため、枠は inset box-shadow で描く(付け外しで幅がずれない)。 */
+.icon-button.toggled {
+  background-color: var(--vscode-inputOption-activeBackground, rgba(0, 122, 204, 0.4));
+  color: var(--vscode-inputOption-activeForeground, var(--vscode-foreground));
+  box-shadow: inset 0 0 0 1px var(--vscode-inputOption-activeBorder, transparent);
+}
 /* .icon-button の正方形 22px 幅ではラベル文字が入らないため width だけ auto にして拡張する。 */
 .icon-button.with-label {
   width: auto;
@@ -173,6 +180,10 @@ button.secondary:hover:not(:disabled) {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+/* ホストグラフより右・ツールバー右端へ寄せる(auto-fit トグル) */
+.toolbar-auto-fit {
+  margin-left: auto;
 }
 .host-metric {
   display: flex;

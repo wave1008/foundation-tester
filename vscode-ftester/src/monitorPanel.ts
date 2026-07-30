@@ -171,6 +171,8 @@ class MonitorPanelController implements vscode.Disposable {
   /** デバイスタブのスプリッター位置(タイルペイン高さ px)。未設定(パネル未ドラッグ)は undefined。
    * webview の getState はパネルを閉じると失われるため host 側で永続化する(splitter.js と対の契約)。 */
   private tilePaneHeight: number | undefined;
+  /** デバイスタブの auto-fit トグル(タイル高さを全デバイスが横幅に収まる高さへ自動調整)。 */
+  private tileAutoFit: boolean;
   /** stopping/rebooting を post 済みで done/failed が未着のデバイス名。runEnded 時、キャンセル等で
    * done/failed が来ないまま残った名前にバッジ固着を防ぐため phase:"done" を post する。 */
   private readonly wipeInProgress = new Set<string>();
@@ -186,6 +188,7 @@ class MonitorPanelController implements vscode.Disposable {
   ) {
     this.pollingMode = workspaceState.get<boolean>("monitor.pollingMode", false);
     this.tilePaneHeight = workspaceState.get<number>("monitor.tilePaneHeight");
+    this.tileAutoFit = workspaceState.get<boolean>("monitor.tileAutoFit", false);
     this.deps = {
       workspaceRoot: this.workspaceRoot,
       getConfig: this.getConfig,
@@ -564,6 +567,10 @@ class MonitorPanelController implements vscode.Disposable {
         this.tilePaneHeight = message.value;
         void this.workspaceState.update("monitor.tilePaneHeight", message.value);
         break;
+      case "setTileAutoFit":
+        this.tileAutoFit = message.value;
+        void this.workspaceState.update("monitor.tileAutoFit", message.value);
+        break;
       case "streamRendered":
         // webview がストリームフレームを描画できた ack。これを受けて初めてポーリングを間引く
         // (契約: monitorDeviceStreamController.ts 冒頭)
@@ -625,6 +632,8 @@ class MonitorPanelController implements vscode.Disposable {
     if (this.tilePaneHeight !== undefined) {
       this.post({ type: "tilePaneHeight", value: this.tilePaneHeight });
     }
+    // auto-fit は tilePaneHeight より後に送る(ON なら高さは復元値ではなく再計算で決まる)。
+    this.post({ type: "tileAutoFit", value: this.tileAutoFit });
     // 設定タブの更新セクション。ネットワークに出るので ready のたびに1回だけ(webview 再読込は稀)。
     // 失敗しても他の初期化を止めない fire-and-forget
     void this.update.check();
