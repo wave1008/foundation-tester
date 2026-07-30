@@ -429,6 +429,12 @@ public final class StepExecutor {
             + ": \(step.locatorSummary)"
     }
 
+    /// `notExist(scroll:)` の裏返し: スクロール探索中に見つかってしまったら不在検証は失敗
+    /// (executeAssertNotExists の scroll-search prelude が使う。scrollNotFoundMessage の対)
+    static func scrollFoundMessage(_ step: FlowStep) -> String {
+        "element found via scroll search: \(step.locatorSummary)"
+    }
+
     /// スクロールヒント(WebView の画面外ノード・実座標付き)から「あと何 px 先か」を出す。
     ///
     /// **なぜ**: スクロール探索の支配項はスワイプ1回のジェスチャ時間(Android 実測 1.05s / 974px。
@@ -706,6 +712,24 @@ public final class StepExecutor {
                 guard case DriverError.badResponse(let code, _) = error, code == 409,
                       let td = typeDriver else { throw error }
                 try await td.pressEnter()
+                phase.actionMs += Self.ms(clock.now - start)
+                return StepOutcome(status: .passed, driverFallback: "fell back to XCUITest")
+            }
+            phase.actionMs += Self.ms(clock.now - start)
+            return StepOutcome(status: .passed)
+        }
+
+        // hideKeyboard もロケータを持たない(フォーカス中の入力欄からファーストレスポンダを外す)。
+        // pressEnter と同じ理由でロケータ解決を挟まないが、フォールバック判定は 409 ではなく
+        // isEngineIncapable(501/ルート不明404): このエンジンでは原理的に非対応、という意味だから
+        // (409 は「今フォーカス無し」等の一時的競合で、pressEnter/type の 409 とは事情が違う)
+        if action == "hideKeyboard" {
+            let start = clock.now
+            do {
+                try await driver.hideKeyboard()
+            } catch {
+                guard DriverError.isEngineIncapable(error), let td = typeDriver else { throw error }
+                try await td.hideKeyboard()
                 phase.actionMs += Self.ms(clock.now - start)
                 return StepOutcome(status: .passed, driverFallback: "fell back to XCUITest")
             }

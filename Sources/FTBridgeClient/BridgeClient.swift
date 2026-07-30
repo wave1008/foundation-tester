@@ -167,6 +167,10 @@ public final class BridgeClient: AppDriver {
                                            timeout: interactionTimeout)
     }
 
+    public func hideKeyboard() async throws {
+        let _: OKResponse = try await post("/hidekeyboard", body: OKResponse(), timeout: interactionTimeout)
+    }
+
     /// エッジスワイプ = iOS の戻る操作(pop ジェスチャ)。ブリッジに /back ルートは無い(版上げ回避。
     /// /drag で表現する)。スワイプバック無効の画面では効かない
     public func back() async throws {

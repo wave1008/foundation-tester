@@ -13,6 +13,10 @@ private final class FakeAppDriver: AppDriver {
     let name: String
     let log: CallLog
     var snapshotElements: [[ElementInfo]]
+    /// snapshotElements と同じ「呼び出し回数ぶんの列(尽きたら最後を繰り返す)」規約で
+    /// SnapshotResponse.keyboardShown を差し替える(keyboardShown/keyboardNotShown の
+    /// poll-until-state-change 検証用)。nil のままなら常に nil(非表示扱い)
+    var keyboardShownFrames: [Bool]?
     private(set) var snapshotCallCount = 0
     /// 非 nil なら type(ref:text:) がこのエラーを throw する(409 リアクティブ切替の検証用)
     var typeError: Error?
@@ -46,9 +50,15 @@ private final class FakeAppDriver: AppDriver {
             let index = min(snapshotCallCount - 1, snapshotElements.count - 1)
             elements = snapshotElements[index]
         }
+        let keyboardShown: Bool?
+        if let frames = keyboardShownFrames, !frames.isEmpty {
+            keyboardShown = frames[min(snapshotCallCount - 1, frames.count - 1)]
+        } else {
+            keyboardShown = nil
+        }
         return SnapshotResponse(sessionBundleID: nil,
                                 screen: FTRect(x: 0, y: 0, width: 400, height: 800),
-                                elements: elements, truncatedCount: 0)
+                                elements: elements, truncatedCount: 0, keyboardShown: keyboardShown)
     }
 
     func tap(ref: Int) async throws {
@@ -131,6 +141,17 @@ private final class FakeAppDriver: AppDriver {
 
     func back() async throws {
         log.entries.append("\(name).back")
+    }
+
+    /// 非 nil なら hideKeyboard() がこのエラーを throw する(501/404 切替の検証用)
+    var hideKeyboardError: Error?
+
+    func hideKeyboard() async throws {
+        if let hideKeyboardError {
+            log.entries.append("\(name).hideKeyboard(throws)")
+            throw hideKeyboardError
+        }
+        log.entries.append("\(name).hideKeyboard")
     }
 }
 
@@ -1102,6 +1123,91 @@ final class StepExecutorTests: XCTestCase {
         }
     }
 
+    // MARK: - hideKeyboard(ロケータ無し。pressEnter と同じくロケータ解決を挟まない経路)
+
+    func testHideKeyboardCallsDriverDirectlyWithoutSnapshot() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log)
+        let executor = StepExecutor(driver: primary)
+        let step = FlowStep(action: "hideKeyboard")
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("hideKeyboard の passed を期待したが \(outcome.status) だった")
+            return
+        }
+        XCTAssertTrue(log.entries.contains("primary.hideKeyboard"), "\(log.entries)")
+    }
+
+    /// 501(このドライバは原理的に非対応)はリアクティブに typeDriver へ切り替えること。
+    /// pressEnter の 409 切替と違い、hideKeyboard は isEngineIncapable(501/ルート不明404)で判定する
+    /// (409 は「今フォーカス無し」等の一時的競合で、実行不能の申告ではないため)
+    func testHideKeyboard501FallsBackToTypeDriverReactively() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log)
+        primary.hideKeyboardError = DriverError.badResponse(status: 501, body: "not supported")
+        let typeDriver = FakeAppDriver(name: "typedriver", log: log)
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver)
+        let step = FlowStep(action: "hideKeyboard")
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("501 からの typeDriver 切替による passed を期待したが \(outcome.status) だった")
+            return
+        }
+        XCTAssertEqual(outcome.driverFallback, "fell back to XCUITest")
+        XCTAssertEqual(log.entries, ["primary.hideKeyboard(throws)", "typedriver.hideKeyboard"])
+    }
+
+    // MARK: - keyboardIsShown / keyboardIsNotShown(ロケータ無し。開閉アニメーションを待つポーリング)
+
+    /// キーボードが非表示→表示へ変わる過渡を、即失敗にせず timeout まで待って pass すること
+    /// (1回のスナップショット照会だけだとフレークする契約の検証)
+    func testKeyboardShownPollsUntilShown() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
+        primary.keyboardShownFrames = [false, true]
+        let executor = StepExecutor(driver: primary)
+        let step = FlowStep(assert: "keyboardShown", timeout: 3)
+
+        guard case .passed = await executor.execute(step).status else {
+            XCTFail("表示に変わったら pass するはず"); return
+        }
+        XCTAssertGreaterThan(primary.snapshotCallCount, 1, "1回の照会で決めず、状態変化までポーリングすること")
+    }
+
+    /// keyboardShown の裏返し: 表示→非表示へ変わる過渡を待って pass すること
+    func testKeyboardNotShownPollsUntilHidden() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
+        primary.keyboardShownFrames = [true, false]
+        let executor = StepExecutor(driver: primary)
+        let step = FlowStep(assert: "keyboardNotShown", timeout: 3)
+
+        guard case .passed = await executor.execute(step).status else {
+            XCTFail("非表示に変わったら pass するはず"); return
+        }
+        XCTAssertGreaterThan(primary.snapshotCallCount, 1, "1回の照会で決めず、状態変化までポーリングすること")
+    }
+
+    /// keyboardShown が nil(判定不能: Android の旧ブリッジ・captureKeyboardStateOnNextSnapshot
+    /// 未着火の両方であり得る)のとき、非表示への嘘の成功にせず明示的に failed で返すこと
+    /// (nil を false 扱いすると keyboardIsNotShown が偽陽性で通ってしまう)
+    func testKeyboardShownFailsWhenStateUnknown() async throws {
+        let log = CallLog()
+        // keyboardShownFrames を設定しない → SnapshotResponse.keyboardShown は常に nil
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
+        let executor = StepExecutor(driver: primary)
+        let step = FlowStep(assert: "keyboardShown", timeout: 0)
+
+        guard case .failed(let message) = await executor.execute(step).status else {
+            XCTFail("状態を取得できないときは failed のはず"); return
+        }
+        XCTAssertTrue(message.contains("cannot determine"), "\(message)")
+    }
+
     // MARK: - clearInput
 
     /// clearInput(セレクタあり) → 解決した ref で driver.clearInput が呼ばれること
@@ -1444,6 +1550,38 @@ final class StepExecutorTests: XCTestCase {
                        "drag の 501 で swipe まで typeDriver へ回してはいけない: \(log.entries)")
         XCTAssertTrue(log.entries.dropFirst().allSatisfy { $0 == "primary.snapshot" },
                       "swipe 後は静止待ちの snapshot だけが続くはず: \(log.entries)")
+    }
+
+    // MARK: - notExist(scroll:) の内蔵探索(exist(scroll:) の裏返し)
+
+    /// スクロール探索を尽くしても見つからなければ、現在のビューポート(最終フレーム)でも
+    /// 不在なので pass すること
+    func testNotExistWithScrollPassesWhenNeverFoundDuringSearch() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[], [], []])
+        let executor = StepExecutor(driver: primary)
+        let step = FlowStep(assert: "notExists", locator: FlowLocator(id: "row_99"),
+                            direction: "up", timeout: 0, maxSwipes: 2)
+
+        guard case .passed = await executor.execute(step).status else {
+            XCTFail("スクロール探索で見つからなければ pass のはず"); return
+        }
+    }
+
+    /// スクロール探索中に見つかったら、現在ビューポートでの消滅待ち(通常のポーリング)には進まず
+    /// 即座に不在検証を失敗させること(exist(scroll:) の裏返しなので判定は逆)
+    func testNotExistWithScrollFailsWhenFoundDuringSearch() async throws {
+        let log = CallLog()
+        let row = framed(ref: 1, id: "row_99", x: 16, y: 300, width: 370, height: 56)
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[], [row]])
+        let executor = StepExecutor(driver: primary, releasesScrollTouch: true)
+        let step = FlowStep(assert: "notExists", locator: FlowLocator(id: "row_99"),
+                            direction: "up", timeout: 0, maxSwipes: 2)
+
+        guard case .failed(let msg) = await executor.execute(step).status else {
+            XCTFail("スクロール探索で見つかったら失敗のはず"); return
+        }
+        XCTAssertTrue(msg.contains("found via scroll search"), msg)
     }
 
     /// フォールバック判定は 501 と「ルート不明の 404」だけ。409(一時的競合)と

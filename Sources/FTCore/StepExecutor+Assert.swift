@@ -123,6 +123,8 @@ extension StepExecutor {
             return try await executeAssertCount(step: step, phase: &phase)
         case "screenMatches":
             return try await executeAssertScreenMatches(step: step, phase: &phase)
+        case "keyboardShown", "keyboardNotShown":
+            return try await executeAssertKeyboardShown(assert, step: step, phase: &phase)
         default:
             return .skipped("unknown assertion: \(assert)")
         }
@@ -316,6 +318,15 @@ extension StepExecutor {
     private func executeAssertNotExists(step: FlowStep,
                                         phase: inout PhaseAccumulator) async throws -> StepResult.Status {
         let clock = ContinuousClock()
+        // `notExist(scroll:)` の内蔵探索(exist(scroll:) と対だが判定は逆: 見つかったら即失敗)。
+        // これは**空間**の判定(スクロールして探しても無いか)で、下のポーリングは**時間**の判定
+        // (現在のビューポートから消えるのを待つ)。前者が「無い」で終わっても、消滅アニメーションの
+        // 途中(ツリーにはまだ残っている)ことがあるため後者を差し替えず両方通す
+        if step.direction != nil, step.locator != nil {
+            let result = try await runScrollSearch(step: step, phase: &phase)
+            scrollSearchNote = Self.scrollSearchNote(result)
+            guard !result.found else { return .failed(Self.scrollFoundMessage(step)) }
+        }
         // 「消えるまで待つ」。初回で不在なら即 pass、在るならタイムアウトまで消滅を待つ。
         // 可視性(occlusion)は見ない: ツリーから消えたことが唯一の判定。
         let deadline = Date().addingTimeInterval(step.timeout ?? 5)
@@ -458,6 +469,41 @@ extension StepExecutor {
         return found
             ? .failed("the element is \(wantEnabled ? "disabled" : "enabled"): \(step.locatorSummary)")
             : .failed("element not found: \(step.locatorSummary)")
+    }
+
+    /// キーボード開閉はアニメーションを伴うため単発チェックはフレークする → notExists と同じ
+    /// 「状態が変わるまで待つ」ポーリング。ロケータは無いので resolve は挟まず、
+    /// snapshot.keyboardShown を直接見る。captureKeyboardStateOnNextSnapshot() は毎周回立て直す
+    /// (Android は1回の snapshot でしか有効でないフラグのため。iOS は no-op)。
+    /// **nil(不明)を非表示と解釈しない** — Android の旧ブリッジ/フラグ未着火を「非表示」の
+    /// 偽成功にすり替えると、キーボードが実際は開いたままでも keyboardIsNotShown が通ってしまう
+    private func executeAssertKeyboardShown(
+        _ assert: String, step: FlowStep,
+        phase: inout PhaseAccumulator) async throws -> StepResult.Status {
+        let clock = ContinuousClock()
+        let wantShown = assert == "keyboardShown"
+        let deadline = Date().addingTimeInterval(step.timeout ?? 5)
+        var backoff = PollBackoff()
+        var lastShown: Bool?
+        while true {
+            driver.captureKeyboardStateOnNextSnapshot()
+            let start = clock.now
+            var snapshot = try await driver.snapshot()
+            phase.snapshotMs += Self.ms(clock.now - start)
+            try await dismissInterruption(in: &snapshot, phase: &phase)
+            lastShown = snapshot.keyboardShown
+            if snapshot.keyboardShown == wantShown { return .passed }
+            if Date() >= deadline { break }
+            let waitStart = clock.now
+            try await Task.sleep(for: backoff.nextDelay())
+            phase.waitMs += Self.ms(clock.now - waitStart)
+        }
+        guard let lastShown else {
+            return .failed("cannot determine the keyboard state (the bridge may be outdated)")
+        }
+        return .failed(wantShown
+            ? "keyboard is not shown (timeout \(FTSeconds.format(step.timeout ?? 5))s)"
+            : "keyboard is still shown (timeout \(FTSeconds.format(step.timeout ?? 5))s)")
     }
 
     private func executeAssertChecked(

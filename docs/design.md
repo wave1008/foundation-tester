@@ -955,6 +955,7 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
 | `back()` は Shirates の `pressBack`(Android 専用)を home()/appSwitcher() と同列の OS 差吸収コマンドとして両 OS 提供(iOS はエッジスワイプ) | iOS に物理バックが無く、コマンド語彙を OS で割らない方針 |
 | `swipePointToPoint` / `swipeElementToElement` に withOffset・offsetY・intervalSeconds・repeat・safeMode・marginRatio・adjust が無い | ブリッジの drag が単発ジェスチャのため(scrollFrame と同じ事情) |
 | `clearInput` がソフトキー/Appium clear 機構ではない(xcuitest=末尾タップ+delete 連打 / inapp=first responder のテキスト置換 / Android=ACTION_SET_TEXT "") | キーボード要素を snapshot から除外しているため(pressEnter と同じ事情) |
+| キーボード可視の取得元が OS で違う(iOS=snapshot のフラグ / Android=dumpsys の InputMethod window) | IME が別プロセスの window でアプリの a11y ツリーに出ないため |
 
 ### `clearInput` の受け口ごとの機構と Flutter の縮退(2026-07-30)
 
@@ -977,6 +978,31 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
 積み増さない**方針(pressEnter の Flutter 対応と同じ規律)に従い、409 で既知の縮退へ落とす。
 **pressEnter と違い clear は xcuitest フォールバックが届く**(ref 有/無とも実測。1.1〜2.2s)ので
 機能は成立する。**再提案しない**(やるなら Flutter engine 側の公開経路が増えたとき)。
+
+### キーボードの観測と `hideKeyboard`(2026-07-30)
+
+**観測(`keyboardIsShown` / `keyboardIsNotShown`)は3経路すべてで動く**が、取得元が OS で違う:
+
+- **iOS xcuitest**: AX ツリー走査中に `.keyboard` ノードを見たか(`app.keyboards` クエリは使わない
+  — キーボードが別プロセス扱いでタイムアウトする。`handleType` のコメントと同じ事情)
+- **iOS in-app**: **`UITextEffectsWindow` の可視判定**。キーボードはキーウィンドウの外に載るので
+  AX ツリー走査では見つからない(閉じても window は残るため、画面内に張り出しているかで見る)
+- **Android**: ホスト側が `dumpsys window windows` の `InputMethod` window を見る(IME は別プロセスの
+  window でアプリの a11y ツリーに出ない)。**dumpsys は固定費なので毎 snapshot では叩かない** —
+  `AppDriver.captureKeyboardStateOnNextSnapshot()` を assert の直前に呼んだときだけ払う。
+  採らなかった snapshot は `keyboardShown == nil` = 不明で、**nil を「非表示」と解釈しない**
+  (`keyboardIsNotShown` が黙って通る嘘の成功になるため、明示的に失敗させる)
+
+**`hideKeyboard` は Android のみ**(戻るキー。**出ているときだけ撃つ** — 出ていないと画面が戻って
+しまうので、dumpsys で可視を確かめてから送る。これで冪等が保てる)。
+
+**iOS は実装手段が無く 501 で明示的に未対応**(3手すべて実機で不発。2026-07-30):
+`XCUIKeyboardKey.escape` の `typeText` / 掴んだ responder への `resignFirstResponder` /
+**nil ターゲットの `sendAction(resignFirstResponder)`** のいずれもキーボードが閉じない
+(Compose の入力受け口が自前でフォーカスを保持するため UIKit の標準手段が届かない)。
+残る手段は「キーボード上端より上の空白点をタップ」だが、**透明なタップ領域を踏む副作用**があり
+`hideKeyboard` が副作用を持つコマンドになるため採らない(ユーザー決定)。
+iOS で閉じたいときは `pressEnter()`(単一行の欄なら閉じる)。**再提案しない**。
 
 ### 型付きセレクタ(Sel。2026-07-27)
 

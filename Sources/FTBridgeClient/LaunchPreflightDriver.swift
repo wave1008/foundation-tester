@@ -71,6 +71,7 @@ public final class LaunchPreflightDriver: AppDriver {
     public func type(ref: Int?, text: String) async throws { try await base.type(ref: ref, text: text) }
     public func pressEnter() async throws { try await base.pressEnter() }
     public func clearInput(ref: Int?) async throws { try await base.clearInput(ref: ref) }
+    public func hideKeyboard() async throws { try await base.hideKeyboard() }
     public func back() async throws { try await base.back() }
     public func swipe(_ direction: FTSwipeDirection) async throws { try await base.swipe(direction) }
 

@@ -81,6 +81,8 @@ public final class SessionRecoveryDriver: AppDriver {
     public func screenshot() async throws -> Data { try await withRecovery { try await base.screenshot() } }
     // ref を使わない(フォーカス中要素へ作用する)ので tap(x:y:) と同じ扱い: 1回だけ回復+再試行する
     public func pressEnter() async throws { try await withRecovery { try await base.pressEnter() } }
+    // ref を取らず古びる状態も無いので withRecovery でよい(clearInput 側の recoverAndRethrow は不要)
+    public func hideKeyboard() async throws { try await withRecovery { try await base.hideKeyboard() } }
     /// terminate 後は回復対象にしない。ブリッジ側 handleTerminate も app=nil にするため以降は 409 に
     /// なるが、これは「意図してセッションを終わらせた」状態であって復旧すべき障害ではない。
     /// ここで lastBundleID を残すと、次の snapshot が activate で**アプリを勝手に起動し直し**、

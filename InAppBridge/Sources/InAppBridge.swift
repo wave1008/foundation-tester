@@ -6,7 +6,7 @@
 // ハンドラは InAppHTTPServer の accept ループ(バックグラウンド)で呼ばれる。UIKit 参照や
 // タッチ合成はメインへホップし、アクションは実行後に整定(InAppSettle)を待ってから応答する。
 //
-// 実装エンドポイント: /status /snapshot /tap /type /clear /pressEnter /swipe /press /screenshot。
+// 実装エンドポイント: /status /snapshot /tap /type /clear /pressEnter /hidekeyboard /swipe /press /screenshot。
 // /session はアプリ再起動を伴うためホスト側(BridgeProvisioner)が simctl launch+注入で担う。
 
 import Foundation
@@ -67,6 +67,7 @@ final class FTInAppBridge {
             case ("POST", "/type"): return try handleType(req.body)
             case ("POST", "/clear"): return try handleClear(req.body)
             case ("POST", "/pressEnter"): return try handlePressEnter()
+            case ("POST", "/hidekeyboard"): return try handleHideKeyboard()
             case ("POST", "/swipe"): return try handleSwipe(req.body)
             case ("POST", "/press"): return try handlePress(req.body)
             case ("GET", "/screenshot"): return try handleScreenshot()
@@ -142,6 +143,10 @@ final class FTInAppBridge {
             FTEnsureFlutterSemantics()
             return InAppSnapshot.capture(window: window)
         }
+        // **キーボードはキーウィンドウの外**(UITextEffectsWindow)に載るため、AX ツリー走査
+        // (InAppSnapshot の sawKeyboard)では見つからない。全 window から可視の
+        // TextEffects window を探すのが in-app での唯一の判定経路(2026-07-30 実測)
+        let keyboardShown: Bool = mainSync { Self.keyboardWindowVisible() }
 
         // **mainSync の外で行う**: WKWebView の DOM 読みは evaluateJavaScript の完了を待つが、
         // その完了はメインキューへ配送されるため、メインを保持したまま待つとデッドロックする
@@ -158,7 +163,22 @@ final class FTInAppBridge {
             elements: merged.elements,
             truncatedCount: merged.truncated,
             note: merged.note,
-            webViewPath: merged.webViewPath))
+            webViewPath: merged.webViewPath,
+            keyboardShown: keyboardShown))
+    }
+
+    /// ソフトキーボードが表示中か。**キーボードは UITextEffectsWindow(キーウィンドウとは別)に
+    /// 載る**ので window 一覧から探す。**存在だけでは判定にならない**(閉じても window は残る)ため
+    /// 可視かつ画面内に張り出しているかで見る
+    private static func keyboardWindowVisible() -> Bool {
+        for window in UIApplication.shared.windows
+        where NSStringFromClass(type(of: window)).contains("TextEffects") {
+            guard !window.isHidden, window.alpha > 0.01 else { continue }
+            // 閉じた直後は window が画面外(y >= 画面下端)へ退避するだけで残る
+            let screen = window.screen.bounds
+            if window.frame.minY < screen.maxY - 1 { return true }
+        }
+        return false
     }
 
     /// 自分自身から window までのクラス名(interop 判定用。UIKit 参照だがメイン外でも
@@ -457,6 +477,13 @@ final class FTInAppBridge {
                 + "診断: \(FTFirstResponderDiagnostics())")
         }
         return .json(OKResponse())
+    }
+
+    /// **iOS ではキーボードを閉じられない**(docs/design.md に不採用の記録)。resignFirstResponder は
+    /// 直接送っても nil ターゲットの sendAction でも閉じず(Compose の受け口が自前でフォーカスを
+    /// 保持する)、xcuitest の Esc も不発。**嘘の成功を返さない**ため 501 を返す
+    private func handleHideKeyboard() throws -> InAppHTTPServer.Response {
+        .error("hideKeyboard は iOS では未対応(Android のみ)。閉じたい場合は pressEnter を使う", status: 501)
     }
 
     private func handleSwipe(_ body: Data) throws -> InAppHTTPServer.Response {

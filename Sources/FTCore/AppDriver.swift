@@ -24,6 +24,13 @@ public protocol AppDriver {
     func type(ref: Int?, text: String) async throws
     /// 入力欄をクリアする(ref なし = フォーカス中の欄)。DSL の clearInput
     func clearInput(ref: Int?) async throws
+    /// フォーカス中の入力欄のファーストレスポンダを解除しソフトキーボードを閉じる(ref なし。DSL の hideKeyboard)。
+    func hideKeyboard() async throws
+    /// 次の snapshot() 呼び出しでだけキーボード表示状態(SnapshotResponse.keyboardShown)を採る。
+    /// StepExecutor が keyboardShown/keyboardNotShown アサートの直前に呼ぶ。既定は no-op
+    /// (iOS はツリー走査中に常に判定できるため不要)。Android は dumpsys 呼び出しが固定費なので、
+    /// 必要な snapshot でだけ払うためのフラグ(AndroidDriver 参照)
+    func captureKeyboardStateOnNextSnapshot()
     /// フォーカス中の入力欄で Enter を押す(ref なし。Shirates pressEnter 相当)。
     /// iOS はソフトキー tap ができない(キーボード要素を snapshot から除外しているため)代替経路を
     /// ドライバごとに持つ: xcuitest は typeText("\n")、inapp は Compose 入力欄への insertText("\n")
@@ -120,6 +127,12 @@ public extension AppDriver {
     func clearInput(ref: Int?) async throws {
         throw DriverError.badResponse(status: 501, body: "This driver does not support clearing input")
     }
+
+    func hideKeyboard() async throws {
+        throw DriverError.badResponse(status: 501, body: "This driver does not support hiding the keyboard")
+    }
+
+    func captureKeyboardStateOnNextSnapshot() {}
 
     func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
               pressSeconds: Double, durationSeconds: Double) async throws {

@@ -20,6 +20,31 @@ public enum AndroidForegroundWindows {
     /// 可視の別 window 名を z 順(手前が先)で返す。アプリの window が見つからなければ空
     /// (判定できないときは黙る = 誤った断定をしない)
     public static func overlaying(package: String, dumpsys: String) -> [String] {
+        let blocks = windowBlocks(dumpsys)
+        guard let appIndex = blocks.indices.first(where: {
+            blocks[$0].visible && blocks[$0].name.hasPrefix("\(package)/")
+        }) else { return [] }
+
+        return blocks.indices.prefix(upTo: appIndex).compactMap { index in
+            guard blocks[index].visible else { return nil }
+            let name = blocks[index].name
+            guard !name.hasPrefix("\(package)/") else { return nil }
+            guard !chromePrefixes.contains(where: { name.hasPrefix($0) }) else { return nil }
+            return name
+        }
+    }
+
+    /// `dumpsys window windows` にソフトキーボード(IME)の window が**表示中**で存在するか。
+    /// AndroidDriver.snapshot() の keyboardShown 判定用(オンデバイスのブリッジは別プロセスの
+    /// window を a11y ツリーから見れないため、ホスト側でここを叩いて補う)。
+    /// isVisible=false の居残り window(閉じかけ等)は false 扱い(overlaying と同じ可視性規約)
+    public static func keyboardVisible(dumpsys: String) -> Bool {
+        windowBlocks(dumpsys).contains { $0.visible && $0.name.hasPrefix("InputMethod") }
+    }
+
+    /// `Window #N Window{... 名前}:` ブロックを (名前, isVisible) の並び(z 順)に分解する。
+    /// overlaying / keyboardVisible の共通パーサ(可視性判定はここ1箇所)
+    private static func windowBlocks(_ dumpsys: String) -> [(name: String, visible: Bool)] {
         var names: [String] = []
         var visibility: [Bool] = []
         var current: String?
@@ -36,18 +61,7 @@ public enum AndroidForegroundWindows {
             }
         }
         if names.count > visibility.count { visibility.append(false) }
-
-        guard let appIndex = names.indices.first(where: {
-            visibility[$0] && names[$0].hasPrefix("\(package)/")
-        }) else { return [] }
-
-        return names.indices.prefix(upTo: appIndex).compactMap { index in
-            guard visibility[index] else { return nil }
-            let name = names[index]
-            guard !name.hasPrefix("\(package)/") else { return nil }
-            guard !chromePrefixes.contains(where: { name.hasPrefix($0) }) else { return nil }
-            return name
-        }
+        return zip(names, visibility).map { (name: $0, visible: $1) }
     }
 
     /// `Window #7 Window{b9b01a8 u0 InputMethod}:` → `InputMethod`

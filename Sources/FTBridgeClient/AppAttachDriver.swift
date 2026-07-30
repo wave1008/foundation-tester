@@ -78,6 +78,18 @@ public final class AppAttachDriver: AppDriver {
     public func press(ref: Int, duration: Double) async throws { try await client.press(ref: ref, duration: duration) }
     public func tap(x: Double, y: Double) async throws { try await client.tap(x: x, y: y) }
 
+    /// ref を使わないので pressEnter と同じ回復を入れる(上の pressEnter のコメント参照)
+    public func hideKeyboard() async throws {
+        try await ensureAttached()
+        do {
+            try await client.hideKeyboard()
+        } catch {
+            guard Self.isRecoverableSession(error) else { throw error }
+            try await client.activate(bundleID: bundleID)
+            try await client.hideKeyboard()
+        }
+    }
+
     /// ref 無し(フォーカス中要素のクリア)は type と同じ回復を入れる。ref 有りには入れない
     /// (activate が refFrames をクリアするため再試行時に別要素を指す)
     public func clearInput(ref: Int?) async throws {

@@ -57,6 +57,9 @@ public final class InAppDriver: AppDriver {
     public func clearInput(ref: Int?) async throws {
         try await withCrashContext { try await client.clearInput(ref: ref) }
     }
+    public func hideKeyboard() async throws {
+        try await withCrashContext { try await client.hideKeyboard() }
+    }
     public func swipe(_ direction: FTSwipeDirection) async throws {
         try await withCrashContext { try await client.swipe(direction) }
     }
