@@ -199,7 +199,7 @@ struct MachineCommand: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
             commandName: "set", abstract: "Register this machine's name")
 
-        @Argument(help: "Machine name (e.g. \"M1 Max(64GB)\")")
+        @Argument(help: "Machine name (e.g. \"M2 Ultra(192GB)\")")
         var name: String
 
         func run() async throws {
