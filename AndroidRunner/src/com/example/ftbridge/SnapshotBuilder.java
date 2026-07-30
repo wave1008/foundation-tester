@@ -27,10 +27,15 @@ final class SnapshotBuilder {
     static final class Result {
         final String json;
         final Map<Integer, double[]> refCenters;  // ref → {centerX, centerY}
+        /// ref → 短縮 resource-id(無い要素はキー無し)。/type・/clear が**座標がズレても同じ要素を
+        /// 追跡し直す**ために使う(キーボードの開閉で adjustResize が走ると座標は当てにならない)
+        final Map<Integer, String> refIds;
         final Rect screen;
-        Result(String json, Map<Integer, double[]> refCenters, Rect screen) {
+        Result(String json, Map<Integer, double[]> refCenters, Map<Integer, String> refIds,
+               Rect screen) {
             this.json = json;
             this.refCenters = refCenters;
+            this.refIds = refIds;
             this.screen = screen;
         }
     }
@@ -110,6 +115,7 @@ final class SnapshotBuilder {
 
         JSONArray elements = new JSONArray();
         Map<Integer, double[]> centers = new HashMap<>();
+        Map<Integer, String> ids = new HashMap<>();
         int truncated = 0;
         for (UINode node : nodes) {
             if (!shouldInclude(node, screen)) continue;
@@ -119,6 +125,8 @@ final class SnapshotBuilder {
             }
             int ref = elements.length() + 1;
             centers.put(ref, new double[]{node.bounds.exactCenterX(), node.bounds.exactCenterY()});
+            String shortId = shortResourceId(node.resourceID);
+            if (shortId != null) ids.put(ref, shortId);
             elements.put(makeInfo(node, ref));
         }
 
@@ -148,7 +156,7 @@ final class SnapshotBuilder {
         response.put("elements", elements);
         response.put("truncatedCount", truncated);
         if (offscreen.length() > 0) response.put("offscreen", offscreen);
-        return new Result(response.toString(), centers, screen);
+        return new Result(response.toString(), centers, ids, screen);
     }
 
     /** preorder 走査。不可視ノードはサブツリーごと除外(uiautomator dump と同じ) */
@@ -289,6 +297,13 @@ final class SnapshotBuilder {
             default:
                 return !node.resourceID.isEmpty();
         }
+    }
+
+    /** "com.example:id/foo" → "foo"(makeInfo の identifier と同じ短縮規則。片方だけ変えない) */
+    private static String shortResourceId(String resourceID) {
+        if (resourceID == null || resourceID.isEmpty()) return null;
+        int idx = resourceID.indexOf("id/");
+        return idx >= 0 ? resourceID.substring(idx + 3) : resourceID;
     }
 
     private static JSONObject makeInfo(UINode node, int ref) throws JSONException {
