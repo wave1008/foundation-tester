@@ -236,7 +236,15 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
 | `501` / `404`(本文 `not found:`) | このエンジンでは**原理的に不可** | XCUITest へフォールバック(§10 の「in-app で不可・XCUITest で可」) |
 | `404`(ref 不明) | スナップショット取り直しが要る本物の失敗 | 失敗(フォールバックしない。本文前置で 501 系と区別) |
 | `409` | 一時的競合(キーウィンドウ不在・セッション消失) | セッション消失だけ `SessionRecoveryDriver` が張り直す。**フォールバック判定に使わない** |
+| `422` | セッションはあるが**今のこの画面では実行できない**(フォーカス欄が無い・クリアしきれない) | 失敗。`clearInput` だけ 409 と同様に typeDriver へ回す(`isClearInputFallback`) |
 | `503` | セッションはあるが**対象アプリが起動していない** | `AppAttachDriver` が activate して1回再試行 |
+
+**XCUITest ランナーは 409 を `requireApp()` の1箇所からしか投げてはいけない**(`SessionRecoveryDriver`
+がこの経路の 409 を無条件に「セッション消失」と読み、activate を撃つため)。同じ「今は無理」を
+表したいときは 422 を使う。in-app ブリッジは逆に 409 を一時的競合へ広く使ってよい
+(あちらは `SessionRecoveryDriver` で包まれない)。2026-07-31 に `handleClear` が 409 を足して
+この不変条件が破れ、clearInput の正当な失敗が「ランナーが再起動した可能性」と誤報告された
+(実害)。以後 `BridgeRouterStatusContractTests` が 409/503/501 の本数を数えて守る
 
 **in-app dylib は「古いまま注入される」事故が起きやすい**(2026-07-27 に実害):
 `InAppBridge/build/` は gitignore・手動ビルドなので、ブリッジのソースを直しても

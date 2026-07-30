@@ -1341,6 +1341,31 @@ final class StepExecutorTests: XCTestCase {
         ])
     }
 
+    /// **422 も 409 と同じ扱い**にすること。XCUITest ランナーは同じ事情(フォーカス欄が無い/
+    /// 消し切れない)を 409 では返せない — 409 は SessionRecoveryDriver がセッション消失と
+    /// 断定して activate を撃つため 422 に分けてある(BridgeRouter.handleClear)。
+    /// ここを 409 だけに戻すと、hybrid の in-app→XCUITest の再試行が丸ごと不発になる
+    func testClearInput422FallsBackToTypeDriverLike409() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[element(ref: 1, id: "field_note")]])
+        primary.clearInputError = DriverError.badResponse(
+            status: 422, body: "フォーカスされた入力欄がありません")
+        let typeDriver = FakeAppDriver(name: "typedriver", log: log,
+                                       snapshotElements: [[element(ref: 2, id: "field_note")]])
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver)
+        let step = FlowStep(action: "clearInput", locator: FlowLocator(id: "field_note"))
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("422 からの typeDriver 切替による passed を期待したが \(outcome.status) だった"); return
+        }
+        XCTAssertEqual(outcome.driverFallback, "fell back to XCUITest")
+        XCTAssertTrue(log.entries.contains("typedriver.clearInput(ref:2)"),
+                      "422 でも typeDriver へ回すこと: \(log.entries)")
+    }
+
     /// ロケータ無し版でも 409 は typeDriver(ref: nil)へフォールバックすること(pressEnter と同じ形)。
     /// pre-snapshot(実装2の下ごしらえ)は 409 の前に必ず1回撮る
     func testClearInputWithoutLocator409FallsBackToTypeDriver() async throws {

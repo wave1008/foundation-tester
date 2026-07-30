@@ -1,7 +1,12 @@
 // XCUITest ブリッジ(BridgeRouter.swift requireApp())は POST /session でしかセッションを持たず、
-// ランナー再起動でセッションが失われると全操作が 409 で落ちる。409 を投げるのはこの1箇所だけなので
-// (`grep -n "409" Runner/FTesterRunnerUITests/BridgeRouter.swift`)、この経路の 409 は
-// 「セッション消失」と断定してよい。
+// ランナー再起動でセッションが失われると全操作が 409 で落ちる。409 を投げるのはこの1箇所だけなので、
+// この経路の 409 は「セッション消失」と断定してよい。
+//
+// **この「1箇所だけ」は不変条件であって観察ではない**: 一度 handleClear が 409 を足して破れており
+// (2026-07-31 修正)、その間 clearInput の正当な失敗が「ランナーが再起動した可能性」と誤報告され、
+// 無用な activate まで撃っていた。以後 `BridgeRouterStatusContractTests` が本数を数えて守る。
+// **in-app ブリッジには適用しない** — あちらは 409 を一時的競合(キーウィンドウ不在・フォーカス
+// 無し)に広く使っており意味が違う(ScenarioRunnerMain の driver 組み立て参照)。
 //
 // 回復は activate(launch ではない)で行う: セッション確立(handleLaunch)は refFrames をクリアするため、
 // 直前 snapshot の ref はセッション再確立後すべて無効になる。launch はアプリを再起動しナビ状態を

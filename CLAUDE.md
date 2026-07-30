@@ -126,6 +126,11 @@
   **ブリッジの入力ファイル一覧は `Sources/FTCore/BridgeSourceSet.swift` が唯一の定義元**
   (`InAppLauncher` の dylib 再ビルド判定も同じ一覧を使う。片方だけ変えない)。
   指紋の性質(コメント編集でも落ちる理由)・保留中の代替案は docs/verification.md
+- **エラーの status はホストの分岐契約**(表は docs/design.md §「エラーの status」)。
+  とくに **XCUITest ランナーの 409 は `requireApp()` の1箇所だけ** — ホストはこの経路の 409 を
+  無条件に「セッション消失」と読んで activate を撃つ。「セッションはあるが今は無理」は **422**
+  を使う(`BridgeRouterStatusContractTests` が 409/503/501 の本数を数えて守る)。
+  in-app ブリッジは逆に 409 を一時的競合へ広く使ってよい(あちらは包まれない)
 - **Android のテキスト注入(`InputInjector`)を触ったら負荷10周で判定する**
   (`for i in $(seq 10); do Scripts/e2e.sh --cmp --android; done`)。**単独実行では出ない**
   flake がある(高負荷でだけ約40%)。守る規律 —「`ACTION_SET_TEXT` の `true` は受理であって

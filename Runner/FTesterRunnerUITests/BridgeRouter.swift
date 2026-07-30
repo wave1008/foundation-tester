@@ -276,6 +276,18 @@ final class BridgeRouter {
     /// delete すると左側の一部しか消えない**ため、必ず frame の右端近くをタップしてカーソルを
     /// 末尾に揃える。1回で消し切れないことがある(delete 中に IME/バリデーションが割り込む等)ため
     /// 最大2周する。
+    ///
+    /// **失敗は 409 ではなく 422**(2026-07-31 修正)。ここは「セッションはあるが今のこの画面では
+    /// クリアできない」であって、`requireApp` のセッション消失とは別物。409 で返していた頃は
+    /// `SessionRecoveryDriver` が**一律にセッション消失と断定**し、無用な activate を撃ったうえで
+    /// 「ランナーが再起動した可能性」という誤った理由でステップを落としていた(実害: E2E の
+    /// clearInput 失敗の原因が読めなかった)。**この経路で 409 を返さないこと** —
+    /// XCUITest ランナーの 409 は `requireApp` の1箇所だけという不変条件を
+    /// `BridgeRouterStatusContractTests` が守っている。
+    /// 422 を選ぶ理由: 501/404 は「このエンジンでは不可」(XCUITest へのフォールバック判定)、
+    /// 503 は「アプリが起動していない」に取られているため。
+    /// ホスト側の `isClearInputFallback` は 409 と同じく 422 でもフォールバックを許すので、
+    /// hybrid の in-app→XCUITest の再試行はこれまでどおり効く
     private func handleClear(_ body: Data) throws -> BridgeHTTPServer.Response {
         let req = try decode(ClearRequest.self, body)
         let app = try requireLiveApp()
@@ -285,7 +297,7 @@ final class BridgeRouter {
         let focused = app.descendants(matching: .any)
             .matching(NSPredicate(format: "hasKeyboardFocus == true")).firstMatch
         guard focused.exists else {
-            throw BridgeError(409, "フォーカスされた入力欄がありません(hasKeyboardFocus な要素が"
+            throw BridgeError(422, "フォーカスされた入力欄がありません(hasKeyboardFocus な要素が"
                 + "見つかりません)。対象を先に tap するか ref を指定してください")
         }
         for _ in 0..<2 {
@@ -295,7 +307,7 @@ final class BridgeRouter {
             focused.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: text.count))
         }
         guard Self.remainingText(of: focused) == nil else {
-            throw BridgeError(409, "入力欄をクリアしきれませんでした(値が残っています)")
+            throw BridgeError(422, "入力欄をクリアしきれませんでした(値が残っています)")
         }
         return .json(OKResponse())
     }
