@@ -201,27 +201,46 @@ public final class FMReplayDelegate: ReplayDelegate {
         defer { FMGate.leave() }
         // マルチモーダル失敗時のフォールバックとしてテキストのみでも再試行する
         // (Attachment は macOS 27+。26 では常にテキストのみの経路を通る)
+        //
+        // **試行ごとに FMHealth へ記録する**(heal / screenIs と同じ規約)。記録は失敗率の分母と
+        // FMBreaker の両方を養う(FMHealth.record → FMBreaker.recordSuccess/Failure)ので、
+        // 記録を欠くと ①結果 JSON の fm に triage が出ず「呼ばれていない」と誤読され
+        // ②triage の失敗がブレーカを進めないため、FM が死んだホストで失敗するシナリオが
+        // 毎回 2 試行ぶんの時間を捨て続ける。画像経路とテキスト経路は別の FM 呼び出しなので
+        // それぞれ 1 件として数える(画像が死んでテキストだけ生きている状態が失敗率に出る)。
         if #available(macOS 27, *), let png = screenshotPNG, let cgImage = Self.cgImage(fromPNG: png) {
-            let response = try? await LanguageModelSession(instructions: instructions).respond(
+            let imageStartedAt = Date()
+            do {
+                let suggestion = try await LanguageModelSession(instructions: instructions).respond(
+                    generating: TriageSuggestion.self,
+                    options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 300)
+                ) {
+                    text
+                    "失敗時点のスクリーンショット:"
+                    Attachment(cgImage)
+                }.content
+                FMHealth.record(kind: "triage", ms: OcclusionVerifier.elapsedMs(imageStartedAt), ok: true)
+                return Self.info(from: suggestion)
+            } catch {
+                // ここでは return しない(下のテキストのみ経路で再試行する)
+                FMHealth.record(kind: "triage", ms: OcclusionVerifier.elapsedMs(imageStartedAt),
+                                ok: false, error: "triage(画像): \(FMHealth.describe(error))")
+            }
+        }
+        let textStartedAt = Date()
+        do {
+            let suggestion = try await LanguageModelSession(instructions: instructions).respond(
+                to: text,
                 generating: TriageSuggestion.self,
                 options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 300)
-            ) {
-                text
-                "失敗時点のスクリーンショット:"
-                Attachment(cgImage)
-            }
-            if let suggestion = response?.content {
-                return Self.info(from: suggestion)
-            }
-        }
-        guard let suggestion = try? await LanguageModelSession(instructions: instructions).respond(
-            to: text,
-            generating: TriageSuggestion.self,
-            options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 300)
-        ).content else {
+            ).content
+            FMHealth.record(kind: "triage", ms: OcclusionVerifier.elapsedMs(textStartedAt), ok: true)
+            return Self.info(from: suggestion)
+        } catch {
+            FMHealth.record(kind: "triage", ms: OcclusionVerifier.elapsedMs(textStartedAt),
+                            ok: false, error: "triage: \(FMHealth.describe(error))")
             return nil
         }
-        return Self.info(from: suggestion)
     }
 
     // MARK: - Helpers
