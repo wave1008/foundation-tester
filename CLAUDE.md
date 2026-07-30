@@ -46,6 +46,9 @@
   **TOOL_ROOT の解決規則は preflight.sh / update.sh / `src/toolRootResolve.ts` と同じ**(4箇所。片方だけ変えない。
   `toolRootContract.test.mjs` が規則の3語(クローン判別マーカー・既定の隣・Package.swift の宣言)の欠落を検出)
 - DSL コマンドリファレンス(全コマンドの引数・挙動。利用者向け): docs/commands.md
+- Shirates(Classic)との対応表(何が揃っていて何を持たないか・意図的に持たないものの理由・
+  OS で挙動が割れるもの・足す価値がある残り): docs/shirates-parity.md。
+  **コマンドを足す/名前を変えるときは必ずここも更新する**(準拠漏れの一覧を含む)
 - CI 連携(`ftester run --junit` の JUnit 出力・GitHub Actions 例・flaky 方針): docs/ci.md
 - リリース(git タグ発行と版ピンの関係。配布はソースビルド前提): docs/releasing.md(`Scripts/release.sh`)
 - 設計書(アーキテクチャ・Swift DSL 仕様・セレクタ記法・プロファイル): docs/design.md
