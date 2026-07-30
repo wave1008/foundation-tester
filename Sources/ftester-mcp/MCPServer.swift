@@ -79,7 +79,7 @@ final class MCPServer {
                 reply(id: id, result: ["content": content, "isError": false])
             } catch {
                 reply(id: id, result: [
-                    "content": [["type": "text", "text": "エラー: \(error.localizedDescription)"]],
+                    "content": [["type": "text", "text": "Error: \(error.localizedDescription)"]],
                     "isError": true,
                 ])
             }
@@ -152,7 +152,7 @@ final class MCPServer {
         case "android":
             created = try AndroidDriver(serial: args["serial"] as? String)
         default:
-            throw MCPError("platform は ios / android のいずれかです: \(platform)")
+            throw MCPError("platform must be ios or android: \(platform)")
         }
         drivers[key] = created
         return created
@@ -185,7 +185,7 @@ final class MCPServer {
         prologue.append(contentsOf: resolved.warnings.map { "⚠️ \($0)" })
         let platform = platformArg ?? resolved.devices.first?.platform ?? "ios"
         guard let device = resolved.devices.first(where: { $0.platform == platform }) else {
-            throw MCPError("プロファイル \(profileName) に \(platform) のデバイスがありません")
+            throw MCPError("profile \(profileName) has no \(platform) device")
         }
         if platform == "ios" {
             // ブリッジ資産(InAppBridge/・Runner/)を持つ**ツール本体**のルート。受け手パッケージの
@@ -215,19 +215,19 @@ final class MCPServer {
         switch tool {
         case "ft_status":
             let status = try await driver(args).status()
-            return text("ready: \(status.ready) / \(status.device) (\(status.osVersion)) / session: \(status.sessionBundleID ?? "なし")")
+            return text("ready: \(status.ready) / \(status.device) (\(status.osVersion)) / session: \(status.sessionBundleID ?? "none")")
 
         case "ft_install":
             guard let packagePath = args["packagePath"] as? String else {
-                throw MCPError("packagePath が必要です")
+                throw MCPError("packagePath is required")
             }
             try await driver(args).install(packagePath: packagePath)
-            return text("インストールしました: \(packagePath)")
+            return text("Installed: \(packagePath)")
 
         case "ft_launch":
-            guard let bundleID = args["bundleId"] as? String else { throw MCPError("bundleId が必要です") }
+            guard let bundleID = args["bundleId"] as? String else { throw MCPError("bundleId is required") }
             try await driver(args).launch(bundleID: bundleID)
-            return text("起動しました: \(bundleID)")
+            return text("Launched: \(bundleID)")
 
         case "ft_snapshot":
             let snapshot = try await driver(args).snapshot()
@@ -237,30 +237,30 @@ final class MCPServer {
             let d = try await driver(args)
             if let ref = args["ref"] as? Int {
                 try await d.tap(ref: ref)
-                return text("tap [\(ref)] 完了。画面が変わった可能性があるため ft_snapshot で再取得してください")
+                return text("tap [\(ref)] done. The screen may have changed — take a fresh ft_snapshot")
             }
             if let x = args["x"] as? Double, let y = args["y"] as? Double {
                 try await d.tap(x: x, y: y)
-                return text("tap (\(x), \(y)) 完了")
+                return text("tap (\(x), \(y)) done")
             }
-            throw MCPError("ref か x/y が必要です")
+            throw MCPError("ref or x/y is required")
 
         case "ft_type":
-            guard let content = args["text"] as? String else { throw MCPError("text が必要です") }
+            guard let content = args["text"] as? String else { throw MCPError("text is required") }
             try await driver(args).type(ref: args["ref"] as? Int, text: content)
-            return text("入力しました: \"\(content)\"")
+            return text("Typed: \"\(content)\"")
 
         case "ft_swipe":
             guard let direction = FTSwipeDirection(rawValue: args["direction"] as? String ?? "") else {
-                throw MCPError("direction は up/down/left/right のいずれかです")
+                throw MCPError("direction must be one of up/down/left/right")
             }
             try await driver(args).swipe(direction)
-            return text("swipe \(direction.rawValue) 完了")
+            return text("swipe \(direction.rawValue) done")
 
         case "ft_press":
-            guard let ref = args["ref"] as? Int else { throw MCPError("ref が必要です") }
+            guard let ref = args["ref"] as? Int else { throw MCPError("ref is required") }
             try await driver(args).press(ref: ref, duration: args["duration"] as? Double ?? 1.0)
-            return text("press [\(ref)] 完了")
+            return text("press [\(ref)] done")
 
         case "ft_screenshot":
             let png = try await driver(args).screenshot()
@@ -268,7 +268,7 @@ final class MCPServer {
 
         case "ft_terminate":
             try await driver(args).terminate()
-            return text("アプリを終了しました")
+            return text("Terminated the app")
 
         case "ft_list_scenarios":
             return try listScenarios(args)
@@ -286,7 +286,7 @@ final class MCPServer {
                 + "\n" + (vision.available ? "✅ " : "⚠️ ") + vision.detail)
 
         default:
-            throw MCPError("未知のツール: \(tool)")
+            throw MCPError("unknown tool: \(tool)")
         }
     }
 
@@ -310,36 +310,36 @@ final class MCPServer {
             "\(info.id)"
                 + (info.title.isEmpty ? "" : " — \(info.title)")
                 + " (\(info.platform ?? "ios/android"), app: \(info.app))"
-                + (info.deleted ? "【削除済み @Deleted。一括実行から除外】" : "")
+                + (info.deleted ? " [deleted @Deleted — excluded from bulk runs]" : "")
         }
         return text(lines.isEmpty
-                    ? "シナリオがありません(Projects/\(project.name)/Scenarios/ に @TestClass を追加してください)"
-                    : "プロジェクト: \(project.name)\n" + lines.joined(separator: "\n"))
+                    ? "No scenarios (add a @TestClass under Projects/\(project.name)/Scenarios/)"
+                    : "Project: \(project.name)\n" + lines.joined(separator: "\n"))
     }
 
     private func listProjects() throws -> [[String: Any]] {
         guard let root = ScenarioHost.packageRoot() else {
-            throw MCPError("Package.swift が見つかりません(リポジトリ内で実行してください)")
+            throw MCPError("Package.swift not found (run this inside the repository)")
         }
         let projects = ProjectStore.all(repoRoot: root)
         guard !projects.isEmpty else {
-            return text("プロジェクトがありません(ftester project create <name> で作成)")
+            return text("No projects (create one with: ftester project create <name>)")
         }
-        let machineName = LocalConfig.currentMachineName() ?? "未登録"
-        var lines = ["このマシン: \(machineName)"]
+        let machineName = LocalConfig.currentMachineName() ?? "unregistered"
+        var lines = ["This machine: \(machineName)"]
         for project in projects {
             let runs = ProfileResolver.runProfileNames(project: project)
             let machines = ProfileResolver.machineNames(project: project)
             lines.append("\(project.name)"
-                + " — 実行プロファイル: \(runs.isEmpty ? "なし" : runs.joined(separator: ", "))"
-                + " / マシン: \(machines.isEmpty ? "なし" : machines.joined(separator: ", "))")
+                + " — run profiles: \(runs.isEmpty ? "none" : runs.joined(separator: ", "))"
+                + " / machines: \(machines.isEmpty ? "none" : machines.joined(separator: ", "))")
         }
         return text(lines.joined(separator: "\n"))
     }
 
     /// シナリオ実行(自動ビルド込み)。サブプロセス(ftester-scenarios)に委譲する
     private func runScenario(_ args: [String: Any]) async throws -> [[String: Any]] {
-        guard let id = args["id"] as? String else { throw MCPError("id が必要です") }
+        guard let id = args["id"] as? String else { throw MCPError("id is required") }
         let project = try ScenarioHost.project(named: args["project"] as? String)
         if !(args["skipBuild"] as? Bool ?? false) {
             try ScenarioHost.build(project: project)
@@ -347,7 +347,7 @@ final class MCPServer {
         let all = try ScenarioHost.list(project: project)
         guard let info = all.first(where: { $0.id == id })
             ?? all.first(where: { $0.id.hasPrefix(id + ".") }) else {
-            throw MCPError("シナリオが見つかりません: \(id)(利用可能: \(all.map(\.id).joined(separator: ", ")))")
+            throw MCPError("scenario not found: \(id) (available: \(all.map(\.id).joined(separator: ", ")))")
         }
 
         var fm = FMConfig(heal: args["heal"] as? Bool ?? false)
@@ -396,20 +396,20 @@ final class MCPServer {
 
     static let platformProperty: [String: Any] = [
         "type": "string", "enum": ["ios", "android"],
-        "description": "対象プラットフォーム(省略時 ios)",
+        "description": "Target platform (default ios)",
     ]
     static let portProperty: [String: Any] = [
-        "type": "integer", "description": "iOS ブリッジのポート(既定 8123)",
+        "type": "integer", "description": "iOS bridge port (default 8123)",
     ]
     static let serialProperty: [String: Any] = [
-        "type": "string", "description": "Android デバイスのシリアル",
+        "type": "string", "description": "Android device serial",
     ]
     static let profileProperty: [String: Any] = [
         "type": "string",
-        "description": "実行プロファイル名。指定すると ft_run_scenario と同じデバイスへ接続する(profiles/runs/)",
+        "description": "Run profile name. When given, connects to the same device as ft_run_scenario (profiles/runs/)",
     ]
     static let projectProperty: [String: Any] = [
-        "type": "string", "description": "テストプロジェクト名(省略時は既定プロジェクト)",
+        "type": "string", "description": "Test project name (defaults to the default project)",
     ]
     /// 全ツール共通のデバイス選択プロパティ。tool() が無条件で足す
     static let commonDeviceProperties: [(String, [String: Any])] = [
@@ -421,47 +421,47 @@ final class MCPServer {
     ]
 
     static let toolDefinitions: [[String: Any]] = [
-        tool("ft_status", "デバイス/ブリッジの接続状態を確認する", [:]),
-        tool("ft_install", "パッケージファイルからアプリをインストールする(iOS: .app バンドル / Android: .apk)", [
-            "packagePath": ["type": "string", "description": "パッケージファイルの絶対パス"],
+        tool("ft_status", "Check the device/bridge connection state", [:]),
+        tool("ft_install", "Install an app from a package file (iOS: .app bundle / Android: .apk)", [
+            "packagePath": ["type": "string", "description": "Absolute path of the package file"],
         ], required: ["packagePath"]),
-        tool("ft_launch", "アプリを起動する(起動済みなら先頭画面から再起動)", [
-            "bundleId": ["type": "string", "description": "bundle ID(iOS)/ パッケージ名(Android)"],
+        tool("ft_launch", "Launch the app (if already running, restarts from the first screen)", [
+            "bundleId": ["type": "string", "description": "bundle ID (iOS) / package name (Android)"],
         ], required: ["bundleId"]),
-        tool("ft_snapshot", "現在画面の要素一覧を取得する。各行 [ref] Type \"label\" id=... (x,y WxH)。tap/type はこの ref を使う", [:]),
-        tool("ft_tap", "要素(ref)または座標(x,y)をタップする。x/y は ft_snapshot の frame と同一座標系(iOS=ポイント pt / Android=デバイスピクセル px)。スクリーンショットのピクセルではない。"
-            + "【iOS の既知の制約】Compose Multiplatform 等の高密度・縦スクロール画面では、ビューポート外(フォールド下)の要素の frame が画面下端に丸められて報告されることがあり、その座標/ref をタップしても当たらない。対象を ft_swipe で可視領域に入れてから ft_snapshot し直してタップする。", [
-            "ref": ["type": "integer", "description": "ft_snapshot の参照番号"],
-            "x": ["type": "number", "description": "iOS=pt / Android=px(snapshot の frame と同一座標系)"],
-            "y": ["type": "number", "description": "iOS=pt / Android=px(snapshot の frame と同一座標系)"],
+        tool("ft_snapshot", "Get the element list of the current screen. Each line: [ref] Type \"label\" id=... (x,y WxH). Use these refs for tap/type", [:]),
+        tool("ft_tap", "Tap an element (ref) or a coordinate (x,y). x/y use the same coordinate system as the ft_snapshot frames (iOS = points pt / Android = device pixels px) — NOT screenshot pixels. "
+            + "[Known iOS limitation] On dense, vertically scrolling screens (e.g. Compose Multiplatform), frames of elements below the fold can be reported clamped to the bottom edge, so tapping that coordinate/ref misses. Bring the target into view with ft_swipe, take a fresh ft_snapshot, then tap.", [
+            "ref": ["type": "integer", "description": "Reference number from ft_snapshot"],
+            "x": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],
+            "y": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],
         ]),
-        tool("ft_type", "テキストを入力する(ref 指定時はその入力欄をタップしてから入力)", [
+        tool("ft_type", "Type text (with ref, taps that field first)", [
             "text": ["type": "string"],
-            "ref": ["type": "integer", "description": "入力欄の参照番号(省略時はフォーカス中の要素)"],
+            "ref": ["type": "integer", "description": "Reference number of the input field (defaults to the focused element)"],
         ], required: ["text"]),
-        tool("ft_swipe", "スワイプする(up=下へスクロール)", [
+        tool("ft_swipe", "Swipe (up = scroll down the content)", [
             "direction": ["type": "string", "enum": ["up", "down", "left", "right"]],
         ], required: ["direction"]),
-        tool("ft_press", "要素を長押しする", [
+        tool("ft_press", "Long-press an element", [
             "ref": ["type": "integer"],
-            "duration": ["type": "number", "description": "秒(既定 1.0)"],
+            "duration": ["type": "number", "description": "Seconds (default 1.0)"],
         ], required: ["ref"]),
-        tool("ft_screenshot", "スクリーンショットを撮る(画像を返す)。視覚検証に使う", [:]),
-        tool("ft_terminate", "起動中のアプリを終了する", [:]),
-        tool("ft_list_scenarios", "Swift DSL シナリオ(Projects/<name>/Scenarios/)の一覧を返す(自動ビルド込み。コンパイルエラーはそのまま返る)", [
-            "project": ["type": "string", "description": "テストプロジェクト名(省略時は既定プロジェクト)"],
-            "skipBuild": ["type": "boolean", "description": "swift build をスキップ(既定 false)"],
+        tool("ft_screenshot", "Take a screenshot (returns an image). Use it for visual verification", [:]),
+        tool("ft_terminate", "Terminate the running app", [:]),
+        tool("ft_list_scenarios", "List the Swift DSL scenarios (Projects/<name>/Scenarios/). Builds automatically; compile errors are returned as-is", [
+            "project": ["type": "string", "description": "Test project name (defaults to the default project)"],
+            "skipBuild": ["type": "boolean", "description": "Skip the swift build (default false)"],
         ]),
-        tool("ft_run_scenario", "シナリオを決定的に実行する。失敗時はトリアージとレポートパスを返す(自動ビルド込み)", [
-            "id": ["type": "string", "description": "シナリオ ID(クラス名.メソッド名。ft_list_scenarios で確認)"],
-            "project": ["type": "string", "description": "テストプロジェクト名(省略時は既定プロジェクト)"],
-            "profile": ["type": "string", "description": "実行プロファイル名(profiles/runs/。接続先・heal・レポート先を解決)"],
-            "heal": ["type": "boolean", "description": "ロケータ自己修復の上書き(省略時: profile 指定ならその設定、無指定なら false。profile の fm:false 時は true でも無効)"],
-            "port": ["type": "integer", "description": "iOS ブリッジのポート(既定 8123)"],
-            "serial": ["type": "string", "description": "Android デバイスのシリアル"],
+        tool("ft_run_scenario", "Run a scenario deterministically. On failure, returns the triage and the report path. Builds automatically", [
+            "id": ["type": "string", "description": "Scenario ID (Class.method; see ft_list_scenarios)"],
+            "project": ["type": "string", "description": "Test project name (defaults to the default project)"],
+            "profile": ["type": "string", "description": "Run profile name (profiles/runs/; resolves the connection, heal and report destination)"],
+            "heal": ["type": "boolean", "description": "Override for locator self-healing (defaults to the profile setting, or false without a profile; ineffective when the profile has fm:false)"],
+            "port": ["type": "integer", "description": "iOS bridge port (default 8123)"],
+            "serial": ["type": "string", "description": "Android device serial"],
         ], required: ["id"]),
-        tool("ft_list_projects", "テストプロジェクト(Projects/)と実行プロファイルの一覧を返す", [:]),
-        tool("ft_doctor", "Foundation Models の可用性を確認する", [:]),
+        tool("ft_list_projects", "List the test projects (Projects/) and their run profiles", [:]),
+        tool("ft_doctor", "Check Foundation Models availability", [:]),
     ]
 
     static func tool(_ name: String, _ description: String,

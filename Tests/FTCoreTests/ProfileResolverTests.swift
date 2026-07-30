@@ -194,10 +194,10 @@ final class ProfileResolverTests: XCTestCase {
             kind: .app, data: data, context: "apps/app2.json", project: project)
         XCTAssertTrue(errors.isEmpty, "警告のみでエラーにはしないはず: \(errors)")
         XCTAssertTrue(warnings.contains { $0.contains("common") && $0.contains("\"app\"")
-                                          && $0.contains("廃止") },
+                                          && $0.contains("deprecated") },
                       "common.app 廃止警告が出るはず: \(warnings)")
         XCTAssertTrue(warnings.contains { $0.contains("common") && $0.contains("\"appPath\"")
-                                          && $0.contains("廃止") },
+                                          && $0.contains("deprecated") },
                       "common.appPath 廃止警告が出るはず: \(warnings)")
         XCTAssertFalse(warnings.contains { $0.contains("appName") },
                        "common の appName は有効なので警告は出ないはず: \(warnings)")
@@ -318,10 +318,10 @@ final class ProfileResolverTests: XCTestCase {
             kind: .app, data: data, context: "apps/app3.json", project: project)
         XCTAssertTrue(errors.isEmpty, "警告のみでエラーにはしないはず: \(errors)")
         XCTAssertTrue(warnings.contains { $0.contains("ios") && $0.contains("autoInstall")
-                                          && $0.contains("廃止") },
+                                          && $0.contains("deprecated") },
                       "ios.autoInstall 廃止警告が出るはず: \(warnings)")
         XCTAssertTrue(warnings.contains { $0.contains("android") && $0.contains("autoInstall")
-                                          && $0.contains("廃止") },
+                                          && $0.contains("deprecated") },
                       "android.autoInstall 廃止警告が出るはず: \(warnings)")
     }
 
@@ -489,7 +489,7 @@ final class ProfileResolverTests: XCTestCase {
 
         let (errors, _) = ProfileResolver.validate(
             kind: .run, data: data, context: "runs/typo.json", project: project)
-        XCTAssertTrue(errors.contains { $0.contains("\"machine\"") && $0.contains("文字列") },
+        XCTAssertTrue(errors.contains { $0.contains("\"machine\"") && $0.contains("must be a string") },
                       "machine 型不正エラーが出るはず: \(errors)")
     }
 
@@ -514,7 +514,7 @@ final class ProfileResolverTests: XCTestCase {
         let (errors, warnings) = ProfileResolver.validate(
             kind: .run, data: data, context: "runs/nomachine.json", project: project)
         XCTAssertTrue(errors.isEmpty, "machine 未指定はエラーにしないはず: \(errors)")
-        XCTAssertTrue(warnings.contains { $0.contains("machine") && $0.contains("未指定") },
+        XCTAssertTrue(warnings.contains { $0.contains("machine") && $0.contains("not specified") },
                       "machine 未指定警告が出るはず: \(warnings)")
     }
 
@@ -527,7 +527,7 @@ final class ProfileResolverTests: XCTestCase {
         let (errors, warnings) = ProfileResolver.validate(
             kind: .run, data: data, context: "runs/withmachine.json", project: project)
         XCTAssertTrue(errors.isEmpty, "machine 指定が正しければエラーは出ないはず: \(errors)")
-        XCTAssertFalse(warnings.contains { $0.contains("未指定") },
+        XCTAssertFalse(warnings.contains { $0.contains("not specified") },
                        "machine 指定済みなら未指定警告は出ないはず: \(warnings)")
     }
 
@@ -672,7 +672,7 @@ final class ProfileResolverTests: XCTestCase {
         let resolved = try ProfileResolver.resolve(project: project, runName: "r", machineName: "m")
         XCTAssertEqual(resolved.iosDevices.map { $0.spec.engine }, ["inapp", "xcuitest"])
         // フラグ明示 × デバイス engine 明示 → 「適用されません」警告(GUI チェックボックスの空振り検知)
-        XCTAssertTrue(resolved.warnings.contains { $0.contains("注入機") && $0.contains("適用されません") },
+        XCTAssertTrue(resolved.warnings.contains { $0.contains("注入機") && $0.contains("does not apply") },
                       "engine 明示デバイスへのフラグ空振り警告が出るはず: \(resolved.warnings)")
         XCTAssertFalse(resolved.warnings.contains { $0.contains("素機") },
                        "engine 無指定デバイスには警告を出さないはず: \(resolved.warnings)")

@@ -112,7 +112,7 @@ final class MCPToolCallTests: XCTestCase {
             ("ft_launch", [:], "bundleId"),
             ("ft_type", [:], "text"),
             ("ft_press", [:], "ref"),
-            ("ft_tap", [:], "ref か x/y"),
+            ("ft_tap", [:], "ref or x/y"),
             ("ft_swipe", ["direction": "sideways"], "up/down/left/right"),
             ("ft_run_scenario", [:], "id"),
         ]
@@ -136,7 +136,7 @@ final class MCPToolCallTests: XCTestCase {
                 _ = try await server.call(tool: "ft_tap", args: args)
                 XCTFail("片方だけの座標が通った: \(args)")
             } catch {
-                XCTAssertTrue(error.localizedDescription.contains("ref か x/y"),
+                XCTAssertTrue(error.localizedDescription.contains("ref or x/y"),
                               error.localizedDescription)
             }
         }
@@ -181,7 +181,7 @@ final class MCPToolCallTests: XCTestCase {
             do {
                 _ = try await server.call(tool: name, args: [:])
             } catch {
-                XCTAssertFalse(error.localizedDescription.contains("未知のツール"),
+                XCTAssertFalse(error.localizedDescription.contains("unknown tool"),
                                "\(name) は宣言されているが dispatch されていない")
             }
         }

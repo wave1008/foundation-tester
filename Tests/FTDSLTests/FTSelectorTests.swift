@@ -432,7 +432,7 @@ final class FTSelectorTests: XCTestCase {
                                 (".button=項目:below(#btn_allow)", ".button&&項目")] {
             let error = FTSelector.validationError(text)
             XCTAssertNotNil(error, "見逃した: \(text)")
-            XCTAssertTrue(error?.contains("型名") ?? false, "案内が無い: \(text)")
+            XCTAssertTrue(error?.contains("type name") ?? false, "案内が無い: \(text)")
             XCTAssertTrue(error?.contains(rewrite) ?? false,
                           "書き換え案 \(rewrite) が無い: \(String(describing: error))")
         }
