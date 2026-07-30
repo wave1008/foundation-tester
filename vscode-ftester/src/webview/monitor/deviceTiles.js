@@ -133,6 +133,12 @@ export function relayoutTiles() {
   if (!probe) {
     return;
   }
+  // 「デバイス」タブ非表示中(display:none)は clientHeight=0 で下限 60px に潰れる。書くと
+  // 「ペイン高さ ↔ --tile-image-h」の対応が壊れ、タブ復帰時の auto-fit(splitter.js の
+  // computeFitTilePaneHeight)が差分計算を誤ってはみ出す。devices は非表示中も届くので必須。
+  if (probe.clientHeight === 0) {
+    return;
+  }
   const imageHeight = Math.max(60, probe.clientHeight - TILE_CHROME_HEIGHT);
   grid.style.setProperty('--tile-image-h', imageHeight + 'px');
 }
