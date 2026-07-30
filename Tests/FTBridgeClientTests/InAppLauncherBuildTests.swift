@@ -16,9 +16,11 @@ final class InAppLauncherBuildTests: XCTestCase {
             try FileManager.default.createDirectory(
                 at: root.appendingPathComponent(dir), withIntermediateDirectories: true)
         }
+        // BridgeSourceSet.inApp が挙げる入力を一式そろえる(1つでも欠けると「判定不能」= 常に再ビルド)
         try write("InAppBridge/build.sh")
         try write("InAppBridge/Sources/InAppSnapshot.swift")
         try write("Sources/FTCore/BridgeDTO.swift")
+        try write("Sources/FTCore/WebViewDOMSnapshot.swift")
     }
 
     override func tearDownWithError() throws {
@@ -82,6 +84,15 @@ final class InAppLauncherBuildTests: XCTestCase {
     func testNeedsBuildWhenSharedDTOIsNewer() throws {
         try buildDylib(at: Date())
         try write("Sources/FTCore/BridgeDTO.swift", at: Date().addingTimeInterval(60))
+        storeFingerprint("Xcode X / sdk Y")
+        XCTAssertTrue(needsBuild())
+    }
+
+    /// WebView DOM の共有ソースも dylib の入力。ここが漏れていて、編集しても古い dylib が
+    /// 注入され続ける穴が空いていた(BridgeSourceSet へ一元化して修正)
+    func testNeedsBuildWhenWebViewDOMSnapshotIsNewer() throws {
+        try buildDylib(at: Date())
+        try write("Sources/FTCore/WebViewDOMSnapshot.swift", at: Date().addingTimeInterval(60))
         storeFingerprint("Xcode X / sdk Y")
         XCTAssertTrue(needsBuild())
     }

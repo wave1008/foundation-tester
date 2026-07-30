@@ -103,9 +103,13 @@
   ときもそこへ戻すので、ズレると表示された件数と実際に走る件数が食い違う)
 - `ftester api` の JSON/NDJSON 契約を後方非互換に変えたら `Sources/FTCore/ProtocolVersion.swift` と `vscode-ftester/src/protocolVersion.ts` の版を +1(両者一致必須・`protocolVersion.test.mjs` が検出。拡張は起動時に照合し不一致を警告)
 - **ブリッジの挙動・エンドポイントを変えたら版を上げる**(上げないと**稼働中の旧ブリッジが再利用され、変更が反映されないまま緑になる**。実害2回)。iOS = `Sources/FTCore/BridgeDTO.swift` の `bridgeProtocolVersion`(in-app dylib と XCUITest ランナーの共通定数)/ Android = `AndroidRunner/build.sh` の `VERSION_CODE` と `AndroidBridge.swift` の `expectedBridgeVersionCode` を**同時に**(`AndroidBridgeVersionSyncTests` が定数間の不一致と、**コミット済み `prebuilt/ftbridge.apk` が
-  定数と別版のまま=APK 作り直し忘れ**を検出)。**ルート表を変えたら `BridgeRouteContractTests` が落ちる**ので、
-  そこで版を上げてから期待値を更新する(版を上げること自体は強制できない=最後は人間の規律。ルートが同じで
-  ハンドラの挙動だけ変えた場合も検出できない)
+  定数と別版のまま=APK 作り直し忘れ**を検出)。**実装ソースを変えたら `BridgeContractTests` が落ちる**
+  ので、そこで版を上げてから期待値を貼り替える(貼り付け用のリテラルは失敗メッセージが出す)。
+  検出は2段: ルート表(エンドポイントの増減)+ ソース指紋(**ルートが同じでハンドラだけ変えた場合も
+  落ちる**)。**版を上げること自体は強制できない**ので最後は人間の規律。
+  **ブリッジの入力ファイル一覧は `Sources/FTCore/BridgeSourceSet.swift` が唯一の定義元**
+  (`InAppLauncher` の dylib 再ビルド判定も同じ一覧を使う。片方だけ変えない)。
+  指紋の性質(コメント編集でも落ちる理由)・保留中の代替案は docs/verification.md
 
 ## 受け手フローの設計方針(スキル・スクリプト・CLI の分担)
 
