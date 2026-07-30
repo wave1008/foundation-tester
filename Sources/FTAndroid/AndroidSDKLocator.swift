@@ -40,12 +40,12 @@ public enum AndroidSDKLocator {
     /// create-device(作成不能)・doctor で同じ文言を使う。Android Studio 標準の SDK 導入では
     /// cmdline-tools が入らないことがあり、そのとき「モデルを選べない」だけが症状として出る。
     public static let avdManagerMissingMessage =
-        "avdmanager が見つかりません(Android SDK Command-line Tools が未導入です)"
+        "avdmanager not found (the Android SDK Command-line Tools are not installed)"
 
     /// 上の理由文に添える解決手段。モニターのダイアログは導入ボタンを併記するので使わない
     /// (ボタンの隣に同じ案内が並ぶため)
     public static let avdManagerInstallHint =
-        "`ftester api install-cmdline-tools` で導入できます"
+        "they can be installed with `ftester api install-cmdline-tools`"
 
     /// cmdline-tools/latest → cmdline-tools/*(名前順)→ tools(旧レイアウト)の順
     public static func findAVDManager() -> URL? {

@@ -70,14 +70,14 @@ public final class InAppDriver: AppDriver {
         throw Self.inappOnly("drag")
     }
     public func press(x: Double, y: Double, duration: Double) async throws {
-        throw Self.inappOnly("座標指定の press")
+        throw Self.inappOnly("press by coordinates")
     }
 
     private static func inappOnly(_ action: String) -> DriverError {
         .badResponse(status: 501,
-                     body: "\(action) は in-app エンジンでは実行できません"
-                         + "(アプリのプロセス内からは他アプリ・システム UI を操作できません)。"
-                         + "実行プロファイルを hybrid か xcuitest にしてください")
+                     body: "\(action) cannot run on the in-app engine"
+                         + " (other apps and system UI cannot be driven from inside the app process). "
+                         + "Switch the run profile to hybrid or xcuitest")
     }
 
     public func screenshot() async throws -> Data { try await withCrashContext { try await client.screenshot() } }
@@ -114,12 +114,12 @@ public final class InAppDriver: AppDriver {
             // 今しがた切断したのだから、対象は数秒以内のものだけでよい。
             if let hit = SimulatorCrashReport.findRecent(bundleID: bundleID, within: 10) {
                 let suffix = hit.reason.map { " (\($0))" } ?? ""
-                return detail + " / アプリがクラッシュしました: \(hit.path)\(suffix)"
+                return detail + " / the app crashed: \(hit.path)\(suffix)"
             }
             if attempt < 7 { try? await Task.sleep(for: .milliseconds(500)) }
         }
-        return detail + " / 直近のクラッシュレポートは見つかりませんでした"
-            + "(4秒待っても .ips が現れず。OS によるプロセス終了・メモリ圧・自発終了の可能性。"
-            + "ハイブリッド混在実行では背面アプリが suspend/終了されることがあります)"
+        return detail + " / no recent crash report found"
+            + " (no .ips appeared within 4s — possibly killed by the OS, memory pressure or a voluntary exit. "
+            + "In hybrid/mixed runs the backgrounded app can be suspended or terminated)"
     }
 }

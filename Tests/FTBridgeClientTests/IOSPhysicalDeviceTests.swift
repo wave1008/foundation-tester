@@ -169,7 +169,7 @@ final class IOSPhysicalDeviceTests: XCTestCase {
         ** TEST EXECUTE FAILED **
         """
         let reason = try XCTUnwrap(IOSDeviceTransport.runnerFailureReason(inLog: log))
-        XCTAssertTrue(reason.contains("VPN とデバイス管理"), reason)
+        XCTAssertTrue(reason.contains("VPN & Device Management"), reason)
     }
 
     /// 起動途中のログを失敗と誤認しないこと(誤検知したら正常な起動を殺す)
@@ -195,7 +195,7 @@ final class IOSPhysicalDeviceTests: XCTestCase {
         XCTAssertNil(IOSDeviceTransport.runnerFailureReason(inLog: log),
                      "ロックは TEST EXECUTE FAILED ではないので失敗扱いにしない")
         let blocker = try XCTUnwrap(IOSDeviceTransport.blockingCondition(inLog: log))
-        XCTAssertTrue(blocker.contains("ロックを解除"), blocker)
+        XCTAssertTrue(blocker.contains("Unlock the device"), blocker)
     }
 
     // MARK: - USB トンネル(iproxy)
@@ -271,7 +271,7 @@ final class IOSPhysicalDeviceTests: XCTestCase {
         """
         let reason = IOSDeviceTransport.runnerFailureReason(inLog: log)
         XCTAssertNotNil(reason, "終端マーカーが無くても証明書未信頼は確定させる")
-        XCTAssertTrue(reason?.contains("VPN とデバイス管理") == true, "端末側の手順を名指しすること")
+        XCTAssertTrue(reason?.contains("VPN & Device Management") == true, "端末側の手順を名指しすること")
     }
 
     /// 逆に、理由を特定できないログでマーカー無しに失敗扱いしないこと(誤検知で run を殺さない)

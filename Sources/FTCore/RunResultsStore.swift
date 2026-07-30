@@ -106,8 +106,8 @@ public enum RunResultsStore {
 
     private static func warnSkipped(_ count: Int, kind: String) {
         guard count > 0 else { return }
-        let message = "RunResultsStore: \(count) 件の\(kind)をスキップしました" +
-            "(壊れている、または schemaVersion が新しすぎます)\n"
+        let message = "RunResultsStore: skipped \(count) \(kind)(s)" +
+            " (corrupt, or their schemaVersion is too new)\n"
         FileHandle.standardError.write(Data(message.utf8))
     }
 

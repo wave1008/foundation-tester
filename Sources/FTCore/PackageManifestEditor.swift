@@ -14,14 +14,14 @@ public enum PackageManifestEditorError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .manifestNotFound(let url):
-            return "Package.swift が見つかりません: \(url.path)"
+            return "Package.swift not found: \(url.path)"
         case .markersNotFound(let url):
-            return "Package.swift にマーカー区間がありません: \(url.path)\n"
-                + "targets 配列内に以下の 2 行を追加してください:\n"
+            return "Package.swift has no marker section: \(url.path)\n"
+                + "Add these two lines inside the targets array:\n"
                 + "        \(PackageManifestEditor.beginMarker)\n"
                 + "        \(PackageManifestEditor.endMarker)"
         case .validationFailed(let log):
-            return "Package.swift の検証に失敗したため元に戻しました:\n\(log)"
+            return "Package.swift failed verification and was rolled back:\n\(log)"
         }
     }
 }

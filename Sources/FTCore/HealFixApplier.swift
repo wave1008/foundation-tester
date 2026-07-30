@@ -74,7 +74,7 @@ public enum HealFixApplier {
             } catch {
                 failures.append(HealFixFailure(
                     id: fix.id,
-                    message: "説明の更新に失敗しました(\(error.localizedDescription))"))
+                    message: "failed to update the description (\(error.localizedDescription))"))
             }
         }
         return (source, applied, failures)

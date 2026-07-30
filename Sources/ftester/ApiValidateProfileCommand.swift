@@ -31,7 +31,7 @@ struct ApiValidateProfile: AsyncParsableCommand {
         if let kind {
             guard let matched = ProfileFileKind.allCases.first(where: { $0.directoryName == kind })
             else {
-                throw ValidationError("--kind は apps/machines/runs のいずれかを指定してください: \(kind)")
+                throw ValidationError("--kind must be one of apps/machines/runs: \(kind)")
             }
             kinds = [matched]
         } else {
@@ -47,7 +47,7 @@ struct ApiValidateProfile: AsyncParsableCommand {
             machineName = try ProfileResolver.determineMachine(
                 project: testProject, registered: LocalConfig.currentMachineName()).name
         } catch {
-            logStderr("⚠️ マシン名を決定できません(出力の machine フィールドは null になります): "
+            logStderr("⚠️ Cannot determine the machine name (the machine field in the output will be null): "
                 + error.localizedDescription)
         }
 
@@ -63,8 +63,8 @@ struct ApiValidateProfile: AsyncParsableCommand {
         }
 
         if results.isEmpty {
-            logStderr("⚠️ 検証対象のプロファイルが見つかりませんでした"
-                + "(--kind/--name の指定を確認してください)")
+            logStderr("⚠️ No profiles matched for validation"
+                + " (check the --kind/--name arguments)")
         }
 
         let output = ApiValidateProfileOutput(
@@ -81,7 +81,7 @@ struct ApiValidateProfile: AsyncParsableCommand {
         guard let data = try? Data(contentsOf: file) else {
             return ApiValidateProfileResult(
                 kind: kind.directoryName, name: fileName, path: file.path,
-                errors: ["ファイルを読み込めません"], warnings: [])
+                errors: ["cannot read the file"], warnings: [])
         }
 
         var (errors, warnings) = ProfileResolver.validate(
@@ -102,7 +102,7 @@ struct ApiValidateProfile: AsyncParsableCommand {
                     project: project, runName: fileName, machineName: machine.name)
                 warnings += resolved.warnings
             } catch ProfileError.machineUndetermined {
-                warnings.append("マシン名が未決定のため参照チェックをスキップしました")
+                warnings.append("reference checks skipped because the machine name is undecided")
             } catch {
                 errors.append(error.localizedDescription)
             }

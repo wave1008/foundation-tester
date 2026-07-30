@@ -40,7 +40,7 @@ struct DevicesCommand: AsyncParsableCommand {
             // iOS はブート完了分をバッチで束ねてブリッジ供給する(bootAll 内。ブートと供給は並行)
             let repoRoot = noBridge ? nil : try RepoRoot.find()
             await DeviceBooter.bootAll(machine: machineProfile, repoRoot: repoRoot) { print($0) }
-            print("✅ デバイス起動シーケンス完了")
+            print("✅ Device start-up sequence complete")
         }
     }
 
@@ -64,7 +64,7 @@ struct DevicesCommand: AsyncParsableCommand {
             if let root = try? RepoRoot.find() {
                 let stopped = BridgeLauncher.stopAll(repoRoot: root)
                 if !stopped.isEmpty {
-                    print("✅ ブリッジ停止(port: \(stopped.joined(separator: ", ")))")
+                    print("✅ Bridges stopped (port: \(stopped.joined(separator: ", ")))")
                 }
             }
             // exit code でなくカタログの実状態で成否判定し、Booted が残れば再試行する
@@ -79,14 +79,14 @@ struct DevicesCommand: AsyncParsableCommand {
                     break
                 }
                 if attempt < 3 {
-                    print("→ 停止が反映されないシミュレータがあるため再試行(\(attempt)/3)...")
+                    print("→ Some simulators have not shut down yet — retrying (\(attempt)/3)...")
                     try? await Task.sleep(nanoseconds: 2_000_000_000)
                 }
             }
             if shutdownConfirmed {
-                print("✅ シミュレータを全て終了しました")
+                print("✅ All simulators shut down")
             } else {
-                print("⚠️ 一部のシミュレータが停止しません(xcrun simctl list devices で確認してください)")
+                print("⚠️ Some simulators will not stop (check xcrun simctl list devices)")
             }
             // gRPC SHUTDOWN 優先(adb 経路死亡でも届く)・不可なら emu kill。
             // それでも offline には届かないため、残った qemu を最後に直接落とす
@@ -96,7 +96,7 @@ struct DevicesCommand: AsyncParsableCommand {
                     if await !EmulatorControl.shutdown(serial: serial) {
                         _ = try? Shell.run([adb, "-s", serial, "emu", "kill"])
                     }
-                    print("✅ エミュレータを終了しました(\(serial))")
+                    print("✅ Emulator shut down (\(serial))")
                 }
                 if !serials.isEmpty {
                     try? await Task.sleep(nanoseconds: 3_000_000_000)
@@ -155,7 +155,7 @@ enum MachineProfileLoad {
             project: testProject, registered: LocalConfig.currentMachineName(),
             runProfileName: profile)
         if machine.auto {
-            noteAutoMachine("→ マシンプロファイル自動採用: \(machine.name)")
+            noteAutoMachine("→ Using machine profile \(machine.name) automatically")
         }
         let url = testProject.machinesDir.appendingPathComponent("\(machine.name).json")
         var machineProfile = try JSONDecoder().decode(

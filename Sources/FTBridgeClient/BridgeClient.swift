@@ -91,8 +91,8 @@ public final class BridgeClient: AppDriver {
                  "--device", udid, packagePath], timeout: 600)
             guard result.status == 0 else {
                 throw DriverError.badResponse(status: Int(result.status),
-                    body: "devicectl device install app に失敗しました"
-                        + "(署名済みの .app/.ipa か、端末が接続済みかを確認してください): \(result.tail)")
+                    body: "devicectl device install app failed"
+                        + " (check that the .app/.ipa is signed and the device is connected): \(result.tail)")
             }
             return
         }
@@ -102,7 +102,7 @@ public final class BridgeClient: AppDriver {
         let result = try Shell.run(["xcrun", "simctl", "install", target, packagePath])
         guard result.status == 0 else {
             throw DriverError.badResponse(status: Int(result.status),
-                body: "simctl install に失敗しました: \(result.tail)")
+                body: "simctl install failed: \(result.tail)")
         }
     }
 

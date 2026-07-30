@@ -100,8 +100,8 @@ extension AndroidDriver {
     }
 
     private static func unreachableError(detail: String?) -> DriverError {
-        let base = "Android ブリッジに接続できません。`ftester doctor` で環境を確認するか、"
-            + "`ftester bridge up --platform android` を試してください"
+        let base = "cannot reach the Android bridge. Check the environment with `ftester doctor`, "
+            + "or try `ftester bridge up --platform android`"
         return .bridgeUnreachable(detail.map { "\(base)(\($0))" } ?? base)
     }
 
@@ -171,7 +171,7 @@ extension AndroidDriver {
             try await Task.sleep(nanoseconds: 200_000_000)
         }
         throw DriverError.bridgeUnreachable(
-            "Android ブリッジが起動しません(adb logcat -s FTBridge を確認してください)")
+            "the Android bridge will not start (check adb logcat -s FTBridge)")
     }
 
     /// 実機に対する設定変更は端末のグローバル設定を**永続的に**書き換える(使い捨ての
@@ -181,10 +181,10 @@ extension AndroidDriver {
     /// 実機判定は serial の emulator- 前置(ApiMonitorCommand のヘルス除外と同じ規則)
     private func noticePersistentSettingsOnPhysicalDevice() {
         guard let serial, !serial.hasPrefix("emulator-") else { return }
-        let message = "ℹ️ \(serial): 次の設定を端末に適用します — アニメーション無効化 / "
-            + "hidden_api_policy=1 / スタイラス手書き無効化(IME の案内がアプリを覆うため) / "
-            + "クラッシュ・ANR ダイアログ非表示"
-            + "(実機では設定が永続します。戻す場合は開発者オプションから)\n"
+        let message = "ℹ️ \(serial): applying these device settings — animations off / "
+            + "hidden_api_policy=1 / stylus handwriting off (its IME hint covers the app) / "
+            + "crash and ANR dialogs hidden"
+            + " (on physical devices these persist; revert via Developer options)\n"
         FileHandle.standardError.write(Data(message.utf8))
     }
 
@@ -195,8 +195,8 @@ extension AndroidDriver {
         let keys = ["window_animation_scale", "transition_animation_scale", "animator_duration_scale"]
         let failed = keys.filter { (try? adb(["shell", "settings", "put", "global", $0, "0"]))?.status != 0 }
         guard !failed.isEmpty else { return }
-        let message = "⚠️ Android アニメーション設定の無効化に失敗しました(\(failed.joined(separator: ", ")))。"
-            + "有効なままだと静穏判定後に screenshot が古い絵を掴むことがあります\n"
+        let message = "⚠️ Failed to disable the Android animation settings (\(failed.joined(separator: ", "))). "
+            + "While they stay on, screenshots can grab a stale frame even after the quiet check\n"
         FileHandle.standardError.write(Data(message.utf8))
     }
 
@@ -209,8 +209,8 @@ extension AndroidDriver {
     private func hideErrorDialogs() {
         guard (try? adb(["shell", "settings", "put", "global",
                          "hide_error_dialogs", "1"]))?.status == 0 else {
-            let message = "⚠️ hide_error_dialogs の設定に失敗しました"
-                + "(クラッシュ/ANR ダイアログが残り、後続シナリオのタップを吸うことがあります)\n"
+            let message = "⚠️ Failed to set hide_error_dialogs"
+                + " (crash/ANR dialogs may linger and swallow taps in later scenarios)\n"
             FileHandle.standardError.write(Data(message.utf8))
             return
         }
@@ -225,8 +225,8 @@ extension AndroidDriver {
     private func disableStylusHandwriting() {
         guard (try? adb(["shell", "settings", "put", "secure",
                          "stylus_handwriting_enabled", "0"]))?.status == 0 else {
-            let message = "⚠️ stylus_handwriting_enabled の無効化に失敗しました"
-                + "(IME のスタイラス案内がアプリを覆い、タップが空振りすることがあります)\n"
+            let message = "⚠️ Failed to disable stylus_handwriting_enabled"
+                + " (the IME stylus hint can cover the app and make taps miss)\n"
             FileHandle.standardError.write(Data(message.utf8))
             return
         }
@@ -238,7 +238,7 @@ extension AndroidDriver {
         guard (try? adb(["shell", "settings", "put", "global", "hidden_api_policy", "1"]))?.status == 0
         else {
             FileHandle.standardError.write(Data(
-                "⚠️ hidden_api_policy の設定に失敗しました(ロケール変更 /locale が使えません)\n".utf8))
+                "⚠️ Failed to set hidden_api_policy (the /locale locale change is unavailable)\n".utf8))
             return
         }
     }
@@ -255,7 +255,7 @@ extension AndroidDriver {
         if let existing = findExistingForward() { return existing }
         let created = try adb(["forward", "tcp:0", "tcp:\(Self.bridgeDevicePort)"])
         guard let hostPort = UInt16(created.output.trimmingCharacters(in: .whitespacesAndNewlines)) else {
-            throw DriverError.bridgeUnreachable("adb forward に失敗: \(created.tail)")
+            throw DriverError.bridgeUnreachable("adb forward failed: \(created.tail)")
         }
         return hostPort
     }
@@ -325,8 +325,8 @@ extension AndroidDriver {
             return !(Double(value ?? "") == 0)
         }
         guard !nonZero.isEmpty else { return nil }
-        return "アニメーション設定が有効です(\(nonZero.joined(separator: ", ")))。"
-            + "screenshot が静穏判定後も古い絵を掴むことがあります(次回ブリッジ起動時に自動で0になります)"
+        return "animation settings are on (\(nonZero.joined(separator: ", "))). "
+            + "Screenshots can grab a stale frame even after the quiet check (zeroed automatically on the next bridge start)"
     }
 
     func installBridgeIfNeeded() throws {
@@ -340,7 +340,7 @@ extension AndroidDriver {
         }
         guard result.output.contains("Success") else {
             throw DriverError.badResponse(status: Int(result.status),
-                body: "ブリッジ APK のインストールに失敗: \(result.tail)")
+                body: "failed to install the bridge APK: \(result.tail)")
         }
     }
 

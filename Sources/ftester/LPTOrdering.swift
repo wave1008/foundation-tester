@@ -56,9 +56,9 @@ enum LPTOrdering {
         let withHistory = items.filter {
             known.contains("\($0.info.id)\u{1}\($0.info.platform ?? defaultPlatform)")
         }.count
-        log("🔀 LPT 投入順: 実績あり \(withHistory)/\(items.count) 件"
-            + "(直近\(Int(historyDays))日・\(defaultPlatform) の実績がある最大\(maxRuns) run"
-            + "・platform 別中央値の降順。実績なしは先頭)")
+        log("🔀 LPT ordering: \(withHistory)/\(items.count) with history"
+            + " (up to \(maxRuns) run(s) with \(defaultPlatform) results in the last \(Int(historyDays)) day(s), "
+            + "descending per-platform median; scenarios without history go first)")
         return ordered
     }
 }

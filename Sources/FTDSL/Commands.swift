@@ -1467,7 +1467,7 @@ private func ifCanSelectImpl(_ selector: FTSelector, waitSeconds: Double,
     // 構文誤りは「不成立」と区別できない(どちらもブロックを飛ばして緑になる)ため、
     // perform を通らないこのコマンドでも実行前に検証する
     if let error = validationError(selector) {
-        let reason = "セレクタの構文が不正です: \(error)"
+        let reason = "invalid selector syntax: \(error)"
         core.recordStep(description: "ifCanSelect \"\(selector.text)\"", status: .failed(reason),
                         file: "\(file)", line: Int(line))
         core.handleFailure(stepDescription: "ifCanSelect \"\(selector.text)\"", reason: reason)
@@ -1476,9 +1476,9 @@ private func ifCanSelectImpl(_ selector: FTSelector, waitSeconds: Double,
     let found = core.canSelect(selector, waitSeconds: waitSeconds)
     // 不成立は **skipped** で記録する(passed にすると「セレクタが腐って毎回飛んでいる」状態が
     // 緑のまま見えなくなる)。run 終了時のサマリにも不成立を残す
-    let description = "ifCanSelect \"\(selector.text)\" → \(found ? "実行" : "不成立")"
+    let description = "ifCanSelect \"\(selector.text)\" → \(found ? "ran" : "not met")"
     core.recordStep(description: description,
-                    status: found ? .passed : .skipped("条件不成立"),
+                    status: found ? .passed : .skipped("condition not met"),
                     file: "\(file)", line: Int(line))
     core.noteBranchOutcome(selector: selector.text, met: found)
     if found { body() }
@@ -1536,7 +1536,7 @@ private func repeatWhileCanSelectImpl(_ selector: FTSelector, max: Int, waitSeco
                                       _ body: () -> Void) {
     let core = FTRuntime.requireCore(command: "repeatWhileCanSelect")
     if let error = validationError(selector) {
-        let reason = "セレクタの構文が不正です: \(error)"
+        let reason = "invalid selector syntax: \(error)"
         core.recordStep(description: "repeatWhileCanSelect \"\(selector.text)\"",
                         status: .failed(reason), file: "\(file)", line: Int(line))
         core.handleFailure(stepDescription: "repeatWhileCanSelect \"\(selector.text)\"",
@@ -1555,8 +1555,8 @@ private func repeatWhileCanSelectImpl(_ selector: FTSelector, max: Int, waitSeco
     // 「ちょうど 10 件だった」のか「まだ残っているのに打ち切った」のかが記録から読めない
     // (成功扱いにする契約は変えない = 上限到達を失敗にはしない)
     let reachedMax = iterations >= max && max > 0 && !core.isDryRun
-    let suffix = reachedMax ? "(上限に達したため打ち切り。まだ残っている可能性があります)" : ""
-    core.recordStep(description: "repeatWhileCanSelect \"\(selector.text)\" → \(iterations) 回\(suffix)",
+    let suffix = reachedMax ? " (stopped at the limit; more may remain)" : ""
+    core.recordStep(description: "repeatWhileCanSelect \"\(selector.text)\" → \(iterations) time(s)\(suffix)",
                     status: .passed, file: "\(file)", line: Int(line))
 }
 
@@ -1601,12 +1601,12 @@ public func doUntilTrue(_ title: String, waitSeconds: Double = 10, intervalSecon
                 loops += 1
                 if loops >= maxLoopCount {
                     throw FTCommandError.message(
-                        "doUntilTrue \"\(title)\" が上限 \(maxLoopCount) 回で成立しませんでした")
+                        "doUntilTrue \"\(title)\" did not hold within the \(maxLoopCount)-attempt limit")
                 }
                 if Date() >= deadline {
                     throw FTCommandError.message(
-                        "doUntilTrue \"\(title)\" が \(FTSeconds.format(waitSeconds))s で成立しませんでした"
-                        + "(\(loops) 回試行)")
+                        "doUntilTrue \"\(title)\" did not hold within \(FTSeconds.format(waitSeconds))s"
+                        + " (\(loops) attempt(s))")
                 }
                 try await Task.sleep(nanoseconds: UInt64(intervalSeconds * 1_000_000_000))
             }

@@ -42,15 +42,15 @@ struct InitCommand: AsyncParsableCommand {
         let cwd = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
         let manifest = cwd.appendingPathComponent("Package.swift")
         guard !FileManager.default.fileExists(atPath: manifest.path) else {
-            throw ValidationError("Package.swift が既に存在します: \(manifest.path)"
-                + "(空のディレクトリで実行してください)")
+            throw ValidationError("Package.swift already exists: \(manifest.path)"
+                + " (run this in an empty directory)")
         }
 
         let packageName = cwd.lastPathComponent
         let projectName = name ?? Self.sanitizedName(packageName)
         guard ProjectStore.isValidName(projectName) else {
-            throw ValidationError("プロジェクト名が不正です: \(projectName)"
-                + "(英数字・_・- のみ。--name で明示指定してください)")
+            throw ValidationError("invalid project name: \(projectName)"
+                + " (letters, digits, _ and - only; specify one with --name)")
         }
 
         let dependencyLine: String
@@ -62,7 +62,7 @@ struct InitCommand: AsyncParsableCommand {
                 #".package(url: "\#(ftesterURL)", branch: "\#($0)"),"#
             } ?? #".package(url: "\#(ftesterURL)", from: "\#(ftesterVersion)"),"#
         } else {
-            throw ValidationError("--ftester-path か --ftester-url のいずれかを指定してください")
+            throw ValidationError("specify either --ftester-path or --ftester-url")
         }
 
         try ProjectScaffold.externalManifest(packageName: packageName, dependencyLine: dependencyLine)
@@ -86,7 +86,7 @@ struct InitCommand: AsyncParsableCommand {
                         URL(fileURLWithPath: $0, relativeTo: cwd).standardizedFileURL.path
                     })
             } catch {
-                FileHandle.standardError.write(Data(("⚠️ .claude/settings.json の整備に失敗しました: "
+                FileHandle.standardError.write(Data(("⚠️ Failed to prepare .claude/settings.json: "
                     + "\(error.localizedDescription)\n").utf8))
             }
             // .build/(~1.7GB)等が git status の未追跡ノイズにならないように。失敗しても init は続行
@@ -94,27 +94,27 @@ struct InitCommand: AsyncParsableCommand {
             do {
                 addedGitignoreEntries = try ProjectScaffold.ensureGitignore(packageRoot: cwd)
             } catch {
-                let warning = "⚠️ .gitignore の自動整備に失敗しました(手動で .build/ 等を追加してください): "
+                let warning = "⚠️ Failed to prepare .gitignore automatically (add .build/ etc. by hand): "
                     + "\(error.localizedDescription)\n"
                 FileHandle.standardError.write(Data(warning.utf8))
             }
-            print("✅ 受け手パッケージを作成しました: \(packageName)")
-            print("   依存:         \(dependencyLine)")
-            print("   プロジェクト: Projects/\(projectName)/(Scenarios/ に @TestClass の .swift を追加)")
-            print("   アプリ設定:   Projects/\(projectName)/profiles/apps/ の appPath を自分のビルドへ")
-            print("   ビルド:       swift build --product \(project.productName)")
-            print("   実行:         ftester run --project \(projectName) --profile ios")
+            print("✅ Created the consumer package: \(packageName)")
+            print("   Dependency: \(dependencyLine)")
+            print("   Project:    Projects/\(projectName)/ (add .swift files with @TestClass under Scenarios/)")
+            print("   App config: point appPath in Projects/\(projectName)/profiles/apps/ at your own build")
+            print("   Build:      swift build --product \(project.productName)")
+            print("   Run:        ftester run --project \(projectName) --profile ios")
             if wroteVSCodeSettings {
-                print("   VSCode 拡張:  .vscode/settings.json に ftester.project/ftester.binaryPath を自動設定しました")
+                print("   VSCode ext: set ftester.project/ftester.binaryPath in .vscode/settings.json automatically")
             }
             if !addedClaudeAllows.isEmpty {
-                print("   Claude Code:  .claude/settings.json に ftester コマンドの実行許可を追加しました"
-                      + "(承認プロンプトを減らすため。不要なら削除してください)")
+                print("   Claude Code: added ftester command permissions to .claude/settings.json"
+                      + " (to reduce approval prompts; delete them if unwanted)")
             }
             if !addedGitignoreEntries.isEmpty {
-                print("   .gitignore:   \(addedGitignoreEntries.joined(separator: " ")) を追記しました(.build/ 等の未追跡ノイズ対策)")
+                print("   .gitignore: appended \(addedGitignoreEntries.joined(separator: " ")) (to keep .build/ etc. out of git noise)")
             }
-            print("   Claude Code:  このフォルダを開いて /ftester-setup でデバイス設定〜実行まで駆動できます")
+            print("   Claude Code: open this folder and /ftester-setup drives device setup through the first run")
         } catch {
             // マニフェストだけ書いて scaffold に失敗したら、中途半端な Package.swift を残さない
             try? FileManager.default.removeItem(at: manifest)
@@ -138,7 +138,7 @@ extension InitCommand {
         switch value {
         case "both": return ["ios", "android"]
         case "ios", "android": return [value]
-        default: throw ValidationError("--platform は ios / android / both のいずれかです: \(value)")
+        default: throw ValidationError("--platform must be one of ios / android / both: \(value)")
         }
     }
 }

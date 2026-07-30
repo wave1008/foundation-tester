@@ -65,7 +65,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             project: testProject, registered: LocalConfig.currentMachineName(),
             runProfileName: profile)
         if machine.auto {
-            logStderr("→ マシンプロファイル自動採用: \(machine.name)(machines/ が 1 つのため)")
+            logStderr("→ Using machine profile \(machine.name) automatically (it is the only one in machines/)")
         }
         let machineURL = testProject.machinesDir.appendingPathComponent("\(machine.name).json")
         guard FileManager.default.fileExists(atPath: machineURL.path) else {
@@ -88,7 +88,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             MonitorTarget(platform: "android", spec: $0)
         }
         guard !targets.isEmpty else {
-            throw ValidationError("マシンプロファイル \(machine.name) にデバイスが定義されていません")
+            throw ValidationError("machine profile \(machine.name) defines no devices")
         }
 
         // --profile 指定時は、実行プロファイルが参照するデバイスのみに監視対象を絞り込む
@@ -131,8 +131,8 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         while !stop.isSet {
             if control.autoResumeIfStale(limit: Self.pauseSafetyValveSeconds) {
                 logStderr(
-                    "[monitor] 一時停止から\(Int(Self.pauseSafetyValveSeconds))秒経過したため" +
-                    "自動的に再開しました(デバイス操作パネル側の resume 未着信の可能性)")
+                    "[monitor] Auto-resumed \(Int(Self.pauseSafetyValveSeconds))s after the pause" +
+                    " (the resume from the device-control panel may never have arrived)")
             }
             if control.takeResetRequest() {
                 confirmed.removeAll()
@@ -239,8 +239,8 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                     // 連続する間は再ログしない)、フレームは skip(前回フレームが Webview に残る)
                     if !loggedFetchFailure.contains(state.target.id) {
                         logStderr(
-                            "[monitor] \(state.target.id) のスクリーンショット取得に失敗しました" +
-                            "(接続は維持: テスト実行中の一時的な競合の可能性): \(error.localizedDescription)")
+                            "[monitor] Failed to capture a screenshot of \(state.target.id)" +
+                            " (connection kept: possibly a transient conflict during a test run): \(error.localizedDescription)")
                         loggedFetchFailure.insert(state.target.id)
                     }
                     continue
@@ -260,7 +260,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                     // 再ログしない。持続するならブリッジ不調のサイン(curl /screenshot で切り分け)
                     let message = error.localizedDescription
                     if lastErrorMessage[state.target.id] != message {
-                        logStderr("[monitor] \(state.target.id): \(message)(タイルへは通知しない)")
+                        logStderr("[monitor] \(state.target.id): \(message) (not notifying the tile)")
                         lastErrorMessage[state.target.id] = message
                     }
                 }
@@ -352,8 +352,8 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                     state: state.state, detail: state.detail,
                     iosPort: nil, androidSerial: nil, iosUdid: nil, missStreak: 0)
                 logDowngrade(
-                    "[monitor] \(id) の接続が途切れました" +
-                    "(/status 失敗が \(connectedDowngradeMissThreshold) 回連続したため降格: \(state.state))")
+                    "[monitor] Lost the connection to \(id)" +
+                    " (demoted after \(connectedDowngradeMissThreshold) consecutive /status failures: \(state.state))")
                 return state
             }
             confirmed[id] = current
@@ -436,13 +436,13 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                 return DeviceRuntimeState(
                     target: target, state: "offline",
                     detail: target.spec.serial == nil
-                        ? "serial が未設定です"
-                        : "adb に見えません(USB 接続と USB デバッグ許可を確認)",
+                        ? "serial is not set"
+                        : "not visible to adb (check the USB connection and USB debugging approval)",
                     iosPort: nil, androidSerial: nil)
             }
             guard bootCompleted[serial] == true else {
                 return DeviceRuntimeState(target: target, state: "booted",
-                                          detail: "ブート完了待ち(\(serial))",
+                                          detail: "waiting for boot to finish (\(serial))",
                                           iosPort: nil, androidSerial: nil)
             }
             return DeviceRuntimeState(target: target, state: "connected", detail: serial,
@@ -450,7 +450,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         }
         guard let avd = target.spec.avd else {
             return DeviceRuntimeState(target: target, state: "offline",
-                                      detail: "avd が未設定です",
+                                      detail: "avd is not set",
                                       iosPort: nil, androidSerial: nil)
         }
         let canonical = AndroidDeviceCatalog.canonicalAVDID(avd)
@@ -460,7 +460,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
         }
         guard bootCompleted[serial] == true else {
             return DeviceRuntimeState(target: target, state: "booted",
-                                      detail: "ブート完了待ち(\(serial))",
+                                      detail: "waiting for boot to finish (\(serial))",
                                       iosPort: nil, androidSerial: nil)
         }
         return DeviceRuntimeState(target: target, state: "connected", detail: serial,
@@ -543,16 +543,16 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                 switch command.cmd {
                 case "pause":
                     control.pause()
-                    self.logStderr("[monitor] ポーリングを一時停止しました(デバイス操作中)")
+                    self.logStderr("[monitor] Polling paused (device operation in progress)")
                 case "resume":
                     control.resume()
-                    self.logStderr("[monitor] ポーリングを再開しました")
+                    self.logStderr("[monitor] Polling resumed")
                 case "suppressFrames":
                     let ids = Set(command.devices ?? [])
                     control.setSuppressedFrames(ids)
                     self.logStderr(
-                        "[monitor] フレーム抑制対象を更新しました" +
-                        "(\(ids.count)台: \(ids.sorted().joined(separator: ", ")))")
+                        "[monitor] Updated the frame-suppression targets" +
+                        " (\(ids.count) device(s): \(ids.sorted().joined(separator: ", ")))")
                 default:
                     break
                 }
@@ -755,7 +755,7 @@ private enum MonitorError: Error, LocalizedError {
     case noConnection
 
     var errorDescription: String? {
-        "接続情報がありません(内部エラー)"
+        "no connection info (internal error)"
     }
 }
 
@@ -828,8 +828,8 @@ enum MonitorImage {
 
         var errorDescription: String? {
             switch self {
-            case .decodeFailed: return "スクリーンショットのデコードに失敗しました"
-            case .encodeFailed: return "JPEG への変換に失敗しました"
+            case .decodeFailed: return "failed to decode the screenshot"
+            case .encodeFailed: return "failed to encode to JPEG"
             }
         }
     }

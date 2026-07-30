@@ -240,7 +240,7 @@ public struct BridgeLauncher {
             Thread.sleep(forTimeInterval: 0.2)
         }
         for pid in remaining { kill(pid, SIGKILL) }
-        let message = "→ ポート \(port) の残骸ランナー(pid \(pids.map(String.init).joined(separator: ", "))) を掃除しました\n"
+        let message = "→ Cleaned up leftover runner(s) on port \(port) (pid \(pids.map(String.init).joined(separator: ", ")))\n"
         FileHandle.standardError.write(Data(message.utf8))
     }
 
@@ -614,8 +614,8 @@ public struct BridgeLauncher {
             "defaults", "write", "com.apple.Accessibility", "ReduceMotionEnabled", "-bool", "true",
         ])
         guard result?.status == 0 else {
-            let message = "⚠️ Reduce Motion の有効化に失敗しました(\(device))。"
-                + "アニメーションが有効なままだとアクションの整定待ちが遅くなります\n"
+            let message = "⚠️ Failed to enable Reduce Motion (\(device)). "
+                + "With animations still on, action settling waits get slower\n"
             FileHandle.standardError.write(Data(message.utf8))
             return
         }
@@ -699,36 +699,36 @@ public enum LauncherError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .commandFailed(let cmd, let tail):
-            return "\(cmd) が失敗しました:\n\(tail)"
+            return "\(cmd) failed:\n\(tail)"
         case .xctestrunNotFound(let path):
-            return "xctestrun が見つかりません(先に build-for-testing が必要): \(path)"
+            return "xctestrun not found (build-for-testing must run first): \(path)"
         case .notRunning:
-            return "ブリッジは起動していません(.ftester/bridge.pid なし)"
+            return "the bridge is not running (no .ftester/bridge.pid)"
         case .notOwnedByThisRepo(let port, let device, let version):
             // 「起動していません」と言うと事実と食い違う(実際は応答している)。実害: 別クローンの
             // 旧版ブリッジがポートとシミュレータを 7 時間握り、原因の切り分けに時間を要した
-            let target = device.map { "デバイス \($0)" } ?? "デバイス不明"
-            let ver = version.map { "protocolVersion \($0)" } ?? "版不明"
-            return "port \(port) のブリッジはこのリポジトリの管理下にありません"
-                + "(\(target) / \(ver))。応答はしているので停止対象は存在します。"
-                + "**別のクローン・別ワークスペースが起動したブリッジ**です。"
-                + "そちらで停止するか、`lsof -ti :\(port)` のプロセスを止めてください"
-                + "(iOS は xcodebuild を止めた後 `xcrun simctl terminate <udid> "
-                + "com.example.ftrunner.uitests.xctrunner` まで行う)"
+            let target = device.map { "device \($0)" } ?? "unknown device"
+            let ver = version.map { "protocolVersion \($0)" } ?? "unknown version"
+            return "the bridge on port \(port) is not managed by this repository"
+                + " (\(target) / \(ver)). It does respond, so there is something to stop — "
+                + "**a bridge started by another clone or workspace**. "
+                + "Stop it from there, or kill the process from `lsof -ti :\(port)`"
+                + " (on iOS, after stopping xcodebuild also run `xcrun simctl terminate <udid> "
+                + "com.example.ftrunner.uitests.xctrunner`)"
         case .timedOut(let lastError, let log):
-            return "ブリッジの起動がタイムアウトしました(最後のエラー: \(lastError))。ログ: \(log)"
+            return "bridge start-up timed out (last error: \(lastError)). Log: \(log)"
         case .portInUse(let port, let holder):
             if let holder {
-                return "ポート \(port) が別プロセスに使用されています(\(holder))"
+                return "port \(port) is in use by another process (\(holder))"
             }
-            return "ポート \(port) が別プロセスに使用されています"
+            return "port \(port) is in use by another process"
         case .developmentTeamMissing:
-            return "iOS 実機ビルドには Apple Developer の Team ID が必要です。"
-                + "~/.config/ftester/config.json の \"developmentTeam\" か環境変数 "
-                + "FT_DEVELOPMENT_TEAM に設定してください"
-                + "(Team ID は署名証明書の OU。`security find-certificate -c "
-                + "\"Apple Development: <you>\" -p | openssl x509 -noout -subject` で確認できる。"
-                + "`security find-identity` の括弧内は証明書 ID であって Team ID ではない)"
+            return "building for a physical iOS device requires an Apple Developer Team ID. "
+                + "Set \"developmentTeam\" in ~/.config/ftester/config.json or the "
+                + "FT_DEVELOPMENT_TEAM environment variable"
+                + " (the Team ID is the OU of the signing certificate — check with `security find-certificate -c "
+                + "\"Apple Development: <you>\" -p | openssl x509 -noout -subject`; "
+                + "the value in parentheses from `security find-identity` is a certificate ID, not a Team ID)"
         }
     }
 }
@@ -750,8 +750,8 @@ public enum RepoRoot {
             guard hasRunner(dir) else {
                 throw LauncherError.commandFailed(
                     "repo root detection",
-                    "FT_TOOL_ROOT=\(override) にブリッジ資産(Runner/project.yml)がありません。"
-                        + "foundation-tester のクローンのルートを指定してください")
+                    "FT_TOOL_ROOT=\(override) has no bridge assets (Runner/project.yml). "
+                        + "Point it at the root of the foundation-tester clone")
             }
             return dir
         }
@@ -780,9 +780,9 @@ public enum RepoRoot {
         if let toolRoot = toolSourceRoot() { return toolRoot }
         throw LauncherError.commandFailed(
             "repo root detection",
-            "ブリッジ資産(Runner/)が見つかりません。ツール本体 foundation-tester のソースが必要です"
-                + "(外部パッケージ構成では受け手パッケージの .build/checkouts か --ftester-path のソースが使われます)。"
-                + "クローンのルートを環境変数 FT_TOOL_ROOT で明示指定することもできます")
+            "bridge assets (Runner/) not found. The foundation-tester sources are required"
+                + " (in the external-package layout, the consumer package .build/checkouts or the --ftester-path sources are used). "
+                + "The clone root can also be set explicitly via the FT_TOOL_ROOT environment variable")
     }
 
     private static func hasRunner(_ dir: URL) -> Bool {

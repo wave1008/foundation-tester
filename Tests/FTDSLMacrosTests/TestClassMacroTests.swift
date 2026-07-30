@@ -233,7 +233,7 @@ final class TestClassMacroTests: XCTestCase {
             """,
             diagnostics: [
                 DiagnosticSpec(
-                    message: "@Deleted はテストクラスまたは @Test メソッドにのみ付与できます",
+                    message: "@Deleted can only be attached to a test class or a @Test method",
                     line: 1, column: 1),
             ],
             macroSpecs: macros
@@ -253,7 +253,7 @@ final class TestClassMacroTests: XCTestCase {
             }
             """,
             diagnostics: [
-                DiagnosticSpec(message: "@TestClass は class にのみ付与できます", line: 1, column: 1),
+                DiagnosticSpec(message: "@TestClass can only be attached to a class", line: 1, column: 1),
             ],
             macroSpecs: macros
         )
@@ -296,7 +296,7 @@ final class TestClassMacroTests: XCTestCase {
             """,
             diagnostics: [
                 DiagnosticSpec(
-                    message: "@Test メソッドは引数なし・非async・非throws で宣言してください: func 悪い()",
+                    message: "@Test methods must take no arguments and be neither async nor throws: func 悪い()",
                     line: 4, column: 10),
             ],
             macroSpecs: macros

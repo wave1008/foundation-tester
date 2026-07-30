@@ -36,19 +36,19 @@ public enum AndroidGpuRecovery {
         }
         guard !targets.isEmpty else { return [] }
 
-        log("🖥 CPU 描画から GPU へ復帰 \(targets.count) 台: "
+        log("🖥 Returning \(targets.count) device(s) from CPU rendering to the GPU: "
             + targets.map(\.device.name).joined(separator: ", "))
-        log("   emulator プロセスを再起動します(GPU モードは起動引数固定のため。1台あたり約1分)")
+        log("   Restarting the emulator processes (the GPU mode is fixed at launch; about a minute per device)")
 
         var recovered: [String] = []
         for (index, target) in targets.enumerated() {
             let name = target.device.name
             let progress = "\(index + 1)/\(targets.count)"
             do {
-                log("🖥 \(name): GPU 復帰中(\(progress))— エミュレータ停止中...")
+                log("🖥 \(name): returning to the GPU (\(progress)) — stopping the emulator...")
                 try await DeviceBooter.shutdownOne(spec: target.device.spec, platform: "android",
                                                   log: log)
-                log("🖥 \(name): GPU(-gpu host)で再ブート中...")
+                log("🖥 \(name): rebooting on the GPU (-gpu host)...")
                 let serial = try await DeviceBooter.startEmulator(avd: target.avdID,
                                                                   gpuMode: "host", locale: locale)
                 try await DeviceBooter.waitForAndroidBoot(serial: serial)
@@ -57,13 +57,13 @@ public enum AndroidGpuRecovery {
                 // ブートしても swiftshader のままなら復帰失敗(-gpu host が効かない構成)。
                 // 起動自体は成功しているので run からは外さず、警告だけ出す
                 if AndroidHealthProbe.detectRenderMode(serial: serial) == "cpu" {
-                    log("⚠️ \(name): 再起動しても CPU 描画のままです(\(progress))")
+                    log("⚠️ \(name): still on CPU rendering after the restart (\(progress))")
                 } else {
                     recovered.append(name)
-                    log("✅ \(name): GPU 描画へ復帰しました(\(progress)、\(serial))")
+                    log("✅ \(name): back on GPU rendering (\(progress), \(serial))")
                 }
             } catch {
-                log("❌ \(name): GPU 復帰に失敗 — \(error.localizedDescription)")
+                log("❌ \(name): GPU recovery failed — \(error.localizedDescription)")
             }
         }
         return recovered

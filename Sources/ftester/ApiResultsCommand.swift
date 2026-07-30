@@ -34,7 +34,7 @@ struct ApiResultsCommand: AsyncParsableCommand {
         let testProject = try ScenarioHost.project(named: project)
         let resultsDir = RunResultsStore.resultsDir(projectRoot: testProject.rootURL)
         guard let sinceDate = RunResultsQuery.parseSince(since) else {
-            throw ValidationError("--since の形式が不正です: \(since)(例: 30d, 12h, 2026-06-01)")
+            throw ValidationError("invalid --since format: \(since) (e.g. 30d, 12h, 2026-06-01)")
         }
 
         let runs = RunResultsStore.scanRuns(resultsDir: resultsDir, since: sinceDate)

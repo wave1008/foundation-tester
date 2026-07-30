@@ -34,7 +34,7 @@ struct ApiListDevices: AsyncParsableCommand {
             project: testProject, registered: LocalConfig.currentMachineName(),
             runProfileName: profile)
         if machine.auto {
-            logStderr("→ マシンプロファイル自動採用: \(machine.name)(machines/ が 1 つのため)")
+            logStderr("→ Using machine profile \(machine.name) automatically (it is the only one in machines/)")
         }
         let machineURL = testProject.machinesDir.appendingPathComponent("\(machine.name).json")
         guard FileManager.default.fileExists(atPath: machineURL.path) else {
@@ -57,7 +57,7 @@ struct ApiListDevices: AsyncParsableCommand {
             MonitorTarget(platform: "android", spec: $0)
         }
         guard !targets.isEmpty else {
-            throw ValidationError("マシンプロファイル \(machine.name) にデバイスが定義されていません")
+            throw ValidationError("machine profile \(machine.name) defines no devices")
         }
 
         // ApiMonitorCommand と同じ判定ロジックを 1 回だけ実行する(debounce なし。

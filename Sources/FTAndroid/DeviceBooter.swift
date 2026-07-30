@@ -16,9 +16,9 @@ public enum DeviceBooterError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .emulatorBinaryNotFound:
-            return "emulator コマンドが見つかりません(ANDROID_HOME を設定するか SDK に emulator/ を導入)"
+            return "the emulator command was not found (set ANDROID_HOME or add emulator/ to the SDK)"
         case .bootTimedOut(let serial):
-            return "ブート完了を確認できませんでした(\(serial))"
+            return "could not confirm that boot finished (\(serial))"
         case .commandFailed(let detail):
             return detail
         }
@@ -129,7 +129,7 @@ public enum DeviceBooter {
                 try await bootOne(spec: spec, platform: item.platform, gpuMode: item.gpuMode, log: log)
             } else if let running = runningDescription(spec: spec, platform: item.platform) {
                 deviceStarting(spec.name, item.platform)
-                log("✔ \(spec.name): 起動済み(\(running))")
+                log("✔ \(spec.name): already running (\(running))")
             } else {
                 deviceStarting(spec.name, item.platform)
                 try await bootOne(spec: spec, platform: item.platform, gpuMode: item.gpuMode, log: log)
@@ -153,38 +153,38 @@ public enum DeviceBooter {
         // 実機に「起動」は無い。到達性の確認だけして返す(未接続はここで明確に落とす)
         if spec.isPhysical {
             let description = try physicalDeviceDescription(spec: spec, platform: platform)
-            log("✔ \(spec.name): 実機接続を確認(\(description))")
+            log("✔ \(spec.name): physical device connected (\(description))")
             return
         }
         if platform == "ios" {
             let sim = try SimulatorCatalog.resolve(spec: spec, in: SimulatorCatalog.devices())
             guard !sim.booted else {
-                log("✔ \(spec.name): 起動済み(\(sim.name))")
+                log("✔ \(spec.name): already running (\(sim.name))")
                 return
             }
-            log("→ \(spec.name): シミュレータ起動(\(sim.name) \(sim.os))...")
+            log("→ \(spec.name): starting the simulator (\(sim.name) \(sim.os))...")
             // bootstatus -b は起動してブート完了までブロックする
             let result = try Shell.run(["xcrun", "simctl", "bootstatus", sim.udid, "-b"])
             guard result.status == 0 else {
                 throw DeviceBooterError.commandFailed("simctl bootstatus: \(result.tail)")
             }
-            log("✅ \(spec.name): 起動完了(\(sim.name))")
+            log("✅ \(spec.name): started (\(sim.name))")
         } else {
             guard let avd = spec.avd else {
                 throw DeviceBooterError.commandFailed(
-                    "avd 指定がありません(マシンプロファイルに \"avd\" を追加してください)")
+                    "no avd is specified (add \"avd\" to the machine profile)")
             }
             let avdID = AndroidDeviceCatalog.canonicalAVDID(avd)
             if let serial = try? AndroidDeviceCatalog.runningAVDs()
                 .first(where: { $0.value == avdID })?.key {
-                log("✔ \(spec.name): 起動済み(\(serial))")
+                log("✔ \(spec.name): already running (\(serial))")
                 return
             }
-            log("→ \(spec.name): エミュレータ起動(\(avdID))...")
+            log("→ \(spec.name): starting the emulator (\(avdID))...")
             let serial = try await startEmulator(avd: avdID, gpuMode: gpuMode)
             try await waitForAndroidBoot(serial: serial)
             await applyLocale(serial: serial, locale: defaultLocale, deviceName: spec.name, log: log)
-            log("✅ \(spec.name): 起動完了(\(serial))")
+            log("✅ \(spec.name): started (\(serial))")
         }
     }
 
@@ -200,10 +200,10 @@ public enum DeviceBooter {
         do {
             let result = try await AndroidDriver(serial: serial).setDeviceLocale(locale)
             if result.changed {
-                log("→ \(deviceName): ロケールを \(result.locale) に設定しました")
+                log("→ \(deviceName): locale set to \(result.locale)")
             }
         } catch {
-            log("⚠️ \(deviceName): ロケール設定に失敗 — \(error.localizedDescription)")
+            log("⚠️ \(deviceName): failed to set the locale — \(error.localizedDescription)")
         }
     }
 
@@ -223,10 +223,10 @@ public enum DeviceBooter {
                 let udid = (try? IOSPhysicalDeviceCatalog.resolve(
                     spec: spec, in: IOSPhysicalDeviceCatalog.devices()))?.udid ?? spec.udid
                 for port in (udid.map { BridgeLauncher.stopMatching(udid: $0, repoRoot: repoRoot) } ?? []) {
-                    log("→ \(spec.name): ブリッジ停止(port \(port))")
+                    log("→ \(spec.name): stopping the bridge (port \(port))")
                 }
             }
-            log("✔ \(spec.name): 実機のため停止しません")
+            log("✔ \(spec.name): physical device — not stopping it")
             return
         }
         if platform == "ios" {
@@ -238,11 +238,11 @@ public enum DeviceBooter {
             // XCUITest セッションがシミュレータを再ブートさせ「停止したのに起動中に戻る」症状になる
             if let repoRoot {
                 for port in BridgeLauncher.stopMatching(udid: sim.udid, repoRoot: repoRoot) {
-                    log("→ \(spec.name): ブリッジ停止(port \(port))")
+                    log("→ \(spec.name): stopping the bridge (port \(port))")
                 }
             }
             guard sim.booted else {
-                log("✔ \(spec.name): 既に停止しています")
+                log("✔ \(spec.name): already stopped")
                 return
             }
             // macOS 27 beta 3: simctl shutdown は「Unable to shutdown...」(405)を返しつつ実際には
@@ -254,16 +254,16 @@ public enum DeviceBooter {
                 let stillBooted = (try? SimulatorCatalog.devices())?
                     .first(where: { $0.udid == sim.udid })?.booted ?? false
                 if !stillBooted {
-                    log("✅ \(spec.name): シミュレータを停止しました(\(sim.name))")
+                    log("✅ \(spec.name): simulator stopped (\(sim.name))")
                     return
                 }
                 if attempt < 3 {
-                    log("→ \(spec.name): 停止が反映されないため再試行(\(attempt)/3)...")
+                    log("→ \(spec.name): shutdown not reflected yet — retrying (\(attempt)/3)...")
                     try await Task.sleep(nanoseconds: 2_000_000_000)
                 }
             }
             throw DeviceBooterError.commandFailed(
-                "simctl shutdown: 3回試行してもシミュレータが停止しません(最後の出力: \(lastResult?.tail ?? ""))")
+                "simctl shutdown: the simulator did not stop after 3 attempts (last output: \(lastResult?.tail ?? ""))")
         } else {
             let serial = try AndroidDeviceCatalog.resolveSerial(spec: spec)
             // gRPC setVmState(SHUTDOWN) 優先(adb 経路がウェッジした個体にも届く)・
@@ -278,12 +278,12 @@ public enum DeviceBooter {
             while Date() < deadline {
                 let connected = (try? AndroidDeviceCatalog.connectedSerials()) ?? []
                 if !connected.contains(serial) {
-                    log("✅ \(spec.name): エミュレータを停止しました(\(serial))")
+                    log("✅ \(spec.name): emulator stopped (\(serial))")
                     return
                 }
                 try? await Task.sleep(nanoseconds: 500_000_000)
             }
-            log("⚠️ \(spec.name): emu kill を送りましたが serial 消失を確認できません(\(serial))")
+            log("⚠️ \(spec.name): sent emu kill but could not confirm the serial disappeared (\(serial))")
         }
     }
 
@@ -386,7 +386,7 @@ public enum DeviceBooter {
         // (次回スキャンで自己回復するが当該 run 中は resource を食う)。失敗経路では明示終了する。
         process.terminate()
         throw DeviceBooterError.commandFailed(
-            "エミュレータの serial を検出できません(\(avd)。AVD 名が正しいか確認してください)")
+            "cannot detect the emulator serial (\(avd); check that the AVD name is correct)")
     }
 
     /// EmulatorLog.url を truncate して開く(ヘッダ=起動時刻+引数)。

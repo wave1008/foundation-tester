@@ -125,7 +125,7 @@ struct ApiLiveServe: AsyncParsableCommand {
         for await line in lines {
             guard let data = line.data(using: .utf8),
                   let command = try? JSONDecoder().decode(ApiLiveServeCommand.self, from: data) else {
-                logStderr("未知の形式の行を無視しました: \(line)")
+                logStderr("Ignored a line in an unknown format: \(line)")
                 continue
             }
             ResidentProcessGuard.noteCommandStart()
@@ -162,7 +162,7 @@ struct ApiLiveServe: AsyncParsableCommand {
             let repoRoot = try RepoRoot.find()
             return LiveBridgeAutoStarter(repoRoot: repoRoot, udid: udid, port: port)
         } catch {
-            logStderr("リポジトリルートが見つからないためブリッジ自動起動を無効化します: " +
+            logStderr("Repository root not found — disabling bridge auto-start: " +
                 error.localizedDescription)
             return nil
         }
@@ -212,40 +212,40 @@ struct ApiLiveServe: AsyncParsableCommand {
             } else if let x = command.x, let y = command.y {
                 try await driver.tap(x: x, y: y)
             } else {
-                throw ServeCommandError.invalidArguments("tap には ref か x/y のどちらかが必要です")
+                throw ServeCommandError.invalidArguments("tap requires ref or x/y")
             }
         case "type":
             guard let text = command.text else {
-                throw ServeCommandError.invalidArguments("type には text が必要です")
+                throw ServeCommandError.invalidArguments("type requires text")
             }
             try await driver.type(ref: command.ref, text: text)
         case "swipe":
             guard let raw = command.direction, let direction = FTSwipeDirection(rawValue: raw) else {
                 throw ServeCommandError.invalidArguments(
-                    "swipe の direction は up/down/left/right のいずれかです")
+                    "swipe direction must be one of up/down/left/right")
             }
             try await driver.swipe(direction)
         case "drag":
             guard let fromX = command.fromX, let fromY = command.fromY,
                   let toX = command.toX, let toY = command.toY else {
-                throw ServeCommandError.invalidArguments("drag には fromX/fromY/toX/toY が必要です")
+                throw ServeCommandError.invalidArguments("drag requires fromX/fromY/toX/toY")
             }
             try await driver.drag(fromX: fromX, fromY: fromY, toX: toX, toY: toY,
                                   pressSeconds: command.press ?? 0.05,
                                   durationSeconds: command.duration ?? 0.3)
         case "press":
             guard let x = command.x, let y = command.y, let duration = command.duration else {
-                throw ServeCommandError.invalidArguments("press には x/y/duration が必要です")
+                throw ServeCommandError.invalidArguments("press requires x/y/duration")
             }
             try await driver.press(x: x, y: y, duration: duration)
         case "launch":
             guard let bundle = command.bundle else {
-                throw ServeCommandError.invalidArguments("launch には bundle が必要です")
+                throw ServeCommandError.invalidArguments("launch requires bundle")
             }
             try await driver.launch(bundleID: bundle)
         case "activate":
             guard let bundle = command.bundle else {
-                throw ServeCommandError.invalidArguments("activate には bundle が必要です")
+                throw ServeCommandError.invalidArguments("activate requires bundle")
             }
             try await driver.activate(bundleID: bundle)
         case "appSwitcher":
@@ -256,10 +256,10 @@ struct ApiLiveServe: AsyncParsableCommand {
             try await driver.terminate()
         case "install":
             guard let path = command.path else {
-                throw ServeCommandError.invalidArguments("install には path が必要です")
+                throw ServeCommandError.invalidArguments("install requires path")
             }
             guard FileManager.default.fileExists(atPath: path) else {
-                throw ServeCommandError.invalidArguments("パッケージファイルが見つかりません: \(path)")
+                throw ServeCommandError.invalidArguments("package file not found: \(path)")
             }
             // 中身が同じなら入れ直さない(run 側 BridgeProvisioner と同じ規律)。
             // 再インストールはアプリを終了させ、記録開始のたびに状態が消えるため
@@ -267,7 +267,7 @@ struct ApiLiveServe: AsyncParsableCommand {
                let bundleID = Self.bundleID(inAppBundle: path),
                InstalledAppCheck.simulatorAppIsCurrent(
                    udid: udid, bundleID: bundleID, appPath: path) {
-                logStderr("→ install: スキップ(インストール済みと内容が同じ): \(bundleID)")
+                logStderr("→ install: skipped (contents identical to the installed app): \(bundleID)")
                 return
             }
             try await driver.install(packagePath: path)
@@ -276,7 +276,7 @@ struct ApiLiveServe: AsyncParsableCommand {
                 InstalledAppCheck.recordInstalled(udid: udid, bundleID: bundleID, appPath: path)
             }
         default:
-            throw ServeCommandError.invalidArguments("未知の cmd です: \(command.cmd)")
+            throw ServeCommandError.invalidArguments("unknown cmd: \(command.cmd)")
         }
     }
 

@@ -145,11 +145,11 @@ func emit(jpeg: Data, width: Int, height: Int) -> Bool {
 
 let options = parseOptions()
 guard options.platform == "ios" || options.platform == "android" else {
-    FileHandle.standardError.write(Data("error: --platform は ios / android のいずれかです\n".utf8))
+    FileHandle.standardError.write(Data("error: --platform must be ios or android\n".utf8))
     exit(2)
 }
 if options.platform == "android" && options.serial.isEmpty {
-    FileHandle.standardError.write(Data("error: --serial が必要です(android)\n".utf8))
+    FileHandle.standardError.write(Data("error: --serial is required (android)\n".utf8))
     exit(2)
 }
 
@@ -181,7 +181,7 @@ while true {
         consecutiveFailures += 1
         if consecutiveFailures >= maxConsecutiveFailures {
             FileHandle.standardError.write(Data(
-                "error: スクリーンショットを \(maxConsecutiveFailures) 回連続で取得できません\n".utf8))
+                "error: failed to capture a screenshot \(maxConsecutiveFailures) times in a row\n".utf8))
             exit(4)
         }
     }

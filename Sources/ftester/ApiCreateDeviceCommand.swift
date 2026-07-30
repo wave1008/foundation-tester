@@ -29,18 +29,18 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
     var name: String
 
     @Option(help: ArgumentHelp(
-        "iOS: シミュレータ機種の identifier / Android: avdmanager のデバイス定義 id"
-        + "(device-catalog の models[].id / deviceTypes[].identifier)"))
+        "iOS: simulator model identifier / Android: avdmanager device-definition id"
+        + " (models[].id / deviceTypes[].identifier from device-catalog)"))
     var model: String
 
     @Option(help: ArgumentHelp(
-        "iOS: ランタイムの identifier / Android: システムイメージのパッケージ"
-        + "(device-catalog の runtimes[].identifier / systemImages[].package)"))
+        "iOS: runtime identifier / Android: system-image package"
+        + " (runtimes[].identifier / systemImages[].package from device-catalog)"))
     var os: String
 
     @Flag(name: .customLong("no-register"), help: ArgumentHelp(
-        "シミュレータ/AVD の作成のみ行い、マシンプロファイルへは追記しない"
-        + "(VSCode拡張の「既存のデバイスから選択」画面用 — 登録は選択画面の OK で行う)"))
+        "Only create the simulator/AVD without appending it to the machine profile"
+        + " (for the VSCode extension's pick-from-existing screen — registration happens on its OK)"))
     var noRegister = false
 
     func run() async throws {
@@ -59,10 +59,10 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
     private func execute() async throws -> ApiCreateDeviceEntry {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedName.isEmpty else {
-            throw CreateDeviceError("デバイス名が空です")
+            throw CreateDeviceError("the device name is empty")
         }
         guard platform == "ios" || platform == "android" else {
-            throw CreateDeviceError("platform は ios または android を指定してください: \(platform)")
+            throw CreateDeviceError("platform must be ios or android: \(platform)")
         }
 
         // --no-register: 物理作成のみ行い、プロファイルの解決・重複チェック・追記・書き戻しは
@@ -75,7 +75,7 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
             default:
                 (_, resultEntry) = try createAVD(name: trimmedName)
             }
-            emitLog("マシンプロファイルへは登録しません(--no-register)")
+            emitLog("Not registering into the machine profile (--no-register)")
             return resultEntry
         }
 
@@ -84,20 +84,20 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
 
         let machineURL = testProject.machinesDir.appendingPathComponent("\(machineName).json")
         guard FileManager.default.fileExists(atPath: machineURL.path) else {
-            throw CreateDeviceError("マシンプロファイル \(machineName).json がありません")
+            throw CreateDeviceError("machine profile \(machineName).json does not exist")
         }
         let data = try Data(contentsOf: machineURL)
         guard let profileObject = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
         else {
-            throw CreateDeviceError("マシンプロファイル \(machineName).json を JSON として解析できません")
+            throw CreateDeviceError("cannot parse machine profile \(machineName).json as JSON")
         }
 
         // 名前重複は物理作成前に検証する(作成後に addingDevice で発覚すると孤児シミュレータ/AVDが
         // 残るため)。addingDevice 内の重複チェックは防御として残している
         guard !MachineProfileEditor.deviceNames(inProfileObject: profileObject)
             .contains(trimmedName) else {
-            throw CreateDeviceError("デバイス名が重複しています: \(trimmedName)"
-                + "(name は ios/android 横断で一意にしてください)")
+            throw CreateDeviceError("duplicate device name: \(trimmedName)"
+                + " (names must be unique across ios and android)")
         }
 
         let deviceEntry: [String: Any]
@@ -123,14 +123,14 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
         do {
             let freshData = try Data(contentsOf: machineURL)
             guard let obj = (try? JSONSerialization.jsonObject(with: freshData)) as? [String: Any] else {
-                throw CreateDeviceError("マシンプロファイル \(machineName).json を JSON として解析できません")
+                throw CreateDeviceError("cannot parse machine profile \(machineName).json as JSON")
             }
             currentObject = obj
         } catch let error as CreateDeviceError {
             throw error
         } catch {
             throw CreateDeviceError(
-                "シミュレータ/AVD の作成には成功しましたが、プロファイルの読み直しに失敗しました: "
+                "the simulator/AVD was created, but re-reading the profile failed: "
                 + error.localizedDescription)
         }
 
@@ -140,7 +140,7 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
                 toProfileObject: currentObject, platform: platform, device: deviceEntry)
         } catch {
             throw CreateDeviceError(
-                "シミュレータ/AVD の作成には成功しましたが、プロファイルへの追記に失敗しました: "
+                "the simulator/AVD was created, but appending it to the profile failed: "
                 + error.localizedDescription)
         }
         do {
@@ -149,7 +149,7 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
             try output.write(to: machineURL, options: .atomic)
         } catch {
             throw CreateDeviceError(
-                "シミュレータ/AVD の作成には成功しましたが、プロファイルファイルへの書き込みに失敗しました: "
+                "the simulator/AVD was created, but writing the profile file failed: "
                 + error.localizedDescription)
         }
         return resultEntry
@@ -162,7 +162,7 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
         let determined = try ProfileResolver.determineMachine(
             project: project, registered: LocalConfig.currentMachineName())
         if determined.auto {
-            logStderr("→ マシンプロファイル自動採用: \(determined.name)(machines/ が 1 つのため)")
+            logStderr("→ Using machine profile \(determined.name) automatically (it is the only one in machines/)")
         }
         return determined.name
     }
@@ -172,7 +172,7 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
     private func createSimulator(
         name: String
     ) async throws -> (deviceEntry: [String: Any], resultEntry: ApiCreateDeviceEntry) {
-        emitLog("シミュレータ機種/ランタイムを解決中...")
+        emitLog("Resolving the simulator model/runtime...")
         let deviceTypesResult = try Shell.run(["xcrun", "simctl", "list", "-j", "devicetypes"])
         guard deviceTypesResult.status == 0,
               let deviceTypesData = deviceTypesResult.output.data(using: .utf8),
@@ -180,12 +180,12 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
                 as? [String: Any],
               let rawDeviceTypes = deviceTypesJSON["devicetypes"] as? [[String: Any]] else {
             throw CreateDeviceError(
-                "simctl list devicetypes の実行に失敗しました: \(deviceTypesResult.tail)")
+                "simctl list devicetypes failed: \(deviceTypesResult.tail)")
         }
         guard let deviceTypeEntry = rawDeviceTypes.first(where: {
             ($0["identifier"] as? String) == model
         }), let deviceTypeName = deviceTypeEntry["name"] as? String else {
-            throw CreateDeviceError("シミュレータ機種が見つかりません: \(model)")
+            throw CreateDeviceError("simulator model not found: \(model)")
         }
 
         let runtimesResult = try Shell.run(["xcrun", "simctl", "list", "-j", "runtimes"])
@@ -194,23 +194,23 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
               let runtimesJSON = (try? JSONSerialization.jsonObject(with: runtimesData))
                 as? [String: Any],
               let rawRuntimes = runtimesJSON["runtimes"] as? [[String: Any]] else {
-            throw CreateDeviceError("simctl list runtimes の実行に失敗しました: \(runtimesResult.tail)")
+            throw CreateDeviceError("simctl list runtimes failed: \(runtimesResult.tail)")
         }
         guard let runtimeEntry = rawRuntimes.first(where: { ($0["identifier"] as? String) == os }),
               let runtimeVersion = runtimeEntry["version"] as? String else {
-            throw CreateDeviceError("ランタイムが見つかりません: \(os)")
+            throw CreateDeviceError("runtime not found: \(os)")
         }
 
-        emitLog("シミュレータを作成中: \(name)(\(deviceTypeName) / iOS \(runtimeVersion))...")
+        emitLog("Creating the simulator: \(name) (\(deviceTypeName) / iOS \(runtimeVersion))...")
         let createResult = try Shell.run(["xcrun", "simctl", "create", name, model, os])
         guard createResult.status == 0 else {
-            throw CreateDeviceError("simctl create に失敗しました: \(createResult.tail)")
+            throw CreateDeviceError("simctl create failed: \(createResult.tail)")
         }
         let udid = createResult.output.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !udid.isEmpty else {
-            throw CreateDeviceError("simctl create の出力(UDID)が空です")
+            throw CreateDeviceError("simctl create produced no output (UDID)")
         }
-        emitLog("シミュレータを作成しました(UDID: \(udid))")
+        emitLog("Created the simulator (UDID: \(udid))")
 
         let deviceEntry: [String: Any] = [
             "name": name, "simulator": deviceTypeName, "os": runtimeVersion, "udid": udid,
@@ -240,10 +240,10 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
             suffix += 1
         }
 
-        emitLog("AVD を作成中: \(avdID)(\(model) / \(os))...")
+        emitLog("Creating the AVD: \(avdID) (\(model) / \(os))...")
         try Self.runAVDManagerCreate(
             avdmanagerPath: avdmanagerURL.path, avdID: avdID, package: os, deviceID: model)
-        emitLog("AVD を作成しました: \(avdID)")
+        emitLog("Created the AVD: \(avdID)")
 
         updateDisplayName(avdID: avdID, displayName: name)
 
@@ -276,7 +276,7 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
         waitForExit()
         guard process.terminationStatus == 0 else {
             let output = String(data: outputData, encoding: .utf8) ?? ""
-            throw CreateDeviceError("avdmanager create avd に失敗しました: \(output)")
+            throw CreateDeviceError("avdmanager create avd failed: \(output)")
         }
     }
 
@@ -290,7 +290,7 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
                 .appendingPathComponent(".android/avd")
         let configURL = avdHome.appendingPathComponent("\(avdID).avd/config.ini")
         guard let content = try? String(contentsOf: configURL, encoding: .utf8) else {
-            logStderr("⚠️ config.ini が見つかりません(表示名の設定をスキップ): \(configURL.path)")
+            logStderr("⚠️ config.ini not found (skipping the display-name setup): \(configURL.path)")
             return
         }
         var lines = content.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
@@ -304,7 +304,7 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
         do {
             try updated.write(to: configURL, options: .atomic)
         } catch {
-            logStderr("⚠️ config.ini への表示名書き込みに失敗しました: \(error.localizedDescription)")
+            logStderr("⚠️ Failed to write the display name into config.ini: \(error.localizedDescription)")
         }
     }
 

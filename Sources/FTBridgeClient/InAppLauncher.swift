@@ -148,22 +148,22 @@ public enum InAppLauncherError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .dylibMissing(let path):
-            return "in-app ブリッジの dylib が見つかりません(InAppBridge/build.sh でビルド): \(path)"
+            return "the in-app bridge dylib was not found (build it with InAppBridge/build.sh): \(path)"
         case .repoRootInvalid(let root):
-            return "\(root) に InAppBridge/build.sh がありません。"
-                + "ここはツール本体(foundation-tester のクローン)のルートである必要があります"
-                + "(シナリオ側パッケージのルートではありません)。"
-                + "解決できないときは環境変数 FT_TOOL_ROOT にクローンのルートを指定してください"
+            return "\(root) has no InAppBridge/build.sh. "
+                + "This must be the root of the tool itself (the foundation-tester clone)"
+                + " — not the root of the scenario package. "
+                + "If it cannot be resolved, set the clone root via the FT_TOOL_ROOT environment variable"
         case .buildFailed(let tail):
-            return "InAppBridge/build.sh が失敗しました:\n\(tail)"
+            return "InAppBridge/build.sh failed:\n\(tail)"
         case .bootFailed(let tail):
-            return "シミュレータをブートできませんでした(simctl bootstatus -b):\n\(tail)"
+            return "could not boot the simulator (simctl bootstatus -b):\n\(tail)"
         case .launchFailed(let tail):
-            return "アプリの注入起動(simctl launch)に失敗しました"
-                + "(プロビジョニング時にインストール確認済みのため、シミュレータの状態異常や"
-                + "アプリのクラッシュ等を確認してください):\n\(tail)"
+            return "the injected app launch (simctl launch) failed"
+                + " (the install was verified during provisioning, so look for simulator trouble "
+                + "or an app crash):\n\(tail)"
         case .notReady(let detail):
-            return "in-app ブリッジが時間内に応答しませんでした: \(detail)"
+            return "the in-app bridge did not respond in time: \(detail)"
         }
     }
 }

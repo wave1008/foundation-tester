@@ -39,13 +39,13 @@ public enum XCUIBridgeResolver {
         let scan = await scanBridges(device: device, excluding: preferred, repoRoot: repoRoot)
 
         if let found = scan.xcuiForDevice {
-            let note = "port \(preferred) は in-app ブリッジのため XCUITest ブリッジ(port \(found.port))へ振り替えました"
+            let note = "port \(preferred) is an in-app bridge — rerouted to the XCUITest bridge (port \(found.port))"
             logger(note)
             return Resolution(endpoint: found, note: note)
         }
         guard autoStart else {
-            let note = "port \(preferred) は in-app ブリッジです"
-                + "(このデバイスの XCUITest ブリッジが見つかりません。`ftester bridge up` で用意してください)"
+            let note = "port \(preferred) is an in-app bridge"
+                + " (no XCUITest bridge found for this device; provide one with `ftester bridge up`)"
             logger(note)
             return Resolution(endpoint: preferredEndpoint, note: note)
         }
@@ -105,18 +105,18 @@ public enum XCUIBridgeResolver {
             return Resolution(endpoint: fallback, note: reason)
         }
         guard let repoRoot else {
-            return giveUp("XCUITest ブリッジを起動できません(リポジトリルートが未解決)")
+            return giveUp("cannot start the XCUITest bridge (repository root unresolved)")
         }
         let booted = ((try? SimulatorCatalog.devices()) ?? []).filter { $0.booted && $0.name == device }
         guard booted.count == 1 else {
-            return giveUp("XCUITest ブリッジを起動できません"
-                + "(デバイス「\(device)」を一意に特定できません: 起動中 \(booted.count) 台)")
+            return giveUp("cannot start the XCUITest bridge"
+                + " (device \"\(device)\" is ambiguous: \(booted.count) booted)")
         }
         guard let port = freePort(repoRoot: repoRoot, occupied: occupied) else {
-            return giveUp("XCUITest ブリッジを起動できません(空きポートがありません)")
+            return giveUp("cannot start the XCUITest bridge (no free port)")
         }
-        logger("in-app ブリッジしか居ないため XCUITest ブリッジを起動します"
-            + "(port \(port), \(device)。初回は build-for-testing で数分かかります)")
+        logger("Only an in-app bridge is present — starting an XCUITest bridge"
+            + " (port \(port), \(device); the first build-for-testing takes several minutes)")
         let launcher = BridgeLauncher(repoRoot: repoRoot, device: booted[0].udid, port: port,
                                       physical: booted[0].physical)
         do {
@@ -132,9 +132,9 @@ public enum XCUIBridgeResolver {
             // 起動途中のプロセス・pid ファイルを残さない(以後のポート採番を汚すため。
             // LiveBridgeAutoStarter.launchBridge と同じ後始末)
             try? launcher.stop()
-            return giveUp("XCUITest ブリッジの起動に失敗しました: \(error.localizedDescription)")
+            return giveUp("failed to start the XCUITest bridge: \(error.localizedDescription)")
         }
-        let note = "XCUITest ブリッジを起動しました(port \(port))"
+        let note = "started the XCUITest bridge (port \(port))"
         logger(note)
         return Resolution(endpoint: BridgeEndpoint.load(port: port, repoRoot: repoRoot), note: note)
     }

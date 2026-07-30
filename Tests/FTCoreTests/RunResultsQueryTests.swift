@@ -168,7 +168,7 @@ final class RunResultsQueryTests: XCTestCase {
         ]
         let report = RunResultsQuery.deviceSummary(records)
 
-        XCTAssertEqual(report.byWorker.map(\.worker), ["(worker不明)", "ios:iPhone 17"])
+        XCTAssertEqual(report.byWorker.map(\.worker), ["(unknown worker)", "ios:iPhone 17"])
         let iphoneRow = report.byWorker.first { $0.worker == "ios:iPhone 17" }
         XCTAssertEqual(iphoneRow?.runs, 2)
         XCTAssertEqual(iphoneRow?.successRate, 50)
@@ -358,7 +358,7 @@ final class RunResultsQueryTests: XCTestCase {
         let row = try? XCTUnwrap(rows.first { $0.kind == "infraFailures" })
         XCTAssertEqual(row?.severity, "warn")
         XCTAssertEqual(row?.count, 2)
-        XCTAssertTrue(row?.message.contains("アサーション起因0件") ?? false)
+        XCTAssertTrue(row?.message.contains("vs 0 assertion-caused") ?? false)
     }
 
     func testInsightsNoInfraFailuresBelowThreshold() {

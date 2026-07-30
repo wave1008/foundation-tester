@@ -80,7 +80,7 @@ public struct TestClassMacro {
                 context.diagnose(Diagnostic(
                     node: Syntax(fn.name),
                     message: FTDSLDiagnostic(
-                        "@Test メソッドは引数なし・非async・非throws で宣言してください: func \(fn.name.text)()",
+                        "@Test methods must take no arguments and be neither async nor throws: func \(fn.name.text)()",
                         id: "scenario-signature")))
                 continue
             }
@@ -112,7 +112,7 @@ public struct TestClassMacro {
         guard let cls = declaration.as(ClassDeclSyntax.self) else {
             context.diagnose(Diagnostic(
                 node: Syntax(node),
-                message: FTDSLDiagnostic("@TestClass は class にのみ付与できます", id: "not-a-class")))
+                message: FTDSLDiagnostic("@TestClass can only be attached to a class", id: "not-a-class")))
             return nil
         }
         return cls
@@ -224,7 +224,7 @@ public struct TestMacro: PeerMacro {
         guard declaration.is(FunctionDeclSyntax.self) else {
             context.diagnose(Diagnostic(
                 node: Syntax(node),
-                message: FTDSLDiagnostic("@Test はメソッドにのみ付与できます", id: "not-a-function")))
+                message: FTDSLDiagnostic("@Test can only be attached to a method", id: "not-a-function")))
             return []
         }
         return []
@@ -243,7 +243,7 @@ public struct DeletedMacro: PeerMacro {
             context.diagnose(Diagnostic(
                 node: Syntax(node),
                 message: FTDSLDiagnostic(
-                    "@Deleted はテストクラスまたは @Test メソッドにのみ付与できます",
+                    "@Deleted can only be attached to a test class or a @Test method",
                     id: "deleted-target")))
             return []
         }

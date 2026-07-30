@@ -48,15 +48,15 @@ public enum IOSPhysicalDeviceCatalogError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .devicectlFailed(let detail):
-            return "xcrun devicectl list devices に失敗しました: \(detail)"
+            return "xcrun devicectl list devices failed: \(detail)"
         case .notFound(let udid, let available):
-            let list = available.isEmpty ? "なし"
+            let list = available.isEmpty ? "none"
                 : available.map { "\($0.name)(\($0.udid))" }.joined(separator: ", ")
-            return "UDID の iOS 実機が見つかりません: \(udid)(認識中の実機: \(list))。"
-                + "USB 接続・「このコンピュータを信頼」・Developer Mode の有効化を確認してください"
+            return "no physical iOS device with that UDID: \(udid) (recognised devices: \(list)). "
+                + "Check the USB connection, \"Trust This Computer\" and Developer Mode"
         case .notConnected(let udid, let name):
-            return "iOS 実機 \(name)(\(udid))は登録済みですが現在接続されていません"
-                + "(USB を挿し直すか、WiFi 接続なら同一ネットワークにあることを確認してください)"
+            return "the physical iOS device \(name) (\(udid)) is registered but not currently connected"
+                + " (re-plug the USB cable, or for WiFi make sure it is on the same network)"
         }
     }
 }

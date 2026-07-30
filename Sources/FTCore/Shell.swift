@@ -38,7 +38,7 @@ public enum ShellError: Error, CustomStringConvertible {
     public var description: String {
         switch self {
         case let .timedOut(args, seconds):
-            return "コマンドが \(seconds)s でタイムアウト(kill 済み): \(args.joined(separator: " "))"
+            return "the command timed out after \(seconds)s (killed): \(args.joined(separator: " "))"
         }
     }
 }

@@ -60,7 +60,7 @@ struct DriverOptions: ParsableArguments {
         case "android":
             return try AndroidDriver(serial: serial)
         default:
-            throw ValidationError("platform は ios / android のいずれかです: \(platformOverride ?? platform)")
+            throw ValidationError("platform must be ios or android: \(platformOverride ?? platform)")
         }
     }
 }
@@ -265,12 +265,12 @@ struct Doctor: AsyncParsableCommand {
                         + "Kill the process shown by `lsof -ti :\(port)`")
                 }
             case .reportForeign(let owner):
-                findings.append("   - \(label)\(idle) — 別ワークスペースの所有: \(owner)。"
-                    + "そちらのクローンで `ftester bridge down --port \(port)`")
+                findings.append("   - \(label)\(idle) — owned by another workspace: \(owner). "
+                    + "Run `ftester bridge down --port \(port)` from that clone")
             case .reportUnknown:
-                findings.append("   - \(label)\(idle) — 起動元不明(自己申告の無い旧ブリッジ)。"
-                    + "`lsof -ti :\(port)` のプロセスを止めたうえで、iOS は "
-                    + "`xcrun simctl terminate <udid> com.example.ftrunner.uitests.xctrunner` まで行う")
+                findings.append("   - \(label)\(idle) — unknown owner (an old bridge with no self-report). "
+                    + "Kill the process from `lsof -ti :\(port)`; on iOS also run "
+                    + "`xcrun simctl terminate <udid> com.example.ftrunner.uitests.xctrunner`")
             }
         }
         if !reaped.isEmpty {
@@ -339,7 +339,7 @@ struct Bridge: AsyncParsableCommand {
                 // serial 省略時は接続中の全デバイス(8台並列前のプリウォーム用)
                 for serial in try AndroidBridgeCLI.serials(only: driverOptions.serial) {
                     let driver = try AndroidDriver(serial: serial)
-                    print("→ Android ブリッジ起動: \(serial)")
+                    print("→ Starting the Android bridge: \(serial)")
                     try await driver.resetAndEnsureBridge()
                     print("✅ \(serial): \(driver.bridgeDoctorSummary())")
                 }
@@ -349,15 +349,15 @@ struct Bridge: AsyncParsableCommand {
             let launcher = BridgeLauncher(repoRoot: root, device: device, port: driverOptions.port,
                                           physical: physical)
 
-            print("→ プロジェクト生成(xcodegen)...")
+            print("→ Generating the project (xcodegen)...")
             try launcher.generateProjectIfNeeded()
 
             if !skipBuild {
-                print("→ build-for-testing(初回は数分かかります)...")
+                print("→ build-for-testing (the first run takes several minutes)...")
                 try launcher.buildForTesting()
             }
             if withSampleApp {
-                print("→ SampleApp をビルドしてインストール...")
+                print("→ Building and installing SampleApp...")
                 try launcher.installSampleApp()
             }
             // 起動は provision() 経由(直接 startDetached しない)。同一シミュレータに XCUITest
@@ -381,12 +381,12 @@ struct Bridge: AsyncParsableCommand {
             // provision は同一デバイスの稼働中ブリッジを preferred(--port)を無視して再利用する。
             // 固定ポート前提のスクリプトが :driverOptions.port を叩いて外さないよう、差異を明示する
             if port != driverOptions.port {
-                print("⚠️ 指定/既定ポート \(driverOptions.port) ではなく、このデバイスの稼働中ブリッジ"
-                    + "(port \(port))を再利用しました。port \(driverOptions.port) で立て直したい場合は"
-                    + "先に `ftester bridge down --port \(port)` で停止してから再実行してください。")
+                print("⚠️ Reused the running bridge on this device (port \(port)) instead of the requested/default "
+                    + "port \(driverOptions.port). To rebuild on port \(driverOptions.port), stop it first "
+                    + "with `ftester bridge down --port \(port)` and run again.")
             }
             let host = provisioned.first?.host ?? BridgeEndpoint.loopbackHost
-            print("✅ ブリッジ準備完了: http://\(host):\(port)")
+            print("✅ Bridge ready: http://\(host):\(port)")
         }
     }
 
@@ -409,7 +409,7 @@ struct Bridge: AsyncParsableCommand {
             if platform == "android" {
                 for serial in try AndroidBridgeCLI.serials(only: serial) {
                     try AndroidDriver(serial: serial).stopBridge()
-                    print("✅ Android ブリッジを停止しました: \(serial)")
+                    print("✅ Stopped the Android bridge: \(serial)")
                 }
                 return
             }
@@ -417,12 +417,12 @@ struct Bridge: AsyncParsableCommand {
             if all {
                 let stopped = BridgeLauncher.stopAll(repoRoot: root)
                 print(stopped.isEmpty
-                      ? "起動中のブリッジはありません"
-                      : "✅ ブリッジを停止しました(port: \(stopped.joined(separator: ", ")))")
+                      ? "No bridges are running"
+                      : "✅ Stopped bridges (port: \(stopped.joined(separator: ", ")))")
             } else {
                 let launcher = BridgeLauncher(repoRoot: root, port: port)
                 try launcher.stop()
-                print("✅ ブリッジを停止しました(port: \(port))")
+                print("✅ Stopped the bridge (port: \(port))")
             }
         }
     }
@@ -443,7 +443,7 @@ struct Bridge: AsyncParsableCommand {
             let status = try await driverOptions.makeDriver().status()
             print("ready: \(status.ready)")
             print("device: \(status.device) (\(status.osVersion))")
-            print("session: \(status.sessionBundleID ?? "なし")")
+            print("session: \(status.sessionBundleID ?? "none")")
         }
     }
 }
@@ -457,7 +457,7 @@ enum AndroidBridgeCLI {
             .filter { $0.contains("\tdevice") }
             .compactMap { $0.split(separator: "\t").first.map(String.init) }
         guard !serials.isEmpty else {
-            throw ValidationError("接続中の Android デバイスがありません(adb devices を確認)")
+            throw ValidationError("no Android device is connected (check adb devices)")
         }
         return serials
     }
@@ -476,10 +476,10 @@ struct Install: AsyncParsableCommand {
 
     func run() async throws {
         guard FileManager.default.fileExists(atPath: packagePath) else {
-            throw ValidationError("パッケージファイルが見つかりません: \(packagePath)")
+            throw ValidationError("package file not found: \(packagePath)")
         }
         try await driverOptions.makeDriver().install(packagePath: packagePath)
-        print("✅ インストール完了: \(packagePath)")
+        print("✅ Installed: \(packagePath)")
     }
 }
 
@@ -493,7 +493,7 @@ struct Launch: AsyncParsableCommand {
 
     func run() async throws {
         try await driverOptions.makeDriver().launch(bundleID: bundleID)
-        print("✅ 起動: \(bundleID)")
+        print("✅ Launched: \(bundleID)")
     }
 }
 
@@ -540,7 +540,7 @@ struct Tap: AsyncParsableCommand {
             try await driverOptions.makeDriver().tap(x: x, y: y)
             print("✅ tap (\(x), \(y))")
         } else {
-            throw ValidationError("--ref か --x/--y のどちらかを指定してください")
+            throw ValidationError("specify either --ref or --x/--y")
         }
     }
 }
@@ -574,7 +574,7 @@ struct Swipe: AsyncParsableCommand {
 
     func run() async throws {
         guard let dir = FTSwipeDirection(rawValue: direction) else {
-            throw ValidationError("方向は up / down / left / right のいずれかです")
+            throw ValidationError("direction must be one of up / down / left / right")
         }
         try await driverOptions.makeDriver().swipe(dir)
         print("✅ swipe \(direction)")
@@ -609,7 +609,7 @@ struct Screenshot: AsyncParsableCommand {
     func run() async throws {
         let data = try await driverOptions.makeDriver().screenshot()
         try data.write(to: URL(fileURLWithPath: output))
-        print("✅ 保存: \(output) (\(data.count) bytes)")
+        print("✅ Saved: \(output) (\(data.count) bytes)")
     }
 }
 
@@ -620,7 +620,7 @@ struct Terminate: AsyncParsableCommand {
 
     func run() async throws {
         try await driverOptions.makeDriver().terminate()
-        print("✅ 終了しました")
+        print("✅ Terminated")
     }
 }
 
@@ -696,13 +696,13 @@ struct RunScenarios: AsyncParsableCommand {
         PhaseLog.mark("scenario-list")
         guard !all.isEmpty else {
             throw ValidationError(
-                "シナリオがありません(Projects/\(testProject.name)/Scenarios/ に @TestClass を追加してください)")
+                "no scenarios (add a @TestClass under Projects/\(testProject.name)/Scenarios/)")
         }
         var selected = try Self.resolve(scenarios, from: all)
         if scenarios.isEmpty {
             let deletedCount = all.filter(\.deleted).count
             if deletedCount > 0 {
-                print("→ 削除済み(@Deleted)のシナリオ \(deletedCount) 件を除外")
+                print("→ Excluded \(deletedCount) deleted (@Deleted) scenario(s)")
             }
         }
         if !folders.isEmpty {
@@ -713,13 +713,13 @@ struct RunScenarios: AsyncParsableCommand {
             let failedSet = LastResultsStore.failedIDs(project: testProject)
             selected = selected.filter { failedSet.contains($0.id) }
             guard !selected.isEmpty else {
-                print("前回失敗したシナリオはありません(全て成功済みか未実行)")
+                print("No scenarios failed last time (everything passed, or nothing has run)")
                 return
             }
-            print("→ 前回失敗した \(selected.count) 件を再実行")
+            print("→ Re-running the \(selected.count) scenario(s) that failed last time")
         }
         guard !selected.isEmpty else {
-            print("実行対象がありません(全シナリオが削除済み @Deleted)")
+            print("Nothing to run (every scenario is marked @Deleted)")
             return
         }
         // LPT 投入順の適用は実行経路ごとに行う(実効 platform が確定してからでないと
@@ -728,10 +728,10 @@ struct RunScenarios: AsyncParsableCommand {
         let items = selected.map { ScenarioRunItem(info: $0) }
 
         if FMDoctor.check().available == false {
-            print("⚠️ Foundation Models 利用不可: 自己修復・screenIs・トリアージは無効です")
+            print("⚠️ Foundation Models unavailable: self-healing, screenIs and triage are disabled")
         } else if !FMVisionSupport.isSupported {
-            print("⚠️ \(FMVisionSupport.requirement): screenIs・occlusion-guard は無効です"
-                  + "(自己修復・トリアージは有効)")
+            print("⚠️ \(FMVisionSupport.requirement): screenIs and occlusion-guard are disabled"
+                  + " (self-healing and triage stay enabled)")
         }
 
         PhaseLog.mark("fm-doctor")
@@ -799,11 +799,11 @@ struct RunScenarios: AsyncParsableCommand {
             guard !classMatches.isEmpty else {
                 if all.contains(where: { $0.id.hasPrefix(id + ".") }) {
                     throw ValidationError(
-                        "\(id) のシナリオは全て削除済み(@Deleted)です"
-                        + "(クラス名.メソッド名 の完全指定なら実行できます)")
+                        "every scenario of \(id) is deleted (@Deleted)"
+                        + " (an exact Class.method reference still runs it)")
                 }
                 throw ValidationError(
-                    "シナリオが見つかりません: \(id)(利用可能: \(all.map(\.id).joined(separator: ", ")))")
+                    "scenario not found: \(id) (available: \(all.map(\.id).joined(separator: ", ")))")
             }
             result.append(contentsOf: classMatches)
         }
@@ -823,8 +823,8 @@ struct RunScenarios: AsyncParsableCommand {
             let unknown = folders.filter { !available.contains($0) }
             if !unknown.isEmpty {
                 throw ValidationError(
-                    "フォルダが見つかりません: \(unknown.joined(separator: ", "))"
-                    + "(利用可能: \(available.joined(separator: ", ")))")
+                    "folder not found: \(unknown.joined(separator: ", "))"
+                    + " (available: \(available.joined(separator: ", ")))")
             }
         }
         return filtered
@@ -897,8 +897,8 @@ struct RunScenarios: AsyncParsableCommand {
                                       log: { print($0) })
         let androidItems = items.filter { ($0.info.platform ?? defaultPlatform) == "android" }
         let portList = iosPorts.map(String.init).joined(separator: ", ")
-        print("🚀 並列実行: iOS \(iosPorts.count) ワーカー(port: \(portList))"
-              + (androidItems.isEmpty ? "" : " + Android 1 ワーカー") + "\n")
+        print("🚀 Parallel run: \(iosPorts.count) iOS worker(s) (port: \(portList))"
+              + (androidItems.isEmpty ? "" : " + 1 Android worker") + "\n")
 
         var workers: [RunWorker] = []
         for port in iosPorts {
@@ -914,7 +914,7 @@ struct RunScenarios: AsyncParsableCommand {
                                          connection: DriverConnection(platform: "android",
                                                                       serial: driverOptions.serial)))
             } else {
-                print("❌ Android ドライバを初期化できません(adb 未検出)")
+                print("❌ Cannot initialise the Android driver (adb not found)")
                 // ワーカー不在の android シナリオは orchestrator が flowSkipped(失敗扱い)にする
             }
         }

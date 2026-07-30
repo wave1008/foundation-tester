@@ -32,21 +32,21 @@ public enum IOSDeviceTransportError: Error, LocalizedError {
         switch self {
         case .addressNotAnnounced(let port, let logPath, let blocker):
             if let blocker {
-                return "iOS 実機ブリッジ(port \(port))が起動しませんでした: \(blocker)"
-                    + "\n(ログ: \(logPath))"
+                return "the physical-device iOS bridge (port \(port)) did not start: \(blocker)"
+                    + "\n(log: \(logPath))"
             }
-            return "iOS 実機ブリッジ(port \(port))の LAN アドレスを取得できません。"
-                + "ランナーの起動に失敗しているか、Mac と端末が同じネットワークに居ません"
-                + "(ログ: \(logPath))"
+            return "cannot obtain the LAN address of the physical-device iOS bridge (port \(port)). "
+                + "Either the runner failed to start, or the Mac and the device are not on the same network"
+                + " (log: \(logPath))"
         case .runnerFailed(let port, let reason, let logPath):
-            return "iOS 実機ブリッジ(port \(port))のランナーが起動しませんでした: \(reason)"
-                + "\n(ログ: \(logPath))"
+            return "the runner of the physical-device iOS bridge (port \(port)) did not start: \(reason)"
+                + "\n(log: \(logPath))"
         case .iproxyMissing:
-            return "iproxy が見つかりません(USB トンネルに必要)。"
-                + "`brew install libimobiledevice` で導入するか、"
-                + "FT_IOS_DEVICE_TRANSPORT=lan で LAN 経由に切り替えてください"
+            return "iproxy not found (required for the USB tunnel). "
+                + "Install it with `brew install libimobiledevice`, "
+                + "or switch to LAN with FT_IOS_DEVICE_TRANSPORT=lan"
         case .iproxyFailed(let detail):
-            return "iproxy による USB トンネルの確立に失敗しました: \(detail)"
+            return "failed to establish the USB tunnel via iproxy: \(detail)"
         }
     }
 }
@@ -86,14 +86,14 @@ public enum IOSDeviceTransport {
             // LAN は WiFi の省電力で 1 往復 ~48ms(標準偏差 27ms)かかる。USB の ~5ms に比べ
             // 1 シナリオあたり約 25% 遅い(実測 2026-07-25)。iproxy があれば usb が既定
             log(wired
-                ? "経路 lan(WiFi 経由。`brew install libimobiledevice` で USB トンネルの方が速い)"
-                : "経路 lan(端末が USB 接続ではないため。USB で繋ぐと 1 往復 48ms → 5ms になる)")
+                ? "transport lan (over WiFi; a USB tunnel via `brew install libimobiledevice` is faster)"
+                : "transport lan (the device is not on USB; connecting over USB cuts a round trip from 48ms to 5ms)")
             endpoint = BridgeEndpoint(
                 host: try await waitForAnnouncedAddress(
                     port: port, repoRoot: repoRoot, timeoutSeconds: timeoutSeconds, log: log),
                 port: port)
         case .usb:
-            log("経路 usb(iproxy の USB トンネル)")
+            log("transport usb (iproxy USB tunnel)")
             try startIproxy(hostPort: port, devicePort: port,
                             deviceUDID: deviceUDID, repoRoot: repoRoot)
             endpoint = BridgeEndpoint(port: port)
@@ -142,9 +142,9 @@ public enum IOSDeviceTransport {
     /// 検知文字列は xcodebuild / DVTDevice の出力依存(変わってもタイムアウトに落ちるだけ)
     static func blockingCondition(inLog text: String) -> String? {
         if text.contains("Unlock") && text.contains("to Continue") {
-            return "iPhone がロックされています。端末のロックを解除してください"
-                + "(テスト中に再ロックされないよう 設定 → 画面表示と明るさ → 自動ロック を"
-                + "「なし」にしておくと安定します)"
+            return "the iPhone is locked. Unlock the device"
+                + " (to keep it from re-locking mid-test, set Settings → Display & Brightness → "
+                + "Auto-Lock to Never)"
         }
         return nil
     }
@@ -162,28 +162,28 @@ public enum IOSDeviceTransport {
         // 端末が拒否した時点で結論は出ているので、下の 3 文字列だけは単独で終端扱いにする
         if text.contains("Developer App Certificate is not trusted")
             || text.contains("has not been explicitly trusted by the user") {
-            return "端末で開発者証明書が信頼されていません。"
-                + "iPhone の 設定 → 一般 → VPN とデバイス管理 から"
-                + "デベロッパ App の証明書を「信頼」してください"
-                + "(証明書を作り直すと再度必要になります)"
+            return "the developer certificate is not trusted on the device. "
+                + "On the iPhone, go to Settings → General → VPN & Device Management "
+                + "and trust the developer app certificate"
+                + " (required again whenever the certificate is recreated)"
         }
         if text.contains("Developer Mode disabled") {
-            return "端末の Developer Mode が無効です。"
-                + "iPhone の 設定 → プライバシーとセキュリティ → デベロッパモード を ON にしてください"
+            return "Developer Mode is off on the device. "
+                + "On the iPhone, turn on Settings → Privacy & Security → Developer Mode"
         }
         // ここから先は理由を特定できないケース。誤検知を避けるため終端マーカーが出てから判定する
         guard text.contains("** TEST EXECUTE FAILED **")
             || text.contains("Testing failed:") else { return nil }
         if text.lowercased().contains("developer mode") {
-            return "端末の Developer Mode が無効です。"
-                + "iPhone の 設定 → プライバシーとセキュリティ → デベロッパモード を ON にしてください"
+            return "Developer Mode is off on the device. "
+                + "On the iPhone, turn on Settings → Privacy & Security → Developer Mode"
         }
         // 理由が特定できないときは xcodebuild の該当行をそのまま見せる(推測を書かない)。
         // 分割は isNewline(ログは CRLF。announcedHost のコメント参照)
         let line = text.split(whereSeparator: \.isNewline)
             .last { $0.contains("error:") || $0.contains("Underlying Error") }
             .map { $0.trimmingCharacters(in: .whitespaces) }
-        return line ?? "xcodebuild のテスト実行が失敗しました"
+        return line ?? "the xcodebuild test run failed"
     }
 
     /// ログ本文から該当ポートの宣言を拾う(複数行あれば最後 = 最新の起動を採用)
@@ -245,8 +245,8 @@ public enum IOSDeviceTransport {
         usleep(300_000)
         guard process.isRunning else {
             throw IOSDeviceTransportError.iproxyFailed(
-                "iproxy がすぐ終了しました(ポート \(hostPort) の使用中、"
-                + "または UDID \(deviceUDID) の端末が USB 接続されていない可能性があります)")
+                "iproxy exited immediately (port \(hostPort) may be in use, "
+                + "or the device with UDID \(deviceUDID) is not connected over USB)")
         }
         try? String(process.processIdentifier)
             .write(to: pidURL(hostPort: hostPort, repoRoot: repoRoot),

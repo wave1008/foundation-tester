@@ -14,16 +14,16 @@ public enum AndroidDeviceCatalogError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .avdNotRunning(let avd, let running):
-            let list = running.isEmpty ? "なし"
+            let list = running.isEmpty ? "none"
                 : running.map { "\($0.value)(\($0.key))" }.sorted().joined(separator: ", ")
-            return "AVD \"\(avd)\" のエミュレータが起動していません(起動中: \(list))。"
-                + "起動: ftester devices up または emulator -avd <ID>"
+            return "no running emulator for AVD \"\(avd)\" (running: \(list)). "
+                + "Start one with: ftester devices up, or emulator -avd <ID>"
         case .noIdentifier(let name):
-            return "デバイス \"\(name)\" に avd がありません(マシンプロファイルに記述してください)"
+            return "device \"\(name)\" has no avd (add it to the machine profile)"
         case .deviceNotConnected(let name, let serial, let connected):
-            let list = connected.isEmpty ? "なし" : connected.joined(separator: ", ")
-            return "実機 \"\(name)\"(serial: \(serial))が adb から見えません(接続中: \(list))。"
-                + "USB 接続と端末側の USB デバッグ許可、`adb devices` の state=device を確認してください"
+            let list = connected.isEmpty ? "none" : connected.joined(separator: ", ")
+            return "physical device \"\(name)\" (serial: \(serial)) is not visible to adb (connected: \(list)). "
+                + "Check the USB connection, the USB-debugging approval on the device, and state=device in `adb devices`"
         }
     }
 }

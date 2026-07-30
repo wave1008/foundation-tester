@@ -178,7 +178,7 @@ public enum RunResultsQuery {
         public let byPlatform: [PlatformRow]
     }
 
-    private static let unknownWorkerLabel = "(worker不明)"
+    private static let unknownWorkerLabel = "(unknown worker)"
 
     public static func deviceSummary(_ records: [ScenarioRunRecord]) -> DevicesReport {
         func aggregate<Key: Hashable>(
@@ -358,7 +358,7 @@ public enum RunResultsQuery {
             guard let deltaPct = row.deltaPct, deltaPct >= durationRegressionPct else { continue }
             rows.append(InsightRow(
                 kind: "durationRegression", severity: "warn", scenarioID: row.scenarioID, worker: nil,
-                message: "\(row.scenarioID): 所要時間が悪化(前半比 +\(String(format: "%.0f", deltaPct))%)",
+                message: "\(row.scenarioID): duration regressed (+\(String(format: "%.0f", deltaPct))% vs the first half)",
                 count: nil, deltaPct: deltaPct))
         }
 
@@ -366,7 +366,7 @@ public enum RunResultsQuery {
         if unfinishedCount >= unfinishedRunsMinCount {
             rows.append(InsightRow(
                 kind: "unfinishedRuns", severity: "info", scenarioID: nil, worker: nil,
-                message: "未完了 run(クラッシュ・強制終了の可能性)が\(unfinishedCount)件",
+                message: "\(unfinishedCount) incomplete run(s) (possible crash or force-quit)",
                 count: unfinishedCount, deltaPct: nil))
         }
 
@@ -506,14 +506,14 @@ public enum RunResultsQuery {
         if streak.length >= consecutiveFailureThreshold {
             return [InsightRow(
                 kind: "consecutiveFailures", severity: "critical", scenarioID: scenarioID, worker: nil,
-                message: "\(scenarioID): 直近\(streak.length)回連続失敗", count: streak.length, deltaPct: nil)]
+                message: "\(scenarioID): failed the last \(streak.length) run(s) in a row", count: streak.length, deltaPct: nil)]
         }
         guard streak.length == 1 else { return [] }
         let priorStreak = trailingStreak(chronological.dropLast().map(\.passed))
         guard priorStreak.passed, priorStreak.length >= newFailurePriorPassThreshold else { return [] }
         return [InsightRow(
             kind: "newFailure", severity: "critical", scenarioID: scenarioID, worker: nil,
-            message: "\(scenarioID): 直近\(priorStreak.length)回連続成功の後に失敗(回帰の疑い)",
+            message: "\(scenarioID): failed after \(priorStreak.length) consecutive passes (possible regression)",
             count: priorStreak.length, deltaPct: nil)]
     }
 
@@ -533,8 +533,8 @@ public enum RunResultsQuery {
         let assertionCount = failedRecords.count - infraFailures.count
         return [InsightRow(
             kind: "infraFailures", severity: "warn", scenarioID: scenarioID, worker: nil,
-            message: "\(scenarioID): インフラ起因の失敗(ブリッジ・デバイス・タイムアウト)が\(infraFailures.count)件"
-                + "(アサーション起因\(assertionCount)件)",
+            message: "\(scenarioID): \(infraFailures.count) infrastructure-caused failure(s) (bridge/device/timeout)"
+                + " (vs \(assertionCount) assertion-caused)",
             count: infraFailures.count, deltaPct: nil)]
     }
 
@@ -543,7 +543,7 @@ public enum RunResultsQuery {
         guard total >= selectorDecayMinCount else { return nil }
         return InsightRow(
             kind: "selectorDecay", severity: "warn", scenarioID: scenarioID, worker: nil,
-            message: "\(scenarioID): セレクタ陳腐化の予兆(自己修復/フォールバックで延命中、計\(total)件)",
+            message: "\(scenarioID): early signs of selector staleness (kept alive by self-heal/fallback, \(total) time(s))",
             count: total, deltaPct: nil)
     }
 
@@ -561,8 +561,8 @@ public enum RunResultsQuery {
             guard workerFailureRate >= overallFailureRate * deviceBiasRatioMultiplier else { return nil }
             return InsightRow(
                 kind: "deviceBias", severity: "warn", scenarioID: scenarioID, worker: worker,
-                message: "\(scenarioID): \(worker) に失敗が偏っている(該当worker失敗率"
-                    + "\(String(format: "%.0f", workerFailureRate * 100))% vs 全体"
+                message: "\(scenarioID): failures cluster on \(worker) (its failure rate is "
+                    + "\(String(format: "%.0f", workerFailureRate * 100))% vs overall"
                     + "\(String(format: "%.0f", overallFailureRate * 100))%)",
                 count: workerFailed, deltaPct: nil)
         }

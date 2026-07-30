@@ -19,7 +19,7 @@ final class ForeignBridgeErrorTests: XCTestCase {
         XCTAssertTrue(message.contains("iPhone 17 Pro"), "デバイスを出すこと: \(message)")
         XCTAssertTrue(message.contains("4"), "版を出すこと: \(message)")
         // 「起動していません」と読める文言を混ぜない(事実と食い違うのが元の問題)
-        XCTAssertFalse(message.contains("起動していません"),
+        XCTAssertFalse(message.contains("is not running"),
                        "応答しているのに『起動していない』と言わない: \(message)")
         XCTAssertTrue(message.contains("lsof"), "手詰まりにしない=次の手を出すこと: \(message)")
     }
@@ -29,13 +29,13 @@ final class ForeignBridgeErrorTests: XCTestCase {
         let error = LauncherError.notOwnedByThisRepo(port: 8130, device: nil, protocolVersion: nil)
         let message = try! XCTUnwrap(error.errorDescription)
         XCTAssertTrue(message.contains("8130"))
-        XCTAssertTrue(message.contains("不明"), "不明であることを明示する: \(message)")
+        XCTAssertTrue(message.contains("unknown"), "不明であることを明示する: \(message)")
     }
 
     func testNotRunningKeepsItsOwnMessage() {
         // 本当に誰も応答していないケースは従来どおり(退行防止)
         let message = try! XCTUnwrap(LauncherError.notRunning.errorDescription)
-        XCTAssertTrue(message.contains("起動していません"))
+        XCTAssertTrue(message.contains("is not running"))
     }
 
     /// stop() の配線そのもの: **応答があれば notRunning ではなく notOwnedByThisRepo を投げる**。

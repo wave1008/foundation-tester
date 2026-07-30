@@ -122,11 +122,11 @@ public final class SessionRecoveryDriver: AppDriver {
         let recovered = lastBundleID != nil
         if recovered { await recover() }
         throw DriverError.badResponse(status: 409, body:
-            "XCUITest ランナーのセッションが失われました(ランナー再起動の可能性)。"
+            "the XCUITest runner session was lost (the runner may have restarted). "
             + (recovered
-               ? "セッションは張り直したので次のステップから復帰します。"
-               : "セッションを張り直せる対象がありません(未 launch、または terminateApp 済み)。"
-                 + "先に launchApp が要ります。")
-            + "このステップは ref(直前スナップショットの要素番号)が無効になるため再試行しません")
+               ? "The session was re-established; the next step recovers. "
+               : "There is nothing to re-establish the session against (not launched, or already terminated). "
+                 + "A launchApp is needed first. ")
+            + "This step is not retried because its ref (an element number from the previous snapshot) is now invalid")
     }
 }

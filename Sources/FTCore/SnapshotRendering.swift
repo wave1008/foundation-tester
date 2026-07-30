@@ -36,7 +36,7 @@ public enum SnapshotRenderer {
         }
         // 空の入力欄はモデルに明示する(「入力済みと思い込んで送信」対策)
         if Self.textInputTypes.contains(e.type), e.value == nil {
-            parts.append("未入力")
+            parts.append("empty")
         }
         if !e.enabled {
             parts.append("disabled")

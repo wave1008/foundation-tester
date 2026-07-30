@@ -52,7 +52,7 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
         guard !stopRequested else { return false }
         for attempt in 1...3 {
             if await spawnPartOnce() { return true }
-            warn("recordVideo の開始を確認できませんでした(試行 \(attempt)/3)")
+            warn("could not confirm recordVideo started (attempt \(attempt)/3)")
             try? await Task.sleep(nanoseconds: 2_000_000_000)
             guard !stopRequested else { return false }
         }
@@ -78,7 +78,7 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
         do {
             try process.run()
         } catch {
-            warn("recordVideo を起動できません: \(error.localizedDescription)")
+            warn("cannot start recordVideo: \(error.localizedDescription)")
             return false
         }
         // stderr は**プロセスの生存中ずっと**読み続ける(EOF まで drain)。"Recording started" 検出後に
@@ -121,12 +121,12 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
         await finalizePart(url: url, startedAt: startedAt)
         guard !stopRequested else { return }
         guard restarts < Self.maxRestarts else {
-            warn("録画プロセスが繰り返し停止したため再開を諦めます(\(Self.maxRestarts)回。"
-                + "それまでに撮れた分は保存します)")
+            warn("the recording process keeps dying — giving up on restarts (\(Self.maxRestarts) times; "
+                + "keeping what was captured so far)")
             return
         }
         restarts += 1
-        warn("録画プロセスが予期せず停止しました。再開します(\(restarts)/\(Self.maxRestarts))")
+        warn("the recording process stopped unexpectedly — restarting (\(restarts)/\(Self.maxRestarts))")
         guard await spawnNextPart() else { return }
         // 再spawn の完了(最大10秒×3試行かかりうる)を待つ間に stop() が既に呼ばれていた場合の
         // 後始末(狭いレースだが、放置すると孤児プロセスが残る)
@@ -137,7 +137,7 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
     private func finalizePart(url: URL, startedAt: Date) async {
         guard let duration = try? await AVURLAsset(url: url).load(.duration), duration.isNumeric,
               duration.seconds > 0 else {
-            warn("録画ファイルを読めなかったため破棄します(\(url.lastPathComponent))")
+            warn("discarding an unreadable recording file (\(url.lastPathComponent))")
             try? FileManager.default.removeItem(at: url)
             return
         }
@@ -154,7 +154,7 @@ actor IOSSimulatorVideoRecorder: DeviceVideoRecorderSession {
             }
             if !exited {
                 if kill(process.processIdentifier, 0) == 0 { kill(process.processIdentifier, SIGKILL) }
-                warn("録画停止が15秒でタイムアウトしたため最後の部分を破棄します")
+                warn("stopping the recording timed out after 15s — discarding the final segment")
                 try? FileManager.default.removeItem(at: movURL(for: partIndex))
             }
         }
