@@ -103,7 +103,7 @@ class デモ_サンプルアプリ {
             }
             scene(2, "りんごを長押しして お気に入り を選ぶ") {
                 action {
-                    press("#item_りんご", duration: 1.5)
+                    tap("#item_りんご", holdSeconds: 1.5)
                     tap("お気に入り")
                 }.expectation {
                     exist("選択済み")

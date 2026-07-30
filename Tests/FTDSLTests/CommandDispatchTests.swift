@@ -3,7 +3,7 @@ import XCTest
 import FTCore
 
 /// DSL コマンドがドライバまで届く値の検証(記録ではなく**実際に発火した引数**を見る)。
-/// press の duration はブリッジまで配線されていながらホスト側で 1.0 に潰れていた実績があるため、
+/// tap の holdSeconds はブリッジまで配線されていながらホスト側で 1.0 に潰れていた実績があるため、
 /// 「DSL の引数がそのままドライバに届くこと」を型付き経路と合わせてここで固定する。
 final class CommandDispatchTests: XCTestCase {
 
@@ -100,7 +100,7 @@ final class CommandDispatchTests: XCTestCase {
         XCTAssertEqual([primary.homeCount, primary.appSwitcherCount], [1, 1])
     }
 
-    func testPressDurationReachesDriver() {
+    func testTapHoldSecondsReachesDriver() {
         let driver = RecordingDriver()
         let core = makeCore(driver: driver)
         FTRuntime.bootstrap(core: core, dslThread: Thread.current)
@@ -109,16 +109,15 @@ final class CommandDispatchTests: XCTestCase {
         scenario {
             scene(1, "s") {
                 action {
-                    press("#cleanup")                    // 既定
-                    press("#cleanup", duration: 2.5)     // 明示
-                    press(.id("cleanup"), duration: 0.5) // 型付き
+                    tap("#cleanup", holdSeconds: 1.0)                    // 明示(旧既定相当)
+                    tap("#cleanup", holdSeconds: 2.5)                    // 明示
+                    tap(.id("cleanup"), holdSeconds: 0.5)                // 型付き
                 }
             }
         }
 
-        XCTAssertEqual(driver.pressed.map(\.duration),
-                       [FlowStep.defaultPressDuration, 2.5, 0.5],
-                       "DSL の duration がドライバまで届いていない")
+        XCTAssertEqual(driver.pressed.map(\.duration), [1.0, 2.5, 0.5],
+                       "DSL の holdSeconds がドライバまで届いていない")
     }
 
     /// 型付きセレクタが文字列版と同じ要素を実際に解決すること(等価性は SelTests、発火はここ)

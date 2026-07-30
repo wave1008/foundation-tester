@@ -926,8 +926,8 @@ final class StepExecutorTests: XCTestCase {
                       "静止待ち以外の呼び出しが混ざっている: \(log.entries)")
     }
 
-    /// press の 501 切替は ref を typeDriver 側 snapshot で取り直すこと(ref はブリッジごとに別名前空間)
-    func testPress501FallsBackAndReresolvesRef() async throws {
+    /// tap(holdSeconds:) の 501 切替は ref を typeDriver 側 snapshot で取り直すこと(ref はブリッジごとに別名前空間)
+    func testTapHoldSeconds501FallsBackAndReresolvesRef() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log,
                                     snapshotElements: [[element(ref: 1, id: "btn_long")]])
@@ -935,7 +935,7 @@ final class StepExecutorTests: XCTestCase {
         let typeDriver = FakeAppDriver(name: "typedriver", log: log,
                                        snapshotElements: [[element(ref: 9, id: "btn_long")]])
         let executor = StepExecutor(driver: primary, typeDriver: typeDriver)
-        let step = FlowStep(action: "press", locator: FlowLocator(id: "btn_long"))
+        let step = FlowStep(action: "tap", locator: FlowLocator(id: "btn_long"), duration: 1.0)
 
         let outcome = await executor.execute(step)
 
@@ -952,15 +952,15 @@ final class StepExecutorTests: XCTestCase {
         ], "typeDriver 側の ref(9)で press すべき")
     }
 
-    /// FlowStep.duration は主経路にもフォールバック経路にも届くこと(旧実装は両方 1.0 固定で、
+    /// FlowStep.duration(tap の holdSeconds)は主経路にもフォールバック経路にも届くこと(旧実装は両方 1.0 固定で、
     /// DSL の press(duration:)が黙って無効化されていた)
-    func testPressDurationIsPassedThroughBothPaths() async throws {
+    func testTapHoldSecondsIsPassedThroughBothPaths() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log,
                                     snapshotElements: [[element(ref: 1, id: "btn_long")]])
         let executor = StepExecutor(driver: primary)
         _ = await executor.execute(
-            FlowStep(action: "press", locator: FlowLocator(id: "btn_long"), duration: 3.5))
+            FlowStep(action: "tap", locator: FlowLocator(id: "btn_long"), duration: 3.5))
         XCTAssertEqual(primary.lastPressDuration, 3.5)
 
         let fallbackLog = CallLog()
@@ -971,18 +971,20 @@ final class StepExecutorTests: XCTestCase {
                                        snapshotElements: [[element(ref: 9, id: "btn_long")]])
         let fallbackExecutor = StepExecutor(driver: failing, typeDriver: typeDriver)
         _ = await fallbackExecutor.execute(
-            FlowStep(action: "press", locator: FlowLocator(id: "btn_long"), duration: 3.5))
+            FlowStep(action: "tap", locator: FlowLocator(id: "btn_long"), duration: 3.5))
         XCTAssertEqual(typeDriver.lastPressDuration, 3.5)
     }
 
-    /// 未指定なら既定秒数に落ちること
-    func testPressDurationDefaultsWhenUnset() async throws {
+    /// duration 未指定(既定 holdSeconds=0)は通常タップになり、press は呼ばれないこと
+    /// (tap/press 統合の要点: 既定を境に呼び先が変わる)
+    func testTapDurationDefaultsToPlainTapWhenUnset() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log,
                                     snapshotElements: [[element(ref: 1, id: "btn_long")]])
         let executor = StepExecutor(driver: primary)
-        _ = await executor.execute(FlowStep(action: "press", locator: FlowLocator(id: "btn_long")))
-        XCTAssertEqual(primary.lastPressDuration, FlowStep.defaultPressDuration)
+        _ = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "btn_long")))
+        XCTAssertNil(primary.lastPressDuration, "既定は通常タップで press を呼ばないはず")
+        XCTAssertEqual(log.entries.last, "primary.tap(ref:1)")
     }
 
     /// 409(inapp が非 UIKit 入力欄で first responder を張れない)はリアクティブに typeDriver へ切り替えること。

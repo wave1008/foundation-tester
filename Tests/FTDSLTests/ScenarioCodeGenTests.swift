@@ -15,22 +15,22 @@ final class ScenarioCodeGenTests: XCTestCase {
             className: "生成されたシナリオ", generatedBy: "test")
     }
 
-    func testPressEmitsFractionalDurationAndOmitsItWhenAbsent() {
+    func testTapEmitsFractionalHoldSecondsAndOmitsItWhenAbsent() {
         let fractional = render([
-            FlowStep(action: "press", locator: FlowLocator(id: "btn"), duration: 1.5),
+            FlowStep(action: "tap", locator: FlowLocator(id: "btn"), duration: 1.5),
         ])
-        XCTAssertTrue(fractional.contains("press(\"#btn\", duration: 1.5)"), fractional)
+        XCTAssertTrue(fractional.contains("tap(\"#btn\", holdSeconds: 1.5)"), fractional)
 
         // 整数相当は小数点を付けない(FTSeconds.format)
         let integral = render([
-            FlowStep(action: "press", locator: FlowLocator(id: "btn"), duration: 2),
+            FlowStep(action: "tap", locator: FlowLocator(id: "btn"), duration: 2),
         ])
-        XCTAssertTrue(integral.contains("press(\"#btn\", duration: 2)"), integral)
+        XCTAssertTrue(integral.contains("tap(\"#btn\", holdSeconds: 2)"), integral)
 
         // nil = 既定なので引数ごと出さない
-        let omitted = render([FlowStep(action: "press", locator: FlowLocator(id: "btn"))])
-        XCTAssertTrue(omitted.contains("press(\"#btn\")"), omitted)
-        XCTAssertFalse(omitted.contains("duration:"), omitted)
+        let omitted = render([FlowStep(action: "tap", locator: FlowLocator(id: "btn"))])
+        XCTAssertTrue(omitted.contains("tap(\"#btn\")"), omitted)
+        XCTAssertFalse(omitted.contains("holdSeconds:"), omitted)
     }
 
     func testExistEmitsFractionalTimeoutAndOmitsTheDefault() {

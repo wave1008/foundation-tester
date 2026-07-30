@@ -48,9 +48,7 @@ public struct FlowStep: Codable, Sendable {
     public var timeout: Double?
     /// scrollTo のスクロール回数上限(省略時 8)
     public var maxSwipes: Int?
-    /// press の長押し秒数(nil = defaultPressDuration)。**ブリッジの /press は元から duration を
-    /// 受け取っており**、ここが nil だった間だけホスト側で 1.0 に潰れていた
-    /// (DSL の press(duration:)が無効化されていた)。既定値と同じなら nil のまま置く
+    /// tap の長押し秒数(nil / 0 = 通常タップ)。既定と同じなら nil のまま置く
     /// (生成コード・JSON を既定ケースで太らせないため)。swipeElementToElement では移動時間(秒)
     public var duration: Double?
     /// count アサーションの期待個数(DSL の countIs)。他のステップでは nil
@@ -65,9 +63,9 @@ public struct FlowStep: Codable, Sendable {
     /// nil = executor 既定(StepExecutor.occlusionGuard)に従う。
     public var occlusionGuard: Bool?
 
-    /// press の既定の長押し秒数。DSL の `press(duration:)` 既定値・実行時のフォールバック・
-    /// 生成コード(ScenarioCodeGen が既定値と同じなら出力しない)はこの1つに揃える
-    public static let defaultPressDuration: Double = 1.0
+    /// `tap(holdSeconds:)` の既定。**0 = 通常タップ**(Shirates の `tapHoldSeconds` 準拠)。
+    /// 0 より大きいときだけ長押しとしてブリッジの /press へ回す(StepExecutor)
+    public static let defaultTapHoldSeconds: Double = 0
 
     /// スクロール探索(`scrollTo` / `tap(scroll:)` / `exist(scroll:)`)の既定スワイプ上限。
     /// DSL の既定引数はこの1つに揃える

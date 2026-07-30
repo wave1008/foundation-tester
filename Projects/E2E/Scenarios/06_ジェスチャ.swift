@@ -1,5 +1,5 @@
 // 06_ジェスチャ.swift
-// ftester 機能: `tap` の連打カウント / `press`(長押し)と通常タップの区別 / `swipe` 4方向。
+// ftester 機能: `tap` の連打カウント / `tap(holdSeconds:)`(長押し)と通常タップの区別 / `swipe` 4方向。
 
 import FTDSL
 
@@ -30,7 +30,7 @@ class ジェスチャが正しく検出されること {
             }
             scene(3, "長押しでカウントが1になる") {
                 action {
-                    press("#btn_long_press")
+                    tap("#btn_long_press", holdSeconds: 1.0)
                 }.expectation {
                     textIs("#txt_press_count", "press=1")
                     textIs("#txt_last_gesture", "last=longpress")
@@ -43,9 +43,9 @@ class ジェスチャが正しく検出されること {
                     textIs("#txt_press_count", "press=1")
                 }
             }
-            scene(5, "duration 指定の長押しも検出される(既定 1 秒以外が実際に届いていること)") {
+            scene(5, "holdSeconds 指定の長押しも検出される(既定 1 秒以外が実際に届いていること)") {
                 action {
-                    press("#btn_long_press", duration: 2.0)
+                    tap("#btn_long_press", holdSeconds: 2.0)
                 }.expectation {
                     textIs("#txt_press_count", "press=2")
                     textIs("#txt_last_gesture", "last=longpress")
