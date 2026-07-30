@@ -97,8 +97,17 @@ pipeline {
 
 ## Apple Intelligence を CI で使う(任意)
 
-self-hosted の Mac(Jenkins 常駐機・AWS EC2 Mac = 実 Apple silicon)なら Apple Intelligence を
-有効化でき、screenIs・偽陽性検証・heal・失敗時トリアージが CI でも動く。条件と罠:
+**ランナーの実体がベアメタルか VM かで可否が決まる**(Virtualization.framework は ANE を
+ゲストに公開せず、Apple Intelligence は VM 内で有効化できない。FM が ANE 依存であることは
+本プロジェクトの実測どおり):
+
+| ランナー | FM の可否 |
+|---|---|
+| 物理 Mac(Jenkins 常駐機等) | ✅ 可(本プロジェクトの開発機で実証済み) |
+| AWS EC2 Mac(ベアメタル) | 原理的に可のはず(未検証)。macOS 27 の画像入力は GA 版 AMI 提供後。macOS 26 AMI ならテキスト系(heal・トリアージ)まで |
+| macOS VM(GitHub ホストランナー・Tart/Anka 等) | ❌ 不可の公算大(ANE 非公開)。FM 系は自動スキップで走る |
+
+ベアメタルで有効化する場合の条件と罠:
 
 - Apple silicon + macOS 26+。**screenIs・偽陽性検証(画像入力)は macOS 27+**
 - **システム言語が日本語だと Apple Intelligence 自体が出現しない**(macOS 27 beta 実測)。
