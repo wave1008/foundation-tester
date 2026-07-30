@@ -688,7 +688,7 @@ struct RunScenarios: AsyncParsableCommand {
 
         // ビルドはホスト側で 1 回だけ(サブプロセスは自らビルドしない)
         if !skipBuild {
-            print("→ シナリオをビルド(\(testProject.name))...")
+            print("→ Building scenarios (\(testProject.name))...")
             try ScenarioHost.build(project: testProject)
         }
         PhaseLog.mark("build")
@@ -754,8 +754,8 @@ struct RunScenarios: AsyncParsableCommand {
                             blankExclusions: runSummary.blankExclusions)
             PhaseLog.mark("recorder-finish")
             print(failedCount == 0
-                  ? "✅ 全 \(items.count) シナリオ成功"
-                  : "❌ \(items.count) シナリオ中 \(failedCount) 件失敗")
+                  ? "✅ All \(items.count) scenario(s) passed"
+                  : "❌ \(failedCount) of \(items.count) scenario(s) failed")
             if failedCount > 0 { throw ExitCode(1) }
             return
         }
@@ -779,8 +779,8 @@ struct RunScenarios: AsyncParsableCommand {
         recorder.finish(total: items.count, passed: items.count - failedCount, failed: failedCount)
 
         print(failedCount == 0
-              ? "✅ 全 \(items.count) シナリオ成功"
-              : "❌ \(items.count) シナリオ中 \(failedCount) 件失敗")
+              ? "✅ All \(items.count) scenario(s) passed"
+              : "❌ \(failedCount) of \(items.count) scenario(s) failed")
         if failedCount > 0 {
             throw ExitCode(1)
         }

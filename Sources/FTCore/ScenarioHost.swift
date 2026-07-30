@@ -90,13 +90,13 @@ public enum ScenarioHostError: Error, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .runnerNotFound(let product):
-            return "\(product) が見つかりません(swift build --product \(product) を実行してください)"
+            return "\(product) not found (run: swift build --product \(product))"
         case .buildFailed(let log):
-            return "シナリオのビルドに失敗しました:\n\(log)"
+            return "failed to build the scenarios:\n\(log)"
         case .listFailed(let detail):
-            return "シナリオ一覧を取得できません: \(detail)"
+            return "cannot list scenarios: \(detail)"
         case .dryRunFailed(let detail):
-            return "ステップ一覧を取得できません: \(detail)"
+            return "cannot list steps: \(detail)"
         }
     }
 }
@@ -112,7 +112,7 @@ public enum ScenarioHost {
     public static func project(named name: String? = nil) throws -> TestProject {
         guard let root = packageRoot() else {
             throw ScenarioHostError.buildFailed(
-                "Package.swift が見つかりません(リポジトリ内で実行してください)")
+                "Package.swift not found (run this inside the repository)")
         }
         return try ProjectStore.find(name, repoRoot: root,
                                      defaultProject: LocalConfig.load().defaultProject)
@@ -124,14 +124,14 @@ public enum ScenarioHost {
     /// (mtime+size 比較。コンテンツ hash ではない)、かつバイナリが実在すればビルドをスキップする
     public static func build(project: TestProject, log: ((String) -> Void)? = nil) throws {
         guard let root = packageRoot() else {
-            throw ScenarioHostError.buildFailed("Package.swift が見つかりません(リポジトリ内で実行してください)")
+            throw ScenarioHostError.buildFailed("Package.swift not found (run this inside the repository)")
         }
 
         let fingerprint = BuildFingerprint.compute(repoRoot: root, scenariosDir: project.scenariosDir)
         if let fingerprint,
            fingerprint == BuildFingerprint.stored(productName: project.productName, repoRoot: root),
            (try? runnerURL(project: project)) != nil {
-            log?("→ 変更なし・シナリオビルドをスキップ")
+            log?("→ No changes — skipping the scenario build")
             return
         }
 
@@ -187,7 +187,7 @@ public enum ScenarioHost {
         guard let jsonLine = result.output.split(separator: "\n")
             .last(where: { $0.hasPrefix("{") }),
               let data = jsonLine.data(using: .utf8) else {
-            throw ScenarioHostError.listFailed("JSON がありません: \(result.tail)")
+            throw ScenarioHostError.listFailed("no JSON in the output: \(result.tail)")
         }
         struct ListResponse: Codable { let scenarios: [ScenarioInfo] }
         return try JSONDecoder().decode(ListResponse.self, from: data).scenarios
@@ -270,7 +270,7 @@ public enum ScenarioHost {
         do {
             try process.run()
         } catch {
-            emit(.log("❌ ランナーを起動できません: \(error.localizedDescription)"))
+            emit(.log("❌ Cannot start the runner: \(error.localizedDescription)"))
             return false
         }
         if let debug, let stdinPipe {
@@ -355,7 +355,7 @@ public enum ScenarioHost {
         // 合成 scenarioFinished(passed:false) を emit で流し、通常失敗と同じ経路で集計・
         // モニタ表示させる(戻り値も false)。レポート(.md)は子専管のため書かない=クラッシュ相当。
         if timedOut, let watchdogSeconds {
-            emit(.log("⏱ シナリオが \(watchdogSeconds)s を超過したため強制終了しました"))
+            emit(.log("⏱ The scenario exceeded \(watchdogSeconds)s and was killed"))
             var finished = ScenarioEvent(kind: "scenarioFinished")
             finished.scenario = scenarioID
             finished.passed = false
@@ -413,7 +413,7 @@ public enum ScenarioHost {
         }
         let logs = events.compactMap(\.message)
         let detail = (failures + logs).suffix(5).joined(separator: "\n")
-        return detail.isEmpty ? "dry-run が失敗しました" : detail
+        return detail.isEmpty ? "dry-run failed" : detail
     }
 
     /// FileHandle を行単位の AsyncStream にする。readabilityHandler ベースで
@@ -525,17 +525,17 @@ public enum ScenarioLogFormatter {
                 return ["    ❌ \(index). \(section)\(description)",
                         "       \(event.detail ?? "")"]
             default:
-                return ["    ⚠️ \(index). \(section)\(description)(スキップ: \(event.detail ?? ""))"]
+                return ["    ⚠️ \(index). \(section)\(description) (skipped: \(event.detail ?? ""))"]
             }
         case "sceneFinished":
             return []
         case "fixSuggestion":
-            return ["    💡 修正提案: \(event.detail ?? "")"]
+            return ["    💡 Suggested fix: \(event.detail ?? "")"]
         case "paused":
-            return ["    ⏸ \(event.index ?? 0). \(event.description ?? "") の手前で一時停止中"]
+            return ["    ⏸ Paused before \(event.index ?? 0). \(event.description ?? "")"]
         case "scenarioFinished":
-            var lines = [event.passed == true ? "  → ✅ 成功" : "  → ❌ 失敗"]
-            if let report = event.reportPath { lines.append("  → レポート: \(report)") }
+            var lines = [event.passed == true ? "  → ✅ passed" : "  → ❌ failed"]
+            if let report = event.reportPath { lines.append("  → report: \(report)") }
             return lines
         case "log":
             return [event.message ?? ""]

@@ -18,7 +18,7 @@ public enum ProfileWorkerFactory {
         let workers = try await buildIOSWorkers(resolved: resolved, repoRoot: repoRoot, log: log)
             + (try buildAndroidWorkers(resolved: resolved))
         guard !workers.isEmpty else {
-            throw InstallError(message: "実行可能なワーカーがありません(全デバイスが離脱しました)")
+            throw InstallError(message: "no usable workers (every device dropped out)")
         }
         return workers
     }
@@ -101,7 +101,7 @@ public enum ProfileWorkerFactory {
         var repairedLabels = outcomes.sorted(by: { $0.index < $1.index })
             .filter(\.repaired).map { workers[$0.index].label }
         for label in repairedLabels {
-            log("🔧 \(label): 画面凍結(blank-screen)を sleep/wake で修復しました")
+            log("🔧 \(label): recovered a frozen (blank) screen with sleep/wake")
         }
         let stubbornIndices = outcomes.filter { !$0.repaired }.map(\.index).sorted()
         guard !stubbornIndices.isEmpty else {
@@ -116,29 +116,29 @@ public enum ProfileWorkerFactory {
             let worker = workers[index]
             guard let serial = worker.connection.serial else {
                 excludedIndices.insert(index)
-                log("⚠️ \(worker.label): 画面が白化(blank-screen)していますが serial 不明で"
-                    + "再起動できないためディスパッチから除外します")
+                log("⚠️ \(worker.label): the screen is blank but the serial is unknown, so it cannot be "
+                    + "restarted — excluding it from dispatch")
                 continue
             }
-            log("🔁 \(worker.label): 画面凍結が sleep/wake で直らないため guest を再起動します"
-                + "(ブート完了まで最大 \(Int(blankRebootTimeoutSeconds))s 待機。この run で使用します)")
+            log("🔁 \(worker.label): sleep/wake did not clear the frozen screen — restarting the guest"
+                + " (waiting up to \(Int(blankRebootTimeoutSeconds))s for boot; it will be used in this run)")
             // ブート完了が確認できない個体は blank 再判定に進めず除外する: 再起動中は screencap 取得
             // 自体が失敗し、probeBlank はそれを「非 blank」(誤除外しない安全側)に倒すため、
             // 判定に掛けるとブート途中の個体を「復帰した」と誤認して run に載せてしまう
             guard await rebootGuest(serial: serial, timeout: blankRebootTimeoutSeconds) else {
                 excludedIndices.insert(index)
-                log("⚠️ \(worker.label): guest 再起動のブート完了を確認できないため"
-                    + "ディスパッチから除外します")
+                log("⚠️ \(worker.label): could not confirm the guest finished booting — "
+                    + "excluding it from dispatch")
                 continue
             }
             if await !AndroidHealthProbe.isPersistentlyBlank(serial: serial, samples: 2,
                                                              intervalMs: 1_500) {
                 repairedLabels.append(worker.label)
-                log("✅ \(worker.label): guest 再起動で画面凍結が解消しました(この run で使用します)")
+                log("✅ \(worker.label): the guest restart cleared the frozen screen (using it in this run)")
                 continue
             }
             excludedIndices.insert(index)
-            log("⚠️ \(worker.label): guest 再起動でも画面が白化したままのためディスパッチから除外します")
+            log("⚠️ \(worker.label): the screen is still blank after a guest restart — excluding it from dispatch")
         }
         guard !excludedIndices.isEmpty else {
             return BlankScreenTriage(workers: workers, repaired: repairedLabels, excluded: [])
@@ -350,13 +350,13 @@ public enum ProfileWorkerFactory {
                 // 存在確認だけは直列のまま行う: 確定的な順序で早期 throw するため
                 // (差分判定・インストールは下の TaskGroup で並列化)
                 guard FileManager.default.fileExists(atPath: appPath) else {
-                    throw InstallError(message: "パッケージファイルが見つかりません: \(appPath)")
+                    throw InstallError(message: "package file not found: \(appPath)")
                 }
                 candidates.append((index, worker, app, appPath))
             } else {
                 if forceThis, apps[worker.platform]?.appPath == nil {
-                    safeLog("⚠️ \(worker.label): Wipe Data 後の再インストールに appPath が必要です"
-                        + "(apps/ の appPath 未指定)")
+                    safeLog("⚠️ \(worker.label): appPath is required to reinstall after Wipe Data"
+                        + " (appPath is not set in apps/)")
                 }
                 passthrough.append((index, worker))
             }
@@ -364,7 +364,7 @@ public enum ProfileWorkerFactory {
         guard !candidates.isEmpty else { return workers }
 
         // N は差分判定前の候補数(判定した結果スキップになるものも含む数)
-        log("→ アプリを確認・インストール(\(candidates.count) デバイス)...")
+        log("→ Checking and installing the app (\(candidates.count) device(s))...")
 
         let installed = await withTaskGroup(of: (Int, RunWorker?).self,
                                             returning: [(Int, RunWorker)].self) { group in
@@ -372,7 +372,7 @@ public enum ProfileWorkerFactory {
                 group.addTask {
                     // 差分スキップ: インストール済み内容がパッケージファイルと同一なら入れ直さない
                     if installedIsCurrent(worker: worker, app: app, appPath: appPath) {
-                        safeLog("→ \(worker.label): インストール済みアプリが最新のためスキップ(autoInstall)")
+                        safeLog("→ \(worker.label): installed app is already up to date — skipping (autoInstall)")
                         return (index, worker)
                     }
                     do {
@@ -381,10 +381,10 @@ public enum ProfileWorkerFactory {
                             InstalledAppCheck.recordInstalled(udid: udid, bundleID: app.bundleID,
                                                              appPath: appPath)
                         }
-                        safeLog("✅ \(worker.label): インストール完了")
+                        safeLog("✅ \(worker.label): install complete")
                         return (index, worker)
                     } catch {
-                        safeLog("❌ \(worker.label): インストール失敗のため離脱 — "
+                        safeLog("❌ \(worker.label): dropped out after an install failure — "
                             + error.localizedDescription)
                         return (index, nil)
                     }
@@ -401,7 +401,7 @@ public enum ProfileWorkerFactory {
         let result = (passthrough + installed.map { (index: $0.0, worker: $0.1) })
             .sorted { $0.index < $1.index }.map { $0.worker }
         guard !result.isEmpty else {
-            throw InstallError(message: "全ワーカーがインストールに失敗しました")
+            throw InstallError(message: "every worker failed to install the app")
         }
         return result
     }

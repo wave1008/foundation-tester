@@ -120,8 +120,8 @@ public final class FTRuntime {
     static func requireCore(command: String) -> FTDriveCore {
         let (core, thread) = shared.current   // lock は抜けてから core を触る(ロック順序)
         guard let core else {
-            fatalError("FTDSL: \(command) はシナリオ実行外で呼び出されました"
-                + "(ftester-scenarios run 経由のシナリオ実行中にのみ呼び出せます)")
+            fatalError("FTDSL: \(command) was called outside a scenario run"
+                + " (it can only be called during a scenario run via ftester-scenarios run)")
         }
         if let thread, Thread.current !== thread {
             core.recordThreadViolation(command: command)
@@ -297,11 +297,11 @@ public final class FTDriveCore {
         // 同じ番号が並び、どちらの結果か読み手が判別できなくなる。**警告に留める**
         // (失敗にはしない = 既存シナリオを止めない。番号は実行順にも結果にも影響しない)
         if withState({ record.scenes.contains(where: { $0.number == number }) }) {
-            emit(.log("⚠️ scene \(number) が重複しています(\"\(title)\")。"
-                      + "レポートで同じ番号が並び、どちらの結果か判別できません"))
+            emit(.log("⚠️ scene \(number) is duplicated (\"\(title)\"). "
+                      + "The report will show the same number twice and the results cannot be told apart"))
             addSuggestion(FixSuggestion(
                 isStrong: false,
-                message: "scene \(number) が重複しています(\"\(title)\")。番号を振り直してください"),
+                message: "scene \(number) is duplicated (\"\(title)\"). Renumber the scenes"),
                 emitEvent: false, file: "", line: 0)
         }
         withState { record.scenes.append(SceneRecordData(number: number, title: title)) }
@@ -313,8 +313,8 @@ public final class FTDriveCore {
         emit(event)
 
         if scenarioAborted {
-            recordStep(description: "scene \(number) 本体をスキップ",
-                       status: .skipped("シナリオ中断のため未実行"), file: "", line: 0)
+            recordStep(description: "skipped the body of scene \(number)",
+                       status: .skipped("not run because the scenario was aborted"), file: "", line: 0)
         } else {
             body()
         }
@@ -386,9 +386,9 @@ public final class FTDriveCore {
         // `:rigth(x)` のような誤りは「そんなラベルは無い」に化け、notExist/countIs(x,0) では
         // 緑になってしまう。ここで落とすのが唯一の防波堤(FTSelector.validationError 参照)
         if validateSelector, let selectorText, let error = FTSelector.validationError(selectorText) {
-            let status = StepResult.Status.failed("セレクタの構文が不正です: \(error)")
+            let status = StepResult.Status.failed("invalid selector syntax: \(error)")
             recordStep(description: description, status: status, file: filePath, line: Int(line))
-            handleFailure(stepDescription: description, reason: "セレクタの構文が不正です: \(error)")
+            handleFailure(stepDescription: description, reason: "invalid selector syntax: \(error)")
             return PerformResult(status: status, element: nil)
         }
         if dryRun {
@@ -414,7 +414,7 @@ public final class FTDriveCore {
         let cachedLocators = cachedEntry?.locators ?? []
         let outcome = FTSync.run { await executor.execute(step, cached: cachedLocators) }
         let status = outcome?.status
-            ?? .failed("コマンドがタイムアウトしました(\(Int(FTSync.commandTimeout))s)")
+            ?? .failed("the command timed out (\(Int(FTSync.commandTimeout))s)")
         // driverFallback はロケータの .passedViaFallback とは別物(セレクタは正しくドライバが
         // 変わっただけ、または無言 no-op になり得る経路の注記)。修正提案は出さず、説明文に
         // 括弧書きで付けるだけ。値は表示済み文言(StepExecutor.StepOutcome.driverFallback 参照)。
@@ -439,22 +439,22 @@ public final class FTDriveCore {
                                                        fallbacks: healed.fallbacks ?? [])
                 let rationale: String
                 if outcome.healedByCache {
-                    rationale = cachedEntry?.rationale ?? "前回の自己修復結果(キャッシュ)"
+                    rationale = cachedEntry?.rationale ?? "previous self-heal result (cache)"
                 } else {
-                    rationale = healed.note?.components(separatedBy: "自己修復: ").last
-                        ?? "FM 自己修復"
+                    rationale = healed.note?.components(separatedBy: "self-healed: ").last
+                        ?? "FM self-heal"
                     if let cacheKey {
                         healCache.store(cacheKey, locators: chain,
                                         newSelector: newSelector, rationale: rationale)
                     }
                 }
-                let via = outcome.healedByCache ? "ヒールキャッシュで通過" : "FM 自己修復で通過"
+                let via = outcome.healedByCache ? "passed via the heal cache" : "passed via FM self-healing"
                 let resolvedNewSelector = cachedEntry?.newSelector ?? newSelector
                 addSuggestion(FixSuggestion(
                     isStrong: true,
-                    message: "\(filePath):\(line) — セレクタ \"\(selectorText)\" を "
-                        + "\"\(resolvedNewSelector)\" に変更してください"
-                        + "(\(via)。理由: \(rationale))"),
+                    message: "\(filePath):\(line) — change the selector \"\(selectorText)\" to "
+                        + "\"\(resolvedNewSelector)\""
+                        + " (\(via); reason: \(rationale))"),
                     emitEvent: true, description: description,
                     file: filePath, line: Int(line),
                     oldSelector: selectorText, newSelector: resolvedNewSelector)
@@ -462,8 +462,8 @@ public final class FTDriveCore {
                 // 弱い提案(フォールバックは設計上の通常経路なのでレポートのみ)
                 addSuggestion(FixSuggestion(
                     isStrong: false,
-                    message: "\(filePath):\(line) — \"\(selectorText)\" はプライマリで解決できず "
-                        + "フォールバック \(locator.summary) で通過(セレクタ更新を検討)"),
+                    message: "\(filePath):\(line) — \"\(selectorText)\" did not resolve as the primary and "
+                        + "passed via the fallback \(locator.summary) (consider updating the selector)"),
                     emitEvent: false, file: filePath, line: Int(line))
             }
         }
@@ -540,27 +540,27 @@ public final class FTDriveCore {
         where !resolvedIDs.contains(id) {
             addSuggestion(FixSuggestion(
                 isStrong: false,
-                message: "`#\(id)` はこのシナリオ中で一度も解決できませんでした"
-                    + "(\(description))。否定アサーションは id の綴り誤りでも成功するため、"
-                    + "実在する id か確認してください"),
+                message: "`#\(id)` never resolved during this scenario"
+                    + " (\(description)). Negative assertions also pass when the id is misspelled, "
+                    + "so make sure the id really exists"),
                 emitEvent: false, file: "", line: 0)
         }
         for (selector, description) in notCheckedOnlySelectors.sorted(by: { $0.key < $1.key })
         where !checkedObservedSelectors.contains(selector) {
             addSuggestion(FixSuggestion(
                 isStrong: false,
-                message: "`\(selector)` は isNotChecked で成功しましたが、"
-                    + "このシナリオ中で一度も checked 状態を観測していません(\(description))。"
-                    + "チェック状態を持たない要素(ただのボタン等)や、状態を報告しない実装"
-                    + "(iOS の SwiftUI / Flutter の checkbox)を指していると**何を書いても成功します**。"
-                    + "オンにしてから isChecked も併せて検証してください"),
+                message: "`\(selector)` passed isNotChecked, but a checked state was never observed "
+                    + "during this scenario (\(description)). If it points at an element with no check "
+                    + "state (a plain button) or at an implementation that never reports one "
+                    + "(SwiftUI on iOS, Flutter checkboxes), **any assertion passes**. "
+                    + "Turn it on and verify isChecked as well"),
                 emitEvent: false, file: "", line: 0)
         }
         for (selector, met) in branchOutcomes.sorted(by: { $0.key < $1.key }) where !met {
             addSuggestion(FixSuggestion(
                 isStrong: false,
-                message: "ifCanSelect \"\(selector)\" はこのシナリオ中で一度も成立しませんでした"
-                    + "(セレクタが古い可能性があります。不成立は失敗にならないため気付けません)"),
+                message: "ifCanSelect \"\(selector)\" never matched during this scenario"
+                    + " (the selector may be stale; a non-match is not a failure, so it goes unnoticed)"),
                 emitEvent: false, file: "", line: 0)
         }
     }
@@ -618,7 +618,7 @@ public final class FTDriveCore {
         case .failure(let error):
             status = .failed(error.localizedDescription)
         case nil:
-            status = .failed("処理がタイムアウトしました(\(Int(FTSync.commandTimeout))s)")
+            status = .failed("the operation timed out (\(Int(FTSync.commandTimeout))s)")
         }
         recordStep(description: description, status: status, file: "\(file)", line: Int(line),
                    durationMs: elapsedMs, at: ISO8601Millis.string(from: Date()))
@@ -647,13 +647,13 @@ public final class FTDriveCore {
         if result == .abort {
             scenarioAborted = true
             stoppedByUser = true
-            emit(.log("⏹ ユーザー操作でシナリオを中断しました"))
+            emit(.log("⏹ The scenario was aborted by the user"))
         }
     }
 
     /// スキップ記録の理由(デバッグの stop による中断は表示を分ける)
     var skipReason: String {
-        stoppedByUser ? "ユーザー操作で中断" : "失敗のため未実行"
+        stoppedByUser ? "aborted by the user" : "not run because of an earlier failure"
     }
 
     /// 分岐評価(記録のみ、実行はしない): セレクタが現在画面で解決できるか。
@@ -697,9 +697,9 @@ public final class FTDriveCore {
             return true
         }()
         guard firstViolation else { return }
-        let reason = "DSL コマンド \"\(command)\" が DSL スレッド外(Task や別スレッド内)から"
-            + "呼び出されました。非同期処理は procedure { } に包んでください"
-        recordStep(description: "スレッド違反: \(command)", status: .failed(reason), file: "", line: 0)
+        let reason = "the DSL command \"\(command)\" was called from outside the DSL thread "
+            + "(inside a Task or another thread). Wrap asynchronous work in procedure { }"
+        recordStep(description: "thread violation: \(command)", status: .failed(reason), file: "", line: 0)
     }
 
     // MARK: - 記録
@@ -827,8 +827,8 @@ public final class FTDriveCore {
             return true
         }
         if recorded {
-            emit(.log("⚠️ アプリより手前に別の window があります: \(overlays.joined(separator: ", "))"
-                      + "(操作がそこに吸われた可能性があります)"))
+            emit(.log("⚠️ Another window is in front of the app: \(overlays.joined(separator: ", "))"
+                      + " (interactions may have been swallowed by it)"))
         }
     }
 

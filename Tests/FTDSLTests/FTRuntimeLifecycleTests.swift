@@ -354,7 +354,7 @@ final class FTRuntimeLifecycleTests: XCTestCase {
         guard case .failed(let reason) = steps(core)[0].status else {
             return XCTFail("上限を超えても NG になっていない: \(steps(core)[0].status)")
         }
-        XCTAssertTrue(reason.contains("処理がタイムアウトしました"),
+        XCTAssertTrue(reason.contains("the operation timed out"),
                       "waitSeconds(30s)が先に効いてしまっている: \(reason)")
     }
 

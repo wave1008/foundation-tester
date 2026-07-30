@@ -14,31 +14,31 @@ import FTCore
 struct RunFileCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "run-file",
-        abstract: "登録していない .swift シナリオをそのまま実行する(プロファイルは既存プロジェクトから借りる)")
+        abstract: "Run an unregistered .swift scenario as-is (profiles are borrowed from an existing project)")
 
     /// ステージ先。Scenarios/ 直下のサブフォルダは SPM ターゲットに含まれる(_disabled のみ除外)
     static let stageDirName = "_runfile"
 
-    @Argument(help: "シナリオの .swift(複数指定するとヘルパーとして一緒にコンパイルされる)")
+    @Argument(help: "Scenario .swift file (pass several and they are compiled together as helpers)")
     var files: [String]
 
-    @Option(help: "プロファイル・レポート・ヒールキャッシュを借りるテストプロジェクト名(省略時は既定プロジェクト)")
+    @Option(help: "Test project to borrow profiles, reports and the heal cache from (defaults to the default project)")
     var project: String?
 
-    @Option(help: "実行プロファイル名(profiles/runs/<名前>.json)")
+    @Option(help: "Run profile name (profiles/runs/<name>.json)")
     var profile: String?
 
     @Option(name: .customLong("scenario"), parsing: .upToNextOption,
-            help: "実行するシナリオ ID(省略時はファイル内の全 @TestClass)")
+            help: "Scenario IDs to run (defaults to every @TestClass in the files)")
     var scenarios: [String] = []
 
-    @Flag(help: "FM によるロケータ自己修復を許可する")
+    @Flag(help: "Allow FM-based locator self-healing")
     var heal = false
 
-    @Option(name: .customLong("report-dir"), help: "レポート出力先ディレクトリ")
+    @Option(name: .customLong("report-dir"), help: "Directory to write reports to")
     var reportDir: String?
 
-    @Option(help: "iOS シナリオを並列実行するブリッジのポート一覧(カンマ区切り)")
+    @Option(help: "Comma-separated bridge ports for running iOS scenarios in parallel")
     var ports: String?
 
     @OptionGroup var driverOptions: DriverOptions
@@ -47,14 +47,14 @@ struct RunFileCommand: AsyncParsableCommand {
         let urls = try files.map { path -> URL in
             let url = URL(fileURLWithPath: path).standardizedFileURL
             guard FileManager.default.fileExists(atPath: url.path) else {
-                throw ValidationError("ファイルがありません: \(url.path)")
+                throw ValidationError("file not found: \(url.path)")
             }
             guard url.pathExtension == "swift" else {
-                throw ValidationError("シナリオは .swift ファイルです: \(url.path)")
+                throw ValidationError("scenarios must be .swift files: \(url.path)")
             }
             return url
         }
-        guard !urls.isEmpty else { throw ValidationError("実行するファイルを指定してください") }
+        guard !urls.isEmpty else { throw ValidationError("specify at least one file to run") }
 
         let repoRoot = try RepoRoot.find()
         let target: TestProject
@@ -63,11 +63,11 @@ struct RunFileCommand: AsyncParsableCommand {
            project == nil || project == owner.name {
             // 既に登録済みターゲットの中にあるファイルはコピーしない(重複クラス定義になる)
             target = owner
-            print("→ \(owner.name) の登録済みシナリオとして実行します")
+            print("→ Running as a registered scenario of \(owner.name)")
         } else {
             target = try ScenarioHost.project(named: project)
             stagedDir = try Self.stage(urls, into: target)
-            print("→ \(target.name) へ一時ステージ: "
+            print("→ Staging temporarily into \(target.name): "
                 + urls.map(\.lastPathComponent).joined(separator: ", "))
         }
         defer {
@@ -79,7 +79,7 @@ struct RunFileCommand: AsyncParsableCommand {
             selected = try urls.flatMap { try Self.testClassNames(in: $0) }
             guard !selected.isEmpty else {
                 throw ValidationError(
-                    "@TestClass が見つかりません: "
+                    "no @TestClass found: "
                     + urls.map(\.lastPathComponent).joined(separator: ", "))
             }
         }
@@ -123,7 +123,7 @@ struct RunFileCommand: AsyncParsableCommand {
         for url in urls {
             let destination = dir.appendingPathComponent(url.lastPathComponent)
             guard !FileManager.default.fileExists(atPath: destination.path) else {
-                throw ValidationError("同名のファイルは同時に実行できません: \(url.lastPathComponent)")
+                throw ValidationError("files with the same name cannot be run together: \(url.lastPathComponent)")
             }
             try FileManager.default.copyItem(at: url, to: destination)
         }

@@ -43,7 +43,7 @@ struct ApiListScenarios: AsyncParsableCommand {
         let repoRoot = try ftesterRepoRoot()
 
         if !skipBuild {
-            logStderr("→ シナリオをビルド(\(testProject.name))...")
+            logStderr("→ Building scenarios (\(testProject.name))...")
             try ScenarioHost.build(project: testProject)
         }
 
@@ -236,7 +236,7 @@ struct ApiSteps: AsyncParsableCommand {
         let testProject = try ScenarioHost.project(named: project)
 
         if !skipBuild {
-            logStderr("→ シナリオをビルド(\(testProject.name))...")
+            logStderr("→ Building scenarios (\(testProject.name))...")
             try ScenarioHost.build(project: testProject)
         }
 

@@ -192,7 +192,7 @@ final class CommandDispatchTests: XCTestCase {
         }
         core.warnAboutNeverResolvedIDs()
         let messages = core.finalRecord.fixSuggestions.map(\.message)
-        XCTAssertEqual(messages.contains { $0.contains("一度も checked 状態を観測していません") }, true,
+        XCTAssertEqual(messages.contains { $0.contains("a checked state was never observed") }, true,
                        "\(messages)")
     }
 
@@ -207,7 +207,7 @@ final class CommandDispatchTests: XCTestCase {
             scene(1, "重複") { action { tap("#cleanup") } }
         }
         let messages = core.finalRecord.fixSuggestions.map(\.message)
-        XCTAssertEqual(messages.contains { $0.contains("scene 1 が重複しています") }, true, "\(messages)")
+        XCTAssertEqual(messages.contains { $0.contains("scene 1 is duplicated") }, true, "\(messages)")
         // 実行自体は止めない(2 scene とも記録される)
         XCTAssertEqual(core.finalRecord.scenes.count, 2)
     }
