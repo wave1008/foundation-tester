@@ -1318,6 +1318,13 @@ public struct FTElement {
         self.matched = matched
     }
 
+    /// **要素を掴めていないか**(Shirates の `TestElement.isEmpty` 相当)。
+    /// `select` が見えない要素で空要素を返したとき・掴めなかったとき・dry-run で true。
+    /// `.text` 等が nil かどうかで判定すると「掴めたが label が無い要素」と区別できない
+    public var isEmpty: Bool { matched == nil }
+    /// 掴めているか(`isEmpty` の逆)
+    public var isNotEmpty: Bool { matched != nil }
+
     /// 掴んだ要素の表示テキスト(label)
     public var text: String? { matched?.label }
     /// 掴んだ要素の value

@@ -36,7 +36,7 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 | コマンド | 説明 |
 |---|---|
 | `tap(sel, holdSeconds: 0, optional:timeout:scroll:maxSwipes:)` | タップ。`holdSeconds` を 0 より大きくすると長押し(既定 0 = 通常タップ) |
-| `select(sel, optional:timeout:requireVisible:scroll:maxSwipes:)` | 要素を**掴むだけ**(デバイス操作なし)。`exist` と違い**検証ではない**ので、レポートに検証ステップとして残らない。値の読み出し(`.text`/`.value`/`.id`)や検証コマンドへのチェーンの起点に使う。**見つからない**と失敗(無視したいときは `optional: true` = Shirates の `throwsException: false` 相当)。**見つかったが見えない**(覆われ・見切れ)ときは**失敗させず空要素を返す** — 呼び出し側が `.text == nil` で分岐できる(`exist` は失敗へ反転するので意味が違う)。`requireVisible: false` で可視性照合自体を外す |
+| `select(sel, optional:timeout:requireVisible:scroll:maxSwipes:)` | 要素を**掴むだけ**(デバイス操作なし)。`exist` と違い**検証ではない**ので、レポートに検証ステップとして残らない。値の読み出し(`.text`/`.value`/`.id`)や検証コマンドへのチェーンの起点に使う。**見つからない**と失敗(無視したいときは `optional: true` = Shirates の `throwsException: false` 相当)。**見つかったが見えない**(覆われ・見切れ)ときは**失敗させず空要素を返す** — 呼び出し側は `.isEmpty` で分岐できる(`exist` は失敗へ反転するので意味が違う)。`requireVisible: false` で可視性照合自体を外す |
 | `type("文字列")` | **フォーカス中の要素**へ入力(直前に `tap(入力欄)` でフォーカスしてから使う)。改行の扱いは下記 |
 | `type(sel, "文字列", optional:timeout:scroll:maxSwipes:)` | 要素を指定して入力。日本語もそのまま入る(IME 切替なし)。改行の扱いは下記 |
 | `pressEnter()` | フォーカス中の入力へ Enter/IME アクション(検索・実行・改行)を発火(Shirates(Classic) 準拠) |
@@ -158,6 +158,14 @@ exist("#txt_total").text.thisContains("1,200")   // thisIs 系へそのまま繋
   **古い値を掴む**。上の例のように `textIs` / `textStartsWith` 等で値を確定させてから読む
 - **要素を掴めなかったとき・失敗後にスキップされたとき・dry-run では nil**
   (「掴めなかったのに値が読める」状態を作らないため)
+- **掴めたかどうかは `.isEmpty` / `.isNotEmpty` で見る**(Shirates の `TestElement.isEmpty` 相当)。
+  `.text == nil` で代用しない — **ラベルを持たない要素を掴んだとき**に「空」と誤判定する
+
+```swift
+let e = select("#txt_total")
+if e.isNotEmpty { 合計 = e.text }   // 見えていなければ空要素なので読まない
+```
+
 - `.text` は要素の表示テキスト(ラベル)、`.value` は値、`.id` は identifier
 - **検証したくない(レポートに検証ステップを残したくない)ときは `exist` の代わりに `select` を使う**。
   `select` は掴むだけで可視性照合の対象にもならない。使い方は同じ(`select("#txt_total").text`)
