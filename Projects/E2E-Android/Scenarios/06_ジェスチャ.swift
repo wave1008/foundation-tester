@@ -86,4 +86,22 @@ class ジェスチャが正しく検出されること {
             }
         }
     }
+
+    @Test("swipePointToPoint が座標スワイプとして認識される")
+    func S0020() {
+        scenario {
+            scene(1, "座標を指定して上方向へドラッグする") {
+                condition {
+                    launchApp()
+                }.action {
+                    tap("#nav_gesture")
+                    // x=540(≈0.5w)は ui-contract §ジェスチャ画面の「中央列 x=0.5w を空ける」制約により
+                    // ボタンが置かれていない帯。座標スワイプの始点・終点として安全に使える
+                    swipePointToPoint(startX: 540, startY: 1500, endX: 540, endY: 700, durationSeconds: 0.3)
+                }.expectation {
+                    textIs("#txt_swipe_dir", "swipe=up")
+                }
+            }
+        }
+    }
 }

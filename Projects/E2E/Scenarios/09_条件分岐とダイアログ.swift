@@ -103,4 +103,29 @@ class 条件分岐とダイアログ操作が正しく働くこと {
             }
         }
     }
+
+    @Test("back でダイアログが閉じる(Android のみ)")
+    func S0040() {
+        scenario {
+            // すべて android {} で包む: iOS のエッジスワイプ back は本 SUT(独自ナビ)では観測不能
+            // (docs/commands.md の back() 契約)。iOS 側でダイアログを開いたまま残すと後続シナリオを
+            // 壊すため、iOS では何も実行しない
+            scene(1, "ダイアログを開いて back で閉じる") {
+                condition {
+                    launchApp()
+                }.action {
+                    android {
+                        tap("#nav_dialog")
+                        tap("#btn_show_dialog")
+                        exist("#btn_dialog_ok")
+                        back()
+                    }
+                }.expectation {
+                    android {
+                        notExist("#btn_dialog_ok")
+                    }
+                }
+            }
+        }
+    }
 }

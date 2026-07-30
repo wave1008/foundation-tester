@@ -85,4 +85,61 @@ class テキスト入力が正しくechoされること {
             }
         }
     }
+
+    @Test("clearInput が入力欄を空にする")
+    func S0020() {
+        scenario {
+            scene(1, "テキスト入力画面を開いて単一行に入力する") {
+                condition {
+                    launchApp()
+                }.expectation {
+                    // Flutter は起動直後の数百 ms、a11y ツリーは完成しているのに**ポインタ入力を
+                    // 取りこぼす**ことがある(初回タップが成功扱いのまま黙って無反応になる。
+                    // Android で実測)。ここで1往復させ、着地を確認してから操作する。
+                    //
+                    // requireVisible: false = これは可視性の**検証**ではなく同期のための1往復。
+                    // FM はホスト全体で直列化(約1回/秒)されるため、全 launchApp で FM を
+                    // 呼ぶとコストだけが乗る。**可視性の検証と、occlusion-guard の誤判定を
+                    // 検出する役目は 01_起動と画面遷移 が既定(true)のまま担う**
+                    // (README「既知の ftester 欠陥」参照。ここで guard を切っても検出器は死なない)。
+                    exist("#txt_home_marker", requireVisible: false)
+                }.action {
+                    tap("#nav_input")
+                }.action {
+                    // Android は input connection が張られるまで ACTION_SET_TEXT を受け付けない
+                    // (S0010 と同じ罠)。tap と type の間に1往復挟んで待つ。
+                    tap("#field_single")
+                }.expectation {
+                    exist("#field_single")
+                }.action {
+                    type("#field_single", "hello123")
+                }.expectation {
+                    textIs("#txt_echo_length", "len=8")
+                }
+            }
+            scene(2, "セレクタ指定の clearInput で単一行が空になる") {
+                action {
+                    clearInput("#field_single")
+                }.expectation {
+                    textIs("#txt_echo_single", "single=")
+                    textIs("#txt_echo_length", "len=0")
+                }
+            }
+            scene(3, "無引数の clearInput はフォーカス中の入力欄(パスワード)を空にする") {
+                action {
+                    tap("#field_password")
+                }.expectation {
+                    exist("#field_password")
+                }.action {
+                    type("#field_password", "secret42")
+                }.expectation {
+                    textIs("#txt_echo_password", "password=secret42")
+                }.action {
+                    clearInput()
+                }.expectation {
+                    textIs("#txt_echo_password", "password=")
+                }
+            }
+        }
+    }
 }

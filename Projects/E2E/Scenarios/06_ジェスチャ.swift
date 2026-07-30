@@ -91,4 +91,23 @@ class ジェスチャが正しく検出されること {
             }
         }
     }
+
+    @Test("swipePointToPoint が座標スワイプとして認識される")
+    func S0020() {
+        scenario {
+            scene(1, "座標を直接指定して上スワイプする") {
+                condition {
+                    launchApp()
+                }.action {
+                    tap("#nav_gesture")
+                    // 座標は snapshot の screen 座標系(iOS pt / Android px)。中央列(x=0.5w 付近)は
+                    // ui-contract のジェスチャ画面レイアウト制約により操作要素が置かれず空いている
+                    ios { swipePointToPoint(startX: 200, startY: 550, endX: 200, endY: 250, durationSeconds: 0.3) }
+                    android { swipePointToPoint(startX: 540, startY: 1500, endX: 540, endY: 700, durationSeconds: 0.3) }
+                }.expectation {
+                    textIs("#txt_swipe_dir", "swipe=up")
+                }
+            }
+        }
+    }
 }

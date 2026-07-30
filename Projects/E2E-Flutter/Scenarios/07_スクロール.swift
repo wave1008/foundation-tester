@@ -127,4 +127,33 @@ class スクロールで折り返し下の要素に到達できること {
             }
         }
     }
+
+    @Test("swipeElementToElement でリストがスクロールする")
+    func S0040() {
+        scenario {
+            scene(1, "初期画面内の行を始点・終点にドラッグして送る") {
+                condition {
+                    launchApp()
+                }.expectation {
+                    // Flutter は起動直後の数百 ms、a11y ツリーは完成しているのに**ポインタ入力を
+                    // 取りこぼす**ことがある(初回タップが成功扱いのまま黙って無反応になる。
+                    // Android で実測)。ここで1往復させ、着地を確認してから操作する。
+                    //
+                    // requireVisible: false = これは可視性の**検証**ではなく同期のための1往復。
+                    // FM はホスト全体で直列化(約1回/秒)されるため、全 launchApp で FM を
+                    // 呼ぶとコストだけが乗る。**可視性の検証と、occlusion-guard の誤判定を
+                    // 検出する役目は 01_起動と画面遷移 が既定(true)のまま担う**
+                    // (README「既知の ftester 欠陥」参照。ここで guard を切っても検出器は死なない)。
+                    exist("#txt_home_marker", requireVisible: false)
+                }.action {
+                    tap("#nav_scroll")
+                    // 始点・終点とも初期画面内で見えている行にする(#row_08 より下へ変えない):
+                    // 画面外要素は frame がクランプされ座標がずれる既知の罠があるため
+                    swipeElementToElement("#row_08", "#row_02", durationSeconds: 0.5)
+                }.expectation {
+                    notExist("#row_01", timeout: 5)
+                }
+            }
+        }
+    }
 }
