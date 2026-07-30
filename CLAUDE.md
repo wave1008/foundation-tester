@@ -111,6 +111,13 @@
   **ブリッジの入力ファイル一覧は `Sources/FTCore/BridgeSourceSet.swift` が唯一の定義元**
   (`InAppLauncher` の dylib 再ビルド判定も同じ一覧を使う。片方だけ変えない)。
   指紋の性質(コメント編集でも落ちる理由)・保留中の代替案は docs/verification.md
+- **Android のテキスト注入(`InputInjector`)を触ったら負荷10周で判定する**
+  (`for i in $(seq 10); do Scripts/e2e.sh --cmp --android; done`)。**単独実行では出ない**
+  flake がある(高負荷でだけ約40%)。守る規律 —「`ACTION_SET_TEXT` の `true` は受理であって
+  反映ではない(必ず読み返す)」「`combined` は最初の読みから1回だけ作る(パスワード欄の読みは
+  マスクされており、作り直すと伏せ字を書き込む・二重追記する)」「フォーカスが立つまで撃たない」
+  「追跡は座標でなく resource-id」 — と不採用案(`ACTION_FOCUS`・ホスト側のキーボード回避)は
+  docs/design.md §Android のテキスト注入の規律
 
 ## 受け手フローの設計方針(スキル・スクリプト・CLI の分担)
 
