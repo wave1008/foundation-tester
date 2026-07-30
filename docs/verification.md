@@ -116,6 +116,21 @@ E2E-Android(View/XML)を回して初めて赤くなり、a11y の `ACTION_IME_EN
 同値の安定化を外しても現在の挙動は変わらない(実測: 200要素・同値混在で順序保持)。この種の
 「将来への保険」はコメントにその旨を書き、無理にテストを作らない。
 
+## 拡張 webview のテストは jsdom にレイアウトが無い(2026-07-31)
+
+`test/webview*.test.mjs` は実 HTML + 実バンドルを jsdom で動かすが、**jsdom はレイアウトを持たない**
+(`clientHeight`/`offsetHeight`/`getBoundingClientRect` は常に 0、`offsetParent` は null)。
+そのため「寸法を測って何かを決める」コードは**分岐そのものが1本しか通らず**、緑でも無検証に近い。
+
+- **再現の仕方**: 対象要素に `Object.defineProperty(el, 'clientHeight', { value: N, configurable: true })`
+  で高さを与える(実例: `webviewTileRelayout.test.mjs`。表示中=306 / `display:none` 相当=0 を
+  切り替えてタブ往復を再現する)
+- **見落としの実害**: タイルの auto-fit がタブ復帰後に崩れるバグ(design.md §12.5)は、
+  非表示中に届く `devices` が `--tile-image-h` を潰すのが原因で、**全ユニットテストが緑のまま**
+  残っていた。jsdom では表示中も非表示中も 0 で区別が付かなかったため
+- **併せて**: レイアウト計算そのものは DOM 非依存の純関数へ切り出して単体テストする
+  (`tileFitModel.js` ⇔ `tileFitModel.test.mjs`)。DOM 側テストは「実測して純関数へ渡す配線」だけ見る
+
 ## 排他は TSan で見る(2026-07-29)
 
 共有状態のロック(`FTDriveCore.stateLock` / `FTRuntime.lock` [契約は docs/design.md §10] や
