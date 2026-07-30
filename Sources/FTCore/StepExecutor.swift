@@ -1280,14 +1280,26 @@ public final class StepExecutor {
 
     /// 画面が静止するまで待ち、そのときの要素配置の署名を返す(scrollToEdge の到達判定)。
     /// **横スクロールでは y が動かない**ので x と y の両方を入れる。
-    /// ref は取り直しで振り直されるため使わない(型・ラベル・座標だけで比較する)。
+    /// ref は取り直しで振り直されるため使わない(型と座標だけで比較する)。
     /// 静止時点のスナップショットも返す(scrollToEdge のヒント跳躍が再利用する。
     /// 別途撮り直すと iOS xcuitest では1周 約380ms の追加になるため)
+    ///
+    /// **label を署名に入れてはいけない**(2026-07-31 実測。入れると SwiftUI List で永久に
+    /// 収束しない): 画面外まで含む行のうち 2 件が、静止画面でも取得のたびに別の行のラベルを
+    /// 名乗り、A↔B で交互に振れ続ける(XCUITest が再利用セル群の古いラベルを読むため。
+    /// frame は 1pt も動かない)。結果 settledSignature は毎回 6 poll を使い切り、
+    /// scrollToEdge の「連続2回不変=端」も成立せず maxSwipes 上限まで回っていた
+    /// (E2E-iOS/ios-xcuitest の scrollToTop で 44〜55s。同じ画面が in-app では 1.5s)。
+    /// **判定したいのは「動いているか」なので frame だけで足りる**
+    /// (settleAfterScroll も同じ理由で frame だけを見ている)。
+    /// 逆に**ランナー側の captureSettled では label を外さない** — あちらは tap 直後の
+    /// 「内容が更新されたか」を待つので、レイアウトが変わらずテキストだけ変わる更新を
+    /// 取りこぼすと stale なツリーを返す
     private func settledSignature(
         phase: inout PhaseAccumulator) async throws -> (signature: String, snapshot: SnapshotResponse) {
         func signature(_ snapshot: SnapshotResponse) -> String {
             snapshot.elements
-                .map { "\($0.type)|\($0.label ?? "")|\($0.frame.x),\($0.frame.y)" }
+                .map { "\($0.type)|\($0.frame.x),\($0.frame.y)" }
                 .joined(separator: ",")
         }
         let clock = ContinuousClock()
