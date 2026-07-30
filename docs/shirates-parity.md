@@ -229,9 +229,12 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | `keyboardIsShown` / `keyboardIsNotShown` | 取得元が OS で違う(iOS xcuitest = AX ツリーの `.keyboard` / iOS in-app = `UITextEffectsWindow` の可視判定 / Android = ホストが `dumpsys` の `InputMethod` window を見る)。**IME が別プロセスの window でアプリの a11y ツリーに出ない**ため |
 | `clearInput(sel)` | **Flutter の iOS は in-app エンジンでは消せず XCUITest 経由**になる(自動フォールバック。1〜2秒)。engine への editing state 配送は3回実測して不採用(design.md) |
 
-## 足す価値がある残り(優先度順)
+## 足す価値がある残り
 
-| 項目 | 理由 | 規模 |
-|---|---|---|
-| **祖先方向の相対セレクタ**(`:parent`) | id を持つのが子ラベルだけの行を「行として」検証できない。タップは座標が最前面に当たるので、効くのは主に行単位の状態検証 | 中 |
-| `notExist` の別名族・`existWithScrollLeft/Right` | 引数で書けるので優先度は低い(人間のタイプ量削減が目的の糖衣) | 小 |
+**capability gap は無い**(今は書けないテストが無い状態)。残りはどれも「あると便利」の範疇で、
+**こちらから実装を提案しない**:
+
+| 項目 | 状態 |
+|---|---|
+| **祖先方向の相対セレクタ**(`:parent`) | ⏸ **保留**(ユーザー決定 2026-07-31)。id を持つのが子ラベルだけの行を「行として」検証するときに効くが、タップは座標が最前面に当たるので現状でも大きくは困らない。**シナリオを書いていて実際に必要になった時点で提案する**(それまで再提案しない) |
+| `notExist` の別名族・`existWithScrollLeft/Right` | ⏸ 引数で書けるので不要(人間のタイプ量削減が目的の糖衣)|
