@@ -87,6 +87,14 @@ final class StepDescriptionTests: XCTestCase {
                        "\"ようこそ\"が(覆われず)見えていること")
     }
 
+    /// select は exist と語彙が違う(検証の「見えていること」ではなく操作の「選択する」)
+    func testSelect() {
+        XCTAssertEqual(StepDescription.describe(command: "select \"ようこそ\""),
+                       "\"ようこそ\"を選択する")
+        XCTAssertEqual(StepDescription.describe(command: "select \"welcome\""),
+                       "select \"welcome\"")
+    }
+
     func testTextIs() {
         XCTAssertEqual(
             StepDescription.describe(command: "textIs \"#login_error\" == \"パスワードが違います\""),
@@ -180,6 +188,10 @@ final class StepDescriptionTests: XCTestCase {
         let exist = FlowStep(assert: "exists", locator: FlowLocator(id: "collapsing_toolbar"))
         XCTAssertEqual(StepDescription.describe(step: exist),
                        "\"#collapsing_toolbar\" is shown")
+
+        // select は action(検証ではない)。exist と語彙が違うことを固定する
+        let select = FlowStep(action: "select", locator: FlowLocator(id: "cleanup"))
+        XCTAssertEqual(StepDescription.describe(step: select), "select \"#cleanup\"")
 
         let type = FlowStep(action: "type", locator: FlowLocator(id: "email"), text: "a@b.c")
         XCTAssertEqual(StepDescription.describe(step: type), "type \"a@b.c\" into \"#email\"")

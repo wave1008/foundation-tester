@@ -46,4 +46,19 @@ final class ScenarioCodeGenTests: XCTestCase {
         XCTAssertTrue(omitted.contains("exist(\"#msg\")"), omitted)
         XCTAssertFalse(omitted.contains("timeout:"), omitted)
     }
+
+    /// select は action(操作)として生成される。exist(assert)とコード生成の分岐が違うことを固定する
+    func testSelectEmitsOptionalAndOmitsTheDefaultTimeout() {
+        let optional = render([
+            FlowStep(action: "select", locator: FlowLocator(id: "msg"), timeout: 1.2, optional: true),
+        ])
+        XCTAssertTrue(optional.contains("select(\"#msg\", optional: true, timeout: 1.2)"), optional)
+
+        let omitted = render([
+            FlowStep(action: "select", locator: FlowLocator(id: "msg"), timeout: 5),
+        ])
+        XCTAssertTrue(omitted.contains("select(\"#msg\")"), omitted)
+        XCTAssertFalse(omitted.contains("timeout:"), omitted)
+        XCTAssertFalse(omitted.contains("optional:"), omitted)
+    }
 }

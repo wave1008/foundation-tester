@@ -82,6 +82,8 @@ public enum ScenarioCodeGen {
 
         if let action = step.action {
             switch action {
+            case "select":
+                return "select(\(literal(selector))\(optionalArg(step))\(timeoutArg(step)))"
             case "tap":
                 let hold = step.duration.map { ", holdSeconds: \(FTSeconds.format($0))" } ?? ""
                 return "tap(\(literal(selector))\(hold)\(optionalArg(step)))"

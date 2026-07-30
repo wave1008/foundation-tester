@@ -233,4 +233,65 @@ final class CommandDispatchTests: XCTestCase {
         XCTAssertEqual(driver.snapshotCount, 1, "exist 1 回に対しスナップショットが複数回取られている")
         XCTAssertTrue(core.finalRecord.passed)
     }
+
+    /// select は exist と違い**検証として記録されない**(action: "select" であって assert: "exists"
+    /// ではない)。record 上は description だけが見えるので "select ..." で判別する。
+    /// 掴んだ要素の値も exist と同様に読め、tap/press は一切発火しない
+    func testSelectRecordsAsActionAndExposesMatchedElementWithoutDeviceOperation() {
+        let driver = RecordingDriver()
+        let core = makeCore(driver: driver)
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        var element: FTElement!
+        scenario {
+            scene(1, "s") {
+                action { element = select("#cleanup") }
+            }
+        }
+
+        XCTAssertEqual(core.finalRecord.scenes.flatMap(\.steps).map(\.description),
+                       ["select \"#cleanup\""], "select は検証(exist)ではなく操作として記録されること")
+        XCTAssertEqual(element.text, "片付け")
+        XCTAssertEqual(element.value, "1200")
+        XCTAssertEqual(element.id, "cleanup")
+        XCTAssertTrue(driver.tapped.isEmpty, "select はデバイス操作(tap)を呼んではいけない")
+        XCTAssertTrue(driver.pressed.isEmpty, "select はデバイス操作(press)を呼んではいけない")
+        XCTAssertTrue(core.finalRecord.passed)
+    }
+
+    /// selectWithScrollDown が scroll: .down を同じステップに畳んで積むこと(tap(scroll:)/exist(scroll:)
+    /// と同じ規約。別の scrollTo ステップに分かれないことも合わせて確認)
+    func testSelectWithScrollDownCarriesScrollInSameStep() {
+        let core = makeCore(driver: RecordingDriver())
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        scenario {
+            scene(1, "s") {
+                action { selectWithScrollDown("#cleanup") }
+            }
+        }
+
+        XCTAssertEqual(core.finalRecord.scenes.flatMap(\.steps).map(\.description),
+                       ["select \"#cleanup\""],
+                       "scroll 探索は別ステップを増やさず1行のまま記録されること")
+    }
+
+    /// select(optional: true) は見つからない要素でも失敗にせずスキップすること
+    func testSelectOptionalSkipsWhenElementMissing() {
+        let core = makeCore(driver: RecordingDriver())
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        var element: FTElement!
+        scenario {
+            scene(1, "s") {
+                action { element = select("#missing", optional: true, timeout: 0) }
+            }
+        }
+
+        XCTAssertNil(element.text, "見つからなければ matched は無いはず")
+        XCTAssertTrue(core.finalRecord.passed, "optional の未検出はシナリオを失敗させない")
+    }
 }

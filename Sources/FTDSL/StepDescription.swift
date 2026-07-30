@@ -67,6 +67,10 @@ public enum StepDescription {
             return isJapanese(obj)
                 ? "\"\(obj)\"が(覆われず)見えていること"
                 : "\"\(obj)\" is visible (not covered)"
+        case "select":
+            guard let selector = unquote(rest) else { return nil }
+            let obj = object(selector)
+            return isJapanese(obj) ? "\"\(obj)\"を選択する" : "select \"\(obj)\""
         case "notExist":
             guard let selector = unquote(rest) else { return nil }
             let obj = object(selector)
@@ -172,6 +176,8 @@ public enum StepDescription {
         let obj = objectPhrase(ofStep: step)
         if let action = step.action {
             switch action {
+            case "select":
+                return isJapanese(obj) ? "\"\(obj)\"を選択する" : "select \"\(obj)\""
             case "tap":
                 if let holdSeconds = step.duration {
                     return isJapanese(obj)
