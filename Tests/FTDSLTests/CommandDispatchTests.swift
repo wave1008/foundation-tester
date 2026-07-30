@@ -7,7 +7,7 @@ import FTCore
 /// 「DSL の引数がそのままドライバに届くこと」を型付き経路と合わせてここで固定する。
 final class CommandDispatchTests: XCTestCase {
 
-    /// #cleanup 1 要素だけを返し、tap/press の引数を記録するドライバ
+    /// #cleanup と #nolabel を返し、tap/press の引数を記録するドライバ
     private final class RecordingDriver: AppDriver {
         private(set) var tapped: [Int] = []
         private(set) var pressed: [(ref: Int, duration: Double)] = []
@@ -27,7 +27,11 @@ final class CommandDispatchTests: XCTestCase {
                 screen: FTRect(x: 0, y: 0, width: 400, height: 800),
                 elements: [ElementInfo(ref: 1, type: "button", identifier: "cleanup", label: "片付け",
                                        value: "1200", placeholder: nil, enabled: true,
-                                       frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: 0)],
+                                       frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: 0),
+                           // label を持たない要素(isEmpty が .text の有無と別物であることの検証用)
+                           ElementInfo(ref: 2, type: "other", identifier: "nolabel", label: nil,
+                                       value: nil, placeholder: nil, enabled: true,
+                                       frame: FTRect(x: 0, y: 20, width: 10, height: 10), depth: 0)],
                 truncatedCount: 0)
         }
         func tap(ref: Int) async throws { tapped.append(ref) }
@@ -255,6 +259,8 @@ final class CommandDispatchTests: XCTestCase {
         XCTAssertEqual(element.text, "片付け")
         XCTAssertEqual(element.value, "1200")
         XCTAssertEqual(element.id, "cleanup")
+        XCTAssertFalse(element.isEmpty, "掴めていれば isEmpty は false")
+        XCTAssertTrue(element.isNotEmpty)
         XCTAssertTrue(driver.tapped.isEmpty, "select はデバイス操作(tap)を呼んではいけない")
         XCTAssertTrue(driver.pressed.isEmpty, "select はデバイス操作(press)を呼んではいけない")
         XCTAssertTrue(core.finalRecord.passed)
@@ -292,6 +298,28 @@ final class CommandDispatchTests: XCTestCase {
         }
 
         XCTAssertNil(element.text, "見つからなければ matched は無いはず")
+        XCTAssertTrue(element.isEmpty, "掴めていなければ isEmpty は true")
+        XCTAssertFalse(element.isNotEmpty)
         XCTAssertTrue(core.finalRecord.passed, "optional の未検出はシナリオを失敗させない")
+    }
+
+    /// isEmpty は matched の有無で判定する。**`.text == nil` では代用できない**
+    /// (label を持たない要素を掴んだときに「空」と誤判定するため)
+    func testIsEmptyDistinguishesUnmatchedFromLabellessElement() {
+        let driver = RecordingDriver()
+        let core = makeCore(driver: driver)
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        var element: FTElement!
+        scenario {
+            scene(1, "s") {
+                action { element = select("#nolabel") }
+            }
+        }
+
+        XCTAssertNil(element.text, "この要素は label を持たない")
+        XCTAssertFalse(element.isEmpty, "label が無くても掴めていれば空ではない")
+        XCTAssertEqual(element.id, "nolabel")
     }
 }
