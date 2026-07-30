@@ -39,7 +39,7 @@ final class ScenarioReportWriterTests: XCTestCase {
         let url = try ScenarioReportWriter.write(record: record, to: dir)
         let content = try String(contentsOf: url, encoding: .utf8)
 
-        XCTAssertTrue(content.contains("- デバイス: Pixel 9(Android 15)-03 (emulator-5560)\n"),
+        XCTAssertTrue(content.contains("- Device: Pixel 9(Android 15)-03 (emulator-5560)\n"),
                       content)
     }
 
@@ -52,7 +52,7 @@ final class ScenarioReportWriterTests: XCTestCase {
         let url = try ScenarioReportWriter.write(record: record, to: dir)
         let content = try String(contentsOf: url, encoding: .utf8)
 
-        XCTAssertFalse(content.contains("- デバイス:"), content)
+        XCTAssertFalse(content.contains("- Device:"), content)
     }
 
     private func makeTempDir() throws -> URL {

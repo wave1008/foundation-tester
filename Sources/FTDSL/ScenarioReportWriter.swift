@@ -16,17 +16,17 @@ public enum ScenarioReportWriter {
         // 並列実行時の衝突回避: ミリ秒+シナリオIDスラッグをファイル名に含める
         let baseName = "scenario-\(stamp)-\(slug(record.id))"
 
-        var md = "# シナリオ実行レポート\n\n"
-        md += "- シナリオ: \(record.id)"
+        var md = "# Scenario run report\n\n"
+        md += "- Scenario: \(record.id)"
         if !record.title.isEmpty { md += " — \(record.title)" }
         md += "\n"
-        md += "- アプリ: \(record.app)\n"
-        md += "- プラットフォーム: \(record.platform)\n"
+        md += "- App: \(record.app)\n"
+        md += "- Platform: \(record.platform)\n"
         if let deviceLine = deviceLine(name: record.deviceName, identifier: record.deviceIdentifier) {
-            md += "- デバイス: \(deviceLine)\n"
+            md += "- Device: \(deviceLine)\n"
         }
-        md += "- 結果: \(record.passed ? "✅ 成功" : "❌ 失敗")\n"
-        md += "- 日時: \(ISO8601DateFormatter().string(from: Date()))\n"
+        md += "- Result: \(record.passed ? "✅ passed" : "❌ failed")\n"
+        md += "- Timestamp: \(ISO8601DateFormatter().string(from: Date()))\n"
 
         var screenshots: [(name: String, data: Data)] = []
 
@@ -35,7 +35,7 @@ public enum ScenarioReportWriter {
             if !scene.title.isEmpty { md += ": \(scene.title)" }
             md += " — \(scene.passed ? "✅" : "❌")\n"
 
-            var section: String? = "(未分類)"
+            var section: String? = "(uncategorized)"
             for step in scene.steps {
                 if step.section != section {
                     section = step.section
@@ -45,22 +45,22 @@ public enum ScenarioReportWriter {
             }
 
             if let triage = scene.triage {
-                md += "\n### トリアージ(Foundation Models)\n\n"
-                md += "- 分類: **\(triage.failureClass)**\n"
-                md += "- 概要: \(triage.summary)\n"
-                md += "- 修正案: \(triage.suggestedFix)\n"
+                md += "\n### Triage (Foundation Models)\n\n"
+                md += "- Class: **\(triage.failureClass)**\n"
+                md += "- Summary: \(triage.summary)\n"
+                md += "- Suggested fix: \(triage.suggestedFix)\n"
             }
 
             if !scene.failureForegroundWindows.isEmpty {
                 // 要素一覧より前に置く: アプリが覆われていたなら、要素の中身を読む前にこれが答え
-                md += "\n> ⚠️ **アプリより手前に別の window があります**: "
+                md += "\n> ⚠️ **Another window is in front of the app**: "
                 md += scene.failureForegroundWindows.joined(separator: ", ")
-                md += "。操作がそこに吸われ、`tap` が成功扱いのまま何も起きていない可能性があります"
-                md += "(アプリの要素一覧には他プロセスの window は現れません)。\n"
+                md += ". Input may have been swallowed by it, so `tap` can report success while nothing happened"
+                md += " (windows owned by other processes never appear in the app element list).\n"
             }
             if let elements = scene.failureElements, !elements.isEmpty {
                 // 直すための一次情報。スクショより先に置く(モデルは PNG から #id を読めない)
-                md += "\n<details><summary>失敗時点の要素一覧</summary>\n\n```\n"
+                md += "\n<details><summary>Element list at the moment of failure</summary>\n\n```\n"
                 md += elements
                 md += "\n```\n</details>\n"
             }
@@ -69,20 +69,20 @@ public enum ScenarioReportWriter {
                 screenshots.append((imageName, screenshot))
                 // 縮小表示+クリックでフルサイズ(markdown プレビューはインライン HTML を描画する。
                 // ![...]() 直埋めだと端末縦解像度のまま表示され確認しづらい)
-                md += "\n### 失敗時のスクリーンショット(クリックでフルサイズ)\n\n"
+                md += "\n### Screenshot at failure (click for full size)\n\n"
                 if scene.evidenceBlank {
-                    md += "\n> ⚠️ 証跡スクリーンショットが白フレーム(デバイス表示凍結)のためエビデンスとして無効です。\n"
+                    md += "\n> ⚠️ The evidence screenshot is a blank frame (frozen device display), so it is not valid evidence.\n"
                 }
                 md += "<a href=\"\(imageName)\"><img src=\"\(imageName)\" width=\"320\"/></a>\n"
             }
         }
 
         if !record.fixSuggestions.isEmpty {
-            md += "\n## 修正提案\n\n"
+            md += "\n## Suggested fixes\n\n"
             for suggestion in record.fixSuggestions {
                 md += "- \(suggestion.isStrong ? "💡" : "・") \(suggestion.message)\n"
             }
-            md += "\n(ソースは自動書換されません。上記を反映するとヒールキャッシュ非依存に戻ります)\n"
+            md += "\n(Sources are not rewritten automatically. Applying the above removes the dependency on the heal cache.)\n"
         }
 
         for (name, data) in screenshots {
@@ -112,13 +112,13 @@ public enum ScenarioReportWriter {
         case .passed:
             return "- ✅ \(step.index). \(step.description)\(duration)\n"
         case .passedViaFallback(let locator):
-            return "- ✅ \(step.index). \(step.description)(フォールバック \(locator.summary) で解決)\(duration)\n"
+            return "- ✅ \(step.index). \(step.description) (resolved via fallback \(locator.summary))\(duration)\n"
         case .healed(let locator):
-            return "- 🔧 \(step.index). \(step.description) → 自己修復: \(locator.summary) \(location)\(duration)\n"
+            return "- 🔧 \(step.index). \(step.description) → self-healed: \(locator.summary) \(location)\(duration)\n"
         case .failed(let reason):
             return "- ❌ \(step.index). \(step.description) \(location)\(duration)\n  - \(reason)\n"
         case .skipped(let reason):
-            return "- ⚠️ \(step.index). \(step.description)(スキップ: \(reason))\(duration)\n"
+            return "- ⚠️ \(step.index). \(step.description) (skipped: \(reason))\(duration)\n"
         }
     }
 

@@ -54,13 +54,13 @@ public enum DriverError: Error, LocalizedError {
         case .bridgeUnreachable(let detail):
             // ハイブリッド/混在実行では背面アプリが suspend され、TCP は受理されても
             // HTTP 応答が返らずタイムアウトになることがある(この case で観測される)。
-            return "ドライバに接続できません(ブリッジ未起動・応答遅延、またはハイブリッド/混在実行で背面アプリが suspend され TCP は受理されても HTTP 応答が返らない状態の可能性。iOS: ftester bridge up / Android: adb devices を確認)。inapp/hybrid エンジンはシミュレータ専用です(実機は注入不可のため xcuitest プロファイルを使ってください): \(detail)"
+            return "Cannot reach the driver (bridge not running, slow response, or — in hybrid/mixed runs — the backgrounded app is suspended so TCP is accepted but no HTTP response comes back. Check iOS: ftester bridge up / Android: adb devices). The inapp/hybrid engines are simulator-only (injection is impossible on physical devices — use an xcuitest profile): \(detail)"
         case .bridgeConnectionRefused(let detail):
             // 接続拒否=ポートで誰も待受していない。実行途中なら対象アプリのプロセス死が最有力
             // (iOS inapp はブリッジがアプリ内常駐のため、アプリが落ちると即接続不能になる)。
-            return "ドライバへの接続が拒否されました(ポートで待受なし)。実行の途中で発生した場合は対象アプリのプロセスが終了/クラッシュした可能性が高いです(iOS inapp はブリッジがアプリ内常駐のため、アプリが落ちると接続不能になります)。まだ起動していない場合は iOS: ftester bridge up / Android: adb devices を確認してください。詳細: \(detail)"
+            return "Connection to the driver was refused (nothing listening on the port). If this happened mid-run, the app under test most likely exited or crashed (on iOS inapp the bridge lives inside the app, so it becomes unreachable the moment the app dies). If the app has not been started yet, check iOS: ftester bridge up / Android: adb devices. Detail: \(detail)"
         case .badResponse(let status, let body):
-            return "ドライバがエラーを返しました (\(status)): \(body)"
+            return "The driver returned an error (\(status)): \(body)"
         }
     }
 
@@ -101,23 +101,23 @@ public extension AppDriver {
     }
 
     func openAppSwitcher() async throws {
-        throw DriverError.badResponse(status: 501, body: "このドライバはアプリスイッチャーに対応していません")
+        throw DriverError.badResponse(status: 501, body: "This driver does not support the app switcher")
     }
 
     func home() async throws {
-        throw DriverError.badResponse(status: 501, body: "このドライバはホームボタンに対応していません")
+        throw DriverError.badResponse(status: 501, body: "This driver does not support the home button")
     }
 
     func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
               pressSeconds: Double, durationSeconds: Double) async throws {
-        throw DriverError.badResponse(status: 501, body: "このドライバは2点間ドラッグに対応していません")
+        throw DriverError.badResponse(status: 501, body: "This driver does not support point-to-point drag")
     }
 
     func press(x: Double, y: Double, duration: Double) async throws {
-        throw DriverError.badResponse(status: 501, body: "このドライバは座標ロングプレスに対応していません")
+        throw DriverError.badResponse(status: 501, body: "This driver does not support long-press by coordinates")
     }
 
     func pressEnter() async throws {
-        throw DriverError.badResponse(status: 501, body: "このドライバは Enter キー押下に対応していません")
+        throw DriverError.badResponse(status: 501, body: "This driver does not support pressing the Enter key")
     }
 }

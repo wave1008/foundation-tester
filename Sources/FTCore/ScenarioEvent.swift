@@ -86,9 +86,9 @@ public extension StepResult.Status {
         case .passed:
             return ("passed", nil)
         case .passedViaFallback(let locator):
-            return ("passedViaFallback", "フォールバック \(locator.summary) で解決")
+            return ("passedViaFallback", "resolved via fallback \(locator.summary)")
         case .healed(let locator):
-            return ("healed", "自己修復: \(locator.summary)")
+            return ("healed", "self-healed: \(locator.summary)")
         case .failed(let reason):
             return ("failed", reason)
         case .skipped(let reason):

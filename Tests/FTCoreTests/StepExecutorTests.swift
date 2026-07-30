@@ -299,7 +299,7 @@ final class StepExecutorTests: XCTestCase {
         guard case .failed(let msg) = await executor.execute(step).status else {
             XCTFail("timeout で失敗するはず"); return
         }
-        XCTAssertTrue(msg.contains("一致しません"), "テキスト不一致を返すこと: \(msg)")
+        XCTAssertTrue(msg.contains("does not equal"), "テキスト不一致を返すこと: \(msg)")
         XCTAssertFalse(msg.contains("occlusion"), "stale な occlusion を返さないこと: \(msg)")
     }
 
@@ -336,7 +336,7 @@ final class StepExecutorTests: XCTestCase {
         guard case .failed(let msg) = await executor.execute(step).status else {
             XCTFail("timeout で失敗するはず"); return
         }
-        XCTAssertTrue(msg.contains("見つかりません"), "未発見を返すこと: \(msg)")
+        XCTAssertTrue(msg.contains("not found"), "未発見を返すこと: \(msg)")
         XCTAssertFalse(msg.contains("occlusion"), "stale な occlusion を返さないこと: \(msg)")
     }
 
@@ -413,7 +413,7 @@ final class StepExecutorTests: XCTestCase {
         guard case .skipped(let msg) = await executor.execute(step).status else {
             XCTFail("screenIs 無効なら skip のはず"); return
         }
-        XCTAssertTrue(msg.contains("screenIs が無効"), "skip 理由に無効化を明示すること: \(msg)")
+        XCTAssertTrue(msg.contains("screenIs is disabled"), "skip 理由に無効化を明示すること: \(msg)")
         XCTAssertEqual(delegate.verifyScreenCalls, 0, "無効時は verifyScreen を呼んではいけない")
         XCTAssertEqual(primary.screenshotCallCount, 0, "無効時はスクショも撮らないはず")
     }
@@ -815,7 +815,7 @@ final class StepExecutorTests: XCTestCase {
             XCTFail("501 からの切替で passed を期待したが \(outcome.status) だった")
             return
         }
-        XCTAssertEqual(outcome.driverFallback, "XCUITest へフォールバック")
+        XCTAssertEqual(outcome.driverFallback, "fell back to XCUITest")
         // 末尾に続く primary.snapshot は swipe 後の静止待ち(settledSignature)
         XCTAssertEqual(Array(log.entries.prefix(2)), ["primary.swipe(throws)", "typedriver.swipe"])
         XCTAssertTrue(log.entries.dropFirst(2).allSatisfy { $0 == "primary.snapshot" },
@@ -851,7 +851,7 @@ final class StepExecutorTests: XCTestCase {
 
         let outcome = await executor.execute(FlowStep(action: "swipe", direction: "up"))
 
-        XCTAssertEqual(outcome.driverFallback, "XCUITest へフォールバック")
+        XCTAssertEqual(outcome.driverFallback, "fell back to XCUITest")
         XCTAssertEqual(log.entries.first, "typedriver.swipe", "primary を無駄打ちしてはいけない")
         XCTAssertTrue(log.entries.dropFirst().allSatisfy { $0 == "primary.snapshot" },
                       "swipe 後は静止待ちの snapshot だけが続くはず: \(log.entries)")
@@ -894,7 +894,7 @@ final class StepExecutorTests: XCTestCase {
             XCTFail("501 からの切替で passed を期待したが \(outcome.status) だった")
             return
         }
-        XCTAssertEqual(outcome.driverFallback, "XCUITest へフォールバック")
+        XCTAssertEqual(outcome.driverFallback, "fell back to XCUITest")
         XCTAssertEqual(log.entries, [
             "primary.snapshot",
             "primary.press(throws)",
@@ -955,7 +955,7 @@ final class StepExecutorTests: XCTestCase {
             XCTFail("409 からの typeDriver 切替による passed を期待したが \(outcome.status) だった")
             return
         }
-        XCTAssertEqual(outcome.driverFallback, "XCUITest へフォールバック")
+        XCTAssertEqual(outcome.driverFallback, "fell back to XCUITest")
         XCTAssertEqual(log.entries, [
             "primary.snapshot",
             "primary.type(throws)",
@@ -1035,7 +1035,7 @@ final class StepExecutorTests: XCTestCase {
             XCTFail("409 からの typeDriver 切替による passed を期待したが \(outcome.status) だった")
             return
         }
-        XCTAssertEqual(outcome.driverFallback, "XCUITest へフォールバック")
+        XCTAssertEqual(outcome.driverFallback, "fell back to XCUITest")
         XCTAssertEqual(log.entries, ["primary.pressEnter(throws)", "typedriver.pressEnter"])
     }
 
@@ -1230,8 +1230,8 @@ final class StepExecutorTests: XCTestCase {
         XCTAssertEqual(StepExecutor.webViewPathHint(nil), "")
 
         let dom = StepExecutor.webViewPathHint(snapshot("dom"))
-        XCTAssertTrue(dom.contains("DOM 経路"), dom)
-        XCTAssertTrue(dom.contains("無反応"), "無反応タップの可能性まで書くこと: \(dom)")
+        XCTAssertTrue(dom.contains("DOM path"), dom)
+        XCTAssertTrue(dom.contains("nothing responds"), "無反応タップの可能性まで書くこと: \(dom)")
 
         let delegated = StepExecutor.webViewPathHint(snapshot("delegated"))
         XCTAssertTrue(delegated.contains("XCUITest"), delegated)

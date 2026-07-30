@@ -17,22 +17,22 @@ enum RepairConfidence {
 
 @Generable
 struct LocatorRepairSuggestion {
-    @Guide(description: "壊れたロケータの代役となる要素。現在の画面一覧にある「」内の label か id= の文字列をそのまま1つコピー")
+    @Guide(description: "The element that should stand in for the broken locator. Copy exactly one label (inside 「」) or id= string from the current element list, verbatim")
     var elementText: String
 
-    @Guide(description: "代役が同じ役割の要素だと言える確信度")
+    @Guide(description: "Confidence that the replacement plays the same role as the original")
     var confidence: RepairConfidence
 
-    @Guide(description: "判断理由(日本語で1文)")
+    @Guide(description: "Reason for the decision, in one English sentence")
     var rationale: String
 }
 
 @Generable
 struct ScreenVerdict {
-    @Guide(description: "スクリーンショットが期待する状態と一致しているか")
+    @Guide(description: "Whether the screenshot matches the expected state")
     var pass: Bool
 
-    @Guide(description: "判定理由(日本語で1文。不一致の場合は何が違うか)")
+    @Guide(description: "Reason for the verdict, in one English sentence; if it does not match, say what differs")
     var reason: String
 }
 
@@ -46,13 +46,13 @@ enum FailureClass {
 
 @Generable
 struct TriageSuggestion {
-    @Guide(description: "失敗の分類。アプリの不具合=appBug、タイミング起因=flakiness、UI変更でロケータが古い=locatorDrift、環境問題=envIssue")
+    @Guide(description: "Failure class. App defect=appBug, timing-related=flakiness, locator stale after a UI change=locatorDrift, environment problem=envIssue")
     var failureClass: FailureClass
 
-    @Guide(description: "何が起きたか(日本語で1〜2文)")
+    @Guide(description: "What happened, in one or two English sentences")
     var summary: String
 
-    @Guide(description: "修正のための次の一手(日本語で1文)")
+    @Guide(description: "The next action to fix it, in one English sentence")
     var suggestedFix: String
 }
 
@@ -76,7 +76,7 @@ public final class FMReplayDelegate: ReplayDelegate {
         """)
         let prompt = """
         見つからなくなったステップ: \(step.summary)
-        \(step.note.map { "このステップの意図: \($0)" } ?? "")
+        \(step.note.map { "Intent of this step: \($0)" } ?? "")
 
         現在の画面の要素一覧:
         \(rendered)
@@ -149,7 +149,7 @@ public final class FMReplayDelegate: ReplayDelegate {
                 generating: ScreenVerdict.self,
                 options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 200)
             ) {
-                "期待する画面の状態: \(expected)\n以下のスクリーンショットがこの状態と一致しているか判定してください。"
+                "Expected screen state: \(expected)\nDecide whether the screenshot below matches this state."
                 Attachment(cgImage)
             }.content
             FMHealth.record(kind: "screenIs", ms: OcclusionVerifier.elapsedMs(screenStartedAt), ok: true)
@@ -176,24 +176,29 @@ public final class FMReplayDelegate: ReplayDelegate {
 
     public func triage(goal: String?, stepDescription: String, failureReason: String,
                        snapshot: SnapshotResponse?, screenshotPNG: Data?) async -> TriageInfo? {
-        let rendered = snapshot.map { SnapshotRenderer.render($0) } ?? "(取得できず)"
+        let rendered = snapshot.map { SnapshotRenderer.render($0) } ?? "(not available)"
+        // **出力言語を決めるのは instructions ではなく @Guide の description**(2026-07-30 実測)。
+        // instructions を英語にしても @Guide に「日本語で1文」が残っている間は日本語で返り続けた。
+        // 出力言語を変えるときは TriageSuggestion / ScreenVerdict / LocatorRepairSuggestion の
+        // @Guide も直すこと
         let instructions = """
-        あなたは UI テストの失敗を分析するトリアージ担当です。
-        失敗したステップ・現在の画面から、失敗の種類を分類し修正案を出します。
-        分類の目安:
-        - 画面にエラーメッセージが表示されている、または操作は成功したのに期待画面に
-          遷移していない → appBug
-        - 同じ役割らしい要素が別の名前で存在する → locatorDrift
-        - 要素はあるが待ち時間不足に見える → flakiness
+        You triage UI test failures.
+        From the failed step and the current screen, classify the failure and suggest a fix.
+        Answer in English.
+        Classification guide:
+        - An error message is shown on screen, or the interaction succeeded but the app did
+          not move to the expected screen -> appBug
+        - An element that seems to play the same role exists under a different name -> locatorDrift
+        - The element is present but the wait looks too short -> flakiness
         """
         let text = """
-        \(goal.map { "テストの目標: \($0)\n" } ?? "")失敗したステップ: \(stepDescription)
-        失敗理由: \(failureReason)
+        \(goal.map { "Test goal: \($0)\n" } ?? "")Failed step: \(stepDescription)
+        Failure reason: \(failureReason)
 
-        失敗時点の画面の要素一覧:
+        Elements on screen at the moment of failure:
         \(rendered)
 
-        この失敗を分析してください。
+        Analyse this failure.
         """
         // FM はホスト全体で直列化される資源(FMLock 参照)。マルチモーダル→テキストの
         // 2 回分をまとめて 1 回の取得で回す(間で他ワーカーに割り込ませない)
@@ -216,7 +221,7 @@ public final class FMReplayDelegate: ReplayDelegate {
                     options: GenerationOptions(sampling: .greedy, maximumResponseTokens: 300)
                 ) {
                     text
-                    "失敗時点のスクリーンショット:"
+                    "Screenshot at the moment of failure:"
                     Attachment(cgImage)
                 }.content
                 FMHealth.record(kind: "triage", ms: OcclusionVerifier.elapsedMs(imageStartedAt), ok: true)
@@ -224,7 +229,7 @@ public final class FMReplayDelegate: ReplayDelegate {
             } catch {
                 // ここでは return しない(下のテキストのみ経路で再試行する)
                 FMHealth.record(kind: "triage", ms: OcclusionVerifier.elapsedMs(imageStartedAt),
-                                ok: false, error: "triage(画像): \(FMHealth.describe(error))")
+                                ok: false, error: "triage(image): \(FMHealth.describe(error))")
             }
         }
         let textStartedAt = Date()
