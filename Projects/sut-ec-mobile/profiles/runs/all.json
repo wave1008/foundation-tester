@@ -17,6 +17,9 @@
       "name": "iPhone 17 Pro(iOS 27.0)-05"
     },
     {
+      "name": "iPhone 17 Pro(iOS 27.0)-06"
+    },
+    {
       "name": "Pixel 9(Android 15)-01"
     },
     {
@@ -38,5 +41,8 @@
   "iosInappEngine": true,
   "wipeDataOnBloat": true,
   "record": true,
-  "recoverCpuFallbackToGpu": true
+  "recoverCpuFallbackToGpu": true,
+  "fm": true,
+  "falsePositiveCheck": false,
+  "screenIs": true
 }
