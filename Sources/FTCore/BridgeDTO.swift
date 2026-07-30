@@ -32,7 +32,10 @@ public enum BridgeAPI {
     /// 依存するため、旧ブリッジの再利用を確実に断つ
     /// 20: POST /hidekeyboard を追加し、snapshot が keyboardShown を返すようになった(2026-07-30)。
     /// 旧ブリッジは 404 と nil を返し、keyboardIsShown が「状態不明」で失敗し続けるため入れ替える
-    public static let bridgeProtocolVersion = 22
+    /// 23: XCUITest ランナーの /clear が「フォーカス欄が無い」「消し切れなかった」を
+    /// **409 でなく 422** で返すようになった(2026-07-31)。旧ブリッジを再利用すると 409 のまま
+    /// = ホストがセッション消失と誤断定して無用な activate を撃ち、誤った理由でステップを落とす
+    public static let bridgeProtocolVersion = 23
 
     /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
     /// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java の

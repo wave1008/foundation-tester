@@ -1090,11 +1090,15 @@ public final class StepExecutor {
         return true
     }
 
-    /// clearInput のフォールバック判定: 409(対象なし/フォーカス無し。type の 409 と同じ一時的競合)
+    /// clearInput のフォールバック判定: 409(in-app の対象なし/フォーカス無し。type の 409 と同じ
+    /// 一時的競合)、422(XCUITest ランナーの同じ事情。**あちらは 409 を使えない** —
+    /// SessionRecoveryDriver がセッション消失と断定するため。BridgeRouter.handleClear 参照)、
     /// または isEngineIncapable(このエンジンでは未対応)なら typeDriver へ回してよい
     private static func isClearInputFallback(_ error: Error) -> Bool {
         if DriverError.isEngineIncapable(error) { return true }
-        if case DriverError.badResponse(let status, _) = error, status == 409 { return true }
+        if case DriverError.badResponse(let status, _) = error, status == 409 || status == 422 {
+            return true
+        }
         return false
     }
 
