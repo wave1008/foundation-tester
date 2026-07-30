@@ -687,6 +687,8 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
       return true;
     case "setTilePaneHeight":
       return typeof value.value === "number" && value.value > 0;
+    case "setTileAutoFit":
+      return typeof value.value === "boolean";
     case "codecError":
       return (
         (value.scope === "tile" || value.scope === "live") &&
