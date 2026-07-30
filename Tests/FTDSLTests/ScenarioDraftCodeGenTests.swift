@@ -50,7 +50,7 @@ final class ScenarioDraftCodeGenTests: XCTestCase {
         XCTAssertTrue(ScenarioDraftCodeGen.commandLine(forAction: "メールアドレスを入力する", indent: indent)
             .hasPrefix("type(\"#TODO\", \"TODO\")"))
         XCTAssertTrue(ScenarioDraftCodeGen.commandLine(forAction: "セルを長押しする", indent: indent)
-            .hasPrefix("press(\"#TODO\")"))
+            .hasPrefix("tap(\"#TODO\", holdSeconds: 1)"))
         XCTAssertTrue(ScenarioDraftCodeGen.commandLine(forAction: "下までスクロールする", indent: indent)
             .hasPrefix("scrollTo(\"#TODO\")"))
         XCTAssertTrue(ScenarioDraftCodeGen.commandLine(forAction: "アプリを再起動する", indent: indent)

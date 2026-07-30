@@ -59,9 +59,14 @@ final class StepDescriptionTests: XCTestCase {
                        "type \"hello world\" into \"#q\"")
     }
 
-    func testPress() {
-        XCTAssertEqual(StepDescription.describe(command: "press \"アイコン\""),
-                       "\"アイコン\"を長押しする")
+    func testTapHoldSeconds() {
+        XCTAssertEqual(StepDescription.describe(command: "tap \"アイコン\" (hold 1s)"),
+                       "\"アイコン\"を1秒間長押しする")
+        XCTAssertEqual(StepDescription.describe(command: "tap \"Icon\" (hold 0.5s)"),
+                       "long-press \"Icon\" for 0.5s")
+        // optional と併記(tapImpl の連結順: hold → optional)
+        XCTAssertEqual(StepDescription.describe(command: "tap \"アイコン\" (hold 1s) (optional)"),
+                       "\"アイコン\"を1秒間長押しする")
     }
 
     func testSwipeAllDirections() {
@@ -166,6 +171,11 @@ final class StepDescriptionTests: XCTestCase {
         let tap = FlowStep(action: "tap", locator: FlowLocator(id: "login_btn"),
                            fallbacks: [FlowLocator(label: "ログイン")])
         XCTAssertEqual(StepDescription.describe(step: tap), "\"ログイン\"をタップする")
+
+        // duration 非 nil = 長押し(tap/press 統合の要点)
+        let hold = FlowStep(action: "tap", locator: FlowLocator(id: "icon"),
+                            fallbacks: [FlowLocator(label: "アイコン")], duration: 1.5)
+        XCTAssertEqual(StepDescription.describe(step: hold), "\"アイコン\"を1.5秒間長押しする")
 
         let exist = FlowStep(assert: "exists", locator: FlowLocator(id: "collapsing_toolbar"))
         XCTAssertEqual(StepDescription.describe(step: exist),

@@ -789,7 +789,7 @@ public final class StepExecutor {
             return StepOutcome(status: .passed)
         }
 
-        // `tap(scroll:)` / `press(scroll:)` 等の内蔵スクロール探索。**別ステップにしない**のは
+        // `tap(scroll:)` 等の内蔵スクロール探索。**別ステップにしない**のは
         // 利用者が書いたのは1コマンドだから(記録に scrollTo 行が増えると、書いていない行が
         // 現れ、しかもソース行を持たないためジャンプも修正提案の照合もできない)。
         // 探索は runScrollSearch が静止まで面倒を見るので、以降は通常の解決へ進んでよい
@@ -915,6 +915,31 @@ public final class StepExecutor {
 
         switch action {
         case "tap":
+            // **長押しは tap の引数**(Shirates 準拠。`tap(sel, holdSeconds:)`)。0 より大きいときだけ
+            // ブリッジの /press へ回す。in-app は座標ジェスチャを持たない(501)ので XCUITest へ
+            // フォールバックする経路も長押し側だけが必要
+            let hold = step.duration ?? FlowStep.defaultTapHoldSeconds
+            if hold > 0 {
+                if typeDriverGestures.contains("press") || gestureFallbackLatched, let td = typeDriver,
+                   try await pressViaTypeDriver(td, step: step, phase: &phase) {
+                    return StepOutcome(status: .passed, healedStep: healedStep,
+                                       healedByCache: healedByCache,
+                                       driverFallback: "fell back to XCUITest")
+                }
+                do {
+                    start = clock.now
+                    try await actingDriver.press(ref: element.ref, duration: hold)
+                    phase.actionMs += Self.ms(clock.now - start)
+                } catch {
+                    // 「このエンジンでは不可」(501 / ルート不明 404)だけ XCUITest へ回す。
+                    // 409 を含めない理由は DriverError.isEngineIncapable 参照
+                    guard DriverError.isEngineIncapable(error), let td = typeDriver else { throw error }
+                    guard try await pressViaTypeDriver(td, step: step, phase: &phase) else { throw error }
+                    gestureFallbackLatched = true
+                    driverFallback = "fell back to XCUITest"
+                }
+                break
+            }
             start = clock.now
             try await actingDriver.tap(ref: element.ref)
             phase.actionMs += Self.ms(clock.now - start)
@@ -942,25 +967,6 @@ public final class StepExecutor {
                       let td = typeDriver else { throw error }
                 guard try await typeViaTypeDriver(td, step: step, phase: &phase) else { throw error }
                 // セレクタは正しくドライバが変わっただけ = .passedViaFallback(ロケータ用)は立てない
-                driverFallback = "fell back to XCUITest"
-            }
-        case "press":
-            if typeDriverGestures.contains("press") || gestureFallbackLatched, let td = typeDriver,
-               try await pressViaTypeDriver(td, step: step, phase: &phase) {
-                return StepOutcome(status: .passed, healedStep: healedStep, healedByCache: healedByCache,
-                                   driverFallback: "fell back to XCUITest")
-            }
-            do {
-                start = clock.now
-                try await actingDriver.press(
-                    ref: element.ref, duration: step.duration ?? FlowStep.defaultPressDuration)
-                phase.actionMs += Self.ms(clock.now - start)
-            } catch {
-                // 「このエンジンでは不可」(501 / ルート不明 404)だけ XCUITest へ回す。
-                // 409 を含めない理由は DriverError.isEngineIncapable 参照
-                guard DriverError.isEngineIncapable(error), let td = typeDriver else { throw error }
-                guard try await pressViaTypeDriver(td, step: step, phase: &phase) else { throw error }
-                gestureFallbackLatched = true
                 driverFallback = "fell back to XCUITest"
             }
         case "clearInput":
@@ -1064,7 +1070,7 @@ public final class StepExecutor {
         guard let resolved = Self.resolveDetailed(step: step, in: snapshot) else { return false }
         start = clock.now
         try await td.press(ref: resolved.element.ref,
-                           duration: step.duration ?? FlowStep.defaultPressDuration)
+                           duration: step.duration ?? FlowStep.defaultTapHoldSeconds)
         phase.actionMs += Self.ms(clock.now - start)
         return true
     }

@@ -83,16 +83,14 @@ public enum ScenarioCodeGen {
         if let action = step.action {
             switch action {
             case "tap":
-                return "tap(\(literal(selector))\(optionalArg(step)))"
+                let hold = step.duration.map { ", holdSeconds: \(FTSeconds.format($0))" } ?? ""
+                return "tap(\(literal(selector))\(hold)\(optionalArg(step)))"
             case "type":
                 // ロケータなし = フォーカス中要素へ入力(直前の tap 前提)。type("text") を出す。
                 if step.locator == nil {
                     return "type(\(literal(step.text ?? ""))\(optionalArg(step)))"
                 }
                 return "type(\(literal(selector)), \(literal(step.text ?? ""))\(optionalArg(step)))"
-            case "press":
-                let duration = step.duration.map { ", duration: \(FTSeconds.format($0))" } ?? ""
-                return "press(\(literal(selector))\(duration))"
             case "swipe":
                 return "swipe(.\(step.direction ?? "up"))"
             case "home":

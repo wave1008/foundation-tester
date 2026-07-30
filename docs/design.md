@@ -643,7 +643,7 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
 ## 9. 検証方法(E2E)
 
 0. **同梱 SUT + 対になるテストプロジェクト**が ftester 自身の機能別 E2E。DSL のコマンド面
-   (セレクタ記法・type・press/swipe・scrollTo・暗黙待ちと timeout・ifCanSelect/optional・
+   (セレクタ記法・type・tap(holdSeconds:)/swipe・scrollTo・暗黙待ちと timeout・ifCanSelect/optional・
    relaunch・ios{}/android{})を 1 機能 1 シナリオで網羅する。
    ネットワーク依存ゼロ・状態は起動ごとにルート正規化する設計で、フリートのロケール差や
    バックエンド死活に左右されない。`Scripts/e2e.sh` が全 SUT を鮮度判定つきで回す。
@@ -725,7 +725,7 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
     違反スレッドが中断検知の前に触り得るのは受容した残存リスク(記録の見え方が乱れるだけで
     結果は壊れない)。検証は `swift test --sanitize=thread --filter FTDSLTests`
     (**ロックの正しさは目視では担保できない**。触ったら必ず TSan を通すこと)
-- tap/type/press は `optional:`(見つからなくても失敗にしない)に加え `timeout:`
+- tap/type は `optional:`(見つからなくても失敗にしない)に加え `timeout:`
   (ロケータ解決の再試行待ち上限秒。0=リトライなし。省略時は既定の約0.7秒)を取る。
   出るか不定な optional ステップの空振り短縮用(performance-tuning §5)
 - **秒は全て小数(Double)**(2026-07-29。`timeout:` / `waitSeconds:` / `defaultTimeout` /
@@ -734,11 +734,10 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
   (`StepDescription.formatSeconds` はここへ委譲)。
   `ifCanSelect` のポーリングは残り時間と 0.25 秒の小さい方で待つ(**0.5 秒固定だとサブ秒の待ちが
   丸められる**)。`waitSeconds: 0` = 即時1回判定の契約は不変
-- `press(duration:)` は長押し秒数(既定 `FlowStep.defaultPressDuration` = 1 秒)。
-  ブリッジの `/press` は当初から duration を受け取っていたが、**ホスト側の `FlowStep` に
-  duration が無く StepExecutor が 1.0 固定で呼んでいたため、DSL の引数が黙って無効化されていた**
-  (2026-07-27 修正)。既定値と同じときは `FlowStep.duration` を nil の
-  ままにする(生成コード・ヒールキャッシュを既定ケースで太らせない)
+- `tap(holdSeconds:)` は長押し秒数(既定 `FlowStep.defaultTapHoldSeconds` = 0 = 通常タップ。
+  Shirates 準拠)。`holdSeconds` が 0 より大きいときだけ StepExecutor がブリッジの `/press` へ回す。
+  既定値と同じときは `FlowStep.duration` を nil のままにする(生成コード・ヒールキャッシュを
+  既定ケースで太らせない)
 - **要素の出現待ちは暗黙**: `tap` はロケータ解決を再試行(省略時 約0.7秒)し、
   `exist`/`textIs`/`valueIs` は既定タイムアウト(5秒・`--default-timeout` で上書き)まで
   スナップショットを取り直してポーリング再判定する。遷移後の検証直前に固定 `wait` を足すのは冗長で、
@@ -1175,7 +1174,7 @@ textIs(.id("txt_result"), "dialog=none")
   各コマンドの `timeout:` を使う(こちらは記録が1ステップに畳まれ、失敗時の情報が減るため)。
   action が throw したら**リトライせず**即 NG(状態待ちと実行時エラーを混ぜない)。
   dry-run は performCustom の既定どおり body を実行しない
-- **`tap(scroll:)` / `press(scroll:)` / `type(scroll:)` / `exist(scroll:)`**
+- **`tap(scroll:)` / `type(scroll:)` / `exist(scroll:)`**
   (2026-07-27。Shirates の `tapWithScrollDown` 相当。別名も併設 = 下記「スクロールの語彙」):
   コマンド名の変種を増やさず引数で表す。**探索は同じステップに畳む**(`FlowStep.direction` /
   `maxSwipes` を tap/exists 自身に載せ、`StepExecutor.runScrollSearch` が解決前に走る)。
@@ -1211,7 +1210,7 @@ textIs(.id("txt_result"), "dialog=none")
 - `scrollDown(repeat: N)` は**各スワイプの間で静止を待つ**(待たないと同じ理由で空振りし、
   N 画面ぶん進まない)
 - **ブロック**: `withScrollDown { }` 系は `FTDriveCore.scrollContextStack` に積み、
-  ブロック内の `tap`/`type`/`press`/`exist` が `scroll:` 未指定なら**その向きで探索**する。
+  ブロック内の `tap`/`type`/`exist` が `scroll:` 未指定なら**その向きで探索**する。
   `withoutScroll { }` と `tapWithoutScroll` / `existWithoutScroll` は積んだ文脈を1段打ち消す。
   明示の `scroll:` 引数が常に最優先(`FTDriveCore.effectiveScroll`)
 - **`textIs` 等の検証コマンドに `scroll:` は持たせない**(ユーザー決定 2026-07-27)。

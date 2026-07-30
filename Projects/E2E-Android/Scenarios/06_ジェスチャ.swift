@@ -1,5 +1,5 @@
 // 06_ジェスチャ.swift
-// ftester 機能: `tap` の連打カウント / `press`(長押し)と通常タップの区別 / `swipe` 4方向。
+// ftester 機能: `tap` の連打カウント / `tap(holdSeconds:)`(長押し)と通常タップの区別 / `swipe` 4方向。
 // SUT 側は View の OnTouchListener / OnLongClickListener で検出する。swipe は要素を狙わず
 // 画面比率の固定座標(Android: 縦 0.3h↔0.7h / 横 0.2w↔0.8w)で撃たれるため、
 // #pad_swipe をコンテンツ領域いっぱいに敷いてある(E2EAppAndroid/docs/ui-contract.md)。
@@ -33,7 +33,7 @@ class ジェスチャが正しく検出されること {
             }
             scene(3, "長押しでカウントが1になる") {
                 action {
-                    press("#btn_long_press")
+                    tap("#btn_long_press", holdSeconds: 1.0)
                 }.expectation {
                     textIs("#txt_press_count", "press=1")
                     textIs("#txt_last_gesture", "last=longpress")

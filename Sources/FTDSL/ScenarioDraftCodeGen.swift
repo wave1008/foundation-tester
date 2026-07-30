@@ -109,7 +109,7 @@ public enum ScenarioDraftCodeGen {
             return indent + "type(\(literal(placeholder)), \"TODO\")\(comment)"
         }
         if contains(text, ["長押し", "ロングタップ"]) {
-            return indent + "press(\(literal(placeholder)))\(comment)"
+            return indent + "tap(\(literal(placeholder)), holdSeconds: 1)\(comment)"
         }
         if contains(text, ["スクロール", "スワイプ", "swipe", "scroll"]) {
             return indent + "scrollTo(\(literal(placeholder)))\(comment)"

@@ -34,7 +34,7 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | Shirates | ftester | |
 |---|---|---|
 | `tap` | `tap(sel, optional:timeout:scroll:maxSwipes:)` | ✅ |
-| `tap(holdSeconds:)` | `press(sel, duration:)` | 🟡 別コマンドに切り出し |
+| `tap(holdSeconds:)` | 同名 | ✅ |
 | `tapWithScrollDown/Up/Left/Right` | 同名 | ✅ |
 | `tapWithoutScroll` | 同名 | ✅ |
 | `select` / `selectWithScroll*` / `selectWithoutScroll` | `exist` が解決要素(`FTElement`)を返す | 🟡 |
@@ -215,10 +215,6 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 |---|---|---|
 | `restartApp` | `restartApp` | ✅ **揃えた**(旧名 `relaunchApp` から改名。2026-07-31) |
 | `notExist` | `dontExist` | ➖ **`notExist` を維持**(ユーザー決定 2026-07-31)。`notExist` は否定の意味が読み取りやすく、`exist` との対称も保てる。**再提案しない** |
-
-また `press` の意味が反転している: Shirates の `press*` はハードキー/キーボード
-(`pressBack` `pressEnter` …)で、長押しは `tap(holdSeconds:)`。ftester は `press(sel, duration:)`
-= 長押しかつ `pressEnter()` も持つため、`press` 族の中で意味が2系統に割れている。
 
 ## OS で挙動が割れるもの(利用者に見える差)
 

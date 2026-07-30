@@ -43,13 +43,18 @@ public enum StepDescription {
 
         switch verb {
         case "tap":
+            // holdSeconds ありは description に `(hold Xs)` が付く(tapImpl 参照)。長押しの文言に化ける
+            if let (selector, holdTail) = unquotedTail(rest, separator: "\" (hold "),
+               holdTail.hasSuffix("s)") {
+                let obj = object(selector)
+                let seconds = String(holdTail.dropLast(2))
+                return isJapanese(obj)
+                    ? "\"\(obj)\"を\(seconds)秒間長押しする"
+                    : "long-press \"\(obj)\" for \(seconds)s"
+            }
             guard let selector = unquote(rest) else { return nil }
             let obj = object(selector)
             return isJapanese(obj) ? "\"\(obj)\"をタップする" : "tap \"\(obj)\""
-        case "press":
-            guard let selector = unquote(rest) else { return nil }
-            let obj = object(selector)
-            return isJapanese(obj) ? "\"\(obj)\"を長押しする" : "long-press \"\(obj)\""
         case "scrollTo":
             guard let selector = unquote(rest) else { return nil }
             let obj = object(selector)
@@ -168,9 +173,12 @@ public enum StepDescription {
         if let action = step.action {
             switch action {
             case "tap":
+                if let holdSeconds = step.duration {
+                    return isJapanese(obj)
+                        ? "\"\(obj)\"を\(formatSeconds(holdSeconds))秒間長押しする"
+                        : "long-press \"\(obj)\" for \(formatSeconds(holdSeconds))s"
+                }
                 return isJapanese(obj) ? "\"\(obj)\"をタップする" : "tap \"\(obj)\""
-            case "press":
-                return isJapanese(obj) ? "\"\(obj)\"を長押しする" : "long-press \"\(obj)\""
             case "scrollTo":
                 return isJapanese(obj)
                     ? "\"\(obj)\"が表示されるまでスクロールする"
