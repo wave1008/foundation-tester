@@ -496,6 +496,72 @@ final class StepExecutorTests: XCTestCase {
         XCTAssertEqual(delegate.visibleCalls, 0, "occlusionGuard 未指定で FM を呼んではいけない")
     }
 
+    /// select は解決するだけでデバイス操作(tap/press 等)を一切呼ばないこと
+    /// (exist と違い検証でもない = occlusionGuard も立たない。docs/design.md の select 契約)
+    func testSelectResolvesWithoutDeviceOperation() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[element(ref: 1, id: "target")]])
+        let executor = StepExecutor(driver: primary)
+        let step = FlowStep(action: "select", locator: FlowLocator(id: "target"), timeout: 1)
+
+        guard case .passed = await executor.execute(step).status else {
+            XCTFail("解決できれば select は pass するはず"); return
+        }
+        XCTAssertTrue(log.entries.allSatisfy { !$0.contains(".tap(") && !$0.contains(".press(") },
+                     "select はデバイス操作を呼んではいけない: \(log.entries)")
+    }
+
+    /// select は**見えないとき失敗させず空要素を返す**(exist は失敗へ反転する = 意味が違う)。
+    /// 呼び出し側は `.text == nil` で分岐できる
+    func testSelectReturnsEmptyElementWhenNotVisible() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[textElement(id: "msg", label: "こんにちは")]])
+        let executor = StepExecutor(driver: primary, delegate: FakeVisibilityDelegate(visible: false))
+        let step = FlowStep(action: "select", locator: FlowLocator(id: "msg"),
+                            timeout: 1, occlusionGuard: true)
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("select は覆われていても失敗させない。実際は \(outcome.status)"); return
+        }
+        XCTAssertNil(outcome.resolvedElement, "見えないなら空要素(掴めていない)を返すこと")
+    }
+
+    /// requireVisible: false 相当(occlusionGuard: false)なら照合せず掴む
+    func testSelectSkipsVisibilityCheckWhenNotRequired() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    snapshotElements: [[textElement(id: "msg", label: "こんにちは")]])
+        let delegate = FakeVisibilityDelegate(visible: false)
+        let executor = StepExecutor(driver: primary, delegate: delegate)
+        let step = FlowStep(action: "select", locator: FlowLocator(id: "msg"),
+                            timeout: 1, occlusionGuard: false)
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("照合を外したら pass するはず。実際は \(outcome.status)"); return
+        }
+        XCTAssertNotNil(outcome.resolvedElement, "照合を外したら掴めていること")
+        XCTAssertEqual(delegate.visibleCalls, 0, "requireVisible: false なら FM を呼ばない")
+    }
+
+    /// select(optional: true) は見つからなくても失敗にせずスキップする(tap/type と同じ語彙)
+    func testSelectOptionalSkipsWhenNotFound() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
+        let executor = StepExecutor(driver: primary)
+        let step = FlowStep(action: "select", locator: FlowLocator(id: "missing"),
+                            timeout: 0, optional: true)
+
+        guard case .skipped = await executor.execute(step).status else {
+            XCTFail("optional: true で見つからなければ skip のはず"); return
+        }
+    }
+
     /// poll-until-visible: 最初は覆われ(covered)、後で可視になる過渡的オーバーレイは、即失敗せず
     /// timeout まで待って pass する
     func testOcclusionGuardWaitsOutTransientOverlay() async throws {

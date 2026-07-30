@@ -11,7 +11,7 @@ extension StepExecutor {
     /// 偽陽性として反転する失敗ステータスを返す。反転不要(可視 or 判定不能 or 無効)なら nil。
     /// 呼び出し側(exists/textEquals)は覆いを即失敗にせず timeout まで可視化を待つ(poll-until-visible)。
     /// コストは足切り+低インクゲートで抑制(可視な高インク領域は FM を呼ばず nil で即通過)。
-    private func occlusionFlip(element: ElementInfo, expectedText: String, elements: [ElementInfo],
+    func occlusionFlip(element: ElementInfo, expectedText: String, elements: [ElementInfo],
                               screen: FTRect, looseMatch: Bool, perStepGuard: Bool?,
                               expectedIsUserText: Bool = false,
                               phase: inout PhaseAccumulator) async throws -> StepResult.Status? {

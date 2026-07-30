@@ -13,9 +13,9 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 
 | 引数 | 意味 |
 |---|---|
-| `optional: true` | 要素が見つからなくても失敗にせずスキップする(既定 false。tap / type / press / tapWithoutScroll のみ) |
+| `optional: true` | 要素が見つからなくても失敗にせずスキップする(既定 false。tap / type / press / tapWithoutScroll / select のみ) |
 | `timeout: 秒` | ロケータ解決の再試行上限。**小数可**(`timeout: 1.2`)。**操作系の省略時は約 0.7 秒**、**検証系の省略時は 5 秒**(実行プロファイルの `defaultTimeout` で変更可。これも小数可)。`0` = 初回スナップショットのみ(出るか不定な optional の空振り短縮に) |
-| `requireVisible: false` | FM による可視性確認(覆われ・見切れの検出)を省く。既定 true だが、FM 照合が実際に走るのは実行プロファイルで `falsePositiveCheck: true`(既定 false)にした run のみ(FM 未配線時・`fm:false` 時も自動で素通り) |
+| `requireVisible: false` | FM による可視性確認(覆われ・見切れの検出)を省く。**`exist` は覆われていると失敗へ反転し、`select` は空要素を返す**(意味が違う)。既定 true だが、FM 照合が実際に走るのは実行プロファイルで `falsePositiveCheck: true`(既定 false)にした run のみ(FM 未配線時・`fm:false` 時も自動で素通り) |
 | `scroll: .down` / `maxSwipes:` | 実行前に**その方向へスクロールしながら要素を探す**(後述「スクロール」)。省略時は現在画面のみ |
 
 - **要素の出現待ちは暗黙**。操作は解決を再試行し、検証はタイムアウトまでポーリング再判定するので、
@@ -36,6 +36,7 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 | コマンド | 説明 |
 |---|---|
 | `tap(sel, holdSeconds: 0, optional:timeout:scroll:maxSwipes:)` | タップ。`holdSeconds` を 0 より大きくすると長押し(既定 0 = 通常タップ) |
+| `select(sel, optional:timeout:requireVisible:scroll:maxSwipes:)` | 要素を**掴むだけ**(デバイス操作なし)。`exist` と違い**検証ではない**ので、レポートに検証ステップとして残らない。値の読み出し(`.text`/`.value`/`.id`)や検証コマンドへのチェーンの起点に使う。**見つからない**と失敗(無視したいときは `optional: true` = Shirates の `throwsException: false` 相当)。**見つかったが見えない**(覆われ・見切れ)ときは**失敗させず空要素を返す** — 呼び出し側が `.text == nil` で分岐できる(`exist` は失敗へ反転するので意味が違う)。`requireVisible: false` で可視性照合自体を外す |
 | `type("文字列")` | **フォーカス中の要素**へ入力(直前に `tap(入力欄)` でフォーカスしてから使う)。改行の扱いは下記 |
 | `type(sel, "文字列", optional:timeout:scroll:maxSwipes:)` | 要素を指定して入力。日本語もそのまま入る(IME 切替なし)。改行の扱いは下記 |
 | `pressEnter()` | フォーカス中の入力へ Enter/IME アクション(検索・実行・改行)を発火(Shirates(Classic) 準拠) |
@@ -66,6 +67,8 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 | `tapWithoutScroll(sel, optional:timeout:)` | `withScroll*` の中でも**この 1 コマンドだけ**スクロールしない |
 | `existWithScrollDown(sel, maxSwipes:)` / `existWithScrollUp` | `exist(sel, scroll: .down)` の別名 |
 | `existWithoutScroll(sel, timeout:requireVisible:)` | `withScroll*` の中でも現在画面だけで存在検証 |
+| `selectWithScrollDown(sel, maxSwipes:)` 等 4 方向 | `select(sel, scroll: .down)` の別名(Shirates と同名) |
+| `selectWithoutScroll(sel, optional:timeout:requireVisible:)` | `withScroll*` の中でも現在画面だけで解決する `select` |
 
 ```swift
 tap("設定", scroll: .down)          // 折り返しの下にある項目を探索してからタップ
@@ -156,6 +159,8 @@ exist("#txt_total").text.thisContains("1,200")   // thisIs 系へそのまま繋
 - **要素を掴めなかったとき・失敗後にスキップされたとき・dry-run では nil**
   (「掴めなかったのに値が読める」状態を作らないため)
 - `.text` は要素の表示テキスト(ラベル)、`.value` は値、`.id` は identifier
+- **検証したくない(レポートに検証ステップを残したくない)ときは `exist` の代わりに `select` を使う**。
+  `select` は掴むだけで可視性照合の対象にもならない。使い方は同じ(`select("#txt_total").text`)
 
 ## 画面に依らない値の検証(thisIs 系)
 

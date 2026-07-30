@@ -914,6 +914,21 @@ public final class StepExecutor {
         resolvedElementThisStep = element
 
         switch action {
+        case "select":
+            // 掴むだけでデバイス操作はしない。ただし**可視性は exist と同じ規律で確かめる**
+            // (覆われた要素を掴んで値を読むと、画面に見えていない値でテストが通る)。
+            // `requireVisible: false` で外せる(step.occlusionGuard が false のとき素通り)
+            if try await occlusionFlip(
+                element: element, expectedText: element.label ?? step.locator?.label ?? "",
+                elements: snapshot.elements, screen: snapshot.screen,
+                looseMatch: false, perStepGuard: step.occlusionGuard,
+                expectedIsUserText: step.locator?.label != nil, phase: &phase) != nil {
+                // **見えないときは失敗させず空要素を返す**(呼び出し側が `.text == nil` で分岐できる)。
+                // exist(検証)と違い select は「掴む」操作なので、見えない事実は値で表す
+                resolvedElementThisStep = nil
+                return StepOutcome(status: .passed,
+                                   driverFallback: "not visible: returned an empty element")
+            }
         case "tap":
             // **長押しは tap の引数**(Shirates 準拠。`tap(sel, holdSeconds:)`)。0 より大きいときだけ
             // ブリッジの /press へ回す。in-app は座標ジェスチャを持たない(501)ので XCUITest へ

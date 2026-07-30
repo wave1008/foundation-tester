@@ -37,7 +37,7 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | `tap(holdSeconds:)` | 同名 | ✅ |
 | `tapWithScrollDown/Up/Left/Right` | 同名 | ✅ |
 | `tapWithoutScroll` | 同名 | ✅ |
-| `select` / `selectWithScroll*` / `selectWithoutScroll` | `exist` が解決要素(`FTElement`)を返す | 🟡 |
+| `select` / `selectWithScroll*` / `selectWithoutScroll` | 同名 | ✅ `exist`(検証)では代用にならないため実装(2026-07-31)。**可視性照合はするが、見えないときは失敗させず空要素を返す**(`requireVisible: false` で外せる)。Shirates の `throwsException` は持たず `optional:` で表す |
 | `canSelect` / `canSelectWithScroll*` / `canSelectNot` | 単独コマンドは無い(`ifCanSelect` / `repeatWhileCanSelect` に内包) | 🟡 |
 | `existAll` / `canSelectAll` / `dontExistAll` | — | ➖ **実装しない**(ユーザー決定 2026-07-31)。`exist` のチェーンで書く方が保守しやすく、要素ごとに `timeout:` / `scroll:` 等のオプションも指定できる。**再提案しない** |
 | `scanElements` / `*InScanResults` | — | ❌ |

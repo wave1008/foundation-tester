@@ -566,6 +566,146 @@ private func existImpl(_ selector: FTSelector, timeout: Double?, requireVisible:
     return FTElement(selector: selector, matched: result.element)
 }
 
+// MARK: - select(要素を掴む。exist(検証)との違いは直下の doc コメント参照)
+
+/// **検証ではなく要素を掴む操作**(Shirates の select 相当)。FlowStep は `action: "select"`
+/// (exist は `assert: "exists"`)なので検証ステップとしては記録されない。
+/// 値の読み出し(`.text`/`.value`/`.id`)や検証コマンドへのチェーンの起点に使う。
+/// - **見つからない**: 失敗(シナリオ中断)。無視したいときは `optional: true`
+///   (Shirates の `throwsException: false` 相当)
+/// - **見つかったが見えない**(覆われ・見切れ): **失敗させず空要素を返す**。
+///   呼び出し側は `.text == nil` で分岐できる。`requireVisible: false` で照合自体を外す
+/// scroll: 指定すると解決前に**その方向へスクロールしながら要素を探す**(exist(scroll:) と同じ)
+@discardableResult
+public func select(_ selector: String, optional: Bool = false, timeout: Double? = nil,
+                   requireVisible: Bool = true,
+                   scroll: FTScrollDirection? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
+                   file: StaticString = #filePath, line: UInt = #line) -> FTElement {
+    selectImpl(FTSelector.parse(selector), optional: optional, timeout: timeout,
+              requireVisible: requireVisible,
+              scroll: scroll, maxSwipes: maxSwipes, file: file, line: line)
+}
+
+@discardableResult
+public func select(_ selector: Sel, optional: Bool = false, timeout: Double? = nil,
+                   requireVisible: Bool = true,
+                   scroll: FTScrollDirection? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
+                   file: StaticString = #filePath, line: UInt = #line) -> FTElement {
+    selectImpl(selector.ftSelector, optional: optional, timeout: timeout,
+              requireVisible: requireVisible,
+              scroll: scroll, maxSwipes: maxSwipes, file: file, line: line)
+}
+
+@discardableResult
+private func selectImpl(_ selector: FTSelector, optional: Bool, timeout: Double?,
+                        requireVisible: Bool,
+                        scroll: FTScrollDirection?, maxSwipes: Int,
+                        file: StaticString, line: UInt) -> FTElement {
+    let core = FTRuntime.requireCore(command: "select")
+    let scroll = core.effectiveScroll(scroll)
+    let step = FlowStep(action: "select", locator: selector.primary,
+                        fallbacks: selector.stepFallbacks,
+                        direction: scroll?.swipe.rawValue,
+                        timeout: timeout ?? core.defaultTimeout,
+                        maxSwipes: scroll == nil ? nil : maxSwipes,
+                        optional: optional ? true : nil,
+                        occlusionGuard: requireVisible)
+    let result = perform("select", selector, step: step,
+                        description: "select \"\(selector.text)\"" + (optional ? " (optional)" : ""),
+                        file: file, line: line)
+    return FTElement(selector: selector, matched: result.element)
+}
+
+@discardableResult
+public func selectWithScrollDown(_ selector: String, requireVisible: Bool = true,
+                                 maxSwipes: Int = FlowStep.defaultMaxSwipes,
+                                 file: StaticString = #filePath, line: UInt = #line) -> FTElement {
+    select(selector, requireVisible: requireVisible, scroll: .down,
+           maxSwipes: maxSwipes, file: file, line: line)
+}
+
+@discardableResult
+public func selectWithScrollDown(_ selector: Sel, requireVisible: Bool = true,
+                                 maxSwipes: Int = FlowStep.defaultMaxSwipes,
+                                 file: StaticString = #filePath, line: UInt = #line) -> FTElement {
+    select(selector, requireVisible: requireVisible, scroll: .down,
+           maxSwipes: maxSwipes, file: file, line: line)
+}
+
+@discardableResult
+public func selectWithScrollUp(_ selector: String, requireVisible: Bool = true,
+                               maxSwipes: Int = FlowStep.defaultMaxSwipes,
+                               file: StaticString = #filePath, line: UInt = #line) -> FTElement {
+    select(selector, requireVisible: requireVisible, scroll: .up,
+           maxSwipes: maxSwipes, file: file, line: line)
+}
+
+@discardableResult
+public func selectWithScrollUp(_ selector: Sel, requireVisible: Bool = true,
+                               maxSwipes: Int = FlowStep.defaultMaxSwipes,
+                               file: StaticString = #filePath, line: UInt = #line) -> FTElement {
+    select(selector, requireVisible: requireVisible, scroll: .up,
+           maxSwipes: maxSwipes, file: file, line: line)
+}
+
+@discardableResult
+public func selectWithScrollLeft(_ selector: String, requireVisible: Bool = true,
+                                 maxSwipes: Int = FlowStep.defaultMaxSwipes,
+                                 file: StaticString = #filePath, line: UInt = #line) -> FTElement {
+    select(selector, requireVisible: requireVisible, scroll: .left,
+           maxSwipes: maxSwipes, file: file, line: line)
+}
+
+@discardableResult
+public func selectWithScrollLeft(_ selector: Sel, requireVisible: Bool = true,
+                                 maxSwipes: Int = FlowStep.defaultMaxSwipes,
+                                 file: StaticString = #filePath, line: UInt = #line) -> FTElement {
+    select(selector, requireVisible: requireVisible, scroll: .left,
+           maxSwipes: maxSwipes, file: file, line: line)
+}
+
+@discardableResult
+public func selectWithScrollRight(_ selector: String, requireVisible: Bool = true,
+                                  maxSwipes: Int = FlowStep.defaultMaxSwipes,
+                                  file: StaticString = #filePath, line: UInt = #line) -> FTElement {
+    select(selector, requireVisible: requireVisible, scroll: .right,
+           maxSwipes: maxSwipes, file: file, line: line)
+}
+
+@discardableResult
+public func selectWithScrollRight(_ selector: Sel, requireVisible: Bool = true,
+                                  maxSwipes: Int = FlowStep.defaultMaxSwipes,
+                                  file: StaticString = #filePath, line: UInt = #line) -> FTElement {
+    select(selector, requireVisible: requireVisible, scroll: .right,
+           maxSwipes: maxSwipes, file: file, line: line)
+}
+
+/// withScroll* の中でも**この1コマンドだけ**現在画面から解決する(existWithoutScroll と同じ仕組み)
+@discardableResult
+public func selectWithoutScroll(_ selector: String, optional: Bool = false,
+                                timeout: Double? = nil, requireVisible: Bool = true,
+                                file: StaticString = #filePath, line: UInt = #line) -> FTElement {
+    var element: FTElement?
+    FTRuntime.requireCore(command: "selectWithoutScroll").runWithScrollContext(.none) {
+        element = select(selector, optional: optional, timeout: timeout,
+                         requireVisible: requireVisible, file: file, line: line)
+    }
+    return element ?? FTElement(selector: FTSelector.parse(selector))
+}
+
+/// フォールバックは selector.ftSelector から作る(existWithoutScroll と同じ理由)
+@discardableResult
+public func selectWithoutScroll(_ selector: Sel, optional: Bool = false,
+                                timeout: Double? = nil, requireVisible: Bool = true,
+                                file: StaticString = #filePath, line: UInt = #line) -> FTElement {
+    var element: FTElement?
+    FTRuntime.requireCore(command: "selectWithoutScroll").runWithScrollContext(.none) {
+        element = select(selector, optional: optional, timeout: timeout,
+                         requireVisible: requireVisible, file: file, line: line)
+    }
+    return element ?? FTElement(selector: selector.ftSelector)
+}
+
 /// テキスト一致検証。既定で可視性も確認(一致かつ実際に見えていること)。
 /// 可視性を問わずテキスト一致だけ見たい場合は requireVisible: false。
 ///
