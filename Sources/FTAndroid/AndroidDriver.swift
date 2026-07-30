@@ -102,6 +102,19 @@ public final class AndroidDriver: AppDriver {
         try await withBridge { try await $0.status() }
     }
 
+    /// アプリを残してデータだけ消す(`pm clear`)。**refs も落とす**: 消したあとの画面は
+    /// 別物なので、古い ref でのタップを「先に snapshot」エラーへ倒す(launch と同じ規律)
+    public func clearAppData(bundleID: String) async throws {
+        let result = try adb(["shell", "pm", "clear", bundleID])
+        guard result.status == 0, result.output.contains("Success") else {
+            throw DriverError.badResponse(status: Int(result.status),
+                body: "failed to clear app data (is \(bundleID) installed?): \(result.tail)")
+        }
+        refCenters = [:]
+        currentPackage = nil
+        persistState()
+    }
+
     public func install(packagePath: String) async throws {
         let result = try adb(["install", "-r", packagePath])
         guard result.output.contains("Success") else {

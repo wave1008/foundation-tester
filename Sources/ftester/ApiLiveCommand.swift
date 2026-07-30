@@ -20,6 +20,8 @@
 //   {"cmd":"home"}                                       ホーム画面に戻る
 //   {"cmd":"back"}                                       前の画面へ戻る
 //   {"cmd":"terminate"}                                 対象アプリを終了
+//   {"cmd":"clearAppData","bundle":<String省略可>}       アプリは残しデータだけ消す(省略時は現在の
+//                                                        セッションが指すアプリ。iOS はシミュレータ専用)
 //   {"cmd":"install","path":<String>}                   パッケージファイル(iOS: .app / Android: .apk)
 //                                                        からインストール
 //   {"cmd":"refresh"}                                   操作は行わず観測のみ
@@ -263,6 +265,9 @@ struct ApiLiveServe: AsyncParsableCommand {
             try await driver.back()
         case "terminate":
             try await driver.terminate()
+        case "clearAppData":
+            let bundle = try await resolveBundleForClearAppData(command: command, driver: driver)
+            try await driver.clearAppData(bundleID: bundle)
         case "install":
             guard let path = command.path else {
                 throw ServeCommandError.invalidArguments("install requires path")
@@ -287,6 +292,19 @@ struct ApiLiveServe: AsyncParsableCommand {
         default:
             throw ServeCommandError.invalidArguments("unknown cmd: \(command.cmd)")
         }
+    }
+
+    /// bundle 省略時は現在のセッションが指すアプリ(/status.sessionBundleID)を対象にする。
+    /// それも取れなければ引数不足として扱う(terminate と違い clearAppData は bundleID が必須のため)
+    private func resolveBundleForClearAppData(
+        command: ApiLiveServeCommand, driver: AppDriver
+    ) async throws -> String {
+        if let bundle = command.bundle { return bundle }
+        guard let sessionBundleID = try? await driver.status().sessionBundleID else {
+            throw ServeCommandError.invalidArguments(
+                "clearAppData requires bundle (no active session to infer it from)")
+        }
+        return sessionBundleID
     }
 
     /// スクリーンショット(ダウンスケール済み JPEG)とアクセシビリティツリーを観測イベントとして出す

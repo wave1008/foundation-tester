@@ -26,6 +26,10 @@ public protocol AppDriver {
     func clearInput(ref: Int?) async throws
     /// フォーカス中の入力欄のファーストレスポンダを解除しソフトキーボードを閉じる(ref なし。DSL の hideKeyboard)。
     func hideKeyboard() async throws
+    /// **アプリは残したままデータだけ消す**(DSL の clearAppData)。初回起動・オンボーディング・
+    /// 権限ダイアログを何度でも再現するためのもので、再インストールは伴わない。
+    /// 実行前にアプリを終了する(起動中に消すとプロセスが持っている状態が書き戻る)
+    func clearAppData(bundleID: String) async throws
     /// 次の snapshot() 呼び出しでだけキーボード表示状態(SnapshotResponse.keyboardShown)を採る。
     /// StepExecutor が keyboardShown/keyboardNotShown アサートの直前に呼ぶ。既定は no-op
     /// (iOS はツリー走査中に常に判定できるため不要)。Android は dumpsys 呼び出しが固定費なので、
@@ -130,6 +134,10 @@ public extension AppDriver {
 
     func hideKeyboard() async throws {
         throw DriverError.badResponse(status: 501, body: "This driver does not support hiding the keyboard")
+    }
+
+    func clearAppData(bundleID: String) async throws {
+        throw DriverError.badResponse(status: 501, body: "This driver does not support clearing app data")
     }
 
     func captureKeyboardStateOnNextSnapshot() {}

@@ -36,6 +36,7 @@ public final class LaunchPreflightDriver: AppDriver {
 
     public func status() async throws -> StatusResponse { try await base.status() }
     public func install(packagePath: String) async throws { try await base.install(packagePath: packagePath) }
+    public func clearAppData(bundleID: String) async throws { try await base.clearAppData(bundleID: bundleID) }
     public var lastActionNote: String? { base.lastActionNote }
 
     public func launch(bundleID: String) async throws {

@@ -79,6 +79,75 @@ public final class BridgeClient: AppDriver {
         try await get("/status", timeout: timeout)
     }
 
+    /// アプリを残してデータだけ消す。**シミュレータ専用**(実機は同等の手段が devicectl に無い)。
+    /// `simctl get_app_container … data` が指すコンテナの**中身**を消す(コンテナ自体は残す —
+    /// ディレクトリごと消すと次回起動でアプリが作り直せず落ちる)。
+    /// **uninstall + install は使わない**: in-app エンジンでは dylib 注入ごと消え、
+    /// 再インストールに appPath が要る(DSL からは持っていない)
+    public func clearAppData(bundleID: String) async throws {
+        // **デバイス名は終了より先に採る**: 終了するとブリッジが応答しなくなる経路がある
+        // (in-app ブリッジは対象アプリのプロセス内に住む)
+        let device = try await simulatorTarget()
+        // 起動中に消すとプロセスが保持している状態が書き戻る
+        try? await terminate()
+        try clearAppDataOnSimulator(bundleID: bundleID, target: device)
+    }
+
+    /// 権限(TCC)を未許可へ戻す。**データコンテナの外(デバイスの TCC.db)にあるので
+    /// コンテナを消しても権限は残る** — これをやらないと「Android では権限ダイアログが出るのに
+    /// iOS では出ない」という OS 差が黙って生まれる(Android の `pm clear` は権限もリセットする)
+    public func resetPrivacyOnSimulator(bundleID: String, target: String) throws {
+        let result = try Shell.run(
+            ["xcrun", "simctl", "privacy", target, "reset", "all", bundleID])
+        guard result.status == 0 else {
+            throw DriverError.badResponse(status: Int(result.status),
+                body: "simctl privacy reset failed (app data was cleared but permissions remain,"
+                    + " so permission dialogs will not reappear): \(result.tail)")
+        }
+    }
+
+    /// clearAppData の対象シミュレータ(UDID 優先)。実機は同等手段が devicectl に無いので 501
+    public func simulatorTarget() async throws -> String {
+        guard physicalUDID == nil else {
+            throw DriverError.badResponse(status: 501,
+                body: "clearAppData is simulator-only on iOS (devicectl has no equivalent;"
+                    + " reinstall the app instead)")
+        }
+        let current = try await status()
+        return (try? SimulatorCatalog.devices())?
+            .first(where: { $0.booted && $0.name == current.device })?.udid ?? current.device
+    }
+
+    /// データコンテナの**中身**を消す(コンテナ自体は残す)。対象の特定と終了は呼び出し側の責務
+    /// (in-app は終了するとブリッジが死ぬため、順序を呼び出し側で決める必要がある)
+    public func clearAppDataOnSimulator(bundleID: String, target: String) throws {
+        let container = try Shell.run(
+            ["xcrun", "simctl", "get_app_container", target, bundleID, "data"])
+        guard container.status == 0 else {
+            throw DriverError.badResponse(status: Int(container.status),
+                body: "simctl get_app_container failed (is \(bundleID) installed?): \(container.tail)")
+        }
+        let path = container.output.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !path.isEmpty, path.hasPrefix("/") else {
+            throw DriverError.badResponse(status: 500,
+                body: "could not resolve the data container for \(bundleID)")
+        }
+        let fm = FileManager.default
+        let entries = (try? fm.contentsOfDirectory(atPath: path)) ?? []
+        var failed: [String] = []
+        for entry in entries {
+            do { try fm.removeItem(atPath: path + "/" + entry) } catch { failed.append(entry) }
+        }
+        // **黙って緑にしない**: 一部でも残ったら「消えた」と言えない
+        guard failed.isEmpty else {
+            throw DriverError.badResponse(status: 500,
+                body: "could not delete \(failed.count) item(s) in the data container of"
+                    + " \(bundleID): \(failed.prefix(5).joined(separator: ", "))")
+        }
+        // 権限はコンテナの外にあるので別途戻す(resetPrivacyOnSimulator 参照)
+        try resetPrivacyOnSimulator(bundleID: bundleID, target: target)
+    }
+
     /// install は HTTP エンドポイントを持たず simctl / devicectl の役割。
     /// 実機(physicalUDID 指定時)は `devicectl device install app`、シミュレータは従来どおり simctl。
     /// シミュレータの対象特定は /status のデバイス名から行う。同名デバイス(Shutdown の複製等)が

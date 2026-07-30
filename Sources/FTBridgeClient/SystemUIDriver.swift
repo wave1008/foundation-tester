@@ -39,5 +39,6 @@ public final class SystemUIDriver: AppDriver {
     public func install(packagePath: String) async throws {}
     public func launch(bundleID: String) async throws {}
     public func terminate() async throws {}
+    public func clearAppData(bundleID: String) async throws {}
     public var lastActionNote: String? { client.lastActionNote }
 }

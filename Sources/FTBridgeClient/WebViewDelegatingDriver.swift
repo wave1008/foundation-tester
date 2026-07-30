@@ -136,6 +136,9 @@ public final class WebViewDelegatingDriver: AppDriver {
     public func install(packagePath: String) async throws {
         try await primary.install(packagePath: packagePath)
     }
+    public func clearAppData(bundleID: String) async throws {
+        try await primary.clearAppData(bundleID: bundleID)
+    }
     public func status() async throws -> StatusResponse { try await primary.status() }
     /// 画面を離れる操作。in-app は 501 を返すので XCUITest 側で行う(委譲状態は畳む)
     public func home() async throws {
