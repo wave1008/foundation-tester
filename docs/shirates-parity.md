@@ -156,12 +156,13 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 |---|---|---|
 | `launchApp` / `terminateApp` | 同名 | ✅ |
 | `restartApp` | `relaunchApp` | 🟡 **名前が違う** |
-| `installApp` / `removeApp` / `isAppInstalled` / `launchAppByShell` | CLI 側(`ftester install`)。DSL には無い | ❌ **初回起動・オンボーディング・権限ダイアログのテストが書けない** |
+| `installApp` / `removeApp` / `isAppInstalled` / `launchAppByShell` | CLI 側(`ftester install`)。DSL には無い | ❌ |
 | `goPreviousApp` | `appSwitcher()`(スイッチャーを開くだけ) | 🟡 |
 | `internetOn/Off` / `wiFiOn/Off` / `mobileOn/Off` | — | ❌ |
 | `shell` / `shellAsync` | `procedure { }` 内で任意 Swift | 🟡 |
 | `screenshot` | ステップごとに自動取得 + MCP `ft_screenshot` | 🟡 |
 | — | `home()` / `back()` | 🟢 OS 差を吸収した1コマンド |
+| — | `clearAppData(bundleID?)` | 🟢 再インストール不要でアプリデータ**と権限**を消す。初回起動・オンボーディング・権限ダイアログのテストが書ける(iOS はシミュレータ専用。キーチェーン/Keystore の値は残る) |
 
 ## 記述子・レポート・テストフロー
 
@@ -233,7 +234,6 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 
 | 項目 | 理由 | 規模 |
 |---|---|---|
-| **アプリ状態リセット**(`clearAppData()` / `removeApp`+`installApp`) | **今は書けないテストが書けるようになる**唯一の capability gap(初回起動・オンボーディング・権限ダイアログ)。今は `procedure { }` で adb/simctl を即興で叩くしかなく、環境依存の脆いコードを生成側が再発明する | 中 |
 | **祖先方向の相対セレクタ**(`:parent`) | id を持つのが子ラベルだけの行を「行として」検証できない。タップは座標が最前面に当たるので、効くのは主に行単位の状態検証 | 中 |
 | `existAll([...])` / `dontExistAll([...])` | capability gap ではない(N 行に展開できる)が、スナップショットから生成しやすい形で、生成トークンとレポート行数が減る | 小 |
 | `notExist` の別名族・`existWithScrollLeft/Right` | 引数で書けるので優先度は低い(人間のタイプ量削減が目的の糖衣) | 小 |

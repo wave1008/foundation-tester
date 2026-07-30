@@ -1527,6 +1527,19 @@ public func relaunchApp(_ bundleID: String? = nil,
     }
 }
 
+/// アプリは残したままデータだけ消す(再インストールは伴わない)。初回起動・オンボーディング・
+/// 権限ダイアログを何度でも再現するために使う。**iOS はシミュレータ専用**(実機は 501)。
+/// Android は `pm clear` 相当
+public func clearAppData(_ bundleID: String? = nil,
+                         file: StaticString = #filePath, line: UInt = #line) {
+    let core = FTRuntime.requireCore(command: "clearAppData")
+    let bundle = bundleID ?? core.appBundleID
+    let driver = core.driver
+    core.performCustom(description: "clearAppData \(bundle)", file: file, line: line) {
+        try await driver.clearAppData(bundleID: bundle)
+    }
+}
+
 public func terminateApp(file: StaticString = #filePath, line: UInt = #line) {
     let core = FTRuntime.requireCore(command: "terminateApp")
     let driver = core.driver

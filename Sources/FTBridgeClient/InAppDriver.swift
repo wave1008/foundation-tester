@@ -41,6 +41,15 @@ public final class InAppDriver: AppDriver {
     public func install(packagePath: String) async throws {
         try await withCrashContext { try await client.install(packagePath: packagePath) }
     }
+    /// **対象を先に採ってから自前で終了させる**: in-app ブリッジは対象アプリのプロセス内に
+    /// 住むので、終了するとデバイス名を採れなくなる。また BridgeClient 側の終了は in-app では
+    /// 501 で効かない(プロセス制御は launcher = simctl が唯一の経路)。
+    /// 起動したまま消すとプロセスが持っている状態が書き戻るため、この順序が要る
+    public func clearAppData(bundleID: String) async throws {
+        let target = try await withCrashContext { try await client.simulatorTarget() }
+        try await terminate()
+        try client.clearAppDataOnSimulator(bundleID: bundleID, target: target)
+    }
     public func snapshot() async throws -> SnapshotResponse {
         try await withCrashContext { try await client.snapshot() }
     }

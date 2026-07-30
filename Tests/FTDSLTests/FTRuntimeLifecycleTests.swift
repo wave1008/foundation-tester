@@ -6,14 +6,16 @@ import FTCore
 /// DSL コマンドはカレントスレッドのグローバル状態を触るため、各テストで bootstrap → tearDown する。
 final class FTRuntimeLifecycleTests: XCTestCase {
 
-    /// 常に同じ 1 要素(#cleanup)を返すドライバ。tap の呼び出しだけ記録する
+    /// 常に同じ 1 要素(#cleanup)を返すドライバ。tap / clearAppData の呼び出しだけ記録する
     private final class StubDriver: AppDriver {
         private(set) var tapped: [Int] = []
+        private(set) var clearedAppData: [String] = []
         func status() async throws -> StatusResponse {
             StatusResponse(ready: true, device: "stub", osVersion: "-", sessionBundleID: nil)
         }
         func install(packagePath: String) async throws {}
         func launch(bundleID: String) async throws {}
+        func clearAppData(bundleID: String) async throws { clearedAppData.append(bundleID) }
         func snapshot() async throws -> SnapshotResponse {
             SnapshotResponse(
                 sessionBundleID: nil,
@@ -230,6 +232,35 @@ final class FTRuntimeLifecycleTests: XCTestCase {
 
         XCTAssertEqual(driver.tapped, [1, 1])
         XCTAssertTrue(core.finalRecord.passed)
+    }
+
+    // MARK: - clearAppData
+
+    /// 明示 bundleID がそのまま driver へ渡ること
+    func testClearAppDataForwardsExplicitBundleIDToDriver() {
+        let driver = StubDriver()
+        let core = makeCore(driver: driver, dryRun: false)
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        scenario {
+            scene(1, "s") { action { clearAppData("com.other.app") } }
+        }
+        XCTAssertEqual(driver.clearedAppData, ["com.other.app"])
+        XCTAssertTrue(core.finalRecord.passed)
+    }
+
+    /// 引数省略時は @TestClass(app:) の bundleID(makeCore の "com.example.app")を使うこと
+    func testClearAppDataDefaultsToTestClassBundleID() {
+        let driver = StubDriver()
+        let core = makeCore(driver: driver, dryRun: false)
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        scenario {
+            scene(1, "s") { action { clearAppData() } }
+        }
+        XCTAssertEqual(driver.clearedAppData, ["com.example.app"])
     }
 
     // MARK: - 値の読み出し(FTElement.text/value/id)
