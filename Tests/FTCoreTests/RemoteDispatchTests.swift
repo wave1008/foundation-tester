@@ -113,9 +113,9 @@ final class RemoteDispatchTests: XCTestCase {
 
     func testRemoteLayoutToolRootWorkDirBinary() {
         let layout = RemoteLayout(base: "/Users/x/ftester-runner")
-        XCTAssertEqual(layout.toolRoot, "/Users/x/ftester-runner/tool")
+        XCTAssertEqual(layout.toolRoot, "/Users/x/ftester-runner/foundation-tester")
         XCTAssertEqual(layout.workDir, "/Users/x/ftester-runner/work")
-        XCTAssertEqual(layout.binary, "/Users/x/ftester-runner/tool/.build/debug/ftester")
+        XCTAssertEqual(layout.binary, "/Users/x/ftester-runner/foundation-tester/.build/debug/ftester")
     }
 
     func testRemoteLayoutProjectDir() {
@@ -239,9 +239,9 @@ final class RemoteDispatchTests: XCTestCase {
             layout: layout,
             ftesterArgs: ["run", "--project", "E2E", "--profile", "ios-inapp", "--quiet"],
             sessionMode: "direct")
-        let binary = "/Users/ci/ftester-runner/tool/.build/debug/ftester"
+        let binary = "/Users/ci/ftester-runner/foundation-tester/.build/debug/ftester"
         XCTAssertEqual(command,
-            "cd '/Users/ci/ftester-runner/work' && test -x '\(binary)' || "
+            "cd '/Users/ci/ftester-runner/work' && export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\" && test -x '\(binary)' || "
             + "{ echo \"ftester binary not found on remote — run: swift build --product ftester\" >&2; exit 90; } && "
             + "'\(binary)' project sync >/dev/null 2>&1 || true && "
             + "'\(binary)' 'run' '--project' 'E2E' '--profile' 'ios-inapp' '--quiet'")
@@ -253,9 +253,9 @@ final class RemoteDispatchTests: XCTestCase {
             layout: layout,
             ftesterArgs: ["run", "--project", "E2E", "--profile", "ios-inapp", "--quiet"],
             sessionMode: "asuser")
-        let binary = "/Users/ci/ftester-runner/tool/.build/debug/ftester"
+        let binary = "/Users/ci/ftester-runner/foundation-tester/.build/debug/ftester"
         XCTAssertEqual(command,
-            "cd '/Users/ci/ftester-runner/work' && test -x '\(binary)' || "
+            "cd '/Users/ci/ftester-runner/work' && export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\" && test -x '\(binary)' || "
             + "{ echo \"ftester binary not found on remote — run: swift build --product ftester\" >&2; exit 90; } && "
             + "'\(binary)' project sync >/dev/null 2>&1 || true && "
             + "launchctl asuser \"$(id -u)\" '\(binary)' 'run' '--project' 'E2E' '--profile' 'ios-inapp' '--quiet'")
@@ -440,8 +440,8 @@ final class RemoteDispatchTests: XCTestCase {
 
     func testStatusProbeCommand() {
         let layout = RemoteLayout(base: "/Users/ci/ftester-runner")
-        let tool = "\"/Users/ci/ftester-runner/tool\""
-        let binary = "\"/Users/ci/ftester-runner/tool/.build/debug/ftester\""
+        let tool = "\"/Users/ci/ftester-runner/foundation-tester\""
+        let binary = "\"/Users/ci/ftester-runner/foundation-tester/.build/debug/ftester\""
         let base = "\"/Users/ci/ftester-runner\""
         XCTAssertEqual(
             RemoteStatusProbe.command(layout: layout),
@@ -457,7 +457,7 @@ final class RemoteDispatchTests: XCTestCase {
     /// 二重引用符で包むだけで壊れない(単一引用符と違い変数展開を妨げない)ことを確認
     func testStatusProbeCommandQuotesDoNotSuppressHomeExpansion() {
         let layout = RemoteLayout(base: RemoteLayout.resolveBase("~/ftester-runner", home: "$HOME"))
-        XCTAssertTrue(RemoteStatusProbe.command(layout: layout).contains("\"$HOME/ftester-runner/tool\""))
+        XCTAssertTrue(RemoteStatusProbe.command(layout: layout).contains("\"$HOME/ftester-runner/foundation-tester\""))
     }
 
     // MARK: - RemoteStatusProbe.dquote

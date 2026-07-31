@@ -155,17 +155,14 @@ FileVault を捨てることと同義になる。ランナーには SSH 鍵・�
   チェックはモードを知る必要がない。モード判定(`fdesetup status` + `autoLoginUser`)は
   **preflight が「復帰手順の案内文」を出し分けるためだけに使う**
   (モード A: 「解錠+ログインが必要」/ モード B: 「自動ログインが効いていない — 設定を確認」)
-- 即席経路(素振り用・**検証対象の仮説**): SSH から `launchctl asuser <uid>` で
-  コンソールユーザーのセッションへ注入。ただし asuser は Mach bootstrap 名前空間の
-  切替だけで **WindowServer への完全なアクセスは保証されない**(GUI 系がこれだけでは
-  動かない事例は既知)。成立可否は §9 の検証項目。不成立時の代替は
-  `launchctl bootstrap gui/<uid>` 経由、またはスプール監視型 LaunchAgent
-  (= Phase 2 の session agent が Phase 1 に繰り上がる)
-- **`--remote-session asuser|direct` の二択は検証後に片方を消す**(実装済みだが暫定)。
-  asuser が成立すれば direct は不要(上表のとおり Background では iOS が動かない)、
-  不成立なら asuser が不要(session agent へ)。**direct が意味を持つのは Phase 4 の
-  Android ヘッドレスレーンだけ**なので、Phase 4 を採らないなら §9 の検証後に削除する
-  (フラグ・GUI セレクタ・文書の4箇所からまとめて落とす)
+- **~~asuser 経由で Aqua へ注入~~ は不成立(2026-07-31 実測。§9)**。`launchctl asuser` は
+  **root を要求**し、sudo を作らない方針では使えない。**代わりに `direct`(SSH の
+  Background セッションで直に実行)で全機能が動く** — コンソールに誰かがログインしていれば、
+  SSH 側のプロセスからでもユーザーの launchd ドメインのサービス(CoreSimulator 等)に
+  到達できるため。したがって上表の「Aqua 必須?」は正確には
+  **「Aqua セッションが存在すること」が必須**で、実行プロセスがその中にいる必要はない
+- `--remote-session` の既定は **`direct`**。`asuser` は root がある環境向けのオプションとして
+  残すが、通常は使わない
 
 ## 6. Android ヘッドレスレーン(条件付き)
 
@@ -205,6 +202,28 @@ ios を含まず FM も使わないジョブは、Aqua 不要のまま(SSH 直�
   マシン単位の概念を持つ)
 
 ## 9. 未検証事項(実装前に潰す)
+
+### 実験①の結果(2026-07-31 localhost E2E で実測・確定)
+
+| 項目 | 結果 |
+|---|---|
+| **`launchctl asuser` で Aqua へ注入できるか** | ❌ **不成立**。`Could not switch to audit session: Operation not permitted` — **asuser は root を要求する**。sudo/NOPASSWD を作らない方針(§5)なので**実用不可** |
+| **`direct`(SSH の Background セッションで直に実行)** | ✅ **成立**。シミュレータ起動・アプリインストール・**XCUITest ブリッジ・in-app ブリッジ・シナリオ実行**まで通った |
+| ディスパッチの体験(転送→実行→中継→回収) | ✅ 成立。JUnit・Markdown レポートともローカルへ回収できた |
+| **初回/2回目以降の所要**(Phase 1 ゲート) | 初回 **95秒**(リモートビルド+ブリッジ供給込み)/ 2回目 **10.8秒**(ブリッジ温存・増分ビルド)。コールドは初回だけで、実用に耐える |
+| キャンセル伝播(`-tt`) | ✅ 実証。`-tt` ありはローカルの ssh を kill するとリモートのプロセスも消え、**`-tt` なしは残る**(対照実験) |
+
+**設計への影響**: §5 が前提にしていた「Background セッションでは iOS シミュレータが動かない」は
+**この構成では誤りだった**。**コンソールに誰かがログインしている(Aqua セッションが存在する)限り、
+SSH 側のプロセスからでもユーザーの launchd ドメインのサービス(CoreSimulator 等)に到達できる**。
+したがって:
+
+- **`--remote-session` の既定を `direct` に変更**(asuser は root 必須のオプション扱いとして残す)
+- **§16.3 のログイン状態チェック(console user)が唯一の実効的な前提**になる。
+  「Aqua セッションが**存在する**こと」が要件で、「ディスパッチされたプロセスが Aqua の**中にいる**こと」は不要
+- Phase 2 の session agent は**当面不要**(asuser 不成立時の代替として計画していたが、direct で足りる)
+
+### 未実施の実験
 
 **実験4回に束ねてある**(項目ごとに別実験を組まない。1回の実験で複数項目が同時に判明する):
 
@@ -369,6 +388,21 @@ ios を含まず FM も使わないジョブは、Aqua 不要のまま(SSH 直�
   **そのディレクトリだけを回収して、回収後にリモートから削除**する
   (リモートの `reports/` を丸ごと引くのをやめた。相手の無関係な実行分・録画を
   引き込まないため。ユーザーの `--report-dir` 併用は引き続き不可 = 内部で使うため)
+
+**localhost E2E で見つかり修正した実装上の罠(2026-07-31。いずれも単体テストでは出ない)**:
+
+- **クローンのディレクトリ名は `foundation-tester` 固定**(`<base>/tool` にしていた)。SPM は
+  パス依存のパッケージ名を**ディレクトリ名から導出**するため、受け手 Package.swift の
+  `package: "foundation-tester"` と一致せず `unknown package` でマニフェストが壊れた
+- **非対話 ssh の PATH は `/usr/bin:/bin:/usr/sbin:/sbin` だけ**で Homebrew が入らない。
+  `xcodegen`(iOS ワーカーのビルドに必須)が見えず落ちるため、リモートコマンドの先頭で
+  `export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"` を明示する
+- **ランナーの WORK_DIR には受け手パッケージ(Package.swift)が必要**。`install.sh --skip-project`
+  は Package.swift 自体を作らないため、`remote setup` は**プロジェクト名を渡して**導入する
+  必要がある。さらに**ディスパッチの rsync が先に `Projects/<name>/` を作ると
+  install.sh のプロジェクト作成がスキップされる**(ディレクトリ存在で判定するため)ので、
+  導入はディスパッチより前に済ませる
+- `remote clean` の `devices down` も同じセッション規律に従う(asuser では動かない)
 
 適合チェックは git revision + `ToolchainFingerprint`(`compose` をローカル/リモート両方が
 共有し、合成規則の drift を防ぐ)の2項目。`ProtocolVersion` は独立して照合しない —

@@ -688,8 +688,8 @@ struct RunScenarios: AsyncParsableCommand {
     var remoteDir: String = "~/ftester-runner"
 
     @Option(name: .customLong("remote-session"),
-            help: "Remote session mode: asuser (default) or direct")
-    var remoteSession: String = "asuser"
+            help: "Remote session mode: direct (default) or asuser. asuser requires root on the remote and fails without it (measured 2026-07-31); direct works as long as a console user is logged in")
+    var remoteSession: String = "direct"
 
     @Option(name: .customLong("remote-timeout"),
             help: "Timeout in seconds for the whole remote dispatch (default: auto, sized from the scenario count; see docs/remote-runner.md)")

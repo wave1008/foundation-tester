@@ -32,27 +32,27 @@ test("resolveRemoteTarget: 一致するが host が空(壊れた登録) → erro
 
 test("buildRemoteRunArgs: dir・session 既定省略(host のみ)", () => {
   assert.deepEqual(
-    buildRemoteRunArgs({ name: "mac-01", host: "user@mac-01", dir: "", session: "asuser" }),
+    buildRemoteRunArgs({ name: "mac-01", host: "user@mac-01", dir: "", session: "direct" }),
     ["--host", "user@mac-01"],
   );
 });
 
-test("buildRemoteRunArgs: direct 指定", () => {
+test("buildRemoteRunArgs: asuser 指定", () => {
   assert.deepEqual(
-    buildRemoteRunArgs({ name: "mac-02", host: "mac-02", dir: "", session: "direct" }),
-    ["--host", "mac-02", "--remote-session", "direct"],
+    buildRemoteRunArgs({ name: "mac-02", host: "mac-02", dir: "", session: "asuser" }),
+    ["--host", "mac-02", "--remote-session", "asuser"],
   );
 });
 
-test("buildRemoteRunArgs: 全指定(host + dir + direct)", () => {
+test("buildRemoteRunArgs: 全指定(host + dir + asuser)", () => {
   assert.deepEqual(
     buildRemoteRunArgs({
       name: "mac-02",
       host: "mac-02",
       dir: "/Users/ci/ftester-runner",
-      session: "direct",
+      session: "asuser",
     }),
-    ["--host", "mac-02", "--remote-dir", "/Users/ci/ftester-runner", "--remote-session", "direct"],
+    ["--host", "mac-02", "--remote-dir", "/Users/ci/ftester-runner", "--remote-session", "asuser"],
   );
 });
 
@@ -79,14 +79,14 @@ test("normalizeRemoteHosts: host 空でも name があれば残す(resolveRemote
   );
 });
 
-test("normalizeRemoteHosts: session は asuser/direct 以外なら asuser に落とす", () => {
+test("normalizeRemoteHosts: session は asuser/direct 以外なら direct に落とす", () => {
   assert.deepEqual(
     normalizeRemoteHosts([{ name: "x", host: "h", dir: "", session: "bogus" }]),
-    [{ name: "x", host: "h", dir: "", session: "asuser" }],
+    [{ name: "x", host: "h", dir: "", session: "direct" }],
   );
   assert.deepEqual(
     normalizeRemoteHosts([{ name: "x", host: "h", dir: "", session: undefined }]),
-    [{ name: "x", host: "h", dir: "", session: "asuser" }],
+    [{ name: "x", host: "h", dir: "", session: "direct" }],
   );
 });
 
