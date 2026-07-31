@@ -213,6 +213,8 @@ ios を含まず FM も使わないジョブは、Aqua 不要のまま(SSH 直�
 | ディスパッチの体験(転送→実行→中継→回収) | ✅ 成立。JUnit・Markdown レポートともローカルへ回収できた |
 | **初回/2回目以降の所要**(Phase 1 ゲート) | 初回 **95秒**(リモートビルド+ブリッジ供給込み)/ 2回目 **10.8秒**(ブリッジ温存・増分ビルド)。コールドは初回だけで、実用に耐える |
 | キャンセル伝播(`-tt`) | ✅ 実証。`-tt` ありはローカルの ssh を kill するとリモートのプロセスも消え、**`-tt` なしは残る**(対照実験) |
+| `api run --host` の NDJSON 中継(拡張経路) | ✅ 成立。stdout は全行が妥当な NDJSON・リモートの診断は stderr へ(`-tt` による合流を中継側で振り分け。§12) |
+| `--remote-timeout` の実発火 | ✅ 実証。期限で打ち切られ、**リモートのプロセスも残らない**(SIGTERM→SIGKILL が届く) |
 
 **設計への影響**: §5 が前提にしていた「Background セッションでは iOS シミュレータが動かない」は
 **この構成では誤りだった**。**コンソールに誰かがログインしている(Aqua セッションが存在する)限り、
@@ -401,6 +403,10 @@ SSH 側のプロセスからでもユーザーの launchd ドメインのサー�
   install.sh のプロジェクト作成がスキップされる**(ディレクトリ存在で判定するため)ので、
   導入はディスパッチより前に済ませる
 - `remote clean` の `devices down` も同じ経路で実行する(リモートの ftester を直接叩く)
+- **`ssh -tt` はリモートの stderr を stdout に合流させる**(擬似 TTY は1本の流れ)。
+  `api run --host` の stdout は NDJSON 専用の契約なので、**中継側で行を振り分ける**
+  (JSON 行 = stdout / それ以外 = stderr。`RemoteRelay.isMachineReadableLine`)。
+  入れないとリモートの人間向け診断が NDJSON に混入する(2026-07-31 実測・修正済み)
 
 適合チェックは git revision + `ToolchainFingerprint`(`compose` をローカル/リモート両方が
 共有し、合成規則の drift を防ぐ)の2項目。`ProtocolVersion` は独立して照合しない —

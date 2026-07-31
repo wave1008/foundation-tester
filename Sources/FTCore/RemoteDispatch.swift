@@ -466,3 +466,13 @@ public final class StreamLineSplitter {
         return String(decoding: data, as: UTF8.self)
     }
 }
+
+public enum RemoteRelay {
+
+    /// 中継行が NDJSON(機械可読)か否か。`ssh -tt` は擬似 TTY のため**リモートの stderr が
+    /// stdout に合流する**ので、apiRun ではこれで振り分けないと NDJSON 契約(stdout は
+    /// 1行1イベント)が壊れる。イベントは必ず JSON オブジェクトなので `{` 始まりで判定する
+    public static func isMachineReadableLine(_ line: String) -> Bool {
+        line.trimmingCharacters(in: .whitespaces).hasPrefix("{")
+    }
+}

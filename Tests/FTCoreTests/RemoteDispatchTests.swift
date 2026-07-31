@@ -584,4 +584,20 @@ final class RemoteDispatchTests: XCTestCase {
             }
         }
     }
+
+    // MARK: - RemoteRelay(-tt で合流するリモート stderr の振り分け)
+
+    func testIsMachineReadableLineAcceptsNDJSON() {
+        XCTAssertTrue(RemoteRelay.isMachineReadableLine("{\"kind\":\"runStarted\",\"total\":1}"))
+        XCTAssertTrue(RemoteRelay.isMachineReadableLine("  {\"kind\":\"runFinished\"}"))
+    }
+
+    func testIsMachineReadableLineRejectsHumanDiagnostics() {
+        for line in ["🧩 Profile ios-1: サンプルアプリ @ M2 Ultra",
+                     "→ Building scenarios (SampleApp)...",
+                     "✅ iPhone 17 Pro(iOS 27.0): xcuitest bridge ready",
+                     ""] {
+            XCTAssertFalse(RemoteRelay.isMachineReadableLine(line), line)
+        }
+    }
 }
