@@ -21,6 +21,7 @@ import type { LiveRunTarget } from "./liveRunTarget";
 import { findLatestReport, listRecentReports, reportsDir } from "./scenarioReports";
 import type { ScenarioFinishedEventBody } from "./debugAdapter";
 import { isRunEvent } from "./model";
+import { buildRemoteRunArgs, resolveRemoteTarget } from "./remoteRunArgs";
 import { type RunEventBus } from "./runEventBus";
 import {
   createRunReducerState,
@@ -508,6 +509,11 @@ async function executeRun(
   // --profile と --platform/--port/--serial は ftester api run 側で同時指定不可なので、liveTarget が
   // あれば最優先で使う(上のライブパネル連携)。無ければ既存どおり: profile が非空のときはそちらだけ、
   // 空なら platform/port/serial を渡す。liveTarget は profile 空のときだけ立つ(上の連動ガード)。
+  // リモートディスパッチ(--host)は CLI 側が --profile を必須とするため profile 分岐のみで付与する
+  // (docs/remote-runner.md §12)。liveTarget(単一デバイス直指定)は常にローカル実行なので、
+  // remote.target がリモートを指していても --host は付けず、1回だけ警告を出すに留める。
+  const remoteResolution = resolveRemoteTarget(config.remote.target, config.remote.hosts);
+  let remoteDispatchHost: string | undefined;
   if (liveTarget) {
     args.push("--platform", liveTarget.platform);
     if (liveTarget.platform === "android" && liveTarget.serial) {
@@ -515,8 +521,30 @@ async function executeRun(
     } else if (liveTarget.platform === "ios" && liveTarget.port !== undefined) {
       args.push("--port", String(liveTarget.port));
     }
+    if (remoteResolution.kind === "remote") {
+      void vscode.window.showWarningMessage(
+        t("run.remote.singleDeviceIgnored", { host: remoteResolution.entry.host }),
+      );
+    }
   } else if (profile.length > 0) {
+    // target が hosts に無い/host 未設定を指しているときは、黙ってローカルへフォールバックせず
+    // run を中止する(「リモートで走ったつもりがローカル」という沈黙の失敗を塞ぐ)。
+    if (remoteResolution.kind === "error") {
+      const message = t("run.remote.targetUnresolved", { target: remoteResolution.target });
+      run.appendOutput(`${message}\r\n`);
+      outputChannel.appendLine(message);
+      for (const item of targets.values()) {
+        run.errored(item, new vscode.TestMessage(message));
+      }
+      run.end();
+      void vscode.window.showErrorMessage(`ftester: ${message}`);
+      return;
+    }
     args.push("--profile", profile);
+    if (remoteResolution.kind === "remote") {
+      args.push(...buildRemoteRunArgs(remoteResolution.entry));
+      remoteDispatchHost = remoteResolution.entry.host;
+    }
   } else {
     args.push("--platform", config.platform);
     if (config.port > 0) {
@@ -550,7 +578,7 @@ async function executeRun(
   let sawEnd = false;
   // 異常終了・キャンセル時に未終端項目へ付けるメッセージ(正常終了時は undefined)。
   let abnormalMessage: string | undefined;
-  let reducerState = createRunReducerState();
+  let reducerState = createRunReducerState(remoteDispatchHost);
   // workersReady(並列実行時のみ)で埋まる worker id → デバイス名。output のプレフィックスに使う。
   const workerNames = new Map<string, string>();
   const stderrTail: string[] = [];

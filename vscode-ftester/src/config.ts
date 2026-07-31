@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as vscode from "vscode";
 import { resolveBinaryPath } from "./binaryPathResolve";
+import { normalizeRemoteHosts, type RemoteHostEntry } from "./remoteRunArgs";
 
 export type Platform = "ios" | "android";
 
@@ -70,6 +71,12 @@ export interface FtesterConfig {
   /** "auto": 起動時に upstream の更新有無を確認し、あれば通知する(updateCheck.ts)。"off": 確認しない。
    * 確認するだけで取り込みはしない(取り込みは /ftester-update)。 */
   updateCheck: UpdateCheckMode;
+  /** リモートディスパッチ(docs/remote-runner.md §11-12)。hosts は登録済みホスト一覧、target は
+   * そのうち今回使う name("" = ローカル実行)。runHandler.ts の resolveRemoteTarget/
+   * buildRemoteRunArgs が `ftester api run` の引数へ変換する(--profile 実行時のみ。単一デバイス
+   * 直指定には非適用)。target が hosts に無い/host 未設定のときは run を中止する契約
+   * (黙ってローカル実行にフォールバックしない)。 */
+  remote: { hosts: RemoteHostEntry[]; target: string };
 }
 
 /** ワークスペースルート(Package.swift のあるフォルダ)を解決する。開いていなければ undefined。 */
@@ -110,6 +117,10 @@ export function readConfig(workspaceRoot: string): FtesterConfig {
     autoRepairDeviceHealth: configuration.get<boolean>("autoRepairDeviceHealth", false),
     liveControlOnRun: configuration.get<boolean>("liveControlOnRun", true),
     updateCheck: configuration.get<string>("updateCheck", "auto") === "off" ? "off" : "auto",
+    remote: {
+      hosts: normalizeRemoteHosts(configuration.get<unknown>("remote.hosts", [])),
+      target: configuration.get<string>("remote.target", "").trim(),
+    },
   };
 }
 

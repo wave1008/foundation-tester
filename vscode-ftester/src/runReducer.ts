@@ -42,10 +42,15 @@ interface ScenarioProgress {
 /** reduceRunEvent が使い回す内部状態。中身は runHandler.ts からは触らない。 */
 export interface RunReducerState {
   scenarios: Map<string, ScenarioProgress>;
+  /** リモートディスパッチ先ホスト(非空のときのみ)。runStarted の見出しへ " @host" を付けるためだけに使う。
+   * NDJSON にホストは乗らないため、runHandler.ts が spawn 時点の設定値を createRunReducerState へ渡す
+   * (docs/remote-runner.md §11 の「レーンにホスト帰属を表示」の最小実装)。 */
+  host?: string;
 }
 
-export function createRunReducerState(): RunReducerState {
-  return { scenarios: new Map() };
+export function createRunReducerState(host?: string): RunReducerState {
+  const trimmed = host?.trim();
+  return { scenarios: new Map(), host: trimmed && trimmed.length > 0 ? trimmed : undefined };
 }
 
 /** ステップの status → アイコン。runLaneModel.ts(ログレーン)も同じアイコンを使う。 */
@@ -71,8 +76,11 @@ export function reduceRunEvent(
 
 function actionsFor(state: RunReducerState, event: RunEvent, nowMs: number): RunAction[] {
   switch (event.kind) {
-    case "runStarted":
-      return [{ type: "output", text: tLane("lane.runStarted", { total: event.total }) }];
+    case "runStarted": {
+      const heading = tLane("lane.runStarted", { total: event.total });
+      // " @host" は翻訳不要の記号+設定値のため辞書に入れない(CLAUDE.md 国際化節参照)。
+      return [{ type: "output", text: state.host ? `${heading} @${state.host}` : heading }];
+    }
 
     case "workersReady":
       // 以降の全イベントに worker が付く合図。

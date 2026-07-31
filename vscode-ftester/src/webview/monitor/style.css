@@ -1714,10 +1714,50 @@ input[type="text"]::placeholder {
   width: 80px;
   padding: 4px 8px; /* .settings-select と同じ高さに揃える */
 }
+.settings-text {
+  min-width: 220px;
+  max-width: 320px;
+  padding: 4px 8px; /* .settings-select と同じ高さに揃える */
+}
 .settings-hint {
   font-size: 12px;
   line-height: 1.5;
   color: var(--vscode-descriptionForeground);
+}
+/* リモート実行ホスト一覧(可変行数・settingsTab.js が組み立てる)。.resident-table と同じ
+   罫線方針(auto レイアウト、最右列は縦線なし)。 */
+.settings-remote-hosts-table {
+  border-collapse: collapse;
+  width: 100%;
+}
+.settings-remote-hosts-table th {
+  text-align: left;
+  font-weight: 600;
+  font-size: 12px;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.4));
+}
+.settings-remote-hosts-table td {
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.2));
+  vertical-align: middle;
+}
+.settings-remote-hosts-input {
+  width: 100%;
+  min-width: 90px;
+  box-sizing: border-box;
+  padding: 3px 6px;
+}
+.settings-remote-hosts-session {
+  min-width: 0;
+  padding: 3px 6px;
+}
+.settings-remote-hosts-remove {
+  padding: 2px 8px;
+  line-height: 1;
+}
+.settings-remote-hosts-actions {
+  display: flex;
 }
 /* 更新セクション(設定タブ)。状態1行 → ボタン → 説明 の縦積み(実行ログは OUTPUT へ)。 */
 .settings-update-statusline {

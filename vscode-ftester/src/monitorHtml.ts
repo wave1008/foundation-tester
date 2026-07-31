@@ -539,6 +539,33 @@ function renderSettingsPanel(): string {
         <label class="settings-item"><input type="checkbox" id="settings-polling-mode"> ${t("panels.settings.pollingModeLabel")}</label>
         <div class="settings-hint">${t("panels.settings.pollingModeHint")}</div>
       </div>
+      <!-- 実体は ftester.remote.hosts/target 設定(config.ts)。ここはもう1つの操作口
+           (docs/remote-runner.md §12)。ホスト一覧(#settings-remote-hosts-body)は行数が可変のため
+           settingsTab.js が動的に組み立てる。対向: settingsTab.js の applySettings / setRemoteConfig,
+           monitorPanel.ts。 -->
+      <div class="settings-group">
+        <div class="settings-section-title">${t("panels.settings.remoteSectionTitle")}</div>
+        <label class="settings-item settings-item-inline" for="settings-remote-target">
+          ${t("panels.settings.remoteTargetLabel")}
+          <select id="settings-remote-target" class="settings-select"></select>
+        </label>
+        <div class="settings-hint">${t("panels.settings.remoteHostsHint")}</div>
+        <table class="settings-remote-hosts-table">
+          <thead>
+            <tr>
+              <th>${t("panels.settings.remoteHostsColName")}</th>
+              <th>${t("panels.settings.remoteHostsColHost")}</th>
+              <th>${t("panels.settings.remoteHostsColDir")}</th>
+              <th>${t("panels.settings.remoteHostsColSession")}</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="settings-remote-hosts-body"></tbody>
+        </table>
+        <div class="settings-remote-hosts-actions">
+          <button id="settings-remote-hosts-add" class="secondary" type="button">${t("panels.settings.remoteHostsAdd")}</button>
+        </div>
+      </div>
     </div>
   </div>`;
 }

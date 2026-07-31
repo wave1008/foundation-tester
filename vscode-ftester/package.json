@@ -2,7 +2,7 @@
   "name": "vscode-ftester",
   "displayName": "ftester",
   "description": "%ftester.extension.description%",
-  "version": "0.0.440",
+  "version": "0.0.445",
   "private": true,
   "publisher": "wave1008",
   "license": "MIT",
@@ -170,6 +170,43 @@
           ],
           "default": "auto",
           "description": "%ftester.config.updateCheck.description%"
+        },
+        "ftester.remote.hosts": {
+          "type": "array",
+          "scope": "machine",
+          "default": [],
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "host": {
+                "type": "string"
+              },
+              "dir": {
+                "type": "string"
+              },
+              "session": {
+                "type": "string",
+                "enum": [
+                  "asuser",
+                  "direct"
+                ]
+              }
+            },
+            "required": [
+              "name",
+              "host"
+            ]
+          },
+          "description": "%ftester.config.remoteHosts.description%"
+        },
+        "ftester.remote.target": {
+          "type": "string",
+          "scope": "machine",
+          "default": "",
+          "description": "%ftester.config.remoteTarget.description%"
         }
       }
     },

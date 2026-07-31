@@ -268,6 +268,35 @@ test("isMonitorFromWebviewMessage: setTileAutoFit は boolean value のみ受理
   assert.equal(isMonitorFromWebviewMessage({ type: "setTileAutoFit", value: "true" }), false);
 });
 
+test("isMonitorFromWebviewMessage: setRemoteConfig は hosts[](name/host/dir/session)+target(string)なら true", () => {
+  assert.equal(
+    isMonitorFromWebviewMessage({
+      type: "setRemoteConfig",
+      hosts: [{ name: "mac-01", host: "user@mac-01", dir: "", session: "asuser" }],
+      target: "mac-01",
+    }),
+    true,
+  );
+  // hosts 空配列 + target 空("" = ローカル)も正常値
+  assert.equal(isMonitorFromWebviewMessage({ type: "setRemoteConfig", hosts: [], target: "" }), true);
+});
+
+test("isMonitorFromWebviewMessage: setRemoteConfig は hosts 要素の型不正・session 語彙不正・target 欠落なら false", () => {
+  assert.equal(isMonitorFromWebviewMessage({ type: "setRemoteConfig", hosts: [], target: undefined }), false);
+  assert.equal(
+    isMonitorFromWebviewMessage({
+      type: "setRemoteConfig",
+      hosts: [{ name: "mac-01", host: "user@mac-01", dir: "", session: "bogus" }],
+      target: "",
+    }),
+    false,
+  );
+  assert.equal(
+    isMonitorFromWebviewMessage({ type: "setRemoteConfig", hosts: "not-an-array", target: "" }),
+    false,
+  );
+});
+
 test("isMonitorFromWebviewMessage: deviceOp は name(string)+op(up/down)が揃っていれば true", () => {
   assert.equal(isMonitorFromWebviewMessage({ type: "deviceOp", name: "シミュ1", op: "up" }), true);
   assert.equal(isMonitorFromWebviewMessage({ type: "deviceOp", name: "シミュ1", op: "down" }), true);
