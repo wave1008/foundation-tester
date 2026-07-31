@@ -1748,10 +1748,6 @@ input[type="text"]::placeholder {
   box-sizing: border-box;
   padding: 3px 6px;
 }
-.settings-remote-hosts-session {
-  min-width: 0;
-  padding: 3px 6px;
-}
 .settings-remote-hosts-remove {
   padding: 2px 8px;
   line-height: 1;

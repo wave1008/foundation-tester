@@ -397,17 +397,17 @@ public enum RemoteShell {
     /// layout.toolRoot 配下の絶対パス(相対 `./.build/...` は cwd が work のため使えない)。
     /// バイナリ不在は exit 90(RemoteRunDispatcher がこの値だけ「ビルドしてください」の専用
     /// メッセージに変える)。project sync は失敗を黙認する(`|| true`) — 失敗しても実体は
-    /// 後続の run が明確に失敗するので、ここで止めると本来の失敗理由が sync の方に隠れる
-    public static func remoteRunCommand(layout: RemoteLayout, ftesterArgs: [String],
-                                        sessionMode: String) -> String {
+    /// 後続の run が明確に失敗するので、ここで止めると本来の失敗理由が sync の方に隠れる。
+    /// SSH の Background セッションのまま直接実行する(ユーザーの launchd ドメインへ昇格させる
+    /// 処理は挟まない)。コンソールにログインしている限りそのままで launchd ドメイン
+    /// (CoreSimulator 等)へ到達できる(2026-07-31 実測)
+    public static func remoteRunCommand(layout: RemoteLayout, ftesterArgs: [String]) -> String {
         let binary = quote(layout.binary)
         let guardCmd = "test -x \(binary) || { echo \"ftester binary not found on remote"
             + " — run: swift build --product ftester\" >&2; exit 90; }"
         let syncCmd = "\(binary) project sync >/dev/null 2>&1 || true"
         let args = ftesterArgs.map(quote).joined(separator: " ")
-        let launch = sessionMode == "asuser"
-            ? "launchctl asuser \"$(id -u)\" \(binary) \(args)"
-            : "\(binary) \(args)"
+        let launch = "\(binary) \(args)"
         // 非対話 ssh の PATH は /usr/bin:/bin:/usr/sbin:/sbin だけで Homebrew が入らない。
         // xcodegen(iOS ワーカーのビルドに必須)・adb などが見えず「No such file or directory」で
         // 落ちる(2026-07-31 の localhost E2E で実測)。ログインシェルに頼ると受け手の

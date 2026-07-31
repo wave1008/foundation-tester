@@ -2,7 +2,8 @@
 
 2026-07-30 の検討結果の文書化。**Phase 1(`run --host` / `api run --host` と GUI の
 ホスト登録・実行先選択)は実装済み(§12)。Phase 2 以降と §13・§14 は設計のみで未実装**。
-SSH 越しの実 E2E(§9 の asuser 成立可否を含む)は未検証。
+**SSH 越しの実 E2E は localhost で実施済み(2026-07-31。§9 実験①)** — 到達経路が確定し、
+`asuser` は撤去した(root 必須で実用不可)。実2台での検証は未実施。
 **セキュリティ前提と信頼モデルは §15** — 実装前に必ず読むこと。
 
 ## 1. 前提と目的
@@ -155,14 +156,14 @@ FileVault を捨てることと同義になる。ランナーには SSH 鍵・�
   チェックはモードを知る必要がない。モード判定(`fdesetup status` + `autoLoginUser`)は
   **preflight が「復帰手順の案内文」を出し分けるためだけに使う**
   (モード A: 「解錠+ログインが必要」/ モード B: 「自動ログインが効いていない — 設定を確認」)
-- **~~asuser 経由で Aqua へ注入~~ は不成立(2026-07-31 実測。§9)**。`launchctl asuser` は
-  **root を要求**し、sudo を作らない方針では使えない。**代わりに `direct`(SSH の
-  Background セッションで直に実行)で全機能が動く** — コンソールに誰かがログインしていれば、
-  SSH 側のプロセスからでもユーザーの launchd ドメインのサービス(CoreSimulator 等)に
-  到達できるため。したがって上表の「Aqua 必須?」は正確には
-  **「Aqua セッションが存在すること」が必須**で、実行プロセスがその中にいる必要はない
-- `--remote-session` の既定は **`direct`**。`asuser` は root がある環境向けのオプションとして
-  残すが、通常は使わない
+- **到達経路は「SSH の Background セッションでそのまま実行する」1つだけ**(2026-07-31 実測)。
+  コンソールに誰かがログインしていれば、SSH 側のプロセスからでもユーザーの launchd ドメインの
+  サービス(CoreSimulator 等)に到達でき、シミュレータ・XCUITest・in-app ブリッジまで動く。
+  したがって上表の「Aqua 必須?」は正確には**「Aqua セッションが存在すること」が必須**で、
+  実行プロセスがその中にいる必要はない
+- **`launchctl asuser` 経由の注入は撤去した(ユーザー決定 2026-07-31)**。`asuser` は **root を
+  要求**し(`Could not switch to audit session`)、sudo を作らない方針では使えないため。
+  セッションモードの選択肢自体を持たない(`--remote-session` は無い)。**再提案しない**
 
 ## 6. Android ヘッドレスレーン(条件付き)
 
@@ -207,8 +208,8 @@ ios を含まず FM も使わないジョブは、Aqua 不要のまま(SSH 直�
 
 | 項目 | 結果 |
 |---|---|
-| **`launchctl asuser` で Aqua へ注入できるか** | ❌ **不成立**。`Could not switch to audit session: Operation not permitted` — **asuser は root を要求する**。sudo/NOPASSWD を作らない方針(§5)なので**実用不可** |
-| **`direct`(SSH の Background セッションで直に実行)** | ✅ **成立**。シミュレータ起動・アプリインストール・**XCUITest ブリッジ・in-app ブリッジ・シナリオ実行**まで通った |
+| **`launchctl asuser` で Aqua へ注入できるか** | ❌ **不成立**。`Could not switch to audit session: Operation not permitted` — **asuser は root を要求する**。sudo/NOPASSWD を作らない方針(§5)なので**実用不可 → 撤去**(ユーザー決定) |
+| **SSH の Background セッションで直に実行** | ✅ **成立**。シミュレータ起動・アプリインストール・**XCUITest ブリッジ・in-app ブリッジ・シナリオ実行**まで通った(これが唯一の経路になった) |
 | ディスパッチの体験(転送→実行→中継→回収) | ✅ 成立。JUnit・Markdown レポートともローカルへ回収できた |
 | **初回/2回目以降の所要**(Phase 1 ゲート) | 初回 **95秒**(リモートビルド+ブリッジ供給込み)/ 2回目 **10.8秒**(ブリッジ温存・増分ビルド)。コールドは初回だけで、実用に耐える |
 | キャンセル伝播(`-tt`) | ✅ 実証。`-tt` ありはローカルの ssh を kill するとリモートのプロセスも消え、**`-tt` なしは残る**(対照実験) |
@@ -218,10 +219,10 @@ ios を含まず FM も使わないジョブは、Aqua 不要のまま(SSH 直�
 SSH 側のプロセスからでもユーザーの launchd ドメインのサービス(CoreSimulator 等)に到達できる**。
 したがって:
 
-- **`--remote-session` の既定を `direct` に変更**(asuser は root 必須のオプション扱いとして残す)
+- **`--remote-session` を撤去**(選択肢が1つなのでオプション自体を持たない)
 - **§16.3 のログイン状態チェック(console user)が唯一の実効的な前提**になる。
   「Aqua セッションが**存在する**こと」が要件で、「ディスパッチされたプロセスが Aqua の**中にいる**こと」は不要
-- Phase 2 の session agent は**当面不要**(asuser 不成立時の代替として計画していたが、direct で足りる)
+- Phase 2 の session agent は**当面不要**(asuser 不成立時の代替として計画していたが、直接実行で足りる)
 
 ### 未実施の実験
 
@@ -229,7 +230,7 @@ SSH 側のプロセスからでもユーザーの launchd ドメインのサー�
 
 | 実験 | 一度に判明する項目 | 手順 |
 |---|---|---|
-| **① localhost 素振り**(要 sshd 有効化) | **asuser で Aqua 到達が成立するか**(シミュレータ・XCUITest が動くか)/ ディスパッチの体験成立(転送→実行→回収)/ 遠隔での flake 診断コスト | localhost へ SSH → `launchctl asuser` で自セッションに注入して run を1本通し、成果物回収と、失敗時にレポートだけで切り分けられるかを見る。**不成立なら §5 の代替**(gui domain bootstrap / スプール監視 LaunchAgent)へ切替 |
+| **① localhost 素振り**(要 sshd 有効化)**= 実施済み。上の結果表を参照** | 到達経路の成否 / ディスパッチの体験成立(転送→実行→回収)/ 遠隔での flake 診断コスト | localhost へ SSH して run を1本通し、成果物回収と、失敗時にレポートだけで切り分けられるかを見る |
 | **② 画面ロックしたまま run 1本** | FM のロック中挙動 / **XCUITest・シミュレータ・録画のロック中可否**(§5 の2モード共通の前提) | ロック状態で run を通し、あわせて `doctor --fm-only` を反復(availability は嘘をつくので実呼び出し)。不可なら「ロック無効」をランナー要件に戻す(FileVault は維持できる) |
 | **③ `fdesetup authrestart` 1回** | 対象機(Apple silicon・当該 macOS)で使えるか | 実行して、再起動後にボリュームが解錠され loginwindow まで来ることを確認 |
 | **④ Android `-no-window` 対照実験** | 凍結挙動 / gRPC 制御の互換 | §6 の採用条件2つをまとめて確認 |
@@ -239,23 +240,21 @@ SSH 側のプロセスからでもユーザーの launchd ドメインのサー�
 各 Phase の末尾が判断ゲート。**Phase 0 で需要または体験が成立しなければ中止**(以降を作らない)。
 
 **進行の実際(2026-07-31)**: ユーザー判断により **Phase 0 を実施しないまま Phase 1 を
-実装済み**(§12)。§9 は未検証のまま残っており、**asuser が不成立だった場合は実装済みの
-`--remote-session asuser` 既定が無効になり、Phase 2 の session agent が Phase 1 に
-繰り上がる**。手戻り範囲は到達経路の差し替えのみ(適合チェック・転送・中継・回収は
-そのまま流用できる)。
+実装済み**(§12)。**§9 の実験①は 2026-07-31 に実施済み**で、到達経路は確定した
+(asuser 撤去・SSH セッションで直接実行)。残る未実施は実験②〜④(画面ロック中の挙動・
+`fdesetup authrestart`・Android `-no-window`)。
 
 ### Phase 0: 素振り・検証(実装なし)
 
-- 手動 SSH + `launchctl asuser` で隣の Mac へ run を投げる(転送→install.sh→run→回収を手作業)
-- §9 の実験4回を実施(①が最優先 — asuser の成立可否が Phase 1 の到達経路を決める)
+- 手動 SSH で隣の Mac へ run を投げる(転送→install.sh→run→回収を手作業)
+- §9 の実験4回を実施(①が最優先 — 到達経路を決める。**①は実施済み**)
 - **ゲート**: 対話的分散・共有の需要が実在するか/ジョブ粒度の体験が成立するかをユーザーが判断
 
 ### Phase 1: `ftester run --host <mac>`(単一リモート・ジョブ粒度)
 
 - 適合チェック(§7)・rsync 転送・リモート実行・出力ストリームバック(§3 の用途分け)・
   成果物回収(JUnit の `report:` パス書き換え含む)
-- Aqua への到達は Phase 0 で成立を確認した経路を使う。`launchctl asuser` が不成立
-  だった場合は **Phase 2 の session agent をここへ繰り上げる**(計画の分岐点)
+- Aqua への到達は Phase 0 で成立を確認した経路を使う(**確定: SSH セッションで直接実行**)
 - 純粋ロジック(適合判定・転送対象の算出・回収パス書き換え)は切り出して単体テスト。
   SSH 越しの結合は E2E に残す
 - 新スクリプト/サブコマンドを足したら Bash 許可リストにも足す(承認3方向の②)
@@ -355,8 +354,7 @@ SSH 側のプロセスからでもユーザーの launchd ドメインのサー�
 
 `ftester run --host <user@host>`(`--profile` 必須。`--ports`/`--report-dir`/`--failed`/
 `--skip-build` は併用不可)・`--remote-dir`(既定: ローカルルートと同じ絶対パス)・
-`--remote-session asuser|direct`(既定 asuser。§9 の asuser 成立可否は未検証のまま実装を
-先行させた。判定は実機2台での E2E に送る)。純粋ロジックは
+(`--remote-session` は asuser 撤去に伴い廃止)。純粋ロジックは
 `Sources/FTCore/RemoteDispatch.swift`(単体テスト対象)、プロセス起動は
 `Sources/ftester/RemoteRunDispatcher.swift` に集約。
 
@@ -402,7 +400,7 @@ SSH 側のプロセスからでもユーザーの launchd ドメインのサー�
   必要がある。さらに**ディスパッチの rsync が先に `Projects/<name>/` を作ると
   install.sh のプロジェクト作成がスキップされる**(ディレクトリ存在で判定するため)ので、
   導入はディスパッチより前に済ませる
-- `remote clean` の `devices down` も同じセッション規律に従う(asuser では動かない)
+- `remote clean` の `devices down` も同じ経路で実行する(リモートの ftester を直接叩く)
 
 適合チェックは git revision + `ToolchainFingerprint`(`compose` をローカル/リモート両方が
 共有し、合成規則の drift を防ぐ)の2項目。`ProtocolVersion` は独立して照合しない —

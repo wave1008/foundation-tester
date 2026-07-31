@@ -268,11 +268,11 @@ test("isMonitorFromWebviewMessage: setTileAutoFit は boolean value のみ受理
   assert.equal(isMonitorFromWebviewMessage({ type: "setTileAutoFit", value: "true" }), false);
 });
 
-test("isMonitorFromWebviewMessage: setRemoteConfig は hosts[](name/host/dir/session)+target(string)なら true", () => {
+test("isMonitorFromWebviewMessage: setRemoteConfig は hosts[](name/host/dir)+target(string)なら true", () => {
   assert.equal(
     isMonitorFromWebviewMessage({
       type: "setRemoteConfig",
-      hosts: [{ name: "mac-01", host: "user@mac-01", dir: "", session: "asuser" }],
+      hosts: [{ name: "mac-01", host: "user@mac-01", dir: "" }],
       target: "mac-01",
     }),
     true,
@@ -281,12 +281,12 @@ test("isMonitorFromWebviewMessage: setRemoteConfig は hosts[](name/host/dir/ses
   assert.equal(isMonitorFromWebviewMessage({ type: "setRemoteConfig", hosts: [], target: "" }), true);
 });
 
-test("isMonitorFromWebviewMessage: setRemoteConfig は hosts 要素の型不正・session 語彙不正・target 欠落なら false", () => {
+test("isMonitorFromWebviewMessage: setRemoteConfig は hosts 要素の型不正・target 欠落なら false", () => {
   assert.equal(isMonitorFromWebviewMessage({ type: "setRemoteConfig", hosts: [], target: undefined }), false);
   assert.equal(
     isMonitorFromWebviewMessage({
       type: "setRemoteConfig",
-      hosts: [{ name: "mac-01", host: "user@mac-01", dir: "", session: "bogus" }],
+      hosts: [{ name: "mac-01", host: 123, dir: "" }],
       target: "",
     }),
     false,

@@ -233,32 +233,17 @@ final class RemoteDispatchTests: XCTestCase {
 
     // MARK: - RemoteShell.remoteRunCommand
 
-    func testRemoteRunCommandDirect() {
+    func testRemoteRunCommand() {
         let layout = RemoteLayout(base: "/Users/ci/ftester-runner")
         let command = RemoteShell.remoteRunCommand(
             layout: layout,
-            ftesterArgs: ["run", "--project", "E2E", "--profile", "ios-inapp", "--quiet"],
-            sessionMode: "direct")
+            ftesterArgs: ["run", "--project", "E2E", "--profile", "ios-inapp", "--quiet"])
         let binary = "/Users/ci/ftester-runner/foundation-tester/.build/debug/ftester"
         XCTAssertEqual(command,
             "cd '/Users/ci/ftester-runner/work' && export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\" && test -x '\(binary)' || "
             + "{ echo \"ftester binary not found on remote — run: swift build --product ftester\" >&2; exit 90; } && "
             + "'\(binary)' project sync >/dev/null 2>&1 || true && "
             + "'\(binary)' 'run' '--project' 'E2E' '--profile' 'ios-inapp' '--quiet'")
-    }
-
-    func testRemoteRunCommandAsuser() {
-        let layout = RemoteLayout(base: "/Users/ci/ftester-runner")
-        let command = RemoteShell.remoteRunCommand(
-            layout: layout,
-            ftesterArgs: ["run", "--project", "E2E", "--profile", "ios-inapp", "--quiet"],
-            sessionMode: "asuser")
-        let binary = "/Users/ci/ftester-runner/foundation-tester/.build/debug/ftester"
-        XCTAssertEqual(command,
-            "cd '/Users/ci/ftester-runner/work' && export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\" && test -x '\(binary)' || "
-            + "{ echo \"ftester binary not found on remote — run: swift build --product ftester\" >&2; exit 90; } && "
-            + "'\(binary)' project sync >/dev/null 2>&1 || true && "
-            + "launchctl asuser \"$(id -u)\" '\(binary)' 'run' '--project' 'E2E' '--profile' 'ios-inapp' '--quiet'")
     }
 
     // MARK: - RemotePathRewrite

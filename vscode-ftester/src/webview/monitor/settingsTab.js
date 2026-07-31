@@ -60,7 +60,7 @@ languageSelect.addEventListener('change', () => {
 // ホスト一覧は行数が可変のため DOM を直接組み立てる。行の識別は name(変更され得る)ではなく
 // 使い捨ての rowId で行う — さもないと「選択中ホストの name を編集する」操作で選択が迷子になる
 // (target セレクタの value は rowId、実際に送る target 文字列はそのIDの行の現在の name)。
-let hostRows = []; // { id, nameInput, hostInput, dirInput, sessionSelect, tr }
+let hostRows = []; // { id, nameInput, hostInput, dirInput, tr }
 let nextRowId = 0;
 // 選択中ターゲットの rowId。null = ローカル実行。
 let selectedTargetRowId = null;
@@ -70,7 +70,6 @@ function currentHostsPayload() {
     name: row.nameInput.value.trim(),
     host: row.hostInput.value.trim(),
     dir: row.dirInput.value.trim(),
-    session: row.sessionSelect.value === 'direct' ? 'direct' : 'asuser',
   }));
 }
 
@@ -145,20 +144,6 @@ function addHostRow(host) {
   const hostInput = makeTextCell(host ? host.host : '', 'user@host');
   const dirInput = makeTextCell(host ? host.dir : '', '~/ftester-runner');
 
-  const sessionSelect = document.createElement('select');
-  sessionSelect.className = 'settings-select settings-remote-hosts-session';
-  for (const value of ['asuser', 'direct']) {
-    const option = document.createElement('option');
-    option.value = value;
-    option.textContent = value;
-    sessionSelect.appendChild(option);
-  }
-  sessionSelect.value = host && host.session === 'direct' ? 'direct' : 'asuser';
-  sessionSelect.addEventListener('change', onHostsChanged);
-  const sessionTd = document.createElement('td');
-  sessionTd.appendChild(sessionSelect);
-  tr.appendChild(sessionTd);
-
   const removeButton = document.createElement('button');
   removeButton.type = 'button';
   removeButton.className = 'secondary settings-remote-hosts-remove';
@@ -172,7 +157,7 @@ function addHostRow(host) {
   tr.appendChild(removeTd);
 
   remoteHostsBody.appendChild(tr);
-  hostRows.push({ id, tr, nameInput, hostInput, dirInput, sessionSelect });
+  hostRows.push({ id, tr, nameInput, hostInput, dirInput });
 }
 
 remoteHostsAddButton.addEventListener('click', () => {

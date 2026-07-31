@@ -556,7 +556,6 @@ function renderSettingsPanel(): string {
               <th>${t("panels.settings.remoteHostsColName")}</th>
               <th>${t("panels.settings.remoteHostsColHost")}</th>
               <th>${t("panels.settings.remoteHostsColDir")}</th>
-              <th>${t("panels.settings.remoteHostsColSession")}</th>
               <th></th>
             </tr>
           </thead>

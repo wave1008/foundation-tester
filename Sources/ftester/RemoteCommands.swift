@@ -238,7 +238,7 @@ struct RemoteCommand: AsyncParsableCommand {
 
             print("→ stopping bridges and shutting down simulators/emulators")
             let devicesDownCommand = RemoteShell.remoteRunCommand(
-                layout: layout, ftesterArgs: ["devices", "down"], sessionMode: "direct")
+                layout: layout, ftesterArgs: ["devices", "down"])
             let downResult = try Shell.run(remoteSSHBase + [target, devicesDownCommand])
             if downResult.status != 0 {
                 print("warning: `devices down` exited with status \(downResult.status)\n\(downResult.tail)")
