@@ -64,6 +64,14 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 | `withScrollDown { … }` / `withScrollUp` / `withScrollRight` / `withScrollLeft` | ブロック内の `tap` / `type` / `press` / `exist` を**すべてスクロール探索**にする(明示の `scroll:` があればそちらが優先) |
 | `withoutScroll { … }` | 外側の `withScroll*` を打ち消し、ブロック内は現在画面だけで解決する |
 | `tapWithScrollDown(sel, maxSwipes:)` 等 4 方向 | `tap(sel, scroll: .down)` の別名(Shirates と同名) |
+
+レポートに出る注記(**失敗ではなく観測**。読み方):
+
+| 注記 | 意味 | 気にするべきか |
+|---|---|---|
+| `stopped at the limit of N (may not have reached the edge yet)` | `maxSwipes` で打ち切った = 端に着いたとは限らない | **する**。`maxSwipes` を増やすか、そもそも端に着けない画面かを疑う |
+| `the screen did not settle (poll limit)` | スワイプ後 600ms 待っても画面の動きが止まらなかった(慣性が長い等)。操作自体は送られている | 通常は不要。**同じ箇所で毎回出るなら**、静止前の座標でタップして flake る余地があるので調べる価値がある |
+| `fell back to XCUITest` | in-app エンジンで実行できずフォールバックした(1回あたり数百 ms 遅い) | 通常は不要。多発するなら実行プロファイルのエンジン選択を見直す |
 | `tapWithoutScroll(sel, optional:timeout:)` | `withScroll*` の中でも**この 1 コマンドだけ**スクロールしない |
 | `existWithScrollDown(sel, maxSwipes:)` / `existWithScrollUp` | `exist(sel, scroll: .down)` の別名 |
 | `existWithoutScroll(sel, timeout:requireVisible:)` | `withScroll*` の中でも現在画面だけで存在検証 |
