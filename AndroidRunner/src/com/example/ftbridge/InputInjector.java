@@ -233,6 +233,13 @@ final class InputInjector {
                 AccessibilityNodeInfo target = root == null ? null
                         : findEditable(root, shortId, (int) x, (int) y, bounds);
                 if (target != null) {
+                    // 読む前に取り直す(理由は setTextAppendingAt の同じ位置のコメント)。
+                    // **この経路の破損は再現していない**(2026-07-31 に refresh 有無で A/B: どちらも
+                    // 40/40 成功)。それでも入れるのは、ここの失敗モードが**沈黙**だから ——
+                    // 古い空文字を読むと「消えていないのに成功」を返し、後段の別の検証まで
+                    // 行かないと分からない。type/フォーカス経路と形を揃える意味もある。コストは
+                    // 1ノード1 IPC(A/B の実測差 317ms 対 328ms = 誤差)
+                    target.refresh();
                     CharSequence remaining = target.isShowingHintText() ? "" : target.getText();
                     if (remaining == null || remaining.length() == 0) {
                         return;
