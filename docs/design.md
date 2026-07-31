@@ -1429,17 +1429,24 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
      `FTSynthTap` だけが通る
 
   対処は3層(1 はブリッジ側、2〜3 はホスト側)。**UIKit/SwiftUI 側の経路は一切変えていない**:
-  1. **ブリッジ**: Compose 検出時の `/swipe` `/press` は **501**(`InAppBridge.handleSwipe`/`handlePress`。
-     判定は `/status` と同じ `compose-resources` マーカー)。黙って空振りするより
-     「12回スクロールしても見つかりません」のような誤診断を防ぐ方が価値が高い。
+  1. **ブリッジ**: Compose/Flutter 検出時、**ジェスチャ目的**の `/swipe` と `/press` は **501**
+     (`InAppBridge.handleSwipe`/`handlePress`。判定は `/status` と同じ `compose-resources` /
+     `Flutter.framework` マーカー)。黙って空振りするより「12回スクロールしても見つかりません」の
+     ような誤診断を防ぐ方が価値が高い。
      **409 ではなく 501 なのは意図的**: 409 はキーウィンドウ不在等の一時的競合にも使われるため、
      フォールバック判定に使うと「アプリが前面に無い」状況を隠して別画面を操作しかねない
-     (`/terminate` が既に 501=このエンジンでは未対応 を返している慣習に合わせた)
-  2. **事前ルーティング**(2026-07-23): hybrid は in-app と XCUITest の両ブリッジを張るので、
-     起動時プローブの **`/status.unsupportedActions`**(ブリッジが「この対象アプリでは実行できない」
-     アクション名を申告する。Compose なら `["swipe","press"]`)に該当し typeDriver ありなら
-     swipe/press/scrollTo のスワイプを**最初から** typeDriver(`AppAttachDriver`)へ回す
-     (`StepExecutor.gesturesViaTypeDriver`)。409 の往復はゼロ
+     (`/terminate` が既に 501=このエンジンでは未対応 を返している慣習に合わせた)。
+     **スクロール目的(`SwipeRequest.scroll`)だけは 2026-07-31 から in-app で通る** ——
+     UIAccessibility の scroll アクション経由(上の「Compose/Flutter のスクロールは
+     UIAccessibility の scroll アクションで駆動する」の節)。この段の記述は**ジェスチャ目的に限る**
+  2. **事前ルーティング**(2026-07-23 導入 / 2026-07-31 に swipe を除外): hybrid は in-app と
+     XCUITest の両ブリッジを張るので、起動時プローブの **`/status.unsupportedActions`**
+     (ブリッジが「この対象アプリでは実行できない」アクション名を申告する)に該当し typeDriver
+     ありなら**最初から** typeDriver(`AppAttachDriver`)へ回す
+     (`StepExecutor.gesturesViaTypeDriver`)。409 の往復はゼロ。
+     **申告は現在 `["press"]` だけ**(以前は Compose/Flutter で `["swipe","press"]`)。
+     swipe を外したのは、可否が**目的と画面で割れる**ようになり「一律不可」では表現できない
+     ため。swipe の可否判定は `handleSwipe` に一本化してある
   3. **事後 501 キャッチ**: プローブ不達で 2 が立たなかった場合の安全網。1回 501 を受けたら
      ラッチして以降は直接 typeDriver へ(`scrollTo` は maxSwipes 回まわるので毎回往復させない)。
      `type` の 409 安全網と同じ形。**press は ref がブリッジごとに別名前空間**なので
