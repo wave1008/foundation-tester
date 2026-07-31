@@ -195,6 +195,65 @@ public enum ProfileWorkerFactory {
         }
     }
 
+    /// 未起動のエミュレータだけを含む MachineProfile を作る(nil = 起動すべきものが無い)。
+    /// 実機は除外する(電源・接続は人が用意するもの)
+    static func pendingEmulatorProfile(
+        androidDevices: [(name: String, spec: DeviceSpec)],
+        isRunning: (DeviceSpec) -> Bool) -> MachineProfile? {
+        let pending = androidDevices
+            .filter { !$0.spec.isPhysical && !isRunning($0.spec) }
+            .map { $0.spec }
+        guard !pending.isEmpty else { return nil }
+        return MachineProfile(android: MachineDeviceList(devices: pending))
+    }
+
+    /// プロファイルが参照する Android エミュレータのうち**未起動のものを起動する**(iOS の
+    /// BridgeProvisioner と同じ「run するだけで使える」体験にする)。実機は対象外
+    /// (電源・接続は人が用意するもの)。buildAndroidWorkers の前に呼ぶこと
+    public static func ensureAndroidEmulators(
+        resolved: ResolvedProfile, repoRoot: URL?, log: @escaping @Sendable (String) -> Void) async {
+        let isRunning: (DeviceSpec) -> Bool = { (try? AndroidDeviceCatalog.resolveSerial(spec: $0)) != nil }
+        let candidates = resolved.androidDevices.map { ($0.name, $0.spec) }
+        guard let pendingProfile = pendingEmulatorProfile(
+            androidDevices: candidates, isRunning: isRunning) else { return }
+        let booted = candidates.filter { !$0.1.isPhysical && !isRunning($0.1) }
+        await DeviceBooter.bootAll(machine: pendingProfile, repoRoot: repoRoot, log: log)
+        // **起動しただけでは run できない**: コールドブート直後の Android は起動ストームの間、
+        // ブリッジ(ftbridge instrumentation)を立てても数秒で殺す(実測 2026-08-01:
+        // 起動17s→21s で死亡)。sys.boot_completed / bootanim / PackageManager 応答 /
+        // ランチャーの mCurrentFocus はどれもこの窓より手前で真になり、信号に使えなかった。
+        // よって**「立てて、生き続けることを確認する」自己検証で待つ**。
+        // これが機能する前提が AndroidBridge の .active 無効化(死んだクライアントを
+        // 握り続けない)で、それ以前は何度再試行しても同じ死体に当たっていた
+        for (name, spec) in booted {
+            await waitForDurableBridge(spec: spec, name: name, log: log)
+        }
+    }
+
+    /// ブリッジが**定着する**まで待つ(上限 bridgeDurableTimeout)。status 応答 → dwell 待つ →
+    /// もう一度 status が通れば定着と判定する。期限切れは黙って返す(後段のワーカー生成が
+    /// 同じ経路で立て直し、そちらのエラーが正になる)
+    private static let bridgeDwellNs: UInt64 = 8_000_000_000
+    private static let bridgeDurableTimeout: TimeInterval = 300
+    private static func waitForDurableBridge(
+        spec: DeviceSpec, name: String, log: @escaping @Sendable (String) -> Void) async {
+        let deadline = Date().addingTimeInterval(bridgeDurableTimeout)
+        var announced = false
+        while Date() < deadline {
+            if let serial = try? AndroidDeviceCatalog.resolveSerial(spec: spec),
+               let driver = try? AndroidDriver(serial: serial),
+               (try? await driver.status()) != nil {
+                try? await Task.sleep(nanoseconds: bridgeDwellNs)
+                if (try? await driver.status()) != nil { return }
+            }
+            if !announced {
+                log("→ \(name): waiting for the bridge to stay up (a freshly booted guest kills it during the boot storm)")
+                announced = true
+            }
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+        }
+    }
+
     /// Android ワーカーのみ構築(serial 照合+ドライバ生成のみ=数秒)。
     public static func buildAndroidWorkers(resolved: ResolvedProfile) throws -> [RunWorker] {
         try resolved.androidDevices.map { device in

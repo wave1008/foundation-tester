@@ -195,6 +195,10 @@ struct ApiRunCommand: AsyncParsableCommand {
                     _ = await AndroidGpuRecovery.recoverCpuFallbackDevices(
                         devices: resolved.androidDevices, locale: resolved.locale) { logStderr($0) }
                 }
+                // Android エミュレータの自動起動(未起動分のみ。iOS の BridgeProvisioner と同じ
+                // 「run するだけで使える」体験にする)。実機準備の前に置く(実機は対象外なので独立)
+                await ProfileWorkerFactory.ensureAndroidEmulators(
+                    resolved: resolved, repoRoot: try? RepoRoot.find()) { logStderr($0) }
                 await ProfileWorkerFactory.preparePhysicalAndroidDevices(
                     resolved: resolved) { logStderr($0) }
                 var workers = try ProfileWorkerFactory.buildAndroidWorkers(resolved: resolved)
