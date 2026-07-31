@@ -40,7 +40,7 @@ export function resolveRemoteTarget(
 
 /**
  * dir は空なら省略する契約(CLI 既定 = "~/ftester-runner"。引数を渡さないことで CLI 側の
- * 既定に委ねる)。session は "direct" のときだけ明示し、"asuser"(CLI 既定)は省略する。
+ * 既定に委ねる)。session は "asuser" のときだけ明示し、"direct"(CLI 既定)は省略する。
  * 呼び出し側は --profile 実行(profile 指定あり)のときのみこれを args へ足すこと
  * (--host は CLI 側で --profile を必須とし、単一デバイス直指定の実行経路には付けない)。
  */
@@ -50,8 +50,10 @@ export function buildRemoteRunArgs(entry: RemoteHostEntry): string[] {
   if (dir.length > 0) {
     args.push("--remote-dir", dir);
   }
-  if (entry.session === "direct") {
-    args.push("--remote-session", "direct");
+  // CLI 既定は direct(asuser は root 必須で実用不可 — 2026-07-31 実測)。
+  // 既定と同じ値は渡さない
+  if (entry.session === "asuser") {
+    args.push("--remote-session", "asuser");
   }
   return args;
 }
@@ -61,7 +63,7 @@ export function buildRemoteRunArgs(entry: RemoteHostEntry): string[] {
  * name も host も空の要素は捨てる(識別も接続先も持たない無意味な登録)。name が空なら host を
  * name に流用する(一意キーとして機能させるため)。host が空の要素は捨てない —
  * resolveRemoteTarget が「登録はあるが host 未設定」を error として検出する経路に使うため。
- * session は "asuser"/"direct" 以外なら "asuser" に落とす(config.ts の旧読み出しと同じ防御)。
+ * session は "asuser"/"direct" 以外なら "direct" に落とす(asuser は root 必須で実用不可)。
  */
 export function normalizeRemoteHosts(raw: unknown): RemoteHostEntry[] {
   if (!Array.isArray(raw)) {
@@ -80,7 +82,7 @@ export function normalizeRemoteHosts(raw: unknown): RemoteHostEntry[] {
       continue;
     }
     const dir = typeof record.dir === "string" ? record.dir.trim() : "";
-    const session = record.session === "direct" ? "direct" : "asuser";
+    const session = record.session === "asuser" ? "asuser" : "direct";
     result.push({ name, host, dir, session });
   }
   return result;

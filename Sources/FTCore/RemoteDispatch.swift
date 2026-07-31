@@ -97,7 +97,12 @@ public struct RemoteLayout: Equatable, Sendable {
         self.base = Self.stripTrailingSlash(base)
     }
 
-    public var toolRoot: String { base + "/tool" }
+    /// **ディレクトリ名は "foundation-tester" 固定**(短くしない)。SPM はパス依存の
+    /// パッケージ名をディレクトリ名から導出するため、受け手 Package.swift が宣言する
+    /// `package: "foundation-tester"` と一致しないと "unknown package" でマニフェストが
+    /// 壊れる(2026-07-31 の localhost E2E で実測)。install.sh の既定
+    /// TOOL_ROOT(= WORK_DIR/../foundation-tester)とも揃う
+    public var toolRoot: String { base + "/foundation-tester" }
     public var workDir: String { base + "/work" }
     public var binary: String { toolRoot + "/.build/debug/ftester" }
 
@@ -403,7 +408,12 @@ public enum RemoteShell {
         let launch = sessionMode == "asuser"
             ? "launchctl asuser \"$(id -u)\" \(binary) \(args)"
             : "\(binary) \(args)"
-        return "cd \(quote(layout.workDir)) && \(guardCmd) && \(syncCmd) && \(launch)"
+        // 非対話 ssh の PATH は /usr/bin:/bin:/usr/sbin:/sbin だけで Homebrew が入らない。
+        // xcodegen(iOS ワーカーのビルドに必須)・adb などが見えず「No such file or directory」で
+        // 落ちる(2026-07-31 の localhost E2E で実測)。ログインシェルに頼ると受け手の
+        // シェル設定に依存するので、ここで明示的に足す
+        let pathCmd = "export PATH=\"/opt/homebrew/bin:/usr/local/bin:$PATH\""
+        return "cd \(quote(layout.workDir)) && \(pathCmd) && \(guardCmd) && \(syncCmd) && \(launch)"
     }
 }
 
