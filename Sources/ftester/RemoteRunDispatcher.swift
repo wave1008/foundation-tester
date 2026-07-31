@@ -17,7 +17,6 @@ struct RemoteRunDispatcher {
     /// `--remote-dir` の生値(既定 "~/ftester-runner"。チルダ展開前)。resolveLayout が
     /// リモートの $HOME を取得してから RemoteLayout.resolveBase で絶対パスへ解決する
     let remoteDirRaw: String
-    let sessionMode: String
     let localRepoRoot: URL
     // var: default 付き let は memberwise init から除外され .apiRun を注入できない
     var mode: RemoteDispatchMode = .cliRun
@@ -180,8 +179,7 @@ struct RemoteRunDispatcher {
     private func runRemoteAndRelay(ftesterArgs: [String], layout: RemoteLayout,
                                    timeoutSeconds: Int) throws -> Int32 {
         log("==> running on \(host.sshTarget): ftester \(ftesterArgs.joined(separator: " "))")
-        let command = RemoteShell.remoteRunCommand(
-            layout: layout, ftesterArgs: ftesterArgs, sessionMode: sessionMode)
+        let command = RemoteShell.remoteRunCommand(layout: layout, ftesterArgs: ftesterArgs)
         let status = try runInheritedWithLineRewrite(
             sshRunBase + [host.sshTarget, command], layout: layout, timeoutSeconds: timeoutSeconds)
         if status == 90 {

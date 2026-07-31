@@ -211,13 +211,12 @@ export const panelsStrings = {
   "panels.settings.remoteSectionTitle": { ja: "リモート実行", en: "Remote execution" },
   "panels.settings.remoteTargetLabel": { ja: "実行先", en: "Run on" },
   "panels.settings.remoteHostsHint": {
-    ja: "ディスパッチ先として使うホストを登録します。name は実行先セレクタに出る表示名(一意)、host は SSH 先(user@host または host)、dir は空欄で ~/ftester-runner(そのマシンの既存のローカルインストールと同じパスにしないこと)、session は既定 asuser。",
-    en: "Register hosts to dispatch runs to. Name is the display name shown in the run-on selector (must be unique); host is the SSH target (user@host or host); dir blank = ~/ftester-runner (must not be an existing local install on that machine); session defaults to asuser.",
+    ja: "ディスパッチ先として使うホストを登録します。name は実行先セレクタに出る表示名(一意)、host は SSH 先(user@host または host)、dir は空欄で ~/ftester-runner(そのマシンの既存のローカルインストールと同じパスにしないこと)。",
+    en: "Register hosts to dispatch runs to. Name is the display name shown in the run-on selector (must be unique); host is the SSH target (user@host or host); dir blank = ~/ftester-runner (must not be an existing local install on that machine).",
   },
   "panels.settings.remoteHostsColName": { ja: "名前", en: "Name" },
   "panels.settings.remoteHostsColHost": { ja: "ホスト", en: "Host" },
   "panels.settings.remoteHostsColDir": { ja: "作業ベースディレクトリ", en: "Base directory" },
-  "panels.settings.remoteHostsColSession": { ja: "セッション方式", en: "Session" },
   "panels.settings.remoteHostsAdd": { ja: "ホストを追加", en: "Add host" },
 
   "panels.deviceMenu.liveControl": { ja: "ライブ操作", en: "Live Control" },

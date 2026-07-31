@@ -447,8 +447,8 @@ export type MonitorFromWebviewMessage =
   // 更新する。反映は extension.ts の onDidChangeConfiguration ハンドラ(ツリー再翻訳 + 再読み込み案内)。
   | { readonly type: "setLanguage"; readonly value: "auto" | "ja" | "en" }
   // 設定タブのリモート実行セクション変更(settingsTab.js)。monitorPanel.ts が ftester.remote.* 設定
-  // (Global)を更新する。hosts は正規化済みの想定だが検証は型のみ(session の防御は config.ts と
-  // 同じ)。target が hosts のどの name とも一致しなくなった場合は monitorPanel.ts が "" に戻す。
+  // (Global)を更新する。hosts は正規化済みの想定だが検証は型のみ。target が hosts のどの name とも
+  // 一致しなくなった場合は monitorPanel.ts が "" に戻す。
   | { readonly type: "setRemoteConfig"; readonly hosts: readonly RemoteHostEntry[]; readonly target: string }
   // 設定タブ「更新」の「更新を確認」ボタン(settingsTab.js)。monitorPanel.ts が update-check.sh を実行する。
   | { readonly type: "checkUpdate" }
@@ -510,16 +510,14 @@ function isMachineDeviceAddEntryLike(value: unknown): value is MachineDeviceAddE
   );
 }
 
-/** setRemoteConfig の hosts[] 1件の検証。session は "asuser"/"direct" のみ受理(config.ts の
- * normalizeRemoteHosts と同じ許容値。webview 側は既に正規化済みの値を送る想定だが、型不正なペイロードを
- * 弾くための最終ゲート)。 */
+/** setRemoteConfig の hosts[] 1件の検証(webview 側は既に正規化済みの値を送る想定だが、
+ * 型不正なペイロードを弾くための最終ゲート)。 */
 function isRemoteHostEntryLike(value: unknown): value is RemoteHostEntry {
   return (
     isRecord(value) &&
     typeof value.name === "string" &&
     typeof value.host === "string" &&
-    typeof value.dir === "string" &&
-    (value.session === "asuser" || value.session === "direct")
+    typeof value.dir === "string"
   );
 }
 

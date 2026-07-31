@@ -687,10 +687,6 @@ struct RunScenarios: AsyncParsableCommand {
             help: "Runner-only base directory on the remote host (holds its own clone and workspace; default: ~/ftester-runner). Must NOT point at an existing local install of foundation-tester")
     var remoteDir: String = "~/ftester-runner"
 
-    @Option(name: .customLong("remote-session"),
-            help: "Remote session mode: direct (default) or asuser. asuser requires root on the remote and fails without it (measured 2026-07-31); direct works as long as a console user is logged in")
-    var remoteSession: String = "direct"
-
     @Option(name: .customLong("remote-timeout"),
             help: "Timeout in seconds for the whole remote dispatch (default: auto, sized from the scenario count; see docs/remote-runner.md)")
     var remoteTimeout: Int?
@@ -830,17 +826,13 @@ struct RunScenarios: AsyncParsableCommand {
         if skipBuild {
             throw ValidationError("--skip-build is not supported with --host")
         }
-        guard remoteSession == "asuser" || remoteSession == "direct" else {
-            throw ValidationError("--remote-session must be asuser or direct: \(remoteSession)")
-        }
 
         try RemoteLayout.validateBase(remoteDir)
         let hostSpec = try RemoteHostSpec.parse(rawHost)
         let testProject = try ScenarioHost.project(named: project)
         let localRoot = try RepoRoot.find()
         let dispatcher = RemoteRunDispatcher(
-            host: hostSpec, remoteDirRaw: remoteDir,
-            sessionMode: remoteSession, localRepoRoot: localRoot)
+            host: hostSpec, remoteDirRaw: remoteDir, localRepoRoot: localRoot)
         let exitCode = try await dispatcher.dispatch(
             project: testProject, profile: profile, scenarios: scenarios, folders: folders,
             heal: heal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
