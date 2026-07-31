@@ -84,6 +84,21 @@ struct ApiRunCommand: AsyncParsableCommand {
     @Option(help: "Android device serial (adb -s; defaults to the only connected device. Cannot be combined with --profile)")
     var serial: String?
 
+    @Option(help: "Dispatch this run to a remote Mac over SSH (user@host or host) and relay its NDJSON stream. Requires --profile. Experimental (docs/remote-runner.md)")
+    var host: String?
+
+    @Option(name: .customLong("remote-dir"),
+            help: "Runner-only base directory on the remote host (holds its own clone and workspace; default: ~/ftester-runner). Must NOT point at an existing local install of foundation-tester")
+    var remoteDir: String = "~/ftester-runner"
+
+    @Option(name: .customLong("remote-session"),
+            help: "Remote session mode: asuser (default) or direct")
+    var remoteSession: String = "asuser"
+
+    @Option(name: .customLong("remote-timeout"),
+            help: "Timeout in seconds for the whole remote dispatch (default: auto, sized from the scenario count; see docs/remote-runner.md)")
+    var remoteTimeout: Int?
+
     func run() async throws {
         // pause等のイベントが既定の全バッファに滞留すると読み手(VSCode拡張)と相互待ちになる
         // (ScenarioRunnerMain.swift の --debug 実装と同じ理由)。--debug 以外も常に行バッファにする
@@ -100,6 +115,13 @@ struct ApiRunCommand: AsyncParsableCommand {
         }
 
         let testProject = try ScenarioHost.project(named: project)
+
+        // NDJSON はここより後でしか出さない(emitLine(ApiRunStartedEvent) 以降)。--host は
+        // ローカルでは何も実行せずリモートの出力を中継するだけなので、必ずそれより前に分岐する
+        if let host {
+            try await dispatchToRemoteHost(host, project: testProject)
+            return
+        }
 
         // --debug: stdin を専用スレッドで読み行をそのままランナーへ渡す。ScenarioHost.run が
         // 起動直後に onControl で渡す ScenarioRunControl を待つ必要があるため小箱経由で受け渡す
@@ -286,6 +308,54 @@ struct ApiRunCommand: AsyncParsableCommand {
 
         if outcome.failed > 0 {
             throw ExitCode(1)
+        }
+    }
+
+    // MARK: - --host(拡張連携用 NDJSON 中継。docs/remote-runner.md §3・§12)
+
+    /// リモート `ftester api run` の NDJSON を stdout へそのまま中継する。stdin 制御系
+    /// (--debug)・ローカル専用系(--dry-run 等)はリモートでは意味を持たない/中継されないため
+    /// 併用不可にする。--profile は既存の platform/port/serial 排他チェックで担保済みなので
+    /// ここでは個別に確認しない
+    private func dispatchToRemoteHost(_ rawHost: String, project: TestProject) async throws {
+        guard let profile else {
+            throw ValidationError("--host requires --profile")
+        }
+        if debug {
+            throw ValidationError("--debug is not supported with --host")
+        }
+        if !breakpoints.isEmpty {
+            throw ValidationError("--breakpoint is not supported with --host")
+        }
+        if pauseOnStart {
+            throw ValidationError("--pause-on-start is not supported with --host")
+        }
+        if dryRun {
+            throw ValidationError("--dry-run is not supported with --host")
+        }
+        if reportDir != nil {
+            throw ValidationError("--report-dir is not supported with --host")
+        }
+        if skipBuild {
+            throw ValidationError("--skip-build is not supported with --host")
+        }
+        guard remoteSession == "asuser" || remoteSession == "direct" else {
+            throw ValidationError("--remote-session must be asuser or direct: \(remoteSession)")
+        }
+
+        try RemoteLayout.validateBase(remoteDir)
+        let hostSpec = try RemoteHostSpec.parse(rawHost)
+        let localRoot = try RepoRoot.find()
+        let dispatcher = RemoteRunDispatcher(
+            host: hostSpec, remoteDirRaw: remoteDir,
+            sessionMode: remoteSession, localRepoRoot: localRoot, mode: .apiRun)
+        let exitCode = try await dispatcher.dispatchApi(
+            project: project, profile: profile, scenarios: scenarios,
+            heal: heal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
+            defaultTimeout: defaultTimeout, scenarioTimeout: scenarioTimeout.map(Double.init),
+            remoteTimeoutSeconds: remoteTimeout)
+        if exitCode != 0 {
+            throw ExitCode(exitCode)
         }
     }
 

@@ -33,6 +33,7 @@ struct FTester: AsyncParsableCommand {
             DevicesCommand.self,
             ApiCommand.self,
             ResultsCommand.self,
+            RemoteCommand.self,
         ]
     )
 }
@@ -679,12 +680,31 @@ struct RunScenarios: AsyncParsableCommand {
           help: "Enable fast input on the iOS xcuitest bridge (skips the quiescence wait). Can also be set via iosFastInput in the run profile")
     var fastInput = false
 
+    @Option(help: "Dispatch this run to a remote Mac over SSH (user@host or host). Requires --profile. Experimental (docs/remote-runner.md)")
+    var host: String?
+
+    @Option(name: .customLong("remote-dir"),
+            help: "Runner-only base directory on the remote host (holds its own clone and workspace; default: ~/ftester-runner). Must NOT point at an existing local install of foundation-tester")
+    var remoteDir: String = "~/ftester-runner"
+
+    @Option(name: .customLong("remote-session"),
+            help: "Remote session mode: asuser (default) or direct")
+    var remoteSession: String = "asuser"
+
+    @Option(name: .customLong("remote-timeout"),
+            help: "Timeout in seconds for the whole remote dispatch (default: auto, sized from the scenario count; see docs/remote-runner.md)")
+    var remoteTimeout: Int?
+
     @OptionGroup var driverOptions: DriverOptions
 
     func run() async throws {
         // BridgeClient(ホスト・サブプロセス両方)が FT_FAST_INPUT を読む。プロファイル指定分は
         // ProfileRunner が同様に注入する
         if fastInput { setenv("FT_FAST_INPUT", "1", 1) }
+        if let host {
+            try await dispatchToRemoteHost(host)
+            return
+        }
         PhaseLog.mark("start")
         let testProject = try ScenarioHost.project(named: project)
         PhaseLog.mark("project-resolved")
@@ -788,6 +808,45 @@ struct RunScenarios: AsyncParsableCommand {
               : "❌ \(failedCount) of \(items.count) scenario(s) failed")
         if failedCount > 0 {
             throw ExitCode(1)
+        }
+    }
+
+    /// `--host`: ローカルビルド・実行をせず、対等ピア(SSH 到達可能な foundation-tester clone)
+    /// に丸ごとディスパッチする(docs/remote-runner.md §3・§7・Phase 1)。デバイス割当競合を
+    /// 避けるためリモート1本での実行のみサポートし、ローカル専用オプションは併用不可にする
+    private func dispatchToRemoteHost(_ rawHost: String) async throws {
+        guard let profile else {
+            throw ValidationError("--host requires --profile")
+        }
+        if ports != nil {
+            throw ValidationError("--ports is not supported with --host")
+        }
+        if reportDir != nil {
+            throw ValidationError("--report-dir is not supported with --host")
+        }
+        if failed {
+            throw ValidationError("--failed is not supported with --host")
+        }
+        if skipBuild {
+            throw ValidationError("--skip-build is not supported with --host")
+        }
+        guard remoteSession == "asuser" || remoteSession == "direct" else {
+            throw ValidationError("--remote-session must be asuser or direct: \(remoteSession)")
+        }
+
+        try RemoteLayout.validateBase(remoteDir)
+        let hostSpec = try RemoteHostSpec.parse(rawHost)
+        let testProject = try ScenarioHost.project(named: project)
+        let localRoot = try RepoRoot.find()
+        let dispatcher = RemoteRunDispatcher(
+            host: hostSpec, remoteDirRaw: remoteDir,
+            sessionMode: remoteSession, localRepoRoot: localRoot)
+        let exitCode = try await dispatcher.dispatch(
+            project: testProject, profile: profile, scenarios: scenarios, folders: folders,
+            heal: heal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,
+            fastInput: fastInput, localJUnitPath: junit, remoteTimeoutSeconds: remoteTimeout)
+        if exitCode != 0 {
+            throw ExitCode(exitCode)
         }
     }
 
