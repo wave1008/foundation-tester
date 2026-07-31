@@ -76,6 +76,10 @@ enum ProfileRunner {
         let supplyLease = leaseStateDir.map { SupplyLeaseHolder(stateDir: $0) }
         defer { supplyLease?.release() }
 
+        // Android エミュレータの自動起動(未起動分のみ。iOS の BridgeProvisioner と同じ
+        // 「run するだけで使える」体験にする)。実機準備の前に置く(実機は対象外なので独立)
+        await ProfileWorkerFactory.ensureAndroidEmulators(
+            resolved: resolved, repoRoot: repoRoot) { print($0) }
         await ProfileWorkerFactory.preparePhysicalAndroidDevices(resolved: resolved) { print($0) }
         var workers = try ProfileWorkerFactory.buildAndroidWorkers(resolved: resolved)
         supplyLease?.hold(keys: workers.compactMap { $0.connection.serial ?? $0.connection.udid })
