@@ -140,6 +140,9 @@ final class BridgeRouter {
         /// SnapshotResponse.keyboardShown 用。**Captured に載せる**: 整定ループは captureOnce を
         /// 複数回まわして「返す1回」を選ぶので、インスタンス変数だと返却ツリーと1回ズレる
         let sawKeyboard: Bool
+        /// captureSettled が **budget 切れで打ち切った**(= 収束していないツリー)。
+        /// 黙って返すと「毎回 350ms 使い切っているのに誰も気付かない」状態が続くので note にする
+        var settleCapped: Bool = false
     }
 
     private func handleSnapshot() throws -> BridgeHTTPServer.Response {
@@ -157,6 +160,7 @@ final class BridgeRouter {
                            width: cap.screen.width, height: cap.screen.height),
             elements: withFocusedFlag(cap.elements, app: app),
             truncatedCount: cap.truncated,
+            note: cap.settleCapped ? "snapshot taken before the screen settled (budget)" : nil,
             keyboardShown: cap.sawKeyboard ? true : nil))
     }
 
@@ -220,7 +224,10 @@ final class BridgeRouter {
             previous = current
             previousSignature = signature
         }
-        return previous   // budget 切れ。previous は常に直近の取得(収束はしていない)
+        // budget 切れ。previous は常に直近の取得(収束はしていない)。
+        // **打ち切ったことを申告する**(handleSnapshot が note にする)
+        previous.settleCapped = true
+        return previous
     }
 
     /// 静止判定の署名。ラベル・型・矩形が全て同じなら「動いていない」とみなす

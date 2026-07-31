@@ -928,6 +928,14 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
     呼ぶので、受けないと**フラグが最初のラッパーで落ちて**経路が丸ごと不発になる
     (実際に落として、フルスイート2周ぶん「緑だが遅いまま」を測ってしまった)。
     `SwipeForScrollForwardingTests` がソース走査で守る
+- **整定の打ち切りは黙って返さない**(2026-07-31)。整定待ちは3層にあり(ホストの
+  `settledSignature` = 6 poll / in-app の `InAppSettle` = cap 2,500ms / XCUITest ランナーの
+  `captureSettled` = budget 350ms)、**どれも収束と打ち切りを同じ顔で返していた**。そのため
+  「常態的に上限へ張り付いているのに緑」が誰にも見えず、実際に2件を長く見逃した
+  (ラベル振れによる `scrollToEdge` の非収束 / scroll edge effect による in-app の 2.5 秒張り付き)。
+  唯一申告していた `scrollToEdge` の `stopped at the limit of N` が、その2件を見つける入口になった。
+  以後3層とも note で申告する(ブリッジは `OKResponse.note` / `SnapshotResponse.note`、
+  ホストは `StepOutcome.driverFallback`)。**打ち切りは失敗ではない**ので status は 200 のまま
 - **整定は「視覚効果パラメータ」を動きと数えない**(2026-07-31)。`InAppSettle` は無アニメが
   100ms 続いたら整定とみなすが、iOS26/27 の scroll edge effect(スクロール縁のぼかし)が
   `CABackdropLayer` の `filters.gaussianBlur.inputRadius` を 0.25s で animate し続けるため、
