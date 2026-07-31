@@ -21,10 +21,17 @@ public enum ToolchainFingerprint {
 
     private static func compute() -> String? {
         guard let xcode = run(["xcodebuild", "-version"]) else { return nil }
-        // "Xcode 27.0\nBuild version 27A5228h" → 両行を1行に畳む(改行はファイルの区切りに使う)
-        let xcodeLine = xcode.split(separator: "\n").map(String.init).joined(separator: " ")
         let sdk = run(["xcrun", "--sdk", "iphonesimulator", "--show-sdk-build-version"]) ?? "sdk?"
-        return "\(xcodeLine.trimmingCharacters(in: .whitespaces)) / iphonesimulator \(sdk)"
+        return compose(xcodeVersionOutput: xcode, sdkBuild: sdk)
+    }
+
+    /// リモートホストの指紋を同じ規則で合成するために公開する(RemoteRunDispatcher が
+    /// ssh 経由で採取した `xcodebuild -version` / SDK build を渡す)。
+    /// **フォーマットを1バイトも変えない**こと(成果物の指紋ファイルと文字列比較される)
+    public static func compose(xcodeVersionOutput: String, sdkBuild: String) -> String {
+        // "Xcode 27.0\nBuild version 27A5228h" → 両行を1行に畳む(改行はファイルの区切りに使う)
+        let xcodeLine = xcodeVersionOutput.split(separator: "\n").map(String.init).joined(separator: " ")
+        return "\(xcodeLine.trimmingCharacters(in: .whitespaces)) / iphonesimulator \(sdkBuild)"
     }
 
     private static func run(_ command: [String]) -> String? {
