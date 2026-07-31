@@ -82,6 +82,14 @@ final class InputInjector {
                 AccessibilityNodeInfo target = root == null ? null
                         : findEditable(root, shortId, (int) x, (int) y, bounds);
                 if (target != null) {
+                    // **読む前に必ず取り直す**。a11y ノードはキャッシュから供給され、とくに
+                    // WebView(Chromium)は DOM 変更のイベントを遅れて出すため、取り直さないと
+                    // getText() が**変更前の値を返し続ける**(SnapshotBuilder.collect の
+                    // insideWebView refresh と同じ事情・同じ対策)。これが無いと
+                    // 「SET_TEXT は効いているのに読みが古く、期限切れで 500」になる
+                    // (2026-07-31 実測: WebView 入力欄で 20%。値は実際には入っていた)。
+                    // 1ノード1 IPC。通常経路は 1〜2 周で終わるのでコストは無視できる
+                    target.refresh();
                     CharSequence existing = target.isShowingHintText() ? "" : target.getText();
                     String current = existing == null ? "" : existing.toString();
                     if (combined != null && applied(current, combined, masked)) {
@@ -303,6 +311,8 @@ final class InputInjector {
                 AccessibilityNodeInfo focus = root == null ? null
                         : root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
                 if (focus != null) {
+                    // 読む前に取り直す(理由は setTextAppendingAt の同じ位置のコメント)
+                    focus.refresh();
                     CharSequence existing = focus.isShowingHintText() ? "" : focus.getText();
                     String current = existing == null ? "" : existing.toString();
                     if (combined != null && applied(current, combined, masked)) {
