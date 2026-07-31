@@ -66,6 +66,7 @@ enum InAppSettle {
             guard let anim = layer.animation(forKey: key) else { continue }
             if anim.repeatCount.isInfinite || anim.repeatCount > 100 { continue }
             if anim.repeatDuration > 1_000_000 { continue }
+            if isVisualEffectParameter((anim as? CAPropertyAnimation)?.keyPath ?? key) { continue }
             return true
         }
         for sub in layer.sublayers ?? [] where layerAnimating(sub) { return true }
@@ -76,5 +77,17 @@ enum InAppSettle {
     private static func isDecorativeChrome(_ layer: CALayer) -> Bool {
         let name = String(describing: type(of: layer))
         return name.contains("SDF") || name.contains("LiquidLens")
+    }
+
+    /// ぼかし等**視覚効果パラメータ**のアニメーションか。これは「画面がまだ動いている」信号ではない。
+    ///
+    /// 具体的には iOS26/27 の scroll edge effect(スクロール縁のぼかし)。実測(2026-07-31)で
+    /// `CABackdropLayer` が `filters.gaussianBlur.inputRadius` を 0.25s で animate し続け、
+    /// **無限反復でないので既存の除外に掛からない**まま quietMs 100ms の無アニメ区間を作らせず、
+    /// launch 直後の 1〜2 アクションが毎回 cap(2500ms)に張り付いていた
+    /// (Compose iOS で actionMs 2,521ms。同じ操作は温まった後なら 107ms)。
+    /// **位置・不透明度・transform は除外しない**ので、本物の画面遷移の待ちは従来どおり効く
+    private static func isVisualEffectParameter(_ keyPath: String) -> Bool {
+        keyPath.hasPrefix("filters.") || keyPath.hasPrefix("backdropFilters.")
     }
 }

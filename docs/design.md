@@ -901,6 +901,18 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
   待ちはメインをブロックしない(asyncAfter)ので遷移自体は進む。**再試行は activate false の
   ときだけ**発生し通常経路のコストはゼロ。恒常的に activate false の要素(合成タッチで動くもの)は
   最大 ~1s 遅くなるが正しさ優先。レポート注記「要素を取り直して再実行」で観測できる。
+- **整定は「視覚効果パラメータ」を動きと数えない**(2026-07-31)。`InAppSettle` は無アニメが
+  100ms 続いたら整定とみなすが、iOS26/27 の scroll edge effect(スクロール縁のぼかし)が
+  `CABackdropLayer` の `filters.gaussianBlur.inputRadius` を 0.25s で animate し続けるため、
+  **無限反復ではなく既存の除外(match/punchout/SDF)にも掛からず**、静止区間が一度も作れない。
+  結果 Compose iOS では launch 直後の 1〜2 アクションが毎回 cap 2500ms に張り付いていた
+  (実測 actionMs 2,521ms。温まった後の同じ操作は 107ms。SwiftUI/Flutter には出ない)。
+  `keyPath` が `filters.` / `backdropFilters.` で始まるアニメーションは無視する。
+  **位置・不透明度・transform は除外しない**ので本物の遷移待ちは従来どおり効く
+  (この修正で CMP の in-app スイートは 74s→57s)。
+  同種の問題は「cap 打ち切りが常態化しても黙っている」ため見つけにくい —— 疑ったら
+  `InAppSettle` に一時 NSLog を入れて `xcrun simctl spawn <udid> log stream` で層と
+  キーを1回採るのが早い(手順は docs/verification.md)
   修正後: シナリオ×15 + フルスイート×3 で失敗ゼロ・救済発火4回
 - **inapp の type は Compose Multiplatform でも通る**(2026-07-21 更新。それ以前は XCUITest 切替が
   必要だった)。Compose は「フォーカスアンカーの OverlayInputView(入力セレクタ非応答)」と

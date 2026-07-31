@@ -37,7 +37,10 @@ public enum BridgeAPI {
     /// = ホストがセッション消失と誤断定して無用な activate を撃ち、誤った理由でステップを落とす
     /// 24: /clear が 2 周固定をやめ、空になるまで(deadline 付きで)叩くようになった(2026-07-31)。
     /// 旧ランナーが再利用されると高負荷での取りこぼしフレークが残ったままになる
-    public static let bridgeProtocolVersion = 24
+    /// 25: in-app の整定が視覚効果パラメータ(scroll edge effect のぼかし)を「動いている」と
+    /// 数えなくなった(2026-07-31)。旧 dylib が再利用されると launch 直後の 1〜2 アクションが
+    /// 毎回 cap 2500ms に張り付いたままになる
+    public static let bridgeProtocolVersion = 25
 
     /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
     /// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java の
