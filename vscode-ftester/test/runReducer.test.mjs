@@ -429,3 +429,23 @@ test("scenarioRequeued は出力行と requeued アクション(待機中へ戻�
   assert.ok(r.actions[0].text.includes("(1/2)"));
   assert.deepEqual(r.actions[1], { type: "requeued", scenario: "Foo.S0010" });
 });
+
+test("createRunReducerState(host): runStarted の見出しに \" @host\" が付く", () => {
+  const state = createRunReducerState("mac-02");
+  const r = reduceRunEvent(state, { kind: "runStarted", total: 3 }, 0);
+  assert.equal(r.actions.length, 1);
+  assert.ok(r.actions[0].text.endsWith(" @mac-02"), r.actions[0].text);
+});
+
+test("createRunReducerState(host なし): runStarted の見出しにサフィックスが付かない", () => {
+  const state = createRunReducerState();
+  const r = reduceRunEvent(state, { kind: "runStarted", total: 3 }, 0);
+  assert.equal(r.actions.length, 1);
+  assert.ok(!r.actions[0].text.includes("@"), r.actions[0].text);
+});
+
+test("createRunReducerState(空白のみの host): サフィックス無し(trim 後空文字は undefined 扱い)", () => {
+  const state = createRunReducerState("   ");
+  const r = reduceRunEvent(state, { kind: "runStarted", total: 1 }, 0);
+  assert.ok(!r.actions[0].text.includes("@"), r.actions[0].text);
+});

@@ -16,6 +16,9 @@ const lptHistoryInput = document.getElementById('settings-lpt-history');
 // 拡張から届く既定値(空欄・不正値のときに戻す値)。届くまでは null。
 let lptHistoryDefault = null;
 const languageSelect = document.getElementById('settings-language');
+const remoteTargetSelect = document.getElementById('settings-remote-target');
+const remoteHostsBody = document.getElementById('settings-remote-hosts-body');
+const remoteHostsAddButton = document.getElementById('settings-remote-hosts-add');
 const updateStatus = document.getElementById('settings-update-status');
 const updateSpinner = document.getElementById('settings-update-spinner');
 const updateCheckButton = document.getElementById('settings-update-check');
@@ -52,6 +55,147 @@ lptHistoryInput.addEventListener('change', () => {
 languageSelect.addEventListener('change', () => {
   vscode.postMessage({ type: 'setLanguage', value: languageSelect.value });
 });
+
+// ---- リモート実行(ftester.remote.hosts/target・config.ts。docs/remote-runner.md §12) --------
+// ホスト一覧は行数が可変のため DOM を直接組み立てる。行の識別は name(変更され得る)ではなく
+// 使い捨ての rowId で行う — さもないと「選択中ホストの name を編集する」操作で選択が迷子になる
+// (target セレクタの value は rowId、実際に送る target 文字列はそのIDの行の現在の name)。
+let hostRows = []; // { id, nameInput, hostInput, dirInput, sessionSelect, tr }
+let nextRowId = 0;
+// 選択中ターゲットの rowId。null = ローカル実行。
+let selectedTargetRowId = null;
+
+function currentHostsPayload() {
+  return hostRows.map((row) => ({
+    name: row.nameInput.value.trim(),
+    host: row.hostInput.value.trim(),
+    dir: row.dirInput.value.trim(),
+    session: row.sessionSelect.value === 'direct' ? 'direct' : 'asuser',
+  }));
+}
+
+function currentTargetPayload() {
+  if (selectedTargetRowId === null) {
+    return '';
+  }
+  const row = hostRows.find((r) => r.id === selectedTargetRowId);
+  return row ? row.nameInput.value.trim() : '';
+}
+
+function sendRemoteConfig() {
+  vscode.postMessage({ type: 'setRemoteConfig', hosts: currentHostsPayload(), target: currentTargetPayload() });
+}
+
+// 実行先セレクタの選択肢を現在の行の name で作り直す(rowId を value にすることで name 変更中も
+// 選択を見失わない)。selectedTargetRowId が指す行が無くなっていれば local へ落とす。
+function rebuildTargetOptions() {
+  if (selectedTargetRowId !== null && !hostRows.some((r) => r.id === selectedTargetRowId)) {
+    selectedTargetRowId = null;
+  }
+  remoteTargetSelect.textContent = '';
+  const localOption = document.createElement('option');
+  localOption.value = '';
+  localOption.textContent = t('wvMonitor2.remote.localOption');
+  remoteTargetSelect.appendChild(localOption);
+  for (const row of hostRows) {
+    const option = document.createElement('option');
+    option.value = String(row.id);
+    option.textContent = row.nameInput.value.trim() || t('wvMonitor2.remote.unnamed');
+    remoteTargetSelect.appendChild(option);
+  }
+  remoteTargetSelect.value = selectedTargetRowId === null ? '' : String(selectedTargetRowId);
+}
+
+function onHostsChanged() {
+  rebuildTargetOptions();
+  sendRemoteConfig();
+}
+
+function removeHostRow(id) {
+  const index = hostRows.findIndex((r) => r.id === id);
+  if (index === -1) {
+    return;
+  }
+  hostRows[index].tr.remove();
+  hostRows.splice(index, 1);
+  onHostsChanged();
+}
+
+// host(省略時は空行=追加ボタン用)から1行分の DOM を組み立てて末尾に追加する。
+function addHostRow(host) {
+  const id = nextRowId++;
+  const tr = document.createElement('tr');
+
+  const makeTextCell = (value, placeholder) => {
+    const td = document.createElement('td');
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'settings-text settings-remote-hosts-input';
+    input.value = value;
+    if (placeholder) {
+      input.placeholder = placeholder;
+    }
+    input.addEventListener('change', onHostsChanged);
+    td.appendChild(input);
+    tr.appendChild(td);
+    return input;
+  };
+
+  const nameInput = makeTextCell(host ? host.name : '');
+  const hostInput = makeTextCell(host ? host.host : '', 'user@host');
+  const dirInput = makeTextCell(host ? host.dir : '', '~/ftester-runner');
+
+  const sessionSelect = document.createElement('select');
+  sessionSelect.className = 'settings-select settings-remote-hosts-session';
+  for (const value of ['asuser', 'direct']) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = value;
+    sessionSelect.appendChild(option);
+  }
+  sessionSelect.value = host && host.session === 'direct' ? 'direct' : 'asuser';
+  sessionSelect.addEventListener('change', onHostsChanged);
+  const sessionTd = document.createElement('td');
+  sessionTd.appendChild(sessionSelect);
+  tr.appendChild(sessionTd);
+
+  const removeButton = document.createElement('button');
+  removeButton.type = 'button';
+  removeButton.className = 'secondary settings-remote-hosts-remove';
+  removeButton.textContent = '−';
+  removeButton.title = t('wvMonitor2.remote.removeTitle');
+  // 削除は破壊的操作だが、ホスト登録は再入力が容易な小データなので modal 確認は不要
+  // (プロファイル削除の modal 方式はここには適用しない)。
+  removeButton.addEventListener('click', () => removeHostRow(id));
+  const removeTd = document.createElement('td');
+  removeTd.appendChild(removeButton);
+  tr.appendChild(removeTd);
+
+  remoteHostsBody.appendChild(tr);
+  hostRows.push({ id, tr, nameInput, hostInput, dirInput, sessionSelect });
+}
+
+remoteHostsAddButton.addEventListener('click', () => {
+  addHostRow(null);
+  onHostsChanged();
+});
+
+remoteTargetSelect.addEventListener('change', () => {
+  selectedTargetRowId = remoteTargetSelect.value === '' ? null : Number(remoteTargetSelect.value);
+  sendRemoteConfig();
+});
+
+// remoteConfig 受信(ready 直後・削除で target の指す先が消えたときの拡張側補正)で全行を作り直す。
+function applyRemoteConfig(message) {
+  remoteHostsBody.textContent = '';
+  hostRows = [];
+  for (const host of Array.isArray(message.hosts) ? message.hosts : []) {
+    addHostRow(host);
+  }
+  const matched = hostRows.find((row) => row.nameInput.value.trim() === message.target);
+  selectedTargetRowId = matched ? matched.id : null;
+  rebuildTargetOptions();
+}
 
 updateCheckButton.addEventListener('click', () => {
   vscode.postMessage({ type: 'checkUpdate' });
@@ -130,6 +274,8 @@ export function applySettings(message) {
     lptHistoryInput.value = String(message.value);
   } else if (message.type === 'language') {
     languageSelect.value = message.value;
+  } else if (message.type === 'remoteConfig') {
+    applyRemoteConfig(message);
   } else if (message.type === 'updateStatus') {
     applyUpdateStatus(message);
   }

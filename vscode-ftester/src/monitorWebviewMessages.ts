@@ -8,6 +8,7 @@
 import type { MonitorDeviceFilter } from "./config";
 import type { RecordingErrorEntry, RecordingScenarioVideo, RecordingTreeClass } from "./recordingsModel";
 import type { RecordingSessionSummary } from "./recordingsStore";
+import type { RemoteHostEntry } from "./remoteRunArgs";
 import type { ResidentProcess } from "./residentProcesses";
 import { isRecord, type MonitorDevice, type MonitorEvent, type MonitorPlatform } from "./monitorDeviceModel";
 import type { DeviceOpKind, DeviceOpQueueStatus } from "./monitorDeviceLifecycle";
@@ -238,6 +239,10 @@ export type MonitorToWebviewMessage =
   // 設定タブの表示言語セレクタ(#settings-language)の現在値(ftester.language 設定の生値)。ready 直後に
   // 送る。webview 側は settingsTab.js の applySettings。切替は setLanguage と対。
   | { readonly type: "language"; readonly value: "auto" | "ja" | "en" }
+  // 設定タブのリモート実行セクション(ftester.remote.* 設定の生値)。ready 直後と、削除で target の
+  // 指す先が消えたときの補正(monitorPanel.ts)に送る。webview 側は settingsTab.js の applySettings。
+  // 変更は setRemoteConfig と対(docs/remote-runner.md §12)。
+  | { readonly type: "remoteConfig"; readonly hosts: readonly RemoteHostEntry[]; readonly target: string }
   // 設定タブ「更新」セクションの状態。パネル ready 直後と checkUpdate/runUpdate の前後に送る。
   // 判定そのものは Scripts/update-check.sh(拡張は解釈するだけ)。対向: settingsTab.js の applyUpdate。
   // **実行ログは webview に送らない**(VSCode の OUTPUT へ出す。monitorUpdateController.ts 冒頭)。
@@ -441,6 +446,10 @@ export type MonitorFromWebviewMessage =
   // 設定タブの表示言語セレクタ変更(settingsTab.js)。monitorPanel.ts が ftester.language 設定(Global)を
   // 更新する。反映は extension.ts の onDidChangeConfiguration ハンドラ(ツリー再翻訳 + 再読み込み案内)。
   | { readonly type: "setLanguage"; readonly value: "auto" | "ja" | "en" }
+  // 設定タブのリモート実行セクション変更(settingsTab.js)。monitorPanel.ts が ftester.remote.* 設定
+  // (Global)を更新する。hosts は正規化済みの想定だが検証は型のみ(session の防御は config.ts と
+  // 同じ)。target が hosts のどの name とも一致しなくなった場合は monitorPanel.ts が "" に戻す。
+  | { readonly type: "setRemoteConfig"; readonly hosts: readonly RemoteHostEntry[]; readonly target: string }
   // 設定タブ「更新」の「更新を確認」ボタン(settingsTab.js)。monitorPanel.ts が update-check.sh を実行する。
   | { readonly type: "checkUpdate" }
   // 設定タブ「更新」の「更新する」ボタン。monitorPanel.ts が update.sh を実行し、出力は OUTPUT へ出す。
@@ -498,6 +507,19 @@ function isMachineDeviceAddEntryLike(value: unknown): value is MachineDeviceAddE
     (value.serial === undefined || typeof value.serial === "string") &&
     (value.model === undefined || typeof value.model === "string") &&
     (value.kind === undefined || value.kind === "virtual" || value.kind === "physical")
+  );
+}
+
+/** setRemoteConfig の hosts[] 1件の検証。session は "asuser"/"direct" のみ受理(config.ts の
+ * normalizeRemoteHosts と同じ許容値。webview 側は既に正規化済みの値を送る想定だが、型不正なペイロードを
+ * 弾くための最終ゲート)。 */
+function isRemoteHostEntryLike(value: unknown): value is RemoteHostEntry {
+  return (
+    isRecord(value) &&
+    typeof value.name === "string" &&
+    typeof value.host === "string" &&
+    typeof value.dir === "string" &&
+    (value.session === "asuser" || value.session === "direct")
   );
 }
 
@@ -670,6 +692,12 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
       return typeof value.value === "boolean";
     case "setLanguage":
       return value.value === "auto" || value.value === "ja" || value.value === "en";
+    case "setRemoteConfig":
+      return (
+        typeof value.target === "string" &&
+        Array.isArray(value.hosts) &&
+        value.hosts.every(isRemoteHostEntryLike)
+      );
     case "devicesTabVisible":
       return typeof value.visible === "boolean";
     case "setLptScheduling":

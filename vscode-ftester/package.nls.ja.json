@@ -23,6 +23,8 @@
   "ftester.config.showOnlyFailedTests.description": "Test Explorer のツリーを失敗したテストだけに絞り込みます(未実施・成功のテストは非表示)。Test Explorer タイトルバーのフィルターボタンでも切り替えられます。",
   "ftester.config.language.description": "拡張の UI 表示言語。auto は VS Code の表示言語に追従します(ja 系なら日本語、それ以外は英語)。",
   "ftester.config.updateCheck.description": "auto: 起動時(1日1回まで)に foundation-tester の更新有無を確認し、あれば通知します。確認するだけで取り込みは行いません(取り込みは /ftester-update)。off: 確認しません。",
+  "ftester.config.remoteHosts.description": "`ftester api run` のディスパッチ先として登録するリモートホスト一覧。各要素: name(設定タブの実行先セレクタに出る表示名。一意にすること)、host(SSH 先、user@host または host)、dir(リモートの作業ベースディレクトリ。空欄で CLI 既定 ~/ftester-runner。そのマシンの既存のローカルインストールと同じパスを指定してはならない)、session(既定 asuser = launchctl asuser 経由 / direct = ftester プロセスを直接実行)。モニターパネルの設定タブ、またはここで直接編集します。",
+  "ftester.config.remoteTarget.description": "`ftester api run` のディスパッチ先として使う ftester.remote.hosts の登録名。空欄(既定)はローカル実行です。host が設定された登録名と一致しない場合は、黙ってローカル実行にフォールバックせずエラーで実行を中止します。ftester.profile(実行プロファイル)の指定が必要です。ライブ操作パネルからの単一デバイス実行は、この設定に関わらず常にローカルで実行されます。",
   "ftester.view.ftesterSteps.name": "ftester ステップ",
   "ftester.debugger.project.description": "対象のテストプロジェクト名(Projects/<name> の <name>)。省略時は ftester.project 設定や自動判定で補完されます。",
   "ftester.debugger.scenario.description": "デバッグ実行するシナリオ ID(クラス名.メソッド名)。1件のみ指定できます。",
