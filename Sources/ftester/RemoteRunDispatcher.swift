@@ -308,8 +308,17 @@ struct RemoteRunDispatcher {
         let splitter = StreamLineSplitter()
         let remoteRoot = layout.base
         let localRoot = localRepoRoot.path
+        let mode = self.mode
         func relayLine(_ line: String) {
-            print(RemotePathRewrite.rewrite(line, remoteRoot: remoteRoot, localRoot: localRoot))
+            let rewritten = RemotePathRewrite.rewrite(line, remoteRoot: remoteRoot, localRoot: localRoot)
+            // `-tt`(擬似 TTY)はリモートの stderr を stdout に合流させる。apiRun の stdout は
+            // NDJSON 専用の契約なので、機械可読行だけを stdout へ流し、リモートの人間向け診断は
+            // stderr へ振り分け直す(2026-07-31 の localhost E2E で混入を実測)
+            if mode == .apiRun, !RemoteRelay.isMachineReadableLine(rewritten) {
+                FileHandle.standardError.write(Data((rewritten + "\n").utf8))
+                return
+            }
+            print(rewritten)
         }
         try process.run()
         DispatchQueue.global(qos: .utility).async {
