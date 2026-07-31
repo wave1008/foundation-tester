@@ -1,0 +1,30 @@
+{
+  "app": "sut-ec-mobile",
+  "devices": [
+    {
+      "name": "Pixel 9(Android 15)-01"
+    },
+    {
+      "name": "Pixel 9(Android 15)-02"
+    },
+    {
+      "name": "Pixel 9(Android 15)-03"
+    },
+    {
+      "name": "Pixel 9(Android 15)-04"
+    },
+    {
+      "name": "Pixel 9(Android 15)-05"
+    }
+  ],
+  "heal": false,
+  "reportDir": "reports",
+  "machine": "M2Ultra",
+  "iosInappEngine": true,
+  "wipeDataOnBloat": true,
+  "record": true,
+  "recoverCpuFallbackToGpu": true,
+  "fm": true,
+  "falsePositiveCheck": false,
+  "screenIs": true
+}
