@@ -596,6 +596,16 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
   `UiAutomation.getWindows()` に `TYPE_INPUT_METHOD` があるときだけ撃つ(無いと画面が戻る)
 - **`performAction` / ノード読みは try/catch で「取り直し」に変換**する。レイアウト変化中の
   ノードは内部で NPE を投げる
+- **読む前に `AccessibilityNodeInfo.refresh()` する**(2026-07-31 追加)。a11y ノードは
+  キャッシュから供給されるので、`getRootInActiveWindow()` を毎周回取り直しても
+  **`getText()` は変更前の値を返し続ける**ことがある。とくに WebView(Chromium)は DOM 変更の
+  a11y イベントを数秒遅れて出す。取り直さないと「SET_TEXT は効いているのに読みが古く、
+  期限切れで 500」= **実際には入っているのに失敗**になる(WebView 入力欄で 20% 再現。
+  期限時のノードは `focused=true` で `text=""` なのに、ホストのスナップショットは
+  `hello123` を読めていた)。`SnapshotBuilder.collect` が `insideWebView` で同じことを
+  していたのに、注入側だけ漏れていた。**副産物として速くなる**: 確認が即座に成立するので
+  WebView の type は 2,000→300ms、通常欄も中央値 864→520ms
+  (キャッシュが古いあいだ待っていたぶんが消えた)
 
 **評価して不採用(再提案しない)**: `ACTION_FOCUS` でフォーカスを立てる案は **NPE を誘発して
 失敗率が 2/5 → 5/5 に悪化**した(フォーカス移動でノードが無効化される)。ホスト側での事前・事後の
