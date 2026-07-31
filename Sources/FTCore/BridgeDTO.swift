@@ -43,7 +43,9 @@ public enum BridgeAPI {
     /// 26: in-app の swipe が Compose/Flutter で UIAccessibility の scroll アクション経由で
     /// 効くようになり、swipe を unsupportedActions に申告しなくなった(2026-07-31)。
     /// 旧 dylib が再利用されるとスクロールが全部 XCUITest へ回ったままになる
-    public static let bridgeProtocolVersion = 26
+    /// 27: 整定を **cap で打ち切ったことを note で申告**するようになった(2026-07-31)。
+    /// 旧ブリッジは黙るので「常態的に上限へ張り付いているのに緑」が見えないまま残る
+    public static let bridgeProtocolVersion = 27
 
     /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
     /// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java の

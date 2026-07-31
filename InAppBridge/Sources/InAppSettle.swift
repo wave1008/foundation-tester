@@ -9,19 +9,25 @@ import QuartzCore
 enum InAppSettle {
 
     /// メインスレッドで呼ぶこと。整定または cap 到達で done をメインで1回だけ呼ぶ。
-    static func waitOnMain(quietMs: Int = 100, capMs: Int = 2500, done: @escaping () -> Void) {
+    ///
+    /// `done` の引数は **converged**(true = 無アニメが quietMs 続いた / false = cap 打ち切り)。
+    /// **打ち切りを黙って返さない**のが要点: 常態的に cap へ張り付いていても結果は同じ顔で返るため、
+    /// 「動くが毎回 2.5 秒遅い」が誰にも見えないまま残る(実際 scroll edge effect のぼかしで
+    /// そうなっていた。2026-07-31)。呼び出し側は note にしてホストのレポートへ出す
+    static func waitOnMain(quietMs: Int = 100, capMs: Int = 2500,
+                           done: @escaping (_ converged: Bool) -> Void) {
         let start = CACurrentMediaTime()
         var lastBusy = start
         var finished = false
         var observer: CFRunLoopObserver?
         var heartbeat: Timer?
 
-        func finish() {
+        func finish(_ converged: Bool) {
             if finished { return }
             finished = true
             if let observer { CFRunLoopRemoveObserver(CFRunLoopGetMain(), observer, .commonModes) }
             heartbeat?.invalidate()
-            done()
+            done(converged)
         }
 
         func evaluate() {
@@ -29,7 +35,8 @@ enum InAppSettle {
             if anyLayerAnimating() { lastBusy = now }
             let quietFor = (now - lastBusy) * 1000
             let elapsed = (now - start) * 1000
-            if quietFor >= Double(quietMs) || elapsed >= Double(capMs) { finish() }
+            if quietFor >= Double(quietMs) { finish(true) }
+            else if elapsed >= Double(capMs) { finish(false) }
         }
 
         observer = CFRunLoopObserverCreateWithHandler(

@@ -1695,8 +1695,12 @@ final class StepExecutorTests: XCTestCase {
 
         XCTAssertEqual(log.entries.filter { $0 == "primary.swipe" }.count, 3,
                        "動き続ける間は上限まで送ること: \(log.entries)")
-        XCTAssertEqual(outcome.driverFallback, "stopped at the limit of 3 (may not have reached the edge yet)",
-                       "端に着いていないことを注記すること")
+        let note = outcome.driverFallback ?? ""
+        XCTAssertTrue(note.contains("stopped at the limit of 3 (may not have reached the edge yet)"),
+                      "端に着いていないことを注記すること: \(note)")
+        // 動き続ける画面なので整定の打ち切りも同時に申告される(両方出るのが正しい)
+        XCTAssertTrue(note.contains("the screen did not settle (poll limit)"),
+                      "静止を確認できなかったことも注記すること: \(note)")
     }
 
     // MARK: - notExist(scroll:) の内蔵探索(exist(scroll:) の裏返し)

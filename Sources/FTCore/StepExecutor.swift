@@ -607,8 +607,12 @@ public final class StepExecutor {
             let viaXCUITest = try await swipeWithFallback(direction, phase: &phase)
             // 慣性が止まるまで待つ。ランナー側は /swipe を整定対象から外している(そこで待っても
             // budget 内に収束しないため)ので、直後に tap する書き方をここで支える
-            _ = try await settledSignature(phase: &phase)
-            return StepOutcome(status: .passed, driverFallback: viaXCUITest ? "fell back to XCUITest" : nil)
+            let settled = try await settledSignature(phase: &phase).settled
+            var notes: [String] = []
+            if viaXCUITest { notes.append("fell back to XCUITest") }
+            if !settled { notes.append("the screen did not settle (poll limit)") }
+            return StepOutcome(status: .passed,
+                               driverFallback: notes.isEmpty ? nil : notes.joined(separator: " / "))
         }
 
         // スクロールだけ行う(Shirates の scrollDown 等)。maxSwipes を繰り返し回数として使う
@@ -616,16 +620,20 @@ public final class StepExecutor {
             let direction = FTSwipeDirection(rawValue: step.direction ?? "") ?? .up
             let times = max(1, step.maxSwipes ?? 1)
             var viaXCUITest = false
+            var unsettled = false
             for index in 0..<times {
                 if try await swipeWithFallback(direction, forScroll: true, phase: &phase) { viaXCUITest = true }
                 // 続けて投げるとフリングの停止だけに消費されて空振りする(Android 実測)。
                 // 「repeat 回ぶん送る」を守るため、次のスワイプ前に静止を待つ。
                 // 最後の1回の後も待つ: ランナーは /swipe を整定対象から外しているので、
                 // 直後に tap する書き方をここで支える(index 条件を外した理由)
-                _ = try await settledSignature(phase: &phase).signature
+                if !(try await settledSignature(phase: &phase).settled) { unsettled = true }
             }
+            var notes: [String] = []
+            if viaXCUITest { notes.append("fell back to XCUITest") }
+            if unsettled { notes.append("the screen did not settle (poll limit)") }
             return StepOutcome(status: .passed,
-                               driverFallback: viaXCUITest ? "fell back to XCUITest" : nil)
+                               driverFallback: notes.isEmpty ? nil : notes.joined(separator: " / "))
         }
 
         // 端まで送る(Shirates の scrollToBottom 等)。**画面が変化しなくなったら端**とみなす。
@@ -639,10 +647,12 @@ public final class StepExecutor {
             var previous: String?
             var unchanged = 0
             var reachedEdge = false
+            var sawUnsettled = false
             let limit = max(1, step.maxSwipes ?? FlowStep.defaultMaxEdgeSwipes)
             var hintJumps = 0
             for _ in 0..<limit {
                 let settled = try await settledSignature(phase: &phase)
+                if !settled.settled { sawUnsettled = true }
                 unchanged = settled.signature == previous ? unchanged + 1 : 0
                 if unchanged >= 2 { reachedEdge = true; break }
                 previous = settled.signature
@@ -662,6 +672,7 @@ public final class StepExecutor {
             if !reachedEdge { notes.append("stopped at the limit of \(limit) (may not have reached the edge yet)") }
             if viaXCUITest { notes.append("fell back to XCUITest") }
             if hintJumps > 0 { notes.append("\(hintJumps) long drag(s) from scroll hints") }
+            if sawUnsettled { notes.append("the screen did not settle (poll limit)") }
             return StepOutcome(status: .passed,
                                driverFallback: notes.isEmpty ? nil : notes.joined(separator: " / "))
         }
@@ -1299,8 +1310,12 @@ public final class StepExecutor {
     /// 逆に**ランナー側の captureSettled では label を外さない** — あちらは tap 直後の
     /// 「内容が更新されたか」を待つので、レイアウトが変わらずテキストだけ変わる更新を
     /// 取りこぼすと stale なツリーを返す
+    /// 戻り値の `settled` は false = **ポーリング上限で打ち切った**(静止を確認できていない)。
+    /// 呼び出し側は note にして可視化する。黙って返すと「毎回上限を使い切っているのに緑」が
+    /// 続き、実際そうなっていた(ラベル振れによる非収束。2026-07-31 修正)
     private func settledSignature(
-        phase: inout PhaseAccumulator) async throws -> (signature: String, snapshot: SnapshotResponse) {
+        phase: inout PhaseAccumulator) async throws
+        -> (signature: String, snapshot: SnapshotResponse, settled: Bool) {
         func signature(_ snapshot: SnapshotResponse) -> String {
             snapshot.elements
                 .map { "\($0.type)|\($0.frame.x),\($0.frame.y)" }
@@ -1319,10 +1334,10 @@ public final class StepExecutor {
             last = try await driver.snapshot()
             let current = signature(last)
             phase.snapshotMs += Self.ms(clock.now - start)
-            if current == previous { return (current, last) }
+            if current == previous { return (current, last, true) }
             previous = current
         }
-        return (previous, last)
+        return (previous, last, false)
     }
 
 

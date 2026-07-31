@@ -58,7 +58,20 @@ final class FTInAppBridge {
         }
     }
 
+    /// 直近の performWithSettle が **cap で打ち切られた**か(整定していない)。
+    /// handle の冒頭で必ず落とし、ok(_:) が note に載せる。**黙って返さない**ための1本道
+    private var lastSettleCapped = false
+
+    /// 応答を作る。整定が打ち切られていたら note に足す(ホストは driverFallback として記録する)。
+    /// 打ち切りは失敗ではないので status は 200 のまま
+    private func ok(_ note: String? = nil) -> InAppHTTPServer.Response {
+        guard lastSettleCapped else { return .json(OKResponse(note: note)) }
+        let capped = "settle capped (screen kept animating)"
+        return .json(OKResponse(note: note.map { "\($0) / \(capped)" } ?? capped))
+    }
+
     private func handle(_ req: InAppHTTPServer.Request) -> InAppHTTPServer.Response {
+        lastSettleCapped = false
         do {
             switch (req.method, req.path) {
             case ("GET", "/status"): return handleStatus()
@@ -79,7 +92,7 @@ final class FTInAppBridge {
                 guard req.bundleID == Bundle.main.bundleIdentifier else {
                     throw InAppError(409, "in-app ブリッジは注入先アプリ(\(Bundle.main.bundleIdentifier ?? "?"))専用です(要求: \(req.bundleID))")
                 }
-                return .json(OKResponse())
+                return ok()
             case ("POST", "/terminate"):
                 return .error("/terminate は in-app では未対応(ホスト側でプロセス制御)", status: 501)
             default:
@@ -272,7 +285,7 @@ final class FTInAppBridge {
         let req = try decode(TapRequest.self, body)
         if let ref = req.ref {
             let note = try tapByRef(ref, req: req)
-            return .json(OKResponse(note: note))
+            return ok(note)
         }
         try performWithSettle { window in
             let p = try self.resolvePoint(ref: nil, x: req.x, y: req.y)
@@ -282,7 +295,7 @@ final class FTInAppBridge {
             if self.activateSnapshotNode(containing: p) { return }
             FTSynthTap(window, p)
         }
-        return .json(OKResponse())
+        return ok()
     }
 
     /// ref 指定タップ。accessibilityActivate(要素のデフォルトアクション=ボタン発火・セル選択等を
@@ -301,7 +314,10 @@ final class FTInAppBridge {
         var note: String?
 
         func finish(_ window: UIWindow) {
-            InAppSettle.waitOnMain { sem.signal() }
+            InAppSettle.waitOnMain { converged in
+                if !converged { self.lastSettleCapped = true }
+                sem.signal()
+            }
         }
         func synthFallback(_ window: UIWindow) {
             // FTSynthTap は成否を返さないため、要素が実際に反応したかは検知できず
@@ -351,7 +367,9 @@ final class FTInAppBridge {
                 return
             }
             // 遷移アニメーションが終わるのを待ってから取り直す(イベント駆動・上限 800ms)
-            InAppSettle.waitOnMain(capMs: 800) {
+            // ここの打ち切りは note にしない: activate 不発の再試行までの繋ぎで、
+            // 続く finish() の整定結果が最終的な申告になる
+            InAppSettle.waitOnMain(capMs: 800) { _ in
                 retry(2, stale: node, window: window)
             }
         }
@@ -430,7 +448,7 @@ final class FTInAppBridge {
                 + "入力欄が AX ツリーに現れない(accessibilityIdentifier/testTag 未設定)場合は"
                 + "アプリ側で testTag を付けてください。診断: \(FTFirstResponderDiagnostics())")
         }
-        return .json(OKResponse())
+        return ok()
     }
 
     private func handleClear(_ body: Data) throws -> InAppHTTPServer.Response {
@@ -451,7 +469,7 @@ final class FTInAppBridge {
                 + "入力欄が AX ツリーに現れない(accessibilityIdentifier/testTag 未設定)場合は"
                 + "アプリ側で testTag を付けてください。診断: \(FTFirstResponderDiagnostics())")
         }
-        return .json(OKResponse())
+        return ok()
     }
 
     /// 末尾の改行1つだけを分離する(text 全体が "\n" のときは分離しない。AndroidDriver の
@@ -475,7 +493,7 @@ final class FTInAppBridge {
                 + "engine=xcuitest の実行プロファイル(iosInappEngine: false)で実行してください。"
                 + "診断: \(FTFirstResponderDiagnostics())")
         }
-        return .json(OKResponse())
+        return ok()
     }
 
     /// **iOS ではキーボードを閉じられない**(docs/design.md に不採用の記録)。resignFirstResponder は
@@ -512,7 +530,7 @@ final class FTInAppBridge {
                     + "(UIAccessibility の scroll を受理する要素が無く、合成タッチの drag も"
                     + "受理されません)。hybrid なら XCUITest へフォールバックします")
             }
-            return .json(OKResponse())
+            return ok()
         }
         if ["compose", "flutter"].contains(uiFramework) {
             // ジェスチャ目的の swipe。自前描画で合成タッチの drag を受理しないので従来どおり
@@ -545,7 +563,7 @@ final class FTInAppBridge {
             }
             // 余地なし = 端。no-op で 200 を返す
         }
-        return .json(OKResponse())
+        return ok()
     }
 
     /// UIAccessibility の scroll アクションでスクロールする(Compose / Flutter 専用)。
@@ -720,7 +738,10 @@ final class FTInAppBridge {
                 sem.signal()
                 return
             }
-            InAppSettle.waitOnMain(capMs: capMs) { sem.signal() }
+            InAppSettle.waitOnMain(capMs: capMs) { converged in
+                if !converged { self.lastSettleCapped = true }
+                sem.signal()
+            }
         }
         _ = sem.wait(timeout: .now() + .milliseconds(blockBudgetMs + capMs + 1500))
         if let thrown { throw thrown }
