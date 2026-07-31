@@ -72,6 +72,10 @@ public final class SessionRecoveryDriver: AppDriver {
     public func swipe(_ direction: FTSwipeDirection) async throws {
         try await withRecovery { try await base.swipe(direction) }
     }
+    /// forScroll 版の素通し(FastLaunchDriver の注記と同じ理由)
+    public func swipe(_ direction: FTSwipeDirection, forScroll: Bool) async throws {
+        try await withRecovery { try await base.swipe(direction, forScroll: forScroll) }
+    }
 
     public func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
                      pressSeconds: Double, durationSeconds: Double) async throws {

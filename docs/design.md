@@ -901,6 +901,23 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
   待ちはメインをブロックしない(asyncAfter)ので遷移自体は進む。**再試行は activate false の
   ときだけ**発生し通常経路のコストはゼロ。恒常的に activate false の要素(合成タッチで動くもの)は
   最大 ~1s 遅くなるが正しさ優先。レポート注記「要素を取り直して再実行」で観測できる。
+- **Compose/Flutter のスクロールは UIAccessibility の scroll アクションで駆動する**(2026-07-31)。
+  両者は `UIScrollView` を持たないので `contentOffset` 経路が無く、合成タッチの drag も受理
+  されないが、**VoiceOver が使う `accessibilityScroll` は実装している**
+  (Compose = `AccessibilityElement` / Flutter = `SemanticsObjectContainer`)。1回 = 1ページで、
+  実測では XCUITest の実スワイプより**距離が長く**(row_01→27 対 row_01→16)、
+  **1回あたり 106ms 対 456ms**。scrollToTop の中央値は 5,304→1,714ms。
+  - **`swipe` を `unsupportedActions` に申告しない**: 可否は「目的と画面」で割れる
+    (スクロール目的=可 / ジェスチャ目的=不可)ので、一律申告では表現できない。
+    判定は `handleSwipe` に一本化し、不可なら 501 を返してホストにフォールバックさせる
+  - **スクロール目的の swipe だけ AX 経路へ流す**(`SwipeRequest.scroll`)。DSL の `swipe`
+    (ジェスチャ自体が目的)を混ぜると、**ジェスチャ検出パッドの上でもスクロール可能な親が
+    受理してしまい**、パッドに届かないまま 200 を返す(2026-07-31 に E2E-Flutter の
+    ジェスチャ画面が 2/2 で黙って空振りした)
+  - **包むドライバは `swipe(_:forScroll:)` を必ず素通しする**。既定実装は自分の `swipe(_:)` を
+    呼ぶので、受けないと**フラグが最初のラッパーで落ちて**経路が丸ごと不発になる
+    (実際に落として、フルスイート2周ぶん「緑だが遅いまま」を測ってしまった)。
+    `SwipeForScrollForwardingTests` がソース走査で守る
 - **整定は「視覚効果パラメータ」を動きと数えない**(2026-07-31)。`InAppSettle` は無アニメが
   100ms 続いたら整定とみなすが、iOS26/27 の scroll edge effect(スクロール縁のぼかし)が
   `CABackdropLayer` の `filters.gaussianBlur.inputRadius` を 0.25s で animate し続けるため、

@@ -40,7 +40,10 @@ public enum BridgeAPI {
     /// 25: in-app の整定が視覚効果パラメータ(scroll edge effect のぼかし)を「動いている」と
     /// 数えなくなった(2026-07-31)。旧 dylib が再利用されると launch 直後の 1〜2 アクションが
     /// 毎回 cap 2500ms に張り付いたままになる
-    public static let bridgeProtocolVersion = 25
+    /// 26: in-app の swipe が Compose/Flutter で UIAccessibility の scroll アクション経由で
+    /// 効くようになり、swipe を unsupportedActions に申告しなくなった(2026-07-31)。
+    /// 旧 dylib が再利用されるとスクロールが全部 XCUITest へ回ったままになる
+    public static let bridgeProtocolVersion = 26
 
     /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
     /// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java の
@@ -348,9 +351,20 @@ public struct SwipeRequest: Codable {
     public var direction: FTSwipeDirection
     /// TapRequest.fast と同じ(互換性の注記もそちらを参照)
     public var fast: Bool?
-    public init(direction: FTSwipeDirection, fast: Bool? = nil) {
+    /// **スクロールが目的**の swipe か(scrollTo / scrollToEdge / scrollDown が立てる)。
+    /// DSL の `swipe` はジェスチャそのものが目的なので立てない。
+    ///
+    /// in-app の Compose/Flutter だけがこれを見る: スクロールは UIAccessibility の scroll
+    /// アクションで代行できるが、**ジェスチャ目的の swipe を同じ経路へ流すと、画面内の
+    /// スクロール可能な親が受理してしまい、ジェスチャ検出パッドに届かないまま 200 を返す**
+    /// (2026-07-31 実測: E2E-Flutter のジェスチャ画面が黙って空振りした)。
+    /// 旧ブリッジは無視して従来動作(TapRequest.fast と同じ互換方針で版は据え置かない —
+    /// 挙動が変わるので handleSwipe 側の変更とセットで上げる)
+    public var scroll: Bool?
+    public init(direction: FTSwipeDirection, fast: Bool? = nil, scroll: Bool? = nil) {
         self.direction = direction
         self.fast = fast
+        self.scroll = scroll
     }
 }
 

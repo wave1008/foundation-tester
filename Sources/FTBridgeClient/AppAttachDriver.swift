@@ -125,6 +125,11 @@ public final class AppAttachDriver: AppDriver {
     /// ref を使う tap/type/press には同じ回復を入れない: activate は refFrames をクリアするため、
     /// 再試行時には直前 snapshot の ref が別要素を指してしまう。
     public func swipe(_ direction: FTSwipeDirection) async throws {
+        try await swipe(direction, forScroll: false)
+    }
+
+    /// forScroll 版の素通し(FastLaunchDriver の注記と同じ理由)
+    public func swipe(_ direction: FTSwipeDirection, forScroll: Bool) async throws {
         try await ensureAttached()
         do {
             try await client.swipe(direction)

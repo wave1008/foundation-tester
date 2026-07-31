@@ -250,8 +250,14 @@ public final class BridgeClient: AppDriver {
     }
 
     public func swipe(_ direction: FTSwipeDirection) async throws {
-        let _: OKResponse = try await post("/swipe", body: SwipeRequest(direction: direction, fast: fastFlag),
-                                           timeout: interactionTimeout)
+        try await swipe(direction, forScroll: false)
+    }
+
+    public func swipe(_ direction: FTSwipeDirection, forScroll: Bool) async throws {
+        let _: OKResponse = try await post(
+            "/swipe",
+            body: SwipeRequest(direction: direction, fast: fastFlag, scroll: forScroll ? true : nil),
+            timeout: interactionTimeout)
     }
 
     public func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,

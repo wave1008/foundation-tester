@@ -116,17 +116,16 @@ final class FTInAppBridge {
                 applicationState: state,
                 uiFramework: self.uiFramework,
                 // 合成タッチは「時間・移動を伴うジェスチャ」を駆動できない。これは Compose 固有ではなく
-                // SwiftUI/UIKit でも同じ(2026-07-23 に Projects/E2E-iOS で実測)。
-                // - press は全フレームワークで駆動不能 → 常に申告する
-                // - swipe は UIScrollView の contentOffset を直接動かす経路があるので UIKit では通ることが
-                //   多い。ただし Compose はその経路が無関係な UIScrollView を動かして空振りするため申告する
-                //   (UIKit で対象スクロールビューが無い場合は handleSwipe が個別に 501 を返す)
-                // ホストはこの申告を見てジェスチャを XCUITest へ回す。撃たれた場合は 501 で拒否する
-                // (申告と拒否の二重化。申告を見ないホスト・旧ホストでも黙って空振りしない)。
-                // flutter も swipe を申告する: UIScrollView が存在しないため in-app の
-                // contentOffset 経路が無く、常に 501 になる(往復を省くため最初から XCUITest へ)
-                unsupportedActions: ["compose", "flutter"].contains(self.uiFramework)
-                    ? ["swipe", "press"] : ["press"],
+                // SwiftUI/UIKit でも同じ(2026-07-23 に Projects/E2E-iOS で実測)ので press は常に申告する。
+                //
+                // **swipe は申告しない**(2026-07-31 に取り下げ)。申告は「このアクションは一律不可」の
+                // 意味しか持たないが、swipe の可否は**目的と画面によって割れる**ようになった:
+                //   スクロール目的 … UIKit=contentOffset / Compose・Flutter=UIAccessibility の scroll で通る
+                //   ジェスチャ目的 … どのフレームワークでも不可(handleSwipe が 501 を返す)
+                // 申告したままだとスクロールまで XCUITest へ回り、せっかくの in-app 経路が使われない。
+                // 可否の判定は handleSwipe に一本化し、不可なら 501 で個別に申告する
+                // (ホストは 501 を見て XCUITest へフォールバックする)
+                unsupportedActions: ["press"],
                 // 起動元の自己申告(InAppLauncher が SIMCTL_CHILD_FT_OWNER_REPO で注入)
                 ownerRepo: ProcessInfo.processInfo.environment["FT_OWNER_REPO"]))
         }
@@ -488,18 +487,39 @@ final class FTInAppBridge {
 
     private func handleSwipe(_ body: Data) throws -> InAppHTTPServer.Response {
         let req = try decode(SwipeRequest.self, body)
-        // Compose Multiplatform は自前描画で、スクロールも長押しも UIKit を経由しない。
-        // この経路は「画面内の UIScrollView の contentOffset を動かす」ものだが、Compose の
-        // 画面にも**本体のスクロールとは無関係な UIScrollView が存在する**ため、動かしても
-        // 見た目は一切変わらず、エラーも出ない = 黙った空振りになる。合成タッチへ迂回しても
-        // Compose は drag を受理しない(tap のみ通る。2026-07-22 に Projects/E2E で実測)。
-        // よってここで明示的に失敗させ、xcuitest プロファイルへ誘導する。
-        if uiFramework == "compose" {
-            // 501 = このエンジンでは未対応(/terminate と同じ慣習)。409(Conflict)はキーウィンドウ
-            // 不在等の一時的競合と同じコードのため、フォールバック判定に使うと取り違える。
-            throw InAppError(501, "Compose Multiplatform では in-app エンジンの swipe/scrollTo が効きません"
+        // Compose / Flutter は自前描画で UIScrollView を持たない(Compose の画面には**本体の
+        // スクロールとは無関係な UIScrollView が存在する**ので、contentOffset を動かしても
+        // 見た目は変わらず黙った空振りになる)。合成タッチの drag も受理されない
+        // (tap のみ通る。2026-07-22 実測)。**UIAccessibility の scroll アクションだけが通る** ——
+        // VoiceOver が使う経路なので両フレームワークとも実装している(2026-07-31 実測。
+        // Compose = AccessibilityElement / Flutter = SemanticsObjectContainer が受理)。
+        //
+        // 受理されなければ従来どおり 501 でホストに XCUITest へ回させる。
+        //
+        // **スクロール目的(req.scroll)のときだけ通す**。DSL の `swipe`(ジェスチャ自体が目的)を
+        // ここへ流してはいけない —— ジェスチャ検出パッドの上でも**画面のスクロール可能な親が
+        // 受理してしまい**、パッドにジェスチャが届かないまま 200 を返す
+        // (2026-07-31 実測: E2E-Flutter のジェスチャ画面が 2/2 で黙って空振りした)。
+        if ["compose", "flutter"].contains(uiFramework), req.scroll == true {
+            var scrolled = false
+            try performWithSettle { window in
+                scrolled = Self.scrollViaAccessibility(window, finger: req.direction)
+            }
+            guard scrolled else {
+                // 501 = このエンジンでは未対応(/terminate と同じ慣習)。409(Conflict)はキーウィンドウ
+                // 不在等の一時的競合と同じコードのため、フォールバック判定に使うと取り違える。
+                throw InAppError(501, "この画面には in-app エンジンで動かせるスクロールがありません"
+                    + "(UIAccessibility の scroll を受理する要素が無く、合成タッチの drag も"
+                    + "受理されません)。hybrid なら XCUITest へフォールバックします")
+            }
+            return .json(OKResponse())
+        }
+        if ["compose", "flutter"].contains(uiFramework) {
+            // ジェスチャ目的の swipe。自前描画で合成タッチの drag を受理しないので従来どおり
+            // XCUITest へ回す(上の AX 経路はスクロールしか代行できない)
+            throw InAppError(501, "\(uiFramework) では in-app エンジンのジェスチャ swipe が効きません"
                 + "(UIScrollView を介さない自前描画で、合成タッチの drag も受理されない)。"
-                + "実行プロファイルで iosInappEngine: false(xcuitest)にしてください")
+                + "hybrid なら XCUITest へフォールバックします")
         }
         try performWithSettle { window in
             // UIKit/SwiftUI のスクロールは合成タッチでは駆動できない(ジェスチャ認識器が受理しない)ため、
@@ -526,6 +546,61 @@ final class FTInAppBridge {
             // 余地なし = 端。no-op で 200 を返す
         }
         return .json(OKResponse())
+    }
+
+    /// UIAccessibility の scroll アクションでスクロールする(Compose / Flutter 専用)。
+    /// 受理した要素が1つでもあれば true。
+    ///
+    /// **UIKit/SwiftUI には使わない**: SwiftUI List では片方向しか効かず不安定で、
+    /// `setContentOffset` の方が決定的・双方向(下の contentOffset 経路)。
+    ///
+    /// **1回 = 1ページ**(API がページ単位なので刻み幅は選べない)。contentOffset 経路の ~85% より
+    /// 粗く、スクロール探索が要素を跨ぐ余地はあるが、**この2フレームワークの従来の経路は
+    /// XCUITest の実スワイプ(慣性つき = 1ページ以上動く)**だったので、粗さは悪化しない。
+    ///
+    /// 走査は深さ優先で**最初に受理した要素**を採る。横カルーセルと縦リストが同居する画面でも、
+    /// 向きの合わない要素は false を返すので実質的に選り分けられる。
+    /// 端に達したときの挙動はフレームワークで割れる(Compose = true のまま動かない /
+    /// Flutter = false)。**false を「スクロール不能」と区別できない**ので、呼び出し側は
+    /// 501 を返しホストの XCUITest フォールバックに委ねる(端での 1 回ぶんは無駄になるが、
+    /// 「スクロールできない画面で黙って成功する」より安全)
+    private static func scrollViaAccessibility(_ root: NSObject, finger: FTSwipeDirection) -> Bool {
+        // 指の向き = コンテンツと逆(指を上へ = 次のページへ送る)
+        let direction: UIAccessibilityScrollDirection
+        switch finger {
+        case .up: direction = .down
+        case .down: direction = .up
+        case .left: direction = .right
+        case .right: direction = .left
+        }
+        var visited = 0
+        return scrollWalk(root, direction, visited: &visited)
+    }
+
+    /// 走査上限。AX ツリーは深いことがあるので暴走を止める(実測の受理は 20〜100 要素目)
+    private static let axScrollMaxVisits = 2000
+
+    private static func scrollWalk(_ node: NSObject, _ direction: UIAccessibilityScrollDirection,
+                                   visited: inout Int) -> Bool {
+        if visited >= axScrollMaxVisits { return false }
+        visited += 1
+        if node.accessibilityScroll(direction) { return true }
+        if let elements = node.accessibilityElements as? [NSObject] {
+            for element in elements where scrollWalk(element, direction, visited: &visited) { return true }
+        }
+        // Flutter の SemanticsObjectContainer は accessibilityElements を実装せず、旧式の
+        // indexed API だけを実装する(InAppSnapshot.axChildren と同じ事情)
+        let count = node.accessibilityElementCount()
+        if count != NSNotFound && count > 0 {
+            for i in 0..<count {
+                guard let element = node.accessibilityElement(at: i) as? NSObject else { continue }
+                if scrollWalk(element, direction, visited: &visited) { return true }
+            }
+        }
+        if let view = node as? UIView {
+            for sub in view.subviews where scrollWalk(sub, direction, visited: &visited) { return true }
+        }
+        return false
     }
 
     /// スワイプ1回 = 可視領域の ~85% 分だけ contentOffset を動かす(実機スワイプの体感に合わせる)。
