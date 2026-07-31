@@ -589,7 +589,7 @@ public final class StepExecutor {
                     hintJumps += 1
                     continue
                 }
-                if try await swipeWithFallback(direction, phase: &phase) { viaXCUITest = true }
+                if try await swipeWithFallback(direction, forScroll: true, phase: &phase) { viaXCUITest = true }
             }
         }
         return ScrollSearchResult(found: false, fallback: nil, viaXCUITest: viaXCUITest,
@@ -617,7 +617,7 @@ public final class StepExecutor {
             let times = max(1, step.maxSwipes ?? 1)
             var viaXCUITest = false
             for index in 0..<times {
-                if try await swipeWithFallback(direction, phase: &phase) { viaXCUITest = true }
+                if try await swipeWithFallback(direction, forScroll: true, phase: &phase) { viaXCUITest = true }
                 // 続けて投げるとフリングの停止だけに消費されて空振りする(Android 実測)。
                 // 「repeat 回ぶん送る」を守るため、次のスワイプ前に静止を待つ。
                 // 最後の1回の後も待つ: ランナーは /swipe を整定対象から外しているので、
@@ -654,7 +654,7 @@ public final class StepExecutor {
                     hintJumps += 1
                     continue
                 }
-                if try await swipeWithFallback(direction, phase: &phase) { viaXCUITest = true }
+                if try await swipeWithFallback(direction, forScroll: true, phase: &phase) { viaXCUITest = true }
             }
             // 上限で抜けたら**端に着いたとは限らない**。黙って成功にすると
             // 「scrollToBottom したのに末尾が無い」の原因が読めなくなる
@@ -1349,18 +1349,21 @@ public final class StepExecutor {
         }
     }
 
-    private func swipeWithFallback(_ direction: FTSwipeDirection,
+    /// forScroll: **スクロールが目的**か(scrollTo / scrollToEdge / scroll)。DSL の `swipe` は
+    /// ジェスチャ自体が目的なので false。in-app の Compose/Flutter だけがこの区別を使う
+    /// (`SwipeRequest.scroll` の説明を参照。混ぜるとジェスチャ画面が黙って空振りする)
+    private func swipeWithFallback(_ direction: FTSwipeDirection, forScroll: Bool = false,
                                    phase: inout PhaseAccumulator) async throws -> Bool {
         let clock = ContinuousClock()
         if typeDriverGestures.contains("swipe") || gestureFallbackLatched, let td = typeDriver {
             let start = clock.now
-            try await td.swipe(direction)
+            try await td.swipe(direction, forScroll: forScroll)
             phase.actionMs += Self.ms(clock.now - start)
             return true
         }
         do {
             let start = clock.now
-            try await driver.swipe(direction)
+            try await driver.swipe(direction, forScroll: forScroll)
             phase.actionMs += Self.ms(clock.now - start)
             return false
         } catch {
@@ -1368,7 +1371,7 @@ public final class StepExecutor {
             // 409 を含めない理由は DriverError.isEngineIncapable 参照
             guard DriverError.isEngineIncapable(error), let td = typeDriver else { throw error }
             let start = clock.now
-            try await td.swipe(direction)
+            try await td.swipe(direction, forScroll: forScroll)
             phase.actionMs += Self.ms(clock.now - start)
             gestureFallbackLatched = true
             return true

@@ -105,6 +105,10 @@ public final class WebViewDelegatingDriver: AppDriver {
     public func swipe(_ direction: FTSwipeDirection) async throws {
         try await screenDriver.swipe(direction)
     }
+    /// forScroll 版の素通し(FastLaunchDriver の注記と同じ理由)
+    public func swipe(_ direction: FTSwipeDirection, forScroll: Bool) async throws {
+        try await screenDriver.swipe(direction, forScroll: forScroll)
+    }
     public func press(ref: Int, duration: Double) async throws {
         try await screenDriver.press(ref: ref, duration: duration)
     }

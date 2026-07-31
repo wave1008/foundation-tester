@@ -75,6 +75,10 @@ public final class LaunchPreflightDriver: AppDriver {
     public func hideKeyboard() async throws { try await base.hideKeyboard() }
     public func back() async throws { try await base.back() }
     public func swipe(_ direction: FTSwipeDirection) async throws { try await base.swipe(direction) }
+    /// forScroll 版の素通し(FastLaunchDriver の注記と同じ理由)
+    public func swipe(_ direction: FTSwipeDirection, forScroll: Bool) async throws {
+        try await base.swipe(direction, forScroll: forScroll)
+    }
 
     public func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
                      pressSeconds: Double, durationSeconds: Double) async throws {
