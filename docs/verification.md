@@ -94,6 +94,24 @@ snapshot→ref→/type→/clear の順で6台並列)で 1 回 150〜180 clear �
 再現率の比較には**同じ負荷・同じ回数**を使う(修正前 5/270 → 修正後 0/510)。
 負荷源は合成 CPU 負荷(`yes`×20)では不十分で、**実際に別スイートを並走させる**必要があった。
 
+## in-app の整定が cap に張り付いているかを見る(2026-07-31)
+
+`InAppSettle` は収束しても cap 打ち切りでも**同じ顔で返る**ので、常態的な張り付きは黙って
+性能だけを食う(実測: Compose iOS の launch 直後 1〜2 アクションが毎回 2,500ms)。疑う手順:
+
+1. `ftester api run --project <P> --profile <inapp プロファイル> --scenario <1本>` の
+   NDJSON で `actionMs` を見る。**cap 値(2500)に近い定数**なら張り付き。
+   snapshotMs でも waitMs でもなく actionMs に出るのが目印
+2. `InAppBridge/Sources/InAppSettle.swift` の打ち切り分岐に一時 `NSLog("FTSETTLE ...")` を入れ、
+   層のクラス名・アニメーションキー・keyPath・delegate を出す(`InAppBridge/build.sh` で再ビルド)
+3. `xcrun simctl spawn <udid> log stream --style compact --predicate 'eventMessage CONTAINS "FTSETTLE"'`
+   を**プロファイルの全デバイスぶん**張ってから run(どの機に載るか選べないため)
+4. 犯人が分かったら `layerAnimating` の除外に足す。**除外は狭く**(位置・不透明度・transform を
+   除外すると本物の遷移待ちが壊れる)
+
+**dylib は版を上げないと入れ替わらない**(`bridgeProtocolVersion`)。上げずに測ると旧 dylib の
+数字を見ることになる。
+
 ## 単体テストが緑でも「実データで1回動かす」まで信用しない(2026-07-29)
 
 単体テストは**書いた本人の前提を共有している**ので、前提そのものが誤っていると実装とテストが
