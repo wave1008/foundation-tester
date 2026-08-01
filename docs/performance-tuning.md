@@ -36,6 +36,13 @@ iOS の残り時間は XCUITest 経路のコストが支配する。**その内�
 3. **採用ゲートは 3 指標同時。** 速度が上がっても、ホスト CPU か N 回連続成功率が
    悪化する変更は採用しない。固定 sleep は「遅いが負荷ゼロ・フレークを隠す」性質が
    あったので、置換系の変更は特に成功率を疑うこと。
+4. **着手順は見積りでなく内訳で決める。** 2026-08-01 に「次は CoreSimulator 化(0.9s)」と
+   決めていたが、内訳を採ったら**別コールの `simctl terminate` が 1.5s** で、しかも
+   1行の修正だった。見積りで順序を決めていたら、大きい方を後回しにしたまま重い実装に
+   着手していた。**内訳が採れない区間があるなら、まず採れるようにする**(§4)。
+5. **削った先に何が残るかまで測る。** simctl を消したら律速が
+   「プロセスごとの CoreSimulator 初期化 384ms」へ移った(§3.12)。移った先を測らないと、
+   次の一手(暖機)の効果を過大評価する —— 実際 30〜60ms しか無く不採用にした。
 
 ## 3. 現在の時間の内訳(どこを削ると何が起きるか)
 
@@ -56,7 +63,7 @@ wait ほぼ 0ms = 固定 sleep の残骸なし):
 
 | 区間 | 所要 | 削る余地 |
 |---|---|---|
-| `xcrun simctl launch` の往復 | 0.61〜0.73s(アイドル)/ 0.88〜0.91s(8レーン) | **候補**: CoreSimulator 直叩き(`FTCoreSimShim` は今は列挙のみ)。0.9s × 40本 ≒ sum −36s |
+| `xcrun simctl launch` の往復 | 0.61〜0.73s(アイドル)/ 0.88〜0.91s(8レーン) | ✅ **CoreSimulator 直叩きへ置換済み**(2026-08-02)。8レーンで 920→205ms |
 | プロセス生成 → ブリッジが listen | 約 0.30s | dylib の constructor 起動なのでほぼ下限 |
 | `/status` が返るまで(`mainSync` がメインスレッド待ち) | 1.82s(SwiftUI)/ 1.84s(Flutter)/ 2.48s(CMP) | **削れない**。アプリが実際に応答可能になるまでの時間で、readiness の定義として正しい |
 
@@ -73,9 +80,33 @@ wait ほぼ 0ms = 固定 sleep の残骸なし):
   `simctl terminate` を別コールで撃っていたぶんで、`--terminate-running-process` へ畳んで解消
   (in-app 側は元からこの形。sum 455.0→427.2s・壁時計 61.1→58.1s。E2E-iOS 469→419.5s /
   E2E-Flutter 446→396.3s)
-- **残る 703ms は `LaunchPreflightDriver.ensureInstalled` の `simctl get_app_container`**
-  (シナリオ毎に1回)。未インストールを分かりやすいエラーにするための検査なので消せないが、
-  CoreSimulator 直叩きにすれば安くなる見込み(未着手)
+- ~~残る 703ms は `LaunchPreflightDriver.ensureInstalled` の `simctl get_app_container`~~
+  → **CoreSimulator の `applicationIsInstalled:type:error:` へ置換済み**(2026-08-02)
+
+### 3.12 simctl のプロセス往復を CoreSimulator 直叩きへ(2026-08-02 実装)
+
+`simctl launch`(0.9s)と `simctl get_app_container`(0.7s)はどちらもシナリオ毎に1回走る。
+`FTCoreSimShim` にアプリ起動(`launchApplicationWithID:options:error:`)と
+インストール確認(`applicationIsInstalled:type:error:`)を足して置き換えた。
+
+実測(8レーン・E2E/40本): ios-xcuitest sum 427.4→**394.2s**・launch 中央 4,567→3,892ms
+(起動呼び出し 920→**205ms**)/ ios-inapp sum 266.5→**253.7s**。E2E-iOS 419.5→392.3s、
+E2E-Flutter 396.3→372.0s。全 466 本(既定+`--ios-inapp`)成功。
+
+**律速は初期化に移った**。CoreSimulator は**プロセスごとに約 384ms**の初期化
+(dlopen 13ms + `SimServiceContext` 327ms + deviceSet 44ms)が要り、以降の呼び出しは **0〜1ms**。
+**シナリオ1本=1プロセス**なので、そのプロセスで最初に CoreSimulator を触った呼び出しが必ず
+384ms を被る。xcuitest はインストール確認が先で launch が速くなる(205ms)、in-app は launch が
+最初なのでそこで払う(830ms)—— これが両エンジンの改善幅の差の理由。
+
+- **暖機(起動直後にバックグラウンドで初期化)は不採用**。効果 30〜60ms で雑音と区別できず、
+  引数解析前にプラットフォームを先読みする必要があり、Android のシナリオでは純粋な無駄になる
+- **未インストールの判定は `NSPOSIXErrorDomain` code 3 だけを根拠にする**。この API は
+  「入っていない」も「判定できない」も `NO` を返すので、エラー種別を見ないと端末が未 boot の
+  ときに `appNotInstalled` で run を止めてしまう。それ以外のエラーは nil = 判定不能にして
+  simctl の判定へ委ねる(遅くなるだけで誤らない側へ倒す)
+- 殺しスイッチは既存の `FT_SIMULATOR_CONTROL=simctl`(検証済み: action 869ms・sum 428.0s と
+  従来値へ戻る)
 
 ライブ操作 1 タップ = serve 常駐プロセスへの stdin 1 行 → ブリッジで注入+静穏 →
 actionResult+snapshot イベント。0.383s のうち大半は静穏待ちの床(200ms)+snapshot/JPEG。
@@ -472,6 +503,18 @@ ref の名前空間を跨ぐので別施策(§8)。
 
 **変更前にベースライン、変更後に同条件で再計測、summary.md を比較する。**
 
+**計測手段は「使いたい条件」で一度検算してから信じる。** 2026-08-01 に launch の内訳を
+出せるようにしたが、いざ 8 レーンで採ると `FT_EVENT_LOG_PATH` が並列書き込みで壊れ、
+**launch 41 本中 3 本しか読めなかった**(1プロセス実行しか想定していなかった)。
+知りたい条件がまさに読めない状態で、しかも**壊れた行は黙って捨てられる**ので
+「n が少ない」以外に手がかりが出ない。手順は単純:
+
+1. 採れた件数が**期待どおりか**を必ず確認する(シナリオ数と一致するか)
+2. パースできなかった行数も数える(0 でないなら計測基盤を疑う)
+3. 疑わしければ**単発(1レーン)と並列で同じものを採って比べる**
+
+これを飛ばすと、少ない・偏ったサンプルで設計判断をすることになる。
+
 軽量な計測口が2つある(bench.swift を回すほどでもない切り分け用):
 
 ```bash
@@ -480,7 +523,18 @@ FT_PHASE_LOG=1 ftester run --profile <p> --scenario <s> --skip-build
 
 # step 単位の NDJSON(durationMs/snapshotMs/actionMs/waitMs)をファイルへテー出力
 FT_EVENT_LOG_PATH=/tmp/steps.ndjson ftester run --profile <p> --scenario <s> --skip-build
+
+# --scenario を付けなければプロファイル全体(=8レーン実負荷)の内訳が採れる。
+# 並列でも行は混ざらない(EventLogAppender が直列化。2026-08-02 修正。それ以前は
+# 複数ワーカーが同じハンドルへ書いて行が壊れ、41 本中 3 本しか読めなかった)
+FT_EVENT_LOG_PATH=/tmp/steps.ndjson ftester run --project <P> --profile <p>
 ```
+
+- **`launch` も内訳を持つ**(2026-08-02 から): `actionMs`=プロセスを起動させる外部呼び出し、
+  `waitMs`=操作可能になるまでの待ち。**`durationMs - actionMs - waitMs`(内訳外)を必ず見る** ——
+  計測していない区間がここに出る(実際これで `simctl terminate` の 1.5s と
+  未インストール検査の 0.7s が見つかった。§3 の表)
+- 埋まらないエンジンは nil のまま(Android・`FT_NO_FAST_LAUNCH` 経路)。嘘の数字は出さない
 
 
 ```bash
@@ -916,8 +970,10 @@ window/transition/animator の `*_scale` はチューニングノブではなく
      **iOS の真のボトルネックは scrollTo(action 中央値 ~7.6s/回。swipe+再 snapshot ループ)と
      tap/type の quiescence 床**であり、大幅短縮には税の撤廃(下記2)が要る。
   2. **税の撤廃 = アプリ内常駐ブリッジ**(EarlGrey/Espresso と同クラス)。シミュレータは
-     `SIMCTL_CHILD_DYLD_INSERT_LIBRARIES=<dylib> simctl launch` で任意アプリに
+     `DYLD_INSERT_LIBRARIES=<dylib>` を起動時の環境に載せれば任意アプリに
      リビルドなしで注入できる(シミュレータプロセスは SIP/hardened runtime 非適用)。
+     **キー名は経路で違う**: simctl 経由は `SIMCTL_CHILD_` を前置する(simctl が剥がして子へ渡す)、
+     CoreSimulator 直叩き(現在の既定)は `options["environment"]` に**接頭辞なし**で入れる。
      UIKit ビュー階層の直接走査(ms 級・IPC ゼロ)+ランループオブザーバと
      CATransaction/CADisplayLink による**真のイベント駆動整定**+プロセス内タッチ合成。
      既存 9 エンドポイントの HTTP 互換にすればホスト側は概ね無変更(単一実装原則と整合)。

@@ -229,6 +229,30 @@ was lost` で落ちる(実測: 版上げ直後の E2E-Android で 4/40 失敗 �
 - これを知らないと、環境劣化を自分の変更の退行と誤認して**正しい修正を取り消す**ことになる
   (実際に 2026-08-01 に「Android +24%」を見て一度その結論に傾いた)
 
+## 私有 API の意味論は推測せず実採取する(2026-08-02)
+
+CoreSimulator のような私有 API は、セレクタ名も引数の形もエラーの意味も**ヘッダが無い**。
+推測で書くと、コンパイルは通るのに実行時に黙って誤動作する(objc_msgSend はシグネチャ違いを
+検出しない)。**使う前に、その場で採る**:
+
+1. **セレクタの実在と型エンコーディング**を `class_copyMethodList` / `method_getTypeEncoding` で
+   採る。戻り値と out パラメータの有無はここで確定する
+   (実例: `applicationIsInstalled:type:error:` の `type` は out パラメータで、
+   知らずに引数を省くと引数の数が合わず落ちる)
+2. **辞書キー等の定数は `nm -gU` でシンボルを探し、`dlsym` で実値を読む**
+   (`SimDeviceLaunchApplicationKeyTerminateRunningProcess` = `"terminate_running_process"`)。
+   実装でもリテラル直書きでなく dlsym で引けば Xcode 版差に強い
+3. **エラーの意味論も採る**。「失敗した」だけでは足りず、**どの失敗か**を区別できるかを見る。
+   実例: `applicationIsInstalled:` は「入っていない」も「判定できない」も `NO` を返し、
+   前者だけが `NSPOSIXErrorDomain` code 3 を伴う。これを知らずに
+   「`NO`+error は判定不能」と決め打ちしたら**未インストールの検出ごと壊れ**、
+   逆に「`NO` は全部未インストール」なら端末が未 boot のときに嘘の失敗を出していた
+
+**書き捨てのプローブで足りる**(`clang -fobjc-arc -framework Foundation`)。
+ARC 下で out パラメータを受けるには `NSString * __unsafe_unretained *` が要る(素の `**` は
+コンパイルエラー)。**採った事実は実装のコメントに数値・署名ごと残す** —— 次に Xcode が上がった
+とき、何を採り直せばよいかがそこにしか無い。
+
 ## 単体テストが緑でも「実データで1回動かす」まで信用しない(2026-07-29)
 
 単体テストは**書いた本人の前提を共有している**ので、前提そのものが誤っていると実装とテストが
@@ -678,8 +702,10 @@ apps プロファイルの healthCheckURL が実行開始時に警告を出す�
   gRPC 起因を疑うときは **`FT_EMULATOR_CONTROL=adb`** で全面 adb に切り替えて比較できる
   (gRPC を話すのは Swift だけ。拡張の凍結修復も `ftester api repair-display` 経由でここを通るため、
   この環境変数1つで両方効く)。挙動差の切り分けはまずこれ。
-  **iOS のシミュレータ列挙も同様に CoreSimulator 直叩きが既定**(design.md §16.4)で、
-  **`FT_SIMULATOR_CONTROL=simctl`** が殺しスイッチ
+  **iOS も同様に CoreSimulator 直叩きが既定**(design.md §16.4)で、
+  **`FT_SIMULATOR_CONTROL=simctl`** が殺しスイッチ。対象は**列挙だけでなく
+  アプリ起動と未インストール検査も**(2026-08-02 拡張)なので、
+  「launch がおかしい」ときもこれ1つで simctl 経路と比較できる
 - **run が遅くなったら負荷トリアージを先に**: ① `top` で qemu の空転(劣化個体はアイドルでも
   ~73%/台消費しホスト全体を遅くする)② run 同梱の `host-metrics.ndjson`(遅い run だけ CPU 飽和
   していれば環境要因)。Spotlight/mediaanalysisd のインデックスストームは CPU 数百%でも run を
@@ -809,8 +835,10 @@ apps プロファイルの healthCheckURL が実行開始時に警告を出す�
 - 実機とシミュレータで DerivedData を分けてある(`.ftester/DerivedData-device`)。混在させると
   `findXCTestRun` が iphoneos/iphonesimulator の誤った方を掴む
 - **engine=xcuitest なら実機で動く、は誤り**だった箇所: `FastLaunchDriver`(xcuitest でも既定 ON・
-  中身は `simctl terminate`+`launch`)と `LaunchPreflightDriver`(`simctl get_app_container`)は
-  実機では無効化される(`--physical`)。素の `XCUIApplication.launch()` 経路に落ちる
+  中身はアプリの再起動)と `LaunchPreflightDriver`(未インストール検査)は
+  実機では無効化される(`--physical`)。素の `XCUIApplication.launch()` 経路に落ちる。
+  どちらも 2026-08-02 に CoreSimulator 直叩き優先へ変えたが(design.md §16.4)、
+  **シミュレータ専用という前提は変わっていない**(simctl も CoreSimulator も実機には効かない)
 - アプリは `xcrun devicectl device install app` で入る(**署名済みの .app/.ipa が要る**)。
   SUT のシミュレータ用ビルド(`-sdk iphonesimulator`)はそのままでは使えない
 - **UDID の先頭は機種共通**(`00008130-` は iPhone 15 Pro 系の固定値)。先頭 8 文字を

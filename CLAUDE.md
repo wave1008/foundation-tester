@@ -116,7 +116,12 @@
   落とすラッパー群 / ランナーの 409 多重定義 / 整定の打ち切りを黙る3層)。
   **再現しない同型でも、失敗モードが沈黙(誤った成功)なら塞ぐ価値がある**(その場合は
   「再現していない」と明記する)。可能なら**同型の再発を落とすテスト**まで足す
-  (`SwipeForScrollForwardingTests` = ソース走査 / `BridgeRouterStatusContractTests` = 本数固定)
+  (`SwipeForScrollForwardingTests` = ソース走査 / `BridgeRouterStatusContractTests` = 本数固定 /
+  `AppDriverDefaultDispatchTests` = 宣言の突き合わせ)
+- **`AppDriver` に既定実装を足すときはプロトコル要件にも宣言する**。存在型越しの呼び出しは
+  要件でなければ**静的ディスパッチで既定実装に落ち**、ドライバ側の実装が呼ばれないまま
+  黙って既定値が返る(ビルドもテストも通る)。2026-08-01 に `snapshot(bypassingCache:)` で実際に踏んだ。
+  `AppDriverDefaultDispatchTests` が検出する
 - **新しいテストは「破ったら落ちる」ことを1回確かめる**(production を1行壊して実行→復元)。
   この確認だけで無力なテストが4件見つかった実績がある。検出できない変異が出たらテストを境界へ
   寄せる(要素数を増やす・既定値でなく限界値で呼ぶ)。詳細は docs/verification.md
