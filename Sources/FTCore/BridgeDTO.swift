@@ -54,7 +54,11 @@ public enum BridgeAPI {
     /// snapshot が webViewPath: "dom-interop" を申告するようになった(2026-08-02)。旧 dylib は
     /// interop 配下を引き続き読めないと申告し続け、ホストが画面ごと XCUITest 委譲へ落とすため、
     /// テストは緑のまま速度改善だけが効かない
-    public static let bridgeProtocolVersion = 30
+    /// 34: ブリッジ内の所要内訳ログ(tapTiming/settleTiming/reqTiming)を追加(2026-08-02)。
+    /// **起動時にしか切り替わらない**ので /status の timingEnabled で状態を申告し、
+    /// ホストは希望と食い違えば起動し直す。旧ブリッジを再利用すると「on にしたのに1行も出ない」
+    /// = 計測できていないのに「待ちが無かった」と誤読する事故になる
+    public static let bridgeProtocolVersion = 34
 
     /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
     /// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java の
@@ -124,12 +128,17 @@ public struct StatusResponse: Codable, Sendable {
     public var ownerPid: Int?
     /// このリクエストの直前の無通信秒数(「いつから放置されていたか」の診断用)
     public var idleSeconds: Double?
+    /// 所要内訳ログ(tapTiming/settleTiming/reqTiming)が有効な状態で起動しているか。
+    /// **起動時にしか切り替わらない**ので、ホストは希望状態と食い違うときブリッジを起動し直す
+    /// (Android: AndroidBridge.startBridge)。返さない実装は nil(=off とみなす)
+    public var timingEnabled: Bool?
 
     public init(ready: Bool, device: String, osVersion: String, sessionBundleID: String?,
                 engine: String? = nil, protocolVersion: Int? = nil, applicationState: String? = nil,
                 uiFramework: String? = nil, bridgeVersionCode: Int? = nil,
                 fastInputAvailable: Bool? = nil, unsupportedActions: [String]? = nil,
-                ownerRepo: String? = nil, ownerPid: Int? = nil, idleSeconds: Double? = nil) {
+                ownerRepo: String? = nil, ownerPid: Int? = nil, idleSeconds: Double? = nil,
+                timingEnabled: Bool? = nil) {
         self.ready = ready
         self.device = device
         self.osVersion = osVersion
@@ -144,6 +153,7 @@ public struct StatusResponse: Codable, Sendable {
         self.ownerRepo = ownerRepo
         self.ownerPid = ownerPid
         self.idleSeconds = idleSeconds
+        self.timingEnabled = timingEnabled
     }
 }
 

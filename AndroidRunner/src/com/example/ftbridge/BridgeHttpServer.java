@@ -97,7 +97,11 @@ final class BridgeHttpServer {
                     // 相手が Content-Length 分を送り切らずに待つと、単スレッドの accept ループが
                     // read で無限ブロックしブリッジ全体が wedge する。受信タイムアウトで離脱させる(15s)。
                     sock.setSoTimeout(15000);
+                    // 計測: accept からの経過を段ごとに出す。ホスト側 actionMs との差が
+                    // 「ブリッジの外(HTTP クライアント・接続確立・単一スレッドの待ち行列)」の量
+                    long acceptedAt = android.os.SystemClock.uptimeMillis();
                     Request request = readRequest(sock.getInputStream());
+                    long readAt = android.os.SystemClock.uptimeMillis();
                     Response response;
                     if (request == null) {
                         response = Response.error(400, "リクエストを解析できません");
@@ -109,7 +113,15 @@ final class BridgeHttpServer {
                             response = Response.error(500, "bridge exception: " + e);
                         }
                     }
+                    long handledAt = android.os.SystemClock.uptimeMillis();
                     writeResponse(sock.getOutputStream(), response);
+                    if (BridgeInstrumentation.timingEnabled && request != null
+                            && "POST".equals(request.method) && "/tap".equals(request.path)) {
+                        Log.i(BridgeInstrumentation.TAG, "reqTiming " + request.path
+                                + " read=" + (readAt - acceptedAt)
+                                + " handle=" + (handledAt - readAt)
+                                + " write=" + (android.os.SystemClock.uptimeMillis() - handledAt));
+                    }
                 } catch (Exception e) {
                     Log.e(BridgeInstrumentation.TAG, "connection failed", e);
                 }

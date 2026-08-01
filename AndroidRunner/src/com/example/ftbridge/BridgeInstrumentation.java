@@ -19,6 +19,8 @@ public class BridgeInstrumentation extends Instrumentation {
     /** 起動元リポジトリ(-e owner)。/status の ownerRepo として申告する(doctor の診断用)。
      *  未指定 = 申告しない(旧ホスト起動) */
     static String ownerRepo;
+    /** 所要内訳ログ(tapTiming/settleTiming/reqTiming)を出すか。既定 false = 1行も出さない */
+    static boolean timingEnabled;
     private int port = 8123;
     private int ttlSeconds = TTL_DEFAULT_SECONDS;
 
@@ -31,6 +33,9 @@ public class BridgeInstrumentation extends Instrumentation {
         if (arguments != null) {
             ttlSeconds = parseTTL(arguments.getString("ttl"));
             ownerRepo = arguments.getString("owner");
+            // 所要内訳ログの on/off(既定 off)。ホストの FT_BRIDGE_TIMING=1 が
+            // `-e timing 1` として届く(同期相手: Sources/FTAndroid/AndroidBridge.swift)
+            timingEnabled = "1".equals(arguments.getString("timing"));
         }
         start();
     }

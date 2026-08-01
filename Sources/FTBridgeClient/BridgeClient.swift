@@ -364,6 +364,9 @@ public final class BridgeClient: AppDriver {
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
         do {
+            if let collector = HTTPTimingCollector.shared {
+                return try await session.data(for: req, delegate: collector)
+            }
             return try await session.data(for: req)
         } catch {
             if DriverError.isDefiniteDeliveryFailure(error) {

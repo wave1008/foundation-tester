@@ -183,6 +183,11 @@ public struct BridgeLauncher {
             // 実機はデバイス内ループバックがホストから見えないので全インターフェースに開く。
             // 同期相手: Runner/FTesterRunnerUITests/BridgeHTTPServer.swift の start()
             if physical { env["FT_BIND_ALL"] = "1" }
+            // ブリッジ内の所要内訳ログ(既定 off)。ホスト側の FT_HTTP_TIMING と対で使い、
+            // 「ホストの actionMs とブリッジのハンドラ計時の差」を突き合わせるためだけのもの
+            if ProcessInfo.processInfo.environment["FT_BRIDGE_TIMING"] == "1" {
+                env["FT_BRIDGE_TIMING"] = "1"
+            }
             target["EnvironmentVariables"] = env
         }
 

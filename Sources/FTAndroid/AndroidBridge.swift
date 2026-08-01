@@ -15,7 +15,7 @@ extension AndroidDriver {
     /// デバイス側の listen ポート(全デバイス共通。デバイス毎に独立 loopback なので衝突しない)
     static let bridgeDevicePort: UInt16 = 8123
     /// AndroidRunner/build.sh の VERSION_CODE と同期(不一致なら自動で再インストール)
-    public static let expectedBridgeVersionCode = 37
+    public static let expectedBridgeVersionCode = 40
 
     enum BridgeState {
         case active(BridgeClient)
@@ -140,11 +140,15 @@ extension AndroidDriver {
 
     private func startBridge() async throws -> BridgeClient {
         let hostPort = try ensureForward()
+        // 計時ログは instrumentation 引数なので**起動時にしか切り替わらない**。稼働中ブリッジを
+        // そのまま使うと、on 側は「1行も出ない = 待ちが無かった」と誤読し、off 側は計測が
+        // 終わった後もログを出し続ける。**希望と食い違うときは必ず起動し直す**(両方向)
+        let timingRequested = ProcessInfo.processInfo.environment["FT_BRIDGE_TIMING"] == "1"
         // 既に稼働中で版一致ならそのまま使う(CLI の別プロセスが起動済みのケース)。
         // 版不一致(旧ブリッジプロセスが常駐したまま)は素通しせず、下の再インストール+
         // force-stop+再起動で更新する(APK 差し替えだけでは稼働中プロセスは旧版のまま)
-        if let (client, version) = await probeBridge(hostPort: hostPort),
-           version == Self.expectedBridgeVersionCode {
+        if let (client, version, timing) = await probeBridge(hostPort: hostPort),
+           version == Self.expectedBridgeVersionCode, timing == timingRequested {
             return client
         }
 
@@ -161,13 +165,16 @@ extension AndroidDriver {
         // 起動元の自己申告(/status の ownerRepo。doctor の診断用)。シングルクォートで
         // スペースを含むパスを守る(パス中の ' は稀なので非対応)
         let owner = (try? RepoRoot.find()).map { " -e owner '\($0.path)'" } ?? ""
+        // ブリッジ内の所要内訳ログ(既定 off)。iOS 側の FT_BRIDGE_TIMING と同じスイッチで、
+        // あちらは環境変数・こちらは instrumentation 引数として渡す
+        let timing = timingRequested ? " -e timing 1" : ""
         _ = try adb(["shell",
-                     "am instrument -w -e port \(Self.bridgeDevicePort) -e ttl \(ttl)\(owner) "
+                     "am instrument -w -e port \(Self.bridgeDevicePort) -e ttl \(ttl)\(owner)\(timing) "
                      + "\(Self.bridgeComponent) </dev/null >/dev/null 2>&1 &"])
 
         // ready 待ち(200ms 間隔・最大 10 秒)。起動直後は導入したての APK なので版照合は不要
         for _ in 0..<50 {
-            if let (client, _) = await probeBridge(hostPort: hostPort) { return client }
+            if let (client, _, _) = await probeBridge(hostPort: hostPort) { return client }
             try await Task.sleep(nanoseconds: 200_000_000)
         }
         throw DriverError.bridgeUnreachable(
@@ -244,11 +251,13 @@ extension AndroidDriver {
     }
 
     /// 生存確認+稼働中プロセスの版(旧ブリッジは bridgeVersionCode を返さない → nil)
-    private func probeBridge(hostPort: UInt16) async -> (client: BridgeClient, version: Int?)? {
+    private func probeBridge(hostPort: UInt16)
+        async -> (client: BridgeClient, version: Int?, timing: Bool)? {
         let probe = BridgeClient(port: hostPort, timeoutSeconds: 2)
         guard let status = try? await probe.status(), status.ready else { return nil }
         // 操作用は通常タイムアウト(snapshot 等は余裕を持つ)
-        return (BridgeClient(port: hostPort), status.bridgeVersionCode)
+        return (BridgeClient(port: hostPort), status.bridgeVersionCode,
+                status.timingEnabled ?? false)
     }
 
     private func ensureForward() throws -> UInt16 {
