@@ -8,15 +8,19 @@
 // が固定している。この場は「実機のスナップショットで解決し、タップ・検証まで届くこと」だけを見る。
 // 要素の並びと個数は E2EApp/docs/ui-contract.md(セレクタ画面)が唯一の正。
 // CMP 版(Projects/E2E/Scenarios/16_フィルタORと否定と対称アサーション.swift)の移植。
-// **thisIs 系(CMP 版 scene 12)と doUntilTrue(CMP 版 scene 13)は移植しない**
+// **thisIs 系と doUntilTrue は移植しない**
 // (デバイスに触れないホスト側機能で CMP 版とユニットテストが固定済み)。
+// **@Test は3本に分ける**(セレクタ系 / スクロールコマンド / 探索を伴うスクロール)。1本に畳むと
+// Android で 27.0s・iOS で 41.5s かかり、8 レーンあってもこの1本がスイート全体の壁時計を
+// 決めていた(2026-08-01 実測。レーン追加では縮まない = docs/performance-tuning.md §3.6)。
+// 分割の粒度は他の3 SUT と揃えてある。
 
 import FTDSL
 
 @TestClass(app: "com.ftester.e2e.flutter")
 class フィルタORと否定と対称アサーションが実機で動くこと {
 
-    @Test("和集合・フィルタ内 OR・否定フィルタ・対称アサーション・scroll 引数")
+    @Test("和集合・フィルタ内 OR・否定フィルタ・対称アサーション・exist(scroll:)")
     func S0010() {
         scenario {
             scene(1, "セレクタ画面を開く") {
@@ -92,17 +96,40 @@ class フィルタORと否定と対称アサーションが実機で動くこと
                         .textEndsWith("item3")
                 }
             }
-            scene(6, "`exist(scroll:)` は画面外の要素を探索してから検証する") {
+            scene(6, "否定の短縮形 `!` は完全形と同じ意味") {
+                condition {
+                    // **クリアしてから撃つ**: 省くと下の tap の期待値が scene 4 の残り値と
+                    // 同じになり、タップが空振りしても気付けない。クリアが効いたことも
+                    // 見る(効いていなければ同じ穴が開く)
+                    tap("#btn_selector_reset")
+                }.expectation {
+                    textIs("#txt_selector_result", "result=-")
+                    countIs(".button&&項目&&!#btn_item_2", 2)
+                    countIs(".button&&*許可*&&!許可", 1)
+                }.action {
+                    tap(".button&&項目&&!#btn_item_1&&!#btn_item_2")
+                }.expectation {
+                    textIs("#txt_selector_result", "result=item3")
+                }
+            }
+            scene(7, "`exist(scroll:)` は画面外の要素を探索してから検証する") {
                 expectation {
                     // 折り返しの下にある要素。scroll を付けない exist は現在画面しか見ない
-                    // (07_スクロール.swift 参照)
+                    // (07_スクロール.swift 参照)。画面を送ってしまうのでこの @Test の最後に置く
                     exist("#txt_offscreen", scroll: .down, maxSwipes: 12)
                 }
             }
-            scene(7, "`tap(scroll:)` は探索してからタップする(scrollTo を前置するのと同じ)") {
+        }
+    }
+
+    @Test("Shirates 準拠のスクロールコマンドと tap(scroll:)")
+    func S0020() {
+        scenario {
+            scene(1, "`tap(scroll:)` は探索してからタップする(scrollTo を前置するのと同じ)") {
                 condition {
-                    // 下部タブは固定なのでスクロール位置に関わらず押せる
-                    tap("#tab_home")
+                    launchApp()
+                    // 起動直後のポインタ取りこぼし対策(理由は S0010 scene 1)
+                    exist("#txt_home_marker", requireVisible: false)
                     tap("#nav_scroll")
                 }.action {
                     // 狙うのは一覧末尾(07_スクロール.swift と同じ #row_40)。tap(scroll:) は
@@ -117,7 +144,7 @@ class フィルタORと否定と対称アサーションが実機で動くこと
                     textIs("#txt_row_selected", "selected=row_40")
                 }
             }
-            scene(8, "`scrollToBottom` は端まで送る") {
+            scene(2, "`scrollToBottom` は端まで送る") {
                 action {
                     scrollToBottom(maxSwipes: 20)
                 }.expectation {
@@ -125,7 +152,7 @@ class フィルタORと否定と対称アサーションが実機で動くこと
                     existWithoutScroll("#row_40")
                 }
             }
-            scene(9, "`scrollToTop` は端まで送る") {
+            scene(3, "`scrollToTop` は端まで送る") {
                 action {
                     scrollToTop(maxSwipes: 20)
                 }.expectation {
@@ -133,15 +160,26 @@ class フィルタORと否定と対称アサーションが実機で動くこと
                     existWithoutScroll("#row_01")
                 }
             }
-            scene(10, "`scrollDown(repeat:)` は指定回数ぶん1画面ずつ送る") {
-                action {
+        }
+    }
+
+    @Test("scrollDown(repeat:) と withScrollDown")
+    func S0030() {
+        scenario {
+            scene(1, "`scrollDown(repeat:)` は指定回数ぶん1画面ずつ送る") {
+                condition {
+                    launchApp()
+                    // 起動直後のポインタ取りこぼし対策(理由は S0010 scene 1)
+                    exist("#txt_home_marker", requireVisible: false)
+                    tap("#nav_scroll")
+                }.action {
                     scrollDown(repeat: 2)
                 }.expectation {
                     // 遅延生成の一覧なので、送った先では先頭行がツリーから消える
                     notExist("#row_01", timeout: 2)
                 }
             }
-            scene(11, "`withScrollDown { }` はブロック内をスクロール探索にする") {
+            scene(2, "`withScrollDown { }` はブロック内をスクロール探索にする") {
                 condition {
                     scrollToTop(maxSwipes: 20)
                 }.action {
@@ -153,19 +191,6 @@ class フィルタORと否定と対称アサーションが実機で動くこと
                     }
                 }.expectation {
                     textIs("#txt_row_selected", "selected=row_40")
-                }
-            }
-            scene(12, "否定の短縮形 `!` は完全形と同じ意味") {
-                condition {
-                    tap("#tab_home")
-                    tap("#nav_selector")
-                }.expectation {
-                    countIs(".button&&項目&&!#btn_item_2", 2)
-                    countIs(".button&&*許可*&&!許可", 1)
-                }.action {
-                    tap(".button&&項目&&!#btn_item_1&&!#btn_item_2")
-                }.expectation {
-                    textIs("#txt_selector_result", "result=item3")
                 }
             }
         }
