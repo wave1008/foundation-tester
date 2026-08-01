@@ -268,31 +268,49 @@ test("isMonitorFromWebviewMessage: setTileAutoFit は boolean value のみ受理
   assert.equal(isMonitorFromWebviewMessage({ type: "setTileAutoFit", value: "true" }), false);
 });
 
-test("isMonitorFromWebviewMessage: setRemoteConfig は hosts[](name/host/dir)+target(string)なら true", () => {
+test("isMonitorFromWebviewMessage: setRemoteConfig は hosts[](name/host/dir)+target+artifacts なら true", () => {
   assert.equal(
     isMonitorFromWebviewMessage({
       type: "setRemoteConfig",
       hosts: [{ name: "mac-01", host: "user@mac-01", dir: "" }],
       target: "mac-01",
+      artifacts: "collect",
     }),
     true,
   );
   // hosts 空配列 + target 空("" = ローカル)も正常値
-  assert.equal(isMonitorFromWebviewMessage({ type: "setRemoteConfig", hosts: [], target: "" }), true);
+  assert.equal(
+    isMonitorFromWebviewMessage({
+      type: "setRemoteConfig", hosts: [], target: "", artifacts: "on-demand",
+    }),
+    true,
+  );
+});
+
+test("isMonitorFromWebviewMessage: setRemoteConfig は artifacts 欠落・不正値なら false", () => {
+  assert.equal(
+    isMonitorFromWebviewMessage({ type: "setRemoteConfig", hosts: [], target: "" }), false);
+  assert.equal(
+    isMonitorFromWebviewMessage({
+      type: "setRemoteConfig", hosts: [], target: "", artifacts: "bogus",
+    }),
+    false,
+  );
 });
 
 test("isMonitorFromWebviewMessage: setRemoteConfig は hosts 要素の型不正・target 欠落なら false", () => {
-  assert.equal(isMonitorFromWebviewMessage({ type: "setRemoteConfig", hosts: [], target: undefined }), false);
+  assert.equal(isMonitorFromWebviewMessage({ type: "setRemoteConfig", hosts: [], target: undefined, artifacts: "collect" }), false);
   assert.equal(
     isMonitorFromWebviewMessage({
       type: "setRemoteConfig",
       hosts: [{ name: "mac-01", host: 123, dir: "" }],
       target: "",
+      artifacts: "collect",
     }),
     false,
   );
   assert.equal(
-    isMonitorFromWebviewMessage({ type: "setRemoteConfig", hosts: "not-an-array", target: "" }),
+    isMonitorFromWebviewMessage({ type: "setRemoteConfig", hosts: "not-an-array", target: "", artifacts: "collect" }),
     false,
   );
 });

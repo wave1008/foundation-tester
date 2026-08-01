@@ -32,19 +32,36 @@ test("resolveRemoteTarget: 一致するが host が空(壊れた登録) → erro
 
 test("buildRemoteRunArgs: dir 既定省略(host のみ)", () => {
   assert.deepEqual(
-    buildRemoteRunArgs({ name: "mac-01", host: "user@mac-01", dir: "" }),
+    buildRemoteRunArgs({ name: "mac-01", host: "user@mac-01", dir: "" }, "collect"),
     ["--host", "user@mac-01"],
   );
 });
 
 test("buildRemoteRunArgs: 全指定(host + dir)", () => {
   assert.deepEqual(
-    buildRemoteRunArgs({
-      name: "mac-02",
-      host: "mac-02",
-      dir: "/Users/ci/ftester-runner",
-    }),
+    buildRemoteRunArgs(
+      {
+        name: "mac-02",
+        host: "mac-02",
+        dir: "/Users/ci/ftester-runner",
+      },
+      "collect",
+    ),
     ["--host", "mac-02", "--remote-dir", "/Users/ci/ftester-runner"],
+  );
+});
+
+test("buildRemoteRunArgs: artifacts=collect(既定) は --remote-artifacts を付けない", () => {
+  assert.deepEqual(
+    buildRemoteRunArgs({ name: "mac-01", host: "user@mac-01", dir: "" }, "collect"),
+    ["--host", "user@mac-01"],
+  );
+});
+
+test("buildRemoteRunArgs: artifacts=on-demand は --remote-artifacts on-demand を足す", () => {
+  assert.deepEqual(
+    buildRemoteRunArgs({ name: "mac-01", host: "user@mac-01", dir: "" }, "on-demand"),
+    ["--host", "user@mac-01", "--remote-artifacts", "on-demand"],
   );
 });
 

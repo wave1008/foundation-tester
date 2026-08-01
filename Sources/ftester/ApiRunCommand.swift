@@ -95,6 +95,10 @@ struct ApiRunCommand: AsyncParsableCommand {
             help: "Timeout in seconds for the whole remote dispatch (default: auto, sized from the scenario count; see docs/remote-runner.md)")
     var remoteTimeout: Int?
 
+    @Option(name: .customLong("remote-artifacts"),
+            help: "Collect recordings and run logs (results/) from the remote after the run: collect (default) or on-demand (leave them on the remote; docs/remote-runner.md)")
+    var remoteArtifacts: String = "collect"
+
     func run() async throws {
         // pause等のイベントが既定の全バッファに滞留すると読み手(VSCode拡張)と相互待ちになる
         // (ScenarioRunnerMain.swift の --debug 実装と同じ理由)。--debug 以外も常に行バッファにする
@@ -342,9 +346,11 @@ struct ApiRunCommand: AsyncParsableCommand {
 
         try RemoteLayout.validateBase(remoteDir)
         let hostSpec = try RemoteHostSpec.parse(rawHost)
+        let artifactsMode = try RemoteArtifactsMode.parse(remoteArtifacts)
         let localRoot = try RepoRoot.find()
         let dispatcher = RemoteRunDispatcher(
-            host: hostSpec, remoteDirRaw: remoteDir, localRepoRoot: localRoot, mode: .apiRun)
+            host: hostSpec, remoteDirRaw: remoteDir, localRepoRoot: localRoot, mode: .apiRun,
+            artifacts: artifactsMode)
         let exitCode = try await dispatcher.dispatchApi(
             project: project, profile: profile, scenarios: scenarios,
             heal: heal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,

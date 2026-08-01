@@ -72,11 +72,12 @@ export interface FtesterConfig {
    * 確認するだけで取り込みはしない(取り込みは /ftester-update)。 */
   updateCheck: UpdateCheckMode;
   /** リモートディスパッチ(docs/remote-runner.md §11-12)。hosts は登録済みホスト一覧、target は
-   * そのうち今回使う name("" = ローカル実行)。runHandler.ts の resolveRemoteTarget/
+   * そのうち今回使う name("" = ローカル実行)。artifacts はリモートの results/ を回収するか
+   * ("collect" 既定 / "on-demand" は回収しない)。runHandler.ts の resolveRemoteTarget/
    * buildRemoteRunArgs が `ftester api run` の引数へ変換する(--profile 実行時のみ。単一デバイス
    * 直指定には非適用)。target が hosts に無い/host 未設定のときは run を中止する契約
    * (黙ってローカル実行にフォールバックしない)。 */
-  remote: { hosts: RemoteHostEntry[]; target: string };
+  remote: { hosts: RemoteHostEntry[]; target: string; artifacts: "collect" | "on-demand" };
 }
 
 /** ワークスペースルート(Package.swift のあるフォルダ)を解決する。開いていなければ undefined。 */
@@ -120,6 +121,7 @@ export function readConfig(workspaceRoot: string): FtesterConfig {
     remote: {
       hosts: normalizeRemoteHosts(configuration.get<unknown>("remote.hosts", [])),
       target: configuration.get<string>("remote.target", "").trim(),
+      artifacts: configuration.get<string>("remote.artifacts", "collect") === "on-demand" ? "on-demand" : "collect",
     },
   };
 }

@@ -396,7 +396,12 @@ SSH 側のプロセスからでもユーザーの launchd ドメインのサー�
   作っていない)。マシン自身の `~/foundation-tester` や `Projects/` には一切触れない
 - アプリバイナリは転送しない(rsync 対象はシナリオ・プロファイルのみ。dispatch 開始時に
   注記を1行出す)。appPath はリモート側で有効なパスであることが前提
-- results DB のマージは行わない(Phase 3 の課題)。拡張連携(`ftester api run` の
+- results DB の**マージ**(ローカルの集計に混ぜる)は行わない(Phase 3 の課題)。ただし
+  **録画と run ログ(`results/` 配下)の回収は実装済み**(2026-08-01): `--remote-artifacts`
+  (`collect` 既定 / `on-demand`)で選ぶ。GUI は設定タブの「成果物(録画・ログ)」。
+  `collect` はローカルの `Projects/<name>/results/` へ rsync(**`--delete` は付けない** —
+  ローカルで別に走った run の results を巻き添えで消さない。差分転送なので再ディスパッチは安い)。
+  `on-demand` は回収せず、リモートのパスを1行案内する。拡張連携(`ftester api run` の
   NDJSON 中継)は §12 末尾のとおり後日実装
 - **レポート回収はディスパッチ単位に隔離**(2026-07-31)。run に
   `--report-dir <base>/work/.ftester/dispatch/<stamp>/reports` を内部で渡し、

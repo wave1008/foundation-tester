@@ -172,6 +172,60 @@ final class RemoteDispatchTests: XCTestCase {
             ])
     }
 
+    // MARK: - RemoteArtifactsMode.parse
+
+    func testArtifactsModeParseCollect() throws {
+        XCTAssertEqual(try RemoteArtifactsMode.parse("collect"), .collect)
+    }
+
+    func testArtifactsModeParseOnDemand() throws {
+        XCTAssertEqual(try RemoteArtifactsMode.parse("on-demand"), .onDemand)
+    }
+
+    func testArtifactsModeParseRejectsBogusValue() {
+        XCTAssertThrowsError(try RemoteArtifactsMode.parse("bogus")) { error in
+            guard case RemoteDispatchError.invalidArtifactsMode = error else {
+                return XCTFail("expected invalidArtifactsMode, got \(error)")
+            }
+        }
+    }
+
+    /// rawValue の完全一致でしか受理しない(大文字小文字は区別する)
+    func testArtifactsModeParseRejectsCapitalizedValue() {
+        XCTAssertThrowsError(try RemoteArtifactsMode.parse("Collect")) { error in
+            guard case RemoteDispatchError.invalidArtifactsMode = error else {
+                return XCTFail("expected invalidArtifactsMode, got \(error)")
+            }
+        }
+    }
+
+    // MARK: - RemoteArtifactCollection.resultsRsyncArgs
+
+    func testResultsRsyncArgs() {
+        let layout = RemoteLayout(base: "/Users/ci/ftester-runner")
+        XCTAssertEqual(
+            RemoteArtifactCollection.resultsRsyncArgs(
+                project: "E2E", layout: layout, sshTarget: "user@host",
+                localProjectsDir: "/local/Projects"),
+            [
+                "-az",
+                "user@host:/Users/ci/ftester-runner/work/Projects/E2E/results/",
+                "/local/Projects/E2E/results/",
+            ])
+    }
+
+    /// --delete が無いこと(ローカルの results を巻き添えで消さない)と、両パスとも末尾スラッシュを
+    /// 保つこと(rsync のディレクトリ中身コピー契約)を確認
+    func testResultsRsyncArgsOmitsDeleteAndKeepsTrailingSlashes() {
+        let layout = RemoteLayout(base: "/Users/ci/ftester-runner")
+        let args = RemoteArtifactCollection.resultsRsyncArgs(
+            project: "E2E", layout: layout, sshTarget: "user@host",
+            localProjectsDir: "/local/Projects")
+        XCTAssertFalse(args.contains("--delete"), "\(args)")
+        XCTAssertTrue(args[1].hasSuffix("/"), args[1])
+        XCTAssertTrue(args[2].hasSuffix("/"), args[2])
+    }
+
     // MARK: - RemoteRunArgs.build
 
     func testRemoteRunArgsMinimal() {
