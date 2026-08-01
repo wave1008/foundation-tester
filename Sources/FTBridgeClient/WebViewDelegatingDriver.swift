@@ -105,9 +105,26 @@ public final class WebViewDelegatingDriver: AppDriver {
     public func swipe(_ direction: FTSwipeDirection) async throws {
         try await screenDriver.swipe(direction)
     }
-    /// forScroll 版の素通し(FastLaunchDriver の注記と同じ理由)
+    /// forScroll 版。**委譲中でもスクロール目的だけは in-app を先に試す**: WKWebView の中の
+    /// WKScrollView は contentOffset で動かせるので、XCUITest の実スワイプ(1回 ≒ 450ms、
+    /// 直後の委譲 snapshot も 300ms)を丸ごと省ける。効かない構成なら in-app が 501 を返すので
+    /// 従来どおり XCUITest へ落とす。
+    ///
+    /// **ref を使わない操作なので名前空間の不変条件は崩れない**(このクラスの冒頭注記の例外は
+    /// ここだけ。ref を伴う操作を同じ理屈で in-app へ回してはいけない)。
+    /// forScroll=false(DSL の `swipe` = ジェスチャ自体が目的)は従来どおり委譲先へ送る:
+    /// in-app は interop のジェスチャを駆動できない。
     public func swipe(_ direction: FTSwipeDirection, forScroll: Bool) async throws {
-        try await screenDriver.swipe(direction, forScroll: forScroll)
+        guard delegating, forScroll else {
+            try await screenDriver.swipe(direction, forScroll: forScroll)
+            return
+        }
+        do {
+            try await primary.swipe(direction, forScroll: true)
+        } catch {
+            guard DriverError.isEngineIncapable(error) else { throw error }
+            try await delegated.swipe(direction, forScroll: true)
+        }
     }
     public func press(ref: Int, duration: Double) async throws {
         try await screenDriver.press(ref: ref, duration: duration)

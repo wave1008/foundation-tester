@@ -82,6 +82,18 @@
         "name": "Pixel 4a",
         "kind": "physical",
         "serial": "14141JEC204922"
+      },
+      {
+        "name": "Pixel 9(Android 15)-06",
+        "avd": "Pixel_9_Android_15_-06"
+      },
+      {
+        "name": "Pixel 9(Android 15)-07",
+        "avd": "Pixel_9_Android_15_-07"
+      },
+      {
+        "name": "Pixel 9(Android 15)-08",
+        "avd": "Pixel_9_Android_15_-08"
       }
     ]
   }

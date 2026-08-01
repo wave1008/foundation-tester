@@ -45,7 +45,12 @@ public enum BridgeAPI {
     /// 旧 dylib が再利用されるとスクロールが全部 XCUITest へ回ったままになる
     /// 27: 整定を **cap で打ち切ったことを note で申告**するようになった(2026-07-31)。
     /// 旧ブリッジは黙るので「常態的に上限へ張り付いているのに緑」が見えないまま残る
-    public static let bridgeProtocolVersion = 27
+    /// 28: Compose/Flutter でも **WebView 画面のスクロールを contentOffset で受けるようになった**
+    /// (2026-08-01)。旧 dylib は 501 を返すので画面ごと XCUITest 委譲のままで、この短縮が効かない
+    /// 29: XCUITest ランナーの /type が**送った打鍵数を完了の根拠にせず**、読み返して期待値に
+    /// 届くまで足りないぶんを追送するようになった(2026-08-01)。旧ランナーが再利用されると
+    /// 高負荷での打鍵取りこぼし(200 を返すのに値が空)が残ったままになる
+    public static let bridgeProtocolVersion = 29
 
     /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
     /// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java の
