@@ -535,6 +535,49 @@ uikit ホストの同シナリオ(元から DOM 経路)が 11.3s なので、ほ
   `transform: translate(60px,0)` の要素も両方 `(76,477)`)。**「タップが外れる」を座標のせいと
   決めつけない** —— ランナー内では ref タップも座標タップも同じ `coordinate(...).tap()`
 
+### 3.14 tap の内訳を実測した(2026-08-02・**改善ではなく調査**)
+
+`tap` はステップ時間の 2 割強(スイート全体の 26%・897 回)で launch に次ぐ2位。ホスト側の
+`actionMs` しか無く「送信」と「整定待ち」を分けられなかったので、両ブリッジに計時を入れて測った。
+
+**結論: tap の 73〜91% は actionMs で、その中身は整定待ちではない。** snapshot は 8〜25% しかない。
+
+| エンジン | tap 平均 | 中央 | snapshot | action | 内訳(ブリッジ内) |
+|---|---|---|---|---|---|
+| iOS xcuitest | 634ms | 537ms | 160ms | 463ms | 合成 363ms + **quiescence 29ms(7.5%)** + HTTP 約70ms |
+| iOS in-app | 250ms | 117ms | 42ms | 195ms | — |
+| Android | 483ms | 337ms | 39ms | 438ms | inject 37ms + settle 285ms(stablePkg 60 + quiet 225)+ HTTP 約20ms |
+
+- **XCUITest の律速は `coordinate.tap()` のイベント合成そのもの**(363ms・全体の 92.5%)。
+  quiescence 待ちは 29ms しかない。**`FT_FAST_INPUT=1`(§6 のレバー1)を実負荷で2回計っても
+  tap 634→601/605ms・run 全体 −1.7% にとどまる**のはこれが理由で、数字は quiesce の実測値と一致する。
+  **「XCUITest が遅いのは整定待ちのせい」という見立ては誤り**。ツール側に削り代は無い
+- **Android の settle は cap(`ACTION_CAP_MS` 2,000ms)に一度も届かない**(165 回中 0 回・
+  quiet の最大 362ms)。ハンドラ全体でも最大 916ms
+- **ホスト `actionMs` が 5〜6 秒になる tap は「探索付き tap」**(`tap(sel, scroll:)` /
+  `tapWithScrollDown` / `withScrollDown { }`)。内蔵スクロール探索は**別ステップにしない**設計
+  (StepExecutor)なので、最大 15 回のスワイプが tap の名前で計上される。**素の tap は 255ms**。
+  平均値だけ見て「Android の tap が遅い」と読まないこと
+
+### 3.15 ブリッジ内の所要内訳ログ(2026-08-02 追加・計測基盤)
+
+上の調査のために足した口。**既定 off**。
+
+```bash
+FT_BRIDGE_TIMING=1 FT_HTTP_TIMING=1 ftester run --project E2E --profile android
+adb -s <serial> logcat -d -s FTBridge | grep -E 'tapTiming|settleTiming|reqTiming'  # Android
+grep tapTiming .ftester/bridge-<port>.log                                            # iOS
+```
+
+- iOS = xctestrun へ環境変数を注入(`BridgeLauncher`)/ Android = `am instrument -e timing 1`
+- **起動時にしか切り替わらない**。稼働中ブリッジを再利用すると on にしても 1 行も出ず、
+  それを「待ちが無かった」と誤読する。Android は `/status` の `timingEnabled` を見て
+  **希望と食い違えば起動し直す**(on/off 両方向)。iOS は再利用の判定が
+  「1デバイス1ランナー」制約と絡むため触らず、代わりに**1,500ms 超の tap はゲート無関係に必ず記録**する
+  (実測 p90 439ms・最大 889ms なので通常運転では 1 行も出ない)
+- ホスト側 `FT_HTTP_TIMING=1`(閾値 `FT_HTTP_TIMING_MS`・既定 1000ms)は URLSession の
+  接続/送信/TTFB を出す。**ブリッジのハンドラ計時と突き合わせて「差がブリッジの外か中か」を決める**用
+
 ## 4. 計測基盤の使い方(チューニングの必須手順)
 
 **変更前にベースライン、変更後に同条件で再計測、summary.md を比較する。**
