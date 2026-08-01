@@ -819,6 +819,11 @@ window/transition/animator の `*_scale` はチューニングノブではなく
   もう一段速くなる。**壁は ref の名前空間**: 返す snapshot と ref の宛先を一致させる不変条件
   (`WebViewDelegatingDriver` の冒頭注記)を、ref を持たない座標タップで跨ぐ設計にする必要がある。
   効果見積り ≒ 1 シナリオあたり 8〜10s × 2 SUT
+- **WebView 画面のスクロールヒント跳躍(`runScrollSearch` / `scrollToEdge` の long drag)**(未対策):
+  `driver.drag` を使うため、in-app が drag 非対応である以上 WebView 委譲中は必ず XCUITest の
+  実ドラッグになる(§3.11 の contentOffset 化はスワイプだけで drag は対象外)。2026-08-01 の
+  全計測で一度も発火しておらず(レポートに「long drag(s) from scroll hints」の注記なし)、
+  効果を実測できないため未着手。着手条件は WebView 画面でこの注記が実際に出るシナリオの出現
 - **iOS ブリッジ供給の堅牢化(高並列時)**: ランナーのコールドスタートが負荷下で
   供給タイムアウトを超え、run 全体が中断する(§7 の交互成功パターン)。候補: タイムアウト値の
   負荷連動延長、ランナー起動の直列化、タイムアウト後も起動継続中なら待ち直す再確認ループ。
