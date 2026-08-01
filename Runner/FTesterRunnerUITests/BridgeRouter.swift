@@ -24,6 +24,9 @@ final class BridgeRouter {
     private var app: XCUIApplication?
     private var sessionBundleID: String?
     private var refFrames: [Int: CGRect] = [:]
+    /// 直近スナップショットの ref→要素。handleType の読み返しが「対象の identifier」と
+    /// 「入力前の値」をここから採る(ライブクエリを撃たずに済ませるため)
+    private var refElements: [Int: ElementInfo] = [:]
     // 直前の要求が画面を変えうる操作(tap/swipe/press/type/drag/session)だったか。
     // XCUITest の tap quiescence は非同期 push 遷移の完了前に返ることがあり、直後 snapshot が
     // 遷移前ツリーを掴む(実測 50% / bridge-8123)。操作直後の snapshot に限り整定確認する。
@@ -108,6 +111,7 @@ final class BridgeRouter {
             app = target
             sessionBundleID = req.bundleID
             refFrames = [:]
+            refElements = [:]
             return .json(OKResponse())
         }
         if req.attachOnly == true {
@@ -129,6 +133,7 @@ final class BridgeRouter {
         app = target
         sessionBundleID = req.bundleID
         refFrames = [:]
+        refElements = [:]
         return .json(OKResponse())
     }
 
@@ -154,6 +159,8 @@ final class BridgeRouter {
         settlePending = false
 
         refFrames = cap.frames
+        // ref → 要素(handleType の読み返しが identifier / 直前の値を使う)。frame と同じ寿命
+        refElements = Dictionary(uniqueKeysWithValues: zip(cap.elements.map(\.ref), cap.elements))
         return .json(SnapshotResponse(
             sessionBundleID: sessionBundleID,
             screen: FTRect(x: cap.screen.origin.x, y: cap.screen.origin.y,
@@ -267,6 +274,35 @@ final class BridgeRouter {
         return .json(OKResponse())
     }
 
+    /// **`typeText` が返ったことを完了の根拠にしない**(handleClear と同じ規律。2026-08-01)。
+    /// 打鍵はキーボード(別プロセス)経由で**非同期に**アプリへ届くため、200 を返した時点では
+    /// アプリの状態に入っていない。高負荷ではさらに取りこぼしも起きる。
+    ///
+    /// **実害**(フル E2E・2026-08-01): `type "#field_single" "persist99"` の直後の送信タップが
+    /// **空の値で処理された**(失敗時の画面は `single=persist99` / `len=9` なのに `submitted=`)。
+    /// タッチは直接アプリへ届くのに文字はキーボード経由で遅れるので、順序が入れ替わる。
+    /// つまり「入っていない」ではなく「まだ入っていない」を 200 で隠していた。
+    ///
+    /// 対策は読み返し: 期待値(入力前の値 + 送る本文)になるまで待ち、
+    ///   - 期待値の**前方一致で止まった**(= 打鍵の取りこぼし)→ 足りないぶんだけ追送
+    ///   - 期待値を**含んで長い**(= 追送が二重に入った)→ 余分を delete で削る
+    ///   - どちらでもない(自動修正・書式付け・マスク欄の `•••`)→ **検証を諦めて受理**
+    ///     (嘘の成功は潰したいが、加工された入力を失敗にはしない)
+    /// 上限は周回数ではなく deadline と進捗なし回数(handleClear と同じ設計)。
+    ///
+    /// **「値が変わらなくなる」まで待ってから追送する**のが肝。まだ届いていないだけの欄へ
+    /// 追送すると同じ文字を2回入れる(Android の `InputInjector` で実害。
+    /// docs/design.md §Android のテキスト注入の規律)。
+    ///
+    /// 検証できない経路(ref なし・テキスト欄でない対象・文中の改行)は従来どおり
+    /// `app.typeText` を1回だけ送る。
+    ///
+    /// **読み返しはスナップショットで行い、ライブクエリ(`descendants` + `hasKeyboardFocus`)は
+    /// 使わない**。ライブクエリは1回 0.5s 級で、happy path が倍以上遅くなる(実測: /type の
+    /// p50 が 842ms → 2,166ms)。**打鍵も `app.typeText` のまま**にする —— 要素に対する
+    /// `typeText` はイベント合成の失敗が XCTest の失敗になり**ランナーごと落ちる**
+    /// (実測1件: 高負荷で `Type '...' into "field_single" TextView` の Synthesize event を
+    /// 最後にランナーが死んだ)。
     private func handleType(_ body: Data) throws -> BridgeHTTPServer.Response {
         let req = try decode(TypeRequest.self, body)
         let app = try requireLiveApp()
@@ -275,8 +311,92 @@ final class BridgeRouter {
             // キーボードが別プロセス扱いのため常にタイムアウトし逆効果だった。2026-07-12実測)
             coordinate(app, try resolvePoint(ref: ref, x: nil, y: nil)).tap()
         }
-        app.typeText(req.text)
+        // 末尾の改行1つは本文と分けて送る(改行は Return キー相当で、値には残らない=検証対象外)。
+        // 本文を入れ切ってから発火するので「空のまま送信された」も同時に塞げる
+        let (main, hasTrailingNewline) = Self.splitTrailingNewline(req.text)
+        // 入力前の値は**直近スナップショットの値をそのまま使う**(ホストは /type の直前に必ず
+        // snapshot を撮っている)。ここで撮り直すと happy path に取得1回ぶん乗る
+        guard !main.contains("\n"),
+              let target = req.ref.flatMap({ refElements[$0] }),
+              TypeReadback.isTextInput(target) else {
+            app.typeText(req.text)
+            return .json(OKResponse())
+        }
+        let expected = TypeReadback.normalizedValue(of: target) + main
+        var pending = main
+        var previous: String?
+        var stagnantRounds = 0
+        var rounds = 0
+        let deadline = Date().addingTimeInterval(Self.typeBudgetSeconds)
+        loop: while true {
+            app.typeText(pending)
+            rounds += 1
+            // 読めない・曖昧 = 検証不能なので受理する(TypeReadback.value 参照)
+            guard let actual = try awaitCommit(app, target: target,
+                                               expected: expected, deadline: deadline) else { break }
+            switch TypeReadback.plan(expected: expected, actual: actual) {
+            case .done, .unverifiable:
+                break loop
+            case .resend(let missing):
+                pending = missing
+            case .deleteExcess(let count):
+                pending = String(repeating: XCUIKeyboardKey.delete.rawValue, count: count)
+            }
+            stagnantRounds = (actual == previous) ? stagnantRounds + 1 : 0
+            previous = actual
+            if stagnantRounds >= Self.typeMaxStagnantRounds || Date() >= deadline {
+                // 残った値そのものは出さない(パスワード欄も通る経路)。長さと周回数だけ出す。
+                // **409 ではなく 422**(理由は handleClear のコメント)
+                throw BridgeError(422, "入力が期待した値になりませんでした"
+                    + "(\(rounds) 周打っても \(expected.count) 文字に対して \(actual.count) 文字)")
+            }
+        }
+        // 本文を入れ切ってから発火する(app 全体へ送るのは従来どおり。要素への typeText は
+        // ランナーごと落ちうる)
+        if hasTrailingNewline { app.typeText("\n") }
         return .json(OKResponse())
+    }
+
+    /// 入力の打ち切り時間(秒)と、値が変わらない周回の許容数。handleClear と同じ設計・同じ値
+    /// (どちらも「1周まるごと打鍵が落ちる」ことがあるので 1 では早すぎる)
+    private static let typeBudgetSeconds: TimeInterval = 8
+    private static let typeMaxStagnantRounds = 4
+    /// 追送に踏み切る前に「値が動かないこと」を確認する時間。**実測の反映遅れより十分長く取る**
+    /// (6シミュレータ並列 + Android スイート並走で、打鍵が値に載るまでの実測は 0.7s 以下)。
+    /// 短くすると、まだ届いていないだけの欄へ追送して二重入力になる
+    private static let typeStableSeconds: TimeInterval = 1.5
+    /// 読み返しの間隔。1回ごとにツリー取得(数十〜数百 ms)が乗るので、これ以上細かくしない
+    private static let typePollSeconds: TimeInterval = 0.05
+
+    /// 期待値になるまで待ち、最後に読めた値を返す(nil = 検証不能。TypeReadback.value 参照)。
+    /// 抜ける条件は3つ: **期待値に一致** / **値が typeStableSeconds のあいだ変わらない** / deadline。
+    /// 「変わらなくなるまで待つ」のが肝 —— 打鍵はキーボード(別プロセス)経由で非同期に届くので、
+    /// まだ届いていない欄へ追送すると二重入力になる。
+    /// 一致していれば最初の1取得で返るので、happy path に待ちは乗らない
+    private func awaitCommit(_ app: XCUIApplication, target: ElementInfo,
+                             expected: String, deadline: Date) throws -> String? {
+        var lastValue = TypeReadback.value(of: target, in: try captureOnce(app).elements)
+        var lastChange = Date()
+        while true {
+            guard let value = lastValue else { return nil }
+            if value == expected { return value }
+            if Date() >= deadline { return value }
+            if Date().timeIntervalSince(lastChange) >= Self.typeStableSeconds { return value }
+            Thread.sleep(forTimeInterval: Self.typePollSeconds)
+            let current = TypeReadback.value(of: target, in: try captureOnce(app).elements)
+            if current != lastValue {
+                lastChange = Date()
+                lastValue = current
+            }
+        }
+    }
+
+    /// 末尾の改行1つだけを本文から切り離す(text 全体が "\n" のときは分離しない)。
+    /// InAppBridge / AndroidDriver の同名ヘルパと同じ規則 —— 「type の末尾改行 = pressEnter」が
+    /// 3ブリッジ共通の契約
+    private static func splitTrailingNewline(_ text: String) -> (main: String, hasTrailingNewline: Bool) {
+        guard text != "\n", text.hasSuffix("\n") else { return (text, false) }
+        return (String(text.dropLast()), true)
     }
 
     /// hasKeyboardFocus な要素を探して末尾へカーソルを送ってから delete を打つ。**文中をタップして
@@ -457,6 +577,7 @@ final class BridgeRouter {
         self.app = nil
         sessionBundleID = nil
         refFrames = [:]
+        refElements = [:]
         return .json(OKResponse())
     }
 

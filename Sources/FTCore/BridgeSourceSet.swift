@@ -42,7 +42,7 @@ public enum BridgeSourceSet: String, CaseIterable, Sendable {
         case .xcuitest:
             // Runner/project.yml は含めない: UITests の設定はブリッジ挙動に効くが、同ファイルは
             // SampleApp / FTesterRunnerApp の都合でも編集されるためノイズが勝つ
-            return ["Sources/FTCore/BridgeDTO.swift"]
+            return ["Sources/FTCore/BridgeDTO.swift", "Sources/FTCore/TypeReadback.swift"]
         case .android:
             return ["AndroidRunner/build.sh", "AndroidRunner/AndroidManifest.xml"]
         }
