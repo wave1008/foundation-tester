@@ -12,6 +12,7 @@ import FTCore
 public final class FastLaunchDriver: AppDriver {
     private let base: BridgeClient
     private let udid: String
+    private var lastLaunchTimingValue: LaunchTiming?
 
     public init(base: BridgeClient, udid: String) {
         self.base = base
@@ -19,15 +20,22 @@ public final class FastLaunchDriver: AppDriver {
     }
 
     public func launch(bundleID: String) async throws {
-        // terminate は未起動なら失敗してよい(冪等化)
+        lastLaunchTimingValue = nil   // 失敗時に前回成功分の内訳を出さないための明示リセット
+        // terminate は未起動なら失敗してよい(冪等化)。actionMs には含めない(「起動」ではなく前処理)
         _ = try? Shell.run(["xcrun", "simctl", "terminate", udid, bundleID], timeout: 15)
+        let clock = ContinuousClock()
+        let actionStart = clock.now
         let result = try Shell.run(["xcrun", "simctl", "launch", udid, bundleID])
+        let actionMs = continuousClockMs(clock.now - actionStart)
         guard result.status == 0 else {
             throw DriverError.badResponse(status: Int(result.status),
                 body: "simctl launch failed (the fast-input fast launch): \(result.tail)")
         }
         // activate = プロキシ接続+前面化+初回整定(冒頭コメントの attachOnly 不採用理由を参照)
+        let waitStart = clock.now
         try await base.activate(bundleID: bundleID)
+        let waitMs = continuousClockMs(clock.now - waitStart)
+        lastLaunchTimingValue = LaunchTiming(actionMs: actionMs, waitMs: waitMs)
     }
 
     public func status() async throws -> StatusResponse { try await base.status() }
@@ -63,4 +71,5 @@ public final class FastLaunchDriver: AppDriver {
     public func screenshot() async throws -> Data { try await base.screenshot() }
     public func terminate() async throws { try await base.terminate() }
     public var lastActionNote: String? { base.lastActionNote }
+    public var lastLaunchTiming: LaunchTiming? { lastLaunchTimingValue }
 }

@@ -1628,7 +1628,8 @@ public func launchApp(_ bundleID: String? = nil,
     let core = FTRuntime.requireCore(command: "launchApp")
     let bundle = bundleID ?? core.appBundleID
     let driver = core.driver
-    core.performCustom(description: "launch \(bundle)", file: file, line: line) {
+    core.performCustom(description: "launch \(bundle)", file: file, line: line,
+                       launchTiming: { driver.lastLaunchTiming }) {
         try await driver.launch(bundleID: bundle)
     }
 }
@@ -1640,7 +1641,8 @@ public func restartApp(_ bundleID: String? = nil,
     let core = FTRuntime.requireCore(command: "restartApp")
     let bundle = bundleID ?? core.appBundleID
     let driver = core.driver
-    core.performCustom(description: "restart \(bundle)", file: file, line: line) {
+    core.performCustom(description: "restart \(bundle)", file: file, line: line,
+                       launchTiming: { driver.lastLaunchTiming }) {
         try? await driver.terminate()
         try await driver.launch(bundleID: bundle)
     }

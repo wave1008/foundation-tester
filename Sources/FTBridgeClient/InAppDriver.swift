@@ -10,6 +10,7 @@ public final class InAppDriver: AppDriver {
     private let launcher: InAppLauncher
     // terminate() は bundleID を取らないため、直近 launch のものを使う
     private var lastBundleID: String?
+    private var lastLaunchTimingValue: LaunchTiming?
 
     public init(repoRoot: URL, udid: String, port: UInt16) {
         self.client = BridgeClient(port: port)
@@ -20,7 +21,8 @@ public final class InAppDriver: AppDriver {
 
     public func launch(bundleID: String) async throws {
         lastBundleID = bundleID
-        try await launcher.relaunch(bundleID: bundleID)
+        lastLaunchTimingValue = nil   // 失敗時に前回成功分の内訳を出さないための明示リセット
+        lastLaunchTimingValue = try await launcher.relaunch(bundleID: bundleID)
     }
 
     public func terminate() async throws {
@@ -101,6 +103,7 @@ public final class InAppDriver: AppDriver {
 
     public func screenshot() async throws -> Data { try await withCrashContext { try await client.screenshot() } }
     public var lastActionNote: String? { client.lastActionNote }
+    public var lastLaunchTiming: LaunchTiming? { lastLaunchTimingValue }
 
     /// 接続系エラーに、直近クラッシュレポートの有無に応じた切り分け情報を detail 末尾に付与して
     /// **同じ case のまま**再 throw する(呼び出し側の catch は変えなくてよい)。

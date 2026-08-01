@@ -53,6 +53,7 @@ public final class SessionRecoveryDriver: AppDriver {
     // install と同じくセッション不要の host 側操作なので回復なしで素通し
     public func clearAppData(bundleID: String) async throws { try await base.clearAppData(bundleID: bundleID) }
     public var lastActionNote: String? { base.lastActionNote }
+    public var lastLaunchTiming: LaunchTiming? { base.lastLaunchTiming }
 
     public func launch(bundleID: String) async throws {
         try await base.launch(bundleID: bundleID)

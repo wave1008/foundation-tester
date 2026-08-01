@@ -49,6 +49,17 @@ wait ほぼ 0ms = 固定 sleep の残骸なし):
 | 検証(exist 等、初回ヒット時) | 数十 ms | ほぼ下限(snapshot 8.7ms+パース) |
 | サブプロセス初期化(spawn+forward 照会+probe) | 0.15〜0.2s | ランナー常駐化で消せるが見送り中(§6) |
 
+**上の表は Android の値**。iOS はどのフレームワークでも launch がこれより桁で重く、
+**フル E2E では launch が全ステップ時間の 32〜57%**(1シナリオ1回 × 37〜40本)を占める最大項になる。
+中央値: iOS xcuitest 4.8〜5.6s / iOS in-app 3.26〜3.32s / Android 1.6s(View/XML)・2.0s(CMP)・3.2s(Flutter)。
+**iOS in-app の 3.3s は CMP/SwiftUI/Flutter でほぼ同値 = アプリ非依存の固定費**。内訳(2026-08-01 実測・アイドル):
+
+| 区間 | 所要 | 削る余地 |
+|---|---|---|
+| `xcrun simctl launch` の往復 | 0.61〜0.73s | **候補**: CoreSimulator 直叩き(`FTCoreSimShim` は今は列挙のみ)。0.65s × 40本 ≒ sum −26s |
+| プロセス生成 → ブリッジが listen | 約 0.30s | dylib の constructor 起動なのでほぼ下限 |
+| `/status` が返るまで(`mainSync` がメインスレッド待ち) | 1.82s(SwiftUI)/ 1.84s(Flutter)/ 2.48s(CMP) | **削れない**。アプリが実際に応答可能になるまでの時間で、readiness の定義として正しい |
+
 ライブ操作 1 タップ = serve 常駐プロセスへの stdin 1 行 → ブリッジで注入+静穏 →
 actionResult+snapshot イベント。0.383s のうち大半は静穏待ちの床(200ms)+snapshot/JPEG。
 
