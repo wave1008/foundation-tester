@@ -2265,6 +2265,25 @@ CoreSimulator.framework を直接叩き、`SimulatorCatalog.devices()` が直叩
 - ステップ実行(tap ~490ms)は XCUITest エンジン内部コストでこの施策の対象外。
   HID 注入バイパスは評価済み不採用(backboardd クラッシュ)・再提案しない
 
+**適用範囲は列挙だけではない**(2026-08-02 拡張)。シナリオ毎に1回走る simctl 往復2つも
+同じ作法で置き換えた(`CoreSimAppControl` が振り分け。殺しスイッチは同じ `FT_SIMULATOR_CONTROL=simctl`):
+
+| 置き換え | 旧 | 新(CoreSimulator) |
+|---|---|---|
+| アプリ起動 | `simctl launch --terminate-running-process` | `launchApplicationWithID:options:error:` |
+| 未インストール検査 | `simctl get_app_container` | `applicationIsInstalled:type:error:` |
+
+- **launch の環境変数は接頭辞が違う**。simctl は `SIMCTL_CHILD_` を剥がして子へ渡すが、
+  CoreSimulator の `options["environment"]` は**接頭辞なし**で渡す。剥がし忘れると
+  in-app の dylib が注入されずブリッジが上がらない(`InAppLauncher` は接頭辞なしで持ち、
+  simctl フォールバック側だけ前置する)
+- **未インストールの断定は `NSPOSIXErrorDomain` code 3 のときだけ**。この API は
+  「入っていない」も「判定できない」も `NO` を返すので、他のエラーは nil = 判定不能にして
+  simctl の判定へ委ねる(誤って `appNotInstalled` で run を止めない側へ倒す)
+- **律速は初期化に移った**。CoreSimulator の初期化は**プロセスごとに約 384ms**で、以降は 0〜1ms。
+  **シナリオ1本=1プロセス**なので、最初に触った呼び出しが必ずこれを被る(性能の内訳と
+  暖機を不採用にした理由は performance-tuning.md §3.12)
+
 ## 17. テストベースからのシナリオ下書き生成(2026-07-26)
 
 `Projects/<name>/docs/testbases/*.md`(テスト設計の元資料)を Swift DSL シナリオの**下書き**に
