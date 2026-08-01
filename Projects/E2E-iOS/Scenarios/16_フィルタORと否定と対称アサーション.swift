@@ -3,10 +3,12 @@
 // 対称化したテキスト検証(textStartsWith / textEndsWith / textIsNot / textIsNotEmpty) /
 // スクロール探索の引数 `scroll:` と Shirates 準拠のスクロールコマンド
 // (scrollToTop / scrollToBottom / scrollDown(repeat:) / withScrollDown / existWithoutScroll)。
-// CMP 版の scene 12(thisIs 系)と scene 13(doUntilTrue)はデバイスに触れないホスト側機能で
+// CMP 版の thisIs 系と doUntilTrue はデバイスに触れないホスト側機能で
 // CMP 版とユニットテストが固定済みのため移植しない。
-// **CMP 版と違い @Test を2本に分ける**: この SUT は1本に畳むと 82s 実測でシナリオ watchdog
-// (既定 90s)にほぼ届き、フルスイートの並列競合下で超過した(2026-07-27 実測)。
+// **@Test は3本に分ける**(セレクタ系 / スクロールコマンド / 探索を伴うスクロール)。この SUT は
+// 1本に畳むと 82s 実測でシナリオ watchdog(既定 90s)にほぼ届き、フルスイートの並列競合下で
+// 超過した(2026-07-27 実測)。他の3 SUT も 2026-08-01 に同じ粒度へ揃えた
+// (あちらの理由は壁時計のクリティカルパス。docs/performance-tuning.md §3.6)。
 // いずれもホスト側(セレクタ解決・DSL)の機能なので、記法の意味そのものは
 // Tests/FTDSLTests/FTSelectorTests.swift と Tests/FTCoreTests/{SelectorScopeTests,AssertKindsTests}.swift
 // が固定している。この場は「実機のスナップショットで解決し、タップ・検証まで届くこと」だけを見る。
@@ -82,7 +84,13 @@ class フィルタORと否定と対称アサーションが実機で動くこと
                 }
             }
             scene(6, "否定の短縮形 `!` は完全形と同じ意味") {
-                expectation {
+                condition {
+                    // **クリアしてから撃つ**: 省くと下の tap の期待値が scene 4 の残り値と
+                    // 同じになり、タップが空振りしても気付けない。クリアが効いたことも
+                    // 見る(効いていなければ同じ穴が開く)
+                    tap("#btn_selector_reset")
+                }.expectation {
+                    textIs("#txt_selector_result", "result=-")
                     countIs(".button&&項目&&!#btn_item_2", 2)
                     countIs(".button&&*許可*&&!許可", 1)
                 }.action {
