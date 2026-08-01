@@ -236,7 +236,7 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
 | `501` / `404`(本文 `not found:`) | このエンジンでは**原理的に不可** | XCUITest へフォールバック(§10 の「in-app で不可・XCUITest で可」) |
 | `404`(ref 不明) | スナップショット取り直しが要る本物の失敗 | 失敗(フォールバックしない。本文前置で 501 系と区別) |
 | `409` | 一時的競合(キーウィンドウ不在・セッション消失) | セッション消失だけ `SessionRecoveryDriver` が張り直す。**フォールバック判定に使わない** |
-| `422` | セッションはあるが**今のこの画面では実行できない**(フォーカス欄が無い・クリアしきれない) | 失敗。`clearInput` だけ 409 と同様に typeDriver へ回す(`isClearInputFallback`) |
+| `422` | セッションはあるが**今のこの画面では実行できない**(フォーカス欄が無い・クリアしきれない・type の読み返しが期待値に届かない) | 失敗。`clearInput` だけ 409 と同様に typeDriver へ回す(`isClearInputFallback`) |
 | `503` | セッションはあるが**対象アプリが起動していない** | `AppAttachDriver` が activate して1回再試行 |
 
 **XCUITest ランナーは 409 を `requireApp()` の1箇所からしか投げてはいけない**(`SessionRecoveryDriver`
@@ -289,7 +289,7 @@ WebView(iOS=WKWebView / Android=android.webkit.WebView)の中身は、経路ご�
 | Android ブリッジ | a11y の仮想ツリー | リンクは Chromium の `chromeRole`(非ローカライズ)で `link` に正規化。**WebView 内ノードだけ `refresh()`** してから読む(DOM 変更の a11y 反映が 4〜8 秒遅れる実測への対処) |
 | iOS xcuitest | a11y ツリー | 中身が現れるまで **約 2.3 秒**(WebContent プロセスの a11y 起動待ち) |
 | iOS in-app(uikit ホスト) | **DOM を JS で走査** | `InAppWebViewDOM` + `WebViewDOM.javaScript`。1往復・隔離ワールド |
-| iOS in-app(Compose / Flutter ホスト) | 取らない | interop が合成タッチと `insertText` を横取りし、**読めても操作が届かない**。画面ごと XCUITest へ委譲 |
+| iOS in-app(Compose / Flutter ホスト) | 取らない | interop が合成タッチと `insertText` を横取りし、**読めても操作が届かない**。画面ごと XCUITest へ委譲。**スクロールだけは例外**(下記) |
 
 - **a11y ツリーは in-app からは見えない**(Web コンテンツの AX は WebContent プロセスが提供する)。
   そこで in-app は `evaluateJavaScript` で DOM を1往復読み、a11y 経路と同じ DTO へ写す。
@@ -302,6 +302,15 @@ WebView(iOS=WKWebView / Android=android.webkit.WebView)の中身は、経路ご�
   interop 容器は WebView と同じ矩形を持つため、中身と誤認して委譲が止まる(2026-07-29 実害)。
 - **効果**(E2E-iOS / ios-inapp・4 run で再現): WebView 画面の検証 1 手が **450ms → 4ms**、
   シナリオ全体 **27.2s → 10.3〜11.0s**。委譲中は XCUITest 経由で 1 手 378ms かかっていた。
+- **委譲中でもスクロールだけは in-app で行う**(2026-08-01)。interop が横取りするのは**タッチ**で、
+  WKWebView の中の `WKScrollView` は本物の `UIScrollView` なので `contentOffset` は素通しで効く。
+  `InAppBridge.handleSwipe` は compose/flutter + `scroll=true` のとき、AX 経路より先に**画面中央を
+  覆う `WKScrollView`** を探して動かす(中央で絞るのは小さな埋め込み WebView のために画面本体の
+  スクロールを奪わないため)。端では 501 でなく **no-op 200**(501 だと XCUITest の実スワイプへ
+  ラッチして下端タップが不安定になる)。ホスト側は `WebViewDelegatingDriver.swipe(_:forScroll:)` が
+  委譲中でも primary を先に試し、501 なら委譲先へ落とす。**ref を使わない操作なので名前空間の
+  不変条件は崩れない — ref を伴う操作を同じ理屈で in-app へ回してはいけない**。
+  効果は CMP/Flutter の WebView シナリオが **41s → 24s**(docs/performance-tuning.md §3.11)
 - **クロスオリジン iframe は読めない**(main frame の JS からは触れない)。数を数えて
   `SnapshotResponse.note` で申告する(黙って要素ゼロにしない)。
 - 殺しスイッチ `FT_WEBVIEW_DOM=off`(ホストの環境変数。`SIMCTL_CHILD_` で注入先へ引き渡す)。
