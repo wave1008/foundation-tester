@@ -98,10 +98,10 @@ export function validateNewAppProfileName(name: string, existing: readonly strin
 }
 
 // ---- プロファイルタブ下半分: 実行プロファイルの設定フォーム -----------------------------
-// handleRunProfileLoad/Save(monitorPanel.ts)が使う、JSON⇔フォーム19フィールド変換の純粋関数
+// handleRunProfileLoad/Save(monitorPanel.ts)が使う、JSON⇔フォーム20フィールド変換の純粋関数
 // (未知キー保持のイミュータブルな方針。updateDeviceInMachineProfile と同じ)。
 
-/** 実行プロファイル設定フォームの19フィールド(全て文字列/配列/真偽値化済み。空文字は未設定)。
+/** 実行プロファイル設定フォームの20フィールド(全て文字列/配列/真偽値化済み。空文字は未設定)。
  * recordFailuresOnly/recordBitrateKbps/recordFullResolution は「録画セクション」、heal/
  * falsePositiveCheck/screenIs は「FM」セクション、iosFastInput は「iOS」セクションのサブオプション
  * (親チェックボックスの状態に関わらず独立して保持・保存する。表示上の非表示切替は
@@ -116,6 +116,7 @@ export interface RunProfileFormFields {
   readonly screenIs: boolean;
   readonly iosInappEngine: boolean;
   readonly iosFastInput: boolean;
+  readonly enableAnimations: boolean;
   readonly reportDir: string;
   readonly defaultTimeout: string;
   readonly wipeDataOnBloat: boolean;
@@ -129,12 +130,12 @@ export interface RunProfileFormFields {
 }
 
 /**
- * runs/<name>.json のトップレベルから、フォームの19フィールドを許容的に読み取る(トップレベルが
+ * runs/<name>.json のトップレベルから、フォームの20フィールドを許容的に読み取る(トップレベルが
  * 非オブジェクトなら null)。各キーは欠落・型不正を「読めなければ空/既定値」で許容し、スキーマ
  * 妥当性検証はしない(保存時 updateRunProfileInObject・CLI 側 ProfileResolver.validate に委ねる)。
  * defaultTimeout/wipeDataThresholdGB/recordBitrateKbps は number ならそのまま String() 化する
  * (0.5 のようなスキーマ違反値もそのまま表示し、整数化はしない)。record/recordFailuresOnly/
- * recordFullResolution/iosFastInput は既定 false、recordBitrateKbps は既定 ""(未設定=CLI側既定1500)。
+ * recordFullResolution/iosFastInput/enableAnimations は既定 false、recordBitrateKbps は既定 ""(未設定=CLI側既定1500)。
  * fm/heal/screenIs はスキーマ既定と合わせ既定 true、falsePositiveCheck は既定 false。
  */
 export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFields | null {
@@ -153,6 +154,7 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
   const screenIs = typeof source.screenIs === "boolean" ? source.screenIs : true;
   const iosInappEngine = typeof source.iosInappEngine === "boolean" ? source.iosInappEngine : true;
   const iosFastInput = typeof source.iosFastInput === "boolean" ? source.iosFastInput : false;
+  const enableAnimations = typeof source.enableAnimations === "boolean" ? source.enableAnimations : false;
   const wipeDataOnBloat = typeof source.wipeDataOnBloat === "boolean" ? source.wipeDataOnBloat : true;
   const recoverCpuFallbackToGpu =
     typeof source.recoverCpuFallbackToGpu === "boolean" ? source.recoverCpuFallbackToGpu : false;
@@ -183,6 +185,7 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
     screenIs,
     iosInappEngine,
     iosFastInput,
+    enableAnimations,
     reportDir,
     defaultTimeout,
     wipeDataOnBloat,
@@ -201,14 +204,15 @@ export type RunProfileUpdateResult =
   | { readonly ok: false; readonly error: string };
 
 /**
- * runs/<name>.json を、フォームの18フィールドの内容で更新した新オブジェクトを組み立てる
+ * runs/<name>.json を、フォームの20フィールドの内容で更新した新オブジェクトを組み立てる
  * (未知キー保持のイミュータブルな方針。profileObject が非オブジェクトなら ok:false)。
  * defaultTimeout は空文字ならキー削除、正の数(小数許容)文字列以外はエラー。
  * wipeDataThresholdGB は空文字ならキー削除、正の数(小数許容)文字列以外はエラー。
  * recordBitrateKbps は空文字ならキー削除、正の整数文字列以外はエラー。
  * devices は fields.devices の順に並べ直し、既存 devices 配列の同名エントリ(未知キー込み)を
  * 再利用する(新規名は { name } のみ追加。同名重複があれば最初の1件を採用)。
- * record/recordFailuresOnly/recordFullResolution/iosFastInput は false のときキー自体を書かない
+ * record/recordFailuresOnly/recordFullResolution/iosFastInput/enableAnimations は false のとき
+ * キー自体を書かない
  * (既定値のノイズを既存プロファイルに足さない。parseRunProfileForForm の「欠落→false」と対で
  * round-trip が安定する)。
  */
@@ -239,6 +243,7 @@ export function updateRunProfileInObject(
   result.wipeDataOnBloat = fields.wipeDataOnBloat;
   for (const key of [
     "record", "recordFailuresOnly", "recordFullResolution", "iosFastInput", "recoverCpuFallbackToGpu",
+    "enableAnimations",
   ] as const) {
     if (fields[key]) {
       result[key] = true;

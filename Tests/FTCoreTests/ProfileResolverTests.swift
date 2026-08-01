@@ -374,6 +374,24 @@ final class ProfileResolverTests: XCTestCase {
                       "未知キー警告が出るはず: \(resolved.warnings)")
     }
 
+    /// enableAnimations は既定 false(= 実行開始時にアニメーションを無効化する)。
+    /// true 指定は素通しし、未知キー警告を出さない(knownKeys 登録漏れの検出)
+    func testEnableAnimationsDefaultsToFalseAndIsKnown() throws {
+        try writeStandardFixture()
+        let defaulted = try ProfileResolver.resolve(
+            project: project, runName: "all", machineName: "M1 Max(64GB)")
+        XCTAssertFalse(defaulted.enableAnimations)
+
+        try write("""
+        { "app": "sampleapp", "devices": [ { "name": "メイン機" } ], "enableAnimations": true }
+        """, to: project.runsDir, name: "animated")
+        let enabled = try ProfileResolver.resolve(
+            project: project, runName: "animated", machineName: "M1 Max(64GB)")
+        XCTAssertTrue(enabled.enableAnimations)
+        XCTAssertFalse(enabled.warnings.contains { $0.contains("enableAnimations") },
+                       "既知キーなので未知キー警告を出さない: \(enabled.warnings)")
+    }
+
     func testDetermineMachinePriority() throws {
         try writeStandardFixture()
         // FT_MACHINE が最優先

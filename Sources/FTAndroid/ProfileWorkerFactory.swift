@@ -16,7 +16,7 @@ public enum ProfileWorkerFactory {
     public static func buildWorkers(resolved: ResolvedProfile, repoRoot: URL,
                                     log: @escaping (String) -> Void) async throws -> [RunWorker] {
         let workers = try await buildIOSWorkers(resolved: resolved, repoRoot: repoRoot, log: log)
-            + (try buildAndroidWorkers(resolved: resolved))
+            + (try buildAndroidWorkers(resolved: resolved, log: log))
         guard !workers.isEmpty else {
             throw InstallError(message: "no usable workers (every device dropped out)")
         }
@@ -35,7 +35,49 @@ public enum ProfileWorkerFactory {
             bundleID: iosApp?.bundleID,
             preinstallAppPath: iosApp?.autoInstall == true ? iosApp?.appPath : nil,
             log: log)
+        // 供給後に同期する(シミュレータのブートは provision 側。未ブートでは simctl spawn が失敗する)
+        for device in provisioned where !device.physical {
+            IOSReduceMotion.apply(udid: device.udid,
+                                  animationsEnabled: resolved.enableAnimations, warn: log)
+        }
         return provisioned.map { makeIOSWorker(device: $0, iosApp: iosApp) }
+    }
+
+    /// run 開始時に Android 端末のアニメーション設定をプロファイルの enableAnimations へ合わせる。
+    /// **ブリッジのコールド起動時の適用(AndroidBridge)だけでは足りない** — ブリッジは run を
+    /// またいで再利用されるため、前の run が残した状態がそのまま残る。
+    /// 呼び出しは buildAndroidWorkers の1箇所(run 開始の全経路がそこを通る)。
+    /// iOS 側は buildIOSWorkers 内で供給後に同期する。
+    /// 実機はグローバル設定が永続的に書き換わるので、**現在値を読んで差分があるときだけ**書き、
+    /// そのときに1行知らせる(エミュレータは使い捨てなので無条件・無言)。失敗は非致命。
+    public static func syncAnimationSettings(
+        resolved: ResolvedProfile, log: (String) -> Void = { _ in }) {
+        guard let adb = try? AndroidDriver.findADB(), !resolved.androidDevices.isEmpty else { return }
+        let enabled = resolved.enableAnimations
+        for device in resolved.androidDevices {
+            guard let serial = try? AndroidDeviceCatalog.resolveSerial(spec: device.spec) else { continue }
+            func shell(_ args: [String]) -> Shell.Result? {
+                try? Shell.run([adb, "-s", serial] + args, timeout: 15)
+            }
+            if device.spec.isPhysical {
+                let stale = AnimationPolicy.androidScaleKeys.filter {
+                    !AndroidAnimationSettings.matches(
+                        rawValue: shell(["shell"] + AndroidAnimationSettings.getArguments(key: $0))?.output,
+                        animationsEnabled: enabled)
+                }
+                guard !stale.isEmpty else { continue }
+                log("ℹ️ \(serial): setting the device animations "
+                    + (enabled ? "back to the OS default (persists after the run)"
+                               : "off (persists after the run)"))
+            }
+            let failed = AndroidAnimationSettings.apply(animationsEnabled: enabled) {
+                shell(["shell"] + $0)?.status == 0
+            }
+            if !failed.isEmpty {
+                log("⚠️ \(serial): could not apply the animation settings "
+                    + "(\(failed.joined(separator: ", ")))")
+            }
+        }
     }
 
     /// excludeOrRepairBlankScreenWorkers の結果。repaired/excluded はワーカー label
@@ -196,8 +238,12 @@ public enum ProfileWorkerFactory {
     }
 
     /// Android ワーカーのみ構築(serial 照合+ドライバ生成のみ=数秒)。
-    public static func buildAndroidWorkers(resolved: ResolvedProfile) throws -> [RunWorker] {
-        try resolved.androidDevices.map { device in
+    /// アニメーション設定の同期もここで行う(run 開始の全経路がこの関数を通るため。
+    /// Wipe Data / GPU 復帰の後に呼ぶこと = serial が確定している)。
+    public static func buildAndroidWorkers(
+        resolved: ResolvedProfile, log: (String) -> Void = { _ in }) throws -> [RunWorker] {
+        syncAnimationSettings(resolved: resolved, log: log)
+        return try resolved.androidDevices.map { device in
             let serial = try AndroidDeviceCatalog.resolveSerial(spec: device.spec)
             let driver = try AndroidDriver(serial: serial)
             return RunWorker(

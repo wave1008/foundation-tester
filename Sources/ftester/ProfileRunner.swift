@@ -44,6 +44,10 @@ enum ProfileRunner {
         await Self.warnIfHealDegraded(heal: fm.heal) { print($0) }
         let reportDir = reportDirOverride.map { URL(fileURLWithPath: $0) } ?? resolved.reportDir
         if resolved.iosFastInput { setenv("FT_FAST_INPUT", "1", 1) }  // BridgeClient.fastInput 参照
+        // 未指定でも必ず書く(既定の "0" を明示し、前段の値を残さない)。環境変数側で
+        // 既に ON なら尊重する(`ftester run --enable-animations` と手動 export の上書き)
+        let animations = resolved.enableAnimations || AnimationPolicy.animationsEnabled()
+        setenv(AnimationPolicy.environmentKey, animations ? "1" : "0", 1)
         let deviceList = resolved.devices
             .map { "\($0.name)(\($0.platform))" }.joined(separator: ", ")
         print("🧩 Profile \(profileName): \(resolved.appName) @ \(resolved.machineName)")
@@ -77,7 +81,7 @@ enum ProfileRunner {
         defer { supplyLease?.release() }
 
         await ProfileWorkerFactory.preparePhysicalAndroidDevices(resolved: resolved) { print($0) }
-        var workers = try ProfileWorkerFactory.buildAndroidWorkers(resolved: resolved)
+        var workers = try ProfileWorkerFactory.buildAndroidWorkers(resolved: resolved) { print($0) }
         supplyLease?.hold(keys: workers.compactMap { $0.connection.serial ?? $0.connection.udid })
         let beforeBlankCheck = workers.count
         let triage = await ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers(workers) { print($0) }

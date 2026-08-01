@@ -188,7 +188,9 @@ extension AndroidDriver {
     /// 実機判定は serial の emulator- 前置(ApiMonitorCommand のヘルス除外と同じ規則)
     private func noticePersistentSettingsOnPhysicalDevice() {
         guard let serial, !serial.hasPrefix("emulator-") else { return }
-        let message = "ℹ️ \(serial): applying these device settings — animations off / "
+        let animations = AnimationPolicy.animationsEnabled()
+            ? "animations on (restored to the OS default)" : "animations off"
+        let message = "ℹ️ \(serial): applying these device settings — \(animations) / "
             + "hidden_api_policy=1 / stylus handwriting off (its IME hint covers the app) / "
             + "crash and ANR dialogs hidden"
             + " (on physical devices these persist; revert via Developer options)\n"
@@ -197,13 +199,22 @@ extension AndroidDriver {
 
     /// アニメーションは a11y イベントを発しないため、QuietWaiter の静穏判定後もアニメが表示を
     /// 動かし続け screenshot が古い/遷移途中の絵を掴むことがある(a11y要素はFRESHだが画像だけSTALE)。
-    /// ブリッジのコールド起動時のみ実行(毎操作ではないため3回のadb spawnは許容)。失敗は非致命。
+    /// 既定は無効化。実行プロファイルの enableAnimations(→ FT_ANIMATIONS)が ON のときは OS 既定の
+    /// 1 へ戻す。ブリッジのコールド起動時のみ実行(毎操作ではないため3回のadb spawnは許容)。
+    /// run 開始ごとの同期は ProfileWorkerFactory.syncAnimationSettings(ブリッジ再利用でも効く)。
+    /// 失敗は非致命。
     private func disableAnimations() {
-        let keys = ["window_animation_scale", "transition_animation_scale", "animator_duration_scale"]
-        let failed = keys.filter { (try? adb(["shell", "settings", "put", "global", $0, "0"]))?.status != 0 }
+        let enabled = AnimationPolicy.animationsEnabled()
+        let failed = AndroidAnimationSettings.apply(animationsEnabled: enabled) {
+            (try? adb(["shell"] + $0))?.status == 0
+        }
         guard !failed.isEmpty else { return }
-        let message = "⚠️ Failed to disable the Android animation settings (\(failed.joined(separator: ", "))). "
-            + "While they stay on, screenshots can grab a stale frame even after the quiet check\n"
+        let action = enabled ? "restore" : "disable"
+        let consequence = enabled
+            ? "the device keeps running without animations"
+            : "while they stay on, screenshots can grab a stale frame even after the quiet check"
+        let message = "⚠️ Failed to \(action) the Android animation settings "
+            + "(\(failed.joined(separator: ", "))). \(consequence)\n"
         FileHandle.standardError.write(Data(message.utf8))
     }
 
@@ -327,15 +338,15 @@ extension AndroidDriver {
     /// doctor 用: window/transition/animator の *_scale のいずれかが 0 でなければ注意文言を返す(全て0ならnil)。
     /// 未設定(get が "null" を返す)は Android の既定値である 1.0 相当として扱い、警告対象に含める
     public func animationScaleWarning() -> String? {
-        let keys = ["window_animation_scale", "transition_animation_scale", "animator_duration_scale"]
-        let nonZero = keys.filter { key in
-            let value = (try? adb(["shell", "settings", "get", "global", key]))?
-                .output.trimmingCharacters(in: .whitespacesAndNewlines)
-            return !(Double(value ?? "") == 0)
+        let nonZero = AnimationPolicy.androidScaleKeys.filter { key in
+            let value = (try? adb(["shell"] + AndroidAnimationSettings.getArguments(key: key)))?.output
+            return !AndroidAnimationSettings.matches(rawValue: value, animationsEnabled: false)
         }
         guard !nonZero.isEmpty else { return nil }
+        // doctor は実行プロファイルを知らないので断定しない(enableAnimations:true なら意図どおり)
         return "animation settings are on (\(nonZero.joined(separator: ", "))). "
-            + "Screenshots can grab a stale frame even after the quiet check (zeroed automatically on the next bridge start)"
+            + "Screenshots can grab a stale frame even after the quiet check. "
+            + "Unless the run profile sets enableAnimations, the next run turns them off automatically"
     }
 
     func installBridgeIfNeeded() throws {

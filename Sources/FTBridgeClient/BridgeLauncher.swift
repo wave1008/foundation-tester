@@ -608,22 +608,18 @@ public struct BridgeLauncher {
         return String(data: data, encoding: .utf8)?.contains("bindFailed(") ?? false
     }
 
-    /// コールド起動時のみ実行(稼働中ブリッジの再利用時はここを通らない)。設定は以後起動される
-    /// アプリに効く(実行中アプリには効かない。/session がシナリオ毎に再起動するので問題ない)。失敗は非致命。
+    /// コールド起動時のみ実行(稼働中ブリッジの再利用時はここを通らない。run 開始ごとの同期は
+    /// ProfileWorkerFactory.syncAnimationSettings)。設定は以後起動されるアプリに効く
+    /// (実行中アプリには効かない。/session がシナリオ毎に再起動するので問題ない)。失敗は非致命。
     private func enableReduceMotion() {
         // simctl spawn は実機に無い。実機のアクセシビリティ設定はホストから変えられないので
         // 何もしない(端末側で「視差効果を減らす」を手動 ON にすると整定が速くなる)
         if physical { return }
-        let result = try? Shell.run([
-            "xcrun", "simctl", "spawn", device,
-            "defaults", "write", "com.apple.Accessibility", "ReduceMotionEnabled", "-bool", "true",
-        ])
-        guard result?.status == 0 else {
-            let message = "⚠️ Failed to enable Reduce Motion (\(device)). "
-                + "With animations still on, action settling waits get slower\n"
-            FileHandle.standardError.write(Data(message.utf8))
-            return
-        }
+        IOSReduceMotion.apply(
+            udid: device,
+            animationsEnabled: AnimationPolicy.animationsEnabled()) { message in
+                FileHandle.standardError.write(Data("\(message)\n".utf8))
+            }
     }
 
     func findXCTestRun() throws -> URL? {

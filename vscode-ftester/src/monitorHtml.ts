@@ -229,6 +229,10 @@ function renderRunProfileSection(): string {
           </div>
           <div class="run-profile-section-group">
             <div class="run-profile-section-title">${t("panels.runProfile.miscSectionTitle")}</div>
+            <div class="modal-row profile-checkbox-row">
+              <input type="checkbox" id="run-profile-enable-animations">
+              <label for="run-profile-enable-animations">${t("panels.runProfile.enableAnimationsLabel")}</label>
+            </div>
             <div class="modal-row">
               <label for="run-profile-default-timeout">defaultTimeout</label>
               <input type="text" id="run-profile-default-timeout">

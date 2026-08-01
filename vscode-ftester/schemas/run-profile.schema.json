@@ -104,6 +104,11 @@
       "type": "boolean",
       "description": "iOS xcuitest ブリッジの高速入力(quiescence 待ちスキップ)。動きの激しい画面ではフレークリスクあり(既定 false)"
     },
+    "enableAnimations": {
+      "type": "boolean",
+      "description": "テスト対象アプリのアニメーションを残す(既定 false = 実行開始時にデバイス側のアニメーションを無効化する)。true にすると整定待ちが伸び、Android ではスクリーンショットが遷移途中の絵を掴むことがある。設定は run 開始時に毎回デバイスへ同期される(Android 実機はグローバル設定が永続的に書き換わる)。",
+      "default": false
+    },
     "record": {
       "type": "boolean",
       "description": "各デバイスの画面録画を有効化する(既定 false)。録画は results/runs/<YYYY-MM>/<runID>/recordings/ 配下に保存され、モニターパネルの「録画」タブから再生できる。",
