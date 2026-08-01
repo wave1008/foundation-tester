@@ -86,7 +86,8 @@ final class SnapshotBuilder {
         }
     }
 
-    static Result build(UiAutomation ua) throws JSONException {
+    /** forceRefresh: WebView 外のノードも refresh() してから読むか(既定は false。collect 参照) */
+    static Result build(UiAutomation ua, boolean forceRefresh) throws JSONException {
         AccessibilityNodeInfo root = waitForRoot(ua, 2000);
         if (root == null) {
             throw new IllegalStateException("アクティブウィンドウの UI ツリーを取得できません");
@@ -94,7 +95,7 @@ final class SnapshotBuilder {
 
         List<UINode> nodes = new ArrayList<>();
         // uiautomator dump の XML は hierarchy=depth1、root ノード=depth2 相当
-        collect(root, 2, nodes, false);
+        collect(root, 2, nodes, false, forceRefresh);
         markChildren(nodes);
         adoptRoleFromMarkerChildren(nodes);
 
@@ -161,15 +162,20 @@ final class SnapshotBuilder {
 
     /** preorder 走査。不可視ノードはサブツリーごと除外(uiautomator dump と同じ) */
     private static void collect(AccessibilityNodeInfo node, int depth, List<UINode> out,
-                                boolean insideWebView) {
-        if (node == null || !node.isVisibleToUser()) return;
+                                boolean insideWebView, boolean forceRefresh) {
+        if (node == null) return;
 
-        // **WebView 内だけキャッシュを捨てて取り直す**。Chromium は DOM 変更の a11y イベントを
-        // 遅れて出すことがあり(CMP / Flutter の interop 埋め込みで実測 4〜8 秒、負荷時はさらに)、
-        // そのあいだ getText() は**変更前の文字列**を返し続ける。tap は効いているのに
-        // textIs だけが古い値で落ちる、という最も追いにくい失敗になる(2026-07-29 実測)。
-        // refresh() は1ノード1 IPC なので WebView の外では呼ばない(通常画面のコストを増やさない)
-        if (insideWebView) node.refresh();
+        // a11y ノードはキャッシュ供給で古い値を返し続ける(Chromium は DOM 変更のイベントを
+        // 遅れて出す。interop 埋め込みで実測 4〜8 秒)。**既定は WebView 内だけ** refresh() する
+        // — 全ノードに広げると snapshot 1回あたり約 +65ms 増え、View/XML SUT(ノード数が多い)の
+        // scenario sum が +43% になると実測済み(2026-08-01、E2E-Android 208.3s→297.3s)。
+        // forceRefresh は呼び出し側(BridgeRouter.handleSnapshot、クエリ `refresh=1`)が
+        // 検証タイムアウト直前の1回だけ明示的に要求するときの逃げ道。
+        // **順序が要**: isVisibleToUser() 自体が古いと、実際は見えているノードがサブツリーごと
+        // 消える。getChildCount()/getChild() も refresh 後の子リストを読む必要がある。
+        // 無効ノードの refresh() は false を返すだけで例外は投げないので戻り値は見ない。
+        if (insideWebView || forceRefresh) node.refresh();
+        if (!node.isVisibleToUser()) return;
 
         UINode n = new UINode();
         n.className = charSeq(node.getClassName());
@@ -205,7 +211,7 @@ final class SnapshotBuilder {
         out.add(n);
 
         for (int i = 0; i < node.getChildCount(); i++) {
-            collect(node.getChild(i), depth + 1, out, insideWebView || isWebView);
+            collect(node.getChild(i), depth + 1, out, insideWebView || isWebView, forceRefresh);
         }
     }
 

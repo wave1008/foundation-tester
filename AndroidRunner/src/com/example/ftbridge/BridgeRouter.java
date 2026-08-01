@@ -71,7 +71,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
             String route = request.method + " " + request.path;
             switch (route) {
                 case "GET /status": return handleStatus();
-                case "GET /snapshot": return handleSnapshot();
+                case "GET /snapshot": return handleSnapshot(request);
                 case "POST /tap": return handleTap(body(request));
                 case "POST /type": return handleType(body(request));
                 case "POST /clear": return handleClear(body(request));
@@ -111,6 +111,23 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         } catch (JSONException e) {
             throw new BridgeException(400, "リクエストボディの JSON が不正です: " + e);
         }
+    }
+
+    /** "a=1&b=2" 形式から key を1つ引く。"?" が無い/値が無い/複数パラメータでも例外を投げない */
+    private static String queryParam(String query, String key) {
+        if (query == null || query.isEmpty()) return null;
+        for (String pair : query.split("&")) {
+            if (pair.isEmpty()) continue;
+            int eq = pair.indexOf('=');
+            String k = eq >= 0 ? pair.substring(0, eq) : pair;
+            if (!k.equals(key)) continue;
+            return eq >= 0 ? pair.substring(eq + 1) : "";
+        }
+        return null;
+    }
+
+    private static boolean isTruthy(String value) {
+        return "1".equals(value) || "true".equalsIgnoreCase(value);
     }
 
     // MARK: - Handlers
@@ -155,16 +172,19 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         return ok();
     }
 
-    private BridgeHttpServer.Response handleSnapshot() throws JSONException {
+    private BridgeHttpServer.Response handleSnapshot(BridgeHttpServer.Request request) throws JSONException {
+        // クエリ `refresh=1`(または `true`)は「タイムアウト直前の1回だけ全ノード refresh() する」
+        // 契約(ホスト側と同期。SnapshotBuilder.collect のコメント参照)。無指定は従来どおり false
+        boolean forceRefresh = isTruthy(queryParam(request.query, "refresh"));
         SnapshotBuilder.Result result;
         try {
-            result = SnapshotBuilder.build(ua());
+            result = SnapshotBuilder.build(ua(), forceRefresh);
         } catch (IllegalStateException e) {
             // root=null が waitForRoot の 2s を超えて続く一時ストール(高負荷時の画面消灯/描画停止で
             // 実測。黒スクショと対の症状)。WAKEUP 注入で display を起こしてから1回だけ再試行する
             shell("input keyevent KEYCODE_WAKEUP");
             SystemClock.sleep(500);
-            result = SnapshotBuilder.build(ua());
+            result = SnapshotBuilder.build(ua(), forceRefresh);
         }
         refCenters = result.refCenters;
         refIds = result.refIds;

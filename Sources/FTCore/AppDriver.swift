@@ -19,6 +19,9 @@ public protocol AppDriver {
     /// ドライバごとに機構が違う。
     func back() async throws
     func snapshot() async throws -> SnapshotResponse
+    /// キャッシュを捨てて撮り直す。**プロトコル要件として宣言すること**(extension だけに置くと
+    /// 存在型越しの呼び出しが静的ディスパッチで既定実装に落ち、実装したドライバが無視される)
+    func snapshot(bypassingCache: Bool) async throws -> SnapshotResponse
     func tap(ref: Int) async throws
     func tap(x: Double, y: Double) async throws
     func type(ref: Int?, text: String) async throws
@@ -59,6 +62,9 @@ public protocol AppDriver {
     /// クリアしないと前回の注記が別ステップに誤って付く)。デコレータ実装は base の値を透過すること
     /// (透過しないと最外のドライバから見えない)。
     var lastActionNote: String? { get }
+    /// キャッシュを捨てた snapshot(`snapshot(bypassingCache: true)`)が意味を持つか。
+    /// **ラッパードライバは base の値を透過すること**(false 固定にすると最内の Android へ届かない)
+    var supportsCacheBypass: Bool { get }
 }
 
 public enum DriverError: Error, LocalizedError {
@@ -120,6 +126,18 @@ public extension AppDriver {
     func swipe(_ direction: FTSwipeDirection, forScroll: Bool) async throws {
         try await swipe(direction)
     }
+
+    /// キャッシュを捨てて撮り直す snapshot。**Android だけが実装を持つ**(a11y ノードは
+    /// キャッシュ供給で、IME 等が前面のとき数秒古いツリーを返し続ける)。コストが高い
+    /// (1 snapshot あたり約 +65ms)ので、検証が期限切れで失敗と決まる直前の1回にだけ使う。
+    /// iOS 系は鮮度問題を持たないので既定の素通しでよい。
+    /// **ラッパードライバを足すときは転送すること**(素通しのままだと最内の Android へ届かない)
+    func snapshot(bypassingCache: Bool) async throws -> SnapshotResponse {
+        try await snapshot()
+    }
+
+    /// false のドライバでは検証側が取り直しの周回そのものを行わない(無駄な1周を増やさない)
+    var supportsCacheBypass: Bool { false }
 
     func activate(bundleID: String) async throws {
         try await launch(bundleID: bundleID)

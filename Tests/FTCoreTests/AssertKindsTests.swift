@@ -760,4 +760,70 @@ final class AssertKindsTests: XCTestCase {
         XCTAssertEqual(failureReason(outcome.status)?.contains("btn_ok"), true)
         XCTAssertEqual(failureReason(outcome.status)?.contains("id"), true)
     }
+
+    // MARK: - 期限切れ直前のキャッシュ捨て(AssertFreshRetry)
+
+    /// キャッシュ供給の a11y ツリーを模したドライバ: 通常の snapshot は**何回撮っても古いまま**で、
+    /// bypassingCache=true のときだけ真の状態を返す(Android の実挙動と同じ形)
+    private final class StaleCacheDriver: AppDriver {
+        let stale: [ElementInfo]
+        let fresh: [ElementInfo]
+        let supportsBypass: Bool
+        private(set) var staleReads = 0
+        private(set) var freshReads = 0
+        init(stale: [ElementInfo], fresh: [ElementInfo], supportsBypass: Bool = true) {
+            self.stale = stale
+            self.fresh = fresh
+            self.supportsBypass = supportsBypass
+        }
+
+        var supportsCacheBypass: Bool { supportsBypass }
+
+        func status() async throws -> StatusResponse {
+            StatusResponse(ready: true, device: "fake", osVersion: "-", sessionBundleID: nil)
+        }
+        func install(packagePath: String) async throws {}
+        func launch(bundleID: String) async throws {}
+        func snapshot() async throws -> SnapshotResponse { try await snapshot(bypassingCache: false) }
+        func snapshot(bypassingCache: Bool) async throws -> SnapshotResponse {
+            if bypassingCache { freshReads += 1 } else { staleReads += 1 }
+            return SnapshotResponse(sessionBundleID: nil,
+                                    screen: FTRect(x: 0, y: 0, width: 400, height: 800),
+                                    elements: bypassingCache ? fresh : stale,
+                                    truncatedCount: 0)
+        }
+        func tap(ref: Int) async throws {}
+        func tap(x: Double, y: Double) async throws {}
+        func type(ref: Int?, text: String) async throws {}
+        func swipe(_ direction: FTSwipeDirection) async throws {}
+        func press(ref: Int, duration: Double) async throws {}
+        func screenshot() async throws -> Data { Data() }
+        func terminate() async throws {}
+    }
+
+    /// 実害の再現: アプリは正しい状態なのにキャッシュが古く、期限切れまで古い値を読み続ける。
+    /// 期限切れ直前に1回だけ取り直すことで**失敗ではなく成功**になる
+    func testStaleTreeIsRecheckedOnceBeforeFailing() async {
+        let driver = StaleCacheDriver(stale: [node(1, id: "txt", label: "submitted=-")],
+                                      fresh: [node(1, id: "txt", label: "submitted=persist99")])
+        let step = FlowStep(assert: "textEquals", locator: FlowLocator(id: "txt"),
+                            expected: "submitted=persist99", timeout: 1, occlusionGuard: false)
+        let outcome = await StepExecutor(driver: driver).execute(step)
+        XCTAssertTrue(isPassed(outcome.status), "取り直しで成功になるはず: \(outcome.status)")
+        // 取り直しは**1回だけ**(毎周回払うとコストが跳ねる)
+        XCTAssertEqual(driver.freshReads, 1)
+        XCTAssertGreaterThan(driver.staleReads, 0)
+    }
+
+    /// 非対応ドライバ(iOS 系)では取り直しの周回そのものを行わない
+    func testUnsupportedDriverIsNotRetried() async {
+        let driver = StaleCacheDriver(stale: [node(1, id: "txt", label: "old")],
+                                      fresh: [node(1, id: "txt", label: "new")],
+                                      supportsBypass: false)
+        let step = FlowStep(assert: "textEquals", locator: FlowLocator(id: "txt"),
+                            expected: "new", timeout: 0, occlusionGuard: false)
+        let outcome = await StepExecutor(driver: driver).execute(step)
+        XCTAssertNotNil(failureReason(outcome.status))
+        XCTAssertEqual(driver.freshReads, 0)
+    }
 }

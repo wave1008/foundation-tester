@@ -203,7 +203,17 @@ public final class BridgeClient: AppDriver {
     }
 
     public func snapshot() async throws -> SnapshotResponse {
-        let response: SnapshotResponse = try await get("/snapshot", timeout: sessionTimeout)
+        try await snapshot(path: "/snapshot")
+    }
+
+    /// `refresh=1` は Android ブリッジとの契約(AndroidRunner の BridgeRouter.handleSnapshot)。
+    /// iOS ブリッジは未知クエリを無視するのでどちらへ送っても安全だが、呼ぶのは AndroidDriver だけ
+    public func snapshot(bypassingCache: Bool) async throws -> SnapshotResponse {
+        try await snapshot(path: bypassingCache ? "/snapshot?refresh=1" : "/snapshot")
+    }
+
+    private func snapshot(path: String) async throws -> SnapshotResponse {
+        let response: SnapshotResponse = try await get(path, timeout: sessionTimeout)
         // 取りこぼしの申告(クロスオリジン iframe 等)は記録に載せる。
         // **無申告なら触らない**: 直前アクションの note を消してしまわないため
         if let note = response.note { lastActionNote = note }

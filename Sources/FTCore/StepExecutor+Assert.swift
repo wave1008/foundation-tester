@@ -4,6 +4,30 @@
 
 import Foundation
 
+/// 期限切れで失敗と決める**前に**、キャッシュを捨てた snapshot でもう1周だけ確かめる。
+/// Android の a11y ツリーは IME 等が前面のとき数秒古い値を返し続けるため、アプリは正しいのに
+/// 検証だけが落ちる(docs/verification.md「ブリッジの『偽陰性』を疑う手順」)。
+/// **通ったアサーションは1円も払わない**(期限切れ時にしか撃たない)。
+/// 対応しないドライバ(iOS 系。鮮度問題を持たない)では arm 自体を行わず周回を増やさない。
+struct AssertFreshRetry {
+    private var used = false
+    private var armed = false
+
+    /// 期限到達時に呼ぶ。true なら「取り直してもう1周」
+    mutating func arm(ifSupported supported: Bool) -> Bool {
+        guard supported, !used else { return false }
+        used = true
+        armed = true
+        return true
+    }
+
+    /// snapshot 取得時に呼ぶ。arm した直後の1周だけ true
+    mutating func takeArmed() -> Bool {
+        defer { armed = false }
+        return armed
+    }
+}
+
 extension StepExecutor {
     // MARK: - アサーション
 
@@ -140,6 +164,7 @@ extension StepExecutor {
             guard result.found else { return .failed(Self.scrollNotFoundMessage(step)) }
         }
         let deadline = Date().addingTimeInterval(step.timeout ?? 5)
+        var freshRetry = AssertFreshRetry()
         var backoff = PollBackoff()
         var primaryMisses = 0
         // occlusion-guard: 要素が見つかっても覆われている場合、過渡的オーバーレイ(ローディング/
@@ -150,7 +175,7 @@ extension StepExecutor {
         // timeout==0 でも初回照会は必ず1回行う(ループ後段の deadline チェックで離脱)。
         while true {
             var start = clock.now
-            var snapshot = try await driver.snapshot()
+            var snapshot = try await driver.snapshot(bypassingCache: freshRetry.takeArmed())
             phase.snapshotMs += Self.ms(clock.now - start)
             try await dismissInterruption(in: &snapshot, phase: &phase)
             lastSnapshot = snapshot
@@ -188,7 +213,11 @@ extension StepExecutor {
                     }
                 }
             }
-            if Date() >= deadline { break }   // 初回照会後にここで離脱(timeout==0 も含む)
+            if Date() >= deadline {   // 初回照会後にここで離脱(timeout==0 も含む)
+                // 失敗と決める前に、キャッシュを捨てた1周だけ確かめる(AssertFreshRetry)
+                if freshRetry.arm(ifSupported: driver.supportsCacheBypass) { continue }
+                break
+            }
             start = clock.now
             try await Task.sleep(for: backoff.nextDelay())
             phase.waitMs += Self.ms(clock.now - start)
@@ -209,6 +238,7 @@ extension StepExecutor {
             return .skipped("expected was not specified")
         }
         let deadline = Date().addingTimeInterval(step.timeout ?? 5)
+        var freshRetry = AssertFreshRetry()
         var lastActual: String?
         var found = false
         var backoff = PollBackoff()
@@ -223,7 +253,7 @@ extension StepExecutor {
         // timeout==0 でも初回照会は必ず1回行う(ループ後段の deadline チェックで離脱)。
         while true {
             var start = clock.now
-            var snapshot = try await driver.snapshot()
+            var snapshot = try await driver.snapshot(bypassingCache: freshRetry.takeArmed())
             phase.snapshotMs += Self.ms(clock.now - start)
             try await dismissInterruption(in: &snapshot, phase: &phase)
             lastSnapshot = snapshot
@@ -280,7 +310,11 @@ extension StepExecutor {
             } else {
                 lastOcclusion = nil   // #5: 要素未発見 → 過去の occlusion 失敗を無効化(消失時に stale を返さない)
             }
-            if Date() >= deadline { break }   // 初回照会後にここで離脱(timeout==0 も含む)
+            if Date() >= deadline {   // 初回照会後にここで離脱(timeout==0 も含む)
+                // 失敗と決める前に、キャッシュを捨てた1周だけ確かめる(AssertFreshRetry)
+                if freshRetry.arm(ifSupported: driver.supportsCacheBypass) { continue }
+                break
+            }
             start = clock.now
             try await Task.sleep(for: backoff.nextDelay())
             phase.waitMs += Self.ms(clock.now - start)
@@ -330,10 +364,11 @@ extension StepExecutor {
         // 「消えるまで待つ」。初回で不在なら即 pass、在るならタイムアウトまで消滅を待つ。
         // 可視性(occlusion)は見ない: ツリーから消えたことが唯一の判定。
         let deadline = Date().addingTimeInterval(step.timeout ?? 5)
+        var freshRetry = AssertFreshRetry()
         var backoff = PollBackoff()
         while true {
             let start = clock.now
-            var snapshot = try await driver.snapshot()
+            var snapshot = try await driver.snapshot(bypassingCache: freshRetry.takeArmed())
             phase.snapshotMs += Self.ms(clock.now - start)
             try await dismissInterruption(in: &snapshot, phase: &phase)
             if Self.resolve(step: step, in: snapshot, strictForAssert: true) == nil {
@@ -356,7 +391,11 @@ extension StepExecutor {
                 }
                 return .passed
             }
-            if Date() >= deadline { break }
+            if Date() >= deadline {
+                // 失敗と決める前に、キャッシュを捨てた1周だけ確かめる(AssertFreshRetry)
+                if freshRetry.arm(ifSupported: driver.supportsCacheBypass) { continue }
+                break
+            }
             let waitStart = clock.now
             try await Task.sleep(for: backoff.nextDelay())
             phase.waitMs += Self.ms(clock.now - waitStart)
@@ -376,6 +415,7 @@ extension StepExecutor {
             return .skipped("expected was not specified")
         }
         let deadline = Date().addingTimeInterval(step.timeout ?? 5)
+        var freshRetry = AssertFreshRetry()
         var backoff = PollBackoff()
         var found = false
         var lastActual: String?
@@ -384,7 +424,7 @@ extension StepExecutor {
         var lastScreen = FTRect(x: 0, y: 0, width: 0, height: 0)
         while true {
             let start = clock.now
-            var snapshot = try await driver.snapshot()
+            var snapshot = try await driver.snapshot(bypassingCache: freshRetry.takeArmed())
             phase.snapshotMs += Self.ms(clock.now - start)
             try await dismissInterruption(in: &snapshot, phase: &phase)
             if let (element, fallback) = Self.resolve(step: step, in: snapshot,
@@ -402,7 +442,11 @@ extension StepExecutor {
                     return .passed
                 }
             }
-            if Date() >= deadline { break }
+            if Date() >= deadline {
+                // 失敗と決める前に、キャッシュを捨てた1周だけ確かめる(AssertFreshRetry)
+                if freshRetry.arm(ifSupported: driver.supportsCacheBypass) { continue }
+                break
+            }
             let waitStart = clock.now
             try await Task.sleep(for: backoff.nextDelay())
             phase.waitMs += Self.ms(clock.now - waitStart)
@@ -445,11 +489,12 @@ extension StepExecutor {
         let clock = ContinuousClock()
         let wantEnabled = assert == "enabled"
         let deadline = Date().addingTimeInterval(step.timeout ?? 5)
+        var freshRetry = AssertFreshRetry()
         var backoff = PollBackoff()
         var found = false
         while true {
             let start = clock.now
-            var snapshot = try await driver.snapshot()
+            var snapshot = try await driver.snapshot(bypassingCache: freshRetry.takeArmed())
             phase.snapshotMs += Self.ms(clock.now - start)
             try await dismissInterruption(in: &snapshot, phase: &phase)
             if let (element, fallback) = Self.resolve(step: step, in: snapshot,
@@ -461,7 +506,11 @@ extension StepExecutor {
                     return .passed
                 }
             }
-            if Date() >= deadline { break }
+            if Date() >= deadline {
+                // 失敗と決める前に、キャッシュを捨てた1周だけ確かめる(AssertFreshRetry)
+                if freshRetry.arm(ifSupported: driver.supportsCacheBypass) { continue }
+                break
+            }
             let waitStart = clock.now
             try await Task.sleep(for: backoff.nextDelay())
             phase.waitMs += Self.ms(clock.now - waitStart)
@@ -483,17 +532,22 @@ extension StepExecutor {
         let clock = ContinuousClock()
         let wantShown = assert == "keyboardShown"
         let deadline = Date().addingTimeInterval(step.timeout ?? 5)
+        var freshRetry = AssertFreshRetry()
         var backoff = PollBackoff()
         var lastShown: Bool?
         while true {
             driver.captureKeyboardStateOnNextSnapshot()
             let start = clock.now
-            var snapshot = try await driver.snapshot()
+            var snapshot = try await driver.snapshot(bypassingCache: freshRetry.takeArmed())
             phase.snapshotMs += Self.ms(clock.now - start)
             try await dismissInterruption(in: &snapshot, phase: &phase)
             lastShown = snapshot.keyboardShown
             if snapshot.keyboardShown == wantShown { return .passed }
-            if Date() >= deadline { break }
+            if Date() >= deadline {
+                // 失敗と決める前に、キャッシュを捨てた1周だけ確かめる(AssertFreshRetry)
+                if freshRetry.arm(ifSupported: driver.supportsCacheBypass) { continue }
+                break
+            }
             let waitStart = clock.now
             try await Task.sleep(for: backoff.nextDelay())
             phase.waitMs += Self.ms(clock.now - waitStart)
@@ -514,11 +568,12 @@ extension StepExecutor {
         // 「状態が違う」と「見つからない」を別メッセージにするのは enabled と同じ規律
         let wantChecked = assert == "checked"
         let deadline = Date().addingTimeInterval(step.timeout ?? 5)
+        var freshRetry = AssertFreshRetry()
         var backoff = PollBackoff()
         var found = false
         while true {
             let start = clock.now
-            var snapshot = try await driver.snapshot()
+            var snapshot = try await driver.snapshot(bypassingCache: freshRetry.takeArmed())
             phase.snapshotMs += Self.ms(clock.now - start)
             try await dismissInterruption(in: &snapshot, phase: &phase)
             if let (element, fallback) = Self.resolve(step: step, in: snapshot,
@@ -532,7 +587,11 @@ extension StepExecutor {
                     return .passed
                 }
             }
-            if Date() >= deadline { break }
+            if Date() >= deadline {
+                // 失敗と決める前に、キャッシュを捨てた1周だけ確かめる(AssertFreshRetry)
+                if freshRetry.arm(ifSupported: driver.supportsCacheBypass) { continue }
+                break
+            }
             let waitStart = clock.now
             try await Task.sleep(for: backoff.nextDelay())
             phase.waitMs += Self.ms(clock.now - waitStart)
@@ -555,13 +614,14 @@ extension StepExecutor {
         // 節の優先順位が効くのは要素を1つ選ぶときだけで、数えるときは節を跨いで合計する
         let chain = [locator] + (step.fallbacks ?? [])
         let deadline = Date().addingTimeInterval(step.timeout ?? 5)
+        var freshRetry = AssertFreshRetry()
         var backoff = PollBackoff()
         var actual = 0
         var breakdown: [(clause: FlowLocator, elements: [ElementInfo])] = []
         var nestingHint = ""
         while true {
             let start = clock.now
-            var snapshot = try await driver.snapshot()
+            var snapshot = try await driver.snapshot(bypassingCache: freshRetry.takeArmed())
             phase.snapshotMs += Self.ms(clock.now - start)
             try await dismissInterruption(in: &snapshot, phase: &phase)
             breakdown = Self.unionByClause(chain, elements: snapshot.elements)
@@ -569,7 +629,11 @@ extension StepExecutor {
             nestingHint = Self.nestingHint(breakdown.flatMap(\.elements),
                                            in: snapshot.elements)
             if actual == expectedCount { return .passed }
-            if Date() >= deadline { break }
+            if Date() >= deadline {
+                // 失敗と決める前に、キャッシュを捨てた1周だけ確かめる(AssertFreshRetry)
+                if freshRetry.arm(ifSupported: driver.supportsCacheBypass) { continue }
+                break
+            }
             let waitStart = clock.now
             try await Task.sleep(for: backoff.nextDelay())
             phase.waitMs += Self.ms(clock.now - waitStart)

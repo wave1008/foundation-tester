@@ -163,6 +163,7 @@ final class InputInjector {
                     KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BACK, 0));
             SystemClock.sleep(150);
         }
+        target.refresh();   // BACK 直後は IME 折り畳みでレイアウトが動く → bounds を取り直す
         Rect fresh = new Rect();
         target.getBoundsInScreen(fresh);
         tap(ua, fresh.exactCenterX(), fresh.exactCenterY());
