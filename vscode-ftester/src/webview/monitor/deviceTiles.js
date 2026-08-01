@@ -177,8 +177,16 @@ function createTile(device) {
   const recordingBadge = document.createElement('span');
   recordingBadge.className = 'badge badge-recording';
   recordingBadge.textContent = t('recordings.deviceBadge');
+  // 未登録(マシンプロファイル未記載の合成デバイス)バッジ。device.state に関わらず常時対象なので
+  // kindBadge と同じくヘッダーに置く(renderMode==='cpu' バッジは state==='connected' 限定だが
+  // 表示切替の実装パターン=専用要素+専用 render 関数+style.display 切替は揃える)。
+  const unregisteredBadge = document.createElement('span');
+  unregisteredBadge.className = 'badge badge-unregistered';
+  unregisteredBadge.textContent = t('wvMonitor.tile.unregistered');
+  unregisteredBadge.title = t('wvMonitor.tile.unregisteredTitle');
+  unregisteredBadge.style.display = 'none';
   // 実機バッジはデバイス名の左(ピッカー・一覧・編集フォームと同じ並び)
-  header.append(kindBadge, name);
+  header.append(kindBadge, name, unregisteredBadge);
 
   const frameWrap = document.createElement('div');
   frameWrap.className = 'frame-wrap';
@@ -226,6 +234,7 @@ function createTile(device) {
     recordingBadgeEl: recordingBadge,
     renderBadgeEl: renderBadge,
     kindBadgeEl: kindBadge,
+    unregisteredBadgeEl: unregisteredBadge,
     frameWrapEl: frameWrap,
     imgEl: img,
     placeholderEl: placeholder,
@@ -366,6 +375,9 @@ function renderMeta(entry) {
   entry.recordingBadgeEl.style.display = entry.device.recording ? 'inline-block' : 'none';
   // 実機は署名・接続の前提がシミュレータ/エミュレータと違うので取り違えないよう明示する
   entry.kindBadgeEl.style.display = entry.device.kind === 'physical' ? 'inline-block' : 'none';
+  // マシンプロファイル未記載の合成デバイス(「(起動中のデバイス)」フィルタでのみ現れる)。
+  // 起動(up)と GPU 再起動が成立しないことをタイル上でも明示する(停止・ライブ操作は可)
+  entry.unregisteredBadgeEl.style.display = entry.device.registered === false ? 'inline-block' : 'none';
   renderRenderBadge(entry);
   // 通常時は空(接続済みは画面表示自体が、接続待ちはプレースホルダの「接続中」が伝えるため
   // 冗長で出さない。ユーザー決定 2026-07-16)。bridgeWatch の異常時だけ下で埋める。
@@ -435,11 +447,19 @@ export function renderDeviceOpMenuItem() {
   if (!deviceOpMenuEntry) {
     return;
   }
+  const device = deviceOpMenuEntry.device;
   // ブリッジ不在の実機は offline と同じ扱い(そのまま booted を渡すと「ブリッジを停止」が出て、
   // 止まっているものを止める操作しか選べなくなる)
-  const device = deviceOpMenuEntry.device;
   const item = deviceOpMenuItem(bridgeNotRunning(device) ? 'offline' : device.state,
                                 deviceOpMenuEntry.opBusy, device.kind === 'physical');
+  // 未登録(マシンプロファイル未記載)は起動(up)がマシンプロファイル名前提のため成立しない。
+  // 停止(down)だけ出す。未登録は原理上 connected/booted しか来ない = op は常に 'down' のはずだが、
+  // 念のため 'up' になるケースを防御的に隠す。
+  if (device.registered === false && item.op !== 'down') {
+    deviceOpMenuItemBtn.style.display = 'none';
+    return;
+  }
+  deviceOpMenuItemBtn.style.display = '';
   // ラベルはspanに書く(ボタン直のtextContent代入はアイコンSVGを消す)。data-opはCSSのアイコン切替も担う。
   deviceOpMenuItemLabel.textContent = item.label;
   deviceOpMenuItemBtn.disabled = item.disabled;
@@ -457,13 +477,19 @@ export function closeDeviceOpMenu() {
 function openDeviceOpMenu(entry, clientX, clientY) {
   deviceOpMenuEntry = entry;
   renderDeviceOpMenuItem();
+  // GPU再起動はマシンプロファイル前提(name 解決)のため未登録では出さない
+  // (起動/停止項目は renderDeviceOpMenuItem 側、ライブ操作は下で個別に扱う)。
+  const unregistered = entry.device.registered === false;
   // ライブ操作はブリッジ接続済み(state==='connected')でのみ機能する(liveTab.js の「接続されていません」
-  // 警告と対)。未接続では項目自体を出さない。
+  // 警告と対)。未登録でも connected なら udid/serial 直指定でブリッジ自動起動が効く
+  // (ApiListDevicesCommand の registered:false・ApiLiveCommand --udid 自動起動)ため、
+  // registered と同条件(state のみ)で出す。
   deviceOpMenuLiveBtn.style.display = entry.device.state === 'connected' ? '' : 'none';
   // 「GPUで再起動」は CPU 描画フォールバック中(CPU バッジ)の Android タイルでのみ意味を持つ。
   // 起動/停止のライフサイクル操作中(opBusy)は再起動を積んでも enqueueRestart が無視するため出さない。
   deviceOpMenuGpuBtn.style.display =
-    !entry.opBusy && entry.device.platform === 'android' && entry.device.renderMode === 'cpu' ? '' : 'none';
+    !unregistered && !entry.opBusy && entry.device.platform === 'android' && entry.device.renderMode === 'cpu'
+      ? '' : 'none';
   deviceOpMenu.classList.add('visible');
   clampMenuPosition(deviceOpMenu, clientX, clientY);
 }
@@ -473,11 +499,20 @@ deviceOpMenuItemBtn.addEventListener('click', (event) => {
   if (!deviceOpMenuEntry || deviceOpMenuItemBtn.disabled) {
     return;
   }
-  vscode.postMessage({
-    type: 'deviceOp',
-    name: deviceOpMenuEntry.device.name,
-    op: deviceOpMenuItemBtn.dataset.op,
-  });
+  const device = deviceOpMenuEntry.device;
+  const message = { type: 'deviceOp', name: device.name, op: deviceOpMenuItemBtn.dataset.op };
+  // 未登録(registered:false)はマシンプロファイルに無いため --name で引けない。udid(iOS)/
+  // serial(Android)を載せ、host 側(monitorDeviceOps.ts)が device-down --udid/--serial の
+  // 直指定モードへ振り分ける(契約: monitorWebviewMessages.ts の "deviceOp")。
+  if (device.registered === false) {
+    message.registered = false;
+    if (device.platform === 'ios' && device.udid) {
+      message.udid = device.udid;
+    } else if (device.platform === 'android' && device.serial) {
+      message.serial = device.serial;
+    }
+  }
+  vscode.postMessage(message);
   closeDeviceOpMenu();
 });
 

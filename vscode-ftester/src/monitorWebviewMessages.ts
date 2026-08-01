@@ -327,7 +327,17 @@ export type MonitorFromWebviewMessage =
   | { readonly type: "devicesUpCancel" }
   | { readonly type: "devicesDown" }
   | { readonly type: "restartMonitor" }
-  | { readonly type: "deviceOp"; readonly name: string; readonly op: DeviceOpKind }
+  // udid/serial/registered: 未登録(マシンプロファイル未記載)デバイスの直指定用。registered:false の
+  // ときだけ deviceTiles.js が iOS udid / Android serial のどちらかを載せる(--name で引けないため)。
+  // 対向: monitorDeviceOps.ts executeDeviceOpJob(device-down --udid/--serial の直指定モード)。
+  | {
+      readonly type: "deviceOp";
+      readonly name: string;
+      readonly op: DeviceOpKind;
+      readonly udid?: string;
+      readonly serial?: string;
+      readonly registered?: boolean;
+    }
   // デバイスタイル右クリック「ライブ操作」: 独立ライブ操作パネル(livePanel.ts)を開いて id のデバイスを
   // 選択させる(受け手: monitorPanel.ts → registerMonitorPanel の openLiveForDevice)。
   | { readonly type: "openLiveForDevice"; readonly id: string }
@@ -540,7 +550,13 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
           value.restartNames.every((n) => typeof n === "string" && n !== ""))
       );
     case "deviceOp":
-      return typeof value.name === "string" && (value.op === "up" || value.op === "down");
+      return (
+        typeof value.name === "string" &&
+        (value.op === "up" || value.op === "down") &&
+        (value.udid === undefined || typeof value.udid === "string") &&
+        (value.serial === undefined || typeof value.serial === "string") &&
+        (value.registered === undefined || typeof value.registered === "boolean")
+      );
     case "openLiveForDevice":
       return typeof value.id === "string" && value.id !== "";
     case "deviceRestartGpu":

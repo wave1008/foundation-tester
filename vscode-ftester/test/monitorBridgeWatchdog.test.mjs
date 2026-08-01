@@ -6,8 +6,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { MonitorBridgeWatchdog } from "../src/monitorBridgeWatchdog";
 
-function device(name, state) {
-  return { id: name, name, platform: "ios", state, detail: "" };
+function device(name, state, registered) {
+  return { id: name, name, platform: "ios", state, detail: "", ...(registered === undefined ? {} : { registered }) };
 }
 
 /** テスト用ハーネス。posts/logs/jobs を配列に記録し、now/autoRepair/runActive を手元で操作できる。 */
@@ -53,6 +53,16 @@ test("最初から booted のデバイスは対象外(5回連続 booted でも�
   const h = createHarness();
   for (let i = 0; i < 10; i += 1) {
     h.watchdog.observe([device("Sim1", "booted")]);
+  }
+  assert.deepEqual(h.posts, []);
+  assert.deepEqual(h.jobs, []);
+});
+
+test("未登録(registered:false)は connected→booted を繰り返しても post も修復 up も発生しない", () => {
+  const h = createHarness();
+  h.watchdog.observe([device("Sim1", "connected", false)]);
+  for (let i = 0; i < 6; i += 1) {
+    h.watchdog.observe([device("Sim1", "booted", false)]);
   }
   assert.deepEqual(h.posts, []);
   assert.deepEqual(h.jobs, []);

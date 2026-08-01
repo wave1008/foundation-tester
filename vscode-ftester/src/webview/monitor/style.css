@@ -912,6 +912,16 @@ button.profile-jump-link:hover:not(:disabled) {
   font-weight: 600;
 }
 
+/* 未登録(マシンプロファイル未記載の合成デバイス)バッジ。実機バッジと違う配色にする
+   (どちらも常時表示だが意味が別: badge-kind=署名/接続前提の違い、こちらは操作不可の告知)。
+   警告色ではなく中立な badge トークンを使う(異常ではなく単なる分類のため) */
+.badge-unregistered {
+  flex: 0 0 auto;
+  background-color: var(--vscode-badge-background, #4d4d4d);
+  color: var(--vscode-badge-foreground, #ffffff);
+  font-weight: 600;
+}
+
 /* 編集フォームの実機バッジ。配色は .badge-kind と揃える(同じ意味のものを別色にしない) */
 .editor-kind-badge {
   font-size: 11px;

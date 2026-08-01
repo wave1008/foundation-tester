@@ -293,7 +293,7 @@ export class MonitorDeviceOps {
       if (job.op === "down") {
         this.deps.stopDeviceStreams(job.name);
       }
-      this.executeDeviceOpJob(job.name, job.op);
+      this.executeDeviceOpJob(job.name, job.op, job.udid, job.serial);
     }
   }
 
@@ -636,7 +636,7 @@ export class MonitorDeviceOps {
    * 失敗時(finished ok:false、または finished を出せずに落ちた場合を含む)は、バナーがパネルを
    * 閉じると消えるため、事後診断できるよう出力チャネルにも必ずログを残す。
    */
-  private executeDeviceOpJob(name: string, op: DeviceOpKind): void {
+  private executeDeviceOpJob(name: string, op: DeviceOpKind, udid?: string, serial?: string): void {
     // spawn 失敗時の 'error'+'close' 二重発火・複数試行にまたがる finish の二重呼び出しを防ぐ
     // ジョブ単位のガード(finishLifecycleQueueHead は1ジョブにつき1回だけ呼ぶ)。
     let jobFinished = false;
@@ -647,23 +647,45 @@ export class MonitorDeviceOps {
       jobFinished = true;
       this.finishLifecycleJob({ kind: "device", name, op });
     };
-    this.runDeviceOpAttempt(name, op, 0, finishOnce);
+    this.runDeviceOpAttempt(name, op, 0, finishOnce, udid, serial);
   }
 
   /** device-up/down の1回分の実行。up が失敗し追加試行が残っていれば遅延後に再試行、
    * それ以外(成功・down・up の上限到達)は finishOnce でキューを進める。 */
-  private runDeviceOpAttempt(name: string, op: DeviceOpKind, attempt: number, finishOnce: () => void): void {
+  private runDeviceOpAttempt(
+    name: string,
+    op: DeviceOpKind,
+    attempt: number,
+    finishOnce: () => void,
+    udid?: string,
+    serial?: string,
+  ): void {
     const config = this.deps.getConfig();
     const resolution = resolveProjectName(this.deps.workspaceRoot, config);
-    const args: string[] = ["api", op === "up" ? "device-up" : "device-down", "--name", name];
-    if (resolution.kind === "resolved") {
-      args.push("--project", resolution.project);
-    }
-    // machine 解決に使う。実行プロファイルの machine 指定を determineMachine が最優先で採用するため、
-    // これが無いと machines/ が複数のとき「マシン名が未登録」で落ちてブリッジ供給に到達しない
-    // (executeBulkJob と同経路。ApiDeviceUp/Down 側の --profile と対)。
-    if (config.profile) {
-      args.push("--profile", config.profile);
+    // 未登録(マシンプロファイル未記載)デバイスの直指定モード: --name の代わりに --udid/--serial を渡し、
+    // プロジェクト・マシンプロファイル解決に使う --project/--profile も付けない(直指定はそれらを
+    // 一切参照しない契約。Sources/ftester/ApiDeviceCommands.swift ApiDeviceDownDirectTarget)。
+    // up には direct モードが無い(未登録は起動をメニューに出さない。monitorDeviceLifecycle.ts の
+    // udid/serial コメント参照)。
+    const direct = op === "down" && (udid !== undefined || serial !== undefined);
+    const args: string[] = ["api", op === "up" ? "device-up" : "device-down"];
+    if (direct) {
+      if (udid !== undefined) {
+        args.push("--udid", udid);
+      } else if (serial !== undefined) {
+        args.push("--serial", serial);
+      }
+    } else {
+      args.push("--name", name);
+      if (resolution.kind === "resolved") {
+        args.push("--project", resolution.project);
+      }
+      // machine 解決に使う。実行プロファイルの machine 指定を determineMachine が最優先で採用するため、
+      // これが無いと machines/ が複数のとき「マシン名が未登録」で落ちてブリッジ供給に到達しない
+      // (executeBulkJob と同経路。ApiDeviceUp/Down 側の --profile と対)。
+      if (config.profile) {
+        args.push("--profile", config.profile);
+      }
     }
     if (op === "up" && this.cpuRenderNames.has(name)) {
       args.push("--gpu", "swiftshader_indirect");
@@ -696,7 +718,7 @@ export class MonitorDeviceOps {
           }),
         );
         setTimeout(
-          () => this.runDeviceOpAttempt(name, op, attempt + 1, finishOnce),
+          () => this.runDeviceOpAttempt(name, op, attempt + 1, finishOnce, udid, serial),
           MonitorDeviceOps.deviceUpRetryDelayMs,
         );
         return;

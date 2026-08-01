@@ -8,6 +8,8 @@
 // 使う)。resolve 失敗・Android は null。
 // kind: "virtual"(シミュレータ/エミュレータ)/ "physical"(実機)。実機は録画・画面配信が
 // できない等で扱いが変わるため消費側が判別できるようにする(追加フィールド=後方互換)。
+// registered: false はマシンプロファイル未記載の起動中デバイス(ApiMonitorCommand.determineStates
+// の includeUnregistered と同じ合成。--profile 指定時は従来どおり合成しない=false)。
 // 対向: vscode-ftester/src/liveModel.ts
 
 import ArgumentParser
@@ -61,8 +63,10 @@ struct ApiListDevices: AsyncParsableCommand {
         }
 
         // ApiMonitorCommand と同じ判定ロジックを 1 回だけ実行する(debounce なし。
-        // 常駐監視と違い単発呼び出しなので、ばたつき抑制は不要かつ状態を持てない)
-        let states = await ApiMonitorCommand.determineStates(targets: targets)
+        // 常駐監視と違い単発呼び出しなので、ばたつき抑制は不要かつ状態を持てない)。
+        // --profile 指定時は監視対象がそのプロファイル参照デバイスに絞られている意図のため
+        // 未登録デバイスは合成しない(ApiMonitorCommand.run の同じ条件と揃える)
+        let states = await ApiMonitorCommand.determineStates(targets: targets, includeUnregistered: profile == nil)
 
         let devices = states.map { state in
             ApiDeviceEntry(
@@ -77,7 +81,8 @@ struct ApiListDevices: AsyncParsableCommand {
                     ? (state.iosPort ?? state.target.spec.port) : nil,
                 serial: state.target.platform == "android" ? state.androidSerial : nil,
                 udid: state.target.platform == "ios" ? state.iosUdid : nil,
-                kind: state.target.spec.isPhysical ? "physical" : "virtual")
+                kind: state.target.spec.isPhysical ? "physical" : "virtual",
+                registered: state.target.registered)
         }
 
         let output = ApiListDevicesOutput(
@@ -104,9 +109,10 @@ private struct ApiDeviceEntry: Encodable {
     let serial: String?
     let udid: String?
     let kind: String
+    let registered: Bool
 
     private enum CodingKeys: String, CodingKey {
-        case name, platform, state, detail, port, serial, udid, kind
+        case name, platform, state, detail, port, serial, udid, kind, registered
     }
 
     func encode(to encoder: Encoder) throws {
@@ -119,6 +125,7 @@ private struct ApiDeviceEntry: Encodable {
         try container.encode(serial, forKey: .serial)
         try container.encode(udid, forKey: .udid)
         try container.encode(kind, forKey: .kind)
+        try container.encode(registered, forKey: .registered)
     }
 }
 
