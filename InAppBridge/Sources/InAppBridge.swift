@@ -211,7 +211,9 @@ final class FTInAppBridge {
         var nodes: [Int: NSObject]
         var truncated: Int
         var note: String?
-        /// BridgeDTO の SnapshotResponse.webViewPath。DOM を読めたときだけ "dom"
+        /// BridgeDTO の SnapshotResponse.webViewPath。"dom" = uikit ホスト等で DOM を読めた /
+        /// "dom-interop" = DOM は読めたが interop(Compose/Flutter)配下 = 操作はホスト側
+        /// (WebViewDelegatingDriver)が XCUITest 座標へ回す。DOM 自体が読めなければ nil
         var webViewPath: String?
     }
 
@@ -222,11 +224,13 @@ final class FTInAppBridge {
     /// それがそのまま「DOM の矩形へ合成タッチを打つ」動作になる(DOM 側で click させない理由は
     /// InAppWebViewDOM の冒頭コメント参照)。
     ///
-    /// DOM が読めなかった WebView は素通し = 従来どおりコンテナだけが出る。
-    /// ホスト側(WebViewDelegatingDriver)はそれを見て XCUITest へ委譲する。
+    /// interop(Compose/Flutter)配下でも DOM は読む(読み取りは届く、操作だけ interop に
+    /// 横取りされる)。操作は合成タッチでは届かないため、interop 配下が1つでも
+    /// あれば webViewPath を "dom-interop" と申告する — **ホスト(WebViewDelegatingDriver)が
+    /// これを見て ref を座標へ解決し XCUITest の実タッチへ回す**(ここでは判定だけ、実際の
+    /// ルーティングはブリッジの責務外)。DOM が全く読めなかった WebView は素通し = 従来どおり
+    /// コンテナだけが出て、ホストは画面ごと XCUITest へ委譲する。
     private func mergeWebViewDOM(into base: InAppSnapshot.Result) -> MergedSnapshot {
-        // interop 配下かどうかの選別はコンテナごとに下のループで行う(アプリ単位にしない理由も
-        // そちらのコメント参照)。ここでは全コンテナを候補にするだけ
         let containers = base.elements.filter { $0.type == "webView" }
         guard !containers.isEmpty else {
             return MergedSnapshot(elements: base.elements, frames: base.frames,
@@ -237,14 +241,14 @@ final class FTInAppBridge {
                             width: base.screen.width, height: base.screen.height)
         var domByRef: [Int: InAppWebViewDOM.Captured] = [:]
         var note: String?
+        var anyInterop = false
         for container in containers {
             guard let webView = base.nodes[container.ref] as? WKWebView,
-                  // interop(Compose / Flutter)配下の WebView は DOM を読んでも操作が届かない
-                  // ため読まない = 従来どおり画面ごと XCUITest へ委譲される。
-                  // **アプリ単位ではなく WebView 単位で見る**(isInteropHosted のコメント参照)
-                  !WebViewDOM.isInteropHosted(ancestorClassNames: Self.ancestorClassNames(of: webView)),
                   let captured = InAppWebViewDOM.capture(webView: webView, screen: screen)
             else { continue }
+            if WebViewDOM.isInteropHosted(ancestorClassNames: Self.ancestorClassNames(of: webView)) {
+                anyInterop = true
+            }
             domByRef[container.ref] = captured
             if note == nil { note = captured.note }
         }
@@ -278,7 +282,8 @@ final class FTInAppBridge {
             }
         }
         return MergedSnapshot(elements: elements, frames: frames, nodes: nodes,
-                              truncated: truncated, note: note, webViewPath: "dom")
+                              truncated: truncated, note: note,
+                              webViewPath: anyInterop ? "dom-interop" : "dom")
     }
 
     private func handleTap(_ body: Data) throws -> InAppHTTPServer.Response {

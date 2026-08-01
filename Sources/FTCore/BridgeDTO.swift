@@ -50,7 +50,11 @@ public enum BridgeAPI {
     /// 29: XCUITest ランナーの /type が**送った打鍵数を完了の根拠にせず**、読み返して期待値に
     /// 届くまで足りないぶんを追送するようになった(2026-08-01)。旧ランナーが再利用されると
     /// 高負荷での打鍵取りこぼし(200 を返すのに値が空)が残ったままになる
-    public static let bridgeProtocolVersion = 29
+    /// 30: in-app が interop(Compose/Flutter)ホストの WebView も DOM から読むようになり、
+    /// snapshot が webViewPath: "dom-interop" を申告するようになった(2026-08-02)。旧 dylib は
+    /// interop 配下を引き続き読めないと申告し続け、ホストが画面ごと XCUITest 委譲へ落とすため、
+    /// テストは緑のまま速度改善だけが効かない
+    public static let bridgeProtocolVersion = 30
 
     /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
     /// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java の
@@ -246,6 +250,8 @@ public struct SnapshotResponse: Codable, Sendable {
     /// **要素解決には決して使わない**(見えない要素へ exist/tap が当たる)。ref は全て 0
     public var offscreen: [ElementInfo]?
     /// WebView の中身を**どの経路で読んだか**の申告。`"dom"` = in-app が DOM を JS で走査 /
+    /// `"dom-interop"` = DOM は読めたが interop(Compose/Flutter)ホスト配下 = 操作はホスト側
+    /// (WebViewDelegatingDriver)が座標へ解決して XCUITest の実タッチへ回す /
     /// `"delegated"` = XCUITest へ画面ごと委譲(ホスト側の WebViewDelegatingDriver が入れる)。
     /// **要素の形から推測してはいけない**: Android は webView 型を出すが web フラグを持たないため、
     /// 推測すると「XCUITest へ委譲」と名乗って Android のデバッグを誤誘導する(2026-07-29 実害)。
