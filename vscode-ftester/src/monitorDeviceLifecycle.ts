@@ -159,7 +159,11 @@ export type DeviceOpQueueStatus = "queued" | "running";
 export type DeviceLifecycleJob =
   // restartNames: up のみ。起動済みでも down→up する対象(devices-up --restart に渡す)。
   | { readonly kind: "bulk"; readonly op: "up" | "down"; readonly restartNames?: readonly string[] }
-  | { readonly kind: "device"; readonly name: string; readonly op: DeviceOpKind }
+  // udid/serial: 未登録(マシンプロファイル未記載)デバイスの直指定(op==="down" のときのみ意味を持つ)。
+  // monitorDeviceOps.ts executeDeviceOpJob が --name の代わりに --udid/--serial を渡す(対向:
+  // Sources/ftester/ApiDeviceCommands.swift ApiDeviceDownDirectTarget)。name はタイル特定・
+  // 重複排除キーとして直指定時も引き続き使う。
+  | { readonly kind: "device"; readonly name: string; readonly op: DeviceOpKind; readonly udid?: string; readonly serial?: string }
   | { readonly kind: "restartBatch"; readonly names: readonly string[] };
 
 /** device ジョブの同時実行上限(2台同時でホスト CPU がほぼ飽和する実測に基づくフリート共通の上限)。 */

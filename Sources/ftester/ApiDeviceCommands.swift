@@ -2,6 +2,10 @@
 // (ftester api device-up / device-down)。起動・停止の実装(DeviceBooter/BridgeProvisioner)は
 // DevicesCommand(ftester devices)と共通。stdout には NDJSON(log* → finished)だけを出す
 // (診断は stderr のみ。ok:false のときは exit code 1)。
+//
+// device-down は --udid/--serial の直指定モードも持つ(未登録=マシンプロファイル未記載の起動中
+// デバイス向け。ApiMonitorCommand.unregisteredStates 参照)。プロジェクト・マシンプロファイル解決を
+// 一切行わない(ApiDeviceDownDirectTarget/ApiDeviceDownDirectSpec)。対向: vscode-ftester/src/monitorDeviceOps.ts
 
 import ArgumentParser
 import Foundation
@@ -275,26 +279,118 @@ struct ApiDeviceDown: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "device-down",
         abstract: "Stop one device listed in the machine profile (NDJSON: log* -> finished on "
-            + "stdout; diagnostics on stderr only; exit code 1 when ok:false)")
+            + "stdout; diagnostics on stderr only; exit code 1 when ok:false). Exactly one of "
+            + "--name/--udid/--serial must be given; --udid/--serial stop a device directly "
+            + "(no project/machine-profile resolution at all) for devices the monitor found "
+            + "running but that are not listed in any machine profile (registered:false; see "
+            + "ApiMonitorCommand.unregisteredStates)")
 
     @Option(help: "Logical device name (a name under ios or android in the machine profile)")
-    var name: String
+    var name: String?
 
-    @Option(help: "Test project name (defaults to the only one in Projects/, or the default project)")
+    @Option(help: "iOS simulator UDID. Direct mode: stops this simulator without resolving a project or machine profile")
+    var udid: String?
+
+    @Option(help: "Android emulator adb serial. Direct mode: stops this emulator without resolving a project or machine profile")
+    var serial: String?
+
+    @Option(help: "Test project name (defaults to the only one in Projects/, or the default project). Ignored in direct (--udid/--serial) mode")
     var project: String?
 
-    @Option(help: "Run profile name, used to resolve the machine. When given, that profile's machine wins; otherwise FT_MACHINE, the registered machine, or the only entry in machines/")
+    @Option(help: "Run profile name, used to resolve the machine. When given, that profile's machine wins; otherwise FT_MACHINE, the registered machine, or the only entry in machines/. Ignored in direct (--udid/--serial) mode")
     var profile: String?
 
     func run() async throws {
-        try await ApiDeviceOperation.run(name: name, project: project, profile: profile) { spec, platform, log in
-            // iOS はシミュレータ停止前に稼働ブリッジも探して停止する(ゾンビ化防止。
-            // BridgeProvisioner.provision の失敗時後始末と対)。repoRoot 未検出時は nil のまま
-            // 渡しブリッジ停止をスキップして simctl shutdown のみ行う
-            let repoRoot = platform == "ios" ? try? RepoRoot.find() : nil
-            try await DeviceBooter.shutdownOne(
-                spec: spec, platform: platform, repoRoot: repoRoot, log: log)
+        switch try ApiDeviceDownDirectTarget.resolve(name: name, udid: udid, serial: serial) {
+        case .name(let name):
+            try await ApiDeviceOperation.run(name: name, project: project, profile: profile) { spec, platform, log in
+                // iOS はシミュレータ停止前に稼働ブリッジも探して停止する(ゾンビ化防止。
+                // BridgeProvisioner.provision の失敗時後始末と対)。repoRoot 未検出時は nil のまま
+                // 渡しブリッジ停止をスキップして simctl shutdown のみ行う
+                let repoRoot = platform == "ios" ? try? RepoRoot.find() : nil
+                try await DeviceBooter.shutdownOne(
+                    spec: spec, platform: platform, repoRoot: repoRoot, log: log)
+            }
+        case .udid(let udid):
+            let simCatalog = (try? SimulatorCatalog.devices()) ?? []
+            let spec = ApiDeviceDownDirectSpec.iosSpec(udid: udid, simCatalog: simCatalog)
+            try await Self.runDirect(spec: spec, platform: "ios", repoRoot: try? RepoRoot.find())
+        case .serial(let serial):
+            let runningAVDs = (try? AndroidDeviceCatalog.runningAVDs()) ?? [:]
+            switch ApiDeviceDownDirectSpec.androidSpec(serial: serial, runningAVDs: runningAVDs) {
+            case .success(let spec):
+                try await Self.runDirect(spec: spec, platform: "android", repoRoot: nil)
+            case .failure(let message):
+                try Self.emitDirectFailure(message)
+            }
         }
+    }
+
+    /// 直指定モード(--udid/--serial)の1台停止。プロジェクト・マシンプロファイル解決を経ないため
+    /// ApiDeviceOperation.run を通らず、NDJSON の log*/finished 出力だけをここで組み立てる
+    private static func runDirect(spec: DeviceSpec, platform: String, repoRoot: URL?) async throws {
+        setvbuf(stdout, nil, _IOLBF, 0)
+        let log: @Sendable (String) -> Void = { message in
+            ApiDeviceEventEmitter.emit(ApiDeviceLogEvent(message: message))
+        }
+        do {
+            try await DeviceBooter.shutdownOne(spec: spec, platform: platform, repoRoot: repoRoot, log: log)
+            ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent(ok: true, error: nil))
+        } catch {
+            ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent(ok: false, error: error.localizedDescription))
+            throw ExitCode(1)
+        }
+    }
+
+    private static func emitDirectFailure(_ message: String) throws -> Never {
+        setvbuf(stdout, nil, _IOLBF, 0)
+        ApiDeviceEventEmitter.emit(ApiDeviceFinishedEvent(ok: false, error: message))
+        throw ExitCode(1)
+    }
+}
+
+/// --name/--udid/--serial のうちどれで device-down を実行するかの判定。I/O を持たない pure 関数
+/// (ユニットテスト対象のため private にしない)
+enum ApiDeviceDownDirectTarget: Equatable {
+    case name(String)
+    case udid(String)
+    case serial(String)
+
+    /// ちょうど1つが指定されているか検証する。0個/2個以上は ValidationError
+    static func resolve(name: String?, udid: String?, serial: String?) throws -> ApiDeviceDownDirectTarget {
+        let given = [name, udid, serial].compactMap { $0 }
+        guard given.count == 1 else {
+            throw ValidationError("specify exactly one of --name / --udid / --serial")
+        }
+        if let name { return .name(name) }
+        if let udid { return .udid(udid) }
+        return .serial(serial!)
+    }
+}
+
+/// 直指定モードの spec 合成。マシンプロファイルに実在しない(未登録)デバイス向けのため、
+/// カタログ照合のみで組み立てる。I/O を持たない pure 関数(ユニットテスト対象のため private にしない)
+enum ApiDeviceDownDirectSpec {
+    /// androidSpec の結果(Swift の Result は Failure: Error 制約があり String を使えない)
+    enum SpecResult: Equatable {
+        case success(DeviceSpec)
+        case failure(String)
+    }
+
+    /// simCatalog に udid が一致すればシミュレータ名を表示名にする。一致しなければ udid をそのまま使う
+    /// (未登録シミュレータが simctl 一覧から既に消えている場合の保険)
+    static func iosSpec(udid: String, simCatalog: [SimDeviceInfo]) -> DeviceSpec {
+        let name = simCatalog.first(where: { $0.udid == udid })?.name ?? udid
+        return DeviceSpec(name: name, udid: udid)
+    }
+
+    /// runningAVDs(serial -> canonical AVD ID)から解決する。見つからなければ呼び出し側が
+    /// emitFinished(ok:false) するためのメッセージを返す
+    static func androidSpec(serial: String, runningAVDs: [String: String]) -> SpecResult {
+        guard let avdID = runningAVDs[serial] else {
+            return .failure("serial not found among running emulators: \(serial)")
+        }
+        return .success(DeviceSpec(name: avdID, avd: avdID))
     }
 }
 

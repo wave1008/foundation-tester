@@ -13,6 +13,8 @@
 //     ブート時固定のため接続中は変化しない値)
 //     ("inRun":bool は ApiMonitorCommand.swift の RunLease.isFresh 判定。`ftester api run` が
 //     このデバイスを使用中なら true。null 化されないが読み手は欠落/非bool を false とみなす)
+//     ("registered":bool は ApiMonitorCommand.determineStates(includeUnregistered:) が合成した
+//     マシンプロファイル未記載の起動中デバイスなら false。欠落/非boolは true とみなす)
 //   {"kind":"monitorFrame","device":"..","jpegBase64":"..","width":480,"height":1040}
 //     … connected デバイスのみ、約interval秒毎
 //   {"kind":"monitorError","device":"..","message":".."}         … device は省略されうる。
@@ -70,6 +72,10 @@ export interface MonitorDevice {
   /** このデバイスが画面録画中か。inRun と同じ契約(Swift は常に true/false を送るが、
    * 欠落・非 bool は false として扱う=isMonitorDevice が正規化。旧バイナリとの互換のため)。 */
   readonly recording?: boolean;
+  /** マシンプロファイルに実在するか。false は ApiMonitorCommand.determineStates(includeUnregistered:)
+   * が合成した起動中デバイス(未登録)。欠落・非 bool は true に正規化する(旧 CLI 互換。
+   * kind と同じ「欠落は従来どおりの表示に寄せる」方針)。 */
+  readonly registered?: boolean;
 }
 
 /** `ftester api monitor` の NDJSON 1行分のイベント(kind で判別)。 */
@@ -126,6 +132,11 @@ function isMonitorDevice(value: unknown): value is MonitorDevice {
     // 欠落/null/型不正を「録画していない」に寄せる(inRun と同じ方針)。
     value.recording = false;
   }
+  if (value.registered !== true && value.registered !== false) {
+    // 欠落/null/型不正を「登録済み」に寄せる(旧 CLI は registered を送らない=全デバイスが
+    // マシンプロファイル記載のみだった挙動を保つ)。
+    value.registered = true;
+  }
   return (
     typeof value.id === "string" &&
     typeof value.name === "string" &&
@@ -140,7 +151,8 @@ function isMonitorDevice(value: unknown): value is MonitorDevice {
       (Array.isArray(value.health) && value.health.every((item) => typeof item === "string"))) &&
     (value.renderMode === undefined || value.renderMode === "gpu" || value.renderMode === "cpu") &&
     typeof value.inRun === "boolean" &&
-    typeof value.recording === "boolean"
+    typeof value.recording === "boolean" &&
+    typeof value.registered === "boolean"
   );
 }
 
@@ -202,12 +214,14 @@ function iosPhysicalWithoutBridge(device: MonitorDevice): boolean {
 }
 
 /** filter="running" なら起動中のみに絞る(offline と、未起動表示になる iOS 実機のブリッジ不在を除外)。
- * "all" は素通し(元の順序を保つ)。 */
+ * 未登録デバイス(registered===false)は定義上「起動中」なので running では素通りする。
+ * "all" は registered===false のみ追加で除外する(マシンプロファイルタブの一覧と一致させるため。
+ * それ以外は元の順序のまま素通し)。 */
 export function filterMonitorDevices(
   devices: readonly MonitorDevice[],
   filter: MonitorDeviceFilter,
 ): readonly MonitorDevice[] {
   return filter === "running"
     ? devices.filter((device) => device.state !== "offline" && !iosPhysicalWithoutBridge(device))
-    : devices;
+    : devices.filter((device) => device.registered !== false);
 }

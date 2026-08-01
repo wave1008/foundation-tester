@@ -239,7 +239,7 @@ let package = Package(
         // 実行プロファイルによる絞り込み・表示整形)
         .testTarget(
             name: "FTesterTests",
-            dependencies: ["ftester", "FTCore", "FTAndroid"],
+            dependencies: ["ftester", "FTCore", "FTAndroid", "FTBridgeClient"],
             swiftSettings: swift5Mode
         ),
         .testTarget(

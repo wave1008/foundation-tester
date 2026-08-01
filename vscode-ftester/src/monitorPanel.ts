@@ -439,7 +439,10 @@ class MonitorPanelController implements vscode.Disposable {
         void this.killAllResidentProcesses();
         break;
       case "deviceOp":
-        this.deviceOps.enqueueLifecycleJob({ kind: "device", name: message.name, op: message.op });
+        this.deviceOps.enqueueLifecycleJob({
+          kind: "device", name: message.name, op: message.op,
+          udid: message.udid, serial: message.serial,
+        });
         break;
       case "openLiveForDevice":
         this.openLiveForDevice(message.id);

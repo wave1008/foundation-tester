@@ -172,6 +172,42 @@ test("isMonitorEvent: monitorDevices の recording は true/false をそのま�
   assert.equal(value.devices[1].recording, false);
 });
 
+test("isMonitorEvent: monitorDevices の registered は欠落・非boolean値を true に正規化する(旧CLI互換)", () => {
+  const missing = {
+    kind: "monitorDevices",
+    devices: [{ id: "d1", name: "d1", platform: "ios", state: "connected", detail: "" }],
+  };
+  assert.equal(isMonitorEvent(missing), true);
+  assert.equal(missing.devices[0].registered, true);
+
+  const nullValue = {
+    kind: "monitorDevices",
+    devices: [{ id: "d1", name: "d1", platform: "ios", state: "connected", detail: "", registered: null }],
+  };
+  assert.equal(isMonitorEvent(nullValue), true);
+  assert.equal(nullValue.devices[0].registered, true);
+
+  const invalidType = {
+    kind: "monitorDevices",
+    devices: [{ id: "d1", name: "d1", platform: "ios", state: "connected", detail: "", registered: "false" }],
+  };
+  assert.equal(isMonitorEvent(invalidType), true);
+  assert.equal(invalidType.devices[0].registered, true);
+});
+
+test("isMonitorEvent: monitorDevices の registered は true/false をそのまま保持する", () => {
+  const value = {
+    kind: "monitorDevices",
+    devices: [
+      { id: "d1", name: "d1", platform: "ios", state: "connected", detail: "", registered: true },
+      { id: "d2", name: "d2", platform: "android", state: "connected", detail: "", registered: false },
+    ],
+  };
+  assert.equal(isMonitorEvent(value), true);
+  assert.equal(value.devices[0].registered, true);
+  assert.equal(value.devices[1].registered, false);
+});
+
 test("isMonitorEvent: monitorFrame は width/height が欠落/非数値なら false", () => {
   assert.equal(
     isMonitorEvent({ kind: "monitorFrame", device: "d", jpegBase64: "A", height: 100 }),
@@ -324,6 +360,26 @@ test("isMonitorFromWebviewMessage: deviceOp は name欠落/opが不正語彙な�
   assert.equal(isMonitorFromWebviewMessage({ type: "deviceOp", op: "up" }), false);
   assert.equal(isMonitorFromWebviewMessage({ type: "deviceOp", name: "シミュ1", op: "boot" }), false);
   assert.equal(isMonitorFromWebviewMessage({ type: "deviceOp", name: 1, op: "up" }), false);
+});
+
+test("isMonitorFromWebviewMessage: deviceOp の udid/serial/registered は省略可・型が合えば true", () => {
+  assert.equal(
+    isMonitorFromWebviewMessage({ type: "deviceOp", name: "シミュ1", op: "down", udid: "ABCD-1234", registered: false }),
+    true,
+  );
+  assert.equal(
+    isMonitorFromWebviewMessage({ type: "deviceOp", name: "エミュ1", op: "down", serial: "emulator-5554", registered: false }),
+    true,
+  );
+});
+
+test("isMonitorFromWebviewMessage: deviceOp の udid/serial/registered は型が不正なら false", () => {
+  assert.equal(isMonitorFromWebviewMessage({ type: "deviceOp", name: "シミュ1", op: "down", udid: 1 }), false);
+  assert.equal(isMonitorFromWebviewMessage({ type: "deviceOp", name: "エミュ1", op: "down", serial: 1 }), false);
+  assert.equal(
+    isMonitorFromWebviewMessage({ type: "deviceOp", name: "シミュ1", op: "down", registered: "false" }),
+    false,
+  );
 });
 
 test("isMonitorFromWebviewMessage: openLiveForDevice は id(非空文字列)があれば true", () => {
@@ -611,6 +667,20 @@ test("filterMonitorDevices: connected の iOS 実機・booted の Android 実機
     id: "android:実機A", name: "実機A", platform: "android", state: "booted", detail: "", kind: "physical",
   };
   assert.deepEqual(filterMonitorDevices([iosConnected, androidBooting], "running"), [iosConnected, androidBooting]);
+});
+
+// 未登録(マシンプロファイル未記載の合成デバイス。determineStates(includeUnregistered:) 参照)
+const SIM_UNREGISTERED = { ...SIM1, id: "ios:野良シム", name: "野良シム", registered: false };
+
+test("filterMonitorDevices: filter='all' は registered=false を除外する(マシンプロファイルタブと一致させるため)", () => {
+  assert.deepEqual(filterMonitorDevices([SIM1, SIM_UNREGISTERED, EMU1], "all"), [SIM1, EMU1]);
+});
+
+test("filterMonitorDevices: filter='running' は registered=false も素通しする(未登録は定義上起動中)", () => {
+  assert.deepEqual(
+    filterMonitorDevices([SIM1, SIM_UNREGISTERED, EMU1], "running"),
+    [SIM1, SIM_UNREGISTERED, EMU1],
+  );
 });
 
 test("RUNNING_DEVICES_PROFILE_VALUE: webview 側の複製定数(deviceTiles.js)と一致する", () => {
