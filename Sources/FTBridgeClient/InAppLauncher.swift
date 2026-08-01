@@ -88,7 +88,7 @@ public struct InAppLauncher {
 
     /// アプリを dylib 注入付きで再起動 → /status 到達待ち。
     /// シナリオ開始時の fresh 状態確保(launchApp/relaunchApp)に使う。
-    /// 戻り値は AppDriver.lastLaunchTiming 用の内訳(actionMs=simctl launch 往復・
+    /// 戻り値は AppDriver.lastLaunchTiming 用の内訳(actionMs=launchViaCoreSimOrSimctl・
     /// waitMs=waitUntilReady())。BridgeProvisioner からは戻り値を使わず呼ぶ
     @discardableResult
     public func relaunch(bundleID: String) async throws -> LaunchTiming {
@@ -96,35 +96,56 @@ public struct InAppLauncher {
         guard FileManager.default.fileExists(atPath: dylib.path) else {
             throw InAppLauncherError.dylibMissing(dylib.path)
         }
-        // --terminate-running-process で terminate+launch を1コールに(simctl 往復を2→1)。
-        // Shell.run は /usr/bin/env 経由なので、先頭に NAME=VALUE を置けば launch されるアプリへ
-        // SIMCTL_CHILD_* が伝わる(dylib 注入とブリッジポートの指定)。
+        // dylib 注入とブリッジポートの指定。**接頭辞なし**の名前で持つ(simctl 経路のときだけ
+        // launchViaCoreSimOrSimctl が SIMCTL_CHILD_ を前置する。CoreSimulator 経路にこの接頭辞は無い
+        // ので剥がし忘れると dylib が注入されずブリッジが上がらない=in-app エンジンが丸ごと死ぬ)。
         // DOM 経路の殺しスイッチはホスト側の環境変数で受けて注入先へ引き渡す
         // (dylib はアプリのプロセスで動くので、そこへ伝えないと効かない)
         var env = [
-            "SIMCTL_CHILD_DYLD_INSERT_LIBRARIES=\(dylib.path)",
-            "SIMCTL_CHILD_FT_PORT=\(port)",
+            "DYLD_INSERT_LIBRARIES": dylib.path,
+            "FT_PORT": "\(port)",
             // 起動元の自己申告(/status の ownerRepo。doctor の刈り取り判定が依存)
-            "SIMCTL_CHILD_FT_OWNER_REPO=\(repoRoot.path)",
+            "FT_OWNER_REPO": repoRoot.path,
         ]
         if let webViewDOM = ProcessInfo.processInfo.environment["FT_WEBVIEW_DOM"] {
-            env.append("SIMCTL_CHILD_FT_WEBVIEW_DOM=\(webViewDOM)")
+            env["FT_WEBVIEW_DOM"] = webViewDOM
         }
         let clock = ContinuousClock()
         let actionStart = clock.now
-        let result = try Shell.run(env + [
-            "xcrun", "simctl", "launch", "--terminate-running-process", udid, bundleID,
-        ])
+        try launchViaCoreSimOrSimctl(bundleID: bundleID, environment: env)
         let actionMs = continuousClockMs(clock.now - actionStart)
-        guard result.status == 0 else {
-            throw InAppLauncherError.launchFailed(result.tail)
-        }
         let waitStart = clock.now
         try await waitUntilReady()
         let waitMs = continuousClockMs(clock.now - waitStart)
         // pid ファイルを持たない in-app ブリッジを bridge down 系コマンドが後始末できるよう記録
         InAppBridgeState.write(stateDir: stateDir, port: port, udid: udid, bundleID: bundleID)
         return LaunchTiming(actionMs: actionMs, waitMs: waitMs)
+    }
+
+    /// CoreSimulator 直叩き優先(simctl launch 883〜909ms → ほぼ0ms・2026-08-02実測)。
+    /// **フォールバックするのは「シムが使えない」ときだけ**(nil)。起動そのものの失敗は投げる
+    /// (simctl で撃ち直しても同じ結果になり、本物の失敗を隠して二重に時間を使うだけ)。
+    /// 強制的に simctl へ戻すには FT_SIMULATOR_CONTROL=simctl
+    /// simctl 経路だけ環境変数キーへ SIMCTL_CHILD_ を前置する(simctl がこの接頭辞を剥がして
+    /// 子プロセスへ渡す仕様。CoreSimulator 経路の options.environment には接頭辞なしで渡す契約)
+    private func launchViaCoreSimOrSimctl(bundleID: String, environment: [String: String]) throws {
+        if let result = CoreSimAppControl.launch(
+            udid: udid, bundleID: bundleID, environment: environment, terminateRunningProcess: true) {
+            guard result.success else {
+                throw InAppLauncherError.launchFailed(result.error ?? "unknown")
+            }
+            return
+        }
+        // --terminate-running-process で terminate+launch を1コールに(simctl 往復を2→1)。
+        // Shell.run は /usr/bin/env 経由なので、先頭に NAME=VALUE を置けば launch されるアプリへ
+        // SIMCTL_CHILD_* が伝わる
+        let simctlEnv = environment.map { "SIMCTL_CHILD_\($0.key)=\($0.value)" }
+        let result = try Shell.run(simctlEnv + [
+            "xcrun", "simctl", "launch", "--terminate-running-process", udid, bundleID,
+        ])
+        guard result.status == 0 else {
+            throw InAppLauncherError.launchFailed(result.tail)
+        }
     }
 
     public func terminate(bundleID: String) {
@@ -175,7 +196,7 @@ public enum InAppLauncherError: Error, LocalizedError {
         case .bootFailed(let tail):
             return "could not boot the simulator (simctl bootstatus -b):\n\(tail)"
         case .launchFailed(let tail):
-            return "the injected app launch (simctl launch) failed"
+            return "the injected app launch failed"
                 + " (the install was verified during provisioning, so look for simulator trouble "
                 + "or an app crash):\n\(tail)"
         case .notReady(let detail):
