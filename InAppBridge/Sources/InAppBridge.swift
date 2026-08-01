@@ -518,9 +518,25 @@ final class FTInAppBridge {
         // ここへ流してはいけない —— ジェスチャ検出パッドの上でも**画面のスクロール可能な親が
         // 受理してしまい**、パッドにジェスチャが届かないまま 200 を返す
         // (2026-07-31 実測: E2E-Flutter のジェスチャ画面が 2/2 で黙って空振りした)。
+        //
+        // **WebView 画面だけは AX 経路より先に contentOffset を試す**: WKWebView の中の
+        // WKScrollView は本物の UIScrollView で、interop が横取りするのはタッチだけなので
+        // contentOffset は効く。AX 経路は Web コンテンツを動かせず 501 → ホストが画面ごと
+        // XCUITest へ委譲したままスワイプするため、1スクロールが実スワイプ + 委譲 snapshot に
+        // なる(2026-08-01 実測 scrollTo 9.5s / scrollToTop 14.2s。同じ画面が SwiftUI ホスト
+        // では 1.1s / 1.5s)。
         if ["compose", "flutter"].contains(uiFramework), req.scroll == true {
             var scrolled = false
             try performWithSettle { window in
+                if let webScroll = Self.centeredWebContentScrollView(in: window) {
+                    // 端に達しているだけなら no-op で 200(UIKit 経路と同じ理由。501 を返すと
+                    // XCUITest の実スワイプへ切り替わり、以降のジェスチャがラッチで全部 XCUITest 化する)
+                    if Self.hasRoom(webScroll, req.direction) {
+                        Self.scrollByPage(webScroll, direction: req.direction)
+                    }
+                    scrolled = true
+                    return
+                }
                 scrolled = Self.scrollViaAccessibility(window, finger: req.direction)
             }
             guard scrolled else {
@@ -651,6 +667,25 @@ final class FTInAppBridge {
             stack.append(contentsOf: v.subviews)
         }
         return found
+    }
+
+    /// **画面中央を覆う WKWebView 自身のスクロールビュー**(WKScrollView)。無ければ nil。
+    ///
+    /// 中央で絞るのは、小さな埋め込み WebView のために画面本体のスクロールを奪わないため
+    /// (XCUITest の実スワイプが駆動するのも画面中央の下にあるものだけ = 従来と同じ対象に揃う)。
+    /// 面積で選ぶ判定は使えない: Compose の画面には本体と無関係な UIScrollView が居るので、
+    /// 「WebView 由来か」を先に効かせる必要がある。
+    private static func centeredWebContentScrollView(in window: UIWindow) -> UIScrollView? {
+        let center = CGPoint(x: window.bounds.midX, y: window.bounds.midY)
+        var best: UIScrollView?
+        var bestArea: CGFloat = 0
+        for sv in visibleScrollViews(in: window) where sv.superview is WKWebView {
+            let frame = sv.convert(sv.bounds, to: window)
+            guard frame.contains(center) else { continue }
+            let area = frame.width * frame.height
+            if area > bestArea { best = sv; bestArea = area }
+        }
+        return best
     }
 
     /// 面積最大の、**その向きに実際にスクロール余地がある**スクロールビュー。

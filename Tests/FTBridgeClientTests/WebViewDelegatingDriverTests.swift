@@ -10,6 +10,8 @@ import FTCore
 private final class FakeDriver: AppDriver, @unchecked Sendable {
     /// snapshot() が返す列(呼ばれるたびに次へ進み、尽きたら最後を返し続ける)
     var snapshots: [SnapshotResponse]
+    /// swipe が投げるエラー(501 フォールバックの検証用)
+    var swipeError: Error?
     private(set) var snapshotCount = 0
     private(set) var calls: [String] = []
 
@@ -34,7 +36,15 @@ private final class FakeDriver: AppDriver, @unchecked Sendable {
     func tap(ref: Int) async throws { calls.append("tap(\(ref))") }
     func tap(x: Double, y: Double) async throws { calls.append("tap(xy)") }
     func type(ref: Int?, text: String) async throws { calls.append("type") }
-    func swipe(_ direction: FTSwipeDirection) async throws { calls.append("swipe") }
+    func swipe(_ direction: FTSwipeDirection) async throws {
+        calls.append("swipe")
+        if let swipeError { throw swipeError }
+    }
+    /// 既定実装は swipe(_:) を呼ぶだけなので、forScroll の行き先を見るには受けて記録する
+    func swipe(_ direction: FTSwipeDirection, forScroll: Bool) async throws {
+        calls.append(forScroll ? "swipe(scroll)" : "swipe")
+        if let swipeError { throw swipeError }
+    }
     func press(ref: Int, duration: Double) async throws { calls.append("press") }
     func screenshot() async throws -> Data { calls.append("screenshot"); return Data() }
 }
@@ -171,6 +181,60 @@ final class WebViewDelegatingDriverTests: XCTestCase {
         _ = try await driver.snapshot()
 
         XCTAssertEqual(delegated.calls, ["snapshot"], "読めていないのだから委譲すること")
+    }
+
+    /// 委譲中でも**スクロール目的の swipe は in-app を先に試す**(WKWebView 内の WKScrollView は
+    /// contentOffset で動く)。ここが委譲先へ行くと 1スクロールが実スワイプ + 委譲 snapshot になり、
+    /// Compose/Flutter の WebView シナリオが 3.5 倍遅くなる(2026-08-01 実測)
+    func testScrollSwipeTriesPrimaryWhileDelegating() async throws {
+        let (driver, primary, delegated) = try await delegatingDriver()
+        try await driver.swipe(.up, forScroll: true)
+
+        XCTAssertEqual(primary.calls, ["snapshot", "swipe(scroll)"])
+        XCTAssertEqual(delegated.calls, ["snapshot"], "スクロールで XCUITest を触らない")
+    }
+
+    /// in-app が「この画面では無理」(501)と言ったら従来どおり XCUITest へ落とす
+    func testScrollSwipeFallsBackToDelegatedOn501() async throws {
+        let (driver, primary, delegated) = try await delegatingDriver()
+        primary.swipeError = DriverError.badResponse(status: 501, body: "no scroll")
+
+        try await driver.swipe(.up, forScroll: true)
+
+        XCTAssertEqual(delegated.calls, ["snapshot", "swipe(scroll)"])
+    }
+
+    /// 501 以外は握りつぶさない(一時的競合を「非対応」と読むと別画面を触りかねない)
+    func testScrollSwipePropagatesNon501() async throws {
+        let (driver, primary, delegated) = try await delegatingDriver()
+        primary.swipeError = DriverError.badResponse(status: 409, body: "busy")
+
+        do {
+            try await driver.swipe(.up, forScroll: true)
+            XCTFail("409 は伝播すること")
+        } catch {}
+        XCTAssertEqual(delegated.calls, ["snapshot"], "409 で XCUITest へ回さない")
+    }
+
+    /// ジェスチャ目的の swipe(DSL の `swipe`)は従来どおり委譲先へ。
+    /// in-app は interop のジェスチャを駆動できないので、ここを in-app へ回すと黙って空振りする
+    func testGestureSwipeStillGoesToDelegated() async throws {
+        let (driver, primary, delegated) = try await delegatingDriver()
+        try await driver.swipe(.up, forScroll: false)
+
+        XCTAssertEqual(delegated.calls, ["snapshot", "swipe"])
+        XCTAssertEqual(primary.calls, ["snapshot"])
+    }
+
+    /// 委譲状態(WebView 画面)に入った driver と、その両側の fake
+    private func delegatingDriver() async throws
+        -> (WebViewDelegatingDriver, FakeDriver, FakeDriver) {
+        let primary = FakeDriver(snapshots: [snapshot([element(1, "WebView")])])
+        let delegated = FakeDriver(snapshots: [snapshot([element(1, "WebView"),
+                                                         element(2, "StaticText", y: 10)])])
+        let driver = WebViewDelegatingDriver(primary: primary, delegated: delegated)
+        _ = try await driver.snapshot()
+        return (driver, primary, delegated)
     }
 
     /// 中身の判定は「webView の矩形の中に webView 以外が居るか」。
