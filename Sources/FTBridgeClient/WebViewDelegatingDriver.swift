@@ -53,7 +53,22 @@ public final class WebViewDelegatingDriver: AppDriver {
     // MARK: - 画面の帰属を決める snapshot
 
     public func snapshot() async throws -> SnapshotResponse {
-        let inapp = try await primary.snapshot()
+        try await snapshot(bypassingCache: false)
+    }
+
+    /// キャッシュ捨ての申告は**そのとき snapshot を撮る側**に従う(normal/domInterop は primary、
+    /// delegated は delegated)。mode は直前の snapshot が決めているので、arm の判断と実際の
+    /// 取得元は一致する
+    public var supportsCacheBypass: Bool {
+        mode == .delegated ? delegated.supportsCacheBypass : primary.supportsCacheBypass
+    }
+
+    /// **モード判定は必ずこちらに置く** —— snapshot() を素通し側にすると片方だけ mode/domFrames を
+    /// 更新せず、ref の名前空間の不変条件(冒頭注記)が崩れる。
+    /// 既定実装に任せてもフラグが落ちて最内へ届かない
+    /// (SnapshotCacheBypassForwardingTests がラッパー全体でこれを守る)
+    public func snapshot(bypassingCache: Bool) async throws -> SnapshotResponse {
+        let inapp = try await primary.snapshot(bypassingCache: bypassingCache)
         // in-app が DOM 経路で中身まで読めていれば画面ごとの委譲はしない(委譲すると 3ms →
         // 378ms になる)。読めないのは JS 無効・評価失敗・未ロード・旧 dylib のとき。
         // **判定は web フラグ**(幾何だと WebView と同じ矩形の interop 容器を中身と誤認する)
@@ -82,7 +97,7 @@ public final class WebViewDelegatingDriver: AppDriver {
         mode = .delegated
         domFrames = [:]
         note = "WebView screen — delegated to XCUITest"
-        var snapshot = try await delegated.snapshot()
+        var snapshot = try await delegated.snapshot(bypassingCache: bypassingCache)
         // 経路は**返した本人が名乗る**(StepExecutor が失敗文言に添える。要素の形から
         // 推測させると Android が「XCUITest へ委譲」を名乗る事故になる)
         snapshot.webViewPath = "delegated"
