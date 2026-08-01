@@ -65,6 +65,12 @@ public final class FastLaunchDriver: AppDriver {
     public func openAppSwitcher() async throws { try await base.openAppSwitcher() }
     public func home() async throws { try await base.home() }
     public func snapshot() async throws -> SnapshotResponse { try await base.snapshot() }
+    /// bypassingCache 版の素通し(既定実装に任せるとフラグが落ちて最内へ届かない。
+    /// SnapshotCacheBypassForwardingTests がラッパー全体でこれを守る)
+    public func snapshot(bypassingCache: Bool) async throws -> SnapshotResponse {
+        try await base.snapshot(bypassingCache: bypassingCache)
+    }
+    public var supportsCacheBypass: Bool { base.supportsCacheBypass }
     public func tap(ref: Int) async throws { try await base.tap(ref: ref) }
     public func tap(x: Double, y: Double) async throws { try await base.tap(x: x, y: y) }
     public func type(ref: Int?, text: String) async throws { try await base.type(ref: ref, text: text) }

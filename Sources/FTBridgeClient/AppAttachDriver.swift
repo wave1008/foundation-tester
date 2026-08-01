@@ -44,10 +44,18 @@ public final class AppAttachDriver: AppDriver {
     }
 
     public func snapshot() async throws -> SnapshotResponse {
+        try await snapshot(bypassingCache: false)
+    }
+
+    /// bypassingCache 版の素通し(既定実装に任せるとフラグが落ちて最内へ届かない。
+    /// SnapshotCacheBypassForwardingTests がラッパー全体でこれを守る)。
+    /// **attach の前処理は必ずこちらに置く** —— snapshot() を素通し側にすると片方だけ attach を飛ばす
+    public func snapshot(bypassingCache: Bool) async throws -> SnapshotResponse {
         try await client.activate(bundleID: bundleID)
         attached = true
-        return try await client.snapshot()
+        return try await client.snapshot(bypassingCache: bypassingCache)
     }
+    public var supportsCacheBypass: Bool { client.supportsCacheBypass }
 
     public func tap(ref: Int) async throws { try await client.tap(ref: ref) }
     /// ref 無し(フォーカス中要素への入力)は swipe と同じ回復を入れる(下の swipe のコメント参照)。

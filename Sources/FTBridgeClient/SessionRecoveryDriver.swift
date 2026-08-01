@@ -69,6 +69,12 @@ public final class SessionRecoveryDriver: AppDriver {
     public func home() async throws { try await withRecovery { try await base.home() } }
     public func back() async throws { try await withRecovery { try await base.back() } }
     public func snapshot() async throws -> SnapshotResponse { try await withRecovery { try await base.snapshot() } }
+    /// bypassingCache 版の素通し(既定実装に任せるとフラグが落ちて最内へ届かない。
+    /// SnapshotCacheBypassForwardingTests がラッパー全体でこれを守る)
+    public func snapshot(bypassingCache: Bool) async throws -> SnapshotResponse {
+        try await withRecovery { try await base.snapshot(bypassingCache: bypassingCache) }
+    }
+    public var supportsCacheBypass: Bool { base.supportsCacheBypass }
     public func tap(x: Double, y: Double) async throws { try await withRecovery { try await base.tap(x: x, y: y) } }
     public func swipe(_ direction: FTSwipeDirection) async throws {
         try await withRecovery { try await base.swipe(direction) }

@@ -18,11 +18,19 @@ public final class SystemUIDriver: AppDriver {
     }
 
     public func snapshot() async throws -> SnapshotResponse {
+        try await snapshot(bypassingCache: false)
+    }
+
+    /// bypassingCache 版の素通し(既定実装に任せるとフラグが落ちて最内へ届かない。
+    /// SnapshotCacheBypassForwardingTests がラッパー全体でこれを守る)。
+    /// **張り直しは必ずこちらに置く** —— snapshot() を素通し側にすると片方だけ張り直しを飛ばす
+    public func snapshot(bypassingCache: Bool) async throws -> SnapshotResponse {
         // 参照を張り直してから live ツリー(現在のアラート含む)を取る。session は refFrames をクリアし、
         // 続く snapshot が振り直すので、この直後の tap は同じ ref で当たる。
         try await client.launch(bundleID: "com.apple.springboard")
-        return try await client.snapshot()
+        return try await client.snapshot(bypassingCache: bypassingCache)
     }
+    public var supportsCacheBypass: Bool { client.supportsCacheBypass }
 
     public func tap(ref: Int) async throws { try await client.tap(ref: ref) }
     public func type(ref: Int?, text: String) async throws { try await client.type(ref: ref, text: text) }
