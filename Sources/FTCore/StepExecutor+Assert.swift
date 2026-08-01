@@ -113,6 +113,9 @@ extension StepExecutor {
             return " (WebView contents were read through the DOM path. Taps are synthesized onto DOM rects, so "
                 + "a WebView embedded through interop **records success even when nothing responds**. "
                 + "Suspect that the preceding interaction had no effect.)"
+        case "dom-interop":
+            return " (WebView contents were read through the DOM path, and interactions were routed to real "
+                + "XCUITest touches, so this does not have the DOM-tap blind spot that plain \"dom\" has.)"
         case "delegated":
             return " (WebView contents were read by delegating to XCUITest)"
         default:

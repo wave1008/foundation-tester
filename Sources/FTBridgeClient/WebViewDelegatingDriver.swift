@@ -2,13 +2,18 @@
 //
 // in-app は WKWebView の中身を a11y ツリーからは採れない(Web コンテンツの AX は WebContent
 // プロセスが提供し、プロセス内走査では届かない)。uikit ホストでは in-app が DOM を JS で読んで
-// 埋めるので委譲は不要。**それができない構成だけ**をここで XCUITest へ回す:
-// Compose / Flutter ホスト(interop がタッチと入力を横取りする)・JS 評価失敗・未ロード・旧 dylib。
+// 埋めるので委譲は不要。3つ目のモードとして、Compose/Flutter(interop)ホストでも in-app は
+// DOM を読めるが、interop が合成タッチ/insertText を横取りするため**操作だけ**
+// XCUITest の実タッチへ回す(座標指定。ref は渡さない)。DOM が全く読めない構成(JS 評価失敗・
+// 未ロード・旧 dylib)だけが画面ごとの委譲(delegated)に残る。
 //
-// 委譲は高い(1手 3ms → 378ms)ので、**必要なときだけ**行うのがこのクラスの役目。
+// 画面ごとの委譲は高い(1手 3ms → 378ms)ので、**必要なときだけ**行うのがこのクラスの役目。
 //
-// **返す snapshot と ref の名前空間は常に一致させる**のが不変条件: 委譲中は XCUITest の
-// snapshot を返し、ref を使う操作も XCUITest へ送る。混ぜると ref が別要素を指す。
+// **返す snapshot と ref の名前空間は常に一致させる**のが不変条件: delegated 中は XCUITest の
+// snapshot を返し、ref を使う操作も XCUITest へ送る。domInterop 中は in-app の snapshot を返すが、
+// ref を使う操作は**座標へ解決してから** delegated へ送る — delegated には ref を一切渡さない
+// (delegated 側は自分が最後に撮った別の snapshot の ref 名前空間を持っており、in-app の ref を
+// そのまま渡すと無関係の要素を指す)。混ぜると ref が別要素を指す。
 
 import Foundation
 import FTCore
@@ -16,11 +21,19 @@ import FTCore
 public final class WebViewDelegatingDriver: AppDriver {
     /// in-app(既定の主経路)
     private let primary: AppDriver
-    /// 対象アプリに attach した XCUITest。WebView 画面のあいだだけ主役になる
+    /// 対象アプリに attach した XCUITest。WebView 画面/domInterop の操作のあいだだけ主役になる
     private let delegated: AppDriver
 
-    /// 直近 snapshot が WebView 画面だったか。ref を使う操作の宛先はこれで決まる
-    private var delegating = false
+    private enum WebViewMode: Equatable {
+        case normal      // 通常画面、または in-app が DOM 全体を読めている(webViewPath == "dom")
+        case delegated   // 画面ごと XCUITest へ委譲(DOM が読めない構成)
+        case domInterop  // snapshot は in-app の DOM、ref を使う操作だけ座標で XCUITest へ回す
+    }
+    /// 直近 snapshot の分類。ref を使う操作の宛先/解決方法はこれで決まる
+    private var mode: WebViewMode = .normal
+    /// domInterop の直近 snapshot の ref→frame(画面座標)。domInteropPoint がここから中心点を
+    /// 引く。snapshot のたびに丸ごと差し替える(古い ref を残すと存在しない要素を指しかねない)
+    private var domFrames: [Int: FTRect] = [:]
     /// この委譲区間で Web コンテンツを一度でも観測したか。
     /// XCUITest 側は WebView の AX 活性化に時間がかかる(実測 約2.3秒)ので初回だけ待つ。
     /// 一度見えたら待たない(空ページや全要素が画面外の画面で毎ステップ待たされないため)
@@ -41,19 +54,33 @@ public final class WebViewDelegatingDriver: AppDriver {
 
     public func snapshot() async throws -> SnapshotResponse {
         let inapp = try await primary.snapshot()
-        // in-app が DOM 経路で中身まで読めていれば委譲しない(委譲すると 3ms → 378ms になる)。
-        // 読めないのは JS 無効・評価失敗・未ロード・旧 dylib・Compose/Flutter ホストのとき。
+        // in-app が DOM 経路で中身まで読めていれば画面ごとの委譲はしない(委譲すると 3ms →
+        // 378ms になる)。読めないのは JS 無効・評価失敗・未ロード・旧 dylib のとき。
         // **判定は web フラグ**(幾何だと WebView と同じ矩形の interop 容器を中身と誤認する)
         guard inapp.elements.contains(where: { $0.type == Self.webViewType }),
               !inapp.elements.contains(where: { $0.web == true }) else {
-            // WebView 画面を離れた / in-app で読めている: 次の委譲でまた初回待ちを行う
-            delegating = false
+            // WebView 画面を離れた / in-app で読めている。webViewPath がブリッジの自己申告
+            // (ホストはフレームワーク固有の知識を持たない) — "dom-interop" なら操作だけ座標で
+            // XCUITest へ回すモードに入る。それ以外(nil/"dom")は通常どおり primary 一本
+            if inapp.webViewPath == "dom-interop" {
+                // **この区間で初めて委譲側を使う前に1回だけ暖める**。旧経路は必ず
+                // delegated.snapshot() を通っており、それが attach と WebView の AX 活性化を
+                // 兼ねていた。省くと最初の座標タップが 200 を返しても実際には効かないことがある
+                // (CMP で再現)。1画面あたり1回だけなので DOM 経路の利得は保たれる
+                if mode != .domInterop { _ = try? await delegated.snapshot() }
+                mode = .domInterop
+                domFrames = Dictionary(uniqueKeysWithValues: inapp.elements.map { ($0.ref, $0.frame) })
+            } else {
+                mode = .normal
+                domFrames = [:]
+            }
             sawWebContent = false
             note = nil
             return inapp
         }
 
-        delegating = true
+        mode = .delegated
+        domFrames = [:]
         note = "WebView screen — delegated to XCUITest"
         var snapshot = try await delegated.snapshot()
         // 経路は**返した本人が名乗る**(StepExecutor が失敗文言に添える。要素の形から
@@ -90,32 +117,65 @@ public final class WebViewDelegatingDriver: AppDriver {
             && a.y < b.y + b.height && b.y < a.y + a.height
     }
 
-    // MARK: - 委譲中だけ XCUITest へ回す操作(画面に触るもの)
+    // MARK: - 委譲中/domInterop 中だけ XCUITest へ回す操作(画面に触るもの)
 
-    private var screenDriver: AppDriver { delegating ? delegated : primary }
+    private var screenDriver: AppDriver {
+        switch mode {
+        case .normal: return primary
+        case .delegated, .domInterop: return delegated
+        }
+    }
 
-    public func tap(ref: Int) async throws { try await screenDriver.tap(ref: ref) }
+    /// domInterop の ref を画面座標(矩形中心)へ解決する。**delegated には x/y だけを渡す**
+    /// (ref の名前空間が違う — このクラス冒頭の不変条件参照)。直近 snapshot に無い ref は
+    /// 座標に解決できない = 黙って別経路へ流さずここで落とす(Android の未知 ref と同じ規約:
+    /// Sources/FTAndroid/AndroidDriver.swift の badResponse(status: 404, ...) と同じ文言規約)
+    private func domInteropPoint(ref: Int) throws -> (x: Double, y: Double) {
+        guard let frame = domFrames[ref] else {
+            throw DriverError.badResponse(status: 404,
+                                          body: "unknown reference number [\(ref)]. Take a snapshot first")
+        }
+        return (frame.centerX, frame.centerY)
+    }
+
+    public func tap(ref: Int) async throws {
+        guard mode == .domInterop else { try await screenDriver.tap(ref: ref); return }
+        let p = try domInteropPoint(ref: ref)
+        try await delegated.tap(x: p.x, y: p.y)
+    }
     public func tap(x: Double, y: Double) async throws { try await screenDriver.tap(x: x, y: y) }
     public func type(ref: Int?, text: String) async throws {
-        try await screenDriver.type(ref: ref, text: text)
+        guard mode == .domInterop else { try await screenDriver.type(ref: ref, text: text); return }
+        if let ref {
+            let p = try domInteropPoint(ref: ref)
+            try await delegated.tap(x: p.x, y: p.y)
+        }
+        try await delegated.type(ref: nil, text: text)
     }
     public func pressEnter() async throws { try await screenDriver.pressEnter() }
-    public func clearInput(ref: Int?) async throws { try await screenDriver.clearInput(ref: ref) }
+    public func clearInput(ref: Int?) async throws {
+        guard mode == .domInterop else { try await screenDriver.clearInput(ref: ref); return }
+        if let ref {
+            let p = try domInteropPoint(ref: ref)
+            try await delegated.tap(x: p.x, y: p.y)
+        }
+        try await delegated.clearInput(ref: nil)
+    }
     public func hideKeyboard() async throws { try await screenDriver.hideKeyboard() }
     public func swipe(_ direction: FTSwipeDirection) async throws {
         try await screenDriver.swipe(direction)
     }
-    /// forScroll 版。**委譲中でもスクロール目的だけは in-app を先に試す**: WKWebView の中の
-    /// WKScrollView は contentOffset で動かせるので、XCUITest の実スワイプ(1回 ≒ 450ms、
-    /// 直後の委譲 snapshot も 300ms)を丸ごと省ける。効かない構成なら in-app が 501 を返すので
-    /// 従来どおり XCUITest へ落とす。
+    /// forScroll 版。**delegated/domInterop 中でもスクロール目的だけは in-app を先に試す**:
+    /// WKWebView の中の WKScrollView は contentOffset で動かせるので、XCUITest の実スワイプ
+    /// (1回 ≒ 450ms、直後の委譲 snapshot も 300ms)を丸ごと省ける。効かない構成なら in-app が
+    /// 501 を返すので従来どおり XCUITest へ落とす。
     ///
     /// **ref を使わない操作なので名前空間の不変条件は崩れない**(このクラスの冒頭注記の例外は
     /// ここだけ。ref を伴う操作を同じ理屈で in-app へ回してはいけない)。
     /// forScroll=false(DSL の `swipe` = ジェスチャ自体が目的)は従来どおり委譲先へ送る:
     /// in-app は interop のジェスチャを駆動できない。
     public func swipe(_ direction: FTSwipeDirection, forScroll: Bool) async throws {
-        guard delegating, forScroll else {
+        guard mode != .normal, forScroll else {
             try await screenDriver.swipe(direction, forScroll: forScroll)
             return
         }
@@ -127,7 +187,9 @@ public final class WebViewDelegatingDriver: AppDriver {
         }
     }
     public func press(ref: Int, duration: Double) async throws {
-        try await screenDriver.press(ref: ref, duration: duration)
+        guard mode == .domInterop else { try await screenDriver.press(ref: ref, duration: duration); return }
+        let p = try domInteropPoint(ref: ref)
+        try await delegated.press(x: p.x, y: p.y, duration: duration)
     }
     public func press(x: Double, y: Double, duration: Double) async throws {
         try await screenDriver.press(x: x, y: y, duration: duration)
@@ -178,13 +240,14 @@ public final class WebViewDelegatingDriver: AppDriver {
     public func screenshot() async throws -> Data { try await primary.screenshot() }
 
     private func resetDelegation() {
-        delegating = false
+        mode = .normal
+        domFrames = [:]
         sawWebContent = false
         note = nil
     }
 
     /// 委譲中は自分の注記を優先し、無ければ実行したドライバのものを透過する
     public var lastActionNote: String? { note ?? screenDriver.lastActionNote }
-    /// launch は常に primary(in-app)固定(145行目)。screenDriver/delegating の状態には無関係
+    /// launch は常に primary(in-app)固定(launch(bundleID:) 参照)。screenDriver/mode の状態には無関係
     public var lastLaunchTiming: LaunchTiming? { primary.lastLaunchTiming }
 }

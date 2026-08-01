@@ -1824,6 +1824,15 @@ final class StepExecutorTests: XCTestCase {
         XCTAssertTrue(delegated.contains("XCUITest"), delegated)
         XCTAssertFalse(delegated.contains("無反応"), "委譲側は合成タッチを使わないので警告しない")
 
+        // dom-interop: DOM は読めるが操作は実タッチ(XCUITest)で行う第三のモード。
+        // "dom" と違い DOM-tap の無反応な成功記録という弱点を持たないので、その警告は出さない
+        let domInterop = StepExecutor.webViewPathHint(snapshot("dom-interop"))
+        XCTAssertTrue(domInterop.contains("XCUITest"), domInterop)
+        XCTAssertTrue(domInterop.lowercased().contains("real") || domInterop.lowercased().contains("touch"),
+                      domInterop)
+        XCTAssertFalse(domInterop.contains("無反応"), "実タッチを使うので無反応警告は出さない: \(domInterop)")
+        XCTAssertFalse(domInterop.contains("nothing responds"), "DOM-tap の弱点は無い: \(domInterop)")
+
         // **Android**: WebView 要素は出るが経路の申告は無い。XCUITest を名乗ってはいけない
         // (Android に XCUITest は存在せず、デバッグ中の人を誤誘導する)
         let android = StepExecutor.webViewPathHint(snapshot(nil))
