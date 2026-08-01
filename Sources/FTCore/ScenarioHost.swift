@@ -501,6 +501,11 @@ public enum ScenarioHost {
 /// ハンドルを共有すると行の途中で混ざり JSON が壊れる(実測: 40 シナリオ 8 レーンで
 /// launch イベントが 41 本中 3 本しか読めなかった)。プロセス内で1本の actor に直列化し、
 /// 追記は 1 行単位で行う。**計測の入口はここだけ**なので、ここが壊れると内訳は採れない。
+///
+/// **プロセスを跨ぐ混線は O_APPEND で防ぐ**: actor が直列化できるのは自プロセス内だけで、
+/// 同じ FT_EVENT_LOG_PATH を指すホストを2つ走らせると、seekToEndOfFile 方式では各プロセスが
+/// 自分のオフセットを持ち互いの行を上書きする。O_APPEND なら write ごとにカーネルが末尾へ
+/// 位置付けるので、追記が競合しても行は失われない。
 actor EventLogAppender {
     static let shared = EventLogAppender()
     private var handle: FileHandle?
@@ -510,11 +515,9 @@ actor EventLogAppender {
         if !opened {
             opened = true
             if let path = ProcessInfo.processInfo.environment["FT_EVENT_LOG_PATH"] {
-                if !FileManager.default.fileExists(atPath: path) {
-                    FileManager.default.createFile(atPath: path, contents: nil)
-                }
-                handle = FileHandle(forWritingAtPath: path)
-                handle?.seekToEndOfFile()
+                // O_CREAT があるので事前の createFile は不要
+                let fd = Darwin.open(path, O_WRONLY | O_APPEND | O_CREAT, 0o644)
+                if fd >= 0 { handle = FileHandle(fileDescriptor: fd, closeOnDealloc: true) }
             }
         }
         guard let handle else { return }

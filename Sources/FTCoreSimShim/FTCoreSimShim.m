@@ -124,12 +124,12 @@ NSNumber *FTCoreSimIsInstalled(NSString *udid, NSString *bundleID) {
     if (installed) return @YES;
     // **NO は2種類ある**。未インストールは NSPOSIXErrorDomain code 3
     // ("failed to lookup application properties"。2026-08-02 実採取)で、これだけを
-    // 「入っていない」と断定してよい。それ以外のエラー(端末が未 boot 等)を NO と読むと
-    // appNotInstalled として run を止め、原因と食い違う失敗になるので nil = 判定不能にして
-    // simctl 側の判定へ委ねる(遅くなるだけで誤らない側に倒す)
+    // 「入っていない」と断定してよい。それ以外(端末が未 boot 等のエラー、および
+    // 採取では出なかった error なしの NO)を「入っていない」と読むと appNotInstalled として
+    // run を止め、原因と食い違う失敗になる。**断定できるのは POSIX 3 だけ**なので残りは
+    // nil = 判定不能にして simctl 側の判定へ委ねる(遅くなるだけで誤らない側に倒す)
     if (error && [error.domain isEqualToString:NSPOSIXErrorDomain] && error.code == 3) return @NO;
-    if (error) return nil;
-    return @NO;
+    return nil;
 }
 
 NSArray<NSDictionary<NSString *, id> *> *FTCoreSimListDevices(void) {
