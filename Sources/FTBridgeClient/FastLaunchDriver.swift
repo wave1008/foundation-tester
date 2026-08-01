@@ -21,11 +21,14 @@ public final class FastLaunchDriver: AppDriver {
 
     public func launch(bundleID: String) async throws {
         lastLaunchTimingValue = nil   // 失敗時に前回成功分の内訳を出さないための明示リセット
-        // terminate は未起動なら失敗してよい(冪等化)。actionMs には含めない(「起動」ではなく前処理)
-        _ = try? Shell.run(["xcrun", "simctl", "terminate", udid, bundleID], timeout: 15)
+        // **terminate は別コールにしない**(--terminate-running-process で1往復に畳む。
+        // InAppLauncher.relaunch と同じ形)。分けていた頃は simctl の往復がもう1回増え、
+        // 実測で launch 1回あたり約 1.5s を捨てていた(8レーンの ios-xcuitest・2026-08-01)。
+        // 未起動でも成功する(冪等)
         let clock = ContinuousClock()
         let actionStart = clock.now
-        let result = try Shell.run(["xcrun", "simctl", "launch", udid, bundleID])
+        let result = try Shell.run(
+            ["xcrun", "simctl", "launch", "--terminate-running-process", udid, bundleID])
         let actionMs = continuousClockMs(clock.now - actionStart)
         guard result.status == 0 else {
             throw DriverError.badResponse(status: Int(result.status),

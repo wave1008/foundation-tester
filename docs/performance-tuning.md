@@ -56,9 +56,26 @@ wait ほぼ 0ms = 固定 sleep の残骸なし):
 
 | 区間 | 所要 | 削る余地 |
 |---|---|---|
-| `xcrun simctl launch` の往復 | 0.61〜0.73s | **候補**: CoreSimulator 直叩き(`FTCoreSimShim` は今は列挙のみ)。0.65s × 40本 ≒ sum −26s |
+| `xcrun simctl launch` の往復 | 0.61〜0.73s(アイドル)/ 0.88〜0.91s(8レーン) | **候補**: CoreSimulator 直叩き(`FTCoreSimShim` は今は列挙のみ)。0.9s × 40本 ≒ sum −36s |
 | プロセス生成 → ブリッジが listen | 約 0.30s | dylib の constructor 起動なのでほぼ下限 |
 | `/status` が返るまで(`mainSync` がメインスレッド待ち) | 1.82s(SwiftUI)/ 1.84s(Flutter)/ 2.48s(CMP) | **削れない**。アプリが実際に応答可能になるまでの時間で、readiness の定義として正しい |
+
+**内訳は `FT_EVENT_LOG_PATH` の `kind:"step"` で採れる**(launch の `actionMs`=外部起動呼び出し・
+`waitMs`=操作可能になるまでの待ち)。8レーン実負荷の実測(2026-08-01・E2E/40本):
+
+| エンジン | launch 中央 | actionMs(simctl) | waitMs | 内訳外 |
+|---|---:|---:|---:|---:|
+| ios-inapp | 3,563ms | 909ms | 2,379ms | 3ms |
+| ios-xcuitest(改善前) | 5,135ms | 788ms | 3,038ms | **1,515ms** |
+| ios-xcuitest(改善後) | 4,536ms | 883ms | 3,029ms | 703ms |
+
+- **「内訳外」を見ると計測していない区間が出る**。xcuitest の 1,515ms は `FastLaunchDriver` が
+  `simctl terminate` を別コールで撃っていたぶんで、`--terminate-running-process` へ畳んで解消
+  (in-app 側は元からこの形。sum 455.0→427.2s・壁時計 61.1→58.1s。E2E-iOS 469→419.5s /
+  E2E-Flutter 446→396.3s)
+- **残る 703ms は `LaunchPreflightDriver.ensureInstalled` の `simctl get_app_container`**
+  (シナリオ毎に1回)。未インストールを分かりやすいエラーにするための検査なので消せないが、
+  CoreSimulator 直叩きにすれば安くなる見込み(未着手)
 
 ライブ操作 1 タップ = serve 常駐プロセスへの stdin 1 行 → ブリッジで注入+静穏 →
 actionResult+snapshot イベント。0.383s のうち大半は静穏待ちの床(200ms)+snapshot/JPEG。
