@@ -584,9 +584,12 @@ public final class FTDriveCore {
         emit(event)
     }
 
-    /// 任意の async 処理を 1 ステップとして実行・記録する(launch / procedure / wait 等)
+    /// 任意の async 処理を 1 ステップとして実行・記録する(launch / procedure / wait 等)。
+    /// launchTiming は launchApp/restartApp だけが渡す(body 完了後に読む actionMs/waitMs 取得元。
+    /// 他の呼び出しは既定 nil = durationMs のみ)
     @discardableResult
     func performCustom(description: String, file: StaticString, line: UInt,
+                       launchTiming: (() -> LaunchTiming?)? = nil,
                        _ body: @escaping () async throws -> Void) -> StepResult.Status {
         let filePath = relativePath("\(file)")
         debugCheckpoint(description: description, file: filePath, line: Int(line))
@@ -620,8 +623,10 @@ public final class FTDriveCore {
         case nil:
             status = .failed("the operation timed out (\(Int(FTSync.commandTimeout))s)")
         }
+        let timing = launchTiming?()
         recordStep(description: description, status: status, file: "\(file)", line: Int(line),
-                   durationMs: elapsedMs, at: ISO8601Millis.string(from: Date()))
+                   durationMs: elapsedMs, actionMs: timing?.actionMs, waitMs: timing?.waitMs,
+                   at: ISO8601Millis.string(from: Date()))
 
         if case .failed(let reason) = status {
             handleFailure(stepDescription: description, reason: reason)
@@ -705,8 +710,9 @@ public final class FTDriveCore {
     // MARK: - 記録
 
     /// durationMs/snapshotMs/actionMs/waitMs: ステップの時間内訳(単位ミリ秒)。
-    /// StepExecutor 経由のステップ(tap/exist 等)は 4 つとも渡され、performCustom 経由
-    /// (launchApp/wait/procedure 等)は durationMs のみ、それ以外(skip・dry-run 等)は
+    /// StepExecutor 経由のステップ(tap/exist 等)は 4 つとも渡され、performCustom 経由は
+    /// durationMs のみ(launchApp/restartApp は launchTiming 経由で actionMs/waitMs も持つ。
+    /// 他の wait/procedure 等は durationMs のみ)、それ以外(skip・dry-run 等)は
     /// 全て nil のまま(=計測なし)になる。
     /// **DSL スレッドと違反スレッドが同時に呼び得るため stateLock で直列化する**(stepCounter/
     /// record 追記/emit を含む一体の操作。emit は呼び出し側が print 等で組んでおり FTDriveCore へ

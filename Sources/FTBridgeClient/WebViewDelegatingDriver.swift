@@ -185,4 +185,6 @@ public final class WebViewDelegatingDriver: AppDriver {
 
     /// 委譲中は自分の注記を優先し、無ければ実行したドライバのものを透過する
     public var lastActionNote: String? { note ?? screenDriver.lastActionNote }
+    /// launch は常に primary(in-app)固定(145行目)。screenDriver/delegating の状態には無関係
+    public var lastLaunchTiming: LaunchTiming? { primary.lastLaunchTiming }
 }

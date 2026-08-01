@@ -88,7 +88,10 @@ public struct InAppLauncher {
 
     /// アプリを dylib 注入付きで再起動 → /status 到達待ち。
     /// シナリオ開始時の fresh 状態確保(launchApp/relaunchApp)に使う。
-    public func relaunch(bundleID: String) async throws {
+    /// 戻り値は AppDriver.lastLaunchTiming 用の内訳(actionMs=simctl launch 往復・
+    /// waitMs=waitUntilReady())。BridgeProvisioner からは戻り値を使わず呼ぶ
+    @discardableResult
+    public func relaunch(bundleID: String) async throws -> LaunchTiming {
         let dylib = Self.dylibPath(repoRoot: repoRoot)
         guard FileManager.default.fileExists(atPath: dylib.path) else {
             throw InAppLauncherError.dylibMissing(dylib.path)
@@ -107,15 +110,21 @@ public struct InAppLauncher {
         if let webViewDOM = ProcessInfo.processInfo.environment["FT_WEBVIEW_DOM"] {
             env.append("SIMCTL_CHILD_FT_WEBVIEW_DOM=\(webViewDOM)")
         }
+        let clock = ContinuousClock()
+        let actionStart = clock.now
         let result = try Shell.run(env + [
             "xcrun", "simctl", "launch", "--terminate-running-process", udid, bundleID,
         ])
+        let actionMs = continuousClockMs(clock.now - actionStart)
         guard result.status == 0 else {
             throw InAppLauncherError.launchFailed(result.tail)
         }
+        let waitStart = clock.now
         try await waitUntilReady()
+        let waitMs = continuousClockMs(clock.now - waitStart)
         // pid ファイルを持たない in-app ブリッジを bridge down 系コマンドが後始末できるよう記録
         InAppBridgeState.write(stateDir: stateDir, port: port, udid: udid, bundleID: bundleID)
+        return LaunchTiming(actionMs: actionMs, waitMs: waitMs)
     }
 
     public func terminate(bundleID: String) {
@@ -135,6 +144,13 @@ public struct InAppLauncher {
         }
         throw InAppLauncherError.notReady(lastError.map { "\($0)" } ?? "no response")
     }
+}
+
+/// Duration → 整数ミリ秒。StepExecutor.ms / continuousClockMilliseconds と同じ計算式だが、
+/// モジュールを跨いで参照できないためここに複製している(要同期)
+func continuousClockMs(_ duration: Duration) -> Int {
+    let (seconds, attoseconds) = duration.components
+    return Int(seconds) * 1000 + Int(attoseconds / 1_000_000_000_000_000)
 }
 
 public enum InAppLauncherError: Error, LocalizedError {

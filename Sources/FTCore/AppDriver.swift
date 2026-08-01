@@ -4,6 +4,20 @@
 
 import Foundation
 
+/// launch(bundleID:) の所要時間内訳(ミリ秒)。AppDriver.lastLaunchTiming が返す型。
+/// actionMs = プロセスを起動させる外部呼び出し自体(simctl launch 等の往復)。
+/// waitMs = 起動後、操作可能になるまで待った時間(readiness ポーリング等)。
+/// FTDSL の launchApp/restartApp が ScenarioEvent(kind:"step").actionMs/waitMs へ
+/// そのまま渡す(StepExecutor 経由のステップと同じフィールドに相乗り。新フィールドは足さない)。
+public struct LaunchTiming: Sendable {
+    public let actionMs: Int
+    public let waitMs: Int
+    public init(actionMs: Int, waitMs: Int) {
+        self.actionMs = actionMs
+        self.waitMs = waitMs
+    }
+}
+
 public protocol AppDriver {
     func status() async throws -> StatusResponse
     /// パッケージファイル(iOS: .app バンドル / Android: .apk)からアプリをインストールする
@@ -62,6 +76,11 @@ public protocol AppDriver {
     /// クリアしないと前回の注記が別ステップに誤って付く)。デコレータ実装は base の値を透過すること
     /// (透過しないと最外のドライバから見えない)。
     var lastActionNote: String? { get }
+    /// 直近の launch(bundleID:) の内訳。lastActionNote と同じ「次の launch 呼び出しで
+    /// 上書き/クリアする」規約(1シナリオ=1ドライバの逐次実行が前提)。計測できないドライバ・
+    /// 失敗した呼び出しは既定 nil(嘘の内訳を返さない)。デコレータ実装は base の値を透過すること
+    /// (透過しないと最外のドライバから見えない。lastActionNote と同じ理由)。
+    var lastLaunchTiming: LaunchTiming? { get }
     /// キャッシュを捨てた snapshot(`snapshot(bypassingCache: true)`)が意味を持つか。
     /// **ラッパードライバは base の値を透過すること**(false 固定にすると最内の Android へ届かない)
     var supportsCacheBypass: Bool { get }
@@ -120,6 +139,7 @@ public enum DriverError: Error, LocalizedError {
 /// activate 未対応ドライバ(InAppDriver/SystemUIDriver 等)は launch(再起動)にフォールバックする。
 public extension AppDriver {
     var lastActionNote: String? { nil }
+    var lastLaunchTiming: LaunchTiming? { nil }
 
     /// 既定はフラグを落として通常 swipe に委譲する(ラッパードライバはこれで素通しになる)。
     /// フラグを実際に送るのは HTTP を話す BridgeClient だけ
