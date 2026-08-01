@@ -107,6 +107,26 @@ public enum ScenarioHost {
     /// この値は子には渡さない(--default-timeout=子内部の検証待ちとは別物)
     public static let defaultScenarioTimeout = 90
 
+    /// `xcode-select -p` の結果(ホストで1回だけ解決)。未解決・Xcode 無しなら nil
+    /// テストが「解決できたなら必ず子へ載る」を検証するため internal
+    static let resolvedDeveloperDir: String? = {
+        if let set = ProcessInfo.processInfo.environment["DEVELOPER_DIR"], !set.isEmpty { return set }
+        guard let result = try? Shell.run(["xcode-select", "-p"]), result.status == 0 else { return nil }
+        let path = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
+        return path.isEmpty ? nil : path
+    }()
+
+    /// 子プロセスへ渡す環境。**`DEVELOPER_DIR` を必ず載せる**: FTCoreSimShim は未設定だと
+    /// `xcode-select -p` を spawn する(実測 65ms)。**シナリオ1本=1プロセス**なので
+    /// 渡さないと毎回払う。ホストでは1回だけ解決する(resolvedDeveloperDir)
+    static func childEnvironment() -> [String: String] {
+        var env = ProcessInfo.processInfo.environment
+        if env["DEVELOPER_DIR"] == nil, let dir = resolvedDeveloperDir {
+            env["DEVELOPER_DIR"] = dir
+        }
+        return env
+    }
+
     /// テストプロジェクトを解決する。name 省略時:
     /// Projects/ が 1 つならそれ → LocalConfig.defaultProject → 候補一覧付きエラー
     public static func project(named name: String? = nil) throws -> TestProject {
@@ -229,6 +249,7 @@ public enum ScenarioHost {
 
         let process = Process()
         process.executableURL = runner
+        process.environment = childEnvironment()
         var args = ["run", "--scenario", scenarioID,
                     "--platform", connection.platform,
                     "--report-dir", reportDir, "--json",
