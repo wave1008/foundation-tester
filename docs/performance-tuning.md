@@ -499,6 +499,36 @@ ref の名前空間を跨ぐので別施策(§8)。
 検証: iOS 全 3 SUT(E2E / E2E-iOS / E2E-Flutter)× `ios-inapp` で **115 シナリオ全成功**・
 振り直し 0 件(40 + 37 + 38。§3.8〜3.10 の「91 シナリオ」は当時の本数)。
 
+### 3.13 interop の WebView を「読みは DOM・触るのは XCUITest の座標」へ(2026-08-02 実装)
+
+Compose / Flutter(interop)ホストの WebView 画面は**画面ごと XCUITest へ委譲**していた。
+1 snapshot が 300〜500ms(in-app の DOM は約 3ms)で、WebView シナリオの**ステップ時間の
+半分以上**をここに使っていた(実測: CMP 26.3s 中 12.9s / Flutter 29.0s 中 17.8s。snapshot 22 回)。
+
+DOM は interop ホストでも**読める**(届かないのは操作だけ)ので、snapshot は in-app の DOM を返し、
+ref を使う操作だけホスト側で座標へ解決して XCUITest の実タッチへ回す。
+
+| 状態 | snapshot | ref を使う操作 |
+|---|---|---|
+| normal | in-app | in-app |
+| delegated(DOM が読めない構成) | XCUITest | XCUITest(ref) |
+| **domInterop** | in-app(DOM) | **座標へ解決して XCUITest** |
+
+実測(シナリオ単体): CMP 29.5→**13.2s**(3回とも同値)/ Flutter 26.4→13.0〜14.1s。
+uikit ホストの同シナリオ(元から DOM 経路)が 11.3s なので、ほぼそこまで落ちた。
+スイートでは E2E/ios-inapp 253.7→226.7s・E2E-Flutter/ios-inapp 277.2→264.6s。
+
+- **不変条件の守り方**: `ref` を XCUITest へ**渡さない**。委譲先は自分が最後に撮った別 snapshot の
+  ref 名前空間を持つので、混ぜると別要素を指す。ホストが ref → 矩形中心 → 座標に解決する
+- **判定はブリッジの申告**(`webViewPath == "dom-interop"`)。ホストにフレームワーク固有の
+  知識を持たせない
+- **画面に入るとき1回だけ委譲側を暖める**(`delegated.snapshot()`)。旧経路はこれを必ず通っており
+  attach を兼ねていた。省くと**最初の座標タップが 200 を返しても効かない**(CMP で再現・
+  Flutter でも高負荷時に発火)。1画面1回なので DOM 経路の利得は保たれる
+- 座標そのものは最初から正しかった(実機で DOM と XCUITest の矩形が一致することを確認。
+  `transform: translate(60px,0)` の要素も両方 `(76,477)`)。**「タップが外れる」を座標のせいと
+  決めつけない** —— ランナー内では ref タップも座標タップも同じ `coordinate(...).tap()`
+
 ## 4. 計測基盤の使い方(チューニングの必須手順)
 
 **変更前にベースライン、変更後に同条件で再計測、summary.md を比較する。**
@@ -894,14 +924,8 @@ window/transition/animator の `*_scale` はチューニングノブではなく
   なお **fail-fast 化は最適化ではなくトレードオフ**で、occlusion-guard は過渡的オーバーレイ
   (ローディング・スナックバー)が消えるのを timeout まで待つよう**意図的に**作られている
   (`StepExecutor+Assert.swift`。即失敗は脆い)
-- **interop ホストの WebView 画面を「読みは DOM・タップだけ XCUITest」にする**(未着手):
-  §3.11 でスクロールは in-app へ戻したが、**snapshot はまだ委譲したまま**で、そこが残る差の
-  ほぼ全部(CMP 12.9s 対 SwiftUI 2.8s / 1 snapshot につき XCUITest 300〜500ms)。
-  DOM は Compose/Flutter ホストでも読める(`WebViewDOMSnapshot.isInteropHosted` が止めているのは
-  **操作**が届かないから)ので、読みを DOM に戻してタップだけ XCUITest の**座標**タップへ回せば
-  もう一段速くなる。**壁は ref の名前空間**: 返す snapshot と ref の宛先を一致させる不変条件
-  (`WebViewDelegatingDriver` の冒頭注記)を、ref を持たない座標タップで跨ぐ設計にする必要がある。
-  効果見積り ≒ 1 シナリオあたり 8〜10s × 2 SUT
+- ✅ **interop ホストの WebView 画面を「読みは DOM・触るのは XCUITest の座標」にする**
+  (2026-08-02 実装。§3.13)
 - **WebView 画面のスクロールヒント跳躍(`runScrollSearch` / `scrollToEdge` の long drag)**(未対策):
   `driver.drag` を使うため、in-app が drag 非対応である以上 WebView 委譲中は必ず XCUITest の
   実ドラッグになる(§3.11 の contentOffset 化はスワイプだけで drag は対象外)。2026-08-01 の
