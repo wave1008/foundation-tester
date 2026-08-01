@@ -391,6 +391,55 @@ APK 変更なので `AndroidRunner/build.sh` の `VERSION_CODE` と
 
 検証: iOS 全 3 SUT(E2E / E2E-iOS / E2E-Flutter)× `ios-inapp` で 91 シナリオ全成功・振り直し 0 件。
 
+### 3.11 WebView 委譲中のスクロールを in-app の contentOffset へ(2026-08-01 実装)
+
+`WebViewDelegatingDriver` は WebView 画面を**丸ごと** XCUITest へ委譲していたため、スクロールも
+XCUITest の実スワイプになっていた。だが **WKWebView の中の `WKScrollView` は本物の
+`UIScrollView`** で、interop(Compose の `InteropWrappingView` / Flutter の platform view)が
+横取りするのは**タッチだけ**なので `contentOffset` は素通しで効く。委譲したままスクロールだけ
+in-app へ戻す。
+
+きっかけは 3 SUT の同一シナリオ(`WebViewの中身を操作できること.S0010` / `ios-inapp`)の差:
+
+| SUT | 修正前 | 修正後 | actionMs |
+|---|---:|---:|---|
+| E2E(CMP) | 40.4s | **24.2s** | 22.2s → 5.7s |
+| E2E-Flutter | 41.3s | **23.8s** | 22.6s → 5.6s |
+| E2E-iOS(SwiftUI) | 11.7s | 11.1s | 4.3s → 4.3s(経路が変わらないので不変) |
+
+内訳は2ステップにほぼ集中していた(中央値・各3 run):
+
+| ステップ | CMP 前 → 後 | Flutter 前 → 後 | SwiftUI(参考) |
+|---|---:|---:|---:|
+| `scrollTo` | 9,527 → 2,888ms | 9,442 → 2,798ms | 1,085ms |
+| `scrollToTop` | 14,175 → 5,648ms | 15,622 → 5,557ms | 1,443ms |
+
+**整定(`InAppSettle`)の cap 張り付きではない**: `actionMs` に 2,500 付近の定数は1つも出ず、
+XCUITest の実スワイプ(1回 ≒ 450ms)+ 委譲 snapshot(≒ 300ms)の積み上げだった。
+SwiftUI ホストだけ速いのは in-app が DOM 経路(`InAppWebViewDOM`)で完結しているため。
+
+実装は2点:
+- `InAppBridge.handleSwipe` … compose/flutter + `scroll=true` のとき、AX 経路より先に
+  **画面中央を覆う `WKScrollView`** を探して `contentOffset` を動かす。無ければ従来の
+  `accessibilityScroll` へ落ちる。中央で絞るのは、小さな埋め込み WebView のために画面本体の
+  スクロールを奪わないため(実スワイプが駆動するのも中央の下にあるものだけ)。
+  端に達したら 501 でなく **no-op 200**(UIKit 経路と同じ。501 だと XCUITest の実スワイプへ
+  ラッチして下端タップが不安定になる)
+- `WebViewDelegatingDriver.swipe(_:forScroll:)` … 委譲中でも **forScroll だけ** primary を先に
+  試し、501 なら委譲先へ落とす。ref を使わない操作なので「snapshot と ref の名前空間を
+  一致させる」不変条件は崩れない。`forScroll=false`(DSL の `swipe`)は従来どおり委譲先へ
+
+**残りの差(CMP 24.2s 対 SwiftUI 11.1s)はほぼ全部 snapshotMs**(12.9s 対 2.8s)。委譲中は
+1 snapshot が in-app(安い)+ XCUITest(≒300〜500ms)の2回になる。これを詰めるには
+interop ホストでも DOM 経路で読み、タップだけ XCUITest の座標タップへ回す構成が要るが、
+ref の名前空間を跨ぐので別施策(§8)。
+
+`bridgeProtocolVersion` 27 → 28(ブリッジの挙動が変わる。上げないと稼働中の旧 dylib が
+再利用され、短縮が効かないまま緑になる)。
+
+検証: iOS 全 3 SUT(E2E / E2E-iOS / E2E-Flutter)× `ios-inapp` で **115 シナリオ全成功**・
+振り直し 0 件(40 + 37 + 38。§3.8〜3.10 の「91 シナリオ」は当時の本数)。
+
 ## 4. 計測基盤の使い方(チューニングの必須手順)
 
 **変更前にベースライン、変更後に同条件で再計測、summary.md を比較する。**
@@ -762,6 +811,14 @@ window/transition/animator の `*_scale` はチューニングノブではなく
   なお **fail-fast 化は最適化ではなくトレードオフ**で、occlusion-guard は過渡的オーバーレイ
   (ローディング・スナックバー)が消えるのを timeout まで待つよう**意図的に**作られている
   (`StepExecutor+Assert.swift`。即失敗は脆い)
+- **interop ホストの WebView 画面を「読みは DOM・タップだけ XCUITest」にする**(未着手):
+  §3.11 でスクロールは in-app へ戻したが、**snapshot はまだ委譲したまま**で、そこが残る差の
+  ほぼ全部(CMP 12.9s 対 SwiftUI 2.8s / 1 snapshot につき XCUITest 300〜500ms)。
+  DOM は Compose/Flutter ホストでも読める(`WebViewDOMSnapshot.isInteropHosted` が止めているのは
+  **操作**が届かないから)ので、読みを DOM に戻してタップだけ XCUITest の**座標**タップへ回せば
+  もう一段速くなる。**壁は ref の名前空間**: 返す snapshot と ref の宛先を一致させる不変条件
+  (`WebViewDelegatingDriver` の冒頭注記)を、ref を持たない座標タップで跨ぐ設計にする必要がある。
+  効果見積り ≒ 1 シナリオあたり 8〜10s × 2 SUT
 - **iOS ブリッジ供給の堅牢化(高並列時)**: ランナーのコールドスタートが負荷下で
   供給タイムアウトを超え、run 全体が中断する(§7 の交互成功パターン)。候補: タイムアウト値の
   負荷連動延長、ランナー起動の直列化、タイムアウト後も起動継続中なら待ち直す再確認ループ。
