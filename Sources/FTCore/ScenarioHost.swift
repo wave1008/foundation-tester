@@ -310,20 +310,14 @@ public enum ScenarioHost {
         // 行がまとめて届くことがあり、一時停止中の paused イベントがホストへ届かず
         // デバッグ実行が相互待ちになる(ScenarioHostDebugTests で回帰検知)
         // ベンチ用: FT_EVENT_LOG_PATH が設定されていれば子の NDJSON 生ログを追記する
-        // (1プロセス実行=1ファイル前提。JSON デコード可否に関わらず非空行はそのまま書く)
-        let eventLogHandle: FileHandle? = ProcessInfo.processInfo.environment["FT_EVENT_LOG_PATH"].flatMap { path in
-            if !FileManager.default.fileExists(atPath: path) {
-                FileManager.default.createFile(atPath: path, contents: nil)
-            }
-            let handle = FileHandle(forWritingAtPath: path)
-            handle?.seekToEndOfFile()
-            return handle
-        }
+        // (JSON デコード可否に関わらず非空行はそのまま書く)。**並列 run でも混ざらないよう
+        // EventLogAppender に直列化する** — ハンドル共有だと行が途中で混ざり読めなくなる
+        let eventLogEnabled = ProcessInfo.processInfo.environment["FT_EVENT_LOG_PATH"] != nil
 
         var passed: Bool?
         for await line in lineStream(stdout.fileHandleForReading) {
-            if !line.isEmpty {
-                eventLogHandle?.write(Data((line + "\n").utf8))
+            if !line.isEmpty, eventLogEnabled {
+                await EventLogAppender.shared.append(line)
             }
             if let event = ScenarioEvent.decode(line: line) {
                 if event.kind == "scenarioFinished" { passed = event.passed }
@@ -336,7 +330,8 @@ public enum ScenarioHost {
 
         // waitUntilExit() は使わない(永久ハングの実害。理由は ProcessExitWait 参照)
         for await _ in processExited {}
-        try? eventLogHandle?.close()
+        // イベントログのハンドルはここで閉じない(EventLogAppender がプロセス寿命で1本持つ。
+        // シナリオ毎に閉じると次のシナリオの追記先が失われる)。write(2) は無バッファなので flush 不要
         try? stdinPipe?.fileHandleForWriting.close()
 
         // watchdog と正常終了のどちらが先に claim したかで timeout を確定する。cancel は
@@ -478,6 +473,31 @@ public enum ScenarioHost {
             dir = parent
         }
         return nil
+    }
+}
+
+/// FT_EVENT_LOG_PATH への追記口。**並列 run では複数ワーカーの行が同じファイルへ流れる**ため、
+/// ハンドルを共有すると行の途中で混ざり JSON が壊れる(実測: 40 シナリオ 8 レーンで
+/// launch イベントが 41 本中 3 本しか読めなかった)。プロセス内で1本の actor に直列化し、
+/// 追記は 1 行単位で行う。**計測の入口はここだけ**なので、ここが壊れると内訳は採れない。
+actor EventLogAppender {
+    static let shared = EventLogAppender()
+    private var handle: FileHandle?
+    private var opened = false
+
+    func append(_ line: String) {
+        if !opened {
+            opened = true
+            if let path = ProcessInfo.processInfo.environment["FT_EVENT_LOG_PATH"] {
+                if !FileManager.default.fileExists(atPath: path) {
+                    FileManager.default.createFile(atPath: path, contents: nil)
+                }
+                handle = FileHandle(forWritingAtPath: path)
+                handle?.seekToEndOfFile()
+            }
+        }
+        guard let handle else { return }
+        handle.write(Data((line + "\n").utf8))
     }
 }
 
