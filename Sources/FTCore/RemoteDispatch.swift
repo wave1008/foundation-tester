@@ -7,6 +7,7 @@ import Foundation
 public enum RemoteDispatchError: Error, LocalizedError {
     case invalidHost(String)
     case invalidRemoteDir(String)
+    case invalidArtifactsMode(String)
     case incompatible([String])
     case remoteSetupFailed(String)
 
@@ -16,6 +17,8 @@ public enum RemoteDispatchError: Error, LocalizedError {
             return "invalid --host: \(detail)"
         case .invalidRemoteDir(let detail):
             return "invalid --remote-dir: \(detail)"
+        case .invalidArtifactsMode(let detail):
+            return "invalid --remote-artifacts: \(detail)"
         case .incompatible(let reasons):
             return (["remote host is not compatible:"] + reasons.map { "  - \($0)" })
                 .joined(separator: "\n")
@@ -170,6 +173,34 @@ public enum RemoteTransferPlan {
             "\(localProjectsDir)/\(project)/",
             "\(sshTarget):\(layout.projectDir(project))/",
         ]
+    }
+}
+
+public enum RemoteArtifactCollection {
+
+    /// results/ 回収(録画+RunRecorder の run.json/scenario json/host-metrics.ndjson)の rsync 引数。
+    /// **--delete は付けない**(RemoteTransferPlan.rsyncArgs と違い、ローカルで別に走った run の
+    /// results を巻き添えで消してはいけない)。差分のみ転送するので繰り返し呼んでも安い
+    public static func resultsRsyncArgs(project: String, layout: RemoteLayout,
+                                        sshTarget: String, localProjectsDir: String) -> [String] {
+        [
+            "-az",
+            "\(sshTarget):\(layout.projectDir(project))/results/",
+            "\(localProjectsDir)/\(project)/results/",
+        ]
+    }
+}
+
+public enum RemoteArtifactsMode: String, Sendable, CaseIterable {
+    case collect
+    case onDemand = "on-demand"
+
+    public static func parse(_ raw: String) throws -> RemoteArtifactsMode {
+        guard let mode = RemoteArtifactsMode(rawValue: raw) else {
+            throw RemoteDispatchError.invalidArtifactsMode(
+                "must be one of collect, on-demand: \"\(raw)\"")
+        }
+        return mode
     }
 }
 

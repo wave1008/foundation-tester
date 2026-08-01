@@ -39,14 +39,19 @@ export function resolveRemoteTarget(
 
 /**
  * dir は空なら省略する契約(CLI 既定 = "~/ftester-runner"。引数を渡さないことで CLI 側の
- * 既定に委ねる)。呼び出し側は --profile 実行(profile 指定あり)のときのみこれを args へ足すこと
- * (--host は CLI 側で --profile を必須とし、単一デバイス直指定の実行経路には付けない)。
+ * 既定に委ねる)。artifacts も同じ省略契約: CLI 既定 "collect" のときは --remote-artifacts を
+ * 付けず、非既定の "on-demand" のときだけ付ける。呼び出し側は --profile 実行(profile 指定あり)
+ * のときのみこれを args へ足すこと(--host は CLI 側で --profile を必須とし、単一デバイス
+ * 直指定の実行経路には付けない)。
  */
-export function buildRemoteRunArgs(entry: RemoteHostEntry): string[] {
+export function buildRemoteRunArgs(entry: RemoteHostEntry, artifacts: "collect" | "on-demand"): string[] {
   const args = ["--host", entry.host.trim()];
   const dir = entry.dir.trim();
   if (dir.length > 0) {
     args.push("--remote-dir", dir);
+  }
+  if (artifacts === "on-demand") {
+    args.push("--remote-artifacts", "on-demand");
   }
   return args;
 }

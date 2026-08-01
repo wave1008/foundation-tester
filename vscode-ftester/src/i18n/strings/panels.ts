@@ -210,6 +210,9 @@ export const panelsStrings = {
   // (i18n/strings/webviewMonitorB.ts の wvMonitor2.remote.*)を使う。ここは静的ラベルのみ。
   "panels.settings.remoteSectionTitle": { ja: "リモート実行", en: "Remote execution" },
   "panels.settings.remoteTargetLabel": { ja: "実行先", en: "Run on" },
+  "panels.settings.remoteArtifactsLabel": { ja: "成果物(録画・ログ)", en: "Artifacts (recordings, logs)" },
+  "panels.settings.remoteArtifactsCollect": { ja: "回収する", en: "Collect" },
+  "panels.settings.remoteArtifactsOnDemand": { ja: "オンデマンド", en: "On demand" },
   "panels.settings.remoteHostsHint": {
     ja: "ディスパッチ先として使うホストを登録します。name は実行先セレクタに出る表示名(一意)、host は SSH 先(user@host または host)、dir は空欄で ~/ftester-runner(そのマシンの既存のローカルインストールと同じパスにしないこと)。",
     en: "Register hosts to dispatch runs to. Name is the display name shown in the run-on selector (must be unique); host is the SSH target (user@host or host); dir blank = ~/ftester-runner (must not be an existing local install on that machine).",

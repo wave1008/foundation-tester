@@ -691,6 +691,10 @@ struct RunScenarios: AsyncParsableCommand {
             help: "Timeout in seconds for the whole remote dispatch (default: auto, sized from the scenario count; see docs/remote-runner.md)")
     var remoteTimeout: Int?
 
+    @Option(name: .customLong("remote-artifacts"),
+            help: "Collect recordings and run logs (results/) from the remote after the run: collect (default) or on-demand (leave them on the remote; docs/remote-runner.md)")
+    var remoteArtifacts: String = "collect"
+
     @OptionGroup var driverOptions: DriverOptions
 
     func run() async throws {
@@ -829,10 +833,11 @@ struct RunScenarios: AsyncParsableCommand {
 
         try RemoteLayout.validateBase(remoteDir)
         let hostSpec = try RemoteHostSpec.parse(rawHost)
+        let artifactsMode = try RemoteArtifactsMode.parse(remoteArtifacts)
         let testProject = try ScenarioHost.project(named: project)
         let localRoot = try RepoRoot.find()
         let dispatcher = RemoteRunDispatcher(
-            host: hostSpec, remoteDirRaw: remoteDir, localRepoRoot: localRoot)
+            host: hostSpec, remoteDirRaw: remoteDir, localRepoRoot: localRoot, artifacts: artifactsMode)
         let exitCode = try await dispatcher.dispatch(
             project: testProject, profile: profile, scenarios: scenarios, folders: folders,
             heal: heal, noLPT: noLPT, lptHistoryRuns: lptHistoryRuns,

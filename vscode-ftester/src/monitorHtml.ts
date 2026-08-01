@@ -539,15 +539,23 @@ function renderSettingsPanel(): string {
         <label class="settings-item"><input type="checkbox" id="settings-polling-mode"> ${t("panels.settings.pollingModeLabel")}</label>
         <div class="settings-hint">${t("panels.settings.pollingModeHint")}</div>
       </div>
-      <!-- 実体は ftester.remote.hosts/target 設定(config.ts)。ここはもう1つの操作口
+      <!-- 実体は ftester.remote.hosts/target/artifacts 設定(config.ts)。ここはもう1つの操作口
            (docs/remote-runner.md §12)。ホスト一覧(#settings-remote-hosts-body)は行数が可変のため
-           settingsTab.js が動的に組み立てる。対向: settingsTab.js の applySettings / setRemoteConfig,
+           settingsTab.js が動的に組み立てる。artifacts セレクタは remoteConfig/setRemoteConfig に
+           相乗り(専用メッセージ型は無い)。対向: settingsTab.js の applySettings / setRemoteConfig,
            monitorPanel.ts。 -->
       <div class="settings-group">
         <div class="settings-section-title">${t("panels.settings.remoteSectionTitle")}</div>
         <label class="settings-item settings-item-inline" for="settings-remote-target">
           ${t("panels.settings.remoteTargetLabel")}
           <select id="settings-remote-target" class="settings-select"></select>
+        </label>
+        <label class="settings-item settings-item-inline" for="settings-remote-artifacts">
+          ${t("panels.settings.remoteArtifactsLabel")}
+          <select id="settings-remote-artifacts" class="settings-select">
+            <option value="collect">${t("panels.settings.remoteArtifactsCollect")}</option>
+            <option value="on-demand">${t("panels.settings.remoteArtifactsOnDemand")}</option>
+          </select>
         </label>
         <div class="settings-hint">${t("panels.settings.remoteHostsHint")}</div>
         <table class="settings-remote-hosts-table">

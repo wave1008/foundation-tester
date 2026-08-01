@@ -241,8 +241,14 @@ export type MonitorToWebviewMessage =
   | { readonly type: "language"; readonly value: "auto" | "ja" | "en" }
   // 設定タブのリモート実行セクション(ftester.remote.* 設定の生値)。ready 直後と、削除で target の
   // 指す先が消えたときの補正(monitorPanel.ts)に送る。webview 側は settingsTab.js の applySettings。
+  // artifacts(results/ 回収モード)も同じメッセージに相乗りする(専用メッセージ型は起こさない)。
   // 変更は setRemoteConfig と対(docs/remote-runner.md §12)。
-  | { readonly type: "remoteConfig"; readonly hosts: readonly RemoteHostEntry[]; readonly target: string }
+  | {
+      readonly type: "remoteConfig";
+      readonly hosts: readonly RemoteHostEntry[];
+      readonly target: string;
+      readonly artifacts: "collect" | "on-demand";
+    }
   // 設定タブ「更新」セクションの状態。パネル ready 直後と checkUpdate/runUpdate の前後に送る。
   // 判定そのものは Scripts/update-check.sh(拡張は解釈するだけ)。対向: settingsTab.js の applyUpdate。
   // **実行ログは webview に送らない**(VSCode の OUTPUT へ出す。monitorUpdateController.ts 冒頭)。
@@ -448,8 +454,13 @@ export type MonitorFromWebviewMessage =
   | { readonly type: "setLanguage"; readonly value: "auto" | "ja" | "en" }
   // 設定タブのリモート実行セクション変更(settingsTab.js)。monitorPanel.ts が ftester.remote.* 設定
   // (Global)を更新する。hosts は正規化済みの想定だが検証は型のみ。target が hosts のどの name とも
-  // 一致しなくなった場合は monitorPanel.ts が "" に戻す。
-  | { readonly type: "setRemoteConfig"; readonly hosts: readonly RemoteHostEntry[]; readonly target: string }
+  // 一致しなくなった場合は monitorPanel.ts が "" に戻す。artifacts は remoteConfig と同じ相乗り。
+  | {
+      readonly type: "setRemoteConfig";
+      readonly hosts: readonly RemoteHostEntry[];
+      readonly target: string;
+      readonly artifacts: "collect" | "on-demand";
+    }
   // 設定タブ「更新」の「更新を確認」ボタン(settingsTab.js)。monitorPanel.ts が update-check.sh を実行する。
   | { readonly type: "checkUpdate" }
   // 設定タブ「更新」の「更新する」ボタン。monitorPanel.ts が update.sh を実行し、出力は OUTPUT へ出す。
@@ -694,7 +705,8 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
       return (
         typeof value.target === "string" &&
         Array.isArray(value.hosts) &&
-        value.hosts.every(isRemoteHostEntryLike)
+        value.hosts.every(isRemoteHostEntryLike) &&
+        (value.artifacts === "collect" || value.artifacts === "on-demand")
       );
     case "devicesTabVisible":
       return typeof value.visible === "boolean";

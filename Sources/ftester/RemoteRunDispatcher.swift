@@ -20,6 +20,7 @@ struct RemoteRunDispatcher {
     let localRepoRoot: URL
     // var: default 付き let は memberwise init から除外され .apiRun を注入できない
     var mode: RemoteDispatchMode = .cliRun
+    var artifacts: RemoteArtifactsMode = .collect
 
     /// 戻り値 = リモート `ftester run` の exit code
     func dispatch(project: TestProject, profile: String,
@@ -50,6 +51,7 @@ struct RemoteRunDispatcher {
         if let localJUnitPath, let remoteJUnitPath {
             collectJUnit(remotePath: remoteJUnitPath, localPath: localJUnitPath, layout: layout)
         }
+        collectArtifactsIfRequested(project: project.name, layout: layout)
         cleanupDispatchDir(layout: layout, stamp: stamp)
 
         log("==> remote run finished (exit \(exitCode))")
@@ -81,6 +83,7 @@ struct RemoteRunDispatcher {
             ftesterArgs: ftesterArgs, layout: layout, timeoutSeconds: timeoutSeconds)
 
         collectReports(project: project.name, remoteReportDir: remoteReportDir)
+        collectArtifactsIfRequested(project: project.name, layout: layout)
         cleanupDispatchDir(layout: layout, stamp: stamp)
 
         log("==> remote run finished (exit \(exitCode))")
@@ -203,6 +206,26 @@ struct RemoteRunDispatcher {
         let status = (try? runInherited(["rsync", "-az", remoteReports, localReports.path + "/"])) ?? -1
         if status != 0 {
             log("warning: failed to collect reports from the remote (rsync exited with \(status))")
+        }
+    }
+
+    /// .onDemand: results(録画・run ログ)はリモートに残す(場所だけ知らせる)。.collect: rsync で
+    /// 回収する。失敗は warn のみ(run の成否は変えない。collectReports と同じ規律)
+    private func collectArtifactsIfRequested(project: String, layout: RemoteLayout) {
+        guard artifacts == .collect else {
+            log("note: recordings and run logs stay on \(host.sshTarget) "
+                + "(\(layout.projectDir(project))/results) — set remote artifacts to \"collect\" to pull them")
+            return
+        }
+        log("==> collecting recordings and run logs")
+        let localResults = localRepoRoot.appendingPathComponent("Projects/\(project)/results")
+        try? FileManager.default.createDirectory(at: localResults, withIntermediateDirectories: true)
+        let args = ["rsync"] + RemoteArtifactCollection.resultsRsyncArgs(
+            project: project, layout: layout, sshTarget: host.sshTarget,
+            localProjectsDir: localRepoRoot.appendingPathComponent("Projects").path)
+        let status = (try? runInherited(args)) ?? -1
+        if status != 0 {
+            log("warning: failed to collect recordings and run logs from the remote (rsync exited with \(status))")
         }
     }
 

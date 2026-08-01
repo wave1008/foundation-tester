@@ -568,6 +568,8 @@ class MonitorPanelController implements vscode.Disposable {
       case "setRemoteConfig": {
         const remoteConfiguration = vscode.workspace.getConfiguration("ftester");
         void remoteConfiguration.update("remote.hosts", message.hosts, vscode.ConfigurationTarget.Global);
+        const artifacts = message.artifacts === "on-demand" ? "on-demand" : "collect";
+        void remoteConfiguration.update("remote.artifacts", artifacts, vscode.ConfigurationTarget.Global);
         // 削除で target の指す先(name)が消えている場合は、黙ってローカルへフォールバックさせず
         // target 自体を "" に戻す(runHandler.ts の resolveRemoteTarget が「未登録」を検出する前に、
         // ここで目に見える形に補正する)。webview 側の選択欄も追随させるため remoteConfig を送り直す。
@@ -575,7 +577,7 @@ class MonitorPanelController implements vscode.Disposable {
         const nextTarget = targetStillValid ? message.target : "";
         void remoteConfiguration.update("remote.target", nextTarget, vscode.ConfigurationTarget.Global);
         if (!targetStillValid) {
-          this.post({ type: "remoteConfig", hosts: message.hosts, target: "" });
+          this.post({ type: "remoteConfig", hosts: message.hosts, target: "", artifacts });
         }
         break;
       }
@@ -646,12 +648,14 @@ class MonitorPanelController implements vscode.Disposable {
       value: vscode.workspace.getConfiguration("ftester").get<"auto" | "ja" | "en">("language", "auto"),
     });
     {
-      // config.ts の readConfig と同じ正規化(normalizeRemoteHosts)。
+      // config.ts の readConfig と同じ正規化(normalizeRemoteHosts / artifacts の "collect" 既定)。
       const remoteConfiguration = vscode.workspace.getConfiguration("ftester");
       this.post({
         type: "remoteConfig",
         hosts: normalizeRemoteHosts(remoteConfiguration.get<unknown>("remote.hosts", [])),
         target: remoteConfiguration.get<string>("remote.target", "").trim(),
+        artifacts:
+          remoteConfiguration.get<string>("remote.artifacts", "collect") === "on-demand" ? "on-demand" : "collect",
       });
     }
     if (this.tilePaneHeight !== undefined) {

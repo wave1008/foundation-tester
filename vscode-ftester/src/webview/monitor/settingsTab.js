@@ -1,6 +1,7 @@
 // モニターパネル「設定」タブ(#panel-settings)。main.js が applySettings を message
 // ディスパッチャに組み込む。対向: src/monitorWebviewMessages.ts の setPollingMode/pollingMode・
 // setLanguage/language メッセージ、処理は src/monitorPanel.ts。常駐プロセス一覧は processesTab.js を参照。
+// リモート実行の artifacts(results/ 回収モード)セレクタは remoteConfig/setRemoteConfig に相乗り。
 //
 // 更新セクション: checkUpdate/runUpdate を送り、updateStatus を受ける(実処理は
 // src/monitorUpdateController.ts → Scripts/update-check.sh / update.sh)。
@@ -17,6 +18,7 @@ const lptHistoryInput = document.getElementById('settings-lpt-history');
 let lptHistoryDefault = null;
 const languageSelect = document.getElementById('settings-language');
 const remoteTargetSelect = document.getElementById('settings-remote-target');
+const remoteArtifactsSelect = document.getElementById('settings-remote-artifacts');
 const remoteHostsBody = document.getElementById('settings-remote-hosts-body');
 const remoteHostsAddButton = document.getElementById('settings-remote-hosts-add');
 const updateStatus = document.getElementById('settings-update-status');
@@ -82,7 +84,12 @@ function currentTargetPayload() {
 }
 
 function sendRemoteConfig() {
-  vscode.postMessage({ type: 'setRemoteConfig', hosts: currentHostsPayload(), target: currentTargetPayload() });
+  vscode.postMessage({
+    type: 'setRemoteConfig',
+    hosts: currentHostsPayload(),
+    target: currentTargetPayload(),
+    artifacts: remoteArtifactsSelect.value,
+  });
 }
 
 // 実行先セレクタの選択肢を現在の行の name で作り直す(rowId を value にすることで name 変更中も
@@ -170,6 +177,10 @@ remoteTargetSelect.addEventListener('change', () => {
   sendRemoteConfig();
 });
 
+remoteArtifactsSelect.addEventListener('change', () => {
+  sendRemoteConfig();
+});
+
 // remoteConfig 受信(ready 直後・削除で target の指す先が消えたときの拡張側補正)で全行を作り直す。
 function applyRemoteConfig(message) {
   remoteHostsBody.textContent = '';
@@ -180,6 +191,7 @@ function applyRemoteConfig(message) {
   const matched = hostRows.find((row) => row.nameInput.value.trim() === message.target);
   selectedTargetRowId = matched ? matched.id : null;
   rebuildTargetOptions();
+  remoteArtifactsSelect.value = message.artifacts === 'on-demand' ? 'on-demand' : 'collect';
 }
 
 updateCheckButton.addEventListener('click', () => {

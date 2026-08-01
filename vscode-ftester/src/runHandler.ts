@@ -542,7 +542,7 @@ async function executeRun(
     }
     args.push("--profile", profile);
     if (remoteResolution.kind === "remote") {
-      args.push(...buildRemoteRunArgs(remoteResolution.entry));
+      args.push(...buildRemoteRunArgs(remoteResolution.entry, config.remote.artifacts));
       remoteDispatchHost = remoteResolution.entry.host;
     }
   } else {
