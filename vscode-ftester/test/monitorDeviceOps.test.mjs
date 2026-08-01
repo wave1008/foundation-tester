@@ -167,6 +167,69 @@ test("syncCpuRenderNames: renderMode が cpu / 未受信 / connected 以外 / �
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+// ---- device-down 直指定モード(未登録デバイス。udid/serial 指定時の引数組み立て) ----
+// 対向: Sources/ftester/ApiDeviceCommands.swift ApiDeviceDownDirectTarget(--name/--udid/--serial の
+// うちちょうど1つ)。monitorDeviceOps.ts runDeviceOpAttempt が --name の代わりに --udid/--serial を
+// 渡し、--project/--profile も付けないことを spawn 引数で検証する。
+
+/** device ジョブを1件流し、mock が記録した引数行を返す。 */
+async function runDeviceJobAndReadArgs(deviceOps, argsLog, job) {
+  deviceOps.enqueueLifecycleJob(job);
+  await waitUntilIdle(deviceOps);
+  return fs.existsSync(argsLog) ? fs.readFileSync(argsLog, "utf8") : "";
+}
+
+test("device-down は udid 指定時、--udid を渡し --name/--project/--profile を渡さない", async () => {
+  const { dir, binaryPath, argsLog } = makeArgRecordingBinary();
+  const { deps } = makeDeps(binaryPath);
+  const deviceOps = new MonitorDeviceOps(deps);
+
+  const args = await runDeviceJobAndReadArgs(deviceOps, argsLog, {
+    kind: "device",
+    name: "iPhone 17 Pro",
+    op: "down",
+    udid: "ABCD-1234",
+  });
+  assert.match(args, /--udid ABCD-1234/);
+  assert.doesNotMatch(args, /--name/);
+  assert.doesNotMatch(args, /--project/);
+  assert.doesNotMatch(args, /--profile/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("device-down は serial 指定時、--serial を渡し --name/--project/--profile を渡さない", async () => {
+  const { dir, binaryPath, argsLog } = makeArgRecordingBinary();
+  const { deps } = makeDeps(binaryPath);
+  const deviceOps = new MonitorDeviceOps(deps);
+
+  const args = await runDeviceJobAndReadArgs(deviceOps, argsLog, {
+    kind: "device",
+    name: "Pixel_9_Android_15_-01",
+    op: "down",
+    serial: "emulator-5554",
+  });
+  assert.match(args, /--serial emulator-5554/);
+  assert.doesNotMatch(args, /--name/);
+  assert.doesNotMatch(args, /--project/);
+  assert.doesNotMatch(args, /--profile/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("device-down は udid/serial 無指定なら従来どおり --name/--project/--profile を渡す", async () => {
+  const { dir, binaryPath, argsLog } = makeArgRecordingBinary();
+  const { deps } = makeDeps(binaryPath);
+  const deviceOps = new MonitorDeviceOps(deps);
+
+  const args = await runDeviceJobAndReadArgs(deviceOps, argsLog, {
+    kind: "device",
+    name: "シミュ1",
+    op: "down",
+  });
+  assert.match(args, /--name シミュ1/);
+  assert.match(args, /--project P/);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 test("syncCpuRenderNames: ライフサイクルジョブ進行中の個体は落とさない(フォールバック直後の競合対策)", async () => {
   const { dir, binaryPath, argsLog } = makeArgRecordingBinary();
   const { deps } = makeDeps(binaryPath);

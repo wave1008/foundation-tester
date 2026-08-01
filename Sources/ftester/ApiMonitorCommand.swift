@@ -144,7 +144,8 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                 continue
             }
 
-            let observed = await Self.determineStates(targets: targets)
+            // --profile 指定時はスコープを絞る意図のため未登録デバイスは合成しない
+            let observed = await Self.determineStates(targets: targets, includeUnregistered: profile == nil)
             let states = Self.debounce(observed, confirmed: &confirmed) { message in
                 self.logStderr(message)
             }
@@ -230,6 +231,10 @@ struct ApiMonitorCommand: AsyncParsableCommand {
                 // 拡張のデバイスタイルがストリーミング表示中のデバイスはスクショ取得側で
                 // 二重生成しない(拡張側は monitorFrame を受信しても捨てるだけになるため)
                 guard !control.isFrameSuppressed(state.target.id) else { continue }
+                // 未登録 iOS シミュレータはブリッジが無い(iosPort == nil のまま connected にする
+                // ため。unregisteredStates 参照)。表示は拡張の simstream helper が udid だけで担うので
+                // fetchScreenshot(ブリッジ /screenshot 前提)は毎サイクル失敗するだけ
+                guard state.target.platform != "ios" || state.iosPort != nil else { continue }
 
                 let png: Data
                 do {
@@ -275,8 +280,12 @@ struct ApiMonitorCommand: AsyncParsableCommand {
     /// iOS は simctl 一覧+ブリッジ /status、Android は起動中 AVD 一覧をそれぞれ一括取得して
     /// 各デバイスへ振り分ける(デバイス毎に simctl/adb を叩くと台数に比例して遅くなるため)。
     /// internal: ApiListDevicesCommand.swift が単発の状態判定にも同じロジックを再利用する
+    /// includeUnregistered: true のとき、マシンプロファイル未記載でも起動中(iOS booted sim /
+    /// Android running AVD)なら合成した DeviceRuntimeState を追加で返す(unregisteredStates 参照。
+    /// 実機は対象外)。list-devices(--profile 指定時と同様スコープを絞る意図)は既定 false のまま
     static func determineStates(targets: [MonitorTarget],
-                                repoRoot: URL? = try? RepoRoot.find()) async -> [DeviceRuntimeState] {
+                                repoRoot: URL? = try? RepoRoot.find(),
+                                includeUnregistered: Bool = false) async -> [DeviceRuntimeState] {
         async let bridgeStatusesTask = scanBridgeStatuses(repoRoot: repoRoot)
         let simCatalog = (try? SimulatorCatalog.devices()) ?? []
         let runningAVDs = (try? AndroidDeviceCatalog.runningAVDs()) ?? [:]
@@ -294,18 +303,110 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             let canonical = AndroidDeviceCatalog.canonicalAVDID(avd)
             return runningAVDs.first(where: { $0.value == canonical })?.key
         })
-        async let bootCompletedTask = scanBootCompleted(serials: androidCandidateSerials)
+        let registeredCanonicalAVDIDs = Set(targets.compactMap { target -> String? in
+            guard target.platform == "android", !target.spec.isPhysical, let avd = target.spec.avd
+            else { return nil }
+            return AndroidDeviceCatalog.canonicalAVDID(avd)
+        })
+        // includeUnregistered のときは未登録の running AVD の serial もブート完了スキャンに加える
+        // (加えないと合成デバイスがブリッジAPK自動インストールを一切試みず永久に booted のまま)
+        let unregisteredAndroidSerials: Set<String> = includeUnregistered
+            ? Set(runningAVDs.filter { !registeredCanonicalAVDIDs.contains($0.value) }.keys)
+            : []
+        async let bootCompletedTask = scanBootCompleted(
+            serials: androidCandidateSerials.union(unregisteredAndroidSerials))
 
         let bridgeStatuses = await bridgeStatusesTask
         let bootCompleted = await bootCompletedTask
 
-        return targets.map { target in
+        let registeredStates = targets.map { target in
             target.platform == "ios"
                 ? iosState(target: target, catalog: simCatalog, bridgeStatuses: bridgeStatuses,
                            repoRoot: repoRoot)
                 : androidState(target: target, runningAVDs: runningAVDs,
                                connectedSerials: connectedSerials, bootCompleted: bootCompleted)
         }
+        guard includeUnregistered else { return registeredStates }
+
+        let registeredIosUdids = Set(registeredStates.compactMap { $0.iosUdid })
+        let (unregistered, skipped) = unregisteredStates(
+            simCatalog: simCatalog, runningAVDs: runningAVDs, bootCompleted: bootCompleted,
+            registeredTargets: targets, registeredIosUdids: registeredIosUdids)
+        for message in skipped {
+            FileHandle.standardError.write(Data((message + "\n").utf8))
+        }
+        return registeredStates + unregistered
+    }
+
+    /// 未登録(マシンプロファイル未記載)の起動中デバイスを合成する。iOS は booted かつ実機でない
+    /// シミュレータのうち registeredIosUdids に無いもの、Android は runningAVDs のうち canonical AVD ID
+    /// が registeredTargets の avd に無いもの。実機は対象外(未登録実機は扱わない)。
+    /// 合成 id が登録ターゲット(または他の合成デバイス)の id と衝突したらスキップする — 拡張側は id を
+    /// 一意キーとして devices を Map 管理するため、重複 id は片方が消える形で表示が壊れる。
+    /// I/O を持たない pure 関数(ユニットテスト対象のため private にしない。skipped は呼び出し側が
+    /// stderr へログする用のメッセージ)
+    static func unregisteredStates(
+        simCatalog: [SimDeviceInfo],
+        runningAVDs: [String: String],
+        bootCompleted: [String: Bool],
+        registeredTargets: [MonitorTarget],
+        registeredIosUdids: Set<String>
+    ) -> (states: [DeviceRuntimeState], skipped: [String]) {
+        var usedIds = Set(registeredTargets.map { $0.id })
+        var states: [DeviceRuntimeState] = []
+        var skipped: [String] = []
+
+        let bootedUnregistered = simCatalog.filter {
+            $0.booted && !$0.physical && !registeredIosUdids.contains($0.udid)
+        }
+        // 未登録同士で同名の booted sim が複数あると合成 id が衝突するため、udid 先頭8桁で一意化する
+        var nameCounts: [String: Int] = [:]
+        for sim in bootedUnregistered { nameCounts[sim.name, default: 0] += 1 }
+        for sim in bootedUnregistered {
+            let name = (nameCounts[sim.name] ?? 0) > 1
+                ? "\(sim.name) [\(sim.udid.prefix(8))]" : sim.name
+            let target = MonitorTarget(
+                platform: "ios", spec: DeviceSpec(name: name, os: sim.os, udid: sim.udid),
+                registered: false)
+            guard !usedIds.contains(target.id) else {
+                skipped.append("[monitor] Skipped an unregistered simulator due to an id collision: \(target.id)")
+                continue
+            }
+            usedIds.insert(target.id)
+            // connected にする理由: 拡張の画面配信(monitorDeviceStreamController.ts)は
+            // state==="connected" のデバイスにしか helper を張らない。未登録シミュレータは
+            // udid だけで simstream が動く(ブリッジ不要)ため、booted のままだと
+            // 「接続中」スピナーが永久に回る
+            states.append(DeviceRuntimeState(
+                target: target, state: "connected", detail: "unregistered",
+                iosPort: nil, androidSerial: nil, iosUdid: sim.udid))
+        }
+
+        let registeredCanonicalAVDIDs = Set(registeredTargets.compactMap { target -> String? in
+            guard target.platform == "android", !target.spec.isPhysical, let avd = target.spec.avd
+            else { return nil }
+            return AndroidDeviceCatalog.canonicalAVDID(avd)
+        })
+        for (serial, avdID) in runningAVDs where !registeredCanonicalAVDIDs.contains(avdID) {
+            let target = MonitorTarget(
+                platform: "android", spec: DeviceSpec(name: avdID, avd: avdID), registered: false)
+            guard !usedIds.contains(target.id) else {
+                skipped.append("[monitor] Skipped an unregistered emulator due to an id collision: \(target.id)")
+                continue
+            }
+            usedIds.insert(target.id)
+            if bootCompleted[serial] == true {
+                states.append(DeviceRuntimeState(
+                    target: target, state: "connected", detail: serial,
+                    iosPort: nil, androidSerial: serial))
+            } else {
+                states.append(DeviceRuntimeState(
+                    target: target, state: "booted", detail: "waiting for boot to finish (\(serial))",
+                    iosPort: nil, androidSerial: nil))
+            }
+        }
+
+        return (states, skipped)
     }
 
     /// connected からの降格を確定させるまでに要する連続失敗回数(1回の失敗では降格しない)
@@ -602,6 +703,10 @@ struct ApiMonitorCommand: AsyncParsableCommand {
 struct MonitorTarget {
     let platform: String  // "ios" / "android"
     let spec: DeviceSpec
+    /// マシンプロファイルに実在するか。false は determineStates(includeUnregistered:) が合成した
+    /// 起動中デバイス(未登録)。var なのは memberwise init に既定値付きで載せるため
+    /// (let + 既定値だと init から除外され registered: false を渡せない)
+    var registered: Bool = true
 
     var name: String { spec.name }
     /// VSCode 拡張側の識別子("ios:simulator1" 等。論理名ベースなのでポート・serial の
@@ -645,7 +750,7 @@ struct DeviceRuntimeState {
                              inRun: inRun,
                              kind: target.spec.isPhysical ? "physical" : "virtual",
                              host: host, port: iosPort,
-                             recording: recording)
+                             recording: recording, registered: target.registered)
     }
 }
 
@@ -800,6 +905,10 @@ private struct ApiMonitorDeviceInfo: Encodable {
     /// recording-lease(RecordingLease.isFresh)が生存中なら true。run profile の record:true で
     /// このデバイスの動画録画(VideoRecordingCoordinator)が進行中の意味。leaseStateDir 未解決時は常に false
     let recording: Bool
+    /// マシンプロファイルに実在するか。false は determineStates(includeUnregistered:) が合成した
+    /// 起動中デバイス(未登録)。追加フィールドのみで後方互換のため ProtocolVersion は不変
+    /// (契約は vscode-ftester/src/monitorDeviceModel.ts の MonitorDevice.registered)
+    let registered: Bool
 }
 
 /// monitorFrame イベント: state == connected のデバイスのみ、スクリーンショットを添えて出す

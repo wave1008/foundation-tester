@@ -6,8 +6,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { MonitorHealthWatchdog } from "../src/monitorHealthWatchdog";
 
-function device(name, state, health, serial, inRun) {
-  return { id: name, name, platform: "android", state, detail: "", health, serial, inRun };
+function device(name, state, health, serial, inRun, registered) {
+  return { id: name, name, platform: "android", state, detail: "", health, serial, inRun, registered };
 }
 
 /** テスト用ハーネス。posts/logs/restarts/streamRestarts を配列に記録し、
@@ -80,6 +80,16 @@ test("異常なしの観測では何も post しない", () => {
   const h = createHarness();
   h.watchdog.observe([device("Pixel1", "connected", undefined, "emulator-5554")]);
   h.watchdog.observe([device("Pixel1", "connected", [], "emulator-5554")]);
+  assert.deepEqual(h.posts, []);
+  assert.deepEqual(h.restarts, []);
+  assert.deepEqual(h.wifiCalls, []);
+});
+
+test("未登録(registered=false)は異常があっても一切 observe しない(マシンプロファイル前提の修復が成立しないため)", () => {
+  const h = createHarness();
+  h.watchdog.observe([
+    device("野良エミュ", "connected", ["wifi-disabled"], "emulator-5554", false, false),
+  ]);
   assert.deepEqual(h.posts, []);
   assert.deepEqual(h.restarts, []);
   assert.deepEqual(h.wifiCalls, []);
