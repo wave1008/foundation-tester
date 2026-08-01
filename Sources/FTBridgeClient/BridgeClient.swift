@@ -203,17 +203,18 @@ public final class BridgeClient: AppDriver {
     }
 
     public func snapshot() async throws -> SnapshotResponse {
-        try await snapshot(path: "/snapshot")
+        try await snapshot(query: nil)
     }
 
     /// `refresh=1` は Android ブリッジとの契約(AndroidRunner の BridgeRouter.handleSnapshot)。
     /// iOS ブリッジは未知クエリを無視するのでどちらへ送っても安全だが、呼ぶのは AndroidDriver だけ
     public func snapshot(bypassingCache: Bool) async throws -> SnapshotResponse {
-        try await snapshot(path: bypassingCache ? "/snapshot?refresh=1" : "/snapshot")
+        try await snapshot(query: bypassingCache ? "refresh=1" : nil)
     }
 
-    private func snapshot(path: String) async throws -> SnapshotResponse {
-        let response: SnapshotResponse = try await get(path, timeout: sessionTimeout)
+    private func snapshot(query: String?) async throws -> SnapshotResponse {
+        let response: SnapshotResponse = try await get("/snapshot", query: query,
+                                                       timeout: sessionTimeout)
         // 取りこぼしの申告(クロスオリジン iframe 等)は記録に載せる。
         // **無申告なら触らない**: 直前アクションの note を消してしまわないため
         if let note = response.note { lastActionNote = note }
@@ -324,8 +325,10 @@ public final class BridgeClient: AppDriver {
 
     // MARK: - HTTP helpers
 
-    func get<R: Decodable>(_ path: String, timeout: TimeInterval? = nil) async throws -> R {
-        let (data, response) = try await request(path: path, method: "GET", body: nil, timeout: timeout)
+    func get<R: Decodable>(_ path: String, query: String? = nil,
+                           timeout: TimeInterval? = nil) async throws -> R {
+        let (data, response) = try await request(path: path, method: "GET", body: nil,
+                                                 query: query, timeout: timeout)
         try Self.check(response: response, data: data)
         return try JSONDecoder().decode(R.self, from: data)
     }
@@ -339,9 +342,21 @@ public final class BridgeClient: AppDriver {
         return try JSONDecoder().decode(R.self, from: data)
     }
 
-    func request(path: String, method: String, body: Data?,
+    /// **クエリは path に混ぜない**: appendingPathComponent は "?" を %3F へ逃がすので、
+    /// "/snapshot?refresh=1" を渡すとブリッジ側で "GET /snapshot%3Frefresh=1" になり 404 になる
+    /// (2026-08-02 に実際に踏んだ。フェイクドライバの単体テストでは配線が通らず気付けなかった)
+    static func url(base: URL, path: String, query: String?) -> URL {
+        let withPath = base.appendingPathComponent(path)
+        guard let query, !query.isEmpty,
+              var components = URLComponents(url: withPath, resolvingAgainstBaseURL: false)
+        else { return withPath }
+        components.query = query
+        return components.url ?? withPath
+    }
+
+    func request(path: String, method: String, body: Data?, query: String? = nil,
                  timeout: TimeInterval? = nil) async throws -> (Data, URLResponse) {
-        var req = URLRequest(url: baseURL.appendingPathComponent(path))
+        var req = URLRequest(url: Self.url(base: baseURL, path: path, query: query))
         req.httpMethod = method
         req.httpBody = body
         if let timeout { req.timeoutInterval = timeout }
