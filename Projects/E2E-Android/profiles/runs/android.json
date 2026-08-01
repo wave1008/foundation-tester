@@ -8,7 +8,8 @@
     { "name": "Pixel 9(Android 15)-04" },
     { "name": "Pixel 9(Android 15)-05" },
     { "name": "Pixel 9(Android 15)-06" },
-    { "name": "Pixel 9(Android 15)-07" }
+    { "name": "Pixel 9(Android 15)-07" },
+    { "name": "Pixel 9(Android 15)-08" }
   ],
   "heal": false,
   "reportDir": "reports",
