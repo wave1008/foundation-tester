@@ -116,12 +116,12 @@ final class BridgeContractTests: XCTestCase {
         .android: [
             "AndroidRunner/AndroidManifest.xml": "a4d6db096f2cb7da4a4431d6c13aa5828247922b19f411091a34645b1a6f7076",
             "AndroidRunner/build.sh": "666cd57fd27b3a39cb9ecea0c7776577301181df87419ddfc76ff58c6ed8a5d7",
-            "AndroidRunner/src/com/example/ftbridge/BridgeHttpServer.java": "11b86fcb58fe8a1feea246011af80ae1f28202b02105f2fe597513895be8bde2",
+            "AndroidRunner/src/com/example/ftbridge/BridgeHttpServer.java": "ad3dcd930eebda953c971dfee7080d438011913ab0cde1ba6a750ee0ce4e1d26",
             "AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java": "d4c8ea3f40159f0221dcc5668a215eb0e41da8a85a332b612ce03a6fdd4623d0",
-            "AndroidRunner/src/com/example/ftbridge/BridgeRouter.java": "a67d67aa20202309ed32d2d9e10f4cd9e62d30eed31af599232644189f257057",
-            "AndroidRunner/src/com/example/ftbridge/InputInjector.java": "f567a80cc9f9461694aab4f428b7853392639ed5394db2cd866a9600c5a154f4",
+            "AndroidRunner/src/com/example/ftbridge/BridgeRouter.java": "56ae85e15c8b1a1287c0cec54acba12da5d0da0aeece590b60c6a5075fba68ed",
+            "AndroidRunner/src/com/example/ftbridge/InputInjector.java": "3bc395cf1ee5ed06ee4adf41b22ab698eb53961848455d896064ee2adf3aac2e",
             "AndroidRunner/src/com/example/ftbridge/QuietWaiter.java": "bed0d4c3bbafa9a4038aabfbf1e29ebaeb0198eaf4bee926cbd842b7907c3c29",
-            "AndroidRunner/src/com/example/ftbridge/SnapshotBuilder.java": "298189c375f07ebf01a1db2f44e9749ea96435c077b2cdf05e535e9701a0fda3",
+            "AndroidRunner/src/com/example/ftbridge/SnapshotBuilder.java": "6c1540b7627083d41d1b00adf7c6861669c5c3abae53d453d1da7698ea4c529e",
         ],
     ]
 

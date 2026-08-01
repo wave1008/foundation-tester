@@ -286,7 +286,7 @@ WebView(iOS=WKWebView / Android=android.webkit.WebView)の中身は、経路ご�
 
 | 経路 | 中身の取得 | 備考 |
 |---|---|---|
-| Android ブリッジ | a11y の仮想ツリー | リンクは Chromium の `chromeRole`(非ローカライズ)で `link` に正規化。**WebView 内ノードだけ `refresh()`** してから読む(DOM 変更の a11y 反映が 4〜8 秒遅れる実測への対処) |
+| Android ブリッジ | a11y の仮想ツリー | リンクは Chromium の `chromeRole`(非ローカライズ)で `link` に正規化。**全ノードを `refresh()`** してから読む(WebView は DOM 変更の a11y 反映が 4〜8 秒遅れ、ネイティブ画面でも IME 等が前面だと数秒古いツリーが返る) |
 | iOS xcuitest | a11y ツリー | 中身が現れるまで **約 2.3 秒**(WebContent プロセスの a11y 起動待ち) |
 | iOS in-app(uikit ホスト) | **DOM を JS で走査** | `InAppWebViewDOM` + `WebViewDOM.javaScript`。1往復・隔離ワールド |
 | iOS in-app(Compose / Flutter ホスト) | 取らない | interop が合成タッチと `insertText` を横取りし、**読めても操作が届かない**。画面ごと XCUITest へ委譲。**スクロールだけは例外**(下記) |
@@ -615,6 +615,11 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
   していたのに、注入側だけ漏れていた。**副産物として速くなる**: 確認が即座に成立するので
   WebView の type は 2,000→300ms、通常欄も中央値 864→520ms
   (キャッシュが古いあいだ待っていたぶんが消えた)
+- **この規律は WebView 限定ではない**(2026-08-01 に範囲を拡大)。IME 等が前面にあると
+  ネイティブ画面でも数秒古いツリーが返り、**アプリは正しいのに検証だけが落ちる**
+  (逆に、遷移前の状態を期待するアサーションは**誤って成功する**)。`SnapshotBuilder.collect` は
+  全ノードで `refresh()` する。**`isVisibleToUser()` より前に呼ぶこと** —— 可視性が古いと
+  実際は見えているノードがサブツリーごと消え、`getChild()` も古い子リストを返す
 
 **評価して不採用(再提案しない)**: `ACTION_FOCUS` でフォーカスを立てる案は **NPE を誘発して
 失敗率が 2/5 → 5/5 に悪化**した(フォーカス移動でノードが無効化される)。ホスト側での事前・事後の

@@ -210,9 +210,17 @@ public final class AndroidDriver: AppDriver {
         await settleViaBridge()
     }
 
+    public var supportsCacheBypass: Bool { true }
+
     public func snapshot() async throws -> SnapshotResponse {
+        try await snapshot(bypassingCache: false)
+    }
+
+    /// bypassingCache=true はブリッジに全ノード `refresh()` を要求する(既定は WebView 内だけ)。
+    /// 約 +65ms 掛かるので、検証が期限切れで失敗と決まる直前の1回にだけ使う(AppDriver の宣言参照)
+    public func snapshot(bypassingCache: Bool) async throws -> SnapshotResponse {
         restoreStateIfNeeded()  // 別プロセス実行時に refCenters 等を引き継ぐ(persistState で消さないため)
-        var snapshot = try await withBridge { try await $0.snapshot() }
+        var snapshot = try await withBridge { try await $0.snapshot(bypassingCache: bypassingCache) }
         syncLocalState(from: snapshot)
         // IME は別プロセスの window でアプリの a11y ツリーに出ないため、オンデバイスのブリッジでは
         // 判定できずホスト側で dumpsys を引いて補う(AndroidForegroundWindows.keyboardVisible)。
