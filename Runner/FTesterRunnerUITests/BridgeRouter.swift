@@ -51,6 +51,14 @@ final class BridgeRouter {
     // 明示的な swipe/scroll コマンドは同 settledSignature(どちらも「連続2回一致」で待つ)。
     private static let mutatingPaths: Set<String> = ["/session", "/tap", "/type", "/clear", "/pressEnter", "/hidekeyboard", "/press", "/appswitcher", "/home"]
 
+    /// 所要内訳ログの on/off(既定 off)。ホストの FT_BRIDGE_TIMING=1 を BridgeLauncher が
+    /// xctestrun の環境変数へ注入する(同期相手: Sources/FTBridgeClient/BridgeLauncher.swift)
+    private static let timingEnabled =
+        ProcessInfo.processInfo.environment["FT_BRIDGE_TIMING"] == "1"
+    /// ゲート off でも記録する閾値(ms)。実測の p90 は 439ms・最大 889ms なので、
+    /// 通常運転では1行も出ない値にしてある(2026-08-02 実測)
+    private static let timingAlwaysLogMs: Double = 1500
+
     func handle(_ request: BridgeHTTPServer.Request) -> BridgeHTTPServer.Response {
         do {
             let response: BridgeHTTPServer.Response
@@ -268,8 +276,21 @@ final class BridgeRouter {
         let req = try decode(TapRequest.self, body)
         let app = try requireLiveApp()
         let point = try resolvePoint(ref: req.ref, x: req.x, y: req.y)
+        // 計測: `tap()` は「イベント合成」と「暗黙の quiescence 待ち」の両方を含む1呼び出しで、
+        // ホスト側の actionMs からは分解できない。quiescence 側だけ swizzle 経由で数え、
+        // 残り(synth)を引き算で出す(FastInput.quiescenceMs の但し書きも読むこと)
+        FastInput.resetTiming()
+        let start = DispatchTime.now()
         try FastInput.with(req.fast) {
             coordinate(app, point).tap()
+        }
+        let totalMs = Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1e6
+        // 閾値超えは**ゲートに関係なく**残す。FT_BRIDGE_TIMING はランナー起動時にしか効かず
+        // (稼働中ランナーを再利用すると届かない)、そのとき 0 行を「待ちが無かった」と
+        // 誤読する事故が起きる。異常に遅い tap だけは必ず記録が残るようにしておく
+        if Self.timingEnabled || totalMs >= Self.timingAlwaysLogMs {
+            NSLog("[ftester] tapTiming total=%.0f quiesce=%.0f synth=%.0f", totalMs,
+                  FastInput.quiescenceMs, totalMs - FastInput.quiescenceMs)
         }
         return .json(OKResponse())
     }

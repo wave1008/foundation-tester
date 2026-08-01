@@ -156,6 +156,9 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         // 起動元の自己申告(doctor の診断用。BridgeDTO.StatusResponse の同名フィールド参照)
         if (BridgeInstrumentation.ownerRepo != null) o.put("ownerRepo", BridgeInstrumentation.ownerRepo);
         o.put("idleSeconds", BridgeHttpServer.lastIdleSeconds);
+        // 所要内訳ログの状態。起動時にしか切り替わらないので、ホストは希望と違えば起動し直す
+        // (同期相手: Sources/FTAndroid/AndroidBridge.swift の startBridge)
+        if (BridgeInstrumentation.timingEnabled) o.put("timingEnabled", true);
         return BridgeHttpServer.Response.json(200, o.toString());
     }
 
@@ -193,9 +196,15 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
     }
 
     private BridgeHttpServer.Response handleTap(JSONObject body) {
+        long t0 = SystemClock.uptimeMillis();
         double[] point = resolvePoint(body);
         InputInjector.tap(ua(), point[0], point[1]);
-        settle();
+        long t1 = SystemClock.uptimeMillis();
+        settle("tap");
+        if (BridgeInstrumentation.timingEnabled) {
+            android.util.Log.i(BridgeInstrumentation.TAG, "tapTiming inject=" + (t1 - t0)
+                    + " settle=" + (SystemClock.uptimeMillis() - t1));
+        }
         return ok();
     }
 
@@ -437,8 +446,21 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
      * QuietWaiter.java 参照)
      */
     private void settle() {
+        settle("-");
+    }
+
+    /** settle() の内訳を logcat に出す版。tag は呼び出し元(計測時にホスト側 actionMs と突き合わせる)。
+     *  ACTION_CAP_MS を超える値が出るなら待ちは quietWait の外にある。 */
+    private void settle(String tag) {
+        long t0 = SystemClock.uptimeMillis();
         String startPackage = stableActivePackage(STABLE_PACKAGE_BUDGET_MS);
+        long t1 = SystemClock.uptimeMillis();
         quietWaiter.quietWait(startPackage, QuietWaiter.QUIET_MS, QuietWaiter.ACTION_CAP_MS);
+        long t2 = SystemClock.uptimeMillis();
+        if (BridgeInstrumentation.timingEnabled) {
+            android.util.Log.i(BridgeInstrumentation.TAG, "settleTiming " + tag
+                    + " stablePkg=" + (t1 - t0) + " quiet=" + (t2 - t1));
+        }
     }
 
     /**
