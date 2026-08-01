@@ -6,6 +6,7 @@
 
 import XCTest
 import FTAndroid
+import FTBridgeClient
 import FTCore
 @testable import ftester
 
@@ -222,5 +223,103 @@ final class MonitorDeviceStateTests: XCTestCase {
         XCTAssertEqual(result.first(where: { $0.target.id == a.id })?.state, "offline")
         XCTAssertEqual(result.first(where: { $0.target.id == b.id })?.state, "connected")
         XCTAssertEqual(downgrades.count, 1, "降格したのは a だけ")
+    }
+
+    // MARK: - unregisteredStates(「(起動中のデバイス)」でマシンプロファイル未記載機を表示するための合成)
+
+    private func sim(udid: String, name: String = "野良シム", os: String = "iOS 18.0",
+                     booted: Bool = true, physical: Bool = false) -> SimDeviceInfo {
+        SimDeviceInfo(udid: udid, name: name, os: os, booted: booted, physical: physical)
+    }
+
+    func testUnregisteredBootedSimulatorIsSynthesizedAsConnected() {
+        let (states, skipped) = ApiMonitorCommand.unregisteredStates(
+            simCatalog: [sim(udid: "UDID-A")], runningAVDs: [:], bootCompleted: [:],
+            registeredTargets: [], registeredIosUdids: [])
+        XCTAssertTrue(skipped.isEmpty)
+        XCTAssertEqual(states.count, 1)
+        let state = states[0]
+        XCTAssertEqual(state.state, "connected",
+                       "simstream は udid だけで動く(ブリッジ不要)ので booted のまま止めない")
+        XCTAssertEqual(state.detail, "unregistered")
+        XCTAssertEqual(state.iosUdid, "UDID-A")
+        XCTAssertNil(state.iosPort, "未登録シミュレータにブリッジは無い")
+        XCTAssertFalse(state.target.registered)
+        XCTAssertEqual(state.target.name, "野良シム")
+    }
+
+    func testRegisteredSimulatorUdidIsNotSynthesized() {
+        let (states, _) = ApiMonitorCommand.unregisteredStates(
+            simCatalog: [sim(udid: "UDID-A")], runningAVDs: [:], bootCompleted: [:],
+            registeredTargets: [], registeredIosUdids: ["UDID-A"])
+        XCTAssertTrue(states.isEmpty)
+    }
+
+    func testUnbootedAndPhysicalSimulatorsAreIgnored() {
+        let (states, _) = ApiMonitorCommand.unregisteredStates(
+            simCatalog: [sim(udid: "UDID-A", booted: false), sim(udid: "UDID-B", physical: true)],
+            runningAVDs: [:], bootCompleted: [:],
+            registeredTargets: [], registeredIosUdids: [])
+        XCTAssertTrue(states.isEmpty, "未起動・実機は未登録合成の対象外")
+    }
+
+    func testUnregisteredRunningAVDBecomesConnectedWhenBootCompleted() {
+        let (states, skipped) = ApiMonitorCommand.unregisteredStates(
+            simCatalog: [], runningAVDs: ["emulator-5556": "Pixel_9_Android_16_-02"],
+            bootCompleted: ["emulator-5556": true],
+            registeredTargets: [], registeredIosUdids: [])
+        XCTAssertTrue(skipped.isEmpty)
+        XCTAssertEqual(states.count, 1)
+        XCTAssertEqual(states[0].state, "connected")
+        XCTAssertEqual(states[0].androidSerial, "emulator-5556")
+        XCTAssertFalse(states[0].target.registered)
+        XCTAssertEqual(states[0].target.spec.avd, "Pixel_9_Android_16_-02")
+    }
+
+    func testUnregisteredRunningAVDStaysBootedUntilBootCompleted() {
+        // 加えて呼び出し側(determineStates)が起動中の未登録 AVD の serial を boot-completed
+        // スキャン対象へ加えないと、この bootCompleted が永久に埋まらず booted のまま固まる
+        let (states, _) = ApiMonitorCommand.unregisteredStates(
+            simCatalog: [], runningAVDs: ["emulator-5556": "Pixel_9_Android_16_-02"],
+            bootCompleted: ["emulator-5556": false],
+            registeredTargets: [], registeredIosUdids: [])
+        XCTAssertEqual(states.first?.state, "booted")
+        XCTAssertNil(states.first?.androidSerial, "booted では serial を載せない(androidState と同じ規約)")
+        XCTAssertEqual(states.first?.detail, "waiting for boot to finish (emulator-5556)")
+    }
+
+    func testRegisteredAVDIsNotSynthesized() {
+        let registered = emulator(avd: "Pixel_9_Android_15_-01")
+        let (states, _) = ApiMonitorCommand.unregisteredStates(
+            simCatalog: [], runningAVDs: ["emulator-5554": "Pixel_9_Android_15_-01"],
+            bootCompleted: ["emulator-5554": true],
+            registeredTargets: [registered], registeredIosUdids: [])
+        XCTAssertTrue(states.isEmpty)
+    }
+
+    func testIdCollisionWithRegisteredTargetSkipsTheSimulator() {
+        // 登録済みターゲットが同名の iOS デバイスを持つ場合、合成 id "ios:野良シム" が衝突するため
+        // スキップする(拡張側は id をキーに devices を Map 管理するため、重複 id は表示が壊れる)
+        let registered = MonitorTarget(platform: "ios", spec: DeviceSpec(name: "野良シム"))
+        let (states, skipped) = ApiMonitorCommand.unregisteredStates(
+            simCatalog: [sim(udid: "UDID-A")], runningAVDs: [:], bootCompleted: [:],
+            registeredTargets: [registered], registeredIosUdids: [])
+        XCTAssertTrue(states.isEmpty)
+        XCTAssertEqual(skipped.count, 1)
+        XCTAssertTrue(skipped[0].contains("ios:野良シム"), "スキップ理由に衝突した id を含めること: \(skipped[0])")
+    }
+
+    func testDuplicateNamedUnregisteredSimulatorsAreDisambiguatedByUdidPrefix() {
+        let (states, skipped) = ApiMonitorCommand.unregisteredStates(
+            simCatalog: [
+                sim(udid: "AAAAAAAA-1111-0000-0000-000000000000", name: "同名シム"),
+                sim(udid: "BBBBBBBB-2222-0000-0000-000000000000", name: "同名シム"),
+            ],
+            runningAVDs: [:], bootCompleted: [:],
+            registeredTargets: [], registeredIosUdids: [])
+        XCTAssertTrue(skipped.isEmpty)
+        XCTAssertEqual(states.count, 2)
+        let names = Set(states.map { $0.target.name })
+        XCTAssertEqual(names, ["同名シム [AAAAAAAA]", "同名シム [BBBBBBBB]"])
     }
 }

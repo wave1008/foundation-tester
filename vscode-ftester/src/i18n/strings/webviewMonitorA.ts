@@ -42,6 +42,11 @@ export const webviewMonitorAStrings = {
     ja: "実機(シミュレータ/エミュレータではありません)。起動・停止は行いません",
     en: "Physical device (not a simulator/emulator). It is never started or stopped.",
   },
+  "wvMonitor.tile.unregistered": { ja: "未登録", en: "Unregistered" },
+  "wvMonitor.tile.unregisteredTitle": {
+    ja: "マシンプロファイル未記載の起動中デバイスです。起動は行えません(停止・ライブ操作は可能です)",
+    en: "A running device not listed in the machine profile. Starting is unavailable (stopping and Live Control are available).",
+  },
   "wvMonitor.tile.queuedRestart": { ja: "再起動待機", en: "Restart pending" },
   "wvMonitor.tile.queuedStart": { ja: "起動待機", en: "Start pending" },
 
