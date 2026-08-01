@@ -236,7 +236,7 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
 | `501` / `404`(本文 `not found:`) | このエンジンでは**原理的に不可** | XCUITest へフォールバック(§10 の「in-app で不可・XCUITest で可」) |
 | `404`(ref 不明) | スナップショット取り直しが要る本物の失敗 | 失敗(フォールバックしない。本文前置で 501 系と区別) |
 | `409` | 一時的競合(キーウィンドウ不在・セッション消失) | セッション消失だけ `SessionRecoveryDriver` が張り直す。**フォールバック判定に使わない** |
-| `422` | セッションはあるが**今のこの画面では実行できない**(フォーカス欄が無い・クリアしきれない) | 失敗。`clearInput` だけ 409 と同様に typeDriver へ回す(`isClearInputFallback`) |
+| `422` | セッションはあるが**今のこの画面では実行できない**(フォーカス欄が無い・クリアしきれない・type の読み返しが期待値に届かない) | 失敗。`clearInput` だけ 409 と同様に typeDriver へ回す(`isClearInputFallback`) |
 | `503` | セッションはあるが**対象アプリが起動していない** | `AppAttachDriver` が activate して1回再試行 |
 
 **XCUITest ランナーは 409 を `requireApp()` の1箇所からしか投げてはいけない**(`SessionRecoveryDriver`
