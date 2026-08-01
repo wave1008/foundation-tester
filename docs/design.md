@@ -289,7 +289,7 @@ WebView(iOS=WKWebView / Android=android.webkit.WebView)の中身は、経路ご�
 | Android ブリッジ | a11y の仮想ツリー | リンクは Chromium の `chromeRole`(非ローカライズ)で `link` に正規化。**全ノードを `refresh()`** してから読む(WebView は DOM 変更の a11y 反映が 4〜8 秒遅れ、ネイティブ画面でも IME 等が前面だと数秒古いツリーが返る) |
 | iOS xcuitest | a11y ツリー | 中身が現れるまで **約 2.3 秒**(WebContent プロセスの a11y 起動待ち) |
 | iOS in-app(uikit ホスト) | **DOM を JS で走査** | `InAppWebViewDOM` + `WebViewDOM.javaScript`。1往復・隔離ワールド |
-| iOS in-app(Compose / Flutter ホスト) | 取らない | interop が合成タッチと `insertText` を横取りし、**読めても操作が届かない**。画面ごと XCUITest へ委譲。**スクロールだけは例外**(下記) |
+| iOS in-app(Compose / Flutter ホスト) | **DOM を JS で走査**(2026-08-02 から) | interop が合成タッチと `insertText` を横取りするので**読めても操作は届かない**。読みは DOM のまま、**ref を使う操作だけ座標へ解決して XCUITest の実タッチ**へ回す(`webViewPath: "dom-interop"`。performance-tuning.md §3.13)。画面ごとの委譲は DOM が全く読めない構成だけに残る |
 
 - **a11y ツリーは in-app からは見えない**(Web コンテンツの AX は WebContent プロセスが提供する)。
   そこで in-app は `evaluateJavaScript` で DOM を1往復読み、a11y 経路と同じ DTO へ写す。
@@ -297,6 +297,12 @@ WebView(iOS=WKWebView / Android=android.webkit.WebView)の中身は、経路ご�
 - **操作は DOM でやらない**。`element.click()` や value 代入は user activation・IME・`:active` を壊すので、
   DOM から得た矩形を画面座標へ変換して**合成タッチ**を打つ(ref に AX ノードを紐付けない =
   `tapByRef` が座標へ落ちる、という既存経路をそのまま使う)。
+- **`dom-interop` では ref を XCUITest へ渡さない**。委譲先は自分が最後に撮った別 snapshot の
+  ref 名前空間を持つため、混ぜると別要素を指す(「返す snapshot と ref の名前空間を一致させる」
+  不変条件)。ホストが ref → 矩形中心 → 座標に解決してから渡す。
+- **画面に入るとき1回だけ委譲側を暖める**(`delegated.snapshot()`)。これが XCUITest の attach を
+  兼ねており、省くと**最初の座標タップが 200 を返しても効かない**。1画面1回に留めること
+  (毎 snapshot 撃つと委譲と同じコストに戻る)。
 - **DOM 由来の要素は `ElementInfo.web = true`** で申告する。ホスト(`WebViewDelegatingDriver`)は
   これを見て委譲要否を決める。**幾何で「中に何か居るか」を見てはいけない**: Compose iOS の
   interop 容器は WebView と同じ矩形を持つため、中身と誤認して委譲が止まる(2026-07-29 実害)。
