@@ -679,12 +679,18 @@ struct RunScenarios: AsyncParsableCommand {
           help: "Enable fast input on the iOS xcuitest bridge (skips the quiescence wait). Can also be set via iosFastInput in the run profile")
     var fastInput = false
 
+    @Flag(name: .customLong("enable-animations"),
+          help: "Keep the app's animations instead of turning them off on the device. Can also be set via enableAnimations in the run profile")
+    var enableAnimations = false
+
     @OptionGroup var driverOptions: DriverOptions
 
     func run() async throws {
         // BridgeClient(ホスト・サブプロセス両方)が FT_FAST_INPUT を読む。プロファイル指定分は
         // ProfileRunner が同様に注入する
         if fastInput { setenv("FT_FAST_INPUT", "1", 1) }
+        // プロファイル指定分は ProfileRunner が注入する(こちらは ON 側の上書きのみ)
+        if enableAnimations { setenv(AnimationPolicy.environmentKey, "1", 1) }
         PhaseLog.mark("start")
         let testProject = try ScenarioHost.project(named: project)
         PhaseLog.mark("project-resolved")

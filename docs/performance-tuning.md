@@ -831,9 +831,12 @@ window/transition/animator の `*_scale` はチューニングノブではなく
   通知権限は**アプリ再インストール(uninstall→install)でのみ未決定に戻る**。ダイアログ系の
   fixture を繰り返し検証するときは各回 reinstall する
 - **アニメーション有効デバイスでは静穏判定後もアニメが画面を動かすため画像が stale になる**
-  (a11y要素はFRESHだがscreenshotだけSTALE、という形で顕在化)。ブリッジ起動時に
+  (a11y要素はFRESHだがscreenshotだけSTALE、という形で顕在化)。ブリッジ起動時と**run 開始時**に
   window/transition/animator の `*_scale` を自動で無効化する(2026-07-12組込み)。
-  実機を追加したときも同様に自動適用される
+  実機を追加したときも同様に自動適用される。
+  **見た目の確認や録画のためにアニメーションを残したいときだけ**実行プロファイルの
+  `enableAnimations: true`(GUI は実行プロファイル設定「アニメーションを有効にする」)にする。
+  その場合は整定待ちが伸び、上記 stale の実害が戻る前提で使うこと(既定に戻すべき設定)
 - **常駐 CLI は stdin EOF で即終了する**(`ftester api {host-metrics,live serve,monitor}`、
   `ftester-simstream`、`ftester-androidstream`。拡張は stdin パイプを開いたまま保持している)。
   アドホックに spawn して計測・検証するとき、stdin を /dev/null 継承のまま渡すと即座に EOF を検知して

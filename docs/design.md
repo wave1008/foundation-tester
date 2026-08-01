@@ -1702,6 +1702,20 @@ run 開始が約1分延びる(ゲスト再起動では戻らない)。戻した�
 モニターが再検出した renderMode を見て `syncCpuRenderNames` が落とす(run 側の復帰は拡張の外で
 起きるため、これが無いと次の個別 device-up が再び swiftshader で起こしてしまう)。
 
+`enableAnimations`(既定 false)を true にすると、**テスト対象アプリのアニメーションを残す**。
+既定(false)では run 開始時に Android の `window/transition/animator_*_scale` を 0 にし、iOS
+シミュレータの Reduce Motion を ON にする(アニメーションは a11y イベントを出さないため、静穏判定を
+通過した後も絵が動き続けてスクリーンショットが遷移途中を掴む。§7 の実害)。判定元は
+`FTCore/AnimationPolicy`(実行プロファイル → `FT_ANIMATIONS` → 各ドライバ。CLI は
+`ftester run --enable-animations`、環境変数直指定でも ON にできる)。
+
+適用は2箇所ある。**ブリッジのコールド起動時**(`AndroidBridge` / `BridgeLauncher`)だけでは
+ブリッジが run をまたいで再利用されたときに前の run の状態が残るため、**run 開始時にも毎回同期**する
+(Android: `ProfileWorkerFactory.syncAnimationSettings`、iOS: `buildIOSWorkers` の供給直後)。
+Android 実機はグローバル設定が**永続的に**書き換わるので、現在値を読んで差分があるときだけ書き、
+そのときだけ1行知らせる(エミュレータ/シミュレータは無条件・無言)。iOS 実機はホストから
+アクセシビリティ設定を変更できないため対象外(端末側で手動設定する)。
+
 `record`(既定 false)を true にすると、各ワーカー(デバイス)で run 全体を録画し続けつつ
 (iOS: `simctl io recordVideo` の .mov / Android: `screenrecord` の 180 秒セグメント群)、
 ファイナライズ時に**テスト関数(シナリオ)ごとに1本の mp4**へ壁時計区間で切り出して

@@ -101,6 +101,10 @@ export const panelsStrings = {
   },
   "panels.runProfile.recordSectionTitle": { ja: "録画", en: "Recording" },
   "panels.runProfile.miscSectionTitle": { ja: "misc", en: "misc" },
+  "panels.runProfile.enableAnimationsLabel": {
+    ja: "アニメーションを有効にする(既定は無効。有効にすると整定待ちが伸び、テストが不安定になることがあります)",
+    en: "Keep app animations (off by default; keeping them lengthens settling waits and can make tests unstable)",
+  },
   "panels.runProfile.recordLabel": { ja: "録画する", en: "Record video" },
   "panels.runProfile.recordFailuresOnlyLabel": {
     ja: "OKになったテストの録画は保存しない",

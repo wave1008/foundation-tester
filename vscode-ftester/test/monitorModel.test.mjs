@@ -1103,6 +1103,7 @@ const VALID_RUN_PROFILE_SAVE = {
     screenIs: true,
     iosInappEngine: true,
     iosFastInput: false,
+    enableAnimations: false,
     reportDir: "reports",
     defaultTimeout: "10",
     wipeDataOnBloat: true,
@@ -1126,7 +1127,7 @@ test("isMonitorFromWebviewMessage: runProfileLoad は profile 空文字/欠落/�
   assert.equal(isMonitorFromWebviewMessage({ type: "runProfileLoad", profile: 1 }), false);
 });
 
-test("isMonitorFromWebviewMessage: runProfileSave は profile 非空・fields19項目の型が揃っていれば true", () => {
+test("isMonitorFromWebviewMessage: runProfileSave は profile 非空・fields20項目の型が揃っていれば true", () => {
   assert.equal(isMonitorFromWebviewMessage(VALID_RUN_PROFILE_SAVE), true);
   // devices は空配列も(型としては)許容する — 「1件以上」の検証はクライアント側の別ロジックが担う。
   assert.equal(
@@ -1147,6 +1148,7 @@ test("isMonitorFromWebviewMessage: runProfileSave は profile 非空・fields19�
         screenIs: false,
         iosInappEngine: false,
         iosFastInput: true,
+        enableAnimations: true,
         reportDir: "",
         defaultTimeout: "",
         wipeDataOnBloat: false,
@@ -1948,7 +1950,7 @@ test("syncDevicesInMachineProfile: トップレベルがオブジェクトでな
 
 // ---- parseRunProfileForForm ----
 
-test("parseRunProfileForForm: 正常な値は19フィールドをそのまま読み取る", () => {
+test("parseRunProfileForForm: 正常な値は20フィールドをそのまま読み取る", () => {
   const parsed = parseRunProfileForForm({
     machine: "M1 Max",
     app: "sampleapp",
@@ -1959,6 +1961,7 @@ test("parseRunProfileForForm: 正常な値は19フィールドをそのまま読
     screenIs: false,
     iosInappEngine: false,
     iosFastInput: true,
+    enableAnimations: true,
     reportDir: "reports",
     defaultTimeout: 10,
     wipeDataOnBloat: false,
@@ -1980,6 +1983,7 @@ test("parseRunProfileForForm: 正常な値は19フィールドをそのまま読
     screenIs: false,
     iosInappEngine: false,
     iosFastInput: true,
+    enableAnimations: true,
     reportDir: "reports",
     defaultTimeout: "10",
     wipeDataOnBloat: false,
@@ -1993,7 +1997,7 @@ test("parseRunProfileForForm: 正常な値は19フィールドをそのまま読
   });
 });
 
-test("parseRunProfileForForm: 欠落キーは既定値(machine/app/reportDir/locale/recordBitrateKbps=''、devices=[]、fm/heal/screenIs=true、falsePositiveCheck=false、iosInappEngine=true、defaultTimeout=''、wipeDataOnBloat=true、wipeDataThresholdGB=''、record/recordFailuresOnly/recordFullResolution/iosFastInput/recoverCpuFallbackToGpu=false)", () => {
+test("parseRunProfileForForm: 欠落キーは既定値(machine/app/reportDir/locale/recordBitrateKbps=''、devices=[]、fm/heal/screenIs=true、falsePositiveCheck=false、iosInappEngine=true、defaultTimeout=''、wipeDataOnBloat=true、wipeDataThresholdGB=''、record/recordFailuresOnly/recordFullResolution/iosFastInput/enableAnimations/recoverCpuFallbackToGpu=false)", () => {
   const parsed = parseRunProfileForForm({});
   assert.deepEqual(parsed, {
     machine: "",
@@ -2005,6 +2009,7 @@ test("parseRunProfileForForm: 欠落キーは既定値(machine/app/reportDir/loc
     screenIs: true,
     iosInappEngine: true,
     iosFastInput: false,
+    enableAnimations: false,
     reportDir: "",
     defaultTimeout: "",
     wipeDataOnBloat: true,
@@ -2050,6 +2055,7 @@ test("parseRunProfileForForm: 型不正のキーは既定値扱い(machine が�
     screenIs: true,
     iosInappEngine: true,
     iosFastInput: false,
+    enableAnimations: false,
     reportDir: "",
     defaultTimeout: "",
     wipeDataOnBloat: true,
@@ -2077,6 +2083,13 @@ test("parseRunProfileForForm: falsePositiveCheck は boolean ならそのまま�
   assert.equal(parseRunProfileForForm({ falsePositiveCheck: false }).falsePositiveCheck, false);
   assert.equal(parseRunProfileForForm({}).falsePositiveCheck, false);
   assert.equal(parseRunProfileForForm({ falsePositiveCheck: "true" }).falsePositiveCheck, false);
+});
+
+test("parseRunProfileForForm: enableAnimations は boolean ならそのまま返し、欠落/非 boolean は既定値 false(= アニメーション無効化)", () => {
+  assert.equal(parseRunProfileForForm({ enableAnimations: true }).enableAnimations, true);
+  assert.equal(parseRunProfileForForm({ enableAnimations: false }).enableAnimations, false);
+  assert.equal(parseRunProfileForForm({}).enableAnimations, false);
+  assert.equal(parseRunProfileForForm({ enableAnimations: "true" }).enableAnimations, false);
 });
 
 test("parseRunProfileForForm: iosFastInput は boolean ならそのまま返し、欠落/非 boolean は既定値 false", () => {
@@ -2215,6 +2228,7 @@ const BASE_RUN_PROFILE_FIELDS = {
   screenIs: true,
   iosInappEngine: true,
   iosFastInput: false,
+  enableAnimations: false,
   reportDir: "reports",
   defaultTimeout: "10",
   wipeDataOnBloat: true,
@@ -2247,10 +2261,11 @@ test("updateRunProfileInObject: 基本更新(machine/app/fm/heal/falsePositiveCh
   assert.equal("recordBitrateKbps" in result.object, false);
   assert.equal("recordFullResolution" in result.object, false);
   assert.equal("iosFastInput" in result.object, false);
+  assert.equal("enableAnimations" in result.object, false); // 既定(無効化)はキーを書かない
 });
 
-test("updateRunProfileInObject: record/recordFailuresOnly/recordFullResolution/iosFastInput は true のときのみ書き込み、false なら既存キーごと削除する", () => {
-  for (const key of ["record", "recordFailuresOnly", "recordFullResolution", "iosFastInput"]) {
+test("updateRunProfileInObject: record/recordFailuresOnly/recordFullResolution/iosFastInput/enableAnimations は true のときのみ書き込み、false なら既存キーごと削除する", () => {
+  for (const key of ["record", "recordFailuresOnly", "recordFullResolution", "iosFastInput", "enableAnimations"]) {
     const enabled = updateRunProfileInObject({}, { ...BASE_RUN_PROFILE_FIELDS, [key]: true });
     assert.equal(enabled.ok, true);
     assert.equal(enabled.object[key], true, `${key}: true で書き込まれるべき`);

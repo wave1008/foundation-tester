@@ -135,6 +135,10 @@ struct ApiRunCommand: AsyncParsableCommand {
                 project: testProject, runName: profile, machineName: machine.name)
             for warning in resolved.warnings { logStderr("⚠️ \(warning)") }
             if resolved.iosFastInput { setenv("FT_FAST_INPUT", "1", 1) }  // BridgeClient.fastInput 参照
+            // 未指定でも必ず書く(既定の "0" を明示し、前段の値を残さない)。環境変数側で
+            // 既に ON なら尊重する(`ftester run --enable-animations` と手動 export の上書き)
+            let animations = resolved.enableAnimations || AnimationPolicy.animationsEnabled()
+            setenv(AnimationPolicy.environmentKey, animations ? "1" : "0", 1)
             await BackendHealthCheck.warnIfUnreachable(resolved: resolved) { logStderr($0) }
             resolvedProfile = resolved
         }
@@ -179,7 +183,8 @@ struct ApiRunCommand: AsyncParsableCommand {
                 }
                 await ProfileWorkerFactory.preparePhysicalAndroidDevices(
                     resolved: resolved) { logStderr($0) }
-                var workers = try ProfileWorkerFactory.buildAndroidWorkers(resolved: resolved)
+                var workers = try ProfileWorkerFactory.buildAndroidWorkers(
+                    resolved: resolved) { logStderr($0) }
                 supplyLease?.hold(
                     keys: workers.compactMap { $0.connection.serial ?? $0.connection.udid })
                 // 凍結機は修復→不発なら guest reboot 待ちで本 run に復帰・それでも駄目な個体のみ除外

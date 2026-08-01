@@ -650,6 +650,7 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
         typeof value.fields.screenIs === "boolean" &&
         typeof value.fields.iosInappEngine === "boolean" &&
         typeof value.fields.iosFastInput === "boolean" &&
+        typeof value.fields.enableAnimations === "boolean" &&
         typeof value.fields.reportDir === "string" &&
         typeof value.fields.defaultTimeout === "string" &&
         typeof value.fields.wipeDataOnBloat === "boolean" &&

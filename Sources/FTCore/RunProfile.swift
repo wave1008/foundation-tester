@@ -252,6 +252,13 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     /// 実行環境に注入する(伝搬経路は BridgeClient.fastInput 参照)。動きの激しい画面では
     /// 整定前タップのフレークリスクを伴う(既定 false)
     public var iosFastInput: Bool?
+    /// テスト対象アプリのアニメーションを残すか(既定 false = 実行開始時に無効化する)。
+    /// true で FT_ANIMATIONS=1 を実行環境に注入する(判定元は AnimationPolicy)。ON にすると
+    /// 整定待ちが伸び、Android では静穏判定後もスクリーンショットが遷移途中の絵を掴みうる。
+    /// 端末側の設定は run 開始時に毎回この値へ同期される(ブリッジ再利用でも効く)。
+    /// 同期相手: vscode-ftester/schemas/run-profile.schema.json と
+    /// src/monitorProfileForms.ts の RunProfileFormFields
+    public var enableAnimations: Bool?
     /// 並列実行の各ワーカー(デバイス)ごとに run 全体を録画し、テスト関数(シナリオ)ごとに
     /// 1本の mp4 へ切り出すか(既定 false)。実体は RunOrchestrator への VideoRecordingConfig 注入
     /// (VideoRecordingCoordinator.swift)。録画失敗は run を失敗させない(警告ログのみ)
@@ -272,7 +279,8 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
                 machine: String? = nil, iosInappEngine: Bool? = nil,
                 wipeDataOnBloat: Bool? = nil, wipeDataThresholdGB: Double? = nil,
                 recoverCpuFallbackToGpu: Bool? = nil,
-                locale: String? = nil, iosFastInput: Bool? = nil, record: Bool? = nil,
+                locale: String? = nil, iosFastInput: Bool? = nil,
+                enableAnimations: Bool? = nil, record: Bool? = nil,
                 recordFailuresOnly: Bool? = nil, recordBitrateKbps: Int? = nil,
                 recordFullResolution: Bool? = nil) {
         self.app = app
@@ -291,6 +299,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
         self.recoverCpuFallbackToGpu = recoverCpuFallbackToGpu
         self.locale = locale
         self.iosFastInput = iosFastInput
+        self.enableAnimations = enableAnimations
         self.record = record
         self.recordFailuresOnly = recordFailuresOnly
         self.recordBitrateKbps = recordBitrateKbps
@@ -302,7 +311,8 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
         "reportDir", "defaultTimeout", "scenarioTimeout",
         "machine", "iosInappEngine", "wipeDataOnBloat", "wipeDataThresholdGB",
         "recoverCpuFallbackToGpu", "locale",
-        "iosFastInput", "record", "recordFailuresOnly", "recordBitrateKbps", "recordFullResolution",
+        "iosFastInput", "enableAnimations",
+        "record", "recordFailuresOnly", "recordBitrateKbps", "recordFullResolution",
     ]
 }
 
@@ -370,6 +380,8 @@ public struct ResolvedProfile: Sendable {
     public let locale: String
     /// iOS xcuitest ブリッジの高速入力(RunProfileDocument.iosFastInput。既定 false)
     public let iosFastInput: Bool
+    /// アプリのアニメーションを残すか(RunProfileDocument.enableAnimations。既定 false=無効化)
+    public let enableAnimations: Bool
     /// 各ワーカーを run 全体で録画し、シナリオごとに切り出すか(RunProfileDocument.record。既定 false)
     public let record: Bool
     /// 成功したシナリオのクリップを保存しないか(RunProfileDocument.recordFailuresOnly。既定 false)
@@ -721,6 +733,7 @@ public enum ProfileResolver {
             recoverCpuFallbackToGpu: runDoc.recoverCpuFallbackToGpu ?? false,
             locale: locale,
             iosFastInput: runDoc.iosFastInput ?? false,
+            enableAnimations: runDoc.enableAnimations ?? false,
             record: runDoc.record ?? false,
             recordFailuresOnly: runDoc.recordFailuresOnly ?? false,
             // 0 以下は無意味な指定なので既定にフォールバック(run を止めるほどの問題ではない)
