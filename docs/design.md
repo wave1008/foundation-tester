@@ -219,7 +219,7 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
 | `GET  /snapshot` | アクセシビリティツリーを圧縮 JSON で返す(4.4) |
 | `POST /tap` | `{ref}` または `{x,y}` |
 | `POST /type` | `{ref, text}`(tap → typeText) |
-| `POST /swipe` | `{direction}` or `{fromRef, direction}` |
+| `POST /swipe` | `{direction}` or `{fromRef, direction}`。用途つきの任意項目あり(下記「スクロールの語彙」) |
 | `POST /press` | `{ref, duration}` または `{x, y, duration}` 長押し |
 | `GET  /screenshot` | `XCUIScreen.main.screenshot()` → PNG |
 | `POST /terminate` | 対象アプリ終了 |
@@ -1291,6 +1291,20 @@ textIs(.id("txt_result"), "dialog=none")
   判定したいのは「動いているか」なので frame だけで足りる(`settleAfterScroll` も同じ)。
   **ランナー側の `captureSettled` は逆にラベルを外さない** — あちらは tap 直後の「内容が
   更新されたか」を待つので、レイアウト不変でテキストだけ変わる更新を取りこぼすと stale を返す
+- **用途でジェスチャを変える**(`FTSwipeIntent`。2026-08-02)。同じ「上へ払う」でも要求が違うので、
+  ホストが用途を `/swipe` へ伝えてブリッジがジェスチャを選ぶ。**ブリッジに用途の知識を集約する**形
+  (`SwipeRequest.scroll` と同じ方針):
+  - `gesture`(DSL の `swipe`)= 何も送らない。ジェスチャ自体が目的(向きの検出をアプリに見せたい)
+  - `search`(`scrollTo` / `scrollDown` 等)= 何も送らない。**1回の飛距離がビューポート高を
+    超えると要素を飛び越す**ので欲張らない
+  - `edge`(`scrollToEdge`)= Android は `durationMs`/`fling`、iOS は `velocity` を送る。
+    行き過ぎても無害なので最速で端まで送ってよい
+  - **Android は距離を送らない・広げてはいけない**(速くするのはストロークだけ。距離はブリッジの
+    軸別既定 縦 0.4・横 0.6 のまま)。スワイプは画面中央基準の全画面固定なので `distance` を
+    0.8 にすると始点が画面の 10% になり、**スクロール領域の外から始まって1ミリも動かない**。
+    iOS は速度のノブなので同じ事故は起きない(XCTest が要素の中で始点を決める)
+  - **ラッパードライバは用途を必ず素通しする**(既定実装は用途を捨てる。`SwipeForScrollForwardingTests`
+    がソース走査で検出)。数値の根拠と計測手順は performance-tuning.md §3.16 / §3.17
 - **`maxSwipes` は暴走を止める上限で終了条件ではない**(端用の既定は `defaultMaxEdgeSwipes` = 50)。
   上限で抜けたときは**ステップに注記を出す**(黙って成功にすると「scrollToBottom したのに
   末尾が無い」の原因が読めない)

@@ -269,24 +269,32 @@ public final class BridgeClient: AppDriver {
             "/swipe",
             body: SwipeRequest(direction: direction, fast: fastFlag,
                                scroll: intent == .gesture ? nil : true,
-                               distance: intent == .edge ? Self.edgeSwipeDistance : nil,
                                durationMs: intent == .edge ? Self.edgeSwipeDurationMs : nil,
-                               fling: intent == .edge ? true : nil),
+                               fling: intent == .edge ? true : nil,
+                               velocity: intent == .edge ? Self.edgeSwipeVelocity : nil),
             timeout: interactionTimeout)
     }
 
-    /// scrollToEdge のジェスチャ。**行き過ぎても無害な用途にだけ使う**(探索に使うと
-    /// 1回の移動量がビューポート高を超えて要素を飛び越す)。Android ブリッジだけが読み、
-    /// iOS 側は未使用フィールドとして無視する。
+    /// scrollToEdge のジェスチャ(Android)。**行き過ぎても無害な用途にだけ使う**(探索に使うと
+    /// 1回の移動量がビューポート高を超えて要素を飛び越す)。iOS 側は未使用フィールドとして無視する。
     ///
-    /// **距離は従来の 0.4 から広げてはいけない**: ブリッジのスワイプは画面中央基準の全画面固定
-    /// (design.md 承認済み差分)なので、0.8 にすると始点が y=画面の10% になり
-    /// **スクロール領域の外から始まって1ミリも動かない**。2026-08-02 に実際に踏んだ
-    /// (scrollToBottom は始点がリスト内なので成功し、scrollToTop だけが 3 SUT とも
-    /// row_29 で止まって直後の `exist "#row_01"` が落ちた)。速くするのはストロークだけ。
-    /// 実測(Android View/XML): 0.4/300ms/実時計 276px → 0.4/200ms/合成 1,156px
-    static let edgeSwipeDistance = 0.4
+    /// **`SwipeRequest.distance` は送らない**(= ブリッジの軸別既定 縦 0.4・横 0.6 のまま)。
+    /// 距離を広げてはいけない: スワイプは画面中央基準の全画面固定(design.md 承認済み差分)なので、
+    /// 0.8 にすると始点が y=画面の10% になり**スクロール領域の外から始まって1ミリも動かない**。
+    /// 2026-08-02 に実際に踏んだ(scrollToBottom は始点がリスト内なので成功し、scrollToTop だけが
+    /// 3 SUT とも row_29 で止まって直後の `exist "#row_01"` が落ちた)。速くするのはストロークだけ。
+    /// 実測(Android View/XML): 300ms/実時計 276px → 200ms/合成 1,156px
     static let edgeSwipeDurationMs = 150
+
+    /// XCUITest ランナー側の同じ用途のノブ(points/sec。`XCUIGestureVelocity`)。
+    /// 距離ではなく速度で効かせるので、Android のような「始点がスクロール領域の外に出る」
+    /// 事故は起きない(XCTest が要素の中で始点を決める)。
+    ///
+    /// **2500 ではなく 1500**: 3設定×3周(交互)の実測で、scrollToTop の中央値はほぼ同じ
+    /// (8,251 対 8,287ms)なのに**最悪ケースが 12.9s 対 18.5s**と差が付き、周ごとのばらつきも
+    /// 小さかった。sum では 2500 が 8.8s 勝つ(壁時計 約1.1s/プロファイル)が、尾を引く挙動は
+    /// フレーク耐性の観点で割に合わない。詳細は docs/performance-tuning.md §3.17
+    static let edgeSwipeVelocity = 1500.0
 
     public func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
                      pressSeconds: Double, durationSeconds: Double) async throws {

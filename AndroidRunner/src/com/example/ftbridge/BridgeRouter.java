@@ -247,28 +247,24 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         double w = lastScreen.width() > 0 ? lastScreen.width() : 1080;
         double h = lastScreen.height() > 0 ? lastScreen.height() : 2400;
         double cx = w / 2, cy = h / 2;
-        double[] from, to;
-        switch (direction) {
-            case "up": from = new double[]{cx, h * 0.7}; to = new double[]{cx, h * 0.3}; break;
-            case "down": from = new double[]{cx, h * 0.3}; to = new double[]{cx, h * 0.7}; break;
-            case "left": from = new double[]{w * 0.8, cy}; to = new double[]{w * 0.2, cy}; break;
-            case "right": from = new double[]{w * 0.2, cy}; to = new double[]{w * 0.8, cy}; break;
-            default:
-                throw new BridgeException(400, "direction は up/down/left/right のいずれかです");
-        }
-        // ホストが用途(FTSwipeIntent)に応じて送る。**未指定は従来値**なので、送ってこない
-        // 用途(gesture / search)と旧ホストの挙動は変わらない。契約は FTCore/BridgeDTO.SwipeRequest
-        double span = body.optDouble("distance", 0.4);
+        boolean vertical = direction.equals("up") || direction.equals("down");
+        // 可変パラメータはホストが用途(FTSwipeIntent)に応じて送る(契約は FTCore/BridgeDTO.SwipeRequest)。
+        // distance の既定は**軸で違う**(縦 0.4 = 0.7→0.3 / 横 0.6 = 0.8→0.2。v40 までの固定値と同一)。
+        // 一律 0.4 にすると、何も送らない gesture / search の横スワイプまで黙って狭くなる。
+        // 明示値は既定と同値でも必ず計算に使う(「既定と同じなら無視」だと、既定を変えた瞬間に
+        // ホストの指定が黙って無視される)
+        double span = body.optDouble("distance", vertical ? 0.4 : 0.6);
         long strokeMs = body.optLong("durationMs", 300);
         boolean syntheticUp = body.optBoolean("fling", false);
-        if (span != 0.4) {
-            double half = Math.min(Math.max(span, 0.05), 0.9) / 2;
-            switch (direction) {
-                case "up": from[1] = h * (0.5 + half); to[1] = h * (0.5 - half); break;
-                case "down": from[1] = h * (0.5 - half); to[1] = h * (0.5 + half); break;
-                case "left": from[0] = w * (0.5 + half); to[0] = w * (0.5 - half); break;
-                case "right": from[0] = w * (0.5 - half); to[0] = w * (0.5 + half); break;
-            }
+        double half = Math.min(Math.max(span, 0.05), 0.9) / 2;
+        double[] from, to;
+        switch (direction) {
+            case "up": from = new double[]{cx, h * (0.5 + half)}; to = new double[]{cx, h * (0.5 - half)}; break;
+            case "down": from = new double[]{cx, h * (0.5 - half)}; to = new double[]{cx, h * (0.5 + half)}; break;
+            case "left": from = new double[]{w * (0.5 + half), cy}; to = new double[]{w * (0.5 - half), cy}; break;
+            case "right": from = new double[]{w * (0.5 - half), cy}; to = new double[]{w * (0.5 + half), cy}; break;
+            default:
+                throw new BridgeException(400, "direction は up/down/left/right のいずれかです");
         }
         InputInjector.swipe(ua(), from[0], from[1], to[0], to[1], strokeMs, syntheticUp);
         settle();
