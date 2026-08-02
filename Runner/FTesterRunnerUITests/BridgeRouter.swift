@@ -521,12 +521,22 @@ final class BridgeRouter {
     private func handleSwipe(_ body: Data) throws -> BridgeHTTPServer.Response {
         let req = try decode(SwipeRequest.self, body)
         let app = try requireLiveApp()
+        // velocity(points/sec)はホストが用途に応じて送る(scrollToEdge だけ。契約は
+        // FTCore/BridgeDTO の FTSwipeIntent)。**`?? .default` で4分岐に畳まないこと**:
+        // XCUIGestureVelocityDefault の実体は -10 というセンチネル値で、実速度は XCTest 内部が
+        // 解決する。`swipeUp(velocity: .default)` が `swipeUp()` と同一である保証は公開されておらず、
+        // 未指定側(search / DSL の swipe = スイート内の大半)の挙動を確認なしに変えることになる
+        let velocity = req.velocity.map { XCUIGestureVelocity($0) }
         FastInput.with(req.fast) {
-            switch req.direction {
-            case .up: app.swipeUp()
-            case .down: app.swipeDown()
-            case .left: app.swipeLeft()
-            case .right: app.swipeRight()
+            switch (req.direction, velocity) {
+            case (.up, nil): app.swipeUp()
+            case (.down, nil): app.swipeDown()
+            case (.left, nil): app.swipeLeft()
+            case (.right, nil): app.swipeRight()
+            case (.up, let v?): app.swipeUp(velocity: v)
+            case (.down, let v?): app.swipeDown(velocity: v)
+            case (.left, let v?): app.swipeLeft(velocity: v)
+            case (.right, let v?): app.swipeRight(velocity: v)
             }
         }
         return .json(OKResponse())

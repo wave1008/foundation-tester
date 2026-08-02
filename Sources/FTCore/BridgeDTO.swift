@@ -61,7 +61,9 @@ public enum BridgeAPI {
     /// 35: SwipeRequest に用途つきのジェスチャ指定(distance/durationMs/fling)が入った(2026-08-02)。
     /// **読むのは Android ブリッジだけ**で iOS の挙動は変えていないが、DTO は iOS ブリッジの
     /// 入力でもあるため版を上げる(上げないと稼働中の旧ブリッジが再利用され続ける)
-    public static let bridgeProtocolVersion = 35
+    /// 36: XCUITest ランナーの /swipe が SwipeRequest.velocity を受けるようになった(2026-08-02)。
+    /// 旧ランナーが再利用されると既定速度のままで効かない
+    public static let bridgeProtocolVersion = 36
 
     /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
     /// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java の
@@ -397,7 +399,9 @@ public struct SwipeRequest: Codable {
     /// 旧ブリッジは無視して従来動作(TapRequest.fast と同じ互換方針で版は据え置かない —
     /// 挙動が変わるので handleSwipe 側の変更とセットで上げる)
     public var scroll: Bool?
-    /// 指の移動距離(画面比)。未指定はブリッジの既定 = 従来値。**Android ブリッジだけが読む**
+    /// 指の移動距離(画面比)。**Android ブリッジだけが読む**。未指定はブリッジの軸別既定
+    /// (縦 0.4・横 0.6 = 従来の固定座標と同一)。ホストは送らない(計測・将来の override 用の口。
+    /// 広げると始点がスクロール領域の外に出る罠は BridgeClient.edgeSwipeDurationMs のコメント)
     public var distance: Double?
     /// ストローク時間(ms)。短いほど離す瞬間の速度が上がりフリングが伸びる
     public var durationMs: Int?
@@ -405,14 +409,19 @@ public struct SwipeRequest: Codable {
     /// これが false(= 実時計)だとフリングが出ない**(実測: 276px → 1,156px)。
     /// 既定 false = 従来動作。Flutter は影響を受けない(独自の速度計算)
     public var fling: Bool?
+    /// スワイプ速度(points/sec)。**XCUITest ランナーだけが読む**(`XCUIGestureVelocity`)。
+    /// nil = `swipeUp()` 等の既定速度。Android は距離とストローク時間で速度を決めるので読まない
+    public var velocity: Double?
     public init(direction: FTSwipeDirection, fast: Bool? = nil, scroll: Bool? = nil,
-                distance: Double? = nil, durationMs: Int? = nil, fling: Bool? = nil) {
+                distance: Double? = nil, durationMs: Int? = nil, fling: Bool? = nil,
+                velocity: Double? = nil) {
         self.direction = direction
         self.fast = fast
         self.scroll = scroll
         self.distance = distance
         self.durationMs = durationMs
         self.fling = fling
+        self.velocity = velocity
     }
 }
 
