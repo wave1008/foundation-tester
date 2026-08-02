@@ -95,7 +95,7 @@ extension FTSelector {
     var stepFallbacks: [FlowLocator]? { fallbacks.isEmpty ? nil : fallbacks }
 }
 
-/// 型付きセレクタ由来なら構文検証を飛ばす(FTSelector.structured)。
+/// 実行前の検証は FTSelector.preflightError に集約(文字列=構文検証 / 型付き=組み立て時の誤り)。
 /// 戻り値は status に加え**照合済み要素**も運ぶ(exist 系だけが使い、他は status のみ見て捨てる)
 @discardableResult
 private func perform(_ command: String, _ selector: FTSelector, step: FlowStep,
@@ -103,7 +103,7 @@ private func perform(_ command: String, _ selector: FTSelector, step: FlowStep,
                      file: StaticString, line: UInt) -> PerformResult {
     FTRuntime.requireCore(command: command)
         .perform(step: step, description: description, selectorText: selector.text,
-                 validateSelector: !selector.structured, file: file, line: line)
+                 selectorError: selector.preflightError, file: file, line: line)
 }
 
 // MARK: - 操作コマンド
@@ -1390,7 +1390,7 @@ public struct FTElement {
     }
 
     @discardableResult
-    public func textIsNotEmpty(_ timeout: Double? = nil,
+    public func textIsNotEmpty(timeout: Double? = nil,
                                file: StaticString = #filePath, line: UInt = #line) -> FTElement {
         emptyAssert("textIsNotEmpty", verb: "textIsNotEmpty", selector: selector,
                     timeout: timeout, file: file, line: line)
@@ -1398,7 +1398,7 @@ public struct FTElement {
     }
 
     @discardableResult
-    public func textIsEmpty(_ timeout: Double? = nil,
+    public func textIsEmpty(timeout: Double? = nil,
                             file: StaticString = #filePath, line: UInt = #line) -> FTElement {
         emptyAssert("textIsEmpty", verb: "textIsEmpty", selector: selector,
                     timeout: timeout, file: file, line: line)
@@ -1564,7 +1564,7 @@ public struct FTElement {
     }
 
     @discardableResult
-    public func valueIsEmpty(_ timeout: Double? = nil,
+    public func valueIsEmpty(timeout: Double? = nil,
                              file: StaticString = #filePath, line: UInt = #line) -> FTElement {
         emptyAssert("valueIsEmpty", verb: "valueIsEmpty", selector: selector,
                     timeout: timeout, file: file, line: line)
@@ -1572,7 +1572,7 @@ public struct FTElement {
     }
 
     @discardableResult
-    public func valueIsNotEmpty(_ timeout: Double? = nil,
+    public func valueIsNotEmpty(timeout: Double? = nil,
                                 file: StaticString = #filePath, line: UInt = #line) -> FTElement {
         emptyAssert("valueIsNotEmpty", verb: "valueIsNotEmpty", selector: selector,
                     timeout: timeout, file: file, line: line)
@@ -1582,7 +1582,7 @@ public struct FTElement {
     // MARK: 状態
 
     @discardableResult
-    public func isEnabled(_ timeout: Double? = nil,
+    public func isEnabled(timeout: Double? = nil,
                           file: StaticString = #filePath, line: UInt = #line) -> FTElement {
         enabledAssert("enabled", verb: "isEnabled", selector: selector,
                       timeout: timeout, file: file, line: line)
@@ -1590,7 +1590,7 @@ public struct FTElement {
     }
 
     @discardableResult
-    public func isDisabled(_ timeout: Double? = nil,
+    public func isDisabled(timeout: Double? = nil,
                            file: StaticString = #filePath, line: UInt = #line) -> FTElement {
         enabledAssert("disabled", verb: "isDisabled", selector: selector,
                       timeout: timeout, file: file, line: line)
@@ -1598,7 +1598,7 @@ public struct FTElement {
     }
 
     @discardableResult
-    public func isChecked(_ timeout: Double? = nil,
+    public func isChecked(timeout: Double? = nil,
                           file: StaticString = #filePath, line: UInt = #line) -> FTElement {
         enabledAssert("checked", verb: "isChecked", selector: selector,
                       timeout: timeout, file: file, line: line)
@@ -1606,7 +1606,7 @@ public struct FTElement {
     }
 
     @discardableResult
-    public func isNotChecked(_ timeout: Double? = nil,
+    public func isNotChecked(timeout: Double? = nil,
                              file: StaticString = #filePath, line: UInt = #line) -> FTElement {
         enabledAssert("notChecked", verb: "isNotChecked", selector: selector,
                       timeout: timeout, file: file, line: line)
@@ -1700,12 +1700,22 @@ public func appSwitcher(file: StaticString = #filePath, line: UInt = #line) {
     }
 }
 
+/// 秒 → ナノ秒。**範囲外の Double で `UInt64(_:)` は trap する**(負値も無限大も
+/// UInt64 に入らない巨大値も)。1プロセス=1シナリオなので trap するとレポートごと消えるため、
+/// ここで丸める(design.md §10)。上限が壁時計上限なのは、**それより長くは待てない**から
+/// (超えたステップは FTSync がキャンセルする。docs/commands.md にも書いてある契約)。
+/// 負値と NaN は `seconds > 0` が false になって 0 に落ちる
+func ftSleepNanoseconds(_ seconds: Double) -> UInt64 {
+    guard seconds > 0 else { return 0 }
+    return UInt64(min(seconds, FTSync.commandTimeout) * 1_000_000_000)
+}
+
 /// 固定秒数待つ(記録に残る)
 public func wait(_ seconds: Double,
                  file: StaticString = #filePath, line: UInt = #line) {
     FTRuntime.requireCore(command: "wait")
         .performCustom(description: "wait \(FTSeconds.format(seconds))s", file: file, line: line) {
-            try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            try await Task.sleep(nanoseconds: ftSleepNanoseconds(seconds))
         }
 }
 
@@ -1754,9 +1764,9 @@ private func ifCanSelectImpl(_ selector: FTSelector, waitSeconds: Double,
     return FTBranch(taken: found)
 }
 
-/// 型付きセレクタは組み立て段階で綴りが保証されているので検証しない(FTSelector.structured)
+/// perform を通らないコマンド(ifCanSelect / repeatWhileCanSelect)用。判定は perform と同じ源
 private func validationError(_ selector: FTSelector) -> String? {
-    selector.structured ? nil : FTSelector.validationError(selector.text)
+    selector.preflightError
 }
 
 public struct FTBranch {
@@ -1877,7 +1887,7 @@ public func doUntilTrue(_ title: String, waitSeconds: Double = 10, intervalSecon
                         "doUntilTrue \"\(title)\" did not hold within \(FTSeconds.format(waitSeconds))s"
                         + " (\(loops) attempt(s))")
                 }
-                try await Task.sleep(nanoseconds: UInt64(intervalSeconds * 1_000_000_000))
+                try await Task.sleep(nanoseconds: ftSleepNanoseconds(intervalSeconds))
             }
         }
 }

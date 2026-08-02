@@ -1294,6 +1294,9 @@ public final class StepExecutor {
     /// スクロール静止待ちの上限(回数 × 間隔 = 最大 600ms)。フリングの減速はこの範囲で収まる
     static let scrollSettleMaxPolls = 6
     static let scrollSettleIntervalMs = 100
+    /// screenIs が不一致だったときに撮り直すまでの待ち(ms)。**遷移の描き終わりを待つだけ**なので
+    /// スクロールの整定待ち(6×100ms)と同じオーダーに置く。長くすると失敗の確定が遅れる
+    static let screenMatchRetryDelayMs = 600
 
     /// 画面が静止するまで待ち、そのときの要素配置の署名を返す(scrollToEdge の到達判定)。
     /// **横スクロールでは y が動かない**ので x と y の両方を入れる。

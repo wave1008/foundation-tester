@@ -53,10 +53,16 @@ public struct SelType: Sendable, Equatable {
 public struct Sel: Sendable, Equatable {
     var primary: FlowLocator
     var fallbacks: [FlowLocator]
+    /// 組み立て時に見つかった誤り(1オリジンでない序数など)。**最初の1件だけ**保持し、
+    /// 実行前に失敗ステップとして落とす(`FTRuntime.perform`)。**crash させない**のは
+    /// 1プロセス=1シナリオでプロセスを落とすとレポートごと消えるため(design.md §10)。
+    /// 文字列版が `[0]` を validationError で落とすのと同じ扱いに揃える
+    var invalidReason: String?
 
-    init(_ primary: FlowLocator, fallbacks: [FlowLocator] = []) {
+    init(_ primary: FlowLocator, fallbacks: [FlowLocator] = [], invalidReason: String? = nil) {
         self.primary = primary
         self.fallbacks = fallbacks
+        self.invalidReason = invalidReason
     }
 
     /// DSL コマンドへ渡す形。text は**文字列版の記法へ戻したもの**(FTSelector.serialize)で、
@@ -64,7 +70,15 @@ public struct Sel: Sendable, Equatable {
     /// `button`(=ラベル)に化け、レポートからコピーしたセレクタが別物になる
     var ftSelector: FTSelector {
         FTSelector(text: FTSelector.serialize(primary: primary, fallbacks: fallbacks),
-                   primary: primary, fallbacks: fallbacks, structured: true)
+                   primary: primary, fallbacks: fallbacks, structured: true,
+                   structuredError: invalidReason)
+    }
+
+    /// 誤りを1件だけ記録した複製(先勝ち: 最初に壊れた地点を報告する)
+    private func invalidated(_ reason: String) -> Sel {
+        var copy = self
+        if copy.invalidReason == nil { copy.invalidReason = reason }
+        return copy
     }
 
     // MARK: - 起点(static)
@@ -123,21 +137,31 @@ public struct Sel: Sendable, Equatable {
 
     /// 除外条件(記法の `text!=キャンセル`)。引数に設定された属性を持つ要素を候補から取り除く。
     /// **肯定条件と併用する**(否定だけでは容器やレイアウトノードまで掴むため、文字列版では
-    /// 検証エラーになる形。型付き版も同じ意味で使う)
+    /// 検証エラーになる形。型付き版も同じ意味で使う)。
+    /// 引数が `or` を含むなら**全節を除外する**(`not` の各要素は「どれかに当たれば除く」)
     public func not(_ other: Sel) -> Sel {
-        updatingTarget { $0.not = ($0.not ?? []) + [other.primary] }
+        let exclusions = [other.primary] + other.fallbacks
+        return updatingTarget { $0.not = ($0.not ?? []) + exclusions }
     }
 
-    /// 候補内の順番(**1 オリジン**。記法の `[n]` と同じ)。相対ステップの後なら近い順の ordinal
+    /// 候補内の順番(**1 オリジン**。記法の `[n]` と同じ)。相対ステップの後なら近い順の ordinal。
+    /// **`updatingTarget` は使えない** — あちらは相対ステップがあると filter 節へ潜るので、
+    /// 「対象の何番目か」ではなく「filter 節の index」になってしまう(2026-08-02 に踏んだ)
     public func nth(_ n: Int) -> Sel {
-        precondition(n >= 1, "nth is 1-origin: \(n)")
-        var copy = self
-        if var steps = copy.primary.relative, !steps.isEmpty {
-            steps[steps.count - 1].ordinal = n > 1 ? n : nil
-            copy.primary.relative = steps
+        guard n >= 1 else { return invalidated("nth is 1-origin: \(n)") }
+        func numbered(_ locator: FlowLocator) -> FlowLocator {
+            var copy = locator
+            if var steps = copy.relative, !steps.isEmpty {
+                steps[steps.count - 1].ordinal = n > 1 ? n : nil
+                copy.relative = steps
+                return copy
+            }
+            copy.index = n > 1 ? n - 1 : nil
             return copy
         }
-        copy.primary.index = n > 1 ? n - 1 : nil
+        var copy = self
+        copy.primary = numbered(primary)
+        copy.fallbacks = fallbacks.map(numbered)
         return copy
     }
 
@@ -146,22 +170,33 @@ public struct Sel: Sendable, Equatable {
     /// 候補集合の和(記法の `||`)。要素を1つ選ぶときは**この順**に先に見つかった方が使われるので、
     /// `#id` → ラベルのヒール連鎖としても書ける。countIs は和集合の総数を数える
     public func or(_ other: Sel) -> Sel {
-        Sel(primary, fallbacks: fallbacks + [other.primary] + other.fallbacks)
+        Sel(primary, fallbacks: fallbacks + [other.primary] + other.fallbacks,
+            invalidReason: invalidReason ?? other.invalidReason)
     }
 
-    /// スコープ(記法の `>>`)。**レシーバが祖先**で、引数がその子孫。引数側に or があれば全節に効く
-    /// (文字列版では書けない形。`#list >> (a||b)` 相当)
+    /// スコープ(記法の `>>`)。**レシーバが祖先**で、引数がその子孫。
+    /// **どちらの側の `or` も落とさない** — 祖先 × 子孫の全組み合わせを候補集合の和にする
+    /// (`Sel.id("a").or(.id("b")).find(.text("x"))` = `#a >> x || #b >> x`)。
+    /// 祖先を先に回すのは、祖先の方が識別子として重い = ヒール連鎖の優先順位だから
     public func find(_ target: Sel) -> Sel {
-        var ancestors = primary.scope ?? []
-        var me = primary
-        me.scope = nil
-        ancestors.append(me)
-        func scoped(_ locator: FlowLocator) -> FlowLocator {
-            var copy = locator
-            copy.scope = ancestors + (locator.scope ?? [])
-            return copy
+        func ancestry(of locator: FlowLocator) -> [FlowLocator] {
+            var chain = locator.scope ?? []
+            var me = locator
+            me.scope = nil
+            chain.append(me)
+            return chain
         }
-        return Sel(scoped(target.primary), fallbacks: target.fallbacks.map(scoped))
+        var scopedAll: [FlowLocator] = []
+        for ancestors in ([primary] + fallbacks).map(ancestry) {
+            for locator in [target.primary] + target.fallbacks {
+                var copy = locator
+                copy.scope = ancestors + (locator.scope ?? [])
+                scopedAll.append(copy)
+            }
+        }
+        // 空にはならない(必ず primary × target.primary が1件できる)
+        return Sel(scopedAll[0], fallbacks: Array(scopedAll.dropFirst()),
+                   invalidReason: invalidReason ?? target.invalidReason)
     }
 
     // MARK: - 相対(基準が先・対象が後)
@@ -203,42 +238,63 @@ public struct Sel: Sendable, Equatable {
     // MARK: - 内部
 
     /// 相対ステップがあれば**その対象**(最後のステップの filter 全節)、無ければ基準へ適用する。
-    /// filter が複数節(`||`)のときは全部に AND する(文字列版 `:rightSwitch(保存)` の merged と同じ)
+    /// filter が複数節(`||`)のときは全部に AND する(文字列版 `:rightSwitch(保存)` の merged と同じ)。
+    ///
+    /// **`or` の全節へ配る**(primary だけに掛けない)。`Sel.text("a").or(.text("b")).type(.button)`
+    /// は文字列版の `(a|b)&&.button` = `a&&.button || b&&.button` と同じ意味になる。
+    /// primary だけに掛けると第2節が無条件のまま残り、**書いた条件が黙って効かない**
     private func updatingTarget(_ transform: (inout FlowLocator) -> Void) -> Sel {
-        var copy = self
-        if var steps = copy.primary.relative, !steps.isEmpty {
-            var last = steps[steps.count - 1]
-            var filter = last.filter ?? []
-            if filter.isEmpty { filter = [FlowLocator()] }
-            last.filter = filter.map { locator in
-                var updated = locator
-                transform(&updated)
-                return updated
+        func applied(_ locator: FlowLocator) -> FlowLocator {
+            var copy = locator
+            if var steps = copy.relative, !steps.isEmpty {
+                var last = steps[steps.count - 1]
+                var filter = last.filter ?? []
+                if filter.isEmpty { filter = [FlowLocator()] }
+                last.filter = filter.map { clause in
+                    var updated = clause
+                    transform(&updated)
+                    return updated
+                }
+                steps[steps.count - 1] = last
+                copy.relative = steps
+                return copy
             }
-            steps[steps.count - 1] = last
-            copy.primary.relative = steps
+            transform(&copy)
             return copy
         }
-        transform(&copy.primary)
+        var copy = self
+        copy.primary = applied(primary)
+        copy.fallbacks = fallbacks.map(applied)
         return copy
     }
 
     private func appendingRelative(_ direction: FlowDirection, type: SelType?, nth: Int) -> Sel {
-        appendingStep(FlowRelativeStep(direction: direction,
-                                       filter: type.map { [FlowLocator(type: $0.name)] },
-                                       ordinal: nth > 1 ? nth : nil))
+        guard nth >= 1 else { return invalidated("nth is 1-origin: \(nth)") }
+        return appendingStep(FlowRelativeStep(direction: direction,
+                                              filter: type.map { [FlowLocator(type: $0.name)] },
+                                              ordinal: nth > 1 ? nth : nil))
     }
 
     private func appendingRelative(_ direction: FlowDirection, matching: Sel, nth: Int) -> Sel {
-        appendingStep(FlowRelativeStep(direction: direction,
-                                       filter: [matching.primary] + matching.fallbacks,
-                                       ordinal: nth > 1 ? nth : nil))
+        guard nth >= 1 else { return invalidated("nth is 1-origin: \(nth)") }
+        var result = appendingStep(FlowRelativeStep(direction: direction,
+                                                    filter: [matching.primary] + matching.fallbacks,
+                                                    ordinal: nth > 1 ? nth : nil))
+        if result.invalidReason == nil { result.invalidReason = matching.invalidReason }
+        return result
     }
 
+    /// 相対ステップも**基準の全節へ配る**(`a||b` の右のスイッチ = `a:rightSwitch || b:rightSwitch`)。
+    /// primary だけに足すと、第2節が「基準そのもの」のまま残って別の要素を掴む
     private func appendingStep(_ step: FlowRelativeStep) -> Sel {
-        precondition((step.ordinal ?? 1) >= 1, "nth is 1-origin")
+        func appended(_ locator: FlowLocator) -> FlowLocator {
+            var copy = locator
+            copy.relative = (copy.relative ?? []) + [step]
+            return copy
+        }
         var copy = self
-        copy.primary.relative = (copy.primary.relative ?? []) + [step]
+        copy.primary = appended(primary)
+        copy.fallbacks = fallbacks.map(appended)
         return copy
     }
 }

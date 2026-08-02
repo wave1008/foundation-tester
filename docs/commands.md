@@ -73,6 +73,11 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 | `selectWithScrollDown(sel, maxSwipes:)` 等 4 方向 | `select(sel, scroll: .down)` の別名(Shirates と同名) |
 | `selectWithoutScroll(sel, timeout:requireVisible:)` | `withScroll*` の中でも現在画面だけで解決する `select` |
 
+**`*WithScroll*` の別名は `maxSwipes:`(`select` 系は `requireVisible:` も)しか取らない糖衣**です。
+`timeout:` や `holdSeconds:` を渡したいときは本体の `scroll:` を使ってください
+(`tap(sel, scroll: .down, timeout: 2)`)。`existWithScrollLeft/Right` を置いていないのも同じ理由で、
+`exist(sel, scroll: .left)` と書けるためです。
+
 レポートに出る注記(**失敗ではなく観測**。読み方):
 
 | 注記 | 意味 | 気にするべきか |
@@ -135,7 +140,8 @@ exist("#total")
 
 **セレクタを取って「その要素」を検証するコマンドはすべてチェーンできる**（`textIs` / `textContains` /
 `textMatches` などテキストの全対称、`valueIs` 以下の value の全対称、`isEnabled` / `isDisabled` /
-`isChecked` / `isNotChecked`、それに掴んだ要素の id を見る `.idIs`）。引数は自由関数版と同じです。
+`isChecked` / `isNotChecked`、それに掴んだ要素の id を見る `.idIs`）。引数はセレクタを除いて
+自由関数版と同じで、`timeout:` も同じラベルで渡せます（`exist("#x").isEnabled(timeout: 3)`）。
 
 チェーンできないのは**要素を1つに定めないコマンド**だけです（`notExist` / `countIs` / `screenIs`）。
 これらは掴んだ要素に対する検証ではないためです。
