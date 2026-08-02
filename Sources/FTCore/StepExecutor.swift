@@ -553,9 +553,20 @@ public final class StepExecutor {
         var viaXCUITest = false
         var hintJumps = 0
         for attempt in 0...maxSwipes {
-            let start = clock.now
-            var snapshot = try await driver.snapshot()
-            phase.snapshotMs += Self.ms(clock.now - start)
+            // **1周目だけは静止を待ってから撮る**。直前の操作がプログラム的な
+            // アニメーションスクロール(「先頭へ」等)だと、ブリッジの整定はすり抜けることがあり
+            // (アニメが始まる前に「変化なし」と判定される)、動く前のツリーで解決すると
+            // **古い座標をタップして別の要素が選ばれる**(2026-08-02 に CMP で実測。
+            // ステップは成功のまま = 黙って誤った結果)。2周目以降はスワイプ後の
+            // settleAfterScroll / settledSignature が既に待っているので素取得でよい
+            var snapshot: SnapshotResponse
+            if attempt == 0 {
+                snapshot = try await settledSignature(phase: &phase).snapshot
+            } else {
+                let start = clock.now
+                snapshot = try await driver.snapshot()
+                phase.snapshotMs += Self.ms(clock.now - start)
+            }
             try await dismissInterruption(in: &snapshot, phase: &phase)
             // スクロール探索でも type+index フォールバックは偽陽性のもとなので使わない
             if let (element, fallback) = Self.resolve(step: step, in: snapshot, strictForAssert: true) {

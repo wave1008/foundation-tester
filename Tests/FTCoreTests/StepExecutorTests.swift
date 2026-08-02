@@ -1783,7 +1783,9 @@ final class StepExecutorTests: XCTestCase {
     func testEmptyDragFallsBackToTypeDriverWhenEngineIncapable() async throws {
         let log = CallLog()
         let row = framed(ref: 1, id: "row_40", x: 16, y: 300, width: 370, height: 56)
-        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[], [row]])
+        // **1周目は静止確認で2枚撮る**(プログラム的スクロールの取りこぼし対策)。
+        // 空の2枚で静止 → スワイプ → 3枚目で発見、の並びにする
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[], [], [row]])
         primary.dragError = DriverError.badResponse(status: 501, body: "未対応")
         let typeDriver = FakeAppDriver(name: "typedriver", log: log)
         let executor = StepExecutor(driver: primary, typeDriver: typeDriver,
@@ -1791,7 +1793,7 @@ final class StepExecutorTests: XCTestCase {
         let step = FlowStep(action: "scrollTo", locator: FlowLocator(id: "row_40"), maxSwipes: 2)
 
         guard case .passed = await executor.execute(step).status else {
-            XCTFail("2回目の snapshot で見つかるので pass のはず"); return
+            XCTFail("スワイプ後の snapshot で見つかるので pass のはず"); return
         }
         XCTAssertTrue(log.entries.contains("primary.drag(throws)"), "まず primary を試すこと: \(log.entries)")
         XCTAssertTrue(log.entries.contains("typedriver.drag"),

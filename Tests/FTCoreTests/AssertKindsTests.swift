@@ -9,6 +9,7 @@ final class AssertKindsTests: XCTestCase {
     private final class ScriptedDriver: AppDriver {
         var frames: [[ElementInfo]]
         private(set) var snapshotCallCount = 0
+        private(set) var swipeCallCount = 0
         init(frames: [[ElementInfo]]) { self.frames = frames }
 
         func status() async throws -> StatusResponse {
@@ -27,7 +28,7 @@ final class AssertKindsTests: XCTestCase {
         func tap(ref: Int) async throws {}
         func tap(x: Double, y: Double) async throws {}
         func type(ref: Int?, text: String) async throws {}
-        func swipe(_ direction: FTSwipeDirection) async throws {}
+        func swipe(_ direction: FTSwipeDirection) async throws { swipeCallCount += 1 }
         func press(ref: Int, duration: Double) async throws {}
         func screenshot() async throws -> Data { Data() }
         func terminate() async throws {}
@@ -367,14 +368,21 @@ final class AssertKindsTests: XCTestCase {
         XCTAssertEqual(driver.snapshotCallCount, 5)
     }
 
-    /// スワイプせずに見つかったときは静止待ちを挟まない(既存の速度を落とさない)
-    func testScrollToSkipsSettleWhenFoundWithoutSwiping() async {
-        let driver = ScriptedDriver(frames: [[node(1, id: "row_30")]])
+    /// **探索の1周目は静止を待ってから解決する**。直前の操作がプログラム的な
+    /// アニメーションスクロール(「先頭へ」等)だと、ブリッジの整定はすり抜けることがあり、
+    /// 動く前のツリーで解決すると**古い座標をタップして別の要素が選ばれる**
+    /// (2026-08-02 に CMP の xcuitest / Android で実測。ステップは成功のまま = 黙って誤った結果)。
+    /// 以前は「スワイプせずに見つかったら静止待ちを挟まない」最適化だったが、
+    /// **実測コストが共通シナリオで +0.1〜1.0%(run 間ノイズ以下)**だったので安全側を採った。
+    /// スワイプは1回も起きない(見つかっているので)ことは変わらない
+    func testScrollToWaitsForStillnessOnTheFirstAttempt() async {
+        let driver = ScriptedDriver(frames: [[node(1, id: "row_30")], [node(1, id: "row_30")]])
         let step = FlowStep(action: "scrollTo", locator: FlowLocator(id: "row_30"),
                             direction: "up", maxSwipes: 5)
         let outcome = await StepExecutor(driver: driver).execute(step)
         XCTAssertTrue(isPassed(outcome.status))
-        XCTAssertEqual(driver.snapshotCallCount, 1)
+        XCTAssertEqual(driver.snapshotCallCount, 2, "静止確認の2枚だけで、スワイプは挟まない")
+        XCTAssertEqual(driver.swipeCallCount, 0)
     }
 
     // MARK: - アプリ内メッセージに覆われたときの失敗メッセージ
