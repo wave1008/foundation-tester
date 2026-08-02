@@ -2121,4 +2121,19 @@ final class StepExecutorTests: XCTestCase {
                                               container: FTRect(x: 0, y: 0, width: 100, height: 120)))
         XCTAssertNil(StepExecutor.dragGesture(jump: 40, container: container))
     }
+
+    /// **容器は画面と交差させる**(scrollFrame 側と同じ規則)。交差を取らないと画面外の座標を撃つ
+    func testDragGestureClipsTheContainerToTheViewport() {
+        // 画面(高さ 2400)より下へはみ出した容器
+        let container = FTRect(x: 0, y: 332, width: 1080, height: 3000)
+        let viewport = FTRect(x: 0, y: 0, width: 1080, height: 2400)
+        let clipped = StepExecutor.dragGesture(jump: 5000, container: container, viewport: viewport)
+        XCTAssertNotNil(clipped)
+        // 交差は y 332..2400(高さ 2068)。始点は下端マージン(15%)の内側 = 画面内
+        XCTAssertLessThanOrEqual(clipped!.fromY, 2400)
+        XCTAssertEqual(clipped!.fromY, 332 + 2068 - 2068 * 0.15, accuracy: 0.5)
+        // viewport を渡さなければ従来どおり(既存の呼び出しを壊さない)
+        let raw = StepExecutor.dragGesture(jump: 5000, container: container)
+        XCTAssertGreaterThan(raw!.fromY, 2400, "交差を取らないと画面外を撃つ = これが直した対象")
+    }
 }

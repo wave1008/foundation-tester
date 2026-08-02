@@ -500,9 +500,16 @@ public final class StepExecutor {
 
     /// 長距離ドラッグの1ジェスチャ分の始点・終点(純粋関数・単体テスト対象)。
     /// container(webView の可視矩形)内で、上下 15% のマージンを避けて縦線上を動かす。
-    /// 1ジェスチャで賄えない距離は呼び手のループ(スナップショット→再計算)が刻む
-    static func dragGesture(jump: Double, container: FTRect)
+    /// 1ジェスチャで賄えない距離は呼び手のループ(スナップショット→再計算)が刻む。
+    ///
+    /// **容器は画面と交差させる**(`ScrollGeometry.intersection` と同じ規則)。
+    /// 交差を取らないと、画面からはみ出した容器で**画面外の座標を撃つ**ことになる
+    /// (WebView が画面より高いときに起き得た。2026-08-03 に scrollFrame 側と規則を揃えた)
+    static func dragGesture(jump: Double, container rawContainer: FTRect,
+                            viewport: FTRect? = nil)
         -> (fromX: Double, fromY: Double, toX: Double, toY: Double)? {
+        let container = viewport.flatMap { ScrollGeometry.intersection(rawContainer, $0) }
+            ?? rawContainer
         let margin = container.height * 0.15
         let usable = container.height - margin * 2
         guard usable > 100 else { return nil }
@@ -520,9 +527,10 @@ public final class StepExecutor {
 
     /// ヒント跳躍のドラッグ実行。ゆっくり終える(pressSeconds でフリングを抑えつつ、
     /// 距離に応じた duration)。失敗したら false(呼び手は従来のスワイプへ落ちる)
-    private func hintDrag(jump: Double, container: FTRect,
+    private func hintDrag(jump: Double, container: FTRect, viewport: FTRect,
                           phase: inout PhaseAccumulator) async -> Bool {
-        guard let g = Self.dragGesture(jump: jump, container: container) else { return false }
+        guard let g = Self.dragGesture(jump: jump, container: container,
+                                       viewport: viewport) else { return false }
         let clock = ContinuousClock()
         let start = clock.now
         let duration = min(max(abs(g.toY - g.fromY) / 2500, 0.3), 0.7)
@@ -648,7 +656,8 @@ public final class StepExecutor {
                 // ドラッグ後は静止を待たず次周回のスナップショット(25ms)で測り直す(自己補正)
                 if let jump = Self.offscreenJump(step: step, snapshot: snapshot, finger: direction),
                    let container = Self.webViewContainer(in: snapshot),
-                   await hintDrag(jump: jump, container: container, phase: &phase) {
+                   await hintDrag(jump: jump, container: container,
+                                  viewport: snapshot.screen, phase: &phase) {
                     hintJumps += 1
                     continue
                 }
@@ -737,7 +746,8 @@ public final class StepExecutor {
                 // 端の確定は従来どおり署名の不変化で行う(ヒントは近道であって判定ではない)
                 if let jump = Self.offscreenEdgeJump(snapshot: settled.snapshot, finger: direction),
                    let container = Self.webViewContainer(in: settled.snapshot),
-                   await hintDrag(jump: jump, container: container, phase: &phase) {
+                   await hintDrag(jump: jump, container: container,
+                                  viewport: settled.snapshot.screen, phase: &phase) {
                     hintJumps += 1
                     continue
                 }
@@ -1621,13 +1631,14 @@ public final class StepExecutor {
             }
             return element.frame
         }
-        // **未指定は従来の全画面固定に任せる**(2026-08-02 に「面積最大のスクロール容器を
-        // 暗黙の対象にする」を実装して実測で撤回した)。理由は3つとも実測:
-        //  - iOS xcuitest は identifier の無い容器を snapshot に載せないので特定できない画面がある
-        //    (画面全体を対象にすると始点がタブバーに乗り**実移動量 0.0pt**)
-        //  - Android は速度ノブが無く、刻みを制御できない(ストロークを速めると Compose で
-        //    慣性が出て探索直後のタップが 9 行ずれた)
-        //  - 明示指定の経路(利用者が領域を決めた場合)は上で座標化しており、価値はそこで出ている
+        // **未指定は従来のエンジン既定に任せる**(2026-08-02 に実装 → 撤回 → 08-03 に条件を
+        // 変えて再投入 → 再び撤回。**3度目は無い**)。2度目の撤回理由:
+        //  - 狙いだった Compose の飛び越しには**効かない**。Compose の容器は xcuitest で
+        //    `other` として出て `scrollable` を申告できず、そもそも対象に選べない
+        //  - in-app では**到達距離が縮んで既定 maxSwipes(8)で届かなくなる**(実測:
+        //    E2E-iOS/ios-inapp の `tap("#row_40")` が失敗)。in-app の 0.85 ページ送りは
+        //    エンジン既定として維持する、という決定にも反する
+        // 領域を絞りたい利用者は `scrollFrame` を書く(そこでは価値が出ている)
         return nil
     }
 
