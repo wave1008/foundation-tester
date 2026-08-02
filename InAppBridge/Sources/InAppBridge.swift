@@ -510,14 +510,14 @@ final class FTInAppBridge {
 
     private func handleSwipe(_ body: Data) throws -> InAppHTTPServer.Response {
         let req = try decode(SwipeRequest.self, body)
-        // **スクロール領域の指定(座標)には応えられない**: 合成タッチの drag をジェスチャ認識器が
-        // 受理しないため、渡された座標のとおりに動かす手段が無い。ここで黙って全体スクロールへ
-        // 落とすと**指定と違う領域が動く**(iOS hybrid の既定エンジンは in-app なので実害が大きい)。
-        // 501 でホストに XCUITest へ回させる(座標経路はあちらが持つ)
-        if req.path != nil {
-            throw InAppError(501, "in-app エンジンはスクロール領域の指定(座標スワイプ)に対応していません"
-                + "(合成タッチの drag が受理されないため)。hybrid なら XCUITest へフォールバックします")
-        }
+        // **スクロール領域の指定(SwipeRequest.path)は「座標を撃つ指示」ではなく
+        // 「どこを・どれだけ動かすか」の指示として読む**。合成タッチの drag は受理されないので
+        // 座標そのものは注入できないが、
+        //   - 始点(fromX/fromY)は**必ず対象領域の中**にある(ホストがマージンを内側に取るため)
+        //     → 動かすスクロールビュー/AX 要素を選ぶのに使える
+        //   - 始点と終点の差 = ホストが意図した移動量 → contentOffset をその量だけ動かせる
+        // これで in-app でもマージン指定が効く(ページ送り 0.85 固定ではなくなる)。
+        // 座標を無視して画面全体を動かしてはいけない —— **指定と違う領域が黙って動く**
         // Compose / Flutter は自前描画で UIScrollView を持たない(Compose の画面には**本体の
         // スクロールとは無関係な UIScrollView が存在する**ので、contentOffset を動かしても
         // 見た目は変わらず黙った空振りになる)。合成タッチの drag も受理されない
@@ -539,13 +539,24 @@ final class FTInAppBridge {
         // なる(2026-08-01 実測 scrollTo 9.5s / scrollToTop 14.2s。同じ画面が SwiftUI ホスト
         // では 1.1s / 1.5s)。
         if ["compose", "flutter"].contains(uiFramework), req.scroll == true {
+            // **領域指定つきは受けない**(2026-08-02 実測で確定)。自前描画のフレームワークでは
+            // hitTest も AX ツリーも「画面のどこか」までしか絞れず、指定領域の外を指しても
+            // 画面本体のスクロールが受理してしまう —— E2E-Flutter で「固定ヘッダを指定したのに
+            // リストが動く」を実際に踏んだ。**黙って別の領域を動かすより 501 で XCUITest へ回す**
+            // (あちらは座標を実際に撃てるので領域どおりに動く)。
+            // UIKit/SwiftUI 側(下の contentOffset 経路)は矩形で対象を選べるので受ける
+            if req.path != nil {
+                throw InAppError(501, "\(uiFramework) では in-app エンジンがスクロール領域を"
+                    + "切り分けられません(自前描画で hitTest も AX も領域を絞れない)。"
+                    + "hybrid なら XCUITest へフォールバックします")
+            }
             var scrolled = false
             try performWithSettle { window in
-                if let webScroll = Self.centeredWebContentScrollView(in: window) {
+                if let webScroll = Self.webContentScrollView(in: window, at: req.path) {
                     // 端に達しているだけなら no-op で 200(UIKit 経路と同じ理由。501 を返すと
                     // XCUITest の実スワイプへ切り替わり、以降のジェスチャがラッチで全部 XCUITest 化する)
                     if Self.hasRoom(webScroll, req.direction) {
-                        Self.scrollByPage(webScroll, direction: req.direction)
+                        Self.scroll(webScroll, direction: req.direction, path: req.path)
                     }
                     scrolled = true
                     return
@@ -587,8 +598,8 @@ final class FTInAppBridge {
                     + "(合成タッチの drag はジェスチャ認識器に受理されません)。"
                     + "hybrid なら XCUITest へフォールバックします")
             }
-            if let scrollView = Self.largestWithRoom(scrollViews, direction: req.direction) {
-                Self.scrollByPage(scrollView, direction: req.direction)
+            if let scrollView = Self.target(scrollViews, direction: req.direction, path: req.path) {
+                Self.scroll(scrollView, direction: req.direction, path: req.path)
             }
             // 余地なし = 端。no-op で 200 を返す
         }
@@ -652,6 +663,17 @@ final class FTInAppBridge {
 
     /// スワイプ1回 = 可視領域の ~85% 分だけ contentOffset を動かす(実機スワイプの体感に合わせる)。
     /// 指の向き=コンテンツと逆(上スワイプ=下方向へスクロール=offset.y 増)。範囲外はクランプ。
+    /// 1回ぶんのスクロール。**領域指定(path)があればホストが意図した移動量をそのまま使う**
+    /// (= マージン指定が in-app でも効く)。無ければ従来どおりビューポートの 85%。
+    /// 移動の向きは指の向きと逆
+    private static func scroll(_ sv: UIScrollView, direction: FTSwipeDirection, path: FTSwipePath?) {
+        guard let path else { scrollByPage(sv, direction: direction); return }
+        var offset = sv.contentOffset
+        offset.x += path.fromX - path.toX
+        offset.y += path.fromY - path.toY
+        clampAndApply(sv, offset)
+    }
+
     private static func scrollByPage(_ sv: UIScrollView, direction: FTSwipeDirection) {
         let inset = sv.adjustedContentInset
         let stepY = (sv.bounds.height - inset.top - inset.bottom) * 0.85
@@ -663,11 +685,18 @@ final class FTInAppBridge {
         case .left:  offset.x += stepX
         case .right: offset.x -= stepX
         }
+        clampAndApply(sv, offset)
+    }
+
+    /// コンテンツ範囲へ丸めてから適用する(はみ出すとバウンスして戻る = 動かないのと同じ)
+    private static func clampAndApply(_ sv: UIScrollView, _ offset: CGPoint) {
+        let inset = sv.adjustedContentInset
         let minY = -inset.top, maxY = max(-inset.top, sv.contentSize.height + inset.bottom - sv.bounds.height)
         let minX = -inset.left, maxX = max(-inset.left, sv.contentSize.width + inset.right - sv.bounds.width)
-        offset.y = min(max(offset.y, minY), maxY)
-        offset.x = min(max(offset.x, minX), maxX)
-        sv.setContentOffset(offset, animated: false)
+        var clamped = offset
+        clamped.y = min(max(offset.y, minY), maxY)
+        clamped.x = min(max(offset.x, minX), maxX)
+        sv.setContentOffset(clamped, animated: false)
     }
 
     private static func visibleScrollViews(in window: UIWindow) -> [UIScrollView] {
@@ -682,14 +711,16 @@ final class FTInAppBridge {
         return found
     }
 
-    /// **画面中央を覆う WKWebView 自身のスクロールビュー**(WKScrollView)。無ければ nil。
+    /// **指定点(領域指定が無ければ画面中央)を覆う WKWebView 自身のスクロールビュー**
+    /// (WKScrollView)。無ければ nil。
     ///
-    /// 中央で絞るのは、小さな埋め込み WebView のために画面本体のスクロールを奪わないため
+    /// 点で絞るのは、小さな埋め込み WebView のために画面本体のスクロールを奪わないため
     /// (XCUITest の実スワイプが駆動するのも画面中央の下にあるものだけ = 従来と同じ対象に揃う)。
     /// 面積で選ぶ判定は使えない: Compose の画面には本体と無関係な UIScrollView が居るので、
     /// 「WebView 由来か」を先に効かせる必要がある。
-    private static func centeredWebContentScrollView(in window: UIWindow) -> UIScrollView? {
-        let center = CGPoint(x: window.bounds.midX, y: window.bounds.midY)
+    private static func webContentScrollView(in window: UIWindow, at path: FTSwipePath?) -> UIScrollView? {
+        let center = path.map { CGPoint(x: $0.fromX, y: $0.fromY) }
+            ?? CGPoint(x: window.bounds.midX, y: window.bounds.midY)
         var best: UIScrollView?
         var bestArea: CGFloat = 0
         for sv in visibleScrollViews(in: window) where sv.superview is WKWebView {
@@ -699,6 +730,26 @@ final class FTInAppBridge {
             if area > bestArea { best = sv; bestArea = area }
         }
         return best
+    }
+
+    /// 動かすスクロールビューを選ぶ。**領域指定(path)があれば始点を含むものを優先する** ——
+    /// 始点はホストが対象領域の内側に取っているので、これで「指定と違う領域が動く」ことがなくなる。
+    /// 入れ子(リストの中の横カルーセル等)では**内側 = 面積が小さい方**を採る:
+    /// 指定された領域そのものを動かしたいのであって、その親ではない。
+    /// 含むものが無ければ従来どおり面積最大へ落ちる(領域が UIScrollView でない画面もあるため)
+    private static func target(_ scrollViews: [UIScrollView], direction: FTSwipeDirection,
+                               path: FTSwipePath?) -> UIScrollView? {
+        guard let path else { return largestWithRoom(scrollViews, direction: direction) }
+        let point = CGPoint(x: path.fromX, y: path.fromY)
+        let containing = scrollViews.filter { sv in
+            guard hasRoom(sv, direction), let window = sv.window else { return false }
+            return sv.convert(sv.bounds, to: window).contains(point)
+        }
+        if let innermost = containing.min(by: { $0.bounds.width * $0.bounds.height
+                                                < $1.bounds.width * $1.bounds.height }) {
+            return innermost
+        }
+        return largestWithRoom(scrollViews, direction: direction)
     }
 
     /// 面積最大の、**その向きに実際にスクロール余地がある**スクロールビュー。

@@ -275,6 +275,36 @@ final class StepExecutorTests: XCTestCase {
                     frame: FTRect(x: 0, y: 0, width: 100, height: 20), depth: 0)
     }
 
+    // MARK: - 見切れ判定(スクロール探索が「見えた瞬間」で止まらないための条件)
+
+    /// 縁で見切れた要素は frame がクランプされてタップが外れる(Compose iOS の上流制約)。
+    /// **見つけた = 十分ではない**ことをここで固定する
+    func testClippedByViewportDetectsEachEdge() {
+        let screen = FTRect(x: 0, y: 0, width: 402, height: 874)
+        func at(_ x: Double, _ y: Double, _ w: Double = 370, _ h: Double = 56) -> ElementInfo {
+            ElementInfo(ref: 1, type: "clickable", identifier: "row", label: nil, value: nil,
+                        placeholder: nil, enabled: true,
+                        frame: FTRect(x: x, y: y, width: w, height: h), depth: 1)
+        }
+        XCTAssertFalse(StepExecutor.isClippedByViewport(at(16, 400), screen: screen))
+        XCTAssertTrue(StepExecutor.isClippedByViewport(at(16, 829), screen: screen), "下端で見切れ")
+        XCTAssertTrue(StepExecutor.isClippedByViewport(at(16, -1), screen: screen), "上端で見切れ")
+        XCTAssertTrue(StepExecutor.isClippedByViewport(at(-1, 400), screen: screen), "左で見切れ")
+        XCTAssertTrue(StepExecutor.isClippedByViewport(at(40, 400, 370), screen: screen), "右で見切れ")
+        // ちょうど収まっているものは見切れではない(境界)
+        XCTAssertFalse(StepExecutor.isClippedByViewport(at(16, 818), screen: screen))
+    }
+
+    /// ビューポートより大きい要素はどう送っても収まらない。true にすると maxSwipes を
+    /// 使い切って「見つけたのに失敗」になる
+    func testElementLargerThanViewportIsNotTreatedAsClipped() {
+        let screen = FTRect(x: 0, y: 0, width: 402, height: 874)
+        let tall = ElementInfo(ref: 1, type: "other", identifier: "long", label: nil, value: nil,
+                               placeholder: nil, enabled: true,
+                               frame: FTRect(x: 0, y: -100, width: 402, height: 1200), depth: 1)
+        XCTAssertFalse(StepExecutor.isClippedByViewport(tall, screen: screen))
+    }
+
     private func element(ref: Int, id: String) -> ElementInfo {
         ElementInfo(ref: ref, type: "button", identifier: id, label: nil, value: nil,
                    placeholder: nil, enabled: true,

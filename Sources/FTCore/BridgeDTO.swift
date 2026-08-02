@@ -71,7 +71,13 @@ public enum BridgeAPI {
     /// 39: SwipeRequest.path(スクロール領域を指定したときの実座標)を追加(2026-08-02)。
     /// 旧ブリッジは path を**黙って無視して全画面スワイプする** = 指定と違う領域が動くので
     /// 確実に入れ替える。in-app は座標を実行できないため 501 を返す(ホストが XCUITest へ回す)
-    public static let bridgeProtocolVersion = 39
+    /// 40: in-app が path を「対象と移動量」として解釈するようになった(2026-08-02)。
+    /// 39 の dylib は path つきを 501 で返すので、再利用されると領域指定のたびに XCUITest へ
+    /// 委譲され続ける(**動くが遅いまま**でテストは緑 = 気付けない)
+    /// 41: in-app の path 受理を **UIKit/SwiftUI(と WebView)に限定**(2026-08-02)。
+    /// compose/flutter は領域を切り分けられず「指定と違う領域が動く」ため 501 に戻した。
+    /// 40 の dylib が再利用されるとその誤動作が残る
+    public static let bridgeProtocolVersion = 41
 
     /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
     /// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java の
@@ -448,8 +454,9 @@ public struct SwipeRequest: Codable {
     /// ホストが `ScrollGeometry` で計算して送る。**nil = 従来の全画面固定**(ブリッジ側の
     /// 軸別既定で計算する)。両 OS のブリッジがこれを読む —— 経路を分けると
     /// 「どこをスクロールするか」の決定がエンジンごとに割れるため。
-    /// **in-app ブリッジは受け付けず 501 を返す**(合成タッチの drag を受理しないので、
-    /// 座標を渡されても指定領域を動かせない。ホストは XCUITest へフォールバックする)
+    /// **in-app ブリッジは座標を撃たずに「対象と移動量」として読む**: 始点は必ず対象領域の
+    /// 内側にある(ホストがマージンを内側に取る)ので動かすスクロールビュー/AX 要素の特定に使い、
+    /// 始点と終点の差を contentOffset の移動量に使う。これで in-app でもマージンが効く
     public var path: FTSwipePath?
     public init(direction: FTSwipeDirection, fast: Bool? = nil, scroll: Bool? = nil,
                 distance: Double? = nil, durationMs: Int? = nil, fling: Bool? = nil,
