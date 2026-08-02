@@ -77,7 +77,11 @@ public enum BridgeAPI {
     /// 41: in-app の path 受理を **UIKit/SwiftUI(と WebView)に限定**(2026-08-02)。
     /// compose/flutter は領域を切り分けられず「指定と違う領域が動く」ため 501 に戻した。
     /// 40 の dylib が再利用されるとその誤動作が残る
-    public static let bridgeProtocolVersion = 41
+    /// 42: in-app の整定が**スクロールの動き自体**を見るようになった(2026-08-02)。
+    /// `setContentOffset(animated:)` は CALayer のアニメを伴わず旧実装をすり抜けるため、
+    /// 「先頭へ」等の直後の snapshot が動く前のツリーを返し、**成功と記録されたまま
+    /// 別の要素が掴まれていた**。旧 dylib が再利用されるとその誤動作が残る
+    public static let bridgeProtocolVersion = 42
 
     /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
     /// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java の

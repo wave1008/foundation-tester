@@ -245,4 +245,28 @@ class スクロールで折り返し下の要素に到達できること {
             }
         }
     }
+
+    /// **検証を挟まずに**「先頭へ」の直後を探索するのが要点。プログラム的な
+    /// アニメーションスクロールが待たれないと、探索が古い a11y ツリーの座標を
+    /// タップして別の行が選ばれる(ステップは成功のまま = 黙って誤った結果)。
+    /// 2026-08-02 に in-app エンジンで実際に踏んだ回帰テスト
+    @Test("プログラム的スクロールの直後でも探索が古いツリーを見ない")
+    func S0080() {
+        scenario {
+            scene(1, "末尾まで送ってから先頭へ戻し、間を置かずに探索する") {
+                condition {
+                    launchApp()
+                }.action {
+                    tap("#nav_scroll")
+                    scrollTo("#row_40", maxSwipes: 15)
+                    tap("#btn_scroll_top")
+                    withScrollDown {
+                        tap("#row_30", maxSwipes: 15)
+                    }
+                }.expectation {
+                    textIs("#txt_row_selected", "selected=row_30")
+                }
+            }
+        }
+    }
 }

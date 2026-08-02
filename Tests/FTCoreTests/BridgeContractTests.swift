@@ -94,12 +94,12 @@ final class BridgeContractTests: XCTestCase {
             "InAppBridge/Sources/InAppHTTPServer.swift": "1d987f76a251ab475b632f24df272b000bb433054c7607e38f0447b6181e58bb",
             "InAppBridge/Sources/InAppInput.h": "acc35263e4306db4f7f5d8e544c406c292b5d1b873c953c5aa741a2de63f66eb",
             "InAppBridge/Sources/InAppInput.m": "2eff34d11bacb028604dc96d364f2fc11538039d471d1320f3a35ca4bdf14cce",
-            "InAppBridge/Sources/InAppSettle.swift": "d7fa2a63009cb184ecec29262de48dcbc6e883ac62be2c8b679abd3f25626e5a",
+            "InAppBridge/Sources/InAppSettle.swift": "62ae8446e108a68b4a72ef1f8226d530d77683087fde133cfe7a05ee13a2a6e1",
             "InAppBridge/Sources/InAppSnapshot.swift": "a37d3c89b74eba4925b182c5e9009e09c070e190cb453029d3c443a1e2f21c8d",
             "InAppBridge/Sources/InAppWebViewDOM.swift": "b4053272dfffb11508b64bd315695123d1199768ed7ceed20f2b8272a5b10551",
             "InAppBridge/Sources/boot.m": "b23fc93fbc99ce2579c9fd8ae75a6f9bbfd0ec6122bec60eb6cd00775dd635ef",
             "InAppBridge/build.sh": "afc02d752c97a009dd48aa6cf18934af0c6f8be662d75af37cdc8c4affbc454d",
-            "Sources/FTCore/BridgeDTO.swift": "567b24fc44b0dcb12d8767293ef7e942c54f604fc0dbe3315564c5ba28876519",
+            "Sources/FTCore/BridgeDTO.swift": "0eebf72bd2a440f4562d30dc98255ab372580577a00a03170ee14077085b4243",
             "Sources/FTCore/WebViewDOMSnapshot.swift": "3b0b20dfb2b8451f9ce19564c7d8701674f9361bbcb5b1c5afbb3570324011af",
         ],
         .xcuitest: [
@@ -110,7 +110,7 @@ final class BridgeContractTests: XCTestCase {
             "Runner/FTesterRunnerUITests/FastInput.swift": "18b54340c404eac53736675763fad8e291b08e2f1f1ba96d696172698aa83bc1",
             "Runner/FTesterRunnerUITests/ObjCExceptionCatcher.h": "5a98cdbeefb031137a985b2f4430a5e12fec447a492599f8f4da1bd2c7101edc",
             "Runner/FTesterRunnerUITests/ObjCExceptionCatcher.m": "8b41a8a81bc8199bca13a364717614684f8003999c7675d9a63242c8e74c26be",
-            "Sources/FTCore/BridgeDTO.swift": "567b24fc44b0dcb12d8767293ef7e942c54f604fc0dbe3315564c5ba28876519",
+            "Sources/FTCore/BridgeDTO.swift": "0eebf72bd2a440f4562d30dc98255ab372580577a00a03170ee14077085b4243",
             "Sources/FTCore/TypeReadback.swift": "8238adeb5146ee2441478a94bf6e2aabb85e6c88c38538ed8df74b2e025bf8ca",
         ],
         .android: [
