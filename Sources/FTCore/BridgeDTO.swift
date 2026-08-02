@@ -77,11 +77,14 @@ public enum BridgeAPI {
     /// 41: in-app の path 受理を **UIKit/SwiftUI(と WebView)に限定**(2026-08-02)。
     /// compose/flutter は領域を切り分けられず「指定と違う領域が動く」ため 501 に戻した。
     /// 40 の dylib が再利用されるとその誤動作が残る
+    /// 43: snapshot が scrollable(スクロールできる容器か)を返すようになった(2026-08-02)。
+    /// ホストは scrollFrame の指定が**スクロールできない領域を指していないか**の判定に使う。
+    /// 旧ブリッジは返さないので判定が働かない(黙った空振りに気付けないまま)
     /// 42: in-app の整定が**スクロールの動き自体**を見るようになった(2026-08-02)。
     /// `setContentOffset(animated:)` は CALayer のアニメを伴わず旧実装をすり抜けるため、
     /// 「先頭へ」等の直後の snapshot が動く前のツリーを返し、**成功と記録されたまま
     /// 別の要素が掴まれていた**。旧 dylib が再利用されるとその誤動作が残る
-    public static let bridgeProtocolVersion = 42
+    public static let bridgeProtocolVersion = 43
 
     /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
     /// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java の
@@ -220,6 +223,14 @@ public struct ElementInfo: Codable, Sendable {
     /// 中身を読めたときに立てる。ホストは「in-app で中身が読めているか」をこれで判定する
     /// (幾何で判定すると WebView と同じ矩形を持つ interop 容器を中身と誤認する。2026-07-29 実害)
     public var web: Bool?
+    /// **スクロールできる容器か**(true のときだけ送る = checked/web と同じ省略規約)。
+    /// 取得元: Android=`AccessibilityNodeInfo.isScrollable` / iOS xcuitest=要素の型
+    /// (scrollView / table / collectionView)/ iOS in-app=`UIScrollView` かどうか。
+    /// **Compose/Flutter の in-app では申告できない**(自前描画で UIScrollView を持たず、
+    /// AX の scroll 可否は**呼ぶと実際にスクロールしてしまう**ので非破壊に判定できない)。
+    /// だから「false = スクロールできない」と読んではいけない —— 使ってよいのは
+    /// **true を見つけたときだけ**(scrollFrame の指定が空振りかの判定に使う)
+    public var scrollable: Bool?
     /// **入力フォーカスを持つか**(true のときだけ送る = checked/web と同じ省略規約)。
     /// clearInput(ref なし)の事後検証(StepExecutor)が、クリア前後のスナップショットで
     /// 同一要素を突き合わせるための唯一の手がかり。取得元: iOS xcuitest=`hasKeyboardFocus` /
@@ -228,7 +239,9 @@ public struct ElementInfo: Codable, Sendable {
 
     public init(ref: Int, type: String, identifier: String?, label: String?, value: String?,
                 placeholder: String?, enabled: Bool, frame: FTRect, depth: Int,
-                checked: Bool? = nil, web: Bool? = nil, focused: Bool? = nil) {
+                checked: Bool? = nil, web: Bool? = nil, focused: Bool? = nil,
+                scrollable: Bool? = nil) {
+        self.scrollable = scrollable
         self.ref = ref
         self.type = Self.normalizedType(type)
         self.identifier = identifier
@@ -257,6 +270,7 @@ public struct ElementInfo: Codable, Sendable {
         depth = try container.decode(Int.self, forKey: .depth)
         web = try container.decodeIfPresent(Bool.self, forKey: .web)
         focused = try container.decodeIfPresent(Bool.self, forKey: .focused)
+        scrollable = try container.decodeIfPresent(Bool.self, forKey: .scrollable)
     }
 
     /// 先頭 1 文字だけ小文字化する(`StaticText` → `staticText`)。冪等なので二重適用しても安全

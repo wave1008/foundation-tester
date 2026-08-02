@@ -107,4 +107,42 @@ final class ScrollGeometryTests: XCTestCase {
                            0.2, accuracy: 0.0001)
         }
     }
+
+    // MARK: - scrollFrame の空振り検出
+
+    private func el(_ ref: Int, id: String, y: Double, h: Double,
+                    scrollable: Bool? = nil) -> ElementInfo {
+        ElementInfo(ref: ref, type: "other", identifier: id, label: nil, value: nil,
+                    placeholder: nil, enabled: true,
+                    frame: FTRect(x: 0, y: y, width: 402, height: h), depth: 1,
+                    scrollable: scrollable)
+    }
+
+    private func snapshot(_ elements: [ElementInfo]) -> SnapshotResponse {
+        SnapshotResponse(sessionBundleID: nil, screen: screen, elements: elements, truncatedCount: 0)
+    }
+
+    /// スクロールできない領域を指すと、座標は正しく作られてスワイプは 200 を返すのに何も動かない。
+    /// 端に達したのと区別できないので**申告しないと気付けない**
+    func testNoteWhenTheSpecifiedFrameCannotScroll() {
+        let header = el(1, id: "header", y: 100, h: 40)
+        let list = el(2, id: "list", y: 200, h: 500, scrollable: true)
+        XCTAssertNotNil(StepExecutor.scrollFrameNote(header, in: snapshot([header, list])))
+        XCTAssertNil(StepExecutor.scrollFrameNote(list, in: snapshot([header, list])))
+    }
+
+    /// 「リストを包む枠」を指定するのは自然な書き方。中のスクロール可能な要素が動けば意図は満たされる
+    func testNoNoteWhenAScrollableElementIsInsideTheFrame() {
+        let wrapper = el(1, id: "wrapper", y: 180, h: 560)
+        let list = el(2, id: "list", y: 200, h: 500, scrollable: true)
+        XCTAssertNil(StepExecutor.scrollFrameNote(wrapper, in: snapshot([wrapper, list])))
+    }
+
+    /// **申告できないエンジン(Compose/Flutter の in-app)では黙る**。全要素 nil のときに
+    /// 警告すると誤報になる —— 使ってよいのは true を見つけたときだけ
+    func testStaysSilentWhenTheEngineCannotReportScrollable() {
+        let header = el(1, id: "header", y: 100, h: 40)
+        let list = el(2, id: "list", y: 200, h: 500)
+        XCTAssertNil(StepExecutor.scrollFrameNote(header, in: snapshot([header, list])))
+    }
 }

@@ -155,7 +155,11 @@ enum InAppSnapshot {
             // XCUITest 版と同じ経路(UIAccessibilityTraits.selected)。false は送らない
             checked: traits.contains(.selected) ? true : nil,
             // clearInput 事後検証用(ElementInfo.focused 参照)。true のときだけ送る
-            focused: (node as? UIResponder)?.isFirstResponder == true ? true : nil)
+            focused: (node as? UIResponder)?.isFirstResponder == true ? true : nil,
+            // スクロールできる容器か(scrollFrame の空振り検出用)。**UIKit/SwiftUI でだけ分かる** ——
+            // Compose/Flutter は自前描画で UIScrollView を持たず、AX の scroll 可否は
+            // 呼ぶと実際にスクロールしてしまうので非破壊に判定できない(false は送らない)
+            scrollable: node is UIScrollView ? true : nil)
     }
 
     // 空の UITextField は accessibilityValue が placeholder を返すため value に漏れる。

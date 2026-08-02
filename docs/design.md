@@ -1325,8 +1325,15 @@ textIs(.id("txt_result"), "dialog=none")
   スパンを変えると始点がスクロール領域の外に出て 1 ミリも動かない(performance-tuning §3.16 の実害)。
   解決できない・削りすぎて動かせないときも従来経路へ落ちる(Shirates も明示 scrollFrame は
   **矩形の供給元**であって、スクロール可能かの判定はしない)。
-  **in-app エンジンは座標を実行できないので 501 を返す**(合成タッチの drag を受理しないため。
-  hybrid は XCUITest へフォールバックする)。時間指定は持たない(上記の承認済み差分)
+  **in-app は座標を「対象 + 移動量」として読む**(始点で UIScrollView を特定し、始点と終点の差を
+  contentOffset へ)ので**マージンも効く**。ただし **Compose/Flutter は 501 で XCUITest へ回す** ——
+  自前描画では hitTest も AX も領域を絞れず、指定領域の外を指しても画面本体が動いてしまう
+  (2026-08-02 に E2E-Flutter で実測)。時間指定は持たない(上記の承認済み差分)。
+  **スクロールできない領域を指定したときは注記で申告する**(座標は正しく作られ 200 が返るが
+  何も動かない = 端に達したのと区別できず署名では検出できないため)。判定は
+  `ElementInfo.scrollable`(Android=`isScrollable` / xcuitest=型 / in-app=`UIScrollView`)で、
+  **申告できないエンジン(Compose/Flutter の in-app)では黙る** —— 使ってよいのは true を
+  見つけたときだけで、「false = スクロールできない」と読むと誤報になる
 
 ### 失敗時に返す情報(2026-07-26)
 
