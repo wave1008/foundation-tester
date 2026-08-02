@@ -130,11 +130,36 @@ class スクロールで折り返し下の要素に到達できること {
     // 他 3 SUT では同じ形が安定して通る。詳細と再現手順は
     // docs/verification.md「Compose の探索直後タップ(未解決)」
 
-    // **CMP だけ「探索直後にタップする」形(S0080 と S0060 後半)を置いていない**。
+    @Test("scrollFrame に固定ヘッダを指定するとリストは動かない")
+    func S0070() {
+        scenario {
+            scene(1, "スクロール画面を開く") {
+                condition {
+                    launchApp()
+                }.action {
+                    tap("#nav_scroll")
+                }.expectation {
+                    exist("#row_01")
+                }
+            }
+            // 座標が**指定した領域から**作られている証拠。全画面固定のままなら
+            // 画面中央 = リストの上を払ってしまい #row_01 は流れて消える
+            scene(2, "スクロールしない固定ヘッダの帯を払っても先頭行が残る") {
+                action {
+                    scrollDown(scrollFrame: "#txt_row_selected", repeat: 2)
+                }.expectation {
+                    exist("#row_01")
+                }
+            }
+        }
+    }
+
+    // **CMP だけ「探索直後にタップする」形(S0080 と S0060 の後半シーン)を置いていない**。
     // Compose は2つの別々の理由でずれる: iOS は移動量がビューポートを超えたときの frame クランプ
     // (**領域指定で塞げる** —— 実測 0/3 → 3/3)、Android は領域を指定しても残る慣性
     // (間欠 2/3)。他 3 SUT では同じ形が安定して通る。
-    // 機構と回避策は docs/verification.md「Compose の探索直後タップ」
+    // 機構と回避策は docs/verification.md「Compose の探索直後タップ」。
+    // **S0070(上)はタップを含まないのでこの制限の対象外** = 他 SUT と同じ形で置く
 
     // --- 縦と横のスクロール領域が同居する画面での領域指定 ---
     // これが `scrollFrame` の本丸: 2つのスクロール領域があるとき、**指定した方だけ**が動くこと。

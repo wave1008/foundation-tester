@@ -178,7 +178,7 @@ Android(`BridgeRouter.handleSwipe`)は縦 0.3h↔0.7h・横 0.2w↔0.8w(y=0.5h)�
 | `#txt_row_selected` | Text | `selected=<v>` 初期 `selected=-` | 固定ヘッダ(スクロールしない) |
 | `#btn_scroll_top` | Button | `先頭へ` | 固定ヘッダ |
 | `#list_rows` | (容器) | (ラベルなし) | 行を包むスクロール容器。**スコープセレクタ `#list_rows >> …` の対象** |
-| `#row_01` … `#row_40` | Button | `行 01` … `行 40` | 高さ 56dp 以上・ゼロ詰め・**`#list_rows` の子孫**。**初期表示で `#row_06` までは完全に見える**こと(下の横カルーセルぶんリストが短い。シナリオの `swipeElementToElement` が依存する。SUT により `#row_08` まで見えることもあり、その場合はシナリオ側で広い方を使ってよい) |
+| `#row_01` … `#row_40` | Button | `行 01` … `行 40` | 高さ 56dp 以上・ゼロ詰め・**`#list_rows` の子孫**。**初期表示で `#row_06` までは完全に見える**こと(下の横カルーセルぶんリストが短い。シナリオの `swipeElementToElement` が依存する)。**CMP はさらに `#row_08` まで完全に見えること** — CMP の S0030 は `#row_06` 起点だとドラッグ距離が足りず `#row_01` が消えない(実測)ため `#row_08` 起点で、この保証に乗っている |
 
 行タップで `selected=row_NN`。`#row_40` は `scrollTo` の到達目標。
 
@@ -187,7 +187,7 @@ Android(`BridgeRouter.handleSwipe`)は縦 0.3h↔0.7h・横 0.2w↔0.8w(y=0.5h)�
 
 | tag | 種別 | ラベル/テキスト | 備考 |
 |---|---|---|---|
-| `#txt_tag_selected` | Text | `tag=<v>` 初期 `tag=-` | 固定ヘッダ(スクロールしない) |
+| `#txt_tag_selected` | Text | `tag=<v>` 初期 `tag=-` | **`#carousel_tags` の直下**(スクロールしない。4 SUT で並びを揃える — 相対セレクタが SUT で割れないため) |
 | `#carousel_tags` | (容器) | (ラベルなし) | **横スクロール**する容器。`#list_rows` と同じくスコープの対象 |
 | `#tag_01` … `#tag_20` | Button | `タグ 01` … `タグ 20` | 幅 120dp・高さ 56dp 以上。**`#carousel_tags` の子孫** |
 
