@@ -622,6 +622,19 @@ run 終了時の「FM 呼び出しが全て失敗しました」警告と結果 
   heal は FM なしで解決し(`healed=1` だが `fm` は nil)、**FM 経路を検証したつもりで空振りする**。
   heal の FM を実際に通すときはこのファイルを消してから実行する
 
+### FM が全滅している間の E2E は「弱い緑」(2026-08-03)
+
+FM(オンデバイスモデル)が死んでいると、**occlusion-guard(`exist` の既定 `requireVisible`)・
+自己修復・`screenIs`・triage が実質無効のまま緑になる**(失敗は飲み込まれて pass 扱い)。
+run のログに `Every FM call failed` が出ていたら、その run は**偽陽性(覆われているのに exist が
+通る)を検出できていない**と読むこと。`ftester doctor` の「On-device model」で確認できる。
+
+根本原因は Apple 側(`modelmanagerd` が安全性モデルを ANE にロードできない。FB 報告済み)で、
+availability は available と嘘をつく。**`SystemLanguageModel(guardrails:
+.permissiveContentTransformations)` で回避できないことは 2026-08-03 に確定**した
+(全滅中のプローブが `tvp` = permissive も同じエラーで落ちる)。
+監視は `Scripts/fm-flap-monitor.swift`(再開手順はスクリプト冒頭)。
+
 ### FM 経路の検証は `Scripts/fm-verify.sh`(2026-07-30)
 
 上記の空振り要因(既定 OFF・失敗しないと呼ばれない・キャッシュ命中・既定スイートに無い)を
