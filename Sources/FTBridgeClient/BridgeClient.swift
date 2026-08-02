@@ -270,9 +270,9 @@ public final class BridgeClient: AppDriver {
             "/swipe",
             body: SwipeRequest(direction: direction, fast: fastFlag,
                                scroll: intent == .gesture ? nil : true,
-                               durationMs: intent == .edge ? Self.edgeSwipeDurationMs : nil,
+                               durationMs: Self.strokeMs(for: intent, path: path),
                                fling: intent == .edge ? true : nil,
-                               velocity: intent == .edge ? Self.edgeSwipeVelocity : nil,
+                               velocity: Self.velocity(for: intent, path: path),
                                path: path),
             timeout: interactionTimeout)
     }
@@ -288,6 +288,16 @@ public final class BridgeClient: AppDriver {
     /// 実測(Android View/XML): 300ms/実時計 276px → 200ms/合成 1,156px
     static let edgeSwipeDurationMs = 150
 
+    /// ストローク時間。**探索では触らない**(ブリッジ既定 300ms)。
+    /// 2026-08-02 に 200ms を試したが、Android の Compose で慣性が出て
+    /// **探索直後のタップが 9 行ずれた**(row_30 を狙って row_39)。
+    /// 逆に 300ms のままだと Flutter/Android は負荷時に到達し損ねることがある ——
+    /// **どちらかに倒せるだけの較正が無い**ので現状維持(docs/performance-tuning.md §3.16 の
+    /// 「較正できるまで触らない」に従う)
+    static func strokeMs(for intent: FTSwipeIntent, path: FTSwipePath?) -> Int? {
+        intent == .edge ? edgeSwipeDurationMs : nil
+    }
+
     /// XCUITest ランナー側の同じ用途のノブ(points/sec。`XCUIGestureVelocity`)。
     /// 距離ではなく速度で効かせるので、Android のような「始点がスクロール領域の外に出る」
     /// 事故は起きない(XCTest が要素の中で始点を決める)。
@@ -297,6 +307,14 @@ public final class BridgeClient: AppDriver {
     /// 小さかった。sum では 2500 が 8.8s 勝つ(壁時計 約1.1s/プロファイル)が、尾を引く挙動は
     /// フレーク耐性の観点で割に合わない。詳細は docs/performance-tuning.md §3.17
     static let edgeSwipeVelocity = 1500.0
+
+    /// 用途から velocity を決める。**探索では送らない**(既定速度のまま)。
+    /// 慣性を消す狙いで v350 を試したが、**エンジンを跨ぐと収束しなかった** ——
+    /// iOS では刻み = 実移動量にできる一方、Android は速度ノブが無く(距離とストローク時間で
+    /// 決まる)同じ設計にできない。実測は docs/performance-tuning.md §3.18
+    static func velocity(for intent: FTSwipeIntent, path: FTSwipePath?) -> Double? {
+        intent == .edge ? edgeSwipeVelocity : nil
+    }
 
     public func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
                      pressSeconds: Double, durationSeconds: Double) async throws {

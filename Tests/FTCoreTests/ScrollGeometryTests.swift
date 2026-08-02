@@ -91,13 +91,47 @@ final class ScrollGeometryTests: XCTestCase {
                                          startMarginRatio: 0.2, endMarginRatio: 0.2))
     }
 
-    /// 用途ごとの既定。**探索だけ保守側**(行き過ぎると戻らずシナリオ全体が中断するため)
+    /// 用途ごとの既定。**探索だけ保守側**(行き過ぎると戻らずシナリオ全体が中断するため)。
+    /// 慣性を消して刻みを大きく取る案は 2026-08-02 に実装して実測で撤回した
+    /// (iOS は velocity で消せるが Android に同じノブが無く、収束しなかった)
     func testSearchMarginIsMoreConservativeThanEdge() {
         let search = FTScrollDefaults.startMarginRatio(intent: .search, vertical: true)
         let edge = FTScrollDefaults.startMarginRatio(intent: .edge, vertical: true)
         XCTAssertGreaterThan(search, edge)
         XCTAssertEqual(search, 0.25, accuracy: 0.0001)
         XCTAssertEqual(edge, 0.2, accuracy: 0.0001)
+    }
+
+    /// 自己補正: 実移動量がビューポートの上限を超えたら刻みを詰める。
+    /// **飛び越しは探索の失敗に直結する**(行き過ぎた要素は拾い直さない)
+    func testScaledMarginsShrinkTheSpanSymmetrically() {
+        let full = StepExecutor.scaledMargins(start: 0.1, end: 0.1, scale: 1)
+        XCTAssertEqual(full.start, 0.1, accuracy: 0.0001)
+        let half = StepExecutor.scaledMargins(start: 0.1, end: 0.1, scale: 0.5)
+        // スパン 0.8 → 0.4 なので両端は 0.3 ずつ
+        XCTAssertEqual(half.start, 0.3, accuracy: 0.0001)
+        XCTAssertEqual(half.end, 0.3, accuracy: 0.0001)
+        // 詰めすぎても動くスワイプを残す
+        let tiny = StepExecutor.scaledMargins(start: 0.1, end: 0.1, scale: 0.01)
+        XCTAssertLessThan(tiny.start, 0.5)
+    }
+
+    /// 面積最大のスクロール容器を選ぶ規則(Shirates の解決連鎖の中核)。
+    /// **今は未指定経路から呼んでいない**(暗黙の座標化は実測で撤回した)が、
+    /// 規則自体は `scrollable` の申告と合わせて残す —— 撤回の理由は規則の誤りではなく、
+    /// 「容器を特定できない画面がある」「Android で刻みを制御できない」という実行側の事情
+    func testImplicitScrollTargetPrefersTheLargestScrollableContainer() {
+        let list = el(1, id: "list", y: 200, h: 500, scrollable: true)
+        let small = el(2, id: "badge", y: 60, h: 40, scrollable: true)
+        let target = StepExecutor.implicitScrollTarget(in: snapshot([list, small]), vertical: true)
+        XCTAssertEqual(target?.y ?? -1, 200, accuracy: 0.001)
+
+        // 申告が無ければ nil(Compose/Flutter の in-app・identifier の無い容器はここに来る)
+        XCTAssertNil(StepExecutor.implicitScrollTarget(
+            in: snapshot([el(1, id: "a", y: 0, h: 100)]), vertical: true))
+
+        // 画面のごく一部しか占めない容器は本体ではない
+        XCTAssertNil(StepExecutor.implicitScrollTarget(in: snapshot([small]), vertical: true))
     }
 
     /// 横は現行の 0.2↔0.8(スパン 0.6)と同じ = 用途で分けない
