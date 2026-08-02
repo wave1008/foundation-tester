@@ -48,17 +48,28 @@ final class ScenarioCodeGenTests: XCTestCase {
     }
 
     /// select は action(操作)として生成される。exist(assert)とコード生成の分岐が違うことを固定する
-    func testSelectEmitsOptionalAndOmitsTheDefaultTimeout() {
-        let optional = render([
-            FlowStep(action: "select", locator: FlowLocator(id: "msg"), timeout: 1.2, optional: true),
+    func testSelectEmitsTheTimeoutAndOmitsTheDefault() {
+        let explicit = render([
+            FlowStep(action: "select", locator: FlowLocator(id: "msg"), timeout: 1.2),
         ])
-        XCTAssertTrue(optional.contains("select(\"#msg\", optional: true, timeout: 1.2)"), optional)
+        XCTAssertTrue(explicit.contains("select(\"#msg\", timeout: 1.2)"), explicit)
 
         let omitted = render([
             FlowStep(action: "select", locator: FlowLocator(id: "msg"), timeout: 5),
         ])
         XCTAssertTrue(omitted.contains("select(\"#msg\")"), omitted)
         XCTAssertFalse(omitted.contains("timeout:"), omitted)
-        XCTAssertFalse(omitted.contains("optional:"), omitted)
+    }
+
+    /// **廃止済みの `optional:` を生成コードに復活させない**。録画 JSON に古い `optional` キーが
+    /// 残っていても FlowStep が読み捨てるので、生成結果はコンパイルできる形のままになる
+    func testGeneratedCodeNeverEmitsTheRemovedOptionalArgument() throws {
+        let json = """
+        {"action":"tap","locator":{"id":"btn"},"optional":true}
+        """
+        let step = try JSONDecoder().decode(FlowStep.self, from: Data(json.utf8))
+        let code = render([step])
+        XCTAssertTrue(code.contains("tap(\"#btn\")"), code)
+        XCTAssertFalse(code.contains("optional"), code)
     }
 }

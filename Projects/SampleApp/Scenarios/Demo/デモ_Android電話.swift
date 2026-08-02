@@ -190,9 +190,11 @@ class デモ_Android電話 {
                 action {
                     ifCanSelect("#search_view||検索||Search", waitSeconds: 2) {
                         tap("#search_view||検索||Search")
-                        // 検索入力欄の実 id 未確認。誤りでもシナリオを落とさないよう optional にする
+                        // 検索入力欄の実 id 未確認。誤りでもシナリオを落とさないよう ifCanSelect で包む
                         // (検索が開けた事実は上の ifCanSelect で担保済み。締めは scene3 の連絡先タブ)
-                        type("#search_src_text||#search_view_edit_text", "xyzzynotfound", optional: true)
+                        ifCanSelect("#search_src_text||#search_view_edit_text") {
+                            type("#search_src_text||#search_view_edit_text", "xyzzynotfound")
+                        }
                     }
                 }.expectation {
                     exist("お気に入り||Favorites||履歴||Recents||連絡先||Contacts")

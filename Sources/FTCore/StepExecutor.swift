@@ -6,7 +6,8 @@
 //   その秒数を予算にリトライ(0 = リトライなし。省略時=nilは従来の3回固定のまま)
 // - アサーションでは type+index のみのフォールバックを使わない(別画面要素への偽陽性防止)。
 //   ただしスコープ付き(`#list >> .Cell[2]`)は容器に錨があるので除外しない(FlowLocator.isWeakForAssert)
-// - optional ステップは要素未発見でも失敗にせずスキップ(自己修復の対象外)
+// - **要素未発見で失敗しない唯一のアクションは `select`**(空要素を返す契約。DSL の
+//   `FTElement.isEmpty` が真になる)。自己修復の対象にもしない。他は全て失敗=シナリオ中断
 // - 自己修復は delegate 提案の confidence == "high" のみ採用
 // - 操作後の整定待ちはドライバ側に委譲(Android: ブリッジの a11y 静穏検知 / iOS: XCUITest の
 //   暗黙 quiescence)。
@@ -424,6 +425,10 @@ public final class StepExecutor {
         return parts.isEmpty ? nil : parts.joined(separator: " / ")
     }
 
+    /// `select` が掴めなかったときの skip 理由。**失敗ではない**(DSL は空要素を返す)ので、
+    /// 読み手が「見つからないのに緑」と誤読しないよう理由文で契約を名乗る
+    static let selectNotFoundReason = "element not found; select returned an empty element"
+
     static func scrollNotFoundMessage(_ step: FlowStep) -> String {
         "element not found after \(max(0, step.maxSwipes ?? FlowStep.defaultMaxSwipes)) scroll(s)"
             + ": \(step.locatorSummary)"
@@ -682,11 +687,6 @@ public final class StepExecutor {
             let result = try await runScrollSearch(step: step, phase: &phase)
             let note = Self.scrollSearchNote(result)
             guard result.found else {
-                // optional は他のアクションと同契約(出るか不定の要素をスクロール探索したとき、
-                // 空振りで scene を落とさない)。tap(scroll:) が optional を伝えてくる
-                if step.optional == true {
-                    return StepOutcome(status: .skipped("skipped because the element was not found (optional)"))
-                }
                 return StepOutcome(status: .failed(Self.scrollNotFoundMessage(step)))
             }
             if let fallback = result.fallback {
@@ -808,8 +808,9 @@ public final class StepExecutor {
             let result = try await runScrollSearch(step: step, phase: &phase)
             scrollSearchNote = Self.scrollSearchNote(result)
             guard result.found else {
-                if step.optional == true {
-                    return StepOutcome(status: .skipped("skipped because the element was not found (optional)"))
+                // select はスクロール探索で見つからなくても空要素を返す契約(下の解決経路と同じ)
+                if action == "select" {
+                    return StepOutcome(status: .skipped(Self.selectNotFoundReason))
                 }
                 return StepOutcome(status: .failed(Self.scrollNotFoundMessage(step)))
             }
@@ -826,7 +827,7 @@ public final class StepExecutor {
         var resolved = Self.resolve(step: step, in: snapshot)
         if resolved == nil {
             if let timeout = step.timeout {
-                // timeout == 0: リトライなし(初回スナップショットのみ。optional の空振り短縮用)
+                // timeout == 0: リトライなし(初回スナップショットのみ。ifCanSelect/select の空振り短縮用)
                 if timeout > 0 {
                     let retryDeadline = clock.now.advanced(by: .seconds(timeout))
                     var backoff = PollBackoff()
@@ -897,10 +898,11 @@ public final class StepExecutor {
             healedStep = healed
             healedByCache = true
             status = .healed(locator)
-        } else if step.optional == true {
-            // 出るかどうか不定な要素(システムダイアログ等)。無ければ何もしないで先へ進む。
-            // 自己修復の対象にもしない(別要素への誤リダイレクトを防ぐ)
-            return StepOutcome(status: .skipped("skipped because the element was not found (optional)"))
+        } else if action == "select" {
+            // **select だけは掴めなくても失敗させない**(空要素を返して呼び出し側に .isEmpty で
+            // 分岐させる契約)。自己修復の対象にもしない — 掴めないことが答えになり得るコマンドで
+            // 別要素へ誤リダイレクトすると、空のはずが値を持って返る
+            return StepOutcome(status: .skipped(Self.selectNotFoundReason))
         } else if healingEnabled, let delegate,
                   let proposal = await delegate.healLocator(step: step, snapshot: snapshot),
                   proposal.confidence == "high" {

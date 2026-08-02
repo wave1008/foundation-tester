@@ -3,7 +3,7 @@
 // 出た時点で自動的に閉じる)。閉じる操作は各コマンドがロケータを解決する直前に走る
 // (StepExecutor.dismissInterruption)ため、検証コマンド(expectation)・操作コマンド(action)の
 // どちらが先にダイアログへぶつかっても同じ結果になることを見る。
-// 09_条件分岐とダイアログ.swift は handler 未宣言のときの ifCanSelect/optional の検証で、
+// 09_条件分岐とダイアログ.swift は handler 未宣言のときの ifCanSelect/select の検証で、
 // この自動クローズと混ざらないよう別ファイルにしている。
 
 import FTDSL

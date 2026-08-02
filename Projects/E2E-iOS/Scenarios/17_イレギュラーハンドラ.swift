@@ -1,7 +1,7 @@
 // 17_イレギュラーハンドラ.swift
 // ftester 機能: `irregularHandler`(出るか不定のアプリ内メッセージを、操作/検証どちらの
 // 待機中でも自動的に閉じる割り込みハンドラ)。
-// 09_条件分岐とダイアログ.swift はハンドラ**無し**でのダイアログ手動操作(ifCanSelect/optional)を
+// 09_条件分岐とダイアログ.swift はハンドラ**無し**でのダイアログ手動操作(ifCanSelect/select)を
 // 検証しているため、干渉しないよう別クラス・別ファイルにした。
 // **この SUT 固有の罠**: ダイアログ見出し(CMP 版の `#txt_dialog_title`)は
 // accessibilityIdentifier が届かず存在しない(E2EAppIOS/docs/ui-contract.md)。

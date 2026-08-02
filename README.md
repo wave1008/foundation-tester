@@ -279,7 +279,9 @@ class ログインテスト {
                     type("#email", "test@example.com")
                     type("#password", "password123")
                     tap("#login_btn||ログイン")          // || = 候補集合の和(節の順に先に見つかった方)
-                    tap("今はしない", optional: true)     // optional = 無ければスキップ
+                    ifCanSelect("今はしない") {            // 出るか不定のシートは条件分岐で包む
+                        tap("今はしない")
+                    }
                 }.expectation {
                     exist("#welcome_text||ようこそ")
                     screenIs("ログイン後のホーム画面が表示されている")  // FM マルチモーダル検証

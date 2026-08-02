@@ -13,11 +13,14 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 
 | 引数 | 意味 |
 |---|---|
-| `optional: true` | 要素が見つからなくても失敗にせずスキップする(既定 false。tap / type / press / tapWithoutScroll / select のみ) |
-| `timeout: 秒` | ロケータ解決の再試行上限。**小数可**(`timeout: 1.2`)。**操作系の省略時は約 0.7 秒**、**検証系の省略時は 5 秒**(実行プロファイルの `defaultTimeout` で変更可。これも小数可)。`0` = 初回スナップショットのみ(出るか不定な optional の空振り短縮に) |
+| `timeout: 秒` | ロケータ解決の再試行上限。**小数可**(`timeout: 1.2`)。**操作系の省略時は約 0.7 秒**、**`select` と検証系の省略時は 5 秒**(実行プロファイルの `defaultTimeout` で変更可。これも小数可)。`0` = 初回スナップショットのみ(出るか不定な要素を `ifCanSelect` で見るときの空振り短縮に) |
 | `requireVisible: false` | FM による可視性確認(覆われ・見切れの検出)を省く。**`exist` は覆われていると失敗へ反転し、`select` は空要素を返す**(意味が違う)。既定 true だが、FM 照合が実際に走るのは実行プロファイルで `falsePositiveCheck: true`(既定 false)にした run のみ(FM 未配線時・`fm:false` 時も自動で素通り) |
 | `scroll: .down` / `maxSwipes:` | 実行前に**その方向へスクロールしながら要素を探す**(後述「スクロール」)。省略時は現在画面のみ |
 
+- **要素が見つからなければ失敗**(シナリオ中断)。**唯一の例外は `select`** で、掴めなければ
+  失敗させず空要素を返す(`.isEmpty` で分岐する)。**「出るか不定」を表す引数は無い** —
+  出るか不定のアプリ内メッセージは `irregularHandler` を setUp で宣言し、
+  その場限りの条件分岐は `ifCanSelect(sel) { … }` で包む
 - **要素の出現待ちは暗黙**。操作は解決を再試行し、検証はタイムアウトまでポーリング再判定するので、
   `exist` の前に `wait` を置くのは冗長。待ちが足りなければ `timeout:` を上げる
 - **失敗セマンティクス**: コマンド NG → **シナリオ中断**(以降のステップは scene を跨いですべてスキップ。
@@ -35,14 +38,14 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 
 | コマンド | 説明 |
 |---|---|
-| `tap(sel, holdSeconds: 0, optional:timeout:scroll:maxSwipes:)` | タップ。`holdSeconds` を 0 より大きくすると長押し(既定 0 = 通常タップ) |
-| `select(sel, optional:timeout:requireVisible:scroll:maxSwipes:)` | 要素を**掴むだけ**(デバイス操作なし)。`exist` と違い**検証ではない**ので、レポートに検証ステップとして残らない。値の読み出し(`.text`/`.value`/`.id`)や検証コマンドへのチェーンの起点に使う。**見つからない**と失敗(無視したいときは `optional: true` = Shirates の `throwsException: false` 相当)。**見つかったが見えない**(覆われ・見切れ)ときは**失敗させず空要素を返す** — 呼び出し側は `.isEmpty` で分岐できる(`exist` は失敗へ反転するので意味が違う)。`requireVisible: false` で可視性照合自体を外す |
+| `tap(sel, holdSeconds: 0, timeout:scroll:maxSwipes:)` | タップ。`holdSeconds` を 0 より大きくすると長押し(既定 0 = 通常タップ) |
+| `select(sel, timeout:requireVisible:scroll:maxSwipes:)` | 要素を**掴むだけ**(デバイス操作なし)。`exist` と違い**検証ではない**ので、レポートに検証ステップとして残らない。値の読み出し(`.text`/`.value`/`.id`)や検証コマンドへのチェーンの起点に使う。**掴めなければ失敗させず空要素を返す** — 「見つからない」も「見つかったが見えない(覆われ・見切れ)」も同じ形で返るので、呼び出し側は `.isEmpty` で分岐する(`exist` はどちらも失敗へ反転するので意味が違う)。**在ることを保証したいなら `exist`**。`requireVisible: false` で可視性照合自体を外す |
 | `type("文字列")` | **フォーカス中の要素**へ入力(直前に `tap(入力欄)` でフォーカスしてから使う)。改行の扱いは下記 |
-| `type(sel, "文字列", optional:timeout:scroll:maxSwipes:)` | 要素を指定して入力。日本語もそのまま入る(IME 切替なし)。改行の扱いは下記 |
+| `type(sel, "文字列", timeout:scroll:maxSwipes:)` | 要素を指定して入力。日本語もそのまま入る(IME 切替なし)。改行の扱いは下記 |
 | `pressEnter()` | フォーカス中の入力へ Enter/IME アクション(検索・実行・改行)を発火(Shirates(Classic) 準拠) |
 | `hideKeyboard()` | ソフトキーボードを閉じる。**Android のみ**(出ているときだけ戻るキーを撃つので冪等)。**iOS は未対応で失敗する** — iOS で閉じたいときは `pressEnter()` を使う(単一行の欄なら閉じる) |
 | `clearInput()` | フォーカス中の入力欄を空にする |
-| `clearInput(sel, optional:timeout:scroll:maxSwipes:)` | 要素を指定して入力欄を空にする(`type` は追記なので、書き換えるならまず `clearInput`)。**Flutter の iOS は in-app エンジンでは消せず XCUITest 経由になる**(自動フォールバック。1〜2秒かかる) |
+| `clearInput(sel, timeout:scroll:maxSwipes:)` | 要素を指定して入力欄を空にする(`type` は追記なので、書き換えるならまず `clearInput`)。**Flutter の iOS は in-app エンジンでは消せず XCUITest 経由になる**(自動フォールバック。1〜2秒かかる) |
 | `swipe(.up / .down / .left / .right)` | 画面全体をスワイプ(**指の動き**) |
 | `swipePointToPoint(startX:startY:endX:endY:durationSeconds: 1.5)` | 2点間ドラッグ(座標は snapshot の screen と同じ座標系。iOS = pt / Android = px) |
 | `swipeElementToElement(開始sel, 終点sel, durationSeconds: 1.5)` | 要素間のドラッグ(スライダー・並べ替え・部分領域のドラッグ用)。**終点はヒール対象外**(始点だけがヒール・フォールバック連鎖を持つ) |
@@ -61,9 +64,14 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 | `scrollTo(sel, direction: .down, maxSwipes: 8)` | 要素が見つかるまでスクロール(見つかったら成功。タップはしない) |
 | `scrollDown(repeat: 1)` / `scrollUp` / `scrollRight` / `scrollLeft` | 1 画面ぶんスクロール(`repeat:` 回繰り返す) |
 | `scrollToBottom(maxSwipes: 50)` / `scrollToTop` / `scrollToRightEdge` / `scrollToLeftEdge` | 端まで送る(**画面が変化しなくなるまで**。maxSwipes は暴走を止める上限で、上限で打ち切ったときはステップに注記が付く) |
-| `withScrollDown { … }` / `withScrollUp` / `withScrollRight` / `withScrollLeft` | ブロック内の `tap` / `type` / `press` / `exist` を**すべてスクロール探索**にする(明示の `scroll:` があればそちらが優先) |
+| `withScrollDown { … }` / `withScrollUp` / `withScrollRight` / `withScrollLeft` | ブロック内の `tap` / `type` / `clearInput` / `select` / `exist` / `notExist` を**すべてスクロール探索**にする(明示の `scroll:` があればそちらが優先)。**`notExist` は意味が変わる** — 探索中に見つかった時点で失敗になる |
 | `withoutScroll { … }` | 外側の `withScroll*` を打ち消し、ブロック内は現在画面だけで解決する |
 | `tapWithScrollDown(sel, maxSwipes:)` 等 4 方向 | `tap(sel, scroll: .down)` の別名(Shirates と同名) |
+| `tapWithoutScroll(sel, timeout:)` | `withScroll*` の中でも**この 1 コマンドだけ**スクロールしない |
+| `existWithScrollDown(sel, maxSwipes:)` / `existWithScrollUp` | `exist(sel, scroll: .down)` の別名 |
+| `existWithoutScroll(sel, timeout:requireVisible:)` | `withScroll*` の中でも現在画面だけで存在検証 |
+| `selectWithScrollDown(sel, maxSwipes:)` 等 4 方向 | `select(sel, scroll: .down)` の別名(Shirates と同名) |
+| `selectWithoutScroll(sel, timeout:requireVisible:)` | `withScroll*` の中でも現在画面だけで解決する `select` |
 
 レポートに出る注記(**失敗ではなく観測**。読み方):
 
@@ -72,11 +80,6 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 | `stopped at the limit of N (may not have reached the edge yet)` | `maxSwipes` で打ち切った = 端に着いたとは限らない | **する**。`maxSwipes` を増やすか、そもそも端に着けない画面かを疑う |
 | `the screen did not settle (poll limit)` | スワイプ後 600ms 待っても画面の動きが止まらなかった(慣性が長い等)。操作自体は送られている | 通常は不要。**同じ箇所で毎回出るなら**、静止前の座標でタップして flake る余地があるので調べる価値がある |
 | `fell back to XCUITest` | in-app エンジンで実行できずフォールバックした(1回あたり数百 ms 遅い) | 通常は不要。多発するなら実行プロファイルのエンジン選択を見直す |
-| `tapWithoutScroll(sel, optional:timeout:)` | `withScroll*` の中でも**この 1 コマンドだけ**スクロールしない |
-| `existWithScrollDown(sel, maxSwipes:)` / `existWithScrollUp` | `exist(sel, scroll: .down)` の別名 |
-| `existWithoutScroll(sel, timeout:requireVisible:)` | `withScroll*` の中でも現在画面だけで存在検証 |
-| `selectWithScrollDown(sel, maxSwipes:)` 等 4 方向 | `select(sel, scroll: .down)` の別名(Shirates と同名) |
-| `selectWithoutScroll(sel, optional:timeout:requireVisible:)` | `withScroll*` の中でも現在画面だけで解決する `select` |
 
 ```swift
 tap("設定", scroll: .down)          // 折り返しの下にある項目を探索してからタップ
@@ -171,7 +174,7 @@ exist("#txt_total").text.thisContains("1,200")   // thisIs 系へそのまま繋
 
 ```swift
 let e = select("#txt_total")
-if e.isNotEmpty { 合計 = e.text }   // 見えていなければ空要素なので読まない
+if e.isNotEmpty { 合計 = e.text }   // 無い・見えていなければ空要素なので読まない
 ```
 
 - `.text` は要素の表示テキスト(ラベル)、`.value` は値、`.id` は identifier

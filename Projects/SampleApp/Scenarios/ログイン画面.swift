@@ -18,8 +18,7 @@ class ログイン画面 {
                     type("#password||.secureTextField", "password123")  // 2番目の入力欄にパスワードを入力する
                     tap("#login_btn||ログイン||.button")  // ログインボタンをタップしてログイン処理を開始する
                     wait(1)  // iOS 27 のパスワード保存シートの出現アニメーション整定待ち
-                    tap("今はしない", optional: true, timeout: 2)  // パスワード保存ダイアログが出た場合のみ閉じる(出なければスキップ)
-                    ifCanSelect("今はしない", waitSeconds: 1) {  // アニメ中タップの空振り(シート残留)への再試行
+                    ifCanSelect("今はしない", waitSeconds: 2) {  // パスワード保存ダイアログが出た場合のみ閉じる(出なければスキップ)
                         tap("今はしない")
                     }
                 }.expectation {
@@ -41,7 +40,9 @@ class ログイン画面 {
                     type("#password||.secureTextField", "password123")  // 2番目の入力欄にパスワードを入力する
                     tap("#login_btn||ログイン||.button")  // ログインボタンをタップしてログイン処理を開始する
                     wait(1)  // iOS 27 のパスワード保存シートの出現アニメーション整定待ち
-                    tap("今はしない", optional: true)  // パスワード保存ダイアログが出た場合のみ閉じる(出なければスキップ)
+                    ifCanSelect("今はしない", waitSeconds: 1) {  // パスワード保存ダイアログが出た場合のみ閉じる(出なければスキップ)
+                        tap("今はしない")
+                    }
                 }.expectation {
                     exist("#welcome_text||ようこそ||.staticText[2]")  // 目標から自動抽出した確認(探索終了時にコード側で検証済み)
                 }

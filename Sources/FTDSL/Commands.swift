@@ -108,24 +108,24 @@ private func perform(_ command: String, _ selector: FTSelector, step: FlowStep,
 
 // MARK: - 操作コマンド
 
-/// timeout: 要素解決を待つ上限秒(0 = 初回スナップショットのみ。出るか不定な optional の
-/// 空振り ~0.7s を数十msに短縮)。省略時は既定の再試行(約0.7秒)
+/// timeout: 要素解決を待つ上限秒(0 = 初回スナップショットのみ。出るか不定の要素を
+/// `ifCanSelect` で見るときの空振り ~0.7s を数十msに短縮)。省略時は既定の再試行(約0.7秒)
 /// scroll: 指定するとタップ前に**その方向へスクロールしながら要素を探す**
 /// (Shirates の tapWithScrollDown 相当。省略時は現在画面だけを見る)。
 /// 方向は**コンテンツ基準**(標準用語どおり `.down` = 下に読み進める。Shirates の ScrollDirection と同じ)
 public func tap(_ selector: String, holdSeconds: Double = FlowStep.defaultTapHoldSeconds,
-                optional: Bool = false, timeout: Double? = nil,
+                timeout: Double? = nil,
                 scroll: FTScrollDirection? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
                 file: StaticString = #filePath, line: UInt = #line) {
-    tapImpl(FTSelector.parse(selector), holdSeconds: holdSeconds, optional: optional, timeout: timeout,
+    tapImpl(FTSelector.parse(selector), holdSeconds: holdSeconds, timeout: timeout,
             scroll: scroll, maxSwipes: maxSwipes, file: file, line: line)
 }
 
 public func tap(_ selector: Sel, holdSeconds: Double = FlowStep.defaultTapHoldSeconds,
-                optional: Bool = false, timeout: Double? = nil,
+                timeout: Double? = nil,
                 scroll: FTScrollDirection? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
                 file: StaticString = #filePath, line: UInt = #line) {
-    tapImpl(selector.ftSelector, holdSeconds: holdSeconds, optional: optional, timeout: timeout,
+    tapImpl(selector.ftSelector, holdSeconds: holdSeconds, timeout: timeout,
             scroll: scroll, maxSwipes: maxSwipes, file: file, line: line)
 }
 
@@ -133,7 +133,7 @@ public func tap(_ selector: Sel, holdSeconds: Double = FlowStep.defaultTapHoldSe
 /// 利用者が書いたのは1コマンドなので記録も1行にする — 書いていない行が現れると、
 /// その行はソース行を持たないためジャンプも修正提案の照合もできず、説明の要る状態になる。
 /// 探索の実体は StepExecutor.runScrollSearch(scrollTo コマンドと共有)
-private func tapImpl(_ selector: FTSelector, holdSeconds: Double, optional: Bool, timeout: Double?,
+private func tapImpl(_ selector: FTSelector, holdSeconds: Double, timeout: Double?,
                      scroll: FTScrollDirection?, maxSwipes: Int,
                      file: StaticString, line: UInt) {
     let scroll = FTRuntime.requireCore(command: "tap").effectiveScroll(scroll)
@@ -142,19 +142,18 @@ private func tapImpl(_ selector: FTSelector, holdSeconds: Double, optional: Bool
                         direction: scroll?.swipe.rawValue,
                         timeout: timeout, maxSwipes: scroll == nil ? nil : maxSwipes,
                         // 既定(0 = 通常タップ)は載せない(生成コード・ヒールキャッシュを太らせない)
-                        duration: holdSeconds == FlowStep.defaultTapHoldSeconds ? nil : holdSeconds,
-                        optional: optional ? true : nil)
+                        duration: holdSeconds == FlowStep.defaultTapHoldSeconds ? nil : holdSeconds)
     let hold = holdSeconds == FlowStep.defaultTapHoldSeconds ? "" : " (hold \(FTSeconds.format(holdSeconds))s)"
     perform("tap", selector, step: step,
-            description: "tap \"\(selector.text)\"" + hold + (optional ? " (optional)" : ""),
+            description: "tap \"\(selector.text)\"" + hold,
             file: file, line: line)
 }
 
 /// フォーカス中の要素にテキストを送信する(直前の tap でフォーカスした欄など。ロケータ指定なし)。
 /// ref なし = ブリッジがフォーカス中要素へ入力する(StepExecutor がロケータ解決を挟まず driver.type(ref: nil) を呼ぶ)。
-public func type(_ text: String, optional: Bool = false,
+public func type(_ text: String,
                  file: StaticString = #filePath, line: UInt = #line) {
-    let step = FlowStep(action: "type", text: text, optional: optional ? true : nil)
+    let step = FlowStep(action: "type", text: text)
     FTRuntime.requireCore(command: "type")
         .perform(step: step, description: "type \"\(text)\"", file: file, line: line)
 }
@@ -174,63 +173,59 @@ public func clearInput(file: StaticString = #filePath, line: UInt = #line) {
         .perform(step: step, description: "clearInput", file: file, line: line)
 }
 
-/// timeout: 要素解決を待つ上限秒(0 = 初回スナップショットのみ。出るか不定な optional の
-/// 空振り ~0.7s を数十msに短縮)。省略時は既定の再試行(約0.7秒)
-public func type(_ selector: String, _ text: String, optional: Bool = false, timeout: Double? = nil,
+/// timeout: 要素解決を待つ上限秒(0 = 初回スナップショットのみ)。省略時は既定の再試行(約0.7秒)
+public func type(_ selector: String, _ text: String, timeout: Double? = nil,
                  scroll: FTScrollDirection? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
                  file: StaticString = #filePath, line: UInt = #line) {
-    typeImpl(FTSelector.parse(selector), text, optional: optional, timeout: timeout,
+    typeImpl(FTSelector.parse(selector), text, timeout: timeout,
              scroll: scroll, maxSwipes: maxSwipes, file: file, line: line)
 }
 
-public func type(_ selector: Sel, _ text: String, optional: Bool = false, timeout: Double? = nil,
+public func type(_ selector: Sel, _ text: String, timeout: Double? = nil,
                  scroll: FTScrollDirection? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
                  file: StaticString = #filePath, line: UInt = #line) {
-    typeImpl(selector.ftSelector, text, optional: optional, timeout: timeout,
+    typeImpl(selector.ftSelector, text, timeout: timeout,
              scroll: scroll, maxSwipes: maxSwipes, file: file, line: line)
 }
 
-private func typeImpl(_ selector: FTSelector, _ text: String, optional: Bool, timeout: Double?,
+private func typeImpl(_ selector: FTSelector, _ text: String, timeout: Double?,
                       scroll: FTScrollDirection?, maxSwipes: Int,
                       file: StaticString, line: UInt) {
     let scroll = FTRuntime.requireCore(command: "type").effectiveScroll(scroll)
     let step = FlowStep(action: "type", locator: selector.primary,
                         fallbacks: selector.stepFallbacks,
                         text: text, direction: scroll?.swipe.rawValue, timeout: timeout,
-                        maxSwipes: scroll == nil ? nil : maxSwipes,
-                        optional: optional ? true : nil)
+                        maxSwipes: scroll == nil ? nil : maxSwipes)
     perform("type", selector, step: step,
             description: "type \"\(selector.text)\" \"\(text)\"", file: file, line: line)
 }
 
-/// timeout: 要素解決を待つ上限秒(0 = 初回スナップショットのみ。出るか不定な optional の
-/// 空振り ~0.7s を数十msに短縮)。省略時は既定の再試行(約0.7秒)
+/// timeout: 要素解決を待つ上限秒(0 = 初回スナップショットのみ)。省略時は既定の再試行(約0.7秒)
 /// scroll: 指定するとクリア前に**その方向へスクロールしながら要素を探す**
-public func clearInput(_ selector: String, optional: Bool = false, timeout: Double? = nil,
+public func clearInput(_ selector: String, timeout: Double? = nil,
                        scroll: FTScrollDirection? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
                        file: StaticString = #filePath, line: UInt = #line) {
-    clearInputImpl(FTSelector.parse(selector), optional: optional, timeout: timeout,
+    clearInputImpl(FTSelector.parse(selector), timeout: timeout,
                    scroll: scroll, maxSwipes: maxSwipes, file: file, line: line)
 }
 
-public func clearInput(_ selector: Sel, optional: Bool = false, timeout: Double? = nil,
+public func clearInput(_ selector: Sel, timeout: Double? = nil,
                        scroll: FTScrollDirection? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
                        file: StaticString = #filePath, line: UInt = #line) {
-    clearInputImpl(selector.ftSelector, optional: optional, timeout: timeout,
+    clearInputImpl(selector.ftSelector, timeout: timeout,
                    scroll: scroll, maxSwipes: maxSwipes, file: file, line: line)
 }
 
-private func clearInputImpl(_ selector: FTSelector, optional: Bool, timeout: Double?,
+private func clearInputImpl(_ selector: FTSelector, timeout: Double?,
                             scroll: FTScrollDirection?, maxSwipes: Int,
                             file: StaticString, line: UInt) {
     let scroll = FTRuntime.requireCore(command: "clearInput").effectiveScroll(scroll)
     let step = FlowStep(action: "clearInput", locator: selector.primary,
                         fallbacks: selector.stepFallbacks,
                         direction: scroll?.swipe.rawValue, timeout: timeout,
-                        maxSwipes: scroll == nil ? nil : maxSwipes,
-                        optional: optional ? true : nil)
+                        maxSwipes: scroll == nil ? nil : maxSwipes)
     perform("clearInput", selector, step: step,
-            description: "clearInput \"\(selector.text)\"" + (optional ? " (optional)" : ""),
+            description: "clearInput \"\(selector.text)\"",
             file: file, line: line)
 }
 
@@ -435,17 +430,17 @@ public func tapWithScrollLeft(_ selector: Sel, maxSwipes: Int = FlowStep.default
 }
 
 /// withScroll* の中でも**この1コマンドだけ**スクロールしない
-public func tapWithoutScroll(_ selector: String, optional: Bool = false, timeout: Double? = nil,
+public func tapWithoutScroll(_ selector: String, timeout: Double? = nil,
                              file: StaticString = #filePath, line: UInt = #line) {
     FTRuntime.requireCore(command: "tapWithoutScroll").runWithScrollContext(.none) {
-        tap(selector, optional: optional, timeout: timeout, file: file, line: line)
+        tap(selector, timeout: timeout, file: file, line: line)
     }
 }
 
-public func tapWithoutScroll(_ selector: Sel, optional: Bool = false, timeout: Double? = nil,
+public func tapWithoutScroll(_ selector: Sel, timeout: Double? = nil,
                              file: StaticString = #filePath, line: UInt = #line) {
     FTRuntime.requireCore(command: "tapWithoutScroll").runWithScrollContext(.none) {
-        tap(selector, optional: optional, timeout: timeout, file: file, line: line)
+        tap(selector, timeout: timeout, file: file, line: line)
     }
 }
 
@@ -571,33 +566,33 @@ private func existImpl(_ selector: FTSelector, timeout: Double?, requireVisible:
 /// **検証ではなく要素を掴む操作**(Shirates の select 相当)。FlowStep は `action: "select"`
 /// (exist は `assert: "exists"`)なので検証ステップとしては記録されない。
 /// 値の読み出し(`.text`/`.value`/`.id`)や検証コマンドへのチェーンの起点に使う。
-/// - **見つからない**: 失敗(シナリオ中断)。無視したいときは `optional: true`
-///   (Shirates の `throwsException: false` 相当)
-/// - **見つかったが見えない**(覆われ・見切れ): **失敗させず空要素を返す**。
-///   呼び出し側は `.text == nil` で分岐できる。`requireVisible: false` で照合自体を外す
+/// **掴めなければ失敗させず空要素を返す**(`.isEmpty` で分岐する)。「見つからない」と
+/// 「見つかったが見えない(覆われ・見切れ)」を同じ形で返すのは、どちらも
+/// 「値を読める状態ではない」という同じ意味だから。`requireVisible: false` で可視性照合を外す。
+/// **在ることを保証したいなら `exist`**(あちらは掴めなければ失敗する)。
 /// scroll: 指定すると解決前に**その方向へスクロールしながら要素を探す**(exist(scroll:) と同じ)
 @discardableResult
-public func select(_ selector: String, optional: Bool = false, timeout: Double? = nil,
+public func select(_ selector: String, timeout: Double? = nil,
                    requireVisible: Bool = true,
                    scroll: FTScrollDirection? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
                    file: StaticString = #filePath, line: UInt = #line) -> FTElement {
-    selectImpl(FTSelector.parse(selector), optional: optional, timeout: timeout,
+    selectImpl(FTSelector.parse(selector), timeout: timeout,
               requireVisible: requireVisible,
               scroll: scroll, maxSwipes: maxSwipes, file: file, line: line)
 }
 
 @discardableResult
-public func select(_ selector: Sel, optional: Bool = false, timeout: Double? = nil,
+public func select(_ selector: Sel, timeout: Double? = nil,
                    requireVisible: Bool = true,
                    scroll: FTScrollDirection? = nil, maxSwipes: Int = FlowStep.defaultMaxSwipes,
                    file: StaticString = #filePath, line: UInt = #line) -> FTElement {
-    selectImpl(selector.ftSelector, optional: optional, timeout: timeout,
+    selectImpl(selector.ftSelector, timeout: timeout,
               requireVisible: requireVisible,
               scroll: scroll, maxSwipes: maxSwipes, file: file, line: line)
 }
 
 @discardableResult
-private func selectImpl(_ selector: FTSelector, optional: Bool, timeout: Double?,
+private func selectImpl(_ selector: FTSelector, timeout: Double?,
                         requireVisible: Bool,
                         scroll: FTScrollDirection?, maxSwipes: Int,
                         file: StaticString, line: UInt) -> FTElement {
@@ -608,10 +603,9 @@ private func selectImpl(_ selector: FTSelector, optional: Bool, timeout: Double?
                         direction: scroll?.swipe.rawValue,
                         timeout: timeout ?? core.defaultTimeout,
                         maxSwipes: scroll == nil ? nil : maxSwipes,
-                        optional: optional ? true : nil,
                         occlusionGuard: requireVisible)
     let result = perform("select", selector, step: step,
-                        description: "select \"\(selector.text)\"" + (optional ? " (optional)" : ""),
+                        description: "select \"\(selector.text)\"",
                         file: file, line: line)
     return FTElement(selector: selector, matched: result.element)
 }
@@ -682,12 +676,12 @@ public func selectWithScrollRight(_ selector: Sel, requireVisible: Bool = true,
 
 /// withScroll* の中でも**この1コマンドだけ**現在画面から解決する(existWithoutScroll と同じ仕組み)
 @discardableResult
-public func selectWithoutScroll(_ selector: String, optional: Bool = false,
+public func selectWithoutScroll(_ selector: String,
                                 timeout: Double? = nil, requireVisible: Bool = true,
                                 file: StaticString = #filePath, line: UInt = #line) -> FTElement {
     var element: FTElement?
     FTRuntime.requireCore(command: "selectWithoutScroll").runWithScrollContext(.none) {
-        element = select(selector, optional: optional, timeout: timeout,
+        element = select(selector, timeout: timeout,
                          requireVisible: requireVisible, file: file, line: line)
     }
     return element ?? FTElement(selector: FTSelector.parse(selector))
@@ -695,12 +689,12 @@ public func selectWithoutScroll(_ selector: String, optional: Bool = false,
 
 /// フォールバックは selector.ftSelector から作る(existWithoutScroll と同じ理由)
 @discardableResult
-public func selectWithoutScroll(_ selector: Sel, optional: Bool = false,
+public func selectWithoutScroll(_ selector: Sel,
                                 timeout: Double? = nil, requireVisible: Bool = true,
                                 file: StaticString = #filePath, line: UInt = #line) -> FTElement {
     var element: FTElement?
     FTRuntime.requireCore(command: "selectWithoutScroll").runWithScrollContext(.none) {
-        element = select(selector, optional: optional, timeout: timeout,
+        element = select(selector, timeout: timeout,
                          requireVisible: requireVisible, file: file, line: line)
     }
     return element ?? FTElement(selector: selector.ftSelector)

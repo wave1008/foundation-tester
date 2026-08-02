@@ -94,7 +94,7 @@ struct ApiGenScenarioCommand: AsyncParsableCommand {
 
 /// --steps の一時 JSON の形。TS 側(録画)が書き出す契約。steps は FlowStep の Codable キーに
 /// そのまま一致させる(action/assert/locator/fallbacks/text/direction/expected/timeout/
-/// maxSwipes/optional/note。Sources/FTCore/Flow.swift 参照)
+/// maxSwipes/note。Sources/FTCore/Flow.swift 参照)
 private struct RecordedSteps: Decodable {
     let app: String
     let platform: String

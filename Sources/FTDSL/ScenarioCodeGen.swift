@@ -83,16 +83,16 @@ public enum ScenarioCodeGen {
         if let action = step.action {
             switch action {
             case "select":
-                return "select(\(literal(selector))\(optionalArg(step))\(timeoutArg(step)))"
+                return "select(\(literal(selector))\(timeoutArg(step)))"
             case "tap":
                 let hold = step.duration.map { ", holdSeconds: \(FTSeconds.format($0))" } ?? ""
-                return "tap(\(literal(selector))\(hold)\(optionalArg(step)))"
+                return "tap(\(literal(selector))\(hold))"
             case "type":
                 // ロケータなし = フォーカス中要素へ入力(直前の tap 前提)。type("text") を出す。
                 if step.locator == nil {
-                    return "type(\(literal(step.text ?? ""))\(optionalArg(step)))"
+                    return "type(\(literal(step.text ?? "")))"
                 }
-                return "type(\(literal(selector)), \(literal(step.text ?? ""))\(optionalArg(step)))"
+                return "type(\(literal(selector)), \(literal(step.text ?? "")))"
             case "swipe":
                 return "swipe(.\(step.direction ?? "up"))"
             case "home":
@@ -111,7 +111,7 @@ public enum ScenarioCodeGen {
                 if step.locator == nil {
                     return "clearInput()"
                 }
-                return "clearInput(\(literal(selector))\(optionalArg(step)))"
+                return "clearInput(\(literal(selector)))"
             case "swipeElementToElement":
                 guard let endLocator = step.endLocator else { return nil }
                 var args = [literal(selector), literal(FTSelector.serialize(primary: endLocator, fallbacks: []))]
@@ -194,10 +194,6 @@ public enum ScenarioCodeGen {
     static func selectorText(for step: FlowStep) -> String {
         guard let primary = step.locator else { return "" }
         return FTSelector.serialize(primary: primary, fallbacks: step.fallbacks ?? [])
-    }
-
-    static func optionalArg(_ step: FlowStep) -> String {
-        step.optional == true ? ", optional: true" : ""
     }
 
     static func timeoutArg(_ step: FlowStep) -> String {
