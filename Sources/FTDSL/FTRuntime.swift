@@ -212,6 +212,11 @@ public final class FTDriveCore {
     enum ScrollContext { case none, direction(FTScrollDirection) }
     var scrollContextStack: [ScrollContext] = []
 
+    /// `withScrollDown(scrollFrame:) { }` が積むスクロール領域(Shirates の
+    /// CodeExecutionContext.scrollFrame 相当)。**向きと同じ寿命**で積み降ろしする。
+    /// 中身はセレクタ式(Shirates も String 式)。ブロック内の `scroll:` 探索が継承する
+    var scrollFrameStack: [String?] = []
+
     /// コマンドが使うスクロール向き。明示 > ブロックの文脈 > 無し
     func effectiveScroll(_ explicit: FTScrollDirection?) -> FTScrollDirection? {
         if let explicit { return explicit }
@@ -221,10 +226,19 @@ public final class FTDriveCore {
         }
     }
 
-    func runWithScrollContext(_ context: ScrollContext, _ body: () -> Void) {
+    /// コマンドが使うスクロール領域。明示 > ブロックの文脈 > 無し(= 従来の全画面固定)
+    func effectiveScrollFrame(_ explicit: String?) -> String? {
+        if let explicit { return explicit }
+        return scrollFrameStack.last ?? nil
+    }
+
+    func runWithScrollContext(_ context: ScrollContext, scrollFrame: String? = nil,
+                              _ body: () -> Void) {
         scrollContextStack.append(context)
+        scrollFrameStack.append(scrollFrame)
         body()
         scrollContextStack.removeLast()
+        scrollFrameStack.removeLast()
     }
 
     /// true = デバイスに触れず全コマンドを記録のみで通過させる(ステップ列挙・コード生成の検証用)

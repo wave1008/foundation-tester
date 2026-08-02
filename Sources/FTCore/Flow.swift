@@ -75,13 +75,28 @@ public struct FlowStep: Codable, Sendable {
     /// shirates-core の Const.SWIPE_DURATION_SECONDS 準拠。DSL の既定引数はこの1つに揃える
     public static let defaultSwipeDurationSeconds: Double = 1.5
 
+    /// スクロール対象の領域(Shirates の `scrollFrame`)。**nil = 従来の全画面固定**。
+    /// 非 nil のときだけホストが座標を計算してブリッジへ渡す(`ScrollGeometry`)。
+    /// **解決できなかったときも従来経路へ落とす**(Shirates も見つからなければ次の候補へ落ちる)
+    public var scrollFrame: FlowLocator?
+    /// 指を置く側 / 離す側の余白比(領域の高さ・幅に対する比)。nil = `FTScrollDefaults` の用途別既定。
+    /// **`scrollFrame` が nil のときは無視される**(全画面固定のままスパンを広げると始点が
+    /// スクロール領域の外に出て 1 ミリも動かない。docs/performance-tuning.md §3.16)
+    public var startMarginRatio: Double?
+    public var endMarginRatio: Double?
+
     public init(action: String? = nil, assert: String? = nil, locator: FlowLocator? = nil,
                 fallbacks: [FlowLocator]? = nil, endLocator: FlowLocator? = nil,
                 text: String? = nil, direction: String? = nil,
                 expected: String? = nil, timeout: Double? = nil, maxSwipes: Int? = nil,
                 duration: Double? = nil,
                 expectedCount: Int? = nil,
-                note: String? = nil, occlusionGuard: Bool? = nil) {
+                note: String? = nil, occlusionGuard: Bool? = nil,
+                scrollFrame: FlowLocator? = nil,
+                startMarginRatio: Double? = nil, endMarginRatio: Double? = nil) {
+        self.scrollFrame = scrollFrame
+        self.startMarginRatio = startMarginRatio
+        self.endMarginRatio = endMarginRatio
         self.action = action
         self.assert = assert
         self.locator = locator

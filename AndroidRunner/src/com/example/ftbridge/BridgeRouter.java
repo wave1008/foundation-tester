@@ -258,6 +258,16 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         boolean syntheticUp = body.optBoolean("fling", false);
         double half = Math.min(Math.max(span, 0.05), 0.9) / 2;
         double[] from, to;
+        // **スクロール領域を指定されたときはホストが計算した実座標を使う**(FTCore/ScrollGeometry)。
+        // ここで軸別既定や distance を混ぜてはいけない —— 領域内の座標として計算済みで、
+        // 比率で作り直すと画面中央基準に戻ってしまう
+        JSONObject path = body.optJSONObject("path");
+        if (path != null) {
+            InputInjector.swipe(ua(), path.optDouble("fromX"), path.optDouble("fromY"),
+                    path.optDouble("toX"), path.optDouble("toY"), strokeMs, syntheticUp);
+            settle();
+            return ok();
+        }
         switch (direction) {
             case "up": from = new double[]{cx, h * (0.5 + half)}; to = new double[]{cx, h * (0.5 - half)}; break;
             case "down": from = new double[]{cx, h * (0.5 - half)}; to = new double[]{cx, h * (0.5 + half)}; break;

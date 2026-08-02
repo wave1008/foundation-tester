@@ -127,6 +127,7 @@ public enum ScenarioCodeGen {
                    scroll != .down {
                     args.append("direction: .\(scroll.rawValue)")
                 }
+                args += scrollFrameArgs(step)
                 if let maxSwipes = step.maxSwipes, maxSwipes != 8 {
                     args.append("maxSwipes: \(maxSwipes)")
                 }
@@ -178,8 +179,25 @@ public enum ScenarioCodeGen {
             return ""
         }
         var args = ", scroll: .\(scroll.rawValue)"
+        for arg in scrollFrameArgs(step) { args += ", " + arg }
         if let maxSwipes = step.maxSwipes, maxSwipes != FlowStep.defaultMaxSwipes {
             args += ", maxSwipes: \(maxSwipes)"
+        }
+        return args
+    }
+
+    /// `scrollFrame:` とマージンを DSL 引数へ戻す。**落とすと往復で領域指定が消え、
+    /// 黙って全画面スワイプに戻る**(生成コードは実行と同じ意味でなければならない)
+    static func scrollFrameArgs(_ step: FlowStep) -> [String] {
+        var args: [String] = []
+        if let frame = step.scrollFrame {
+            args.append("scrollFrame: \(literal(FTSelector.serialize(primary: frame, fallbacks: [])))")
+        }
+        if let ratio = step.startMarginRatio {
+            args.append("startMarginRatio: \(ratio)")
+        }
+        if let ratio = step.endMarginRatio {
+            args.append("endMarginRatio: \(ratio)")
         }
         return args
     }

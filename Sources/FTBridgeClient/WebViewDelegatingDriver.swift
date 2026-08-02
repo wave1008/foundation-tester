@@ -189,16 +189,17 @@ public final class WebViewDelegatingDriver: AppDriver {
     /// ここだけ。ref を伴う操作を同じ理屈で in-app へ回してはいけない)。
     /// intent が `.gesture`(DSL の `swipe` = ジェスチャ自体が目的)は従来どおり委譲先へ送る:
     /// in-app は interop のジェスチャを駆動できない。
-    public func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent) async throws {
+    public func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent,
+                      path: FTSwipePath?) async throws {
         guard mode != .normal, intent != .gesture else {
-            try await screenDriver.swipe(direction, intent: intent)
+            try await screenDriver.swipe(direction, intent: intent, path: path)
             return
         }
         do {
-            try await primary.swipe(direction, intent: intent)
+            try await primary.swipe(direction, intent: intent, path: path)
         } catch {
             guard DriverError.isEngineIncapable(error) else { throw error }
-            try await delegated.swipe(direction, intent: intent)
+            try await delegated.swipe(direction, intent: intent, path: path)
         }
     }
     public func press(ref: Int, duration: Double) async throws {

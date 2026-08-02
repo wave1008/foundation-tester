@@ -119,4 +119,74 @@ class スクロールで折り返し下の要素に到達できること {
             }
         }
     }
+
+    // --- スクロール領域の指定(Shirates の scrollFrame 相当)---
+    // ホストが領域の矩形から座標を計算してブリッジへ渡す(FTCore/ScrollGeometry)。
+    // **iOS hybrid では in-app が座標を実行できず 501 を返す**ので、XCUITest へ落ちる経路も同時に通る。
+
+    @Test("scrollFrame でリストを指定して末尾まで到達できる")
+    func S0060() {
+        scenario {
+            scene(1, "スクロール画面を開く") {
+                condition {
+                    launchApp()
+                }.action {
+                    tap("#nav_scroll")
+                }.expectation {
+                    exist("#row_01")
+                }
+            }
+            scene(2, "#list_rows を指定した scrollTo で #row_40 に到達する") {
+                action {
+                    scrollTo("#row_40", scrollFrame: "#list_rows", maxSwipes: 15)
+                    tap("#row_40")
+                }.expectation {
+                    textIs("#txt_row_selected", "selected=row_40")
+                }
+            }
+            // **先頭へ戻したことを検証してから次のシーンへ進む**: in-app エンジンでは
+            // プログラム的なアニメーションスクロールが待たれず、直後の探索が古い a11y ツリーを
+            // 見て「もう見えている」と誤解する(scrollFrame の有無に関係なく再現する既存の挙動)
+            scene(3, "先頭へ戻す") {
+                action {
+                    tap("#btn_scroll_top")
+                }.expectation {
+                    exist("#row_01")
+                }
+            }
+            scene(4, "withScrollDown(scrollFrame:) のブロックでも探索できる") {
+                action {
+                    withScrollDown(scrollFrame: "#list_rows") {
+                        tap("#row_30", maxSwipes: 15)
+                    }
+                }.expectation {
+                    textIs("#txt_row_selected", "selected=row_30")
+                }
+            }
+        }
+    }
+
+    @Test("scrollFrame に固定ヘッダを指定するとリストは動かない")
+    func S0070() {
+        scenario {
+            scene(1, "スクロール画面を開く") {
+                condition {
+                    launchApp()
+                }.action {
+                    tap("#nav_scroll")
+                }.expectation {
+                    exist("#row_01")
+                }
+            }
+            // 座標が**指定した領域から**作られている証拠。全画面固定のままなら
+            // 画面中央 = リストの上を払ってしまい #row_01 は流れて消える
+            scene(2, "スクロールしない固定ヘッダの帯を払っても先頭行が残る") {
+                action {
+                    scrollDown(scrollFrame: "#txt_row_selected", repeat: 2)
+                }.expectation {
+                    exist("#row_01")
+                }
+            }
+        }
+    }
 }

@@ -82,8 +82,9 @@ public final class FastLaunchDriver: AppDriver {
     // 包むドライバは 用途つき版も必ず素通しする(既定実装は自分の swipe(_:) を呼ぶので
     // ここで受けないと**フラグが最初のラッパーで落ちる**。2026-07-31 に実際に落として
     // in-app のスクロール経路が丸ごと不発になった)
-    public func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent) async throws {
-        try await base.swipe(direction, intent: intent)
+    public func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent,
+                      path: FTSwipePath?) async throws {
+        try await base.swipe(direction, intent: intent, path: path)
     }
     public func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
                      pressSeconds: Double, durationSeconds: Double) async throws {

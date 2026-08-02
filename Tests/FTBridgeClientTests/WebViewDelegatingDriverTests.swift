@@ -43,7 +43,8 @@ private final class FakeDriver: AppDriver, @unchecked Sendable {
         if let swipeError { throw swipeError }
     }
     /// 既定実装は swipe(_:) を呼ぶだけなので、用途の行き先を見るには受けて記録する
-    func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent) async throws {
+    func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent,
+               path: FTSwipePath?) async throws {
         calls.append(intent == .gesture ? "swipe" : "swipe(scroll)")
         if let swipeError { throw swipeError }
     }
@@ -198,7 +199,7 @@ final class WebViewDelegatingDriverTests: XCTestCase {
     /// Compose/Flutter の WebView シナリオが 3.5 倍遅くなる(2026-08-01 実測)
     func testScrollSwipeTriesPrimaryWhileDelegating() async throws {
         let (driver, primary, delegated) = try await delegatingDriver()
-        try await driver.swipe(.up, intent: .search)
+        try await driver.swipe(.up, intent: .search, path: nil)
 
         XCTAssertEqual(primary.calls, ["snapshot", "swipe(scroll)"])
         XCTAssertEqual(delegated.calls, ["snapshot"], "スクロールで XCUITest を触らない")
@@ -209,7 +210,7 @@ final class WebViewDelegatingDriverTests: XCTestCase {
         let (driver, primary, delegated) = try await delegatingDriver()
         primary.swipeError = DriverError.badResponse(status: 501, body: "no scroll")
 
-        try await driver.swipe(.up, intent: .search)
+        try await driver.swipe(.up, intent: .search, path: nil)
 
         XCTAssertEqual(delegated.calls, ["snapshot", "swipe(scroll)"])
     }
@@ -220,7 +221,7 @@ final class WebViewDelegatingDriverTests: XCTestCase {
         primary.swipeError = DriverError.badResponse(status: 409, body: "busy")
 
         do {
-            try await driver.swipe(.up, intent: .search)
+            try await driver.swipe(.up, intent: .search, path: nil)
             XCTFail("409 は伝播すること")
         } catch {}
         XCTAssertEqual(delegated.calls, ["snapshot"], "409 で XCUITest へ回さない")
@@ -230,7 +231,7 @@ final class WebViewDelegatingDriverTests: XCTestCase {
     /// in-app は interop のジェスチャを駆動できないので、ここを in-app へ回すと黙って空振りする
     func testGestureSwipeStillGoesToDelegated() async throws {
         let (driver, primary, delegated) = try await delegatingDriver()
-        try await driver.swipe(.up, intent: .gesture)
+        try await driver.swipe(.up, intent: .gesture, path: nil)
 
         XCTAssertEqual(delegated.calls, ["snapshot", "swipe"])
         XCTAssertEqual(primary.calls, ["snapshot"])

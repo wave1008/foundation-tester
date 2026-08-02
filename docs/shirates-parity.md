@@ -75,7 +75,10 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | `swipeCenterToTop/Bottom/Left/Right` ほか swipe 一族 | `swipe(.up/.down/.left/.right)` 1本 | 🟡 集約 |
 | `swipeElementToElementAdjust` / `TestElement.swipeTo*` `swipeOut*` | — | ❌ |
 | `flick*` 一族(14種) | — | ❌ |
-| `scrollFrame` / マージン / 時間指定 | — | ➖ ブリッジのスワイプが全画面固定(承認済み差分) |
+| `scrollFrame` | 同名(`scroll*` / `scrollTo` / `withScroll*` の引数。セレクタ式) | ✅ 2026-08-02 |
+| `startMarginRatio` / `endMarginRatio` | 同名 | ✅ **既定値は ftester の実測値**(承認済み差分) |
+| `scrollableElement` | — | ➖ `scrollFrame` のセレクタ式で足りる |
+| `scrollDurationSeconds` / `scrollIntervalSeconds` | — | ➖ フリング前提の実測値を優先(承認済み差分) |
 | — | `scrollTo(sel, direction:maxSwipes:)` | 🟢 |
 
 ## 存在・画面の検証

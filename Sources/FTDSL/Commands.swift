@@ -132,17 +132,26 @@ public func tap(_ selector: Sel, holdSeconds: Double = FlowStep.defaultTapHoldSe
 /// `scroll:` は**同じステップに畳む**(別の scrollTo ステップを作らない)。
 /// 利用者が書いたのは1コマンドなので記録も1行にする — 書いていない行が現れると、
 /// その行はソース行を持たないためジャンプも修正提案の照合もできず、説明の要る状態になる。
+/// `withScrollDown(scrollFrame:) { }` が積んだスクロール領域を FlowStep 用に解決する。
+/// **探索するときだけ意味を持つ**(scroll 未指定 = 現在画面だけを見るので領域は無関係)
+private func contextScrollFrame(_ core: FTDriveCore, scrolling: Bool) -> FlowLocator? {
+    guard scrolling, let expression = core.effectiveScrollFrame(nil) else { return nil }
+    return FTSelector.parse(expression).primary
+}
+
 /// 探索の実体は StepExecutor.runScrollSearch(scrollTo コマンドと共有)
 private func tapImpl(_ selector: FTSelector, holdSeconds: Double, timeout: Double?,
                      scroll: FTScrollDirection?, maxSwipes: Int,
                      file: StaticString, line: UInt) {
-    let scroll = FTRuntime.requireCore(command: "tap").effectiveScroll(scroll)
+    let core = FTRuntime.requireCore(command: "tap")
+    let scroll = core.effectiveScroll(scroll)
     let step = FlowStep(action: "tap", locator: selector.primary,
                         fallbacks: selector.stepFallbacks,
                         direction: scroll?.swipe.rawValue,
                         timeout: timeout, maxSwipes: scroll == nil ? nil : maxSwipes,
                         // 既定(0 = 通常タップ)は載せない(生成コード・ヒールキャッシュを太らせない)
-                        duration: holdSeconds == FlowStep.defaultTapHoldSeconds ? nil : holdSeconds)
+                        duration: holdSeconds == FlowStep.defaultTapHoldSeconds ? nil : holdSeconds,
+                        scrollFrame: contextScrollFrame(core, scrolling: scroll != nil))
     let hold = holdSeconds == FlowStep.defaultTapHoldSeconds ? "" : " (hold \(FTSeconds.format(holdSeconds))s)"
     perform("tap", selector, step: step,
             description: "tap \"\(selector.text)\"" + hold,
@@ -191,11 +200,13 @@ public func type(_ selector: Sel, _ text: String, timeout: Double? = nil,
 private func typeImpl(_ selector: FTSelector, _ text: String, timeout: Double?,
                       scroll: FTScrollDirection?, maxSwipes: Int,
                       file: StaticString, line: UInt) {
-    let scroll = FTRuntime.requireCore(command: "type").effectiveScroll(scroll)
+    let core = FTRuntime.requireCore(command: "type")
+    let scroll = core.effectiveScroll(scroll)
     let step = FlowStep(action: "type", locator: selector.primary,
                         fallbacks: selector.stepFallbacks,
                         text: text, direction: scroll?.swipe.rawValue, timeout: timeout,
-                        maxSwipes: scroll == nil ? nil : maxSwipes)
+                        maxSwipes: scroll == nil ? nil : maxSwipes,
+                        scrollFrame: contextScrollFrame(core, scrolling: scroll != nil))
     perform("type", selector, step: step,
             description: "type \"\(selector.text)\" \"\(text)\"", file: file, line: line)
 }
@@ -219,11 +230,13 @@ public func clearInput(_ selector: Sel, timeout: Double? = nil,
 private func clearInputImpl(_ selector: FTSelector, timeout: Double?,
                             scroll: FTScrollDirection?, maxSwipes: Int,
                             file: StaticString, line: UInt) {
-    let scroll = FTRuntime.requireCore(command: "clearInput").effectiveScroll(scroll)
+    let core = FTRuntime.requireCore(command: "clearInput")
+    let scroll = core.effectiveScroll(scroll)
     let step = FlowStep(action: "clearInput", locator: selector.primary,
                         fallbacks: selector.stepFallbacks,
                         direction: scroll?.swipe.rawValue, timeout: timeout,
-                        maxSwipes: scroll == nil ? nil : maxSwipes)
+                        maxSwipes: scroll == nil ? nil : maxSwipes,
+                        scrollFrame: contextScrollFrame(core, scrolling: scroll != nil))
     perform("clearInput", selector, step: step,
             description: "clearInput \"\(selector.text)\"",
             file: file, line: line)
@@ -297,33 +310,51 @@ private func swipeElementToElementImpl(_ from: FTSelector, _ to: FTSelector,
 
 /// 1回スクロールする(`repeat` 回ぶん繰り返す)。**コンテンツ基準**なので `scrollDown` は
 /// 下に読み進める = 指は上へ動く。ftester のブリッジは全画面スワイプのみなので、
-/// Shirates の scrollFrame / マージン / 時間指定は持たない(ユーザー了承済みの差分)
-public func scrollDown(repeat times: Int = 1,
+/// `scrollFrame` はスクロールさせたい領域のセレクタ式(Shirates と同じく式で受ける)。
+/// **省略時は従来どおり画面中央基準の全画面スワイプ**で、マージン指定も無視される
+/// (全画面固定のままスパンを変えると始点がスクロール領域の外に出る。design.md 参照)。
+/// 時間指定(scrollDurationSeconds / scrollIntervalSeconds)は持たない(承認済み差分)
+public func scrollDown(scrollFrame: String? = nil,
+                       startMarginRatio: Double? = nil, endMarginRatio: Double? = nil,
+                       repeat times: Int = 1,
                        file: StaticString = #filePath, line: UInt = #line) {
-    scrollImpl(.down, times: times, file: file, line: line)
+    scrollImpl(.down, scrollFrame: scrollFrame, startMarginRatio: startMarginRatio,
+               endMarginRatio: endMarginRatio, times: times, file: file, line: line)
 }
 
-public func scrollUp(repeat times: Int = 1,
+public func scrollUp(scrollFrame: String? = nil,
+                     startMarginRatio: Double? = nil, endMarginRatio: Double? = nil,
+                     repeat times: Int = 1,
                      file: StaticString = #filePath, line: UInt = #line) {
-    scrollImpl(.up, times: times, file: file, line: line)
+    scrollImpl(.up, scrollFrame: scrollFrame, startMarginRatio: startMarginRatio,
+               endMarginRatio: endMarginRatio, times: times, file: file, line: line)
 }
 
-public func scrollRight(repeat times: Int = 1,
+public func scrollRight(scrollFrame: String? = nil,
+                        startMarginRatio: Double? = nil, endMarginRatio: Double? = nil,
+                        repeat times: Int = 1,
                         file: StaticString = #filePath, line: UInt = #line) {
-    scrollImpl(.right, times: times, file: file, line: line)
+    scrollImpl(.right, scrollFrame: scrollFrame, startMarginRatio: startMarginRatio,
+               endMarginRatio: endMarginRatio, times: times, file: file, line: line)
 }
 
-public func scrollLeft(repeat times: Int = 1,
+public func scrollLeft(scrollFrame: String? = nil,
+                       startMarginRatio: Double? = nil, endMarginRatio: Double? = nil,
+                       repeat times: Int = 1,
                        file: StaticString = #filePath, line: UInt = #line) {
-    scrollImpl(.left, times: times, file: file, line: line)
+    scrollImpl(.left, scrollFrame: scrollFrame, startMarginRatio: startMarginRatio,
+               endMarginRatio: endMarginRatio, times: times, file: file, line: line)
 }
 
-private func scrollImpl(_ direction: FTScrollDirection, times: Int,
+private func scrollImpl(_ direction: FTScrollDirection, scrollFrame: String?,
+                        startMarginRatio: Double?, endMarginRatio: Double?, times: Int,
                         file: StaticString, line: UInt) {
+    let core = FTRuntime.requireCore(command: "scroll\(direction.rawValue.capitalized)")
     let step = FlowStep(action: "scroll", direction: direction.swipe.rawValue,
-                        maxSwipes: max(1, times))
-    FTRuntime.requireCore(command: "scroll\(direction.rawValue.capitalized)")
-        .perform(step: step,
+                        maxSwipes: max(1, times),
+                        scrollFrame: core.effectiveScrollFrame(scrollFrame).map(FTSelector.parse)?.primary,
+                        startMarginRatio: startMarginRatio, endMarginRatio: endMarginRatio)
+    core.perform(step: step,
                  description: "scroll\(direction.rawValue.capitalized)"
                      + (times > 1 ? " ×\(times)" : ""),
                  file: file, line: line)
@@ -331,55 +362,74 @@ private func scrollImpl(_ direction: FTScrollDirection, times: Int,
 
 /// スクロール領域の端まで送る(**画面が変化しなくなるまで**。maxSwipes は暴走を止める上限で、
 /// 到達しなかったときはステップに注記が付く)
-public func scrollToBottom(maxSwipes: Int = FlowStep.defaultMaxEdgeSwipes,
+public func scrollToBottom(scrollFrame: String? = nil,
+                           startMarginRatio: Double? = nil, endMarginRatio: Double? = nil,
+                           maxSwipes: Int = FlowStep.defaultMaxEdgeSwipes,
                            file: StaticString = #filePath, line: UInt = #line) {
-    scrollToEdgeImpl(.down, maxSwipes: maxSwipes, file: file, line: line)
+    scrollToEdgeImpl(.down, scrollFrame: scrollFrame, startMarginRatio: startMarginRatio,
+                     endMarginRatio: endMarginRatio, maxSwipes: maxSwipes, file: file, line: line)
 }
 
-public func scrollToTop(maxSwipes: Int = FlowStep.defaultMaxEdgeSwipes,
+public func scrollToTop(scrollFrame: String? = nil,
+                        startMarginRatio: Double? = nil, endMarginRatio: Double? = nil,
+                        maxSwipes: Int = FlowStep.defaultMaxEdgeSwipes,
                         file: StaticString = #filePath, line: UInt = #line) {
-    scrollToEdgeImpl(.up, maxSwipes: maxSwipes, file: file, line: line)
+    scrollToEdgeImpl(.up, scrollFrame: scrollFrame, startMarginRatio: startMarginRatio,
+                     endMarginRatio: endMarginRatio, maxSwipes: maxSwipes, file: file, line: line)
 }
 
-public func scrollToRightEdge(maxSwipes: Int = FlowStep.defaultMaxEdgeSwipes,
+public func scrollToRightEdge(scrollFrame: String? = nil,
+                              startMarginRatio: Double? = nil, endMarginRatio: Double? = nil,
+                              maxSwipes: Int = FlowStep.defaultMaxEdgeSwipes,
                               file: StaticString = #filePath, line: UInt = #line) {
-    scrollToEdgeImpl(.right, maxSwipes: maxSwipes, file: file, line: line)
+    scrollToEdgeImpl(.right, scrollFrame: scrollFrame, startMarginRatio: startMarginRatio,
+                     endMarginRatio: endMarginRatio, maxSwipes: maxSwipes, file: file, line: line)
 }
 
-public func scrollToLeftEdge(maxSwipes: Int = FlowStep.defaultMaxEdgeSwipes,
+public func scrollToLeftEdge(scrollFrame: String? = nil,
+                             startMarginRatio: Double? = nil, endMarginRatio: Double? = nil,
+                             maxSwipes: Int = FlowStep.defaultMaxEdgeSwipes,
                              file: StaticString = #filePath, line: UInt = #line) {
-    scrollToEdgeImpl(.left, maxSwipes: maxSwipes, file: file, line: line)
+    scrollToEdgeImpl(.left, scrollFrame: scrollFrame, startMarginRatio: startMarginRatio,
+                     endMarginRatio: endMarginRatio, maxSwipes: maxSwipes, file: file, line: line)
 }
 
-private func scrollToEdgeImpl(_ direction: FTScrollDirection, maxSwipes: Int,
-                              file: StaticString, line: UInt) {
+private func scrollToEdgeImpl(_ direction: FTScrollDirection, scrollFrame: String?,
+                              startMarginRatio: Double?, endMarginRatio: Double?,
+                              maxSwipes: Int, file: StaticString, line: UInt) {
     let names: [FTScrollDirection: String] = [
         .down: "scrollToBottom", .up: "scrollToTop",
         .right: "scrollToRightEdge", .left: "scrollToLeftEdge",
     ]
+    let core = FTRuntime.requireCore(command: names[direction] ?? "scrollToEdge")
     let step = FlowStep(action: "scrollToEdge", direction: direction.swipe.rawValue,
-                        maxSwipes: maxSwipes)
-    FTRuntime.requireCore(command: names[direction] ?? "scrollToEdge")
-        .perform(step: step, description: names[direction] ?? "scrollToEdge",
+                        maxSwipes: maxSwipes,
+                        scrollFrame: core.effectiveScrollFrame(scrollFrame).map(FTSelector.parse)?.primary,
+                        startMarginRatio: startMarginRatio, endMarginRatio: endMarginRatio)
+    core.perform(step: step, description: names[direction] ?? "scrollToEdge",
                  file: file, line: line)
 }
 
 /// ブロック内の `tap` / `exist` を**スクロールしながら**解決する(明示の `scroll:` があればそちらが優先)。
 /// Shirates の withScrollDown { } 相当
-public func withScrollDown(_ body: () -> Void) {
-    FTRuntime.requireCore(command: "withScrollDown").runWithScrollContext(.direction(.down), body)
+public func withScrollDown(scrollFrame: String? = nil, _ body: () -> Void) {
+    FTRuntime.requireCore(command: "withScrollDown")
+        .runWithScrollContext(.direction(.down), scrollFrame: scrollFrame, body)
 }
 
-public func withScrollUp(_ body: () -> Void) {
-    FTRuntime.requireCore(command: "withScrollUp").runWithScrollContext(.direction(.up), body)
+public func withScrollUp(scrollFrame: String? = nil, _ body: () -> Void) {
+    FTRuntime.requireCore(command: "withScrollUp")
+        .runWithScrollContext(.direction(.up), scrollFrame: scrollFrame, body)
 }
 
-public func withScrollRight(_ body: () -> Void) {
-    FTRuntime.requireCore(command: "withScrollRight").runWithScrollContext(.direction(.right), body)
+public func withScrollRight(scrollFrame: String? = nil, _ body: () -> Void) {
+    FTRuntime.requireCore(command: "withScrollRight")
+        .runWithScrollContext(.direction(.right), scrollFrame: scrollFrame, body)
 }
 
-public func withScrollLeft(_ body: () -> Void) {
-    FTRuntime.requireCore(command: "withScrollLeft").runWithScrollContext(.direction(.left), body)
+public func withScrollLeft(scrollFrame: String? = nil, _ body: () -> Void) {
+    FTRuntime.requireCore(command: "withScrollLeft")
+        .runWithScrollContext(.direction(.left), scrollFrame: scrollFrame, body)
 }
 
 /// 外側の withScroll* を打ち消して、ブロック内は現在画面だけで解決する
@@ -495,24 +545,35 @@ public func existWithoutScroll(_ selector: Sel, timeout: Double? = nil,
 
 /// 要素が見つかるまでスクロールする(見つかったら成功。タップはしない)
 public func scrollTo(_ selector: String, direction: FTScrollDirection = .down,
+                     scrollFrame: String? = nil,
+                     startMarginRatio: Double? = nil, endMarginRatio: Double? = nil,
                      maxSwipes: Int = FlowStep.defaultMaxSwipes,
                      file: StaticString = #filePath, line: UInt = #line) {
-    scrollToImpl(FTSelector.parse(selector), direction: direction, maxSwipes: maxSwipes,
-                 file: file, line: line)
+    scrollToImpl(FTSelector.parse(selector), direction: direction, scrollFrame: scrollFrame,
+                 startMarginRatio: startMarginRatio, endMarginRatio: endMarginRatio,
+                 maxSwipes: maxSwipes, file: file, line: line)
 }
 
 public func scrollTo(_ selector: Sel, direction: FTScrollDirection = .down,
+                     scrollFrame: String? = nil,
+                     startMarginRatio: Double? = nil, endMarginRatio: Double? = nil,
                      maxSwipes: Int = FlowStep.defaultMaxSwipes,
                      file: StaticString = #filePath, line: UInt = #line) {
-    scrollToImpl(selector.ftSelector, direction: direction, maxSwipes: maxSwipes,
-                 file: file, line: line)
+    scrollToImpl(selector.ftSelector, direction: direction, scrollFrame: scrollFrame,
+                 startMarginRatio: startMarginRatio, endMarginRatio: endMarginRatio,
+                 maxSwipes: maxSwipes, file: file, line: line)
 }
 
-private func scrollToImpl(_ selector: FTSelector, direction: FTScrollDirection, maxSwipes: Int,
+private func scrollToImpl(_ selector: FTSelector, direction: FTScrollDirection,
+                          scrollFrame: String?, startMarginRatio: Double?,
+                          endMarginRatio: Double?, maxSwipes: Int,
                           file: StaticString, line: UInt) {
+    let frame = FTRuntime.requireCore(command: "scrollTo").effectiveScrollFrame(scrollFrame)
     let step = FlowStep(action: "scrollTo", locator: selector.primary,
                         fallbacks: selector.stepFallbacks,
-                        direction: direction.swipe.rawValue, maxSwipes: maxSwipes)
+                        direction: direction.swipe.rawValue, maxSwipes: maxSwipes,
+                        scrollFrame: frame.map(FTSelector.parse)?.primary,
+                        startMarginRatio: startMarginRatio, endMarginRatio: endMarginRatio)
     perform("scrollTo", selector, step: step, description: "scrollTo \"\(selector.text)\"",
             file: file, line: line)
 }
@@ -555,7 +616,8 @@ private func existImpl(_ selector: FTSelector, timeout: Double?, requireVisible:
                         direction: scroll?.swipe.rawValue,
                         timeout: timeout ?? core.defaultTimeout,
                         maxSwipes: scroll == nil ? nil : maxSwipes,
-                        occlusionGuard: requireVisible)
+                        occlusionGuard: requireVisible,
+                        scrollFrame: contextScrollFrame(core, scrolling: scroll != nil))
     let result = perform("exist", selector, step: step, description: "exist \"\(selector.text)\"",
                         file: file, line: line)
     return FTElement(selector: selector, matched: result.element)
@@ -603,7 +665,8 @@ private func selectImpl(_ selector: FTSelector, timeout: Double?,
                         direction: scroll?.swipe.rawValue,
                         timeout: timeout ?? core.defaultTimeout,
                         maxSwipes: scroll == nil ? nil : maxSwipes,
-                        occlusionGuard: requireVisible)
+                        occlusionGuard: requireVisible,
+                        scrollFrame: contextScrollFrame(core, scrolling: scroll != nil))
     let result = perform("select", selector, step: step,
                         description: "select \"\(selector.text)\"",
                         file: file, line: line)
@@ -1174,7 +1237,8 @@ private func notExistImpl(_ selector: FTSelector, timeout: Double?,
                         fallbacks: selector.stepFallbacks,
                         direction: scroll?.swipe.rawValue,
                         timeout: timeout ?? core.defaultTimeout,
-                        maxSwipes: scroll == nil ? nil : maxSwipes)
+                        maxSwipes: scroll == nil ? nil : maxSwipes,
+                        scrollFrame: contextScrollFrame(core, scrolling: scroll != nil))
     perform("notExist", selector, step: step, description: "notExist \"\(selector.text)\"",
             file: file, line: line)
 }

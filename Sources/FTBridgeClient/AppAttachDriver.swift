@@ -133,18 +133,21 @@ public final class AppAttachDriver: AppDriver {
     /// ref を使う tap/type/press には同じ回復を入れない: activate は refFrames をクリアするため、
     /// 再試行時には直前 snapshot の ref が別要素を指してしまう。
     public func swipe(_ direction: FTSwipeDirection) async throws {
-        try await swipe(direction, intent: .gesture)
+        try await swipe(direction, intent: .gesture, path: nil)
     }
 
-    /// 用途つき版の素通し(FastLaunchDriver の注記と同じ理由)
-    public func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent) async throws {
+    /// 用途つき版の素通し(FastLaunchDriver の注記と同じ理由)。
+    /// **client.swipe へ intent と path を渡す**(落とすと用途別のジェスチャ調整と
+    /// スクロール領域の指定が丸ごと効かなくなる)
+    public func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent,
+                      path: FTSwipePath?) async throws {
         try await ensureAttached()
         do {
-            try await client.swipe(direction)
+            try await client.swipe(direction, intent: intent, path: path)
         } catch {
             guard Self.isRecoverableSession(error) else { throw error }
             try await client.activate(bundleID: bundleID)
-            try await client.swipe(direction)
+            try await client.swipe(direction, intent: intent, path: path)
         }
     }
     /// drag も ref を使わないので swipe と同じ 409 回復を入れる(座標は対象アプリのセッションが要る)。

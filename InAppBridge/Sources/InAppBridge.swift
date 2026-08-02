@@ -510,6 +510,14 @@ final class FTInAppBridge {
 
     private func handleSwipe(_ body: Data) throws -> InAppHTTPServer.Response {
         let req = try decode(SwipeRequest.self, body)
+        // **スクロール領域の指定(座標)には応えられない**: 合成タッチの drag をジェスチャ認識器が
+        // 受理しないため、渡された座標のとおりに動かす手段が無い。ここで黙って全体スクロールへ
+        // 落とすと**指定と違う領域が動く**(iOS hybrid の既定エンジンは in-app なので実害が大きい)。
+        // 501 でホストに XCUITest へ回させる(座標経路はあちらが持つ)
+        if req.path != nil {
+            throw InAppError(501, "in-app エンジンはスクロール領域の指定(座標スワイプ)に対応していません"
+                + "(合成タッチの drag が受理されないため)。hybrid なら XCUITest へフォールバックします")
+        }
         // Compose / Flutter は自前描画で UIScrollView を持たない(Compose の画面には**本体の
         // スクロールとは無関係な UIScrollView が存在する**ので、contentOffset を動かしても
         // 見た目は変わらず黙った空振りになる)。合成タッチの drag も受理されない

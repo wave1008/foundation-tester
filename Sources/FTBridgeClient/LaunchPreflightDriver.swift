@@ -92,8 +92,9 @@ public final class LaunchPreflightDriver: AppDriver {
     public func back() async throws { try await base.back() }
     public func swipe(_ direction: FTSwipeDirection) async throws { try await base.swipe(direction) }
     /// 用途つき版の素通し(FastLaunchDriver の注記と同じ理由)
-    public func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent) async throws {
-        try await base.swipe(direction, intent: intent)
+    public func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent,
+                      path: FTSwipePath?) async throws {
+        try await base.swipe(direction, intent: intent, path: path)
     }
 
     public func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
