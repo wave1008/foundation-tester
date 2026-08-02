@@ -354,6 +354,12 @@ public final class AndroidDriver: AppDriver {
         try await withBridge { try await $0.swipe(direction) }
     }
 
+    /// 用途つき版。**Android は用途でジェスチャが変わる**(edge は強いフリング)ので、
+    /// 既定実装に落として用途を捨ててはいけない
+    public func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent) async throws {
+        try await withBridge { try await $0.swipe(direction, intent: intent) }
+    }
+
     /// 2点間ドラッグ。ブリッジ経由ではなく gRPC タッチ合成(down→補間 move→up)優先・
     /// adb input swipe フォールバック(どちらも snapshot と同じピクセル座標)。
     /// gRPC はゲスト内 app_process 起動(~300ms/回)が無くステップ列が高速。

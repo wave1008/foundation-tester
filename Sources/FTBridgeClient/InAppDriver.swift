@@ -80,8 +80,8 @@ public final class InAppDriver: AppDriver {
     public func swipe(_ direction: FTSwipeDirection) async throws {
         try await withCrashContext { try await client.swipe(direction) }
     }
-    public func swipe(_ direction: FTSwipeDirection, forScroll: Bool) async throws {
-        try await withCrashContext { try await client.swipe(direction, forScroll: forScroll) }
+    public func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent) async throws {
+        try await withCrashContext { try await client.swipe(direction, intent: intent) }
     }
     public func press(ref: Int, duration: Double) async throws {
         try await withCrashContext { try await client.press(ref: ref, duration: duration) }

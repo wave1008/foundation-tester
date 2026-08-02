@@ -256,7 +256,21 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
             default:
                 throw new BridgeException(400, "direction は up/down/left/right のいずれかです");
         }
-        InputInjector.swipe(ua(), from[0], from[1], to[0], to[1], 300);
+        // ホストが用途(FTSwipeIntent)に応じて送る。**未指定は従来値**なので、送ってこない
+        // 用途(gesture / search)と旧ホストの挙動は変わらない。契約は FTCore/BridgeDTO.SwipeRequest
+        double span = body.optDouble("distance", 0.4);
+        long strokeMs = body.optLong("durationMs", 300);
+        boolean syntheticUp = body.optBoolean("fling", false);
+        if (span != 0.4) {
+            double half = Math.min(Math.max(span, 0.05), 0.9) / 2;
+            switch (direction) {
+                case "up": from[1] = h * (0.5 + half); to[1] = h * (0.5 - half); break;
+                case "down": from[1] = h * (0.5 - half); to[1] = h * (0.5 + half); break;
+                case "left": from[0] = w * (0.5 + half); to[0] = w * (0.5 - half); break;
+                case "right": from[0] = w * (0.5 - half); to[0] = w * (0.5 + half); break;
+            }
+        }
+        InputInjector.swipe(ua(), from[0], from[1], to[0], to[1], strokeMs, syntheticUp);
         settle();
         return ok();
     }

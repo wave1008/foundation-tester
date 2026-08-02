@@ -40,9 +40,9 @@ public final class SystemUIDriver: AppDriver {
     public func press(ref: Int, duration: Double) async throws { try await client.press(ref: ref, duration: duration) }
     public func tap(x: Double, y: Double) async throws { try await client.tap(x: x, y: y) }
     public func swipe(_ direction: FTSwipeDirection) async throws { try await client.swipe(direction) }
-    /// forScroll 版の素通し(FastLaunchDriver の注記と同じ理由)
-    public func swipe(_ direction: FTSwipeDirection, forScroll: Bool) async throws {
-        try await client.swipe(direction, forScroll: forScroll)
+    /// 用途つき版の素通し(FastLaunchDriver の注記と同じ理由)
+    public func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent) async throws {
+        try await client.swipe(direction, intent: intent)
     }
     public func screenshot() async throws -> Data { try await client.screenshot() }
     public func status() async throws -> StatusResponse { try await client.status() }

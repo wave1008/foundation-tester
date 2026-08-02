@@ -33,8 +33,19 @@ final class InputInjector {
         inject(ua, event(downTime, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, x, y));
     }
 
+    /**
+     * syntheticUpTime=true のとき ACTION_UP の eventTime を MOVE と同じ合成時刻
+     * (downTime + durationMs)にする。**false(実時計)だと sleep(16) とイベント注入の
+     * オーバーヘッドぶん UP が遅れ、VelocityTracker が「最後は止まっていた」と読んで
+     * フリングが出ない** —— 飛距離が指の移動距離を下回る(実測 969px 動かして 690px)。
+     * ストロークを短くするほど悪化し、150ms では [120, 780, 105, 714, 120] と
+     * 「UP が間に合うか」のレースになる。**View/Compose だけの現象で Flutter は影響を受けない**。
+     *
+     * 既定を true にしていないのは、探索(scrollTo)の1回の移動量がビューポート高を超えると
+     * 要素を飛び越すため。用途ごとの使い分けは FTCore/BridgeDTO の FTSwipeIntent を見ること
+     */
     static void swipe(UiAutomation ua, double fromX, double fromY, double toX, double toY,
-                      long durationMs) {
+                      long durationMs, boolean syntheticUpTime) {
         long downTime = SystemClock.uptimeMillis();
         inject(ua, event(downTime, downTime, MotionEvent.ACTION_DOWN, fromX, fromY));
         int steps = Math.max(1, (int) (durationMs / 16));
@@ -44,7 +55,8 @@ final class InputInjector {
                     fromX + (toX - fromX) * t, fromY + (toY - fromY) * t));
             SystemClock.sleep(16);
         }
-        inject(ua, event(downTime, SystemClock.uptimeMillis(), MotionEvent.ACTION_UP, toX, toY));
+        long upTime = syntheticUpTime ? downTime + durationMs : SystemClock.uptimeMillis();
+        inject(ua, event(downTime, upTime, MotionEvent.ACTION_UP, toX, toY));
     }
 
     /**
