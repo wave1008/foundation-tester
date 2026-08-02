@@ -58,7 +58,10 @@ public enum BridgeAPI {
     /// **起動時にしか切り替わらない**ので /status の timingEnabled で状態を申告し、
     /// ホストは希望と食い違えば起動し直す。旧ブリッジを再利用すると「on にしたのに1行も出ない」
     /// = 計測できていないのに「待ちが無かった」と誤読する事故になる
-    public static let bridgeProtocolVersion = 34
+    /// 35: SwipeRequest に用途つきのジェスチャ指定(distance/durationMs/fling)が入った(2026-08-02)。
+    /// **読むのは Android ブリッジだけ**で iOS の挙動は変えていないが、DTO は iOS ブリッジの
+    /// 入力でもあるため版を上げる(上げないと稼働中の旧ブリッジが再利用され続ける)
+    public static let bridgeProtocolVersion = 35
 
     /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
     /// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java の
@@ -348,6 +351,16 @@ public struct ClearRequest: Codable {
     }
 }
 
+/// swipe の**用途**。同じ「上へ払う」でも要求される性質が違うので、ホストが用途を伝えて
+/// ブリッジ側がジェスチャを選ぶ。
+/// - `gesture`: DSL の `swipe`。**ジェスチャ自体が目的**(向きの検出をアプリに見せたい)
+/// - `search`: `scrollTo` / `scrollDown` 等。**飛距離がビューポート高を超えると要素を飛び越す**
+///   ので、1回の移動量を欲張らない
+/// - `edge`: `scrollToEdge`。行き過ぎても無害なので**最速で端まで**送ってよい
+public enum FTSwipeIntent: String, Codable, CaseIterable {
+    case gesture, search, edge
+}
+
 /// **ジェスチャの向き**(指の動き)。ブリッジの /swipe はこれを受ける
 public enum FTSwipeDirection: String, Codable, CaseIterable {
     case up, down, left, right
@@ -384,10 +397,22 @@ public struct SwipeRequest: Codable {
     /// 旧ブリッジは無視して従来動作(TapRequest.fast と同じ互換方針で版は据え置かない —
     /// 挙動が変わるので handleSwipe 側の変更とセットで上げる)
     public var scroll: Bool?
-    public init(direction: FTSwipeDirection, fast: Bool? = nil, scroll: Bool? = nil) {
+    /// 指の移動距離(画面比)。未指定はブリッジの既定 = 従来値。**Android ブリッジだけが読む**
+    public var distance: Double?
+    /// ストローク時間(ms)。短いほど離す瞬間の速度が上がりフリングが伸びる
+    public var durationMs: Int?
+    /// ACTION_UP の eventTime を MOVE と同じ合成時刻にするか。**Android の View/Compose では
+    /// これが false(= 実時計)だとフリングが出ない**(実測: 276px → 1,156px)。
+    /// 既定 false = 従来動作。Flutter は影響を受けない(独自の速度計算)
+    public var fling: Bool?
+    public init(direction: FTSwipeDirection, fast: Bool? = nil, scroll: Bool? = nil,
+                distance: Double? = nil, durationMs: Int? = nil, fling: Bool? = nil) {
         self.direction = direction
         self.fast = fast
         self.scroll = scroll
+        self.distance = distance
+        self.durationMs = durationMs
+        self.fling = fling
     }
 }
 

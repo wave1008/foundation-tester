@@ -594,7 +594,7 @@ public final class StepExecutor {
                     hintJumps += 1
                     continue
                 }
-                if try await swipeWithFallback(direction, forScroll: true, phase: &phase) { viaXCUITest = true }
+                if try await swipeWithFallback(direction, intent: .search, phase: &phase) { viaXCUITest = true }
             }
         }
         return ScrollSearchResult(found: false, fallback: nil, viaXCUITest: viaXCUITest,
@@ -627,7 +627,7 @@ public final class StepExecutor {
             var viaXCUITest = false
             var unsettled = false
             for index in 0..<times {
-                if try await swipeWithFallback(direction, forScroll: true, phase: &phase) { viaXCUITest = true }
+                if try await swipeWithFallback(direction, intent: .search, phase: &phase) { viaXCUITest = true }
                 // 続けて投げるとフリングの停止だけに消費されて空振りする(Android 実測)。
                 // 「repeat 回ぶん送る」を守るため、次のスワイプ前に静止を待つ。
                 // 最後の1回の後も待つ: ランナーは /swipe を整定対象から外しているので、
@@ -669,7 +669,7 @@ public final class StepExecutor {
                     hintJumps += 1
                     continue
                 }
-                if try await swipeWithFallback(direction, forScroll: true, phase: &phase) { viaXCUITest = true }
+                if try await swipeWithFallback(direction, intent: .edge, phase: &phase) { viaXCUITest = true }
             }
             // 上限で抜けたら**端に着いたとは限らない**。黙って成功にすると
             // 「scrollToBottom したのに末尾が無い」の原因が読めなくなる
@@ -1369,21 +1369,22 @@ public final class StepExecutor {
         }
     }
 
-    /// forScroll: **スクロールが目的**か(scrollTo / scrollToEdge / scroll)。DSL の `swipe` は
-    /// ジェスチャ自体が目的なので false。in-app の Compose/Flutter だけがこの区別を使う
-    /// (`SwipeRequest.scroll` の説明を参照。混ぜるとジェスチャ画面が黙って空振りする)
-    private func swipeWithFallback(_ direction: FTSwipeDirection, forScroll: Bool = false,
+    /// intent: swipe の用途(`FTSwipeIntent`)。in-app の Compose/Flutter は
+    /// gesture かどうかだけを見る(混ぜるとジェスチャ画面が黙って空振りする)。
+    /// Android ブリッジは edge のときだけ強いフリングを使う(`SwipeRequest.fling`)
+    private func swipeWithFallback(_ direction: FTSwipeDirection,
+                                   intent: FTSwipeIntent = .gesture,
                                    phase: inout PhaseAccumulator) async throws -> Bool {
         let clock = ContinuousClock()
         if typeDriverGestures.contains("swipe") || gestureFallbackLatched, let td = typeDriver {
             let start = clock.now
-            try await td.swipe(direction, forScroll: forScroll)
+            try await td.swipe(direction, intent: intent)
             phase.actionMs += Self.ms(clock.now - start)
             return true
         }
         do {
             let start = clock.now
-            try await driver.swipe(direction, forScroll: forScroll)
+            try await driver.swipe(direction, intent: intent)
             phase.actionMs += Self.ms(clock.now - start)
             return false
         } catch {
@@ -1391,7 +1392,7 @@ public final class StepExecutor {
             // 409 を含めない理由は DriverError.isEngineIncapable 参照
             guard DriverError.isEngineIncapable(error), let td = typeDriver else { throw error }
             let start = clock.now
-            try await td.swipe(direction, forScroll: forScroll)
+            try await td.swipe(direction, intent: intent)
             phase.actionMs += Self.ms(clock.now - start)
             gestureFallbackLatched = true
             return true

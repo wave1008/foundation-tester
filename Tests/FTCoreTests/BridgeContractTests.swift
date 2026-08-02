@@ -99,7 +99,7 @@ final class BridgeContractTests: XCTestCase {
             "InAppBridge/Sources/InAppWebViewDOM.swift": "b4053272dfffb11508b64bd315695123d1199768ed7ceed20f2b8272a5b10551",
             "InAppBridge/Sources/boot.m": "b23fc93fbc99ce2579c9fd8ae75a6f9bbfd0ec6122bec60eb6cd00775dd635ef",
             "InAppBridge/build.sh": "afc02d752c97a009dd48aa6cf18934af0c6f8be662d75af37cdc8c4affbc454d",
-            "Sources/FTCore/BridgeDTO.swift": "79116960f31529aaf76700c7626e8099458452e250951fe898783ea6a97926cc",
+            "Sources/FTCore/BridgeDTO.swift": "79f2f930f246f1deb051952d762cd2739bce698fc6d635b28a97f00a006dd839",
             "Sources/FTCore/WebViewDOMSnapshot.swift": "3b0b20dfb2b8451f9ce19564c7d8701674f9361bbcb5b1c5afbb3570324011af",
         ],
         .xcuitest: [
@@ -110,7 +110,7 @@ final class BridgeContractTests: XCTestCase {
             "Runner/FTesterRunnerUITests/FastInput.swift": "18b54340c404eac53736675763fad8e291b08e2f1f1ba96d696172698aa83bc1",
             "Runner/FTesterRunnerUITests/ObjCExceptionCatcher.h": "5a98cdbeefb031137a985b2f4430a5e12fec447a492599f8f4da1bd2c7101edc",
             "Runner/FTesterRunnerUITests/ObjCExceptionCatcher.m": "8b41a8a81bc8199bca13a364717614684f8003999c7675d9a63242c8e74c26be",
-            "Sources/FTCore/BridgeDTO.swift": "79116960f31529aaf76700c7626e8099458452e250951fe898783ea6a97926cc",
+            "Sources/FTCore/BridgeDTO.swift": "79f2f930f246f1deb051952d762cd2739bce698fc6d635b28a97f00a006dd839",
             "Sources/FTCore/TypeReadback.swift": "8238adeb5146ee2441478a94bf6e2aabb85e6c88c38538ed8df74b2e025bf8ca",
         ],
         .android: [
@@ -118,8 +118,8 @@ final class BridgeContractTests: XCTestCase {
             "AndroidRunner/build.sh": "666cd57fd27b3a39cb9ecea0c7776577301181df87419ddfc76ff58c6ed8a5d7",
             "AndroidRunner/src/com/example/ftbridge/BridgeHttpServer.java": "2468ca5f4ae1136b4efef39a3bf4f5768c3ea3bfd46b8f6b8275712624825f2a",
             "AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java": "cc4efa0fb045b4c85df9b56c89774dfd371fe1d09a7656a8c34e7c15deb8ad25",
-            "AndroidRunner/src/com/example/ftbridge/BridgeRouter.java": "7ab7fbb595501b017fc6af5fe1602df9b2eee72c0e391a360d1a2b415691ee95",
-            "AndroidRunner/src/com/example/ftbridge/InputInjector.java": "3bc395cf1ee5ed06ee4adf41b22ab698eb53961848455d896064ee2adf3aac2e",
+            "AndroidRunner/src/com/example/ftbridge/BridgeRouter.java": "70cda9345e2323b2e777308d6c0644cac629a4c83f172a25f4b9fb37c186abb0",
+            "AndroidRunner/src/com/example/ftbridge/InputInjector.java": "d2626095e73c5e73568f6ac9a7c9ae44492423b7f41dc0fb4ab2e1587aec456a",
             "AndroidRunner/src/com/example/ftbridge/QuietWaiter.java": "bed0d4c3bbafa9a4038aabfbf1e29ebaeb0198eaf4bee926cbd842b7907c3c29",
             "AndroidRunner/src/com/example/ftbridge/SnapshotBuilder.java": "6c1540b7627083d41d1b00adf7c6861669c5c3abae53d453d1da7698ea4c529e",
         ],

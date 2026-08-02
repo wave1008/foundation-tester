@@ -79,11 +79,11 @@ public final class FastLaunchDriver: AppDriver {
     public func hideKeyboard() async throws { try await base.hideKeyboard() }
     public func back() async throws { try await base.back() }
     public func swipe(_ direction: FTSwipeDirection) async throws { try await base.swipe(direction) }
-    // 包むドライバは forScroll 版も必ず素通しする(既定実装は自分の swipe(_:) を呼ぶので
+    // 包むドライバは 用途つき版も必ず素通しする(既定実装は自分の swipe(_:) を呼ぶので
     // ここで受けないと**フラグが最初のラッパーで落ちる**。2026-07-31 に実際に落として
     // in-app のスクロール経路が丸ごと不発になった)
-    public func swipe(_ direction: FTSwipeDirection, forScroll: Bool) async throws {
-        try await base.swipe(direction, forScroll: forScroll)
+    public func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent) async throws {
+        try await base.swipe(direction, intent: intent)
     }
     public func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
                      pressSeconds: Double, durationSeconds: Double) async throws {

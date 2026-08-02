@@ -42,9 +42,9 @@ private final class FakeDriver: AppDriver, @unchecked Sendable {
         calls.append("swipe")
         if let swipeError { throw swipeError }
     }
-    /// 既定実装は swipe(_:) を呼ぶだけなので、forScroll の行き先を見るには受けて記録する
-    func swipe(_ direction: FTSwipeDirection, forScroll: Bool) async throws {
-        calls.append(forScroll ? "swipe(scroll)" : "swipe")
+    /// 既定実装は swipe(_:) を呼ぶだけなので、用途の行き先を見るには受けて記録する
+    func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent) async throws {
+        calls.append(intent == .gesture ? "swipe" : "swipe(scroll)")
         if let swipeError { throw swipeError }
     }
     func press(ref: Int, duration: Double) async throws { calls.append("press(\(ref))") }
@@ -198,7 +198,7 @@ final class WebViewDelegatingDriverTests: XCTestCase {
     /// Compose/Flutter の WebView シナリオが 3.5 倍遅くなる(2026-08-01 実測)
     func testScrollSwipeTriesPrimaryWhileDelegating() async throws {
         let (driver, primary, delegated) = try await delegatingDriver()
-        try await driver.swipe(.up, forScroll: true)
+        try await driver.swipe(.up, intent: .search)
 
         XCTAssertEqual(primary.calls, ["snapshot", "swipe(scroll)"])
         XCTAssertEqual(delegated.calls, ["snapshot"], "スクロールで XCUITest を触らない")
@@ -209,7 +209,7 @@ final class WebViewDelegatingDriverTests: XCTestCase {
         let (driver, primary, delegated) = try await delegatingDriver()
         primary.swipeError = DriverError.badResponse(status: 501, body: "no scroll")
 
-        try await driver.swipe(.up, forScroll: true)
+        try await driver.swipe(.up, intent: .search)
 
         XCTAssertEqual(delegated.calls, ["snapshot", "swipe(scroll)"])
     }
@@ -220,7 +220,7 @@ final class WebViewDelegatingDriverTests: XCTestCase {
         primary.swipeError = DriverError.badResponse(status: 409, body: "busy")
 
         do {
-            try await driver.swipe(.up, forScroll: true)
+            try await driver.swipe(.up, intent: .search)
             XCTFail("409 は伝播すること")
         } catch {}
         XCTAssertEqual(delegated.calls, ["snapshot"], "409 で XCUITest へ回さない")
@@ -230,7 +230,7 @@ final class WebViewDelegatingDriverTests: XCTestCase {
     /// in-app は interop のジェスチャを駆動できないので、ここを in-app へ回すと黙って空振りする
     func testGestureSwipeStillGoesToDelegated() async throws {
         let (driver, primary, delegated) = try await delegatingDriver()
-        try await driver.swipe(.up, forScroll: false)
+        try await driver.swipe(.up, intent: .gesture)
 
         XCTAssertEqual(delegated.calls, ["snapshot", "swipe"])
         XCTAssertEqual(primary.calls, ["snapshot"])

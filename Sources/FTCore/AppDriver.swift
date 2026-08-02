@@ -59,9 +59,8 @@ public protocol AppDriver {
     /// xcuitest フォールバックは StepExecutor が担う
     func pressEnter() async throws
     func swipe(_ direction: FTSwipeDirection) async throws
-    /// スクロールが目的の swipe(`SwipeRequest.scroll`)。既定は通常 swipe と同じで、
-    /// ブリッジ実装だけがフラグを送る
-    func swipe(_ direction: FTSwipeDirection, forScroll: Bool) async throws
+    /// 用途つきの swipe。既定は通常 swipe と同じで、ブリッジ実装だけが用途を送る
+    func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent) async throws
     /// 2点間ドラッグ(座標は snapshot の screen と同じ座標系)。pressSeconds=押下静止時間、
     /// durationSeconds=移動時間(実機ジェスチャの速度・長押しに反映される)。
     func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
@@ -141,9 +140,9 @@ public extension AppDriver {
     var lastActionNote: String? { nil }
     var lastLaunchTiming: LaunchTiming? { nil }
 
-    /// 既定はフラグを落として通常 swipe に委譲する(ラッパードライバはこれで素通しになる)。
-    /// フラグを実際に送るのは HTTP を話す BridgeClient だけ
-    func swipe(_ direction: FTSwipeDirection, forScroll: Bool) async throws {
+    /// 既定は用途を落として通常 swipe に委譲する(ラッパードライバはこれで素通しになる)。
+    /// 用途を実際に送るのは HTTP を話す BridgeClient / AndroidDriver だけ
+    func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent) async throws {
         try await swipe(direction)
     }
 
