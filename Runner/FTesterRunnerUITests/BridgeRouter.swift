@@ -527,6 +527,23 @@ final class BridgeRouter {
         // 解決する。`swipeUp(velocity: .default)` が `swipeUp()` と同一である保証は公開されておらず、
         // 未指定側(search / DSL の swipe = スイート内の大半)の挙動を確認なしに変えることになる
         let velocity = req.velocity.map { XCUIGestureVelocity($0) }
+        // **スクロール領域を指定された場合は座標ドラッグ**(swipeUp() 系は始点を選べない)。
+        // 同じ velocity なら両者の物理は一致する(2026-08-02 実測: 984.3pt 対 985.3pt)。
+        // 速度未指定のときは既定速度を模倣せず**素の press-drag** にする —— 指定領域を
+        // 動かすことが目的で、未指定側(全画面)の挙動を変えるものではない
+        if let path = req.path {
+            let from = coordinate(app, CGPoint(x: path.fromX, y: path.fromY))
+            let to = coordinate(app, CGPoint(x: path.toX, y: path.toY))
+            FastInput.with(req.fast) {
+                if let velocity {
+                    from.press(forDuration: 0.05, thenDragTo: to,
+                               withVelocity: velocity, thenHoldForDuration: 0)
+                } else {
+                    from.press(forDuration: 0.05, thenDragTo: to)
+                }
+            }
+            return .json(OKResponse())
+        }
         FastInput.with(req.fast) {
             switch (req.direction, velocity) {
             case (.up, nil): app.swipeUp()
@@ -558,6 +575,8 @@ final class BridgeRouter {
         let duration = max(requestedDuration, 0.05)
         // velocity の単位は pt/秒。極端値はクランプ(0除算・非現実的な速度の防止)
         let velocity = max(10.0, min(distance / duration, 5000.0))
+        // **thenHoldForDuration に正の値を渡しても慣性は消えない**(2026-08-02 実測。
+        // 指を保持するだけでイベントが出ず velocity 計算が更新されない)。0 のままにすること
         from.press(forDuration: press, thenDragTo: to,
                    withVelocity: XCUIGestureVelocity(velocity), thenHoldForDuration: 0)
         return .json(OKResponse())

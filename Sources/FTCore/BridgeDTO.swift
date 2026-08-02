@@ -63,7 +63,15 @@ public enum BridgeAPI {
     /// 入力でもあるため版を上げる(上げないと稼働中の旧ブリッジが再利用され続ける)
     /// 36: XCUITest ランナーの /swipe が SwipeRequest.velocity を受けるようになった(2026-08-02)。
     /// 旧ランナーが再利用されると既定速度のままで効かない
-    public static let bridgeProtocolVersion = 36
+    /// 37: DragRequest.hold(終端ドウェル)を一時的に足した版(2026-08-02)。**実測で iOS では
+    /// 慣性を止められないと分かったため 38 で撤去した**。37 のブリッジが稼働している環境を
+    /// 確実に入れ替えるため、番号は再利用せず欠番にする
+    /// 38: DragRequest.hold を撤去(2026-08-02)。wire 形式は 36 と同一だが、37 が稼働している
+    /// 可能性があるので戻さず進める
+    /// 39: SwipeRequest.path(スクロール領域を指定したときの実座標)を追加(2026-08-02)。
+    /// 旧ブリッジは path を**黙って無視して全画面スワイプする** = 指定と違う領域が動くので
+    /// 確実に入れ替える。in-app は座標を実行できないため 501 を返す(ホストが XCUITest へ回す)
+    public static let bridgeProtocolVersion = 39
 
     /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
     /// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java の
@@ -320,7 +328,11 @@ public struct DragRequest: Codable {
     public var toY: Double
     /// 押下から移動開始までの静止時間(秒)。nil は最小値(0.05)扱い
     public var press: Double?
-    /// 移動開始から離すまでの時間(秒)。nil は既定速度
+    /// 移動開始から離すまでの時間(秒)。nil は既定速度。
+    /// **終端ドウェル(`thenHoldForDuration`)のフィールドは持たない** —— 2026-08-02 に実測して
+    /// **iOS では慣性を止められない**ことが分かったため(v1500 + hold 0.2s で 2.85→2.82 倍。
+    /// 所要だけ +200ms)。XCUITest の hold は指を保持するだけでイベントを出さず、
+    /// `UIPanGestureRecognizer` の速度計算が更新されない。詳細は docs/performance-tuning.md §6
     public var duration: Double?
     public init(fromX: Double, fromY: Double, toX: Double, toY: Double,
                 press: Double? = nil, duration: Double? = nil) {
@@ -385,6 +397,26 @@ public enum FTScrollDirection: String, Codable, CaseIterable, Sendable {
     }
 }
 
+/// スワイプの実座標(snapshot の screen と同じ座標系。iOS = pt / Android = px)。
+/// 作るのはホストの `ScrollGeometry`(FTCore)だが、**型はここに置く** ——
+/// このファイルはランナーのターゲットにも直接コンパイルされるため
+public struct FTSwipePath: Codable, Equatable, Sendable {
+    public var fromX: Double
+    public var fromY: Double
+    public var toX: Double
+    public var toY: Double
+
+    public init(fromX: Double, fromY: Double, toX: Double, toY: Double) {
+        self.fromX = fromX
+        self.fromY = fromY
+        self.toX = toX
+        self.toY = toY
+    }
+
+    /// 始点から終点までの距離(velocity の算出に使う。縦横どちらかしか動かさないので単純和でよい)
+    public var distance: Double { (toX - fromX).magnitude + (toY - fromY).magnitude }
+}
+
 public struct SwipeRequest: Codable {
     public var direction: FTSwipeDirection
     /// TapRequest.fast と同じ(互換性の注記もそちらを参照)
@@ -412,9 +444,17 @@ public struct SwipeRequest: Codable {
     /// スワイプ速度(points/sec)。**XCUITest ランナーだけが読む**(`XCUIGestureVelocity`)。
     /// nil = `swipeUp()` 等の既定速度。Android は距離とストローク時間で速度を決めるので読まない
     public var velocity: Double?
+    /// **スクロール領域を指定したときの実座標**(snapshot の screen と同じ座標系)。
+    /// ホストが `ScrollGeometry` で計算して送る。**nil = 従来の全画面固定**(ブリッジ側の
+    /// 軸別既定で計算する)。両 OS のブリッジがこれを読む —— 経路を分けると
+    /// 「どこをスクロールするか」の決定がエンジンごとに割れるため。
+    /// **in-app ブリッジは受け付けず 501 を返す**(合成タッチの drag を受理しないので、
+    /// 座標を渡されても指定領域を動かせない。ホストは XCUITest へフォールバックする)
+    public var path: FTSwipePath?
     public init(direction: FTSwipeDirection, fast: Bool? = nil, scroll: Bool? = nil,
                 distance: Double? = nil, durationMs: Int? = nil, fling: Bool? = nil,
-                velocity: Double? = nil) {
+                velocity: Double? = nil, path: FTSwipePath? = nil) {
+        self.path = path
         self.direction = direction
         self.fast = fast
         self.scroll = scroll

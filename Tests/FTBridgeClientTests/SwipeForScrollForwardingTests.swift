@@ -1,4 +1,4 @@
-// `swipe(_:intent:)` を**包むドライバが必ず素通しする**ことを守る。
+// `swipe(_:intent:path:)` の**用途とスクロール領域を包むドライバが必ず素通しする**ことを守る。
 //
 // AppDriver の既定実装は用途を捨てて自分の `swipe(_:)` を呼ぶ。ラッパーがこの既定に
 // 頼ると、用途は**最初のラッパーで落ちて**ブリッジまで届かない。届かないと in-app の
@@ -27,6 +27,7 @@ final class SwipeForScrollForwardingTests: XCTestCase {
             .deletingLastPathComponent()   // Tests
             .deletingLastPathComponent()   // リポジトリルート
         var offenders: [String] = []
+        var droppers: [String] = []
         var checked = 0
         for dir in ["Sources/FTBridgeClient", "Sources/FTAndroid", "Sources/FTCore"] {
             let base = root.appendingPathComponent(dir)
@@ -37,8 +38,15 @@ final class SwipeForScrollForwardingTests: XCTestCase {
                 guard let source = try? String(contentsOf: file, encoding: .utf8) else { continue }
                 guard source.contains("func swipe(_ direction: FTSwipeDirection) async throws") else { continue }
                 checked += 1
-                if !source.contains("func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent)") {
+                if !source.contains("func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent,") {
                     offenders.append(file.lastPathComponent)
+                    continue
+                }
+                // **引数を受けるだけで捨てていないか**まで見る。`path: nil` と書けば
+                // シグネチャの検査は通るが、スクロール領域の指定は最初のラッパーで落ちる
+                // (intent で 2026-07-31 に踏んだ事故と同じ型)
+                if !source.contains("path: path") {
+                    droppers.append(file.lastPathComponent)
                 }
             }
         }
@@ -46,5 +54,8 @@ final class SwipeForScrollForwardingTests: XCTestCase {
         XCTAssertTrue(offenders.isEmpty,
                       "swipe(_:) を実装する型は intent 版も実装して base へ素通しすること"
                       + "(既定実装に任せると用途が落ちてスクロールが XCUITest へ回る): \(offenders)")
+        XCTAssertTrue(droppers.isEmpty,
+                      "intent 版を実装する型は path も素通しすること(`path: path` を渡す)。"
+                      + "受け取って捨てるとスクロール領域の指定が黙って無効になる: \(droppers)")
     }
 }

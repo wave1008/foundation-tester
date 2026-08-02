@@ -63,6 +63,38 @@ final class ScenarioCodeGenTests: XCTestCase {
 
     /// **廃止済みの `optional:` を生成コードに復活させない**。録画 JSON に古い `optional` キーが
     /// 残っていても FlowStep が読み捨てるので、生成結果はコンパイルできる形のままになる
+    /// **スクロール領域の指定は往復で消えてはいけない**。落とすと生成コードが黙って
+    /// 全画面スワイプに戻り、実行と生成物の意味が食い違う
+    func testScrollToEmitsScrollFrameAndMargins() {
+        let code = render([
+            FlowStep(action: "scrollTo", locator: FlowLocator(id: "row_40"),
+                     direction: "up", maxSwipes: 15,
+                     scrollFrame: FlowLocator(id: "list_rows"),
+                     startMarginRatio: 0.3, endMarginRatio: 0.1),
+        ])
+        XCTAssertTrue(code.contains("scrollFrame: \"#list_rows\""), code)
+        XCTAssertTrue(code.contains("startMarginRatio: 0.3"), code)
+        XCTAssertTrue(code.contains("endMarginRatio: 0.1"), code)
+
+        // 未指定なら引数ごと出さない(既定ケースで生成コードを太らせない)
+        let plain = render([
+            FlowStep(action: "scrollTo", locator: FlowLocator(id: "row_40"), direction: "up"),
+        ])
+        XCTAssertFalse(plain.contains("scrollFrame:"), plain)
+        XCTAssertFalse(plain.contains("MarginRatio:"), plain)
+    }
+
+    /// notExist(scroll:) も同じ規則(scroll 引数を再構成する唯一のもう1箇所)
+    func testNotExistWithScrollEmitsScrollFrame() {
+        let code = render([
+            FlowStep(assert: "notExists", locator: FlowLocator(id: "row_99"),
+                     direction: "up", maxSwipes: 3,
+                     scrollFrame: FlowLocator(id: "list_rows")),
+        ])
+        XCTAssertTrue(code.contains("scroll: .down"), code)
+        XCTAssertTrue(code.contains("scrollFrame: \"#list_rows\""), code)
+    }
+
     func testGeneratedCodeNeverEmitsTheRemovedOptionalArgument() throws {
         let json = """
         {"action":"tap","locator":{"id":"btn"},"optional":true}

@@ -264,14 +264,16 @@ public final class BridgeClient: AppDriver {
         try await swipe(direction, intent: .gesture)
     }
 
-    public func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent) async throws {
+    public func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent,
+                      path: FTSwipePath? = nil) async throws {
         let _: OKResponse = try await post(
             "/swipe",
             body: SwipeRequest(direction: direction, fast: fastFlag,
                                scroll: intent == .gesture ? nil : true,
                                durationMs: intent == .edge ? Self.edgeSwipeDurationMs : nil,
                                fling: intent == .edge ? true : nil,
-                               velocity: intent == .edge ? Self.edgeSwipeVelocity : nil),
+                               velocity: intent == .edge ? Self.edgeSwipeVelocity : nil,
+                               path: path),
             timeout: interactionTimeout)
     }
 

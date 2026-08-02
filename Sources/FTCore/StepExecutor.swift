@@ -594,7 +594,10 @@ public final class StepExecutor {
                     hintJumps += 1
                     continue
                 }
-                if try await swipeWithFallback(direction, intent: .search, phase: &phase) { viaXCUITest = true }
+                if try await swipeWithFallback(direction, intent: .search,
+                                               path: scrollPath(step: step, intent: .search,
+                                                                in: snapshot),
+                                               phase: &phase) { viaXCUITest = true }
             }
         }
         return ScrollSearchResult(found: false, fallback: nil, viaXCUITest: viaXCUITest,
@@ -626,13 +629,18 @@ public final class StepExecutor {
             let times = max(1, step.maxSwipes ?? 1)
             var viaXCUITest = false
             var unsettled = false
+            var latest = step.scrollFrame == nil ? nil : try await snapshotForScrollFrame(phase: &phase)
             for index in 0..<times {
-                if try await swipeWithFallback(direction, intent: .search, phase: &phase) { viaXCUITest = true }
+                let path = latest.flatMap { scrollPath(step: step, intent: .search, in: $0) }
+                if try await swipeWithFallback(direction, intent: .search, path: path,
+                                               phase: &phase) { viaXCUITest = true }
                 // 続けて投げるとフリングの停止だけに消費されて空振りする(Android 実測)。
                 // 「repeat 回ぶん送る」を守るため、次のスワイプ前に静止を待つ。
                 // 最後の1回の後も待つ: ランナーは /swipe を整定対象から外しているので、
                 // 直後に tap する書き方をここで支える(index 条件を外した理由)
-                if !(try await settledSignature(phase: &phase).settled) { unsettled = true }
+                let settled = try await settledSignature(phase: &phase)
+                if !settled.settled { unsettled = true }
+                if step.scrollFrame != nil { latest = settled.snapshot }
             }
             var notes: [String] = []
             if viaXCUITest { notes.append("fell back to XCUITest") }
@@ -669,7 +677,10 @@ public final class StepExecutor {
                     hintJumps += 1
                     continue
                 }
-                if try await swipeWithFallback(direction, intent: .edge, phase: &phase) { viaXCUITest = true }
+                if try await swipeWithFallback(direction, intent: .edge,
+                                               path: scrollPath(step: step, intent: .edge,
+                                                                in: settled.snapshot),
+                                               phase: &phase) { viaXCUITest = true }
             }
             // 上限で抜けたら**端に着いたとは限らない**。黙って成功にすると
             // 「scrollToBottom したのに末尾が無い」の原因が読めなくなる
@@ -1374,29 +1385,68 @@ public final class StepExecutor {
     /// Android ブリッジは edge のときだけ強いフリングを使う(`SwipeRequest.fling`)
     private func swipeWithFallback(_ direction: FTSwipeDirection,
                                    intent: FTSwipeIntent = .gesture,
+                                   path: FTSwipePath? = nil,
                                    phase: inout PhaseAccumulator) async throws -> Bool {
         let clock = ContinuousClock()
         if typeDriverGestures.contains("swipe") || gestureFallbackLatched, let td = typeDriver {
             let start = clock.now
-            try await td.swipe(direction, intent: intent)
+            try await td.swipe(direction, intent: intent, path: path)
             phase.actionMs += Self.ms(clock.now - start)
             return true
         }
         do {
             let start = clock.now
-            try await driver.swipe(direction, intent: intent)
+            try await driver.swipe(direction, intent: intent, path: path)
             phase.actionMs += Self.ms(clock.now - start)
             return false
         } catch {
             // 「このエンジンでは不可」(501 / ルート不明 404)だけ XCUITest へ回す。
-            // 409 を含めない理由は DriverError.isEngineIncapable 参照
+            // 409 を含めない理由は DriverError.isEngineIncapable 参照。
+            // **座標つきは in-app が必ず 501 を返す**(合成タッチの drag を受理しないため)ので、
+            // scrollFrame 指定時の hybrid はここで XCUITest へ落ちる
             guard DriverError.isEngineIncapable(error), let td = typeDriver else { throw error }
             let start = clock.now
-            try await td.swipe(direction, intent: intent)
+            try await td.swipe(direction, intent: intent, path: path)
             phase.actionMs += Self.ms(clock.now - start)
             gestureFallbackLatched = true
             return true
         }
+    }
+
+    /// `scrollFrame` を解決するためだけの snapshot。**指定があるときしか呼ばない**
+    /// (従来経路に snapshot を1枚増やさないため)
+    private func snapshotForScrollFrame(phase: inout PhaseAccumulator) async throws -> SnapshotResponse {
+        let clock = ContinuousClock()
+        let start = clock.now
+        let snapshot = try await driver.snapshot()
+        phase.snapshotMs += Self.ms(clock.now - start)
+        return snapshot
+    }
+
+    /// `scrollFrame` 指定時のスワイプ座標。**nil = 従来の全画面固定へ落ちる**。
+    /// 落ちる条件は「指定が無い」「その画面で解決できない」「削りすぎて動かせない」の3つで、
+    /// どれも Shirates が次の候補へ落ちるのと同じ扱い(明示指定は矩形の供給元であって、
+    /// スクロール可能かの判定はしない)。
+    ///
+    /// **毎回の snapshot から解決し直す**: 容器の矩形はスクロールやレイアウト変化で動く。
+    /// 較正値は持たない(WebView のヒント跳躍と同じ自己補正の方針)
+    private func scrollPath(step: FlowStep, intent: FTSwipeIntent,
+                            in snapshot: SnapshotResponse) -> FTSwipePath? {
+        guard let locator = step.scrollFrame,
+              let element = Self.match(locator, in: snapshot) else { return nil }
+        // FlowStep.direction は**指の向き**(ブリッジへ渡る語彙)。コンテンツ基準へ戻すのに
+        // 逆写像を書き足さない —— 写像は `FTScrollDirection.swipe` の1箇所だけという契約
+        let finger = FTSwipeDirection(rawValue: step.direction ?? "") ?? .up
+        let direction = FTScrollDirection.allCases.first { $0.swipe == finger } ?? .down
+        let vertical = direction == .up || direction == .down
+        return ScrollGeometry.path(
+            container: element.frame,
+            viewport: snapshot.screen,
+            direction: direction,
+            startMarginRatio: step.startMarginRatio
+                ?? FTScrollDefaults.startMarginRatio(intent: intent, vertical: vertical),
+            endMarginRatio: step.endMarginRatio
+                ?? FTScrollDefaults.endMarginRatio(intent: intent, vertical: vertical))
     }
 
     /// ヒールキャッシュのロケータ連鎖を順に照合する
