@@ -418,10 +418,12 @@ public final class StepExecutor {
     }
 
     /// スクロール探索の注記(XCUITest フォールバック / ヒント跳躍)。無ければ nil
-    static func scrollSearchNote(_ result: ScrollSearchResult) -> String? {
+    static func scrollSearchNote(_ result: ScrollSearchResult,
+                                 scrollFrameNote: String? = nil) -> String? {
         var parts: [String] = []
         if result.viaXCUITest { parts.append("fell back to XCUITest") }
         if result.hintJumps > 0 { parts.append("\(result.hintJumps) long drag(s) from scroll hints") }
+        if let scrollFrameNote { parts.append(scrollFrameNote) }
         return parts.isEmpty ? nil : parts.joined(separator: " / ")
     }
 
@@ -643,6 +645,8 @@ public final class StepExecutor {
                                phase: inout PhaseAccumulator) async throws -> StepOutcome {
         let clock = ContinuousClock()
         cachedScreenshot = nil   // 画面を変える操作 → occlusion-guard スクショ再利用を無効化
+        pendingScrollFrameNote = nil
+        reportedScrollFrameNote = false
         // ロケータ不要のアクション
         if action == "swipe" {
             let direction = FTSwipeDirection(rawValue: step.direction ?? "") ?? .up
@@ -679,6 +683,7 @@ public final class StepExecutor {
             var notes: [String] = []
             if viaXCUITest { notes.append("fell back to XCUITest") }
             if unsettled { notes.append("the screen did not settle (poll limit)") }
+            if let note = pendingScrollFrameNote { notes.append(note) }
             return StepOutcome(status: .passed,
                                driverFallback: notes.isEmpty ? nil : notes.joined(separator: " / "))
         }
@@ -720,6 +725,7 @@ public final class StepExecutor {
             // 「scrollToBottom したのに末尾が無い」の原因が読めなくなる
             var notes: [String] = []
             if !reachedEdge { notes.append("stopped at the limit of \(limit) (may not have reached the edge yet)") }
+            if let note = pendingScrollFrameNote { notes.append(note) }
             if viaXCUITest { notes.append("fell back to XCUITest") }
             if hintJumps > 0 { notes.append("\(hintJumps) long drag(s) from scroll hints") }
             if sawUnsettled { notes.append("the screen did not settle (poll limit)") }
@@ -730,7 +736,7 @@ public final class StepExecutor {
         // 要素が見つかるまでスクロール(見つかったら成功。操作はしない)
         if action == "scrollTo" {
             let result = try await runScrollSearch(step: step, phase: &phase)
-            let note = Self.scrollSearchNote(result)
+            let note = Self.scrollSearchNote(result, scrollFrameNote: pendingScrollFrameNote)
             guard result.found else {
                 return StepOutcome(status: .failed(Self.scrollNotFoundMessage(step)))
             }
@@ -851,7 +857,7 @@ public final class StepExecutor {
         // 探索は runScrollSearch が静止まで面倒を見るので、以降は通常の解決へ進んでよい
         if step.direction != nil, step.locator != nil {
             let result = try await runScrollSearch(step: step, phase: &phase)
-            scrollSearchNote = Self.scrollSearchNote(result)
+            scrollSearchNote = Self.scrollSearchNote(result, scrollFrameNote: pendingScrollFrameNote)
             guard result.found else {
                 // select はスクロール探索で見つからなくても空要素を返す契約(下の解決経路と同じ)
                 if action == "select" {
@@ -1469,6 +1475,31 @@ public final class StepExecutor {
         return snapshot
     }
 
+    /// scrollFrame の空振り申告(ステップの注記へ載せる。1ステップ1回だけ)
+    private var pendingScrollFrameNote: String?
+    private var reportedScrollFrameNote = false
+
+    /// 指定した `scrollFrame` が**スクロールできない領域**を指していないか。
+    /// 指していれば座標は正しく作られ、スワイプは 200 を返し、**何も起きない**(端に達したのと
+    /// 区別できないので署名では検出できない)= 黙った空振りになる。
+    ///
+    /// **判定に使えるのは「true を見つけたとき」だけ**: `scrollable` を申告できないエンジン
+    /// (Compose/Flutter の in-app)では全要素が nil になるので、そこで警告すると誤報になる。
+    /// だから**画面のどこかに scrollable=true が1つでもあるとき**にだけ判定する。
+    /// 戻り値は注記(nil = 問題なし・申告できないエンジン)
+    static func scrollFrameNote(_ frame: ElementInfo, in snapshot: SnapshotResponse) -> String? {
+        guard snapshot.elements.contains(where: { $0.scrollable == true }) else { return nil }
+        if frame.scrollable == true { return nil }
+        // 容器そのものが scrollable でなくても、**中のスクロール可能な要素**が動けば意図は満たされる
+        // (「リストを包む枠」を指定するのは自然な書き方)
+        let inside = snapshot.elements.contains { element in
+            element.scrollable == true && ScrollGeometry.intersection(element.frame, frame.frame) != nil
+        }
+        if inside { return nil }
+        return "the specified scrollFrame is not scrollable"
+            + " (the swipe lands there but nothing moves)"
+    }
+
     /// `scrollFrame` 指定時のスワイプ座標。**nil = 従来の全画面固定へ落ちる**。
     /// 落ちる条件は「指定が無い」「その画面で解決できない」「削りすぎて動かせない」の3つで、
     /// どれも Shirates が次の候補へ落ちるのと同じ扱い(明示指定は矩形の供給元であって、
@@ -1480,6 +1511,11 @@ public final class StepExecutor {
                             in snapshot: SnapshotResponse) -> FTSwipePath? {
         guard let locator = step.scrollFrame,
               let element = Self.match(locator, in: snapshot) else { return nil }
+        // 空振りの申告は1ステップにつき1回だけ(周回ごとに積むとレポートが埋まる)
+        if pendingScrollFrameNote == nil, !reportedScrollFrameNote {
+            pendingScrollFrameNote = Self.scrollFrameNote(element, in: snapshot)
+            reportedScrollFrameNote = pendingScrollFrameNote != nil
+        }
         // FlowStep.direction は**指の向き**(ブリッジへ渡る語彙)。コンテンツ基準へ戻すのに
         // 逆写像を書き足さない —— 写像は `FTScrollDirection.swipe` の1箇所だけという契約
         let finger = FTSwipeDirection(rawValue: step.direction ?? "") ?? .up

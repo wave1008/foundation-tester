@@ -52,6 +52,8 @@ final class SnapshotBuilder {
         boolean checked;
         /** clearInput 事後検証用(BridgeDTO.ElementInfo.focused 参照) */
         boolean focused;
+        /** スクロールできる容器か(BridgeDTO.ElementInfo.scrollable 参照) */
+        boolean scrollable;
         boolean enabled = true;
         boolean password;
         Rect bounds = new Rect();
@@ -192,6 +194,7 @@ final class SnapshotBuilder {
         n.checkable = node.isCheckable();
         n.checked = node.isChecked();
         n.focused = node.isFocused();
+        n.scrollable = node.isScrollable();
         n.enabled = node.isEnabled();
         n.password = node.isPassword();
         n.chromeRole = chromeRole(node);
@@ -349,6 +352,8 @@ final class SnapshotBuilder {
         if (node.checked) info.put("checked", true);
         // focused も同じ省略規約(clearInput 事後検証用。BridgeDTO.ElementInfo.focused 参照)
         if (node.focused) info.put("focused", true);
+        // scrollable も同じ省略規約(scrollFrame の空振り検出用)
+        if (node.scrollable) info.put("scrollable", true);
         info.put("frame", rectJSON(node.bounds));
         info.put("depth", node.depth);
         return info;

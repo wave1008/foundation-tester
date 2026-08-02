@@ -705,6 +705,11 @@ final class BridgeRouter {
         }
     }
 
+    /// スクロールできる容器とみなす型(`ElementInfo.scrollable`)
+    private static let scrollableTypes: Set<XCUIElement.ElementType> = [
+        .scrollView, .table, .collectionView,
+    ]
+
     private func makeInfo(_ node: XCUIElementSnapshot, ref: Int, depth: Int) -> ElementInfo {
         let frame = node.frame
         return ElementInfo(
@@ -720,7 +725,11 @@ final class BridgeRouter {
             depth: depth,
             // Compose iOS は Switch の value を出さないため isSelected が唯一の checked 経路
             // (SwiftUI/Flutter も同じ trait が立つ。2026-07-26 実測)。false は送らない
-            checked: node.isSelected ? true : nil)
+            checked: node.isSelected ? true : nil,
+            // スクロールできる容器か(scrollFrame の空振り検出用)。XCUITest は Android の
+            // isScrollable に当たる属性を持たないので**型で判定する**(Shirates の iOS 側と同じ規則)。
+            // 自前描画(Compose/Flutter)の容器は Other として出るため申告できない = false は送らない
+            scrollable: Self.scrollableTypes.contains(node.elementType) ? true : nil)
     }
 
     private func valueString(_ node: XCUIElementSnapshot) -> String? {
