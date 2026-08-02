@@ -324,20 +324,25 @@ final class AssertKindsTests: XCTestCase {
         XCTAssertEqual(failureReason(outcome.status)?.contains("element not found"), true)
     }
 
-    /// tap(scroll:, optional: true) が伝える optional は scrollTo 経路でも同契約
-    /// (見つからないときは失敗ではなくスキップ)
-    func testScrollToHonoursOptional() async {
+    /// `scrollTo` は探索し尽くしても見つからなければ**失敗**する(空振りを許す逃げ道は無い)
+    func testScrollToFailsWhenNotFound() async {
         let elements = [[node(1, id: "other")]]
-        let optionalStep = FlowStep(action: "scrollTo", locator: FlowLocator(id: "居ない"),
-                                    direction: "down", maxSwipes: 1, optional: true)
-        let skipped = await StepExecutor(driver: ScriptedDriver(frames: elements))
-            .execute(optionalStep)
-        if case .skipped = skipped.status {} else { XCTFail("skipped を期待: \(skipped.status)") }
-        let requiredStep = FlowStep(action: "scrollTo", locator: FlowLocator(id: "居ない"),
-                                    direction: "down", maxSwipes: 1)
+        let step = FlowStep(action: "scrollTo", locator: FlowLocator(id: "居ない"),
+                            direction: "down", maxSwipes: 1)
         let failed = await StepExecutor(driver: ScriptedDriver(frames: elements))
-            .execute(requiredStep)
+            .execute(step)
         XCTAssertEqual(failureReason(failed.status)?.contains("scroll(s)"), true)
+    }
+
+    /// `select(scroll:)` はスクロール探索でも掴めなければ空要素を返す(失敗にしない)。
+    /// 解決経路が2つ(探索終端と通常解決)あるので、探索側にも契約が通っていることを固定する
+    func testSelectWithScrollReturnsEmptyWhenNotFound() async {
+        let step = FlowStep(action: "select", locator: FlowLocator(id: "居ない"),
+                            direction: "down", maxSwipes: 1)
+        let outcome = await StepExecutor(driver: ScriptedDriver(frames: [[node(1, id: "other")]]))
+            .execute(step)
+        if case .skipped = outcome.status {} else { XCTFail("skipped を期待: \(outcome.status)") }
+        XCTAssertNil(outcome.resolvedElement)
     }
 
     // MARK: - スクロール探索の静止待ち
@@ -588,7 +593,7 @@ final class AssertKindsTests: XCTestCase {
         XCTAssertEqual(driver.tapped, [1])
     }
 
-    /// スクロールしても見つからなければ、その旨で失敗する(optional なら skipped)
+    /// スクロールしても見つからなければ、その旨で失敗する
     func testTapWithScrollFailsWithScrollMessage() async {
         let driver = TapRecordingDriver(frames: [[node(9, id: "other")]])
         let step = FlowStep(action: "tap", locator: FlowLocator(id: "row_40"),
@@ -596,12 +601,6 @@ final class AssertKindsTests: XCTestCase {
         let outcome = await StepExecutor(driver: driver).execute(step)
         XCTAssertEqual(failureReason(outcome.status)?.contains("scroll(s)"), true)
         XCTAssertTrue(driver.tapped.isEmpty)
-
-        let optionalStep = FlowStep(action: "tap", locator: FlowLocator(id: "row_40"),
-                                    direction: "up", maxSwipes: 2, optional: true)
-        let skipped = await StepExecutor(driver: TapRecordingDriver(frames: [[node(9, id: "o")]]))
-            .execute(optionalStep)
-        if case .skipped = skipped.status {} else { XCTFail("skipped を期待: \(skipped.status)") }
     }
 
     /// exist(scroll:) も同じく1ステップ。探索して見つかれば検証が通る

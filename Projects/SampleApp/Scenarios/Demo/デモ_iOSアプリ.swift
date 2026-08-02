@@ -5,7 +5,7 @@
 // 確認環境で初回ダイアログなし。リマインダーのみ「ようこそ」→iCloud同期確認 の2段ダイアログが出る
 // (dismissRemindersOnboardingIfAny で消費済みでも安全に無害化)。
 // 連絡先とリマインダーは launchApp() が直前の詳細/リスト画面から再開することがある
-// (ensureContactsList / #BackButton の optional tap で一覧画面へ正規化してから進める)。
+// (ensureContactsList / #BackButton の条件付き tap で一覧画面へ正規化してから進める)。
 // 位置情報等の権限ダイアログが出るアプリ(マップ等)は対象外。状態を変える操作(表示切替等)は
 // 同一 @Test 内で元に戻す。
 
@@ -88,7 +88,9 @@ class デモ_iOSアプリ {
             }
             scene(2, "リスト一覧画面まで戻る") {
                 action {
-                    tap("#BackButton", optional: true, timeout: 1)
+                    ifCanSelect("#BackButton", waitSeconds: 1) {
+                        tap("#BackButton")
+                    }
                 }.expectation {
                     exist("#Reminders.TTRIAccountsListsView")
                     exist("今日")

@@ -15,7 +15,8 @@ public enum StepDescription {
     /// selectorOverride 指定時はセレクタ引数を差し替えて目的語を組み立てる
     /// (ヒール確認シートが新セレクタで説明を提案するため)。生成できなければ nil
     public static func describe(command: String, selectorOverride: String? = nil) -> String? {
-        // ` (optional)` サフィックス(tap の任意実行)は説明に影響しない
+        // ` (optional)` は廃止済みの `optional:` 引数が付けていたサフィックス。**過去 run の
+        // 説明文を読み直すため**に剥がしは残す(新しい run では二度と現れない)
         var text = command.trimmingCharacters(in: .whitespaces)
         if text.hasSuffix(" (optional)") {
             text = String(text.dropLast(" (optional)".count))

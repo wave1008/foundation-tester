@@ -44,7 +44,7 @@ public struct FlowStep: Codable, Sendable {
     /// screenMatches 用の期待状態(自然言語。マルチモーダル画面検証に使う)
     public var expected: String?
     /// 秒(小数可)。検証(assert)では要素出現待ちの上限。アクションではロケータ解決の
-    /// 再試行待ち上限(nil = 既定の約0.7秒 / 0 = 再試行なし。optional ステップの空振り短縮用)
+    /// 再試行待ち上限(nil = 既定の約0.7秒 / 0 = 再試行なし。出るか不定の要素を待つ空振りの短縮用)
     public var timeout: Double?
     /// scrollTo のスクロール回数上限(省略時 8)
     public var maxSwipes: Int?
@@ -53,9 +53,6 @@ public struct FlowStep: Codable, Sendable {
     public var duration: Double?
     /// count アサーションの期待個数(DSL の countIs)。他のステップでは nil
     public var expectedCount: Int?
-    /// true のとき、ロケータが解決できなくても失敗にせずスキップする
-    /// (パスワード保存シート等、出るかどうか不定なシステムダイアログの処理用)
-    public var optional: Bool?
     /// 探索時に FM が述べた意図(リプレイでは使わないがレビューの助けになる)
     public var note: String?
     /// [occlusion-guard] true のとき、この検証(exists/textEquals)がツリー一致で pass した直後に
@@ -84,7 +81,7 @@ public struct FlowStep: Codable, Sendable {
                 expected: String? = nil, timeout: Double? = nil, maxSwipes: Int? = nil,
                 duration: Double? = nil,
                 expectedCount: Int? = nil,
-                optional: Bool? = nil, note: String? = nil, occlusionGuard: Bool? = nil) {
+                note: String? = nil, occlusionGuard: Bool? = nil) {
         self.action = action
         self.assert = assert
         self.locator = locator
@@ -97,7 +94,6 @@ public struct FlowStep: Codable, Sendable {
         self.maxSwipes = maxSwipes
         self.duration = duration
         self.expectedCount = expectedCount
-        self.optional = optional
         self.note = note
         self.occlusionGuard = occlusionGuard
     }

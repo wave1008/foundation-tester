@@ -64,7 +64,7 @@ final class StepDescriptionTests: XCTestCase {
                        "\"アイコン\"を1秒間長押しする")
         XCTAssertEqual(StepDescription.describe(command: "tap \"Icon\" (hold 0.5s)"),
                        "long-press \"Icon\" for 0.5s")
-        // optional と併記(tapImpl の連結順: hold → optional)
+        // 廃止済み `optional:` が付けていたサフィックス。**過去 run の説明文を読み直せること**
         XCTAssertEqual(StepDescription.describe(command: "tap \"アイコン\" (hold 1s) (optional)"),
                        "\"アイコン\"を1秒間長押しする")
     }

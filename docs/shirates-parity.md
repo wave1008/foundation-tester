@@ -33,11 +33,11 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 
 | Shirates | ftester | |
 |---|---|---|
-| `tap` | `tap(sel, optional:timeout:scroll:maxSwipes:)` | ✅ |
+| `tap` | `tap(sel, timeout:scroll:maxSwipes:)` | ✅ |
 | `tap(holdSeconds:)` | 同名 | ✅ |
 | `tapWithScrollDown/Up/Left/Right` | 同名 | ✅ |
 | `tapWithoutScroll` | 同名 | ✅ |
-| `select` / `selectWithScroll*` / `selectWithoutScroll` | 同名 | ✅ `exist`(検証)では代用にならないため実装(2026-07-31)。**可視性照合はするが、見えないときは失敗させず空要素を返す**(`requireVisible: false` で外せる)。Shirates の `throwsException` は持たず `optional:` で表す |
+| `select` / `selectWithScroll*` / `selectWithoutScroll` | 同名 | ✅ `exist`(検証)では代用にならないため実装(2026-07-31)。**掴めなければ失敗させず空要素を返す**(見つからないときも、見えないときも同じ。`requireVisible: false` で可視性照合を外せる)。Shirates の `throwsException` に相当する引数は持たない = 常に非 throw |
 | `canSelect` / `canSelectWithScroll*` / `canSelectNot` | 単独コマンドは無い(`ifCanSelect` / `repeatWhileCanSelect` に内包) | 🟡 |
 | `existAll` / `canSelectAll` / `dontExistAll` | — | ➖ **実装しない**(ユーザー決定 2026-07-31)。`exist` のチェーンで書く方が保守しやすく、要素ごとに `timeout:` / `scroll:` 等のオプションも指定できる。**再提案しない** |
 | `scanElements` / `*InScanResults` | — | ❌ |
@@ -127,7 +127,7 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 
 | Shirates | ftester | |
 |---|---|---|
-| `ifCanSelect { }` | 同名 + `.ifElse { }` | ✅ |
+| `ifCanSelect { }` | 同名 + `.ifElse { }` | ✅ **「出るか不定」の唯一の表現手段**(`optional:` 廃止後。アプリ内メッセージは `irregularHandler`) |
 | `ifCanSelectNot` | `.ifElse` で代替 | 🟡 |
 | `doUntilTrue` | 同名(引数名も準拠) | ✅ |
 | `android` / `ios` | 同名 | ✅ |
@@ -215,6 +215,7 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 |---|---|---|
 | `restartApp` | `restartApp` | ✅ **揃えた**(旧名 `relaunchApp` から改名。2026-07-31) |
 | `notExist` | `dontExist` | ➖ **`notExist` を維持**(ユーザー決定 2026-07-31)。`notExist` は否定の意味が読み取りやすく、`exist` との対称も保てる。**再提案しない** |
+| `optional:` 引数なし | `throwsException: false` | ➖ **全廃**(ユーザー決定 2026-08-02)。空振りを許す引数が操作系にあると腐ったセレクタが緑で残る。代替は `irregularHandler` / `ifCanSelect`、値を読む用途は `select` の空要素。**再提案しない** |
 
 ## OS で挙動が割れるもの(利用者に見える差)
 

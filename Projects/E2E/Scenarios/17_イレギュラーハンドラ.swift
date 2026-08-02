@@ -1,6 +1,6 @@
 // 17_イレギュラーハンドラ.swift
 // ftester 機能: `irregularHandler`(出るか不定なアプリ内メッセージの検出・自動終了)。
-// 09_条件分岐とダイアログ.swift はハンドラなしでのダイアログ操作(ifCanSelect/optional)を検証しており、
+// 09_条件分岐とダイアログ.swift はハンドラなしでのダイアログ操作(ifCanSelect/select)を検証しており、
 // 干渉させないためこちらは分けて irregularHandler 専用に検証する。
 
 import FTDSL

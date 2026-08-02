@@ -1,5 +1,5 @@
 // 09_条件分岐とダイアログ.swift
-// ftester 機能: `ifCanSelect`(出るか不定な要素への条件分岐)と `optional:`(空振りしても失敗にしない)。
+// ftester 機能: `ifCanSelect`(出るか不定な要素への条件分岐)と `select`(掴めなければ空要素を返す)。
 // #btn_maybe_dialog は奇数回目だけダイアログを開く決定的仕様のため、ifCanSelect の
 // 「出ても出なくても通る」ことの検証材料になる。
 // SUT のダイアログは AlertDialog + setView(カスタムビュー)。既定ボタンは resource-id が
@@ -86,7 +86,7 @@ class 条件分岐とダイアログ操作が正しく働くこと {
         }
     }
 
-    @Test("optional: true の空振りは失敗にならない")
+    @Test("select の空振りは失敗せず空要素を返す")
     func S0030() {
         scenario {
             scene(1, "ダイアログ画面を開く(ダイアログを開かずに)") {
@@ -98,9 +98,9 @@ class 条件分岐とダイアログ操作が正しく働くこと {
                     textIs("#txt_dialog_result", "dialog=none")
                 }
             }
-            scene(2, "ダイアログ未表示のまま optional: true で空振りしても scene は成功する") {
+            scene(2, "ダイアログ未表示のまま select しても scene は成功し、空要素が返る") {
                 action {
-                    tap("#btn_dialog_ok", optional: true, timeout: 0)
+                    select("#btn_dialog_ok", timeout: 0).isEmpty.thisIsTrue()
                 }.expectation {
                     textIs("#txt_dialog_result", "dialog=none")
                 }

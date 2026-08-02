@@ -681,7 +681,7 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
 ## 9. 検証方法(E2E)
 
 0. **同梱 SUT + 対になるテストプロジェクト**が ftester 自身の機能別 E2E。DSL のコマンド面
-   (セレクタ記法・type・tap(holdSeconds:)/swipe・scrollTo・暗黙待ちと timeout・ifCanSelect/optional・
+   (セレクタ記法・type・tap(holdSeconds:)/swipe・scrollTo・暗黙待ちと timeout・ifCanSelect/select・
    relaunch・ios{}/android{})を 1 機能 1 シナリオで網羅する。
    ネットワーク依存ゼロ・状態は起動ごとにルート正規化する設計で、フリートのロケール差や
    バックエンド死活に左右されない。`Scripts/e2e.sh` が全 SUT を鮮度判定つきで回す。
@@ -763,9 +763,12 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
     違反スレッドが中断検知の前に触り得るのは受容した残存リスク(記録の見え方が乱れるだけで
     結果は壊れない)。検証は `swift test --sanitize=thread --filter FTDSLTests`
     (**ロックの正しさは目視では担保できない**。触ったら必ず TSan を通すこと)
-- tap/type は `optional:`(見つからなくても失敗にしない)に加え `timeout:`
-  (ロケータ解決の再試行待ち上限秒。0=リトライなし。省略時は既定の約0.7秒)を取る。
-  出るか不定な optional ステップの空振り短縮用(performance-tuning §5)
+- **要素が見つからなければ失敗(シナリオ中断)。唯一の例外は `select`** で、掴めなければ
+  失敗させず空要素を返す(`FTElement.isEmpty`)。**「出るか不定」を表す引数は持たない**
+  (`optional:` は 2026-08-02 に全廃。`irregularHandler` と `ifCanSelect` に一本化した。下記)
+- tap/type/select は `timeout:`(ロケータ解決の再試行待ち上限秒。0=リトライなし。
+  省略時は tap/type が約0.7秒・select は `defaultTimeout`)を取る。
+  出るか不定の要素を `ifCanSelect` で見るときの空振り短縮用(performance-tuning §5)
 - **秒は全て小数(Double)**(2026-07-29。`timeout:` / `waitSeconds:` / `defaultTimeout` /
   `--default-timeout`。`FlowStep.timeout` も `Double?`)。`timeout: 1.2` が書ける。
   表示は `FTSeconds.format`(FTCore)が唯一の生成元で `5.0s` ではなく `5s`・`1.2s` と出す
@@ -1058,6 +1061,7 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
 | `pressEnter` の iOS 実装がソフトキー tap ではない(xcuitest = `typeText("\n")` / inapp = 受け口ごとに Compose は `insertText("\n")`・UIKit は delegate 再現・Flutter は engine への配送) | キーボード要素をスナップショットから除外しているため tap できない。受け口で機構が違うのは iOS 側の事情(上記「iOS の Enter は…」)。観測できる挙動(Return キー相当)はいずれも同等 |
 | `back()` は Shirates の `pressBack`(Android 専用)を home()/appSwitcher() と同列の OS 差吸収コマンドとして両 OS 提供(iOS はエッジスワイプ) | iOS に物理バックが無く、コマンド語彙を OS で割らない方針 |
 | `swipePointToPoint` / `swipeElementToElement` に withOffset・offsetY・intervalSeconds・repeat・safeMode・marginRatio・adjust が無い | ブリッジの drag が単発ジェスチャのため(scrollFrame と同じ事情) |
+| `optional:` 引数を持たない(Shirates は `throwsException: false`) | ユーザー決定 2026-08-02・**再提案しない**。「出るか不定」はアプリ内メッセージなら `irregularHandler`、その場限りなら `ifCanSelect { }` で表す。空振りを黙って許す引数が操作系に付いていると、腐ったセレクタが緑のまま残る。掴めないことが答えになり得る `select` だけは失敗させず空要素を返す |
 | `notExist`(Shirates は `dontExist`) | 否定の意味が読み取りやすく `exist` との対称も保てる(ユーザー決定 2026-07-31・**再提案しない**) |
 | `existAll` / `dontExistAll` を持たない | `exist` のチェーンで書く方が保守しやすく、要素ごとに `timeout:` / `scroll:` を指定できる(ユーザー決定 2026-07-31・**再提案しない**) |
 | `clearInput` がソフトキー/Appium clear 機構ではない(xcuitest=末尾タップ+delete 連打 / inapp=first responder のテキスト置換 / Android=ACTION_SET_TEXT "") | キーボード要素を snapshot から除外しているため(pressEnter と同じ事情) |
@@ -1260,7 +1264,7 @@ textIs(.id("txt_result"), "dialog=none")
   **別ステップにしない理由**: 利用者が書いたのは1コマンドなので記録も1行にする。
   合成ステップは**ソース行を持たない**ためジャンプも修正提案の照合もできず、説明の要る状態になる
   (2026-07-27 に一度その形で入れて、直した)。
-  見つからなければ「N 回スクロールしても要素が見つかりません」で失敗(optional なら skipped)。
+  見つからなければ「N 回スクロールしても要素が見つかりません」で失敗(`select` だけは空要素を返して skipped)。
   既定のスワイプ上限は `FlowStep.defaultMaxSwipes`
 
 ### スクロールの語彙(2026-07-27。Shirates 準拠)

@@ -193,7 +193,7 @@ testbase(SC/TC 等の仕様書)を根拠にシナリオを書く場合、実行�
 
 | 分類 | コマンド |
 |---|---|
-| タップ/入力 | `tap(sel, optional:, timeout:)` / `type(text)`(直前フォーカス)/ `type(sel, text)` / `press(sel, duration:)`(長押し) |
+| タップ/入力 | `tap(sel, timeout:)` / `tap(sel, holdSeconds:)`(長押し)/ `type(text)`(直前フォーカス)/ `type(sel, text)` / `select(sel)`(掴むだけ。**掴めなければ空要素**を返し失敗しない) |
 | スワイプ/スクロール | `swipe(.up/.down/.left/.right)`(**指の動き**。生のジェスチャ)/ 以下は**コンテンツ基準**(`.down` = 下に読み進める): `scrollTo(sel, direction:, maxSwipes:)` / `scrollDown(repeat:)` `scrollUp` `scrollRight` `scrollLeft` / `scrollToBottom(maxSwipes:)` `scrollToTop` `scrollToRightEdge` `scrollToLeftEdge` |
 | スクロールしながら探す | `tap(sel, scroll: .down)` / `exist(sel, scroll: .down)`(別名 `tapWithScrollDown` / `existWithScrollDown`)/ ブロックで囲む `withScrollDown { … }` と、1コマンドだけ打ち消す `tapWithoutScroll` `existWithoutScroll` `withoutScroll { … }` |
 | 検証 | `exist(sel)` / `notExist(sel)` / `isEnabled(sel)` / `isDisabled(sel)` / `isChecked(sel)` / `isNotChecked(sel)` / `countIs(sel, 個数)` / `screenIs(名)`。exist は `.textIs()/.valueIs()/.idIs()` チェーン可 |
@@ -206,8 +206,10 @@ testbase(SC/TC 等の仕様書)を根拠にシナリオを書く場合、実行�
 | まとまり | `group("ログイン") { … }`(記録に `[ログイン]` を前置するだけ。実行・失敗の扱いは素の列と同じ) |
 | 前後処理 | テストクラスに `func setUp()` / `func tearDown()`(引数なし)を書くと各 `@Test` の前後で自動実行 |
 
-- `optional: true` = 見つからなくても失敗にしない。`timeout:` = ロケータ再試行の上限秒(0=即諦め、
-  省略=約0.7秒)。出るか不定な optional ステップの空振り短縮に使う。
+- **要素が見つからなければ失敗**(シナリオ中断)。**唯一の例外は `select`**(空要素を返す。`.isEmpty` で分岐)。
+  「出るか不定」を表す引数は無いので、アプリ内メッセージは `irregularHandler`、その場限りの分岐は
+  `ifCanSelect(sel) { … }` で書く。`timeout:` = ロケータ再試行の上限秒(0=即諦め、省略=約0.7秒)で、
+  `ifCanSelect` / `select` の空振り短縮に使う。
 - **`wait(秒)` は原則不要**。`tap` はロケータ解決を約0.7秒(`timeout:` でその秒数)まで再試行し、
   `exist`/`textIs`/`valueIs` は既定タイムアウト(5秒・実行プロファイルの `--default-timeout` で上書き)まで
   ポーリング再判定する。要素の**出現待ち**はこれらが暗黙にこなすので、遷移後の `exist` 直前などに

@@ -13,8 +13,7 @@ class デモ_サンプルアプリ {
     /// 座標がずれて空振りする(タップ成功でもシート残留)ため、wait+再試行の2段構え
     private func dismissPasswordSheetIfAny() {
         wait(1)
-        tap("今はしない", optional: true, timeout: 2)
-        ifCanSelect("今はしない", waitSeconds: 1) {
+        ifCanSelect("今はしない", waitSeconds: 2) {
             tap("今はしない")
         }
     }

@@ -284,23 +284,50 @@ final class CommandDispatchTests: XCTestCase {
                        "scroll 探索は別ステップを増やさず1行のまま記録されること")
     }
 
-    /// select(optional: true) は見つからない要素でも失敗にせずスキップすること
-    func testSelectOptionalSkipsWhenElementMissing() {
+    /// **select は掴めなくても空要素を返し、シナリオを止めない**(`optional:` 廃止後の唯一の契約)。
+    /// ここが失敗に転ぶと `.isEmpty` 分岐を書いた利用者コードが到達しなくなる
+    func testSelectReturnsEmptyElementWhenMissing() {
         let core = makeCore(driver: RecordingDriver())
         FTRuntime.bootstrap(core: core, dslThread: Thread.current)
         defer { FTRuntime.tearDown() }
 
         var element: FTElement!
+        var reachedNextStep = false
         scenario {
             scene(1, "s") {
-                action { element = select("#missing", optional: true, timeout: 0) }
+                action {
+                    element = select("#missing", timeout: 0)
+                    reachedNextStep = true
+                }
             }
         }
 
         XCTAssertNil(element.text, "見つからなければ matched は無いはず")
         XCTAssertTrue(element.isEmpty, "掴めていなければ isEmpty は true")
         XCTAssertFalse(element.isNotEmpty)
-        XCTAssertTrue(core.finalRecord.passed, "optional の未検出はシナリオを失敗させない")
+        XCTAssertTrue(reachedNextStep, "select の空振りは後続を止めないこと")
+        XCTAssertTrue(core.finalRecord.passed, "select の未検出はシナリオを失敗させない")
+    }
+
+    /// 対の検証: **tap は掴めなければ失敗**してシナリオを中断する。
+    /// `optional:` の廃止で「空振りを黙って許す」経路が操作系に残っていないことを固定する
+    func testTapFailsAndAbortsWhenElementMissing() {
+        let core = makeCore(driver: RecordingDriver())
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        var reachedNextStep = false
+        scenario {
+            scene(1, "s") {
+                action {
+                    tap("#missing", timeout: 0)
+                    reachedNextStep = true
+                }
+            }
+        }
+
+        XCTAssertFalse(core.finalRecord.passed, "tap の未検出はシナリオを失敗させること")
+        XCTAssertTrue(reachedNextStep, "ブロック内の生 Swift コードはスキップされない(既知の契約)")
     }
 
     /// isEmpty は matched の有無で判定する。**`.text == nil` では代用できない**

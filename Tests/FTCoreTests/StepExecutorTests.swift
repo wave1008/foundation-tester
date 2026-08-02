@@ -549,16 +549,32 @@ final class StepExecutorTests: XCTestCase {
         XCTAssertEqual(delegate.visibleCalls, 0, "requireVisible: false なら FM を呼ばない")
     }
 
-    /// select(optional: true) は見つからなくても失敗にせずスキップする(tap/type と同じ語彙)
-    func testSelectOptionalSkipsWhenNotFound() async throws {
+    /// **select だけは掴めなくても失敗しない**(空要素を返す契約)。DSL の `.isEmpty` 分岐が
+    /// 成立する前提なので、ここが failed に転ぶと利用者は掴めない要素を検知できなくなる
+    func testSelectSkipsWithAnEmptyElementWhenNotFound() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
         let executor = StepExecutor(driver: primary)
-        let step = FlowStep(action: "select", locator: FlowLocator(id: "missing"),
-                            timeout: 0, optional: true)
+        let step = FlowStep(action: "select", locator: FlowLocator(id: "missing"), timeout: 0)
 
-        guard case .skipped = await executor.execute(step).status else {
-            XCTFail("optional: true で見つからなければ skip のはず"); return
+        let outcome = await executor.execute(step)
+
+        guard case .skipped = outcome.status else {
+            XCTFail("select は見つからなければ skip のはず。実際は \(outcome.status)"); return
+        }
+        XCTAssertNil(outcome.resolvedElement, "掴めていないので要素を返さないこと")
+    }
+
+    /// 対の検証: **select 以外は見つからなければ失敗**(シナリオ中断)。`optional:` 廃止で
+    /// 「空振りを黙って許す」経路が tap/type に残っていないことを固定する
+    func testTapFailsWhenNotFound() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
+        let executor = StepExecutor(driver: primary)
+        let step = FlowStep(action: "tap", locator: FlowLocator(id: "missing"), timeout: 0)
+
+        guard case .failed = await executor.execute(step).status else {
+            XCTFail("tap は見つからなければ失敗のはず"); return
         }
     }
 
@@ -639,20 +655,20 @@ final class StepExecutorTests: XCTestCase {
         XCTAssertEqual(fallback.snapshotCallCount, 1)
     }
 
-    /// tap(optional: true, timeout: 0): ロケータ再試行は行わないが、driver フォールバックの
-    /// 1回照会(hybrid の optional 解決に必須)は timeout: 0 でも必ず行われる
-    func testTapOptionalWithZeroTimeoutSkipsRetryButQueriesFallbackOnce() async throws {
+    /// timeout: 0 ではロケータ再試行を行わないが、driver フォールバックの
+    /// 1回照会(hybrid で解決するために必須)は timeout: 0 でも必ず行われる。
+    /// 空振りを失敗にしない `select` で、解決の往復回数だけを観測する
+    func testZeroTimeoutSkipsRetryButQueriesFallbackOnce() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
         let fallback = FakeAppDriver(name: "fallback", log: log, snapshotElements: [[]])
         let executor = StepExecutor(driver: primary, fallbackDriver: fallback)
-        let step = FlowStep(action: "tap", locator: FlowLocator(id: "target"),
-                            timeout: 0, optional: true)
+        let step = FlowStep(action: "select", locator: FlowLocator(id: "target"), timeout: 0)
 
         let outcome = await executor.execute(step)
 
         guard case .skipped = outcome.status else {
-            XCTFail("optional な要素なしでの skip を期待したが \(outcome.status) だった")
+            XCTFail("select の空振りは skip を期待したが \(outcome.status) だった")
             return
         }
         XCTAssertEqual(primary.snapshotCallCount, 1)
@@ -662,16 +678,16 @@ final class StepExecutorTests: XCTestCase {
 
     /// 回帰ガード: step.timeout が nil(省略)のときアクションは従来どおり
     /// 初回+3回リトライ(計4回スナップショット)のまま変わらないこと
-    func testTapWithNilTimeoutKeepsLegacyThreeRetries() async throws {
+    func testNilTimeoutKeepsLegacyThreeRetries() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
         let executor = StepExecutor(driver: primary)
-        let step = FlowStep(action: "tap", locator: FlowLocator(id: "target"), optional: true)
+        let step = FlowStep(action: "select", locator: FlowLocator(id: "target"))
 
         let outcome = await executor.execute(step)
 
         guard case .skipped = outcome.status else {
-            XCTFail("optional な要素なしでの skip を期待したが \(outcome.status) だった")
+            XCTFail("select の空振りは skip を期待したが \(outcome.status) だった")
             return
         }
         XCTAssertEqual(primary.snapshotCallCount, 4)
