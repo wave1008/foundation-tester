@@ -293,6 +293,9 @@ final class StepExecutorTests: XCTestCase {
         XCTAssertTrue(StepExecutor.isClippedByViewport(at(40, 400, 370), screen: screen), "右で見切れ")
         // ちょうど収まっているものは見切れではない(境界)
         XCTAssertFalse(StepExecutor.isClippedByViewport(at(16, 818), screen: screen))
+        // **幅がビューポートと同じ要素も判定対象**(リストの行は容器と同じ幅を持つ)
+        XCTAssertTrue(StepExecutor.isClippedByViewport(at(0, 829, 402), screen: screen),
+                      "幅一致の行が漏れるとタップが容器の外へ落ちる")
     }
 
     /// ビューポートより大きい要素はどう送っても収まらない。true にすると maxSwipes を

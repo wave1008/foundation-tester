@@ -554,6 +554,8 @@ public final class StepExecutor {
         let maxSwipes = max(0, step.maxSwipes ?? FlowStep.defaultMaxSwipes)
         var viaXCUITest = false
         var hintJumps = 0
+        // 自己補正の材料(直前の周回のツリー)。**較正値は持たず毎周測り直す**
+        var previousSnapshot: SnapshotResponse?
         for attempt in 0...maxSwipes {
             // **1周目だけは静止を待ってから撮る**。直前の操作がプログラム的な
             // アニメーションスクロール(「先頭へ」等)だと、ブリッジの整定はすり抜けることがあり
@@ -570,6 +572,23 @@ public final class StepExecutor {
                 phase.snapshotMs += Self.ms(clock.now - start)
             }
             try await dismissInterruption(in: &snapshot, phase: &phase)
+            // **1回の移動量がビューポートを超えると要素を飛び越す**(スクロール探索は行き過ぎた
+            // 要素を拾い直さない)。実測して超えていたら次の刻みを詰める
+            if let previousSnapshot {
+                let vertical = direction == .up || direction == .down
+                let extent = vertical ? snapshot.screen.height : snapshot.screen.width
+                if let travel = Self.measuredTravel(before: previousSnapshot, after: snapshot,
+                                                    vertical: vertical) {
+                    if travel > extent * Self.travelCeilingRatio {
+                        spanScale = max(Self.minSpanScale, spanScale * Self.spanShrinkFactor)
+                    } else if travel < 1, step.scrollFrame == nil {
+                        // **座標を撃ったのに1ミリも動かなかった** = 始点が対象の外(タブバー等)。
+                        // 領域を明示されていない限り、以降は従来の全画面固定へ戻す
+                        // (明示指定は利用者の意図なので黙って別の場所を動かさない)
+                        coordinateSwipeIneffective = true
+                    }
+                }
+            }
             // スクロール探索でも type+index フォールバックは偽陽性のもとなので使わない
             if let (element, fallback) = Self.resolve(step: step, in: snapshot, strictForAssert: true) {
                 // **見つけただけでは足りない**: 画面の縁で見切れている要素は、フレームワークに
@@ -579,8 +598,11 @@ public final class StepExecutor {
                 // 領域指定(scrollFrame)や刻みの細かい設定ほどここに掛かる
                 // (2026-08-02 実測: CMP で #row_40 が y=829/高さ56 = 下端 885 > 画面 874 で見つかり、
                 // タップが別の行に取られた。従来の全画面スワイプでは y=720 で見つかっていた)
+                let viewport = scrollContainer(step: step, in: snapshot,
+                                               vertical: direction == .up || direction == .down)
+                    .flatMap { ScrollGeometry.intersection($0, snapshot.screen) } ?? snapshot.screen
                 if attempt < maxSwipes,
-                   Self.isClippedByViewport(element, screen: snapshot.screen) {
+                   Self.isClippedByViewport(element, screen: viewport) {
                     if try await swipeWithFallback(direction, intent: .search,
                                                    path: scrollPath(step: step, intent: .search,
                                                                     in: snapshot),
@@ -634,6 +656,7 @@ public final class StepExecutor {
                                                path: scrollPath(step: step, intent: .search,
                                                                 in: snapshot),
                                                phase: &phase) { viaXCUITest = true }
+                previousSnapshot = snapshot
             }
         }
         return ScrollSearchResult(found: false, fallback: nil, viaXCUITest: viaXCUITest,
@@ -647,6 +670,8 @@ public final class StepExecutor {
         cachedScreenshot = nil   // 画面を変える操作 → occlusion-guard スクショ再利用を無効化
         pendingScrollFrameNote = nil
         reportedScrollFrameNote = false
+        spanScale = 1
+        coordinateSwipeIneffective = false
         // ロケータ不要のアクション
         if action == "swipe" {
             let direction = FTSwipeDirection(rawValue: step.direction ?? "") ?? .up
@@ -1332,8 +1357,11 @@ public final class StepExecutor {
     /// どう送っても収まらないので false(送り続けて maxSwipes を使い切らせない)
     static func isClippedByViewport(_ element: ElementInfo, screen: FTRect) -> Bool {
         let frame = element.frame
+        // **等しいときは「大きい」ではない**: リストの行は容器と同じ幅を持つのが普通で、
+        // `<` にすると幅一致の行が丸ごと判定から漏れる(2026-08-02 実測: 下端で見切れた行が
+        // 可視とみなされ、タップが容器の外のタブバーに当たって別画面へ遷移した)
         guard frame.height > 0, frame.width > 0,
-              frame.height < screen.height, frame.width < screen.width else { return false }
+              frame.height <= screen.height, frame.width <= screen.width else { return false }
         return frame.y < screen.y
             || frame.y + frame.height > screen.y + screen.height
             || frame.x < screen.x
@@ -1479,6 +1507,46 @@ public final class StepExecutor {
     private var pendingScrollFrameNote: String?
     private var reportedScrollFrameNote = false
 
+    /// 探索スワイプの刻み倍率(自己補正)。**1回の移動量がビューポートを超えると要素を飛び越す**
+    /// ので、実移動量を毎周測って詰める。較正表は持たない(端末・SUT を跨ぐと再現しないため。
+    /// docs/performance-tuning.md §3.16 / §3.18)。ステップごとに 1.0 へ戻す
+    private var spanScale: Double = 1
+
+    /// 座標スワイプが**1ミリも動かなかった**ことを観測したか(始点が対象の外に出た形)。
+    /// 立ったらこのステップでは従来の全画面固定へ戻す
+    private var coordinateSwipeIneffective = false
+
+    /// 実移動量がビューポートのこの割合を超えたら刻みを詰める(飛び越しの余裕を残す)
+    static let travelCeilingRatio: Double = 0.8
+    /// 詰めるときの倍率(急に効かせすぎると往復が増えるので緩やかに)
+    static let spanShrinkFactor: Double = 0.6
+    /// 刻みの下限(これ以上小さくすると周回数が増えるだけ)
+    static let minSpanScale: Double = 0.25
+
+    /// 直前のスワイプで**実際に動いた量**。前後のスナップショットに共通する要素の frame 差の
+    /// 中央値で測る(1要素だと再利用セルのラベル振れに引きずられる)。
+    ///
+    /// **共通要素が無いときは nil(不明)を返す**。「1画面ぶん動いた」とは限らず、画面遷移や
+    /// id を持たない画面でも同じ状態になるため、行き過ぎと読むと**刻みを縮め続けて到達できなくなる**
+    /// (2026-08-02 に実際に踏んだ: #txt_offscreen への scrollTo が maxSwipes を使い切って失敗)
+    static func measuredTravel(before: SnapshotResponse, after: SnapshotResponse,
+                               vertical: Bool) -> Double? {
+        var deltas: [Double] = []
+        let index = Dictionary(before.elements.compactMap { element -> (Int, ElementInfo)? in
+            guard let id = element.identifier, !id.isEmpty else { return nil }
+            return (id.hashValue, element)
+        }, uniquingKeysWith: { first, _ in first })
+        for element in after.elements {
+            guard let id = element.identifier, !id.isEmpty,
+                  let previous = index[id.hashValue] else { continue }
+            deltas.append(vertical ? previous.frame.y - element.frame.y
+                                   : previous.frame.x - element.frame.x)
+        }
+        guard !deltas.isEmpty else { return nil }
+        let sorted = deltas.map(abs).sorted()
+        return sorted[sorted.count / 2]
+    }
+
     /// 指定した `scrollFrame` が**スクロールできない領域**を指していないか。
     /// 指していれば座標は正しく作られ、スワイプは 200 を返し、**何も起きない**(端に達したのと
     /// 区別できないので署名では検出できない)= 黙った空振りになる。
@@ -1509,27 +1577,92 @@ public final class StepExecutor {
     /// 較正値は持たない(WebView のヒント跳躍と同じ自己補正の方針)
     private func scrollPath(step: FlowStep, intent: FTSwipeIntent,
                             in snapshot: SnapshotResponse) -> FTSwipePath? {
-        guard let locator = step.scrollFrame,
-              let element = Self.match(locator, in: snapshot) else { return nil }
-        // 空振りの申告は1ステップにつき1回だけ(周回ごとに積むとレポートが埋まる)
-        if pendingScrollFrameNote == nil, !reportedScrollFrameNote {
-            pendingScrollFrameNote = Self.scrollFrameNote(element, in: snapshot)
-            reportedScrollFrameNote = pendingScrollFrameNote != nil
-        }
+        guard Self.coordinateScrollEnabled else { return nil }
         // FlowStep.direction は**指の向き**(ブリッジへ渡る語彙)。コンテンツ基準へ戻すのに
         // 逆写像を書き足さない —— 写像は `FTScrollDirection.swipe` の1箇所だけという契約
         let finger = FTSwipeDirection(rawValue: step.direction ?? "") ?? .up
         let direction = FTScrollDirection.allCases.first { $0.swipe == finger } ?? .down
         let vertical = direction == .up || direction == .down
+
+        guard let container = scrollContainer(step: step, in: snapshot, vertical: vertical) else {
+            return nil
+        }
+
+        // 自己補正(spanScale)は探索だけに掛ける。**較正表を持たない**のが方針で、
+        // 実移動量を毎周測って次の刻みを詰める(WebView のヒント跳躍と同じ考え方)
+        let base = step.startMarginRatio
+            ?? FTScrollDefaults.startMarginRatio(intent: intent, vertical: vertical)
+        let baseEnd = step.endMarginRatio
+            ?? FTScrollDefaults.endMarginRatio(intent: intent, vertical: vertical)
+        let scaled = Self.scaledMargins(start: base, end: baseEnd, scale: spanScale)
         return ScrollGeometry.path(
-            container: element.frame,
+            container: container,
             viewport: snapshot.screen,
             direction: direction,
-            startMarginRatio: step.startMarginRatio
-                ?? FTScrollDefaults.startMarginRatio(intent: intent, vertical: vertical),
-            endMarginRatio: step.endMarginRatio
-                ?? FTScrollDefaults.endMarginRatio(intent: intent, vertical: vertical))
+            startMarginRatio: scaled.start,
+            endMarginRatio: scaled.end)
     }
+
+    /// このステップのスクロール対象領域。**nil = 従来の全画面固定へ落ちる**。
+    /// スワイプ座標の計算(`scrollPath`)と、見つけた要素の見切れ判定の**両方**がこれを使う ——
+    /// 見切れは画面ではなく**容器の縁**で起きるので、判定を画面基準にすると
+    /// 「容器の外にはみ出した行」を可視とみなしてタップが容器の外(タブバー等)へ落ちる
+    /// (2026-08-02 実測: #row_30 が y=745・容器の下端 762 で見つかり、中心 773 のタップが
+    /// タブバーに当たって別画面へ遷移した)
+    func scrollContainer(step: FlowStep, in snapshot: SnapshotResponse,
+                         vertical: Bool) -> FTRect? {
+        guard Self.coordinateScrollEnabled else { return nil }
+        if let locator = step.scrollFrame {
+            guard let element = Self.match(locator, in: snapshot) else { return nil }
+            // 空振りの申告は1ステップにつき1回だけ(周回ごとに積むとレポートが埋まる)
+            if pendingScrollFrameNote == nil, !reportedScrollFrameNote {
+                pendingScrollFrameNote = Self.scrollFrameNote(element, in: snapshot)
+                reportedScrollFrameNote = pendingScrollFrameNote != nil
+            }
+            return element.frame
+        }
+        // **未指定は従来の全画面固定に任せる**(2026-08-02 に「面積最大のスクロール容器を
+        // 暗黙の対象にする」を実装して実測で撤回した)。理由は3つとも実測:
+        //  - iOS xcuitest は identifier の無い容器を snapshot に載せないので特定できない画面がある
+        //    (画面全体を対象にすると始点がタブバーに乗り**実移動量 0.0pt**)
+        //  - Android は速度ノブが無く、刻みを制御できない(ストロークを速めると Compose で
+        //    慣性が出て探索直後のタップが 9 行ずれた)
+        //  - 明示指定の経路(利用者が領域を決めた場合)は上で座標化しており、価値はそこで出ている
+        return nil
+    }
+
+    /// `scrollFrame` 未指定のときの対象領域(Shirates の `getScrollableElement` 相当)。
+    /// **面積最大のスクロール容器**を採る。
+    ///
+    /// **見つからなければ nil = 従来の全画面固定へ落とす**。画面全体を対象にしてはいけない ——
+    /// 2026-08-02 に実測で踏んだ: E2E-iOS のセレクタ画面は容器に identifier が無く snapshot に
+    /// 載らないため申告が無い。画面全体をスパン 0.8 で払うと**始点(画面の 90%)がタブバーに乗り、
+    /// 実移動量が 0.0pt** になった(従来の `swipeUp()` は XCTest が要素の中で始点を決めるので効く)。
+    /// 容器を特定できないエンジン・画面では、座標化しない方が正しい
+    static func implicitScrollTarget(in snapshot: SnapshotResponse, vertical: Bool) -> FTRect? {
+        let candidates = snapshot.elements.filter { $0.scrollable == true }
+        guard let largest = candidates.max(by: { a, b in
+            a.frame.width * a.frame.height < b.frame.width * b.frame.height
+        }) else { return nil }
+        // 画面のごく一部しか占めない容器(小さなバッジ内スクロール等)は本体ではない
+        let area = largest.frame.width * largest.frame.height
+        let screenArea = snapshot.screen.width * snapshot.screen.height
+        return area >= screenArea * 0.2 ? largest.frame : nil
+    }
+
+    /// 自己補正の倍率をマージンへ写す。span = 1 - start - end を scale 倍し、両端へ等分に戻す
+    static func scaledMargins(start: Double, end: Double, scale: Double)
+        -> (start: Double, end: Double) {
+        guard scale < 0.999 else { return (start, end) }
+        let span = max(0.05, (1 - start - end) * scale)
+        let margin = max(0, (1 - span) / 2)
+        return (margin, margin)
+    }
+
+    /// 座標スクロールの殺しスイッチ。`FT_SCROLL_TARGET=legacy` でブリッジ側の
+    /// 固定比率(従来経路)へ丸ごと戻す
+    static let coordinateScrollEnabled =
+        ProcessInfo.processInfo.environment["FT_SCROLL_TARGET"] != "legacy"
 
     /// ヒールキャッシュのロケータ連鎖を順に照合する
     private func matchCached(_ cached: [FlowLocator],

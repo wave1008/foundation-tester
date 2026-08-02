@@ -93,7 +93,10 @@ public enum FTScrollDefaults {
     private static func margin(intent: FTSwipeIntent, vertical: Bool) -> Double {
         guard vertical else { return 0.2 }   // 横は現行(0.2↔0.8 = スパン 0.6)と同じ
         switch intent {
-        case .search: return 0.25            // スパン 0.5・重なり 50%(取りこぼし防止)
+        // 探索は保守側(重なり 50%)。**慣性を消せないので刻み = 実移動量にはならない** ——
+        // 速度を落として慣性を消す案は iOS では効くが Android に同じノブが無く、
+        // 実測で収束しなかった(2026-08-02)。行き過ぎは探索の失敗に直結するので控えめに取る
+        case .search: return 0.25            // スパン 0.5・重なり 50%
         case .gesture, .edge: return 0.2     // スパン 0.6
         }
     }
