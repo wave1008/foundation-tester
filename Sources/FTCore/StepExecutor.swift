@@ -559,6 +559,21 @@ public final class StepExecutor {
             try await dismissInterruption(in: &snapshot, phase: &phase)
             // スクロール探索でも type+index フォールバックは偽陽性のもとなので使わない
             if let (element, fallback) = Self.resolve(step: step, in: snapshot, strictForAssert: true) {
+                // **見つけただけでは足りない**: 画面の縁で見切れている要素は、フレームワークに
+                // よっては frame がクランプされて**タップが外れる**(Compose iOS の既知の上流制約)。
+                // まだ送れるなら、完全に見えるまでもう1回スワイプする。
+                // 1回の移動量が小さいほど「見えた瞬間 = 見切れ位置」で止まるので、
+                // 領域指定(scrollFrame)や刻みの細かい設定ほどここに掛かる
+                // (2026-08-02 実測: CMP で #row_40 が y=829/高さ56 = 下端 885 > 画面 874 で見つかり、
+                // タップが別の行に取られた。従来の全画面スワイプでは y=720 で見つかっていた)
+                if attempt < maxSwipes,
+                   Self.isClippedByViewport(element, screen: snapshot.screen) {
+                    if try await swipeWithFallback(direction, intent: .search,
+                                                   path: scrollPath(step: step, intent: .search,
+                                                                    in: snapshot),
+                                                   phase: &phase) { viaXCUITest = true }
+                    continue
+                }
                 // **スワイプしたなら静止を待つ**。フリングの慣性でリストは減速しながら動き続けており、
                 // 見つけた瞬間に返すと次の操作が別の要素を掴む
                 // (実測 2026-07-27: Android は #row_30 を狙って #row_37 をタップした)。
@@ -573,8 +588,16 @@ public final class StepExecutor {
                     // (タブバー等)に届き、そのボタンが反応してしまう
                     // (2026-07-27 実測: E2E-iOS の #txt_offscreen はタブバーの帯の中に出るため、
                     // 空打ちでホームタブへ切り替わっていた)
+                    // **点は容器の中でありさえすればよい**(容器の1タッチを肩代わりするだけで、
+                    // 対象要素に当てる必要は無い)。そこで下端の a11y 空白帯に掛かるときは
+                    // 上へずらす —— 探索は「見えた瞬間」に止まるので、**1回の移動量が小さいほど
+                    // 対象は下端で見つかり**、ずらさないと空打ちが常に抑止される
+                    // (2026-08-02 実測: CMP で scrollFrame 指定時に #row_40 が y=829 で見つかり、
+                    // 空打ちが飛ばされてタップが容器に吸われた。従来の全画面スワイプでは y=720)
                     let x: Double = element.frame.x + element.frame.width / 2
-                    let y: Double = element.frame.y + element.frame.height / 2
+                    let y: Double = min(element.frame.y + element.frame.height / 2,
+                                        snapshot.screen.y + snapshot.screen.height
+                                            - Self.bottomUncoveredBand - 1)
                     if releasesScrollTouch,
                        Self.emptyDragIsSafe(x: x, y: y, of: element,
                                             in: snapshot.elements, screen: snapshot.screen) {
@@ -1287,6 +1310,18 @@ public final class StepExecutor {
 
     /// 画面下端の a11y 空白帯の高さ(pt)。実測の空白(874-840=34)+整定位置のブレの余裕
     static let bottomUncoveredBand: Double = 48
+
+    /// 要素が画面の縁で**見切れている**か。ビューポートより大きい要素(長文など)は
+    /// どう送っても収まらないので false(送り続けて maxSwipes を使い切らせない)
+    static func isClippedByViewport(_ element: ElementInfo, screen: FTRect) -> Bool {
+        let frame = element.frame
+        guard frame.height > 0, frame.width > 0,
+              frame.height < screen.height, frame.width < screen.width else { return false }
+        return frame.y < screen.y
+            || frame.y + frame.height > screen.y + screen.height
+            || frame.x < screen.x
+            || frame.x + frame.width > screen.x + screen.width
+    }
 
     /// その座標のタッチが**対象ではなく手前の別要素に渡る**か。スナップショットは pre-order
     /// (後 = 手前寄り)なので、対象より後ろにあって点を含む要素が居れば取られ得る。

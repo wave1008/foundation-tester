@@ -90,7 +90,7 @@ final class BridgeContractTests: XCTestCase {
     private static let expectedFingerprints: [BridgeSourceSet: [String: String]] = [
         .inApp: [
             "InAppBridge/Sources/Bridging.h": "08799e6d190f958eed7c6bb4406f1cbbfea1bed1d252ce4572636273c65a5aad",
-            "InAppBridge/Sources/InAppBridge.swift": "c886702741dae03d4208ccd14068ce5a0f5289a882b5315d150964cb928a50af",
+            "InAppBridge/Sources/InAppBridge.swift": "050321f6297f3c0632c972010960cac2e8c12bb5eba22efc3ce85adc581aba57",
             "InAppBridge/Sources/InAppHTTPServer.swift": "1d987f76a251ab475b632f24df272b000bb433054c7607e38f0447b6181e58bb",
             "InAppBridge/Sources/InAppInput.h": "acc35263e4306db4f7f5d8e544c406c292b5d1b873c953c5aa741a2de63f66eb",
             "InAppBridge/Sources/InAppInput.m": "2eff34d11bacb028604dc96d364f2fc11538039d471d1320f3a35ca4bdf14cce",
@@ -99,7 +99,7 @@ final class BridgeContractTests: XCTestCase {
             "InAppBridge/Sources/InAppWebViewDOM.swift": "b4053272dfffb11508b64bd315695123d1199768ed7ceed20f2b8272a5b10551",
             "InAppBridge/Sources/boot.m": "b23fc93fbc99ce2579c9fd8ae75a6f9bbfd0ec6122bec60eb6cd00775dd635ef",
             "InAppBridge/build.sh": "afc02d752c97a009dd48aa6cf18934af0c6f8be662d75af37cdc8c4affbc454d",
-            "Sources/FTCore/BridgeDTO.swift": "489068181a7230f294aafca70e5399c8c5906916f1121d4dc587c3f59798d145",
+            "Sources/FTCore/BridgeDTO.swift": "567b24fc44b0dcb12d8767293ef7e942c54f604fc0dbe3315564c5ba28876519",
             "Sources/FTCore/WebViewDOMSnapshot.swift": "3b0b20dfb2b8451f9ce19564c7d8701674f9361bbcb5b1c5afbb3570324011af",
         ],
         .xcuitest: [
@@ -110,7 +110,7 @@ final class BridgeContractTests: XCTestCase {
             "Runner/FTesterRunnerUITests/FastInput.swift": "18b54340c404eac53736675763fad8e291b08e2f1f1ba96d696172698aa83bc1",
             "Runner/FTesterRunnerUITests/ObjCExceptionCatcher.h": "5a98cdbeefb031137a985b2f4430a5e12fec447a492599f8f4da1bd2c7101edc",
             "Runner/FTesterRunnerUITests/ObjCExceptionCatcher.m": "8b41a8a81bc8199bca13a364717614684f8003999c7675d9a63242c8e74c26be",
-            "Sources/FTCore/BridgeDTO.swift": "489068181a7230f294aafca70e5399c8c5906916f1121d4dc587c3f59798d145",
+            "Sources/FTCore/BridgeDTO.swift": "567b24fc44b0dcb12d8767293ef7e942c54f604fc0dbe3315564c5ba28876519",
             "Sources/FTCore/TypeReadback.swift": "8238adeb5146ee2441478a94bf6e2aabb85e6c88c38538ed8df74b2e025bf8ca",
         ],
         .android: [
