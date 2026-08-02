@@ -56,8 +56,9 @@ fun ScrollScreen() {
         // 横スクロールの検証材料(scrollFrame)。**リストの下に置く** —— 画面中央に置くと
         // 領域を指定しない従来スクロール(画面中央基準)がカルーセルに吸われる。
         // **1画面に 3〜4 個しか入らない幅**にする ——
-        // 全部見えていると「横スクロールした」ことを不在で検証できない
-        TaggedText(Tags.TXT_TAG_SELECTED, "tag=$tagSelected")
+        // 全部見えていると「横スクロールした」ことを不在で検証できない。
+        // 並びは**カルーセル → その下にテキスト**(4 SUT 共通の契約。相対セレクタ
+        // :above/:below を使うシナリオが SUT で割れないため)
         LazyRow(state = tagState,
                 modifier = Modifier.fillMaxWidth().height(60.dp).testTag(Tags.CAROUSEL_TAGS)) {
             items(Tags.TAG_COUNT) { index ->
@@ -71,5 +72,6 @@ fun ScrollScreen() {
                 }
             }
         }
+        TaggedText(Tags.TXT_TAG_SELECTED, "tag=$tagSelected")
     }
 }
