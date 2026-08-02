@@ -85,7 +85,42 @@ fun buildScrollScreen(activity: Activity, parent: ViewGroup): View {
     list.layoutManager = LinearLayoutManager(activity)
     list.adapter = RowAdapter { n -> selected.text = "selected=${rowTag(n)}" }
     v.findViewById<Button>(R.id.btn_scroll_top).setOnClickListener { list.scrollToPosition(0) }
+    // 横スクロールの検証材料(scrollFrame)。縦リストと同居させることで
+    // 「指定した領域だけが動く」を検証できる
+    val tagSelected = v.findViewById<TextView>(R.id.txt_tag_selected)
+    val carousel = v.findViewById<RecyclerView>(R.id.carousel_tags)
+    carousel.layoutManager = LinearLayoutManager(activity, LinearLayoutManager.HORIZONTAL, false)
+    carousel.adapter = TagAdapter { n -> tagSelected.text = "tag=${tagTag(n)}" }
     return v
+}
+
+private fun tagTag(n: Int) = "tag_%02d".format(n)
+private fun tagLabel(n: Int) = "タグ %02d".format(n)
+
+private class TagAdapter(val onClick: (Int) -> Unit) : RecyclerView.Adapter<TagAdapter.VH>() {
+    class VH(val view: View) : RecyclerView.ViewHolder(view)
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH =
+        VH(android.view.LayoutInflater.from(parent.context).inflate(R.layout.item_tag, parent, false))
+
+    override fun getItemCount(): Int = TAG_IDS.size
+
+    override fun onBindViewHolder(holder: VH, position: Int) {
+        val n = position + 1
+        ((holder.view as ViewGroup).getChildAt(0) as TextView).text = tagLabel(n)
+        holder.view.id = TAG_IDS[position]
+        holder.view.contentDescription = tagLabel(n)
+        holder.view.setOnClickListener { onClick(n) }
+    }
+
+    companion object {
+        val TAG_IDS = intArrayOf(
+            R.id.tag_01, R.id.tag_02, R.id.tag_03, R.id.tag_04, R.id.tag_05,
+            R.id.tag_06, R.id.tag_07, R.id.tag_08, R.id.tag_09, R.id.tag_10,
+            R.id.tag_11, R.id.tag_12, R.id.tag_13, R.id.tag_14, R.id.tag_15,
+            R.id.tag_16, R.id.tag_17, R.id.tag_18, R.id.tag_19, R.id.tag_20,
+        )
+    }
 }
 
 private class RowAdapter(val onClick: (Int) -> Unit) : RecyclerView.Adapter<RowAdapter.VH>() {

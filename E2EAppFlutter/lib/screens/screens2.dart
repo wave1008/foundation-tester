@@ -134,11 +134,14 @@ class ScrollScreen extends StatefulWidget {
 
 class _ScrollScreenState extends State<ScrollScreen> {
   final _controller = ScrollController();
+  final _tagController = ScrollController();
   String _selected = '-';
+  String _tagSelected = '-';
 
   @override
   void dispose() {
     _controller.dispose();
+    _tagController.dispose();
     super.dispose();
   }
 
@@ -188,6 +191,36 @@ class _ScrollScreenState extends State<ScrollScreen> {
             ),
           ),
         ),
+        // 横スクロールの検証材料(scrollFrame)。**リストの下に置く** —— 画面中央に置くと
+        // 領域を指定しない従来スクロール(画面中央基準)がカルーセルに吸われる。
+        // **1画面に 3〜4 個しか入らない幅**にする ——
+        // 全部見えていると「横スクロールした」ことを不在で検証できない。
+        // 容器は list_rows と同じく Semantics(container/explicitChildNodes)で公開する
+        // (tagged() = MergeSemantics で包むと子孫が消える)
+        SizedBox(
+          height: 60,
+          child: Semantics(
+            identifier: Tags.carouselTags,
+            container: true,
+            explicitChildNodes: true,
+            child: ListView.builder(
+              controller: _tagController,
+              scrollDirection: Axis.horizontal,
+              cacheExtent: 0,
+              itemCount: Tags.tagCount,
+              itemBuilder: (context, index) {
+                final n = index + 1;
+                return SizedBox(
+                  width: 120,
+                  height: 56,
+                  child: TaggedButton(Tags.tag(n), Tags.tagLabel(n),
+                      onTap: () => setState(() => _tagSelected = Tags.tag(n))),
+                );
+              },
+            ),
+          ),
+        ),
+        TaggedText(Tags.txtTagSelected, 'tag=$_tagSelected'),
       ],
     ),
   );

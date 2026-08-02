@@ -69,6 +69,13 @@ class Tags {
   /// 行 tag。n は 1..rowCount。ゼロ詰め("row_01")= ラベルの部分一致衝突回避と対。
   static String row(int n) => 'row_${n.toString().padLeft(2, '0')}';
 
+  /// 横スクロールの検証材料(scrollFrame。縦と横が同居していないと「指定した方だけ動く」を確かめられない)
+  static const txtTagSelected = 'txt_tag_selected';
+  static const carouselTags = 'carousel_tags';
+  static String tag(int n) => 'tag_${n.toString().padLeft(2, '0')}';
+  static String tagLabel(int n) => 'タグ ${n.toString().padLeft(2, '0')}';
+  static const tagCount = 20;
+
   /// 行ラベル("行 01")。
   static String rowLabel(int n) => '行 ${n.toString().padLeft(2, '0')}';
 
