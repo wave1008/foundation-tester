@@ -1329,6 +1329,15 @@ textIs(.id("txt_result"), "dialog=none")
   contentOffset へ)ので**マージンも効く**。ただし **Compose/Flutter は 501 で XCUITest へ回す** ——
   自前描画では hitTest も AX も領域を絞れず、指定領域の外を指しても画面本体が動いてしまう
   (2026-08-02 に E2E-Flutter で実測)。時間指定は持たない(上記の承認済み差分)。
+  **未指定でも容器を特定できたときは座標化する**(`ElementInfo.scrollable` の申告がある
+  エンジン = SwiftUI の table / Android の RecyclerView / in-app の UIScrollView)。
+  特定できない画面(identifier の無い容器・**Compose は xcuitest で `other` として出る**)は
+  従来の全画面固定のまま —— 画面全体を対象にすると始点が画面の 90% になりタブバーに乗り、
+  **1ミリも動かない**(2026-08-02 実測)。
+  **Compose は未指定だと要素を飛び越す**: 全画面スワイプの移動量がリストのビューポートを超え、
+  画面外の行の frame がクランプされて「見えている」ように出るため、探索がそこで止まって
+  別の行をタップする。**`scrollFrame` を指定すると刻みが収まって解決する**(実測 0/3 → 3/3。
+  docs/verification.md「Compose の探索直後タップ」)。
   **スクロールできない領域を指定したときは注記で申告する**(座標は正しく作られ 200 が返るが
   何も動かない = 端に達したのと区別できず署名では検出できないため)。判定は
   `ElementInfo.scrollable`(Android=`isScrollable` / xcuitest=型 / in-app=`UIScrollView`)で、
