@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ScrollScreen: View {
     @State private var selected = "-"
+    @State private var tagSelected = "-"
     @State private var scrollToken = 0
 
     var body: some View {
@@ -10,6 +11,23 @@ struct ScrollScreen: View {
             TaggedText(tag: Tags.txtRowSelected, text: "selected=\(selected)")
             TaggedButton(tag: Tags.btnScrollTop, label: "先頭へ") { scrollToken += 1 }
             RowTableView(selected: $selected, scrollToTopToken: scrollToken)
+            // 横スクロールの検証材料(scrollFrame)。**リストの下に置く** —— 画面中央に置くと
+            // 領域を指定しない従来スクロール(画面中央基準)がカルーセルに吸われる。
+            // **1画面に 3〜4 個しか入らない幅**にする ——
+            // 全部見えていると「横スクロールした」ことを不在で検証できない
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(1...Tags.tagCount, id: \.self) { n in
+                        TaggedButton(tag: Tags.tag(n), label: Tags.tagLabel(n)) {
+                            tagSelected = Tags.tag(n)
+                        }
+                        .frame(width: 120, height: 56)
+                    }
+                }
+            }
+            .frame(height: 60)
+            .accessibilityIdentifier(Tags.carouselTags)
+            TaggedText(tag: Tags.txtTagSelected, text: "tag=\(tagSelected)")
         }
         .padding(16)
     }

@@ -75,6 +75,13 @@ object Tags {
 
     const val ROW_COUNT = 40
 
+    /** 横スクロールの検証材料(scrollFrame。縦と横が同居していないと「指定した方だけ動く」を確かめられない) */
+    const val TXT_TAG_SELECTED = "txt_tag_selected"
+    const val CAROUSEL_TAGS = "carousel_tags"
+    fun tag(n: Int): String = "tag_" + n.toString().padStart(2, '0')
+    fun tagLabel(n: Int): String = "タグ " + n.toString().padStart(2, '0')
+    const val TAG_COUNT = 20
+
     // 非同期表示
     const val TXT_DELAY_STATE = "txt_delay_state"
     const val BTN_DELAY_1 = "btn_delay_1"

@@ -43,4 +43,26 @@
     <item name="row_38" type="id" />
     <item name="row_39" type="id" />
     <item name="row_40" type="id" />
+
+    <!-- 横カルーセル。行と同じ事情で tag_01..tag_20 を静的に宣言して onBind で割り当てる -->
+    <item name="tag_01" type="id" />
+    <item name="tag_02" type="id" />
+    <item name="tag_03" type="id" />
+    <item name="tag_04" type="id" />
+    <item name="tag_05" type="id" />
+    <item name="tag_06" type="id" />
+    <item name="tag_07" type="id" />
+    <item name="tag_08" type="id" />
+    <item name="tag_09" type="id" />
+    <item name="tag_10" type="id" />
+    <item name="tag_11" type="id" />
+    <item name="tag_12" type="id" />
+    <item name="tag_13" type="id" />
+    <item name="tag_14" type="id" />
+    <item name="tag_15" type="id" />
+    <item name="tag_16" type="id" />
+    <item name="tag_17" type="id" />
+    <item name="tag_18" type="id" />
+    <item name="tag_19" type="id" />
+    <item name="tag_20" type="id" />
 </resources>

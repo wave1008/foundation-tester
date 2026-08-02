@@ -90,13 +90,13 @@ class スクロールで折り返し下の要素に到達できること {
     @Test("swipeElementToElement でリストがスクロールする")
     func S0040() {
         scenario {
-            scene(1, "#row_08 から #row_02 へドラッグして上方向へスクロールする") {
+            scene(1, "#row_06 から #row_02 へドラッグして上方向へスクロールする") {
                 condition {
                     launchApp()
                 }.action {
                     tap("#nav_scroll")
-                    // 始点・終点とも初期表示で見えている行にする(#row_08 より下は画面外でヒール対象外の終点に届かない)
-                    swipeElementToElement("#row_08", "#row_02", durationSeconds: 0.5)
+                    // 始点・終点とも初期表示で見えている行にする(#row_06 より下は画面外でヒール対象外の終点に届かない)
+                    swipeElementToElement("#row_06", "#row_02", durationSeconds: 0.5)
                 }.expectation {
                     notExist("#row_01", timeout: 5)
                 }
@@ -209,6 +209,46 @@ class スクロールで折り返し下の要素に到達できること {
                     }
                 }.expectation {
                     textIs("#txt_row_selected", "selected=row_30")
+                }
+            }
+        }
+    }
+
+    // --- 縦と横のスクロール領域が同居する画面での領域指定 ---
+    // これが `scrollFrame` の本丸: 2つのスクロール領域があるとき、**指定した方だけ**が動くこと。
+    // 横方向の scrollFrame もここでしか通らない
+
+    @Test("scrollFrame で指定した領域だけが動く(縦リストと横カルーセル)")
+    func S0090() {
+        scenario {
+            scene(1, "スクロール画面を開く") {
+                condition {
+                    launchApp()
+                }.action {
+                    tap("#nav_scroll")
+                }.expectation {
+                    exist("#row_01")
+                    exist("#tag_01")
+                }
+            }
+            scene(2, "縦リストを指定して送ると、横カルーセルは動かない") {
+                action {
+                    scrollDown(scrollFrame: "#list_rows", repeat: 2)
+                }.expectation {
+                    // 先頭行は流れ、先頭タグは残る
+                    notExist("#row_01")
+                    exist("#tag_01")
+                }
+            }
+            scene(3, "横カルーセルを指定して送ると、縦リストは動かない") {
+                action {
+                    tap("#btn_scroll_top")
+                    exist("#row_01")
+                    scrollRight(scrollFrame: "#carousel_tags", repeat: 2)
+                }.expectation {
+                    // 先頭タグは流れ、先頭行は残る
+                    notExist("#tag_01")
+                    exist("#row_01")
                 }
             }
         }

@@ -74,6 +74,13 @@ enum Tags {
     /// 行 tag。n は 1...rowCount。ゼロ詰め("row_01")= ラベルの部分一致衝突回避と対。
     static func row(_ n: Int) -> String { String(format: "row_%02d", n) }
 
+    /// 横スクロールの検証材料(scrollFrame。縦と横が同居していないと「指定した方だけ動く」を確かめられない)
+    static let txtTagSelected = "txt_tag_selected"
+    static let carouselTags = "carousel_tags"
+    static func tag(_ n: Int) -> String { String(format: "tag_%02d", n) }
+    static func tagLabel(_ n: Int) -> String { String(format: "タグ %02d", n) }
+    static let tagCount = 20
+
     /// 行ラベル("行 01")。
     static func rowLabel(_ n: Int) -> String { String(format: "行 %02d", n) }
 
