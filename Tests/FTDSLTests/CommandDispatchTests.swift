@@ -309,6 +309,55 @@ final class CommandDispatchTests: XCTestCase {
         XCTAssertTrue(core.finalRecord.passed, "select の未検出はシナリオを失敗させない")
     }
 
+    /// **`wait` に負値を渡してもプロセスを落とさない**(`UInt64(負の Double)` は trap する)。
+    /// 1プロセス=1シナリオなので crash するとレポートごと消える(design.md §10)。
+    /// このテストは「落ちないこと」自体が assertion で、trap すれば実行プロセスごと死ぬ
+    func testNegativeWaitDoesNotCrashTheProcess() {
+        let core = makeCore(driver: RecordingDriver())
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        // XCTestCase.wait(for:) と名前が衝突するのでモジュール修飾する(実シナリオは
+        // XCTestCase を継承しないので素の wait(...) で書ける)
+        scenario { scene(1, "s") { action { FTDSL.wait(-1) } } }
+
+        XCTAssertTrue(core.finalRecord.passed, "負値は 0 に丸めて素通りすること")
+    }
+
+    /// **上限側も trap する**(`UInt64(無限大)` / UInt64 に収まらない巨大値)。
+    /// 壁時計上限(FTSync.commandTimeout)へ丸める — それより長くは待てない契約なので
+    /// 情報は失われない(docs/commands.md「1コマンドの壁時計上限は 120 秒」)
+    func testHugeWaitIsClampedInsteadOfTrapping() {
+        XCTAssertEqual(ftSleepNanoseconds(.infinity),
+                       UInt64(FTSync.commandTimeout * 1_000_000_000))
+        XCTAssertEqual(ftSleepNanoseconds(1e30), UInt64(FTSync.commandTimeout * 1_000_000_000))
+        XCTAssertEqual(ftSleepNanoseconds(.nan), 0, "NaN は 0 に落ちること")
+        XCTAssertEqual(ftSleepNanoseconds(-1), 0)
+        XCTAssertEqual(ftSleepNanoseconds(1.5), 1_500_000_000, "正常値は素通しすること")
+    }
+
+    /// 同型: `doUntilTrue(intervalSeconds:)` の負値も trap しない
+    func testNegativeIntervalDoesNotCrashTheProcess() {
+        let core = makeCore(driver: RecordingDriver())
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        var attempts = 0
+        scenario {
+            scene(1, "s") {
+                action {
+                    doUntilTrue("状態待ち", waitSeconds: 1, intervalSeconds: -0.5) {
+                        attempts += 1
+                        return attempts >= 2
+                    }
+                }
+            }
+        }
+
+        XCTAssertTrue(core.finalRecord.passed)
+        XCTAssertGreaterThanOrEqual(attempts, 2, "負の間隔でも繰り返せること")
+    }
+
     /// 対の検証: **tap は掴めなければ失敗**してシナリオを中断する。
     /// `optional:` の廃止で「空振りを黙って許す」経路が操作系に残っていないことを固定する
     func testTapFailsAndAbortsWhenElementMissing() {

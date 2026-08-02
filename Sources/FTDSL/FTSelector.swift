@@ -41,12 +41,22 @@ public struct FTSelector {
     /// (綴り誤りはコンパイラが捕まえているので防波堤が要らない。加えて、ラベルに `>>` 等の
     /// 予約文字が入ると serialize→再パースで別物になり得るのを避ける。FTRuntime.perform 参照)
     public let structured: Bool
+    /// 型付きセレクタの組み立て時に見つかった誤り(`Sel.invalidReason`)。
+    /// structured は構文検証を通さないので、**代わりにこれが唯一の防波堤**になる
+    public let structuredError: String?
 
-    init(text: String, primary: FlowLocator, fallbacks: [FlowLocator], structured: Bool = false) {
+    init(text: String, primary: FlowLocator, fallbacks: [FlowLocator], structured: Bool = false,
+         structuredError: String? = nil) {
         self.text = text
         self.primary = primary
         self.fallbacks = fallbacks
         self.structured = structured
+        self.structuredError = structuredError
+    }
+
+    /// 実行前に落とすべき理由。型付きは組み立て時の誤り、文字列は構文検証(唯一の合流点)
+    var preflightError: String? {
+        structured ? structuredError : FTSelector.validationError(text)
     }
 
     public static func parse(_ text: String) -> FTSelector {

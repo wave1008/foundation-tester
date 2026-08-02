@@ -668,28 +668,55 @@ extension StepExecutor {
         guard FMVisionSupport.isSupported else {
             return .skipped("screen verification is disabled (\(FMVisionSupport.requirement))")
         }
-        var start = clock.now
-        var screenshot = try await driver.screenshot()
-        phase.actionMs += Self.ms(clock.now - start)
-        // 白フレーム(画面凍結)を FM 検証に渡すと必ず不一致で誤失敗するため、リトライで回復を待つ
-        if BlankFrameDetector.isUniformBlank(pngData: screenshot) {
-            for _ in 0..<2 {
-                try await Task.sleep(nanoseconds: 2_000_000_000)
-                start = clock.now
-                let retry = try await driver.screenshot()
-                phase.actionMs += Self.ms(clock.now - start)
-                screenshot = retry
-                if !BlankFrameDetector.isUniformBlank(pngData: retry) { break }
-            }
-            if BlankFrameDetector.isUniformBlank(pngData: screenshot) {
-                onDeviceFrozen?()
-                return .skipped("aborted due to a frozen display (blank frame) — requeued onto another device")
-            }
+        let frozen = StepResult.Status
+            .skipped("aborted due to a frozen display (blank frame) — requeued onto another device")
+        guard let screenshot = try await unfrozenScreenshot(phase: &phase) else {
+            onDeviceFrozen?()
+            return frozen
         }
         guard let verdict = await delegate.verifyScreen(expected: expected, screenshotPNG: screenshot) else {
             return .skipped("could not run screen verification")
         }
         if verdict.pass { return .passed }
-        return .failed("the screen does not match the expectation: \(verdict.reason)")
+        // **不一致なら1回だけ撮り直して判定し直す**。他の検証は timeout までポーリングして遷移の
+        // 整定を吸収するが、screenIs にそれを許すと FM 照合(ホスト全体で直列・約1回/秒)を
+        // 何度も焼くので、**回数を1回に固定**する(正常系のコストは増えない・失敗系で +1 回)。
+        // 狙いは「遷移直後のまだ描き終わっていない画面」の1件だけを救うこと
+        let start = clock.now
+        try await Task.sleep(nanoseconds: UInt64(Self.screenMatchRetryDelayMs) * 1_000_000)
+        phase.waitMs += Self.ms(clock.now - start)
+        // **撮り直しも白フレーム検査を通す**。素の screenshot() を呼ぶと、凍結した画面を FM に渡して
+        // 「画面が一致しない」で落ち、requeue すべき凍結を検証失敗に見せかける
+        guard let retryShot = try await unfrozenScreenshot(phase: &phase) else {
+            onDeviceFrozen?()
+            return frozen
+        }
+        guard let retryVerdict = await delegate.verifyScreen(expected: expected,
+                                                             screenshotPNG: retryShot) else {
+            return .failed("the screen does not match the expectation: \(verdict.reason)")
+        }
+        if retryVerdict.pass { return .passed }
+        return .failed("the screen does not match the expectation: \(retryVerdict.reason)")
+    }
+
+    /// スクショを撮り、白フレーム(画面凍結)なら回復を待って最大2回まで撮り直す。
+    /// **白のままなら nil**(呼び手が onDeviceFrozen + requeue する)。
+    /// 白フレームを FM 検証に渡すと必ず不一致になり、凍結が「検証失敗」に化けるための防波堤
+    private func unfrozenScreenshot(phase: inout PhaseAccumulator) async throws -> Data? {
+        let clock = ContinuousClock()
+        var start = clock.now
+        var screenshot = try await driver.screenshot()
+        phase.actionMs += Self.ms(clock.now - start)
+        guard BlankFrameDetector.isUniformBlank(pngData: screenshot) else { return screenshot }
+        for _ in 0..<2 {
+            start = clock.now
+            try await Task.sleep(nanoseconds: 2_000_000_000)
+            phase.waitMs += Self.ms(clock.now - start)
+            start = clock.now
+            screenshot = try await driver.screenshot()
+            phase.actionMs += Self.ms(clock.now - start)
+            if !BlankFrameDetector.isUniformBlank(pngData: screenshot) { return screenshot }
+        }
+        return nil
     }
 }

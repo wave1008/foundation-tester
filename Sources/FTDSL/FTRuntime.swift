@@ -371,9 +371,10 @@ public final class FTDriveCore {
     /// 戻り値は status に加え**照合済み要素**も運ぶ(FTElement.text/value/id の元。
     /// exist 系の呼び出し元だけが element を読み、他は捨てる)
     @discardableResult
-    /// validateSelector: false = 型付きセレクタ(Sel)由来なので構文検証を飛ばす(FTSelector.structured)
+    /// selectorError: 実行前に落とす理由(FTSelector.preflightError)。
+    /// nil = 検証済み・問題なし。セレクタを取らないコマンドも nil
     func perform(step: FlowStep, description: String, selectorText: String? = nil,
-                 validateSelector: Bool = true,
+                 selectorError: String? = nil,
                  file: StaticString, line: UInt) -> PerformResult {
         let filePath = relativePath("\(file)")
         debugCheckpoint(description: description, file: filePath, line: Int(line))
@@ -384,8 +385,8 @@ public final class FTDriveCore {
         }
         // 構文検証はデバイスに触る前(dry-run でも)に行う。パースは失敗しない契約のため、
         // `:rigth(x)` のような誤りは「そんなラベルは無い」に化け、notExist/countIs(x,0) では
-        // 緑になってしまう。ここで落とすのが唯一の防波堤(FTSelector.validationError 参照)
-        if validateSelector, let selectorText, let error = FTSelector.validationError(selectorText) {
+        // 緑になってしまう。ここで落とすのが唯一の防波堤(FTSelector.preflightError 参照)
+        if let error = selectorError {
             let status = StepResult.Status.failed("invalid selector syntax: \(error)")
             recordStep(description: description, status: status, file: filePath, line: Int(line))
             handleFailure(stepDescription: description, reason: "invalid selector syntax: \(error)")

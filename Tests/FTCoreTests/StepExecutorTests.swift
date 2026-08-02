@@ -1,4 +1,7 @@
 import XCTest
+import CoreGraphics
+import ImageIO
+import UniformTypeIdentifiers
 @testable import FTCore
 
 /// primary/fallback 2 台の FakeAppDriver 間で呼び出し順序を検証するための共有ログ
@@ -17,6 +20,9 @@ private final class FakeAppDriver: AppDriver {
     /// SnapshotResponse.keyboardShown を差し替える(keyboardShown/keyboardNotShown の
     /// poll-until-state-change 検証用)。nil のままなら常に nil(非表示扱い)
     var keyboardShownFrames: [Bool]?
+    /// 同じ規約(尽きたら最後を繰り返す)で screenshot() の戻り値を差し替える。
+    /// nil のままなら空 Data(= BlankFrameDetector はデコードできず「白ではない」を返す)
+    var screenshots: [Data]?
     private(set) var snapshotCallCount = 0
     /// 非 nil なら type(ref:text:) がこのエラーを throw する(409 リアクティブ切替の検証用)
     var typeError: Error?
@@ -24,10 +30,12 @@ private final class FakeAppDriver: AppDriver {
     var swipeError: Error?
     var pressError: Error?
 
-    init(name: String, log: CallLog, snapshotElements: [[ElementInfo]] = []) {
+    init(name: String, log: CallLog, snapshotElements: [[ElementInfo]] = [],
+         screenshots: [Data]? = nil) {
         self.name = name
         self.log = log
         self.snapshotElements = snapshotElements
+        self.screenshots = screenshots
     }
 
     func status() async throws -> StatusResponse {
@@ -113,7 +121,11 @@ private final class FakeAppDriver: AppDriver {
     }
 
     private(set) var screenshotCallCount = 0
-    func screenshot() async throws -> Data { screenshotCallCount += 1; return Data() }
+    func screenshot() async throws -> Data {
+        defer { screenshotCallCount += 1 }
+        guard let screenshots, !screenshots.isEmpty else { return Data() }
+        return screenshots[min(screenshotCallCount, screenshots.count - 1)]
+    }
 
     func terminate() async throws {}
 
@@ -191,6 +203,22 @@ private final class SequenceVisibilityDelegate: ReplayDelegate {
     }
 }
 
+/// screenMatches の撮り直し検証用: verdict を順番に返し、呼び出し回数を数える
+/// (列を使い切ったら最後の verdict を返し続ける)
+private final class ScriptedScreenDelegate: ReplayDelegate {
+    private(set) var verifyScreenCalls = 0
+    private let verdicts: [Bool]
+    init(_ verdicts: [Bool]) { self.verdicts = verdicts }
+    func healLocator(step: FlowStep, snapshot: SnapshotResponse) async -> HealProposal? { nil }
+    func verifyScreen(expected: String, screenshotPNG: Data) async -> (pass: Bool, reason: String)? {
+        let pass = verdicts[min(verifyScreenCalls, verdicts.count - 1)]
+        verifyScreenCalls += 1
+        return (pass, pass ? "ok" : "mismatch")
+    }
+    func triage(goal: String?, stepDescription: String, failureReason: String,
+                snapshot: SnapshotResponse?, screenshotPNG: Data?) async -> TriageInfo? { nil }
+}
+
 /// screenMatches 検証用: verifyScreen が常に pass を返し、呼び出し回数を数える
 /// (screenIsEnabled=false で呼ばれないことの検証用)
 private final class CountingScreenDelegate: ReplayDelegate {
@@ -205,6 +233,41 @@ private final class CountingScreenDelegate: ReplayDelegate {
 }
 
 final class StepExecutorTests: XCTestCase {
+    /// 白ベタ = BlankFrameDetector が凍結と判定する画像
+    static let blankPNG: Data = makePNG { context in
+        context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: 64, height: 64))
+    }
+    /// 市松模様 = サンプル点が割れるので凍結と判定されない画像
+    static let nonBlankPNG: Data = makePNG { context in
+        context.setFillColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: 64, height: 64))
+        context.setFillColor(CGColor(red: 0, green: 0, blue: 0, alpha: 1))
+        for row in 0..<8 where row.isMultiple(of: 2) {
+            for col in 0..<8 where col.isMultiple(of: 2) {
+                context.fill(CGRect(x: col * 8, y: row * 8, width: 8, height: 8))
+            }
+        }
+    }
+
+    private static func makePNG(_ draw: (CGContext) -> Void) -> Data {
+        guard let context = CGContext(data: nil, width: 64, height: 64, bitsPerComponent: 8,
+                                      bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
+            fatalError("テスト用 CGContext 生成に失敗")
+        }
+        draw(context)
+        guard let image = context.makeImage() else { fatalError("テスト用 CGImage 生成に失敗") }
+        let output = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(
+            output, UTType.png.identifier as CFString, 1, nil) else {
+            fatalError("テスト用 PNG destination 生成に失敗")
+        }
+        CGImageDestinationAddImage(destination, image, nil)
+        guard CGImageDestinationFinalize(destination) else { fatalError("テスト用 PNG 書き出しに失敗") }
+        return output as Data
+    }
+
     /// occlusion-guard 対象になり得るテキスト要素(StaticText + 文字を含む label)
     private func textElement(id: String, label: String) -> ElementInfo {
         ElementInfo(ref: 1, type: "staticText", identifier: id, label: label, value: nil,
@@ -479,6 +542,72 @@ final class StepExecutorTests: XCTestCase {
             XCTFail("delegate が pass を返せば pass のはず"); return
         }
         XCTAssertEqual(delegate.verifyScreenCalls, 1)
+    }
+
+    /// **screenIs は不一致なら1回だけ撮り直す**(遷移直後のまだ描き終わっていない画面を救う)。
+    /// 他の検証のような timeout ポーリングにしないのは、FM 照合がホスト全体で直列(約1回/秒)だから
+    func testScreenMatchesRetriesOnceOnMismatch() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log)
+        let delegate = ScriptedScreenDelegate([false, true])
+        let executor = StepExecutor(driver: primary, delegate: delegate)
+        let step = FlowStep(assert: "screenMatches", expected: "ホーム画面")
+
+        guard case .passed = await executor.execute(step).status else {
+            XCTFail("撮り直しで一致すれば pass のはず"); return
+        }
+        XCTAssertEqual(delegate.verifyScreenCalls, 2, "1回だけ撮り直すこと")
+        XCTAssertEqual(primary.screenshotCallCount, 2, "撮り直しでは画像も取り直すこと")
+    }
+
+    /// 撮り直しても一致しなければ失敗。**再試行は1回で打ち切る**(FM を焼き続けない)
+    func testScreenMatchesStopsAfterOneRetry() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log)
+        let delegate = ScriptedScreenDelegate([false, false])
+        let executor = StepExecutor(driver: primary, delegate: delegate)
+        let step = FlowStep(assert: "screenMatches", expected: "ホーム画面")
+
+        guard case .failed = await executor.execute(step).status else {
+            XCTFail("2回とも不一致なら失敗のはず"); return
+        }
+        XCTAssertEqual(delegate.verifyScreenCalls, 2, "3回目を呼んではいけない")
+    }
+
+    /// **撮り直しも白フレーム検査を通す**。凍結した画面を FM に渡すと必ず不一致になるので、
+    /// 素の screenshot() で撮り直すと「requeue すべき凍結」が「画面が一致しない」に化ける
+    func testScreenMatchesRetryStillGuardsAgainstBlankFrames() async throws {
+        let log = CallLog()
+        // 1枚目は通常の画像、2枚目以降(撮り直し)は白フレーム
+        let primary = FakeAppDriver(name: "primary", log: log,
+                                    screenshots: [Self.nonBlankPNG] + Array(repeating: Self.blankPNG, count: 5))
+        let delegate = ScriptedScreenDelegate([false])
+        let frozen = CallLog()   // @Sendable クロージャからは参照型で数える
+        let executor = StepExecutor(driver: primary, delegate: delegate)
+        executor.onDeviceFrozen = { frozen.entries.append("frozen") }
+        let step = FlowStep(assert: "screenMatches", expected: "ホーム画面")
+
+        guard case .skipped(let msg) = await executor.execute(step).status else {
+            XCTFail("撮り直しが白フレームなら凍結として skip するはず"); return
+        }
+        XCTAssertTrue(msg.contains("frozen display"), "凍結として報告すること: \(msg)")
+        XCTAssertEqual(frozen.entries.count, 1, "requeue のため onDeviceFrozen を呼ぶこと")
+        XCTAssertEqual(delegate.verifyScreenCalls, 1, "白フレームを FM に渡してはいけない")
+    }
+
+    /// 一致した場合は撮り直さない(正常系のコストを増やさない)
+    func testScreenMatchesDoesNotRetryWhenItPasses() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log)
+        let delegate = ScriptedScreenDelegate([true])
+        let executor = StepExecutor(driver: primary, delegate: delegate)
+        let step = FlowStep(assert: "screenMatches", expected: "ホーム画面")
+
+        guard case .passed = await executor.execute(step).status else {
+            XCTFail("1回目で一致すれば pass のはず"); return
+        }
+        XCTAssertEqual(delegate.verifyScreenCalls, 1, "正常系で撮り直してはいけない")
+        XCTAssertEqual(primary.screenshotCallCount, 1)
     }
 
     /// 素の exist(occlusionGuard 未指定)は、隠れ判定 delegate が居ても FM を呼ばず pass(オプトイン)

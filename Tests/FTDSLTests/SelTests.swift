@@ -132,6 +132,62 @@ final class SelTests: XCTestCase {
         XCTAssertEqual(step?.filter?.first?.not, [FlowLocator(label: "編集")])
         XCTAssertNil(sel.ftSelector.primary.not)
     }
+
+    // MARK: - or の後の合成は全節へ配る(2026-08-02。以前は primary だけに掛かって黙って条件が消えていた)
+
+    /// **`or` は文字列版の `(a|b)` グループと同じ**: 後から足したフィルタは全節に掛かる。
+    /// primary だけに掛けると第2節が無条件で残り、書いた `.button` が黙って効かない
+    func testFilterAfterOrAppliesToEveryClause() {
+        XCTAssertEqual(Sel.text("a").or(.text("b")).type(.button).ftSelector.text,
+                       ".button&&a||.button&&b")
+    }
+
+    /// 序数も同じ。文字列版の `(a|b)&&[2]` = 「各節の2番目」に揃える(design.md の既知の非対応と同義)
+    func testOrdinalAfterOrAppliesToEveryClause() {
+        XCTAssertEqual(Sel.text("a").or(.text("b")).nth(2).ftSelector.text, "a&&[2]||b&&[2]")
+    }
+
+    /// 相対ステップも全節へ。primary だけに足すと第2節が「基準そのもの」のまま別要素を掴む
+    func testRelativeStepAfterOrAppliesToEveryClause() {
+        XCTAssertEqual(Sel.text("a").or(.text("b")).right(.switch).ftSelector.text,
+                       "a:rightSwitch||b:rightSwitch")
+    }
+
+    /// **`find` はどちらの側の `or` も落とさない**(祖先 × 子孫の全組み合わせ)。
+    /// 以前はレシーバの fallbacks が丸ごと消え、書いたヒール連鎖が片方だけになっていた
+    func testFindKeepsAlternativeAncestors() {
+        XCTAssertEqual(Sel.id("a").or(.id("b")).find(.text("x")).ftSelector.text,
+                       "#a >> x||#b >> x")
+    }
+
+    /// 祖先が先(ヒール連鎖の優先順位)・子孫が後。両側に or があるときの順序を固定する
+    func testFindOrdersAncestorMajor() {
+        XCTAssertEqual(Sel.id("a").or(.id("b")).find(Sel.text("x").or(.text("y"))).ftSelector.text,
+                       "#a >> x||#a >> y||#b >> x||#b >> y")
+    }
+
+    /// **`not` は引数側の全節を除外する**(`not` の各要素は「どれかに当たれば除く」)。
+    /// 以前は other.fallbacks が捨てられ、除外したいものの半分だけが効いていた
+    func testNotExcludesEveryClauseOfTheArgument() {
+        XCTAssertEqual(Sel.type(.button).not(Sel.text("c").or(.text("d"))).ftSelector.text,
+                       ".button&&text!=c&&text!=d")
+    }
+
+    // MARK: - 1オリジンでない序数はプロセスを落とさず失敗ステップにする
+
+    /// `Sel.nth(0)` は**crash させない**(1プロセス=1シナリオなので落とすとレポートごと消える)。
+    /// 文字列版の `"[0]"` が validationError で失敗ステップになるのと同じ扱いに揃える
+    func testNonPositiveOrdinalIsReportedInsteadOfCrashing() {
+        XCTAssertNotNil(Sel.text("a").nth(0).ftSelector.preflightError)
+        XCTAssertNotNil(Sel.text("a").right(.button, nth: 0).ftSelector.preflightError)
+        XCTAssertNil(Sel.text("a").nth(1).ftSelector.preflightError, "正当な序数は素通りすること")
+    }
+
+    /// 誤りは合成をまたいで運ばれる(途中で握り潰すと実行前に落とせない)
+    func testInvalidOrdinalSurvivesComposition() {
+        XCTAssertNotNil(Sel.id("list").find(Sel.text("a").nth(0)).ftSelector.preflightError)
+        XCTAssertNotNil(Sel.text("a").nth(0).or(.text("b")).ftSelector.preflightError)
+    }
 }
 
 /// tapWithScrollDown/Up/Right/Left・tapWithoutScroll・existWithScrollDown/Up・existWithoutScroll の
@@ -296,5 +352,27 @@ final class SelScrollVariantDispatchTests: XCTestCase {
         }
         XCTAssertTrue(selDriver.swipes.isEmpty, "Sel 版がスクロールしてしまった")
         XCTAssertNil(selElement.id, "Sel 版のフォールバック FTElement が空でない")
+    }
+
+    /// 実行時: 失敗ステップとして記録され、シナリオが中断すること(crash しない)。
+    /// **失敗理由まで見る** — 「要素が見つからない」でも passed==false になるので、
+    /// 理由を見ないと序数の防波堤が外れても緑のままで気付けない(2026-08-02 に実際に無力だった)
+    func testInvalidOrdinalFailsTheStepWithTheOrdinalReason() {
+        let driver = ScrollRevealDriver(revealDirection: .up)
+        let core = makeCore(driver: driver)
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        scenario { scene(1, "s") { action { tap(Sel.text("a").nth(0)) } } }
+
+        XCTAssertFalse(core.finalRecord.passed, "不正な序数は失敗として記録すること")
+        let reasons = core.finalRecord.scenes.flatMap(\.steps).compactMap { step -> String? in
+            if case .failed(let reason) = step.status { return reason }
+            return nil
+        }
+        XCTAssertEqual(reasons.count, 1, "1ステップだけが失敗するはず: \(reasons)")
+        XCTAssertTrue(reasons[0].contains("1-origin"),
+                      "序数の誤りとして落とすこと(要素未検出に化けていない): \(reasons[0])")
+        XCTAssertTrue(driver.tapped.isEmpty, "デバイスに触る前に落とすこと")
     }
 }

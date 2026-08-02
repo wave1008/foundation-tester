@@ -84,7 +84,7 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 |---|---|---|
 | `exist` | 同名(戻り値チェーン可) | ✅ |
 | `existWithScrollDown/Up` | 同名 | ✅ |
-| `existWithScrollLeft/Right` | 別名なし(`exist(sel, scroll: .left)` で可) | 🟡 別名だけ欠落 |
+| `existWithScrollLeft/Right` | 別名なし(`exist(sel, scroll: .left)` で可) | ➖ **置かない**(下記「別名族が取る引数」) |
 | `existWithoutScroll` | 同名 | ✅ |
 | `dontExist` | `notExist(sel, timeout:scroll:maxSwipes:)` | 🟡 **名前が違う** |
 | `dontExistWithScrollDown/Up` / `dontExistWithoutScroll` | `notExist(scroll:)` に集約 | 🟡 別名は無い |
@@ -226,6 +226,15 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | `keyboardIsShown` / `keyboardIsNotShown` | 取得元が OS で違う(iOS xcuitest = AX ツリーの `.keyboard` / iOS in-app = `UITextEffectsWindow` の可視判定 / Android = ホストが `dumpsys` の `InputMethod` window を見る)。**IME が別プロセスの window でアプリの a11y ツリーに出ない**ため |
 | `clearInput(sel)` | **Flutter の iOS は in-app エンジンでは消せず XCUITest 経由**になる(自動フォールバック。1〜2秒)。engine への editing state 配送は3回実測して不採用(design.md) |
 
+## 別名族が取る引数(2026-08-02 に仕様として固定)
+
+`tapWithScroll*` / `existWithScroll*` / `selectWithScroll*` は **`maxSwipes:`(select 系は
+`requireVisible:` も)しか取らない糖衣**で、本体の全引数は生やさない。`existWithScrollLeft/Right`
+を置かないのも同じ判断。**理由**: 別名は「Shirates と同名で書ける」ことだけが価値で、引数が要る
+場面では本体の `scroll:` の方が短く読みやすい(`tap(sel, scroll: .down, timeout: 2)`)。
+別名にも全引数を生やすと、同じことを2通りで書ける組み合わせが増え、**生成側の語彙のブレ**になる
+(この文書冒頭の「何を足すかの判断基準」そのもの)。**引数の欠落を不整合として再提案しない。**
+
 ## 足す価値がある残り
 
 **capability gap は無い**(今は書けないテストが無い状態)。残りはどれも「あると便利」の範疇で、
@@ -234,4 +243,4 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | 項目 | 状態 |
 |---|---|
 | **祖先方向の相対セレクタ**(`:parent`) | ⏸ **保留**(ユーザー決定 2026-07-31)。id を持つのが子ラベルだけの行を「行として」検証するときに効くが、タップは座標が最前面に当たるので現状でも大きくは困らない。**シナリオを書いていて実際に必要になった時点で提案する**(それまで再提案しない) |
-| `notExist` の別名族・`existWithScrollLeft/Right` | ⏸ 引数で書けるので不要(人間のタイプ量削減が目的の糖衣)|
+| `notExist` の別名族・`existWithScrollLeft/Right` | ➖ **置かない**(上記「別名族が取る引数」で決着。2026-08-02)|
