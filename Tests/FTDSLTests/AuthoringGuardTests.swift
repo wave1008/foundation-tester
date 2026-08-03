@@ -250,9 +250,23 @@ final class AuthoringGuardTests: XCTestCase {
 
     func testUnknownIDIsReportedInDryRun() {
         let inventory = makeInventory(ids: ["field", "submit"])
-        let messages = runWithInventory(inventory) { tap("#feild") }   // 綴り誤り
+        // 綴り誤りは「多数の正しい id に少数の誤り」という形で出る
+        let messages = runWithInventory(inventory) { tap("#field"); tap("#submit"); tap("#feild") }
         XCTAssertTrue(messages.contains { $0.contains("`#feild`") },
                       "台帳に無い id が素通りした")
+    }
+
+    /// **薄い台帳では黙る**。1画面しか撮っていない状態で既存シナリオを回すと、
+    /// 他画面の id が全部「綴り誤り」に見える(実測 44/47 シナリオが誤警告した)。
+    /// そのシナリオが触る id の 2/3 以上が台帳に在るときだけ警告する
+    func testThinInventoryStaysSilent() {
+        let inventory = makeInventory(ids: ["nav_input"])   // 1画面ぶんだけ撮った状態
+        let messages = runWithInventory(inventory) {
+            tap("#nav_input")                                // 台帳に在る
+            tap("#field_single"); tap("#btn_clear")          // まだ撮っていない画面の実在 id
+            exist("#txt_echo")
+        }
+        XCTAssertTrue(messages.isEmpty, "薄い台帳を根拠に誤警告した: \(messages)")
     }
 
     func testKnownIDIsNotReported() {
