@@ -3,18 +3,26 @@
 // 素通しする」といった退行が、スキーマ宣言のテスト(MCPServerToolDefinitionsTests)を緑のまま通る。
 
 import XCTest
+import FTCore
 @testable import ftester_mcp
 
 final class MCPToolCallTests: XCTestCase {
 
     private var driver: FakeDriver!
     private var server: MCPServer!
+    /// ft_snapshot が台帳へ落とした内容(実ファイルには書かせない。既定の実装は
+    /// 実プロジェクトの .ftester/ へ書くため、差し替えないとテストが利用者の資産を汚す)
+    private var recorded: [(ids: [String], platform: String)] = []
 
     override func setUp() {
         super.setUp()
         driver = FakeDriver()
+        recorded = []
         let fake = driver!
-        server = MCPServer(write: { _ in }, makeDriver: { _ in fake })
+        server = MCPServer(write: { _ in }, makeDriver: { _ in fake },
+                           recordSnapshot: { [weak self] snapshot, platform, _ in
+                               self?.recorded.append((SelectorInventory.ids(in: snapshot), platform))
+                           })
     }
 
     // MARK: - ドライバ操作へ正しく橋渡しされるか
@@ -45,6 +53,16 @@ final class MCPToolCallTests: XCTestCase {
         XCTAssertTrue(text.contains("[1]"), text)
         XCTAssertTrue(text.contains("ログイン"), text)
         XCTAssertTrue(text.contains("login_btn"), text)
+    }
+
+    /// **撮った id は台帳へ落ちる**(ft_dry_run が綴り誤りの照合に使う唯一の供給源。
+    /// ここが切れると照合は永久に黙り、機能が死んでいることに誰も気付けない)
+    func testSnapshotRecordsSelectorsForTheInventory() async throws {
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        XCTAssertEqual(recorded.count, 1, "スナップショットが台帳へ落ちていない")
+        XCTAssertTrue(recorded.first?.ids.contains("login_btn") ?? false,
+                      "id が拾えていない: \(recorded)")
+        XCTAssertEqual(recorded.first?.platform, "ios")
     }
 
     func testTapByRef() async throws {

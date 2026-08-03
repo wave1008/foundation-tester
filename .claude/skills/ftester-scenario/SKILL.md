@@ -87,6 +87,8 @@ README.md「Swift DSL」節。ここはエージェントが順に実行する�
 3. **画面ごとに `ft_snapshot`** を撮り、各行 `[ref] Type "label" id=... (x,y WxH)` から
    **セレクタに使う id / ラベル / 型を控える**。`ft_tap` / `ft_type` / `ft_swipe`(ref 指定)で
    フローを1手ずつ進め、遷移の各画面でまた snapshot する。これが CAE の action と expectation の素になる。
+   **通った画面は撮っておく** —— `ft_snapshot` は撮った `#id` をプロジェクトの台帳に貯め、
+   ステップ4.5 の dry-run が綴り誤りの照合に使う(撮っていない画面の id は照合できない)。
 4. 出るか不定なダイアログ(権限・初回オンボーディング等)があれば、出た/出ないの両方を観察して
    `ifCanSelect` で無害化する対象を把握する。
 5. **コントロールが期待通り動かない**とき(タップしても遷移しない等)は snapshot 往復で粘らず
@@ -161,9 +163,17 @@ scene・**アサーションが0個の expectation** を落とす(どれもコ�
 - MCP: `ft_dry_run`(id=`クラス名.S0010`, project 指定)
 - CLI: `ftester api run --project <proj> --dry-run --scenario <クラス名.S0010>`
 
-⚠️ 行(`contains no assertions` / `no assertions at all`)が出たら、**expectation に `exist` /
-`textIs` / `thisIs` 等を足してから**次へ進む。dry-run は**セレクタが実在するかは判定できない**
-(それは次のステップの仕事)。
+⚠️ 行が出たら直してから次へ進む:
+
+| 出る警告 | 意味 | 直し方 |
+|---|---|---|
+| `contains no assertions` / `no assertions at all` | 操作しただけで何も検証していない | expectation に `exist` / `textIs` / `thisIs` 等を足す |
+| `no snapshot taken for this project contains this id` | その `#id` は、**ステップ2で撮ったスナップショットのどれにも無い** = 綴り誤りの疑い | スナップショットの実物と突き合わせる。まだ撮っていない画面のものなら `ft_snapshot` を撮り直す(撮った時点で台帳に入る) |
+
+id の照合は**ステップ2で `ft_snapshot` を撮った画面ぶんだけ**効く(`ft_snapshot` が
+`<プロジェクト>/.ftester/selector-inventory.json` に貯める)。**撮らずに書いたシナリオでは
+何も言わない**ので、セレクタを推測で書かない原則は変わらない。ラベルとワイルドカード
+(`#row_*`)は照合対象外。
 
 ### 5. 🧑 実行して意図通りか確認
 

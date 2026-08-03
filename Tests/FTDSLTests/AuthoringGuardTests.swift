@@ -36,13 +36,24 @@ final class AuthoringGuardTests: XCTestCase {
         func terminate() async throws {}
     }
 
-    private func makeCore(driver: AppDriver = StubDriver(), dryRun: Bool = true) -> FTDriveCore {
-        FTDriveCore(driver: driver, platform: "ios", app: "com.example.app",
+    private func makeCore(driver: AppDriver = StubDriver(), dryRun: Bool = true,
+                          platform: String = "ios",
+                          inventoryURL: URL? = nil) -> FTDriveCore {
+        FTDriveCore(driver: driver, platform: platform, app: "com.example.app",
                     scenarioID: "T.S0010", scenarioTitle: "t",
                     delegate: nil, healingEnabled: false, dryRun: dryRun,
                     healCacheURL: URL(fileURLWithPath: NSTemporaryDirectory())
                         .appendingPathComponent("ft-authoring-guard-test.json"),
+                    selectorInventoryURL: inventoryURL,
                     emit: { _ in })
+    }
+
+    /// 使い捨ての台帳を作って URL を返す
+    private func makeInventory(ids: [String], platform: String = "ios") -> URL {
+        let url = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("ft-inv-\(UUID().uuidString)/inv.json")
+        SelectorInventory.record(ids: ids, platform: platform, at: url)
+        return url
     }
 
     private func suggestions(_ core: FTDriveCore) -> [String] {
@@ -222,6 +233,58 @@ final class AuthoringGuardTests: XCTestCase {
         XCTAssertEqual(core.scenarioAssertionCount, expected,
                        "検証コマンドの一部が noteAssertion に合流していない"
                        + "(または上の呼び出し列が索引に追随していない)")
+    }
+
+    // MARK: - 台帳に無い #id(綴り誤り・でっち上げ)
+
+    private func runWithInventory(_ url: URL?, platform: String = "ios",
+                                  dryRun: Bool = true,
+                                  _ body: @escaping () -> Void) -> [String] {
+        let core = makeCore(dryRun: dryRun, platform: platform, inventoryURL: url)
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        scenario { scene(1, "s") { action(body) } }
+        FTRuntime.tearDown()
+        core.warnAboutUnknownIDs()
+        return suggestions(core)
+    }
+
+    func testUnknownIDIsReportedInDryRun() {
+        let inventory = makeInventory(ids: ["field", "submit"])
+        let messages = runWithInventory(inventory) { tap("#feild") }   // 綴り誤り
+        XCTAssertTrue(messages.contains { $0.contains("`#feild`") },
+                      "台帳に無い id が素通りした")
+    }
+
+    func testKnownIDIsNotReported() {
+        let inventory = makeInventory(ids: ["field", "submit"])
+        let messages = runWithInventory(inventory) { tap("#field"); exist("#submit") }
+        XCTAssertTrue(messages.isEmpty, "実在する id を警告した: \(messages)")
+    }
+
+    /// **台帳が無い/そのプラットフォームの記録が無いなら黙る**。
+    /// 「知らない」を「間違い」と言うと、導入直後の全シナリオが警告まみれになって機能ごと無視される
+    func testSilentWithoutInventory() {
+        XCTAssertTrue(runWithInventory(nil) { tap("#anything") }.isEmpty,
+                      "台帳が無いのに警告した")
+        let iosOnly = makeInventory(ids: ["field"], platform: "ios")
+        XCTAssertTrue(runWithInventory(iosOnly, platform: "android") { tap("#anything") }.isEmpty,
+                      "別プラットフォームの記録を根拠に警告した")
+    }
+
+    /// 照合は dry-run 専用(実行では解決の成否そのものが答えを出すので二重に言わない)。
+    /// **台帳に無い id で試す** —— 実在する id で試すと、照合が走っていても警告が出ず素通りする
+    func testNotReportedInRealRun() {
+        let inventory = makeInventory(ids: ["field"])
+        let messages = runWithInventory(inventory, dryRun: false) { tap("#nope") }
+        XCTAssertFalse(messages.contains { $0.contains("`#nope`") },
+                       "実行時に台帳の照合が走っている(解決の失敗と二重に言うことになる)")
+    }
+
+    /// ワイルドカードは台帳に無くて当然なので照合しない
+    func testWildcardIDIsNotReported() {
+        let inventory = makeInventory(ids: ["row_01", "row_02"])
+        XCTAssertTrue(runWithInventory(inventory) { tap("#row_*") }.isEmpty,
+                      "ワイルドカードを完全一致で照合した")
     }
 
     // MARK: - type の引数落とし
