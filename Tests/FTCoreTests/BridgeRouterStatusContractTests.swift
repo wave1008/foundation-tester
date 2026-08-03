@@ -26,10 +26,16 @@ final class BridgeRouterStatusContractTests: XCTestCase {
         }
     }
 
+    /// ルータは status を**2書式**で返す(`throw BridgeError(501, …)` と
+    /// `.error(…, status: 501)`)。片方しか数えないと**もう片方で足した分を見逃す** ——
+    /// 実際に `handleHideKeyboard` の 501 が「0箇所」の主張をすり抜けていた(2026-08-04)
     private func throwSites(status: Int, in source: String) throws -> Int {
-        let regex = try NSRegularExpression(pattern: #"BridgeError\(\#(status)\s*,"#)
-        return regex.numberOfMatches(in: source,
-                                     range: NSRange(source.startIndex..<source.endIndex, in: source))
+        let patterns = [#"BridgeError\(\#(status)\s*,"#, #"status:\s*\#(status)\b"#]
+        return try patterns.reduce(0) { total, pattern in
+            let regex = try NSRegularExpression(pattern: pattern)
+            return total + regex.numberOfMatches(
+                in: source, range: NSRange(source.startIndex..<source.endIndex, in: source))
+        }
     }
 
     /// 409 は `requireApp()` のセッション消失だけ。**増やしてはいけない**:
@@ -51,11 +57,20 @@ final class BridgeRouterStatusContractTests: XCTestCase {
                        "503 は requireLiveApp() の1箇所だけ")
     }
 
-    /// XCUITest ランナーは「このエンジンでは不可」を持たない(全ルートを実装している)。
-    /// 501 を足すと isEngineIncapable が真になり、ホストが**同じ XCUITest へ**
-    /// フォールバックする無限の遠回りになる
+    /// XCUITest ランナーの 501 は `handleHideKeyboard` の**1箇所だけ**。
+    /// 501 は isEngineIncapable が真になり、ホストは XCUITest へフォールバックする ——
+    /// つまり**フォールバック先が自分自身**になるので、増やすと無限の遠回りを作る。
+    ///
+    /// 唯一の例外が hideKeyboard で、これは iOS に実装手段が無い(§10)ため in-app も
+    /// XCUITest も 501 を返す。ホスト(`StepExecutor`)は in-app の 501 を typeDriver へ
+    /// **1回だけ**回し、そこでも 501 なら失敗させるので、遠回りは1往復で止まる。
+    /// **これ以外の 501 を足さないこと**(「今は無理」は 422)
     func testRunnerNeverClaimsEngineIncapable() throws {
-        XCTAssertEqual(try throwSites(status: 501, in: try routerSource), 0,
-                       "XCUITest ランナーが 501 を返すとフォールバック先が自分自身になる")
+        let source = try routerSource
+        XCTAssertEqual(try throwSites(status: 501, in: source), 1,
+                       "XCUITest ランナーの 501 は hideKeyboard の1箇所だけ。"
+                       + "増やすとフォールバック先が自分自身になる")
+        XCTAssertTrue(source.contains("hideKeyboard は iOS では未対応"),
+                      "501 の1箇所は hideKeyboard であること")
     }
 }

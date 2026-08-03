@@ -4,7 +4,7 @@ Foundation Models framework(オンデバイス 3B モデル。macOS 26+、視覚
 iOS / Android 両対応のアプリ E2E テストツール。iOS を先行実装し、Android は同じ
 `AppDriver` 抽象の上に後続実装した(経緯・時系列は §7, §8 参照)。
 
-- 作成日: 2026-07-07 / 最終更新: 2026-07-26
+- 作成日: 2026-07-07 / 最終更新: 2026-08-04
 - ステータス: iOS / Android とも実装済み・運用中(GUI 入口は VSCode 拡張に一本化)
 - 決定事項: ハイブリッド型 / 自作 XCUITest ブリッジ+自作 Android ブリッジ / シミュレータ優先 / Swift + FoundationModels
 
@@ -93,9 +93,10 @@ iOS / Android 両対応のアプリ E2E テストツール。iOS を先行実装
 ```
 
 **`AppDriver` プロトコル**が唯一のプラットフォーム境界。iOS ブリッジ(Runner/)・Android
-ブリッジ(AndroidRunner/)・InApp ブリッジは共通コア 9 エンドポイント(status/session/
-snapshot/tap/type/swipe/press/screenshot/terminate)を共有しつつ、iOS は drag/appswitcher/
-home を追加した12、Android は locale を追加した10、InApp はコアのみの9という差分があるため、
+ブリッジ(AndroidRunner/)・InApp ブリッジは共通コア 11 エンドポイント(status/session/
+snapshot/tap/type/clear/pressEnter/swipe/press/screenshot/terminate)を共有しつつ、iOS は
+drag/appswitcher/home/hidekeyboard/appstate を追加した16、Android は locale/settle を
+追加した13、InApp は hidekeyboard/appstate を追加した13という差分があるため、
 `FTAgent` / `FTCore` / `FTDSL` はプラットフォーム非依存のまま両OSで動く
 (ブリッジ設計の詳細は §4、Swift DSL の詳細は §10)。
 
@@ -221,12 +222,23 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
 | `POST /type` | `{ref, text}`(tap → typeText) |
 | `POST /swipe` | `{direction}` or `{fromRef, direction}`。用途つきの任意項目あり(下記「スクロールの語彙」) |
 | `POST /press` | `{ref, duration}` または `{x, y, duration}` 長押し |
+| `POST /clear` | `{ref}` 省略可(省略時はフォーカス中の入力欄)。入力欄のクリア |
+| `POST /pressEnter` | Return キー相当(受け口ごとの機構は §10) |
 | `GET  /screenshot` | `XCUIScreen.main.screenshot()` → PNG |
 | `POST /terminate` | 対象アプリ終了 |
 
-上記9個は共通コア。iOS ブリッジはこれに加え `POST /drag`・`POST /appswitcher`・`POST /home` を
-実装(計12)、Android ブリッジは `POST /locale` を追加(計10。§4.5)、InApp ブリッジは
-共通コアのみ(計9)。
+上記11個は3実装共通のコア。差分は次のとおり(**唯一の正は
+`Tests/FTCoreTests/BridgeContractTests.swift` のルート表**。ここはその写し):
+
+| ブリッジ | 共通コアへの追加 | 計 |
+|---|---|---|
+| XCUITest(Runner/) | `POST /drag`・`POST /appswitcher`・`POST /home`・`POST /hidekeyboard`・`POST /appstate` | 16 |
+| Android(AndroidRunner/) | `POST /locale`・`POST /settle`(§4.5) | 13 |
+| InApp | `POST /hidekeyboard`・`POST /appstate` | 13 |
+
+`/hidekeyboard` は iOS の2実装だけが持つが、**中身は 501 を返すだけ**(iOS に実装手段が無い。
+§10「キーボードの観測と `hideKeyboard`」)。Android は `hideKeyboard` をホスト側の
+戻るキーで実現するのでルートを持たない。
 
 **エラーの status はホスト側の分岐に使われる契約**(ブリッジ実装とホストで同期が必要。
 `DriverError.isEngineIncapable` / `AppAttachDriver` / `SessionRecoveryDriver`):
@@ -375,10 +387,10 @@ iOS ブリッジと区別なく扱える。
 - **常駐 instrumentation**: `am instrument -w` でデバイス内にバックグラウンド常駐させ、
   HTTP サーバ(BridgeInstrumentation)を内蔵する。`AndroidBridge.swift` が初回操作時に
   自動インストール・自動起動するためセットアップ手順は不要
-- **共通コア9 + locale の10エンドポイント**: §4.3 の共通コア(status/session/snapshot/
-  tap/type/swipe/press/screenshot/terminate)に `POST /locale` を加えた10エンドポイントを話す
-  (iOS 固有の drag/appswitcher/home は未実装)ため、共通コア部分はホスト側の `FTBridgeClient`
-  相当のクライアントコードを流用できる
+- **共通コア11 + locale/settle の13エンドポイント**: §4.3 の共通コア(status/session/snapshot/
+  tap/type/clear/pressEnter/swipe/press/screenshot/terminate)に `POST /locale`・`POST /settle` を
+  加えた13エンドポイントを話す(iOS 固有の drag/appswitcher/home/hidekeyboard/appstate は未実装)
+  ため、共通コア部分はホスト側の `FTBridgeClient` 相当のクライアントコードを流用できる
 - **操作応答 = a11y 静穏後**: 各操作 API は注入後、対象パッケージの a11y イベントが
   一定時間静まるまで応答を保留する(QuietWaiter)。固定 sleep をやめてイベント駆動にした
   2026-07 の高速化はこの仕組みが土台(詳細・実測は [performance-tuning.md](performance-tuning.md))
@@ -844,7 +856,8 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
   `||` が和集合になったのでこの等価が成立し、照合・serialize・ヒールは一切変更が要らない。
   `|` を含まない括弧はラベルの一部(`保存(推奨)`)。
   **相対セレクタの引数では括弧を自分で書く**(`:right((保存|OK))`。`:right(...)` の括弧は
-  引数の括弧なので `|` の囲みにならない)。展開数の上限は 32(超えると validationError)。
+  引数の括弧なので `|` の囲みにならない)。**展開数が 32 に達したら validationError**
+  (`FTSelector.maxExpansion`。実際に書けるのは 31 通りまで)。
   **既知の非対応**: `(a|b)&&[2]` は「各節の 2 番目」であって「和集合の 2 番目」ではない
   (Shirates は後者。節ごとに `[n]` を持つ ftester の構造をそのまま使うため)
 - **否定フィルタ `属性!=値` と短縮形 `!値`**(2026-07-27): `FlowLocator.not` に
@@ -1004,7 +1017,9 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
   attach 前だと 409 になるため `AppAttachDriver.type(ref: nil)` に activate 再試行を入れてある
   (ref 有りには入れない — activate が refFrames をクリアする)
 - **iOS の Enter はフレームワークごとに受け口が違う**(2026-07-28 実測。吸収は
-  `FTPressEnterOnComposeFirstResponder` の1箇所): Compose は `insertText("\n")` が IME アクションに
+  `FTPressEnterOnComposeFirstResponder` の1箇所。**名前は Compose 由来だが実態は
+  Compose / UITextField(UITextView)/ Flutter の3経路を吸収する** —— 改名すると
+  ブリッジ指紋が変わり版上げと入力系 E2E が要るので見送っている): Compose は `insertText("\n")` が IME アクションに
   変換される。**UITextField は変換されない**ので UIKit が Return で行うこと自体を再現する
   (`textFieldShouldReturn:` + `EditingDidEndOnExit`。SwiftUI の `onSubmit` もこの経路)。
   UITextView は Return = 改行挿入なのでそのまま `insertText("\n")`。
@@ -1044,12 +1059,34 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
   `exist` と `tap` が `scroll:` を持つのは「在るか」を探す・操作するコマンドだから。
   一貫性を理由に対称化しないこと(**再提案しない**)
 
-### Shirates(Classic) 準拠の方針と承認済みの差分(2026-07-27)
+### アプリのライフサイクルと OS 分岐
+
+- `launchApp(bundleID?)` / `restartApp(bundleID?)` / `terminateApp()` / `clearAppData(bundleID?)`
+  はロケータを取らず、`FTDriveCore.performCustom` でドライバを直接呼ぶ(スナップショットも
+  セレクタ解決も挟まない)。bundleID 省略時は `@TestClass(app:)` のアプリ。
+  `restartApp` は terminate の失敗を無視して launch する(既に落ちている状態から呼べる)
+- **`clearAppData` の機構は OS で違う**: Android = `pm clear` / iOS = データコンテナの中身を
+  削除 + `simctl privacy reset all`。**権限はコンテナの外(TCC.db)にある**ので後者を省くと
+  「Android では権限ダイアログが出るのに iOS では出ない」という OS 差が黙って生まれる
+  (`pm clear` は権限もリセットする)。**iOS はシミュレータ専用**(実機は devicectl に同等手段が
+  無く 501)。1件でも消せなければ失敗させる(部分削除を「消えた」と言わない)。
+  キーチェーン/Keystore の値は残るので、そこに初回起動判定を置くアプリでは再現しない
+- `ifCanSelect(セレクタ, waitSeconds:) { }.ifElse { }`: 「出るか不定」の唯一の表現手段
+  (`optional:` 全廃後)。既定 `waitSeconds: 0` = 即時1回判定。**`FTRuntime.perform` を
+  通らないので構文検証を個別に呼ぶ**(上記 `validationError` 項)
+- `ios { } / android { }`: 対象 OS のときだけ実行する。**中身が実行されなかったことは警告しない**
+  (ブロックに何が書かれているかは実行しないと分からないため)
+
+### Shirates(Classic) 準拠の方針と承認済みの差分(2026-08-04 更新)
 
 **コマンド名・引数名・既定値・挙動は Shirates(Classic) をそのまま踏襲する**。独自の「改良」を
 しない — 差分を作るときは実装前にユーザーへ提示して判断を仰ぐ(経緯: 独自アレンジを重ねて
 指摘を受けた)。迷ったら `~/github/ldi-github/shirates-core` のソースを読んでから書く。
-以下は**提示済み・承認済みの差分**の全リスト(これ以外の挙動差は準拠漏れ = バグとして扱う):
+
+**準拠状況の正典は [shirates-parity.md](shirates-parity.md)**(何が揃っていて何を持たないかの
+全リスト)。**コマンドを足す・名前を変えるときに更新するのは向こう**で、こちらの表は
+**理由の説明が要る代表例**を抜き出したもの(挙動差を見つけたら、まず parity に載っているかを見る。
+載っていない挙動差は準拠漏れ = バグとして扱う):
 
 | 差分 | 理由 |
 |---|---|
@@ -1068,7 +1105,7 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
 | `notExist`(Shirates は `dontExist`) | 否定の意味が読み取りやすく `exist` との対称も保てる(ユーザー決定 2026-07-31・**再提案しない**) |
 | `existAll` / `dontExistAll` を持たない | `exist` のチェーンで書く方が保守しやすく、要素ごとに `timeout:` / `scroll:` を指定できる(ユーザー決定 2026-07-31・**再提案しない**) |
 | `clearInput` がソフトキー/Appium clear 機構ではない(xcuitest=末尾タップ+delete 連打 / inapp=first responder のテキスト置換 / Android=ACTION_SET_TEXT "") | キーボード要素を snapshot から除外しているため(pressEnter と同じ事情) |
-| キーボード可視の取得元が OS で違う(iOS=snapshot のフラグ / Android=dumpsys の InputMethod window) | IME が別プロセスの window でアプリの a11y ツリーに出ないため |
+| キーボード可視の取得元がエンジンで違う(iOS xcuitest=AX ツリーの `.keyboard` ノード / iOS in-app=`UITextEffectsWindow` の可視判定 / Android=ホストが見る dumpsys の InputMethod window) | IME が別プロセスの window でアプリの a11y ツリーに出ないため(iOS の2経路の事情は下記「キーボードの観測と `hideKeyboard`」) |
 | `waitForDisplay` / `waitForClose` に `throwsException` が無い(タイムアウトは常に失敗として記録) | `optional:` 全廃(2026-08-02)と同じ方針。空振りを許すと腐ったセレクタが緑のまま残る(2026-08-03 承認) |
 | `waitForClose` の expression 省略(Shirates の直前セレクタ再利用)は不可 | ftester に lastElement 概念が無い(2026-08-03 承認) |
 | `waitForDisplay` の判定は `exist` と同じ可視性込み(Shirates は `safeElementOnly=false` のツリー存在判定) | コマンド名の意味(displayed)に沿い、既存の exists 検証機構をそのまま使う(2026-08-03 承認) |
@@ -1146,10 +1183,17 @@ textIs(.id("txt_result"), "dialog=none")
   のような総称にすると leading-dot が効かなくなるため、各コマンドは String 版と `Sel` 版の
   **2 つの具体オーバーロード**を持ち、共通の impl(FTSelector を取る)へ畳む
 - **セレクタを取るコマンドは String / Sel が1対1**(2026-07-29 に非対称を解消)。
-  Shirates 由来の別名族(`tapWithScrollDown/Up/Right/Left` `tapWithoutScroll`
-  `existWithScrollDown/Up` `existWithoutScroll`)にも Sel 版がある。**片方だけ足さない** —
-  `Sel` を選ぶと別名族が使えない状態は「型付き経路を選ぶと機能が減る」ことを意味し、
-  生成側を Sel 既定に寄せられなくなる
+  Shirates 由来の別名族(`tapWithScrollDown/Up/Right/Left` `tapWithoutScroll` /
+  `existWithScrollDown/Up` `existWithoutScroll` /
+  `selectWithScrollDown/Up/Right/Left` `selectWithoutScroll`)にも Sel 版がある。
+  **片方だけ足さない** — `Sel` を選ぶと別名族が使えない状態は「型付き経路を選ぶと機能が減る」
+  ことを意味し、生成側を Sel 既定に寄せられなくなる。取りこぼしは
+  `Tests/FTDSLTests/SelOverloadParityTests.swift` がソース走査で検出する
+- **別名族は `maxSwipes:`(`select*` は `requireVisible:` も)しか取らない**(2026-08-02 に仕様として
+  固定)。本体の全引数は生やさない — 別名の価値は「Shirates と同名で書ける」ことだけで、引数が
+  要る場面では本体の `scroll:` の方が短い(`tap(sel, scroll: .down, timeout: 2)`)。全引数を生やすと
+  同じことを2通りで書ける組み合わせが増え、生成側の語彙のブレになる。
+  `existWithScrollLeft/Right` を置かないのも同じ判断。**引数の欠落を不整合として再提案しない**
 - 組み立てるのは**文字列版と同じ `FlowLocator`**。解決・実行・レポート・ヒールは完全に共通で、
   実行エンジンは分岐しない(`SelTests` が全構文について「文字列版と同じ FlowLocator になること」を固定)
 - フィルタ系メソッド(`text`/`type`/`nth` 等)は常に「**現在の対象**」に AND する:
@@ -1201,6 +1245,9 @@ textIs(.id("txt_result"), "dialog=none")
 
 - **`notExist`** は「消えるまで待つ」。初回で不在なら即成功、在ればタイムアウトまで消滅を待つ
   (`exist` の poll と対称)。可視性(occlusion)は見ない — ツリーから消えたことが唯一の判定。
+  **`scroll:` を渡す(または `withScroll*` ブロックに入れる)と意味が変わる**: その向きへ
+  探索しながら探し、**見つかった時点で失敗**する(`exist(scroll:)` の裏返し)。
+  見つからなければ従来どおり現在のビューポートでの消滅待ちに進む。
   hybrid では **不在を確定する側でだけ** `fallbackDriver` を1回照会する(pass 経路の固定費 1 回。
   システム UI のダイアログが primary の snapshot に映らないため。miss 毎に払う `exist` 側とは事情が逆)
 - **`isChecked` / `isNotChecked`**(セレクタの `checked=` も同じ源)は `ElementInfo.checked` を見る。
@@ -1325,7 +1372,8 @@ textIs(.id("txt_result"), "dialog=none")
 - `scrollDown(repeat: N)` は**各スワイプの間で静止を待つ**(待たないと同じ理由で空振りし、
   N 画面ぶん進まない)
 - **ブロック**: `withScrollDown { }` 系は `FTDriveCore.scrollContextStack` に積み、
-  ブロック内の `tap`/`type`/`exist` が `scroll:` 未指定なら**その向きで探索**する。
+  ブロック内の `tap`/`type`/`clearInput`/`select`/`exist`/`notExist` が `scroll:` 未指定なら
+  **その向きで探索**する(`notExist` だけは意味が裏返る。上記「否定・状態・個数のアサーション」)。
   `withoutScroll { }` と `tapWithoutScroll` / `existWithoutScroll` は積んだ文脈を1段打ち消す。
   明示の `scroll:` 引数が常に最優先(`FTDriveCore.effectiveScroll`)
 - **`textIs` 等の検証コマンドに `scroll:` は持たせない**(ユーザー決定 2026-07-27)。
@@ -1335,6 +1383,18 @@ textIs(.id("txt_result"), "dialog=none")
   `scroll*` / `scrollTo` / `withScroll*` の引数で、`withScroll*` に渡すとブロック内の `scroll:` 探索が継承する。
   **指定時だけ**ホストが領域の矩形から座標を計算してブリッジへ渡す(`FTCore/ScrollGeometry` =
   shirates-core `ScrollingInfo` の移植。容器 ∩ 画面 → `startMarginRatio` / `endMarginRatio` で削る)。
+  **マージン比の既定値の一次記載はここ**(`FTScrollDefaults`。Shirates の既定は踏襲せず ftester の
+  実測で決めた = 承認済み差分)。**直後の「縦 0.4 / 横 0.6」はスワイプ距離の既定であってマージン比
+  ではない** —— 混同しないこと:
+
+  | 用途(`FTSwipeIntent`) | 縦のマージン比(始点・終点とも) | 横 |
+  |---|---|---|
+  | `search`(`scrollTo` / `scrollDown` 等) | 0.25(スパン 0.5・重なり 50%) | 0.2 |
+  | `gesture`(DSL の `swipe`)/ `edge`(`scrollToEdge`) | 0.2(スパン 0.6) | 0.2 |
+
+  探索だけ保守側に取るのは、**慣性を消せないので刻み = 実移動量にはならず**、行き過ぎが探索の失敗に
+  直結するため(速度を落として慣性を消す案は Android に同じノブが無く、2026-08-02 の実測で収束しなかった)。
+  片側の上限は `FTScrollDefaults.maxMarginRatio` = 0.45(= スパンの最小 0.1)。
   **未指定は従来どおりブリッジ側の軸別既定**(縦 0.4 / 横 0.6 の全画面固定)—— 全画面固定のまま
   スパンを変えると始点がスクロール領域の外に出て 1 ミリも動かない(performance-tuning §3.16 の実害)。
   解決できない・削りすぎて動かせないときも従来経路へ落ちる(Shirates も明示 scrollFrame は
@@ -1343,11 +1403,14 @@ textIs(.id("txt_result"), "dialog=none")
   contentOffset へ)ので**マージンも効く**。ただし **Compose/Flutter は 501 で XCUITest へ回す** ——
   自前描画では hitTest も AX も領域を絞れず、指定領域の外を指しても画面本体が動いてしまう
   (2026-08-02 に E2E-Flutter で実測)。時間指定は持たない(上記の承認済み差分)。
-  **未指定でも容器を特定できたときは座標化する**(`ElementInfo.scrollable` の申告がある
-  エンジン = SwiftUI の table / Android の RecyclerView / in-app の UIScrollView)。
-  特定できない画面(identifier の無い容器・**Compose は xcuitest で `other` として出る**)は
-  従来の全画面固定のまま —— 画面全体を対象にすると始点が画面の 90% になりタブバーに乗り、
-  **1ミリも動かない**(2026-08-02 実測)。
+  **未指定のときに容器を特定して座標化する案は撤回済み**(2026-08-02 実装 → 撤回 →
+  08-03 に条件を変えて再投入 → 再び撤回。**3度目は無い**)。2度目の撤回理由は2つ:
+  狙いだった Compose の飛び越しに**効かない**(Compose の容器は xcuitest で `other` として出て
+  `scrollable` を申告できず、そもそも対象に選べない)/ in-app では**到達距離が縮んで既定
+  `maxSwipes` に届かなくなる**(E2E-iOS/ios-inapp の `tap("#row_40")` が失敗)。
+  判定コードは `StepExecutor.scrollContainer` / `implicitScrollTarget` に残っているが、
+  **`scrollFrame` 未指定なら必ず nil を返す**(`implicitScrollTarget` の呼び元は
+  `ScrollGeometryTests` だけで、production の経路には繋がっていない)。
   **未指定でも見切れ判定は容器基準で行う**: Compose は**容器の外に子(ghost)を報告する**ので、
   viewport を画面全体にすると容器の外の要素を「見えている」と誤判定して探索がそこで止まり、
   タップが飲まれる。`scrollable` の申告が無くても、スナップショットの `depth` から
