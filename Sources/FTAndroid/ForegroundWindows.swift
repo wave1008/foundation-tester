@@ -75,6 +75,29 @@ public enum AndroidForegroundWindows {
         return String(parts[2])
     }
 
+    /// 最前面のアプリの package 名を返す。DSL の appIs 用。
+    /// 本線は z 順の window リスト: **可視(isVisible=true)のアプリ窓は前面の1つだけ**で、
+    /// 背面アプリ・ランチャーは isVisible=false、システム装飾・IME は名前に `/` を含まない
+    /// (Android 15 エミュレータで実測)。`mCurrentFocus=` 行があれば優先するが、
+    /// Android 15 の `dumpsys window windows` にはこの行が出ない(実測。行前提の実装は
+    /// 常に nil になり appIs が必ずタイムアウトした)。
+    /// どちらでも取れなければ nil(不明。判定できないときは黙る=overlaying と同じ規約)
+    public static func topmostAppPackage(dumpsys: String) -> String? {
+        if let line = dumpsys.split(separator: "\n", omittingEmptySubsequences: false)
+            .map({ $0.trimmingCharacters(in: .whitespaces) })
+            .first(where: { $0.hasPrefix("mCurrentFocus=") }),
+           let name = windowName(line),
+           let slashIndex = name.firstIndex(of: "/") {
+            return String(name[..<slashIndex])
+        }
+        for block in windowBlocks(dumpsys) where block.visible {
+            if let slashIndex = block.name.firstIndex(of: "/") {
+                return String(block.name[..<slashIndex])
+            }
+        }
+        return nil
+    }
+
     /// 実機/エミュレータへ問い合わせる。adb が無い・失敗した場合は空(失敗診断の付加情報なので非致命)
     public static func query(package: String, serial: String) -> [String] {
         guard let adb = try? AndroidDriver.findADB(),

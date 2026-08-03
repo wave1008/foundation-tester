@@ -215,7 +215,14 @@ public enum ScenarioHost {
 
     /// シナリオを 1 つ実行し、NDJSON イベントを onEvent へ流す。戻り値: passed。
     /// debug 指定時はランナーを制御チャネル付き(--debug)で起動し、
-    /// 起動直後に onControl で続行・ステップ・停止の送り口を渡す
+    /// 起動直後に onControl で続行・ステップ・停止の送り口を渡す。
+    /// installHandler 指定時は子を `--host-install` で起動し、installApp() の子→親 RPC
+    /// (installRequest イベント)をここで横取りして処理する(ScenarioEvent.swift のコメント参照。
+    /// onEvent へは転送しない)。appPath は installHandler 未指定時のみ意味を持つ
+    /// フォールバック(子へ `--app-path` として渡す。プロファイルの appPath 等、呼び出し側が
+    /// 解決できた値があれば渡す。無ければ渡さない = 子は明示引数のみで解決する)。
+    /// appName はアプリの表示名(プロファイルの appName)。子へ `--app-name` として渡し、
+    /// tapAppIcon() の引数省略時の既定になる(installHandler と無関係に常に渡す)
     @discardableResult
     public static func run(project: TestProject, scenarioID: String,
                            connection: DriverConnection,
@@ -224,6 +231,9 @@ public enum ScenarioHost {
                            dryRun: Bool = false,
                            debug: ScenarioDebugOptions? = nil,
                            recording: ScenarioRecording? = nil,
+                           installHandler: ((String?) async -> (ok: Bool, message: String))? = nil,
+                           appPath: String? = nil,
+                           appName: String? = nil,
                            onEvent: @escaping (ScenarioEvent) -> Void) async -> Bool {
         let startedAt = Date()
         let clock = ContinuousClock()
@@ -274,6 +284,12 @@ public enum ScenarioHost {
             if debug.pauseOnStart { args.append("--pause-on-start") }
             for location in debug.breakpoints { args += ["--breakpoint", location] }
         }
+        if installHandler != nil {
+            args.append("--host-install")
+        } else if let appPath {
+            args += ["--app-path", appPath]
+        }
+        if let appName { args += ["--app-name", appName] }
         process.arguments = args
 
         let stdout = Pipe()
@@ -281,7 +297,7 @@ public enum ScenarioHost {
         process.standardOutput = stdout
         process.standardError = stderr
         var stdinPipe: Pipe?
-        if debug != nil {
+        if debug != nil || installHandler != nil {
             let pipe = Pipe()
             process.standardInput = pipe
             stdinPipe = pipe
@@ -341,6 +357,10 @@ public enum ScenarioHost {
                 await EventLogAppender.shared.append(line)
             }
             if let event = ScenarioEvent.decode(line: line) {
+                if event.kind == "installRequest" {
+                    await handleInstallRequest(event, installHandler: installHandler, stdinPipe: stdinPipe)
+                    continue
+                }
                 if event.kind == "scenarioFinished" { passed = event.passed }
                 emit(event)
             } else if !line.isEmpty {
@@ -394,6 +414,25 @@ public enum ScenarioHost {
                 durationMs: continuousClockMs(clock.now - clockStart), packageRoot: packageRoot()))
         }
         return result
+    }
+
+    /// installRequest イベント(installApp() の子→親 RPC)を処理し、stdin へ installResult を書く。
+    /// installHandler が nil のときは黙って無視する(installHandler != nil のときだけ子は
+    /// --host-install で起動し installRequest を送るため、通常は起きない)
+    private static func handleInstallRequest(
+        _ event: ScenarioEvent,
+        installHandler: ((String?) async -> (ok: Bool, message: String))?,
+        stdinPipe: Pipe?
+    ) async {
+        guard let installHandler, let stdinPipe, let requestID = event.requestID else { return }
+        let result = await installHandler(event.installPath)
+        let object: [String: Any] = [
+            "cmd": "installResult", "id": requestID, "ok": result.ok, "message": result.message,
+        ]
+        guard var data = try? JSONSerialization.data(withJSONObject: object) else { return }
+        data.append(Data("\n".utf8))
+        // プロセス終了直後の broken pipe は無視(ScenarioRunControl.send と同じ理由)
+        try? stdinPipe.fileHandleForWriting.write(contentsOf: data)
     }
 
     /// シナリオを dry-run(No-Load-Run)してイベント列を収集する。デバイス不要・FM 不使用で
@@ -568,6 +607,8 @@ public enum ScenarioLogFormatter {
             case "failed":
                 return ["    ❌ \(index). \(section)\(description)",
                         "       \(event.detail ?? "")"]
+            case "inconclusive":
+                return ["    ❓ \(index). \(section)\(description) (inconclusive: \(event.detail ?? ""))"]
             default:
                 return ["    ⚠️ \(index). \(section)\(description) (skipped: \(event.detail ?? ""))"]
             }

@@ -82,15 +82,20 @@ public struct StepCountsRecord: Codable, Sendable {
     public var skipped: Int
     public var healed: Int
     public var passedViaFallback: Int
+    /// verify のブロックにアサーションが無かった等の inconclusive(2026-08-03 追加)。失敗には数えない。
+    /// 後発の追加フィールドなので Optional(ScenarioEvent.durationMs と同じ理由。旧レコードの
+    /// 欠損キーが decode エラーにならず nil になる = 過去の run 結果を読み続けられる)
+    public var inconclusive: Int?
 
     public init(total: Int = 0, passed: Int = 0, failed: Int = 0, skipped: Int = 0,
-                healed: Int = 0, passedViaFallback: Int = 0) {
+                healed: Int = 0, passedViaFallback: Int = 0, inconclusive: Int? = nil) {
         self.total = total
         self.passed = passed
         self.failed = failed
         self.skipped = skipped
         self.healed = healed
         self.passedViaFallback = passedViaFallback
+        self.inconclusive = inconclusive
     }
 }
 
@@ -314,6 +319,8 @@ public struct ScenarioRecordBuilder {
             stepCounts.healed += 1
         case "skipped":
             stepCounts.skipped += 1
+        case "inconclusive":
+            stepCounts.inconclusive = (stepCounts.inconclusive ?? 0) + 1
         case "failed":
             stepCounts.failed += 1
             failedSteps.append(FailedStepRecord(

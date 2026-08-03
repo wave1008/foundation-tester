@@ -78,6 +78,7 @@ final class BridgeRouter {
             case ("POST", "/appswitcher"): response = try handleAppSwitcher()
             case ("POST", "/home"): response = try handleHome()
             case ("POST", "/terminate"): response = try handleTerminate()
+            case ("POST", "/appstate"): response = try handleAppState(request.body)
             default:
                 return .error("not found: \(request.method) \(request.path)", status: 404)
             }
@@ -631,6 +632,14 @@ final class BridgeRouter {
         return .json(OKResponse())
     }
 
+    /// フォアグラウンドのアプリが bundleID と一致するか(DSL の appIs)。**requireApp() を使わない**
+    /// — このルートはセッション対象アプリに依存しない読み取りで、任意の bundleID を照会できる
+    private func handleAppState(_ body: Data) throws -> BridgeHTTPServer.Response {
+        let req = try decode(AppStateRequest.self, body)
+        let target = XCUIApplication(bundleIdentifier: req.bundleID)
+        return .json(AppStateResponse(foreground: target.state == .runningForeground))
+    }
+
     // MARK: - スナップショット収集・フィルタ
 
     private func collect(_ node: XCUIElementSnapshot, depth: Int, screen: CGRect,
@@ -687,10 +696,11 @@ final class BridgeRouter {
         let hasText = !node.identifier.isEmpty || !node.label.isEmpty || valueString(node) != nil
 
         switch node.elementType {
-        // 操作可能な要素はテキストがなくても含める(アイコンだけのボタン等)
+        // 操作可能な要素はテキストがなくても含める(アイコンだけのボタン等)。
+        // .icon は springboard のホーム画面アイコン(tapAppIcon 用。label のみで identifier を持たない)
         case .button, .textField, .secureTextField, .textView, .`switch`, .toggle,
              .slider, .cell, .link, .searchField, .segmentedControl, .pickerWheel,
-             .stepper, .datePicker, .checkBox, .menuItem:
+             .stepper, .datePicker, .checkBox, .menuItem, .icon:
             return true
         // 表示要素はテキストを持つ場合のみ
         case .staticText, .image:

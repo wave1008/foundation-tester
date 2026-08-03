@@ -194,16 +194,17 @@ testbase(SC/TC 等の仕様書)を根拠にシナリオを書く場合、実行�
 | 分類 | コマンド |
 |---|---|
 | タップ/入力 | `tap(sel, timeout:)` / `tap(sel, holdSeconds:)`(長押し)/ `type(text)`(直前フォーカス)/ `type(sel, text)` / `select(sel)`(掴むだけ。**掴めなければ空要素**を返し失敗しない) |
-| スワイプ/スクロール | `swipe(.up/.down/.left/.right)`(**指の動き**。生のジェスチャ)/ 以下は**コンテンツ基準**(`.down` = 下に読み進める): `scrollTo(sel, direction:, maxSwipes:)` / `scrollDown(repeat:)` `scrollUp` `scrollRight` `scrollLeft` / `scrollToBottom(maxSwipes:)` `scrollToTop` `scrollToRightEdge` `scrollToLeftEdge` |
+| スワイプ/スクロール | `swipe(.up/.down/.left/.right)`(**指の動き**。生のジェスチャ)/ 以下は**コンテンツ基準**(`.down` = 下に読み進める): `scrollTo(sel, direction:, maxSwipes:)` / `scrollDown(repeat:)` `scrollUp` `scrollRight` `scrollLeft` / `scrollToBottom(maxSwipes:)` `scrollToTop` `scrollToRightEdge` `scrollToLeftEdge` / `flickCenterToTop/Bottom/Left/Right` `flickLeftToRight/RightToLeft` `flickBottomToTop/TopToBottom`(画面基点・8種。速い1ストロークの生ジェスチャ) |
 | スクロールしながら探す | `tap(sel, scroll: .down)` / `exist(sel, scroll: .down)`(別名 `tapWithScrollDown` / `existWithScrollDown`)/ ブロックで囲む `withScrollDown { … }` と、1コマンドだけ打ち消す `tapWithoutScroll` `existWithoutScroll` `withoutScroll { … }` |
-| 検証 | `exist(sel)` / `notExist(sel)` / `isEnabled(sel)` / `isDisabled(sel)` / `isChecked(sel)` / `isNotChecked(sel)` / `countIs(sel, 個数)` / `screenIs(名)`。exist は `.textIs()/.valueIs()/.idIs()` チェーン可 |
+| 検証 | `exist(sel)` / `notExist(sel)` / `isEnabled(sel)` / `isDisabled(sel)` / `isChecked(sel)` / `isNotChecked(sel)` / `countIs(sel, 個数)` / `screenIs(名)` / `verify("説明") { … }`(複数アサーションを1ステップに集約。ブロック内0個なら inconclusive = passed でも failed でもない・シナリオは続行)。exist は `.textIs()/.valueIs()/.idIs()` チェーン可 |
 | テキスト・値の検証 | `textIs` `textContains` `textStartsWith` `textEndsWith` `textMatches`(正規表現)`textMatchesDateFormat` `textIsEmpty` `textIsNotEmpty` と、**それぞれの否定** `textIsNot` `textContainsNot` … / `value…` も同名で一式。**これらに `scroll:` は無い**(静止画面の検証用。画面外は先に `scrollTo`) |
 | 画面に依らない値の検証 | `thisIs` `thisIsNot` `thisIsTrue` `thisContains` `thisMatchesDateFormat` `thisIsGreaterThan` …(API 応答・計算結果に直接生える。失敗は1ステップとして記録される) |
-| アプリ制御 | `launchApp(bundleID?)` / `restartApp()` / `terminateApp()` / `home()` / `appSwitcher()` |
-| 待機/分岐 | `wait(秒)` / `ifCanSelect(sel, waitSeconds:) { … }.ifElse { … }` / `ios { }` / `android { }` / `procedure("名") { try await … }` |
+| アプリ制御 | `launchApp(bundleID?)` / `restartApp()` / `terminateApp()` / `home()` / `appSwitcher()` / `installApp(path?)` / `removeApp(id?)` / `appIs(id, waitSeconds:)` / `tapAppIcon(name?)`(ホーム画面のアイコンをタップ。省略時はプロファイルの appName) |
+| 待機/分岐 | `wait(秒)` / `waitForDisplay(sel, waitSeconds:)`(表示まで待つ。スクロールしない)/ `waitForClose(sel, waitSeconds:)`(消えるまで待つ。スクロールしない)/ `ifCanSelect(sel, waitSeconds:) { … }.ifElse { … }` / `ios { }` / `android { }` / `procedure("名") { try await … }` |
 | 反復 | `repeatWhileCanSelect(sel, max: n) { … }`(解決できる限り繰り返す。上限到達は失敗にしない)/ `doUntilTrue("名", waitSeconds:) { 条件 }`(**アプリ・外部の状態待ち専用**。要素の出現待ちは各コマンドの `timeout:`) |
 | 割り込み | `irregularHandler("#promo_modal", dismiss: "#btn_close")` を setUp で宣言すると、出るか不定の**アプリ内メッセージ**を出た時点で自動的に閉じる(OS のダイアログはツール側が吸収するので書かない) |
 | まとまり | `group("ログイン") { … }`(記録に `[ログイン]` を前置するだけ。実行・失敗の扱いは素の列と同じ) |
+| 記録 | `screenshot(filename:?)`(現在の画面を撮り、このステップ直後にレポートへ埋め込む) |
 | 前後処理 | テストクラスに `func setUp()` / `func tearDown()`(引数なし)を書くと各 `@Test` の前後で自動実行 |
 
 - **要素が見つからなければ失敗**(シナリオ中断)。**唯一の例外は `select`**(空要素を返す。`.isEmpty` で分岐)。

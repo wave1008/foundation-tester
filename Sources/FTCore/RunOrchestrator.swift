@@ -260,6 +260,9 @@ public enum ScenarioRunner {
                               scenarioTimeout: Int? = nil,
                               debug: ScenarioDebugOptions? = nil,
                               recorder: RunRecorder? = nil,
+                              installHandler: (@Sendable (RunWorker, String?) async
+                                               -> (ok: Bool, message: String))? = nil,
+                              appName: String? = nil,
                               onEvent: @escaping (RunEvent) -> Void) async -> ScenarioOutcome {
         onEvent(.flowStarted(worker: worker.label, flowURL: item.url,
                              flowName: item.info.id, isDirty: false))
@@ -277,7 +280,11 @@ public enum ScenarioRunner {
             project: project, scenarioID: item.info.id, connection: worker.connection,
             fm: fm, reportDir: reportDir.path,
             defaultTimeout: defaultTimeout, scenarioTimeout: scenarioTimeout,
-            debug: debug, recording: recording) { event in
+            debug: debug, recording: recording,
+            installHandler: installHandler.map { handler in
+                { (path: String?) async -> (ok: Bool, message: String) in await handler(worker, path) }
+            },
+            appName: appName) { event in
             switch event.kind {
             case "sceneStarted":
                 onEvent(.sceneStarted(worker: worker.label, flowURL: item.url,
@@ -345,6 +352,8 @@ public enum ScenarioRunner {
             status = .healed(FlowLocator(raw: event.detail ?? ""))
         case "failed":
             status = .failed(event.detail ?? "")
+        case "inconclusive":
+            status = .inconclusive(event.detail ?? "")
         default:
             status = .skipped(event.detail ?? "")
         }
@@ -430,6 +439,12 @@ public final class RunOrchestrator {
     /// ドレインが「実行できるワーカーがありません」で失敗確定する)。
     /// Android を iOS 供給(壊れたブリッジの置き換え=数十秒)の完了待ちにしないための機構。
     private let lateWorkers: (platforms: Set<String>, provider: @Sendable () async -> [RunWorker])?
+    /// installApp() の親実行ハンドラ(RPC)。nil なら子は --host-install 無しで起動し、
+    /// フォールバック(--app-path・明示引数・明示エラー)に委ねる(ScenarioHost.run 参照)。
+    /// 呼び出し側(ftester ターゲット)が InstallHandlerFactory 経由で注入する
+    private let installHandler: (@Sendable (RunWorker, String?) async -> (ok: Bool, message: String))?
+    /// アプリの表示名(プロファイルの appName)。tapAppIcon() の引数省略時の既定として子へ渡す
+    private let appName: String?
     /// 劣化・離脱したワーカーの収集(summary/レポートの degradedWorkers に載せる)。
     private let degraded = NoteCollector()
     /// 振り直し(結果取り消し+requeue)の監査記録(summary/レポートの freezeRetries に載せる)。
@@ -455,7 +470,10 @@ public final class RunOrchestrator {
                 removeRecordingLease: (@Sendable (String) -> Void)? = nil,
                 cleanupRetiredWorker: (@Sendable (RunWorker) async -> Void)? = nil,
                 reviveWorker: (@Sendable (RunWorker) async -> RunWorker?)? = nil,
-                lateWorkers: (platforms: Set<String>, provider: @Sendable () async -> [RunWorker])? = nil) {
+                lateWorkers: (platforms: Set<String>, provider: @Sendable () async -> [RunWorker])? = nil,
+                installHandler: (@Sendable (RunWorker, String?) async
+                                  -> (ok: Bool, message: String))? = nil,
+                appName: String? = nil) {
         (self.events, self.continuation) = AsyncStream.makeStream(of: RunEvent.self)
         self.workers = workers
         self.fm = fm
@@ -477,6 +495,8 @@ public final class RunOrchestrator {
         self.cleanupRetiredWorker = cleanupRetiredWorker
         self.reviveWorker = reviveWorker
         self.lateWorkers = lateWorkers
+        self.installHandler = installHandler
+        self.appName = appName
     }
 
     private func deviceUnreachable(_ serial: String) async -> Bool {
@@ -754,7 +774,7 @@ public final class RunOrchestrator {
                 project: project, item: item, worker: worker,
                 fm: fm, reportDir: reportDir,
                 defaultTimeout: defaultTimeout, scenarioTimeout: scenarioTimeout, debug: debug,
-                recorder: recorder,
+                recorder: recorder, installHandler: installHandler, appName: appName,
                 onEvent: { [continuation] in continuation.yield($0) })
             await videoRecording?.scenarioFinished(
                 workerLabel: worker.label, at: Date(), passed: outcome == .passed)
@@ -890,6 +910,8 @@ public enum RunLogFormatter {
             return ["  ❌ \(step.index). \(description)", "     \(reason)"]
         case .skipped(let reason):
             return ["  ⚠️ \(step.index). \(description) (skipped: \(reason))"]
+        case .inconclusive(let reason):
+            return ["  ❓ \(step.index). \(description) (inconclusive: \(reason))"]
         }
     }
 }

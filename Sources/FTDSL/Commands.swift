@@ -306,6 +306,122 @@ private func swipeElementToElementImpl(_ from: FTSelector, _ to: FTSelector,
             file: file, line: line)
 }
 
+// MARK: - フリック(Shirates 準拠のコマンド名。画面基点8種)
+
+/// swipe/scroll と低レベル実装は同じ(等速の1ストローク・加速なし)だが、既定の
+/// durationSeconds/intervalSeconds が短い(Shirates の FLICK_DURATION/INTERVAL_SECONDS 準拠)。
+/// `scrollableElement` 引数は持たない(scrollFrame のセレクタ式で足りる)。
+/// centerTo系4種は startMarginRatio を取らない(始点は常に中心)。
+public func flickCenterToTop(scrollFrame: String? = nil,
+                             durationSeconds: Double = FlowStep.defaultFlickDurationSeconds,
+                             repeat times: Int = 1,
+                             intervalSeconds: Double = FlowStep.defaultFlickIntervalSeconds,
+                             file: StaticString = #filePath, line: UInt = #line) {
+    flickImpl(.centerToTop, scrollFrame: scrollFrame, startMarginRatio: nil,
+             durationSeconds: durationSeconds, times: times, intervalSeconds: intervalSeconds,
+             file: file, line: line)
+}
+
+public func flickCenterToBottom(scrollFrame: String? = nil,
+                                durationSeconds: Double = FlowStep.defaultFlickDurationSeconds,
+                                repeat times: Int = 1,
+                                intervalSeconds: Double = FlowStep.defaultFlickIntervalSeconds,
+                                file: StaticString = #filePath, line: UInt = #line) {
+    flickImpl(.centerToBottom, scrollFrame: scrollFrame, startMarginRatio: nil,
+             durationSeconds: durationSeconds, times: times, intervalSeconds: intervalSeconds,
+             file: file, line: line)
+}
+
+public func flickCenterToLeft(scrollFrame: String? = nil,
+                              durationSeconds: Double = FlowStep.defaultFlickDurationSeconds,
+                              repeat times: Int = 1,
+                              intervalSeconds: Double = FlowStep.defaultFlickIntervalSeconds,
+                              file: StaticString = #filePath, line: UInt = #line) {
+    flickImpl(.centerToLeft, scrollFrame: scrollFrame, startMarginRatio: nil,
+             durationSeconds: durationSeconds, times: times, intervalSeconds: intervalSeconds,
+             file: file, line: line)
+}
+
+public func flickCenterToRight(scrollFrame: String? = nil,
+                               durationSeconds: Double = FlowStep.defaultFlickDurationSeconds,
+                               repeat times: Int = 1,
+                               intervalSeconds: Double = FlowStep.defaultFlickIntervalSeconds,
+                               file: StaticString = #filePath, line: UInt = #line) {
+    flickImpl(.centerToRight, scrollFrame: scrollFrame, startMarginRatio: nil,
+             durationSeconds: durationSeconds, times: times, intervalSeconds: intervalSeconds,
+             file: file, line: line)
+}
+
+/// startMarginRatio 省略時は scrollRight 等と同じ既定(`FTScrollDefaults`。実測値 0.2)を使う ——
+/// Shirates の 0.2 を別途持ち込まない(承認済み差分)
+public func flickLeftToRight(scrollFrame: String? = nil,
+                             startMarginRatio: Double? = nil,
+                             durationSeconds: Double = FlowStep.defaultFlickDurationSeconds,
+                             repeat times: Int = 1,
+                             intervalSeconds: Double = FlowStep.defaultFlickIntervalSeconds,
+                             file: StaticString = #filePath, line: UInt = #line) {
+    flickImpl(.leftToRight, scrollFrame: scrollFrame, startMarginRatio: startMarginRatio,
+             durationSeconds: durationSeconds, times: times, intervalSeconds: intervalSeconds,
+             file: file, line: line)
+}
+
+public func flickRightToLeft(scrollFrame: String? = nil,
+                             startMarginRatio: Double? = nil,
+                             durationSeconds: Double = FlowStep.defaultFlickDurationSeconds,
+                             repeat times: Int = 1,
+                             intervalSeconds: Double = FlowStep.defaultFlickIntervalSeconds,
+                             file: StaticString = #filePath, line: UInt = #line) {
+    flickImpl(.rightToLeft, scrollFrame: scrollFrame, startMarginRatio: startMarginRatio,
+             durationSeconds: durationSeconds, times: times, intervalSeconds: intervalSeconds,
+             file: file, line: line)
+}
+
+public func flickBottomToTop(scrollFrame: String? = nil,
+                             startMarginRatio: Double? = nil,
+                             durationSeconds: Double = FlowStep.defaultFlickDurationSeconds,
+                             repeat times: Int = 1,
+                             intervalSeconds: Double = FlowStep.defaultFlickIntervalSeconds,
+                             file: StaticString = #filePath, line: UInt = #line) {
+    flickImpl(.bottomToTop, scrollFrame: scrollFrame, startMarginRatio: startMarginRatio,
+             durationSeconds: durationSeconds, times: times, intervalSeconds: intervalSeconds,
+             file: file, line: line)
+}
+
+public func flickTopToBottom(scrollFrame: String? = nil,
+                             startMarginRatio: Double? = nil,
+                             durationSeconds: Double = FlowStep.defaultFlickDurationSeconds,
+                             repeat times: Int = 1,
+                             intervalSeconds: Double = FlowStep.defaultFlickIntervalSeconds,
+                             file: StaticString = #filePath, line: UInt = #line) {
+    flickImpl(.topToBottom, scrollFrame: scrollFrame, startMarginRatio: startMarginRatio,
+             durationSeconds: durationSeconds, times: times, intervalSeconds: intervalSeconds,
+             file: file, line: line)
+}
+
+private let flickCommandNames: [FlickKind: String] = [
+    .centerToTop: "flickCenterToTop", .centerToBottom: "flickCenterToBottom",
+    .centerToLeft: "flickCenterToLeft", .centerToRight: "flickCenterToRight",
+    .leftToRight: "flickLeftToRight", .rightToLeft: "flickRightToLeft",
+    .bottomToTop: "flickBottomToTop", .topToBottom: "flickTopToBottom",
+]
+
+private func flickImpl(_ kind: FlickKind, scrollFrame: String?, startMarginRatio: Double?,
+                       durationSeconds: Double, times: Int, intervalSeconds: Double,
+                       file: StaticString, line: UInt) {
+    let name = flickCommandNames[kind] ?? "flick"
+    let core = FTRuntime.requireCore(command: name)
+    let step = FlowStep(action: "flick", direction: kind.rawValue,
+                        maxSwipes: max(1, times),
+                        duration: durationSeconds == FlowStep.defaultFlickDurationSeconds
+                            ? nil : durationSeconds,
+                        scrollFrame: core.effectiveScrollFrame(scrollFrame).map(FTSelector.parse)?.primary,
+                        startMarginRatio: startMarginRatio,
+                        intervalSeconds: intervalSeconds == FlowStep.defaultFlickIntervalSeconds
+                            ? nil : intervalSeconds)
+    core.perform(step: step, description: name + (times > 1 ? " ×\(times)" : ""),
+                file: file, line: line)
+}
+
 // MARK: - スクロール(Shirates 準拠のコマンド名)
 
 /// 1回スクロールする(`repeat` 回ぶん繰り返す)。**コンテンツ基準**なので `scrollDown` は
@@ -1243,6 +1359,51 @@ private func notExistImpl(_ selector: FTSelector, timeout: Double?,
             file: file, line: line)
 }
 
+/// 要素が表示されるまで待つ(スクロールしない)。exist の可視性確認込みの形にタイムアウトだけ差し替えたもの
+@discardableResult
+public func waitForDisplay(_ expression: String, waitSeconds: Double = FlowStep.defaultIsScreenWaitSeconds,
+                           file: StaticString = #filePath, line: UInt = #line) -> FTElement {
+    waitForDisplayImpl(FTSelector.parse(expression), waitSeconds: waitSeconds, file: file, line: line)
+}
+
+@discardableResult
+public func waitForDisplay(_ expression: Sel, waitSeconds: Double = FlowStep.defaultIsScreenWaitSeconds,
+                           file: StaticString = #filePath, line: UInt = #line) -> FTElement {
+    waitForDisplayImpl(expression.ftSelector, waitSeconds: waitSeconds, file: file, line: line)
+}
+
+@discardableResult
+private func waitForDisplayImpl(_ selector: FTSelector, waitSeconds: Double,
+                                file: StaticString, line: UInt) -> FTElement {
+    let step = FlowStep(assert: "exists", locator: selector.primary,
+                        fallbacks: selector.stepFallbacks,
+                        timeout: waitSeconds, occlusionGuard: true)
+    let result = perform("waitForDisplay", selector, step: step,
+                         description: "waitForDisplay \"\(selector.text)\"", file: file, line: line)
+    return FTElement(selector: selector, matched: result.element)
+}
+
+/// 要素が消えるまで待つ(スクロールしない)。expression 省略(直前セレクタ再利用)は実装しない
+/// (ftester に lastElement 概念が無いため)
+public func waitForClose(_ expression: String, waitSeconds: Double = FlowStep.defaultIsScreenWaitSeconds,
+                         file: StaticString = #filePath, line: UInt = #line) {
+    waitForCloseImpl(FTSelector.parse(expression), waitSeconds: waitSeconds, file: file, line: line)
+}
+
+public func waitForClose(_ expression: Sel, waitSeconds: Double = FlowStep.defaultIsScreenWaitSeconds,
+                         file: StaticString = #filePath, line: UInt = #line) {
+    waitForCloseImpl(expression.ftSelector, waitSeconds: waitSeconds, file: file, line: line)
+}
+
+private func waitForCloseImpl(_ selector: FTSelector, waitSeconds: Double,
+                              file: StaticString, line: UInt) {
+    let step = FlowStep(assert: "notExists", locator: selector.primary,
+                        fallbacks: selector.stepFallbacks,
+                        timeout: waitSeconds)
+    perform("waitForClose", selector, step: step,
+            description: "waitForClose \"\(selector.text)\"", file: file, line: line)
+}
+
 /// 要素が操作可能(enabled)であることの検証。タイムアウトまで状態変化を待つ
 public func isEnabled(_ selector: String, timeout: Double? = nil,
                       file: StaticString = #filePath, line: UInt = #line) {
@@ -1727,6 +1888,103 @@ public func terminateApp(file: StaticString = #filePath, line: UInt = #line) {
     }
 }
 
+/// アプリをインストールする。**実行はオーケストレータ(親プロセス)の仕事**(2026-08-03 決定): 子は
+/// installControl 経由で依頼を送るだけで、親が実行プロファイルの appPath 解決・実インストール・
+/// (iOS inapp/hybrid の)再注入注記までを担う。appPackageFile 省略時は親側でプロファイルの appPath を
+/// 解決する。ホスト無しの単独実行(installControl が nil)では従来どおり子が直接
+/// driver.install を呼び、パス解決は 明示引数 ?? --app-path(親が解決して渡した場合) ?? 明示エラー
+public func installApp(_ appPackageFile: String? = nil,
+                       file: StaticString = #filePath, line: UInt = #line) {
+    let core = FTRuntime.requireCore(command: "installApp")
+    let driver = core.driver
+    let description = appPackageFile.map { "installApp \"\($0)\"" } ?? "installApp"
+    core.performCustom(description: description, file: file, line: line) {
+        if let installControl = core.installControl {
+            // 110s: FTSync.commandTimeout(120s。performCustom を包む外枠)より内側に収め、
+            // ここで先に installApp 固有の理由を返す(外枠だと汎用の "operation timed out" になる)
+            let result = await installControl.request(timeoutSeconds: 110) { id in
+                var event = ScenarioEvent(kind: "installRequest")
+                event.scenario = core.scenarioID
+                event.requestID = id
+                event.installPath = appPackageFile
+                core.emit(event)
+            }
+            guard result.ok else { throw FTCommandError.message(result.message) }
+            if !result.message.isEmpty { core.emit(.log("ℹ️ \(result.message)")) }
+            return
+        }
+        let resolvedPath = appPackageFile ?? core.appPathOverride
+        guard let resolvedPath else {
+            throw FTCommandError.message(
+                "installApp: no package path was given and it cannot be resolved automatically "
+                + "(the scenario process only knows the app's bundle ID, not a package file path). "
+                + "Pass the path explicitly: installApp(\"/path/to/App.app\")")
+        }
+        let expanded = (resolvedPath as NSString).expandingTildeInPath
+        guard FileManager.default.fileExists(atPath: expanded) else {
+            throw FTCommandError.message("installApp: package not found at \(expanded)")
+        }
+        try await driver.install(packagePath: expanded)
+    }
+}
+
+/// アプリをアンインストールする。nil のときは実行中アプリの既定 bundleID/package
+/// (launchApp() 引数なしと同じ解決 = core.appBundleID)
+public func removeApp(_ packageOrBundleId: String? = nil,
+                      file: StaticString = #filePath, line: UInt = #line) {
+    let core = FTRuntime.requireCore(command: "removeApp")
+    let driver = core.driver
+    let target = packageOrBundleId ?? core.appBundleID
+    core.performCustom(description: "removeApp \"\(target)\"", file: file, line: line) {
+        try await driver.uninstall(bundleID: target)
+    }
+}
+
+/// appIs のポーリング(PollBackoff の再利用はコピペ禁止の契約。
+/// Sources/FTCore/PollBackoff.swift 参照)。timeout==0 でも初回照会は必ず1回行う
+private func pollForegroundMatch(driver: AppDriver, target: String,
+                                 waitSeconds: Double) async throws -> Bool {
+    let deadline = Date().addingTimeInterval(waitSeconds)
+    var backoff = PollBackoff()
+    while true {
+        if try await driver.isAppForeground(bundleID: target) { return true }
+        if Date() >= deadline { return false }
+        try await Task.sleep(for: backoff.nextDelay())
+    }
+}
+
+/// フォアグラウンドのアプリが appNameOrAppId(iOS=bundle ID / Android=package 名)と一致することの検証。
+/// ftester はニックネーム機構を持たないため、引数は ID そのもの(引数名だけ Shirates 準拠)。
+/// waitSeconds までポーリングする。Android は失敗メッセージに actual の package 名を含める
+/// (iOS は前面 bundle ID を取得する手段が無いため自然と省かれる。foregroundAppID 参照)
+public func appIs(_ appNameOrAppId: String, waitSeconds: Double = FlowStep.defaultIsScreenWaitSeconds,
+                  file: StaticString = #filePath, line: UInt = #line) {
+    let core = FTRuntime.requireCore(command: "appIs")
+    let driver = core.driver
+    core.performCustom(description: "appIs \"\(appNameOrAppId)\"", file: file, line: line) {
+        let matched = try await pollForegroundMatch(
+            driver: driver, target: appNameOrAppId, waitSeconds: waitSeconds)
+        guard !matched else { return }
+        var message = "appIs \"\(appNameOrAppId)\" did not hold within \(FTSeconds.format(waitSeconds))s"
+        // try? はネストした Optional を1段へ平坦化する(SE-0230): throw でも nil 返却でも actual は
+        // nil になり、両方の場合を区別なく「省く」で扱える
+        if let actual = try? await driver.foregroundAppID() {
+            message += " (actual=\"\(actual)\")"
+        }
+        throw FTCommandError.message(message)
+    }
+}
+
+// MARK: - スクリーンショット
+
+/// 現在の画面をスクリーンショットとして撮り、レポートのこのステップの直後に埋め込む。
+/// ファイル名省略時はステップ連番(.png)。Shirates の force/onChangedOnly/withXmlSource は未実装
+public func screenshot(filename: String? = nil,
+                       file: StaticString = #filePath, line: UInt = #line) {
+    FTRuntime.requireCore(command: "screenshot").performScreenshot(
+        filename: filename, file: file, line: line)
+}
+
 /// ホーム画面へ戻る
 public func home(file: StaticString = #filePath, line: UInt = #line) {
     let core = FTRuntime.requireCore(command: "home")
@@ -1761,6 +2019,99 @@ public func appSwitcher(file: StaticString = #filePath, line: UInt = #line) {
     let driver = core.systemDriver
     core.performCustom(description: "appSwitcher", file: file, line: line) {
         try await driver.openAppSwitcher()
+    }
+}
+
+/// ホーム画面のドロワー探索(Android)で試す上限回数。Shirates は無指定(打ち切りは
+/// canSelectWithScrollDown の既定に委ねる)なので、ここでは妥当な値を独自に決める
+private let tapAppIconAndroidMaxFlicks = 8
+/// iOS のページ送り上限。ページインジケータを読めない(Runner が未対応)ため既定値固定
+/// (docs 化していない残課題。ページ数が分かればそちらを使う設計に変更余地あり)
+private let tapAppIconIOSMaxPages = 5
+/// アイコンタップ後の整定待ち(Shirates 準拠。ホーム画面遷移直後の描画完了を待つ)
+private let tapAppIconSettleSeconds = 1.5
+
+/// ホーム画面のアプリアイコンをタップする(Shirates tapAppIcon の auto 相当。
+/// tapAppIconMethod・マクロ・カスタム関数は持たない)。
+/// 名前省略時は親(オーケストレータ)が解決して渡したプロファイルの appName
+/// (Shirates の appIconName 既定=プロファイル、に相当)。
+/// 手順: home()(iOS はもう1回。Shirates 準拠) → 現在の画面で探す → 無ければ
+/// Android はドロワーを開いてスクロール探索、iOS はページ送りしながら探索。
+public func tapAppIcon(_ appIconName: String? = nil,
+                       file: StaticString = #filePath, line: UInt = #line) {
+    let core = FTRuntime.requireCore(command: "tapAppIcon")
+    let driver = core.homeScreenDriver
+    let platform = core.platform
+    let resolvedName = appIconName ?? core.appDisplayName
+    let description = resolvedName.map { "tapAppIcon \"\($0)\"" } ?? "tapAppIcon"
+    core.performCustom(description: description, file: file, line: line) {
+        // 親(プロファイルの appName)からも取れないときだけ明示エラー
+        guard let appIconName = resolvedName else {
+            throw FTCommandError.message(
+                "tapAppIcon: no icon name was given and the profile has no appName to resolve it "
+                + "from. Pass the name explicitly (tapAppIcon(\"App Name\")) or set appName in "
+                + "the app profile")
+        }
+
+        // タップ成功後の共通処理。xcuitest 単独では springboard 参照が**主ドライバと同じランナーの
+        // セッションを springboard に付け替える**ため、張り直さないと以降の要素コマンドが
+        // springboard のツリーを黙って読む(実機で確認)。タップ先がシナリオ対象アプリのときだけ
+        // 張り直す(activate は /session の再バインド+前面化で状態を保持する。
+        // 対象外アプリを開いた場合はそのまま = xcuitest は対象アプリ以外を駆動しない)
+        func settleAndRestoreSession() async throws {
+            try await Task.sleep(nanoseconds: ftSleepNanoseconds(tapAppIconSettleSeconds))
+            if core.homeScreenSharesRunnerSession,
+               (try? await driver.isAppForeground(bundleID: core.appBundleID)) == true {
+                try await core.driver.activate(bundleID: core.appBundleID)
+            }
+        }
+
+        try await driver.home()
+        if platform == "ios" { try await driver.home() }
+
+        var last = try await driver.snapshot()
+        if let icon = AppIconLocator.findIcon(appIconName, in: last) {
+            try await driver.tap(ref: icon.ref)
+            try await settleAndRestoreSession()
+            return
+        }
+
+        // 画面の矩形はドロワー/ページ送りの間ずっと同じ(内容だけが変わる)ので1回だけ取る
+        let screen = last.screen
+        let kind: FlickKind = platform == "android" ? .centerToTop : .rightToLeft
+        let maxAttempts = platform == "android" ? tapAppIconAndroidMaxFlicks : tapAppIconIOSMaxPages
+        var previousSignature = AppIconLocator.signature(of: last)
+        var unchanged = 0
+        var attempt = 0
+        while true {
+            attempt += 1
+            let startRatio = FTScrollDefaults.startMarginRatio(intent: .gesture, vertical: kind.isVertical)
+            if let path = ScrollGeometry.flickPath(container: screen, viewport: screen,
+                                                    kind: kind, startMarginRatio: startRatio) {
+                try await driver.drag(fromX: path.fromX, fromY: path.fromY,
+                                      toX: path.toX, toY: path.toY,
+                                      pressSeconds: 0.05, durationSeconds: FlowStep.defaultFlickDurationSeconds)
+            } else {
+                // 座標を作れない(画面が小さすぎる等): 向き基準の汎用スワイプへ落ちる
+                // (flick アクションの座標算出失敗と同じ扱い)
+                try await driver.swipe(kind.fingerDirection)
+            }
+
+            last = try await driver.snapshot()
+            if let icon = AppIconLocator.findIcon(appIconName, in: last) {
+                try await driver.tap(ref: icon.ref)
+                try await settleAndRestoreSession()
+                return
+            }
+
+            let signature = AppIconLocator.signature(of: last)
+            unchanged = signature == previousSignature ? unchanged + 1 : 0
+            previousSignature = signature
+            if AppIconLocator.shouldStopSearch(consecutiveUnchanged: unchanged,
+                                               attempts: attempt, maxAttempts: maxAttempts) {
+                throw FTCommandError.message("App icon not found.(\(appIconName))")
+            }
+        }
     }
 }
 
@@ -1911,6 +2262,38 @@ private func repeatWhileCanSelectImpl(_ selector: FTSelector, max: Int, waitSeco
 /// 再利用は普通の Swift 関数で行い、その中身をこれで包む。
 public func group(_ title: String, _ body: () -> Void) {
     FTRuntime.requireCore(command: "group").runGroup(title, body)
+}
+
+/// ブロックを実行し、1ステップ(check)として message を記録する。ブロック内で1つ以上の
+/// アサーション(assert 系コマンド・thisIs 系)が実行され全て成功すれば passed。
+/// ブロック内のコマンドが失敗した場合は既定どおりシナリオを中断する(handleFailure は
+/// 失敗した内側のコマンドが既に呼んでいるので、ここでは呼ばない=二重に証跡を撮らない)。
+/// アサーションが1つも無ければ **inconclusive**(2026-08-03 ユーザー決定。Shirates の MANUAL
+/// 相当は持たないが、失敗にもしない。理由つきステップ + 弱い修正提案で気付かせる)
+public func verify(_ message: String, file: StaticString = #filePath, line: UInt = #line,
+                   _ block: () -> Void) {
+    let core = FTRuntime.requireCore(command: "verify")
+    let description = "verify \"\(message)\""
+    if core.scenarioAborted {
+        core.recordStep(description: description, status: .skipped(core.skipReason),
+                        file: "\(file)", line: Int(line))
+        return
+    }
+    let outcome = core.runVerify(block)
+    if outcome.failed {
+        core.recordStep(description: description, status: .failed(message),
+                        file: "\(file)", line: Int(line))
+        return
+    }
+    if outcome.assertionCount == 0 {
+        core.suggestVerifyWithoutAssertions(message: message)
+        core.recordStep(description: description,
+                        status: .inconclusive("verify block contains no assertions "
+                                              + "(add exist / textIs / thisIs etc.)"),
+                        file: "\(file)", line: Int(line))
+        return
+    }
+    core.recordStep(description: description, status: .passed, file: "\(file)", line: Int(line))
 }
 
 /// @TestClass マクロが setUp() の呼び出しを包むために生成する(利用者が直接書くものではない)。

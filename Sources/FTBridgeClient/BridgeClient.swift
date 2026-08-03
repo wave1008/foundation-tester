@@ -175,6 +175,40 @@ public final class BridgeClient: AppDriver {
         }
     }
 
+    /// uninstall は install と対で HTTP エンドポイントを持たず simctl / devicectl の役割。
+    /// 対象特定は install と同じ規則(実機は UDID 直・シミュレータは /status のデバイス名から解決)
+    public func uninstall(bundleID: String) async throws {
+        if let udid = physicalUDID {
+            let result = try Shell.run(
+                ["xcrun", "devicectl", "device", "uninstall", "app",
+                 "--device", udid, bundleID], timeout: 600)
+            guard result.status == 0 else {
+                throw DriverError.badResponse(status: Int(result.status),
+                    body: "devicectl device uninstall app failed: \(result.tail)")
+            }
+            return
+        }
+        let current = try await status()
+        let target = (try? SimulatorCatalog.devices())?
+            .first(where: { $0.booted && $0.name == current.device })?.udid ?? current.device
+        let result = try Shell.run(["xcrun", "simctl", "uninstall", target, bundleID])
+        guard result.status == 0 else {
+            throw DriverError.badResponse(status: Int(result.status),
+                body: "simctl uninstall failed: \(result.tail)")
+        }
+    }
+
+    /// フォアグラウンドのアプリが bundleID と一致するか(POST /appstate。両ブリッジ HTTP 互換)
+    public func isAppForeground(bundleID: String) async throws -> Bool {
+        let res: AppStateResponse = try await post("/appstate", body: AppStateRequest(bundleID: bundleID),
+                                                    timeout: sessionTimeout)
+        return res.foreground
+    }
+
+    /// iOS は任意の前面 bundle ID を取得する手段を持たない(XCUITest は他アプリの状態を見れず、
+    /// in-app は自分自身しか知らない)。appIs の失敗メッセージは actual なしで表示する
+    public func foregroundAppID() async throws -> String? { nil }
+
     /// simctl 等で起動済みのアプリへプロキシ接続だけ行う(FastLaunchDriver 用。activate 比 約-1s)
     public func attach(bundleID: String) async throws {
         let _: OKResponse = try await post("/session",

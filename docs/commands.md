@@ -95,17 +95,36 @@ withScrollDown {
 }
 ```
 
+## フリック
+
+Shirates 準拠のコマンド名(`flick*`)。**画面(または `scrollFrame`)基点の8方向**。`scroll*` は
+コンテンツ基準(要素が見つかるまで探索)なのに対し、flick は**指を1回速く動かすだけ**の生ジェスチャで、
+低レベル実装は `swipe`/`scroll*` と同じ(等速の1ストローク)だが既定の `durationSeconds`/
+`intervalSeconds` が短い(Shirates の `FLICK_DURATION`/`INTERVAL_SECONDS` 準拠)。
+
+| コマンド | 説明 |
+|---|---|
+| `flickCenterToTop/Bottom/Left/Right(scrollFrame:durationSeconds: 0.25 repeat: 1 intervalSeconds: 0.3)` | 画面(または `scrollFrame`)の中央を起点に4方向へ払う |
+| `flickLeftToRight/RightToLeft(scrollFrame:startMarginRatio:durationSeconds: 0.25 repeat: 1 intervalSeconds: 0.3)` | 端から端へ横方向。`startMarginRatio` 省略時は `scrollRight` 等と同じ既定(実測値 0.2) |
+| `flickBottomToTop/TopToBottom(scrollFrame:startMarginRatio:durationSeconds: 0.25 repeat: 1 intervalSeconds: 0.3)` | 端から端へ縦方向 |
+
+- `scrollableElement` 引数は無い(`scrollFrame` のセレクタ式で足りる)
+- Shirates の `flickAndGo*` 一族(画面遷移トリガ)・要素基点の `TestElement.flickTo*`/`flickOut*` は未実装(docs/shirates-parity.md)
+
 ## 存在・状態の検証
 
 | コマンド | 説明 |
 |---|---|
 | `exist(sel, timeout:requireVisible:scroll:maxSwipes:)` | 存在検証。偽陽性検証を有効にした run(実行プロファイル `falsePositiveCheck: true`)では**実際に見えていること**も確認する。戻り値にチェーン可(後述) |
+| `waitForDisplay(sel, waitSeconds: 15)` | 要素が表示されるまで待つ(**スクロールしない**)。戻り値は `FTElement`(`exist` と同様チェーン可)。見つからなければ失敗しシナリオ中断 |
+| `waitForClose(sel, waitSeconds: 15)` | 要素が消えるまで待つ(**スクロールしない**)。`sel` は省略不可(Shirates の直前セレクタ再利用の省略形は無い。ftester に「直前に掴んだ要素」の概念が無いため) |
 | `notExist(sel, timeout:scroll:maxSwipes:)` | **消えるまで待つ**(初回で不在なら即成功)。ダイアログ・ローディングが閉じた確認に。`scroll:` 指定時は**その方向へスクロールしながら探し、見つかった時点で不在検証を失敗させる**(`exist(scroll:)` の裏返し。見つからなければ従来どおり現在のビューポートでの消滅待ちに進む) |
 | `countIs(sel, 個数, timeout:)` | 候補の個数。**ツリー上の件数**で可視性は見ない。`\|\|` は和集合の総数(重複は 1 度だけ)。**ラベルで数えるときは型で絞る**(`.button&&項目` — ボタンと内側のラベルは別要素として両方載るため) |
 | `isEnabled(sel)` / `isDisabled(sel)` | 有効/無効の検証(タイムアウトまで状態変化を待つ) |
 | `isChecked(sel)` / `isNotChecked(sel)` | チェック状態の検証。iOS はアプリの実装により checked が取れないことがある(取れないままだと run 終了時に警告が出る) |
 | `keyboardIsShown(timeout:)` / `keyboardIsNotShown(timeout:)` | ソフトキーボードの表示/非表示の検証。開閉はアニメーションを伴うためタイムアウトまでポーリングする |
 | `screenIs("画面の説明文")` | FM による**見た目の**画面検証(スクリーンショットと説明文の照合)。実行プロファイルで `fm:false` / `screenIs:false` の場合はスキップ(素通り) |
+| `appIs(id, waitSeconds: 15)` | フォアグラウンドのアプリが `id`(iOS=bundle ID / Android=package 名)と一致することの検証。**ニックネーム機構は無く ID を直接書く**(Shirates 準拠だが引数の意味だけ異なる)。`waitSeconds` までポーリング。**Android は失敗時に actual の package 名をメッセージへ含める**(iOS は前面 bundle ID を取得する手段が無いため含まれない) |
 
 > `screenIs` と偽陽性検証(`requireVisible` / `falsePositiveCheck`)は FM に画像を渡すため
 > **macOS 27+ が必要**。macOS 26 では自動でスキップ/素通りになる(現在の可否は `ftester doctor`)。
@@ -212,6 +231,23 @@ let 合計 = try await fetchTotal()        // procedure { } 内で取得した�
 | `thisMatches(Not)` / `thisMatchesDateFormat` | 正規表現 / 日付書式 |
 | `thisIsGreaterThan(OrEqual)` / `thisIsLessThan(OrEqual)` | 数値比較(数値に解釈できなければ失敗) |
 
+## まとめて検証(verify)
+
+```swift
+verify("注文情報が正しい") {
+    textIs("#txt_order_id", 注文番号 ?? "")
+    exist("#txt_order_total")
+}
+```
+
+`verify(message) { }` はブロックを実行し、**1ステップ(check)として `message` を記録する**。ブロック内で
+`exist` / `textIs` などのアサーション系コマンドが**1つ以上**実行され、全て成功すれば passed。
+**アサーションが0個の場合は passed でも failed でもなく inconclusive(結論なし)になる**
+(検証したつもりで何も検証していないことに気付かせる。Shirates の `MANUAL` 相当は持たない方針のまま)。
+inconclusive はシナリオを中断しない。レポート・ログには ❓ とともに理由が出て、弱い修正提案も残る。
+ブロック内のコマンドが失敗した場合は通常どおりシナリオが中断する
+(その失敗が verify 自身の失敗としても記録される)。
+
 ## アプリ・OS 操作
 
 | コマンド | 説明 |
@@ -219,10 +255,14 @@ let 合計 = try await fetchTotal()        // procedure { } 内で取得した�
 | `launchApp(bundleID?)` | 起動(省略時は `@TestClass(app:)` のアプリ)。起動済みなら前面化 |
 | `restartApp(bundleID?)` | 終了してから起動(プロセス内状態のリセットに) |
 | `terminateApp()` | 終了 |
+| `installApp(path?)` | アプリをインストール。**実行はオーケストレータ(親プロセス)が行う**。パス省略時は実行プロファイルの `appPath` を親が解決する(明示引数 > プロファイル)。プロファイルにも `appPath` が無ければ明示エラー。iOS の in-app/hybrid エンジンでは simctl install で常駐ブリッジが道連れに終了するが、直後の `launchApp()` が再注入し直すので、続けて `launchApp()` を呼べば問題ない。オーケストレータ無しの単独実行(`ftester-scenarios run` を直接叩く等)では従来どおり明示引数が必須(省略時は明示エラー) |
+| `removeApp(id?)` | アプリをアンインストール。省略時は起動中アプリの既定 bundleID/package(`launchApp()` 引数なしと同じ解決)。**自分自身の SUT を消すと、以降のシナリオ実行と in-app ブリッジが壊れる**ので、テスト対象アプリに対して呼ぶのは慎重に |
 | `clearAppData(bundleID?)` | アプリは残しデータだけ消す(再インストール不要)。初回起動・オンボーディング・権限ダイアログの再現に使う。**権限(iOS の TCC / Android の実行時権限)も未許可へ戻す**ので、権限ダイアログが再び出る。**iOS はシミュレータ専用**(実機は失敗する)。Android は `pm clear` 相当。**キーチェーン(iOS)/ Keystore(Android)に置いた値は消えない** — オンボーディング判定をそこに置いているアプリは初回起動が再現しない |
 | `home()` | ホーム画面へ |
 | `back()` | 前の画面へ戻る(Android = 戻るキー / iOS = 左端エッジスワイプ)。**Android はキーボードが開いていると1回目がキーボードを閉じるのに消費される**(OS 仕様)。**iOS はスワイプバック対応のナビゲーション(NavigationStack 等)を持つ画面でのみ戻れる**(独自ナビのアプリには効かない。アプリ内の戻るボタンを `tap` する) |
 | `appSwitcher()` | アプリスイッチャーを開く |
+| `tapAppIcon(name?)` | ホーム画面のアプリアイコンをタップ(Shirates の `auto` 相当のみ。`tapAppIconMethod` 等のマクロ機構は無い)。**名前省略時はアプリプロファイルの `appName`**(親が解決して渡す。無ければ明示エラー)。手順: `home()`(iOS はもう1回)→ 現在画面で探索 → 見つからなければ Android はドロワーを開いて `flickCenterToTop` で最大8回スクロール探索、iOS は `flickRightToLeft` で最大5ページ送り(2回連続不変化でも打ち切り)。最後まで見つからなければ失敗(`"App icon not found.(name)"`) |
+| `screenshot(filename:?)` | 現在の画面を撮り、レポートのこのステップ直後に埋め込む。ファイル名省略時はステップ連番(`.png`)。Shirates の `force`/`onChangedOnly`/`withXmlSource` は無い |
 
 ## 待機・分岐・反復
 

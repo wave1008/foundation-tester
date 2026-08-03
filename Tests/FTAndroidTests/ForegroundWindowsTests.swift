@@ -72,6 +72,36 @@ final class ForegroundWindowsTests: XCTestCase {
         XCTAssertEqual(AndroidForegroundWindows.overlaying(package: package, dumpsys: text), [])
     }
 
+    /// Android 15 の実出力形: mCurrentFocus 行は無く、可視のアプリ窓は前面の1つだけ
+    /// (背面アプリ・ランチャーは isVisible=false)。E2E で appIs が必ずタイムアウトした退行の再発防止
+    func testTopmostAppPackageFromZOrderWithoutCurrentFocusLine() {
+        let text = dump([
+            ("ScreenDecorOverlay", true), ("Taskbar", true), ("StatusBar", true),
+            ("InputMethod", false),
+            ("com.ftester.e2e.flutter/com.ftester.e2e.flutter.MainActivity", true),
+            ("com.ftester.e2e/com.ftester.e2e.MainActivity", false),
+            ("com.google.android.apps.nexuslauncher/….NexusLauncherActivity", false),
+        ])
+        XCTAssertEqual(AndroidForegroundWindows.topmostAppPackage(dumpsys: text),
+                       "com.ftester.e2e.flutter")
+    }
+
+    /// mCurrentFocus 行がある(旧形式)ときはそちらを優先する
+    func testTopmostAppPackagePrefersCurrentFocusLineWhenPresent() {
+        let text = dump([
+            ("com.zorder.top/com.zorder.top.MainActivity", true),
+        ]) + "\n  mCurrentFocus=Window{1755f66 u0 com.focused.app/com.focused.app.MainActivity}"
+        XCTAssertEqual(AndroidForegroundWindows.topmostAppPackage(dumpsys: text),
+                       "com.focused.app")
+    }
+
+    /// 可視のアプリ窓が1つも無い(ホーム画面すら取れない・取得失敗)ときは nil で黙る
+    func testTopmostAppPackageReturnsNilWhenNoVisibleAppWindow() {
+        let text = dump([("StatusBar", true), ("InputMethod", true),
+                         ("com.hidden.app/com.hidden.app.MainActivity", false)])
+        XCTAssertNil(AndroidForegroundWindows.topmostAppPackage(dumpsys: text))
+    }
+
     func testParsesWindowNameFromRealLine() {
         XCTAssertEqual(
             AndroidForegroundWindows.windowName("Window #7 Window{b9b01a8 u0 InputMethod}:"),

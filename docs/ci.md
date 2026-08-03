@@ -32,7 +32,11 @@ ftester run --profile ios-xcuitest --quiet --junit reports/junit.xml
 - **exit code**: 0 = 全シナリオ成功 / 1 = 失敗あり(JUnit は**失敗時も書かれる**)
 - **JUnit XML**: `<testsuite>` = シナリオクラス、`<testcase>` = シナリオ。
   失敗には最初の失敗ステップの要約(message)・全失敗ステップとソース位置・
-  Markdown レポートのパス・実行 worker が入る
+  Markdown レポートのパス・実行 worker が入る。
+  **inconclusive**(`verify` のアサーション0個)は JUnit に語彙が無いため、
+  シナリオの**全ステップ**が inconclusive のときだけ `<skipped>` になる —
+  通常のステップと混在する場合は passed の `<testcase>` に埋もれる
+  (気付く経路は実行ログ・Markdown レポートの ❓ と修正提案)
 - **失敗の調査**: `Projects/<name>/reports/` に Markdown レポート(失敗時の要素一覧・
   スクリーンショット・FM トリアージ)が出る。**artifact に上げておく**と JUnit の
   `report:` 行から辿れる

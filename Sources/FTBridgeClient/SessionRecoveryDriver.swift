@@ -50,8 +50,14 @@ public final class SessionRecoveryDriver: AppDriver {
 
     public func status() async throws -> StatusResponse { try await base.status() }
     public func install(packagePath: String) async throws { try await base.install(packagePath: packagePath) }
+    public func uninstall(bundleID: String) async throws { try await base.uninstall(bundleID: bundleID) }
     // install と同じくセッション不要の host 側操作なので回復なしで素通し
     public func clearAppData(bundleID: String) async throws { try await base.clearAppData(bundleID: bundleID) }
+    // /appstate はセッション不要の読み取りなので withRecovery を挟まず素通し(install と同じ扱い)
+    public func isAppForeground(bundleID: String) async throws -> Bool {
+        try await base.isAppForeground(bundleID: bundleID)
+    }
+    public func foregroundAppID() async throws -> String? { try await base.foregroundAppID() }
     public var lastActionNote: String? { base.lastActionNote }
     public var lastLaunchTiming: LaunchTiming? { base.lastLaunchTiming }
 

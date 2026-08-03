@@ -57,13 +57,28 @@ public enum JUnitReportWriter {
             && record.steps.total > 0 && record.steps.skipped == record.steps.total
     }
 
+    /// 全ステップが inconclusive(verify にアサーション0個等)= 実行はしたが何も検証していない。
+    /// JUnit に inconclusive の概念が無いため isSkipped と対称に skipped として出す
+    /// (record.passed は inconclusive だけでは false にならないので isSkipped とは別条件)
+    static func isAllInconclusive(_ record: ScenarioRunRecord) -> Bool {
+        record.passed && record.steps.total > 0
+            && (record.steps.inconclusive ?? 0) == record.steps.total
+    }
+
     private static func testcase(_ record: ScenarioRunRecord, className: String) -> String {
         let method = record.scenarioID.firstIndex(of: ".")
             .map { String(record.scenarioID[record.scenarioID.index(after: $0)...]) }
             ?? record.scenarioID
         let open = "    <testcase classname=\"\(escape(className))\" name=\"\(escape(method))\""
             + " time=\"\(seconds(record.durationMs))\""
-        if record.passed { return open + "/>" }
+        if record.passed {
+            if isAllInconclusive(record) {
+                let reason = record.timeline?.first { $0.status == "inconclusive" }?.description
+                    ?? "inconclusive"
+                return open + ">\n      <skipped message=\"\(escape(reason))\"/>\n    </testcase>"
+            }
+            return open + "/>"
+        }
 
         if isSkipped(record) {
             let reason = record.failedSteps?.first?.description ?? "skipped"
@@ -107,7 +122,10 @@ public enum JUnitReportWriter {
             for record in records {
                 tests += 1
                 totalMs += record.durationMs
-                if record.passed { continue }
+                if record.passed {
+                    if JUnitReportWriter.isAllInconclusive(record) { skipped += 1 }
+                    continue
+                }
                 if JUnitReportWriter.isSkipped(record) { skipped += 1 } else { failures += 1 }
             }
         }

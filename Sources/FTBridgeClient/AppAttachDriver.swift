@@ -175,10 +175,16 @@ public final class AppAttachDriver: AppDriver {
     public func screenshot() async throws -> Data { try await client.screenshot() }
     public func status() async throws -> StatusResponse { try await client.status() }
 
-    // ライフサイクル・install はアプリ本体(primary=in-app)が担う。attach 用では no-op。
+    // ライフサイクル・install/uninstall はアプリ本体(primary=in-app)が担う。attach 用では no-op。
     public func install(packagePath: String) async throws {}
+    public func uninstall(bundleID: String) async throws {}
     public func launch(bundleID: String) async throws {}
     public func terminate() async throws {}
     public func clearAppData(bundleID: String) async throws {}
+    // /appstate はセッション不要の読み取り。attach 用も実体は BridgeClient なのでそのまま使える
+    public func isAppForeground(bundleID: String) async throws -> Bool {
+        try await client.isAppForeground(bundleID: bundleID)
+    }
+    public func foregroundAppID() async throws -> String? { try await client.foregroundAppID() }
     public var lastActionNote: String? { client.lastActionNote }
 }

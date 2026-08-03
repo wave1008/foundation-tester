@@ -137,6 +137,18 @@ struct RunScenario: AsyncParsableCommand {
             help: "Default timeout in seconds for assertions such as exist/textIs (decimals allowed, default 5)")
     var defaultTimeout: Double?
 
+    @Flag(name: .customLong("host-install"),
+          help: "Route installApp() through the orchestrator via a stdin/stdout RPC instead of installing directly (set by ScenarioHost when an install handler is configured)")
+    var hostInstall = false
+
+    @Option(name: .customLong("app-path"),
+            help: "Resolved appPath from the run profile, used by installApp() when the argument is omitted and --host-install is not set")
+    var appPath: String?
+
+    @Option(name: .customLong("app-name"),
+            help: "App display name from the run profile (appName), used by tapAppIcon() when the argument is omitted")
+    var appName: String?
+
     @Flag(help: "Emit NDJSON events (for the host)")
     var json = false
 
@@ -177,6 +189,9 @@ struct RunScenario: AsyncParsableCommand {
         // hybrid: primary=in-app、fallback=XCUITest ブリッジ(springboard 参照)を StepExecutor へ。
         let driver: AppDriver
         var fallbackDriver: AppDriver?
+        // tapAppIcon 用(FTDriveCore.homeScreenDriver の①)。xcuitest 単独でだけ明示注入する
+        // (hybrid は fallbackDriver が同役を担う。Android は主ドライバで足りる)
+        var homeScreenDriver: AppDriver?
         // typeDriver は常に渡す(409 安全網)。preferTypeDriver は probe の uiFramework 検出時のみ
         // (probe 不達なら false のまま=安全網頼み)。
         var typeDriver: AppDriver?
@@ -265,6 +280,9 @@ struct RunScenario: AsyncParsableCommand {
                         ? inner
                         : (udid.map { LaunchPreflightDriver(base: inner, udid: $0) as AppDriver } ?? client)
                     driver = SessionRecoveryDriver(base: preflighted)
+                    // 通常ドライバのセッションは対象アプリに縛られ、home() 後の snapshot が
+                    // 背面アプリ照会でハングする(実機で確認)。springboard 参照専用を渡す
+                    homeScreenDriver = SystemUIDriver(port: port)
                 }
             case "android":
                 driver = try AndroidDriver(serial: serial)
@@ -310,9 +328,12 @@ struct RunScenario: AsyncParsableCommand {
                                fallbackDriver: fallbackDriver,
                                typeDriver: typeDriver, preferTypeDriver: preferTypeDriver,
                                typeDriverGestures: typeDriverGestures,
+                               homeScreenDriver: homeScreenDriver,
                                deviceName: deviceName, deviceIdentifier: deviceIdentifier,
                                physical: physical,
                                emit: emit)
+        core.appPathOverride = appPath
+        core.appDisplayName = appName
 
         // 失敗時に「アプリより手前の別 window」を添える(Android のみ。adb を叩くのでここで注入する)
         if runPlatform == "android", let serial {
@@ -322,18 +343,34 @@ struct RunScenario: AsyncParsableCommand {
             }
         }
 
+        var debugControl: ScenarioDebugControl?
         if debug {
             let control = ScenarioDebugControl(breakpoints: breakpoint,
                                                pauseOnStart: pauseOnStart)
             core.debugControl = control
-            // stdin の制御コマンドは専用スレッドで読む(DSL スレッドは停止中ブロックする)。
-            // EOF(ホスト終了)で読み終わり、プロセス終了とともに消える
+            debugControl = control
+        }
+        var installControl: ScenarioInstallControl?
+        if hostInstall {
+            let control = ScenarioInstallControl()
+            core.installControl = control
+            installControl = control
+        }
+        if debugControl != nil || installControl != nil {
+            // stdin の制御コマンドは専用スレッドで読む(DSL スレッドは停止中・RPC 待ちでブロックする)。
+            // EOF(ホスト終了)で読み終わり、プロセス終了とともに消える。debug と host-install の
+            // 制御コマンドは同じ stdin を共有し、"cmd" の値で振り分ける
+            // (installResult は installControl、それ以外は既存の debugControl.apply)
             let reader = Thread {
                 while let line = readLine(strippingNewline: true) {
-                    control.apply(line: line)
+                    if let installControl, let parsed = ScenarioInstallControl.parse(line: line) {
+                        Task { await installControl.resolve(id: parsed.id, ok: parsed.ok, message: parsed.message) }
+                    } else {
+                        debugControl?.apply(line: line)
+                    }
                 }
             }
-            reader.name = "ftester-debug-control"
+            reader.name = "ftester-control"
             reader.start()
         }
 
@@ -439,6 +476,7 @@ struct NullDriver: AppDriver {
         StatusResponse(ready: true, device: "dry-run", osVersion: "-", sessionBundleID: nil)
     }
     func install(packagePath: String) async throws { throw Unavailable() }
+    func uninstall(bundleID: String) async throws { throw Unavailable() }
     func launch(bundleID: String) async throws { throw Unavailable() }
     func snapshot() async throws -> SnapshotResponse { throw Unavailable() }
     func tap(ref: Int) async throws { throw Unavailable() }
@@ -448,6 +486,8 @@ struct NullDriver: AppDriver {
     func press(ref: Int, duration: Double) async throws { throw Unavailable() }
     func screenshot() async throws -> Data { throw Unavailable() }
     func terminate() async throws { throw Unavailable() }
+    func isAppForeground(bundleID: String) async throws -> Bool { throw Unavailable() }
+    func foregroundAppID() async throws -> String? { throw Unavailable() }
 }
 
 // (人間向けログ整形は FTCore.ScenarioLogFormatter を使用 — MCP 応答と共通)

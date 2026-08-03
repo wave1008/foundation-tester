@@ -45,13 +45,28 @@ public final class SystemUIDriver: AppDriver {
                       path: FTSwipePath?) async throws {
         try await client.swipe(direction, intent: intent, path: path)
     }
+    /// tapAppIcon のページ送り(flickRightToLeft 相当)用。既存 /drag ルートの素通し(新規エンドポイントではない)
+    public func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
+                     pressSeconds: Double, durationSeconds: Double) async throws {
+        try await client.drag(fromX: fromX, fromY: fromY, toX: toX, toY: toY,
+                              pressSeconds: pressSeconds, durationSeconds: durationSeconds)
+    }
+    /// tapAppIcon の冒頭 home() 用。**素通しを書かないと extension の 501 既定実装に落ちる**
+    /// (実機で踏んだ。SystemUIDriverHomeForwardingTests が守る)
+    public func home() async throws { try await client.home() }
     public func screenshot() async throws -> Data { try await client.screenshot() }
     public func status() async throws -> StatusResponse { try await client.status() }
 
-    // ライフサイクル・install はアプリ本体(primary=in-app)が担う。フォールバックでは no-op。
+    // ライフサイクル・install/uninstall はアプリ本体(primary=in-app)が担う。フォールバックでは no-op。
     public func install(packagePath: String) async throws {}
+    public func uninstall(bundleID: String) async throws {}
     public func launch(bundleID: String) async throws {}
     public func terminate() async throws {}
     public func clearAppData(bundleID: String) async throws {}
+    // /appstate はセッション不要の読み取り。フォールバック用も実体は BridgeClient なのでそのまま使える
+    public func isAppForeground(bundleID: String) async throws -> Bool {
+        try await client.isAppForeground(bundleID: bundleID)
+    }
+    public func foregroundAppID() async throws -> String? { try await client.foregroundAppID() }
     public var lastActionNote: String? { client.lastActionNote }
 }

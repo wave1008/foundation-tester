@@ -95,6 +95,7 @@ final class FTInAppBridge {
                 return ok()
             case ("POST", "/terminate"):
                 return .error("/terminate は in-app では未対応(ホスト側でプロセス制御)", status: 501)
+            case ("POST", "/appstate"): return try handleAppState(req.body)
             default:
                 return .error("not found: \(req.method) \(req.path)", status: 404)
             }
@@ -141,6 +142,20 @@ final class FTInAppBridge {
                 unsupportedActions: ["press"],
                 // 起動元の自己申告(InAppLauncher が SIMCTL_CHILD_FT_OWNER_REPO で注入)
                 ownerRepo: ProcessInfo.processInfo.environment["FT_OWNER_REPO"]))
+        }
+    }
+
+    /// フォアグラウンドのアプリが bundleID と一致するか(DSL の appIs)。in-app ブリッジは
+    /// 自プロセスしか見えないため、判定は「要求された bundleID が自分自身で、かつ active か」
+    /// だけで足りる: 自分が active なら他アプリは前面にいられない。別アプリを問われた場合は、
+    /// ブリッジが応答できている(=自分は少なくとも起動している)こと自体からは前面/背面を
+    /// 判定できないので false を返す(前面なのは高々1つ、それが自分でない以上 false で正しい)
+    private func handleAppState(_ body: Data) throws -> InAppHTTPServer.Response {
+        let req = try decode(AppStateRequest.self, body)
+        return mainSync {
+            let isSelf = req.bundleID == Bundle.main.bundleIdentifier
+            let active = UIApplication.shared.applicationState == .active
+            return .json(AppStateResponse(foreground: isSelf && active))
         }
     }
 

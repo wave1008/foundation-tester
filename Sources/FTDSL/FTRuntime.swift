@@ -17,6 +17,24 @@ public struct DSLStepRecord: Sendable {
     public let line: Int
     /// レポートの時間列に使う。欠測条件は recordStep のコメント参照
     public let durationMs: Int?
+    /// screenshot() コマンドが撮った画像。ScenarioReportWriter がこのステップの直後に埋め込む。
+    /// 他コマンドは常に nil(failureScreenshot とは別経路)
+    public let screenshotData: Data?
+    public let screenshotLabel: String?
+
+    public init(index: Int, section: String?, description: String, status: StepResult.Status,
+                file: String, line: Int, durationMs: Int? = nil,
+                screenshotData: Data? = nil, screenshotLabel: String? = nil) {
+        self.index = index
+        self.section = section
+        self.description = description
+        self.status = status
+        self.file = file
+        self.line = line
+        self.durationMs = durationMs
+        self.screenshotData = screenshotData
+        self.screenshotLabel = screenshotLabel
+    }
 }
 
 /// セレクタの修正提案(自己修復・キャッシュ命中・フォールバック通過から導出)
@@ -146,6 +164,20 @@ public final class FTDriveCore {
     /// (XCUITest ブリッジの /home・/appswitcher はセッション不要)。
     /// hybrid 以外(xcuitest / Android / inapp 単独)は primary のまま = 挙動不変
     var systemDriver: AppDriver { executor.typeDriver ?? driver }
+    /// tapAppIcon 用。**systemDriver とは別**: hybrid の typeDriver(AppAttachDriver)は
+    /// snapshot() のたびテスト対象アプリを再前面化する(springboard を見せない)ため使えない。
+    /// 優先順: ①明示注入(xcuitest 単独。**セッションが対象アプリに縛られた通常ドライバは
+    /// home() 後の snapshot が背面アプリ照会でハングする** — 実機で踏んだため springboard 参照を
+    /// 注入する)→ ② fallbackDriver(hybrid の SystemUIDriver)→ ③ systemDriver
+    /// (Android は再前面化しない。inapp 単独は home() が 501 で自然に失敗する)
+    private let homeScreenDriverOverride: AppDriver?
+    var homeScreenDriver: AppDriver {
+        homeScreenDriverOverride ?? executor.fallbackDriver ?? systemDriver
+    }
+    /// true = homeScreenDriver が主ドライバと同じランナーのセッションを付け替える
+    /// (xcuitest 単独。tapAppIcon が終わりにセッションを張り直す条件。
+    /// hybrid は主ドライバが in-app なので張り替えの影響を受けない)
+    var homeScreenSharesRunnerSession: Bool { homeScreenDriverOverride != nil }
     public let platform: String
     /// 実機か。白フレーム=画面凍結の推定はエミュレータ固有の病理(GPU 合成バッファ固着)なので、
     /// 実機では「画面が消灯しているだけ」を凍結と誤断しないためにこれで抑止する
@@ -182,6 +214,11 @@ public final class FTDriveCore {
     var currentSection: String?
     /// group("名前") { } の入れ子。記録時にステップ説明へ `[外/内]` を前置する
     var groupStack: [String] = []
+    /// verify() のブロック内で走ったアサーション数を数えるスタック。ネストした verify を
+    /// support するため「今アクティブな全フレーム」に加算する(noteVerifyAssertion 参照)。
+    /// group と同様 DSL スレッド専有で lock 不要
+    struct VerifyFrame { var assertionCount = 0 }
+    var verifyStack: [VerifyFrame] = []
     private var _scenarioAborted = false
     var scenarioAborted: Bool {
         get { stateLock.lock(); defer { stateLock.unlock() }; return _scenarioAborted }
@@ -246,6 +283,15 @@ public final class FTDriveCore {
 
     /// --debug 時のブレークポイント/一時停止制御。nil なら通常実行(dry-run でも有効)
     public var debugControl: ScenarioDebugControl?
+    /// --host-install 時のみ非 nil。installApp() はこれがあれば親(オーケストレータ)へ RPC する
+    /// (installApp と同じ理由で子はパスを解決できないため、実行自体を親に委ねる。2026-08-03 決定)
+    public var installControl: ScenarioInstallControl?
+    /// --app-path で親が解決して渡した実行プロファイルの appPath。installControl が nil のとき
+    /// (ホスト無しの単独実行)の installApp() 引数省略時のフォールバックに使う
+    public var appPathOverride: String?
+    /// --app-name で親が解決して渡したアプリの表示名(プロファイルの appName)。
+    /// tapAppIcon() 引数省略時の既定(Shirates の appIconName 既定=プロファイル、に相当)
+    public var appDisplayName: String?
     /// DSL の `irregularHandler` が宣言した割り込み(アプリ内メッセージ)を実行器へ渡す
     func addInterruptHandler(detect: FlowLocator, dismiss: FlowLocator) {
         executor.interruptHandlers.append(
@@ -271,6 +317,7 @@ public final class FTDriveCore {
                 typeDriver: AppDriver? = nil,
                 preferTypeDriver: Bool = false,
                 typeDriverGestures: Set<String> = [],
+                homeScreenDriver: AppDriver? = nil,
                 deviceName: String? = nil,
                 deviceIdentifier: String? = nil,
                 physical: Bool = false,
@@ -279,6 +326,7 @@ public final class FTDriveCore {
         self.platform = platform
         self.physical = physical
         self.appBundleID = app
+        self.homeScreenDriverOverride = homeScreenDriver
         self.executor = StepExecutor(driver: driver, fallbackDriver: fallbackDriver,
                                      typeDriver: typeDriver, preferTypeDriver: preferTypeDriver,
                                      typeDriverGestures: typeDriverGestures,
@@ -357,6 +405,37 @@ public final class FTDriveCore {
         groupStack.removeLast()
     }
 
+    struct VerifyOutcome { let assertionCount: Int; let failed: Bool }
+
+    /// verify() の実体。body 実行中に noteVerifyAssertion() で数えたアサーション数と、
+    /// 実行中に新たに scenarioAborted が立ったか(= 既存の failure が verify を失敗させたか)を返す
+    func runVerify(_ body: () -> Void) -> VerifyOutcome {
+        verifyStack.append(VerifyFrame())
+        let abortedBefore = scenarioAborted
+        body()
+        let frame = verifyStack.removeLast()
+        let failed = !abortedBefore && scenarioAborted
+        return VerifyOutcome(assertionCount: frame.assertionCount, failed: failed)
+    }
+
+    /// perform()(assert 系 FlowStep)と ValueAssertions.record()(thisIs 系)の両方から呼ぶ。
+    /// verify の外(verifyStack が空)では no-op
+    func noteVerifyAssertion() {
+        guard !verifyStack.isEmpty else { return }
+        for i in verifyStack.indices { verifyStack[i].assertionCount += 1 }
+    }
+
+    /// verify のブロックにアサーションが無かったときの弱い修正提案(2026-08-03 ユーザー決定:
+    /// ステップ自体は .inconclusive(理由つき)で記録されるため、別途の警告ログは出さない
+    /// (旧 warnVerifyWithoutAssertions。ステップ行が理由を持つようになり役割が変わった)
+    func suggestVerifyWithoutAssertions(message: String) {
+        addSuggestion(FixSuggestion(
+            isStrong: false,
+            message: "verify \"\(message)\" block contains no assertions (it checks nothing). "
+                     + "Add exist / textIs / thisIs etc."),
+            emitEvent: false, file: "", line: 0)
+    }
+
     /// setUp / tearDown の実行。
     /// allowAfterFailure=false(setUp): 中で失敗したら本体と同じくシナリオ中断(handleFailure)。
     /// allowAfterFailure=true(tearDown): 中断中でも片付けが走るよう一度フラグを解除し、
@@ -391,6 +470,9 @@ public final class FTDriveCore {
                  selectorError: String? = nil,
                  file: StaticString, line: UInt) -> PerformResult {
         let filePath = relativePath("\(file)")
+        // verify() のブロック内アサーション数を数える(判定は FlowStep.assert != nil のみ。
+        // skip/dry-run/失敗いずれの結果になっても「アサーションとして書かれた」事実は変わらない)
+        if step.assert != nil { noteVerifyAssertion() }
         debugCheckpoint(description: description, file: filePath, line: Int(line))
         if scenarioAborted {
             let status = StepResult.Status.skipped(skipReason)
@@ -506,7 +588,7 @@ public final class FTDriveCore {
         let succeeded: Bool
         switch status {
         case .passed, .passedViaFallback, .healed: succeeded = true
-        case .failed, .skipped: succeeded = false
+        case .failed, .skipped, .inconclusive: succeeded = false
         }
         for id in ids {
             if succeeded, !isNegative {
@@ -534,7 +616,7 @@ public final class FTDriveCore {
         switch status {
         case .passed, .passedViaFallback, .healed:
             if notCheckedOnlySelectors[key] == nil { notCheckedOnlySelectors[key] = description }
-        case .failed, .skipped:
+        case .failed, .skipped, .inconclusive:
             break
         }
     }
@@ -649,6 +731,56 @@ public final class FTDriveCore {
         return status
     }
 
+    /// screenshot コマンドの実体。performCustom を使わないのは、取得した Data をこのステップの
+    /// 記録へ添付する必要があるため(performCustom の body は Void しか返せない)
+    @discardableResult
+    func performScreenshot(filename: String?, file: StaticString, line: UInt) -> StepResult.Status {
+        let filePath = relativePath("\(file)")
+        let label = Self.screenshotLabel(filename: filename, index: stepCounter + 1)
+        let description = "screenshot \"\(label)\""
+        debugCheckpoint(description: description, file: filePath, line: Int(line))
+        if scenarioAborted {
+            let status = StepResult.Status.skipped(skipReason)
+            recordStep(description: description, status: status, file: filePath, line: Int(line))
+            return status
+        }
+        if dryRun {
+            recordStep(description: description, status: .passed, file: filePath, line: Int(line))
+            return .passed
+        }
+
+        executor.invalidateScreenshotCache()
+        let driver = self.driver
+        let clock = ContinuousClock()
+        let start = clock.now
+        let result = FTSync.runThrowing { try await driver.screenshot() }
+        let elapsedMs = continuousClockMilliseconds(clock.now - start)
+        switch result {
+        case .success(let data):
+            recordStep(description: description, status: .passed, file: filePath, line: Int(line),
+                      durationMs: elapsedMs, screenshotData: data, screenshotLabel: label)
+            return .passed
+        case .failure(let error):
+            let status = StepResult.Status.failed(error.localizedDescription)
+            recordStep(description: description, status: status, file: filePath, line: Int(line),
+                      durationMs: elapsedMs)
+            handleFailure(stepDescription: description, reason: error.localizedDescription)
+            return status
+        case nil:
+            let reason = "the operation timed out (\(Int(FTSync.commandTimeout))s)"
+            let status = StepResult.Status.failed(reason)
+            recordStep(description: description, status: status, file: filePath, line: Int(line),
+                      durationMs: elapsedMs)
+            handleFailure(stepDescription: description, reason: reason)
+            return status
+        }
+    }
+
+    private static func screenshotLabel(filename: String?, index: Int) -> String {
+        let base = filename ?? "\(index)"
+        return base.hasSuffix(".png") ? base : base + ".png"
+    }
+
     /// 停止条件に合致したら paused イベントを流してブロックし、再開コマンドを待つ。
     /// stop コマンドはシナリオ中断(以降のステップは skipped)として扱う
     private func debugCheckpoint(description: String, file: String, line: Int) {
@@ -734,7 +866,8 @@ public final class FTDriveCore {
     /// 再入しないことを確認済み = デッドロックしない)
     func recordStep(description: String, status: StepResult.Status, file: String, line: Int,
                     durationMs: Int? = nil, snapshotMs: Int? = nil,
-                    actionMs: Int? = nil, waitMs: Int? = nil, at: String? = nil) {
+                    actionMs: Int? = nil, waitMs: Int? = nil, at: String? = nil,
+                    screenshotData: Data? = nil, screenshotLabel: String? = nil) {
         stateLock.lock()
         defer { stateLock.unlock() }
         stepCounter += 1
@@ -744,7 +877,8 @@ public final class FTDriveCore {
             : "[\(groupStack.joined(separator: "/"))] \(description)"
         let record = DSLStepRecord(index: stepCounter, section: currentSection,
                                    description: displayed, status: status,
-                                   file: relativePath(file), line: line, durationMs: durationMs)
+                                   file: relativePath(file), line: line, durationMs: durationMs,
+                                   screenshotData: screenshotData, screenshotLabel: screenshotLabel)
         appendToCurrentScene(record)
 
         var event = ScenarioEvent(kind: "step")

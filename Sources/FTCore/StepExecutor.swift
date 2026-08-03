@@ -76,6 +76,9 @@ public struct StepResult: Sendable {
         case healed(FlowLocator)
         case failed(String)
         case skipped(String)
+        /// verify のブロックにアサーションが1つも無かった等、passed でも failed でもなく
+        /// 「結論が出ない」状態(2026-08-03 ユーザー決定)。シナリオは中断しない = 失敗扱いしない
+        case inconclusive(String)
     }
     public let index: Int
     public let description: String
@@ -367,7 +370,7 @@ public final class StepExecutor {
     static func isSuccess(_ status: StepResult.Status) -> Bool {
         switch status {
         case .passed, .passedViaFallback, .healed: return true
-        case .failed, .skipped: return false
+        case .failed, .skipped, .inconclusive: return false
         }
     }
 
@@ -764,6 +767,73 @@ public final class StepExecutor {
             if viaXCUITest { notes.append("fell back to XCUITest") }
             if hintJumps > 0 { notes.append("\(hintJumps) long drag(s) from scroll hints") }
             if sawUnsettled { notes.append("the screen did not settle (poll limit)") }
+            return StepOutcome(status: .passed,
+                               driverFallback: notes.isEmpty ? nil : notes.joined(separator: " / "))
+        }
+
+        // フリック(Shirates flickXxx 8種)。scrollableElement は持たず scrollFrame のセレクタ式
+        // (nil = 画面全体)で表す。**repeat 回とも同じ座標を撃つ**(Shirates は容器を毎回測り直さない。
+        // TestDriveSwipeExtension.kt 参照)。整定待ちは「swipe」アクションと同じ形で末尾に1回だけ
+        // (ランナー側は /swipe を整定対象から外しているため)
+        if action == "flick" {
+            guard let kind = FlickKind(rawValue: step.direction ?? "") else {
+                return StepOutcome(status: .failed("unknown flick kind: \(step.direction ?? "")"))
+            }
+            let times = max(1, step.maxSwipes ?? 1)
+            let durationSeconds = step.duration ?? FlowStep.defaultFlickDurationSeconds
+            let intervalSeconds = step.intervalSeconds ?? FlowStep.defaultFlickIntervalSeconds
+
+            var path: FTSwipePath?
+            if Self.coordinateScrollEnabled {
+                let snapshot = try await snapshotForScrollFrame(phase: &phase)
+                let container: FTRect?
+                if let locator = step.scrollFrame {
+                    container = Self.match(locator, in: snapshot)?.frame
+                } else {
+                    container = snapshot.screen
+                }
+                if let container {
+                    path = ScrollGeometry.flickPath(
+                        container: container, viewport: snapshot.screen, kind: kind,
+                        startMarginRatio: step.startMarginRatio
+                            ?? FTScrollDefaults.startMarginRatio(intent: .gesture, vertical: kind.isVertical))
+                }
+            }
+
+            var viaXCUITest = false
+            if let path {
+                for _ in 0..<times {
+                    if times > 1 {
+                        let waitStart = clock.now
+                        try await Task.sleep(for: .milliseconds(Int(intervalSeconds * 1000)))
+                        phase.waitMs += Self.ms(clock.now - waitStart)
+                    }
+                    let start = clock.now
+                    do {
+                        try await driver.drag(fromX: path.fromX, fromY: path.fromY,
+                                              toX: path.toX, toY: path.toY,
+                                              pressSeconds: 0.05, durationSeconds: durationSeconds)
+                        phase.actionMs += Self.ms(clock.now - start)
+                    } catch {
+                        // in-app エンジンは drag を一切実装しない(501)ため、hybrid では
+                        // typeDriver(XCUITest)へ回す(swipePointToPoint と同じ理由)
+                        guard DriverError.isEngineIncapable(error), let td = typeDriver else { throw error }
+                        try await td.drag(fromX: path.fromX, fromY: path.fromY,
+                                          toX: path.toX, toY: path.toY,
+                                          pressSeconds: 0.05, durationSeconds: durationSeconds)
+                        phase.actionMs += Self.ms(clock.now - start)
+                        viaXCUITest = true
+                    }
+                }
+            } else {
+                // 殺しスイッチ有効時、または領域を削りすぎて座標を作れないとき: 向き基準の汎用スワイプへ
+                // 落ちる(scroll アクションが scrollPath nil のとき辿る経路と同じ考え方)
+                if try await swipeWithFallback(kind.fingerDirection, phase: &phase) { viaXCUITest = true }
+            }
+            let settled = try await settledSignature(phase: &phase).settled
+            var notes: [String] = []
+            if viaXCUITest { notes.append("fell back to XCUITest") }
+            if !settled { notes.append("the screen did not settle (poll limit)") }
             return StepOutcome(status: .passed,
                                driverFallback: notes.isEmpty ? nil : notes.joined(separator: " / "))
         }
@@ -1503,8 +1573,9 @@ public final class StepExecutor {
         }
     }
 
-    /// `scrollFrame` を解決するためだけの snapshot。**指定があるときしか呼ばない**
-    /// (従来経路に snapshot を1枚増やさないため)
+    /// `scrollFrame` を解決するためだけの snapshot。**scroll/scrollToEdge は指定があるときしか
+    /// 呼ばない**(従来経路に snapshot を1枚増やさないため)。**flick は scrollFrame の有無に
+    /// 関わらず毎回呼ぶ**(未指定でも画面全体を対象に座標を作る必要があるため)
     private func snapshotForScrollFrame(phase: inout PhaseAccumulator) async throws -> SnapshotResponse {
         let clock = ContinuousClock()
         let start = clock.now
