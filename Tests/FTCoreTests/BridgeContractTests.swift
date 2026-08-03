@@ -31,13 +31,13 @@ final class BridgeContractTests: XCTestCase {
     // /home を持たず、/locale は Android だけ)。
     private static let inAppRoutes: Set<String> = [
         "GET /screenshot", "GET /snapshot", "GET /status",
-        "POST /clear", "POST /hidekeyboard", "POST /press", "POST /pressEnter",
+        "POST /appstate", "POST /clear", "POST /hidekeyboard", "POST /press", "POST /pressEnter",
         "POST /session", "POST /swipe", "POST /tap", "POST /terminate", "POST /type",
     ]
 
     private static let xcuiTestRoutes: Set<String> = [
         "GET /screenshot", "GET /snapshot", "GET /status",
-        "POST /appswitcher", "POST /clear", "POST /drag", "POST /hidekeyboard",
+        "POST /appstate", "POST /appswitcher", "POST /clear", "POST /drag", "POST /hidekeyboard",
         "POST /home", "POST /press", "POST /pressEnter", "POST /session",
         "POST /swipe", "POST /tap", "POST /terminate", "POST /type",
     ]
@@ -90,7 +90,7 @@ final class BridgeContractTests: XCTestCase {
     private static let expectedFingerprints: [BridgeSourceSet: [String: String]] = [
         .inApp: [
             "InAppBridge/Sources/Bridging.h": "08799e6d190f958eed7c6bb4406f1cbbfea1bed1d252ce4572636273c65a5aad",
-            "InAppBridge/Sources/InAppBridge.swift": "050321f6297f3c0632c972010960cac2e8c12bb5eba22efc3ce85adc581aba57",
+            "InAppBridge/Sources/InAppBridge.swift": "6190e135776423392b88578d136ddef690d8c3494e0d47a6724c3510510a225c",
             "InAppBridge/Sources/InAppHTTPServer.swift": "1d987f76a251ab475b632f24df272b000bb433054c7607e38f0447b6181e58bb",
             "InAppBridge/Sources/InAppInput.h": "acc35263e4306db4f7f5d8e544c406c292b5d1b873c953c5aa741a2de63f66eb",
             "InAppBridge/Sources/InAppInput.m": "2eff34d11bacb028604dc96d364f2fc11538039d471d1320f3a35ca4bdf14cce",
@@ -99,18 +99,18 @@ final class BridgeContractTests: XCTestCase {
             "InAppBridge/Sources/InAppWebViewDOM.swift": "b4053272dfffb11508b64bd315695123d1199768ed7ceed20f2b8272a5b10551",
             "InAppBridge/Sources/boot.m": "b23fc93fbc99ce2579c9fd8ae75a6f9bbfd0ec6122bec60eb6cd00775dd635ef",
             "InAppBridge/build.sh": "afc02d752c97a009dd48aa6cf18934af0c6f8be662d75af37cdc8c4affbc454d",
-            "Sources/FTCore/BridgeDTO.swift": "45a96565ac48a280fccd420491213bd06cee82b6e43d4db07c0e5a548c79820e",
+            "Sources/FTCore/BridgeDTO.swift": "f7cef93002831cdb6906379acf68c7900ea91bf997945b801f78cc2097eaf0bf",
             "Sources/FTCore/WebViewDOMSnapshot.swift": "3b0b20dfb2b8451f9ce19564c7d8701674f9361bbcb5b1c5afbb3570324011af",
         ],
         .xcuitest: [
             "Runner/FTesterRunnerUITests/BridgeHTTPServer.swift": "2659f97c1116efd8beaa6d7c0d74a205f307436f1e8d0869a73c81bc96033e5c",
-            "Runner/FTesterRunnerUITests/BridgeRouter.swift": "46c6379f3247b85631c41b81b97d3c5c8f0824cf0b98510c030ee0e9c4511fd9",
+            "Runner/FTesterRunnerUITests/BridgeRouter.swift": "e3662e3dbe187e95b0c43e32717ddf4a041876ea09324b686d97781005cef2b9",
             "Runner/FTesterRunnerUITests/BridgingHeader.h": "f7ff424d9283644d0e7a0c6e202911ecbf2d9c12d469eea330d91471c4788272",
             "Runner/FTesterRunnerUITests/FTesterBridgeTests.swift": "5a3521fc332ff690cfa4a105ab8486c612814b05b637451401244e632e7c6e9e",
             "Runner/FTesterRunnerUITests/FastInput.swift": "18b54340c404eac53736675763fad8e291b08e2f1f1ba96d696172698aa83bc1",
             "Runner/FTesterRunnerUITests/ObjCExceptionCatcher.h": "5a98cdbeefb031137a985b2f4430a5e12fec447a492599f8f4da1bd2c7101edc",
             "Runner/FTesterRunnerUITests/ObjCExceptionCatcher.m": "8b41a8a81bc8199bca13a364717614684f8003999c7675d9a63242c8e74c26be",
-            "Sources/FTCore/BridgeDTO.swift": "45a96565ac48a280fccd420491213bd06cee82b6e43d4db07c0e5a548c79820e",
+            "Sources/FTCore/BridgeDTO.swift": "f7cef93002831cdb6906379acf68c7900ea91bf997945b801f78cc2097eaf0bf",
             "Sources/FTCore/TypeReadback.swift": "8238adeb5146ee2441478a94bf6e2aabb85e6c88c38538ed8df74b2e025bf8ca",
         ],
         .android: [

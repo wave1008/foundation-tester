@@ -429,12 +429,17 @@ struct ApiRunCommand: AsyncParsableCommand {
             }
 
             let scenarioStart = Date()
+            // この経路(--dry-run/--debug)は installHandler(RPC)を配線しない — dry-run はデバイスに
+            // 触らず installApp() 自体を通過しない、debug は人間介入前提の単発実行のため。appPath だけ
+            // フォールバックとして渡し、installApp() 引数省略時に子が直接インストールできるようにする
             let passed = await ScenarioHost.run(
                 project: project, scenarioID: info.id, connection: connection,
                 fm: fm, reportDir: reportDirPath,
                 defaultTimeout: resolved.defaultTimeout,
                 scenarioTimeout: resolved.scenarioTimeout, dryRun: dryRun,
-                debug: debugOptions, recording: recording) { event in
+                debug: debugOptions, recording: recording,
+                appPath: dryRun ? nil : resolved.apps[scenarioPlatform]?.appPath,
+                appName: resolved.appName) { event in
                 var event = event
                 if event.scenario == nil { event.scenario = info.id }
                 writeLine(event.encodedLine())
@@ -608,7 +613,9 @@ struct ApiRunCommand: AsyncParsableCommand {
                     workerID.merge(ws)
                     return ws
                 })
-            })
+            },
+            installHandler: InstallHandlerFactory.make(apps: resolved.apps),
+            appName: resolved.appName)
         async let summary = orchestrator.run(items: items, defaultPlatform: defaultPlatform)
 
         var timing = ScenarioTimingTracker()
@@ -753,6 +760,9 @@ struct ApiRunCommand: AsyncParsableCommand {
                 step.detail = reason
             case .skipped(let reason):
                 step.status = "skipped"
+                step.detail = reason
+            case .inconclusive(let reason):
+                step.status = "inconclusive"
                 step.detail = reason
             }
             // 時間内訳(RunOrchestrator.swift の ScenarioRunner.stepResult(from:) から復元済み)

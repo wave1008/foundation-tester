@@ -43,6 +43,22 @@ final class FakeDriver: AppDriver, @unchecked Sendable {
         try record("install(\(packagePath))", "install")
     }
 
+    func uninstall(bundleID: String) async throws {
+        try record("uninstall(\(bundleID))", "uninstall")
+    }
+
+    var foregroundBundleID: String?
+
+    func isAppForeground(bundleID: String) async throws -> Bool {
+        try record("isAppForeground(\(bundleID))", "isAppForeground")
+        return foregroundBundleID == bundleID
+    }
+
+    func foregroundAppID() async throws -> String? {
+        try record("foregroundAppID", "foregroundAppID")
+        return foregroundBundleID
+    }
+
     func launch(bundleID: String) async throws {
         try record("launch(\(bundleID))", "launch")
     }

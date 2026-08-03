@@ -106,7 +106,13 @@ export interface WorkersReadyEvent {
 }
 
 /** ScenarioEvent.swift の StepResult.Status.eventStatus が返す status 文字列。 */
-export type StepStatus = "passed" | "passedViaFallback" | "healed" | "failed" | "skipped";
+export type StepStatus =
+  | "passed"
+  | "passedViaFallback"
+  | "healed"
+  | "failed"
+  | "skipped"
+  | "inconclusive";
 
 /** ScenarioEvent.swift の section フィールド(CAE ブロック外は undefined)。 */
 export type RunStepSection = "condition" | "action" | "expectation";

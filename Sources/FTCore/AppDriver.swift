@@ -22,6 +22,10 @@ public protocol AppDriver {
     func status() async throws -> StatusResponse
     /// パッケージファイル(iOS: .app バンドル / Android: .apk)からアプリをインストールする
     func install(packagePath: String) async throws
+    /// アプリをアンインストールする(DSL の removeApp)。**プロトコル要件として宣言すること**
+    /// (install(packagePath:) と同じ理由。extension だけに置くと存在型越しの呼び出しが
+    /// 静的ディスパッチで既定実装に落ち、ドライバ側の実装が呼ばれないまま黙って無視される)
+    func uninstall(bundleID: String) async throws
     func launch(bundleID: String) async throws
     /// 状態を保持したまま前面へ切り替える(未起動なら起動)。
     func activate(bundleID: String) async throws
@@ -73,6 +77,13 @@ public protocol AppDriver {
     func press(x: Double, y: Double, duration: Double) async throws
     func screenshot() async throws -> Data
     func terminate() async throws
+    /// フォアグラウンドのアプリが bundleID(iOS)/ package(Android)と一致しているか(DSL の appIs)。
+    /// **プロトコル要件として宣言すること**(install(packagePath:) と同じ理由)
+    func isAppForeground(bundleID: String) async throws -> Bool
+    /// 現在フォアグラウンドのアプリの bundleID/package(分かるプラットフォームだけ実値。
+    /// 分からなければ nil。DSL の appIs の失敗メッセージが actual として使う)。
+    /// **プロトコル要件として宣言すること**(install(packagePath:) と同じ理由)
+    func foregroundAppID() async throws -> String?
     /// 直前のアクションで通常と違う経路を通ったときの説明(既定 nil)。失敗ではなく観測用。
     /// 「次のアクション呼び出しで上書き/クリアする」実装が前提(1シナリオ=1ドライバの逐次実行なので、
     /// クリアしないと前回の注記が別ステップに誤って付く)。デコレータ実装は base の値を透過すること

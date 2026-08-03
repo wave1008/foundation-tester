@@ -179,4 +179,94 @@ final class ScrollGeometryTests: XCTestCase {
         let list = el(2, id: "list", y: 200, h: 500)
         XCTAssertNil(StepExecutor.scrollFrameNote(header, in: snapshot([header, list])))
     }
+
+    // MARK: - flick(Shirates flickXxx 8種の幾何)
+
+    /// centerTo系: 中心→各端。startMarginRatio は無関係(渡しても無視される式)
+    func testFlickCenterToEachEdge() {
+        let top = ScrollGeometry.flickPath(container: screen, viewport: screen,
+                                           kind: .centerToTop, startMarginRatio: 0.2)
+        XCTAssertEqual(top?.fromX ?? 0, 201, accuracy: 0.001)
+        XCTAssertEqual(top?.fromY ?? 0, 437, accuracy: 0.001)
+        XCTAssertEqual(top?.toX ?? 0, 201, accuracy: 0.001)
+        XCTAssertEqual(top?.toY ?? 0, 0, accuracy: 0.001)
+
+        let bottom = ScrollGeometry.flickPath(container: screen, viewport: screen,
+                                              kind: .centerToBottom, startMarginRatio: 0.2)
+        XCTAssertEqual(bottom?.toY ?? 0, 874, accuracy: 0.001)
+
+        let left = ScrollGeometry.flickPath(container: screen, viewport: screen,
+                                            kind: .centerToLeft, startMarginRatio: 0.2)
+        XCTAssertEqual(left?.toX ?? 0, 0, accuracy: 0.001)
+        XCTAssertEqual(left?.toY ?? 0, 437, accuracy: 0.001)
+
+        let right = ScrollGeometry.flickPath(container: screen, viewport: screen,
+                                             kind: .centerToRight, startMarginRatio: 0.2)
+        XCTAssertEqual(right?.toX ?? 0, 402, accuracy: 0.001)
+    }
+
+    /// leftToRight: 始点は**右端×startMarginRatio**(Shirates の式をそのまま移植。左オフセットは
+    /// 考慮しない)、終点は右端
+    func testFlickLeftToRightUsesRightEdgeTimesRatio() {
+        let path = ScrollGeometry.flickPath(container: screen, viewport: screen,
+                                            kind: .leftToRight, startMarginRatio: 0.2)
+        XCTAssertEqual(path?.fromX ?? 0, 402 * 0.2, accuracy: 0.001)
+        XCTAssertEqual(path?.toX ?? 0, 402, accuracy: 0.001)
+        XCTAssertEqual(path?.fromY ?? 0, 437, accuracy: 0.001)
+    }
+
+    func testFlickRightToLeftUsesOneMinusRatio() {
+        let path = ScrollGeometry.flickPath(container: screen, viewport: screen,
+                                            kind: .rightToLeft, startMarginRatio: 0.2)
+        XCTAssertEqual(path?.fromX ?? 0, 402 * 0.8, accuracy: 0.001)
+        XCTAssertEqual(path?.toX ?? 0, 0, accuracy: 0.001)
+    }
+
+    func testFlickBottomToTopAndTopToBottom() {
+        let bottomToTop = ScrollGeometry.flickPath(container: screen, viewport: screen,
+                                                    kind: .bottomToTop, startMarginRatio: 0.2)
+        XCTAssertEqual(bottomToTop?.fromY ?? 0, 874 * 0.8, accuracy: 0.001)
+        XCTAssertEqual(bottomToTop?.toY ?? 0, 0, accuracy: 0.001)
+
+        let topToBottom = ScrollGeometry.flickPath(container: screen, viewport: screen,
+                                                    kind: .topToBottom, startMarginRatio: 0.2)
+        XCTAssertEqual(topToBottom?.fromY ?? 0, 874 * 0.2, accuracy: 0.001)
+        XCTAssertEqual(topToBottom?.toY ?? 0, 874, accuracy: 0.001)
+    }
+
+    /// **safeMode 相当のクランプ**: 容器が左オフセットを持つと生の式(右端×ratio)は容器の外を指しうる。
+    /// クランプ後は `container ∩ viewport` の内側に収まること
+    func testFlickLeftToRightClampsRawFormulaIntoContainerIntersection() {
+        // 画面右半分(x=200..402)を対象。生の式は fromX = 402*0.2 = 80.4(容器の外)になるが、
+        // クランプ後は容器の左端(200)に寄る
+        let rightHalf = FTRect(x: 200, y: 0, width: 202, height: 874)
+        let path = ScrollGeometry.flickPath(container: rightHalf, viewport: screen,
+                                            kind: .leftToRight, startMarginRatio: 0.2)
+        XCTAssertEqual(path?.fromX ?? -1, 200, accuracy: 0.001)
+        XCTAssertEqual(path?.toX ?? -1, 402, accuracy: 0.001)
+    }
+
+    /// 交差なし(容器が画面外)は nil
+    func testFlickReturnsNilWhenContainerDoesNotIntersectViewport() {
+        let offscreen = FTRect(x: 0, y: 900, width: 402, height: 100)
+        XCTAssertNil(ScrollGeometry.flickPath(container: offscreen, viewport: screen,
+                                              kind: .centerToTop, startMarginRatio: 0.2))
+    }
+
+    /// 開始比率が 1 近くに寄ると生の移動距離が縮むが、既定(0.2)は十分な距離を残す
+    func testFlickKindAxisAndFingerDirectionMapping() {
+        XCTAssertTrue(FlickKind.centerToTop.isVertical)
+        XCTAssertTrue(FlickKind.bottomToTop.isVertical)
+        XCTAssertFalse(FlickKind.leftToRight.isVertical)
+        XCTAssertFalse(FlickKind.centerToRight.isVertical)
+
+        XCTAssertEqual(FlickKind.centerToTop.fingerDirection, .up)
+        XCTAssertEqual(FlickKind.bottomToTop.fingerDirection, .up)
+        XCTAssertEqual(FlickKind.centerToBottom.fingerDirection, .down)
+        XCTAssertEqual(FlickKind.topToBottom.fingerDirection, .down)
+        XCTAssertEqual(FlickKind.centerToLeft.fingerDirection, .left)
+        XCTAssertEqual(FlickKind.rightToLeft.fingerDirection, .left)
+        XCTAssertEqual(FlickKind.centerToRight.fingerDirection, .right)
+        XCTAssertEqual(FlickKind.leftToRight.fingerDirection, .right)
+    }
 }

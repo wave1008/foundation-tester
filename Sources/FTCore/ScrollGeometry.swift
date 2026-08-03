@@ -72,6 +72,79 @@ public enum ScrollGeometry {
         guard ratio.isFinite else { return 0 }
         return min(max(ratio, 0), maxMarginRatio)
     }
+
+    /// フリック8種の始点・終点(shirates-core TestDriveSwipeExtension.kt の flickXxx 系を移植)。
+    /// **swipe の1本道の式(向き基準)と違い、種別ごとに個別の固定幾何を持つ**(Shirates 準拠)。
+    /// 計算は生の `container` 座標で行い(Shirates の `bounds` と同じ。leftToRight/rightToLeft は
+    /// **右端を基準に startMarginRatio を掛ける式**で、容器の左オフセットは考慮しない —— Shirates の
+    /// 実際の式をそのまま移植している)、そのあと Shirates の safeMode 相当として
+    /// `container ∩ viewport` へクランプする(画面外へは注入しない)。戻り値 nil は
+    /// ScrollGeometry.path と同じ2条件(交差なし / クランプ後の距離が minUsableDistance 未満)
+    public static func flickPath(container: FTRect, viewport: FTRect,
+                                 kind: FlickKind, startMarginRatio: Double) -> FTSwipePath? {
+        guard let area = intersection(container, viewport) else { return nil }
+        let ratio = startMarginRatio.isFinite ? min(max(startMarginRatio, 0), 0.99) : 0
+        let right = container.x + container.width
+        let bottom = container.y + container.height
+
+        let raw: FTSwipePath
+        switch kind {
+        case .centerToTop:
+            raw = FTSwipePath(fromX: container.centerX, fromY: container.centerY,
+                              toX: container.centerX, toY: container.y)
+        case .centerToBottom:
+            raw = FTSwipePath(fromX: container.centerX, fromY: container.centerY,
+                              toX: container.centerX, toY: bottom)
+        case .centerToLeft:
+            raw = FTSwipePath(fromX: container.centerX, fromY: container.centerY,
+                              toX: container.x, toY: container.centerY)
+        case .centerToRight:
+            raw = FTSwipePath(fromX: container.centerX, fromY: container.centerY,
+                              toX: right, toY: container.centerY)
+        case .leftToRight:
+            raw = FTSwipePath(fromX: right * ratio, fromY: container.centerY,
+                              toX: right, toY: container.centerY)
+        case .rightToLeft:
+            raw = FTSwipePath(fromX: right * (1 - ratio), fromY: container.centerY,
+                              toX: container.x, toY: container.centerY)
+        case .bottomToTop:
+            raw = FTSwipePath(fromX: container.centerX, fromY: bottom * (1 - ratio),
+                              toX: container.centerX, toY: container.y)
+        case .topToBottom:
+            raw = FTSwipePath(fromX: container.centerX, fromY: bottom * ratio,
+                              toX: container.centerX, toY: bottom)
+        }
+
+        func clampX(_ x: Double) -> Double { min(max(x, area.x), area.x + area.width) }
+        func clampY(_ y: Double) -> Double { min(max(y, area.y), area.y + area.height) }
+        let path = FTSwipePath(fromX: clampX(raw.fromX), fromY: clampY(raw.fromY),
+                               toX: clampX(raw.toX), toY: clampY(raw.toY))
+        return path.distance >= minUsableDistance ? path : nil
+    }
+}
+
+/// flickXxx の画面基点8種(Shirates 準拠のコマンド名がそのまま raw value)。
+public enum FlickKind: String, Codable, Sendable, CaseIterable {
+    case centerToTop, centerToBottom, centerToLeft, centerToRight
+    case leftToRight, rightToLeft, bottomToTop, topToBottom
+
+    /// startMarginRatio の既定値選びに使う軸(centerTo系は無関係だが一貫させておく)
+    public var isVertical: Bool {
+        switch self {
+        case .centerToTop, .centerToBottom, .bottomToTop, .topToBottom: return true
+        case .centerToLeft, .centerToRight, .leftToRight, .rightToLeft: return false
+        }
+    }
+
+    /// 座標化できないとき(殺しスイッチ / 領域を削りすぎた)に落ちる汎用の向き基準スワイプ
+    public var fingerDirection: FTSwipeDirection {
+        switch self {
+        case .centerToTop, .bottomToTop: return .up
+        case .centerToBottom, .topToBottom: return .down
+        case .centerToLeft, .rightToLeft: return .left
+        case .centerToRight, .leftToRight: return .right
+        }
+    }
 }
 
 /// スクロールの既定マージン。**用途で危険の中身が違う**ので用途ごとに持つ:

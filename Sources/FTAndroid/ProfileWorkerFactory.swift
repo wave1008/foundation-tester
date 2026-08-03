@@ -422,11 +422,7 @@ public enum ProfileWorkerFactory {
                         return (index, worker)
                     }
                     do {
-                        try await worker.driver.install(packagePath: appPath)
-                        if worker.platform == "ios", let udid = worker.connection.udid {
-                            InstalledAppCheck.recordInstalled(udid: udid, bundleID: app.bundleID,
-                                                             appPath: appPath)
-                        }
+                        try await installOne(worker: worker, bundleID: app.bundleID, appPath: appPath)
                         safeLog("✅ \(worker.label): install complete")
                         return (index, worker)
                     } catch {
@@ -450,5 +446,16 @@ public enum ProfileWorkerFactory {
             throw InstallError(message: "every worker failed to install the app")
         }
         return result
+    }
+
+    /// 1 ワーカーへの実インストール。installIfNeeded の TaskGroup 本体と installApp() の RPC ハンドラ
+    /// (InstallHandlerFactory)が共用する唯一の実行口(ロジックを複製しない)。差分スキップ
+    /// (installedIsCurrent)は呼ばない — 呼び出し側の判断に委ねる(installApp() は明示要求なので
+    /// 常に実行、installIfNeeded は自動インストールなのでスキップ判定を挟む)
+    public static func installOne(worker: RunWorker, bundleID: String, appPath: String) async throws {
+        try await worker.driver.install(packagePath: appPath)
+        if worker.platform == "ios", let udid = worker.connection.udid {
+            InstalledAppCheck.recordInstalled(udid: udid, bundleID: bundleID, appPath: appPath)
+        }
     }
 }

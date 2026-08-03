@@ -84,7 +84,12 @@ public enum BridgeAPI {
     /// `setContentOffset(animated:)` は CALayer のアニメを伴わず旧実装をすり抜けるため、
     /// 「先頭へ」等の直後の snapshot が動く前のツリーを返し、**成功と記録されたまま
     /// 別の要素が掴まれていた**。旧 dylib が再利用されるとその誤動作が残る
-    public static let bridgeProtocolVersion = 43
+    /// 44: POST /appstate(DSL の appIs)を追加(2026-08-03)。旧ブリッジは
+    /// 404 "not found:" を返し続けるため入れ替える
+    /// 45: XCUITest ランナーの GET /snapshot が XCUIElementTypeIcon(springboard のホーム画面
+    /// アイコン)を含めるようになった(2026-08-03、tapAppIcon 用)。旧ランナーは identifier の
+    /// 無いアイコンを黙って除外するため、tapAppIcon が「見つからない」で失敗し続ける
+    public static let bridgeProtocolVersion = 45
 
     /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
     /// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java の
@@ -516,6 +521,19 @@ public struct OKResponse: Codable {
         self.ok = ok
         self.note = note
     }
+}
+
+/// POST /appstate(DSL の appIs)。読み取り専用でセッション不要
+/// (両ブリッジとも requireApp() を経由しない。同期相手: Runner/BridgeRouter.swift handleAppState /
+/// InAppBridge/Sources/InAppBridge.swift handleAppState)。
+public struct AppStateRequest: Codable {
+    public var bundleID: String
+    public init(bundleID: String) { self.bundleID = bundleID }
+}
+
+public struct AppStateResponse: Codable {
+    public var foreground: Bool
+    public init(foreground: Bool) { self.foreground = foreground }
 }
 
 public struct ErrorResponse: Codable {

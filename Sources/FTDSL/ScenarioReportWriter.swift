@@ -42,6 +42,13 @@ public enum ScenarioReportWriter {
                     if let section { md += "\n### \(section)\n\n" } else { md += "\n" }
                 }
                 md += line(for: step)
+                if let data = step.screenshotData {
+                    let stem = step.screenshotLabel ?? "screenshot"
+                    let stemNoExt = stem.hasSuffix(".png") ? String(stem.dropLast(4)) : stem
+                    let imageName = "\(baseName)-scene\(scene.number)-step\(step.index)-\(slug(stemNoExt)).png"
+                    screenshots.append((imageName, data))
+                    md += "<a href=\"\(imageName)\"><img src=\"\(imageName)\" width=\"320\"/></a>\n\n"
+                }
             }
 
             if let triage = scene.triage {
@@ -119,6 +126,8 @@ public enum ScenarioReportWriter {
             return "- ❌ \(step.index). \(step.description) \(location)\(duration)\n  - \(reason)\n"
         case .skipped(let reason):
             return "- ⚠️ \(step.index). \(step.description) (skipped: \(reason))\(duration)\n"
+        case .inconclusive(let reason):
+            return "- ❓ \(step.index). \(step.description) (inconclusive: \(reason))\(duration)\n"
         }
     }
 

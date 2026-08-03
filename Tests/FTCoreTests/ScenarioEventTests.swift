@@ -119,6 +119,8 @@ final class ScenarioEventTests: XCTestCase {
         XCTAssertEqual(StepResult.Status.failed("理由").eventStatus.detail, "理由")
         XCTAssertEqual(StepResult.Status.skipped("前段が失敗").eventStatus.status, "skipped")
         XCTAssertEqual(StepResult.Status.skipped("前段が失敗").eventStatus.detail, "前段が失敗")
+        XCTAssertEqual(StepResult.Status.inconclusive("no assertions").eventStatus.status, "inconclusive")
+        XCTAssertEqual(StepResult.Status.inconclusive("no assertions").eventStatus.detail, "no assertions")
     }
 
     /// フォールバック・修復は「何で解決したか」を detail に残す(レポートの調査手がかり)

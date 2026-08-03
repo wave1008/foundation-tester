@@ -219,7 +219,9 @@ enum ProfileRunner {
                     print("❌ Failed to build iOS workers: \(error.localizedDescription)")
                     return []
                 }
-            }) : nil)
+            }) : nil,
+            installHandler: InstallHandlerFactory.make(apps: resolved.apps),
+            appName: resolved.appName)
         PhaseLog.mark("orchestrator-setup")
         async let summary = orchestrator.run(items: items, defaultPlatform: defaultPlatform)
 

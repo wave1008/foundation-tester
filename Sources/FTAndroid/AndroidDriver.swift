@@ -123,6 +123,30 @@ public final class AndroidDriver: AppDriver {
         }
     }
 
+    public func uninstall(bundleID: String) async throws {
+        let result = try adb(["uninstall", bundleID])
+        guard result.output.contains("Success") else {
+            throw DriverError.badResponse(status: Int(result.status),
+                body: "failed to uninstall the app: \(result.tail)")
+        }
+    }
+
+    /// フォアグラウンドのアプリが bundleID と一致するか(DSL の appIs)。
+    /// ホスト側で dumpsys を引く(ブリッジはアプリ内 a11y ツリーしか見えず、他プロセスの
+    /// window は見えない。AndroidForegroundWindows と同じ制約)
+    public func isAppForeground(bundleID: String) async throws -> Bool {
+        try await foregroundAppID() == bundleID
+    }
+
+    public func foregroundAppID() async throws -> String? {
+        let result = try adb(["shell", "dumpsys", "window", "windows"])
+        guard result.status == 0 else {
+            throw DriverError.badResponse(status: Int(result.status),
+                body: "dumpsys window windows failed: \(result.tail)")
+        }
+        return AndroidForegroundWindows.topmostAppPackage(dumpsys: result.output)
+    }
+
     public func launch(bundleID: String) async throws {
         // force-stop+monkey+am start フォールバックと整定待ちはブリッジ側 handleLaunch() が持つ
         // (ここでの追加 sleep は不要)

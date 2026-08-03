@@ -206,6 +206,30 @@ final class RunRecordTests: XCTestCase {
         XCTAssertNil(record.timeline)
     }
 
+    /// inconclusive(verify にアサーション0個等)は failed に数えず、専用カウンタへ積む
+    func testInconclusiveStepsAreCountedSeparatelyFromFailures() {
+        var builder = ScenarioRecordBuilder(
+            scenarioID: "Foo.inconclusive", platform: "ios", title: nil, worker: nil)
+
+        builder.consume(stepEvent(index: 0, scene: 1, status: "passed", durationMs: 10))
+        builder.consume(stepEvent(index: 1, scene: 1, status: "inconclusive",
+                                  description: "verify \"何か\"",
+                                  detail: "verify block contains no assertions", durationMs: 5))
+
+        let record = builder.build(
+            passed: true, timedOut: false, startedAt: Date(timeIntervalSince1970: 0),
+            durationMs: 15, packageRoot: nil)
+
+        XCTAssertEqual(record.steps.total, 2)
+        XCTAssertEqual(record.steps.passed, 1)
+        XCTAssertEqual(record.steps.failed, 0, "inconclusive は failed に数えないこと")
+        XCTAssertEqual(record.steps.inconclusive, 1)
+        XCTAssertNil(record.failedSteps, "inconclusive は failedSteps に載らないこと")
+
+        let timeline = try? XCTUnwrap(record.timeline)
+        XCTAssertEqual(timeline?[1].status, "inconclusive")
+    }
+
     func testSceneWithoutAnyDurationEventsIsNil() {
         var builder = ScenarioRecordBuilder(
             scenarioID: "Foo.quux", platform: "ios", title: nil, worker: nil)

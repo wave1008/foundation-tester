@@ -75,6 +75,18 @@ public struct FlowStep: Codable, Sendable {
     /// shirates-core の Const.SWIPE_DURATION_SECONDS 準拠。DSL の既定引数はこの1つに揃える
     public static let defaultSwipeDurationSeconds: Double = 1.5
 
+    /// flickXxx の既定の移動時間(秒)。shirates-core の Const.FLICK_DURATION_SECONDS 準拠。
+    /// swipe と低レベル実装は同じ(等速 pointerMove 1本)で、既定値だけ短い
+    public static let defaultFlickDurationSeconds: Double = 0.25
+    /// flickXxx の repeat 間隔(秒)。shirates-core の Const.FLICK_INTERVAL_SECONDS 準拠。
+    /// repeat > 1 のとき、次のストロークの前に必ずこの秒数だけ待つ(Shirates の
+    /// swipePointToPointCore と同じ: 1回目も含め毎周の前に待つ)
+    public static let defaultFlickIntervalSeconds: Double = 0.3
+
+    /// waitForDisplay/waitForClose の既定待ち秒数(スクロールしない出現/消滅待ち)。
+    /// Shirates の WAIT_SECONDS_ON_ISSCREEN 準拠
+    public static let defaultIsScreenWaitSeconds: Double = 15.0
+
     /// スクロール対象の領域(Shirates の `scrollFrame`)。**nil = 従来の全画面固定**。
     /// 非 nil のときだけホストが座標を計算してブリッジへ渡す(`ScrollGeometry`)。
     /// **解決できなかったときも従来経路へ落とす**(Shirates も見つからなければ次の候補へ落ちる)
@@ -84,6 +96,8 @@ public struct FlowStep: Codable, Sendable {
     /// スクロール領域の外に出て 1 ミリも動かない。docs/performance-tuning.md §3.16)
     public var startMarginRatio: Double?
     public var endMarginRatio: Double?
+    /// flick の repeat 間隔(秒)。**flick 以外は未使用**。nil = `FlowStep.defaultFlickIntervalSeconds`
+    public var intervalSeconds: Double?
 
     public init(action: String? = nil, assert: String? = nil, locator: FlowLocator? = nil,
                 fallbacks: [FlowLocator]? = nil, endLocator: FlowLocator? = nil,
@@ -93,10 +107,12 @@ public struct FlowStep: Codable, Sendable {
                 expectedCount: Int? = nil,
                 note: String? = nil, occlusionGuard: Bool? = nil,
                 scrollFrame: FlowLocator? = nil,
-                startMarginRatio: Double? = nil, endMarginRatio: Double? = nil) {
+                startMarginRatio: Double? = nil, endMarginRatio: Double? = nil,
+                intervalSeconds: Double? = nil) {
         self.scrollFrame = scrollFrame
         self.startMarginRatio = startMarginRatio
         self.endMarginRatio = endMarginRatio
+        self.intervalSeconds = intervalSeconds
         self.action = action
         self.assert = assert
         self.locator = locator

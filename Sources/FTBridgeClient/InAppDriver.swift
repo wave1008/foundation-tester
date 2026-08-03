@@ -43,6 +43,17 @@ public final class InAppDriver: AppDriver {
     public func install(packagePath: String) async throws {
         try await withCrashContext { try await client.install(packagePath: packagePath) }
     }
+    public func uninstall(bundleID: String) async throws {
+        try await withCrashContext { try await client.uninstall(bundleID: bundleID) }
+    }
+    /// in-app ブリッジは自分自身の active/bundleID しか知らないので、判定はブリッジ側の
+    /// /appstate ハンドラに一本化してある(InAppBridge.handleAppState)。ここは HTTP 委譲のみ
+    public func isAppForeground(bundleID: String) async throws -> Bool {
+        try await withCrashContext { try await client.isAppForeground(bundleID: bundleID) }
+    }
+    /// 自分自身の bundleID しか分からず、それを「今フォアグラウンドのアプリ」として名乗る根拠が
+    /// 無い(自分が active でない可能性がある)ため、XCUITest 側と同じく nil(不明)を返す
+    public func foregroundAppID() async throws -> String? { nil }
     /// **対象を先に採ってから自前で終了させる**: in-app ブリッジは対象アプリのプロセス内に
     /// 住むので、終了するとデバイス名を採れなくなる。また BridgeClient 側の終了は in-app では
     /// 501 で効かない(プロセス制御は launcher = simctl が唯一の経路)。

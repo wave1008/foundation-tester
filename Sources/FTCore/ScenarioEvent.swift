@@ -1,8 +1,11 @@
 // ScenarioEvent.swift
 // ftester-scenarios(サブプロセス)とホスト(CLI/MCP)の間で交わす NDJSON イベントの DTO。
 // Foundation 以外に依存しないこと(ホスト側の軽量パースを保つ)。
-// kind: scenarioStarted / sceneStarted / step / sceneFinished / fixSuggestion / scenarioFinished / log / deviceFrozen
+// kind: scenarioStarted / sceneStarted / step / sceneFinished / fixSuggestion / scenarioFinished / log / deviceFrozen / installRequest
 // step は tap/exist 等 1 操作の結果(既存 StepResult と同語彙)。
+// installRequest は installApp() の子→親 RPC 専用(ScenarioInstall.swift)。ScenarioHost.run が
+// 横取りして stdin へ応答を書き、呼び出し側の emit へは渡さない — **ftester api の NDJSON 契約には
+// 現れない**(ProtocolVersion の対象外)。
 
 import Foundation
 
@@ -57,6 +60,10 @@ public struct ScenarioEvent: Codable, Sendable {
     /// 再生位置ジャンプ用(録画の startedAt と突き合わせる)。failed 以外も付与されるが、
     /// 永続化(FailedStepRecord.at)は失敗ステップのみ
     public var at: String?
+    /// kind == installRequest。子→親 RPC の相関 id(ScenarioInstallControl が発番)
+    public var requestID: Int?
+    /// kind == installRequest。installApp() の明示引数(nil = 親が実行プロファイルの appPath を解決する)
+    public var installPath: String?
 
     public init(kind: String) {
         self.kind = kind
@@ -93,6 +100,8 @@ public extension StepResult.Status {
             return ("failed", reason)
         case .skipped(let reason):
             return ("skipped", reason)
+        case .inconclusive(let reason):
+            return ("inconclusive", reason)
         }
     }
 }
