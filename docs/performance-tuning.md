@@ -771,6 +771,24 @@ WebView のヒント跳躍(`offscreenJump` / `dragGesture` / `hintDrag`)と、�
 
 これを飛ばすと、少ない・偏ったサンプルで設計判断をすることになる。
 
+**A/B でバイナリを差し替えるなら `ftester-scenarios-<project>` を差し替える(2026-08-03 に実害)。**
+`StepExecutor`・ドライバ・セレクタ解決は **`ftester` ではなくシナリオランナーのサブプロセス**で
+動く(`RunOrchestrator.swift` 冒頭の契約)。`swift build --product ftester` して
+`.build/debug/ftester` を入れ替え、`--skip-build` で回す —— という手順は
+**両側とも同一のコードを実行する**ので、どんな変更も必ず「差なし」に見える。
+実際にこれで、性能の A/B(誤って「+0.1% = 退行なし」と結論)と、Compose の探索不具合に当てた
+修正案2件(いずれも誤って「no-op」と結論)を取り違えた。**症状は「きれいに差が出ない」**なので
+気付きにくい。手順:
+
+1. 差し替えるのは `.build/debug/ftester-scenarios-<project>`(`swift build --product` も同名で)
+2. **陽性対照を先に通す** —— マーカーを書くだけの版をビルドして差し替え、
+   実行してマーカーが出ることを確認してから本番の A/B に入る
+3. 二つのバイナリが `cmp` で別物であることも確認する(同名プロダクトの取り違え検出)
+
+`nm` でシンボルを確認するときは、**動く側のバイナリ**を見ること
+([[swiftbuild-layout-and-rebuild-verification]] の「mtime でなく symbol」の別形。
+symbol を見ても対象を間違えれば同じ穴に落ちる)。
+
 軽量な計測口が2つある(bench.swift を回すほどでもない切り分け用):
 
 ```bash
