@@ -579,7 +579,14 @@ public final class StepExecutor {
                 snapshot = try await settledSignature(phase: &phase).snapshot
             } else {
                 let start = clock.now
-                snapshot = try await driver.snapshot()
+                // **スワイプ直後は必ずキャッシュを捨てて撮る**(Android のみ実費。iOS は素通し)。
+                // ブリッジの整定(a11y の静穏待ち)を通っても、**Compose の a11y ツリーは
+                // 数十 ms 遅れて公開される** —— 応答時点の素の snapshot が**スワイプ前の位置**を
+                // 返す瞬間があり(2026-08-03 実測: 4回中2回。素=row_01 / refresh=1=row_06)、
+                // 古いツリーで探索を続けると「動かなかった」と誤認する・見つけた要素が直後の
+                // 解決で消える(`cannot resolve the locator` として現れる)。
+                // 検証系の期限切れ直前の1回とは別で、ここは**毎周払う**必要がある
+                snapshot = try await driver.snapshot(bypassingCache: driver.supportsCacheBypass)
                 phase.snapshotMs += Self.ms(clock.now - start)
             }
             try await dismissInterruption(in: &snapshot, phase: &phase)
@@ -960,6 +967,10 @@ public final class StepExecutor {
         // 利用者が書いたのは1コマンドだから(記録に scrollTo 行が増えると、書いていない行が
         // 現れ、しかもソース行を持たないためジャンプも修正提案の照合もできない)。
         // 探索は runScrollSearch が静止まで面倒を見るので、以降は通常の解決へ進んでよい
+        // 探索がスワイプを撃ったか。直後の解決 snapshot も**キャッシュを捨てて**撮るために立てる
+        // (探索が最後に見た木は新しいのに、ここで古い木を掴むと**見つけたはずの要素が消えて**
+        // `cannot resolve the locator` になる。2026-08-03 に CMP/Android で実測した失敗そのもの)
+        var searchSwiped = false
         if step.direction != nil, step.locator != nil {
             let result = try await runScrollSearch(step: step, phase: &phase)
             scrollSearchNote = Self.scrollSearchNote(result, scrollFrameNote: pendingScrollFrameNote)
@@ -970,11 +981,13 @@ public final class StepExecutor {
                 }
                 return StepOutcome(status: .failed(Self.scrollNotFoundMessage(step)))
             }
+            searchSwiped = true
         }
 
         // ロケータ解決の再試行(ファイル冒頭のセマンティクス参照: 最大3回、計700ms)
         var start = clock.now
-        var snapshot = try await driver.snapshot()
+        var snapshot = try await driver.snapshot(
+            bypassingCache: searchSwiped && driver.supportsCacheBypass)
         phase.snapshotMs += Self.ms(clock.now - start)
         // 宣言された割り込み(アプリ内メッセージ等)が出ていれば先に閉じる。**解決を試みる前**に
         // 行う: 覆われているだけで要素自体は解決できてしまい、タップが吸われる形があるため
@@ -992,7 +1005,10 @@ public final class StepExecutor {
                         try await Task.sleep(for: backoff.nextDelay())
                         phase.waitMs += Self.ms(clock.now - start)
                         start = clock.now
-                        snapshot = try await driver.snapshot()
+                        // 探索後の再試行もキャッシュを捨てる。古い木は撮り直しても同じものが
+                        // 返るので、素取得だと**再試行の予算をまるごと空振りに使う**
+                        snapshot = try await driver.snapshot(
+                            bypassingCache: searchSwiped && driver.supportsCacheBypass)
                         phase.snapshotMs += Self.ms(clock.now - start)
                         resolved = Self.resolve(step: step, in: snapshot)
                     }
@@ -1004,7 +1020,8 @@ public final class StepExecutor {
                     try await Task.sleep(for: backoff.nextDelay())
                     phase.waitMs += Self.ms(clock.now - start)
                     start = clock.now
-                    snapshot = try await driver.snapshot()
+                    snapshot = try await driver.snapshot(
+                        bypassingCache: searchSwiped && driver.supportsCacheBypass)
                     phase.snapshotMs += Self.ms(clock.now - start)
                     resolved = Self.resolve(step: step, in: snapshot)
                     if resolved != nil { break }
@@ -1407,7 +1424,10 @@ public final class StepExecutor {
             try await Task.sleep(for: .milliseconds(Self.scrollSettleIntervalMs))
             phase.waitMs += Self.ms(clock.now - waitStart)
             let start = clock.now
-            let snapshot = try await driver.snapshot()
+            // 静止判定も**キャッシュを捨てて**撮る。古いツリーは連続して同じ座標を返すので、
+            // 素取得だと「2回続けて同じ = 止まった」が**遅れて公開された古い位置**で成立する
+            // (runScrollSearch のスワイプ後の snapshot と同じ理由)
+            let snapshot = try await driver.snapshot(bypassingCache: driver.supportsCacheBypass)
             phase.snapshotMs += Self.ms(clock.now - start)
             guard let (element, _) = Self.resolve(step: step, in: snapshot,
                                                   strictForAssert: true) else { return }
@@ -1497,9 +1517,14 @@ public final class StepExecutor {
                 .map { "\($0.type)|\($0.frame.x),\($0.frame.y)" }
                 .joined(separator: ",")
         }
+        // **全周キャッシュを捨てて撮る**(Android のみ実費。iOS は素通し)。素取得だと
+        // 遅れて公開された古いツリーが2回続けて同じ署名を返し、**動いている最中に
+        // 「静止した」が成立する** —— しかも返す `last` が古い木なので、呼び出し側は
+        // そのまま古い座標で解決する(settleAfterScroll と同じ理由。掃討 2026-08-03)。
+        // 落ち着いた画面なら 2 枚で返るので固定費は約 +130ms/呼び出しに収まる
         let clock = ContinuousClock()
         var start = clock.now
-        var last = try await driver.snapshot()
+        var last = try await driver.snapshot(bypassingCache: driver.supportsCacheBypass)
         var previous = signature(last)
         phase.snapshotMs += Self.ms(clock.now - start)
         for _ in 0..<Self.scrollSettleMaxPolls {
@@ -1507,7 +1532,7 @@ public final class StepExecutor {
             try await Task.sleep(for: .milliseconds(Self.scrollSettleIntervalMs))
             phase.waitMs += Self.ms(clock.now - waitStart)
             start = clock.now
-            last = try await driver.snapshot()
+            last = try await driver.snapshot(bypassingCache: driver.supportsCacheBypass)
             let current = signature(last)
             phase.snapshotMs += Self.ms(clock.now - start)
             if current == previous { return (current, last, true) }

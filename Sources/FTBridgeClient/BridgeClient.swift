@@ -241,7 +241,10 @@ public final class BridgeClient: AppDriver {
     }
 
     /// `refresh=1` は Android ブリッジとの契約(AndroidRunner の BridgeRouter.handleSnapshot)。
-    /// iOS ブリッジは未知クエリを無視するのでどちらへ送っても安全だが、呼ぶのは AndroidDriver だけ
+    /// **iOS ブリッジへ送ってはいけない** —— クエリ付きは別ルート扱いで
+    /// `404 not found: GET /snapshot?refresh=1` になる(2026-08-03 に実測。
+    /// 「未知クエリは無視される」と書いてあったが誤りだった)。
+    /// 呼び出し側は必ず `supportsCacheBypass`(このクライアントは既定の false)で閉じること
     public func snapshot(bypassingCache: Bool) async throws -> SnapshotResponse {
         try await snapshot(query: bypassingCache ? "refresh=1" : nil)
     }
