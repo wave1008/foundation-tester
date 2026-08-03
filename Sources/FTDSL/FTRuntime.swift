@@ -235,6 +235,9 @@ public final class FTDriveCore {
     private let knownIDs: Set<String>?
     /// dry-run 中に見つけた「台帳に無い id」→ 最初に見たステップの説明
     private var unknownIDs: [String: String] = [:]
+    /// 同じく、台帳に**在った** id。**台帳がこのシナリオの範囲を実際にカバーしているか**の判定に使う
+    /// (warnAboutUnknownIDs 参照)
+    private var seenKnownIDs: Set<String> = []
     private var _scenarioAborted = false
     var scenarioAborted: Bool {
         get { stateLock.lock(); defer { stateLock.unlock() }; return _scenarioAborted }
@@ -637,9 +640,12 @@ public final class FTDriveCore {
     private func trackUnknownIDs(step: FlowStep, description: String) {
         guard let knownIDs, !knownIDs.isEmpty else { return }
         let locators = ([step.locator] + (step.fallbacks ?? [])).compactMap { $0 }
-        for id in locators.flatMap(SelectorInventory.exactIDs(in:))
-        where !knownIDs.contains(id) && unknownIDs[id] == nil {
-            unknownIDs[id] = description
+        for id in locators.flatMap(SelectorInventory.exactIDs(in:)) {
+            if knownIDs.contains(id) {
+                seenKnownIDs.insert(id)
+            } else if unknownIDs[id] == nil {
+                unknownIDs[id] = description
+            }
         }
     }
 
@@ -716,9 +722,17 @@ public final class FTDriveCore {
     /// **台帳(ft_snapshot が貯めた実在 id)に無い `#id`** を dry-run で警告する。
     /// 綴り誤り・でっち上げは構文検証を通ってしまい、従来は実機で初めて分かった。
     /// **失敗にはしない** —— 台帳は「撮った画面ぶんだけ」なので、新しい画面の id は当然載っていない。
-    /// シナリオ終了時に1回だけ呼ぶ(dry-run 以外では unknownIDs が空なので no-op)
+    /// シナリオ終了時に1回だけ呼ぶ(dry-run 以外では unknownIDs が空なので no-op)。
+    ///
+    /// **薄い台帳では黙る**: 台帳の有無だけで判定すると、1画面しか撮っていない状態で
+    /// 既存シナリオを回したときに**他画面の id を全部「綴り誤り」と言う**(実測 44/47 シナリオが
+    /// 誤警告。2026-08-03 のドッグフーディングで判明)。**そのシナリオが触る id の 2/3 以上が
+    /// 台帳に在るときだけ**警告する = 台帳がこの範囲をカバーしている証拠がある場合に限る。
+    /// 綴り誤りは「多数の正しい id に少数の誤り」という形で出るので、この比で拾える
     public func warnAboutUnknownIDs() {
         guard !unknownIDs.isEmpty else { return }
+        let total = unknownIDs.count + seenKnownIDs.count
+        guard unknownIDs.count * 3 <= total else { return }
         let listed = unknownIDs.keys.sorted().map { "`#\($0)`" }.joined(separator: ", ")
         let message = "\(listed): no snapshot taken for this project contains this id "
             + "(it may be misspelled). If it belongs to a screen that has not been captured yet, "
