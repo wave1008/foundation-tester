@@ -4,7 +4,9 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 そのまま踏襲し、独自の「改良」をしない)。この文書は**どこまで揃っていて、何を持たないか**の一覧。
 
 - 読者は**保守者**(利用者向けの全コマンド説明は docs/commands.md)
-- 承認済みの差分と、その理由は docs/design.md「Shirates(Classic) 準拠の方針と承認済みの差分」
+- **この文書が準拠状況の正典**。コマンドを足す・名前を変える・意図的に持たないと決めたときは
+  ここを更新する。docs/design.md「Shirates(Classic) 準拠の方針と承認済みの差分」は
+  **理由の説明が要る代表例**を抜き出した表で、全リストではない(理由の詳述はあちらを参照)
 - Shirates 側の出典は `~/github/wave1008/shirates-core`(迷ったらソースを読む)
 
 ## 判定の凡例
@@ -73,13 +75,15 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | `swipePointToPoint` | 同名(`durationSeconds:` 既定 1.5 = `Const.SWIPE_DURATION_SECONDS`) | ✅ |
 | `swipeElementToElement` | 同名 | ✅ 終点はヒール対象外 |
 | `swipeCenterToTop/Bottom/Left/Right` ほか swipe 一族 | `swipe(.up/.down/.left/.right)` 1本 | 🟡 集約 |
-| `swipeElementToElementAdjust` / `TestElement.swipeTo*` `swipeOut*` | — | ❌ |
+| `swipeElementToElementAdjust`、および `swipePointToPoint` / `swipeElementToElement` の `withOffset` `offsetY` `intervalSeconds` `repeat` `safeMode` `marginRatio` `adjust` | — | ➖ ブリッジの drag が**単発ジェスチャ**のため(承認済み差分) |
+| `TestElement.swipeTo*` / `swipeOut*`(要素基点) | — | ❌ |
 | `flickCenterToTop/Bottom/Left/Right` `flickLeftToRight/RightToLeft` `flickBottomToTop/TopToBottom`(8種) | 同名 | ✅ 2026-08-03 **画面基点のみ**。`scrollableElement`/`safeMode` 引数は無い(`scrollFrame` で足りる) |
 | `flickAndGo*` 一族 | `scroll*`/`scrollTo` 系で代替 | ➖ 画面遷移トリガの糖衣は生成側の語彙を増やすだけ |
 | 要素基点 `TestElement.flickTo*` / `flickOut*` | — | ❌ |
 | `scrollFrame` | 同名(`scroll*` / `scrollTo` / `withScroll*` の引数。セレクタ式) | ✅ 2026-08-02 |
 | `startMarginRatio` / `endMarginRatio` | 同名 | ✅ **既定値は ftester の実測値**(承認済み差分) |
 | `scrollableElement` | — | ➖ `scrollFrame` のセレクタ式で足りる |
+| `ScrollDirection.None` | `FTScrollDirection` に相当なし | ➖ 「スクロールしない」は `scroll:` 引数の省略(Optional)が担う |
 | `scrollDurationSeconds` / `scrollIntervalSeconds` | — | ➖ フリング前提の実測値を優先(承認済み差分) |
 | — | `scrollTo(sel, direction:maxSwipes:)` | 🟢 |
 
@@ -162,7 +166,7 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | Shirates | ftester | |
 |---|---|---|
 | `launchApp` / `terminateApp` | 同名 | ✅ |
-| `restartApp` | `restartApp` | 🟡 **名前が違う** |
+| `restartApp` | 同名 | ✅ 旧名 `relaunchApp` から改名済み(2026-07-31。下記「名前の相違」) |
 | `installApp` / `removeApp` | `installApp(path?)` / `removeApp(id?)` | ✅ 2026-08-03 DSL 化。`installApp` は実行をオーケストレータ(親プロセス)へ委譲し、パス省略時は実行プロファイルの `appPath` を解決する(Shirates の `appPackageFile` 既定に一致)。オーケストレータ無しの単独実行だけ引数必須(省略時は明示エラー)。`removeApp` は id 省略を実行中アプリの既定 bundleID/package に解決する |
 | `isAppInstalled` / `launchAppByShell` | CLI 側(`ftester install`)。DSL には無い | ❌ |
 | `goPreviousApp` | `appSwitcher()`(スイッチャーを開くだけ) | 🟡 |
@@ -203,6 +207,8 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | Shirates | ftester | |
 |---|---|---|
 | 直接フィルタ(`text` `id` `class` `value` `checked` `enabled` `pos` 等) | 同等(`access` は `id` に統合) | 🟡 |
+| フィルタ内 OR `(a\|b)` | 同名記法 | ✅ 差分2つ: **`(a\|b)&&[2]` は「各節の2番目」**(Shirates は和集合の2番目。節ごとに `[n]` を持つ ftester の構造をそのまま使う)/ **相対セレクタの引数では括弧を自分で書く**(`:right((保存\|OK))`。`:right(...)` の括弧は引数の括弧で `\|` の囲みにならない)。展開数が 32 に達したら validationError |
+| 否定フィルタ `属性!=値` / 短縮形 `!値` | 同名記法 | ✅ ただし**序数は否定できない**(`pos!=n` も短縮形 `![2]` も実行前エラー。候補集合を絞れず黙って無視されるため) |
 | 相対セレクタ(方向ベース `:right` `:above` + `Button/Image/Input/Label/Switch`) | 同等(`:rightSwitch` 等) | ✅ |
 | 相対セレクタ(`:inner*`) | スコープ `>>` | 🟡 |
 | 相対セレクタ(`:next*` / `:pre*`) | — | ❌ |

@@ -27,8 +27,14 @@ final class BridgeContractTests: XCTestCase {
     //   in-app / XCUITest ランナー → Sources/FTCore/BridgeDTO.swift の bridgeProtocolVersion
     //   Android                    → AndroidRunner/build.sh の VERSION_CODE と
     //                                Sources/FTAndroid/AndroidBridge.swift の expectedBridgeVersionCode
-    // 3実装でルートが異なるのは仕様(in-app は同一プロセスしか見えないので /drag・/appswitcher・
-    // /home を持たず、/locale は Android だけ)。
+    // 3実装でルートが異なるのは仕様。共通コアは11本で、差分は:
+    //   in-app     … 同一プロセスしか見えないので /drag・/appswitcher・/home を持たない
+    //   /locale    … Android だけ
+    //   /settle    … Android だけ(ホストが adb で撃った操作〈launch・戻るキー〉の整定を
+    //                 ブリッジに待たせる口。ブリッジ経由の操作は応答内で待つので不要)
+    //   /hidekeyboard … iOS の2実装だけ(中身は 501。Android はホスト側の戻るキーで実現するため
+    //                   ルートを持たない)
+    //   /appstate  … iOS の2実装だけ
     private static let inAppRoutes: Set<String> = [
         "GET /screenshot", "GET /snapshot", "GET /status",
         "POST /appstate", "POST /clear", "POST /hidekeyboard", "POST /press", "POST /pressEnter",
