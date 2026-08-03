@@ -5,9 +5,10 @@
 (`#id` `ラベル` `*部分一致*` `.型[n]` `&&` `||` `(a|b)` `!` `>>` `:rightSwitch` など)は
 README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirates(Classic) に準拠している。
 
-引数の `sel` はセレクタ式(文字列)。**セレクタを取る全コマンドに型付きセレクタ(`Sel`)版が併設**
+引数の `sel` はセレクタ式(文字列)。**対象セレクタを取る全コマンドに型付きセレクタ(`Sel`)版が併設**
 されている(`tap(.id("login_btn"))` 等。意味・記録・ヒールは文字列版と同一で、`tapWithScrollDown`
-`existWithoutScroll` のような別名族も両方で書ける)。
+`existWithoutScroll` のような別名族も両方で書ける)。**例外は `scrollFrame:` 引数で、こちらは
+文字列のみ**(`scrollDown(scrollFrame: "#list")`。`Sel` 版のコマンドでも同じ)。
 
 ## 共通の引数と挙動
 

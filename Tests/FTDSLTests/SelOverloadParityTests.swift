@@ -20,9 +20,10 @@ final class SelOverloadParityTests: XCTestCase {
         "group", "procedure", "scene", "verify", "doUntilTrue",  // 記録用のタイトル・説明
     ]
 
-    /// **既知の非対称**: `scrollFrame:`(スクロール領域のセレクタ式)は String だけで Sel 版が無い。
-    /// `scrollTo` は対象セレクタに Sel 版があるが、その Sel 版でも `scrollFrame:` は String のまま。
-    /// 増減したらここを更新し、**そのとき Sel 版を足すかを判断する**(黙って増やさない)
+    /// **承認済みの差分**(ユーザー決定 2026-08-04・**再提案しない**): `scrollFrame:`
+    /// (スクロール領域のセレクタ式)は String 固定で Sel 版を持たない。1対1を保証するのは
+    /// **対象セレクタ**まで(`scrollTo` の Sel 版でも `scrollFrame:` は String のまま)。
+    /// 一覧が増減したらここを更新する — **Sel 版を足す判断ではなく**、コマンドの増減の追随
     private static let scrollFrameStringOnlyCommands: Set<String> = [
         "scrollDown", "scrollUp", "scrollLeft", "scrollRight",
         "scrollToBottom", "scrollToTop", "scrollToRightEdge", "scrollToLeftEdge",
@@ -126,8 +127,8 @@ final class SelOverloadParityTests: XCTestCase {
                        + "そうでなければ nonSelectorStringCommands に登録すること")
     }
 
-    /// 既知の非対称(`scrollFrame:` が String だけ)が**そのまま**であること。
-    /// 解消したら(Sel 版を足したら)このテストが落ちるので、一覧を空にして気付ける
+    /// 承認済みの差分(`scrollFrame:` は String 固定)が**そのまま**であること。
+    /// Sel 版を足すと落ちる = 決定を破る変更に気付ける
     func testScrollFrameRemainsStringOnly() throws {
         for declaration in try declarations()
         where Self.scrollFrameStringOnlyCommands.contains(declaration.name) {

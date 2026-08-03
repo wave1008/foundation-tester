@@ -1097,6 +1097,7 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
 | テキスト検証(`textIs` 等)に `scroll:` が無い | ユーザー決定(上記「再提案しない」項) |
 | `thisIs` 系が素の値にも直接生える(`FTValue` 転送) | Swift は非 Optional に `Any?` 拡張が生えない(言語制約の吸収であり挙動差ではない) |
 | 相対セレクタの引数の `(a\|b)` は括弧を自分で書く | `:right(...)` の括弧が引数の括弧で `\|` の囲みにならないため |
+| `scrollFrame:` に型付きセレクタ(`Sel`)版が無い(String 固定) | ユーザー決定 2026-08-04・**再提案しない**。1対1を保証するのは**対象セレクタ**まで。`scrollTo` は対象と `scrollFrame` の両方を取るためオーバーロードが 2×2 になり、他20コマンドと合わせて語彙が増える割に、`scrollFrame` は生成コードにほとんど出ない(下記「型付きセレクタ」) |
 | フローベース相対セレクタ(`:flow` 等)を持たない | 根拠の無い調整値を要求する(上記 2026-07-26 決定・再提案しない) |
 | `pressEnter` の iOS 実装がソフトキー tap ではない(xcuitest = `typeText("\n")` / inapp = 受け口ごとに Compose は `insertText("\n")`・UIKit は delegate 再現・Flutter は engine への配送) | キーボード要素をスナップショットから除外しているため tap できない。受け口で機構が違うのは iOS 側の事情(上記「iOS の Enter は…」)。観測できる挙動(Return キー相当)はいずれも同等 |
 | `back()` は Shirates の `pressBack`(Android 専用)を home()/appSwitcher() と同列の OS 差吸収コマンドとして両 OS 提供(iOS はエッジスワイプ) | iOS に物理バックが無く、コマンド語彙を OS で割らない方針 |
@@ -1182,13 +1183,20 @@ textIs(.id("txt_result"), "dialog=none")
 - **引数の型が具体型なので先頭ドットで書ける**(`tap(.id(...))`)。`some FTSelectorConvertible`
   のような総称にすると leading-dot が効かなくなるため、各コマンドは String 版と `Sel` 版の
   **2 つの具体オーバーロード**を持ち、共通の impl(FTSelector を取る)へ畳む
-- **セレクタを取るコマンドは String / Sel が1対1**(2026-07-29 に非対称を解消)。
+- **対象セレクタを取るコマンドは String / Sel が1対1**(2026-07-29 に非対称を解消)。
   Shirates 由来の別名族(`tapWithScrollDown/Up/Right/Left` `tapWithoutScroll` /
   `existWithScrollDown/Up` `existWithoutScroll` /
   `selectWithScrollDown/Up/Right/Left` `selectWithoutScroll`)にも Sel 版がある。
   **片方だけ足さない** — `Sel` を選ぶと別名族が使えない状態は「型付き経路を選ぶと機能が減る」
   ことを意味し、生成側を Sel 既定に寄せられなくなる。取りこぼしは
   `Tests/FTDSLTests/SelOverloadParityTests.swift` がソース走査で検出する
+- **`scrollFrame:` 引数だけは String 固定**(Sel 版を持たない。ユーザー決定 2026-08-04・
+  **再提案しない**)。1対1の対象は**対象セレクタ**であって全てのセレクタ式引数ではない。
+  理由: `scrollTo` は対象と `scrollFrame` の両方を取るのでオーバーロードが 2×2 になり、
+  他20コマンド(`scroll*` / `scrollToEdge` 系 / `withScroll*` / `flick*`)と合わせて語彙が一気に増える。
+  一方で `scrollFrame` は**生成コードにほとんど出ない引数**(生成側は文字列版を出す既定)なので、
+  「型付き経路を選ぶと機能が減る」の実害が最も小さい場所。
+  `SelOverloadParityTests.testScrollFrameRemainsStringOnly` がこの決定を固定する
 - **別名族は `maxSwipes:`(`select*` は `requireVisible:` も)しか取らない**(2026-08-02 に仕様として
   固定)。本体の全引数は生やさない — 別名の価値は「Shirates と同名で書ける」ことだけで、引数が
   要る場面では本体の `scroll:` の方が短い(`tap(sel, scroll: .down, timeout: 2)`)。全引数を生やすと
