@@ -1427,16 +1427,20 @@ public final class StepExecutor {
                                    phase: inout PhaseAccumulator) async throws {
         let clock = ContinuousClock()
         var previous = found.frame
+        var lastSnapshotMs = 0
         for _ in 0..<Self.scrollSettleMaxPolls {
             let waitStart = clock.now
-            try await Task.sleep(for: .milliseconds(Self.scrollSettleIntervalMs))
+            try await Task.sleep(for: .milliseconds(
+                Self.settleSleepMs(afterSnapshotMs: lastSnapshotMs,
+                                   bypassing: driver.supportsCacheBypass)))
             phase.waitMs += Self.ms(clock.now - waitStart)
             let start = clock.now
             // 静止判定も**キャッシュを捨てて**撮る。古いツリーは連続して同じ座標を返すので、
             // 素取得だと「2回続けて同じ = 止まった」が**遅れて公開された古い位置**で成立する
             // (runScrollSearch のスワイプ後の snapshot と同じ理由)
             let snapshot = try await driver.snapshot(bypassingCache: driver.supportsCacheBypass)
-            phase.snapshotMs += Self.ms(clock.now - start)
+            lastSnapshotMs = Self.ms(clock.now - start)
+            phase.snapshotMs += lastSnapshotMs
             guard let (element, _) = Self.resolve(step: step, in: snapshot,
                                                   strictForAssert: true) else { return }
             if element.frame == previous { return }
@@ -1515,6 +1519,21 @@ public final class StepExecutor {
         }
     }
 
+    /// 整定ポーリングの**周期を一定に保つ**待ち時間。判定したいのは
+    /// 「約 `scrollSettleIntervalMs` の周期で画面が変わらないこと」であって sleep の長さではない。
+    /// キャッシュ迂回の snapshot は Android で約 +35ms 掛かる(ブリッジ直叩きで 5.1ms → 39.9ms)ので、
+    /// 差し引かないと周期が 100ms → 140ms へ伸び、**スクロール系のステップが丸ごと遅くなる**
+    /// (2026-08-03 実測: scroll 系ステップ合計 +3.2s。差し引きで -2.0s 回収)。
+    /// **迂回しないエンジン(iOS)では引かない** —— あちらは snapshot 自体が重く(xcuitest は
+    /// 数百 ms)、引くと周期が大きく縮んで「早すぎる静止判定」に倒れる
+    static func settleSleepMs(afterSnapshotMs: Int, bypassing: Bool) -> Int {
+        guard bypassing else { return Self.scrollSettleIntervalMs }
+        return max(Self.scrollSettleMinSleepMs, Self.scrollSettleIntervalMs - afterSnapshotMs)
+    }
+
+    /// 整定ポーリングの待ちの下限(busy loop 防止)
+    static let scrollSettleMinSleepMs = 30
+
     /// スクロール静止待ちの上限(回数 × 間隔 = 最大 600ms)。フリングの減速はこの範囲で収まる
     static let scrollSettleMaxPolls = 6
     static let scrollSettleIntervalMs = 100
@@ -1559,15 +1578,19 @@ public final class StepExecutor {
         var start = clock.now
         var last = try await driver.snapshot(bypassingCache: driver.supportsCacheBypass)
         var previous = signature(last)
-        phase.snapshotMs += Self.ms(clock.now - start)
+        var lastSnapshotMs = Self.ms(clock.now - start)
+        phase.snapshotMs += lastSnapshotMs
         for _ in 0..<Self.scrollSettleMaxPolls {
             let waitStart = clock.now
-            try await Task.sleep(for: .milliseconds(Self.scrollSettleIntervalMs))
+            try await Task.sleep(for: .milliseconds(
+                Self.settleSleepMs(afterSnapshotMs: lastSnapshotMs,
+                                   bypassing: driver.supportsCacheBypass)))
             phase.waitMs += Self.ms(clock.now - waitStart)
             start = clock.now
             last = try await driver.snapshot(bypassingCache: driver.supportsCacheBypass)
             let current = signature(last)
-            phase.snapshotMs += Self.ms(clock.now - start)
+            lastSnapshotMs = Self.ms(clock.now - start)
+            phase.snapshotMs += lastSnapshotMs
             if current == previous { return (current, last, true) }
             previous = current
         }
