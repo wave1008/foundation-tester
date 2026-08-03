@@ -3,16 +3,23 @@
 // screenshot(1ステップとして埋め込み)・flick(画面基点の生ジェスチャ)・appIs(前面アプリ検証)。
 // installApp/removeApp/tapAppIcon は意図的にここへ含めない(removeApp は自 SUT を消すと以降のシナリオと
 // in-app ブリッジが壊れる。tapAppIcon はホーム画面依存で flake リスクが高く実機検証は別途行う)。
+//
+// **同じ画面で始まるものは1本にまとめる**(2026-08-04 統合)。appIs / screenshot / waitForDisplay /
+// verify は「起動 → 非同期表示画面」という同一の導入を4回繰り返しており、1本あたり launchApp +
+// ナビの固定費だけが増えていた(全 E2E スイートは合計律速 = docs/performance-tuning.md §3.6)。
+// **別画面のものは分けたまま**(flick=スクロール画面 / waitForClose=ダイアログ画面)。
+// ナビ項目はホーム画面にしかないため、別画面から続けて #nav_* を叩けない。
+// 統合で、起動直後の同期の1往復(下記)も4か所から1か所に減る。
 
 import FTDSL
 
 @TestClass(app: "com.ftester.e2e.flutter")
 class 新規コマンドが正しく動くこと {
 
-    @Test("waitForDisplay が遅延表示をスクロールなしで待つ")
+    @Test("appIs・screenshot・waitForDisplay・verify が非同期表示画面で動く")
     func S0010() {
         scenario {
-            scene(1, "非同期表示画面を開く") {
+            scene(1, "起動直後、appIs が自身の bundle ID/package を検証する") {
                 condition {
                     launchApp()
                 }.expectation {
@@ -26,13 +33,19 @@ class 新規コマンドが正しく動くこと {
                     // 検出する役目は 01_起動と画面遷移 が既定(true)のまま担う**
                     // (README「既知の ftester 欠陥」参照。ここで guard を切っても検出器は死なない)。
                     exist("#txt_home_marker", requireVisible: false)
-                }.action {
+                    // Flutter は iOS/Android とも同じ bundle ID(com.ftester.e2e.flutter)を使う
+                    appIs("com.ftester.e2e.flutter")
+                }
+            }
+            scene(2, "非同期表示画面を開いてスクリーンショットを撮る") {
+                action {
                     tap("#nav_async")
+                    screenshot(filename: "S0010_async")
                 }.expectation {
                     textIs("#txt_delay_state", "state=idle")
                 }
             }
-            scene(2, "waitForDisplay で3秒後表示を待つ(暗黙待ちでなく明示の待機コマンド)") {
+            scene(3, "waitForDisplay で3秒後表示を待つ(暗黙待ちでなく明示の待機コマンド)") {
                 action {
                     tap("#btn_delay_3")
                 }.expectation {
@@ -42,26 +55,7 @@ class 新規コマンドが正しく動くこと {
                     textIs("#txt_delay_state", "state=done")
                 }
             }
-        }
-    }
-
-    @Test("verify が複数アサーションを1ステップにまとめて passed にする")
-    func S0020() {
-        scenario {
-            scene(1, "非同期表示画面で3秒後表示を待つ") {
-                condition {
-                    launchApp()
-                }.expectation {
-                    // 同期の1往復(S0010 scene1 と同じ罠。requireVisible: false の理由もそちら参照)
-                    exist("#txt_home_marker", requireVisible: false)
-                }.action {
-                    tap("#nav_async")
-                    tap("#btn_delay_3")
-                }.expectation {
-                    exist("#txt_delayed", timeout: 6)
-                }
-            }
-            scene(2, "verify が exist と textIs をまとめて検証する") {
+            scene(4, "verify が exist と textIs をまとめて1ステップにする") {
                 expectation {
                     verify("遅延表示が完了し、状態表示も done になっていること") {
                         exist("#txt_delayed")
@@ -72,26 +66,7 @@ class 新規コマンドが正しく動くこと {
         }
     }
 
-    @Test("screenshot が1ステップとして記録される")
-    func S0030() {
-        scenario {
-            scene(1, "画面を開いてスクリーンショットを撮る") {
-                condition {
-                    launchApp()
-                }.expectation {
-                    // 同期の1往復(S0010 scene1 と同じ罠。requireVisible: false の理由もそちら参照)
-                    exist("#txt_home_marker", requireVisible: false)
-                }.action {
-                    tap("#nav_async")
-                    screenshot(filename: "S0030_async")
-                }.expectation {
-                    textIs("#txt_delay_state", "state=idle")
-                }
-            }
-        }
-    }
-
-    @Test("flickBottomToTop でリストが動く")
+    @Test("flick 8方向がスクロール容器と横カルーセルを実際に動かす")
     func S0040() {
         scenario {
             scene(1, "スクロール画面を開く") {
@@ -114,27 +89,61 @@ class 新規コマンドが正しく動くこと {
                     notExist("#row_01")
                 }
             }
-        }
-    }
-
-    @Test("appIs が自 SUT の bundle ID/package を検証する")
-    func S0050() {
-        scenario {
-            scene(1, "起動直後、appIs が自身の bundle ID/package を検証する") {
-                condition {
-                    launchApp()
+            // **戻り方向は端で撃つ**。フリングの距離は往路と復路で対称ではなく
+            // (Android 実測 2026-08-04: 往路で 行15 付近まで送られ、復路を3回撃っても 行08 止まり)、
+            // 「先頭へ戻り切る」を期待値にすると SUT ごとに落ちる。端で撃てば**動かないのが正しい**ので、
+            // 逆向きに実装されていれば #row_01 が流れて落ちる = 方向だけを決定的に固定できる
+            // (距離と座標は Tests/FTCoreTests/ScrollGeometryTests.swift が持つ)
+            scene(3, "先頭へ戻し、端で flickTopToBottom / flickCenterToBottom を撃っても先頭行は残る") {
+                action {
+                    tap("#btn_scroll_top")
                 }.expectation {
-                    // 同期の1往復(S0010 scene1 と同じ罠。requireVisible: false の理由もそちら参照)
-                    exist("#txt_home_marker", requireVisible: false)
-                    // Flutter は iOS/Android とも同じ bundle ID(com.ftester.e2e.flutter)を使う
-                    appIs("com.ftester.e2e.flutter")
+                    exist("#row_01")
+                }.action {
+                    flickTopToBottom(scrollFrame: "#list_rows")
+                    flickCenterToBottom(scrollFrame: "#list_rows")
+                }.expectation {
+                    exist("#row_01")
+                }
+            }
+            scene(4, "flickCenterToTop も中央基点で先頭行を流す") {
+                action {
+                    flickCenterToTop(scrollFrame: "#list_rows")
+                }.expectation {
+                    notExist("#row_01")
+                }
+            }
+            scene(5, "横カルーセルは flickRightToLeft / flickCenterToLeft で送れる") {
+                action {
+                    flickRightToLeft(scrollFrame: "#carousel_tags")
+                }.expectation {
+                    notExist("#tag_01")
+                }.action {
+                    // 戻しは**フリックではなく決定的な scrollLeft**(距離に依存させない)
+                    scrollLeft(scrollFrame: "#carousel_tags", repeat: 3)
+                }.expectation {
+                    exist("#tag_01")
+                }.action {
+                    flickCenterToLeft(scrollFrame: "#carousel_tags")
+                }.expectation {
+                    notExist("#tag_01")
+                }
+            }
+            scene(6, "左端に戻し、端で flickLeftToRight / flickCenterToRight を撃っても先頭タグは残る") {
+                action {
+                    scrollLeft(scrollFrame: "#carousel_tags", repeat: 3)
+                }.expectation {
+                    exist("#tag_01")
+                }.action {
+                    flickLeftToRight(scrollFrame: "#carousel_tags")
+                    flickCenterToRight(scrollFrame: "#carousel_tags")
+                }.expectation {
+                    exist("#tag_01")
                 }
             }
         }
     }
 
-    // ナビ項目はホーム画面にしかないため、別画面から続けて #nav_* を叩けない
-    // (シナリオは「launchApp から1画面に入る」構成が正。S0010 と分けたのはそのため)
     @Test("waitForClose がダイアログの消滅を待つ")
     func S0060() {
         scenario {

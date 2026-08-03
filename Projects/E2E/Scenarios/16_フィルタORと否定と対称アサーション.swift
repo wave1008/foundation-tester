@@ -147,7 +147,16 @@ class フィルタORと否定と対称アサーションが実機で動くこと
                     textIs("#txt_row_selected", "selected=row_40")
                 }
             }
-            scene(2, "`scrollToBottom` / `scrollToTop` は端まで送る") {
+            scene(2, "`scrollToBottom` は端まで送る") {
+                action {
+                    scrollToBottom(maxSwipes: 20)
+                }.expectation {
+                    // 端に着いていれば末尾行が**探索なしで**見えている(端判定は静止署名の
+                    // 2回連続不変化。commands.md の scrollToBottom/scrollToTop 節)
+                    existWithoutScroll("#row_40")
+                }
+            }
+            scene(3, "`scrollToTop` は端まで送る") {
                 action {
                     scrollToTop(maxSwipes: 20)
                 }.expectation {

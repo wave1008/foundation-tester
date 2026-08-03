@@ -51,6 +51,18 @@ class テキスト入力が正しくechoされること {
                     valueIs("#field_single", "hello123")
                     valueContains("#field_single", "hello")
                     valueIsNotEmpty("#field_single")
+                    // **対称形も同じ値で1回ずつ通す**。判定そのものは AssertKindsTests が固定済みで、
+                    // ここで見るのは**ブリッジから来た value** に対して同じ結果が出ることだけ。
+                    // valueIsEmpty は書かない(空欄の value にプレースホルダが返る)。
+                    // valueMatchesDateFormat は日付を持つ入力欄が SUT に無いので置かない
+                    valueStartsWith("#field_single", "hello")
+                    valueEndsWith("#field_single", "123")
+                    valueMatches("#field_single", "^hello[0-9]+$")
+                    valueIsNot("#field_single", "hello")
+                    valueContainsNot("#field_single", "xyz")
+                    valueStartsWithNot("#field_single", "123")
+                    valueEndsWithNot("#field_single", "hello")
+                    valueMatchesNot("#field_single", "^[0-9]+$")
                     // exist の戻り値にも同じ検証をチェーンできる
                     exist("#field_single").valueIs("hello123")
                     // 空欄側(クリア後等)の valueIsEmpty は書かない: プレースホルダが値として
