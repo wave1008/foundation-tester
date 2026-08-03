@@ -152,9 +152,9 @@ public enum ScenarioCodeGen {
                 // `exist` 側(exists ケース)はまだ scroll 再構成に未対応(別課題。exists は触らない)
                 return "notExist(\(literal(selector))\(timeoutArg(step))\(notExistScrollArgs(step)))"
             case "enabled":
-                return "isEnabled(\(literal(selector))\(timeoutArg(step)))"
+                return "enabledIsTrue(\(literal(selector))\(timeoutArg(step)))"
             case "disabled":
-                return "isDisabled(\(literal(selector))\(timeoutArg(step)))"
+                return "enabledIsFalse(\(literal(selector))\(timeoutArg(step)))"
             case "count":
                 return "countIs(\(literal(selector)), \(step.expectedCount ?? 0)\(timeoutArg(step)))"
             case "screenMatches":

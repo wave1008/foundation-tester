@@ -147,3 +147,17 @@ public func swipeLeft() { fatalError() }
 
 @available(*, unavailable, message: "Write swipe(.right) for the raw finger gesture, or scrollLeft() to go back left in the content (the two are the same motion, opposite naming)")
 public func swipeRight() { fatalError() }
+
+// MARK: - ③ ftester 内の改名(2026-08-04: Shirates(Classic) 準拠の糖衣形へ)
+
+@available(*, unavailable, message: "ftester renamed isEnabled to enabledIsTrue (Shirates-compliant name). Write enabledIsTrue(selector) instead")
+public func isEnabled(_ selector: String) { fatalError() }
+
+@available(*, unavailable, message: "ftester renamed isDisabled to enabledIsFalse (Shirates-compliant name). Write enabledIsFalse(selector) instead")
+public func isDisabled(_ selector: String) { fatalError() }
+
+@available(*, unavailable, message: "ftester renamed isChecked to checkIsON (Shirates-compliant name). Write checkIsON(selector) instead")
+public func isChecked(_ selector: String) { fatalError() }
+
+@available(*, unavailable, message: "ftester renamed isNotChecked to checkIsOFF (Shirates-compliant name). Write checkIsOFF(selector) instead")
+public func isNotChecked(_ selector: String) { fatalError() }

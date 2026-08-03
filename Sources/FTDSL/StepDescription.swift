@@ -76,11 +76,11 @@ public enum StepDescription {
             guard let selector = unquote(rest) else { return nil }
             let obj = object(selector)
             return isJapanese(obj) ? "\"\(obj)\"が表示されていないこと" : "\"\(obj)\" is not shown"
-        case "isEnabled":
+        case "enabledIsTrue":
             guard let selector = unquote(rest) else { return nil }
             let obj = object(selector)
             return isJapanese(obj) ? "\"\(obj)\"が操作可能であること" : "\"\(obj)\" is enabled"
-        case "isDisabled":
+        case "enabledIsFalse":
             guard let selector = unquote(rest) else { return nil }
             let obj = object(selector)
             return isJapanese(obj) ? "\"\(obj)\"が操作不可であること" : "\"\(obj)\" is disabled"
@@ -96,11 +96,11 @@ public enum StepDescription {
             return isJapanese(obj, pattern)
                 ? "\"\(obj)\"が正規表現 \"\(pattern)\" に一致すること"
                 : "\"\(obj)\" matches the regex \"\(pattern)\""
-        case "isChecked":
+        case "checkIsON":
             guard let selector = unquote(rest) else { return nil }
             let obj = object(selector)
             return isJapanese(obj) ? "\"\(obj)\"がオンであること" : "\"\(obj)\" is on"
-        case "isNotChecked":
+        case "checkIsOFF":
             guard let selector = unquote(rest) else { return nil }
             let obj = object(selector)
             return isJapanese(obj) ? "\"\(obj)\"がオフであること" : "\"\(obj)\" is off"

@@ -1408,57 +1408,57 @@ private func waitForCloseImpl(_ selector: FTSelector, waitSeconds: Double,
 }
 
 /// 要素が操作可能(enabled)であることの検証。タイムアウトまで状態変化を待つ
-public func isEnabled(_ selector: String, timeout: Double? = nil,
+public func enabledIsTrue(_ selector: String, timeout: Double? = nil,
                       file: StaticString = #filePath, line: UInt = #line) {
-    enabledAssert("enabled", verb: "isEnabled", selector: FTSelector.parse(selector),
+    enabledAssert("enabled", verb: "enabledIsTrue", selector: FTSelector.parse(selector),
                   timeout: timeout, file: file, line: line)
 }
 
-public func isEnabled(_ selector: Sel, timeout: Double? = nil,
+public func enabledIsTrue(_ selector: Sel, timeout: Double? = nil,
                       file: StaticString = #filePath, line: UInt = #line) {
-    enabledAssert("enabled", verb: "isEnabled", selector: selector.ftSelector,
+    enabledAssert("enabled", verb: "enabledIsTrue", selector: selector.ftSelector,
                   timeout: timeout, file: file, line: line)
 }
 
 /// 要素が操作不可(disabled)であることの検証。タイムアウトまで状態変化を待つ
-public func isDisabled(_ selector: String, timeout: Double? = nil,
+public func enabledIsFalse(_ selector: String, timeout: Double? = nil,
                        file: StaticString = #filePath, line: UInt = #line) {
-    enabledAssert("disabled", verb: "isDisabled", selector: FTSelector.parse(selector),
+    enabledAssert("disabled", verb: "enabledIsFalse", selector: FTSelector.parse(selector),
                   timeout: timeout, file: file, line: line)
 }
 
-public func isDisabled(_ selector: Sel, timeout: Double? = nil,
+public func enabledIsFalse(_ selector: Sel, timeout: Double? = nil,
                        file: StaticString = #filePath, line: UInt = #line) {
-    enabledAssert("disabled", verb: "isDisabled", selector: selector.ftSelector,
+    enabledAssert("disabled", verb: "enabledIsFalse", selector: selector.ftSelector,
                   timeout: timeout, file: file, line: line)
 }
 
 /// スイッチ・チェックボックス・ラジオが**オン**であることの検証。タイムアウトまで状態変化を待つ。
 /// 取得元は iOS=accessibility の selected trait / Android=isChecked(ElementInfo.checked)。
 /// **型が OS で揃わない要素(checkbox/radio)でも使える** — 状態は型と独立に取れるため
-public func isChecked(_ selector: String, timeout: Double? = nil,
+public func checkIsON(_ selector: String, timeout: Double? = nil,
                       file: StaticString = #filePath, line: UInt = #line) {
-    enabledAssert("checked", verb: "isChecked", selector: FTSelector.parse(selector),
+    enabledAssert("checked", verb: "checkIsON", selector: FTSelector.parse(selector),
                   timeout: timeout, file: file, line: line)
 }
 
-public func isChecked(_ selector: Sel, timeout: Double? = nil,
+public func checkIsON(_ selector: Sel, timeout: Double? = nil,
                       file: StaticString = #filePath, line: UInt = #line) {
-    enabledAssert("checked", verb: "isChecked", selector: selector.ftSelector,
+    enabledAssert("checked", verb: "checkIsON", selector: selector.ftSelector,
                   timeout: timeout, file: file, line: line)
 }
 
 /// スイッチ・チェックボックス・ラジオが**オフ**であることの検証。
 /// 状態を持たない要素(ただのボタン等)も「オフ」として通る(ブリッジは true のときだけ送るため)
-public func isNotChecked(_ selector: String, timeout: Double? = nil,
+public func checkIsOFF(_ selector: String, timeout: Double? = nil,
                          file: StaticString = #filePath, line: UInt = #line) {
-    enabledAssert("notChecked", verb: "isNotChecked", selector: FTSelector.parse(selector),
+    enabledAssert("notChecked", verb: "checkIsOFF", selector: FTSelector.parse(selector),
                   timeout: timeout, file: file, line: line)
 }
 
-public func isNotChecked(_ selector: Sel, timeout: Double? = nil,
+public func checkIsOFF(_ selector: Sel, timeout: Double? = nil,
                          file: StaticString = #filePath, line: UInt = #line) {
-    enabledAssert("notChecked", verb: "isNotChecked", selector: selector.ftSelector,
+    enabledAssert("notChecked", verb: "checkIsOFF", selector: selector.ftSelector,
                   timeout: timeout, file: file, line: line)
 }
 
@@ -1524,7 +1524,7 @@ public func keyboardIsNotShown(timeout: Double? = nil,
 
 /// exist の戻り値。検証をチェーンできる。
 /// **網羅の規則**: セレクタを取り「その要素」を検証する自由関数は**すべて同名でここにも生える**
-/// (text/value の全対称 + `isEnabled` / `isDisabled` / `isChecked` / `isNotChecked` + `idIs`)。
+/// (text/value の全対称 + `enabledIsTrue` / `enabledIsFalse` / `checkIsON` / `checkIsOFF` + `idIs`)。
 /// 一部だけ生やすと「どれがチェーンできるか」が覚えられず、書いてみるまで分からない。
 /// **例外は要素を1つに定めないコマンド**(`notExist` / `countIs` / `screenIs`)で、これらは
 /// 掴んだ要素に対する検証ではないのでチェーンにしない。新しい検証コマンドを足すときは両方に足す
@@ -1810,33 +1810,33 @@ public struct FTElement {
     // MARK: 状態
 
     @discardableResult
-    public func isEnabled(timeout: Double? = nil,
+    public func enabledIsTrue(timeout: Double? = nil,
                           file: StaticString = #filePath, line: UInt = #line) -> FTElement {
-        enabledAssert("enabled", verb: "isEnabled", selector: selector,
+        enabledAssert("enabled", verb: "enabledIsTrue", selector: selector,
                       timeout: timeout, file: file, line: line)
         return self
     }
 
     @discardableResult
-    public func isDisabled(timeout: Double? = nil,
+    public func enabledIsFalse(timeout: Double? = nil,
                            file: StaticString = #filePath, line: UInt = #line) -> FTElement {
-        enabledAssert("disabled", verb: "isDisabled", selector: selector,
+        enabledAssert("disabled", verb: "enabledIsFalse", selector: selector,
                       timeout: timeout, file: file, line: line)
         return self
     }
 
     @discardableResult
-    public func isChecked(timeout: Double? = nil,
+    public func checkIsON(timeout: Double? = nil,
                           file: StaticString = #filePath, line: UInt = #line) -> FTElement {
-        enabledAssert("checked", verb: "isChecked", selector: selector,
+        enabledAssert("checked", verb: "checkIsON", selector: selector,
                       timeout: timeout, file: file, line: line)
         return self
     }
 
     @discardableResult
-    public func isNotChecked(timeout: Double? = nil,
+    public func checkIsOFF(timeout: Double? = nil,
                              file: StaticString = #filePath, line: UInt = #line) -> FTElement {
-        enabledAssert("notChecked", verb: "isNotChecked", selector: selector,
+        enabledAssert("notChecked", verb: "checkIsOFF", selector: selector,
                       timeout: timeout, file: file, line: line)
         return self
     }

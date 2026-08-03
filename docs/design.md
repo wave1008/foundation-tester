@@ -1118,6 +1118,7 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
 | `packageIs` を持たない | 2026-08-03 ユーザー決定(いったん実装後に削除)。ニックネームが無い ftester では `appIs` が ID 直指定のため Android で完全に同じ検査になり、同じことを2通りで書ける語彙になる。**再提案しない** |
 | `tapAppIcon` が `auto` 相当のみ(method 切替・マクロ機構なし) | 対象は実質エミュレータ/シミュレータで `auto` の分岐だけで足りる。名前省略時の既定は installApp と同じ形で親が解決する(`--app-name` = プロファイルの `appName`。2026-08-03 決定。実行自体は子のまま — UI 操作は「1シナリオ=1プロセス=1ドライバ」の子の責務で、親が同じランナーを叩くと二重クライアントの事故型になる) |
 | `installApp` の実行主体がオーケストレータ(親プロセス)である | 2026-08-03 ユーザー決定。子(シナリオサブプロセス)は install の依頼だけを親へ送り(stdin/stdout RPC)、親が実行プロファイルの `appPath` を解決して実インストールする。パス解決の優先順は明示引数 > プロファイルの `appPath`(Shirates の `appPackageFile` 既定に一致)。オーケストレータ無しの単独実行だけ、子が直接 `driver.install` を呼ぶ従来経路にフォールバックする(パス解決は 明示引数 > `--app-path` > 明示エラー)。iOS in-app/hybrid ではインストールで in-app ブリッジが道連れになるが、次の `launchApp()` が再注入する(注記は実行中の ℹ️ ログにのみ出る。保存レポートには残らない) |
+| `enabledIs(expected:)`/`checkedIs(expected:)`(生文字列親形)を持たず、糖衣形 `enabledIsTrue/False`・`checkIsON/OFF` のみ | 生値比較は OS 依存(checked の iOS "1"/"")で、正規化済み Bool と衝突する。糖衣形は OS 差を吸収済みで ftester の正規化と一致(2026-08-04 ユーザー決定。旧 `isEnabled` 系4名からの改名も同決定 — Is 後置の社内語彙とも揃う) |
 
 ### `clearInput` の受け口ごとの機構と Flutter の縮退(2026-07-30)
 
@@ -1240,7 +1241,7 @@ textIs(.id("txt_result"), "dialog=none")
 - **再取得しない**(値の出所は最初の `exist` に固定)。最新の値が要るなら `exist` を書き直す
 - 型は `String?`。`ValueAssertions` の `FTValue`(`Optional: FTValue where Wrapped: FTValue`)に
   乗るので `exist("#total").text.thisContains("1,200")` がそのまま書ける
-- `checked` / `enabled` の**値**は足していない(語彙を増やさない。検証は `.isChecked` / `.isEnabled` で足りる)
+- `checked` / `enabled` の**値**は足していない(語彙を増やさない。検証は `.checkIsON` / `.enabledIsTrue` で足りる)
 - **チェーンは網羅する**(2026-07-30): セレクタを取り「その要素」を検証する自由関数は
   **すべて同名で `FTElement` にも生やす**。一部だけだと「どれがチェーンできるか」に規則が無く、
   書いてみてコンパイルエラーで気付くことになる。例外は要素を1つに定めない
@@ -1258,20 +1259,20 @@ textIs(.id("txt_result"), "dialog=none")
   見つからなければ従来どおり現在のビューポートでの消滅待ちに進む。
   hybrid では **不在を確定する側でだけ** `fallbackDriver` を1回照会する(pass 経路の固定費 1 回。
   システム UI のダイアログが primary の snapshot に映らないため。miss 毎に払う `exist` 側とは事情が逆)
-- **`isChecked` / `isNotChecked`**(セレクタの `checked=` も同じ源)は `ElementInfo.checked` を見る。
+- **`checkIsON` / `checkIsOFF`**(セレクタの `checked=` も同じ源)は `ElementInfo.checked` を見る。
   取得元は **iOS = accessibility の selected trait**(`XCUIElementSnapshot.isSelected` / in-app は
   `UIAccessibilityTraits.selected`)、**Android = `AccessibilityNodeInfo.isChecked`**。
   Compose iOS は Switch の `value` を出さない(実測)ので selected trait が唯一の経路。
   **true のときだけ送る**(省略 = オフ、または状態を持たない要素)。
   **iOS 側は UI 実装依存**(2026-07-26 の 4 SUT 実測): Compose は selected trait を出すので取れるが、
   **SwiftUI/UIKit と Flutter の checkbox は出さない** → `checked` が nil のままで
-  `isChecked` / `checked=true` が当たらない。**Android 側は 4 SUT とも取れる**。
+  `checkIsON` / `checked=true` が当たらない。**Android 側は 4 SUT とも取れる**。
   iOS も含めて確実に見たいならアプリ側の echo Text を `textIs` で見る
 - **状態フィルタ(`checked=` / `enabled=`)は型ではなく `#id` と併用する**(2026-07-26 実測)。
   同じ役割の要素でも型は SUT で割れるため(コントロール画面の無効ボタンは CMP では `button`、
   View/XML では `clickable`)、`.button&&enabled=false` のような型との AND は SUT 固有の式になる。
   `#btn_always_disabled&&enabled=false` なら 4 SUT 共通で通る
-- **`isEnabled` / `isDisabled`** は `ElementInfo.enabled`(3 ブリッジとも埋めている)を見る。
+- **`enabledIsTrue` / `enabledIsFalse`** は `ElementInfo.enabled`(3 ブリッジとも埋めている)を見る。
   タイムアウトまで状態変化を待つ。「見つからない」と「状態が違う」を別メッセージで返す
 - **`countIs`** は**ツリー上の**候補の個数。**可視性は見ない**(覆われた要素も折り返しの下の
   要素も1件に数える)。`exist` が(偽陽性検証を有効にした run で)可視性まで確認するのと
@@ -1437,10 +1438,10 @@ textIs(.id("txt_result"), "dialog=none")
   id の部分一致 → ラベルの部分一致 → 同型の順)。直すための snapshot 取り直しを1往復減らす
 - **レポートに失敗時点の要素一覧**を折りたたみで載せる(`SceneRecordData.failureElements`)。
   スクリーンショットからは `#id` を読めないため、機械が直すための一次情報はこちら
-- **「`isNotChecked` で通ったが checked を一度も観測できなかったセレクタ」を run 終了時に警告**する
+- **「`checkIsOFF` で通ったが checked を一度も観測できなかったセレクタ」を run 終了時に警告**する
   (2026-07-27)。ブリッジは checked を**true のときだけ送る**ので、状態を持たない要素
   (ただのボタン等)や状態を報告しない実装(**iOS の SwiftUI / Flutter の checkbox**)を指すと
-  `isNotChecked` は**何を書いても成功する**。notExist の id typo と同じ構造の穴なので同じ扱いにする
+  `checkIsOFF` は**何を書いても成功する**。notExist の id typo と同じ構造の穴なので同じ扱いにする
   (一度でも checked を観測できたセレクタは警告しない = 正しい使い方を潰さない)
 - **`scene` 番号の重複を警告**する(2026-07-27)。番号は利用者が手で振るのでコピペで重複しやすく、
   レポートに同じ番号が並ぶとどちらの結果か読み手が判別できない。

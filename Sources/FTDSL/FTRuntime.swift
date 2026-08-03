@@ -255,7 +255,7 @@ public final class FTDriveCore {
     /// ifCanSelect のセレクタ → 一度でも成立したか。**一度も成立しなかったものだけ**警告する
     /// (交互に出るダイアログのように「出ないこともある」のが正しい用途があるため)
     var branchOutcomes: [String: Bool] = [:]
-    /// `isNotChecked` で通ったセレクタ → 最初に見た説明。**checked を一度も観測できなかったもの**は
+    /// `checkIsOFF` で通ったセレクタ → 最初に見た説明。**checked を一度も観測できなかったもの**は
     /// 「状態を持たない要素を指していて、何を書いても通っていた」疑いがある(ブリッジは
     /// checked を true のときだけ送るため、オフと未対応が区別できない)。
     /// iOS の SwiftUI / Flutter の checkbox は selected trait を出さない = 常に通る(design.md)
@@ -674,7 +674,7 @@ public final class FTDriveCore {
         }
     }
 
-    /// `isNotChecked` が「状態を持たない要素」を指していないかを覚える。
+    /// `checkIsOFF` が「状態を持たない要素」を指していないかを覚える。
     /// notExist の id typo と同じ構造の穴(**何を指しても成功する**)なので、同じく run 終了時に警告する
     private func trackCheckedObservation(step: FlowStep, status: StepResult.Status,
                                          outcome: StepOutcome?, selectorText: String?,
@@ -758,11 +758,11 @@ public final class FTDriveCore {
         where !checkedObservedSelectors.contains(selector) {
             addSuggestion(FixSuggestion(
                 isStrong: false,
-                message: "`\(selector)` passed isNotChecked, but a checked state was never observed "
+                message: "`\(selector)` passed checkIsOFF, but a checked state was never observed "
                     + "during this scenario (\(description)). If it points at an element with no check "
                     + "state (a plain button) or at an implementation that never reports one "
                     + "(SwiftUI on iOS, Flutter checkboxes), **any assertion passes**. "
-                    + "Turn it on and verify isChecked as well"),
+                    + "Turn it on and verify checkIsON as well"),
                 emitEvent: false, file: "", line: 0)
         }
         for (selector, met) in branchOutcomes.sorted(by: { $0.key < $1.key }) where !met {

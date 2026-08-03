@@ -1,5 +1,5 @@
 // 11_否定と個数と方向セレクタ.swift
-// ftester 機能: notExist / countIs / isEnabled / isDisabled / isChecked / isNotChecked / 相対セレクタ `基準:below(...)` `基準:above(...)` /
+// ftester 機能: notExist / countIs / enabledIsTrue / enabledIsFalse / checkIsON / checkIsOFF / 相対セレクタ `基準:below(...)` `基準:above(...)` /
 // 共通ステップ group / クラスの setUp・tearDown の検証。
 // 型を使うセレクタは OS 共通で書ける(ブリッジが役割へ正規化するため。ui-contract.md 全体規約)。
 
@@ -87,38 +87,38 @@ class 否定と個数と方向セレクタが正しく動くこと {
                     textIs("#txt_selector_result", "result=item3")
                 }
             }
-            scene(6, "isEnabled と共通ステップ group") {
+            scene(6, "enabledIsTrue と共通ステップ group") {
                 action {
                     group("結果をクリアする") {
-                        isEnabled("#btn_selector_reset")
+                        enabledIsTrue("#btn_selector_reset")
                         tap("#btn_selector_reset")
                     }
                 }.expectation {
                     textIs("#txt_selector_result", "result=-")
                 }
             }
-            scene(7, "isDisabled / isEnabled が要素の操作可否を判定する") {
+            scene(7, "enabledIsFalse / enabledIsTrue が要素の操作可否を判定する") {
                 condition {
                     tap("#tab_controls")
                     tap("#btn_controls_reset")
                 }.expectation {
                     // #btn_always_disabled は常に無効、#btn_toggle_target は #cb_agree 連動(初期 off)
-                    isDisabled("#btn_always_disabled")
-                    isDisabled("#btn_toggle_target")
+                    enabledIsFalse("#btn_always_disabled")
+                    enabledIsFalse("#btn_toggle_target")
                     // 状態は型と独立に取れるので、型が OS で揃わない checkbox でも使える
-                    isNotChecked("#cb_agree")
+                    checkIsOFF("#cb_agree")
                 }.action {
                     tap("#cb_agree")
                 }.expectation {
                     textIs("#txt_cb_agree", "agree=true")
-                    isChecked("#cb_agree")
-                    isEnabled("#btn_toggle_target")
-                    isDisabled("#btn_always_disabled")
+                    checkIsON("#cb_agree")
+                    enabledIsTrue("#btn_toggle_target")
+                    enabledIsFalse("#btn_always_disabled")
                 }.action {
                     tap("#cb_agree")
                 }.expectation {
-                    isNotChecked("#cb_agree")
-                    isDisabled("#btn_toggle_target")
+                    checkIsOFF("#cb_agree")
+                    enabledIsFalse("#btn_toggle_target")
                 }
             }
             scene(8, "スコープ(>>)は祖先の子孫だけを対象にする") {

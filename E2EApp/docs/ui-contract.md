@@ -34,7 +34,7 @@ tag 定数は `composeApp/src/commonMain/kotlin/com/ftester/e2e/Tags.kt` に集�
 - **状態表示は必ず `key=value` 形式の Text にする**(`textIs` で完全一致検証できる)。
   Switch/Checkbox の AX value は OS で表現が違うため、値検証は原則この echo Text で行う
   (`valueIs` の OS 依存挙動は `ios {}` / `android {}` 節でのみ確認する)。
-  **`isChecked` / `isNotChecked`(と セレクタの `checked=`)は iOS 側が UI 実装依存**
+  **`checkIsON` / `checkIsOFF`(と セレクタの `checked=`)は iOS 側が UI 実装依存**
   (2026-07-26 の 4 SUT 実測。Android は 4 SUT とも取れる): Compose は selected trait を出すので
   iOS でも取れるが、**SwiftUI/UIKit と Flutter の checkbox は出さない**。
   だから**この契約では状態の正は echo Text**(`agree=<true|false>` 等)であり、
@@ -248,7 +248,7 @@ Android(`BridgeRouter.handleSwipe`)は縦 0.3h↔0.7h・横 0.2w↔0.8w(y=0.5h)�
 | `#btn_toggle_target` | Button | `切替対象` | **`#cb_agree` が true のときだけ enabled**(初期 disabled)。押しても何も起きない |
 | `#btn_controls_reset` | Button | `コントロールリセット` | 全て初期値へ |
 
-**disabled の 2 ボタンは `isEnabled`/`isDisabled` の検証材料**(ftester 側の唯一の disabled 供給源)。
+**disabled の 2 ボタンは `enabledIsTrue`/`enabledIsFalse` の検証材料**(ftester 側の唯一の disabled 供給源)。
 - **無効でもアクセシビリティツリーから消さない**(消えると「要素が見つかりません」になり
   「無効であること」を検証できない)。無効化は enabled 属性だけで表現する。
 - `#btn_toggle_target` は既存の `#cb_agree` を有効化スイッチとして流用する(新しいトグルを増やさない)。

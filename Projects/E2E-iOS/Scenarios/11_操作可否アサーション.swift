@@ -1,5 +1,5 @@
 // 11_操作可否アサーション.swift
-// ftester 機能: `isDisabled` / `isEnabled`(要素の enabled 属性の検証)。
+// ftester 機能: `enabledIsFalse` / `enabledIsTrue`(要素の enabled 属性の検証)。
 // **この SUT に置く意味**: enabled の表現はフレームワークごとに実装が違う
 // (SwiftUI は .disabled(_:))ため、a11y ツリーに出る enabled 属性が
 // AppDriver から上で同じに見えることをフレームワーク別に確かめる。
@@ -19,8 +19,8 @@ class 操作可否アサーションが正しく判定できること {
                     tap("#tab_controls")
                     tap("#btn_controls_reset")
                 }.expectation {
-                    isDisabled("#btn_always_disabled")
-                    isDisabled("#btn_toggle_target")
+                    enabledIsFalse("#btn_always_disabled")
+                    enabledIsFalse("#btn_toggle_target")
                 }
             }
             scene(2, "同意すると条件付きボタンだけが有効になる") {
@@ -28,9 +28,9 @@ class 操作可否アサーションが正しく判定できること {
                     tap("#cb_agree")
                 }.expectation {
                     textIs("#txt_cb_agree", "agree=true")
-                    isEnabled("#btn_toggle_target")
+                    enabledIsTrue("#btn_toggle_target")
                     // 常時無効ボタンは影響を受けない
-                    isDisabled("#btn_always_disabled")
+                    enabledIsFalse("#btn_always_disabled")
                 }
             }
             scene(3, "同意を外すと条件付きボタンは無効に戻る") {
@@ -38,7 +38,7 @@ class 操作可否アサーションが正しく判定できること {
                     tap("#cb_agree")
                 }.expectation {
                     textIs("#txt_cb_agree", "agree=false")
-                    isDisabled("#btn_toggle_target")
+                    enabledIsFalse("#btn_toggle_target")
                 }
             }
         }

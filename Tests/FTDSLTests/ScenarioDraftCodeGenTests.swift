@@ -64,9 +64,9 @@ final class ScenarioDraftCodeGenTests: XCTestCase {
         XCTAssertTrue(ScenarioDraftCodeGen.commandLine(forExpectation: "ダイアログが表示されないこと",
                                                        indent: indent).hasPrefix("notExist("))
         XCTAssertTrue(ScenarioDraftCodeGen.commandLine(forExpectation: "送信ボタンが無効であること",
-                                                       indent: indent).hasPrefix("isDisabled("))
+                                                       indent: indent).hasPrefix("enabledIsFalse("))
         XCTAssertTrue(ScenarioDraftCodeGen.commandLine(forExpectation: "送信ボタンが有効であること",
-                                                       indent: indent).hasPrefix("isEnabled("))
+                                                       indent: indent).hasPrefix("enabledIsTrue("))
         XCTAssertTrue(ScenarioDraftCodeGen.commandLine(forExpectation: "一覧に3件表示されること",
                                                        indent: indent).hasPrefix("countIs(\"#TODO\", 3)"))
         XCTAssertTrue(ScenarioDraftCodeGen.commandLine(forExpectation: "「保存しました」と表示されること",
