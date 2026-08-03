@@ -253,4 +253,26 @@ class スクロールで折り返し下の要素に到達できること {
             }
         }
     }
+
+    /// **探索はアプリの状態を変えない**。`scrollTo` はタップを含まないので selected は "-" のまま。
+    /// 探索終端の空打ちドラッグが**要素の矩形の中で離れているとクリックとして成立**し、
+    /// 指の下の行が選ばれていた(2026-08-03 修正。矩形の外へ抜ける終点にして解決)。
+    /// **既存資産は1本も検出できなかった** —— 後続のタップが誤選択を上書きするので、
+    /// `clearAppData` して「探索の直後に読む」この形でないと表に出ない
+    @Test("探索だけではアプリの状態が変わらない")
+    func S0100() {
+        scenario {
+            scene(1, "末尾へ送るだけで、行は選択されない") {
+                condition {
+                    clearAppData()
+                    launchApp()
+                }.action {
+                    tap("#nav_scroll")
+                    scrollTo("#row_40", maxSwipes: 15)
+                }.expectation {
+                    textIs("#txt_row_selected", "selected=-")
+                }
+            }
+        }
+    }
 }
