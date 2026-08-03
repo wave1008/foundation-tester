@@ -115,8 +115,9 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | `valueIs…` 一式(同10種) | 全て同名 | ✅ 全対称 |
 | `idIs` | 同名(`FTElement` チェーン) | ✅ |
 | `accessIs…` 一式 | `#id` に統合 | 🟡 |
-| `enabledIs` / `enabledIsTrue/False` | `isEnabled` / `isDisabled` | 🟡 |
-| `checkedIs` / `checkIsON` / `checkIsOFF` | `isChecked` / `isNotChecked` | 🟡 |
+| `enabledIsTrue/False` | `enabledIsTrue()` / `enabledIsFalse()` | ✅ 2026-08-04 糖衣形を同名で踏襲(旧 `isEnabled`/`isDisabled` から改名)。**生文字列の親形 `enabledIs(expected:)` は持たない**(下記 ➖) |
+| `checkIsON` / `checkIsOFF` | `checkIsON()` / `checkIsOFF()` | ✅ 2026-08-04 同名で踏襲(旧 `isChecked`/`isNotChecked` から改名) |
+| `enabledIs(expected:)` / `checkedIs(expected:)`(生文字列の親形) | — | ➖ **持たない**。生値比較は OS 依存(checked は Android "true"/"false"・iOS "1"/"")で、ftester が持つ正規化済み Bool と衝突する。糖衣形(`enabledIsTrue/False`・`checkIsON/OFF`)は OS 差を吸収済みで正規化と一致する。Shirates 自身も `checkIsON/OFF` の中でこの OS 差を吸収している。**再提案しない** |
 | `selectedIs(True/False)` | — | ➖ iOS の selected trait は `checked` に写像している |
 | `displayedIs` | `requireVisible:` + `falsePositiveCheck` | 🟡 |
 | `classIs(Not)` | セレクタの `.型` で絞る | 🟡 |

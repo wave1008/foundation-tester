@@ -101,7 +101,7 @@ E2E のシナリオは全て `@TestClass(app: "com.ftester.e2e")` で `platform:
 | `08_待機とタイムアウト.swift` | 暗黙待ち(既定タイムアウト再試行)と `timeout:` 引数 |
 | `09_条件分岐とダイアログ.swift` | `ifCanSelect` と `select`(掴めなければ空要素) |
 | `10_ライフサイクルとプラットフォーム分岐.swift` | `restartApp` によるプロセス内/永続状態の分離、`ios {}` / `android {}` |
-| `11_否定と個数と方向セレクタ.swift` | `notExist` / `countIs` / `isEnabled`〜`isNotChecked` / 相対セレクタ `:below`・`:above` / `group` / setUp・tearDown |
+| `11_否定と個数と方向セレクタ.swift` | `notExist` / `countIs` / `enabledIsTrue/False`・`checkIsON/OFF` / 相対セレクタ `:below`・`:above` / `group` / setUp・tearDown |
 | `13_ID無し画面.swift` | id の無い画面を相対セレクタ(`基準:rightSwitch` 等)だけで操作・検証 |
 | `14_部分一致と反復.swift` | `textContains` / `textMatches`(動的文字列)と `repeatWhileCanSelect`(件数不定の一括操作) |
 | `15_型付きセレクタ.swift` | 型付きセレクタ(Sel)が文字列版と同じ要素に着地すること |

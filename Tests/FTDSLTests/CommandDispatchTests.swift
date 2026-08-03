@@ -211,7 +211,7 @@ final class CommandDispatchTests: XCTestCase {
         XCTAssertTrue(core.finalRecord.passed)
     }
 
-    /// checked を報告しない要素(ただのボタン等)への isNotChecked は**何を書いても成功する**。
+    /// checked を報告しない要素(ただのボタン等)への checkIsOFF は**何を書いても成功する**。
     /// notExist の id typo と同じ構造の穴なので、run 終了時の警告で気付けるようにする
     func testIsNotCheckedOnStatelessElementIsWarned() {
         let core = makeCore(driver: RecordingDriver())   // checked を返さない要素だけの画面
@@ -221,7 +221,7 @@ final class CommandDispatchTests: XCTestCase {
         scenario {
             scene(1, "s") {
                 // XCTestCase.expectation と衝突するのでここでは action を使う(区分は本題でない)
-                action { isNotChecked("#cleanup") }
+                action { checkIsOFF("#cleanup") }
             }
         }
         core.warnAboutNeverResolvedIDs()

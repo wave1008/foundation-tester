@@ -122,8 +122,8 @@ Shirates 準拠のコマンド名(`flick*`)。**画面(または `scrollFrame`)�
 | `waitForClose(sel, waitSeconds: 15)` | 要素が消えるまで待つ(**スクロールしない**)。`sel` は省略不可(Shirates の直前セレクタ再利用の省略形は無い。ftester に「直前に掴んだ要素」の概念が無いため) |
 | `notExist(sel, timeout:scroll:maxSwipes:)` | **消えるまで待つ**(初回で不在なら即成功)。ダイアログ・ローディングが閉じた確認に。`scroll:` 指定時は**その方向へスクロールしながら探し、見つかった時点で不在検証を失敗させる**(`exist(scroll:)` の裏返し。見つからなければ従来どおり現在のビューポートでの消滅待ちに進む) |
 | `countIs(sel, 個数, timeout:)` | 候補の個数。**ツリー上の件数**で可視性は見ない。`\|\|` は和集合の総数(重複は 1 度だけ)。**ラベルで数えるときは型で絞る**(`.button&&項目` — ボタンと内側のラベルは別要素として両方載るため) |
-| `isEnabled(sel)` / `isDisabled(sel)` | 有効/無効の検証(タイムアウトまで状態変化を待つ) |
-| `isChecked(sel)` / `isNotChecked(sel)` | チェック状態の検証。iOS はアプリの実装により checked が取れないことがある(取れないままだと run 終了時に警告が出る) |
+| `enabledIsTrue(sel)` / `enabledIsFalse(sel)` | 有効/無効の検証(タイムアウトまで状態変化を待つ) |
+| `checkIsON(sel)` / `checkIsOFF(sel)` | チェック状態の検証。iOS はアプリの実装により checked が取れないことがある(取れないままだと run 終了時に警告が出る) |
 | `keyboardIsShown(timeout:)` / `keyboardIsNotShown(timeout:)` | ソフトキーボードの表示/非表示の検証。開閉はアニメーションを伴うためタイムアウトまでポーリングする |
 | `screenIs("画面の説明文")` | FM による**見た目の**画面検証(スクリーンショットと説明文の照合)。実行プロファイルで `fm:false` / `screenIs:false` の場合はスキップ(素通り) |
 | `appIs(id, waitSeconds: 15)` | フォアグラウンドのアプリが `id`(iOS=bundle ID / Android=package 名)と一致することの検証。**ニックネーム機構は無く ID を直接書く**(Shirates 準拠だが引数の意味だけ異なる)。`waitSeconds` までポーリング。**Android は失敗時に actual の package 名をメッセージへ含める**(iOS は前面 bundle ID を取得する手段が無いため含まれない) |
@@ -161,9 +161,9 @@ exist("#total")
 ```
 
 **セレクタを取って「その要素」を検証するコマンドはすべてチェーンできる**（`textIs` / `textContains` /
-`textMatches` などテキストの全対称、`valueIs` 以下の value の全対称、`isEnabled` / `isDisabled` /
-`isChecked` / `isNotChecked`、それに掴んだ要素の id を見る `.idIs`）。引数はセレクタを除いて
-自由関数版と同じで、`timeout:` も同じラベルで渡せます（`exist("#x").isEnabled(timeout: 3)`）。
+`textMatches` などテキストの全対称、`valueIs` 以下の value の全対称、`enabledIsTrue` / `enabledIsFalse` /
+`checkIsON` / `checkIsOFF`、それに掴んだ要素の id を見る `.idIs`）。引数はセレクタを除いて
+自由関数版と同じで、`timeout:` も同じラベルで渡せます（`exist("#x").enabledIsTrue(timeout: 3)`）。
 
 チェーンできないのは**要素を1つに定めないコマンド**だけです（`notExist` / `countIs` / `screenIs`）。
 これらは掴んだ要素に対する検証ではないためです。

@@ -88,8 +88,8 @@ final class FTElementChainTests: XCTestCase {
                 .valueEndsWithNot("01")
                 .valueMatchesNot("^[a-z]+$")
                 .valueIsNotEmpty()
-                .isEnabled()
-                .isNotChecked()
+                .enabledIsTrue()
+                .checkIsOFF()
                 .idIs("total")
         }
         let recorded = steps(core)

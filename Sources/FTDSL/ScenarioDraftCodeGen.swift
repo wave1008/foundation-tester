@@ -132,10 +132,10 @@ public enum ScenarioDraftCodeGen {
             return indent + "notExist(\(literal(placeholder)))\(comment)"
         }
         if contains(text, ["押せない", "操作できない", "無効", "タップできない", "disabled"]) {
-            return indent + "isDisabled(\(literal(placeholder)))\(comment)"
+            return indent + "enabledIsFalse(\(literal(placeholder)))\(comment)"
         }
         if contains(text, ["押せる", "操作できる", "有効", "enabled"]) {
-            return indent + "isEnabled(\(literal(placeholder)))\(comment)"
+            return indent + "enabledIsTrue(\(literal(placeholder)))\(comment)"
         }
         if let count = itemCount(in: text) {
             return indent + "countIs(\(literal(placeholder)), \(count))\(comment)"
