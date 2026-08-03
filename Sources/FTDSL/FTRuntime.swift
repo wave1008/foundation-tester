@@ -215,10 +215,21 @@ public final class FTDriveCore {
     /// group("名前") { } の入れ子。記録時にステップ説明へ `[外/内]` を前置する
     var groupStack: [String] = []
     /// verify() のブロック内で走ったアサーション数を数えるスタック。ネストした verify を
-    /// support するため「今アクティブな全フレーム」に加算する(noteVerifyAssertion 参照)。
+    /// support するため「今アクティブな全フレーム」に加算する(noteAssertion 参照)。
     /// group と同様 DSL スレッド専有で lock 不要
     struct VerifyFrame { var assertionCount = 0 }
     var verifyStack: [VerifyFrame] = []
+    /// 実行中の CAE セクション内で走ったアサーション数(runSection が退避・復元する)。
+    /// **0 のまま終わった expectation は「何も検証していない」** = 緑になる誤り
+    var sectionAssertionCount = 0
+    /// シナリオ全体のアサーション数。0 なら**どう転んでも検証していない**(warnAboutMissingAssertions)
+    var scenarioAssertionCount = 0
+    /// 本体を実行しなかった条件ブロックの数(`ios`/`android` の不一致・`ifCanSelect` の不成立・
+    /// `repeatWhileCanSelect` の 0 周)。**中に何が書かれているかは実行しないと分からない**ので、
+    /// 1つでもあればアサーション不足の警告を出さない —— 誤検知を出さない側に倒す
+    /// (実際 `expectation { android { notExist(...) } }` を iOS で回すと 0 本に見える)
+    var sectionUnexecutedBlocks = 0
+    var scenarioUnexecutedBlocks = 0
     private var _scenarioAborted = false
     var scenarioAborted: Bool {
         get { stateLock.lock(); defer { stateLock.unlock() }; return _scenarioAborted }
@@ -391,11 +402,35 @@ public final class FTDriveCore {
         emit(finished)
     }
 
+    /// CAE の 1 ブロック。**expectation がアサーション 0 個で終わったら警告する** —
+    /// 「action に全部書いて expectation には tap だけ置く」「exist のつもりで select を置く」は
+    /// コンパイルも実行も通り、**何も検証しないまま緑**になる(verify の inconclusive と同じ穴を
+    /// CAE 側にも塞ぐ)。失敗にはしない = 既存シナリオを止めない
     func runSection(_ name: String, _ body: () -> Void) {
         let previous = currentSection
+        let previousCount = sectionAssertionCount
+        let previousUnexecuted = sectionUnexecutedBlocks
         currentSection = name
+        sectionAssertionCount = 0
+        sectionUnexecutedBlocks = 0
         body()
+        if name == "expectation", sectionAssertionCount == 0, sectionUnexecutedBlocks == 0 {
+            warnSectionWithoutAssertions()
+        }
         currentSection = previous
+        sectionAssertionCount = previousCount
+        sectionUnexecutedBlocks = previousUnexecuted
+    }
+
+    private func warnSectionWithoutAssertions() {
+        let scene = withState { record.scenes.last }
+        let title = (scene?.title).map { $0.isEmpty ? "" : " (\"\($0)\")" } ?? ""
+        let location = scene.map { "scene \($0.number)\(title)" } ?? "a scene"
+        let message = "the expectation block of \(location) contains no assertions "
+            + "(it checks nothing). Add exist / textIs / thisIs etc."
+        emit(.log("⚠️ " + message))
+        addSuggestion(FixSuggestion(isStrong: false, message: message),
+                      emitEvent: false, file: "", line: 0)
     }
 
     /// 名前付きの共通ステップ(group)。記録上の見え方だけを変え、実行・失敗セマンティクスは素の列と同じ
@@ -407,7 +442,7 @@ public final class FTDriveCore {
 
     struct VerifyOutcome { let assertionCount: Int; let failed: Bool }
 
-    /// verify() の実体。body 実行中に noteVerifyAssertion() で数えたアサーション数と、
+    /// verify() の実体。body 実行中に noteAssertion() で数えたアサーション数と、
     /// 実行中に新たに scenarioAborted が立ったか(= 既存の failure が verify を失敗させたか)を返す
     func runVerify(_ body: () -> Void) -> VerifyOutcome {
         verifyStack.append(VerifyFrame())
@@ -419,10 +454,18 @@ public final class FTDriveCore {
     }
 
     /// perform()(assert 系 FlowStep)と ValueAssertions.record()(thisIs 系)の両方から呼ぶ。
-    /// verify の外(verifyStack が空)では no-op
-    func noteVerifyAssertion() {
-        guard !verifyStack.isEmpty else { return }
+    /// **「アサーションとして書かれた」の唯一の定義**で、verify / CAE セクション / シナリオ全体の
+    /// 3 つの計数がここに合流する(定義が割れると片方だけ誤検知する)
+    func noteAssertion() {
+        sectionAssertionCount += 1
+        scenarioAssertionCount += 1
         for i in verifyStack.indices { verifyStack[i].assertionCount += 1 }
+    }
+
+    /// 条件ブロックの本体を実行しなかった(sectionUnexecutedBlocks の説明を参照)
+    func noteUnexecutedBlock() {
+        sectionUnexecutedBlocks += 1
+        scenarioUnexecutedBlocks += 1
     }
 
     /// verify のブロックにアサーションが無かったときの弱い修正提案(2026-08-03 ユーザー決定:
@@ -466,13 +509,15 @@ public final class FTDriveCore {
     @discardableResult
     /// selectorError: 実行前に落とす理由(FTSelector.preflightError)。
     /// nil = 検証済み・問題なし。セレクタを取らないコマンドも nil
+    /// commandError: セレクタ以外の引数の誤り。**メッセージをそのまま**失敗理由にする
+    /// (selectorError は "invalid selector syntax: " を前置するので用途が違う)
     func perform(step: FlowStep, description: String, selectorText: String? = nil,
-                 selectorError: String? = nil,
+                 selectorError: String? = nil, commandError: String? = nil,
                  file: StaticString, line: UInt) -> PerformResult {
         let filePath = relativePath("\(file)")
         // verify() のブロック内アサーション数を数える(判定は FlowStep.assert != nil のみ。
         // skip/dry-run/失敗いずれの結果になっても「アサーションとして書かれた」事実は変わらない)
-        if step.assert != nil { noteVerifyAssertion() }
+        if step.assert != nil { noteAssertion() }
         debugCheckpoint(description: description, file: filePath, line: Int(line))
         if scenarioAborted {
             let status = StepResult.Status.skipped(skipReason)
@@ -482,10 +527,11 @@ public final class FTDriveCore {
         // 構文検証はデバイスに触る前(dry-run でも)に行う。パースは失敗しない契約のため、
         // `:rigth(x)` のような誤りは「そんなラベルは無い」に化け、notExist/countIs(x,0) では
         // 緑になってしまう。ここで落とすのが唯一の防波堤(FTSelector.preflightError 参照)
-        if let error = selectorError {
-            let status = StepResult.Status.failed("invalid selector syntax: \(error)")
+        if let error = selectorError ?? commandError {
+            let reason = selectorError == nil ? error : "invalid selector syntax: \(error)"
+            let status = StepResult.Status.failed(reason)
             recordStep(description: description, status: status, file: filePath, line: Int(line))
-            handleFailure(stepDescription: description, reason: "invalid selector syntax: \(error)")
+            handleFailure(stepDescription: description, reason: reason)
             return PerformResult(status: status, element: nil)
         }
         if dryRun {
@@ -630,6 +676,21 @@ public final class FTDriveCore {
         branchOutcomes[selector] = (branchOutcomes[selector] ?? false) || met
     }
 
+    /// **シナリオ全体でアサーションが1本も無い**ときの警告。expectation 単位の警告
+    /// (runSection)より重い症状 —— 操作しただけで何も確かめておらず、**アプリがどう壊れても緑**。
+    /// dry-run でも成立する静的な判定なので、生成直後の検証ループで拾える。
+    /// シナリオ終了時に1回だけ呼ぶ(warnAboutNeverResolvedIDs と同じ位置)
+    public func warnAboutMissingAssertions() {
+        guard scenarioAssertionCount == 0, scenarioUnexecutedBlocks == 0,
+              withState({ !record.scenes.isEmpty }) else { return }
+        let message = "this scenario contains no assertions at all "
+            + "(it only operates the app, so it stays green no matter how the app breaks). "
+            + "Add exist / textIs / thisIs etc. to the expectation blocks"
+        emit(.log("⚠️ " + message))
+        addSuggestion(FixSuggestion(isStrong: true, message: message),
+                      emitEvent: false, file: "", line: 0)
+    }
+
     /// 否定側でしか現れず、一度も解決できなかった `#id` を弱い提案として残す。
     /// シナリオ終了時に1回だけ呼ぶ(ftRunTearDown 後)
     public func warnAboutNeverResolvedIDs() {
@@ -683,12 +744,16 @@ public final class FTDriveCore {
 
     /// 任意の async 処理を 1 ステップとして実行・記録する(launch / procedure / wait 等)。
     /// launchTiming は launchApp/restartApp だけが渡す(body 完了後に読む actionMs/waitMs 取得元。
-    /// 他の呼び出しは既定 nil = durationMs のみ)
+    /// 他の呼び出しは既定 nil = durationMs のみ)。
+    /// isAssertion は **appIs だけ** true(FlowStep を持たない唯一の検証コマンドで、
+    /// 渡さないと verify も expectation も「検証0本」と数えてしまう)
     @discardableResult
     func performCustom(description: String, file: StaticString, line: UInt,
                        launchTiming: (() -> LaunchTiming?)? = nil,
+                       isAssertion: Bool = false,
                        _ body: @escaping () async throws -> Void) -> StepResult.Status {
         let filePath = relativePath("\(file)")
+        if isAssertion { noteAssertion() }
         debugCheckpoint(description: description, file: filePath, line: Int(line))
         if scenarioAborted {
             let status = StepResult.Status.skipped(skipReason)
