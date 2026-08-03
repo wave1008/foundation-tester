@@ -77,7 +77,8 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 **`*WithScroll*` の別名は `maxSwipes:`(`select` 系は `requireVisible:` も)しか取らない糖衣**です。
 `timeout:` や `holdSeconds:` を渡したいときは本体の `scroll:` を使ってください
 (`tap(sel, scroll: .down, timeout: 2)`)。`existWithScrollLeft/Right` を置いていないのも同じ理由で、
-`exist(sel, scroll: .left)` と書けるためです。
+`exist(sel, scroll: .left)` と書けるためです。**置いていない別名を書いてもコンパイルエラーが
+正しい書き方を指します**(`tapWithScrollDown(sel, timeout: 2)` → 「本体の `scroll:` を使え」)。
 
 レポートに出る注記(**失敗ではなく観測**。読み方):
 
