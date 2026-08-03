@@ -14,7 +14,7 @@ extension Optional where Wrapped == Any {
         let core = FTRuntime.requireCore(command: verb)
         let description = "\(verb) \(detail)"
         // verify() のブロック内アサーション数を数える(perform() 側の同種フックと対になる)
-        core.noteVerifyAssertion()
+        core.noteAssertion()
         if core.scenarioAborted {
             core.recordStep(description: description, status: .skipped(core.skipReason),
                             file: "\(file)", line: Int(line))

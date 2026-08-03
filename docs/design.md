@@ -1374,6 +1374,16 @@ textIs(.id("txt_result"), "dialog=none")
   成功するため、構文検証では捕まらないこの穴の最後の砦
 - **`ifCanSelect` の不成立は `.skipped` で記録**し、最後まで不成立だった分岐は同じく警告に出す
   (`.passed` にすると「セレクタが腐って毎回飛んでいる」状態が緑のまま見えなくなる)
+- **アサーションが0個の `expectation` を警告**する(2026-08-03。`FTDriveCore.runSection` /
+  `warnAboutMissingAssertions`)。「`action` に全部書いて `expectation` は `tap` だけ」
+  「`exist` のつもりで `select`」はコンパイルも実行も通り、**アプリがどう壊れても緑**になる
+  (`verify` の inconclusive と同じ穴を CAE 側にも塞ぐ)。シナリオ全体で0本ならさらに強い提案を出す。
+  **数える定義は `FTDriveCore.noteAssertion` 1箇所**(`verify` と共有。定義が割れると片方だけ誤検知する)。
+  `appIs` は `FlowStep` を持たない唯一の検証コマンドなので `performCustom(isAssertion:)` で合流させる。
+  **`ios`/`android`/`ifCanSelect`/`repeatWhileCanSelect` の本体を実行しなかったときは黙る**
+  (`noteUnexecutedBlock`。中身は実行しないと分からないので誤検知を出さない側に倒す ——
+  `expectation { android { notExist(…) } }` を iOS で回す形が実際にある)。
+  **デバイス不要**(`api run --dry-run` / `ft_dry_run` で判定できる = 実機の前に落とせる)
 - **アプリより手前にある別プロセスの window を失敗時に添える**(Android のみ。2026-07-27)。
   `AndroidForegroundWindows` が `dumpsys window windows` を z 順に読み、アプリの window より
   手前で `isVisible=true` かつ別パッケージのものを返す。**アプリの a11y ツリーには他プロセスの

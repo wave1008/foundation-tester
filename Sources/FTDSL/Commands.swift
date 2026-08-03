@@ -160,11 +160,14 @@ private func tapImpl(_ selector: FTSelector, holdSeconds: Double, timeout: Doubl
 
 /// フォーカス中の要素にテキストを送信する(直前の tap でフォーカスした欄など。ロケータ指定なし)。
 /// ref なし = ブリッジがフォーカス中要素へ入力する(StepExecutor がロケータ解決を挟まず driver.type(ref: nil) を呼ぶ)。
+/// **セレクタを渡す引数落としは実行前に落とす**(FTSelector.selectorLikeInputError)
 public func type(_ text: String,
                  file: StaticString = #filePath, line: UInt = #line) {
     let step = FlowStep(action: "type", text: text)
     FTRuntime.requireCore(command: "type")
-        .perform(step: step, description: "type \"\(text)\"", file: file, line: line)
+        .perform(step: step, description: "type \"\(text)\"",
+                 commandError: FTSelector.selectorLikeInputError(text),
+                 file: file, line: line)
 }
 
 /// フォーカス中の入力欄で Enter を押す(IME の改行/送信アクション相当。Shirates pressEnter 対応。
@@ -1961,7 +1964,8 @@ public func appIs(_ appNameOrAppId: String, waitSeconds: Double = FlowStep.defau
                   file: StaticString = #filePath, line: UInt = #line) {
     let core = FTRuntime.requireCore(command: "appIs")
     let driver = core.driver
-    core.performCustom(description: "appIs \"\(appNameOrAppId)\"", file: file, line: line) {
+    core.performCustom(description: "appIs \"\(appNameOrAppId)\"", file: file, line: line,
+                       isAssertion: true) {
         let matched = try await pollForegroundMatch(
             driver: driver, target: appNameOrAppId, waitSeconds: waitSeconds)
         guard !matched else { return }
@@ -2175,7 +2179,7 @@ private func ifCanSelectImpl(_ selector: FTSelector, waitSeconds: Double,
                     status: found ? .passed : .skipped("condition not met"),
                     file: "\(file)", line: Int(line))
     core.noteBranchOutcome(selector: selector.text, met: found)
-    if found { body() }
+    if found { body() } else { core.noteUnexecutedBlock() }
     return FTBranch(taken: found)
 }
 
@@ -2187,20 +2191,30 @@ private func validationError(_ selector: FTSelector) -> String? {
 public struct FTBranch {
     let taken: Bool
 
-    /// 直前の分岐が不成立だった場合にブロックを実行する
+    /// 直前の分岐が不成立だった場合にブロックを実行する。
+    /// **成立していた場合はこちらが未実行**なので記録する(ifCanSelect 側と対称。理由は
+    /// FTDriveCore.sectionUnexecutedBlocks)
     public func ifElse(_ body: () -> Void) {
-        if !taken { body() }
+        if taken {
+            FTRuntime.requireCore(command: "ifElse").noteUnexecutedBlock()
+        } else {
+            body()
+        }
     }
 }
 
-/// プラットフォームが iOS のときのみブロックを実行する
+/// プラットフォームが iOS のときのみブロックを実行する。
+/// 実行しなかったことは noteUnexecutedBlock で残す(中身は実行しないと分からないので、
+/// 「アサーションが無い」の判定を誤らせないため。FTDriveCore.runSection 参照)
 public func ios(_ body: () -> Void) {
-    if FTRuntime.requireCore(command: "ios").platform == "ios" { body() }
+    let core = FTRuntime.requireCore(command: "ios")
+    if core.platform == "ios" { body() } else { core.noteUnexecutedBlock() }
 }
 
 /// プラットフォームが Android のときのみブロックを実行する
 public func android(_ body: () -> Void) {
-    if FTRuntime.requireCore(command: "android").platform == "android" { body() }
+    let core = FTRuntime.requireCore(command: "android")
+    if core.platform == "android" { body() } else { core.noteUnexecutedBlock() }
 }
 
 /// セレクタが解決できる限り本体を繰り返す(件数不定の一括操作用。上限 max 回)。
@@ -2249,6 +2263,8 @@ private func repeatWhileCanSelectImpl(_ selector: FTSelector, max: Int, waitSeco
     // 「ちょうど 10 件だった」のか「まだ残っているのに打ち切った」のかが記録から読めない
     // (成功扱いにする契約は変えない = 上限到達を失敗にはしない)
     let reachedMax = iterations >= max && max > 0 && !core.isDryRun
+    // 0 周 = 本体を一度も実行していない(ios/android の不一致と同じ扱い。runSection 参照)
+    if iterations == 0 { core.noteUnexecutedBlock() }
     let suffix = reachedMax ? " (stopped at the limit; more may remain)" : ""
     core.recordStep(description: "repeatWhileCanSelect \"\(selector.text)\" → \(iterations) time(s)\(suffix)",
                     status: .passed, file: "\(file)", line: Int(line))

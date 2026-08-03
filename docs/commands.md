@@ -40,7 +40,7 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 |---|---|
 | `tap(sel, holdSeconds: 0, timeout:scroll:maxSwipes:)` | タップ。`holdSeconds` を 0 より大きくすると長押し(既定 0 = 通常タップ) |
 | `select(sel, timeout:requireVisible:scroll:maxSwipes:)` | 要素を**掴むだけ**(デバイス操作なし)。`exist` と違い**検証ではない**ので、レポートに検証ステップとして残らない。値の読み出し(`.text`/`.value`/`.id`)や検証コマンドへのチェーンの起点に使う。**掴めなければ失敗させず空要素を返す** — 「見つからない」も「見つかったが見えない(覆われ・見切れ)」も同じ形で返るので、呼び出し側は `.isEmpty` で分岐する(`exist` はどちらも失敗へ反転するので意味が違う)。**在ることを保証したいなら `exist`**。`requireVisible: false` で可視性照合自体を外す |
-| `type("文字列")` | **フォーカス中の要素**へ入力(直前に `tap(入力欄)` でフォーカスしてから使う)。改行の扱いは下記 |
+| `type("文字列")` | **フォーカス中の要素**へ入力(直前に `tap(入力欄)` でフォーカスしてから使う)。改行の扱いは下記。**引数はテキストであってセレクタではない** — `type("#email")` のようにセレクタらしい1語(`#` + 識別子・`\|\|` や `>>` を含む)を渡すと実行前に失敗する(黙って `#email` と打ち込んで後段の検証で落ちると原因から遠いため)。その文字列を本当に入力したいなら2引数形 `type("#field", "#email")` を使う |
 | `type(sel, "文字列", timeout:scroll:maxSwipes:)` | 要素を指定して入力。日本語もそのまま入る(IME 切替なし)。改行の扱いは下記 |
 | `pressEnter()` | フォーカス中の入力へ Enter/IME アクション(検索・実行・改行)を発火(Shirates(Classic) 準拠) |
 | `hideKeyboard()` | ソフトキーボードを閉じる。**Android のみ**(出ているときだけ戻るキーを撃つので冪等)。**iOS は未対応で失敗する** — iOS で閉じたいときは `pressEnter()` を使う(単一行の欄なら閉じる) |
@@ -231,6 +231,21 @@ let 合計 = try await fetchTotal()        // procedure { } 内で取得した�
 | `thisContains(Not)` / `thisStartsWith(Not)` / `thisEndsWith(Not)` | 部分・前方・後方一致 |
 | `thisMatches(Not)` / `thisMatchesDateFormat` | 正規表現 / 日付書式 |
 | `thisIsGreaterThan(OrEqual)` / `thisIsLessThan(OrEqual)` | 数値比較(数値に解釈できなければ失敗) |
+
+## 検証していないシナリオの検知
+
+`expectation { }` に**アサーションが1つも無い**と、レポートとログに警告が出ます(失敗にはしません)。
+`action` に全部書いて `expectation` には `tap` だけ置いた・`exist` のつもりで `select` を置いた、は
+どちらもコンパイルも実行も通り、**アプリがどう壊れても緑**になるためです。
+**シナリオ全体でアサーションが0本**ならさらに強い警告が出ます。
+
+- 数えるのは `exist` / `notExist` / `textIs` 以下の検証コマンドと `thisIs` 系・`appIs`
+  (= `verify` が数えるものと同じ)。`select` は検証ではないので数えません
+- **`ios { }` / `android { }` / `ifCanSelect { }` の中身が実行されなかった**ときは警告しません
+  (中に何が書かれているかは実行しないと分からないため。`expectation { android { notExist(…) } }`
+  を iOS で回しても黙ります)
+- **`ftester api run --dry-run`(MCP は `ft_dry_run`)ならデバイス無しで判定できます**。
+  実機を触る前にここで落とすのが安上がりです
 
 ## まとめて検証(verify)
 

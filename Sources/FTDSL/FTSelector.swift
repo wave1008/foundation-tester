@@ -830,6 +830,28 @@ public struct FTSelector {
         return false
     }
 
+    /// 単一引数 `type("...")` にセレクタが渡されている疑い(**引数落とし**の検出)。
+    /// あの形は「フォーカス中の要素へこの文字列を入力する」なので、セレクタを渡すと
+    /// **`#email` という文字列を打ち込んで先へ進み**、失敗するのは後段の検証になる(原因から遠い)。
+    /// **誤検知しない形にだけ絞る**: `#` + 識別子だけの1語 / `||` / `>>` を含む。
+    /// これらを文字どおり入力したいときは2引数形 `type(欄のセレクタ, "#foo")` で書ける
+    /// (単一引数形だけが曖昧なので、逃げ道は既存 API で足りる)
+    public static func selectorLikeInputError(_ text: String) -> String? {
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
+        let hint = "`type(\"\(trimmed)\")` types that text into the focused element"
+            + " — the single-argument form takes text, not a selector."
+            + " Use `type(<selector>, \"<text>\")` to target a field,"
+            + " or `tap(<selector>)` first and then pass only the text."
+        if trimmed.contains("||") || trimmed.contains(">>") { return hint }
+        guard trimmed.hasPrefix("#"), trimmed.count >= 2,
+              !trimmed.contains(where: { $0.isWhitespace }) else { return nil }
+        let body = trimmed.dropFirst()
+        let isIDBody = body.allSatisfy { char in
+            (char.isASCII && (char.isLetter || char.isNumber)) || "_-*".contains(char)
+        }
+        return isIDBody ? hint : nil
+    }
+
     static func isAsciiIdentifier(_ text: String) -> Bool {
         guard let first = text.first, first.isLetter, first.isASCII else { return false }
         return text.allSatisfy { ($0.isLetter || $0.isNumber) && $0.isASCII }
