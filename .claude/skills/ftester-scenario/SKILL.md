@@ -40,6 +40,8 @@ README.md「Swift DSL」節。ここはエージェントが順に実行する�
   設問で意思決定を丸投げしない。セレクタ・経路・後始末など既定で決められることは決めて進める)。
 - **各書き込みの後にコンパイル検証ゲートを通す**(`ft_list_scenarios` の自動ビルド、または
   `swift build --product ftester-scenarios-<proj>`)。緑になるまで次へ進まない。
+  **緑になったら実機の前に dry-run**(ステップ4.5)。実機時間ゼロで「コンパイルは通るが
+  何も検証していない」を落とせるので、実機で1回試してから気付くより安い。
 - Projects/ 配下のシナリオはユーザー資産。**既存 .swift を勝手に上書き・整形しない**。追記か新規ファイル。
 
 ## 前提の確定(最初に1回)
@@ -145,6 +147,23 @@ class ログインできること {
 - ビルドが `Could not find target 'ftester-scenarios-<proj>...'` で落ちたら、そのプロジェクトが
   Package.swift に未登録(手動 clone / git pull 後にありがち)。**`ftester project sync`** でマーカー
   区間を再生成してから再検証する(Package.swift のマーカー区間は自動生成・手編集しない)。
+- **コマンド名の当てずっぽうを避ける**: 存在しない名前はコンパイルエラーになるが、`ftester api
+  dsl-commands`(デバイス不要・JSON)で名前・引数・`exist` へのチェーン可否を先に引ける
+  (`--name tap` / `--category scroll` で絞る)。他ツールの名前(`assertExists` `waitFor` `click`
+  `sleep` `swipeUp` 等)を書くと、コンパイラが ftester での書き方を指して落ちる。
+
+### 4.5. dry-run ゲート(デバイス不要・数秒)
+
+**コンパイルの次・実機実行の前に必ず1回**。実機を1台も使わずに、セレクタの構文誤り・到達しない
+scene・**アサーションが0個の expectation** を落とす(どれもコンパイルは通り、実機では
+「なぜか緑」になって気付けない類)。
+
+- MCP: `ft_dry_run`(id=`クラス名.S0010`, project 指定)
+- CLI: `ftester api run --project <proj> --dry-run --scenario <クラス名.S0010>`
+
+⚠️ 行(`contains no assertions` / `no assertions at all`)が出たら、**expectation に `exist` /
+`textIs` / `thisIs` 等を足してから**次へ進む。dry-run は**セレクタが実在するかは判定できない**
+(それは次のステップの仕事)。
 
 ### 5. 🧑 実行して意図通りか確認
 
