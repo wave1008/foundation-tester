@@ -80,7 +80,7 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | `flickCenterToTop/Bottom/Left/Right` `flickLeftToRight/RightToLeft` `flickBottomToTop/TopToBottom`(8種) | 同名 | ✅ 2026-08-03 **画面基点のみ**。`scrollableElement`/`safeMode` 引数は無い(`scrollFrame` で足りる) |
 | `flickAndGo*` 一族 | `scroll*`/`scrollTo` 系で代替 | ➖ 画面遷移トリガの糖衣は生成側の語彙を増やすだけ |
 | 要素基点 `TestElement.flickTo*` / `flickOut*` | — | ❌ |
-| `scrollFrame` | 同名(`scroll*` / `scrollTo` / `withScroll*` の引数。セレクタ式) | ✅ 2026-08-02 |
+| `scrollFrame` | 同名(`scroll*` / `scrollTo` / `withScroll*` / `flick*` の引数。セレクタ式) | ✅ 2026-08-02。**型付きセレクタ(`Sel`)版は持たない = 文字列のみ**(ユーザー決定 2026-08-04・**再提案しない**。1対1を保証するのは対象セレクタまで。理由は design.md) |
 | `startMarginRatio` / `endMarginRatio` | 同名 | ✅ **既定値は ftester の実測値**(承認済み差分) |
 | `scrollableElement` | — | ➖ `scrollFrame` のセレクタ式で足りる |
 | `ScrollDirection.None` | `FTScrollDirection` に相当なし | ➖ 「スクロールしない」は `scroll:` 引数の省略(Optional)が担う |
