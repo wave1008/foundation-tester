@@ -115,6 +115,7 @@ final class MCPToolCallTests: XCTestCase {
             ("ft_tap", [:], "ref or x/y"),
             ("ft_swipe", ["direction": "sideways"], "up/down/left/right"),
             ("ft_run_scenario", [:], "id"),
+            ("ft_dry_run", [:], "id"),
         ]
         for testCase in cases {
             do {
@@ -173,7 +174,7 @@ final class MCPToolCallTests: XCTestCase {
         "ft_swipe", "ft_press", "ft_screenshot", "ft_terminate",
     ]
     private static let projectBackedTools: Set<String> = [
-        "ft_list_scenarios", "ft_run_scenario", "ft_list_projects", "ft_doctor",
+        "ft_list_scenarios", "ft_run_scenario", "ft_dry_run", "ft_list_projects", "ft_doctor",
     ]
 
     func testDriverBackedToolsAreAllDispatched() async {

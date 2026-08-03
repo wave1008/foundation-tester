@@ -273,6 +273,9 @@ final class MCPServer {
         case "ft_list_scenarios":
             return try listScenarios(args)
 
+        case "ft_dry_run":
+            return try await dryRun(args)
+
         case "ft_run_scenario":
             return try await runScenario(args)
 
@@ -334,6 +337,42 @@ final class MCPServer {
                 + " — run profiles: \(runs.isEmpty ? "none" : runs.joined(separator: ", "))"
                 + " / machines: \(machines.isEmpty ? "none" : machines.joined(separator: ", "))")
         }
+        return text(lines.joined(separator: "\n"))
+    }
+
+    /// dry-run(**デバイス不要**)。コンパイルの次・実機実行の前に挟む検証で、実機時間ゼロで
+    /// セレクタ構文エラー・到達しない scene・アサーション0の expectation を落とす。
+    /// 実機に触れないのでロケータが実在するかは分からない(それは ft_run_scenario の仕事)
+    private func dryRun(_ args: [String: Any]) async throws -> [[String: Any]] {
+        guard let id = args["id"] as? String else { throw MCPError("id is required") }
+        let project = try ScenarioHost.project(named: args["project"] as? String)
+        if !(args["skipBuild"] as? Bool ?? false) {
+            try ScenarioHost.build(project: project)
+        }
+        let all = try ScenarioHost.list(project: project)
+        guard let info = all.first(where: { $0.id == id })
+            ?? all.first(where: { $0.id.hasPrefix(id + ".") }) else {
+            throw MCPError("scenario not found: \(id) (available: \(all.map(\.id).joined(separator: ", ")))")
+        }
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ftester-mcp-dryrun-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        var lines: [String] = []
+        // dry-run は NullDriver 固定なので接続情報は使われない(platform だけが ios { } / android { } を分ける)
+        let passed = await ScenarioHost.run(
+            project: project, scenarioID: info.id,
+            connection: DriverConnection(platform: info.platform ?? "ios"),
+            fm: FMConfig(heal: false), reportDir: tempDir.path,
+            dryRun: true) { event in
+                lines.append(contentsOf: ScenarioLogFormatter.lines(for: event))
+            }
+        // レポートは一時ディレクトリに書かれ、この関数を抜けると消える。
+        // 案内すると開けないパスを渡すことになるので落とす(dry-run に証跡は要らない)
+        lines.removeAll { $0.contains("→ report:") }
+        lines.append(passed
+            ? "✅ dry-run passed (no device was touched — selectors were only syntax-checked)"
+            : "❌ dry-run failed")
         return text(lines.joined(separator: "\n"))
     }
 
@@ -452,6 +491,12 @@ final class MCPServer {
             "project": ["type": "string", "description": "Test project name (defaults to the default project)"],
             "skipBuild": ["type": "boolean", "description": "Skip the swift build (default false)"],
         ]),
+        tool("ft_dry_run", "Dry-run a scenario without any device. Catches selector syntax errors, unreachable scenes and expectation blocks with no assertions in seconds. "
+            + "Run it after ft_list_scenarios (compile) and before ft_run_scenario (real device) — it cannot tell whether a selector matches a real element", [
+            "id": ["type": "string", "description": "Scenario ID (Class.method; see ft_list_scenarios)"],
+            "project": ["type": "string", "description": "Test project name (defaults to the default project)"],
+            "skipBuild": ["type": "boolean", "description": "Skip the swift build (default false)"],
+        ], required: ["id"]),
         tool("ft_run_scenario", "Run a scenario deterministically. On failure, returns the triage and the report path. Builds automatically", [
             "id": ["type": "string", "description": "Scenario ID (Class.method; see ft_list_scenarios)"],
             "project": ["type": "string", "description": "Test project name (defaults to the default project)"],
