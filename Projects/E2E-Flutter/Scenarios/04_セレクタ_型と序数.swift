@@ -10,13 +10,20 @@
 //   - **テキストは iOS = `StaticText` / Android = `Other`**(Flutter は canvas 描画で、
 //     Android 側の className が android.view.View のままになるため StaticText に写像されない)
 // → 型セレクタを使ってよいのは Button だけ。テキストの検証は必ず `#id` + `textIs` で書く。
+//
+// **記法ごとに @Test を分けない**(2026-08-04 統合)。4 本は同じセレクタ画面で始まり導入シーンが
+// 完全に同一で、1 本あたり launchApp + ナビの固定費だけが増えていた。全 E2E スイートは合計律速
+// (合計÷レーン数 > 最長シナリオ)なので、@Test を減らすと壁時計が縮む
+// (docs/performance-tuning.md §3.6 の判定表)。**空振りは検出できる** —— 各シーンの期待値は
+// 直前と必ず異なる値(`-` → item3 → allow → alias → shared)なので、タップが届かなければ落ちる。
+// 統合で、下の起動直後同期(4 か所に複製されていた)も 1 か所に減る。
 
 import FTDSL
 
 @TestClass(app: "com.ftester.e2e.flutter")
 class セレクタの型と序数とフォールバックが解決できること {
 
-    @Test(".型[n] 序数で同一ラベル3連から一意に引ける(ラベル指定では曖昧で引けない)")
+    @Test("序数・型限定 id・型限定ラベル・フォールバック連鎖が同じ画面で解決できる")
     func S0010() {
         scenario {
             scene(1, "セレクタ画面を開く") {
@@ -46,99 +53,21 @@ class セレクタの型と序数とフォールバックが解決できるこ�
                     textIs("#txt_selector_result", "result=item3")
                 }
             }
-        }
-    }
-
-    @Test(".型#id で型限定した id 指定ができる")
-    func S0020() {
-        scenario {
-            scene(1, "セレクタ画面を開く") {
-                condition {
-                    launchApp()
-                }.expectation {
-                    // Flutter は起動直後の数百 ms、a11y ツリーは完成しているのに**ポインタ入力を
-                    // 取りこぼす**ことがある(初回タップが成功扱いのまま黙って無反応になる。
-                    // Android で実測)。ここで1往復させ、着地を確認してから操作する。
-                    //
-                    // requireVisible: false = これは可視性の**検証**ではなく同期のための1往復。
-                    // FM はホスト全体で直列化(約1回/秒)されるため、全 launchApp で FM を
-                    // 呼ぶとコストだけが乗る。**可視性の検証と、occlusion-guard の誤判定を
-                    // 検出する役目は 01_起動と画面遷移 が既定(true)のまま担う**
-                    // (README「既知の ftester 欠陥」参照。ここで guard を切っても検出器は死なない)。
-                    exist("#txt_home_marker", requireVisible: false)
-                }.action {
-                    tap("#nav_selector")
-                }.expectation {
-                    textIs("#txt_selector_result", "result=-")
-                }
-            }
-            scene(2, ".型#id で #btn_allow に着地") {
+            scene(3, ".型#id で #btn_allow に着地") {
                 action {
                     tap(".button#btn_allow")
                 }.expectation {
                     textIs("#txt_selector_result", "result=allow")
                 }
             }
-        }
-    }
-
-    @Test("|| フォールバック連鎖で1つ目が無くても2つ目に当たる")
-    func S0030() {
-        scenario {
-            scene(1, "セレクタ画面を開く") {
-                condition {
-                    launchApp()
-                }.expectation {
-                    // Flutter は起動直後の数百 ms、a11y ツリーは完成しているのに**ポインタ入力を
-                    // 取りこぼす**ことがある(初回タップが成功扱いのまま黙って無反応になる。
-                    // Android で実測)。ここで1往復させ、着地を確認してから操作する。
-                    //
-                    // requireVisible: false = これは可視性の**検証**ではなく同期のための1往復。
-                    // FM はホスト全体で直列化(約1回/秒)されるため、全 launchApp で FM を
-                    // 呼ぶとコストだけが乗る。**可視性の検証と、occlusion-guard の誤判定を
-                    // 検出する役目は 01_起動と画面遷移 が既定(true)のまま担う**
-                    // (README「既知の ftester 欠陥」参照。ここで guard を切っても検出器は死なない)。
-                    exist("#txt_home_marker", requireVisible: false)
-                }.action {
-                    tap("#nav_selector")
-                }.expectation {
-                    textIs("#txt_selector_result", "result=-")
-                }
-            }
-            scene(2, "btn_alias_old(存在しない) || btn_alias_new(実在) → 2つ目で解決") {
+            scene(4, "btn_alias_old(存在しない) || btn_alias_new(実在) → 2つ目で解決") {
                 action {
                     tap("#btn_alias_old||#btn_alias_new")
                 }.expectation {
                     textIs("#txt_selector_result", "result=alias")
                 }
             }
-        }
-    }
-
-    @Test(".型&&共通ラベル で同ラベルのテキストではなく Button が選ばれる")
-    func S0040() {
-        scenario {
-            scene(1, "セレクタ画面を開く") {
-                condition {
-                    launchApp()
-                }.expectation {
-                    // Flutter は起動直後の数百 ms、a11y ツリーは完成しているのに**ポインタ入力を
-                    // 取りこぼす**ことがある(初回タップが成功扱いのまま黙って無反応になる。
-                    // Android で実測)。ここで1往復させ、着地を確認してから操作する。
-                    //
-                    // requireVisible: false = これは可視性の**検証**ではなく同期のための1往復。
-                    // FM はホスト全体で直列化(約1回/秒)されるため、全 launchApp で FM を
-                    // 呼ぶとコストだけが乗る。**可視性の検証と、occlusion-guard の誤判定を
-                    // 検出する役目は 01_起動と画面遷移 が既定(true)のまま担う**
-                    // (README「既知の ftester 欠陥」参照。ここで guard を切っても検出器は死なない)。
-                    exist("#txt_home_marker", requireVisible: false)
-                }.action {
-                    tap("#nav_selector")
-                }.expectation {
-                    textIs("#txt_selector_result", "result=-")
-                }
-            }
-            scene(2, ".button&&共通ラベル は #txt_shared_label ではなく #btn_shared_label に着地") {
+            scene(5, ".button&&共通ラベル は #txt_shared_label ではなく #btn_shared_label に着地") {
                 action {
                     tap(".button&&共通ラベル")
                 }.expectation {

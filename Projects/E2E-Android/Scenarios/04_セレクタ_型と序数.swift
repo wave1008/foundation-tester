@@ -11,13 +11,20 @@
 //   - Compose の Button(コントロール画面)→ 型 `Cell`(className が android.widget.button にならず
 //     SnapshotBuilder.mappedType の既定 clickable 側に落ちる)
 // 同一アプリ内で型が食い違うため、型セレクタは「どの画面か」まで意識して書く必要がある。
+//
+// **記法ごとに @Test を分けない**(2026-08-04 統合)。5 本のうち 4 本は同じセレクタ画面で始まり
+// 導入シーンが完全に同一で、1 本あたり launchApp + ナビの固定費だけが増えていた。全 E2E スイートは
+// 合計律速(合計÷レーン数 > 最長シナリオ)なので、@Test を減らすと壁時計が縮む
+// (docs/performance-tuning.md §3.6 の判定表)。**空振りは検出できる** —— 各シーンの期待値は
+// 直前と必ず異なる値(`-` → item3 → allow → alias → shared)なので、タップが届かなければ落ちる。
+// 最後の Compose 節だけはコントロールタブへ移るので、そこで画面が変わることを scene 見出しに残す。
 
 import FTDSL
 
 @TestClass(app: "com.ftester.e2e.android", platform: "android")
 class セレクタの型と序数とフォールバックが解決できること {
 
-    @Test(".型[n] 序数で同一ラベル3連から一意に引ける(ラベル指定では曖昧で引けない)")
+    @Test("序数・型限定 id・型限定ラベル・フォールバック連鎖と、View/Compose の型差")
     func S0010() {
         scenario {
             scene(1, "セレクタ画面を開く") {
@@ -36,90 +43,39 @@ class セレクタの型と序数とフォールバックが解決できるこ�
                     textIs("#txt_selector_result", "result=item3")
                 }
             }
-        }
-    }
-
-    @Test(".型#id で型限定した id 指定ができる")
-    func S0020() {
-        scenario {
-            scene(1, "セレクタ画面を開く") {
-                condition {
-                    launchApp()
-                }.action {
-                    tap("#nav_selector")
-                }.expectation {
-                    textIs("#txt_selector_result", "result=-")
-                }
-            }
-            scene(2, ".型#id で #btn_allow に着地") {
+            scene(3, ".型#id で #btn_allow に着地") {
                 action {
                     tap(".button#btn_allow")
                 }.expectation {
                     textIs("#txt_selector_result", "result=allow")
                 }
             }
-        }
-    }
-
-    @Test("|| フォールバック連鎖で1つ目が無くても2つ目に当たる")
-    func S0030() {
-        scenario {
-            scene(1, "セレクタ画面を開く") {
-                condition {
-                    launchApp()
-                }.action {
-                    tap("#nav_selector")
-                }.expectation {
-                    textIs("#txt_selector_result", "result=-")
-                }
-            }
-            scene(2, "btn_alias_old(存在しない) || btn_alias_new(実在) → 2つ目で解決") {
+            scene(4, "btn_alias_old(存在しない) || btn_alias_new(実在) → 2つ目で解決") {
                 action {
                     tap("#btn_alias_old||#btn_alias_new")
                 }.expectation {
                     textIs("#txt_selector_result", "result=alias")
                 }
             }
-        }
-    }
-
-    @Test(".型&&共通ラベル で同ラベルの Text ではなく Button が選ばれる")
-    func S0040() {
-        scenario {
-            scene(1, "セレクタ画面を開く") {
-                condition {
-                    launchApp()
-                }.action {
-                    tap("#nav_selector")
-                }.expectation {
-                    textIs("#txt_selector_result", "result=-")
-                }
-            }
-            scene(2, ".型&&共通ラベル は #txt_shared_label(staticText)ではなく #btn_shared_label(button)に着地") {
+            scene(5, ".型&&共通ラベル は #txt_shared_label(staticText)ではなく #btn_shared_label(button)に着地") {
                 action {
                     tap(".button&&共通ラベル")
                 }.expectation {
                     textIs("#txt_selector_result", "result=shared")
                 }
             }
-        }
-    }
-
-    @Test("同一アプリでも Compose 部分は Button ではなく Cell 型になる")
-    func S0050() {
-        scenario {
-            scene(1, "コントロールタブ(ComposeView)を開く") {
+            scene(6, "コントロールタブ(ComposeView)へ移ると Compose の Button は .clickable でしか引けない") {
                 condition {
-                    launchApp()
-                }.action {
                     tap("#tab_controls")
                 }.expectation {
                     textIs("#txt_radio", "plan=A")
-                }
-            }
-            scene(2, "Compose の Button は .clickable=ラベル で引ける(.button では引けない)") {
-                action {
+                }.action {
                     tap("#radio_b")
+                }.expectation {
+                    // **途中で確定させる**: 省くと最後の plan=A が初期値のままでも通り、
+                    // ラジオもリセットも空振りした場合と区別がつかない
+                    textIs("#txt_radio", "plan=B")
+                }.action {
                     tap(".clickable&&コントロールリセット")
                 }.expectation {
                     textIs("#txt_radio", "plan=A")

@@ -1,6 +1,6 @@
 // 05_テキスト入力.swift
 // ftester 機能: `type` コマンドと入力値の echo 検証(単一行/パスワード/送信/クリア)、
-// および `valueIs` / `valueContains` / `valueIsNotEmpty`(入力欄自体の値の直接検証)。
+// および `value*` 一式(入力欄自体の値の直接検証。肯定・否定の対称形すべて)。
 // SUT の入力欄は EditText。inputType=textPassword の欄だけ `SecureTextField` になり、
 // 複数行(textMultiLine)も `TextField` のまま(iOS ネイティブが TextView になるのと違う)。
 
@@ -81,7 +81,7 @@ class テキスト入力が正しくechoされること {
         }
     }
 
-    @Test("valueIs / valueContains / valueIsNotEmpty で入力欄自体の値を直接検証できる")
+    @Test("value* 一式で入力欄自体の値を直接検証できる")
     func S0030() {
         scenario {
             scene(1, "単一行に ASCII を入力した直後の値を検証する") {
@@ -96,6 +96,18 @@ class テキスト入力が正しくechoされること {
                     valueIs("#field_single", "hello123")
                     valueContains("#field_single", "hello")
                     valueIsNotEmpty("#field_single")
+                    // **対称形も同じ値で1回ずつ通す**。判定そのものは AssertKindsTests が固定済みで、
+                    // ここで見るのは**ブリッジから来た value** に対して同じ結果が出ることだけ。
+                    // valueIsEmpty は書かない(空欄の value にプレースホルダが返る)。
+                    // valueMatchesDateFormat は日付を持つ入力欄が SUT に無いので置かない
+                    valueStartsWith("#field_single", "hello")
+                    valueEndsWith("#field_single", "123")
+                    valueMatches("#field_single", "^hello[0-9]+$")
+                    valueIsNot("#field_single", "hello")
+                    valueContainsNot("#field_single", "xyz")
+                    valueStartsWithNot("#field_single", "123")
+                    valueEndsWithNot("#field_single", "hello")
+                    valueMatchesNot("#field_single", "^[0-9]+$")
                     // exist の戻り値にも同じ検証をチェーンできる
                     exist("#field_single").valueIs("hello123")
                 }

@@ -2,6 +2,11 @@
 // ftester 機能: `ifCanSelect`(出るか不定な要素への条件分岐)と `select`(掴めなければ空要素を返す)。
 // #btn_maybe_dialog は奇数回目だけダイアログを開く決定的仕様のため、ifCanSelect の
 // 「出ても出なくても通る」ことの検証材料になる。
+// **`select` の空振り検証は S0010 の最終シーンへ統合した**(2026-08-04)。導入シーンが同一で、
+// launchApp + ナビの固定費だけが増えていたため(全 E2E スイートは合計律速 =
+// docs/performance-tuning.md §3.6)。**交互ダイアログ(S0020)は分離を維持する** ——
+// #btn_maybe_dialog のカウンタは画面離脱でリセットされる仕様で、他の検証と同居させると
+// 「何回目のタップか」がシーンの並びに依存するため。
 // SUT のダイアログは SwiftUI `.alert`(= UIAlertController)。**ボタンには** accessibilityIdentifier が
 // そのまま届くが、**title/message には届かない**(UIAlertController が自前で描く StaticText。
 // .accessibilityIdentifier は捨てられる。実測)。よって見出しの検証はラベル「確認」で行う
@@ -46,6 +51,14 @@ class 条件分岐とダイアログ操作が正しく働くこと {
                     textIs("#txt_dialog_result", "dialog=cancel")
                 }
             }
+            scene(4, "ダイアログを閉じた状態で select しても scene は成功し、空要素が返る") {
+                action {
+                    select("#btn_dialog_ok", timeout: 0).isEmpty.thisIsTrue()
+                }.expectation {
+                    // select は掴めなくても失敗しないので、直前の結果が保たれたままであること
+                    textIs("#txt_dialog_result", "dialog=cancel")
+                }
+            }
         }
     }
 
@@ -81,28 +94,6 @@ class 条件分岐とダイアログ操作が正しく働くこと {
                     }
                 }.expectation {
                     exist("#txt_dialog_result")
-                }
-            }
-        }
-    }
-
-    @Test("select の空振りは失敗せず空要素を返す")
-    func S0030() {
-        scenario {
-            scene(1, "ダイアログ画面を開く(ダイアログを開かずに)") {
-                condition {
-                    launchApp()
-                }.action {
-                    tap("#nav_dialog")
-                }.expectation {
-                    textIs("#txt_dialog_result", "dialog=none")
-                }
-            }
-            scene(2, "ダイアログ未表示のまま select しても scene は成功し、空要素が返る") {
-                action {
-                    select("#btn_dialog_ok", timeout: 0).isEmpty.thisIsTrue()
-                }.expectation {
-                    textIs("#txt_dialog_result", "dialog=none")
                 }
             }
         }

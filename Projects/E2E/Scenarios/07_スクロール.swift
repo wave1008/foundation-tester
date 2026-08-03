@@ -121,6 +121,25 @@ class スクロールで折り返し下の要素に到達できること {
                     textIs("#txt_row_selected", "selected=row_40")
                 }
             }
+            // 上方向は下方向の鏡像だが**マージンの適用辺が入れ替わる**ので別経路(ScrollGeometry)。
+            // 末尾に居るこの位置が、上方向を試すのに追加の送りが要らない唯一の場所
+            scene(3, "`scrollUp` は1画面ぶんコンテンツを戻す") {
+                action {
+                    scrollUp(scrollFrame: "#list_rows", repeat: 2)
+                }.expectation {
+                    notExist("#row_40")
+                }
+            }
+            scene(4, "`withScrollUp { }` はブロック内を上方向のスクロール探索にする") {
+                action {
+                    withScrollUp(scrollFrame: "#list_rows") {
+                        tap("#row_01", maxSwipes: 15)
+                    }
+                }.expectation {
+                    // 直前は selected=row_40 なので、探索・タップが届かなければ落ちる
+                    textIs("#txt_row_selected", "selected=row_01")
+                }
+            }
         }
     }
 
@@ -212,6 +231,53 @@ class スクロールで折り返し下の要素に到達できること {
                     // 先頭タグは流れ、先頭行は残る
                     notExist("#tag_01")
                     exist("#row_01")
+                }
+            }
+            // **横方向は縦の焼き直しではない**: 端マージンの適用辺が入れ替わり、横スクロール容器の
+            // `scrollable` 申告はフレームワークで割れる(Compose は出さない)。4 SUT で回す価値が高い
+            scene(4, "`scrollLeft` で横カルーセルを戻すと先頭タグが再び見える") {
+                action {
+                    scrollLeft(scrollFrame: "#carousel_tags", repeat: 2)
+                }.expectation {
+                    exist("#tag_01")
+                    exist("#row_01")
+                }
+            }
+            // **見るのはブロックが方向を継承するかだけ**で、タップまでは含めない。
+            // iOS の SwiftUI / Flutter では**横探索の直後のタップが飲まれる**ことがあり
+            // (2026-08-04 実測: #tag_08 は整定後も画面内 (205,672) に見えているのに tag=- のまま。
+            // CMP と Android では再現しない)、タップまで入れるとこの検証がその問題に巻き込まれる。
+            // スクロール直後のタップは縦方向の S0080 / S0110 が回帰テストとして持っている
+            scene(5, "`withScrollRight { }` / `withScrollLeft { }` はブロック内を横方向の探索にする") {
+                action {
+                    withScrollRight(scrollFrame: "#carousel_tags") {
+                        // 方向を継承していなければ画面外の #tag_15 に届かず落ちる
+                        exist("#tag_15", maxSwipes: 10)
+                    }
+                }.expectation {
+                    // 探索が実際に画面へ入れたこと(現在画面だけで解決できる)
+                    existWithoutScroll("#tag_15")
+                }.action {
+                    withScrollLeft(scrollFrame: "#carousel_tags") {
+                        exist("#tag_01", maxSwipes: 10)
+                    }
+                }.expectation {
+                    existWithoutScroll("#tag_01")
+                }
+            }
+            // 横の端送り。端判定の機構(静止署名の2回連続不変化)は縦の scrollToBottom/scrollToTop と
+            // 共通で軸だけが違うが、**容器の scrollable 申告はフレームワークで割れる**ので4 SUT で回す
+            // (カルーセルは 20 件・1画面 3〜4 件のため往復で十数秒かかる。2026-08-04 にコスト優先で
+            //  CMP のみにしたが、揃える判断に変えた)
+            scene(6, "`scrollToRightEdge` / `scrollToLeftEdge` は横の端まで送る") {
+                action {
+                    scrollToRightEdge(scrollFrame: "#carousel_tags", maxSwipes: 20)
+                }.expectation {
+                    existWithoutScroll("#tag_20")
+                }.action {
+                    scrollToLeftEdge(scrollFrame: "#carousel_tags", maxSwipes: 20)
+                }.expectation {
+                    existWithoutScroll("#tag_01")
                 }
             }
         }

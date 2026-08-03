@@ -163,6 +163,46 @@ class スクロールで折り返し下の要素に到達できること {
                     textIs("#txt_row_selected", "selected=row_30")
                 }
             }
+            // 上方向は下方向の鏡像だが**マージンの適用辺が入れ替わる**ので別経路(ScrollGeometry)。
+            // 下まで送ったこの位置が、上方向を試すのに追加の送りが要らない唯一の場所
+            scene(5, "`scrollUp` は1画面ぶんコンテンツを戻す") {
+                action {
+                    scrollUp(scrollFrame: "#list_rows", repeat: 2)
+                }.expectation {
+                    notExist("#row_30")
+                }
+            }
+            scene(6, "`withScrollUp { }` はブロック内を上方向のスクロール探索にする") {
+                action {
+                    withScrollUp(scrollFrame: "#list_rows") {
+                        tap("#row_01", maxSwipes: 15)
+                    }
+                }.expectation {
+                    // 直前は selected=row_30 なので、探索・タップが届かなければ落ちる
+                    textIs("#txt_row_selected", "selected=row_01")
+                }
+            }
+            // 別名族は本体(`tap(scroll:)` / `exist(scroll:)`)の糖衣で、転送そのものは
+            // Tests/FTBridgeClientTests/SwipeForScrollForwardingTests.swift がソース走査で固定している。
+            // ここで見るのは**同じ経路を通って実機に届くこと**だけ(CMP は 15_型付きセレクタ が
+            // Sel 版で同じ組を通しているので、文字列版はこちらの3 SUT が担う)
+            scene(7, "スクロール探索の別名族(tapWithScrollDown / existWithScrollUp / tapWithoutScroll)") {
+                action {
+                    tapWithScrollDown("#row_40", maxSwipes: 15)
+                }.expectation {
+                    // 直前は selected=row_01 なので、届かなければ落ちる
+                    textIs("#txt_row_selected", "selected=row_40")
+                    existWithScrollUp("#row_01", maxSwipes: 15)
+                }.action {
+                    withScrollDown {
+                        // 固定ヘッダは常に現在画面にある = スクロールせずに解決できる
+                        existWithoutScroll("#txt_row_selected")
+                        tapWithoutScroll("#btn_scroll_top")
+                    }
+                }.expectation {
+                    exist("#row_01")
+                }
+            }
         }
     }
 
@@ -249,6 +289,49 @@ class スクロールで折り返し下の要素に到達できること {
                     // 先頭タグは流れ、先頭行は残る
                     notExist("#tag_01")
                     exist("#row_01")
+                }
+            }
+            // **横方向は縦の焼き直しではない**: 端マージンの適用辺が入れ替わり、横スクロール容器の
+            // `scrollable` 申告はフレームワークで割れる。4 SUT で回す価値が高い
+            scene(4, "`scrollLeft` で横カルーセルを戻すと先頭タグが再び見える") {
+                action {
+                    scrollLeft(scrollFrame: "#carousel_tags", repeat: 2)
+                }.expectation {
+                    exist("#tag_01")
+                    exist("#row_01")
+                }
+            }
+            // **見るのはブロックが方向を継承するかだけ**で、タップまでは含めない。
+            // iOS の SwiftUI / Flutter では**横探索の直後のタップが飲まれる**ことがあり
+            // (2026-08-04 実測: #tag_08 は整定後も画面内 (205,672) に見えているのに tag=- のまま。
+            // CMP と Android では再現しない)、タップまで入れるとこの検証がその問題に巻き込まれる。
+            // スクロール直後のタップは縦方向の S0080 / S0110 が回帰テストとして持っている
+            scene(5, "`withScrollRight { }` / `withScrollLeft { }` はブロック内を横方向の探索にする") {
+                action {
+                    withScrollRight(scrollFrame: "#carousel_tags") {
+                        // 方向を継承していなければ画面外の #tag_15 に届かず落ちる
+                        exist("#tag_15", maxSwipes: 10)
+                    }
+                }.expectation {
+                    // 探索が実際に画面へ入れたこと(現在画面だけで解決できる)
+                    existWithoutScroll("#tag_15")
+                }.action {
+                    withScrollLeft(scrollFrame: "#carousel_tags") {
+                        exist("#tag_01", maxSwipes: 10)
+                    }
+                }.expectation {
+                    existWithoutScroll("#tag_01")
+                }
+            }
+            scene(6, "`scrollToRightEdge` / `scrollToLeftEdge` は横の端まで送る") {
+                action {
+                    scrollToRightEdge(scrollFrame: "#carousel_tags", maxSwipes: 20)
+                }.expectation {
+                    existWithoutScroll("#tag_20")
+                }.action {
+                    scrollToLeftEdge(scrollFrame: "#carousel_tags", maxSwipes: 20)
+                }.expectation {
+                    existWithoutScroll("#tag_01")
                 }
             }
         }

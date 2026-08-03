@@ -35,7 +35,11 @@ class 操作可否アサーションが正しく判定できること {
             }
             scene(3, "同意を外すと条件付きボタンは無効に戻る") {
                 action {
-                    tap("#cb_agree")
+                    // group は記録に [名前] を前置するだけのまとまり(実行・失敗の扱いは素の列と同じ)
+                    group("同意を外す") {
+                        enabledIsTrue("#cb_agree")
+                        tap("#cb_agree")
+                    }
                 }.expectation {
                     textIs("#txt_cb_agree", "agree=false")
                     enabledIsFalse("#btn_toggle_target")

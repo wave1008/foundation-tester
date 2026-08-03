@@ -46,35 +46,43 @@ class ジェスチャが正しく検出されること {
                     textIs("#txt_press_count", "press=1")
                 }
             }
-            scene(5, "上スワイプ") {
+            scene(5, "holdSeconds 指定の長押しも検出される(既定 1 秒以外が実際に届いていること)") {
+                action {
+                    tap("#btn_long_press", holdSeconds: 2.0)
+                }.expectation {
+                    textIs("#txt_press_count", "press=2")
+                    textIs("#txt_last_gesture", "last=longpress")
+                }
+            }
+            scene(6, "上スワイプ") {
                 action {
                     swipe(.up)
                 }.expectation {
                     textIs("#txt_swipe_dir", "swipe=up")
                 }
             }
-            scene(6, "下スワイプ") {
+            scene(7, "下スワイプ") {
                 action {
                     swipe(.down)
                 }.expectation {
                     textIs("#txt_swipe_dir", "swipe=down")
                 }
             }
-            scene(7, "左スワイプ") {
+            scene(8, "左スワイプ") {
                 action {
                     swipe(.left)
                 }.expectation {
                     textIs("#txt_swipe_dir", "swipe=left")
                 }
             }
-            scene(8, "右スワイプ") {
+            scene(9, "右スワイプ") {
                 action {
                     swipe(.right)
                 }.expectation {
                     textIs("#txt_swipe_dir", "swipe=right")
                 }
             }
-            scene(9, "リセットで全カウンタが初期値に戻る") {
+            scene(10, "リセットで全カウンタが初期値に戻る") {
                 action {
                     tap("#btn_gesture_reset")
                 }.expectation {

@@ -1,5 +1,6 @@
 // 10_ライフサイクルとプラットフォーム分岐.swift
-// ftester 機能: `restartApp`(terminate+launch でのプロセス内状態リセット・永続カウンタは残る)と
+// ftester 機能: `restartApp`(terminate+launch でのプロセス内状態リセット・永続カウンタは残る)/
+// `terminateApp`(落としたことは次の launchApp の launch カウンタでのみ観測できる)と
 // `ios {}` / `android {}` によるプラットフォーム分岐。
 // Flutter は1つのコードから両OSのバイナリが出るため、同一シナリオが両OSで回る唯一の新規 SUT。
 
@@ -8,7 +9,7 @@ import FTDSL
 @TestClass(app: "com.ftester.e2e.flutter")
 class ライフサイクルとプラットフォーム分岐が正しく働くこと {
 
-    @Test("restartApp でプロセス内カウンタはリセットされ永続カウンタは加算される")
+    @Test("restartApp / terminateApp でプロセス内カウンタと永続カウンタが期待どおり動く")
     func S0010() {
         scenario {
             scene(1, "ライフサイクル画面を開き永続カウンタを基準化") {
@@ -50,6 +51,18 @@ class ライフサイクルとプラットフォーム分岐が正しく働く�
                 }.expectation {
                     textIs("#txt_session_count", "session=0")
                     textIs("#txt_launch_count", "launch=2")
+                }
+            }
+            // `terminateApp` は restartApp の半分だけを撃つ。**落ちたことは次の launchApp の
+            // launch カウンタでしか観測できない**(落ちていなければ +1 されない)
+            scene(4, "terminateApp でプロセスが落ち、次の launchApp で launch が +1 される") {
+                action {
+                    terminateApp()
+                    launchApp()
+                    tap("#nav_lifecycle")
+                }.expectation {
+                    textIs("#txt_launch_count", "launch=3")
+                    textIs("#txt_session_count", "session=0")
                 }
             }
         }
