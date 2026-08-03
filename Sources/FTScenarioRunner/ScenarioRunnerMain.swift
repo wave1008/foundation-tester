@@ -317,6 +317,10 @@ struct RunScenario: AsyncParsableCommand {
         let healCacheURL = projectDir.map {
             URL(fileURLWithPath: $0).appendingPathComponent(".ftester/heal-cache.json")
         }
+        // `#id` の実在照合に使う台帳(dry-run 専用。ft_snapshot が貯める。SelectorInventory)
+        let selectorInventoryURL = projectDir.map {
+            SelectorInventory.url(projectRoot: URL(fileURLWithPath: $0))
+        }
         // 技術識別子: Android は adb serial、iOS はシミュレータ UDID(共に既存のドライバ構築引数の再利用)
         let deviceIdentifier = runPlatform == "android" ? serial : udid
         let core = FTDriveCore(driver: driver, platform: runPlatform, app: testClass.app,
@@ -324,7 +328,9 @@ struct RunScenario: AsyncParsableCommand {
                                delegate: delegate, healingEnabled: heal && !noFM,
                                falsePositiveCheckEnabled: !noFalsePositiveCheck,
                                screenIsEnabled: !noScreenIs, dryRun: dryRun,
-                               healCacheURL: healCacheURL, defaultTimeout: defaultTimeout,
+                               healCacheURL: healCacheURL,
+                               selectorInventoryURL: selectorInventoryURL,
+                               defaultTimeout: defaultTimeout,
                                fallbackDriver: fallbackDriver,
                                typeDriver: typeDriver, preferTypeDriver: preferTypeDriver,
                                typeDriverGestures: typeDriverGestures,
@@ -391,6 +397,7 @@ struct RunScenario: AsyncParsableCommand {
         // 「アサーションが1本も無い」を修正提案として残す(いずれも緑のまま腐る経路。docs/design.md §10)
         core.warnAboutNeverResolvedIDs()
         core.warnAboutMissingAssertions()
+        core.warnAboutUnknownIDs()
 
         let record = core.finalRecord
         let reportURL = try? ScenarioReportWriter.write(

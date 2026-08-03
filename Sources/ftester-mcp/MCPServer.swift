@@ -29,11 +29,18 @@ final class MCPServer {
     private let write: (Data) -> Void
     /// ドライバ生成の差し替え口。nil = 実デバイスを解決する(既定)
     private let makeDriver: ((_ args: [String: Any]) async throws -> AppDriver)?
+    /// スナップショットの `#id` を台帳へ落とす口。**テストは必ず差し替える**
+    /// (既定は実プロジェクトの `.ftester/` へ書くので、テストが利用者の資産を汚す)
+    private let recordSnapshot: (_ snapshot: SnapshotResponse, _ platform: String,
+                                 _ args: [String: Any]) -> Void
 
     init(write: @escaping (Data) -> Void = { FileHandle.standardOutput.write($0) },
-         makeDriver: ((_ args: [String: Any]) async throws -> AppDriver)? = nil) {
+         makeDriver: ((_ args: [String: Any]) async throws -> AppDriver)? = nil,
+         recordSnapshot: ((_ snapshot: SnapshotResponse, _ platform: String,
+                           _ args: [String: Any]) -> Void)? = nil) {
         self.write = write
         self.makeDriver = makeDriver
+        self.recordSnapshot = recordSnapshot ?? MCPServer.recordSelectors
     }
 
     // MARK: - メインループ(stdio: 改行区切り JSON-RPC)
@@ -230,7 +237,11 @@ final class MCPServer {
             return text("Launched: \(bundleID)")
 
         case "ft_snapshot":
-            let snapshot = try await driver(args).snapshot()
+            let snapshotDriver = try await driver(args)
+            let snapshot = try await snapshotDriver.snapshot()
+            // **プラットフォームはドライバの実体から採る**(profile 指定時は args["platform"] が
+            // 空でもプロファイル側で解決済みなので、args を見ると取り違える)
+            recordSnapshot(snapshot, snapshotDriver is AndroidDriver ? "android" : "ios", args)
             return text(SnapshotRenderer.render(snapshot))
 
         case "ft_tap":
@@ -295,6 +306,16 @@ final class MCPServer {
 
     private func text(_ string: String) -> [[String: Any]] {
         [["type": "text", "text": string]]
+    }
+
+    /// 撮ったスナップショットの `#id` をプロジェクトの台帳へ足す(ft_dry_run が綴り誤りの照合に使う。
+    /// SelectorInventory 参照)。**best-effort** —— プロジェクトを特定できない・書けないなら黙って諦める
+    /// (探索の邪魔をしない。台帳が薄いと dry-run が黙るだけで、誤検知にはならない)
+    static func recordSelectors(_ snapshot: SnapshotResponse, _ platform: String,
+                                _ args: [String: Any]) {
+        guard let project = try? ScenarioHost.project(named: args["project"] as? String) else { return }
+        SelectorInventory.record(ids: SelectorInventory.ids(in: snapshot), platform: platform,
+                                 at: SelectorInventory.url(projectRoot: project.rootURL))
     }
 
     /// stdout は JSON-RPC 専用(混ぜるとクライアントのパースが壊れる)。診断は必ず stderr へ

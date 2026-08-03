@@ -230,6 +230,11 @@ public final class FTDriveCore {
     /// (実際 `expectation { android { notExist(...) } }` を iOS で回すと 0 本に見える)
     var sectionUnexecutedBlocks = 0
     var scenarioUnexecutedBlocks = 0
+    /// このプロジェクトで観測済みの `#id`(`ft_snapshot` が貯めた台帳。SelectorInventory)。
+    /// **nil = 台帳が無い / このプラットフォームの記録が無い** → 照合しない(黙る)
+    private let knownIDs: Set<String>?
+    /// dry-run 中に見つけた「台帳に無い id」→ 最初に見たステップの説明
+    private var unknownIDs: [String: String] = [:]
     private var _scenarioAborted = false
     var scenarioAborted: Bool {
         get { stateLock.lock(); defer { stateLock.unlock() }; return _scenarioAborted }
@@ -323,6 +328,7 @@ public final class FTDriveCore {
                 falsePositiveCheckEnabled: Bool = true, screenIsEnabled: Bool = true,
                 dryRun: Bool = false,
                 healCacheURL: URL? = nil,
+                selectorInventoryURL: URL? = nil,
                 defaultTimeout: Double? = nil,
                 fallbackDriver: AppDriver? = nil,
                 typeDriver: AppDriver? = nil,
@@ -350,6 +356,10 @@ public final class FTDriveCore {
         self.dryRun = dryRun
         self.healCache = HealCache(
             url: healCacheURL ?? URL(fileURLWithPath: ".ftester/heal-cache.json"))
+        // 台帳の照合は dry-run 専用(実行なら解決の成否が答えを出すので、二重に言う意味が無い)
+        self.knownIDs = dryRun
+            ? selectorInventoryURL.flatMap { SelectorInventory.load(at: $0) }?.ids(platform: platform)
+            : nil
         self.defaultTimeout = defaultTimeout ?? 5
         self.emit = emit
         self.record = ScenarioRecordData(id: scenarioID, title: scenarioTitle,
@@ -535,6 +545,7 @@ public final class FTDriveCore {
             return PerformResult(status: status, element: nil)
         }
         if dryRun {
+            trackUnknownIDs(step: step, description: description)
             // 実機に触れず計測はほぼ 0ms だが、NDJSON 配線を検証できるよう durationMs は必ず付与する
             let clock = ContinuousClock()
             let start = clock.now
@@ -621,6 +632,17 @@ public final class FTDriveCore {
         return PerformResult(status: status, element: outcome?.resolvedElement)
     }
 
+    /// dry-run 中、**台帳に無い `#id`** を覚える(綴り誤り・でっち上げの検出。SelectorInventory)。
+    /// 台帳が無い/そのプラットフォームの記録が無いなら何もしない = 「知らない」を「間違い」と言わない
+    private func trackUnknownIDs(step: FlowStep, description: String) {
+        guard let knownIDs, !knownIDs.isEmpty else { return }
+        let locators = ([step.locator] + (step.fallbacks ?? [])).compactMap { $0 }
+        for id in locators.flatMap(SelectorInventory.exactIDs(in:))
+        where !knownIDs.contains(id) && unknownIDs[id] == nil {
+            unknownIDs[id] = description
+        }
+    }
+
     /// `#id` が「解決できた」のか「否定側でしか使われていない」のかを覚える。
     /// notExist / countIs 0 は要素が**無い**ことで成功するので、解決の証拠にはならない
     private func trackIDResolution(step: FlowStep, status: StepResult.Status, description: String) {
@@ -688,6 +710,21 @@ public final class FTDriveCore {
             + "Add exist / textIs / thisIs etc. to the expectation blocks"
         emit(.log("⚠️ " + message))
         addSuggestion(FixSuggestion(isStrong: true, message: message),
+                      emitEvent: false, file: "", line: 0)
+    }
+
+    /// **台帳(ft_snapshot が貯めた実在 id)に無い `#id`** を dry-run で警告する。
+    /// 綴り誤り・でっち上げは構文検証を通ってしまい、従来は実機で初めて分かった。
+    /// **失敗にはしない** —— 台帳は「撮った画面ぶんだけ」なので、新しい画面の id は当然載っていない。
+    /// シナリオ終了時に1回だけ呼ぶ(dry-run 以外では unknownIDs が空なので no-op)
+    public func warnAboutUnknownIDs() {
+        guard !unknownIDs.isEmpty else { return }
+        let listed = unknownIDs.keys.sorted().map { "`#\($0)`" }.joined(separator: ", ")
+        let message = "\(listed): no snapshot taken for this project contains this id "
+            + "(it may be misspelled). If it belongs to a screen that has not been captured yet, "
+            + "take a fresh ft_snapshot of that screen"
+        emit(.log("⚠️ " + message))
+        addSuggestion(FixSuggestion(isStrong: false, message: message),
                       emitEvent: false, file: "", line: 0)
     }
 
