@@ -616,8 +616,13 @@ public final class StepExecutor {
                 // 領域指定(scrollFrame)や刻みの細かい設定ほどここに掛かる
                 // (2026-08-02 実測: CMP で #row_40 が y=829/高さ56 = 下端 885 > 画面 874 で見つかり、
                 // タップが別の行に取られた。従来の全画面スワイプでは y=720 で見つかっていた)
-                let viewport = scrollContainer(step: step, in: snapshot,
-                                               vertical: direction == .up || direction == .down)
+                // 領域が指定されていないときは**報告された木から clip 元の祖先**を採る。
+                // これが無いと viewport が画面全体になり、容器の外に並ぶ ghost 要素を
+                // 「見えている」と判定して探索がそこで止まる(2026-08-03 実測: #row_30 が
+                // label=nil・y=783 = 容器 230..692 の外で見つかり、タップが飲まれた)
+                let viewport = (scrollContainer(step: step, in: snapshot,
+                                                vertical: direction == .up || direction == .down)
+                                ?? Self.clippingAncestor(of: element, in: snapshot.elements))
                     .flatMap { ScrollGeometry.intersection($0, snapshot.screen) } ?? snapshot.screen
                 if attempt < maxSwipes,
                    Self.isClippedByViewport(element, screen: viewport) {
@@ -635,7 +640,8 @@ public final class StepExecutor {
                     // 順序に意味がある(逆にすると Android で誤タップが再発する。2026-07-27 実測):
                     //  1. **空打ちの極小ドラッグ**: iOS(Compose)のスクロール容器は次の1タッチを
                     //     消費してしまい、タップもプレスも効かない(待っても解けない。2回目は効く)。
-                    //     クリックにならない 2pt のドラッグでその1回ぶんを肩代わりする
+                    //     **縦向き**の小さなドラッグでその1回ぶんを肩代わりする —— 横向きだと
+                    //     Compose がクリックと読んで行を選んでしまう(emptyDragDistance 参照)
                     //  2. **静止待ち**: 空打ちでリストが微動するので、止まってから返す
                     // **触る点が他の要素に取られるなら打たない**。空打ちは手前の要素
                     // (タブバー等)に届き、そのボタンが反応してしまう
@@ -654,7 +660,9 @@ public final class StepExecutor {
                     if releasesScrollTouch,
                        Self.emptyDragIsSafe(x: x, y: y, of: element,
                                             in: snapshot.elements, screen: snapshot.screen) {
-                        await emptyDrag(x: x, y: y)
+                        await emptyDrag(x: x, y: y,
+                                        toX: Self.emptyDragEndX(of: element, from: x,
+                                                                screen: snapshot.screen))
                     }
                     try await settleAfterScroll(step: step, found: element, phase: &phase)
                 }
@@ -1453,6 +1461,31 @@ public final class StepExecutor {
     /// 画面下端の a11y 空白帯の高さ(pt)。実測の空白(874-840=34)+整定位置のブレの余裕
     static let bottomUncoveredBand: Double = 48
 
+    /// 要素を **clip している祖先**の矩形。**見切れ判定にだけ使う**(スクロールの座標化には
+    /// 使わない = 暗黙の座標化とは別物。あちらは2度撤回済みで3度目は無い)。
+    ///
+    /// Compose iOS は**容器の外に「ghost」の子を報告する**: `#list_rows`(y 230..692)に対し
+    /// `#row_10`(y 734)`#row_11`(790)が並び、いずれも**ラベルを持たない**(2026-08-03 実測)。
+    /// 容器を特定できないと viewport が画面全体になり、ghost は「画面内 = 見えている」と
+    /// 判定されて探索がそこで止まり、**容器の外の座標をタップする**。`scrollable` の申告は
+    /// Compose では出ないので、**報告された木そのものから祖先を採る**。
+    ///
+    /// スナップショットは pre-order + depth なので、直前にある depth の小さい要素が祖先候補。
+    /// ただし**ブリッジは要素を間引く**(identifier の無い other 等)ので候補が叔父のことがある。
+    /// そこで「同じ depth の兄弟が2つ以上その中に居る」ことを確かめてから採用する ——
+    /// 叔父を掴んだときは兄弟が誰も中に居ないので nil に落ちる
+    static func clippingAncestor(of element: ElementInfo, in elements: [ElementInfo]) -> FTRect? {
+        guard let index = elements.firstIndex(where: { $0.ref == element.ref }),
+              let ancestor = elements[..<index].last(where: { $0.depth < element.depth }),
+              ancestor.frame.width > 0, ancestor.frame.height > 0,
+              // 交差しているなら見切れ判定を変える必要がない(既存の画面基準で足りる)
+              ScrollGeometry.intersection(element.frame, ancestor.frame) == nil
+        else { return nil }
+        let siblings = descendants(of: ancestor, in: elements).filter { $0.depth == element.depth }
+        let inside = siblings.filter { ScrollGeometry.intersection($0.frame, ancestor.frame) != nil }
+        return inside.count >= 2 ? ancestor.frame : nil
+    }
+
     /// 要素が画面の縁で**見切れている**か。ビューポートより大きい要素(長文など)は
     /// どう送っても収まらないので false(送り続けて maxSwipes を使い切らせない)
     static func isClippedByViewport(_ element: ElementInfo, screen: FTRect) -> Bool {
@@ -1542,15 +1575,33 @@ public final class StepExecutor {
     }
 
 
+    /// 空打ちの所要。速いとフリングになり、遅いと長押しになる
+    static let emptyDragSeconds: Double = 0.30
+
+    /// 空打ちドラッグの終点。**対象の矩形の外へ横に抜ける**のが要件。
+    /// Compose iOS は「離した点が要素の中」ならクリックとして成立させるので、中に留まる限り
+    /// **距離では消せない**(2026-08-03 実測: 2pt / 24pt / 120pt、0.05s / 0.30s のどれでも
+    /// `scrollTo("#row_40")` だけで `selected=row_40` が入った = 読み取り専用のはずの
+    /// コマンドがアプリの状態を書き換える)。矩形の外で離せばクリックは取り消される。
+    /// **縦に抜いてはいけない**: 容器がスクロールとして消費して内容が動き、直後に
+    /// 「今ここにある」を確かめる assertion が壊れる(実測: E2E/ios-inapp の S0020 が 0/3)。
+    /// **止めるという選択肢も無い**: 完全に外すと肩代わりが効かず S0080 が CMP/ios で落ちる
+    static func emptyDragEndX(of element: ElementInfo, from x: Double, screen: FTRect) -> Double {
+        let right = element.frame.x + element.frame.width + 4
+        if right <= screen.x + screen.width - 1 { return right }
+        let left = element.frame.x - 4
+        return left >= screen.x + 1 ? left : x
+    }
+
     /// スクロール探索直後の「空打ち」極小ドラッグ(呼ぶ条件は呼び出し側の判定を参照)。
     /// **in-app エンジンは drag を一切実装しない**(501)ため、hybrid では typeDriver=XCUITest へ
     /// 回さないとこの対策が丸ごと不発になる(= Compose の容器がタッチを1回吸ったままになり、
     /// 直後の tap/press が空振りする)。空打ちは補助でありこれ自体の失敗はステップの失敗にしない
     /// (両経路とも失敗したら黙って進む = 従来の `try?` と同じ扱い)
-    private func emptyDrag(x: Double, y: Double) async {
+    private func emptyDrag(x: Double, y: Double, toX: Double) async {
         func drag(_ target: AppDriver) async throws {
-            try await target.drag(fromX: x, fromY: y, toX: x + 2, toY: y,
-                                  pressSeconds: 0.05, durationSeconds: 0.05)
+            try await target.drag(fromX: x, fromY: y, toX: toX, toY: y,
+                                  pressSeconds: 0.05, durationSeconds: Self.emptyDragSeconds)
         }
         if dragFallbackLatched, let td = typeDriver {
             try? await drag(td)
