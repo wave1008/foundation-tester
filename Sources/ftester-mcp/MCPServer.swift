@@ -131,11 +131,8 @@ final class MCPServer {
             prologue.forEach(Self.logStderr)
             let created: AppDriver
             switch target {
-            case .ios(let provisioned, _):
-                let resolution = await XCUIBridgeResolver.resolve(
-                    preferred: provisioned.port, repoRoot: try? RepoRoot.find(),
-                    logger: { Self.logStderr($0) })
-                created = BridgeClient(port: resolution.endpoint.port, host: resolution.endpoint.host)
+            case .ios(let provisioned, let iosApp):
+                created = try await Self.iosDriver(provisioned: provisioned, bundleID: iosApp?.bundleID)
             case .android(let serial, _):
                 created = try AndroidDriver(serial: serial)
             }
@@ -165,17 +162,49 @@ final class MCPServer {
         return created
     }
 
-    /// **MCP は iOS では常に XCUITest ブリッジを使う**(profile の engine 設定は見ない。
-    /// driver(_:) が BridgeClient を作る)。XCUITest では成立しないジェスチャがあり、
-    /// 何も起きなかったときに原因が分からないと詰むので、結果テキストへ切り分けを添える
-    /// (表と実測は docs/commands.md)。**シナリオ実行(ft_run_scenario)は profile どおりの
-    /// エンジンで走る**ので、ここで効かなくてもシナリオでは通ることがある。
-    /// **Android と分かっているときは付けない**(この制限は iOS 固有で、無関係な助言は誤誘導になる)
+    /// profile 経由の iOS ドライバ。**実行プロファイルのエンジンに追従する**(2026-08-04。
+    /// それ以前は常に XCUITest だった —— StepExecutor を通らない ft_* が in-app では
+    /// home/drag/座標 press で素の 501 になるためで、その穴は HybridFallbackDriver が埋めた)。
+    /// エンジンを揃える理由は**探索と実行で見えるものを一致させる**こと: snapshot の内容も
+    /// ジェスチャの成否もエンジンで変わるので、揃えないと「MCP では動いたのにシナリオでは falls」
+    /// (およびその逆)が起きる。
+    ///
+    /// 合成は実行側(ScenarioRunnerMain)と同じ形:
+    ///   in-app(注入) → WebView 画面だけ XCUITest へ委譲 → 不可な操作だけ XCUITest へ回す
+    /// **hybrid でないとき(inapp 単独・xcuitest・実機)は素の1本**にする
+    static func iosDriver(provisioned: ProvisionedIOSDevice, bundleID: String?) async throws -> AppDriver {
+        guard !provisioned.physical, provisioned.engine == "inapp" || provisioned.engine == "hybrid" else {
+            // xcuitest(と実機)は従来どおり。resolve は接続先が in-app だったときの振り替えも担う
+            let resolution = await XCUIBridgeResolver.resolve(
+                preferred: provisioned.port, repoRoot: try? RepoRoot.find(),
+                logger: { Self.logStderr($0) })
+            return BridgeClient(port: resolution.endpoint.port, host: resolution.endpoint.host)
+        }
+        let inapp = InAppDriver(repoRoot: try RepoRoot.find(), udid: provisioned.udid,
+                                port: provisioned.port)
+        guard provisioned.engine == "hybrid", let xcuiPort = provisioned.xcuiPort,
+              let bundleID else {
+            return inapp
+        }
+        // attach は**同じインスタンス**を委譲とフォールバックの両方に使う(実行側と同じ理由:
+        // activate/attached 状態を1本にしないと余計な activate が挟まる)
+        let attach = AppAttachDriver(port: xcuiPort, bundleID: bundleID)
+        return HybridFallbackDriver(primary: WebViewDelegatingDriver(primary: inapp, delegated: attach),
+                                    fallback: attach)
+    }
+
+    /// **profile 無しの iOS は XCUITest 固定**(エンジンを知る材料が無いため。profile 付きは
+    /// iosDriver が実行プロファイルのエンジンに追従する)。XCUITest では成立しないジェスチャが
+    /// あり、何も起きなかったときに原因が分からないと詰むので、結果テキストへ切り分けを添える
+    /// (表と実測は docs/commands.md)。
+    /// **Android と profile 付きには付けない**(前者はこの制限が無く、後者は解消済み。
+    /// 無関係な助言は誤誘導になる)
     static func iosEngineHint(_ framework: String, _ gesture: String, args: [String: Any]) -> String {
         if (args["platform"] as? String) == "android" || args["serial"] != nil { return "" }
-        return " If nothing changed on iOS: MCP tools always drive the XCUITest engine there, and"
-            + " \(framework) apps do not receive \(gesture) through it (scenario runs use the"
-            + " profile's engine, where the inapp/hybrid path handles it)."
+        if args["profile"] != nil { return "" }
+        return " If nothing changed on iOS: without a profile these tools drive the XCUITest engine,"
+            + " and \(framework) apps do not receive \(gesture) through it."
+            + " Pass profile: to follow the run profile's engine (inapp/hybrid handles it)."
     }
 
     /// drivers キャッシュのキー生成。profile / project / port / serial の違いを別ドライバとして扱う
@@ -572,10 +601,10 @@ final class MCPServer {
         ], required: ["direction"]),
         tool("ft_double_tap", "Double-tap an element (ref) or a coordinate (x,y). "
             + "Cannot be replaced by two ft_tap calls — the round trip exceeds the OS double-tap window. "
-            + "[Known iOS limitation] MCP tools always drive the XCUITest engine on iOS, and Compose "
-            + "Multiplatform apps do not receive a double tap through it (the two taps arrive too close "
-            + "together and land as a single tap). Scenario runs use the profile's engine, so the same "
-            + "gesture works there on inapp/hybrid.", [
+            + "[Known iOS limitation] Without a profile these tools drive the XCUITest engine, where "
+            + "Compose Multiplatform apps do not receive a double tap (the two taps arrive too close "
+            + "together and land as a single tap). Pass profile: to follow the run profile's engine, "
+            + "which handles it on inapp/hybrid.", [
             "ref": ["type": "integer", "description": "Reference number from ft_snapshot"],
             "x": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],
             "y": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],
@@ -593,9 +622,9 @@ final class MCPServer {
             + "Without ref the whole screen is pinched; with ref the element is the target. "
             + "The resulting zoom may be smaller than the requested scale (the fingers cannot go outside "
             + "the target area). "
-            + "[Known iOS limitation] MCP tools always drive the XCUITest engine on iOS, where the fingers "
-            + "move only about 8px — too little for Flutter's scale threshold, so Flutter apps do not zoom. "
-            + "Scenario runs use the profile's engine, so it works there on inapp/hybrid.", [
+            + "[Known iOS limitation] Without a profile these tools drive the XCUITest engine, where the "
+            + "fingers move only about 8px — too little for Flutter's scale threshold, so Flutter apps do "
+            + "not zoom. Pass profile: to follow the run profile's engine, which handles it.", [
             "ref": ["type": "integer", "description": "Reference number from ft_snapshot (defaults to the whole screen)"],
             "scale": ["type": "number", "description": "Zoom factor (default 2.0)"],
             "durationSeconds": ["type": "number", "description": "Gesture duration in seconds (default 0.5)"],
