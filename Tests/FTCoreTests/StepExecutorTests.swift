@@ -822,23 +822,45 @@ final class StepExecutorTests: XCTestCase {
 
     /// timeout: 0 ではロケータ再試行を行わないが、driver フォールバックの
     /// 1回照会(hybrid で解決するために必須)は timeout: 0 でも必ず行われる。
-    /// 空振りを失敗にしない `select` で、解決の往復回数だけを観測する
+    /// 操作コマンド(tap)で解決の往復回数だけを観測する
     func testZeroTimeoutSkipsRetryButQueriesFallbackOnce() async throws {
         let log = CallLog()
         let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
         let fallback = FakeAppDriver(name: "fallback", log: log, snapshotElements: [[]])
         let executor = StepExecutor(driver: primary, fallbackDriver: fallback)
-        let step = FlowStep(action: "select", locator: FlowLocator(id: "target"), timeout: 0)
+        let step = FlowStep(action: "tap", locator: FlowLocator(id: "target"), timeout: 0)
 
         let outcome = await executor.execute(step)
 
-        guard case .skipped = outcome.status else {
-            XCTFail("select の空振りは skip を期待したが \(outcome.status) だった")
+        guard case .failed = outcome.status else {
+            XCTFail("tap の空振りは失敗を期待したが \(outcome.status) だった")
             return
         }
         XCTAssertEqual(primary.snapshotCallCount, 1)
         XCTAssertEqual(fallback.snapshotCallCount, 1)
         XCTAssertLessThanOrEqual(outcome.timing?.waitMs ?? 0, 5)
+    }
+
+    /// **select は driver フォールバックを照会しない**(掴むだけでデバイス操作が無く、
+    /// 掴めないことが答えになり得るコマンド。fb.snapshot() は springboard セッションを張り、
+    /// 同一デバイス1セッション制約でアプリ attach を潰す実害があった。StepExecutor 側の
+    /// コメント参照)
+    func testSelectDoesNotQueryDriverFallback() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
+        let fallback = FakeAppDriver(name: "fallback", log: log,
+                                     snapshotElements: [[element(ref: 1, id: "target")]])
+        let executor = StepExecutor(driver: primary, fallbackDriver: fallback)
+        let step = FlowStep(action: "select", locator: FlowLocator(id: "target"), timeout: 0)
+
+        let outcome = await executor.execute(step)
+
+        // fallback 側に要素が実在しても照会しない = 掴めず skip(空要素)になる
+        guard case .skipped = outcome.status else {
+            XCTFail("select の空振りは skip を期待したが \(outcome.status) だった")
+            return
+        }
+        XCTAssertEqual(fallback.snapshotCallCount, 0)
     }
 
     /// 回帰ガード: step.timeout が nil(省略)のときアクションは従来どおり

@@ -1043,8 +1043,13 @@ public final class StepExecutor {
         // substring 誤解決の偽陽性(in-app の label がシステム UI label の部分文字列で contains 命中し、
         // 本来当てたいシステム UI 要素へフォールバックされない)を、fallback の exact 一致で上書きする。
         // primary が exact のときは fallback を照会しない(従来どおりコスト増なし)。
+        // **select は照会しない**: 掴むだけでデバイス操作が無く、掴めないことが答えになり得る
+        // コマンドなので、システム UI 側を探す意味がない。実害もある — fb.snapshot() は
+        // springboard セッションを張り、**同一デバイス1セッション制約でアプリ attach を潰す**。
+        // WebView(domInterop)では直後の type が入らなくなった(2026-08-04 実測。
+        // `select("wv_result=*")` はワイルドカードが quality=substring になり毎回ここを踏む)
         var actingDriver: AppDriver = driver
-        if let fb = fallbackDriver {
+        if action != "select", let fb = fallbackDriver {
             let primaryQuality = resolved == nil ? nil : Self.resolveDetailed(step: step, in: snapshot)?.quality
             if resolved == nil || primaryQuality == .substring {
                 start = clock.now
