@@ -101,6 +101,10 @@ public final class WebViewDelegatingDriver: AppDriver {
         // 経路は**返した本人が名乗る**(StepExecutor が失敗文言に添える。要素の形から
         // 推測させると Android が「XCUITest へ委譲」を名乗る事故になる)
         snapshot.webViewPath = "delegated"
+        // offscreen ヒントは純 xcuitest エンジン限定にする: hybrid の WebView スクロールは
+        // in-app の contentOffset 短絡が既に速く(実測 scrollToTop 1.5s)、ヒントが乗ると
+        // StepExecutor の跳躍(実ドラッグ)が優先されて計測済みの挙動が変わる(2026-08-04)
+        snapshot.offscreen = nil
         guard !sawWebContent else { return snapshot }
 
         var waited = 0
@@ -109,6 +113,7 @@ public final class WebViewDelegatingDriver: AppDriver {
             waited += Self.contentPollMs
             snapshot = try await delegated.snapshot()
             snapshot.webViewPath = "delegated"
+            snapshot.offscreen = nil
         }
         if Self.hasWebContent(snapshot) { sawWebContent = true }
         return snapshot

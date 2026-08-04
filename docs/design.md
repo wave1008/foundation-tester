@@ -373,7 +373,18 @@ CDP を使えば取れるが `setWebContentsDebuggingEnabled(true)` = 対象ア�
 **不在の根拠にもしない**(ネイティブのリストは画面外を載せないため)。
 効果(scrollTo 中央値・android プロファイル): ネイティブ 10.2s→3.7s / CMP 8.7s→5.9s /
 Flutter は中立(9.5s。ドラッグ後の再計測サイクルが重く相殺。退行はない)。
-iOS には効かない(XCUITest は画面外ノードを出さず、in-app の DOM 経路は既に 1.1s)。
+
+**iOS(XCUITest ランナー・2026-08-04 実装)**: XCUITest も WKWebView 配下は**全ドキュメントの
+ノードを実座標のまま**ツリーに載せる(旧記述「画面外ノードを出さない」は誤り —
+`BridgeRouter.shouldInclude` の画面交差ガードが落としていただけ。クランプも無い: 画面 402x874 に
+対し y=2784 や y=-1200 が取れ、スクロール量に追従する)。Android と同じ契約
+(ref=0・elements に混ぜない)で供給する。**hybrid には流さない**: WebView 委譲中の snapshot は
+`WebViewDelegatingDriver` が offscreen を落とす(in-app の contentOffset 短絡 1.5s の方が速く、
+ヒントが乗ると跳躍 = XCUITest 実ドラッグが優先されて遅くなる方向に挙動が変わるため)。
+効果(WebView シナリオ・ios-xcuitest・アイドル3周 A/B): scrollTo 9.3〜9.6s→6.5〜7.3s
+(全 SUT −22〜31%)/ scrollToTop CMP・Flutter 10.9〜11.0s→9.1〜9.2s(−16%)・SwiftUI 中立
+(fling 2〜3回で足りる距離では跳躍の節約が settle コストに埋まる)。残る床は scrollToEdge の
+毎周 `settledSignature`(WebView は snapshot 1枚 300〜500ms・減速中比較の実害由来で外せない)。
 
 **未着手の副産物**: `AccessibilityNodeInfo` extras の `targetUrl`(リンクの href。
 同ラベルのリンクを区別する手段になり得る)。

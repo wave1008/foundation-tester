@@ -1220,11 +1220,17 @@ window/transition/animator の `*_scale` はチューニングノブではなく
   (`StepExecutor+Assert.swift`。即失敗は脆い)
 - ✅ **interop ホストの WebView 画面を「読みは DOM・触るのは XCUITest の座標」にする**
   (2026-08-02 実装。§3.13)
-- **WebView 画面のスクロールヒント跳躍(`runScrollSearch` / `scrollToEdge` の long drag)**(未対策):
-  `driver.drag` を使うため、in-app が drag 非対応である以上 WebView 委譲中は必ず XCUITest の
-  実ドラッグになる(§3.11 の contentOffset 化はスワイプだけで drag は対象外)。2026-08-01 の
-  全計測で一度も発火しておらず(レポートに「long drag(s) from scroll hints」の注記なし)、
-  効果を実測できないため未着手。着手条件は WebView 画面でこの注記が実際に出るシナリオの出現
+- ✅ **WebView 画面のスクロールヒント跳躍を iOS xcuitest でも発火させる**(2026-08-04 実装):
+  未発火の原因はホスト側ではなく**供給の欠落**だった(XCUITest は WKWebView 配下の画面外ノードを
+  実座標で報告するが、ランナーの画面交差ガードが落としていた。Android だけが
+  `SnapshotResponse.offscreen` を供給していた)。ランナーが Android と同じ契約で供給するように
+  変更(bridgeProtocolVersion 46)。実測(WebView シナリオ・アイドル3周 A/B・全3 SUT):
+  scrollTo −22〜31%・scrollToTop CMP/Flutter −16%(SwiftUI 中立)・シナリオ全体 34.1→30.4s(−11%)。
+  **hybrid には供給しない**(`WebViewDelegatingDriver` が落とす。contentOffset 短絡の方が速い)。
+  残る床は `scrollToEdge` の毎周 `settledSignature`(WebView は snapshot 1枚 300〜500ms かかり、
+  端確定に最低2周 = 減速中に比較すると早すぎる端判定になる実害由来で単純には外せない)と
+  Web コンテンツの AX 活性化待ち(`exist` 3〜4s・エンジン差なし)。これ以上詰めるなら
+  「ヒントに端判定をさせる」(現設計は「ヒントは近道であって判定ではない」)の再設計が要る
 - **iOS ブリッジ供給の堅牢化(高並列時)**: ランナーのコールドスタートが負荷下で
   供給タイムアウトを超え、run 全体が中断する(§7 の交互成功パターン)。候補: タイムアウト値の
   負荷連動延長、ランナー起動の直列化、タイムアウト後も起動継続中なら待ち直す再確認ループ。
