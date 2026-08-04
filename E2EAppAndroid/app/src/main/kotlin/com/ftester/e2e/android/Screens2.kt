@@ -18,7 +18,8 @@ private const val ROW_COUNT = 40
 private fun rowTag(n: Int) = "row_%02d".format(n)
 private fun rowLabel(n: Int) = "行 %02d".format(n)
 
-fun buildGestureScreen(activity: Activity, parent: ViewGroup): View {
+fun buildGestureScreen(activity: Activity, parent: ViewGroup,
+                       onOpenMap: () -> Unit = {}): View {
     val v = activity.layoutInflater.inflate(R.layout.screen_gesture, parent, false)
     var tap = 0
     var press = 0
@@ -67,6 +68,8 @@ fun buildGestureScreen(activity: Activity, parent: ViewGroup): View {
         true
     }
 
+    v.findViewById<Button>(R.id.nav_map).setOnClickListener { onOpenMap() }
+
     v.findViewById<Button>(R.id.btn_gesture_reset).setOnClickListener {
         tap = 0
         press = 0
@@ -74,6 +77,73 @@ fun buildGestureScreen(activity: Activity, parent: ViewGroup): View {
         pressCount.text = "press=0"
         swipeDir.text = "swipe=-"
         last.text = "last=-"
+    }
+    return v
+}
+
+// マップ系ジェスチャ。ScaleGestureDetector(ピンチ)と GestureDetector(ダブルタップ・ドラッグ)を
+// 同じ View の onTouch へ**両方**流す。片方だけに渡すともう片方が無反応になる。
+// 値は全て累積(#btn_map_reset でだけ戻る)。1操作ごとに戻すと、ジェスチャ直後の snapshot が
+// 間に合わなかったときに検証が落ちる。契約は E2EAppCMP/docs/ui-contract.md。
+fun buildMapScreen(activity: Activity, parent: ViewGroup): View {
+    val v = activity.layoutInflater.inflate(R.layout.screen_map, parent, false)
+    val zoomDirView = v.findViewById<TextView>(R.id.txt_zoom_dir)
+    val zoomView = v.findViewById<TextView>(R.id.txt_zoom)
+    val panView = v.findViewById<TextView>(R.id.txt_pan)
+    val doubleView = v.findViewById<TextView>(R.id.txt_double_count)
+
+    var zoom = 1f
+    var panX = 0f
+    var panY = 0f
+    var doubleCount = 0
+
+    fun render() {
+        zoomDirView.text = "zoom=" + zoomDirection(zoom)
+        zoomView.text = "zoom=" + formatZoom(zoom)
+        panView.text = "pan=" + panLabel(panX, panY)
+        doubleView.text = "double=$doubleCount"
+    }
+
+    val scaleDetector = android.view.ScaleGestureDetector(activity,
+        object : android.view.ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            override fun onScale(detector: android.view.ScaleGestureDetector): Boolean {
+                zoom *= detector.scaleFactor
+                render()
+                return true
+            }
+        })
+    val tapDetector = android.view.GestureDetector(activity,
+        object : android.view.GestureDetector.SimpleOnGestureListener() {
+            override fun onDown(e: MotionEvent): Boolean = true
+            override fun onDoubleTap(e: MotionEvent): Boolean {
+                doubleCount += 1
+                render()
+                return true
+            }
+            // 2本指の最中は onScroll も来る(ピンチの中心移動)。**1本指のときだけ**パンに数える
+            override fun onScroll(e1: MotionEvent?, e2: MotionEvent,
+                                  distanceX: Float, distanceY: Float): Boolean {
+                if (e2.pointerCount > 1) return false
+                panX -= distanceX   // distance は「前回からの減少量」なので符号が逆
+                panY -= distanceY
+                render()
+                return true
+            }
+        })
+
+    v.findViewById<View>(R.id.pad_map).setOnTouchListener { view, ev ->
+        scaleDetector.onTouchEvent(ev)
+        tapDetector.onTouchEvent(ev)
+        if (ev.action == MotionEvent.ACTION_UP) view.performClick()
+        true
+    }
+
+    v.findViewById<Button>(R.id.btn_map_reset).setOnClickListener {
+        zoom = 1f
+        panX = 0f
+        panY = 0f
+        doubleCount = 0
+        render()
     }
     return v
 }
@@ -265,4 +335,26 @@ fun buildWebviewScreen(activity: Activity, parent: ViewGroup): View {
     v.settings.javaScriptEnabled = true
     v.loadUrl("file:///android_asset/webview.html")
     return v
+}
+
+/** 軸ごとの向き。8px 未満は none(手ぶれを斜めと誤判定しないため) */
+private const val PAN_THRESHOLD = 8f
+
+/** 倍率の不感帯。ピンチ以外の操作で拾う微小な zoom を in/out と読まないため */
+private const val ZOOM_DEAD_ZONE = 0.05f
+
+private fun zoomDirection(zoom: Float): String = when {
+    zoom > 1f + ZOOM_DEAD_ZONE -> "in"
+    zoom < 1f - ZOOM_DEAD_ZONE -> "out"
+    else -> "-"
+}
+
+private fun formatZoom(zoom: Float): String = "%.1f".format(zoom)
+
+/** 指の移動方向。両軸とも非 none なら斜め(ftester の swipeBy の検証材料) */
+private fun panLabel(x: Float, y: Float): String {
+    if (abs(x) < PAN_THRESHOLD && abs(y) < PAN_THRESHOLD) return "-"
+    val horizontal = if (abs(x) < PAN_THRESHOLD) "none" else if (x < 0) "left" else "right"
+    val vertical = if (abs(y) < PAN_THRESHOLD) "none" else if (y < 0) "up" else "down"
+    return "$horizontal-$vertical"
 }

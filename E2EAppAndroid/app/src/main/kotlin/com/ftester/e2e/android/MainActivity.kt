@@ -7,7 +7,7 @@ import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 
-enum class Screen { SELECTOR, INPUT, GESTURE, SCROLL, ASYNC, DIALOG, LIFECYCLE, HEAL, DIAGNOSTICS, NOID, WEBVIEW }
+enum class Screen { SELECTOR, INPUT, GESTURE, MAP, SCROLL, ASYNC, DIALOG, LIFECYCLE, HEAL, DIAGNOSTICS, NOID, WEBVIEW }
 
 private enum class Tab { HOME, CONTROLS, ABOUT }
 
@@ -66,7 +66,8 @@ class MainActivity : AppCompatActivity() {
                 null -> buildHomeScreen(this, container, ::navigate)
                 Screen.SELECTOR -> buildSelectorScreen(this, container)
                 Screen.INPUT -> buildInputScreen(this, container)
-                Screen.GESTURE -> buildGestureScreen(this, container)
+                Screen.GESTURE -> buildGestureScreen(this, container) { navigate(Screen.MAP) }
+                Screen.MAP -> buildMapScreen(this, container)
                 Screen.SCROLL -> buildScrollScreen(this, container)
                 Screen.ASYNC -> buildAsyncScreen(this, container)
                 Screen.DIALOG -> buildDialogScreen(this, container)
@@ -88,6 +89,7 @@ class MainActivity : AppCompatActivity() {
             Screen.SELECTOR -> "セレクタ"
             Screen.INPUT -> "テキスト入力"
             Screen.GESTURE -> "ジェスチャ"
+            Screen.MAP -> "マップ"
             Screen.SCROLL -> "スクロール"
             Screen.ASYNC -> "非同期表示"
             Screen.DIALOG -> "ダイアログ"

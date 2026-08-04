@@ -7,6 +7,7 @@ import SwiftUI
 // 重ねてよいのは Text(ポインタを消費しない)だけ。ボタン類は始点を塞がないよう
 // 「幅 45% 以内(中央列 x=0.5w を空ける)」かつ「上下の端(中央行 y=0.5h を空ける)」に置く。
 struct GestureScreen: View {
+    var onOpenMap: () -> Void = {}
     @State private var tapCount = 0
     @State private var pressCount = 0
     @State private var swipeDir = "-"
@@ -59,6 +60,13 @@ struct GestureScreen: View {
                 }
                 .padding(12)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+
+                // マップ画面への導線。**右下に置く**(ホーム末尾に足すと下部タブに重なって
+                // タップを吸われる。スワイプ経路は中央行・中央列なのでここは塞がない)
+                TaggedButton(tag: Tags.navMap, label: "マップ", fillWidth: true, action: onOpenMap)
+                    .frame(width: geo.size.width * 0.45)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
 
                 TaggedButton(tag: Tags.btnGestureReset, label: "ジェスチャクリア", fillWidth: true) {
                     tapCount = 0

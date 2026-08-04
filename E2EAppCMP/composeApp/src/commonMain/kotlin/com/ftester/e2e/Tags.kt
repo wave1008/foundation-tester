@@ -15,6 +15,7 @@ object Tags {
     const val NAV_SELECTOR = "nav_selector"
     const val NAV_INPUT = "nav_input"
     const val NAV_GESTURE = "nav_gesture"
+    const val NAV_MAP = "nav_map"
     const val NAV_SCROLL = "nav_scroll"
     const val NAV_ASYNC = "nav_async"
     const val NAV_DIALOG = "nav_dialog"
@@ -61,6 +62,14 @@ object Tags {
     const val TXT_SWIPE_DIR = "txt_swipe_dir"
     const val TXT_LAST_GESTURE = "txt_last_gesture"
     const val BTN_GESTURE_RESET = "btn_gesture_reset"
+
+    // マップ(ピンチ・ダブルタップ・斜めドラッグ)
+    const val PAD_MAP = "pad_map"
+    const val TXT_ZOOM_DIR = "txt_zoom_dir"
+    const val TXT_ZOOM = "txt_zoom"
+    const val TXT_PAN = "txt_pan"
+    const val TXT_DOUBLE_COUNT = "txt_double_count"
+    const val BTN_MAP_RESET = "btn_map_reset"
 
     // スクロール
     const val TXT_ROW_SELECTED = "txt_row_selected"

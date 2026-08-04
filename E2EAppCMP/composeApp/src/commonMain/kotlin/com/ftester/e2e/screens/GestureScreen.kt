@@ -38,7 +38,7 @@ import kotlin.math.abs
 // 「幅 45% 以内(中央列 x=0.5w を空ける)」かつ「上下の端(中央行 y=0.5h を空ける)」に置く。
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun GestureScreen() {
+fun GestureScreen(onOpenMap: () -> Unit = {}) {
     var tap by remember { mutableStateOf(0) }
     var press by remember { mutableStateOf(0) }
     var swipeDir by remember { mutableStateOf("-") }
@@ -106,6 +106,15 @@ fun GestureScreen() {
             TaggedText(Tags.TXT_SWIPE_DIR, "swipe=$swipeDir")
             TaggedText(Tags.TXT_LAST_GESTURE, "last=$last")
         }
+
+        // マップ画面への導線。**右下に置く**(ホーム末尾に足すと下部タブに重なってタップを
+        // 吸われる。スワイプ経路は中央行・中央列なのでここは塞がない)
+        TaggedButton(
+            Tags.NAV_MAP,
+            "マップ",
+            modifier = Modifier.align(Alignment.BottomEnd).fillMaxWidth(0.45f).padding(12.dp),
+            onClick = onOpenMap
+        )
 
         TaggedButton(
             Tags.BTN_GESTURE_RESET,

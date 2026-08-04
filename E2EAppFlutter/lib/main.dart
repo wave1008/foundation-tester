@@ -48,6 +48,7 @@ enum Screen {
   selector,
   input,
   gesture,
+  map,
   scroll,
   async,
   dialog,
@@ -104,6 +105,8 @@ class _AppShellState extends State<AppShell> {
             return 'テキスト入力';
           case Screen.gesture:
             return 'ジェスチャ';
+          case Screen.map:
+            return 'マップ';
           case Screen.scroll:
             return 'スクロール';
           case Screen.async:
@@ -145,7 +148,10 @@ class _AppShellState extends State<AppShell> {
           case Screen.input:
             return const InputScreen();
           case Screen.gesture:
-            return const GestureScreen();
+            return GestureScreen(
+                onOpenMap: () => setState(() => _homeChild = Screen.map));
+          case Screen.map:
+            return const MapScreen();
           case Screen.scroll:
             return const ScrollScreen();
           case Screen.async:

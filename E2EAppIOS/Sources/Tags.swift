@@ -17,6 +17,7 @@ enum Tags {
     static let navSelector = "nav_selector"
     static let navInput = "nav_input"
     static let navGesture = "nav_gesture"
+    static let navMap = "nav_map"
     static let navScroll = "nav_scroll"
     static let navAsync = "nav_async"
     static let navDialog = "nav_dialog"
@@ -63,6 +64,14 @@ enum Tags {
     static let txtSwipeDir = "txt_swipe_dir"
     static let txtLastGesture = "txt_last_gesture"
     static let btnGestureReset = "btn_gesture_reset"
+
+    // マップ(ピンチ・ダブルタップ・斜めドラッグ)
+    static let padMap = "pad_map"
+    static let txtZoomDir = "txt_zoom_dir"
+    static let txtZoom = "txt_zoom"
+    static let txtPan = "txt_pan"
+    static let txtDoubleCount = "txt_double_count"
+    static let btnMapReset = "btn_map_reset"
 
     // スクロール
     static let txtRowSelected = "txt_row_selected"
