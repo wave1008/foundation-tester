@@ -101,12 +101,12 @@ final class BridgeContractTests: XCTestCase {
     private static let expectedFingerprints: [BridgeSourceSet: [String: String]] = [
         .inApp: [
             "InAppBridge/Sources/Bridging.h": "08799e6d190f958eed7c6bb4406f1cbbfea1bed1d252ce4572636273c65a5aad",
-            "InAppBridge/Sources/InAppBridge.swift": "feb752a288969b346340c2666480812e3fc551880bd9ec76bb8441dde473a492",
+            "InAppBridge/Sources/InAppBridge.swift": "b035765f2e8aa2e1df02ca7802b9d55120798b8bc6e7dff28053759ca74383b6",
             "InAppBridge/Sources/InAppHTTPServer.swift": "1d987f76a251ab475b632f24df272b000bb433054c7607e38f0447b6181e58bb",
             "InAppBridge/Sources/InAppInput.h": "cb980dcf8b80c38a97a841946354460ce6fd960baf53ada67aa939e16e373a65",
             "InAppBridge/Sources/InAppInput.m": "ea5a619f2b945e078af3bea394cb6d73a7e405c7509586389e427951d9b2f601",
             "InAppBridge/Sources/InAppSettle.swift": "62ae8446e108a68b4a72ef1f8226d530d77683087fde133cfe7a05ee13a2a6e1",
-            "InAppBridge/Sources/InAppSnapshot.swift": "8e11d8c8f6a3bb462e3dc372eb66a2ba3c206f682c7c0bd39cc19787ddb55c64",
+            "InAppBridge/Sources/InAppSnapshot.swift": "ecdf6d62ca00b6e0bd308350c4e1c74ca8625d4b146bf81e3162f007d4cfb46f",
             "InAppBridge/Sources/InAppWebViewDOM.swift": "b4053272dfffb11508b64bd315695123d1199768ed7ceed20f2b8272a5b10551",
             "InAppBridge/Sources/boot.m": "b23fc93fbc99ce2579c9fd8ae75a6f9bbfd0ec6122bec60eb6cd00775dd635ef",
             "InAppBridge/build.sh": "afc02d752c97a009dd48aa6cf18934af0c6f8be662d75af37cdc8c4affbc454d",

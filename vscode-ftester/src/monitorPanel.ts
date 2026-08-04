@@ -97,7 +97,7 @@ export interface MonitorPanelDeps {
   /** 生成したソース(絶対パス)を、デバイスモニターの列を避けた列に開く(モニター表示を覆わないため)。 */
   openGeneratedDocument(filePath: string): void;
   /** 録画動画ファイル(絶対パス)を webview から読める URI 文字列に変換する(録画タブ用)。
-   * パネル未生成時は null。localResourceRoots(Projects/ 配下)の対象外パスを渡さないこと。 */
+   * パネル未生成時は null。localResourceRoots(TestProjects/ 配下)の対象外パスを渡さないこと。 */
   videoWebviewUri(absPath: string): string | null;
 }
 
@@ -310,11 +310,11 @@ class MonitorPanelController implements vscode.Disposable {
     const panel = vscode.window.createWebviewPanel(VIEW_TYPE, PANEL_TITLE, vscode.ViewColumn.Beside, {
       enableScripts: true,
       retainContextWhenHidden: true,
-      // Projects/ 配下は録画タブの動画(mp4)読み込みに必要(monitorRecordingsController.ts が
+      // TestProjects/ 配下は録画タブの動画(mp4)読み込みに必要(monitorRecordingsController.ts が
       // asWebviewUri で変換するファイルはこの配下)。
       localResourceRoots: [
         vscode.Uri.joinPath(this.extensionUri, "media"),
-        vscode.Uri.joinPath(vscode.Uri.file(this.workspaceRoot), "Projects"),
+        vscode.Uri.joinPath(vscode.Uri.file(this.workspaceRoot), "TestProjects"),
       ],
     });
     this.panel = panel;

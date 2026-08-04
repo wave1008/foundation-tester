@@ -15,7 +15,7 @@ final class RunProfileScopeTests: XCTestCase {
     override func setUpWithError() throws {
         tempDir = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("FTesterTests-\(UUID().uuidString)")
-        let root = tempDir.appendingPathComponent("Projects/SampleApp")
+        let root = tempDir.appendingPathComponent("TestProjects/SampleApp")
         project = TestProject(name: "SampleApp", rootURL: root)
         try FileManager.default.createDirectory(at: project.runsDir, withIntermediateDirectories: true)
     }

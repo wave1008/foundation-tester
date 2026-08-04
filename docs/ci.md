@@ -37,7 +37,7 @@ ftester run --profile ios-xcuitest --quiet --junit reports/junit.xml
   シナリオの**全ステップ**が inconclusive のときだけ `<skipped>` になる —
   通常のステップと混在する場合は passed の `<testcase>` に埋もれる
   (気付く経路は実行ログ・Markdown レポートの ❓ と修正提案)
-- **失敗の調査**: `Projects/<name>/reports/` に Markdown レポート(失敗時の要素一覧・
+- **失敗の調査**: `TestProjects/<name>/reports/` に Markdown レポート(失敗時の要素一覧・
   スクリーンショット・FM トリアージ)が出る。**artifact に上げておく**と JUnit の
   `report:` 行から辿れる
 
@@ -56,7 +56,7 @@ pipeline {
   }
   post {
     always  { junit 'reports/junit.xml' }
-    failure { archiveArtifacts artifacts: 'reports/junit.xml, Projects/*/reports/**', allowEmptyArchive: true }
+    failure { archiveArtifacts artifacts: 'reports/junit.xml, TestProjects/*/reports/**', allowEmptyArchive: true }
   }
 }
 ```

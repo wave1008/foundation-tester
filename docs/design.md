@@ -152,19 +152,19 @@ foundation-tester/
 │   ├── src/com/example/ftbridge/  #   BridgeInstrumentation / QuietWaiter / SnapshotBuilder 等(Java のみ)
 │   ├── build.sh                   #   prebuilt/ftbridge.apk の再ビルド
 │   └── prebuilt/ftbridge.apk      #   同梱 prebuilt APK(初回操作時に自動インストール)
-├── Projects/                      # テストプロジェクト(§11)
+├── TestProjects/                      # テストプロジェクト(§11)
 │   └── SampleApp/
 │       ├── profiles/              #   実行プロファイル(apps / machines / runs)
-│       ├── Scenarios/             #   Swift DSL シナリオ(SPM ターゲットの path)
+│       ├── scenarios/             #   Swift DSL シナリオ(SPM ターゲットの path)
 │       ├── docs/testbases/        #   テスト設計の元資料(仕様・観点)。シナリオの根拠
 │       ├── reports/               #   実行レポート出力先(プロジェクト別)
 │       └── .ftester/              #   ヒールキャッシュ等(プロジェクト別)
 ├── Scripts/bench.swift            # 計測基盤(§9。詳細は docs/performance-tuning.md)
-├── E2EAppCMP/                     # 自己 E2E の SUT: Compose Multiplatform(→ Projects/E2E-CMP)
+├── E2EAppCMP/                     # 自己 E2E の SUT: Compose Multiplatform(→ TestProjects/E2E-CMP)
 │   └── docs/ui-contract.md        #   **全 SUT 共通の画面・#id・ラベル契約(唯一の正)**
-├── E2EAppIOS/                     # 自己 E2E の SUT: SwiftUI + 一部 UIKit(→ Projects/E2E-iOS)
-├── E2EAppAndroid/                 # 自己 E2E の SUT: View/XML + 一部 Compose(→ Projects/E2E-Android)
-├── E2EAppFlutter/                 # 自己 E2E の SUT: Flutter(→ Projects/E2E-Flutter)
+├── E2EAppIOS/                     # 自己 E2E の SUT: SwiftUI + 一部 UIKit(→ TestProjects/E2E-iOS)
+├── E2EAppAndroid/                 # 自己 E2E の SUT: View/XML + 一部 Compose(→ TestProjects/E2E-Android)
+├── E2EAppFlutter/                 # 自己 E2E の SUT: Flutter(→ TestProjects/E2E-Flutter)
 │                                  #   各 SUT の docs/ui-contract.md には**型語彙と固有の罠だけ**を置く
 ├── SampleApp/                     # 検証用の小さな SwiftUI デモアプリ(テスト対象)
 ├── vscode-ftester/                # VSCode 拡張。UI 入口はここに一本化(旧 ftester-gui は 2026-07-10 削除)
@@ -511,7 +511,7 @@ ftester snapshot [--json] | tap | type | swipe | press | screenshot
                                            # 手動駆動プリミティブ(圧縮スナップショット・操作。§4.4)
 ```
 
-実行結果はシナリオ実行毎に `Projects/<name>/reports/scenario-*.md`(§10)へ自動出力される。
+実行結果はシナリオ実行毎に `TestProjects/<name>/reports/scenario-*.md`(§10)へ自動出力される。
 集約・分析は別レイヤの `ftester results list/summary/flaky/trend/devices/slow/insights`(§14)で行う。
 
 - **`bridge up` が起動するのは xcuitest ブリッジ(iOS)/デバイス内サーバ(Android)のみ**(in-app ブリッジを
@@ -720,10 +720,10 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
 
    | SUT | 実装 | プロジェクト | 対象 OS | 契約 |
    |---|---|---|---|---|
-   | `E2EAppCMP/` | Compose Multiplatform | `Projects/E2E-CMP` | ios + android | **`E2EAppCMP/docs/ui-contract.md` が唯一の正** |
-   | `E2EAppIOS/` | SwiftUI + 一部 UIKit | `Projects/E2E-iOS` | ios | 差分のみ `E2EAppIOS/docs/ui-contract.md` |
-   | `E2EAppAndroid/` | View/XML + 一部 Compose | `Projects/E2E-Android` | android | 差分のみ `E2EAppAndroid/docs/ui-contract.md` |
-   | `E2EAppFlutter/` | Flutter | `Projects/E2E-Flutter` | ios + android | 差分のみ `E2EAppFlutter/docs/ui-contract.md` |
+   | `E2EAppCMP/` | Compose Multiplatform | `TestProjects/E2E-CMP` | ios + android | **`E2EAppCMP/docs/ui-contract.md` が唯一の正** |
+   | `E2EAppIOS/` | SwiftUI + 一部 UIKit | `TestProjects/E2E-iOS` | ios | 差分のみ `E2EAppIOS/docs/ui-contract.md` |
+   | `E2EAppAndroid/` | View/XML + 一部 Compose | `TestProjects/E2E-Android` | android | 差分のみ `E2EAppAndroid/docs/ui-contract.md` |
+   | `E2EAppFlutter/` | Flutter | `TestProjects/E2E-Flutter` | ios + android | 差分のみ `E2EAppFlutter/docs/ui-contract.md` |
 
    **`#id` とラベルは4 SUT で完全に同一、違うのは「型」と「id を露出させる作法」だけ**という設計。
    実測で採取した型の食い違い(いずれも同じ `#id` を指す):
@@ -906,8 +906,8 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
   Compose の Box+重ね置き `#pad_swipe` は iOS で子 Text が同 depth に平坦化される)。
   当初「Flutter では使えない」と判断したが、SUT が `MergeSemantics` で畳んでいただけで、
   容器を非マージで公開したら iOS/Android とも入れ子になった(=**フレームワークの制約ではない**)。
-  回帰は 4 SUT 共通の `#list_rows >> …`(`Projects/E2E-CMP/Scenarios/11_*.swift`・
-  `Projects/E2E-*/Scenarios/12_セレクタ拡張.swift`)。
+  回帰は 4 SUT 共通の `#list_rows >> …`(`TestProjects/E2E-CMP/scenarios/11_*.swift`・
+  `TestProjects/E2E-*/scenarios/12_セレクタ拡張.swift`)。
   `notExist` / `countIs` も 4 フレームワーク全てで同一に動く(同実測)
 - **相対セレクタ `基準:rightSwitch`**(`right` / `left` / `above` / `below` × 型別接尾辞
   `Button` / `Input` / `Label` / `Image` / `Switch` / `Widget`。Shirates 準拠で**基準が先**):
@@ -1078,6 +1078,12 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
   はロケータを取らず、`FTDriveCore.performCustom` でドライバを直接呼ぶ(スナップショットも
   セレクタ解決も挟まない)。bundleID 省略時は `@TestClass(app:)` のアプリ。
   `restartApp` は terminate の失敗を無視して launch する(既に落ちている状態から呼べる)
+- **器のディレクトリ名は `TestProjects/<name>/scenarios/`**(2026-08-05 に `Projects/` /
+  `Scenarios/` から改名。profiles / reports / results / docs と大小を揃えた)。
+  **旧名も解決する**: `ProjectStore.projectsDir` は `TestProjects/` が無ければ `Projects/`、
+  `TestProject.scenariosDir` は `scenarios/` が無ければ `Scenarios/` を見る
+  (既に導入済みの受け手は旧名のままで、`Projects`→`TestProjects` は大小が違うので
+  macOS でも解決できない)。`Scripts/preflight.sh` も両方を見る
 - **`home` の機構は iOS 実機とシミュレータで違う**: シミュレータは `XCUIDevice.press(.home)`、
   **実機は springboard の下端フリック**(`press(.home)` が実機では ok を返すのに効かない。
   2026-08-05 実測)。フリックは**速さでホーム/アプリスイッチャーが分かれる**ので数値を変えない
@@ -1622,7 +1628,7 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
 
 ### 実行アーキテクチャ
 
-- `Scenarios/` を SPM の実行ターゲット(ftester-scenarios)としてコンパイル。
+- `scenarios/` を SPM の実行ターゲット(ftester-scenarios)としてコンパイル。
   マクロが生成する登録クラス(NSObject 派生)を objc ランタイム走査
   (メッセージ送信なしの class_getSuperclass のみ)で自動発見する
 - **1 プロセス = 1 シナリオ実行**のサブプロセス方式。ホスト(CLI/GUI/MCP)は ScenarioHost 経由で
@@ -1644,7 +1650,7 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   (`abortScenarioOnFailure()` も既定化に伴い撤去)
 - **登録不要の単発実行**: `ftester run-file <path.swift>`(Sources/ftester/RunFileCommand.swift)。
   `ftester project create/sync` で Package.swift へ登録していない .swift をそのまま実行する。
-  実装は「対象プロジェクトの `Scenarios/_runfile/` へコピー → 通常どおり `RunScenarios` へ委譲 →
+  実装は「対象プロジェクトの `scenarios/_runfile/` へコピー → 通常どおり `RunScenarios` へ委譲 →
   実行後に撤去」だけで、**ビルド・プロファイル・レポート・ヒール・並列は通常 run と完全に同一**。
   - シナリオを**解釈実行**する軽量モードは採らない。実行エンジンが2本になると意味論が必ず分岐し、
     生 Swift・`procedure`・ホスト言語の制御構造という DSL 最大の資産を単発実行だけ失う
@@ -1684,7 +1690,7 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
   (`SIMCTL_CHILD_FT_RESET` 等)を意図的に提供しない(ユーザー決定・2026-07-20)。
   シナリオ側は scene1 で対象タブをルートへ正規化して吸収する
 - **inapp は Compose Multiplatform(iOS)の swipe/scrollTo/press を駆動できない**
-  (2026-07-22・`Projects/E2E-CMP` で切り分け確定)。同一アプリ・同一シナリオの両エンジン差分:
+  (2026-07-22・`TestProjects/E2E-CMP` で切り分け確定)。同一アプリ・同一シナリオの両エンジン差分:
   - inapp: `tap`/`type` は通る。`swipe` 4方向・`scrollTo`・`press`(長押し)が**すべて無反応**
   - xcuitest: 同じシナリオが**全て成功**
 
@@ -1722,7 +1728,7 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
      `type` の 409 安全網と同じ形。**press は ref がブリッジごとに別名前空間**なので
      typeDriver 側で snapshot し直して再解決する(`pressViaTypeDriver`)
 
-  これにより **hybrid では Compose でもジェスチャが通る**(`Projects/E2E-CMP` の `ios-inapp` が
+  これにより **hybrid では Compose でもジェスチャが通る**(`TestProjects/E2E-CMP` の `ios-inapp` が
   18/18・37.3s。導入前は3シナリオ失敗・93.9s)。tap/type/スナップショットは高速な in-app のまま。
   409 が表面化するのは **typeDriver が無い構成**(engine=inapp 単独・xcuiPort 無し)だけで、
   そのときはメッセージが xcuitest プロファイルへ誘導する。
@@ -1817,7 +1823,7 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
 - **偽陽性検証を有効にした run(実行プロファイル `falsePositiveCheck: true`。既定 OFF)では、
   `exist`/`textIs` は既定 `requireVisible: true` のため、ソフトキーボードに覆われた要素は
   「偽陽性(occlusion)」で失敗する**。入力を伴う画面では検証対象・操作対象を入力欄より**上**に置く
-  (Projects/E2E-CMP のテキスト入力画面がこの配置。2026-07-22 実測)
+  (TestProjects/E2E-CMP のテキスト入力画面がこの配置。2026-07-22 実測)
 - **inapp ブリッジは注入先アプリのプロセス内常駐**なので、アプリがクラッシュ/終了すると HTTP が
   `DriverError.bridgeConnectionRefused`(「Could not connect」)になる。xcuitest/Android はブリッジが
   別プロセスのためこの切断は起きない(inapp 固有)。切断時は `InAppDriver` がホストの
@@ -1830,13 +1836,13 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
 
 ## 11. テストプロジェクトと実行プロファイル(2026-07-08)
 
-シナリオのフラット配置(リポジトリ直下 Scenarios/)と UserDefaults 頼みの実行設定を廃止し、
-**テストプロジェクト**(Projects/<name>/)と**組み合わせ型の実行プロファイル**(JSON)に移行した。
+シナリオのフラット配置(リポジトリ直下 scenarios/)と UserDefaults 頼みの実行設定を廃止し、
+**テストプロジェクト**(TestProjects/<name>/)と**組み合わせ型の実行プロファイル**(JSON)に移行した。
 
 ### 11.1 テストプロジェクト
 
-`Projects/<name>/` = シナリオ+プロファイル+レポートを持つ器。プロジェクト毎に SPM の
-executableTarget `ftester-scenarios-<name>`(path: `Projects/<name>/Scenarios`)が対応する。
+`TestProjects/<name>/` = シナリオ+プロファイル+レポートを持つ器。プロジェクト毎に SPM の
+executableTarget `ftester-scenarios-<name>`(path: `TestProjects/<name>/scenarios`)が対応する。
 
 - **Package.swift のマーカー区間自動生成**: `// === ftester projects begin/end ===` の区間を
   `ftester project create/sync` が全置換で再生成する(手編集禁止)。書換後に
@@ -1846,13 +1852,13 @@ executableTarget `ftester-scenarios-<name>`(path: `Projects/<name>/Scenarios`)�
 - プロジェクト間はビルド隔離される(1 プロジェクトのコンパイルエラーが他を止めない)。
   バイナリ毎に objc 走査が分かれるため、シナリオ一覧のプロジェクト別化は発見ロジック無変更で成立
 - プロジェクト名は SPM ターゲット名になるため `^[A-Za-z0-9_][A-Za-z0-9_-]*$`(日本語はクラス名側で使う)
-- `--project` 省略時の解決: Projects/ が 1 つならそれ → LocalConfig.defaultProject → 候補一覧付きエラー
+- `--project` 省略時の解決: TestProjects/ が 1 つならそれ → LocalConfig.defaultProject → 候補一覧付きエラー
 - CLI: `ftester project create <name> [--app <bundleID>]` / `project list` / `project sync`
-  (手動コピーや git pull 後の Projects/ ↔ マーカー区間の再整合)
+  (手動コピーや git pull 後の TestProjects/ ↔ マーカー区間の再整合)
 
 ### 11.2 プロファイルは 3 種の組み合わせ
 
-`Projects/<name>/profiles/` 配下。共通設定の継承ではなく**部品の参照合成**で表現する。
+`TestProjects/<name>/profiles/` 配下。共通設定の継承ではなく**部品の参照合成**で表現する。
 
 **アプリケーションプロファイル** `apps/<name>.json` — common(共通)→ ios/android の後勝ちマージ。
 `appName`(表示名)と `autoInstall` は **common のみ**採用(`autoInstall` の未指定時の既定は
@@ -1866,7 +1872,7 @@ executableTarget `ftester-scenarios-<name>`(path: `Projects/<name>/Scenarios`)�
 ```
 
 `appPath` の相対パスは**リポジトリルート**基準(上例の `builds/app-debug.apk` は `<repoRoot>/builds/...`)。
-`~` 展開・絶対パスも可。ビルド成果物は Projects/ 外に置くのが普通なためプロジェクト基準にしていない。
+`~` 展開・絶対パスも可。ビルド成果物は TestProjects/ 外に置くのが普通なためプロジェクト基準にしていない。
 
 `healthCheckURL`(common のみ・任意)— アプリが依存するバックエンドの死活確認 URL。実行開始前に
 3秒タイムアウトで到達確認し、不達なら警告する(実行はブロックしない)。バックエンド停止中は
@@ -2049,7 +2055,7 @@ DeviceBooter.defaultLocale(実行プロファイルの locale が届くのは wi
    **ライブ操作(記録開始)の install も同じ差分判定**を通す(`ApiLiveServe`。無条件に入れ直すと
    記録のたびにアプリが終了し、状態が消える)
 5. RunOrchestrator で並列実行。ワーカーラベル=デバイスの論理名。レポートは
-   `Projects/<P>/reports/`、ヒールキャッシュは `--project-dir` 経由で `Projects/<P>/.ftester/` に分離
+   `TestProjects/<P>/reports/`、ヒールキャッシュは `--project-dir` 経由で `TestProjects/<P>/.ftester/` に分離
    - **シナリオの振り分けは platform 別の静的分配**(ワークスティールではない)。
      `ProfileRunner` は iOS デバイスが1台でもあれば既定 platform を `ios` にし、
      `RunOrchestrator` は `@TestClass` の `platform:` **未指定**シナリオをその既定 platform の
@@ -2083,7 +2089,7 @@ DeviceBooter.defaultLocale(実行プロファイルの locale が届くのは wi
 
 ### 11.6 移行と後方互換
 
-- 旧 `Scenarios/` は `Projects/SampleApp/Scenarios/` へ git mv(同一コミットでアトミック移行。
+- 旧 `scenarios/` は `TestProjects/SampleApp/scenarios/` へ git mv(同一コミットでアトミック移行。
   レガシーレイアウトのランタイムサポートは持たない)
 - ルート `reports/` の既存成果物は履歴として残置。旧 `.ftester/heal-cache.json` も放置で無害
   (キー不一致なら FM が再ヒールするだけ)
@@ -2385,7 +2391,7 @@ run → monitor 方向の `RunLease`(§12 の「監視と実行の協調」)は�
 
 ## 14. 実行結果のファイルベース DB(2026-07-17)
 
-シナリオ実行結果を git 管理下の `Projects/<name>/results/` に蓄積し、分散チーム(複数マシン・
+シナリオ実行結果を git 管理下の `TestProjects/<name>/results/` に蓄積し、分散チーム(複数マシン・
 複数ブランチ)の結果をコミット・マージで合流させる。サーバ DB は使わない。
 
 ### 14.1 マージ安全性(設計の核)
@@ -2403,7 +2409,7 @@ runID = `<yyyyMMdd-HHmmss(UTC)>Z-<マシン名>-<乱数4hex>` をディレクト
   (月別シャーディングで走査範囲を限定。間引きは月ディレクトリごと git rm)
 - run.json のみ実行完了時に同一プロセスが 1 回上書き(finishedAt・集計)。finishedAt 欠落=
   未完了 run(クラッシュ検出に利用)。scenarios/ は追加専用(同一 run 内の再実行は `~2` 連番)
-- スキーマ詳細・フィールド一覧は `Projects/SampleApp/results/README.md`(データと同居させる)
+- スキーマ詳細・フィールド一覧は `TestProjects/SampleApp/results/README.md`(データと同居させる)
 
 ### 14.2 記録パス
 
@@ -2570,7 +2576,7 @@ CoreSimulator.framework を直接叩き、`SimulatorCatalog.devices()` が直叩
 
 ## 17. テストベースからのシナリオ下書き生成(2026-07-26)
 
-`Projects/<name>/docs/testbases/*.md`(テスト設計の元資料)を Swift DSL シナリオの**下書き**に
+`TestProjects/<name>/docs/testbases/*.md`(テスト設計の元資料)を Swift DSL シナリオの**下書き**に
 落とす。`ftester draft-scenario`。ライブ操作の記録生成(§10 の gen-scenario)は実セレクタを持つが、
 こちらは設計資料しか無いのでセレクタは全て TODO プレースホルダになる。
 
@@ -2588,7 +2594,7 @@ CoreSimulator.framework を直接叩き、`SimulatorCatalog.devices()` が直叩
 ### 17.2 生成物の性質(壊さないこと)
 
 - 生成クラスには **`@Deleted` を付ける** → 一括実行から外れる(一覧には残る)。人が TODO を実セレクタへ
-  置き換えてから `@Deleted` を外す運用。出力先は `Scenarios/Drafts/`(SPM ターゲットに含まれるので
+  置き換えてから `@Deleted` を外す運用。出力先は `scenarios/Drafts/`(SPM ターゲットに含まれるので
   **下書きもコンパイル対象**。`ScenarioCodeGen.writeValidated` でビルド検証し、失敗時は `_disabled/` へ隔離)
 - プレースホルダは `#TODO` = **決して解決できない id**。埋め忘れたまま `@Deleted` を外すと
   「ロケータを解決できません」で確実に落ちる(空実装で緑になる方が危険なので意図的)

@@ -48,7 +48,7 @@ public enum PackageManifestEditor {
                 .executableTarget(
                     name: "ftester-scenarios-\(name)",
                     dependencies: \(deps),
-                    path: "Projects/\(name)/Scenarios",
+                    path: "TestProjects/\(name)/scenarios",
                     exclude: ["_disabled"],
                     swiftSettings: swift5Mode
                 ),

@@ -17,7 +17,7 @@ import { createDapDriver } from "./fixtures/dapDriver.mjs";
 // process.cwd() を基準に fixtures を解決する(runReducer.test.mjs と同じ流儀)。
 const MOCK_RUNNER = path.resolve(process.cwd(), "test", "fixtures", "mock-runner.mjs");
 // spawn の cwd はリポジトリルート相当として扱う(存在するディレクトリが必要なので
-// vscode-ftester/ 自身を使う。Projects/Mock/... は実在しなくてよい: パス文字列の
+// vscode-ftester/ 自身を使う。TestProjects/Mock/... は実在しなくてよい: パス文字列の
 // 相対化/spawn の cwd としてのみ使う)。
 const REPO_ROOT = process.cwd();
 
@@ -44,7 +44,7 @@ async function withDriver(overrides, fn) {
 
 test("setBreakpoints: 絶対パス→リポジトリ相対化し、起動後の追加分も全ファイル分を全置換で stdin へ送る", async () => {
   await withDriver({}, async (driver) => {
-    const fileA = path.join(REPO_ROOT, "Projects", "Mock", "Scenarios", "Mock.swift");
+    const fileA = path.join(REPO_ROOT, "TestProjects", "Mock", "scenarios", "Mock.swift");
 
     await driver.initialize();
 
@@ -65,7 +65,7 @@ test("setBreakpoints: 絶対パス→リポジトリ相対化し、起動後の�
 
     // 起動後に別ファイルの breakpoints を追加設定する → 全置換で stdin へ送られ、
     // mock-runner が ack を stderr に出す(1件目の Mock.swift:14 も含めて全部届いているはず)
-    const fileB = path.join(REPO_ROOT, "Projects", "Other", "Scenarios", "Other.swift");
+    const fileB = path.join(REPO_ROOT, "TestProjects", "Other", "scenarios", "Other.swift");
     driver.send("setBreakpoints", { source: { path: fileB }, breakpoints: [{ line: 5 }] });
     const resp2 = await driver.waitForResponse("setBreakpoints");
     assert.equal(resp2.body.breakpoints.length, 1);
@@ -75,8 +75,8 @@ test("setBreakpoints: 絶対パス→リポジトリ相対化し、起動後の�
       driver.logs.some((l) => l.stream === "stderr" && l.line.includes("breakpoints ack")),
     );
     const ackLine = driver.logs.find((l) => l.line.includes("breakpoints ack")).line;
-    assert.match(ackLine, /Projects\/Mock\/Scenarios\/Mock\.swift:14/);
-    assert.match(ackLine, /Projects\/Other\/Scenarios\/Other\.swift:5/);
+    assert.match(ackLine, /Projects\/Mock\/scenarios\/Mock\.swift:14/);
+    assert.match(ackLine, /Projects\/Other\/scenarios\/Other\.swift:5/);
   });
 });
 
@@ -146,7 +146,7 @@ test("scopes/variables: 停止中はスコープ「ステップ」とシナリ�
     assert.equal(byName["コマンド"], "launch com.example.mock");
     assert.equal(byName["scene"], "1");
     assert.equal(byName["区分"], "action");
-    assert.equal(byName["位置"], "Projects/Mock/Scenarios/Mock.swift:10");
+    assert.equal(byName["位置"], "TestProjects/Mock/scenarios/Mock.swift:10");
   });
 });
 

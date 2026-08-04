@@ -16,7 +16,7 @@ struct ApiGenScenarioCommand: AsyncParsableCommand {
         abstract: "Generate a Swift scenario from recorded interactions (the temporary JSON given to --steps)"
             + " and stream NDJSON (genStarted -> scenarioGenerated | error) on stdout (diagnostics on stderr only)")
 
-    @Option(help: "Test project name (defaults to the only one in Projects/, or the default project)")
+    @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
     var project: String?
 
     @Option(name: .customLong("steps"), help: "Path of the temporary JSON file the recorded interactions were written to")

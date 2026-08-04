@@ -16,7 +16,7 @@ final class LPTOrderingTests: XCTestCase {
     override func setUpWithError() throws {
         tempDir = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("FTesterTests-\(UUID().uuidString)")
-        let root = tempDir.appendingPathComponent("Projects/SampleApp")
+        let root = tempDir.appendingPathComponent("TestProjects/SampleApp")
         project = TestProject(name: "SampleApp", rootURL: root)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     }
@@ -140,7 +140,7 @@ final class LPTOrderingTests: XCTestCase {
     }
 
     func testHistoryFromAnotherPlatformIsNotUsed() throws {
-        // 同じ results/ に iOS と Android の記録が混ざる構成(Projects/E2E-CMP 等)。
+        // 同じ results/ に iOS と Android の記録が混ざる構成(TestProjects/E2E-CMP 等)。
         // android の run で ios の実績を使うと、遅い iOS 実測で並べてしまう
         try writeRecord(scenarioID: "両対応", durationMs: 30_000, platform: "ios")
         try writeRecord(scenarioID: "Android専用", durationMs: 5_000, platform: "android")

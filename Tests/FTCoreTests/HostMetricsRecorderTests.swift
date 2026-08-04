@@ -54,7 +54,7 @@ final class HostMetricsRecorderTests: XCTestCase {
     /// RunRecorder.begin(captureHostMetrics: true) は runDir/host-metrics.ndjson を作る
     func testRunRecorderCreatesSessionFile() {
         let project = TestProject(name: "SampleApp",
-                                  rootURL: tmpRoot.appendingPathComponent("Projects/SampleApp"))
+                                  rootURL: tmpRoot.appendingPathComponent("TestProjects/SampleApp"))
         let recorder = RunRecorder.begin(project: project, profile: nil, trigger: "test")
         let resultsDir = RunResultsStore.resultsDir(projectRoot: project.rootURL)
         let sessionFile = RunResultsStore.runDir(resultsDir: resultsDir, runID: recorder.runID)
@@ -68,7 +68,7 @@ final class HostMetricsRecorderTests: XCTestCase {
     /// captureHostMetrics: false では採取器を起動せず、ファイルも作らない
     func testRunRecorderSkipsCaptureWhenDisabled() {
         let project = TestProject(name: "SampleApp",
-                                  rootURL: tmpRoot.appendingPathComponent("Projects/SampleApp"))
+                                  rootURL: tmpRoot.appendingPathComponent("TestProjects/SampleApp"))
         let recorder = RunRecorder.begin(project: project, profile: nil, trigger: "test",
                                          captureHostMetrics: false)
         let resultsDir = RunResultsStore.resultsDir(projectRoot: project.rootURL)

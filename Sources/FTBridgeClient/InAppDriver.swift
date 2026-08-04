@@ -157,7 +157,7 @@ public final class InAppDriver: AppDriver {
     }
 
     /// クラッシュ検知時の注記。**.ips は落ちてから遅れて書かれる**(実測: ブリッジ切断の
-    /// 約 2 秒後。Projects/E2E-iOS の 91_クラッシュ検知 で確認)。切断直後に1回だけ探すと
+    /// 約 2 秒後。TestProjects/E2E-iOS の 91_クラッシュ検知 で確認)。切断直後に1回だけ探すと
     /// ファイルがまだ無く「見つかりませんでした」になるため、短くポーリングして待つ。
     /// この経路は既に失敗が確定しているので、待ち時間が正常系を遅らせることはない。
     private func crashAnnotated(_ detail: String) async -> String {

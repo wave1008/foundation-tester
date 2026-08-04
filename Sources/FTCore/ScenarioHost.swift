@@ -128,7 +128,7 @@ public enum ScenarioHost {
     }
 
     /// テストプロジェクトを解決する。name 省略時:
-    /// Projects/ が 1 つならそれ → LocalConfig.defaultProject → 候補一覧付きエラー
+    /// TestProjects/ が 1 つならそれ → LocalConfig.defaultProject → 候補一覧付きエラー
     public static func project(named name: String? = nil) throws -> TestProject {
         guard let root = packageRoot() else {
             throw ScenarioHostError.buildFailed(

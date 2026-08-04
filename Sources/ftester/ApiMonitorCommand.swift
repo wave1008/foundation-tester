@@ -42,7 +42,7 @@ struct ApiMonitorCommand: AsyncParsableCommand {
             + " NDJSON (monitorDevices/monitorFrame/monitorError) on stdout"
             + " (diagnostics on stderr only; exits on stdin EOF or SIGTERM/SIGINT)")
 
-    @Option(help: "Test project name (defaults to the only one in Projects/, or the default project)")
+    @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
     var project: String?
 
     @Option(help: "Interval between monitor cycles in seconds (default 2.0)")

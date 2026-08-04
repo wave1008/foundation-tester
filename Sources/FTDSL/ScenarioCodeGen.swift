@@ -298,7 +298,7 @@ public enum ScenarioCodeGen {
     }
 
     /// 生成先の既存クラス名(.swift ベース名)を収集する(重複回避用)。
-    /// シナリオはフォルダ(Scenarios/ 直下 1 階層)にも置けるため、サブディレクトリも見る
+    /// シナリオはフォルダ(scenarios/ 直下 1 階層)にも置けるため、サブディレクトリも見る
     public static func existingClassNames(in dirs: [URL]) -> Set<String> {
         var names = Set<String>()
         for dir in dirs {

@@ -7,7 +7,7 @@ tag 定数は `Sources/Tags.swift` に集約する(値は共通契約の表と b
 
 - bundle id: `com.ftester.e2e.ios`(Compose 版 `com.ftester.e2e` と共存できる)
 - `#txt_about_app` は `app=com.ftester.e2e.ios`
-- シナリオ: `Projects/E2E-iOS/Scenarios/`
+- シナリオ: `TestProjects/E2E-iOS/scenarios/`
 
 ## 実装方式(どの画面が SwiftUI で、どこが UIKit か)
 

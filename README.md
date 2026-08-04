@@ -23,7 +23,7 @@ UI は VSCode 拡張(`vscode-ftester/`)に一本化している(セットアッ�
 | **CLI** `ftester` | `swift run ftester ...`(clone 内)/ ビルド済み `.build/debug/ftester` | CI・回帰テストの定期実行(決定的・無料・exit code) |
 | **VSCode 拡張** | [vscode-ftester/](vscode-ftester/README.md)(F5 起動 または .vsix インストール) | 人間の対話操作: シナリオ実行・デバッグ実行・ライブ操作(録画→生成)・デバイスモニター・結果ダッシュボード |
 | **MCP** サーバ | Claude Code が自動起動([.mcp.json](.mcp.json)) | エージェント連携: AIによるテスト作成・デバッグ・探索的テスト |
-| **Swift DSL** | `Projects/<name>/Scenarios/*.swift` | テスト資産。どの入口で作っても同じ形式で保存・実行される |
+| **Swift DSL** | `TestProjects/<name>/scenarios/*.swift` | テスト資産。どの入口で作っても同じ形式で保存・実行される |
 
 役割分担の原則: **探索・判断(知能)はエージェント、操作・実行・検証(決定性)は ftester**。
 テスト作成は VSCode 拡張のライブ操作録画(操作を Swift シナリオに変換)か、複雑なものは Claude Code
@@ -63,7 +63,7 @@ curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scr
   版を固定するなら `claude plugin marketplace add https://github.com/wave1008/foundation-tester.git#<tag>`。
   プラグイン機構が無い環境向けの代替は
   `curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scripts/install-skill.sh | sh`。
-- 既定は**外部パッケージ構成**: ツール(この clone)と、あなたの `Projects/` が住むテスト用フォルダを分ける。
+- 既定は**外部パッケージ構成**: ツール(この clone)と、あなたの `TestProjects/` が住むテスト用フォルダを分ける。
 - 事前準備・インストール・更新・アンインストールの手順は [docs/getting-started.md](docs/getting-started.md)。
   導入後の使い方(プロファイル・シナリオ・実行)は本 README の以降の節と [docs/commands.md](docs/commands.md)。
 
@@ -116,7 +116,7 @@ bash AndroidRunner/build.sh                  # 常駐ブリッジ APK を生成(
 
 - macOS ベータを使う場合は **Xcode を同じベータへ揃えてフルリビルド**する
   (FoundationModels の ABI 不整合で全バイナリが dyld クラッシュするため)
-- 手動コピー・別リポジトリからの移行などで `Projects/` を持ち込んだ場合は
+- 手動コピー・別リポジトリからの移行などで `TestProjects/` を持ち込んだ場合は
   `swift run ftester project sync` で Package.swift のマーカー区間を再生成する
 
 ## クイックスタート
@@ -129,9 +129,9 @@ swift run ftester doctor
 swift run ftester bridge up --with-sample-app
 
 # 3. シナリオを用意する(下記いずれか)
-#    - VSCode 拡張のライブ操作パネルで操作を録画 → Projects/<name>/Scenarios/Generated/*.swift を生成
-#      (生成直後にビルド検証され、失敗コードは Scenarios/_disabled/ に隔離される)
-#    - Projects/<name>/Scenarios/ に Swift DSL で手書きする(下記「Swift DSL」参照)
+#    - VSCode 拡張のライブ操作パネルで操作を録画 → TestProjects/<name>/scenarios/Generated/*.swift を生成
+#      (生成直後にビルド検証され、失敗コードは scenarios/_disabled/ に隔離される)
+#    - TestProjects/<name>/scenarios/ に Swift DSL で手書きする(下記「Swift DSL」参照)
 #    - Claude Code(MCP 経由)に作らせる
 
 # 4. 決定的実行(LLM なし。失敗があれば exit code 1)
@@ -169,17 +169,17 @@ swift run ftester run --profile ios           # 実行プロファイル(ブリ�
 
 ## テストプロジェクトと実行プロファイル
 
-テストは **テストプロジェクト**(`Projects/<name>/` = シナリオ+プロファイル+レポートの器)で管理する。
+テストは **テストプロジェクト**(`TestProjects/<name>/` = シナリオ+プロファイル+レポートの器)で管理する。
 プロジェクト毎に SPM ターゲット `ftester-scenarios-<name>` が対応し、`ftester project create/sync` が
 Package.swift のマーカー区間を自動更新する(プロジェクト間はビルド隔離)。
 
 ```
-Projects/SampleApp/
+TestProjects/SampleApp/
 ├── profiles/
 │   ├── apps/sampleapp_ios.json    # アプリ: appName/autoInstall は common、bundle ID(app)と appPath は ios/android
 │   ├── machines/M2 Ultra.json     # マシン別デバイス定義(ファイル名 = マシン名)
 │   └── runs/ios.json              # 実行プロファイル(アプリ+デバイス名リスト+実行時設定)
-├── Scenarios/                     # Swift DSL(_Main.swift / Generated/ / _disabled/)
+├── scenarios/                     # Swift DSL(_Main.swift / Generated/ / _disabled/)
 ├── reports/                       # 実行レポート(プロジェクト別)
 └── .ftester/heal-cache.json       # ヒールキャッシュ(プロジェクト別)
 ```
@@ -257,11 +257,11 @@ Android シナリオも iOS と同様に `--platform android` を付けて実行
 
 ブリッジ経由では `ACTION_SET_TEXT` で入力するため、日本語もそのまま入る(IME 切替なし)。
 
-## Swift DSL(Projects/<name>/Scenarios/)
+## Swift DSL(TestProjects/<name>/scenarios/)
 
 テストは Shirates 風の Swift DSL で書く。**`try await` もクロージャ引数も不要** —
 コマンドは同期・非 throw の自由関数で、`scenario → scene → condition/action/expectation`(CAE)
-の3層構造を持つ。プロジェクトの `Scenarios/` に .swift を置いて `swift build` すれば自動発見される。
+の3層構造を持つ。プロジェクトの `scenarios/` に .swift を置いて `swift build` すれば自動発見される。
 
 ```swift
 import FTDSL
@@ -403,12 +403,12 @@ condition {
 - 失敗セマンティクス: コマンド NG → **シナリオ中断**(以降のステップは scene を跨いですべてスキップ。
   tearDown だけは失敗後でも実行される)。
   ブロック内の生 Swift コードはスキップされないため、失敗後に走らせたくない処理は `procedure { }` に包む
-- レポートは成否問わず `Projects/<name>/reports/scenario-*.md` に出力(scene → CAE → ステップ階層、
+- レポートは成否問わず `TestProjects/<name>/reports/scenario-*.md` に出力(scene → CAE → ステップ階層、
   トリアージ、失敗スクリーンショット、**修正提案**)
 - **自己修復とヒールキャッシュ**: 自己修復が有効な実行(実行プロファイルの `heal`。既定 ON、
   CLI は `--heal` で上書き)では、壊れたセレクタは FM が修復して続行し、
-  結果は `Projects/<name>/.ftester/heal-cache.json` に保存される。**2回目以降は FM なしで決定的に通過**し、
-  レポートに「`Projects/SampleApp/Scenarios/LoginTest.swift:17` — セレクタ "#email_input" を
+  結果は `TestProjects/<name>/.ftester/heal-cache.json` に保存される。**2回目以降は FM なしで決定的に通過**し、
+  レポートに「`TestProjects/SampleApp/scenarios/LoginTest.swift:17` — セレクタ "#email_input" を
   "#email||.textField[0]" に変更してください」のようなソース位置付き修正提案を出し続ける
   (ソースの自動書換はしない。人がソースを直すとキー不一致でキャッシュは自然に無効化される)
 - **dry-run**: `swift run ftester-scenarios-<プロジェクト名> run --scenario <id> --dry-run` で
@@ -507,10 +507,10 @@ ftester CLI / MCP ──(サブプロセス)──▶ ftester-scenarios-<project
 ## プロジェクト構成
 
 ```
-Projects/          テストプロジェクト(コミットして資産化する)
+TestProjects/          テストプロジェクト(コミットして資産化する)
   SampleApp/
     profiles/        実行プロファイル(apps / machines / runs。JSON)
-    Scenarios/       テストシナリオ(Swift DSL)
+    scenarios/       テストシナリオ(Swift DSL)
       _Main.swift      ランナーへの委譲(編集不要)
       Generated/       ライブ操作の録画(gen-scenario)が生成したシナリオ
       _disabled/       コンパイル対象外の退避場所(並列デモ・生成失敗コードの隔離先)
@@ -563,7 +563,7 @@ Jenkins の例と flaky の扱いは [docs/ci.md](docs/ci.md)。
 - **ドライバに接続できません** → iOS: `bridge up` を先に実行(ログは `.ftester/bridge-<ポート>.log`)。
   Android: `adb devices` で接続確認
 - **シナリオのコンパイルエラーで実行できない** → `swift build --product ftester-scenarios-<プロジェクト名>`
-  のエラーを修正する。ライブ操作録画(gen-scenario)の生成不良は Scenarios/_disabled/ に自動隔離される
+  のエラーを修正する。ライブ操作録画(gen-scenario)の生成不良は scenarios/_disabled/ に自動隔離される
 - **プロジェクトが認識されない(手動コピーや git pull 後)** → `ftester project sync` で
   Package.swift のマーカー区間を再生成する(`project list` が未登録を警告する)
 - **マシンプロファイルが見つからない** → `ftester machine show` で登録名と

@@ -63,10 +63,10 @@
 
   | SUT | 実装 | プロジェクト | 対象 OS |
   |---|---|---|---|
-  | `E2EAppCMP/` | Compose Multiplatform | Projects/E2E-CMP | ios + android |
-  | `E2EAppIOS/` | SwiftUI + 一部 UIKit | Projects/E2E-iOS | ios |
-  | `E2EAppAndroid/` | View/XML + 一部 Compose | Projects/E2E-Android | android |
-  | `E2EAppFlutter/` | Flutter | Projects/E2E-Flutter | ios + android |
+  | `E2EAppCMP/` | Compose Multiplatform | TestProjects/E2E-CMP | ios + android |
+  | `E2EAppIOS/` | SwiftUI + 一部 UIKit | TestProjects/E2E-iOS | ios |
+  | `E2EAppAndroid/` | View/XML + 一部 Compose | TestProjects/E2E-Android | android |
+  | `E2EAppFlutter/` | Flutter | TestProjects/E2E-Flutter | ios + android |
 
   **要素の testTag/`#id`/ラベルの唯一の正は `E2EAppCMP/docs/ui-contract.md`**(全 SUT とシナリオがこれを参照。
   片方だけ変えない。`uiContractSync.test.mjs` が「SUT 側の `#id` が母体に実在するか」を検出)。
@@ -203,7 +203,7 @@
 - 全域一括の機械的変更は、ファイル集合が互いに素になるようバッチ分割して並列委譲する(コメント量・行数で均等化)
 - サブエージェントに swift build / npm build を実行させない(SPM ビルドロック・出力の競合)。ビルド・テストはメインで全バッチ完了後に一括実行。軽量な per-file チェック(node --check 等)は各エージェントで可
 - 「コメントのみ」「移動のみ」を謳う変更は、diff の全変更行を機械検証(全 +/- 行がコメント/空行か、末尾コメント編集はコード部分が同一か)してからコミットする
-- Projects/ 配下のシナリオ(.swift)はユーザー資産(一部は explore 生成)。リポジトリ全域の一括整形・コメント編集の対象に含めない
+- TestProjects/ 配下のシナリオ(.swift)はユーザー資産(一部は explore 生成)。リポジトリ全域の一括整形・コメント編集の対象に含めない
 
 ## ソース分割の方針
 

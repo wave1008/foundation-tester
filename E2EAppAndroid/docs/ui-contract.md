@@ -6,7 +6,7 @@
 
 - applicationId: `com.ftester.e2e.android`(Compose 版 `com.ftester.e2e` と共存できる)
 - `#txt_about_app` は `app=com.ftester.e2e.android`
-- シナリオ: `Projects/E2E-Android/Scenarios/`
+- シナリオ: `TestProjects/E2E-Android/scenarios/`
 
 ## 実装方式(どこが View で、どこが Compose か)
 

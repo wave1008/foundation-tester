@@ -47,13 +47,13 @@ final class JUnitReportWriterTests: XCTestCase {
                                                  detail: "element not found: id=x",
                                                  file: "A.swift", line: 12)],
                    errorLogs: ["❌ bridge unreachable"],
-                   reportPath: "Projects/E2E-CMP/reports/a.md",
+                   reportPath: "TestProjects/E2E-CMP/reports/a.md",
                    worker: "ios:iPhone 17")])
         XCTAssertTrue(xml.contains(
             #"<failure message="tap &quot;x&quot; — element not found: id=x">"#), xml)
         XCTAssertTrue(xml.contains("at A.swift:12"), xml)
         XCTAssertTrue(xml.contains("error logs:"), xml)
-        XCTAssertTrue(xml.contains("report: Projects/E2E-CMP/reports/a.md"), xml)
+        XCTAssertTrue(xml.contains("report: TestProjects/E2E-CMP/reports/a.md"), xml)
         XCTAssertTrue(xml.contains("worker: ios:iPhone 17"), xml)
     }
 

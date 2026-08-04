@@ -31,8 +31,8 @@ const MOCK_RUNNER = path.resolve(process.cwd(), "test", "fixtures", "mock-runner
 // ---- healFixId ----------------------------------------------------------------------
 
 test("healFixId: scenarioID|file:line|oldSelector の形式になる(GUI の HealFix.id と同形式)", () => {
-  const id = healFixId({ scenarioID: "S.T1", file: "Projects/P/Scenarios/S.swift", line: 12, oldSelector: "#old" });
-  assert.equal(id, "S.T1|Projects/P/Scenarios/S.swift:12|#old");
+  const id = healFixId({ scenarioID: "S.T1", file: "TestProjects/P/scenarios/S.swift", line: 12, oldSelector: "#old" });
+  assert.equal(id, "S.T1|TestProjects/P/scenarios/S.swift:12|#old");
 });
 
 // ---- HealFixCollector ----------------------------------------------------------------
@@ -45,7 +45,7 @@ test("HealFixCollector: fixSuggestion を収集し、必須フィールドが揃
     scenario: "S.T1",
     description: 'tap "#old_id"',
     detail: "ロケータが変化した可能性があります",
-    file: "Projects/P/Scenarios/S.swift",
+    file: "TestProjects/P/scenarios/S.swift",
     line: 12,
     oldSelector: "#old_id",
     newSelector: "#new_id",
@@ -54,7 +54,7 @@ test("HealFixCollector: fixSuggestion を収集し、必須フィールドが揃
   assert.equal(list.length, 1);
   assert.deepEqual(list[0], {
     scenarioID: "S.T1",
-    file: "Projects/P/Scenarios/S.swift",
+    file: "TestProjects/P/scenarios/S.swift",
     line: 12,
     oldSelector: "#old_id",
     newSelector: "#new_id",

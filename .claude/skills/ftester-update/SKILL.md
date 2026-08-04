@@ -1,6 +1,6 @@
 ---
 name: ftester-update
-description: 既に foundation-tester をセットアップ済みの受け手が、新しい修正版（upstream の更新）を取り込む。git pull → Projects/ と Package.swift の再整合 → 再ビルド → VSCode 拡張の再インストール → 反映（Reload Window）までを検証付きで実行する。「更新して」「最新にして」「アップデートして」「新しい版を取り込んで」等の依頼で使う。初回セットアップは /ftester-setup。
+description: 既に foundation-tester をセットアップ済みの受け手が、新しい修正版（upstream の更新）を取り込む。git pull → TestProjects/ と Package.swift の再整合 → 再ビルド → VSCode 拡張の再インストール → 反映（Reload Window）までを検証付きで実行する。「更新して」「最新にして」「アップデートして」「新しい版を取り込んで」等の依頼で使う。初回セットアップは /ftester-setup。
 ---
 
 # ftester 更新 runbook
@@ -20,19 +20,19 @@ description: 既に foundation-tester をセットアップ済みの受け手が
 
 **構成は setup と同じ2通り。まず判定する(ステップ0):**
 
-- **clone 構成**: foundation-tester クローンの中で直接使う。ツールも Projects も同じ場所。
+- **clone 構成**: foundation-tester クローンの中で直接使う。ツールも TestProjects も同じ場所。
 - **外部パッケージ構成(既定)**: 自分のパッケージ(`ftester init` 済み)が横の `../foundation-tester`
   クローンを SPM 依存として引く。ツール更新は TOOL_ROOT を pull+build し、受け手側は依存を反映して再ビルドする。
 
 用語(setup と共通): **TOOL_ROOT** = foundation-tester クローン(git pull / swift build / 拡張ビルドを
-行う場所。CLI は `TOOL_ROOT/.build/debug/ftester`)、**WORK_DIR** = 自分の `Projects/` が住むディレクトリ。
+行う場所。CLI は `TOOL_ROOT/.build/debug/ftester`)、**WORK_DIR** = 自分の `TestProjects/` が住むディレクトリ。
 外部構成では TOOL_ROOT = `../foundation-tester`・WORK_DIR = 自分のパッケージ。clone 構成では両者は同一。
 
 ## 進め方の原則
 
 - 各ステップは **exit code で成否判定**（パイプで grep に繋がない）。
 - **人間チェックポイント（🧑）では停止**する（Reload Window はエージェントでは代行不可）。
-- 受け手の資産（`Projects/<自分のプロジェクト>/`）を壊さない。`git pull` が衝突したら
+- 受け手の資産（`TestProjects/<自分のプロジェクト>/`）を壊さない。`git pull` が衝突したら
   勝手に解決せず、状況をそのままユーザーに見せて相談する。
 
 ## 手順
@@ -101,8 +101,8 @@ vsce)は画面に出ず `<WORK_DIR>/.ftester/install-*.log` にだけ入り、**
 
 ### 1. 取り込み（TOOL_ROOT）
 
-TOOL_ROOT で `git pull`。衝突が出たら停止して報告する(clone 構成では受け手の `Projects/` が
-git 管理下にあると衝突しやすい。その場合は Projects/ を git 管理外か別リポジトリにするよう案内する)。
+TOOL_ROOT で `git pull`。衝突が出たら停止して報告する(clone 構成では受け手の `TestProjects/` が
+git 管理下にあると衝突しやすい。その場合は TestProjects/ を git 管理外か別リポジトリにするよう案内する)。
 版を固定したい場合は `git checkout <新version>`。
 
 ### 2. 再ビルド（TOOL_ROOT）
@@ -115,7 +115,7 @@ TOOL_ROOT で `swift build`。CLI 本体・拡張ランタイム・FTScenarioRun
 
 ### 3. 受け手側の反映
 
-- **clone 構成**: `ftester project sync`（Projects/ ↔ Package.swift マーカー再整合）。
+- **clone 構成**: `ftester project sync`（TestProjects/ ↔ Package.swift マーカー再整合）。
 - **外部パッケージ構成**:
   - `.package(path:)`（既定）: pull 済みソースを SPM が直接見るため反映済み。シナリオは実行時に
     自動ビルドされる（明示するなら WORK_DIR で `swift build --product ftester-scenarios-<名>`）。
@@ -149,7 +149,7 @@ cd <TOOL_ROOT>/vscode-ftester && npm install && npm run install-local
 の形（**ビルドのため TOOL_ROOT へ `cd` したまま `exec` する**）になっていることがある。この形だと
 `ftester-mcp` の cwd が TOOL_ROOT のクローン側に固定されたままになり、`packageRoot()`（cwd から上に
 `Package.swift` を探す）が WORK_DIR の受け手パッケージではなくクローン側を見つけてしまい、外部パッケージ
-構成で受け手の `Projects/` が見えなくなる（新版のテンプレートは exec 前に元の cwd へ戻る）。
+構成で受け手の `TestProjects/` が見えなくなる（新版のテンプレートは exec 前に元の cwd へ戻る）。
 
 - **WORK_DIR の `.mcp.json`**（外部パッケージ構成のみ。clone 構成は同梱 `.mcp.json` を直接編集しない
   ―― 本体側で管理される）を確認する。`mcpServers.ftester.args` に `swift build --product ftester-mcp`

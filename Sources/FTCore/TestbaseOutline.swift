@@ -1,5 +1,5 @@
 // TestbaseOutline.swift
-// テスト設計の元資料(Projects/<name>/docs/testbases/*.md)→ シナリオ下書きの中間モデルと、
+// テスト設計の元資料(TestProjects/<name>/docs/testbases/*.md)→ シナリオ下書きの中間モデルと、
 // FM を使わない決定的パーサ。FM(FTAgent.TestbaseDrafter)が使えないときの土台であり、
 // 同時に「FM 出力の受け皿の型」でもある(両者は同じ ScenarioDraft を返す契約)。
 // レンダリング(Swift DSL 化)は FTDSL.ScenarioDraftCodeGen。

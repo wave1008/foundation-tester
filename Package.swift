@@ -127,55 +127,55 @@ let package = Package(
             ],
             swiftSettings: swift5Mode
         ),
-        // テストプロジェクト(Projects/<name>/Scenarios/)のシナリオ実行ターゲット。
+        // テストプロジェクト(TestProjects/<name>/scenarios/)のシナリオ実行ターゲット。
         // _disabled/ は退避場所(コンパイル対象外。並列デモ等をここに置く)
         // === ftester projects begin(ftester project create/sync が自動生成。手編集禁止)===
         .executableTarget(
             name: "ftester-scenarios-E2E-Android",
             dependencies: ["FTScenarioRunner", "FTDSL"],
-            path: "Projects/E2E-Android/Scenarios",
+            path: "TestProjects/E2E-Android/scenarios",
             exclude: ["_disabled"],
             swiftSettings: swift5Mode
         ),
         .executableTarget(
             name: "ftester-scenarios-E2E-CMP",
             dependencies: ["FTScenarioRunner", "FTDSL"],
-            path: "Projects/E2E-CMP/Scenarios",
+            path: "TestProjects/E2E-CMP/scenarios",
             exclude: ["_disabled"],
             swiftSettings: swift5Mode
         ),
         .executableTarget(
             name: "ftester-scenarios-E2E-Flutter",
             dependencies: ["FTScenarioRunner", "FTDSL"],
-            path: "Projects/E2E-Flutter/Scenarios",
+            path: "TestProjects/E2E-Flutter/scenarios",
             exclude: ["_disabled"],
             swiftSettings: swift5Mode
         ),
         .executableTarget(
             name: "ftester-scenarios-E2E-iOS",
             dependencies: ["FTScenarioRunner", "FTDSL"],
-            path: "Projects/E2E-iOS/Scenarios",
+            path: "TestProjects/E2E-iOS/scenarios",
             exclude: ["_disabled"],
             swiftSettings: swift5Mode
         ),
         .executableTarget(
             name: "ftester-scenarios-SampleApp",
             dependencies: ["FTScenarioRunner", "FTDSL"],
-            path: "Projects/SampleApp/Scenarios",
+            path: "TestProjects/SampleApp/scenarios",
             exclude: ["_disabled"],
             swiftSettings: swift5Mode
         ),
         .executableTarget(
             name: "ftester-scenarios-project1",
             dependencies: ["FTScenarioRunner", "FTDSL"],
-            path: "Projects/project1/Scenarios",
+            path: "TestProjects/project1/scenarios",
             exclude: ["_disabled"],
             swiftSettings: swift5Mode
         ),
         .executableTarget(
             name: "ftester-scenarios-sut-ec-mobile",
             dependencies: ["FTScenarioRunner", "FTDSL"],
-            path: "Projects/sut-ec-mobile/Scenarios",
+            path: "TestProjects/sut-ec-mobile/scenarios",
             exclude: ["_disabled"],
             swiftSettings: swift5Mode
         ),

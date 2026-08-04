@@ -142,7 +142,7 @@ Demo 16 シナリオ(iOS 6+Android 10)を iOS/Android 同数のデバイスで A
 
 1. **変更なし時の swift build スキップ**(`ScenarioHost.build` + `Sources/FTCore/BuildFingerprint.swift`):
    no-op の `swift build --product` でも SPM の依存グラフ再検証で **~2.6s** かかるため、
-   入力(Package.swift/.resolved・Sources/・Scenarios/ の mtime+size+ツールチェーン識別)の
+   入力(Package.swift/.resolved・Sources/・scenarios/ の mtime+size+ツールチェーン識別)の
    フィンガープリント一致でスキップする。実測: `api run --dry-run` の連続実行 3.96s → **0.08s**。
    ツールチェーン識別(xcode_select_link の先+version.plist の mtime)を含むのは、Xcode 更新後に
    古いバイナリを温存して FoundationModels ABI 不整合で dyld クラッシュする罠(§CLAUDE.md)を
@@ -305,7 +305,7 @@ A/B 実測(E2E-Android 31シナリオ・Android 8レーン・交互に3回ずつ
 **実装時に踏んだ罠(いずれも実データで初めて出た)**:
 
 1. **実績は platform ごとに集計する**。`RunResultsQuery.scenarioSummary` は `scenarioID` だけで
-   まとめるため、同じシナリオを iOS/Android 両プロファイルで走らせる構成(Projects/E2E-CMP 等)では
+   まとめるため、同じシナリオを iOS/Android 両プロファイルで走らせる構成(TestProjects/E2E-CMP 等)では
    1 つの `results/` に両方の記録が溜まり、iOS が数倍遅いぶん中央値が中間へ均されて順序判断が歪む。
    LPT は `(scenarioID, platform)` で集計し、各シナリオが走る platform
    (`info.platform ?? defaultPlatform`)の値で並べる。
@@ -320,7 +320,7 @@ A/B 実測(E2E-Android 31シナリオ・Android 8レーン・交互に3回ずつ
    「最短のシナリオ」と誤認して末尾へ回る。
 5. **履歴枠は「対象 platform の実績を含む run」で数える**(2026-07-30 修正)。1 と 3 を入れた後も
    **枠の数え方が platform 非対応**で残っていたため、iOS と Android を別プロファイルで回す
-   プロジェクト(Projects/E2E-CMP・E2E-Flutter は同じ `results/` に両方が溜まる)では
+   プロジェクト(TestProjects/E2E-CMP・E2E-Flutter は同じ `results/` に両方が溜まる)では
    **他 platform の run が枠を食い、対象 platform の直近フル run が窓から押し出されて実績ゼロ**に
    なった。`RunResultsStore.scanRecords(countingPlatform:)` で対象 platform のレコードを含む run
    だけを 1 枠と数える(返すレコードは絞らない。集計側が platform 別なので混在は無害)。
@@ -883,7 +883,7 @@ swift Scripts/bench.swift --project SampleApp --profile ios --iterations 3 \
 - ステップ内訳は NDJSON イベント(`kind:"step"` の `durationMs/snapshotMs/actionMs/waitMs`)
   として流れるので、レポート/拡張からも参照できる
 - `bench-results/` は .gitignore 済み。比較対象のベースラインは削除しないこと
-- run ごとに `Projects/<project>/results/runs/<YYYY-MM>/<runID>/host-metrics.ndjson`(1Hz NDJSON)
+- run ごとに `TestProjects/<project>/results/runs/<YYYY-MM>/<runID>/host-metrics.ndjson`(1Hz NDJSON)
   へホスト負荷を採取し、`ftester api host-metrics-summary --project <p> --run latest`(既定 latest)
   で直近実行の avg/peak を JSON で読み戻せる(「あの実行は CPU 律速か」を実行後に確認できる)
 
@@ -935,7 +935,7 @@ FM はホスト全体で直列化する共有資源(§3.5)なので、コスト�
 # run 全体の FM コストを集計(壁時計と比べて律速かを判定する)
 python3 -c "
 import json,glob
-fs=[json.load(open(f)).get('fm') for f in glob.glob('Projects/<project>/results/runs/*/<runID>/scenarios/*.json')]
+fs=[json.load(open(f)).get('fm') for f in glob.glob('TestProjects/<project>/results/runs/*/<runID>/scenarios/*.json')]
 fs=[f for f in fs if f]
 print('呼び出し', sum(f['calls'] for f in fs), '合計秒', sum(f['totalMs'] for f in fs)/1000)
 "

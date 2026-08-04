@@ -1111,7 +1111,7 @@ run 終了時の「FM 呼び出しが全て失敗しました」警告と結果 
   一致して triage の欠落を見逃す。判定前にコメントを落とすのも必須 —
   記録の必要性を説明したコメント自身に一致して一度素通りした)。
   作成時の経路(FMDoctor / ScenarioNamer / TestbaseDrafter)は run の実績ではないので免除リスト
-- **ヒールキャッシュが FM を肩代わりする**。`Projects/<p>/.ftester/heal-cache.json` が命中すると
+- **ヒールキャッシュが FM を肩代わりする**。`TestProjects/<p>/.ftester/heal-cache.json` が命中すると
   heal は FM なしで解決し(`healed=1` だが `fm` は nil)、**FM 経路を検証したつもりで空振りする**。
   heal の FM を実際に通すときはこのファイルを消してから実行する
 
@@ -1135,10 +1135,10 @@ availability は available と嘘をつく。**`SystemLanguageModel(guardrails:
 結果 JSON の `fm.byKind` に4種が出たかを判定**する(1コマンド)。
 
 ```
-Scripts/fm-verify.sh                    # 既定 Projects/E2E-CMP・プロファイル ios-fm
+Scripts/fm-verify.sh                    # 既定 TestProjects/E2E-CMP・プロファイル ios-fm
 ```
 
-- FM 専用シナリオは `Projects/E2E-CMP/Scenarios/_disabled/` に置く(`90_自己修復` = heal /
+- FM 専用シナリオは `TestProjects/E2E-CMP/scenarios/_disabled/` に置く(`90_自己修復` = heal /
   `92_screenIs` = screenIs / `93_triage` = **意図的に失敗**して triage を発火)。
   **既定スイートに入れない**: 生きた FM の判定は非決定的でフレーク源になり、
   かつ FM が死んでいる間は skip されるので緑のまま気付けない
@@ -1634,7 +1634,7 @@ devicepoll の要点:
   実例: CMP と Flutter は interop が合成タッチと `insertText` を横取りするため DOM 経路を使わない
   (uikit ホストのみ有効)。この分岐は E2E でしか壊れているとわからない。
 - **効果測定は `FT_WEBVIEW_DOM=off` との A/B** で取る。比較は
-  `Projects/E2E-iOS/results/runs/<run>/scenarios/WebViewの中身を操作できること.S0010.json` の
+  `TestProjects/E2E-iOS/results/runs/<run>/scenarios/WebViewの中身を操作できること.S0010.json` の
   `timeline`(scene 2 以降の exist/textIs の中央値)と `scenes[0].durationMs`。
 - **ブリッジ版を上げ忘れない**。iOS = `bridgeProtocolVersion`、Android = `VERSION_CODE` +
   `expectedBridgeVersionCode`。上げないと稼働中の旧ブリッジが再利用され、**変更が入っていないのに緑**になる。

@@ -22,7 +22,7 @@ struct ApiListDevices: AsyncParsableCommand {
         abstract: "Evaluate every device in the machine profile and its current state once, and print it"
             + " as JSON on stdout (diagnostics on stderr only)")
 
-    @Option(help: "Test project name (defaults to the only one in Projects/, or the default project)")
+    @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
     var project: String?
 
     @Option(help: "Run profile name, used to resolve the machine. When given, that profile's machine wins; otherwise FT_MACHINE, the registered machine, or the only entry in machines/")

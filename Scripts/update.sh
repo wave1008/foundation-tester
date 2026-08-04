@@ -27,7 +27,7 @@ usage() {
   cat <<'EOF'
 Usage: update.sh [options]
 
-  --work-dir <dir>   Consumer directory that holds Projects/ (default: current directory)
+  --work-dir <dir>   Consumer directory that holds TestProjects/ (default: current directory)
   --tool-root <dir>  Location of the foundation-tester clone (default: <work-dir>/../foundation-tester)
   --no-pull          Do not update the clone (to pin a version, or while developing the tool)
   --force            Run everything even without an update (to redo a broken install)
@@ -99,7 +99,7 @@ if [ "$FORCE" = "0" ] && [ "$ALLOW_PULL" = "1" ] && [ -f "$TOOL_ROOT/Scripts/upd
 fi
 
 # ---- 1〜2・5・5.5: install.sh に委譲(pull・build・拡張・.mcp.json・検証ゲート・ログ) -------
-# --skip-project: 既存の Projects/ を触らない(更新でプロジェクトを作り直さない)
+# --skip-project: 既存の TestProjects/ を触らない(更新でプロジェクトを作り直さない)
 echo "==> Re-running install.sh (pull → build → extension → .mcp.json → verification)"
 # --no-doctor が既定: 結果表に Apple Intelligence の warn 行が出るので情報が重複し、8秒かかる
 [ "$DO_DOCTOR" = "1" ] || PASS_THROUGH+=(--no-doctor)
@@ -116,7 +116,7 @@ fi
 FT="$TOOL_ROOT/.build/debug/ftester"
 if [ "$WORK_DIR" = "$TOOL_ROOT" ] && [ -x "$FT" ]; then
   echo ""
-  echo "==> ftester project sync (resyncing Projects/ ↔ Package.swift)"
+  echo "==> ftester project sync (resyncing TestProjects/ ↔ Package.swift)"
   ( cd "$WORK_DIR" && "$FT" project sync ) || echo "⚠️ project sync failed (check it by hand)"
 fi
 

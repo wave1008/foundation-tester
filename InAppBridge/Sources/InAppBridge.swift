@@ -132,7 +132,7 @@ final class FTInAppBridge {
                 applicationState: state,
                 uiFramework: self.uiFramework,
                 // 合成タッチは「時間・移動を伴うジェスチャ」を駆動できない。これは Compose 固有ではなく
-                // SwiftUI/UIKit でも同じ(2026-07-23 に Projects/E2E-iOS で実測)ので press は常に申告する。
+                // SwiftUI/UIKit でも同じ(2026-07-23 に TestProjects/E2E-iOS で実測)ので press は常に申告する。
                 //
                 // **swipe は申告しない**(2026-07-31 に取り下げ)。申告は「このアクションは一律不可」の
                 // 意味しか持たないが、swipe の可否は**目的と画面によって割れる**ようになった:
@@ -604,7 +604,7 @@ final class FTInAppBridge {
             // 「スクロールビューが無い」と「あるが端に達した」は**区別する**:
             // - 無い = ジェスチャ検出用パッド等。FTSynthSwipe を撃っても DragGesture /
             //   UIPanGestureRecognizer は受理されず 200 で黙って空振りするため、501 で申告して
-            //   ホストに XCUITest へ回させる(2026-07-23 に Projects/E2E-iOS で実測)
+            //   ホストに XCUITest へ回させる(2026-07-23 に TestProjects/E2E-iOS で実測)
             // - 端に達した = scrollTo の探索が終端に来ただけの**正常な状態**。ここで 501 を返すと
             //   XCUITest の実スワイプ(バウンス)へ切り替わり、さらにラッチで以降のジェスチャ全部が
             //   XCUITest 化して、下端でのタップが不安定になる(実測: scrollTo 直後の行タップが
@@ -799,7 +799,7 @@ final class FTInAppBridge {
 
     // 合成タッチの押下保持はどのフレームワークでも長押しとして受理されない
     // (Compose だけでなく SwiftUI の onLongPressGesture でも発火しないことを 2026-07-23 に
-    // Projects/E2E-iOS で実測。tap だけが通る)。黙って空振りさせず xcuitest へ誘導するため、
+    // TestProjects/E2E-iOS で実測。tap だけが通る)。黙って空振りさせず xcuitest へ誘導するため、
     // 実装(FTSynthPress 経路)は持たず常に 501 を返す。
     // 501 = このエンジンでは未対応(/terminate と同じ慣習。409 は一時的競合なので取り違えない)。
     /// 合成タッチの多点・連打を受理するのは**自前描画のフレームワークだけ**(2026-08-04 実測):

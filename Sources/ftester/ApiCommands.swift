@@ -32,7 +32,7 @@ struct ApiListScenarios: AsyncParsableCommand {
         abstract: "Print the scenario list as JSON on stdout, including source locations (file and line)"
             + " (diagnostics and warnings go to stderr only)")
 
-    @Option(help: "Test project name (defaults to the only one in Projects/, or the default project)")
+    @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
     var project: String?
 
     @Flag(name: .customLong("skip-build"), help: "Skip the swift build before running")
@@ -165,7 +165,7 @@ private struct ApiScenarioInfo: Encodable {
     let classLine: Int?
     /// func 宣言の行番号(1 起点、解決不能なら nil)
     let methodLine: Int?
-    /// Scenarios/ 直下のサブフォルダ名(直下ファイルは nil)
+    /// scenarios/ 直下のサブフォルダ名(直下ファイルは nil)
     let folder: String?
 
     private enum CodingKeys: String, CodingKey {
@@ -223,7 +223,7 @@ struct ApiSteps: AsyncParsableCommand {
         abstract: "Dry-run a scenario and print the equivalent of its step table as JSON on stdout"
             + " (diagnostics and warnings go to stderr only)")
 
-    @Option(help: "Test project name (defaults to the only one in Projects/, or the default project)")
+    @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
     var project: String?
 
     @Option(help: "Scenario ID (Class.method)")

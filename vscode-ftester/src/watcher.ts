@@ -1,5 +1,5 @@
 // watcher.ts
-// Projects/*/Scenarios/**/*.swift の変更を監視し、デバウンスしてから onChanged を呼ぶ。
+// TestProjects/*/scenarios/**/*.swift の変更を監視し、デバウンスしてから onChanged を呼ぶ。
 // setSuspended(true) 中は refresh を保留する(runHandler/debugAdapter がテスト実行結果と
 // ツリー再構築の競合を避けるために使う)。
 
@@ -7,7 +7,7 @@ import * as vscode from "vscode";
 
 const DEFAULT_DEBOUNCE_MS = 800;
 /** シナリオファイルの glob(reportCodeLens.ts の CodeLens 対象パターンと同一にすること)。 */
-export const WATCH_GLOB = "Projects/*/Scenarios/**/*.swift";
+export const WATCH_GLOB = "TestProjects/*/scenarios/**/*.swift";
 
 export class ScenarioFileWatcher implements vscode.Disposable {
   private readonly watcher: vscode.FileSystemWatcher;

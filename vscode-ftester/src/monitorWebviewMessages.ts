@@ -73,7 +73,7 @@ export type MonitorToWebviewMessage =
   | { readonly type: "deviceDownFinished"; readonly name: string }
   | {
       readonly type: "profileInfo";
-      /** 対象プロジェクトの実行プロファイル名一覧(Projects/<project>/profiles/runs/ 直下)。 */
+      /** 対象プロジェクトの実行プロファイル名一覧(TestProjects/<project>/profiles/runs/ 直下)。 */
       readonly profiles: readonly string[];
       /** 現在の ftester.profile 設定値。"" はプロファイルなし。 */
       readonly current: string;
@@ -277,7 +277,7 @@ export type MonitorToWebviewMessage =
       readonly phase: "stopping" | "rebooting" | "done" | "failed";
     }
   // ---- 録画タブ ---------------------------------------------------------------------------
-  // セッション一覧(recordingsStore.ts が Projects/*/results/runs/*/*/recordings/index.json を
+  // セッション一覧(recordingsStore.ts が TestProjects/*/results/runs/*/*/recordings/index.json を
   // 列挙。新しい順・最大50件)。recordingsRefresh 受信時に post する。
   | { readonly type: "recordingsSessions"; readonly sessions: readonly RecordingSessionSummary[] }
   // recordingsOpen への応答。ok:false は index.json 未検出等(webview は一覧ビューのまま)。

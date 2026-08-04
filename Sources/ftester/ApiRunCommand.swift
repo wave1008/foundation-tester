@@ -24,7 +24,7 @@ struct ApiRunCommand: AsyncParsableCommand {
             + "--dry-run/--debug. Diagnostics go to stderr only. With --debug, control "
             + "commands from stdin are passed straight through to the runner")
 
-    @Option(help: "Test project name (defaults to the only one in Projects/, or the default project)")
+    @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
     var project: String?
 
     @Option(help: "Run profile name (profiles/runs/<name>.json). Includes device provisioning and auto-install. Cannot be combined with --platform/--port/--serial")
@@ -38,7 +38,7 @@ struct ApiRunCommand: AsyncParsableCommand {
     var heal = false
 
     @Option(name: .customLong("report-dir"),
-            help: "Directory to write reports to (defaults to Projects/<name>/reports; with --profile it overrides the profile reportDir)")
+            help: "Directory to write reports to (defaults to TestProjects/<name>/reports; with --profile it overrides the profile reportDir)")
     var reportDir: String?
 
     @Option(name: .customLong("default-timeout"),
@@ -234,7 +234,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         let all = try ScenarioHost.list(project: testProject)
         guard !all.isEmpty else {
             throw ValidationError(
-                "no scenarios (add a @TestClass under Projects/\(testProject.name)/Scenarios/)")
+                "no scenarios (add a @TestClass under TestProjects/\(testProject.name)/scenarios/)")
         }
         let selected = try RunScenarios.resolve(scenarios, from: all)
         guard !selected.isEmpty else {

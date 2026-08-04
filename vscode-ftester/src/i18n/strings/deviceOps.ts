@@ -128,10 +128,10 @@ export const deviceOpsStrings = {
   "deviceOps.monitorExitedMachineHint": {
     ja:
       "マシンプロファイル未設定の可能性があります。「ftester machine set」の実行、または " +
-      "Projects/<project>/profiles/machines/ の内容を確認してください。",
+      "TestProjects/<project>/profiles/machines/ の内容を確認してください。",
     en:
       "The machine profile might not be configured. Run \"ftester machine set\", or check " +
-      "Projects/<project>/profiles/machines/.",
+      "TestProjects/<project>/profiles/machines/.",
   },
   "deviceOps.monitorClosedMessage": {
     ja: "モニタープロセスが終了しました(exit code: {exitCode}, signal: {signal})。{hint}",

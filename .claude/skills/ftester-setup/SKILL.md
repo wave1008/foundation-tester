@@ -23,14 +23,14 @@ description: foundation-tester を使いたい受け手を、自分の iOS/Andro
 **入り方は2通り。ステップ 0.5 で判定する:**
 
 - **外部パッケージ構成(既定・curl でスキルだけ入れた受け手ディレクトリ)**: いま開いているこの
-  ディレクトリを ftester テストパッケージにする。**あなたのプロジェクト(`Projects/<name>/`)は
+  ディレクトリを ftester テストパッケージにする。**あなたのプロジェクト(`TestProjects/<name>/`)は
   この受け手ディレクトリに作られる**。foundation-tester は「ツール(CLI・拡張)」として横に clone+build
   するだけで、Projects はここに住む。作成は `ftester init`。
 - **clone 構成(foundation-tester クローンの中で直接作業する保守者/PoC)**: Projects はクローンの
-  `Projects/` に作る。作成は `ftester project create`。
+  `TestProjects/` に作る。作成は `ftester project create`。
 
 以降、**TOOL_ROOT** = foundation-tester クローン(swift build / doctor / 拡張ビルドを行う場所。CLI は
-`TOOL_ROOT/.build/debug/ftester`)、**WORK_DIR** = `Projects/` が住む作業ディレクトリ、と呼ぶ。
+`TOOL_ROOT/.build/debug/ftester`)、**WORK_DIR** = `TestProjects/` が住む作業ディレクトリ、と呼ぶ。
 外部構成では WORK_DIR = このカレント・TOOL_ROOT = clone 先(**既定は隣の `../foundation-tester`**。
 ユーザーが指定すればそのパス)。clone 構成では両者は同一(クローン)。
 
@@ -85,7 +85,7 @@ curl -fsSL https://raw.githubusercontent.com/wave1008/foundation-tester/main/Scr
   - シナリオの作成 → `/ftester-scenario`
   - **再インストール**(clone 先の変更・導入のやり直し)→ **まずアンインストールを 🧑 に案内**し、
     完了を確認してから `/ftester-setup` を再実行する。手順は docs/getting-started.md「アンインストール」
-    (3層+ WORK_DIR 側の生成物削除。`Projects/` は資産なので残してよい)。アンインストール前に
+    (3層+ WORK_DIR 側の生成物削除。`TestProjects/` は資産なので残してよい)。アンインストール前に
     セットアップを続行しない。`Package.swift` 等の部分的な書き換えで済まさない(1箇所でも残すと
     旧 clone と新 clone に分裂し、更新が旧側に当たり続ける)
 
@@ -139,7 +139,7 @@ clone 構成(両方ある)の再実行は従来どおり冪等スキップで続
 
 - **両方ある = clone 構成**: いま foundation-tester クローンの中にいる。TOOL_ROOT = WORK_DIR =
   そのディレクトリ。取得不要でステップ1へ。
-- **無い = 外部パッケージ構成(既定)**: WORK_DIR = このカレント(ここに Projects/ を作る)。
+- **無い = 外部パッケージ構成(既定)**: WORK_DIR = このカレント(ここに TestProjects/ を作る)。
   ツールを供給するため foundation-tester を**兄弟ディレクトリ**に clone+build する(受け手の
   ディレクトリの中にネストさせない):
 
@@ -255,7 +255,7 @@ FM 無しで動く。**人間に「有効か」を聞かない**：
 
   bundle ID が未確定なら `--app` を**省略**する(既定のプレースホルダ `com.example.myapp` で作成される)。
 
-  → WORK_DIR に `Package.swift`(空マーカー区間 + ftester 依存)と `Projects/<ProjectName>/`、
+  → WORK_DIR に `Package.swift`(空マーカー区間 + ftester 依存)と `TestProjects/<ProjectName>/`、
   `.vscode/settings.json`(`ftester.binaryPath`・`ftester.project`。拡張の手動設定を不要にする)が生成され、
   受け手専用の `/ftester-setup` スキルが `.claude/skills/` に上書きされる(次回以降の実行はそちらを使う。
   この実行はロード済み手順のまま継続してよい)。ローカルパス依存なので `swift build` はネットワーク不要・
@@ -267,13 +267,13 @@ FM 無しで動く。**人間に「有効か」を聞かない**：
   以降このスキル内で `ftester ...` と書いたら `../foundation-tester/.build/debug/ftester ...` を実行する。
 
 - **clone 構成**: TOOL_ROOT(=WORK_DIR)で `swift run ftester project create <ProjectName> --app <bundleID>`。
-  `Projects/<ProjectName>/` と Package.swift のターゲット登録が生成されたことを確認する。
+  `TestProjects/<ProjectName>/` と Package.swift のターゲット登録が生成されたことを確認する。
 
 **検証ゲート(init 後の .gitignore)**: WORK_DIR が git リポジトリ(既存 repo 直下を含む)なら、
-`.gitignore` に `.build/` と `Projects/*/reports/` があることを確認する(`ftester init` が自動整備する。
+`.gitignore` に `.build/` と `TestProjects/*/reports/` があることを確認する(`ftester init` が自動整備する。
 欠けていればこの2行を追記)。`git status` に `.build/` の未追跡ノイズが出ないことまで見る。
-何をコミットすべきかを受け手に案内する: `Package.swift`・`Package.resolved`・`Projects/`・`.gitignore` は
-コミット、`.build/` と `Projects/*/reports/` は ignore(init が整備済み)。`.mcp.json` は TOOL_ROOT の
+何をコミットすべきかを受け手に案内する: `Package.swift`・`Package.resolved`・`TestProjects/`・`.gitignore` は
+コミット、`.build/` と `TestProjects/*/reports/` は ignore(init が整備済み)。`.mcp.json` は TOOL_ROOT の
 絶対パスを含むためマシン固有。
 
 ### 5. プロファイル（マシン/アプリ/実行）
@@ -293,14 +293,14 @@ ftester profile setup --project <ProjectName> --platform <ios|android|both> --au
 
 ### 6. アプリのパス（appPath）と未確定の bundle ID は後から設定する
 
-bundle ID をプレースホルダで続行した場合は、`Projects/<ProjectName>/profiles/apps/<projectname>.json` の
+bundle ID をプレースホルダで続行した場合は、`TestProjects/<ProjectName>/profiles/apps/<projectname>.json` の
 `app`(ios/android セクション)を実IDへ差し替えるまでアプリの起動(launch)が失敗することを 🧑 に伝える
 (セットアップ・dry-run はプレースホルダのままで完走できる)。ステップ9の完了報告にも「bundle ID 要設定」を
 残す。
 
 `appPath` はセットアップでは**聞かない・書かない**（未設定なら `autoInstall` は無効のまま =
 インストール済みのアプリをそのまま使う）。自動インストールが必要になったら、後から
-`Projects/<ProjectName>/profiles/apps/<projectname>.json` の `appPath` をビルド済みアプリ
+`TestProjects/<ProjectName>/profiles/apps/<projectname>.json` の `appPath` をビルド済みアプリ
 （ios は `.app`、android は `.apk`）へ向ける。相対パスは **WORK_DIR(そのプロジェクトの
 Package.swift があるディレクトリ)基準**・`~` 展開可・絶対パス可。
 **ユーザーが自発的にパスを伝えてきた場合のみ書く。別リポジトリを覗いて確定値を書き込まない。**
@@ -351,9 +351,9 @@ products 未宣言でも `swift build --product ftester-mcp` は暗黙 product �
   `/dev/null`（JSON-RPC は stdout 専用・混ぜると壊れる）。`bash -lc`（ログインシェル）はデスクトップ版
   Claude Code が最小 PATH でサーバを起こしても swift/Xcode ツールチェインを引けるようにするため。
   **ビルドのため TOOL_ROOT へ `cd` した後、`exec` 前に元の WORK_DIR へ戻す**（cwd は `ftester-mcp` が
-  パッケージルートを特定する入力。cd したままだと外部パッケージ構成で受け手の `Projects/` が見えなくなる）。
+  パッケージルートを特定する入力。cd したままだと外部パッケージ構成で受け手の `TestProjects/` が見えなくなる）。
   `env.FT_TOOL_ROOT` は**ブリッジ資産（`Runner/`・`InAppBridge/`）のルート**の明示指定（cwd が指す
-  受け手パッケージ＝`Projects/` 側とは別物）。省略しても自動解決するが、明示すると解決に依存しない。
+  受け手パッケージ＝`TestProjects/` 側とは別物）。省略しても自動解決するが、明示すると解決に依存しない。
   `<ABS_TOOL_ROOT>` は3箇所とも同じ絶対パス。
 
 「全プロジェクトで使いたい」場合のみ、代わりに user スコープ登録

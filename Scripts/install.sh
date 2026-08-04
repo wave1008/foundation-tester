@@ -47,7 +47,7 @@ usage() {
   cat <<'EOF'
 Usage: install.sh [options]
 
-  --work-dir <dir>   Consumer directory that holds Projects/ (default: current directory)
+  --work-dir <dir>   Consumer directory that holds TestProjects/ (default: current directory)
   --name <name>      Project name to create (letters, digits, _ and -; derived from the directory name when omitted)
   --app <bundleID>   Bundle ID / package name of the app under test (--app-id also works; optional, can be changed later)
   --platform <p>     Which run profiles to scaffold: ios / android / both (default both)
@@ -57,7 +57,7 @@ Usage: install.sh [options]
   --no-clone         Do not clone when missing (an existing clone is required)
   --no-pull          Do not update an existing clone (to pin a version, or while developing the tool)
   --skip-extension   Do not install the VSCode extension
-  --skip-project     Do not create a project (Projects/<name>/) — e.g. MCP-only installs
+  --skip-project     Do not create a project (TestProjects/<name>/) — e.g. MCP-only installs
   --skip-mcp         Do not generate/merge .mcp.json
   --no-doctor        Skip the final environment report (ftester doctor)
   --no-next-steps    Do not print "next steps" (when the caller, e.g. update.sh, guides instead)
@@ -278,7 +278,7 @@ if [ -d "$TOOL_ROOT_RAW/.git" ] || [ -f "$TOOL_ROOT_RAW/Package.swift" ]; then
   else
     # 前回の更新が残した npm の版差分を先に片付ける(これを残すと下の dirty ガードで止まる)
     restore_lock_version_churn
-    # **外部パッケージ構成ではクローンに受け手の資産が無い**(Projects/・プロファイル・.mcp.json は
+    # **外部パッケージ構成ではクローンに受け手の資産が無い**(TestProjects/・プロファイル・.mcp.json は
     # すべて WORK_DIR 側)。そこに出る差分は生成物か上流コードの改変だけなので、聞かずに捨てる
     # ―― 聞くと更新1回あたりの承認が3手増える(ダイアログ + reset + 再実行。受け手実測)。
     # 捨てた内容は画面とログに残す(追跡分は reset、未追跡は clean。どちらも下の行を参照)。
@@ -292,7 +292,7 @@ if [ -d "$TOOL_ROOT_RAW/.git" ] || [ -f "$TOOL_ROOT_RAW/Package.swift" ]; then
       # **未追跡も消す** ―― reset は追跡分しか戻さず、残った未追跡ファイルは下のガードで止まるうえ、
       # 上流に同名ファイルが増えると `pull --ff-only` 自体が失敗する。`-x` は付けない
       # (.gitignore 対象 = .build/・node_modules・.vsix は消さない。消すと再ビルドで数分かかる)。
-      # clone 構成では受け手の Projects/ が未追跡のことがあるので**外部構成に限る**(この分岐の条件)
+      # clone 構成では受け手の TestProjects/ が未追跡のことがあるので**外部構成に限る**(この分岐の条件)
       git -C "$TOOL_ROOT" clean -fd >/dev/null 2>&1 || true
     fi
     if [ -n "$(git -C "$TOOL_ROOT" status --porcelain 2>/dev/null)" ]; then
@@ -308,7 +308,7 @@ if [ -d "$TOOL_ROOT_RAW/.git" ] || [ -f "$TOOL_ROOT_RAW/Package.swift" ]; then
       fi
       case "$answer" in
         [yY]*)
-          # 追跡ファイルの変更だけを戻す。未追跡は消さない(clone 構成では Projects/ が
+          # 追跡ファイルの変更だけを戻す。未追跡は消さない(clone 構成では TestProjects/ が
           # 未追跡のことがあり、git clean で受け手の資産を巻き込む)
           git -C "$TOOL_ROOT" reset --hard >/dev/null \
             || die "clone" "failed to discard local changes (git reset --hard)" 0.5
@@ -342,7 +342,7 @@ fi
 [ -f "$TOOL_ROOT/Package.swift" ] && [ -d "$TOOL_ROOT/Sources/FTScenarioRunner" ] \
   || die "clone" "$TOOL_ROOT is not a foundation-tester clone" 0.5
 
-# clone 構成 = 受け手ディレクトリがクローン自身(Projects/ はクローン内に作る)
+# clone 構成 = 受け手ディレクトリがクローン自身(TestProjects/ はクローン内に作る)
 LAYOUT="external"
 if [ "$WORK_DIR" = "$TOOL_ROOT" ]; then
   LAYOUT="clone"
@@ -388,7 +388,7 @@ fi
 
 # ---- 4. プロジェクト作成(SKILL ステップ4) ------------------------------------
 project_exists() {
-  [ -n "$PROJECT_NAME" ] && [ -d "$WORK_DIR/Projects/$PROJECT_NAME" ]
+  [ -n "$PROJECT_NAME" ] && [ -d "$WORK_DIR/TestProjects/$PROJECT_NAME" ]
 }
 
 # 省略可能な引数は配列で渡す(空文字列を引数として渡さないため)
@@ -402,13 +402,13 @@ NAME_ARGS=()
 if [ "$DO_PROJECT" = "0" ]; then
   record "project" skip "--skip-project"
 elif project_exists; then
-  record "project" skip "Projects/$PROJECT_NAME already exists"
+  record "project" skip "TestProjects/$PROJECT_NAME already exists"
 elif [ "$LAYOUT" = "clone" ]; then
   [ -n "$PROJECT_NAME" ] || die "project" "--name is required in the clone layout" 4
   echo "==> ftester project create $PROJECT_NAME"
   ( cd "$WORK_DIR" && "$FT" project create "$PROJECT_NAME" "${APP_ARGS[@]+"${APP_ARGS[@]}"}" \
       "${PLATFORM_ARGS[@]}" ) || die "project" "project create failed" 4
-  record "project" ok "Projects/$PROJECT_NAME"
+  record "project" ok "TestProjects/$PROJECT_NAME"
 elif [ -f "$WORK_DIR/Package.swift" ]; then
   # ftester と無関係の既存パッケージへの導入は事故になる(init も拒否する)
   grep -q "ftester projects begin\|foundation-tester" "$WORK_DIR/Package.swift" \
@@ -418,14 +418,14 @@ elif [ -f "$WORK_DIR/Package.swift" ]; then
   echo "==> ftester project create $PROJECT_NAME"
   ( cd "$WORK_DIR" && "$FT" project create "$PROJECT_NAME" "${APP_ARGS[@]+"${APP_ARGS[@]}"}" \
       "${PLATFORM_ARGS[@]}" ) || die "project" "project create failed" 4
-  record "project" ok "Projects/$PROJECT_NAME (added to the existing package)"
+  record "project" ok "TestProjects/$PROJECT_NAME (added to the existing package)"
 else
   # 新規の受け手パッケージ。TOOL_ROOT はローカルパス依存で引く(git 依存は手動・SKILL ステップ4参照)
   echo "==> ftester init($WORK_DIR)"
   ( cd "$WORK_DIR" && "$FT" init --ftester-path "$TOOL_ROOT" \
       "${NAME_ARGS[@]+"${NAME_ARGS[@]}"}" "${APP_ARGS[@]+"${APP_ARGS[@]}"}" "${PLATFORM_ARGS[@]}" ) \
     || die "project" "ftester init failed" 4
-  record "project" ok "created the consumer package${PROJECT_NAME:+ (Projects/$PROJECT_NAME)}"
+  record "project" ok "created the consumer package${PROJECT_NAME:+ (TestProjects/$PROJECT_NAME)}"
 fi
 
 # ---- 4 の検証ゲート: .gitignore(SKILL ステップ4) -----------------------------
@@ -436,7 +436,7 @@ if [ "$LAYOUT" = "clone" ]; then
 elif [ -d "$WORK_DIR/.git" ]; then
   added=""
   # 対の実装: FTCore.ProjectScaffold.ensureGitignore(ftester init が使う)。片方だけ変えない
-  for line in ".build/" ".ftester/" "Projects/*/reports/"; do
+  for line in ".build/" ".ftester/" "TestProjects/*/reports/"; do
     if ! grep -qxF "$line" "$WORK_DIR/.gitignore" 2>/dev/null; then
       printf '%s\n' "$line" >> "$WORK_DIR/.gitignore"
       added="$added $line"
@@ -492,7 +492,7 @@ if os.path.exists(path):
             sys.exit(3)
 servers = data.setdefault("mcpServers", {})
 previous = servers.get("ftester", {}).get("env", {}).get("FT_TOOL_ROOT")
-# cwd は受け手パッケージ(Projects/ の在り処)、FT_TOOL_ROOT はツール本体(ブリッジ資産)。
+# cwd は受け手パッケージ(TestProjects/ の在り処)、FT_TOOL_ROOT はツール本体(ブリッジ資産)。
 # ビルドのため TOOL_ROOT へ cd したあと exec 前に元の cwd へ戻すのが必須。
 servers["ftester"] = {
     "command": "bash",
@@ -537,7 +537,7 @@ else
 fi
 
 # ---- 検証ゲート: ルート解決(SKILL ステップ7.5 の検証ゲート) -------------------
-# ツール本体(ブリッジ資産)と受け手パッケージ(Projects/)の取り違えは ft_* を全滅させる。
+# ツール本体(ブリッジ資産)と受け手パッケージ(TestProjects/)の取り違えは ft_* を全滅させる。
 # 表示された解決結果が、このインストールで意図した2ディレクトリと一致するかまで見る
 if ! roots=$( cd "$WORK_DIR" && "$FT" doctor --roots-only 2>&1 ); then
   record "root-resolution" fail "$(printf '%s' "$roots" | tr '\n' ' ')"

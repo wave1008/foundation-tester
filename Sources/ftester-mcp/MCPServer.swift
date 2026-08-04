@@ -586,7 +586,7 @@ final class MCPServer {
                 + (info.deleted ? " [deleted @Deleted — excluded from bulk runs]" : "")
         }
         return text(lines.isEmpty
-                    ? "No scenarios (add a @TestClass under Projects/\(project.name)/Scenarios/)"
+                    ? "No scenarios (add a @TestClass under TestProjects/\(project.name)/scenarios/)"
                     : "Project: \(project.name)\n" + lines.joined(separator: "\n"))
     }
 
@@ -830,7 +830,7 @@ final class MCPServer {
         ], required: ["ref"]),
         tool("ft_screenshot", "Take a screenshot (returns an image). Use it for visual verification", [:]),
         tool("ft_terminate", "Terminate the running app", [:]),
-        tool("ft_list_scenarios", "List the Swift DSL scenarios (Projects/<name>/Scenarios/). Builds automatically; compile errors are returned as-is", [
+        tool("ft_list_scenarios", "List the Swift DSL scenarios (TestProjects/<name>/scenarios/). Builds automatically; compile errors are returned as-is", [
             "project": ["type": "string", "description": "Test project name (defaults to the default project)"],
             "skipBuild": ["type": "boolean", "description": "Skip the swift build (default false)"],
         ], scope: .project),
@@ -848,7 +848,7 @@ final class MCPServer {
             "port": ["type": "integer", "description": "iOS bridge port (default 8123)"],
             "serial": ["type": "string", "description": "Android device serial"],
         ], required: ["id"]),
-        tool("ft_list_projects", "List the test projects (Projects/) and their run profiles", [:],
+        tool("ft_list_projects", "List the test projects (TestProjects/) and their run profiles", [:],
              scope: .none),
         tool("ft_doctor", "Check Foundation Models availability", [:], scope: .none),
     ]

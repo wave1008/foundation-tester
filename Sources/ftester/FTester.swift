@@ -205,7 +205,7 @@ struct Doctor: AsyncParsableCommand {
     }
 
     /// 2つのルートを表示し、ツール本体を解決できたかを返す。外部パッケージ構成では別ディレクトリに
-    /// なり、取り違えると「InAppBridge/build.sh が無い」「Projects/ が見えない」で詰まる(実害あり)
+    /// なり、取り違えると「InAppBridge/build.sh が無い」「TestProjects/ が見えない」で詰まる(実害あり)
     /// このリポジトリの管理下に無いブリッジ(別クローン起動 / 版が古い)の報告と、
     /// **証拠が決定的なものだけ**の自動停止(処遇は UnmanagedBridgeTriage が唯一の判定者):
     /// 自リポジトリの旧版・起動元リポジトリが消滅したゾンビ → 停止 /
@@ -300,7 +300,7 @@ struct Doctor: AsyncParsableCommand {
             print("❌ Cannot determine the tool root: \(error.localizedDescription)")
         }
         if let packageRoot = ScenarioHost.packageRoot() {
-            print("✅ Scenario package (Projects/): \(packageRoot.path)")
+            print("✅ Scenario package (TestProjects/): \(packageRoot.path)")
         } else {
             print("⚠️ No scenario package (Package.swift) found above the current directory"
                 + " (set FT_PACKAGE_ROOT to point at it explicitly)")
@@ -629,9 +629,9 @@ struct Terminate: AsyncParsableCommand {
 struct RunScenarios: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "run",
-        abstract: "Run Swift DSL scenarios (Projects/<name>/Scenarios/). FM only steps in on failure")
+        abstract: "Run Swift DSL scenarios (TestProjects/<name>/scenarios/). FM only steps in on failure")
 
-    @Option(help: "Test project name (defaults to the only one in Projects/, or the default project)")
+    @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
     var project: String?
 
     @Option(help: "Run profile name (profiles/runs/<name>.json). Includes device provisioning and auto-install")
@@ -642,7 +642,7 @@ struct RunScenarios: AsyncParsableCommand {
     var scenarios: [String] = []
 
     @Option(name: .customLong("folder"), parsing: .upToNextOption,
-            help: "Scenario folders to run (subfolders directly under Scenarios/). Repeatable; can be combined with --scenario and --failed")
+            help: "Scenario folders to run (subfolders directly under scenarios/). Repeatable; can be combined with --scenario and --failed")
     var folders: [String] = []
 
     @Flag(help: "Allow FM-based locator self-healing")
@@ -660,7 +660,7 @@ struct RunScenarios: AsyncParsableCommand {
     var failed = false
 
     @Option(name: .customLong("report-dir"),
-            help: "Directory to write reports to (defaults to Projects/<name>/reports)")
+            help: "Directory to write reports to (defaults to TestProjects/<name>/reports)")
     var reportDir: String?
 
     @Option(help: "Comma-separated bridge ports for running iOS scenarios in parallel (e.g. 8123,8124). Each port must already have bridge up on a separate device")
@@ -705,7 +705,7 @@ struct RunScenarios: AsyncParsableCommand {
         PhaseLog.mark("scenario-list")
         guard !all.isEmpty else {
             throw ValidationError(
-                "no scenarios (add a @TestClass under Projects/\(testProject.name)/Scenarios/)")
+                "no scenarios (add a @TestClass under TestProjects/\(testProject.name)/scenarios/)")
         }
         var selected = try Self.resolve(scenarios, from: all)
         if scenarios.isEmpty {

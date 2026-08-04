@@ -85,10 +85,10 @@ final class ProjectScaffoldTests: XCTestCase {
 
     func testGitignoreFreshCreatesBothEntries() throws {
         let added = try ProjectScaffold.ensureGitignore(packageRoot: packageRoot)
-        XCTAssertEqual(added, [".build/", ".ftester/", "Projects/*/reports/"])
+        XCTAssertEqual(added, [".build/", ".ftester/", "TestProjects/*/reports/"])
         let content = try String(contentsOf: gitignoreURL, encoding: .utf8)
         XCTAssertTrue(content.contains(".build/"))
-        XCTAssertTrue(content.contains("Projects/*/reports/"))
+        XCTAssertTrue(content.contains("TestProjects/*/reports/"))
         XCTAssertTrue(content.hasSuffix("\n"))
     }
 
@@ -107,13 +107,13 @@ final class ProjectScaffoldTests: XCTestCase {
         try existing.write(to: gitignoreURL, atomically: true, encoding: .utf8)
 
         let added = try ProjectScaffold.ensureGitignore(packageRoot: packageRoot)
-        XCTAssertEqual(added, [".ftester/", "Projects/*/reports/"])
+        XCTAssertEqual(added, [".ftester/", "TestProjects/*/reports/"])
 
         let content = try String(contentsOf: gitignoreURL, encoding: .utf8)
         XCTAssertTrue(content.contains("*.log"), "既存行は保持")
         XCTAssertTrue(content.contains(".build"), "既存行は保持")
         XCTAssertTrue(content.contains("# ftester"))
-        XCTAssertTrue(content.contains("Projects/*/reports/"))
+        XCTAssertTrue(content.contains("TestProjects/*/reports/"))
     }
 
     func testGitignoreAppendDoesNotMergeWithMissingTrailingNewline() throws {
@@ -128,7 +128,7 @@ final class ProjectScaffoldTests: XCTestCase {
     }
 
     func testGitignoreRecognizesAlternateSpellingsAsPresent() throws {
-        let existing = "/.build/\n.ftester\n./Projects/*/reports\n"
+        let existing = "/.build/\n.ftester\n./TestProjects/*/reports\n"
         try existing.write(to: gitignoreURL, atomically: true, encoding: .utf8)
 
         let added = try ProjectScaffold.ensureGitignore(packageRoot: packageRoot)
@@ -140,7 +140,7 @@ final class ProjectScaffoldTests: XCTestCase {
     // MARK: - create(生成する run とマシンプロファイル)
 
     private func makeProject() -> TestProject {
-        TestProject(name: "MyApp", rootURL: packageRoot.appendingPathComponent("Projects/MyApp"))
+        TestProject(name: "MyApp", rootURL: packageRoot.appendingPathComponent("TestProjects/MyApp"))
     }
 
     private func runNames(_ project: TestProject) throws -> [String] {

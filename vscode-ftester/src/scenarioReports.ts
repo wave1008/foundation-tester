@@ -17,7 +17,7 @@ function reportFileNameRegex(scenarioId: string): RegExp {
 }
 
 export function reportsDir(workspaceRoot: string, project: string): string {
-  return path.join(workspaceRoot, "Projects", project, "reports");
+  return path.join(workspaceRoot, "TestProjects", project, "reports");
 }
 
 /** dir 内で scenarioId に一致する最新レポートの絶対パス。ディレクトリ無し/読み取り不可/該当無しは undefined。

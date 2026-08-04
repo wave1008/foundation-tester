@@ -1,7 +1,7 @@
 package com.ftester.e2e
 
 // testTag の唯一の正。値は docs/ui-contract.md の表と byte 一致させる。
-// シナリオ側(Projects/E2E/Scenarios)が "#<値>" で参照するため、リネームは契約変更。
+// シナリオ側(TestProjects/E2E/Scenarios)が "#<値>" で参照するため、リネームは契約変更。
 object Tags {
     // シェル
     const val SCREEN_TITLE = "txt_screen_title"
