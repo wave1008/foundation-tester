@@ -112,6 +112,111 @@ void FTSynthTap(UIWindow *window, CGPoint point) {
     ftDispatch(window, t, point, UITouchPhaseEnded);
 }
 
+// 2本指ぶんの HID デジタイザイベント(1つの hand イベントに finger を2つぶら下げる)。
+// index/identity を分けないと UIKit が同一の指の移動と解釈して多点にならない。
+static IOHIDEventRef ftMakeHIDEvent2(UIWindow *window, CGPoint p1, CGPoint p2, UITouchPhase phase) {
+    UIScreen *scr = window.screen ?: UIScreen.mainScreen;
+    CGSize screen = scr.bounds.size;
+    uint64_t ts = mach_absolute_time();
+    boolean_t touching = (phase != UITouchPhaseEnded && phase != UITouchPhaseCancelled);
+    uint32_t mask = (phase == UITouchPhaseMoved) ? FT_HID_POSITION : (FT_HID_RANGE | FT_HID_TOUCH);
+    IOHIDEventRef hand = IOHIDEventCreateDigitizerEvent(kCFAllocatorDefault, ts,
+        FT_HID_TRANSDUCER_HAND, 0, 0, 0, 0, 0, 0, 0, 0, 0, touching, touching, 0);
+    IOHIDEventSetIntegerValue(hand, FT_HID_FIELD_IS_DISPLAY_INTEGRATED, 1);
+    CGPoint points[2] = {p1, p2};
+    for (uint32_t i = 0; i < 2; i++) {
+        CGPoint sp = [window convertPoint:points[i] toCoordinateSpace:scr.coordinateSpace];
+        IOHIDFloat nx = screen.width > 0 ? sp.x / screen.width : 0;
+        IOHIDFloat ny = screen.height > 0 ? sp.y / screen.height : 0;
+        IOHIDEventRef finger = IOHIDEventCreateDigitizerFingerEvent(kCFAllocatorDefault, ts,
+            i + 1, i + 1, mask, nx, ny, 0, 0, 0, touching, touching, 0);
+        IOHIDEventAppendEvent(hand, finger, 0);
+        CFRelease(finger);
+    }
+    return hand;
+}
+
+// 2本指を同じ UITouchesEvent に載せて送る(片方ずつ送ると多点として解釈されない)
+static void ftDispatch2(UIWindow *window, UITouch *t1, UITouch *t2,
+                        CGPoint p1, CGPoint p2, UITouchPhase phase) {
+    IOHIDEventRef hid = ftMakeHIDEvent2(window, p1, p2, phase);
+    UIApplication *app = UIApplication.sharedApplication;
+    UIEvent *ev = [app _touchesEvent];
+    [ev _clearTouches];
+    [ev _setHIDEvent:hid];
+    [ev _addTouch:t1 forDelayedDelivery:NO];
+    [ev _addTouch:t2 forDelayedDelivery:NO];
+    [app sendEvent:ev];
+    CFRelease(hid);
+}
+
+// 単発タップ(tapCount 指定つき)。ダブルタップの2打目は tapCount=2 にする(実機の UIKit と同じ形)
+static void ftTapWithCount(UIWindow *window, CGPoint point, NSUInteger tapCount) {
+    UIView *hit = [window hitTest:point withEvent:nil] ?: window;
+    NSTimeInterval ts = NSProcessInfo.processInfo.systemUptime;
+    UITouch *t = ftMakeTouch(window, hit, point, ts);
+    [t setTapCount:tapCount];
+    ftDispatch(window, t, point, UITouchPhaseBegan);
+    [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.03]];
+    [t setPhase:UITouchPhaseEnded];
+    [t _setLocationInWindow:point resetPrevious:NO];
+    [t setTimestamp:NSProcessInfo.processInfo.systemUptime];
+    ftDispatch(window, t, point, UITouchPhaseEnded);
+}
+
+// ダブルタップ。**gapSeconds は「離してから次に押すまで」**で、ここが短すぎると
+// Compose(iOS)が2打目を捨てる(doubleTapMinTimeMillis = 40ms 未満は無視。XCUITest の
+// doubleTap はここが 0ms になるため Compose では単タップに落ちる。2026-08-04 実測)。
+// 長すぎると今度は判定窓(約 300ms)を外れる。
+void FTSynthDoubleTap(UIWindow *window, CGPoint point, double gapSeconds) {
+    if (!(gapSeconds > 0) || gapSeconds > 0.25) gapSeconds = 0.08;
+    ftTapWithCount(window, point, 1);
+    [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:gapSeconds]];
+    ftTapWithCount(window, point, 2);
+}
+
+// 2本指ピンチ。center を挟んで対角(45度)に startSpan → endSpan まで開閉する。
+// **合成タッチの move がジェスチャ認識器に受理されるかはフレームワーク依存**(UIKit/SwiftUI と
+// Compose は受理しない = swipe/press が in-app で 501 な理由と同じ)。受理判定はできないので
+// 呼び出し側が事後に検証する。
+void FTSynthPinch(UIWindow *window, CGPoint center, double startSpan, double endSpan,
+                  double duration, int steps) {
+    if (steps < 1) steps = 20;
+    if (!(duration > 0)) duration = 0.5;
+    const double axis = 0.70710678;   // cos45: 各軸への射影
+    CGPoint p1 = CGPointMake(center.x - startSpan / 2 * axis, center.y - startSpan / 2 * axis);
+    CGPoint p2 = CGPointMake(center.x + startSpan / 2 * axis, center.y + startSpan / 2 * axis);
+    UIView *hit = [window hitTest:center withEvent:nil] ?: window;
+    NSTimeInterval ts = NSProcessInfo.processInfo.systemUptime;
+    UITouch *t1 = ftMakeTouch(window, hit, p1, ts);
+    UITouch *t2 = ftMakeTouch(window, hit, p2, ts);
+    [t2 _setIsFirstTouchForView:NO];
+    ftDispatch2(window, t1, t2, p1, p2, UITouchPhaseBegan);
+    double stepDelay = duration / steps;
+    for (int i = 1; i <= steps; i++) {
+        double f = (double)i / (double)steps;
+        double span = startSpan + (endSpan - startSpan) * f;
+        p1 = CGPointMake(center.x - span / 2 * axis, center.y - span / 2 * axis);
+        p2 = CGPointMake(center.x + span / 2 * axis, center.y + span / 2 * axis);
+        ts = NSProcessInfo.processInfo.systemUptime;
+        [t1 _setLocationInWindow:p1 resetPrevious:NO];
+        [t2 _setLocationInWindow:p2 resetPrevious:NO];
+        [t1 setPhase:UITouchPhaseMoved];
+        [t2 setPhase:UITouchPhaseMoved];
+        [t1 setTimestamp:ts];
+        [t2 setTimestamp:ts];
+        ftDispatch2(window, t1, t2, p1, p2, UITouchPhaseMoved);
+        // 実時間を進める(タイムスタンプだけ進めても速度計算が追随しない)
+        [[NSRunLoop currentRunLoop] runUntilDate:[NSDate dateWithTimeIntervalSinceNow:stepDelay]];
+    }
+    ts = NSProcessInfo.processInfo.systemUptime;
+    [t1 setPhase:UITouchPhaseEnded];
+    [t2 setPhase:UITouchPhaseEnded];
+    [t1 setTimestamp:ts];
+    [t2 setTimestamp:ts];
+    ftDispatch2(window, t1, t2, p1, p2, UITouchPhaseEnded);
+}
+
 void FTSynthSwipe(UIWindow *window, CGPoint from, CGPoint to, int steps) {
     if (steps < 1) steps = 10;
     UIView *hit = [window hitTest:from withEvent:nil] ?: window;

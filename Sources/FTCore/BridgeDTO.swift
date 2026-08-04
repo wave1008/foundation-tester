@@ -93,7 +93,19 @@ public enum BridgeAPI {
     /// 画面外ノード)を供給するようになった(2026-08-04)。Android は既に供給しており iOS だけ
     /// 欠けていたため offscreenJump/offscreenEdgeJump が一度も発火しなかった。旧ランナーは
     /// offscreen を返さない = 黙って無効のまま
-    public static let bridgeProtocolVersion = 46
+    /// 47: POST /pinch(2本指ズーム)と POST /doubletap を追加(2026-08-04、マップ系アプリ用)。
+    /// 旧ブリッジは 404 "not found:" を返すので、hybrid では XCUITest へ回って**動くが遅い**、
+    /// xcuitest 単独では失敗し続ける。in-app は今もルートを持たない(= 404 でホストが回す)
+    /// 48: /doubletap をランナー内の2打(間隔 60ms)に変えた版(2026-08-04)。**実測で
+    /// `XCUICoordinate.tap()` が1打 335ms かかり、実際の間隔が約 400ms = 判定窓を外れて
+    /// 単タップ2回になる**と分かったため 49 で撤去した。48 が稼働している環境を確実に
+    /// 入れ替えるため番号は再利用せず欠番にする(37 と同じ扱い)
+    /// 49: /doubletap を `XCUICoordinate.doubleTap()` へ戻した(2026-08-04)
+    /// 50: **in-app ブリッジに /doubletap と /pinch を追加**(2026-08-04)。in-app は合成タッチの
+    /// 間隔と指の距離を自分で決められるので、XCTest では成立しない組み合わせ(Compose の
+    /// ダブルタップ)が通る。旧 dylib はルートを持たず 404 → ホストが XCUITest へ回すため、
+    /// **入れ替えないと直った経路が使われないまま**になる
+    public static let bridgeProtocolVersion = 50
 
     /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
     /// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java の
@@ -496,6 +508,34 @@ public struct SwipeRequest: Codable {
         self.durationMs = durationMs
         self.fling = fling
         self.velocity = velocity
+    }
+}
+
+/// POST /pinch(2本指のズーム。DSL の pinchOut / pinchIn)。
+/// **2つの表現を同時に運ぶ**のは、対象の指定方法が OS で原理的に違うため:
+/// - Android(`InputInjector.pinch`)は座標を合成できるので `frame` の中心を使う
+/// - XCUITest は座標を指定した多点ジェスチャを持たず `XCUIElement.pinch(withScale:velocity:)`
+///   しかない = **要素を掴むしかない**ので `identifier` で引く(見つからなければアプリ全体)
+///
+/// ホストは対象を1回解決して両方を埋める(同期相手: StepExecutor の "pinch" アクション /
+/// Runner の handlePinch / AndroidRunner BridgeRouter.handlePinch)
+public struct PinchRequest: Codable {
+    /// 拡大率。> 1 = 拡大(指を開く) / 0 < scale < 1 = 縮小(指を閉じる)。
+    /// **XCUITest は scale と velocity の符号が食い違うと例外を投げる**ので、velocity は
+    /// ランナー側が scale から導出する(ホストからは送らない)
+    public var scale: Double
+    /// ジェスチャの所要時間(秒)。Android のストローク時間・iOS の velocity 算出に使う
+    public var durationSeconds: Double?
+    /// 対象領域(snapshot の screen と同じ座標系)。nil = 画面全体。**Android だけが読む**
+    public var frame: FTRect?
+    /// 対象の accessibility identifier。nil / 解決不能 = アプリ全体。**XCUITest だけが読む**
+    public var identifier: String?
+    public init(scale: Double, durationSeconds: Double? = nil,
+                frame: FTRect? = nil, identifier: String? = nil) {
+        self.scale = scale
+        self.durationSeconds = durationSeconds
+        self.frame = frame
+        self.identifier = identifier
     }
 }
 

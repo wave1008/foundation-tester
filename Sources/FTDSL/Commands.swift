@@ -294,6 +294,160 @@ public func swipePointToPoint(startX: Double, startY: Double, endX: Double, endY
     }
 }
 
+// MARK: - マップ系のジェスチャ(ピンチ・ダブルタップ・斜めパン)
+
+/// **対象領域の中心を基点に、比率で指を動かす**(斜め可)。マップ・キャンバスのパン用。
+/// 比率は対象の幅・高さに対する割合で、**符号は指の向き**(dxRatio > 0 = 指を右へ =
+/// コンテンツは左へ動く。`swipe` と同じ規約)。対角に動かすには両方を非 0 にする。
+/// 座標を直接指定したいときは `swipePointToPoint`(こちらは pt/px)。
+///
+///     swipeBy(dxRatio: -0.3, dyRatio: -0.3)          // 画面中心から左上へ
+///     swipeBy("#map", dxRatio: 0.4, dyRatio: -0.2)   // その要素の中で右上へ
+///
+/// 既定の移動時間は `swipePointToPoint` と同じ 1.5 秒(**ゆっくり引くと慣性が乗らない**ので、
+/// 移動量を読みたいマップのパンでは短くしない)
+public func swipeBy(dxRatio: Double, dyRatio: Double,
+                    durationSeconds: Double = FlowStep.defaultSwipeDurationSeconds,
+                    file: StaticString = #filePath, line: UInt = #line) {
+    let step = FlowStep(action: "swipeBy",
+                        duration: durationSeconds == FlowStep.defaultSwipeDurationSeconds
+                            ? nil : durationSeconds,
+                        dxRatio: dxRatio, dyRatio: dyRatio)
+    FTRuntime.requireCore(command: "swipeBy")
+        .perform(step: step, description: "swipeBy (\(dxRatio), \(dyRatio))",
+                 file: file, line: line)
+}
+
+public func swipeBy(_ selector: String, dxRatio: Double, dyRatio: Double,
+                    durationSeconds: Double = FlowStep.defaultSwipeDurationSeconds,
+                    timeout: Double? = nil,
+                    file: StaticString = #filePath, line: UInt = #line) {
+    swipeByImpl(FTSelector.parse(selector), dxRatio: dxRatio, dyRatio: dyRatio,
+                durationSeconds: durationSeconds, timeout: timeout, file: file, line: line)
+}
+
+public func swipeBy(_ selector: Sel, dxRatio: Double, dyRatio: Double,
+                    durationSeconds: Double = FlowStep.defaultSwipeDurationSeconds,
+                    timeout: Double? = nil,
+                    file: StaticString = #filePath, line: UInt = #line) {
+    swipeByImpl(selector.ftSelector, dxRatio: dxRatio, dyRatio: dyRatio,
+                durationSeconds: durationSeconds, timeout: timeout, file: file, line: line)
+}
+
+private func swipeByImpl(_ selector: FTSelector, dxRatio: Double, dyRatio: Double,
+                         durationSeconds: Double, timeout: Double?,
+                         file: StaticString, line: UInt) {
+    let step = FlowStep(action: "swipeBy", locator: selector.primary,
+                        fallbacks: selector.stepFallbacks, timeout: timeout,
+                        duration: durationSeconds == FlowStep.defaultSwipeDurationSeconds
+                            ? nil : durationSeconds,
+                        dxRatio: dxRatio, dyRatio: dyRatio)
+    perform("swipeBy", selector, step: step,
+            description: "swipeBy \"\(selector.text)\" (\(dxRatio), \(dyRatio))",
+            file: file, line: line)
+}
+
+/// ダブルタップ(マップの拡大・カード展開等)。セレクタ無しは**画面中心**。
+/// **2回タップに分解しない**: ホスト↔ブリッジの往復が入ると OS のダブルタップ判定時間を
+/// 超えて2回の単タップになる。ブリッジ側の1操作として撃つ
+public func doubleTap(file: StaticString = #filePath, line: UInt = #line) {
+    FTRuntime.requireCore(command: "doubleTap")
+        .perform(step: FlowStep(action: "doubleTap"), description: "doubleTap",
+                 file: file, line: line)
+}
+
+public func doubleTap(_ selector: String, timeout: Double? = nil,
+                      file: StaticString = #filePath, line: UInt = #line) {
+    doubleTapImpl(FTSelector.parse(selector), timeout: timeout, file: file, line: line)
+}
+
+public func doubleTap(_ selector: Sel, timeout: Double? = nil,
+                      file: StaticString = #filePath, line: UInt = #line) {
+    doubleTapImpl(selector.ftSelector, timeout: timeout, file: file, line: line)
+}
+
+private func doubleTapImpl(_ selector: FTSelector, timeout: Double?,
+                           file: StaticString, line: UInt) {
+    let step = FlowStep(action: "doubleTap", locator: selector.primary,
+                        fallbacks: selector.stepFallbacks, timeout: timeout)
+    perform("doubleTap", selector, step: step,
+            description: "doubleTap \"\(selector.text)\"", file: file, line: line)
+}
+
+/// 2本指を開くピンチ = **拡大**(scale > 1)。セレクタ無しは画面全体が対象。
+///
+///     pinchOut()                    // 2倍に拡大
+///     pinchOut("#map", scale: 3.0)  // その要素を対象に3倍
+///
+/// **iOS では対象要素を identifier で引く**(XCUITest は座標指定の多点ジェスチャを持たない)。
+/// identifier の無い要素を指定した場合はアプリ全体のピンチに落ち、注記が残る。
+/// **in-app エンジンは多点ジェスチャを持たない**ので hybrid では XCUITest へ回る
+public func pinchOut(scale: Double = FlowStep.defaultPinchOutScale,
+                     durationSeconds: Double = FlowStep.defaultPinchDurationSeconds,
+                     file: StaticString = #filePath, line: UInt = #line) {
+    pinchImpl(nil, action: "pinchOut", scale: scale, durationSeconds: durationSeconds,
+              timeout: nil, file: file, line: line)
+}
+
+public func pinchOut(_ selector: String, scale: Double = FlowStep.defaultPinchOutScale,
+                     durationSeconds: Double = FlowStep.defaultPinchDurationSeconds,
+                     timeout: Double? = nil,
+                     file: StaticString = #filePath, line: UInt = #line) {
+    pinchImpl(FTSelector.parse(selector), action: "pinchOut", scale: scale,
+              durationSeconds: durationSeconds, timeout: timeout, file: file, line: line)
+}
+
+public func pinchOut(_ selector: Sel, scale: Double = FlowStep.defaultPinchOutScale,
+                     durationSeconds: Double = FlowStep.defaultPinchDurationSeconds,
+                     timeout: Double? = nil,
+                     file: StaticString = #filePath, line: UInt = #line) {
+    pinchImpl(selector.ftSelector, action: "pinchOut", scale: scale,
+              durationSeconds: durationSeconds, timeout: timeout, file: file, line: line)
+}
+
+/// 2本指を閉じるピンチ = **縮小**(0 < scale < 1)。対象の決め方は `pinchOut` と同じ
+public func pinchIn(scale: Double = FlowStep.defaultPinchInScale,
+                    durationSeconds: Double = FlowStep.defaultPinchDurationSeconds,
+                    file: StaticString = #filePath, line: UInt = #line) {
+    pinchImpl(nil, action: "pinchIn", scale: scale, durationSeconds: durationSeconds,
+              timeout: nil, file: file, line: line)
+}
+
+public func pinchIn(_ selector: String, scale: Double = FlowStep.defaultPinchInScale,
+                    durationSeconds: Double = FlowStep.defaultPinchDurationSeconds,
+                    timeout: Double? = nil,
+                    file: StaticString = #filePath, line: UInt = #line) {
+    pinchImpl(FTSelector.parse(selector), action: "pinchIn", scale: scale,
+              durationSeconds: durationSeconds, timeout: timeout, file: file, line: line)
+}
+
+public func pinchIn(_ selector: Sel, scale: Double = FlowStep.defaultPinchInScale,
+                    durationSeconds: Double = FlowStep.defaultPinchDurationSeconds,
+                    timeout: Double? = nil,
+                    file: StaticString = #filePath, line: UInt = #line) {
+    pinchImpl(selector.ftSelector, action: "pinchIn", scale: scale,
+              durationSeconds: durationSeconds, timeout: timeout, file: file, line: line)
+}
+
+/// selector nil = 画面全体。倍率と向きの食い違い(pinchOut に scale < 1 等)は
+/// StepExecutor が失敗にする(判定を1箇所に置く)
+private func pinchImpl(_ selector: FTSelector?, action: String, scale: Double,
+                       durationSeconds: Double, timeout: Double?,
+                       file: StaticString, line: UInt) {
+    let step = FlowStep(action: action, locator: selector?.primary,
+                        fallbacks: selector?.stepFallbacks, timeout: timeout,
+                        duration: durationSeconds == FlowStep.defaultPinchDurationSeconds
+                            ? nil : durationSeconds,
+                        scale: scale)
+    let description = selector.map { "\(action) \"\($0.text)\" x\(scale)" } ?? "\(action) x\(scale)"
+    guard let selector else {
+        FTRuntime.requireCore(command: action)
+            .perform(step: step, description: description, file: file, line: line)
+        return
+    }
+    perform(action, selector, step: step, description: description, file: file, line: line)
+}
+
 /// 要素間のドラッグ(スライダー・並べ替え・部分領域のスクロール等、要素を掴んで動かす操作用)。
 /// **終点(to)はヒール・自己修復の対象外**(始点だけが解決連鎖を持つ)
 public func swipeElementToElement(_ from: String, _ to: String,

@@ -221,6 +221,18 @@ public final class WebViewDelegatingDriver: AppDriver {
                                     pressSeconds: pressSeconds, durationSeconds: durationSeconds)
     }
 
+    /// 多点・座標ジェスチャは WebView の中でも画面側(screenDriver)が撃つ(drag と同じ理由。
+    /// DOM 側に相当する口が無い)
+    public func doubleTap(x: Double, y: Double) async throws {
+        try await screenDriver.doubleTap(x: x, y: y)
+    }
+
+    public func pinch(frame: FTRect?, identifier: String?, scale: Double,
+                      durationSeconds: Double) async throws {
+        try await screenDriver.pinch(frame: frame, identifier: identifier, scale: scale,
+                                     durationSeconds: durationSeconds)
+    }
+
     // MARK: - 常に in-app 側で扱う操作
 
     // ライフサイクルは注入起動を持つ in-app 側の責務(XCUITest から起動すると dylib が入らない)。

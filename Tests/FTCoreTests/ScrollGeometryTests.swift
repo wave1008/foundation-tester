@@ -269,4 +269,70 @@ final class ScrollGeometryTests: XCTestCase {
         XCTAssertEqual(FlickKind.centerToRight.fingerDirection, .right)
         XCTAssertEqual(FlickKind.leftToRight.fingerDirection, .right)
     }
+
+    // MARK: - panPath(斜めを含む相対ドラッグ)
+
+    /// 中心を挟んで対称。dx/dy とも非 0 = 斜めになること
+    func testPanPathIsDiagonalAndSymmetricAroundTheCenter() {
+        let screen = FTRect(x: 0, y: 0, width: 400, height: 800)
+        let path = ScrollGeometry.panPath(container: screen, viewport: screen,
+                                          dxRatio: 0.5, dyRatio: -0.25)
+        XCTAssertEqual(path?.fromX, 100)
+        XCTAssertEqual(path?.fromY, 500)
+        XCTAssertEqual(path?.toX, 300)
+        XCTAssertEqual(path?.toY, 300)
+    }
+
+    /// 比率は container(要素)基準。**画面ではなく指定領域の幅・高さに掛かる**
+    func testPanPathUsesTheContainerSizeNotTheScreen() {
+        let screen = FTRect(x: 0, y: 0, width: 400, height: 800)
+        let container = FTRect(x: 100, y: 200, width: 200, height: 100)
+        let path = ScrollGeometry.panPath(container: container, viewport: screen,
+                                          dxRatio: 0.5, dyRatio: 0)
+        // 中心 (200, 250)・移動量 100 → ±50
+        XCTAssertEqual(path?.fromX, 150)
+        XCTAssertEqual(path?.toX, 250)
+        XCTAssertEqual(path?.fromY, 250)
+        XCTAssertEqual(path?.toY, 250)
+    }
+
+    /// 画面外へはみ出す領域は交差を取ってから計算する(はみ出した座標は注入しても届かない)
+    func testPanPathClipsTheContainerToTheViewport() {
+        let screen = FTRect(x: 0, y: 0, width: 400, height: 800)
+        let container = FTRect(x: 200, y: 0, width: 400, height: 800)   // 右半分だけが画面内
+        let path = ScrollGeometry.panPath(container: container, viewport: screen,
+                                          dxRatio: 1.0, dyRatio: 0)
+        // 交差は x=200..400(幅 200)・中心 300。比率は 0.9 で頭打ち = 移動量 180
+        XCTAssertEqual(path?.fromX, 210)
+        XCTAssertEqual(path?.toX, 390)
+    }
+
+    /// 1 を超える比率でも経路は領域の中に収まる(端をはみ出さない)
+    func testPanPathIsClampedInsideTheArea() {
+        let screen = FTRect(x: 0, y: 0, width: 400, height: 800)
+        let path = ScrollGeometry.panPath(container: screen, viewport: screen,
+                                          dxRatio: 5, dyRatio: -5)
+        XCTAssertEqual(path?.fromX, 20)     // 中心 200 − 0.9*400/2
+        XCTAssertEqual(path?.toX, 380)
+        XCTAssertEqual(path?.fromY, 760)
+        XCTAssertEqual(path?.toY, 40)
+    }
+
+    /// 動かない指示(0 / 非有限 / 極小)は nil = 呼び手が失敗にできる
+    func testPanPathReturnsNilWhenTheFingerWouldNotMove() {
+        let screen = FTRect(x: 0, y: 0, width: 400, height: 800)
+        XCTAssertNil(ScrollGeometry.panPath(container: screen, viewport: screen,
+                                            dxRatio: 0, dyRatio: 0))
+        XCTAssertNil(ScrollGeometry.panPath(container: screen, viewport: screen,
+                                            dxRatio: .nan, dyRatio: .nan))
+        XCTAssertNil(ScrollGeometry.panPath(container: screen, viewport: screen,
+                                            dxRatio: 0.001, dyRatio: 0.001))
+    }
+
+    /// 交差しない領域では作れない(path と同じ契約)
+    func testPanPathReturnsNilWithoutIntersection() {
+        XCTAssertNil(ScrollGeometry.panPath(container: FTRect(x: 500, y: 0, width: 100, height: 100),
+                                            viewport: FTRect(x: 0, y: 0, width: 400, height: 800),
+                                            dxRatio: 0.5, dyRatio: 0.5))
+    }
 }

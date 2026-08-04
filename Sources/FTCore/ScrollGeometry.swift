@@ -58,6 +58,32 @@ public enum ScrollGeometry {
         return path.distance >= minUsableDistance ? path : nil
     }
 
+    /// **斜めを含む任意方向のドラッグ**(DSL の swipeBy。マップのパン用)。
+    /// 比率は**指の移動量 ÷ 領域の幅・高さ**で、符号は指の向き(dxRatio > 0 = 指を右へ =
+    /// コンテンツは左へ動く。`swipe` の向き規約と同じ)。
+    ///
+    /// 経路は領域の中心を挟んで対称に取る(始点 = 中心 − 移動量/2、終点 = 中心 + 移動量/2)。
+    /// **片側 0.9 で頭打ち**にするのは、半分ずつ振り分けても端が領域内に収まるようにするため
+    /// (0.9 → 中心 ±0.45 = 縁の内側)。戻り値 nil は `path` と同じ2条件
+    /// (交差なし / 移動距離が minUsableDistance 未満)
+    public static func panPath(container: FTRect, viewport: FTRect,
+                               dxRatio: Double, dyRatio: Double) -> FTSwipePath? {
+        guard let area = intersection(container, viewport) else { return nil }
+        let dx = area.width * clampPanRatio(dxRatio)
+        let dy = area.height * clampPanRatio(dyRatio)
+        let path = FTSwipePath(fromX: area.centerX - dx / 2, fromY: area.centerY - dy / 2,
+                               toX: area.centerX + dx / 2, toY: area.centerY + dy / 2)
+        return path.distance >= minUsableDistance ? path : nil
+    }
+
+    /// 比率の上限(片側)。非有限は 0(= 動かさない)に倒す
+    public static let maxPanRatio: Double = 0.9
+
+    static func clampPanRatio(_ ratio: Double) -> Double {
+        guard ratio.isFinite else { return 0 }
+        return min(max(ratio, -maxPanRatio), maxPanRatio)
+    }
+
     /// 交差矩形。幅・高さが 0 以下なら nil(接しているだけ = 操作できない)
     static func intersection(_ a: FTRect, _ b: FTRect) -> FTRect? {
         let left = max(a.x, b.x)

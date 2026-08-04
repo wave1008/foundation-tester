@@ -123,6 +123,33 @@ private final class FakeAppDriver: AppDriver {
         log.entries.append("\(name).drag")
     }
 
+    /// 非 nil なら doubleTap/pinch がこのエラーを throw する(501 切替の検証用)。
+    /// **実装しないと AppDriver 既定の 501 になる**ので、通常経路の検証にも実装が要る
+    var doubleTapError: Error?
+    var pinchError: Error?
+    private(set) var lastDoubleTap: (x: Double, y: Double)?
+    private(set) var lastPinch: (frame: FTRect?, identifier: String?,
+                                 scale: Double, durationSeconds: Double)?
+
+    func doubleTap(x: Double, y: Double) async throws {
+        lastDoubleTap = (x, y)
+        if let doubleTapError {
+            log.entries.append("\(name).doubleTap(throws)")
+            throw doubleTapError
+        }
+        log.entries.append("\(name).doubleTap")
+    }
+
+    func pinch(frame: FTRect?, identifier: String?, scale: Double,
+               durationSeconds: Double) async throws {
+        lastPinch = (frame, identifier, scale, durationSeconds)
+        if let pinchError {
+            log.entries.append("\(name).pinch(throws)")
+            throw pinchError
+        }
+        log.entries.append("\(name).pinch")
+    }
+
     private(set) var screenshotCallCount = 0
     func screenshot() async throws -> Data {
         defer { screenshotCallCount += 1 }
@@ -1772,6 +1799,134 @@ final class StepExecutorTests: XCTestCase {
         XCTAssertTrue(log.entries.contains("typedriver.drag"), "501 なら typeDriver へ回すこと: \(log.entries)")
         XCTAssertEqual(typeDriver.lastDragArgs?.fromX, 10)
         XCTAssertEqual(typeDriver.lastDragArgs?.toX, 220)
+    }
+
+    // MARK: - マップ系ジェスチャ(pinchOut/pinchIn・doubleTap・swipeBy)
+
+    /// 対象未指定のピンチは画面全体(frame = screen・identifier なし)で撃たれること
+    func testPinchOutWithoutLocatorTargetsTheWholeScreen() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
+        let executor = StepExecutor(driver: primary)
+
+        let outcome = await executor.execute(FlowStep(action: "pinchOut", scale: 2.0))
+
+        guard case .passed = outcome.status else {
+            XCTFail("pinchOut の passed を期待したが \(outcome.status) だった"); return
+        }
+        XCTAssertEqual(primary.lastPinch?.frame, FTRect(x: 0, y: 0, width: 400, height: 800))
+        XCTAssertNil(primary.lastPinch?.identifier)
+        XCTAssertEqual(primary.lastPinch?.scale, 2.0)
+        XCTAssertEqual(primary.lastPinch?.durationSeconds, FlowStep.defaultPinchDurationSeconds)
+    }
+
+    /// セレクタ付きは**要素の frame と identifier の両方**が渡ること
+    /// (Android は frame の中心で合成し、XCUITest は identifier で要素を引くため。
+    /// 片方でも落ちると、対象を指定したのに画面中心がピンチされる)
+    func testPinchWithLocatorPassesFrameAndIdentifier() async throws {
+        let log = CallLog()
+        let map = framed(ref: 1, id: "map", x: 10, y: 40, width: 300, height: 200)
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[map]])
+        let executor = StepExecutor(driver: primary)
+        let step = FlowStep(action: "pinchIn", locator: FlowLocator(id: "map"), scale: 0.5)
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("pinchIn の passed を期待したが \(outcome.status) だった"); return
+        }
+        XCTAssertEqual(primary.lastPinch?.frame, FTRect(x: 10, y: 40, width: 300, height: 200))
+        XCTAssertEqual(primary.lastPinch?.identifier, "map")
+        XCTAssertEqual(primary.lastPinch?.scale, 0.5)
+    }
+
+    /// 向きと倍率が食い違ったら**撃たずに失敗**(撃つと「pinchOut と書いたのに縮小」が緑になる)
+    func testPinchRejectsScaleThatContradictsDirection() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
+        let executor = StepExecutor(driver: primary)
+
+        let outOutcome = await executor.execute(FlowStep(action: "pinchOut", scale: 0.5))
+        let inOutcome = await executor.execute(FlowStep(action: "pinchIn", scale: 2.0))
+
+        guard case .failed(let outMsg) = outOutcome.status else {
+            XCTFail("pinchOut(scale<1) は failed を期待したが \(outOutcome.status) だった"); return
+        }
+        guard case .failed = inOutcome.status else {
+            XCTFail("pinchIn(scale>1) は failed を期待したが \(inOutcome.status) だった"); return
+        }
+        XCTAssertTrue(outMsg.contains("scale > 1"), "何が期待値かを述べること: \(outMsg)")
+        XCTAssertFalse(log.entries.contains("primary.pinch"), "撃たないこと: \(log.entries)")
+    }
+
+    /// in-app 相当(501)なら typeDriver へ回すこと。**座標・identifier はそのまま**渡る
+    /// (ref と違いブリッジ間で意味が変わらないので取り直しが要らない)
+    func testPinchFallsBackToTypeDriverWhenEngineIncapable() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
+        primary.pinchError = DriverError.badResponse(status: 501, body: "in-app では pinch が効きません")
+        let typeDriver = FakeAppDriver(name: "typedriver", log: log, snapshotElements: [[]])
+        let executor = StepExecutor(driver: primary, typeDriver: typeDriver)
+
+        let outcome = await executor.execute(FlowStep(action: "pinchOut", scale: 3.0))
+
+        guard case .passed = outcome.status else {
+            XCTFail("501 からの切替による passed を期待したが \(outcome.status) だった"); return
+        }
+        XCTAssertEqual(outcome.driverFallback, "fell back to XCUITest")
+        XCTAssertEqual(typeDriver.lastPinch?.scale, 3.0)
+    }
+
+    /// ダブルタップは要素の中心座標で撃たれること
+    func testDoubleTapUsesElementCenter() async throws {
+        let log = CallLog()
+        let map = framed(ref: 1, id: "map", x: 100, y: 200, width: 40, height: 60)
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[map]])
+        let executor = StepExecutor(driver: primary)
+
+        let outcome = await executor.execute(FlowStep(action: "doubleTap",
+                                                      locator: FlowLocator(id: "map")))
+
+        guard case .passed = outcome.status else {
+            XCTFail("doubleTap の passed を期待したが \(outcome.status) だった"); return
+        }
+        XCTAssertEqual(primary.lastDoubleTap?.x, 120)
+        XCTAssertEqual(primary.lastDoubleTap?.y, 230)
+    }
+
+    /// swipeBy は**斜め**(dx/dy とも非 0)の経路を、対象領域の中心を挟んで対称に作ること
+    func testSwipeByBuildsDiagonalPathAroundTheCenter() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
+        let executor = StepExecutor(driver: primary)
+        // 画面 400x800 の中心 (200, 400) から、幅の -0.5・高さの -0.25 ぶん指を動かす
+        let step = FlowStep(action: "swipeBy", dxRatio: -0.5, dyRatio: -0.25)
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("swipeBy の passed を期待したが \(outcome.status) だった"); return
+        }
+        XCTAssertEqual(primary.lastDragArgs?.fromX, 300)
+        XCTAssertEqual(primary.lastDragArgs?.fromY, 500)
+        XCTAssertEqual(primary.lastDragArgs?.toX, 100)
+        XCTAssertEqual(primary.lastDragArgs?.toY, 300)
+        XCTAssertEqual(primary.lastDragArgs?.durationSeconds, FlowStep.defaultSwipeDurationSeconds)
+    }
+
+    /// 移動量が小さすぎて指が動かないときは**成功にしない**(比率の書き間違いに気付けなくなる)
+    func testSwipeByFailsWhenTheOffsetIsTooSmallToMove() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
+        let executor = StepExecutor(driver: primary)
+
+        let outcome = await executor.execute(FlowStep(action: "swipeBy",
+                                                      dxRatio: 0.001, dyRatio: 0))
+
+        guard case .failed = outcome.status else {
+            XCTFail("動かない swipeBy は failed を期待したが \(outcome.status) だった"); return
+        }
+        XCTAssertNil(primary.lastDragArgs, "撃たないこと")
     }
 
     // MARK: - スクロール探索終端の空打ち可否(pointIsTakenByFrontElement)

@@ -49,6 +49,8 @@ final class BridgeRouter {
     // 撮るため、その全てにこの待ちが乗っていた。
     // **スクロール後の静止はホスト側が担う**: 探索終端は StepExecutor.settleAfterScroll、
     // 明示的な swipe/scroll コマンドは同 settledSignature(どちらも「連続2回一致」で待つ)。
+    // **/pinch と /doubletap も同じ理由で入れない**: ズーム・展開のアニメーションは budget 内に
+    // 収まらないことがあり、ホストの performGesture が末尾で必ず整定を待つ(二重に待たない)。
     private static let mutatingPaths: Set<String> = ["/session", "/tap", "/type", "/clear", "/pressEnter", "/hidekeyboard", "/press", "/appswitcher", "/home"]
 
     /// 所要内訳ログの on/off(既定 off)。ホストの FT_BRIDGE_TIMING=1 を BridgeLauncher が
@@ -73,6 +75,8 @@ final class BridgeRouter {
             case ("POST", "/hidekeyboard"): response = try handleHideKeyboard()
             case ("POST", "/swipe"): response = try handleSwipe(request.body)
             case ("POST", "/drag"): response = try handleDrag(request.body)
+            case ("POST", "/doubletap"): response = try handleDoubleTap(request.body)
+            case ("POST", "/pinch"): response = try handlePinch(request.body)
             case ("POST", "/press"): response = try handlePress(request.body)
             case ("GET", "/screenshot"): response = handleScreenshot()
             case ("POST", "/appswitcher"): response = try handleAppSwitcher()
@@ -588,6 +592,58 @@ final class BridgeRouter {
         from.press(forDuration: press, thenDragTo: to,
                    withVelocity: XCUIGestureVelocity(velocity), thenHoldForDuration: 0)
         return .json(OKResponse())
+    }
+
+    /// ダブルタップ(座標は tap と同じポイント座標)。**2回の /tap に分けない** ——
+    /// ホストとの往復が入ると OS のダブルタップ判定時間を超えて単タップ2回になる。
+    ///
+    /// **ランナー内で2打に分けるのも不可**(2026-08-04 実測): `XCUICoordinate.tap()` は
+    /// FastInput(quiescence スキップ)込みでも**1打 335ms** かかり、間隔を 60ms に詰めても
+    /// 実際の2打間隔は約 400ms = 判定窓(約 300ms)を外れて単タップ2回になる。
+    /// よって XCTest の `doubleTap()` に任せるしかない。
+    /// **既知の穴**: この2打は間隔が詰まりすぎていて **Compose Multiplatform の iOS だけ拾えない**
+    /// (`detectTapGestures` は最初の UP から `doubleTapMinTimeMillis` = 40ms 以内の DOWN を捨てる)。
+    /// SwiftUI/UIKit・Flutter・Android は問題ない。詳細と回避策は docs/commands.md
+    private func handleDoubleTap(_ body: Data) throws -> BridgeHTTPServer.Response {
+        let req = try decode(TapRequest.self, body)
+        let app = try requireLiveApp()
+        let point = try resolvePoint(ref: req.ref, x: req.x, y: req.y)
+        try FastInput.with(req.fast) {
+            coordinate(app, point).doubleTap()
+        }
+        return .json(OKResponse())
+    }
+
+    /// 2本指のピンチ。**XCUITest には座標指定の多点ジェスチャが無い**(XCUICoordinate は単点のみ)ため、
+    /// `XCUIElement.pinch(withScale:velocity:)` に落とすしかない = **要素単位**になる。
+    /// identifier で対象を引き、見つからなければアプリ全体をピンチして注記を返す
+    /// (ホストは PinchRequest.frame も送ってくるが、こちらでは使えない。Android 側が使う)。
+    ///
+    /// velocity(scale/秒)は**符号が scale と食い違うと XCTest が例外を投げる**ので、ここで
+    /// scale と所要時間から導出する(ホストからは受け取らない = 不整合を作れなくする)。
+    private func handlePinch(_ body: Data) throws -> BridgeHTTPServer.Response {
+        let req = try decode(PinchRequest.self, body)
+        let app = try requireLiveApp()
+        guard req.scale > 0, req.scale != 1, req.scale.isFinite else {
+            throw BridgeError(400, "scale は正で 1 以外である必要があります(受領: \(req.scale))")
+        }
+        var target: XCUIElement = app
+        var note: String?
+        if let identifier = req.identifier {
+            let matched = app.descendants(matching: .any)
+                .matching(NSPredicate(format: "identifier == %@", identifier)).firstMatch
+            if matched.exists {
+                target = matched
+            } else {
+                note = "identifier [\(identifier)] not found; pinched the whole app instead"
+            }
+        }
+        let duration = max(req.durationSeconds ?? 0.5, 0.05)
+        // 拡大は正・縮小は負の velocity。極端値は避ける(0.1〜10 scale/秒)
+        let magnitude = min(max(abs(req.scale - 1) / duration, 0.1), 10)
+        target.pinch(withScale: CGFloat(req.scale),
+                     velocity: req.scale > 1 ? magnitude : -magnitude)
+        return .json(OKResponse(note: note))
     }
 
     private func handlePress(_ body: Data) throws -> BridgeHTTPServer.Response {

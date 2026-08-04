@@ -103,6 +103,18 @@ public final class SessionRecoveryDriver: AppDriver {
         try await withRecovery { try await base.press(x: x, y: y, duration: duration) }
     }
 
+    public func doubleTap(x: Double, y: Double) async throws {
+        try await withRecovery { try await base.doubleTap(x: x, y: y) }
+    }
+
+    public func pinch(frame: FTRect?, identifier: String?, scale: Double,
+                      durationSeconds: Double) async throws {
+        try await withRecovery {
+            try await base.pinch(frame: frame, identifier: identifier, scale: scale,
+                                 durationSeconds: durationSeconds)
+        }
+    }
+
     public func screenshot() async throws -> Data { try await withRecovery { try await base.screenshot() } }
     // ref を使わない(フォーカス中要素へ作用する)ので tap(x:y:) と同じ扱い: 1回だけ回復+再試行する
     public func pressEnter() async throws { try await withRecovery { try await base.pressEnter() } }

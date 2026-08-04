@@ -51,6 +51,10 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 | `swipe(.up / .down / .left / .right)` | 画面全体をスワイプ(**指の動き**) |
 | `swipePointToPoint(startX:startY:endX:endY:durationSeconds: 1.5)` | 2点間ドラッグ(座標は snapshot の screen と同じ座標系。iOS = pt / Android = px) |
 | `swipeElementToElement(開始sel, 終点sel, durationSeconds: 1.5)` | 要素間のドラッグ(スライダー・並べ替え・部分領域のドラッグ用)。**終点はヒール対象外**(始点だけがヒール・フォールバック連鎖を持つ) |
+| `swipeBy(sel?, dxRatio:dyRatio:durationSeconds: 1.5)` | 対象の中心から**比率**で指を動かす(**斜め可**。両方を非 0 にすると対角)。比率は対象の幅・高さに対する割合で、符号は指の向き。セレクタ省略 = 画面全体 |
+| `doubleTap(sel?)` | ダブルタップ。セレクタ省略 = 画面中心。**`tap` を2回書いても代用できない**(往復で OS のダブルタップ判定時間を超える) |
+| `pinchOut(sel?, scale: 2.0, durationSeconds: 0.5)` | 2本指を開く = **拡大**。`scale` は 1 より大きい値のみ |
+| `pinchIn(sel?, scale: 0.5, durationSeconds: 0.5)` | 2本指を閉じる = **縮小**。`scale` は 0 より大きく 1 未満のみ |
 
 **`type` の中の `\n`**: **OS 既定の挙動**になる。iOS は Return キー押下として届くので、
 複数行の欄なら改行が入り、単一行の欄なら確定アクション(検索・完了など)が発火する
@@ -58,6 +62,39 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 **確定アクションを撃つ意図なら `pressEnter()` を使う**(意図が読み手に伝わる。
 `type("腕時計\n")` は「改行を入れたいのか送信したいのか」がコードから読めない)。
 エンジン(in-app / XCUITest)によって結果が変わることはない(docs/design.md)。
+
+**マップ・キャンバス系の画面**(地図・画像ビューア・図面)は、この4つで操作する:
+`swipeBy` でパン(斜め含む)・`pinchOut`/`pinchIn` でズーム・`doubleTap` でズームイン。
+注意点は3つ:
+
+- **ピンチの対象指定は経路で仕組みが違う**。Android と iOS の in-app は指定領域の中心で
+  2本指を合成するが、**iOS の XCUITest は座標指定の多点ジェスチャを持たない**ため
+  `accessibilityIdentifier` で要素を引いてピンチする。**id の無い要素を XCUITest 経路で
+  指定すると画面全体のピンチに落ち**、ステップに注記が残る
+- **iOS はエンジンによって成否が分かれるジェスチャがある**(2026-08-04 に4 SUT で実測)。
+  **既定の hybrid なら全フレームワークで動く**(ホストが自動で使い分ける)。Android は全て問題ない:
+
+  | iOS | SwiftUI / UIKit | Compose Multiplatform | Flutter |
+  |---|---|---|---|
+  | `swipeBy`(斜め含む) | ✅ | ✅ | ✅ |
+  | `doubleTap` | ✅ XCUITest | ✅ **in-app のみ** | ✅ |
+  | `pinchOut` / `pinchIn` | ✅ XCUITest | ✅ | ✅ **in-app のみ** |
+
+  「in-app のみ」= **`xcuitest` 単独プロファイルと実機では効かない**(実機は注入不可のため
+  XCUITest しか経路が無い)。理由は注入側の性質で、どちらも実測で確定している:
+  - **XCUITest の `doubleTap` は「離してから次に押すまで」が 0ms**。Compose は 40ms 未満の
+    2打目を捨てる仕様なので単タップになる。**ランナー内で2打に分けても直らない** ——
+    `XCUICoordinate.tap()` は quiescence 待ちを飛ばしても1打 335ms かかり、今度は判定窓
+    (約 300ms)を超える。in-app は合成タッチなので間隔を 80ms に作れる
+  - **XCUITest の `pinch` は指の間隔を約 8px しか開かない**(要素指定でも画面全体でも同じ)。
+    Compose は間隔の**比**で見るので効くが、Flutter は移動量のしきい値で落ちる
+    (`scale: 8.0` のように大きくすると Flutter でも効く = しきい値の問題であることの裏付け)。
+    in-app は対象領域の短辺 90% まで開くので届く
+  - 逆に **UIKit/SwiftUI は合成タッチを受け付けない**(`UIGestureRecognizer` が受理しない。
+    in-app の `press`/`drag` が未対応なのと同じ機構)。in-app 側が 501 を返して XCUITest へ回す
+- **倍率は指示どおりに出るとは限らない**。指を領域の外へは置けないので、極端な `scale` は
+  「その領域で出せる最大」で頭打ちになる(2本指の間隔で決まるため)。**倍率そのものを検証するより、
+  拡大/縮小が起きたことを検証する**方が SUT を跨いで安定する
 
 ## スクロール
 
