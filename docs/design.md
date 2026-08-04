@@ -1307,10 +1307,10 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   (`exist` は掴む側なので当然セレクタが要る)
 - **判定の実体は `FTElement` のメソッド1か所**。自由関数は `lastElement.<同名>` へ委譲するだけで、
   ステップ記録も往復回数も一致する(`HeldValueAssertTests.testTheThreeFormsAreEquivalent` が固定)
-- **旧形は `@available(*, unavailable)` で受け止める**(String 版・Sel 版の両方)。消すだけだと
-  `extra argument in call` としか出ず、書き手は「引数を減らす」= 対象を失った検証を書く
+- **セレクタを取る形の unavailable スタブは置かない**(未リリースで移行案内は不要・ユーザー決定
+  2026-08-04)。`textIs("#id", "OK")` はコンパイラの素のエラー(`extra argument in call`)になる
 - **1引数形にセレクタらしい期待値が来たら実行前に落とす**(`expectedLooksLikeSelector`)。
-  旧形の書き癖 `textIsNot("#btn_ok")` は「そのテキストではない」が常に真で**黙って緑**になる。
+  `textIsNot("#btn_ok")` のような書き方は「そのテキストではない」が常に真で**黙って緑**になる。
   逃げ道はチェーン形(対象が明示なので曖昧さが無い)
 - 3つの書き方の対応は `vscode-ftester/test/ftElementChainSync.test.mjs` がソース走査で見張る
   (FTElement のメソッド集合 = 委譲する自由関数の集合。旧形の復活も検出する)

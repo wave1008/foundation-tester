@@ -6,7 +6,7 @@
 //     select("#x"); textIs("OK")           // トップレベルの自由関数(委譲するだけ)
 //
 // 片方だけ足すと「その検証はどの書き方でも使えるのか」が覚えられず、書いてみるまで分からない
-// (旧 `textIs("#x", "OK")` = セレクタを取る形は廃止済み。UnavailableCommands.swift が案内する)。
+// (`textIs("#x", "OK")` = セレクタを取る形は置かない)。
 //
 // 逆方向(自由関数にあってチェーンに無い)も見る: 委譲先が無ければそもそも成立しない。
 // process.cwd() は npm test 実行時に vscode-ftester ルート(protocolVersion.test.mjs と同じ前提)。

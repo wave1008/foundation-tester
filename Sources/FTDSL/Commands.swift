@@ -938,8 +938,8 @@ public var lastElement: FTElement {
 //     select("#btn_ok"); lastElement.textIs("OK")   // 保持要素を明示
 //     select("#btn_ok"); textIs("OK")    // 暗黙の lastElement(ここの自由関数)
 //
-// **セレクタを取る版(`textIs("#btn_ok", "OK")`)は廃止**(UnavailableCommands.swift が
-// コンパイル時に新しい書き方を案内する)。対象を暗黙にしたのは、検証のたびにセレクタを書くと
+// **セレクタを取る版(`textIs("#btn_ok", "OK")`)は置かない**(未リリースで移行案内は不要・
+// ユーザー決定 2026-08-04。コンパイラの素のエラーになる)。対象を暗黙にしたのは、検証のたびにセレクタを書くと
 // 「どの要素を見ているか」が select と検証で二重に現れ、片方だけ直す事故が起きるため。
 // **要素を1つに定めないコマンド(`exist` / `notExist` / `countIs` / `screenIs`)はセレクタを取り続ける**。
 //
