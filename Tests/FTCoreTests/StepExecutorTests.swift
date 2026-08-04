@@ -1801,6 +1801,82 @@ final class StepExecutorTests: XCTestCase {
         XCTAssertEqual(typeDriver.lastDragArgs?.toX, 220)
     }
 
+    // MARK: - 探索直後に容器の外の ghost を掴む(Compose iOS の上流制約)
+
+    /// 容器と交差しない子(ghost)を検出できること。**交差していれば nil**(通常の行)
+    func testClippingAncestorDetectsRowsReportedOutsideTheContainer() {
+        let container = framed(ref: 100, id: "list_rows", x: 16, y: 230, width: 370, height: 462,
+                               depth: 1)
+        let inside1 = framed(ref: 1, id: "row_28", x: 16, y: 300, width: 370, height: 56, depth: 2)
+        let inside2 = framed(ref: 2, id: "row_29", x: 16, y: 360, width: 370, height: 56, depth: 2)
+        let ghost = framed(ref: 3, id: "row_30", x: 16, y: 783, width: 370, height: 56, depth: 2)
+        let elements = [container, inside1, inside2, ghost]
+
+        XCTAssertEqual(StepExecutor.clippingAncestor(of: ghost, in: elements), container.frame,
+                       "容器の外に並ぶ行は ghost として検出すること")
+        XCTAssertNil(StepExecutor.clippingAncestor(of: inside1, in: elements),
+                     "容器と交差する行は通常の行(判定を変えない)")
+    }
+
+    /// **探索の直後に ghost を掴んだら掴み直す**。掴んだままタップすると容器の外を撃って
+    /// 黙って飲まれる(値が変わらず、後段の検証だけが落ちて原因から遠い)
+    func testTapAfterSearchReResolvesWhenItGrabsAGhostRow() async throws {
+        let log = CallLog()
+        let container = framed(ref: 100, id: "list_rows", x: 16, y: 230, width: 370, height: 462,
+                               depth: 1)
+        let inside1 = framed(ref: 1, id: "row_28", x: 16, y: 300, width: 370, height: 56, depth: 2)
+        let inside2 = framed(ref: 2, id: "row_29", x: 16, y: 360, width: 370, height: 56, depth: 2)
+        let target = framed(ref: 3, id: "row_30", x: 16, y: 420, width: 370, height: 56, depth: 2)
+        let ghost = framed(ref: 4, id: "row_30", x: 16, y: 783, width: 370, height: 56, depth: 2)
+        let settled = framed(ref: 5, id: "row_30", x: 16, y: 430, width: 370, height: 56, depth: 2)
+        // **探索は2枚消費する**(見つけた周回 + 静止確認)。台本がズレると ghost が
+        // 解決時点に届かず、この防波堤を素通りしたまま緑になる
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [
+            [container, inside1, inside2, target],   // 探索: 容器の中で見つかる
+            [container, inside1, inside2, target],   // 探索の静止確認
+            [container, inside1, inside2, ghost],    // 探索直後の解決: 容器の外(ghost)
+            [container, inside1, inside2, settled],  // 掴み直し: 容器の中
+        ])
+        let executor = StepExecutor(driver: primary)
+        let step = FlowStep(action: "tap", locator: FlowLocator(id: "row_30"),
+                            direction: "up", maxSwipes: 2)
+
+        let outcome = await executor.execute(step)
+
+        guard case .passed = outcome.status else {
+            XCTFail("掴み直して tap する想定だが \(outcome.status) だった"); return
+        }
+        XCTAssertTrue(log.entries.contains("primary.tap(ref:5)"),
+                      "掴み直した容器内の行をタップすること: \(log.entries)")
+        XCTAssertFalse(log.entries.contains("primary.tap(ref:4)"),
+                       "ghost をタップしてはいけない: \(log.entries)")
+        XCTAssertEqual(outcome.driverFallback?.contains("re-resolved"), true,
+                       "掴み直したことを注記に残すこと: \(outcome.driverFallback ?? "nil") 呼び出し=\(log.entries)")
+    }
+
+    /// 掴み直しても ghost のままなら**注記を残す**(黙ってタップして飲まれるのが最悪)
+    func testTapAfterSearchNotesWhenTheGhostPersists() async throws {
+        let log = CallLog()
+        let container = framed(ref: 100, id: "list_rows", x: 16, y: 230, width: 370, height: 462,
+                               depth: 1)
+        let inside1 = framed(ref: 1, id: "row_28", x: 16, y: 300, width: 370, height: 56, depth: 2)
+        let inside2 = framed(ref: 2, id: "row_29", x: 16, y: 360, width: 370, height: 56, depth: 2)
+        let target = framed(ref: 3, id: "row_30", x: 16, y: 420, width: 370, height: 56, depth: 2)
+        let ghost = framed(ref: 4, id: "row_30", x: 16, y: 783, width: 370, height: 56, depth: 2)
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [
+            [container, inside1, inside2, target],
+            [container, inside1, inside2, ghost],    // 以降ずっと ghost(尽きたら最後を繰り返す)
+        ])
+        let executor = StepExecutor(driver: primary)
+        let step = FlowStep(action: "tap", locator: FlowLocator(id: "row_30"),
+                            direction: "up", maxSwipes: 2)
+
+        let outcome = await executor.execute(step)
+
+        XCTAssertEqual(outcome.driverFallback?.contains("still reported outside"), true,
+                       "救えなかったことを注記に残すこと: \(outcome.driverFallback ?? "nil") 呼び出し=\(log.entries)")
+    }
+
     // MARK: - マップ系ジェスチャ(pinchOut/pinchIn・doubleTap・swipeBy)
 
     /// 対象未指定のピンチは画面全体(frame = screen・identifier なし)で撃たれること
