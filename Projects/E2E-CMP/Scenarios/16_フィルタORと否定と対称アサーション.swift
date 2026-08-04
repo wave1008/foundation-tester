@@ -16,7 +16,7 @@
 import FTDSL
 
 @TestClass(app: "com.ftester.e2e")
-class フィルタORと否定と対称アサーションが実機で動くこと {
+class フィルタORと否定と対称アサーションがデバイスで動くこと {
 
     @Test("和集合・フィルタ内 OR・否定フィルタ・対称アサーション・exist(scroll:)")
     func S0010() {

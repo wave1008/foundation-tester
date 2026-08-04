@@ -188,6 +188,20 @@ E2E-Android(View/XML)を回して初めて赤くなり、a11y の `ACTION_IME_EN
 - **「関数が正しい」と「ループが見ている」は別**なので、待ちの本体が1秒以内に降りることまで
   テストする(応答しないポート + マーカー入りログで実測)
 
+### macOS のファイル名は NFD —— 文字列一致が黙って外れる(2026-08-05)
+
+シナリオのクラス名を改名し、`results/` と `reports/` の履歴(6,656 ファイル)を追随させたとき、
+**ファイル名の置換が 0 件で「完了」した**。原因は macOS がファイル名を **NFD** で保存すること
+(`で` = `て` + U+3099)。NFC のリテラルで `in` を取ると、目で見えているのに一致しない。
+しかも `grep -rl` も同じ理由で 0 件を返すので、**「残存 0」の確認まで一緒に騙される**。
+
+- **ファイル名は `unicodedata.normalize("NFC", name)` してから照合する**(置換後の名前は
+  NFC で書けばよい。APFS は正規化非依存で引けるので参照は壊れない)
+- **ファイルの中身は NFC のことも NFD のこともある**。ツールが書いた文字列は NFC、
+  **ファイル名から作った文字列(reportPath 等)は NFD** で混在していた。両方の形を置換対象にする
+- 検証は「残っていないこと」ではなく**「新しい名前で引けること」**で行う
+  (`ftester results summary` に 694/333/333 件の履歴がそのまま出ることを確認した)
+
 ### snapshot が「今の画面」とは限らない —— セッションのアプリに閉じている(2026-08-05)
 
 MCP で「タップしたのに画面が変わらない」が続いたとき(**症状の初出は iPhone 実機・機構の確定は
@@ -1461,7 +1475,7 @@ apps プロファイルの healthCheckURL が実行開始時に警告を出す�
   - `usb` … `iproxy`(`brew install libimobiledevice`)で USB トンネルを張り 127.0.0.1 を維持する
 - 実機とシミュレータで DerivedData を分けてある(`.ftester/DerivedData-device`)。混在させると
   `findXCTestRun` が iphoneos/iphonesimulator の誤った方を掴む
-- **engine=xcuitest なら実機で動く、は誤り**だった箇所: `FastLaunchDriver`(xcuitest でも既定 ON・
+- **engine=xcuitest ならデバイスで動く、は誤り**だった箇所: `FastLaunchDriver`(xcuitest でも既定 ON・
   中身はアプリの再起動)と `LaunchPreflightDriver`(未インストール検査)は
   実機では無効化される(`--physical`)。素の `XCUIApplication.launch()` 経路に落ちる。
   どちらも 2026-08-02 に CoreSimulator 直叩き優先へ変えたが(design.md §16.4)、
