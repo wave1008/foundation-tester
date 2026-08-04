@@ -245,6 +245,8 @@ export type LiveServeCommand =
       readonly duration: number;
     }
   | { readonly cmd: "press"; readonly x: number; readonly y: number; readonly duration: number }
+  | { readonly cmd: "doubleTap"; readonly x: number; readonly y: number }
+  | { readonly cmd: "pinch"; readonly scale: number; readonly duration: number }
   | { readonly cmd: "appSwitcher" }
   | { readonly cmd: "home" }
   | { readonly cmd: "terminate" }
@@ -388,7 +390,10 @@ export interface FlowLocatorShape {
 /** Flow.swift FlowStep の使用フィールドのみ。gen-scenario --steps に渡す JSON 配列の要素形。
  * home/appSwitcher/terminate はロケータ無し(ScenarioCodeGen が home()/appSwitcher()/terminateApp() に写像)。 */
 export interface RecordedStep {
-  readonly action: "tap" | "type" | "press" | "swipe" | "home" | "appSwitcher" | "terminate";
+  readonly action:
+    | "tap" | "type" | "press" | "swipe" | "home" | "appSwitcher" | "terminate"
+    // マップ系(Sources/FTDSL/Commands.swift と同名。生成は ScenarioCodeGen.command(for:))
+    | "doubleTap" | "pinchOut" | "pinchIn";
   readonly locator?: FlowLocatorShape;
   readonly fallbacks?: readonly FlowLocatorShape[];
   readonly text?: string;
@@ -555,6 +560,14 @@ export function stepDescriptionToOperationLabel(description: string): string {
         ? t("live.opLabel.swipe", { direction: swipeDirectionLabel(dir) })
         : description;
     }
+    case "doubleTap":
+      return quoted?.[0] !== undefined
+        ? t("live.opLabel.doubleTap", { target: selectorObjectPhrase(quoted[0]) })
+        : t("live.opLabel.doubleTapPlain");
+    case "pinchOut":
+      return t("live.opLabel.pinchOut");
+    case "pinchIn":
+      return t("live.opLabel.pinchIn");
     case "home":
       return t("live.opLabel.home");
     case "appSwitcher":
@@ -743,6 +756,15 @@ export type LiveFromWebviewMessage =
       readonly holdMs: number;
     }
   | {
+      readonly type: "doubleTapPoint";
+      readonly clickX: number;
+      readonly clickY: number;
+      readonly displayWidth: number;
+      readonly displayHeight: number;
+    }
+  /** 画面全体のピンチ。zoomIn=false は縮小 */
+  | { readonly type: "pinch"; readonly zoomIn: boolean }
+  | {
       readonly type: "dragPoints";
       readonly fromX: number;
       readonly fromY: number;
@@ -795,6 +817,15 @@ export function isLiveFromWebviewMessage(value: unknown): value is LiveFromWebvi
         typeof value.displayHeight === "number" &&
         typeof value.holdMs === "number"
       );
+    case "doubleTapPoint":
+      return (
+        typeof value.clickX === "number" &&
+        typeof value.clickY === "number" &&
+        typeof value.displayWidth === "number" &&
+        typeof value.displayHeight === "number"
+      );
+    case "pinch":
+      return typeof value.zoomIn === "boolean";
     case "dragPoints":
       return (
         typeof value.fromX === "number" &&

@@ -206,6 +206,14 @@ test("serializeLiveServeCommand: JSON化して末尾に改行を付ける", () =
   assert.equal(serializeLiveServeCommand({ cmd: "refresh" }), '{"cmd":"refresh"}\n');
   assert.equal(serializeLiveServeCommand({ cmd: "tap", ref: 3 }), '{"cmd":"tap","ref":3}\n');
   assert.equal(
+    serializeLiveServeCommand({ cmd: "doubleTap", x: 10, y: 20 }),
+    '{"cmd":"doubleTap","x":10,"y":20}\n',
+  );
+  assert.equal(
+    serializeLiveServeCommand({ cmd: "pinch", scale: 2, duration: 0.5 }),
+    '{"cmd":"pinch","scale":2,"duration":0.5}\n',
+  );
+  assert.equal(
     serializeLiveServeCommand({ cmd: "tap", x: 1.5, y: 2.5 }),
     '{"cmd":"tap","x":1.5,"y":2.5}\n',
   );
@@ -653,6 +661,17 @@ test("isLiveFromWebviewMessage: 各メッセージ種別の正常な値を true 
   assert.equal(isLiveFromWebviewMessage({ type: "tapRef", ref: 1 }), true);
   assert.equal(isLiveFromWebviewMessage({ type: "typeText", text: "hello", ref: null }), true);
   assert.equal(isLiveFromWebviewMessage({ type: "typeText", text: "hello", ref: 2 }), true);
+  assert.equal(
+    isLiveFromWebviewMessage({
+      type: "doubleTapPoint",
+      clickX: 1,
+      clickY: 2,
+      displayWidth: 3,
+      displayHeight: 4,
+    }),
+    true,
+  );
+  assert.equal(isLiveFromWebviewMessage({ type: "pinch", zoomIn: true }), true);
   assert.equal(isLiveFromWebviewMessage({ type: "appSwitcher" }), true);
   assert.equal(isLiveFromWebviewMessage({ type: "home" }), true);
   assert.equal(isLiveFromWebviewMessage({ type: "visibility", visible: true }), true);
@@ -689,6 +708,13 @@ test("isLiveFromWebviewMessage: 未知の type・型不一致・フィールド�
     false,
     "holdMs 欠落は不正",
   );
+  assert.equal(
+    isLiveFromWebviewMessage({ type: "doubleTapPoint", clickX: 1, clickY: 2, displayWidth: 3 }),
+    false,
+    "displayHeight 欠落は不正",
+  );
+  assert.equal(isLiveFromWebviewMessage({ type: "pinch" }), false, "zoomIn 欠落は不正");
+  assert.equal(isLiveFromWebviewMessage({ type: "pinch", zoomIn: "yes" }), false);
   assert.equal(isLiveFromWebviewMessage({ type: "tapRef", ref: "1" }), false);
   assert.equal(isLiveFromWebviewMessage({ type: "typeText", text: 1, ref: null }), false);
   assert.equal(isLiveFromWebviewMessage({ type: "visibility" }), false);
