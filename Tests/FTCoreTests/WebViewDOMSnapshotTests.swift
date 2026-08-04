@@ -1,5 +1,5 @@
 // WKWebView の DOM 走査経路のうち、デバイス無しで固められる部分の固定。
-// 実機が要るのは「JS が実際に何を返すか」だけで、JSON の写像・座標変換・型語彙はここで守る。
+// デバイスが要るのは「JS が実際に何を返すか」だけで、JSON の写像・座標変換・型語彙はここで守る。
 
 import XCTest
 @testable import FTCore
@@ -62,7 +62,7 @@ final class WebViewDOMSnapshotTests: XCTestCase {
     }
 
     /// ピンチズーム中は visualViewport の offset を引いてから scale を掛ける。
-    /// 順序を逆にすると**ズーム時だけ**タップ座標がずれる(実機でしか気付けない類の事故)
+    /// 順序を逆にすると**ズーム時だけ**タップ座標がずれる(デバイス上でしか気付けない類の事故)
     func testLocalRectWithPinchZoom() {
         let viewport = WebViewDOM.Viewport(offsetLeft: 10, offsetTop: 20, scale: 2,
                                            width: 195, height: 300)

@@ -451,7 +451,7 @@ macOS GUI 版(`ftester-gui`)の「自己修復トグル + 修復候補の確認�
 - `ftester.heal` を `true` にすると、Test Explorer の**「実行」**(dry-run を除く)と
   **「デバッグ」**の CLI 呼び出しに `--heal` が付与され、FM によるロケータ自己修復が有効になります。
   **「実行 (dry-run)」**には付与されません(dry-run はデバイス不要の検証実行で、自己修復の対象になる
-  実機動作が発生しないため)。
+  デバイス操作が発生しないため)。
 - `ftester.profile` を使ったプロファイル実行では、プロファイル(`profiles/runs/<name>.json`)側にも
   `heal` を設定できます。`ftester.heal` が `true` のときだけプロファイル側の設定より優先されます
   (`ftester.heal` が `false`(既定)のときは何も付与せず、プロファイル側の `heal` 設定がそのまま

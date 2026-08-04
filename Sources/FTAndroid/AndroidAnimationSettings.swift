@@ -1,6 +1,6 @@
 // AndroidAnimationSettings.swift
 // `settings get/put global *_animation_scale` の組み立てと判定(adb 実行は呼び出し側へ委譲)。
-// 実機でしか出ない部分を残さず単体テストで固めるための切り出し。方針は FTCore/AnimationPolicy。
+// デバイス上でしか出ない部分を残さず単体テストで固めるための切り出し。方針は FTCore/AnimationPolicy。
 
 import Foundation
 import FTCore

@@ -5,7 +5,7 @@
 // (scrollToTop / scrollToBottom / scrollDown(repeat:) / withScrollDown / existWithoutScroll)。
 // いずれもホスト側(セレクタ解決・DSL)の機能なので、記法の意味そのものは
 // Tests/FTDSLTests/FTSelectorTests.swift と Tests/FTCoreTests/{SelectorScopeTests,AssertKindsTests}.swift
-// が固定している。この場は「実機のスナップショットで解決し、タップ・検証まで届くこと」だけを見る。
+// が固定している。この場は「実デバイスのスナップショットで解決し、タップ・検証まで届くこと」だけを見る。
 // 要素の並びと個数は E2EAppCMP/docs/ui-contract.md(セレクタ画面)が唯一の正。
 // CMP 版(Projects/E2E-CMP/Scenarios/16_フィルタORと否定と対称アサーション.swift)の移植。
 // **thisIs 系と doUntilTrue は移植しない**

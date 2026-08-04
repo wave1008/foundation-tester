@@ -237,7 +237,7 @@ let package = Package(
             swiftSettings: swift5Mode
         ),
         // CLI 本体(executableTarget)の純粋ロジック。FTesterMCPTests と同じく @testable import で
-        // 入る。対象は外部プロセス・実機に触らない部分だけ(カタログのパースと整列・集計・
+        // 入る。対象は外部プロセス・デバイスに触らない部分だけ(カタログのパースと整列・集計・
         // 実行プロファイルによる絞り込み・表示整形)
         .testTarget(
             name: "FTesterTests",

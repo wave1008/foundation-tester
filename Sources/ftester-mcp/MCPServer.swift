@@ -610,9 +610,9 @@ final class MCPServer {
         return text(lines.joined(separator: "\n"))
     }
 
-    /// dry-run(**デバイス不要**)。コンパイルの次・実機実行の前に挟む検証で、実機時間ゼロで
-    /// セレクタ構文エラー・到達しない scene・アサーション0の expectation を落とす。
-    /// 実機に触れないのでロケータが実在するかは分からない(それは ft_run_scenario の仕事)
+    /// dry-run(**デバイス不要**)。コンパイルの次・デバイス実行の前に挟む検証で、デバイスを
+    /// 使わずにセレクタ構文エラー・到達しない scene・アサーション0の expectation を落とす。
+    /// デバイスに触れないのでロケータが実在するかは分からない(それは ft_run_scenario の仕事)
     private func dryRun(_ args: [String: Any]) async throws -> [[String: Any]] {
         guard let id = args["id"] as? String else { throw MCPError("id is required") }
         let project = try ScenarioHost.project(named: args["project"] as? String)
