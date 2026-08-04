@@ -28,6 +28,7 @@ import com.ftester.e2e.screens.HealScreen
 import com.ftester.e2e.screens.HomeScreen
 import com.ftester.e2e.screens.InputScreen
 import com.ftester.e2e.screens.LifecycleScreen
+import com.ftester.e2e.screens.MapScreen
 import com.ftester.e2e.screens.NoIdScreen
 import com.ftester.e2e.screens.ScrollScreen
 import com.ftester.e2e.screens.SelectorScreen
@@ -38,7 +39,7 @@ import com.ftester.e2e.util.LaunchCounter
 import com.ftester.e2e.util.exposeTestTagsAsResourceId
 
 enum class Screen {
-    HOME, SELECTOR, INPUT, GESTURE, SCROLL, ASYNC, DIALOG, LIFECYCLE, HEAL, DIAGNOSTICS,
+    HOME, SELECTOR, INPUT, GESTURE, MAP, SCROLL, ASYNC, DIALOG, LIFECYCLE, HEAL, DIAGNOSTICS,
     NOID, WEBVIEW, CONTROLS, ABOUT
 }
 
@@ -52,6 +53,7 @@ private fun titleFor(tab: Tab, homeChild: Screen?): String = when (tab) {
         Screen.SELECTOR -> "セレクタ"
         Screen.INPUT -> "テキスト入力"
         Screen.GESTURE -> "ジェスチャ"
+        Screen.MAP -> "マップ"
         Screen.SCROLL -> "スクロール"
         Screen.ASYNC -> "非同期表示"
         Screen.DIALOG -> "ダイアログ"
@@ -105,7 +107,8 @@ fun App() {
                         null -> HomeScreen(onNavigate = { screen -> homeChild = screen })
                         Screen.SELECTOR -> SelectorScreen()
                         Screen.INPUT -> InputScreen()
-                        Screen.GESTURE -> GestureScreen()
+                        Screen.GESTURE -> GestureScreen(onOpenMap = { homeChild = Screen.MAP })
+                        Screen.MAP -> MapScreen()
                         Screen.SCROLL -> ScrollScreen()
                         Screen.ASYNC -> AsyncScreen()
                         Screen.DIALOG -> DialogScreen()

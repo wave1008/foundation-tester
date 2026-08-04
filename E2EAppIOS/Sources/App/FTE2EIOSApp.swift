@@ -1,7 +1,7 @@
 import SwiftUI
 
 enum Screen {
-    case selector, input, gesture, scroll, async, dialog, lifecycle, heal, diagnostics, noid, webview
+    case selector, input, gesture, map, scroll, async, dialog, lifecycle, heal, diagnostics, noid, webview
 }
 
 private enum Tab { case home, controls, about }
@@ -33,6 +33,7 @@ struct AppShell: View {
             case .selector: return "セレクタ"
             case .input: return "テキスト入力"
             case .gesture: return "ジェスチャ"
+            case .map: return "マップ"
             case .scroll: return "スクロール"
             case .async: return "非同期表示"
             case .dialog: return "ダイアログ"
@@ -77,7 +78,8 @@ struct AppShell: View {
             case nil: HomeScreen { homeChild = $0 }
             case .selector: SelectorScreen()
             case .input: InputScreen()
-            case .gesture: GestureScreen()
+            case .gesture: GestureScreen(onOpenMap: { homeChild = .map })
+            case .map: MapScreen()
             case .scroll: ScrollScreen()
             case .async: AsyncScreen()
             case .dialog: DialogScreen()

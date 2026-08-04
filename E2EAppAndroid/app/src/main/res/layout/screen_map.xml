@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- マップ系ジェスチャ(ピンチ・ダブルタップ・斜めドラッグ)の検証材料。
+     ジェスチャ画面と分けてあるのは、あちらの #pad_swipe が onTouch で方向判定していて
+     同じ領域に ScaleGestureDetector を重ねるとどちらかが空振りするため。
+     #pad_map をコンテンツ領域いっぱいに敷き、表示・ボタンはその上に重ねる(#pad_swipe と同じ規律)。 -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <View
+        android:id="@+id/pad_map"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#EEEEEE"
+        android:contentDescription="マップ領域" />
+
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|end"
+        android:orientation="vertical"
+        android:gravity="end"
+        android:padding="12dp">
+
+        <TextView
+            android:id="@+id/txt_zoom_dir"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="zoom=-" />
+
+        <TextView
+            android:id="@+id/txt_zoom"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="zoom=1.0" />
+
+        <TextView
+            android:id="@+id/txt_pan"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="pan=-" />
+
+        <TextView
+            android:id="@+id/txt_double_count"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="double=0" />
+    </LinearLayout>
+
+    <!-- 幅 45% は**横**の LinearLayout + weightSum で作る(縦に layout_weight を書くと
+         幅が 0dp のままになり要素がスナップショットから消える。screen_gesture.xml と同じ罠)。 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|start"
+        android:orientation="horizontal"
+        android:padding="12dp"
+        android:weightSum="1">
+
+        <Button
+            android:id="@+id/btn_map_reset"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="0.45"
+            android:minHeight="48dp"
+            android:text="マップクリア" />
+    </LinearLayout>
+</FrameLayout>

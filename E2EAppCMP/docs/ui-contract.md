@@ -75,8 +75,14 @@ tag 定数は `composeApp/src/commonMain/kotlin/com/ftester/e2e/Tags.kt` に集�
 | `#nav_heal` | Button | `自己修復` | |
 | `#nav_diagnostics` | Button | `診断` | |
 
-ナビ行は縦に並べる。10 行 + マーカーが 1 画面に収まらない場合はスクロール可にする
+ナビ行は縦に並べる。11 行 + マーカーが 1 画面に収まらない場合はスクロール可にする
 (`#nav_diagnostics` は `scrollTo` の対象になり得る)。
+
+**ここに行を増やさない**(2026-08-04 に実際に踏んだ): 1行足すだけで末尾側が下部タブに重なり、
+**素の `tap` がタブに吸われて別画面へ遷移したまま成功として記録される**。
+スクロールを伴う `tapWithScrollDown` へ替えても、SwiftUI の SUT では**探索スワイプ自体が
+ボタンを発火**して同じ事故になった。新しい画面は**関連画面から開く**こと
+(マップ画面はジェスチャ画面の右下ボタンから開く)。
 
 ## セレクタ画面(タイトル `セレクタ`)
 
@@ -160,6 +166,7 @@ tag 定数は `composeApp/src/commonMain/kotlin/com/ftester/e2e/Tags.kt` に集�
 | `#txt_swipe_dir` | Text | `swipe=<dir>` 初期 `swipe=-` | dir ∈ `up`/`down`/`left`/`right` |
 | `#txt_last_gesture` | Text | `last=<g>` 初期 `last=-` | g ∈ `tap`/`longpress`/`swipe` |
 | `#btn_gesture_reset` | Button | `ジェスチャクリア` | 全カウンタを初期化 |
+| `#nav_map` | Button | `マップ` | **右下**に置く(マップ画面を開く。左下は `#btn_gesture_reset`)|
 
 スワイプ方向は**指の移動方向**で判定する(上へ払う = `up`)。ftester の `swipe(.up)` と一致させる。
 
@@ -170,6 +177,37 @@ Android(`BridgeRouter.handleSwipe`)は縦 0.3h↔0.7h・横 0.2w↔0.8w(y=0.5h)�
 よって `#pad_swipe` はコンテンツ領域いっぱいに敷き、操作要素はその**上に重ねる**。
 重ねてよいのは Text(ポインタを消費しない)のみ。ボタン類は始点を塞がないよう
 **幅 45% 以内(中央列 x=0.5w を空ける)** かつ **上下の端(中央行 y=0.5h を空ける)** に置く。
+
+## マップ画面(タイトル `マップ`)
+
+マップ系アプリの検証材料(**ピンチ・ダブルタップ・斜めドラッグ**)。ジェスチャ画面と分けてあるのは、
+あちらの `#pad_swipe` が drag を消費して方向判定する作りで、同じ領域に変形ジェスチャを重ねると
+どちらかが空振りするため。この画面はスクロールさせない。
+
+| tag | 種別 | ラベル/テキスト | 備考 |
+|---|---|---|---|
+| `#pad_map` | Box | 内部に Text `マップ領域` | **コンテンツ領域いっぱい**。ピンチ・ダブルタップ・ドラッグを受ける。他要素はこの上に重ねる |
+| `#txt_zoom_dir` | Text | `zoom=<d>` 初期 `zoom=-` | d ∈ `in`/`out`。累積倍率が 1.05 超で `in`・0.95 未満で `out` |
+| `#txt_zoom` | Text | `zoom=<n.n>` 初期 `zoom=1.0` | 累積倍率(小数1桁)。**倍率が目減りしていないか**の診断用 |
+| `#txt_pan` | Text | `pan=<h>-<v>` 初期 `pan=-` | h ∈ `left`/`right`/`none`・v ∈ `up`/`down`/`none`。**斜めは両方が非 none** |
+| `#txt_double_count` | Text | `double=<n>` 初期 `double=0` | ダブルタップで +1。**単タップでは増えない** |
+| `#btn_map_reset` | Button | `マップクリア` | 全カウンタ・倍率を初期化 |
+
+判定の規約(4 SUT 共通):
+- **パンは指の移動方向**(左上へ払う = `pan=left-up`)。ジェスチャ画面の swipe と同じ向き規約。
+  軸ごとに 8dp/px 未満の移動は `none`(手ぶれで斜めと誤判定しないため)
+- 倍率・移動量は**累積**(`マップクリア` でのみ戻る)。1操作ごとに戻すと、
+  ジェスチャ直後の snapshot が間に合わなかったときに検証が落ちる
+- 表示は**読み取り専用の Text**(パッドの上に重ねる)。`#btn_map_reset` は始点を塞がないよう
+  ジェスチャ画面と同じ規律(幅 45% 以内・上下の端)に置く
+
+**iOS はエンジンで成否が分かれるジェスチャがある**(2026-08-04 に4 SUT で実測。表と機構は
+docs/commands.md)。**既定の hybrid では全て動く**が、`ios-xcuitest` プロファイルでは
+`#txt_double_count` が Compose で増えず、`#txt_zoom_dir` が Flutter で動かない
+(SUT 側の作りの問題ではないので直そうとしないこと)。E2E のシナリオは**両エンジンで走る**ため、
+該当 scene を `android { }` に閉じてある —— iOS 側の担保は届く SUT
+(ダブルタップ = E2EAppIOS/E2EAppFlutter、ピンチ = E2EAppIOS/E2EAppCMP)と、
+in-app 経路のソース走査テスト(`InAppGestureRoutingTests`)が担う。
 
 ## スクロール画面(タイトル `スクロール`)
 

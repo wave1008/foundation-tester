@@ -15,6 +15,7 @@ class Tags {
   static const navSelector = 'nav_selector';
   static const navInput = 'nav_input';
   static const navGesture = 'nav_gesture';
+  static const navMap = 'nav_map';
   static const navScroll = 'nav_scroll';
   static const navAsync = 'nav_async';
   static const navDialog = 'nav_dialog';
@@ -59,6 +60,14 @@ class Tags {
   static const txtSwipeDir = 'txt_swipe_dir';
   static const txtLastGesture = 'txt_last_gesture';
   static const btnGestureReset = 'btn_gesture_reset';
+
+  // マップ(ピンチ・ダブルタップ・斜めドラッグ)
+  static const padMap = 'pad_map';
+  static const txtZoomDir = 'txt_zoom_dir';
+  static const txtZoom = 'txt_zoom';
+  static const txtPan = 'txt_pan';
+  static const txtDoubleCount = 'txt_double_count';
+  static const btnMapReset = 'btn_map_reset';
 
   // スクロール
   static const txtRowSelected = 'txt_row_selected';

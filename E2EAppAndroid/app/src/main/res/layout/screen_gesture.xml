@@ -89,6 +89,30 @@
             android:text="last=-" />
     </LinearLayout>
 
+    <!-- マップ画面への導線。**右下に置く**(ホーム末尾に足すと下部タブに重なってタップを
+         吸われる。スワイプ経路は中央行・中央列なのでここは塞がない) -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|end"
+        android:orientation="horizontal"
+        android:padding="12dp"
+        android:weightSum="1">
+
+        <Space
+            android:layout_width="0dp"
+            android:layout_height="1dp"
+            android:layout_weight="0.55" />
+
+        <Button
+            android:id="@+id/nav_map"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="0.45"
+            android:minHeight="48dp"
+            android:text="マップ" />
+    </LinearLayout>
+
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
