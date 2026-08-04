@@ -3,7 +3,7 @@
 // `repeatWhileCanSelect`(件数不定の一括操作。DSL にループが無かった頃の
 // 「ガード付き反復を上限回数ぶん並べる」の置き換え)。
 // 型を使うセレクタは OS 共通で書ける(ブリッジが役割へ正規化するため。ui-contract.md 全体規約)。
-// CMP 版(Projects/E2E/Scenarios/14_部分一致と反復.swift)の移植。
+// CMP 版(Projects/E2E-CMP/Scenarios/14_部分一致と反復.swift)の移植。
 
 import FTDSL
 

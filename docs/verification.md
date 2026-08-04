@@ -183,7 +183,7 @@ FOUND / DRAG / TAP を出す版では 13 周回して一度も再現しなかっ
 
 **負荷モデルを間違えて 42 回無駄にした(2026-08-03)**: 「iOS 単独 + Android スイート並走」を
 負荷と考えて追ったが、**効くのは iOS 側のレーン数**だった。**負荷の当て方は、失敗が実際に
-起きている実行形態に合わせる**(このときは E2E/ios-xcuitest のスイートを反復するのが正解)。
+起きている実行形態に合わせる**(このときは E2E-CMP/ios-xcuitest のスイートを反復するのが正解)。
 
 **成功時の記録から分かったこと**(次に追うときの材料):
 - 修正は意図どおり働いている —— `attempt=3` で ghost(`label=nil`・y 768..824・容器 230..692 の外)を
@@ -226,9 +226,9 @@ FOUND / DRAG / TAP を出す版では 13 周回して一度も再現しなかっ
 
 | | base | fix | 差 |
 |---|---|---|---|
-| E2E android・**scroll 系ステップの中央値合計**(シナリオ・index 単位で突き合わせ) | 70,538ms | 73,765ms | **+3,227ms** |
+| E2E-CMP android・**scroll 系ステップの中央値合計**(シナリオ・index 単位で突き合わせ) | 70,538ms | 73,765ms | **+3,227ms** |
 | 同・共通53シナリオの中央値合計 | 347.15s | 350.95s | +3.80s(+1.1%) |
-| E2E ios-xcuitest(対照) | 477.54s | 477.24s | −0.30s(−0.1%) |
+| E2E-CMP ios-xcuitest(対照) | 477.54s | 477.24s | −0.30s(−0.1%) |
 
 **集計はシナリオ・index 単位で揃える**。コマンド名だけで中央値を取ると別シナリオの
 `scrollToTop` が混ざり、実際より大きい差(`+1,007ms`)に見える —— 最初はそう書いていた。
@@ -269,7 +269,7 @@ Compose は**離した点が要素の矩形の中なら**クリックを成立�
 
 **修正: 終点を要素の矩形の外へ横に抜く**(`StepExecutor.emptyDragEndX`)。矩形の外で離せば
 クリックは取り消される。**縦に抜いてはいけない**(容器がスクロールとして消費して内容が動き、
-直後に「今ここにある」を確かめる assertion が壊れる。実測: `E2E/ios-inapp` の S0020 が
+直後に「今ここにある」を確かめる assertion が壊れる。実測: `E2E-CMP/ios-inapp` の S0020 が
 3/3 → 0/3)。**止めるという選択肢も無い**(完全に外すと肩代わりが効かず S0080 が
 CMP/ios で落ちる)。切り分けは変種A(祖先 clip のみ)3/3 / 変種B(縦ドラッグのみ)0/3。
 
@@ -366,7 +366,7 @@ S0030 型(type が成功扱いなのに後段の検証で値が空)の再発ゼ�
   (type→即 submit の直叩き 約1,500 回中 1 回・極端負荷下。入力欄の値は正しいのに
   `submitted=-` が初期値のまま = type ではなくタップ自体が落ちた)。type と違い
   「何が起きるべきだったか」をブリッジが知らないので、同じ読み返し方式は使えない。
-  **2例目(2026-08-02・E2E/ios-xcuitest フル並列)**: `WebViewの中身を操作できること.S0010` の
+  **2例目(2026-08-02・E2E-CMP/ios-xcuitest フル並列)**: `WebViewの中身を操作できること.S0010` の
   `tap("#btn_back")` 後に `#txt_screen_title` が "WebView" のまま(期待 "ホーム")。
   同シナリオ単独 3/3・同プロファイル フル 2/2 で再現せず。**xcuitest が画面ごと委譲している
   WebView 画面**で出た点が新しい(1例目は Android の入力画面)
@@ -444,7 +444,7 @@ was lost` で落ちる(実測: 版上げ直後の E2E-Android で 4/40 失敗 �
 
 ## Android の実行時間はセッション内で劣化する(前後比較は必ず同セッションで取り直す)
 
-2026-08-01 実測: 同じ E2E/android が**同一コード**で 262.9s(セッション序盤)→ 325.7〜352.8s
+2026-08-01 実測: 同じ E2E-CMP/android が**同一コード**で 262.9s(セッション序盤)→ 325.7〜352.8s
 (1.5 時間・10 スイート後)。**+24〜33% がコード変更なしで出る**。iOS は同時刻でも +0.8% しか
 動かなかったので、ホスト CPU ではなくエミュレータ側の劣化。
 
@@ -591,13 +591,13 @@ E2E アプリは**選択状態や入力値を launch を跨いで永続する**(
 判らない** —— それは実機の仕事)。`--scenario` は**クラス名を渡すとそのクラス全体**を回す:
 
 ```bash
-ftester api list-scenarios --project E2E | python3 -c "
+ftester api list-scenarios --project E2E-CMP | python3 -c "
 import json,sys
 print('\n'.join(sorted({s['id'].split('.')[0] for s in json.load(sys.stdin)['scenarios']})))" > /tmp/cls.txt
 # **配列で渡す**(クラス名に日本語・空白が入るので、文字列連結だと
 # 「Unexpected argument」でまとめて落ちる)
 ARGS=(); while IFS= read -r c; do ARGS+=(--scenario "$c"); done < /tmp/cls.txt
-ftester api run --project E2E --dry-run "${ARGS[@]}" | grep "探したい語"
+ftester api run --project E2E-CMP --dry-run "${ARGS[@]}" | grep "探したい語"
 ```
 
 ## テストは「通ること」でなく「破ったら落ちること」を確認する(2026-07-29)
@@ -754,7 +754,7 @@ E2E-iOS を回すまで気付かなかった)。**距離を伸ばしても・画
 
 ## `Scripts/e2e.sh`(ftester 自身の E2E)
 
-- SUT(`E2EApp/` 他)の鮮度を見て必要なら再ビルドし、各プロファイルを順に回す。オプション:
+- SUT(`E2EAppCMP/` 他)の鮮度を見て必要なら再ビルドし、各プロファイルを順に回す。オプション:
   `--rebuild` / `--ios` / `--android` / `--cmp` / `--ios-native` / `--android-native` / `--flutter` /
   `--ios-inapp`(iOS を in-app エンジンで回す。上記「in-app エンジンは…」節) /
   `--record`(録画パイプラインの整合チェック付き。詳細は下記「録画」節)
@@ -844,10 +844,10 @@ availability は available と嘘をつく。**`SystemLanguageModel(guardrails:
 結果 JSON の `fm.byKind` に4種が出たかを判定**する(1コマンド)。
 
 ```
-Scripts/fm-verify.sh                    # 既定 Projects/E2E・プロファイル ios-fm
+Scripts/fm-verify.sh                    # 既定 Projects/E2E-CMP・プロファイル ios-fm
 ```
 
-- FM 専用シナリオは `Projects/E2E/Scenarios/_disabled/` に置く(`90_自己修復` = heal /
+- FM 専用シナリオは `Projects/E2E-CMP/Scenarios/_disabled/` に置く(`90_自己修復` = heal /
   `92_screenIs` = screenIs / `93_triage` = **意図的に失敗**して triage を発火)。
   **既定スイートに入れない**: 生きた FM の判定は非決定的でフレーク源になり、
   かつ FM が死んでいる間は skip されるので緑のまま気付けない

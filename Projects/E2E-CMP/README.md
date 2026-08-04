@@ -1,8 +1,8 @@
-# Projects/E2E
+# Projects/E2E-CMP
 
 ftester 自身の機能を検証する E2E テストプロジェクト。対象アプリはリポジトリ同梱の
-Compose Multiplatform アプリ `E2EApp/`(iOS/Android 両対応、bundle id / package =
-`com.ftester.e2e`)。testTag(`#id`)と表示ラベルの唯一の正は `E2EApp/docs/ui-contract.md`。
+Compose Multiplatform アプリ `E2EAppCMP/`(iOS/Android 両対応、bundle id / package =
+`com.ftester.e2e`)。testTag(`#id`)と表示ラベルの唯一の正は `E2EAppCMP/docs/ui-contract.md`。
 
 **同じ画面契約を別の UI フレームワークで実装した SUT が他に3つある**(`#id`・ラベルは同一、
 型語彙と id 露出の作法だけが違う。フレームワーク差の退行はこれを跨がないと出ない):
@@ -13,7 +13,7 @@ Compose Multiplatform アプリ `E2EApp/`(iOS/Android 両対応、bundle id / pa
 ## 対象アプリのビルド
 
 ```sh
-cd E2EApp
+cd E2EAppCMP
 ./scripts/build-ios.sh       # → dist/ios-simulator/FTE2E.app
 ./scripts/build-android.sh   # → dist/android/ft-e2e-debug.apk
 ```
@@ -21,10 +21,10 @@ cd E2EApp
 ## 実行
 
 ```sh
-ftester run --project E2E --profile ios        # iPhone 17 Pro(iOS 27.0)・xcuitest エンジン(全件グリーンの基準)
-ftester run --project E2E --profile ios-inapp  # 同じ端末を inapp エンジンで(エンジン差分の観測用)
-ftester run --project E2E --profile android    # Pixel 9(Android 15)-01
-ftester run --project E2E --profile heal       # --heal(_disabled/90 を有効化して回すとき)
+ftester run --project E2E-CMP --profile ios        # iPhone 17 Pro(iOS 27.0)・xcuitest エンジン(全件グリーンの基準)
+ftester run --project E2E-CMP --profile ios-inapp  # 同じ端末を inapp エンジンで(エンジン差分の観測用)
+ftester run --project E2E-CMP --profile android    # Pixel 9(Android 15)-01
+ftester run --project E2E-CMP --profile heal       # --heal(_disabled/90 を有効化して回すとき)
 ```
 
 ### iOS のエンジン選択
@@ -110,7 +110,7 @@ E2E のシナリオは全て `@TestClass(app: "com.ftester.e2e")` で `platform:
 ## `_disabled/`(通常実行に含めない)
 
 **`_disabled/` は SPM のビルド対象外**(`Package.swift` の `exclude`)。回すときは
-`Scenarios/` 直下へ移動 → `swift build --product ftester-scenarios-E2E` → 実行 → 元に戻す。
+`Scenarios/` 直下へ移動 → `swift build --product ftester-scenarios-E2E-CMP` → 実行 → 元に戻す。
 
 - `90_自己修復.swift` — FM 呼び出しを要するため通常実行には載せない。`heal` プロファイルで実行。
   **2026-07-22 検証済み**: FM 経路(14.5s)で `#btn_heal_v1` → `#btn_heal_v2||修復対象` に修復し、
@@ -140,4 +140,4 @@ E2E のシナリオは全て `@TestClass(app: "com.ftester.e2e")` で `platform:
 - ジェスチャ画面は `#pad_swipe` を画面いっぱいに敷き、その上に要素を重ねている。`swipe` は要素を狙わず
   画面全体を払う形で撃たれるため(iOS=XCUITest の swipeUp() 等 / Android=縦 0.3h↔0.7h の固定座標)、
   パッドが小さいと始点が外れる。
-  詳細は `E2EApp/docs/ui-contract.md` §ジェスチャ画面。
+  詳細は `E2EAppCMP/docs/ui-contract.md` §ジェスチャ画面。

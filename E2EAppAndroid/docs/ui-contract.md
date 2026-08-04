@@ -1,6 +1,6 @@
 # FT E2E Android ネイティブアプリ UI 契約
 
-**画面構成・`#id`・表示ラベルは `E2EApp/docs/ui-contract.md`(Compose Multiplatform 版)と共通**。
+**画面構成・`#id`・表示ラベルは `E2EAppCMP/docs/ui-contract.md`(Compose Multiplatform 版)と共通**。
 同じシナリオを各 SUT に当てて比較できるよう、値は byte 一致させてある。
 このファイルは **Android ネイティブ実装(View/XML + 一部 Compose)固有の差分だけ**を定義する。
 

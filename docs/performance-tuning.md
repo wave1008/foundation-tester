@@ -74,7 +74,7 @@ wait ほぼ 0ms = 固定 sleep の残骸なし):
 | `/status` が返るまで(`mainSync` がメインスレッド待ち) | 1.82s(SwiftUI)/ 1.84s(Flutter)/ 2.48s(CMP) | **削れない**。アプリが実際に応答可能になるまでの時間で、readiness の定義として正しい |
 
 **内訳は `FT_EVENT_LOG_PATH` の `kind:"step"` で採れる**(launch の `actionMs`=外部起動呼び出し・
-`waitMs`=操作可能になるまでの待ち)。8レーン実負荷の実測(2026-08-01・E2E/40本):
+`waitMs`=操作可能になるまでの待ち)。8レーン実負荷の実測(2026-08-01・E2E-CMP/40本):
 
 | エンジン | launch 中央 | actionMs(simctl) | waitMs | 内訳外 |
 |---|---:|---:|---:|---:|
@@ -95,7 +95,7 @@ wait ほぼ 0ms = 固定 sleep の残骸なし):
 `FTCoreSimShim` にアプリ起動(`launchApplicationWithID:options:error:`)と
 インストール確認(`applicationIsInstalled:type:error:`)を足して置き換えた。
 
-実測(8レーン・E2E/40本): ios-xcuitest sum 427.4→**394.2s**・launch 中央 4,567→3,892ms
+実測(8レーン・E2E-CMP/40本): ios-xcuitest sum 427.4→**394.2s**・launch 中央 4,567→3,892ms
 (起動呼び出し 920→**205ms**)/ ios-inapp sum 266.5→**253.7s**。E2E-iOS 419.5→392.3s、
 E2E-Flutter 396.3→372.0s。全 466 本(既定+`--ios-inapp`)成功。
 
@@ -263,7 +263,7 @@ SampleApp 76シナリオを `ios-5-android-5`(10台)で実行したときのレ�
 | スイート | 最長 | 合計÷8 | 律速 | 分割の効果 |
 |---|---|---|---|---|
 | E2E-Android | 31.8 | 23.7 | 最長 | 壁時計 −5 |
-| E2E / android | 33.9 | 31.3 | ほぼ拮抗 | ほぼ無し |
+| E2E-CMP / android | 33.9 | 31.3 | ほぼ拮抗 | ほぼ無し |
 | E2E-Flutter / android | 27.0 | **29.4** | 合計 | 無し(微増) |
 
 **@Test を増やすと合計が増える**(1本ごとに `launchApp` + 画面遷移。実測で1スイート約 +25秒 =
@@ -305,7 +305,7 @@ A/B 実測(E2E-Android 31シナリオ・Android 8レーン・交互に3回ずつ
 **実装時に踏んだ罠(いずれも実データで初めて出た)**:
 
 1. **実績は platform ごとに集計する**。`RunResultsQuery.scenarioSummary` は `scenarioID` だけで
-   まとめるため、同じシナリオを iOS/Android 両プロファイルで走らせる構成(Projects/E2E 等)では
+   まとめるため、同じシナリオを iOS/Android 両プロファイルで走らせる構成(Projects/E2E-CMP 等)では
    1 つの `results/` に両方の記録が溜まり、iOS が数倍遅いぶん中央値が中間へ均されて順序判断が歪む。
    LPT は `(scenarioID, platform)` で集計し、各シナリオが走る platform
    (`info.platform ?? defaultPlatform`)の値で並べる。
@@ -320,7 +320,7 @@ A/B 実測(E2E-Android 31シナリオ・Android 8レーン・交互に3回ずつ
    「最短のシナリオ」と誤認して末尾へ回る。
 5. **履歴枠は「対象 platform の実績を含む run」で数える**(2026-07-30 修正)。1 と 3 を入れた後も
    **枠の数え方が platform 非対応**で残っていたため、iOS と Android を別プロファイルで回す
-   プロジェクト(Projects/E2E・E2E-Flutter は同じ `results/` に両方が溜まる)では
+   プロジェクト(Projects/E2E-CMP・E2E-Flutter は同じ `results/` に両方が溜まる)では
    **他 platform の run が枠を食い、対象 platform の直近フル run が窓から押し出されて実績ゼロ**に
    なった。`RunResultsStore.scanRecords(countingPlatform:)` で対象 platform のレコードを含む run
    だけを 1 枠と数える(返すレコードは絞らない。集計側が platform 別なので混在は無害)。
@@ -332,7 +332,7 @@ A/B 実測(E2E-Android 31シナリオ・Android 8レーン・交互に3回ずつ
 
    | パス | 実績カバレッジ | 実行スパン | 理論下限との差 | 開始順ρ |
    |---|---|---|---|---|
-   | E2E/android(崩れ) | 1/31 | 39.0s | +6.0s | 0.32 |
+   | E2E-CMP/android(崩れ) | 1/31 | 39.0s | +6.0s | 0.32 |
    | E2E-Flutter/android(崩れ) | 2/29 | 35.6s | +10.0s | 0.15 |
    | E2E-Flutter/android(履歴回復後) | 29/29 | **27.2s** | 0.0s | 0.90 |
    | 他 7 パス(正常) | 全件 | 下限 +0〜2.4s | — | 0.88〜0.96 |
@@ -454,7 +454,7 @@ APK 変更なので `AndroidRunner/build.sh` の `VERSION_CODE` と
 整定の**挙動**が変わり、旧ブリッジ再利用が緑の偽装になり得たから。計測時の新旧混在は
 `ftester bridge down --all` で潰す(こちらは版数と無関係に必要)。
 
-検証: iOS 全 3 SUT(E2E / E2E-iOS / E2E-Flutter)× `ios-inapp` で 91 シナリオ全成功・振り直し 0 件。
+検証: iOS 全 3 SUT(E2E-CMP / E2E-iOS / E2E-Flutter)× `ios-inapp` で 91 シナリオ全成功・振り直し 0 件。
 
 ### 3.11 WebView 委譲中のスクロールを in-app の contentOffset へ(2026-08-01 実装)
 
@@ -502,7 +502,7 @@ ref の名前空間を跨ぐので別施策(§8)。
 `bridgeProtocolVersion` 27 → 28(ブリッジの挙動が変わる。上げないと稼働中の旧 dylib が
 再利用され、短縮が効かないまま緑になる)。
 
-検証: iOS 全 3 SUT(E2E / E2E-iOS / E2E-Flutter)× `ios-inapp` で **115 シナリオ全成功**・
+検証: iOS 全 3 SUT(E2E-CMP / E2E-iOS / E2E-Flutter)× `ios-inapp` で **115 シナリオ全成功**・
 振り直し 0 件(40 + 37 + 38。§3.8〜3.10 の「91 シナリオ」は当時の本数)。
 
 ### 3.13 interop の WebView を「読みは DOM・触るのは XCUITest の座標」へ(2026-08-02 実装)
@@ -522,7 +522,7 @@ ref を使う操作だけホスト側で座標へ解決して XCUITest の実タ
 
 実測(シナリオ単体): CMP 29.5→**13.2s**(3回とも同値)/ Flutter 26.4→13.0〜14.1s。
 uikit ホストの同シナリオ(元から DOM 経路)が 11.3s なので、ほぼそこまで落ちた。
-スイートでは E2E/ios-inapp 253.7→226.7s・E2E-Flutter/ios-inapp 277.2→264.6s。
+スイートでは E2E-CMP/ios-inapp 253.7→226.7s・E2E-Flutter/ios-inapp 277.2→264.6s。
 
 - **不変条件の守り方**: `ref` を XCUITest へ**渡さない**。委譲先は自分が最後に撮った別 snapshot の
   ref 名前空間を持つので、混ぜると別要素を指す。ホストが ref → 矩形中心 → 座標に解決する
@@ -564,7 +564,7 @@ uikit ホストの同シナリオ(元から DOM 経路)が 11.3s なので、ほ
 上の調査のために足した口。**既定 off**。
 
 ```bash
-FT_BRIDGE_TIMING=1 FT_HTTP_TIMING=1 ftester run --project E2E --profile android
+FT_BRIDGE_TIMING=1 FT_HTTP_TIMING=1 ftester run --project E2E-CMP --profile android
 adb -s <serial> logcat -d -s FTBridge | grep -E 'tapTiming|settleTiming|reqTiming'  # Android
 grep tapTiming .ftester/bridge-<port>.log                                            # iOS
 ```
@@ -670,7 +670,7 @@ scrollToTop sum 78.2→50.6s(**−35%**)・中央値 8,001→4,288ms(**−46%**)
 
 **(c) 慣性が消える速度はフレームワークで違う**(スパン比 = 実移動量 ÷ 幾何スパン):
 
-| velocity | SwiftUI(E2E-iOS) | Compose(E2E) | Flutter(E2E-Flutter) |
+| velocity | SwiftUI(E2E-iOS) | Compose(E2E-CMP) | Flutter(E2E-Flutter) |
 |---:|---:|---:|---:|
 | 1500 | 2.85 | 1.46 | 2.76 |
 | 700 | 1.67 | 1.14 | 1.61 |
@@ -761,8 +761,8 @@ WebView のヒント跳躍(`offscreenJump` / `dragGesture` / `hintDrag`)と、�
 
 | プロファイル | test time | 理論下限(sum/8) | 余剰 | レーン稼働 |
 |---|---|---|---|---|
-| E2E / ios-xcuitest | 71.2s | 68.8s | +2.4s | 97% |
-| E2E / android | 49.1s | 48.3s | +0.8s | 98% |
+| E2E-CMP / ios-xcuitest | 71.2s | 68.8s | +2.4s | 97% |
+| E2E-CMP / android | 49.1s | 48.3s | +0.8s | 98% |
 | E2E-iOS / ios-xcuitest | 67.3s | 66.2s | +1.1s | 98% |
 | E2E-Android / android | 40.1s | 39.2s | +0.9s | 98% |
 | E2E-Flutter / ios-xcuitest | 62.7s | 60.6s | +2.1s | 97% |
@@ -785,11 +785,18 @@ WebView のヒント跳躍(`offscreenJump` / `dragGesture` / `hintDrag`)と、�
 **launch が最大項なのは §3.2〜3.4 の既知どおり**で、CoreSimulator 直叩き・fast launch は適用済み、
 `attachOnly` 化は §7 で棄却済み。**新しい削り代は見つからなかった**。
 
-**この計測で踏んだ罠**: `E2E/ios-xcuitest` だけレーン稼働 87%・余剰 +10.1s と出たが、
+**この計測で踏んだ罠**: `E2E-CMP/ios-xcuitest` だけレーン稼働 87%・余剰 +10.1s と出たが、
 **測定手順が作ったアーティファクト**だった。直前に 1 シナリオを単独で約 90 回回したため
 LPT の履歴枠(既定 5 run)が 1 シナリオ run で埋まり、`🔀 LPT ordering: 1/52 with history` に
 なっていた(§3.7 の「残る狭い穴」そのもの)。**履歴が戻ると 97%・余剰 +2.4s**。
 **壁時計の異常を見たらまず `🔀 LPT ordering: N/M with history` を確認する**。
+
+**同じ罠を 2026-08-04 に再発させた(2回目)**。WebView の A/B で 1 シナリオ単独実行を 9 回
+回した直後にフルを回したため、**iOS の 3 プロファイルが揃って `1/45`・`1/41`・`1/42`**
+(Android は履歴を汚していないので `45/45` のまま健全)。結果、**シナリオ sum はほぼ不変なのに
+test time だけ +28〜44%** に膨らんだ(E2E-CMP/ios-xcuitest 71.2→91.2s)。
+履歴が戻った直後の同一プロファイルは **72.5s・稼働 98%** で、上表の定常値が正しいことを確認済み。
+**教訓: 単独反復のあとのフル実行は壁時計を定常値として使えない**(sum とステップ内訳は使える)。
 
 ## 4. 計測基盤の使い方(チューニングの必須手順)
 
@@ -1231,6 +1238,15 @@ window/transition/animator の `*_scale` はチューニングノブではなく
   端確定に最低2周 = 減速中に比較すると早すぎる端判定になる実害由来で単純には外せない)と
   Web コンテンツの AX 活性化待ち(`exist` 3〜4s・エンジン差なし)。これ以上詰めるなら
   「ヒントに端判定をさせる」(現設計は「ヒントは近道であって判定ではない」)の再設計が要る
+- **iOS xcuitest の横スクロールが縦の約2倍高い**(未着手・2026-08-04 のフルで観測):
+  スイート最長の `E2E-iOS` `スクロールで折り返し下の要素に到達できること.S0090`(78.0s)は、
+  **78 秒のうち約 50 秒が横方向の4手** —— 横探索 `exist` 13.3s + 12.6s /
+  `scrollToRightEdge` 12.5s / `scrollToLeftEdge` 12.5s。縦の `scrollDown ×2` は 6.4s。
+  単価でも `scrollToRightEdge/ToLeftEdge` の 7.0〜7.3s がコマンド中で最大。
+  **上のヒント供給は縦だけ**(`offscreenJump`/`offscreenEdgeJump` が `finger == .up || .down`
+  で門番)なので横は素の実スワイプのまま。**このプロファイルだけ最長シナリオが壁時計に効く**
+  (78.0s 対 合計÷8 = 78.6s でほぼ拮抗。他 8 プロファイルはレーン容量律速)ので、
+  着手すればスイート壁時計が動く唯一の場所。候補は横の較正か、ヒントの横方向への拡張
 - **iOS ブリッジ供給の堅牢化(高並列時)**: ランナーのコールドスタートが負荷下で
   供給タイムアウトを超え、run 全体が中断する(§7 の交互成功パターン)。候補: タイムアウト値の
   負荷連動延長、ランナー起動の直列化、タイムアウト後も起動継続中なら待ち直す再確認ループ。

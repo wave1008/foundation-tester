@@ -5,10 +5,10 @@
   },
   "ios": {
     "app": "com.ftester.e2e",
-    "appPath": "E2EApp/dist/ios-simulator/FTE2E.app"
+    "appPath": "E2EAppCMP/dist/ios-simulator/FTE2E.app"
   },
   "android": {
     "app": "com.ftester.e2e",
-    "appPath": "E2EApp/dist/android/ft-e2e-debug.apk"
+    "appPath": "E2EAppCMP/dist/android/ft-e2e-debug.apk"
   }
 }

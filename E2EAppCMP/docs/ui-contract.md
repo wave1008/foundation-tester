@@ -1,7 +1,7 @@
 # FT E2E アプリ UI 契約
 
-このファイルが **testTag(=`#id`)と表示ラベルの唯一の正**。アプリ実装(`E2EApp/composeApp`)と
-シナリオ(`Projects/E2E/Scenarios`)の両方がここを参照する。**片方だけ変えない**。
+このファイルが **testTag(=`#id`)と表示ラベルの唯一の正**。アプリ実装(`E2EAppCMP/composeApp`)と
+シナリオ(`Projects/E2E-CMP/Scenarios`)の両方がここを参照する。**片方だけ変えない**。
 tag 定数は `composeApp/src/commonMain/kotlin/com/ftester/e2e/Tags.kt` に集約する(値はこの表と byte 一致)。
 
 ## 全体規約
@@ -329,7 +329,7 @@ id がある(そこまで無いとテストが書けないため)。
 ## WebView 画面(タイトル `WebView`)
 
 ネイティブの WebView(iOS=WKWebView / Android=android.webkit.WebView)に**同じ HTML** を
-読ませる画面。HTML の唯一の正は **`E2EApp/docs/webview.html`**(4 SUT がその写しを持つ。
+読ませる画面。HTML の唯一の正は **`E2EAppCMP/docs/webview.html`**(4 SUT がその写しを持つ。
 iOS/CMP は文字列定数、Android/Flutter はアセット)。ネットワークは使わない。
 
 **この画面だけ規約が違う。読む前に必ずここを読むこと**:

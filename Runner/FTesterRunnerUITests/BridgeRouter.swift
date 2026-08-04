@@ -788,7 +788,7 @@ final class BridgeRouter {
         case .toggle: return "Toggle"
         case .slider: return "Slider"
         // UITableView/UICollectionView のセル。Android の「役割不明の clickable 容器」と
-        // 同じバケツに入れるため名前を揃える(型語彙の唯一の正は E2EApp/docs/ui-contract.md)
+        // 同じバケツに入れるため名前を揃える(型語彙の唯一の正は E2EAppCMP/docs/ui-contract.md)
         case .cell: return "Clickable"
         case .link: return "Link"
         case .image: return "Image"

@@ -3,7 +3,7 @@
 ftester を **Android ネイティブアプリ(View/XML + 一部 Compose)** に対して検証する E2E テスト
 プロジェクト。対象アプリはリポジトリ同梱の `E2EAppAndroid/`(package = `com.ftester.e2e.android`)。
 
-- 画面構成・`#id`・ラベルの正: `E2EApp/docs/ui-contract.md`(Compose 版と共通)
+- 画面構成・`#id`・ラベルの正: `E2EAppCMP/docs/ui-contract.md`(Compose 版と共通)
 - Android ネイティブ固有の差分(型語彙・7つの罠): `E2EAppAndroid/docs/ui-contract.md`
 
 ## 対象アプリのビルド

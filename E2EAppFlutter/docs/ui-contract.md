@@ -1,6 +1,6 @@
 # FT E2E Flutter アプリ UI 契約
 
-**画面構成・`#id`・表示ラベルは `E2EApp/docs/ui-contract.md`(Compose Multiplatform 版)と共通**。
+**画面構成・`#id`・表示ラベルは `E2EAppCMP/docs/ui-contract.md`(Compose Multiplatform 版)と共通**。
 同じシナリオを各 SUT に当てて比較できるよう、値は byte 一致させてある。
 このファイルは **Flutter 実装固有の差分だけ**を定義する。
 tag 定数は `lib/tags.dart` に集約する(値は共通契約の表と byte 一致)。

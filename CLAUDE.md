@@ -63,12 +63,12 @@
 
   | SUT | 実装 | プロジェクト | 対象 OS |
   |---|---|---|---|
-  | `E2EApp/` | Compose Multiplatform | Projects/E2E | ios + android |
+  | `E2EAppCMP/` | Compose Multiplatform | Projects/E2E-CMP | ios + android |
   | `E2EAppIOS/` | SwiftUI + 一部 UIKit | Projects/E2E-iOS | ios |
   | `E2EAppAndroid/` | View/XML + 一部 Compose | Projects/E2E-Android | android |
   | `E2EAppFlutter/` | Flutter | Projects/E2E-Flutter | ios + android |
 
-  **要素の testTag/`#id`/ラベルの唯一の正は `E2EApp/docs/ui-contract.md`**(全 SUT とシナリオがこれを参照。
+  **要素の testTag/`#id`/ラベルの唯一の正は `E2EAppCMP/docs/ui-contract.md`**(全 SUT とシナリオがこれを参照。
   片方だけ変えない。`uiContractSync.test.mjs` が「SUT 側の `#id` が母体に実在するか」を検出)。
   **型語彙・OS/フレームワーク固有の罠だけ**は各 SUT の `<SUT>/docs/ui-contract.md` に置く
   (同じ `#id` でも型は SUT ごとに違う。例: ボタンは CMP/Android で `Cell`、View/XML なら `Button`)。

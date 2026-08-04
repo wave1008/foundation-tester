@@ -1612,7 +1612,7 @@ public final class StepExecutor {
     /// `scrollTo("#row_40")` だけで `selected=row_40` が入った = 読み取り専用のはずの
     /// コマンドがアプリの状態を書き換える)。矩形の外で離せばクリックは取り消される。
     /// **縦に抜いてはいけない**: 容器がスクロールとして消費して内容が動き、直後に
-    /// 「今ここにある」を確かめる assertion が壊れる(実測: E2E/ios-inapp の S0020 が 0/3)。
+    /// 「今ここにある」を確かめる assertion が壊れる(実測: E2E-CMP/ios-inapp の S0020 が 0/3)。
     /// **止めるという選択肢も無い**: 完全に外すと肩代わりが効かず S0080 が CMP/ios で落ちる
     static func emptyDragEndX(of element: ElementInfo, from x: Double, screen: FTRect) -> Double {
         let right = element.frame.x + element.frame.width + 4

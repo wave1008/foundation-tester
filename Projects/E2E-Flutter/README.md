@@ -3,7 +3,7 @@
 ftester を **Flutter アプリ**に対して検証する E2E テストプロジェクト。
 対象アプリはリポジトリ同梱の `E2EAppFlutter/`(bundle id / applicationId = `com.ftester.e2e.flutter`)。
 
-- 画面構成・`#id`・ラベルの正: `E2EApp/docs/ui-contract.md`(Compose 版と共通)
+- 画面構成・`#id`・ラベルの正: `E2EAppCMP/docs/ui-contract.md`(Compose 版と共通)
 - Flutter 固有の差分(必須設定2つ・罠8つ): `E2EAppFlutter/docs/ui-contract.md`
 
 ## 対象アプリのビルド

@@ -1,7 +1,7 @@
 // 01_起動と画面遷移.swift
 // ftester 機能: launchApp / タブ切替 / 下位画面遷移+戻る / タブ切替時にスタックが
 // 持ち越されないこと(homeChild リセット)の検証。
-// E2EApp 側はプロセス起動時に必ずホームタブのルートへ戻る契約(ui-contract.md 全体規約)。
+// E2EAppCMP 側はプロセス起動時に必ずホームタブのルートへ戻る契約(ui-contract.md 全体規約)。
 
 import FTDSL
 

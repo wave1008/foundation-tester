@@ -1,6 +1,6 @@
 # FT E2E iOS ネイティブアプリ UI 契約
 
-**画面構成・`#id`・表示ラベルは `E2EApp/docs/ui-contract.md`(Compose Multiplatform 版)と共通**。
+**画面構成・`#id`・表示ラベルは `E2EAppCMP/docs/ui-contract.md`(Compose Multiplatform 版)と共通**。
 同じシナリオを両 SUT に当てて比較できるよう、値は byte 一致させてある。
 このファイルは **iOS ネイティブ実装(SwiftUI + UIKit)固有の差分だけ**を定義する。
 tag 定数は `Sources/Tags.swift` に集約する(値は共通契約の表と byte 一致)。

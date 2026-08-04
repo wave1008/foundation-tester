@@ -12,7 +12,7 @@
 // それが長かった場合に LPT の狙いがそのまま裏返るため、悲観側に倒す。
 //
 // **実績は platform ごとに分ける**。同じシナリオを iOS と Android の両プロファイルで走らせる
-// 構成(このリポジトリの Projects/E2E 等)では 1 つの results/ に両方の記録が溜まり、iOS は
+// 構成(このリポジトリの Projects/E2E-CMP 等)では 1 つの results/ に両方の記録が溜まり、iOS は
 // Android の数倍遅いため、混ぜると中央値が両者の中間に均されて順序判断が歪む。
 
 import Foundation

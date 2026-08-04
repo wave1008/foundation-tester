@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# E2EApp を iOS シミュレータ向け Debug ビルドし dist/ios-simulator/ へ配置する。
+# E2EAppCMP を iOS シミュレータ向け Debug ビルドし dist/ios-simulator/ へ配置する。
 set -euo pipefail
 
 cd "$(dirname "$0")/.."

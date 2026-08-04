@@ -317,7 +317,7 @@ public enum FlowDirection: String, Codable, Equatable, Sendable {
 /// 実型が1つで足りるものは増やさない = 語彙を増やすと生成側の誤用が増えるため)。
 /// 実型の綴りは ElementInfo.normalizedType(先頭小文字)と揃える。
 public enum FlowTypeAlias {
-    /// OS を跨いで保証される役割型(E2EApp/docs/ui-contract.md の契約)。`.widget` と
+    /// OS を跨いで保証される役割型(E2EAppCMP/docs/ui-contract.md の契約)。`.widget` と
     /// 相対セレクタの既定フィルタがこれを使う(役割不明の `clickable` 容器は**入れない**)
     public static let widget = ["button", "staticText", "textField", "secureTextField", "switch"]
     private static let table: [String: [String]] = [

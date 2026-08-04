@@ -129,16 +129,16 @@ let package = Package(
         // _disabled/ は退避場所(コンパイル対象外。並列デモ等をここに置く)
         // === ftester projects begin(ftester project create/sync が自動生成。手編集禁止)===
         .executableTarget(
-            name: "ftester-scenarios-E2E",
+            name: "ftester-scenarios-E2E-Android",
             dependencies: ["FTScenarioRunner", "FTDSL"],
-            path: "Projects/E2E/Scenarios",
+            path: "Projects/E2E-Android/Scenarios",
             exclude: ["_disabled"],
             swiftSettings: swift5Mode
         ),
         .executableTarget(
-            name: "ftester-scenarios-E2E-Android",
+            name: "ftester-scenarios-E2E-CMP",
             dependencies: ["FTScenarioRunner", "FTDSL"],
-            path: "Projects/E2E-Android/Scenarios",
+            path: "Projects/E2E-CMP/Scenarios",
             exclude: ["_disabled"],
             swiftSettings: swift5Mode
         ),

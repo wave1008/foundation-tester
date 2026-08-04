@@ -1,6 +1,6 @@
 // 18_Enterキー.swift
 // ftester 機能: `pressEnter()`(IME アクション発火)と、`type` の**末尾改行**が同じ結果になること。
-// 観測点は `#txt_ime_action`(`ime=<n>`)= E2EApp/docs/ui-contract.md「テキスト入力画面」の契約。
+// 観測点は `#txt_ime_action`(`ime=<n>`)= E2EAppCMP/docs/ui-contract.md「テキスト入力画面」の契約。
 // **改行が本文に入っていないこと**を `len` で同時に見る(len が増えていたら、IME アクションではなく
 // 文字として挿入されている = 退行)。
 // **この SUT の `#field_single` は UIKit の UITextField** なので、in-app ブリッジは /pressEnter に

@@ -6,7 +6,7 @@
 // AppDriver から上で同じに見えることをフレームワーク別に確かめる。
 // 対象は ui-contract.md のコントロールタブの 2 ボタン(どちらもタップ対象にしない)。
 // checkIsON/checkIsOFF は Android が 4 SUT の中で唯一確実に取得できる
-// (iOS は UI 実装依存。E2EApp/docs/ui-contract.md 全体規約)ため、この SUT で担保する。
+// (iOS は UI 実装依存。E2EAppCMP/docs/ui-contract.md 全体規約)ため、この SUT で担保する。
 // 状態の正は echo Text(#txt_cb_agree / #txt_sw_notify)なのでクロスチェックする。
 
 import FTDSL

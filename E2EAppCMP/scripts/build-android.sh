@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# E2EApp を debug apk としてビルドし dist/android/ へ配置する。
+# E2EAppCMP を debug apk としてビルドし dist/android/ へ配置する。
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
