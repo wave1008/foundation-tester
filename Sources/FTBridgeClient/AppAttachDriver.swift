@@ -166,6 +166,21 @@ public final class AppAttachDriver: AppDriver {
         }
     }
 
+    /// 座標ロングプレスも ref を使わないので drag と同じ 409 回復を入れる。
+    /// **既定実装(501)に落としてはいけない**: hybrid のフォールバックで in-app が長押しを
+    /// 持たない(501)ぶんをここが受けるため、無いと「どちらの経路でも 501」になる
+    /// (2026-08-04 に MCP のエンジン追従で実際に踏んだ)
+    public func press(x: Double, y: Double, duration: Double) async throws {
+        try await ensureAttached()
+        do {
+            try await client.press(x: x, y: y, duration: duration)
+        } catch {
+            guard Self.isRecoverableSession(error) else { throw error }
+            try await client.activate(bundleID: bundleID)
+            try await client.press(x: x, y: y, duration: duration)
+        }
+    }
+
     /// doubleTap / pinch も ref を使わない(座標・identifier)ので drag と同じ 409 回復を入れる。
     /// in-app は多点ジェスチャを持たないため、hybrid のピンチはここへ回ってくる
     public func doubleTap(x: Double, y: Double) async throws {
