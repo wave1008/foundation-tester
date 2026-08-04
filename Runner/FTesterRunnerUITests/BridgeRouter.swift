@@ -672,9 +672,28 @@ final class BridgeRouter {
         return .json(OKResponse())
     }
 
-    /// ホーム画面に戻る(セッション不要。XCUIDevice のホームボタン押下=前面アプリに関係なく効く)
+    /// ホーム画面に戻る(セッション不要)。
+    /// **実機では `XCUIDevice.press(.home)` が黙って効かない**(2026-08-05 実測:
+    /// iPhone 15 Pro / iOS 26.5.2 で ok を返すのにアプリが前面のまま。同じ端末で
+    /// スワイプ系[appswitcher]は効くので、ジェスチャではなく API 側の問題)。
+    /// そこで実機だけ springboard の下端スワイプで代替する —— ホールドしなければ
+    /// アプリスイッチャーではなくホームに戻る(handleAppSwitcher と同じ座標系)。
+    /// シミュレータは press(.home) が確実に効くので変えない(ジェスチャに一本化すると
+    /// 既存の全シナリオの前提を実測せずに動かすことになる)
     private func handleHome() throws -> BridgeHTTPServer.Response {
+        #if targetEnvironment(simulator)
         XCUIDevice.shared.press(.home)
+        #else
+        // **速い短フリック**でないとアプリスイッチャーが開く(実測: 下端から画面の 1/4 強を
+        // 0.08 秒で駆け上がるとホーム・ゆっくり長く引くとスイッチャー)。
+        // 数値は iPhone 15 Pro / iOS 26.5.2 で確認した値
+        let sb = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let start = sb.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.995))
+        let end = sb.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.73))
+        // press は 0 にしない(タッチダウンが載らず不発になる。handleDrag の下限 0.05 と同じ)
+        start.press(forDuration: 0.05, thenDragTo: end, withVelocity: XCUIGestureVelocity(2850),
+                    thenHoldForDuration: 0.0)
+        #endif
         return .json(OKResponse())
     }
 

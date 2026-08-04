@@ -113,6 +113,52 @@ public final class BridgeClient: AppDriver {
         }
     }
 
+    /// /status のデバイス名が指す相手。**名前をそのまま simctl へ渡さない**ための解決。
+    /// 渡してしまうと、実機に繋がっているときは「Invalid device」という的外れな失敗になり、
+    /// **同名のシミュレータが起動していればそちらを操作してしまう**
+    enum ResolvedTarget: Equatable {
+        case simulator(udid: String)
+        case physical(udid: String)
+        /// カタログ自体が引けない(別種の故障)。従来どおり名前を simctl へ渡す
+        case unknown(name: String)
+    }
+
+    /// **install / uninstall / clearAppData の対象特定はここに一本化する**(3箇所が
+    /// 同じ「名前で引いて、見つからなければ名前のまま」を持っていた)。
+    /// **実機一覧は遅延評価**: `SimulatorCatalog.devices()` はシミュレータしか返さないので
+    /// 実機は devicectl 側を引く必要があるが、毎回引くと数百 ms 乗る。シミュレータに
+    /// 同名が居ない = 実機の可能性がある、というときだけ引く
+    static func resolveTarget(named device: String, simulators: [SimDeviceInfo]?,
+                              physicalDevices: () -> [IOSPhysicalDeviceInfo]?) -> ResolvedTarget {
+        guard let simulators else { return .unknown(name: device) }
+        if let simulator = simulators.first(where: { $0.booted && !$0.physical && $0.name == device }) {
+            return .simulator(udid: simulator.udid)
+        }
+        if let phone = physicalDevices()?.first(where: { $0.name == device }) {
+            return .physical(udid: phone.deviceCtlIdentifier)
+        }
+        return .unknown(name: device)
+    }
+
+    /// 実行時の既定の引き当て(実機一覧は必要になったときだけ devicectl を叩く)
+    static func resolveTarget(named device: String) -> ResolvedTarget {
+        resolveTarget(named: device, simulators: try? SimulatorCatalog.devices(),
+                      physicalDevices: { try? IOSPhysicalDeviceCatalog.devices() })
+    }
+
+    /// simctl 系の対象特定。**実機は 501**(devicectl に同等手段が無い)
+    func simctlTarget(_ operation: String) async throws -> String {
+        let current = try await status()
+        switch Self.resolveTarget(named: current.device) {
+        case .simulator(let udid): return udid
+        case .physical:
+            throw DriverError.badResponse(status: 501,
+                body: "\(operation) is simulator-only on iOS (devicectl has no equivalent;"
+                    + " reinstall the app instead)")
+        case .unknown(let name): return name
+        }
+    }
+
     /// clearAppData の対象シミュレータ(UDID 優先)。実機は同等手段が devicectl に無いので 501
     public func simulatorTarget() async throws -> String {
         guard physicalUDID == nil else {
@@ -120,9 +166,16 @@ public final class BridgeClient: AppDriver {
                 body: "clearAppData is simulator-only on iOS (devicectl has no equivalent;"
                     + " reinstall the app instead)")
         }
+        return try await simctlTarget("clearAppData")
+    }
+
+    /// install / uninstall の対象。**実機は UDID を渡して devicectl** へ回す
+    /// (profile 経由なら physicalUDID が来るが、MCP のポート直指定では来ないので
+    /// カタログからも引く。引けなければ simctl の対象として扱う)
+    func installTarget() async throws -> ResolvedTarget {
+        if let physicalUDID { return .physical(udid: physicalUDID) }
         let current = try await status()
-        return (try? SimulatorCatalog.devices())?
-            .first(where: { $0.booted && $0.name == current.device })?.udid ?? current.device
+        return Self.resolveTarget(named: current.device)
     }
 
     /// データコンテナの**中身**を消す(コンテナ自体は残す)。対象の特定と終了は呼び出し側の責務
@@ -151,6 +204,21 @@ public final class BridgeClient: AppDriver {
                 body: "could not delete \(failed.count) item(s) in the data container of"
                     + " \(bundleID): \(failed.prefix(5).joined(separator: ", "))")
         }
+        // **ファイルを消しただけでは NSUserDefaults が戻ってくる**(2026-08-05 に実測で確定):
+        // cfprefsd がドメインをメモリに抱えており、次の起動で消したはずの値を配って plist を
+        // 書き直す。対照実験(消して起動を3回)で launch_count が 2→3→4 と増え続けた =
+        // 消去が一度も効いていなかった。デーモンを入れ直すとキャッシュが落ちる(3/3 で初期化)。
+        // **順序は「ファイルを消してから再起動」**(先に再起動するとディスクの旧値を読み直す)。
+        // `defaults delete` は効かない(サンドボックス化されたドメインが見えず domain not found)、
+        // `killall` はシミュレータに存在しない
+        let prefsDaemon = try Shell.run(
+            ["xcrun", "simctl", "spawn", target,
+             "launchctl", "kickstart", "-k", "system/com.apple.cfprefsd.xpc.daemon"])
+        guard prefsDaemon.status == 0 else {
+            throw DriverError.badResponse(status: Int(prefsDaemon.status),
+                body: "could not restart cfprefsd after clearing the data of \(bundleID)"
+                    + " — UserDefaults values would survive the clear: \(prefsDaemon.tail)")
+        }
         // 権限はコンテナの外にあるので別途戻す(resetPrivacyOnSimulator 参照)
         try resetPrivacyOnSimulator(bundleID: bundleID, target: target)
     }
@@ -161,7 +229,7 @@ public final class BridgeClient: AppDriver {
     /// あると名前指定 simctl は失敗するため、Booted かつ同名の UDID に解決してから実行する
     /// (解決不能時は名前のまま試す)。
     public func install(packagePath: String) async throws {
-        if let udid = physicalUDID {
+        if case .physical(let udid) = try await installTarget() {
             let result = try Shell.run(
                 ["xcrun", "devicectl", "device", "install", "app",
                  "--device", udid, packagePath], timeout: 600)
@@ -172,9 +240,7 @@ public final class BridgeClient: AppDriver {
             }
             return
         }
-        let current = try await status()
-        let target = (try? SimulatorCatalog.devices())?
-            .first(where: { $0.booted && $0.name == current.device })?.udid ?? current.device
+        let target = try await simctlTarget("install")
         let result = try Shell.run(["xcrun", "simctl", "install", target, packagePath])
         guard result.status == 0 else {
             throw DriverError.badResponse(status: Int(result.status),
@@ -185,7 +251,7 @@ public final class BridgeClient: AppDriver {
     /// uninstall は install と対で HTTP エンドポイントを持たず simctl / devicectl の役割。
     /// 対象特定は install と同じ規則(実機は UDID 直・シミュレータは /status のデバイス名から解決)
     public func uninstall(bundleID: String) async throws {
-        if let udid = physicalUDID {
+        if case .physical(let udid) = try await installTarget() {
             let result = try Shell.run(
                 ["xcrun", "devicectl", "device", "uninstall", "app",
                  "--device", udid, bundleID], timeout: 600)
@@ -195,9 +261,7 @@ public final class BridgeClient: AppDriver {
             }
             return
         }
-        let current = try await status()
-        let target = (try? SimulatorCatalog.devices())?
-            .first(where: { $0.booted && $0.name == current.device })?.udid ?? current.device
+        let target = try await simctlTarget("uninstall")
         let result = try Shell.run(["xcrun", "simctl", "uninstall", target, bundleID])
         guard result.status == 0 else {
             throw DriverError.badResponse(status: Int(result.status),

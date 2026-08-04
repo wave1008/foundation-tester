@@ -137,6 +137,23 @@ final class SessionRecoveryDriverTests: XCTestCase {
         XCTAssertEqual(fake.snapshotCallCount, 1, "再試行しない")
     }
 
+    /// **launch 前の 409 は「何をすべきか」を返す**。ブリッジ側の 409 本文は
+    /// 「ランナーが再起動したかもしれない」だが、実際には**まだ起動していない**ときにも出る
+    /// (実機の MCP セッションで最初に ft_snapshot を撃つと必ずこれ)。原因の取り違えを防ぐ
+    func testPreLaunch409SaysToLaunchFirst() async throws {
+        let fake = FakeAppDriver()
+        fake.snapshotShouldFail = [true]
+        let driver = SessionRecoveryDriver(base: fake)
+
+        do {
+            _ = try await driver.snapshot()
+            XCTFail("409 を再スローするはず")
+        } catch let DriverError.badResponse(_, body) {
+            XCTAssertTrue(body.contains("has not been launched"), body)
+            XCTAssertTrue(body.contains("ft_launch"), "次の一手を出すこと: \(body)")
+        }
+    }
+
     /// pressEnter は ref を使わない(フォーカス中要素へ作用する)ので tap(x:y:) と同じ扱い:
     /// 409 → activate → 1回だけ再試行する
     func testPressEnterRecoversAfterSingle409() async throws {

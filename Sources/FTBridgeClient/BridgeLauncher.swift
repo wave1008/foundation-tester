@@ -540,6 +540,21 @@ public struct BridgeLauncher {
 
     /// host: 実機は LAN IP か iproxy のループバック(IOSDeviceTransport が確立済みのもの)を渡す。
     /// log: 実機で「失敗ではないが進まない」条件(端末ロック等)を1回だけ知らせるための出力先
+    /// **xcodebuild のテストセッションが既に終わっている**ことをログから判定する。
+    /// 終わっていれば ready には二度とならないので、待ち続けても既定 180 秒を捨てるだけ
+    /// (2026-08-05 実測: 未インストールのアプリを launch してランナーが落ちた後、次の
+    /// provision がこの待ちで 3 分級になった)。**pid の生死では判定できない** ——
+    /// テストが失敗しても xcodebuild は後始末の間だけ生きており、`ps` にも残る。
+    /// ログは起動のたびに空で作り直される(startDetached の createFile)ので、
+    /// 見つかったマーカーは必ず今回のもの
+    public static func runnerSessionEnded(inLog text: String) -> String? {
+        for marker in ["** TEST EXECUTE FAILED **", "** BUILD INTERRUPTED **", "Testing failed:"]
+        where text.contains(marker) {
+            return marker
+        }
+        return nil
+    }
+
     public func waitUntilReady(timeout: TimeInterval = 180,
                                host: String = BridgeEndpoint.loopbackHost,
                                log: @escaping (String) -> Void = { _ in }) async throws {
@@ -570,6 +585,12 @@ public struct BridgeLauncher {
                 }
             } catch {
                 lastError = error
+            }
+            // **終わったセッションを待たない**(理由は runnerSessionEnded)
+            if let text = try? String(contentsOf: logPath, encoding: .utf8),
+               let marker = Self.runnerSessionEnded(inLog: text) {
+                throw LauncherError.timedOut("the test session already ended (\(marker))",
+                                             logPath.path)
             }
             // startDetached が logPath を毎回空で作り直す(createFile)ため、ここで見つかる
             // bindFailed は必ず今回の起動試行のもの。180 秒待たずに fail-fast する

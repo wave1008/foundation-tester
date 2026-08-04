@@ -1078,8 +1078,26 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
   はロケータを取らず、`FTDriveCore.performCustom` でドライバを直接呼ぶ(スナップショットも
   セレクタ解決も挟まない)。bundleID 省略時は `@TestClass(app:)` のアプリ。
   `restartApp` は terminate の失敗を無視して launch する(既に落ちている状態から呼べる)
+- **`home` の機構は iOS 実機とシミュレータで違う**: シミュレータは `XCUIDevice.press(.home)`、
+  **実機は springboard の下端フリック**(`press(.home)` が実機では ok を返すのに効かない。
+  2026-08-05 実測)。フリックは**速さでホーム/アプリスイッチャーが分かれる**ので数値を変えない
+  (下端から 1/4 強・0.08 秒相当・press 0.05)。判定は `/appstate` ではできない
+  (実機の `XCUIApplication.state` はスイッチャー表示中でも foreground を返す)
 - **`clearAppData` の機構は OS で違う**: Android = `pm clear` / iOS = データコンテナの中身を
-  削除 + `simctl privacy reset all`。**権限はコンテナの外(TCC.db)にある**ので後者を省くと
+  削除 + **cfprefsd の入れ直し** + `simctl privacy reset all`。**中身の削除だけでは
+  NSUserDefaults が戻る**(cfprefsd がドメインを抱えていて、次の起動で消したはずの値を配り
+  plist を書き直す。2026-08-05 実測: 消して起動を3回で launch_count が 2→3→4)。
+  `launchctl kickstart -k system/com.apple.cfprefsd.xpc.daemon` で 3/3 初期化される。
+  **順序は「ファイルを消してから入れ直す」**(先に入れ直すとディスクの旧値を読み直す)。
+  `defaults delete` は効かず(サンドボックスのドメインが見えない)、`killall` はシムに無い。
+  `ClearAppDataContractTests` が2段の欠落を検出する。
+- **simctl / devicectl の対象特定は `BridgeClient.resolveTarget` に一本化**(install /
+  uninstall / clearAppData)。`/status` はデバイス名しか返さないので名前で引き当てるが、
+  **名前をそのまま simctl へ渡さない**: 実機に繋がっているとき「Invalid device」という
+  的外れな失敗になり、**同名のシミュレータが起動していればそちらを操作してしまう**。
+  引き当ては booted シミュレータ優先 → 実機(devicectl 一覧は**必要になったときだけ**引く。
+  数百 ms かかる)→ どちらでもなければ従来どおり名前。実機と分かれば install/uninstall は
+  devicectl・clearAppData は 501。`DeviceTargetResolutionTests` が規則を固定する**権限はコンテナの外(TCC.db)にある**ので後者を省くと
   「Android では権限ダイアログが出るのに iOS では出ない」という OS 差が黙って生まれる
   (`pm clear` は権限もリセットする)。**iOS はシミュレータ専用**(実機は devicectl に同等手段が
   無く 501)。1件でも消せなければ失敗させる(部分削除を「消えた」と言わない)。

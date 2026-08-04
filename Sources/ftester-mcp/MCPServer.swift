@@ -196,7 +196,12 @@ final class MCPServer {
             let resolution = await XCUIBridgeResolver.resolve(
                 preferred: provisioned.port, repoRoot: try? RepoRoot.find(),
                 logger: { Self.logStderr($0) })
-            return BridgeClient(port: resolution.endpoint.port, host: resolution.endpoint.host)
+            // **実機は UDID を渡す**: install/uninstall は simctl ではなく devicectl が要り、
+            // clearAppData は「実機では不可」と即答できる(渡さないとデバイス名で simctl を
+            // 撃つことになり、的外れな失敗になる)
+            return SessionRecoveryDriver(base: BridgeClient(
+                port: resolution.endpoint.port, host: resolution.endpoint.host,
+                physicalUDID: provisioned.physical ? provisioned.udid : nil))
         }
         let inapp = InAppDriver(repoRoot: try RepoRoot.find(), udid: provisioned.udid,
                                 port: provisioned.port)
@@ -234,6 +239,50 @@ final class MCPServer {
         return ". The app is in the background now, so the tools run through the XCUITest bridge"
             + " (slower reads, and the snapshot still describes the app itself)"
             + " until you bring it back with ft_launch"
+    }
+
+    /// 待ちの既定(秒)。**DSL の defaultTimeout と同じ 5**(FTRuntime)。揃えておかないと
+    /// 「MCP では出たのにシナリオでは間に合わない」が起きる
+    static let defaultWaitSeconds: Double = 5
+
+    /// ポーリング間隔(秒)。短くしても律速は snapshot 自体(iOS in-app で約 0.12s)
+    private static let waitPollSeconds: Double = 0.3
+
+    /// selector が出るまで snapshot を撃ち直す。**照合は DSL と同じ**(FTSelector →
+    /// StepExecutor)なので、ここで書ける式はそのままシナリオへ持ち込める
+    static func waitFor(_ selector: String, driver: AppDriver, first: SnapshotResponse,
+                        seconds: Double) async throws -> (found: Bool, snapshot: SnapshotResponse) {
+        if matches(selector, in: first) { return (true, first) }
+        let deadline = Date().addingTimeInterval(seconds)
+        var latest = first
+        while Date() < deadline {
+            try await Task.sleep(for: .seconds(waitPollSeconds))
+            // **キャッシュを捨てて撮る**: 同じ木を読み続けると、出ていても永遠に出ない
+            latest = driver.supportsCacheBypass
+                ? try await driver.snapshot(bypassingCache: true) : try await driver.snapshot()
+            if matches(selector, in: latest) { return (true, latest) }
+        }
+        return (false, latest)
+    }
+
+    /// セレクタ式(`#id` / ラベル / `.type` / `||` 等)がこの画面に1つでも当たるか
+    static func matches(_ selector: String, in snapshot: SnapshotResponse) -> Bool {
+        let parsed = FTSelector.parse(selector)
+        return ([parsed.primary] + parsed.fallbacks).contains { locator in
+            !(StepExecutor.resolvedCandidates(locator, elements: snapshot.elements) ?? []).isEmpty
+        }
+    }
+
+    /// セッションのアプリが前面に居ないときの注記(居るとき・判定できないときは空)。
+    /// 判定は 1 往復(/appstate)なので snapshot の1割程度。**黙って嘘を返すよりは安い**
+    static func backgroundedSessionNote(_ snapshot: SnapshotResponse,
+                                        driver: AppDriver) async -> String {
+        guard let bundleID = snapshot.sessionBundleID,
+              let foreground = try? await driver.isAppForeground(bundleID: bundleID),
+              !foreground else { return "" }
+        return "\(bundleID) is NOT in the foreground: this tree is its last state, not what is on"
+            + " screen now (another app or a system screen is in front)."
+            + " Bring it back with ft_launch before trusting these refs\n"
     }
 
     /// driver(_:) が使うキャッシュキーと同じ引き当て(エンジンの記録先)
@@ -321,11 +370,30 @@ final class MCPServer {
 
         case "ft_snapshot":
             let snapshotDriver = try await driver(args)
-            let snapshot = try await snapshotDriver.snapshot()
+            var snapshot = try await snapshotDriver.snapshot()
+            var waitNote = ""
+            // **待つのはホスト側の仕事**: エージェントに snapshot を撃ち直させると、待った
+            // 回数だけ画面一覧が文脈に積まれる(1回あたり数千トークン)
+            if let waitFor = args["waitFor"] as? String {
+                let seconds = args["timeout"] as? Double ?? Self.defaultWaitSeconds
+                let waited = try await Self.waitFor(waitFor, driver: snapshotDriver,
+                                                    first: snapshot, seconds: seconds)
+                snapshot = waited.snapshot
+                if !waited.found {
+                    waitNote = "waitFor \"\(waitFor)\" did not appear within \(seconds)s"
+                        + " — this is the screen as it is now\n"
+                }
+            }
             // **プラットフォームはドライバの実体から採る**(profile 指定時は args["platform"] が
             // 空でもプロファイル側で解決済みなので、args を見ると取り違える)
             recordSnapshot(snapshot, snapshotDriver is AndroidDriver ? "android" : "ios", args)
-            return text(SnapshotRenderer.render(snapshot))
+            // **背面のアプリのツリーを「今の画面」として返さない**: XCUITest の snapshot は
+            // セッションのアプリに閉じているので、**別のアプリが前面に来ても同じ木を返し続ける**。
+            // 実測(2026-08-05・シミュレータで確定。症状の初出は iPhone 実機):
+            // ステータスバーの「◀ 元のアプリへ」を踏んだタップで前面が別アプリに替わったのに、
+            // snapshot は元アプリの画面を返し、エージェントからは「タップが効かない」に見えた
+            let backgroundNote = await Self.backgroundedSessionNote(snapshot, driver: snapshotDriver)
+            return text(waitNote + backgroundNote + SnapshotRenderer.render(snapshot))
 
         case "ft_tap":
             let d = try await driver(args)
@@ -380,6 +448,11 @@ final class MCPServer {
             }
             return text("\(target) done. The screen changed — take a fresh ft_snapshot"
                 + Self.backgroundedAppNote(target: target, engine: engines[Self.engineKey(args)]))
+
+        case "ft_clear_app_data":
+            guard let bundleID = args["bundleId"] as? String else { throw MCPError("bundleId is required") }
+            try await driver(args).clearAppData(bundleID: bundleID)
+            return text("Cleared the data of \(bundleID). The app is stopped — ft_launch to continue")
 
         case "ft_clear_input":
             // ref 省略 = フォーカス中の欄(DSL の clearInput() と同じ)
@@ -691,7 +764,11 @@ final class MCPServer {
         tool("ft_launch", "Launch the app (if already running, restarts from the first screen)", [
             "bundleId": ["type": "string", "description": "bundle ID (iOS) / package name (Android)"],
         ], required: ["bundleId"]),
-        tool("ft_snapshot", "Get the element list of the current screen. Each line: [ref] Type \"label\" id=... (x,y WxH). Use these refs for tap/type", [:]),
+        tool("ft_snapshot", "Get the element list of the current screen. Each line: [ref] Type \"label\" id=... (x,y WxH). "
+            + "Use these refs for tap/type. With waitFor it polls for you instead of you calling this again", [
+            "waitFor": ["type": "string", "description": "Wait until this selector is on screen. Same syntax as the DSL: #id, a label, .type, a||b"],
+            "timeout": ["type": "number", "description": "Seconds to wait for waitFor (default 5, same as the DSL)"],
+        ]),
         tool("ft_tap", "Tap an element (ref) or a coordinate (x,y). x/y match the ft_snapshot frames (iOS=pt / Android=px), not screenshot pixels. "
             + "If a tap below the fold misses, the frame was clamped: ft_swipe it into view, ft_snapshot again, then tap.", [
             "ref": ["type": "integer", "description": "Reference number from ft_snapshot"],
@@ -711,6 +788,10 @@ final class MCPServer {
         tool("ft_navigate", "Go back / to the home screen / to the app switcher", [
             "target": ["type": "string", "enum": ["back", "home", "appSwitcher"]],
         ], required: ["target"]),
+        tool("ft_clear_app_data", "Wipe the app's data and permissions, keeping it installed (iOS: simulator only). "
+            + "Stops the app, so ft_launch after it. Scenarios start from clearAppData(), so explore from that same state", [
+            "bundleId": ["type": "string", "description": "bundle ID (iOS) / package name (Android)"],
+        ], required: ["bundleId"]),
         tool("ft_clear_input", "Empty an input field (ft_type appends, so clear first to replace)", [
             "ref": ["type": "integer", "description": "Reference number of the field (default: the focused one)"],
         ]),
