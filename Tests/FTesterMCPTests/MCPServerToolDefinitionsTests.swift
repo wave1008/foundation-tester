@@ -1,17 +1,30 @@
 import XCTest
 @testable import ftester_mcp
 
-/// port/serial/profile/project がスキーマ宣言から漏れる退行を防ぐ
-/// (実装は driver(_:) で対応済みでも、宣言が無いと MCP クライアントから送れない)
+/// デバイス選択プロパティの過不足を防ぐ。**「全ツールに付ける」ではなく「要るツールにだけ付ける」**
+/// (2026-08-05 変更): 5つ × ツール数で定義全体の約4割を占めるため、デバイスに触らないツールに
+/// 並べるとコンテキストを食うだけでなく「渡せば効く」と誤解させる。
+/// 逆に**デバイス系から漏れると MCP クライアントから送れない**ので、両方向を検査する。
 final class MCPServerToolDefinitionsTests: XCTestCase {
     private static let requiredDeviceKeys: Set<String> = ["platform", "port", "serial", "profile", "project"]
 
-    func testAllToolsDeclareDeviceSelectionProperties() {
+    /// デバイスを掴まないツール(driver(_:) を呼ばない)。増減したらここも直す
+    private static let deviceFreeTools: Set<String> = [
+        "ft_list_scenarios", "ft_dry_run", "ft_list_projects", "ft_doctor", "ft_dsl_commands",
+    ]
+
+    func testDeviceToolsDeclareDeviceSelectionProperties() {
         for definition in MCPServer.toolDefinitions {
             let name = definition["name"] as? String ?? "(unnamed)"
             guard let schema = definition["inputSchema"] as? [String: Any],
                   let properties = schema["properties"] as? [String: Any] else {
                 XCTFail("\(name): inputSchema.properties がありません")
+                continue
+            }
+            if Self.deviceFreeTools.contains(name) {
+                let extra = Self.requiredDeviceKeys.subtracting(["project"]).intersection(properties.keys)
+                XCTAssertTrue(extra.isEmpty,
+                              "\(name) はデバイスを掴まないのに選択プロパティを宣言している: \(extra.sorted())")
                 continue
             }
             let missing = Self.requiredDeviceKeys.subtracting(properties.keys)

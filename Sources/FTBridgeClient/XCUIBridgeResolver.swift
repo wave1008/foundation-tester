@@ -25,8 +25,11 @@ public enum XCUIBridgeResolver {
     /// xcuitest・Android)は指定ポートをそのまま返す = 既存挙動のまま。
     /// - Parameters:
     ///   - autoStart: 既存の XCUITest ブリッジが見つからないとき起動するか
-    ///   - logger: 振り替え・起動の進捗(呼び出し側の stderr 等へ)
+    ///   - logsReroute: 「振り替えた」と告げるか。**false = 呼び出し側が別の使い方をする**
+    ///     (ExploreDriverResolver は返ってきた宛先をフォールバックに使うだけで振り替えない。
+    ///     そのまま出すと自分の説明と矛盾する)。起動の進捗は false でも出す(分単位ブロックし得る)
     public static func resolve(preferred: UInt16, repoRoot: URL?, autoStart: Bool = true,
+                               logsReroute: Bool = true,
                                logger: @Sendable (String) -> Void = { _ in }) async -> Resolution {
         let preferredEndpoint = endpoint(port: preferred, repoRoot: repoRoot)
         // status(timeout:) を明示する(引数なしは sessionTimeout=45s に上書きされ、
@@ -40,7 +43,7 @@ public enum XCUIBridgeResolver {
 
         if let found = scan.xcuiForDevice {
             let note = "port \(preferred) is an in-app bridge — rerouted to the XCUITest bridge (port \(found.port))"
-            logger(note)
+            if logsReroute { logger(note) }
             return Resolution(endpoint: found, note: note)
         }
         guard autoStart else {
