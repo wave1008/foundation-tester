@@ -1497,8 +1497,9 @@ public final class StepExecutor {
         }
     }
 
-    /// 座標だけで完結するジェスチャの共通フォールバック(in-app エンジンは多点・座標ジェスチャを
-    /// 持たないので 501 / ルート不明 404 を返す。hybrid では XCUITest へ回す)。
+    /// 座標だけで完結するジェスチャの共通フォールバック。in-app が「このエンジンでは不可」と
+    /// 返したとき(501 / ルート不明 404)だけ XCUITest へ回す —— in-app は自前描画の
+    /// フレームワークなら多点も撃てるが、UIKit/SwiftUI では合成タッチが受理されず 501 を返す。
     /// **409 は含めない**(理由は DriverError.isEngineIncapable)
     private func gestureWithFallback(phase: inout PhaseAccumulator,
                                      _ body: (AppDriver) async throws -> Void) async throws -> Bool {

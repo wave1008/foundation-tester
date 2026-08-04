@@ -182,7 +182,7 @@ public final class AppAttachDriver: AppDriver {
     }
 
     /// doubleTap / pinch も ref を使わない(座標・identifier)ので drag と同じ 409 回復を入れる。
-    /// in-app は多点ジェスチャを持たないため、hybrid のピンチはここへ回ってくる
+    /// in-app が 501 を返す組み合わせ(UIKit/SwiftUI)の hybrid ピンチはここへ回ってくる
     public func doubleTap(x: Double, y: Double) async throws {
         try await ensureAttached()
         do {
