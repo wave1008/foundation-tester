@@ -2,7 +2,7 @@
 // ftester 機能: waitForDisplay/waitForClose(スクロールしない出現・消滅待ち)・verify(アサーション集約)・
 // screenshot(1ステップとして埋め込み)・flick(画面基点の生ジェスチャ)・appIs(前面アプリ検証)。
 // installApp/removeApp/tapAppIcon は意図的にここへ含めない(removeApp は自 SUT を消すと以降のシナリオと
-// in-app ブリッジが壊れる。tapAppIcon はホーム画面依存で flake リスクが高く実機検証は別途行う)。
+// in-app ブリッジが壊れる。tapAppIcon はホーム画面依存で flake リスクが高く実行での検証は別途行う)。
 // ダイアログは SwiftUI `.alert` で title/message に accessibilityIdentifier が届かない
 // (09_条件分岐とダイアログ.swift の既知の差分)ため、waitForClose の対象はラベル「確認」を使う。
 //

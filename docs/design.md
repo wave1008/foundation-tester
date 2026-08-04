@@ -434,7 +434,7 @@ iOS の a11y 層に出す frame 自体で、**xcuitest / inapp どちらのエ�
 - 対象を `ft_swipe` で可視領域に入れてから `ft_snapshot` し直してタップする(可視セルの frame は正確)
 - 小さすぎる要素(〜17pt)より、可能なら大きい親要素/隣接ラベルを狙う
 
-**採らない対策(2026-07-21 実機検証で否定・device -03)**:
+**採らない対策(2026-07-21 実測で否定・シミュレータ -03)**:
 identifier ベースの `XCUIElement.tap()`(scroll-to-visible 期待)は効かない。XCUITest の `isHittable` が
 Compose では壊れており、クランプされた画面外セルを `hittable=true`(=画面内)と誤認してスクロールせず
 クランプ位置を叩き別セルへ誤遷移する。逆に可視の正確セルは `hittable=false` になり `.tap()` が不規則な
@@ -1570,7 +1570,7 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   **`ios`/`android`/`ifCanSelect`/`repeatWhileCanSelect` の本体を実行しなかったときは黙る**
   (`noteUnexecutedBlock`。中身は実行しないと分からないので誤検知を出さない側に倒す ——
   `expectation { android { notExist(…) } }` を iOS で回す形が実際にある)。
-  **デバイス不要**(`api run --dry-run` / `ft_dry_run` で判定できる = 実機の前に落とせる)
+  **デバイス不要**(`api run --dry-run` / `ft_dry_run` で判定できる = デバイス実行の前に落とせる)
 - **アプリより手前にある別プロセスの window を失敗時に添える**(Android のみ。2026-07-27)。
   `AndroidForegroundWindows` が `dumpsys window windows` を z 順に読み、アプリの window より
   手前で `isVisible=true` かつ別パッケージのものを返す。**アプリの a11y ツリーには他プロセスの

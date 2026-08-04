@@ -2,7 +2,7 @@
 // ftester 機能: waitForDisplay/waitForClose(スクロールしない出現・消滅待ち)・verify(アサーション集約)・
 // screenshot(1ステップとして埋め込み)・flick(画面基点の生ジェスチャ)・appIs(前面アプリ検証)。
 // installApp/removeApp/tapAppIcon は意図的にここへ含めない(removeApp は自 SUT を消すと以降のシナリオと
-// in-app ブリッジが壊れる。tapAppIcon はホーム画面依存で flake リスクが高く実機検証は別途行う)。
+// in-app ブリッジが壊れる。tapAppIcon はホーム画面依存で flake リスクが高く実行での検証は別途行う)。
 //
 // **同じ画面で始まるものは1本にまとめる**(2026-08-04 統合)。appIs / screenshot / waitForDisplay /
 // verify は「起動 → 非同期表示画面」という同一の導入を4回繰り返しており、1本あたり launchApp +

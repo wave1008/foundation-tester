@@ -184,7 +184,7 @@ class スクロールで折り返し下の要素に到達できること {
             }
             // 別名族は本体(`tap(scroll:)` / `exist(scroll:)`)の糖衣で、転送そのものは
             // Tests/FTBridgeClientTests/SwipeForScrollForwardingTests.swift がソース走査で固定している。
-            // ここで見るのは**同じ経路を通って実機に届くこと**だけ(CMP は 15_型付きセレクタ が
+            // ここで見るのは**同じ経路を通ってデバイスに届くこと**だけ(CMP は 15_型付きセレクタ が
             // Sel 版で同じ組を通しているので、文字列版はこちらの3 SUT が担う)
             scene(7, "スクロール探索の別名族(tapWithScrollDown / existWithScrollUp / tapWithoutScroll)") {
                 action {
