@@ -34,6 +34,10 @@ public final class WebViewDelegatingDriver: AppDriver {
     /// domInterop の直近 snapshot の ref→frame(画面座標)。domInteropPoint がここから中心点を
     /// 引く。snapshot のたびに丸ごと差し替える(古い ref を残すと存在しない要素を指しかねない)
     private var domFrames: [Int: FTRect] = [:]
+    /// domInterop の ref→value。**type の読み返しにだけ使う**(入力前後の比較)。
+    /// **値を報告しない要素は nil のまま持つ**(空文字と同一視すると、value を持たない
+    /// フィールドが「入力前後で不変」に見えて毎回二重入力になる。既存テストが検出した)
+    private var domValues: [Int: String?] = [:]
     /// この委譲区間で Web コンテンツを一度でも観測したか。
     /// XCUITest 側は WebView の AX 活性化に時間がかかる(実測 約2.3秒)ので初回だけ待つ。
     /// 一度見えたら待たない(空ページや全要素が画面外の画面で毎ステップ待たされないため)
@@ -85,9 +89,12 @@ public final class WebViewDelegatingDriver: AppDriver {
                 if mode != .domInterop { _ = try? await delegated.snapshot() }
                 mode = .domInterop
                 domFrames = Dictionary(uniqueKeysWithValues: inapp.elements.map { ($0.ref, $0.frame) })
+                // 値も控える: type の読み返し(下記 type の注記)で「入力前の値」を比べるため
+                domValues = Dictionary(uniqueKeysWithValues: inapp.elements.map { ($0.ref, $0.value) })
             } else {
                 mode = .normal
                 domFrames = [:]
+                domValues = [:]
             }
             sawWebContent = false
             note = nil
@@ -164,12 +171,31 @@ public final class WebViewDelegatingDriver: AppDriver {
         try await delegated.tap(x: p.x, y: p.y)
     }
     public func tap(x: Double, y: Double) async throws { try await screenDriver.tap(x: x, y: y) }
+    /// domInterop の入力は「座標タップでフォーカス → フォーカス中要素へ typeText」なので、
+    /// **タップがフォーカスを立て損なうと打鍵が丸ごと落ちる**(値が空のまま。実測 2026-08-04:
+    /// E2E-CMP の WebView シナリオが 4/78 でこれを踏み、後段の検証だけが落ちていた)。
+    /// DOM は `value` を返せるので**読み返して1回だけ張り直す**。
+    /// **判定は「値が入力前から1文字も変わっていない」ときだけ**にする —— 「期待した文字列を
+    /// 含まない」で判定すると、入力を加工するフィールド(大文字化・書式化)で二重入力になる
+    /// (Android の SET_TEXT で踏んだ二重追記と同じ型。docs/design.md §Android のテキスト注入の規律)
     public func type(ref: Int?, text: String) async throws {
         guard mode == .domInterop else { try await screenDriver.type(ref: ref, text: text); return }
-        if let ref {
-            let p = try domInteropPoint(ref: ref)
-            try await delegated.tap(x: p.x, y: p.y)
+        guard let ref else {
+            try await delegated.type(ref: nil, text: text)
+            return
         }
+        let point = try domInteropPoint(ref: ref)
+        let before = domValues[ref]
+        try await delegated.tap(x: point.x, y: point.y)
+        try await delegated.type(ref: nil, text: text)
+        // **値を報告する要素だけ**読み返す(報告しない要素は検証不能 = 従来どおり撃ちっぱなし。
+        // ここを空文字で代用すると、value を持たない要素で毎回二重入力になる)
+        guard !text.isEmpty, let before, before != nil else { return }
+        // 読み返しは DOM の再取得(in-app 経路。実測 1手 3ms 級なので正常系でも重くない)
+        _ = try await snapshot()
+        guard let after = domValues[ref], after != nil, after == before else { return }
+        note = "the typed text did not reach the WebView field; tapped and typed again"
+        try await delegated.tap(x: point.x, y: point.y)
         try await delegated.type(ref: nil, text: text)
     }
     public func pressEnter() async throws { try await screenDriver.pressEnter() }
