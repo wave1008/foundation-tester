@@ -14,7 +14,14 @@ public final class BridgeClient: AppDriver {
     let fastInput: Bool
     /// 実機の UDID(nil = シミュレータ)。install の simctl / devicectl 分岐にのみ使う
     let physicalUDID: String?
-    /// リクエストに載せる値(未使用時はキーごと省略 → 旧ランナーと byte 互換)
+    /// リクエストに載せる値(未使用時はキーごと省略 → 旧ランナーと byte 互換)。
+    ///
+    /// **探索のスワイプだけ quiescence を飛ばす案は不採用**(2026-08-04 実測)。
+    /// 1スワイプは 2,546→926ms まで縮み S0090 は −10% になったが、**探索直後のタップが飲まれる**
+    /// (`tap("#row_30")` 後に `selected=-`)。E2E-iOS の S0080/S0060 が 2/2 で落ちた ——
+    /// あの空打ちドラッグ+`settleAfterScroll` は「XCTest の quiescence が慣性を吸った後」を
+    /// 前提にしている。CMP のスクロール系は同一セッション A/B で改善ゼロだったので、
+    /// 得られるものも小さい。**再提案しない**(docs/performance-tuning.md §8)
     private var fastFlag: Bool? { fastInput ? true : nil }
 
     /// tap(ref:) が受け取った OKResponse.note(AppDriver.lastActionNote 参照)。
