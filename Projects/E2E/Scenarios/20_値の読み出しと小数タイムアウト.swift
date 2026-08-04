@@ -26,15 +26,15 @@ class 掴んだ要素の値を読んで後段で使えること {
                     tap("#nav_input")
                     tap("#btn_input_clear")
                 }.expectation {
-                    textIs("#txt_echo_length", "len=0")
-                    textIs("#txt_input_submitted", "submitted=-")
+                    select("#txt_echo_length").textIs("len=0")
+                    select("#txt_input_submitted").textIs("submitted=-")
                 }
             }
             scene(2, "入力した文字数を読み出す(値はアプリが数えるので固定値では通らない)") {
                 action {
                     type("#field_single", "readback123")   // 11 文字
                 }.expectation {
-                    textIs("#txt_echo_length", "len=11")   // 先に確定させる
+                    select("#txt_echo_length").textIs("len=11")   // 先に確定させる
                     let 文字数 = exist("#txt_echo_length")
                     文字数.text.thisIs("len=11")
                     // .id は「セレクタの綴り」ではなく**実際に解決した要素**の identifier
@@ -45,12 +45,12 @@ class 掴んだ要素の値を読んで後段で使えること {
                 action {
                     tap("#btn_input_submit")
                 }.expectation {
-                    textIs("#txt_input_submitted", "submitted=readback123")   // 先に確定させる
+                    select("#txt_input_submitted").textIs("submitted=readback123")   // 先に確定させる
                     let 送信結果 = exist("#txt_input_submitted").text
                     // 画面から採った値だけを使って、別要素(echo)の期待値を組み立てる。
                     // 読み出しが壊れると期待値が "single=" になり必ず落ちる
                     let 入力値 = (送信結果 ?? "").replacingOccurrences(of: "submitted=", with: "")
-                    textIs("#txt_echo_single", "single=\(入力値)")
+                    select("#txt_echo_single").textIs("single=\(入力値)")
                 }
             }
         }
@@ -65,7 +65,7 @@ class 掴んだ要素の値を読んで後段で使えること {
                     tap("#nav_async")
                     tap("#btn_async_reset")
                 }.expectation {
-                    textIs("#txt_delay_state", "state=idle")
+                    select("#txt_delay_state").textIs("state=idle")
                 }
             }
             scene(2, "3秒後表示を timeout: 4.5(小数)で待てる") {
@@ -73,7 +73,7 @@ class 掴んだ要素の値を読んで後段で使えること {
                     tap("#btn_delay_3")
                 }.expectation {
                     exist("#txt_delayed", timeout: 4.5)
-                    textIs("#txt_delay_state", "state=done", timeout: 1.5)
+                    select("#txt_delay_state", timeout: 1.5).textIs("state=done", timeout: 1.5)
                 }
             }
             scene(3, "ifCanSelect の waitSeconds も小数で待てる") {
@@ -85,7 +85,7 @@ class 掴んだ要素の値を読んで後段で使えること {
                         tap("#btn_async_reset")
                     }
                 }.expectation {
-                    textIs("#txt_delay_state", "state=idle")
+                    select("#txt_delay_state").textIs("state=idle")
                 }
             }
         }

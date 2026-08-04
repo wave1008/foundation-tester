@@ -28,28 +28,28 @@ class セレクタのid指定でタップできること {
                 }.action {
                     tap("#nav_selector")
                 }.expectation {
-                    textIs("#txt_selector_result", "result=-")
+                    select("#txt_selector_result").textIs("result=-")
                 }
             }
             scene(2, "#btn_allow を id 指定でタップ") {
                 action {
                     tap("#btn_allow")
                 }.expectation {
-                    textIs("#txt_selector_result", "result=allow")
+                    select("#txt_selector_result").textIs("result=allow")
                 }
             }
             scene(3, "#btn_shared_label を id 指定でタップ") {
                 action {
                     tap("#btn_shared_label")
                 }.expectation {
-                    textIs("#txt_selector_result", "result=shared")
+                    select("#txt_selector_result").textIs("result=shared")
                 }
             }
             scene(4, "#btn_selector_reset で結果をクリア") {
                 action {
                     tap("#btn_selector_reset")
                 }.expectation {
-                    textIs("#txt_selector_result", "result=-")
+                    select("#txt_selector_result").textIs("result=-")
                 }
             }
         }

@@ -20,7 +20,7 @@ class ライフサイクルとコントロールが正しく働くこと {
                     tap("#nav_lifecycle")
                     tap("#btn_reset_persisted")
                 }.expectation {
-                    textIs("#txt_launch_count", "launch=1")
+                    select("#txt_launch_count").textIs("launch=1")
                 }
             }
             scene(2, "セッションカウンタを2回加算") {
@@ -28,7 +28,7 @@ class ライフサイクルとコントロールが正しく働くこと {
                     tap("#btn_session_inc")
                     tap("#btn_session_inc")
                 }.expectation {
-                    textIs("#txt_session_count", "session=2")
+                    select("#txt_session_count").textIs("session=2")
                 }
             }
             scene(3, "restartApp 後: session はリセット・launch は+1・ホームのルートに戻る") {
@@ -39,13 +39,13 @@ class ライフサイクルとコントロールが正しく働くこと {
                 }.action {
                     tap("#nav_lifecycle")
                 }.expectation {
-                    textIs("#txt_session_count", "session=0")
-                    textIs("#txt_launch_count", "launch=2")
+                    select("#txt_session_count").textIs("session=0")
+                    select("#txt_launch_count").textIs("launch=2")
                 }
             }
             scene(4, "platform 表記は iOS") {
                 expectation {
-                    textIs("#txt_platform", "platform=iOS")
+                    select("#txt_platform").textIs("platform=iOS")
                 }
             }
             // `terminateApp` は restartApp の半分だけを撃つ。**落ちたことは次の launchApp の
@@ -56,8 +56,8 @@ class ライフサイクルとコントロールが正しく働くこと {
                     launchApp()
                     tap("#nav_lifecycle")
                 }.expectation {
-                    textIs("#txt_launch_count", "launch=3")
-                    textIs("#txt_session_count", "session=0")
+                    select("#txt_launch_count").textIs("launch=3")
+                    select("#txt_session_count").textIs("session=0")
                 }
             }
         }
@@ -72,10 +72,10 @@ class ライフサイクルとコントロールが正しく働くこと {
                 }.action {
                     tap("#tab_controls")
                 }.expectation {
-                    textIs("#txt_sw_notify", "notify=off")
-                    textIs("#txt_cb_agree", "agree=false")
-                    textIs("#txt_radio", "plan=A")
-                    textIs("#txt_slider", "volume=50")
+                    select("#txt_sw_notify").textIs("notify=off")
+                    select("#txt_cb_agree").textIs("agree=false")
+                    select("#txt_radio").textIs("plan=A")
+                    select("#txt_slider").textIs("volume=50")
                 }
             }
             scene(2, "Switch とチェックを ON にする") {
@@ -83,25 +83,25 @@ class ライフサイクルとコントロールが正しく働くこと {
                     tap("#sw_notify")
                     tap("#cb_agree")
                 }.expectation {
-                    textIs("#txt_sw_notify", "notify=on")
-                    textIs("#txt_cb_agree", "agree=true")
+                    select("#txt_sw_notify").textIs("notify=on")
+                    select("#txt_cb_agree").textIs("agree=true")
                 }
             }
             scene(3, "ラジオを B へ切り替える") {
                 action {
                     tap("#radio_b")
                 }.expectation {
-                    textIs("#txt_radio", "plan=B")
+                    select("#txt_radio").textIs("plan=B")
                 }
             }
             scene(4, "リセットで全て初期値に戻る") {
                 action {
                     tap("#btn_controls_reset")
                 }.expectation {
-                    textIs("#txt_sw_notify", "notify=off")
-                    textIs("#txt_cb_agree", "agree=false")
-                    textIs("#txt_radio", "plan=A")
-                    textIs("#txt_slider", "volume=50")
+                    select("#txt_sw_notify").textIs("notify=off")
+                    select("#txt_cb_agree").textIs("agree=false")
+                    select("#txt_radio").textIs("plan=A")
+                    select("#txt_slider").textIs("volume=50")
                 }
             }
         }
@@ -120,7 +120,7 @@ class ライフサイクルとコントロールが正しく働くこと {
                     type("#field_single", "persist99")
                     tap("#btn_input_submit")
                 }.expectation {
-                    textIs("#txt_input_submitted", "submitted=persist99")
+                    select("#txt_input_submitted").textIs("submitted=persist99")
                 }
             }
             scene(2, "clearAppData 後に起動すると初期状態に戻る") {
@@ -129,8 +129,8 @@ class ライフサイクルとコントロールが正しく働くこと {
                     launchApp()
                     tap("#nav_input")
                 }.expectation {
-                    textIs("#txt_input_submitted", "submitted=-")
-                    textIs("#txt_echo_single", "single=")
+                    select("#txt_input_submitted").textIs("submitted=-")
+                    select("#txt_echo_single").textIs("single=")
                 }
             }
         }

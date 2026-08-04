@@ -18,7 +18,7 @@ class ライフサイクルとプラットフォーム分岐が正しく働く�
                     tap("#nav_lifecycle")
                     tap("#btn_reset_persisted")
                 }.expectation {
-                    textIs("#txt_launch_count", "launch=1")
+                    select("#txt_launch_count").textIs("launch=1")
                 }
             }
             scene(2, "セッションカウンタを2回加算") {
@@ -26,7 +26,7 @@ class ライフサイクルとプラットフォーム分岐が正しく働く�
                     tap("#btn_session_inc")
                     tap("#btn_session_inc")
                 }.expectation {
-                    textIs("#txt_session_count", "session=2")
+                    select("#txt_session_count").textIs("session=2")
                 }
             }
             scene(3, "restartApp 後: session はリセット・launch は+1・ホームのルートに戻る") {
@@ -37,8 +37,8 @@ class ライフサイクルとプラットフォーム分岐が正しく働く�
                 }.action {
                     tap("#nav_lifecycle")
                 }.expectation {
-                    textIs("#txt_session_count", "session=0")
-                    textIs("#txt_launch_count", "launch=2")
+                    select("#txt_session_count").textIs("session=0")
+                    select("#txt_launch_count").textIs("launch=2")
                 }
             }
             // `terminateApp` は restartApp の半分だけを撃つ。**落ちたことは次の launchApp の
@@ -49,8 +49,8 @@ class ライフサイクルとプラットフォーム分岐が正しく働く�
                     launchApp()
                     tap("#nav_lifecycle")
                 }.expectation {
-                    textIs("#txt_launch_count", "launch=3")
-                    textIs("#txt_session_count", "session=0")
+                    select("#txt_launch_count").textIs("launch=3")
+                    select("#txt_session_count").textIs("session=0")
                 }
             }
         }
@@ -70,8 +70,8 @@ class ライフサイクルとプラットフォーム分岐が正しく働く�
             }
             scene(2, "ios {} / android {} で platform 表記を確認") {
                 expectation {
-                    ios { textIs("#txt_platform", "platform=iOS") }
-                    android { textIs("#txt_platform", "platform=Android") }
+                    ios { select("#txt_platform").textIs("platform=iOS") }
+                    android { select("#txt_platform").textIs("platform=Android") }
                 }
             }
         }
@@ -90,7 +90,7 @@ class ライフサイクルとプラットフォーム分岐が正しく働く�
                     type("#field_single", "persist99")
                     tap("#btn_input_submit")
                 }.expectation {
-                    textIs("#txt_input_submitted", "submitted=persist99")
+                    select("#txt_input_submitted").textIs("submitted=persist99")
                 }
             }
             scene(2, "clearAppData 後に起動すると初期状態に戻る") {
@@ -99,8 +99,8 @@ class ライフサイクルとプラットフォーム分岐が正しく働く�
                     launchApp()
                     tap("#nav_input")
                 }.expectation {
-                    textIs("#txt_input_submitted", "submitted=-")
-                    textIs("#txt_echo_single", "single=")
+                    select("#txt_input_submitted").textIs("submitted=-")
+                    select("#txt_echo_single").textIs("single=")
                 }
             }
         }

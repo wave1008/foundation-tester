@@ -144,17 +144,19 @@ public enum ScenarioCodeGen {
                 return "exist(\(literal(selector))\(timeoutArg(step))\(g))"
             case "valueEquals":
                 let g = step.occlusionGuard == false ? ", requireVisible: false" : ""
-                return "valueIs(\(literal(selector)), \(literal(step.expected ?? ""))\(timeoutArg(step))\(g))"
+                return "select(\(literal(selector))\(timeoutArg(step))\(g)).valueIs("
+                    + "\(literal(step.expected ?? ""))\(timeoutArg(step))\(g))"
             case "textEquals":
                 let g = step.occlusionGuard == false ? ", requireVisible: false" : ""
-                return "textIs(\(literal(selector)), \(literal(step.expected ?? ""))\(timeoutArg(step))\(g))"
+                return "select(\(literal(selector))\(timeoutArg(step))\(g)).textIs("
+                    + "\(literal(step.expected ?? ""))\(timeoutArg(step))\(g))"
             case "notExists":
                 // `exist` 側(exists ケース)はまだ scroll 再構成に未対応(別課題。exists は触らない)
                 return "notExist(\(literal(selector))\(timeoutArg(step))\(notExistScrollArgs(step)))"
             case "enabled":
-                return "enabledIsTrue(\(literal(selector))\(timeoutArg(step)))"
+                return "select(\(literal(selector))\(timeoutArg(step))).enabledIsTrue(\(bareTimeoutArg(step)))"
             case "disabled":
-                return "enabledIsFalse(\(literal(selector))\(timeoutArg(step)))"
+                return "select(\(literal(selector))\(timeoutArg(step))).enabledIsFalse(\(bareTimeoutArg(step)))"
             case "count":
                 return "countIs(\(literal(selector)), \(step.expectedCount ?? 0)\(timeoutArg(step)))"
             case "screenMatches":

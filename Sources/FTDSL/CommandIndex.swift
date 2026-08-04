@@ -2,7 +2,7 @@
 // 「その名前は在るか・引数は何か・exist の戻り値に繋げられるか」を実行前に確かめるためのもの。
 //
 // **表は手書きで、`CommandIndexSyncTests` がソースと突き合わせる**(Commands.swift の
-// `public func` 全件 + ValueAssertions.swift の `this*` 全件 = この表の name 集合、
+// `public func` + トップレベル `public var` 全件 + ValueAssertions.swift の `this*` 全件 = この表の name 集合、
 // chainable は FTElement のメソッド集合と一致)。コマンドを足す/消す/改名したら
 // ここも直さないとテストが落ちる —— 索引が古いまま配られるのを防ぐのが唯一の目的。
 // 併せて docs/commands.md も直す(あちらは人間向けの散文、こちらは名前の正典)。
@@ -13,9 +13,11 @@ import Foundation
 
 public struct DSLCommandInfo: Sendable, Encodable {
     public let name: String
-    /// structure / operation / scroll / flick / existence / text / value / this / app / control
+    /// structure / operation / scroll / flick / existence / id / text / value / this / app / control
     public let category: String
-    /// 代表的な呼び出し形(セレクタを取るものは文字列版。型付き `Sel` 版が必ず併設されている)
+    /// 代表的な呼び出し形(セレクタを取るものは文字列版。型付き `Sel` 版が必ず併設されている)。
+    /// **検証は `select(selector).xxx(...)` の形で載せる** —— 対象は「直前に掴んだ要素」なので、
+    /// 名前と引数だけを見て `xxx(selector, expected)` と書かれるのを防ぐ(その形は廃止済み)
     public let signature: String
     public let summary: String
     /// `exist(...)` / `waitForDisplay(...)` の戻り値へ `.name(...)` で繋げられるか
@@ -62,6 +64,8 @@ public enum DSLCommandIndex {
               "Taps an element. holdSeconds greater than 0 makes it a long press."),
         .init("select", "operation", "select(selector, timeout:, requireVisible:, scroll:, maxSwipes:)",
               "Grabs an element without touching the device. Returns an empty element instead of failing."),
+        .init("lastElement", "operation", "lastElement",
+              "The element the last single-element command grabbed. Values are frozen at grab time and cleared between scenes."),
         .init("type", "operation", "type(selector, text) / type(text)",
               "Types text. The single-argument form targets the focused element and takes text, not a selector."),
         .init("pressEnter", "operation", "pressEnter()",
@@ -172,14 +176,14 @@ public enum DSLCommandIndex {
               "Waits until the element is absent. With scroll:, finding it fails the check."),
         .init("countIs", "existence", "countIs(selector, count, timeout:)",
               "Asserts the number of candidates in the tree. Visibility is not considered."),
-        .init("enabledIsTrue", "existence", "enabledIsTrue(selector, timeout:)",
-              "Asserts the element is enabled.", chainable: true),
-        .init("enabledIsFalse", "existence", "enabledIsFalse(selector, timeout:)",
-              "Asserts the element is disabled.", chainable: true),
-        .init("checkIsON", "existence", "checkIsON(selector, timeout:)",
-              "Asserts the element is checked.", chainable: true),
-        .init("checkIsOFF", "existence", "checkIsOFF(selector, timeout:)",
-              "Asserts the element is not checked. Warns if a checked state was never observed.",
+        .init("enabledIsTrue", "existence", "select(selector).enabledIsTrue(timeout:)",
+              "Asserts the element is enabled. The target is the element grabbed last.", chainable: true),
+        .init("enabledIsFalse", "existence", "select(selector).enabledIsFalse(timeout:)",
+              "Asserts the element is disabled. The target is the element grabbed last.", chainable: true),
+        .init("checkIsON", "existence", "select(selector).checkIsON(timeout:)",
+              "Asserts the element is checked. The target is the element grabbed last.", chainable: true),
+        .init("checkIsOFF", "existence", "select(selector).checkIsOFF(timeout:)",
+              "Asserts the element is not checked. Warns if a checked state was never observed. The target is the element grabbed last.",
               chainable: true),
         .init("keyboardIsShown", "existence", "keyboardIsShown(timeout:)",
               "Asserts the soft keyboard is shown."),
@@ -190,61 +194,66 @@ public enum DSLCommandIndex {
         .init("appIs", "existence", "appIs(id, waitSeconds:)",
               "Asserts the foreground app is the given bundle ID / package name."),
 
+        // MARK: id
+        .init("idIs", "id", "select(selector).idIs(expected, timeout:)",
+              "Asserts the identifier of the element equals expected. The target is the element grabbed last.",
+              chainable: true),
+
         // MARK: text
-        .init("textIs", "text", "textIs(selector, expected, timeout:, requireVisible:)",
-              "Asserts the label equals expected.", chainable: true),
-        .init("textIsNot", "text", "textIsNot(selector, expected, timeout:)",
-              "Asserts the label differs from expected.", chainable: true),
-        .init("textContains", "text", "textContains(selector, expected, timeout:, requireVisible:)",
-              "Asserts the label contains expected.", chainable: true),
-        .init("textContainsNot", "text", "textContainsNot(selector, expected, timeout:)",
-              "Asserts the label does not contain expected.", chainable: true),
-        .init("textStartsWith", "text", "textStartsWith(selector, expected, timeout:, requireVisible:)",
-              "Asserts the label starts with expected.", chainable: true),
-        .init("textStartsWithNot", "text", "textStartsWithNot(selector, expected, timeout:)",
-              "Asserts the label does not start with expected.", chainable: true),
-        .init("textEndsWith", "text", "textEndsWith(selector, expected, timeout:, requireVisible:)",
-              "Asserts the label ends with expected.", chainable: true),
-        .init("textEndsWithNot", "text", "textEndsWithNot(selector, expected, timeout:)",
-              "Asserts the label does not end with expected.", chainable: true),
-        .init("textMatches", "text", "textMatches(selector, pattern, timeout:, requireVisible:)",
-              "Asserts the label matches the regular expression (substring match).", chainable: true),
-        .init("textMatchesNot", "text", "textMatchesNot(selector, pattern, timeout:)",
-              "Asserts the label does not match the regular expression.", chainable: true),
-        .init("textMatchesDateFormat", "text", "textMatchesDateFormat(selector, format, timeout:, requireVisible:)",
-              "Asserts the label parses with the DateFormatter format.", chainable: true),
-        .init("textIsEmpty", "text", "textIsEmpty(selector, timeout:)",
-              "Asserts the label is empty. Visibility is not considered.", chainable: true),
-        .init("textIsNotEmpty", "text", "textIsNotEmpty(selector, timeout:, requireVisible:)",
-              "Asserts the label is not empty.", chainable: true),
+        .init("textIs", "text", "select(selector).textIs(expected, timeout:, requireVisible:)",
+              "Asserts the label equals expected. The target is the element grabbed last.", chainable: true),
+        .init("textIsNot", "text", "select(selector).textIsNot(expected, timeout:)",
+              "Asserts the label differs from expected. The target is the element grabbed last.", chainable: true),
+        .init("textContains", "text", "select(selector).textContains(expected, timeout:, requireVisible:)",
+              "Asserts the label contains expected. The target is the element grabbed last.", chainable: true),
+        .init("textContainsNot", "text", "select(selector).textContainsNot(expected, timeout:)",
+              "Asserts the label does not contain expected. The target is the element grabbed last.", chainable: true),
+        .init("textStartsWith", "text", "select(selector).textStartsWith(expected, timeout:, requireVisible:)",
+              "Asserts the label starts with expected. The target is the element grabbed last.", chainable: true),
+        .init("textStartsWithNot", "text", "select(selector).textStartsWithNot(expected, timeout:)",
+              "Asserts the label does not start with expected. The target is the element grabbed last.", chainable: true),
+        .init("textEndsWith", "text", "select(selector).textEndsWith(expected, timeout:, requireVisible:)",
+              "Asserts the label ends with expected. The target is the element grabbed last.", chainable: true),
+        .init("textEndsWithNot", "text", "select(selector).textEndsWithNot(expected, timeout:)",
+              "Asserts the label does not end with expected. The target is the element grabbed last.", chainable: true),
+        .init("textMatches", "text", "select(selector).textMatches(pattern, timeout:, requireVisible:)",
+              "Asserts the label matches the regular expression (substring match). The target is the element grabbed last.", chainable: true),
+        .init("textMatchesNot", "text", "select(selector).textMatchesNot(pattern, timeout:)",
+              "Asserts the label does not match the regular expression. The target is the element grabbed last.", chainable: true),
+        .init("textMatchesDateFormat", "text", "select(selector).textMatchesDateFormat(format, timeout:, requireVisible:)",
+              "Asserts the label parses with the DateFormatter format. The target is the element grabbed last.", chainable: true),
+        .init("textIsEmpty", "text", "select(selector).textIsEmpty(timeout:)",
+              "Asserts the label is empty. Visibility is not considered. The target is the element grabbed last.", chainable: true),
+        .init("textIsNotEmpty", "text", "select(selector).textIsNotEmpty(timeout:)",
+              "Asserts the label is not empty. The target is the element grabbed last.", chainable: true),
 
         // MARK: value
-        .init("valueIs", "value", "valueIs(selector, expected, timeout:, requireVisible:)",
-              "Asserts the value equals expected.", chainable: true),
-        .init("valueIsNot", "value", "valueIsNot(selector, expected, timeout:)",
-              "Asserts the value differs from expected.", chainable: true),
-        .init("valueContains", "value", "valueContains(selector, expected, timeout:, requireVisible:)",
-              "Asserts the value contains expected.", chainable: true),
-        .init("valueContainsNot", "value", "valueContainsNot(selector, expected, timeout:)",
-              "Asserts the value does not contain expected.", chainable: true),
-        .init("valueStartsWith", "value", "valueStartsWith(selector, expected, timeout:, requireVisible:)",
-              "Asserts the value starts with expected.", chainable: true),
-        .init("valueStartsWithNot", "value", "valueStartsWithNot(selector, expected, timeout:)",
-              "Asserts the value does not start with expected.", chainable: true),
-        .init("valueEndsWith", "value", "valueEndsWith(selector, expected, timeout:, requireVisible:)",
-              "Asserts the value ends with expected.", chainable: true),
-        .init("valueEndsWithNot", "value", "valueEndsWithNot(selector, expected, timeout:)",
-              "Asserts the value does not end with expected.", chainable: true),
-        .init("valueMatches", "value", "valueMatches(selector, pattern, timeout:, requireVisible:)",
-              "Asserts the value matches the regular expression (substring match).", chainable: true),
-        .init("valueMatchesNot", "value", "valueMatchesNot(selector, pattern, timeout:)",
-              "Asserts the value does not match the regular expression.", chainable: true),
-        .init("valueMatchesDateFormat", "value", "valueMatchesDateFormat(selector, format, timeout:, requireVisible:)",
-              "Asserts the value parses with the DateFormatter format.", chainable: true),
-        .init("valueIsEmpty", "value", "valueIsEmpty(selector, timeout:)",
-              "Asserts the value is empty. Visibility is not considered.", chainable: true),
-        .init("valueIsNotEmpty", "value", "valueIsNotEmpty(selector, timeout:, requireVisible:)",
-              "Asserts the value is not empty.", chainable: true),
+        .init("valueIs", "value", "select(selector).valueIs(expected, timeout:, requireVisible:)",
+              "Asserts the value equals expected. The target is the element grabbed last.", chainable: true),
+        .init("valueIsNot", "value", "select(selector).valueIsNot(expected, timeout:)",
+              "Asserts the value differs from expected. The target is the element grabbed last.", chainable: true),
+        .init("valueContains", "value", "select(selector).valueContains(expected, timeout:, requireVisible:)",
+              "Asserts the value contains expected. The target is the element grabbed last.", chainable: true),
+        .init("valueContainsNot", "value", "select(selector).valueContainsNot(expected, timeout:)",
+              "Asserts the value does not contain expected. The target is the element grabbed last.", chainable: true),
+        .init("valueStartsWith", "value", "select(selector).valueStartsWith(expected, timeout:, requireVisible:)",
+              "Asserts the value starts with expected. The target is the element grabbed last.", chainable: true),
+        .init("valueStartsWithNot", "value", "select(selector).valueStartsWithNot(expected, timeout:)",
+              "Asserts the value does not start with expected. The target is the element grabbed last.", chainable: true),
+        .init("valueEndsWith", "value", "select(selector).valueEndsWith(expected, timeout:, requireVisible:)",
+              "Asserts the value ends with expected. The target is the element grabbed last.", chainable: true),
+        .init("valueEndsWithNot", "value", "select(selector).valueEndsWithNot(expected, timeout:)",
+              "Asserts the value does not end with expected. The target is the element grabbed last.", chainable: true),
+        .init("valueMatches", "value", "select(selector).valueMatches(pattern, timeout:, requireVisible:)",
+              "Asserts the value matches the regular expression (substring match). The target is the element grabbed last.", chainable: true),
+        .init("valueMatchesNot", "value", "select(selector).valueMatchesNot(pattern, timeout:)",
+              "Asserts the value does not match the regular expression. The target is the element grabbed last.", chainable: true),
+        .init("valueMatchesDateFormat", "value", "select(selector).valueMatchesDateFormat(format, timeout:, requireVisible:)",
+              "Asserts the value parses with the DateFormatter format. The target is the element grabbed last.", chainable: true),
+        .init("valueIsEmpty", "value", "select(selector).valueIsEmpty(timeout:)",
+              "Asserts the value is empty. Visibility is not considered. The target is the element grabbed last.", chainable: true),
+        .init("valueIsNotEmpty", "value", "select(selector).valueIsNotEmpty(timeout:)",
+              "Asserts the value is not empty. The target is the element grabbed last.", chainable: true),
 
         // MARK: app
         .init("launchApp", "app", "launchApp(bundleID?)",
@@ -311,6 +320,7 @@ public enum DSLCommandIndex {
               "Asserts a numeric less-than-or-equal."),
     ]
 
-    /// `exist(...)` の戻り値だけが持つメソッド(自由関数の対応が無い)。chainable の照合に使う
-    public static let chainOnlyNames: Set<String> = ["idIs"]
+    /// `exist(...)` の戻り値だけが持つメソッド(自由関数の対応が無い)。chainable の照合に使う。
+    /// **現在は空** —— チェーンできる検証はすべて同名の1引数自由関数を持つ(2026-08-04)
+    public static let chainOnlyNames: Set<String> = []
 }

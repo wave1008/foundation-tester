@@ -16,29 +16,29 @@ class 起動と画面遷移が正しく行われること {
                     launchApp()
                 }.expectation {
                     exist("#txt_home_marker")
-                    textIs("#txt_screen_title", "ホーム")
+                    select("#txt_screen_title").textIs("ホーム")
                 }
             }
             scene(2, "下位画面へ遷移して戻るでホームに戻る") {
                 action {
                     tap("#nav_selector")
                 }.expectation {
-                    textIs("#txt_screen_title", "セレクタ")
+                    select("#txt_screen_title").textIs("セレクタ")
                 }.action {
                     tap("#btn_back")
                 }.expectation {
-                    textIs("#txt_screen_title", "ホーム")
+                    select("#txt_screen_title").textIs("ホーム")
                 }
             }
             scene(3, "下位画面に入った状態でタブ切替してもスタックが持ち越されない") {
                 action {
                     tap("#nav_selector")
                 }.expectation {
-                    textIs("#txt_screen_title", "セレクタ")
+                    select("#txt_screen_title").textIs("セレクタ")
                 }.action {
                     tap("#tab_controls")
                 }.expectation {
-                    textIs("#txt_screen_title", "コントロール")
+                    select("#txt_screen_title").textIs("コントロール")
                 }.action {
                     tap("#tab_home")
                 }.expectation {
@@ -50,7 +50,7 @@ class 起動と画面遷移が正しく行われること {
                     tap("#tab_about")
                 }.expectation {
                     exist("#txt_about_marker")
-                    textIs("#txt_about_app", "app=com.ftester.e2e")
+                    select("#txt_about_app").textIs("app=com.ftester.e2e")
                 }
             }
         }

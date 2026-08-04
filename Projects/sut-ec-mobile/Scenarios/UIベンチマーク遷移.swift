@@ -35,7 +35,7 @@ class UIベンチマークを操作できること {
                     // 直前の実行が別年数で残っていても 3年へ基準化する(resume 時の擬陽性回避)。
                     tap("#chip_years_3")
                 }.expectation {
-                    textIs("#benchmark_cell_count", "セル数: 1096")  // 3年ぶんの総日数
+                    select("#benchmark_cell_count").textIs("セル数: 1096")  // 3年ぶんの総日数
                     exist("#chip_years_3")
                 }
             }
@@ -52,7 +52,7 @@ class UIベンチマークを操作できること {
                 action {
                     tap("#btn_back")
                 }.expectation {
-                    textIs("#benchmark_cell_count", "セル数: 1096")
+                    select("#benchmark_cell_count").textIs("セル数: 1096")
                     exist("#chip_years_3")
                 }
             }

@@ -29,35 +29,35 @@ class セレクタの型と序数とフォールバックが解決できるこ�
                 }.action {
                     tap("#nav_selector")
                 }.expectation {
-                    textIs("#txt_selector_result", "result=-")
+                    select("#txt_selector_result").textIs("result=-")
                 }
             }
             scene(2, ".button[6] で3番目の『項目』(#btn_item_3)に着地") {
                 action {
                     tap(".button[6]")
                 }.expectation {
-                    textIs("#txt_selector_result", "result=item3")
+                    select("#txt_selector_result").textIs("result=item3")
                 }
             }
             scene(3, ".型#id で #btn_allow に着地") {
                 action {
                     tap(".button#btn_allow")
                 }.expectation {
-                    textIs("#txt_selector_result", "result=allow")
+                    select("#txt_selector_result").textIs("result=allow")
                 }
             }
             scene(4, "btn_alias_old(存在しない) || btn_alias_new(実在) → 2つ目で解決") {
                 action {
                     tap("#btn_alias_old||#btn_alias_new")
                 }.expectation {
-                    textIs("#txt_selector_result", "result=alias")
+                    select("#txt_selector_result").textIs("result=alias")
                 }
             }
             scene(5, ".型&&共通ラベル は #txt_shared_label(staticText)ではなく #btn_shared_label(button)に着地") {
                 action {
                     tap(".button&&共通ラベル")
                 }.expectation {
-                    textIs("#txt_selector_result", "result=shared")
+                    select("#txt_selector_result").textIs("result=shared")
                 }
             }
         }

@@ -25,7 +25,7 @@ class スクロールで折り返し下の要素に到達できること {
                     tap("#row_40")
                 }.expectation {
                     // #txt_row_selected は固定ヘッダなのでスクロール後も見える
-                    textIs("#txt_row_selected", "selected=row_40")
+                    select("#txt_row_selected").textIs("selected=row_40")
                 }
             }
             scene(3, "先頭へで #row_01 が再び見える") {
@@ -47,7 +47,7 @@ class スクロールで折り返し下の要素に到達できること {
                 }.action {
                     tap("#nav_selector")
                 }.expectation {
-                    textIs("#txt_selector_result", "result=-")
+                    select("#txt_selector_result").textIs("result=-")
                 }
             }
             scene(2, "#txt_offscreen は scrollTo で送らない限り exist で見つからない画面外要素") {
@@ -118,7 +118,7 @@ class スクロールで折り返し下の要素に到達できること {
                     scrollTo("#row_40", scrollFrame: "#list_rows", maxSwipes: 15)
                     tap("#row_40")
                 }.expectation {
-                    textIs("#txt_row_selected", "selected=row_40")
+                    select("#txt_row_selected").textIs("selected=row_40")
                 }
             }
             // 上方向は下方向の鏡像だが**マージンの適用辺が入れ替わる**ので別経路(ScrollGeometry)。
@@ -137,7 +137,7 @@ class スクロールで折り返し下の要素に到達できること {
                     }
                 }.expectation {
                     // 直前は selected=row_40 なので、探索・タップが届かなければ落ちる
-                    textIs("#txt_row_selected", "selected=row_01")
+                    select("#txt_row_selected").textIs("selected=row_01")
                 }
             }
         }
@@ -162,7 +162,7 @@ class スクロールで折り返し下の要素に到達できること {
                         tap("#row_30", maxSwipes: 15)
                     }
                 }.expectation {
-                    textIs("#txt_row_selected", "selected=row_30")
+                    select("#txt_row_selected").textIs("selected=row_30")
                 }
             }
         }
@@ -299,7 +299,7 @@ class スクロールで折り返し下の要素に到達できること {
                     tap("#nav_scroll")
                     scrollTo("#row_40", maxSwipes: 15)
                 }.expectation {
-                    textIs("#txt_row_selected", "selected=-")
+                    select("#txt_row_selected").textIs("selected=-")
                 }
             }
         }
@@ -334,7 +334,7 @@ class スクロールで折り返し下の要素に到達できること {
                         tap("#row_30", maxSwipes: 15)
                     }
                 }.expectation {
-                    textIs("#txt_row_selected", "selected=row_30")
+                    select("#txt_row_selected").textIs("selected=row_30")
                 }
             }
         }

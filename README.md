@@ -363,14 +363,16 @@ exist(.type(.button).text("保存", .contains))    // .button&&textContains=保�
 
 **コマンド**の一覧・引数・挙動は **docs/commands.md** を参照(操作 `tap` `type` `press` `swipe` `flick` 系 `pressEnter` /
 スクロール `scrollTo`・`scrollDown` 系・`withScrollDown { }` / 検証 `exist` `notExist` `countIs` `appIs`・
-`textIs`/`valueIs` の全対称(否定 `…Not`・`…IsEmpty`・`…MatchesDateFormat`)・`screenIs`(FM 視覚検証)・
+`textIs`/`valueIs` の全対称(否定 `…Not`・`…IsEmpty`・`…MatchesDateFormat`。**セレクタは取らず直前に掴んだ要素を見る**)・`screenIs`(FM 視覚検証)・
 `verify(message) { }`(アサーション集約)/ 素の値の検証 `thisIs` 系 / アプリ制御・待機
 (`waitForDisplay`/`waitForClose` 含む)・分岐・反復 / `procedure` `group` `irregularHandler` 等)。
 特に効く規約だけ抜粋:
 
 - **要素の出現待ちは暗黙**(`wait` は原則不要。足りなければ各コマンドの `timeout:` を上げる。
   秒は**小数可** — `timeout: 1.2` / `waitSeconds: 0.5`)
-- **画面の値は `exist` の戻り値から読める**(`exist("#txt_total").text` / `.value` / `.id`)。
+- **属性の検証は「掴んでから」書く**(`select("#msg").textIs("完了")`。`select("#msg")` の次の行に
+  `textIs("完了")` と書いても同義 = 対象は直前に掴んだ要素。`textIs("#msg", "完了")` は書けない)
+- **画面の値は `exist` / `select` の戻り値から読める**(`exist("#txt_total").text` / `.value` / `.id`)。
   期待値を書き切れないとき(控えた注文番号を後の画面で照合する等)に使う。
   値は `exist` した時点のもので**再取得しない**ので、更新途中の画面は先に `textIs` 等で確定させてから読む
 - 折り返しの下は `tap("設定", scroll: .down)` / `exist(…, scroll: .down)` で**スクロールしながら探す**

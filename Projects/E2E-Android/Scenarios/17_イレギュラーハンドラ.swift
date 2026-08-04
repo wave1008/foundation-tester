@@ -25,14 +25,14 @@ class イレギュラーハンドラーが不定なダイアログを自動的�
                     launchApp()
                     tap("#nav_dialog")
                 }.expectation {
-                    textIs("#txt_dialog_result", "dialog=none")
+                    select("#txt_dialog_result").textIs("dialog=none")
                 }.action {
                     tap("#btn_show_dialog")
                 }.expectation {
                     // #btn_dialog_cancel を明示的にタップしていない。次の textIs が
                     // ロケータを解決する直前に handler がダイアログを検出して自動タップするため、
                     // echo が "cancel" になり notExist も即成立する
-                    textIs("#txt_dialog_result", "dialog=cancel")
+                    select("#txt_dialog_result").textIs("dialog=cancel")
                     notExist("#txt_dialog_title")
                 }
             }
@@ -45,7 +45,7 @@ class イレギュラーハンドラーが不定なダイアログを自動的�
                     tap("#btn_maybe_dialog")
                 }.expectation {
                     // 直後の textIs の解決前に再び handler が発火してこのダイアログも閉じる
-                    textIs("#txt_dialog_result", "dialog=cancel")
+                    select("#txt_dialog_result").textIs("dialog=cancel")
                     notExist("#txt_dialog_title")
                 }
             }

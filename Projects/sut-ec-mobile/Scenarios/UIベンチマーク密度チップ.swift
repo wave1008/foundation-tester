@@ -51,28 +51,28 @@ class UIベンチマークの密度チップが正しいこと {
                 action {
                     tap("#chip_years_1")
                 }.expectation {
-                    textIs("#benchmark_cell_count", "セル数: 366")
+                    select("#benchmark_cell_count").textIs("セル数: 366")
                 }
             }
             scene(3, "3年 → 1096セル") {
                 action {
                     tap("#chip_years_3")
                 }.expectation {
-                    textIs("#benchmark_cell_count", "セル数: 1096")
+                    select("#benchmark_cell_count").textIs("セル数: 1096")
                 }
             }
             scene(4, "6年 → 2192セル") {
                 action {
                     tap("#chip_years_6")
                 }.expectation {
-                    textIs("#benchmark_cell_count", "セル数: 2192")
+                    select("#benchmark_cell_count").textIs("セル数: 2192")
                 }
             }
             scene(5, "12年 → 4383セル(最大密度)") {
                 action {
                     tap("#chip_years_12")
                 }.expectation {
-                    textIs("#benchmark_cell_count", "セル数: 4383")
+                    select("#benchmark_cell_count").textIs("セル数: 4383")
                 }
             }
             scene(6, "後始末: 既定の3年へ戻す") {
@@ -80,7 +80,7 @@ class UIベンチマークの密度チップが正しいこと {
                 action {
                     tap("#chip_years_3")
                 }.expectation {
-                    textIs("#benchmark_cell_count", "セル数: 1096")
+                    select("#benchmark_cell_count").textIs("セル数: 1096")
                 }
             }
         }

@@ -52,9 +52,9 @@ class デモ_Androidアプリ {
             scene(2, "画像フィルタを ON にして OFF に戻す") {
                 action {
                     tap("画像||Images")
-                    valueIs("画像||Images", "1")
+                    select("画像||Images").valueIs("1")
                     tap("画像||Images")
-                    valueIs("画像||Images", "0")
+                    select("画像||Images").valueIs("0")
                 }.expectation {
                     exist("#breadcrumb_text")
                 }

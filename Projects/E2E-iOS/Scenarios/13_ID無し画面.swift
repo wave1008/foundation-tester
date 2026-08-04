@@ -20,38 +20,38 @@ class ID無し画面を方向セレクタで操作できること {
                     launchApp()
                     tap("#nav_noid")
                 }.expectation {
-                    textIs("#txt_screen_title", "ID なし")
+                    select("#txt_screen_title").textIs("ID なし")
                     // 状態表示は id が無いので前方一致(`notify=*` が `notify=off` に当たる)で引く
-                    textIs("notify=*", "notify=off")
-                    textIs("location=*", "location=off")
-                    textIs("qty=*", "qty=0")
+                    select("notify=*").textIs("notify=off")
+                    select("location=*").textIs("location=off")
+                    select("qty=*").textIs("qty=0")
                 }
             }
             scene(2, "行1のスイッチだけが切り替わる(帯判定が隣の行を拾わない)") {
                 action {
                     tap("通知:rightSwitch")
                 }.expectation {
-                    textIs("notify=*", "notify=on")
-                    textIs("location=*", "location=off")
+                    select("notify=*").textIs("notify=on")
+                    select("location=*").textIs("location=off")
                 }
             }
             scene(3, "行2のスイッチを同じ記法で切り替える") {
                 action {
                     tap("位置情報:rightSwitch")
                 }.expectation {
-                    textIs("location=*", "location=on")
-                    textIs("notify=*", "notify=on")
+                    select("location=*").textIs("location=on")
+                    select("notify=*").textIs("notify=on")
                 }
             }
             scene(4, "同一ラベルのボタンを左右で選び分ける") {
                 action {
                     tap("数量:right(.button&&変更)")
                 }.expectation {
-                    textIs("qty=*", "qty=1")
+                    select("qty=*").textIs("qty=1")
                 }.action {
                     tap("数量:leftButton")
                 }.expectation {
-                    textIs("qty=*", "qty=0")
+                    select("qty=*").textIs("qty=0")
                 }
             }
             scene(5, "方向が違えば解決しない(最も近いものを勝手に選ばない)") {

@@ -18,42 +18,42 @@ class ラベルの一致規則が明示どおりであること {
                 }.action {
                     tap("#nav_selector")
                 }.expectation {
-                    textIs("#txt_selector_result", "result=-")
+                    select("#txt_selector_result").textIs("result=-")
                 }
             }
             scene(2, "「通知を許可」は完全一致するラベルでそのままタップされる") {
                 action {
                     tap("通知を許可")
                 }.expectation {
-                    textIs("#txt_selector_result", "result=allow_notification")
+                    select("#txt_selector_result").textIs("result=allow_notification")
                 }
             }
             scene(3, "結果をクリア") {
                 action {
                     tap("#btn_selector_reset")
                 }.expectation {
-                    textIs("#txt_selector_result", "result=-")
+                    select("#txt_selector_result").textIs("result=-")
                 }
             }
             scene(4, "「許可」は #btn_allow(完全一致)が選ばれる(「通知を許可」には当たらない)") {
                 action {
                     tap("許可")
                 }.expectation {
-                    textIs("#txt_selector_result", "result=allow")
+                    select("#txt_selector_result").textIs("result=allow")
                 }
             }
             scene(5, "結果をクリア") {
                 action {
                     tap("#btn_selector_reset")
                 }.expectation {
-                    textIs("#txt_selector_result", "result=-")
+                    select("#txt_selector_result").textIs("result=-")
                 }
             }
             scene(6, "`*知を許*` と書いたときだけ部分一致で「通知を許可」を掴む") {
                 action {
                     tap("*知を許*")
                 }.expectation {
-                    textIs("#txt_selector_result", "result=allow_notification")
+                    select("#txt_selector_result").textIs("result=allow_notification")
                 }
             }
             scene(7, "同じ文字列を素で書くと**どの要素にも当たらない**(部分一致は暗黙には起きない)") {

@@ -26,8 +26,8 @@ class 否定と個数と方向セレクタが正しく動くこと {
         scenario {
             scene(1, "setUp が本体より前に実行されている") {
                 expectation {
-                    textIs("#txt_screen_title", "ライフサイクル")
-                    textIs("#txt_session_count", "session=1")
+                    select("#txt_screen_title").textIs("ライフサイクル")
+                    select("#txt_session_count").textIs("session=1")
                 }
             }
             scene(2, "notExist は未配置の要素を即座に不在と判定し、消えるまで待つ") {
@@ -45,7 +45,7 @@ class 否定と個数と方向セレクタが正しく動くこと {
                     tap("#btn_async_reset")
                 }.expectation {
                     notExist("#txt_delayed")
-                    textIs("#txt_delay_state", "state=idle")
+                    select("#txt_delay_state").textIs("state=idle")
                 }
             }
             scene(3, "notExist でダイアログが閉じたことを検証する") {
@@ -60,7 +60,7 @@ class 否定と個数と方向セレクタが正しく動くこと {
                     tap("#btn_dialog_ok")
                 }.expectation {
                     notExist("#txt_dialog_title")
-                    textIs("#txt_dialog_result", "dialog=ok")
+                    select("#txt_dialog_result").textIs("dialog=ok")
                 }
             }
             scene(4, "countIs で同一ラベル要素の個数を数える") {
@@ -79,22 +79,22 @@ class 否定と個数と方向セレクタが正しく動くこと {
                     // 縦一列に並ぶので上下で選ぶ。`許可` の下にある最初の `項目` = 1 番目
                     tap("#btn_allow:below(.button&&項目)")
                 }.expectation {
-                    textIs("#txt_selector_result", "result=item1")
+                    select("#txt_selector_result").textIs("result=item1")
                 }.action {
                     // `結果クリア` の上にある最も近い `項目` = 3 番目
                     tap("#btn_selector_reset:above(.button&&項目)")
                 }.expectation {
-                    textIs("#txt_selector_result", "result=item3")
+                    select("#txt_selector_result").textIs("result=item3")
                 }
             }
             scene(6, "enabledIsTrue と共通ステップ group") {
                 action {
                     group("結果をクリアする") {
-                        enabledIsTrue("#btn_selector_reset")
+                        select("#btn_selector_reset").enabledIsTrue()
                         tap("#btn_selector_reset")
                     }
                 }.expectation {
-                    textIs("#txt_selector_result", "result=-")
+                    select("#txt_selector_result").textIs("result=-")
                 }
             }
             scene(7, "enabledIsFalse / enabledIsTrue が要素の操作可否を判定する") {
@@ -103,22 +103,22 @@ class 否定と個数と方向セレクタが正しく動くこと {
                     tap("#btn_controls_reset")
                 }.expectation {
                     // #btn_always_disabled は常に無効、#btn_toggle_target は #cb_agree 連動(初期 off)
-                    enabledIsFalse("#btn_always_disabled")
-                    enabledIsFalse("#btn_toggle_target")
+                    select("#btn_always_disabled").enabledIsFalse()
+                    select("#btn_toggle_target").enabledIsFalse()
                     // 状態は型と独立に取れるので、型が OS で揃わない checkbox でも使える
-                    checkIsOFF("#cb_agree")
+                    select("#cb_agree").checkIsOFF()
                 }.action {
                     tap("#cb_agree")
                 }.expectation {
-                    textIs("#txt_cb_agree", "agree=true")
-                    checkIsON("#cb_agree")
-                    enabledIsTrue("#btn_toggle_target")
-                    enabledIsFalse("#btn_always_disabled")
+                    select("#txt_cb_agree").textIs("agree=true")
+                    select("#cb_agree").checkIsON()
+                    select("#btn_toggle_target").enabledIsTrue()
+                    select("#btn_always_disabled").enabledIsFalse()
                 }.action {
                     tap("#cb_agree")
                 }.expectation {
-                    checkIsOFF("#cb_agree")
-                    enabledIsFalse("#btn_toggle_target")
+                    select("#cb_agree").checkIsOFF()
+                    select("#btn_toggle_target").enabledIsFalse()
                 }
             }
             scene(8, "スコープ(>>)は祖先の子孫だけを対象にする") {
@@ -148,7 +148,7 @@ class 否定と個数と方向セレクタが正しく動くこと {
                     // 3 つ縦に並ぶので 2 番目は item2(並び順は ui-contract.md)
                     tap("#btn_allow:below(.button&&項目&&[2])")
                 }.expectation {
-                    textIs("#txt_selector_result", "result=item2")
+                    select("#txt_selector_result").textIs("result=item2")
                 }
             }
             scene(10, "状態フィルタ(enabled / checked)で候補を絞る") {

@@ -20,6 +20,19 @@ final class SelOverloadParityTests: XCTestCase {
         "group", "procedure", "scene", "verify", "doUntilTrue",  // 記録用のタイトル・説明
     ]
 
+    /// **検証コマンド**(2026-08-04 以降): String を取るが**期待値であってセレクタではない**
+    /// (対象は直前に掴んだ要素 = 暗黙の lastElement)。Sel 版は要らない —— 対象を指すのは
+    /// `select` 側で、そちらに Sel 版がある。**セレクタを取る旧形は廃止**(UnavailableCommands.swift)
+    private static let expectedValueStringCommands: Set<String> = [
+        "textIs", "textIsNot", "textContains", "textContainsNot",
+        "textStartsWith", "textStartsWithNot", "textEndsWith", "textEndsWithNot",
+        "textMatches", "textMatchesNot", "textMatchesDateFormat",
+        "valueIs", "valueIsNot", "valueContains", "valueContainsNot",
+        "valueStartsWith", "valueStartsWithNot", "valueEndsWith", "valueEndsWithNot",
+        "valueMatches", "valueMatchesNot", "valueMatchesDateFormat",
+        "idIs",
+    ]
+
     /// **承認済みの差分**(ユーザー決定 2026-08-04・**再提案しない**): `scrollFrame:`
     /// (スクロール領域のセレクタ式)は String 固定で Sel 版を持たない。1対1を保証するのは
     /// **対象セレクタ**まで(`scrollTo` の Sel 版でも `scrollFrame:` は String のまま)。
@@ -119,6 +132,7 @@ final class SelOverloadParityTests: XCTestCase {
             let name = declaration.name
             guard !selNames.contains(name),
                   !Self.nonSelectorStringCommands.contains(name),
+                  !Self.expectedValueStringCommands.contains(name),
                   !Self.scrollFrameStringOnlyCommands.contains(name) else { continue }
             unclassified.insert(name)
         }

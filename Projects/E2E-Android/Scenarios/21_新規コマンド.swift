@@ -30,7 +30,7 @@ class 新規コマンドが正しく動くこと {
                     tap("#nav_async")
                     screenshot(filename: "S0010_async")
                 }.expectation {
-                    textIs("#txt_delay_state", "state=idle")
+                    select("#txt_delay_state").textIs("state=idle")
                 }
             }
             scene(3, "waitForDisplay で3秒後表示を待つ(暗黙待ちでなく明示の待機コマンド)") {
@@ -40,14 +40,14 @@ class 新規コマンドが正しく動くこと {
                     // 戻り値は FTElement なのでそのままチェーンで検証できる
                     waitForDisplay("#txt_delayed", waitSeconds: 6)
                         .textIs("遅延表示 完了")
-                    textIs("#txt_delay_state", "state=done")
+                    select("#txt_delay_state").textIs("state=done")
                 }
             }
             scene(4, "verify が exist と textIs をまとめて1ステップにする") {
                 expectation {
                     verify("遅延表示が完了し、状態表示も done になっていること") {
                         exist("#txt_delayed")
-                        textIs("#txt_delay_state", "state=done")
+                        select("#txt_delay_state").textIs("state=done")
                     }
                 }
             }
@@ -138,7 +138,7 @@ class 新規コマンドが正しく動くこと {
                 }.action {
                     tap("#nav_dialog")
                 }.expectation {
-                    textIs("#txt_dialog_result", "dialog=none")
+                    select("#txt_dialog_result").textIs("dialog=none")
                 }
             }
             scene(2, "ダイアログを開いて OK し、waitForClose で閉じるのを待つ") {
@@ -150,7 +150,7 @@ class 新規コマンドが正しく動くこと {
                     tap("#btn_dialog_ok")
                     waitForClose("#txt_dialog_title", waitSeconds: 5)
                 }.expectation {
-                    textIs("#txt_dialog_result", "dialog=ok")
+                    select("#txt_dialog_result").textIs("dialog=ok")
                 }
             }
         }
