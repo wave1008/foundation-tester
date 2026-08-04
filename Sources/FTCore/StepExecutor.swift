@@ -829,20 +829,10 @@ public final class StepExecutor {
                         try await Task.sleep(for: .milliseconds(Int(intervalSeconds * 1000)))
                         phase.waitMs += Self.ms(clock.now - waitStart)
                     }
-                    let start = clock.now
-                    do {
-                        try await driver.drag(fromX: path.fromX, fromY: path.fromY,
-                                              toX: path.toX, toY: path.toY,
-                                              pressSeconds: 0.05, durationSeconds: durationSeconds)
-                        phase.actionMs += Self.ms(clock.now - start)
-                    } catch {
-                        // in-app エンジンは drag を一切実装しない(501)ため、hybrid では
-                        // typeDriver(XCUITest)へ回す(swipePointToPoint と同じ理由)
-                        guard DriverError.isEngineIncapable(error), let td = typeDriver else { throw error }
-                        try await td.drag(fromX: path.fromX, fromY: path.fromY,
-                                          toX: path.toX, toY: path.toY,
-                                          pressSeconds: 0.05, durationSeconds: durationSeconds)
-                        phase.actionMs += Self.ms(clock.now - start)
+                    // in-app エンジンは drag を一切実装しない(501)ため、hybrid では
+                    // typeDriver(XCUITest)へ回す(swipePointToPoint と同じ理由)
+                    if try await dragWithFallback(path: path, durationSeconds: durationSeconds,
+                                                  phase: &phase) {
                         viaXCUITest = true
                     }
                 }
@@ -857,6 +847,17 @@ public final class StepExecutor {
             if !settled { notes.append("the screen did not settle (poll limit)") }
             return StepOutcome(status: .passed,
                                driverFallback: notes.isEmpty ? nil : notes.joined(separator: " / "))
+        }
+
+        // ピンチ・ダブルタップ・相対ドラッグ(斜め可)の**対象未指定版** = 画面全体を対象にする。
+        // ロケータ付きは下の switch(要素解決・ヒール・スクロール探索にそのまま乗せるため)で、
+        // 対象の決め方以外は performGesture に集約してある
+        if Self.gestureActions.contains(action), step.locator == nil,
+           step.fallbacks?.isEmpty ?? true {
+            let snapshot = try await snapshotForScrollFrame(phase: &phase)
+            return try await performGesture(action, step: step, target: snapshot.screen,
+                                            identifier: nil, viewport: snapshot.screen,
+                                            phase: &phase)
         }
 
         // 要素が見つかるまでスクロール(見つかったら成功。操作はしない)
@@ -1227,6 +1228,14 @@ public final class StepExecutor {
                 }
                 driverFallback = "fell back to XCUITest"
             }
+        case "pinchOut", "pinchIn", "doubleTap", "swipeBy":
+            // 対象を指定した版。要素の frame(Android のピンチ中心・swipeBy の基準領域)と
+            // identifier(XCUITest のピンチ対象)の両方を渡す(理由は BridgeDTO.PinchRequest)
+            let outcome = try await performGesture(action, step: step, target: element.frame,
+                                                   identifier: element.identifier,
+                                                   viewport: snapshot.screen, phase: &phase)
+            guard case .passed = outcome.status else { return outcome }
+            driverFallback = outcome.driverFallback
         case "swipeElementToElement":
             guard let endLocator = step.endLocator else {
                 return StepOutcome(status: .failed("swipeElementToElement requires an end locator"))
@@ -1406,6 +1415,105 @@ public final class StepExecutor {
         guard let match else { return nil }
         return Self.residualClearValue(before: before.value, after: match.value,
                                        placeholder: match.placeholder)
+    }
+
+    /// 対象を取り得るジェスチャ(対象未指定なら画面全体)。ロケータ有無で解決だけが違うので
+    /// 実体はここ1箇所に置く
+    static let gestureActions: Set<String> = ["pinchOut", "pinchIn", "doubleTap", "swipeBy"]
+
+    /// ピンチ / ダブルタップ / 相対ドラッグの実行。target = 対象領域(要素の frame か画面)、
+    /// viewport = 画面矩形。**慣性が乗るので末尾で必ず整定を待つ**(ランナーはこれらのルートを
+    /// 整定対象に入れていない。理由は BridgeRouter.mutatingPaths のコメント)
+    private func performGesture(_ action: String, step: FlowStep, target: FTRect,
+                                identifier: String?, viewport: FTRect,
+                                phase: inout PhaseAccumulator) async throws -> StepOutcome {
+        var viaXCUITest = false
+        switch action {
+        case "pinchOut", "pinchIn":
+            let out = action == "pinchOut"
+            let scale = step.scale
+                ?? (out ? FlowStep.defaultPinchOutScale : FlowStep.defaultPinchInScale)
+            // **向きと倍率が食い違ったら実行しない**。撃ってしまうと「pinchOut と書いたのに
+            // 縮小された」が成功として記録され、書き間違いに気付けない
+            guard scale.isFinite, out ? scale > 1 : (scale > 0 && scale < 1) else {
+                return StepOutcome(status: .failed(
+                    out ? "pinchOut requires scale > 1 (got \(scale)). Use pinchIn to zoom out."
+                        : "pinchIn requires 0 < scale < 1 (got \(scale)). Use pinchOut to zoom in."))
+            }
+            viaXCUITest = try await pinchWithFallback(
+                frame: target, identifier: identifier, scale: scale,
+                durationSeconds: step.duration ?? FlowStep.defaultPinchDurationSeconds,
+                phase: &phase)
+        case "doubleTap":
+            viaXCUITest = try await doubleTapWithFallback(x: target.centerX, y: target.centerY,
+                                                          phase: &phase)
+        case "swipeBy":
+            guard let path = ScrollGeometry.panPath(container: target, viewport: viewport,
+                                                    dxRatio: step.dxRatio ?? 0,
+                                                    dyRatio: step.dyRatio ?? 0) else {
+                // 動かないドラッグを撃って「成功」と記録すると、比率の書き間違いに気付けない
+                return StepOutcome(status: .failed(
+                    "swipeBy cannot build a usable path (the target area is off-screen, "
+                        + "or dxRatio/dyRatio are too small to move a finger)"))
+            }
+            viaXCUITest = try await dragWithFallback(
+                path: path,
+                durationSeconds: step.duration ?? FlowStep.defaultSwipeDurationSeconds,
+                phase: &phase)
+        default:
+            return StepOutcome(status: .skipped("unknown gesture: \(action)"))
+        }
+        let settled = try await settledSignature(phase: &phase).settled
+        var notes: [String] = []
+        if viaXCUITest { notes.append("fell back to XCUITest") }
+        if !settled { notes.append("the screen did not settle (poll limit)") }
+        return StepOutcome(status: .passed,
+                           driverFallback: notes.isEmpty ? nil : notes.joined(separator: " / "))
+    }
+
+    /// 座標ドラッグを通常ドライバ →(501/ルート不明404 なら)typeDriver の順で撃つ。
+    /// 座標はブリッジ間で共通(ref と違い取り直しが要らない)ので、そのまま渡すだけでよい。
+    /// 戻り値: true = typeDriver(XCUITest)経由
+    private func dragWithFallback(path: FTSwipePath, durationSeconds: Double,
+                                  phase: inout PhaseAccumulator) async throws -> Bool {
+        try await gestureWithFallback(phase: &phase) {
+            try await $0.drag(fromX: path.fromX, fromY: path.fromY,
+                              toX: path.toX, toY: path.toY,
+                              pressSeconds: 0.05, durationSeconds: durationSeconds)
+        }
+    }
+
+    private func doubleTapWithFallback(x: Double, y: Double,
+                                       phase: inout PhaseAccumulator) async throws -> Bool {
+        try await gestureWithFallback(phase: &phase) { try await $0.doubleTap(x: x, y: y) }
+    }
+
+    private func pinchWithFallback(frame: FTRect, identifier: String?, scale: Double,
+                                   durationSeconds: Double,
+                                   phase: inout PhaseAccumulator) async throws -> Bool {
+        try await gestureWithFallback(phase: &phase) {
+            try await $0.pinch(frame: frame, identifier: identifier, scale: scale,
+                               durationSeconds: durationSeconds)
+        }
+    }
+
+    /// 座標だけで完結するジェスチャの共通フォールバック(in-app エンジンは多点・座標ジェスチャを
+    /// 持たないので 501 / ルート不明 404 を返す。hybrid では XCUITest へ回す)。
+    /// **409 は含めない**(理由は DriverError.isEngineIncapable)
+    private func gestureWithFallback(phase: inout PhaseAccumulator,
+                                     _ body: (AppDriver) async throws -> Void) async throws -> Bool {
+        let clock = ContinuousClock()
+        let start = clock.now
+        do {
+            try await body(driver)
+            phase.actionMs += Self.ms(clock.now - start)
+            return false
+        } catch {
+            guard DriverError.isEngineIncapable(error), let td = typeDriver else { throw error }
+            try await body(td)
+            phase.actionMs += Self.ms(clock.now - start)
+            return true
+        }
     }
 
     /// typeDriver で始点・終点を取り直してドラッグする(ref はブリッジごとに別名前空間なので、

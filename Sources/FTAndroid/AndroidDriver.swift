@@ -385,6 +385,22 @@ public final class AndroidDriver: AppDriver {
         try await withBridge { try await $0.swipe(direction, intent: intent, path: path) }
     }
 
+    /// ダブルタップ・ピンチは**ブリッジ apk 経由だけ**(gRPC の道は作らない)。
+    /// gRPC は `EmulatorController` = エミュレータ専用で実機に無く、一方 apk の
+    /// `UiAutomation.injectInputEvent` は両方で動く。1操作の中で時間制約(ダブルタップ判定)や
+    /// 多点の同期が要るので、実装を2本持つと差が出るところでもある
+    public func doubleTap(x: Double, y: Double) async throws {
+        try await withBridge { try await $0.doubleTap(x: x, y: y) }
+    }
+
+    public func pinch(frame: FTRect?, identifier: String?, scale: Double,
+                      durationSeconds: Double) async throws {
+        try await withBridge {
+            try await $0.pinch(frame: frame, identifier: identifier, scale: scale,
+                               durationSeconds: durationSeconds)
+        }
+    }
+
     /// 2点間ドラッグ。ブリッジ経由ではなく gRPC タッチ合成(down→補間 move→up)優先・
     /// adb input swipe フォールバック(どちらも snapshot と同じピクセル座標)。
     /// gRPC はゲスト内 app_process 起動(~300ms/回)が無くステップ列が高速。

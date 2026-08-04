@@ -98,6 +98,20 @@ public final class InAppDriver: AppDriver {
     public func press(ref: Int, duration: Double) async throws {
         try await withCrashContext { try await client.press(ref: ref, duration: duration) }
     }
+    /// **ダブルタップは in-app の方が正確**(合成タッチはタップだけは受理される): 離してから
+    /// 次に押すまでの間隔をこちらで決められるので、XCTest の doubleTap では単タップに落ちる
+    /// Compose(iOS)でも成立する。ピンチは合成タッチの move 次第なのでフレームワーク依存
+    /// (受理しない実装では黙って無反応 = 呼び出し側の検証で気付く)
+    public func doubleTap(x: Double, y: Double) async throws {
+        try await withCrashContext { try await client.doubleTap(x: x, y: y) }
+    }
+    public func pinch(frame: FTRect?, identifier: String?, scale: Double,
+                      durationSeconds: Double) async throws {
+        try await withCrashContext {
+            try await client.pinch(frame: frame, identifier: identifier, scale: scale,
+                                   durationSeconds: durationSeconds)
+        }
+    }
     // in-app では原理的に実行できない操作(自プロセス外・座標ジェスチャ)。hybrid では StepExecutor /
     // FTDriveCore が XCUITest 側へ回すのでここへは来ない。engine=inapp 単独だけがここに到達するため、
     // 既定実装の汎用メッセージではなく構成の直し方を示す(501 = このエンジンでは未対応)

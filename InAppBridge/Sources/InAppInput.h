@@ -15,6 +15,15 @@ void FTSynthSwipe(UIWindow *window, CGPoint from, CGPoint to, int steps);
 /// point で down 後、duration 秒ランループを回して(長押しタイマ発火のため)up する。
 void FTSynthPress(UIWindow *window, CGPoint point, double duration);
 
+/// ダブルタップ。gapSeconds は**離してから次に押すまで**(0.04〜0.25 の範囲外は既定 0.08 に丸める)。
+/// 短すぎると Compose(iOS)が2打目を捨て、長すぎると判定窓を外れる。
+void FTSynthDoubleTap(UIWindow *window, CGPoint point, double gapSeconds);
+
+/// 2本指ピンチ(center を挟んで対角に startSpan → endSpan)。steps<1 は既定 20。
+/// **受理されるかはフレームワーク依存**(合成タッチの move を無視する実装がある)。
+void FTSynthPinch(UIWindow *window, CGPoint center, double startSpan, double endSpan,
+                  double duration, int steps);
+
 /// 現在の first responder が UIKeyInput なら text を挿入する。挿入できたら YES。
 BOOL FTInsertTextIntoFirstResponder(NSString *text);
 

@@ -166,6 +166,33 @@ public final class AppAttachDriver: AppDriver {
         }
     }
 
+    /// doubleTap / pinch も ref を使わない(座標・identifier)ので drag と同じ 409 回復を入れる。
+    /// in-app は多点ジェスチャを持たないため、hybrid のピンチはここへ回ってくる
+    public func doubleTap(x: Double, y: Double) async throws {
+        try await ensureAttached()
+        do {
+            try await client.doubleTap(x: x, y: y)
+        } catch {
+            guard Self.isRecoverableSession(error) else { throw error }
+            try await client.activate(bundleID: bundleID)
+            try await client.doubleTap(x: x, y: y)
+        }
+    }
+
+    public func pinch(frame: FTRect?, identifier: String?, scale: Double,
+                      durationSeconds: Double) async throws {
+        try await ensureAttached()
+        do {
+            try await client.pinch(frame: frame, identifier: identifier, scale: scale,
+                                   durationSeconds: durationSeconds)
+        } catch {
+            guard Self.isRecoverableSession(error) else { throw error }
+            try await client.activate(bundleID: bundleID)
+            try await client.pinch(frame: frame, identifier: identifier, scale: scale,
+                                   durationSeconds: durationSeconds)
+        }
+    }
+
     /// home / appSwitcher は XCUITest ブリッジ側が**セッション不要**で処理する
     /// (XCUIDevice / springboard 座標。Runner の BridgeRouter.handleHome / handleAppSwitcher)。
     /// activate を挟まない = 対象アプリを前面に戻してしまわない

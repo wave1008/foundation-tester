@@ -51,6 +51,12 @@ public final class SystemUIDriver: AppDriver {
         try await client.drag(fromX: fromX, fromY: fromY, toX: toX, toY: toY,
                               pressSeconds: pressSeconds, durationSeconds: durationSeconds)
     }
+    public func doubleTap(x: Double, y: Double) async throws { try await client.doubleTap(x: x, y: y) }
+    public func pinch(frame: FTRect?, identifier: String?, scale: Double,
+                      durationSeconds: Double) async throws {
+        try await client.pinch(frame: frame, identifier: identifier, scale: scale,
+                               durationSeconds: durationSeconds)
+    }
     /// tapAppIcon の冒頭 home() 用。**素通しを書かないと extension の 501 既定実装に落ちる**
     /// (実機で踏んだ。SystemUIDriverHomeForwardingTests が守る)
     public func home() async throws { try await client.home() }

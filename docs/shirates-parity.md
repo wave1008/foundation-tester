@@ -87,6 +87,9 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | `ScrollDirection.None` | `FTScrollDirection` に相当なし | ➖ 「スクロールしない」は `scroll:` 引数の省略(Optional)が担う |
 | `scrollDurationSeconds` / `scrollIntervalSeconds` | — | ➖ フリング前提の実測値を優先(承認済み差分) |
 | — | `scrollTo(sel, direction:maxSwipes:)` | 🟢 |
+| — | `swipeBy(sel?, dxRatio:dyRatio:)` | 🟢 2026-08-04 **斜めを含む相対ドラッグ**(マップのパン)。Shirates は縦横 4 方向しか持たない |
+| — | `doubleTap(sel?)` | 🟢 2026-08-04 ブリッジ側の1操作(往復するとダブルタップ判定時間を超える) |
+| — | `pinchOut(sel?, scale:)` / `pinchIn(sel?, scale:)` | 🟢 2026-08-04 2本指ズーム。**Shirates(Classic) にピンチ系は無い**ので名前の準拠先も無い。対象指定は Android=座標合成 / iOS=XCUITest は identifier・in-app は座標。**iOS はエンジンで成否が分かれる**(docs/commands.md の表) |
 
 ## 存在・画面の検証
 

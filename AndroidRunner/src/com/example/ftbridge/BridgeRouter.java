@@ -76,6 +76,8 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
                 case "POST /type": return handleType(body(request));
                 case "POST /clear": return handleClear(body(request));
                 case "POST /swipe": return handleSwipe(body(request));
+                case "POST /doubletap": return handleDoubleTap(body(request));
+                case "POST /pinch": return handlePinch(body(request));
                 case "POST /press": return handlePress(body(request));
                 case "POST /pressEnter": return handlePressEnter();
                 case "GET /screenshot": return handleScreenshot();
@@ -277,6 +279,55 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
                 throw new BridgeException(400, "direction は up/down/left/right のいずれかです");
         }
         InputInjector.swipe(ua(), from[0], from[1], to[0], to[1], strokeMs, syntheticUp);
+        settle();
+        return ok();
+    }
+
+    /** ダブルタップ(ref または x/y。iOS ブリッジと同じ受理形) */
+    private BridgeHttpServer.Response handleDoubleTap(JSONObject body) {
+        double[] point = resolvePoint(body);
+        InputInjector.doubleTap(ua(), point[0], point[1]);
+        settle();
+        return ok();
+    }
+
+    /**
+     * 2本指のピンチ。**ホストが送る frame の中心**で開閉する(nil = 画面全体)。
+     * PinchRequest.identifier は iOS 専用(XCUITest は座標指定の多点ジェスチャを持たないため)で、
+     * こちらは読まない —— 座標を作れるので frame の方が正確。
+     *
+     * span は**倍率が正確に出る側から決める**: 拡大なら「広い方 = 短辺の 90%」を終点にして
+     * 始点を span/scale に、縮小ならその逆。先に始点を決めて scale 倍すると領域からはみ出し、
+     * クランプで倍率が黙って目減りする(短辺の 90% を超える点は容器の外 = 別のビューが受け取る)。
+     * 指を 16px より近付けることはできない(タッチスロップ)ので、極端な scale では倍率が落ちる。
+     */
+    private BridgeHttpServer.Response handlePinch(JSONObject body) {
+        double scale = body.optDouble("scale", 0);
+        if (!(scale > 0) || scale == 1 || Double.isInfinite(scale)) {
+            throw new BridgeException(400, "scale は正で 1 以外である必要があります(受領: " + scale + ")");
+        }
+        double left = lastScreen.left, top = lastScreen.top;
+        double width = lastScreen.width() > 0 ? lastScreen.width() : 1080;
+        double height = lastScreen.height() > 0 ? lastScreen.height() : 2400;
+        JSONObject frame = body.optJSONObject("frame");
+        if (frame != null) {
+            left = frame.optDouble("x", left);
+            top = frame.optDouble("y", top);
+            width = frame.optDouble("width", width);
+            height = frame.optDouble("height", height);
+        }
+        double maxSpan = Math.min(width, height) * 0.9;
+        double startSpan, endSpan;
+        if (scale > 1) {
+            endSpan = maxSpan;
+            startSpan = Math.max(maxSpan / scale, 16);
+        } else {
+            startSpan = maxSpan;
+            endSpan = Math.max(maxSpan * scale, 16);
+        }
+        long durationMs = Math.min(Math.max(
+                (long) (body.optDouble("durationSeconds", 0.5) * 1000), 50), 10000);
+        InputInjector.pinch(ua(), left + width / 2, top + height / 2, startSpan, endSpan, durationMs);
         settle();
         return ok();
     }

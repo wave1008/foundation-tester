@@ -83,6 +83,13 @@ public struct FlowStep: Codable, Sendable {
     /// swipePointToPointCore と同じ: 1回目も含め毎周の前に待つ)
     public static let defaultFlickIntervalSeconds: Double = 0.3
 
+    /// pinchOut / pinchIn の既定拡大率。**Shirates に対応するコマンドが無い**ので準拠先は無く、
+    /// 「1回で目に見えて変わるが行き過ぎない」値として選んだ(倍率と 1/2)
+    public static let defaultPinchOutScale: Double = 2.0
+    public static let defaultPinchInScale: Double = 0.5
+    /// pinch の既定所要時間(秒)。Android はストローク時間、iOS は velocity(scale/秒)の分母になる
+    public static let defaultPinchDurationSeconds: Double = 0.5
+
     /// waitForDisplay/waitForClose の既定待ち秒数(スクロールしない出現/消滅待ち)。
     /// Shirates の WAIT_SECONDS_ON_ISSCREEN 準拠
     public static let defaultIsScreenWaitSeconds: Double = 15.0
@@ -98,6 +105,11 @@ public struct FlowStep: Codable, Sendable {
     public var endMarginRatio: Double?
     /// flick の repeat 間隔(秒)。**flick 以外は未使用**。nil = `FlowStep.defaultFlickIntervalSeconds`
     public var intervalSeconds: Double?
+    /// pinch の拡大率(> 1 = 拡大 / 0 < scale < 1 = 縮小)。**pinch 以外は未使用**
+    public var scale: Double?
+    /// swipeBy の移動量(対象領域の幅・高さに対する比。符号は指の向き)。**swipeBy 以外は未使用**
+    public var dxRatio: Double?
+    public var dyRatio: Double?
 
     public init(action: String? = nil, assert: String? = nil, locator: FlowLocator? = nil,
                 fallbacks: [FlowLocator]? = nil, endLocator: FlowLocator? = nil,
@@ -108,7 +120,11 @@ public struct FlowStep: Codable, Sendable {
                 note: String? = nil, occlusionGuard: Bool? = nil,
                 scrollFrame: FlowLocator? = nil,
                 startMarginRatio: Double? = nil, endMarginRatio: Double? = nil,
-                intervalSeconds: Double? = nil) {
+                intervalSeconds: Double? = nil,
+                scale: Double? = nil, dxRatio: Double? = nil, dyRatio: Double? = nil) {
+        self.scale = scale
+        self.dxRatio = dxRatio
+        self.dyRatio = dyRatio
         self.scrollFrame = scrollFrame
         self.startMarginRatio = startMarginRatio
         self.endMarginRatio = endMarginRatio
@@ -373,6 +389,9 @@ public extension FlowStep {
                     : "type \(locatorSummary) \"\(text ?? "")\""
             case "swipe": return "swipe \(direction ?? "up")"
             case "scrollTo": return "scrollTo \(locatorSummary)"
+            // 対象なし(画面全体)を取り得るアクションは locatorSummary の "(no locator)" を出さない
+            case "pinchOut", "pinchIn", "doubleTap", "swipeBy":
+                return locator == nil ? action : "\(action) \(locatorSummary)"
             default: return "\(action) \(locatorSummary)"
             }
         }

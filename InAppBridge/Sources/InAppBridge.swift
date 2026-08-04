@@ -82,6 +82,8 @@ final class FTInAppBridge {
             case ("POST", "/pressEnter"): return try handlePressEnter()
             case ("POST", "/hidekeyboard"): return try handleHideKeyboard()
             case ("POST", "/swipe"): return try handleSwipe(req.body)
+            case ("POST", "/doubletap"): return try handleDoubleTap(req.body)
+            case ("POST", "/pinch"): return try handlePinch(req.body)
             case ("POST", "/press"): return try handlePress(req.body)
             case ("GET", "/screenshot"): return try handleScreenshot()
             case ("POST", "/session"):
@@ -800,6 +802,64 @@ final class FTInAppBridge {
     // Projects/E2E-iOS で実測。tap だけが通る)。黙って空振りさせず xcuitest へ誘導するため、
     // 実装(FTSynthPress 経路)は持たず常に 501 を返す。
     // 501 = このエンジンでは未対応(/terminate と同じ慣習。409 は一時的競合なので取り違えない)。
+    /// 合成タッチの多点・連打を受理するのは**自前描画のフレームワークだけ**(2026-08-04 実測):
+    /// Compose / Flutter は生タッチを自前のアリーナで捌くので通るが、UIKit/SwiftUI の
+    /// UIGestureRecognizer は受理しない(press / drag が in-app で 501 なのと同じ機構)。
+    /// **受理しない側で 200 を返すと黙って無反応になる**ので、ここで 501 を返して
+    /// ホストに XCUITest へ回させる(あちらは UIKit/SwiftUI では正しく動く)
+    private func requireSelfRenderedFramework(_ action: String) throws {
+        guard ["compose", "flutter"].contains(uiFramework) else {
+            throw InAppError(501, "\(uiFramework) では in-app エンジンの \(action) が効きません"
+                + "(合成タッチを UIGestureRecognizer が受理しない)。"
+                + "hybrid なら XCUITest へフォールバックします")
+        }
+    }
+
+    /// ダブルタップ。**in-app の方が正確な場面がある**: 離してから次に押すまでの間隔を
+    /// こちらで決められるので、XCTest の doubleTap(この間隔が 0ms)では単タップに落ちる
+    /// Compose(iOS)でも成立する(2026-08-04 実測)
+    private func handleDoubleTap(_ body: Data) throws -> InAppHTTPServer.Response {
+        let req = try decode(TapRequest.self, body)
+        try requireSelfRenderedFramework("doubleTap")
+        try performWithSettle { window in
+            let p = try self.resolvePoint(ref: req.ref, x: req.x, y: req.y)
+            FTSynthDoubleTap(window, p, 0.08)
+        }
+        return ok()
+    }
+
+    /// 2本指ピンチ。対象領域(PinchRequest.frame。nil = 画面全体)の中心で開閉する。
+    /// **XCUITest より指を大きく動かせる**のが効く場面がある: XCTest のピンチは指の間隔を
+    /// 8px 程度からしか開かず、Flutter のスケール判定のしきい値に届かない(2026-08-04 実測)。
+    /// こちらは対象領域の短辺 90% まで開くので届く
+    private func handlePinch(_ body: Data) throws -> InAppHTTPServer.Response {
+        let req = try decode(PinchRequest.self, body)
+        try requireSelfRenderedFramework("pinch")
+        guard req.scale > 0, req.scale != 1, req.scale.isFinite else {
+            throw InAppError(400, "scale は正で 1 以外である必要があります(受領: \(req.scale))")
+        }
+        try performWithSettle { window in
+            let bounds = window.bounds
+            let frame = req.frame.map {
+                CGRect(x: $0.x, y: $0.y, width: $0.width, height: $0.height)
+            } ?? bounds
+            // 指の間隔は**倍率が正確に出る側から決める**(Android ブリッジの handlePinch と同じ規律)
+            let maxSpan = min(frame.width, frame.height) * 0.9
+            let startSpan: Double
+            let endSpan: Double
+            if req.scale > 1 {
+                endSpan = maxSpan
+                startSpan = max(maxSpan / req.scale, 16)
+            } else {
+                startSpan = maxSpan
+                endSpan = max(maxSpan * req.scale, 16)
+            }
+            FTSynthPinch(window, CGPoint(x: frame.midX, y: frame.midY),
+                         startSpan, endSpan, req.durationSeconds ?? 0.5, 20)
+        }
+        return ok()
+    }
+
     private func handlePress(_ body: Data) throws -> InAppHTTPServer.Response {
         throw InAppError(501, "in-app エンジンでは press(長押し)が効きません"
             + "(合成タッチの押下保持がジェスチャ認識器に受理されない)。"

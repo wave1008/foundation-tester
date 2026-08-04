@@ -368,6 +368,20 @@ public final class BridgeClient: AppDriver {
             timeout: interactionTimeout)
     }
 
+    public func doubleTap(x: Double, y: Double) async throws {
+        let _: OKResponse = try await post("/doubletap", body: TapRequest(x: x, y: y, fast: fastFlag),
+                                           timeout: interactionTimeout)
+    }
+
+    /// ピンチは XCUITest の `XCUIElement.pinch` に落ちる = **1回の呼び出しの中で指を動かし切る**ので、
+    /// 移動時間ぶん応答が遅れる。interactionTimeout に収まる範囲でしか使えない
+    public func pinch(frame: FTRect?, identifier: String?, scale: Double,
+                      durationSeconds: Double) async throws {
+        let _: OKResponse = try await post("/pinch", body: PinchRequest(
+            scale: scale, durationSeconds: durationSeconds,
+            frame: frame, identifier: identifier), timeout: interactionTimeout)
+    }
+
     public func press(ref: Int, duration: Double) async throws {
         let _: OKResponse = try await post("/press", body: PressRequest(ref: ref, duration: duration,
                                                                         fast: fastFlag),

@@ -72,6 +72,15 @@ public protocol AppDriver {
     /// durationSeconds=移動時間(実機ジェスチャの速度・長押しに反映される)。
     func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
               pressSeconds: Double, durationSeconds: Double) async throws
+    /// ダブルタップ(座標は snapshot の screen と同じ座標系)。**ref を取らない**のは、
+    /// ref がブリッジごとに別名前空間で、501 で別ドライバへ回すときに取り直しが要るため
+    /// (swipeElementToElement が中心座標へ畳んでから drag するのと同じ方針)。
+    /// **プロトコル要件として宣言すること**(install(packagePath:) と同じ理由)
+    func doubleTap(x: Double, y: Double) async throws
+    /// 2本指のピンチ(DSL の pinchOut / pinchIn)。対象指定が frame と identifier の2本立てな
+    /// 理由は BridgeDTO の PinchRequest 参照。**プロトコル要件として宣言すること**
+    func pinch(frame: FTRect?, identifier: String?, scale: Double,
+               durationSeconds: Double) async throws
     func press(ref: Int, duration: Double) async throws
     /// 座標指定のロングプレス(座標は snapshot の screen と同じ座標系)。
     func press(x: Double, y: Double, duration: Double) async throws
@@ -209,6 +218,17 @@ public extension AppDriver {
 
     func press(x: Double, y: Double, duration: Double) async throws {
         throw DriverError.badResponse(status: 501, body: "This driver does not support long-press by coordinates")
+    }
+
+    /// in-app ブリッジは多点ジェスチャを合成できない(UIKit の privateAPI 無しでは不可)。
+    /// 501 = ホストが typeDriver(XCUITest)へ回す合図
+    func doubleTap(x: Double, y: Double) async throws {
+        throw DriverError.badResponse(status: 501, body: "This driver does not support double tap")
+    }
+
+    func pinch(frame: FTRect?, identifier: String?, scale: Double,
+               durationSeconds: Double) async throws {
+        throw DriverError.badResponse(status: 501, body: "This driver does not support pinch")
     }
 
     func pressEnter() async throws {

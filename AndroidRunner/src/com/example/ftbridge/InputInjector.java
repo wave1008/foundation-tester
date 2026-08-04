@@ -403,6 +403,82 @@ final class InputInjector {
         }
     }
 
+    /**
+     * ダブルタップ。2回のタップは**同じ downTime を共有しない**(別ストローク)が、
+     * GestureDetector は「1回目の UP から DOUBLE_TAP_TIMEOUT(既定 300ms)以内の DOWN」を
+     * ダブルタップと見なすので、間隔は固定 60ms にする。**ホストから2回 /tap を撃つ形にはできない**
+     * (HTTP の往復だけで 300ms を超えることがあり、単タップ2回に化ける)。
+     * 座標は動かさない(タップスロップを超えると別ジェスチャになる)。
+     */
+    static void doubleTap(UiAutomation ua, double x, double y) {
+        tap(ua, x, y);
+        SystemClock.sleep(60);
+        tap(ua, x, y);
+    }
+
+    /**
+     * 2本指のピンチ。(centerX, centerY) を中心に、対角線上へ startSpan → endSpan まで
+     * 2点を同時に動かす(span = 2点間の距離)。
+     *
+     * 規律:
+     * - **ACTION_POINTER_DOWN/UP は pointer index を action へ埋める**(<< 8)。埋め忘れると
+     *   1本目の指の DOWN として解釈され、ピンチにならない
+     * - **MOVE は必ず2点ぶんの座標を1イベントに載せる**(2本のストロークを交互に注入する形だと
+     *   ScaleGestureDetector が距離変化を取れない)
+     * - 45度方向へ開く(水平だと横スクロール、垂直だと縦スクロールと競合しやすい)
+     */
+    static void pinch(UiAutomation ua, double centerX, double centerY,
+                      double startSpan, double endSpan, long durationMs) {
+        double axis = Math.sqrt(0.5);   // 45度: 各軸への射影は span/2 * cos45
+        long downTime = SystemClock.uptimeMillis();
+        double[] a = new double[]{centerX - startSpan / 2 * axis, centerY - startSpan / 2 * axis};
+        double[] b = new double[]{centerX + startSpan / 2 * axis, centerY + startSpan / 2 * axis};
+        inject(ua, event(downTime, downTime, MotionEvent.ACTION_DOWN, a[0], a[1]));
+        inject(ua, multiEvent(downTime, downTime,
+                MotionEvent.ACTION_POINTER_DOWN | (1 << MotionEvent.ACTION_POINTER_INDEX_SHIFT),
+                a, b));
+        int steps = Math.max(1, (int) (durationMs / 16));
+        for (int i = 1; i <= steps; i++) {
+            double t = (double) i / steps;
+            double span = startSpan + (endSpan - startSpan) * t;
+            double[] p1 = new double[]{centerX - span / 2 * axis, centerY - span / 2 * axis};
+            double[] p2 = new double[]{centerX + span / 2 * axis, centerY + span / 2 * axis};
+            inject(ua, multiEvent(downTime, downTime + (long) (t * durationMs),
+                    MotionEvent.ACTION_MOVE, p1, p2));
+            SystemClock.sleep(16);
+        }
+        double[] e1 = new double[]{centerX - endSpan / 2 * axis, centerY - endSpan / 2 * axis};
+        double[] e2 = new double[]{centerX + endSpan / 2 * axis, centerY + endSpan / 2 * axis};
+        long upTime = downTime + durationMs;
+        inject(ua, multiEvent(downTime, upTime,
+                MotionEvent.ACTION_POINTER_UP | (1 << MotionEvent.ACTION_POINTER_INDEX_SHIFT),
+                e1, e2));
+        inject(ua, event(downTime, upTime, MotionEvent.ACTION_UP, e1[0], e1[1]));
+    }
+
+    /** 2点ぶんの座標を載せた MotionEvent(pointer id は 0 と 1 固定) */
+    private static MotionEvent multiEvent(long downTime, long eventTime, int action,
+                                          double[] p1, double[] p2) {
+        MotionEvent.PointerProperties[] props = new MotionEvent.PointerProperties[2];
+        MotionEvent.PointerCoords[] coords = new MotionEvent.PointerCoords[2];
+        double[][] points = new double[][]{p1, p2};
+        for (int i = 0; i < 2; i++) {
+            MotionEvent.PointerProperties p = new MotionEvent.PointerProperties();
+            p.id = i;
+            p.toolType = MotionEvent.TOOL_TYPE_FINGER;
+            props[i] = p;
+            MotionEvent.PointerCoords c = new MotionEvent.PointerCoords();
+            c.x = (float) points[i][0];
+            c.y = (float) points[i][1];
+            c.pressure = 1;
+            c.size = 1;
+            coords[i] = c;
+        }
+        MotionEvent e = MotionEvent.obtain(downTime, eventTime, action, 2, props, coords,
+                0, 0, 1, 1, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0);
+        return e;
+    }
+
     private static MotionEvent event(long downTime, long eventTime, int action, double x, double y) {
         MotionEvent e = MotionEvent.obtain(downTime, eventTime, action, (float) x, (float) y, 0);
         e.setSource(InputDevice.SOURCE_TOUCHSCREEN);

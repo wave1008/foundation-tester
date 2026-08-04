@@ -96,6 +96,12 @@ public final class FastLaunchDriver: AppDriver {
         try await base.drag(fromX: fromX, fromY: fromY, toX: toX, toY: toY,
                             pressSeconds: pressSeconds, durationSeconds: durationSeconds)
     }
+    public func doubleTap(x: Double, y: Double) async throws { try await base.doubleTap(x: x, y: y) }
+    public func pinch(frame: FTRect?, identifier: String?, scale: Double,
+                      durationSeconds: Double) async throws {
+        try await base.pinch(frame: frame, identifier: identifier, scale: scale,
+                             durationSeconds: durationSeconds)
+    }
     public func press(ref: Int, duration: Double) async throws { try await base.press(ref: ref, duration: duration) }
     public func press(x: Double, y: Double, duration: Double) async throws {
         try await base.press(x: x, y: y, duration: duration)

@@ -209,6 +209,17 @@ public enum StepDescription {
             case "clearInput":
                 if step.locator == nil { return "clear the focused input" }
                 return isJapanese(obj) ? "\"\(obj)\"を空にする" : "clear \"\(obj)\""
+            case "doubleTap":
+                if step.locator == nil { return "double-tap the center of the screen" }
+                return isJapanese(obj) ? "\"\(obj)\"をダブルタップする" : "double-tap \"\(obj)\""
+            case "pinchOut", "pinchIn":
+                let zoom = action == "pinchOut" ? "zoom in" : "zoom out"
+                let zoomJa = action == "pinchOut" ? "拡大" : "縮小"
+                if step.locator == nil { return "\(zoom) with a pinch gesture" }
+                return isJapanese(obj) ? "\"\(obj)\"をピンチで\(zoomJa)する" : "\(zoom) on \"\(obj)\""
+            case "swipeBy":
+                if step.locator == nil { return "drag the screen by a relative offset" }
+                return isJapanese(obj) ? "\"\(obj)\"を相対量でドラッグする" : "drag \"\(obj)\" by a relative offset"
             case "swipeElementToElement":
                 guard let endLocator = step.endLocator else { return nil }
                 let toObj = endLocator.label ?? FTSelector.serialize(primary: endLocator, fallbacks: [])
