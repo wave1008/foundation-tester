@@ -24,6 +24,8 @@ import FTCore
 final class BridgeContractTests: XCTestCase {
 
     // 期待するルート表。**変更したら対応する版数を必ず上げること**:
+    // (この3つは internal = docs/design.md のエンドポイント表と突き合わせる
+    //  BridgeDocRouteSyncTests から参照する。**唯一の正はここ**で、あちらは写し)
     //   in-app / XCUITest ランナー → Sources/FTCore/BridgeDTO.swift の bridgeProtocolVersion
     //   Android                    → AndroidRunner/build.sh の VERSION_CODE と
     //                                Sources/FTAndroid/AndroidBridge.swift の expectedBridgeVersionCode
@@ -37,21 +39,21 @@ final class BridgeContractTests: XCTestCase {
     //   /appstate  … iOS の2実装だけ
     //   /pinch・/doubletap … 3実装とも持つ(in-app は 2026-08-04 に追加。合成タッチの間隔と
     //                 指の距離を自分で決められるぶん XCTest より正確な場面がある)
-    private static let inAppRoutes: Set<String> = [
+    static let inAppRoutes: Set<String> = [
         "GET /screenshot", "GET /snapshot", "GET /status",
         "POST /appstate", "POST /clear", "POST /doubletap", "POST /hidekeyboard", "POST /pinch",
         "POST /press", "POST /pressEnter", "POST /session", "POST /swipe", "POST /tap",
         "POST /terminate", "POST /type",
     ]
 
-    private static let xcuiTestRoutes: Set<String> = [
+    static let xcuiTestRoutes: Set<String> = [
         "GET /screenshot", "GET /snapshot", "GET /status",
         "POST /appstate", "POST /appswitcher", "POST /clear", "POST /doubletap", "POST /drag",
         "POST /hidekeyboard", "POST /home", "POST /pinch", "POST /press", "POST /pressEnter",
         "POST /session", "POST /swipe", "POST /tap", "POST /terminate", "POST /type",
     ]
 
-    private static let androidRoutes: Set<String> = [
+    static let androidRoutes: Set<String> = [
         "GET /screenshot", "GET /snapshot", "GET /status",
         "POST /clear", "POST /doubletap", "POST /locale", "POST /pinch", "POST /press",
         "POST /pressEnter", "POST /session", "POST /settle", "POST /swipe",
