@@ -268,7 +268,7 @@ struct RunScenario: AsyncParsableCommand {
                     // launch は既定で simctl 化(FastLaunchDriver。実測 -14〜19%)。
                     // FT_NO_FAST_LAUNCH=1 で従来の XCUIApplication.launch() に戻せる。
                     // preflight(未インストール検査)は fast launch の外側に置く。
-                    // **実機は両方とも simctl 依存なので必ず外す**(engine=xcuitest ならデバイスで動く、と
+                    // **実機は両方とも simctl 依存なので必ず外す**(engine=xcuitest なら実機で動く、と
                     // 誤認しやすい罠。素の XCUIApplication.launch() 経路に落とす)
                     let noFastLaunch = ProcessInfo.processInfo.environment["FT_NO_FAST_LAUNCH"] == "1"
                     let inner: AppDriver = (!noFastLaunch && !physical && udid != nil)
