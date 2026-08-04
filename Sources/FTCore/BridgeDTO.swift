@@ -89,7 +89,11 @@ public enum BridgeAPI {
     /// 45: XCUITest ランナーの GET /snapshot が XCUIElementTypeIcon(springboard のホーム画面
     /// アイコン)を含めるようになった(2026-08-03、tapAppIcon 用)。旧ランナーは identifier の
     /// 無いアイコンを黙って除外するため、tapAppIcon が「見つからない」で失敗し続ける
-    public static let bridgeProtocolVersion = 45
+    /// 46: XCUITest ランナーの GET /snapshot が SnapshotResponse.offscreen(WebView 配下の
+    /// 画面外ノード)を供給するようになった(2026-08-04)。Android は既に供給しており iOS だけ
+    /// 欠けていたため offscreenJump/offscreenEdgeJump が一度も発火しなかった。旧ランナーは
+    /// offscreen を返さない = 黙って無効のまま
+    public static let bridgeProtocolVersion = 46
 
     /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
     /// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java の

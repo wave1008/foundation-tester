@@ -157,6 +157,11 @@ final class BridgeRouter {
         /// captureSettled が **budget 切れで打ち切った**(= 収束していないツリー)。
         /// 黙って返すと「毎回 350ms 使い切っているのに誰も気付かない」状態が続くので note にする
         var settleCapped: Bool = false
+        /// WebView 内の画面外ノード(スクロールヒント)。Android の SnapshotBuilder と同じ契約 =
+        /// ref 0・elements に混ぜない(見えない要素へ exist/tap が当たる)・実座標。iOS は
+        /// XCUITest が実座標のまま報告するので復元は不要(2026-08-04 実測)。
+        /// 読み手は StepExecutor.offscreenJump / offscreenEdgeJump
+        let offscreen: [ElementInfo]
     }
 
     private func handleSnapshot() throws -> BridgeHTTPServer.Response {
@@ -177,6 +182,7 @@ final class BridgeRouter {
             elements: withFocusedFlag(cap.elements, app: app),
             truncatedCount: cap.truncated,
             note: cap.settleCapped ? "snapshot taken before the screen settled (budget)" : nil,
+            offscreen: cap.offscreen.isEmpty ? nil : cap.offscreen,
             keyboardShown: cap.sawKeyboard ? true : nil))
     }
 
@@ -266,11 +272,12 @@ final class BridgeRouter {
         var frames: [Int: CGRect] = [:]
         var truncated = 0
         var sawKeyboard = false
+        var offscreenHints: [ElementInfo] = []
         collect(root, depth: 0, screen: screen,
                 elements: &elements, frames: &frames, truncated: &truncated,
-                sawKeyboard: &sawKeyboard)
+                sawKeyboard: &sawKeyboard, offscreenHints: &offscreenHints)
         return Captured(elements: elements, frames: frames, truncated: truncated, screen: screen,
-                        sawKeyboard: sawKeyboard)
+                        sawKeyboard: sawKeyboard, offscreen: offscreenHints)
     }
 
     private func handleTap(_ body: Data) throws -> BridgeHTTPServer.Response {
@@ -645,6 +652,7 @@ final class BridgeRouter {
     private func collect(_ node: XCUIElementSnapshot, depth: Int, screen: CGRect,
                          elements: inout [ElementInfo], frames: inout [Int: CGRect],
                          truncated: inout Int, sawKeyboard: inout Bool,
+                         offscreenHints: inout [ElementInfo],
                          insideWebView: Bool = false) {
         // キーボードはキー1つ1つが Button として大量に写り込むため、サブツリーごと除外
         // (4Kトークン対策。入力は /type がキーイベント合成で行うので情報として不要)。
@@ -658,7 +666,7 @@ final class BridgeRouter {
             for child in node.children {
                 collect(child, depth: depth, screen: screen,
                         elements: &elements, frames: &frames, truncated: &truncated,
-                        sawKeyboard: &sawKeyboard, insideWebView: true)
+                        sawKeyboard: &sawKeyboard, offscreenHints: &offscreenHints, insideWebView: true)
             }
             return
         }
@@ -670,11 +678,16 @@ final class BridgeRouter {
             } else {
                 truncated += 1
             }
+        } else if insideWebView, offscreenHints.count < BridgeAPI.maxSnapshotElements,
+                  isOffscreenHintCandidate(node, screen: screen) {
+            // ref 0(座標表に入れない・タップ対象にしない)。Captured.offscreen 参照
+            offscreenHints.append(makeInfo(node, ref: 0, depth: depth))
         }
         for child in node.children {
             collect(child, depth: depth + 1, screen: screen,
                     elements: &elements, frames: &frames, truncated: &truncated,
-                    sawKeyboard: &sawKeyboard, insideWebView: insideWebView || isWebView)
+                    sawKeyboard: &sawKeyboard, offscreenHints: &offscreenHints,
+                    insideWebView: insideWebView || isWebView)
         }
     }
 
@@ -682,11 +695,27 @@ final class BridgeRouter {
         let frame = node.frame
         guard frame.width >= 2, frame.height >= 2 else { return false }
         guard screen.isEmpty || frame.intersects(screen) else { return false }
+        return isEligible(node, screen: screen)
+    }
 
+    /// 画面外ヒント(offscreenHints)の候補判定。サイズガードは shouldInclude と共有、
+    /// 画面交差ガードだけ反転する(「画面と交わらない」ときだけヒント化する。screen が空だと
+    /// 交差判定ができないので対象にしない)
+    private func isOffscreenHintCandidate(_ node: XCUIElementSnapshot, screen: CGRect) -> Bool {
+        let frame = node.frame
+        guard frame.width >= 2, frame.height >= 2 else { return false }
+        guard !screen.isEmpty, !frame.intersects(screen) else { return false }
+        return isEligible(node, screen: screen)
+    }
+
+    /// 型・テキストによる採用資格(画面内/外は問わない)。shouldInclude(可視要素)と
+    /// isOffscreenHintCandidate(WebView 配下の画面外ノード)が共有する
+    private func isEligible(_ node: XCUIElementSnapshot, screen: CGRect) -> Bool {
         // 画面の大半を覆う Other コンテナは identifier があっても除外する。
         // タップ対象になり得ず、id が「タブ」等に見えると FM の誤タップを誘発する
         // (SwiftUI の .accessibilityIdentifier がコンテナに付くケース)。
         if node.elementType == .other {
+            let frame = node.frame
             let screenArea = screen.width * screen.height
             if screenArea > 0, (frame.width * frame.height) / screenArea > 0.85 {
                 return false

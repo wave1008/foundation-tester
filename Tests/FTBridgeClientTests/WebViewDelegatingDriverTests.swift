@@ -111,6 +111,21 @@ final class WebViewDelegatingDriverTests: XCTestCase {
         XCTAssertEqual(primary.calls, ["snapshot"])
     }
 
+    /// offscreen ヒントは純 xcuitest エンジン限定(WebViewDelegatingDriver.swift の
+    /// snapshot(bypassingCache:) コメント参照)。hybrid で乗ると計測済みの
+    /// contentOffset 短絡より StepExecutor の跳躍が優先され挙動が変わるため落とす
+    func testWebViewScreenDropsOffscreenHintsFromDelegatedSnapshot() async throws {
+        let primary = FakeDriver(snapshots: [snapshot([element(1, "WebView")])])
+        var delegatedSnapshot = snapshot([element(1, "WebView"), element(2, "StaticText", y: 10)])
+        delegatedSnapshot.offscreen = [element(3, "StaticText", y: 2000)]
+        let delegated = FakeDriver(snapshots: [delegatedSnapshot])
+        let driver = WebViewDelegatingDriver(primary: primary, delegated: delegated)
+
+        let result = try await driver.snapshot()
+
+        XCTAssertNil(result.offscreen, "委譲 snapshot の offscreen は落とすこと")
+    }
+
     /// XCUITest 側は Web コンテンツの a11y 活性化が遅れる(実測 約2.3秒)。
     /// 中身が空のうちは取り直す = 最初の1回で「要素ゼロ」を返してしまわない
     func testWaitsForWebContentToAppear() async throws {
