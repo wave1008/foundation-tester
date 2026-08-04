@@ -74,6 +74,7 @@ private final class RecordingDriver: AppDriver, @unchecked Sendable {
         try record("press(x:\(x),y:\(y))")
     }
     func home() async throws { try record("home") }
+    func back() async throws { try record("back") }
     func screenshot() async throws -> Data { Data() }
     func terminate() async throws {}
 }
@@ -165,6 +166,45 @@ final class HybridFallbackDriverTests: XCTestCase {
     /// snapshot は常に primary(ref の名前空間を跨がせない)
     func testSnapshotAlwaysComesFromPrimary() async throws {
         _ = try await driver.snapshot()
+        XCTAssertEqual(log.entries, ["inapp.snapshot"])
+    }
+
+    /// **home の後は in-app 側を撃たない**: in-app ブリッジは対象アプリの中に住むので、
+    /// 背面化すると suspend され、TCP は受理されるのに応答が来ない(実測でタイムアウト)。
+    /// 読みも書きも XCUITest へ寄せる = ref の名前空間も揃う
+    func testEverythingGoesToTheFallbackWhileTheAppIsBackgrounded() async throws {
+        primary.errors["home"] = Self.notCapable
+        try await driver.home()
+        log.entries.removeAll()
+
+        _ = try await driver.snapshot()
+        try await driver.tap(ref: 3)
+        try await driver.tap(x: 1, y: 2)
+
+        XCTAssertEqual(log.entries, ["xcui.snapshot", "xcui.tap(ref:3)", "xcui.tap(x:1.0,y:2.0)"],
+                       "背面化中に in-app を撃つと応答待ちで固まる: \(log.entries)")
+    }
+
+    /// **launch で解除**する(前面へ戻る)。起動系は XCUITest では代替できない
+    /// (in-app は dylib 注入を伴う再起動)ので、背面化中でも primary が受ける
+    func testLaunchReturnsControlToThePrimary() async throws {
+        primary.errors["home"] = Self.notCapable
+        try await driver.home()
+        log.entries.removeAll()
+
+        try await driver.launch(bundleID: "com.example.app")
+        _ = try await driver.snapshot()
+
+        XCTAssertEqual(log.entries, ["inapp.launch", "inapp.snapshot"])
+    }
+
+    /// back は前面のままなので寄せ替えない
+    func testBackDoesNotSwitchTheRoute() async throws {
+        try await driver.back()
+        log.entries.removeAll()
+
+        _ = try await driver.snapshot()
+
         XCTAssertEqual(log.entries, ["inapp.snapshot"])
     }
 }

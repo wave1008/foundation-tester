@@ -82,7 +82,8 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 
   「in-app のみ」= **`xcuitest` 単独プロファイルと実機では効かない**(実機は注入不可のため
   XCUITest しか経路が無い)。**MCP の `ft_*` も `profile` を渡せば同じエンジンで動く**
-  (渡さないと XCUITest 固定。README「MCP」参照)。理由は注入側の性質で、どちらも実測で確定している:
+  (渡さないときは接続先ポートのブリッジに従う = in-app ブリッジが動いていれば hybrid。
+  README「MCP」参照)。理由は注入側の性質で、どちらも実測で確定している:
   - **XCUITest の `doubleTap` は「離してから次に押すまで」が 0ms**。Compose は 40ms 未満の
     2打目を捨てる仕様なので単タップになる。**ランナー内で2打に分けても直らない** ——
     `XCUICoordinate.tap()` は quiescence 待ちを飛ばしても1打 335ms かかり、今度は判定窓

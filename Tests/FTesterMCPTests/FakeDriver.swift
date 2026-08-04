@@ -103,6 +103,15 @@ final class FakeDriver: AppDriver, @unchecked Sendable {
         try record("pinch(\(target),id:\(identifier ?? "nil"),scale:\(scale))", "pinch")
     }
 
+    func back() async throws { try record("back", "back") }
+    func home() async throws { try record("home", "home") }
+    func openAppSwitcher() async throws { try record("appSwitcher", "appSwitcher") }
+    func pressEnter() async throws { try record("pressEnter", "pressEnter") }
+
+    func clearInput(ref: Int?) async throws {
+        try record("clearInput(ref:\(ref.map(String.init) ?? "nil"))", "clearInput")
+    }
+
     func screenshot() async throws -> Data {
         try record("screenshot", "screenshot")
         return screenshotData

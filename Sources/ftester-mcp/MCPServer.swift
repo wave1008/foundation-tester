@@ -13,6 +13,7 @@ import FTAgent
 import FTAndroid
 import FTBridgeClient
 import FTCore
+import FTDSL
 
 @main
 struct FTesterMCP {
@@ -25,6 +26,9 @@ struct FTesterMCP {
 final class MCPServer {
 
     private var drivers: [String: AppDriver] = [:]
+    /// drivers と同じキーで「実際に主となったエンジン」を覚える。iosEngineHint がこれで
+    /// 助言を出し分ける(引数からは決まらない: profile 無しでも in-app を掴めば hybrid)
+    var engines: [String: String] = [:]
     /// 応答の書き出し口。**stdout は JSON-RPC 専用**(診断を混ぜるとクライアントのパースが壊れる)
     private let write: (Data) -> Void
     /// ドライバ生成の差し替え口。nil = 実デバイスを解決する(既定)
@@ -111,12 +115,20 @@ final class MCPServer {
 
     // MARK: - ドライバ
 
-    // ft_* は home/appSwitcher/drag/座標 press を含むため in-app ブリッジは使わない
-    // (XCUIBridgeResolver: in-app を掴んだら同じデバイスの XCUITest ブリッジへ振り替え、無ければ起動)。
-    // profile 指定時は resolveProfileTarget が ft_run_scenario と同じデバイスを解決し、iOS は
-    // provision 後のポートを XCUIBridgeResolver へ渡して同じ振り替えを通す
+    // **実行と同じエンジンで探索する**のが原則(揃えないと snapshot もジェスチャの成否も食い違う)。
+    // profile 指定時は resolveProfileTarget が ft_run_scenario と同じデバイスを解決し、iosDriver が
+    // プロファイルのエンジンに追従する。profile 無しの iOS は ExploreDriverResolver が
+    // 稼働中ブリッジを見て決める(in-app が居れば hybrid を組む・居なければ XCUITest)
     private func driver(_ args: [String: Any]) async throws -> AppDriver {
-        if let makeDriver { return try await makeDriver(args) }
+        if let makeDriver {
+            // 差し替えドライバのエンジンは分からない。**助言が出る側(xcuitest)を既定**にする
+            // (テストは engines を先に埋めて別のエンジンを名乗れる)
+            let key = Self.engineKey(args)
+            if engines[key] == nil {
+                engines[key] = (args["platform"] as? String) == "android" ? "android" : "xcuitest"
+            }
+            return try await makeDriver(args)
+        }
         if let profileName = args["profile"] as? String {
             let key = Self.driverCacheKey(profile: profileName, project: args["project"] as? String,
                                           platform: args["platform"] as? String)
@@ -137,6 +149,10 @@ final class MCPServer {
                 created = try AndroidDriver(serial: serial)
             }
             drivers[key] = created
+            engines[key] = {
+                if case .ios(let provisioned, _) = target { provisioned.physical ? "xcuitest" : provisioned.engine }
+                else { "android" }
+            }()
             return created
         }
 
@@ -149,12 +165,14 @@ final class MCPServer {
         switch platform {
         case "ios":
             let port = (args["port"] as? Int).map(UInt16.init) ?? BridgeAPI.defaultPort
-            let resolution = await XCUIBridgeResolver.resolve(
+            let resolved = await ExploreDriverResolver.resolve(
                 preferred: port, repoRoot: try? RepoRoot.find(),
                 logger: { Self.logStderr($0) })
-            created = BridgeClient(port: resolution.endpoint.port, host: resolution.endpoint.host)
+            created = resolved.driver
+            engines[key] = resolved.engine
         case "android":
             created = try AndroidDriver(serial: args["serial"] as? String)
+            engines[key] = "android"
         default:
             throw MCPError("platform must be ios or android: \(platform)")
         }
@@ -193,18 +211,41 @@ final class MCPServer {
                                     fallback: attach)
     }
 
-    /// **profile 無しの iOS は XCUITest 固定**(エンジンを知る材料が無いため。profile 付きは
-    /// iosDriver が実行プロファイルのエンジンに追従する)。XCUITest では成立しないジェスチャが
-    /// あり、何も起きなかったときに原因が分からないと詰むので、結果テキストへ切り分けを添える
-    /// (表と実測は docs/commands.md)。
-    /// **Android と profile 付きには付けない**(前者はこの制限が無く、後者は解消済み。
-    /// 無関係な助言は誤誘導になる)
-    static func iosEngineHint(_ framework: String, _ gesture: String, args: [String: Any]) -> String {
-        if (args["platform"] as? String) == "android" || args["serial"] != nil { return "" }
-        if args["profile"] != nil { return "" }
-        return " If nothing changed on iOS: without a profile these tools drive the XCUITest engine,"
+    /// **実際に主となったエンジンが XCUITest のときだけ**添える切り分け。XCUITest では
+    /// 成立しないジェスチャがあり(表と実測は docs/commands.md)、何も起きなかったときに
+    /// 原因が分からないと詰む。**Android と in-app/hybrid には付けない**(前者はこの制限が
+    /// 無く、後者は成立する。無関係な助言は誤誘導になる)。
+    /// エンジンは driver(_:) が記録する = **推測しない**(profile 無しでも稼働中の in-app
+    /// ブリッジを掴めば hybrid になるため、引数だけからは決まらない)
+    func iosEngineHint(_ framework: String, _ gesture: String, args: [String: Any]) -> String {
+        guard engines[Self.engineKey(args)] == "xcuitest" else { return "" }
+        return " If nothing changed on iOS: this ran on the XCUITest engine,"
             + " and \(framework) apps do not receive \(gesture) through it."
-            + " Pass profile: to follow the run profile's engine (inapp/hybrid handles it)."
+            + " Pass profile: to follow the run profile's engine, or start an in-app bridge"
+            + " (`ftester bridge up --engine inapp`) — both handle it."
+    }
+
+    /// **in-app 経路で背面化すると、以降は XCUITest ブリッジ側が受ける**
+    /// (in-app ブリッジはアプリのプロセス内に住み、suspend されると応答しない。
+    /// 寄せ替えは HybridFallbackDriver が持つ)。XCUITest は外側のプロセスなので関係なく、
+    /// back は前面のままなので関係ない
+    static func backgroundedAppNote(target: String, engine: String?) -> String {
+        guard target != "back", engine == "inapp" || engine == "hybrid" else { return "" }
+        return ". The app is in the background now, so the tools run through the XCUITest bridge"
+            + " (slower reads, and the snapshot still describes the app itself)"
+            + " until you bring it back with ft_launch"
+    }
+
+    /// driver(_:) が使うキャッシュキーと同じ引き当て(エンジンの記録先)
+    static func engineKey(_ args: [String: Any]) -> String {
+        if let profileName = args["profile"] as? String {
+            return driverCacheKey(profile: profileName, project: args["project"] as? String,
+                                  platform: args["platform"] as? String)
+        }
+        let platform = (args["platform"] as? String)
+            ?? ProcessInfo.processInfo.environment["FTESTER_PLATFORM"] ?? "ios"
+        return driverCacheKey(platform: platform, port: args["port"] as? Int,
+                              serial: args["serial"] as? String)
     }
 
     /// drivers キャッシュのキー生成。profile / project / port / serial の違いを別ドライバとして扱う
@@ -299,9 +340,24 @@ final class MCPServer {
             throw MCPError("ref or x/y is required")
 
         case "ft_type":
-            guard let content = args["text"] as? String else { throw MCPError("text is required") }
-            try await driver(args).type(ref: args["ref"] as? Int, text: content)
-            return text("Typed: \"\(content)\"")
+            // **Enter は別ツールにしない**が、**入力を伴わない pressEnter も要る**:
+            // iOS はソフトキーボードを閉じる手段が pressEnter しかない(hideKeyboard は Android 専用。
+            // docs/commands.md)。そのため text は「pressEnter だけを撃つとき」は省略できる
+            let wantsEnter = args["pressEnter"] as? Bool == true
+            let content = args["text"] as? String
+            guard content != nil || wantsEnter else {
+                throw MCPError("text is required (or pass pressEnter: true to fire Enter only)")
+            }
+            let typeDriver = try await driver(args)
+            if let content, !content.isEmpty {
+                try await typeDriver.type(ref: args["ref"] as? Int, text: content)
+            } else if let ref = args["ref"] as? Int {
+                // 入力せず Enter だけ撃つときも、対象が指定されていればフォーカスを立ててから
+                try await typeDriver.tap(ref: ref)
+            }
+            guard wantsEnter else { return text("Typed: \"\(content ?? "")\"") }
+            try await typeDriver.pressEnter()
+            return text(content.map { "Typed: \"\($0)\" and pressed Enter" } ?? "Pressed Enter")
 
         case "ft_swipe":
             guard let direction = FTSwipeDirection(rawValue: args["direction"] as? String ?? "") else {
@@ -309,6 +365,29 @@ final class MCPServer {
             }
             try await driver(args).swipe(direction)
             return text("swipe \(direction.rawValue) done")
+
+        case "ft_navigate":
+            // **3つを1ツールに束ねる**: back/home/appSwitcher を個別ツールにすると定義が3倍になり、
+            // 似た選択肢が並んでエージェントの選択が揺れる(docs/shirates-parity.md の
+            // 「別名族を置かない」と同じ判断)
+            let target = args["target"] as? String ?? ""
+            let navigation = try await driver(args)
+            switch target {
+            case "back": try await navigation.back()
+            case "home": try await navigation.home()
+            case "appSwitcher": try await navigation.openAppSwitcher()
+            default: throw MCPError("target must be one of back/home/appSwitcher")
+            }
+            return text("\(target) done. The screen changed — take a fresh ft_snapshot"
+                + Self.backgroundedAppNote(target: target, engine: engines[Self.engineKey(args)]))
+
+        case "ft_clear_input":
+            // ref 省略 = フォーカス中の欄(DSL の clearInput() と同じ)
+            try await driver(args).clearInput(ref: args["ref"] as? Int)
+            return text("cleared")
+
+        case "ft_dsl_commands":
+            return dslCommands(args)
 
         case "ft_double_tap":
             // **座標へ畳んでから撃つ**: ref はブリッジごとに別名前空間で、501 で別ドライバへ
@@ -329,7 +408,7 @@ final class MCPServer {
             try await doubleTapDriver.doubleTap(x: doubleTapPoint.x, y: doubleTapPoint.y)
             return text("double tap (\(doubleTapPoint.x), \(doubleTapPoint.y)) done."
                 + " The screen may have changed — take a fresh ft_snapshot."
-                + Self.iosEngineHint("Compose Multiplatform", "double tap", args: args))
+                + iosEngineHint("Compose Multiplatform", "double tap", args: args))
 
         case "ft_drag":
             guard let fromX = args["fromX"] as? Double, let fromY = args["fromY"] as? Double,
@@ -363,7 +442,7 @@ final class MCPServer {
                                         durationSeconds: args["durationSeconds"] as? Double ?? 0.5)
             return text("pinch x\(scale) done."
                 + " The zoom may be smaller than requested — verify with ft_snapshot/ft_screenshot."
-                + Self.iosEngineHint("Flutter", "pinch", args: args))
+                + iosEngineHint("Flutter", "pinch", args: args))
 
         case "ft_press":
             guard let ref = args["ref"] as? Int else { throw MCPError("ref is required") }
@@ -549,11 +628,38 @@ final class MCPServer {
         return text(lines.joined(separator: "\n"))
     }
 
+    /// DSL コマンド索引(`ftester api dsl-commands` と同じ出典 = Sources/FTDSL/CommandIndex.swift)。
+    /// **既定は名前と署名だけ**にする: 全 136 件の要約まで返すと 15KB 級になり、
+    /// 「どのコマンドがあるか」を知りたいだけの呼び出しでコンテキストを食う。
+    /// 要約が要るときは name / category で絞る
+    private func dslCommands(_ args: [String: Any]) -> [[String: Any]] {
+        let category = args["category"] as? String
+        let name = args["name"] as? String
+        var commands = DSLCommandIndex.all
+        if let category { commands = commands.filter { $0.category == category } }
+        if let name { commands = commands.filter { $0.name == name } }
+        guard !commands.isEmpty else {
+            let categories = Set(DSLCommandIndex.all.map(\.category)).sorted()
+            return text("no command matched. Categories: \(categories.joined(separator: ", "))."
+                + " A name that is not in this index does not exist (it will not compile)")
+        }
+        let detailed = name != nil || category != nil
+        let lines = commands.map { command in
+            detailed ? "\(command.signature) — \(command.summary)" : command.signature
+        }
+        let header = detailed
+            ? "\(commands.count) command(s)"
+            : "\(commands.count) commands (pass category: or name: for summaries)."
+                + " Chain-only: \(DSLCommandIndex.chainOnlyNames.sorted().joined(separator: ", "))"
+        return text(([header] + lines).joined(separator: "\n"))
+    }
+
     // MARK: - ツール定義
 
+    // **共通引数の説明は最小限にする**: 5つ × デバイス系ツールで定義全体の約4割を占めるため、
+    // 1文字が13倍になる(2026-08-05 実測)。意味は enum と名前で足りる
     static let platformProperty: [String: Any] = [
-        "type": "string", "enum": ["ios", "android"],
-        "description": "Target platform (default ios)",
+        "type": "string", "enum": ["ios", "android"], "description": "default ios",
     ]
     static let portProperty: [String: Any] = [
         "type": "integer", "description": "iOS bridge port (default 8123)",
@@ -563,10 +669,10 @@ final class MCPServer {
     ]
     static let profileProperty: [String: Any] = [
         "type": "string",
-        "description": "Run profile name. When given, connects to the same device as ft_run_scenario (profiles/runs/)",
+        "description": "profiles/runs/<name>. Same device and engine as ft_run_scenario",
     ]
     static let projectProperty: [String: Any] = [
-        "type": "string", "description": "Test project name (defaults to the default project)",
+        "type": "string", "description": "Test project name",
     ]
     /// 全ツール共通のデバイス選択プロパティ。tool() が無条件で足す
     static let commonDeviceProperties: [(String, [String: Any])] = [
@@ -586,25 +692,37 @@ final class MCPServer {
             "bundleId": ["type": "string", "description": "bundle ID (iOS) / package name (Android)"],
         ], required: ["bundleId"]),
         tool("ft_snapshot", "Get the element list of the current screen. Each line: [ref] Type \"label\" id=... (x,y WxH). Use these refs for tap/type", [:]),
-        tool("ft_tap", "Tap an element (ref) or a coordinate (x,y). x/y use the same coordinate system as the ft_snapshot frames (iOS = points pt / Android = device pixels px) — NOT screenshot pixels. "
-            + "[Known iOS limitation] On dense, vertically scrolling screens (e.g. Compose Multiplatform), frames of elements below the fold can be reported clamped to the bottom edge, so tapping that coordinate/ref misses. Bring the target into view with ft_swipe, take a fresh ft_snapshot, then tap.", [
+        tool("ft_tap", "Tap an element (ref) or a coordinate (x,y). x/y match the ft_snapshot frames (iOS=pt / Android=px), not screenshot pixels. "
+            + "If a tap below the fold misses, the frame was clamped: ft_swipe it into view, ft_snapshot again, then tap.", [
             "ref": ["type": "integer", "description": "Reference number from ft_snapshot"],
             "x": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],
             "y": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],
         ]),
-        tool("ft_type", "Type text (with ref, taps that field first)", [
-            "text": ["type": "string"],
+        tool("ft_type", "Type text (with ref, taps that field first). text is required unless pressEnter is "
+            + "true — pressEnter alone fires the Enter/IME action, which is also the only way to close the "
+            + "soft keyboard on iOS", [
+            "text": ["type": "string", "description": "Omit it to fire Enter only"],
+            "pressEnter": ["type": "boolean", "description": "Fire Enter/IME action (search, submit, close keyboard)"],
             "ref": ["type": "integer", "description": "Reference number of the input field (defaults to the focused element)"],
-        ], required: ["text"]),
+        ]),
         tool("ft_swipe", "Swipe (up = scroll down the content)", [
             "direction": ["type": "string", "enum": ["up", "down", "left", "right"]],
         ], required: ["direction"]),
-        tool("ft_double_tap", "Double-tap an element (ref) or a coordinate (x,y). "
-            + "Cannot be replaced by two ft_tap calls — the round trip exceeds the OS double-tap window. "
-            + "[Known iOS limitation] Without a profile these tools drive the XCUITest engine, where "
-            + "Compose Multiplatform apps do not receive a double tap (the two taps arrive too close "
-            + "together and land as a single tap). Pass profile: to follow the run profile's engine, "
-            + "which handles it on inapp/hybrid.", [
+        tool("ft_navigate", "Go back / to the home screen / to the app switcher", [
+            "target": ["type": "string", "enum": ["back", "home", "appSwitcher"]],
+        ], required: ["target"]),
+        tool("ft_clear_input", "Empty an input field (ft_type appends, so clear first to replace)", [
+            "ref": ["type": "integer", "description": "Reference number of the field (default: the focused one)"],
+        ]),
+        tool("ft_dsl_commands", "List the Swift DSL commands with their signatures — the source of truth for "
+            + "writing scenarios. Call it before writing code so you do not invent commands. "
+            + "Without arguments it returns names and signatures only", [
+            "category": ["type": "string", "description": "Only this category (operation/scroll/existence/text/value/app/control/…)"],
+            "name": ["type": "string", "description": "Only this command, with its full summary"],
+        ], scope: .none),
+        tool("ft_double_tap", "Double-tap an element (ref) or a coordinate (x,y). Two ft_tap calls do not work "
+            + "(the round trip exceeds the OS double-tap window). Pass profile: on iOS — without it these "
+            + "tools use XCUITest, where Compose apps never receive a double tap (see docs/commands.md).", [
             "ref": ["type": "integer", "description": "Reference number from ft_snapshot"],
             "x": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],
             "y": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],
@@ -618,13 +736,9 @@ final class MCPServer {
             "toY": ["type": "number"],
             "durationSeconds": ["type": "number", "description": "Travel time in seconds (default 1.5)"],
         ], required: ["fromX", "fromY", "toX", "toY"]),
-        tool("ft_pinch", "Pinch to zoom. scale > 1 zooms in, 0 < scale < 1 zooms out. "
-            + "Without ref the whole screen is pinched; with ref the element is the target. "
-            + "The resulting zoom may be smaller than the requested scale (the fingers cannot go outside "
-            + "the target area). "
-            + "[Known iOS limitation] Without a profile these tools drive the XCUITest engine, where the "
-            + "fingers move only about 8px — too little for Flutter's scale threshold, so Flutter apps do "
-            + "not zoom. Pass profile: to follow the run profile's engine, which handles it.", [
+        tool("ft_pinch", "Pinch to zoom. scale > 1 zooms in, 0 < scale < 1 zooms out. Without ref the whole "
+            + "screen is the target. The actual zoom can be smaller than requested (fingers stay inside the "
+            + "target). Pass profile: on iOS — without it Flutter apps do not zoom (see docs/commands.md).", [
             "ref": ["type": "integer", "description": "Reference number from ft_snapshot (defaults to the whole screen)"],
             "scale": ["type": "number", "description": "Zoom factor (default 2.0)"],
             "durationSeconds": ["type": "number", "description": "Gesture duration in seconds (default 0.5)"],
@@ -638,13 +752,13 @@ final class MCPServer {
         tool("ft_list_scenarios", "List the Swift DSL scenarios (Projects/<name>/Scenarios/). Builds automatically; compile errors are returned as-is", [
             "project": ["type": "string", "description": "Test project name (defaults to the default project)"],
             "skipBuild": ["type": "boolean", "description": "Skip the swift build (default false)"],
-        ]),
+        ], scope: .project),
         tool("ft_dry_run", "Dry-run a scenario without any device. Catches selector syntax errors, unreachable scenes and expectation blocks with no assertions in seconds. "
             + "Run it after ft_list_scenarios (compile) and before ft_run_scenario (real device) — it cannot tell whether a selector matches a real element", [
             "id": ["type": "string", "description": "Scenario ID (Class.method; see ft_list_scenarios)"],
             "project": ["type": "string", "description": "Test project name (defaults to the default project)"],
             "skipBuild": ["type": "boolean", "description": "Skip the swift build (default false)"],
-        ], required: ["id"]),
+        ], required: ["id"], scope: .project),
         tool("ft_run_scenario", "Run a scenario deterministically. On failure, returns the triage and the report path. Builds automatically", [
             "id": ["type": "string", "description": "Scenario ID (Class.method; see ft_list_scenarios)"],
             "project": ["type": "string", "description": "Test project name (defaults to the default project)"],
@@ -653,17 +767,37 @@ final class MCPServer {
             "port": ["type": "integer", "description": "iOS bridge port (default 8123)"],
             "serial": ["type": "string", "description": "Android device serial"],
         ], required: ["id"]),
-        tool("ft_list_projects", "List the test projects (Projects/) and their run profiles", [:]),
-        tool("ft_doctor", "Check Foundation Models availability", [:]),
+        tool("ft_list_projects", "List the test projects (Projects/) and their run profiles", [:],
+             scope: .none),
+        tool("ft_doctor", "Check Foundation Models availability", [:], scope: .none),
     ]
 
+    /// ツールがどの引数群を要るか。**デバイスに触らないツールへ5つ足さない**のが要点 ——
+    /// 共通引数はツール定義全体の過半を占めており(2026-08-05 実測 57%)、
+    /// 使えない引数を並べるとコンテキストを食うだけでなく「渡せば効く」と誤解させる
+    enum ToolScope {
+        /// デバイスを掴む(platform/port/serial/profile/project)
+        case device
+        /// プロジェクトだけ要る(ビルド・シナリオ解決。デバイスには触らない)
+        case project
+        /// どちらも要らない
+        case none
+    }
+
     static func tool(_ name: String, _ description: String,
-                     _ properties: [String: Any], required: [String] = []) -> [String: Any] {
+                     _ properties: [String: Any], required: [String] = [],
+                     scope: ToolScope = .device) -> [String: Any] {
         var props = properties
-        // デバイス選択は全ツール共通。個別宣言があればそちらを優先する
-        // (ft_run_scenario は profile/port/serial/project により詳細な説明文を持つ)
-        for (key, value) in commonDeviceProperties where props[key] == nil {
-            props[key] = value
+        // 個別宣言があればそちらを優先する(ft_run_scenario は profile/port/serial により詳細な説明を持つ)
+        switch scope {
+        case .device:
+            for (key, value) in commonDeviceProperties where props[key] == nil {
+                props[key] = value
+            }
+        case .project:
+            if props["project"] == nil { props["project"] = projectProperty }
+        case .none:
+            break
         }
         var schema: [String: Any] = ["type": "object", "properties": props]
         if !required.isEmpty { schema["required"] = required }

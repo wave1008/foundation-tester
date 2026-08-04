@@ -82,6 +82,8 @@ let package = Package(
                 "FTBridgeClient",
                 "FTAgent",
                 "FTAndroid",
+                // ft_dsl_commands が DSL コマンド索引を返す(出典は Sources/FTDSL/CommandIndex.swift)
+                "FTDSL",
             ],
             swiftSettings: swift5Mode
         ),

@@ -84,9 +84,9 @@ final class MCPToolCallTests: XCTestCase {
         XCTAssertEqual(driver.calls, ["drag(100.0,200.0->40.0,150.0,duration:0.8)"])
     }
 
-    /// **無反応だったときの切り分けを応答に載せる**(MCP は iOS では常に XCUITest 経路で、
-    /// Compose のダブルタップと Flutter のピンチはそこでは届かない)。
-    /// Android と分かっているときは付けない —— 無関係な助言は誤誘導になる
+    /// **無反応だったときの切り分けを応答に載せる**(XCUITest では Compose のダブルタップと
+    /// Flutter のピンチが届かない)。Android と分かっているときは付けない —— 無関係な助言は
+    /// 誤誘導になる
     func testGestureResultsCarryTheEngineHintOnIOSOnly() async throws {
         let iosDouble = try await server.call(tool: "ft_double_tap", args: ["x": 1.0, "y": 2.0])
         let iosText = try XCTUnwrap(iosDouble.first?["text"] as? String)
@@ -101,6 +101,99 @@ final class MCPToolCallTests: XCTestCase {
         let pinch = try await server.call(tool: "ft_pinch", args: [:])
         let pinchText = try XCTUnwrap(pinch.first?["text"] as? String)
         XCTAssertTrue(pinchText.contains("Flutter"), pinchText)
+    }
+
+    /// **助言は「実際に使ったエンジン」で出し分ける**。in-app/hybrid ではジェスチャが成立するので
+    /// 添えない —— 成立しているのに「届かない」と言うと、無関係な原因を探させる
+    func testEngineHintDisappearsWhenTheRunIsNotOnXCUITest() async throws {
+        for engine in ["hybrid", "inapp"] {
+            server.engines[MCPServer.engineKey([:])] = engine
+            let result = try await server.call(tool: "ft_double_tap", args: ["x": 1.0, "y": 2.0])
+            let resultText = try XCTUnwrap(result.first?["text"] as? String)
+            XCTAssertFalse(resultText.contains("XCUITest engine"), "\(engine): \(resultText)")
+        }
+    }
+
+    /// **in-app 経路の背面化は「次が無応答になりうる」ことまで返す**(in-app ブリッジは
+    /// 対象アプリの中に住む)。back は前面のままなので黙る
+    func testHomeWarnsAboutTheSuspendedInAppBridge() {
+        XCTAssertTrue(MCPServer.backgroundedAppNote(target: "home", engine: "hybrid")
+            .contains("XCUITest bridge"))
+        XCTAssertTrue(MCPServer.backgroundedAppNote(target: "appSwitcher", engine: "inapp")
+            .contains("ft_launch"))
+        XCTAssertEqual(MCPServer.backgroundedAppNote(target: "home", engine: "xcuitest"), "",
+                       "XCUITest はアプリの外なので関係ない")
+        XCTAssertEqual(MCPServer.backgroundedAppNote(target: "back", engine: "hybrid"), "",
+                       "back は背面化しない")
+    }
+
+    // MARK: - 統合したツール(ft_navigate / ft_clear_input / ft_type の pressEnter)
+
+    /// **3操作を1ツールに束ねている**ので、target がドライバの正しいメソッドへ振り分くこと
+    func testNavigateDispatchesToTheRightDriverCall() async throws {
+        _ = try await server.call(tool: "ft_navigate", args: ["target": "back"])
+        _ = try await server.call(tool: "ft_navigate", args: ["target": "home"])
+        _ = try await server.call(tool: "ft_navigate", args: ["target": "appSwitcher"])
+        XCTAssertEqual(driver.calls, ["back", "home", "appSwitcher"])
+    }
+
+    func testNavigateRejectsAnUnknownTarget() async {
+        await assertThrows("ft_navigate", ["target": "sideways"])
+        XCTAssertEqual(driver.calls, [])
+    }
+
+    /// ref 省略はフォーカス中の欄(DSL の clearInput() と同じ)
+    func testClearInputPassesTheRefOrNil() async throws {
+        _ = try await server.call(tool: "ft_clear_input", args: ["ref": 2])
+        _ = try await server.call(tool: "ft_clear_input", args: [:])
+        XCTAssertEqual(driver.calls, ["clearInput(ref:2)", "clearInput(ref:nil)"])
+    }
+
+    /// **入力を伴わない Enter も撃てること**。iOS はソフトキーボードを閉じる手段が
+    /// pressEnter しかない(hideKeyboard は Android 専用)ので、text 必須にすると
+    /// 「閉じるためだけに何か打つ」しかなくなる
+    func testPressEnterAloneIsAllowed() async throws {
+        _ = try await server.call(tool: "ft_type", args: ["pressEnter": true])
+        XCTAssertEqual(driver.calls, ["pressEnter"], "打鍵せず Enter だけ撃つこと")
+
+        // ref を渡したときはフォーカスを立ててから撃つ
+        _ = try await server.call(tool: "ft_type", args: ["ref": 4, "pressEnter": true])
+        XCTAssertEqual(driver.calls, ["pressEnter", "tap(ref:4)", "pressEnter"])
+    }
+
+    /// text も pressEnter も無ければ弾く(打つものが無い)
+    func testTypeRequiresTextUnlessPressEnter() async {
+        await assertThrows("ft_type", [:])
+        XCTAssertEqual(driver.calls, [])
+    }
+
+    /// **Enter を別ツールにしない**ぶん、引数が確実に効くこと(既定は撃たない)
+    func testTypeFiresEnterOnlyWhenAsked() async throws {
+        _ = try await server.call(tool: "ft_type", args: ["text": "abc"])
+        XCTAssertEqual(driver.calls, ["type(ref:nil,text:abc)"])
+
+        _ = try await server.call(tool: "ft_type", args: ["text": "abc", "pressEnter": true])
+        XCTAssertEqual(driver.calls,
+                       ["type(ref:nil,text:abc)", "type(ref:nil,text:abc)", "pressEnter"])
+    }
+
+    /// 索引はデバイスに触らない。**既定は署名だけ**(全件の要約まで返すと 15KB 級になる)
+    func testDslCommandsListsSignaturesAndNarrowsByName() async throws {
+        let all = try await server.call(tool: "ft_dsl_commands", args: [:])
+        let allText = try XCTUnwrap(all.first?["text"] as? String)
+        XCTAssertTrue(allText.contains("tap(selector"), allText.prefix(200).description)
+        XCTAssertFalse(allText.contains("—"), "既定では要約を出さない")
+
+        let one = try await server.call(tool: "ft_dsl_commands", args: ["name": "pinchOut"])
+        let oneText = try XCTUnwrap(one.first?["text"] as? String)
+        XCTAssertTrue(oneText.contains("pinchOut(selector?"), oneText)
+        XCTAssertTrue(oneText.contains("—"), "名前を絞ったら要約も出す")
+
+        // 索引に無い名前は**存在しない**ことを伝える(でっち上げの抑止がこのツールの目的)
+        let missing = try await server.call(tool: "ft_dsl_commands", args: ["name": "swipeDown"])
+        let missingText = try XCTUnwrap(missing.first?["text"] as? String)
+        XCTAssertTrue(missingText.contains("does not exist"), missingText)
+        XCTAssertEqual(driver.calls, [], "索引はデバイスに触らない")
     }
 
     func testDragRequiresAllCoordinates() async {
@@ -272,9 +365,11 @@ final class MCPToolCallTests: XCTestCase {
         "ft_status", "ft_install", "ft_launch", "ft_snapshot", "ft_tap", "ft_type",
         "ft_swipe", "ft_press", "ft_screenshot", "ft_terminate",
         "ft_double_tap", "ft_pinch", "ft_drag",
+        "ft_navigate", "ft_clear_input",
     ]
     private static let projectBackedTools: Set<String> = [
         "ft_list_scenarios", "ft_run_scenario", "ft_dry_run", "ft_list_projects", "ft_doctor",
+        "ft_dsl_commands",
     ]
 
     func testDriverBackedToolsAreAllDispatched() async {
