@@ -37,6 +37,39 @@ public final class SessionRecoveryDriver: AppDriver {
         _ = try? await base.activate(bundleID: lastBundleID)
     }
 
+    /// XCTest の a11y サーバが一時的に落ちると、ツリー走査が
+    /// 「Error getting main window kAXErrorAPIDisabled」(500)で失敗する。
+    /// **同時刻に全レーンで一斉に出る**(2026-08-04 00:55:29〜34 に6件・2026-08-01 にも7件の塊。
+    /// 19件すべてクラスタ)ので**環境要因**で、数秒で復旧する。
+    /// アプリ側の問題ではないため、失敗として返すと調査が明後日の方向へ行く
+    static func isAccessibilityTemporarilyDown(_ error: Error) -> Bool {
+        guard case DriverError.badResponse(let status, let body) = error, status == 500 else {
+            return false
+        }
+        return body.contains("kAXErrorAPIDisabled")
+    }
+
+    /// 復旧待ちの刻み(秒)。クラスタは実測で最長 5 秒なので、合計 6 秒まで粘る。
+    /// **読み取りにしか使わない**(下記)ので、粘っても副作用は無い
+    private static let accessibilityRetryDelays: [Double] = [1, 2, 3]
+
+    /// **読み取り(snapshot/screenshot)だけ**この待ちを入れる。書き込み(tap/type 等)は
+    /// 「撃つ前に落ちた」と断定できないので再試行しない —— 二重実行を作らない方を選ぶ
+    /// (DriverError.isDefiniteDeliveryFailure と同じ判断)
+    private func withAccessibilityRetry<T>(_ operation: () async throws -> T) async throws -> T {
+        for delay in Self.accessibilityRetryDelays {
+            do {
+                return try await operation()
+            } catch {
+                guard Self.isAccessibilityTemporarilyDown(error) else { throw error }
+                accessibilityOutageNote = "the accessibility server was momentarily unavailable"
+                    + " (kAXErrorAPIDisabled); retried the read"
+                try? await Task.sleep(for: .seconds(delay))
+            }
+        }
+        return try await operation()
+    }
+
     /// ref を使わない操作向け: 409 なら1回だけ回復+再試行する。
     private func withRecovery<T>(_ operation: () async throws -> T) async throws -> T {
         do {
@@ -48,6 +81,8 @@ public final class SessionRecoveryDriver: AppDriver {
         }
     }
 
+    private var accessibilityOutageNote: String?
+
     public func status() async throws -> StatusResponse { try await base.status() }
     public func install(packagePath: String) async throws { try await base.install(packagePath: packagePath) }
     public func uninstall(bundleID: String) async throws { try await base.uninstall(bundleID: bundleID) }
@@ -58,7 +93,9 @@ public final class SessionRecoveryDriver: AppDriver {
         try await base.isAppForeground(bundleID: bundleID)
     }
     public func foregroundAppID() async throws -> String? { try await base.foregroundAppID() }
-    public var lastActionNote: String? { base.lastActionNote }
+    /// a11y の一時停止で撃ち直したことは**必ず見せる**(黙って遅くなるだけだと、
+    /// 8 秒級の遅れの理由が読めない)。base の注記があればそちらを優先する
+    public var lastActionNote: String? { base.lastActionNote ?? accessibilityOutageNote }
     public var lastLaunchTiming: LaunchTiming? { base.lastLaunchTiming }
 
     public func launch(bundleID: String) async throws {
@@ -74,11 +111,15 @@ public final class SessionRecoveryDriver: AppDriver {
     public func openAppSwitcher() async throws { try await withRecovery { try await base.openAppSwitcher() } }
     public func home() async throws { try await withRecovery { try await base.home() } }
     public func back() async throws { try await withRecovery { try await base.back() } }
-    public func snapshot() async throws -> SnapshotResponse { try await withRecovery { try await base.snapshot() } }
+    public func snapshot() async throws -> SnapshotResponse {
+        try await withAccessibilityRetry { try await self.withRecovery { try await self.base.snapshot() } }
+    }
     /// bypassingCache 版の素通し(既定実装に任せるとフラグが落ちて最内へ届かない。
     /// SnapshotCacheBypassForwardingTests がラッパー全体でこれを守る)
     public func snapshot(bypassingCache: Bool) async throws -> SnapshotResponse {
-        try await withRecovery { try await base.snapshot(bypassingCache: bypassingCache) }
+        try await withAccessibilityRetry {
+            try await self.withRecovery { try await self.base.snapshot(bypassingCache: bypassingCache) }
+        }
     }
     public var supportsCacheBypass: Bool { base.supportsCacheBypass }
     public func tap(x: Double, y: Double) async throws { try await withRecovery { try await base.tap(x: x, y: y) } }
@@ -115,7 +156,9 @@ public final class SessionRecoveryDriver: AppDriver {
         }
     }
 
-    public func screenshot() async throws -> Data { try await withRecovery { try await base.screenshot() } }
+    public func screenshot() async throws -> Data {
+        try await withAccessibilityRetry { try await self.withRecovery { try await self.base.screenshot() } }
+    }
     // ref を使わない(フォーカス中要素へ作用する)ので tap(x:y:) と同じ扱い: 1回だけ回復+再試行する
     public func pressEnter() async throws { try await withRecovery { try await base.pressEnter() } }
     // ref を取らず古びる状態も無いので withRecovery でよい(clearInput 側の recoverAndRethrow は不要)
