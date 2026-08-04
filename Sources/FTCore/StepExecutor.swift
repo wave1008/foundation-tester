@@ -1009,13 +1009,26 @@ public final class StepExecutor {
         // (層3 の coveringHint と同じ事象。あちらは診断、こちらは宣言があるときの自動処理)
         try await dismissInterruption(in: &snapshot, phase: &phase)
         var resolved = Self.resolve(step: step, in: snapshot)
-        if resolved == nil {
+        // **探索の直後は容器の外に並ぶ ghost 行を掴むことがある**(Compose iOS は容器の外にも
+        // 子を報告する。docs/verification.md「Compose の探索直後タップ」)。掴んだままタップすると
+        // 容器の外を撃って**黙って飲まれる**(値が変わらないので、後段の検証だけが落ちて原因が遠い)。
+        // 探索ループの中では同じ判定で「もう1回送る」をしているが、**ループを抜けた後の再解決には
+        // 効いていなかった**のが残存フレークの正体(2026-08-04)。
+        // `clippingAncestor` は「要素が clip 元の祖先と交差しない = 容器の外」のときだけ非 nil を返す
+        // ので、これがそのまま ghost の判定になる。木が落ち着けば容器の中の行が返るので**解決し直す**
+        func grabbedGhost(_ candidate: (ElementInfo, FlowLocator?)?) -> Bool {
+            guard searchSwiped, let element = candidate?.0 else { return false }
+            return Self.clippingAncestor(of: element, in: snapshot.elements) != nil
+        }
+        var ghostRetries = 0
+        var ghostSwipes = 0
+        if resolved == nil || grabbedGhost(resolved) {
             if let timeout = step.timeout {
                 // timeout == 0: リトライなし(初回スナップショットのみ。ifCanSelect/select の空振り短縮用)
                 if timeout > 0 {
                     let retryDeadline = clock.now.advanced(by: .seconds(timeout))
                     var backoff = PollBackoff()
-                    while resolved == nil, clock.now < retryDeadline {
+                    while resolved == nil || grabbedGhost(resolved), clock.now < retryDeadline {
                         start = clock.now
                         try await Task.sleep(for: backoff.nextDelay())
                         phase.waitMs += Self.ms(clock.now - start)
@@ -1025,21 +1038,38 @@ public final class StepExecutor {
                         snapshot = try await driver.snapshot(
                             bypassingCache: searchSwiped && driver.supportsCacheBypass)
                         phase.snapshotMs += Self.ms(clock.now - start)
+                        let previous = resolved
                         resolved = Self.resolve(step: step, in: snapshot)
+                        if previous != nil { ghostRetries += 1 }
                     }
                 }
             } else {
                 var backoff = PollBackoff()
-                for _ in 0..<3 {
+                for attempt in 0..<3 {
                     start = clock.now
                     try await Task.sleep(for: backoff.nextDelay())
                     phase.waitMs += Self.ms(clock.now - start)
+                    // **撮り直しだけでは戻らないことがある**(2026-08-04 実測: 3回撮り直しても
+                    // 容器の外に報告されたまま = タップが飲まれて `selected=-`)。
+                    // 探索ループと同じく**もう1回送って**容器の中へ入れる。1周目は撮り直しだけ
+                    // (木の遅れなら送らずに直る)、2周目以降だけ送る = 正常系のコストを増やさない
+                    if attempt > 0, grabbedGhost(resolved),
+                       let finger = FTSwipeDirection(rawValue: step.direction ?? "") {
+                        _ = try await swipeWithFallback(finger, intent: .search,
+                                                        path: scrollPath(step: step, intent: .search,
+                                                                         in: snapshot),
+                                                        phase: &phase)
+                        ghostSwipes += 1
+                        _ = try await settledSignature(phase: &phase)
+                    }
                     start = clock.now
                     snapshot = try await driver.snapshot(
                         bypassingCache: searchSwiped && driver.supportsCacheBypass)
                     phase.snapshotMs += Self.ms(clock.now - start)
+                    let previous = resolved
                     resolved = Self.resolve(step: step, in: snapshot)
-                    if resolved != nil { break }
+                    if previous != nil { ghostRetries += 1 }
+                    if resolved != nil, !grabbedGhost(resolved) { break }
                 }
             }
         }
@@ -1055,6 +1085,19 @@ public final class StepExecutor {
         // springboard セッションを張り、**同一デバイス1セッション制約でアプリ attach を潰す**。
         // WebView(domInterop)では直後の type が入らなくなった(2026-08-04 実測。
         // `select("wv_result=*")` はワイルドカードが quality=substring になり毎回ここを踏む)
+        // 掴み直しの結果を**必ず注記に残す**: 救えたなら「なぜ遅かったか」の説明になり、
+        // 救えなかったなら「タップが飲まれた可能性」を失敗調査の起点にできる(黙るのが最悪)
+        var ghostNote: String?
+        if grabbedGhost(resolved) {
+            ghostNote = "the element is still reported outside its scroll container"
+                + " (\(ghostRetries) re-resolve(s), \(ghostSwipes) extra swipe(s));"
+                + " the interaction may be swallowed"
+        } else if ghostRetries > 0 {
+            ghostNote = "re-resolved \(ghostRetries) time(s)"
+                + (ghostSwipes > 0 ? " with \(ghostSwipes) extra swipe(s)" : "")
+                + " — the element was first reported outside its scroll container"
+        }
+
         var actingDriver: AppDriver = driver
         if action != "select", let fb = fallbackDriver {
             let primaryQuality = resolved == nil ? nil : Self.resolveDetailed(step: step, in: snapshot)?.quality
@@ -1270,7 +1313,7 @@ public final class StepExecutor {
             return StepOutcome(status: .skipped("unknown action: \(action)"))
         }
         return StepOutcome(status: status, healedStep: healedStep, healedByCache: healedByCache,
-                           driverFallback: driverFallback)
+                           driverFallback: Self.joinNotes(driverFallback, ghostNote))
     }
 
     /// typeDriver で type を試みる。ref はブリッジごとに別名前空間なので typeDriver 側 snapshot で
@@ -1415,6 +1458,12 @@ public final class StepExecutor {
         guard let match else { return nil }
         return Self.residualClearValue(before: before.value, after: match.value,
                                        placeholder: match.placeholder)
+    }
+
+    /// 注記の合流(どちらか片方だけのことが多いので nil を潰して " / " で繋ぐ)
+    static func joinNotes(_ notes: String?...) -> String? {
+        let present = notes.compactMap { $0 }.filter { !$0.isEmpty }
+        return present.isEmpty ? nil : present.joined(separator: " / ")
     }
 
     /// 対象を取り得るジェスチャ(対象未指定なら画面全体)。ロケータ有無で解決だけが違うので
