@@ -101,6 +101,7 @@ let liveStallSent = false;
 const busyButtons = [
   'live-btn-refresh-devices', 'live-btn-refresh-snapshot',
   'live-btn-app-switcher', 'live-btn-home',
+  'live-btn-zoom-in', 'live-btn-zoom-out',
 ].map((id) => document.getElementById(id));
 
 function setBusy(value) {
@@ -427,6 +428,10 @@ function handleScreenPointerDown(event) {
   dragStart = {
     x: event.clientX - rect.left, y: event.clientY - rect.top, pointerId: event.pointerId,
     downAt: performance.now(), moveAt: null, el,
+    // **押した時点の Alt を採る**(離すまでに押し直されても、利用者の意図は押下時のもの)。
+    // ダブルタップは「素早く2回」では表せない —— パネルの1クリックは既にタップとして
+    // 送っているので、2回目を待つと通常のタップが毎回遅くなる
+    doubleTap: event.altKey,
   };
   updateDragOverlay(dragStart, dragStart.x, dragStart.y);
   try {
@@ -468,7 +473,13 @@ window.addEventListener('pointerup', (event) => {
   const upAt = performance.now();
   if (Math.hypot(endX - start.x, endY - start.y) < DRAG_MIN_PX) {
     const holdMs = Math.max(0, Math.round(upAt - start.downAt));
-    if (holdMs >= LONG_PRESS_MS) {
+    if (start.doubleTap) {
+      post({
+        type: 'doubleTapPoint',
+        clickX: endX, clickY: endY,
+        displayWidth: rect.width, displayHeight: rect.height,
+      });
+    } else if (holdMs >= LONG_PRESS_MS) {
       post({
         type: 'pressPoint',
         clickX: endX, clickY: endY,
@@ -564,6 +575,14 @@ document.getElementById('live-btn-refresh-devices').addEventListener('click', ()
 document.getElementById('live-btn-refresh-snapshot').addEventListener('click', () => {
   showActionError('');
   post({ type: 'refreshSnapshot' });
+});
+document.getElementById('live-btn-zoom-in').addEventListener('click', () => {
+  showActionError('');
+  post({ type: 'pinch', zoomIn: true });
+});
+document.getElementById('live-btn-zoom-out').addEventListener('click', () => {
+  showActionError('');
+  post({ type: 'pinch', zoomIn: false });
 });
 document.getElementById('live-btn-home').addEventListener('click', () => {
   showActionError('');

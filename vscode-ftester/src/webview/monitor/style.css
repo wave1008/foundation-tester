@@ -1453,7 +1453,11 @@ input[type="text"]::placeholder {
   justify-content: flex-start;
 }
 /* flex:0 で画像直下に確保 → ホーム/タスク切替は常に押せる */
-.screenshot-actions { flex: 0 0 auto; display: flex; justify-content: center; gap: 6px; }
+.screenshot-actions { flex: 0 0 auto; display: flex; justify-content: center; gap: 6px; flex-wrap: wrap; align-items: center; }
+/* 修飾キーの割り当て表示。**行を増やさない**(パネル高は fitScreenshot が実測で配分するため、
+   行が増えるとスクリーンショットが縮む)。狭いときだけ折り返す */
+/* 文言に含めた改行をそのまま2行で見せる(pre-line。折り返しは行わない) */
+.screenshot-hint { font-size: 11px; opacity: 0.75; white-space: pre-line; line-height: 1.25; text-align: center; }
 #panel-live .screenshot-wrap {
   position: relative;
   /* img と同寸(overlay が inset:0 で貼り付くため wrap==img を維持)。frame の flex 子。 */

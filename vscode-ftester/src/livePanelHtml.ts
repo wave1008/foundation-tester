@@ -69,7 +69,7 @@ export function renderLiveHtml(webview: vscode.Webview, extensionUri: vscode.Uri
         <!-- 画像スロット。内容フィットで画像実寸に縮み pane 上端に付く。liveTab.js の fitScreenshot が
              pane 実測高から actions/gap を引いた残りを #live-screenshot の max-height に反映する。 -->
         <div class="screenshot-frame" id="live-screenshot-frame">
-          <div class="screenshot-wrap" id="live-screenshot-wrap">
+          <div class="screenshot-wrap" id="live-screenshot-wrap" title="${t("panels.live.gestureHintTitle")}">
             <img id="live-screenshot" alt="${t("panels.live.screenshotAlt")}">
             <div id="live-hover-box"></div>
             <svg id="live-drag-overlay" aria-hidden="true"><line id="live-drag-line"/><circle id="live-drag-start" r="6"/></svg>
@@ -88,6 +88,11 @@ export function renderLiveHtml(webview: vscode.Webview, extensionUri: vscode.Uri
         <div class="screenshot-actions" id="live-screenshot-actions">
           <button id="live-btn-home" class="secondary" title="${t("panels.live.homeButtonTitle")}">${t("panels.live.homeButton")}</button>
           <button id="live-btn-app-switcher" class="secondary" title="${t("panels.live.appSwitcherTitle")}">${t("panels.live.appSwitcherButton")}</button>
+          <button id="live-btn-zoom-in" class="secondary" title="${t("panels.live.zoomInTitle")}">${t("panels.live.zoomInButton")}</button>
+          <button id="live-btn-zoom-out" class="secondary" title="${t("panels.live.zoomOutTitle")}">${t("panels.live.zoomOutButton")}</button>
+          <!-- 修飾キーの割り当ては UI に出さないと誰も気付かない(README だけでは届かない)。
+               全体の割り当ては画面領域の tooltip(gestureHintTitle)にも同じものを出す -->
+          <span id="live-gesture-hint" class="screenshot-hint" title="${t("panels.live.gestureHintTitle")}">${t("panels.live.gestureHint")}</span>
         </div>
       </div>
 

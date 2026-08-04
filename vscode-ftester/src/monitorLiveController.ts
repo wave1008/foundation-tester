@@ -1605,6 +1605,39 @@ export class MonitorLiveController implements vscode.Disposable {
         void this.runAction({ cmd: "press", x: point.x, y: point.y, duration }, pressStep, { logLabel: pressLabel });
         break;
       }
+      case "doubleTapPoint": {
+        if (!this.lastScreen) {
+          this.postActionError(t("live.refreshFirst"));
+          break;
+        }
+        const point = pointFromClick(
+          { x: message.clickX, y: message.clickY },
+          { width: message.displayWidth, height: message.displayHeight },
+          this.lastScreen,
+        );
+        // 記録は tap と同じくロケータ付きにする(生成コードは doubleTap("#id"))。
+        // **座標へ畳んでから送る**のは ref の名前空間がブリッジごとに違うため(AppDriver の注記)
+        const hit = hitTestElement(point, this.lastElements);
+        const step: RecordedStep | undefined = hit
+          ? { action: "doubleTap", ...locatorChainForElement(hit, this.lastElements) }
+          : undefined;
+        const label = hit
+          ? t("live.opLabel.doubleTap", { target: describeElementShort(hit) })
+          : t("live.opLabel.doubleTap", { target: `(${Math.round(point.x)}, ${Math.round(point.y)})` });
+        void this.runAction({ cmd: "doubleTap", x: point.x, y: point.y }, step, { logLabel: label });
+        break;
+      }
+      case "pinch": {
+        // 画面全体が対象(要素指定はパネルからは出さない — 対象の指し方が経路で違い、
+        // 人が選べる形にすると誤解を招く。DSL 側は pinchOut("#map") が書ける)
+        const zoomIn = message.zoomIn;
+        void this.runAction(
+          { cmd: "pinch", scale: zoomIn ? 2 : 0.5, duration: 0.5 },
+          { action: zoomIn ? "pinchOut" : "pinchIn" },
+          { logLabel: t(zoomIn ? "live.opLabel.pinchOut" : "live.opLabel.pinchIn") },
+        );
+        break;
+      }
       case "tapRef": {
         const refHit = this.lastElements.find((element) => element.ref === message.ref);
         const refChain = refHit ? locatorChainForElement(refHit, this.lastElements) : undefined;

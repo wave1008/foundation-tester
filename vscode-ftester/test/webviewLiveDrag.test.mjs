@@ -92,13 +92,14 @@ function createWebview() {
 }
 
 /** PointerEvent は jsdom に無いため MouseEvent に pointerId を後付けして代用する。 */
-function pointerEvent(window, type, { x, y, pointerId = 1, button = 0 }) {
+function pointerEvent(window, type, { x, y, pointerId = 1, button = 0, altKey = false }) {
   const event = new window.MouseEvent(type, {
     bubbles: true,
     cancelable: true,
     clientX: x,
     clientY: y,
     button,
+    altKey,
   });
   Object.defineProperty(event, "pointerId", { value: pointerId });
   return event;
@@ -225,4 +226,52 @@ test("画像の外で離したドラッグは表示範囲にクランプされ�
   assert.ok(drags[0].pressMs >= 0);
   assert.equal(typeof drags[0].dragMs, "number");
   assert.ok(drags[0].dragMs >= 0);
+});
+
+// マップ・キャンバス系の操作(2026-08-04 追加)。**ダブルタップは「素早く2回」では表せない** ——
+// パネルの1クリックは既にタップとして送っているので、2回目を待つ設計にすると通常のタップが
+// 毎回遅くなる。そこで Alt(Option)+クリックに割り当てている
+test("Alt+クリックは doubleTapPoint になる(通常のタップは送らない)", () => {
+  const { window, screenshot, sendToWebview, liveMessages } = createWebview();
+  sendToWebview(SNAPSHOT_MESSAGE);
+
+  screenshot.dispatchEvent(pointerEvent(window, "pointerdown", { x: 70, y: 80, altKey: true }));
+  window.dispatchEvent(pointerEvent(window, "pointerup", { x: 71, y: 80 }));
+
+  const doubles = liveMessages().filter((m) => m.type === "doubleTapPoint");
+  assert.equal(doubles.length, 1);
+  assert.equal(doubles[0].clickX, 71);
+  assert.equal(liveMessages().filter((m) => m.type === "tapPoint").length, 0,
+    "ダブルタップのときは通常のタップを送らない(3回タップになる)");
+});
+
+// **修飾キーは UI に出ていないと使われない**(README だけでは届かない)。
+// ヒント表示と画面領域の tooltip の両方を固定する
+test("Alt+クリックの割り当てがパネル上に表示されている", () => {
+  const { window } = createWebview();
+
+  const hint = window.document.getElementById("live-gesture-hint");
+  assert.ok(hint, "ツールバーに割り当てのヒントを出すこと");
+  assert.match(hint.textContent, /Alt/i);
+  assert.match(hint.textContent, /ダブルタップ|double tap/i);
+  // **2行で出す**(CSS の white-space: pre-line が効く前提。文言から改行が落ちると1行に戻る)
+  assert.ok(hint.textContent.includes("\n"), `ヒントは2行で出すこと: ${JSON.stringify(hint.textContent)}`);
+
+  // 画面領域をホバーすれば全割り当てが読める
+  const wrap = window.document.getElementById("live-screenshot-wrap");
+  assert.match(wrap.getAttribute("title") ?? "", /Alt/i);
+  assert.match(wrap.getAttribute("title") ?? "", /ダブルタップ|double tap/i);
+});
+
+test("拡大・縮小ボタンは画面全体のピンチを送る", () => {
+  const { window, sendToWebview, liveMessages } = createWebview();
+  sendToWebview(SNAPSHOT_MESSAGE);
+
+  window.document.getElementById("live-btn-zoom-in").dispatchEvent(
+    new window.MouseEvent("click", { bubbles: true }));
+  window.document.getElementById("live-btn-zoom-out").dispatchEvent(
+    new window.MouseEvent("click", { bubbles: true }));
+
+  const pinches = liveMessages().filter((m) => m.type === "pinch");
+  assert.deepEqual(pinches.map((m) => m.zoomIn), [true, false]);
 });
