@@ -33,6 +33,28 @@ final class ScenarioCodeGenTests: XCTestCase {
         XCTAssertFalse(omitted.contains("holdSeconds:"), omitted)
     }
 
+    /// **ライブ操作パネルの録画が生成に届くこと**。ここが nil を返すと、記録した操作が
+    /// 黙って生成コードから落ちる(パネルは 2026-08-04 からダブルタップ・ピンチを記録する)
+    func testMapGesturesAreGenerated() {
+        let doubleTap = render([FlowStep(action: "doubleTap", locator: FlowLocator(id: "map"))])
+        XCTAssertTrue(doubleTap.contains("doubleTap(\"#map\")"), doubleTap)
+
+        // 対象なし(画面全体)
+        let plain = render([FlowStep(action: "doubleTap")])
+        XCTAssertTrue(plain.contains("doubleTap()"), plain)
+
+        // 既定倍率は出さない(生成コードを既定ケースで太らせない)
+        let defaultZoom = render([FlowStep(action: "pinchOut", scale: 2.0)])
+        XCTAssertTrue(defaultZoom.contains("pinchOut()"), defaultZoom)
+        XCTAssertFalse(defaultZoom.contains("scale:"), defaultZoom)
+
+        let zoom = render([FlowStep(action: "pinchIn", locator: FlowLocator(id: "map"), scale: 0.25)])
+        XCTAssertTrue(zoom.contains("pinchIn(\"#map\", scale: 0.25)"), zoom)
+
+        let pan = render([FlowStep(action: "swipeBy", dxRatio: -0.4, dyRatio: 0.4)])
+        XCTAssertTrue(pan.contains("swipeBy(dxRatio: -0.4, dyRatio: 0.4)"), pan)
+    }
+
     func testExistEmitsFractionalTimeoutAndOmitsTheDefault() {
         let fractional = render([
             FlowStep(assert: "exists", locator: FlowLocator(id: "msg"), timeout: 1.2),
