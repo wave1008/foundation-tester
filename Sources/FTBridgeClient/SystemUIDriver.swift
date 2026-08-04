@@ -51,6 +51,11 @@ public final class SystemUIDriver: AppDriver {
         try await client.drag(fromX: fromX, fromY: fromY, toX: toX, toY: toY,
                               pressSeconds: pressSeconds, durationSeconds: durationSeconds)
     }
+    /// 座標ロングプレス。**既定実装(501)に落としてはいけない** —— 包む相手が実装を
+    /// 持っているのに、ラッパーが黙って「未対応」を返すことになる
+    public func press(x: Double, y: Double, duration: Double) async throws {
+        try await client.press(x: x, y: y, duration: duration)
+    }
     public func doubleTap(x: Double, y: Double) async throws { try await client.doubleTap(x: x, y: y) }
     public func pinch(frame: FTRect?, identifier: String?, scale: Double,
                       durationSeconds: Double) async throws {
