@@ -440,6 +440,7 @@ Android: `ftester-androidstream`)経由でほぼリアルタイムに更新す�
 | `ft_launch` / `ft_terminate` | アプリ起動・終了 |
 | `ft_snapshot` | 画面要素一覧(set-of-mark 圧縮形式)。撮った `#id` は `<プロジェクト>/.ftester/selector-inventory.json` に貯まり、`ft_dry_run` の綴り誤り照合に使われる |
 | `ft_tap` / `ft_type` / `ft_swipe` / `ft_press` | 画面操作 |
+| `ft_double_tap` / `ft_pinch` / `ft_drag` | マップ・キャンバス系の操作(ダブルタップ / ズーム / **斜めを含む任意方向のドラッグ**)。**MCP は iOS では常に XCUITest 経路**なので、Compose のダブルタップと Flutter のピンチはここでは効かない(シナリオ実行は profile どおりのエンジンなので通る。docs/commands.md の表) |
 | `ft_screenshot` | スクリーンショット(画像を返す — エージェントの視覚検証用) |
 | `ft_list_scenarios` / `ft_run_scenario` | シナリオ一覧 / 決定的実行(`project`・`profile`・`heal` オプション付き。自動ビルド込みで、コンパイルエラーはそのまま返る=エージェントが直せる) |
 | `ft_dry_run` | **デバイス不要**の検証(数秒)。セレクタの構文誤り・到達しない scene・アサーション0の expectation・**`ft_snapshot` で撮った画面に実在しない `#id`** を実機の前に落とす |

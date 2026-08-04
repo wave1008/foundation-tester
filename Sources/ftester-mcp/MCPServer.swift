@@ -165,6 +165,19 @@ final class MCPServer {
         return created
     }
 
+    /// **MCP は iOS では常に XCUITest ブリッジを使う**(profile の engine 設定は見ない。
+    /// driver(_:) が BridgeClient を作る)。XCUITest では成立しないジェスチャがあり、
+    /// 何も起きなかったときに原因が分からないと詰むので、結果テキストへ切り分けを添える
+    /// (表と実測は docs/commands.md)。**シナリオ実行(ft_run_scenario)は profile どおりの
+    /// エンジンで走る**ので、ここで効かなくてもシナリオでは通ることがある。
+    /// **Android と分かっているときは付けない**(この制限は iOS 固有で、無関係な助言は誤誘導になる)
+    static func iosEngineHint(_ framework: String, _ gesture: String, args: [String: Any]) -> String {
+        if (args["platform"] as? String) == "android" || args["serial"] != nil { return "" }
+        return " If nothing changed on iOS: MCP tools always drive the XCUITest engine there, and"
+            + " \(framework) apps do not receive \(gesture) through it (scenario runs use the"
+            + " profile's engine, where the inapp/hybrid path handles it)."
+    }
+
     /// drivers キャッシュのキー生成。profile / project / port / serial の違いを別ドライバとして扱う
     static func driverCacheKey(profile: String, project: String?, platform: String?) -> String {
         "profile:\(project ?? ""):\(profile):\(platform ?? "")"
@@ -267,6 +280,61 @@ final class MCPServer {
             }
             try await driver(args).swipe(direction)
             return text("swipe \(direction.rawValue) done")
+
+        case "ft_double_tap":
+            // **座標へ畳んでから撃つ**: ref はブリッジごとに別名前空間で、501 で別ドライバへ
+            // 回るときに取り直しが要る(AppDriver.doubleTap が ref を取らない理由と同じ)
+            let doubleTapDriver = try await driver(args)
+            let doubleTapPoint: (x: Double, y: Double)
+            if let ref = args["ref"] as? Int {
+                let snapshot = try await doubleTapDriver.snapshot()
+                guard let element = snapshot.elements.first(where: { $0.ref == ref }) else {
+                    throw MCPError("unknown ref [\(ref)]. Take an ft_snapshot first")
+                }
+                doubleTapPoint = (element.frame.centerX, element.frame.centerY)
+            } else if let x = args["x"] as? Double, let y = args["y"] as? Double {
+                doubleTapPoint = (x, y)
+            } else {
+                throw MCPError("ref or x/y is required")
+            }
+            try await doubleTapDriver.doubleTap(x: doubleTapPoint.x, y: doubleTapPoint.y)
+            return text("double tap (\(doubleTapPoint.x), \(doubleTapPoint.y)) done."
+                + " The screen may have changed — take a fresh ft_snapshot."
+                + Self.iosEngineHint("Compose Multiplatform", "double tap", args: args))
+
+        case "ft_drag":
+            guard let fromX = args["fromX"] as? Double, let fromY = args["fromY"] as? Double,
+                  let toX = args["toX"] as? Double, let toY = args["toY"] as? Double else {
+                throw MCPError("fromX/fromY/toX/toY are required")
+            }
+            try await driver(args).drag(fromX: fromX, fromY: fromY, toX: toX, toY: toY,
+                                        pressSeconds: 0.05,
+                                        durationSeconds: args["durationSeconds"] as? Double ?? 1.5)
+            return text("drag (\(fromX), \(fromY)) → (\(toX), \(toY)) done")
+
+        case "ft_pinch":
+            let scale = args["scale"] as? Double ?? 2.0
+            guard scale > 0, scale != 1, scale.isFinite else {
+                throw MCPError("scale must be positive and not 1 (>1 zooms in, <1 zooms out)")
+            }
+            // ref 指定時は frame と identifier の**両方**を渡す(対象の伝え方が経路で違う。
+            // Android/in-app は frame の中心・XCUITest は identifier。FTCore/BridgeDTO の PinchRequest)
+            let pinchDriver = try await driver(args)
+            var frame: FTRect?
+            var identifier: String?
+            if let ref = args["ref"] as? Int {
+                let snapshot = try await pinchDriver.snapshot()
+                guard let element = snapshot.elements.first(where: { $0.ref == ref }) else {
+                    throw MCPError("unknown ref [\(ref)]. Take an ft_snapshot first")
+                }
+                frame = element.frame
+                identifier = element.identifier
+            }
+            try await pinchDriver.pinch(frame: frame, identifier: identifier, scale: scale,
+                                        durationSeconds: args["durationSeconds"] as? Double ?? 0.5)
+            return text("pinch x\(scale) done."
+                + " The zoom may be smaller than requested — verify with ft_snapshot/ft_screenshot."
+                + Self.iosEngineHint("Flutter", "pinch", args: args))
 
         case "ft_press":
             guard let ref = args["ref"] as? Int else { throw MCPError("ref is required") }
@@ -502,6 +570,36 @@ final class MCPServer {
         tool("ft_swipe", "Swipe (up = scroll down the content)", [
             "direction": ["type": "string", "enum": ["up", "down", "left", "right"]],
         ], required: ["direction"]),
+        tool("ft_double_tap", "Double-tap an element (ref) or a coordinate (x,y). "
+            + "Cannot be replaced by two ft_tap calls — the round trip exceeds the OS double-tap window. "
+            + "[Known iOS limitation] MCP tools always drive the XCUITest engine on iOS, and Compose "
+            + "Multiplatform apps do not receive a double tap through it (the two taps arrive too close "
+            + "together and land as a single tap). Scenario runs use the profile's engine, so the same "
+            + "gesture works there on inapp/hybrid.", [
+            "ref": ["type": "integer", "description": "Reference number from ft_snapshot"],
+            "x": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],
+            "y": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],
+        ]),
+        tool("ft_drag", "Drag between two coordinates — the only way to pan diagonally (set both axes). "
+            + "Coordinates use the same system as the ft_snapshot frames (iOS=pt / Android=px). "
+            + "A long durationSeconds drags slowly and leaves no inertia; a short one flicks", [
+            "fromX": ["type": "number"],
+            "fromY": ["type": "number"],
+            "toX": ["type": "number"],
+            "toY": ["type": "number"],
+            "durationSeconds": ["type": "number", "description": "Travel time in seconds (default 1.5)"],
+        ], required: ["fromX", "fromY", "toX", "toY"]),
+        tool("ft_pinch", "Pinch to zoom. scale > 1 zooms in, 0 < scale < 1 zooms out. "
+            + "Without ref the whole screen is pinched; with ref the element is the target. "
+            + "The resulting zoom may be smaller than the requested scale (the fingers cannot go outside "
+            + "the target area). "
+            + "[Known iOS limitation] MCP tools always drive the XCUITest engine on iOS, where the fingers "
+            + "move only about 8px — too little for Flutter's scale threshold, so Flutter apps do not zoom. "
+            + "Scenario runs use the profile's engine, so it works there on inapp/hybrid.", [
+            "ref": ["type": "integer", "description": "Reference number from ft_snapshot (defaults to the whole screen)"],
+            "scale": ["type": "number", "description": "Zoom factor (default 2.0)"],
+            "durationSeconds": ["type": "number", "description": "Gesture duration in seconds (default 0.5)"],
+        ]),
         tool("ft_press", "Long-press an element", [
             "ref": ["type": "integer"],
             "duration": ["type": "number", "description": "Seconds (default 1.0)"],

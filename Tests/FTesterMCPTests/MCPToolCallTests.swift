@@ -27,6 +27,87 @@ final class MCPToolCallTests: XCTestCase {
 
     // MARK: - ドライバ操作へ正しく橋渡しされるか
 
+    // MARK: - マップ系ジェスチャ(ft_double_tap / ft_pinch / ft_drag)
+
+    /// 非同期呼び出しが throw することの確認(引数検証が素通りしないこと)
+    private func assertThrows(_ tool: String, _ args: [String: Any],
+                              file: StaticString = #filePath, line: UInt = #line) async {
+        do {
+            _ = try await server.call(tool: tool, args: args)
+            XCTFail("\(tool) は引数不足で throw するはず", file: file, line: line)
+        } catch {}
+    }
+
+    /// ref は**座標へ畳んでから**ドライバへ渡す(ref はブリッジごとに別名前空間で、
+    /// 501 で別ドライバへ回るときに取り直しが要るため)
+    func testDoubleTapResolvesRefToCoordinates() async throws {
+        _ = try await server.call(tool: "ft_double_tap", args: ["ref": 1])
+        XCTAssertEqual(driver.calls, ["snapshot", "doubleTap(x:60.0,y:40.0)"])
+    }
+
+    func testDoubleTapAcceptsCoordinates() async throws {
+        _ = try await server.call(tool: "ft_double_tap", args: ["x": 10.0, "y": 20.0])
+        XCTAssertEqual(driver.calls, ["doubleTap(x:10.0,y:20.0)"])
+    }
+
+    func testDoubleTapRequiresRefOrCoordinates() async {
+        await assertThrows("ft_double_tap", [:])
+        XCTAssertEqual(driver.calls, [])
+    }
+
+    /// ref 指定のピンチは **frame と identifier の両方**を渡す(経路で対象の伝え方が違う。
+    /// 片方でも落ちると「対象を指定したのに画面中心がピンチされる」黙った取り違えになる)
+    func testPinchPassesFrameAndIdentifierForRef() async throws {
+        _ = try await server.call(tool: "ft_pinch", args: ["ref": 1, "scale": 3.0])
+        XCTAssertEqual(driver.calls,
+                       ["snapshot", "pinch(10.0,20.0,100.0x40.0,id:login_btn,scale:3.0)"])
+    }
+
+    /// ref 省略は画面全体(frame nil)
+    func testPinchWithoutRefTargetsTheWholeScreen() async throws {
+        _ = try await server.call(tool: "ft_pinch", args: [:])
+        XCTAssertEqual(driver.calls, ["pinch(screen,id:nil,scale:2.0)"])
+    }
+
+    /// 向きの無い scale(1 以下 0 以下)は撃たずに弾く
+    func testPinchRejectsMeaninglessScale() async {
+        await assertThrows("ft_pinch", ["scale": 1.0])
+        await assertThrows("ft_pinch", ["scale": 0.0])
+        XCTAssertEqual(driver.calls, [])
+    }
+
+    /// 斜めドラッグ(両軸が動く)がそのまま渡ること
+    func testDragPassesBothAxes() async throws {
+        _ = try await server.call(tool: "ft_drag",
+                                  args: ["fromX": 100.0, "fromY": 200.0,
+                                         "toX": 40.0, "toY": 150.0, "durationSeconds": 0.8])
+        XCTAssertEqual(driver.calls, ["drag(100.0,200.0->40.0,150.0,duration:0.8)"])
+    }
+
+    /// **無反応だったときの切り分けを応答に載せる**(MCP は iOS では常に XCUITest 経路で、
+    /// Compose のダブルタップと Flutter のピンチはそこでは届かない)。
+    /// Android と分かっているときは付けない —— 無関係な助言は誤誘導になる
+    func testGestureResultsCarryTheEngineHintOnIOSOnly() async throws {
+        let iosDouble = try await server.call(tool: "ft_double_tap", args: ["x": 1.0, "y": 2.0])
+        let iosText = try XCTUnwrap(iosDouble.first?["text"] as? String)
+        XCTAssertTrue(iosText.contains("XCUITest engine"), iosText)
+        XCTAssertTrue(iosText.contains("Compose"), iosText)
+
+        let androidDouble = try await server.call(
+            tool: "ft_double_tap", args: ["x": 1.0, "y": 2.0, "platform": "android"])
+        let androidText = try XCTUnwrap(androidDouble.first?["text"] as? String)
+        XCTAssertFalse(androidText.contains("XCUITest engine"), androidText)
+
+        let pinch = try await server.call(tool: "ft_pinch", args: [:])
+        let pinchText = try XCTUnwrap(pinch.first?["text"] as? String)
+        XCTAssertTrue(pinchText.contains("Flutter"), pinchText)
+    }
+
+    func testDragRequiresAllCoordinates() async {
+        await assertThrows("ft_drag", ["fromX": 1.0, "fromY": 2.0])
+        XCTAssertEqual(driver.calls, [])
+    }
+
     func testStatusRendersReadyDeviceAndSession() async throws {
         let content = try await server.call(tool: "ft_status", args: [:])
         XCTAssertEqual(driver.calls, ["status"])
@@ -190,6 +271,7 @@ final class MCPToolCallTests: XCTestCase {
     private static let driverBackedTools: Set<String> = [
         "ft_status", "ft_install", "ft_launch", "ft_snapshot", "ft_tap", "ft_type",
         "ft_swipe", "ft_press", "ft_screenshot", "ft_terminate",
+        "ft_double_tap", "ft_pinch", "ft_drag",
     ]
     private static let projectBackedTools: Set<String> = [
         "ft_list_scenarios", "ft_run_scenario", "ft_dry_run", "ft_list_projects", "ft_doctor",

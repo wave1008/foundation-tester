@@ -1726,6 +1726,11 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
   素の 501 になる。`XCUIBridgeResolver` が接続先の `/status.engine == "inapp"` を検知したら
   **同じデバイス(名前で相関)の XCUITest ブリッジへ振り替え**、無ければ空きポートに起動する
   (デバイス名が一意に定まらない・起動に失敗したときは指定ポートのまま + 理由を stderr へ)
+  - **副作用: マップ系ジェスチャは MCP と実行で結果が割れる**(2026-08-04)。iOS の
+    `ft_double_tap` は Compose で、`ft_pinch` は Flutter で効かない —— どちらも XCUITest 経路の
+    制約で、シナリオ実行(profile が hybrid なら in-app 優先)では通る。**探索で無反応でも
+    シナリオでは動く**という逆転が起きる唯一の領域なので、両ツールの応答テキストに
+    切り分けを添えてある(`MCPServer.iosEngineHint`)。表と実測は docs/commands.md
 - **XCUITest ランナーは「操作の失敗」でプロセスごと落ちる**(Xcode 27 beta のツールチェーン不具合。
   2026-07-28 にクラッシュレポートで確定)。XCUI の失敗は `_XCUIFailWithError` が issue を記録するが、
   ブリッジのハンドラは **main queue 上 = テストメソッドのスタックの外**で動く

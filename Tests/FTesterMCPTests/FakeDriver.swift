@@ -88,6 +88,21 @@ final class FakeDriver: AppDriver, @unchecked Sendable {
         try record("press(ref:\(ref),duration:\(duration))", "press")
     }
 
+    func doubleTap(x: Double, y: Double) async throws {
+        try record("doubleTap(x:\(x),y:\(y))", "doubleTap")
+    }
+
+    func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
+              pressSeconds: Double, durationSeconds: Double) async throws {
+        try record("drag(\(fromX),\(fromY)->\(toX),\(toY),duration:\(durationSeconds))", "drag")
+    }
+
+    func pinch(frame: FTRect?, identifier: String?, scale: Double,
+               durationSeconds: Double) async throws {
+        let target = frame.map { "\($0.x),\($0.y),\($0.width)x\($0.height)" } ?? "screen"
+        try record("pinch(\(target),id:\(identifier ?? "nil"),scale:\(scale))", "pinch")
+    }
+
     func screenshot() async throws -> Data {
         try record("screenshot", "screenshot")
         return screenshotData
