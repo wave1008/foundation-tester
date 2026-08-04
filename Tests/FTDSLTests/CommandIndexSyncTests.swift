@@ -100,23 +100,4 @@ final class CommandIndexSyncTests: XCTestCase {
                        "索引に重複がある")
     }
 
-    /// 改名した旧コマンド名は UnavailableCommands.swift に unavailable スタブが要る
-    /// (無いと `cannot find 'X' in scope` としか出ず、書き手は新名を知らないまま当てずっぽうを試す)。
-    /// `@available(*, unavailable...)` はコンパイル時にしか効かないので実行時テストにできない。
-    /// ここではソース走査で「スタブが実在し、正しい新名を案内している」ことだけ確かめる
-    func testRenamedCommandsHaveUnavailableStubs() throws {
-        let renames: [(old: String, new: String)] = [
-            ("isEnabled", "enabledIsTrue"),
-            ("isDisabled", "enabledIsFalse"),
-            ("isChecked", "checkIsON"),
-            ("isNotChecked", "checkIsOFF"),
-        ]
-        let unavailable = try source("UnavailableCommands.swift")
-        for (old, new) in renames {
-            XCTAssertTrue(unavailable.contains("public func \(old)("),
-                          "\(old) の unavailable スタブが無い(改名の追随漏れ)")
-            XCTAssertTrue(unavailable.contains(new),
-                          "\(old) のスタブが新名 \(new) を案内していない")
-        }
-    }
 }

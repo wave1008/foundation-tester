@@ -22,7 +22,7 @@ final class SelOverloadParityTests: XCTestCase {
 
     /// **検証コマンド**(2026-08-04 以降): String を取るが**期待値であってセレクタではない**
     /// (対象は直前に掴んだ要素 = 暗黙の lastElement)。Sel 版は要らない —— 対象を指すのは
-    /// `select` 側で、そちらに Sel 版がある。**セレクタを取る旧形は廃止**(UnavailableCommands.swift)
+    /// `select` 側で、そちらに Sel 版がある(セレクタを取る形は置かない)
     private static let expectedValueStringCommands: Set<String> = [
         "textIs", "textIsNot", "textContains", "textContainsNot",
         "textStartsWith", "textStartsWithNot", "textEndsWith", "textEndsWithNot",
