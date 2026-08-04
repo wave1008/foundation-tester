@@ -21,7 +21,7 @@ class EnterキーでIMEアクションが発火すること {
                 }.action {
                     tap("#nav_input")
                 }.expectation {
-                    textIs("#txt_ime_action", "ime=0")
+                    select("#txt_ime_action").textIs("ime=0")
                 }
             }
             scene(2, "pressEnter で IME アクションが発火する") {
@@ -31,10 +31,10 @@ class EnterキーでIMEアクションが発火すること {
                     type("#field_single", "abc")
                     pressEnter()
                 }.expectation {
-                    textIs("#txt_ime_action", "ime=1")
-                    textIs("#txt_echo_single", "single=abc")
+                    select("#txt_ime_action").textIs("ime=1")
+                    select("#txt_echo_single").textIs("single=abc")
                     // len=4 なら改行が文字として入っている
-                    textIs("#txt_echo_length", "len=3")
+                    select("#txt_echo_length").textIs("len=3")
                 }
             }
             scene(3, "一括 type の末尾改行も IME アクションになる") {
@@ -45,9 +45,9 @@ class EnterキーでIMEアクションが発火すること {
                     tap("#field_single")
                     type("#field_single", "xyz\n")
                 }.expectation {
-                    textIs("#txt_ime_action", "ime=1")
-                    textIs("#txt_echo_single", "single=xyz")
-                    textIs("#txt_echo_length", "len=3")
+                    select("#txt_ime_action").textIs("ime=1")
+                    select("#txt_echo_single").textIs("single=xyz")
+                    select("#txt_echo_length").textIs("len=3")
                 }
             }
             scene(4, "ロケータ無しの type でも末尾改行が IME アクションになる") {
@@ -59,9 +59,9 @@ class EnterキーでIMEアクションが発火すること {
                     tap("#field_single")
                     type("pqr\n")
                 }.expectation {
-                    textIs("#txt_ime_action", "ime=1")
-                    textIs("#txt_echo_single", "single=pqr")
-                    textIs("#txt_echo_length", "len=3")
+                    select("#txt_ime_action").textIs("ime=1")
+                    select("#txt_echo_single").textIs("single=pqr")
+                    select("#txt_echo_length").textIs("len=3")
                 }
             }
         }

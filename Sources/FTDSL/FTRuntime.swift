@@ -212,6 +212,14 @@ public final class FTDriveCore {
 
     // 実行状態(DSL スレッドからのみ触る。scenarioAborted は例外 = stateLock 経由)
     var currentSection: String?
+    /// 自由関数 `lastElement` が読む「直前に掴んだ要素」(Shirates の TestDriver.lastElement 相当)。
+    /// 更新するのは**要素を1つに定めて解決したコマンドだけ**(判定は Commands.swift の
+    /// `definesSingleElement`)。**掴めなかったときも空要素で上書きする** —— 前の要素を残すと
+    /// 別要素の値を「今掴んだもの」として読んでしまう。scene の切り替わりで捨てる(runScene)。
+    /// 保持するのは掴んだ時点の凍結値で、再取得はしない(FTElement.matched と同じ契約)
+    var lastResolvedElement: FTElement?
+    /// 何も掴んでいない状態で `lastElement` を読んだ警告は 1 run に 1 回だけ
+    private var lastElementWarned = false
     /// group("名前") { } の入れ子。記録時にステップ説明へ `[外/内]` を前置する
     var groupStack: [String] = []
     /// verify() のブロック内で走ったアサーション数を数えるスタック。ネストした verify を
@@ -379,6 +387,8 @@ public final class FTDriveCore {
 
     func runScene(_ number: Int, _ title: String, _ body: () -> Void) {
         currentSection = nil
+        // scene を跨いで前の画面の要素を読むのは事故(値も座標も古い)。持ち越さない
+        lastResolvedElement = nil
         // scene 番号は利用者が手で振るのでコピペで重複しやすい。重複するとレポートに
         // 同じ番号が並び、どちらの結果か読み手が判別できなくなる。**警告に留める**
         // (失敗にはしない = 既存シナリオを止めない。番号は実行順にも結果にも影響しない)
@@ -441,6 +451,18 @@ public final class FTDriveCore {
         let location = scene.map { "scene \($0.number)\(title)" } ?? "a scene"
         let message = "the expectation block of \(location) contains no assertions "
             + "(it checks nothing). Add exist / textIs / thisIs etc."
+        emit(.log("⚠️ " + message))
+        addSuggestion(FixSuggestion(isStrong: false, message: message),
+                      emitEvent: false, file: "", line: 0)
+    }
+
+    /// まだ何も掴んでいないのに `lastElement` が読まれた。空要素を返すだけだと
+    /// 「掴んだが空だった」と見分けが付かないので、1 度だけ警告と弱い修正提案を残す
+    func warnLastElementUnavailable() {
+        guard !lastElementWarned else { return }
+        lastElementWarned = true
+        let message = "lastElement was read before any element was grabbed, so it is empty. "
+            + "Grab one first (select / exist / tap ...), or hold it in a variable"
         emit(.log("⚠️ " + message))
         addSuggestion(FixSuggestion(isStrong: false, message: message),
                       emitEvent: false, file: "", line: 0)
@@ -524,8 +546,11 @@ public final class FTDriveCore {
     /// nil = 検証済み・問題なし。セレクタを取らないコマンドも nil
     /// commandError: セレクタ以外の引数の誤り。**メッセージをそのまま**失敗理由にする
     /// (selectorError は "invalid selector syntax: " を前置するので用途が違う)
+    /// heldElement: **既に掴んである要素**(FTElement のチェーンだけが渡す)。満たしていれば
+    /// デバイスを見ずに通す(下記の高速経路)。満たしていなければ従来どおり実機で取り直す
     func perform(step: FlowStep, description: String, selectorText: String? = nil,
                  selectorError: String? = nil, commandError: String? = nil,
+                 heldElement: ElementInfo? = nil,
                  file: StaticString, line: UInt) -> PerformResult {
         let filePath = relativePath("\(file)")
         // verify() のブロック内アサーション数を数える(判定は FlowStep.assert != nil のみ。
@@ -555,6 +580,26 @@ public final class FTDriveCore {
             recordStep(description: description, status: .passed, file: filePath, line: Int(line),
                        durationMs: continuousClockMilliseconds(clock.now - start))
             return PerformResult(status: .passed, element: nil)
+        }
+
+        // 高速経路: **掴んである値だけで満たしているなら実機を見に行かない**(FTElement のチェーン)。
+        // 満たしていなければ何もせず下の通常経路へ落ちる = 従来どおり取り直しながらポーリングする。
+        // 判定できるアサートの範囲と除外理由は HeldElementAssert。
+        // **可視性照合(occlusion-guard)が走る設定では高速経路に入らない** —— 見えているかは
+        // 保持値から言えないので、飛ばすと falsePositiveCheck 有効の run で検査が1つ静かに消える。
+        // 条件は StepExecutor.occlusionFlip の入口(ステップ非依存の部分)と同じものを見る。
+        // 注記を description に足すのは、レポートで「取り直していない判定」を見分けられるようにするため
+        let visibilityWouldBeChecked = executor.occlusionGuardEnabled
+            && (step.occlusionGuard ?? executor.occlusionGuard)
+            && executor.delegate != nil
+            && FMVisionSupport.isSupported
+        if let heldElement, let assert = step.assert, !visibilityWouldBeChecked,
+           HeldElementAssert.satisfied(assert: assert, expected: step.expected,
+                                       element: heldElement) == true {
+            recordStep(description: description + "(from the grabbed value)", status: .passed,
+                       file: filePath, line: Int(line), durationMs: 0)
+            trackIDResolution(step: step, status: .passed, description: description)
+            return PerformResult(status: .passed, element: heldElement)
         }
 
         // 解決順: プライマリ → フォールバック → キャッシュ → FM ヒール(StepExecutor 内)

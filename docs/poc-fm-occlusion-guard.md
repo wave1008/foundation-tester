@@ -232,9 +232,9 @@ occlusion-guard を利用側の既定挙動にし、**`requireVisible` 引数で
 ```swift
 exist("#msg")                        // 既定: ツリー存在 + 実際に見えているかを FM で確認(見えなければ失敗)
 exist("#icon", requireVisible: false) // ツリー存在のみ(見えているかは問わない・高速・アイコン/画像向け)
-textIs("#msg", "完了")                // 既定: 一致 + 見えている
-textIs("#msg", "完了", requireVisible: false)  // 一致のみ
-valueIs("#sw", "1")                   // 同上(既定ガード)
+select("#msg").textIs("完了")                // 既定: 一致 + 見えている
+select("#msg").textIs("完了", requireVisible: false)  // 一致のみ
+select("#sw").valueIs("1")                   // 同上(既定ガード)
 ```
 
 - **既定 ON**: exist/textIs/valueIs は、ツリー一致で pass した直後に occlusion-guard を発火
@@ -329,7 +329,7 @@ OcclusionVerifier)が実機で機能することを確認**。これで PoC は 
   由来の要素に一致した場合、その frame/screen は primary と別座標系なのに occlusionFlip へ primary の
   snapshot/screenshot を渡していた(FM に別アプリのスクショ+システム要素を渡し偽陽性化しうる)。
   → **fsnap 由来一致はガードをスキップ**(exist の fsnap 経路と同契約)。`fromFallbackDriver` で判定。
-- **#2 結合 `, ` 規則の過剰適用(低〜中)**: `textIs("#x", "Hello, World")` のような正当な句読点入り期待値が
+- **#2 結合 `, ` 規則の過剰適用(低〜中)**: `select("#x").textIs("Hello, World")` のような正当な句読点入り期待値が
   結合セマンティクス扱いで黙って素通りしていた。→ eligibility に `isUserText` を追加し、**ユーザー期待値
   (textEquals/valueEquals)には `, ` 規則を当てない**(型・絵文字の規則は維持)。
 - **#5 stale occlusion(軽微)**: 覆い観測後にテキストが不一致へ変化して timeout すると、実態(不一致)を

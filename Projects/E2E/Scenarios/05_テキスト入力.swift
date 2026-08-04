@@ -16,7 +16,7 @@ class テキスト入力が正しくechoされること {
                 }.action {
                     tap("#nav_input")
                 }.expectation {
-                    textIs("#txt_echo_single", "single=")
+                    select("#txt_echo_single").textIs("single=")
                 }
             }
             scene(2, "単一行に入力して echo される") {
@@ -26,25 +26,25 @@ class テキスト入力が正しくechoされること {
                     tap("#field_single")
                     type("#field_single", "hello123")
                 }.expectation {
-                    textIs("#txt_echo_single", "single=hello123")
-                    textIs("#txt_echo_length", "len=8")
+                    select("#txt_echo_single").textIs("single=hello123")
+                    select("#txt_echo_length").textIs("len=8")
                     // value* は入力欄自体の値を見る(text* は echo Text)。非空欄なら OS 間で割れない
                     // (空欄の valueIsEmpty は書かない: iOS は空欄の value に placeholder が返るため)
-                    valueIs("#field_single", "hello123")
-                    valueContains("#field_single", "hello1")
-                    valueIsNotEmpty("#field_single")
+                    select("#field_single").valueIs("hello123")
+                    select("#field_single").valueContains("hello1")
+                    select("#field_single").valueIsNotEmpty()
                     // **対称形も同じ値で1回ずつ通す**。判定そのものは AssertKindsTests が固定済みで、
                     // ここで見るのは**ブリッジから来た value** に対して同じ結果が出ることだけ。
                     // valueIsEmpty は書かない(空欄の value にプレースホルダが返る)。
                     // valueMatchesDateFormat は日付を持つ入力欄が SUT に無いので置かない
-                    valueStartsWith("#field_single", "hello")
-                    valueEndsWith("#field_single", "123")
-                    valueMatches("#field_single", "^hello[0-9]+$")
-                    valueIsNot("#field_single", "hello")
-                    valueContainsNot("#field_single", "xyz")
-                    valueStartsWithNot("#field_single", "123")
-                    valueEndsWithNot("#field_single", "hello")
-                    valueMatchesNot("#field_single", "^[0-9]+$")
+                    select("#field_single").valueStartsWith("hello")
+                    select("#field_single").valueEndsWith("123")
+                    select("#field_single").valueMatches("^hello[0-9]+$")
+                    select("#field_single").valueIsNot("hello")
+                    select("#field_single").valueContainsNot("xyz")
+                    select("#field_single").valueStartsWithNot("123")
+                    select("#field_single").valueEndsWithNot("hello")
+                    select("#field_single").valueMatchesNot("^[0-9]+$")
                     exist("#field_single").valueIs("hello123")
                 }
             }
@@ -53,22 +53,22 @@ class テキスト入力が正しくechoされること {
                     tap("#field_password")
                     type("#field_password", "secret42")
                 }.expectation {
-                    textIs("#txt_echo_password", "password=secret42")
+                    select("#txt_echo_password").textIs("password=secret42")
                 }
             }
             scene(4, "送信で submitted に反映される") {
                 action {
                     tap("#btn_input_submit")
                 }.expectation {
-                    textIs("#txt_input_submitted", "submitted=hello123")
+                    select("#txt_input_submitted").textIs("submitted=hello123")
                 }
             }
             scene(5, "クリアで全フィールドと submitted が初期化される") {
                 action {
                     tap("#btn_input_clear")
                 }.expectation {
-                    textIs("#txt_echo_single", "single=")
-                    textIs("#txt_input_submitted", "submitted=-")
+                    select("#txt_echo_single").textIs("single=")
+                    select("#txt_input_submitted").textIs("submitted=-")
                 }
             }
         }
@@ -85,15 +85,15 @@ class テキスト入力が正しくechoされること {
                     tap("#field_single")
                     type("#field_single", "hello123")
                 }.expectation {
-                    textIs("#txt_echo_length", "len=8")
+                    select("#txt_echo_length").textIs("len=8")
                 }
             }
             scene(2, "セレクタ指定の clearInput で単一行が空になる") {
                 action {
                     clearInput("#field_single")
                 }.expectation {
-                    textIs("#txt_echo_single", "single=")
-                    textIs("#txt_echo_length", "len=0")
+                    select("#txt_echo_single").textIs("single=")
+                    select("#txt_echo_length").textIs("len=0")
                 }
             }
             scene(3, "無引数の clearInput はフォーカス中の入力欄(パスワード)を空にする") {
@@ -102,7 +102,7 @@ class テキスト入力が正しくechoされること {
                     type("#field_password", "secret42")
                     clearInput()
                 }.expectation {
-                    textIs("#txt_echo_password", "password=")
+                    select("#txt_echo_password").textIs("password=")
                 }
             }
         }

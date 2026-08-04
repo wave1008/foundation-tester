@@ -25,21 +25,21 @@ class 自己修復でid変更を追従できること {
                     // 「v1 の id が実在するときだけ切り替える」= 冪等にする。
                     ifCanSelect("#btn_heal_v1", waitSeconds: 1) { tap("#sw_heal_schema") }
                 }.expectation {
-                    textIs("#txt_heal_schema", "schema=v2")
+                    select("#txt_heal_schema").textIs("schema=v2")
                 }
             }
             scene(2, "id は v1 のままだが FM がラベル『修復対象』から解決する") {
                 action {
                     tap("#btn_heal_v1")
                 }.expectation {
-                    textIs("#txt_heal_result", "tapped=v2")
+                    select("#txt_heal_result").textIs("tapped=v2")
                 }
             }
             scene(3, "後始末: 既定スキーマ(v1)へ戻す") {
                 action {
                     ifCanSelect("#btn_heal_v2", waitSeconds: 1) { tap("#sw_heal_schema") }
                 }.expectation {
-                    textIs("#txt_heal_schema", "schema=v1")
+                    select("#txt_heal_schema").textIs("schema=v1")
                 }
             }
         }

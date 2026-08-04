@@ -28,7 +28,7 @@ class 待機とタイムアウトが正しく効くこと {
                 }.action {
                     tap("#nav_async")
                 }.expectation {
-                    textIs("#txt_delay_state", "state=idle")
+                    select("#txt_delay_state").textIs("state=idle")
                 }
             }
             scene(2, "1秒後表示は既定タイムアウト内に暗黙待ちで検出される") {
@@ -36,7 +36,7 @@ class 待機とタイムアウトが正しく効くこと {
                     tap("#btn_delay_1")
                 }.expectation {
                     exist("#txt_delayed")
-                    textIs("#txt_delay_state", "state=done")
+                    select("#txt_delay_state").textIs("state=done")
                 }
             }
         }
@@ -63,7 +63,7 @@ class 待機とタイムアウトが正しく効くこと {
                     tap("#nav_async")
                     tap("#btn_async_reset")
                 }.expectation {
-                    textIs("#txt_delay_state", "state=idle")
+                    select("#txt_delay_state").textIs("state=idle")
                 }
             }
             scene(2, "3秒後表示は timeout: 6 を明示して待つ") {
@@ -71,7 +71,7 @@ class 待機とタイムアウトが正しく効くこと {
                     tap("#btn_delay_3")
                 }.expectation {
                     exist("#txt_delayed", timeout: 6)
-                    textIs("#txt_delay_state", "state=done")
+                    select("#txt_delay_state").textIs("state=done")
                 }
             }
             scene(3, "カウントダウンも timeout: 3 で観測できる") {
@@ -88,7 +88,7 @@ class 待機とタイムアウトが正しく効くこと {
                     tap("#btn_delay_8")
                 }.expectation {
                     exist("#txt_delayed", timeout: 12)
-                    textIs("#txt_delay_state", "state=done")
+                    select("#txt_delay_state").textIs("state=done")
                 }
             }
         }

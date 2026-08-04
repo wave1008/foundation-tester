@@ -36,14 +36,14 @@ class イレギュラーハンドラが自動でダイアログを閉じるこ�
                 }.action {
                     tap("#nav_dialog")
                 }.expectation {
-                    textIs("#txt_dialog_result", "dialog=none")
+                    select("#txt_dialog_result").textIs("dialog=none")
                 }.action {
                     tap("#btn_show_dialog")
                 }.expectation {
                     // textIs/notExist はどちらも判定前にスナップショットを取る。そこで
                     // #txt_dialog_title を検出し #btn_dialog_cancel を自動タップしてから判定する
                     // (検証コマンドでも発火する仕様の固定。閉じたことはステップの注記に残る)
-                    textIs("#txt_dialog_result", "dialog=cancel")
+                    select("#txt_dialog_result").textIs("dialog=cancel")
                     notExist("#txt_dialog_title")
                 }
             }
@@ -54,7 +54,7 @@ class イレギュラーハンドラが自動でダイアログを閉じるこ�
                     // 交互ダイアログ(#btn_maybe_dialog)の1回目タップ(奇数回目=開く)で再び開く
                     tap("#btn_maybe_dialog")
                 }.expectation {
-                    textIs("#txt_dialog_result", "dialog=cancel")
+                    select("#txt_dialog_result").textIs("dialog=cancel")
                     notExist("#txt_dialog_title")
                 }
             }

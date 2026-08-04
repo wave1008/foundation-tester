@@ -28,7 +28,7 @@ class フィルタORと否定と対称アサーションが実機で動くこと
                 }.action {
                     tap("#nav_selector")
                 }.expectation {
-                    textIs("#txt_selector_result", "result=-")
+                    select("#txt_selector_result").textIs("result=-")
                 }
             }
             scene(2, "`||` は候補集合の和(節ごとの件数ではなく合計)") {
@@ -56,7 +56,7 @@ class フィルタORと否定と対称アサーションが実機で動くこと
                     // 和集合の先頭 = 節の順。1 つ目は解決できないので 2 つ目に着地する
                     tap("(#btn_none|#btn_item_2)")
                 }.expectation {
-                    textIs("#txt_selector_result", "result=item2")
+                    select("#txt_selector_result").textIs("result=item2")
                 }
             }
             scene(4, "否定フィルタ `!=` は候補から取り除く") {
@@ -69,15 +69,15 @@ class フィルタORと否定と対称アサーションが実機で動くこと
                     // 否定は積み重ねられる(残るのは item3 だけ)
                     tap(".button&&項目&&id!=btn_item_1&&id!=btn_item_2")
                 }.expectation {
-                    textIs("#txt_selector_result", "result=item3")
+                    select("#txt_selector_result").textIs("result=item3")
                 }
             }
             scene(5, "対称化したテキスト検証(前方一致・後方一致・不一致・非空)") {
                 expectation {
-                    textStartsWith("#txt_selector_result", "result=")
-                    textEndsWith("#txt_selector_result", "item3")
-                    textIsNot("#txt_selector_result", "result=-")
-                    textIsNotEmpty("#txt_selector_result")
+                    select("#txt_selector_result").textStartsWith("result=")
+                    select("#txt_selector_result").textEndsWith("item3")
+                    select("#txt_selector_result").textIsNot("result=-")
+                    select("#txt_selector_result").textIsNotEmpty()
                     // exist の戻り値にも同じ検証をチェーンできる
                     exist("#txt_selector_result")
                         .textStartsWith("result=")
@@ -91,13 +91,13 @@ class フィルタORと否定と対称アサーションが実機で動くこと
                     // 見る(効いていなければ同じ穴が開く)
                     tap("#btn_selector_reset")
                 }.expectation {
-                    textIs("#txt_selector_result", "result=-")
+                    select("#txt_selector_result").textIs("result=-")
                     countIs(".button&&項目&&!#btn_item_2", 2)
                     countIs(".button&&*許可*&&!許可", 1)
                 }.action {
                     tap(".button&&項目&&!#btn_item_1&&!#btn_item_2")
                 }.expectation {
-                    textIs("#txt_selector_result", "result=item3")
+                    select("#txt_selector_result").textIs("result=item3")
                 }
             }
             scene(7, "`exist(scroll:)` は画面外の要素を探索してから検証する") {
@@ -125,7 +125,7 @@ class フィルタORと否定と対称アサーションが実機で動くこと
                 }.expectation {
                     // #txt_row_selected は固定ヘッダなのでスクロール後も見える(07 と同じ理由)。
                     // **スクロール後に元の位置へ戻って検証しない**(戻す向きの操作は不安定)
-                    textIs("#txt_row_selected", "selected=row_40")
+                    select("#txt_row_selected").textIs("selected=row_40")
                 }
             }
             scene(2, "`scrollToBottom` は端まで送る") {
@@ -172,7 +172,7 @@ class フィルタORと否定と対称アサーションが実機で動くこと
                         existWithoutScroll("#txt_row_selected")
                     }
                 }.expectation {
-                    textIs("#txt_row_selected", "selected=row_40")
+                    select("#txt_row_selected").textIs("selected=row_40")
                 }
             }
         }

@@ -18,8 +18,8 @@ class 部分一致と反復が正しく動くこと {
                     tap("#nav_scroll")
                 }.expectation {
                     // 行ラベルは `行 01`。完全一致(textIs)でも書けるが、ここは部分一致の検証
-                    textContains("#row_01", "01")
-                    textMatches("#row_01", "^行 [0-9]{2}$")
+                    select("#row_01").textContains("01")
+                    select("#row_01").textMatches("^行 [0-9]{2}$")
                 }
             }
             scene(2, "選択結果の echo を正規表現で検証する") {
@@ -27,8 +27,8 @@ class 部分一致と反復が正しく動くこと {
                     tap("#row_03")
                 }.expectation {
                     // `selected=row_03`。数字部分は動的とみなして正規表現で受ける
-                    textMatches("#txt_row_selected", "^selected=row_[0-9]+$")
-                    textContains("#txt_row_selected", "row_03")
+                    select("#txt_row_selected").textMatches("^selected=row_[0-9]+$")
+                    select("#txt_row_selected").textContains("row_03")
                 }
             }
             scene(3, "一致しない期待は失敗する側の規約(部分一致は含むかどうかだけを見る)") {
@@ -37,9 +37,9 @@ class 部分一致と反復が正しく動くこと {
                     // **CMP 版の notExist("*行 3*") はこの SUT では使えない**: UITableView は画面外の
                     // 行 30〜39 の staticText もツリーに残す(実測)ため `*行 3*` が正当に当たる。
                     // 同じ契約を要素単位の否定(textContainsNot)で検証する
-                    textContainsNot("#row_03", "行 3")
+                    select("#row_03").textContainsNot("行 3")
                     exist("*行 0*")
-                    textContains("#row_03", "行 0")
+                    select("#row_03").textContains("行 0")
                 }
             }
         }
@@ -53,7 +53,7 @@ class 部分一致と反復が正しく動くこと {
                     launchApp()
                     tap("#nav_dialog")
                 }.expectation {
-                    textIs("#txt_dialog_result", "dialog=none")
+                    select("#txt_dialog_result").textIs("dialog=none")
                 }
             }
             scene(2, "出るか不定なダイアログを、出なくなるまで閉じ続ける") {

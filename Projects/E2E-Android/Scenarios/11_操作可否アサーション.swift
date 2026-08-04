@@ -23,56 +23,56 @@ class 操作可否アサーションが正しく判定できること {
                     tap("#tab_controls")
                     tap("#btn_controls_reset")
                 }.expectation {
-                    enabledIsFalse("#btn_always_disabled")
-                    enabledIsFalse("#btn_toggle_target")
+                    select("#btn_always_disabled").enabledIsFalse()
+                    select("#btn_toggle_target").enabledIsFalse()
                 }
             }
             scene(2, "同意すると条件付きボタンだけが有効になる") {
                 action {
                     tap("#cb_agree")
                 }.expectation {
-                    textIs("#txt_cb_agree", "agree=true")
-                    enabledIsTrue("#btn_toggle_target")
+                    select("#txt_cb_agree").textIs("agree=true")
+                    select("#btn_toggle_target").enabledIsTrue()
                     // 常時無効ボタンは影響を受けない
-                    enabledIsFalse("#btn_always_disabled")
+                    select("#btn_always_disabled").enabledIsFalse()
                 }
             }
             scene(3, "同意を外すと条件付きボタンは無効に戻る") {
                 action {
                     // group は記録に [名前] を前置するだけのまとまり(実行・失敗の扱いは素の列と同じ)
                     group("同意を外す") {
-                        enabledIsTrue("#cb_agree")
+                        select("#cb_agree").enabledIsTrue()
                         tap("#cb_agree")
                     }
                 }.expectation {
-                    textIs("#txt_cb_agree", "agree=false")
-                    enabledIsFalse("#btn_toggle_target")
+                    select("#txt_cb_agree").textIs("agree=false")
+                    select("#btn_toggle_target").enabledIsFalse()
                 }
             }
             scene(4, "コントロールリセットで初期化してから #cb_agree の checkIsON/checkIsOFF を検証する") {
                 condition {
                     tap("#btn_controls_reset")
                 }.expectation {
-                    checkIsOFF("#cb_agree")
-                    textIs("#txt_cb_agree", "agree=false")
+                    select("#cb_agree").checkIsOFF()
+                    select("#txt_cb_agree").textIs("agree=false")
                 }.action {
                     tap("#cb_agree")
                 }.expectation {
-                    checkIsON("#cb_agree")
-                    textIs("#txt_cb_agree", "agree=true")
+                    select("#cb_agree").checkIsON()
+                    select("#txt_cb_agree").textIs("agree=true")
                 }
             }
             scene(5, "#sw_notify も同様に checkIsON/checkIsOFF が echo と一致する") {
                 condition {
                     tap("#btn_controls_reset")
                 }.expectation {
-                    checkIsOFF("#sw_notify")
-                    textIs("#txt_sw_notify", "notify=off")
+                    select("#sw_notify").checkIsOFF()
+                    select("#txt_sw_notify").textIs("notify=off")
                 }.action {
                     tap("#sw_notify")
                 }.expectation {
-                    checkIsON("#sw_notify")
-                    textIs("#txt_sw_notify", "notify=on")
+                    select("#sw_notify").checkIsON()
+                    select("#txt_sw_notify").textIs("notify=on")
                 }
             }
         }

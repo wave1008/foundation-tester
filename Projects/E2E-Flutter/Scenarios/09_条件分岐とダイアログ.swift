@@ -36,7 +36,7 @@ class 条件分岐とダイアログ操作が正しく働くこと {
                 }.action {
                     tap("#nav_dialog")
                 }.expectation {
-                    textIs("#txt_dialog_result", "dialog=none")
+                    select("#txt_dialog_result").textIs("dialog=none")
                 }
             }
             scene(2, "ダイアログを開いて OK") {
@@ -47,7 +47,7 @@ class 条件分岐とダイアログ操作が正しく働くこと {
                 }.action {
                     tap("#btn_dialog_ok")
                 }.expectation {
-                    textIs("#txt_dialog_result", "dialog=ok")
+                    select("#txt_dialog_result").textIs("dialog=ok")
                 }
             }
             scene(3, "再度開いてキャンセル") {
@@ -58,7 +58,7 @@ class 条件分岐とダイアログ操作が正しく働くこと {
                 }.action {
                     tap("#btn_dialog_cancel")
                 }.expectation {
-                    textIs("#txt_dialog_result", "dialog=cancel")
+                    select("#txt_dialog_result").textIs("dialog=cancel")
                 }
             }
             scene(4, "ダイアログを閉じた状態で select しても scene は成功し、空要素が返る") {
@@ -66,7 +66,7 @@ class 条件分岐とダイアログ操作が正しく働くこと {
                     select("#btn_dialog_ok", timeout: 0).isEmpty.thisIsTrue()
                 }.expectation {
                     // select は掴めなくても失敗しないので、直前の結果が保たれたままであること
-                    textIs("#txt_dialog_result", "dialog=cancel")
+                    select("#txt_dialog_result").textIs("dialog=cancel")
                 }
             }
         }
@@ -92,7 +92,7 @@ class 条件分岐とダイアログ操作が正しく働くこと {
                 }.action {
                     tap("#nav_dialog")
                 }.expectation {
-                    textIs("#txt_dialog_result", "dialog=none")
+                    select("#txt_dialog_result").textIs("dialog=none")
                 }
             }
             scene(2, "1回目(奇数回目=開く)。ifCanSelect が成立してキャンセルする") {

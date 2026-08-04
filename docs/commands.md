@@ -41,6 +41,7 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 |---|---|
 | `tap(sel, holdSeconds: 0, timeout:scroll:maxSwipes:)` | タップ。`holdSeconds` を 0 より大きくすると長押し(既定 0 = 通常タップ) |
 | `select(sel, timeout:requireVisible:scroll:maxSwipes:)` | 要素を**掴むだけ**(デバイス操作なし)。`exist` と違い**検証ではない**ので、レポートに検証ステップとして残らない。値の読み出し(`.text`/`.value`/`.id`)や検証コマンドへのチェーンの起点に使う。**掴めなければ失敗させず空要素を返す** — 「見つからない」も「見つかったが見えない(覆われ・見切れ)」も同じ形で返るので、呼び出し側は `.isEmpty` で分岐する(`exist` はどちらも失敗へ反転するので意味が違う)。**在ることを保証したいなら `exist`**。`requireVisible: false` で可視性照合自体を外す |
+| `lastElement` | **直前に掴んだ要素**(引数なし。Shirates(Classic) の `TestDriver.lastElement` 相当)。要素を1つに定めて解決したコマンド(`select` / `exist` / `tap` / `type` / `waitForDisplay` / テキスト・値の検証など)が通るたびに差し替わる。差し替えないのは**要素を1つに定めない** `notExist` / `countIs` と、**セレクタを取らない** `swipe` / `launchApp` 等。**値は掴んだ時点の凍結値**で、掴んだ後にスクロールやタップを挟むと古い値を読む(下記「掴んだ要素の値を読む」)。**scene を跨ぐと空**・**掴めなかったコマンドは空で上書き**・**一度も掴んでいなければ空+警告** |
 | `type("文字列")` | **フォーカス中の要素**へ入力(直前に `tap(入力欄)` でフォーカスしてから使う)。改行の扱いは下記。**引数はテキストであってセレクタではない** — `type("#email")` のようにセレクタらしい1語(`#` + 識別子・`\|\|` や `>>` を含む)を渡すと実行前に失敗する(黙って `#email` と打ち込んで後段の検証で落ちると原因から遠いため)。その文字列を本当に入力したいなら2引数形 `type("#field", "#email")` を使う |
 | `type(sel, "文字列", timeout:scroll:maxSwipes:)` | 要素を指定して入力。日本語もそのまま入る(IME 切替なし)。改行の扱いは下記 |
 | `pressEnter()` | フォーカス中の入力へ Enter/IME アクション(検索・実行・改行)を発火(Shirates(Classic) 準拠) |
@@ -119,11 +120,11 @@ Shirates 準拠のコマンド名(`flick*`)。**画面(または `scrollFrame`)�
 |---|---|
 | `exist(sel, timeout:requireVisible:scroll:maxSwipes:)` | 存在検証。偽陽性検証を有効にした run(実行プロファイル `falsePositiveCheck: true`)では**実際に見えていること**も確認する。戻り値にチェーン可(後述) |
 | `waitForDisplay(sel, waitSeconds: 15)` | 要素が表示されるまで待つ(**スクロールしない**)。戻り値は `FTElement`(`exist` と同様チェーン可)。見つからなければ失敗しシナリオ中断 |
-| `waitForClose(sel, waitSeconds: 15)` | 要素が消えるまで待つ(**スクロールしない**)。`sel` は省略不可(Shirates の直前セレクタ再利用の省略形は無い。ftester に「直前に掴んだ要素」の概念が無いため) |
+| `waitForClose(sel, waitSeconds: 15)` | 要素が消えるまで待つ(**スクロールしない**)。`sel` は省略不可(Shirates の直前セレクタ再利用の省略形は無い。`lastElement` はあるが、待ち対象がソース上で読めなくなるため引数は必須のまま) |
 | `notExist(sel, timeout:scroll:maxSwipes:)` | **消えるまで待つ**(初回で不在なら即成功)。ダイアログ・ローディングが閉じた確認に。`scroll:` 指定時は**その方向へスクロールしながら探し、見つかった時点で不在検証を失敗させる**(`exist(scroll:)` の裏返し。見つからなければ従来どおり現在のビューポートでの消滅待ちに進む) |
 | `countIs(sel, 個数, timeout:)` | 候補の個数。**ツリー上の件数**で可視性は見ない。`\|\|` は和集合の総数(重複は 1 度だけ)。**ラベルで数えるときは型で絞る**(`.button&&項目` — ボタンと内側のラベルは別要素として両方載るため) |
-| `enabledIsTrue(sel)` / `enabledIsFalse(sel)` | 有効/無効の検証(タイムアウトまで状態変化を待つ) |
-| `checkIsON(sel)` / `checkIsOFF(sel)` | チェック状態の検証。iOS はアプリの実装により checked が取れないことがある(取れないままだと run 終了時に警告が出る) |
+| `enabledIsTrue()` / `enabledIsFalse()` | 有効/無効の検証(タイムアウトまで状態変化を待つ)。**対象は直前に掴んだ要素**(`select("#btn").enabledIsTrue()`) |
+| `checkIsON()` / `checkIsOFF()` | チェック状態の検証。**対象は直前に掴んだ要素**。iOS はアプリの実装により checked が取れないことがある(取れないままだと run 終了時に警告が出る) |
 | `keyboardIsShown(timeout:)` / `keyboardIsNotShown(timeout:)` | ソフトキーボードの表示/非表示の検証。開閉はアニメーションを伴うためタイムアウトまでポーリングする |
 | `screenIs("画面の説明文")` | FM による**見た目の**画面検証(スクリーンショットと説明文の照合)。実行プロファイルで `fm:false` / `screenIs:false` の場合はスキップ(素通り) |
 | `appIs(id, waitSeconds: 15)` | フォアグラウンドのアプリが `id`(iOS=bundle ID / Android=package 名)と一致することの検証。**ニックネーム機構は無く ID を直接書く**(Shirates 準拠だが引数の意味だけ異なる)。`waitSeconds` までポーリング。**Android は失敗時に actual の package 名をメッセージへ含める**(iOS は前面 bundle ID を取得する手段が無いため含まれない) |
@@ -133,8 +134,20 @@ Shirates 準拠のコマンド名(`flick*`)。**画面(または `scrollFrame`)�
 
 ## テキスト・値の検証
 
-`text…` はラベル(表示文字列)、`value…` は入力欄などの値を見る。全コマンド
-`(sel, 期待値, timeout:)` の形(肯定形は `requireVisible:` も取る)。
+`text…` はラベル(表示文字列)、`value…` は入力欄などの値を見る。
+
+**対象は「直前に掴んだ要素」で、セレクタは検証コマンドに渡しません**(2026-08-04)。
+まず `select`(または `exist` / `tap` など)で掴み、そのうえで検証します。
+**次の3つはまったく同じ意味**で、記録されるステップもデバイス往復の回数も同じです:
+
+```swift
+select("#btn_ok").textIs("OK")                  // 戻り値へチェーン
+select("#btn_ok"); lastElement.textIs("OK")     // 掴んだ要素を明示
+select("#btn_ok"); textIs("OK")                 // 暗黙(直前に掴んだ要素)
+```
+
+引数は `(期待値, timeout:)`(肯定形は `requireVisible:` も取る)。
+**旧 `textIs("#btn_ok", "OK")` はコンパイルエラー**になり、正しい書き方が案内されます。
 
 | 肯定 | 否定 | 判定 |
 |---|---|---|
@@ -160,13 +173,13 @@ exist("#total")
     .idIs("total")        // 解決した要素の id 検証
 ```
 
-**セレクタを取って「その要素」を検証するコマンドはすべてチェーンできる**（`textIs` / `textContains` /
+**「その要素」を検証するコマンドはすべてチェーンできます**（`textIs` / `textContains` /
 `textMatches` などテキストの全対称、`valueIs` 以下の value の全対称、`enabledIsTrue` / `enabledIsFalse` /
-`checkIsON` / `checkIsOFF`、それに掴んだ要素の id を見る `.idIs`）。引数はセレクタを除いて
-自由関数版と同じで、`timeout:` も同じラベルで渡せます（`exist("#x").enabledIsTrue(timeout: 3)`）。
+`checkIsON` / `checkIsOFF`、掴んだ要素の id を見る `idIs`）。**同じ集合がそのまま暗黙形
+(1引数の自由関数)にもなっています** — チェーンで書けるものは必ず暗黙形でも書けます。
 
-チェーンできないのは**要素を1つに定めないコマンド**だけです（`notExist` / `countIs` / `screenIs`）。
-これらは掴んだ要素に対する検証ではないためです。
+チェーンできない = 暗黙形も無いのは**要素を1つに定めないコマンド**だけです（`exist` / `notExist` /
+`countIs` / `screenIs`）。これらはセレクタを取り続けます（`exist` は掴む側なので当然セレクタが要ります）。
 
 ### 掴んだ要素の値を読む(`.text` / `.value` / `.id`)
 
@@ -185,7 +198,7 @@ scene(2, "注文を確定して注文番号を控える") {
 }
 scene(3, "確認画面にも同じ注文番号が出る") {
     action { tap("#tab_orders") }
-    .expectation { textIs("#txt_confirm_order_id", 注文番号 ?? "") }
+    .expectation { select("#txt_confirm_order_id").textIs(注文番号 ?? "") }
 }
 
 exist("#txt_total").text.thisContains("1,200")   // thisIs 系へそのまま繋がる
@@ -208,6 +221,55 @@ if e.isNotEmpty { 合計 = e.text }   // 無い・見えていなければ空要
 - `.text` は要素の表示テキスト(ラベル)、`.value` は値、`.id` は identifier
 - **検証したくない(レポートに検証ステップを残したくない)ときは `exist` の代わりに `select` を使う**。
   `select` は掴むだけで可視性照合の対象にもならない。使い方は同じ(`select("#txt_total").text`)
+
+### チェーンした検証の初回判定(掴んだ値を先に見る)
+
+`exist(…)` / `select(…)` / `lastElement` にチェーンした検証は、**まず掴んだ時点の値で判定**し、
+満たしていればデバイスを見に行きません（ステップは通常どおり記録され、説明に
+`(from the grabbed value)` が付きます）。**満たしていなければ従来どおり**取り直しながら
+タイムアウトまでポーリングします。
+
+```swift
+exist("#txt_total").textIs("1,200")   // 掴んだ値が "1,200" なら往復 0 回
+tap("#btn_reload")
+lastElement.textIs("1,500")           // 掴んだ値は古い → 取り直して "1,500" になるまで待つ
+```
+
+- **3つの書き方すべてに効きます**（チェーン / `lastElement.textIs(…)` / 暗黙の `textIs(…)`）。
+  掴んでいない状態で暗黙形を書くと空要素 + 警告になり、検証は落ちます
+- **`checkIsON` / `checkIsOFF` は対象外**です（「checked を実際に観測したか」の追跡が
+  デバイス経路にあり、飛ばすと *状態を持たない要素を指している* 誤用警告が出なくなるため）
+- **可視性照合が走る run（実行プロファイルの `falsePositiveCheck: true`）では対象外**です
+  （見えているかは掴んだ値から言えないので、覆われ検出が静かに消えないようデバイスを見ます）
+- **注意**: 掴んでから時間が空くほど「古い値のまま通る」向きの誤りが増えます。とくに
+  `lastElement` は掴んだ場所から離れるほど危険です（`textIs` は *期待どおりになるまで待つ* 検証なので、
+  古い値が偶然期待に一致すると待たずに通ります）
+
+### 直前に掴んだ要素(`lastElement`)
+
+戻り値を受けていなくても、**直前に掴んだ要素**は `lastElement` で読めます。
+
+```swift
+select("#txt_total")
+lastElement.text.thisContains("1,200")     // 変数に受けなくても読める
+tap("#btn_order")
+lastElement.idIs("btn_order")              // 操作コマンドも掴んだ要素を差し替える
+```
+
+- **差し替えるのは要素を1つに定めて解決したコマンド**(`select` / `exist` / `tap` / `type` /
+  `waitForDisplay` / テキスト・値の検証など)。**`notExist` / `countIs` は差し替えません**
+  (要素を1つに定めないため。直前に掴んだ要素がそのまま残ります)。
+  セレクタを取らないコマンド(`swipe` / `launchApp` 等)も差し替えません
+- **`.text` / `.value` / `.id` は掴んだ時点の凍結値**です(`exist` の戻り値と同じ契約)。
+  **掴んでから読むまでにスクロール・タップを挟むと、古い値・古い座標を読みます**。
+  値を読むのは掴んだ直後だけにし、離れた場所で使うなら変数に受けてください
+  (`let e = select(…)`。そのほうが読み手にも「いつの値か」が見えます)
+- `.textIs(…)` 等の**チェーンは掴んだ値で先に判定し、満たしていなければ取り直します**
+  (下記「チェーンした検証の初回判定」)
+- **掴めなかったコマンドは空要素で上書きします**(前の要素が残ると、別の要素の値を
+  「今掴んだもの」として読んでしまうため)。**scene を跨ぐと空**になります
+- **一度も掴んでいない状態で読むと空要素+警告**が出ます(黙って通る形にしないため)。
+  その空要素にチェーンした検証は必ず落ちます
 
 ## 画面に依らない値の検証(thisIs 系)
 
@@ -268,7 +330,7 @@ let 合計 = try await fetchTotal()        // procedure { } 内で取得した�
 
 ```swift
 verify("注文情報が正しい") {
-    textIs("#txt_order_id", 注文番号 ?? "")
+    select("#txt_order_id").textIs(注文番号 ?? "")
     exist("#txt_order_total")
 }
 ```

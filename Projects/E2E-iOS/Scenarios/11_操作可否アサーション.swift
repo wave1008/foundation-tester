@@ -19,30 +19,30 @@ class 操作可否アサーションが正しく判定できること {
                     tap("#tab_controls")
                     tap("#btn_controls_reset")
                 }.expectation {
-                    enabledIsFalse("#btn_always_disabled")
-                    enabledIsFalse("#btn_toggle_target")
+                    select("#btn_always_disabled").enabledIsFalse()
+                    select("#btn_toggle_target").enabledIsFalse()
                 }
             }
             scene(2, "同意すると条件付きボタンだけが有効になる") {
                 action {
                     tap("#cb_agree")
                 }.expectation {
-                    textIs("#txt_cb_agree", "agree=true")
-                    enabledIsTrue("#btn_toggle_target")
+                    select("#txt_cb_agree").textIs("agree=true")
+                    select("#btn_toggle_target").enabledIsTrue()
                     // 常時無効ボタンは影響を受けない
-                    enabledIsFalse("#btn_always_disabled")
+                    select("#btn_always_disabled").enabledIsFalse()
                 }
             }
             scene(3, "同意を外すと条件付きボタンは無効に戻る") {
                 action {
                     // group は記録に [名前] を前置するだけのまとまり(実行・失敗の扱いは素の列と同じ)
                     group("同意を外す") {
-                        enabledIsTrue("#cb_agree")
+                        select("#cb_agree").enabledIsTrue()
                         tap("#cb_agree")
                     }
                 }.expectation {
-                    textIs("#txt_cb_agree", "agree=false")
-                    enabledIsFalse("#btn_toggle_target")
+                    select("#txt_cb_agree").textIs("agree=false")
+                    select("#btn_toggle_target").enabledIsFalse()
                 }
             }
         }

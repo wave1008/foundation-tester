@@ -18,7 +18,7 @@ class 型付きセレクタが文字列版と同じ要素に着地すること {
                 }.action {
                     tap(.id("nav_selector"))                       // #nav_selector
                 }.expectation {
-                    textIs(.id("txt_selector_result"), "result=-")  // #txt_selector_result
+                    select(.id("txt_selector_result")).textIs("result=-")  // #txt_selector_result
                 }
             }
             scene(2, "型限定ラベルの個数と || フォールバック") {
@@ -28,7 +28,7 @@ class 型付きセレクタが文字列版と同じ要素に着地すること {
                     // 1つ目は存在しない id。2つ目で解決する
                     tap(.id("btn_alias_old").or(.id("btn_alias_new")))  // #btn_alias_old||#btn_alias_new
                 }.expectation {
-                    textIs(.id("txt_selector_result"), "result=alias")
+                    select(.id("txt_selector_result")).textIs("result=alias")
                 }
             }
             scene(3, "相対セレクタ(基準が先・近い順の2番目)") {
@@ -36,7 +36,7 @@ class 型付きセレクタが文字列版と同じ要素に着地すること {
                     // #btn_allow:below(.button&&項目&&[2]) と同じ構造(序数は ordinal に正規化される)
                     tap(.id("btn_allow").below(matching: .type(.button).text("項目"), nth: 2))
                 }.expectation {
-                    textIs(.id("txt_selector_result"), "result=item2")
+                    select(.id("txt_selector_result")).textIs("result=item2")
                 }
             }
         }
@@ -51,7 +51,7 @@ class 型付きセレクタが文字列版と同じ要素に着地すること {
                     tap(.id("nav_scroll"))
                 }.expectation {
                     exist(.id("list_rows").find(.id("row_02")))                    // #list_rows >> #row_02
-                    textIs(.id("list_rows").find(.type(.button).nth(2)), "行 02")   // #list_rows >> .button[2]
+                    select(.id("list_rows").find(.type(.button).nth(2))).textIs("行 02")   // #list_rows >> .button[2]
                     notExist(.id("list_rows").find(.id("txt_row_selected")))
                 }
             }
@@ -91,7 +91,7 @@ class 型付きセレクタが文字列版と同じ要素に着地すること {
                     tapWithScrollDown(.id("row_40"), maxSwipes: 15)
                 }.expectation {
                     // 固定ヘッダなのでスクロール後も見える
-                    textIs(.id("txt_row_selected"), "selected=row_40")
+                    select(.id("txt_row_selected")).textIs("selected=row_40")
                 }
             }
             scene(3, "existWithScrollUp の Sel 版で先頭へ戻りながら確認する") {

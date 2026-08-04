@@ -221,7 +221,7 @@ final class CommandDispatchTests: XCTestCase {
         scenario {
             scene(1, "s") {
                 // XCTestCase.expectation と衝突するのでここでは action を使う(区分は本題でない)
-                action { checkIsOFF("#cleanup") }
+                action { select("#cleanup").checkIsOFF() }
             }
         }
         core.warnAboutNeverResolvedIDs()

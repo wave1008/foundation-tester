@@ -23,6 +23,20 @@ final class CommandIndexSyncTests: XCTestCase {
         names(in: source, prefix: "public func ", anchoredToLineStart: true)
     }
 
+    /// 行頭 `public var 名前:` を拾う(引数を取らないコマンド。lastElement)
+    private func topLevelValues(in source: String) -> Set<String> {
+        var found: Set<String> = []
+        for line in source.split(separator: "\n", omittingEmptySubsequences: false) {
+            let text = String(line)
+            guard text.hasPrefix("public var ") else { continue }
+            let rest = text.dropFirst("public var ".count)
+            guard let colon = rest.firstIndex(of: ":") else { continue }
+            let name = String(rest[rest.startIndex..<colon])
+            if !name.isEmpty, !name.contains(" ") { found.insert(name) }
+        }
+        return found
+    }
+
     private func names(in source: String, prefix: String, anchoredToLineStart: Bool) -> Set<String> {
         var found: Set<String> = []
         for line in source.split(separator: "\n", omittingEmptySubsequences: false) {
@@ -38,7 +52,9 @@ final class CommandIndexSyncTests: XCTestCase {
     }
 
     func testIndexCoversEveryCommand() throws {
-        let commands = topLevelFunctions(in: try source("Commands.swift"))
+        let commandsSource = try source("Commands.swift")
+        let commands = topLevelFunctions(in: commandsSource)
+            .union(topLevelValues(in: commandsSource))
             .subtracting(DSLCommandIndex.internalNames)
         // this* は `public extension` の中のメンバ(各宣言に public は付かない)
         let thisAssertions = names(in: try source("ValueAssertions.swift"),

@@ -26,7 +26,7 @@ class セレクタ拡張が正しく解決できること {
                     tap("#btn_async_reset")
                 }.expectation {
                     notExist("#txt_delayed")
-                    textIs("#txt_delay_state", "state=idle")
+                    select("#txt_delay_state").textIs("state=idle")
                 }
             }
             scene(2, "countIs で同一ラベル要素の個数を数える") {
@@ -44,11 +44,11 @@ class セレクタ拡張が正しく解決できること {
                     tap("#btn_allow:below(.button&&項目)")
                 }.expectation {
                     // 縦一列なので上下で選ぶ。`許可` の下にある最初の `項目` は 1 番目(ui-contract.md の並び順)
-                    textIs("#txt_selector_result", "result=item1")
+                    select("#txt_selector_result").textIs("result=item1")
                 }.action {
                     tap("#btn_selector_reset:above(.button&&項目)")
                 }.expectation {
-                    textIs("#txt_selector_result", "result=item3")
+                    select("#txt_selector_result").textIs("result=item3")
                 }
             }
             scene(4, "スコープ(>>)は祖先の子孫だけを対象にする") {
@@ -76,7 +76,7 @@ class セレクタ拡張が正しく解決できること {
                     // 3 つ縦に並ぶので 2 番目は item2(並び順は ui-contract.md)
                     tap("#btn_allow:below(.button&&項目&&[2])")
                 }.expectation {
-                    textIs("#txt_selector_result", "result=item2")
+                    select("#txt_selector_result").textIs("result=item2")
                 }
             }
             scene(6, "状態フィルタ(enabled)を id と併用して候補を絞る") {

@@ -1108,7 +1108,7 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
 | `clearInput` がソフトキー/Appium clear 機構ではない(xcuitest=末尾タップ+delete 連打 / inapp=first responder のテキスト置換 / Android=ACTION_SET_TEXT "") | キーボード要素を snapshot から除外しているため(pressEnter と同じ事情) |
 | キーボード可視の取得元がエンジンで違う(iOS xcuitest=AX ツリーの `.keyboard` ノード / iOS in-app=`UITextEffectsWindow` の可視判定 / Android=ホストが見る dumpsys の InputMethod window) | IME が別プロセスの window でアプリの a11y ツリーに出ないため(iOS の2経路の事情は下記「キーボードの観測と `hideKeyboard`」) |
 | `waitForDisplay` / `waitForClose` に `throwsException` が無い(タイムアウトは常に失敗として記録) | `optional:` 全廃(2026-08-02)と同じ方針。空振りを許すと腐ったセレクタが緑のまま残る(2026-08-03 承認) |
-| `waitForClose` の expression 省略(Shirates の直前セレクタ再利用)は不可 | ftester に lastElement 概念が無い(2026-08-03 承認) |
+| `waitForClose` の expression 省略(Shirates の直前セレクタ再利用)は不可 | 2026-08-04 に `lastElement`(暗黙の要素保持)を実装したので当初の理由(概念が無い)は消えたが、**省略形は引き続き置かない** —— 待っている対象がソース上で読めなくなり、直前のコマンド次第で待ち先が変わる。値の読み出しと違って**待ちは何を待つかが読めることが要**(2026-08-03 承認の判断を維持) |
 | `waitForDisplay` の判定は `exist` と同じ可視性込み(Shirates は `safeElementOnly=false` のツリー存在判定) | コマンド名の意味(displayed)に沿い、既存の exists 検証機構をそのまま使う(2026-08-03 承認) |
 | 待ち系(`waitForDisplay`/`waitForClose`/`appIs`)のポーリング間隔が `PollBackoff`(100→1000ms)である(Shirates は 0.2s 固定) | ポーリングは既存機構の再利用が契約(PollBackoff.swift「コピペ禁止」)。既定の待ち秒数 15.0(`WAIT_SECONDS_ON_ISSCREEN`)は踏襲(2026-08-03 承認) |
 | `screenshot` が `force`/`onChangedOnly`/`withXmlSource` を持たない(`filename:` のみ) | この3引数は Shirates の auto-screenshot 機構(毎操作の自動撮影・変化なしスキップ・XML dump)の制御で、ftester はその機構自体を持たない(撮るのは失敗時の証跡と `screenshot()` の明示呼び出しだけ)。画像はレポートの該当ステップ直後に埋め込む(2026-08-03 承認) |
@@ -1178,7 +1178,7 @@ tap(.id("login_btn"))                            // #login_btn
 tap(.id("login_btn").or(.text("ログイン")))        // #login_btn||ログイン
 tap(.id("list").find(.type(.cell).nth(2)))       // #list >> .cell[2]
 tap(.text("通知").right(.switch))                 // 通知:rightSwitch
-textIs(.id("txt_result"), "dialog=none")
+select(.id("txt_result")).textIs("dialog=none")   // 検証はセレクタを取らない(下記)
 ```
 
 - **引数の型が具体型なので先頭ドットで書ける**(`tap(.id(...))`)。`some FTSelectorConvertible`
@@ -1249,6 +1249,74 @@ textIs(.id("txt_result"), "dialog=none")
   取りこぼしは `vscode-ftester/test/ftElementChainSync.test.mjs` が検出し、
   繋ぎ先の取り違え(`textContains` が `textStartsWith` を呼ぶ等)は
   `Tests/FTDSLTests/FTElementChainTests.swift` が実行して検出する(**形と挙動で担当が違う**)
+
+### 暗黙の要素保持(`lastElement`。2026-08-04)
+
+戻り値を受けていなくても直前に掴んだ要素を読める(Shirates の `TestDriver.lastElement` 相当)。
+**鮮度のリスクを承知したうえでのユーザー決定**(2026-08-04。それ以前は「概念を持たない」が承認済み差分だった)。
+
+- **更新点は1か所**: `Commands.swift` の共通経路 `perform(_:_:step:…)`。セレクタを取るコマンドは
+  全部ここを通るので個々のコマンドに書き足さない(足し忘れると「どのコマンドで差し替わるか」の
+  規則が崩れ、読み手が追えなくなる)。保持先は `FTDriveCore.lastResolvedElement`(DSL スレッド専有)
+- **差し替えないのは要素を1つに定めないステップだけ**(`definesSingleElement`: `notExists` / `count`)。
+  値の出所は `PerformResult.element` = 上記「掴んだ要素の値の読み出し」と同じ経路なので、
+  **凍結・成功時のみ・dry-run は nil** の契約もそのまま継承する
+- **掴めなかったときは空要素で上書きする**。前の要素を残すと**別要素の値を「今掴んだもの」として
+  読む**ことになり、失敗が沈黙する(「空の結果は成功と見分けがつかない」と同じ型)
+- **scene の切り替わりで捨てる**(`runScene`)。前の画面の要素は値も座標も古い
+- **一度も掴んでいない読み出しは空要素 + 1回だけの警告**(`warnLastElementUnavailable`)。
+  返す空要素には実在しないセレクタを持たせてあるので、チェーンした検証は必ず落ちる
+- 規律の固定は `Tests/FTDSLTests/LastElementTests.swift`(差し替える/差し替えない・空になる条件)
+
+### チェーンした検証の初回判定は掴んだ値で行う(2026-08-04)
+
+`exist(…).textIs(…)` は**掴んだ時点の値で先に判定し、満たしていれば実機を見に行かない**。
+満たしていなければ何もせず通常経路へ落ちる = 従来どおり取り直しながらポーリングする。
+**ユーザー決定**(2026-08-04。それ以前はチェーンも毎回セレクタから解決し直していた)。
+
+- **判定できるアサートの表は `FTCore/HeldElementAssert`**。比較そのものは
+  `StepExecutor.matchedText` / `negativeAssertSatisfied` を**呼ぶ**(独自に書くと、同じアサートが
+  チェーン経路と実機経路で違う答えを出す)。値ベース(text/value/id/enabled)だけが対象
+- **除外**: `exists` / `notExists` / `count`(今の画面の話で過去の値から言えない)、
+  `checked` / `notChecked`(実機経路が「checked を観測したか」を追跡しており、飛ばすと
+  `checkIsOFF` の誤用警告が消える)、`screenMatches` / `keyboard*`(要素の値を見ていない)
+- **可視性照合が走る設定では高速経路に入らない**(`visibilityWouldBeChecked`)。条件は
+  `occlusionFlip` の入口のうちステップ非依存の部分と同じものを見る。飛ばすと
+  falsePositiveCheck 有効の run で偽陽性検出が**静かに1つ消える**
+- 記録は通常どおり1ステップだが、説明に `(from the grabbed value)` を付ける
+  (レポートで「取り直していない判定」を見分けられるようにするため。durationMs は 0)
+- **残る危険は「古い値が偶然期待に一致して待たずに通る」向き**。`textIs` は本来
+  「そうなるまで待つ」検証なので、`lastElement` のように掴んだ場所から離れるほど確率が上がる。
+  承知のうえでの決定で、docs/commands.md にも注意として書いてある
+- 規律の固定は `Tests/FTDSLTests/HeldValueAssertTests.swift`(往復回数で「見に行っていない」ことを
+  直接数える。**古い値では不一致 → 取り直して一致** も必ず通す)
+
+### 検証の対象は「直前に掴んだ要素」に固定(2026-08-04)
+
+`textIs("#btn_ok", "OK")` の形(セレクタを取る検証の自由関数)を**廃止**し、対象は
+`lastElement` に固定した。**ユーザー決定**。3つの書き方が同義になる:
+
+```swift
+select("#btn_ok").textIs("OK")                  // FTElement のメソッド(判定の実体)
+select("#btn_ok"); lastElement.textIs("OK")     // 保持要素を明示
+select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの自由関数。委譲のみ)
+```
+
+- **対象は31コマンド**(text/value の全対称26 + `enabledIsTrue/False` + `checkIsON/OFF` + `idIs`)。
+  **`exist` / `notExist` / `countIs` / `screenIs` はセレクタを取り続ける** —— 要素を1つに定めない
+  (`exist` は掴む側なので当然セレクタが要る)
+- **判定の実体は `FTElement` のメソッド1か所**。自由関数は `lastElement.<同名>` へ委譲するだけで、
+  ステップ記録も往復回数も一致する(`HeldValueAssertTests.testTheThreeFormsAreEquivalent` が固定)
+- **旧形は `@available(*, unavailable)` で受け止める**(String 版・Sel 版の両方)。消すだけだと
+  `extra argument in call` としか出ず、書き手は「引数を減らす」= 対象を失った検証を書く
+- **1引数形にセレクタらしい期待値が来たら実行前に落とす**(`expectedLooksLikeSelector`)。
+  旧形の書き癖 `textIsNot("#btn_ok")` は「そのテキストではない」が常に真で**黙って緑**になる。
+  逃げ道はチェーン形(対象が明示なので曖昧さが無い)
+- 3つの書き方の対応は `vscode-ftester/test/ftElementChainSync.test.mjs` がソース走査で見張る
+  (FTElement のメソッド集合 = 委譲する自由関数の集合。旧形の復活も検出する)
+- **コード生成も新形で出す**(`ScenarioCodeGen` / `ScenarioDraftCodeGen`)。索引
+  (`CommandIndex`)は signature を `select(selector).textIs(expected, ...)` の形で載せ、
+  summary に「対象は直前に掴んだ要素」と明記する —— 生成側は JSON しか見ないため
 
 ### 否定・状態・個数のアサーション(2026-07-26)
 

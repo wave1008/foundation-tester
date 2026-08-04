@@ -40,6 +40,7 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | `tapWithScrollDown/Up/Left/Right` | 同名 | ✅ |
 | `tapWithoutScroll` | 同名 | ✅ |
 | `select` / `selectWithScroll*` / `selectWithoutScroll` | 同名 | ✅ `exist`(検証)では代用にならないため実装(2026-07-31)。**掴めなければ失敗させず空要素を返す**(見つからないときも、見えないときも同じ。`requireVisible: false` で可視性照合を外せる)。Shirates の `throwsException` に相当する引数は持たない = 常に非 throw |
+| `TestDriver.lastElement` / `it` | `lastElement` | ✅ 2026-08-04 ユーザー決定で実装(それ以前は「概念を持たない」が承認済み差分)。要素を1つに定めて解決したコマンドが差し替える(`notExist` / `countIs` とセレクタを取らないコマンドは差し替えない)。**値は掴んだ時点の凍結値**・**掴めなければ空で上書き**・**scene を跨ぐと空**・一度も掴んでいない読み出しは空+警告。`it` の別名は置かない(Swift では読み手が識別子を追えない) |
 | `canSelect` / `canSelectWithScroll*` / `canSelectNot` | 単独コマンドは無い(`ifCanSelect` / `repeatWhileCanSelect` に内包) | 🟡 |
 | `existAll` / `canSelectAll` / `dontExistAll` | — | ➖ **実装しない**(ユーザー決定 2026-07-31)。`exist` のチェーンで書く方が保守しやすく、要素ごとに `timeout:` / `scroll:` 等のオプションも指定できる。**再提案しない** |
 | `scanElements` / `*InScanResults` | — | ❌ |
@@ -111,9 +112,9 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 
 | Shirates | ftester | |
 |---|---|---|
-| `textIs/IsNot/Contains(Not)/StartsWith(Not)/EndsWith(Not)/Matches(Not)/MatchesDateFormat/IsEmpty/IsNotEmpty` | 全て同名 | ✅ 全対称 |
-| `valueIs…` 一式(同10種) | 全て同名 | ✅ 全対称 |
-| `idIs` | 同名(`FTElement` チェーン) | ✅ |
+| `textIs/IsNot/Contains(Not)/StartsWith(Not)/EndsWith(Not)/Matches(Not)/MatchesDateFormat/IsEmpty/IsNotEmpty` | 全て同名 | ✅ 全対称。**2026-08-04 以降セレクタを取らない**(対象は直前に掴んだ要素 = Shirates の `it`/`lastElement` と同じ考え方)。`select("#x").textIs("OK")` / `select("#x"); textIs("OK")` の2形が同義 |
+| `valueIs…` 一式(同10種) | 全て同名 | ✅ 全対称(対象の扱いは `textIs` と同じ) |
+| `idIs` | 同名(チェーン / 暗黙形の両方) | ✅ 2026-08-04 に自由関数版(`select("#x"); idIs("x")`)も追加 |
 | `accessIs…` 一式 | `#id` に統合 | 🟡 |
 | `enabledIsTrue/False` | `enabledIsTrue()` / `enabledIsFalse()` | ✅ 2026-08-04 糖衣形を同名で踏襲(旧 `isEnabled`/`isDisabled` から改名)。**生文字列の親形 `enabledIs(expected:)` は持たない**(下記 ➖) |
 | `checkIsON` / `checkIsOFF` | `checkIsON()` / `checkIsOFF()` | ✅ 2026-08-04 同名で踏襲(旧 `isChecked`/`isNotChecked` から改名) |
@@ -158,7 +159,7 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 |---|---|---|
 | `wait` | 同名 | ✅ |
 | `waitForDisplay` | `waitForDisplay(sel, waitSeconds: 15)` | ✅ 2026-08-03 スクロールしない・戻り値 `FTElement`。Shirates の `throwsException` に相当する引数は持たない(常に失敗として記録する) |
-| `waitForClose` | `waitForClose(sel, waitSeconds: 15)` | ✅ 2026-08-03 **`expression` 省略不可**(Shirates の直前セレクタ再利用の省略形は不採用) |
+| `waitForClose` | `waitForClose(sel, waitSeconds: 15)` | ✅ 2026-08-03 **`expression` 省略不可**(Shirates の直前セレクタ再利用の省略形は不採用。`lastElement` は 2026-08-04 に実装済みだが、待ち対象がソース上で読めなくなるため待ち系には省略形を置かない) |
 | `usingWaitSeconds` | `timeout:` 引数 / 実行プロファイル `defaultTimeout` | 🟡 |
 | `waitScreen` / `waitScreenOf` | — | ➖ 画面ニックネーム機構を持たない |
 

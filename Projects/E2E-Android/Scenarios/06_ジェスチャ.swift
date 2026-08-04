@@ -18,7 +18,7 @@ class ジェスチャが正しく検出されること {
                 }.action {
                     tap("#nav_gesture")
                 }.expectation {
-                    textIs("#txt_tap_count", "tap=0")
+                    select("#txt_tap_count").textIs("tap=0")
                 }
             }
             scene(2, "タップ3回でカウントが3になる") {
@@ -27,69 +27,69 @@ class ジェスチャが正しく検出されること {
                     tap("#btn_tap_counter")
                     tap("#btn_tap_counter")
                 }.expectation {
-                    textIs("#txt_tap_count", "tap=3")
-                    textIs("#txt_last_gesture", "last=tap")
+                    select("#txt_tap_count").textIs("tap=3")
+                    select("#txt_last_gesture").textIs("last=tap")
                 }
             }
             scene(3, "長押しでカウントが1になる") {
                 action {
                     tap("#btn_long_press", holdSeconds: 1.0)
                 }.expectation {
-                    textIs("#txt_press_count", "press=1")
-                    textIs("#txt_last_gesture", "last=longpress")
+                    select("#txt_press_count").textIs("press=1")
+                    select("#txt_last_gesture").textIs("last=longpress")
                 }
             }
             scene(4, "通常タップでは長押しカウントが増えない(区別の検証)") {
                 action {
                     tap("#btn_long_press")
                 }.expectation {
-                    textIs("#txt_press_count", "press=1")
+                    select("#txt_press_count").textIs("press=1")
                 }
             }
             scene(5, "holdSeconds 指定の長押しも検出される(既定 1 秒以外が実際に届いていること)") {
                 action {
                     tap("#btn_long_press", holdSeconds: 2.0)
                 }.expectation {
-                    textIs("#txt_press_count", "press=2")
-                    textIs("#txt_last_gesture", "last=longpress")
+                    select("#txt_press_count").textIs("press=2")
+                    select("#txt_last_gesture").textIs("last=longpress")
                 }
             }
             scene(6, "上スワイプ") {
                 action {
                     swipe(.up)
                 }.expectation {
-                    textIs("#txt_swipe_dir", "swipe=up")
+                    select("#txt_swipe_dir").textIs("swipe=up")
                 }
             }
             scene(7, "下スワイプ") {
                 action {
                     swipe(.down)
                 }.expectation {
-                    textIs("#txt_swipe_dir", "swipe=down")
+                    select("#txt_swipe_dir").textIs("swipe=down")
                 }
             }
             scene(8, "左スワイプ") {
                 action {
                     swipe(.left)
                 }.expectation {
-                    textIs("#txt_swipe_dir", "swipe=left")
+                    select("#txt_swipe_dir").textIs("swipe=left")
                 }
             }
             scene(9, "右スワイプ") {
                 action {
                     swipe(.right)
                 }.expectation {
-                    textIs("#txt_swipe_dir", "swipe=right")
+                    select("#txt_swipe_dir").textIs("swipe=right")
                 }
             }
             scene(10, "リセットで全カウンタが初期値に戻る") {
                 action {
                     tap("#btn_gesture_reset")
                 }.expectation {
-                    textIs("#txt_tap_count", "tap=0")
-                    textIs("#txt_press_count", "press=0")
-                    textIs("#txt_swipe_dir", "swipe=-")
-                    textIs("#txt_last_gesture", "last=-")
+                    select("#txt_tap_count").textIs("tap=0")
+                    select("#txt_press_count").textIs("press=0")
+                    select("#txt_swipe_dir").textIs("swipe=-")
+                    select("#txt_last_gesture").textIs("last=-")
                 }
             }
         }
@@ -107,7 +107,7 @@ class ジェスチャが正しく検出されること {
                     // ボタンが置かれていない帯。座標スワイプの始点・終点として安全に使える
                     swipePointToPoint(startX: 540, startY: 1500, endX: 540, endY: 700, durationSeconds: 0.3)
                 }.expectation {
-                    textIs("#txt_swipe_dir", "swipe=up")
+                    select("#txt_swipe_dir").textIs("swipe=up")
                 }
             }
         }

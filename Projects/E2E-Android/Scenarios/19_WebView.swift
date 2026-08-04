@@ -20,12 +20,12 @@ class WebViewの中身を操作できること {
                     launchApp()
                     tap("#nav_webview")
                 }.expectation {
-                    textIs("#txt_screen_title", "WebView")
+                    select("#txt_screen_title").textIs("WebView")
                     // **中身が出るまで数秒かかる**(WebContent プロセスの a11y 起動待ち。
                     // 実測 約2.3秒、SUT により最大 約8秒)。既定 5 秒では足りないことがある
                     exist("WebView 見出し", timeout: 20)
                     exist(".webView")
-                    textIs("wv_result=*", "wv_result=-")
+                    select("wv_result=*").textIs("wv_result=-")
                 }
             }
             // 既定 timeout のままにしておくこと: Android ブリッジが WebView 内ノードを
@@ -35,7 +35,7 @@ class WebViewの中身を操作できること {
                 action {
                     tap(".link&&WebView リンク")
                 }.expectation {
-                    textIs("wv_result=*", "wv_result=link")
+                    select("wv_result=*").textIs("wv_result=link")
                 }
             }
             scene(3, "Web の入力欄へ入力し、送信ボタンで反映する") {
@@ -45,14 +45,14 @@ class WebViewの中身を操作できること {
                     type("placeholder=WebView 入力", "hello123")
                     tap("送信")
                 }.expectation {
-                    textIs("wv_result=*", "wv_result=hello123")
+                    select("wv_result=*").textIs("wv_result=hello123")
                 }
             }
             scene(4, "aria-label だけのボタンもラベルで指せる") {
                 action {
                     tap("WebView アリアラベル")
                 }.expectation {
-                    textIs("wv_result=*", "wv_result=aria")
+                    select("wv_result=*").textIs("wv_result=aria")
                 }
             }
             scene(5, "CSS transform された要素も正しい座標でタップできる") {
@@ -60,7 +60,7 @@ class WebViewの中身を操作できること {
                     // rect が transform 込みで来ないと 60px ずれて外れる(契約の座標検証材料)
                     tap("変形ボタン")
                 }.expectation {
-                    textIs("wv_result=*", "wv_result=transform")
+                    select("wv_result=*").textIs("wv_result=transform")
                 }
             }
             scene(6, "Web コンテンツ内をスクロール探索できる") {
@@ -78,14 +78,14 @@ class WebViewの中身を操作できること {
                     // 先頭へ戻さないと textIs が「要素が見つかりません」になる(全 SUT で実測)
                     scrollToTop()
                 }.expectation {
-                    textIs("wv_result=*", "wv_result=fixed")
+                    select("wv_result=*").textIs("wv_result=fixed")
                 }
             }
             scene(8, "WebView から離れるとネイティブ側の操作に戻れる") {
                 action {
                     tap("#btn_back")
                 }.expectation {
-                    textIs("#txt_screen_title", "ホーム")
+                    select("#txt_screen_title").textIs("ホーム")
                     exist("#txt_home_marker")
                 }
             }

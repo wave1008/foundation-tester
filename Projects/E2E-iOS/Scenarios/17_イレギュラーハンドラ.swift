@@ -25,7 +25,7 @@ class イレギュラーハンドラでダイアログが自動的に閉じら�
                     launchApp()
                     tap("#nav_dialog")
                 }.expectation {
-                    textIs("#txt_dialog_result", "dialog=none")
+                    select("#txt_dialog_result").textIs("dialog=none")
                 }.action {
                     tap("#btn_show_dialog")
                 }.expectation {
@@ -33,7 +33,7 @@ class イレギュラーハンドラでダイアログが自動的に閉じら�
                     // dismissInterruption を評価するため、待機中に「確認」を検出して
                     // #btn_dialog_cancel を自動タップする(検証コマンドでも発火する仕様。
                     // アクション限定だと exist/textIs の待機中に出た分を閉じられない。design.md)
-                    textIs("#txt_dialog_result", "dialog=cancel")
+                    select("#txt_dialog_result").textIs("dialog=cancel")
                     notExist("確認")
                 }
             }
@@ -45,7 +45,7 @@ class イレギュラーハンドラでダイアログが自動的に閉じら�
                     // (奇数回目=開く。ui-contract.md)で再びダイアログが開く
                     tap("#btn_maybe_dialog")
                 }.expectation {
-                    textIs("#txt_dialog_result", "dialog=cancel")
+                    select("#txt_dialog_result").textIs("dialog=cancel")
                     notExist("確認")
                 }
             }
