@@ -110,7 +110,7 @@ final class BridgeContractTests: XCTestCase {
         ],
         .xcuitest: [
             "Runner/FTesterRunnerUITests/BridgeHTTPServer.swift": "2659f97c1116efd8beaa6d7c0d74a205f307436f1e8d0869a73c81bc96033e5c",
-            "Runner/FTesterRunnerUITests/BridgeRouter.swift": "5a3c49a2e6f62123fa0301847f30637c52f37246552dbaf9fd227736683e6510",
+            "Runner/FTesterRunnerUITests/BridgeRouter.swift": "75832e90b03d226b0e91fb79b84432e6a370b99cef2010c9ec9d36f939b27b12",
             "Runner/FTesterRunnerUITests/BridgingHeader.h": "f7ff424d9283644d0e7a0c6e202911ecbf2d9c12d469eea330d91471c4788272",
             "Runner/FTesterRunnerUITests/FTesterBridgeTests.swift": "5a3521fc332ff690cfa4a105ab8486c612814b05b637451401244e632e7c6e9e",
             "Runner/FTesterRunnerUITests/FastInput.swift": "18b54340c404eac53736675763fad8e291b08e2f1f1ba96d696172698aa83bc1",

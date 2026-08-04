@@ -2,7 +2,7 @@
 // ftester 機能: `irregularHandler`(出るか不定なアプリ内メッセージの検出・自動終了)。
 // 09_条件分岐とダイアログ.swift はハンドラなしでのダイアログ操作(ifCanSelect/select)を検証しており、
 // 干渉させないためこちらは分けて irregularHandler 専用に検証する。
-// CMP 版(Projects/E2E/Scenarios/17_イレギュラーハンドラ.swift)の移植。Flutter の AlertDialog は
+// CMP 版(Projects/E2E-CMP/Scenarios/17_イレギュラーハンドラ.swift)の移植。Flutter の AlertDialog は
 // 通常の Semantics として出るため、E2E-iOS 版のようなラベルへのフォールバックは不要
 // (#txt_dialog_title がそのまま引ける。E2EAppFlutter/docs/ui-contract.md)。
 

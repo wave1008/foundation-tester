@@ -1,5 +1,5 @@
 // SUT の UI 契約ドリフト検出。
-// 契約(CLAUDE.md): 要素の testTag/`#id`/ラベルの唯一の正は E2EApp/docs/ui-contract.md。
+// 契約(CLAUDE.md): 要素の testTag/`#id`/ラベルの唯一の正は E2EAppCMP/docs/ui-contract.md。
 // 各 SUT の <SUT>/docs/ui-contract.md には型語彙と OS/フレームワーク固有の罠だけを置く。
 // SUT 側の契約が母体に無い `#id` を語り出すと、4つの SUT が同じ画面契約を共有しているという前提が
 // 静かに崩れ、シナリオがどの SUT で通るのか分からなくなる。
@@ -15,7 +15,7 @@ import path from "node:path";
 import { test } from "node:test";
 
 const ROOT = path.join(process.cwd(), "..");
-const MASTER = "E2EApp/docs/ui-contract.md";
+const MASTER = "E2EAppCMP/docs/ui-contract.md";
 const SUT_CONTRACTS = [
   "E2EAppIOS/docs/ui-contract.md",
   "E2EAppAndroid/docs/ui-contract.md",

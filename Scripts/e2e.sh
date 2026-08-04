@@ -3,8 +3,8 @@
 # ftester 自身の E2E を全 SUT で回す。
 #
 # SUT は UI フレームワークごとに4つある(どれも画面・#id・ラベルは同じ契約。
-# 唯一の正は E2EApp/docs/ui-contract.md、各 SUT の差分は <SUT>/docs/ui-contract.md):
-#   cmp            E2EApp/         Compose Multiplatform   → Projects/E2E         (ios + android)
+# 唯一の正は E2EAppCMP/docs/ui-contract.md、各 SUT の差分は <SUT>/docs/ui-contract.md):
+#   cmp            E2EAppCMP/      Compose Multiplatform   → Projects/E2E-CMP     (ios + android)
 #   ios-native     E2EAppIOS/      SwiftUI + UIKit         → Projects/E2E-iOS     (ios のみ)
 #   android-native E2EAppAndroid/  View/XML + 一部 Compose → Projects/E2E-Android (android のみ)
 #   flutter        E2EAppFlutter/  Flutter                 → Projects/E2E-Flutter (ios + android)
@@ -108,15 +108,15 @@ run_profile() {  # $1 = プロジェクト名, $2 = プロファイル名
 for sut in $SUTS; do
   case "$sut" in
     cmp)
-      APP="$ROOT/E2EApp"
+      APP="$ROOT/E2EAppCMP"
       if [ "$RUN_IOS" = 1 ] && needs_rebuild "$APP/dist/ios-simulator/FTE2E.app" "$APP/composeApp/src" "$APP/iosApp"; then
         echo "→ SUT cmp(iOS)を再ビルドします..."; "$APP/scripts/build-ios.sh"
       fi
       if [ "$RUN_ANDROID" = 1 ] && needs_rebuild "$APP/dist/android/ft-e2e-debug.apk" "$APP/composeApp/src"; then
         echo "→ SUT cmp(Android)を再ビルドします..."; "$APP/scripts/build-android.sh"
       fi
-      [ "$RUN_IOS" = 1 ] && run_profile E2E "$IOS_PROFILE"
-      [ "$RUN_ANDROID" = 1 ] && run_profile E2E android
+      [ "$RUN_IOS" = 1 ] && run_profile E2E-CMP "$IOS_PROFILE"
+      [ "$RUN_ANDROID" = 1 ] && run_profile E2E-CMP android
       ;;
     ios-native)
       [ "$RUN_IOS" = 1 ] || continue

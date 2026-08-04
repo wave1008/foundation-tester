@@ -21,7 +21,7 @@ import Foundation
 import FTCore
 
 /// 型セレクタの型名。OS を跨いで保証されるのは button / staticText / textField /
-/// secureTextField / switch の5つだけ(E2EApp/docs/ui-contract.md)。それ以外は SUT・OS 依存で、
+/// secureTextField / switch の5つだけ(E2EAppCMP/docs/ui-contract.md)。それ以外は SUT・OS 依存で、
 /// 語彙に無い型は `.custom("...")`(先頭小文字へ正規化する。ElementInfo.normalizedType と同じ規約)
 public struct SelType: Sendable, Equatable {
     public let name: String

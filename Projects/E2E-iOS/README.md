@@ -3,7 +3,7 @@
 ftester を **iOS ネイティブアプリ(SwiftUI + UIKit)** に対して検証する E2E テストプロジェクト。
 対象アプリはリポジトリ同梱の `E2EAppIOS/`(bundle id = `com.ftester.e2e.ios`)。
 
-- 画面構成・`#id`・ラベルの正: `E2EApp/docs/ui-contract.md`(Compose 版と共通)
+- 画面構成・`#id`・ラベルの正: `E2EAppCMP/docs/ui-contract.md`(Compose 版と共通)
 - iOS ネイティブ固有の差分(型語彙・UIAlertController の癖・UITableView の癖): `E2EAppIOS/docs/ui-contract.md`
 
 ## 対象アプリのビルド

@@ -1,6 +1,6 @@
 // 19_WebView.swift
 // ftester 機能: **WebView(Web コンテンツ)の中を操作・検証できること**。
-// 対象画面(E2EApp/docs/ui-contract.md「WebView 画面」)はネイティブの WebView に同じ HTML を
+// 対象画面(E2EAppCMP/docs/ui-contract.md「WebView 画面」)はネイティブの WebView に同じ HTML を
 // 読ませたもので、他の画面と違い **`#id` が一切効かない**(HTML の id は a11y の identifier に
 // 現れない)。指せるのは表示テキスト・`aria-label`・型だけ。
 // **この SUT に置く意味**: Android は WebView の中身が a11y の仮想ツリーとして降りてくるが、

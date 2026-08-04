@@ -160,7 +160,7 @@ foundation-tester/
 │       ├── reports/               #   実行レポート出力先(プロジェクト別)
 │       └── .ftester/              #   ヒールキャッシュ等(プロジェクト別)
 ├── Scripts/bench.swift            # 計測基盤(§9。詳細は docs/performance-tuning.md)
-├── E2EApp/                        # 自己 E2E の SUT: Compose Multiplatform(→ Projects/E2E)
+├── E2EAppCMP/                     # 自己 E2E の SUT: Compose Multiplatform(→ Projects/E2E-CMP)
 │   └── docs/ui-contract.md        #   **全 SUT 共通の画面・#id・ラベル契約(唯一の正)**
 ├── E2EAppIOS/                     # 自己 E2E の SUT: SwiftUI + 一部 UIKit(→ Projects/E2E-iOS)
 ├── E2EAppAndroid/                 # 自己 E2E の SUT: View/XML + 一部 Compose(→ Projects/E2E-Android)
@@ -718,7 +718,7 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
 
    | SUT | 実装 | プロジェクト | 対象 OS | 契約 |
    |---|---|---|---|---|
-   | `E2EApp/` | Compose Multiplatform | `Projects/E2E` | ios + android | **`E2EApp/docs/ui-contract.md` が唯一の正** |
+   | `E2EAppCMP/` | Compose Multiplatform | `Projects/E2E-CMP` | ios + android | **`E2EAppCMP/docs/ui-contract.md` が唯一の正** |
    | `E2EAppIOS/` | SwiftUI + 一部 UIKit | `Projects/E2E-iOS` | ios | 差分のみ `E2EAppIOS/docs/ui-contract.md` |
    | `E2EAppAndroid/` | View/XML + 一部 Compose | `Projects/E2E-Android` | android | 差分のみ `E2EAppAndroid/docs/ui-contract.md` |
    | `E2EAppFlutter/` | Flutter | `Projects/E2E-Flutter` | ios + android | 差分のみ `E2EAppFlutter/docs/ui-contract.md` |
@@ -904,7 +904,7 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
   Compose の Box+重ね置き `#pad_swipe` は iOS で子 Text が同 depth に平坦化される)。
   当初「Flutter では使えない」と判断したが、SUT が `MergeSemantics` で畳んでいただけで、
   容器を非マージで公開したら iOS/Android とも入れ子になった(=**フレームワークの制約ではない**)。
-  回帰は 4 SUT 共通の `#list_rows >> …`(`Projects/E2E/Scenarios/11_*.swift`・
+  回帰は 4 SUT 共通の `#list_rows >> …`(`Projects/E2E-CMP/Scenarios/11_*.swift`・
   `Projects/E2E-*/Scenarios/12_セレクタ拡張.swift`)。
   `notExist` / `countIs` も 4 フレームワーク全てで同一に動く(同実測)
 - **相対セレクタ `基準:rightSwitch`**(`right` / `left` / `above` / `below` × 型別接尾辞
@@ -1664,7 +1664,7 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
   (`SIMCTL_CHILD_FT_RESET` 等)を意図的に提供しない(ユーザー決定・2026-07-20)。
   シナリオ側は scene1 で対象タブをルートへ正規化して吸収する
 - **inapp は Compose Multiplatform(iOS)の swipe/scrollTo/press を駆動できない**
-  (2026-07-22・`Projects/E2E` で切り分け確定)。同一アプリ・同一シナリオの両エンジン差分:
+  (2026-07-22・`Projects/E2E-CMP` で切り分け確定)。同一アプリ・同一シナリオの両エンジン差分:
   - inapp: `tap`/`type` は通る。`swipe` 4方向・`scrollTo`・`press`(長押し)が**すべて無反応**
   - xcuitest: 同じシナリオが**全て成功**
 
@@ -1702,7 +1702,7 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
      `type` の 409 安全網と同じ形。**press は ref がブリッジごとに別名前空間**なので
      typeDriver 側で snapshot し直して再解決する(`pressViaTypeDriver`)
 
-  これにより **hybrid では Compose でもジェスチャが通る**(`Projects/E2E` の `ios-inapp` が
+  これにより **hybrid では Compose でもジェスチャが通る**(`Projects/E2E-CMP` の `ios-inapp` が
   18/18・37.3s。導入前は3シナリオ失敗・93.9s)。tap/type/スナップショットは高速な in-app のまま。
   409 が表面化するのは **typeDriver が無い構成**(engine=inapp 単独・xcuiPort 無し)だけで、
   そのときはメッセージが xcuitest プロファイルへ誘導する。
@@ -1783,7 +1783,7 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
 - **偽陽性検証を有効にした run(実行プロファイル `falsePositiveCheck: true`。既定 OFF)では、
   `exist`/`textIs` は既定 `requireVisible: true` のため、ソフトキーボードに覆われた要素は
   「偽陽性(occlusion)」で失敗する**。入力を伴う画面では検証対象・操作対象を入力欄より**上**に置く
-  (Projects/E2E のテキスト入力画面がこの配置。2026-07-22 実測)
+  (Projects/E2E-CMP のテキスト入力画面がこの配置。2026-07-22 実測)
 - **inapp ブリッジは注入先アプリのプロセス内常駐**なので、アプリがクラッシュ/終了すると HTTP が
   `DriverError.bridgeConnectionRefused`(「Could not connect」)になる。xcuitest/Android はブリッジが
   別プロセスのためこの切断は起きない(inapp 固有)。切断時は `InAppDriver` がホストの
