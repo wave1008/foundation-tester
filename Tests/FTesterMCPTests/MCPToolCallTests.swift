@@ -127,6 +127,96 @@ final class MCPToolCallTests: XCTestCase {
                        "back は背面化しない")
     }
 
+    /// **背面のアプリのツリーを「今の画面」として返さない**。XCUITest の snapshot は
+    /// セッションのアプリに閉じているので、別のアプリが前面に来ても同じ木を返し続ける
+    /// (実機の iPhone で症状に当たり、シミュレータで機構を確定: ステータスバーの
+    /// 「元のアプリへ」を踏んだタップで前面が替わったのに気付けなかった)
+    func testSnapshotSaysWhenTheAppIsNotInTheForeground() async throws {
+        driver.foregroundBundleID = nil   // = 対象アプリは前面に居ない
+
+        let result = try await server.call(tool: "ft_snapshot", args: [:])
+        let rendered = try XCTUnwrap(result.first?["text"] as? String)
+
+        XCTAssertTrue(rendered.hasPrefix("com.example.app is NOT in the foreground"), rendered)
+        XCTAssertTrue(rendered.contains("login_btn"), "木そのものは返すこと")
+    }
+
+    /// 前面に居るときは黙る(毎回付くと注記が読み飛ばされる)
+    func testSnapshotIsQuietWhenTheAppIsInTheForeground() async throws {
+        driver.foregroundBundleID = "com.example.app"
+
+        let result = try await server.call(tool: "ft_snapshot", args: [:])
+        let rendered = try XCTUnwrap(result.first?["text"] as? String)
+
+        XCTAssertTrue(rendered.hasPrefix("screen:"), rendered)
+    }
+
+    // MARK: - 待ち(ft_snapshot の waitFor)とデータ消去
+
+    /// **待ちはホスト側で回す**: 出るまで snapshot を撃ち直し、出た画面を1回だけ返す
+    /// (エージェントに撃ち直させると、待った回数だけ画面一覧が文脈に積まれる)
+    func testSnapshotWaitsUntilTheSelectorAppears() async throws {
+        let empty = SnapshotResponse(sessionBundleID: "com.example.app",
+                                     screen: FTRect(x: 0, y: 0, width: 390, height: 844),
+                                     elements: [], truncatedCount: 0)
+        driver.scriptedSnapshots = [empty, empty, driver.snapshotResponse]
+
+        let result = try await server.call(tool: "ft_snapshot",
+                                           args: ["waitFor": "#login_btn", "timeout": 5.0])
+        let rendered = try XCTUnwrap(result.first?["text"] as? String)
+
+        XCTAssertTrue(rendered.contains("login_btn"), rendered)
+        XCTAssertFalse(rendered.contains("did not appear"), rendered)
+        XCTAssertEqual(driver.calls.filter { $0 == "snapshot" }.count, 3, "出るまで撮り直すこと")
+    }
+
+    /// **出なくてもエラーにしない**: 今の画面は判断材料なので返す。ただし
+    /// 「出なかった」と明示する(黙って現状を返すと、出たものと読み違える)
+    func testSnapshotReportsWhenTheSelectorNeverAppears() async throws {
+        let result = try await server.call(tool: "ft_snapshot",
+                                           args: ["waitFor": "#missing", "timeout": 0.5])
+        let rendered = try XCTUnwrap(result.first?["text"] as? String)
+
+        XCTAssertTrue(rendered.contains("did not appear"), rendered)
+        XCTAssertTrue(rendered.contains("login_btn"), "現在の画面は返すこと: \(rendered)")
+    }
+
+    /// 照合は **DSL と同じセレクタエンジン**(ここで書ける式はそのままシナリオへ持ち込める)
+    func testWaitForUsesTheDSLSelectorSyntax() {
+        let screen = SnapshotResponse(
+            sessionBundleID: "com.example.app",
+            screen: FTRect(x: 0, y: 0, width: 390, height: 844),
+            elements: [
+                ElementInfo(ref: 1, type: "Button", identifier: "login_btn", label: "ログイン",
+                            value: nil, placeholder: nil, enabled: true,
+                            frame: FTRect(x: 10, y: 20, width: 100, height: 40), depth: 1),
+            ],
+            truncatedCount: 0)
+
+        XCTAssertTrue(MCPServer.matches("#login_btn", in: screen))
+        XCTAssertTrue(MCPServer.matches("ログイン", in: screen), "ラベル完全一致")
+        XCTAssertTrue(MCPServer.matches("#login_*", in: screen), "# 短縮形のワイルドカード")
+        XCTAssertTrue(MCPServer.matches("#nope||#login_btn", in: screen), "|| は和集合")
+        XCTAssertFalse(MCPServer.matches("#login", in: screen), "id は完全一致(部分一致は * で明示)")
+        XCTAssertFalse(MCPServer.matches("ログ", in: screen), "ラベルも完全一致")
+    }
+
+    /// データ消去はアプリを止めるので、**止まったことまで返す**(次に何をすべきかが決まる)
+    func testClearAppDataStopsTheAppAndSaysSo() async throws {
+        let result = try await server.call(tool: "ft_clear_app_data",
+                                           args: ["bundleId": "com.example.app"])
+        let message = try XCTUnwrap(result.first?["text"] as? String)
+
+        XCTAssertEqual(driver.calls, ["clearAppData(com.example.app)"])
+        XCTAssertTrue(message.contains("ft_launch"), message)
+    }
+
+    /// 対象が無ければ撃たない(既定のアプリを勝手に決めない)
+    func testClearAppDataRequiresABundleID() async {
+        await assertThrows("ft_clear_app_data", [:])
+        XCTAssertEqual(driver.calls, [])
+    }
+
     // MARK: - 統合したツール(ft_navigate / ft_clear_input / ft_type の pressEnter)
 
     /// **3操作を1ツールに束ねている**ので、target がドライバの正しいメソッドへ振り分くこと
@@ -365,7 +455,7 @@ final class MCPToolCallTests: XCTestCase {
         "ft_status", "ft_install", "ft_launch", "ft_snapshot", "ft_tap", "ft_type",
         "ft_swipe", "ft_press", "ft_screenshot", "ft_terminate",
         "ft_double_tap", "ft_pinch", "ft_drag",
-        "ft_navigate", "ft_clear_input",
+        "ft_navigate", "ft_clear_input", "ft_clear_app_data",
     ]
     private static let projectBackedTools: Set<String> = [
         "ft_list_scenarios", "ft_run_scenario", "ft_dry_run", "ft_list_projects", "ft_doctor",

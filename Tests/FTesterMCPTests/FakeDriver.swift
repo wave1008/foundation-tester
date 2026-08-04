@@ -65,7 +65,19 @@ final class FakeDriver: AppDriver, @unchecked Sendable {
 
     func snapshot() async throws -> SnapshotResponse {
         try record("snapshot", "snapshot")
+        // 待ちの検証用: 台本があれば呼ばれた順に返し、尽きたら最後の1枚を返し続ける
+        if !scriptedSnapshots.isEmpty {
+            let next = scriptedSnapshots.removeFirst()
+            snapshotResponse = next
+        }
         return snapshotResponse
+    }
+
+    /// snapshot が順に返す台本(空 = snapshotResponse を返し続ける)
+    var scriptedSnapshots: [SnapshotResponse] = []
+
+    func clearAppData(bundleID: String) async throws {
+        try record("clearAppData(\(bundleID))", "clearAppData")
     }
 
     func tap(ref: Int) async throws {

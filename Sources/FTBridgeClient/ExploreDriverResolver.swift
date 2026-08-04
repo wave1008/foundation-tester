@@ -61,7 +61,10 @@ public enum ExploreDriverResolver {
         let status = try? await BridgeClient(port: endpoint.port, timeoutSeconds: 3,
                                              host: endpoint.host).status(timeout: 3)
         guard status?.engine == "inapp" else {
-            return Resolved(driver: BridgeClient(port: endpoint.port, host: endpoint.host),
+            // **XCUITest はセッション制**(ランナー再起動で全操作が 409)。実行側と同じ回復を
+            // 与えておく = 探索中にランナーが落ちても次の操作から戻れる
+            return Resolved(driver: SessionRecoveryDriver(
+                base: BridgeClient(port: endpoint.port, host: endpoint.host)),
                             engine: status?.engine ?? "xcuitest")
         }
         let udid = (status?.device).flatMap(bootedSimulatorUDID)
@@ -79,7 +82,8 @@ public enum ExploreDriverResolver {
             logger("port \(preferred) is an in-app bridge, but this device cannot be driven through it"
                 + " (\(udid == nil ? "the simulator could not be identified" : "the bridge did not report its app"))"
                 + " — using the XCUITest bridge (port \(port))")
-            return Resolved(driver: BridgeClient(port: port, host: resolution.endpoint.host),
+            return Resolved(driver: SessionRecoveryDriver(
+                base: BridgeClient(port: port, host: resolution.endpoint.host)),
                             engine: "xcuitest")
         case .inappOnly(let port):
             guard let repoRoot, let udid else {

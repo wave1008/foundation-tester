@@ -105,7 +105,7 @@ public enum BridgeAPI {
     /// 間隔と指の距離を自分で決められるので、XCTest では成立しない組み合わせ(Compose の
     /// ダブルタップ)が通る。旧 dylib はルートを持たず 404 → ホストが XCUITest へ回すため、
     /// **入れ替えないと直った経路が使われないまま**になる
-    public static let bridgeProtocolVersion = 50
+    public static let bridgeProtocolVersion = 51
 
     /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
     /// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java の

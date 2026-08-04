@@ -71,11 +71,21 @@ public final class SessionRecoveryDriver: AppDriver {
     }
 
     /// ref を使わない操作向け: 409 なら1回だけ回復+再試行する。
+    /// **張り直す相手が分からないとき(まだ launch していない)は、素の 409 を返さず
+    /// 何をすべきかを返す** —— ブリッジ側の 409 本文は「ランナーが再起動したかもしれない」で、
+    /// 実際には「まだアプリを起動していない」ときにも出る。MCP で最初に ft_snapshot を
+    /// 撃つとこれを踏むので(iPhone 実機で確認)、原因の取り違えを防ぐ
     private func withRecovery<T>(_ operation: () async throws -> T) async throws -> T {
         do {
             return try await operation()
         } catch {
-            guard isSessionLost(error), lastBundleID != nil else { throw error }
+            guard isSessionLost(error) else { throw error }
+            guard lastBundleID != nil else {
+                throw DriverError.badResponse(status: 409, body:
+                    "the XCUITest runner has no session: the app has not been launched from this"
+                    + " session yet (or it was terminated)."
+                    + " Launch it first (DSL: launchApp / MCP: ft_launch)")
+            }
             await recover()
             return try await operation()
         }

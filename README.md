@@ -449,16 +449,26 @@ Android: `ftester-androidstream`)経由でほぼリアルタイムに更新す�
 |---|---|
 | `ft_status` / `ft_doctor` | 接続確認 / FM 可用性 |
 | `ft_launch` / `ft_terminate` | アプリ起動・終了 |
-| `ft_snapshot` | 画面要素一覧(set-of-mark 圧縮形式)。撮った `#id` は `<プロジェクト>/.ftester/selector-inventory.json` に貯まり、`ft_dry_run` の綴り誤り照合に使われる |
+| `ft_snapshot` | 画面要素一覧(set-of-mark 圧縮形式)。**`waitFor` を渡すと出るまでホスト側で待つ**(セレクタ記法は DSL と同じ。既定 5 秒)。**対象アプリが前面に居なければ先頭で警告する**(XCUITest の木はセッションのアプリに閉じているので、別アプリが前面でも同じ木を返してしまう。**iOS 実機では OS が前面状態を正しく申告しないため警告は出ない**)。撮った `#id` は `<プロジェクト>/.ftester/selector-inventory.json` に貯まり、`ft_dry_run` の綴り誤り照合に使われる |
 | `ft_tap` / `ft_type` / `ft_swipe` / `ft_press` | 画面操作(`ft_type` は `pressEnter: true` で入力後に Enter/IME アクションまで撃つ。`text` を省けば Enter だけ = iOS でソフトキーボードを閉じる手段) |
 | `ft_navigate` | 戻る / ホーム / タスク切替(3操作を1ツールに束ねている) |
 | `ft_clear_input` | 入力欄を空にする(`ft_type` は追記なので、置き換えるならまず消す) |
+| `ft_clear_app_data` | アプリのデータと権限を消す(iOS はシミュレータのみ)。**シナリオは `clearAppData()` から始まる**ので、探索も同じ初期状態から行う。アプリは止まるので後で `ft_launch` |
 | `ft_dsl_commands` | **DSL コマンドの索引**(名前と署名)。シナリオを書く前に引いて、存在しないコマンドを書かないようにする。デバイスに触らない |
 | `ft_double_tap` / `ft_pinch` / `ft_drag` | マップ・キャンバス系の操作(ダブルタップ / ズーム / **斜めを含む任意方向のドラッグ**)。iOS は Compose のダブルタップと Flutter のピンチがエンジン依存なので、**`profile` を渡して実行と同じエンジンで試す**(docs/commands.md の表) |
 | `ft_screenshot` | スクリーンショット(画像を返す — エージェントの視覚検証用) |
 | `ft_list_scenarios` / `ft_run_scenario` | シナリオ一覧 / 決定的実行(`project`・`profile`・`heal` オプション付き。自動ビルド込みで、コンパイルエラーはそのまま返る=エージェントが直せる) |
 | `ft_dry_run` | **デバイス不要**の検証(数秒)。セレクタの構文誤り・到達しない scene・アサーション0の expectation・**`ft_snapshot` で撮った画面に実在しない `#id`** を実機の前に落とす |
 | `ft_list_projects` | テストプロジェクトと実行プロファイルの一覧 |
+
+**実機(iPhone / Android 端末)**: 画面操作系(`ft_tap` / `ft_type` / `ft_swipe` / `ft_press` /
+`ft_double_tap` / `ft_pinch` / `ft_drag` / `ft_navigate` / `ft_snapshot` / `ft_screenshot`)は
+そのまま使える。**シミュレータ/エミュレータ専用の操作は自動で振り分ける**:
+`ft_install` は iOS 実機なら `devicectl`(シミュレータは `simctl`)、`ft_clear_app_data` は
+iOS 実機では 501 で断る(devicectl に同等手段が無い。Android は実機でも `pm clear` が効く)。
+in-app エンジンは注入できないので実機では選ばれない。Android のエミュレータ gRPC 制御も
+実機では自動的に adb 経路へ落ちる。**`profile` を渡すと端末の UDID まで分かる**ので、
+渡しておくのが確実(渡さないときはブリッジが名乗るデバイス名から引き当てる)。
 
 **iOS のエンジン**: `profile` を渡せば実行プロファイルのエンジンに追従する。渡さないときは
 **接続先ポートのブリッジに従う** —— in-app ブリッジが動いていればそれを主にした hybrid を組み
