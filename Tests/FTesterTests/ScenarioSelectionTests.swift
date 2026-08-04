@@ -78,7 +78,7 @@ final class ScenarioSelectionTests: XCTestCase {
     private func makeScenariosDir(_ layout: [String: [String]]) throws -> URL {
         tempDir = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("FTesterTests-\(UUID().uuidString)")
-        let scenariosDir = tempDir.appendingPathComponent("Scenarios")
+        let scenariosDir = tempDir.appendingPathComponent("scenarios")
         for (folder, classNames) in layout {
             let dir = folder.isEmpty ? scenariosDir : scenariosDir.appendingPathComponent(folder)
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

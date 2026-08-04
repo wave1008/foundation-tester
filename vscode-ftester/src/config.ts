@@ -15,7 +15,7 @@ export type UpdateCheckMode = "auto" | "off";
 export interface FtesterConfig {
   /** ワークスペースルート基準の絶対パスに解決済みの CLI バイナリパス。 */
   binaryPath: string;
-  /** 空文字列の場合は自動判定(Projects/ 直下)に委ねる。 */
+  /** 空文字列の場合は自動判定(TestProjects/ 直下)に委ねる。 */
   project: string;
   profile: string;
   platform: Platform;
@@ -224,9 +224,9 @@ export function resolveAdb(): string | undefined {
   return undefined;
 }
 
-/** Projects/ 直下にあるテストプロジェクト名(ディレクトリ名)の一覧を返す。 */
+/** TestProjects/ 直下にあるテストプロジェクト名(ディレクトリ名)の一覧を返す。 */
 export function listProjectCandidates(workspaceRoot: string): string[] {
-  const projectsDir = path.join(workspaceRoot, "Projects");
+  const projectsDir = path.join(workspaceRoot, "TestProjects");
   try {
     return fs
       .readdirSync(projectsDir, { withFileTypes: true })
@@ -238,9 +238,9 @@ export function listProjectCandidates(workspaceRoot: string): string[] {
   }
 }
 
-/** Projects/<project>/profiles/runs/ にある実行プロファイル名(拡張子なし)の一覧を返す。 */
+/** TestProjects/<project>/profiles/runs/ にある実行プロファイル名(拡張子なし)の一覧を返す。 */
 export function listRunProfileNames(workspaceRoot: string, project: string): string[] {
-  const runsDir = path.join(workspaceRoot, "Projects", project, "profiles", "runs");
+  const runsDir = path.join(workspaceRoot, "TestProjects", project, "profiles", "runs");
   try {
     return fs
       .readdirSync(runsDir, { withFileTypes: true })
@@ -252,9 +252,9 @@ export function listRunProfileNames(workspaceRoot: string, project: string): str
   }
 }
 
-/** Projects/<project>/profiles/apps/ にあるアプリプロファイル名(拡張子なし)の一覧を返す。 */
+/** TestProjects/<project>/profiles/apps/ にあるアプリプロファイル名(拡張子なし)の一覧を返す。 */
 export function listAppProfileNames(workspaceRoot: string, project: string): string[] {
-  const appsDir = path.join(workspaceRoot, "Projects", project, "profiles", "apps");
+  const appsDir = path.join(workspaceRoot, "TestProjects", project, "profiles", "apps");
   try {
     return fs
       .readdirSync(appsDir, { withFileTypes: true })
@@ -267,7 +267,7 @@ export function listAppProfileNames(workspaceRoot: string, project: string): str
 }
 
 /**
- * Projects/<project>/profiles/apps/<name>.json から platform 向けの起動対象を読む。
+ * TestProjects/<project>/profiles/apps/<name>.json から platform 向けの起動対象を読む。
  * app/appPath は platform セクションのみ参照する(RunProfile.swift AppProfileSection.merging:
  * common へのフォールバックは無い。common.app は非推奨)。bundle が無ければ null。
  */
@@ -277,7 +277,7 @@ export function readAppProfileTarget(
   name: string,
   platform: Platform,
 ): { bundle: string; appPath: string | null } | null {
-  const profilePath = path.join(workspaceRoot, "Projects", project, "profiles", "apps", `${name}.json`);
+  const profilePath = path.join(workspaceRoot, "TestProjects", project, "profiles", "apps", `${name}.json`);
   try {
     const raw = fs.readFileSync(profilePath, "utf8");
     const parsed: unknown = JSON.parse(raw);
@@ -295,11 +295,11 @@ export function readAppProfileTarget(
     let appPath: string | null = null;
     if (typeof rawAppPath === "string") {
       // ベースディレクトリ・~展開の契約: RunProfile.swift:492 resolvePath(_, base: project.rootURL)
-      // (rootURL = Projects/<project>/)。
+      // (rootURL = TestProjects/<project>/)。
       const expanded = rawAppPath.startsWith("~") ? path.join(os.homedir(), rawAppPath.slice(1)) : rawAppPath;
       appPath = path.isAbsolute(expanded)
         ? expanded
-        : path.resolve(path.join(workspaceRoot, "Projects", project), expanded);
+        : path.resolve(path.join(workspaceRoot, "TestProjects", project), expanded);
     }
     return { bundle: app, appPath };
   } catch {
@@ -322,7 +322,7 @@ export function readAppProfileDetail(
   name: string,
   platform: Platform,
 ): AppProfileDetail | null {
-  const profilePath = path.join(workspaceRoot, "Projects", project, "profiles", "apps", `${name}.json`);
+  const profilePath = path.join(workspaceRoot, "TestProjects", project, "profiles", "apps", `${name}.json`);
   try {
     const parsed: unknown = JSON.parse(fs.readFileSync(profilePath, "utf8"));
     if (typeof parsed !== "object" || parsed === null) {
@@ -339,11 +339,11 @@ export function readAppProfileDetail(
     const rawAppPath = str(section?.appPath);
     let appPath: string | null = null;
     if (rawAppPath) {
-      // ベースディレクトリ・~展開の契約は readAppProfileTarget と同一(RunProfile.swift:492 resolvePath, base=Projects/<project>/)。
+      // ベースディレクトリ・~展開の契約は readAppProfileTarget と同一(RunProfile.swift:492 resolvePath, base=TestProjects/<project>/)。
       const expanded = rawAppPath.startsWith("~") ? path.join(os.homedir(), rawAppPath.slice(1)) : rawAppPath;
       appPath = path.isAbsolute(expanded)
         ? expanded
-        : path.resolve(path.join(workspaceRoot, "Projects", project), expanded);
+        : path.resolve(path.join(workspaceRoot, "TestProjects", project), expanded);
     }
     return { appName, bundle, appPath };
   } catch {
@@ -359,7 +359,7 @@ export function readAppProfileDetail(
  * 無い場合に限って埋める。0個・複数・読み取り/解析失敗は空配列。
  */
 export function readMachineDeviceNames(workspaceRoot: string, project: string): string[] {
-  const machinesDir = path.join(workspaceRoot, "Projects", project, "profiles", "machines");
+  const machinesDir = path.join(workspaceRoot, "TestProjects", project, "profiles", "machines");
   let entries: fs.Dirent[];
   try {
     entries = fs
@@ -490,7 +490,7 @@ function toMachineDeviceEntry(value: unknown, platform: Platform): MachineDevice
  * と異なり複数ファイルを許容する(UI表示用のため「1マシン1ファイル」制約は課さない)。
  */
 export function listMachineProfiles(workspaceRoot: string, project: string): MachineProfileSummary[] {
-  const machinesDir = path.join(workspaceRoot, "Projects", project, "profiles", "machines");
+  const machinesDir = path.join(workspaceRoot, "TestProjects", project, "profiles", "machines");
   let entries: fs.Dirent[];
   try {
     entries = fs
@@ -593,7 +593,7 @@ export type ProjectResolution =
   | { kind: "ambiguous"; candidates: string[] };
 
 /**
- * ftester.project が設定されていればそれを優先。空なら Projects/ 直下から自動判定
+ * ftester.project が設定されていればそれを優先。空なら TestProjects/ 直下から自動判定
  * (1つだけなら採用、0/複数は呼び出し側で誘導が必要)。
  */
 export function resolveProjectName(

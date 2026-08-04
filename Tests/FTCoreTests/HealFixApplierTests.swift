@@ -28,7 +28,7 @@ final class HealFixApplierTests: XCTestCase {
 
     private func fix(line: Int, old: String, new: String,
                      newComment: String? = nil, scenarioID: String = "ログインテスト.S0010",
-                     file: String = "Scenarios/Login.swift") -> HealFixInput {
+                     file: String = "scenarios/Login.swift") -> HealFixInput {
         HealFixInput(scenarioID: scenarioID, file: file, line: line,
                     oldSelector: old, newSelector: new, newComment: newComment)
     }
@@ -104,14 +104,14 @@ final class HealFixApplierTests: XCTestCase {
 
     func testRemovingAppliedKeysFromCache() {
         let dict: [String: Any] = [
-            "ログインテスト.S0010|Scenarios/Login.swift:14|#old_login_btn": ["newSelector": "x"],
+            "ログインテスト.S0010|scenarios/Login.swift:14|#old_login_btn": ["newSelector": "x"],
             "他のキー": ["newSelector": "y"],
         ]
         let result = HealFixApplier.removingAppliedKeys(
-            ["ログインテスト.S0010|Scenarios/Login.swift:14|#old_login_btn"], from: dict)
+            ["ログインテスト.S0010|scenarios/Login.swift:14|#old_login_btn"], from: dict)
 
         XCTAssertTrue(result.changed)
-        XCTAssertNil(result.dict["ログインテスト.S0010|Scenarios/Login.swift:14|#old_login_btn"])
+        XCTAssertNil(result.dict["ログインテスト.S0010|scenarios/Login.swift:14|#old_login_btn"])
         XCTAssertNotNil(result.dict["他のキー"])
     }
 

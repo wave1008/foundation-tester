@@ -143,7 +143,7 @@ export function deactivate(): void {
 
 function hasProjectsDirectory(workspaceRoot: string): boolean {
   try {
-    return fs.statSync(path.join(workspaceRoot, "Projects")).isDirectory();
+    return fs.statSync(path.join(workspaceRoot, "TestProjects")).isDirectory();
   } catch {
     return false;
   }

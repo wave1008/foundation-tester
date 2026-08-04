@@ -1,4 +1,4 @@
-// ftester-scenarios(Scenarios/ ターゲット)の CLI 実装。
+// ftester-scenarios(scenarios/ ターゲット)の CLI 実装。
 //   list [--json]                       … シナリオ一覧
 //   run --scenario <クラス名.メソッド名>  … 1 シナリオを実行(1 プロセス = 1 シナリオ)
 // --json 指定時は NDJSON イベント(FTCore/ScenarioEvent)を stdout に流す。
@@ -56,7 +56,7 @@ struct ListScenarios: AsyncParsableCommand {
             print(String(data: data, encoding: .utf8)!)
         } else {
             guard !classes.isEmpty else {
-                print("No scenarios (add a @TestClass under the project Scenarios/)")
+                print("No scenarios (add a @TestClass under the project scenarios/)")
                 return
             }
             for testClass in classes {

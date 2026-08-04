@@ -100,8 +100,8 @@ struct InitCommand: AsyncParsableCommand {
             }
             print("✅ Created the consumer package: \(packageName)")
             print("   Dependency: \(dependencyLine)")
-            print("   Project:    Projects/\(projectName)/ (add .swift files with @TestClass under Scenarios/)")
-            print("   App config: point appPath in Projects/\(projectName)/profiles/apps/ at your own build")
+            print("   Project:    TestProjects/\(projectName)/ (add .swift files with @TestClass under scenarios/)")
+            print("   App config: point appPath in TestProjects/\(projectName)/profiles/apps/ at your own build")
             print("   Build:      swift build --product \(project.productName)")
             print("   Run:        ftester run --project \(projectName) --profile ios")
             if wroteVSCodeSettings {

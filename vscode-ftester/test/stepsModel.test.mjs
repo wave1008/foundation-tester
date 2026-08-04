@@ -16,7 +16,7 @@ function step(overrides) {
     command: "tap \"#btn\"",
     comment: null,
     generatedComment: null,
-    file: "Projects/P/Scenarios/S.swift",
+    file: "TestProjects/P/scenarios/S.swift",
     line: 10,
     ...overrides,
   };

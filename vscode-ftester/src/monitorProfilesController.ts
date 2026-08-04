@@ -76,7 +76,7 @@ export class MonitorProfilesController {
 
   constructor(private readonly deps: MonitorPanelDeps) {
     this.profileFileWatcher = vscode.workspace.createFileSystemWatcher(
-      new vscode.RelativePattern(deps.workspaceRoot, "Projects/*/profiles/runs/*.json"),
+      new vscode.RelativePattern(deps.workspaceRoot, "TestProjects/*/profiles/runs/*.json"),
     );
     this.profileFileWatcher.onDidCreate(() => this.postProfileInfo());
     this.profileFileWatcher.onDidDelete(() => this.postProfileInfo());
@@ -84,13 +84,13 @@ export class MonitorProfilesController {
       this.deps.post({ type: "runProfileFileChanged", name: path.basename(uri.fsPath, ".json") });
     });
     this.machineFileWatcher = vscode.workspace.createFileSystemWatcher(
-      new vscode.RelativePattern(deps.workspaceRoot, "Projects/*/profiles/machines/*.json"),
+      new vscode.RelativePattern(deps.workspaceRoot, "TestProjects/*/profiles/machines/*.json"),
     );
     this.machineFileWatcher.onDidCreate(() => this.postMachineProfileInfo());
     this.machineFileWatcher.onDidDelete(() => this.postMachineProfileInfo());
     this.machineFileWatcher.onDidChange(() => this.postMachineProfileInfo());
     this.appsFileWatcher = vscode.workspace.createFileSystemWatcher(
-      new vscode.RelativePattern(deps.workspaceRoot, "Projects/*/profiles/apps/*.json"),
+      new vscode.RelativePattern(deps.workspaceRoot, "TestProjects/*/profiles/apps/*.json"),
     );
     this.appsFileWatcher.onDidCreate(() => this.postProfileInfo());
     this.appsFileWatcher.onDidDelete(() => this.postProfileInfo());
@@ -283,9 +283,9 @@ export class MonitorProfilesController {
   // ftester.profile 設定(selectProfile)には触れない(名前変更で対象を指していた場合の追随を除く。
   // handleProfileRename 参照)。
 
-  /** Projects/<project>/profiles/runs ディレクトリの絶対パス。 */
+  /** TestProjects/<project>/profiles/runs ディレクトリの絶対パス。 */
   private runsDir(project: string): string {
-    return path.join(this.deps.workspaceRoot, "Projects", project, "profiles", "runs");
+    return path.join(this.deps.workspaceRoot, "TestProjects", project, "profiles", "runs");
   }
 
   /** 対象プロジェクトが解決できない場合は警告して undefined を返す(呼び出し側はここで中断)。 */
@@ -478,9 +478,9 @@ export class MonitorProfilesController {
   // ftester.* から直接参照されないため selectProfile 相当の追随は無い(壊れた参照の検出は
   // CLI 側の validate-profile に委ねる)。
 
-  /** Projects/<project>/profiles/apps ディレクトリの絶対パス。 */
+  /** TestProjects/<project>/profiles/apps ディレクトリの絶対パス。 */
   private appsDir(project: string): string {
-    return path.join(this.deps.workspaceRoot, "Projects", project, "profiles", "apps");
+    return path.join(this.deps.workspaceRoot, "TestProjects", project, "profiles", "apps");
   }
 
   /** 「+」ボタン: 新しいアプリプロファイル名を入力させ、テンプレート内容で作成して編集対象に選択する。 */
@@ -645,9 +645,9 @@ export class MonitorProfilesController {
     }
   }
 
-  /** Projects/<project>/profiles/machines ディレクトリの絶対パス。 */
+  /** TestProjects/<project>/profiles/machines ディレクトリの絶対パス。 */
   private machinesDir(project: string): string {
-    return path.join(this.deps.workspaceRoot, "Projects", project, "profiles", "machines");
+    return path.join(this.deps.workspaceRoot, "TestProjects", project, "profiles", "machines");
   }
 
   // ---- マシンプロファイル自体の追加/削除/名前変更(マシン名横の [+][−][✏] ボタン) -----------------

@@ -4,10 +4,10 @@
 #
 # SUT は UI フレームワークごとに4つある(どれも画面・#id・ラベルは同じ契約。
 # 唯一の正は E2EAppCMP/docs/ui-contract.md、各 SUT の差分は <SUT>/docs/ui-contract.md):
-#   cmp            E2EAppCMP/      Compose Multiplatform   → Projects/E2E-CMP     (ios + android)
-#   ios-native     E2EAppIOS/      SwiftUI + UIKit         → Projects/E2E-iOS     (ios のみ)
-#   android-native E2EAppAndroid/  View/XML + 一部 Compose → Projects/E2E-Android (android のみ)
-#   flutter        E2EAppFlutter/  Flutter                 → Projects/E2E-Flutter (ios + android)
+#   cmp            E2EAppCMP/      Compose Multiplatform   → TestProjects/E2E-CMP     (ios + android)
+#   ios-native     E2EAppIOS/      SwiftUI + UIKit         → TestProjects/E2E-iOS     (ios のみ)
+#   android-native E2EAppAndroid/  View/XML + 一部 Compose → TestProjects/E2E-Android (android のみ)
+#   flutter        E2EAppFlutter/  Flutter                 → TestProjects/E2E-Flutter (ios + android)
 #
 # 使い方:
 #   Scripts/e2e.sh                 # 全 SUT・全プロファイル(鮮度を見て必要なら SUT を再ビルド)
@@ -77,10 +77,10 @@ run_profile() {  # $1 = プロジェクト名, $2 = プロファイル名
   local profile="$2"
   local tmp_profile_path=""
   if [ "$RECORD" = 1 ]; then
-    local src_path="$ROOT/Projects/$1/profiles/runs/$2.json"
+    local src_path="$ROOT/TestProjects/$1/profiles/runs/$2.json"
     if [ -f "$src_path" ]; then
       profile="$2-record-tmp"
-      tmp_profile_path="$ROOT/Projects/$1/profiles/runs/$profile.json"
+      tmp_profile_path="$ROOT/TestProjects/$1/profiles/runs/$profile.json"
       # 元のプロファイルは書き換えず、record:true を足した一時コピーを作る
       jq '. + {record: true}' "$src_path" > "$tmp_profile_path"
     else
@@ -152,6 +152,6 @@ echo ""
 if [ "$FAILED" = 0 ]; then
   echo "✅ E2E 全て成功"
 else
-  echo "❌ E2E に失敗があります(レポート: Projects/*/reports/)"
+  echo "❌ E2E に失敗があります(レポート: TestProjects/*/reports/)"
 fi
 exit "$FAILED"

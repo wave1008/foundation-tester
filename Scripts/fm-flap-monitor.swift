@@ -3,7 +3,7 @@
 // 死ぬか」を記録する(2026-07-23 に SensitiveContentAnalysisML error 15 の生→死→生→死を
 // 同日中に観測したが、遷移時刻の記録が無く報告できなかった)。
 //
-// text と vision(画像添付)を**別々に**プローブする理由: occlusion 偽陽性(Projects/E2E-Flutter/
+// text と vision(画像添付)を**別々に**プローブする理由: occlusion 偽陽性(TestProjects/E2E-Flutter/
 // README.md の既知事象)の有力仮説が「SCA 劣化の過程で画像添付だけが先に壊れる」であり、
 // vision だけ先に死ぬ観測が取れれば2つの事象が同じ根で繋がる。
 //

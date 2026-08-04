@@ -16,7 +16,7 @@ struct ApiCreateDeviceCommand: AsyncParsableCommand {
             + " (NDJSON: log* -> finished on stdout; diagnostics on stderr only;"
             + " exit code 1 when ok:false)")
 
-    @Option(help: "Test project name (defaults to the only one in Projects/, or the default project)")
+    @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
     var project: String?
 
     @Option(help: "Machine name (defaults to FT_MACHINE, the registered name, or the only entry in machines/)")

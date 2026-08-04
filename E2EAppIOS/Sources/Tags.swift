@@ -1,7 +1,7 @@
 import Foundation
 
 // accessibilityIdentifier の唯一の正。値は docs/ui-contract.md の表と byte 一致させる。
-// シナリオ側(Projects/E2E-iOS/Scenarios)が "#<値>" で参照するため、リネームは契約変更。
+// シナリオ側(TestProjects/E2E-iOS/scenarios)が "#<値>" で参照するため、リネームは契約変更。
 // Compose 版(E2EAppCMP/composeApp/.../Tags.kt)と id/ラベルを共通にしてあり、
 // 同じシナリオを両 SUT に当てられる(型セレクタだけが SUT ごとに異なる)。
 enum Tags {

@@ -1,12 +1,12 @@
 // TestProject.swift
-// テストプロジェクト = Projects/<name>/ 配下のシナリオ+プロファイル+レポートの器。
-// SPM の executableTarget "ftester-scenarios-<name>"(path: Projects/<name>/Scenarios)と 1:1 対応する。
+// テストプロジェクト = TestProjects/<name>/ 配下のシナリオ+プロファイル+レポートの器。
+// SPM の executableTarget "ftester-scenarios-<name>"(path: TestProjects/<name>/scenarios)と 1:1 対応する。
 
 import Foundation
 
 public struct TestProject: Sendable, Hashable, Identifiable {
     public let name: String
-    /// Projects/<name>/ の絶対 URL
+    /// TestProjects/<name>/ の絶対 URL
     public let rootURL: URL
 
     public var id: String { name }
@@ -18,7 +18,16 @@ public struct TestProject: Sendable, Hashable, Identifiable {
 
     public var productName: String { "ftester-scenarios-\(name)" }
 
-    public var scenariosDir: URL { rootURL.appendingPathComponent("Scenarios") }
+    /// **小文字 `scenarios/` が正**(2026-08-05 に `Scenarios/` から統一。他の器 —— profiles /
+    /// reports / results / docs —— と揃える)。**旧名も受ける**: 既存の受け手のプロジェクトは
+    /// `Scenarios/` のままで、macOS は大小同一視するので実害が出ないが、
+    /// **大小を区別するボリュームでは解決できなくなる**ため明示的に見に行く
+    public var scenariosDir: URL {
+        let lower = rootURL.appendingPathComponent("scenarios")
+        guard !FileManager.default.fileExists(atPath: lower.path) else { return lower }
+        let legacy = rootURL.appendingPathComponent("Scenarios")
+        return FileManager.default.fileExists(atPath: legacy.path) ? legacy : lower
+    }
     public var generatedDir: URL { scenariosDir.appendingPathComponent("Generated") }
     public var disabledDir: URL { scenariosDir.appendingPathComponent("_disabled") }
     public var profilesDir: URL { rootURL.appendingPathComponent("profiles") }
@@ -43,7 +52,7 @@ public enum ProjectStoreError: Error, LocalizedError {
         switch self {
         case .notFound(let name, let available):
             let hint = available.isEmpty
-                ? "(Projects/ is empty — create one with ftester project create)"
+                ? "(TestProjects/ is empty — create one with ftester project create)"
                 : "(available: \(available.joined(separator: ", ")))"
             return "project not found: \(name) \(hint)"
         case .noProjects(let dir):
@@ -61,10 +70,17 @@ public enum ProjectStoreError: Error, LocalizedError {
 
 public enum ProjectStore {
     public static func projectsDir(repoRoot: URL) -> URL {
-        repoRoot.appendingPathComponent("Projects")
+        {
+            let current = repoRoot.appendingPathComponent("TestProjects")
+            guard !FileManager.default.fileExists(atPath: current.path) else { return current }
+            // **旧名 `TestProjects/` も受ける**(2026-08-05 に改名。既存の受け手のリポジトリは
+            // 旧名のままで、こちらは大小が違うので macOS でも解決できない)
+            let legacy = repoRoot.appendingPathComponent("Projects")
+            return FileManager.default.fileExists(atPath: legacy.path) ? legacy : current
+        }()
     }
 
-    /// Projects/ 直下のディレクトリを列挙(名前順)
+    /// TestProjects/ 直下のディレクトリを列挙(名前順)
     public static func all(repoRoot: URL) -> [TestProject] {
         let dir = projectsDir(repoRoot: repoRoot)
         guard let entries = try? FileManager.default.contentsOfDirectory(

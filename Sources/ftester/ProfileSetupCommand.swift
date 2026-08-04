@@ -15,7 +15,7 @@ struct ProfileSetupCommand: AsyncParsableCommand {
         commandName: "setup",
         abstract: "Create machine, app and run profiles consistently (idempotent)")
 
-    @Option(help: "Test project name (defaults to the only one in Projects/, or the default project)")
+    @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
     var project: String?
 
     @Option(help: "Target platform: ios / android / both")

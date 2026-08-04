@@ -91,7 +91,7 @@ function normalizePath(value: string): string {
 }
 
 /**
- * `Projects/<project>/profiles/{apps,machines,runs}/<name>.json` の形に一致する場合だけ
+ * `TestProjects/<project>/profiles/{apps,machines,runs}/<name>.json` の形に一致する場合だけ
  * project/kind/name を抽出する(--project/--kind/--name 絞り込み呼び出しの引数を組み立てるため)。
  * filePath は workspaceRoot 配下の絶対パス・相対パスのどちらでも受け付ける。
  */
@@ -104,13 +104,13 @@ export function parseProfileFilePath(
   const relative = target === root || target.startsWith(`${root}/`) ? target.slice(root.length + 1) : target;
 
   const segments = relative.split("/").filter((segment) => segment.length > 0);
-  // ["Projects", "<project>", "profiles", "<kindディレクトリ>", "<name>.json"] の5要素のみ許容する。
+  // ["TestProjects", "<project>", "profiles", "<kindディレクトリ>", "<name>.json"] の5要素のみ許容する。
   if (segments.length !== 5) {
     return undefined;
   }
   const [projectsDir, project, profilesDir, kindDir, fileName] = segments;
   if (
-    projectsDir !== "Projects" ||
+    projectsDir !== "TestProjects" ||
     profilesDir !== "profiles" ||
     project === undefined ||
     project.length === 0 ||

@@ -49,12 +49,12 @@ README.md「Swift DSL」節。ここはエージェントが順に実行する�
   `swift build --product ftester-scenarios-<proj>`)。緑になるまで次へ進まない。
   **緑になったら実行の前に dry-run**(ステップ4.5)。デバイスを1台も使わずに「コンパイルは通るが
   何も検証していない」を落とせるので、デバイスで1回試してから気付くより安い。
-- Projects/ 配下のシナリオはユーザー資産。**既存 .swift を勝手に上書き・整形しない**。追記か新規ファイル。
+- TestProjects/ 配下のシナリオはユーザー資産。**既存 .swift を勝手に上書き・整形しない**。追記か新規ファイル。
 
 ## 前提の確定(最初に1回)
 
-- **プロジェクトと WORK_DIR**: シナリオは `WORK_DIR/Projects/<プロジェクト>/Scenarios/` に住む。
-  Projects/ が1つならそれ。複数なら🧑どれかを確認する。
+- **プロジェクトと WORK_DIR**: シナリオは `WORK_DIR/TestProjects/<プロジェクト>/scenarios/` に住む。
+  TestProjects/ が1つならそれ。複数なら🧑どれかを確認する。
 - **ftester CLI の在り処**: clone 構成は `swift run ftester ...`、外部パッケージ構成は
   `../foundation-tester/.build/debug/ftester ...`(判定は `Sources/FTScenarioRunner/` の有無)。
   以降 `ftester` はこれを指す。MCP(`ft_*`)が使えるならそちらを優先。
@@ -66,7 +66,7 @@ README.md「Swift DSL」節。ここはエージェントが順に実行する�
 
 **bundle ID を推測・探索で決めない。プロジェクトに登録済みのアプリプロファイルから選ばせる。**
 
-1. `Projects/<proj>/profiles/apps/*.json` を列挙する(または `ftester profile list`)。各ファイルの
+1. `TestProjects/<proj>/profiles/apps/*.json` を列挙する(または `ftester profile list`)。各ファイルの
    `common.appName`(表示名)と `ios.app` / `android.app`(bundle ID・パッケージ名)を読む。
 2. 🧑 **どのアプリプロファイルを対象にするかをユーザーに確認**する(AskUserQuestion。候補が
    1つでも確認する)。選ばれたプロファイルの `app` を @TestClass の `app:` に使う。
@@ -110,7 +110,7 @@ README.md「Swift DSL」節。ここはエージェントが順に実行する�
 
 ### 3. シナリオ .swift を書く
 
-`Projects/<proj>/Scenarios/<日本語可のファイル名>.swift` に、下記「DSL リファレンス」に従って書く。
+`TestProjects/<proj>/scenarios/<日本語可のファイル名>.swift` に、下記「DSL リファレンス」に従って書く。
 命名: クラス名は日本語可、@Test メソッドは `S0010`, `S0020`, …(10刻み)。@Test の説明は「〜できる」。
 
 ```swift
@@ -201,7 +201,7 @@ testbase(SC/TC 等の仕様書)を根拠にシナリオを書く場合、実行�
   期待のまま RED(失敗)**にして追跡する(緑で隠すと退行検知にならない)。後始末は `tearDown` に置く
   (失敗でシナリオは中断するが、tearDown だけは失敗後でも実行されるため残留を防げる)。
 - **バグは1件1ファイルで専用フォルダに起票**する(詳細=個別ファイル)。置き場所:
-  `Projects/<proj>/issues/defects/`。命名・テンプレート・凡例は同フォルダ `README.md`(`D-<連番2桁>-<slug>.md`)。
+  `TestProjects/<proj>/issues/defects/`。命名・テンプレート・凡例は同フォルダ `README.md`(`D-<連番2桁>-<slug>.md`)。
   **状態の一覧は同フォルダ `INDEX.md`(対応状況ダッシュボード)**に集約し、起票・状態変更時は個別ファイルと
   INDEX.md の両方(集計含む)を更新する。
   各ファイルに: 対象 / 対応 SC-TC / 重大度 / 状態 / 検出元シナリオ / 再現手順 / 期待 / 実際 / 証拠 / 仕様裁定案。
@@ -351,6 +351,6 @@ testbase(SC/TC 等の仕様書)を根拠にシナリオを書く場合、実行�
 
 ### 命名・配置
 
-- ファイル: `Projects/<proj>/Scenarios/<日本語可>.swift`(`_Main.swift` は触らない = エントリポイント)。
+- ファイル: `TestProjects/<proj>/scenarios/<日本語可>.swift`(`_Main.swift` は触らない = エントリポイント)。
 - クラス名は日本語可。@Test メソッド名 `S0010`/`S0020`/…(10刻み)。実行 ID は `クラス名.メソッド名`。
-- 深い階層に置いてよい(`Scenarios/Demo/…`)。objc 走査で自動発見される。
+- 深い階層に置いてよい(`scenarios/Demo/…`)。objc 走査で自動発見される。

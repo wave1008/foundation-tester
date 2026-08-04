@@ -1,6 +1,6 @@
 // ProjectScaffold.swift
 // ftester project create のテストプロジェクト雛形生成。
-// Scenarios/(_Main.swift・Generated/・_disabled/)、profiles/(apps/machines/runs)、reports/ を作る。
+// scenarios/(_Main.swift・Generated/・_disabled/)、profiles/(apps/machines/runs)、reports/ を作る。
 
 import Foundation
 
@@ -172,7 +172,7 @@ public enum ProjectScaffold {
     /// いれば空 = 何も書かない)
     @discardableResult
     public static func ensureGitignore(packageRoot: URL) throws -> [String] {
-        let entries = [".build/", ".ftester/", "Projects/*/reports/"]
+        let entries = [".build/", ".ftester/", "TestProjects/*/reports/"]
         let url = packageRoot.appendingPathComponent(".gitignore")
 
         // 先頭の "/"・"./"、末尾の "/" を無視して同一視する(.build / /.build/ / .build/ はどれも同じ扱い)
@@ -268,7 +268,7 @@ public enum ProjectScaffold {
         ### 2. マシンプロファイル(この Mac のデバイス定義)
         - `ftester machine set "<マシン名>"`(machines/ に .json が1つだけなら自動採用で省略可)
         - `xcrun simctl list devices available` で使えるシミュレータ名を採取
-        - 🧑 `Projects/\(name)/profiles/machines/<マシン名>.json` に使うデバイスを列挙(雛形は同ディレクトリの README.md):
+        - 🧑 `TestProjects/\(name)/profiles/machines/<マシン名>.json` に使うデバイスを列挙(雛形は同ディレクトリの README.md):
 
         ```json
         { "ios": { "devices": [ { "name": "simulator1", "simulator": "iPhone 17 Pro" } ] } }
@@ -280,7 +280,7 @@ public enum ProjectScaffold {
         それまでのビルド・dry-run はプレースホルダで完走できる)。
         `appPath` はセットアップでは**聞かない・書かない**(未設定なら自動インストールは無効 =
         インストール済みのアプリをそのまま使う)。自動インストールが必要になったら、後から
-        `Projects/\(name)/profiles/apps/\(appRef).json` の `appPath` をビルド済みアプリへ向ける
+        `TestProjects/\(name)/profiles/apps/\(appRef).json` の `appPath` をビルド済みアプリへ向ける
         (`appName`/`autoInstall` は common、bundle ID(`app`)と `appPath` は ios/android セクション)。
         **ユーザーが自発的にパスを伝えてきた場合のみ書く。別リポジトリを覗いて確定値を書き込まない**:
 
@@ -291,9 +291,9 @@ public enum ProjectScaffold {
         `appPath` の相対パスはリポジトリルート基準(`builds/x.app` → `<repoRoot>/builds/x.app`)。`~`・絶対パスも可。
 
         ### 4. シナリオを1本用意
-        - まず `Projects/\(name)/docs/testbases/` にテストの元資料(仕様・観点・元ネタ)を置き、
+        - まず `TestProjects/\(name)/docs/testbases/` にテストの元資料(仕様・観点・元ネタ)を置き、
           それを根拠にシナリオを書く(何をなぜテストするかの拠り所。任意だが推奨)。
-        - `Projects/\(name)/Scenarios/` に `@TestClass` の .swift を置く(`import FTDSL`)、
+        - `TestProjects/\(name)/scenarios/` に `@TestClass` の .swift を置く(`import FTDSL`)、
           または VSCode 拡張のライブ操作パネルで操作を録画して生成する。
 
         ### 5. デバイス不要の動作確認(まずここまで)
@@ -304,8 +304,8 @@ public enum ProjectScaffold {
         ```
 
         ### 5.5 git 管理(このパッケージを自分のリポジトリで管理する場合)
-        `.gitignore` は init が整備済み(`.build/`・`.ftester/`・`Projects/*/reports/`)。コミットするのは
-        Package.swift・Projects/(シナリオ・プロファイル)・.claude/・.gitignore。Package.resolved は
+        `.gitignore` は init が整備済み(`.build/`・`.ftester/`・`TestProjects/*/reports/`)。コミットするのは
+        Package.swift・TestProjects/(シナリオ・プロファイル)・.claude/・.gitignore。Package.resolved は
         コミット推奨(依存の版固定)。.vscode/settings.json は binaryPath が相対ならコミット可。
         .mcp.json は絶対パスを含むためマシン固有(コミットするならチームでパス規約を揃える)。
 
@@ -330,7 +330,7 @@ public enum ProjectScaffold {
         (JSON-RPC は stdout 専用)。Claude Code はプロジェクトスコープの MCP を初回に承認確認する
         → 許可すると `ft_*` ツールが使え、`/ftester-scenario` が MCP 経由で動く。
         **ビルドのため clone へ `cd` した後、`exec` 前に元のパッケージルートへ戻す**(cwd は
-        `ftester-mcp` がパッケージルートを特定する入力。cd したままだと `Projects/` が見えなくなる)。
+        `ftester-mcp` がパッケージルートを特定する入力。cd したままだと `TestProjects/` が見えなくなる)。
 
         ## 更新(新しい版が出たとき)
         clone した foundation-tester で `git pull`(または `git checkout <新version>`)して `swift build`
@@ -384,7 +384,7 @@ public enum ProjectScaffold {
     static let mainSwift = """
     // _Main.swift
     // ftester-scenarios のエントリポイント(編集不要)。
-    // このディレクトリ(Scenarios/)に .swift を置いて swift build すればシナリオが認識される。
+    // このディレクトリ(scenarios/)に .swift を置いて swift build すればシナリオが認識される。
 
     import FTScenarioRunner
 
@@ -397,11 +397,11 @@ public enum ProjectScaffold {
     """
 
     static let disabledReadme = """
-    # Scenarios/_disabled
+    # scenarios/_disabled
 
     コンパイル対象外の退避場所(Package.swift の `exclude` 指定)。
 
-    - 並列デモなど普段の「全実行」に含めたくないシナリオはここに置く(有効化は Scenarios/ 直下へ移動)
+    - 並列デモなど普段の「全実行」に含めたくないシナリオはここに置く(有効化は scenarios/ 直下へ移動)
     - gen-scenario の生成コードがビルドに失敗した場合もここに隔離される
     """
 
@@ -409,7 +409,7 @@ public enum ProjectScaffold {
     # docs/testbases
 
     テスト設計の元になる資料(仕様・テスト観点・元ネタ)を置く場所。
-    ここのドキュメントを根拠に Scenarios/ のシナリオを書く。
+    ここのドキュメントを根拠に scenarios/ のシナリオを書く。
     """
 
     public static let machinesReadme = """

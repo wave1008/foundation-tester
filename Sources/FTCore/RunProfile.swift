@@ -673,8 +673,8 @@ public enum ProfileResolver {
         }
 
         // 5. アプリ解決(デバイスのある platform ごと。合成規則は AppProfileSection.merging 参照)
-        // appPath の相対パスは「リポジトリルート」基準(project.rootURL = <repoRoot>/Projects/<name> の
-        // 2 階層上)。ビルド成果物は Projects/ 外(リポジトリ直下の builds/ 等)に置くのが普通なため。
+        // appPath の相対パスは「リポジトリルート」基準(project.rootURL = <repoRoot>/TestProjects/<name> の
+        // 2 階層上)。ビルド成果物は TestProjects/ 外(リポジトリ直下の builds/ 等)に置くのが普通なため。
         // packageRoot() の CWD 走査は使わない(単体テストでは CWD が本体リポジトリを指し誤基準になる。
         // project.rootURL からの決定的導出で統一)。reportDir だけはプロジェクト直下に出すため下記で
         // project.rootURL 基準のまま(基準が異なるので resolvePath の base で使い分ける)。

@@ -16,7 +16,7 @@ struct ApiHostMetricsSummaryCommand: ParsableCommand {
     @Option(name: .customLong("log"), help: "Path of the NDJSON to aggregate (resolved from --project/--run when omitted)")
     var logPath: String?
 
-    @Option(help: "Test project name (defaults to the only one in Projects/, or the default project; ignored with --log)")
+    @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project; ignored with --log)")
     var project: String?
 
     // プロパティ名は `run` にできない(ParsableCommand の必須メソッド run() と衝突し

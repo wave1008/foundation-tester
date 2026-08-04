@@ -1,5 +1,5 @@
 // テストプロジェクト・マシン名・実行プロファイルの管理 CLI。
-//   ftester project create/list/sync … Projects/<name>/ と Package.swift マーカー区間の管理
+//   ftester project create/list/sync … TestProjects/<name>/ と Package.swift マーカー区間の管理
 //   ftester machine set/show         … このマシンの名前(~/.config/ftester/config.json)
 //   ftester profile list             … 実行プロファイルと部品プロファイルの一覧・整合チェック
 
@@ -20,7 +20,7 @@ func ftesterRepoRoot() throws -> URL {
 struct ProjectCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "project",
-        abstract: "Manage test projects (Projects/<name>/)",
+        abstract: "Manage test projects (TestProjects/<name>/)",
         subcommands: [Create.self, List.self, Sync.self, LintSelectors.self])
 
     struct Create: AsyncParsableCommand {
@@ -42,9 +42,9 @@ struct ProjectCommand: AsyncParsableCommand {
                 name: name, app: app, repoRoot: root,
                 platforms: try InitCommand.platforms(from: platform))
 
-            print("✅ Created the project: Projects/\(name)/")
-            print("   Scenarios:  Projects/\(name)/Scenarios/ (add .swift files with @TestClass)")
-            print("   Profiles:   Projects/\(name)/profiles/{apps,machines,runs}/")
+            print("✅ Created the project: TestProjects/\(name)/")
+            print("   Scenarios:  TestProjects/\(name)/scenarios/ (add .swift files with @TestClass)")
+            print("   Profiles:   TestProjects/\(name)/profiles/{apps,machines,runs}/")
             print("   Build:      swift build --product \(project.productName)")
             print("   Run:        ftester run --project \(name) --profile ios")
         }
@@ -77,7 +77,7 @@ struct ProjectCommand: AsyncParsableCommand {
                       + (notes.isEmpty ? "" : " — \(notes.joined(separator: " / "))"))
             }
             for name in registered where !projects.contains(where: { $0.name == name }) {
-                print("・ \(name) — ⚠️ registered in Package.swift but Projects/\(name)/ does not exist"
+                print("・ \(name) — ⚠️ registered in Package.swift but TestProjects/\(name)/ does not exist"
                       + " (remove it with: ftester project sync)")
             }
         }
@@ -85,7 +85,7 @@ struct ProjectCommand: AsyncParsableCommand {
 
     struct Sync: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
-            abstract: "Regenerate the marker section of Package.swift from a scan of Projects/"
+            abstract: "Regenerate the marker section of Package.swift from a scan of TestProjects/"
                 + " (to resync after a manual copy or a git pull)")
 
         func run() async throws {
@@ -103,7 +103,7 @@ struct ProjectCommand: AsyncParsableCommand {
         @Option(help: "Test project name (resolved the same way as in the other commands)")
         var project: String?
 
-        @Option(help: "Path to the contract markdown (defaults to Projects/<name>/docs/ui-contract.md; an error if missing)")
+        @Option(help: "Path to the contract markdown (defaults to TestProjects/<name>/docs/ui-contract.md; an error if missing)")
         var contract: String?
 
         func run() async throws {
@@ -166,7 +166,7 @@ struct ProjectCommand: AsyncParsableCommand {
         }
     }
 
-    /// Projects/ の走査結果でマーカー区間を全置換する
+    /// TestProjects/ の走査結果でマーカー区間を全置換する
     fileprivate static func syncManifest(repoRoot: URL, verbose: Bool = false) throws {
         let manifest = repoRoot.appendingPathComponent("Package.swift")
         let names = ProjectStore.all(repoRoot: repoRoot).map(\.name)
@@ -257,7 +257,7 @@ struct ProfileCommand: AsyncParsableCommand {
         static let configuration = CommandConfiguration(
             abstract: "List run profiles and their component profiles, and show how they resolve on this machine")
 
-        @Option(help: "Test project name (defaults to the only one in Projects/, or the default project)")
+        @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
         var project: String?
 
         func run() async throws {

@@ -31,7 +31,7 @@ test("stdin 対応 spawn: invocation.stdin を書き込んで EOF を送り、mo
     fixes: [
       {
         scenarioID: "S.T1",
-        file: "Projects/P/Scenarios/S.swift",
+        file: "TestProjects/P/scenarios/S.swift",
         line: 12,
         oldSelector: "#old_id",
         newSelector: "#new_id",
@@ -39,7 +39,7 @@ test("stdin 対応 spawn: invocation.stdin を書き込んで EOF を送り、mo
       },
       {
         scenarioID: "S.T2",
-        file: "Projects/P/Scenarios/S.swift",
+        file: "TestProjects/P/scenarios/S.swift",
         line: 20,
         oldSelector: "#old2",
         newSelector: "#FAIL_new2",
@@ -56,10 +56,10 @@ test("stdin 対応 spawn: invocation.stdin を書き込んで EOF を送り、mo
   assert.equal(result.exitCode, 0);
   assert.equal(result.cancelled, false);
   assert.deepEqual(result.json, {
-    applied: ["S.T1|Projects/P/Scenarios/S.swift:12|#old_id"],
+    applied: ["S.T1|TestProjects/P/scenarios/S.swift:12|#old_id"],
     failures: [
       {
-        id: "S.T2|Projects/P/Scenarios/S.swift:20|#old2",
+        id: "S.T2|TestProjects/P/scenarios/S.swift:20|#old2",
         message: "模擬エラー: #FAIL_new2",
       },
     ],

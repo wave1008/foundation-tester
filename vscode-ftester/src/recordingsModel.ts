@@ -2,7 +2,7 @@
 // 録画再生 UI の vscode 非依存ロジック(型ガード・純粋関数)。monitorRecordingsController.ts /
 // recordingsStore.ts と test/recordingsModel.test.mjs の両方から使う。
 //
-// 契約(録画側実装。runDir = <workspaceRoot>/Projects/<project>/results/runs/<YYYY-MM>/<runID>/):
+// 契約(録画側実装。runDir = <workspaceRoot>/TestProjects/<project>/results/runs/<YYYY-MM>/<runID>/):
 // - recordings/index.json は schemaVersion 2: { schemaVersion:2, recordings: [{ scenarioID, worker,
 //   platform, file, segments }] }。**1エントリ = 1テスト関数(scenarioID)の mp4**(v1 の1ワーカー
 //   1動画とは異なる)。file は runDir 相対。動画の0秒 = 先頭 segment の startedAt(クリップ自体が

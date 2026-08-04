@@ -47,7 +47,7 @@ const V1_INDEX = {
 
 function runDir(root, project, runID) {
   const month = `${runID.slice(0, 4)}-${runID.slice(4, 6)}`;
-  return path.join(root, "Projects", project, "results", "runs", month, runID);
+  return path.join(root, "TestProjects", project, "results", "runs", month, runID);
 }
 
 test("listRecordingSessions: recordings/index.json が無い run は含めない", async () => {
@@ -134,7 +134,7 @@ test("listRecordingSessions: schemaVersion:1(v1)の古いセッションは一�
   }
 });
 
-test("listRecordingSessions: workspaceRoot に Projects/ が無ければ空配列", async () => {
+test("listRecordingSessions: workspaceRoot に TestProjects/ が無ければ空配列", async () => {
   const root = makeWorkspace();
   try {
     assert.deepEqual(await listRecordingSessions(root), []);

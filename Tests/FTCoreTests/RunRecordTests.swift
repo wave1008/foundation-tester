@@ -49,7 +49,7 @@ final class RunRecordTests: XCTestCase {
 
         var finished = ScenarioEvent(kind: "scenarioFinished")
         finished.passed = false
-        finished.reportPath = "/repo/root/Projects/SampleApp/reports/foo.json"
+        finished.reportPath = "/repo/root/TestProjects/SampleApp/reports/foo.json"
         builder.consume(finished)
 
         let record = builder.build(
@@ -87,7 +87,7 @@ final class RunRecordTests: XCTestCase {
         XCTAssertEqual(fixSuggestions[0].oldSelector, "#foo")
         XCTAssertEqual(fixSuggestions[0].newSelector, "#foo2")
 
-        XCTAssertEqual(record.reportPath, "Projects/SampleApp/reports/foo.json", "packageRoot の prefix を剥がして相対化")
+        XCTAssertEqual(record.reportPath, "TestProjects/SampleApp/reports/foo.json", "packageRoot の prefix を剥がして相対化")
     }
 
     func testPassedScenarioHasNilFailureFields() {

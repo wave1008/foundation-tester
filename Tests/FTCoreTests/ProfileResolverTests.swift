@@ -8,7 +8,7 @@ final class ProfileResolverTests: XCTestCase {
     override func setUpWithError() throws {
         tempDir = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("FTCoreTests-\(UUID().uuidString)")
-        let root = tempDir.appendingPathComponent("Projects/SampleApp")
+        let root = tempDir.appendingPathComponent("TestProjects/SampleApp")
         project = TestProject(name: "SampleApp", rootURL: root)
         for dir in [project.appsDir, project.machinesDir, project.runsDir] {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -65,7 +65,7 @@ final class ProfileResolverTests: XCTestCase {
         // appPath の相対パスはリポジトリルート基準(= project.rootURL の 2 階層上 = tempDir)
         XCTAssertEqual(ios.appPath,
                        tempDir.appendingPathComponent("builds/SampleApp.app").path,
-                       "appPath 相対はリポジトリルート(<repoRoot>/Projects/<name> の 2 階層上)基準")
+                       "appPath 相対はリポジトリルート(<repoRoot>/TestProjects/<name> の 2 階層上)基準")
         XCTAssertTrue(ios.autoInstall, "common の autoInstall: true が両 platform に効く")
         let android = try XCTUnwrap(resolved.apps["android"])
         XCTAssertEqual(android.bundleID, "com.example.sampleapp")

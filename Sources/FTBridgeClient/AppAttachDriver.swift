@@ -128,7 +128,7 @@ public final class AppAttachDriver: AppDriver {
     /// swipe は ref を使わないので、事前に attach を揃え(ensureAttached)、それでも
     /// 409/503 なら activate して1回だけ再試行する。snapshot() を経ずに swipe が先に来るシナリオ
     /// (scrollTo が最初の操作)が
-    /// あり、そのままだと 409 で落ちる(2026-07-23 に Projects/E2E-iOS の inapp 実行で顕在化。
+    /// あり、そのままだと 409 で落ちる(2026-07-23 に TestProjects/E2E-iOS の inapp 実行で顕在化。
     /// Compose 版は press のフォールバックが先に snapshot=activate していて露呈していなかった)。
     /// ref を使う tap/type/press には同じ回復を入れない: activate は refFrames をクリアするため、
     /// 再試行時には直前 snapshot の ref が別要素を指してしまう。

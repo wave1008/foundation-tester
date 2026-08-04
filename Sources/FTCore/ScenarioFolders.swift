@@ -1,5 +1,5 @@
 // ScenarioFolders.swift
-// シナリオのフォルダグルーピング(Projects/<name>/Scenarios/ 直下のサブディレクトリ、1 階層のみ)。
+// シナリオのフォルダグルーピング(TestProjects/<name>/scenarios/ 直下のサブディレクトリ、1 階層のみ)。
 // SPM ターゲットは path 以下を再帰的にコンパイルするため、フォルダを作っても Package.swift の
 // 変更は不要(_disabled/ だけが exclude)。シナリオ ID(クラス名.メソッド名)はフォルダと無関係で、
 // 「シナリオの移動」は実体としてはクラスを定義する .swift ファイルの移動になる。
@@ -35,7 +35,7 @@ public enum ScenarioFolders {
     /// コンパイル対象外の退避場所(Package.swift の exclude と対)。フォルダとして扱わない
     public static let reservedNames: Set<String> = ["_disabled"]
 
-    /// Scenarios/ 直下のフォルダ名一覧(1 階層のみ。_disabled と隠しディレクトリは除外、名前順)
+    /// scenarios/ 直下のフォルダ名一覧(1 階層のみ。_disabled と隠しディレクトリは除外、名前順)
     public static func list(scenariosDir: URL) -> [String] {
         let entries = (try? FileManager.default.contentsOfDirectory(
             at: scenariosDir, includingPropertiesForKeys: [.isDirectoryKey],
@@ -47,7 +47,7 @@ public enum ScenarioFolders {
             .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
     }
 
-    /// クラス名 → 定義している .swift の URL。Scenarios/ 以下を走査する(_disabled と隠しは除外)。
+    /// クラス名 → 定義している .swift の URL。scenarios/ 以下を走査する(_disabled と隠しは除外)。
     /// シナリオ一覧(クラス名.メソッド名)とファイルを対応付けてフォルダ表示・移動に使う
     public static func classFileMap(scenariosDir: URL) -> [String: URL] {
         var map: [String: URL] = [:]
@@ -60,7 +60,7 @@ public enum ScenarioFolders {
         return map
     }
 
-    /// ファイルが属するフォルダ名(Scenarios/ 直下なら nil)
+    /// ファイルが属するフォルダ名(scenarios/ 直下なら nil)
     public static func folderName(of file: URL, scenariosDir: URL) -> String? {
         let base = scenariosDir.standardizedFileURL.pathComponents
         let path = file.standardizedFileURL.pathComponents
@@ -71,7 +71,7 @@ public enum ScenarioFolders {
     }
 
     /// シナリオをフォルダ名で絞り込む(folders が空なら絞り込まない)。
-    /// folderOf はクラス名(ID の最初の "." の手前)→ フォルダ名(Scenarios/ 直下は nil)
+    /// folderOf はクラス名(ID の最初の "." の手前)→ フォルダ名(scenarios/ 直下は nil)
     public static func filter(_ infos: [ScenarioInfo], byFolders folders: [String],
                               folderOf: (String) -> String?) -> [ScenarioInfo] {
         guard !folders.isEmpty else { return infos }
@@ -101,7 +101,7 @@ public enum ScenarioFolders {
         return nil
     }
 
-    /// フォルダを作成する(Scenarios/ 直下、1 階層のみ)
+    /// フォルダを作成する(scenarios/ 直下、1 階層のみ)
     @discardableResult
     public static func create(name: String, scenariosDir: URL) throws -> URL {
         if let reason = validateName(name) {
@@ -115,7 +115,7 @@ public enum ScenarioFolders {
         return url
     }
 
-    /// シナリオファイルをフォルダへ移動する(folder = nil は Scenarios/ 直下へ)。
+    /// シナリオファイルをフォルダへ移動する(folder = nil は scenarios/ 直下へ)。
     /// 移動後の URL を返す(移動不要ならそのまま返す)
     @discardableResult
     public static func move(file: URL, toFolder folder: String?,
@@ -205,7 +205,7 @@ public enum ScenarioFolders {
 
     // MARK: - 内部
 
-    /// Scenarios/ 以下の .swift を列挙する(_disabled と隠しディレクトリはスキップ)。
+    /// scenarios/ 以下の .swift を列挙する(_disabled と隠しディレクトリはスキップ)。
     /// Sources/ftester/ProjectCommands.swift の lint-selectors からも呼ばれる(同一走査規則の再利用)
     public static func swiftFiles(under dir: URL) -> [URL] {
         guard let enumerator = FileManager.default.enumerator(

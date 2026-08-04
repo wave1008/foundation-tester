@@ -37,7 +37,7 @@ final class PackageManifestEditorTests: XCTestCase {
             manifestURL: manifestURL, projectNames: ["SampleApp", "Demo"], verify: false)
         let content = try String(contentsOf: manifestURL, encoding: .utf8)
         XCTAssertTrue(content.contains(#"name: "ftester-scenarios-SampleApp""#))
-        XCTAssertTrue(content.contains(#"path: "Projects/Demo/Scenarios""#))
+        XCTAssertTrue(content.contains(#"path: "TestProjects/Demo/scenarios""#))
         XCTAssertTrue(content.contains(#"exclude: ["_disabled"]"#))
         XCTAssertTrue(content.contains(".target(name: \"Core\"),"))
         XCTAssertTrue(content.contains(".testTarget(name: \"CoreTests\"),"))

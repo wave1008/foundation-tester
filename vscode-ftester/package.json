@@ -408,15 +408,15 @@
     ],
     "jsonValidation": [
       {
-        "fileMatch": "**/Projects/*/profiles/runs/*.json",
+        "fileMatch": "**/TestProjects/*/profiles/runs/*.json",
         "url": "./schemas/run-profile.schema.json"
       },
       {
-        "fileMatch": "**/Projects/*/profiles/apps/*.json",
+        "fileMatch": "**/TestProjects/*/profiles/apps/*.json",
         "url": "./schemas/app-profile.schema.json"
       },
       {
-        "fileMatch": "**/Projects/*/profiles/machines/*.json",
+        "fileMatch": "**/TestProjects/*/profiles/machines/*.json",
         "url": "./schemas/machine-profile.schema.json"
       }
     ]

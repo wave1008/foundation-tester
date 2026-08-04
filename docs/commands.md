@@ -1,6 +1,6 @@
 # DSL コマンドリファレンス
 
-シナリオ(`Projects/<name>/Scenarios/*.swift`)で使える全コマンドの説明。読者は**シナリオを書く利用者**。
+シナリオ(`TestProjects/<name>/scenarios/*.swift`)で使える全コマンドの説明。読者は**シナリオを書く利用者**。
 シナリオの構造(`@TestClass` / `@Test` / `scene` / condition-action-expectation)と**セレクタ記法**
 (`#id` `ラベル` `*部分一致*` `.型[n]` `&&` `||` `(a|b)` `!` `>>` `:rightSwitch` など)は
 README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirates(Classic) に準拠している。

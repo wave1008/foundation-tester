@@ -6,7 +6,7 @@
 // e2e-dryrun-debug.test.mjs と同じ方針(REPO_ROOT/.build/debug/ftester を spawn)。
 //
 // デバイス(シミュレータ/エミュレータ)自体が起動している必要はない。マシンプロファイル
-// (Projects/SampleApp/profiles/machines/)にデバイスが定義されてさえいれば、各デバイスは
+// (TestProjects/SampleApp/profiles/machines/)にデバイスが定義されてさえいれば、各デバイスは
 // state: "offline"(未起動)のままでもこのテストは成功する(ApiMonitorCommand.swift 参照。
 // デバイスの起動・終了はこのコマンドの責務外)。
 //

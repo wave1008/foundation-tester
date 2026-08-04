@@ -8,7 +8,7 @@ final class BuildFingerprintTests: XCTestCase {
     override func setUpWithError() throws {
         repoRoot = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("FTCoreTests-repo-\(UUID().uuidString)")
-        scenariosDir = repoRoot.appendingPathComponent("Scenarios")
+        scenariosDir = repoRoot.appendingPathComponent("scenarios")
         try FileManager.default.createDirectory(
             at: repoRoot.appendingPathComponent("Sources"), withIntermediateDirectories: true)
         try FileManager.default.createDirectory(

@@ -1,7 +1,7 @@
 # FT E2E アプリ UI 契約
 
 このファイルが **testTag(=`#id`)と表示ラベルの唯一の正**。アプリ実装(`E2EAppCMP/composeApp`)と
-シナリオ(`Projects/E2E-CMP/Scenarios`)の両方がここを参照する。**片方だけ変えない**。
+シナリオ(`TestProjects/E2E-CMP/scenarios`)の両方がここを参照する。**片方だけ変えない**。
 tag 定数は `composeApp/src/commonMain/kotlin/com/ftester/e2e/Tags.kt` に集約する(値はこの表と byte 一致)。
 
 ## 全体規約
@@ -336,7 +336,7 @@ FM が修復できるかを検証する。
 | `#btn_crash_cancel` | Button | `やめる` | |
 
 `#btn_crash_confirm` はブリッジ切断・クラッシュレポート添付の検証専用。
-通常実行に載せる `Scenarios/` 直下には置かず `_disabled/` に置く。
+通常実行に載せる `scenarios/` 直下には置かず `_disabled/` に置く。
 
 ## ID なし画面(タイトル `ID なし`)
 

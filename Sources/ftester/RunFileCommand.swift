@@ -1,6 +1,6 @@
 // ftester run-file: Package.swift への登録(ftester project create/sync)なしに .swift シナリオを
 // 1 本だけ実行する。実行エンジンは通常の run と完全に同一 —
-// 対象プロジェクトの Scenarios/_runfile/ へコピーして SPM ターゲットに混ぜ、
+// 対象プロジェクトの scenarios/_runfile/ へコピーして SPM ターゲットに混ぜ、
 // あとは RunScenarios にそのまま委譲する(ビルド・プロファイル・レポート・ヒールを再利用)。
 //
 // _runfile/ は実行の前後で必ず消す。SIGKILL 等で残骸が出た場合、次の run-file の開始時掃除で
@@ -16,7 +16,7 @@ struct RunFileCommand: AsyncParsableCommand {
         commandName: "run-file",
         abstract: "Run an unregistered .swift scenario as-is (profiles are borrowed from an existing project)")
 
-    /// ステージ先。Scenarios/ 直下のサブフォルダは SPM ターゲットに含まれる(_disabled のみ除外)
+    /// ステージ先。scenarios/ 直下のサブフォルダは SPM ターゲットに含まれる(_disabled のみ除外)
     static let stageDirName = "_runfile"
 
     @Argument(help: "Scenario .swift file (pass several and they are compiled together as helpers)")

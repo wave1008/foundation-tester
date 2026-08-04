@@ -1,4 +1,4 @@
-// テスト設計の元資料(Projects/<name>/docs/testbases/*.md)から Swift シナリオの**下書き**を作る。
+// テスト設計の元資料(TestProjects/<name>/docs/testbases/*.md)から Swift シナリオの**下書き**を作る。
 // 生成物は @Deleted 付き = 一括実行の対象外(セレクタが TODO のままなので当然落ちる)。
 // 構造化は FM(TestbaseDrafter)→ 失敗時は決定的パーサ(TestbaseOutline.parse)へフォールバックする。
 
@@ -13,7 +13,7 @@ struct DraftScenarioCommand: AsyncParsableCommand {
         commandName: "draft-scenario",
         abstract: "Generate a scenario draft from a test base (docs/testbases/*.md)")
 
-    @Option(help: "Test project name (defaults to the only one in Projects/, or the default project)")
+    @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
     var project: String?
 
     @Option(help: "Path to the test base file (defaults to the only file in the project docs/testbases/)")

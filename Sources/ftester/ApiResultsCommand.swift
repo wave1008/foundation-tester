@@ -12,7 +12,7 @@ struct ApiResultsCommand: AsyncParsableCommand {
         abstract: "Aggregate the run-results database (results/) — runs/summary/flaky/devices/daily/trend/slow/insights/matrix —"
             + " and print it all as JSON on stdout (diagnostics on stderr only)")
 
-    @Option(help: "Test project name (defaults to the only one in Projects/, or the default project)")
+    @Option(help: "Test project name (defaults to the only one in TestProjects/, or the default project)")
     var project: String?
 
     @Option(help: "Start of the period: a relative value such as 30d/12h, or YYYY-MM-DD (default 90d)")

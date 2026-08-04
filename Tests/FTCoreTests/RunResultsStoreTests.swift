@@ -9,7 +9,7 @@ final class RunResultsStoreTests: XCTestCase {
     override func setUpWithError() throws {
         repoRoot = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("RunResultsStoreTests-\(UUID().uuidString)")
-        project = TestProject(name: "SampleApp", rootURL: repoRoot.appendingPathComponent("Projects/SampleApp"))
+        project = TestProject(name: "SampleApp", rootURL: repoRoot.appendingPathComponent("TestProjects/SampleApp"))
         resultsDir = RunResultsStore.resultsDir(projectRoot: project.rootURL)
         try FileManager.default.createDirectory(at: repoRoot, withIntermediateDirectories: true)
     }

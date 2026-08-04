@@ -31,8 +31,8 @@ final class ScenarioDebugControlTests: XCTestCase {
         XCTAssertNil(ScenarioDebugControl.parseLocation(":12"))
         XCTAssertNil(ScenarioDebugControl.parseLocation("a.swift:0"))
         let parsed = ScenarioDebugControl.parseLocation(
-            "Projects/SampleApp/Scenarios/ログイン画面.swift:18")
-        XCTAssertEqual(parsed?.file, "Projects/SampleApp/Scenarios/ログイン画面.swift")
+            "TestProjects/SampleApp/scenarios/ログイン画面.swift:18")
+        XCTAssertEqual(parsed?.file, "TestProjects/SampleApp/scenarios/ログイン画面.swift")
         XCTAssertEqual(parsed?.line, 18)
     }
 
@@ -45,21 +45,21 @@ final class ScenarioDebugControlTests: XCTestCase {
     }
 
     func testBreakpointPausesAndContinues() {
-        let control = ScenarioDebugControl(breakpoints: ["Scenarios/a.swift:10"])
+        let control = ScenarioDebugControl(breakpoints: ["scenarios/a.swift:10"])
 
         // 非該当行は素通り
         var paused = false
-        XCTAssertEqual(control.checkpoint(file: "Scenarios/a.swift", line: 9) { paused = true },
+        XCTAssertEqual(control.checkpoint(file: "scenarios/a.swift", line: 9) { paused = true },
                        .proceed)
         XCTAssertFalse(paused)
 
-        let run = CheckpointRun(self, control: control, file: "Scenarios/a.swift", line: 10)
+        let run = CheckpointRun(self, control: control, file: "scenarios/a.swift", line: 10)
         wait(for: [run.pausedExpectation], timeout: 5)
         control.apply(line: #"{"cmd":"continue"}"#)
         wait(for: [run.finishedExpectation], timeout: 5)
         XCTAssertEqual(run.result, .proceed)
 
-        let second = CheckpointRun(self, control: control, file: "Scenarios/a.swift", line: 10)
+        let second = CheckpointRun(self, control: control, file: "scenarios/a.swift", line: 10)
         wait(for: [second.pausedExpectation], timeout: 5)
         control.apply(line: #"{"cmd":"continue"}"#)
         wait(for: [second.finishedExpectation], timeout: 5)
@@ -67,8 +67,8 @@ final class ScenarioDebugControlTests: XCTestCase {
 
     func testBreakpointMatchesPathSuffix() {
         // ホスト側が絶対パス・ランナー側が相対パス(またはその逆)でも一致する
-        let control = ScenarioDebugControl(breakpoints: ["/repo/Scenarios/a.swift:10"])
-        let run = CheckpointRun(self, control: control, file: "Scenarios/a.swift", line: 10)
+        let control = ScenarioDebugControl(breakpoints: ["/repo/scenarios/a.swift:10"])
+        let run = CheckpointRun(self, control: control, file: "scenarios/a.swift", line: 10)
         wait(for: [run.pausedExpectation], timeout: 5)
         control.apply(line: #"{"cmd":"continue"}"#)
         wait(for: [run.finishedExpectation], timeout: 5)

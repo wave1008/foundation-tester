@@ -2,7 +2,7 @@
 // 並べ替えの規則そのものは FTCore の LPTScheduler(純関数・単体テスト済み)にあり、
 // ここは「どの実績を読むか」だけを決める。
 //
-// 実績は結果 JSON(Projects/<p>/results/runs/**/scenarios/*.json)の durationMs。
+// 実績は結果 JSON(TestProjects/<p>/results/runs/**/scenarios/*.json)の durationMs。
 // 範囲を二重に絞る:
 //   - 直近 historyDays 日: 古い実績はアプリもシナリオも変わっていて代表値にならない
 //   - 直近 maxRuns run: 結果 JSON は run × シナリオ数で増え続ける(実測で 1 プロジェクト
