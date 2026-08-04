@@ -220,8 +220,9 @@ public extension AppDriver {
         throw DriverError.badResponse(status: 501, body: "This driver does not support long-press by coordinates")
     }
 
-    /// in-app ブリッジは多点ジェスチャを合成できない(UIKit の privateAPI 無しでは不可)。
-    /// 501 = ホストが typeDriver(XCUITest)へ回す合図
+    /// 実装を持たないドライバの既定。501 = ホストが typeDriver(XCUITest)へ回す合図
+    /// (in-app は 2026-08-04 から自前描画フレームワーク向けに実装を持つ。UIKit/SwiftUI は
+    /// 合成タッチを受理しないので、あちらが 501 を返して XCUITest へ回る)
     func doubleTap(x: Double, y: Double) async throws {
         throw DriverError.badResponse(status: 501, body: "This driver does not support double tap")
     }

@@ -222,19 +222,21 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
 | `POST /type` | `{ref, text}`(tap → typeText) |
 | `POST /swipe` | `{direction}` or `{fromRef, direction}`。用途つきの任意項目あり(下記「スクロールの語彙」) |
 | `POST /press` | `{ref, duration}` または `{x, y, duration}` 長押し |
+| `POST /doubletap` | `{ref}` または `{x,y}`。**2回の /tap では代用できない**(往復で OS のダブルタップ判定時間を超える) |
+| `POST /pinch` | `{scale, frame?, identifier?, durationSeconds?}` 2本指ズーム。**対象の指定が経路で違う**ので両方を運ぶ(Android と in-app は `frame` の中心で合成・XCUITest は座標指定の多点ジェスチャを持たず `identifier` で要素を引く) |
 | `POST /clear` | `{ref}` 省略可(省略時はフォーカス中の入力欄)。入力欄のクリア |
 | `POST /pressEnter` | Return キー相当(受け口ごとの機構は §10) |
 | `GET  /screenshot` | `XCUIScreen.main.screenshot()` → PNG |
 | `POST /terminate` | 対象アプリ終了 |
 
-上記11個は3実装共通のコア。差分は次のとおり(**唯一の正は
+上記13個は3実装共通のコア。差分は次のとおり(**唯一の正は
 `Tests/FTCoreTests/BridgeContractTests.swift` のルート表**。ここはその写し):
 
 | ブリッジ | 共通コアへの追加 | 計 |
 |---|---|---|
-| XCUITest(Runner/) | `POST /drag`・`POST /appswitcher`・`POST /home`・`POST /hidekeyboard`・`POST /appstate` | 16 |
-| Android(AndroidRunner/) | `POST /locale`・`POST /settle`(§4.5) | 13 |
-| InApp | `POST /hidekeyboard`・`POST /appstate` | 13 |
+| XCUITest(Runner/) | `POST /drag`・`POST /appswitcher`・`POST /home`・`POST /hidekeyboard`・`POST /appstate` | 18 |
+| Android(AndroidRunner/) | `POST /locale`・`POST /settle`(§4.5) | 15 |
+| InApp | `POST /hidekeyboard`・`POST /appstate` | 15 |
 
 `/hidekeyboard` は iOS の2実装だけが持つが、**中身は 501 を返すだけ**(iOS に実装手段が無い。
 §10「キーボードの観測と `hideKeyboard`」)。Android は `hideKeyboard` をホスト側の

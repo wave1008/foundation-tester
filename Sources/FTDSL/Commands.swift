@@ -379,9 +379,10 @@ private func doubleTapImpl(_ selector: FTSelector, timeout: Double?,
 ///     pinchOut()                    // 2倍に拡大
 ///     pinchOut("#map", scale: 3.0)  // その要素を対象に3倍
 ///
-/// **iOS では対象要素を identifier で引く**(XCUITest は座標指定の多点ジェスチャを持たない)。
+/// **iOS の XCUITest 経路では対象要素を identifier で引く**(座標指定の多点ジェスチャが無い)。
 /// identifier の無い要素を指定した場合はアプリ全体のピンチに落ち、注記が残る。
-/// **in-app エンジンは多点ジェスチャを持たない**ので hybrid では XCUITest へ回る
+/// Android と iOS の in-app は領域の中心で2本指を合成するので identifier に依らない。
+/// **フレームワークとエンジンで成否が分かれる**組み合わせがある(表は docs/commands.md)
 public func pinchOut(scale: Double = FlowStep.defaultPinchOutScale,
                      durationSeconds: Double = FlowStep.defaultPinchDurationSeconds,
                      file: StaticString = #filePath, line: UInt = #line) {
