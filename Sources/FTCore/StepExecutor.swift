@@ -418,6 +418,9 @@ public final class StepExecutor {
         let viaXCUITest: Bool
         /// スクロールヒントで置き換えた長距離ドラッグの回数(記録の注記に載せる)
         let hintJumps: Int
+        /// 探索終端の静止待ちが**収束せずに打ち切られた**。黙って返すと「動いている画面で
+        /// 掴んだ座標」を後段がタップすることになり、失敗は沈黙(誤った成功)として現れる
+        var settleCapped: Bool = false
     }
 
     /// スクロール探索の注記(XCUITest フォールバック / ヒント跳躍)。無ければ nil
@@ -426,6 +429,7 @@ public final class StepExecutor {
         var parts: [String] = []
         if result.viaXCUITest { parts.append("fell back to XCUITest") }
         if result.hintJumps > 0 { parts.append("\(result.hintJumps) long drag(s) from scroll hints") }
+        if result.settleCapped { parts.append("the screen did not settle after the search (poll limit)") }
         if let scrollFrameNote { parts.append(scrollFrameNote) }
         return parts.isEmpty ? nil : parts.joined(separator: " / ")
     }
@@ -565,6 +569,7 @@ public final class StepExecutor {
         let maxSwipes = max(0, step.maxSwipes ?? FlowStep.defaultMaxSwipes)
         var viaXCUITest = false
         var hintJumps = 0
+        var settleCapped = false
         // 自己補正の材料(直前の周回のツリー)。**較正値は持たず毎周測り直す**
         var previousSnapshot: SnapshotResponse?
         for attempt in 0...maxSwipes {
@@ -664,10 +669,11 @@ public final class StepExecutor {
                                         toX: Self.emptyDragEndX(of: element, from: x,
                                                                 screen: snapshot.screen))
                     }
-                    try await settleAfterScroll(step: step, found: element, phase: &phase)
+                    settleCapped = try await !settleAfterScroll(step: step, found: element,
+                                                               phase: &phase)
                 }
                 return ScrollSearchResult(found: true, fallback: fallback, viaXCUITest: viaXCUITest,
-                                          hintJumps: hintJumps)
+                                          hintJumps: hintJumps, settleCapped: settleCapped)
             }
             if attempt < maxSwipes {
                 // ヒント跳躍: 距離が分かるときは固定幅スワイプでなく長距離ドラッグで寄せる。
@@ -1428,8 +1434,11 @@ public final class StepExecutor {
     /// 連続2回同じ frame なら静止とみなす。見失った場合・上限に達した場合はそのまま抜ける
     /// (探索自体は成功しているので、ここで失敗にはしない = 判定を1箇所に保つ)。
     /// 上限はフリングの減速が収まる実測レンジに合わせた固定値で、調整ノブにはしない
+    /// 戻り値: **静止を確認できたか**。false = 周回上限で打ち切った(= まだ動いているかもしれない)。
+    /// 呼び手は注記にする(黙ると「動いている画面の座標をタップ」が誤った成功として通る)
+    @discardableResult
     private func settleAfterScroll(step: FlowStep, found: ElementInfo,
-                                   phase: inout PhaseAccumulator) async throws {
+                                   phase: inout PhaseAccumulator) async throws -> Bool {
         let clock = ContinuousClock()
         var previous = found.frame
         var lastSnapshotMs = 0
@@ -1446,11 +1455,13 @@ public final class StepExecutor {
             let snapshot = try await driver.snapshot(bypassingCache: driver.supportsCacheBypass)
             lastSnapshotMs = Self.ms(clock.now - start)
             phase.snapshotMs += lastSnapshotMs
+            // 解決できなくなった = このスナップショットでは判定材料が無い。静止は名乗らない
             guard let (element, _) = Self.resolve(step: step, in: snapshot,
-                                                  strictForAssert: true) else { return }
-            if element.frame == previous { return }
+                                                  strictForAssert: true) else { return false }
+            if element.frame == previous { return true }
             previous = element.frame
         }
+        return false
     }
 
     /// スクロール探索終端の空打ちドラッグを (x,y) に打ってよいか。打たない条件は2つ

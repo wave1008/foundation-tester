@@ -2161,4 +2161,17 @@ final class StepExecutorTests: XCTestCase {
         let raw = StepExecutor.dragGesture(jump: 5000, container: container)
         XCTAssertGreaterThan(raw!.fromY, 2400, "交差を取らないと画面外を撃つ = これが直した対象")
     }
+
+    /// 探索終端の静止待ちを**打ち切ったら注記にする**。黙って返すと「まだ動いている画面で
+    /// 掴んだ座標」を後段がタップし、失敗が沈黙(誤った成功)として現れる
+    func testScrollSearchNoteReportsAnUnsettledSearch() {
+        let capped = StepExecutor.ScrollSearchResult(found: true, fallback: nil, viaXCUITest: false,
+                                                     hintJumps: 0, settleCapped: true)
+        XCTAssertEqual(StepExecutor.scrollSearchNote(capped),
+                       "the screen did not settle after the search (poll limit)")
+        // 静止できていれば無言(通常運転で注記を出さない = 出たときに意味がある)
+        let settled = StepExecutor.ScrollSearchResult(found: true, fallback: nil, viaXCUITest: false,
+                                                      hintJumps: 0)
+        XCTAssertNil(StepExecutor.scrollSearchNote(settled))
+    }
 }
