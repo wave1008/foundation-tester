@@ -112,6 +112,28 @@ public enum ScenarioCodeGen {
                     return "clearInput()"
                 }
                 return "clearInput(\(literal(selector)))"
+            case "doubleTap":
+                return step.locator == nil ? "doubleTap()" : "doubleTap(\(literal(selector)))"
+            case "pinchOut", "pinchIn":
+                // 既定値は省く(生成コードを既定ケースで太らせない。tap の holdSeconds と同じ方針)
+                let defaultScale = action == "pinchOut"
+                    ? FlowStep.defaultPinchOutScale : FlowStep.defaultPinchInScale
+                var args: [String] = step.locator == nil ? [] : [literal(selector)]
+                if let scale = step.scale, scale != defaultScale {
+                    args.append("scale: \(FTSeconds.format(scale))")
+                }
+                if let duration = step.duration {
+                    args.append("durationSeconds: \(FTSeconds.format(duration))")
+                }
+                return "\(action)(\(args.joined(separator: ", ")))"
+            case "swipeBy":
+                var args: [String] = step.locator == nil ? [] : [literal(selector)]
+                args.append("dxRatio: \(FTSeconds.format(step.dxRatio ?? 0))")
+                args.append("dyRatio: \(FTSeconds.format(step.dyRatio ?? 0))")
+                if let duration = step.duration {
+                    args.append("durationSeconds: \(FTSeconds.format(duration))")
+                }
+                return "swipeBy(\(args.joined(separator: ", ")))"
             case "swipeElementToElement":
                 guard let endLocator = step.endLocator else { return nil }
                 var args = [literal(selector), literal(FTSelector.serialize(primary: endLocator, fallbacks: []))]
