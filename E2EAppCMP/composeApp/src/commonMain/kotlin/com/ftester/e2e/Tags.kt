@@ -91,6 +91,16 @@ object Tags {
     fun tagLabel(n: Int): String = "タグ " + n.toString().padStart(2, '0')
     const val TAG_COUNT = 20
 
+    // 飛び越し(容器 160dp に行 180dp = 領域指定なしの既定スワイプで行が丸ごと通過する witness)
+    const val TXT_JUMP_SELECTED = "txt_jump_selected"
+    const val LIST_JUMP = "list_jump"
+
+    /** 飛び越し行 tag。n は 1..12。ゼロ詰め("jrow_01")= ラベルの部分一致衝突回避と対。 */
+    fun jrow(n: Int): String = "jrow_" + n.toString().padStart(2, '0')
+
+    /** 飛び越し行ラベル("跳 01")。既存の「行 NN」「タグ NN」と部分一致衝突しない語。 */
+    fun jrowLabel(n: Int): String = "跳 " + n.toString().padStart(2, '0')
+
     // 非同期表示
     const val TXT_DELAY_STATE = "txt_delay_state"
     const val BTN_DELAY_1 = "btn_delay_1"
@@ -143,6 +153,9 @@ object Tags {
     // 診断
     const val TXT_BUILD_INFO = "txt_build_info"
     const val TXT_DIAG_NOTE = "txt_diag_note"
+    // 飛び越し画面への入口。ホームのナビ行を増やさない契約(docs/ui-contract.md 「ホーム」節)により、
+    // 診断画面から開く形にしてある。
+    const val BTN_OPEN_JUMP = "btn_open_jump"
     const val BTN_FREEZE_3S = "btn_freeze_3s"
     const val BTN_CRASH = "btn_crash"
     const val BTN_CRASH_CONFIRM = "btn_crash_confirm"

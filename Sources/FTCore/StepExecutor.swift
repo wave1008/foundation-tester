@@ -578,9 +578,9 @@ public final class StepExecutor {
     }
 
     struct ScrollSearchResult {
-        let found: Bool
+        var found: Bool
         /// 解決に使ったフォールバック節(プライマリで解決したら nil)
-        let fallback: FlowLocator?
+        var fallback: FlowLocator?
         /// 1回でも XCUITest 経由で swipe したか(記録の注記に載せる)
         let viaXCUITest: Bool
         /// スクロールヒントで置き換えた長距離ドラッグの回数(記録の注記に載せる)
@@ -588,6 +588,12 @@ public final class StepExecutor {
         /// 探索終端の静止待ちが**収束せずに打ち切られた**。黙って返すと「動いている画面で
         /// 掴んだ座標」を後段がタップすることになり、失敗は沈黙(誤った成功)として現れる
         var settleCapped: Bool = false
+        /// 実際に撃ったスワイプ数(見つからなかったときの理由文に使う)
+        var swipes: Int = 0
+        /// **もう動かないので上限より手前で打ち切った**。上限まで振り続けても結果は変わらないため
+        var stoppedUnmoving: Bool = false
+        /// 端まで来ても見つからず、**逆向きの細刻みで拾い直した**回数(0 か 1。注記に載せる)
+        var reverseSweeps: Int = 0
     }
 
     /// スクロール探索の注記(XCUITest フォールバック / ヒント跳躍)。無ければ nil
@@ -597,6 +603,12 @@ public final class StepExecutor {
         if result.viaXCUITest { parts.append("fell back to XCUITest") }
         if result.hintJumps > 0 { parts.append("\(result.hintJumps) long drag(s) from scroll hints") }
         if result.settleCapped { parts.append("the screen did not settle after the search (poll limit)") }
+        // **黙って拾い直さない**: 順方向で飛び越したことは利用者の書き方(scrollFrame 未指定)に
+        // 由来するので、逆走査で救えたことを見せて `scrollFrame` を書く判断材料にする
+        if result.reverseSweeps > 0 {
+            parts.append("found by sweeping back after overshooting it"
+                + " (specify scrollFrame: to step within the container instead)")
+        }
         if let scrollFrameNote { parts.append(scrollFrameNote) }
         return parts.isEmpty ? nil : parts.joined(separator: " / ")
     }
@@ -605,9 +617,14 @@ public final class StepExecutor {
     /// 読み手が「見つからないのに緑」と誤読しないよう理由文で契約を名乗る
     static let selectNotFoundReason = "element not found; select returned an empty element"
 
-    static func scrollNotFoundMessage(_ step: FlowStep) -> String {
-        "element not found after \(max(0, step.maxSwipes ?? FlowStep.defaultMaxSwipes)) scroll(s)"
-            + ": \(step.locatorSummary)"
+    static func scrollNotFoundMessage(_ step: FlowStep,
+                                      _ result: ScrollSearchResult? = nil) -> String {
+        let limit = max(0, step.maxSwipes ?? FlowStep.defaultMaxSwipes)
+        // 打ち切ったときは**実際の回数**を出す(上限を名乗ると「8回も振ったのに」と読めてしまう)
+        let swipes = result?.stoppedUnmoving == true ? (result?.swipes ?? limit) : limit
+        let stopped = result?.stoppedUnmoving == true
+            ? " (stopped early: the content no longer moved)" : ""
+        return "element not found after \(swipes) scroll(s)\(stopped): \(step.locatorSummary)"
     }
 
     /// `notExist(scroll:)` の裏返し: スクロール探索中に見つかってしまったら不在検証は失敗
@@ -737,6 +754,28 @@ public final class StepExecutor {
         }
     }
 
+    /// **フリングを出さないドラッグ**。逆走査専用。hintDrag(0.3〜0.7s)は Android では
+    /// まだ速く、189px のドラッグが慣性で 700px 走って**逆向きの飛び越し**になった
+    /// (2026-08-06 実機で観測)。指を離す直前の速度が閾値を下回るよう、
+    /// **距離ぶんの時間を必ず取る**(reverseSweepDragSpeed px/s)
+    private func slowDrag(jump: Double, container: FTRect,
+                          phase: inout PhaseAccumulator) async -> Bool {
+        guard let g = Self.dragGesture(jump: jump, container: container,
+                                       viewport: container) else { return false }
+        let clock = ContinuousClock()
+        let start = clock.now
+        let distance = abs(g.toY - g.fromY)
+        let duration = min(max(distance / Self.reverseSweepDragSpeed, 0.6), 3.0)
+        defer { phase.actionMs += Self.ms(clock.now - start) }
+        do {
+            try await driver.drag(fromX: g.fromX, fromY: g.fromY, toX: g.toX, toY: g.toY,
+                                  pressSeconds: 0.15, durationSeconds: duration)
+            return true
+        } catch {
+            return false
+        }
+    }
+
     /// スナップショット中の webView コンテナ(ヒントのドラッグ領域)。無ければ nil
     static func webViewContainer(in snapshot: SnapshotResponse) -> FTRect? {
         snapshot.elements.first(where: { $0.type == "webView" })?.frame
@@ -746,7 +785,9 @@ public final class StepExecutor {
     /// 内蔵探索が共有する(同じ挙動を2箇所に書かない)。見つけたら静止させてから返すので、
     /// 呼び手はそのまま解決・操作してよい
     /// StepExecutor+Assert.swift の executeAssertExists(`exist(scroll:)`)からも呼ぶため internal。
-    func runScrollSearch(step: FlowStep,
+    /// `recoverOnMiss` = 見つからずに端まで来たとき、**逆向きの細刻みで1往復だけ拾い直す**か。
+    /// `notExist(scroll:)` の前奏だけは false(見つからないのが期待値なので、往復は丸損)
+    func runScrollSearch(step: FlowStep, recoverOnMiss: Bool = true,
                          phase: inout PhaseAccumulator) async throws -> ScrollSearchResult {
         let clock = ContinuousClock()
         let direction = FTSwipeDirection(rawValue: step.direction ?? "") ?? .up
@@ -757,6 +798,13 @@ public final class StepExecutor {
         var settleCapped = false
         // 自己補正の材料(直前の周回のツリー)。**較正値は持たず毎周測り直す**
         var previousSnapshot: SnapshotResponse?
+        // 撃ったスワイプ数と、**振っても木が1文字も変わらなかった**連続回数。
+        // 端に着いた後も上限まで振り続けるのは丸損なので、2周続けて変化が無ければ打ち切る
+        // (1周で切らないのは、遅れて描画される行を「動かなかった」と誤断しないため)
+        var swipes = 0
+        var unmovedRounds = 0
+        // スクロールした容器(中身が入れ替わった領域)。逆走査の刻みの基準
+        var scrolledContainer: FTRect?
         for attempt in 0...maxSwipes {
             // **1周目だけは静止を待ってから撮る**。直前の操作がプログラム的な
             // アニメーションスクロール(「先頭へ」等)だと、ブリッジの整定はすり抜けることがあり
@@ -780,6 +828,13 @@ public final class StepExecutor {
                 phase.snapshotMs += Self.ms(clock.now - start)
             }
             try await dismissInterruption(in: &snapshot, phase: &phase)
+            if let previousSnapshot {
+                scrolledContainer = Self.changedContentContainer(before: previousSnapshot,
+                                                                 after: snapshot)
+                    ?? Self.movedContentContainer(before: previousSnapshot, after: snapshot,
+                                                  vertical: direction == .up || direction == .down)
+                    ?? scrolledContainer
+            }
             // **1回の移動量が容器を超えると要素を飛び越す**(スクロール探索は行き過ぎた要素を
             // 拾い直さない)。実測して超えていたら次の刻みを詰める。
             //
@@ -835,46 +890,46 @@ public final class StepExecutor {
                                                    phase: &phase) { viaXCUITest = true }
                     continue
                 }
-                // **スワイプしたなら静止を待つ**。フリングの慣性でリストは減速しながら動き続けており、
-                // 見つけた瞬間に返すと次の操作が別の要素を掴む
-                // (実測 2026-07-27: Android は #row_30 を狙って #row_37 をタップした)。
+                // **スワイプしたなら静止を待つ**(空打ち→静止待ちの順。settleAfterFind 参照)。
                 // スワイプしていない周回(attempt == 0)は静止しているので追加コストを払わない
                 if attempt > 0 {
-                    // 順序に意味がある(逆にすると Android で誤タップが再発する。2026-07-27 実測):
-                    //  1. **空打ちの極小ドラッグ**: iOS(Compose)のスクロール容器は次の1タッチを
-                    //     消費してしまい、タップもプレスも効かない(待っても解けない。2回目は効く)。
-                    //     **横へ抜けるドラッグ**でその1回ぶんを肩代わりする。向きの根拠は
-                    //     `emptyDragEndX` に書いてある(縦に抜くと容器がスクロールとして消費し、
-                    //     直後のアサーションが壊れる / 矩形の中で離すとクリックとして成立してしまう)
-                    //  2. **静止待ち**: 空打ちでリストが微動するので、止まってから返す
-                    // **触る点が他の要素に取られるなら打たない**。空打ちは手前の要素
-                    // (タブバー等)に届き、そのボタンが反応してしまう
-                    // (2026-07-27 実測: E2E-iOS の #txt_offscreen はタブバーの帯の中に出るため、
-                    // 空打ちでホームタブへ切り替わっていた)
-                    // **点は容器の中でありさえすればよい**(容器の1タッチを肩代わりするだけで、
-                    // 対象要素に当てる必要は無い)。そこで下端の a11y 空白帯に掛かるときは
-                    // 上へずらす —— 探索は「見えた瞬間」に止まるので、**1回の移動量が小さいほど
-                    // 対象は下端で見つかり**、ずらさないと空打ちが常に抑止される
-                    // (2026-08-02 実測: CMP で scrollFrame 指定時に #row_40 が y=829 で見つかり、
-                    // 空打ちが飛ばされてタップが容器に吸われた。従来の全画面スワイプでは y=720)
-                    let x: Double = element.frame.x + element.frame.width / 2
-                    let y: Double = min(element.frame.y + element.frame.height / 2,
-                                        snapshot.screen.y + snapshot.screen.height
-                                            - Self.bottomUncoveredBand - 1)
-                    if releasesScrollTouch,
-                       Self.emptyDragIsSafe(x: x, y: y, of: element,
-                                            in: snapshot.elements, screen: snapshot.screen) {
-                        await emptyDrag(x: x, y: y,
-                                        toX: Self.emptyDragEndX(of: element, from: x,
-                                                                screen: snapshot.screen))
-                    }
-                    settleCapped = try await !settleAfterScroll(step: step, found: element,
-                                                               phase: &phase)
+                    settleCapped = try await settleAfterFind(step: step, element: element,
+                                                             snapshot: snapshot, phase: &phase)
                 }
                 return ScrollSearchResult(found: true, fallback: fallback, viaXCUITest: viaXCUITest,
                                           hintJumps: hintJumps, settleCapped: settleCapped)
             }
             if attempt < maxSwipes {
+                if let previousSnapshot,
+                   Self.contentSignature(previousSnapshot.elements)
+                       == Self.contentSignature(snapshot.elements) {
+                    unmovedRounds += 1
+                    if unmovedRounds >= Self.unmovedRoundsToStopSearch {
+                        var result = ScrollSearchResult(found: false, fallback: nil,
+                                                        viaXCUITest: viaXCUITest,
+                                                        hintJumps: hintJumps,
+                                                        swipes: swipes, stoppedUnmoving: true)
+                        guard recoverOnMiss, step.containerInference ?? true,
+                              let container = (scrolledContainer
+                                               ?? Self.overflowingContainer(in: snapshot))
+                                  .flatMap({ ScrollGeometry.intersection($0, snapshot.screen) })
+                        else { return result }
+                        // **端に着いたのに見つからない = 途中で飛び越した可能性**。
+                        // 既定経路(scrollFrame 未指定)は刻みがエンジン任せで縮められないので、
+                        // ここでだけ推測した容器で細刻みの逆走査を掛ける
+                        // (通常の送りには触らない = 2度撤回した「暗黙の座標化」にならない)
+                        if let recovered = try await reverseSweep(step: step, container: container,
+                                                                  searching: direction,
+                                                                  phase: &phase) {
+                            result.found = true
+                            result.fallback = recovered
+                            result.reverseSweeps += 1
+                        }
+                        return result
+                    }
+                } else {
+                    unmovedRounds = 0
+                }
                 // ヒント跳躍: 距離が分かるときは固定幅スワイプでなく長距離ドラッグで寄せる。
                 // ドラッグ後は静止を待たず次周回のスナップショット(25ms)で測り直す(自己補正)
                 if let jump = Self.offscreenJump(step: step, snapshot: snapshot, finger: direction),
@@ -882,17 +937,20 @@ public final class StepExecutor {
                    await hintDrag(jump: jump, container: container,
                                   viewport: snapshot.screen, phase: &phase) {
                     hintJumps += 1
+                    swipes += 1
+                    previousSnapshot = snapshot
                     continue
                 }
                 if try await swipeWithFallback(direction, intent: .search,
                                                path: scrollPath(step: step, intent: .search,
                                                                 in: snapshot),
                                                phase: &phase) { viaXCUITest = true }
+                swipes += 1
                 previousSnapshot = snapshot
             }
         }
         return ScrollSearchResult(found: false, fallback: nil, viaXCUITest: viaXCUITest,
-                                  hintJumps: hintJumps)
+                                  hintJumps: hintJumps, swipes: swipes)
     }
 
     private func executeAction(_ action: String, step: FlowStep,
@@ -1070,7 +1128,7 @@ public final class StepExecutor {
             let result = try await runScrollSearch(step: step, phase: &phase)
             let note = Self.scrollSearchNote(result, scrollFrameNote: pendingScrollFrameNote)
             guard result.found else {
-                return StepOutcome(status: .failed(Self.scrollNotFoundMessage(step)))
+                return StepOutcome(status: .failed(Self.scrollNotFoundMessage(step, result)))
             }
             if let fallback = result.fallback {
                 return StepOutcome(status: .passedViaFallback(fallback), driverFallback: note)
@@ -1199,7 +1257,7 @@ public final class StepExecutor {
                 if action == "select" {
                     return StepOutcome(status: .skipped(Self.selectNotFoundReason))
                 }
-                return StepOutcome(status: .failed(Self.scrollNotFoundMessage(step)))
+                return StepOutcome(status: .failed(Self.scrollNotFoundMessage(step, result)))
             }
             searchSwiped = true
         }
@@ -1227,8 +1285,13 @@ public final class StepExecutor {
         // tap が 4.0s → 7.2〜8.2s に伸びたうえで**「対象があの後 9〜14pt 動いた」**で落ちている
         // = 縁で救済スワイプを撃つと、わずかに動いた先の座標でタップすることになり自傷する。
         // **またぎは探索ループ側の見切れ判定に任せる**(あちらは掴む前に送るので座標が古くならない)
+        // **このステップが探索したかは条件にしない**(2026-08-06 に外した): ghost は
+        // 「直前の探索」ではなく**アプリがスクロールしていること**の帰結で、木にはその後も
+        // 残り続ける。`scrollTo` と `tap` を別ステップで書く(利用者の自然な書き方)と
+        // searchSwiped が false になり、**防御がまるごと素通り**していた —— 実測では
+        // `tap` が容器の外を撃って画面が何も変わらず、後段の検証だけが落ちていた
         func grabbedGhost(_ candidate: (ElementInfo, FlowLocator?)?) -> Bool {
-            guard searchSwiped, let element = candidate?.0, step.containerInference ?? true
+            guard let element = candidate?.0, step.containerInference ?? true
             else { return false }
             return Self.isOutsideContainer(element, in: snapshot.elements)
         }
@@ -1265,9 +1328,14 @@ public final class StepExecutor {
                     // 容器の外に報告されたまま = タップが飲まれて `selected=-`)。
                     // 探索ループと同じく**もう1回送って**容器の中へ入れる。1周目は撮り直しだけ
                     // (木の遅れなら送らずに直る)、2周目以降だけ送る = 正常系のコストを増やさない
+                    // **指の向きを持たないステップでも救済に入る**(2026-08-06): 素の `tap` は
+                    // direction を持たないため、旧実装は ghost を検出しておきながら
+                    // **1本も送らずにそのままタップ**していた。ghost は容器の外に居ることが
+                    // 分かっているので、戻す向きは `recoveryJump` / `recoveryDirection` が
+                    // 幾何から決められる(既定の finger は「内側に居るとき」しか使われない)
                     if attempt > 0, grabbedGhost(resolved),
-                       let finger = FTSwipeDirection(rawValue: step.direction ?? ""),
                        let element = resolved?.0 {
+                        let finger = FTSwipeDirection(rawValue: step.direction ?? "") ?? .up
                         let container = Self.clippingContainer(
                             of: element, in: snapshot.elements,
                             inferring: step.containerInference ?? true)
@@ -1952,6 +2020,98 @@ public final class StepExecutor {
         return ScrollGeometry.intersection(element.frame, container) == nil
     }
 
+    /// 端まで送っても見つからなかったときの**拾い直し**。探索方向を反転し、
+    /// **容器基準の細刻み**(容器の約半分)で戻りながら毎周解決を試す。
+    ///
+    /// **なぜ失敗が確定してからだけ掛けるか**: 既定経路(`scrollFrame` 未指定)は刻みが
+    /// エンジン任せで、1回の移動が容器を超えると要素がスワイプの合間に一度も木へ出ない。
+    /// 通常の送りを容器基準に変える案は**2度実装して2度撤回**している(到達距離が縮んで
+    /// 既定 maxSwipes で届かなくなる。docs/performance-tuning.md §3.19)。ここは
+    /// **もう届かないと確定した後**なので、その撤回理由に触れない。
+    /// 容器は推測なので `containerInference` で切れる(呼び出し側で判定済み)
+    private func reverseSweep(step: FlowStep, container: FTRect,
+                              searching finger: FTSwipeDirection,
+                              phase: inout PhaseAccumulator) async throws -> FlowLocator?? {
+        let back: FTSwipeDirection = switch finger {
+        case .up: .down
+        case .down: .up
+        case .left: .right
+        case .right: .left
+        }
+        // **スワイプではなくドラッグで戻す**。スワイプはフリングになり、この局面(端に着いている =
+        // 残りの可動域が短い)では1回で反対の端まで走り切って、また同じ飛び越しを起こす
+        // (2026-08-06 に実機で観測: path 付きスワイプでは1本も拾えなかった)。
+        // slowDrag は距離ぶんの時間を必ず取るのでフリング閾値を下回る
+        let vertical = back == .up || back == .down
+        let extent = vertical ? container.height : container.width
+        let jump = (back == .up ? 1.0 : -1.0) * extent * Self.reverseSweepSpanRatio
+        guard vertical else { return nil }   // 横方向のドラッグ経路は未対応(縦の探索だけ救う)
+
+        var previous: String?
+        for _ in 0..<Self.reverseSweepMaxSwipes {
+            guard await slowDrag(jump: jump, container: container,
+                                 phase: &phase) else { return nil }
+            let snapshot = try await driver.snapshot(bypassingCache: driver.supportsCacheBypass)
+            if let (element, fallback) = Self.resolve(step: step, in: snapshot,
+                                                     strictForAssert: true) {
+                // **見つけただけでは足りない**(本編の探索と同じ規則): 容器の縁で見切れている
+                // 要素は frame がクランプされていてタップが外れる。まだ戻せるなら送り続ける
+                // (iOS/Compose は可視域の外の行も木に残すので、ここを省くと ghost を掴む)
+                if !Self.isClippedByViewport(element, screen: container) {
+                    _ = try await settleAfterFind(step: step, element: element,
+                                                  snapshot: snapshot, phase: &phase)
+                    // **連続2回一致まで待つ**(settleAfterScroll より強い)。逆走査のドラッグは
+                    // 遅い代わりに離した後もしばらく減速しながら動き、**掴んだ座標が
+                    // タップまでにずれる**(2026-08-06 実測: 176px ずれて隣の行を叩いた)
+                    _ = try await settledSignature(phase: &phase)
+                    return .some(fallback)
+                }
+            }
+            // 反対の端まで戻った(もう動かない)なら、この画面には無い
+            let signature = Self.contentSignature(snapshot.elements)
+            if signature == previous { return nil }
+            previous = signature
+        }
+        return nil
+    }
+
+    /// 探索が要素を見つけた直後の後始末。**スワイプを撃った周回だけ**呼ぶ。戻り値は
+    /// 「静止待ちが収束せず打ち切られた」= 呼び手はそれを注記に載せる。
+    /// **順序に意味がある**(逆にすると Android で誤タップが再発する。2026-07-27 実測)
+    private func settleAfterFind(step: FlowStep, element: ElementInfo,
+                                 snapshot: SnapshotResponse,
+                                 phase: inout PhaseAccumulator) async throws -> Bool {
+        // 順序に意味がある(逆にすると Android で誤タップが再発する。2026-07-27 実測):
+        //  1. **空打ちの極小ドラッグ**: iOS(Compose)のスクロール容器は次の1タッチを
+        //     消費してしまい、タップもプレスも効かない(待っても解けない。2回目は効く)。
+        //     **横へ抜けるドラッグ**でその1回ぶんを肩代わりする。向きの根拠は
+        //     `emptyDragEndX` に書いてある(縦に抜くと容器がスクロールとして消費し、
+        //     直後のアサーションが壊れる / 矩形の中で離すとクリックとして成立してしまう)
+        //  2. **静止待ち**: 空打ちでリストが微動するので、止まってから返す
+        // **触る点が他の要素に取られるなら打たない**。空打ちは手前の要素
+        // (タブバー等)に届き、そのボタンが反応してしまう
+        // (2026-07-27 実測: E2E-iOS の #txt_offscreen はタブバーの帯の中に出るため、
+        // 空打ちでホームタブへ切り替わっていた)
+        // **点は容器の中でありさえすればよい**(容器の1タッチを肩代わりするだけで、
+        // 対象要素に当てる必要は無い)。そこで下端の a11y 空白帯に掛かるときは
+        // 上へずらす —— 探索は「見えた瞬間」に止まるので、**1回の移動量が小さいほど
+        // 対象は下端で見つかり**、ずらさないと空打ちが常に抑止される
+        // (2026-08-02 実測: CMP で scrollFrame 指定時に #row_40 が y=829 で見つかり、
+        // 空打ちが飛ばされてタップが容器に吸われた。従来の全画面スワイプでは y=720)
+        let x: Double = element.frame.x + element.frame.width / 2
+        let y: Double = min(element.frame.y + element.frame.height / 2,
+                            snapshot.screen.y + snapshot.screen.height
+                                - Self.bottomUncoveredBand - 1)
+        if releasesScrollTouch,
+           Self.emptyDragIsSafe(x: x, y: y, of: element,
+                                in: snapshot.elements, screen: snapshot.screen) {
+            await emptyDrag(x: x, y: y,
+                            toX: Self.emptyDragEndX(of: element, from: x,
+                                                    screen: snapshot.screen))
+        }
+        return try await !settleAfterScroll(step: step, found: element, phase: &phase)
+    }
+
     /// 掴んだ要素を可視域へ入れ直すために**次に送る向き**。
     ///
     /// **探索方向へ送り続けてはいけない** —— 行き過ぎた側の要素は**さらに遠ざかる**。
@@ -2243,6 +2403,17 @@ public final class StepExecutor {
     private var spanScale: Double = 1
 
     /// 実移動量が容器のこの割合を超えたら刻みを詰める(飛び越しの余裕を残す)
+    /// **もう動かない**と判定するまでの連続周回数。1 だと遅れて描画される行を取りこぼす
+    static let unmovedRoundsToStopSearch = 2
+
+    /// 逆走査の刻み(容器に対する割合)と上限本数。**失敗が確定してからしか撃たない**ので
+    /// 上限は「近くを通り過ぎた」を拾える程度でよい(遠くまで戻すと失敗が遅くなるだけ)
+    static let reverseSweepSpanRatio: Double = 0.5
+    static let reverseSweepMaxSwipes = 8
+    /// 逆走査のドラッグ速度(px/s)。**フリングの閾値を下回る**ことが目的で、速いと慣性で走り、
+    /// 遅いと1周が高くつく
+    static let reverseSweepDragSpeed: Double = 120
+
     static let travelCeilingRatio: Double = 0.8
     /// 詰めるときの倍率(急に効かせすぎると往復が増えるので緩やかに)
     static let spanShrinkFactor: Double = 0.6
@@ -2255,6 +2426,69 @@ public final class StepExecutor {
     /// **共通要素が無いときは nil(不明)を返す**。「1画面ぶん動いた」とは限らず、画面遷移や
     /// id を持たない画面でも同じ状態になるため、行き過ぎと読むと**刻みを縮め続けて到達できなくなる**
     /// (2026-08-02 に実際に踏んだ: #txt_offscreen への scrollTo が maxSwipes を使い切って失敗)
+    /// **スワイプで中身が入れ替わった領域**の推測 = スクロールした容器。
+    /// 2枚の木を比べ、**後の木にだけ現れた要素**の clip 元を数えて最頻のものを採る。
+    ///
+    /// **スワイプ点から推測してはいけない**: 既定スワイプの始点はブリッジ側の比率
+    /// (Android は画面 70%)で、ホストは知らない。中央と決め打つと、下寄せの容器で nil になる
+    /// (2026-08-06 に実測)。**動いた要素から採るのも駄目** —— 飛び越したときは
+    /// 2枚の木に共通の要素が1つも無い(だから「消えた/現れた」で見る)
+    static func changedContentContainer(before: SnapshotResponse, after: SnapshotResponse)
+        -> FTRect? {
+        let known = Set(before.elements.compactMap(\.identifier).filter { !$0.isEmpty })
+        var tally: [String: (rect: FTRect, count: Int)] = [:]
+        for element in after.elements {
+            guard let id = element.identifier, !id.isEmpty, !known.contains(id),
+                  let container = clippingContainer(of: element, in: after.elements,
+                                                    inferring: true)
+            else { continue }
+            let key = "\(container.x),\(container.y),\(container.width),\(container.height)"
+            tally[key] = (container, (tally[key]?.count ?? 0) + 1)
+        }
+        return tally.values.max { $0.count < $1.count }?.rect
+    }
+
+    /// 中身の**入れ替わり**では採れないときの対**: 位置が動いた要素の clip 元。
+    /// iOS(Compose)は可視域の外の行も木に残す(ghost)ので id 集合が変わらず、
+    /// `changedContentContainer` が nil になる —— そのぶんフレームは動くのでこちらで拾える
+    static func movedContentContainer(before: SnapshotResponse, after: SnapshotResponse,
+                                      vertical: Bool) -> FTRect? {
+        let index = Dictionary(before.elements.compactMap { element -> (String, ElementInfo)? in
+            guard let id = element.identifier, !id.isEmpty else { return nil }
+            return (id, element)
+        }, uniquingKeysWith: { first, _ in first })
+        var tally: [String: (rect: FTRect, count: Int)] = [:]
+        for element in after.elements {
+            guard let id = element.identifier, let old = index[id] else { continue }
+            let delta = vertical ? element.frame.y - old.frame.y : element.frame.x - old.frame.x
+            guard abs(delta) > 1,
+                  let container = clippingContainer(of: element, in: after.elements,
+                                                    inferring: true)
+            else { continue }
+            let key = "\(container.x),\(container.y),\(container.width),\(container.height)"
+            tally[key] = (container, (tally[key]?.count ?? 0) + 1)
+        }
+        return tally.values.max { $0.count < $1.count }?.rect
+    }
+
+    /// 木の**形だけ**から採るスクロール容器(2枚の比較が要らない最後の手段)。
+    /// **子がはみ出している clip 領域**を探す —— はみ出しはスクロールで外へ出た子の姿で、
+    /// 静止した木にも残る。iOS(Compose)は id 集合も frame も変わらないことがあり、
+    /// `changedContentContainer` / `movedContentContainer` がどちらも nil になる
+    static func overflowingContainer(in snapshot: SnapshotResponse) -> FTRect? {
+        var tally: [String: (rect: FTRect, count: Int)] = [:]
+        for element in snapshot.elements {
+            guard let container = clippingContainer(of: element, in: snapshot.elements,
+                                                    inferring: true),
+                  // 完全に外 = スクロールで押し出された子(またぎは数えない)
+                  ScrollGeometry.intersection(element.frame, container) == nil
+            else { continue }
+            let key = "\(container.x),\(container.y),\(container.width),\(container.height)"
+            tally[key] = (container, (tally[key]?.count ?? 0) + 1)
+        }
+        return tally.values.max { $0.count < $1.count }?.rect
+    }
+
     static func measuredTravel(before: SnapshotResponse, after: SnapshotResponse,
                                vertical: Bool) -> Double? {
         var deltas: [Double] = []
