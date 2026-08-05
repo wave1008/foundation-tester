@@ -1522,9 +1522,10 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   狙いだった Compose の飛び越しに**効かない**(Compose の容器は xcuitest で `other` として出て
   `scrollable` を申告できず、そもそも対象に選べない)/ in-app では**到達距離が縮んで既定
   `maxSwipes` に届かなくなる**(E2E-iOS/ios-inapp の `tap("#row_40")` が失敗)。
-  判定コードは `StepExecutor.scrollContainer` / `implicitScrollTarget` に残っているが、
-  **`scrollFrame` 未指定なら必ず nil を返す**(`implicitScrollTarget` の呼び元は
-  `ScrollGeometryTests` だけで、production の経路には繋がっていない)。
+  判定コードは `StepExecutor.scrollContainer` に残り、**`scrollFrame` 未指定なら必ず nil を返す**。
+  暗黙対象を選ぶ `implicitScrollTarget` は **2026-08-05 に関数ごと削除した**(production から
+  呼ばれておらず、生きているように見えるだけだったため。規則と再検討条件は
+  docs/performance-tuning.md §3.19 に残っているので、必要になったら書き直す)。
   **未指定でも見切れ判定は容器基準で行う**: Compose は**容器の外に子(ghost)を報告する**ので、
   viewport を画面全体にすると容器の外の要素を「見えている」と誤判定して探索がそこで止まり、
   タップが飲まれる。`scrollable` の申告が無くても、スナップショットの `depth` から

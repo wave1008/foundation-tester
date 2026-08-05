@@ -688,21 +688,27 @@ public final class StepExecutor {
                 phase.snapshotMs += Self.ms(clock.now - start)
             }
             try await dismissInterruption(in: &snapshot, phase: &phase)
-            // **1回の移動量がビューポートを超えると要素を飛び越す**(スクロール探索は行き過ぎた
-            // 要素を拾い直さない)。実測して超えていたら次の刻みを詰める
-            if let previousSnapshot {
-                let vertical = direction == .up || direction == .down
-                let extent = vertical ? snapshot.screen.height : snapshot.screen.width
-                if let travel = Self.measuredTravel(before: previousSnapshot, after: snapshot,
-                                                    vertical: vertical) {
-                    if travel > extent * Self.travelCeilingRatio {
-                        spanScale = max(Self.minSpanScale, spanScale * Self.spanShrinkFactor)
-                    } else if travel < 1, step.scrollFrame == nil {
-                        // **座標を撃ったのに1ミリも動かなかった** = 始点が対象の外(タブバー等)。
-                        // 領域を明示されていない限り、以降は従来の全画面固定へ戻す
-                        // (明示指定は利用者の意図なので黙って別の場所を動かさない)
-                        coordinateSwipeIneffective = true
-                    }
+            // **1回の移動量が容器を超えると要素を飛び越す**(スクロール探索は行き過ぎた要素を
+            // 拾い直さない)。実測して超えていたら次の刻みを詰める。
+            //
+            // **基準は画面ではなく容器**(2026-08-05 修正)。旧実装は画面の高さで割っており、
+            // 容器は定義上それより小さいので**ほぼ発火しなかった** —— §3.18(f) の実測を当てると
+            // SwiftUI は 1 スワイプ 681pt に対し閾値 0.8×874=699pt で素通りする一方、
+            // リストの可視高は 492pt = **1.38 倍の超過**(いちばん取りこぼす SUT で無効だった)。
+            //
+            // **効くのは `scrollFrame` を書いた経路だけ**。刻みを縮める唯一の口は `spanScale` →
+            // `scrollPath` で、あちらは領域未指定なら nil を返してエンジン既定に任せるため。
+            // 既定経路の飛び越しをホスト側で塞ぐには座標スワイプを常用するしかなく、それは
+            // 2度撤回済み(docs/performance-tuning.md §3.19)。**ここを既定経路へ広げないこと**
+            let vertical = direction == .up || direction == .down
+            if let previousSnapshot,
+               let travel = Self.measuredTravel(before: previousSnapshot, after: snapshot,
+                                                vertical: vertical) {
+                let container = scrollContainer(step: step, in: snapshot, vertical: vertical)
+                    .flatMap { ScrollGeometry.intersection($0, snapshot.screen) } ?? snapshot.screen
+                let extent = vertical ? container.height : container.width
+                if travel > extent * Self.travelCeilingRatio {
+                    spanScale = max(Self.minSpanScale, spanScale * Self.spanShrinkFactor)
                 }
             }
             // スクロール探索でも type+index フォールバックは偽陽性のもとなので使わない
@@ -802,7 +808,6 @@ public final class StepExecutor {
         pendingScrollFrameNote = nil
         reportedScrollFrameNote = false
         spanScale = 1
-        coordinateSwipeIneffective = false
         // ロケータ不要のアクション
         if action == "swipe" {
             let direction = FTSwipeDirection(rawValue: step.direction ?? "") ?? .up
@@ -1972,16 +1977,13 @@ public final class StepExecutor {
     private var pendingScrollFrameNote: String?
     private var reportedScrollFrameNote = false
 
-    /// 探索スワイプの刻み倍率(自己補正)。**1回の移動量がビューポートを超えると要素を飛び越す**
-    /// ので、実移動量を毎周測って詰める。較正表は持たない(端末・SUT を跨ぐと再現しないため。
-    /// docs/performance-tuning.md §3.16 / §3.18)。ステップごとに 1.0 へ戻す
+    /// 探索スワイプの刻み倍率(自己補正)。**1回の移動量が容器を超えると要素を飛び越す**ので、
+    /// 実移動量を毎周測って詰める。較正表は持たない(端末・SUT を跨ぐと再現しないため。
+    /// docs/performance-tuning.md §3.16 / §3.18)。ステップごとに 1.0 へ戻す。
+    /// **読むのは `scrollPath` の1箇所だけ** = `scrollFrame` を書いた経路でしか効かない
     private var spanScale: Double = 1
 
-    /// 座標スワイプが**1ミリも動かなかった**ことを観測したか(始点が対象の外に出た形)。
-    /// 立ったらこのステップでは従来の全画面固定へ戻す
-    private var coordinateSwipeIneffective = false
-
-    /// 実移動量がビューポートのこの割合を超えたら刻みを詰める(飛び越しの余裕を残す)
+    /// 実移動量が容器のこの割合を超えたら刻みを詰める(飛び越しの余裕を残す)
     static let travelCeilingRatio: Double = 0.8
     /// 詰めるときの倍率(急に効かせすぎると往復が増えるので緩やかに)
     static let spanShrinkFactor: Double = 0.6
@@ -2095,25 +2097,6 @@ public final class StepExecutor {
         //    エンジン既定として維持する、という決定にも反する
         // 領域を絞りたい利用者は `scrollFrame` を書く(そこでは価値が出ている)
         return nil
-    }
-
-    /// `scrollFrame` 未指定のときの対象領域(Shirates の `getScrollableElement` 相当)。
-    /// **面積最大のスクロール容器**を採る。
-    ///
-    /// **見つからなければ nil = 従来の全画面固定へ落とす**。画面全体を対象にしてはいけない ——
-    /// 2026-08-02 に実測で踏んだ: E2E-iOS のセレクタ画面は容器に identifier が無く snapshot に
-    /// 載らないため申告が無い。画面全体をスパン 0.8 で払うと**始点(画面の 90%)がタブバーに乗り、
-    /// 実移動量が 0.0pt** になった(従来の `swipeUp()` は XCTest が要素の中で始点を決めるので効く)。
-    /// 容器を特定できないエンジン・画面では、座標化しない方が正しい
-    static func implicitScrollTarget(in snapshot: SnapshotResponse, vertical: Bool) -> FTRect? {
-        let candidates = snapshot.elements.filter { $0.scrollable == true }
-        guard let largest = candidates.max(by: { a, b in
-            a.frame.width * a.frame.height < b.frame.width * b.frame.height
-        }) else { return nil }
-        // 画面のごく一部しか占めない容器(小さなバッジ内スクロール等)は本体ではない
-        let area = largest.frame.width * largest.frame.height
-        let screenArea = snapshot.screen.width * snapshot.screen.height
-        return area >= screenArea * 0.2 ? largest.frame : nil
     }
 
     /// 自己補正の倍率をマージンへ写す。span = 1 - start - end を scale 倍し、両端へ等分に戻す
