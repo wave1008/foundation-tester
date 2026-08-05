@@ -30,6 +30,20 @@ public enum InstalledAppCheck {
         return equal
     }
 
+    /// 起動中シミュレータ(デバイス名で一意に引けるもの)にそのアプリが入っているか。
+    /// **判定できないときは nil**(実機・同名デバイス複数・simctl 不調)= 断定しない側に倒す。
+    /// launch 失敗の切り分けに使う: ブリッジ側は未インストールと未起動を区別できない
+    /// (XCUIApplication はどちらも notRunning のまま)ため、ホストが udid で確かめる
+    public static func installedOnSimulator(deviceName: String, bundleID: String) -> Bool? {
+        let booted = ((try? SimulatorCatalog.devices()) ?? [])
+            .filter { $0.booted && !$0.physical && $0.name == deviceName }
+        guard booted.count == 1 else { return nil }
+        guard let result = try? Shell.run(
+            ["xcrun", "simctl", "get_app_container", booted[0].udid, bundleID],
+            timeout: 15) else { return nil }
+        return result.status == 0
+    }
+
     /// インストール直後に呼ぶと次回以降の深比較をスキップできる(呼ばなくても初回深比較で自己回復)
     public static func recordInstalled(udid: String, bundleID: String, appPath: String) {
         guard let fingerprint = sourceFingerprint(appPath: appPath) else { return }

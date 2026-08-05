@@ -147,6 +147,16 @@ public final class AndroidDriver: AppDriver {
         return AndroidForegroundWindows.topmostAppPackage(dumpsys: result.output)
     }
 
+    /// パッケージが入っているか。**判定できないときは nil**(adb 不調でも「未インストール」と
+    /// 断じない)。launch 失敗の切り分け文言に使う
+    public func isInstalled(bundleID: String) -> Bool? {
+        guard let result = try? adb(["shell", "pm", "list", "packages", bundleID]),
+              result.status == 0 else { return nil }
+        // pm list packages は前方一致で引くので、行の完全一致で判定する
+        return result.output.split(separator: "\n")
+            .contains { $0.trimmingCharacters(in: .whitespaces) == "package:\(bundleID)" }
+    }
+
     public func launch(bundleID: String) async throws {
         // force-stop+monkey+am start フォールバックと整定待ちはブリッジ側 handleLaunch() が持つ
         // (ここでの追加 sleep は不要)
