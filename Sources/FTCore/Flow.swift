@@ -59,6 +59,10 @@ public struct FlowStep: Codable, Sendable {
     /// FM でスクショ視覚照合し、覆われ/切れ/不在なら偽陽性として失敗へ反転する。DSL の visible() が立てる。
     /// nil = executor 既定(StepExecutor.occlusionGuard)に従う。
     public var occlusionGuard: Bool?
+    /// **容器の推測に依存する補正**をこのステップで行うか(見切れ判定・掴み直し・救済ドラッグ・
+    /// 見えている部分を撃つ座標補正・壊れた座標の候補除外)。nil = 実行プロファイルの既定に従う。
+    /// 想定外のツリーで補正が裏目に出る画面だけ、利用者が1コマンド単位で切れるようにするためのもの
+    public var containerInference: Bool?
 
     /// `tap(holdSeconds:)` の既定。**0 = 通常タップ**(Shirates の `tapHoldSeconds` 準拠)。
     /// 0 より大きいときだけ長押しとしてブリッジの /press へ回す(StepExecutor)
@@ -118,6 +122,7 @@ public struct FlowStep: Codable, Sendable {
                 duration: Double? = nil,
                 expectedCount: Int? = nil,
                 note: String? = nil, occlusionGuard: Bool? = nil,
+                containerInference: Bool? = nil,
                 scrollFrame: FlowLocator? = nil,
                 startMarginRatio: Double? = nil, endMarginRatio: Double? = nil,
                 intervalSeconds: Double? = nil,
@@ -143,6 +148,7 @@ public struct FlowStep: Codable, Sendable {
         self.expectedCount = expectedCount
         self.note = note
         self.occlusionGuard = occlusionGuard
+        self.containerInference = containerInference
     }
 }
 

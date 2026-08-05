@@ -443,6 +443,7 @@ struct ApiRunCommand: AsyncParsableCommand {
                 project: project, scenarioID: info.id, connection: connection,
                 fm: fm, reportDir: reportDirPath,
                 defaultTimeout: resolved.defaultTimeout,
+                containerInference: resolved.containerInference,
                 scenarioTimeout: resolved.scenarioTimeout, dryRun: dryRun,
                 debug: debugOptions, recording: recording,
                 appPath: dryRun ? nil : resolved.apps[scenarioPlatform]?.appPath,
@@ -525,6 +526,7 @@ struct ApiRunCommand: AsyncParsableCommand {
         let orchestrator = RunOrchestrator(
             project: project, workers: workers, fm: fm,
             reportDir: reportDirURL, defaultTimeout: resolved.defaultTimeout,
+            containerInference: resolved.containerInference,
             scenarioTimeout: resolved.scenarioTimeout, recorder: recorder,
             recordingConfig: recordingConfig,
             isDeviceFrozen: { serial in

@@ -255,6 +255,12 @@ public final class StepExecutor {
     /// 行が選択される = 二重実行。2026-07-27 実測)。プラットフォームで分ける唯一の理由
     private let releasesScrollTouch: Bool
 
+    /// **容器の推測に依存する補正**の既定(実行プロファイルの `containerInference`。既定 true)。
+    /// ステップ側の指定(`FlowStep.containerInference`)があればそちらが勝ち、
+    /// 環境変数 `FT_CONTAINER_INFERENCE=off` はどちらより上位の殺しスイッチ。
+    /// **`execute` の入口でステップへ畳む**ので、下流(解決・探索・タップ)はステップだけ見ればよい
+    let containerInference: Bool
+
     /// 画面が変わり得る操作の直後に呼び、スクショ再利用キャッシュを捨てる(performCustom から呼ぶ)。
     public func invalidateScreenshotCache() { cachedScreenshot = nil }
 
@@ -279,8 +285,10 @@ public final class StepExecutor {
                 delegate: ReplayDelegate? = nil, healingEnabled: Bool = false,
                 occlusionGuard: Bool = false, occlusionInkThreshold: Double = 12,
                 occlusionGuardEnabled: Bool = true, screenIsEnabled: Bool = true,
-                releasesScrollTouch: Bool = false) {
+                releasesScrollTouch: Bool = false,
+                containerInference: Bool = true) {
         self.releasesScrollTouch = releasesScrollTouch
+        self.containerInference = containerInference
         self.driver = driver
         self.fallbackDriver = fallbackDriver
         self.typeDriver = typeDriver
@@ -296,7 +304,12 @@ public final class StepExecutor {
 
     /// cached: ヒールキャッシュ由来のロケータ連鎖。解決順は
     /// プライマリ → フォールバック → キャッシュ → FM ヒール(アクションのみ)
-    public func execute(_ step: FlowStep, cached: [FlowLocator] = []) async -> StepOutcome {
+    public func execute(_ original: FlowStep, cached: [FlowLocator] = []) async -> StepOutcome {
+        // **入口で1回だけ実効値へ畳む**(下流は `step.containerInference` だけを見る)。
+        // 優先順位: 環境変数の殺しスイッチ > ステップ指定 > 実行プロファイル既定
+        var step = original
+        step.containerInference = Self.containerInferenceEnabled
+            && (original.containerInference ?? containerInference)
         let clock = ContinuousClock()
         let start = clock.now
         var phase = PhaseAccumulator()
@@ -436,8 +449,9 @@ public final class StepExecutor {
     /// 触る直前の静止確認(settleTapTarget)は fix 20/40 対 base 20/40 で**差ゼロ**だったので撤去した。
     /// 送る方向は 2/10 → 5/10 の自傷を実測済み(grabbedGhost の記録)。
     /// 残るのは**座標そのものを直す**ことだけで、見えている部分は実在するのでそこを撃てば当たる
-    static func visibleTapRect(for element: ElementInfo, in elements: [ElementInfo]) -> FTRect? {
-        guard let container = clippingContainer(of: element, in: elements),
+    static func visibleTapRect(for element: ElementInfo, in elements: [ElementInfo],
+                               inferring: Bool = containerInferenceEnabled) -> FTRect? {
+        guard let container = clippingContainer(of: element, in: elements, inferring: inferring),
               let visible = ScrollGeometry.intersection(element.frame, container),
               // **細すぎる帯は撃たない**。容器の推測が外れていた場合、わずかな重なりを
               // 「見えている部分」と信じて叩くと**より悪い場所**へ当たる。実測の対象は
@@ -804,7 +818,8 @@ public final class StepExecutor {
                 // label=nil・y=783 = 容器 230..692 の外で見つかり、タップが飲まれた)
                 let viewport = (scrollContainer(step: step, in: snapshot,
                                                 vertical: direction == .up || direction == .down)
-                                ?? Self.clippingContainer(of: element, in: snapshot.elements))
+                                ?? Self.clippingContainer(of: element, in: snapshot.elements,
+                                                          inferring: step.containerInference ?? true))
                     .flatMap { ScrollGeometry.intersection($0, snapshot.screen) } ?? snapshot.screen
                 if attempt < maxSwipes,
                    Self.isClippedByViewport(element, screen: viewport) {
@@ -1213,7 +1228,8 @@ public final class StepExecutor {
         // = 縁で救済スワイプを撃つと、わずかに動いた先の座標でタップすることになり自傷する。
         // **またぎは探索ループ側の見切れ判定に任せる**(あちらは掴む前に送るので座標が古くならない)
         func grabbedGhost(_ candidate: (ElementInfo, FlowLocator?)?) -> Bool {
-            guard searchSwiped, let element = candidate?.0 else { return false }
+            guard searchSwiped, let element = candidate?.0, step.containerInference ?? true
+            else { return false }
             return Self.isOutsideContainer(element, in: snapshot.elements)
         }
         var ghostRetries = 0
@@ -1252,7 +1268,9 @@ public final class StepExecutor {
                     if attempt > 0, grabbedGhost(resolved),
                        let finger = FTSwipeDirection(rawValue: step.direction ?? ""),
                        let element = resolved?.0 {
-                        let container = Self.clippingContainer(of: element, in: snapshot.elements)
+                        let container = Self.clippingContainer(
+                            of: element, in: snapshot.elements,
+                            inferring: step.containerInference ?? true)
                         // **距離を測ってその分だけ動かす**(recoveryJump 参照)。全画面スワイプだと
                         // 100pt のずれに対して1ページ動いてしまい、**行き過ぎて往復する**。
                         // 容器が分かるときだけ使える手なので、駄目なら従来のスワイプへ落ちる
@@ -1457,7 +1475,8 @@ public final class StepExecutor {
             // **中心が容器の外に落ちる要素だけ、見えている部分の中心を座標で撃つ**
             // (visibleTapRect 参照)。ref で撃つとブリッジが frame の中心へ解決するので、
             // 壊れた frame ではそのまま容器の外を叩いて黙って飲まれる
-            if let visible = Self.visibleTapRect(for: element, in: snapshot.elements) {
+            if let visible = Self.visibleTapRect(for: element, in: snapshot.elements,
+                                                inferring: step.containerInference ?? true) {
                 try await actingDriver.tap(x: visible.centerX, y: visible.centerY)
                 driverFallback = Self.joinNotes(driverFallback,
                     "tapped the visible part (the reported frame's centre falls outside its container)")
@@ -2364,7 +2383,7 @@ public final class StepExecutor {
     /// 利用者が1つの環境変数で全部止められるようにしておく。
     /// 影響範囲を1箇所に閉じるため、**推測の入口(`clippingContainer`)と
     /// `hasClampedCoordinates` の2箇所だけ**でこのフラグを見る
-    static let containerInferenceEnabled =
+    public static let containerInferenceEnabled =
         ProcessInfo.processInfo.environment["FT_CONTAINER_INFERENCE"] != "off"
 
     /// ヒールキャッシュのロケータ連鎖を順に照合する
@@ -2404,8 +2423,10 @@ public final class StepExecutor {
             chain.append((fallback, false))
         }
 
+        // **ステップの実効値を解決経路へ流す**(execute の入口で畳んである。nil = 既定 on)
+        let inferring = step.containerInference ?? containerInferenceEnabled
         for (locator, isPrimary) in chain {
-            if let (element, quality) = matchDetailed(locator, in: snapshot) {
+            if let (element, quality) = matchDetailed(locator, in: snapshot, inferring: inferring) {
                 return (element, isPrimary ? nil : locator, quality)
             }
         }
@@ -2416,17 +2437,20 @@ public final class StepExecutor {
         matchDetailed(locator, in: snapshot)?.0
     }
 
-    public static func matchDetailed(_ locator: FlowLocator, in snapshot: SnapshotResponse)
+    public static func matchDetailed(_ locator: FlowLocator, in snapshot: SnapshotResponse,
+                                     inferring: Bool = containerInferenceEnabled)
         -> (ElementInfo, MatchQuality)? {
-        matchDetailed(locator, elements: snapshot.elements)
+        matchDetailed(locator, elements: snapshot.elements, inferring: inferring)
     }
 
     /// ロケータに一致する要素を 1 つ選ぶ。選択規則:
     /// 属性フィルタ(全て AND)で絞る → `[n]` 番目を採る → 相対ステップがあれば順に辿る。
     /// 相対セレクタ(`通知:rightSwitch`)では属性フィルタが**対象ではなく基準**を指す。
-    public static func matchDetailed(_ locator: FlowLocator, elements: [ElementInfo])
+    public static func matchDetailed(_ locator: FlowLocator, elements: [ElementInfo],
+                                     inferring: Bool = containerInferenceEnabled)
         -> (ElementInfo, MatchQuality)? {
-        guard let matches = candidates(locator, elements: elements), !matches.isEmpty else {
+        guard let matches = candidates(locator, elements: elements, inferring: inferring),
+              !matches.isEmpty else {
             return nil
         }
         let index = locator.index ?? 0
@@ -2577,7 +2601,8 @@ public final class StepExecutor {
     /// (スコープだけは条件として認める。`#list >> [2]` を書けるようにするため)。
     /// 相対ステップ(`relative`)と序数(`index`)はここでは見ない —
     /// 呼び手(matchDetailed)が基準を決めてから辿る。
-    public static func candidates(_ locator: FlowLocator, elements: [ElementInfo]) -> [ElementInfo]? {
+    public static func candidates(_ locator: FlowLocator, elements: [ElementInfo],
+                                  inferring: Bool = containerInferenceEnabled) -> [ElementInfo]? {
         guard var pool = scopedPool(locator.scope, elements: elements) else { return [] }
         if locator.hasNoFilter, locator.scope?.isEmpty ?? true { return nil }
         // 素の文字列は**完全一致**。部分一致は `*x*` 等で明示したときだけ
@@ -2601,7 +2626,7 @@ public final class StepExecutor {
         // 除外条件(`text!=キャンセル`)は**肯定フィルタで絞ったあと**に引く。
         // 否定だけの節は上の hasNoFilter で既に nil を返しているので、ここには来ない
         for exclusion in locator.not ?? [] {
-            let excluded = Set(candidates(exclusion, elements: pool)?.map(\.ref) ?? [])
+            let excluded = Set(candidates(exclusion, elements: pool, inferring: inferring)?.map(\.ref) ?? [])
             if excluded.isEmpty { continue }
             pool = pool.filter { !excluded.contains($0.ref) }
         }
@@ -2612,7 +2637,7 @@ public final class StepExecutor {
         // 計算量は O(|pool| × |elements|) だが、要素数の多い WebView 画面(200 程度)でも
         // 数万回の矩形比較 = 1ms 未満で、snapshot 1枚の往復(数百 ms)に対して無視できる。
         // 群ごとに1回だけ判定する形へ畳むこともできるが、規則の実装が2つに割れる方が高くつく
-        return pool.filter { !Self.hasClampedCoordinates($0, in: elements) }
+        return pool.filter { !Self.hasClampedCoordinates($0, in: elements, inferring: inferring) }
     }
 
     /// 否定系アサート(`*Not` / `*IsEmpty` / `*IsNotEmpty`)の判定。

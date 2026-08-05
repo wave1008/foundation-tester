@@ -1033,6 +1033,32 @@ final class ProfileResolverTests: XCTestCase {
         XCTAssertFalse(resolved.fm.screenIs)
     }
 
+    // MARK: - containerInference(FM とは独立。既定 true)
+
+    func testContainerInferenceDefaultsToTrueAndFollowsExplicitFalse() throws {
+        try writeStandardFixture()
+        let onByDefault = try ProfileResolver.resolve(
+            project: project, runName: "all", machineName: "M1 Max(64GB)")
+        XCTAssertTrue(onByDefault.containerInference, "省略時は既定 true のはず")
+
+        // fm:false に巻き込まれない(FM のサブフラグではない)ことも同時に見る
+        try write("""
+        { "app": "sampleapp", "devices": [ { "name": "メイン機" } ],
+          "fm": false, "containerInference": false }
+        """, to: project.runsDir, name: "ciofffmoff")
+        let off = try ProfileResolver.resolve(
+            project: project, runName: "ciofffmoff", machineName: "M1 Max(64GB)")
+        XCTAssertFalse(off.containerInference)
+
+        try write("""
+        { "app": "sampleapp", "devices": [ { "name": "メイン機" } ], "fm": false }
+        """, to: project.runsDir, name: "fmoffonly")
+        let fmOffOnly = try ProfileResolver.resolve(
+            project: project, runName: "fmoffonly", machineName: "M1 Max(64GB)")
+        XCTAssertTrue(fmOffOnly.containerInference, "fm:false でも補正は止まらない")
+        XCTAssertTrue(fmOffOnly.warnings.isEmpty, "containerInference は既知キー: \(fmOffOnly.warnings)")
+    }
+
     func testValidateMachineProfileReportsPhysicalErrors() throws {
         let data = #"""
         { "ios": { "devices": [ { "name": "実機", "kind": "physical", "engine": "inapp" } ] },

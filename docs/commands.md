@@ -39,7 +39,7 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 
 | コマンド | 説明 |
 |---|---|
-| `tap(sel, holdSeconds: 0, timeout:scroll:maxSwipes:)` | タップ。`holdSeconds` を 0 より大きくすると長押し(既定 0 = 通常タップ) |
+| `tap(sel, holdSeconds: 0, timeout:scroll:maxSwipes:containerInference:)` | タップ。`holdSeconds` を 0 より大きくすると長押し(既定 0 = 通常タップ)。`containerInference:` は下記「容器の推測に依存する補正」参照 |
 | `select(sel, timeout:requireVisible:scroll:maxSwipes:)` | 要素を**掴むだけ**(デバイス操作なし)。`exist` と違い**検証ではない**ので、レポートに検証ステップとして残らない。値の読み出し(`.text`/`.value`/`.id`)や検証コマンドへのチェーンの起点に使う。**掴めなければ失敗させず空要素を返す** — 「見つからない」も「見つかったが見えない(覆われ・見切れ)」も同じ形で返るので、呼び出し側は `.isEmpty` で分岐する(`exist` はどちらも失敗へ反転するので意味が違う)。**在ることを保証したいなら `exist`**。`requireVisible: false` で可視性照合自体を外す |
 | `lastElement` | **直前に掴んだ要素**(引数なし。Shirates(Classic) の `TestDriver.lastElement` 相当)。要素を1つに定めて解決したコマンド(`select` / `exist` / `tap` / `type` / `waitForDisplay` / テキスト・値の検証など)が通るたびに差し替わる。差し替えないのは**要素を1つに定めない** `notExist` / `countIs` と、**セレクタを取らない** `swipe` / `launchApp` 等。**値は掴んだ時点の凍結値**で、掴んだ後にスクロールやタップを挟むと古い値を読む(下記「掴んだ要素の値を読む」)。**scene を跨ぐと空**・**掴めなかったコマンドは空で上書き**・**一度も掴んでいなければ空+警告** |
 | `type("文字列")` | **フォーカス中の要素**へ入力(直前に `tap(入力欄)` でフォーカスしてから使う)。改行の扱いは下記。**引数はテキストであってセレクタではない** — `type("#email")` のようにセレクタらしい1語(`#` + 識別子・`\|\|` や `>>` を含む)を渡すと実行前に失敗する(黙って `#email` と打ち込んで後段の検証で落ちると原因から遠いため)。その文字列を本当に入力したいなら2引数形 `type("#field", "#email")` を使う |
@@ -102,12 +102,13 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 
 | コマンド | 説明 |
 |---|---|
-| `scrollTo(sel, direction: .down, maxSwipes: 8)` | 要素が見つかるまでスクロール(見つかったら成功。タップはしない) |
+| `scrollTo(sel, direction: .down, maxSwipes: 8, containerInference:)` | 要素が見つかるまでスクロール(見つかったら成功。タップはしない)。`containerInference:` は下記「容器の推測に依存する補正」参照 |
 | `scrollDown(repeat: 1)` / `scrollUp` / `scrollRight` / `scrollLeft` | 1 画面ぶんスクロール(`repeat:` 回繰り返す) |
 | `scrollFrame:` / `startMarginRatio:` / `endMarginRatio:`(`scroll*` / `scrollToBottom` 等 / `scrollTo` / `withScroll*` の引数) | **スクロールさせたい領域**をセレクタ式で指定する(Shirates 準拠)。例: `scrollTo("#row_40", scrollFrame: "#list_rows")`。**省略時は画面中央基準の全画面スワイプ**(マージン指定も無視)。`withScrollDown(scrollFrame:) { }` に渡すとブロック内の探索が継承する。**Compose / Flutter の in-app エンジンは領域を切り分けられないため XCUITest へ自動フォールバックする**(そのぶん遅い)。**スクロールできない領域を指定すると、スワイプは成功するが何も動かない** —— 気付けるようにステップへ注記が付く(`the specified scrollFrame is not scrollable`)。**Compose(CMP)で領域指定が必須だった制限は 2026-08-03 に解消**(容器の外に出る ghost 要素を掴んでいた。docs/verification.md「Compose の探索直後タップ」)|
 | `scrollToBottom(maxSwipes: 50)` / `scrollToTop` / `scrollToRightEdge` / `scrollToLeftEdge` | 端まで送る(**画面が変化しなくなるまで**。maxSwipes は暴走を止める上限で、上限で打ち切ったときはステップに注記が付く) |
 | `withScrollDown { … }` / `withScrollUp` / `withScrollRight` / `withScrollLeft` | ブロック内の `tap` / `type` / `clearInput` / `select` / `exist` / `notExist` を**すべてスクロール探索**にする(明示の `scroll:` があればそちらが優先)。**`notExist` は意味が変わる** — 探索中に見つかった時点で失敗になる |
 | `withoutScroll { … }` | 外側の `withScroll*` を打ち消し、ブロック内は現在画面だけで解決する |
+| `withoutContainerInference { … }` | ブロック内のすべてのコマンドで、容器の推測に依存する補正を止める(下記) |
 | `tapWithScrollDown(sel, maxSwipes:)` 等 4 方向 | `tap(sel, scroll: .down)` の別名(Shirates と同名) |
 | `tapWithoutScroll(sel, timeout:)` | `withScroll*` の中でも**この 1 コマンドだけ**スクロールしない |
 | `existWithScrollDown(sel, maxSwipes:)` / `existWithScrollUp` | `exist(sel, scroll: .down)` の別名 |
@@ -136,6 +137,21 @@ withScrollDown {
     existWithoutScroll("#header")   // 固定ヘッダは現在画面で確認
 }
 ```
+
+### 容器の推測に依存する補正
+
+`tap`/`scrollTo` などの座標解決は、見切れ判定・掴み直し・救済ドラッグ・見えている部分を撃つ座標補正・
+壊れた座標の候補除外といった「容器の推測」に依存する補正を行う。**既定で有効**だが、想定外の画面構成
+(独自のスクロールコンテナ実装など)で補正が裏目に出るときだけ切れる。3段階のどこで切るかを選べる:
+
+| 単位 | 方法 |
+|---|---|
+| run 全体(**最上位の殺しスイッチ**) | 環境変数 `FT_CONTAINER_INFERENCE=off`。これを立てると下の3つは全部無視して無効 |
+| 1 コマンド | `tap(sel, containerInference: false)` / `scrollTo(sel, containerInference: false)` |
+| ブロック | `withoutContainerInference { … }`(`tap`/`exist`/`select` など全コマンドに効く) |
+| 実行プロファイル全体 | 実行プロファイルの `containerInference: false`(VSCode 拡張のプロファイルタブからも設定できる) |
+
+環境変数を除けば、明示引数 > ブロックの文脈 > 実行プロファイルの既定 の順。
 
 ## フリック
 

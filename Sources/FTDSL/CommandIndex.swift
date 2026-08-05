@@ -60,7 +60,8 @@ public enum DSLCommandIndex {
               "Declares an in-app message to close automatically whenever it appears."),
 
         // MARK: operation
-        .init("tap", "operation", "tap(selector, holdSeconds:, timeout:, scroll:, maxSwipes:)",
+        .init("tap", "operation",
+              "tap(selector, holdSeconds:, timeout:, scroll:, maxSwipes:, containerInference:)",
               "Taps an element. holdSeconds greater than 0 makes it a long press."),
         .init("select", "operation", "select(selector, timeout:, requireVisible:, scroll:, maxSwipes:)",
               "Grabs an element without touching the device. Returns an empty element instead of failing."),
@@ -94,7 +95,8 @@ public enum DSLCommandIndex {
               "Drags from one element to another. Only the start point is healed."),
 
         // MARK: scroll
-        .init("scrollTo", "scroll", "scrollTo(selector, direction:, maxSwipes:, scrollFrame:)",
+        .init("scrollTo", "scroll",
+              "scrollTo(selector, direction:, maxSwipes:, scrollFrame:, containerInference:)",
               "Scrolls until the element is found. Does not tap it."),
         .init("scrollDown", "scroll", "scrollDown(repeat:, scrollFrame:)",
               "Scrolls one screen further down the content."),
@@ -122,6 +124,8 @@ public enum DSLCommandIndex {
               "Makes every command in the block search by scrolling left."),
         .init("withoutScroll", "scroll", "withoutScroll { }",
               "Cancels an enclosing withScroll* for the block."),
+        .init("withoutContainerInference", "scroll", "withoutContainerInference { }",
+              "Disables container-inference-based tap/scroll correction for every command in the block."),
         .init("tapWithScrollDown", "scroll", "tapWithScrollDown(selector, maxSwipes:)",
               "Alias of tap(selector, scroll: .down). Takes only maxSwipes."),
         .init("tapWithScrollUp", "scroll", "tapWithScrollUp(selector, maxSwipes:)",

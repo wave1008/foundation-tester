@@ -252,6 +252,11 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
     /// 実行環境に注入する(伝搬経路は BridgeClient.fastInput 参照)。動きの激しい画面では
     /// 整定前タップのフレークリスクを伴う(既定 false)
     public var iosFastInput: Bool?
+    /// **容器の推測に依存する補正**を行うか(既定 true)。false にすると見切れ判定・掴み直し・
+    /// 救済ドラッグ・見えている部分を撃つ座標補正・壊れた座標の候補除外が止まり、
+    /// 推測を持たなかった頃の挙動へ戻る。**FM とは無関係**(幾何ヒューリスティック)。
+    /// シナリオ側は `tap(..., containerInference:)` で1コマンド単位に上書きできる
+    public var containerInference: Bool?
     /// テスト対象アプリのアニメーションを残すか(既定 false = 実行開始時に無効化する)。
     /// true で FT_ANIMATIONS=1 を実行環境に注入する(判定元は AnimationPolicy)。ON にすると
     /// 整定待ちが伸び、Android では静穏判定後もスクリーンショットが遷移途中の絵を掴みうる。
@@ -280,6 +285,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
                 wipeDataOnBloat: Bool? = nil, wipeDataThresholdGB: Double? = nil,
                 recoverCpuFallbackToGpu: Bool? = nil,
                 locale: String? = nil, iosFastInput: Bool? = nil,
+                containerInference: Bool? = nil,
                 enableAnimations: Bool? = nil, record: Bool? = nil,
                 recordFailuresOnly: Bool? = nil, recordBitrateKbps: Int? = nil,
                 recordFullResolution: Bool? = nil) {
@@ -299,6 +305,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
         self.recoverCpuFallbackToGpu = recoverCpuFallbackToGpu
         self.locale = locale
         self.iosFastInput = iosFastInput
+        self.containerInference = containerInference
         self.enableAnimations = enableAnimations
         self.record = record
         self.recordFailuresOnly = recordFailuresOnly
@@ -311,7 +318,7 @@ public struct RunProfileDocument: Codable, Sendable, Equatable {
         "reportDir", "defaultTimeout", "scenarioTimeout",
         "machine", "iosInappEngine", "wipeDataOnBloat", "wipeDataThresholdGB",
         "recoverCpuFallbackToGpu", "locale",
-        "iosFastInput", "enableAnimations",
+        "iosFastInput", "enableAnimations", "containerInference",
         "record", "recordFailuresOnly", "recordBitrateKbps", "recordFullResolution",
     ]
 }
@@ -380,6 +387,8 @@ public struct ResolvedProfile: Sendable {
     public let locale: String
     /// iOS xcuitest ブリッジの高速入力(RunProfileDocument.iosFastInput。既定 false)
     public let iosFastInput: Bool
+    /// 容器の推測に依存する補正(RunProfileDocument.containerInference。**既定 true**)
+    public let containerInference: Bool
     /// アプリのアニメーションを残すか(RunProfileDocument.enableAnimations。既定 false=無効化)
     public let enableAnimations: Bool
     /// 各ワーカーを run 全体で録画し、シナリオごとに切り出すか(RunProfileDocument.record。既定 false)
@@ -733,6 +742,7 @@ public enum ProfileResolver {
             recoverCpuFallbackToGpu: runDoc.recoverCpuFallbackToGpu ?? false,
             locale: locale,
             iosFastInput: runDoc.iosFastInput ?? false,
+            containerInference: runDoc.containerInference ?? true,
             enableAnimations: runDoc.enableAnimations ?? false,
             record: runDoc.record ?? false,
             recordFailuresOnly: runDoc.recordFailuresOnly ?? false,

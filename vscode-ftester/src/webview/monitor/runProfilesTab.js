@@ -26,6 +26,7 @@ const runProfileFmOptions = document.getElementById('run-profile-fm-options');
 const runProfileHeal = document.getElementById('run-profile-heal');
 const runProfileFalsePositiveCheck = document.getElementById('run-profile-false-positive-check');
 const runProfileScreenIs = document.getElementById('run-profile-screen-is');
+const runProfileContainerInference = document.getElementById('run-profile-container-inference');
 const runProfileIosInappEngine = document.getElementById('run-profile-ios-inapp-engine');
 const runProfileIosFastInput = document.getElementById('run-profile-ios-fast-input');
 const runProfileEnableAnimations = document.getElementById('run-profile-enable-animations');
@@ -215,6 +216,7 @@ function renderRunProfileEditor(fields) {
   runProfileIosInappEngine.checked = fields.iosInappEngine;
   runProfileIosFastInput.checked = fields.iosFastInput;
   runProfileEnableAnimations.checked = fields.enableAnimations;
+  runProfileContainerInference.checked = fields.containerInference;
   runProfileWipeDataOnBloat.checked = fields.wipeDataOnBloat;
   runProfileRecoverCpuFallback.checked = fields.recoverCpuFallbackToGpu;
   runProfileRecord.checked = fields.record;
@@ -366,6 +368,7 @@ runProfileScreenIs.addEventListener('change', onRunProfileFormInput);
 runProfileIosInappEngine.addEventListener('change', onRunProfileFormInput);
 runProfileIosFastInput.addEventListener('change', onRunProfileFormInput);
 runProfileEnableAnimations.addEventListener('change', onRunProfileFormInput);
+runProfileContainerInference.addEventListener('change', onRunProfileFormInput);
 runProfileWipeDataOnBloat.addEventListener('change', onRunProfileFormInput);
 runProfileRecoverCpuFallback.addEventListener('change', onRunProfileFormInput);
 // record ON のときだけ配下のサブオプション(recordFailuresOnly/recordBitrateKbps/
@@ -407,6 +410,7 @@ function runProfileValuesEqual(fields) {
     runProfileIosInappEngine.checked === fields.iosInappEngine &&
     runProfileIosFastInput.checked === fields.iosFastInput &&
     runProfileEnableAnimations.checked === fields.enableAnimations &&
+    runProfileContainerInference.checked === fields.containerInference &&
     runProfileWipeDataOnBloat.checked === fields.wipeDataOnBloat &&
     runProfileRecoverCpuFallback.checked === fields.recoverCpuFallbackToGpu &&
     runProfileRecord.checked === fields.record &&
@@ -438,6 +442,7 @@ function setRunProfileControlsEnabled(enabled) {
   runProfileScreenIs.disabled = !enabled;
   runProfileIosInappEngine.disabled = !enabled;
   runProfileIosFastInput.disabled = !enabled;
+  runProfileContainerInference.disabled = !enabled;
   runProfileWipeDataOnBloat.disabled = !enabled;
   runProfileRecoverCpuFallback.disabled = !enabled;
   runProfileRecord.disabled = !enabled;
@@ -515,6 +520,7 @@ runProfileConfirm.addEventListener('click', () => {
       iosInappEngine: runProfileIosInappEngine.checked,
       iosFastInput: runProfileIosFastInput.checked,
       enableAnimations: runProfileEnableAnimations.checked,
+      containerInference: runProfileContainerInference.checked,
       wipeDataOnBloat: runProfileWipeDataOnBloat.checked,
       recoverCpuFallbackToGpu: runProfileRecoverCpuFallback.checked,
       record: runProfileRecord.checked,
