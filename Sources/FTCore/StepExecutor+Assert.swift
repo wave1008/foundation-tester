@@ -230,6 +230,7 @@ extension StepExecutor {
         if let lastOcclusion { return lastOcclusion }
         return .failed("element not found: \(step.locatorSummary) (timeout \(FTSeconds.format(step.timeout ?? 5))s)"
                        + Self.truncationHint(lastSnapshot)
+                       + swallowedInteractionHint(lastSnapshot?.elements)
                        + Self.webViewPathHint(lastSnapshot))
     }
 
@@ -331,8 +332,10 @@ extension StepExecutor {
             ? .failed("\(subject) \(relation): expected \"\(expected)\", actual \"\(lastActual ?? "nil")\""
                       + Self.coveringHint(element: lastElement, elements: lastElements,
                                           screen: lastScreen)
+                      + swallowedInteractionHint(lastSnapshot?.elements)
                       + Self.webViewPathHint(lastSnapshot))
             : .failed("element not found: \(step.locatorSummary)"
+                      + swallowedInteractionHint(lastSnapshot?.elements)
                       + Self.webViewPathHint(lastSnapshot))
     }
 
@@ -369,11 +372,13 @@ extension StepExecutor {
         let deadline = Date().addingTimeInterval(step.timeout ?? 5)
         var freshRetry = AssertFreshRetry()
         var backoff = PollBackoff()
+        var lastElements: [ElementInfo] = []   // 失敗文言の swallowedInteractionHint 用
         while true {
             let start = clock.now
             var snapshot = try await driver.snapshot(bypassingCache: freshRetry.takeArmed())
             phase.snapshotMs += Self.ms(clock.now - start)
             try await dismissInterruption(in: &snapshot, phase: &phase)
+            lastElements = snapshot.elements
             if Self.resolve(step: step, in: snapshot, strictForAssert: true) == nil {
                 // primary で不在 = pass だが、hybrid ではシステム UI(別プロセスのダイアログ)が
                 // primary の snapshot に映らない。不在を確定する側でだけ fallbackDriver を1回照会する
@@ -403,7 +408,8 @@ extension StepExecutor {
             try await Task.sleep(for: backoff.nextDelay())
             phase.waitMs += Self.ms(clock.now - waitStart)
         }
-        return .failed("element still exists: \(step.locatorSummary) (timeout \(FTSeconds.format(step.timeout ?? 5))s)")
+        return .failed("element still exists: \(step.locatorSummary) (timeout \(FTSeconds.format(step.timeout ?? 5))s)"
+                       + swallowedInteractionHint(lastElements))
     }
 
     private func executeAssertNegativeTextComparison(
@@ -425,11 +431,15 @@ extension StepExecutor {
         var lastElement: ElementInfo?
         var lastElements: [ElementInfo] = []
         var lastScreen = FTRect(x: 0, y: 0, width: 0, height: 0)
+        // **lastElements とは別に持つ**: あちらは lastElement と対で coveringHint が ref を引くため、
+        // 見つかった周のものでなければならない。こちらは木の同一性だけを見るので毎周更新する
+        var lastSeenElements: [ElementInfo] = []
         while true {
             let start = clock.now
             var snapshot = try await driver.snapshot(bypassingCache: freshRetry.takeArmed())
             phase.snapshotMs += Self.ms(clock.now - start)
             try await dismissInterruption(in: &snapshot, phase: &phase)
+            lastSeenElements = snapshot.elements
             if let (element, fallback) = Self.resolve(step: step, in: snapshot,
                                                       strictForAssert: true) {
                 found = true
@@ -454,9 +464,13 @@ extension StepExecutor {
             try await Task.sleep(for: backoff.nextDelay())
             phase.waitMs += Self.ms(clock.now - waitStart)
         }
-        guard found else { return .failed("element not found: \(step.locatorSummary)") }
+        guard found else {
+            return .failed("element not found: \(step.locatorSummary)"
+                           + swallowedInteractionHint(lastSeenElements))
+        }
         let hint = Self.coveringHint(element: lastElement, elements: lastElements,
                                      screen: lastScreen)
+            + swallowedInteractionHint(lastSeenElements)
         let subject = assert.hasPrefix("value") ? "value" : "text"
         switch assert {
         case "textIsEmpty", "valueIsEmpty":
