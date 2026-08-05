@@ -116,23 +116,10 @@ final class ScrollGeometryTests: XCTestCase {
         XCTAssertLessThan(tiny.start, 0.5)
     }
 
-    /// 面積最大のスクロール容器を選ぶ規則(Shirates の解決連鎖の中核)。
-    /// **今は未指定経路から呼んでいない**(暗黙の座標化は実測で撤回した)が、
-    /// 規則自体は `scrollable` の申告と合わせて残す —— 撤回の理由は規則の誤りではなく、
-    /// 「容器を特定できない画面がある」「Android で刻みを制御できない」という実行側の事情
-    func testImplicitScrollTargetPrefersTheLargestScrollableContainer() {
-        let list = el(1, id: "list", y: 200, h: 500, scrollable: true)
-        let small = el(2, id: "badge", y: 60, h: 40, scrollable: true)
-        let target = StepExecutor.implicitScrollTarget(in: snapshot([list, small]), vertical: true)
-        XCTAssertEqual(target?.y ?? -1, 200, accuracy: 0.001)
-
-        // 申告が無ければ nil(Compose/Flutter の in-app・identifier の無い容器はここに来る)
-        XCTAssertNil(StepExecutor.implicitScrollTarget(
-            in: snapshot([el(1, id: "a", y: 0, h: 100)]), vertical: true))
-
-        // 画面のごく一部しか占めない容器は本体ではない
-        XCTAssertNil(StepExecutor.implicitScrollTarget(in: snapshot([small]), vertical: true))
-    }
+    // `implicitScrollTarget`(面積最大のスクロール容器を暗黙の対象にする規則)のテストは
+    // 2026-08-05 に**関数ごと削除**した。暗黙の座標化は2度撤回されており production から
+    // 呼ばれていなかった = 生きているように見えるだけの死んだ規則だった。
+    // 規則と再検討条件は docs/performance-tuning.md §3.19 に残っている(必要になったら書き直す)
 
     /// 横は現行の 0.2↔0.8(スパン 0.6)と同じ = 用途で分けない
     func testHorizontalMarginIsUniform() {
