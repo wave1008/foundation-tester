@@ -87,6 +87,9 @@ public enum ExploreDriverResolver {
                             engine: "xcuitest")
         case .inappOnly(let port):
             guard let repoRoot, let udid else {
+                // **無言で落とさない**: 同名シミュレータが複数だと udid を引けず、エンジンだけが
+                // 静かに変わる(ジェスチャの効き方が変わって見える)。上の分岐と同じ扱い
+                logger(Self.unidentifiedSimulatorNote(port: port, repoRoot: repoRoot))
                 return Resolved(driver: BridgeClient(port: port, host: endpoint.host), engine: "xcuitest")
             }
             logger("port \(port) is an in-app bridge — using it (no XCUITest bridge for fallback:"
@@ -95,6 +98,7 @@ public enum ExploreDriverResolver {
                             engine: "inapp")
         case .hybrid(let inappPort, let xcuiPort, let bundleID):
             guard let repoRoot, let udid else {
+                logger(Self.unidentifiedSimulatorNote(port: inappPort, repoRoot: repoRoot))
                 return Resolved(driver: BridgeClient(port: xcuiPort, host: resolution.endpoint.host),
                                 engine: "xcuitest")
             }
@@ -107,6 +111,15 @@ public enum ExploreDriverResolver {
                 primary: WebViewDelegatingDriver(primary: inapp, delegated: attach),
                 fallback: attach), engine: "hybrid")
         }
+    }
+
+    /// 諦めた理由(Xcode はランタイムごとに同名のシミュレータを作るので、同名2台は普通に起きる)
+    static func unidentifiedSimulatorNote(port: UInt16, repoRoot: URL?) -> String {
+        let cause = repoRoot == nil
+            ? "the repository root could not be resolved"
+            : "the simulator could not be identified (several booted simulators share its name)"
+        return "port \(port) is an in-app bridge, but \(cause)"
+            + " — falling back to the XCUITest bridge. Pass profile: to target a device by UDID."
     }
 
     /// /status はデバイス名しか返さないので名前で引く。**同名が複数起動していたら諦める**
