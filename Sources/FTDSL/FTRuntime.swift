@@ -305,6 +305,25 @@ public final class FTDriveCore {
         scrollFrameStack.removeLast()
     }
 
+    /// `withoutContainerInference { }` が積む文脈(Bool そのもの。方向のような .none 相当は無く、
+    /// スタックが空 = 文脈なし)。**`FlowStep.containerInference` と同じ3値ロジック** ——
+    /// nil はここでも「プロファイル既定に委ねる」を表す
+    var containerInferenceStack: [Bool] = []
+
+    /// コマンドが使う容器推測補正の有効/無効。明示 > ブロックの文脈 > nil(実行プロファイル既定に委ねる)。
+    /// `FTDriveCore.perform` の入口が `step.containerInference == nil` のときだけこれを呼ぶので、
+    /// 全コマンド共通でブロックの文脈が効く(tap/scrollTo は明示引数をここへ渡してから呼ぶ)
+    func effectiveContainerInference(_ explicit: Bool?) -> Bool? {
+        if let explicit { return explicit }
+        return containerInferenceStack.last
+    }
+
+    func runWithContainerInference(_ enabled: Bool, _ body: () -> Void) {
+        containerInferenceStack.append(enabled)
+        body()
+        containerInferenceStack.removeLast()
+    }
+
     /// true = デバイスに触れず全コマンドを記録のみで通過させる(ステップ列挙・コード生成の検証用)
     let dryRun: Bool
 
@@ -337,6 +356,8 @@ public final class FTDriveCore {
                 scenarioID: String, scenarioTitle: String,
                 delegate: ReplayDelegate?, healingEnabled: Bool,
                 falsePositiveCheckEnabled: Bool = true, screenIsEnabled: Bool = true,
+                // 容器の推測に依存する補正の既定(実行プロファイル由来。**FM とは無関係**)
+                containerInference: Bool = true,
                 dryRun: Bool = false,
                 healCacheURL: URL? = nil,
                 selectorInventoryURL: URL? = nil,
@@ -361,7 +382,8 @@ public final class FTDriveCore {
                                      delegate: delegate, healingEnabled: healingEnabled,
                                      occlusionGuardEnabled: falsePositiveCheckEnabled,
                                      screenIsEnabled: screenIsEnabled,
-                                     releasesScrollTouch: platform == "ios")
+                                     releasesScrollTouch: platform == "ios",
+                                     containerInference: containerInference)
         self.scenarioID = scenarioID
         self.scenarioTitle = scenarioTitle
         self.dryRun = dryRun
@@ -552,6 +574,13 @@ public final class FTDriveCore {
                  selectorError: String? = nil, commandError: String? = nil,
                  heldElement: ElementInfo? = nil,
                  file: StaticString, line: UInt) -> PerformResult {
+        // 全コマンドの唯一の合流点(セレクタを取らないコマンドも含む)なので、ここで一度だけ
+        // ブロックの文脈を埋める。tap/scrollTo は明示引数を effectiveContainerInference 済みで
+        // 渡してくるため、ここでは非 nil で二重に通っても変わらない
+        var step = step
+        if step.containerInference == nil {
+            step.containerInference = effectiveContainerInference(nil)
+        }
         let filePath = relativePath("\(file)")
         // verify() のブロック内アサーション数を数える(判定は FlowStep.assert != nil のみ。
         // skip/dry-run/失敗いずれの結果になっても「アサーションとして書かれた」事実は変わらない)

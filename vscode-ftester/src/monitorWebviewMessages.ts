@@ -648,6 +648,7 @@ export function isMonitorFromWebviewMessage(value: unknown): value is MonitorFro
         typeof value.fields.heal === "boolean" &&
         typeof value.fields.falsePositiveCheck === "boolean" &&
         typeof value.fields.screenIs === "boolean" &&
+        typeof value.fields.containerInference === "boolean" &&
         typeof value.fields.iosInappEngine === "boolean" &&
         typeof value.fields.iosFastInput === "boolean" &&
         typeof value.fields.enableAnimations === "boolean" &&

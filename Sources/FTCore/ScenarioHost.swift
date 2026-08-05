@@ -227,6 +227,7 @@ public enum ScenarioHost {
     public static func run(project: TestProject, scenarioID: String,
                            connection: DriverConnection,
                            fm: FMConfig = FMConfig(), reportDir: String, defaultTimeout: Double? = nil,
+                           containerInference: Bool = true,
                            scenarioTimeout: Int? = nil,
                            dryRun: Bool = false,
                            debug: ScenarioDebugOptions? = nil,
@@ -279,6 +280,8 @@ public enum ScenarioHost {
         if connection.physical { args.append("--physical") }
         if let host = connection.host { args += ["--bridge-host", host] }
         if let defaultTimeout { args += ["--default-timeout", FTSeconds.format(defaultTimeout)] }
+        // **FM とは無関係**(幾何ヒューリスティックの既定)なので FMConfig には入れない
+        if !containerInference { args.append("--no-container-inference") }
         if let debug {
             args.append("--debug")
             if debug.pauseOnStart { args.append("--pause-on-start") }

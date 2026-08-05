@@ -105,6 +105,10 @@ export const panelsStrings = {
     ja: "アニメーションを有効にする(既定は無効。有効にすると整定待ちが伸び、テストが不安定になることがあります)",
     en: "Keep app animations (off by default; keeping them lengthens settling waits and can make tests unstable)",
   },
+  "panels.runProfile.containerInferenceLabel": {
+    ja: "タップ/スクロールの領域推測による補正",
+    en: "Container-inference corrections for taps/scrolls",
+  },
   "panels.runProfile.recordLabel": { ja: "録画する", en: "Record video" },
   "panels.runProfile.recordFailuresOnlyLabel": {
     ja: "OKになったテストの録画は保存しない",

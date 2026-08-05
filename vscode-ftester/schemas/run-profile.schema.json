@@ -58,6 +58,11 @@
       "description": "screenIs コマンド(FM による画面判定)を有効にするか(既定 true)。",
       "default": true
     },
+    "containerInference": {
+      "type": "boolean",
+      "description": "容器(スクロール領域)の推測に基づくタップ/スクロール座標補正を行うか(既定 true)。false で見切れ判定・掴み直し・救済ドラッグ・座標補正・壊れた座標の候補除外を止める。FM とは無関係の幾何ヒューリスティック。",
+      "default": true
+    },
     "reportDir": {
       "type": "string",
       "description": "レポート出力先(プロジェクトルート相対 or 絶対。既定 \"reports\")。",

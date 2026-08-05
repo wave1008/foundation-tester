@@ -98,14 +98,14 @@ export function validateNewAppProfileName(name: string, existing: readonly strin
 }
 
 // ---- プロファイルタブ下半分: 実行プロファイルの設定フォーム -----------------------------
-// handleRunProfileLoad/Save(monitorPanel.ts)が使う、JSON⇔フォーム20フィールド変換の純粋関数
+// handleRunProfileLoad/Save(monitorPanel.ts)が使う、JSON⇔フォーム21フィールド変換の純粋関数
 // (未知キー保持のイミュータブルな方針。updateDeviceInMachineProfile と同じ)。
 
-/** 実行プロファイル設定フォームの20フィールド(全て文字列/配列/真偽値化済み。空文字は未設定)。
+/** 実行プロファイル設定フォームの21フィールド(全て文字列/配列/真偽値化済み。空文字は未設定)。
  * recordFailuresOnly/recordBitrateKbps/recordFullResolution は「録画セクション」、heal/
  * falsePositiveCheck/screenIs は「FM」セクション、iosFastInput は「iOS」セクションのサブオプション
  * (親チェックボックスの状態に関わらず独立して保持・保存する。表示上の非表示切替は
- * runProfilesTab.js の責務)。 */
+ * runProfilesTab.js の責務)。containerInference は独立トグル(FM とは無関係の幾何ヒューリスティック)。 */
 export interface RunProfileFormFields {
   readonly machine: string;
   readonly app: string;
@@ -114,6 +114,7 @@ export interface RunProfileFormFields {
   readonly heal: boolean;
   readonly falsePositiveCheck: boolean;
   readonly screenIs: boolean;
+  readonly containerInference: boolean;
   readonly iosInappEngine: boolean;
   readonly iosFastInput: boolean;
   readonly enableAnimations: boolean;
@@ -130,13 +131,13 @@ export interface RunProfileFormFields {
 }
 
 /**
- * runs/<name>.json のトップレベルから、フォームの20フィールドを許容的に読み取る(トップレベルが
+ * runs/<name>.json のトップレベルから、フォームの21フィールドを許容的に読み取る(トップレベルが
  * 非オブジェクトなら null)。各キーは欠落・型不正を「読めなければ空/既定値」で許容し、スキーマ
  * 妥当性検証はしない(保存時 updateRunProfileInObject・CLI 側 ProfileResolver.validate に委ねる)。
  * defaultTimeout/wipeDataThresholdGB/recordBitrateKbps は number ならそのまま String() 化する
  * (0.5 のようなスキーマ違反値もそのまま表示し、整数化はしない)。record/recordFailuresOnly/
  * recordFullResolution/iosFastInput/enableAnimations は既定 false、recordBitrateKbps は既定 ""(未設定=CLI側既定1500)。
- * fm/heal/screenIs はスキーマ既定と合わせ既定 true、falsePositiveCheck は既定 false。
+ * fm/heal/screenIs/containerInference はスキーマ既定と合わせ既定 true、falsePositiveCheck は既定 false。
  */
 export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFields | null {
   // 配列も typeof "object" だが、トップレベルとしては不正なので弾く(他の同様関数と同じ判定)。
@@ -152,6 +153,7 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
   const heal = typeof source.heal === "boolean" ? source.heal : true;
   const falsePositiveCheck = typeof source.falsePositiveCheck === "boolean" ? source.falsePositiveCheck : false;
   const screenIs = typeof source.screenIs === "boolean" ? source.screenIs : true;
+  const containerInference = typeof source.containerInference === "boolean" ? source.containerInference : true;
   const iosInappEngine = typeof source.iosInappEngine === "boolean" ? source.iosInappEngine : true;
   const iosFastInput = typeof source.iosFastInput === "boolean" ? source.iosFastInput : false;
   const enableAnimations = typeof source.enableAnimations === "boolean" ? source.enableAnimations : false;
@@ -183,6 +185,7 @@ export function parseRunProfileForForm(profileObject: unknown): RunProfileFormFi
     heal,
     falsePositiveCheck,
     screenIs,
+    containerInference,
     iosInappEngine,
     iosFastInput,
     enableAnimations,
@@ -204,7 +207,7 @@ export type RunProfileUpdateResult =
   | { readonly ok: false; readonly error: string };
 
 /**
- * runs/<name>.json を、フォームの20フィールドの内容で更新した新オブジェクトを組み立てる
+ * runs/<name>.json を、フォームの21フィールドの内容で更新した新オブジェクトを組み立てる
  * (未知キー保持のイミュータブルな方針。profileObject が非オブジェクトなら ok:false)。
  * defaultTimeout は空文字ならキー削除、正の数(小数許容)文字列以外はエラー。
  * wipeDataThresholdGB は空文字ならキー削除、正の数(小数許容)文字列以外はエラー。
@@ -239,6 +242,7 @@ export function updateRunProfileInObject(
   result.heal = fields.heal;
   result.falsePositiveCheck = fields.falsePositiveCheck;
   result.screenIs = fields.screenIs;
+  result.containerInference = fields.containerInference;
   result.iosInappEngine = fields.iosInappEngine;
   result.wipeDataOnBloat = fields.wipeDataOnBloat;
   for (const key of [

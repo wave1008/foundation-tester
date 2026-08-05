@@ -233,6 +233,10 @@ function renderRunProfileSection(): string {
               <input type="checkbox" id="run-profile-enable-animations">
               <label for="run-profile-enable-animations">${t("panels.runProfile.enableAnimationsLabel")}</label>
             </div>
+            <div class="modal-row profile-checkbox-row">
+              <input type="checkbox" id="run-profile-container-inference">
+              <label for="run-profile-container-inference">${t("panels.runProfile.containerInferenceLabel")}</label>
+            </div>
             <div class="modal-row">
               <label for="run-profile-default-timeout">defaultTimeout</label>
               <input type="text" id="run-profile-default-timeout">

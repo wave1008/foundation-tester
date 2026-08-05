@@ -126,6 +126,12 @@ struct RunScenario: AsyncParsableCommand {
     @Flag(name: .customLong("no-screen-is"), help: "Disable screenIs (screenMatches)")
     var noScreenIs = false
 
+    /// **FM とは無関係**の幾何ヒューリスティック。実行プロファイルの containerInference 由来で、
+    /// シナリオ側は `tap(..., containerInference:)` で1コマンド単位に上書きできる
+    @Flag(name: .customLong("no-container-inference"),
+          help: "Disable corrections that infer the scroll container from the tree")
+    var noContainerInference = false
+
     @Option(name: .customLong("report-dir"), help: "Directory to write reports to")
     var reportDir: String = "reports"
 
@@ -327,7 +333,8 @@ struct RunScenario: AsyncParsableCommand {
                                scenarioID: scenarioID, scenarioTitle: descriptor.title,
                                delegate: delegate, healingEnabled: heal && !noFM,
                                falsePositiveCheckEnabled: !noFalsePositiveCheck,
-                               screenIsEnabled: !noScreenIs, dryRun: dryRun,
+                               screenIsEnabled: !noScreenIs,
+                               containerInference: !noContainerInference, dryRun: dryRun,
                                healCacheURL: healCacheURL,
                                selectorInventoryURL: selectorInventoryURL,
                                defaultTimeout: defaultTimeout,

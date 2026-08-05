@@ -257,6 +257,7 @@ public enum ScenarioRunner {
     public static func runOne(project: TestProject, item: ScenarioRunItem, worker: RunWorker,
                               fm: FMConfig, reportDir: URL,
                               defaultTimeout: Double? = nil,
+                              containerInference: Bool = true,
                               scenarioTimeout: Int? = nil,
                               debug: ScenarioDebugOptions? = nil,
                               recorder: RunRecorder? = nil,
@@ -279,7 +280,8 @@ public enum ScenarioRunner {
         let passed = await ScenarioHost.run(
             project: project, scenarioID: item.info.id, connection: worker.connection,
             fm: fm, reportDir: reportDir.path,
-            defaultTimeout: defaultTimeout, scenarioTimeout: scenarioTimeout,
+            defaultTimeout: defaultTimeout, containerInference: containerInference,
+            scenarioTimeout: scenarioTimeout,
             debug: debug, recording: recording,
             installHandler: installHandler.map { handler in
                 { (path: String?) async -> (ok: Bool, message: String) in await handler(worker, path) }
@@ -386,6 +388,7 @@ public final class RunOrchestrator {
     private let reportDir: URL
     private let project: TestProject
     private let defaultTimeout: Double?
+    private let containerInference: Bool
     private let scenarioTimeout: Int?
     /// デバッグ実行(ブレークポイント・ステップ実行)。呼び出し側が単一シナリオ実行時のみ指定する
     private let debug: ScenarioDebugOptions?
@@ -457,7 +460,8 @@ public final class RunOrchestrator {
     }
 
     public init(project: TestProject, workers: [RunWorker], fm: FMConfig,
-                reportDir: URL, defaultTimeout: Double? = nil, scenarioTimeout: Int? = nil,
+                reportDir: URL, defaultTimeout: Double? = nil, containerInference: Bool = true,
+                scenarioTimeout: Int? = nil,
                 debug: ScenarioDebugOptions? = nil, recorder: RunRecorder? = nil,
                 recordingConfig: VideoRecordingConfig? = nil,
                 isDeviceFrozen: (@Sendable (String) async -> Bool)? = nil,
@@ -480,6 +484,7 @@ public final class RunOrchestrator {
         self.reportDir = reportDir
         self.project = project
         self.defaultTimeout = defaultTimeout
+        self.containerInference = containerInference
         self.scenarioTimeout = scenarioTimeout
         self.debug = debug
         self.recorder = recorder
@@ -773,7 +778,8 @@ public final class RunOrchestrator {
             let outcome = await ScenarioRunner.runOne(
                 project: project, item: item, worker: worker,
                 fm: fm, reportDir: reportDir,
-                defaultTimeout: defaultTimeout, scenarioTimeout: scenarioTimeout, debug: debug,
+                defaultTimeout: defaultTimeout, containerInference: containerInference,
+                scenarioTimeout: scenarioTimeout, debug: debug,
                 recorder: recorder, installHandler: installHandler, appName: appName,
                 onEvent: { [continuation] in continuation.yield($0) })
             await videoRecording?.scenarioFinished(

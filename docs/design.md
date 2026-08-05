@@ -1595,7 +1595,9 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   **iOS には軽い修復手段が無い**(確認できているのは `simctl shutdown`→`boot` だけ)ので
   除外して復旧コマンドをログに出す。判定は恒常 blank(1.5s 間隔で2連続)で、
   健全機は1サンプルで返る = 正常時の固定費はスクショ1枚。**実機は対象外**(消灯を凍結と誤断する)
-- **容器の推測に依存する補正は1つの環境変数で全部止められる**(`FT_CONTAINER_INFERENCE=off`)。
+- **容器の推測に依存する補正は3層で止められる**(上位から `FT_CONTAINER_INFERENCE=off` の殺しスイッチ /
+  実行プロファイルの `containerInference` / DSL の `tap(containerInference:)`・`withoutContainerInference { }`。
+  実装は `StepExecutor.execute` 冒頭の `Self.containerInferenceEnabled && (step.containerInference ?? 既定)` 1式)。
   容器は木からの**推測**なので想定外のツリーでは外れ得る。外れたときに起きるのは
   「別の場所を叩く」「明後日の方向へ送る」「正当な要素が候補から消える」= **より悪い事態**なので、
   推測の入口(`clippingContainer`)と `hasClampedCoordinates` の2箇所だけでフラグを見て
