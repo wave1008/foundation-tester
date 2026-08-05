@@ -409,6 +409,20 @@ public final class StepExecutor {
     /// StepExecutor+Assert.swift の各失敗経路から読むため internal
     var lastInteraction: LastInteraction?
 
+    /// 容器の外に居る要素を可視域へ戻すのに必要な移動量(`hintDrag` の jump 規約 = 正なら指を上へ)。
+    /// 収まっている/測れないときは nil。
+    ///
+    /// **全画面スワイプで戻してはいけない**(2026-08-05 実測): ずれは 100pt 程度なのに1回が
+    /// 約1ページ動くので**行き過ぎて反対側へ出る** → 次の周で逆向き → 往復して収束しない。
+    /// 8並列で採った失敗 13 件は**全部**が救済を撃ち切ったうえで(tap 4.0s → 約8.0s)、
+    /// `#row_30` は容器 230..692 の**上** y=116〜174 に戻っていた。
+    /// WebView のヒント跳躍と同じく**距離を測ってその分だけ**動かす
+    static func recoveryJump(for element: ElementInfo, container: FTRect) -> Double? {
+        // 着地目標は容器の 40% 位置(offscreenJump と同じ規約 = 端に寄せず中央寄りへ置く)
+        let delta = element.frame.centerY - (container.y + container.height * 0.4)
+        return abs(delta) > 1 ? delta : nil
+    }
+
     /// **報告された frame の中心が容器の外に落ちるとき、実際に見えている部分の矩形**を返す。
     /// 中心が容器の中なら nil = 従来どおり ref でタップする(ブリッジが frame の中心へ解決)。
     ///
@@ -1229,11 +1243,30 @@ public final class StepExecutor {
                     if attempt > 0, grabbedGhost(resolved),
                        let finger = FTSwipeDirection(rawValue: step.direction ?? ""),
                        let element = resolved?.0 {
+                        let container = Self.clippingContainer(of: element, in: snapshot.elements)
+                        // **距離を測ってその分だけ動かす**(recoveryJump 参照)。全画面スワイプだと
+                        // 100pt のずれに対して1ページ動いてしまい、**行き過ぎて往復する**。
+                        // 容器が分かるときだけ使える手なので、駄目なら従来のスワイプへ落ちる
+                        if let container,
+                           let jump = Self.recoveryJump(for: element, container: container),
+                           await hintDrag(jump: jump, container: container,
+                                          viewport: snapshot.screen, phase: &phase) {
+                            ghostSwipes += 1
+                            _ = try await settledSignature(phase: &phase)
+                            start = clock.now
+                            snapshot = try await driver.snapshot(
+                                bypassingCache: searchSwiped && driver.supportsCacheBypass)
+                            phase.snapshotMs += Self.ms(clock.now - start)
+                            let previous = resolved
+                            resolved = Self.resolve(step: step, in: snapshot)
+                            if previous != nil { ghostRetries += 1 }
+                            if resolved != nil, !grabbedGhost(resolved) { break }
+                            continue
+                        }
                         // **行き過ぎた側なら逆へ送る**(recoveryDirection 参照)。同じ向きに
                         // 送り続けると遠ざかるだけで、実測でも2回撃って外のままだった
                         var recovery = step
-                        recovery.direction = (Self.clippingContainer(of: element,
-                                                                     in: snapshot.elements)
+                        recovery.direction = (container
                             .map { Self.recoveryDirection(for: element, container: $0,
                                                           searching: finger) } ?? finger).rawValue
                         _ = try await swipeWithFallback(
@@ -1270,6 +1303,27 @@ public final class StepExecutor {
         // `select("wv_result=*")` はワイルドカードが quality=substring になり毎回ここを踏む)
         // 掴み直しの結果を**必ず注記に残す**: 救えたなら「なぜ遅かったか」の説明になり、
         // 救えなかったなら「タップが飲まれた可能性」を失敗調査の起点にできる(黙るのが最悪)
+        // **救済で送った直後は、容器が次の1タッチを吸う**(探索終端と同じ既知の形。
+        // docs/verification.md「スクロールした直後のタップ」)。探索終端では空打ちドラッグで
+        // 肩代わりしているが、**救済経路には無かった** —— 実測(8並列 40 サンプル):
+        // 救済が走った 18 件のうち **4 件が失敗**、走らなかった 22 件は **0 件**(p≈0.03)。
+        // しかも失敗時の対象は容器のど真ん中(y=519〜534 / 容器 230..692)で座標は正しい。
+        // 探索終端と**同じ順序**で肩代わり → 静止 → 掴み直しを行う
+        if ghostSwipes > 0, releasesScrollTouch, let target = resolved?.0 {
+            let x = target.frame.centerX
+            let y = min(target.frame.centerY,
+                        snapshot.screen.y + snapshot.screen.height - Self.bottomUncoveredBand - 1)
+            if Self.emptyDragIsSafe(x: x, y: y, of: target, in: snapshot.elements,
+                                    screen: snapshot.screen) {
+                await emptyDrag(x: x, y: y,
+                                toX: Self.emptyDragEndX(of: target, from: x, screen: snapshot.screen))
+                let settled = try await settledSignature(phase: &phase)
+                snapshot = settled.snapshot
+                // 空打ちで木が入れ替わるので ref を取り直す(古い ref は別要素を指す)
+                if let refreshed = Self.resolve(step: step, in: snapshot) { resolved = refreshed }
+            }
+        }
+
         var ghostNote: String?
         if grabbedGhost(resolved) {
             ghostNote = "the element is still reported outside its scroll container"

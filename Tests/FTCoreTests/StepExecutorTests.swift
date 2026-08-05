@@ -112,10 +112,13 @@ private final class FakeAppDriver: AppDriver {
     /// 直近の drag 呼び出しに渡った引数(swipeElementToElement/swipePointToPoint の座標配線確認用)
     private(set) var lastDragArgs: (fromX: Double, fromY: Double, toX: Double, toY: Double,
                                     pressSeconds: Double, durationSeconds: Double)?
+    /// 全 drag 呼び出し(空打ちが撃たれたかの検証用。lastDragArgs は最後の1件しか残らない)
+    private(set) var dragCalls: [(fromX: Double, fromY: Double, toX: Double, toY: Double)] = []
 
     func drag(fromX: Double, fromY: Double, toX: Double, toY: Double,
               pressSeconds: Double, durationSeconds: Double) async throws {
         lastDragArgs = (fromX, fromY, toX, toY, pressSeconds, durationSeconds)
+        dragCalls.append((fromX, fromY, toX, toY))
         if let dragError {
             log.entries.append("\(name).drag(throws)")
             throw dragError
@@ -1901,6 +1904,46 @@ final class StepExecutorTests: XCTestCase {
 
         XCTAssertEqual(outcome.driverFallback?.contains("still reported outside"), true,
                        "救えなかったことを注記に残すこと: \(outcome.driverFallback ?? "nil") 呼び出し=\(log.entries)")
+    }
+
+    /// **救済で送った直後は、容器が次の1タッチを吸う**ので空打ちで肩代わりしてからタップする。
+    /// 探索終端では以前からやっているが、救済経路には無かった —— 実測(S0110 を8並列):
+    /// 救済が走った 18 件のうち 4 件が失敗、走らなかった 22 件は 0 件(p≈0.03)。
+    /// 肩代わりを足すと **fix 0/48 対 base 8/48**(p≈0.006)。
+    /// **iOS だけ**(releasesScrollTouch)。Android では 2pt のドラッグがクリックとして発火する。
+    ///
+    /// **台本は「救済スワイプまで到達する」形でなければ意味がない**(2026-08-05 に一度失敗した):
+    /// 探索の中で解決できてしまうと `ghostSwipes` が 0 のままで、この経路自体を通らない
+    func testRecoverySwipeIsFollowedByTheEmptyDrag() async throws {
+        let log = CallLog()
+        let container = framed(ref: 100, id: "list_rows", x: 16, y: 230, width: 370, height: 462,
+                               depth: 1)
+        let inside1 = framed(ref: 1, id: "row_28", x: 16, y: 300, width: 370, height: 56, depth: 2)
+        let inside2 = framed(ref: 2, id: "row_29", x: 16, y: 360, width: 370, height: 56, depth: 2)
+        let target = framed(ref: 3, id: "row_30", x: 16, y: 420, width: 370, height: 56, depth: 2)
+        let ghost = framed(ref: 4, id: "row_30", x: 16, y: 783, width: 370, height: 56, depth: 2)
+        let settled = framed(ref: 5, id: "row_30", x: 16, y: 430, width: 370, height: 56, depth: 2)
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [
+            [container, inside1, inside2, target],   // 探索: 容器の中で見つかる
+            [container, inside1, inside2, target],   // 探索の静止確認
+            [container, inside1, inside2, ghost],    // 探索直後の解決: ghost
+            [container, inside1, inside2, ghost],    // 掴み直し1回目: まだ ghost(= ここで救済が走る)
+            [container, inside1, inside2, settled],  // 救済後: 容器の中
+        ])
+        let executor = StepExecutor(driver: primary, releasesScrollTouch: true)
+        let step = FlowStep(action: "tap", locator: FlowLocator(id: "row_30"),
+                            direction: "up", maxSwipes: 2)
+
+        _ = await executor.execute(step)
+
+        // この台本では探索が attempt 0 で見つけるので**終端の空打ちは撃たれない** ——
+        // 横のドラッグが出るなら、それは救済の後の肩代わりだけ
+        let vertical = primary.dragCalls.filter { $0.fromY != $0.toY }
+        XCTAssertFalse(vertical.isEmpty, "救済は距離ぶんの縦ドラッグで戻す: \(primary.dragCalls)")
+        // 空打ちは**横へ抜ける**(縦だと容器がスクロールとして消費する。emptyDragEndX 参照)
+        let horizontal = primary.dragCalls.filter { $0.fromY == $0.toY }
+        XCTAssertFalse(horizontal.isEmpty,
+                       "救済の後に容器の1タッチを肩代わりしていない: \(primary.dragCalls)")
     }
 
     // MARK: - マップ系ジェスチャ(pinchOut/pinchIn・doubleTap・swipeBy)
