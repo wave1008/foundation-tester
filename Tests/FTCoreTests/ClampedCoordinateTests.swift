@@ -127,6 +127,38 @@ final class ClampedCoordinateTests: XCTestCase {
                        "row_01")
     }
 
+    // MARK: - 殺しスイッチと防御
+
+    /// **容器の推測に依存する補正は1つの環境変数で全部止められる**(`FT_CONTAINER_INFERENCE=off`)。
+    /// 推測が外れる画面では、補正が**より悪い事態**を招き得る(別の場所を叩く・明後日へ送る・
+    /// 正当な要素が候補から消える)ため、利用者が推測を持たなかった頃の挙動へ戻せるようにしておく
+    func testContainerInferenceCanBeTurnedOff() {
+        let tree = realWorldTree()
+        // 入口(容器の推測)が止まる = 見切れ判定・掴み直し・座標補正が全部無効化される
+        XCTAssertNotNil(StepExecutor.clippingContainer(of: tree[5], in: tree, inferring: true))
+        XCTAssertNil(StepExecutor.clippingContainer(of: tree[5], in: tree, inferring: false))
+        // 候補の除外も止まる
+        XCTAssertTrue(StepExecutor.hasClampedCoordinates(tree[3], in: tree, inferring: true))
+        XCTAssertFalse(StepExecutor.hasClampedCoordinates(tree[3], in: tree, inferring: false))
+    }
+
+    /// **細すぎる帯は撃たない**。容器の推測が外れていた場合、わずかな重なりを
+    /// 「見えている部分」と信じて叩くと**より悪い場所**へ当たる
+    func testThinSliverIsNotTapped() {
+        let container = element(1, "other", id: "list", x: 16, y: 230, w: 370, h: 462, depth: 11)
+        func row(_ ref: Int, _ y: Double, _ h: Double) -> ElementInfo {
+            element(ref, "clickable", id: "row\(ref)", label: "行", x: 16, y: y, w: 370, h: h, depth: 12)
+        }
+        let inside1 = row(3, 300, 56), inside2 = row(4, 360, 56)
+        // 可視部分が 3pt しかない(226..233 のうち 230..233)
+        let sliver = row(2, 195, 38)
+        XCTAssertNil(StepExecutor.visibleTapRect(for: sliver, in: [container, sliver, inside1, inside2]),
+                     "3pt の帯を『見えている部分』として叩いてはいけない")
+        // 実測の形(10pt 以上見えている)は従来どおり拾う
+        let real = row(2, 206, 38)
+        XCTAssertNotNil(StepExecutor.visibleTapRect(for: real, in: [container, real, inside1, inside2]))
+    }
+
     // MARK: - 行き過ぎたら逆へ送る
 
     /// **通り過ぎた要素へは逆向きに送る**。探索方向のまま送り続けると遠ざかるだけで、
