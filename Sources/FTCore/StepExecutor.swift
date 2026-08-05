@@ -1788,6 +1788,60 @@ public final class StepExecutor {
             || frame.x + frame.width > screen.x + screen.width
     }
 
+    /// **報告された座標が壊れている要素**か(= 同じ場所に同じ深さの兄弟が積み上がっている)。
+    ///
+    /// フレームワークは**容器の可視域を外れた子孫の frame の原点を、容器の原点へクランプする**。
+    /// XCUITest の `UITableView` では**実体化していない行のラベルまでツリーに載り**、
+    /// 全部が容器の原点に積み上がる(2026-08-05 実採取: 40 行のうち **32 個**が
+    /// `(16,270 330x56)` に重なり、**すべて depth 8**)。これを掴むと:
+    ///   - `tap("行 15")` が**先頭行をタップする**(実採取で再現。可視性ガードを通らないので沈黙)
+    ///   - `exist("行 15")` が画面外なのに真を返す(「exist は非スクロール」の契約に反する)
+    ///
+    /// **判定に depth の一致が要る**(2026-08-05 に過去レポート 466 件へ当てて確認): frame だけで
+    /// 判定すると `homepage_container > main_content > list_container > recycler_view` のような
+    /// **入れ子の連鎖**(親子が同じ矩形を持つのは普通)を巻き込む。祖先と子孫は depth が違うので、
+    /// 「同じ depth = 兄弟」を条件にすれば連鎖は残る。
+    ///
+    /// **「同じ場所に3つ」だけでは足りない**(2026-08-05: 症状で判定したら既存テスト 13 件が落ちた)。
+    /// 同 depth の兄弟が同じ矩形を持つこと自体は珍しくない —— 重ねたオーバーレイや、
+    /// 属性だけが違う要素群がそうなる。**機構そのもの**を条件にする:
+    ///   「容器の**原点にちょうど固定**され、かつ容器より**小さい**要素が3つ以上重なっている」
+    /// 実採取と一致する(容器 `#list_rows` (16,270.33 370x395.33) / 群 (16,270.33 **330x56**))。
+    /// 全面に重ねた正当なオーバーレイは**容器と同じ大きさ**になるので、この条件では残る。
+    ///
+    /// 閾値3は `OcclusionSuspicion.isClampGhost` と同じ(親子2重で誤爆させない)。
+    /// **あちらとは用途も条件も違う**ので統合しないこと —— あちらは「画面端に接する」ものを
+    /// occluder の判定から外す話(FM を余計に呼ばないため)で、こちらは解決候補から外す話
+    static func hasClampedCoordinates(_ element: ElementInfo, in elements: [ElementInfo]) -> Bool {
+        let frame = element.frame
+        var count = 0
+        for other in elements
+        where other.depth == element.depth && Self.sameFrame(other.frame, frame) {
+            count += 1
+            if count >= Self.clampedStackThreshold { break }
+        }
+        guard count >= Self.clampedStackThreshold else { return false }
+        // クランプ先(= 原点を貸している祖先候補)が居るか。**同じ大きさなら別物**
+        return elements.contains { container in
+            container.depth < element.depth
+                && abs(container.frame.x - frame.x) <= 0.5
+                && abs(container.frame.y - frame.y) <= 0.5
+                && container.frame.width >= frame.width && container.frame.height >= frame.height
+                && (container.frame.width > frame.width + 0.5
+                    || container.frame.height > frame.height + 0.5)
+        }
+    }
+
+    /// 同じ場所に積み上がっているとみなす数(自分を含む)
+    static let clampedStackThreshold = 3
+
+    /// frame の同一判定。**丸めではなく許容差**で見る(実採取の値は 270.3333… のような
+    /// 分数座標で、同じ木の中では同値だが、丸めると隣接する別要素と衝突し得る)
+    static func sameFrame(_ a: FTRect, _ b: FTRect, tolerance: Double = 0.5) -> Bool {
+        abs(a.x - b.x) <= tolerance && abs(a.y - b.y) <= tolerance
+            && abs(a.width - b.width) <= tolerance && abs(a.height - b.height) <= tolerance
+    }
+
     /// その座標のタッチが**対象ではなく手前の別要素に渡る**か。スナップショットは pre-order
     /// (後 = 手前寄り)なので、対象より後ろにあって点を含む要素が居れば取られ得る。
     /// 対象の子孫は同じ見た目の一部なので除く。空打ちドラッグの安全判定に使う
@@ -2351,7 +2405,11 @@ public final class StepExecutor {
             if excluded.isEmpty { continue }
             pool = pool.filter { !excluded.contains($0.ref) }
         }
-        return pool
+        // **座標が壊れている要素は候補にしない**(hasClampedCoordinates 参照)。
+        // 最後に引くのは、絞り込みで1〜数件になってからでないと走査が無駄になるため。
+        // **他に候補が無いときも引く** —— 残すと「見つかったのにタップが別の場所へ落ちる」
+        // 沈黙の誤りになり、`exist` も画面外の要素で真を返す(契約は「現在画面のみ判定」)
+        return pool.filter { !Self.hasClampedCoordinates($0, in: elements) }
     }
 
     /// 否定系アサート(`*Not` / `*IsEmpty` / `*IsNotEmpty`)の判定。
@@ -2445,8 +2503,31 @@ public final class StepExecutor {
             hints.append("near matches: \(summaries.joined(separator: " / "))")
         }
         if let hint = partialMatchHint(for: locator, in: elements) { hints.append(hint) }
+        if let hint = clampedStackHint(for: locator, in: elements) { hints.append(hint) }
         // 候補の区切りが " / " なので、ヒント同士は別の記号で割る(読み手が機械でも人でも混ざらない)
         return hints.isEmpty ? nil : hints.joined(separator: "。")
+    }
+
+    /// **候補から外した理由**を書く(`hasClampedCoordinates` 参照)。これが無いと、画面外の行を
+    /// ラベルで指した利用者には「在るのに見つからない」としか見えない —— 実際にはツリーには
+    /// 在り、**座標だけが壊れている**ので候補から外した、というのが起きていること。
+    /// **黙って消すのが最悪**なので、消したときは必ずここで説明する
+    static func clampedStackHint(for locator: FlowLocator, in elements: [ElementInfo]) -> String? {
+        // 「フィルタには一致するが座標が壊れている」要素だけを数える(素の一致は上の近傍候補が出す)
+        let broken = elements.filter { element in
+            guard hasClampedCoordinates(element, in: elements) else { return false }
+            if let id = locator.id, element.identifier != id { return false }
+            if let label = locator.label, element.label != label { return false }
+            return locator.id != nil || locator.label != nil
+        }
+        guard let sample = broken.first else { return nil }
+        let frame = sample.frame
+        return "it is in the tree but its coordinates are unusable"
+            + " — \(elements.filter { hasClampedCoordinates($0, in: elements) }.count) elements are"
+            + " stacked at the same spot (\(Int(frame.x)),\(Int(frame.y))"
+            + " \(Int(frame.width))x\(Int(frame.height)));"
+            + " the framework clamps offscreen descendants to the container origin,"
+            + " so scroll it into view first (scrollTo / tap(scroll:))"
     }
 
     /// 完全一致のラベル指定が外れたが**部分一致なら在る**ときに書き方を示す
