@@ -30,18 +30,43 @@ public enum InstalledAppCheck {
         return equal
     }
 
-    /// 起動中シミュレータ(デバイス名で一意に引けるもの)にそのアプリが入っているか。
-    /// **判定できないときは nil**(実機・同名デバイス複数・simctl 不調)= 断定しない側に倒す。
-    /// launch 失敗の切り分けに使う: ブリッジ側は未インストールと未起動を区別できない
-    /// (XCUIApplication はどちらも notRunning のまま)ため、ホストが udid で確かめる
-    public static func installedOnSimulator(deviceName: String, bundleID: String) -> Bool? {
+    /// 判定できなかった理由を持つ(**沈黙させないため**。理由が出ないと、ガードが
+    /// 素通ししていることに誰も気付けない —— 2026-08-06 に受け手側で実際に起きた)
+    public enum InstallVerdict: Equatable {
+        case installed
+        case notInstalled
+        case unknown(String)
+    }
+
+    /// 起動中シミュレータにそのアプリが入っているか。ブリッジ側は未インストールと未起動を
+    /// 区別できない(XCUIApplication はどちらも notRunning のまま)ため、ホストが udid で確かめる。
+    /// 相関がデバイス**名**なのは `/status` が名前しか返さないため(XCUIBridgeResolver と同じ制約)
+    public static func simulatorInstallVerdict(deviceName: String, bundleID: String) -> InstallVerdict {
         let booted = ((try? SimulatorCatalog.devices()) ?? [])
             .filter { $0.booted && !$0.physical && $0.name == deviceName }
-        guard booted.count == 1 else { return nil }
-        guard let result = try? Shell.run(
-            ["xcrun", "simctl", "get_app_container", booted[0].udid, bundleID],
-            timeout: 15) else { return nil }
-        return result.status == 0
+        var installedFlags: [Bool] = []
+        for device in booted {
+            guard let result = try? Shell.run(
+                ["xcrun", "simctl", "get_app_container", device.udid, bundleID],
+                timeout: 15) else {
+                return .unknown("simctl get_app_container failed for \(device.udid)")
+            }
+            installedFlags.append(result.status == 0)
+        }
+        return verdict(deviceName: deviceName, installedFlags: installedFlags)
+    }
+
+    /// **同名が複数でも「どれにも入っていない」なら断定できる**(どれが宛先でも未インストール)。
+    /// 既定名のシミュレータを2台起動している受け手は珍しくないので、
+    /// 「一意に引けたときだけ判定する」では素通りする
+    static func verdict(deviceName: String, installedFlags: [Bool]) -> InstallVerdict {
+        guard !installedFlags.isEmpty else {
+            return .unknown("no booted simulator is named \"\(deviceName)\"")
+        }
+        if installedFlags.allSatisfy({ $0 == false }) { return .notInstalled }
+        if installedFlags.count == 1 { return .installed }
+        return .unknown("\(installedFlags.count) booted simulators are named \"\(deviceName)\""
+            + " and the app is installed on some of them")
     }
 
     /// インストール直後に呼ぶと次回以降の深比較をスキップできる(呼ばなくても初回深比較で自己回復)

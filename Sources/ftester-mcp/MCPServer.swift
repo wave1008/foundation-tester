@@ -296,10 +296,27 @@ final class MCPServer {
         // 差し替えドライバ(テスト)ではデバイスを照会しない = simctl/adb を撃たない
         guard makeDriver == nil else { return nil }
         if let android = driver as? AndroidDriver {
-            return android.isInstalled(bundleID: bundleID)
+            let installed = android.isInstalled(bundleID: bundleID)
+            if installed == nil { Self.logStderr(Self.uncheckedNote(bundleID: bundleID, reason: "adb")) }
+            return installed
         }
-        guard let device = try? await driver.status().device else { return nil }
-        return InstalledAppCheck.installedOnSimulator(deviceName: device, bundleID: bundleID)
+        guard let device = try? await driver.status().device else {
+            Self.logStderr(Self.uncheckedNote(bundleID: bundleID, reason: "the bridge did not report a device"))
+            return nil
+        }
+        switch InstalledAppCheck.simulatorInstallVerdict(deviceName: device, bundleID: bundleID) {
+        case .installed: return true
+        case .notInstalled: return false
+        case .unknown(let reason):
+            // **素通しは必ず言う**: 黙って通すと、ランナーが死んでから原因を探すことになる
+            Self.logStderr(Self.uncheckedNote(bundleID: bundleID, reason: reason))
+            return nil
+        }
+    }
+
+    static func uncheckedNote(bundleID: String, reason: String) -> String {
+        "could not verify whether \(bundleID) is installed (\(reason)) — launching anyway."
+            + " If it is missing, the XCUITest runner will exit and this bridge will disappear."
     }
 
     static func notInstalledMessage(bundleID: String) -> String {
