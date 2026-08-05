@@ -464,6 +464,12 @@ public final class StepExecutor {
         return inside ? nil : visible
     }
 
+    /// **指で触る操作か**(縁にまたがった要素を寄せてから撃つ対象)。`select` は掴むだけ、
+    /// `type` は入力欄が動くと厄介なので含めない
+    static func interactsByTouch(_ action: String) -> Bool {
+        action == "tap" || action == "press" || action == "doubleTap"
+    }
+
     /// 「見えている部分」を撃つと言えるだけの最小の幅・高さ(pt)。
     /// 容器の推測が外れたときに、わずかな重なりへ突っ込まないための床
     static let minimumVisibleTapExtent: Double = 8
@@ -900,11 +906,24 @@ public final class StepExecutor {
                                           hintJumps: hintJumps, settleCapped: settleCapped)
             }
             if attempt < maxSwipes {
-                if let previousSnapshot,
-                   Self.contentSignature(previousSnapshot.elements)
+                if let earlier = previousSnapshot,
+                   Self.contentSignature(earlier.elements)
                        == Self.contentSignature(snapshot.elements) {
                     unmovedRounds += 1
                     if unmovedRounds >= Self.unmovedRoundsToStopSearch {
+                        // **打ち切る前に整定まで待って確かめる**(2026-08-06 に Flutter/Android で
+                        // 誤発火): a11y ツリーは遅れて公開されるので、**動いている最中でも
+                        // 2周続けて同じ木**が返ることがある。`settledSignature` は
+                        // キャッシュを捨てて連続2回一致まで待つので、遅れと停止を区別できる。
+                        // 費用は打ち切る局面の1回だけ(正常系には掛からない)
+                        let confirmed = try await settledSignature(phase: &phase)
+                        if Self.contentSignature(confirmed.snapshot.elements)
+                            != Self.contentSignature(snapshot.elements) {
+                            snapshot = confirmed.snapshot
+                            previousSnapshot = snapshot
+                            unmovedRounds = 0
+                            continue
+                        }
                         var result = ScrollSearchResult(found: false, fallback: nil,
                                                         viaXCUITest: viaXCUITest,
                                                         hintJumps: hintJumps,
@@ -1419,6 +1438,7 @@ public final class StepExecutor {
             }
         }
 
+        var straddleNote: String?
         var ghostNote: String?
         if grabbedGhost(resolved) {
             ghostNote = "the element is still reported outside its scroll container"
@@ -1493,6 +1513,31 @@ public final class StepExecutor {
                     + Self.webViewPathHint(snapshot)))
         }
         resolvedElementThisStep = element
+
+        // **容器の縁にまたがった要素はそのまま撃たない**(2026-08-06)。見えている部分を撃っても、
+        // Compose は focus 時に bringIntoView で内容を動かすため、離すまでに隣の行が指の下へ来る
+        // (Emulator で約 50%・実測 135〜179px ずれて隣の行が反応した)。**容器の中へ寄せてから撃つ**。
+        //
+        // 2026-08-05 に撤回した「またぎも掴み直しの対象へ広げる」との違いは**送り方**:
+        // あちらは全画面スワイプで行き過ぎて自傷した(S0110 が 2/10 → 5/10)。ここは
+        // `recoveryJump`(容器の 40% 位置までの距離)+ `slowDrag`(フリングを出さない)なので
+        // 行き過ぎない。**1回だけ**(収束しなければ従来どおり見えている部分を撃つ)
+        if Self.interactsByTouch(action), step.containerInference ?? true,
+           let container = Self.clippingContainer(of: element, in: snapshot.elements,
+                                                  inferring: true),
+           ScrollGeometry.intersection(element.frame, container) != nil,
+           Self.isClippedByViewport(element, screen: container),
+           let jump = Self.recoveryJump(for: element, container: container),
+           await slowDrag(jump: jump, container: container, phase: &phase) {
+            _ = try await settledSignature(phase: &phase)
+            let refreshed = try await driver.snapshot(bypassingCache: driver.supportsCacheBypass)
+            if let (moved, _) = Self.resolve(step: step, in: refreshed) {
+                snapshot = refreshed
+                element = moved
+                resolvedElementThisStep = element
+                straddleNote = "nudged the element fully inside its container before touching it"
+            }
+        }
 
         switch action {
         case "select":
@@ -1658,7 +1703,8 @@ public final class StepExecutor {
             return StepOutcome(status: .skipped("unknown action: \(action)"))
         }
         return StepOutcome(status: status, healedStep: healedStep, healedByCache: healedByCache,
-                           driverFallback: Self.joinNotes(driverFallback, ghostNote))
+                           driverFallback: Self.joinNotes(Self.joinNotes(driverFallback, ghostNote),
+                                                          straddleNote))
     }
 
     /// typeDriver で type を試みる。ref はブリッジごとに別名前空間なので typeDriver 側 snapshot で
