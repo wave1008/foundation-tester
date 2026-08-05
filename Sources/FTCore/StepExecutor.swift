@@ -756,7 +756,7 @@ public final class StepExecutor {
 
     /// **フリングを出さないドラッグ**。逆走査専用。hintDrag(0.3〜0.7s)は Android では
     /// まだ速く、189px のドラッグが慣性で 700px 走って**逆向きの飛び越し**になった
-    /// (2026-08-06 実機で観測)。指を離す直前の速度が閾値を下回るよう、
+    /// (2026-08-06 に Emulator で観測)。指を離す直前の速度が閾値を下回るよう、
     /// **距離ぶんの時間を必ず取る**(reverseSweepDragSpeed px/s)
     private func slowDrag(jump: Double, container: FTRect,
                           phase: inout PhaseAccumulator) async -> Bool {
@@ -2040,7 +2040,7 @@ public final class StepExecutor {
         }
         // **スワイプではなくドラッグで戻す**。スワイプはフリングになり、この局面(端に着いている =
         // 残りの可動域が短い)では1回で反対の端まで走り切って、また同じ飛び越しを起こす
-        // (2026-08-06 に実機で観測: path 付きスワイプでは1本も拾えなかった)。
+        // (2026-08-06 に Emulator で観測: path 付きスワイプでは1本も拾えなかった)。
         // slowDrag は距離ぶんの時間を必ず取るのでフリング閾値を下回る
         let vertical = back == .up || back == .down
         let extent = vertical ? container.height : container.width

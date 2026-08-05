@@ -1184,7 +1184,7 @@ Android エミュレータの表示凍結([[emulator-display-freeze-wedge]])と*
   2度撤回した「暗黙の座標化」(docs/performance-tuning.md §3.19)の撤回理由に抵触しない。
   救えたときはステップ注記に `found by sweeping back after overshooting it` を出す(黙って救わない)
 
-**実装で踏んだ罠**(いずれも実機でしか出ない):
+**実装で踏んだ罠**(いずれもデバイス上でしか出ない。観測はすべて Simulator / Emulator):
 
 - **逆走査をスワイプでやると慣性で反対の端まで走る**(189px 指定が約 700px 走った)。
   ドラッグにしても **hintDrag の 0.3〜0.7s ではまだ速い** —— 距離ぶんの時間を必ず取る
