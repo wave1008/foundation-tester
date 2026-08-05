@@ -726,7 +726,7 @@ public final class StepExecutor {
                 // label=nil・y=783 = 容器 230..692 の外で見つかり、タップが飲まれた)
                 let viewport = (scrollContainer(step: step, in: snapshot,
                                                 vertical: direction == .up || direction == .down)
-                                ?? Self.clippingAncestor(of: element, in: snapshot.elements))
+                                ?? Self.clippingContainer(of: element, in: snapshot.elements))
                     .flatMap { ScrollGeometry.intersection($0, snapshot.screen) } ?? snapshot.screen
                 if attempt < maxSwipes,
                    Self.isClippedByViewport(element, screen: viewport) {
@@ -1120,11 +1120,12 @@ public final class StepExecutor {
         // 容器の外を撃って**黙って飲まれる**(値が変わらないので、後段の検証だけが落ちて原因が遠い)。
         // 探索ループの中では同じ判定で「もう1回送る」をしているが、**ループを抜けた後の再解決には
         // 効いていなかった**のが残存フレークの正体(2026-08-04)。
-        // `clippingAncestor` は「要素が clip 元の祖先と交差しない = 容器の外」のときだけ非 nil を返す
-        // ので、これがそのまま ghost の判定になる。木が落ち着けば容器の中の行が返るので**解決し直す**
+        // 判定は `isOutsideContainer`(容器と**交差しない** = 完全に外)。**またぐ要素は ghost では
+        // ない**ので掴み直さず、探索ループの見切れ判定(`clippingContainer` + `isClippedByViewport`)が
+        // 「もう1回送る」で可視域へ入れる。木が落ち着けば容器の中の行が返るので**解決し直す**
         func grabbedGhost(_ candidate: (ElementInfo, FlowLocator?)?) -> Bool {
             guard searchSwiped, let element = candidate?.0 else { return false }
-            return Self.clippingAncestor(of: element, in: snapshot.elements) != nil
+            return Self.isOutsideContainer(element, in: snapshot.elements)
         }
         var ghostRetries = 0
         var ghostSwipes = 0
@@ -1748,29 +1749,39 @@ public final class StepExecutor {
     /// 画面下端の a11y 空白帯の高さ(pt)。実測の空白(874-840=34)+整定位置のブレの余裕
     static let bottomUncoveredBand: Double = 48
 
-    /// 要素を **clip している祖先**の矩形。**見切れ判定にだけ使う**(スクロールの座標化には
-    /// 使わない = 暗黙の座標化とは別物。あちらは2度撤回済みで3度目は無い)。
+    /// 要素を **clip している容器**の矩形(見切れ判定の viewport)。**スクロールの座標化には
+    /// 使わない** = 暗黙の座標化とは別物(あちらは2度撤回済みで3度目は無い)。
     ///
-    /// Compose iOS は**容器の外に「ghost」の子を報告する**: `#list_rows`(y 230..692)に対し
-    /// `#row_10`(y 734)`#row_11`(790)が並び、いずれも**ラベルを持たない**(2026-08-03 実測)。
-    /// 容器を特定できないと viewport が画面全体になり、ghost は「画面内 = 見えている」と
-    /// 判定されて探索がそこで止まり、**容器の外の座標をタップする**。`scrollable` の申告は
-    /// Compose では出ないので、**報告された木そのものから祖先を採る**。
+    /// Compose iOS は容器の外・縁に子を報告する。`scrollable` の申告は Compose では出ないので、
+    /// **報告された木そのものから容器を採る**: スナップショットは pre-order + depth なので、
+    /// 直前にある depth の小さい要素が容器の候補。ただし**ブリッジは要素を間引く**
+    /// (identifier の無い other 等)ので候補が叔父のことがある。そこで
+    /// 「同じ depth の兄弟が2つ以上その中に居る」ことを確かめてから採用する ——
+    /// 叔父を掴んだときは兄弟が誰も中に居ないので nil に落ちる。
     ///
-    /// スナップショットは pre-order + depth なので、直前にある depth の小さい要素が祖先候補。
-    /// ただし**ブリッジは要素を間引く**(identifier の無い other 等)ので候補が叔父のことがある。
-    /// そこで「同じ depth の兄弟が2つ以上その中に居る」ことを確かめてから採用する ——
-    /// 叔父を掴んだときは兄弟が誰も中に居ないので nil に落ちる
-    static func clippingAncestor(of element: ElementInfo, in elements: [ElementInfo]) -> FTRect? {
+    /// **交差の有無で絞らない**(2026-08-05 に条件を外した)。旧実装は「容器と交差しないときだけ」
+    /// 容器を返していたため、**縁をまたぐ要素で nil に落ちて viewport が画面全体になっていた**。
+    /// Compose は縁をまたぐ行を「原点はクリップ前・サイズはクリップ後」の混成で返すので、
+    /// `#list_rows` が y 230..692 のとき `#row_30` が `(16,206 370x43)` = **中心 227.5 が容器の外**
+    /// になる。画面基準では「見えている」と判定されて探索が止まり、隙間をタップして飲まれていた
+    /// (S0110 の失敗 21 件中 **12 件**がこの形)。
+    static func clippingContainer(of element: ElementInfo, in elements: [ElementInfo]) -> FTRect? {
         guard let index = elements.firstIndex(where: { $0.ref == element.ref }),
               let ancestor = elements[..<index].last(where: { $0.depth < element.depth }),
-              ancestor.frame.width > 0, ancestor.frame.height > 0,
-              // 交差しているなら見切れ判定を変える必要がない(既存の画面基準で足りる)
-              ScrollGeometry.intersection(element.frame, ancestor.frame) == nil
+              ancestor.frame.width > 0, ancestor.frame.height > 0
         else { return nil }
         let siblings = descendants(of: ancestor, in: elements).filter { $0.depth == element.depth }
         let inside = siblings.filter { ScrollGeometry.intersection($0.frame, ancestor.frame) != nil }
         return inside.count >= 2 ? ancestor.frame : nil
+    }
+
+    /// 要素が**容器の完全に外**に報告されているか(ghost)。`clippingContainer` と違い
+    /// **交差しないことが条件**で、こちらは「掴んでしまった要素を捨てて掴み直す」判断に使う。
+    /// またぐ要素(= 一部は見えている)は ghost ではないので、そちらは見切れ判定
+    /// (`isClippedByViewport` + `clippingContainer`)が「もう1回送る」で面倒を見る
+    static func isOutsideContainer(_ element: ElementInfo, in elements: [ElementInfo]) -> Bool {
+        guard let container = clippingContainer(of: element, in: elements) else { return false }
+        return ScrollGeometry.intersection(element.frame, container) == nil
     }
 
     /// 要素が画面の縁で**見切れている**か。ビューポートより大きい要素(長文など)は
@@ -2408,7 +2419,10 @@ public final class StepExecutor {
         // **座標が壊れている要素は候補にしない**(hasClampedCoordinates 参照)。
         // 最後に引くのは、絞り込みで1〜数件になってからでないと走査が無駄になるため。
         // **他に候補が無いときも引く** —— 残すと「見つかったのにタップが別の場所へ落ちる」
-        // 沈黙の誤りになり、`exist` も画面外の要素で真を返す(契約は「現在画面のみ判定」)
+        // 沈黙の誤りになり、`exist` も画面外の要素で真を返す(契約は「現在画面のみ判定」)。
+        // 計算量は O(|pool| × |elements|) だが、要素数の多い WebView 画面(200 程度)でも
+        // 数万回の矩形比較 = 1ms 未満で、snapshot 1枚の往復(数百 ms)に対して無視できる。
+        // 群ごとに1回だけ判定する形へ畳むこともできるが、規則の実装が2つに割れる方が高くつく
         return pool.filter { !Self.hasClampedCoordinates($0, in: elements) }
     }
 
@@ -2522,8 +2536,11 @@ public final class StepExecutor {
         }
         guard let sample = broken.first else { return nil }
         let frame = sample.frame
+        // 同じ場所に積み上がっている数(**sample と同じ矩形のものだけ**を数える。
+        // 画面に複数のスタックがあっても、利用者が指した要素の話に閉じる)
+        let stacked = elements.filter { Self.sameFrame($0.frame, frame) && $0.depth == sample.depth }
         return "it is in the tree but its coordinates are unusable"
-            + " — \(elements.filter { hasClampedCoordinates($0, in: elements) }.count) elements are"
+            + " — \(stacked.count) elements are"
             + " stacked at the same spot (\(Int(frame.x)),\(Int(frame.y))"
             + " \(Int(frame.width))x\(Int(frame.height)));"
             + " the framework clamps offscreen descendants to the container origin,"

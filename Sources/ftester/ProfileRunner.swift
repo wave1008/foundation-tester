@@ -212,6 +212,9 @@ enum ProfileRunner {
                     ws = (try? await ProfileWorkerFactory.installIfNeeded(
                         apps: resolved.apps, workers: ws, forceAndroidInstall: false) { print($0) }) ?? ws
                     PhaseLog.mark("ios-workers-installed")
+                    // 画面だけ死んだシミュレータを**投入前に**弾く(BlankWorkerTriage 参照)。
+                    // Android は buildAndroidWorkers 直後に同等の処理(修復つき)を通している
+                    ws = await BlankWorkerTriage.excludeBlankScreenWorkers(ws) { print($0) }.workers
                     print("🚀 \(ws.count) iOS worker(s) joined")
                     return ws
                 } catch {

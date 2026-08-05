@@ -1529,7 +1529,7 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   **未指定でも見切れ判定は容器基準で行う**: Compose は**容器の外に子(ghost)を報告する**ので、
   viewport を画面全体にすると容器の外の要素を「見えている」と誤判定して探索がそこで止まり、
   タップが飲まれる。`scrollable` の申告が無くても、スナップショットの `depth` から
-  **clip 元の祖先を復元**して viewport に使う(`StepExecutor.clippingAncestor`。
+  **clip 元の祖先を復元**して viewport に使う(`StepExecutor.clippingContainer`。
   **これは見切れ判定専用で、スワイプ座標には使わない**)。2026-08-03 修正・
   詳細は docs/verification.md「Compose の探索直後タップ」。
   **スクロールできない領域を指定したときは注記で申告する**(座標は正しく作られ 200 が返るが
@@ -1590,6 +1590,11 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   アプリ内メッセージ・モーダルは**同一プロセスなので上の別 window 検出では捕まらない**。
   判定は `OcclusionSuspicion.covering`(ツリーのみの幾何。FM もスクショも不要 = FM が落ちていても効く)。
   **過検出寄りなので判定は変えず文言を足すだけ**にする(ステップの成否には触らない)
+- **run の開始前に「画面だけ死んだ」仮想デバイスを弾く**(2026-08-05。`BlankWorkerTriage`)。
+  Android は `ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers` が同じ位置で**修復まで**行うが、
+  **iOS には軽い修復手段が無い**(確認できているのは `simctl shutdown`→`boot` だけ)ので
+  除外して復旧コマンドをログに出す。判定は恒常 blank(1.5s 間隔で2連続)で、
+  健全機は1サンプルで返る = 正常時の固定費はスクショ1枚。**実機は対象外**(消灯を凍結と誤断する)
 - **座標が壊れている要素は解決候補にしない**(2026-08-05。`StepExecutor.hasClampedCoordinates`)。
   フレームワークは**容器の可視域を外れた子孫の frame の原点を容器の原点へクランプする**ため、
   掴むと `tap` が別の要素へ落ち(可視性ガードを通らないので沈黙)、`exist` は画面外なのに真を返す
