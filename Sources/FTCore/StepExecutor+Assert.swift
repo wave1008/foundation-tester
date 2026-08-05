@@ -230,7 +230,7 @@ extension StepExecutor {
         if let lastOcclusion { return lastOcclusion }
         return .failed("element not found: \(step.locatorSummary) (timeout \(FTSeconds.format(step.timeout ?? 5))s)"
                        + Self.truncationHint(lastSnapshot)
-                       + swallowedInteractionHint(lastSnapshot?.elements)
+                       + tapDiagnosisHint(lastSnapshot?.elements)
                        + Self.webViewPathHint(lastSnapshot))
     }
 
@@ -332,10 +332,10 @@ extension StepExecutor {
             ? .failed("\(subject) \(relation): expected \"\(expected)\", actual \"\(lastActual ?? "nil")\""
                       + Self.coveringHint(element: lastElement, elements: lastElements,
                                           screen: lastScreen)
-                      + swallowedInteractionHint(lastSnapshot?.elements)
+                      + tapDiagnosisHint(lastSnapshot?.elements)
                       + Self.webViewPathHint(lastSnapshot))
             : .failed("element not found: \(step.locatorSummary)"
-                      + swallowedInteractionHint(lastSnapshot?.elements)
+                      + tapDiagnosisHint(lastSnapshot?.elements)
                       + Self.webViewPathHint(lastSnapshot))
     }
 
@@ -372,7 +372,7 @@ extension StepExecutor {
         let deadline = Date().addingTimeInterval(step.timeout ?? 5)
         var freshRetry = AssertFreshRetry()
         var backoff = PollBackoff()
-        var lastElements: [ElementInfo] = []   // 失敗文言の swallowedInteractionHint 用
+        var lastElements: [ElementInfo] = []   // 失敗文言の tapDiagnosisHint 用
         while true {
             let start = clock.now
             var snapshot = try await driver.snapshot(bypassingCache: freshRetry.takeArmed())
@@ -409,7 +409,7 @@ extension StepExecutor {
             phase.waitMs += Self.ms(clock.now - waitStart)
         }
         return .failed("element still exists: \(step.locatorSummary) (timeout \(FTSeconds.format(step.timeout ?? 5))s)"
-                       + swallowedInteractionHint(lastElements))
+                       + tapDiagnosisHint(lastElements))
     }
 
     private func executeAssertNegativeTextComparison(
@@ -466,11 +466,11 @@ extension StepExecutor {
         }
         guard found else {
             return .failed("element not found: \(step.locatorSummary)"
-                           + swallowedInteractionHint(lastSeenElements))
+                           + tapDiagnosisHint(lastSeenElements))
         }
         let hint = Self.coveringHint(element: lastElement, elements: lastElements,
                                      screen: lastScreen)
-            + swallowedInteractionHint(lastSeenElements)
+            + tapDiagnosisHint(lastSeenElements)
         let subject = assert.hasPrefix("value") ? "value" : "text"
         switch assert {
         case "textIsEmpty", "valueIsEmpty":

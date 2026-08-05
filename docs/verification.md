@@ -1072,7 +1072,7 @@ in-app の合成タッチについて「**drag はジェスチャ認識器に受
 **2026-08-05 以降は「飲まれたタップ」を失敗文言が名指しする**: 直前のタップの**直前に解決で
 使った木**を覚えておき、失敗した検証が手元に持っている木と突き合わせて、**1ピクセルも変わって
 いなければ** `(the preceding tap … did not change the screen at all; the interaction may have
-been swallowed)` を添える(`StepExecutor.swallowedInteractionHint`)。
+been swallowed)` を添える(`StepExecutor.tapDiagnosisHint`)。
 - **追加のスナップショットは撮らない**。実行中に I/O を足すと事象そのものが消える
   (下記「Compose の探索直後タップ」の heisenbug で 13 周回して再現しなかった)ため、
   これは設計要件であって最適化ではない
@@ -1085,6 +1085,12 @@ been swallowed)` を添える(`StepExecutor.swallowedInteractionHint`)。
 - **タップ点を手前の別要素が取っていた**ときは、無変化と同時に成立したときだけ名前も添える。
   単独で出さないのは、画面外要素の frame がクランプされるフレームワーク(下記)では
   **正常なタップでも普通に非 nil になる**ため
+- **木が変わっていて、かつ対象があの後動いていたら移動量を出す**(2026-08-05 追加)。
+  `(the target has moved (0,-100) since the preceding tap …)`。これが
+  **「座標が古くなった」と「本当に無反応だった」を分ける唯一の材料** ——
+  失敗時の幾何だけでは両者が同じ絵になり、実際に取り違えた(「掴んだ時点で壊れていた」と読んで
+  探索側を直したが、10周回して**一度も発火しなかった**)。閾値は 8pt(整定の揺れで出さない床。
+  実測の取りこぼしは 98pt 級)。対象が消えていたら黙る
 
 実例: Gboard の「タッチペンを試してみる」が送信ボタンを覆い、05_テキスト入力 が間欠失敗した
 (抑止は `AndroidBridge.disableStylusHandwriting`)。**この手の教育用ポップアップは今後も増える**ので、

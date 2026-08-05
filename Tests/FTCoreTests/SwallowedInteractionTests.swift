@@ -214,6 +214,87 @@ final class SwallowedInteractionTests: XCTestCase {
                       "タップ点を取っている要素を名指しすること: \(message)")
     }
 
+    // MARK: - 「座標が古くなった」側(2026-08-05 追加)
+
+    /// **対象があの後動いていたら、それを出す**。事後の幾何だけでは「掴んだ時点で壊れていた」と
+    /// 「掴んだ後に動いた」を区別できず、実際に取り違えた(探索側を直したが一度も発火しなかった)。
+    /// タップ時点の frame を持っているのはここだけなので、この注記が唯一の分け目になる
+    func testFailureReportsHowFarTheTargetMovedAfterTheTap() async throws {
+        // タップ時 y=300 → 検証時 y=200(= 100pt 上へ動いた)。値も変わるので「無変化」ではない
+        let before = [text(1, "row_30", "行 30", y: 300, type: "clickable"),
+                      text(2, "txt_row_selected", "selected=-", y: 500)]
+        let after = [text(1, "row_30", "行 30", y: 200, type: "clickable"),
+                     text(2, "txt_row_selected", "selected=-", y: 500)]
+        let driver = ScriptedDriver(frames: [before, after])
+        let executor = StepExecutor(driver: driver)
+
+        _ = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "row_30")))
+        let outcome = await executor.execute(
+            FlowStep(assert: "textEquals", locator: FlowLocator(id: "txt_row_selected"),
+                     expected: "selected=row_30", timeout: 0, occlusionGuard: false))
+
+        guard case .failed(let message) = outcome.status else {
+            XCTFail("失敗するはず: \(outcome.status)"); return
+        }
+        XCTAssertTrue(message.contains("has moved"), "動いたことを出すこと: \(message)")
+        XCTAssertTrue(message.contains("(0,-100)"), "移動量を出すこと: \(message)")
+        XCTAssertFalse(message.contains("did not change the screen"),
+                       "動いている = 無変化ではない(2つは排他)")
+    }
+
+    /// **わずかな揺れでは出さない**(整定のブレ・サブピクセル)。実測の取りこぼしは 98pt 級
+    func testSmallJitterDoesNotProduceTheMovedNote() async throws {
+        let before = [text(1, "row_30", "行 30", y: 300, type: "clickable"),
+                      text(2, "txt_row_selected", "selected=-", y: 500)]
+        let after = [text(1, "row_30", "行 30", y: 303, type: "clickable"),
+                     text(2, "txt_row_selected", "selected=-", y: 500)]
+        let driver = ScriptedDriver(frames: [before, after])
+        let executor = StepExecutor(driver: driver)
+
+        _ = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "row_30")))
+        let outcome = await executor.execute(
+            FlowStep(assert: "textEquals", locator: FlowLocator(id: "txt_row_selected"),
+                     expected: "selected=row_30", timeout: 0, occlusionGuard: false))
+
+        guard case .failed(let message) = outcome.status else { XCTFail("失敗するはず"); return }
+        XCTAssertFalse(message.contains("has moved"), "3pt の揺れで注記を出さないこと: \(message)")
+    }
+
+    /// 対象が**消えていたら黙る**(消えた要素について「動いた」とは言えない)
+    func testDisappearedTargetIsSilent() async throws {
+        let before = [text(1, "row_30", "行 30", y: 300, type: "clickable"),
+                      text(2, "txt_row_selected", "selected=-", y: 500)]
+        let after = [text(2, "txt_row_selected", "selected=-", y: 500)]
+        let driver = ScriptedDriver(frames: [before, after])
+        let executor = StepExecutor(driver: driver)
+
+        _ = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "row_30")))
+        let outcome = await executor.execute(
+            FlowStep(assert: "textEquals", locator: FlowLocator(id: "txt_row_selected"),
+                     expected: "selected=row_30", timeout: 0, occlusionGuard: false))
+
+        guard case .failed(let message) = outcome.status else { XCTFail("失敗するはず"); return }
+        XCTAssertFalse(message.contains("has moved"), "\(message)")
+    }
+
+    /// 探し直しの規則(id 優先・無ければ型+ラベル・見つからなければ nil)
+    func testRelocateRules() {
+        let target = text(1, "row_30", "行 30", y: 300, type: "clickable")
+        let moved = text(9, "row_30", "行 30", y: 100, type: "clickable")
+        XCTAssertEqual(StepExecutor.relocate(target, in: [moved])?.frame.y, 100, "id で探す")
+
+        let unnamed = ElementInfo(ref: 1, type: "clickable", identifier: nil, label: "行 30",
+                                  value: nil, placeholder: nil, enabled: true,
+                                  frame: FTRect(x: 0, y: 300, width: 10, height: 10), depth: 1)
+        let unnamedMoved = ElementInfo(ref: 9, type: "clickable", identifier: nil, label: "行 30",
+                                       value: nil, placeholder: nil, enabled: true,
+                                       frame: FTRect(x: 0, y: 100, width: 10, height: 10), depth: 1)
+        XCTAssertEqual(StepExecutor.relocate(unnamed, in: [unnamedMoved])?.frame.y, 100,
+                       "id が無ければ型+ラベル")
+        XCTAssertNil(StepExecutor.relocate(target, in: [text(9, "row_31", "行 31", y: 100)]),
+                     "見つからなければ nil")
+    }
+
     /// 純粋関数側の境界(点が入っているか・自分の子孫は除く・前後関係)
     func testFrontElementTakingPointRules() {
         let target = ElementInfo(ref: 1, type: "clickable", identifier: "row", label: nil, value: nil,
