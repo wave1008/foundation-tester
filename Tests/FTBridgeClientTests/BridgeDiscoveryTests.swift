@@ -18,26 +18,50 @@ final class BridgeDiscoveryTests: XCTestCase {
 
     /// 既定ポートが生きていれば探索結果に関わらずそれを使う(従来挙動を変えない)
     func testAlivePreferredPortWins() {
-        XCTAssertEqual(BridgeDiscovery.decide(preferredAlive: true, found: [found(8130)]),
+        XCTAssertEqual(BridgeDiscovery.decide(preferredAlive: true, preferredBound: true,
+                                              found: [found(8130)]),
                        .usePreferred)
     }
 
     /// 1本だけなら自動採用(ユーザー決定 2026-08-06)
     func testAdoptsTheOnlyRunningBridge() {
-        XCTAssertEqual(BridgeDiscovery.decide(preferredAlive: false, found: [found(8124)]),
+        XCTAssertEqual(BridgeDiscovery.decide(preferredAlive: false, preferredBound: false,
+                                              found: [found(8124)]),
                        .adopt(found(8124)))
     }
 
     /// **複数なら自動採用しない**: 別デバイスを黙って操作させない
     func testMultipleBridgesAreAmbiguous() {
         let decision = BridgeDiscovery.decide(
-            preferredAlive: false, found: [found(8130, "iPad Pro"), found(8124)])
+            preferredAlive: false, preferredBound: false,
+            found: [found(8130, "iPad Pro"), found(8124)])
         XCTAssertEqual(decision, .ambiguous([found(8124), found(8130, "iPad Pro")]),
                        "ポート昇順で提示すること")
     }
 
     func testNoBridgeAtAll() {
-        XCTAssertEqual(BridgeDiscovery.decide(preferredAlive: false, found: []), .none)
+        XCTAssertEqual(BridgeDiscovery.decide(preferredAlive: false, preferredBound: false,
+                                              found: []), .none)
+    }
+
+    /// **待受しているのに応答しないだけなら乗り換えない**(2026-08-06 のログ: quiescence 待ちで
+    /// 33.7 秒ブロックした実績がある)。ここが緩むと別デバイスを黙って操作する
+    func testBoundButSilentPreferredIsNeverAbandoned() {
+        XCTAssertEqual(BridgeDiscovery.decide(preferredAlive: false, preferredBound: true,
+                                              found: [found(8124)]),
+                       .preferredBusy, "1本しか無くても乗り換えてはいけない")
+        XCTAssertEqual(BridgeDiscovery.decide(preferredAlive: false, preferredBound: true,
+                                              found: []),
+                       .preferredBusy, "他に居なくても「無い」ではなく「今は忙しい」")
+    }
+
+    /// 待たせる側の文言は、**死んでいないこと**と再試行を言うこと
+    func testBusyMessageSaysItIsNotGone() {
+        let busy = BridgeDiscovery.busyMessage(preferred: 8123)
+        XCTAssertTrue(busy.contains("8123"), busy)
+        XCTAssertTrue(busy.contains("not gone"), busy)
+        XCTAssertTrue(busy.contains("Retry"), busy)
+        XCTAssertTrue(busy.contains("different device"), busy)
     }
 
     /// 文言はそのまま利用者(エージェント)への指示になる。**次の一手が書かれていること**

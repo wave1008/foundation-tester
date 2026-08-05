@@ -196,10 +196,14 @@ final class MCPServer {
         let preferred = BridgeAPI.defaultPort
         let repoRoot = try? RepoRoot.find()
         if await BridgeDiscovery.isAlive(port: preferred, repoRoot: repoRoot) { return preferred }
-        let found = await BridgeDiscovery.scan(excluding: preferred, repoRoot: repoRoot)
-        switch BridgeDiscovery.decide(preferredAlive: false, found: found) {
+        // **応答なしを死と読まない**: 待受が続いているなら乗り換え先は別デバイスになる
+        let bound = BridgeDiscovery.isBound(port: preferred, repoRoot: repoRoot)
+        let found = bound ? [] : await BridgeDiscovery.scan(excluding: preferred, repoRoot: repoRoot)
+        switch BridgeDiscovery.decide(preferredAlive: false, preferredBound: bound, found: found) {
         case .usePreferred:
             return preferred
+        case .preferredBusy:
+            throw MCPError(BridgeDiscovery.busyMessage(preferred: preferred))
         case .adopt(let bridge):
             logStderr(BridgeDiscovery.adoptedNote(preferred: preferred, found: bridge))
             return bridge.port
@@ -278,25 +282,28 @@ final class MCPServer {
             + " (`ftester bridge up --engine inapp`) — both handle it."
     }
 
-    /// launch 失敗が「未インストール」だったときだけ足す切り分け。ブリッジ側は未インストールと
-    /// 未起動を区別できない(XCUIApplication はどちらも notRunning)ので、ホストが確かめる。
-    /// **確かめられないときは黙る**(実機・同名デバイス複数・adb 不調。断定しない側に倒す)
-    func notInstalledHint(bundleID: String, driver: AppDriver) async -> String {
+    /// **launch する前に**確かめる。未インストールのまま `XCUIApplication.launch()` を撃つと、
+    /// XCUI が記録する issue が(main queue 上 = テストのスタック外なので)ランナーごと落とし、
+    /// ブリッジが消える —— 2026-08-06 の外部フィードバック #7 の真因はこれで、
+    /// 「Safari 操作後に切断」に見えていたのは**別ポートで先に死んでいたランナー**だった。
+    /// requireLiveApp と同じ形(XCUI に触れる前に弾いて手前でエラーにする)。
+    ///
+    /// ブリッジ側は未インストールと未起動を区別できない(XCUIApplication はどちらも notRunning)
+    /// のでホストが確かめる。**確かめられないときは nil = 素通し**(実機・同名デバイス複数・
+    /// simctl/adb 不調。断定しない側に倒す)。iOS のシステムアプリ(springboard/Safari)も
+    /// get_app_container が runtime のパスを返すので誤って弾かない(2026-08-06 実測)
+    func installedState(bundleID: String, driver: AppDriver) async -> Bool? {
         // 差し替えドライバ(テスト)ではデバイスを照会しない = simctl/adb を撃たない
-        guard makeDriver == nil else { return "" }
-        let installed: Bool?
+        guard makeDriver == nil else { return nil }
         if let android = driver as? AndroidDriver {
-            installed = android.isInstalled(bundleID: bundleID)
-        } else if let device = try? await driver.status().device {
-            installed = InstalledAppCheck.installedOnSimulator(deviceName: device, bundleID: bundleID)
-        } else {
-            installed = nil
+            return android.isInstalled(bundleID: bundleID)
         }
-        return installed == false ? Self.notInstalledMessage(bundleID: bundleID) : ""
+        guard let device = try? await driver.status().device else { return nil }
+        return InstalledAppCheck.installedOnSimulator(deviceName: device, bundleID: bundleID)
     }
 
     static func notInstalledMessage(bundleID: String) -> String {
-        "\n\(bundleID) is not installed on this device."
+        "\(bundleID) is not installed on this device."
             + " Install it with ft_install packagePath: <.app or .apk>, or check the bundle ID"
             + " (Android: the package name)."
     }
@@ -508,12 +515,11 @@ final class MCPServer {
         case "ft_launch":
             guard let bundleID = args["bundleId"] as? String else { throw MCPError("bundleId is required") }
             let launchDriver = try await driver(args)
-            do {
-                try await launchDriver.launch(bundleID: bundleID)
-            } catch {
-                throw MCPError(error.localizedDescription
-                    + (await notInstalledHint(bundleID: bundleID, driver: launchDriver)))
+            // **撃つ前に弾く**(ランナー死の予防。installedState のコメント参照)
+            if await installedState(bundleID: bundleID, driver: launchDriver) == false {
+                throw MCPError(Self.notInstalledMessage(bundleID: bundleID))
             }
+            try await launchDriver.launch(bundleID: bundleID)
             return text("Launched: \(bundleID)")
 
         case "ft_snapshot":

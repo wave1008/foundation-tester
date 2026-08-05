@@ -1800,6 +1800,17 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
     Android の `serial` 未指定も同じ規律(`AndroidSerialResolver`。1台なら自動採用・
     複数なら AVD 名付きで列挙。`-s` 無しの adb は複数台で "more than one device/emulator" になる)。
     `ft_run_scenario` の `profile` 無し経路も同じ解決を通す(片方だけ賢いと食い違う)
+  - **「応答しない」を「死んだ」と読まない**(`BridgeDiscovery.isBound`。2026-08-06)。XCUITest は
+    整定待ちでブリッジのスレッドを数十秒ブロックする(外部ログで実測 33.7s)。/status が返らなくても
+    **カーネルは accept する**ので、待受があるうちは乗り換えず「今は忙しい・少し待て」を返す。
+    ここを緩めると、自動採用が防ぐはずの**別デバイスへの取り違えを自分で作る**
+  - **未インストールのアプリを launch させない**(`MCPServer.installedState`。2026-08-06)。
+    `XCUIApplication.launch()` が未インストールで失敗すると、その issue は main queue 上
+    (テストのスタック外)で記録されるため**ランナーごと落ちる** —— `requireLiveApp` が防いでいるのと
+    同じ経路で、対処も同じ「XCUI に触れる前に弾く」。実測: 遊休ブリッジへ直接
+    `POST /session {"bundleID":"<未インストール>"}` を投げると、無応答(待受のみ)を約5秒挟んで
+    10秒以内にランナーが消える。**判定できないときは素通し**(実機・同名デバイス複数・simctl/adb 不調)。
+    システムアプリ(springboard/Safari)は `get_app_container` が runtime のパスを返すので弾かれない
   - **ホーム画面・システム UI は `ft_launch com.apple.springboard` で読む**(XCUITest 経路のみ)。
     セッションはアプリに閉じているので、未起動での `ft_snapshot` は 409、`ft_navigate home` 後は
     背面アプリ照会の 500(kAXErrorServerNotFound)になる。`BridgeRouter.handleLaunch` は
