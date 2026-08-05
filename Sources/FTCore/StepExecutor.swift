@@ -399,6 +399,10 @@ public final class StepExecutor {
         /// フレームワーク(実測: XCUITest の UITableView は未実体化行のラベルまで同一座標で返す)が
         /// あり、正常なタップでも普通に非 nil になるため。無変化と同時に成立したときだけ添える
         let pointTakenBy: ElementInfo?
+        /// **タップした要素そのもの**(タップ時点の frame を含む)。失敗した側の木で同じ要素を
+        /// 探し直し、**あの後どれだけ動いたか**を出すのに使う。
+        /// これが「座標が古くなった」と「本当に無反応だった」を分ける唯一の材料
+        let target: ElementInfo
     }
 
     /// 直前の操作(tap / 長押し)の記録。**読むのは失敗文言の組み立てだけ**。
@@ -414,7 +418,8 @@ public final class StepExecutor {
             // ブリッジは ref を frame の中心へ解決する(iOS/Android とも)。同じ点で判定する
             pointTakenBy: Self.frontElementTakingPoint(
                 x: element.frame.centerX, y: element.frame.centerY,
-                of: element, in: snapshot.elements))
+                of: element, in: snapshot.elements),
+            target: element)
     }
 
     /// 木の内容署名(**位置だけでなくラベル・値も含む**)。
@@ -436,22 +441,50 @@ public final class StepExecutor {
         return text
     }
 
-    /// 直前の操作が**画面を1ピクセルも変えていない**なら、失敗文言へ添える注記を返す。
-    /// 変わっていれば空文字(黙る)。**判定には触れない** —— 正しく変化しない操作
-    /// (トグルの再タップ等)も世の中にはあるので、失敗の理由付けにだけ使う。
-    ///
+    /// 直前のタップについて、失敗した側の木から**分かることだけ**を失敗文言へ添える。
+    /// **判定には触れない**(正しく変化しない操作もあるので、理由付けにだけ使う)。
     /// 呼び手は**既に持っている木の要素列**を渡すこと(このために追加取得しない)。
+    ///
+    /// 出るのは排他な2つ。**この2つを分けることが目的**で、事後の幾何だけでは区別できない
+    /// (2026-08-05 に実際に取り違えた: 失敗時に対象が容器の縁へずれていたのを「掴んだ時点で
+    /// 壊れていた」と読み、探索側を直したが**一度も発火しなかった**):
+    ///   1. **木が1ピクセルも変わっていない** → タップが丸ごと飲まれた(真の空振り)
+    ///   2. **対象があの後動いた** → タップは**動く前の座標**を撃った可能性(古い座標)
+    ///
     /// StepExecutor+Assert.swift の失敗経路から呼ぶため internal
-    func swallowedInteractionHint(_ elements: [ElementInfo]?) -> String {
-        guard let last = lastInteraction, let elements, !elements.isEmpty,
-              Self.contentSignature(elements) == Self.contentSignature(last.before) else { return "" }
-        var text = " (the preceding \(last.description) did not change the screen at all"
-            + "; the interaction may have been swallowed"
-        if let taken = last.pointTakenBy {
-            let label = taken.identifier.map { "#\($0)" } ?? taken.label.map { "\"\($0)\"" } ?? taken.type
-            text += " — its point was inside \(label), which is in front of the target"
+    func tapDiagnosisHint(_ elements: [ElementInfo]?) -> String {
+        guard let last = lastInteraction, let elements, !elements.isEmpty else { return "" }
+        if Self.contentSignature(elements) == Self.contentSignature(last.before) {
+            var text = " (the preceding \(last.description) did not change the screen at all"
+                + "; the interaction may have been swallowed"
+            if let taken = last.pointTakenBy {
+                let label = taken.identifier.map { "#\($0)" } ?? taken.label.map { "\"\($0)\"" }
+                    ?? taken.type
+                text += " — its point was inside \(label), which is in front of the target"
+            }
+            return text + ")"
         }
-        return text + ")"
+        guard let now = Self.relocate(last.target, in: elements) else { return "" }
+        let dx = now.frame.x - last.target.frame.x
+        let dy = now.frame.y - last.target.frame.y
+        guard (dx * dx + dy * dy).squareRoot() >= Self.movedTargetThreshold else { return "" }
+        return " (the target has moved (\(Int(dx)),\(Int(dy))) since the preceding"
+            + " \(last.description) — the tap used the coordinates from before that move,"
+            + " so it may have landed on whatever was there at the time)"
+    }
+
+    /// 「動いた」と言い切る下限(pt)。整定のわずかな揺れやサブピクセルで注記を出さないための床。
+    /// 実測の取りこぼしは 98pt 級(docs/verification.md の計装記録)なので、この値で十分拾える
+    static let movedTargetThreshold: Double = 8
+
+    /// タップした要素を**別の木の中で**探し直す。id があれば id、無ければ型+ラベル。
+    /// 見つからなければ nil = 黙る(消えた要素について「動いた」とは言えない)
+    static func relocate(_ target: ElementInfo, in elements: [ElementInfo]) -> ElementInfo? {
+        if let id = target.identifier, !id.isEmpty {
+            return elements.first { $0.identifier == id }
+        }
+        guard let label = target.label, !label.isEmpty else { return nil }
+        return elements.first { $0.type == target.type && $0.label == label }
     }
 
     /// ステップ横断の注記(内蔵スクロール探索・割り込み)を既存の driverFallback へ合流させる
