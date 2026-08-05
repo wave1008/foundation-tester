@@ -351,7 +351,11 @@ class スクロールで折り返し下の要素に到達できること {
             // `scrollable` 申告はフレームワークで割れる。4 SUT で回す価値が高い
             scene(4, "`scrollLeft` で横カルーセルを戻すと先頭タグが再び見える") {
                 action {
-                    scrollLeft(scrollFrame: "#carousel_tags", repeat: 2)
+                    // **戻しは往路より多く撃つ**(フリングの距離は往路と復路で対称ではない。
+                    // 21_新規コマンド の同型 scene と同じ理由・同じ回数)。
+                    // 2026-08-06 にフル実行で1度だけ `#tag_01` 不在で落ちた
+                    // (208 サンプルでは再現せず = 未確定。回数を合わせて余裕を持たせる)
+                    scrollLeft(scrollFrame: "#carousel_tags", repeat: 3)
                 }.expectation {
                     exist("#tag_01")
                     exist("#row_01")
