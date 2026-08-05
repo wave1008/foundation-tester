@@ -250,6 +250,24 @@ actor ScenarioQueue {
 /// CLI の逐次実行と RunOrchestrator のワーカーの両方がここを通る。
 public enum ScenarioOutcome: Sendable, Equatable {
     case passed, failed, frozen
+    /// **デバイス側の一過性の故障**でテストが落ちた(コードの失敗ではない)。振り直す
+    case environmentFault
+}
+
+/// 「テストではなくデバイスが壊れていた」と機械的に言い切れる失敗のしるし。
+/// **ここに足すのは、アサーション失敗と構造的に区別できるものだけ** ——
+/// ドライバが返した基盤側のエラーで、同じコードを別デバイスや少し後に走らせれば通るもの。
+/// 判定を広げると本物の失敗を skipped に隠すことになる
+enum EnvironmentFault {
+    /// XCUITest の a11y 基盤が一時的に応答しない。**ブリッジ供給直後・アプリ入れ替え直後**に
+    /// 同時刻クラスタで出て、再実行で必ず消える(2026-08-05/06 に2回・8件と6件を手で判定した)。
+    /// docs/verification.md「kAXErrorAPIDisabled は環境と判定してよい」
+    static let markers = ["kAXErrorAPIDisabled"]
+
+    static func matches(_ detail: String?) -> Bool {
+        guard let detail else { return false }
+        return markers.contains { detail.contains($0) }
+    }
 }
 
 public enum ScenarioRunner {
@@ -277,6 +295,7 @@ public enum ScenarioRunner {
         var reportURL: URL?
         var fmUsage: FMUsageRecord?
         var frozen = false
+        var environmentFault = false
         let passed = await ScenarioHost.run(
             project: project, scenarioID: item.info.id, connection: worker.connection,
             fm: fm, reportDir: reportDir.path,
@@ -293,6 +312,10 @@ public enum ScenarioRunner {
                                       scene: event.scene ?? 0,
                                       sceneTitle: event.sceneTitle ?? ""))
             case "step":
+                // **デバイス基盤の一過性エラーは「テストの失敗」として数えない**(振り直す)
+                if event.status == "failed", EnvironmentFault.matches(event.detail) {
+                    environmentFault = true
+                }
                 onEvent(.step(worker: worker.label, flowURL: item.url,
                               result: stepResult(from: event)))
             case "sceneFinished":
@@ -335,10 +358,20 @@ public enum ScenarioRunner {
             }
         }
 
-        let outcome: ScenarioOutcome = frozen ? .frozen : (passed ? .passed : .failed)
+        let outcome = Self.outcome(passed: passed, frozen: frozen,
+                                   environmentFault: environmentFault)
         onEvent(.flowFinished(worker: worker.label, flowURL: item.url, passed: frozen ? false : passed,
                               triage: nil, reportURL: reportURL, fm: fmUsage))
         return outcome
+    }
+
+    /// 実行結果の確定(純粋関数)。**優先順位に意味がある**: 画面凍結 > 環境の一過性エラー >
+    /// テストの合否。凍結はワーカーごと使えないので先に判定し、環境エラーは合格を上書きしない
+    /// (途中のステップが環境エラーでも、最終的に通ったならテストとしては合格)
+    static func outcome(passed: Bool, frozen: Bool, environmentFault: Bool) -> ScenarioOutcome {
+        if frozen { return .frozen }
+        if passed { return .passed }
+        return environmentFault ? .environmentFault : .failed
     }
 
     /// ScenarioEvent(step)→ StepResult。scene/sceneTitle/section は構造化フィールドのまま写す。
@@ -786,6 +819,16 @@ public final class RunOrchestrator {
                 workerLabel: worker.label, at: Date(), passed: outcome == .passed)
             if outcome == .passed {
                 consecutiveFailures = 0
+                continue
+            }
+            // **デバイス基盤の一過性エラー**(kAXErrorAPIDisabled 等)は結果を捨てて振り直す。
+            // **ワーカーは離脱させない** —— 個体は健全で、ブリッジを作り直しても同じ確率で踏む
+            // (実測でも再実行で必ず消えた)。連続失敗の数にも入れない = サーキットブレーカを
+            // 環境ノイズで作動させない
+            if outcome == .environmentFault {
+                let requeued = await discardAndRequeue(item, worker: worker, queue: queue,
+                                                       reason: "a transient accessibility fault")
+                if !requeued { failed += 1 }
                 continue
             }
             // デバイスが使用不能なら結果取り消し+別デバイス再実行+ワーカー離脱。
