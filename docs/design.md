@@ -1787,10 +1787,24 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
     **座標へ畳んでから**回す
   - 合成は実行側(`ScenarioRunnerMain`)と同じ形:
     in-app(注入)→ WebView 画面だけ XCUITest へ委譲 → 不可な操作だけ XCUITest へ回す
-  - **`profile` を渡さない直接指定(`port`/`platform`)は従来どおり XCUITest**。エンジンを知る
-    材料が無いため。`XCUIBridgeResolver` が接続先の `/status.engine == "inapp"` を検知したら
-    **同じデバイス(名前で相関)の XCUITest ブリッジへ振り替え**、無ければ空きポートに起動する
-    (デバイス名が一意に定まらない・起動に失敗したときは指定ポートのまま + 理由を stderr へ)
+  - **`profile` を渡さない直接指定(`port`/`platform`)は稼働中ブリッジに追従する**
+    (`ExploreDriverResolver`。2026-08-05)。接続先が in-app なら同じデバイスの XCUITest ブリッジを
+    フォールバックに合成して hybrid を組み、合成できないとき(実機・同名デバイス複数・
+    XCUITest ブリッジを用意できない)だけ振り替え/素通しへ落とす
+  - **宛先そのものも探す**(`BridgeDiscovery`。2026-08-06)。`port` 未指定で既定 8123 が無応答なら
+    範囲(8123〜8154)を走査し、**生きているブリッジが1本だけなら自動採用**(採用理由を stderr へ)・
+    **複数ならデバイス名付きで列挙してエラー**(別デバイスを黙って操作させない)・0本なら
+    `ftester bridge up` を案内する。既定固定だと `bridge up` が別ポートを選んだ瞬間
+    (稼働中ブリッジの再利用・pid ファイルの残り)に全ツールがタイムアウトする。
+    **`port` を明示したときは探索しない**(宛先を利用者が決めている)。
+    Android の `serial` 未指定も同じ規律(`AndroidSerialResolver`。1台なら自動採用・
+    複数なら AVD 名付きで列挙。`-s` 無しの adb は複数台で "more than one device/emulator" になる)。
+    `ft_run_scenario` の `profile` 無し経路も同じ解決を通す(片方だけ賢いと食い違う)
+  - **ホーム画面・システム UI は `ft_launch com.apple.springboard` で読む**(XCUITest 経路のみ)。
+    セッションはアプリに閉じているので、未起動での `ft_snapshot` は 409、`ft_navigate home` 後は
+    背面アプリ照会の 500(kAXErrorServerNotFound)になる。`BridgeRouter.handleLaunch` は
+    springboard を**起動せず参照だけ張る**特別扱いを持つので、これで木が読める
+    (`MCPServer.springboardHint` / `homeScreenReadNote` が両方の行き止まりで案内する)
   - この追従によって、**マップ系ジェスチャの MCP と実行の食い違いが消えた**(2026-08-04)。
     `profile` 付きなら iOS の Compose でもダブルタップが、Flutter でもピンチが効く。
     `profile` 無しは XCUITest 経路のままなのでこの2つが効かず、応答テキストに切り分けを添える
@@ -2054,8 +2068,9 @@ DeviceBooter.defaultLocale(実行プロファイルの locale が届くのは wi
    1 台も解決できなければエラー。Android は `AndroidDeviceCatalog.resolveSerial` が
    **AVD ID 完全一致**でのみ serial を引き、不一致は throw(代役フォールバック無し)。
    → **profile 外のはぐれエミュレータは profile 実行には一切混入しない**(ワーカー0件)。
-   ただし serial 未指定の対話コマンド(`ft_status`/`ft_snapshot` 等)は adb の全デバイスから
-   **最若番ポートを既定**にするため、はぐれ高 Android 機があると診断画面がそれになり切り分けを誤らせる。
+   ただし serial 未指定の対話コマンド(`ft_status`/`ft_snapshot` 等)は接続中デバイスが
+   **1台のときだけ**それを自動採用する(2026-08-06。複数なら AVD 名付きで列挙してエラー)。
+   はぐれ Android 機が1台混ざっていると、それが唯一の候補になって診断画面がそれになりうるので、
    規模ランの調査前に `adb -s <serial> emu kill` で掃除する(2026-07-16)
 3. **アプリ解決**: common → デバイスの platform セクションの後勝ちマージ。`app`(bundle ID)必須
 4. **並列数 = 解決後のデバイス数**(maxParallel は存在しない)。プラットフォーム毎にワーカーを立て、

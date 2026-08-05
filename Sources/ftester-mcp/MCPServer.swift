@@ -164,20 +164,68 @@ final class MCPServer {
         let created: AppDriver
         switch platform {
         case "ios":
-            let port = (args["port"] as? Int).map(UInt16.init) ?? BridgeAPI.defaultPort
+            let port = try await Self.resolveIOSPort(explicit: (args["port"] as? Int).map(UInt16.init))
             let resolved = await ExploreDriverResolver.resolve(
                 preferred: port, repoRoot: try? RepoRoot.find(),
                 logger: { Self.logStderr($0) })
             created = resolved.driver
             engines[key] = resolved.engine
+            connections[key] = "port \(port)"
         case "android":
-            created = try AndroidDriver(serial: args["serial"] as? String)
+            let serial = try Self.resolveAndroidSerial(explicit: args["serial"] as? String)
+            created = try AndroidDriver(serial: serial)
             engines[key] = "android"
+            connections[key] = "serial \(serial)"
         default:
             throw MCPError("platform must be ios or android: \(platform)")
         }
         drivers[key] = created
         return created
+    }
+
+    /// 接続先の宛先(ft_status が見せる)。**#2/#5 の取り違えは「今どこに繋がっているか」が
+    /// 見えないまま起きる** —— 既定 8123 が死んでいても、はぐれエミュレータを掴んでいても、
+    /// 応答だけ見ると正常に見える
+    var connections: [String: String] = [:]
+
+    /// profile 無しの iOS 宛先。**明示 port は探索しない**(利用者が宛先を決めている)。
+    /// 既定ポートが死んでいるのは珍しくない —— `bridge up` は稼働中ブリッジの再利用や
+    /// pid ファイルの残りで別ポートを選ぶ(FTester.swift の警告)
+    static func resolveIOSPort(explicit: UInt16?) async throws -> UInt16 {
+        if let explicit { return explicit }
+        let preferred = BridgeAPI.defaultPort
+        let repoRoot = try? RepoRoot.find()
+        if await BridgeDiscovery.isAlive(port: preferred, repoRoot: repoRoot) { return preferred }
+        let found = await BridgeDiscovery.scan(excluding: preferred, repoRoot: repoRoot)
+        switch BridgeDiscovery.decide(preferredAlive: false, found: found) {
+        case .usePreferred:
+            return preferred
+        case .adopt(let bridge):
+            logStderr(BridgeDiscovery.adoptedNote(preferred: preferred, found: bridge))
+            return bridge.port
+        case .none:
+            throw MCPError(BridgeDiscovery.noBridgeMessage(preferred: preferred))
+        case .ambiguous(let bridges):
+            throw MCPError(BridgeDiscovery.ambiguousMessage(preferred: preferred, found: bridges))
+        }
+    }
+
+    /// profile 無しの Android 宛先。**serial 無しで adb を撃たない**(複数台なら
+    /// "more than one device/emulator" が生で出る)
+    static func resolveAndroidSerial(explicit: String?) throws -> String {
+        if let explicit, !explicit.isEmpty { return explicit }
+        let serials = AndroidSerialResolver.connectedSerials()
+        switch AndroidSerialResolver.decide(explicit: nil, connected: serials) {
+        case .use(let serial):
+            logStderr(AndroidSerialResolver.adoptedNote(
+                AndroidSerialResolver.describe(serials: [serial])[0]))
+            return serial
+        case .none:
+            throw MCPError(AndroidSerialResolver.noDeviceMessage)
+        case .ambiguous(let devices):
+            throw MCPError(AndroidSerialResolver.ambiguousMessage(
+                AndroidSerialResolver.describe(serials: devices.map(\.serial))))
+        }
     }
 
     /// profile 経由の iOS ドライバ。**実行プロファイルのエンジンに追従する**(2026-08-04。
@@ -228,6 +276,55 @@ final class MCPServer {
             + " and \(framework) apps do not receive \(gesture) through it."
             + " Pass profile: to follow the run profile's engine, or start an in-app bridge"
             + " (`ftester bridge up --engine inapp`) — both handle it."
+    }
+
+    /// launch 失敗が「未インストール」だったときだけ足す切り分け。ブリッジ側は未インストールと
+    /// 未起動を区別できない(XCUIApplication はどちらも notRunning)ので、ホストが確かめる。
+    /// **確かめられないときは黙る**(実機・同名デバイス複数・adb 不調。断定しない側に倒す)
+    func notInstalledHint(bundleID: String, driver: AppDriver) async -> String {
+        // 差し替えドライバ(テスト)ではデバイスを照会しない = simctl/adb を撃たない
+        guard makeDriver == nil else { return "" }
+        let installed: Bool?
+        if let android = driver as? AndroidDriver {
+            installed = android.isInstalled(bundleID: bundleID)
+        } else if let device = try? await driver.status().device {
+            installed = InstalledAppCheck.installedOnSimulator(deviceName: device, bundleID: bundleID)
+        } else {
+            installed = nil
+        }
+        return installed == false ? Self.notInstalledMessage(bundleID: bundleID) : ""
+    }
+
+    static func notInstalledMessage(bundleID: String) -> String {
+        "\n\(bundleID) is not installed on this device."
+            + " Install it with ft_install packagePath: <.app or .apk>, or check the bundle ID"
+            + " (Android: the package name)."
+    }
+
+    /// XCUITest のセッションは**そのアプリに閉じている**ので、ホーム画面やシステム UI は
+    /// 素では読めない。ただし**読む方法はある**(springboard 参照セッション。BridgeRouter の
+    /// handleLaunch が bundleID=com.apple.springboard を非破壊で特別扱いする)。
+    /// 詰まる2つの応答 —— セッション不在の 409 と、背面アプリ照会の kAXErrorServerNotFound ——
+    /// にだけ足す(2026-08-06 フィードバック #6)。
+    /// **in-app/hybrid には付けない**: in-app ブリッジは注入先アプリ専用で springboard を掴めない
+    static func springboardHint(_ error: Error, engine: String?) -> String {
+        guard engine == nil || engine == "xcuitest" else { return "" }
+        guard case DriverError.badResponse(let status, let body) = error,
+              status == 409 || (status == 500 && body.contains("kAXErrorServerNotFound")) else {
+            return ""
+        }
+        return "\nTo read the home screen or a system dialog instead of the app,"
+            + " ft_launch bundleId: com.apple.springboard — it attaches to SpringBoard without"
+            + " launching anything, and ft_snapshot then returns the home screen."
+            + " ft_launch your app again to go back."
+    }
+
+    /// home 直後の XCUITest は「セッションはアプリのまま・画面はホーム」になり、次の
+    /// ft_snapshot がアプリの古い木か 500 を返す。**先に言う**(踏んでから調べさせない)
+    static func homeScreenReadNote(target: String, engine: String?) -> String {
+        guard target == "home", engine == nil || engine == "xcuitest" else { return "" }
+        return ". The session still points at the app, so ft_snapshot cannot read the home screen"
+            + " — ft_launch bundleId: com.apple.springboard first (non-destructive)"
     }
 
     /// **in-app 経路で背面化すると、以降は XCUITest ブリッジ側が受ける**
@@ -350,11 +447,56 @@ final class MCPServer {
 
     // MARK: - ツール実装
 
+    /// **接続が消えた失敗には「今どこに何が居るか」を添える**(2026-08-06 フィードバック #7)。
+    /// ポートで誰も待受していない = XCUITest ランナーのプロセス死で、原因の筆頭は
+    /// **同一シミュレータに2本目のランナーが立った**こと(全ポート共通 bundle id のため
+    /// 先代が蹴り出される。FTester.swift の bridge up 参照)。素のメッセージからは追えない
     func call(tool: String, args: [String: Any]) async throws -> [[String: Any]] {
+        do {
+            return try await dispatch(tool: tool, args: args)
+        } catch {
+            let hint = await connectionLostHint(error, args: args)
+            guard !hint.isEmpty else { throw error }
+            throw MCPError(error.localizedDescription + hint)
+        }
+    }
+
+    func connectionLostHint(_ error: Error, args: [String: Any]) async -> String {
+        // 差し替えドライバ(テスト)では走査しない = 実ポートを叩かない
+        guard makeDriver == nil, case DriverError.bridgeConnectionRefused = error else { return "" }
+        let key = Self.engineKey(args)
+        guard let connection = connections[key], connection.hasPrefix("port") else { return "" }
+        // 掴んでいたドライバは死んでいる。次の呼び出しで解決し直させる
+        drivers[key] = nil
+        connections[key] = nil
+        let running = await BridgeDiscovery.scan(excluding: 0, repoRoot: try? RepoRoot.find())
+        return Self.connectionLostMessage(connection: connection, running: running)
+    }
+
+    static func connectionLostMessage(connection: String,
+                                      running: [BridgeDiscovery.Found]) -> String {
+        let now = running.isEmpty
+            ? "no iOS bridge is running now"
+            : "running bridges now: \(running.map(\.label).joined(separator: ", "))"
+        return "\nThe XCUITest runner behind \(connection) exited — a second runner on the same"
+            + " simulator kicks out the first, and the app under test crashing takes an in-app"
+            + " bridge with it. \(now). Start one with `ftester bridge up`; the session does not"
+            + " survive, so ft_launch your app again."
+    }
+
+    func dispatch(tool: String, args: [String: Any]) async throws -> [[String: Any]] {
         switch tool {
         case "ft_status":
             let status = try await driver(args).status()
-            return text("ready: \(status.ready) / \(status.device) (\(status.osVersion)) / session: \(status.sessionBundleID ?? "none")")
+            // **宛先とセッションの意味まで出す**: 「どこに繋がっているか」が見えないと、
+            // 既定ポートの死・はぐれデバイスの誤掴み・ブリッジ再起動によるセッション消失が
+            // どれも「応答はしているのに操作できない」に見える(2026-08-06 フィードバック #2/#8)
+            let endpoint = connections[Self.engineKey(args)].map { " @ \($0)" } ?? ""
+            let session = status.sessionBundleID
+                ?? "none (no app attached — ft_launch <bundleId> first;"
+                    + " a bridge restart clears the session)"
+            return text("ready: \(status.ready) / \(status.device) (\(status.osVersion))\(endpoint)"
+                + " / session: \(session)")
 
         case "ft_install":
             guard let packagePath = args["packagePath"] as? String else {
@@ -365,12 +507,26 @@ final class MCPServer {
 
         case "ft_launch":
             guard let bundleID = args["bundleId"] as? String else { throw MCPError("bundleId is required") }
-            try await driver(args).launch(bundleID: bundleID)
+            let launchDriver = try await driver(args)
+            do {
+                try await launchDriver.launch(bundleID: bundleID)
+            } catch {
+                throw MCPError(error.localizedDescription
+                    + (await notInstalledHint(bundleID: bundleID, driver: launchDriver)))
+            }
             return text("Launched: \(bundleID)")
 
         case "ft_snapshot":
             let snapshotDriver = try await driver(args)
-            var snapshot = try await snapshotDriver.snapshot()
+            var snapshot: SnapshotResponse
+            do {
+                snapshot = try await snapshotDriver.snapshot()
+            } catch {
+                // ホーム画面/システム UI を読もうとして詰まった形なら、読む方法まで返す
+                let hint = Self.springboardHint(error, engine: engines[Self.engineKey(args)])
+                guard !hint.isEmpty else { throw error }
+                throw MCPError(error.localizedDescription + hint)
+            }
             var waitNote = ""
             // **待つのはホスト側の仕事**: エージェントに snapshot を撃ち直させると、待った
             // 回数だけ画面一覧が文脈に積まれる(1回あたり数千トークン)
@@ -447,7 +603,8 @@ final class MCPServer {
             default: throw MCPError("target must be one of back/home/appSwitcher")
             }
             return text("\(target) done. The screen changed — take a fresh ft_snapshot"
-                + Self.backgroundedAppNote(target: target, engine: engines[Self.engineKey(args)]))
+                + Self.backgroundedAppNote(target: target, engine: engines[Self.engineKey(args)])
+                + Self.homeScreenReadNote(target: target, engine: engines[Self.engineKey(args)]))
 
         case "ft_clear_app_data":
             guard let bundleID = args["bundleId"] as? String else { throw MCPError("bundleId is required") }
@@ -685,10 +842,16 @@ final class MCPServer {
             }
         } else {
             let platform = info.platform ?? (args["platform"] as? String ?? "ios")
+            // **宛先の決め方は探索系(driver(_:))と同じにする**。片方だけ賢いと
+            // 「ft_snapshot は繋がるのに ft_run_scenario だけ既定ポートで落ちる」になる
             connection = DriverConnection(
                 platform: platform,
-                port: (args["port"] as? Int).map(UInt16.init),
-                serial: args["serial"] as? String)
+                port: platform == "ios"
+                    ? try await Self.resolveIOSPort(explicit: (args["port"] as? Int).map(UInt16.init))
+                    : nil,
+                serial: platform == "android"
+                    ? try Self.resolveAndroidSerial(explicit: args["serial"] as? String)
+                    : nil)
         }
 
         var lines: [String] = prologue
@@ -735,10 +898,10 @@ final class MCPServer {
         "type": "string", "enum": ["ios", "android"], "description": "default ios",
     ]
     static let portProperty: [String: Any] = [
-        "type": "integer", "description": "iOS bridge port (default 8123)",
+        "type": "integer", "description": "iOS bridge port (default: the running bridge)",
     ]
     static let serialProperty: [String: Any] = [
-        "type": "string", "description": "Android device serial",
+        "type": "string", "description": "Android device serial (default: the connected device)",
     ]
     static let profileProperty: [String: Any] = [
         "type": "string",
@@ -761,7 +924,9 @@ final class MCPServer {
         tool("ft_install", "Install an app from a package file (iOS: .app bundle / Android: .apk)", [
             "packagePath": ["type": "string", "description": "Absolute path of the package file"],
         ], required: ["packagePath"]),
-        tool("ft_launch", "Launch the app (if already running, restarts from the first screen)", [
+        tool("ft_launch", "Launch the app (if already running, restarts from the first screen). "
+            + "iOS: com.apple.springboard attaches to the home screen instead, without launching "
+            + "anything — that is how you read the home screen or a system dialog", [
             "bundleId": ["type": "string", "description": "bundle ID (iOS) / package name (Android)"],
         ], required: ["bundleId"]),
         tool("ft_snapshot", "Get the element list of the current screen. Each line: [ref] Type \"label\" id=... (x,y WxH). "
@@ -845,8 +1010,8 @@ final class MCPServer {
             "project": ["type": "string", "description": "Test project name (defaults to the default project)"],
             "profile": ["type": "string", "description": "Run profile name (profiles/runs/; resolves the connection, heal and report destination)"],
             "heal": ["type": "boolean", "description": "Override for locator self-healing (defaults to the profile setting, or false without a profile; ineffective when the profile has fm:false)"],
-            "port": ["type": "integer", "description": "iOS bridge port (default 8123)"],
-            "serial": ["type": "string", "description": "Android device serial"],
+            "port": ["type": "integer", "description": "iOS bridge port (default: the running bridge)"],
+            "serial": ["type": "string", "description": "Android device serial (default: the connected device)"],
         ], required: ["id"]),
         tool("ft_list_projects", "List the test projects (TestProjects/) and their run profiles", [:],
              scope: .none),
