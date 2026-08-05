@@ -438,12 +438,21 @@ public final class StepExecutor {
     /// 残るのは**座標そのものを直す**ことだけで、見えている部分は実在するのでそこを撃てば当たる
     static func visibleTapRect(for element: ElementInfo, in elements: [ElementInfo]) -> FTRect? {
         guard let container = clippingContainer(of: element, in: elements),
-              let visible = ScrollGeometry.intersection(element.frame, container) else { return nil }
+              let visible = ScrollGeometry.intersection(element.frame, container),
+              // **細すぎる帯は撃たない**。容器の推測が外れていた場合、わずかな重なりを
+              // 「見えている部分」と信じて叩くと**より悪い場所**へ当たる。実測の対象は
+              // 10pt 以上見えていた(容器 230 に対し 240〜244)ので、この床で取りこぼさない
+              visible.height >= Self.minimumVisibleTapExtent,
+              visible.width >= Self.minimumVisibleTapExtent else { return nil }
         let center = (x: element.frame.centerX, y: element.frame.centerY)
         let inside = center.x >= container.x && center.x <= container.x + container.width
             && center.y >= container.y && center.y <= container.y + container.height
         return inside ? nil : visible
     }
+
+    /// 「見えている部分」を撃つと言えるだけの最小の幅・高さ(pt)。
+    /// 容器の推測が外れたときに、わずかな重なりへ突っ込まないための床
+    static let minimumVisibleTapExtent: Double = 8
 
     /// 飲まれたタップの証跡を採る(LastInteraction 参照)。**追加のスナップショットは撮らない** ——
     /// 解決に使った木をそのまま基準にする。前面要素の判定も同じ木の上の計算だけ
@@ -1904,8 +1913,10 @@ public final class StepExecutor {
     /// `#list_rows` が y 230..692 のとき `#row_30` が `(16,206 370x43)` = **中心 227.5 が容器の外**
     /// になる。画面基準では「見えている」と判定されて探索が止まり、隙間をタップして飲まれていた
     /// (S0110 の失敗 21 件中 **12 件**がこの形)。
-    static func clippingContainer(of element: ElementInfo, in elements: [ElementInfo]) -> FTRect? {
-        guard let index = elements.firstIndex(where: { $0.ref == element.ref }),
+    static func clippingContainer(of element: ElementInfo, in elements: [ElementInfo],
+                                  inferring enabled: Bool = containerInferenceEnabled) -> FTRect? {
+        guard enabled,
+              let index = elements.firstIndex(where: { $0.ref == element.ref }),
               let ancestor = elements[..<index].last(where: { $0.depth < element.depth }),
               ancestor.frame.width > 0, ancestor.frame.height > 0
         else { return nil }
@@ -1985,7 +1996,9 @@ public final class StepExecutor {
     /// 閾値3は `OcclusionSuspicion.isClampGhost` と同じ(親子2重で誤爆させない)。
     /// **あちらとは用途も条件も違う**ので統合しないこと —— あちらは「画面端に接する」ものを
     /// occluder の判定から外す話(FM を余計に呼ばないため)で、こちらは解決候補から外す話
-    static func hasClampedCoordinates(_ element: ElementInfo, in elements: [ElementInfo]) -> Bool {
+    static func hasClampedCoordinates(_ element: ElementInfo, in elements: [ElementInfo],
+                                      inferring enabled: Bool = containerInferenceEnabled) -> Bool {
+        guard enabled else { return false }
         let frame = element.frame
         var count = 0
         for other in elements
@@ -2339,6 +2352,20 @@ public final class StepExecutor {
     /// 固定比率(従来経路)へ丸ごと戻す
     static let coordinateScrollEnabled =
         ProcessInfo.processInfo.environment["FT_SCROLL_TARGET"] != "legacy"
+
+    /// **容器をツリーから推測して行う補正**の殺しスイッチ。`FT_CONTAINER_INFERENCE=off` で
+    /// まとめて止め、推測を持たなかった頃の挙動(見切れ判定は画面基準・掴み直し無し・
+    /// 座標補正無し・候補の除外無し)へ戻す。
+    ///
+    /// **なぜ要るか**: 容器は「pre-order で直前にある depth の小さい要素」+「同 depth の兄弟が
+    /// 2つ以上その中に居る」という**推測**で決めている(`clippingContainer`)。E2E は 4 SUT しか
+    /// 見ていないので、想定外のツリーでは推測が外れ得る。外れたときに起きるのは
+    /// **より悪い事態**(別の場所を叩く・明後日の方向へ送る・正当な要素が候補から消える)なので、
+    /// 利用者が1つの環境変数で全部止められるようにしておく。
+    /// 影響範囲を1箇所に閉じるため、**推測の入口(`clippingContainer`)と
+    /// `hasClampedCoordinates` の2箇所だけ**でこのフラグを見る
+    static let containerInferenceEnabled =
+        ProcessInfo.processInfo.environment["FT_CONTAINER_INFERENCE"] != "off"
 
     /// ヒールキャッシュのロケータ連鎖を順に照合する
     private func matchCached(_ cached: [FlowLocator],
