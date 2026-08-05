@@ -233,6 +233,10 @@ claude plugin update ftester@foundation-tester
 - デバイスモニター等のパネルは**開き直す**（retainContextWhenHidden で古い HTML が残るため）。
 - プラグインを更新した場合（5.7）は **Claude Code の再起動**。更新コマンド自体は 5.7 で代行済みなので、
   ここで依頼するのは再起動だけ（再起動するまでスキルは旧版のまま読まれる）。
+- **MCP（`ft_*` ツール）を使っている場合も Claude Code の再起動**。`.mcp.json` の
+  `swift build --product ftester-mcp` は**サーバ起動時にしか走らない**ので、既に動いている
+  `ftester-mcp` プロセスは更新前のバイナリのまま応答し続ける。再起動せずに動作確認すると、
+  取り込んだはずの修正が効いていないように見える（`ft_*` の挙動だけが古い）。
 
 ### 7. 動作確認
 
