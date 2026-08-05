@@ -860,12 +860,25 @@ struct RunScenarios: AsyncParsableCommand {
     }
 
     /// ブリッジの /status(デバイス名)→ 起動中シミュレータの一意な同名から UDID を解決する。
-    /// launch 事前検査(LaunchPreflightDriver)用。同名複数・未起動・応答なしは nil(検査なしで従来動作)
+    /// launch 事前検査(LaunchPreflightDriver)と FastLaunch 用。
+    /// **プロファイル経路は provision の udid を渡すのでここを通らない** —— これは
+    /// `--port` 直指定の経路だけの相関。
+    ///
+    /// 同名複数・未起動・応答なしは nil(検査なしで従来動作)だが、**黙って落とさない**:
+    /// 事前検査が外れると、未インストールのまま launch して XCUITest ランナーが死ぬ経路
+    /// (LaunchPreflightDriver のコメント)がそのまま開く。Xcode はランタイムごとに同名の
+    /// シミュレータを作るので、同名2台は受け手環境で普通に起きる(2026-08-06 に実例)
     private static func resolveUdid(port: UInt16) async -> String? {
         guard let status = try? await BridgeClient(port: port, timeoutSeconds: 5).status(),
               let catalog = try? SimulatorCatalog.devices() else { return nil }
         let matches = catalog.filter { $0.booted && $0.name == status.device }
-        return matches.count == 1 ? matches[0].udid : nil
+        if matches.count == 1 { return matches[0].udid }
+        FileHandle.standardError.write(Data(
+            ("install preflight and fast launch are disabled:"
+             + " \(matches.count) booted simulators are named \"\(status.device)\"."
+             + " Launching an app that is not installed will kill the XCUITest runner."
+             + " Use a run profile (--profile) to target a simulator by UDID.\n").utf8))
+        return nil
     }
 
     // MARK: - 逐次実行(ライブ出力)
