@@ -127,6 +127,44 @@ final class ClampedCoordinateTests: XCTestCase {
                        "row_01")
     }
 
+    // MARK: - 行き過ぎたら逆へ送る
+
+    /// **通り過ぎた要素へは逆向きに送る**。探索方向のまま送り続けると遠ざかるだけで、
+    /// 実測でも ghost 検出後の追加スワイプ2回が空振りした
+    /// (注記に `3 re-resolve(s), 2 extra swipe(s)` が残り、`#row_30` は容器 230..692 の上 y=76 のまま)
+    func testRecoveryReversesWhenTheTargetIsAlreadyPast() {
+        let container = FTRect(x: 16, y: 230, width: 370, height: 462)
+        let above = element(9, "button", id: "row_30", x: 16, y: 76, w: 370, h: 56, depth: 12)
+        let below = element(9, "button", id: "row_30", x: 16, y: 800, w: 370, h: 56, depth: 12)
+        // `withScrollDown` の指は上。行き過ぎた行は容器の**上**にあるので、指を下へ返す
+        XCTAssertEqual(StepExecutor.recoveryDirection(for: above, container: container,
+                                                      searching: .up), .down)
+        // まだ届いていない側(容器の下)はこれまでどおり探索方向のまま
+        XCTAssertEqual(StepExecutor.recoveryDirection(for: below, container: container,
+                                                      searching: .up), .up)
+    }
+
+    /// 容器の中にある間は向きを変えない(= 通常の探索の挙動は不変)
+    func testRecoveryKeepsTheSearchDirectionInsideTheContainer() {
+        let container = FTRect(x: 16, y: 230, width: 370, height: 462)
+        let inside = element(9, "button", id: "row_30", x: 16, y: 400, w: 370, h: 56, depth: 12)
+        for finger in [FTSwipeDirection.up, .down, .left, .right] {
+            XCTAssertEqual(StepExecutor.recoveryDirection(for: inside, container: container,
+                                                          searching: finger), finger)
+        }
+    }
+
+    /// 横方向も同じ規則(左へ行き過ぎたら指を右へ)
+    func testRecoveryReversesHorizontally() {
+        let container = FTRect(x: 16, y: 692, width: 370, height: 60)
+        let left = element(9, "button", id: "tag_02", x: -120, y: 692, w: 120, h: 56, depth: 12)
+        XCTAssertEqual(StepExecutor.recoveryDirection(for: left, container: container,
+                                                      searching: .left), .right)
+        let right = element(9, "button", id: "tag_20", x: 600, y: 692, w: 120, h: 56, depth: 12)
+        XCTAssertEqual(StepExecutor.recoveryDirection(for: right, container: container,
+                                                      searching: .left), .left)
+    }
+
     /// **黙って消さない**。消したときは失敗文言で理由を説明する(でないと
     /// 「ツリーには在るのに見つからない」が読み解けない)
     func testFailureExplainsWhyItVanished() {

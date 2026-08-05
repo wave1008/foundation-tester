@@ -1818,11 +1818,12 @@ final class StepExecutorTests: XCTestCase {
                        "容器と交差する行は通常の行(掴み直さない)")
     }
 
-    /// **縁をまたぐ行でも容器を返す**(2026-08-05)。旧実装は「交差しないときだけ」容器を返して
-    /// いたため、またぐ行では viewport が画面全体になり「見えている」と誤判定していた ——
-    /// Compose は原点をクリップ前・サイズをクリップ後で返すので、`#row_30` の**中心が容器の外**に
-    /// なる(S0110 の失敗 21 件中 12 件がこの形)。またぐ行は ghost ではないので掴み直しはしない
-    func testStraddlingRowStillResolvesItsContainerButIsNotAGhost() {
+    /// **縁をまたぐ行は「掴み直し」の対象にしない**(2026-08-05 に試して撤回)。
+    /// 掴み直しの対象を「容器に収まっていない要素」へ広げたら S0110 が **2/10 → 5/10 に悪化**した
+    /// (縁で救済スワイプを撃つと数 pt 動き、その古い座標でタップして自傷する)。
+    /// **またぎは探索ループの見切れ判定が担当する** —— あちらは掴む前に送るので座標が古くならない。
+    /// 容器を返せること自体は必要(返せないと見切れ判定が画面基準に落ちる)
+    func testStraddlingRowResolvesItsContainerButIsNotAGhost() {
         let container = framed(ref: 100, id: "list_rows", x: 16, y: 230, width: 370, height: 462,
                                depth: 1)
         let inside1 = framed(ref: 1, id: "row_31", x: 16, y: 249, width: 370, height: 56, depth: 2)
@@ -1834,9 +1835,9 @@ final class StepExecutorTests: XCTestCase {
         XCTAssertEqual(StepExecutor.clippingContainer(of: straddling, in: elements), container.frame,
                        "またぐ行でも容器を特定できないと、見切れ判定が画面基準に落ちる")
         XCTAssertFalse(StepExecutor.isOutsideContainer(straddling, in: elements),
-                       "またぐ行は ghost ではない(掴み直しではなく『もう1回送る』で扱う)")
+                       "またぐ行は ghost ではない(掴み直しの対象にすると自傷する)")
         XCTAssertTrue(StepExecutor.isClippedByViewport(straddling, screen: container.frame),
-                      "容器基準なら見切れとして検出でき、探索がもう1回送る")
+                      "容器基準なら見切れとして検出でき、探索ループがもう1回送る")
         XCTAssertFalse(StepExecutor.isClippedByViewport(straddling,
                                                         screen: FTRect(x: 0, y: 0, width: 402,
                                                                        height: 874)),

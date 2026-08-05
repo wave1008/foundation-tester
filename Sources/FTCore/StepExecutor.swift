@@ -763,8 +763,14 @@ public final class StepExecutor {
                     .flatMap { ScrollGeometry.intersection($0, snapshot.screen) } ?? snapshot.screen
                 if attempt < maxSwipes,
                    Self.isClippedByViewport(element, screen: viewport) {
-                    if try await swipeWithFallback(direction, intent: .search,
-                                                   path: scrollPath(step: step, intent: .search,
+                    // **行き過ぎた側なら逆へ送る**(recoveryDirection 参照)。探索方向のまま
+                    // 送り続けると、既に通り過ぎた要素は遠ざかるだけで永久に可視域へ戻らない
+                    var recovery = step
+                    recovery.direction = Self.recoveryDirection(for: element, container: viewport,
+                                                                searching: direction).rawValue
+                    let finger = FTSwipeDirection(rawValue: recovery.direction ?? "") ?? direction
+                    if try await swipeWithFallback(finger, intent: .search,
+                                                   path: scrollPath(step: recovery, intent: .search,
                                                                     in: snapshot),
                                                    phase: &phase) { viaXCUITest = true }
                     continue
@@ -1153,9 +1159,14 @@ public final class StepExecutor {
         // 容器の外を撃って**黙って飲まれる**(値が変わらないので、後段の検証だけが落ちて原因が遠い)。
         // 探索ループの中では同じ判定で「もう1回送る」をしているが、**ループを抜けた後の再解決には
         // 効いていなかった**のが残存フレークの正体(2026-08-04)。
-        // 判定は `isOutsideContainer`(容器と**交差しない** = 完全に外)。**またぐ要素は ghost では
-        // ない**ので掴み直さず、探索ループの見切れ判定(`clippingContainer` + `isClippedByViewport`)が
-        // 「もう1回送る」で可視域へ入れる。木が落ち着けば容器の中の行が返るので**解決し直す**
+        // 判定は `isOutsideContainer`(容器と**交差しない** = 完全に外)。
+        //
+        // **またぎ(縁をまたぐ要素)まで対象に広げてはいけない**(2026-08-05 に試して撤回)。
+        // 「掴み直し+送り直し」の対象を `isClippedByViewport`(= 完全に外もまたぎも拾う)へ
+        // 統一したところ、S0110 の失敗が **2/10 → 5/10 に悪化**した。失敗はいずれも救済が発火し、
+        // tap が 4.0s → 7.2〜8.2s に伸びたうえで**「対象があの後 9〜14pt 動いた」**で落ちている
+        // = 縁で救済スワイプを撃つと、わずかに動いた先の座標でタップすることになり自傷する。
+        // **またぎは探索ループ側の見切れ判定に任せる**(あちらは掴む前に送るので座標が古くならない)
         func grabbedGhost(_ candidate: (ElementInfo, FlowLocator?)?) -> Bool {
             guard searchSwiped, let element = candidate?.0 else { return false }
             return Self.isOutsideContainer(element, in: snapshot.elements)
@@ -1194,11 +1205,21 @@ public final class StepExecutor {
                     // 探索ループと同じく**もう1回送って**容器の中へ入れる。1周目は撮り直しだけ
                     // (木の遅れなら送らずに直る)、2周目以降だけ送る = 正常系のコストを増やさない
                     if attempt > 0, grabbedGhost(resolved),
-                       let finger = FTSwipeDirection(rawValue: step.direction ?? "") {
-                        _ = try await swipeWithFallback(finger, intent: .search,
-                                                        path: scrollPath(step: step, intent: .search,
-                                                                         in: snapshot),
-                                                        phase: &phase)
+                       let finger = FTSwipeDirection(rawValue: step.direction ?? ""),
+                       let element = resolved?.0 {
+                        // **行き過ぎた側なら逆へ送る**(recoveryDirection 参照)。同じ向きに
+                        // 送り続けると遠ざかるだけで、実測でも2回撃って外のままだった
+                        var recovery = step
+                        recovery.direction = (Self.clippingContainer(of: element,
+                                                                     in: snapshot.elements)
+                            .map { Self.recoveryDirection(for: element, container: $0,
+                                                          searching: finger) } ?? finger).rawValue
+                        _ = try await swipeWithFallback(
+                            FTSwipeDirection(rawValue: recovery.direction ?? "") ?? finger,
+                            intent: .search,
+                            // **座標も逆向きで作り直す**(path は向きを内包している)
+                            path: scrollPath(step: recovery, intent: .search, in: snapshot),
+                            phase: &phase)
                         ghostSwipes += 1
                         _ = try await settledSignature(phase: &phase)
                     }
@@ -1810,12 +1831,35 @@ public final class StepExecutor {
 
     /// 要素が**容器の完全に外**に報告されているか(ghost)。`clippingContainer` と違い
     /// **交差しないことが条件**で、こちらは「掴んでしまった要素を捨てて掴み直す」判断に使う。
-    /// またぐ要素(= 一部は見えている)は ghost ではないので、そちらは見切れ判定
-    /// (`isClippedByViewport` + `clippingContainer`)が「もう1回送る」で面倒を見る
+    /// **またぐ要素を含めてはいけない** —— 縁で救済スワイプを撃つと自傷する(grabbedGhost の記録)
     static func isOutsideContainer(_ element: ElementInfo, in elements: [ElementInfo]) -> Bool {
         guard let container = clippingContainer(of: element, in: elements) else { return false }
         return ScrollGeometry.intersection(element.frame, container) == nil
     }
+
+    /// 掴んだ要素を可視域へ入れ直すために**次に送る向き**。
+    ///
+    /// **探索方向へ送り続けてはいけない** —— 行き過ぎた側の要素は**さらに遠ざかる**。
+    /// 2026-08-05 実測: `withScrollDown` の探索(指は上)で `#row_30` が容器(230..692)の**上**
+    /// y=76 に報告され、ghost 検出後の追加スワイプ2回でも外のままだった
+    /// (注記が `3 re-resolve(s), 2 extra swipe(s)` で残っていた = 検出はできていて救済が収束しない)。
+    ///
+    /// **`direction` は指の向き**(ブリッジへ渡る語彙)なので、内容を下へ戻すには指を下へ動かす。
+    /// 中心が容器の内側にある間は探索方向のまま = 「まだ届いていない」ときの挙動は変わらない
+    static func recoveryDirection(for element: ElementInfo, container: FTRect,
+                                  searching finger: FTSwipeDirection) -> FTSwipeDirection {
+        let frame = element.frame
+        switch finger {
+        case .up, .down:
+            if frame.centerY < container.y { return .down }
+            if frame.centerY > container.y + container.height { return .up }
+        case .left, .right:
+            if frame.centerX < container.x { return .right }
+            if frame.centerX > container.x + container.width { return .left }
+        }
+        return finger
+    }
+
 
     /// 要素が画面の縁で**見切れている**か。ビューポートより大きい要素(長文など)は
     /// どう送っても収まらないので false(送り続けて maxSwipes を使い切らせない)
