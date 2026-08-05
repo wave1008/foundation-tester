@@ -36,11 +36,19 @@ public enum BridgeDiscovery {
         case none
         /// 複数 = 利用者に選ばせる
         case ambiguous([Found])
+        /// 待受はしているが応答しない = **死んでいない**。乗り換えてはいけない
+        case preferredBusy
     }
 
-    /// 判断だけ(IO 無し)。材料は呼び出し側が集める
-    public static func decide(preferredAlive: Bool, found: [Found]) -> Decision {
+    /// 判断だけ(IO 無し)。材料は呼び出し側が集める。
+    ///
+    /// **`preferredBound` を無視して自動採用してはいけない**: XCUITest の quiescence 待ちで
+    /// ブリッジのスレッドは数十秒ブロックする(2026-08-06 のログで実測 33.7s)。この間は
+    /// /status が返らないが待受は続いているので、応答なしを死と読むと**別デバイスのブリッジへ
+    /// 黙って乗り換える** —— 自動採用が防ぐはずの取り違えを自分で作ることになる
+    public static func decide(preferredAlive: Bool, preferredBound: Bool, found: [Found]) -> Decision {
         if preferredAlive { return .usePreferred }
+        if preferredBound { return .preferredBusy }
         let sorted = found.sorted { $0.port < $1.port }
         switch sorted.count {
         case 0: return .none
@@ -59,6 +67,38 @@ public enum BridgeDiscovery {
         let status = try? await BridgeClient(port: endpoint.port, timeoutSeconds: 2,
                                              host: endpoint.host).status(timeout: 2)
         return status != nil
+    }
+
+    /// 誰かがそのポートを**待受しているか**(応答するかではない)。カーネルが accept するので、
+    /// アプリのスレッドがブロックしていても true になる —— そこが `isAlive` との差で、
+    /// 「応答なし=死」と読まないための材料になる。
+    /// IPv4 のみ(実機ブリッジの宛先も provision が IP で残す)。名前解決が要る宛先は false =
+    /// 判定材料にしない側へ倒す
+    public static func isBound(port: UInt16, repoRoot: URL?) -> Bool {
+        let endpoint = repoRoot.map { BridgeEndpoint.load(port: port, repoRoot: $0) }
+            ?? BridgeEndpoint(port: port)
+        var addr = sockaddr_in()
+        addr.sin_family = sa_family_t(AF_INET)
+        addr.sin_port = endpoint.port.bigEndian
+        guard inet_pton(AF_INET, endpoint.host, &addr.sin_addr) == 1 else { return false }
+        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        guard fd >= 0 else { return false }
+        defer { close(fd) }
+        _ = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK)
+        let connected = withUnsafePointer(to: &addr) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                connect(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }
+        if connected == 0 { return true }
+        // ECONNREFUSED = 誰も居ない(= 乗り換えてよい)。EINPROGRESS だけ結果を待つ
+        guard errno == EINPROGRESS else { return false }
+        var pfd = pollfd(fd: fd, events: Int16(POLLOUT), revents: 0)
+        guard poll(&pfd, 1, 300) > 0 else { return false }
+        var soError: Int32 = 0
+        var length = socklen_t(MemoryLayout<Int32>.size)
+        guard getsockopt(fd, SOL_SOCKET, SO_ERROR, &soError, &length) == 0 else { return false }
+        return soError == 0
     }
 
     /// 範囲を並列に走査して応答した全ポートを返す
@@ -92,6 +132,15 @@ public enum BridgeDiscovery {
         "no iOS bridge is running (scanned ports \(portRange.lowerBound)-\(portRange.upperBound))."
             + " Start one with `ftester bridge up --device \"<simulator name>\"`,"
             + " or pass profile: to use a run profile's device."
+    }
+
+    /// **乗り換えない理由まで書く**(黙って待たされたように見えないため)
+    public static func busyMessage(preferred: UInt16) -> String {
+        "the bridge on port \(preferred) is listening but did not answer within 2s — it is busy,"
+            + " not gone (XCUITest blocks its thread while waiting for the screen to settle,"
+            + " which can take tens of seconds). Retry in a moment."
+            + " Another bridge is not used automatically: it would be a different device."
+            + " Pass port: or profile: to target one deliberately."
     }
 
     public static func ambiguousMessage(preferred: UInt16, found: [Found]) -> String {
