@@ -18,7 +18,7 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 
 @Composable
-fun DiagnosticsScreen() {
+fun DiagnosticsScreen(onOpenJump: () -> Unit = {}) {
     var confirmOpen by remember { mutableStateOf(false) }
     var crashNow by remember { mutableStateOf(false) }
 
@@ -30,6 +30,8 @@ fun DiagnosticsScreen() {
     ScreenColumn(scrollable = true) {
         TaggedText(Tags.TXT_BUILD_INFO, "build=${AppInfo.VERSION}")
         TaggedText(Tags.TXT_DIAG_NOTE, "診断メニュー")
+        // #btn_crash_confirm(即プロセス落ち)より前に置く: 近くに新しい押下対象を並べない。
+        TaggedButton(Tags.BTN_OPEN_JUMP, "飛び越し", onClick = onOpenJump)
         TaggedButton(Tags.BTN_FREEZE_3S, "3秒フリーズ") {
             // ブリッジのタイムアウト挙動検証用にメインスレッドを 3 秒ブロックする。
             // runBlocking は commonMain に無い(concurrent ソースセット限定)ためビジーループで代替する。

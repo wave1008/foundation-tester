@@ -164,7 +164,7 @@ extension StepExecutor {
         if step.direction != nil, step.locator != nil {
             let result = try await runScrollSearch(step: step, phase: &phase)
             scrollSearchNote = Self.scrollSearchNote(result)
-            guard result.found else { return .failed(Self.scrollNotFoundMessage(step)) }
+            guard result.found else { return .failed(Self.scrollNotFoundMessage(step, result)) }
         }
         let deadline = Date().addingTimeInterval(step.timeout ?? 5)
         var freshRetry = AssertFreshRetry()
@@ -363,7 +363,8 @@ extension StepExecutor {
         // (現在のビューポートから消えるのを待つ)。前者が「無い」で終わっても、消滅アニメーションの
         // 途中(ツリーにはまだ残っている)ことがあるため後者を差し替えず両方通す
         if step.direction != nil, step.locator != nil {
-            let result = try await runScrollSearch(step: step, phase: &phase)
+            // **拾い直しは掛けない**: 見つからないのが期待値なので、逆走査は丸損になる
+            let result = try await runScrollSearch(step: step, recoverOnMiss: false, phase: &phase)
             scrollSearchNote = Self.scrollSearchNote(result)
             guard !result.found else { return .failed(Self.scrollFoundMessage(step)) }
         }
