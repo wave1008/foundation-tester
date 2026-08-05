@@ -1090,14 +1090,22 @@ public final class FTDriveCore {
         scenarioAborted = true
 
         // 失敗時のスクリーンショット+トリアージ(FM 利用可時のみ)。Android は画面凍結(白フレーム)で
-        // 証跡が無効になり得るため、blank を検知したら最大3回撮り直して回復を待つ(iOS は対象外)。
+        // 証跡が無効になり得るため、blank を検知したら最大3回撮り直して回復を待つ。
         // トリアージは白のままでも変わらず実行する(証跡としては evidenceBlank で無効マークするのみ)。
         let driver = self.driver
         let delegate = executor.delegate
         let goal = scenarioTitle.isEmpty ? scenarioID : scenarioTitle
-        // 白フレーム=画面凍結の推定を行うか。エミュレータ固有の病理(GPU 合成バッファ固着)なので
-        // Android **かつ**実機でない場合だけ。実機は「画面が消灯しているだけ」を凍結と誤断する
-        let inferFrozenFromBlankFrame = platform == "android" && !physical
+        // 白フレーム=画面凍結の推定を行うか。**仮想デバイスなら OS を問わず行う**。
+        // **実機だけ外す**理由は「画面が消灯しているだけ」を凍結と誤断するため。
+        //
+        // **旧実装は Android 限定で、これは誤りだった**(2026-08-05 実測): iOS シミュレータでも
+        // まったく同じ病理が起きる —— 画面は真っ黒なのに **a11y ツリーは健全なホーム画面を返し、
+        // タップだけが1つも届かない**。E2E-CMP/ios-xcuitest の `-06` で `tap("#nav_scroll")` が
+        // 9/9 で飲まれ、MCP から手で叩いても再現した(2回連続タップも不発 =「容器が最初の1タッチを
+        // 吸う」型ではない)。**ファイルサイズでは検出できない**(黒一色でも 42KB あった)ので、
+        // 画素をサンプルする BlankFrameDetector が唯一の判定手段。
+        // これを外していたため、環境起因の全滅が「テストの失敗」として無警告で記録されていた
+        let inferFrozenFromBlankFrame = !physical
         let context = FTSync.run { () async -> (Data?, TriageInfo?, Bool, String?) in
             let snapshot = try? await driver.snapshot()
             let elementsText = snapshot.map { SnapshotRenderer.render($0) }

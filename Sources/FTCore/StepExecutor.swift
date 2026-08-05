@@ -379,6 +379,81 @@ public final class StepExecutor {
     /// アサーションのポーリングごとにタップし続けるのを防ぐ)
     private var interruptNote: String?
 
+    /// 直前の「画面を変えるはずの操作」の記録。**失敗の診断にだけ使い、判定は変えない**。
+    ///
+    /// タップは 200 を返しても黙って飲まれることがあり(座標が容器の外・容器が最初の1タッチを吸う・
+    /// 到達しない)、そのとき落ちるのは2ステップ先の検証なので原因が遠い。ここに操作直前の木を
+    /// 置いておき、**失敗した側が既に持っている木と比べる**ことで「あの操作で画面が1ピクセルも
+    /// 変わっていない」を証跡として出せる。
+    ///
+    /// **追加のスナップショットは撮らない**のが要件(実行中に I/O を足すとタイミングが変わって
+    /// 事象そのものが消える。docs/verification.md「Compose の探索直後タップ」の heisenbug)。
+    /// 署名の生成も**失敗したときだけ**行う(正常系はフィールドを持ち回るだけ)。
+    struct LastInteraction {
+        /// 失敗文言に出す操作の呼び名(例: `tap "#row_30"`)
+        let description: String
+        /// 操作の**直前**に解決で使った木の要素列(比較の基準)
+        let before: [ElementInfo]
+        /// タップ点を取り得る「手前の別要素」(pointIsTakenByFrontElement と同じ規則)。
+        /// **これ単独では注記にしない** —— 画面外要素の frame が容器原点へクランプされる
+        /// フレームワーク(実測: XCUITest の UITableView は未実体化行のラベルまで同一座標で返す)が
+        /// あり、正常なタップでも普通に非 nil になるため。無変化と同時に成立したときだけ添える
+        let pointTakenBy: ElementInfo?
+    }
+
+    /// 直前の操作(tap / 長押し)の記録。**読むのは失敗文言の組み立てだけ**。
+    /// StepExecutor+Assert.swift の各失敗経路から読むため internal
+    var lastInteraction: LastInteraction?
+
+    /// 飲まれたタップの証跡を採る(LastInteraction 参照)。**追加のスナップショットは撮らない** ——
+    /// 解決に使った木をそのまま基準にする。前面要素の判定も同じ木の上の計算だけ
+    private func recordInteraction(step: FlowStep, element: ElementInfo, in snapshot: SnapshotResponse) {
+        lastInteraction = LastInteraction(
+            description: "tap \(step.locatorSummary)",
+            before: snapshot.elements,
+            // ブリッジは ref を frame の中心へ解決する(iOS/Android とも)。同じ点で判定する
+            pointTakenBy: Self.frontElementTakingPoint(
+                x: element.frame.centerX, y: element.frame.centerY,
+                of: element, in: snapshot.elements))
+    }
+
+    /// 木の内容署名(**位置だけでなくラベル・値も含む**)。
+    ///
+    /// `settledSignature` の署名とは別物なので共用しないこと —— あちらは「動いているか」を見るので
+    /// frame だけ(iOS の再利用セルはラベルが振れるため入れると収束しない)。こちらは
+    /// 「何か変わったか」を見るので、**レイアウトが同じでテキストだけ変わる更新**
+    /// (`selected=-` → `selected=row_30` がまさにこれ)を取りこぼしてはいけない。
+    /// ラベルの振れは「変わった」側に倒れる = 誤って「無変化」と言うことはない(片側の誤りしか出ない)
+    static func contentSignature(_ elements: [ElementInfo]) -> String {
+        var text = ""
+        text.reserveCapacity(elements.count * 48)
+        for element in elements {
+            let frame = element.frame
+            text += "\(element.type)|\(element.identifier ?? "")|\(element.label ?? "")"
+            text += "|\(element.value ?? "")|\(element.enabled)|\(element.checked ?? false)"
+            text += "|\(Int(frame.x)),\(Int(frame.y)),\(Int(frame.width)),\(Int(frame.height));"
+        }
+        return text
+    }
+
+    /// 直前の操作が**画面を1ピクセルも変えていない**なら、失敗文言へ添える注記を返す。
+    /// 変わっていれば空文字(黙る)。**判定には触れない** —— 正しく変化しない操作
+    /// (トグルの再タップ等)も世の中にはあるので、失敗の理由付けにだけ使う。
+    ///
+    /// 呼び手は**既に持っている木の要素列**を渡すこと(このために追加取得しない)。
+    /// StepExecutor+Assert.swift の失敗経路から呼ぶため internal
+    func swallowedInteractionHint(_ elements: [ElementInfo]?) -> String {
+        guard let last = lastInteraction, let elements, !elements.isEmpty,
+              Self.contentSignature(elements) == Self.contentSignature(last.before) else { return "" }
+        var text = " (the preceding \(last.description) did not change the screen at all"
+            + "; the interaction may have been swallowed"
+        if let taken = last.pointTakenBy {
+            let label = taken.identifier.map { "#\($0)" } ?? taken.label.map { "\"\($0)\"" } ?? taken.type
+            text += " — its point was inside \(label), which is in front of the target"
+        }
+        return text + ")"
+    }
+
     /// ステップ横断の注記(内蔵スクロール探索・割り込み)を既存の driverFallback へ合流させる
     private func noteWithInterrupt(_ base: String?) -> String? {
         var parts = [base, scrollSearchNote].compactMap { $0 }
@@ -478,6 +553,24 @@ public final class StepExecutor {
         if finger == .up, jump > screen.height * 0.3 { return jump }
         if finger == .down, jump < -screen.height * 0.3 { return jump }
         return nil
+    }
+
+    /// `scrollToEdge` が端と認めるまでに必要な「署名が不変だった周回数」。
+    ///
+    /// 既定は **2**。Android では次のスワイプがフリングの停止だけに消費されて1回空振りすることがあり、
+    /// 1回で打ち切ると途中で止まる(2026-07-27 実測: scrollToTop が row_22 付近で停止)。
+    ///
+    /// **ヒントを供給する画面(WebView)だけ 1 に下げる**。`offscreen` はその方向にまだ内容が
+    /// あるかの**肯定的な証拠**で、`remainingJump == nil` = 「もう先が無い」。これがあるなら
+    /// 署名の不変化を2回重ねる必要はない。
+    /// 効くのは iOS xcuitest の WebView で、**端に着いた後に捨てのスワイプを2回撃っていた**
+    /// (1スワイプ約2.5秒 = 実測 scrollToTop 中央値 12.1s の主成分。docs/performance-tuning.md §8)。
+    /// 供給の無い画面(ネイティブ・旧ブリッジ・hybrid の WebViewDelegatingDriver)は
+    /// `offscreen` が nil なので従来どおり 2 のまま = 挙動は変わらない
+    static func unchangedRoundsForEdge(snapshot: SnapshotResponse,
+                                       remainingJump: Double?) -> Int {
+        guard remainingJump == nil, let hints = snapshot.offscreen, !hints.isEmpty else { return 2 }
+        return 1
     }
 
     /// スクロールヒントの端(その方向にまだ続く実座標の限界)までの距離。scrollToEdge 用。
@@ -645,8 +738,9 @@ public final class StepExecutor {
                     // 順序に意味がある(逆にすると Android で誤タップが再発する。2026-07-27 実測):
                     //  1. **空打ちの極小ドラッグ**: iOS(Compose)のスクロール容器は次の1タッチを
                     //     消費してしまい、タップもプレスも効かない(待っても解けない。2回目は効く)。
-                    //     **縦向き**の小さなドラッグでその1回ぶんを肩代わりする —— 横向きだと
-                    //     Compose がクリックと読んで行を選んでしまう(emptyDragDistance 参照)
+                    //     **横へ抜けるドラッグ**でその1回ぶんを肩代わりする。向きの根拠は
+                    //     `emptyDragEndX` に書いてある(縦に抜くと容器がスクロールとして消費し、
+                    //     直後のアサーションが壊れる / 矩形の中で離すとクリックとして成立してしまう)
                     //  2. **静止待ち**: 空打ちでリストが微動するので、止まってから返す
                     // **触る点が他の要素に取られるなら打たない**。空打ちは手前の要素
                     // (タブバー等)に届き、そのボタンが反応してしまう
@@ -701,6 +795,10 @@ public final class StepExecutor {
                                phase: inout PhaseAccumulator) async throws -> StepOutcome {
         let clock = ContinuousClock()
         cachedScreenshot = nil   // 画面を変える操作 → occlusion-guard スクショ再利用を無効化
+        // 直前の操作の記録は**次の操作が画面を変えるまで**有効(検証は画面を変えないので消さない)。
+        // `select` は掴むだけでデバイス操作が無いので例外 —— `tap → select → textIs` という
+        // 一番ありふれた形で、落ちるのは textIs 側だから、ここで消すと肝心なときに証跡が無くなる
+        if action != "select" { lastInteraction = nil }
         pendingScrollFrameNote = nil
         reportedScrollFrameNote = false
         spanScale = 1
@@ -764,12 +862,15 @@ public final class StepExecutor {
                 let settled = try await settledSignature(phase: &phase)
                 if !settled.settled { sawUnsettled = true }
                 unchanged = settled.signature == previous ? unchanged + 1 : 0
-                if unchanged >= 2 { reachedEdge = true; break }
+                // ヒント跳躍(WebView): 端までの残り距離が分かるときは長距離ドラッグで寄せる
+                let jump = Self.offscreenEdgeJump(snapshot: settled.snapshot, finger: direction)
+                if unchanged >= Self.unchangedRoundsForEdge(snapshot: settled.snapshot,
+                                                            remainingJump: jump) {
+                    reachedEdge = true
+                    break
+                }
                 previous = settled.signature
-                // ヒント跳躍(WebView): 端までの残り距離が分かるときは長距離ドラッグで寄せる。
-                // 端の確定は従来どおり署名の不変化で行う(ヒントは近道であって判定ではない)
-                if let jump = Self.offscreenEdgeJump(snapshot: settled.snapshot, finger: direction),
-                   let container = Self.webViewContainer(in: settled.snapshot),
+                if let jump, let container = Self.webViewContainer(in: settled.snapshot),
                    await hintDrag(jump: jump, container: container,
                                   viewport: settled.snapshot.screen, phase: &phase) {
                     hintJumps += 1
@@ -1179,6 +1280,9 @@ public final class StepExecutor {
                                    driverFallback: "not visible: returned an empty element")
             }
         case "tap":
+            // 飲まれたタップの証跡(LastInteraction 参照)。**操作の前**に採る = 比較の基準は
+            // 「この操作を撃つ直前の画面」でなければ意味がない
+            recordInteraction(step: step, element: element, in: snapshot)
             // **長押しは tap の引数**(Shirates 準拠。`tap(sel, holdSeconds:)`)。0 より大きいときだけ
             // ブリッジの /press へ回す。in-app は座標ジェスチャを持たない(501)ので XCUITest へ
             // フォールバックする経路も長押し側だけが必要
@@ -1684,9 +1788,16 @@ public final class StepExecutor {
     /// 対象の子孫は同じ見た目の一部なので除く。空打ちドラッグの安全判定に使う
     static func pointIsTakenByFrontElement(x: Double, y: Double, of element: ElementInfo,
                                            in elements: [ElementInfo]) -> Bool {
-        guard let index = elements.firstIndex(where: { $0.ref == element.ref }) else { return false }
+        frontElementTakingPoint(x: x, y: y, of: element, in: elements) != nil
+    }
+
+    /// 同上で、**取っている要素そのもの**を返す(失敗診断に名前を出すため)。
+    /// 判定規則は pointIsTakenByFrontElement と1つの実装を共有する(片方だけ変わらないように)
+    static func frontElementTakingPoint(x: Double, y: Double, of element: ElementInfo,
+                                        in elements: [ElementInfo]) -> ElementInfo? {
+        guard let index = elements.firstIndex(where: { $0.ref == element.ref }) else { return nil }
         let ownRefs = Set(descendants(of: element, in: elements).map(\.ref))
-        return elements[elements.index(after: index)...].contains { other in
+        return elements[elements.index(after: index)...].first { other in
             guard !ownRefs.contains(other.ref) else { return false }
             let f = other.frame
             return x >= f.x && x <= f.x + f.width && y >= f.y && y <= f.y + f.height
