@@ -211,6 +211,10 @@ struct ApiRunCommand: AsyncParsableCommand {
                         workers = (try? await ProfileWorkerFactory.installIfNeeded(
                             apps: resolved.apps, workers: workers,
                             forceAndroidInstall: false) { logStderr($0) }) ?? workers
+                        // 画面だけ死んだシミュレータを**投入前に**弾く(BlankWorkerTriage 参照)。
+                        // Android は buildAndroidWorkers 直後に同等の処理(修復つき)を通している
+                        workers = await BlankWorkerTriage.excludeBlankScreenWorkers(
+                            workers) { logStderr($0) }.workers
                         logStderr("🚀 \(workers.count) iOS worker(s) joined")
                         return workers
                     } catch {
@@ -381,11 +385,14 @@ struct ApiRunCommand: AsyncParsableCommand {
                 resolved: resolved, repoRoot: try RepoRoot.find()) { logStderr($0) }
             supplyLease?.hold(
                 keys: workers.compactMap { $0.connection.serial ?? $0.connection.udid })
-            // android ワーカーのみ判定対象(iOS はそのまま通る)。凍結機は修復→guest reboot 待ちで
-            // 本 run に復帰・それでも駄目な個体のみ除外
+            // android は修復→guest reboot 待ちで本 run に復帰・それでも駄目な個体のみ除外
             let triage = await ProfileWorkerFactory.excludeOrRepairBlankScreenWorkers(workers) { logStderr($0) }
             workers = triage.workers
-            blankTriage = (triage.repaired, triage.excluded)
+            // iOS は修復手段が無いので除外だけ(BlankWorkerTriage 参照)。**この経路にも通すこと** ——
+            // iOS ワーカーの供給口は「遅延合流(lateWorkers)」とここの2つで、片方だけだと穴が空く
+            let iosTriage = await BlankWorkerTriage.excludeBlankScreenWorkers(workers) { logStderr($0) }
+            workers = iosTriage.workers
+            blankTriage = (triage.repaired, triage.excluded + iosTriage.excluded)
             workers = try await ProfileWorkerFactory.installIfNeeded(
                 apps: resolved.apps, workers: workers,
                 forceAndroidInstall: !wipedAndroid.isEmpty) { logStderr($0) }

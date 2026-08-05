@@ -1803,8 +1803,8 @@ final class StepExecutorTests: XCTestCase {
 
     // MARK: - 探索直後に容器の外の ghost を掴む(Compose iOS の上流制約)
 
-    /// 容器と交差しない子(ghost)を検出できること。**交差していれば nil**(通常の行)
-    func testClippingAncestorDetectsRowsReportedOutsideTheContainer() {
+    /// 容器と交差しない子(ghost)を検出できること。**交差していれば ghost ではない**(通常の行)
+    func testGhostDetectionFindsRowsReportedOutsideTheContainer() {
         let container = framed(ref: 100, id: "list_rows", x: 16, y: 230, width: 370, height: 462,
                                depth: 1)
         let inside1 = framed(ref: 1, id: "row_28", x: 16, y: 300, width: 370, height: 56, depth: 2)
@@ -1812,10 +1812,35 @@ final class StepExecutorTests: XCTestCase {
         let ghost = framed(ref: 3, id: "row_30", x: 16, y: 783, width: 370, height: 56, depth: 2)
         let elements = [container, inside1, inside2, ghost]
 
-        XCTAssertEqual(StepExecutor.clippingAncestor(of: ghost, in: elements), container.frame,
-                       "容器の外に並ぶ行は ghost として検出すること")
-        XCTAssertNil(StepExecutor.clippingAncestor(of: inside1, in: elements),
-                     "容器と交差する行は通常の行(判定を変えない)")
+        XCTAssertTrue(StepExecutor.isOutsideContainer(ghost, in: elements),
+                      "容器の外に並ぶ行は ghost として検出すること")
+        XCTAssertFalse(StepExecutor.isOutsideContainer(inside1, in: elements),
+                       "容器と交差する行は通常の行(掴み直さない)")
+    }
+
+    /// **縁をまたぐ行でも容器を返す**(2026-08-05)。旧実装は「交差しないときだけ」容器を返して
+    /// いたため、またぐ行では viewport が画面全体になり「見えている」と誤判定していた ——
+    /// Compose は原点をクリップ前・サイズをクリップ後で返すので、`#row_30` の**中心が容器の外**に
+    /// なる(S0110 の失敗 21 件中 12 件がこの形)。またぐ行は ghost ではないので掴み直しはしない
+    func testStraddlingRowStillResolvesItsContainerButIsNotAGhost() {
+        let container = framed(ref: 100, id: "list_rows", x: 16, y: 230, width: 370, height: 462,
+                               depth: 1)
+        let inside1 = framed(ref: 1, id: "row_31", x: 16, y: 249, width: 370, height: 56, depth: 2)
+        let inside2 = framed(ref: 2, id: "row_32", x: 16, y: 305, width: 370, height: 56, depth: 2)
+        // 実採取の値: 原点はクリップ前(206)・高さはクリップ後(43)= 中心 227.5 は容器の外
+        let straddling = framed(ref: 3, id: "row_30", x: 16, y: 206, width: 370, height: 43, depth: 2)
+        let elements = [container, inside1, inside2, straddling]
+
+        XCTAssertEqual(StepExecutor.clippingContainer(of: straddling, in: elements), container.frame,
+                       "またぐ行でも容器を特定できないと、見切れ判定が画面基準に落ちる")
+        XCTAssertFalse(StepExecutor.isOutsideContainer(straddling, in: elements),
+                       "またぐ行は ghost ではない(掴み直しではなく『もう1回送る』で扱う)")
+        XCTAssertTrue(StepExecutor.isClippedByViewport(straddling, screen: container.frame),
+                      "容器基準なら見切れとして検出でき、探索がもう1回送る")
+        XCTAssertFalse(StepExecutor.isClippedByViewport(straddling,
+                                                        screen: FTRect(x: 0, y: 0, width: 402,
+                                                                       height: 874)),
+                       "画面基準では見えていることになってしまう = 旧実装が止まっていた理由")
     }
 
     /// **探索の直後に ghost を掴んだら掴み直す**。掴んだままタップすると容器の外を撃って
