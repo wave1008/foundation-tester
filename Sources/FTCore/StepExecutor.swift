@@ -409,6 +409,28 @@ public final class StepExecutor {
     /// StepExecutor+Assert.swift の各失敗経路から読むため internal
     var lastInteraction: LastInteraction?
 
+    /// **報告された frame の中心が容器の外に落ちるとき、実際に見えている部分の矩形**を返す。
+    /// 中心が容器の中なら nil = 従来どおり ref でタップする(ブリッジが frame の中心へ解決)。
+    ///
+    /// フレームワークは縁をまたぐ行を「原点はクリップ前・サイズはクリップ後」の混成で返すため、
+    /// **frame の中心が可視域の外に落ちる**。実測(2026-08-05・S0110 を8並列で 80 サンプル):
+    /// **失敗 40 件の全部**でタップ座標が容器の外だった(完全に外 14 / またぎ 26。
+    /// またぎの中心は 218〜228 で容器の上端は 230)。
+    ///
+    /// **整定でも追加スワイプでも直らない**ことは実測済み: 木は1ピクセルも動いていない
+    /// (無変化の注記が 17/20)= **frame は安定していて、ただ間違っている**。
+    /// 触る直前の静止確認(settleTapTarget)は fix 20/40 対 base 20/40 で**差ゼロ**だったので撤去した。
+    /// 送る方向は 2/10 → 5/10 の自傷を実測済み(grabbedGhost の記録)。
+    /// 残るのは**座標そのものを直す**ことだけで、見えている部分は実在するのでそこを撃てば当たる
+    static func visibleTapRect(for element: ElementInfo, in elements: [ElementInfo]) -> FTRect? {
+        guard let container = clippingContainer(of: element, in: elements),
+              let visible = ScrollGeometry.intersection(element.frame, container) else { return nil }
+        let center = (x: element.frame.centerX, y: element.frame.centerY)
+        let inside = center.x >= container.x && center.x <= container.x + container.width
+            && center.y >= container.y && center.y <= container.y + container.height
+        return inside ? nil : visible
+    }
+
     /// 飲まれたタップの証跡を採る(LastInteraction 参照)。**追加のスナップショットは撮らない** ——
     /// 解決に使った木をそのまま基準にする。前面要素の判定も同じ木の上の計算だけ
     private func recordInteraction(step: FlowStep, element: ElementInfo, in snapshot: SnapshotResponse) {
@@ -1369,7 +1391,16 @@ public final class StepExecutor {
                 break
             }
             start = clock.now
-            try await actingDriver.tap(ref: element.ref)
+            // **中心が容器の外に落ちる要素だけ、見えている部分の中心を座標で撃つ**
+            // (visibleTapRect 参照)。ref で撃つとブリッジが frame の中心へ解決するので、
+            // 壊れた frame ではそのまま容器の外を叩いて黙って飲まれる
+            if let visible = Self.visibleTapRect(for: element, in: snapshot.elements) {
+                try await actingDriver.tap(x: visible.centerX, y: visible.centerY)
+                driverFallback = Self.joinNotes(driverFallback,
+                    "tapped the visible part (the reported frame's centre falls outside its container)")
+            } else {
+                try await actingDriver.tap(ref: element.ref)
+            }
             phase.actionMs += Self.ms(clock.now - start)
             // ドライバが「無言 no-op になり得る経路を通った」と申告した注記(例: InAppBridge の
             // activate 不発→合成タッチ)。失敗ではないので driverFallback に載せて可視化するだけ

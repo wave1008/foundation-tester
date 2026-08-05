@@ -25,6 +25,8 @@ private final class ScriptedDriver: AppDriver {
     var offscreen: [ElementInfo]?
     private(set) var snapshotCount = 0
     private(set) var tapCount = 0
+    private(set) var tappedRefs: [Int] = []
+    private(set) var tappedPoints: [(x: Double, y: Double)] = []
     private(set) var swipeCount = 0
 
     init(frames: [[ElementInfo]], offscreen: [ElementInfo]? = nil) {
@@ -43,8 +45,8 @@ private final class ScriptedDriver: AppDriver {
     func terminate() async throws {}
     func screenshot() async throws -> Data { Data() }
     func type(ref: Int?, text: String) async throws {}
-    func tap(x: Double, y: Double) async throws {}
-    func tap(ref: Int) async throws { tapCount += 1 }
+    func tap(x: Double, y: Double) async throws { tappedPoints.append((x, y)) }
+    func tap(ref: Int) async throws { tapCount += 1; tappedRefs.append(ref) }
     func press(ref: Int, duration: Double) async throws {}
     func swipe(_ direction: FTSwipeDirection) async throws { swipeCount += 1 }
 
@@ -293,6 +295,92 @@ final class SwallowedInteractionTests: XCTestCase {
                        "id が無ければ型+ラベル")
         XCTAssertNil(StepExecutor.relocate(target, in: [text(9, "row_31", "行 31", y: 100)]),
                      "見つからなければ nil")
+    }
+
+    // MARK: - 見えている部分を撃つ(座標そのものを直す)
+
+    /// **中心が容器の外に落ちる要素は、見えている部分の中心を座標で撃つ**。
+    /// 実測(S0110 を8並列・交互 A/B・各40サンプル): **base 18/40(45%)→ fix 5/40(12.5%)**。
+    /// ref で撃つとブリッジが frame の中心へ解決するので、壊れた frame では容器の外を叩く
+    func testTapsTheVisiblePartWhenTheFrameCentreFallsOutside() async throws {
+        // 実採取の形: 容器 230..692 に対し row_30 は (16,206 h=38) = 中心 225 が容器の外
+        let container = ElementInfo(ref: 1, type: "other", identifier: "list_rows", label: nil,
+                                    value: nil, placeholder: nil, enabled: true,
+                                    frame: FTRect(x: 16, y: 230, width: 370, height: 462), depth: 11)
+        let straddling = ElementInfo(ref: 2, type: "clickable", identifier: "row_30", label: "行 30",
+                                     value: nil, placeholder: nil, enabled: true,
+                                     frame: FTRect(x: 16, y: 206, width: 370, height: 38), depth: 12)
+        let sibling1 = ElementInfo(ref: 3, type: "clickable", identifier: "row_31", label: "行 31",
+                                   value: nil, placeholder: nil, enabled: true,
+                                   frame: FTRect(x: 16, y: 244, width: 370, height: 56), depth: 12)
+        let sibling2 = ElementInfo(ref: 4, type: "clickable", identifier: "row_32", label: "行 32",
+                                   value: nil, placeholder: nil, enabled: true,
+                                   frame: FTRect(x: 16, y: 300, width: 370, height: 56), depth: 12)
+        let tree = [container, straddling, sibling1, sibling2]
+        let driver = ScriptedDriver(frames: [tree])
+        let executor = StepExecutor(driver: driver)
+
+        _ = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "row_30")))
+
+        XCTAssertTrue(driver.tappedRefs.isEmpty, "ref で撃つと壊れた frame の中心を叩く")
+        XCTAssertEqual(driver.tappedPoints.count, 1)
+        // 見えているのは 230..244 なので中心は 237
+        XCTAssertEqual(driver.tappedPoints.first?.y ?? 0, 237, accuracy: 0.5)
+    }
+
+    /// **中心が容器の中なら従来どおり ref で撃つ**(in-app の accessibilityActivate の利点を捨てない)
+    func testKeepsTheRefTapWhenTheCentreIsInside() async throws {
+        let container = ElementInfo(ref: 1, type: "other", identifier: "list_rows", label: nil,
+                                    value: nil, placeholder: nil, enabled: true,
+                                    frame: FTRect(x: 16, y: 230, width: 370, height: 462), depth: 11)
+        func row(_ ref: Int, _ id: String, _ y: Double) -> ElementInfo {
+            ElementInfo(ref: ref, type: "clickable", identifier: id, label: id, value: nil,
+                        placeholder: nil, enabled: true,
+                        frame: FTRect(x: 16, y: y, width: 370, height: 56), depth: 12)
+        }
+        let tree = [container, row(2, "row_30", 300), row(3, "row_31", 356), row(4, "row_32", 412)]
+        let driver = ScriptedDriver(frames: [tree])
+        let executor = StepExecutor(driver: driver)
+
+        _ = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "row_30")))
+
+        XCTAssertEqual(driver.tappedRefs, [2])
+        XCTAssertTrue(driver.tappedPoints.isEmpty)
+    }
+
+    /// 判定の境界(純粋関数)
+    func testVisibleTapRectRules() {
+        let container = ElementInfo(ref: 1, type: "other", identifier: "list", label: nil, value: nil,
+                                    placeholder: nil, enabled: true,
+                                    frame: FTRect(x: 16, y: 230, width: 370, height: 462), depth: 1)
+        func row(_ ref: Int, _ y: Double, _ h: Double = 56) -> ElementInfo {
+            ElementInfo(ref: ref, type: "clickable", identifier: "row\(ref)", label: "行", value: nil,
+                        placeholder: nil, enabled: true,
+                        frame: FTRect(x: 16, y: y, width: 370, height: h), depth: 2)
+        }
+        let inside1 = row(3, 300), inside2 = row(4, 360)
+        let straddling = row(2, 206, 38)
+        let outside = row(5, 20)
+        let tree = [container, straddling, inside1, inside2, outside]
+        XCTAssertEqual(StepExecutor.visibleTapRect(for: straddling, in: tree)?.y ?? -1, 230,
+                       accuracy: 0.5)
+        XCTAssertNil(StepExecutor.visibleTapRect(for: inside1, in: tree), "中心が中なら nil")
+        XCTAssertNil(StepExecutor.visibleTapRect(for: outside, in: tree),
+                     "完全に外は交点が空 = 撃つ場所が無い(別問題)")
+    }
+
+    /// **タップ経路にスナップショットを足さない**(tap は実行時間の 23% を占めるので固定費が跳ねる)。
+    /// 2026-08-05 に「触る直前に対象の静止を確かめる」を入れて1枚増やしたが、
+    /// 8並列の A/B で **fix 20/40 対 base 20/40 = 差ゼロ**だったので撤去した
+    /// (frame は動いていない = 安定していて間違っている、が実測の答えだった)
+    func testPlainTapDoesNotPayForAnExtraSnapshot() async throws {
+        let frame = [text(1, "row_30", "行 30", y: 300, type: "clickable")]
+        let driver = ScriptedDriver(frames: [frame])
+        let executor = StepExecutor(driver: driver)
+
+        _ = await executor.execute(FlowStep(action: "tap", locator: FlowLocator(id: "row_30")))
+
+        XCTAssertEqual(driver.snapshotCount, 1, "探索なしのタップで取得が増えている")
     }
 
     /// 純粋関数側の境界(点が入っているか・自分の子孫は除く・前後関係)
