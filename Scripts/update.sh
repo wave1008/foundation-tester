@@ -111,10 +111,16 @@ if [ "$INSTALL_STATUS" = "1" ]; then
   exit 1
 fi
 
-# ---- 3. 受け手側の反映(clone 構成のみ project sync) ----------------------------
-# 外部パッケージ構成はローカルパス依存なので pull だけで反映される(シナリオは実行時に自動ビルド)
+# ---- 3. 受け手側の反映(project sync) ------------------------------------------
+# **構成で分けない**(2026-08-06 に修正)。かつては「外部パッケージ構成はローカルパス依存なので
+# pull だけで反映される」として clone 構成だけで走らせていたが、それが正しいのは**依存の解決**
+# だけで、**受け手の Package.swift に書かれたシナリオのパス**には効かない。
+# 実害: 2026-08-05 の `Projects/`→`TestProjects/` / `Scenarios/`→`scenarios/` 改名のあと、
+# 外部構成の受け手だけ Package.swift が旧名のまま取り残され、
+# `invalid custom path 'Projects/<name>/Scenarios'` でビルドが落ちた(外部フィードバック)。
+# syncManifest は external を明示的に扱う実装なので、両構成でそのまま安全に走る。
 FT="$TOOL_ROOT/.build/debug/ftester"
-if [ "$WORK_DIR" = "$TOOL_ROOT" ] && [ -x "$FT" ]; then
+if [ -x "$FT" ]; then
   echo ""
   echo "==> ftester project sync (resyncing TestProjects/ ↔ Package.swift)"
   ( cd "$WORK_DIR" && "$FT" project sync ) || echo "⚠️ project sync failed (check it by hand)"

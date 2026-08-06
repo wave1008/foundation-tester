@@ -33,6 +33,9 @@ final class MCPServer {
     /// 撮り直して同じ要素を引き直すための起点(RefGuard 参照)。
     /// **ref はスナップショットごとに振り直される**ので、番号ではなく要素の同一性で照合する
     var lastSnapshots: [String: SnapshotResponse] = [:]
+    /// プロファイル解決で出た警告(未解決のデバイス名など)。**次に返す応答へ1度だけ**混ぜる。
+    /// stderr だけに出していたときは MCP クライアントに一切届かなかった
+    var pendingWarnings: [String: [String]] = [:]
     /// 応答の書き出し口。**stdout は JSON-RPC 専用**(診断を混ぜるとクライアントのパースが壊れる)
     private let write: (Data) -> Void
     /// ドライバ生成の差し替え口。nil = 実デバイスを解決する(既定)
@@ -145,6 +148,10 @@ final class MCPServer {
                 project: project, profileName: profileName,
                 platformArg: args["platform"] as? String, prologue: &prologue)
             prologue.forEach(Self.logStderr)
+            // **警告を stderr に捨てない**(外部フィードバック 2026-08-06)。MCP クライアントは
+            // stderr を見ないので、「runs の name が machines のデバイスに解決できない」等の
+            // 設定ミスが**実行するまで表に出なかった**。次の応答に1度だけ載せる
+            pendingWarnings[key] = prologue.filter { $0.hasPrefix("⚠️") }
             let created: AppDriver
             switch target {
             case .ios(let provisioned, let iosApp):
@@ -488,13 +495,56 @@ final class MCPServer {
         // **探索でツリーは必ず動く**ので、覚えている木を捨てて撮り直す(古い ref を残さない)
         let after = try await freshSnapshot(scrollDriver, args: args)
         guard case .passed = outcome.status else {
+            // **止まった時点で見えているものを一緒に返す**(外部フィードバック 2026-08-06)。
+            // 「届かなかった」だけだと ft_snapshot の往復が要るうえ、**記法の誤りに気づけない**
+            // —— 素のラベルは完全一致なので、「端末情報」は「端末情報を表示」に当たらない。
+            // 候補を見せれば、綴り違いなのか記法(`*…*`)不足なのかがその場で分かる
+            let bare = selectorText.trimmingCharacters(in: CharacterSet(charactersIn: "#*"))
             throw MCPError("scrollTo \"\(selectorText)\" did not reach the element"
-                + " (\(outcome.status)). The screen is where the search stopped —"
-                + " take an ft_snapshot to see it")
+                + " (\(outcome.status)). \(Self.visibleLabelsHint(after))"
+                + " Plain labels match exactly — wrap them in * for a partial match (e.g. *\(bare)*).")
         }
         let landed = outcome.resolvedElement.map { " → [\($0.ref)] \(RefGuard.describe($0))" } ?? ""
         return text("scrolled to \"\(selectorText)\"\(landed)."
-            + " The refs below are fresh\n" + SnapshotRenderer.render(after))
+            + " The refs below are fresh\n" + Self.ghostNote(after)
+            + SnapshotRenderer.render(after, flagging: Self.ghostFlags(after)))
+    }
+
+    /// 接続中の Android 全台の状態。**1台ずつ独立に見る**(1台落ちていても他を隠さない)
+    static func androidFleetStatus(_ serials: [String]) async -> String {
+        var lines = ["\(serials.count) Android devices are connected."
+            + " Pass serial: (or profile:) to operate one — this listing is status-only."]
+        for device in AndroidSerialResolver.describe(serials: serials) {
+            let line: String
+            if let driver = try? AndroidDriver(serial: device.serial),
+               let status = try? await driver.status() {
+                let session = status.sessionBundleID ?? "none"
+                line = "ready: \(status.ready) / \(device.label) (\(status.osVersion))"
+                    + " / session: \(session)"
+            } else {
+                line = "unreachable / \(device.label) (adb responds but the bridge does not —"
+                    + " it starts on the first operation)"
+            }
+            lines.append("  serial \(device.serial): \(line)")
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    /// 探索が止まった画面で「実際に引けるもの」を列挙する。id を優先し、無ければラベル。
+    /// **多すぎると読めない**ので上限を切る(足りなければ ft_snapshot を撮ればよい)
+    static func visibleLabelsHint(_ snapshot: SnapshotResponse) -> String {
+        var seen = Set<String>()
+        var shown: [String] = []
+        for e in snapshot.elements {
+            let name = (e.identifier?.isEmpty == false) ? "#\(e.identifier!)"
+                : (e.label?.isEmpty == false) ? "\"\(e.label!)\"" : ""
+            guard !name.isEmpty, seen.insert(name).inserted else { continue }
+            shown.append(name)
+            if shown.count >= 20 { break }
+        }
+        guard !shown.isEmpty else { return "Nothing selectable is on screen." }
+        let more = snapshot.elements.count > shown.count ? " …" : ""
+        return "On screen where the search stopped: \(shown.joined(separator: " "))\(more)."
     }
 
     /// スクロール容器の**完全に外**に報告されている要素(ghost)を先頭で名指しする。
@@ -503,6 +553,18 @@ final class MCPServer {
     /// 「画面に見えている行」と同じ形で出る(Compose iOS は容器の外の行も木に残す)。
     /// `waitFor` も素の存在しか見ないので、ghost だけで条件が満たされることがある。
     /// **叩けば RefGuard が止める**が、そこまで行かずに気付けるほうが往復が減る
+    static func ghostRefs(_ snapshot: SnapshotResponse) -> [Int] {
+        snapshot.elements
+            .filter { StepExecutor.isOutsideContainer($0, in: snapshot.elements) }
+            .map(\.ref)
+    }
+
+    /// 残像の行に付ける印。**先頭の注記だけでは足りない**(外部フィードバック 2026-08-06):
+    /// エージェントは一覧の行から ref をコピーするので、その行自体に出ていないと届かない
+    static func ghostFlags(_ snapshot: SnapshotResponse) -> [Int: String] {
+        Dictionary(uniqueKeysWithValues: ghostRefs(snapshot).map { ($0, "⚠️scroll-leftover") })
+    }
+
     static func ghostNote(_ snapshot: SnapshotResponse) -> String {
         let ghosts = snapshot.elements.filter {
             StepExecutor.isOutsideContainer($0, in: snapshot.elements)
@@ -511,9 +573,9 @@ final class MCPServer {
         let listed = ghosts.prefix(8).map { "[\($0.ref)] \(RefGuard.describe($0))" }
             .joined(separator: " ")
         let more = ghosts.count > 8 ? " (+\(ghosts.count - 8) more)" : ""
-        return "note: these are outside their scroll container — leftovers from scrolling, not"
-            + " drawn where their frames say: \(listed)\(more)."
-            + " Scroll them into view (ft_scroll_to) before using them\n"
+        return "note: the ⚠️scroll-leftover rows below are outside their scroll container — not"
+            + " drawn where their frames say, and ft_tap refuses them: \(listed)\(more)."
+            + " Bring them into view with ft_scroll_to first\n"
     }
 
     /// フォーカス待ちの上限。**短い**のは、報告しないフレームワークで毎回これを丸ごと待つため
@@ -674,6 +736,16 @@ final class MCPServer {
     func dispatch(tool: String, args: [String: Any]) async throws -> [[String: Any]] {
         switch tool {
         case "ft_status":
+            // **読み取り専用のここだけは、複数台でも失敗させない**(外部フィードバック 2026-08-06)。
+            // 操作系(tap/type/…)は従来どおりエラーにする —— 曖昧なまま「どれか」を操作させない
+            // 規律([[BridgeDiscovery]] と同じ)を崩さないため。status は状態を見るだけなので、
+            // 全台を並べて返すほうが次の一手(serial: を選ぶ)に直結する
+            if args["profile"] == nil, args["serial"] == nil,
+               (args["platform"] as? String) == "android",
+               case .ambiguous(let devices) = AndroidSerialResolver.decide(
+                   explicit: nil, connected: AndroidSerialResolver.connectedSerials()) {
+                return text(await Self.androidFleetStatus(devices.map(\.serial)))
+            }
             let status = try await driver(args).status()
             // **宛先とセッションの意味まで出す**: 「どこに繋がっているか」が見えないと、
             // 既定ポートの死・はぐれデバイスの誤掴み・ブリッジ再起動によるセッション消失が
@@ -682,8 +754,9 @@ final class MCPServer {
             let session = status.sessionBundleID
                 ?? "none (no app attached — ft_launch <bundleId> first;"
                     + " a bridge restart clears the session)"
-            return text("ready: \(status.ready) / \(status.device) (\(status.osVersion))\(endpoint)"
-                + " / session: \(session)")
+            return text(withPendingWarnings(
+                "ready: \(status.ready) / \(status.device) (\(status.osVersion))\(endpoint)"
+                + " / session: \(session)", args: args))
 
         case "ft_install":
             guard let packagePath = args["packagePath"] as? String else {
@@ -736,8 +809,9 @@ final class MCPServer {
             // ステータスバーの「◀ 元のアプリへ」を踏んだタップで前面が別アプリに替わったのに、
             // snapshot は元アプリの画面を返し、エージェントからは「タップが効かない」に見えた
             let backgroundNote = await Self.backgroundedSessionNote(snapshot, driver: snapshotDriver)
-            return text(waitNote + backgroundNote + Self.ghostNote(snapshot)
-                + SnapshotRenderer.render(snapshot))
+            return text(withPendingWarnings(
+                waitNote + backgroundNote + Self.ghostNote(snapshot)
+                + SnapshotRenderer.render(snapshot, flagging: Self.ghostFlags(snapshot)), args: args))
 
         case "ft_tap":
             let d = try await driver(args)
@@ -914,6 +988,7 @@ final class MCPServer {
             let fm = await FMDoctor.checkLive()
             let vision = FMDoctor.visionReport
             return text((fm.available ? "✅ " : "❌ ") + fm.detail
+                + (fm.available ? "" : "\n   " + FMDoctor.unavailableImpact)
                 + "\n" + (vision.available ? "✅ " : "⚠️ ") + vision.detail)
 
         default:
@@ -923,6 +998,14 @@ final class MCPServer {
 
     private func text(_ string: String) -> [[String: Any]] {
         [["type": "text", "text": string]]
+    }
+
+    /// 溜まっているプロファイル警告を先頭に付けて1度だけ吐き出す
+    private func withPendingWarnings(_ body: String, args: [String: Any]) -> String {
+        let key = Self.engineKey(args)
+        guard let warnings = pendingWarnings.removeValue(forKey: key), !warnings.isEmpty
+        else { return body }
+        return warnings.joined(separator: "\n") + "\n" + body
     }
 
     /// 撮ったスナップショットの `#id` をプロジェクトの台帳へ足す(ft_dry_run が綴り誤りの照合に使う。

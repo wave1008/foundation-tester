@@ -7,12 +7,18 @@ import Foundation
 public enum SnapshotRenderer {
 
     /// `[3] Button "ログイン" id=login_btn (120,610 180x44)` 形式の1行を要素ごとに出力する。
-    public static func render(_ snapshot: SnapshotResponse) -> String {
+    ///
+    /// `flagging` に入れた ref の行末には印を付ける(既定は空 = 従来どおり)。MCP が
+    /// スクロール残像を名指しするのに使う —— **先頭の注記だけでは足りない**という
+    /// 外部フィードバック(2026-08-06)への対応で、ref をコピーする行そのものに出す。
+    public static func render(_ snapshot: SnapshotResponse,
+                              flagging: [Int: String] = [:]) -> String {
         var lines: [String] = []
         let s = snapshot.screen
         lines.append("screen: \(Int(s.width))x\(Int(s.height))")
         for e in snapshot.elements {
-            lines.append(renderElement(e))
+            let flag = flagging[e.ref].map { " \($0)" } ?? ""
+            lines.append(renderElement(e) + flag)
         }
         if snapshot.truncatedCount > 0 {
             lines.append("(+\(snapshot.truncatedCount) elements truncated)")
