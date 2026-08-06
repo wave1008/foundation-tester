@@ -159,16 +159,38 @@ public struct FlowStep: Codable, Sendable {
 public enum FlowMatchMode: String, Codable, Equatable, Sendable {
     case exact, startsWith, contains, endsWith, matches
 
-    /// 実属性値がこの一致方法で expected を満たすか。nil の属性は常に不一致
+    /// 実属性値がこの一致方法で expected を満たすか。nil の属性は常に不一致。
+    /// ゼロ幅文字(実データに紛れて画面にもスナップショットにも見えない)は比較前に
+    /// actual から常に、expected は `.matches`(正規表現。パターンを書き換えないため)以外で除去する
     public func matches(_ actual: String?, _ expected: String) -> Bool {
         guard let actual else { return false }
+        let normalizedActual = Self.stripZeroWidthCharacters(actual)
+        let normalizedExpected = self == .matches ? expected : Self.stripZeroWidthCharacters(expected)
         switch self {
-        case .exact: return actual == expected
-        case .startsWith: return actual.hasPrefix(expected)
-        case .contains: return actual.contains(expected)
-        case .endsWith: return actual.hasSuffix(expected)
-        case .matches: return actual.range(of: expected, options: .regularExpression) != nil
+        case .exact: return normalizedActual == normalizedExpected
+        case .startsWith: return normalizedActual.hasPrefix(normalizedExpected)
+        case .contains: return normalizedActual.contains(normalizedExpected)
+        case .endsWith: return normalizedActual.hasSuffix(normalizedExpected)
+        case .matches: return normalizedActual.range(of: normalizedExpected, options: .regularExpression) != nil
         }
+    }
+
+    /// U+200B/U+200C/U+200D/U+FEFF/U+2060。Google マップ等の実データが混入させる不可視文字で、
+    /// 除去しないと目視では同一に見える文字列が完全一致に失敗する(SnapshotRenderer.renderElement も
+    /// 同じ集合を出力から除去し、コピーした文字列が必ず一致する状態を保つ)
+    public static let zeroWidthScalars: Set<Unicode.Scalar> = [
+        "\u{200B}", "\u{200C}", "\u{200D}", "\u{FEFF}", "\u{2060}",
+    ]
+
+    /// **走査は Character でなく Unicode スカラ単位**。Character は書記素クラスタなので
+    /// ZWJ(U+200D)は隣接文字と1つのクラスタに融合し、Character 比較では素通りする
+    public static func stripZeroWidthCharacters(_ s: String) -> String {
+        guard s.unicodeScalars.contains(where: { zeroWidthScalars.contains($0) }) else { return s }
+        var out = String.UnicodeScalarView()
+        for scalar in s.unicodeScalars where !zeroWidthScalars.contains(scalar) {
+            out.append(scalar)
+        }
+        return String(out)
     }
 
     /// セレクタ式のフィルタ名(属性名 + 一致方法)。exact は接尾辞なし。
