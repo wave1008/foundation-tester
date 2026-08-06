@@ -36,6 +36,7 @@ PLATFORM="both"
 DO_EXTENSION=1
 DO_PROJECT=1
 DO_MCP=1
+DO_CLAUDE_MD=1
 DO_DOCTOR=1
 DO_NEXT_STEPS=1
 ALLOW_CLONE=1
@@ -59,6 +60,7 @@ Usage: install.sh [options]
   --skip-extension   Do not install the VSCode extension
   --skip-project     Do not create a project (TestProjects/<name>/) — e.g. MCP-only installs
   --skip-mcp         Do not generate/merge .mcp.json
+  --skip-claude-md   Do not write the ftester block into <work-dir>/CLAUDE.md
   --no-doctor        Skip the final environment report (ftester doctor)
   --no-next-steps    Do not print "next steps" (when the caller, e.g. update.sh, guides instead)
   --keep-local       Do not auto-discard local changes in the clone (auto-discard is the default in the external layout)
@@ -67,7 +69,7 @@ Usage: install.sh [options]
 
 What it does: clone (git pull if it exists; in the external layout local changes are auto-discarded) /
          swift build / project creation / .gitignore upkeep / VSCode extension / .mcp.json /
-         verification gates. **With --machine and --app-name it also creates profiles (--auto-device)**
+         CLAUDE.md entry point / verification gates. **With --machine and --app-name it also creates profiles (--auto-device)**
          (idempotent; finished steps are skipped)
 Exit codes: 0=done / 2=only optional steps incomplete (CLI and MCP work) / 1=stopped at a required step
          (on stop, the [fail] line shows the cause and the number of the manual step to complete)
@@ -88,6 +90,7 @@ while [ $# -gt 0 ]; do
     --skip-extension) DO_EXTENSION=0; shift ;;
     --skip-project) DO_PROJECT=0; shift ;;
     --skip-mcp) DO_MCP=0; shift ;;
+    --skip-claude-md) DO_CLAUDE_MD=0; shift ;;
     --no-doctor) DO_DOCTOR=0; shift ;;
     --keep-local) KEEP_LOCAL=1; shift ;;
     --verbose) VERBOSE=1; shift ;;
@@ -515,6 +518,67 @@ PY
     esac
   else
     soft_fail "MCP" "failed to merge .mcp.json ($merge_out)" 7.5
+  fi
+fi
+
+# ---- 7.6 エージェントの入口を CLAUDE.md に置く(SKILL ステップ7.6) ----------------
+# **導入直後ではなく、その後のセッションのための手当て**。.mcp.json も .claude/settings.json も
+# 「設定として効く」だけでエージェントが読む物ではないので、これが無いと翌週
+# 「このアプリのテスト書いて」と言われた Claude Code の手掛かりはスキルの description だけになる。
+# 実害は3つに絞られる(素の XCTest を書き始める / 新しい ft_* に気づかない /
+# DSL コマンドを推測で書く)ので、**使い方の解説は書かず入口だけ4行**置く
+# —— 解説を置くとツール説明と二重管理になり必ずズレる(docs/design.md「契約は1箇所」)。
+# 受け手の資産なので**マーカーの内側だけ**差し替える。共有リポジトリで嫌うなら --skip-claude-md。
+if [ "$DO_CLAUDE_MD" = "0" ]; then
+  record "CLAUDE.md" skip "--skip-claude-md"
+elif ! command -v python3 >/dev/null 2>&1; then
+  record "CLAUDE.md" warn "python3 is missing, so the entry point was not written (agents may miss ft_*)"
+else
+  if guide_out=$(python3 - "$WORK_DIR/CLAUDE.md" <<'GUIDE'
+import os, re, sys
+
+path = sys.argv[1]
+# **マーカーは最短・不変にする**。説明文をマーカー行に埋めると、文言を変えた瞬間に
+# 既存ブロックを見失って**二重に追記される**。前置き一致で拾い、説明は本文の側に置く。
+BEGIN = "<!-- ftester:begin -->"
+END = "<!-- ftester:end -->"
+BODY = """## テスト(foundation-tester)
+
+<!-- この範囲は Scripts/install.sh が管理しており、更新のたび上書きされます。
+     不要なら begin〜end ごと削除するか、インストーラに --skip-claude-md を渡してください。 -->
+
+- シナリオ作成は `/ftester-scenario`、対象アプリ/デバイスの追加は `/ftester-profiles`、更新は `/ftester-update`
+- 画面の探索・操作は `ft_*` ツール。**長いリストは `ft_swipe` の繰り返しでなく `ft_scroll_to`**
+- DSL のコマンド名は推測せず `ft_dsl_commands` で索引を引く(無いコマンドを書かないため)
+- シナリオは `TestProjects/<プロジェクト>/scenarios/*.swift`。実行は `ft_run_scenario` か VSCode 拡張"""
+block = BEGIN + "\n" + BODY + "\n" + END
+
+existing = ""
+if os.path.exists(path):
+    with open(path) as f:
+        existing = f.read()
+
+# 旧版のマーカー(説明文入り)も拾えるよう、begin は行ごと前置きで照合する
+span = re.search(r"<!--\s*ftester:begin.*?<!--\s*ftester:end\s*-->", existing, re.S)
+if span:
+    updated = existing[: span.start()] + block + existing[span.end():]
+    verb = "unchanged" if updated == existing else "refreshed"
+elif existing.strip():
+    updated = existing.rstrip("\n") + "\n\n" + block + "\n"
+    verb = "appended to"
+else:
+    updated = block + "\n"
+    verb = "created"
+
+if updated != existing:
+    with open(path, "w") as f:
+        f.write(updated)
+print(verb, end="")
+GUIDE
+  ); then
+    record "CLAUDE.md" ok "$guide_out CLAUDE.md (delete the ftester block, or pass --skip-claude-md, to opt out)"
+  else
+    record "CLAUDE.md" warn "could not write the entry point (agents may miss ft_*)"
   fi
 fi
 
