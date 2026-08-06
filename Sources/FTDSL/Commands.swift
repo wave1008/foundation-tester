@@ -2103,7 +2103,8 @@ public func home(file: StaticString = #filePath, line: UInt = #line) {
     }
 }
 
-/// 前の画面へ戻る(Android = 戻るキー / iOS = 左端エッジスワイプ。Shirates の pressBack 相当)
+/// 前の画面へ戻る(Android = 戻るキー / iOS = ナビゲーションバーの戻るボタン、
+/// 無ければ左端エッジスワイプ。Shirates の pressBack 相当)
 public func back(file: StaticString = #filePath, line: UInt = #line) {
     let core = FTRuntime.requireCore(command: "back")
     let driver = core.systemDriver

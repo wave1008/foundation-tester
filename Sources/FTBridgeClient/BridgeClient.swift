@@ -361,11 +361,37 @@ public final class BridgeClient: AppDriver {
 
     /// エッジスワイプ = iOS の戻る操作(pop ジェスチャ)。ブリッジに /back ルートは無い(版上げ回避。
     /// /drag で表現する)。スワイプバック無効の画面では効かない
+    /// **戻るボタンがあれば押す。無ければ左端エッジスワイプ**(2026-08-06)。
+    ///
+    /// エッジスワイプは iOS 標準の interactive pop を再現したものだが、**成立を保証できない** ——
+    /// 成立しなければ同じタッチが下の要素へ渡り、押していない行が反応し得る。
+    /// Android のシステムキーと違って決定的でないため、外部フィードバックで
+    /// 「戻ったはずが別の画面に居た」と報告された(こちらでは9回試して再現せず。
+    /// 報告者も後に別原因と訂正したが、**機構として非決定的なのは事実**なので直す)。
+    ///
+    /// UIKit / SwiftUI のナビゲーションバーは戻るボタンに `BackButton` という識別子を付ける
+    /// (iOS 27.0 の設定アプリで実測: `button id=BackButton label=設定 (16,62 44x44)`)。
+    /// **Compose / Flutter は自前描画でシステムのナビゲーションバーを持たない**ので nil になり、
+    /// 従来どおりエッジスワイプへ落ちる = 既存の挙動は変わらない
     public func back() async throws {
-        let screen = try await snapshot().screen
+        let tree = try await snapshot()
+        if let button = Self.navigationBackButton(in: tree) {
+            try await tap(x: button.frame.x + button.frame.width / 2,
+                          y: button.frame.y + button.frame.height / 2)
+            return
+        }
+        let screen = tree.screen
         try await drag(fromX: screen.x + 1, fromY: screen.y + screen.height * 0.5,
                        toX: screen.x + screen.width * 0.65, toY: screen.y + screen.height * 0.5,
                        pressSeconds: 0.05, durationSeconds: 0.25)
+    }
+
+    /// ナビゲーションバーの戻るボタン。**識別子で引く**(位置や順序で当てると、左に別のボタンを
+    /// 置く画面で取り違える)。無効(戻れない)なものは採らない
+    static func navigationBackButton(in snapshot: SnapshotResponse) -> ElementInfo? {
+        snapshot.elements.first {
+            $0.identifier == "BackButton" && $0.type == "button" && $0.enabled
+        }
     }
 
     public func swipe(_ direction: FTSwipeDirection) async throws {
