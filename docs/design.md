@@ -250,7 +250,7 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
 | `501` / `404`(本文 `not found:`) | このエンジンでは**原理的に不可** | XCUITest へフォールバック(§10 の「in-app で不可・XCUITest で可」) |
 | `404`(ref 不明) | スナップショット取り直しが要る本物の失敗 | 失敗(フォールバックしない。本文前置で 501 系と区別) |
 | `409` | 一時的競合(キーウィンドウ不在・セッション消失) | セッション消失だけ `SessionRecoveryDriver` が張り直す。**フォールバック判定に使わない** |
-| `422` | セッションはあるが**今のこの画面では実行できない**(フォーカス欄が無い・クリアしきれない・type の読み返しが期待値に届かない) | 失敗。`clearInput` だけ 409 と同様に typeDriver へ回す(`isClearInputFallback`) |
+| `422` | セッションはあるが**今のこの画面では実行できない**(フォーカス欄が無い・クリアしきれない・type の読み返しが期待値に届かない・**中身のあるマスク欄への追記**) | 失敗。`clearInput` だけ 409 と同様に typeDriver へ回す(`isClearInputFallback`) |
 | `503` | セッションはあるが**対象アプリが起動していない** | `AppAttachDriver` が activate して1回再試行 |
 
 **XCUITest ランナーは 409 を `requireApp()` の1箇所からしか投げてはいけない**(`SessionRecoveryDriver`
@@ -627,6 +627,16 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
 - **`combined` は最初の確定読みから1回だけ作る**。再発火は常に同じ値=構造的に冪等。
   読み返すたびに作り直すと、**パスワード欄の a11y 読みはマスクされている**ため伏せ字を値として
   書き込み(`password=•••…secret42`)、遅延適用と重なれば二重追記になる(`hello123hello123`)
+- **中身のあるマスク欄へは追記そのものを撃たない**(`rejectMaskedAppend`。2026-08-06 追加)。
+  上の規律は「作り**直す**と伏せ字を書く」だったが、**初回構築も同じ穴**だった ——
+  追記は `既存の読み + text` を書き戻す形で、パスワード欄の「既存の読み」は伏せ字そのもの。
+  実測: 空欄へ `abc` → 続けて `def` で、アプリ側の echo が **`•••def`** になり、
+  ツールは "Typed" と成功を返した(値が壊れたことは後段の検証まで分からない)。
+  読める術が無い以上ここは追記できないので **422 で弾く** ——
+  置換したいなら呼び手が先に `clearInput` する(空への置換は冪等で安全)。
+  空欄への1回目は `current` が空なので従来どおり通る。
+  **弾いた判断は `catch (RuntimeException)` で再試行に化けさせない**(BridgeException だけ
+  先に再スローする)。しないと 4 秒待って「ノードが無効化された」という無関係な 500 になる
 - **適用確認はマスク欄だけ長さ一致**で見る(値そのものは読めない)
 - **SET_TEXT はフォーカスが立っているときだけ撃つ**。立たないときは座標でなく `ACTION_CLICK`
   でフォーカスを要求する(キーボードの開閉で adjustResize が走ると**座標は当てにならない**)。
@@ -733,7 +743,7 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
    | ボタン | `button` | `button` | `button` | `button` | `button` | `button` |
    | スイッチ | `switch` | `switch` | `switch` | `switch` | `switch` | `switch` |
    | テキスト | `staticText` | `staticText` | `staticText` | `staticText` | `staticText` | `staticText` |
-   | パスワード欄 | `textField` | `secureTextField` | `secureTextField` | `secureTextField` | `textField` | `textField` |
+   | パスワード欄 | `textView` | `secureTextField` | `secureTextField` | `secureTextField` | `textField` | `textField` |
    | チェックボックス | `button` | `checkBox` | `button` | `checkBox` | `switch` | `checkBox` |
    | リスト行 | `button` | `clickable` | `clickable`(UITableView) | `clickable` | `button` | `button` |
 
@@ -741,6 +751,38 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
    CMP(Android)のボタン/スイッチが `cell`[現 `clickable` の旧名]、Flutter(Android)の
    テキストが `other` だった)。**チェックボックスとリスト行は揃わない** — iOS 側の a11y が
    役割を出さないため(下記「型は役割に正規化する」)
+
+   **入力欄は「エンジン間で揃える」ところまでが担保**で、OS 間では揃わない(2026-08-06 実測)。
+   iOS の自前描画フレームワーク(Compose / Flutter)の入力欄は UIKit の `UITextField` ではないので、
+   in-app ブリッジのクラス判定を素通りして `other` に落ちていた —— **in-app だけ `other`・
+   xcuitest は `textView`** という食い違いで、MCP で探索した型がシナリオで通らなかった。
+   判定を**テキスト入力 trait(`1<<18`)**に足し、`UITextInput` 準拠で分けることで
+   XCUITest の `elementType` と一致させた(`InAppSnapshot.elementType`):
+
+   | | 要素クラス | traits | UITextInput | in-app / xcuitest とも |
+   |---|---|---|---|---|
+   | Compose | `AccessibilityElement` | `1<<47｜1<<18` | 非準拠 | `textView` |
+   | Flutter | `TextInputSemanticsObject` | `1<<37｜1<<18` | 準拠 | `textField` |
+
+   上位ビットはフレームワーク固有なので見ない。**マスクの有無は iOS のこの2系統では型に出ない**
+   (Compose も Flutter も secure にならない)ので、跨 OS で入力欄を指すときは `#id` を使う。
+   UIKit/SwiftUI は従来どおりクラス判定が先に効き `textField` / `secureTextField` / `textView` に分かれる
+
+   **Android は「見切れた要素の型が変わらない」ことも担保**(2026-08-06)。Compose の役割は
+   同一矩形の無名子ノード(役割マーカー)で表現されるが、**見切れると親とマーカー子は独立に
+   クリップされる**ため、矩形の完全一致を条件にしていると引き上げに失敗し、
+   **同じ Composable が可視状態によって `button` と `clickable` を行き来していた**。実測3形:
+
+   | 見切れ方 | 親 | マーカー子 |
+   |---|---|---|
+   | 右端(`#tag_04`) | `(987,1972)-(1080,2119)` | `(987,1972)-(1038,2119)`(子が狭い) |
+   | 下端(`#btn_scroll_top`) | `(42,378)-(278,441)` | `(42,378)-(278,504)`(**子のほうが大きい**) |
+   | 上端(`#row_07`) | `(42,441)-(1038,559)` | `(42,504)-(1038,559)`(原点が違う) |
+
+   「子は親に内包される」も「原点は動かない」も成り立たない。**成り立つのは辺の共有**
+   (切れていない側は必ず一致する = 3形とも3辺一致・角で切れれば2辺)なので、条件は
+   **2辺以上の一致 + 面積が3倍以内**(`SnapshotBuilder.looksLikeRoleMarker`)。
+   装飾(行の中のアイコン)は0〜1辺しか一致しない —— ここを緩めすぎると**リスト行が `image` になる**
 
    id 露出の作法もフレームワークごとに違う: Compose は `testTagsAsResourceId`(Android のみ・
    ダイアログには再適用が必要)、View 系は `android:id`(**実行時に resource-id を作れないため
@@ -1816,6 +1858,35 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
     背面アプリ照会の 500(kAXErrorServerNotFound)になる。`BridgeRouter.handleLaunch` は
     springboard を**起動せず参照だけ張る**特別扱いを持つので、これで木が読める
     (`MCPServer.springboardHint` / `homeScreenReadNote` が両方の行き止まりで案内する)
+  - **MCP の snapshot は必ずキャッシュを捨てて撮る**(`MCPServer.freshSnapshot`。2026-08-06)。
+    Android の a11y ノードはキャッシュ供給で、**Compose のスクロール後は木が古いまま固まる** ——
+    実測(E2E-CMP / Pixel 9・Android 15)では `ft_swipe` 後の画面が行08〜16 なのに木は行01〜10 のままで、
+    撮り直しても数分待っても直らず、`ft_tap(#row_03)` が **`selected=row_10`** を返した。
+    ブリッジ側の既定(WebView 内だけ `refresh()`)は**シナリオ実行**の実測
+    (全ノードで snapshot +65ms・E2E-Android の sum +43%)に基づくもので、MCP は1手ずつ撃つ経路なので
+    往復のほうが桁で大きく、この上乗せは見えない。**「ジェスチャの後だけ」のフラグ運用にしない**
+    (立て忘れたツールが1つでもあると黙って古い木に戻る)。
+    出るのは **Android の Compose だけ**(RecyclerView と Flutter は同じ手順で再現しない)
+  - **ref は撃つ直前に撮り直して照合する**(`RefGuard` / `MCPServer.verifiedRef`。2026-08-06)。
+    **ref はスナップショットごとに振り直される**ので、覚えた番号のまま撃つと別の要素に当たる。
+    覚えた要素の同一性(identifier → ラベル+型 → 型+frame)で引き直し、
+    **動いていれば新しい ref へ撃ち直す/消えていれば撃たずに理由を返す**。
+    identifier を持つ要素がその identifier で引けないときは**ラベルへ落ちない**(別要素を掴む)。
+    ghost 判定は `StepExecutor.isOutsideContainer` を共有する(MCP 側に別の閾値を置くと
+    DSL と「ghost の定義」が割れる)。**容器の完全に外に居る要素は撃たない** ——
+    Compose iOS は容器の外へ出た行をフルフレームで木に残し、`ios-xcuitest` はそれを座標で叩くので
+    実測では**下部タブへ遷移して "tap done" を返した**(`ios-inapp` は要素起動なので当たる = エンジンで割れる)。
+    一覧からは見分けが付かないので `ft_snapshot` の先頭でも名指しする(`MCPServer.ghostNote`)
+  - **`ft_scroll_to` は DSL と同じ `StepExecutor` に委ねる**(2026-08-06)。整定待ち・キャッシュ回避・
+    容器基準の刻み・ghost の掴み直し・飛び越しの拾い直し・打ち切りは全部あちらに入っており、
+    **同じ知見の2つ目の実装を作ると必ず割れる**。MCP は FlowStep を1つ組んで投げるだけ =
+    MCP で届く要素はシナリオでも届く
+  - **`ft_type(ref:, pressEnter:)` はフォーカスが立つのを待ってから Enter を撃つ**
+    (`MCPServer.awaitFocus`。2026-08-06)。直前に別の欄へ入力していると移動が間に合わず、
+    Enter が**前の欄**へ飛んで黙って何も起きない(Android で観測)。
+    **報告しないフレームワークで待ち続けない**のが要点 —— Compose iOS の a11y 要素は UIResponder では
+    ないので in-app は `focused` を一度も返さない。「木の中に誰も `focused` を名乗らない」を
+    報告しない経路と読んで即座に諦める
   - この追従によって、**マップ系ジェスチャの MCP と実行の食い違いが消えた**(2026-08-04)。
     `profile` 付きなら iOS の Compose でもダブルタップが、Flutter でもピンチが効く。
     `profile` 無しは XCUITest 経路のままなのでこの2つが効かず、応答テキストに切り分けを添える

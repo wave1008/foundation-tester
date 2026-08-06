@@ -666,6 +666,32 @@ ARC 下で out パラメータを受けるには `NSString * __unsafe_unretained
 コンパイルエラー)。**採った事実は実装のコメントに数値・署名ごと残す** —— 次に Xcode が上がった
 とき、何を採り直せばよいかがそこにしか無い。
 
+## ブリッジが「何を見ているか」は使い捨てのプローブ版で採る(2026-08-06)
+
+a11y trait も Compose の役割マーカーもヘッダに無く、**推測で条件を書くと、緑のまま誤検出する**。
+ブリッジは自前ビルドなので、**一時的に生の値を応答へ載せた版を焼いて1回読む**のが最短で確実。
+
+- **Android**: `SnapshotBuilder.makeInfo` の `label` に `className` / `roleClassName` /
+  `isVisibleToUser()` を連結する。**版を上げないと届かない** —— 稼働中の旧ブリッジが再利用されるので
+  `build.sh` の `VERSION_CODE` を**捨て番(90 等)**にして `./build.sh --install`。
+  ホスト(`expectedBridgeVersionCode`)は触らず、**`adb forward --list` で出たポートへ curl して直に読む**
+  (`am instrument -w -e port 8123 … &` で自分で起動し直す)。
+  `if (!node.isVisibleToUser()) return;` を外し `shouldInclude` を無効化すると**落とされた子まで**見える。
+  戻すときは**捨て番から下げられない**(`INSTALL_FAILED_VERSION_DOWNGRADE`)ので、
+  全機 `adb uninstall com.example.ftbridge` してから本番版を入れ直す
+- **iOS(in-app)**: `InAppSnapshot.makeInfo` の `label` に `type(of:)` / `accessibilityTraits.rawValue` /
+  `conforms(to: UITextInput.self)` を載せて `InAppBridge/build.sh`。注入は
+  `SIMCTL_CHILD_DYLD_INSERT_LIBRARIES=<dylib> SIMCTL_CHILD_FT_PORT=<空きポート> xcrun simctl launch <udid> <bundleID>`。
+  **アプリを変えれば同じ dylib でフレームワーク差がそのまま採れる**(Compose / Flutter / UIKit を1周)
+- **採ったら必ず元へ戻してから**本番の条件を書く(プローブ版のまま指紋を貼り替えると
+  `BridgeContractTests` が嘘の期待値で固まる)。バックアップは `git checkout` でなくファイルコピーで取る
+- **採った数値は実装のコメントに残す**(traits の生値・実測した frame)。次に OS が上がったとき、
+  何を採り直せばよいかがそこにしか無い
+
+実例(2026-08-06): テキスト入力 trait が `1<<18` で Compose/Flutter 共通・分岐は `UITextInput` 準拠、
+Compose の役割マーカーは画面端で**親と別の幅にクリップされる**(親 93px / 子 51px)。
+どちらも推測では出せず、条件を1回で確定できた。
+
 ## めったに撃たない経路は、緑を重ねても検証されない(2026-08-02)
 
 「期限切れ直前だけ」「失敗したときだけ」しか通らない経路は、**フル E2E を何周回しても

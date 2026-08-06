@@ -449,10 +449,11 @@ Android: `ftester-androidstream`)経由でほぼリアルタイムに更新す�
 |---|---|
 | `ft_status` / `ft_doctor` | 接続確認 / FM 可用性 |
 | `ft_launch` / `ft_terminate` | アプリ起動・終了 |
-| `ft_snapshot` | 画面要素一覧(set-of-mark 圧縮形式)。**`waitFor` を渡すと出るまでホスト側で待つ**(セレクタ記法は DSL と同じ。既定 5 秒)。**対象アプリが前面に居なければ先頭で警告する**(XCUITest の木はセッションのアプリに閉じているので、別アプリが前面でも同じ木を返してしまう。**iOS 実機では OS が前面状態を正しく申告しないため警告は出ない**)。撮った `#id` は `<プロジェクト>/.ftester/selector-inventory.json` に貯まり、`ft_dry_run` の綴り誤り照合に使われる |
-| `ft_tap` / `ft_type` / `ft_swipe` / `ft_press` | 画面操作(`ft_type` は `pressEnter: true` で入力後に Enter/IME アクションまで撃つ。`text` を省けば Enter だけ = iOS でソフトキーボードを閉じる手段) |
+| `ft_snapshot` | 画面要素一覧(set-of-mark 圧縮形式)。**`waitFor` を渡すと出るまでホスト側で待つ**(セレクタ記法は DSL と同じ。既定 5 秒)。**対象アプリが前面に居なければ先頭で警告する**(XCUITest の木はセッションのアプリに閉じているので、別アプリが前面でも同じ木を返してしまう。**iOS 実機では OS が前面状態を正しく申告しないため警告は出ない**)。**スクロール容器の外に取り残された要素(ghost)も先頭で名指しする** —— 一覧の見た目は普通の行と同じだが、その座標には別のものが描かれている。撮った `#id` は `<プロジェクト>/.ftester/selector-inventory.json` に貯まり、`ft_dry_run` の綴り誤り照合に使われる |
+| `ft_tap` / `ft_type` / `ft_swipe` / `ft_press` | 画面操作(`ft_type` は `pressEnter: true` で入力後に Enter/IME アクションまで撃つ。`text` を省けば Enter だけ)。**ref は撃つ直前に撮り直して照合する** —— 動いていれば今の位置へ撃ち直し、消えた/ghost なら**撃たずに理由を返す**(黙って別の要素を叩かない) |
+| `ft_scroll_to` | セレクタが出るまでスクロールして、**撮り直した一覧を返す**。`ft_swipe` + `ft_snapshot` の繰り返しより確実で、探索そのものは DSL の `scrollTo` と同じ実装(整定・容器基準の刻み・飛び越しの拾い直し)。`scrollFrame` でスクロールする容器を指定できる |
 | `ft_navigate` | 戻る / ホーム / タスク切替(3操作を1ツールに束ねている) |
-| `ft_clear_input` | 入力欄を空にする(`ft_type` は追記なので、置き換えるならまず消す) |
+| `ft_clear_input` | 入力欄を空にする(`ft_type` は追記なので、置き換えるならまず消す)。**パスワード欄は追記できない**(読みが伏せ字なので追記すると伏せ字が本文に入る)ため、Android は 422 で断る = 先にここを通す |
 | `ft_clear_app_data` | アプリのデータと権限を消す(iOS はシミュレータのみ)。**シナリオは `clearAppData()` から始まる**ので、探索も同じ初期状態から行う。アプリは止まるので後で `ft_launch` |
 | `ft_dsl_commands` | **DSL コマンドの索引**(名前と署名)。シナリオを書く前に引いて、存在しないコマンドを書かないようにする。デバイスに触らない |
 | `ft_double_tap` / `ft_pinch` / `ft_drag` | マップ・キャンバス系の操作(ダブルタップ / ズーム / **斜めを含む任意方向のドラッグ**)。iOS は Compose のダブルタップと Flutter のピンチがエンジン依存なので、**`profile` を渡して実行と同じエンジンで試す**(docs/commands.md の表) |
@@ -461,8 +462,8 @@ Android: `ftester-androidstream`)経由でほぼリアルタイムに更新す�
 | `ft_dry_run` | **デバイス不要**の検証(数秒)。セレクタの構文誤り・到達しない scene・アサーション0の expectation・**`ft_snapshot` で撮った画面に実在しない `#id`** をデバイス実行の前に落とす |
 | `ft_list_projects` | テストプロジェクトと実行プロファイルの一覧 |
 
-**実機(iPhone / Android 端末)**: 画面操作系(`ft_tap` / `ft_type` / `ft_swipe` / `ft_press` /
-`ft_double_tap` / `ft_pinch` / `ft_drag` / `ft_navigate` / `ft_snapshot` / `ft_screenshot`)は
+**実機(iPhone / Android 端末)**: 画面操作系(`ft_tap` / `ft_type` / `ft_swipe` / `ft_scroll_to` /
+`ft_press` / `ft_double_tap` / `ft_pinch` / `ft_drag` / `ft_navigate` / `ft_snapshot` / `ft_screenshot`)は
 そのまま使える。**シミュレータ/エミュレータ専用の操作は自動で振り分ける**:
 `ft_install` は iOS 実機なら `devicectl`(シミュレータは `simctl`)、`ft_clear_app_data` は
 iOS 実機では 501 で断る(devicectl に同等手段が無い。Android は実機でも `pm clear` が効く)。
