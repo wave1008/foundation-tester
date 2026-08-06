@@ -111,7 +111,12 @@ public enum BridgeAPI {
     /// (Android は空で返す = 経路で割れていた)。(b) が無いと UIKit の Switch・UIAlertController の
     /// ボタン・キーボードの Dictate が2つずつ出て、`.button[n]` の序数が見え方とずれる。
     /// **旧ランナーが再利用されるとどちらも直らないまま緑になる**
-    public static let bridgeProtocolVersion = 53
+    /// 54: XCUITest ランナー・in-app の GET /snapshot が上限超過時の間引きを**先着順から
+    /// 優先度順(BridgeSnapshotThinning)へ変えた**(2026-08-07)。同一 identifier を20件以上
+    /// 持つ非スクロール・非操作の装飾群(地図ピン等)を最初に捨てるようになり、詳細シートの
+    /// 中身のような本物のコンテンツが残るようになった。旧ランナー/dylib は先着順のままなので、
+    /// 再利用されると枠を装飾に食われた画面で waitFor/scrollTo が見えない要素を探し続ける
+    public static let bridgeProtocolVersion = 54
 
     /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
     /// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java の
@@ -123,6 +128,98 @@ public enum BridgeAPI {
     public static func resolvedBridgeTTLSeconds(_ raw: String?) -> Int {
         guard let raw, let value = Int(raw), value >= 0 else { return bridgeTTLSecondsDefault }
         return value
+    }
+}
+
+/// GET /snapshot が maxSnapshotElements を超えたときに何を先に捨てるかの判定。
+/// **in-app dylib と XCUITest ランナーの共通実装**(BridgeSourceSet 参照。両方コンパイルする)。
+/// Android は Java で書けないため `AndroidRunner/.../SnapshotBuilder.java` の `priorityTier` に
+/// 個別実装している —— **こちらを正とする。tier0〜2 を変えたら Java 側も直すこと**。
+/// **tier3(bulk)は iOS だけ**: コーパス14本の実測で Android は1画面も発火しなかった
+/// (Google マップを含む)ため移植していない。Android で bulk 群が出る画面を見つけたら、
+/// ここを写して VERSION_CODE を上げる。
+///
+/// tier0(操作可能 or scrollable な容器) → tier1(ラベル/identifier を持つ) →
+/// tier2(それ以外) → tier3(bulk。**新設**)の順に、tier3 から全部捨ててもまだ超過するなら
+/// tier2、それでも超過するなら tier1 → tier0 と捨てる。同一 tier 内は preorder の後ろから捨てる
+/// (先頭寄りの要素を優先して残す)。
+///
+/// bulk tier の根拠(コーパス14本・iOS/Android・2種の地図アプリ・4 SUT で確認):
+/// 装飾ピン(同一 identifier ×90・scrollable な祖先なし・非操作)は地図画面の枠の大半を占めて
+/// 本物のコンテンツ(リスト・詳細シート)を押し出す。**scrollable な祖先を持つ同一 identifier の
+/// 群(長いリスト)は bulk にしない** —— 装飾90 対 正当な非スクロール群5(実測)の間に
+/// 十分な余裕があるので閾値20で見分けられる。
+public enum BridgeSnapshotThinning {
+
+    /// 同一 identifier の出現数がこの数以上なら bulk tier の対象候補
+    public static let bulkGroupMinimum = 20
+
+    /// 操作可能とみなす正規化型名(ElementInfo.normalizedType 後の綴り = ElementInfo.init が
+    /// 自動で適用するので、makeInfo が返す ElementInfo.type は既にこの形)。bulk tier からは
+    /// 常に除外する
+    public static let operableTypes: Set<String> = [
+        "button", "cell", "textField", "secureTextField", "searchField", "switch",
+        "checkBox", "link", "slider", "tab", "menuItem", "clickable", "textView",
+    ]
+
+    /// 間引き判定に要る、ElementInfo だけでは分からない情報。呼び出し側が生のツリー走査で作る
+    public struct Candidate {
+        public var info: ElementInfo
+        /// scrollable な祖先(自分自身は含まない)を持つか。**必ず生のツリーの再帰で判定すること**
+        /// —— スクロール容器はフィルタで snapshot に載らないのが普通(identifier が空だと
+        /// isEligible/shouldInclude で落ちる)。emit 済みの配列から親を辿ると、容器が抜けた列で
+        /// 正当なリストを bulk と誤判定する
+        public var insideScrollable: Bool
+
+        public init(info: ElementInfo, insideScrollable: Bool) {
+            self.info = info
+            self.insideScrollable = insideScrollable
+        }
+    }
+
+    /// 超過時に残す候補の添字を、元の配列と同じ順序(preorder)で返す。max 以下ならそのまま全添字。
+    /// **並べ替えない**: RefGuard.lineage が preorder+depth からツリーを復元し、ref の大小を
+    /// z-order の代理に使う
+    public static func indicesToKeep(_ candidates: [Candidate], max: Int) -> [Int] {
+        let n = candidates.count
+        guard n > max else { return Array(candidates.indices) }
+
+        var identifierCounts: [String: Int] = [:]
+        for candidate in candidates {
+            guard let id = candidate.info.identifier, !id.isEmpty else { continue }
+            identifierCounts[id, default: 0] += 1
+        }
+
+        var keep = [Bool](repeating: true, count: n)
+        var remaining = n
+        for currentTier in stride(from: 3, through: 0, by: -1) {
+            guard remaining > max else { break }
+            for index in stride(from: n - 1, through: 0, by: -1) {
+                guard remaining > max else { break }
+                guard keep[index], tier(candidates[index], identifierCounts: identifierCounts) == currentTier
+                else { continue }
+                keep[index] = false
+                remaining -= 1
+            }
+        }
+        return (0..<n).filter { keep[$0] }
+    }
+
+    /// 0(高優先・最後まで残す) … 3(bulk・最初に捨てる)
+    static func tier(_ candidate: Candidate, identifierCounts: [String: Int]) -> Int {
+        if isBulk(candidate, identifierCounts: identifierCounts) { return 3 }
+        if operableTypes.contains(candidate.info.type) || candidate.info.scrollable == true { return 0 }
+        let hasText = !(candidate.info.label ?? "").isEmpty || !(candidate.info.identifier ?? "").isEmpty
+        return hasText ? 1 : 2
+    }
+
+    /// bulk 判定の3条件(すべて満たすときだけ true): 同一 identifier の群が bulkGroupMinimum 以上・
+    /// scrollable な祖先を持たない・操作可能な型でない
+    private static func isBulk(_ candidate: Candidate, identifierCounts: [String: Int]) -> Bool {
+        guard !candidate.insideScrollable else { return false }
+        guard let id = candidate.info.identifier, let count = identifierCounts[id],
+              count >= bulkGroupMinimum else { return false }
+        return !operableTypes.contains(candidate.info.type)
     }
 }
 

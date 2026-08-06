@@ -18,28 +18,58 @@ enum InAppSnapshot {
         var truncated: Int
     }
 
+    /// 1パス目(collect)で拾った要素。ref はまだ未採番(0)。insideScrollable は間引き判定に要り、
+    /// **生のツリーでしか分からない**(BridgeSnapshotThinning.Candidate 参照)
+    private struct Gathered {
+        var info: ElementInfo
+        var frame: CGRect
+        var node: NSObject
+        var insideScrollable: Bool
+    }
+
+    /// **2パス**: 集めるときは上限で打ち切らず、超過したときだけ優先度順に間引いて ref を振る
+    /// (規則と根拠は BridgeSnapshotThinning。XCUITest 版 BridgeRouter.collect と同じ形)
     static func capture(window: UIWindow) -> Result {
         let screen = window.bounds
-        var elements: [ElementInfo] = []
-        var frames: [Int: CGRect] = [:]
-        var nodes: [Int: NSObject] = [:]
-        var truncated = 0
         // 同じオブジェクトが2経路から届くことがある(Compose iOS の interop は WKWebView を
         // accessibilityElements と subviews の両方から見せ、同じ WebView が2度出た。2026-07-29 実測)。
         // 重複すると同じラベルが並んでセレクタが曖昧になり、DOM も2回読むことになる
         var visited = Set<ObjectIdentifier>()
+        var gathered: [Gathered] = []
         collect(window, depth: 0, screen: screen, visited: &visited,
-                elements: &elements, frames: &frames, nodes: &nodes, truncated: &truncated)
+                insideScrollable: false, gathered: &gathered)
+
+        let keptIndices: [Int]
+        if gathered.count <= BridgeAPI.maxSnapshotElements {
+            keptIndices = Array(gathered.indices)
+        } else {
+            let candidates = gathered.map {
+                BridgeSnapshotThinning.Candidate(info: $0.info, insideScrollable: $0.insideScrollable)
+            }
+            keptIndices = BridgeSnapshotThinning.indicesToKeep(candidates, max: BridgeAPI.maxSnapshotElements)
+        }
+
+        var elements: [ElementInfo] = []
+        var frames: [Int: CGRect] = [:]
+        var nodes: [Int: NSObject] = [:]
+        for index in keptIndices {
+            let ref = elements.count + 1
+            var info = gathered[index].info
+            info.ref = ref
+            frames[ref] = gathered[index].frame
+            nodes[ref] = gathered[index].node
+            elements.append(info)
+        }
         return Result(
             screen: FTRect(x: screen.origin.x, y: screen.origin.y,
                            width: screen.width, height: screen.height),
-            elements: elements, frames: frames, nodes: nodes, truncated: truncated)
+            elements: elements, frames: frames, nodes: nodes,
+            truncated: gathered.count - keptIndices.count)
     }
 
     private static func collect(_ node: NSObject, depth: Int, screen: CGRect,
                                 visited: inout Set<ObjectIdentifier>,
-                                elements: inout [ElementInfo], frames: inout [Int: CGRect],
-                                nodes: inout [Int: NSObject], truncated: inout Int) {
+                                insideScrollable: Bool, gathered: inout [Gathered]) {
         guard visited.insert(ObjectIdentifier(node)).inserted else { return }
         // 非表示サブツリーは丸ごと除外
         if let view = node as? UIView, view.isHidden || view.alpha < 0.01
@@ -52,14 +82,9 @@ enum InAppSnapshot {
         if type == .keyboardKey { return }
 
         if let info = shouldInclude(node, type: type, screen: screen) {
-            if elements.count < BridgeAPI.maxSnapshotElements {
-                let ref = elements.count + 1
-                frames[ref] = info.frame
-                nodes[ref] = node
-                elements.append(makeInfo(node, type: type, ref: ref, depth: depth, frame: info.frame))
-            } else {
-                truncated += 1
-            }
+            gathered.append(Gathered(
+                info: makeInfo(node, type: type, ref: 0, depth: depth, frame: info.frame),
+                frame: info.frame, node: node, insideScrollable: insideScrollable))
         }
 
         // WKWebView の内部(WKScrollView/WKContentView)は AX を別プロセスが持つため走査しても
@@ -70,9 +95,12 @@ enum InAppSnapshot {
         // それ以外は accessibilityElements(あれば)を、無ければ subviews を辿る。
         if let view = node as? UIView, view.isAccessibilityElement { return }
         let children = axChildren(node)
+        // makeInfo の scrollable と同じ判定(UIScrollView だけ)。Compose/Flutter は自前描画で
+        // UIScrollView を持たないため、あちらのリストは insideScrollable が立たない
+        let isScrollContainer = node is UIScrollView
         for child in children {
             collect(child, depth: depth + 1, screen: screen, visited: &visited,
-                    elements: &elements, frames: &frames, nodes: &nodes, truncated: &truncated)
+                    insideScrollable: insideScrollable || isScrollContainer, gathered: &gathered)
         }
     }
 

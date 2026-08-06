@@ -724,11 +724,66 @@ final class BridgeRouter {
 
     // MARK: - スナップショット収集・フィルタ
 
+    /// 1パス目(gather)で拾った要素。ref はまだ未採番(0)・間引き判定に要る insideScrollable を
+    /// 添えて持つ(BridgeSnapshotThinning.Candidate の入力)
+    private struct Gathered {
+        var info: ElementInfo
+        var frame: CGRect
+        var insideScrollable: Bool
+    }
+
+    /// **2パス化**: 1パス目(gather)は上限で打ち切らずに全件 preorder で集め、2パス目で
+    /// dedupe → 間引き(超過時のみ)→ ref 採番を行う。
+    /// **順序が要る**: SnapshotDedupe.isRedundant は「既に出したもの」基準なので、間引きより
+    /// 先に全件へ通す(先に間引くと、落とした要素を基準にしていた冗長判定が変わる)。
     private func collect(_ node: XCUIElementSnapshot, depth: Int, screen: CGRect,
                          elements: inout [ElementInfo], frames: inout [Int: CGRect],
                          truncated: inout Int, sawKeyboard: inout Bool,
                          offscreenHints: inout [ElementInfo],
                          insideWebView: Bool = false) {
+        var gathered: [Gathered] = []
+        gather(node, depth: depth, screen: screen, insideWebView: insideWebView,
+               insideScrollable: false, gathered: &gathered,
+               sawKeyboard: &sawKeyboard, offscreenHints: &offscreenHints)
+
+        // isRedundant は [ElementInfo] を取るので**同じ列を2本持つ**。`deduped.map(\.info)` を
+        // 毎回作ると、全件走査になった分そのまま要素ごとの配列確保になる(木が大きいほど効く)
+        var deduped: [Gathered] = []
+        var dedupedInfos: [ElementInfo] = []
+        deduped.reserveCapacity(gathered.count)
+        dedupedInfos.reserveCapacity(gathered.count)
+        for item in gathered where !SnapshotDedupe.isRedundant(item.info, alreadyEmitted: dedupedInfos) {
+            deduped.append(item)
+            dedupedInfos.append(item.info)
+        }
+
+        let keptIndices: [Int]
+        if deduped.count <= BridgeAPI.maxSnapshotElements {
+            keptIndices = Array(deduped.indices)
+        } else {
+            let candidates = deduped.map {
+                BridgeSnapshotThinning.Candidate(info: $0.info, insideScrollable: $0.insideScrollable)
+            }
+            keptIndices = BridgeSnapshotThinning.indicesToKeep(candidates, max: BridgeAPI.maxSnapshotElements)
+        }
+        truncated += deduped.count - keptIndices.count
+
+        for index in keptIndices {
+            let ref = elements.count + 1
+            var info = deduped[index].info
+            info.ref = ref
+            frames[ref] = deduped[index].frame
+            elements.append(info)
+        }
+    }
+
+    /// preorder 走査。不可視ノードはサブツリーごと除外。**上限で打ち切らない**(collect の2パス目が
+    /// dedupe・間引きをまとめて行う)。insideScrollable は `scrollableTypes` な祖先を持つかを
+    /// 再帰で運ぶ(BridgeSnapshotThinning の bulk 判定用。**生のツリーでしか分からない**)
+    private func gather(_ node: XCUIElementSnapshot, depth: Int, screen: CGRect,
+                        insideWebView: Bool, insideScrollable: Bool,
+                        gathered: inout [Gathered], sawKeyboard: inout Bool,
+                        offscreenHints: inout [ElementInfo]) {
         // キーボードはキー1つ1つが Button として大量に写り込むため、サブツリーごと除外
         // (4Kトークン対策。入力は /type がキーイベント合成で行うので情報として不要)。
         // 除外前に検知だけ記録する(SnapshotResponse.keyboardShown)
@@ -739,35 +794,27 @@ final class BridgeRouter {
         let isWebView = node.elementType == .webView
         if isWebView && insideWebView {
             for child in node.children {
-                collect(child, depth: depth, screen: screen,
-                        elements: &elements, frames: &frames, truncated: &truncated,
-                        sawKeyboard: &sawKeyboard, offscreenHints: &offscreenHints, insideWebView: true)
+                gather(child, depth: depth, screen: screen, insideWebView: true,
+                       insideScrollable: insideScrollable, gathered: &gathered,
+                       sawKeyboard: &sawKeyboard, offscreenHints: &offscreenHints)
             }
             return
         }
         if shouldInclude(node, screen: screen) {
-            if elements.count < BridgeAPI.maxSnapshotElements {
-                let ref = elements.count + 1
-                let info = makeInfo(node, ref: ref, depth: depth)
-                // **同じ物を2度並べない**(規則と理由は FTCore/SnapshotDedupe.swift)。
-                // 落とすときは ref を進めない = 番号は詰まったまま連番になる
-                if !SnapshotDedupe.isRedundant(info, alreadyEmitted: elements) {
-                    frames[ref] = node.frame
-                    elements.append(info)
-                }
-            } else {
-                truncated += 1
-            }
+            let info = makeInfo(node, ref: 0, depth: depth)
+            gathered.append(Gathered(info: info, frame: node.frame, insideScrollable: insideScrollable))
         } else if insideWebView, offscreenHints.count < BridgeAPI.maxSnapshotElements,
                   isOffscreenHintCandidate(node, screen: screen) {
-            // ref 0(座標表に入れない・タップ対象にしない)。Captured.offscreen 参照
+            // ref 0(座標表に入れない・タップ対象にしない)。Captured.offscreen 参照。
+            // **この別枠上限は間引きと無関係**(hint は elements に混ざらない)
             offscreenHints.append(makeInfo(node, ref: 0, depth: depth))
         }
+        let isScrollableContainer = Self.scrollableTypes.contains(node.elementType)
         for child in node.children {
-            collect(child, depth: depth + 1, screen: screen,
-                    elements: &elements, frames: &frames, truncated: &truncated,
-                    sawKeyboard: &sawKeyboard, offscreenHints: &offscreenHints,
-                    insideWebView: insideWebView || isWebView)
+            gather(child, depth: depth + 1, screen: screen,
+                   insideWebView: insideWebView || isWebView,
+                   insideScrollable: insideScrollable || isScrollableContainer,
+                   gathered: &gathered, sawKeyboard: &sawKeyboard, offscreenHints: &offscreenHints)
         }
     }
 
