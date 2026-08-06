@@ -50,6 +50,8 @@ final class SnapshotBuilder {
         boolean clickable;
         boolean checkable;
         boolean checked;
+        /** タブ・選択行の選択状態(isChecked とは別軸。checked へ OR して出す。collect 参照) */
+        boolean selected;
         /** clearInput 事後検証用(BridgeDTO.ElementInfo.focused 参照) */
         boolean focused;
         /** スクロールできる容器か(BridgeDTO.ElementInfo.scrollable 参照) */
@@ -148,16 +150,18 @@ final class SnapshotBuilder {
         // swipe が画面上部の狭い帯を払うことになる
         Rect screen = displayBounds(window);
 
+        List<UINode> included = new ArrayList<>();
+        for (UINode node : nodes) {
+            if (shouldInclude(node, window)) included.add(node);
+        }
+        List<UINode> kept = included.size() <= MAX_ELEMENTS
+                ? included : selectByPriority(included, MAX_ELEMENTS);
+        int truncated = included.size() - kept.size();
+
         JSONArray elements = new JSONArray();
         Map<Integer, double[]> centers = new HashMap<>();
         Map<Integer, String> ids = new HashMap<>();
-        int truncated = 0;
-        for (UINode node : nodes) {
-            if (!shouldInclude(node, window)) continue;
-            if (elements.length() >= MAX_ELEMENTS) {
-                truncated++;
-                continue;
-            }
+        for (UINode node : kept) {
             int ref = elements.length() + 1;
             centers.put(ref, new double[]{node.bounds.exactCenterX(), node.bounds.exactCenterY()});
             String shortId = shortResourceId(node.resourceID);
@@ -225,6 +229,7 @@ final class SnapshotBuilder {
         n.clickable = node.isClickable();
         n.checkable = node.isCheckable();
         n.checked = node.isChecked();
+        n.selected = node.isSelected();
         n.focused = node.isFocused();
         n.scrollable = node.isScrollable();
         n.enabled = node.isEnabled();
@@ -333,6 +338,44 @@ final class SnapshotBuilder {
                 || className.endsWith("Layout") || className.isEmpty();
     }
 
+    /**
+     * MAX_ELEMENTS 超過時に優先度の低いノードから間引く。**preorder 順は維持する**
+     * (RefGuard.lineage が preorder+depth からツリーを復元し、ref の大小を z-order の
+     * 代理に使うため。並べ替え厳禁)。
+     * tier0(clickable/checkable/scrollable/編集可能なテキスト欄) → tier1(非空白の
+     * text/contentDesc か resourceID を持つ) → tier2(それ以外)の順に、**tier2 から**
+     * 全部捨ててもまだ超過するなら tier1、それでも超過するなら tier0 を捨てる。
+     * 同一 tier 内では preorder の後ろから捨てる(先頭寄りの要素を優先して残す)。
+     */
+    private static List<UINode> selectByPriority(List<UINode> included, int max) {
+        int n = included.size();
+        boolean[] keep = new boolean[n];
+        java.util.Arrays.fill(keep, true);
+        int remaining = n;
+        for (int tier = 2; tier >= 0 && remaining > max; tier--) {
+            for (int i = n - 1; i >= 0 && remaining > max; i--) {
+                if (!keep[i] || priorityTier(included.get(i)) != tier) continue;
+                keep[i] = false;
+                remaining--;
+            }
+        }
+        List<UINode> kept = new ArrayList<>(Math.min(max, n));
+        for (int i = 0; i < n; i++) {
+            if (keep[i]) kept.add(included.get(i));
+        }
+        return kept;
+    }
+
+    /** 0=高優先(残す) .. 2=低優先(先に捨てる)。tier0/1 の条件は shouldInclude と別軸 */
+    private static int priorityTier(UINode node) {
+        if (node.clickable || node.checkable || node.scrollable) return 0;
+        String type = mappedType(node);
+        if (type.equals("TextField") || type.equals("SecureTextField")) return 0;
+        boolean hasText = !node.text.trim().isEmpty() || !node.contentDesc.trim().isEmpty();
+        if (hasText || !node.resourceID.isEmpty()) return 1;
+        return 2;
+    }
+
     // MARK: - フィルタと変換(AndroidDriver.shouldInclude / makeInfo / mappedType の移植)
 
     private static boolean shouldInclude(UINode node, Rect screen) {
@@ -409,8 +452,11 @@ final class SnapshotBuilder {
         if (value != null) info.put("value", value);
         if (isInput && !node.hint.isEmpty()) info.put("placeholder", node.hint);
         info.put("enabled", node.enabled);
-        // checked は true のときだけ送る(iOS の isSelected と同じ意味・同じ省略規約)
-        if (node.checked) info.put("checked", true);
+        // checked は true のときだけ送る(iOS の isSelected と同じ意味・同じ省略規約)。
+        // Android は isChecked と isSelected の両方を OR で流し込む —— タブ・選択行は
+        // isChecked を立てず isSelected だけで選択状態を出す widget がある(実測: Google マップ
+        // 下部ナビ)。isChecked/isSelected どちらが立っても checkIsON の意味は同じ「選択中」
+        if (node.checked || node.selected) info.put("checked", true);
         // focused も同じ省略規約(clearInput 事後検証用。BridgeDTO.ElementInfo.focused 参照)
         if (node.focused) info.put("focused", true);
         // scrollable も同じ省略規約(scrollFrame の空振り検出用)
