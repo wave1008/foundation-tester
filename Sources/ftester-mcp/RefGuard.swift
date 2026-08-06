@@ -63,10 +63,25 @@ enum RefGuard {
         let cy = element.frame.y + element.frame.height / 2
         let excluded = lineage(of: element, in: elements)
         return elements.first { other in
-            !excluded.contains(other.ref)
-                && other.frame.x <= cx && cx <= other.frame.x + other.frame.width
-                && other.frame.y <= cy && cy <= other.frame.y + other.frame.height
+            guard !excluded.contains(other.ref),
+                  other.frame.x <= cx, cx <= other.frame.x + other.frame.width,
+                  other.frame.y <= cy, cy <= other.frame.y + other.frame.height
+            else { return false }
+            // **自分を丸ごと包む相手は遮蔽ではなく容器**(2026-08-06 の外部フィードバック)。
+            // 設定アプリの検索を開いた状態で「閉じる」ボタンが弾かれた —— 覆っていたのは
+            // `#AdditionalDimmingOverlay` や全画面の toolbar/collectionView で、
+            // どれも矩形としては中心を含むが、実際にはボタンより後ろに描かれている。
+            // 実測: 閉じる (351,485 38x38) を包む相手は Toolbar (0,0 402x874) 等だけ。
+            // 本物の遮蔽(残像 #row_11 に重なる下部タブ)は**一部しか重ならない**
+            return !contains(other.frame, element.frame)
         }
+    }
+
+    /// outer が inner を完全に含むか(縁の丸め差 1pt は許容)
+    static func contains(_ outer: FTRect, _ inner: FTRect) -> Bool {
+        outer.x <= inner.x + 1 && outer.y <= inner.y + 1
+            && outer.x + outer.width >= inner.x + inner.width - 1
+            && outer.y + outer.height >= inner.y + inner.height - 1
     }
 
     /// 自分・祖先・子孫の ref(preorder + depth から復元する)
