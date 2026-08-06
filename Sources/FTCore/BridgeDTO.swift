@@ -105,7 +105,13 @@ public enum BridgeAPI {
     /// 間隔と指の距離を自分で決められるので、XCTest では成立しない組み合わせ(Compose の
     /// ダブルタップ)が通る。旧 dylib はルートを持たず 404 → ホストが XCUITest へ回すため、
     /// **入れ替えないと直った経路が使われないまま**になる
-    public static let bridgeProtocolVersion = 52
+    /// 53: XCUITest ランナーの GET /snapshot が(a)**placeholder がそのまま来る value を空に正規化**し、
+    /// (b)**同じ型・同じ位置で情報を足さない重複ノードを1つに畳む**ようになった(2026-08-06)。
+    /// (a) が無いと iOS の WebView 入力欄だけ `value="<placeholder>"` になり `valueIs("")` が通らない
+    /// (Android は空で返す = 経路で割れていた)。(b) が無いと UIKit の Switch・UIAlertController の
+    /// ボタン・キーボードの Dictate が2つずつ出て、`.button[n]` の序数が見え方とずれる。
+    /// **旧ランナーが再利用されるとどちらも直らないまま緑になる**
+    public static let bridgeProtocolVersion = 53
 
     /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
     /// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java の

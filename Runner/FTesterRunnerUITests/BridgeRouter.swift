@@ -748,8 +748,13 @@ final class BridgeRouter {
         if shouldInclude(node, screen: screen) {
             if elements.count < BridgeAPI.maxSnapshotElements {
                 let ref = elements.count + 1
-                frames[ref] = node.frame
-                elements.append(makeInfo(node, ref: ref, depth: depth))
+                let info = makeInfo(node, ref: ref, depth: depth)
+                // **同じ物を2度並べない**(規則と理由は FTCore/SnapshotDedupe.swift)。
+                // 落とすときは ref を進めない = 番号は詰まったまま連番になる
+                if !SnapshotDedupe.isRedundant(info, alreadyEmitted: elements) {
+                    frames[ref] = node.frame
+                    elements.append(info)
+                }
             } else {
                 truncated += 1
             }
@@ -849,7 +854,15 @@ final class BridgeRouter {
     private func valueString(_ node: XCUIElementSnapshot) -> String? {
         guard let value = node.value else { return nil }
         let string = (value as? String) ?? String(describing: value)
-        return string.isEmpty ? nil : string
+        guard !string.isEmpty else { return nil }
+        // **placeholder がそのまま value で来る欄は「空」**。WebKit は空の `<input>` の
+        // AXValue に placeholder を入れて返すので(UIKit の入力欄は入れない)、正規化しないと
+        // iOS の WebView だけ `value="WebView 入力"` になり `valueIs("")` が通らない。
+        // Android のブリッジは同じ欄を empty で返す = ここが揃っていなかった
+        // (2026-08-06 に E2E-iOS / E2E-CMP の WebView 画面で実測)。
+        // 判定は clearInput の `remainingText` と同じ規則(同じ知見の2つ目の定義を作らない)
+        if let placeholder = node.placeholderValue, string == placeholder { return nil }
+        return string
     }
 
     static func typeName(_ type: XCUIElement.ElementType) -> String {
