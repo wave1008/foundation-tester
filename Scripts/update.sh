@@ -44,6 +44,9 @@ What it does: re-runs install.sh (git pull → swift build → extension → .mc
 EOF
 }
 
+# 再 exec(install.sh の pull で自分が新しくなったとき)で渡し直すため、パース前に控える
+ORIGINAL_ARGS=("$@")
+
 while [ $# -gt 0 ]; do
   case "$1" in
     --work-dir) WORK_DIR="${2:?--work-dir requires a value}"; shift 2 ;;
@@ -88,7 +91,10 @@ fi
 # 再パッケージ 4s。M2 Ultra 実測)。1秒で済む判定を先に置く。
 # **up-to-date のときだけ止める** ―― pinned/unknown(版固定・オフライン)は判定できないだけなので
 # 従来どおり進む。取りこぼしを疑うとき(前回が途中で失敗した等)は --force
-if [ "$FORCE" = "0" ] && [ "$ALLOW_PULL" = "1" ] && [ -f "$TOOL_ROOT/Scripts/update-check.sh" ]; then
+# **再 exec された2周目はこの判定を通さない** —— 直前に pull しているので必ず up-to-date になり、
+# ここで抜けると project sync とプラグイン更新(= update 固有の工程)が丸ごと飛ぶ
+if [ "${FT_UPDATE_REEXEC:-0}" != "1" ] \
+   && [ "$FORCE" = "0" ] && [ "$ALLOW_PULL" = "1" ] && [ -f "$TOOL_ROOT/Scripts/update-check.sh" ]; then
   check_out="$(bash "$TOOL_ROOT/Scripts/update-check.sh" --tool-root "$TOOL_ROOT" 2>/dev/null || true)"
   case "$check_out" in
     *"verdict=up-to-date"*)
@@ -103,12 +109,29 @@ fi
 echo "==> Re-running install.sh (pull → build → extension → .mcp.json → verification)"
 # --no-doctor が既定: 結果表に Apple Intelligence の warn 行が出るので情報が重複し、8秒かかる
 [ "$DO_DOCTOR" = "1" ] || PASS_THROUGH+=(--no-doctor)
+HEAD_BEFORE_INSTALL="$(git -C "$TOOL_ROOT" rev-parse HEAD 2>/dev/null || echo none)"
 bash "$TOOL_ROOT/Scripts/install.sh" --work-dir "$WORK_DIR" --skip-project --no-next-steps \
   "${PASS_THROUGH[@]+"${PASS_THROUGH[@]}"}"
 INSTALL_STATUS=$?
 if [ "$INSTALL_STATUS" = "1" ]; then
   echo "❌ Update aborted (fix the [fail] above, then re-run)" >&2
   exit 1
+fi
+
+# ---- 2.5 pull で自分自身が新しくなったら、新版でやり直す --------------------------
+# install.sh 側と同じ理由(**bash は実行中にファイルが差し替わっても古い内容を最後まで実行する**)。
+# install.sh は自前で再 exec するようになったが、**この update.sh のロジック変更は依然1版遅れる**。
+# 「委譲が中心だから影響は小さい」と一度は残したが、直後に利用者向けの修正(project sync を
+# 外部構成でも走らせる)がこのファイルへ入り、**受け手は2回更新しないと直らない**状態になった
+# (2026-08-06 の外部フィードバックで判明)。ここも塞ぐ。
+# 2周目の install.sh は全ステップ skip で数秒。**up-to-date の早期終了は FT_UPDATE_REEXEC で回避済み**。
+if [ "${FT_UPDATE_REEXEC:-0}" != "1" ] && [ -f "$0" ] \
+   && [ "$HEAD_BEFORE_INSTALL" != "$(git -C "$TOOL_ROOT" rev-parse HEAD 2>/dev/null || echo none)" ] \
+   && [ "$(cd "$(dirname "$0")" 2>/dev/null && pwd)/$(basename "$0")" = "$TOOL_ROOT/Scripts/update.sh" ]; then
+  echo ""
+  echo "==> The clone moved to a new revision — restarting with the updated update.sh"
+  export FT_UPDATE_REEXEC=1
+  exec bash "$0" "${ORIGINAL_ARGS[@]+"${ORIGINAL_ARGS[@]}"}"
 fi
 
 # ---- 3. 受け手側の反映(project sync) ------------------------------------------
