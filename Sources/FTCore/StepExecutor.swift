@@ -600,6 +600,9 @@ public final class StepExecutor {
         var stoppedUnmoving: Bool = false
         /// 端まで来ても見つからず、**逆向きの細刻みで拾い直した**回数(0 か 1。注記に載せる)
         var reverseSweeps: Int = 0
+        /// 拾い直しに使った容器を**そのまま書けるセレクタ**にしたもの(nil = 名指しできない)。
+        /// 注記で `scrollFrame:` を勧めるときに実物の名前を出すために持つ
+        var suggestedScrollFrame: String?
     }
 
     /// スクロール探索の注記(XCUITest フォールバック / ヒント跳躍)。無ければ nil
@@ -612,8 +615,12 @@ public final class StepExecutor {
         // **黙って拾い直さない**: 順方向で飛び越したことは利用者の書き方(scrollFrame 未指定)に
         // 由来するので、逆走査で救えたことを見せて `scrollFrame` を書く判断材料にする
         if result.reverseSweeps > 0 {
+            // **具体名まで出す**: 総称の「scrollFrame を書け」だけだと、読み手は容器の名前を
+            // 探すためにスナップショットを撮り直すことになる(困った瞬間に答えを渡す)
+            let how = result.suggestedScrollFrame.map { "specify scrollFrame: \($0)" }
+                ?? "specify scrollFrame:"
             parts.append("found by sweeping back after overshooting it"
-                + " (specify scrollFrame: to step within the container instead)")
+                + " (\(how) to step within the container instead)")
         }
         if let scrollFrameNote { parts.append(scrollFrameNote) }
         return parts.isEmpty ? nil : parts.joined(separator: " / ")
@@ -943,6 +950,11 @@ public final class StepExecutor {
                             result.found = true
                             result.fallback = recovered
                             result.reverseSweeps += 1
+                            // 推測した容器に**申告済みの容器**が重なっていればその名前を出す。
+                            // 重ならなければ nil のまま = 注記は総称に留める(推測した矩形を
+                            // 座標で名乗っても `scrollFrame:` には書けない)
+                            result.suggestedScrollFrame = ScrollFrameCandidates.selector(
+                                matching: container, in: snapshot)
                         }
                         return result
                     }

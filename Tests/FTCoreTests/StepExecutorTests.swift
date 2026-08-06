@@ -2474,4 +2474,22 @@ final class StepExecutorTests: XCTestCase {
                                                       hintJumps: 0)
         XCTAssertNil(StepExecutor.scrollSearchNote(settled))
     }
+
+    /// 飛び越しの拾い直しは**指定すべき容器の名前まで**返す。総称のままだと、読み手は
+    /// 名前を探すためにスナップショットを撮り直すことになる
+    func testScrollSearchNoteNamesTheContainerToSpecify() {
+        var named = StepExecutor.ScrollSearchResult(found: true, fallback: nil, viaXCUITest: false,
+                                                    hintJumps: 0)
+        named.reverseSweeps = 1
+        named.suggestedScrollFrame = "#list_rows"
+        XCTAssertEqual(StepExecutor.scrollSearchNote(named),
+                       "found by sweeping back after overshooting it"
+                       + " (specify scrollFrame: #list_rows to step within the container instead)")
+        // 名指しできない容器(id もラベルも無い)では総称のまま = 存在しない名前を勧めない
+        var unnamed = named
+        unnamed.suggestedScrollFrame = nil
+        XCTAssertEqual(StepExecutor.scrollSearchNote(unnamed),
+                       "found by sweeping back after overshooting it"
+                       + " (specify scrollFrame: to step within the container instead)")
+    }
 }

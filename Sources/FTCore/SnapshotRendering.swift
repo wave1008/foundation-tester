@@ -47,6 +47,11 @@ public enum SnapshotRenderer {
         if !e.enabled {
             parts.append("disabled")
         }
+        // `scrollFrame:` に指定できる容器の印。**true のときだけ**出す(申告できないエンジンが
+        // あるので「印が無い = スクロールしない」ではない。ElementInfo.scrollable 参照)
+        if e.scrollable == true {
+            parts.append("scroll")
+        }
         let f = e.frame
         parts.append("(\(Int(f.x)),\(Int(f.y)) \(Int(f.width))x\(Int(f.height)))")
         return parts.joined(separator: " ")

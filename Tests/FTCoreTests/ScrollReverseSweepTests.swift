@@ -21,6 +21,8 @@ private final class JumpScreenDriver: AppDriver {
 
     private(set) var offset: Double = 0
     private(set) var swipes = 0
+    /// 容器が `scrollable` を申告するか(申告できないエンジンを再現するため既定は false)
+    var declaresScrollable = false
 
     func status() async throws -> StatusResponse {
         StatusResponse(ready: true, device: "fake", osVersion: "-", sessionBundleID: nil)
@@ -60,7 +62,8 @@ private final class JumpScreenDriver: AppDriver {
         let container = FTRect(x: 16, y: Self.containerY, width: 370, height: Self.containerHeight)
         var elements = [
             ElementInfo(ref: 1, type: "other", identifier: "list_jump", label: nil, value: nil,
-                        placeholder: nil, enabled: true, frame: container, depth: 1)
+                        placeholder: nil, enabled: true, frame: container, depth: 1,
+                        scrollable: declaresScrollable ? true : nil)
         ]
         // 容器と交差する行だけを木に出す(lazy list = 見えていない行は存在しない)
         for n in 1...Self.rowCount {
@@ -107,6 +110,28 @@ final class ScrollReverseSweepTests: XCTestCase {
             return XCTFail("飛び越した要素を拾い直せていない: \(outcome.status)"
                            + " (swipes=\(driver.swipes) offset=\(driver.offset))")
         }
+    }
+
+    /// 拾い直したら注記で**指定すべき容器を名指しする**。総称の「scrollFrame を書け」だけだと、
+    /// 読み手は名前を探すためにスナップショットを撮り直すことになる
+    func testReverseSweepNamesTheContainerToSpecify() async throws {
+        let driver = JumpScreenDriver()
+        driver.declaresScrollable = true
+
+        let outcome = await StepExecutor(driver: driver).execute(scrollTo("jrow_05"))
+
+        let note = outcome.driverFallback ?? ""
+        XCTAssertTrue(note.contains("specify scrollFrame: #list_jump"), "注記: \(note)")
+    }
+
+    /// 申告できないエンジンでは**名指ししない**(推測した矩形は `scrollFrame:` に書けない)
+    func testReverseSweepStaysGenericWhenTheContainerCannotBeNamed() async throws {
+        let driver = JumpScreenDriver()   // declaresScrollable = false
+
+        let outcome = await StepExecutor(driver: driver).execute(scrollTo("jrow_05"))
+
+        let note = outcome.driverFallback ?? ""
+        XCTAssertTrue(note.contains("specify scrollFrame: to step"), "注記: \(note)")
     }
 
     /// **`containerInference: false` では拾い直さない**(容器の推測に依存する補正なので、
