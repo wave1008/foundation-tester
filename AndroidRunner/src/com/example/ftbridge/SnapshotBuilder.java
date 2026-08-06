@@ -366,7 +366,12 @@ final class SnapshotBuilder {
         return kept;
     }
 
-    /** 0=高優先(残す) .. 2=低優先(先に捨てる)。tier0/1 の条件は shouldInclude と別軸 */
+    /**
+     * 0=高優先(残す) .. 2=低優先(先に捨てる)。tier0/1 の条件は shouldInclude と別軸。
+     * **正は Swift 側の BridgeSnapshotThinning**(Sources/FTCore/BridgeDTO.swift)。
+     * あちらは iOS 専用に tier3(同一 id が20件以上の非スクロール装飾群)を持つが、
+     * コーパス14本の実測で Android は1画面も発火しなかったので写していない。
+     */
     private static int priorityTier(UINode node) {
         if (node.clickable || node.checkable || node.scrollable) return 0;
         String type = mappedType(node);

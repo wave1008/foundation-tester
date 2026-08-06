@@ -287,18 +287,34 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
   超過分は `(+12 elements truncated)` と件数だけ出す。**打ち切りは描画の省略ではなく
   配列そのものからの脱落**なので、`waitFor` も `scrollTo` も打ち切り後しか見ない
   (だから MCP の失敗文は打ち切りを名指しする。`MCPServer.truncationHint`)。
-- **間引き方は OS で違う**(2026-08-07。ここは長く「hittable 優先」と書いてあったが、
-  実装は両 OS とも先着順だった):
-  - **Android は優先度配分**。tier2(空白テキスト・id 無し容器)→ tier1(テキスト/id 持ち)
-    → tier0(clickable/checkable/scrollable/入力欄)の順に落とす。**preorder 順は維持する** ——
-    `RefGuard.lineage` が preorder+depth でツリーを復元し、ref の大小を z-order の代理に使う。
-    先着順だと落ちるのは preorder 末尾 = Material 系では app bar と FAB で、**戻るボタンが
-    画面に出ているのに木から消える**(実測: 発車一覧が 142 要素で `#nav_button` が引けない)
-  - **iOS は先着順のまま**。実測(Apple マップ・2026-08-07)では害の形が違い、chrome は
-    木の前方に出るので残り、落ちるのは詳細シートの中身。**Android の tier をそのまま
-    移植しても効かない** —— 打ち切り画面は tier2 が 0 件で、枠の 75% を占める地図ピン
-    (`id=VKPointFeature` ×90)が中身と同じ tier1 に入るため、後ろから捨てる規則では
-    相変わらず中身が落ちる。要るのは別の判別軸(「単一 identifier が枠の大半を占めたら降格」等)
+- **間引きは優先度順**(2026-08-07。ここは長く「hittable 優先」と書いてあったが、実装は
+  両 OS とも先着順だった)。低い帯から順に、**同じ帯の中では preorder の後ろから**捨てる。
+  **並べ替えはしない** —— `RefGuard.lineage` が preorder+depth でツリーを復元し、
+  ref の大小を z-order の代理に使うため:
+
+  | 帯 | 中身 | 捨てる順 |
+  |---|---|---|
+  | tier3 = bulk | 同一 identifier が20件以上・**スクロール容器の外**・非操作 | 最初 |
+  | tier2 | ラベルも identifier も持たない | 2番目 |
+  | tier1 | ラベルか identifier を持つ | 3番目 |
+  | tier0 | 操作可能(clickable/入力欄など)か scrollable な容器 | 最後 |
+
+  - 規則の定義元は **`BridgeSnapshotThinning`(`Sources/FTCore/BridgeDTO.swift`)**。
+    XCUITest ランナーと in-app dylib が共有する。**Android は Java で書けないため
+    `SnapshotBuilder.selectByPriority` に個別実装**していて、**tier3 だけ持たない**
+    (下記のとおり Android では発火しなかったため。足すときは Swift 側を正として写す)
+  - 先着順だと落ちるのは preorder 末尾で、**害の形は OS で違った**。Android(Material)は
+    app bar と FAB が末尾に出るので**戻るボタンが画面に出ているのに木から消える**
+    (実測: 発車一覧が 142 要素で `#nav_button` が引けない)。iOS は chrome が木の前方なので
+    残り、代わりに**詳細シートの中身**が落ちる
+  - **tier3(bulk)は iOS のために足した**。Apple マップの打ち切り画面は tier2 が 0 件で、
+    枠の 75% を同一 identifier の装飾ピン(`id=VKPointFeature` ×90)が占めるため、
+    tier0〜2 だけでは中身が落ち続けた。**スクロール容器の中の大群(=長いリスト)は降格しない**
+    のが誤検知よけで、この判定は**生のツリーの再帰でしか採れない**(容器自体は identifier が
+    無いとフィルタで落ちるので、出力済みの配列から親を辿ると正当なリストを bulk と誤る)
+  - 誤検知の確認は**コーパス14本**(iOS/Android・2種の地図アプリ・4 SUT の実画面)で全数。
+    発火は狙いの `VKPointFeature` ×90 の1件だけで、**Android は1画面も発火しなかった**
+    (Google マップを含む)
 - **操作直後の整定(xcuitest, 2026-07-21)**: XCUITest の tap quiescence は非同期 push 遷移の
   完了前に返り、かつ直近 snapshot をキャッシュするため、操作直後の素取得は遷移前ツリーを返す
   (実測 50%)。対策として、直前が画面変更操作(tap/type/swipe/drag/press/session/…)だった
@@ -1260,7 +1276,7 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
    (`focused` を足したのはこのため。特定できないときは検証をスキップ = 検証不能を失敗にしない)
 
 **Flutter iOS の in-app は非対応**(409 → xcuitest フォールバック)。**engine への editing state 配送は
-評価のうえ不採用**(3回の実機実測):`flutterTextInputView:updateEditingClient:withState:` は実在し
+評価のうえ不採用**(3回のデバイス実測):`flutterTextInputView:updateEditingClient:withState:` は実在し
 (ランタイムのメソッド列挙で確認)、client も state のキー集合も正しいが、**Dart 側の
 `TextEditingController` は空にならない**。`replaceRange` も view のローカル状態しか変えない
 (併用すると engine への旧値の再通知が同期配送を上書きする挙動も観測)。**推測で私有 API を
@@ -1285,7 +1301,7 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
 **`hideKeyboard` は Android のみ**(戻るキー。**出ているときだけ撃つ** — 出ていないと画面が戻って
 しまうので、dumpsys で可視を確かめてから送る。これで冪等が保てる)。
 
-**iOS は実装手段が無く 501 で明示的に未対応**(3手すべて実機で不発。2026-07-30):
+**iOS は実装手段が無く 501 で明示的に未対応**(3手すべてデバイス上で不発。2026-07-30):
 `XCUIKeyboardKey.escape` の `typeText` / 掴んだ responder への `resignFirstResponder` /
 **nil ターゲットの `sendAction(resignFirstResponder)`** のいずれもキーボードが閉じない
 (Compose の入力受け口が自前でフォーカスを保持するため UIKit の標準手段が届かない)。
