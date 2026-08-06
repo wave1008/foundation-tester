@@ -8,9 +8,12 @@
 //
 // **この SUT は同じアプリの中に View と Compose が同居する**のが検証の核:
 //   - View の android.widget.button → 型 `Button`
-//   - Compose の Button(コントロール画面)→ 型 `Cell`(className が android.widget.button にならず
-//     SnapshotBuilder.mappedType の既定 clickable 側に落ちる)
-// 同一アプリ内で型が食い違うため、型セレクタは「どの画面か」まで意識して書く必要がある。
+//   - Compose の Button(コントロール画面)→ **これも型 `Button`**。className は
+//     `android.view.View` のままだが、ブリッジが同じ矩形の役割マーカー子から復元する
+//     (SnapshotBuilder.adoptRoleFromMarkerChildren)。**2026-08-06 まで ComposeView 埋め込みでは
+//     復元に失敗して `clickable` に落ちており**、この scene はその旧挙動を固定してしまっていた
+//     (親と役割マーカー子の矩形が完全一致しないため。docs/design.md の型語彙節)。
+// つまり**型は画面をまたいで揃う**。揃わないのは checkBox / slider / リスト行だけ。
 //
 // **記法ごとに @Test を分けない**(2026-08-04 統合)。5 本のうち 4 本は同じセレクタ画面で始まり
 // 導入シーンが完全に同一で、1 本あたり launchApp + ナビの固定費だけが増えていた。全 E2E スイートは
@@ -64,7 +67,7 @@ class セレクタの型と序数とフォールバックが解決できるこ�
                     select("#txt_selector_result").textIs("result=shared")
                 }
             }
-            scene(6, "コントロールタブ(ComposeView)へ移ると Compose の Button は .clickable でしか引けない") {
+            scene(6, "コントロールタブ(ComposeView)の Compose Button も View と同じ .button で引ける") {
                 condition {
                     tap("#tab_controls")
                 }.expectation {
@@ -76,7 +79,7 @@ class セレクタの型と序数とフォールバックが解決できるこ�
                     // ラジオもリセットも空振りした場合と区別がつかない
                     select("#txt_radio").textIs("plan=B")
                 }.action {
-                    tap(".clickable&&コントロールリセット")
+                    tap(".button&&コントロールリセット")
                 }.expectation {
                     select("#txt_radio").textIs("plan=A")
                 }

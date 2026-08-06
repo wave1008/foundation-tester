@@ -248,6 +248,22 @@ final class SnapshotBuilder {
      * 当の clickable ノードは android.view.View のままにする。そのままだと既定分岐に落ちて `Cell` に
      * なり、iOS(AX trait で Button になる)と型が食い違う。ここで子の役割を親へ引き上げて揃える。
      * 2026-07-26 に E2EApp(CMP)と E2EAppAndroid(ComposeView)の実スナップショットで確認。
+     *
+     * **矩形の完全一致を条件にしてはいけない**(2026-08-06 に実測して緩めた): 見切れると
+     * 親とマーカー子が**独立にクリップされる**。一致条件では引き上げに失敗し、
+     * **同じ Composable が可視状態によって Button と Clickable を行き来していた**
+     * (`.button` の型セレクタがスクロール位置で落ちる)。実測した3形はどれも食い違う:
+     *
+     * | 見切れ方 | 親 | マーカー子 |
+     * |---|---|---|
+     * | 右端(`#tag_04`) | `(987,1972)-(1080,2119)` | `(987,1972)-(1038,2119)`(子が狭い) |
+     * | 下端(`#btn_scroll_top`) | `(42,378)-(278,441)` | `(42,378)-(278,504)`(**子のほうが大きい**) |
+     * | 上端(`#row_07`) | `(42,441)-(1038,559)` | `(42,504)-(1038,559)`(原点が違う) |
+     *
+     * 「子は親に内包される」も「原点は動かない」も成り立たない。**成り立つのは辺の共有**で、
+     * 3形とも4辺のうち3辺が一致する(切れていない側は必ず一致する)。角で切れれば2辺なので
+     * しきい値は2。装飾(行の中のアイコン等)は0〜1辺しか一致しない —— ここを緩めすぎると
+     * **リスト行が Image になる**ので、面積比(3倍以内)も併せて要求する。
      */
     private static void adoptRoleFromMarkerChildren(List<UINode> nodes) {
         for (int i = 0; i < nodes.size(); i++) {
@@ -255,8 +271,8 @@ final class SnapshotBuilder {
             if (!node.clickable || !isGenericContainer(node.className)) continue;
             for (int j = i + 1; j < nodes.size() && nodes.get(j).depth > node.depth; j++) {
                 UINode child = nodes.get(j);
-                // マーカーの条件: 親と同じ矩形・名前を持たない・自身は操作対象でない
-                if (!child.bounds.equals(node.bounds)) continue;
+                // マーカーの条件: 親と同じ矩形(見切れ許容)・名前を持たない・自身は操作対象でない
+                if (!looksLikeRoleMarker(child.bounds, node.bounds)) continue;
                 if (!child.text.isEmpty() || !child.contentDesc.isEmpty()
                         || !child.resourceID.isEmpty() || child.clickable) continue;
                 if (isGenericContainer(child.className)) continue;
@@ -264,6 +280,19 @@ final class SnapshotBuilder {
                 break;
             }
         }
+    }
+
+    /** 役割マーカーの矩形条件: 4辺のうち2辺以上が一致し、面積が3倍以内(独立クリップの許容) */
+    private static boolean looksLikeRoleMarker(Rect child, Rect parent) {
+        int sharedEdges = (child.left == parent.left ? 1 : 0)
+                + (child.top == parent.top ? 1 : 0)
+                + (child.right == parent.right ? 1 : 0)
+                + (child.bottom == parent.bottom ? 1 : 0);
+        if (sharedEdges < 2) return false;
+        long childArea = (long) child.width() * child.height();
+        long parentArea = (long) parent.width() * parent.height();
+        if (childArea <= 0 || parentArea <= 0) return false;
+        return Math.min(childArea, parentArea) * 3 >= Math.max(childArea, parentArea);
     }
 
     /** 役割を持たない汎用コンテナ(Compose/Flutter が canvas 描画で使う)か */
