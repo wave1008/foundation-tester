@@ -197,6 +197,11 @@ enum InAppSnapshot {
     /// クラス取得は1回だけ(走査で全ノードに当たるため)
     private static let webViewClass: AnyClass? = NSClassFromString("WKWebView")
 
+    /// テキスト入力を表す非公開 trait(`1<<18`)。公開 API に相当するものが無く、
+    /// UIKit の UITextField/UITextView と Compose/Flutter の合成 AX 要素が共通で立てる
+    /// (2026-08-06 に iOS 27.0 の Simulator で実測)。`elementType` の宣言参照
+    private static let textEntryTrait = UIAccessibilityTraits(rawValue: 1 << 18)
+
     private static func elementType(_ node: NSObject) -> UIKitType {
         // trait 判定より先に置く: WKWebView は内部に別の trait を持つ子を抱えており、
         // 後ろに置くと other に落ちてホストが webview 画面だと気付けない
@@ -217,6 +222,21 @@ enum InAppSnapshot {
         if t.contains(.keyboardKey) { return .keyboardKey }
         if t.contains(.searchField) { return .searchField }
         if t.contains(.link) { return .link }
+        // **自前描画フレームワークの入力欄**(Compose / Flutter)。UIKit の UITextField/UITextView
+        // ではないので上のクラス判定を素通りし、trait も button/staticText を持たないため、
+        // これが無いと `.other` に落ちる —— 2026-08-06 に E2E-CMP で実害を観測した
+        // (in-app だけ `other`・xcuitest は `textView`。型セレクタが探索と実行で食い違う)。
+        //
+        // 判定は**テキスト入力 trait(1<<18)**。実測値(iPhone 17 Pro / iOS 27.0):
+        //   Compose `AccessibilityElement`      traits=1<<47|1<<18  UITextInput 非準拠
+        //   Flutter `TextInputSemanticsObject`  traits=1<<37|1<<18  UITextInput 準拠
+        // 上位ビットはフレームワーク固有なので見ない。**分岐は UITextInput 準拠**で、
+        // これが XCUITest の elementType と一致する(同じ画面で実測):
+        //   Flutter → textField / Compose → textView(パスワード欄も同じ = secure は出ない)。
+        // ここを片方に寄せると、寄せなかった側が xcuitest と食い違う
+        if t.contains(Self.textEntryTrait) {
+            return node.conforms(to: UITextInput.self) ? .textField : .textView
+        }
         if t.contains(.button) { return .button }
         if t.contains(.image) { return .image }
         if t.contains(.adjustable) { return .adjustable }

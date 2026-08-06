@@ -14,9 +14,22 @@ tag 定数は `composeApp/src/commonMain/kotlin/com/ftester/e2e/Tags.kt` に集�
   を**必ず再適用する**。忘れると Android だけダイアログ内の `#id` が全滅する(ラベルは引ける)。
 - **型名は先頭小文字**(`.button` / `.staticText`)。ホスト側で正規化しており、スナップショット表示・
   セレクタ記法・生成コードで綴りが一致する(先頭大文字で書くと構文エラー)。
-- **OS を跨いで保証される型は `button` / `staticText` / `textField` / `secureTextField` / `switch` の5つ**
+- **OS を跨いで保証される型は `button` / `staticText` / `switch` の3つ**
   (2026-07-26 のブリッジ役割正規化以降。それ以前は Compose の Button が Android で `cell` になり
-  `ios {}` / `android {}` の分岐が必要だった)。この5つは型セレクタを OS 共通で書ける。
+  `ios {}` / `android {}` の分岐が必要だった)。この3つは型セレクタを OS 共通で書ける。
+  **入力欄の型は OS 共通ではない**(2026-08-06 に実測して表を訂正した。Compose の制約であって
+  ftester の穴ではない):
+
+  | | `#field_single` | `#field_password` | `#field_multiline` |
+  |---|---|---|---|
+  | Android | `textField` | `secureTextField` | `textField` |
+  | iOS(in-app / xcuitest とも) | `textView` | `textView` | `textView` |
+
+  iOS では Compose の入力欄が UIKit の `UITextField` ではなく合成 AX 要素なので、
+  XCUITest の `elementType` が `textView` になり、in-app ブリッジもそこへ揃えてある
+  (`InAppSnapshot.elementType` のテキスト入力 trait 判定)。**マスクの有無は iOS では型に出ない**。
+  よって**入力欄は `#id` で指す**。`.textField` / `.secureTextField` が使えるのは Android だけ。
+  以前は in-app だけ `other` を返していて、探索(MCP)と実行で型が食い違っていた。
   **iOS の3エンジン間でも揃っている**: in-app は traits の `.toggleButton`(実測 0x20000000000001 =
   `.button` と併用。UIKit/SwiftUI/Compose 共通)で `switch` を出す。ここが抜けると in-app だけ
   `switch` が `button` になり、`:rightSwitch` が xcuitest とだけ食い違う(2026-07-27 に実害)。
