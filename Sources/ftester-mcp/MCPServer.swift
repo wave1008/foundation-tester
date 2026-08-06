@@ -33,6 +33,16 @@ final class MCPServer {
     /// 撮り直して同じ要素を引き直すための起点(RefGuard 参照)。
     /// **ref はスナップショットごとに振り直される**ので、番号ではなく要素の同一性で照合する
     var lastSnapshots: [String: SnapshotResponse] = [:]
+    /// drivers と同じキーで**最後に ft_launch した bundleID**を覚える。
+    ///
+    /// **Android のブリッジは session を前面ウィンドウから採る**(`SnapshotBuilder` の
+    /// `root.getPackageName()`)。つまり back でアプリを出ると session がその場で別アプリに
+    /// 差し替わり、`backgroundedSessionNote`(session が前面か)は**構造上まったく発火しない**。
+    /// E2E の 4 SUT は `#id`・ラベルが共通契約なので、木を見ても入れ替わりに気付けない
+    /// (2026-08-06 の探索で決定的に再現: `ft_launch com.ftester.e2e.android` → `back` 1回で
+    /// 以後の snapshot が `com.ftester.e2e.flutter` の木になった)。
+    /// **ホスト側で「起動したアプリ」を覚えて突き合わせる**のが唯一の検知経路。
+    var launchedBundleIDs: [String: String] = [:]
     /// プロファイル解決で出た警告(未解決のデバイス名など)。**次に返す応答へ1度だけ**混ぜる。
     /// stderr だけに出していたときは MCP クライアントに一切届かなかった
     var pendingWarnings: [String: [String]] = [:]
@@ -192,6 +202,15 @@ final class MCPServer {
             created = resolved.driver
             engines[key] = resolved.engine
             connections[key] = "port \(port)"
+            // **稼働中のブリッジが古いままではないか**を1度だけ確かめる(2026-08-06 に踏んだ)。
+            // profile 経由は BridgeProvisioner が版で再利用可否を決めるが、**この経路は
+            // 生きているポートへ素で繋ぐだけ**なので、版を上げても旧ランナーが使われ続ける。
+            // 実害: ブリッジ側の修正2件を入れて版も上げたのに、ft_snapshot は直る前の木を
+            // 返し続け、`bridge down && bridge up` するまで「直っていない」に見えた。
+            // Android は AndroidBridge が expectedBridgeVersionCode で入れ替えるのでこの穴が無い
+            if let note = await Self.staleBridgeWarning(driver: created) {
+                pendingWarnings[key, default: []].append(note)
+            }
         case "android":
             let serial = try Self.resolveAndroidSerial(explicit: args["serial"] as? String)
             created = try AndroidDriver(serial: serial)
@@ -202,6 +221,20 @@ final class MCPServer {
         }
         drivers[key] = created
         return created
+    }
+
+    /// 繋いだブリッジが古い版なら警告文、そうでなければ nil。
+    ///
+    /// **止めはしない**: 利用者が意図して古いブリッジを使っていることはあるし、ここで throw
+    /// するとセッションごと止まる。害は「直したはずの挙動が黙って旧版のまま」なので、
+    /// 気付けさえすればよい。**判定できないときも nil**(旧ブリッジは版を返さない = nil で、
+    /// それを「古い」と断じると常時警告になる)
+    static func staleBridgeWarning(driver: AppDriver) async -> String? {
+        guard let running = try? await driver.status().protocolVersion,
+              running != BridgeAPI.bridgeProtocolVersion else { return nil }
+        return "⚠️ The bridge you are connected to is v\(running) but this build expects"
+            + " v\(BridgeAPI.bridgeProtocolVersion): snapshots and gestures still behave the way"
+            + " the older bridge did. Restart it with `ftester bridge down && ftester bridge up`"
     }
 
     /// 接続先の宛先(ft_status が見せる)。**#2/#5 の取り違えは「今どこに繋がっているか」が
@@ -302,7 +335,17 @@ final class MCPServer {
             + " and \(framework) apps do not receive \(gesture) through it."
             + " Pass profile: to follow the run profile's engine, or start an in-app bridge"
             + " (`ftester bridge up --engine inapp`) — both handle it."
+            + Self.inappRelaunchWarning
     }
+
+    /// **in-app へ切り替える初回はアプリが起動し直る**(dylib は起動時にしか差し込めない)。
+    /// これを書かずに「profile: を渡せ」とだけ案内すると、探索中の画面が消えたことに
+    /// 気付けないまま、ホーム画面に対して同じ座標のジェスチャが撃たれる
+    /// (2026-08-06 の探索で実際に踏んだ: マップ画面で double tap → ホームから
+    /// `#nav_scroll` が開き `行 05` が選ばれた)
+    static let inappRelaunchWarning =
+        " Note: starting an in-app bridge relaunches the app, so the current screen is lost —"
+        + " re-navigate before repeating the gesture."
 
     /// **launch する前に**確かめる。未インストールのまま `XCUIApplication.launch()` を撃つと、
     /// XCUI が記録する issue が(main queue 上 = テストのスタック外なので)ランナーごと落とし、
@@ -373,6 +416,20 @@ final class MCPServer {
             + " — ft_launch bundleId: com.apple.springboard first (non-destructive)"
     }
 
+    /// back が**空振りし得る**ことと、**アプリの外へ出る**ことの2つを言う。
+    /// iOS は端の swipe(`XCUIApplication` の navigation gesture)なので、画面側が
+    /// システムの戻るを実装していないと 1px も動かない。Android は最初の画面からの back で
+    /// アプリが終了し、前面が別アプリになる(`switchedAppNote` が次の snapshot で捕まえる)
+    static func backNoOpNote(target: String, engine: String?) -> String {
+        guard target == "back" else { return "" }
+        let iosNote = engine == "android" ? ""
+            : " On iOS this is an edge swipe: screens with their own in-app back button"
+                + " (and no system navigation) do not move at all."
+        return "." + iosNote
+            + " If it was the app's first screen, back leaves the app and the tools follow"
+            + " whatever is in front now — ft_launch to come back."
+    }
+
     /// **in-app 経路で背面化すると、以降は XCUITest ブリッジ側が受ける**
     /// (in-app ブリッジはアプリのプロセス内に住み、suspend されると応答しない。
     /// 寄せ替えは HybridFallbackDriver が持つ)。XCUITest は外側のプロセスなので関係なく、
@@ -428,6 +485,23 @@ final class MCPServer {
             + " Bring it back with ft_launch before trusting these refs\n"
     }
 
+    /// **この木は ft_launch したアプリのものか**。違えば名指しで止める。
+    ///
+    /// `backgroundedSessionNote` と役割が違う: あちらは「session のアプリが背面」を見るが、
+    /// **session 自体が別アプリへ移ってしまう経路**(Android)ではあちらは永遠に沈黙する。
+    /// ここは「起動したもの」対「木が名乗るもの」を比べるので、session が追従しても捕まる。
+    ///
+    /// **判定材料が無いときは黙る**(嘘を足さない): ft_launch していない・木が名乗らない。
+    static func switchedAppNote(launched: String?, snapshot: SnapshotResponse) -> String {
+        guard let launched, let session = snapshot.sessionBundleID, session != launched else {
+            return ""
+        }
+        return "⚠️ This tree belongs to \(session), NOT the app you launched (\(launched))."
+            + " Leaving the app (back from its first screen, home, an app switch) hands the"
+            + " tools to whatever is in front now — and sibling test apps can look identical."
+            + " ft_launch \(launched) before trusting these refs\n"
+    }
+
     /// 木を撮り直す。**MCP は必ずキャッシュを捨てて撮る**(driver が対応していれば)。
     ///
     /// Android の a11y ノードはキャッシュ供給で、**Compose のスクロール後は木が古いまま固まる**
@@ -463,7 +537,10 @@ final class MCPServer {
             // **拒否せず警告して撃つ**(2026-08-06 に方針を後退させた。理由は RefGuard の宣言)
             return (found.ref, RefGuard.ghostWarning(found: found, in: fresh.elements))
         case .found(let found, let moved):
-            guard moved >= RefGuard.movedThreshold else { return (found.ref, "") }
+            // **ghost でなくても別の物に当たり得る**2形(上に描かれた overlay / 同一矩形への
+            // 積み重なり)。どちらも容器の内側なので RefGuard.relocate では .found になる
+            let overlap = RefGuard.overlapWarning(found: found, in: fresh.elements)
+            guard moved >= RefGuard.movedThreshold else { return (found.ref, overlap) }
             // **原因までは断定できない**が、「他も同じだけ動いたか」は手元の2枚から言える。
             // 揃って動いていればスクロール等の画面全体の移動、その要素だけならレイアウト変化。
             // 切り分けの手掛かりとして出す(外部フィードバック 2026-08-06。severity は低いとのこと)
@@ -511,8 +588,28 @@ final class MCPServer {
                 + " (\(outcome.status)). \(Self.visibleLabelsHint(after))"
                 + " Plain labels match exactly — wrap them in * for a partial match (e.g. *\(bare)*).")
         }
+        // **成功と言う前に、返す木にそれが居ることを確かめる**(2026-08-06 の探索で外した)。
+        // 探索のスワイプは**ボタンを発火させることがある**(SwiftUI の SUT で実測)。
+        // その場合 executor は途中の観測で passed のまま、撮り直した木は**別画面**になり、
+        // 「scrolled to #nav_diagnostics」+ `#nav_diagnostics` が居ない木、が返っていた。
+        // 決定的再現: E2E-iOS のホームで `#nav_diagnostics`(下部タブの下にある行)
+        // **照合は selector で行う**: `scrollTo` は `resolvedElement` を載せない
+        // (StepExecutor の scrollTo 経路は要素を掴んでも記録しない)ので、それを当てにすると
+        // この検査は一度も走らない。`matches` は waitFor と同じ = DSL と同じ照合
+        if !Self.matches(selectorText, in: after) {
+            throw MCPError("scrollTo \"\(selectorText)\" reached the element, but it is gone from"
+                + " the screen now — the search itself changed the screen"
+                + " (a swipe over a tappable row can fire it). \(Self.visibleLabelsHint(after))"
+                + " Go back to the screen that has it and retry;"
+                + " scrollFrame: <container> keeps the swipes inside the list.")
+        }
         let landed = outcome.resolvedElement.map { " → [\($0.ref)] \(RefGuard.describe($0))" } ?? ""
-        return text("scrolled to \"\(selectorText)\"\(landed)."
+        // **木を返す口はすべて名指しする**(2026-08-06 の掃討で漏れを見つけた)。上の再確認は
+        // 「セレクタが居るか」しか見ないので、**別アプリに同じ id がある**と素通しする ——
+        // E2E の 4 SUT は id・ラベルが共通契約なので、これは現に起こり得る形
+        let switched = Self.switchedAppNote(
+            launched: launchedBundleIDs[Self.engineKey(args)], snapshot: after)
+        return text(switched + "scrolled to \"\(selectorText)\"\(landed)."
             + " The refs below are fresh\n" + Self.ghostNote(after)
             + SnapshotRenderer.render(after, flagging: Self.ghostFlags(after)))
     }
@@ -579,21 +676,26 @@ final class MCPServer {
     }
 
     /// 残像の行に付ける印。**先頭の注記だけでは足りない**(外部フィードバック 2026-08-06):
-    /// エージェントは一覧の行から ref をコピーするので、その行自体に出ていないと届かない
+    /// エージェントは一覧の行から ref をコピーするので、その行自体に出ていないと届かない。
+    ///
+    /// 積み重なり(`stackedRefs`)にも同じ印を付ける —— 利用者から見ると原因は同じ
+    /// 「スクロールの残骸がそこに描かれていない」で、対処(`ft_scroll_to` で出してから撮り直す)
+    /// も同じ。**印を2種類に割らない**(見分けても打ち手が変わらないものを増やさない)
     static func ghostFlags(_ snapshot: SnapshotResponse) -> [Int: String] {
-        Dictionary(uniqueKeysWithValues: ghostRefs(snapshot).map { ($0, "⚠️scroll-leftover") })
+        let refs = Set(ghostRefs(snapshot)).union(RefGuard.stackedRefs(snapshot.elements))
+        return Dictionary(uniqueKeysWithValues: refs.map { ($0, "⚠️scroll-leftover") })
     }
 
     static func ghostNote(_ snapshot: SnapshotResponse) -> String {
-        let ghosts = snapshot.elements.filter {
-            RefGuard.isUntappableGhost($0, in: snapshot.elements)
-        }
+        let flagged = ghostFlags(snapshot)
+        let ghosts = snapshot.elements.filter { flagged[$0.ref] != nil }
         guard !ghosts.isEmpty else { return "" }
         let listed = ghosts.prefix(8).map { "[\($0.ref)] \(RefGuard.describe($0))" }
             .joined(separator: " ")
         let more = ghosts.count > 8 ? " (+\(ghosts.count - 8) more)" : ""
-        return "note: the ⚠️scroll-leftover rows below are outside their scroll container — not"
-            + " drawn where their frames say, so tapping them may hit something else:"
+        return "note: the ⚠️scroll-leftover rows below are not drawn where their frames say"
+            + " (outside their scroll container, or clamped onto another row's frame),"
+            + " so tapping them may hit something else:"
             + " \(listed)\(more). Bring them into view with ft_scroll_to first,"
             + " or verify with ft_screenshot\n"
     }
@@ -796,6 +898,8 @@ final class MCPServer {
                 throw MCPError(Self.notInstalledMessage(bundleID: bundleID))
             }
             try await launchDriver.launch(bundleID: bundleID)
+            // 以後の snapshot は「これの木か」を突き合わせられる(switchedAppNote)
+            launchedBundleIDs[Self.engineKey(args)] = bundleID
             return text("Launched: \(bundleID)")
 
         case "ft_snapshot":
@@ -832,8 +936,12 @@ final class MCPServer {
             // ステータスバーの「◀ 元のアプリへ」を踏んだタップで前面が別アプリに替わったのに、
             // snapshot は元アプリの画面を返し、エージェントからは「タップが効かない」に見えた
             let backgroundNote = await Self.backgroundedSessionNote(snapshot, driver: snapshotDriver)
+            // **すり替わりを先頭に置く**: これが起きているとき、以下の一覧は丸ごと別アプリのもので、
+            // ghost 注記も scrollFrame 候補も読む意味が無い
+            let switchedNote = Self.switchedAppNote(
+                launched: launchedBundleIDs[Self.engineKey(args)], snapshot: snapshot)
             return text(withPendingWarnings(
-                waitNote + backgroundNote + Self.ghostNote(snapshot)
+                switchedNote + waitNote + backgroundNote + Self.ghostNote(snapshot)
                 + (ScrollFrameCandidates.note(snapshot) ?? "")
                 + SnapshotRenderer.render(snapshot, flagging: Self.ghostFlags(snapshot)), args: args))
 
@@ -888,8 +996,11 @@ final class MCPServer {
                 throw MCPError("direction must be one of up/down/left/right")
             }
             try await driver(args).swipe(direction)
-            return text("swipe \(direction.rawValue) done."
-                + " The tree moved — take a fresh ft_snapshot before using any ref")
+            // **「動いた」と断言しない**(back と同じ理由。2026-08-06)。スワイプは端に着いていれば
+            // 1px も動かないし、スクロールできない画面では何も起きない
+            return text("swipe \(direction.rawValue) sent."
+                + " If anything moved, the old refs are stale — take a fresh ft_snapshot"
+                + " before using any ref")
 
         case "ft_scroll_to":
             return try await scrollTo(args)
@@ -906,7 +1017,12 @@ final class MCPServer {
             case "appSwitcher": try await navigation.openAppSwitcher()
             default: throw MCPError("target must be one of back/home/appSwitcher")
             }
-            return text("\(target) done. The screen changed — take a fresh ft_snapshot"
+            // **「画面が変わった」と断言しない**(2026-08-06 の探索で外した): iOS の back は
+            // 端の swipe なので、自前ナビの画面(`#btn_back` を持つ SwiftUI 等)では
+            // **何も起きない**。back でアプリ自体を出てしまうこともあり、どちらも
+            // 「変わった」と言い切ると誤操作の起点になる
+            return text("\(target) sent. Take a fresh ft_snapshot to see the result"
+                + Self.backNoOpNote(target: target, engine: engines[Self.engineKey(args)])
                 + Self.backgroundedAppNote(target: target, engine: engines[Self.engineKey(args)])
                 + Self.homeScreenReadNote(target: target, engine: engines[Self.engineKey(args)]))
 
@@ -977,7 +1093,10 @@ final class MCPServer {
             try await pinchDriver.pinch(frame: frame, identifier: identifier, scale: scale,
                                         durationSeconds: args["durationSeconds"] as? Double ?? 0.5)
             return text("pinch x\(scale) done."
-                + " The zoom may be smaller than requested — verify with ft_snapshot/ft_screenshot."
+                // **「小さくなる」とだけ言わない**(2026-08-06 実測): 指が対象の内側に収まる分だけ
+                // 小さくなることもあれば、慣性で大きくもなる(scale 2.0 の要求で累積 3.9 倍)
+                + " The actual zoom can differ from what you asked for in either direction"
+                + " — verify with ft_snapshot/ft_screenshot."
                 + iosEngineHint("Flutter", "pinch", args: args))
 
         case "ft_press":
@@ -994,6 +1113,8 @@ final class MCPServer {
 
         case "ft_terminate":
             try await driver(args).terminate()
+            // 意図して落としたので、以後の別アプリの木は「すり替わり」ではない
+            launchedBundleIDs[Self.engineKey(args)] = nil
             return text("Terminated the app")
 
         case "ft_list_scenarios":

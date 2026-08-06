@@ -56,6 +56,60 @@ enum RefGuard {
         return occluder(of: element, in: elements) != nil
     }
 
+    /// **同じ矩形に積まれた要素**の ref。これだけの数が同じ場所に描かれることは有り得ないので、
+    /// 少なくとも一部は「本来の位置を出せずクランプされた残骸」。
+    ///
+    /// isUntappableGhost では捕まらない —— クランプ先は**容器の内側**なので
+    /// `isOutsideContainer` が false になる。実測(E2E-iOS のスクロール画面・xcuitest):
+    /// `#row_09`〜`#row_11` の clickable は容器の外に出て印が付くが、**行 09〜行 40 の
+    /// staticText 29 個は全部 (16,270 330x56)**(= 行 01 の位置)に畳まれ、無印のまま出ていた。
+    /// その ref を叩くと `selected=row_01` になり、ツールは成功を返す(2026-08-06 に実測)。
+    ///
+    /// **入れ子の一本鎖は数えない**: 容器とその唯一の子が同じ矩形になるのは普通で
+    /// (Android のダイアログは `action_bar_root`→`content`→`parentPanel`→`customPanel`→`custom`
+    /// が全部同じ矩形)、これを弾くと正常な木が丸ごと警告になる
+    static func stackedRefs(_ elements: [ElementInfo]) -> Set<Int> {
+        var byFrame: [String: [ElementInfo]] = [:]
+        for element in elements {
+            byFrame[frameKey(element.frame), default: []].append(element)
+        }
+        var flagged: Set<Int> = []
+        for (_, group) in byFrame where group.count >= stackedFrameMinimum {
+            let chain = lineage(of: group[0], in: elements)
+            if group.allSatisfy({ chain.contains($0.ref) }) { continue }
+            flagged.formUnion(group.map(\.ref))
+        }
+        return flagged
+    }
+
+    /// 積み重なりとみなす下限。**3**にしてある: 2個は「容器＋その子」で普通に起きる形で、
+    /// 一本鎖の除外を抜けた 2個(兄弟が偶然同寸同位置)まで拾うと誤検知側へ倒れる
+    static let stackedFrameMinimum = 3
+
+    /// 丸めた矩形のキー(1pt 未満の差は同じ位置とみなす)
+    private static func frameKey(_ frame: FTRect) -> String {
+        "\(frame.x.rounded()),\(frame.y.rounded()),"
+            + "\(frame.width.rounded()),\(frame.height.rounded())"
+    }
+
+    /// **容器の中に居るのに、後から描かれた別要素に中心を覆われている**要素の遮蔽物。
+    ///
+    /// `isUntappableGhost` は「容器の外」を入口条件にしているので、この形を1つも捕まえない。
+    /// 実測(E2E-iOS のホーム・xcuitest): `#nav_heal` (16,788 370x62) は縦リストの中にあるが、
+    /// 下部タブ `#tab_controls` (134,778 134x62) がその中心 (201,819) に重なっており、
+    /// ref 指定のタップは**コントロールタブへ遷移**して "tap done" が返っていた。
+    ///
+    /// **木の順序(= 描画順)で後ろにあるものだけ**を遮蔽とみなすのが要点。これを外すと、
+    /// 先に並ぶ大きな背景パネルが端の要素を「覆っている」ことになり、
+    /// 2026-08-06 に拒否をやめる原因になった誤検知の形に逆戻りする。
+    /// 祖先・子孫の除外、残像の除外、丸ごと包む相手の除外は `occluder` と共有する
+    static func overlayCovering(_ element: ElementInfo,
+                                in elements: [ElementInfo]) -> ElementInfo? {
+        guard !isUntappableGhost(element, in: elements) else { return nil }
+        guard let hit = occluder(of: element, in: elements), hit.ref > element.ref else { return nil }
+        return hit
+    }
+
     /// 中心を覆う別要素。**除くのは自分の祖先と子孫だけ**。
     /// 「自分より深いものだけ」に絞ると外す —— 実測では残像 `#row_11`(リストの奥)に重なるのは
     /// 下部タブ `#tab_controls` で、**タブのほうが浅い**。容器(リスト・画面全体)を数えない
@@ -186,6 +240,24 @@ enum RefGuard {
             + " If ft_screenshot shows it really is visible there, this check was wrong —"
             + " tap the coordinates directly (x: \(Int(f.x + f.width / 2)),"
             + " y: \(Int(f.y + f.height / 2))), which skips the check, and please report it."
+    }
+
+    /// ghost ではないが**別の物に当たったかもしれない**2形の注記。空文字なら心当たり無し。
+    ///
+    /// ghostWarning と同じ方針で**撃ってから言う**(拒否しない)。木の幾何だけでは
+    /// 「本当に描かれているか」を決められないという 2026-08-06 の結論は、この2形にも効く。
+    static func overlapWarning(found: ElementInfo, in elements: [ElementInfo]) -> String {
+        if let over = overlayCovering(found, in: elements) {
+            return " (warning: \(describe(over)) is drawn over the center of \(describe(found)),"
+                + " so this may have hit \(describe(over)) instead — verify with ft_screenshot,"
+                + " or scroll the element clear of the overlay first)"
+        }
+        if stackedRefs(elements).contains(found.ref) {
+            return " (warning: \(describe(found)) shares its exact frame with other elements,"
+                + " so at most one of them is really drawn there — the rest are clamped"
+                + " leftovers. Bring it into view with ft_scroll_to and re-snapshot)"
+        }
+        return ""
     }
 
     static func movedNote(found: ElementInfo, moved: Double, cause: String) -> String {
