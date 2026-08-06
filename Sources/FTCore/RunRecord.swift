@@ -368,7 +368,11 @@ public struct ScenarioRecordBuilder {
             durationMs: durationMs, scenes: scenes, steps: stepCounts,
             reportPath: Self.relativize(reportPath, packageRoot: packageRoot),
             failedSteps: passed ? nil : (failedSteps.isEmpty ? nil : failedSteps),
-            fixSuggestions: passed ? nil : (fixSuggestions.isEmpty ? nil : fixSuggestions),
+            // **修正提案は成否によらず残す**(fm と同じ理由)。強い提案が出るのは自己修復か
+            // ヒールキャッシュで**通ったとき**なので、passed で捨てると
+            // 「緑だがセレクタは壊れている」という一番知りたい状態の記録が1件も残らない
+            // (実測: 89,025 記録すべてで fixSuggestions が空だった)
+            fixSuggestions: fixSuggestions.isEmpty ? nil : fixSuggestions,
             errorLogs: passed ? nil : (errorLogs.isEmpty ? nil : errorLogs),
             // FM 実測は成否によらず残す(コスト分析は成功実行こそ必要)
             fm: fm,

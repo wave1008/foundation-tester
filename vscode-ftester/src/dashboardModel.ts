@@ -137,7 +137,8 @@ export type InsightKind =
   | "durationRegression"
   | "unfinishedRuns"
   | "unsettledSteps"
-  | "retiredScenarios";
+  | "retiredScenarios"
+  | "healReliance";
 
 export type InsightSeverity = "critical" | "warn" | "info";
 
@@ -330,7 +331,8 @@ function isInsightKind(value: unknown): value is InsightKind {
     value === "durationRegression" ||
     value === "unfinishedRuns" ||
     value === "unsettledSteps" ||
-    value === "retiredScenarios"
+    value === "retiredScenarios" ||
+    value === "healReliance"
   );
 }
 

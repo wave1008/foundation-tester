@@ -460,56 +460,51 @@ final class RunResultsQueryTests: XCTestCase {
 
     // MARK: - insights: deviceBias
 
-    func testInsightsDeviceBiasWhenWorkerFailureRateDoubled() {
-        // worker A: 3敗/3件=100% / worker B: 0敗/3件=0% → 全体失敗率50%、A は 100% >= 50%*2
-        let records =
-            (0..<3).map { i in
-                makeRecord(
-                    scenarioID: "Foo.a", passed: false,
-                    startedAt: String(format: "2026-01-0%dT00:00:00Z", i + 1), durationMs: 100,
-                    worker: "ios:A")
-            } +
-            (0..<3).map { i in
-                makeRecord(
-                    scenarioID: "Foo.a", passed: true,
-                    startedAt: String(format: "2026-01-1%dT00:00:00Z", i), durationMs: 100,
-                    worker: "ios:B")
-            }
+    /// worker ごとの記録を作る(deviceBias は実行回数と失敗回数の両方に下限があるので数が要る)
+    private func workerRecords(worker: String, runs: Int, failures: Int,
+                               dayOffset: Int) -> [ScenarioRunRecord] {
+        (0..<runs).map { index in
+            makeRecord(
+                scenarioID: "Foo.a", passed: index >= failures,
+                startedAt: String(format: "2026-01-%02dT%02d:00:00Z", dayOffset + 1, index % 24),
+                durationMs: 100, worker: worker)
+        }
+    }
+
+    func testInsightsDeviceBiasWhenFailuresClusterOnOneWorker() {
+        // A: 12 run 中 8 敗(67%)/ B: 20 run 全通 → 全体 25%。67% >= 25%*2 かつ 8 >= 最小失敗回数
+        let records = workerRecords(worker: "ios:A", runs: 12, failures: 8, dayOffset: 0)
+            + workerRecords(worker: "ios:B", runs: 20, failures: 0, dayOffset: 1)
         let rows = RunResultsQuery.insights(records: records, runs: [])
         let row = try? XCTUnwrap(rows.first { $0.kind == "deviceBias" })
         XCTAssertEqual(row?.severity, "warn")
         XCTAssertEqual(row?.worker, "ios:A")
-        XCTAssertEqual(row?.count, 3)
+        XCTAssertEqual(row?.count, 8)
+    }
+
+    /// **率だけでは出さない**。単発〜数件の失敗は率を跳ね上げるが偏りの証拠にならない
+    /// (実データで 69 行出ていた主因。3 run 中 1 敗 = 33% が全体 4% の 2 倍を軽く超えていた)
+    func testInsightsNoDeviceBiasWhenTheWorkerHasTooFewFailures() {
+        // A: 20 run 中 4 敗(20%)/ B: 20 run 全通 → 全体 10%、率は 2 倍だが失敗回数が足りない
+        let records = workerRecords(worker: "ios:A", runs: 20, failures: 4, dayOffset: 0)
+            + workerRecords(worker: "ios:B", runs: 20, failures: 0, dayOffset: 1)
+        XCTAssertFalse(RunResultsQuery.insights(records: records, runs: [])
+            .contains { $0.kind == "deviceBias" })
     }
 
     func testInsightsNoDeviceBiasWithSingleWorkerKind() {
-        let records = (0..<3).map { i in
-            makeRecord(
-                scenarioID: "Foo.a", passed: false,
-                startedAt: String(format: "2026-01-0%dT00:00:00Z", i + 1), durationMs: 100,
-                worker: "ios:A")
-        }
+        let records = workerRecords(worker: "ios:A", runs: 12, failures: 8, dayOffset: 0)
         let rows = RunResultsQuery.insights(records: records, runs: [])
         XCTAssertFalse(rows.contains { $0.kind == "deviceBias" }, "worker が 1 種類のみでは偏り判定不能")
     }
 
+    /// 実行回数が足りない worker は判定しない(率が安定しない)
     func testInsightsNoDeviceBiasBelowMinRunsPerWorker() {
-        // worker A: 2件のみ(最小実行回数 3 未満)
-        let records =
-            (0..<2).map { i in
-                makeRecord(
-                    scenarioID: "Foo.a", passed: false,
-                    startedAt: String(format: "2026-01-0%dT00:00:00Z", i + 1), durationMs: 100,
-                    worker: "ios:A")
-            } +
-            (0..<3).map { i in
-                makeRecord(
-                    scenarioID: "Foo.a", passed: true,
-                    startedAt: String(format: "2026-01-1%dT00:00:00Z", i), durationMs: 100,
-                    worker: "ios:B")
-            }
-        let rows = RunResultsQuery.insights(records: records, runs: [])
-        XCTAssertFalse(rows.contains { $0.kind == "deviceBias" })
+        // A: 8 run 中 8 敗(100%)—— 失敗回数は足りるが run 数が下限未満
+        let records = workerRecords(worker: "ios:A", runs: 8, failures: 8, dayOffset: 0)
+            + workerRecords(worker: "ios:B", runs: 20, failures: 0, dayOffset: 1)
+        XCTAssertFalse(RunResultsQuery.insights(records: records, runs: [])
+            .contains { $0.kind == "deviceBias" })
     }
 
     // MARK: - insights: durationRegression
@@ -633,6 +628,73 @@ final class RunResultsQueryTests: XCTestCase {
         let rows = RunResultsQuery.insights(records: records, runs: [])
         XCTAssertFalse(rows.contains { $0.kind == "retiredScenarios" })
         XCTAssertTrue(rows.contains { $0.kind == "consecutiveFailures" })
+    }
+
+    // MARK: - insights: healReliance(ヒールキャッシュ依存)
+
+    /// 同じセレクタの修正提案が続いている = **緑だがセレクタは壊れている**状態が放置されている
+    func testInsightsHealRelianceWhenTheSameSelectorKeepsBeingSuggested() {
+        let records = (0..<3).map { index in
+            makeRecord(
+                scenarioID: "Foo.a", passed: true,
+                startedAt: String(format: "2026-01-0%dT00:00:00Z", index + 1), durationMs: 100,
+                fixSuggestions: [FixSuggestionRecord(oldSelector: "#old_id", newSelector: "#new_id")])
+        }
+        let row = RunResultsQuery.insights(records: records, runs: [])
+            .first { $0.kind == "healReliance" }
+        XCTAssertEqual(row?.severity, "warn")
+        XCTAssertEqual(row?.count, 3)
+        XCTAssertTrue(row?.message.contains("#old_id") ?? false)
+    }
+
+    /// 1〜2 run なら出さない(直せば済む段階では鳴らさない)
+    func testInsightsNoHealRelianceForAOneOffSuggestion() {
+        let records = (0..<2).map { index in
+            makeRecord(
+                scenarioID: "Foo.a", passed: true,
+                startedAt: String(format: "2026-01-0%dT00:00:00Z", index + 1), durationMs: 100,
+                fixSuggestions: [FixSuggestionRecord(oldSelector: "#old_id", newSelector: "#new_id")])
+        }
+        XCTAssertFalse(RunResultsQuery.insights(records: records, runs: [])
+            .contains { $0.kind == "healReliance" })
+    }
+
+    /// 同じ run に同じセレクタが複数回出ても **run 数**として 1 と数える
+    /// (ステップ数で数えると、1 run しか無いのに閾値を超える)
+    func testInsightsHealRelianceCountsRunsNotSuggestions() {
+        let many = (0..<5).map { _ in FixSuggestionRecord(oldSelector: "#old_id", newSelector: "#new_id") }
+        let records = [
+            makeRecord(scenarioID: "Foo.a", passed: true, startedAt: "2026-01-01T00:00:00Z",
+                       durationMs: 100, fixSuggestions: many),
+        ]
+        XCTAssertFalse(RunResultsQuery.insights(records: records, runs: [])
+            .contains { $0.kind == "healReliance" })
+    }
+
+    // MARK: - insights: retiredScenarios(ソース照合)
+
+    /// **ソースに無いクラスは日付を問わず retired**(削除・_disabled 化。日数の窓では消えない)
+    func testInsightsRetiresScenariosMissingFromTheSource() {
+        let records = (0..<3).map { index in
+            makeRecord(
+                scenarioID: "Gone.a", passed: false,
+                startedAt: String(format: "2026-01-0%dT00:00:00Z", index + 1), durationMs: 100)
+        }
+        let rows = RunResultsQuery.insights(records: records, runs: [], definedClasses: ["Live"])
+        XCTAssertFalse(rows.contains { $0.scenarioID == "Gone.a" })
+        XCTAssertEqual(rows.first { $0.kind == "retiredScenarios" }?.count, 1)
+    }
+
+    /// **空集合を「全部消えた」と読まない**(走査に失敗したときに検知が丸ごと黙るのを防ぐ)
+    func testInsightsTreatsAnEmptyDefinedSetAsUnknown() {
+        let records = (0..<3).map { index in
+            makeRecord(
+                scenarioID: "Foo.a", passed: false,
+                startedAt: String(format: "2026-01-0%dT00:00:00Z", index + 1), durationMs: 100)
+        }
+        let rows = RunResultsQuery.insights(records: records, runs: [], definedClasses: [])
+        XCTAssertTrue(rows.contains { $0.kind == "consecutiveFailures" })
+        XCTAssertFalse(rows.contains { $0.kind == "retiredScenarios" })
     }
 
     // MARK: - matrix
@@ -805,13 +867,14 @@ final class RunResultsQueryTests: XCTestCase {
         steps: StepCountsRecord? = nil, platform: String = "ios", worker: String? = nil,
         timedOut: Bool? = nil, scenes: [SceneResultRecord] = [],
         failedSteps: [FailedStepRecord]? = nil, errorLogs: [String]? = nil,
-        runID: String = "", title: String? = nil
+        runID: String = "", title: String? = nil,
+        fixSuggestions: [FixSuggestionRecord]? = nil
     ) -> ScenarioRunRecord {
         ScenarioRunRecord(
             runID: runID, scenarioID: scenarioID, title: title, platform: platform, worker: worker,
             machine: "testmachine",
             passed: passed, timedOut: timedOut, startedAt: startedAt, durationMs: durationMs,
             scenes: scenes, steps: steps ?? StepCountsRecord(total: 1, passed: passed ? 1 : 0, failed: passed ? 0 : 1),
-            failedSteps: failedSteps, errorLogs: errorLogs)
+            failedSteps: failedSteps, fixSuggestions: fixSuggestions, errorLogs: errorLogs)
     }
 }

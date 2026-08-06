@@ -111,8 +111,34 @@ final class RunRecordTests: XCTestCase {
 
         XCTAssertTrue(record.passed)
         XCTAssertNil(record.failedSteps)
-        XCTAssertNil(record.fixSuggestions)
+        XCTAssertNil(record.fixSuggestions, "提案イベントが1つも来ていないので nil(成否とは無関係)")
         XCTAssertEqual(record.scenes[0].durationMs, 10, "sceneFinished に durationMs が無ければ step 合計を使う")
+    }
+
+    /// **修正提案は成否によらず残す**。強い提案が出るのは自己修復かヒールキャッシュで
+    /// **通ったとき**なので、passed で捨てると「緑だがセレクタは壊れている」という
+    /// 一番知りたい状態の記録が1件も残らない(実測: 89,025 記録すべてで空だった)
+    func testPassedScenarioKeepsItsFixSuggestions() throws {
+        var builder = ScenarioRecordBuilder(
+            scenarioID: "Foo.heal", platform: "ios", title: nil, worker: nil)
+        builder.consume(stepEvent(index: 0, scene: 1, status: "healed", durationMs: 10))
+        var suggestion = ScenarioEvent(kind: "fixSuggestion")
+        suggestion.scene = 1
+        suggestion.file = "Scenarios/Foo.swift"
+        suggestion.line = 12
+        suggestion.oldSelector = "#old_id"
+        suggestion.newSelector = "#new_id"
+        builder.consume(suggestion)
+
+        let record = builder.build(
+            passed: true, timedOut: false, startedAt: Date(timeIntervalSince1970: 0),
+            durationMs: 50, packageRoot: nil)
+
+        XCTAssertTrue(record.passed)
+        let suggestions = try XCTUnwrap(record.fixSuggestions)
+        XCTAssertEqual(suggestions.count, 1)
+        XCTAssertEqual(suggestions.first?.oldSelector, "#old_id")
+        XCTAssertEqual(suggestions.first?.newSelector, "#new_id")
     }
 
     func testReportPathKeptAsIsWhenPrefixMismatches() {
