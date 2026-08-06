@@ -142,6 +142,19 @@ public enum ScenarioHost {
     /// (並列ワーカーが同時に swift build して SPM ロック競合するのを防ぐ)。
     /// no-op の swift build でも ~2.6s かかるため、BuildFingerprint が前回ビルド時と一致し
     /// (mtime+size 比較。コンテンツ hash ではない)、かつバイナリが実在すればビルドをスキップする
+    /// ビルド失敗の定型に「次の一手」を足す。**SPM のメッセージは正確だが、規約を知らない**ので
+    /// 受け手は原因(改名の取り残し)に辿り着けない(外部フィードバック 2026-08-06)。
+    /// 器のディレクトリは 2026-08-05 に `Projects/`→`TestProjects/` /
+    /// `Scenarios/`→`scenarios/` へ改名しており、Package.swift が旧名のまま残ると
+    /// `invalid custom path` で落ちる。直すのは `ftester project sync` の1手。
+    static func buildHint(_ tail: String, project: TestProject) -> String {
+        guard tail.contains("invalid custom path") else { return "" }
+        return "\n\nHint: Package.swift still points at a path that no longer exists."
+            + " The scenario directory is TestProjects/\(project.name)/scenarios"
+            + " (renamed from Projects/…/Scenarios on 2026-08-05)."
+            + " Run `ftester project sync` to rewrite the ftester-managed region of Package.swift."
+    }
+
     public static func build(project: TestProject, log: ((String) -> Void)? = nil) throws {
         guard let root = packageRoot() else {
             throw ScenarioHostError.buildFailed("Package.swift not found (run this inside the repository)")
@@ -157,7 +170,7 @@ public enum ScenarioHost {
 
         let result = try Shell.run(["swift", "build", "--product", project.productName], cwd: root)
         guard result.status == 0 else {
-            throw ScenarioHostError.buildFailed(result.tail)
+            throw ScenarioHostError.buildFailed(result.tail + Self.buildHint(result.tail, project: project))
         }
         if let fingerprint {
             BuildFingerprint.store(fingerprint, productName: project.productName, repoRoot: root)

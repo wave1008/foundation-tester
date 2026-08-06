@@ -154,6 +154,44 @@ final class MCPRefGuardTests: XCTestCase {
         }
     }
 
+    // MARK: - 応答に載せる助言(外部フィードバック 2026-08-06)
+
+    /// **残像の行そのものに印**が要る。先頭の注記だけだと、一覧から ref をコピーする動作に届かない
+    func testGhostFlagsMarkOnlyTheLeftoverRows() {
+        let snapshot = screen([
+            element(ref: 1, type: "Other", id: "list", label: nil, x: 0, y: 100, w: 390, h: 200, depth: 1),
+            element(ref: 2, id: "row_01", label: "行 01", x: 10, y: 110, depth: 2),
+            element(ref: 3, id: "row_02", label: "行 02", x: 10, y: 160, depth: 2),
+            element(ref: 4, id: "row_09", label: "行 09", x: 10, y: 700, depth: 2),
+        ])
+        let flags = MCPServer.ghostFlags(snapshot)
+        XCTAssertEqual(Set(flags.keys), [4], "容器の外の1件だけに印が付くこと")
+        XCTAssertTrue(SnapshotRenderer.render(snapshot, flagging: flags)
+            .contains("id=row_09 (10,700 100x40) ⚠️scroll-leftover"))
+    }
+
+    /// 探索が空振りしたら「そこに何があったか」を返す。**往復を1回省く**のと、
+    /// 素のラベルが完全一致であることに気づかせるのが目的
+    func testVisibleLabelsHintListsWhatCanActuallyBeSelected() {
+        let snapshot = screen([
+            element(ref: 1, id: "btn_back", label: "戻る", x: 0, y: 0),
+            element(ref: 2, type: "StaticText", id: nil, label: "端末情報を表示", x: 0, y: 50),
+            element(ref: 3, type: "Other", id: nil, label: nil, x: 0, y: 90),
+        ])
+        let hint = MCPServer.visibleLabelsHint(snapshot)
+        XCTAssertTrue(hint.contains("#btn_back"))
+        XCTAssertTrue(hint.contains("\"端末情報を表示\""), "id が無い要素はラベルで出すこと")
+        XCTAssertFalse(hint.contains("()"), "名前を持たない要素は載せない")
+    }
+
+    /// 20 件で打ち切る(全部並べると読めない。足りなければ ft_snapshot を撮ればよい)
+    func testVisibleLabelsHintIsCapped() {
+        let many = (1...40).map { element(ref: $0, id: "id_\($0)", label: nil, x: 0, y: Double($0)) }
+        let hint = MCPServer.visibleLabelsHint(screen(many))
+        XCTAssertEqual(hint.components(separatedBy: "#id_").count - 1, 20)
+        XCTAssertTrue(hint.hasSuffix("…."))
+    }
+
     private static func text(_ content: [[String: Any]]) -> String {
         content.compactMap { $0["text"] as? String }.joined(separator: "\n")
     }
