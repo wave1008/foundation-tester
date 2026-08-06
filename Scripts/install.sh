@@ -76,6 +76,9 @@ Exit codes: 0=done / 2=only optional steps incomplete (CLI and MCP work) / 1=sto
 EOF
 }
 
+# 再 exec(下の「自分自身が新しくなったら」)で渡し直すため、パース前に控える
+ORIGINAL_ARGS=("$@")
+
 while [ $# -gt 0 ]; do
   case "$1" in
     --work-dir) WORK_DIR="${2:?--work-dir requires a value}"; shift 2 ;;
@@ -207,7 +210,11 @@ WORK_DIR="$(abspath "$WORK_DIR")"
 # 実行のたびに別ファイル(前回の記録を上書きしない)。人への質問は /dev/tty へ直接書くので
 # tee の影響を受けない。ログを作れない場合でもインストールは続行する
 LOG_FILE=""
-if mkdir -p "$WORK_DIR/.ftester" 2>/dev/null; then
+if [ -n "${FT_INSTALL_LOG:-}" ]; then
+  # 再 exec された2周目。1周目と同じログへ続けて書く
+  LOG_FILE="$FT_INSTALL_LOG"
+  exec > >(tee -a "$LOG_FILE") 2>&1
+elif mkdir -p "$WORK_DIR/.ftester" 2>/dev/null; then
   LOG_FILE="$WORK_DIR/.ftester/install-$(date +%Y%m%d-%H%M%S).log"
   exec > >(tee -a "$LOG_FILE") 2>&1
   echo "==> Log: $LOG_FILE"
@@ -326,6 +333,7 @@ if [ -d "$TOOL_ROOT_RAW/.git" ] || [ -f "$TOOL_ROOT_RAW/Package.swift" ]; then
     fi
     echo "==> git pull (updating the existing clone $TOOL_ROOT)"
     step_started=$SECONDS
+    HEAD_BEFORE_PULL="$(git -C "$TOOL_ROOT" rev-parse HEAD 2>/dev/null || echo none)"
     if git -C "$TOOL_ROOT" pull --ff-only >>"$RAW_SINK" 2>&1; then
       record "clone" ok "updated the existing clone: $TOOL_ROOT ($branch $(git -C "$TOOL_ROOT" rev-parse --short HEAD), $(elapsed_since $step_started))"
     else
@@ -344,6 +352,24 @@ fi
 
 [ -f "$TOOL_ROOT/Package.swift" ] && [ -d "$TOOL_ROOT/Sources/FTScenarioRunner" ] \
   || die "clone" "$TOOL_ROOT is not a foundation-tester clone" 0.5
+
+# ---- pull で自分自身が新しくなったら、新版で実行し直す ------------------------
+# **bash は実行中にファイルが差し替わっても古い内容を最後まで実行する**(git は rename で
+# 置換するので、開いた fd は旧 inode を指し続ける。2026-08-06 に実験で確認)。
+# そのため update.sh 経由(= クローンの Scripts/install.sh を bash で起動する経路)では、
+# **pull で入った新しいステップがその回は1つも実行されない**。しかも次回は update.sh が
+# up-to-date で即終了するので**永久に実行されない**(実害: ステップ7.6 の CLAUDE.md が
+# 版だけ上がって一度も走らなかった)。スキル既定の curl 形は常に新鮮なので対象外。
+#
+# 条件は「**いま実行しているファイルが、たった今 pull したクローンの install.sh 自身**」のときだけ。
+# ダウンロード済みの控えを実行している場合に再 exec しても意味が無い(同じ古い内容を読み直す)。
+if [ "${FT_REEXEC:-0}" != "1" ] && [ -f "$0" ] && [ -n "${HEAD_BEFORE_PULL:-}" ] \
+   && [ "$HEAD_BEFORE_PULL" != "$(git -C "$TOOL_ROOT" rev-parse HEAD 2>/dev/null || echo none)" ] \
+   && [ "$(abspath "$(dirname "$0")")/$(basename "$0")" = "$TOOL_ROOT/Scripts/install.sh" ]; then
+  echo "==> The clone moved to a new revision — restarting with the updated install.sh"
+  export FT_REEXEC=1 FT_INSTALL_LOG="$LOG_FILE"
+  exec bash "$0" "${ORIGINAL_ARGS[@]+"${ORIGINAL_ARGS[@]}"}"
+fi
 
 # clone 構成 = 受け手ディレクトリがクローン自身(TestProjects/ はクローン内に作る)
 LAYOUT="external"
