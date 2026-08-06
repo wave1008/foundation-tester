@@ -1853,6 +1853,15 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
     `POST /session {"bundleID":"<未インストール>"}` を投げると、無応答(待受のみ)を約5秒挟んで
     10秒以内にランナーが消える。**判定できないときは素通し**(実機・同名デバイス複数・simctl/adb 不調)。
     システムアプリ(springboard/Safari)は `get_app_container` が runtime のパスを返すので弾かれない
+  - **hybrid でも別 bundle(springboard・他アプリ)を開いたら読み書きごと XCUITest へ寄せる**
+    (2026-08-06)。`HybridFallbackDriver.launch` は従来**必ず primary(in-app)** へ投げていたが、
+    **in-app ブリッジは自分のプロセスの中しか見えない** —— `ft_launch com.apple.springboard` は
+    「Launched」と成功を返したうえで、続く snapshot が**アプリ自身の古い木**を返していた
+    (実測: ホーム画面を読もうとして 30 要素のアプリ画面)。
+    寄せ先は `AppAttachDriver`(fallback)では駄目 —— あれは固定 bundle への attach 専用で
+    `launch` が意図的に no-op。**セッションを張れる素の BridgeClient** を別に持たせる
+    (`foreignApp`)。自分のアプリへ launch し直すと in-app 主へ戻る。
+    engine を hybrid に固定しても直らない問題なので、**エンジンの選択では解けない**
   - **ホーム画面・システム UI は `ft_launch com.apple.springboard` で読む**(XCUITest 経路のみ)。
     セッションはアプリに閉じているので、未起動での `ft_snapshot` は 409、`ft_navigate home` 後は
     背面アプリ照会の 500(kAXErrorServerNotFound)になる。`BridgeRouter.handleLaunch` は
