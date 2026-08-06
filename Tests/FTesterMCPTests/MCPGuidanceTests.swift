@@ -142,6 +142,30 @@ final class MCPGuidanceTests: XCTestCase {
         XCTAssertTrue(text.contains("NOT the app you launched"), text)
     }
 
+    /// **欠陥⑧**: 別パッケージがシステムダイアログのときは「操作してから続行」であって
+    /// 「ft_launch し直す」ではない。実測: 位置情報の許可ダイアログ(permissioncontroller)で
+    /// 通常の案内(ft_launch し直す)に従うと、ダイアログを放置したままアプリを再起動してループした
+    func testSwitchedAppNoteGuidesToOperateSystemDialogs() {
+        let snapshot = SnapshotResponse(sessionBundleID: "com.google.android.permissioncontroller",
+                                        screen: FTRect(x: 0, y: 0, width: 1080, height: 2424),
+                                        elements: [], truncatedCount: 0)
+        let note = MCPServer.switchedAppNote(launched: "com.example.app", snapshot: snapshot)
+        XCTAssertTrue(note.contains("system dialog"), note)
+        XCTAssertTrue(note.contains("Operate the dialog"), note)
+        XCTAssertFalse(note.contains("Leaving the app"), "通常文言に落ちないこと: \(note)")
+    }
+
+    /// springboard は `ft_launch bundleId: com.apple.springboard` が正規の attach 先(ツール説明に
+    /// 明記)なので、その用途を否定しない文言にする
+    func testSwitchedAppNoteDoesNotDenySpringboardAsAValidDestination() {
+        let snapshot = SnapshotResponse(sessionBundleID: "com.apple.springboard",
+                                        screen: FTRect(x: 0, y: 0, width: 390, height: 844),
+                                        elements: [], truncatedCount: 0)
+        let note = MCPServer.switchedAppNote(launched: "com.example.app", snapshot: snapshot)
+        XCTAssertTrue(note.contains("supported"), note)
+        XCTAssertTrue(note.contains("com.apple.springboard"), note)
+    }
+
     /// 一致していれば黙る(注記は毎回の木の先頭に出るので、無駄に出すと本文を押し出す)
     func testSnapshotStaysQuietWhenTheTreeIsTheLaunchedApp() {
         let snapshot = SnapshotResponse(sessionBundleID: "com.example.app",
