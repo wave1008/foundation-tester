@@ -135,9 +135,16 @@ enum RefGuard {
 
     static func ghostMessage(ref: Int, found: ElementInfo, in elements: [ElementInfo]) -> String {
         let hit = occluder(of: found, in: elements).map { " — the tap would land on \(describe($0))" } ?? ""
+        let f = found.frame
+        // **逃げ道も書く**が、順序を守る(外部フィードバック 2026-08-06)。
+        // 先に「本来の直し方」、次に「確かめたうえでの回避」。座標タップを無条件に勧めると、
+        // 判定が正しいとき **覆っている要素を黙って叩く**ことになり、このガードの意味が消える
         return "[\(ref)] \(describe(found)) is outside its scroll container and something else is"
             + " drawn at its coordinates\(hit). It is a leftover from scrolling, not what you see."
             + " Bring it into view with ft_scroll_to and re-snapshot."
+            + " If ft_screenshot shows it really is visible there, this check was wrong —"
+            + " tap the coordinates directly (x: \(Int(f.x + f.width / 2)),"
+            + " y: \(Int(f.y + f.height / 2))), which skips the check, and please report it."
     }
 
     static func movedNote(found: ElementInfo, moved: Double, cause: String) -> String {
