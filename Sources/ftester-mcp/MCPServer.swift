@@ -286,7 +286,8 @@ final class MCPServer {
         // activate/attached 状態を1本にしないと余計な activate が挟まる)
         let attach = AppAttachDriver(port: xcuiPort, bundleID: bundleID)
         return HybridFallbackDriver(primary: WebViewDelegatingDriver(primary: inapp, delegated: attach),
-                                    fallback: attach)
+                                    fallback: attach, primaryBundleID: bundleID,
+                                    foreignApp: SessionRecoveryDriver(base: BridgeClient(port: xcuiPort)))
     }
 
     /// **実際に主となったエンジンが XCUITest のときだけ**添える切り分け。XCUITest では

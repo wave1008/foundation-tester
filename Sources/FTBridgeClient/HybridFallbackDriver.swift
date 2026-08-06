@@ -25,20 +25,46 @@ public final class HybridFallbackDriver: AppDriver {
     /// この間は**全操作を XCUITest 側へ寄せる** —— 読みも書きも同じ側に寄せるので
     /// ref の名前空間も一致する(混ぜると別要素を操作する)。launch/activate で解除
     private var appBackgrounded = false
+    /// in-app ブリッジが住んでいるアプリの bundle ID(分かるときだけ)。
+    /// **これが無いと「自分では抱えられないアプリ」を判定できない**
+    private let primaryBundleID: String?
+    /// **別 bundle のセッションを張れる** XCUITest ドライバ(fallback の AppAttachDriver は
+    /// 固定 bundle への attach 専用で、`launch` は意図的に no-op)。
+    /// springboard や別アプリを開くのはこちらの役目
+    private let foreignApp: AppDriver?
+    /// primary(in-app)が原理的に見られない対象を見ている。
+    /// **in-app ブリッジは自分のプロセスの中しか見えない**ので、別アプリや springboard を
+    /// launch したら以降は読みも書きも XCUITest 側へ寄せる。
+    /// これが無いと `ft_launch com.apple.springboard` が**成功を返したうえで、
+    /// 続く snapshot がアプリ自身の古い木を返す**(2026-08-06 に実測。
+    /// ホーム画面を読もうとして 30 要素のアプリ画面が返った)
+    private var delegatedApp = false
 
-    /// 背面化中の宛先。primary 限定の操作もこちらを見る
-    private var active: AppDriver { appBackgrounded ? fallback : primary }
+    /// primary を使えない状態か(背面化 or primary が抱えられない対象)
+    private var delegating: Bool { appBackgrounded || delegatedApp }
 
-    public init(primary: AppDriver, fallback: AppDriver) {
+    /// 宛先。primary 限定の操作もこちらを見る。
+    /// 別 bundle を見ている間は**セッションを張った側**から読む(attach 専用の fallback ではない)
+    private var active: AppDriver {
+        if delegatedApp, let foreignApp { return foreignApp }
+        return delegating ? fallback : primary
+    }
+
+    public init(primary: AppDriver, fallback: AppDriver,
+                primaryBundleID: String? = nil, foreignApp: AppDriver? = nil) {
         self.primary = primary
         self.fallback = fallback
+        self.primaryBundleID = primaryBundleID
+        self.foreignApp = foreignApp
     }
 
     /// primary を試し、**このエンジンでは不可(501 / ルート不明 404)のときだけ** fallback へ回す。
     /// 409 は含めない(一時的競合。理由は DriverError.isEngineIncapable)
     private func withFallback<T>(_ operation: (AppDriver) async throws -> T) async throws -> T {
-        // 背面化中は primary を撃たない(応答が返らず、タイムアウト分だけ待たされる)
-        if appBackgrounded { return try await operation(fallback) }
+        // 背面化中・別アプリを見ている間は primary を撃たない
+        // (前者は応答が返らずタイムアウト分待たされる。後者は無関係な木を触る)
+        if delegatedApp, let foreignApp { return try await operation(foreignApp) }
+        if delegating { return try await operation(fallback) }
         do {
             let result = try await operation(primary)
             fallbackNote = nil
@@ -150,12 +176,31 @@ public final class HybridFallbackDriver: AppDriver {
     /// 起動系は**必ず primary**(in-app は dylib 注入を伴う再起動で、XCUITest の launch では
     /// ブリッジが載らない)。前面へ戻るので寄せ替えも解除する
     public func launch(bundleID: String) async throws {
+        if try await delegateForeignApp(bundleID, { try await $0.launch(bundleID: bundleID) }) { return }
         try await primary.launch(bundleID: bundleID)
         appBackgrounded = false
+        delegatedApp = false
     }
     public func activate(bundleID: String) async throws {
+        if try await delegateForeignApp(bundleID, { try await $0.activate(bundleID: bundleID) }) { return }
         try await primary.activate(bundleID: bundleID)
         appBackgrounded = false
+        delegatedApp = false
+    }
+
+    /// **自分の中に居ないアプリは XCUITest 側で開く**。in-app ブリッジは対象アプリの
+    /// プロセス内に住むので、別 bundle を渡されても自分の外は見えない ——
+    /// primary に投げると「成功したのに読めるのは自分の木だけ」になる。
+    /// 開いた後も寄せたままにする(読みと書きを同じ側に置く = ref の名前空間が揃う)。
+    /// primaryBundleID が不明なときは従来どおり primary へ(判定材料が無いので嘘をつかない)
+    private func delegateForeignApp(
+        _ bundleID: String, _ operation: (AppDriver) async throws -> Void) async throws -> Bool {
+        guard let own = primaryBundleID, bundleID != own, let foreignApp else { return false }
+        try await operation(foreignApp)
+        delegatedApp = true
+        appBackgrounded = false
+        fallbackNote = "delegated to XCUITest (the in-app bridge only sees \(own))"
+        return true
     }
     public func terminate() async throws { try await primary.terminate() }
     public func install(packagePath: String) async throws {

@@ -109,7 +109,9 @@ public enum ExploreDriverResolver {
             let inapp = InAppDriver(repoRoot: repoRoot, udid: udid, port: inappPort)
             return Resolved(driver: HybridFallbackDriver(
                 primary: WebViewDelegatingDriver(primary: inapp, delegated: attach),
-                fallback: attach), engine: "hybrid")
+                fallback: attach, primaryBundleID: bundleID,
+                foreignApp: SessionRecoveryDriver(base: BridgeClient(
+                    port: xcuiPort, host: resolution.endpoint.host))), engine: "hybrid")
         }
     }
 
