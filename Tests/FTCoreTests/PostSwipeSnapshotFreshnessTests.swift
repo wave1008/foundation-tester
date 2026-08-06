@@ -8,6 +8,8 @@
 //
 // 型ではなく**関数の本文を走査する**: これらの関数に素の `driver.snapshot()` が1つでも
 // 戻ると、失敗モードは沈黙(緑のまま誤った要素を掴む)なのでテストでは捕まらない。
+// 撮り直す理由は `SnapshotFreshness` で書くので、走査もその語彙で行う(理由を書く形にしても
+// 「素取得に戻す」「swiped を false 固定にする」は**コンパイラでは防げない**ため、この検査は残す)。
 // 機構と実測は docs/verification.md「Compose の探索直後タップ」。
 
 import XCTest
@@ -56,10 +58,9 @@ final class PostSwipeSnapshotFreshnessTests: XCTestCase {
             }
             let bare = body.filter { $0.contains("driver.snapshot()") }
             XCTAssertTrue(bare.isEmpty,
-                          "\(signature) はスワイプ後に読む経路なので "
-                          + "snapshot(bypassingCache: driver.supportsCacheBypass) を使うこと。"
+                          "\(signature) はスワイプ後に読む経路なので freshSnapshot(.afterOwnMove) を使うこと。"
                           + "素取得だと古いツリーを掴んで黙って誤る: \(bare.map { $0.trimmingCharacters(in: .whitespaces) })")
-            XCTAssertTrue(body.contains { $0.contains("bypassingCache:") },
+            XCTAssertTrue(body.contains { $0.contains("freshSnapshot(.afterOwnMove)") },
                           "\(signature) にキャッシュ迂回の snapshot が1つも無い = 手当てが消えている")
         }
     }
@@ -72,7 +73,9 @@ final class PostSwipeSnapshotFreshnessTests: XCTestCase {
         guard let body = Self.body(of: "private func executeAction(", in: source) else {
             return XCTFail("走査対象が見つからない = executeAction のシグネチャが変わった")
         }
-        let gated = body.filter { $0.contains("bypassingCache: searchSwiped") }
+        // **`swiped:` の実引数まで見る**: `.afterSearch(swiped: false)` に固定されると
+        // 理由は書かれたまま迂回が消えるので、語彙の存在だけでは検出できない
+        let gated = body.filter { $0.contains("freshSnapshot(.afterSearch(swiped: searchSwiped))") }
         XCTAssertGreaterThanOrEqual(gated.count, 3,
                                     "探索後の解決 snapshot は初回と再試行2経路(timeout 指定 / 既定3回)の"
                                     + "計3箇所すべてを searchSwiped で迂回すること。現在 \(gated.count) 箇所")
