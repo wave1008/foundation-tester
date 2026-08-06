@@ -118,6 +118,13 @@ final class MCPRefGuardTests: XCTestCase {
             XCTAssertTrue(error.localizedDescription.contains("#row_09"))
             XCTAssertTrue(error.localizedDescription.contains("#tab_home"),
                           "何に当たってしまうのかを名指しすること")
+            // **逃げ道も書くが順序を守る**: 先に本来の直し方(ft_scroll_to)、次に確認付きの座標タップ
+            let message = error.localizedDescription
+            let fix = try XCTUnwrap(message.range(of: "ft_scroll_to"))
+            let escape = try XCTUnwrap(message.range(of: "tap the coordinates directly"))
+            XCTAssertTrue(fix.lowerBound < escape.lowerBound,
+                          "座標タップを先に勧めるとガードの意味が消える")
+            XCTAssertTrue(message.contains("(x: 60, y: 720)"), "撃つべき座標まで出すこと")
         }
         XCTAssertFalse(actions.contains { $0.hasPrefix("tap") }, "撃ってはいけない")
     }
