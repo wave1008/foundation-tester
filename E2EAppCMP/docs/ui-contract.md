@@ -77,7 +77,7 @@ tag 定数は `composeApp/src/commonMain/kotlin/com/ftester/e2e/Tags.kt` に集�
 |---|---|---|---|
 | `#txt_home_marker` | Text | `E2E ホーム` | ホーム着地の判定 |
 | `#nav_selector` | Button | `セレクタ` | |
-| `#nav_noid` | Button | `ID なし` | **2番目に置く**(末尾だと下部タブに重なり、タップがタブに吸われる。iOS ネイティブ SUT で実測) |
+| `#nav_noid` | Button | `ID なし` | **上から3行目までに置く**(末尾だと下部タブに重なり、タップがタブに吸われる。iOS ネイティブ SUT で実測)。SUT ごとの実際の並びは2番目(Android/Flutter)と3番目(CMP/iOS)に割れているが、**制約は「末尾側に置かない」であって位置そのものではない**(2026-08-06 に実測して表記を訂正) |
 | `#nav_input` | Button | `テキスト入力` | |
 | `#nav_webview` | Button | `WebView` | **末尾に置かない**(`#nav_noid` と同じ理由でタップがタブに吸われる) |
 | `#nav_gesture` | Button | `ジェスチャ` | |
@@ -96,6 +96,14 @@ tag 定数は `composeApp/src/commonMain/kotlin/com/ftester/e2e/Tags.kt` に集�
 スクロールを伴う `tapWithScrollDown` へ替えても、SwiftUI の SUT では**探索スワイプ自体が
 ボタンを発火**して同じ事故になった。新しい画面は**関連画面から開く**こと
 (マップ画面はジェスチャ画面の右下ボタンから開く)。
+
+**E2E-iOS だけは、この事故が起きたままの状態を意図して残してある**(2026-08-06)。
+あの SUT のホームは 11 行が収まらず、`#nav_heal` (16,788 370x62) が**下部タブの下に着地**し、
+`#nav_diagnostics` は画面外に出る。ここは**直さない** —— ツール側の
+「上に描かれた要素に覆われている」警告(`RefGuard.overlayCovering`)の**唯一の生きた witness**で、
+飛び越し画面と同じ役割を持つ。安全なのは、この2つを触るシナリオが `_disabled/` にしか無いため
+(CMP の `23_飛び越し.swift` は `#nav_diagnostics` を叩くが、CMP のホームは全行が収まる)。
+**他の SUT でこの形を作らない**(witness は1つで足りる)。
 
 ## セレクタ画面(タイトル `セレクタ`)
 

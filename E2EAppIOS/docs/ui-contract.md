@@ -81,7 +81,10 @@ keyboard focus を持つ要素として見えず無言 no-op になる**。だ�
 
 ### Toggle / Slider
 
-- `Toggle` は同一 frame の `switch` ノードが2つ出る(id 付き1つ + id 無し1つ)。`#id` 指定なら実害なし
+- `Toggle` は AX ツリー上は同一 frame の `switch` ノードが2つある(id 付き1つ + id 無し1つ・幅が 2pt 違う)。
+  **ブリッジが後から来て何も足さない方を落とすので、スナップショットには1つしか出ない**
+  (2026-08-06 / protocol 53。規則は `Sources/FTCore/SnapshotDedupe.swift`)。
+  同じ畳み込みは `UIAlertController` のボタン(`#btn_dialog_ok` / `#btn_dialog_cancel`)にも効く
 - `Slider` の value は `"50%"`(パーセント表記)。値検証は echo Text(`#txt_slider`)で行う契約
 
 ### WebView 画面(SUT 固有の実測)
@@ -92,6 +95,18 @@ keyboard focus を持つ要素として見えず無言 no-op になる**。だ�
   DOM 経路が有効 = WebView 画面でも in-app の速度が出る。
 - 中身が a11y に現れるまで **約 2.3 秒**(内蔵 HTML・2026-07-29 実測)。
 - HTML の `id` は **identifier に来ない**。`aria-label` は label に来る。
+- 空の `<input>` は WebKit が **placeholder を AXValue に入れて返す**(UIKit の入力欄は入れない)。
+  ブリッジが `value == placeholderValue` を空へ正規化するので、
+  スナップショットは `ph="WebView 入力" empty` になる(2026-08-06 / protocol 53)。
+  これが無いと `valueIs("")` が iOS の WebView でだけ通らない。
+
+## ホームの `#nav_heal` / `#nav_diagnostics` は**意図して下部タブに重ねてある**
+
+11 行が 1 画面に収まらず、`#nav_heal` (16,788 370x62) が下部タブ `#tab_controls` の下に着地し、
+`#nav_diagnostics` は画面外に出る。**直さないこと** —— MCP の
+「上に描かれた要素に覆われている」警告(`RefGuard.overlayCovering`)の唯一の生きた witness で、
+E2E-CMP の飛び越し画面と同じ役割を持つ。この2つを叩くシナリオは `_disabled/` にしか無いので
+通常実行には影響しない(母体の契約 `E2EAppCMP/docs/ui-contract.md` §ホームタブ にも記載)。
 
 ## ビルド
 

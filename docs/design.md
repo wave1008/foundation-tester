@@ -294,6 +294,22 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
   quiescence API を使えば event-driven 化できるが未採用)。inapp エンジンは tap 側の `InAppSettle`
   (アニメ整定をイベント駆動で待つ)が既に遷移を待つため対象外。
 
+**value の正規化: placeholder がそのまま来る欄は空にする**(2026-08-06)。
+WebKit は空の `<input>` の AXValue に placeholder を入れて返す(UIKit の入力欄は入れない)ため、
+正規化しないと **iOS の WebView だけ `value="WebView 入力"`** になり `valueIs("")` が通らない。
+**Android の同じ欄は empty で返る**ので、経路で割れていた。判定は `clearInput` の
+`remainingText` と同じ規則(`value == placeholderValue` なら空)。
+
+**重複ノードの畳み込み**(2026-08-06。規則は `Sources/FTCore/SnapshotDedupe.swift`)。
+iOS の AX ツリーは**ラッパと実体を両方出す**ことがあり、実測で3形あった:
+UIKit の Switch(`id=sw_notify 61x28` と無名の `63x28`)/ `UIAlertController` の各ボタン
+(同一 frame・同一 id で2つ)/ キーボードの `#dictation`。**Android のブリッジは1つで返す**。
+実害は「`.button[n]` の序数が見え方とずれる」と「同じ id が複数候補になる」。
+落とす条件は**型が同じ・位置がほぼ同じ(2pt)・情報を足していない**の3つとも成り立つときだけ
+(内側が id やラベルを新しく持つ形は落とさない = 指せる要素を消さない)。
+**ラベルが違えば落とさない** —— 同じ矩形へクランプされた行(`行 09`〜`行 40` が `行 01` の
+位置に畳まれる形)は重複ではなく「描かれていない残骸」で、扱いは MCP 側の警告(§MCP)。
+
 ### 4.4.1 WebView の中身(2026-07-29)
 
 WebView(iOS=WKWebView / Android=android.webkit.WebView)の中身は、経路ごとに見え方が違う。
@@ -409,6 +425,15 @@ iOS ブリッジと区別なく扱える。
   2026-07 の高速化はこの仕組みが土台(詳細・実測は [performance-tuning.md](performance-tuning.md))
 - **アニメーション自動無効化**: ブリッジ起動時に window/transition/animator の
   アニメーション倍率を 0 に固定し、静穏判定後に screenshot が古い絵を掴む問題を回避する
+- **報告する `screen` はディスプレイ全体・フィルタの基準はアクティブウィンドウの根**
+  (2026-08-06 に分離)。両方をウィンドウの根で兼ねていたため、**ダイアログが出ている間だけ
+  `screen` がダイアログの DecorView**(実測 1024x427 / 735x386)になり、同じ応答に入っている
+  要素座標(y=1342 等)がそれをはみ出す自己矛盾した木を返していた。実害はもう1つあり、
+  `BridgeRouter` はこれを `lastScreen` として覚え**既定の全画面スワイプとピンチの座標を作る**
+  ので、ダイアログを撮った直後の swipe が画面上部の狭い帯を払うことになる。
+  ディスプレイは `Resources.getSystem()` の DisplayMetrics から採る(Context を持ち回らない。
+  取れなければ従来値へ落とす)。**フィルタ側を display に替えてはいけない** ——
+  「画面の大半を覆う容器を落とす」0.85 の意味が変わり、ダイアログの中身の出方が動く
 - 実装・落とし穴の詳細は重複させず [AndroidRunner/README.md](../AndroidRunner/README.md) を参照
 
 ### 4.6 座標系の契約と Compose の frame 制約(2026-07-21)
@@ -1917,6 +1942,40 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
     **同じ判定を拒否へ格上げすると、外れがそのまま機能の喪失になる**。
     強度を変えて再利用するときは、外れたときの損害が同じかを確かめる。
     なお5形とも**利用者の実アプリで出た** —— 4 SUT 全画面(84画面)の掃討では1件も出ていない。
+  - **容器の中に居ても別の物に当たる2形**(2026-08-06。`RefGuard.overlapWarning`)。
+    上の ghost 判定は `isOutsideContainer` を**入口条件**にしているため、この2形を1つも捕まえない:
+
+    | 形 | 実測 | 判定 |
+    |---|---|---|
+    | 上に描かれた overlay に覆われている | E2E-iOS のホームで `#nav_heal` (16,788 370x62) が下部タブ `#tab_controls` (134,778 134x62) の下。ref タップが**コントロールタブへ遷移**して "tap done" | `overlayCovering`: `occluder` のうち**木の順序で後ろ**にあるものだけ(先に並ぶ大きな背景パネルを遮蔽と読むと、拒否をやめる原因になった誤検知に逆戻りする) |
+    | 同一矩形に積まれている | E2E-iOS のスクロール画面で `行 09`〜`行 40` の staticText **29 個が全部 (16,270 330x56)**(= `行 01` の位置)。ref タップが `selected=row_01` | `stackedRefs`: 同じ矩形に **3つ以上**。**入れ子の一本鎖は数えない**(Android のダイアログは `action_bar_root`→`content`→`parentPanel`→`customPanel`→`custom` が全部同じ矩形) |
+
+    どちらも**拒否せず警告**(ghost と同じ理由)。積み重なりは一覧にも `⚠️scroll-leftover` を出す ——
+    利用者から見ると原因も打ち手も ghost と同じなので**印を2種類に割らない**。
+    誤検知ゲートは 6 構成 × 72 画面で真陽性 34・**誤検知 0**(手順は docs/verification.md)。
+  - **`ft_scroll_to` は「返す木にそれが居るか」を確かめてから成功と言う**(2026-08-06)。
+    探索のスワイプは**タップ可能な行を発火させることがある**(SwiftUI の SUT で実測)。
+    そのとき executor は途中の観測で passed のまま、撮り直した木は別画面になり、
+    「scrolled to "#nav_diagnostics"」+ **その id が居ない診断画面の木**が返っていた
+    (E2E-iOS のホームで決定的に再現)。照合は `matches`(waitFor と同じ = DSL と同じ)で行う ——
+    `scrollTo` は `StepOutcome.resolvedElement` を載せないので、そちらを当てにすると一度も走らない。
+  - **木が「起動したアプリのもの」かを突き合わせる**(`MCPServer.switchedAppNote`。2026-08-06)。
+    Android のブリッジは session を**前面ウィンドウ**から採る(`root.getPackageName()`)ので、
+    back でアプリを出ると session ごと別アプリへ移り、`backgroundedSessionNote` は
+    **構造上まったく発火しない**。4 SUT は id・ラベルが共通契約なので木を見ても気付けない。
+    ホスト側で最後の `ft_launch` を覚えるのが唯一の検知経路(詳細は docs/verification.md)。
+  - **繋いだブリッジの版を1度だけ照合する**(`MCPServer.staleBridgeWarning`。2026-08-06)。
+    profile 無しの iOS 経路は `ExploreDriverResolver` が**生きているポートへ素で繋ぐ**だけで
+    provision を通らないため、`bridgeProtocolVersion` を上げても旧ランナーが使われ続ける
+    (実害: ランナー側の修正2件が `bridge down && bridge up` まで反映されなかった)。
+    **止めはしない**(意図して古いブリッジを使うことはある)。版を返さない旧ブリッジ(nil)も黙る。
+  - **`ft_navigate back` は「画面が変わった」と断言しない**(2026-08-06)。iOS の back は端の swipe で、
+    自前ナビの画面(`#btn_back` を持つ SwiftUI 等)では**1px も動かない**(E2E-iOS で2回とも不変)。
+    アプリの外へ出ることもあるので、両方を注記に書く。
+  - **エンジン切替の案内には「アプリが起動し直る」まで書く**(`inappRelaunchWarning`。2026-08-06)。
+    dylib は起動時にしか差し込めないので、in-app ブリッジの初回起動はアプリを再起動する。
+    書かないと、案内に従った瞬間に探索中の画面が消え、**ホーム画面へ同じ座標のジェスチャが撃たれる**
+    (実測: マップ画面での double tap がホームから `#nav_scroll` を開き `行 05` を選んだ)。
   - **スクロール容器は行に `scroll` を出し、2つ以上あるときだけ先頭で名指しする**
     (`ScrollFrameCandidates`。2026-08-06)。`scrollFrame:` は**ref でなくセレクタ文字列**を取るのに、
     一覧はどれが容器かを言っていなかった —— `ft_scroll_to` の引数説明が「複数あるときに渡せ」と
