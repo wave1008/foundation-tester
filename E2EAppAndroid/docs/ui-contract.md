@@ -8,6 +8,16 @@
 - `#txt_about_app` は `app=com.ftester.e2e.android`
 - シナリオ: `TestProjects/E2E-Android/scenarios/`
 
+## `textAllCaps` を必ず切る(2026-08-06)
+
+`Theme.FTE2E` に `android:textAllCaps=false` / `textAllCaps=false` を入れてある。
+AppCompat の既定は `Button` を大文字で描き、**a11y ラベルまで大文字になる** ——
+`android:text="WebView"` の `#nav_webview` が `WEBVIEW` で出て、
+「ラベルは全 SUT 共通」の契約どおりに書いたシナリオがこの SUT でだけ落ちていた。
+
+**日本語ラベルは大文字化の影響を受けない**ので、ASCII ラベルの `WebView` 1件だけが
+表面化していた。ASCII のラベルを増やすときはここを疑うこと。
+
 ## 実装方式(どこが View で、どこが Compose か)
 
 **同じアプリの中で View と Compose を同居させる**のがこの SUT の核。型語彙が画面ごとに変わる。
