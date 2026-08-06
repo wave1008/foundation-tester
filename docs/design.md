@@ -1930,7 +1930,18 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
     飛び越しの拾い直しの注記も**総称でなく実物の名前**を出す(`suggestedScrollFrame`。
     推測した容器に申告済みの容器が IoU 0.5 以上で重なるときだけ)。
     実画面での確認: 3 SUT(E2E-Android / E2E-CMP on Android / E2E-iOS)の 35 画面で
-    印が出たのはスクロール画面3枚だけ・いずれも設計どおりの2容器(縦リスト+横カルーセル)で誤検知0
+    印が出たのはスクロール画面3枚だけ・いずれも設計どおりの2容器(縦リスト+横カルーセル)で誤検知0。
+
+    **印が出ない理由は2つあり、混同しない**(2026-08-06 に iOS 設定アプリで実地確認):
+    ①**エンジンが申告できない**(Compose/Flutter の自前描画容器)/
+    ②**容器がスナップショットに載っていない**。②は iOS で普通に起きる ——
+    `scrollView`/`table`/`collectionView` は `BridgeRouter.isEligible` の `default` 分岐、
+    in-app は `UIScrollView` が `.other` へ写るので、**どちらも identifier が空なら除外**される
+    (Android も resource-id が無い容器は同じ)。**`scrollFrame:` は名前を要求するので、
+    ②の容器はそもそも指定できない** = 印が無いことと書けないことが一致していて矛盾は無い。
+    容器を型で指定できるようにする(`.scrollView` を書けるようにする)には**ブリッジのフィルタを
+    緩める**しかなく、版上げ + `clippingContainer` の推測結果が変わるため 4 SUT の E2E が要る。
+    価値は中程度(容器推測が既に大半を吸収している)なので**保留**
   - **`ft_status` は session と「いま前面か」を分けて出す**。session はブリッジが掴んでいるアプリで、
     `ft_navigate home` の後も変わらない。前面判定は XCUITest の `/appstate`(1往復)。
     iOS は**任意の前面 bundle ID を取れない**(`foregroundAppID` は nil を返す)ので、
