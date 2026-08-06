@@ -106,11 +106,11 @@ final class BridgeContractTests: XCTestCase {
             "InAppBridge/Sources/InAppInput.h": "cb980dcf8b80c38a97a841946354460ce6fd960baf53ada67aa939e16e373a65",
             "InAppBridge/Sources/InAppInput.m": "ea5a619f2b945e078af3bea394cb6d73a7e405c7509586389e427951d9b2f601",
             "InAppBridge/Sources/InAppSettle.swift": "62ae8446e108a68b4a72ef1f8226d530d77683087fde133cfe7a05ee13a2a6e1",
-            "InAppBridge/Sources/InAppSnapshot.swift": "ecdf6d62ca00b6e0bd308350c4e1c74ca8625d4b146bf81e3162f007d4cfb46f",
+            "InAppBridge/Sources/InAppSnapshot.swift": "63488d7f6da3d6a016fc85aa7592dd0645d9f785bd915ac30ba956426fd46131",
             "InAppBridge/Sources/InAppWebViewDOM.swift": "b4053272dfffb11508b64bd315695123d1199768ed7ceed20f2b8272a5b10551",
             "InAppBridge/Sources/boot.m": "b23fc93fbc99ce2579c9fd8ae75a6f9bbfd0ec6122bec60eb6cd00775dd635ef",
             "InAppBridge/build.sh": "afc02d752c97a009dd48aa6cf18934af0c6f8be662d75af37cdc8c4affbc454d",
-            "Sources/FTCore/BridgeDTO.swift": "2de134bf6699a825ea699eb400ee508fcab9c5b9a9229f6280d74e77ec4add51",
+            "Sources/FTCore/BridgeDTO.swift": "c83683dfa5b97438855616a2b6745de91d5279e8080d4843c4a387a9a8798372",
             "Sources/FTCore/WebViewDOMSnapshot.swift": "3b0b20dfb2b8451f9ce19564c7d8701674f9361bbcb5b1c5afbb3570324011af",
         ],
         .xcuitest: [
@@ -121,7 +121,7 @@ final class BridgeContractTests: XCTestCase {
             "Runner/FTesterRunnerUITests/FastInput.swift": "18b54340c404eac53736675763fad8e291b08e2f1f1ba96d696172698aa83bc1",
             "Runner/FTesterRunnerUITests/ObjCExceptionCatcher.h": "5a98cdbeefb031137a985b2f4430a5e12fec447a492599f8f4da1bd2c7101edc",
             "Runner/FTesterRunnerUITests/ObjCExceptionCatcher.m": "8b41a8a81bc8199bca13a364717614684f8003999c7675d9a63242c8e74c26be",
-            "Sources/FTCore/BridgeDTO.swift": "2de134bf6699a825ea699eb400ee508fcab9c5b9a9229f6280d74e77ec4add51",
+            "Sources/FTCore/BridgeDTO.swift": "c83683dfa5b97438855616a2b6745de91d5279e8080d4843c4a387a9a8798372",
             "Sources/FTCore/TypeReadback.swift": "8238adeb5146ee2441478a94bf6e2aabb85e6c88c38538ed8df74b2e025bf8ca",
         ],
         .android: [
