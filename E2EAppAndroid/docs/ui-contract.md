@@ -28,7 +28,7 @@
 | `EditText`(通常) | `textField` | `textMultiLine` も `textField`(iOS ネイティブは `textView` になる) |
 | `EditText`(textPassword) | `secureTextField` | |
 | `SwitchCompat` | `switch` | ダイアログ画面・自己修復画面 |
-| Compose `Switch` / `Button` | `switch` / `button` | className は `android.view.View` のまま。ブリッジが checkable と同一 bounds の Button マーカー子から役割を復元する(2026-07-26 正規化。それ以前は両方 `cell` = 現 `clickable` の旧名) |
+| Compose `Switch` / `Button` | `switch` / `button` | className は `android.view.View` のまま。ブリッジが checkable と同じ矩形の Button マーカー子から役割を復元する(2026-07-26 正規化。それ以前は両方 `cell` = 現 `clickable` の旧名)。**Button は 2026-08-06 まで復元に失敗して `clickable` のままだった** —— ComposeView 埋め込みでは親とマーカー子の矩形が完全一致せず、一致条件で弾かれていた(`looksLikeRoleMarker` で辺の共有判定に緩めて解消) |
 | Compose `Checkbox` / `RadioButton` | `checkBox` | ラジオも `checkBox` に丸められる |
 | Compose `Slider` | `slider` | |
 | `RecyclerView` | `collectionView` | |

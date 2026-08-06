@@ -123,6 +123,7 @@ final class InputInjector {
                     if (focused || (SystemClock.uptimeMillis() >= focusGraceUntil && !blindFired)) {
                         if (combined == null) {
                             masked = target.isPassword();
+                            rejectMaskedAppend(masked, current);
                             combined = current + text;
                         }
                         Bundle args = new Bundle();
@@ -148,6 +149,8 @@ final class InputInjector {
                         lastState = "未フォーカス(ACTION_CLICK でフォーカス要求中)";
                     }
                 }
+            } catch (BridgeRouter.BridgeException e) {
+                throw e;   // 撃たずに弾いた判断(rejectMaskedAppend 等)は再試行の対象ではない
             } catch (RuntimeException e) {
                 // レイアウト変化中のノードは内部で NPE 等を投げる → 次周回で取り直す
                 lastState = "ノードが無効化された(" + e.getClass().getSimpleName() + ")";
@@ -190,6 +193,26 @@ final class InputInjector {
 
     private static void injectKey(UiAutomation ua, KeyEvent e) {
         ua.injectInputEvent(e, true);
+    }
+
+    /**
+     * **中身のあるマスク欄への追記は撃たずに弾く**(2026-08-06 に実害を観測)。
+     *
+     * 追記は `既存の読み + text` を SET_TEXT で書き戻す形だが、**パスワード欄の読みは伏せ字**
+     * (`••••`)なので、そのまま書き戻すと**伏せ字そのものが本文になる**。
+     * 実測: 空欄へ "abc" → 続けて "def" で、アプリ側の echo が `•••def` になった。
+     * ツールは "Typed" と成功を返すため、値が壊れたことは後段の検証まで分からない。
+     *
+     * 既存コメント(setTextAppendingAt の規律)は「combined を**作り直す**と伏せ字を書く」と
+     * 警告していたが、**初回構築そのもの**が同じ穴だった。読める術が無い以上ここは
+     * 追記できない —— 置換したいなら呼び手が先に clearInput する(それは冪等で安全)。
+     * 空欄への1回目は `current` が "" なので従来どおり通る。
+     */
+    private static void rejectMaskedAppend(boolean masked, String current) {
+        if (!masked || current.isEmpty()) return;
+        throw new BridgeRouter.BridgeException(422,
+                "パスワード欄には追記できません(読みが伏せ字なので、追記すると伏せ字が本文として"
+                + "書き込まれます)。置換したい場合は先に clearInput してください");
     }
 
     /** 適用確認。マスク欄(パスワード)は読みが伏せ字になるため長さ一致で見る */
@@ -287,6 +310,8 @@ final class InputInjector {
                         lastState = "未フォーカス(ACTION_CLICK でフォーカス要求中)";
                     }
                 }
+            } catch (BridgeRouter.BridgeException e) {
+                throw e;   // 撃たずに弾いた判断は再試行の対象ではない(上のコメント参照)
             } catch (RuntimeException e) {
                 lastState = "ノードが無効化された(" + e.getClass().getSimpleName() + ")";
             }
@@ -340,6 +365,7 @@ final class InputInjector {
                     }
                     if (combined == null) {
                         masked = focus.isPassword();
+                        rejectMaskedAppend(masked, current);
                         combined = current + text;
                     }
                     Bundle args = new Bundle();
@@ -351,6 +377,8 @@ final class InputInjector {
                         lastState = "ACTION_SET_TEXT を受け付けないフィールドです(WebView 等)";
                     }
                 }
+            } catch (BridgeRouter.BridgeException e) {
+                throw e;   // 撃たずに弾いた判断は再試行の対象ではない(上のコメント参照)
             } catch (RuntimeException e) {
                 lastState = "ノードが無効化された(" + e.getClass().getSimpleName() + ")";
             }

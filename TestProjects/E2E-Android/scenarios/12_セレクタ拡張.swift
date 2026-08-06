@@ -86,8 +86,8 @@ class セレクタ拡張が正しく解決できること {
                     tap("#btn_controls_reset")
                 }.expectation {
                     // **状態フィルタは型ではなく id と併用する**: 同じ役割の要素でも型は SUT ごとに
-                    // 割れる(この画面の無効ボタンは View/XML では clickable、CMP では button。
-                    // ui-contract.md「型で指さない要素」)。enabled は 3 ブリッジ共通で埋まる
+                    // 割れることがある(checkBox / slider / リスト行。ui-contract.md「型で指さない要素」)。
+                    // enabled は 3 ブリッジ共通で埋まる
                     exist("#btn_always_disabled&&enabled=false")
                     exist("#btn_toggle_target&&enabled=false")
                 }.action {
