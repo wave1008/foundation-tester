@@ -115,6 +115,8 @@ claude plugin uninstall ftester@foundation-tester
 ### 作業フォルダの削除
 
 - VSCodeを終了してから Finder や rm で削除します
+- **作業フォルダを残す場合**は、`CLAUDE.md` の `<!-- ftester:begin -->` 〜 `<!-- ftester:end -->`
+  の範囲も削除してください(インストーラが置いた Claude Code 向けの案内。範囲外には触れていません)
 
 ### ファイルの削除
 
