@@ -2061,7 +2061,10 @@ public final class StepExecutor {
     /// 要素が**容器の完全に外**に報告されているか(ghost)。`clippingContainer` と違い
     /// **交差しないことが条件**で、こちらは「掴んでしまった要素を捨てて掴み直す」判断に使う。
     /// **またぐ要素を含めてはいけない** —— 縁で救済スワイプを撃つと自傷する(grabbedGhost の記録)
-    static func isOutsideContainer(_ element: ElementInfo, in elements: [ElementInfo]) -> Bool {
+    ///
+    /// public なのは ftester-mcp の RefGuard が同じ判定を使うため(ref を撃つ直前の照合)。
+    /// **判定はここ1箇所** —— MCP 側に別の閾値を置くと、DSL と MCP で「ghost の定義」が割れる
+    public static func isOutsideContainer(_ element: ElementInfo, in elements: [ElementInfo]) -> Bool {
         guard let container = clippingContainer(of: element, in: elements) else { return false }
         return ScrollGeometry.intersection(element.frame, container) == nil
     }

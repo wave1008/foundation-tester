@@ -73,6 +73,19 @@ final class FakeDriver: AppDriver, @unchecked Sendable {
         return snapshotResponse
     }
 
+    /// Android を模す(既定 false = iOS 相当)。true にすると MCP は必ず
+    /// `snapshot(bypassingCache: true)` を撃つはずで、呼び出し記録で区別できる
+    var supportsCacheBypass = false
+
+    func snapshot(bypassingCache: Bool) async throws -> SnapshotResponse {
+        guard bypassingCache else { return try await snapshot() }
+        try record("snapshot(fresh)", "snapshot")
+        if !scriptedSnapshots.isEmpty {
+            snapshotResponse = scriptedSnapshots.removeFirst()
+        }
+        return snapshotResponse
+    }
+
     /// snapshot が順に返す台本(空 = snapshotResponse を返し続ける)
     var scriptedSnapshots: [SnapshotResponse] = []
 

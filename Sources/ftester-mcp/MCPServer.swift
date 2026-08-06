@@ -29,6 +29,10 @@ final class MCPServer {
     /// drivers と同じキーで「実際に主となったエンジン」を覚える。iosEngineHint がこれで
     /// 助言を出し分ける(引数からは決まらない: profile 無しでも in-app を掴めば hybrid)
     var engines: [String: String] = [:]
+    /// drivers と同じキーで**直前にエージェントへ返した木**を覚える。ref を撃つ直前に
+    /// 撮り直して同じ要素を引き直すための起点(RefGuard 参照)。
+    /// **ref はスナップショットごとに振り直される**ので、番号ではなく要素の同一性で照合する
+    var lastSnapshots: [String: SnapshotResponse] = [:]
     /// 応答の書き出し口。**stdout は JSON-RPC 専用**(診断を混ぜるとクライアントのパースが壊れる)
     private let write: (Data) -> Void
     /// ドライバ生成の差し替え口。nil = 実デバイスを解決する(既定)
@@ -153,6 +157,16 @@ final class MCPServer {
                 if case .ios(let provisioned, _) = target { provisioned.physical ? "xcuitest" : provisioned.engine }
                 else { "android" }
             }()
+            // **profile 経由でも宛先を記録する**(2026-08-06)。ここが空だと ft_status が
+            // 「どこに繋がっているか」を出せず、**同名のデバイスが並ぶフリートでどの1台か
+            // 分からない** —— Android の status.device は全エミュレータで
+            // `sdk_gphone64_arm64` になるので、serial が出ないと識別子がゼロになる
+            connections[key] = switch target {
+            case .ios(let provisioned, _):
+                "\(provisioned.simulatorName) port \(provisioned.port)"
+            case .android(let serial, let deviceName):
+                "\(deviceName) serial \(serial)"
+            }
             return created
         }
 
@@ -406,6 +420,155 @@ final class MCPServer {
             + " Bring it back with ft_launch before trusting these refs\n"
     }
 
+    /// 木を撮り直す。**MCP は必ずキャッシュを捨てて撮る**(driver が対応していれば)。
+    ///
+    /// Android の a11y ノードはキャッシュ供給で、**Compose のスクロール後は木が古いまま固まる**
+    /// (2026-08-06 に決定的再現。撮り直しても数分待っても直らない)。ブリッジ側の既定が
+    /// 「WebView 内だけ refresh」なのは**シナリオ実行**の実測(全ノード refresh で
+    /// snapshot +65ms・E2E-Android の sum +43%)に基づくもので、MCP はエージェントが
+    /// 1手ずつ撃つ経路なので往復のほうが桁で大きく、この上乗せは見えない。
+    /// **常時オンにする**(「ジェスチャの後だけ」のフラグ運用は、フラグを立て忘れたツールが
+    /// 1つでもあると黙って古い木に戻る)
+    private func freshSnapshot(_ driver: AppDriver, args: [String: Any]) async throws
+        -> SnapshotResponse {
+        let snapshot = try await driver.snapshot(bypassingCache: driver.supportsCacheBypass)
+        lastSnapshots[Self.engineKey(args)] = snapshot
+        return snapshot
+    }
+
+    /// ref を撃つ直前の照合。**撮り直した木から同じ要素を引き直して、その新しい ref を返す**。
+    /// 引けない(消えた・ghost)なら撃たずに throw する —— 沈黙した誤操作を作らないため。
+    ///
+    /// 直前の木を覚えていないとき(ft_snapshot を挟まずに ref を撃たれたとき)は素通しする:
+    /// 照合の起点が無いので嘘の判断をするより、ブリッジの 404 に任せるほうが正しい
+    private func verifiedRef(_ ref: Int, driver: AppDriver,
+                             args: [String: Any]) async throws -> (ref: Int, note: String) {
+        guard let target = lastSnapshots[Self.engineKey(args)]?
+            .elements.first(where: { $0.ref == ref })
+        else { return (ref, "") }
+        let fresh = try await freshSnapshot(driver, args: args)
+        switch RefGuard.relocate(target, in: fresh.elements) {
+        case .gone:
+            throw MCPError(RefGuard.goneMessage(ref: ref, target: target))
+        case .ghost(let found):
+            throw MCPError(RefGuard.ghostMessage(ref: ref, found: found))
+        case .found(let found, let moved):
+            return (found.ref,
+                    moved >= RefGuard.movedThreshold
+                        ? RefGuard.movedNote(found: found, moved: moved) : "")
+        }
+    }
+
+    /// 要素が出るまでスクロールして探す。**探索そのものは DSL と同じ StepExecutor に委ねる**。
+    ///
+    /// 自前でスワイプのループを書かない理由: 整定待ち・キャッシュ回避・容器基準の刻み・
+    /// ghost の掴み直し・飛び越しの拾い直し・打ち切りは全部 StepExecutor に入っており、
+    /// **同じ知見の2つ目の実装を作ると必ず割れる**(docs/design.md の「契約は1箇所」)。
+    /// ここは FlowStep を1つ組んで投げるだけにする = MCP で届く要素はシナリオでも届く。
+    private func scrollTo(_ args: [String: Any]) async throws -> [[String: Any]] {
+        guard let selectorText = args["selector"] as? String, !selectorText.isEmpty else {
+            throw MCPError("selector is required (same syntax as the DSL: #id, a label, .type, a||b)")
+        }
+        guard let direction = FTScrollDirection(rawValue: args["direction"] as? String ?? "down") else {
+            throw MCPError("direction must be one of down/up/right/left (content direction)")
+        }
+        let scrollDriver = try await driver(args)
+        let selector = FTSelector.parse(selectorText)
+        let step = FlowStep(
+            action: "scrollTo", locator: selector.primary,
+            fallbacks: selector.fallbacks.isEmpty ? nil : selector.fallbacks,
+            direction: direction.swipe.rawValue,
+            maxSwipes: args["maxSwipes"] as? Int ?? FlowStep.defaultMaxSwipes,
+            scrollFrame: (args["scrollFrame"] as? String).map { FTSelector.parse($0).primary })
+        // releasesScrollTouch は **iOS だけ true**(Android では 2pt のドラッグがクリックとして
+        // 発火する。StepExecutor の宣言参照)。ここを取り違えると探索直後に行が勝手に選択される
+        let executor = StepExecutor(driver: scrollDriver,
+                                    releasesScrollTouch: !(scrollDriver is AndroidDriver))
+        let outcome = await executor.execute(step)
+        // **探索でツリーは必ず動く**ので、覚えている木を捨てて撮り直す(古い ref を残さない)
+        let after = try await freshSnapshot(scrollDriver, args: args)
+        guard case .passed = outcome.status else {
+            throw MCPError("scrollTo \"\(selectorText)\" did not reach the element"
+                + " (\(outcome.status)). The screen is where the search stopped —"
+                + " take an ft_snapshot to see it")
+        }
+        let landed = outcome.resolvedElement.map { " → [\($0.ref)] \(RefGuard.describe($0))" } ?? ""
+        return text("scrolled to \"\(selectorText)\"\(landed)."
+            + " The refs below are fresh\n" + SnapshotRenderer.render(after))
+    }
+
+    /// スクロール容器の**完全に外**に報告されている要素(ghost)を先頭で名指しする。
+    ///
+    /// 一覧そのものからは見分けが付かない —— ghost はフルフレームで並ぶので、
+    /// 「画面に見えている行」と同じ形で出る(Compose iOS は容器の外の行も木に残す)。
+    /// `waitFor` も素の存在しか見ないので、ghost だけで条件が満たされることがある。
+    /// **叩けば RefGuard が止める**が、そこまで行かずに気付けるほうが往復が減る
+    static func ghostNote(_ snapshot: SnapshotResponse) -> String {
+        let ghosts = snapshot.elements.filter {
+            StepExecutor.isOutsideContainer($0, in: snapshot.elements)
+        }
+        guard !ghosts.isEmpty else { return "" }
+        let listed = ghosts.prefix(8).map { "[\($0.ref)] \(RefGuard.describe($0))" }
+            .joined(separator: " ")
+        let more = ghosts.count > 8 ? " (+\(ghosts.count - 8) more)" : ""
+        return "note: these are outside their scroll container — leftovers from scrolling, not"
+            + " drawn where their frames say: \(listed)\(more)."
+            + " Scroll them into view (ft_scroll_to) before using them\n"
+    }
+
+    /// フォーカス待ちの上限。**短い**のは、報告しないフレームワークで毎回これを丸ごと待つため
+    static let focusWaitSeconds: Double = 1.5
+    static let focusPollSeconds: Double = 0.15
+
+    /// `tap(ref:)` の直後、pressEnter を撃つ前に**その欄へフォーカスが立つまで**待つ。
+    ///
+    /// **フォーカスを報告しないフレームワークで待ち続けない**のが要点: Compose iOS の a11y 要素は
+    /// UIResponder ではないので in-app ブリッジは focused を一度も返さない(InAppSnapshot の
+    /// makeInfo)。そこで「木の中に focused=true の要素が1つも無い」= 報告しない経路と読み、
+    /// 即座に諦める。誰かが focused を名乗っているのに対象でないときだけが**本当の待ち**
+    /// (= 前の欄にフォーカスが残っている状態)。
+    private func awaitFocus(ref: Int, driver: AppDriver, args: [String: Any]) async -> String {
+        guard let target = lastSnapshots[Self.engineKey(args)]?
+            .elements.first(where: { $0.ref == ref }) else { return "" }
+        let deadline = Date().addingTimeInterval(Self.focusWaitSeconds)
+        while true {
+            guard let fresh = try? await freshSnapshot(driver, args: args) else { return "" }
+            if case .found(let found, _) = RefGuard.relocate(target, in: fresh.elements),
+               found.focused == true { return "" }
+            // 誰も focused を名乗らない = 報告しない経路。待っても永遠に立たない
+            guard fresh.elements.contains(where: { $0.focused == true }) else { return "" }
+            guard Date() < deadline else {
+                return " (warning: \(RefGuard.describe(target)) never took focus within"
+                    + " \(Self.focusWaitSeconds)s — the Enter/IME action may have gone to"
+                    + " whichever field still had it)"
+            }
+            try? await Task.sleep(for: .seconds(Self.focusPollSeconds))
+        }
+    }
+
+    /// ref を撃つ直前に照合したうえで**要素そのもの**を返す(ft_double_tap / ft_pinch 用。
+    /// 両者は ref ではなく座標・identifier で撃つため要素が要る)
+    private func verifiedElement(_ ref: Int, driver: AppDriver,
+                                 args: [String: Any]) async throws -> ElementInfo {
+        let remembered = lastSnapshots[Self.engineKey(args)]?.elements.first { $0.ref == ref }
+        let fresh = try await freshSnapshot(driver, args: args)
+        // 直前の木を覚えていない(ft_snapshot を挟まずに撃たれた)= 撮ったばかりの木から素直に引く
+        guard let target = remembered else {
+            guard let element = fresh.elements.first(where: { $0.ref == ref }) else {
+                throw MCPError("unknown ref [\(ref)]. Take an ft_snapshot first")
+            }
+            return element
+        }
+        switch RefGuard.relocate(target, in: fresh.elements) {
+        case .gone:
+            throw MCPError(RefGuard.goneMessage(ref: ref, target: target))
+        case .ghost(let found):
+            throw MCPError(RefGuard.ghostMessage(ref: ref, found: found))
+        case .found(let found, _):
+            return found
+        }
+    }
+
     /// driver(_:) が使うキャッシュキーと同じ引き当て(エンジンの記録先)
     static func engineKey(_ args: [String: Any]) -> String {
         if let profileName = args["profile"] as? String {
@@ -543,7 +706,7 @@ final class MCPServer {
             let snapshotDriver = try await driver(args)
             var snapshot: SnapshotResponse
             do {
-                snapshot = try await snapshotDriver.snapshot()
+                snapshot = try await freshSnapshot(snapshotDriver, args: args)
             } catch {
                 // ホーム画面/システム UI を読もうとして詰まった形なら、読む方法まで返す
                 let hint = Self.springboardHint(error, engine: engines[Self.engineKey(args)])
@@ -558,6 +721,7 @@ final class MCPServer {
                 let waited = try await Self.waitFor(waitFor, driver: snapshotDriver,
                                                     first: snapshot, seconds: seconds)
                 snapshot = waited.snapshot
+                lastSnapshots[Self.engineKey(args)] = snapshot
                 if !waited.found {
                     waitNote = "waitFor \"\(waitFor)\" did not appear within \(seconds)s"
                         + " — this is the screen as it is now\n"
@@ -572,13 +736,16 @@ final class MCPServer {
             // ステータスバーの「◀ 元のアプリへ」を踏んだタップで前面が別アプリに替わったのに、
             // snapshot は元アプリの画面を返し、エージェントからは「タップが効かない」に見えた
             let backgroundNote = await Self.backgroundedSessionNote(snapshot, driver: snapshotDriver)
-            return text(waitNote + backgroundNote + SnapshotRenderer.render(snapshot))
+            return text(waitNote + backgroundNote + Self.ghostNote(snapshot)
+                + SnapshotRenderer.render(snapshot))
 
         case "ft_tap":
             let d = try await driver(args)
             if let ref = args["ref"] as? Int {
-                try await d.tap(ref: ref)
-                return text("tap [\(ref)] done. The screen may have changed — take a fresh ft_snapshot")
+                let target = try await verifiedRef(ref, driver: d, args: args)
+                try await d.tap(ref: target.ref)
+                return text("tap [\(ref)] done.\(target.note)"
+                    + " The screen may have changed — take a fresh ft_snapshot")
             }
             if let x = args["x"] as? Double, let y = args["y"] as? Double {
                 try await d.tap(x: x, y: y)
@@ -596,22 +763,38 @@ final class MCPServer {
                 throw MCPError("text is required (or pass pressEnter: true to fire Enter only)")
             }
             let typeDriver = try await driver(args)
-            if let content, !content.isEmpty {
-                try await typeDriver.type(ref: args["ref"] as? Int, text: content)
-            } else if let ref = args["ref"] as? Int {
-                // 入力せず Enter だけ撃つときも、対象が指定されていればフォーカスを立ててから
-                try await typeDriver.tap(ref: ref)
+            var targetRef = args["ref"] as? Int
+            var note = ""
+            if let ref = targetRef {
+                let verified = try await verifiedRef(ref, driver: typeDriver, args: args)
+                targetRef = verified.ref
+                note = verified.note
             }
-            guard wantsEnter else { return text("Typed: \"\(content ?? "")\"") }
+            if let content, !content.isEmpty {
+                try await typeDriver.type(ref: targetRef, text: content)
+            } else if let ref = targetRef {
+                // 入力せず Enter だけ撃つときも、対象が指定されていればフォーカスを立ててから。
+                // **タップの直後に撃たない**(下の awaitFocus): 直前に別の欄へ入力していると
+                // フォーカスの移動が間に合わず、Enter が**前の欄**へ飛んで黙って何も起きない
+                // (2026-08-06 に Android で観測。ime カウンタが増えなかった)
+                try await typeDriver.tap(ref: ref)
+                note += await awaitFocus(ref: ref, driver: typeDriver, args: args)
+            }
+            guard wantsEnter else { return text("Typed: \"\(content ?? "")\"\(note)") }
             try await typeDriver.pressEnter()
-            return text(content.map { "Typed: \"\($0)\" and pressed Enter" } ?? "Pressed Enter")
+            return text((content.map { "Typed: \"\($0)\" and pressed Enter" } ?? "Pressed Enter")
+                + note)
 
         case "ft_swipe":
             guard let direction = FTSwipeDirection(rawValue: args["direction"] as? String ?? "") else {
                 throw MCPError("direction must be one of up/down/left/right")
             }
             try await driver(args).swipe(direction)
-            return text("swipe \(direction.rawValue) done")
+            return text("swipe \(direction.rawValue) done."
+                + " The tree moved — take a fresh ft_snapshot before using any ref")
+
+        case "ft_scroll_to":
+            return try await scrollTo(args)
 
         case "ft_navigate":
             // **3つを1ツールに束ねる**: back/home/appSwitcher を個別ツールにすると定義が3倍になり、
@@ -636,8 +819,16 @@ final class MCPServer {
 
         case "ft_clear_input":
             // ref 省略 = フォーカス中の欄(DSL の clearInput() と同じ)
-            try await driver(args).clearInput(ref: args["ref"] as? Int)
-            return text("cleared")
+            let clearDriver = try await driver(args)
+            var clearRef = args["ref"] as? Int
+            var clearNote = ""
+            if let ref = clearRef {
+                let verified = try await verifiedRef(ref, driver: clearDriver, args: args)
+                clearRef = verified.ref
+                clearNote = verified.note
+            }
+            try await clearDriver.clearInput(ref: clearRef)
+            return text("cleared\(clearNote)")
 
         case "ft_dsl_commands":
             return dslCommands(args)
@@ -648,10 +839,7 @@ final class MCPServer {
             let doubleTapDriver = try await driver(args)
             let doubleTapPoint: (x: Double, y: Double)
             if let ref = args["ref"] as? Int {
-                let snapshot = try await doubleTapDriver.snapshot()
-                guard let element = snapshot.elements.first(where: { $0.ref == ref }) else {
-                    throw MCPError("unknown ref [\(ref)]. Take an ft_snapshot first")
-                }
+                let element = try await verifiedElement(ref, driver: doubleTapDriver, args: args)
                 doubleTapPoint = (element.frame.centerX, element.frame.centerY)
             } else if let x = args["x"] as? Double, let y = args["y"] as? Double {
                 doubleTapPoint = (x, y)
@@ -684,10 +872,7 @@ final class MCPServer {
             var frame: FTRect?
             var identifier: String?
             if let ref = args["ref"] as? Int {
-                let snapshot = try await pinchDriver.snapshot()
-                guard let element = snapshot.elements.first(where: { $0.ref == ref }) else {
-                    throw MCPError("unknown ref [\(ref)]. Take an ft_snapshot first")
-                }
+                let element = try await verifiedElement(ref, driver: pinchDriver, args: args)
                 frame = element.frame
                 identifier = element.identifier
             }
@@ -699,8 +884,11 @@ final class MCPServer {
 
         case "ft_press":
             guard let ref = args["ref"] as? Int else { throw MCPError("ref is required") }
-            try await driver(args).press(ref: ref, duration: args["duration"] as? Double ?? 1.0)
-            return text("press [\(ref)] done")
+            let pressDriver = try await driver(args)
+            let pressTarget = try await verifiedRef(ref, driver: pressDriver, args: args)
+            try await pressDriver.press(ref: pressTarget.ref,
+                                        duration: args["duration"] as? Double ?? 1.0)
+            return text("press [\(ref)] done\(pressTarget.note)")
 
         case "ft_screenshot":
             let png = try await driver(args).screenshot()
@@ -958,21 +1146,36 @@ final class MCPServer {
             "timeout": ["type": "number", "description": "Seconds to wait for waitFor (default 5, same as the DSL)"],
         ]),
         tool("ft_tap", "Tap an element (ref) or a coordinate (x,y). x/y match the ft_snapshot frames (iOS=pt / Android=px), not screenshot pixels. "
-            + "If a tap below the fold misses, the frame was clamped: ft_swipe it into view, ft_snapshot again, then tap.", [
+            + "A ref is re-checked against a fresh tree before the tap, so a ref that moved is retargeted and "
+            + "one that is gone or is a scroll leftover is refused instead of hitting something else.", [
             "ref": ["type": "integer", "description": "Reference number from ft_snapshot"],
             "x": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],
             "y": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],
         ]),
-        tool("ft_type", "Type text (with ref, taps that field first). text is required unless pressEnter is "
-            + "true — pressEnter alone fires the Enter/IME action, which is also the only way to close the "
-            + "soft keyboard on iOS", [
+        tool("ft_type", "Type text (with ref, taps that field first and waits for it to take focus). "
+            + "text is required unless pressEnter is true — pressEnter alone fires the Enter/IME action. "
+            + "It closes the soft keyboard on UIKit/SwiftUI, but Compose and Flutter keep it open, so do not "
+            + "retry pressEnter waiting for the keyboard to go away.", [
             "text": ["type": "string", "description": "Omit it to fire Enter only"],
-            "pressEnter": ["type": "boolean", "description": "Fire Enter/IME action (search, submit, close keyboard)"],
+            "pressEnter": ["type": "boolean", "description": "Fire Enter/IME action (search, submit)"],
             "ref": ["type": "integer", "description": "Reference number of the input field (defaults to the focused element)"],
         ]),
-        tool("ft_swipe", "Swipe (up = scroll down the content)", [
+        tool("ft_swipe", "Swipe one screenful (up = scroll down the content). To reach a specific element use "
+            + "ft_scroll_to instead — it stops on the element and hands back fresh refs", [
             "direction": ["type": "string", "enum": ["up", "down", "left", "right"]],
         ], required: ["direction"]),
+        tool("ft_scroll_to", "Scroll until a selector is on screen, then return the fresh element list. "
+            + "Use this instead of repeating ft_swipe + ft_snapshot: it runs the same search the DSL's "
+            + "scrollTo does (settling, container-sized steps, overshoot recovery) and the refs it returns "
+            + "are taken after the scroll", [
+            "selector": ["type": "string", "description": "Same syntax as the DSL: #id, a label, .type, a||b"],
+            "direction": ["type": "string", "enum": ["down", "up", "right", "left"],
+                          "description": "Content direction to read towards (default down)"],
+            "scrollFrame": ["type": "string",
+                            "description": "Selector of the scrolling container to search inside (e.g. #list_rows). "
+                                + "Pass it when the screen has more than one scrollable area"],
+            "maxSwipes": ["type": "integer", "description": "Swipe limit (default 8, same as the DSL)"],
+        ], required: ["selector"]),
         tool("ft_navigate", "Go back / to the home screen / to the app switcher", [
             "target": ["type": "string", "enum": ["back", "home", "appSwitcher"]],
         ], required: ["target"]),
