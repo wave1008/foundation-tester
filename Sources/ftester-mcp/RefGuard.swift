@@ -67,6 +67,13 @@ enum RefGuard {
                   other.frame.x <= cx, cx <= other.frame.x + other.frame.width,
                   other.frame.y <= cy, cy <= other.frame.y + other.frame.height
             else { return false }
+            // **描かれていないものは何も覆えない**(2026-08-06 の外部フィードバック2件目)。
+            // 相手自身がスクロール容器の外に出ている(= 残像)なら、矩形が重なっていても
+            // 実際にはそこに無い。実例: 設定アプリの検索で「閉じる」を弾いていた
+            // `clickable (16,484 370x52)` は、スクロールで画面外へ出たリスト行の容器だった。
+            // **この判定を先に置く**のが要点 —— 包含判定は 1pt の差で外れるほど際どく
+            // (閉じる y483..521 対 clickable y484..536)、閾値では守り切れない
+            if StepExecutor.isOutsideContainer(other, in: elements) { return false }
             // **自分を丸ごと包む相手は遮蔽ではなく容器**(2026-08-06 の外部フィードバック)。
             // 設定アプリの検索を開いた状態で「閉じる」ボタンが弾かれた —— 覆っていたのは
             // `#AdditionalDimmingOverlay` や全画面の toolbar/collectionView で、

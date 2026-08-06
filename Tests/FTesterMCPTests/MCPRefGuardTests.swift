@@ -181,6 +181,26 @@ final class MCPRefGuardTests: XCTestCase {
         XCTAssertTrue(actions.contains { $0.hasPrefix("tap") }, "包む相手しか無いなら撃てること")
     }
 
+    /// **描かれていないものは何も覆えない**。報告された形をそのまま固定する:
+    /// 設定アプリの検索で「閉じる」を弾いていたのは、スクロールで画面外へ出たリスト行の容器。
+    /// 矩形は包含にもならない位置関係なので、**包含の除外では守れない**
+    func testAGhostCannotOccludeAnything() async throws {
+        driver.snapshotResponse = screen([
+            element(ref: 1, type: "Other", id: "list", label: nil, x: 16, y: 100, w: 370, h: 300, depth: 1),
+            element(ref: 2, id: "row_a", label: "A", x: 16, y: 110, w: 370, h: 52, depth: 2),
+            element(ref: 3, id: "row_b", label: "B", x: 16, y: 170, w: 370, h: 52, depth: 2),
+            // 容器(y100..400)の外へ出たリスト行 = それ自身が残像。描かれていない
+            element(ref: 4, type: "Clickable", id: nil, label: nil, x: 16, y: 484, w: 370, h: 52, depth: 2),
+            // 検索の「閉じる」。中心 (366,497) は ref 4 の矩形の中だが、**包含はされない**
+            // (上端が上へはみ出す)ので、「残像は覆えない」規則だけが救う
+            element(ref: 5, id: "close", label: "閉じる", x: 347, y: 478, w: 38, h: 38, depth: 2),
+        ])
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        _ = try await server.call(tool: "ft_tap", args: ["ref": 5])
+        XCTAssertTrue(actions.contains { $0.hasPrefix("tap") },
+                      "覆っている側が残像なら遮蔽に数えないこと")
+    }
+
     /// 同じラベルの Button と StaticText が並ぶ形で取り違えないこと(型も見る)
     func testRelocateDoesNotSwapAcrossTypesWithTheSameLabel() {
         let target = element(ref: 1, type: "Button", id: nil, label: "共通ラベル", x: 10, y: 100)
