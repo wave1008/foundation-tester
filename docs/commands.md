@@ -363,7 +363,7 @@ let 合計 = try await fetchTotal()        // procedure { } 内で取得した�
   (中に何が書かれているかは実行しないと分からないため。`expectation { android { notExist(…) } }`
   を iOS で回しても黙ります)
 - **`ftester api run --dry-run`(MCP は `ft_dry_run`)ならデバイス無しで判定できます**。
-  実機を触る前にここで落とすのが安上がりです
+  デバイスを触る前にここで落とすのが安上がりです
 
 ## セレクタの綴り誤りの検知(dry-run)
 
