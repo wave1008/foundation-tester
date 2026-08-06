@@ -96,39 +96,25 @@ final class MCPRefGuardTests: XCTestCase {
         XCTAssertFalse(actions.contains { $0.hasPrefix("tap") }, "撃ってはいけない")
     }
 
-    /// **容器の完全に外に居る ghost は撃たない**。Compose iOS はスクロール容器の外へ出た行を
-    /// フルフレームのまま木に残すので、その座標には別の要素(下部タブ等)が描かれている
-    func testTapRefusesAGhostLeftOverFromScrolling() async throws {
-        // 容器 #list(y 100..300)と、その中の兄弟2つ(clippingContainer の成立条件)。
-        // **容器の外に居るだけでは拒否しない** —— 中心に別の要素が重なっていることまで要る。
-        // ここでは残像 #row_09 の中心 (60,720) をタブバーが覆う
+    /// **容器の外に居る要素も撃つ。ただし黙って撃たない**(2026-08-06 に拒否から後退)。
+    /// 木の幾何だけでは「実際に描かれているか」を決められず、押せる要素を押せなくする害が
+    /// 5形続いた。情報を渡して判断はエージェントに委ねる
+    func testTapWarnsInsteadOfRefusingForAScrollLeftover() async throws {
         let tree = [
             element(ref: 1, type: "Other", id: "list", label: nil, x: 0, y: 100, w: 390, h: 200, depth: 1),
             element(ref: 2, id: "row_01", label: "行 01", x: 10, y: 110, depth: 2),
             element(ref: 3, id: "row_02", label: "行 02", x: 10, y: 160, depth: 2),
             element(ref: 4, id: "row_09", label: "行 09", x: 10, y: 700, w: 370, h: 40, depth: 2),
-            // 実機と同じ形にする: **タブは行の一部にしか重ならない**(丸ごと包む相手は容器なので
-            // 遮蔽に数えない。包む形にすると、この防御が何も検出しないテストになる)
             element(ref: 5, id: "tab_home", label: "ホーム", x: 130, y: 700, w: 130, h: 48, depth: 1),
         ]
         driver.snapshotResponse = screen(tree)
         _ = try await server.call(tool: "ft_snapshot", args: [:])
-        do {
-            _ = try await server.call(tool: "ft_tap", args: ["ref": 4])
-            XCTFail("ghost へのタップは throw するはず")
-        } catch {
-            XCTAssertTrue(error.localizedDescription.contains("#row_09"))
-            XCTAssertTrue(error.localizedDescription.contains("#tab_home"),
-                          "何に当たってしまうのかを名指しすること")
-            // **逃げ道も書くが順序を守る**: 先に本来の直し方(ft_scroll_to)、次に確認付きの座標タップ
-            let message = error.localizedDescription
-            let fix = try XCTUnwrap(message.range(of: "ft_scroll_to"))
-            let escape = try XCTUnwrap(message.range(of: "tap the coordinates directly"))
-            XCTAssertTrue(fix.lowerBound < escape.lowerBound,
-                          "座標タップを先に勧めるとガードの意味が消える")
-            XCTAssertTrue(message.contains("(x: 195, y: 720)"), "撃つべき座標まで出すこと")
-        }
-        XCTAssertFalse(actions.contains { $0.hasPrefix("tap") }, "撃ってはいけない")
+        let result = try await server.call(tool: "ft_tap", args: ["ref": 4])
+        XCTAssertTrue(actions.contains { $0.hasPrefix("tap") }, "撃つこと")
+        let text = Self.text(result)
+        XCTAssertTrue(text.contains("#row_09"), text)
+        XCTAssertTrue(text.contains("#tab_home"), "何に当たったかもしれないかを言うこと")
+        XCTAssertTrue(text.contains("ft_screenshot"), "確かめ方を出すこと")
     }
 
     /// 一覧そのものからは ghost を見分けられないので、**撮った時点で名指しする**
@@ -160,7 +146,7 @@ final class MCPRefGuardTests: XCTestCase {
         ])
         _ = try await server.call(tool: "ft_snapshot", args: [:])
         _ = try await server.call(tool: "ft_tap", args: ["ref": 4])
-        XCTAssertTrue(actions.contains { $0.hasPrefix("tap") }, "覆う要素が無いなら撃てること")
+        XCTAssertTrue(actions.contains { $0.hasPrefix("tap") }, "撃てること(残像でないので警告も出ない)")
     }
 
     /// **自分を丸ごと包む相手は遮蔽ではなく容器**。設定アプリの検索を開いた状態で
