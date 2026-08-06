@@ -99,4 +99,119 @@ final class MCPGuidanceTests: XCTestCase {
         XCTAssertTrue(text.contains("ft_launch"), text)
         XCTAssertTrue(text.contains("bridge restart"), text)
     }
+
+    // MARK: - アプリのすり替わり(2026-08-06 の探索で決定的に再現)
+
+    /// **Android のブリッジは session を前面ウィンドウから採る**ので、back でアプリを出ると
+    /// session ごと別アプリに移り、`backgroundedSessionNote` は永遠に沈黙する。
+    /// E2E の 4 SUT は id・ラベルが共通契約なので、木を見ても入れ替わりに気付けない
+    func testSnapshotNamesTheAppSwitchWhenTheTreeIsNotTheLaunchedApp() async throws {
+        let driver = FakeDriver()
+        driver.snapshotResponse = SnapshotResponse(
+            sessionBundleID: "com.ftester.e2e.flutter",
+            screen: FTRect(x: 0, y: 0, width: 1080, height: 2424),
+            elements: [], truncatedCount: 0)
+        let server = MCPServer(write: { _ in }, makeDriver: { _ in driver },
+                               recordSnapshot: { _, _, _ in })
+        _ = try await server.call(tool: "ft_launch", args: ["bundleId": "com.ftester.e2e.android"])
+        let content = try await server.call(tool: "ft_snapshot", args: [:])
+        let text = try XCTUnwrap(content.first?["text"] as? String)
+        XCTAssertTrue(text.contains("com.ftester.e2e.flutter"), text)
+        XCTAssertTrue(text.contains("com.ftester.e2e.android"), text)
+        XCTAssertTrue(text.contains("ft_launch"), text)
+    }
+
+    /// **木を返す口はすべて名指しする**。`ft_scroll_to` の「対象が居るか」の再確認は
+    /// セレクタしか見ないので、**別アプリに同じ id がある**と素通しする —— 4 SUT は
+    /// id・ラベルが共通契約なので、これは現に起こり得る形(2026-08-06 の掃討で見つけた漏れ)
+    func testScrollToAlsoNamesTheAppSwitch() async throws {
+        let driver = FakeDriver()
+        let tree = SnapshotResponse(
+            sessionBundleID: "com.ftester.e2e.flutter",
+            screen: FTRect(x: 0, y: 0, width: 390, height: 844),
+            elements: [ElementInfo(ref: 1, type: "Button", identifier: "row_40", label: "行 40",
+                                   value: nil, placeholder: nil, enabled: true,
+                                   frame: FTRect(x: 16, y: 100, width: 100, height: 40), depth: 1)],
+            truncatedCount: 0)
+        driver.snapshotResponse = tree
+        let server = MCPServer(write: { _ in }, makeDriver: { _ in driver },
+                               recordSnapshot: { _, _, _ in })
+        _ = try await server.call(tool: "ft_launch", args: ["bundleId": "com.ftester.e2e.android"])
+        let content = try await server.call(tool: "ft_scroll_to", args: ["selector": "#row_40"])
+        let text = try XCTUnwrap(content.first?["text"] as? String)
+        XCTAssertTrue(text.contains("NOT the app you launched"), text)
+    }
+
+    /// 一致していれば黙る(注記は毎回の木の先頭に出るので、無駄に出すと本文を押し出す)
+    func testSnapshotStaysQuietWhenTheTreeIsTheLaunchedApp() {
+        let snapshot = SnapshotResponse(sessionBundleID: "com.example.app",
+                                        screen: FTRect(x: 0, y: 0, width: 390, height: 844),
+                                        elements: [], truncatedCount: 0)
+        XCTAssertEqual(
+            MCPServer.switchedAppNote(launched: "com.example.app", snapshot: snapshot), "")
+        // ft_launch していない / 木が名乗らないときは**判定材料が無い** = 嘘を足さない
+        XCTAssertEqual(MCPServer.switchedAppNote(launched: nil, snapshot: snapshot), "")
+        XCTAssertEqual(MCPServer.switchedAppNote(
+            launched: "com.example.app",
+            snapshot: SnapshotResponse(sessionBundleID: nil,
+                                       screen: FTRect(x: 0, y: 0, width: 390, height: 844),
+                                       elements: [], truncatedCount: 0)), "")
+    }
+
+    // MARK: - back は空振りし得る / in-app への切替はアプリを起動し直す
+
+    /// 「画面が変わった」と断言しない。iOS の back は端の swipe なので、自前ナビの画面では
+    /// 1px も動かない(E2E-iOS のセレクタ画面で2回とも不変を実測)
+    func testBackDoesNotClaimTheScreenChanged() {
+        let note = MCPServer.backNoOpNote(target: "back", engine: "xcuitest")
+        XCTAssertTrue(note.contains("edge swipe"), note)
+        XCTAssertTrue(note.contains("leaves the app"), note)
+        // Android には端 swipe の話が無い(無関係な助言は誤誘導になる)
+        XCTAssertFalse(MCPServer.backNoOpNote(target: "back", engine: "android").contains("edge swipe"))
+        XCTAssertEqual(MCPServer.backNoOpNote(target: "home", engine: "xcuitest"), "")
+    }
+
+    // MARK: - 古いブリッジに繋がっている(2026-08-06 に実際に踏んだ)
+
+    /// profile 無しの iOS 経路は**生きているポートへ素で繋ぐだけ**なので、版を上げても
+    /// 旧ランナーが使われ続ける。実害: ブリッジ側の修正2件を入れて版も上げたのに、
+    /// ft_snapshot は直る前の木を返し、`bridge down && bridge up` まで直っていなく見えた
+    func testAStaleBridgeIsCalledOut() async throws {
+        let driver = FakeDriver()
+        driver.statusResponse = StatusResponse(
+            ready: true, device: "iPhone 17", osVersion: "27.0",
+            sessionBundleID: "com.example.app",
+            protocolVersion: BridgeAPI.bridgeProtocolVersion - 1)
+        let note = await MCPServer.staleBridgeWarning(driver: driver)
+        let text = try XCTUnwrap(note)
+        XCTAssertTrue(text.contains("bridge down"), text)
+        XCTAssertTrue(text.contains("v\(BridgeAPI.bridgeProtocolVersion)"), text)
+    }
+
+    /// 版が合っていれば黙る。**返さないブリッジ(nil)も黙る** —— 旧ブリッジは版を返さないので、
+    /// nil を「古い」と読むと常時警告になり、本当に古いときの信号が埋もれる
+    func testAMatchingOrUnknownBridgeVersionStaysQuiet() async throws {
+        let driver = FakeDriver()
+        driver.statusResponse = StatusResponse(
+            ready: true, device: "iPhone 17", osVersion: "27.0",
+            sessionBundleID: "com.example.app",
+            protocolVersion: BridgeAPI.bridgeProtocolVersion)
+        var note = await MCPServer.staleBridgeWarning(driver: driver)
+        XCTAssertNil(note)
+        driver.statusResponse = StatusResponse(
+            ready: true, device: "iPhone 17", osVersion: "27.0",
+            sessionBundleID: "com.example.app", protocolVersion: nil)
+        note = await MCPServer.staleBridgeWarning(driver: driver)
+        XCTAssertNil(note)
+    }
+
+    /// エンジン切替の案内には**アプリが起動し直る**ことまで書く。書かないと、案内に従った
+    /// 瞬間に探索中の画面が消え、ホーム画面へ同じ座標のジェスチャが撃たれる
+    func testEngineHintWarnsThatSwitchingRelaunchesTheApp() {
+        let server = MCPServer(write: { _ in }, makeDriver: { _ in FakeDriver() },
+                               recordSnapshot: { _, _, _ in })
+        server.engines[MCPServer.engineKey([:])] = "xcuitest"
+        let hint = server.iosEngineHint("Compose Multiplatform", "double tap", args: [:])
+        XCTAssertTrue(hint.contains("relaunches the app"), hint)
+    }
 }

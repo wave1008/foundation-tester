@@ -228,6 +228,112 @@ final class MCPRefGuardTests: XCTestCase {
             .contains("id=row_09 (10,700 370x40) ⚠️scroll-leftover"))
     }
 
+    // MARK: - 探索そのものが画面を変えたら成功と言わない
+
+    /// 探索のスワイプは**タップ可能な行を発火させることがある**(SwiftUI の SUT で実測)。
+    /// そのとき executor は途中の観測で passed のまま、撮り直した木は別画面になる。
+    /// 決定的再現: E2E-iOS のホームで `ft_scroll_to #nav_diagnostics` が
+    /// 「scrolled to "#nav_diagnostics"」+ その id が居ない診断画面の木、を返していた
+    func testScrollToFailsWhenTheTargetIsGoneFromTheTreeItReturns() async throws {
+        let onScreen = screen([element(ref: 1, id: "nav_diagnostics", label: "診断", x: 16, y: 100)])
+        let afterNavigation = screen([element(ref: 1, type: "StaticText", id: "txt_build_info",
+                                              label: "build=1.0.0", x: 16, y: 100)])
+        // **枚数は実測で固定**: scrollTo は executor が 2 枚 + 撮り直し 1 枚の計 3 枚撮る。
+        // 台本は尽きると最後の1枚を返し続けるので、3枚目に別画面を置けば
+        // 「executor は見つけた / 返す木には居ない」を作れる
+        driver.scriptedSnapshots = [onScreen, onScreen, afterNavigation]
+        do {
+            _ = try await server.call(tool: "ft_scroll_to", args: ["selector": "#nav_diagnostics"])
+            XCTFail("対象が居ない木を「到達した」と返してはいけない")
+        } catch let error as MCPError {
+            XCTAssertTrue(error.localizedDescription.contains("gone from"),
+                          error.localizedDescription)
+            XCTAssertTrue(error.localizedDescription.contains("scrollFrame"),
+                          "逃げ道まで出すこと: \(error.localizedDescription)")
+        }
+    }
+
+    /// 素直に到達したときは今までどおり成功を返す(上の検査で通常経路を潰していないこと)
+    func testScrollToStillSucceedsWhenTheTargetIsThere() async throws {
+        driver.snapshotResponse = screen([element(ref: 1, id: "row_40", label: "行 40", x: 16, y: 100)])
+        let text = Self.text(try await server.call(tool: "ft_scroll_to", args: ["selector": "#row_40"]))
+        XCTAssertTrue(text.contains("scrolled to \"#row_40\""), text)
+    }
+
+    // MARK: - 容器の中でも別の物に当たる2形(2026-08-06 の探索で実測)
+
+    /// **容器の中に居るのに下部タブに覆われている**形。`isUntappableGhost` は
+    /// 「容器の外」を入口条件にしているので1つも捕まえない —— 実測では E2E-iOS のホームで
+    /// `#nav_heal` を叩くと**コントロールタブへ遷移**し、それでも "tap done" が返っていた
+    func testTapWarnsWhenAnOverlayIsDrawnOverTheElement() async throws {
+        driver.snapshotResponse = screen([
+            element(ref: 1, type: "Other", id: "home_list", label: nil,
+                    x: 16, y: 100, w: 370, h: 760, depth: 1),
+            element(ref: 2, id: "nav_a", label: "A", x: 16, y: 110, w: 370, h: 62, depth: 2),
+            element(ref: 3, id: "nav_heal", label: "自己修復", x: 16, y: 788, w: 370, h: 62, depth: 2),
+            // タブは行の一部にしか重ならない(丸ごと包む相手は容器なので遮蔽に数えない)
+            element(ref: 4, id: "tab_controls", label: "コントロール",
+                    x: 134, y: 778, w: 134, h: 62, depth: 1),
+        ])
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        let text = Self.text(try await server.call(tool: "ft_tap", args: ["ref": 3]))
+        XCTAssertTrue(text.contains("#tab_controls"), "何に当たったかもしれないかを名指しすること: \(text)")
+        XCTAssertTrue(actions.contains { $0.hasPrefix("tap") }, "拒否ではなく警告して撃つこと")
+    }
+
+    /// **先に並ぶ大きな要素は遮蔽に数えない**(木の順序 = 描画順)。ここを緩めると、
+    /// 2026-08-06 に拒否をやめる原因になった誤検知(背景パネルが端の要素を「覆う」)へ逆戻りする
+    func testAnEarlierSiblingIsNotTreatedAsAnOverlay() async throws {
+        driver.snapshotResponse = screen([
+            // 背景パネルが先に並ぶ。ボタンの中心を含むが、包んではいない(端で切れている)
+            element(ref: 1, type: "Other", id: "panel", label: nil,
+                    x: 0, y: 100, w: 300, h: 300, depth: 1),
+            element(ref: 2, id: "btn", label: "押す", x: 250, y: 200, w: 120, h: 40, depth: 1),
+        ])
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        let text = Self.text(try await server.call(tool: "ft_tap", args: ["ref": 2]))
+        XCTAssertFalse(text.contains("warning"), "後ろに描かれた物だけを遮蔽とみなすこと: \(text)")
+    }
+
+    /// **同じ矩形に積まれた要素**。容器の内側なので ghost 判定は素通しする。
+    /// 実測(E2E-iOS のスクロール画面): `行 09`〜`行 40` の staticText 29 個が全部
+    /// `行 01` の位置に畳まれ、無印で出ていた。ref を叩くと `selected=row_01` になる
+    func testStackedFramesAreFlaggedAndWarnOnTap() async throws {
+        var rows: [ElementInfo] = [
+            element(ref: 1, type: "Table", id: "list_rows", label: nil,
+                    x: 16, y: 270, w: 370, h: 400, depth: 1),
+            element(ref: 2, type: "StaticText", id: nil, label: "行 01",
+                    x: 36, y: 270, w: 330, h: 56, depth: 2),
+        ]
+        // 3個以上が同じ矩形 = そこに全部は描かれていない
+        for n in 9...12 {
+            rows.append(element(ref: n - 6, type: "StaticText", id: nil, label: "行 \(n)",
+                                x: 16, y: 270, w: 330, h: 56, depth: 2))
+        }
+        driver.snapshotResponse = screen(rows)
+        let rendered = Self.text(try await server.call(tool: "ft_snapshot", args: [:]))
+        XCTAssertTrue(rendered.contains("clamped onto another row's frame"), rendered)
+        XCTAssertTrue(rendered.contains("\"行 12\" (16,270 330x56) ⚠️scroll-leftover"), rendered)
+        XCTAssertFalse(rendered.contains("\"行 01\" (36,270 330x56) ⚠️"),
+                       "本当にそこに描かれている行は巻き込まないこと")
+        let text = Self.text(try await server.call(tool: "ft_tap", args: ["ref": 6]))
+        XCTAssertTrue(text.contains("shares its exact frame"), text)
+    }
+
+    /// **入れ子の一本鎖は積み重なりではない**。Android のダイアログは
+    /// `action_bar_root`→`content`→`parentPanel`→`customPanel`→`custom` が全部同じ矩形で、
+    /// これを弾くと正常な木が丸ごと警告になる
+    func testANestedChainSharingOneFrameIsNotFlagged() async throws {
+        let names = ["action_bar_root", "content", "parentPanel", "customPanel", "custom"]
+        let chain = names.enumerated().map { index, id in
+            element(ref: index + 1, type: "Other", id: id, label: nil,
+                    x: 70, y: 1077, w: 940, h: 343, depth: index + 1)
+        }
+        driver.snapshotResponse = screen(chain)
+        let rendered = Self.text(try await server.call(tool: "ft_snapshot", args: [:]))
+        XCTAssertFalse(rendered.contains("⚠️"), rendered)
+    }
+
     /// 探索が空振りしたら「そこに何があったか」を返す。**往復を1回省く**のと、
     /// 素のラベルが完全一致であることに気づかせるのが目的
     func testVisibleLabelsHintListsWhatCanActuallyBeSelected() {
