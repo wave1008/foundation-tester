@@ -99,12 +99,15 @@ final class MCPRefGuardTests: XCTestCase {
     /// **容器の完全に外に居る ghost は撃たない**。Compose iOS はスクロール容器の外へ出た行を
     /// フルフレームのまま木に残すので、その座標には別の要素(下部タブ等)が描かれている
     func testTapRefusesAGhostLeftOverFromScrolling() async throws {
-        // 容器 #list(y 100..300)と、その中の兄弟2つ(clippingContainer の成立条件)
+        // 容器 #list(y 100..300)と、その中の兄弟2つ(clippingContainer の成立条件)。
+        // **容器の外に居るだけでは拒否しない** —— 中心に別の要素が重なっていることまで要る。
+        // ここでは残像 #row_09 の中心 (60,720) をタブバーが覆う
         let tree = [
             element(ref: 1, type: "Other", id: "list", label: nil, x: 0, y: 100, w: 390, h: 200, depth: 1),
             element(ref: 2, id: "row_01", label: "行 01", x: 10, y: 110, depth: 2),
             element(ref: 3, id: "row_02", label: "行 02", x: 10, y: 160, depth: 2),
             element(ref: 4, id: "row_09", label: "行 09", x: 10, y: 700, depth: 2),
+            element(ref: 5, id: "tab_home", label: "ホーム", x: 0, y: 700, w: 130, h: 48, depth: 1),
         ]
         driver.snapshotResponse = screen(tree)
         _ = try await server.call(tool: "ft_snapshot", args: [:])
@@ -113,7 +116,8 @@ final class MCPRefGuardTests: XCTestCase {
             XCTFail("ghost へのタップは throw するはず")
         } catch {
             XCTAssertTrue(error.localizedDescription.contains("#row_09"))
-            XCTAssertTrue(error.localizedDescription.contains("outside its scroll container"))
+            XCTAssertTrue(error.localizedDescription.contains("#tab_home"),
+                          "何に当たってしまうのかを名指しすること")
         }
         XCTAssertFalse(actions.contains { $0.hasPrefix("tap") }, "撃ってはいけない")
     }
@@ -125,11 +129,27 @@ final class MCPRefGuardTests: XCTestCase {
             element(ref: 2, id: "row_01", label: "行 01", x: 10, y: 110, depth: 2),
             element(ref: 3, id: "row_02", label: "行 02", x: 10, y: 160, depth: 2),
             element(ref: 4, id: "row_09", label: "行 09", x: 10, y: 700, depth: 2),
+            element(ref: 5, id: "tab_home", label: "ホーム", x: 0, y: 700, w: 130, h: 48, depth: 1),
         ])
         let rendered = Self.text(try await server.call(tool: "ft_snapshot", args: [:]))
         XCTAssertTrue(rendered.contains("outside their scroll container"))
         XCTAssertTrue(rendered.contains("[4] #row_09"))
         XCTAssertFalse(rendered.contains("[2] #row_01"), "容器の中の行を ghost 扱いしない")
+    }
+
+    /// **容器の外に居るだけでは拒否しない**。ホーム画面の dock がこの形で、
+    /// 容器の推測から外れた位置に出るが、その座標にはそれ自身しか無いので普通に押せる
+    /// (2026-08-06 の外部フィードバックで、dock が押せなくなっていたのが発覚)
+    func testElementOutsideItsContainerIsTappableWhenNothingCoversIt() async throws {
+        driver.snapshotResponse = screen([
+            element(ref: 1, type: "Other", id: "page", label: nil, x: 0, y: 100, w: 390, h: 400, depth: 1),
+            element(ref: 2, id: "icon_a", label: "A", x: 10, y: 110, depth: 2),
+            element(ref: 3, id: "icon_b", label: "B", x: 10, y: 160, depth: 2),
+            element(ref: 4, id: "Safari", label: "Safari", x: 120, y: 770, w: 68, h: 68, depth: 2),
+        ])
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        _ = try await server.call(tool: "ft_tap", args: ["ref": 4])
+        XCTAssertTrue(actions.contains { $0.hasPrefix("tap") }, "覆う要素が無いなら撃てること")
     }
 
     /// 同じラベルの Button と StaticText が並ぶ形で取り違えないこと(型も見る)
@@ -163,6 +183,7 @@ final class MCPRefGuardTests: XCTestCase {
             element(ref: 2, id: "row_01", label: "行 01", x: 10, y: 110, depth: 2),
             element(ref: 3, id: "row_02", label: "行 02", x: 10, y: 160, depth: 2),
             element(ref: 4, id: "row_09", label: "行 09", x: 10, y: 700, depth: 2),
+            element(ref: 5, id: "tab_home", label: "ホーム", x: 0, y: 700, w: 130, h: 48, depth: 1),
         ])
         let flags = MCPServer.ghostFlags(snapshot)
         XCTAssertEqual(Set(flags.keys), [4], "容器の外の1件だけに印が付くこと")

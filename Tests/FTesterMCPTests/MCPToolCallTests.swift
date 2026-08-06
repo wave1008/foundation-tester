@@ -291,12 +291,25 @@ final class MCPToolCallTests: XCTestCase {
         XCTAssertEqual(driver.calls, [])
     }
 
+    /// **session と前面は別物**: session はブリッジが掴んでいるアプリで、ホームへ戻っても
+    /// 変わらない。「今そのアプリを見ているか」を状態として出す(2026-08-06 の外部フィードバック)
     func testStatusRendersReadyDeviceAndSession() async throws {
+        driver.foregroundBundleID = "com.example.app"
         let content = try await server.call(tool: "ft_status", args: [:])
-        XCTAssertEqual(driver.calls, ["status"])
+        XCTAssertEqual(driver.calls, ["status", "foregroundAppID"])
         let text = try XCTUnwrap(content.first?["text"] as? String)
         XCTAssertTrue(text.contains("iPhone 17"), text)
         XCTAssertTrue(text.contains("com.example.app"), text)
+        XCTAssertTrue(text.contains("foreground: yes"), text)
+    }
+
+    /// ホーム画面や別アプリが前面なら、**何が前に居るか**まで返す
+    func testStatusSaysWhenTheSessionAppIsNotInFront() async throws {
+        driver.foregroundBundleID = "com.apple.springboard"
+        let content = try await server.call(tool: "ft_status", args: [:])
+        let text = try XCTUnwrap(content.first?["text"] as? String)
+        XCTAssertTrue(text.contains("foreground: no"), text)
+        XCTAssertTrue(text.contains("com.apple.springboard"), text)
     }
 
     func testInstallPassesPackagePath() async throws {
