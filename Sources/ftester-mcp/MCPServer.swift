@@ -450,19 +450,24 @@ final class MCPServer {
     /// 照合の起点が無いので嘘の判断をするより、ブリッジの 404 に任せるほうが正しい
     private func verifiedRef(_ ref: Int, driver: AppDriver,
                              args: [String: Any]) async throws -> (ref: Int, note: String) {
-        guard let target = lastSnapshots[Self.engineKey(args)]?
-            .elements.first(where: { $0.ref == ref })
+        guard let remembered = lastSnapshots[Self.engineKey(args)],
+              let target = remembered.elements.first(where: { $0.ref == ref })
         else { return (ref, "") }
+        let lastRendered = remembered.elements
         let fresh = try await freshSnapshot(driver, args: args)
         switch RefGuard.relocate(target, in: fresh.elements) {
         case .gone:
             throw MCPError(RefGuard.goneMessage(ref: ref, target: target))
         case .ghost(let found):
-            throw MCPError(RefGuard.ghostMessage(ref: ref, found: found))
+            throw MCPError(RefGuard.ghostMessage(ref: ref, found: found, in: fresh.elements))
         case .found(let found, let moved):
-            return (found.ref,
-                    moved >= RefGuard.movedThreshold
-                        ? RefGuard.movedNote(found: found, moved: moved) : "")
+            guard moved >= RefGuard.movedThreshold else { return (found.ref, "") }
+            // **原因までは断定できない**が、「他も同じだけ動いたか」は手元の2枚から言える。
+            // 揃って動いていればスクロール等の画面全体の移動、その要素だけならレイアウト変化。
+            // 切り分けの手掛かりとして出す(外部フィードバック 2026-08-06。severity は低いとのこと)
+            let cause = RefGuard.movedTogether(target, found,
+                                               before: lastRendered, after: fresh.elements)
+            return (found.ref, RefGuard.movedNote(found: found, moved: moved, cause: cause))
         }
     }
 
@@ -510,6 +515,18 @@ final class MCPServer {
             + SnapshotRenderer.render(after, flagging: Self.ghostFlags(after)))
     }
 
+    /// 「session のアプリが今も前面か」。判定できないドライバでは黙る(嘘を足さない)
+    static func foregroundNote(_ sessionBundleID: String?, driver: AppDriver) async -> String {
+        guard let bundleID = sessionBundleID else { return "" }
+        if let front = (try? await driver.foregroundAppID()) ?? nil {
+            return front == bundleID ? " / foreground: yes"
+                : " / foreground: no (\(front) is in front — ft_launch to come back)"
+        }
+        guard let inFront = try? await driver.isAppForeground(bundleID: bundleID) else { return "" }
+        return inFront ? " / foreground: yes"
+            : " / foreground: no (another app or the home screen is in front — ft_launch to come back)"
+    }
+
     /// 接続中の Android 全台の状態。**1台ずつ独立に見る**(1台落ちていても他を隠さない)
     static func androidFleetStatus(_ serials: [String]) async -> String {
         var lines = ["\(serials.count) Android devices are connected."
@@ -555,7 +572,7 @@ final class MCPServer {
     /// **叩けば RefGuard が止める**が、そこまで行かずに気付けるほうが往復が減る
     static func ghostRefs(_ snapshot: SnapshotResponse) -> [Int] {
         snapshot.elements
-            .filter { StepExecutor.isOutsideContainer($0, in: snapshot.elements) }
+            .filter { RefGuard.isUntappableGhost($0, in: snapshot.elements) }
             .map(\.ref)
     }
 
@@ -567,7 +584,7 @@ final class MCPServer {
 
     static func ghostNote(_ snapshot: SnapshotResponse) -> String {
         let ghosts = snapshot.elements.filter {
-            StepExecutor.isOutsideContainer($0, in: snapshot.elements)
+            RefGuard.isUntappableGhost($0, in: snapshot.elements)
         }
         guard !ghosts.isEmpty else { return "" }
         let listed = ghosts.prefix(8).map { "[\($0.ref)] \(RefGuard.describe($0))" }
@@ -625,7 +642,7 @@ final class MCPServer {
         case .gone:
             throw MCPError(RefGuard.goneMessage(ref: ref, target: target))
         case .ghost(let found):
-            throw MCPError(RefGuard.ghostMessage(ref: ref, found: found))
+            throw MCPError(RefGuard.ghostMessage(ref: ref, found: found, in: fresh.elements))
         case .found(let found, _):
             return found
         }
@@ -754,9 +771,14 @@ final class MCPServer {
             let session = status.sessionBundleID
                 ?? "none (no app attached — ft_launch <bundleId> first;"
                     + " a bridge restart clears the session)"
+            // **session と「いま前面にあるもの」は別物**(外部フィードバック 2026-08-06)。
+            // session はブリッジが掴んでいるアプリで、ft_navigate home の後も変わらない。
+            // 前面の照会は 1 往復で済むので、シナリオ冒頭の appIs 相当をここで賄えるようにする
+            let foreground = await Self.foregroundNote(status.sessionBundleID,
+                                                       driver: try await driver(args))
             return text(withPendingWarnings(
                 "ready: \(status.ready) / \(status.device) (\(status.osVersion))\(endpoint)"
-                + " / session: \(session)", args: args))
+                + " / session: \(session)\(foreground)", args: args))
 
         case "ft_install":
             guard let packagePath = args["packagePath"] as? String else {
