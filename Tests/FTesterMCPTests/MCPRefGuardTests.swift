@@ -106,8 +106,10 @@ final class MCPRefGuardTests: XCTestCase {
             element(ref: 1, type: "Other", id: "list", label: nil, x: 0, y: 100, w: 390, h: 200, depth: 1),
             element(ref: 2, id: "row_01", label: "行 01", x: 10, y: 110, depth: 2),
             element(ref: 3, id: "row_02", label: "行 02", x: 10, y: 160, depth: 2),
-            element(ref: 4, id: "row_09", label: "行 09", x: 10, y: 700, depth: 2),
-            element(ref: 5, id: "tab_home", label: "ホーム", x: 0, y: 700, w: 130, h: 48, depth: 1),
+            element(ref: 4, id: "row_09", label: "行 09", x: 10, y: 700, w: 370, h: 40, depth: 2),
+            // 実機と同じ形にする: **タブは行の一部にしか重ならない**(丸ごと包む相手は容器なので
+            // 遮蔽に数えない。包む形にすると、この防御が何も検出しないテストになる)
+            element(ref: 5, id: "tab_home", label: "ホーム", x: 130, y: 700, w: 130, h: 48, depth: 1),
         ]
         driver.snapshotResponse = screen(tree)
         _ = try await server.call(tool: "ft_snapshot", args: [:])
@@ -124,7 +126,7 @@ final class MCPRefGuardTests: XCTestCase {
             let escape = try XCTUnwrap(message.range(of: "tap the coordinates directly"))
             XCTAssertTrue(fix.lowerBound < escape.lowerBound,
                           "座標タップを先に勧めるとガードの意味が消える")
-            XCTAssertTrue(message.contains("(x: 60, y: 720)"), "撃つべき座標まで出すこと")
+            XCTAssertTrue(message.contains("(x: 195, y: 720)"), "撃つべき座標まで出すこと")
         }
         XCTAssertFalse(actions.contains { $0.hasPrefix("tap") }, "撃ってはいけない")
     }
@@ -135,8 +137,10 @@ final class MCPRefGuardTests: XCTestCase {
             element(ref: 1, type: "Other", id: "list", label: nil, x: 0, y: 100, w: 390, h: 200, depth: 1),
             element(ref: 2, id: "row_01", label: "行 01", x: 10, y: 110, depth: 2),
             element(ref: 3, id: "row_02", label: "行 02", x: 10, y: 160, depth: 2),
-            element(ref: 4, id: "row_09", label: "行 09", x: 10, y: 700, depth: 2),
-            element(ref: 5, id: "tab_home", label: "ホーム", x: 0, y: 700, w: 130, h: 48, depth: 1),
+            element(ref: 4, id: "row_09", label: "行 09", x: 10, y: 700, w: 370, h: 40, depth: 2),
+            // 実機と同じ形にする: **タブは行の一部にしか重ならない**(丸ごと包む相手は容器なので
+            // 遮蔽に数えない。包む形にすると、この防御が何も検出しないテストになる)
+            element(ref: 5, id: "tab_home", label: "ホーム", x: 130, y: 700, w: 130, h: 48, depth: 1),
         ])
         let rendered = Self.text(try await server.call(tool: "ft_snapshot", args: [:]))
         XCTAssertTrue(rendered.contains("outside their scroll container"))
@@ -157,6 +161,24 @@ final class MCPRefGuardTests: XCTestCase {
         _ = try await server.call(tool: "ft_snapshot", args: [:])
         _ = try await server.call(tool: "ft_tap", args: ["ref": 4])
         XCTAssertTrue(actions.contains { $0.hasPrefix("tap") }, "覆う要素が無いなら撃てること")
+    }
+
+    /// **自分を丸ごと包む相手は遮蔽ではなく容器**。設定アプリの検索を開いた状態で
+    /// 「閉じる」が弾かれた形(覆っていたのは全画面の減光レイヤーと toolbar)。
+    /// 座標タップでは正しく閉じられた = 判定が誤りだったことが確定している
+    func testFullScreenContainersAreNotOccluders() async throws {
+        driver.snapshotResponse = screen([
+            element(ref: 1, type: "Other", id: "page", label: nil, x: 0, y: 100, w: 390, h: 300, depth: 1),
+            element(ref: 2, id: "row_a", label: "A", x: 10, y: 110, depth: 2),
+            element(ref: 3, id: "row_b", label: "B", x: 10, y: 160, depth: 2),
+            // 容器の外に出た「閉じる」。中心を覆うのは全画面の減光レイヤーだけ
+            element(ref: 4, id: "close", label: "閉じる", x: 351, y: 485, w: 38, h: 38, depth: 2),
+            element(ref: 5, type: "Other", id: "AdditionalDimmingOverlay", label: nil,
+                    x: 0, y: 0, w: 390, h: 844, depth: 1),
+        ])
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        _ = try await server.call(tool: "ft_tap", args: ["ref": 4])
+        XCTAssertTrue(actions.contains { $0.hasPrefix("tap") }, "包む相手しか無いなら撃てること")
     }
 
     /// 同じラベルの Button と StaticText が並ぶ形で取り違えないこと(型も見る)
@@ -189,13 +211,15 @@ final class MCPRefGuardTests: XCTestCase {
             element(ref: 1, type: "Other", id: "list", label: nil, x: 0, y: 100, w: 390, h: 200, depth: 1),
             element(ref: 2, id: "row_01", label: "行 01", x: 10, y: 110, depth: 2),
             element(ref: 3, id: "row_02", label: "行 02", x: 10, y: 160, depth: 2),
-            element(ref: 4, id: "row_09", label: "行 09", x: 10, y: 700, depth: 2),
-            element(ref: 5, id: "tab_home", label: "ホーム", x: 0, y: 700, w: 130, h: 48, depth: 1),
+            element(ref: 4, id: "row_09", label: "行 09", x: 10, y: 700, w: 370, h: 40, depth: 2),
+            // 実機と同じ形にする: **タブは行の一部にしか重ならない**(丸ごと包む相手は容器なので
+            // 遮蔽に数えない。包む形にすると、この防御が何も検出しないテストになる)
+            element(ref: 5, id: "tab_home", label: "ホーム", x: 130, y: 700, w: 130, h: 48, depth: 1),
         ])
         let flags = MCPServer.ghostFlags(snapshot)
         XCTAssertEqual(Set(flags.keys), [4], "容器の外の1件だけに印が付くこと")
         XCTAssertTrue(SnapshotRenderer.render(snapshot, flagging: flags)
-            .contains("id=row_09 (10,700 100x40) ⚠️scroll-leftover"))
+            .contains("id=row_09 (10,700 370x40) ⚠️scroll-leftover"))
     }
 
     /// 探索が空振りしたら「そこに何があったか」を返す。**往復を1回省く**のと、
