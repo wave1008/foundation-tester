@@ -313,8 +313,19 @@ public enum RunResultsQuery {
     private static let newFailurePriorPassThreshold = 3
     /// infraFailures: timedOut またはステップ未到達失敗がシナリオあたり何件以上で警告するか
     private static let infraFailureMinCount = 2
-    /// selectorDecay: steps.healed + passedViaFallback の合計がシナリオあたり何件以上で警告するか
+    /// selectorDecay: steps.healed + passedViaFallback の合計がシナリオあたり何件以上で警告するか。
+    /// **これだけでは判定しない**(下の傾向条件と AND)—— 合計は窓の中で増え続けるので、
+    /// 単独だと「毎回1件フォールバックするシナリオ」が 3 run 目から永久に鳴る
     private static let selectorDecayMinCount = 3
+    /// selectorDecay: 前半/後半の比較に要る最小 run 数(slowTestsMinRunsForDelta と同じ理由)
+    private static let selectorDecayMinRunsForTrend = 4
+    /// selectorDecay: 1 run あたりの件数が前半→後半でこの割合(%)以上増えたら「劣化」とみなす。
+    /// **一定なら劣化ではない** —— フォールバックや自己修復を意図的に検証するシナリオは
+    /// 毎 run 同じ件数を出す(実測: 2118 run で 2107 件 = 1件/run が2週間一定)
+    private static let selectorDecayRisePct = 30.0
+    /// retiredScenarios: 最新の記録からこの日数より前にしか記録が無いシナリオは
+    /// 「実行されなくなった」とみなし、per-scenario の検知から外す
+    private static let retiredScenarioDays = 7.0
     /// deviceBias: 対象 worker の最小実行回数(サンプル数が少ない偏り判定を避ける)
     private static let deviceBiasMinRunsPerWorker = 3
     /// deviceBias: シナリオ全体の失敗率に対してこの倍率以上なら偏りありと判定
@@ -333,7 +344,7 @@ public enum RunResultsQuery {
 
     public struct InsightRow: Codable, Sendable, Equatable {
         /// "newFailure" | "consecutiveFailures" | "infraFailures" | "selectorDecay" | "deviceBias" |
-        /// "durationRegression" | "unfinishedRuns" | "unsettledSteps"
+        /// "durationRegression" | "unfinishedRuns" | "unsettledSteps" | "retiredScenarios"
         public let kind: String
         /// "critical" | "warn" | "info"
         public let severity: String
@@ -347,6 +358,10 @@ public enum RunResultsQuery {
     /// severity 順(critical→warn→info)、同 severity 内は count 降順(同数は kind→scenarioID 昇順で決定的に)
     public static func insights(records: [ScenarioRunRecord], runs: [RunMetaRecord]) -> [InsightRow] {
         var rows: [InsightRow] = []
+        // **実行されなくなったシナリオを先に外す**。--since の窓に古い記録が残るかぎり、
+        // 削除・_disabled 化されたシナリオの「末尾の失敗」は永久に critical を出し続け、
+        // severity 順の先頭を占めて本物を押し下げる(実測: 12 行中 5 行がこれだった)
+        let (records, retiredIDs) = partitionRetired(records)
         let grouped = Dictionary(grouping: records, by: \.scenarioID)
 
         for (scenarioID, group) in grouped {
@@ -368,6 +383,16 @@ public enum RunResultsQuery {
                 kind: "durationRegression", severity: "warn", scenarioID: row.scenarioID, worker: nil,
                 message: "\(row.scenarioID): duration regressed (+\(String(format: "%.0f", deltaPct))% vs the first half)",
                 count: nil, deltaPct: deltaPct))
+        }
+
+        // **黙って落とさない**: 外した事実は出す(消えたシナリオの結果が残っていること自体が情報)
+        if !retiredIDs.isEmpty {
+            rows.append(InsightRow(
+                kind: "retiredScenarios", severity: "info", scenarioID: nil, worker: nil,
+                message: "\(retiredIDs.count) scenario(s) have results but are no longer being run"
+                    + " (excluded from the checks above): \(retiredIDs.prefix(3).joined(separator: ", "))"
+                    + (retiredIDs.count > 3 ? ", …" : ""),
+                count: retiredIDs.count, deltaPct: nil))
         }
 
         let unfinishedCount = runs.filter { $0.finishedAt == nil }.count
@@ -546,13 +571,50 @@ public enum RunResultsQuery {
             count: infraFailures.count, deltaPct: nil)]
     }
 
+    /// セレクタの劣化は「**増えていること**」でしか判定できない。合計だけを見ると、
+    /// フォールバックや自己修復を意図的に検証するシナリオ(このリポジトリの
+    /// `セレクタの型と序数とフォールバックが解決できること` 等)が毎 run 同じ件数を出すため、
+    /// 3 run 目から永久に鳴り続けて一覧を埋める。1 run あたりの件数を前半/後半で比べる。
     private static func selectorDecayInsight(scenarioID: String, group: [ScenarioRunRecord]) -> InsightRow? {
-        let total = group.reduce(0) { $0 + $1.steps.healed + $1.steps.passedViaFallback }
-        guard total >= selectorDecayMinCount else { return nil }
+        let chronological = group.sorted { date(from: $0.startedAt) < date(from: $1.startedAt) }
+        let counts = chronological.map { $0.steps.healed + $0.steps.passedViaFallback }
+        let total = counts.reduce(0, +)
+        guard total >= selectorDecayMinCount, counts.count >= selectorDecayMinRunsForTrend else { return nil }
+        let mid = counts.count / 2
+        guard let firstAvg = average(Array(counts[0..<mid])),
+              let secondAvg = average(Array(counts[mid...])) else { return nil }
+        // 前半 0 = **無かったものが出始めた**。比率が発散するので率は出さず、これ自体を合図にする。
+        // このとき後半が 0 でないことは selectorDecayMinCount(合計 >= 3)が担保する
+        // ——「減っている」「一定」は下の閾値で落ちるので、ここで別途 secondAvg > firstAvg を見ない
+        // (見ても到達しない条件になり、テストで守れない枝が増えるだけ)
+        let deltaPct: Double? = firstAvg > 0 ? (secondAvg - firstAvg) / firstAvg * 100 : nil
+        if let deltaPct, deltaPct < selectorDecayRisePct { return nil }
+        let trend = deltaPct.map { "+\(String(format: "%.0f", $0))% per run" }
+            ?? "newly appeared"
         return InsightRow(
             kind: "selectorDecay", severity: "warn", scenarioID: scenarioID, worker: nil,
-            message: "\(scenarioID): early signs of selector staleness (kept alive by self-heal/fallback, \(total) time(s))",
-            count: total, deltaPct: nil)
+            message: "\(scenarioID): reliance on self-heal/fallback is growing (\(trend), \(total) time(s) total)",
+            count: total, deltaPct: deltaPct)
+    }
+
+    /// 実行されなくなったシナリオ(結果だけが results/ に残っている)を分ける。
+    /// 判定は**最新の記録からの相対**にする —— 絶対時刻だと、しばらく回していない
+    /// プロジェクトの全シナリオが一斉に retired になる
+    private static func partitionRetired(
+        _ records: [ScenarioRunRecord]
+    ) -> (live: [ScenarioRunRecord], retired: [String]) {
+        guard let newest = records.map({ date(from: $0.startedAt) }).max() else { return (records, []) }
+        let cutoff = newest.addingTimeInterval(-retiredScenarioDays * 86400)
+        var live: [ScenarioRunRecord] = []
+        var retired: [String] = []
+        for (scenarioID, group) in Dictionary(grouping: records, by: \.scenarioID) {
+            if let last = group.map({ date(from: $0.startedAt) }).max(), last < cutoff {
+                retired.append(scenarioID)
+            } else {
+                live.append(contentsOf: group)
+            }
+        }
+        return (live, retired.sorted())
     }
 
     /// 整定の収束判定が打ち切られたまま先へ進んだステップの**出現率**(赤になる前の先行指標)。
