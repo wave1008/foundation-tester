@@ -32,9 +32,9 @@ enum RefGuard {
     static let movedThreshold: Double = 1.0
 
     /// 覚えていた要素 `target` を、撮り直した木 `fresh` から引き直す
-    static func relocate(_ target: ElementInfo, in fresh: [ElementInfo]) -> Outcome {
+    static func relocate(_ target: ElementInfo, in fresh: [ElementInfo], screen: FTRect) -> Outcome {
         guard let found = match(target, in: fresh) else { return .gone }
-        if isUntappableGhost(found, in: fresh) { return .ghost(found) }
+        if isUntappableGhost(found, in: fresh, screen: screen) { return .ghost(found) }
         return .found(found, moved: distance(target.frame, found.frame))
     }
 
@@ -51,9 +51,10 @@ enum RefGuard {
     /// そこで危険の定義そのものを条件にする —— **中心に別の要素が重なっている**こと。
     /// 実測: E2E の残像行 `#row_11` の中心 (201,818) には下部タブ `#tab_controls` が重なる(拒否)。
     /// springboard の `#Safari` の中心 (157,805) には何も重ならない(通す)。
-    static func isUntappableGhost(_ element: ElementInfo, in elements: [ElementInfo]) -> Bool {
+    static func isUntappableGhost(_ element: ElementInfo, in elements: [ElementInfo],
+                                  screen: FTRect) -> Bool {
         guard StepExecutor.isOutsideContainer(element, in: elements) else { return false }
-        return occluder(of: element, in: elements) != nil
+        return occluder(of: element, in: elements, screen: screen) != nil
     }
 
     /// **同じ矩形に積まれた要素**の ref。これだけの数が同じ場所に描かれることは有り得ないので、
@@ -77,6 +78,13 @@ enum RefGuard {
         for (_, group) in byFrame where group.count >= stackedFrameMinimum {
             let chain = lineage(of: group[0], in: elements)
             if group.allSatisfy({ chain.contains($0.ref) }) { continue }
+            // **無地のラッパーは数えない**(欠陥⑤): 同一矩形の入れ子ラッパー連鎖(Android では
+            // ありふれた形。実測: `#expandingscrollview_container`/`#cardui_cardlist`/
+            // `#recycler_view`/`#home_bottom_sheet_container` の4件で、実際は普通のボトムシート)
+            // を件数だけで積み重なりと誤認していた。label/value のどちらかを持つものだけを数え、
+            // それが下限に届くときだけ印を付ける(印を付ける対象は従来どおり群の全要素)
+            let withContent = group.filter { !($0.label ?? "").isEmpty || !($0.value ?? "").isEmpty }
+            guard withContent.count >= stackedFrameMinimum else { continue }
             flagged.formUnion(group.map(\.ref))
         }
         return flagged
@@ -103,18 +111,39 @@ enum RefGuard {
     /// 先に並ぶ大きな背景パネルが端の要素を「覆っている」ことになり、
     /// 2026-08-06 に拒否をやめる原因になった誤検知の形に逆戻りする。
     /// 祖先・子孫の除外、残像の除外、丸ごと包む相手の除外は `occluder` と共有する
-    static func overlayCovering(_ element: ElementInfo,
-                                in elements: [ElementInfo]) -> ElementInfo? {
-        guard !isUntappableGhost(element, in: elements) else { return nil }
-        guard let hit = occluder(of: element, in: elements), hit.ref > element.ref else { return nil }
+    static func overlayCovering(_ element: ElementInfo, in elements: [ElementInfo],
+                                screen: FTRect) -> ElementInfo? {
+        guard !isUntappableGhost(element, in: elements, screen: screen) else { return nil }
+        guard let hit = occluder(of: element, in: elements, screen: screen), hit.ref > element.ref
+        else { return nil }
         return hit
     }
+
+    /// **何も描いていない葉コンテナ**は遮蔽候補から除外する: label・value が空で子孫を持たない
+    /// 非対話的容器(`other`)は、実際には画面に何も描いていない。
+    /// 実測: `#compass_container`(全幅・非 clickable・葉)が起動直後の「スキップ」ボタンと
+    /// 検索サジェスト先頭候補の両方を遮蔽扱いしたが、どちらもタップは正常に成功していた。
+    /// **`image` や対話型(`clickable` 等)は対象外**(ラベルの無い装飾アイコンでも実際に描かれている)
+    private static func isBlankLeafContainer(_ element: ElementInfo, in elements: [ElementInfo]) -> Bool {
+        guard element.type == "other",
+              (element.label ?? "").isEmpty, (element.value ?? "").isEmpty
+        else { return false }
+        guard let index = elements.firstIndex(where: { $0.ref == element.ref }) else { return true }
+        let next = elements.index(after: index)
+        return next >= elements.endIndex || elements[next].depth <= element.depth
+    }
+
+    /// 完全包含でも「容器」とみなす面積比の下限。実測: app bar (0,0 1080x290) は画面
+    /// (1080x2424) の約 12% で、これを容器扱いすると下に潜った行への遮蔽が丸ごと無警告になる。
+    /// 全画面の toolbar/collectionView・`#AdditionalDimmingOverlay` は 100% なので下回らない
+    static let fullScreenContainerAreaRatio = 0.5
 
     /// 中心を覆う別要素。**除くのは自分の祖先と子孫だけ**。
     /// 「自分より深いものだけ」に絞ると外す —— 実測では残像 `#row_11`(リストの奥)に重なるのは
     /// 下部タブ `#tab_controls` で、**タブのほうが浅い**。容器(リスト・画面全体)を数えない
     /// 目的には祖先の除外で足りる
-    static func occluder(of element: ElementInfo, in elements: [ElementInfo]) -> ElementInfo? {
+    static func occluder(of element: ElementInfo, in elements: [ElementInfo],
+                         screen: FTRect) -> ElementInfo? {
         let cx = element.frame.x + element.frame.width / 2
         let cy = element.frame.y + element.frame.height / 2
         let excluded = lineage(of: element, in: elements)
@@ -123,6 +152,7 @@ enum RefGuard {
                   other.frame.x <= cx, cx <= other.frame.x + other.frame.width,
                   other.frame.y <= cy, cy <= other.frame.y + other.frame.height
             else { return false }
+            if isBlankLeafContainer(other, in: elements) { return false }
             // **描かれていないものは何も覆えない**(2026-08-06 の外部フィードバック2件目)。
             // 相手自身がスクロール容器の外に出ている(= 残像)なら、矩形が重なっていても
             // 実際にはそこに無い。実例: 設定アプリの検索で「閉じる」を弾いていた
@@ -130,13 +160,14 @@ enum RefGuard {
             // **この判定を先に置く**のが要点 —— 包含判定は 1pt の差で外れるほど際どく
             // (閉じる y483..521 対 clickable y484..536)、閾値では守り切れない
             if StepExecutor.isOutsideContainer(other, in: elements) { return false }
-            // **自分を丸ごと包む相手は遮蔽ではなく容器**(2026-08-06 の外部フィードバック)。
-            // 設定アプリの検索を開いた状態で「閉じる」ボタンが弾かれた —— 覆っていたのは
-            // `#AdditionalDimmingOverlay` や全画面の toolbar/collectionView で、
-            // どれも矩形としては中心を含むが、実際にはボタンより後ろに描かれている。
-            // 実測: 閉じる (351,485 38x38) を包む相手は Toolbar (0,0 402x874) 等だけ。
-            // 本物の遮蔽(残像 #row_11 に重なる下部タブ)は**一部しか重ならない**
-            return !contains(other.frame, element.frame)
+            // **自分を丸ごと包み、かつ画面規模の相手だけが容器**。完全包含でも面積が画面の
+            // fullScreenContainerAreaRatio 未満なら容器ではなく遮蔽 —— app bar の下に潜った行は
+            // まさにこの形で、面積を見ずに「包む相手はみな容器」とすると丸ごと無警告になっていた。
+            // 実測: 閉じる (351,485 38x38) を包む相手は Toolbar (0,0 402x874) = 画面そのもの
+            guard contains(other.frame, element.frame) else { return true }
+            let otherArea = other.frame.width * other.frame.height
+            let screenArea = screen.width * screen.height
+            return screenArea > 0 && otherArea < screenArea * fullScreenContainerAreaRatio
         }
     }
 
@@ -206,9 +237,16 @@ enum RefGuard {
         return element.type
     }
 
-    static func goneMessage(ref: Int, target: ElementInfo) -> String {
-        "[\(ref)] \(describe(target)) is no longer in the tree — the screen changed after that"
-            + " ft_snapshot. Take a fresh ft_snapshot and use the new ref."
+    /// **打ち切りも「消えた」の原因になる**(欠陥①と同型): 画面が密になるとブリッジの
+    /// 要素上限に押し出され、画面には出ているのに木から落ちる。原因を「画面が変わった」と
+    /// 断定すると、そこで探索が止まる
+    static func goneMessage(ref: Int, target: ElementInfo, truncatedCount: Int = 0) -> String {
+        let truncated = truncatedCount > 0
+            ? " (or it was pushed out of the tree: \(truncatedCount) element(s) were omitted"
+                + " by the snapshot limit)"
+            : ""
+        return "[\(ref)] \(describe(target)) is no longer in the tree — the screen changed after"
+            + " that ft_snapshot\(truncated). Take a fresh ft_snapshot and use the new ref."
     }
 
     /// **撃つ。ただし何に当たったかもしれないかを言う**(2026-08-06 に拒否から後退)。
@@ -221,15 +259,18 @@ enum RefGuard {
     /// 押せる要素を押せなくする害は、誤操作を見逃す害と**別種で、こちらは確実に起きる**。
     /// 情報だけ渡して判断はエージェントに委ねる —— 一覧の行にも印が付いているので、
     /// 「怪しいものを撃った」ことは黙って通り過ぎない
-    static func ghostWarning(found: ElementInfo, in elements: [ElementInfo]) -> String {
-        let hit = occluder(of: found, in: elements).map { " (possibly \(describe($0)))" } ?? ""
+    static func ghostWarning(found: ElementInfo, in elements: [ElementInfo], screen: FTRect) -> String {
+        let hit = occluder(of: found, in: elements, screen: screen)
+            .map { " (possibly \(describe($0)))" } ?? ""
         return " (warning: \(describe(found)) is reported outside its scroll container, so this"
             + " may have hit whatever is really drawn there\(hit) — verify with ft_screenshot,"
             + " or use ft_scroll_to to bring it into view first)"
     }
 
-    static func ghostMessage(ref: Int, found: ElementInfo, in elements: [ElementInfo]) -> String {
-        let hit = occluder(of: found, in: elements).map { " — the tap would land on \(describe($0))" } ?? ""
+    static func ghostMessage(ref: Int, found: ElementInfo, in elements: [ElementInfo],
+                             screen: FTRect) -> String {
+        let hit = occluder(of: found, in: elements, screen: screen)
+            .map { " — the tap would land on \(describe($0))" } ?? ""
         let f = found.frame
         // **逃げ道も書く**が、順序を守る(外部フィードバック 2026-08-06)。
         // 先に「本来の直し方」、次に「確かめたうえでの回避」。座標タップを無条件に勧めると、
@@ -246,8 +287,8 @@ enum RefGuard {
     ///
     /// ghostWarning と同じ方針で**撃ってから言う**(拒否しない)。木の幾何だけでは
     /// 「本当に描かれているか」を決められないという 2026-08-06 の結論は、この2形にも効く。
-    static func overlapWarning(found: ElementInfo, in elements: [ElementInfo]) -> String {
-        if let over = overlayCovering(found, in: elements) {
+    static func overlapWarning(found: ElementInfo, in elements: [ElementInfo], screen: FTRect) -> String {
+        if let over = overlayCovering(found, in: elements, screen: screen) {
             return " (warning: \(describe(over)) is drawn over the center of \(describe(found)),"
                 + " so this may have hit \(describe(over)) instead — verify with ft_screenshot,"
                 + " or scroll the element clear of the overlay first)"

@@ -485,6 +485,16 @@ final class MCPServer {
             + " Bring it back with ft_launch before trusting these refs\n"
     }
 
+    /// システムダイアログのパッケージ/バンドル ID。これらへの切り替わりは「別アプリに迷い込んだ」
+    /// ではなく「対象アプリの上にシステム UI が出ている」なので、案内を変える(欠陥⑧)。
+    /// 実測: 位置情報の許可ダイアログ(permissioncontroller)で通常の案内(ft_launch し直す)に
+    /// 従うと、ダイアログを放置したままアプリを再起動してループした
+    static let systemDialogPackages: Set<String> = [
+        "com.google.android.permissioncontroller", "com.android.permissioncontroller",
+        "com.android.packageinstaller", "com.google.android.packageinstaller",
+        "com.android.systemui",
+    ]
+
     /// **この木は ft_launch したアプリのものか**。違えば名指しで止める。
     ///
     /// `backgroundedSessionNote` と役割が違う: あちらは「session のアプリが背面」を見るが、
@@ -495,6 +505,20 @@ final class MCPServer {
     static func switchedAppNote(launched: String?, snapshot: SnapshotResponse) -> String {
         guard let launched, let session = snapshot.sessionBundleID, session != launched else {
             return ""
+        }
+        // springboard は ft_launch bundleId: com.apple.springboard がホーム画面へ attach する
+        // 正規の使い方(ツール説明に明記)なので、その用途を否定しない文言にする
+        if session == "com.apple.springboard" {
+            return "⚠️ This tree is the home screen (springboard), not \(launched)."
+                + " Reading it is fine — ft_launch bundleId: com.apple.springboard is the supported"
+                + " way to attach there — but ft_launch \(launched) first if you meant to keep"
+                + " testing the app.\n"
+        }
+        if systemDialogPackages.contains(session) {
+            return "⚠️ \(session) is a system dialog drawn over \(launched)"
+                + " (e.g. a permission prompt), not the app itself. Operate the dialog"
+                + " (tap its buttons, or back) to get back to \(launched) — ft_launch restarts"
+                + " the app and leaves the dialog on screen, so you would loop without progress.\n"
         }
         return "⚠️ This tree belongs to \(session), NOT the app you launched (\(launched))."
             + " Leaving the app (back from its first screen, home, an app switch) hands the"
@@ -530,16 +554,17 @@ final class MCPServer {
         else { return (ref, "") }
         let lastRendered = remembered.elements
         let fresh = try await freshSnapshot(driver, args: args)
-        switch RefGuard.relocate(target, in: fresh.elements) {
+        switch RefGuard.relocate(target, in: fresh.elements, screen: fresh.screen) {
         case .gone:
-            throw MCPError(RefGuard.goneMessage(ref: ref, target: target))
+            throw MCPError(RefGuard.goneMessage(ref: ref, target: target,
+                                                truncatedCount: fresh.truncatedCount))
         case .ghost(let found):
             // **拒否せず警告して撃つ**(2026-08-06 に方針を後退させた。理由は RefGuard の宣言)
-            return (found.ref, RefGuard.ghostWarning(found: found, in: fresh.elements))
+            return (found.ref, RefGuard.ghostWarning(found: found, in: fresh.elements, screen: fresh.screen))
         case .found(let found, let moved):
             // **ghost でなくても別の物に当たり得る**2形(上に描かれた overlay / 同一矩形への
             // 積み重なり)。どちらも容器の内側なので RefGuard.relocate では .found になる
-            let overlap = RefGuard.overlapWarning(found: found, in: fresh.elements)
+            let overlap = RefGuard.overlapWarning(found: found, in: fresh.elements, screen: fresh.screen)
             guard moved >= RefGuard.movedThreshold else { return (found.ref, overlap) }
             // **原因までは断定できない**が、「他も同じだけ動いたか」は手元の2枚から言える。
             // 揃って動いていればスクロール等の画面全体の移動、その要素だけならレイアウト変化。
@@ -585,8 +610,9 @@ final class MCPServer {
             // 候補を見せれば、綴り違いなのか記法(`*…*`)不足なのかがその場で分かる
             let bare = selectorText.trimmingCharacters(in: CharacterSet(charactersIn: "#*"))
             throw MCPError("scrollTo \"\(selectorText)\" did not reach the element"
-                + " (\(outcome.status)). \(Self.visibleLabelsHint(after))"
-                + " Plain labels match exactly — wrap them in * for a partial match (e.g. *\(bare)*).")
+                + " (\(outcome.status))\(Self.truncationHint(after)). \(Self.visibleLabelsHint(after))"
+                + " Plain labels match exactly — wrap them in * for a partial match (e.g. *\(bare)*)."
+                + Self.scrollAreaHint(after, args: args))
         }
         // **成功と言う前に、返す木にそれが居ることを確かめる**(2026-08-06 の探索で外した)。
         // 探索のスワイプは**ボタンを発火させることがある**(SwiftUI の SUT で実測)。
@@ -599,9 +625,11 @@ final class MCPServer {
         if !Self.matches(selectorText, in: after) {
             throw MCPError("scrollTo \"\(selectorText)\" reached the element, but it is gone from"
                 + " the screen now — the search itself changed the screen"
-                + " (a swipe over a tappable row can fire it). \(Self.visibleLabelsHint(after))"
+                + " (a swipe over a tappable row can fire it)\(Self.truncationHint(after))."
+                + " \(Self.visibleLabelsHint(after))"
                 + " Go back to the screen that has it and retry;"
-                + " scrollFrame: <container> keeps the swipes inside the list.")
+                + " scrollFrame: <container> keeps the swipes inside the list."
+                + Self.scrollAreaHint(after, args: args))
         }
         let landed = outcome.resolvedElement.map { " → [\($0.ref)] \(RefGuard.describe($0))" } ?? ""
         // **木を返す口はすべて名指しする**(2026-08-06 の掃討で漏れを見つけた)。上の再確認は
@@ -609,8 +637,10 @@ final class MCPServer {
         // E2E の 4 SUT は id・ラベルが共通契約なので、これは現に起こり得る形
         let switched = Self.switchedAppNote(
             launched: launchedBundleIDs[Self.engineKey(args)], snapshot: after)
+        // scrollFrame を渡すべき当人なので、複数領域の注記もここに出す(欠陥⑪)
+        let scrollAreaNote = args["scrollFrame"] == nil ? (ScrollFrameCandidates.note(after) ?? "") : ""
         return text(switched + "scrolled to \"\(selectorText)\"\(landed)."
-            + " The refs below are fresh\n" + Self.ghostNote(after)
+            + " The refs below are fresh\n" + scrollAreaNote + Self.ghostNote(after)
             + SnapshotRenderer.render(after, flagging: Self.ghostFlags(after)))
     }
 
@@ -671,7 +701,7 @@ final class MCPServer {
     /// **叩けば RefGuard が止める**が、そこまで行かずに気付けるほうが往復が減る
     static func ghostRefs(_ snapshot: SnapshotResponse) -> [Int] {
         snapshot.elements
-            .filter { RefGuard.isUntappableGhost($0, in: snapshot.elements) }
+            .filter { RefGuard.isUntappableGhost($0, in: snapshot.elements, screen: snapshot.screen) }
             .map(\.ref)
     }
 
@@ -700,6 +730,60 @@ final class MCPServer {
             + " or verify with ft_screenshot\n"
     }
 
+    /// **scrollFrame を渡すべき当人**である ft_scroll_to にだけ出す、複数スクロール領域の注記
+    /// (欠陥⑪)。`ScrollFrameCandidates.note` は ft_snapshot でしか呼ばれておらず、一番効く場所
+    /// (scrollFrame: を渡すべき本人の失敗文・成功文)に届いていなかった。
+    /// scrollFrame: を既に渡しているときは黙る(選んだ後なので不要)
+    static func scrollAreaHint(_ snapshot: SnapshotResponse, args: [String: Any]) -> String {
+        guard args["scrollFrame"] == nil, let note = ScrollFrameCandidates.note(snapshot) else { return "" }
+        return " " + note.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// スナップショットが上限で打ち切られていたときの注記(欠陥①a)。**打ち切りは配列そのものからの
+    /// 脱落**であって描画の省略ではないので、waitFor/scrollTo は打ち切られた要素を一生探し続ける。
+    /// 実測: 画面に描画されている `#nav_button` を waitFor が「did not appear」、scrollTo が
+    /// 「element not found」としか言わず、存在しない要素を探し続けることになっていた。
+    /// FTCore 側に同趣旨(`StepExecutor+Assert.truncationHint`)があるが internal で呼べないため、
+    /// 文言だけ揃えてこちらに複製する
+    static func truncationHint(_ snapshot: SnapshotResponse) -> String {
+        guard snapshot.truncatedCount > 0 else { return "" }
+        return " (the tree was truncated at \(snapshot.elements.count) elements;"
+            + " \(snapshot.truncatedCount) more were omitted — the element you are looking for"
+            + " may be among them)"
+    }
+
+    /// **ラベルも id も無い clickable**の注記(欠陥⑨)。座標か ref でしか指定できず、
+    /// シナリオでは安定したセレクタを書けないことを伝える。実測: 経路の移動手段タブ(アイコンのみ)
+    /// が id もラベルも無い `clickable` として出て、書ける手段が何も無いことに気付けなかった
+    static func unlabeledClickablesNote(_ snapshot: SnapshotResponse) -> String {
+        let unlabeled = snapshot.elements.filter {
+            $0.type == "clickable" && ($0.identifier ?? "").isEmpty && ($0.label ?? "").isEmpty
+        }
+        guard !unlabeled.isEmpty else { return "" }
+        let listed = unlabeled.prefix(8).map { "[\($0.ref)]" }.joined(separator: " ")
+        let more = unlabeled.count > 8 ? " (+\(unlabeled.count - 8) more)" : ""
+        return "note: \(unlabeled.count) clickable element(s) have neither a label nor an id"
+            + " (\(listed)\(more)) — they can only be targeted by ref or coordinates,"
+            + " so a scenario cannot select them with a stable selector.\n"
+    }
+
+    /// 同一ラベルが3件以上に一致するときの要約注記(欠陥⑩)。id の重複は別パッケージが
+    /// 行内に `×N` として個別に出すので、こちらは**ラベルだけ**を扱う。
+    /// 実測: 経路検索の候補一覧で「東京駅」が9件一致し、素のラベルでは一意に指せなかった
+    static func ambiguousLabelsNote(_ snapshot: SnapshotResponse) -> String {
+        var counts: [String: Int] = [:]
+        for e in snapshot.elements {
+            guard let label = e.label, !label.isEmpty else { continue }
+            counts[label, default: 0] += 1
+        }
+        let ambiguous = counts.filter { $0.value >= 3 }.sorted { $0.value > $1.value }
+        guard !ambiguous.isEmpty else { return "" }
+        let listed = ambiguous.prefix(5).map { "\"\($0.key)\" ×\($0.value)" }.joined(separator: " ")
+        let more = ambiguous.count > 5 ? " (+\(ambiguous.count - 5) more)" : ""
+        return "note: these labels match multiple elements, so a plain label selector cannot"
+            + " pick one uniquely: \(listed)\(more).\n"
+    }
+
     /// フォーカス待ちの上限。**短い**のは、報告しないフレームワークで毎回これを丸ごと待つため
     static let focusWaitSeconds: Double = 1.5
     static let focusPollSeconds: Double = 0.15
@@ -717,7 +801,7 @@ final class MCPServer {
         let deadline = Date().addingTimeInterval(Self.focusWaitSeconds)
         while true {
             guard let fresh = try? await freshSnapshot(driver, args: args) else { return "" }
-            if case .found(let found, _) = RefGuard.relocate(target, in: fresh.elements),
+            if case .found(let found, _) = RefGuard.relocate(target, in: fresh.elements, screen: fresh.screen),
                found.focused == true { return "" }
             // 誰も focused を名乗らない = 報告しない経路。待っても永遠に立たない
             guard fresh.elements.contains(where: { $0.focused == true }) else { return "" }
@@ -743,9 +827,10 @@ final class MCPServer {
             }
             return element
         }
-        switch RefGuard.relocate(target, in: fresh.elements) {
+        switch RefGuard.relocate(target, in: fresh.elements, screen: fresh.screen) {
         case .gone:
-            throw MCPError(RefGuard.goneMessage(ref: ref, target: target))
+            throw MCPError(RefGuard.goneMessage(ref: ref, target: target,
+                                                truncatedCount: fresh.truncatedCount))
         case .ghost(let found), .found(let found, _):
             return found
         }
@@ -924,7 +1009,7 @@ final class MCPServer {
                 lastSnapshots[Self.engineKey(args)] = snapshot
                 if !waited.found {
                     waitNote = "waitFor \"\(waitFor)\" did not appear within \(seconds)s"
-                        + " — this is the screen as it is now\n"
+                        + " — this is the screen as it is now\(Self.truncationHint(snapshot))\n"
                 }
             }
             // **プラットフォームはドライバの実体から採る**(profile 指定時は args["platform"] が
@@ -943,6 +1028,7 @@ final class MCPServer {
             return text(withPendingWarnings(
                 switchedNote + waitNote + backgroundNote + Self.ghostNote(snapshot)
                 + (ScrollFrameCandidates.note(snapshot) ?? "")
+                + Self.unlabeledClickablesNote(snapshot) + Self.ambiguousLabelsNote(snapshot)
                 + SnapshotRenderer.render(snapshot, flagging: Self.ghostFlags(snapshot)), args: args))
 
         case "ft_tap":

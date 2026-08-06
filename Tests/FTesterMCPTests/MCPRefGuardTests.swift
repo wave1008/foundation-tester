@@ -187,6 +187,96 @@ final class MCPRefGuardTests: XCTestCase {
                       "覆っている側が残像なら遮蔽に数えないこと")
     }
 
+    // MARK: - 欠陥③④(2026-08-07 の Android Emulator 探索)
+
+    /// **欠陥③**: 何も描いていない葉コンテナ(label/value 空・子孫なし・type=other)は
+    /// 遮蔽候補から除外する。実測: `#compass_container`(全幅・非 clickable・葉)が起動直後の
+    /// 「スキップ」ボタンを遮蔽扱いしたが、タップは正常に成功していた
+    func testBlankLeafContainerDoesNotOccludeAnything() async throws {
+        driver.snapshotResponse = screen([
+            element(ref: 1, id: "btn_skip", label: "スキップ", x: 150, y: 700, w: 100, h: 40, depth: 1),
+            // 何も描いていない葉コンテナ。ボタンの中心を覆うが、完全には包まない
+            // (包む形にすると欠陥④側の面積判定だけで救われてしまい、③の検証にならない)
+            element(ref: 2, type: "Other", id: "compass_container", label: nil,
+                    x: 0, y: 680, w: 200, h: 80, depth: 1),
+        ])
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        let text = Self.text(try await server.call(tool: "ft_tap", args: ["ref": 1]))
+        XCTAssertFalse(text.contains("warning"), "空の葉コンテナは遮蔽に数えないこと: \(text)")
+    }
+
+    /// 葉コンテナでも label を持てば除外しない(実際に何か描いている可能性を捨てない)。
+    /// ③の除外条件が広すぎないことの確認
+    func testLeafContainerWithLabelStillOccludes() async throws {
+        driver.snapshotResponse = screen([
+            element(ref: 1, id: "btn_skip", label: "スキップ", x: 150, y: 700, w: 100, h: 40, depth: 1),
+            element(ref: 2, type: "Other", id: "banner", label: "広告",
+                    x: 0, y: 680, w: 200, h: 80, depth: 1),
+        ])
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        let text = Self.text(try await server.call(tool: "ft_tap", args: ["ref": 1]))
+        XCTAssertTrue(text.contains("warning"), "label を持つ葉は除外しないこと: \(text)")
+    }
+
+    /// **欠陥④**: 完全包含でも画面の半分未満の相手は容器ではなく遮蔽として拾う。実測:
+    /// app bar (0,0 1080x290) が画面(1080x2424)の 12% しかないのに、下に潜った行
+    /// `#transit_station_title_name` への遮蔽が「丸ごと包む相手は容器」規則で無警告になっていた。
+    /// header_container に子(#btn_back)を持たせて③の葉除外を経由しないことを保証する
+    func testPartialCoverageContainerBelowThresholdOccludes() async throws {
+        driver.snapshotResponse = SnapshotResponse(
+            sessionBundleID: "com.example.app",
+            screen: FTRect(x: 0, y: 0, width: 1080, height: 2424),
+            elements: [
+                element(ref: 1, id: "transit_station_title_name", label: "東京駅",
+                        x: 285, y: 0, w: 510, h: 85, depth: 1),
+                element(ref: 2, type: "Other", id: "header_container", label: nil,
+                        x: 0, y: 0, w: 1080, h: 290, depth: 1),
+                element(ref: 3, id: "btn_back", label: "戻る", x: 20, y: 20, w: 60, h: 60, depth: 2),
+            ],
+            truncatedCount: 0)
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        let text = Self.text(try await server.call(tool: "ft_tap", args: ["ref": 1]))
+        XCTAssertTrue(text.contains("#header_container"),
+                      "画面の一部でしかない app bar は遮蔽として拾うこと: \(text)")
+    }
+
+    /// 画面規模(閾値以上)の相手は従来どおり容器のまま(退行防止)。
+    /// `testFullScreenContainersAreNotOccluders` の 390x844 全画面 overlay と同じ形を、
+    /// 閾値ちょうど上のケースとしてもう一度固定する
+    func testScreenScaleContainerStaysSuppressedAboveThreshold() async throws {
+        driver.snapshotResponse = SnapshotResponse(
+            sessionBundleID: "com.example.app",
+            screen: FTRect(x: 0, y: 0, width: 1080, height: 2424),
+            elements: [
+                element(ref: 1, id: "row", label: "行", x: 100, y: 100, w: 200, h: 60, depth: 1),
+                // 画面の 60% を占める大きな容器(子を持つので③の葉除外は経由しない)
+                element(ref: 2, type: "Other", id: "sheet", label: nil,
+                        x: 0, y: 0, w: 1080, h: 1500, depth: 1),
+                element(ref: 3, id: "sheet_title", label: "見出し", x: 40, y: 40, w: 200, h: 40, depth: 2),
+            ],
+            truncatedCount: 0)
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        let text = Self.text(try await server.call(tool: "ft_tap", args: ["ref": 1]))
+        XCTAssertFalse(text.contains("warning"), "画面規模の相手は容器のままにすること: \(text)")
+    }
+
+    /// **欠陥⑤**: 同一矩形のラッパー連鎖は「描画内容を持つもの」だけを数える。実測:
+    /// `#expandingscrollview_container`/`#cardui_cardlist`/`#recycler_view`/
+    /// `#home_bottom_sheet_container`(全部同じ矩形・全部 label/value 空)の4件が
+    /// leftover 扱いされたが、実際は普通のボトムシートだった。**入れ子ではなく兄弟**にして
+    /// 一本鎖の除外(既存規則)を経由せず、新しい「描画内容を数える」規則だけを試す
+    func testBlankWrapperStackDoesNotFlagAsLeftover() async throws {
+        let ids = ["expandingscrollview_container", "cardui_cardlist",
+                   "recycler_view", "home_bottom_sheet_container"]
+        let wrappers = ids.enumerated().map { index, id in
+            element(ref: index + 1, type: "Other", id: id, label: nil,
+                    x: 0, y: 565, w: 1080, h: 1859, depth: 1)
+        }
+        driver.snapshotResponse = screen(wrappers)
+        let rendered = Self.text(try await server.call(tool: "ft_snapshot", args: [:]))
+        XCTAssertFalse(rendered.contains("⚠️"), rendered)
+    }
+
     /// 同じラベルの Button と StaticText が並ぶ形で取り違えないこと(型も見る)
     func testRelocateDoesNotSwapAcrossTypesWithTheSameLabel() {
         let target = element(ref: 1, type: "Button", id: nil, label: "共通ラベル", x: 10, y: 100)
@@ -194,7 +284,8 @@ final class MCPRefGuardTests: XCTestCase {
             element(ref: 1, type: "StaticText", id: nil, label: "共通ラベル", x: 10, y: 100),
             element(ref: 2, type: "Button", id: nil, label: "共通ラベル", x: 10, y: 200),
         ]
-        guard case .found(let hit, _) = RefGuard.relocate(target, in: fresh) else {
+        let testScreen = FTRect(x: 0, y: 0, width: 390, height: 844)
+        guard case .found(let hit, _) = RefGuard.relocate(target, in: fresh, screen: testScreen) else {
             return XCTFail("引き直せるはず")
         }
         XCTAssertEqual(hit.ref, 2, "同じ型のほうを採ること")
@@ -204,7 +295,8 @@ final class MCPRefGuardTests: XCTestCase {
     func testRelocateDoesNotFallBackToLabelWhenTheIdentifierIsGone() {
         let target = element(ref: 1, id: "btn_a", label: "送信", x: 10, y: 100)
         let fresh = [element(ref: 1, id: "btn_b", label: "送信", x: 10, y: 100)]
-        guard case .gone = RefGuard.relocate(target, in: fresh) else {
+        let testScreen = FTRect(x: 0, y: 0, width: 390, height: 844)
+        guard case .gone = RefGuard.relocate(target, in: fresh, screen: testScreen) else {
             return XCTFail("gone を返すはず")
         }
     }
@@ -354,6 +446,146 @@ final class MCPRefGuardTests: XCTestCase {
         let hint = MCPServer.visibleLabelsHint(screen(many))
         XCTAssertEqual(hint.components(separatedBy: "#id_").count - 1, 20)
         XCTAssertTrue(hint.hasSuffix("…."))
+    }
+
+    // MARK: - 欠陥①a: 打ち切りを失敗文に出す
+
+    /// 打ち切りは配列そのものからの脱落であって描画の省略ではないので、waitFor/scrollTo は
+    /// 打ち切られた要素を一生探し続ける。件数を失敗文に明記すること
+    func testTruncationHintExplainsOmittedElements() {
+        let intact = screen([element(ref: 1, id: "a", label: "A", x: 0, y: 0)])
+        var truncated = intact
+        truncated.truncatedCount = 5
+        let hint = MCPServer.truncationHint(truncated)
+        XCTAssertTrue(hint.contains("5"), hint)
+        XCTAssertTrue(hint.contains("truncated"), hint)
+        XCTAssertEqual(MCPServer.truncationHint(intact), "", "打ち切りが無ければ黙ること")
+    }
+
+    /// ft_snapshot の waitFor 失敗に打ち切りが載ること。実測: 画面に描画されている
+    /// `#nav_button` を「did not appear」としか言わず、存在しない要素を探し続けることになっていた
+    func testWaitForFailureMentionsTruncation() async throws {
+        var truncated = screen([element(ref: 1, id: "other_row", label: "他の要素", x: 0, y: 0)])
+        truncated.truncatedCount = 3
+        driver.snapshotResponse = truncated
+        let text = Self.text(try await server.call(
+            tool: "ft_snapshot", args: ["waitFor": "#missing", "timeout": 0.3]))
+        XCTAssertTrue(text.contains("did not appear"), text)
+        XCTAssertTrue(text.contains("truncated"), text)
+    }
+
+    /// scrollTo の「届かなかった」失敗にも打ち切りを明記すること
+    func testScrollToFailureMentionsTruncationWhenTreeWasTruncated() async throws {
+        var truncated = screen([element(ref: 1, id: "other_row", label: "他の要素", x: 0, y: 0)])
+        truncated.truncatedCount = 7
+        driver.snapshotResponse = truncated
+        do {
+            _ = try await server.call(tool: "ft_scroll_to", args: ["selector": "#missing_row"])
+            XCTFail("見つからないセレクタは throw するはず")
+        } catch let error as MCPError {
+            XCTAssertTrue(error.localizedDescription.contains("truncated"), error.localizedDescription)
+            XCTAssertTrue(error.localizedDescription.contains("7"), error.localizedDescription)
+        }
+    }
+
+    // MARK: - 欠陥⑨: ラベルも id も無い clickable
+
+    /// ref か座標でしか指定できない要素を名指しする。実測: 経路の移動手段タブ(アイコンのみ)が
+    /// id もラベルも無い `clickable` 3個として出て、書ける手段が何も無いことに気付けなかった
+    func testUnlabeledClickablesNoteListsThemByRef() {
+        let snapshot = screen([
+            element(ref: 1, type: "Clickable", id: nil, label: nil, x: 10, y: 10, w: 40, h: 40),
+            element(ref: 2, type: "Clickable", id: nil, label: nil, x: 60, y: 10, w: 40, h: 40),
+            element(ref: 3, id: "btn_ok", label: "OK", x: 110, y: 10),
+        ])
+        let note = MCPServer.unlabeledClickablesNote(snapshot)
+        XCTAssertTrue(note.contains("2 clickable"), note)
+        XCTAssertTrue(note.contains("[1]"), note)
+        XCTAssertTrue(note.contains("[2]"), note)
+        XCTAssertFalse(note.contains("[3]"), "id/label を持つ要素は数えないこと: \(note)")
+    }
+
+    func testUnlabeledClickablesNoteStaysQuietWhenNone() {
+        XCTAssertEqual(MCPServer.unlabeledClickablesNote(
+            screen([element(ref: 1, id: "btn_ok", label: "OK", x: 0, y: 0)])), "")
+    }
+
+    func testSnapshotSurfacesUnlabeledClickables() async throws {
+        driver.snapshotResponse = screen([
+            element(ref: 1, type: "Clickable", id: nil, label: nil, x: 10, y: 10, w: 40, h: 40),
+        ])
+        let text = Self.text(try await server.call(tool: "ft_snapshot", args: [:]))
+        XCTAssertTrue(text.contains("neither a label nor an id"), text)
+    }
+
+    // MARK: - 欠陥⑩: 曖昧なラベルの要約注記
+
+    /// 3件以上の同一ラベルは素のラベルでは一意に指せない。実測: 経路検索の候補一覧で
+    /// 「東京駅」が9件一致した。id の重複は別パッケージの `×N` が扱うので、ここはラベルだけ
+    func testAmbiguousLabelsNoteSummarizesRepeatedLabels() {
+        var elements = (1...9).map { element(ref: $0, id: nil, label: "東京駅", x: 0, y: Double($0)) }
+        elements.append(element(ref: 10, id: "btn_ok", label: "OK", x: 0, y: 100))
+        let note = MCPServer.ambiguousLabelsNote(screen(elements))
+        XCTAssertTrue(note.contains("\"東京駅\" ×9"), note)
+        XCTAssertFalse(note.contains("\"OK\""), "3件未満のラベルは対象外: \(note)")
+    }
+
+    func testAmbiguousLabelsNoteStaysQuietBelowThreshold() {
+        let elements = (1...2).map { element(ref: $0, id: nil, label: "重複", x: 0, y: Double($0)) }
+        XCTAssertEqual(MCPServer.ambiguousLabelsNote(screen(elements)), "")
+    }
+
+    func testSnapshotSurfacesAmbiguousLabels() async throws {
+        driver.snapshotResponse = screen(
+            (1...3).map { element(ref: $0, id: nil, label: "重複ラベル", x: 0, y: Double($0)) })
+        let text = Self.text(try await server.call(tool: "ft_snapshot", args: [:]))
+        XCTAssertTrue(text.contains("cannot pick one uniquely"), text)
+    }
+
+    // MARK: - 欠陥⑪: 複数スクロール領域の注記が ft_scroll_to に出ない
+
+    /// `ScrollFrameCandidates` の「N scroll areas」注記は ft_snapshot にしか出ていなかった。
+    /// scrollFrame: を渡すべき当人である ft_scroll_to の成功文にも出すこと
+    func testScrollToNamesMultipleScrollAreasWhenNotSpecified() async throws {
+        driver.snapshotResponse = SnapshotResponse(
+            sessionBundleID: "com.example.app",
+            screen: FTRect(x: 0, y: 0, width: 390, height: 844),
+            elements: [
+                ElementInfo(ref: 1, type: "ScrollView", identifier: "chips", label: nil,
+                            value: nil, placeholder: nil, enabled: true,
+                            frame: FTRect(x: 0, y: 60, width: 390, height: 60), depth: 1,
+                            scrollable: true),
+                ElementInfo(ref: 2, type: "Table", identifier: "list_rows", label: nil,
+                            value: nil, placeholder: nil, enabled: true,
+                            frame: FTRect(x: 0, y: 120, width: 390, height: 600), depth: 1,
+                            scrollable: true),
+                element(ref: 3, id: "row_40", label: "行 40", x: 16, y: 100),
+            ],
+            truncatedCount: 0)
+        let text = Self.text(try await server.call(tool: "ft_scroll_to", args: ["selector": "#row_40"]))
+        XCTAssertTrue(text.contains("2 scroll areas"), text)
+    }
+
+    /// scrollFrame: を既に渡していれば黙る(選んだ後なので不要)
+    func testScrollToStaysQuietAboutScrollAreasWhenScrollFrameIsGiven() async throws {
+        driver.snapshotResponse = SnapshotResponse(
+            sessionBundleID: "com.example.app",
+            screen: FTRect(x: 0, y: 0, width: 390, height: 844),
+            elements: [
+                ElementInfo(ref: 1, type: "ScrollView", identifier: "chips", label: nil,
+                            value: nil, placeholder: nil, enabled: true,
+                            frame: FTRect(x: 0, y: 60, width: 390, height: 60), depth: 1,
+                            scrollable: true),
+                ElementInfo(ref: 2, type: "Table", identifier: "list_rows", label: nil,
+                            value: nil, placeholder: nil, enabled: true,
+                            frame: FTRect(x: 0, y: 120, width: 390, height: 600), depth: 1,
+                            scrollable: true),
+                element(ref: 3, id: "row_40", label: "行 40", x: 16, y: 100),
+            ],
+            truncatedCount: 0)
+        let text = Self.text(try await server.call(
+            tool: "ft_scroll_to", args: ["selector": "#row_40", "scrollFrame": "#list_rows"]))
+        XCTAssertFalse(text.contains("scroll areas"), text)
     }
 
     private static func text(_ content: [[String: Any]]) -> String {
