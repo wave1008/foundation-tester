@@ -24,6 +24,11 @@ private final class FakeAppDriver: AppDriver {
     /// nil のままなら空 Data(= BlankFrameDetector はデコードできず「白ではない」を返す)
     var screenshots: [Data]?
     private(set) var snapshotCallCount = 0
+    /// このドライバでキャッシュ迂回が意味を持つか(既定は AppDriver の既定実装と同じ false)。
+    /// bypassesCache の真理値表の検証で切り替える
+    var bypassSupported = false
+    /// 迂回付きで撮られた回数(素取得と区別する)
+    private(set) var bypassedSnapshotCount = 0
     /// 非 nil なら type(ref:text:) がこのエラーを throw する(409 リアクティブ切替の検証用)
     var typeError: Error?
     /// 非 nil なら swipe/press がこのエラーを throw する(501 ジェスチャ切替の検証用)
@@ -70,6 +75,14 @@ private final class FakeAppDriver: AppDriver {
         return SnapshotResponse(sessionBundleID: nil,
                                 screen: FTRect(x: 0, y: 0, width: 400, height: 800),
                                 elements: elements, truncatedCount: 0, keyboardShown: keyboardShown)
+    }
+
+    var supportsCacheBypass: Bool { bypassSupported }
+
+    /// 既定実装はフラグを捨てて snapshot() を呼ぶので、記録するには実装が要る
+    func snapshot(bypassingCache: Bool) async throws -> SnapshotResponse {
+        if bypassingCache { bypassedSnapshotCount += 1 }
+        return try await snapshot()
     }
 
     func tap(ref: Int) async throws {
@@ -2552,6 +2565,39 @@ final class StepExecutorTests: XCTestCase {
             FlowStep(action: "scrollToEdge", direction: "up", maxSwipes: 3))
 
         XCTAssertEqual(settled.notes, [], "静止した画面のステップに前ステップの注記が残っている")
+    }
+
+    /// 「なぜ撮り直すか」→「実際に迂回するか」の対応。**ソース走査の guard では届かない**
+    /// (方針が1箇所に寄ったので、call site の字面を見ても分からない)。
+    /// とくに `.afterSearch(swiped: false)` が false になることが要 —— ここが true に倒れると
+    /// 探索が1度もスワイプしていない場合まで毎回撮り直し、計測済みの所要が静かに増える
+    func testBypassPolicyTruthTable() {
+        let driver = FakeAppDriver(name: "primary", log: CallLog())
+        let executor = StepExecutor(driver: driver)
+
+        driver.bypassSupported = true
+        XCTAssertTrue(executor.bypassesCache(.afterOwnMove))
+        XCTAssertTrue(executor.bypassesCache(.afterSearch(swiped: true)))
+        XCTAssertFalse(executor.bypassesCache(.afterSearch(swiped: false)),
+                       "探索がスワイプしていないなら木は古くならない(撮り直しは無駄)")
+
+        // 対応していないドライバでは理由によらず迂回しない(フラグを送っても意味が無い)
+        driver.bypassSupported = false
+        XCTAssertFalse(executor.bypassesCache(.afterOwnMove))
+        XCTAssertFalse(executor.bypassesCache(.afterSearch(swiped: true)))
+    }
+
+    /// 理由が実際に driver まで届くこと(helper が握り潰していないこと)
+    func testFreshSnapshotForwardsTheDecisionToTheDriver() async throws {
+        let driver = FakeAppDriver(name: "primary", log: CallLog())
+        driver.bypassSupported = true
+        let executor = StepExecutor(driver: driver)
+
+        _ = try await executor.freshSnapshot(.afterSearch(swiped: false))
+        XCTAssertEqual(driver.bypassedSnapshotCount, 0)
+
+        _ = try await executor.freshSnapshot(.afterOwnMove)
+        XCTAssertEqual(driver.bypassedSnapshotCount, 1)
     }
 
     private func movingRow(y: Double) -> [ElementInfo] {

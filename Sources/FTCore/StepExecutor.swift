@@ -182,6 +182,22 @@ public struct StepOutcome: Sendable {
     }
 }
 
+/// snapshot を撮り直す**理由**。「古い木を掴んでよいか」は方針なので、呼び出し側は
+/// bool ではなく理由を書き、`supportsCacheBypass` との掛け合わせは
+/// `StepExecutor.bypassesCache(_:)` 1箇所に閉じる。
+///
+/// bool を渡し回すと、新しい呼び出しを足すときに**既定値を何気なく渡してドリフトする** ——
+/// しかも失敗モードは沈黙(古い木で「動かなかった」と誤認する / 静止判定が古い位置で成立する)
+/// なので、テストでは捕まらない。素取得でよい経路は今までどおり `driver.snapshot()` を呼ぶ。
+enum SnapshotFreshness {
+    /// 直前に**自分で画面を動かした**(スワイプ・ドラッグ・整定のポーリング)。
+    /// 実測と機構は runScrollSearch のコメントおよび docs/verification.md
+    case afterOwnMove
+    /// 内蔵スクロール探索の後の解決。**探索がスワイプを撃っていなければ**素取得でよい
+    /// (撃っていないなら木は古くならない)
+    case afterSearch(swiped: Bool)
+}
+
 public final class StepExecutor {
     public let driver: AppDriver
     /// ハイブリッド用: primary(driver=in-app)で要素が解決できないとき、この driver の snapshot でも
@@ -357,6 +373,23 @@ public final class StepExecutor {
                                                   actionMs: phase.actionMs, waitMs: phase.waitMs),
                                notes: collectedNotes())
         }
+    }
+
+    /// 撮り直す理由 → 実際にキャッシュを迂回するか。**ドライバの対応可否と掛け合わせる唯一の場所**
+    /// (SnapshotFreshness の doc)。整定の sleep 長も同じ述語を見るので関数として公開する
+    func bypassesCache(_ freshness: SnapshotFreshness) -> Bool {
+        guard driver.supportsCacheBypass else { return false }
+        switch freshness {
+        case .afterOwnMove: return true
+        case .afterSearch(let swiped): return swiped
+        }
+    }
+
+    /// 理由付きの snapshot(呼び出し側が bool を組み立てない形)。
+    /// **`snapshot(_:)` にしない** —— 呼び出し側の多くが `snapshot` という局所変数へ代入するので、
+    /// 同名だと変数がメソッドを覆って `cannot call value of non-function type` になる
+    func freshSnapshot(_ freshness: SnapshotFreshness) async throws -> SnapshotResponse {
+        try await driver.snapshot(bypassingCache: bypassesCache(freshness))
     }
 
     /// このステップで立った注記。順序を rawValue 固定にするのは、記録が run 間で決定的に
@@ -874,7 +907,7 @@ public final class StepExecutor {
                 // 古いツリーで探索を続けると「動かなかった」と誤認する・見つけた要素が直後の
                 // 解決で消える(`cannot resolve the locator` として現れる)。
                 // 検証系の期限切れ直前の1回とは別で、ここは**毎周払う**必要がある
-                snapshot = try await driver.snapshot(bypassingCache: driver.supportsCacheBypass)
+                snapshot = try await freshSnapshot(.afterOwnMove)
                 phase.snapshotMs += Self.ms(clock.now - start)
             }
             try await dismissInterruption(in: &snapshot, phase: &phase)
@@ -1332,8 +1365,7 @@ public final class StepExecutor {
 
         // ロケータ解決の再試行(ファイル冒頭のセマンティクス参照: 最大3回、計700ms)
         var start = clock.now
-        var snapshot = try await driver.snapshot(
-            bypassingCache: searchSwiped && driver.supportsCacheBypass)
+        var snapshot = try await freshSnapshot(.afterSearch(swiped: searchSwiped))
         phase.snapshotMs += Self.ms(clock.now - start)
         // 宣言された割り込み(アプリ内メッセージ等)が出ていれば先に閉じる。**解決を試みる前**に
         // 行う: 覆われているだけで要素自体は解決できてしまい、タップが吸われる形があるため
@@ -1378,8 +1410,7 @@ public final class StepExecutor {
                         start = clock.now
                         // 探索後の再試行もキャッシュを捨てる。古い木は撮り直しても同じものが
                         // 返るので、素取得だと**再試行の予算をまるごと空振りに使う**
-                        snapshot = try await driver.snapshot(
-                            bypassingCache: searchSwiped && driver.supportsCacheBypass)
+                        snapshot = try await freshSnapshot(.afterSearch(swiped: searchSwiped))
                         phase.snapshotMs += Self.ms(clock.now - start)
                         let previous = resolved
                         resolved = Self.resolve(step: step, in: snapshot)
@@ -1417,8 +1448,7 @@ public final class StepExecutor {
                             ghostSwipes += 1
                             _ = try await settledSignature(phase: &phase)
                             start = clock.now
-                            snapshot = try await driver.snapshot(
-                                bypassingCache: searchSwiped && driver.supportsCacheBypass)
+                            snapshot = try await freshSnapshot(.afterSearch(swiped: searchSwiped))
                             phase.snapshotMs += Self.ms(clock.now - start)
                             let previous = resolved
                             resolved = Self.resolve(step: step, in: snapshot)
@@ -1442,8 +1472,7 @@ public final class StepExecutor {
                         _ = try await settledSignature(phase: &phase)
                     }
                     start = clock.now
-                    snapshot = try await driver.snapshot(
-                        bypassingCache: searchSwiped && driver.supportsCacheBypass)
+                    snapshot = try await freshSnapshot(.afterSearch(swiped: searchSwiped))
                     phase.snapshotMs += Self.ms(clock.now - start)
                     let previous = resolved
                     resolved = Self.resolve(step: step, in: snapshot)
@@ -1579,7 +1608,7 @@ public final class StepExecutor {
            let jump = Self.recoveryJump(for: element, container: container),
            await slowDrag(jump: jump, container: container, phase: &phase) {
             _ = try await settledSignature(phase: &phase)
-            let refreshed = try await driver.snapshot(bypassingCache: driver.supportsCacheBypass)
+            let refreshed = try await freshSnapshot(.afterOwnMove)
             if let (moved, _) = Self.resolve(step: step, in: refreshed) {
                 snapshot = refreshed
                 element = moved
@@ -2044,13 +2073,13 @@ public final class StepExecutor {
             let waitStart = clock.now
             try await Task.sleep(for: .milliseconds(
                 Self.settleSleepMs(afterSnapshotMs: lastSnapshotMs,
-                                   bypassing: driver.supportsCacheBypass)))
+                                   bypassing: bypassesCache(.afterOwnMove))))
             phase.waitMs += Self.ms(clock.now - waitStart)
             let start = clock.now
             // 静止判定も**キャッシュを捨てて**撮る。古いツリーは連続して同じ座標を返すので、
             // 素取得だと「2回続けて同じ = 止まった」が**遅れて公開された古い位置**で成立する
             // (runScrollSearch のスワイプ後の snapshot と同じ理由)
-            let snapshot = try await driver.snapshot(bypassingCache: driver.supportsCacheBypass)
+            let snapshot = try await freshSnapshot(.afterOwnMove)
             lastSnapshotMs = Self.ms(clock.now - start)
             phase.snapshotMs += lastSnapshotMs
             // 解決できなくなった = このスナップショットでは判定材料が無い。静止は名乗らない
@@ -2149,7 +2178,7 @@ public final class StepExecutor {
         for _ in 0..<Self.reverseSweepMaxSwipes {
             guard await slowDrag(jump: jump, container: container,
                                  phase: &phase) else { return nil }
-            let snapshot = try await driver.snapshot(bypassingCache: driver.supportsCacheBypass)
+            let snapshot = try await freshSnapshot(.afterOwnMove)
             if let (element, fallback) = Self.resolve(step: step, in: snapshot,
                                                      strictForAssert: true) {
                 // **見つけただけでは足りない**(本編の探索と同じ規則): 容器の縁で見切れている
@@ -2383,7 +2412,7 @@ public final class StepExecutor {
         // 落ち着いた画面なら 2 枚で返るので固定費は約 +130ms/呼び出しに収まる
         let clock = ContinuousClock()
         var start = clock.now
-        var last = try await driver.snapshot(bypassingCache: driver.supportsCacheBypass)
+        var last = try await freshSnapshot(.afterOwnMove)
         var previous = signature(last)
         var lastSnapshotMs = Self.ms(clock.now - start)
         phase.snapshotMs += lastSnapshotMs
@@ -2391,10 +2420,10 @@ public final class StepExecutor {
             let waitStart = clock.now
             try await Task.sleep(for: .milliseconds(
                 Self.settleSleepMs(afterSnapshotMs: lastSnapshotMs,
-                                   bypassing: driver.supportsCacheBypass)))
+                                   bypassing: bypassesCache(.afterOwnMove))))
             phase.waitMs += Self.ms(clock.now - waitStart)
             start = clock.now
-            last = try await driver.snapshot(bypassingCache: driver.supportsCacheBypass)
+            last = try await freshSnapshot(.afterOwnMove)
             let current = signature(last)
             lastSnapshotMs = Self.ms(clock.now - start)
             phase.snapshotMs += lastSnapshotMs
