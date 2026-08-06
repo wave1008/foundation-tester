@@ -35,6 +35,12 @@
   導入の翌週にスキルの description しか手掛かりが無くなる)。**使い方の解説は書かない** ——
   ツール説明と二重管理になり必ずズレる。受け手の資産なのでマーカーの内側だけ差し替え、
   嫌う受け手には `--skip-claude-md`。
+  **ここは受け手のファイルを書き換える唯一の箇所**なので、**マーカーが begin/end ちょうど1組で
+  なければ1バイトも書かない**(片方だけ・2組以上・逆順は `damaged` で warn 止まり)。
+  素朴に「最初の begin 〜 最初の end」を置換すると、end だけ壊れた CLAUDE.md で
+  **1回目に2つ目のブロックを追記 → 2回目に間に挟まれた利用者の記述ごと削除**する
+  (2026-08-06 に実際に消して確認)。`installClaudeMdBlock.test.mjs` が
+  install.sh から python を抜き出して実行し、この3形を守る
   **毎回 `ftester api ensure-settings` で Bash 許可リストを補修する**(init 経由だけだと
   `--skip-project` の更新で既存の受け手に永久に届かない)
 - 受け手の更新: `Scripts/update.sh`(install.sh を再実行 + project sync + プラグイン更新と版照合。

@@ -584,17 +584,31 @@ if os.path.exists(path):
     with open(path) as f:
         existing = f.read()
 
-# 旧版のマーカー(説明文入り)も拾えるよう、begin は行ごと前置きで照合する
-span = re.search(r"<!--\s*ftester:begin.*?<!--\s*ftester:end\s*-->", existing, re.S)
-if span:
+# **マーカーが1組でないなら何も書かない**(2026-08-06。実際に消して確認した)。
+# 素朴に「最初の begin 〜 最初の end」を置換すると、end だけ壊れた CLAUDE.md で
+# 1回目に2つ目のブロックを追記 → 2回目に**間に挟まれた利用者の記述ごと**置換して消す。
+# 受け手の資産を黙って壊すくらいなら、案内を諦めて人に直してもらうほうがよい。
+# 行頭に限って数える(散文やコード例の中の言及に反応しないため)。
+begins = len(re.findall(r"(?m)^[ \t]*<!--\s*ftester:begin", existing))
+ends = len(re.findall(r"(?m)^[ \t]*<!--\s*ftester:end\s*-->", existing))
+span = None
+if begins == 1 and ends == 1:
+    span = re.search(r"(?ms)^[ \t]*<!--\s*ftester:begin.*?<!--\s*ftester:end\s*-->", existing)
+
+if begins == 0 and ends == 0:
+    if existing.strip():
+        updated = existing.rstrip("\n") + "\n\n" + block + "\n"
+        verb = "appended to"
+    else:
+        updated = block + "\n"
+        verb = "created"
+elif span:
     updated = existing[: span.start()] + block + existing[span.end():]
     verb = "unchanged" if updated == existing else "refreshed"
-elif existing.strip():
-    updated = existing.rstrip("\n") + "\n\n" + block + "\n"
-    verb = "appended to"
 else:
-    updated = block + "\n"
-    verb = "created"
+    # begin/end が 0組でも1組でもない(片方だけ・2組以上・逆順)
+    updated = existing
+    verb = "damaged"
 
 if updated != existing:
     with open(path, "w") as f:
@@ -602,7 +616,13 @@ if updated != existing:
 print(verb, end="")
 GUIDE
   ); then
-    record "CLAUDE.md" ok "$guide_out CLAUDE.md (delete the ftester block, or pass --skip-claude-md, to opt out)"
+    case "$guide_out" in
+      damaged)
+        record "CLAUDE.md" warn "the ftester markers in CLAUDE.md are not a single begin/end pair"\
+" — left the file untouched (fix or remove them by hand, then re-run)" ;;
+      *)
+        record "CLAUDE.md" ok "$guide_out CLAUDE.md (delete the ftester block, or pass --skip-claude-md, to opt out)" ;;
+    esac
   else
     record "CLAUDE.md" warn "could not write the entry point (agents may miss ft_*)"
   fi
