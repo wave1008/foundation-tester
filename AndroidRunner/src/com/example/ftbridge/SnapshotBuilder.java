@@ -88,6 +88,28 @@ final class SnapshotBuilder {
         }
     }
 
+    /**
+     * ディスプレイ全体の矩形。**アクティブウィンドウの根では代用できない** —— ダイアログが
+     * 出ている間はそれがダイアログの DecorView になる(実測 1024x427)。
+     *
+     * Context を持ち回らずに済む `Resources.getSystem()` の DisplayMetrics を使う
+     * (既定ディスプレイの実ピクセル)。**取れなければウィンドウの根へ落ちる**:
+     * 嘘の大きさを返すより、従来の値のままの方が害が小さい(ホストはこれで
+     * 既定スワイプとピンチの座標を作る)。
+     */
+    private static Rect displayBounds(Rect fallback) {
+        try {
+            android.util.DisplayMetrics metrics =
+                    android.content.res.Resources.getSystem().getDisplayMetrics();
+            if (metrics != null && metrics.widthPixels > 0 && metrics.heightPixels > 0) {
+                return new Rect(0, 0, metrics.widthPixels, metrics.heightPixels);
+            }
+        } catch (RuntimeException ignored) {
+            // 取得できない環境では従来どおり
+        }
+        return fallback;
+    }
+
     /** forceRefresh: WebView 外のノードも refresh() してから読むか(既定は false。collect 参照) */
     static Result build(UiAutomation ua, boolean forceRefresh) throws JSONException {
         AccessibilityNodeInfo root = waitForRoot(ua, 2000);
@@ -114,14 +136,24 @@ final class SnapshotBuilder {
             }
         }
 
-        Rect screen = nodes.isEmpty() ? new Rect() : nodes.get(0).bounds;
+        // **フィルタの基準はアクティブウィンドウの根**(従来どおり)。ここを display に替えると
+        // 「画面の大半を覆う容器を落とす」0.85 の意味が変わり、ダイアログの中身の出方が動く
+        Rect window = nodes.isEmpty() ? new Rect() : nodes.get(0).bounds;
+        // **報告する screen は display**(2026-08-06 の探索で外した)。ウィンドウの根をそのまま
+        // 返していたため、ダイアログが出ている間 `screen` が 1080x2424 ではなく
+        // ダイアログの DecorView(実測 1024x427 / 735x386)になり、**同じ応答に入っている
+        // 要素座標(y=1342 等)が screen をはみ出す**自己矛盾した木を返していた。
+        // ホスト側の実害はもう1つある: BridgeRouter はこれを lastScreen として覚え、
+        // **既定の全画面スワイプとピンチの座標をここから作る**ので、ダイアログを撮った直後の
+        // swipe が画面上部の狭い帯を払うことになる
+        Rect screen = displayBounds(window);
 
         JSONArray elements = new JSONArray();
         Map<Integer, double[]> centers = new HashMap<>();
         Map<Integer, String> ids = new HashMap<>();
         int truncated = 0;
         for (UINode node : nodes) {
-            if (!shouldInclude(node, screen)) continue;
+            if (!shouldInclude(node, window)) continue;
             if (elements.length() >= MAX_ELEMENTS) {
                 truncated++;
                 continue;

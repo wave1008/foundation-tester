@@ -37,6 +37,7 @@ targets:
       # ホスト(macOS CLI)と共有するAPI型・純粋ロジック。Foundation のみに依存すること。
       # 追加したら BridgeSourceSet.xcuitest の explicitFiles にも載せる(片方だけ変えない)
       - path: ../Sources/FTCore/BridgeDTO.swift
+      - path: ../Sources/FTCore/SnapshotDedupe.swift
       - path: ../Sources/FTCore/TypeReadback.swift
     dependencies:
       - target: FTesterRunnerApp
