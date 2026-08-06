@@ -523,10 +523,12 @@ servers = data.setdefault("mcpServers", {})
 previous = servers.get("ftester", {}).get("env", {}).get("FT_TOOL_ROOT")
 # cwd は受け手パッケージ(TestProjects/ の在り処)、FT_TOOL_ROOT はツール本体(ブリッジ資産)。
 # ビルドのため TOOL_ROOT へ cd したあと exec 前に元の cwd へ戻すのが必須。
+# ランチャは Scripts/mcp-server.sh(鮮度判定・ログ・失敗の可視化はあちら)。
+# **1行のシェル式を埋め込まない**: 起動のたびに約8秒の no-op ビルドを払い、失敗しても
+# /dev/null で黙って起動しなかった(2026-08-06 の外部フィードバック)
 servers["ftester"] = {
     "command": "bash",
-    "args": ["-lc", 'WD="$PWD"; cd "%s" && swift build --product ftester-mcp >/dev/null 2>&1 '
-                    '&& cd "$WD" && exec "%s/.build/debug/ftester-mcp"' % (tool_root, tool_root)],
+    "args": ["-lc", 'exec "%s/Scripts/mcp-server.sh"' % tool_root],
     "env": {"FT_TOOL_ROOT": tool_root},
 }
 with open(path, "w") as f:

@@ -46,6 +46,14 @@
   install.sh から python を抜き出して実行し、この3形を守る
   **毎回 `ftester api ensure-settings` で Bash 許可リストを補修する**(init 経由だけだと
   `--skip-project` の更新で既存の受け手に永久に届かない)
+- MCP サーバの起動口: `Scripts/mcp-server.sh`(`.mcp.json` はこれを exec するだけ)。
+  **シェル式を `.mcp.json` へ直書きしない** —— 起動のたびに no-op でも約8秒の `swift build` を払い、
+  失敗すると `>/dev/null` で**理由が分からないまま起動しない**(2026-08-06 の外部フィードバック)。
+  ランチャが守るのは3つ: **鮮度でだけ建てる**(`find Sources Package.swift -newer <bin>`。
+  存在チェックに戻さない = InAppLauncher と同じ規律。建てた直後に `touch` するのは、
+  無変更のソースを触っただけだと再リンクされず毎回建て直しになるため)/
+  **stdout は JSON-RPC 専用**(診断は stderr・ビルド出力はログファイル)/
+  **cwd を変えない**(cwd は受け手パッケージの特定に使う。ビルドはサブシェルで行う)
 - 受け手の更新: `Scripts/update.sh`(install.sh を再実行 + project sync + プラグイン更新と版照合。
   `.claude/skills/ftester-update/SKILL.md` と 1:1)。**先に update-check.sh を呼び up-to-date なら
   即終了**(全工程は更新が無くても約30秒。入れ直しは `--force`)。**ログの場所は最後の

@@ -142,26 +142,31 @@ cd <TOOL_ROOT>/vscode-ftester && npm install && npm run install-local
 （clone 構成なら `cd vscode-ftester && ...`。）`install-local` はパッケージ→インストール→到達確認まで一括。
 **exit code で成否判定**。
 
-### 5.5 MCP 登録テンプレートの更新（旧 `.mcp.json` の cwd 罠を修正）
+### 5.5 MCP 登録テンプレートの更新（起動のたびのビルドと、旧 cwd 罠を解消）
 
-旧版のセットアップ手順で書かれた `.mcp.json` の `ftester` エントリは、`args` が
-`cd "<ABS_TOOL_ROOT>" && swift build --product ftester-mcp >/dev/null 2>&1 && exec "<ABS_TOOL_ROOT>/.build/debug/ftester-mcp"`
-の形（**ビルドのため TOOL_ROOT へ `cd` したまま `exec` する**）になっていることがある。この形だと
-`ftester-mcp` の cwd が TOOL_ROOT のクローン側に固定されたままになり、`packageRoot()`（cwd から上に
-`Package.swift` を探す）が WORK_DIR の受け手パッケージではなくクローン側を見つけてしまい、外部パッケージ
-構成で受け手の `TestProjects/` が見えなくなる（新版のテンプレートは exec 前に元の cwd へ戻る）。
+旧版のセットアップ手順で書かれた `.mcp.json` の `ftester` エントリは、`args` にシェル式を
+直書きしている（`cd "<ABS_TOOL_ROOT>" && swift build … && exec …`）。この形には実害が3つある:
+
+- **起動のたびに `swift build` が走る**。無変更でも約8秒(実測)かかり、その回に `ft_*` を
+  1度も使わなくても必ず払う
+- **ビルド出力が `/dev/null`** なので、失敗すると `&&` が切れて**サーバが黙って起動しない**
+- さらに古い形（`cd "$WD"` を含まないもの）は **TOOL_ROOT へ cd したまま `exec`** するため、
+  `packageRoot()` がクローン側の `Package.swift` を拾い、外部パッケージ構成で受け手の
+  `TestProjects/` が見えなくなる
+
+新版はランチャを `Scripts/mcp-server.sh` に切り出してあり、鮮度判定（ソースが実行ファイルより
+新しいときだけ建てる）・ログ・失敗時の stderr 出力・cwd の保持をあちらが担う。
 
 - **WORK_DIR の `.mcp.json`**（外部パッケージ構成のみ。clone 構成は同梱 `.mcp.json` を直接編集しない
-  ―― 本体側で管理される）を確認する。`mcpServers.ftester.args` に `swift build --product ftester-mcp`
-  を含み、かつ `cd "$WD"`（または `WD=`）を**含まない**なら旧テンプレート。次の形へ書き換える
-  （`<ABS_TOOL_ROOT>` は既存値をそのまま使う。他のキーは変更しない）:
+  ―― 本体側で管理される）を確認する。`mcpServers.ftester.args` が `swift build` を含むなら
+  旧テンプレート。次の形へ書き換える（`<ABS_TOOL_ROOT>` は既存値をそのまま使う。他のキーは変更しない）:
 
 ```json
 {
   "mcpServers": {
     "ftester": {
       "command": "bash",
-      "args": ["-lc", "WD=\"$PWD\"; cd \"<ABS_TOOL_ROOT>\" && swift build --product ftester-mcp >/dev/null 2>&1 && cd \"$WD\" && exec \"<ABS_TOOL_ROOT>/.build/debug/ftester-mcp\""],
+      "args": ["-lc", "exec \"<ABS_TOOL_ROOT>/Scripts/mcp-server.sh\""],
       "env": { "FT_TOOL_ROOT": "<ABS_TOOL_ROOT>" }
     }
   }
