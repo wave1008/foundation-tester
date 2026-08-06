@@ -460,7 +460,8 @@ final class MCPServer {
         case .gone:
             throw MCPError(RefGuard.goneMessage(ref: ref, target: target))
         case .ghost(let found):
-            throw MCPError(RefGuard.ghostMessage(ref: ref, found: found, in: fresh.elements))
+            // **拒否せず警告して撃つ**(2026-08-06 に方針を後退させた。理由は RefGuard の宣言)
+            return (found.ref, RefGuard.ghostWarning(found: found, in: fresh.elements))
         case .found(let found, let moved):
             guard moved >= RefGuard.movedThreshold else { return (found.ref, "") }
             // **原因までは断定できない**が、「他も同じだけ動いたか」は手元の2枚から言える。
@@ -592,8 +593,9 @@ final class MCPServer {
             .joined(separator: " ")
         let more = ghosts.count > 8 ? " (+\(ghosts.count - 8) more)" : ""
         return "note: the ⚠️scroll-leftover rows below are outside their scroll container — not"
-            + " drawn where their frames say, and ft_tap refuses them: \(listed)\(more)."
-            + " Bring them into view with ft_scroll_to first\n"
+            + " drawn where their frames say, so tapping them may hit something else:"
+            + " \(listed)\(more). Bring them into view with ft_scroll_to first,"
+            + " or verify with ft_screenshot\n"
     }
 
     /// フォーカス待ちの上限。**短い**のは、報告しないフレームワークで毎回これを丸ごと待つため
@@ -642,9 +644,7 @@ final class MCPServer {
         switch RefGuard.relocate(target, in: fresh.elements) {
         case .gone:
             throw MCPError(RefGuard.goneMessage(ref: ref, target: target))
-        case .ghost(let found):
-            throw MCPError(RefGuard.ghostMessage(ref: ref, found: found, in: fresh.elements))
-        case .found(let found, _):
+        case .ghost(let found), .found(let found, _):
             return found
         }
     }
@@ -1253,7 +1253,8 @@ final class MCPServer {
         ]),
         tool("ft_tap", "Tap an element (ref) or a coordinate (x,y). x/y match the ft_snapshot frames (iOS=pt / Android=px), not screenshot pixels. "
             + "A ref is re-checked against a fresh tree before the tap, so a ref that moved is retargeted and "
-            + "one that is gone or is a scroll leftover is refused instead of hitting something else.", [
+            + "one that is gone is refused; a scroll leftover is tapped with a warning naming what "
+            + "it may have hit instead.", [
             "ref": ["type": "integer", "description": "Reference number from ft_snapshot"],
             "x": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],
             "y": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],

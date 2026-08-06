@@ -44,7 +44,9 @@ enum RefGuard {
     /// (2026-08-06 の外部フィードバックで発覚)。dock のアイコンは容器の推測から外れる位置に
     /// 出るが、その座標には**それ自身しか無い**ので普通にタップできる。
     /// `isOutsideContainer` は DSL では「掴み直して送り直す」= やり直しの合図に使われており、
-    /// 外しても次の周回で回復する。MCP はそれを**拒否**へ格上げしたので、同じ閾値では強すぎた。
+    /// 外しても次の周回で回復する。MCP はそれを**拒否**へ格上げしたので、同じ閾値では強すぎた
+    /// —— **2026-08-06 に拒否をやめ、警告に落とした**(誤検知が5形続いたため。`ghostWarning`)。
+    /// 以下の除外規則は「何に当たるかもしれないか」を言うために残している。
     ///
     /// そこで危険の定義そのものを条件にする —— **中心に別の要素が重なっている**こと。
     /// 実測: E2E の残像行 `#row_11` の中心 (201,818) には下部タブ `#tab_controls` が重なる(拒否)。
@@ -153,6 +155,23 @@ enum RefGuard {
     static func goneMessage(ref: Int, target: ElementInfo) -> String {
         "[\(ref)] \(describe(target)) is no longer in the tree — the screen changed after that"
             + " ft_snapshot. Take a fresh ft_snapshot and use the new ref."
+    }
+
+    /// **撃つ。ただし何に当たったかもしれないかを言う**(2026-08-06 に拒否から後退)。
+    ///
+    /// 木の幾何だけでは「実際に描かれているか」を決められない、というのが5形の誤検知で
+    /// 示された結論。相手が残像でなく、包含でもなく、それでも描かれていないことがある
+    /// (キーボードの下・スクロールアウト)。**キーボードはスナップショットから除外されている**
+    /// ので frame すら取れず、原理的に判定材料が足りない。
+    ///
+    /// 押せる要素を押せなくする害は、誤操作を見逃す害と**別種で、こちらは確実に起きる**。
+    /// 情報だけ渡して判断はエージェントに委ねる —— 一覧の行にも印が付いているので、
+    /// 「怪しいものを撃った」ことは黙って通り過ぎない
+    static func ghostWarning(found: ElementInfo, in elements: [ElementInfo]) -> String {
+        let hit = occluder(of: found, in: elements).map { " (possibly \(describe($0)))" } ?? ""
+        return " (warning: \(describe(found)) is reported outside its scroll container, so this"
+            + " may have hit whatever is really drawn there\(hit) — verify with ft_screenshot,"
+            + " or use ft_scroll_to to bring it into view first)"
     }
 
     static func ghostMessage(ref: Int, found: ElementInfo, in elements: [ElementInfo]) -> String {
