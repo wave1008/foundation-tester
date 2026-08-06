@@ -163,7 +163,7 @@ extension StepExecutor {
         // `exist(scroll:)` の内蔵探索(アクション側と同じ理由で別ステップにしない)
         if step.direction != nil, step.locator != nil {
             let result = try await runScrollSearch(step: step, phase: &phase)
-            scrollSearchNote = Self.scrollSearchNote(result)
+            scrollSearchNote = recordedScrollSearchNote(result)
             guard result.found else { return .failed(Self.scrollNotFoundMessage(step, result)) }
         }
         let deadline = Date().addingTimeInterval(step.timeout ?? 5)
@@ -365,7 +365,7 @@ extension StepExecutor {
         if step.direction != nil, step.locator != nil {
             // **拾い直しは掛けない**: 見つからないのが期待値なので、逆走査は丸損になる
             let result = try await runScrollSearch(step: step, recoverOnMiss: false, phase: &phase)
-            scrollSearchNote = Self.scrollSearchNote(result)
+            scrollSearchNote = recordedScrollSearchNote(result)
             guard !result.found else { return .failed(Self.scrollFoundMessage(step)) }
         }
         // 「消えるまで待つ」。初回で不在なら即 pass、在るならタイムアウトまで消滅を待つ。

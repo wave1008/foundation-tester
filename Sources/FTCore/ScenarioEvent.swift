@@ -56,6 +56,11 @@ public struct ScenarioEvent: Codable, Sendable {
     /// FM を使わなかったシナリオでは nil(キーごと省略)。FM はホスト全体で直列化するため、
     /// 並列実行では他レーンの待ちも含む値になる(FMHealth の doc 参照)
     public var fm: FMUsageRecord?
+    /// kind == step。run を跨いで数える注記の機械可読コード(StepNote の rawValue)。
+    /// 表示は description の括弧書きに含まれるが、**集計は必ずこちらを見る**
+    /// (文言を変えた瞬間に集計が 0 件になるのを防ぐ。StepNote の doc 参照)。
+    /// 後発の追加フィールドで Optional = 旧クライアント互換
+    public var notes: [String]?
     /// kind == step。ステップの結果が確定した壁時計時刻(ISO8601+ミリ秒)。動画録画(record:true)の
     /// 再生位置ジャンプ用(録画の startedAt と突き合わせる)。failed 以外も付与されるが、
     /// 永続化(FailedStepRecord.at)は失敗ステップのみ

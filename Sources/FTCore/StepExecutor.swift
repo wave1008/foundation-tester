@@ -147,6 +147,10 @@ public struct StepOutcome: Sendable {
     /// 表示済み文言で持つ(例 "fell back to XCUITest" / "activate 不発 → 合成タッチ(...)")。
     /// ロケータのフォールバック(.passedViaFallback)とは別物で、セレクタ更新の提案は出さない。
     public let driverFallback: String?
+    /// driverFallback のうち **run を跨いで数えたい注記**の機械可読コード(StepNote)。
+    /// `execute(_:cached:)` が per-step の累積器から詰めるので、**内側の return では空のまま**でよい
+    /// (外側で組み直される)。表示文言との同期は `StepExecutor.note(_:into:)` が担保する
+    public let notes: [StepNote]
     /// このステップの結果が確定した壁時計時刻(ISO8601+ミリ秒)。execute(_:cached:) が
     /// 返す直前に都度 Date() から採る(failed 以外にも付くが、永続化するのは失敗ステップのみ。
     /// ScenarioEvent.at / FailedStepRecord.at 参照)
@@ -163,6 +167,7 @@ public struct StepOutcome: Sendable {
 
     public init(status: StepResult.Status, healedStep: FlowStep? = nil, healedByCache: Bool = false,
                timing: StepTiming? = nil, driverFallback: String? = nil,
+               notes: [StepNote] = [],
                observedChecked: Bool? = nil, resolvedElement: ElementInfo? = nil,
                at: String = ISO8601Millis.string(from: Date())) {
         self.observedChecked = observedChecked
@@ -172,6 +177,7 @@ public struct StepOutcome: Sendable {
         self.healedByCache = healedByCache
         self.timing = timing
         self.driverFallback = driverFallback
+        self.notes = notes
         self.at = at
     }
 }
@@ -316,6 +322,7 @@ public final class StepExecutor {
         interruptNote = nil   // 「1ステップにつき1回だけ」の起点(dismissInterruption が見る)
         observedCheckedThisStep = nil
         resolvedElementThisStep = nil
+        noteCodesThisStep = []
         do {
             if let action = step.action {
                 let outcome = try await executeAction(action, step: step, cached: cached, phase: &phase)
@@ -325,6 +332,7 @@ public final class StepExecutor {
                                                       snapshotMs: phase.snapshotMs,
                                                       actionMs: phase.actionMs, waitMs: phase.waitMs),
                                    driverFallback: noteWithInterrupt(outcome.driverFallback),
+                                   notes: collectedNotes(),
                                    // アクションは**解決した時点**で立てる(操作の成否より前)ため、
                                    // 失敗した操作の要素を持ち帰らないようここで落とす
                                    resolvedElement: Self.isSuccess(outcome.status)
@@ -337,6 +345,7 @@ public final class StepExecutor {
                                                       snapshotMs: phase.snapshotMs,
                                                       actionMs: phase.actionMs, waitMs: phase.waitMs),
                                    driverFallback: noteWithInterrupt(nil),
+                                   notes: collectedNotes(),
                                    observedChecked: observedCheckedThisStep,
                                    resolvedElement: resolvedElementThisStep)
             }
@@ -345,8 +354,15 @@ public final class StepExecutor {
             return StepOutcome(status: .failed("execution error: \(error.localizedDescription)"),
                                timing: StepTiming(durationMs: Self.ms(clock.now - start),
                                                   snapshotMs: phase.snapshotMs,
-                                                  actionMs: phase.actionMs, waitMs: phase.waitMs))
+                                                  actionMs: phase.actionMs, waitMs: phase.waitMs),
+                               notes: collectedNotes())
         }
+    }
+
+    /// このステップで立った注記。順序を rawValue 固定にするのは、記録が run 間で決定的に
+    /// 比較できるようにするため(Set の反復順はプロセスごとに変わる)
+    private func collectedNotes() -> [StepNote] {
+        noteCodesThisStep.sorted { $0.rawValue < $1.rawValue }
     }
 
     /// execute(_:cached:) 1 回分の snapshot/action/wait 所要時間(ミリ秒)の積算値。
@@ -378,6 +394,18 @@ public final class StepExecutor {
     /// (execute が StepOutcome.resolvedElement に載せる)。observedCheckedThisStep と同じ受け渡し形
     /// (StepExecutor+Assert.swift の各 executeAssert* から書くため internal)。失敗時は立てない。
     var resolvedElementThisStep: ElementInfo?
+    /// このステップで立った機械可読な注記(execute が StepOutcome.notes に載せる)。
+    /// アクション/検証のどの return 経路から立てても拾えるようインスタンスで持つ
+    /// (scrollSearchNote / observedCheckedThisStep と同じ受け渡し形)。
+    /// StepExecutor+Assert.swift からも書くため internal
+    var noteCodesThisStep: Set<StepNote> = []
+
+    /// 注記の**表示文言と機械可読コードを同時に**足す。片方だけ足すと
+    /// 「レポートには出ているのに集計に乗らない(逆も)」が起きるので、必ずこれを通す
+    func note(_ code: StepNote, into parts: inout [String]) {
+        noteCodesThisStep.insert(code)
+        parts.append(code.text)
+    }
 
     /// 「掴めた」と言い切れる状態か(StepOutcome.resolvedElement を載せてよいかの判定)
     static func isSuccess(_ status: StepResult.Status) -> Bool {
@@ -603,6 +631,15 @@ public final class StepExecutor {
         /// 拾い直しに使った容器を**そのまま書けるセレクタ**にしたもの(nil = 名指しできない)。
         /// 注記で `scrollFrame:` を勧めるときに実物の名前を出すために持つ
         var suggestedScrollFrame: String?
+    }
+
+    /// 探索の注記を組み立てつつ、**機械可読コードを今のステップへ記録する**。
+    /// 探索の打ち切りは文言が別(「after the search」)だが `settleCapped` として同じ棚で数える ——
+    /// 集計側の関心は「動いている画面のまま進んだか」で、どの経路で起きたかではない
+    func recordedScrollSearchNote(_ result: ScrollSearchResult,
+                                  scrollFrameNote: String? = nil) -> String? {
+        if result.settleCapped { noteCodesThisStep.insert(.settleCapped) }
+        return Self.scrollSearchNote(result, scrollFrameNote: scrollFrameNote)
     }
 
     /// スクロール探索の注記(XCUITest フォールバック / ヒント跳躍)。無ければ nil
@@ -1005,7 +1042,7 @@ public final class StepExecutor {
             let settled = try await settledSignature(phase: &phase).settled
             var notes: [String] = []
             if viaXCUITest { notes.append("fell back to XCUITest") }
-            if !settled { notes.append("the screen did not settle (poll limit)") }
+            if !settled { note(.settleCapped, into: &notes) }
             return StepOutcome(status: .passed,
                                driverFallback: notes.isEmpty ? nil : notes.joined(separator: " / "))
         }
@@ -1031,7 +1068,7 @@ public final class StepExecutor {
             }
             var notes: [String] = []
             if viaXCUITest { notes.append("fell back to XCUITest") }
-            if unsettled { notes.append("the screen did not settle (poll limit)") }
+            if unsettled { note(.settleCapped, into: &notes) }
             if let note = pendingScrollFrameNote { notes.append(note) }
             return StepOutcome(status: .passed,
                                driverFallback: notes.isEmpty ? nil : notes.joined(separator: " / "))
@@ -1081,7 +1118,7 @@ public final class StepExecutor {
             if let note = pendingScrollFrameNote { notes.append(note) }
             if viaXCUITest { notes.append("fell back to XCUITest") }
             if hintJumps > 0 { notes.append("\(hintJumps) long drag(s) from scroll hints") }
-            if sawUnsettled { notes.append("the screen did not settle (poll limit)") }
+            if sawUnsettled { note(.settleCapped, into: &notes) }
             return StepOutcome(status: .passed,
                                driverFallback: notes.isEmpty ? nil : notes.joined(separator: " / "))
         }
@@ -1138,7 +1175,7 @@ public final class StepExecutor {
             let settled = try await settledSignature(phase: &phase).settled
             var notes: [String] = []
             if viaXCUITest { notes.append("fell back to XCUITest") }
-            if !settled { notes.append("the screen did not settle (poll limit)") }
+            if !settled { note(.settleCapped, into: &notes) }
             return StepOutcome(status: .passed,
                                driverFallback: notes.isEmpty ? nil : notes.joined(separator: " / "))
         }
@@ -1157,7 +1194,7 @@ public final class StepExecutor {
         // 要素が見つかるまでスクロール(見つかったら成功。操作はしない)
         if action == "scrollTo" {
             let result = try await runScrollSearch(step: step, phase: &phase)
-            let note = Self.scrollSearchNote(result, scrollFrameNote: pendingScrollFrameNote)
+            let note = recordedScrollSearchNote(result, scrollFrameNote: pendingScrollFrameNote)
             guard result.found else {
                 return StepOutcome(status: .failed(Self.scrollNotFoundMessage(step, result)))
             }
@@ -1282,7 +1319,7 @@ public final class StepExecutor {
         var searchSwiped = false
         if step.direction != nil, step.locator != nil {
             let result = try await runScrollSearch(step: step, phase: &phase)
-            scrollSearchNote = Self.scrollSearchNote(result, scrollFrameNote: pendingScrollFrameNote)
+            scrollSearchNote = recordedScrollSearchNote(result, scrollFrameNote: pendingScrollFrameNote)
             guard result.found else {
                 // select はスクロール探索で見つからなくても空要素を返す契約(下の解決経路と同じ)
                 if action == "select" {
@@ -1918,7 +1955,7 @@ public final class StepExecutor {
         let settled = try await settledSignature(phase: &phase).settled
         var notes: [String] = []
         if viaXCUITest { notes.append("fell back to XCUITest") }
-        if !settled { notes.append("the screen did not settle (poll limit)") }
+        if !settled { note(.settleCapped, into: &notes) }
         return StepOutcome(status: .passed,
                            driverFallback: notes.isEmpty ? nil : notes.joined(separator: " / "))
     }

@@ -625,8 +625,9 @@ public final class FTDriveCore {
         if let heldElement, let assert = step.assert, !visibilityWouldBeChecked,
            HeldElementAssert.satisfied(assert: assert, expected: step.expected,
                                        element: heldElement) == true {
-            recordStep(description: description + "(from the grabbed value)", status: .passed,
-                       file: filePath, line: Int(line), durationMs: 0)
+            recordStep(description: description + "(\(StepNote.heldValue.text))", status: .passed,
+                       file: filePath, line: Int(line), durationMs: 0,
+                       notes: [.heldValue])
             trackIDResolution(step: step, status: .passed, description: description)
             return PerformResult(status: .passed, element: heldElement)
         }
@@ -660,7 +661,8 @@ public final class FTDriveCore {
                    snapshotMs: outcome?.timing?.snapshotMs,
                    actionMs: outcome?.timing?.actionMs,
                    waitMs: outcome?.timing?.waitMs,
-                   at: outcome?.at)
+                   at: outcome?.at,
+                   notes: outcome?.notes ?? [])
 
         // 修正提案とヒールキャッシュの更新
         if let outcome, let selectorText {
@@ -1057,6 +1059,7 @@ public final class FTDriveCore {
     func recordStep(description: String, status: StepResult.Status, file: String, line: Int,
                     durationMs: Int? = nil, snapshotMs: Int? = nil,
                     actionMs: Int? = nil, waitMs: Int? = nil, at: String? = nil,
+                    notes: [StepNote] = [],
                     screenshotData: Data? = nil, screenshotLabel: String? = nil) {
         stateLock.lock()
         defer { stateLock.unlock() }
@@ -1087,6 +1090,7 @@ public final class FTDriveCore {
         event.actionMs = actionMs
         event.waitMs = waitMs
         event.at = at
+        event.notes = notes.isEmpty ? nil : notes.map(\.rawValue)
         emit(event)
     }
 

@@ -83,6 +83,29 @@ final class HeldValueAssertTests: XCTestCase {
         core.finalRecord.scenes.flatMap(\.steps)
     }
 
+    /// 高速経路を **run 横断で数えられる形**で emit すること。表示(説明文の括弧書き)だけだと
+    /// 「速くなったのは実装のおかげか、この経路の当たり率が上がっただけか」を後から切り分けられない
+    func testGrabbedValueStepsEmitTheMachineReadableCode() {
+        var events: [ScenarioEvent] = []
+        let driver = MutatingDriver()
+        let core = FTDriveCore(driver: driver, platform: "ios", app: "com.example.app",
+                               scenarioID: "T.S0010", scenarioTitle: "t",
+                               delegate: nil, healingEnabled: false,
+                               falsePositiveCheckEnabled: false, dryRun: false,
+                               healCacheURL: URL(fileURLWithPath: NSTemporaryDirectory())
+                                   .appendingPathComponent("ft-held-assert-notes-test.json"),
+                               emit: { events.append($0) })
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+        scenario { scene(1, "s") { action { select("#total").textIs("1,200") } } }
+        assertAllPassed(core)
+
+        let steps = events.filter { $0.kind == "step" }
+        XCTAssertEqual(steps.count, 2, "select と textIs の 2 ステップ: \(steps.map { $0.description ?? "" })")
+        XCTAssertNil(steps.first?.notes, "デバイスを見たステップに高速経路の印が付いている")
+        XCTAssertEqual(steps.last?.notes, [StepNote.heldValue.rawValue])
+    }
+
     private func assertAllPassed(_ core: FTDriveCore,
                                  file: StaticString = #filePath, line: UInt = #line) {
         for step in steps(core) {

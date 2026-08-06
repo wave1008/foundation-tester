@@ -2492,4 +2492,71 @@ final class StepExecutorTests: XCTestCase {
                        "found by sweeping back after overshooting it"
                        + " (specify scrollFrame: to step within the container instead)")
     }
+
+    // MARK: - 機械可読な注記(StepNote)
+
+    /// 探索の打ち切りは文言が別(「after the search」)でも同じコードで数えること
+    func testScrollSearchNoteRecordsTheSameCode() {
+        let executor = StepExecutor(driver: FakeAppDriver(name: "primary", log: CallLog()))
+        var capped = StepExecutor.ScrollSearchResult(found: true, fallback: nil,
+                                                     viaXCUITest: false, hintJumps: 0)
+        capped.settleCapped = true
+
+        let note = executor.recordedScrollSearchNote(capped)
+
+        XCTAssertEqual(note, "the screen did not settle after the search (poll limit)")
+        XCTAssertTrue(executor.noteCodesThisStep.contains(.settleCapped),
+                      "文言を出したのにコードを立てないと集計に乗らない")
+    }
+
+    /// 打ち切っていないときは何も立てないこと(上の検証を「常に立てる」実装で通さないための対)
+    func testScrollSearchNoteRecordsNothingWhenSettled() {
+        let executor = StepExecutor(driver: FakeAppDriver(name: "primary", log: CallLog()))
+        let settled = StepExecutor.ScrollSearchResult(found: true, fallback: nil,
+                                                      viaXCUITest: false, hintJumps: 0)
+
+        XCTAssertNil(executor.recordedScrollSearchNote(settled))
+        XCTAssertTrue(executor.noteCodesThisStep.isEmpty)
+    }
+
+    /// 動き続ける画面で打ち切ったとき、注記の文言とコードが**両方**出ること
+    /// (片方だけだと「レポートには出ているのに集計に乗らない」が起きる)
+    func testSettleCapIsReportedAsBothTextAndCode() async throws {
+        let log = CallLog()
+        let moving = (0..<200).map { movingRow(y: Double($0) * 10) }
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: moving)
+        let executor = StepExecutor(driver: primary)
+
+        let outcome = await executor.execute(
+            FlowStep(action: "scrollToEdge", direction: "up", maxSwipes: 3))
+
+        XCTAssertTrue(outcome.driverFallback?.contains(StepNote.settleCapped.text) == true,
+                      "表示: \(outcome.driverFallback ?? "-")")
+        XCTAssertEqual(outcome.notes, [.settleCapped])
+    }
+
+    /// 注記は**ステップごとに捨てる**こと(前ステップの打ち切りを次ステップへ持ち越さない)
+    func testNotesAreResetBetweenSteps() async throws {
+        let log = CallLog()
+        let moving = (0..<200).map { movingRow(y: Double($0) * 10) }
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: moving)
+        let executor = StepExecutor(driver: primary)
+        let capped = await executor.execute(
+            FlowStep(action: "scrollToEdge", direction: "up", maxSwipes: 3))
+        XCTAssertEqual(capped.notes, [.settleCapped], "前提: 1本目は打ち切られていること")
+
+        // 以降は同じフレームを返し続ける(尽きたら最後を繰り返す規約)= 静止した画面
+        primary.snapshotElements = [movingRow(y: 100)]
+
+        let settled = await executor.execute(
+            FlowStep(action: "scrollToEdge", direction: "up", maxSwipes: 3))
+
+        XCTAssertEqual(settled.notes, [], "静止した画面のステップに前ステップの注記が残っている")
+    }
+
+    private func movingRow(y: Double) -> [ElementInfo] {
+        [ElementInfo(ref: 1, type: "cell", identifier: "row_01", label: "行 01", value: nil,
+                     placeholder: nil, enabled: true,
+                     frame: FTRect(x: 16, y: y, width: 370, height: 56), depth: 0)]
+    }
 }
