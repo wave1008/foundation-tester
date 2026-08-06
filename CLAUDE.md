@@ -160,6 +160,11 @@
   **ブリッジの入力ファイル一覧は `Sources/FTCore/BridgeSourceSet.swift` が唯一の定義元**
   (`InAppLauncher` の dylib 再ビルド判定も同じ一覧を使う。片方だけ変えない)。
   指紋の性質(コメント編集でも落ちる理由)・保留中の代替案は docs/verification.md
+- **MCP(`ft_*`)は DSL と別経路なので、鮮度・防御を DSL 側に入れただけでは届かない**。
+  `StepExecutor` が持つ知見(キャッシュを捨てた snapshot・ghost の掴み直し・整定)を足したら、
+  **MCP にも同じものが要るかを必ず見る**(2026-08-06 に3件まとめて踏んだ: スクロール後の古い木・
+  容器外 ghost への座標タップ・pressEnter の焦点待ち。いずれも DSL 側では対処済みだった)。
+  探索ロジックは**MCP に2つ目の実装を書かず `StepExecutor` へ委ねる**(`ft_scroll_to`)
 - **エラーの status はホストの分岐契約**(表は docs/design.md §「エラーの status」)。
   とくに **XCUITest ランナーの 409 は `requireApp()` の1箇所だけ** — ホストはこの経路の 409 を
   無条件に「セッション消失」と読んで activate を撃つ。「セッションはあるが今は無理」は **422**
