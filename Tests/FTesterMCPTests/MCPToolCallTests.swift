@@ -332,6 +332,40 @@ final class MCPToolCallTests: XCTestCase {
         XCTAssertTrue(text.contains("login_btn"), text)
     }
 
+    /// スクロール容器は行に印を出し、**2つ以上あるときだけ**先頭で名指しする
+    /// (`scrollFrame:` を書く判断はここでしかできない。1つの画面で勧めると
+    /// iOS in-app では XCUITest フォールバックを払うだけになる)
+    func testSnapshotMarksScrollContainersAndNamesThemWhenAmbiguous() async throws {
+        driver.snapshotResponse = SnapshotResponse(
+            sessionBundleID: "com.example.app",
+            screen: FTRect(x: 0, y: 0, width: 390, height: 844),
+            elements: [
+                ElementInfo(ref: 1, type: "ScrollView", identifier: "chips", label: nil,
+                            value: nil, placeholder: nil, enabled: true,
+                            frame: FTRect(x: 0, y: 60, width: 390, height: 60), depth: 1,
+                            scrollable: true),
+                ElementInfo(ref: 2, type: "Table", identifier: "list_rows", label: nil,
+                            value: nil, placeholder: nil, enabled: true,
+                            frame: FTRect(x: 0, y: 120, width: 390, height: 600), depth: 1,
+                            scrollable: true),
+            ],
+            truncatedCount: 0)
+        let content = try await server.call(tool: "ft_snapshot", args: [:])
+        let text = try XCTUnwrap(content.first?["text"] as? String)
+        XCTAssertTrue(text.contains("2 scroll areas"), text)
+        XCTAssertTrue(text.contains("#list_rows"), text)
+        XCTAssertTrue(text.contains("id=chips scroll"), text)
+    }
+
+    /// 申告できないエンジン(Compose/Flutter の in-app)では黙る。
+    /// 印も注記も出さない = 「スクロールしない画面」と読ませない
+    func testSnapshotStaysSilentWhenNoScrollContainerIsDeclared() async throws {
+        let content = try await server.call(tool: "ft_snapshot", args: [:])
+        let text = try XCTUnwrap(content.first?["text"] as? String)
+        XCTAssertFalse(text.contains("scroll area"), text)
+        XCTAssertFalse(text.contains(" scroll"), text)
+    }
+
     /// **撮った id は台帳へ落ちる**(ft_dry_run が綴り誤りの照合に使う唯一の供給源。
     /// ここが切れると照合は永久に黙り、機能が死んでいることに誰も気付けない)
     func testSnapshotRecordsSelectorsForTheInventory() async throws {

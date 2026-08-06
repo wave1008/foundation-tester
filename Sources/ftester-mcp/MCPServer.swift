@@ -834,6 +834,7 @@ final class MCPServer {
             let backgroundNote = await Self.backgroundedSessionNote(snapshot, driver: snapshotDriver)
             return text(withPendingWarnings(
                 waitNote + backgroundNote + Self.ghostNote(snapshot)
+                + (ScrollFrameCandidates.note(snapshot) ?? "")
                 + SnapshotRenderer.render(snapshot, flagging: Self.ghostFlags(snapshot)), args: args))
 
         case "ft_tap":
@@ -1247,6 +1248,7 @@ final class MCPServer {
             "bundleId": ["type": "string", "description": "bundle ID (iOS) / package name (Android)"],
         ], required: ["bundleId"]),
         tool("ft_snapshot", "Get the element list of the current screen. Each line: [ref] Type \"label\" id=... (x,y WxH). "
+            + "A line marked scroll is a scrolling container you can pass as scrollFrame. "
             + "Use these refs for tap/type. With waitFor it polls for you instead of you calling this again", [
             "waitFor": ["type": "string", "description": "Wait until this selector is on screen. Same syntax as the DSL: #id, a label, .type, a||b"],
             "timeout": ["type": "number", "description": "Seconds to wait for waitFor (default 5, same as the DSL)"],
@@ -1280,7 +1282,8 @@ final class MCPServer {
                           "description": "Content direction to read towards (default down)"],
             "scrollFrame": ["type": "string",
                             "description": "Selector of the scrolling container to search inside (e.g. #list_rows). "
-                                + "Pass it when the screen has more than one scrollable area"],
+                                + "Pass it when the screen has more than one scrollable area — ft_snapshot marks "
+                                + "those lines scroll and says so at the top"],
             "maxSwipes": ["type": "integer", "description": "Swipe limit (default 8, same as the DSL)"],
         ], required: ["selector"]),
         tool("ft_navigate", "Go back / to the home screen / to the app switcher", [
