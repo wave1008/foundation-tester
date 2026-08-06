@@ -86,9 +86,15 @@ public struct StepCountsRecord: Codable, Sendable {
     /// 後発の追加フィールドなので Optional(ScenarioEvent.durationMs と同じ理由。旧レコードの
     /// 欠損キーが decode エラーにならず nil になる = 過去の run 結果を読み続けられる)
     public var inconclusive: Int?
+    /// 掴んだ値だけで通り、デバイスを 1 度も見なかったステップ数(StepNote.heldValue)。
+    /// これらは durationMs=0 で記録されるため、**所要の内訳を読むときの母数から抜ける** ——
+    /// 高速化の効果を見るときに「当たり率が上がっただけ」を切り分けるための分母。Optional の理由は
+    /// inconclusive と同じ
+    public var viaHeldValue: Int?
 
     public init(total: Int = 0, passed: Int = 0, failed: Int = 0, skipped: Int = 0,
-                healed: Int = 0, passedViaFallback: Int = 0, inconclusive: Int? = nil) {
+                healed: Int = 0, passedViaFallback: Int = 0, inconclusive: Int? = nil,
+                viaHeldValue: Int? = nil) {
         self.total = total
         self.passed = passed
         self.failed = failed
@@ -96,6 +102,7 @@ public struct StepCountsRecord: Codable, Sendable {
         self.healed = healed
         self.passedViaFallback = passedViaFallback
         self.inconclusive = inconclusive
+        self.viaHeldValue = viaHeldValue
     }
 }
 
@@ -141,9 +148,14 @@ public struct TimelineStepRecord: Codable, Sendable {
     /// ISO8601+ミリ秒(ScenarioEvent.at 由来)。取得できないステップでは nil
     public var at: String?
     public var durationMs: Int?
+    /// StepNote の rawValue(ScenarioEvent.notes 由来)。**run 横断の集計はここだけを見る**
+    /// (description の文言一致で数えない。StepNote の doc 参照)。注記が無いステップと、
+    /// notes を持たない旧レコードはどちらも nil
+    public var notes: [String]?
 
     public init(scene: Int? = nil, sceneTitle: String? = nil, index: Int, description: String,
-                status: String, at: String? = nil, durationMs: Int? = nil) {
+                status: String, at: String? = nil, durationMs: Int? = nil,
+                notes: [String]? = nil) {
         self.scene = scene
         self.sceneTitle = sceneTitle
         self.index = index
@@ -151,6 +163,7 @@ public struct TimelineStepRecord: Codable, Sendable {
         self.status = status
         self.at = at
         self.durationMs = durationMs
+        self.notes = notes
     }
 }
 
@@ -309,7 +322,11 @@ public struct ScenarioRecordBuilder {
         timeline.append(TimelineStepRecord(
             scene: event.scene, sceneTitle: event.sceneTitle ?? event.scene.flatMap { sceneTitles[$0] },
             index: event.index ?? 0, description: event.description ?? "",
-            status: status, at: event.at, durationMs: event.durationMs))
+            status: status, at: event.at, durationMs: event.durationMs,
+            notes: event.notes?.isEmpty == true ? nil : event.notes))
+        if event.notes?.contains(StepNote.heldValue.rawValue) == true {
+            stepCounts.viaHeldValue = (stepCounts.viaHeldValue ?? 0) + 1
+        }
         switch status {
         case "passed":
             stepCounts.passed += 1

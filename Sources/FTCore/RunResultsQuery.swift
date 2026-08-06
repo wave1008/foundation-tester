@@ -325,10 +325,15 @@ public enum RunResultsQuery {
     private static let durationRegressionPct = 30.0
     /// unfinishedRuns: finishedAt 欠落 run がこの件数以上で info を出す
     private static let unfinishedRunsMinCount = 1
+    /// unsettledSteps: 判定に要る最小 run 数(1〜2 run では整定の打ち切りは環境雑音と区別できない)
+    private static let unsettledMinRuns = 3
+    /// unsettledSteps: 整定打ち切りを含む run の割合がこれ以上で警告。**緑の run も母数に入れる** ——
+    /// これは失敗の集計ではなく「赤になる前の先行指標」なので、通っている run こそ見たい
+    private static let unsettledRunRatio = 0.3
 
     public struct InsightRow: Codable, Sendable, Equatable {
         /// "newFailure" | "consecutiveFailures" | "infraFailures" | "selectorDecay" | "deviceBias" |
-        /// "durationRegression" | "unfinishedRuns"
+        /// "durationRegression" | "unfinishedRuns" | "unsettledSteps"
         public let kind: String
         /// "critical" | "warn" | "info"
         public let severity: String
@@ -352,6 +357,9 @@ public enum RunResultsQuery {
                 rows.append(row)
             }
             rows.append(contentsOf: deviceBiasInsights(scenarioID: scenarioID, group: group))
+            if let row = unsettledStepsInsight(scenarioID: scenarioID, group: group) {
+                rows.append(row)
+            }
         }
 
         for row in slowTests(records, limit: .max) {
@@ -545,6 +553,33 @@ public enum RunResultsQuery {
             kind: "selectorDecay", severity: "warn", scenarioID: scenarioID, worker: nil,
             message: "\(scenarioID): early signs of selector staleness (kept alive by self-heal/fallback, \(total) time(s))",
             count: total, deltaPct: nil)
+    }
+
+    /// 整定の収束判定が打ち切られたまま先へ進んだステップの**出現率**(赤になる前の先行指標)。
+    ///
+    /// 数えるのは `TimelineStepRecord.notes` のコードだけで、説明文は見ない(StepNote の doc)。
+    /// **notes を持たない旧レコードは 0 件として数える** = 率が下がる側 ==
+    /// 「まだ測れていない」を「異常あり」と言わない側に倒れる(過小報告は安全・過剰報告は害)。
+    /// timeline が無い記録も同じ扱い。
+    private static func unsettledStepsInsight(scenarioID: String,
+                                              group: [ScenarioRunRecord]) -> InsightRow? {
+        guard group.count >= unsettledMinRuns else { return nil }
+        let affected = group.filter { record in
+            record.timeline?.contains { $0.notes?.contains(StepNote.settleCapped.rawValue) == true } == true
+        }
+        guard !affected.isEmpty else { return nil }
+        let ratio = Double(affected.count) / Double(group.count)
+        guard ratio >= unsettledRunRatio else { return nil }
+        let steps = affected.reduce(0) { total, record in
+            total + (record.timeline?.filter {
+                $0.notes?.contains(StepNote.settleCapped.rawValue) == true
+            }.count ?? 0)
+        }
+        return InsightRow(
+            kind: "unsettledSteps", severity: "warn", scenarioID: scenarioID, worker: nil,
+            message: "\(scenarioID): the screen was still moving when \(steps) step(s) went ahead"
+                + " (in \(affected.count)/\(group.count) runs; a leading indicator of flakiness)",
+            count: steps, deltaPct: nil)
     }
 
     private static func deviceBiasInsights(scenarioID: String, group: [ScenarioRunRecord]) -> [InsightRow] {

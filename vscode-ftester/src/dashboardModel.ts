@@ -135,7 +135,8 @@ export type InsightKind =
   | "selectorDecay"
   | "deviceBias"
   | "durationRegression"
-  | "unfinishedRuns";
+  | "unfinishedRuns"
+  | "unsettledSteps";
 
 export type InsightSeverity = "critical" | "warn" | "info";
 
@@ -326,7 +327,8 @@ function isInsightKind(value: unknown): value is InsightKind {
     value === "selectorDecay" ||
     value === "deviceBias" ||
     value === "durationRegression" ||
-    value === "unfinishedRuns"
+    value === "unfinishedRuns" ||
+    value === "unsettledSteps"
   );
 }
 
