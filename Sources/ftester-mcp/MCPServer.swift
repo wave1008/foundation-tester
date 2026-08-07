@@ -1146,8 +1146,12 @@ final class MCPServer {
                 // 引けない(= ref なし)ときは無検証の `typeText` へ落ちて OK を返す。
                 // Android は焦点ノードを読み返すので ref なしでも検証される
                 if targetRef == nil, !(typeDriver is AndroidDriver) {
-                    note += " (no ref was given, so on iOS the text was typed into whatever has"
-                        + " focus and was not read back — pass ref to have it verified)"
+                    // **注意書きで済ませず、ここで確かめる**: iOS の XCUITest ランナーは ref から
+                    // 対象を引けたときだけ TypeReadback を回すので、ref なしは無検証で OK が返る。
+                    // 木は `focused` を持っているのだから、撮り直して**どこへ入ったか**を名指しできる
+                    // (Android は焦点ノードを読み返すのでこの1枚は払わない)
+                    note += await Self.typedIntoNote(driver: typeDriver, expected: content,
+                                                     snapshot: try? freshSnapshot(typeDriver, args: args))
                 }
                 if let prior = priorValue, !prior.isEmpty {
                     note += " (the field already held \"\(SnapshotRenderer.truncate(prior, 30))\";"
@@ -1690,6 +1694,26 @@ final class MCPServer {
         case project
         /// どちらも要らない
         case none
+    }
+
+    /// ref なしで入力したあと、**実際にどの欄へ入ったか**を名指しする。
+    /// 焦点が無ければそれ自体が答え(撃った先が無かった = 沈黙した誤り)。
+    /// 値が読めるなら期待した文字列が入っているかまで見る
+    static func typedIntoNote(driver: AppDriver, expected: String?,
+                              snapshot: SnapshotResponse?) async -> String {
+        guard let snapshot else { return " (could not re-read the screen to confirm where it went)" }
+        guard let field = snapshot.elements.first(where: { $0.focused == true }) else {
+            return " (warning: nothing has input focus now, so the text may have gone nowhere"
+                + " — tap the field by ref first)"
+        }
+        let name = RefGuard.describe(field)
+        guard let value = field.value.map(FlowMatchMode.stripZeroWidthCharacters), !value.isEmpty
+        else { return " (into \(name); its value could not be read back)" }
+        guard let expected, !value.contains(expected) else {
+            return " (into \(name), which now reads \"\(SnapshotRenderer.truncate(value, 40))\")"
+        }
+        return " (warning: it went into \(name), but that field reads"
+            + " \"\(SnapshotRenderer.truncate(value, 40))\" — the text may not have landed)"
     }
 
     /// 座標形は ref の安全網(遮蔽・残像・中身外し)を1つも通らない。**設計上そうなる**が、

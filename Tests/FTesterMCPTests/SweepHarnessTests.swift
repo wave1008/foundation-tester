@@ -30,6 +30,35 @@ final class SweepHarnessTests: XCTestCase {
                 }
             }
             let stacked = RefGuard.stackedRefs(els)
+            // **警告の密度**: ref でその要素を叩いたとき警告が付くか。多すぎれば検知ではなく雑音で、
+            // 読み手は全部読み飛ばす(2026-08-07 に検知を4種足したので自分で採点する)
+            var warned = 0, tappable = 0, warnedTappable = 0, disabled = 0
+            for e in els {
+                let hits = RefGuard.isUntappableGhost(e, in: els, screen: snap.screen)
+                    || RefGuard.overlayCovering(e, in: els, screen: snap.screen) != nil
+                    || stacked.contains(e.ref)
+                    || RefGuard.missesItsOwnContent(e, in: els, screen: snap.screen) != nil
+                    || !e.enabled
+                if !e.enabled { disabled += 1 }
+                if hits { warned += 1 }
+                if RefGuard.interactiveTypes.contains(e.type) {
+                    tappable += 1
+                    if hits {
+                        warnedTappable += 1
+                        let why = RefGuard.isUntappableGhost(e, in: els, screen: snap.screen) ? "ghost"
+                            : RefGuard.overlayCovering(e, in: els, screen: snap.screen) != nil ? "overlay"
+                            : stacked.contains(e.ref) ? "stacked"
+                            : RefGuard.missesItsOwnContent(e, in: els, screen: snap.screen) != nil ? "misses"
+                            : "disabled"
+                        print("DENSITY   warned-tappable: \(e.identifier ?? e.label ?? "ref\(e.ref)")"
+                            + " [\(e.type)] ← \(why)")
+                    }
+                }
+            }
+            let pct = tappable == 0 ? 0 : warnedTappable * 100 / tappable
+            print("DENSITY \(f) elements=\(els.count) warned=\(warned)"
+                + " | tappable=\(tappable) warnedTappable=\(warnedTappable) (\(pct)%)"
+                + " | disabled=\(disabled)")
             print("SWEEP \(f) elements=\(els.count) z=\(els.contains { $0.z != nil })"
                 + " ghost=\(ghosts.count) overlay=\(overlays.count) stacked=\(stacked.count)"
                 + " missesContent=\(misses.count)")

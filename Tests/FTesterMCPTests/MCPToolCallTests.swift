@@ -257,14 +257,16 @@ final class MCPToolCallTests: XCTestCase {
         XCTAssertEqual(driver.calls, [])
     }
 
-    /// **Enter を別ツールにしない**ぶん、引数が確実に効くこと(既定は撃たない)
+    /// **Enter を別ツールにしない**ぶん、引数が確実に効くこと(既定は撃たない)。
+    /// 末尾の `snapshot` は **ref なし入力の確認**(下の testTypeWithoutRefIsConfirmed 参照)
     func testTypeFiresEnterOnlyWhenAsked() async throws {
         _ = try await server.call(tool: "ft_type", args: ["text": "abc"])
-        XCTAssertEqual(driver.calls, ["type(ref:nil,text:abc)"])
+        XCTAssertEqual(driver.calls, ["type(ref:nil,text:abc)", "snapshot"])
 
         _ = try await server.call(tool: "ft_type", args: ["text": "abc", "pressEnter": true])
         XCTAssertEqual(driver.calls,
-                       ["type(ref:nil,text:abc)", "type(ref:nil,text:abc)", "pressEnter"])
+                       ["type(ref:nil,text:abc)", "snapshot",
+                        "type(ref:nil,text:abc)", "snapshot", "pressEnter"])
     }
 
     /// 索引はデバイスに触らない。**既定は署名だけ**(全件の要約まで返すと 15KB 級になる)
@@ -400,7 +402,40 @@ final class MCPToolCallTests: XCTestCase {
     /// ref 省略時は「フォーカス中の要素」= ref nil をドライバへ渡す
     func testTypeWithoutRefPassesNil() async throws {
         _ = try await server.call(tool: "ft_type", args: ["text": "hello"])
-        XCTAssertEqual(driver.calls, ["type(ref:nil,text:hello)"])
+        XCTAssertEqual(driver.calls, ["type(ref:nil,text:hello)", "snapshot"])
+    }
+
+    private static func responseText(_ content: [[String: Any]]) -> String {
+        content.compactMap { $0["text"] as? String }.joined()
+    }
+
+    /// **ref なしの入力は撃ちっぱなしにしない**: iOS の XCUITest ランナーは ref から対象を
+    /// 引けたときだけ読み返す(TypeReadback)ので、ref なしは無検証で OK が返っていた。
+    /// 木は `focused` を持っているので、撮り直して**どこへ入ったか**を名指しする。
+    /// 焦点が無ければそれ自体が答え(撃った先が無かった = 沈黙した誤り)
+    func testTypeWithoutRefIsConfirmedAgainstTheFocusedField() async throws {
+        driver.snapshotResponse = SnapshotResponse(
+            sessionBundleID: "com.example.app",
+            screen: FTRect(x: 0, y: 0, width: 390, height: 844),
+            elements: [ElementInfo(ref: 1, type: "textField", identifier: "search",
+                                   label: nil, value: "hello", placeholder: nil, enabled: true,
+                                   frame: FTRect(x: 0, y: 0, width: 200, height: 40), depth: 2,
+                                   focused: true)],
+            truncatedCount: 0)
+        let hit = Self.responseText(try await server.call(tool: "ft_type", args: ["text": "hello"]))
+        XCTAssertTrue(hit.contains("#search"), hit)
+        XCTAssertTrue(hit.contains("hello"), hit)
+
+        // 焦点がどこにも無い = 撃った先が無い
+        driver.snapshotResponse = SnapshotResponse(
+            sessionBundleID: "com.example.app",
+            screen: FTRect(x: 0, y: 0, width: 390, height: 844),
+            elements: [ElementInfo(ref: 1, type: "button", identifier: "b", label: "B", value: nil,
+                                   placeholder: nil, enabled: true,
+                                   frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: 2)],
+            truncatedCount: 0)
+        let miss = Self.responseText(try await server.call(tool: "ft_type", args: ["text": "hello"]))
+        XCTAssertTrue(miss.contains("nothing has input focus"), miss)
     }
 
     func testSwipeParsesDirection() async throws {
