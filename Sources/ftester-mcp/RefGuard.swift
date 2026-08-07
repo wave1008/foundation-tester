@@ -18,6 +18,28 @@ import FTCore
 
 enum RefGuard {
 
+    // MARK: - 共有した幾何(実体は FTCore.TapTargetGeometry)
+    //
+    // **DSL(StepExecutor)と同じ定義を使う**ために FTCore へ出した。ここは転送だけにして
+    // 呼び出し側を書き換えない —— 掃討ゲート(SweepHarnessTests)が「移しても件数が変わらない」
+    // ことを実アプリのコーパスで検証する。
+
+    static let fullScreenContainerAreaRatio = TapTargetGeometry.fullScreenContainerAreaRatio
+    static let interactiveTypes = TapTargetGeometry.interactiveTypes
+
+    static func contains(_ outer: FTRect, _ inner: FTRect) -> Bool {
+        TapTargetGeometry.contains(outer, inner)
+    }
+
+    static func lineage(of element: ElementInfo, in elements: [ElementInfo]) -> Set<Int> {
+        TapTargetGeometry.lineage(of: element, in: elements)
+    }
+
+    static func missesItsOwnContent(_ element: ElementInfo, in elements: [ElementInfo],
+                                    screen: FTRect) -> ElementInfo? {
+        TapTargetGeometry.missesItsOwnContent(element, in: elements, screen: screen)
+    }
+
     /// 撮り直した木での照合結果
     enum Outcome {
         /// 同じ要素を引き直せた(moved = 前回から動いた距離 pt/px)
@@ -133,10 +155,6 @@ enum RefGuard {
         return next >= elements.endIndex || elements[next].depth <= element.depth
     }
 
-    /// 完全包含でも「容器」とみなす面積比の下限。実測: app bar (0,0 1080x290) は画面
-    /// (1080x2424) の約 12% で、これを容器扱いすると下に潜った行への遮蔽が丸ごと無警告になる。
-    /// 全画面の toolbar/collectionView・`#AdditionalDimmingOverlay` は 100% なので下回らない
-    static let fullScreenContainerAreaRatio = 0.5
 
     /// 中心を覆う別要素。**除くのは自分の祖先と子孫だけ**。
     /// 「自分より深いものだけ」に絞ると外す —— 実測では残像 `#row_11`(リストの奥)に重なるのは
@@ -217,12 +235,6 @@ enum RefGuard {
         PaintOrder.drawnAbove(candidate, element)
     }
 
-    /// outer が inner を完全に含むか(縁の丸め差 1pt は許容)
-    static func contains(_ outer: FTRect, _ inner: FTRect) -> Bool {
-        outer.x <= inner.x + 1 && outer.y <= inner.y + 1
-            && outer.x + outer.width >= inner.x + inner.width - 1
-            && outer.y + outer.height >= inner.y + inner.height - 1
-    }
 
     /// `candidate` と `element` の**間に**もう1枚、element を包む小さい入れ物があるか。
     /// あるなら candidate はいちばん内側ではない = 外枠。
@@ -248,22 +260,6 @@ enum RefGuard {
         }
     }
 
-    /// 自分・祖先・子孫の ref(preorder + depth から復元する)
-    static func lineage(of element: ElementInfo, in elements: [ElementInfo]) -> Set<Int> {
-        var result: Set<Int> = [element.ref]
-        guard let index = elements.firstIndex(where: { $0.ref == element.ref }) else { return result }
-        var depth = element.depth
-        for ancestor in elements[..<index].reversed() where ancestor.depth < depth {
-            result.insert(ancestor.ref)
-            depth = ancestor.depth
-        }
-        var i = elements.index(after: index)
-        while i < elements.endIndex, elements[i].depth > element.depth {
-            result.insert(elements[i].ref)
-            i = elements.index(after: i)
-        }
-        return result
-    }
 
     /// 同一性の照合。**強い手掛かりから順に**当てて、候補が複数なら最も近い frame を採る。
     /// 型を必ず見るのは、同じラベルの Button と StaticText が並ぶ形(E2E の `#txt_shared_label` /
@@ -357,57 +353,7 @@ enum RefGuard {
             + " y: \(Int(f.y + f.height / 2))), which skips the check, and please report it."
     }
 
-    /// ghost ではないが**別の物に当たったかもしれない**2形の注記。空文字なら心当たり無し。
-    ///
-    /// ghostWarning と同じ方針で**撃ってから言う**(拒否しない)。木の幾何だけでは
-    /// 「本当に描かれているか」を決められないという 2026-08-06 の結論は、この2形にも効く。
-    /// **中身のどこでもない点を叩こうとしている**か。対話的でない容器(`other`)で、
-    /// 子孫を持つのに**中心がそのどれの上にも無い**とき、タップは背後(地図・背景)へ抜ける。
-    ///
-    /// 実測(2026-08-07・Google マップ Android): `#layers_fab_button` は全幅 (0,442 1080x157) の
-    /// 非 clickable コンテナで、中身は右端の FAB 1つだけ。中心 (540,520) は地図の上にあり、
-    /// `ft_tap` は "done" を返しながら**海上の座標にピンを落として place page を開いた**。
-    /// 名前が `..._button` で終わるのでエージェントが選びがちな形。
-    ///
-    /// **子の中心へ寄せる自動補正はしない** —— 黙って別の物を叩くのと同じになる。
-    /// 遮蔽でも ghost でも積み重なりでもないので、既存の3つには1つも掛からない
-    static func missesItsOwnContent(_ element: ElementInfo, in elements: [ElementInfo],
-                                    screen: FTRect) -> ElementInfo? {
-        guard element.type == "other" else { return nil }
-        let children = StepExecutor.descendants(of: element, in: elements)
-        guard !children.isEmpty else { return nil }
-        let cx = element.frame.x + element.frame.width / 2
-        let cy = element.frame.y + element.frame.height / 2
-        func covers(_ e: ElementInfo) -> Bool {
-            e.frame.x <= cx && cx <= e.frame.x + e.frame.width
-                && e.frame.y <= cy && cy <= e.frame.y + e.frame.height
-        }
-        guard !children.contains(where: covers) else { return nil }
-        // **囲っている対話要素がタップを受け止めるなら黙る**: 中心が空白でも、外側の
-        // 行やカードが clickable なら押した結果は妥当。**画面規模のものは数えない** ——
-        // 地図やキャンバスは全画面 clickable で、そこへ抜けること自体が今回の実害
-        // (実測: `#business_place_card` の中心は空白だが、包む place card が clickable で
-        // 正しく開く。一方 `#layers_fab_button` を包むのは全画面の地図だけだった)
-        let screenArea = screen.width * screen.height
-        let absorbed = lineage(of: element, in: elements).contains { ref in
-            guard ref != element.ref, let ancestor = elements.first(where: { $0.ref == ref }),
-                  interactiveTypes.contains(ancestor.type), covers(ancestor) else { return false }
-            let area = ancestor.frame.width * ancestor.frame.height
-            return screenArea <= 0 || area < screenArea * fullScreenContainerAreaRatio
-        }
-        guard !absorbed else { return nil }
-        // 「代わりにこれを狙え」は**自分の矩形の内側にある子**から選ぶ。木の depth だけで
-        // 子孫を採ると、間引きの副作用で**視覚的に無関係な要素**が混ざる
-        // (実測: `#search_omnibox_container` の子孫にページ下端のカード束が入っていた)
-        return children
-            .filter { contains(element.frame, $0.frame) }
-            .max { ($0.frame.width * $0.frame.height) < ($1.frame.width * $1.frame.height) }
-    }
 
-    /// タップを受け止める型(ブリッジの型語彙。`other` は含めない)
-    static let interactiveTypes: Set<String> = [
-        "clickable", "button", "cell", "link", "switch", "checkBox", "radioButton", "tab",
-    ]
 
     /// **無効な要素を叩こうとしている**ときの警告。木には `disabled` と印字しているのに、
     /// 操作経路は `enabled` を一度も見ておらず、押しても何も起きない要素へ "done" を返していた
