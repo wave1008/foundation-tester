@@ -2722,7 +2722,18 @@ public final class StepExecutor {
                          vertical: Bool) -> FTRect? {
         guard Self.coordinateScrollEnabled else { return nil }
         if let locator = step.scrollFrame {
-            guard let element = Self.match(locator, in: snapshot) else { return nil }
+            guard let element = Self.match(locator, in: snapshot) else {
+                // **当たらない scrollFrame を黙って無視しない**(2026-08-07 実測)。誤字や
+                // 範囲外の添字(`#recycler_view[9]`)でも nil になり、そのまま全画面スワイプへ
+                // 落ちて「領域を絞ったつもりが絞れていない」まま失敗していた。
+                // **`[n]` を勧めるようになった分、範囲外を書く機会はこちらが増やしている**
+                if pendingScrollFrameNote == nil, !reportedScrollFrameNote {
+                    pendingScrollFrameNote = "the specified scrollFrame matched nothing on this"
+                        + " screen, so the swipes covered the whole screen instead"
+                    reportedScrollFrameNote = true
+                }
+                return nil
+            }
             // 空振りの申告は1ステップにつき1回だけ(周回ごとに積むとレポートが埋まる)
             if pendingScrollFrameNote == nil, !reportedScrollFrameNote {
                 pendingScrollFrameNote = Self.scrollFrameNote(element, in: snapshot)
@@ -3107,7 +3118,10 @@ public final class StepExecutor {
             let summaries = picked.prefix(3).map { element -> String in
                 var parts = [element.type]
                 if let id = element.identifier, !id.isEmpty { parts.append("#\(id)") }
-                if let label = element.label, !label.isEmpty {
+                // 「代わりにこれを使え」と勧める文なので、**そのまま貼れる形**にする
+                // (ゼロ幅文字が残ると見た目が正しいのに一致しない)
+                if let label = element.label.map(FlowMatchMode.stripZeroWidthCharacters),
+                   !label.isEmpty {
                     parts.append("\"\(SnapshotRenderer.truncate(label, 24))\"")
                 }
                 return parts.joined(separator: " ")
