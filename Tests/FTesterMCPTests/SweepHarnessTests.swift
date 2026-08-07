@@ -20,9 +20,16 @@ final class SweepHarnessTests: XCTestCase {
     struct Counts: Equatable, CustomStringConvertible {
         var ghost = 0, overlay = 0, stacked = 0, misses = 0, disabled = 0, offscreen = 0,
             warnedTappable = 0
+        /// keyboard はソフトキーボードに中心を覆われたタップ対象(keyboardFrame を申告する
+        /// 新ブリッジの木でだけ非 0 になり得る)。**画面の一時状態**であって要素の恒常的な
+        /// 問題ではないので warnedTappable(雑音密度ゲート)には入れない
+        var keyboard = 0
+        /// sliver は容器の縁で細帯に切れたラベル付き要素(TapTargetGeometry.isClippedSliver)
+        var sliver = 0
         var description: String {
             "ghost=\(ghost) overlay=\(overlay) stacked=\(stacked) misses=\(misses)"
                 + " disabled=\(disabled) offscreen=\(offscreen) warnedTappable=\(warnedTappable)"
+                + " keyboard=\(keyboard) sliver=\(sliver)"
         }
     }
 
@@ -34,6 +41,11 @@ final class SweepHarnessTests: XCTestCase {
     static let baselines: [String: Counts] = [
         "and-home": Counts(ghost: 0, overlay: 2, stacked: 0, misses: 2, disabled: 0,
                            warnedTappable: 0),
+        // 2026-08-08 採取(キーボード/IME 遮蔽検知の導入時)。keyboard 2 は Gboard の
+        // レイアウト選択シートに覆われた候補行で、Emulator 上のプローブで実際にタップが IME に
+        // 化けた witness と同一要素 = 真陽性。overlay 1(compass ← 候補行)も描画どおり
+        "and-maps_suggest_ime": Counts(ghost: 0, overlay: 1, stacked: 0, misses: 0, disabled: 0,
+                                       warnedTappable: 0, keyboard: 2),
         "and-overflow": Counts(),
         "and-place": Counts(ghost: 0, overlay: 1, stacked: 0, misses: 1, disabled: 0,
                             warnedTappable: 0),
@@ -43,6 +55,18 @@ final class SweepHarnessTests: XCTestCase {
                               warnedTappable: 2),
         "ios-home": Counts(ghost: 0, overlay: 1, stacked: 0, misses: 0, disabled: 0,
                            warnedTappable: 0),
+        // 2026-08-08 採取(v58 = 間引きの bulk 拡張後)。東京駅カード + 地図 POI 67個の木。
+        // overlay 17 の内訳: POI 同士の重なり14(駅構内の高密度で実描画どおり・非操作)/
+        // カード見出し系3。misses 2 は見出し容器。すべて非操作なので warnedTappable 0
+        "ios-maps_station": Counts(ghost: 0, overlay: 17, stacked: 0, misses: 2, disabled: 0,
+                                   warnedTappable: 0),
+        // 2026-08-08 採取。検索候補 + キーボード(keyboardFrame (0,583 402x233))。
+        // keyboard 16 はキーボード下の候補行群(Simulator 上のプローブでタップが顔文字キーに化けた
+        // witness と同じ画面・同じ形 = 真陽性)。overlay 11 は候補行の button ← MultiTextView
+        // 兄弟重なり(iOS は z が無い既知の限界。and-results と同型の現状固定)
+        "ios-maps_suggest_keyboard": Counts(ghost: 0, overlay: 11, stacked: 0, misses: 0,
+                                            disabled: 0, offscreen: 1, warnedTappable: 9,
+                                            keyboard: 16),
         "ios-place": Counts(ghost: 0, overlay: 3, stacked: 0, misses: 2, disabled: 0,
                             warnedTappable: 0),
         "ios-profile": Counts(),
@@ -96,6 +120,11 @@ final class SweepHarnessTests: XCTestCase {
                ghost || overlay || misses || stacked.contains(e.ref) || disabled || offscreen {
                 c.warnedTappable += 1
             }
+            if RefGuard.interactiveTypes.contains(e.type),
+               RefGuard.keyboardWarning(e, keyboardFrame: snap.keyboardFrame) != nil {
+                c.keyboard += 1
+            }
+            if RefGuard.isClippedSliver(e) { c.sliver += 1 }
         }
         return c
     }
@@ -153,7 +182,8 @@ final class SweepHarnessTests: XCTestCase {
             let name = String(file.dropLast(".json".count))
             print("BASELINE \"\(name)\": Counts(ghost: \(c.ghost), overlay: \(c.overlay),"
                 + " stacked: \(c.stacked), misses: \(c.misses), disabled: \(c.disabled),"
-                + " offscreen: \(c.offscreen), warnedTappable: \(c.warnedTappable)),")
+                + " offscreen: \(c.offscreen), warnedTappable: \(c.warnedTappable),"
+                + " keyboard: \(c.keyboard), sliver: \(c.sliver)),")
             let els = snap.elements
             for e in els {
                 let who = RefGuard.describe(e)
@@ -170,6 +200,14 @@ final class SweepHarnessTests: XCTestCase {
                     let f = e.frame
                     print("   DETAIL \(name) offscreen \(who) centre=(\(Int(f.x + f.width / 2)),"
                         + "\(Int(f.y + f.height / 2)))")
+                }
+                if RefGuard.interactiveTypes.contains(e.type),
+                   RefGuard.keyboardWarning(e, keyboardFrame: snap.keyboardFrame) != nil {
+                    print("   DETAIL \(name) keyboard \(who)")
+                }
+                if RefGuard.isClippedSliver(e) {
+                    let f = e.frame
+                    print("   DETAIL \(name) sliver   \(who) \(Int(f.width))x\(Int(f.height))")
                 }
             }
         }
