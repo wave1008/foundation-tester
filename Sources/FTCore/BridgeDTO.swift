@@ -373,10 +373,20 @@ public struct ElementInfo: Codable, Sendable {
     /// 生成は SnapshotBuilder.assignPaintOrder。**nil のときは ref 順へ落ちる**
     public var z: Int?
 
+    /// スライダー/プログレスの**取り得る範囲**(`"0-100"`)。nil = 範囲を持たない要素、
+    /// またはブリッジが申告しない。現在値は `value` に入る。
+    ///
+    /// **パーセントへ正規化しない**のが決定(2026-08-07): 0..10 のスライダーで current=3 を
+    /// "30%" と言うのは、生値を読みたい側には嘘に近い。範囲を別に添えて割合は読み手に任せる。
+    /// 取得元: Android=`AccessibilityNodeInfo.getRangeInfo`。
+    /// **iOS はまだ出さない**(XCUIElement.value が `"50%"` を返すので value 側だけは読める)
+    public var range: String?
+
     public init(ref: Int, type: String, identifier: String?, label: String?, value: String?,
                 placeholder: String?, enabled: Bool, frame: FTRect, depth: Int,
                 checked: Bool? = nil, web: Bool? = nil, focused: Bool? = nil,
-                scrollable: Bool? = nil, z: Int? = nil) {
+                scrollable: Bool? = nil, z: Int? = nil, range: String? = nil) {
+        self.range = range
         self.scrollable = scrollable
         self.z = z
         self.ref = ref
@@ -409,6 +419,7 @@ public struct ElementInfo: Codable, Sendable {
         focused = try container.decodeIfPresent(Bool.self, forKey: .focused)
         scrollable = try container.decodeIfPresent(Bool.self, forKey: .scrollable)
         z = try container.decodeIfPresent(Int.self, forKey: .z)
+        range = try container.decodeIfPresent(String.self, forKey: .range)
     }
 
     /// 先頭 1 文字だけ小文字化する(`StaticText` → `staticText`)。冪等なので二重適用しても安全

@@ -32,7 +32,8 @@ final class ElementInfoCodingTests: XCTestCase {
             web: true,
             focused: true,
             scrollable: true,
-            z: 124)
+            z: 124,
+            range: "0-100")
     }
 
     func testEveryFieldSurvivesAnEncodeDecodeRoundTrip() throws {
