@@ -373,6 +373,25 @@ final class MCPRefGuardTests: XCTestCase {
         XCTAssertTrue(actions.contains { $0.hasPrefix("tap") }, "拒否ではなく警告して撃つこと")
     }
 
+    /// **中心が画面の外にある要素へのタップは警告する**(拒否はしない)。
+    /// 実測(2026-08-08・Compose iOS のカレンダー): スクロールでヘッダ裏へ抜けた
+    /// `#slot_07` (0,-46 402x56) への ft_tap が無警告の "done" を返し、画面は無変化だった。
+    /// ウィンドウ外のタッチは hitTest に乗らず黙って落ちる
+    func testTapWarnsWhenTheCentreIsOffscreen() async throws {
+        driver.snapshotResponse = screen([
+            element(ref: 1, id: "slot_07", label: nil, x: 0, y: -46, w: 390, h: 56, depth: 2),
+            element(ref: 2, id: "slot_11", label: "11:00", x: 0, y: 182, w: 390, h: 56, depth: 2),
+        ])
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        let text = Self.text(try await server.call(tool: "ft_tap", args: ["ref": 1]))
+        XCTAssertTrue(text.contains("outside the visible screen"),
+                      "画面外の中心を警告すること: \(text)")
+        XCTAssertTrue(actions.contains { $0.hasPrefix("tap") }, "拒否ではなく警告して撃つこと")
+        // 画面内の要素では黙る
+        let ok = Self.text(try await server.call(tool: "ft_tap", args: ["ref": 2]))
+        XCTAssertFalse(ok.contains("outside the visible screen"), ok)
+    }
+
     /// **先に並ぶ大きな要素は遮蔽に数えない**(木の順序 = 描画順)。ここを緩めると、
     /// 2026-08-06 に拒否をやめる原因になった誤検知(背景パネルが端の要素を「覆う」)へ逆戻りする
     func testAnEarlierSiblingIsNotTreatedAsAnOverlay() async throws {

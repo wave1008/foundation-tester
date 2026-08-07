@@ -105,12 +105,38 @@ public enum TapTargetGeometry {
     public static func advisory(for element: ElementInfo, in elements: [ElementInfo],
                                 screen: FTRect) -> String? {
         disabledAdvisory(for: element)
+            ?? offscreenAdvisory(for: element, screen: screen)
             ?? missedContentAdvisory(for: element, in: elements, screen: screen)
     }
 
     /// 「そもそも無効」。**撃つ座標に依らない**ので、どの経路でも同じことが言える
     public static func disabledAdvisory(for element: ElementInfo) -> String? {
         element.enabled ? nil : "the target is disabled, so this almost certainly did nothing"
+    }
+
+    /// 「中心が画面の外」。ウィンドウ外のタッチは hitTest に乗らず**黙って落ちる**ので、
+    /// frame の中心を撃つ経路では確実に空振りになる。これも**frame の中心を撃つときにしか
+    /// 言えない**(`visibleTapRect` で見えている部分へ寄せたなら撃つ点は画面内)。
+    ///
+    /// 実測(2026-08-08・Compose iOS のカレンダー): ヘッダ裏へスクロールで抜けた
+    /// `#slot_07` (0,-46 402x56) — 中心 y=-18 — への ref タップが "done" を返し、
+    /// 画面は 1px も変わらなかった。スクロール直後の木は縁の外の要素を frame ごと残すので、
+    /// エージェントが古い位置感覚のまま撃つとこの形になる
+    /// 画面の縁の丸め誤差を「画面外」と言わないための猶予(pt/px)。
+    /// 実測(Apple マップの ios-home): 下端バーの `#SubtitleLabel` は中心が 874.3 と
+    /// screen.height=874 を **0.3pt** だけ超える —— 見えているラベルに「ほぼ確実に空振り」は嘘
+    public static let offscreenCentreTolerance = 2.0
+
+    public static func offscreenAdvisory(for element: ElementInfo, screen: FTRect) -> String? {
+        guard screen.width > 0, screen.height > 0 else { return nil }
+        let cx = element.frame.x + element.frame.width / 2
+        let cy = element.frame.y + element.frame.height / 2
+        let pad = offscreenCentreTolerance
+        let inside = cx >= screen.x - pad && cx <= screen.x + screen.width + pad
+            && cy >= screen.y - pad && cy <= screen.y + screen.height + pad
+        guard !inside else { return nil }
+        return "its centre (\(Int(cx)), \(Int(cy))) is outside the visible screen,"
+            + " so this almost certainly did nothing"
     }
 
     /// 「中心が中身のどこにも乗らない」。**frame の中心を撃つときにしか言えない** ——

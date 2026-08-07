@@ -1657,10 +1657,12 @@ public final class StepExecutor {
             // フォールバックする経路も長押し側だけが必要
             let hold = step.duration ?? FlowStep.defaultTapHoldSeconds
             if hold > 0 {
-                // 長押しは press(ref:) = ブリッジが frame の中心へ解決するので中身外しも言える
+                // 長押しは press(ref:) = ブリッジが frame の中心へ解決するので、
+                // 画面外の中心・中身外しが言える(重なったら強い方 = 画面外だけ)
                 driverFallback = Self.joinNotes(driverFallback,
-                    TapTargetGeometry.missedContentAdvisory(for: element, in: snapshot.elements,
-                                                            screen: snapshot.screen))
+                    TapTargetGeometry.offscreenAdvisory(for: element, screen: snapshot.screen)
+                        ?? TapTargetGeometry.missedContentAdvisory(
+                            for: element, in: snapshot.elements, screen: snapshot.screen))
                 if typeDriverGestures.contains("press") || gestureFallbackLatched, let td = typeDriver,
                    try await pressViaTypeDriver(td, step: step, phase: &phase) {
                     return StepOutcome(status: .passed, healedStep: healedStep,
@@ -1692,10 +1694,12 @@ public final class StepExecutor {
                 driverFallback = Self.joinNotes(driverFallback,
                     "tapped the visible part (the reported frame's centre falls outside its container)")
             } else {
-                // 寄せずに frame の中心を撃つ = 中身外しの注記が言える経路
+                // 寄せずに frame の中心を撃つ = 画面外の中心・中身外しの注記が言える経路
+                // (重なったら強い方 = 画面外だけ)
                 driverFallback = Self.joinNotes(driverFallback,
-                    TapTargetGeometry.missedContentAdvisory(for: element, in: snapshot.elements,
-                                                            screen: snapshot.screen))
+                    TapTargetGeometry.offscreenAdvisory(for: element, screen: snapshot.screen)
+                        ?? TapTargetGeometry.missedContentAdvisory(
+                            for: element, in: snapshot.elements, screen: snapshot.screen))
                 try await actingDriver.tap(ref: element.ref)
             }
             phase.actionMs += Self.ms(clock.now - start)
