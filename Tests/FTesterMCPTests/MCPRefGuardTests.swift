@@ -607,6 +607,25 @@ final class MCPRefGuardTests: XCTestCase {
         XCTAssertFalse(text.contains("scroll areas"), text)
     }
 
+    // MARK: - キーボード被覆(2026-08-08)
+
+    /// **中心がソフトキーボードの下にある要素へのタップは警告する**(拒否はしない)。
+    /// 判定は RefGuard.keyboardWarning → TapTargetGeometry.keyboardCoveredAdvisory への転送
+    /// (SweepHarnessTests が RefGuard 経由で数える規約のため転送を必ず置く)。
+    /// 実測(2026-08-08・iOS): キーボード下の候補行 ref タップが警告なしで顔文字キーに当たった
+    /// (inputView は空葉になり、既存の空葉コンテナ除外で遮蔽候補から漏れる)
+    func testTapWarnsWhenTheCentreIsUnderTheKeyboard() async throws {
+        var withKeyboard = screen([
+            element(ref: 1, id: "suggestion_row", label: "候補", x: 16, y: 620, w: 358, h: 40),
+        ])
+        withKeyboard.keyboardFrame = FTRect(x: 0, y: 600, width: 390, height: 244)
+        driver.snapshotResponse = withKeyboard
+        _ = try await server.call(tool: "ft_snapshot", args: [:])
+        let text = Self.text(try await server.call(tool: "ft_tap", args: ["ref": 1]))
+        XCTAssertTrue(text.contains("soft keyboard"), "キーボード被覆を警告すること: \(text)")
+        XCTAssertTrue(actions.contains { $0.hasPrefix("tap") }, "拒否ではなく警告して撃つこと")
+    }
+
     private static func text(_ content: [[String: Any]]) -> String {
         content.compactMap { $0["text"] as? String }.joined(separator: "\n")
     }

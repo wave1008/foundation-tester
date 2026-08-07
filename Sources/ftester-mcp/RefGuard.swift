@@ -40,6 +40,10 @@ enum RefGuard {
         TapTargetGeometry.missesItsOwnContent(element, in: elements, screen: screen)
     }
 
+    static func isClippedSliver(_ element: ElementInfo) -> Bool {
+        TapTargetGeometry.isClippedSliver(element)
+    }
+
     /// 撮り直した木での照合結果
     enum Outcome {
         /// 同じ要素を引き直せた(moved = 前回から動いた距離 pt/px)
@@ -385,6 +389,22 @@ enum RefGuard {
         }
         return " (warning: \(describe(element)) — \(advisory);"
             + " bring it into view with ft_scroll_to and re-snapshot)"
+    }
+
+    /// **中心がソフトキーボードの下にある要素を撃とうとしている**ときの警告。木からは判定できない
+    /// (キーボードはスナップショットの対象外)ので、ブリッジが申告する `keyboardFrame` でだけ言える
+    /// (判定は TapTargetGeometry.keyboardCoveredAdvisory = DSL と共有)。実測(2026-08-08・iOS):
+    /// キーボード下の候補行 ref タップが警告なしで顔文字キーに当たった
+    static func keyboardWarning(_ element: ElementInfo, keyboardFrame: FTRect?) -> String? {
+        guard let advisory = TapTargetGeometry.keyboardCoveredAdvisory(
+            element, keyboardFrame: keyboardFrame) else { return nil }
+        return " (warning: \(describe(element)) — \(advisory))"
+    }
+
+    /// keyboard + disabled の組。**この順序で4箇所から呼ばれる** —— キーボードを先にするのは、
+    /// 木からは判定できず ghost/overlap 側では検知できない唯一の警告だから
+    static func preTapWarnings(_ element: ElementInfo, keyboardFrame: FTRect?) -> String {
+        (keyboardWarning(element, keyboardFrame: keyboardFrame) ?? "") + disabledWarning(element)
     }
 
     static func overlapWarning(found: ElementInfo, in elements: [ElementInfo], screen: FTRect) -> String {

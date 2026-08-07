@@ -497,6 +497,23 @@ public final class StepExecutor {
         return abs(delta) > 1 ? delta : nil
     }
 
+    /// **またぎ解消に必要な最小スクロール量**(+マージン)。またぎ補正に recoveryJump
+    /// (容器の 40% 位置へ寄せる)を使うと寄せ過ぎる —— 2026-08-08 実害: SwiftUI の素の
+    /// scrollView が木に出るようになった(版58)ことで補正がネイティブ画面でも発火し、
+    /// 約330px の寄せが観測対象の echo ラベルまで仮想化の外へ流して、タップは成立したのに
+    /// アサーションが要素を見失った(E2E-iOS の3シナリオが決定的に失敗)。
+    /// 60 の床上げは dragGesture の実行下限(距離 50 超)を割らないため —— 割ると
+    /// overflow の小さいまたぎ(Compose の実測は中心が縁から 2〜12px 外)で寄せ自体が不発になる
+    static func straddleJump(for element: ElementInfo, container: FTRect) -> Double? {
+        let margin = 12.0
+        let bottomOverflow = (element.frame.y + element.frame.height)
+            - (container.y + container.height) + margin
+        let topOverflow = container.y - element.frame.y + margin
+        if bottomOverflow > margin { return max(bottomOverflow, 60) }
+        if topOverflow > margin { return -max(topOverflow, 60) }
+        return nil
+    }
+
     /// **報告された frame の中心が容器の外に落ちるとき、実際に見えている部分の矩形**を返す。
     /// 中心が容器の中なら nil = 従来どおり ref でタップする(ブリッジが frame の中心へ解決)。
     ///
@@ -664,6 +681,13 @@ public final class StepExecutor {
         /// 拾い直しに使った容器を**そのまま書けるセレクタ**にしたもの(nil = 名指しできない)。
         /// 注記で `scrollFrame:` を勧めるときに実物の名前を出すために持つ
         var suggestedScrollFrame: String?
+        /// `step.scrollFrame` が明示されているのに、探索開始時点(または探索中)の snapshot で
+        /// 1件も解決できず、**スワイプを1本も送らずに**打ち切った。全画面スワイプへ黙って
+        /// 退化すると画面上の別の物(カードのボタン等)を発火させ得るための fail-fast(2026-08-08)
+        var scrollFrameMissing: Bool = false
+        /// `stoppedUnmoving` の時点で、明示 scrollFrame が画面高の80%未満しかない(半開シート等)。
+        /// シート展開ヒント(scrollNotFoundMessage)を**全画面リストの末尾到達**にまで出さないためのゲート
+        var containerIsPartialHeight: Bool = false
     }
 
     /// 探索の注記を組み立てつつ、**機械可読コードを今のステップへ記録する**。
@@ -672,6 +696,7 @@ public final class StepExecutor {
     func recordedScrollSearchNote(_ result: ScrollSearchResult,
                                   scrollFrameNote: String? = nil) -> String? {
         if result.settleCapped { noteCodesThisStep.insert(.settleCapped) }
+        if result.scrollFrameMissing { noteCodesThisStep.insert(.scrollFrameMissing) }
         return Self.scrollSearchNote(result, scrollFrameNote: scrollFrameNote)
     }
 
@@ -702,18 +727,57 @@ public final class StepExecutor {
 
     static func scrollNotFoundMessage(_ step: FlowStep,
                                       _ result: ScrollSearchResult? = nil) -> String {
+        // **fail-fast は別の文**: 実際にはスワイプを1本も送っていないので、通常の
+        // 「N 回振って見つからなかった」は嘘になる(2026-08-08)
+        if result?.scrollFrameMissing == true {
+            return Self.scrollFrameFailFastMessage(step, action: "search", swipes: result?.swipes ?? 0)
+        }
         let limit = max(0, step.maxSwipes ?? FlowStep.defaultMaxSwipes)
         // 打ち切ったときは**実際の回数**を出す(上限を名乗ると「8回も振ったのに」と読めてしまう)
         let swipes = result?.stoppedUnmoving == true ? (result?.swipes ?? limit) : limit
         let stopped = result?.stoppedUnmoving == true
             ? " (stopped early: the content no longer moved)" : ""
+        // **シート展開のヒント**: 半開ボトムシート内のリストは容器が動いても中身は動かず、
+        // 「動かなくなった」だけでは利用者がシートの状態に気付けない(2026-08-08・Google マップ実測)。
+        // **全画面リストの末尾到達には出さない**(containerIsPartialHeight。2026-08-08)
+        let sheetHint = result?.stoppedUnmoving == true && result?.containerIsPartialHeight == true
+            ? " If the list sits inside a half-open bottom sheet, expand the sheet first"
+                + " (drag its grabber upward) and retry."
+            : ""
         return "element not found after \(swipes) scroll(s)\(stopped): \(step.locatorSummary)"
+            + sheetHint
     }
 
     /// `notExist(scroll:)` の裏返し: スクロール探索中に見つかってしまったら不在検証は失敗
     /// (executeAssertNotExists の scroll-search prelude が使う。scrollNotFoundMessage の対)
     static func scrollFoundMessage(_ step: FlowStep) -> String {
         "element found via scroll search: \(step.locatorSummary)"
+    }
+
+    /// 明示 scrollFrame が「解決できない」ことの判定。**scrollContainer には委ねない** ——
+    /// scrollContainer は殺しスイッチ(`FT_SCROLL_TARGET=legacy`)のとき常に nil を返すため、
+    /// それを fail-fast の根拠にすると legacy 指定時に「セレクタが実在するのに matched nothing」
+    /// と誤判定する(2026-08-08)。殺しスイッチ有効時は判定自体をスキップし、従来(legacy)挙動へ流す。
+    /// runScrollSearch(scrollTo/exist/notExist 系)と scroll/scrollToEdge/flick の両方から呼ぶ
+    static func scrollFrameUnresolved(_ step: FlowStep, in snapshot: SnapshotResponse) -> Bool {
+        guard Self.coordinateScrollEnabled, let locator = step.scrollFrame else { return false }
+        return Self.match(locator, in: snapshot) == nil
+    }
+
+    /// 明示 scrollFrame が解決できないときの fail-fast 文言。呼び手ごとに動詞(action)を渡す
+    /// (scrollTo/exist/notExist 系="search"・scroll/scrollToEdge="swipe"・flick="flick")。
+    /// **`swipes > 0`(容器が解決していたのに送信中に消えた)なら文言を差し替える** ——
+    /// スワイプ送信後にも「送られなかった」と言うのは嘘になるため(2026-08-08)
+    static func scrollFrameFailFastMessage(_ step: FlowStep, action: String, swipes: Int) -> String {
+        let sel = step.scrollFrame?.summary ?? "?"
+        guard swipes > 0 else {
+            let verb = action == "search" ? "the search was not run" : "the \(action) was not sent"
+            return "scrollFrame \"\(sel)\" matched nothing on this screen, so \(verb) —"
+                + " a whole-screen swipe could tap something under the finger."
+                + " Fix the scrollFrame selector, or remove it to search the whole screen."
+        }
+        return "scrollFrame \"\(sel)\" disappeared from the tree after \(swipes) swipe(s),"
+            + " so the search stopped."
     }
 
     /// スクロールヒント(WebView の画面外ノード・実座標付き)から「あと何 px 先か」を出す。
@@ -983,6 +1047,20 @@ public final class StepExecutor {
                                           hintJumps: hintJumps, settleCapped: settleCapped)
             }
             if attempt < maxSwipes {
+                // **明示 scrollFrame が解決できないなら、ここで打ち切る(1本も振らない)**。
+                // 空振りしたまま全画面スワイプへ黙って退化すると、カード上のボタン等
+                // 無関係な要素を発火させ得る(2026-08-08・Apple マップの実害: 申告した
+                // #MUScrollableStackView が次の瞬間ツリーから落ち、退化したスワイプが
+                // カードの「計画」ボタンを叩いて画面遷移した)。**探索中に容器が消えた場合も同型**
+                // なので、初回だけでなく毎周チェックする。
+                // **scrollContainer ではなく Self.scrollFrameUnresolved で判定する**
+                // (scrollContainer は殺しスイッチ時に常に nil を返すため、それをそのまま使うと
+                // legacy 指定時に「セレクタが実在するのに matched nothing」と誤検知する。2026-08-08)
+                if Self.scrollFrameUnresolved(step, in: snapshot) {
+                    return ScrollSearchResult(found: false, fallback: nil, viaXCUITest: viaXCUITest,
+                                              hintJumps: hintJumps, swipes: swipes,
+                                              scrollFrameMissing: true)
+                }
                 if let earlier = previousSnapshot,
                    Self.contentSignature(earlier.elements)
                        == Self.contentSignature(snapshot.elements) {
@@ -1001,10 +1079,17 @@ public final class StepExecutor {
                             unmovedRounds = 0
                             continue
                         }
+                        // シート展開ヒントは**明示 scrollFrame が画面の大半を占めない**ときだけ
+                        // (全画面リストの末尾到達で毎回シートを探しに行かせないためのゲート。2026-08-08)
+                        let containerIsPartialHeight = step.scrollFrame != nil
+                            && snapshot.screen.height > 0
+                            && (scrollContainer(step: step, in: snapshot, vertical: vertical)
+                                .map { $0.height < snapshot.screen.height * 0.8 } ?? false)
                         var result = ScrollSearchResult(found: false, fallback: nil,
                                                         viaXCUITest: viaXCUITest,
                                                         hintJumps: hintJumps,
-                                                        swipes: swipes, stoppedUnmoving: true)
+                                                        swipes: swipes, stoppedUnmoving: true,
+                                                        containerIsPartialHeight: containerIsPartialHeight)
                         guard recoverOnMiss, step.containerInference ?? true,
                               let container = (scrolledContainer
                                                ?? Self.overflowingContainer(in: snapshot))
@@ -1064,7 +1149,6 @@ public final class StepExecutor {
         // 一番ありふれた形で、落ちるのは textIs 側だから、ここで消すと肝心なときに証跡が無くなる
         if action != "select" { lastInteraction = nil }
         pendingScrollFrameNote = nil
-        reportedScrollFrameNote = false
         spanScale = 1
         // ロケータ不要のアクション
         if action == "swipe" {
@@ -1086,11 +1170,20 @@ public final class StepExecutor {
             let times = max(1, step.maxSwipes ?? 1)
             var viaXCUITest = false
             var unsettled = false
+            var sentSwipes = 0
             var latest = step.scrollFrame == nil ? nil : try await snapshotForScrollFrame(phase: &phase)
             for index in 0..<times {
+                // **明示 scrollFrame が解決できないなら、ここで打ち切る(1本も振らない)**。
+                // 黙って全画面スワイプへ退化させない(runScrollSearch の fail-fast と同じ理由。2026-08-08)
+                if let latest, Self.scrollFrameUnresolved(step, in: latest) {
+                    noteCodesThisStep.insert(.scrollFrameMissing)
+                    return StepOutcome(status: .failed(
+                        Self.scrollFrameFailFastMessage(step, action: "swipe", swipes: sentSwipes)))
+                }
                 let path = latest.flatMap { scrollPath(step: step, intent: .search, in: $0) }
                 if try await swipeWithFallback(direction, intent: .search, path: path,
                                                phase: &phase) { viaXCUITest = true }
+                sentSwipes += 1
                 // 続けて投げるとフリングの停止だけに消費されて空振りする(Android 実測)。
                 // 「repeat 回ぶん送る」を守るため、次のスワイプ前に静止を待つ。
                 // 最後の1回の後も待つ: ランナーは /swipe を整定対象から外しているので、
@@ -1121,6 +1214,7 @@ public final class StepExecutor {
             var sawUnsettled = false
             let limit = max(1, step.maxSwipes ?? FlowStep.defaultMaxEdgeSwipes)
             var hintJumps = 0
+            var sentSwipes = 0
             for _ in 0..<limit {
                 let settled = try await settledSignature(phase: &phase)
                 if !settled.settled { sawUnsettled = true }
@@ -1132,17 +1226,26 @@ public final class StepExecutor {
                     reachedEdge = true
                     break
                 }
+                // **明示 scrollFrame が解決できないなら、ここで打ち切る(1本も振らない)**。
+                // 黙って全画面スワイプへ退化させない(2026-08-08)
+                if Self.scrollFrameUnresolved(step, in: settled.snapshot) {
+                    noteCodesThisStep.insert(.scrollFrameMissing)
+                    return StepOutcome(status: .failed(
+                        Self.scrollFrameFailFastMessage(step, action: "swipe", swipes: sentSwipes)))
+                }
                 previous = settled.signature
                 if let jump, let container = Self.webViewContainer(in: settled.snapshot),
                    await hintDrag(jump: jump, container: container,
                                   viewport: settled.snapshot.screen, phase: &phase) {
                     hintJumps += 1
+                    sentSwipes += 1
                     continue
                 }
                 if try await swipeWithFallback(direction, intent: .edge,
                                                path: scrollPath(step: step, intent: .edge,
                                                                 in: settled.snapshot),
                                                phase: &phase) { viaXCUITest = true }
+                sentSwipes += 1
             }
             // 上限で抜けたら**端に着いたとは限らない**。黙って成功にすると
             // 「scrollToBottom したのに末尾が無い」の原因が読めなくなる
@@ -1177,11 +1280,24 @@ public final class StepExecutor {
                 } else {
                     container = snapshot.screen
                 }
+                // **明示 scrollFrame が解決できないなら、ここで打ち切る(1本も振らない)**。
+                // 黙って全画面スワイプへ退化させない(scroll/scrollToEdge と同じ理由。2026-08-08)
+                if step.scrollFrame != nil, container == nil {
+                    noteCodesThisStep.insert(.scrollFrameMissing)
+                    return StepOutcome(status: .failed(
+                        Self.scrollFrameFailFastMessage(step, action: "flick", swipes: 0)))
+                }
                 if let container {
                     path = ScrollGeometry.flickPath(
                         container: container, viewport: snapshot.screen, kind: kind,
                         startMarginRatio: step.startMarginRatio
                             ?? FTScrollDefaults.startMarginRatio(intent: .gesture, vertical: kind.isVertical))
+                    // **容器は解決したが動かせる幅が無い**(margin で潰れた等)。黙って全画面へ
+                    // 落ちると理由が読めなくなる(scrollPath と同じ注記。2026-08-08)
+                    if path == nil, step.scrollFrame != nil {
+                        pendingScrollFrameNote = "the specified scrollFrame resolved but leaves"
+                            + " nothing to move, so the whole screen was swiped"
+                    }
                 }
             }
 
@@ -1207,6 +1323,7 @@ public final class StepExecutor {
             }
             let settled = try await settledSignature(phase: &phase).settled
             var notes: [String] = []
+            if let note = pendingScrollFrameNote { notes.append(note) }
             if viaXCUITest { notes.append("fell back to XCUITest") }
             if !settled { note(.settleCapped, into: &notes) }
             return StepOutcome(status: .passed,
@@ -1604,14 +1721,15 @@ public final class StepExecutor {
         //
         // 2026-08-05 に撤回した「またぎも掴み直しの対象へ広げる」との違いは**送り方**:
         // あちらは全画面スワイプで行き過ぎて自傷した(S0110 が 2/10 → 5/10)。ここは
-        // `recoveryJump`(容器の 40% 位置までの距離)+ `slowDrag`(フリングを出さない)なので
+        // `straddleJump`(またぎ解消に必要な最小量。40% 位置への寄せは観測対象まで流す —
+        // 定義部の 2026-08-08 実害参照)+ `slowDrag`(フリングを出さない)なので
         // 行き過ぎない。**1回だけ**(収束しなければ従来どおり見えている部分を撃つ)
         if Self.interactsByTouch(action), step.containerInference ?? true,
            let container = Self.clippingContainer(of: element, in: snapshot.elements,
                                                   inferring: true),
            ScrollGeometry.intersection(element.frame, container) != nil,
            Self.isClippedByViewport(element, screen: container),
-           let jump = Self.recoveryJump(for: element, container: container),
+           let jump = Self.straddleJump(for: element, container: container),
            await slowDrag(jump: jump, container: container, phase: &phase) {
             _ = try await settledSignature(phase: &phase)
             let refreshed = try await freshSnapshot(.afterOwnMove)
@@ -1650,15 +1768,25 @@ public final class StepExecutor {
             // **「そもそも無効」は撃つ座標に依らない**ので、この時点で載せてよい。
             // 中身外しのほうは**frame の中心を撃つと決まってから**(下の visibleTapRect で
             // 見えている部分へ寄せることがあり、寄せたなら「背後へ抜けた」は嘘になる)
+            // **キーボード下は木の遮蔽判定が原理的に拾えない**(inputView は子孫が全部除外された
+            // 空葉になり、既存の空葉コンテナ除外で候補から外れる)ので、ブリッジ申告の
+            // keyboardFrame でだけ判定する。**disabled より先**(座標に依らず言えるのは同じだが、
+            // 実害はキーボード誤タップのほうが具体的で誤操作に直結する)。
+            // **offscreen/missedContent はここに混ぜない**: 撃つ座標(visibleTapRect で寄せるか
+            // frame の中心か)が決まってからでないと嘘になる(下記2箇所参照)。混ぜると
+            // keyboard/disabled が2回付く(2026-08-08 に発覚したバグ)ので、この2つだけをここで確定する
             driverFallback = Self.joinNotes(driverFallback,
-                                            TapTargetGeometry.disabledAdvisory(for: element))
+                TapTargetGeometry.keyboardCoveredAdvisory(element, keyboardFrame: snapshot.keyboardFrame),
+                TapTargetGeometry.disabledAdvisory(for: element))
             // **長押しは tap の引数**(Shirates 準拠。`tap(sel, holdSeconds:)`)。0 より大きいときだけ
             // ブリッジの /press へ回す。in-app は座標ジェスチャを持たない(501)ので XCUITest へ
             // フォールバックする経路も長押し側だけが必要
             let hold = step.duration ?? FlowStep.defaultTapHoldSeconds
             if hold > 0 {
                 // 長押しは press(ref:) = ブリッジが frame の中心へ解決するので、
-                // 画面外の中心・中身外しが言える(重なったら強い方 = 画面外だけ)
+                // 画面外の中心・中身外しが言える(重なったら強い方 = 画面外だけ)。
+                // **keyboard/disabled はここでは足さない**(上ですでに1回付けている。
+                // ここで足すと同文が2回付く)
                 driverFallback = Self.joinNotes(driverFallback,
                     TapTargetGeometry.offscreenAdvisory(for: element, screen: snapshot.screen)
                         ?? TapTargetGeometry.missedContentAdvisory(
@@ -1695,7 +1823,8 @@ public final class StepExecutor {
                     "tapped the visible part (the reported frame's centre falls outside its container)")
             } else {
                 // 寄せずに frame の中心を撃つ = 画面外の中心・中身外しの注記が言える経路
-                // (重なったら強い方 = 画面外だけ)
+                // (重なったら強い方 = 画面外だけ)。**keyboard/disabled はここでは足さない**
+                // (上ですでに1回付けている。ここで足すと同文が2回付く)
                 driverFallback = Self.joinNotes(driverFallback,
                     TapTargetGeometry.offscreenAdvisory(for: element, screen: snapshot.screen)
                         ?? TapTargetGeometry.missedContentAdvisory(
@@ -1778,7 +1907,8 @@ public final class StepExecutor {
             // pinch / swipeBy は「要素を掴んで動かす」形で、無効でも意味があるので対象外
             let gestureAdvisory = action == "doubleTap"
                 ? TapTargetGeometry.advisory(for: element, in: snapshot.elements,
-                                             screen: snapshot.screen)
+                                             screen: snapshot.screen,
+                                             keyboardFrame: snapshot.keyboardFrame)
                 : nil
             let outcome = try await performGesture(action, step: step, target: element.frame,
                                                    identifier: element.identifier,
@@ -2558,9 +2688,10 @@ public final class StepExecutor {
         return snapshot
     }
 
-    /// scrollFrame の空振り申告(ステップの注記へ載せる。1ステップ1回だけ)
+    /// scrollFrame の空振り申告(ステップの注記へ載せる)。**「1ステップ1回」は nil 判定だけで
+    /// 表現できる**(2026-08-08: 別に立てていた `reportedScrollFrameNote` フラグは、唯一の代入元が
+    /// 常に `pendingScrollFrameNote != nil` と同値になり、ガード条件として無力だった)
     private var pendingScrollFrameNote: String?
-    private var reportedScrollFrameNote = false
 
     /// 探索スワイプの刻み倍率(自己補正)。**1回の移動量が容器を超えると要素を飛び越す**ので、
     /// 実移動量を毎周測って詰める。較正表は持たない(端末・SUT を跨ぐと再現しないため。
@@ -2711,9 +2842,9 @@ public final class StepExecutor {
     }
 
     /// `scrollFrame` 指定時のスワイプ座標。**nil = 従来の全画面固定へ落ちる**。
-    /// 落ちる条件は「指定が無い」「その画面で解決できない」「削りすぎて動かせない」の3つで、
-    /// どれも Shirates が次の候補へ落ちるのと同じ扱い(明示指定は矩形の供給元であって、
-    /// スクロール可能かの判定はしない)。
+    /// 落ちる条件は「指定が無い」「削りすぎて動かせない」の2つ(「その画面で解決できない」は
+    /// 2026-08-08 に runScrollSearch と scroll/scrollToEdge/flick の fail-fast へ移した ——
+    /// ここで黙って nil を返すと、呼び手が全画面スワイプへ退化してしまう)。
     ///
     /// **毎回の snapshot から解決し直す**: 容器の矩形はスクロールやレイアウト変化で動く。
     /// 較正値は持たない(WebView のヒント跳躍と同じ自己補正の方針)
@@ -2737,12 +2868,20 @@ public final class StepExecutor {
         let baseEnd = step.endMarginRatio
             ?? FTScrollDefaults.endMarginRatio(intent: intent, vertical: vertical)
         let scaled = Self.scaledMargins(start: base, end: baseEnd, scale: spanScale)
-        return ScrollGeometry.path(
+        let path = ScrollGeometry.path(
             container: container,
             viewport: snapshot.screen,
             direction: direction,
             startMarginRatio: scaled.start,
             endMarginRatio: scaled.end)
+        // **容器は解決したのに動かせる幅が無い**(margin で潰れた・画面と交差しない等)。
+        // fail-fast はここを通らない(容器自体は見つかっている)ので、黙って全画面へ落ちる前に
+        // 理由を残す(2026-08-08。1ステップにつき1回 = pendingScrollFrameNote の空きで判定)
+        if path == nil, step.scrollFrame != nil, pendingScrollFrameNote == nil {
+            pendingScrollFrameNote = "the specified scrollFrame resolved but leaves nothing to move,"
+                + " so the whole screen was swiped"
+        }
+        return path
     }
 
     /// このステップのスクロール対象領域。**nil = 従来の全画面固定へ落ちる**。
@@ -2756,22 +2895,15 @@ public final class StepExecutor {
         guard Self.coordinateScrollEnabled else { return nil }
         if let locator = step.scrollFrame {
             guard let element = Self.match(locator, in: snapshot) else {
-                // **当たらない scrollFrame を黙って無視しない**(2026-08-07 実測)。誤字や
-                // 範囲外の添字(`#recycler_view[9]`)でも nil になり、そのまま全画面スワイプへ
-                // 落ちて「領域を絞ったつもりが絞れていない」まま失敗していた。
-                // **`[n]` を勧めるようになった分、範囲外を書く機会はこちらが増やしている**
-                if pendingScrollFrameNote == nil, !reportedScrollFrameNote {
-                    pendingScrollFrameNote = "the specified scrollFrame matched nothing on this"
-                        + " screen, so the swipes covered the whole screen instead"
-                    reportedScrollFrameNote = true
-                }
+                // **未解決は呼び手(runScrollSearch / scroll・scrollToEdge・flick アクション)が
+                // fail-fast する**(2026-08-08。全画面スワイプへの黙った退化がカードのボタン等を
+                // 誤発火させた実害があったため)。この関数自身は判定せず nil を返すだけでよい
                 return nil
             }
             // 空振りの申告は1ステップにつき1回だけ(周回ごとに積むとレポートが埋まる)
-            if pendingScrollFrameNote == nil, !reportedScrollFrameNote {
+            if pendingScrollFrameNote == nil {
                 pendingScrollFrameNote = Self.scrollFrameNote(element, in: snapshot)
                     ?? Self.ambiguousScrollFrameNote(locator, picked: element, in: snapshot)
-                reportedScrollFrameNote = pendingScrollFrameNote != nil
             }
             return element.frame
         }

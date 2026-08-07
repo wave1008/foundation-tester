@@ -329,23 +329,18 @@ final class MCPServer {
     /// 無く、後者は成立する。無関係な助言は誤誘導になる)。
     /// エンジンは driver(_:) が記録する = **推測しない**(profile 無しでも稼働中の in-app
     /// ブリッジを掴めば hybrid になるため、引数だけからは決まらない)
+    /// **1文に圧縮**(2026-08-08): UIKit アプリでも xcuitest エンジンなら毎回この助言が出ており、
+    /// 長文の苦情があった。「in-app は起動し直る」制約(dylib は起動時にしか差し込めない。
+    /// 2026-08-06 に実際に踏んだ: マップ画面で double tap → ホームから `#nav_scroll` が開いた)
+    /// は末尾に畳み込む
     func iosEngineHint(_ framework: String, _ gesture: String, args: [String: Any]) -> String {
         guard engines[Self.engineKey(args)] == "xcuitest" else { return "" }
-        return " If nothing changed on iOS: this ran on the XCUITest engine,"
-            + " and \(framework) apps do not receive \(gesture) through it."
-            + " Pass profile: to follow the run profile's engine, or start an in-app bridge"
-            + " (`ftester bridge up --engine inapp`) — both handle it."
-            + Self.inappRelaunchWarning
+        // `ftester bridge up --engine inapp` と案内しない —— そのフラグは存在しない
+        // (in-app ブリッジは in-app/hybrid の実行プロファイル経由でだけ立つ。2026-08-08 に確認)
+        return " If nothing changed on iOS: \(framework) apps do not receive \(gesture) on the"
+            + " XCUITest engine — pass profile: naming an in-app/hybrid run profile, which starts"
+            + " an in-app bridge (this relaunches the app — re-navigate before retrying)."
     }
-
-    /// **in-app へ切り替える初回はアプリが起動し直る**(dylib は起動時にしか差し込めない)。
-    /// これを書かずに「profile: を渡せ」とだけ案内すると、探索中の画面が消えたことに
-    /// 気付けないまま、ホーム画面に対して同じ座標のジェスチャが撃たれる
-    /// (2026-08-06 の探索で実際に踏んだ: マップ画面で double tap → ホームから
-    /// `#nav_scroll` が開き `行 05` が選ばれた)
-    static let inappRelaunchWarning =
-        " Note: starting an in-app bridge relaunches the app, so the current screen is lost —"
-        + " re-navigate before repeating the gesture."
 
     /// **launch する前に**確かめる。未インストールのまま `XCUIApplication.launch()` を撃つと、
     /// XCUI が記録する issue が(main queue 上 = テストのスタック外なので)ランナーごと落とし、
@@ -559,13 +554,15 @@ final class MCPServer {
             throw MCPError(RefGuard.goneMessage(ref: ref, target: target,
                                                 truncatedCount: fresh.truncatedCount))
         case .ghost(let found):
-            // **拒否せず警告して撃つ**(2026-08-06 に方針を後退させた。理由は RefGuard の宣言)
-            return (found.ref, RefGuard.disabledWarning(found)
+            // **拒否せず警告して撃つ**(2026-08-06 に方針を後退させた。理由は RefGuard の宣言)。
+            // **キーボード被覆は先に言う**(木の遮蔽判定では原理的に拾えない事実なので、
+            // 座標由来の他の警告より確度が高い)
+            return (found.ref, RefGuard.preTapWarnings(found, keyboardFrame: fresh.keyboardFrame)
                 + RefGuard.ghostWarning(found: found, in: fresh.elements, screen: fresh.screen))
         case .found(let found, let moved):
             // **ghost でなくても別の物に当たり得る**2形(上に描かれた overlay / 同一矩形への
             // 積み重なり)。どちらも容器の内側なので RefGuard.relocate では .found になる
-            let overlap = RefGuard.disabledWarning(found)
+            let overlap = RefGuard.preTapWarnings(found, keyboardFrame: fresh.keyboardFrame)
                 + RefGuard.overlapWarning(found: found, in: fresh.elements, screen: fresh.screen)
             guard moved >= RefGuard.movedThreshold else { return (found.ref, overlap) }
             // **原因までは断定できない**が、「他も同じだけ動いたか」は手元の2枚から言える。
@@ -573,7 +570,7 @@ final class MCPServer {
             // 切り分けの手掛かりとして出す(外部フィードバック 2026-08-06。severity は低いとのこと)
             let cause = RefGuard.movedTogether(target, found,
                                                before: lastRendered, after: fresh.elements)
-            return (found.ref, RefGuard.disabledWarning(found)
+            return (found.ref, RefGuard.preTapWarnings(found, keyboardFrame: fresh.keyboardFrame)
                 + RefGuard.movedNote(found: found, moved: moved, cause: cause))
         }
     }
@@ -611,6 +608,16 @@ final class MCPServer {
         // **探索でツリーは必ず動く**ので、覚えている木を捨てて撮り直す(古い ref を残さない)
         let after = try await freshSnapshot(scrollDriver, args: args)
         guard case .passed = outcome.status else {
+            // **fail-fast(scrollFrame 未解決)は別の文で伝える**: 通常の「did not reach the
+            // element」はスワイプを何本か送った前提の文言で、fail-fast は1本も送っていないので
+            // そのままでは誤解を招く(2026-08-08。StepNote.scrollFrameMissing = DSL と共有した判定)
+            if outcome.notes.contains(.scrollFrameMissing) {
+                let reason: String
+                if case .failed(let message) = outcome.status { reason = message }
+                else { reason = "\(outcome.status)" }
+                throw MCPError("scrollTo \"\(selectorText)\": \(reason)"
+                    + Self.scrollAlternativesHint(beforeScroll ?? after))
+            }
             // **止まった時点で見えているものを一緒に返す**(外部フィードバック 2026-08-06)。
             // 「届かなかった」だけだと ft_snapshot の往復が要るうえ、**記法の誤りに気づけない**
             // —— 素のラベルは完全一致なので、「端末情報」は「端末情報を表示」に当たらない。
@@ -648,6 +655,7 @@ final class MCPServer {
             : Self.lineNote(Self.scrollAreaHint(beforeScroll ?? after, args: args))
         return text(switched + "scrolled to \"\(selectorText)\"\(landed)."
             + " The refs below are fresh\n" + scrollAreaNote + Self.ghostNote(after)
+            + Self.keyboardCoverageNote(after) + Self.sliverNote(after)
             + (SnapshotRenderer.truncatedLabelNote(after) ?? "")
             + SnapshotRenderer.render(after, flagging: Self.ghostFlags(after)))
     }
@@ -752,6 +760,15 @@ final class MCPServer {
         return trimmed.isEmpty ? "" : "note: \(trimmed)\n"
     }
 
+    /// スクロールできる容器の実名の列挙だけ(理由の断定はしない。呼び出し側の文に添える)
+    static func scrollAlternativesHint(_ snapshot: SnapshotResponse) -> String {
+        let real = ScrollFrameCandidates.candidates(in: snapshot)
+            .compactMap(\.selector).prefix(4).joined(separator: " ")
+        return real.isEmpty
+            ? " No element on this screen declares itself scrollable."
+            : " Scrollable areas here: \(real)."
+    }
+
     static func scrollAreaHint(_ snapshot: SnapshotResponse, args: [String: Any]) -> String {
         // **渡した scrollFrame が複数に当たっているなら、それを先に言う**。`matchDetailed` は
         // 添字が無ければ `matches[0]` を黙って採るので、同名の容器が並ぶ画面では
@@ -764,16 +781,15 @@ final class MCPServer {
             let locator = FTSelector.parse(frame).primary
             let matches = StepExecutor.candidates(locator, elements: snapshot.elements) ?? []
             // **1件も当たらないなら、その事実こそ言う**: 誤字や範囲外の添字でも
-            // `scrollContainer` は nil を返して全画面スワイプへ落ちるだけで、
-            // 「絞ったつもりが絞れていない」ことに気づけない(2026-08-07 実測)
+            // `scrollContainer` は nil を返し、**2026-08-08 からは探索そのものを打ち切る**
+            // (以前は全画面スワイプへ黙って退化していたが、カードのボタン等を誤発火させる
+            // 実害があったため fail-fast に変えた。ここは fail-fast の理由文に添える候補列挙)
             if matches.isEmpty {
-                let real = ScrollFrameCandidates.candidates(in: snapshot)
-                    .compactMap(\.selector).prefix(4).joined(separator: " ")
-                let alternatives = real.isEmpty
-                    ? " No element on this screen declares itself scrollable."
-                    : " Scrollable areas here: \(real)."
-                return " scrollFrame \"\(frame)\" matched nothing, so the whole screen was"
-                    + " swiped instead.\(alternatives)"
+                // 「search was not run」とはここでは言わない —— fail-fast の理由文
+                // (StepExecutor.scrollNotFoundMessage)が既に言っており、このヒントは
+                // 成功時の note にも合流するので、断定すると成功メッセージで嘘になる
+                return " scrollFrame \"\(frame)\" matches nothing on this screen."
+                    + Self.scrollAlternativesHint(snapshot)
             }
             guard locator.index == nil, matches.count >= 2 else { return "" }
             let listed = matches.prefix(4).enumerated().map { index, element -> String in
@@ -841,6 +857,39 @@ final class MCPServer {
         return "note: \(unlabeled.count) clickable element(s) have neither a label nor an id"
             + " (\(listed)\(more)) — they can only be targeted by ref or coordinates,"
             + " so a scenario cannot select them with a stable selector.\n"
+    }
+
+    /// キーボード下に隠れた操作対象。木からは判定できない(キーボードはスナップショットの対象外)
+    /// ので、ブリッジ申告の `keyboardFrame` でだけ言える(判定は RefGuard.keyboardWarning と共有)。
+    /// 実測(2026-08-08・iOS): キーボード下の候補行 ref タップが警告なしで顔文字キーに当たった
+    static func keyboardCoverageNote(_ snapshot: SnapshotResponse) -> String {
+        guard let kb = snapshot.keyboardFrame else { return "" }
+        let header = "the soft keyboard covers"
+            + " (\(Int(kb.x)),\(Int(kb.y)) \(Int(kb.width))x\(Int(kb.height)))"
+        let covered = snapshot.elements.filter {
+            RefGuard.interactiveTypes.contains($0.type)
+                && TapTargetGeometry.keyboardCoveredAdvisory($0, keyboardFrame: kb) != nil
+        }
+        guard !covered.isEmpty else { return "note: \(header); nothing tappable is beneath it\n" }
+        let listed = covered.prefix(8).map { "[\($0.ref)] \(RefGuard.describe($0))" }
+            .joined(separator: " ")
+        let more = covered.count > 8 ? " (+\(covered.count - 8) more)" : ""
+        return "note: \(header). \(covered.count) listed element(s) are beneath it and a tap would"
+            + " hit the keyboard instead: \(listed)\(more)\n"
+    }
+
+    /// ラベル付きだが極端に細い要素(掴めないほど狭い可能性)。
+    /// 判定は RefGuard.isClippedSliver = DSL(TapTargetGeometry)と共有。
+    /// 判定は要素自身の細さだけ(縁で切れたかは見ない)
+    static func sliverNote(_ snapshot: SnapshotResponse) -> String {
+        let slivers = snapshot.elements.filter { RefGuard.isClippedSliver($0) }
+        guard !slivers.isEmpty else { return "" }
+        let listed = slivers.prefix(8).map { "[\($0.ref)] \(RefGuard.describe($0))" }
+            .joined(separator: " ")
+        let more = slivers.count > 8 ? " (+\(slivers.count - 8) more)" : ""
+        return "note: \(slivers.count) element(s) are extremely thin with a label"
+            + " (≤10 wide/tall) — the strip may be too thin to tap, whether clipped at an edge"
+            + " or just narrow by design: \(listed)\(more)\n"
     }
 
     /// 同一ラベルが3件以上に一致するときの要約注記(欠陥⑩)。id の重複は別パッケージが
@@ -1109,6 +1158,7 @@ final class MCPServer {
                 switchedNote + waitNote + backgroundNote + Self.ghostNote(snapshot)
                 + (ScrollFrameCandidates.note(snapshot) ?? "")
                 + Self.unlabeledClickablesNote(snapshot) + Self.ambiguousLabelsNote(snapshot)
+                + Self.keyboardCoverageNote(snapshot) + Self.sliverNote(snapshot)
                 + (SnapshotRenderer.truncatedLabelNote(snapshot) ?? "")
                 + SnapshotRenderer.render(snapshot, flagging: Self.ghostFlags(snapshot)), args: args))
 
@@ -1253,9 +1303,11 @@ final class MCPServer {
                 doubleTapPoint = (element.frame.centerX, element.frame.centerY)
                 doubleTapWhat = "[\(ref)]"
                 // **ft_tap と同じ被覆にする**(ft_tap は verifiedRef 経由で遮蔽・残像・
-                // 中身外しも見ている)。ここだけ disabled しか見ないと、同じ要素に対して
-                // ツールごとに言うことが変わる(2026-08-08 のレビュー)
-                doubleTapNote = RefGuard.disabledWarning(element)
+                // 中身外し・キーボード被覆も見ている)。ここだけ見落とすと、同じ要素に対して
+                // ツールごとに言うことが変わる(2026-08-08 のレビュー)。
+                // keyboardFrame は verifiedElement が撮り直した木(lastSnapshots に反映済み)から採る
+                doubleTapNote = RefGuard.preTapWarnings(
+                    element, keyboardFrame: lastSnapshots[Self.engineKey(args)]?.keyboardFrame)
                     + RefGuard.overlapWarning(found: element, in: lastSnapshots[Self.engineKey(args)]?
                         .elements ?? [], screen: lastSnapshots[Self.engineKey(args)]?.screen
                         ?? FTRect(x: 0, y: 0, width: 0, height: 0))
@@ -1605,8 +1657,9 @@ final class MCPServer {
         tool("ft_type", "Type text (with ref, taps that field first and waits for it to take focus). "
             + "It APPENDS to whatever the field already holds — call ft_clear_input first to replace. "
             + "text is required unless pressEnter is true — pressEnter alone fires the Enter/IME action. "
-            + "It closes the soft keyboard on UIKit/SwiftUI, but Compose and Flutter keep it open, so do not "
-            + "retry pressEnter waiting for the keyboard to go away.", [
+            + "Typing itself never closes the soft keyboard. pressEnter fires the Enter/IME action — on "
+            + "UIKit/SwiftUI the return key usually closes the keyboard as a side effect; Compose and Flutter "
+            + "keep it open, so do not retry pressEnter waiting for the keyboard to go away.", [
             "text": ["type": "string", "description": "Omit it to fire Enter only"],
             "pressEnter": ["type": "boolean", "description": "Fire Enter/IME action (search, submit)"],
             "ref": ["type": "integer", "description": "Reference number of the input field (defaults to the focused element)"],

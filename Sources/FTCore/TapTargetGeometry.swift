@@ -91,6 +91,8 @@ public enum TapTargetGeometry {
     }
 
     /// **撃つ前に言える「たぶん何も起きない/別の物に当たる」**を1文にする。空 = 心当たり無し。
+    /// **keyboard を先頭**に合成する(木の遮蔽判定では原理的に拾えず、確度が最も高いため)。
+    /// `keyboardFrame` を渡さない呼び出しは従来どおり disabled から始まる。
     ///
     /// 判断はしない —— 呼び出し側が注記に混ぜるか警告にするかを決める。
     /// DSL は**ステップ注記**に混ぜる(失敗にはしない): 無効な要素をわざと叩いて
@@ -103,8 +105,9 @@ public enum TapTargetGeometry {
     /// - 中身外し: `#layers_fab_button`(全幅・中身は右端の FAB だけ)を叩くと、
     ///   中心が地図の上にあるので**海上の座標にピンが落ちて place page が開いた**
     public static func advisory(for element: ElementInfo, in elements: [ElementInfo],
-                                screen: FTRect) -> String? {
-        disabledAdvisory(for: element)
+                                screen: FTRect, keyboardFrame: FTRect? = nil) -> String? {
+        keyboardCoveredAdvisory(element, keyboardFrame: keyboardFrame)
+            ?? disabledAdvisory(for: element)
             ?? offscreenAdvisory(for: element, screen: screen)
             ?? missedContentAdvisory(for: element, in: elements, screen: screen)
     }
@@ -150,5 +153,40 @@ public enum TapTargetGeometry {
         let name = inner.identifier.map { "#\($0)" } ?? inner.label.map { "\"\($0)\"" } ?? inner.type
         return "the target is not interactive and its centre is not over any of its own content,"
             + " so the touch went to whatever is behind it (aim at \(name) instead)"
+    }
+
+    /// 「中心がソフトキーボードの下」。木からは判定できない(キーボードはスナップショットの
+    /// 対象外)ので、ブリッジが申告する `keyboardFrame` でだけ言える。**警告のみ**(新しい検知は
+    /// 拒否でなく警告から。start-new-detections-as-warnings)。
+    ///
+    /// 実測(2026-08-08・iOS): キーボード下の候補行 ref タップが警告なしで顔文字キーに当たった。
+    /// ツリー内の inputView は子孫が全部除外された空葉になり、既存の空葉コンテナ除外
+    /// (`RefGuard.isBlankLeafContainer`。誤検知対策)で遮蔽候補から外れる —— だからツリー由来の
+    /// 遮蔽判定では原理的に拾えない
+    public static func keyboardCoveredAdvisory(_ element: ElementInfo,
+                                               keyboardFrame: FTRect?) -> String? {
+        guard let keyboardFrame else { return nil }
+        let cx = element.frame.centerX
+        let cy = element.frame.centerY
+        guard cx >= keyboardFrame.x, cx <= keyboardFrame.x + keyboardFrame.width,
+              cy >= keyboardFrame.y, cy <= keyboardFrame.y + keyboardFrame.height else { return nil }
+        return "its centre (\(Int(cx)), \(Int(cy))) is under the soft keyboard — the tap will land"
+            + " on the keyboard, not this element. Dismiss the keyboard first (pressEnter, or tap"
+            + " outside the field), or scroll the element clear of it"
+    }
+
+    /// 容器の縁で細い帯に切れた要素(ラベルは付いているが実際には掴めないほど狭い)。
+    /// 実測(2026-08-08・Apple マップ): 右端で幅9pxに切れたタブ「サンライズ瀬戸」(9x137)。
+    /// アイコン(9x13 等)は縦横比条件(細い辺の対辺が `sliverLongDimension` 未満)で除外される
+    public static let sliverThinDimension: Double = 10
+    public static let sliverLongDimension: Double = 30
+
+    public static func isClippedSliver(_ element: ElementInfo) -> Bool {
+        let label = FlowMatchMode.stripZeroWidthCharacters(element.label ?? "")
+        guard label.count >= 2 else { return false }
+        let w = element.frame.width
+        let h = element.frame.height
+        return (w <= sliverThinDimension && h >= sliverLongDimension)
+            || (h <= sliverThinDimension && w >= sliverLongDimension)
     }
 }

@@ -24,11 +24,19 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// 「速くなったのは実装のおかげか、この経路の当たり率が上がっただけか」を切り分けるために数える
     case heldValue = "held-value"
 
+    /// `scrollFrame` が明示されているのに探索開始時点(または探索中)の snapshot で
+    /// 1件も解決できず、**スワイプを1本も送らずに**探索を打ち切った。MCP(RefGuard 経由ではなく
+    /// StepOutcome.notes 経由)がこのコードで fail-fast 専用の文へ分岐する。
+    /// 実測(2026-08-08・Apple マップ): 申告した容器がツリーから消え、黙った全画面スワイプへ
+    /// 退化してカードの「計画」ボタンを誤発火させた
+    case scrollFrameMissing = "scroll-frame-missing"
+
     /// 人間向けの文言(FTRuntime がステップ説明へ括弧書きで付ける)
     public var text: String {
         switch self {
         case .settleCapped: return "the screen did not settle (poll limit)"
         case .heldValue: return "from the grabbed value"
+        case .scrollFrameMissing: return "the scrollFrame did not resolve, so the search stopped early"
         }
     }
 }

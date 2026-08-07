@@ -90,6 +90,63 @@ final class TapTargetAdvisoryTests: XCTestCase {
         XCTAssertEqual(TapTargetGeometry.advisory(for: elements[1], in: elements, screen: screen),
                        "the target is disabled, so this almost certainly did nothing")
     }
+
+    // MARK: - keyboardCoveredAdvisory
+    //
+    // 木からは判定できない(キーボードはスナップショットの対象外)ので、ブリッジ申告の
+    // keyboardFrame でだけ言える。実測(2026-08-08・iOS): キーボード下の候補行 ref タップが
+    // 警告なしで顔文字キーに当たった(inputView は空葉になり、既存の空葉除外で遮蔽から漏れる)。
+
+    /// 中心がキーボードの中 → 警告
+    func testKeyboardCoveredCentreIsCalledOut() {
+        let keyboard = FTRect(x: 0, y: 600, width: 402, height: 274)
+        let target = element(1, "suggestion_row", "button", 16, 620, 370, 40)
+        let note = TapTargetGeometry.keyboardCoveredAdvisory(target, keyboardFrame: keyboard)
+        XCTAssertNotNil(note)
+        XCTAssertTrue(note?.contains("soft keyboard") == true, note ?? "")
+    }
+
+    /// 中心がキーボードの外 → 黙る
+    func testCentreAboveTheKeyboardIsSilent() {
+        let keyboard = FTRect(x: 0, y: 600, width: 402, height: 274)
+        let target = element(1, "row", "button", 16, 400, 370, 40)
+        XCTAssertNil(TapTargetGeometry.keyboardCoveredAdvisory(target, keyboardFrame: keyboard))
+    }
+
+    /// keyboardFrame が nil(旧ブリッジ・キーボード非表示)→ 黙る
+    func testNoKeyboardFrameIsSilent() {
+        let target = element(1, "row", "button", 16, 620, 370, 40)
+        XCTAssertNil(TapTargetGeometry.keyboardCoveredAdvisory(target, keyboardFrame: nil))
+    }
+
+    // MARK: - isClippedSliver
+
+    /// 実害形: 右端で幅9pxに切れたタブ「サンライズ瀬戸」(2026-08-08・Apple マップ)
+    func testThinVerticalSliverWithLabelIsClipped() {
+        var e = element(1, "tab_sunrise_seto", "tab", 1071, 100, 9, 137)
+        e.label = "サンライズ瀬戸"
+        XCTAssertTrue(TapTargetGeometry.isClippedSliver(e))
+    }
+
+    /// アイコン(9x13)は縦横比条件で除外される(ラベルを付けても偽)
+    func testSmallIconIsNotASliver() {
+        var e = element(1, "icon_close", "image", 1071, 100, 9, 13)
+        e.label = "閉じる"
+        XCTAssertFalse(TapTargetGeometry.isClippedSliver(e))
+    }
+
+    /// ラベル無しの細帯は「読めるテキストが切れた」ことを示せないので偽
+    func testThinSliverWithoutALabelIsNotFlagged() {
+        let e = element(1, "tab_unlabeled", "tab", 1071, 100, 9, 137)
+        XCTAssertFalse(TapTargetGeometry.isClippedSliver(e))
+    }
+
+    /// 横帯(height<=10, width>=30)も同じ判定を通る
+    func testThinHorizontalSliverWithLabelIsClipped() {
+        var e = element(1, "banner_clipped", "staticText", 0, 866, 300, 8)
+        e.label = "ライブ配信中"
+        XCTAssertTrue(TapTargetGeometry.isClippedSliver(e))
+    }
 }
 
 /// **配線のテスト**: 判定関数を単体で確かめるだけでは「DSL の tap がそれを通っているか」を

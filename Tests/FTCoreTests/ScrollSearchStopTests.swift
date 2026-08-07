@@ -120,4 +120,77 @@ final class ScrollSearchStopTests: XCTestCase {
         XCTAssertEqual(driver.swipeCount, 5,
                        "動いているのに打ち切った: \(driver.swipeCount) 回")
     }
+
+    /// **明示 scrollFrame が解決できないなら、1本も振らずに失敗させる**(2026-08-08)。
+    /// 黙って全画面スワイプへ退化すると、無関係な要素(カードのボタン等)を発火させ得るための
+    /// fail-fast(実害: Apple マップで申告した容器がツリーから消え、退化したスワイプが
+    /// カードの「計画」ボタンを叩いて画面遷移した)。MCP はこのコードで文面を分岐する(RefGuard 経由)
+    func testExplicitScrollFrameThatDoesNotResolveFailsWithoutSwiping() async throws {
+        let driver = CountingDriver(frame: Self.still)
+        var step = scrollTo("missing", maxSwipes: 8)
+        step.scrollFrame = FlowLocator(id: "no_such_container")
+
+        let outcome = await StepExecutor(driver: driver).execute(step)
+
+        XCTAssertEqual(driver.swipeCount, 0, "scrollFrame が解決できないなら1本も振らないこと")
+        guard case .failed(let reason) = outcome.status else {
+            return XCTFail("scrollFrame 未解決は失敗のはず: \(outcome.status)")
+        }
+        XCTAssertTrue(reason.contains("search was not run"), reason)
+        XCTAssertTrue(outcome.notes.contains(.scrollFrameMissing),
+                      "MCP が分岐に使う機械可読コードが立っていない")
+    }
+
+    /// **シート展開のヒント**: `stoppedUnmoving` かつ `containerIsPartialHeight`(明示 scrollFrame が
+    /// 画面の大半を占めない)のときだけ末尾に追記する(2026-08-08・Google マップ実測: 半開ボトムシート
+    /// 内のリストが1pxも動かず「content no longer moved」で終わり、シート展開が要ることを
+    /// 利用者が推測するしかなかった)
+    func testStoppedUnmovingMessageSuggestsExpandingTheSheet() {
+        let step = scrollTo("missing", maxSwipes: 8)
+        let stopped = StepExecutor.ScrollSearchResult(found: false, fallback: nil, viaXCUITest: false,
+                                                       hintJumps: 0, swipes: 3, stoppedUnmoving: true,
+                                                       containerIsPartialHeight: true)
+        let message = StepExecutor.scrollNotFoundMessage(step, stopped)
+        XCTAssertTrue(message.contains("half-open bottom sheet"), message)
+    }
+
+    /// **全画面リストの末尾到達では出さない**(containerIsPartialHeight == false)。
+    /// 毎回シートの心配をさせない(2026-08-08)
+    func testStoppedUnmovingAtFullHeightContainerDoesNotMentionTheSheet() {
+        let step = scrollTo("missing", maxSwipes: 8)
+        let stopped = StepExecutor.ScrollSearchResult(found: false, fallback: nil, viaXCUITest: false,
+                                                       hintJumps: 0, swipes: 3, stoppedUnmoving: true,
+                                                       containerIsPartialHeight: false)
+        let message = StepExecutor.scrollNotFoundMessage(step, stopped)
+        XCTAssertFalse(message.contains("bottom sheet"), message)
+    }
+
+    /// 打ち切られていない(上限まで振った/探索が続いている)ときはシートの話は出さない
+    func testStillGoingMessageDoesNotMentionTheSheet() {
+        let step = scrollTo("missing", maxSwipes: 8)
+        let stillGoing = StepExecutor.ScrollSearchResult(found: false, fallback: nil,
+                                                          viaXCUITest: false, hintJumps: 0, swipes: 8)
+        let message = StepExecutor.scrollNotFoundMessage(step, stillGoing)
+        XCTAssertFalse(message.contains("bottom sheet"), message)
+    }
+
+    /// **fail-fast の文言はスワイプ数で分岐する**(2026-08-08): 1本も送っていなければ
+    /// 「検索は走っていない」、送った後に消えたなら「N 本振った後に消えた」と言う ——
+    /// 送信後にも「送られなかった」と言うのは嘘になるため
+    func testFailFastMessageBeforeAnySwipe() {
+        let step = scrollTo("missing", maxSwipes: 8)
+        let result = StepExecutor.ScrollSearchResult(found: false, fallback: nil, viaXCUITest: false,
+                                                      hintJumps: 0, swipes: 0, scrollFrameMissing: true)
+        let message = StepExecutor.scrollNotFoundMessage(step, result)
+        XCTAssertTrue(message.contains("search was not run"), message)
+    }
+
+    func testFailFastMessageAfterSomeSwipes() {
+        let step = scrollTo("missing", maxSwipes: 8)
+        let result = StepExecutor.ScrollSearchResult(found: false, fallback: nil, viaXCUITest: false,
+                                                      hintJumps: 0, swipes: 3, scrollFrameMissing: true)
+        let message = StepExecutor.scrollNotFoundMessage(step, result)
+        XCTAssertFalse(message.contains("was not run"), message)
+        XCTAssertTrue(message.contains("disappeared from the tree after 3 swipe(s)"), message)
+    }
 }
