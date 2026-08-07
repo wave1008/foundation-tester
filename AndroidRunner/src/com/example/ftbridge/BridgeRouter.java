@@ -52,7 +52,16 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
     BridgeRouter(Instrumentation instrumentation) {
         this.instrumentation = instrumentation;
         this.versionCode = resolveVersionCode(instrumentation);
-        ua().setOnAccessibilityEventListener(quietWaiter.listener());
+        UiAutomation ua = ua();
+        ua.setOnAccessibilityEventListener(quietWaiter.listener());
+        // getWindows() は既定でこのフラグが立っていないと空を返す(IME ウィンドウの bounds が
+        // 拾えない=keyboardFrame が常に省略される)。SnapshotBuilder.keyboardBounds 参照
+        android.accessibilityservice.AccessibilityServiceInfo info = ua.getServiceInfo();
+        if (info != null) {
+            info.flags |= android.accessibilityservice.AccessibilityServiceInfo
+                    .FLAG_RETRIEVE_INTERACTIVE_WINDOWS;
+            ua.setServiceInfo(info);
+        }
     }
 
     /** インストール済み APK の実 versionCode(build.sh の VERSION_CODE と手動同期しないため実物を引く) */

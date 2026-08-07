@@ -49,6 +49,10 @@ final class FTInAppBridge {
         }
         // AX ツリーを materialize させる(XCUITest 相当。未活性だと label/frame が取れない)
         DispatchQueue.main.async { FTActivateAccessibility() }
+        // キーボードの実矩形は通知でしか安定して取れない(TextEffects window は全画面、
+        // UIInputSetHostView のクラス名走査は iOS 27 で不発を実測)。ブリッジ起動前に
+        // 開いていたキーボードは最初の変化まで不明のまま = keyboardFrame なし
+        DispatchQueue.main.async { Self.observeKeyboardFrame() }
         do {
             try server.start()
             self.server = server
@@ -173,9 +177,11 @@ final class FTInAppBridge {
             return InAppSnapshot.capture(window: window)
         }
         // **キーボードはキーウィンドウの外**(UITextEffectsWindow)に載るため、AX ツリー走査
-        // (InAppSnapshot の sawKeyboard)では見つからない。全 window から可視の
-        // TextEffects window を探すのが in-app での唯一の判定経路(2026-07-30 実測)
-        let keyboardShown: Bool = mainSync { Self.keyboardWindowVisible() }
+        // (InAppSnapshot の sawKeyboard)では見つからない。表示中かと実矩形を同一時点で読むため
+        // 1回の mainSync にまとめる(2回に分けると間でキーボードが閉じ、不整合な組が起こり得る)
+        let (keyboardShown, keyboardWindowFrame): (Bool, CGRect?) = mainSync {
+            (Self.keyboardIsVisible(), Self.keyboardFrameIfVisible())
+        }
 
         // **mainSync の外で行う**: WKWebView の DOM 読みは evaluateJavaScript の完了を待つが、
         // その完了はメインキューへ配送されるため、メインを保持したまま待つとデッドロックする
@@ -193,21 +199,59 @@ final class FTInAppBridge {
             truncatedCount: merged.truncated,
             note: merged.note,
             webViewPath: merged.webViewPath,
-            keyboardShown: keyboardShown))
+            // in-app は window 一覧から実際に「非表示」を確認できる唯一のエンジン
+            // (XCUITest/Android は不明を false 相当で返すしかない)。false を nil に潰すと
+            // keyboardIsNotShown() が unknown 扱いになりタイムアウトする(実害・再発させない)
+            keyboardShown: keyboardShown,
+            keyboardFrame: keyboardWindowFrame.map {
+                FTRect(x: $0.origin.x, y: $0.origin.y, width: $0.width, height: $0.height)
+            }))
+    }
+
+    /// keyboardWillChangeFrame の最新値(画面座標)。nil = 非表示または不明。
+    /// メインスレッドでのみ読み書きする(observeKeyboardFrame も snapshot も mainSync 内)
+    private static var observedKeyboardFrame: CGRect?
+    private static var keyboardObserversInstalled = false
+
+    private static func observeKeyboardFrame() {
+        guard !keyboardObserversInstalled else { return }
+        keyboardObserversInstalled = true
+        let center = NotificationCenter.default
+        center.addObserver(forName: UIResponder.keyboardWillChangeFrameNotification,
+                           object: nil, queue: .main) { note in
+            guard let frame = (note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey]
+                as? NSValue)?.cgRectValue else { return }
+            // 閉じるときは end frame が画面外(minY >= 画面下端)で来る
+            let screen = UIScreen.main.bounds
+            observedKeyboardFrame = frame.minY < screen.maxY - 1 ? frame : nil
+        }
+        center.addObserver(forName: UIResponder.keyboardWillHideNotification,
+                           object: nil, queue: .main) { _ in
+            observedKeyboardFrame = nil
+        }
     }
 
     /// ソフトキーボードが表示中か。**キーボードは UITextEffectsWindow(キーウィンドウとは別)に
-    /// 載る**ので window 一覧から探す。**存在だけでは判定にならない**(閉じても window は残る)ため
-    /// 可視かつ画面内に張り出しているかで見る
-    private static func keyboardWindowVisible() -> Bool {
+    /// 載る**ので window 一覧から探す。閉じた直後は window が画面外(y >= 画面下端)へ退避する
+    /// だけで残るため、可視かつ画面内に張り出しているかで見る
+    private static func keyboardIsVisible() -> Bool {
         for window in UIApplication.shared.windows
         where NSStringFromClass(type(of: window)).contains("TextEffects") {
             guard !window.isHidden, window.alpha > 0.01 else { continue }
-            // 閉じた直後は window が画面外(y >= 画面下端)へ退避するだけで残る
-            let screen = window.screen.bounds
-            if window.frame.minY < screen.maxY - 1 { return true }
+            if window.frame.minY < window.screen.bounds.maxY - 1 { return true }
         }
         return false
+    }
+
+    /// 可視なソフトキーボードの実矩形(画面座標)。通知の最新値から採る ——
+    /// **TextEffects window の frame をそのまま使ってはいけない**(開いている間も全画面。
+    /// 実測 2026-08-08: (0,0 402x874) が返り、画面上部の要素まで「キーボード下」と誤警告した。
+    /// 配下の UIInputSetHostView をクラス名で探す案も iOS 27 で不発を実測)。
+    /// 通知値が無ければ frame は申告しない(誤検知側に倒さない。keyboardShown だけ true になる)
+    private static func keyboardFrameIfVisible() -> CGRect? {
+        guard keyboardIsVisible(), let observed = observedKeyboardFrame,
+              observed.height >= 1 else { return nil }
+        return observed
     }
 
     /// 自分自身から window までのクラス名(interop 判定用。UIKit 参照だがメイン外でも
