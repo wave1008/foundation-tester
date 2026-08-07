@@ -71,11 +71,14 @@ final class TapTargetAdvisoryTests: XCTestCase {
 /// tap を実行して、ステップ注記に載ることを固定する。
 private final class AdvisoryProbeDriver: AppDriver {
     let disabled: Bool
+    /// true = 中心が中身のどこにも乗らない容器を `#target` として返す(有効な要素)
+    let missesContent: Bool
     /// ドライバ自身が申告する注記(InAppBridge の「activate 不発→合成タッチ」に相当)
     let driverNote: String?
     private(set) var taps = 0
-    init(disabled: Bool, driverNote: String? = nil) {
+    init(disabled: Bool, missesContent: Bool = false, driverNote: String? = nil) {
         self.disabled = disabled
+        self.missesContent = missesContent
         self.driverNote = driverNote
     }
     var lastActionNote: String? { driverNote }
@@ -96,11 +99,30 @@ private final class AdvisoryProbeDriver: AppDriver {
     func press(ref: Int, duration: Double) async throws {}
     func swipe(_ direction: FTSwipeDirection) async throws {}
     func swipe(_ direction: FTSwipeDirection, intent: FTSwipeIntent, path: FTSwipePath?) async throws {}
+    /// **doubleTap を実装しないと**ジェスチャが失敗して早期 return し、注記の配線を通らない
+    func doubleTap(x: Double, y: Double) async throws { taps += 1 }
 
     func snapshot() async throws -> SnapshotResponse {
-        SnapshotResponse(
-            sessionBundleID: nil,
-            screen: FTRect(x: 0, y: 0, width: 402, height: 874),
+        let screen = FTRect(x: 0, y: 0, width: 402, height: 874)
+        if missesContent {
+            // 全幅の非対話コンテナ(#target)の中身は右端の小さな像だけ = 中心は背後の地図
+            return SnapshotResponse(
+                sessionBundleID: nil, screen: screen,
+                elements: [
+                    ElementInfo(ref: 1, type: "clickable", identifier: "canvas", label: nil,
+                                value: nil, placeholder: nil, enabled: true,
+                                frame: screen, depth: 1),
+                    ElementInfo(ref: 2, type: "other", identifier: "target", label: nil,
+                                value: nil, placeholder: nil, enabled: true,
+                                frame: FTRect(x: 0, y: 160, width: 402, height: 60), depth: 3),
+                    ElementInfo(ref: 3, type: "image", identifier: "inner", label: nil,
+                                value: nil, placeholder: nil, enabled: true,
+                                frame: FTRect(x: 350, y: 170, width: 40, height: 40), depth: 4),
+                ],
+                truncatedCount: 0)
+        }
+        return SnapshotResponse(
+            sessionBundleID: nil, screen: screen,
             elements: [
                 ElementInfo(ref: 1, type: "clickable", identifier: "target", label: "対象",
                             value: nil, placeholder: nil, enabled: !disabled,
@@ -144,5 +166,49 @@ final class TapAdvisoryWiringTests: XCTestCase {
         let note = outcome.driverFallback ?? ""
         XCTAssertTrue(note.contains("disabled"), "advisory が消えた: \(note)")
         XCTAssertTrue(note.contains("activate misfired"), "ドライバの注記が消えた: \(note)")
+    }
+
+    /// **doubleTap にも載る**(配線のテスト。定数 nil に差し替えると落ちること)
+    func testDoubleTapCarriesTheAdvisory() async throws {
+        let driver = AdvisoryProbeDriver(disabled: true)
+        let outcome = await StepExecutor(driver: driver)
+            .execute(FlowStep(action: "doubleTap", locator: FlowLocator(id: "target")))
+        XCTAssertTrue(outcome.driverFallback?.contains("disabled") == true,
+                      "doubleTap で注記が出ていない: \(outcome.driverFallback ?? "nil")")
+    }
+
+    /// **見えている部分へ寄せたときは「背後へ抜けた」と言わない**(嘘になる)。
+    /// 無効かどうかは撃つ座標に依らないので、そちらは言ってよい
+    func testGeometricAdviceIsPointDependentButDisabledIsNot() {
+        let elements = [
+            ElementInfo(ref: 1, type: "clickable", identifier: "map", label: nil, value: nil,
+                        placeholder: nil, enabled: true,
+                        frame: FTRect(x: 0, y: 0, width: 1080, height: 2424), depth: 2),
+            ElementInfo(ref: 2, type: "other", identifier: "wrap", label: nil, value: nil,
+                        placeholder: nil, enabled: false,
+                        frame: FTRect(x: 0, y: 442, width: 1080, height: 157), depth: 4),
+            ElementInfo(ref: 3, type: "image", identifier: "inner", label: nil, value: nil,
+                        placeholder: nil, enabled: true,
+                        frame: FTRect(x: 928, y: 457, width: 152, height: 142), depth: 5),
+        ]
+        let wrap = elements[1]
+        XCTAssertNotNil(TapTargetGeometry.disabledAdvisory(for: wrap))
+        XCTAssertNotNil(TapTargetGeometry.missedContentAdvisory(
+            for: wrap, in: elements, screen: FTRect(x: 0, y: 0, width: 1080, height: 2424)))
+        // 有効な要素なら disabled 側だけが黙る
+        let on = ElementInfo(ref: 4, type: "button", identifier: "b", label: nil, value: nil,
+                             placeholder: nil, enabled: true,
+                             frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: 2)
+        XCTAssertNil(TapTargetGeometry.disabledAdvisory(for: on))
+    }
+
+    /// **中身外しの配線**(有効な要素なので disabled 側の早期 return を通らない経路)
+    func testMissedContentAdvisoryReachesTheStepNote() async throws {
+        let driver = AdvisoryProbeDriver(disabled: false, missesContent: true)
+        let outcome = await StepExecutor(driver: driver)
+            .execute(FlowStep(action: "tap", locator: FlowLocator(id: "target")))
+        let note = outcome.driverFallback ?? ""
+        XCTAssertTrue(note.contains("#inner"), "中身外しの注記が出ていない: \(note)")
+        XCTAssertTrue(note.contains("behind it"), note)
     }
 }
