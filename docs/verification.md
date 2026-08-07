@@ -854,22 +854,35 @@ E2E アプリは**選択状態や入力値を launch を跨いで永続する**(
 直して 44 → 2 件になった。
 
 **スナップショットの検知は dry-run では当てられない**(木が要る)。掃討は
-**`Scripts/mcp-sweep.py`**(ビルド済み `ftester-mcp` へ stdin で JSON-RPC を流し、
-アプリを自動探索して旗の立つ行を集める):
+**`Tests/Fixtures/RealAppSnapshots/` に固定した実アプリのスナップショット**へ当てる
+(`SweepHarnessTests`。`swift test` で毎回走る):
 
-```bash
-Scripts/mcp-sweep.py --bin .build/debug/ftester-mcp --out /tmp/sweep.json \
-    --platform android --serial emulator-5554 \
-    --app com.ftester.e2e --app com.google.android.apps.maps
-```
+- 画面ごとの検知件数を基準値と突き合わせる(`testDetectionCountsMatchTheBaseline`)
+- タップ対象に対する警告率の上限 20%(`testWarningDensityStaysLow`)——
+  **新しい検知が雑音になっていないかを自分で採点する**ための枠
+- 採り直しは `FT_SWEEP_BASELINE=1 swift test --filter SweepHarnessTests/testPrintBaselines`
+  (貼り付け用の1行と、**何が発火したかの明細**が出る)
+- 別のコーパスを当てたいときは `FT_SWEEP_DIR=<dir>`(件数の照合はしない)
+
+コーパスは `GET /snapshot` の生 JSON をブリッジから直接採る(手順は
+`Tests/Fixtures/RealAppSnapshots/README.md`)。**Android(塗り順 `z` あり)/ iOS(`z` なし)/
+自前 SUT(`disabled` の唯一の供給源)を必ず揃える** —— どれか欠けると、その経路の回帰が
+素通しになる。
+
+**基準値を上げるのは、増えた分を1件ずつ見て真陽性だと確かめてから。**
+黙って上げるとこの砦は現状の追認装置になる。
 
 **必ず実アプリにも当てる。自前 SUT だけでは代表しない** —— 2026-08-06 に遮蔽・積み重なりの
 警告を新設したときの掃討(6 構成 × 72 画面)は真陽性 34・誤検知 0 だったが、**同じ検知が
 利用者の実アプリで5形の誤検知を出した**。2026-08-07 にも繰り返した: Google マップの
 1セッションで誤検知3種類、同日の自前 SUT(3 SUT・44画面)は**0 件**。
 
-**この掃討ハーネスは2回書き捨てられている**(2026-08-06 と 08-07)。2回とも単体テストが
-緑のまま実バグを出しているので、使い捨てにせず `Scripts/mcp-sweep.py` を直すこと。
+**この掃討ハーネスは2回書き捨てられた**(2026-08-06 と 08-07)。2回とも単体テストが緑のまま
+実バグを出しているので、3度目に**リポジトリへ固定した**(2026-08-07・daf9712)。
+コーパスをスクラッチパッドに置くと消える —— 実際に同じセッション中に2回消えて採り直した。
+
+**ハーネスの計数は production の関数を通すこと**: `disabled` の件数を `!e.enabled` と
+自前で書いていたため、`RefGuard.disabledWarning` を壊しても素通しした(2026-08-07 の変異テストで発覚)。
 
 引き継いでいる罠3つ(いずれも実害を出した):
 
