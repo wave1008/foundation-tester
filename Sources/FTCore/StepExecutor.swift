@@ -1643,6 +1643,13 @@ public final class StepExecutor {
             // 飲まれたタップの証跡(LastInteraction 参照)。**操作の前**に採る = 比較の基準は
             // 「この操作を撃つ直前の画面」でなければ意味がない
             recordInteraction(step: step, element: element, in: snapshot)
+            // **撃つ前に言えることは言う**(判定は MCP と共有。TapTargetGeometry.advisory)。
+            // 失敗にはしない —— 無効な要素をわざと叩いて反応しないことを確かめる書き方は正当で、
+            // `enabledIsFalse` も用意されている。**注記に混ぜて、後段の失敗から原因へ辿れるようにする**
+            // (これが無いと「押したのに何も起きない」が後段のアサーションでだけ落ち、原因から遠い)
+            driverFallback = Self.joinNotes(driverFallback,
+                TapTargetGeometry.advisory(for: element, in: snapshot.elements,
+                                           screen: snapshot.screen))
             // **長押しは tap の引数**(Shirates 準拠。`tap(sel, holdSeconds:)`)。0 より大きいときだけ
             // ブリッジの /press へ回す。in-app は座標ジェスチャを持たない(501)ので XCUITest へ
             // フォールバックする経路も長押し側だけが必要
