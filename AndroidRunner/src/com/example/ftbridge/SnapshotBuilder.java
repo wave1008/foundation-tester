@@ -56,6 +56,16 @@ final class SnapshotBuilder {
         boolean focused;
         /** スクロールできる容器か(BridgeDTO.ElementInfo.scrollable 参照) */
         boolean scrollable;
+        /** 根から自分までの描画順の並び(各段は API24+ の getDrawingOrder)。
+         *  **preorder は描画順ではない** —— ViewGroup は elevation で子を並べ替えるので、
+         *  木で後に出る要素が奥にあることがある(実測: Google マップは地図の FAB を
+         *  シートより後に出すが、描画はシートが手前)。
+         *  **単体の getDrawingOrder はホストでは合成できない**: 出力ツリーは中間ノードを
+         *  間引くので、2要素の共通祖先が木に残っていない。だから**根からの並びをここで持ち**、
+         *  最後に辞書式で並べて 1 本の整数 z にしてから送る(assignPaintOrder) */
+        int[] zPath = new int[0];
+        /** 塗り順(0 起点の通し番号。大きいほど手前)。BridgeDTO.ElementInfo.z 参照 */
+        int z;
         boolean enabled = true;
         boolean password;
         Rect bounds = new Rect();
@@ -122,6 +132,7 @@ final class SnapshotBuilder {
         List<UINode> nodes = new ArrayList<>();
         // uiautomator dump の XML は hierarchy=depth1、root ノード=depth2 相当
         collect(root, 2, nodes, false, forceRefresh);
+        assignPaintOrder(nodes);
         markChildren(nodes);
         adoptRoleFromMarkerChildren(nodes);
 
@@ -201,6 +212,11 @@ final class SnapshotBuilder {
     /** preorder 走査。不可視ノードはサブツリーごと除外(uiautomator dump と同じ) */
     private static void collect(AccessibilityNodeInfo node, int depth, List<UINode> out,
                                 boolean insideWebView, boolean forceRefresh) {
+        collect(node, depth, out, insideWebView, forceRefresh, new int[0]);
+    }
+
+    private static void collect(AccessibilityNodeInfo node, int depth, List<UINode> out,
+                                boolean insideWebView, boolean forceRefresh, int[] parentZPath) {
         if (node == null) return;
 
         // a11y ノードはキャッシュ供給で古い値を返し続ける(Chromium は DOM 変更のイベントを
@@ -232,6 +248,7 @@ final class SnapshotBuilder {
         n.selected = node.isSelected();
         n.focused = node.isFocused();
         n.scrollable = node.isScrollable();
+
         n.enabled = node.isEnabled();
         n.password = node.isPassword();
         n.chromeRole = chromeRole(node);
@@ -248,10 +265,15 @@ final class SnapshotBuilder {
         }
         node.getBoundsInScreen(n.bounds);
         n.depth = depth;
+        int[] zPath = new int[parentZPath.length + 1];
+        System.arraycopy(parentZPath, 0, zPath, 0, parentZPath.length);
+        zPath[parentZPath.length] = node.getDrawingOrder();
+        n.zPath = zPath;
         out.add(n);
 
         for (int i = 0; i < node.getChildCount(); i++) {
-            collect(node.getChild(i), depth + 1, out, insideWebView || isWebView, forceRefresh);
+            collect(node.getChild(i), depth + 1, out, insideWebView || isWebView, forceRefresh,
+                    zPath);
         }
     }
 
@@ -269,6 +291,27 @@ final class SnapshotBuilder {
     private static String chromeRole(AccessibilityNodeInfo node) {
         android.os.Bundle extras = node.getExtras();
         return extras == null ? "" : charSeq(extras.getCharSequence(EXTRA_CHROME_ROLE));
+    }
+
+    /**
+     * zPath を辞書式に並べて 0 起点の通し番号 `z` を振る(大きいほど手前)。
+     * **出力の並び(preorder)は変えない** —— `RefGuard.lineage` が preorder+depth で
+     * ツリーを復元するので、並べ替えるとそちらが壊れる。順位だけを別フィールドで持つ。
+     * 辞書式でよいのは塗り順がまさにそれだから: 親を塗ってから子を描画順に、を再帰する
+     * = 祖先は必ず先、同じ親なら drawingOrder の小さい枝が先。
+     */
+    private static void assignPaintOrder(List<UINode> nodes) {
+        List<UINode> sorted = new java.util.ArrayList<>(nodes);
+        java.util.Collections.sort(sorted, new java.util.Comparator<UINode>() {
+            @Override public int compare(UINode a, UINode b) {
+                int n = Math.min(a.zPath.length, b.zPath.length);
+                for (int i = 0; i < n; i++) {
+                    if (a.zPath[i] != b.zPath[i]) return a.zPath[i] < b.zPath[i] ? -1 : 1;
+                }
+                return Integer.compare(a.zPath.length, b.zPath.length);
+            }
+        });
+        for (int i = 0; i < sorted.size(); i++) sorted.get(i).z = i;
     }
 
     /** pre-order なので「次のノードの depth が自分より深い」= 子を持つ */
@@ -466,6 +509,9 @@ final class SnapshotBuilder {
         if (node.focused) info.put("focused", true);
         // scrollable も同じ省略規約(scrollFrame の空振り検出用)
         if (node.scrollable) info.put("scrollable", true);
+        // 塗り順は**常に**送る(0 も有効な値。省略すると「奥から数えて0番目」と
+        // 「申告なし」が区別できなくなる)
+        info.put("z", node.z);
         info.put("frame", rectJSON(node.bounds));
         info.put("depth", node.depth);
         return info;
