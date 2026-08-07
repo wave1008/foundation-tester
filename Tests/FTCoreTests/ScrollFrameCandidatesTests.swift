@@ -103,6 +103,29 @@ final class ScrollFrameCandidatesTests: XCTestCase {
         XCTAssertTrue(text.hasSuffix("\n"), text)
     }
 
+    /// **同名 id が並ぶ画面では添字と矩形と軸まで出す**。実測(2026-08-07・Google マップ Android):
+    /// `#recycler_view / #search_list_layout / #recycler_view / #recycler_view` と並べていたので、
+    /// 「どれか1つを渡せ」と言いながら渡せる書き方が無かった。
+    /// 添字は**木の全要素の中の順番**(スクロールしない同名要素も番号を消費する)
+    func testAmbiguousIdsAreListedWithIndexRectAndAxis() {
+        let snap = snapshot([
+            // 横チップ行(preorder 先頭 = 添字なしなら黙ってこれが選ばれていた)
+            element(1, id: "recycler_view", frame: FTRect(x: 0, y: 300, width: 400, height: 126),
+                    scrollable: true),
+            element(2, id: "search_list_layout",
+                    frame: FTRect(x: 0, y: 430, width: 380, height: 60), scrollable: true),
+            // スクロールしない同名要素。**候補ではないが添字は消費する**
+            element(3, id: "recycler_view", frame: FTRect(x: 0, y: 740, width: 400, height: 20)),
+            element(4, id: "recycler_view", frame: FTRect(x: 0, y: 490, width: 200, height: 290),
+                    scrollable: true),
+        ])
+        let text = ScrollFrameCandidates.note(snap) ?? ""
+        XCTAssertTrue(text.contains("#recycler_view[0] (0,300 400x126) wide"), text)
+        XCTAssertTrue(text.contains("#recycler_view[2] (0,490 200x290) tall"), text)
+        // 一意なものは今までどおり名前だけ(読みやすさを落とさない)
+        XCTAssertTrue(text.contains("/ #search_list_layout /"), text)
+    }
+
     func testNoteCapsTheListing() {
         let snap = snapshot((1...6).map {
             element($0, id: "area_\($0)",

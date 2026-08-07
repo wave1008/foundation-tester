@@ -589,6 +589,10 @@ final class MCPServer {
             throw MCPError("direction must be one of down/up/right/left (content direction)")
         }
         let scrollDriver = try await driver(args)
+        // **曖昧さは「渡す前に見えていた画面」で判定する**: 探索後の木で数えると、リストが
+        // 読み込み直しに入っている回に同名の容器が1つしか残らず黙ってしまう
+        // (2026-08-07 実測。Google マップは探索スワイプのたびに結果を組み直す)
+        let beforeScroll = lastSnapshots[Self.engineKey(args)]
         let selector = FTSelector.parse(selectorText)
         let step = FlowStep(
             action: "scrollTo", locator: selector.primary,
@@ -608,11 +612,10 @@ final class MCPServer {
             // 「届かなかった」だけだと ft_snapshot の往復が要るうえ、**記法の誤りに気づけない**
             // —— 素のラベルは完全一致なので、「端末情報」は「端末情報を表示」に当たらない。
             // 候補を見せれば、綴り違いなのか記法(`*…*`)不足なのかがその場で分かる
-            let bare = selectorText.trimmingCharacters(in: CharacterSet(charactersIn: "#*"))
             throw MCPError("scrollTo \"\(selectorText)\" did not reach the element"
                 + " (\(outcome.status))\(Self.truncationHint(after)). \(Self.visibleLabelsHint(after))"
-                + " Plain labels match exactly — wrap them in * for a partial match (e.g. *\(bare)*)."
-                + Self.scrollAreaHint(after, args: args))
+                + Self.notationHint(selectorText, in: after)
+                + Self.scrollAreaHint(beforeScroll ?? after, args: args))
         }
         // **成功と言う前に、返す木にそれが居ることを確かめる**(2026-08-06 の探索で外した)。
         // 探索のスワイプは**ボタンを発火させることがある**(SwiftUI の SUT で実測)。
@@ -638,9 +641,11 @@ final class MCPServer {
         let switched = Self.switchedAppNote(
             launched: launchedBundleIDs[Self.engineKey(args)], snapshot: after)
         // scrollFrame を渡すべき当人なので、複数領域の注記もここに出す(欠陥⑪)
-        let scrollAreaNote = args["scrollFrame"] == nil ? (ScrollFrameCandidates.note(after) ?? "") : ""
+        let scrollAreaNote = args["scrollFrame"] == nil ? (ScrollFrameCandidates.note(after) ?? "")
+            : Self.lineNote(Self.scrollAreaHint(beforeScroll ?? after, args: args))
         return text(switched + "scrolled to \"\(selectorText)\"\(landed)."
             + " The refs below are fresh\n" + scrollAreaNote + Self.ghostNote(after)
+            + (SnapshotRenderer.truncatedLabelNote(after) ?? "")
             + SnapshotRenderer.render(after, flagging: Self.ghostFlags(after)))
     }
 
@@ -734,9 +739,51 @@ final class MCPServer {
     /// (欠陥⑪)。`ScrollFrameCandidates.note` は ft_snapshot でしか呼ばれておらず、一番効く場所
     /// (scrollFrame: を渡すべき本人の失敗文・成功文)に届いていなかった。
     /// scrollFrame: を既に渡しているときは黙る(選んだ後なので不要)
+    /// 木の前に置く注記は**1行で終える**(次の注記と同じ行に流れ込むと読み手が切れ目を失う)
+    static func lineNote(_ text: String) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "" : "note: \(trimmed)\n"
+    }
+
     static func scrollAreaHint(_ snapshot: SnapshotResponse, args: [String: Any]) -> String {
-        guard args["scrollFrame"] == nil, let note = ScrollFrameCandidates.note(snapshot) else { return "" }
+        // **渡した scrollFrame が複数に当たっているなら、それを先に言う**。`matchDetailed` は
+        // 添字が無ければ `matches[0]` を黙って採るので、同名の容器が並ぶ画面では
+        // preorder 先頭(たいてい横カルーセル)を掴んだまま「見つからない」で終わる。
+        // 実測(2026-08-07・Google マップ Android): `#recycler_view` は1画面に4つあり、
+        // 注記どおり渡すと高さ126pxのチップ行が選ばれて結果リストは1pxも動かなかった。
+        // **StepExecutor 側の申告は当てにしない** —— あちらの `pendingScrollFrameNote` は
+        // 探索ループの条件分岐の中でしか埋まらず、空振りのまま失敗する回では nil のままになる
+        if let frame = args["scrollFrame"] as? String {
+            let locator = FTSelector.parse(frame).primary
+            guard locator.index == nil,
+                  let matches = StepExecutor.candidates(locator, elements: snapshot.elements),
+                  matches.count >= 2 else { return "" }
+            let listed = matches.prefix(4).enumerated().map { index, element -> String in
+                let f = element.frame
+                return "[\(index)] (\(Int(f.x)),\(Int(f.y)) \(Int(f.width))x\(Int(f.height)))"
+            }.joined(separator: " ")
+            return " scrollFrame \"\(frame)\" matches \(matches.count) elements and the first one"
+                + " was used — add [n] to pick another: \(listed)."
+        }
+        guard let note = ScrollFrameCandidates.note(snapshot) else { return "" }
         return " " + note.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// セレクタの**記法**が原因で外れたときだけ出す助言。無条件に「\* で囲め」と言っていた版は
+    /// 誤った助言を2形返していた(2026-08-07 に Google マップで実測): 既に `*寿司*` を渡した相手に
+    /// 同じ `*寿司*` を勧める / `#no_such_id` に**ラベル部分一致**の `*no_such_id*` を勧める。
+    /// 判定は DSL と同じ `StepExecutor.partialMatchHint` に委ねる(3条件そろったときだけ返る)。
+    /// 切り詰めラベルの取り違えはそれとは別の形なので独立に足す
+    static func notationHint(_ selectorText: String, in snapshot: SnapshotResponse) -> String {
+        var parts: [String] = []
+        if let hint = SnapshotRenderer.truncatedSelectorHint(selectorText, in: snapshot) {
+            parts.append(hint)
+        }
+        let locator = FTSelector.parse(selectorText).primary
+        if let hint = StepExecutor.partialMatchHint(for: locator, in: snapshot.elements) {
+            parts.append(" The element is \(hint).")
+        }
+        return parts.joined()
     }
 
     /// スナップショットが上限で打ち切られていたときの注記(欠陥①a)。**打ち切りは配列そのものからの
@@ -1009,7 +1056,11 @@ final class MCPServer {
                 lastSnapshots[Self.engineKey(args)] = snapshot
                 if !waited.found {
                     waitNote = "waitFor \"\(waitFor)\" did not appear within \(seconds)s"
-                        + " — this is the screen as it is now\(Self.truncationHint(snapshot))\n"
+                        + " — this is the screen as it is now\(Self.truncationHint(snapshot))"
+                        // **記法の助言はここにも要る**: 切り詰めラベルをそのまま渡した waitFor は
+                        // 外れるのに、返す木には**同じ文字列が印字されている**ので照合のバグに見える
+                        // (2026-08-07 実測)。scrollTo だけに出していて届いていなかった
+                        + Self.notationHint(waitFor, in: snapshot) + "\n"
                 }
             }
             // **プラットフォームはドライバの実体から採る**(profile 指定時は args["platform"] が
@@ -1029,6 +1080,7 @@ final class MCPServer {
                 switchedNote + waitNote + backgroundNote + Self.ghostNote(snapshot)
                 + (ScrollFrameCandidates.note(snapshot) ?? "")
                 + Self.unlabeledClickablesNote(snapshot) + Self.ambiguousLabelsNote(snapshot)
+                + (SnapshotRenderer.truncatedLabelNote(snapshot) ?? "")
                 + SnapshotRenderer.render(snapshot, flagging: Self.ghostFlags(snapshot)), args: args))
 
         case "ft_tap":
