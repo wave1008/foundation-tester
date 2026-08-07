@@ -2007,7 +2007,8 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
     **2026-08-07 に同じことが繰り返された**: 実アプリ(Google マップ)の1セッションで誤検知が
     3種類(上の②、③の緩和で塞いだ見逃し、積み重なりの件数判定)出たが、同じ日の
     自前 SUT 掃討では**3 SUT とも 0 件**だった。この検知系で「自前 SUT の誤検知 0」は
-    production を代表しない。掃討は `Scripts/mcp-sweep.py` で実アプリにも当てる。
+    production を代表しない。掃討は `Tests/Fixtures/RealAppSnapshots/` の固定コーパス
+    (`SweepHarnessTests`)で実アプリにも当てる。
   - **容器の中に居ても別の物に当たる2形**(2026-08-06。`RefGuard.overlapWarning`)。
     上の ghost 判定は `isOutsideContainer` を**入口条件**にしているため、この2形を1つも捕まえない:
 
@@ -2025,7 +2026,7 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
     どちらも**拒否せず警告**(ghost と同じ理由)。積み重なりは一覧にも `⚠️scroll-leftover` を出す ——
     利用者から見ると原因も打ち手も ghost と同じなので**印を2種類に割らない**。
     誤検知ゲートの回し方は docs/verification.md(**自前 SUT だけでは足りない** ——
-    `Scripts/mcp-sweep.py` で実アプリにも当てる)。
+    `Tests/Fixtures/RealAppSnapshots/` の固定コーパスで実アプリにも当てる)。
   - **`ft_scroll_to` は「返す木にそれが居るか」を確かめてから成功と言う**(2026-08-06)。
     探索のスワイプは**タップ可能な行を発火させることがある**(SwiftUI の SUT で実測)。
     そのとき executor は途中の観測で passed のまま、撮り直した木は別画面になり、
