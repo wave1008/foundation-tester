@@ -360,11 +360,64 @@ enum RefGuard {
     ///
     /// ghostWarning と同じ方針で**撃ってから言う**(拒否しない)。木の幾何だけでは
     /// 「本当に描かれているか」を決められないという 2026-08-06 の結論は、この2形にも効く。
+    /// **中身のどこでもない点を叩こうとしている**か。対話的でない容器(`other`)で、
+    /// 子孫を持つのに**中心がそのどれの上にも無い**とき、タップは背後(地図・背景)へ抜ける。
+    ///
+    /// 実測(2026-08-07・Google マップ Android): `#layers_fab_button` は全幅 (0,442 1080x157) の
+    /// 非 clickable コンテナで、中身は右端の FAB 1つだけ。中心 (540,520) は地図の上にあり、
+    /// `ft_tap` は "done" を返しながら**海上の座標にピンを落として place page を開いた**。
+    /// 名前が `..._button` で終わるのでエージェントが選びがちな形。
+    ///
+    /// **子の中心へ寄せる自動補正はしない** —— 黙って別の物を叩くのと同じになる。
+    /// 遮蔽でも ghost でも積み重なりでもないので、既存の3つには1つも掛からない
+    static func missesItsOwnContent(_ element: ElementInfo, in elements: [ElementInfo],
+                                    screen: FTRect) -> ElementInfo? {
+        guard element.type == "other" else { return nil }
+        let children = StepExecutor.descendants(of: element, in: elements)
+        guard !children.isEmpty else { return nil }
+        let cx = element.frame.x + element.frame.width / 2
+        let cy = element.frame.y + element.frame.height / 2
+        func covers(_ e: ElementInfo) -> Bool {
+            e.frame.x <= cx && cx <= e.frame.x + e.frame.width
+                && e.frame.y <= cy && cy <= e.frame.y + e.frame.height
+        }
+        guard !children.contains(where: covers) else { return nil }
+        // **囲っている対話要素がタップを受け止めるなら黙る**: 中心が空白でも、外側の
+        // 行やカードが clickable なら押した結果は妥当。**画面規模のものは数えない** ——
+        // 地図やキャンバスは全画面 clickable で、そこへ抜けること自体が今回の実害
+        // (実測: `#business_place_card` の中心は空白だが、包む place card が clickable で
+        // 正しく開く。一方 `#layers_fab_button` を包むのは全画面の地図だけだった)
+        let screenArea = screen.width * screen.height
+        let absorbed = lineage(of: element, in: elements).contains { ref in
+            guard ref != element.ref, let ancestor = elements.first(where: { $0.ref == ref }),
+                  interactiveTypes.contains(ancestor.type), covers(ancestor) else { return false }
+            let area = ancestor.frame.width * ancestor.frame.height
+            return screenArea <= 0 || area < screenArea * fullScreenContainerAreaRatio
+        }
+        guard !absorbed else { return nil }
+        // 「代わりにこれを狙え」は**自分の矩形の内側にある子**から選ぶ。木の depth だけで
+        // 子孫を採ると、間引きの副作用で**視覚的に無関係な要素**が混ざる
+        // (実測: `#search_omnibox_container` の子孫にページ下端のカード束が入っていた)
+        return children
+            .filter { contains(element.frame, $0.frame) }
+            .max { ($0.frame.width * $0.frame.height) < ($1.frame.width * $1.frame.height) }
+    }
+
+    /// タップを受け止める型(ブリッジの型語彙。`other` は含めない)
+    static let interactiveTypes: Set<String> = [
+        "clickable", "button", "cell", "link", "switch", "checkBox", "radioButton", "tab",
+    ]
+
     static func overlapWarning(found: ElementInfo, in elements: [ElementInfo], screen: FTRect) -> String {
         if let over = overlayCovering(found, in: elements, screen: screen) {
             return " (warning: \(describe(over)) is drawn over the center of \(describe(found)),"
                 + " so this may have hit \(describe(over)) instead — verify with ft_screenshot,"
                 + " or scroll the element clear of the overlay first)"
+        }
+        if let inner = missesItsOwnContent(found, in: elements, screen: screen) {
+            return " (warning: \(describe(found)) is not interactive and its center is not over any"
+                + " of its own content, so this tap went to whatever is behind it."
+                + " Target the content instead, e.g. \(describe(inner)))"
         }
         if stackedRefs(elements).contains(found.ref) {
             return " (warning: \(describe(found)) shares its exact frame with other elements,"

@@ -23,9 +23,17 @@ final class SweepHarnessTests: XCTestCase {
                     overlays.append("\(e.identifier ?? e.label ?? "ref\(e.ref)")<-\(o.identifier ?? o.label ?? "ref\(o.ref)")")
                 }
             }
+            var misses: [String] = []
+            for e in els {
+                if let inner = RefGuard.missesItsOwnContent(e, in: els, screen: snap.screen) {
+                    misses.append("\(e.identifier ?? "ref\(e.ref)")→\(inner.identifier ?? "ref\(inner.ref)")")
+                }
+            }
             let stacked = RefGuard.stackedRefs(els)
             print("SWEEP \(f) elements=\(els.count) z=\(els.contains { $0.z != nil })"
-                + " ghost=\(ghosts.count) overlay=\(overlays.count) stacked=\(stacked.count)")
+                + " ghost=\(ghosts.count) overlay=\(overlays.count) stacked=\(stacked.count)"
+                + " missesContent=\(misses.count)")
+            for m in misses.prefix(8) { print("SWEEP   misses: \(m)") }
             for g in ghosts.prefix(6) { print("SWEEP   ghost: \(g)") }
             for o in overlays.prefix(8) { print("SWEEP   overlay: \(o)") }
         }
