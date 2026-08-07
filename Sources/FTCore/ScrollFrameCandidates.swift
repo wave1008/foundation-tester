@@ -61,10 +61,30 @@ public enum ScrollFrameCandidates {
     public static func note(_ snapshot: SnapshotResponse) -> String? {
         let found = candidates(in: snapshot)
         guard found.count >= 2 else { return nil }
-        let listed = found.prefix(4).map(describe).joined(separator: " / ")
+        let listed = found.prefix(4)
+            .map { describe($0, in: snapshot) }.joined(separator: " / ")
         let more = found.count > 4 ? " (+\(found.count - 4) more)" : ""
         return "note: \(found.count) scroll areas on screen: \(listed)\(more)."
             + " Pass scrollFrame: to ft_scroll_to to search inside one of them.\n"
+    }
+
+    /// 同じセレクタ文字列を持つ候補が2つ以上あるか。**あるなら添字なしの指定は当てにならない**
+    static func isAmbiguous(_ candidate: Candidate, among all: [Candidate]) -> Bool {
+        guard let selector = candidate.selector else { return false }
+        return all.filter { $0.selector == selector }.count >= 2
+    }
+
+    /// `selector` に一致する要素の中で、この候補が何番目か(`[n]` 記法の n)。
+    /// **数えるのは木の全要素**であって候補だけではない —— `matchDetailed` は
+    /// `candidates(locator, elements:)` の並びから `[n]` を採るので、スクロールしない
+    /// 同名要素も番号を消費する(Google マップの `#recycler_view` は4つあるが
+    /// スクロールするのは3つ。候補内で数えると1つずれる)
+    static func selectorIndex(of candidate: Candidate, in snapshot: SnapshotResponse) -> Int? {
+        guard let selector = candidate.selector else { return nil }
+        let sameName = snapshot.elements.filter { element in
+            Self.selector(for: element) == selector
+        }
+        return sameName.firstIndex { $0.ref == candidate.ref }
     }
 
     /// 矩形から**書けるセレクタ**を引く(飛び越しの注記で「どれを指定すればよいか」を名指しする)。
@@ -82,10 +102,23 @@ public enum ScrollFrameCandidates {
         return best?.selector
     }
 
-    static func describe(_ candidate: Candidate) -> String {
-        if let selector = candidate.selector { return selector }
+    /// 注記に出す1件分。**同名が複数あるときは添字と矩形まで出す**のが要点 ——
+    /// 名前だけ並べると `#recycler_view / #search_list_layout / #recycler_view / #recycler_view`
+    /// のようになり、「どれか1つを渡せ」と言いながら**渡せる書き方が無い**。
+    /// 実測(2026-08-07・Google マップ Android): その注記どおり `#recycler_view` を渡すと
+    /// `matches[0]` = 高さ126pxの横チップ行が黙って選ばれ、結果リストは1pxも動かなかった
+    static func describe(_ candidate: Candidate, in snapshot: SnapshotResponse) -> String {
         let f = candidate.visible
-        return "(\(Int(f.x)),\(Int(f.y)) \(Int(f.width))x\(Int(f.height)) — no id)"
+        let rect = "(\(Int(f.x)),\(Int(f.y)) \(Int(f.width))x\(Int(f.height)))"
+        guard let selector = candidate.selector else {
+            return "(\(Int(f.x)),\(Int(f.y)) \(Int(f.width))x\(Int(f.height)) — no id)"
+        }
+        let all = candidates(in: snapshot)
+        guard isAmbiguous(candidate, among: all),
+              let index = selectorIndex(of: candidate, in: snapshot) else { return selector }
+        // 軸まで言う: 縦に探すのに横カルーセルを渡す取り違えがいちばん起きる
+        let axis = f.height >= f.width ? "tall" : "wide"
+        return "\(selector)[\(index)] \(rect) \(axis)"
     }
 
     /// `scrollFrame:` にそのまま貼れる形。id が最優先(ラベルは容器では珍しく、

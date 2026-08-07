@@ -1358,7 +1358,13 @@ public final class StepExecutor {
                 if action == "select" {
                     return StepOutcome(status: .skipped(Self.selectNotFoundReason))
                 }
-                return StepOutcome(status: .failed(Self.scrollNotFoundMessage(step, result)))
+                // **scrollFrame の申告は失敗文へ畳んで返す**: 探索が空振りした理由がそこにある
+                // のに、`StepOutcome(status:)` だけの return は driverFallback を運ばないので
+                // `scrollSearchNote` が捨てられていた(MCP の失敗文にも一度も出ていなかった)。
+                // 実測(2026-08-07): 同名 `#recycler_view` が4つある画面で先頭の横チップ行を
+                // 掴んだまま「element not found」としか言わず、曖昧だったことが伝わらなかった
+                let why = pendingScrollFrameNote.map { " (\($0))" } ?? ""
+                return StepOutcome(status: .failed(Self.scrollNotFoundMessage(step, result) + why))
             }
             searchSwiped = true
         }
@@ -2655,6 +2661,22 @@ public final class StepExecutor {
             + " (the swipe lands there but nothing moves)"
     }
 
+    /// 指定した `scrollFrame` が**複数の要素に当たった**ときの申告。`matchDetailed` は
+    /// 添字が無ければ `matches[0]` を黙って採るので、同名の容器が並ぶ画面
+    /// (Android の `#recycler_view` は1画面に3〜4個)では**preorder 先頭の横カルーセル**を
+    /// 掴んだまま「見つからない」で終わる。何を掴んだかと `[n]` の書き方まで出す。
+    /// 添字を明示しているときは選択済みなので黙る
+    static func ambiguousScrollFrameNote(_ locator: FlowLocator, picked: ElementInfo,
+                                         in snapshot: SnapshotResponse) -> String? {
+        guard locator.index == nil,
+              let matches = candidates(locator, elements: snapshot.elements),
+              matches.count >= 2 else { return nil }
+        let f = picked.frame
+        return "the scrollFrame selector matched \(matches.count) elements; the first one"
+            + " (\(Int(f.x)),\(Int(f.y)) \(Int(f.width))x\(Int(f.height))) was used"
+            + " — add [n] to pick another"
+    }
+
     /// `scrollFrame` 指定時のスワイプ座標。**nil = 従来の全画面固定へ落ちる**。
     /// 落ちる条件は「指定が無い」「その画面で解決できない」「削りすぎて動かせない」の3つで、
     /// どれも Shirates が次の候補へ落ちるのと同じ扱い(明示指定は矩形の供給元であって、
@@ -2704,6 +2726,7 @@ public final class StepExecutor {
             // 空振りの申告は1ステップにつき1回だけ(周回ごとに積むとレポートが埋まる)
             if pendingScrollFrameNote == nil, !reportedScrollFrameNote {
                 pendingScrollFrameNote = Self.scrollFrameNote(element, in: snapshot)
+                    ?? Self.ambiguousScrollFrameNote(locator, picked: element, in: snapshot)
                 reportedScrollFrameNote = pendingScrollFrameNote != nil
             }
             return element.frame
@@ -3122,14 +3145,31 @@ public final class StepExecutor {
             + " so scroll it into view first (scrollTo / tap(scroll:))"
     }
 
-    /// 完全一致のラベル指定が外れたが**部分一致なら在る**ときに書き方を示す
-    /// (素の文字列は完全一致なので、部分一致で拾いたいなら記法で明示する必要がある)
-    static func partialMatchHint(for locator: FlowLocator, in elements: [ElementInfo]) -> String? {
-        guard let label = locator.label, !label.isEmpty,
-              (locator.labelMatch ?? .exact) == .exact,
-              !elements.contains(where: { $0.label == label }),
-              elements.contains(where: { ($0.label ?? "").contains(label) }) else { return nil }
-        return "present as a partial match: writing \"*\(label)*\" would find it"
+    /// 完全一致の指定が外れたが**部分一致なら在る**ときに書き方を示す
+    /// (素の文字列は完全一致なので、部分一致で拾いたいなら記法で明示する必要がある)。
+    ///
+    /// **3条件そろったときだけ出す**のが要点 —— 「素の完全一致指定」「完全一致は無い」
+    /// 「部分一致なら在る」。無条件に「\* で囲め」と言うと、既に `*…*` を渡した相手に同じものを
+    /// 勧め、`#id` 指定にはラベル部分一致(`*foo*`)という**誤った記法**を勧める
+    /// (2026-08-07 に MCP 側の無条件版で実測。id の部分一致は `#*foo*`)。
+    /// **MCP もこれを呼ぶ**(ftester-mcp/MCPServer の scrollTo/waitFor の失敗文)ので public
+    public static func partialMatchHint(for locator: FlowLocator,
+                                        in elements: [ElementInfo]) -> String? {
+        if let label = locator.label, !label.isEmpty,
+           (locator.labelMatch ?? .exact) == .exact,
+           !elements.contains(where: { $0.label == label }),
+           elements.contains(where: { ($0.label ?? "").contains(label) }) {
+            return "present as a partial match: writing \"*\(label)*\" would find it"
+        }
+        // id も同じ形で拾う。**記法は `#*foo*`**(docs/design.md の idContains)であって
+        // `*foo*` ではない —— `*foo*` はラベルの部分一致なので id には一生当たらない
+        if let id = locator.id, !id.isEmpty,
+           (locator.idMatch ?? .exact) == .exact,
+           !elements.contains(where: { $0.identifier == id }),
+           elements.contains(where: { ($0.identifier ?? "").contains(id) }) {
+            return "present as a partial id match: writing \"#*\(id)*\" would find it"
+        }
+        return nil
     }
 
     /// 要素の子孫(スナップショットは pre-order + 元ツリーの depth を保つため、
