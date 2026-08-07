@@ -559,6 +559,18 @@ fi
 # 受け手の資産なので**マーカーの内側だけ**差し替える。共有リポジトリで嫌うなら --skip-claude-md。
 if [ "$DO_CLAUDE_MD" = "0" ]; then
   record "CLAUDE.md" skip "--skip-claude-md"
+# **クローンが git 管理している CLAUDE.md には書かない**(2026-08-07 に自己破壊を再現)。
+# clone 構成(WORK_DIR = TOOL_ROOT)では受け手の CLAUDE.md はクローン自身の追跡ファイルで、
+# ここへ追記すると次の更新が pull ガード(「local changes」)で必ず止まる。しかも
+# `git reset --hard` で戻しても次の更新が同じブロックを書くので**同じ状態に戻る**。
+# 判定は「レイアウト」ではなく**そのファイルが追跡されているか** —— 外部構成でも受け手が
+# 自分のリポジトリで CLAUDE.md を管理していることはあるが、そちらはクローンの pull を
+# 妨げないので対象外(見るのは TOOL_ROOT の索引だけ)。
+# 同型: packageLockSync(npm install が lock を書き換えてクローンが dirty になる)
+elif git -C "$TOOL_ROOT" ls-files --error-unmatch \
+       "$(python3 -c 'import os,sys;print(os.path.relpath(sys.argv[1],sys.argv[2]))' \
+          "$WORK_DIR/CLAUDE.md" "$TOOL_ROOT" 2>/dev/null)" >/dev/null 2>&1; then
+  record "CLAUDE.md" skip "it is tracked by the clone — writing there would make the next update abort at the pull guard"
 elif ! command -v python3 >/dev/null 2>&1; then
   record "CLAUDE.md" warn "python3 is missing, so the entry point was not written (agents may miss ft_*)"
 else
