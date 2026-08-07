@@ -123,6 +123,75 @@ final class MCPProductionAppShapesTests: XCTestCase {
         XCTAssertFalse(RefGuard.drawnAbove(halfKnown, behind))
     }
 
+    // MARK: - 中身のどこでもない点を叩く(R2)
+
+    /// 全幅の非対話コンテナで、中身は右端の FAB 1つだけ。中心は地図の上にある。
+    /// 実測(Google マップ Android): `ft_tap` は "done" を返しながら海上にピンを落とした
+    func testTappingAContainerWhoseCenterMissesItsContentIsFlagged() {
+        let screen1080 = FTRect(x: 0, y: 0, width: 1080, height: 2424)
+        let elements = [
+            element(1, "map", depth: 2, type: "clickable", 0, 0, 1080, 2424),
+            element(2, "layers_fab_button", depth: 4, type: "other", 0, 442, 1080, 157),
+            element(3, "layers_fab", depth: 5, type: "image", 928, 457, 152, 142, label: "レイヤ"),
+        ]
+        let target = elements.first { $0.identifier == "layers_fab_button" }!
+        let hit = RefGuard.missesItsOwnContent(target, in: elements, screen: screen1080)
+        XCTAssertEqual(hit?.identifier, "layers_fab")
+    }
+
+    /// **囲っている対話要素がタップを受け止めるなら黙る**(誤検知の抑制)。
+    /// 実測: `#business_place_card` の中心は空白だが、包む place card が clickable で正しく開く
+    func testNoWarningWhenAnEnclosingInteractiveAncestorAbsorbsTheTap() {
+        let screen1080 = FTRect(x: 0, y: 0, width: 1080, height: 2424)
+        let elements = [
+            element(1, "card", depth: 2, type: "clickable", 0, 1399, 1080, 1025),
+            element(2, "business_place_card", depth: 3, type: "other", 0, 1399, 1080, 320),
+            element(3, "title", depth: 4, type: "staticText", 42, 1462, 440, 58, label: "東京タワー"),
+        ]
+        let target = elements.first { $0.identifier == "business_place_card" }!
+        XCTAssertNil(RefGuard.missesItsOwnContent(target, in: elements, screen: screen1080))
+    }
+
+    /// **画面規模の相手は受け止め手に数えない** —— 地図やキャンバスへ抜けること自体が実害
+    func testFullScreenCanvasDoesNotCountAsAbsorbingTheTap() {
+        let screen1080 = FTRect(x: 0, y: 0, width: 1080, height: 2424)
+        let elements = [
+            element(1, "map", depth: 2, type: "clickable", 0, 0, 1080, 2424),
+            element(2, "footer_container", depth: 3, type: "other", 0, 2193, 1080, 230),
+            element(3, "map_list_toggle_fab", depth: 4, type: "button", 651, 2225, 388, 147),
+        ]
+        let target = elements.first { $0.identifier == "footer_container" }!
+        XCTAssertEqual(RefGuard.missesItsOwnContent(target, in: elements, screen: screen1080)?
+            .identifier, "map_list_toggle_fab")
+    }
+
+    /// 中心が子の上にあるふつうの容器では黙る
+    func testContainerWhoseCenterIsOverItsContentIsNotFlagged() {
+        let elements = [
+            element(1, "row", depth: 2, type: "other", 0, 0, 400, 100),
+            element(2, "label", depth: 3, type: "staticText", 0, 0, 400, 100, label: "行"),
+        ]
+        let target = elements.first { $0.identifier == "row" }!
+        XCTAssertNil(RefGuard.missesItsOwnContent(target, in: elements, screen: screen))
+    }
+
+    // MARK: - ゼロ幅文字(R4)
+
+    /// ヒントから写したラベルは**見た目が正しいのに一致しない**ので、出す前に落とす
+    func testZeroWidthCharactersAreStrippedFromLabelsWeHandBack() {
+        let dirty = "\u{200b}\u{200b}MEX宮古・盛岡\u{200b}"
+        // **id を持たせない**: describe は id があるとラベル分岐へ入らず、
+        // ここを id 付きで書くとゼロ幅文字を戻しても落ちない(無力なテストになる)
+        let noID = ElementInfo(ref: 1, type: "staticText", identifier: nil, label: dirty,
+                               value: nil, placeholder: nil, enabled: true,
+                               frame: FTRect(x: 0, y: 0, width: 100, height: 40), depth: 2)
+        XCTAssertFalse(RefGuard.describe(noID).contains("\u{200b}"), RefGuard.describe(noID))
+        XCTAssertTrue(RefGuard.describe(noID).contains("MEX宮古・盛岡"))
+        let snap = SnapshotResponse(sessionBundleID: "a", screen: screen,
+                                    elements: [noID], truncatedCount: 0)
+        XCTAssertFalse(MCPServer.visibleLabelsHint(snap).contains("\u{200b}"))
+    }
+
     // MARK: - 切り詰めラベル(F5)
 
     /// 印字は40文字で切れる。**その文字列をそのままセレクタにすると一生当たらない**ので、
