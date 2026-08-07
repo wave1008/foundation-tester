@@ -294,10 +294,27 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
 
   | 帯 | 中身 | 捨てる順 |
   |---|---|---|
-  | tier3 = bulk | 同一 identifier が20件以上・**スクロール容器の外**・非操作 | 最初 |
-  | tier2 | ラベルも identifier も持たない | 2番目 |
+  | tier2 | ラベルも identifier も持たない | 最初 |
+  | tier3 = bulk | 同一 identifier が20件以上・非操作(自身が scrollable なら除く) | 2番目 |
   | tier1 | ラベルか identifier を持つ | 3番目 |
   | tier0 | 操作可能(clickable/入力欄など)か scrollable な容器 | 最後 |
+
+  **tier2 を bulk より先に捨てる**(2026-08-08 に変更。旧順は bulk が最初だった)。
+  ラベル付き同一 identifier 群(bulk)は、ラベルも id も無い装飾(tier2)より本物のコンテンツ
+  である見込みが高いので、超過時は装飾から削る。POI 洪水のような大群の捲れは、tier2 が
+  少ない画面では次に bulk が捨てられるので従来どおり保たれる。
+
+  **bulk に「スクロール容器の外」という条件は置かない**(2026-08-08 に撤廃)。Apple マップの
+  地図 POI(`id=VKPointFeature` ×67〜77、画面により変動)は地図=スクロール容器の中に居るため
+  旧条件では bulk を素通りしてラベル付き tier1 になり、**preorder 前方(地図は木の先頭)に
+  居るため同 tier 内では最後まで残って**、後方のカード内容から先に落ち、経路画面で 84 件の
+  切り詰めを起こした。ラベルの異同は条件に入れない(同一 id ×20 はそれ自体が「塊」の証拠)。**scrollable な要素はどの帯でも捨てない**(cap 免除。容器が
+  木から落ちると scrollFrame 解決が全滅する — 下記「scrollFrame の fail-fast」)。
+  **この cap 免除は Swift 側(iOS の xcuitest ランナー・in-app dylib・WebView DOM マージ)だけが持つ**。
+  Android の `SnapshotBuilder`(Java、tier0〜2 のみ)は tier0 を最後に捨てる点は同じだが、
+  scrollable の cap 免除は持たない。また Compose/Flutter を xcuitest エンジンで撮った木は
+  スクロール容器が `.other` として出て `scrollable` を申告できず(in-app なら申告できる)、
+  この免除には最初から乗らない。
 
   - 規則の定義元は **`BridgeSnapshotThinning`(`Sources/FTCore/BridgeDTO.swift`)**。
     XCUITest ランナーと in-app dylib が共有する。**Android は Java で書けないため
@@ -1284,19 +1301,28 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
 **pressEnter と違い clear は xcuitest フォールバックが届く**(ref 有/無とも実測。1.1〜2.2s)ので
 機能は成立する。**再提案しない**(やるなら Flutter engine 側の公開経路が増えたとき)。
 
-### キーボードの観測と `hideKeyboard`(2026-07-30)
+### キーボードの観測と `hideKeyboard`(2026-07-30。keyboardFrame は 2026-08-08)
 
 **観測(`keyboardIsShown` / `keyboardIsNotShown`)は3経路すべてで動く**が、取得元が OS で違う:
 
 - **iOS xcuitest**: AX ツリー走査中に `.keyboard` ノードを見たか(`app.keyboards` クエリは使わない
-  — キーボードが別プロセス扱いでタイムアウトする。`handleType` のコメントと同じ事情)
+  — キーボードが別プロセス扱いでタイムアウトする。`handleType` のコメントと同じ事情)。
+  **「非表示」を確定できない**(見なかった = 不明で `keyboardShown == nil`)ため、
+  `keyboardIsNotShown` はこのエンジンでは通らない(下記の nil 規約どおり明示的に失敗する)
 - **iOS in-app**: **`UITextEffectsWindow` の可視判定**。キーボードはキーウィンドウの外に載るので
-  AX ツリー走査では見つからない(閉じても window は残るため、画面内に張り出しているかで見る)
+  AX ツリー走査では見つからない(閉じても window は残るため、画面内に張り出しているかで見る)。
+  **非表示を false で確定できる唯一の iOS 経路**(2026-08-08 に一度 nil へ潰して
+  `keyboardIsNotShown` を壊した — false を送り続けるのが契約)
 - **Android**: ホスト側が `dumpsys window windows` の `InputMethod` window を見る(IME は別プロセスの
   window でアプリの a11y ツリーに出ない)。**dumpsys は固定費なので毎 snapshot では叩かない** —
   `AppDriver.captureKeyboardStateOnNextSnapshot()` を assert の直前に呼んだときだけ払う。
   採らなかった snapshot は `keyboardShown == nil` = 不明で、**nil を「非表示」と解釈しない**
   (`keyboardIsNotShown` が黙って通る嘘の成功になるため、明示的に失敗させる)
+
+**キーボードが覆う実矩形は別フィールド `SnapshotResponse.keyboardFrame`**(2026-08-08。
+取得元・罠・読み手は上記「ソフトキーボードの遮蔽」の表)。keyboardShown が可視性の Bool、
+keyboardFrame が遮蔽警告用の矩形で、**申告できる条件が違う**(例: in-app は通知値が無いと
+frame を申告しないが shown は言える)ため統合しない。
 
 **`hideKeyboard` は Android のみ**(戻るキー。**出ているときだけ撃つ** — 出ていないと画面が戻って
 しまうので、dumpsys で可視を確かめてから送る。これで冪等が保てる)。
@@ -2060,6 +2086,49 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
     利用者から見ると原因も打ち手も ghost と同じなので**印を2種類に割らない**。
     誤検知ゲートの回し方は docs/verification.md(**自前 SUT だけでは足りない** ——
     `Tests/Fixtures/RealAppSnapshots/` の固定コーパスで実アプリにも当てる)。
+  - **ソフトキーボードの遮蔽は木からは原理的に判定できない**(2026-08-08)。iOS xcuitest は
+    `.keyboard`/`.key` サブツリーを木から除外しており、残る外側コンテナ(`inputView`)は
+    子孫ゼロの空葉になって**空葉除外(誤検知対策)に正しく弾かれる**。Android は IME が
+    別プロセスの別ウィンドウで木に出ない。実害は両 OS で実測済み: iOS はキーボード下の
+    候補行への ref タップが顔文字キーに化けて検索欄を汚し、Android は Gboard の
+    レイアウト選択シート下の候補タップが IME の「QWERTY」選択に化けた —— どちらも無警告。
+    だから**ブリッジが `SnapshotResponse.keyboardFrame` で実矩形を申告する**:
+    | エンジン | 取得元 | 罠 |
+    |---|---|---|
+    | iOS xcuitest | 走査中に見た `.keyboard` ノードの frame | — |
+    | iOS in-app | `keyboardWillChangeFrame` 通知の最新値 | **TextEffects window の frame を使ってはいけない**(開いていても全画面 (0,0 402x874) が返り、画面上部の要素まで誤警告する。`UIInputSetHostView` のクラス名走査も iOS 27 で不発 — どちらも実測)。通知値が無ければ frame は申告しない(誤検知側に倒さない) |
+    | Android | `UiAutomation.getWindows()` の TYPE_INPUT_METHOD の bounds(要 `FLAG_RETRIEVE_INTERACTIVE_WINDOWS`) | — |
+    判定は `TapTargetGeometry.keyboardCoveredAdvisory`(中心が keyboardFrame 内)1箇所で、
+    DSL はステップ注記・MCP はタップ警告 + `ft_snapshot` / `ft_scroll_to` の note に使う
+    (note は覆う矩形を常に申告し、その下に操作対象が居るときだけ ref を列挙する)。
+    **警告のみで拒否しない**(新しい検知は警告から)。旧ブリッジは申告しない = 黙って従来どおり。
+    Android は `getWindows()` を毎 snapshot 叩く(dumpsys と違い a11y 内 API で安い。ただし
+    `FLAG_RETRIEVE_INTERACTIVE_WINDOWS` をブリッジ起動時に恒久で立てる副作用がある)。
+  - **細帯(sliver)の注記**(2026-08-08): 幅・高さのどちらかが 10 以下の、極端に細いラベル付き要素
+    (実測: 右端で 9x137 に切れたタブ「サンライズ瀬戸」)は掴めないことが多いので
+    `ft_snapshot` が note で名指しする。判定は `TapTargetGeometry.isClippedSliver`
+    (ラベル2文字以上 + 細い辺 ≤10 かつ対辺 ≥30。アイコン 9x13 等は対辺条件で除外)。
+    **判定は要素自身の細さだけ**(縁で切れた結果か、元々細いだけかは幾何を見ないので判定しない)。
+  - **明示した scrollFrame が解決できないときは、スワイプを1本も送らずに失敗する**
+    (`ScrollSearchResult.scrollFrameMissing`。2026-08-08)。以前は「matched nothing →
+    全画面スワイプ」へ黙って退化しており、Apple マップで snapshot が scroll と申告した
+    `#MUScrollableStackView` が直後に 120 件 cap で木から落ち、退化したスワイプが
+    カードの「計画」ボタンを発火して画面遷移した。cap 側の対策(scrollable の cap 免除)と両輪。
+    範囲と細部:
+    - **scrollTo 探索だけでなく `scrollDown` 等の単発スクロール・`scrollToBottom` 等の
+      端送り・flick 系・`withScroll*` 配下の探索も同じ**(全画面退化はどれでもボタン誤発火に
+      なり得る)。**`select` 系だけは例外** — 「掴めなければ空要素を返す」契約が優先し、
+      fail-fast も skipped になる(失敗はしないが探索もしない)
+    - **探索中に容器が消えた場合も失敗**にするが、文言は分ける(スワイプ済みなら
+      「disappeared after N swipe(s)」— 0本のときだけ「実行していない」と言う。
+      動詞は呼び手ごと: search was not run / swipe was not sent / flick was not sent)
+    - **判定はセレクタ照合そのもの**(`Self.match`)で行う。`scrollContainer` の nil を
+      流用してはいけない — あちらは `FT_SCROLL_TARGET=legacy`(座標スクロールの殺しスイッチ)
+      でも nil を返すため、殺しスイッチが「全 scrollFrame シナリオ即死」に化ける。
+      **legacy 時は fail-fast ごとスキップ**して従来挙動へ落とす
+    - **容器は解決したが動かせる幅が無い**(margin で潰れた等)場合は従来どおり全画面へ
+      落ちるが、注記(`resolved but leaves nothing to move`)で申告する
+    - scrollFrame 未指定の全画面スワイプは従来どおり(正当な既定)。
   - **`ft_scroll_to` は「返す木にそれが居るか」を確かめてから成功と言う**(2026-08-06)。
     探索のスワイプは**タップ可能な行を発火させることがある**(SwiftUI の SUT で実測)。
     そのとき executor は途中の観測で passed のまま、撮り直した木は別画面になり、
@@ -2079,12 +2148,15 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
   - **`ft_navigate back` は「画面が変わった」と断言しない**(2026-08-06)。iOS の back は端の swipe で、
     自前ナビの画面(`#btn_back` を持つ SwiftUI 等)では**1px も動かない**(E2E-iOS で2回とも不変)。
     アプリの外へ出ることもあるので、両方を注記に書く。
-  - **エンジン切替の案内には「アプリが起動し直る」まで書く**(`inappRelaunchWarning`。2026-08-06)。
+  - **エンジン切替の案内には「アプリが起動し直る」まで書く**(`iosEngineHint` 末尾。2026-08-06。
+    2026-08-08 に苦情を受けて1文へ圧縮したが、この事実は残した)。
     dylib は起動時にしか差し込めないので、in-app ブリッジの初回起動はアプリを再起動する。
     書かないと、案内に従った瞬間に探索中の画面が消え、**ホーム画面へ同じ座標のジェスチャが撃たれる**
     (実測: マップ画面での double tap がホームから `#nav_scroll` を開き `行 05` を選んだ)。
   - **スクロール容器は行に `scroll` を出し、2つ以上あるときだけ先頭で名指しする**
-    (`ScrollFrameCandidates`。2026-08-06)。`scrollFrame:` は**ref でなくセレクタ文字列**を取るのに、
+    (`ScrollFrameCandidates`。2026-08-06)。**id を持たない ScrollView/Table/CollectionView も
+    版58から木に出る**(xcuitest の `isEligible` が容器型を id 必須から免除。in-app は
+    版57で対応済み。id が無い容器は矩形で名指しされる)。`scrollFrame:` は**ref でなくセレクタ文字列**を取るのに、
     一覧はどれが容器かを言っていなかった —— `ft_scroll_to` の引数説明が「複数あるときに渡せ」と
     言うだけで、**渡す値の探し方が無かった**。専用ツールを足さないのは、欲しくなるのが常に
     snapshot の直後(データは既に届いている)で、ツールは説明文が毎リクエストに乗るため。
