@@ -125,7 +125,14 @@ public enum BridgeAPI {
     /// 57: in-app が Compose/Flutter でも scrollable を申告するようになった
     /// (UIFocusItemScrollableContainer へのインスタンス毎準拠で判定。id 無しのスクロール容器も
     /// 木に出す)。旧 dylib が再利用されると scroll マークも scrollFrame 候補も出ないまま緑になる
-    public static let bridgeProtocolVersion = 57
+    /// 58: 間引きの bulk 条件を「スクロール祖先の除外」から「自身がスクロール容器でない」へ
+    /// 変更(2026-08-08。地図 POI がスクロール容器[地図]の中に居るため旧条件では素通りし、
+    /// ラベル付き tier1 として操作可能要素より後まで生き残って +84 切り詰めを起こした実測)。
+    /// indicesToKeep がスクロール容器自身を cap 免除するようにもなった(容器が落ちると
+    /// scrollFrame 解決が退化する)。XCUITest ランナーの isEligible も id 無しのスクロール容器を
+    /// 通すようになり、keyboardFrame の申告を追加。旧ランナー/dylib が再利用されると
+    /// POI の多い画面で操作要素が切り詰められたまま・容器が落ちたままになる
+    public static let bridgeProtocolVersion = 58
 
     /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
     /// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java の
@@ -148,16 +155,22 @@ public enum BridgeAPI {
 /// (Google マップを含む)ため移植していない。Android で bulk 群が出る画面を見つけたら、
 /// ここを写して VERSION_CODE を上げる。
 ///
-/// tier0(操作可能 or scrollable な容器) → tier1(ラベル/identifier を持つ) →
-/// tier2(それ以外) → tier3(bulk。**新設**)の順に、tier3 から全部捨ててもまだ超過するなら
-/// tier2、それでも超過するなら tier1 → tier0 と捨てる。同一 tier 内は preorder の後ろから捨てる
-/// (先頭寄りの要素を優先して残す)。
+/// 捨てる順序は tier2(それ以外) → tier3(bulk) → tier1(ラベル/identifier を持つ) →
+/// tier0(操作可能 or scrollable な容器)。tier2 から全部捨ててもまだ超過するなら tier3、
+/// それでも超過するなら tier1 → tier0 と捨てる。ラベル/id 付きの同一id反復群(tier3)は
+/// ラベル無し装飾(tier2)より本物のコンテンツである可能性が高いため、装飾を先に落とす。
+/// 同一 tier 内は preorder の後ろから捨てる(先頭寄りの要素を優先して残す)。
 ///
 /// bulk tier の根拠(コーパス14本・iOS/Android・2種の地図アプリ・4 SUT で確認):
-/// 装飾ピン(同一 identifier ×90・scrollable な祖先なし・非操作)は地図画面の枠の大半を占めて
-/// 本物のコンテンツ(リスト・詳細シート)を押し出す。**scrollable な祖先を持つ同一 identifier の
-/// 群(長いリスト)は bulk にしない** —— 装飾90 対 正当な非スクロール群5(実測)の間に
-/// 十分な余裕があるので閾値20で見分けられる。
+/// 装飾ピン(同一 identifier ×90・非操作)は地図画面の枠の大半を占めて本物のコンテンツ
+/// (リスト・詳細シート)を押し出す。**当初は scrollable な祖先を持つ群を bulk から除外**していたが、
+/// 地図 POI 自体がスクロール容器(地図)の中に居るため素通りしてラベル付き tier1 になり、
+/// preorder 前方(地図は木の先頭)に居るため同 tier 内では最後まで残って、後方のカード内容から
+/// 先に落ちる +84 切り詰めを起こした(2026-08-08 実測、Apple マップ)。
+/// **免除は「自身がスクロール容器か」だけに縮小**(祖先ベースの免除は撤去)。リスト行の
+/// ラベル群(同一id×20+)も bulk 対象になるが、捨て順は tier2(無ラベル装飾)が先
+/// (indicesToKeep)なので、装飾より先に本物の行が消えることはない。
+/// 容器そのものは indicesToKeep が tier に関係なく cap 免除する。
 public enum BridgeSnapshotThinning {
 
     /// 同一 identifier の出現数がこの数以上なら bulk tier の対象候補
@@ -171,18 +184,13 @@ public enum BridgeSnapshotThinning {
         "checkBox", "link", "slider", "tab", "menuItem", "clickable", "textView",
     ]
 
-    /// 間引き判定に要る、ElementInfo だけでは分からない情報。呼び出し側が生のツリー走査で作る
+    /// 間引き判定の入力。tier/bulk 判定は info(自身のプロパティ)だけで決まる
+    /// (祖先由来の情報は 58 で撤去。ElementInfo.scrollable は自身が容器かどうかの申告)
     public struct Candidate {
         public var info: ElementInfo
-        /// scrollable な祖先(自分自身は含まない)を持つか。**必ず生のツリーの再帰で判定すること**
-        /// —— スクロール容器はフィルタで snapshot に載らないのが普通(identifier が空だと
-        /// isEligible/shouldInclude で落ちる)。emit 済みの配列から親を辿ると、容器が抜けた列で
-        /// 正当なリストを bulk と誤判定する
-        public var insideScrollable: Bool
 
-        public init(info: ElementInfo, insideScrollable: Bool) {
+        public init(info: ElementInfo) {
             self.info = info
-            self.insideScrollable = insideScrollable
         }
     }
 
@@ -201,11 +209,14 @@ public enum BridgeSnapshotThinning {
 
         var keep = [Bool](repeating: true, count: n)
         var remaining = n
-        for currentTier in stride(from: 3, through: 0, by: -1) {
+        for currentTier in [2, 3, 1, 0] {
             guard remaining > max else { break }
             for index in stride(from: n - 1, through: 0, by: -1) {
                 guard remaining > max else { break }
-                guard keep[index], tier(candidates[index], identifierCounts: identifierCounts) == currentTier
+                // スクロール容器自身は tier に関係なく cap 免除(容器が落ちると scrollFrame
+                // 解決が退化する。数個しかないので実害なし)。max を僅かに超えて返ることを許容する
+                guard keep[index], candidates[index].info.scrollable != true,
+                      tier(candidates[index], identifierCounts: identifierCounts) == currentTier
                 else { continue }
                 keep[index] = false
                 remaining -= 1
@@ -221,10 +232,9 @@ public enum BridgeSnapshotThinning {
     /// 装飾セル 115 個を残して**ページ上の操作可能要素(送信・入力欄・リンク・状態 echo)を
     /// 全部**押し出した —— iOS ネイティブ側が版54で直した形がマージ側に残っていた。
     ///
-    /// insideScrollable は全件 true で渡す = **bulk tier はここでは効かせない**。
-    /// ネイティブ側は1段目の間引きで bulk 適用済み・DOM ノードは identifier を持たないので
-    /// bulk の対象になり得ず、マージ時点では生ツリーの scroll 祖先情報も失われている
-    /// (false で渡すと、1段目を正当に生き残った同一 id 群を誤って bulk 扱いしかねない)
+    /// bulk 判定は info.scrollable(自身のプロパティ)だけを見るので、祖先情報が失われる
+    /// マージ後の flat な列でも1段目と矛盾なく再適用できる(58 より前は祖先ベースの判定で
+    /// ここだけ bulk を無効化する必要があったが、その回避は不要になった)。
     public enum MergeSlot: Equatable, Sendable {
         /// base[i](ネイティブ要素)
         case base(Int)
@@ -238,11 +248,11 @@ public enum BridgeSnapshotThinning {
         var candidates: [Candidate] = []
         for (i, info) in base.enumerated() {
             slots.append(.base(i))
-            candidates.append(Candidate(info: info, insideScrollable: true))
+            candidates.append(Candidate(info: info))
             guard let elements = dom[info.ref] else { continue }
             for (j, element) in elements.enumerated() {
                 slots.append(.dom(container: info.ref, index: j))
-                candidates.append(Candidate(info: element, insideScrollable: true))
+                candidates.append(Candidate(info: element))
             }
         }
         let kept = indicesToKeep(candidates, max: max)
@@ -258,9 +268,10 @@ public enum BridgeSnapshotThinning {
     }
 
     /// bulk 判定の3条件(すべて満たすときだけ true): 同一 identifier の群が bulkGroupMinimum 以上・
-    /// scrollable な祖先を持たない・操作可能な型でない
+    /// **自身が**スクロール容器でない(58 より前は祖先ベースだったが、地図 POI がスクロール容器
+    /// [地図] の中に居るため素通りしていた)・操作可能な型でない
     private static func isBulk(_ candidate: Candidate, identifierCounts: [String: Int]) -> Bool {
-        guard !candidate.insideScrollable else { return false }
+        guard candidate.info.scrollable != true else { return false }
         guard let id = candidate.info.identifier, let count = identifierCounts[id],
               count >= bulkGroupMinimum else { return false }
         return !operableTypes.contains(candidate.info.type)
@@ -506,10 +517,18 @@ public struct SnapshotResponse: Codable, Sendable {
     /// `AndroidDriver.snapshot()` が `dumpsys window windows` から算出(dumpsys の固定費を避けるため
     /// `captureKeyboardStateOnNextSnapshot()` で立てた回だけ。それ以外は nil)。
     public var keyboardShown: Bool?
+    /// ソフトキーボードが覆っている矩形(画面座標)。省略は「非表示、または旧ブリッジ」。
+    /// 取得元は iOS xcuitest=走査中に見た `.keyboard` ノードの frame /
+    /// iOS in-app=`keyboardWillChangeFrame` 通知の最新値(**TextEffects window の frame は
+    /// 使わない** — 開いていても全画面で、画面上部の要素まで誤警告する。2026-08-08 実測)/
+    /// Android=UiAutomation.getWindows() の TYPE_INPUT_METHOD ウィンドウ bounds。
+    /// 読み手はホストの遮蔽警告(TapTargetGeometry)。
+    public var keyboardFrame: FTRect?
 
     public init(sessionBundleID: String?, screen: FTRect, elements: [ElementInfo],
                 truncatedCount: Int, note: String? = nil, webViewPath: String? = nil,
-                offscreen: [ElementInfo]? = nil, keyboardShown: Bool? = nil) {
+                offscreen: [ElementInfo]? = nil, keyboardShown: Bool? = nil,
+                keyboardFrame: FTRect? = nil) {
         self.sessionBundleID = sessionBundleID
         self.screen = screen
         self.elements = elements
@@ -518,6 +537,7 @@ public struct SnapshotResponse: Codable, Sendable {
         self.webViewPath = webViewPath
         self.offscreen = offscreen
         self.keyboardShown = keyboardShown
+        self.keyboardFrame = keyboardFrame
     }
 }
 

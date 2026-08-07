@@ -155,9 +155,10 @@ final class BridgeRouter {
         let frames: [Int: CGRect]
         let truncated: Int
         let screen: CGRect
-        /// SnapshotResponse.keyboardShown 用。**Captured に載せる**: 整定ループは captureOnce を
-        /// 複数回まわして「返す1回」を選ぶので、インスタンス変数だと返却ツリーと1回ズレる
-        let sawKeyboard: Bool
+        /// SnapshotResponse.keyboardShown/keyboardFrame 用。**Captured に載せる**: 整定ループは
+        /// captureOnce を複数回まわして「返す1回」を選ぶので、インスタンス変数だと返却ツリーと
+        /// 1回ズレる。nil = 非表示または不明(XCUITest は「非表示」を積極的に確認できない)
+        let keyboardFrame: CGRect?
         /// captureSettled が **budget 切れで打ち切った**(= 収束していないツリー)。
         /// 黙って返すと「毎回 350ms 使い切っているのに誰も気付かない」状態が続くので note にする
         var settleCapped: Bool = false
@@ -187,7 +188,10 @@ final class BridgeRouter {
             truncatedCount: cap.truncated,
             note: cap.settleCapped ? "snapshot taken before the screen settled (budget)" : nil,
             offscreen: cap.offscreen.isEmpty ? nil : cap.offscreen,
-            keyboardShown: cap.sawKeyboard ? true : nil))
+            keyboardShown: cap.keyboardFrame != nil ? true : nil,
+            keyboardFrame: cap.keyboardFrame.map {
+                FTRect(x: $0.origin.x, y: $0.origin.y, width: $0.width, height: $0.height)
+            }))
     }
 
     /// フォーカス中要素の申告(clearInput 事後検証用。ElementInfo.focused 参照)。
@@ -275,13 +279,13 @@ final class BridgeRouter {
         var elements: [ElementInfo] = []
         var frames: [Int: CGRect] = [:]
         var truncated = 0
-        var sawKeyboard = false
+        var keyboardFrame: CGRect?
         var offscreenHints: [ElementInfo] = []
         collect(root, depth: 0, screen: screen,
                 elements: &elements, frames: &frames, truncated: &truncated,
-                sawKeyboard: &sawKeyboard, offscreenHints: &offscreenHints)
+                keyboardFrame: &keyboardFrame, offscreenHints: &offscreenHints)
         return Captured(elements: elements, frames: frames, truncated: truncated, screen: screen,
-                        sawKeyboard: sawKeyboard, offscreen: offscreenHints)
+                        keyboardFrame: keyboardFrame, offscreen: offscreenHints)
     }
 
     private func handleTap(_ body: Data) throws -> BridgeHTTPServer.Response {
@@ -724,12 +728,10 @@ final class BridgeRouter {
 
     // MARK: - スナップショット収集・フィルタ
 
-    /// 1パス目(gather)で拾った要素。ref はまだ未採番(0)・間引き判定に要る insideScrollable を
-    /// 添えて持つ(BridgeSnapshotThinning.Candidate の入力)
+    /// 1パス目(gather)で拾った要素。ref はまだ未採番(0)
     private struct Gathered {
         var info: ElementInfo
         var frame: CGRect
-        var insideScrollable: Bool
     }
 
     /// **2パス化**: 1パス目(gather)は上限で打ち切らずに全件 preorder で集め、2パス目で
@@ -738,13 +740,14 @@ final class BridgeRouter {
     /// 先に全件へ通す(先に間引くと、落とした要素を基準にしていた冗長判定が変わる)。
     private func collect(_ node: XCUIElementSnapshot, depth: Int, screen: CGRect,
                          elements: inout [ElementInfo], frames: inout [Int: CGRect],
-                         truncated: inout Int, sawKeyboard: inout Bool,
+                         truncated: inout Int,
+                         keyboardFrame: inout CGRect?,
                          offscreenHints: inout [ElementInfo],
                          insideWebView: Bool = false) {
         var gathered: [Gathered] = []
         gather(node, depth: depth, screen: screen, insideWebView: insideWebView,
-               insideScrollable: false, gathered: &gathered,
-               sawKeyboard: &sawKeyboard, offscreenHints: &offscreenHints)
+               gathered: &gathered,
+               keyboardFrame: &keyboardFrame, offscreenHints: &offscreenHints)
 
         // isRedundant は [ElementInfo] を取るので**同じ列を2本持つ**。`deduped.map(\.info)` を
         // 毎回作ると、全件走査になった分そのまま要素ごとの配列確保になる(木が大きいほど効く)
@@ -761,9 +764,7 @@ final class BridgeRouter {
         if deduped.count <= BridgeAPI.maxSnapshotElements {
             keptIndices = Array(deduped.indices)
         } else {
-            let candidates = deduped.map {
-                BridgeSnapshotThinning.Candidate(info: $0.info, insideScrollable: $0.insideScrollable)
-            }
+            let candidates = deduped.map { BridgeSnapshotThinning.Candidate(info: $0.info) }
             keptIndices = BridgeSnapshotThinning.indicesToKeep(candidates, max: BridgeAPI.maxSnapshotElements)
         }
         truncated += deduped.count - keptIndices.count
@@ -778,16 +779,19 @@ final class BridgeRouter {
     }
 
     /// preorder 走査。不可視ノードはサブツリーごと除外。**上限で打ち切らない**(collect の2パス目が
-    /// dedupe・間引きをまとめて行う)。insideScrollable は `scrollableTypes` な祖先を持つかを
-    /// 再帰で運ぶ(BridgeSnapshotThinning の bulk 判定用。**生のツリーでしか分からない**)
+    /// dedupe・間引きをまとめて行う)
     private func gather(_ node: XCUIElementSnapshot, depth: Int, screen: CGRect,
-                        insideWebView: Bool, insideScrollable: Bool,
-                        gathered: inout [Gathered], sawKeyboard: inout Bool,
+                        insideWebView: Bool,
+                        gathered: inout [Gathered],
+                        keyboardFrame: inout CGRect?,
                         offscreenHints: inout [ElementInfo]) {
         // キーボードはキー1つ1つが Button として大量に写り込むため、サブツリーごと除外
         // (4Kトークン対策。入力は /type がキーイベント合成で行うので情報として不要)。
-        // 除外前に検知だけ記録する(SnapshotResponse.keyboardShown)
-        if node.elementType == .keyboard { sawKeyboard = true }
+        // 除外前に frame だけ記録する(SnapshotResponse.keyboardShown/keyboardFrame。
+        // keyboardShown は keyboardFrame != nil から導く)
+        if node.elementType == .keyboard {
+            keyboardFrame = node.frame
+        }
         if node.elementType == .keyboard || node.elementType == .key { return }
         // WebView は入れ子で複数出る(Compose iOS の interop ラッパで実測3重)。外側だけ残さないと
         // `.webView[1]` がどれを指すか読めない。Android ブリッジの nestedWebView と同じ規則
@@ -795,26 +799,26 @@ final class BridgeRouter {
         if isWebView && insideWebView {
             for child in node.children {
                 gather(child, depth: depth, screen: screen, insideWebView: true,
-                       insideScrollable: insideScrollable, gathered: &gathered,
-                       sawKeyboard: &sawKeyboard, offscreenHints: &offscreenHints)
+                       gathered: &gathered,
+                       keyboardFrame: &keyboardFrame,
+                       offscreenHints: &offscreenHints)
             }
             return
         }
         if shouldInclude(node, screen: screen) {
             let info = makeInfo(node, ref: 0, depth: depth)
-            gathered.append(Gathered(info: info, frame: node.frame, insideScrollable: insideScrollable))
+            gathered.append(Gathered(info: info, frame: node.frame))
         } else if insideWebView, offscreenHints.count < BridgeAPI.maxSnapshotElements,
                   isOffscreenHintCandidate(node, screen: screen) {
             // ref 0(座標表に入れない・タップ対象にしない)。Captured.offscreen 参照。
             // **この別枠上限は間引きと無関係**(hint は elements に混ざらない)
             offscreenHints.append(makeInfo(node, ref: 0, depth: depth))
         }
-        let isScrollableContainer = Self.scrollableTypes.contains(node.elementType)
         for child in node.children {
             gather(child, depth: depth + 1, screen: screen,
                    insideWebView: insideWebView || isWebView,
-                   insideScrollable: insideScrollable || isScrollableContainer,
-                   gathered: &gathered, sawKeyboard: &sawKeyboard, offscreenHints: &offscreenHints)
+                   gathered: &gathered, keyboardFrame: &keyboardFrame,
+                   offscreenHints: &offscreenHints)
         }
     }
 
@@ -865,7 +869,12 @@ final class BridgeRouter {
         // identifier が無くても残す(Web コンテンツは id を一切持たない = 唯一の絞り込み手段)
         case .navigationBar, .tabBar, .alert, .sheet, .webView:
             return true
-        // その他(Other/Group/ScrollView 等)は identifier 付きのみ
+        // スクロール容器は identifier が無くても残す(2026-08-08。in-app 側
+        // InAppSnapshot.shouldInclude と同じ規律)。落とすと scrollFrame の候補も scroll マークも
+        // 出ないまま木から消える(自前描画の容器は Other 型で id を持たないのが普通)
+        case .scrollView, .table, .collectionView:
+            return true
+        // その他(Other/Group 等)は identifier 付きのみ
         default:
             return !node.identifier.isEmpty
         }
@@ -936,6 +945,7 @@ final class BridgeRouter {
         case .datePicker: return "DatePicker"
         case .checkBox: return "CheckBox"
         case .menuItem: return "MenuItem"
+        case .pageIndicator: return "PageIndicator"
         case .navigationBar: return "NavigationBar"
         case .tabBar: return "TabBar"
         case .toolbar: return "Toolbar"

@@ -9,6 +9,7 @@ import android.app.UiAutomation;
 import android.graphics.Rect;
 import android.os.SystemClock;
 import android.view.accessibility.AccessibilityNodeInfo;
+import android.view.accessibility.AccessibilityWindowInfo;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -212,7 +213,34 @@ final class SnapshotBuilder {
         response.put("elements", elements);
         response.put("truncatedCount", truncated);
         if (offscreen.length() > 0) response.put("offscreen", offscreen);
+        Rect keyboard = keyboardBounds(ua);
+        if (keyboard != null) response.put("keyboardFrame", rectJSON(keyboard));
         return new Result(response.toString(), centers, ids, screen);
+    }
+
+    /**
+     * IME(ソフトキーボード)ウィンドウの bounds。別プロセスの別ウィンドウで a11y 木に出ないため、
+     * ここで申告しないとホストは要素がキーボードに隠れているかを判定できない
+     * (2026-08-08 Google マップで無警告タップ漏れを実害確認)。
+     * getWindows() は BridgeRouter コンストラクタで FLAG_RETRIEVE_INTERACTIVE_WINDOWS を
+     * 立てないと常に空を返す。取れない(空/例外)場合は黙って null = レスポンスから省略する。
+     */
+    private static Rect keyboardBounds(UiAutomation ua) {
+        try {
+            List<AccessibilityWindowInfo> windows = ua.getWindows();
+            if (windows == null) return null;
+            for (AccessibilityWindowInfo window : windows) {
+                if (window == null || window.getType() != AccessibilityWindowInfo.TYPE_INPUT_METHOD) {
+                    continue;
+                }
+                Rect bounds = new Rect();
+                window.getBoundsInScreen(bounds);
+                if (!bounds.isEmpty()) return bounds;
+            }
+        } catch (RuntimeException ignored) {
+            // a11y サービス切断中などで getWindows が使えない環境では省略
+        }
+        return null;
     }
 
     /** preorder 走査。不可視ノードはサブツリーごと除外(uiautomator dump と同じ) */

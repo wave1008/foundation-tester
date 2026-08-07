@@ -18,13 +18,11 @@ enum InAppSnapshot {
         var truncated: Int
     }
 
-    /// 1パス目(collect)で拾った要素。ref はまだ未採番(0)。insideScrollable は間引き判定に要り、
-    /// **生のツリーでしか分からない**(BridgeSnapshotThinning.Candidate 参照)
+    /// 1パス目(collect)で拾った要素。ref はまだ未採番(0)
     private struct Gathered {
         var info: ElementInfo
         var frame: CGRect
         var node: NSObject
-        var insideScrollable: Bool
     }
 
     /// **2パス**: 集めるときは上限で打ち切らず、超過したときだけ優先度順に間引いて ref を振る
@@ -36,16 +34,13 @@ enum InAppSnapshot {
         // 重複すると同じラベルが並んでセレクタが曖昧になり、DOM も2回読むことになる
         var visited = Set<ObjectIdentifier>()
         var gathered: [Gathered] = []
-        collect(window, depth: 0, screen: screen, visited: &visited,
-                insideScrollable: false, gathered: &gathered)
+        collect(window, depth: 0, screen: screen, visited: &visited, gathered: &gathered)
 
         let keptIndices: [Int]
         if gathered.count <= BridgeAPI.maxSnapshotElements {
             keptIndices = Array(gathered.indices)
         } else {
-            let candidates = gathered.map {
-                BridgeSnapshotThinning.Candidate(info: $0.info, insideScrollable: $0.insideScrollable)
-            }
+            let candidates = gathered.map { BridgeSnapshotThinning.Candidate(info: $0.info) }
             keptIndices = BridgeSnapshotThinning.indicesToKeep(candidates, max: BridgeAPI.maxSnapshotElements)
         }
 
@@ -68,8 +63,7 @@ enum InAppSnapshot {
     }
 
     private static func collect(_ node: NSObject, depth: Int, screen: CGRect,
-                                visited: inout Set<ObjectIdentifier>,
-                                insideScrollable: Bool, gathered: inout [Gathered]) {
+                                visited: inout Set<ObjectIdentifier>, gathered: inout [Gathered]) {
         guard visited.insert(ObjectIdentifier(node)).inserted else { return }
         // 非表示サブツリーは丸ごと除外
         if let view = node as? UIView, view.isHidden || view.alpha < 0.01
@@ -78,13 +72,13 @@ enum InAppSnapshot {
         let type = elementType(node)
         // キーボードのキーは大量に写り込むため除外(入力は /type が担うので情報として不要)。
         // **キーボードの表示判定はここではできない**(キーウィンドウの外に載るため。
-        // 判定は InAppBridge.keyboardWindowVisible)
+        // 判定は InAppBridge.keyboardIsVisible)
         if type == .keyboardKey { return }
 
         if let info = shouldInclude(node, type: type, screen: screen) {
             gathered.append(Gathered(
                 info: makeInfo(node, type: type, ref: 0, depth: depth, frame: info.frame),
-                frame: info.frame, node: node, insideScrollable: insideScrollable))
+                frame: info.frame, node: node))
         }
 
         // WKWebView の内部(WKScrollView/WKContentView)は AX を別プロセスが持つため走査しても
@@ -95,12 +89,8 @@ enum InAppSnapshot {
         // それ以外は accessibilityElements(あれば)を、無ければ subviews を辿る。
         if let view = node as? UIView, view.isAccessibilityElement { return }
         let children = axChildren(node)
-        // makeInfo の scrollable と同じ判定(isScrollableContainer)。Compose/Flutter の
-        // リストも 2026-08-08 から立つ = 長いリストの同一 id 群を bulk tier から正しく守れる
-        let isScrollContainer = isScrollableContainer(node) == true
         for child in children {
-            collect(child, depth: depth + 1, screen: screen, visited: &visited,
-                    insideScrollable: insideScrollable || isScrollContainer, gathered: &gathered)
+            collect(child, depth: depth + 1, screen: screen, visited: &visited, gathered: &gathered)
         }
     }
 

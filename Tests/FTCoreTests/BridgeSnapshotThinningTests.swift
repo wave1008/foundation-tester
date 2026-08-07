@@ -19,11 +19,8 @@ final class BridgeSnapshotThinningTests: XCTestCase {
     }
 
     private func candidate(_ type: String, id: String? = nil, label: String? = nil,
-                           scrollable: Bool? = nil,
-                           insideScrollable: Bool = false) -> BridgeSnapshotThinning.Candidate {
-        BridgeSnapshotThinning.Candidate(
-            info: element(type, id: id, label: label, scrollable: scrollable),
-            insideScrollable: insideScrollable)
+                           scrollable: Bool? = nil) -> BridgeSnapshotThinning.Candidate {
+        BridgeSnapshotThinning.Candidate(info: element(type, id: id, label: label, scrollable: scrollable))
     }
 
     /// 上限以下なら1件も落とさない(順序もそのまま)
@@ -47,19 +44,61 @@ final class BridgeSnapshotThinningTests: XCTestCase {
         XCTAssertEqual(Array(kept.prefix(10)), Array(0..<10))
     }
 
-    /// **スクロール容器の中の大群は bulk にしない**(長いリストは装飾ではない)。
-    /// この場合はラベル持ち = tier1 なので、末尾から均等に落ちる
-    func testGroupInsideScrollableIsNotBulk() {
-        var candidates = (0..<90).map { i in
-            candidate("other", id: "row", label: "行\(i)", insideScrollable: true)
-        }
+    /// **58 で祖先ベースの bulk 免除を撤去**(地図 POI がスクロール容器[地図]の中に居るため
+    /// 旧条件では素通りし、ラベル付き tier1 として本来操作可能な要素より後まで生き残っていた)。
+    /// 同一 id 群は祖先の状況に関わらず bulk として最初に落ちる
+    func testGroupWithScrollableAncestorIsNowBulk() {
+        var candidates = (0..<90).map { i in candidate("other", id: "row", label: "行\(i)") }
         candidates += (0..<30).map { i in candidate("staticText", label: "詳細\(i)") }
 
         let kept = BridgeSnapshotThinning.indicesToKeep(candidates, max: 40)
 
         XCTAssertEqual(kept.count, 40)
-        // 同 tier では後ろから捨てるので、残るのは先頭40件
-        XCTAssertEqual(kept, Array(0..<40))
+        // bulk(添字 0..89)から先に落ち、詳細(添字90..119)は全部残る
+        XCTAssertEqual(Array(kept.suffix(30)), Array(90..<120))
+        XCTAssertEqual(Array(kept.prefix(10)), Array(0..<10))
+    }
+
+    /// スクロール容器自身(info.scrollable == true)は同一 id が20件以上でも bulk(tier3)にならない
+    func testScrollableCandidateIsNeverBulk() {
+        let scrollableCandidate = candidate("other", id: "pane", scrollable: true)
+        XCTAssertNotEqual(
+            BridgeSnapshotThinning.tier(scrollableCandidate, identifierCounts: ["pane": 25]), 3)
+    }
+
+    /// tier0 まで落とす必要がある超過ツリーでも scrollable=true の要素は cap 免除で残る
+    /// (結果が max を超えて返ることを許容する。indicesToKeep のコメント参照)
+    func testScrollableContainerSurvivesCapEvenAtTier0() {
+        var candidates = [candidate("other", id: "map1", scrollable: true),
+                          candidate("other", id: "map2", scrollable: true)]
+        candidates += (0..<3).map { i in candidate("button", label: "b\(i)") }
+
+        let kept = BridgeSnapshotThinning.indicesToKeep(candidates, max: 1)
+
+        XCTAssertEqual(kept, [0, 1], "スクロール容器2件は max(1) を超えて残るはず")
+    }
+
+    /// 実害の再現形(2026-08-08 実測・Apple マップ)を縮尺: ラベルが全て異なる同一 id ×21・
+    /// 非操作の群(地図 POI)は、祖先がスクロール容器でも bulk として最初に落ちる
+    func testMapPOIGroupIsBulkDespiteScrollableAncestor() {
+        var candidates = (0..<21).map { i in candidate("other", id: "VKPointFeature", label: "駅\(i)") }
+        candidates += (0..<5).map { i in candidate("button", label: "詳細\(i)") }
+
+        let kept = BridgeSnapshotThinning.indicesToKeep(candidates, max: 5)
+
+        XCTAssertEqual(kept, Array(21..<26))
+    }
+
+    /// POI 装飾群と隣り合うラベル付き同一id群が超過したとき、装飾(tier2)が先に落ちて
+    /// ラベル付き bulk 群(tier3)が残ることを固定する(旧順序は bulk を先に落としていた)
+    func testDecorativeTier2DropsBeforeALabeledBulkGroup() {
+        var candidates = (0..<21).map { i in candidate("other", id: "row", label: "行\(i)") } // tier3(bulk)
+        candidates += (0..<5).map { _ in candidate("other") } // tier2(ラベルもidも無い装飾)
+
+        let kept = BridgeSnapshotThinning.indicesToKeep(candidates, max: 22)
+
+        // 装飾4件だけが落ち、ラベル付き bulk 群21件は無傷で残る
+        XCTAssertEqual(kept, Array(0..<22))
     }
 
     /// 操作可能な型は大群でも bulk にしない(タップ対象を先に捨てない)
@@ -92,14 +131,16 @@ final class BridgeSnapshotThinningTests: XCTestCase {
         XCTAssertEqual(kept, Array(0..<10))
     }
 
-    /// bulk を全部捨ててもまだ超過するなら tier2 → tier1 → tier0 の順に落ちる
+    /// tier2 と tier3(bulk)を両方捨ててもまだ超過するなら tier1 → tier0 の順に落ちる。
+    /// この例は tier2(10)+tier3(20)=30 が必要な削減(35)に足りないため、両方全滅する点は
+    /// 捨てる順序(tier2 が先か tier3 が先か)に依らず結果が同じ
     func testFallsThroughTiersWhenBulkIsNotEnough() {
         var candidates = (0..<20).map { _ in candidate("other", id: "pin") }   // tier3
         candidates += (0..<10).map { _ in candidate("other") }            // tier2
         candidates += (0..<10).map { _ in candidate("staticText", label: "t") }// tier1
         candidates += (0..<10).map { _ in candidate("button", label: "b") }    // tier0
 
-        // 50 → 15: bulk 20 と tier2 10 を全部捨て、足りない5件を tier1 の後ろから削る。
+        // 50 → 15: tier2 10 と bulk 20 を全部捨て、足りない5件を tier1 の後ろから削る。
         // tier0(操作可能)は最後まで無傷
         let kept = BridgeSnapshotThinning.indicesToKeep(candidates, max: 15)
 
