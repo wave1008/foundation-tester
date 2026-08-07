@@ -126,7 +126,7 @@ final class SnapshotBuilder {
     static Result build(UiAutomation ua, boolean forceRefresh) throws JSONException {
         AccessibilityNodeInfo root = waitForRoot(ua, 2000);
         if (root == null) {
-            throw new IllegalStateException("アクティブウィンドウの UI ツリーを取得できません");
+            throw new IllegalStateException("cannot read the UI tree of the active window");
         }
 
         List<UINode> nodes = new ArrayList<>();
@@ -443,7 +443,13 @@ final class SnapshotBuilder {
         }
 
         boolean hasText = !node.text.isEmpty() || !node.contentDesc.isEmpty() || !node.resourceID.isEmpty();
-        if (node.clickable || node.checkable) return true;
+        // **選択中のノードは必ず残す**(2026-08-07 実測): Android は選択中のタブから
+        // clickable を落とす。そのノードが resource-id もテキストも持たないと、下の default
+        // 分岐で捨てられて**木から丸ごと消える**。実害は Google マップの経路プランナーで、
+        // 移動手段タブを切り替えると**選んだ側だけが消え**、今どれが選ばれているのか
+        // エージェントから読めなくなっていた(下部ナビが無事なのは id を持つから)。
+        // `selected` は checked へ OR して出しているので、残れば状態も読める
+        if (node.clickable || node.checkable || node.selected) return true;
         switch (type) {
             case "TextField":
             case "SecureTextField":

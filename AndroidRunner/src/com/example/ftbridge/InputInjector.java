@@ -83,7 +83,7 @@ final class InputInjector {
         long focusGraceUntil = start + timeoutMs / 2;
         long lastClickAt = 0;
         long firstFireAt = 0;         // 最初に SET_TEXT を受理させた時刻(未反映の張り直し判定用)
-        String lastState = "対象ノード未発見";
+        String lastState = "target node not found";
         String combined = null;       // 最初の確定読みから1回だけ作る(上記の規律)
         boolean masked = false;
         boolean blindFired = false;   // 猶予後の未フォーカス発火は1回だけ
@@ -131,11 +131,11 @@ final class InputInjector {
                                 AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, combined);
                         if (target.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) {
                             if (firstFireAt == 0) firstFireAt = SystemClock.uptimeMillis();
-                            lastState = focused ? "SET_TEXT は受理されたが値が反映されない"
-                                                : "未フォーカスの SET_TEXT が反映されない";
+                            lastState = focused ? "ACTION_SET_TEXT was accepted but the value did not change"
+                                                : "ACTION_SET_TEXT on an unfocused field did not take effect";
                             if (!focused) blindFired = true;
                         } else {
-                            lastState = "SET_TEXT 拒否(input connection 未確立の可能性)";
+                            lastState = "ACTION_SET_TEXT refused (the input connection may not be established yet)";
                         }
                     } else if (!focused && SystemClock.uptimeMillis() - lastClickAt >= 200) {
                         // フォーカスが立たない(タップがキーボードに吸われた等)。ACTION_CLICK は
@@ -146,19 +146,19 @@ final class InputInjector {
                         }
                         target.performAction(AccessibilityNodeInfo.ACTION_CLICK);
                         lastClickAt = SystemClock.uptimeMillis();
-                        lastState = "未フォーカス(ACTION_CLICK でフォーカス要求中)";
+                        lastState = "not focused (requesting focus with ACTION_CLICK)";
                     }
                 }
             } catch (BridgeRouter.BridgeException e) {
                 throw e;   // 撃たずに弾いた判断(rejectMaskedAppend 等)は再試行の対象ではない
             } catch (RuntimeException e) {
                 // レイアウト変化中のノードは内部で NPE 等を投げる → 次周回で取り直す
-                lastState = "ノードが無効化された(" + e.getClass().getSimpleName() + ")";
+                lastState = "the node became stale (" + e.getClass().getSimpleName() + ")";
             }
             if (SystemClock.uptimeMillis() >= deadline) {
                 throw new BridgeRouter.BridgeException(500,
-                        "タップしたフィールドへ入力できませんでした(" + lastState + "、"
-                        + timeoutMs + "ms 待機。他のフィールドへ誤入力しないため中止します)");
+                        "cannot type into the field that was tapped (" + lastState + "、"
+                        + timeoutMs + "ms waited; giving up rather than typing into the wrong field)");
             }
             SystemClock.sleep(20);
         }
@@ -211,8 +211,8 @@ final class InputInjector {
     private static void rejectMaskedAppend(boolean masked, String current) {
         if (!masked || current.isEmpty()) return;
         throw new BridgeRouter.BridgeException(422,
-                "パスワード欄には追記できません(読みが伏せ字なので、追記すると伏せ字が本文として"
-                + "書き込まれます)。置換したい場合は先に clearInput してください");
+                "cannot append to a password field (its value reads back masked, so appending would write the mask "
+                + "as real text). Call clearInput first if you meant to replace it");
     }
 
     /** 適用確認。マスク欄(パスワード)は読みが伏せ字になるため長さ一致で見る */
@@ -260,7 +260,7 @@ final class InputInjector {
         long focusGraceUntil = start + timeoutMs / 2;
         long lastClickAt = 0;
         long firstFireAt = 0;
-        String lastState = "対象ノード未発見";
+        String lastState = "target node not found";
         boolean blindFired = false;
         Rect bounds = new Rect();
         while (true) {
@@ -294,11 +294,11 @@ final class InputInjector {
                                 AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "");
                         if (target.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) {
                             if (firstFireAt == 0) firstFireAt = SystemClock.uptimeMillis();
-                            lastState = focused ? "SET_TEXT は受理されたが値が残っている"
-                                                : "未フォーカスの SET_TEXT が反映されない";
+                            lastState = focused ? "ACTION_SET_TEXT was accepted but the value is still there"
+                                                : "ACTION_SET_TEXT on an unfocused field did not take effect";
                             if (!focused) blindFired = true;
                         } else {
-                            lastState = "SET_TEXT 拒否(input connection 未確立の可能性)";
+                            lastState = "ACTION_SET_TEXT refused (the input connection may not be established yet)";
                         }
                     } else if (!focused && SystemClock.uptimeMillis() - lastClickAt >= 200) {
                         if (!target.isVisibleToUser()) {
@@ -307,18 +307,18 @@ final class InputInjector {
                         }
                         target.performAction(AccessibilityNodeInfo.ACTION_CLICK);
                         lastClickAt = SystemClock.uptimeMillis();
-                        lastState = "未フォーカス(ACTION_CLICK でフォーカス要求中)";
+                        lastState = "not focused (requesting focus with ACTION_CLICK)";
                     }
                 }
             } catch (BridgeRouter.BridgeException e) {
                 throw e;   // 撃たずに弾いた判断は再試行の対象ではない(上のコメント参照)
             } catch (RuntimeException e) {
-                lastState = "ノードが無効化された(" + e.getClass().getSimpleName() + ")";
+                lastState = "the node became stale (" + e.getClass().getSimpleName() + ")";
             }
             if (SystemClock.uptimeMillis() >= deadline) {
                 throw new BridgeRouter.BridgeException(409,
-                        "タップしたフィールドをクリアできませんでした(" + lastState + "、"
-                        + timeoutMs + "ms 待機)");
+                        "cannot clear the field that was tapped (" + lastState + "、"
+                        + timeoutMs + "ms waited)");
             }
             SystemClock.sleep(20);
         }
@@ -347,7 +347,7 @@ final class InputInjector {
      */
     static void setTextAppending(UiAutomation ua, String text) {
         long deadline = SystemClock.uptimeMillis() + 2000;
-        String lastState = "入力フォーカスを持つ要素がありません(先に ref 指定でタップしてください)";
+        String lastState = "no-input-focus: nothing has input focus (tap the field by ref first)";
         String combined = null;
         boolean masked = false;
         while (true) {
@@ -372,18 +372,18 @@ final class InputInjector {
                     args.putCharSequence(
                             AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, combined);
                     if (focus.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) {
-                        lastState = "SET_TEXT は受理されたが値が反映されない";
+                        lastState = "ACTION_SET_TEXT was accepted but the value did not change";
                     } else {
-                        lastState = "ACTION_SET_TEXT を受け付けないフィールドです(WebView 等)";
+                        lastState = "this field does not accept ACTION_SET_TEXT (a WebView, for example)";
                     }
                 }
             } catch (BridgeRouter.BridgeException e) {
                 throw e;   // 撃たずに弾いた判断は再試行の対象ではない(上のコメント参照)
             } catch (RuntimeException e) {
-                lastState = "ノードが無効化された(" + e.getClass().getSimpleName() + ")";
+                lastState = "the node became stale (" + e.getClass().getSimpleName() + ")";
             }
             if (SystemClock.uptimeMillis() >= deadline) {
-                throw new BridgeRouter.BridgeException(500, lastState + "(2000ms 待機)");
+                throw new BridgeRouter.BridgeException(500, lastState + "(2000ms waited)");
             }
             SystemClock.sleep(20);
         }
@@ -400,13 +400,13 @@ final class InputInjector {
                 : root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
         if (focus == null) {
             throw new BridgeRouter.BridgeException(409,
-                    "入力フォーカスを持つ要素がありません(先に ref 指定でタップしてください)");
+                    "no-input-focus: nothing has input focus (tap the field by ref first)");
         }
         Bundle args = new Bundle();
         args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, "");
         if (!focus.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) {
             throw new BridgeRouter.BridgeException(409,
-                    "ACTION_SET_TEXT を受け付けないフィールドです(WebView 等)");
+                    "this field does not accept ACTION_SET_TEXT (a WebView, for example)");
         }
     }
 
@@ -423,11 +423,11 @@ final class InputInjector {
                 : root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
         if (focus == null) {
             throw new BridgeRouter.BridgeException(409,
-                    "入力フォーカスを持つ要素がありません(先に ref 指定でタップしてください)");
+                    "no-input-focus: nothing has input focus (tap the field by ref first)");
         }
         // ホストがキーイベント経路へフォールバックできるよう、失敗は 409 で返す(500 にしない)
         if (!focus.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.getId())) {
-            throw new BridgeRouter.BridgeException(409, "IME の Enter アクションを実行できませんでした");
+            throw new BridgeRouter.BridgeException(409, "the IME Enter action could not be performed");
         }
     }
 
@@ -516,7 +516,7 @@ final class InputInjector {
     private static void inject(UiAutomation ua, MotionEvent e) {
         try {
             if (!ua.injectInputEvent(e, true)) {
-                throw new BridgeRouter.BridgeException(500, "injectInputEvent が拒否されました");
+                throw new BridgeRouter.BridgeException(500, "injectInputEvent was refused");
             }
         } finally {
             e.recycle();

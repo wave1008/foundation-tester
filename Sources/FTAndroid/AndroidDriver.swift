@@ -359,13 +359,28 @@ public final class AndroidDriver: AppDriver {
     /// ため keyevent でも発火する。実機実測で確認済み)。404(旧ブリッジ未実装)/409(フォーカス無し
     /// 等)/501(API 30未満)は下のキーイベント経路へフォールバックする。bridgeConnectionRefused
     /// 等それ以外のエラーは握り潰さずそのまま投げる。
+    /// ブリッジが「入力フォーカスが無い」と言うときの目印(InputInjector と同期。
+    /// **文言ではなくこの接頭辞で判定する** —— 文言は英語化で変わる)
+    static let noInputFocusMarker = "no-input-focus"
+
     public func pressEnter() async throws {
         do {
             try await withBridge { try await $0.pressEnter() }
             return
         } catch let error as DriverError {
-            guard case .badResponse(let status, _) = error,
+            guard case .badResponse(let status, let body) = error,
                   status == 404 || status == 409 || status == 501 else { throw error }
+            // **「フォーカスが無い」だけはフォールバックしない**(2026-08-07 実測)。
+            // 409 は2種類あり、「IME アクションが失敗」はキーイベントで救えるが、
+            // 「そもそも入力フォーカスが無い」は**誰も受け取らない**ので、生の Enter を
+            // 撃って成功を返すと沈黙した誤りになる(入力欄のタップに失敗したまま
+            // 検索が実行されず、原因から遠いところで落ちていた)。
+            // 目印はブリッジ側の `no-input-focus:` 接頭辞(InputInjector)
+            if body.contains(Self.noInputFocusMarker) {
+                throw DriverError.badResponse(status: status,
+                    body: "pressEnter did nothing: no field has input focus."
+                        + " Tap the field by ref first (ft_type with ref does this for you)")
+            }
         }
         // gRPC KeyboardEvent.key は w3c 名(home()/openAppSwitcher() と同じ振り分け)。"Enter" は
         // w3c UIEvents キー値だが emulator gRPC 側の対応は未確認 — EmulatorControl.perform は

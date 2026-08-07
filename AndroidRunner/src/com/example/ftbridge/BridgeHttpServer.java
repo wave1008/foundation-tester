@@ -104,7 +104,7 @@ final class BridgeHttpServer {
                     long readAt = android.os.SystemClock.uptimeMillis();
                     Response response;
                     if (request == null) {
-                        response = Response.error(400, "リクエストを解析できません");
+                        response = Response.error(400, "cannot parse the request");
                     } else {
                         try {
                             response = handler.handle(request);
