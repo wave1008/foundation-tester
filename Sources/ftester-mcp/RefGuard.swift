@@ -302,7 +302,11 @@ enum RefGuard {
     /// 失敗メッセージ用の人が読める識別(`#id` があればそれ、無ければ型とラベル)
     static func describe(_ element: ElementInfo) -> String {
         if let id = element.identifier, !id.isEmpty { return "#\(id)" }
-        if let label = element.label, !label.isEmpty { return "\(element.type) \"\(label)\"" }
+        // ゼロ幅文字を落とす(visibleLabelsHint と同じ理由。describe は tap の警告・
+        // goneMessage・遮蔽/ghost の警告が全部通る口なので、ここが最後の砦)
+        if let label = element.label.map(FlowMatchMode.stripZeroWidthCharacters), !label.isEmpty {
+            return "\(element.type) \"\(label)\""
+        }
         return element.type
     }
 

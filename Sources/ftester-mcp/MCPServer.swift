@@ -687,8 +687,12 @@ final class MCPServer {
         var seen = Set<String>()
         var shown: [String] = []
         for e in snapshot.elements {
+            // **ゼロ幅文字を落としてから出す**: ここから写したラベルは**見た目が正しいのに
+            // 完全一致しない**(2026-08-07 実測。Google マップの発車案内で U+200B が21個
+            // 漏れていた。木の描画側は除去済みで、ヒストだけ素通しだった)
+            let cleaned = e.label.map(FlowMatchMode.stripZeroWidthCharacters)
             let name = (e.identifier?.isEmpty == false) ? "#\(e.identifier!)"
-                : (e.label?.isEmpty == false) ? "\"\(e.label!)\"" : ""
+                : (cleaned?.isEmpty == false) ? "\"\(cleaned!)\"" : ""
             guard !name.isEmpty, seen.insert(name).inserted else { continue }
             shown.append(name)
             if shown.count >= 20 { break }
@@ -755,9 +759,20 @@ final class MCPServer {
         // 探索ループの条件分岐の中でしか埋まらず、空振りのまま失敗する回では nil のままになる
         if let frame = args["scrollFrame"] as? String {
             let locator = FTSelector.parse(frame).primary
-            guard locator.index == nil,
-                  let matches = StepExecutor.candidates(locator, elements: snapshot.elements),
-                  matches.count >= 2 else { return "" }
+            let matches = StepExecutor.candidates(locator, elements: snapshot.elements) ?? []
+            // **1件も当たらないなら、その事実こそ言う**: 誤字や範囲外の添字でも
+            // `scrollContainer` は nil を返して全画面スワイプへ落ちるだけで、
+            // 「絞ったつもりが絞れていない」ことに気づけない(2026-08-07 実測)
+            if matches.isEmpty {
+                let real = ScrollFrameCandidates.candidates(in: snapshot)
+                    .compactMap(\.selector).prefix(4).joined(separator: " ")
+                let alternatives = real.isEmpty
+                    ? " No element on this screen declares itself scrollable."
+                    : " Scrollable areas here: \(real)."
+                return " scrollFrame \"\(frame)\" matched nothing, so the whole screen was"
+                    + " swiped instead.\(alternatives)"
+            }
+            guard locator.index == nil, matches.count >= 2 else { return "" }
             let listed = matches.prefix(4).enumerated().map { index, element -> String in
                 let f = element.frame
                 return "[\(index)] (\(Int(f.x)),\(Int(f.y)) \(Int(f.width))x\(Int(f.height)))"
