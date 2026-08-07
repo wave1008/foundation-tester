@@ -360,12 +360,25 @@ public struct ElementInfo: Codable, Sendable {
     /// 同一要素を突き合わせるための唯一の手がかり。取得元: iOS xcuitest=`hasKeyboardFocus` /
     /// iOS in-app=`isFirstResponder` / Android=`AccessibilityNodeInfo.isFocused`
     public var focused: Bool?
+    /// **塗り順**(0 起点の通し番号。大きいほど手前)。nil = ブリッジが申告しない
+    /// (iOS の XCUITest / in-app には描画順を読む API が無い)。
+    ///
+    /// **preorder は描画順ではない**ので、遮蔽の判定にツリー順を代理で使うと裏返る ——
+    /// Google マップは地図の FAB をシートより後に出すが、描画はシートが手前で、
+    /// 「シートの裏の要素」を無警告でタップして別アプリを起動していた(2026-08-07 実測)。
+    ///
+    /// **ホストでは合成できないのでブリッジが1本の整数にして送る**: 出力ツリーは中間ノードを
+    /// 間引くため、2要素の共通祖先が木に残っておらず、段ごとの `getDrawingOrder` を
+    /// 突き合わせられない(実測: `#mylocation_button` の祖先鎖は3段で、シート側と1つも共有が無い)。
+    /// 生成は SnapshotBuilder.assignPaintOrder。**nil のときは ref 順へ落ちる**
+    public var z: Int?
 
     public init(ref: Int, type: String, identifier: String?, label: String?, value: String?,
                 placeholder: String?, enabled: Bool, frame: FTRect, depth: Int,
                 checked: Bool? = nil, web: Bool? = nil, focused: Bool? = nil,
-                scrollable: Bool? = nil) {
+                scrollable: Bool? = nil, z: Int? = nil) {
         self.scrollable = scrollable
+        self.z = z
         self.ref = ref
         self.type = Self.normalizedType(type)
         self.identifier = identifier
@@ -395,6 +408,7 @@ public struct ElementInfo: Codable, Sendable {
         web = try container.decodeIfPresent(Bool.self, forKey: .web)
         focused = try container.decodeIfPresent(Bool.self, forKey: .focused)
         scrollable = try container.decodeIfPresent(Bool.self, forKey: .scrollable)
+        z = try container.decodeIfPresent(Int.self, forKey: .z)
     }
 
     /// 先頭 1 文字だけ小文字化する(`StaticText` → `staticText`)。冪等なので二重適用しても安全

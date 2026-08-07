@@ -114,8 +114,8 @@ enum RefGuard {
     static func overlayCovering(_ element: ElementInfo, in elements: [ElementInfo],
                                 screen: FTRect) -> ElementInfo? {
         guard !isUntappableGhost(element, in: elements, screen: screen) else { return nil }
-        guard let hit = occluder(of: element, in: elements, screen: screen), hit.ref > element.ref
-        else { return nil }
+        guard let hit = occluder(of: element, in: elements, screen: screen),
+              drawnAbove(hit, element) else { return nil }
         return hit
     }
 
@@ -160,15 +160,60 @@ enum RefGuard {
             // **この判定を先に置く**のが要点 —— 包含判定は 1pt の差で外れるほど際どく
             // (閉じる y483..521 対 clickable y484..536)、閾値では守り切れない
             if StepExecutor.isOutsideContainer(other, in: elements) { return false }
-            // **自分を丸ごと包み、かつ画面規模の相手だけが容器**。完全包含でも面積が画面の
+            // **矩形がぴったり同じ相手は遮蔽と言わない**。同寸同位置は「上に載った物」ではなく
+            // ラッパーか、同じ枠を奪い合う入れ替わり(実測・Apple マップの検索結果:
+            // `#ResultsViewTable` と `#SearchAutocompleteView` はどちらも (0,62 402x812) で、
+            // 出ていない方が出ている方を覆っていることになっていた)。**本物の積み重なりは
+            // `stackedRefs` が別に見ている**ので、ここで拾わなくても取りこぼさない
+            if sameFrame(other.frame, element.frame) { return false }
+            // ここから先は「自分を丸ごと包む相手」の話。包まないなら素直に遮蔽
+            guard contains(other.frame, element.frame) else { return true }
+            // **奥にある相手は覆えない**(drawnAbove。z があればそれ、無ければ木の順序)。
+            // 奥にある入れ物は覆えない —— これが無いと、**視覚的には親だが木では兄弟**の
+            // ラッパーが遮蔽物になる。実測(2026-08-07・Apple マップの1画面目):
+            // `#MapsSearchBar`(ref 4・画面の 8.7%)が中の `#userProfileButton`(ref 8)を
+            // 覆っていると報告し、⚠️scroll-leftover を出していた。タップは正常だった
+            if !drawnAbove(other, element) { return false }
+            // **塗り順が実測で採れているなら、ここから下の幾何ヒューリスティクスは使わない**。
+            // 下の2つは「木の順序では手前/奥が分からない」ことへの当て推量で、真値がある場に
+            // 混ぜると真値を打ち消す —— 実測(2026-08-07・Google マップ): シート(z=76)が
+            // `#mylocation_button`(z=17)を覆っているのに、地図側の容器 `#qu_mylocation_container`
+            // が「内側の入れ物」に当たって外枠と誤判定し、警告が消えた。
+            // 包含していて、かつ手前に描かれているなら、それは覆っている
+            if other.z != nil, element.z != nil { return true }
+            // **いちばん内側の入れ物より外側なら外枠**。相手が「自分を包むもっと小さい何か」ごと
+            // 包んでいるなら、それは上に載った物ではなくレイアウトの外枠。
+            // 面積でも depth でも切り分けられない —— app bar の形(`#transit_station_title_name` を
+            // 包む `#header_container`)と、カードの形(`#userProfileButton` を包む `#HomeView`)は
+            // **depth も包含関係も同じ**で、違うのは「間にもう1枚あるか」だけ:
+            //   app bar: 包むのは header_container だけ            → いちばん内側 = 遮蔽として残す
+            //   カード:  HomeView ⊃ MapsSearchBar ⊃ userProfileButton → 外枠として外す
+            // **depth からの親復元は使えない**: 中間ノードはフィルタで落ちており、実測では
+            // アバターの「親」がシートグラバー(152,847 96x23)になっていた
+            if enclosesAnInnerWrapper(of: element, candidate: other, in: elements) { return false }
+            // **画面規模の相手だけが容器**。完全包含でも面積が画面の
             // fullScreenContainerAreaRatio 未満なら容器ではなく遮蔽 —— app bar の下に潜った行は
             // まさにこの形で、面積を見ずに「包む相手はみな容器」とすると丸ごと無警告になっていた。
             // 実測: 閉じる (351,485 38x38) を包む相手は Toolbar (0,0 402x874) = 画面そのもの
-            guard contains(other.frame, element.frame) else { return true }
             let otherArea = other.frame.width * other.frame.height
             let screenArea = screen.width * screen.height
             return screenArea > 0 && otherArea < screenArea * fullScreenContainerAreaRatio
         }
+    }
+
+    /// `candidate` が `element` より手前に描かれているか。
+    ///
+    /// **ブリッジが塗り順(`z`)を申告するなら必ずそれを使う**。ツリー順は描画順の代理として
+    /// 使ってきたが、production では裏返る —— Google マップは地図の FAB(ref 81〜86)を
+    /// シート(ref 17〜61)より**後**に出すのに、描画はシートが手前。2026-08-07 に
+    /// `#mylocation_button` を無警告でタップして裏の広告を踏み、**Chrome が起動**した。
+    ///
+    /// `z` を持たないエンジン(iOS の XCUITest / in-app には描画順を読む API が無い)では
+    /// 従来どおり ref 順へ落ちる。**両者が揃っているときだけ z を信じる**のは、
+    /// 片方だけ nil の木(打ち切りや別ブリッジの混在)で大小が無意味になるため
+    static func drawnAbove(_ candidate: ElementInfo, _ element: ElementInfo) -> Bool {
+        if let candidateZ = candidate.z, let elementZ = element.z { return candidateZ > elementZ }
+        return candidate.ref > element.ref
     }
 
     /// outer が inner を完全に含むか(縁の丸め差 1pt は許容)
@@ -176,6 +221,30 @@ enum RefGuard {
         outer.x <= inner.x + 1 && outer.y <= inner.y + 1
             && outer.x + outer.width >= inner.x + inner.width - 1
             && outer.y + outer.height >= inner.y + inner.height - 1
+    }
+
+    /// `candidate` と `element` の**間に**もう1枚、element を包む小さい入れ物があるか。
+    /// あるなら candidate はいちばん内側ではない = 外枠。
+    ///
+    /// **見落としの側に倒れる形**は自覚している: モーダルが「行の中のボタン」を覆う場合、
+    /// 行が内側の入れ物になってモーダルが外枠と判定される。それでもこちらを採るのは、
+    /// ①よくある遮蔽(スクロールで潜る・浮遊ボタン)は**部分的な重なり**なのでこの分岐に来ない
+    /// ②実アプリで出た誤検知は全部この形だった(2026-08-07・Apple マップの1画面目で3件)
+    /// ③これは警告であって拒否ではない、の3点による
+    static func enclosesAnInnerWrapper(of element: ElementInfo, candidate: ElementInfo,
+                                       in elements: [ElementInfo]) -> Bool {
+        // **祖先は数える**(むしろ本命): `#MapsSearchTextField` を包む `#MapsSearchBar` は
+        // その祖先で、それごと包む `#HomeView` が外枠だと分かる。
+        // 除くのは自分と子孫だけ —— 同一矩形の子を「内側の入れ物」と数えると何でも外枠になる
+        let descendants = Set(StepExecutor.descendants(of: element, in: elements).map(\.ref))
+        let candidateArea = candidate.frame.width * candidate.frame.height
+        return elements.contains { inner in
+            guard inner.ref != candidate.ref, inner.ref != element.ref,
+                  !descendants.contains(inner.ref),
+                  contains(inner.frame, element.frame),
+                  contains(candidate.frame, inner.frame) else { return false }
+            return inner.frame.width * inner.frame.height < candidateArea
+        }
     }
 
     /// 自分・祖先・子孫の ref(preorder + depth から復元する)
