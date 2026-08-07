@@ -104,9 +104,20 @@ public enum TapTargetGeometry {
     ///   中心が地図の上にあるので**海上の座標にピンが落ちて place page が開いた**
     public static func advisory(for element: ElementInfo, in elements: [ElementInfo],
                                 screen: FTRect) -> String? {
-        if !element.enabled {
-            return "the target is disabled, so this almost certainly did nothing"
-        }
+        disabledAdvisory(for: element)
+            ?? missedContentAdvisory(for: element, in: elements, screen: screen)
+    }
+
+    /// 「そもそも無効」。**撃つ座標に依らない**ので、どの経路でも同じことが言える
+    public static func disabledAdvisory(for element: ElementInfo) -> String? {
+        element.enabled ? nil : "the target is disabled, so this almost certainly did nothing"
+    }
+
+    /// 「中心が中身のどこにも乗らない」。**frame の中心を撃つときにしか言えない** ——
+    /// 呼び出し側が見えている部分の中心へ寄せる(`StepExecutor.visibleTapRect`)場合、
+    /// 撃つ点が変わるので「背後へ抜けた」は嘘になる(2026-08-08 のレビュー)
+    public static func missedContentAdvisory(for element: ElementInfo, in elements: [ElementInfo],
+                                             screen: FTRect) -> String? {
         guard let inner = missesItsOwnContent(element, in: elements, screen: screen) else {
             return nil
         }

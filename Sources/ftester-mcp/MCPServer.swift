@@ -1241,7 +1241,13 @@ final class MCPServer {
                 let element = try await verifiedElement(ref, driver: doubleTapDriver, args: args)
                 doubleTapPoint = (element.frame.centerX, element.frame.centerY)
                 doubleTapWhat = "[\(ref)]"
+                // **ft_tap と同じ被覆にする**(ft_tap は verifiedRef 経由で遮蔽・残像・
+                // 中身外しも見ている)。ここだけ disabled しか見ないと、同じ要素に対して
+                // ツールごとに言うことが変わる(2026-08-08 のレビュー)
                 doubleTapNote = RefGuard.disabledWarning(element)
+                    + RefGuard.overlapWarning(found: element, in: lastSnapshots[Self.engineKey(args)]?
+                        .elements ?? [], screen: lastSnapshots[Self.engineKey(args)]?.screen
+                        ?? FTRect(x: 0, y: 0, width: 0, height: 0))
             } else if let x = args["x"] as? Double, let y = args["y"] as? Double {
                 doubleTapPoint = (x, y)
                 doubleTapWhat = "(\(x), \(y))"

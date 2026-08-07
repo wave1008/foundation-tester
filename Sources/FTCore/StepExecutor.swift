@@ -1647,14 +1647,20 @@ public final class StepExecutor {
             // 失敗にはしない —— 無効な要素をわざと叩いて反応しないことを確かめる書き方は正当で、
             // `enabledIsFalse` も用意されている。**注記に混ぜて、後段の失敗から原因へ辿れるようにする**
             // (これが無いと「押したのに何も起きない」が後段のアサーションでだけ落ち、原因から遠い)
+            // **「そもそも無効」は撃つ座標に依らない**ので、この時点で載せてよい。
+            // 中身外しのほうは**frame の中心を撃つと決まってから**(下の visibleTapRect で
+            // 見えている部分へ寄せることがあり、寄せたなら「背後へ抜けた」は嘘になる)
             driverFallback = Self.joinNotes(driverFallback,
-                TapTargetGeometry.advisory(for: element, in: snapshot.elements,
-                                           screen: snapshot.screen))
+                                            TapTargetGeometry.disabledAdvisory(for: element))
             // **長押しは tap の引数**(Shirates 準拠。`tap(sel, holdSeconds:)`)。0 より大きいときだけ
             // ブリッジの /press へ回す。in-app は座標ジェスチャを持たない(501)ので XCUITest へ
             // フォールバックする経路も長押し側だけが必要
             let hold = step.duration ?? FlowStep.defaultTapHoldSeconds
             if hold > 0 {
+                // 長押しは press(ref:) = ブリッジが frame の中心へ解決するので中身外しも言える
+                driverFallback = Self.joinNotes(driverFallback,
+                    TapTargetGeometry.missedContentAdvisory(for: element, in: snapshot.elements,
+                                                            screen: snapshot.screen))
                 if typeDriverGestures.contains("press") || gestureFallbackLatched, let td = typeDriver,
                    try await pressViaTypeDriver(td, step: step, phase: &phase) {
                     return StepOutcome(status: .passed, healedStep: healedStep,
@@ -1686,6 +1692,10 @@ public final class StepExecutor {
                 driverFallback = Self.joinNotes(driverFallback,
                     "tapped the visible part (the reported frame's centre falls outside its container)")
             } else {
+                // 寄せずに frame の中心を撃つ = 中身外しの注記が言える経路
+                driverFallback = Self.joinNotes(driverFallback,
+                    TapTargetGeometry.missedContentAdvisory(for: element, in: snapshot.elements,
+                                                            screen: snapshot.screen))
                 try await actingDriver.tap(ref: element.ref)
             }
             phase.actionMs += Self.ms(clock.now - start)
@@ -1759,8 +1769,8 @@ public final class StepExecutor {
         case "pinchOut", "pinchIn", "doubleTap", "swipeBy":
             // 対象を指定した版。要素の frame(Android のピンチ中心・swipeBy の基準領域)と
             // identifier(XCUITest のピンチ対象)の両方を渡す(理由は BridgeDTO.PinchRequest)
-            // **doubleTap も指で触る操作**なので、tap と同じ注記を載せる(MCP は
-            // ft_double_tap で出しているので、ここが無いと DSL 側だけ黙る)。
+            // **doubleTap も指で触る操作**なので、tap と同じ注記を載せる
+            // (MCP の ft_double_tap も同じ内容を出す。片方だけ黙ると判断が食い違う)。
             // pinch / swipeBy は「要素を掴んで動かす」形で、無効でも意味があるので対象外
             let gestureAdvisory = action == "doubleTap"
                 ? TapTargetGeometry.advisory(for: element, in: snapshot.elements,
