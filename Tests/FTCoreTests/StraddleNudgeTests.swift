@@ -120,4 +120,42 @@ final class StraddleNudgeTests: XCTestCase {
 
         XCTAssertEqual(driver.drags, 0, "補正を切ったのに寄せている")
     }
+
+    // MARK: - straddleJump(寄せ量は最小 + 実行下限の床上げ)
+
+    private func element(y: Double, height: Double) -> ElementInfo {
+        ElementInfo(ref: 1, type: "button", identifier: "b", label: nil, value: nil,
+                    placeholder: nil, enabled: true,
+                    frame: FTRect(x: 16, y: y, width: 100, height: height), depth: 1)
+    }
+    private let container = FTRect(x: 0, y: 100, width: 402, height: 600)
+
+    /// 下端またぎ: 必要量が床(60)未満なら 60 へ床上げ(dragGesture の実行下限 50 を割ると
+    /// 寄せ自体が不発になり、Compose の小さいまたぎで元の対策が効かなくなる)
+    func testStraddleJumpFloorsSmallBottomOverflow() {
+        // 下端 700 に対し要素の下端 720 = はみ出し 20 + margin 12 = 32 → 床上げで 60
+        XCTAssertEqual(StepExecutor.straddleJump(for: element(y: 660, height: 60),
+                                                 container: container), 60)
+    }
+
+    /// 大きいはみ出しは実量 + margin(40% 位置への寄せ = 観測対象まで流す量にしない。
+    /// 2026-08-08 実害: E2E-iOS で echo ラベルが仮想化の外へ流れた)
+    func testStraddleJumpUsesActualOverflowWhenLarge() {
+        // 要素の下端 900 - 容器の下端 700 = 200 + margin 12 = 212
+        XCTAssertEqual(StepExecutor.straddleJump(for: element(y: 840, height: 60),
+                                                 container: container), 212)
+    }
+
+    /// 上端またぎは負(内容を下へ)
+    func testStraddleJumpIsNegativeForTopOverflow() {
+        // 上端 100 - 要素の上端 70 = 30 + margin 12 = 42 → 床上げで -60
+        XCTAssertEqual(StepExecutor.straddleJump(for: element(y: 70, height: 60),
+                                                 container: container), -60)
+    }
+
+    /// 完全に中なら nil(寄せない)
+    func testStraddleJumpIsNilWhenFullyInside() {
+        XCTAssertNil(StepExecutor.straddleJump(for: element(y: 300, height: 60),
+                                               container: container))
+    }
 }

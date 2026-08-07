@@ -367,6 +367,13 @@ extension StepExecutor {
             let result = try await runScrollSearch(step: step, recoverOnMiss: false, phase: &phase)
             scrollSearchNote = recordedScrollSearchNote(result)
             guard !result.found else { return .failed(Self.scrollFoundMessage(step)) }
+            // **`!result.found` を成功材料にしない**: scrollFrame が解決できず1本も振らずに
+            // 打ち切った場合も found=false になるが、それは「無いことを確認した」ではなく
+            // 探索していない(2026-08-08)。exist 側(executeAssertExists)と同じく
+            // scrollNotFoundMessage 経由の文言でその場に失敗させる
+            if result.scrollFrameMissing {
+                return .failed(Self.scrollNotFoundMessage(step, result))
+            }
         }
         // 「消えるまで待つ」。初回で不在なら即 pass、在るならタイムアウトまで消滅を待つ。
         // 可視性(occlusion)は見ない: ツリーから消えたことが唯一の判定。

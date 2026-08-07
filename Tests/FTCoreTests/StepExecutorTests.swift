@@ -2221,6 +2221,55 @@ final class StepExecutorTests: XCTestCase {
                       "静止を確認できなかったことも注記すること: \(note)")
     }
 
+    // MARK: - scroll/scrollToEdge/flick(scrollFrame:) の fail-fast(2026-08-08)
+
+    /// 明示 scrollFrame が解決できないなら、`scroll` は全画面スワイプへ黙って退化せず
+    /// 1本も振らずに失敗する(A1 と同じ理由: 無関係な要素を誤発火させ得るため)
+    func testScrollFailsWithoutSwipingWhenScrollFrameDoesNotResolve() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
+        let executor = StepExecutor(driver: primary)
+        var step = FlowStep(action: "scroll", direction: "up", maxSwipes: 3)
+        step.scrollFrame = FlowLocator(id: "no_such_container")
+
+        let outcome = await executor.execute(step)
+
+        guard case .failed(let msg) = outcome.status else { XCTFail("失敗のはず: \(outcome.status)"); return }
+        XCTAssertTrue(msg.contains("the swipe was not sent"), msg)
+        XCTAssertFalse(log.entries.contains { $0.contains(".swipe") },
+                       "scrollFrame が解決できないなら1本も振らないこと")
+    }
+
+    func testScrollToEdgeFailsWithoutSwipingWhenScrollFrameDoesNotResolve() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
+        let executor = StepExecutor(driver: primary)
+        var step = FlowStep(action: "scrollToEdge", direction: "up", maxSwipes: 3)
+        step.scrollFrame = FlowLocator(id: "no_such_container")
+
+        let outcome = await executor.execute(step)
+
+        guard case .failed(let msg) = outcome.status else { XCTFail("失敗のはず: \(outcome.status)"); return }
+        XCTAssertTrue(msg.contains("the swipe was not sent"), msg)
+        XCTAssertFalse(log.entries.contains { $0.contains(".swipe") },
+                       "scrollFrame が解決できないなら1本も振らないこと")
+    }
+
+    func testFlickFailsWithoutSwipingWhenScrollFrameDoesNotResolve() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
+        let executor = StepExecutor(driver: primary)
+        var step = FlowStep(action: "flick", direction: "topToBottom", maxSwipes: 1)
+        step.scrollFrame = FlowLocator(id: "no_such_container")
+
+        let outcome = await executor.execute(step)
+
+        guard case .failed(let msg) = outcome.status else { XCTFail("失敗のはず: \(outcome.status)"); return }
+        XCTAssertTrue(msg.contains("the flick was not sent"), msg)
+        XCTAssertFalse(log.entries.contains { $0.contains(".swipe") || $0.contains(".drag") },
+                       "scrollFrame が解決できないなら1本も振らないこと")
+    }
+
     // MARK: - notExist(scroll:) の内蔵探索(exist(scroll:) の裏返し)
 
     /// スクロール探索を尽くしても見つからなければ、現在のビューポート(最終フレーム)でも
@@ -2251,6 +2300,25 @@ final class StepExecutorTests: XCTestCase {
             XCTFail("スクロール探索で見つかったら失敗のはず"); return
         }
         XCTAssertTrue(msg.contains("found via scroll search"), msg)
+    }
+
+    /// **`!result.found` を成功材料にしない**: 明示 scrollFrame が解決できず1本も振らずに
+    /// 打ち切った場合も found=false になるが、それは「無いことを確認した」ではなく
+    /// 探索していないだけ(2026-08-08)。notExist(scroll:) は exist(scroll:) と同じ文言で失敗する
+    func testNotExistWithScrollFailsWhenScrollFrameDoesNotResolve() async throws {
+        let log = CallLog()
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[]])
+        let executor = StepExecutor(driver: primary)
+        var step = FlowStep(assert: "notExists", locator: FlowLocator(id: "row_99"),
+                            direction: "up", timeout: 0, maxSwipes: 2)
+        step.scrollFrame = FlowLocator(id: "no_such_container")
+
+        guard case .failed(let msg) = await executor.execute(step).status else {
+            XCTFail("scrollFrame 未解決は失敗のはず"); return
+        }
+        XCTAssertTrue(msg.contains("search was not run"), msg)
+        XCTAssertFalse(log.entries.contains { $0.contains(".swipe") },
+                       "scrollFrame が解決できないなら1本も振らないこと")
     }
 
     /// フォールバック判定は 501 と「ルート不明の 404」だけ。409(一時的競合)と
