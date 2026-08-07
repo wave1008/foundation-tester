@@ -103,6 +103,20 @@ final class ScrollFrameCandidatesTests: XCTestCase {
         XCTAssertTrue(text.hasSuffix("\n"), text)
     }
 
+    /// **1つも名指しできない画面では scrollFrame を勧めない**(2026-08-08。in-app が版57で
+    /// Compose の素の容器を出すようになった —— testTag の無い容器ばかりの画面で
+    /// 「scrollFrame: を渡せ」と言っても渡せる書き方が無い。ft_drag で領域内を掴む案内に切り替える)
+    func testNoteAdvisesDragWhenNoCandidateCanBeNamed() {
+        let snap = snapshot([
+            element(1, frame: FTRect(x: 0, y: 60, width: 400, height: 60), scrollable: true),
+            element(2, frame: FTRect(x: 0, y: 120, width: 400, height: 500), scrollable: true),
+        ])
+        let text = ScrollFrameCandidates.note(snap) ?? ""
+        XCTAssertTrue(text.contains("2 scroll areas"), text)
+        XCTAssertTrue(text.contains("ft_drag"), text)
+        XCTAssertFalse(text.contains("Pass scrollFrame:"), text)
+    }
+
     /// **同名 id が並ぶ画面では添字と矩形と軸まで出す**。実測(2026-08-07・Google マップ Android):
     /// `#recycler_view / #search_list_layout / #recycler_view / #recycler_view` と並べていたので、
     /// 「どれか1つを渡せ」と言いながら渡せる書き方が無かった。
