@@ -276,30 +276,35 @@ final class FTInAppBridge {
                                   webViewPath: nil)
         }
 
+        // **先着順で切らない**(2026-08-08 実測: 密グリッドページで装飾セルが残り、送信・入力欄・
+        // リンクが全部押し出された)。捨てる順は BridgeSnapshotThinning.mergedSlots に1箇所
+        // (ネイティブ1段目の間引きと同じ優先度規則)
+        let domElements = domByRef.mapValues(\.elements)
+        let (kept, dropped) = BridgeSnapshotThinning.mergedSlots(
+            base: base.elements, dom: domElements, max: BridgeAPI.maxSnapshotElements)
         var elements: [ElementInfo] = []
         var frames: [Int: CGRect] = [:]
         var nodes: [Int: NSObject] = [:]
-        var truncated = base.truncated
-        func append(_ info: ElementInfo, frame: CGRect?, node: NSObject?) {
-            guard elements.count < BridgeAPI.maxSnapshotElements else {
-                truncated += 1
-                return
+        for slot in kept {
+            var copy: ElementInfo
+            var frame: CGRect?
+            var node: NSObject?
+            switch slot {
+            case .base(let i):
+                copy = base.elements[i]
+                frame = base.frames[copy.ref]
+                node = base.nodes[copy.ref]
+            case .dom(let container, let index):
+                copy = domByRef[container]!.elements[index]
+                frame = domByRef[container]!.frames[index]
             }
-            var copy = info
             copy.ref = elements.count + 1
             elements.append(copy)
             if let frame { frames[copy.ref] = frame }
             if let node { nodes[copy.ref] = node }
         }
-        for info in base.elements {
-            append(info, frame: base.frames[info.ref], node: base.nodes[info.ref])
-            guard let dom = domByRef[info.ref] else { continue }
-            for (index, element) in dom.elements.enumerated() {
-                append(element, frame: dom.frames[index], node: nil)
-            }
-        }
         return MergedSnapshot(elements: elements, frames: frames, nodes: nodes,
-                              truncated: truncated, note: note,
+                              truncated: base.truncated + dropped, note: note,
                               webViewPath: anyInterop ? "dom-interop" : "dom")
     }
 
