@@ -100,7 +100,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         UiAutomation ua = instrumentation.getUiAutomation();
         if (ua == null) {
             throw new BridgeException(500,
-                    "UiAutomation を取得できません(am instrument は -w 付きで起動する必要があります)");
+                    "cannot obtain UiAutomation (am instrument must be started with -w)");
         }
         return ua;
     }
@@ -111,7 +111,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
             String text = new String(request.body, StandardCharsets.UTF_8);
             return text.isEmpty() ? new JSONObject() : new JSONObject(text);
         } catch (JSONException e) {
-            throw new BridgeException(400, "リクエストボディの JSON が不正です: " + e);
+            throw new BridgeException(400, "the request body is not valid JSON: " + e);
         }
     }
 
@@ -212,7 +212,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
 
     private BridgeHttpServer.Response handleType(JSONObject body) {
         if (!body.has("text")) {
-            throw new BridgeException(400, "text が必要です");
+            throw new BridgeException(400, "text is required");
         }
         String text = body.optString("text");
         if (body.has("ref")) {
@@ -276,7 +276,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
             case "left": from = new double[]{w * (0.5 + half), cy}; to = new double[]{w * (0.5 - half), cy}; break;
             case "right": from = new double[]{w * (0.5 - half), cy}; to = new double[]{w * (0.5 + half), cy}; break;
             default:
-                throw new BridgeException(400, "direction は up/down/left/right のいずれかです");
+                throw new BridgeException(400, "direction must be one of up/down/left/right");
         }
         InputInjector.swipe(ua(), from[0], from[1], to[0], to[1], strokeMs, syntheticUp);
         settle();
@@ -304,7 +304,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
     private BridgeHttpServer.Response handlePinch(JSONObject body) {
         double scale = body.optDouble("scale", 0);
         if (!(scale > 0) || scale == 1 || Double.isInfinite(scale)) {
-            throw new BridgeException(400, "scale は正で 1 以外である必要があります(受領: " + scale + ")");
+            throw new BridgeException(400, "scale must be positive and not 1 (received: " + scale + ")");
         }
         double left = lastScreen.left, top = lastScreen.top;
         double width = lastScreen.width() > 0 ? lastScreen.width() : 1080;
@@ -349,7 +349,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
      */
     private BridgeHttpServer.Response handlePressEnter() {
         if (Build.VERSION.SDK_INT < 30) {
-            throw new BridgeException(501, "ACTION_IME_ENTER は API 30 未満では未対応です");
+            throw new BridgeException(501, "ACTION_IME_ENTER is not supported below API 30");
         }
         InputInjector.pressImeEnter(ua());
         settle();
@@ -359,7 +359,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
     private BridgeHttpServer.Response handleScreenshot() {
         Bitmap bitmap = ua().takeScreenshot();
         if (bitmap == null) {
-            throw new BridgeException(500, "スクリーンショットを取得できません");
+            throw new BridgeException(500, "cannot take a screenshot");
         }
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         bitmap.compress(Bitmap.CompressFormat.PNG, 100, out);
@@ -385,7 +385,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
             String start = component == null ? null : shell("am start -n " + component);
             if (component == null || start == null || start.contains("Error")) {
                 throw new BridgeException(500,
-                        "アプリを起動できません: " + bundleID + "(インストール済みか確認してください)");
+                        "cannot launch the app: " + bundleID + " (check that it is installed)");
             }
         }
         sessionBundleID = bundleID;
@@ -413,7 +413,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
     private BridgeHttpServer.Response handleLaunch(JSONObject body) {
         String bundleID = body.optString("bundleID");
         if (bundleID.isEmpty()) {
-            throw new BridgeException(400, "bundleID が必要です");
+            throw new BridgeException(400, "bundleID is required");
         }
         if (attemptLaunch(bundleID)) return ok();
         // 前面判定が別パッケージの居座りで詰んだ。前面を掃除して1回だけ再試行する。
@@ -427,7 +427,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
             shell("input keyevent KEYCODE_HOME");
         }
         if (attemptLaunch(bundleID)) return ok();
-        throw new BridgeException(500, "アプリの画面が表示されませんでした: " + bundleID);
+        throw new BridgeException(500, "the app never came to the foreground: " + bundleID);
     }
 
     private BridgeHttpServer.Response handleTerminate() {
@@ -449,10 +449,10 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
      */
     private BridgeHttpServer.Response handleLocale(JSONObject body) throws JSONException {
         String tag = body.optString("locale", "").replace('_', '-');
-        if (tag.isEmpty()) throw new BridgeException(400, "locale がありません");
+        if (tag.isEmpty()) throw new BridgeException(400, "locale is required");
         java.util.Locale target = java.util.Locale.forLanguageTag(tag);
         if (target.getLanguage().isEmpty()) {
-            throw new BridgeException(400, "locale を解釈できません: " + tag);
+            throw new BridgeException(400, "cannot parse the locale: " + tag);
         }
         java.util.Locale current = android.content.res.Resources.getSystem()
                 .getConfiguration().getLocales().get(0);
@@ -463,7 +463,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
             return BridgeHttpServer.Response.json(200, o.toString());
         }
         if (Build.VERSION.SDK_INT < 29) {
-            throw new BridgeException(500, "ロケール変更は API 29 以上のみ対応です");
+            throw new BridgeException(500, "changing the locale requires API 29 or newer");
         }
         UiAutomation ua = ua();
         ua.adoptShellPermissionIdentity();
@@ -476,7 +476,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
             am.getClass().getMethod("updatePersistentConfiguration",
                     android.content.res.Configuration.class).invoke(am, config);
         } catch (ReflectiveOperationException e) {
-            throw new BridgeException(500, "ロケール変更に失敗(hidden_api_policy=1 が必要): " + e);
+            throw new BridgeException(500, "changing the locale failed (hidden_api_policy=1 is required): " + e);
         } finally {
             ua.dropShellPermissionIdentity();
         }
@@ -564,14 +564,14 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
         if (body.has("x") && body.has("y")) {
             return new double[]{body.optDouble("x"), body.optDouble("y")};
         }
-        throw new BridgeException(400, "ref または x/y が必要です");
+        throw new BridgeException(400, "ref or x/y is required");
     }
 
     private double[] centerOf(int ref) {
         double[] center = refCenters.get(ref);
         if (center == null) {
             throw new BridgeException(404,
-                    "参照番号 [" + ref + "] は未知です。先に GET /snapshot を実行してください");
+                    "reference number [" + ref + "] is unknown. Run GET /snapshot first");
         }
         return center;
     }
@@ -587,7 +587,7 @@ final class BridgeRouter implements BridgeHttpServer.Handler {
             }
             return out.toString("UTF-8");
         } catch (Exception e) {
-            throw new BridgeException(500, "shell 実行に失敗: " + command + " (" + e + ")");
+            throw new BridgeException(500, "the shell command failed: " + command + " (" + e + ")");
         }
     }
 
