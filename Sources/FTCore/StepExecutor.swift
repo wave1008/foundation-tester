@@ -1659,7 +1659,8 @@ public final class StepExecutor {
                    try await pressViaTypeDriver(td, step: step, phase: &phase) {
                     return StepOutcome(status: .passed, healedStep: healedStep,
                                        healedByCache: healedByCache,
-                                       driverFallback: "fell back to XCUITest")
+                                       driverFallback: Self.joinNotes(driverFallback,
+                                                                      "fell back to XCUITest"))
                 }
                 do {
                     start = clock.now
@@ -1671,7 +1672,7 @@ public final class StepExecutor {
                     guard DriverError.isEngineIncapable(error), let td = typeDriver else { throw error }
                     guard try await pressViaTypeDriver(td, step: step, phase: &phase) else { throw error }
                     gestureFallbackLatched = true
-                    driverFallback = "fell back to XCUITest"
+                    driverFallback = Self.joinNotes(driverFallback, "fell back to XCUITest")
                 }
                 break
             }
@@ -1689,8 +1690,11 @@ public final class StepExecutor {
             }
             phase.actionMs += Self.ms(clock.now - start)
             // ドライバが「無言 no-op になり得る経路を通った」と申告した注記(例: InAppBridge の
-            // activate 不発→合成タッチ)。失敗ではないので driverFallback に載せて可視化するだけ
-            if let note = actingDriver.lastActionNote { driverFallback = note }
+            // activate 不発→合成タッチ)。失敗ではないので driverFallback に載せて可視化するだけ。
+            // **代入ではなく合流**: 上書きすると、直前に積んだ注記(無効な要素・中身外し)が
+            // 消える —— しかも消えるのは activate 不発のような**まさに飲まれた場面**で、
+            // 両方が要るときに片方を失っていた(2026-08-07 のレビューで発覚)
+            driverFallback = Self.joinNotes(driverFallback, actingDriver.lastActionNote)
         case "type":
             // "\n" を含む入力だけ typeDriver(XCUITest)を優先する: typeText は改行を Return
             // キー押下として発火し iOS 既定の挙動と揃うが、in-app の insertText は改行の解釈が
@@ -1755,11 +1759,19 @@ public final class StepExecutor {
         case "pinchOut", "pinchIn", "doubleTap", "swipeBy":
             // 対象を指定した版。要素の frame(Android のピンチ中心・swipeBy の基準領域)と
             // identifier(XCUITest のピンチ対象)の両方を渡す(理由は BridgeDTO.PinchRequest)
+            // **doubleTap も指で触る操作**なので、tap と同じ注記を載せる(MCP は
+            // ft_double_tap で出しているので、ここが無いと DSL 側だけ黙る)。
+            // pinch / swipeBy は「要素を掴んで動かす」形で、無効でも意味があるので対象外
+            let gestureAdvisory = action == "doubleTap"
+                ? TapTargetGeometry.advisory(for: element, in: snapshot.elements,
+                                             screen: snapshot.screen)
+                : nil
             let outcome = try await performGesture(action, step: step, target: element.frame,
                                                    identifier: element.identifier,
                                                    viewport: snapshot.screen, phase: &phase)
             guard case .passed = outcome.status else { return outcome }
-            driverFallback = outcome.driverFallback
+            driverFallback = Self.joinNotes(driverFallback, gestureAdvisory,
+                                            outcome.driverFallback)
         case "swipeElementToElement":
             guard let endLocator = step.endLocator else {
                 return StepOutcome(status: .failed("swipeElementToElement requires an end locator"))

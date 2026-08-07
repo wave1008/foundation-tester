@@ -23,10 +23,4 @@ public enum PaintOrder {
         if let candidateZ = candidate.z, let elementZ = element.z { return candidateZ > elementZ }
         return candidate.ref > element.ref
     }
-
-    /// この木が本物の塗り順を持っているか(注記の文言を変えるときの判定用)。
-    /// **1つでも欠けていれば false** —— 混在した木で「z がある」と言うと読み手を誤らせる
-    public static func isReported(in elements: [ElementInfo]) -> Bool {
-        !elements.isEmpty && elements.allSatisfy { $0.z != nil }
-    }
 }

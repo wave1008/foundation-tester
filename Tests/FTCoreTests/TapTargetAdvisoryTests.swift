@@ -71,8 +71,14 @@ final class TapTargetAdvisoryTests: XCTestCase {
 /// tap を実行して、ステップ注記に載ることを固定する。
 private final class AdvisoryProbeDriver: AppDriver {
     let disabled: Bool
+    /// ドライバ自身が申告する注記(InAppBridge の「activate 不発→合成タッチ」に相当)
+    let driverNote: String?
     private(set) var taps = 0
-    init(disabled: Bool) { self.disabled = disabled }
+    init(disabled: Bool, driverNote: String? = nil) {
+        self.disabled = disabled
+        self.driverNote = driverNote
+    }
+    var lastActionNote: String? { driverNote }
 
     func status() async throws -> StatusResponse {
         StatusResponse(ready: true, device: "fake", osVersion: "-", sessionBundleID: nil)
@@ -125,5 +131,18 @@ final class TapAdvisoryWiringTests: XCTestCase {
             .execute(FlowStep(action: "tap", locator: FlowLocator(id: "target")))
         XCTAssertEqual(driver.taps, 1)
         XCTAssertNil(outcome.driverFallback, "余計な注記が付いた: \(outcome.driverFallback ?? "")")
+    }
+
+    /// **ドライバ自身の注記と共存する**。以前はここで代入していたため、
+    /// activate 不発のような**まさに飲まれた場面**で「無効な要素」の注記が消えていた
+    /// (2026-08-07 のレビューで発覚。上書き→合流に直した)
+    func testDriverNoteDoesNotSwallowTheAdvisory() async throws {
+        let driver = AdvisoryProbeDriver(disabled: true,
+                                         driverNote: "activate misfired: synthesized a touch instead")
+        let outcome = await StepExecutor(driver: driver)
+            .execute(FlowStep(action: "tap", locator: FlowLocator(id: "target")))
+        let note = outcome.driverFallback ?? ""
+        XCTAssertTrue(note.contains("disabled"), "advisory が消えた: \(note)")
+        XCTAssertTrue(note.contains("activate misfired"), "ドライバの注記が消えた: \(note)")
     }
 }
