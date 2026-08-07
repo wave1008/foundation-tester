@@ -408,6 +408,19 @@ enum RefGuard {
         "clickable", "button", "cell", "link", "switch", "checkBox", "radioButton", "tab",
     ]
 
+    /// **無効な要素を叩こうとしている**ときの警告。木には `disabled` と印字しているのに、
+    /// 操作経路は `enabled` を一度も見ておらず、押しても何も起きない要素へ "done" を返していた
+    /// (2026-08-07 の棚卸しで確認。E2E-CMP の契約上「押しても何も起きない」ボタンに対し
+    /// tap / press / double_tap の3つとも無警告で成功していた。実アプリでも
+    /// Apple マップの経路画面に `#CardButtonTypeShare disabled` がある)。
+    ///
+    /// **拒否ではなく警告**にする —— 「無効な要素が反応しないこと」を確かめる操作は正当で、
+    /// DSL 側にも `enabledIsFalse` がある
+    static func disabledWarning(_ element: ElementInfo) -> String {
+        guard !element.enabled else { return "" }
+        return " (warning: \(describe(element)) is disabled, so this almost certainly did nothing)"
+    }
+
     static func overlapWarning(found: ElementInfo, in elements: [ElementInfo], screen: FTRect) -> String {
         if let over = overlayCovering(found, in: elements, screen: screen) {
             return " (warning: \(describe(over)) is drawn over the center of \(describe(found)),"
