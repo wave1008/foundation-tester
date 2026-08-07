@@ -77,4 +77,24 @@ final class SnapshotRenderingTests: XCTestCase {
         XCTAssertTrue(text.contains("id=title (0,200"))
         XCTAssertFalse(text.contains("id=title ×"))
     }
+    /// **値だけでは意味が決まらない**ので範囲も出す。実測(2026-08-07): 同じ SUT の同じ
+    /// スライダーが iOS では `value="50%"`、Android では**値すら無い**状態だった
+    /// (`getRangeInfo` を採っていなかった)。パーセントへ正規化せず生値+範囲で出す決定
+    func testSliderRangeIsRendered() {
+        let e = ElementInfo(ref: 1, type: "slider", identifier: "slider_volume", label: nil,
+                            value: "50", placeholder: nil, enabled: true,
+                            frame: FTRect(x: 0, y: 0, width: 100, height: 20), depth: 2,
+                            range: "0-100")
+        let line = SnapshotRenderer.renderElement(e)
+        XCTAssertTrue(line.contains("value=\"50\""), line)
+        XCTAssertTrue(line.contains("range=0-100"), line)
+    }
+
+    /// 範囲を持たない要素では出さない(全要素に付くと表が太る)
+    func testNonRangeElementsGetNoRange() {
+        let e = ElementInfo(ref: 1, type: "button", identifier: "b", label: "OK", value: nil,
+                            placeholder: nil, enabled: true,
+                            frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: 2)
+        XCTAssertFalse(SnapshotRenderer.renderElement(e).contains("range="))
+    }
 }

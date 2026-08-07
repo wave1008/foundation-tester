@@ -66,6 +66,12 @@ final class SnapshotBuilder {
         int[] zPath = new int[0];
         /** 塗り順(0 起点の通し番号。大きいほど手前)。BridgeDTO.ElementInfo.z 参照 */
         int z;
+        /** スライダー/プログレスの現在値と範囲(API21+ の RangeInfo)。**採っていないと
+         *  Android ではスライダーの状態がまったく読めない** —— iOS は XCUIElement.value が
+         *  "50%" を返すので、同じ SUT の同じ要素でプラットフォームごとに結果が違っていた
+         *  (2026-08-07 実測)。`hasRange` が false のときは3値とも無効 */
+        boolean hasRange;
+        float rangeCurrent, rangeMin, rangeMax;
         boolean enabled = true;
         boolean password;
         Rect bounds = new Rect();
@@ -248,6 +254,13 @@ final class SnapshotBuilder {
         n.selected = node.isSelected();
         n.focused = node.isFocused();
         n.scrollable = node.isScrollable();
+        AccessibilityNodeInfo.RangeInfo range = node.getRangeInfo();
+        if (range != null) {
+            n.hasRange = true;
+            n.rangeCurrent = range.getCurrent();
+            n.rangeMin = range.getMin();
+            n.rangeMax = range.getMax();
+        }
 
         n.enabled = node.isEnabled();
         n.password = node.isPassword();
@@ -497,6 +510,15 @@ final class SnapshotBuilder {
             identifier = idx >= 0 ? node.resourceID.substring(idx + 3) : node.resourceID;
         }
 
+        // **スライダー等は現在値を value に載せる**。パーセントへ正規化しない ——
+        // 0..10 のスライダーで current=3 を "30%" と言うのは、生値を読みたい側には嘘に近い。
+        // 範囲は別キー `range` で添えるので、読み手は割合も自分で出せる(2026-08-07 の決定)
+        String range = null;
+        if (node.hasRange) {
+            if (value == null) value = trimFloat(node.rangeCurrent);
+            range = trimFloat(node.rangeMin) + "-" + trimFloat(node.rangeMax);
+        }
+
         // Optional フィールドは nil のときキー省略(Swift JSONEncoder と同じ形)
         JSONObject info = new JSONObject();
         info.put("ref", ref);
@@ -515,12 +537,18 @@ final class SnapshotBuilder {
         if (node.focused) info.put("focused", true);
         // scrollable も同じ省略規約(scrollFrame の空振り検出用)
         if (node.scrollable) info.put("scrollable", true);
+        if (range != null) info.put("range", range);
         // 塗り順は**常に**送る(0 も有効な値。省略すると「奥から数えて0番目」と
         // 「申告なし」が区別できなくなる)
         info.put("z", node.z);
         info.put("frame", rectJSON(node.bounds));
         info.put("depth", node.depth);
         return info;
+    }
+
+    /** 整数なら小数点以下を落とす("50.0" ではなく "50")。読み手はこれをそのまま値として使う */
+    private static String trimFloat(float f) {
+        return f == Math.rint(f) ? String.valueOf((long) f) : String.valueOf(f);
     }
 
     static JSONObject rectJSON(Rect rect) throws JSONException {

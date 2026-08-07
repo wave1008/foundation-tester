@@ -54,6 +54,11 @@ public enum SnapshotRenderer {
         if let placeholder, !placeholder.isEmpty, placeholder != label {
             parts.append("ph=\"\(truncate(placeholder, valueDisplayLimit))\"")
         }
+        // 取り得る範囲(スライダー・プログレス)。**値だけでは意味が決まらない** ——
+        // `value="3"` が 0..10 の3なのか 0..100 の3なのかで読み方が変わる
+        if let range = e.range, !range.isEmpty {
+            parts.append("range=\(range)")
+        }
         // 空の入力欄はモデルに明示する(「入力済みと思い込んで送信」対策)。
         // label があるのに empty と出す自己矛盾を避けるため、label も無いときだけ出す
         if Self.textInputTypes.contains(e.type), e.value == nil, label == nil || label!.isEmpty {
