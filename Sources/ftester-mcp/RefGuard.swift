@@ -165,7 +165,11 @@ enum RefGuard {
         let cx = element.frame.x + element.frame.width / 2
         let cy = element.frame.y + element.frame.height / 2
         let excluded = lineage(of: element, in: elements)
-        return elements.first { other in
+        // **いちばん手前を返す**(2026-08-08。DSL の `OcclusionSuspicion.covering` と揃えた)。
+        // 配列順で最初の候補を返すと、重なりが複数あるとき中間層を名指しして、実際に見えている
+        // 最前面を素通しする。実データでは「包んでいるシート」ではなく**タップを受け取った広告行**が
+        // 答えになる。塗り順が採れる場では最前面は計算できるので、当てずっぽうを残す理由が無い
+        let isOccluder: (ElementInfo) -> Bool = { other in
             guard !excluded.contains(other.ref),
                   other.frame.x <= cx, cx <= other.frame.x + other.frame.width,
                   other.frame.y <= cy, cy <= other.frame.y + other.frame.height
@@ -217,6 +221,9 @@ enum RefGuard {
             let screenArea = screen.width * screen.height
             return screenArea > 0 && otherArea < screenArea * fullScreenContainerAreaRatio
         }
+        // `max(by:)` の述語は「$0 が $1 より奥か」= $1 が手前なら $0 < $1。
+        // `drawnAbove` は z か ref の全順序なので、これで最前面がひとつ決まる
+        return elements.filter(isOccluder).max { drawnAbove($1, $0) }
     }
 
     /// `candidate` が `element` より手前に描かれているか。

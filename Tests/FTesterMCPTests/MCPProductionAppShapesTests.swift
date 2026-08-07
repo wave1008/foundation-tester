@@ -109,7 +109,10 @@ final class MCPProductionAppShapesTests: XCTestCase {
         XCTAssertTrue(target.ref > 17)
         let hit = RefGuard.overlayCovering(target, in: elements,
                                            screen: FTRect(x: 0, y: 0, width: 1080, height: 2424))
-        XCTAssertEqual(hit?.identifier, "place_page_tabs_container")
+        // 名指しは**最前面**(#recycler_view は z=78 でシート z=76 より手前)。
+        // ここで問うているのは「シートの裏の chrome を覆われていると認識できるか」で、
+        // どちらが名指しされるかは最前面の規則(testOccluderNamesTheFrontmost…)が別に固定する
+        XCTAssertEqual(hit?.identifier, "recycler_view")
     }
 
     /// **z を申告しないエンジン(iOS)では ref 順のまま**。片方だけ nil の木でも大小を比べない
@@ -121,6 +124,24 @@ final class MCPProductionAppShapesTests: XCTestCase {
         // z が片側だけのときも ref 順(混在した木で大小が無意味になるのを避ける)
         let halfKnown = element(3, "c", depth: 2, 0, 0, 10, 10, z: 999)
         XCTAssertFalse(RefGuard.drawnAbove(halfKnown, behind))
+    }
+
+    /// **重なりが複数あるときは最前面を名指しする**(2026-08-08。DSL の `covering` と揃えた)。
+    /// 配列順で最初を返すと中間層(包んでいるシート)を名指しし、**実際にタップを受け取る
+    /// 最前面**を素通しする。実データでは広告行が答えで、それは事故で Chrome を起動させた要素そのもの
+    func testOccluderNamesTheFrontmostNotTheFirstInArrayOrder() {
+        let screen1080 = FTRect(x: 0, y: 0, width: 1080, height: 2424)
+        let elements = [
+            element(1, "root", depth: 2, type: "other", 0, 0, 1080, 2424, z: 0),
+            element(17, "sheet", depth: 17, type: "other", 0, 408, 1080, 1796, z: 76),
+            element(37, "ad_row", depth: 22, type: "clickable", 42, 1072, 996, 143, z: 124),
+            element(86, "chrome", depth: 9, type: "other", 881, 1075, 199, 199, z: 15),
+            element(88, "mylocation_button", depth: 11, type: "image",
+                    881, 1075, 199, 186, label: "現在地", z: 17),
+        ]
+        let target = elements.first { $0.identifier == "mylocation_button" }!
+        XCTAssertEqual(RefGuard.overlayCovering(target, in: elements, screen: screen1080)?
+            .identifier, "ad_row", "包んでいるシートではなく最前面を名指しすること")
     }
 
     // MARK: - 中身のどこでもない点を叩く(R2)
