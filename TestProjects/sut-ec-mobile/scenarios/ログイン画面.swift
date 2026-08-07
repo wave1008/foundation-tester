@@ -19,6 +19,9 @@ class ログイン画面を開けること {
         // 押し込み画面から再開した場合に一覧へ正規化(タブ根なら無害)
         ifCanSelect("#btn_back") { tap("#btn_back") }
         tap("#tab_account")
+        // 待ち2つの理由と実害は ログイン失敗.swift の setUp を参照
+        waitForDisplay("#btn_benchmark")
+        waitForClose("#account_loading")
         ifCanSelect("#btn_logout") { tap("#btn_logout") }
     }
 

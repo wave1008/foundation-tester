@@ -16,11 +16,19 @@ class ログイン失敗が表示されること {
     // このテストは**ログアウト状態**が前提。アプリのデータは launchApp で消えないため、
     // 前のシナリオのセッションが残っているとアカウント画面がプロフィール表示になり
     // #btn_login が存在しない(実害: この前提が無くて 07/27 に解決失敗で落ちた)。
-    // setUp の失敗はシナリオごと中断されるので、前提が崩れたまま本体が走ることはない
+    // setUp の失敗はシナリオごと中断されるので、前提が崩れたまま本体が走ることはない。
+    //
+    // **ログアウト分岐の前に2つ待つ**(2026-08-08 実測。同型4本の理由はここに集約):
+    //   1. #btn_benchmark = タブ直後は AX 木が前画面のまま残る(実測 ~1.5s)ので葉要素で着地を待つ
+    //   2. #account_loading の消失 = セッション復元中はログイン/ログアウトのどちらも描画されない
+    // どちらか欠けると、ログイン残留状態で ifCanSelect が #btn_logout を見逃し、
+    // ログインしたまま本体へ進んで #btn_login の解決失敗で落ちる(決定的に再現)
     func setUp() {
         launchApp()
         ifCanSelect("#btn_back") { tap("#btn_back") }
         tap("#tab_account")
+        waitForDisplay("#btn_benchmark")
+        waitForClose("#account_loading")
         ifCanSelect("#btn_logout") { tap("#btn_logout") }
     }
 
