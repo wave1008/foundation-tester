@@ -784,14 +784,15 @@ final class MCPServer {
                 + " was used — add [n] to pick another: \(listed)."
         }
         // **スクロール容器が1つも申告されない木**では、案内が出せない理由ごと言う(2026-08-08 の
-        // 監査): Compose/Flutter は iOS では scrollable を申告できず(両エンジンとも)、既定の
-        // 全画面スワイプは横スクロール列を1pxも動かせない。黙ると「scrollFrame を渡せ」という
-        // ツール説明だけが残り、渡す候補が無いことに気づけない
+        // 監査)。in-app は版57から Compose/Flutter でも申告できるが、XCUITest エンジンの木では
+        // 依然として出ない。黙ると「scrollFrame を渡せ」というツール説明だけが残り、
+        // 渡す候補が無いことに気づけない
         if !snapshot.elements.contains(where: { $0.scrollable == true }) {
-            return " No element in this tree declares itself scrollable (Compose/Flutter on iOS"
-                + " never can), so the search swiped the whole screen. If the target sits in a"
-                + " horizontal row, scroll the row with ft_drag inside its bounds; a container"
-                + " that has a #id (testTag) can still be passed as scrollFrame:."
+            return " No element in this tree declares itself scrollable (with Compose/Flutter,"
+                + " only the in-app engine can see scroll containers), so the search swiped the"
+                + " whole screen. If the target sits in a horizontal row, scroll the row with"
+                + " ft_drag inside its bounds; a container that has a #id (testTag) can still be"
+                + " passed as scrollFrame:."
         }
         guard let note = ScrollFrameCandidates.note(snapshot) else { return "" }
         return " " + note.trimmingCharacters(in: .whitespacesAndNewlines)

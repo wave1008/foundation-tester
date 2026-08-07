@@ -3,7 +3,8 @@
 // **デバイスを必要としない**ので境界は単体テストで固定する(ScrollGeometry と同じ規律)。
 //
 // 判定に使えるのは **`scrollable == true` を見つけたときだけ**。申告できないエンジン
-// (Compose/Flutter の in-app)では全要素が nil になるので、そこで「候補なし」と言うと嘘になる。
+// (Compose/Flutter の **XCUITest**。in-app は版57から申告できる)では全要素が nil に
+// なるので、そこで「候補なし」と言うと嘘になる。
 // StepExecutor.scrollFrameNote と同じ規律 —— **1つも true が無い画面では黙る**。
 
 import Foundation
@@ -64,8 +65,13 @@ public enum ScrollFrameCandidates {
         let listed = found.prefix(4)
             .map { describe($0, in: snapshot) }.joined(separator: " / ")
         let more = found.count > 4 ? " (+\(found.count - 4) more)" : ""
-        return "note: \(found.count) scroll areas on screen: \(listed)\(more)."
-            + " Pass scrollFrame: to ft_scroll_to to search inside one of them.\n"
+        // **1つも名指しできない**(id もラベルも無い = Compose の素の容器)なら scrollFrame を
+        // 勧めない —— 渡せる書き方が無い。矩形は出ているので ft_drag で領域内を掴む案内にする
+        let advice = found.contains(where: { $0.selector != nil })
+            ? " Pass scrollFrame: to ft_scroll_to to search inside one of them."
+            : " None of them has an id, so scrollFrame: cannot name them —"
+                + " scroll a specific one by dragging inside its frame (ft_drag)."
+        return "note: \(found.count) scroll areas on screen: \(listed)\(more).\(advice)\n"
     }
 
     /// 同じセレクタ文字列を持つ候補が2つ以上あるか。**あるなら添字なしの指定は当てにならない**

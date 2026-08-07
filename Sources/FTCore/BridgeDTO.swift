@@ -122,7 +122,10 @@ public enum BridgeAPI {
     /// 56: WebView DOM マージの上限超過を先着順から優先度順(mergedSlots)へ変えた
     /// (2026-08-08。密グリッドページで装飾セルが操作可能要素を全部押し出す実害を実測)。
     /// 旧 dylib が再利用されると DOM の濃い画面で送信ボタン等が木から消えたまま緑になる
-    public static let bridgeProtocolVersion = 56
+    /// 57: in-app が Compose/Flutter でも scrollable を申告するようになった
+    /// (UIFocusItemScrollableContainer へのインスタンス毎準拠で判定。id 無しのスクロール容器も
+    /// 木に出す)。旧 dylib が再利用されると scroll マークも scrollFrame 候補も出ないまま緑になる
+    public static let bridgeProtocolVersion = 57
 
     /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
     /// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java の

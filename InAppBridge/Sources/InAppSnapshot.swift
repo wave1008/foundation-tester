@@ -95,9 +95,9 @@ enum InAppSnapshot {
         // それ以外は accessibilityElements(あれば)を、無ければ subviews を辿る。
         if let view = node as? UIView, view.isAccessibilityElement { return }
         let children = axChildren(node)
-        // makeInfo の scrollable と同じ判定(UIScrollView だけ)。Compose/Flutter は自前描画で
-        // UIScrollView を持たないため、あちらのリストは insideScrollable が立たない
-        let isScrollContainer = node is UIScrollView
+        // makeInfo の scrollable と同じ判定(isScrollableContainer)。Compose/Flutter の
+        // リストも 2026-08-08 から立つ = 長いリストの同一 id 群を bulk tier から正しく守れる
+        let isScrollContainer = isScrollableContainer(node) == true
         for child in children {
             collect(child, depth: depth + 1, screen: screen, visited: &visited,
                     insideScrollable: insideScrollable || isScrollContainer, gathered: &gathered)
@@ -132,8 +132,10 @@ enum InAppSnapshot {
         guard frame.width >= 2, frame.height >= 2 else { return nil }
         guard screen.isEmpty || frame.intersects(screen) else { return nil }
 
-        // 画面の大半を覆う Other コンテナは除外(誤タップ誘発。BridgeRouter と同じ)
-        if type == .other {
+        // 画面の大半を覆う Other コンテナは除外(誤タップ誘発。BridgeRouter と同じ)。
+        // **スクロール容器だけは残す**(2026-08-08): 全画面のスクロール画面はまさにこの形で、
+        // 落とすと scrollFrame の候補が1つも出ない。誤タップは offscreen/中身外しの注記が守る
+        if type == .other, isScrollableContainer(node) != true {
             let screenArea = screen.width * screen.height
             if screenArea > 0, (frame.width * frame.height) / screenArea > 0.85 { return nil }
         }
@@ -153,8 +155,36 @@ enum InAppSnapshot {
         case .keyboardKey:
             return nil
         case .other:
+            // id 無しでも**スクロール容器なら出す**(2026-08-08。Android の `|| node.selected` と
+            // 同じ型 = 情報を持つノードをフィルタで黙らせない)。Compose のスクロール容器は
+            // testTag が無いのが普通で、落とすと scrollFrame の候補も scroll マークも出ない
+            if isScrollableContainer(node) == true { return Included(frame: frame) }
             return (axIdentifier(node) ?? "").isEmpty ? nil : Included(frame: frame)
         }
+    }
+
+    /// スクロールできる容器か。**UIKit/SwiftUI** = UIScrollView の存在(従来どおり)。
+    /// **Compose/Flutter** = `UIFocusItemScrollableContainer`(公開プロトコル)への
+    /// **インスタンス毎の準拠**で判る(2026-08-08 PoC・sut-ec-mobile 3画面 + E2E-Flutter で確認):
+    /// Compose の AccessibilityElement は `conformsToProtocol:` を自前実装し、スクロール可能な
+    /// セマンティクスノードでだけ準拠を名乗る。ツールバー・Scaffold ルートのような
+    /// 非スクロールの traversal group(accessibilityContainerType は同じ semanticGroup)は
+    /// 準拠しない = ct では割れない誤検知がこれで消える。Flutter の FlutterSemanticsScrollView は
+    /// UIScrollView 側の分岐で従来どおり拾われる。
+    /// visible が 0 のガードは Flutter が持つ迷子の UIScrollView(402x0・content 2x2)対策
+    static func isScrollableContainer(_ node: NSObject) -> Bool? {
+        if let scrollView = node as? UIScrollView {
+            // content が 0x0 の UIScrollView はどこへも動けない。Compose の画面が持つ
+            // 「本体のスクロールとは無関係な UIScrollView」(handleSwipe の注記参照)が
+            // まさにこの形(402x874・content 0x0)で、素通しすると全画面の偽 scroll マークになる
+            let content = scrollView.contentSize
+            guard content.width > 0 || content.height > 0 else { return nil }
+            return true
+        }
+        guard let container = node as? (any UIFocusItemScrollableContainer) else { return nil }
+        let visible = container.visibleSize
+        guard visible.width > 0, visible.height > 0 else { return nil }
+        return true
     }
 
     // SwiftUI の AccessibilityNode/UIKitTextField は UIAccessibilityIdentification 準拠を
@@ -184,10 +214,9 @@ enum InAppSnapshot {
             checked: traits.contains(.selected) ? true : nil,
             // clearInput 事後検証用(ElementInfo.focused 参照)。true のときだけ送る
             focused: (node as? UIResponder)?.isFirstResponder == true ? true : nil,
-            // スクロールできる容器か(scrollFrame の空振り検出用)。**UIKit/SwiftUI でだけ分かる** ——
-            // Compose/Flutter は自前描画で UIScrollView を持たず、AX の scroll 可否は
-            // 呼ぶと実際にスクロールしてしまうので非破壊に判定できない(false は送らない)
-            scrollable: node is UIScrollView ? true : nil)
+            // スクロールできる容器か(scroll マーク・scrollFrame の空振り検出用)。
+            // 判定は isScrollableContainer(Compose/Flutter も 2026-08-08 から判る。false は送らない)
+            scrollable: Self.isScrollableContainer(node))
     }
 
     // 空の UITextField は accessibilityValue が placeholder を返すため value に漏れる。

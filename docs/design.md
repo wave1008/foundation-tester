@@ -1639,9 +1639,14 @@ select("#btn_ok"); textIs("OK")                 // 暗黙(トップレベルの�
   詳細は docs/verification.md「Compose の探索直後タップ」。
   **スクロールできない領域を指定したときは注記で申告する**(座標は正しく作られ 200 が返るが
   何も動かない = 端に達したのと区別できず署名では検出できないため)。判定は
-  `ElementInfo.scrollable`(Android=`isScrollable` / xcuitest=型 / in-app=`UIScrollView`)で、
-  **申告できないエンジン(Compose/Flutter の in-app)では黙る** —— 使ってよいのは true を
-  見つけたときだけで、「false = スクロールできない」と読むと誤報になる
+  `ElementInfo.scrollable`(Android=`isScrollable` / xcuitest=型 / in-app=版57から
+  `isScrollableContainer` = UIScrollView(content 0x0 は除外)or `UIFocusItemScrollableContainer`
+  への**インスタンス毎の準拠**。Compose の AccessibilityElement は `conformsToProtocol:` を
+  自前実装しスクロール可能なノードでだけ準拠を名乗る —— 公開プロトコルなので私有 API ではない。
+  2026-08-08 PoC: sut-ec-mobile 3画面 + E2E-Flutter で誤検知0・見逃し0。id 無しの容器も
+  snapshot に出すようにした)。**申告できないエンジン(Compose/Flutter の xcuitest)では
+  黙る** —— 使ってよいのは true を見つけたときだけで、
+  「false = スクロールできない」と読むと誤報になる
 
 ### 失敗時に返す情報(2026-07-26)
 
