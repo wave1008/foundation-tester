@@ -1109,13 +1109,26 @@ final class MCPServer {
             let typeDriver = try await driver(args)
             var targetRef = args["ref"] as? Int
             var note = ""
+            // **type は追記**(docs/commands.md)。既に入っている欄へ撃つと連結された文字列になり、
+            // 戻り値が `Typed: "東京タワー"` だけだと気づけない —— 検索欄なら検索自体は成立するので
+            // **沈黙した誤りになる**(2026-08-07 に Google マップで `レストラン東京タワー` を実測)。
+            // 撃つ前の値は verifiedRef が撮り直した木から引く(追加の snapshot を払わない)
+            var priorValue: String?
             if let ref = targetRef {
                 let verified = try await verifiedRef(ref, driver: typeDriver, args: args)
                 targetRef = verified.ref
                 note = verified.note
+                priorValue = lastSnapshots[Self.engineKey(args)]?
+                    .elements.first { $0.ref == verified.ref }?.value
             }
             if let content, !content.isEmpty {
                 try await typeDriver.type(ref: targetRef, text: content)
+                if let prior = priorValue, !prior.isEmpty {
+                    note += " (the field already held \"\(SnapshotRenderer.truncate(prior, 30))\";"
+                        + " ft_type appends, so it now reads"
+                        + " \"\(SnapshotRenderer.truncate(prior + content, 60))\"."
+                        + " Call ft_clear_input first if you meant to replace it)"
+                }
             } else if let ref = targetRef {
                 // 入力せず Enter だけ撃つときも、対象が指定されていればフォーカスを立ててから。
                 // **タップの直後に撃たない**(下の awaitFocus): 直前に別の欄へ入力していると
@@ -1238,12 +1251,21 @@ final class MCPServer {
                 + iosEngineHint("Flutter", "pinch", args: args))
 
         case "ft_press":
-            guard let ref = args["ref"] as? Int else { throw MCPError("ref is required") }
             let pressDriver = try await driver(args)
-            let pressTarget = try await verifiedRef(ref, driver: pressDriver, args: args)
-            try await pressDriver.press(ref: pressTarget.ref,
-                                        duration: args["duration"] as? Double ?? 1.0)
-            return text("press [\(ref)] done\(pressTarget.note)")
+            let pressDuration = args["duration"] as? Double ?? 1.0
+            if let ref = args["ref"] as? Int {
+                let pressTarget = try await verifiedRef(ref, driver: pressDriver, args: args)
+                try await pressDriver.press(ref: pressTarget.ref, duration: pressDuration)
+                return text("press [\(ref)] done\(pressTarget.note)")
+            }
+            // **座標形は ft_tap と揃える**: ドライバは press(x:y:duration:) を要件として持つのに
+            // MCP からは ref でしか呼べなかった。地図・キャンバスのように a11y 要素が無い点を
+            // 長押しする操作(ピンを落とす・住所を出す)が一切書けない状態だった(2026-08-07)
+            if let x = args["x"] as? Double, let y = args["y"] as? Double {
+                try await pressDriver.press(x: x, y: y, duration: pressDuration)
+                return text("press (\(x), \(y)) done")
+            }
+            throw MCPError("ref or x/y is required")
 
         case "ft_screenshot":
             let png = try await driver(args).screenshot()
@@ -1521,6 +1543,7 @@ final class MCPServer {
             "y": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],
         ]),
         tool("ft_type", "Type text (with ref, taps that field first and waits for it to take focus). "
+            + "It APPENDS to whatever the field already holds — call ft_clear_input first to replace. "
             + "text is required unless pressEnter is true — pressEnter alone fires the Enter/IME action. "
             + "It closes the soft keyboard on UIKit/SwiftUI, but Compose and Flutter keep it open, so do not "
             + "retry pressEnter waiting for the keyboard to go away.", [
@@ -1584,10 +1607,13 @@ final class MCPServer {
             "scale": ["type": "number", "description": "Zoom factor (default 2.0)"],
             "durationSeconds": ["type": "number", "description": "Gesture duration in seconds (default 0.5)"],
         ]),
-        tool("ft_press", "Long-press an element", [
-            "ref": ["type": "integer"],
+        tool("ft_press", "Long-press an element (ref) or a coordinate (x,y). Use x/y on a map or "
+            + "canvas, where the point you want has no element of its own", [
+            "ref": ["type": "integer", "description": "Reference number from ft_snapshot"],
+            "x": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],
+            "y": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],
             "duration": ["type": "number", "description": "Seconds (default 1.0)"],
-        ], required: ["ref"]),
+        ]),
         tool("ft_screenshot", "Take a screenshot (returns an image). Use it for visual verification", [:]),
         tool("ft_terminate", "Terminate the running app", [:]),
         tool("ft_list_scenarios", "List the Swift DSL scenarios (TestProjects/<name>/scenarios/). Builds automatically; compile errors are returned as-is", [
