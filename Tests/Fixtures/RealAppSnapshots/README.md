@@ -9,6 +9,7 @@
 | `and-` | Google マップ 11.x / Android 15(emulator) | 塗り順 `z` を**持つ**木・全画面シート・横カルーセル |
 | `ios-` | Apple マップ / iOS 27.0(Simulator・xcuitest) | `z` を**持たない**木(ツリー順フォールバック) |
 | `sut-` | E2E-CMP(自前) | `disabled` の供給源(実アプリのコーパスには1件も無い) |
+| `sutec-` | sut-ec-mobile / iOS 27.0(Simulator・**in-app**) | in-app エンジンの木(それまで1枚も無かった)・画面外中心(`offscreen`)の供給源・下部バーの遮蔽 |
 
 **採り直すとき**は基準値も一緒に更新する(`SweepHarnessTests.baselines`)。件数が増えたら
 まず誤検知を疑い、真陽性だと確かめてから基準値を上げること —— 黙って上げると、

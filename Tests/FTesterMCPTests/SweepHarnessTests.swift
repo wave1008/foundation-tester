@@ -18,10 +18,11 @@ final class SweepHarnessTests: XCTestCase {
 
     /// 1画面ぶんの検知件数
     struct Counts: Equatable, CustomStringConvertible {
-        var ghost = 0, overlay = 0, stacked = 0, misses = 0, disabled = 0, warnedTappable = 0
+        var ghost = 0, overlay = 0, stacked = 0, misses = 0, disabled = 0, offscreen = 0,
+            warnedTappable = 0
         var description: String {
             "ghost=\(ghost) overlay=\(overlay) stacked=\(stacked) misses=\(misses)"
-                + " disabled=\(disabled) warnedTappable=\(warnedTappable)"
+                + " disabled=\(disabled) offscreen=\(offscreen) warnedTappable=\(warnedTappable)"
         }
     }
 
@@ -48,6 +49,21 @@ final class SweepHarnessTests: XCTestCase {
         "sut-cmp_controls": Counts(ghost: 0, overlay: 0, stacked: 0, misses: 0, disabled: 2,
                                    warnedTappable: 2),
         "sut-cmp_home": Counts(),
+        // sutec-* は sut-ec-mobile の **iOS in-app** の木(2026-08-08 の in-app 監査で採取。
+        // それまで in-app の実樹はコーパスに1枚も無かった)。offscreen は全件確認済みの真陽性:
+        // calendar_day の #slot_07 は Simulator 上で無反応タップを実測・#slot_23 とホームの
+        // 「カテゴリ」は中心が幾何的に画面外。detail の overlay(説明文 ← #btn_add_to_cart)は
+        // タップが実際にカート追加になった実測の真陽性。calendar_day の overlay
+        // (#btn_back ← #slot_10)は**確認済みの誤検知**(Simulator 実測: btn_back の中心を
+        // 叩くと正常に戻る。slot_08〜10 の frame はヘッダ裏の真っ白な領域を指しており、
+        // そこには描かれていない。iOS は z が無く後着の行が「手前」と読まれる既知の限界)
+        // —— 挙動の現状を固定する値であって真陽性の追認ではない
+        "sutec-calendar_day": Counts(ghost: 0, overlay: 1, stacked: 0, misses: 0, disabled: 0,
+                                     offscreen: 2, warnedTappable: 3),
+        "sutec-detail": Counts(ghost: 0, overlay: 1, stacked: 0, misses: 0, disabled: 1,
+                               offscreen: 0, warnedTappable: 1),
+        "sutec-home": Counts(ghost: 0, overlay: 0, stacked: 0, misses: 0, disabled: 0,
+                             offscreen: 1, warnedTappable: 0),
     ]
 
     private static var fixtureDirectory: URL {
@@ -74,8 +90,10 @@ final class SweepHarnessTests: XCTestCase {
             // 変異テストで実際に素通しした)。検知の回帰を見る砦なので必ず本番経路で数える
             let disabled = !RefGuard.disabledWarning(e).isEmpty
             if disabled { c.disabled += 1 }
+            let offscreen = !RefGuard.offscreenWarning(e, screen: snap.screen).isEmpty
+            if offscreen { c.offscreen += 1 }
             if RefGuard.interactiveTypes.contains(e.type),
-               ghost || overlay || misses || stacked.contains(e.ref) || disabled {
+               ghost || overlay || misses || stacked.contains(e.ref) || disabled || offscreen {
                 c.warnedTappable += 1
             }
         }
@@ -135,7 +153,7 @@ final class SweepHarnessTests: XCTestCase {
             let name = String(file.dropLast(".json".count))
             print("BASELINE \"\(name)\": Counts(ghost: \(c.ghost), overlay: \(c.overlay),"
                 + " stacked: \(c.stacked), misses: \(c.misses), disabled: \(c.disabled),"
-                + " warnedTappable: \(c.warnedTappable)),")
+                + " offscreen: \(c.offscreen), warnedTappable: \(c.warnedTappable)),")
             let els = snap.elements
             for e in els {
                 let who = RefGuard.describe(e)
@@ -147,6 +165,11 @@ final class SweepHarnessTests: XCTestCase {
                 }
                 if RefGuard.isUntappableGhost(e, in: els, screen: snap.screen) {
                     print("   DETAIL \(name) ghost    \(who)")
+                }
+                if !RefGuard.offscreenWarning(e, screen: snap.screen).isEmpty {
+                    let f = e.frame
+                    print("   DETAIL \(name) offscreen \(who) centre=(\(Int(f.x + f.width / 2)),"
+                        + "\(Int(f.y + f.height / 2)))")
                 }
             }
         }
