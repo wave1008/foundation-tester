@@ -123,4 +123,53 @@ final class BridgeSnapshotThinningTests: XCTestCase {
         let kept = BridgeSnapshotThinning.indicesToKeep(candidates, max: 5)
         XCTAssertTrue(kept.contains(0))
     }
+
+    // MARK: - WebView DOM マージ(mergedSlots)
+
+    /// 実測の実害(2026-08-08・E2E-iOS の密グリッドページ): 先着順カットは装飾セル 115 個を
+    /// 残して**操作可能要素(送信ボタン・入力欄・リンク)を全部**押し出した。
+    /// mergedSlots は同じ入力で操作可能要素を最後まで残す
+    func testMergedSlotsKeepOperablesOverDecorativeTexts() {
+        // native: コンテナ2 + 前後のボタン。DOM: 装飾テキスト30 + 末尾に button/textField
+        let webView = ElementInfo(ref: 2, type: "webView", identifier: nil, label: nil,
+                                  value: nil, placeholder: nil, enabled: true,
+                                  frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: 2)
+        let base = [element("button", label: "back"), webView, element("button", label: "tab")]
+        var dom = (0..<30).map { element("staticText", label: "C\($0)") }
+        dom.append(element("button", label: "送信"))
+        dom.append(element("textField", label: ""))
+        let (kept, dropped) = BridgeSnapshotThinning.mergedSlots(
+            base: base, dom: [2: dom], max: 10)
+        XCTAssertEqual(dropped, 35 - 10)
+        // 操作可能(native ボタン2 + DOM の button/textField)は全部残る
+        XCTAssertTrue(kept.contains(.base(0)))
+        XCTAssertTrue(kept.contains(.base(2)))
+        XCTAssertTrue(kept.contains(.dom(container: 2, index: 30)), "送信ボタンが落ちた")
+        XCTAssertTrue(kept.contains(.dom(container: 2, index: 31)), "入力欄が落ちた")
+        // 捨てられるのは装飾テキストだけ(後ろから)
+        XCTAssertTrue(kept.contains(.dom(container: 2, index: 0)))
+        XCTAssertFalse(kept.contains(.dom(container: 2, index: 29)))
+    }
+
+    /// 上限以下なら合算順(ネイティブの直後に各コンテナの DOM)をそのまま返す
+    func testMergedSlotsPreserveOrderUnderTheCap() {
+        let webView = ElementInfo(ref: 1, type: "webView", identifier: nil, label: nil,
+                                  value: nil, placeholder: nil, enabled: true,
+                                  frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: 1)
+        let base = [webView, element("button", label: "tab")]
+        let dom = [element("staticText", label: "a"), element("link", label: "l")]
+        let (kept, dropped) = BridgeSnapshotThinning.mergedSlots(
+            base: base, dom: [1: dom], max: 120)
+        XCTAssertEqual(dropped, 0)
+        XCTAssertEqual(kept, [.base(0), .dom(container: 1, index: 0),
+                              .dom(container: 1, index: 1), .base(1)])
+    }
+
+    /// DOM の無い木では base がそのまま出る(マージ経路を通しても等価)
+    func testMergedSlotsWithoutDOMAreJustTheBase() {
+        let base = [element("button", label: "a"), element("staticText", label: "b")]
+        let (kept, dropped) = BridgeSnapshotThinning.mergedSlots(base: base, dom: [:], max: 120)
+        XCTAssertEqual(dropped, 0)
+        XCTAssertEqual(kept, [.base(0), .base(1)])
+    }
 }

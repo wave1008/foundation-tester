@@ -119,7 +119,10 @@ public enum BridgeAPI {
     /// 55: in-app のエラー文を英語化(agent が読む面は英語 = CLI と同じ決定)+ pressEnter の
     /// 409 の助言を「先に欄へ tap/type」へ直した(2026-08-08。フォーカスが無いだけの場面で
     /// エンジン切替を勧めていた)。旧 dylib が再利用されると日本語文と誤誘導が残る
-    public static let bridgeProtocolVersion = 55
+    /// 56: WebView DOM マージの上限超過を先着順から優先度順(mergedSlots)へ変えた
+    /// (2026-08-08。密グリッドページで装飾セルが操作可能要素を全部押し出す実害を実測)。
+    /// 旧 dylib が再利用されると DOM の濃い画面で送信ボタン等が木から消えたまま緑になる
+    public static let bridgeProtocolVersion = 56
 
     /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
     /// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java の
@@ -206,6 +209,41 @@ public enum BridgeSnapshotThinning {
             }
         }
         return (0..<n).filter { keep[$0] }
+    }
+
+    /// WebView DOM マージ用の間引き。ネイティブ(間引き済み)の直後に各 webView コンテナの
+    /// DOM 要素を差し込んだ合算列を作り、max 超過なら indicesToKeep と同じ優先度で捨てる。
+    ///
+    /// なぜ要るか(2026-08-08 に E2E-iOS の密グリッドページで実測): 従来の先着順カットは
+    /// 装飾セル 115 個を残して**ページ上の操作可能要素(送信・入力欄・リンク・状態 echo)を
+    /// 全部**押し出した —— iOS ネイティブ側が版54で直した形がマージ側に残っていた。
+    ///
+    /// insideScrollable は全件 true で渡す = **bulk tier はここでは効かせない**。
+    /// ネイティブ側は1段目の間引きで bulk 適用済み・DOM ノードは identifier を持たないので
+    /// bulk の対象になり得ず、マージ時点では生ツリーの scroll 祖先情報も失われている
+    /// (false で渡すと、1段目を正当に生き残った同一 id 群を誤って bulk 扱いしかねない)
+    public enum MergeSlot: Equatable, Sendable {
+        /// base[i](ネイティブ要素)
+        case base(Int)
+        /// dom[container]![j](container = ネイティブ側 webView コンテナの ref)
+        case dom(container: Int, index: Int)
+    }
+
+    public static func mergedSlots(base: [ElementInfo], dom: [Int: [ElementInfo]],
+                                   max: Int) -> (kept: [MergeSlot], dropped: Int) {
+        var slots: [MergeSlot] = []
+        var candidates: [Candidate] = []
+        for (i, info) in base.enumerated() {
+            slots.append(.base(i))
+            candidates.append(Candidate(info: info, insideScrollable: true))
+            guard let elements = dom[info.ref] else { continue }
+            for (j, element) in elements.enumerated() {
+                slots.append(.dom(container: info.ref, index: j))
+                candidates.append(Candidate(info: element, insideScrollable: true))
+            }
+        }
+        let kept = indicesToKeep(candidates, max: max)
+        return (kept.map { slots[$0] }, slots.count - kept.count)
     }
 
     /// 0(高優先・最後まで残す) … 3(bulk・最初に捨てる)
