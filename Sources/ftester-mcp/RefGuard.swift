@@ -211,9 +211,10 @@ enum RefGuard {
     /// `z` を持たないエンジン(iOS の XCUITest / in-app には描画順を読む API が無い)では
     /// 従来どおり ref 順へ落ちる。**両者が揃っているときだけ z を信じる**のは、
     /// 片方だけ nil の木(打ち切りや別ブリッジの混在)で大小が無意味になるため
+    /// 判定の実体は `FTCore.PaintOrder` にある(DSL の `OcclusionSuspicion` と共有。
+    /// 別々に持つと、同じ画面で MCP と DSL の遮蔽判定が食い違う)
     static func drawnAbove(_ candidate: ElementInfo, _ element: ElementInfo) -> Bool {
-        if let candidateZ = candidate.z, let elementZ = element.z { return candidateZ > elementZ }
-        return candidate.ref > element.ref
+        PaintOrder.drawnAbove(candidate, element)
     }
 
     /// outer が inner を完全に含むか(縁の丸め差 1pt は許容)

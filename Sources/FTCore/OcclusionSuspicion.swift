@@ -28,13 +28,20 @@ public enum OcclusionSuspicion {
     /// **失敗メッセージ用**(アプリ内メッセージ・モーダルの特定)。同一プロセスの覆いは
     /// `AndroidForegroundWindows`(別プロセスの window)では捕まらないので、判定はこちらが担う。
     /// 判定規則は geometric と共有する = 「FM へ回すか」と「誰が覆っているか」がずれない。
-    /// **過検出寄り**(記載順は z 順の保証ではない)なので、ステップを落とす根拠には使わないこと
+    /// **手前かどうかは `PaintOrder` に委ねる**(MCP の RefGuard と同じ判定を使う)。
+    /// ブリッジが塗り順を申告する木(Android)では本物の z 順、持たない木(iOS)では
+    /// 従来どおりツリー順の近似 —— **近似のときだけ過検出寄り**なので、
+    /// ステップを落とす根拠には使わないこと。
+    ///
+    /// 実測(2026-08-07・固定コーパス): ツリー順のままだと Google マップの詳細画面で
+    /// **90要素中81件**が「疑い」になり(FM は約1回/秒の直列資源なので実時間に効く)、
+    /// 逆に**シートの裏に潜った地図 chrome は1件も拾えなかった**(シートが chrome より先に出るため)。
     public static func covering(element: ElementInfo, in elements: [ElementInfo],
                                 screen: FTRect, overlapFraction: Double = 0.4) -> ElementInfo? {
         let t = element.frame
         let area = max(1, t.width * t.height)
-        guard let selfIndex = elements.firstIndex(where: { $0.ref == element.ref }) else { return nil }
-        for (i, other) in elements.enumerated() where i > selfIndex {   // 記載順で後=手前寄り
+        for other in elements where other.ref != element.ref {
+            guard PaintOrder.drawnAbove(other, element) else { continue }
             guard intersectionArea(t, other.frame) / area >= overlapFraction else { continue }
             // Compose-iOS の frame クランプで画面外行が画面端の同一座標へ潰れて生じる ghost スタックは
             // occluder とみなさない(見えている端要素へ余分な FM を誘発する。docs compose-ios-ax-frame-clamp)。
