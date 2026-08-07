@@ -41,11 +41,18 @@ final class PaintOrderTests: XCTestCase {
         XCTAssertTrue(PaintOrder.drawnAbove(unknown, known))
     }
 
-    func testIsReportedNeedsEveryElement() {
-        XCTAssertTrue(PaintOrder.isReported(in: [element(1, "a", 0, 0, 1, 1, z: 0)]))
-        XCTAssertFalse(PaintOrder.isReported(in: [element(1, "a", 0, 0, 1, 1, z: 0),
-                                                  element(2, "b", 0, 0, 1, 1)]))
-        XCTAssertFalse(PaintOrder.isReported(in: []))
+
+    /// **重なりが複数あるときは最前面を答える**(中間層の暗幕を名指しして最前面を素通ししない)
+    func testCoveringReturnsTheFrontmostNotTheFirstInArrayOrder() {
+        let target = element(5, "row", 0, 500, 400, 100, z: 10)
+        let scrim = element(6, "scrim", 0, 400, 1080, 400, z: 50)
+        let sheet = element(7, "sheet", 0, 400, 1080, 400, z: 76)
+        let elements = [target, scrim, sheet]
+        XCTAssertEqual(OcclusionSuspicion.covering(element: target, in: elements,
+                                                   screen: screen)?.identifier, "sheet")
+        // 配列順を入れ替えても答えは変わらない(順序依存でないことの確認)
+        XCTAssertEqual(OcclusionSuspicion.covering(element: target, in: [target, sheet, scrim],
+                                                   screen: screen)?.identifier, "sheet")
     }
 
     /// **DSL の遮蔽疑いも塗り順に従う**: ツリー順ではシートが「奥」なので拾えなかった形
@@ -78,7 +85,11 @@ final class CoveringHintPaintOrderTests: XCTestCase {
         XCTAssertTrue(target.ref > 17)
         let hint = StepExecutor.coveringHint(element: target, elements: snap.elements,
                                              screen: snap.screen)
-        XCTAssertTrue(hint.contains("#place_page_tabs_container"), hint)
         XCTAssertTrue(hint.contains("covered by"), hint)
+        // **名指しは最前面**(z=124 の広告行)。これは事故のときに実際にタップを受け取って
+        // Chrome を起動させた要素そのもの —— 包んでいるシート(z=76)より、こちらのほうが
+        // 「何に飲まれたか」の答えとして正確
+        XCTAssertTrue(hint.contains("Thrillophilia"), hint)
+        XCTAssertFalse(hint.contains("place_page_tabs_container"), hint)
     }
 }

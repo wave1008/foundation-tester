@@ -212,6 +212,10 @@
   **ブリッジの入力ファイル一覧は `Sources/FTCore/BridgeSourceSet.swift` が唯一の定義元**
   (`InAppLauncher` の dylib 再ビルド判定も同じ一覧を使う。片方だけ変えない)。
   指紋の性質(コメント編集でも落ちる理由)・保留中の代替案は docs/verification.md
+- **判定は MCP と DSL で共有する**(2026-08-07)。「手前かどうか」は `FTCore.PaintOrder`、
+  「撃つと別の物に当たるか」は `FTCore.TapTargetGeometry` の1箇所だけに置き、
+  `RefGuard` は転送する。別々に持つと**同じ画面で MCP と DSL の判断が食い違う**。
+  移設したときは**掃討ゲート(`SweepHarnessTests`)が実アプリのコーパスで等価性を検証する**
 - **MCP(`ft_*`)は DSL と別経路なので、鮮度・防御を DSL 側に入れただけでは届かない**。
   `StepExecutor` が持つ知見(キャッシュを捨てた snapshot・ghost の掴み直し・整定)を足したら、
   **MCP にも同じものが要るかを必ず見る**(2026-08-06 に3件まとめて踏んだ: スクロール後の古い木・

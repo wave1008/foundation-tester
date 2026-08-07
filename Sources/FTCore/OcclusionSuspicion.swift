@@ -40,15 +40,20 @@ public enum OcclusionSuspicion {
                                 screen: FTRect, overlapFraction: Double = 0.4) -> ElementInfo? {
         let t = element.frame
         let area = max(1, t.width * t.height)
+        // **いちばん手前を返す**(2026-08-07 のレビュー)。配列順で最初に見つけたものを返すと、
+        // 重なりが複数あるとき中間層(暗幕など)を名指しして、実際に見えている最前面を素通しする。
+        // 塗り順が採れるなら最前面は計算できるので、そちらを答えにする
+        var frontmost: ElementInfo?
         for other in elements where other.ref != element.ref {
             guard PaintOrder.drawnAbove(other, element) else { continue }
             guard intersectionArea(t, other.frame) / area >= overlapFraction else { continue }
             // Compose-iOS の frame クランプで画面外行が画面端の同一座標へ潰れて生じる ghost スタックは
             // occluder とみなさない(見えている端要素へ余分な FM を誘発する。docs compose-ios-ax-frame-clamp)。
             if isClampGhost(other.frame, in: elements, screen: screen) { continue }
-            return other
+            if let best = frontmost, !PaintOrder.drawnAbove(other, best) { continue }
+            frontmost = other
         }
-        return nil
+        return frontmost
     }
 
     static func intersectionArea(_ a: FTRect, _ b: FTRect) -> Double {
