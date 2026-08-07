@@ -54,6 +54,32 @@ final class TapTargetAdvisoryTests: XCTestCase {
         XCTAssertNil(TapTargetGeometry.advisory(for: elements[1], in: elements, screen: screen))
     }
 
+    /// **中心が画面の外**は空振りの警告になる(実測: Compose iOS のカレンダーで
+    /// ヘッダ裏へ抜けた `#slot_07`(中心 y=-18)への ref タップが無警告の no-op だった)
+    func testOffscreenCentreIsCalledOut() {
+        let above = element(1, "slot_07", "button", 0, -46, 402, 56)
+        let note = TapTargetGeometry.advisory(
+            for: above, in: [above], screen: FTRect(x: 0, y: 0, width: 402, height: 874))
+        XCTAssertNotNil(note)
+        XCTAssertTrue(note?.contains("outside the visible screen") == true, note ?? "")
+        XCTAssertTrue(note?.contains("(201, -18)") == true, note ?? "")
+    }
+
+    /// **縁の丸め誤差では黙る**(実測: Apple マップ下端バーの `#SubtitleLabel` は中心が
+    /// screen.height を 0.3pt だけ超えるが、見えているラベルなので警告したら嘘)
+    func testEdgeRoundingIsNotCalledOffscreen() {
+        let edge = element(1, "SubtitleLabel", "staticText", 51, 866.8, 23, 15)
+        XCTAssertNil(TapTargetGeometry.offscreenAdvisory(
+            for: edge, screen: FTRect(x: 0, y: 0, width: 402, height: 874)))
+    }
+
+    /// screen が採れない(0 サイズ)ときは黙る(嘘を足さない)
+    func testZeroScreenStaysSilent() {
+        let e = element(1, "x", "button", -100, -100, 10, 10)
+        XCTAssertNil(TapTargetGeometry.offscreenAdvisory(
+            for: e, screen: FTRect(x: 0, y: 0, width: 0, height: 0)))
+    }
+
     /// **disabled が優先**: 両方に当てはまるときは「そもそも無効」を先に言う
     func testDisabledWinsOverTheGeometricAdvice() {
         let elements = [
@@ -73,12 +99,16 @@ private final class AdvisoryProbeDriver: AppDriver {
     let disabled: Bool
     /// true = 中心が中身のどこにも乗らない容器を `#target` として返す(有効な要素)
     let missesContent: Bool
+    /// true = 中心が画面の外にある `#target` を返す(スクロールで縁の外へ抜けた形)
+    let offscreen: Bool
     /// ドライバ自身が申告する注記(InAppBridge の「activate 不発→合成タッチ」に相当)
     let driverNote: String?
     private(set) var taps = 0
-    init(disabled: Bool, missesContent: Bool = false, driverNote: String? = nil) {
+    init(disabled: Bool, missesContent: Bool = false, offscreen: Bool = false,
+         driverNote: String? = nil) {
         self.disabled = disabled
         self.missesContent = missesContent
+        self.offscreen = offscreen
         self.driverNote = driverNote
     }
     var lastActionNote: String? { driverNote }
@@ -104,6 +134,18 @@ private final class AdvisoryProbeDriver: AppDriver {
 
     func snapshot() async throws -> SnapshotResponse {
         let screen = FTRect(x: 0, y: 0, width: 402, height: 874)
+        if offscreen {
+            // スクロールで縁の外へ抜けた要素(実測の #slot_07 と同じ形)。単独で返す =
+            // 兄弟が2つ無いので容器は推測されず、visibleTapRect には寄せられない経路になる
+            return SnapshotResponse(
+                sessionBundleID: nil, screen: screen,
+                elements: [
+                    ElementInfo(ref: 1, type: "button", identifier: "target", label: nil,
+                                value: nil, placeholder: nil, enabled: true,
+                                frame: FTRect(x: 0, y: -46, width: 402, height: 56), depth: 2),
+                ],
+                truncatedCount: 0)
+        }
         if missesContent {
             // 全幅の非対話コンテナ(#target)の中身は右端の小さな像だけ = 中心は背後の地図
             return SnapshotResponse(
@@ -200,6 +242,17 @@ final class TapAdvisoryWiringTests: XCTestCase {
                              placeholder: nil, enabled: true,
                              frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: 2)
         XCTAssertNil(TapTargetGeometry.disabledAdvisory(for: on))
+    }
+
+    /// **画面外の中心の配線**(tap の「寄せずに中心を撃つ」経路。実測: Compose iOS の
+    /// カレンダーで #slot_07 への ref タップが無警告の no-op だった)
+    func testOffscreenCentreAdvisoryReachesTheStepNote() async throws {
+        let driver = AdvisoryProbeDriver(disabled: false, offscreen: true)
+        let outcome = await StepExecutor(driver: driver)
+            .execute(FlowStep(action: "tap", locator: FlowLocator(id: "target")))
+        XCTAssertEqual(driver.taps, 1, "警告は出すが撃つのはやめない(拒否ではない)")
+        XCTAssertTrue(outcome.driverFallback?.contains("outside the visible screen") == true,
+                      "画面外の注記が出ていない: \(outcome.driverFallback ?? "nil")")
     }
 
     /// **中身外しの配線**(有効な要素なので disabled 側の早期 return を通らない経路)

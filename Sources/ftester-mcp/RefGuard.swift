@@ -375,7 +375,22 @@ enum RefGuard {
         return " (warning: \(describe(element)) is disabled, so this almost certainly did nothing)"
     }
 
+    /// **中心が画面の外にある要素を撃とうとしている**ときの警告。ウィンドウ外のタッチは
+    /// hitTest に乗らず黙って落ちる(判定は TapTargetGeometry.offscreenAdvisory = DSL と共有)。
+    /// 実測(2026-08-08): カレンダーでヘッダ裏へ抜けた `#slot_07`(中心 y=-18)への
+    /// ft_tap が無警告の "done" を返し、画面は 1px も変わらなかった
+    static func offscreenWarning(_ element: ElementInfo, screen: FTRect) -> String {
+        guard let advisory = TapTargetGeometry.offscreenAdvisory(for: element, screen: screen) else {
+            return ""
+        }
+        return " (warning: \(describe(element)) — \(advisory);"
+            + " bring it into view with ft_scroll_to and re-snapshot)"
+    }
+
     static func overlapWarning(found: ElementInfo, in elements: [ElementInfo], screen: FTRect) -> String {
+        // 画面外の中心は「何にも当たらない」= 遮蔽・中身外しより強い事実なので先に言う
+        let offscreen = offscreenWarning(found, screen: screen)
+        if !offscreen.isEmpty { return offscreen }
         if let over = overlayCovering(found, in: elements, screen: screen) {
             return " (warning: \(describe(over)) is drawn over the center of \(describe(found)),"
                 + " so this may have hit \(describe(over)) instead — verify with ft_screenshot,"
