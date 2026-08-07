@@ -560,18 +560,21 @@ final class MCPServer {
                                                 truncatedCount: fresh.truncatedCount))
         case .ghost(let found):
             // **拒否せず警告して撃つ**(2026-08-06 に方針を後退させた。理由は RefGuard の宣言)
-            return (found.ref, RefGuard.ghostWarning(found: found, in: fresh.elements, screen: fresh.screen))
+            return (found.ref, RefGuard.disabledWarning(found)
+                + RefGuard.ghostWarning(found: found, in: fresh.elements, screen: fresh.screen))
         case .found(let found, let moved):
             // **ghost でなくても別の物に当たり得る**2形(上に描かれた overlay / 同一矩形への
             // 積み重なり)。どちらも容器の内側なので RefGuard.relocate では .found になる
-            let overlap = RefGuard.overlapWarning(found: found, in: fresh.elements, screen: fresh.screen)
+            let overlap = RefGuard.disabledWarning(found)
+                + RefGuard.overlapWarning(found: found, in: fresh.elements, screen: fresh.screen)
             guard moved >= RefGuard.movedThreshold else { return (found.ref, overlap) }
             // **原因までは断定できない**が、「他も同じだけ動いたか」は手元の2枚から言える。
             // 揃って動いていればスクロール等の画面全体の移動、その要素だけならレイアウト変化。
             // 切り分けの手掛かりとして出す(外部フィードバック 2026-08-06。severity は低いとのこと)
             let cause = RefGuard.movedTogether(target, found,
                                                before: lastRendered, after: fresh.elements)
-            return (found.ref, RefGuard.movedNote(found: found, moved: moved, cause: cause))
+            return (found.ref, RefGuard.disabledWarning(found)
+                + RefGuard.movedNote(found: found, moved: moved, cause: cause))
         }
     }
 
@@ -1138,6 +1141,14 @@ final class MCPServer {
             }
             if let content, !content.isEmpty {
                 try await typeDriver.type(ref: targetRef, text: content)
+                // **ref を渡したときだけ読み返しで検証される**。iOS の XCUITest ランナーは
+                // ref から対象を引けたときだけ TypeReadback の resend/deleteExcess を回し、
+                // 引けない(= ref なし)ときは無検証の `typeText` へ落ちて OK を返す。
+                // Android は焦点ノードを読み返すので ref なしでも検証される
+                if targetRef == nil, !(typeDriver is AndroidDriver) {
+                    note += " (no ref was given, so on iOS the text was typed into whatever has"
+                        + " focus and was not read back — pass ref to have it verified)"
+                }
                 if let prior = priorValue, !prior.isEmpty {
                     note += " (the field already held \"\(SnapshotRenderer.truncate(prior, 30))\";"
                         + " ft_type appends, so it now reads"
@@ -1218,16 +1229,23 @@ final class MCPServer {
             // 回るときに取り直しが要る(AppDriver.doubleTap が ref を取らない理由と同じ)
             let doubleTapDriver = try await driver(args)
             let doubleTapPoint: (x: Double, y: Double)
+            // **答えは渡された形で返す**: ref を渡したのに座標で返すと、tap/press
+            // (`[17]` と返す)と食い違って読み手が取り違える(2026-08-07 の棚卸し)
+            var doubleTapWhat: String
+            var doubleTapNote = ""
             if let ref = args["ref"] as? Int {
                 let element = try await verifiedElement(ref, driver: doubleTapDriver, args: args)
                 doubleTapPoint = (element.frame.centerX, element.frame.centerY)
+                doubleTapWhat = "[\(ref)]"
+                doubleTapNote = RefGuard.disabledWarning(element)
             } else if let x = args["x"] as? Double, let y = args["y"] as? Double {
                 doubleTapPoint = (x, y)
+                doubleTapWhat = "(\(x), \(y))"
             } else {
                 throw MCPError("ref or x/y is required")
             }
             try await doubleTapDriver.doubleTap(x: doubleTapPoint.x, y: doubleTapPoint.y)
-            return text("double tap (\(doubleTapPoint.x), \(doubleTapPoint.y)) done."
+            return text("double tap \(doubleTapWhat) done.\(doubleTapNote)"
                 + " The screen may have changed — take a fresh ft_snapshot."
                 + iosEngineHint("Compose Multiplatform", "double tap", args: args))
 
@@ -1239,7 +1257,11 @@ final class MCPServer {
             try await driver(args).drag(fromX: fromX, fromY: fromY, toX: toX, toY: toY,
                                         pressSeconds: 0.05,
                                         durationSeconds: args["durationSeconds"] as? Double ?? 1.5)
-            return text("drag (\(fromX), \(fromY)) → (\(toX), \(toY)) done")
+            // **無検証であることを言う**(swipe / pinch は言っているのに drag / press だけ
+            // 「done」で言い切っていた。同じ無検証なのに信頼度が違って見える)
+            return text("drag (\(fromX), \(fromY)) → (\(toX), \(toY)) sent."
+                + " Nothing about the result is checked — if it should have moved something,"
+                + " confirm with ft_snapshot/ft_screenshot")
 
         case "ft_pinch":
             let scale = args["scale"] as? Double ?? 2.0
@@ -1271,14 +1293,16 @@ final class MCPServer {
             if let ref = args["ref"] as? Int {
                 let pressTarget = try await verifiedRef(ref, driver: pressDriver, args: args)
                 try await pressDriver.press(ref: pressTarget.ref, duration: pressDuration)
-                return text("press [\(ref)] done\(pressTarget.note)")
+                return text("press [\(ref)] done\(pressTarget.note)."
+                    + " The screen may have changed — take a fresh ft_snapshot")
             }
             // **座標形は ft_tap と揃える**: ドライバは press(x:y:duration:) を要件として持つのに
             // MCP からは ref でしか呼べなかった。地図・キャンバスのように a11y 要素が無い点を
             // 長押しする操作(ピンを落とす・住所を出す)が一切書けない状態だった(2026-08-07)
             if let x = args["x"] as? Double, let y = args["y"] as? Double {
                 try await pressDriver.press(x: x, y: y, duration: pressDuration)
-                return text("press (\(x), \(y)) done")
+                return text("press (\(x), \(y)) done."
+                    + " The screen may have changed — take a fresh ft_snapshot")
             }
             throw MCPError("ref or x/y is required")
 
@@ -1552,7 +1576,7 @@ final class MCPServer {
         tool("ft_tap", "Tap an element (ref) or a coordinate (x,y). x/y match the ft_snapshot frames (iOS=pt / Android=px), not screenshot pixels. "
             + "A ref is re-checked against a fresh tree before the tap, so a ref that moved is retargeted and "
             + "one that is gone is refused; a scroll leftover is tapped with a warning naming what "
-            + "it may have hit instead.", [
+            + "it may have hit instead. " + coordinateCaveat, [
             "ref": ["type": "integer", "description": "Reference number from ft_snapshot"],
             "x": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],
             "y": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],
@@ -1601,14 +1625,16 @@ final class MCPServer {
         ], scope: .none),
         tool("ft_double_tap", "Double-tap an element (ref) or a coordinate (x,y). Two ft_tap calls do not work "
             + "(the round trip exceeds the OS double-tap window). Pass profile: on iOS — without it these "
-            + "tools use XCUITest, where Compose apps never receive a double tap (see docs/commands.md).", [
+            + "tools use XCUITest, where Compose apps never receive a double tap (see docs/commands.md). "
+            + coordinateCaveat, [
             "ref": ["type": "integer", "description": "Reference number from ft_snapshot"],
             "x": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],
             "y": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],
         ]),
         tool("ft_drag", "Drag between two coordinates — the only way to pan diagonally (set both axes). "
             + "Coordinates use the same system as the ft_snapshot frames (iOS=pt / Android=px). "
-            + "A long durationSeconds drags slowly and leaves no inertia; a short one flicks", [
+            + "A long durationSeconds drags slowly and leaves no inertia; a short one flicks. "
+            + coordinateCaveat, [
             "fromX": ["type": "number"],
             "fromY": ["type": "number"],
             "toX": ["type": "number"],
@@ -1623,7 +1649,7 @@ final class MCPServer {
             "durationSeconds": ["type": "number", "description": "Gesture duration in seconds (default 0.5)"],
         ]),
         tool("ft_press", "Long-press an element (ref) or a coordinate (x,y). Use x/y on a map or "
-            + "canvas, where the point you want has no element of its own", [
+            + "canvas, where the point you want has no element of its own. " + coordinateCaveat, [
             "ref": ["type": "integer", "description": "Reference number from ft_snapshot"],
             "x": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],
             "y": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],
@@ -1665,6 +1691,12 @@ final class MCPServer {
         /// どちらも要らない
         case none
     }
+
+    /// 座標形は ref の安全網(遮蔽・残像・中身外し)を1つも通らない。**設計上そうなる**が、
+    /// 説明に書いていないと読み手が ref 形と同じ信頼度だと思い込む(2026-08-07 の棚卸し)
+    static let coordinateCaveat = "Coordinates skip the ref safety checks (occlusion, scroll"
+        + " leftovers, a container whose centre misses its own content), so prefer a ref when the"
+        + " element is in the tree."
 
     static func tool(_ name: String, _ description: String,
                      _ properties: [String: Any], required: [String] = [],

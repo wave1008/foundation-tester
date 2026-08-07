@@ -192,6 +192,26 @@ final class MCPProductionAppShapesTests: XCTestCase {
         XCTAssertFalse(MCPServer.visibleLabelsHint(snap).contains("\u{200b}"))
     }
 
+    // MARK: - 無効な要素(沈黙した成功の棚卸し X1)
+
+    /// 木には `disabled` と印字しているのに、操作経路は `enabled` を一度も見ていなかった。
+    /// 実測(E2E-CMP・契約上「押しても何も起きない」ボタン): tap / press / double_tap の
+    /// 3つとも無警告で "done" を返していた
+    func testDisabledElementsAreCalledOut() {
+        let off = ElementInfo(ref: 17, type: "button", identifier: "btn_always_disabled",
+                              label: "無効ボタン", value: nil, placeholder: nil, enabled: false,
+                              frame: FTRect(x: 42, y: 1544, width: 309, height: 126), depth: 3)
+        let warning = RefGuard.disabledWarning(off)
+        XCTAssertTrue(warning.contains("disabled"), warning)
+        XCTAssertTrue(warning.contains("#btn_always_disabled"), warning)
+    }
+
+    /// 有効な要素では黙る(毎回付くと注記が意味を失う)
+    func testEnabledElementsGetNoDisabledWarning() {
+        let on = element(1, "btn", depth: 2, 0, 0, 100, 40, label: "押せる")
+        XCTAssertEqual(RefGuard.disabledWarning(on), "")
+    }
+
     // MARK: - 切り詰めラベル(F5)
 
     /// 印字は40文字で切れる。**その文字列をそのままセレクタにすると一生当たらない**ので、
