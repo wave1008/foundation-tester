@@ -112,7 +112,8 @@ enum InAppWebViewDOM {
         var note: String?
         if let count = payload.crossOriginFrames, count > 0 {
             // 黙って要素ゼロにしない(読めない領域があることを記録へ残す)
-            note = "クロスオリジン iframe \(count) 個の中身は読めません(main frame のみ対応)"
+            note = "the contents of \(count) cross-origin iframe(s) are not readable"
+                + " (main frame only)"
         }
         return Captured(elements: elements, frames: frames, note: note)
     }
