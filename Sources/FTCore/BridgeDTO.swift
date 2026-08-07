@@ -116,7 +116,10 @@ public enum BridgeAPI {
     /// 持つ非スクロール・非操作の装飾群(地図ピン等)を最初に捨てるようになり、詳細シートの
     /// 中身のような本物のコンテンツが残るようになった。旧ランナー/dylib は先着順のままなので、
     /// 再利用されると枠を装飾に食われた画面で waitFor/scrollTo が見えない要素を探し続ける
-    public static let bridgeProtocolVersion = 54
+    /// 55: in-app のエラー文を英語化(agent が読む面は英語 = CLI と同じ決定)+ pressEnter の
+    /// 409 の助言を「先に欄へ tap/type」へ直した(2026-08-08。フォーカスが無いだけの場面で
+    /// エンジン切替を勧めていた)。旧 dylib が再利用されると日本語文と誤誘導が残る
+    public static let bridgeProtocolVersion = 55
 
     /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
     /// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java の
