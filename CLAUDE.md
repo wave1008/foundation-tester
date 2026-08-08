@@ -95,7 +95,7 @@
 - 設計書(アーキテクチャ・Swift DSL 仕様・セレクタ記法・プロファイル): docs/design.md
 - 性能チューニング(調整ノブ・不採用施策と再検討条件・計測手順): docs/performance-tuning.md
 - 検証の詳細(flake/性能の判定規律・ベータ整合・全滅時の切り分け・e2e.sh のオプション): docs/verification.md
-- ftester 自身の E2E: **UI フレームワークごとに SUT が4つ**ある(画面・`#id`・ラベルは全 SUT 共通契約):
+- ftester 自身の E2E: **UI フレームワークごとに SUT が5つ**ある(画面・`#id`・ラベルは全 SUT 共通契約):
 
   | SUT | 実装 | プロジェクト | 対象 OS |
   |---|---|---|---|
@@ -103,13 +103,14 @@
   | `E2EAppIOS/` | SwiftUI + 一部 UIKit | TestProjects/E2E-iOS | ios |
   | `E2EAppAndroid/` | View/XML + 一部 Compose | TestProjects/E2E-Android | android |
   | `E2EAppFlutter/` | Flutter | TestProjects/E2E-Flutter | ios + android |
+  | `E2EAppRN/` | React Native | TestProjects/E2E-RN | ios + android |
 
   **要素の testTag/`#id`/ラベルの唯一の正は `E2EAppCMP/docs/ui-contract.md`**(全 SUT とシナリオがこれを参照。
   片方だけ変えない。`uiContractSync.test.mjs` が「SUT 側の `#id` が母体に実在するか」を検出)。
   **型語彙・OS/フレームワーク固有の罠だけ**は各 SUT の `<SUT>/docs/ui-contract.md` に置く
   (同じ `#id` でも型は SUT ごとに違う。例: ボタンは CMP/Android で `Cell`、View/XML なら `Button`)。
-  **4 SUT のシナリオはほぼ同内容だが共通化しない**(2026-07-29 ユーザー決定・可読性優先)。
-  差分は16ファイル中の過半が2〜10行で、DSL 変更のたび4箇所を編集することになるが、共通化すると
+  **5 SUT のシナリオはほぼ同内容だが共通化しない**(2026-07-29 ユーザー決定・可読性優先。
+  RN 追加後も同じ)。DSL 変更のたび5箇所を編集することになるが、共通化すると
   SUT 固有の差(型語彙・フレームワーク固有の罠)が表現しにくくなる。**共通化を再提案しない**
 
 ## ビルド・検証

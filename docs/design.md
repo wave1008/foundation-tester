@@ -165,6 +165,7 @@ foundation-tester/
 ├── E2EAppIOS/                     # 自己 E2E の SUT: SwiftUI + 一部 UIKit(→ TestProjects/E2E-iOS)
 ├── E2EAppAndroid/                 # 自己 E2E の SUT: View/XML + 一部 Compose(→ TestProjects/E2E-Android)
 ├── E2EAppFlutter/                 # 自己 E2E の SUT: Flutter(→ TestProjects/E2E-Flutter)
+├── E2EAppRN/                      # 自己 E2E の SUT: React Native(→ TestProjects/E2E-RN)
 │                                  #   各 SUT の docs/ui-contract.md には**型語彙と固有の罠だけ**を置く
 ├── SampleApp/                     # 検証用の小さな SwiftUI デモアプリ(テスト対象)
 ├── vscode-ftester/                # VSCode 拡張。UI 入口はここに一本化(旧 ftester-gui は 2026-07-10 削除)
@@ -796,7 +797,7 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
    ネットワーク依存ゼロ・状態は起動ごとにルート正規化する設計で、フリートのロケール差や
    バックエンド死活に左右されない。`Scripts/e2e.sh` が全 SUT を鮮度判定つきで回す。
 
-   **SUT は UI フレームワークごとに4つ**ある。同じ画面・同じ `#id`・同じラベルを4通りの
+   **SUT は UI フレームワークごとに5つ**ある。同じ画面・同じ `#id`・同じラベルを5通りの
    実装で作ってあり、`AppDriver` から上(セレクタ解決・スナップショット圧縮)がフレームワークに
    依存しないことを実証する土台になっている:
 
@@ -806,23 +807,26 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
    | `E2EAppIOS/` | SwiftUI + 一部 UIKit | `TestProjects/E2E-iOS` | ios | 差分のみ `E2EAppIOS/docs/ui-contract.md` |
    | `E2EAppAndroid/` | View/XML + 一部 Compose | `TestProjects/E2E-Android` | android | 差分のみ `E2EAppAndroid/docs/ui-contract.md` |
    | `E2EAppFlutter/` | Flutter | `TestProjects/E2E-Flutter` | ios + android | 差分のみ `E2EAppFlutter/docs/ui-contract.md` |
+   | `E2EAppRN/` | React Native | `TestProjects/E2E-RN` | ios + android | 差分のみ `E2EAppRN/docs/ui-contract.md` |
 
-   **`#id` とラベルは4 SUT で完全に同一、違うのは「型」と「id を露出させる作法」だけ**という設計。
+   **`#id` とラベルは5 SUT で完全に同一、違うのは「型」と「id を露出させる作法」だけ**という設計。
    実測で採取した型の食い違い(いずれも同じ `#id` を指す):
 
-   | 要素 | CMP(iOS) | CMP(Android) | SwiftUI/UIKit | View/XML | Flutter(iOS) | Flutter(Android) |
-   |---|---|---|---|---|---|---|
-   | ボタン | `button` | `button` | `button` | `button` | `button` | `button` |
-   | スイッチ | `switch` | `switch` | `switch` | `switch` | `switch` | `switch` |
-   | テキスト | `staticText` | `staticText` | `staticText` | `staticText` | `staticText` | `staticText` |
-   | パスワード欄 | `textView` | `secureTextField` | `secureTextField` | `secureTextField` | `textField` | `textField` |
-   | チェックボックス | `button` | `checkBox` | `button` | `checkBox` | `switch` | `checkBox` |
-   | リスト行 | `button` | `clickable` | `clickable`(UITableView) | `clickable` | `button` | `button` |
+   | 要素 | CMP(iOS) | CMP(Android) | SwiftUI/UIKit | View/XML | Flutter(iOS) | Flutter(Android) | RN(iOS) | RN(Android) |
+   |---|---|---|---|---|---|---|---|---|
+   | ボタン | `button` | `button` | `button` | `button` | `button` | `button` | `button` | `button` |
+   | スイッチ | `switch` | `switch` | `switch` | `switch` | `switch` | `switch` | `switch` | `switch` |
+   | テキスト | `staticText` | `staticText` | `staticText` | `staticText` | `staticText` | `staticText` | `staticText` | `staticText` |
+   | パスワード欄 | `textView` | `secureTextField` | `secureTextField` | `secureTextField` | `textField` | `textField` | `secureTextField` | `secureTextField` |
+   | チェックボックス | `button` | `checkBox` | `button` | `checkBox` | `switch` | `checkBox` | `other` | `checkBox` |
+   | リスト行 | `button` | `clickable` | `clickable`(UITableView) | `clickable` | `button` | `button` | `button`(TaggedButton) | `button`(TaggedButton) |
 
    ボタン・スイッチ・テキストが揃っているのは 2026-07-26 の役割正規化の結果(それ以前は
    CMP(Android)のボタン/スイッチが `cell`[現 `clickable` の旧名]、Flutter(Android)の
    テキストが `other` だった)。**チェックボックスとリスト行は揃わない** — iOS 側の a11y が
-   役割を出さないため(下記「型は役割に正規化する」)
+   役割を出さないため(下記「型は役割に正規化する」)。**RN はパスワード欄・リスト行が
+   ネイティブ SUT(SwiftUI/View)と同型で揃う**(RCTUITextField/ReactEditText がそれぞれ
+   `UITextField`/`EditText` 派生のため。詳細は `E2EAppRN/docs/ui-contract.md`)
 
    **入力欄は「エンジン間で揃える」ところまでが担保**で、OS 間では揃わない(2026-08-06 実測)。
    iOS の自前描画フレームワーク(Compose / Flutter)の入力欄は UIKit の `UITextField` ではないので、
@@ -838,7 +842,11 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
 
    上位ビットはフレームワーク固有なので見ない。**マスクの有無は iOS のこの2系統では型に出ない**
    (Compose も Flutter も secure にならない)ので、跨 OS で入力欄を指すときは `#id` を使う。
-   UIKit/SwiftUI は従来どおりクラス判定が先に効き `textField` / `secureTextField` / `textView` に分かれる
+   UIKit/SwiftUI は従来どおりクラス判定が先に効き `textField` / `secureTextField` / `textView` に分かれる。
+   **React Native の入力欄はこのクラス判定がそのまま効く**(`RCTUITextField` が `UITextField` 派生・
+   Android の `ReactEditText` が `EditText` 派生のため、trait 分岐を新設する必要が無かった。
+   2026-08-08 実測)。既存経路のみで `textField` / `secureTextField` / `textView`
+   (multiline は Android のみ `textField` のまま。詳細は `E2EAppRN/docs/ui-contract.md`)
 
    **Android は「見切れた要素の型が変わらない」ことも担保**(2026-08-06)。Compose の役割は
    同一矩形の無名子ノード(役割マーカー)で表現されるが、**見切れると親とマーカー子は独立に
@@ -861,7 +869,8 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
    動的リストは `res/values/ids.xml` に静的宣言**)、SwiftUI は `.accessibilityIdentifier`
    (**UIAlertController の title/message には効かない**)、Flutter は `Semantics(identifier:)`
    (**`ensureSemantics()` 必須・`MergeSemantics` で畳む必要あり・Slider に畳むと iOS で
-   a11y ツリーが丸ごと空になる**)。詳細は各 SUT の `docs/ui-contract.md`。
+   a11y ツリーが丸ごと空になる**)、React Native は `testID`(iOS は `accessibilityIdentifier`・
+   Android は 0.65 以降 `resource-id` にマップ。Modal 内にも届く)。詳細は各 SUT の `docs/ui-contract.md`。
 1. `SampleApp`(ログイン画面 + ホーム画面 + 設定画面の 3 画面 SwiftUI アプリ、
    accessibility identifier 付き)をリポジトリに同梱
 2. M1: `ftester bridge up` → `curl localhost:8123/snapshot` で圧縮ツリーが返る
@@ -1023,6 +1032,7 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
   | SwiftUI + UIKit | `UITableView` の `accessibilityIdentifier` |
   | View/XML | `RecyclerView` の `android:id` |
   | Flutter | `Semantics(container: true, explicitChildNodes: true)`。**`MergeSemantics` で包まない** |
+  | React Native | `FlatList`/`ScrollView` に `testID`。**iOS は id 付きラッパー(`RCTScrollView`・非 scrollable)と実 scroll ノードが同 frame で別要素に割れるため、ホスト側の正規化で統合する**(両エンジン) |
 
   **畳むと子孫が消えてスコープ対象が無くなる**のが唯一の落とし穴(Flutter の `MergeSemantics`、
   Compose の Box+重ね置き `#pad_swipe` は iOS で子 Text が同 depth に平坦化される)。
@@ -1160,6 +1170,8 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
   UITextView は Return = 改行挿入なのでそのまま `insertText("\n")`。
   **この関数を通るのは `pressEnter` だけ**(`type` の `\n` は上記のとおり XCUITest へ回るので
   in-app の `handleType` には届かない。engine=inapp 単独=xcuiPort 無しのときだけ来る)。
+  **React Native は `RCTUITextField`/`RCTUITextView` が UIKit 派生なのでこの UITextField/UITextView
+  経路をそのまま通る**(新しい分岐は不要。2026-08-08 実測。E2EAppRN/docs/ui-contract.md)。
   **Flutter は engine の私有 API へアクションを配送する**: `insertText("\n")` は engine に
   握り潰され(文字も入らずアクションも出ないのに 200 が返る最悪の形)、hybrid の xcuitest
   フォールバックも **in-app の合成タッチが立てたフォーカスに届かない**ため、in-app で完結させるしかない。

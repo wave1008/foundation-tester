@@ -152,7 +152,7 @@ tag 定数は `composeApp/src/commonMain/kotlin/com/ftester/e2e/Tags.kt` に集�
 (シナリオ 18 が `pressEnter()` と `type("…\n")` の両方で検証する)。
 
 - **改行は本文に入らない**: 発火しても `#txt_echo_single` / `#txt_echo_length` は変わらない
-  (singleLine のフィールドとして 4 SUT 共通。`len` が増えたら改行が文字として入っている = バグ)
+  (singleLine のフィールドとして全 SUT 共通。`len` が増えたら改行が文字として入っている = バグ)
 - **発火後のフォーカス・キーボードの状態は SUT ごとに異なる**(UIKit は resignFirstResponder、
   Compose/Flutter は保持)。**シナリオは発火後に必ず tap し直してから次の入力をする**
 - **Android の発火経路は2つある**。ftester は a11y の `ACTION_IME_ENTER`(actionId は
@@ -214,7 +214,7 @@ Android(`BridgeRouter.handleSwipe`)は縦 0.3h↔0.7h・横 0.2w↔0.8w(y=0.5h)�
 | `#txt_double_count` | Text | `double=<n>` 初期 `double=0` | ダブルタップで +1。**単タップでは増えない** |
 | `#btn_map_reset` | Button | `マップクリア` | 全カウンタ・倍率を初期化 |
 
-判定の規約(4 SUT 共通):
+判定の規約(全 SUT 共通):
 - **パンは指の移動方向**(左上へ払う = `pan=left-up`)。ジェスチャ画面の swipe と同じ向き規約。
   軸ごとに 8dp/px 未満の移動は `none`(手ぶれで斜めと誤判定しないため)
 - 倍率・移動量は**累積**(`マップクリア` でのみ戻る)。1操作ごとに戻すと、
@@ -246,7 +246,7 @@ in-app 経路のソース走査テスト(`InAppGestureRoutingTests`)が担う。
 
 | tag | 種別 | ラベル/テキスト | 備考 |
 |---|---|---|---|
-| `#txt_tag_selected` | Text | `tag=<v>` 初期 `tag=-` | **`#carousel_tags` の直下**(スクロールしない。4 SUT で並びを揃える — 相対セレクタが SUT で割れないため) |
+| `#txt_tag_selected` | Text | `tag=<v>` 初期 `tag=-` | **`#carousel_tags` の直下**(スクロールしない。全 SUT で並びを揃える — 相対セレクタが SUT で割れないため) |
 | `#carousel_tags` | (容器) | (ラベルなし) | **横スクロール**する容器。`#list_rows` と同じくスコープの対象 |
 | `#tag_01` … `#tag_20` | Button | `タグ 01` … `タグ 20` | 幅 120dp・高さ 56dp 以上。**`#carousel_tags` の子孫** |
 
@@ -417,7 +417,7 @@ id がある(そこまで無いとテストが書けないため)。
 ## WebView 画面(タイトル `WebView`)
 
 ネイティブの WebView(iOS=WKWebView / Android=android.webkit.WebView)に**同じ HTML** を
-読ませる画面。HTML の唯一の正は **`E2EAppCMP/docs/webview.html`**(4 SUT がその写しを持つ。
+読ませる画面。HTML の唯一の正は **`E2EAppCMP/docs/webview.html`**(5 SUT がその写しを持つ。
 iOS/CMP は文字列定数、Android/Flutter はアセット)。ネットワークは使わない。
 
 **この画面だけ規約が違う。読む前に必ずここを読むこと**:
