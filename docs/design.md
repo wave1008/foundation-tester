@@ -1039,7 +1039,7 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
   当初「Flutter では使えない」と判断したが、SUT が `MergeSemantics` で畳んでいただけで、
   容器を非マージで公開したら iOS/Android とも入れ子になった(=**フレームワークの制約ではない**)。
   回帰は 4 SUT 共通の `#list_rows >> …`(`TestProjects/E2E-CMP/scenarios/11_*.swift`・
-  `TestProjects/E2E-*/scenarios/12_セレクタ拡張.swift`)。
+  `TestProjects/E2E-*/scenarios/08_待機とタイムアウト.swift` の旧 12_セレクタ拡張 ブロック)。
   `notExist` / `countIs` も 4 フレームワーク全てで同一に動く(同実測)
 - **相対セレクタ `基準:rightSwitch`**(`right` / `left` / `above` / `below` × 型別接尾辞
   `Button` / `Input` / `Label` / `Image` / `Switch` / `Widget`。Shirates 準拠で**基準が先**):

@@ -74,18 +74,22 @@ simctl terminate する(ログに「別アプリに注入された in-app ブリ
 
 ## シナリオ一覧
 
+**launchApp を減らすため、同じ launch 文脈を共有できる軽量シナリオは1 @Test 内の連続 scene に
+統合してある**(2026-08-08。旧シナリオ境界は `tap("#tab_home")`+再遷移。scene タイトルの
+`S00x0:` 接頭辞が旧シナリオ ID)。重量級と検出器(01 の起動着地・07 の S0060/S0080/S0090/S0100・
+08 の S0020・10 の S0010/S0030・17・19)は独立のまま。
+
 | ファイル | 検証する ftester 機能 |
 |---|---|
 | `01_起動と画面遷移.swift` | `launchApp` / タブ切替 / 下位画面遷移+`戻る` / タブ切替でスタックを持ち越さないこと |
-| `02_セレクタ_id指定.swift` | `#id` セレクタと結果 echo の完全一致検証 |
-| `03_セレクタ_ラベルと部分一致.swift` | ラベルセレクタの完全一致優先→部分一致フォールバック契約 |
-| `04_セレクタ_型と序数.swift` | `.Type[n]` / `.Type#id` / `.Type=ラベル` / `\|\|` フォールバック連鎖 |
-| `05_テキスト入力.swift` | `type` と入力値 echo。UIKit 入力欄の型分化(`.SecureTextField`)も引く |
-| `06_ジェスチャ.swift` | `tap` 連打 / `press`(長押し)と通常タップの区別 / `swipe` 4方向 |
-| `07_スクロール.swift` | `scrollTo` と「`scroll:` を付けない探索・検証は現在画面のみ」の契約。`.Cell=行 03` のラベル解決 |
-| `08_待機とタイムアウト.swift` | 暗黙待ち(既定タイムアウト再試行)と `timeout:` 引数 |
-| `09_条件分岐とダイアログ.swift` | `ifCanSelect` と `select`(掴めなければ空要素)。UIAlertController のボタン id 解決 |
-| `10_ライフサイクルとコントロール.swift` | `restartApp` によるプロセス内/永続状態の分離、Switch/ラジオ/Slider の状態遷移 |
+| `02_セレクタ画面.swift` | `#id`・ラベル一致規則・`.Type[n]` 系・`\|\|` フォールバック・フィルタ OR・対称アサーション(旧 02/03/04/16 を統合) |
+| `05_テキスト入力.swift` | `type` と入力値 echo・`.SecureTextField`・`clearInput`・キーボード表示検証・pressEnter/IME(旧 18 を統合) |
+| `06_ジェスチャ.swift` | `tap` 連打 / `press` / `swipe` 4方向 / `swipePointToPoint` / ピンチ・ダブルタップ・斜めドラッグ(旧 22 を統合) |
+| `07_スクロール.swift` | `scrollTo`・`swipeElementToElement`・`notExist(scroll:)`・scrollFrame・Shirates 準拠スクロール(旧 14.S0010/16.S0020/S0030 を統合)。S0060/S0080/S0090/S0100 は独立 |
+| `08_待機とタイムアウト.swift` | 暗黙待ちと `timeout:`・セレクタ拡張・appIs/screenshot/waitForDisplay/verify(旧 12/21.S0010 を統合) |
+| `09_条件分岐とダイアログ.swift` | ダイアログ操作・`ifCanSelect`・`repeatWhileCanSelect`・`waitForClose`(旧 14.S0020/21.S0060 を統合) |
+| `10_ライフサイクルとコントロール.swift` | `restartApp` のプロセス内/永続分離・コントロール状態・操作可否アサーション(旧 11 を統合)・`clearAppData` |
+| `13_ID無し画面.swift` / `17_イレギュラーハンドラ.swift` / `19_WebView.swift` / `21_新規コマンド.swift`(S0040) | 単独維持(リセット手段が無い画面・setUp ハンドラ・重量級) |
 
 ## `_disabled/`(通常実行に含めない)
 

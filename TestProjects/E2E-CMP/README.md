@@ -89,23 +89,29 @@ E2E のシナリオは全て `@TestClass(app: "com.ftester.e2e")` で `platform:
 
 ## シナリオ一覧
 
+**launchApp を減らすため、同じ launch 文脈を共有できる軽量シナリオは1 @Test 内の連続 scene に
+統合してある**(2026-08-08。旧シナリオ境界は `tap("#tab_home")`+再遷移。scene タイトルの
+`S00x0:` 接頭辞が旧シナリオ ID)。重量級と検出器(01 の起動着地・07 の S0060/S0080/S0090/S0100/S0110・
+08 の S0020・10 の S0010/S0030・11/13/17/19/23)は独立のまま。**05/18(テキスト入力・Enter キー)は
+統合を見送った** —— E2EAppCMP は IME アクション発火後もフォーカス・キーボードを保持する
+(ui-contract.md「テキスト入力画面」)ため、境界で `#tab_home` を確実に叩ける決定的なキーボード
+消去手段が iOS 側に無い(Android の `hideKeyboard()` に相当するものが無い)。
+
 | ファイル | 検証する ftester 機能 |
 |---|---|
 | `01_起動と画面遷移.swift` | `launchApp` / タブ切替 / 下位画面遷移+`戻る` / タブ切替時にスタックが持ち越されないこと |
-| `02_セレクタ_id指定.swift` | `#id` セレクタと結果 echo の完全一致検証 |
-| `03_セレクタ_ラベルと部分一致.swift` | ラベルセレクタの完全一致優先→部分一致フォールバック契約 |
-| `04_セレクタ_型と序数.swift` | `.Type[n]` / `.Type#id` / `.Type=ラベル` / `\|\|` フォールバック連鎖(序数は下記の注意を参照) |
-| `05_テキスト入力.swift` | `type` と入力値 echo(単一行/パスワード/送信/クリア) |
-| `06_ジェスチャ.swift` | `tap` 連打 / `press`(長押し)と通常タップの区別 / `swipe` 4方向 |
-| `07_スクロール.swift` | `scrollTo` と「`scroll:` を付けない探索・検証は現在画面のみ」の契約 |
-| `08_待機とタイムアウト.swift` | 暗黙待ち(既定タイムアウト再試行)と `timeout:` 引数 |
-| `09_条件分岐とダイアログ.swift` | `ifCanSelect` と `select`(掴めなければ空要素) |
-| `10_ライフサイクルとプラットフォーム分岐.swift` | `restartApp` によるプロセス内/永続状態の分離、`ios {}` / `android {}` |
+| `02_セレクタ画面.swift` | `#id`・ラベル一致規則・`.Type[n]` 系・`\|\|` フォールバック・フィルタ OR・対称アサーション・型付きセレクタ(Sel)(旧 02/03/04/16.S0010/15.S0010 を統合) |
+| `05_テキスト入力.swift` | `type` と入力値 echo(単一行/パスワード/送信/クリア)・`clearInput`・キーボード表示検証(統合見送り。上記参照) |
+| `06_ジェスチャ.swift` | `tap` 連打 / `press` / `swipe` 4方向 / `swipePointToPoint` / ピンチ・ダブルタップ・斜めドラッグ(旧 22 を統合) |
+| `07_スクロール.swift` | `scrollTo`・非スクロール契約・`swipeElementToElement`・`notExist(scroll:)`・textContains/textMatches・Shirates 準拠スクロール・Sel 版のスコープ/状態フィルタ/スクロール別名族(旧 14.S0010/16.S0020/S0030/15.S0020/S0030 を統合。統合Bは壁時計対策で2 @Test)。S0060/S0080/S0090/S0100/S0110 は独立 |
+| `08_待機とタイムアウト.swift` | 暗黙待ちと `timeout:`・appIs/screenshot/waitForDisplay/verify・秒引数の小数指定(旧 21.S0010/20.S0020 を統合)。S0020 は独立 |
+| `09_条件分岐とダイアログ.swift` | ダイアログ操作・`ifCanSelect`・`back`(Android)・`repeatWhileCanSelect`・`waitForClose`(旧 14.S0020/21.S0060 を統合) |
+| `10_ライフサイクルとプラットフォーム分岐.swift` | `restartApp` のプロセス内/永続分離・`ios {}`/`android {}`・ブリッジの Slider value 供給(旧 24 を統合)。S0010/S0030 は独立 |
 | `11_否定と個数と方向セレクタ.swift` | `notExist` / `countIs` / `enabledIsTrue/False`・`checkIsON/OFF` / 相対セレクタ `:below`・`:above` / `group` / setUp・tearDown |
 | `13_ID無し画面.swift` | id の無い画面を相対セレクタ(`基準:rightSwitch` 等)だけで操作・検証 |
-| `14_部分一致と反復.swift` | `textContains` / `textMatches`(動的文字列)と `repeatWhileCanSelect`(件数不定の一括操作) |
-| `15_型付きセレクタ.swift` | 型付きセレクタ(Sel)が文字列版と同じ要素に着地すること |
-| `16_フィルタORと否定と対称アサーション.swift` | `\|\|` の和集合 / `(a\|b)` / 否定 `!=`・`!` / 対称アサーション / `scroll:` / スクロールコマンド群 / `withScrollDown` / `thisIs` 系 / `doUntilTrue` |
+| `18_Enterキー.swift` | `pressEnter()` と `type` の末尾改行(統合見送り。上記参照) |
+| `20_値の読み出しと小数タイムアウト.swift` | `exist` の戻り値から画面の値を読んで後段の期待値に使う(旧 S0020 は 08 へ移設) |
+| `21_新規コマンド.swift` | `flick` 8方向(旧 S0010 は 08 へ、旧 S0060 は 09 へ移設) |
 
 ## `_disabled/`(通常実行に含めない)
 
@@ -124,7 +130,7 @@ E2E のシナリオは全て `@TestClass(app: "com.ftester.e2e")` で `platform:
 
 ## 注意
 
-- `04_セレクタ_型と序数.swift` の `.Button[6]` / `.Cell[6]` は **両 OS の実スナップショットで採取した値**。
+- `02_セレクタ画面.swift`(旧 04)の `.Button[6]` / `.Cell[6]` は **両 OS の実スナップショットで採取した値**。
   `.Type[n]` は「見えている同型要素のツリー順」で、圧縮スナップショットが画面外を含まないため
   **スクロール位置と画面クロム(戻る・下部タブ)に依存する**。レイアウトを変えたら採取し直す
   (序数の並び自体は iOS/Android で一致した)。

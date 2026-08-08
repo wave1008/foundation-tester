@@ -36,18 +36,23 @@ ftester run --project E2E-Flutter --profile android
 
 ## シナリオ一覧
 
+launchApp 回数を減らすため、同じ画面を起点にする軽量シナリオは1 @Test の連続 scene へ統合してある
+(2026-08-08。旧ファイル番号は各 scene のタイトルに `旧ID:` 接頭辞で残る)。
+
 | ファイル | 検証する ftester 機能 |
 |---|---|
 | `01_起動と画面遷移.swift` | `launchApp` / タブ切替 / 下位画面遷移+`戻る` / タブ切替でスタックを持ち越さないこと |
-| `02_セレクタ_id指定.swift` | `#id` セレクタと結果 echo の完全一致検証 |
-| `03_セレクタ_ラベルと部分一致.swift` | ラベルセレクタの完全一致優先→部分一致フォールバック契約 |
-| `04_セレクタ_型と序数.swift` | `.Type[n]` / `.Type#id` / `.Type=ラベル` / `\|\|` フォールバック連鎖 |
-| `05_テキスト入力.swift` | `type` と入力値 echo |
-| `06_ジェスチャ.swift` | `tap` 連打 / `press`(長押し)と通常タップの区別 / `swipe` 4方向 |
-| `07_スクロール.swift` | `scrollTo` と「`scroll:` を付けない探索・検証は現在画面のみ」の契約 |
-| `08_待機とタイムアウト.swift` | 暗黙待ち(既定タイムアウト再試行)と `timeout:` 引数 |
-| `09_条件分岐とダイアログ.swift` | `ifCanSelect` と `select`(掴めなければ空要素) |
-| `10_ライフサイクルとプラットフォーム分岐.swift` | `restartApp`、`ios {}` / `android {}`、コントロールの状態遷移 |
+| `02_セレクタ画面.swift` | `#id` 完全一致 / ラベル一致規則 / `.Type[n]` / `.Type#id` / `.Type&&ラベル` / `\|\|` フォールバック連鎖 / OR・否定フィルタ・対称アサーション / `exist(scroll:)`(旧 02/03/04、16 の S0010) |
+| `05_テキスト入力.swift` | `type` と入力値 echo / `clearInput` / キーボード表示状態 / `pressEnter`・末尾改行の IME アクション(旧 05 の S0010〜S0030、18) |
+| `06_ジェスチャ.swift` | `tap` 連打 / `press`(長押し)と通常タップの区別 / `swipe` 4方向 / `swipePointToPoint` / `pinchOut`/`pinchIn` / `doubleTap` / `swipeBy`(旧 06 の S0010〜S0020、22) |
+| `07_スクロール.swift` | `scrollTo` と「`scroll:` を付けない探索・検証は現在画面のみ」の契約 / `swipeElementToElement` / `notExist(scroll:)` / 固定ヘッダの `scrollFrame` / `textContains`/`textMatches` / Shirates 準拠のスクロールコマンド(旧 07 の S0010〜S0050・S0070、14 の S0010、16 の S0020〜S0030。S0060/S0080/S0090/S0100 は重量級のため独立のまま) |
+| `08_待機とタイムアウト.swift` | 暗黙待ち(既定タイムアウト再試行)と `timeout:` 引数 / `notExist`/`countIs` / 相対セレクタとスコープ / 状態フィルタ / `appIs`/`screenshot`/`waitForDisplay`/`verify`(旧 08 の S0010、12、21 の S0010。S0020 は独立のまま) |
+| `09_条件分岐とダイアログ.swift` | `ifCanSelect` と `select`(掴めなければ空要素) / `back`(Android のみ) / `repeatWhileCanSelect` / `waitForClose`(旧 09 の S0010・S0020・S0040、14 の S0020、21 の S0060) |
+| `10_ライフサイクルとプラットフォーム分岐.swift` | `restartApp`、`ios {}` / `android {}`、コントロールの状態遷移、`enabledIsFalse`/`enabledIsTrue`、`clearAppData`(旧 10 の S0020・S0030、11。S0010/S0040 は独立のまま) |
+| `13_ID無し画面.swift` | 相対セレクタ(`基準:rightSwitch` / `基準:leftButton`)だけで id の無い画面を操作・検証 |
+| `17_イレギュラーハンドラ.swift` | `irregularHandler`(出るか不定なアプリ内メッセージの検出・自動終了) |
+| `19_WebView.swift` | WebView(Web コンテンツ)の中を操作・検証できること |
+| `21_新規コマンド.swift` | `flick`(画面基点の生ジェスチャ・8方向) |
 
 ## `_disabled/`(通常実行に含めない)
 
