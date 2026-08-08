@@ -39,6 +39,15 @@ final class SweepHarnessTests: XCTestCase {
     /// - `disabled` は E2E-CMP の契約上「押しても何も起きない」2ボタンだけ
     /// - `ghost` と `stacked` は**全画面で 0**(2026-08-07 に誤検知を潰した結果)
     static let baselines: [String: Counts] = [
+        // 経路プランナーの移動手段タブ(2026-08-08 採取・版53)。**選択中ノード保持の形**
+        // (`other checked`・id もテキストも無い)を含む唯一のフィクスチャ。
+        // **ただしこれは採取時点の木の凍結**であって、Java 側 shouldInclude の退行は
+        // 落とせない(生きたガードには SUT 側に id 無し selected ウィジェットが要る。未実施)。
+        // overlay 6 は全件検分済み: 5件はシートが地図 chrome(#mylocation_button 等)を覆う
+        // 真陽性、残る1件(warnedTappable の1)は全画面の地図 clickable の中心に
+        // 提案テキストが乗る形 = and-results の「スポンサー ← footer」と同じ受理済みの型
+        "and-directions_tabs": Counts(ghost: 0, overlay: 6, stacked: 0, misses: 0, disabled: 0,
+                                      offscreen: 0, warnedTappable: 1, keyboard: 0, sliver: 0),
         "and-home": Counts(ghost: 0, overlay: 2, stacked: 0, misses: 2, disabled: 0,
                            warnedTappable: 0),
         // 2026-08-08 採取(キーボード/IME 遮蔽検知の導入時)。keyboard 2 は Gboard の

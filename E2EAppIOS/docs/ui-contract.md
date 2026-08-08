@@ -85,7 +85,7 @@ keyboard focus を持つ要素として見えず無言 no-op になる**。だ�
   **ブリッジが後から来て何も足さない方を落とすので、スナップショットには1つしか出ない**
   (2026-08-06 / protocol 53。規則は `Sources/FTCore/SnapshotDedupe.swift`)。
   同じ畳み込みは `UIAlertController` のボタン(`#btn_dialog_ok` / `#btn_dialog_cancel`)にも効く
-- `Slider` の value は `"50%"`(パーセント表記)。値検証は echo Text(`#txt_slider`)で行う契約
+- `Slider` の value は `"50%"`(パーセント表記)。**アプリの状態**の値検証は echo Text(`#txt_slider`)で行う契約。例外が1箇所: 10_ライフサイクルとコントロール の `valueIs("50%")` は**ブリッジが value を供給していること**の検証で、echo では代替できない(SUT が自前で描くのでブリッジが黙っても緑のまま)
 
 ### WebView 画面(SUT 固有の実測)
 
