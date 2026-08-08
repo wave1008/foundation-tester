@@ -1,17 +1,22 @@
 // 08_待機とタイムアウト.swift
-// ftester 機能: 暗黙待ち(exist/textIs の既定タイムアウト再試行)と `timeout:` 引数の検証。
+// ftester 機能: 暗黙待ち(exist/textIs の既定タイムアウト再試行)と `timeout:` 引数の検証・
+// notExist の待機/countIs/方向セレクタ・スコープ(`>>`)・状態フィルタ(12)・
+// `appIs`/`screenshot`/`waitForDisplay`/`verify`(21)をまとめて検証する。
 // #btn_delay_8 は既定5秒を超えるため timeout: を明示して通す(timeout が効いていることの証明であり、
 // 「失敗させる」テストにはしない)。固定 wait() は暗黙待ちがあるため使わない。
+// 旧シナリオ境界は tap("#tab_home") でホームへ戻ってから叩き直す形に置き換えてある
+// (AppShell はタブ切替で子画面の @State を破棄するため、state=idle 等の初期値はこれだけで戻る)。
+// **S0020(timeout: の明示検証)は重量級(8秒待ち)のため統合しない**(独立 @Test のまま)。
 
 import FTDSL
 
 @TestClass(app: "com.ftester.e2e.ios", platform: "ios")
 class 待機とタイムアウトが正しく効くこと {
 
-    @Test("既定タイムアウト内の遅延表示は暗黙待ちで拾える")
+    @Test("既定タイムアウト内の遅延表示は暗黙待ちで拾える・notExist/countIs/方向/スコープ・appIs/screenshot/waitForDisplay/verify")
     func S0010() {
         scenario {
-            scene(1, "非同期表示画面を開く") {
+            scene(1, "08.S0010: 既定タイムアウト内の遅延表示は暗黙待ちで拾える") {
                 condition {
                     launchApp()
                 }.action {
@@ -26,6 +31,128 @@ class 待機とタイムアウトが正しく効くこと {
                 }.expectation {
                     exist("#txt_delayed")
                     select("#txt_delay_state").textIs("state=done")
+                }
+            }
+            scene(3, "12.S0010: 否定・個数・方向・スコープの各セレクタが期待どおり解決する") {
+                condition {
+                    tap("#tab_home")
+                    tap("#nav_async")
+                }.expectation {
+                    // 待機中はツリーに未配置(非表示ではない)
+                    notExist("#txt_delayed")
+                }.action {
+                    tap("#btn_delay_1")
+                }.expectation {
+                    exist("#txt_delayed")
+                }.action {
+                    tap("#btn_async_reset")
+                }.expectation {
+                    notExist("#txt_delayed")
+                    select("#txt_delay_state").textIs("state=idle")
+                }
+            }
+            scene(4, "countIs で同一ラベル要素の個数を数える") {
+                condition {
+                    tap("#btn_back")
+                    tap("#nav_selector")
+                }.expectation {
+                    countIs(".button&&項目", 3)
+                    countIs("#btn_item_1", 1)
+                    countIs("存在しないラベル", 0)
+                }
+            }
+            scene(5, "方向セレクタで同一ラベル群をアンカーで選び分ける") {
+                action {
+                    tap("#btn_allow:below(.button&&項目)")
+                }.expectation {
+                    // 縦一列なので上下で選ぶ。`許可` の下にある最初の `項目` は 1 番目(ui-contract.md の並び順)
+                    select("#txt_selector_result").textIs("result=item1")
+                }.action {
+                    tap("#btn_selector_reset:above(.button&&項目)")
+                }.expectation {
+                    select("#txt_selector_result").textIs("result=item3")
+                }
+            }
+            scene(6, "スコープ(>>)は祖先の子孫だけを対象にする") {
+                condition {
+                    tap("#btn_back")
+                    tap("#nav_scroll")
+                }.expectation {
+                    // #list_rows は行を包む容器(ui-contract.md)。スコープはその子孫だけを見る
+                    exist("#list_rows >> #row_02")
+                    countIs("#list_rows >> #row_02", 1)
+                    // スコープ外(固定ヘッダ)の要素はスコープ内からは解決できない
+                    notExist("#list_rows >> #txt_row_selected")
+                }
+            }
+            scene(7, "`&&` 合成・序数つき相対セレクタ・状態フィルタ") {
+                condition {
+                    tap("#btn_back")
+                    tap("#nav_selector")
+                }.expectation {
+                    // `&&` は id と型の併用にも使える(`.button#btn_allow` と同義の一般形)
+                    exist("#btn_allow&&.button")
+                    countIs(".button&&項目", 3)
+                }.action {
+                    // 引数末尾の `&&[n]` は「その方向で近い順の n 番目」。`許可` の下に `項目` が
+                    // 3 つ縦に並ぶので 2 番目は item2(並び順は ui-contract.md)
+                    tap("#btn_allow:below(.button&&項目&&[2])")
+                }.expectation {
+                    select("#txt_selector_result").textIs("result=item2")
+                }
+            }
+            scene(8, "状態フィルタ(enabled)を id と併用して候補を絞る") {
+                condition {
+                    tap("#btn_back")
+                    tap("#tab_controls")
+                    tap("#btn_controls_reset")
+                }.expectation {
+                    // **状態フィルタは型ではなく id と併用する**: 同じ役割の要素でも型は SUT ごとに
+                    // 割れる(この画面の無効ボタンは View/XML では clickable、CMP では button。
+                    // ui-contract.md「型で指さない要素」)。enabled は 3 ブリッジ共通で埋まる
+                    exist("#btn_always_disabled&&enabled=false")
+                    exist("#btn_toggle_target&&enabled=false")
+                }.action {
+                    tap("#cb_agree")
+                }.expectation {
+                    // 同意すると条件付きボタンだけが有効化される(常時無効ボタンは不変)
+                    exist("#btn_toggle_target&&enabled=true")
+                    exist("#btn_always_disabled&&enabled=false")
+                }
+            }
+            scene(9, "21.S0010: appIs・screenshot・waitForDisplay・verify が非同期表示画面で動く") {
+                condition {
+                    tap("#tab_home")
+                }.expectation {
+                    appIs("com.ftester.e2e.ios")
+                }
+            }
+            scene(10, "非同期表示画面を開いてスクリーンショットを撮る") {
+                action {
+                    tap("#nav_async")
+                    screenshot(filename: "S0010_async")
+                }.expectation {
+                    select("#txt_delay_state").textIs("state=idle")
+                }
+            }
+            scene(11, "waitForDisplay で3秒後表示を待つ(暗黙待ちでなく明示の待機コマンド)") {
+                action {
+                    tap("#btn_delay_3")
+                }.expectation {
+                    // 戻り値は FTElement なのでそのままチェーンで検証できる
+                    waitForDisplay("#txt_delayed", waitSeconds: 6)
+                        .textIs("遅延表示 完了")
+                    select("#txt_delay_state").textIs("state=done")
+                }
+            }
+            scene(12, "verify が exist と textIs をまとめて1ステップにする") {
+                expectation {
+                    verify("遅延表示が完了し、状態表示も done になっていること") {
+                        exist("#txt_delayed")
+                        select("#txt_delay_state").textIs("state=done")
+                    }
+                }.action {
+                    tap("#tab_home")
                 }
             }
         }

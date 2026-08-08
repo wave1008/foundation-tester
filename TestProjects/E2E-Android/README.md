@@ -29,18 +29,23 @@ ftester run --project E2E-Android --profile android
 
 ## シナリオ一覧
 
+**同じ画面・同じ導入(`launchApp`+ナビ)から始まる軽量シナリオは1 @Test の連続 scene へ
+統合してある**(2026-08-08。旧シナリオ境界は `tap("#tab_home")`(入力系は `hideKeyboard()` を
+前置)+再遷移。scene タイトルの `S00x0:` 接頭辞が旧シナリオ ID)。重量級(07 の
+S0060/S0080/S0090/S0100)と独立維持のもの(08 の S0020・10 の S0010/S0030・13・17・19・21 の
+S0040)は独立のまま。
+
 | ファイル | 検証する ftester 機能 |
 |---|---|
 | `01_起動と画面遷移.swift` | `launchApp` / タブ切替 / 下位画面遷移+`戻る` / タブ切替でスタックを持ち越さないこと |
-| `02_セレクタ_id指定.swift` | `#id` セレクタと結果 echo の完全一致検証 |
-| `03_セレクタ_ラベルと部分一致.swift` | ラベルセレクタの完全一致優先→部分一致フォールバック契約 |
-| `04_セレクタ_型と序数.swift` | `.Type[n]` / `.Type#id` / `.Type=ラベル` / `\|\|`。**同一アプリ内で View=`Button` / Compose=`Cell`** の食い違い |
-| `05_テキスト入力.swift` | `type` と入力値 echo。`SecureTextField` はパスワード欄だけ |
-| `06_ジェスチャ.swift` | `tap` 連打 / `press`(長押し)と通常タップの区別 / `swipe` 4方向 |
-| `07_スクロール.swift` | `scrollTo`(RecyclerView)と「`scroll:` を付けない探索・検証は現在画面のみ」の契約 |
-| `08_待機とタイムアウト.swift` | 暗黙待ち(既定タイムアウト再試行)と `timeout:` 引数 |
-| `09_条件分岐とダイアログ.swift` | `ifCanSelect` と `select`(掴めなければ空要素)。カスタムビュー AlertDialog の id 解決 |
-| `10_ライフサイクルとコントロール.swift` | `restartApp` によるプロセス内/永続状態の分離、Compose コントロールの状態遷移 |
+| `02_セレクタ画面.swift` | `#id`・ラベル一致規則・`.Type[n]` 系・`\|\|` フォールバック・フィルタ OR・対称アサーション・View/Compose の型差(旧 02/03/04/16 を統合) |
+| `05_テキスト入力.swift` | `type` と入力値 echo・`value*`・`.SecureTextField`・`clearInput`・キーボード表示検証・pressEnter/IME(旧 18 を統合) |
+| `06_ジェスチャ.swift` | `tap` 連打 / `press`(長押し)と通常タップの区別 / `swipe` 4方向 / `swipePointToPoint` / ピンチ・ダブルタップ・斜めドラッグ(旧 22 を統合) |
+| `07_スクロール.swift` | `scrollTo`(RecyclerView)・「`scroll:` を付けない探索・検証は現在画面のみ」の契約・swipeElementToElement・scrollFrame・Shirates 準拠スクロール(旧 14.S0010/16.S0020/S0030 を統合)。S0060/S0080/S0090/S0100 は独立 |
+| `08_待機とタイムアウト.swift` | 暗黙待ち(既定タイムアウト再試行)と `timeout:` 引数・セレクタ拡張(notExist/countIs/相対/スコープ/状態フィルタ)・appIs/screenshot/waitForDisplay/verify(旧 12/21.S0010 を統合)。S0020 は独立 |
+| `09_条件分岐とダイアログ.swift` | ダイアログ操作・`ifCanSelect`・back クローズ・`repeatWhileCanSelect`・`waitForClose`(旧 14.S0020/21.S0060 を統合) |
+| `10_ライフサイクルとコントロール.swift` | `restartApp` によるプロセス内/永続状態の分離、Compose コントロールの状態遷移・`enabledIsFalse`/`enabledIsTrue`・`checkIsON`/`checkIsOFF`・ブリッジの value 供給(旧 11/24 を統合)。S0010/S0030 は無変更 |
+| `13_ID無し画面.swift` / `17_イレギュラーハンドラ.swift` / `19_WebView.swift` / `21_新規コマンド.swift`(S0040) | 単独維持(リセット手段が無い画面・setUp ハンドラ・重量級) |
 
 ## `_disabled/`(通常実行に含めない)
 

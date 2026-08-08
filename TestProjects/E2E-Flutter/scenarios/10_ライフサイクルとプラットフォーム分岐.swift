@@ -1,8 +1,16 @@
 // 10_ライフサイクルとプラットフォーム分岐.swift
 // ftester 機能: `restartApp`(terminate+launch でのプロセス内状態リセット・永続カウンタは残る)/
-// `terminateApp`(落としたことは次の launchApp の launch カウンタでのみ観測できる)と
-// `ios {}` / `android {}` によるプラットフォーム分岐。
-// Flutter は1つのコードから両OSのバイナリが出るため、同一シナリオが両OSで回る唯一の新規 SUT。
+// `terminateApp`(落としたことは次の launchApp の launch カウンタでのみ観測できる)/
+// `ios {}` / `android {}` によるプラットフォーム分岐 / コントロール(Switch/Checkbox/ラジオ/Slider)の
+// 状態遷移 / `enabledIsFalse`/`enabledIsTrue`(旧 11_操作可否アサーション)/ `clearAppData` をまとめて
+// 検証する。Flutter は1つのコードから両OSのバイナリが出るため、同一シナリオが両OSで回る唯一の新規 SUT。
+// **この SUT に置く 11 の意味**: enabled の表現はフレームワークごとに実装が違う
+// (Flutter は onPressed: null)ため、a11y ツリーに出る enabled 属性が
+// AppDriver から上で同じに見えることをフレームワーク別に確かめる。
+// **S0020 は旧シナリオ境界を tap("#tab_home") + 再ナビへ置き換えて11の検証を統合してある**
+// (AppShell はタブ切替で子画面の State を破棄するため、agree=false 等の初期値はこれだけで戻る)。
+// **S0010(ライフサイクル)と S0040(clearAppData)は無変更**(それぞれ他クラスタと同居させると
+// restartApp/terminateApp・データ消去の副作用が別の検証と干渉するため、独立のまま残す)。
 
 import FTDSL
 
@@ -68,10 +76,10 @@ class ライフサイクルとプラットフォーム分岐が正しく働く�
         }
     }
 
-    @Test("プラットフォーム分岐でそれぞれの platform 表記になる")
+    @Test("プラットフォーム分岐でそれぞれの platform 表記になる・コントロールの状態遷移・enabled 状態の判定")
     func S0020() {
         scenario {
-            scene(1, "ライフサイクル画面を開く") {
+            scene(1, "10.S0020: プラットフォーム分岐でそれぞれの platform 表記になる") {
                 condition {
                     launchApp()
                 }.expectation {
@@ -97,25 +105,10 @@ class ライフサイクルとプラットフォーム分岐が正しく働く�
                     android { select("#txt_platform").textIs("platform=Android") }
                 }
             }
-        }
-    }
-
-    @Test("コントロール(Switch/Checkbox/ラジオ/Slider)の状態が echo に反映される")
-    func S0030() {
-        scenario {
-            scene(1, "コントロールタブを開いて初期値を確認") {
+            scene(3, "10.S0030: コントロール(Switch/Checkbox/ラジオ/Slider)の状態が echo に反映される") {
                 condition {
-                    launchApp()
+                    tap("#tab_home")
                 }.expectation {
-                    // Flutter は起動直後の数百 ms、a11y ツリーは完成しているのに**ポインタ入力を
-                    // 取りこぼす**ことがある(初回タップが成功扱いのまま黙って無反応になる。
-                    // Android で実測)。ここで1往復させ、着地を確認してから操作する。
-                    //
-                    // requireVisible: false = これは可視性の**検証**ではなく同期のための1往復。
-                    // FM はホスト全体で直列化(約1回/秒)されるため、全 launchApp で FM を
-                    // 呼ぶとコストだけが乗る。**可視性の検証と、occlusion-guard の誤判定を
-                    // 検出する役目は 01_起動と画面遷移 が既定(true)のまま担う**
-                    // (README「既知の ftester 欠陥」参照。ここで guard を切っても検出器は死なない)。
                     exist("#txt_home_marker", requireVisible: false)
                 }.action {
                     tap("#tab_controls")
@@ -126,7 +119,7 @@ class ライフサイクルとプラットフォーム分岐が正しく働く�
                     select("#txt_slider").textIs("volume=50")
                 }
             }
-            scene(2, "Switch とチェックを ON にする") {
+            scene(4, "Switch とチェックを ON にする") {
                 action {
                     tap("#sw_notify")
                     tap("#cb_agree")
@@ -135,14 +128,14 @@ class ライフサイクルとプラットフォーム分岐が正しく働く�
                     select("#txt_cb_agree").textIs("agree=true")
                 }
             }
-            scene(3, "ラジオを B へ切り替える") {
+            scene(5, "ラジオを B へ切り替える") {
                 action {
                     tap("#radio_b")
                 }.expectation {
                     select("#txt_radio").textIs("plan=B")
                 }
             }
-            scene(4, "リセットで全て初期値に戻る") {
+            scene(6, "リセットで全て初期値に戻る") {
                 action {
                     tap("#btn_controls_reset")
                 }.expectation {
@@ -150,6 +143,40 @@ class ライフサイクルとプラットフォーム分岐が正しく働く�
                     select("#txt_cb_agree").textIs("agree=false")
                     select("#txt_radio").textIs("plan=A")
                     select("#txt_slider").textIs("volume=50")
+                }
+            }
+            scene(7, "11.S0010: 常時無効ボタンと条件付きボタンの enabled 状態を判定する") {
+                condition {
+                    tap("#tab_home")
+                    tap("#tab_controls")
+                    tap("#btn_controls_reset")
+                }.expectation {
+                    select("#btn_always_disabled").enabledIsFalse()
+                    select("#btn_toggle_target").enabledIsFalse()
+                }
+            }
+            scene(8, "同意すると条件付きボタンだけが有効になる") {
+                action {
+                    tap("#cb_agree")
+                }.expectation {
+                    select("#txt_cb_agree").textIs("agree=true")
+                    select("#btn_toggle_target").enabledIsTrue()
+                    // 常時無効ボタンは影響を受けない
+                    select("#btn_always_disabled").enabledIsFalse()
+                }
+            }
+            scene(9, "同意を外すと条件付きボタンは無効に戻る") {
+                action {
+                    // group は記録に [名前] を前置するだけのまとまり(実行・失敗の扱いは素の列と同じ)
+                    group("同意を外す") {
+                        select("#cb_agree").enabledIsTrue()
+                        tap("#cb_agree")
+                    }
+                }.expectation {
+                    select("#txt_cb_agree").textIs("agree=false")
+                    select("#btn_toggle_target").enabledIsFalse()
+                }.action {
+                    tap("#tab_home")
                 }
             }
         }

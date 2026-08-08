@@ -1,7 +1,11 @@
 // 10_ライフサイクルとプラットフォーム分岐.swift
 // ftester 機能: `restartApp`(terminate+launch でのプロセス内状態リセット・永続カウンタは残る)/
 // `terminateApp`(落としたことは次の launchApp の launch カウンタでのみ観測できる)と
-// `ios {}` / `android {}` によるプラットフォーム分岐。
+// `ios {}` / `android {}` によるプラットフォーム分岐・**ブリッジが要素の状態を供給していること**
+// (24.S0010。Slider の value は AccessibilityNodeInfo.getRangeInfo() が唯一の供給源で、
+// echo Text は SUT が自前で描くためブリッジが黙っても緑のまま。ここは emission そのものを見る)。
+// S0020 の境界は旧シナリオ境界を tap("#tab_home") + 再ナビへ置き換えてある
+// (App() はタブ/子画面切替で remember 状態を破棄するため、volume=50 等の初期値はこれだけで戻る)。
 
 import FTDSL
 
@@ -56,10 +60,10 @@ class ライフサイクルとプラットフォーム分岐が正しく働く�
         }
     }
 
-    @Test("プラットフォーム分岐でそれぞれの platform 表記になる")
+    @Test("プラットフォーム分岐でそれぞれの platform 表記になる・Slider の現在値が value として木に載る")
     func S0020() {
         scenario {
-            scene(1, "ライフサイクル画面を開く") {
+            scene(1, "10.S0020: ライフサイクル画面を開く") {
                 condition {
                     launchApp()
                 }.action {
@@ -72,6 +76,24 @@ class ライフサイクルとプラットフォーム分岐が正しく働く�
                 expectation {
                     ios { select("#txt_platform").textIs("platform=iOS") }
                     android { select("#txt_platform").textIs("platform=Android") }
+                }
+            }
+            scene(3, "24.S0010: Slider の現在値が value として木に載る") {
+                condition {
+                    tap("#tab_home")
+                }.action {
+                    tap("#tab_controls")
+                    tap("#btn_controls_reset")
+                }.expectation {
+                    select("#txt_slider").textIs("volume=50")   // 先にアプリ側の状態を確定させる
+                }
+            }
+            scene(4, "ブリッジの供給を echo とは独立に確認する") {
+                expectation {
+                    android { select("#slider_volume").valueIs("50") }
+                    ios { select("#slider_volume").valueIs("50.0") }
+                }.action {
+                    tap("#tab_home")
                 }
             }
         }

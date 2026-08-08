@@ -1,9 +1,12 @@
 // 10_ライフサイクルとコントロール.swift
 // ftester 機能: `restartApp`(terminate+launch でのプロセス内状態リセット・永続カウンタは残る)/
 // `terminateApp`(落としたことは次の launchApp の launch カウンタでのみ観測できる)と、
-// ネイティブ UI コントロール(Switch / Slider / トグルボタン)の状態遷移検証。
+// ネイティブ UI コントロール(Switch / Slider / トグルボタン)の状態遷移・`enabledIsFalse`/
+// `enabledIsTrue`(11)の検証。
 // Compose 版 10 の `ios {}` / `android {}` 分岐に相当する部分は、この SUT が iOS 専用のため
 // platform: "ios" 固定で置き換えている。
+// S0020 は旧シナリオ境界を tap("#tab_home") + 再ナビへ置き換えて11の検証を統合してある
+// (AppShell はタブ切替で子画面の @State を破棄するため、agree=false 等の初期値はこれだけで戻る)。
 
 import FTDSL
 
@@ -63,10 +66,10 @@ class ライフサイクルとコントロールが正しく働くこと {
         }
     }
 
-    @Test("Switch / チェック / ラジオ / Slider の状態が echo に反映される")
+    @Test("Switch / チェック / ラジオ / Slider の状態が echo に反映される・enabled 状態の判定")
     func S0020() {
         scenario {
-            scene(1, "コントロールタブを開いて初期値を確認") {
+            scene(1, "10.S0020: Switch / チェック / ラジオ / Slider の状態が echo に反映される") {
                 condition {
                     launchApp()
                 }.action {
@@ -107,6 +110,40 @@ class ライフサイクルとコントロールが正しく働くこと {
                     select("#txt_cb_agree").textIs("agree=false")
                     select("#txt_radio").textIs("plan=A")
                     select("#txt_slider").textIs("volume=50")
+                }
+            }
+            scene(5, "11.S0010: 常時無効ボタンと条件付きボタンの enabled 状態を判定する") {
+                condition {
+                    tap("#tab_home")
+                    tap("#tab_controls")
+                    tap("#btn_controls_reset")
+                }.expectation {
+                    select("#btn_always_disabled").enabledIsFalse()
+                    select("#btn_toggle_target").enabledIsFalse()
+                }
+            }
+            scene(6, "同意すると条件付きボタンだけが有効になる") {
+                action {
+                    tap("#cb_agree")
+                }.expectation {
+                    select("#txt_cb_agree").textIs("agree=true")
+                    select("#btn_toggle_target").enabledIsTrue()
+                    // 常時無効ボタンは影響を受けない
+                    select("#btn_always_disabled").enabledIsFalse()
+                }
+            }
+            scene(7, "同意を外すと条件付きボタンは無効に戻る") {
+                action {
+                    // group は記録に [名前] を前置するだけのまとまり(実行・失敗の扱いは素の列と同じ)
+                    group("同意を外す") {
+                        select("#cb_agree").enabledIsTrue()
+                        tap("#cb_agree")
+                    }
+                }.expectation {
+                    select("#txt_cb_agree").textIs("agree=false")
+                    select("#btn_toggle_target").enabledIsFalse()
+                }.action {
+                    tap("#tab_home")
                 }
             }
         }

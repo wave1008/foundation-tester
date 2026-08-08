@@ -1,19 +1,30 @@
 // 07_スクロール.swift
 // ftester 機能: `scrollTo` による要素到達と、「exist/textIs は非スクロール(現在画面のみ判定)」の
-// 契約検証(docs/design.md §10)。
+// 契約検証(docs/design.md §10)・ラベルセレクタでの行タップ・`swipeElementToElement` /
+// `notExist(scroll:)` / 固定ヘッダを指定した `scrollFrame` / `textContains`・`textMatches` /
+// Shirates 準拠のスクロールコマンド(`scrollToBottom`/`scrollToTop`/`scrollDown(repeat:)`/
+// `withScrollDown`/`tap(scroll:)`)をまとめて検証する。
 // SUT のリストは `FlatList`(仮想化リスト)。可視範囲＋数行しか描画されないため、画面外の行は
 // **#id ごとツリーに存在しない**(= scrollTo なしの exist が落ちる契約の裏返しの検証材料)。
 // 行は `TaggedButton`(accessibilityRole="button")で実装してある(型語彙の予測は 04 参照)。
+// 旧シナリオ境界は tap("#tab_home") でホームへ戻ってから叩き直す形に置き換えてある
+// (AppShell はタブ切替で homeChild を null に戻し子画面をアンマウントするため、selected="-" 等の
+// 初期値はこれだけで戻る)。**境界でも起動直後の同期用 exist(#txt_home_marker) は元の scene1 に
+// あった場合だけ維持する**。
+// **S0060/S0080/S0090/S0100 は重量級(scrollFrame 本丸・古いツリー検出・横縦同居・状態不変性)の
+// ため統合しない**(各自 launchApp を残す独立 @Test のまま)。
+// **S0110/S0120 は旧 14_部分一致と反復.S0010 と旧 16_フィルタORと否定と対称アサーション.S0020/S0030 の
+// 移設**(いずれもこのスクロール画面が舞台のため。S0110 は単独、S0120 は S0020→S0030 を1本に統合)。
 
 import FTDSL
 
 @TestClass(app: "com.ftester.e2e.rn")
 class スクロールで折り返し下の要素に到達できること {
 
-    @Test("scrollTo で行リストの末尾まで到達しタップできる")
+    @Test("scrollTo 到達・ラベルセレクタ・非スクロール契約・swipeElementToElement・notExist(scroll:)・固定ヘッダ")
     func S0010() {
         scenario {
-            scene(1, "スクロール画面を開く") {
+            scene(1, "07.S0010: scrollTo で行リストの末尾まで到達しタップできる") {
                 condition {
                     launchApp()
                 }.expectation {
@@ -57,25 +68,10 @@ class スクロールで折り返し下の要素に到達できること {
                     exist("#row_01")
                 }
             }
-        }
-    }
-
-    @Test("行はラベルセレクタからも引ける")
-    func S0020() {
-        scenario {
-            scene(1, "スクロール画面を開く") {
+            scene(4, "07.S0020: 行はラベルセレクタからも引ける") {
                 condition {
-                    launchApp()
+                    tap("#tab_home")
                 }.expectation {
-                    // 起動直後は a11y ツリー完成後もポインタ入力を一時的に取りこぼす実装が
-                    // Flutter で実測されている。RN で同じ罠があるかは未検証だが、害の無い
-                    // 1往復なので安全側として残す。
-                    //
-                    // requireVisible: false = これは可視性の**検証**ではなく同期のための1往復。
-                    // FM はホスト全体で直列化(約1回/秒)されるため、全 launchApp で FM を
-                    // 呼ぶとコストだけが乗る。**可視性の検証と、occlusion-guard の誤判定を
-                    // 検出する役目は 01_起動と画面遷移 が既定(true)のまま担う**
-                    // (README「既知の ftester 欠陥」参照。ここで guard を切っても検出器は死なない)。
                     exist("#txt_home_marker", requireVisible: false)
                 }.action {
                     tap("#nav_scroll")
@@ -83,32 +79,17 @@ class スクロールで折り返し下の要素に到達できること {
                     exist("#row_01")
                 }
             }
-            scene(2, ".button&&行 03 でラベル指定タップできる") {
+            scene(5, ".button&&行 03 でラベル指定タップできる") {
                 action {
                     tap(".button&&行 03")
                 }.expectation {
                     select("#txt_row_selected").textIs("selected=row_03")
                 }
             }
-        }
-    }
-
-    @Test("exist は非スクロールのため直前に scrollTo が必要")
-    func S0030() {
-        scenario {
-            scene(1, "セレクタ画面を開く") {
+            scene(6, "07.S0030: exist は非スクロールのため直前に scrollTo が必要") {
                 condition {
-                    launchApp()
+                    tap("#tab_home")
                 }.expectation {
-                    // 起動直後は a11y ツリー完成後もポインタ入力を一時的に取りこぼす実装が
-                    // Flutter で実測されている。RN で同じ罠があるかは未検証だが、害の無い
-                    // 1往復なので安全側として残す。
-                    //
-                    // requireVisible: false = これは可視性の**検証**ではなく同期のための1往復。
-                    // FM はホスト全体で直列化(約1回/秒)されるため、全 launchApp で FM を
-                    // 呼ぶとコストだけが乗る。**可視性の検証と、occlusion-guard の誤判定を
-                    // 検出する役目は 01_起動と画面遷移 が既定(true)のまま担う**
-                    // (README「既知の ftester 欠陥」参照。ここで guard を切っても検出器は死なない)。
                     exist("#txt_home_marker", requireVisible: false)
                 }.action {
                     tap("#nav_selector")
@@ -116,7 +97,7 @@ class スクロールで折り返し下の要素に到達できること {
                     select("#txt_selector_result").textIs("result=-")
                 }
             }
-            scene(2, "#txt_offscreen は scrollTo で送らない限り exist で見つからない画面外要素") {
+            scene(7, "#txt_offscreen は scrollTo で送らない限り exist で見つからない画面外要素") {
                 action {
                     // exist 自体はスクロールしないため、scrollTo で画面内に入れてから確認する。
                     // scrollTo を省いて直接 exist するとタイムアウト失敗する契約の裏返しの検証
@@ -125,25 +106,10 @@ class スクロールで折り返し下の要素に到達できること {
                     exist("#txt_offscreen")
                 }
             }
-        }
-    }
-
-    @Test("swipeElementToElement でリストがスクロールする")
-    func S0040() {
-        scenario {
-            scene(1, "初期画面内の行を始点・終点にドラッグして送る") {
+            scene(8, "07.S0040: swipeElementToElement でリストがスクロールする") {
                 condition {
-                    launchApp()
+                    tap("#tab_home")
                 }.expectation {
-                    // 起動直後は a11y ツリー完成後もポインタ入力を一時的に取りこぼす実装が
-                    // Flutter で実測されている。RN で同じ罠があるかは未検証だが、害の無い
-                    // 1往復なので安全側として残す。
-                    //
-                    // requireVisible: false = これは可視性の**検証**ではなく同期のための1往復。
-                    // FM はホスト全体で直列化(約1回/秒)されるため、全 launchApp で FM を
-                    // 呼ぶとコストだけが乗る。**可視性の検証と、occlusion-guard の誤判定を
-                    // 検出する役目は 01_起動と画面遷移 が既定(true)のまま担う**
-                    // (README「既知の ftester 欠陥」参照。ここで guard を切っても検出器は死なない)。
                     exist("#txt_home_marker", requireVisible: false)
                 }.action {
                     tap("#nav_scroll")
@@ -154,23 +120,36 @@ class スクロールで折り返し下の要素に到達できること {
                     notExist("#row_01", timeout: 5)
                 }
             }
-        }
-    }
-
-    @Test("notExist(scroll:) で不在をスクロール探索できる")
-    func S0050() {
-        scenario {
-            scene(1, "スクロール画面を開く") {
+            scene(9, "07.S0050: notExist(scroll:) で不在をスクロール探索できる") {
                 condition {
-                    launchApp()
+                    tap("#tab_home")
                 }.expectation {
-                    // 同期の1往復(S0010 scene1 と同じ罠。requireVisible: false の理由もそちら参照)
                     exist("#txt_home_marker", requireVisible: false)
                 }.action {
                     tap("#nav_scroll")
                 }.expectation {
                     // #row_99 は存在しない行(#row_01〜#row_40 の範囲外)。スクロールしても見つからないことを検証する
                     notExist("#row_99", scroll: .down, maxSwipes: 3)
+                }
+            }
+            scene(10, "07.S0070: scrollFrame に固定ヘッダを指定するとリストは動かない") {
+                condition {
+                    tap("#tab_home")
+                }.action {
+                    tap("#nav_scroll")
+                }.expectation {
+                    exist("#row_01")
+                }
+            }
+            scene(11, "スクロールしない固定ヘッダの帯を払っても先頭行が残る") {
+                action {
+                    // 座標が**指定した領域から**作られている証拠。全画面固定のままなら
+                    // 画面中央 = リストの上を払ってしまい #row_01 は流れて消える
+                    scrollDown(scrollFrame: "#txt_row_selected", repeat: 2)
+                }.expectation {
+                    exist("#row_01")
+                }.action {
+                    tap("#tab_home")
                 }
             }
         }
@@ -240,8 +219,8 @@ class スクロールで折り返し下の要素に到達できること {
             }
             // 別名族は本体(`tap(scroll:)` / `exist(scroll:)`)の糖衣で、転送そのものは
             // Tests/FTBridgeClientTests/SwipeForScrollForwardingTests.swift がソース走査で固定している。
-            // ここで見るのは**同じ経路を通ってデバイスに届くこと**だけ(CMP は 15_型付きセレクタ が
-            // Sel 版で同じ組を通しているので、文字列版はこちらの3 SUT が担う)
+            // ここで見るのは**同じ経路を通ってデバイスに届くこと**だけ(CMP は 07_スクロール の Sel 版統合
+            // @Test が同じ組を通しているので、文字列版はこちらの SUT 群が担う)
             scene(7, "スクロール探索の別名族(tapWithScrollDown / existWithScrollUp / tapWithoutScroll)") {
                 action {
                     tapWithScrollDown("#row_40", maxSwipes: 15)
@@ -255,30 +234,6 @@ class スクロールで折り返し下の要素に到達できること {
                         existWithoutScroll("#txt_row_selected")
                         tapWithoutScroll("#btn_scroll_top")
                     }
-                }.expectation {
-                    exist("#row_01")
-                }
-            }
-        }
-    }
-
-    @Test("scrollFrame に固定ヘッダを指定するとリストは動かない")
-    func S0070() {
-        scenario {
-            scene(1, "スクロール画面を開く") {
-                condition {
-                    launchApp()
-                }.action {
-                    tap("#nav_scroll")
-                }.expectation {
-                    exist("#row_01")
-                }
-            }
-            // 座標が**指定した領域から**作られている証拠。全画面固定のままなら
-            // 画面中央 = リストの上を払ってしまい #row_01 は流れて消える
-            scene(2, "スクロールしない固定ヘッダの帯を払っても先頭行が残る") {
-                action {
-                    scrollDown(scrollFrame: "#txt_row_selected", repeat: 2)
                 }.expectation {
                     exist("#row_01")
                 }
@@ -414,6 +369,123 @@ class スクロールで折り返し下の要素に到達できること {
                     scrollTo("#row_40", maxSwipes: 15)
                 }.expectation {
                     select("#txt_row_selected").textIs("selected=-")
+                }
+            }
+        }
+    }
+
+    @Test("textContains / textMatches が動的な文字列を検証できる")
+    func S0110() {
+        scenario {
+            scene(1, "スクロール画面を開き行ラベルを部分一致で検証する") {
+                condition {
+                    launchApp()
+                }.expectation {
+                    // 起動直後は a11y ツリー完成後もポインタ入力を一時的に取りこぼす実装が
+                    // Flutter で実測されている。RN で同じ罠があるかは未検証だが、害の無い
+                    // 1往復なので安全側として残す。
+                    //
+                    // requireVisible: false = これは可視性の**検証**ではなく同期のための1往復。
+                    // FM はホスト全体で直列化(約1回/秒)されるため、全 launchApp で FM を
+                    // 呼ぶとコストだけが乗る。**可視性の検証と、occlusion-guard の誤判定を
+                    // 検出する役目は 01_起動と画面遷移 が既定(true)のまま担う**
+                    // (README「既知の ftester 欠陥」参照。ここで guard を切っても検出器は死なない)。
+                    exist("#txt_home_marker", requireVisible: false)
+                }.action {
+                    tap("#nav_scroll")
+                }.expectation {
+                    // 行ラベルは `行 01`。完全一致(textIs)でも書けるが、ここは部分一致の検証
+                    select("#row_01").textContains("01")
+                    select("#row_01").textMatches("^行 [0-9]{2}$")
+                }
+            }
+            scene(2, "選択結果の echo を正規表現で検証する") {
+                action {
+                    tap("#row_03")
+                }.expectation {
+                    // `selected=row_03`。数字部分は動的とみなして正規表現で受ける
+                    select("#txt_row_selected").textMatches("^selected=row_[0-9]+$")
+                    select("#txt_row_selected").textContains("row_03")
+                }
+            }
+            scene(3, "一致しない期待は失敗する側の規約(部分一致は含むかどうかだけを見る)") {
+                expectation {
+                    // `行 03` は `行 3` を含まない(ゼロ詰め契約。ui-contract.md)。
+                    // セレクタ側の部分一致記法でも同じ結論になることを見る
+                    notExist("*行 3*")
+                    // 同じ契約を**要素単位の否定**でも見る(セレクタ側の否定とは経路が違う)
+                    select("#row_03").textContainsNot("行 3")
+                    exist("*行 0*")
+                    select("#row_03").textContains("行 0")
+                }
+            }
+        }
+    }
+
+    @Test("Shirates 準拠のスクロールコマンドと tap(scroll:)・scrollDown(repeat:)と withScrollDown")
+    func S0120() {
+        scenario {
+            scene(1, "16.S0020: `tap(scroll:)` は探索してからタップする(scrollTo を前置するのと同じ)") {
+                condition {
+                    launchApp()
+                    // 起動直後のポインタ取りこぼし対策(理由は S0010 scene 1)
+                    exist("#txt_home_marker", requireVisible: false)
+                    tap("#nav_scroll")
+                }.action {
+                    // 狙うのは一覧末尾(07_スクロール.swift と同じ #row_40)。tap(scroll:) は
+                    // 内部で scrollTo と同じ探索(runScrollSearch)を使うため、07 で実測した
+                    // 「末尾行が下端をわずかに覗いただけで解決しタップが空振りする」問題が
+                    // ここにも及ぶ可能性がある(未検証)
+                    tap("#row_40", scroll: .down, maxSwipes: 15)
+                }.expectation {
+                    // #txt_row_selected は固定ヘッダなのでスクロール後も見える(07 と同じ理由)。
+                    // **スクロール後に元の位置へ戻って検証しない**(戻す向きの操作は不安定)
+                    select("#txt_row_selected").textIs("selected=row_40")
+                }
+            }
+            scene(2, "`scrollToBottom` は端まで送る") {
+                action {
+                    scrollToBottom(maxSwipes: 20)
+                }.expectation {
+                    // 端まで送られていれば最終行が探索なしで見えている
+                    existWithoutScroll("#row_40")
+                }
+            }
+            scene(3, "`scrollToTop` は端まで送る") {
+                action {
+                    scrollToTop(maxSwipes: 20)
+                }.expectation {
+                    // 端まで戻っていれば先頭行が探索なしで見えている
+                    existWithoutScroll("#row_01")
+                }
+            }
+            scene(4, "16.S0030: scrollDown(repeat:) と withScrollDown") {
+                condition {
+                    tap("#tab_home")
+                    // 起動直後のポインタ取りこぼし対策(理由は S0010 scene 1)
+                    exist("#txt_home_marker", requireVisible: false)
+                    tap("#nav_scroll")
+                }.action {
+                    scrollDown(repeat: 2)
+                }.expectation {
+                    // 遅延生成の一覧なので、送った先では先頭行がツリーから消える
+                    notExist("#row_01", timeout: 2)
+                }
+            }
+            scene(5, "`withScrollDown { }` はブロック内をスクロール探索にする") {
+                condition {
+                    scrollToTop(maxSwipes: 20)
+                }.action {
+                    withScrollDown {
+                        // 明示の scroll: を書かなくても探索される(狙いは 07 と同じ末尾行)
+                        tap("#row_40")
+                        // 固定ヘッダは現在画面にあるので、探索を打ち消して確認する
+                        existWithoutScroll("#txt_row_selected")
+                    }
+                }.expectation {
+                    select("#txt_row_selected").textIs("selected=row_40")
+                }.action {
+                    tap("#tab_home")
                 }
             }
         }

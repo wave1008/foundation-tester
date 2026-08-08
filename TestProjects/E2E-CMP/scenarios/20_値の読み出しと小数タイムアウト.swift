@@ -1,15 +1,19 @@
 // 20_値の読み出しと小数タイムアウト.swift
-// ftester 機能:
-//   ① `exist` の戻り値から**画面の値そのもの**を読む(`.text` / `.id`。docs/design.md §掴んだ要素の値の読み出し)。
-//      読んだ値を**次の検証の期待値として使える**ことまでをデバイス実行で固定する(これが無いと期待値を
-//      シナリオに書き切るしかない)。
-//   ② 秒引数が小数(Double)であること(`timeout: 4.5` / `waitSeconds: 2.5`)。
+// ftester 機能: `exist` の戻り値から**画面の値そのもの**を読む(`.text` / `.id`。
+// docs/design.md §掴んだ要素の値の読み出し)。読んだ値を**次の検証の期待値として使える**ことまで
+// をデバイス実行で固定する(これが無いと期待値をシナリオに書き切るしかない)。
 //
 // **読む前に値を確定させること**: `.text` は `exist` が照合した時点の値で再取得しない契約なので、
 // 更新途中の画面でいきなり読むと古い値を掴む。先に `textIs`/`textContains` で待ってから読む。
 // 「掴めなかったら nil」「dry-run では nil」は失敗経路のためここでは見ない
 // (Tests/FTDSLTests/FTRuntimeLifecycleTests.swift が持つ)。
 // 追加のデバイス往復が起きないことは Tests/FTDSLTests/CommandDispatchTests.swift が持つ。
+//
+// **秒引数の小数指定(timeout: 4.5 / waitSeconds: 2.5)の検証(旧 S0020)は
+// 08_待機とタイムアウト.swift(08.S0010→21.S0010→20.S0020 の統合クラスタ)へ移設した**。
+// この S0010 自体はテキスト入力画面が対象で、入力系クラスタ(05/18)は境界のキーボード確実消去に
+// iOS 側の決定的な手段が無いため統合を見送っている(E2EAppCMP は IME アクション発火後もフォーカス・
+// キーボードを保持する。ui-contract.md「テキスト入力画面」の IME アクション節)。統合せず単独 @Test のまま。
 
 import Foundation
 import FTDSL
@@ -51,41 +55,6 @@ class 掴んだ要素の値を読んで後段で使えること {
                     // 読み出しが壊れると期待値が "single=" になり必ず落ちる
                     let 入力値 = (送信結果 ?? "").replacingOccurrences(of: "submitted=", with: "")
                     select("#txt_echo_single").textIs("single=\(入力値)")
-                }
-            }
-        }
-    }
-
-    @Test("秒引数に小数を書ける")
-    func S0020() {
-        scenario {
-            scene(1, "非同期表示画面をリセットして開く") {
-                condition {
-                    launchApp()
-                    tap("#nav_async")
-                    tap("#btn_async_reset")
-                }.expectation {
-                    select("#txt_delay_state").textIs("state=idle")
-                }
-            }
-            scene(2, "3秒後表示を timeout: 4.5(小数)で待てる") {
-                action {
-                    tap("#btn_delay_3")
-                }.expectation {
-                    exist("#txt_delayed", timeout: 4.5)
-                    select("#txt_delay_state", timeout: 1.5).textIs("state=done", timeout: 1.5)
-                }
-            }
-            scene(3, "ifCanSelect の waitSeconds も小数で待てる") {
-                action {
-                    tap("#btn_async_reset")
-                    tap("#btn_delay_1")
-                    // 1秒後に出る要素を 2.5 秒まで待って拾う(既定の 0 では不成立になる待ち)
-                    ifCanSelect("#txt_delayed", waitSeconds: 2.5) {
-                        tap("#btn_async_reset")
-                    }
-                }.expectation {
-                    select("#txt_delay_state").textIs("state=idle")
                 }
             }
         }

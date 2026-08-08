@@ -1,17 +1,29 @@
 // 05_テキスト入力.swift
-// ftester 機能: `type` コマンドと入力値の echo 検証(単一行/パスワード/送信/クリア)。
+// ftester 機能: `type` コマンドと入力値の echo 検証(単一行/パスワード/送信/クリア/clearInput/
+// キーボード表示状態/pressEnter・末尾改行の IME アクション)をまとめて検証する
+// (旧: 05_テキスト入力 の S0010〜S0030 / 18_Enterキー)。
 // Flutter の `obscureText: true` は **`SecureTextField` にならない**(iOS/Android とも `TextField`)。
 // ネイティブ SUT のように型でパスワード欄を区別できないため、`#id` で引く。
+// 旧シナリオ境界は tap("#tab_home") でホームへ戻ってから #nav_input を叩き直す形に置き換えてある
+// (AppShell はタブ切替で子画面の State を破棄するため、single/imeCount 等の初期値はこれだけで戻る)。
+// **各境界の直前でキーボードを閉じる**: Flutter の `#field_single` は `TextInputAction.search`
+// (非 multiline)なので、Flutter framework の既定実装(`EditableText.performAction` →
+// `_finalizeEditing(shouldUnfocus: true)` → `focusNode.unfocus()`)が Enter で確実にフォーカスを
+// 外す(Flutter SDK `editable_text.dart` で確認済み。docs/commands.md の
+// 「iOS で閉じたいときは pressEnter() を使う(単一行の欄なら閉じる)」と一致)。
+// iOS = tap(#field_single) + pressEnter() / Android = hideKeyboard()(冪等: 出ているときだけ効く)。
+// 閉じずに #tab_home を叩むと、キーボードに隠れたタブバーへのタップが飲まれる事故が
+// 他 SUT(E2E-iOS)で実害化しているため、Flutter でも同じ型で防いでおく。
 
 import FTDSL
 
 @TestClass(app: "com.ftester.e2e.flutter")
 class テキスト入力が正しくechoされること {
 
-    @Test("単一行・パスワードの入力値が echo され送信/クリアが効く")
+    @Test("単一行・パスワードの入力値が echo され送信/クリアが効く・clearInput・キーボード表示状態・pressEnter/末尾改行の IME アクション")
     func S0010() {
         scenario {
-            scene(1, "テキスト入力画面を開く") {
+            scene(1, "05.S0010: 単一行・パスワードの入力値が echo され送信/クリアが効く") {
                 condition {
                     launchApp()
                 }.expectation {
@@ -95,31 +107,24 @@ class テキスト入力が正しくechoされること {
                     select("#txt_input_submitted").textIs("submitted=-")
                 }
             }
-        }
-    }
-
-    @Test("clearInput が入力欄を空にする")
-    func S0020() {
-        scenario {
-            scene(1, "テキスト入力画面を開いて単一行に入力する") {
+            scene(7, "05.S0020: clearInput が入力欄を空にする") {
                 condition {
-                    launchApp()
+                    // 直前ブロックが開いたキーボードを閉じてからタブへ戻る(理由はファイル冒頭コメント参照)
+                    ios {
+                        tap("#field_single")
+                        pressEnter()
+                    }
+                    android {
+                        hideKeyboard()
+                    }
+                    tap("#tab_home")
                 }.expectation {
-                    // Flutter は起動直後の数百 ms、a11y ツリーは完成しているのに**ポインタ入力を
-                    // 取りこぼす**ことがある(初回タップが成功扱いのまま黙って無反応になる。
-                    // Android で実測)。ここで1往復させ、着地を確認してから操作する。
-                    //
-                    // requireVisible: false = これは可視性の**検証**ではなく同期のための1往復。
-                    // FM はホスト全体で直列化(約1回/秒)されるため、全 launchApp で FM を
-                    // 呼ぶとコストだけが乗る。**可視性の検証と、occlusion-guard の誤判定を
-                    // 検出する役目は 01_起動と画面遷移 が既定(true)のまま担う**
-                    // (README「既知の ftester 欠陥」参照。ここで guard を切っても検出器は死なない)。
                     exist("#txt_home_marker", requireVisible: false)
                 }.action {
                     tap("#nav_input")
                 }.action {
                     // Android は input connection が張られるまで ACTION_SET_TEXT を受け付けない
-                    // (S0010 と同じ罠)。tap と type の間に1往復挟んで待つ。
+                    // (scene 2 と同じ罠)。tap と type の間に1往復挟んで待つ。
                     tap("#field_single")
                 }.expectation {
                     exist("#field_single")
@@ -129,7 +134,7 @@ class テキスト入力が正しくechoされること {
                     select("#txt_echo_length").textIs("len=8")
                 }
             }
-            scene(2, "セレクタ指定の clearInput で単一行が空になる") {
+            scene(8, "セレクタ指定の clearInput で単一行が空になる") {
                 action {
                     clearInput("#field_single")
                 }.expectation {
@@ -137,7 +142,7 @@ class テキスト入力が正しくechoされること {
                     select("#txt_echo_length").textIs("len=0")
                 }
             }
-            scene(3, "無引数の clearInput はフォーカス中の入力欄(パスワード)を空にする") {
+            scene(9, "無引数の clearInput はフォーカス中の入力欄(パスワード)を空にする") {
                 action {
                     tap("#field_password")
                 }.expectation {
@@ -152,17 +157,18 @@ class テキスト入力が正しくechoされること {
                     select("#txt_echo_password").textIs("password=")
                 }
             }
-        }
-    }
-
-    @Test("キーボードの表示状態を検証できる")
-    func S0030() {
-        scenario {
-            scene(1, "入力欄をタップするとキーボードが出る") {
+            scene(10, "05.S0030: キーボードの表示状態を検証できる") {
                 condition {
-                    launchApp()
+                    // 直前ブロックが開いたキーボードを閉じてからタブへ戻る(理由はファイル冒頭コメント参照)
+                    ios {
+                        tap("#field_single")
+                        pressEnter()
+                    }
+                    android {
+                        hideKeyboard()
+                    }
+                    tap("#tab_home")
                 }.expectation {
-                    // 同期の1往復(S0010 scene1 と同じ罠。requireVisible: false の理由もそちら参照)
                     exist("#txt_home_marker", requireVisible: false)
                 }.action {
                     tap("#nav_input")
@@ -171,11 +177,72 @@ class テキスト入力が正しくechoされること {
                     keyboardIsShown()
                 }
             }
-            scene(2, "hideKeyboard で閉じる(Android のみ。iOS は 501 で未対応: docs/commands.md hideKeyboard 行)") {
+            scene(11, "hideKeyboard で閉じる(Android のみ。iOS は 501 で未対応: docs/commands.md hideKeyboard 行)") {
                 action {
                     android { hideKeyboard() }
                 }.expectation {
                     android { keyboardIsNotShown() }
+                }
+            }
+            scene(12, "18.S0010: pressEnter と type の末尾改行がどちらも IME アクションになる") {
+                condition {
+                    // 直前ブロックが開いたキーボードを閉じてからタブへ戻る(理由はファイル冒頭コメント参照)
+                    ios {
+                        tap("#field_single")
+                        pressEnter()
+                    }
+                    android {
+                        hideKeyboard()
+                    }
+                    tap("#tab_home")
+                }.expectation {
+                    exist("#txt_home_marker", requireVisible: false)
+                }.action {
+                    tap("#nav_input")
+                }.expectation {
+                    select("#txt_ime_action").textIs("ime=0")
+                }
+            }
+            scene(13, "pressEnter で IME アクションが発火する") {
+                action {
+                    // input connection が張られるまで SET_TEXT を受け付けない(scene 2 と同じ規律)
+                    tap("#field_single")
+                    type("#field_single", "abc")
+                    pressEnter()
+                }.expectation {
+                    select("#txt_ime_action").textIs("ime=1")
+                    select("#txt_echo_single").textIs("single=abc")
+                    // len=4 なら改行が文字として入っている
+                    select("#txt_echo_length").textIs("len=3")
+                }
+            }
+            scene(14, "一括 type の末尾改行も IME アクションになる") {
+                condition {
+                    // クリアは ime=0 にも戻す。発火後のフォーカスは SUT ごとに違うので tap し直す
+                    tap("#btn_input_clear")
+                }.action {
+                    tap("#field_single")
+                    type("#field_single", "xyz\n")
+                }.expectation {
+                    select("#txt_ime_action").textIs("ime=1")
+                    select("#txt_echo_single").textIs("single=xyz")
+                    select("#txt_echo_length").textIs("len=3")
+                }
+            }
+            scene(15, "ロケータ無しの type でも末尾改行が IME アクションになる") {
+                condition {
+                    tap("#btn_input_clear")
+                }.action {
+                    // ロケータ無し = フォーカス中の要素へ入力。iOS はここも XCUITest 経路へ回る
+                    // (ref が無いので attach 済みでないと 409。AppAttachDriver が activate して再試行する)
+                    tap("#field_single")
+                    type("pqr\n")
+                }.expectation {
+                    select("#txt_ime_action").textIs("ime=1")
+                    select("#txt_echo_single").textIs("single=pqr")
+                    select("#txt_echo_length").textIs("len=3")
+                }.action {
+                    tap("#tab_home")
                 }
             }
         }
