@@ -2,6 +2,9 @@
 // ここが未検証だと、MCP から見て「引数を無視する」「別のドライバ操作を呼ぶ」「必須引数の欠落を
 // 素通しする」といった退行が、スキーマ宣言のテスト(MCPServerToolDefinitionsTests)を緑のまま通る。
 
+import CoreGraphics
+import ImageIO
+import UniformTypeIdentifiers
 import XCTest
 import FTCore
 @testable import ftester_mcp
@@ -453,13 +456,57 @@ final class MCPToolCallTests: XCTestCase {
         XCTAssertEqual(driver.calls, ["press(ref:4,duration:2.5)"])
     }
 
-    /// screenshot は text ではなく image コンテンツ(base64 + mimeType)で返す契約
+    /// screenshot は text ではなく image コンテンツ(base64 + mimeType)で返す契約。
+    /// FakeDriver の絵は PNG として解釈できないので、ここは**縮小できないときの原寸フォールバック**でもある
     func testScreenshotReturnsBase64Image() async throws {
         let content = try await server.call(tool: "ft_screenshot", args: [:])
         let item = try XCTUnwrap(content.first)
         XCTAssertEqual(item["type"] as? String, "image")
         XCTAssertEqual(item["mimeType"] as? String, "image/png")
         XCTAssertEqual(item["data"] as? String, driver.screenshotData.base64EncodedString())
+    }
+
+    /// 既定は縮小 JPEG。原寸 PNG は 830〜910KB あり base64 でさらに 1.33 倍になるため、
+    /// **既定が原寸へ戻る退行**をここで落とす
+    func testScreenshotDownscalesByDefault() async throws {
+        driver.screenshotData = Self.makePNG(width: 1179, height: 2556)
+        let content = try await server.call(tool: "ft_screenshot", args: [:])
+        let item = try XCTUnwrap(content.first)
+        XCTAssertEqual(item["mimeType"] as? String, "image/jpeg")
+        let data = try XCTUnwrap(Data(base64Encoded: try XCTUnwrap(item["data"] as? String)))
+        // バイト数ではなく**画素数**で見る: 合成画像は PNG のほうが小さくなることがあり
+        // (市松模様は可逆圧縮が効く)、サイズ比較では「縮小したか」を判定できない
+        let source = try XCTUnwrap(CGImageSourceCreateWithData(data as CFData, nil))
+        let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
+        XCTAssertEqual(properties?[kCGImagePropertyPixelWidth] as? Int, MCPServer.screenshotMaxWidth)
+    }
+
+    func testScreenshotFullSizeReturnsOriginalPNG() async throws {
+        driver.screenshotData = Self.makePNG(width: 1179, height: 2556)
+        let content = try await server.call(tool: "ft_screenshot", args: ["fullSize": true])
+        let item = try XCTUnwrap(content.first)
+        XCTAssertEqual(item["mimeType"] as? String, "image/png")
+        XCTAssertEqual(item["data"] as? String, driver.screenshotData.base64EncodedString())
+    }
+
+    /// 単色だと JPEG が極端に小さくなり「縮小したか」の判定が甘くなるので市松模様にする
+    private static func makePNG(width: Int, height: Int) -> Data {
+        let space = CGColorSpaceCreateDeviceRGB()
+        let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
+                                bytesPerRow: 0, space: space,
+                                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        for y in stride(from: 0, to: height, by: 16) {
+            for x in stride(from: 0, to: width, by: 16) where (x / 16 + y / 16) % 2 == 0 {
+                context.setFillColor(CGColor(red: 0.1, green: 0.6, blue: 0.9, alpha: 1))
+                context.fill(CGRect(x: x, y: y, width: 16, height: 16))
+            }
+        }
+        let image = context.makeImage()!
+        let out = NSMutableData()
+        let dest = CGImageDestinationCreateWithData(out, UTType.png.identifier as CFString, 1, nil)!
+        CGImageDestinationAddImage(dest, image, nil)
+        CGImageDestinationFinalize(dest)
+        return out as Data
     }
 
     func testTerminate() async throws {
@@ -538,11 +585,15 @@ final class MCPToolCallTests: XCTestCase {
         "ft_swipe", "ft_scroll_to", "ft_press", "ft_screenshot", "ft_terminate",
         "ft_double_tap", "ft_pinch", "ft_drag",
         "ft_navigate", "ft_clear_input", "ft_clear_app_data", "ft_open_url",
+        "ft_list_apps",
     ]
     private static let projectBackedTools: Set<String> = [
         "ft_list_scenarios", "ft_run_scenario", "ft_dry_run", "ft_list_projects", "ft_doctor",
         "ft_dsl_commands",
     ]
+    /// ドライバを掴まないがホストの外部コマンド(simctl / adb)やファイル走査を伴うので
+    /// ここでは呼ばない。名前の集合だけで宣言と dispatch の対応を担保する
+    private static let hostBackedTools: Set<String> = ["ft_list_devices", "ft_logs"]
 
     func testDriverBackedToolsAreAllDispatched() async {
         for name in Self.driverBackedTools {
@@ -560,7 +611,9 @@ final class MCPToolCallTests: XCTestCase {
     /// クライアントからは見えるのに呼ぶと必ず「未知のツール」で落ちる)
     func testDeclaredToolNamesMatchKnownSet() {
         let declared = Set(MCPServer.toolDefinitions.compactMap { $0["name"] as? String })
-        XCTAssertEqual(declared, Self.driverBackedTools.union(Self.projectBackedTools),
+        XCTAssertEqual(declared,
+                       Self.driverBackedTools.union(Self.projectBackedTools)
+                           .union(Self.hostBackedTools),
                        "ツールの増減があります。dispatch(MCPServer.call)に case を足したうえで"
                        + "このテストの集合を更新すること")
     }

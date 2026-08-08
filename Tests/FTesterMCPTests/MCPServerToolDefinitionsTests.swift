@@ -8,9 +8,15 @@ import XCTest
 final class MCPServerToolDefinitionsTests: XCTestCase {
     private static let requiredDeviceKeys: Set<String> = ["platform", "port", "serial", "profile", "project"]
 
-    /// デバイスを掴まないツール(driver(_:) を呼ばない)。増減したらここも直す
-    private static let deviceFreeTools: Set<String> = [
-        "ft_list_scenarios", "ft_dry_run", "ft_list_projects", "ft_doctor", "ft_dsl_commands",
+    /// デバイスを掴まないツール(driver(_:) を呼ばない)と、そこで**意味を持つ**選択プロパティ。
+    /// 空 = 1つも宣言してはいけない。増減したらここも直す。
+    /// ft_list_devices はプロファイルを読むだけ・ft_logs は adb とホストのファイルだけを見るので、
+    /// 宛先を絞る引数は要るが port/serial/profile の全部は要らない
+    private static let deviceFreeTools: [String: Set<String>] = [
+        "ft_list_scenarios": [], "ft_dry_run": [], "ft_list_projects": [], "ft_doctor": [],
+        "ft_dsl_commands": [],
+        "ft_list_devices": ["platform", "profile"],
+        "ft_logs": ["platform", "serial"],
     ]
 
     func testDeviceToolsDeclareDeviceSelectionProperties() {
@@ -21,10 +27,12 @@ final class MCPServerToolDefinitionsTests: XCTestCase {
                 XCTFail("\(name): inputSchema.properties がありません")
                 continue
             }
-            if Self.deviceFreeTools.contains(name) {
-                let extra = Self.requiredDeviceKeys.subtracting(["project"]).intersection(properties.keys)
-                XCTAssertTrue(extra.isEmpty,
-                              "\(name) はデバイスを掴まないのに選択プロパティを宣言している: \(extra.sorted())")
+            if let allowed = Self.deviceFreeTools[name] {
+                let declared = Self.requiredDeviceKeys.subtracting(["project"])
+                    .intersection(properties.keys)
+                XCTAssertEqual(declared, allowed,
+                               "\(name) の選択プロパティが許可集合と違う: 宣言 \(declared.sorted())"
+                                + " / 許可 \(allowed.sorted())")
                 continue
             }
             let missing = Self.requiredDeviceKeys.subtracting(properties.keys)

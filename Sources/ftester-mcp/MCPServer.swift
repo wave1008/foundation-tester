@@ -1012,10 +1012,22 @@ final class MCPServer {
             return driverCacheKey(profile: profileName, project: args["project"] as? String,
                                   platform: args["platform"] as? String)
         }
-        let platform = (args["platform"] as? String)
-            ?? ProcessInfo.processInfo.environment["FTESTER_PLATFORM"] ?? "ios"
-        return driverCacheKey(platform: platform, port: args["port"] as? Int,
+        return driverCacheKey(platform: platformName(args), port: args["port"] as? Int,
                               serial: args["serial"] as? String)
+    }
+
+    /// 引数から見た宛先プラットフォーム。**既定は iOS**(FTESTER_PLATFORM で上書き)
+    static func platformName(_ args: [String: Any]) -> String {
+        (args["platform"] as? String)
+            ?? ProcessInfo.processInfo.environment["FTESTER_PLATFORM"] ?? "ios"
+    }
+
+    /// ft_logs の bundleId 既定。ログはブリッジを通らないので engineKey が launch 時と
+    /// 揃わない(profile で起動し serial 直指定で読む等)。覚えている起動が1つだけならそれを使う
+    func lastLaunchedBundleID(_ args: [String: Any]) -> String? {
+        if let exact = launchedBundleIDs[Self.engineKey(args)] { return exact }
+        let known = Set(launchedBundleIDs.values)
+        return known.count == 1 ? known.first : nil
     }
 
     /// drivers キャッシュのキー生成。profile / project / port / serial の違いを別ドライバとして扱う
@@ -1137,6 +1149,37 @@ final class MCPServer {
             return text(withPendingWarnings(
                 "ready: \(status.ready) / \(status.device) (\(status.osVersion))\(endpoint)"
                 + " / session: \(session)\(foreground)", args: args))
+
+        case "ft_list_devices":
+            return text(await DeviceInventory.devicesText(
+                project: args["project"] as? String,
+                profile: args["profile"] as? String,
+                platform: args["platform"] as? String))
+
+        case "ft_list_apps":
+            // driver() を先に通す: profile 指定の解決(provision)と udids の記録がここで済み、
+            // 直指定でも同じ宛先選択規則に乗る
+            let appsDriver = try await driver(args)
+            if Self.platformName(args) == "android" {
+                guard let android = appsDriver as? AndroidDriver else {
+                    throw MCPError("this Android connection cannot list packages")
+                }
+                return text(DeviceInventory.appsText(packages: try android.listInstalledPackages()))
+            }
+            let deviceName = try await appsDriver.status().device
+            let udid = try udids[Self.engineKey(args)].flatMap { $0 }
+                ?? SimulatorAppCatalog.bootedSimulatorUDID(named: deviceName)
+            return text(DeviceInventory.appsText(apps: try SimulatorAppCatalog.apps(udid: udid)))
+
+        case "ft_logs":
+            let logBundleID = args["bundleId"] as? String ?? lastLaunchedBundleID(args)
+            return text(await CrashLogs.text(
+                platform: Self.platformName(args),
+                bundleID: logBundleID,
+                serial: args["serial"] as? String,
+                withinSeconds: args["sinceSeconds"] as? Int ?? 300,
+                maxLines: args["lines"] as? Int ?? 100,
+                crashOnly: (args["all"] as? Bool) != true))
 
         case "ft_install":
             guard let packagePath = args["packagePath"] as? String else {
@@ -1439,7 +1482,18 @@ final class MCPServer {
 
         case "ft_screenshot":
             let png = try await driver(args).screenshot()
-            return [["type": "image", "data": png.base64EncodedString(), "mimeType": "image/png"]]
+            guard (args["fullSize"] as? Bool) != true else {
+                return [["type": "image", "data": png.base64EncodedString(), "mimeType": "image/png"]]
+            }
+            // 縮小できないとき(壊れた PNG・ImageIO 失敗)は絵を返さないより原寸のほうがまし
+            guard let scaled = ImageDownscale.jpeg(
+                png: png,
+                maxWidth: args["maxWidth"] as? Int ?? Self.screenshotMaxWidth,
+                quality: args["quality"] as? Double ?? Self.screenshotQuality) else {
+                return [["type": "image", "data": png.base64EncodedString(), "mimeType": "image/png"]]
+            }
+            return [["type": "image", "data": scaled.data.base64EncodedString(),
+                     "mimeType": "image/jpeg"]]
 
         case "ft_terminate":
             try await driver(args).terminate()
@@ -1688,8 +1742,36 @@ final class MCPServer {
         ("project", projectProperty),
     ]
 
+    /// ft_screenshot の既定。**費用は画素数で決まる**(バイト数ではない) —— 平坦な UI では
+    /// 原寸 PNG のほうが JPEG より小さいことすらあるので、バイト比較で選ぶと逆に損をする。
+    /// 600 は実測で決めた: iPhone 17 Pro(1179px)の E2E 画面で CJK 本文もステータスバーも読め、
+    /// 画素は 1/2.4。地図のような密な画面はこれでは潰れうるので maxWidth / fullSize で逃がす
+    static let screenshotMaxWidth = 600
+    static let screenshotQuality = 0.6
+
     static let toolDefinitions: [[String: Any]] = [
         tool("ft_status", "Check the device/bridge connection state", [:]),
+        tool("ft_list_devices", "List the devices this Mac can drive (simulators, emulators and "
+            + "physical devices) with the udid/serial the other tools take. It works before any "
+            + "profile exists — without a machine profile it lists what is booted or connected now", [
+            "platform": ["type": "string", "enum": ["ios", "android"],
+                         "description": "Only this platform (default: both)"],
+            "profile": profileProperty,
+        ], scope: .project),
+        tool("ft_list_apps", "List the apps installed on the device, user apps first. Use it to find "
+            + "the bundle ID (iOS) / package name (Android) that ft_launch takes", [:]),
+        tool("ft_logs", "Read why the app died. iOS returns the crash report summary and the .ips "
+            + "path for a simulator — there is no runtime log on iOS, so a running app yields "
+            + "nothing here; Android returns recent logcat lines. It never goes through the bridge, "
+            + "so it still answers after a crash took the bridge with it", [
+            "bundleId": ["type": "string", "description": "bundle ID (iOS) / package name (Android). "
+                + "Defaults to the bundle ID of the last ft_launch"],
+            "platform": platformProperty,
+            "serial": serialProperty,
+            "lines": ["type": "integer", "description": "Android: how many recent lines to return (default 100)"],
+            "sinceSeconds": ["type": "integer", "description": "How far back to look (default 300)"],
+            "all": ["type": "boolean", "description": "Android: read the main buffer too, not just crashes"],
+        ], scope: .none),
         tool("ft_install", "Install an app from a package file (iOS: .app bundle / Android: .apk)", [
             "packagePath": ["type": "string", "description": "Absolute path of the package file"],
         ], required: ["packagePath"]),
@@ -1795,7 +1877,15 @@ final class MCPServer {
             "y": ["type": "number", "description": "iOS=pt / Android=px (same coordinate system as the snapshot frames)"],
             "duration": ["type": "number", "description": "Seconds (default 1.0)"],
         ]),
-        tool("ft_screenshot", "Take a screenshot (returns an image). Use it for visual verification", [:]),
+        tool("ft_screenshot", "Take a screenshot (returns an image). Use it for visual verification. "
+            + "It comes back downscaled — the pixels are NOT the coordinate system, so read x/y off "
+            + "ft_snapshot (iOS=pt / Android=px) and never off this image", [
+            "maxWidth": ["type": "integer", "description": "Width limit in pixels (default 600). "
+                + "Raise it for dense screens where small labels stop being readable"],
+            "quality": ["type": "number", "description": "JPEG quality 0-1 (default 0.6)"],
+            "fullSize": ["type": "boolean", "description": "Return the original PNG at full "
+                + "resolution instead, for when fine detail matters"],
+        ]),
         tool("ft_terminate", "Terminate the running app", [:]),
         tool("ft_list_scenarios", "List the Swift DSL scenarios (TestProjects/<name>/scenarios/). Builds automatically; compile errors are returned as-is", [
             "project": ["type": "string", "description": "Test project name (defaults to the default project)"],
