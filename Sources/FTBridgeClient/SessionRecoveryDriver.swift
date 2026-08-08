@@ -122,14 +122,24 @@ public final class SessionRecoveryDriver: AppDriver {
     public func home() async throws { try await withRecovery { try await base.home() } }
     public func back() async throws { try await withRecovery { try await base.back() } }
     public func snapshot() async throws -> SnapshotResponse {
-        try await withAccessibilityRetry { try await self.withRecovery { try await self.base.snapshot() } }
+        normalizedWrapperScroll(
+            try await withAccessibilityRetry { try await self.withRecovery { try await self.base.snapshot() } })
     }
     /// bypassingCache 版の素通し(既定実装に任せるとフラグが落ちて最内へ届かない。
     /// SnapshotCacheBypassForwardingTests がラッパー全体でこれを守る)
     public func snapshot(bypassingCache: Bool) async throws -> SnapshotResponse {
-        try await withAccessibilityRetry {
+        normalizedWrapperScroll(try await withAccessibilityRetry {
             try await self.withRecovery { try await self.base.snapshot(bypassingCache: bypassingCache) }
-        }
+        })
+    }
+
+    /// RN の ScrollView/FlatList ラッパー分離を畳む(SnapshotDedupe.wrapperScrollMerge 参照)。
+    /// uiFramework の判定手段が無いので無条件適用(パターンが狭いので他 SUT では実質 no-op のはず。
+    /// フル E2E で検証する)
+    private func normalizedWrapperScroll(_ response: SnapshotResponse) -> SnapshotResponse {
+        var response = response
+        response.elements = SnapshotDedupe.wrapperScrollMerge(response.elements)
+        return response
     }
     public var supportsCacheBypass: Bool { base.supportsCacheBypass }
     public func tap(x: Double, y: Double) async throws { try await withRecovery { try await base.tap(x: x, y: y) } }

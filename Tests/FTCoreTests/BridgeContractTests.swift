@@ -101,7 +101,7 @@ final class BridgeContractTests: XCTestCase {
     private static let expectedFingerprints: [BridgeSourceSet: [String: String]] = [
         .inApp: [
             "InAppBridge/Sources/Bridging.h": "08799e6d190f958eed7c6bb4406f1cbbfea1bed1d252ce4572636273c65a5aad",
-            "InAppBridge/Sources/InAppBridge.swift": "d1cd2977bab5db42ae90f3f3ecd62eb86c4b8fcffe33b1ff71c79f446622db8a",
+            "InAppBridge/Sources/InAppBridge.swift": "05ccb2a5cc9f2c7aab2c25ca534e61154c14698b6f65c639f74624a746d6c998",
             "InAppBridge/Sources/InAppHTTPServer.swift": "1d987f76a251ab475b632f24df272b000bb433054c7607e38f0447b6181e58bb",
             "InAppBridge/Sources/InAppInput.h": "cb980dcf8b80c38a97a841946354460ce6fd960baf53ada67aa939e16e373a65",
             "InAppBridge/Sources/InAppInput.m": "ea5a619f2b945e078af3bea394cb6d73a7e405c7509586389e427951d9b2f601",
@@ -110,8 +110,8 @@ final class BridgeContractTests: XCTestCase {
             "InAppBridge/Sources/InAppWebViewDOM.swift": "91add4d32dfd9db8ece05ea026b64de2c90227c1ceec1acc5005da0381796afb",
             "InAppBridge/Sources/boot.m": "b23fc93fbc99ce2579c9fd8ae75a6f9bbfd0ec6122bec60eb6cd00775dd635ef",
             "InAppBridge/build.sh": "afc02d752c97a009dd48aa6cf18934af0c6f8be662d75af37cdc8c4affbc454d",
-            "Sources/FTCore/BridgeDTO.swift": "ba2e58d435027f34a9434a221c732ffbdf30e809238bb7306072ac9e4187d1f4",
-            "Sources/FTCore/WebViewDOMSnapshot.swift": "3b0b20dfb2b8451f9ce19564c7d8701674f9361bbcb5b1c5afbb3570324011af",
+            "Sources/FTCore/BridgeDTO.swift": "07826d340df1d528b66eb63a8a372b8470fbb402211a25887e9ff68be6163fad",
+            "Sources/FTCore/WebViewDOMSnapshot.swift": "4c10c6a84b96c6d1760c1b5a2e9b7005cca221d77dc2d4acda7109817637d41b",
         ],
         .xcuitest: [
             "Runner/FTesterRunnerUITests/BridgeHTTPServer.swift": "2659f97c1116efd8beaa6d7c0d74a205f307436f1e8d0869a73c81bc96033e5c",
@@ -121,8 +121,8 @@ final class BridgeContractTests: XCTestCase {
             "Runner/FTesterRunnerUITests/FastInput.swift": "18b54340c404eac53736675763fad8e291b08e2f1f1ba96d696172698aa83bc1",
             "Runner/FTesterRunnerUITests/ObjCExceptionCatcher.h": "5a98cdbeefb031137a985b2f4430a5e12fec447a492599f8f4da1bd2c7101edc",
             "Runner/FTesterRunnerUITests/ObjCExceptionCatcher.m": "8b41a8a81bc8199bca13a364717614684f8003999c7675d9a63242c8e74c26be",
-            "Sources/FTCore/BridgeDTO.swift": "ba2e58d435027f34a9434a221c732ffbdf30e809238bb7306072ac9e4187d1f4",
-            "Sources/FTCore/SnapshotDedupe.swift": "c5d088a50cb66c4c9a40bce97df5f64a47d00699eda1d667f42765df4df314e3",
+            "Sources/FTCore/BridgeDTO.swift": "07826d340df1d528b66eb63a8a372b8470fbb402211a25887e9ff68be6163fad",
+            "Sources/FTCore/SnapshotDedupe.swift": "01912610b9bbf66f1fcf6cecc8c3d51d3fedc836c24d1a9ba8689a2538227b17",
             "Sources/FTCore/TypeReadback.swift": "8238adeb5146ee2441478a94bf6e2aabb85e6c88c38538ed8df74b2e025bf8ca",
         ],
         .android: [

@@ -74,11 +74,11 @@ README「Swift DSL」章を参照。コマンド名・引数・挙動は Shirate
 - **iOS はエンジンによって成否が分かれるジェスチャがある**(2026-08-04 に4 SUT で実測)。
   **既定の hybrid なら全フレームワークで動く**(ホストが自動で使い分ける)。Android は全て問題ない:
 
-  | iOS | SwiftUI / UIKit | Compose Multiplatform | Flutter |
-  |---|---|---|---|
-  | `swipeBy`(斜め含む) | ✅ | ✅ | ✅ |
-  | `doubleTap` | ✅ XCUITest | ✅ **in-app のみ** | ✅ |
-  | `pinchOut` / `pinchIn` | ✅ XCUITest | ✅ | ✅ **in-app のみ** |
+  | iOS | SwiftUI / UIKit | Compose Multiplatform | Flutter | React Native |
+  |---|---|---|---|---|
+  | `swipeBy`(斜め含む) | ✅ | ✅ | ✅ | 未実測(想定: uikit 経路 = ✅) |
+  | `doubleTap` | ✅ XCUITest | ✅ **in-app のみ** | ✅ | 未実測(想定: uikit 経路 = ✅ XCUITest。SwiftUI/UIKit と同じ合成タッチ非受理) |
+  | `pinchOut` / `pinchIn` | ✅ XCUITest | ✅ | ✅ **in-app のみ** | 未実測(想定: uikit 経路 = ✅ XCUITest) |
 
   「in-app のみ」= **`xcuitest` 単独プロファイルと実機では効かない**(実機は注入不可のため
   XCUITest しか経路が無い)。**MCP の `ft_*` も `profile` を渡せば同じエンジンで動く**

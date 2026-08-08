@@ -236,6 +236,9 @@ public enum WebViewDOM {
             "FlutterView",                  // Flutter(add-to-app 含む)
             "FlutterTouchInterceptingView", // platform view のタッチ横取り本体
             "androidx.compose.ui.",         // Compose Multiplatform の interop / コンテナ
+            "RNCWebView",                   // react-native-webview(RNCWebViewImpl も contains で拾う。
+                                            // 2026-08-08 実測: DOM 読みは通るが合成タッチが Web 側の
+                                            // ハンドラに届かず、リンクタップが無反応のまま成功に見える)
         ]
         return ancestorClassNames.contains { name in
             markers.contains { name.contains($0) }

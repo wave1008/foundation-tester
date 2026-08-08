@@ -370,6 +370,9 @@ public final class FTDriveCore {
                 deviceName: String? = nil,
                 deviceIdentifier: String? = nil,
                 physical: Bool = false,
+                // StepExecutor の空打ちゲート(shouldEmptyDrag)へ渡すヒント。呼び出し側
+                // (ScenarioRunnerMain)が engine ごとに解決する。nil は「不明」= 従来どおり
+                uiFramework: String? = nil,
                 emit: @escaping (ScenarioEvent) -> Void) {
         self.driver = driver
         self.platform = platform
@@ -383,6 +386,7 @@ public final class FTDriveCore {
                                      occlusionGuardEnabled: falsePositiveCheckEnabled,
                                      screenIsEnabled: screenIsEnabled,
                                      releasesScrollTouch: platform == "ios",
+                                     uiFramework: uiFramework,
                                      containerInference: containerInference)
         self.scenarioID = scenarioID
         self.scenarioTitle = scenarioTitle

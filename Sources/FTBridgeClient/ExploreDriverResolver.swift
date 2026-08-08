@@ -49,6 +49,9 @@ public enum ExploreDriverResolver {
         /// 実際に主となったエンジン。**呼び出し側の助言文がこれで変わる**
         /// (xcuitest のときだけ「Compose のダブルタップは届かない」と言う)
         public let engine: String
+        /// 特定できたシミュレータの udid(MCP が xcuitest でもバンドルマーカー判定
+        /// = AppBundleInspector を使えるように運ぶ)。不明なら nil
+        public let udid: String?
     }
 
     /// 稼働中ブリッジを見て組み立てる。XCUITest ブリッジが要るケースでは
@@ -60,14 +63,14 @@ public enum ExploreDriverResolver {
         // timeout を明示する(引数なしは sessionTimeout=45s に上書きされる。XCUIBridgeResolver と同じ)
         let status = try? await BridgeClient(port: endpoint.port, timeoutSeconds: 3,
                                              host: endpoint.host).status(timeout: 3)
+        let udid = (status?.device).flatMap(bootedSimulatorUDID)
         guard status?.engine == "inapp" else {
             // **XCUITest はセッション制**(ランナー再起動で全操作が 409)。実行側と同じ回復を
             // 与えておく = 探索中にランナーが落ちても次の操作から戻れる
             return Resolved(driver: SessionRecoveryDriver(
                 base: BridgeClient(port: endpoint.port, host: endpoint.host)),
-                            engine: status?.engine ?? "xcuitest")
+                            engine: status?.engine ?? "xcuitest", udid: udid)
         }
-        let udid = (status?.device).flatMap(bootedSimulatorUDID)
         // in-app が居る時点で XCUITest 側は必ず要る(合成のフォールバック先 or 振り替え先)
         let resolution = await XCUIBridgeResolver.resolve(preferred: preferred, repoRoot: repoRoot,
                                                          logsReroute: false, logger: logger)
@@ -84,23 +87,28 @@ public enum ExploreDriverResolver {
                 + " — using the XCUITest bridge (port \(port))")
             return Resolved(driver: SessionRecoveryDriver(
                 base: BridgeClient(port: port, host: resolution.endpoint.host)),
-                            engine: "xcuitest")
+                            engine: "xcuitest", udid: udid)
         case .inappOnly(let port):
             guard let repoRoot, let udid else {
                 // **無言で落とさない**: 同名シミュレータが複数だと udid を引けず、エンジンだけが
                 // 静かに変わる(ジェスチャの効き方が変わって見える)。上の分岐と同じ扱い
                 logger(Self.unidentifiedSimulatorNote(port: port, repoRoot: repoRoot))
-                return Resolved(driver: BridgeClient(port: port, host: endpoint.host), engine: "xcuitest")
+                // 縮退でも SessionRecoveryDriver で包む(通常経路と同じ。素の BridgeClient だと
+                // スナップショット正規化=ラッパー統合が掛からず、同じ画面で挙動が割れる)
+                return Resolved(driver: SessionRecoveryDriver(
+                                    base: BridgeClient(port: port, host: endpoint.host)),
+                                engine: "xcuitest", udid: udid)
             }
             logger("port \(port) is an in-app bridge — using it (no XCUITest bridge for fallback:"
                 + " home/appSwitcher/drag and coordinate press are unavailable)")
             return Resolved(driver: InAppDriver(repoRoot: repoRoot, udid: udid, port: port),
-                            engine: "inapp")
+                            engine: "inapp", udid: udid)
         case .hybrid(let inappPort, let xcuiPort, let bundleID):
             guard let repoRoot, let udid else {
                 logger(Self.unidentifiedSimulatorNote(port: inappPort, repoRoot: repoRoot))
-                return Resolved(driver: BridgeClient(port: xcuiPort, host: resolution.endpoint.host),
-                                engine: "xcuitest")
+                return Resolved(driver: SessionRecoveryDriver(
+                                    base: BridgeClient(port: xcuiPort, host: resolution.endpoint.host)),
+                                engine: "xcuitest", udid: udid)
             }
             logger("port \(inappPort) is an in-app bridge — driving it with the XCUITest bridge"
                 + " (port \(xcuiPort)) as fallback, matching the hybrid run engine")
@@ -111,7 +119,7 @@ public enum ExploreDriverResolver {
                 primary: WebViewDelegatingDriver(primary: inapp, delegated: attach),
                 fallback: attach, primaryBundleID: bundleID,
                 foreignApp: SessionRecoveryDriver(base: BridgeClient(
-                    port: xcuiPort, host: resolution.endpoint.host))), engine: "hybrid")
+                    port: xcuiPort, host: resolution.endpoint.host))), engine: "hybrid", udid: udid)
         }
     }
 
