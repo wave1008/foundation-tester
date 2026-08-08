@@ -122,7 +122,7 @@ final class BridgeContractTests: XCTestCase {
             "Runner/FTesterRunnerUITests/ObjCExceptionCatcher.h": "5a98cdbeefb031137a985b2f4430a5e12fec447a492599f8f4da1bd2c7101edc",
             "Runner/FTesterRunnerUITests/ObjCExceptionCatcher.m": "8b41a8a81bc8199bca13a364717614684f8003999c7675d9a63242c8e74c26be",
             "Sources/FTCore/BridgeDTO.swift": "07826d340df1d528b66eb63a8a372b8470fbb402211a25887e9ff68be6163fad",
-            "Sources/FTCore/SnapshotDedupe.swift": "539bdb8381c3173fcbfc03e4baeac139677e8ecd28a059704dfef0dbe661baac",
+            "Sources/FTCore/SnapshotDedupe.swift": "01912610b9bbf66f1fcf6cecc8c3d51d3fedc836c24d1a9ba8689a2538227b17",
             "Sources/FTCore/TypeReadback.swift": "8238adeb5146ee2441478a94bf6e2aabb85e6c88c38538ed8df74b2e025bf8ca",
         ],
         .android: [

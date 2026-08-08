@@ -31,13 +31,15 @@ Android は `scrollView id=list_rows scroll` の理想形でそのまま出る�
 → **ホスト側で「同一 frame の id 付きラッパー + 匿名 scroll ノード」を統合する正規化**を入れて
 両エンジン・両 OS で吸収している(design.md §「スコープ `祖先 >> 子孫`」参照)。SUT 側の対処は不要。
 
-### B. Android は Pressable の内側 Text が別ノードとして出る
+### B. Android は Pressable の内側 Text が別ノードとして出る(ツール側で畳み込み済み)
 
 `TaggedButton`(`src/ui.tsx`)の子 Text は `importantForAccessibility="no-hide-descendants"` +
 `accessibilityElementsHidden` で隠しているが、Android はブリッジが a11y 非重要ビューも含めて
-採るため、**button と同ラベルの staticText が別ノードで残る**。ラベルセレクタは木順先勝ちで
-親 button に解決されるため操作は壊れないが、`.staticText[n]` の序数はこの分を数える点に注意
-(iOS は同じ隠蔽指定で単一ノード化できている)。
+採るため、**button と同ラベルの staticText が別ノードで残る**(iOS は同じ隠蔽指定で単一ノード化
+できている)。2026-08-08 からホスト側が「button に frame ごと内包される同ラベル・無 id の
+staticText」を畳む(`SnapshotDedupe.dropLabelTwinsInsideButtons`。ラベルの曖昧注記と
+`.staticText[n]` の水増しが解消)。**id 付き・別ラベル・枠外のテキストは畳まない**ので、
+実テキストを button に重ねる設計は従来どおり見える。
 
 ### C. iOS in-app は id 付き Text が2重化することがある
 
