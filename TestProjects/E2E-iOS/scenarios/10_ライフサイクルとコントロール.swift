@@ -76,6 +76,11 @@ class ライフサイクルとコントロールが正しく働くこと {
                     select("#txt_cb_agree").textIs("agree=false")
                     select("#txt_radio").textIs("plan=A")
                     select("#txt_slider").textIs("volume=50")
+                    // **ブリッジが Slider の value を供給していること**(echo Text とは別の検証)。
+                    // "50%" は XCUIElement.value のパーセント表記(ui-contract.md)。
+                    // これが無いと、ランナーが value を落とす退行を E2E が一生検出できない
+                    // (echo は SUT が自前で描くので、ブリッジが黙っても緑のまま)
+                    select("#slider_volume").valueIs("50%")
                 }
             }
             scene(2, "Switch とチェックを ON にする") {
