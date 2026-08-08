@@ -44,6 +44,16 @@ enum RefGuard {
         TapTargetGeometry.isClippedSliver(element)
     }
 
+    static func nestedActionCoveringCentre(_ element: ElementInfo,
+                                           in elements: [ElementInfo]) -> ElementInfo? {
+        TapTargetGeometry.nestedActionCoveringCentre(element, in: elements)
+    }
+
+    static func outsideDeclaredScroller(_ element: ElementInfo,
+                                        in elements: [ElementInfo]) -> ElementInfo? {
+        TapTargetGeometry.outsideDeclaredScroller(element, in: elements)
+    }
+
     /// 撮り直した木での照合結果
     enum Outcome {
         /// 同じ要素を引き直せた(moved = 前回から動いた距離 pt/px)
@@ -407,10 +417,29 @@ enum RefGuard {
         (keyboardWarning(element, keyboardFrame: keyboardFrame) ?? "") + disabledWarning(element)
     }
 
+    /// **申告されたスクロール容器の外へ送り出された要素を撃とうとしている**ときの警告
+    /// (判定は TapTargetGeometry.outsideDeclaredScroller)。`ghostWarning` と同じ事象だが、
+    /// あちらの入口は容器の**推測**(`StepExecutor.isOutsideContainer`)なので、申告のある
+    /// UIKit/SwiftUI の木では nil に落ちて1件も捕まえていなかった。
+    ///
+    /// 実測(2026-08-09・Apple マップ): カードを送って `#MUScrollableStackView` (0,72 402x802) の
+    /// 上へ抜けた `link "ウィキペディア"` (16,-2 85x18) への ft_tap が無警告の "done" を返し、
+    /// 実際には中心 (58,7) = ステータスバーに当たってカードが先頭へ飛んだ
+    static func scrolledOutWarning(_ element: ElementInfo, in elements: [ElementInfo]) -> String {
+        guard let scroller = outsideDeclaredScroller(element, in: elements) else { return "" }
+        return " (warning: \(describe(element)) is reported entirely outside \(describe(scroller)),"
+            + " which is the scroll container it belongs to — it is a leftover from scrolling,"
+            + " not what you see. Bring it into view with ft_scroll_to and re-snapshot)"
+    }
+
     static func overlapWarning(found: ElementInfo, in elements: [ElementInfo], screen: FTRect) -> String {
         // 画面外の中心は「何にも当たらない」= 遮蔽・中身外しより強い事実なので先に言う
         let offscreen = offscreenWarning(found, screen: screen)
         if !offscreen.isEmpty { return offscreen }
+        // **次に容器の外**: これが真なら frame そのものが今の描画位置ではないので、
+        // 以下の遮蔽・中身外しはその古い frame を前提にした話になり、名指しが嘘になる
+        let scrolledOut = scrolledOutWarning(found, in: elements)
+        if !scrolledOut.isEmpty { return scrolledOut }
         if let over = overlayCovering(found, in: elements, screen: screen) {
             return " (warning: \(describe(over)) is drawn over the center of \(describe(found)),"
                 + " so this may have hit \(describe(over)) instead — verify with ft_screenshot,"
@@ -420,6 +449,14 @@ enum RefGuard {
             return " (warning: \(describe(found)) is not interactive and its center is not over any"
                 + " of its own content, so this tap went to whatever is behind it."
                 + " Target the content instead, e.g. \(describe(inner)))"
+        }
+        // **子孫が中心を横取りしている**。`overlayCovering` は子孫を除外するので届かない
+        // (2026-08-09 に Apple マップの検索候補で実害。TapTargetGeometry の解説を参照)
+        if let nested = nestedActionCoveringCentre(found, in: elements) {
+            return " (warning: \(describe(nested)) sits inside \(describe(found)) and covers its"
+                + " center, so this may have triggered \(describe(nested)) instead of"
+                + " \(describe(found)) — verify with ft_screenshot, and target the part you"
+                + " actually want)"
         }
         if stackedRefs(elements).contains(found.ref) {
             return " (warning: \(describe(found)) shares its exact frame with other elements,"

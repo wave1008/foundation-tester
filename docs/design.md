@@ -333,6 +333,16 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
   - 誤検知の確認は**コーパス14本**(iOS/Android・2種の地図アプリ・4 SUT の実画面)で全数。
     発火は狙いの `VKPointFeature` ×90 の1件だけで、**Android は1画面も発火しなかった**
     (Google マップを含む)
+  - **打ち切りに掛からなくても、大群は読む側の邪魔になる**(2026-08-09)。Apple マップの
+    1画面は `id=VKPointFeature` が 42〜67 件あり、**一覧の 47〜58% がこれ**で、本物の UI が
+    毎回下半分へ押し込まれていた。そこで**描画側でも畳む**:
+    `SnapshotRenderer.render(collapsingBulk:)` が「同一 id が `bulkGroupMinimum`(=20。
+    ブリッジの bulk tier と同じ値)以上・すべて `other` の葉・非スクロール・印が付いていない」
+    群を**見出し1行 + 「ラベル[ref]」の索引**に畳む。**frame は落とすが ref は全件残す**
+    —— 実測で `#VKPointFeature` の ref タップは場所カードを開くので、消してはいけない。
+    `ft_snapshot` は既定で畳み `expandBulk: true` で全行に戻す。`ft_scroll_to` は常に畳む
+    (答えは「探した1つがどこに居るか」なので大群を並べる意味が無い)。**間引き(ブリッジ)と
+    畳み(描画)は別物** —— 前者は配列から消し、後者は見せ方を変えるだけ
 - **操作直後の整定(xcuitest, 2026-07-21)**: XCUITest の tap quiescence は非同期 push 遷移の
   完了前に返り、かつ直近 snapshot をキャッシュするため、操作直後の素取得は遷移前ツリーを返す
   (実測 50%)。対策として、直前が画面変更操作(tap/type/swipe/drag/press/session/…)だった
@@ -2137,6 +2147,43 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
     利用者から見ると原因も打ち手も ghost と同じなので**印を2種類に割らない**。
     誤検知ゲートの回し方は docs/verification.md(**自前 SUT だけでは足りない** ——
     `Tests/Fixtures/RealAppSnapshots/` の固定コーパスで実アプリにも当てる)。
+  - **自分の子孫が中心を横取りする形**(2026-08-09。`TapTargetGeometry.nestedActionCoveringCentre`)。
+    上の `occluder` は**祖先と子孫を除外する**(親子の重なりは正常な入れ子で、数えると何でも
+    遮蔽になる)ので、この形を1つも捕まえていなかった。実測(Apple マップの検索候補):
+    `#Maps.PlaceTableViewCell` (20,138 362x155) の中心 (201,215) が、同じセルの中の
+    `#FeaturedInMultipleGuidesContextLineItem` (80,202 205x18) の内側にあり、ref タップは
+    **場所カードではなくガイド一覧を開いて**無警告で "done" を返した。兄弟の重なり
+    (`#FavoriteButton` × `#TransitDepartureRow`)では警告が出ていたので、**差は「子孫かどうか」だけ**。
+    条件は「親が対話的」「子孫も対話的」「面積比 < `nestedActionAreaRatio`(=0.25)」の3つ:
+    比の上限は**行を包み直すだけのラッパー**(同セル内の無名 button は 0.99)と**行の主ラベル**
+    (`#MultiTextView` は 0.31〜0.49 で、押しても行と同じ場所が開く)を外し、
+    **行の中に別の遷移先を持つ小さな帯**だけを残す値。コーパス全数(18枚)で発火は
+    `#PinnedItemSection` ← `#PinnedTile`(帯を撃つとタイルが開く = 真陽性)の1件だけ。
+    非対話の容器は `missesItsOwnContent` の担当なので**排他**(二重に言わない)。警告のみ
+  - **申告されたスクロール容器の外へ送り出された行**(2026-08-09。
+    `TapTargetGeometry.outsideDeclaredScroller`)。ghost 判定(`StepExecutor.isOutsideContainer`)は
+    容器を**木の並びから推測する**ので、申告のある UIKit/SwiftUI では推測が中間ノードに当たって
+    nil に落ち、1件も付いていなかった。実測(Apple マップの場所カード): カードを送ると
+    `#MUScrollableStackView` (0,72 402x802) の上へ抜けた行が frame ごと木に残り、
+    `link "ウィキペディア"` (16,-2 85x18) への ref タップが "done" を返して、実際には
+    中心 (58,7) = ステータスバーに当たり**カードが先頭へ飛んだ**。
+    こちらは推測せず **`scrollable` を申告している祖先だけ**を見る。
+    **ただし depth からの祖先復元はブリッジの間引きで嘘になる** —— Google マップの検索結果では
+    カード容器が落ちた結果、本文(depth 20〜22)が直前の写真カルーセル `#recycler_view`(depth 19)の
+    子孫に見え、素の判定では**10件まとめて誤検知**した。そこで `clippingContainer` と同じ
+    「その depth の兄弟が2つ以上、容器の中に居る」を条件に足す(間引きで繋がっただけの相手は
+    仲間が容器の中に1つも居ない)。一覧の印は ghost と同じ `⚠️scroll-leftover`
+    (原因も打ち手も同じなので**印を割らない**)
+  - **`ft_pinch` は座標(`x`/`y`[+`radius`])でも対象を指せる**(2026-08-09)。地図やキャンバスは
+    要素として木に無いので `ref` を渡せず、対象を省くと指が画面全体に開く —— 実測(Apple マップ):
+    場所カードを半分出したまま `scale 0.4` を撃つと**地図は 1px も動かず、シートが全画面に展開した**。
+    既定の半径は**画面の短辺の 22%**(座標系が iOS=pt / Android=px で桁が違うので固定値にしない)、
+    画面の内側へクランプする(外へ出た指は届かず、要求より小さいズームになる)。
+    **エンジンで honour できるかが割れる**: `PinchRequest.frame` を読むのは **Android と
+    iOS in-app だけ**で、**XCUITest は読めない**(XCTest のピンチは `XCUIElement` にしか生えておらず
+    座標版が無い)。だから xcuitest エンジンでは**全画面へ退化したことを戻り値で必ず言う**
+    (黙って退化させると「狙った場所を撃ったつもりで手前のシートを掴む」= この修正の動機そのもの)。
+    逃げ道は他のジェスチャと同じ `profile:` で in-app/hybrid を選ぶこと
   - **ソフトキーボードの遮蔽は木からは原理的に判定できない**(2026-08-08)。iOS xcuitest は
     `.keyboard`/`.key` サブツリーを木から除外しており、残る外側コンテナ(`inputView`)は
     子孫ゼロの空葉になって**空葉除外(誤検知対策)に正しく弾かれる**。Android は IME が

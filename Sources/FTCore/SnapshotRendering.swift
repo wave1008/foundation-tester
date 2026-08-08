@@ -12,7 +12,8 @@ public enum SnapshotRenderer {
     /// スクロール残像を名指しするのに使う —— **先頭の注記だけでは足りない**という
     /// 外部フィードバック(2026-08-06)への対応で、ref をコピーする行そのものに出す。
     public static func render(_ snapshot: SnapshotResponse,
-                              flagging: [Int: String] = [:]) -> String {
+                              flagging: [Int: String] = [:],
+                              collapsingBulk: Bool = false) -> String {
         var lines: [String] = []
         let s = snapshot.screen
         lines.append("screen: \(Int(s.width))x\(Int(s.height))")
@@ -23,7 +24,14 @@ public enum SnapshotRenderer {
                 idCounts[id, default: 0] += 1
             }
         }
+        let bulk = collapsingBulk ? bulkGroups(snapshot, flagging: flagging) : [:]
+        var emitted: Set<String> = []
         for e in snapshot.elements {
+            if let id = e.identifier, let group = bulk[id] {
+                guard emitted.insert(id).inserted else { continue }
+                lines.append(contentsOf: bulkLines(id: id, group: group))
+                continue
+            }
             let flag = flagging[e.ref].map { " \($0)" } ?? ""
             let idCount = e.identifier.flatMap { idCounts[$0] }.flatMap { $0 >= 2 ? $0 : nil }
             lines.append(renderElement(e, idCount: idCount) + flag)
@@ -33,6 +41,72 @@ public enum SnapshotRenderer {
         }
         return lines.joined(separator: "\n")
     }
+
+    /// 1行に畳む最小の群サイズ。**20** はブリッジ側の bulk tier(同一 id ×20 以上を
+    /// 要素上限の後回しにする)と同じ値にしてある —— 片方だけ動かすと「間引きでは大量扱い
+    /// なのに描画では個別」がねじれる。実アプリのコーパス18枚では地図の POI
+    /// (`#VKPointFeature` ×67)だけが該当し、検索候補の `#TitleLabel` ×10 のような
+    /// **中身の一覧**には1つも掛からない
+    public static let bulkGroupMinimum = 20
+
+    /// 畳んでよい群か。**`other` の葉だけ**に限るのが要点:
+    /// - `other` = ブリッジが「型が付かなかったもの」に使う型で、シナリオの対象になるのは
+    ///   地図のピンのような座標付きの飾りだけ。`staticText` や `button` の一覧は中身なので畳まない
+    /// - 葉に限るのは、子を持つ要素を畳むと**子の行だけが親を失って残る**ため
+    /// - 印(⚠️scroll-leftover 等)が付いた要素を含む群は畳まない —— 印は行ごとに読ませるためにある
+    ///
+    /// 畳んでも **ref では撃てる**(ラベルと ref の索引を必ず出す)。実測で
+    /// `ft_tap` の対象になり得ることを確認しているので、消してはいけない
+    static func bulkGroups(_ snapshot: SnapshotResponse,
+                           flagging: [Int: String]) -> [String: [ElementInfo]] {
+        var byID: [String: [ElementInfo]] = [:]
+        for e in snapshot.elements {
+            guard let id = e.identifier, !id.isEmpty else { continue }
+            byID[id, default: []].append(e)
+        }
+        return byID.filter { _, group in
+            group.count >= bulkGroupMinimum && group.allSatisfy { e in
+                e.type == "other" && e.enabled && e.scrollable != true && e.checked != true
+                    && (e.value ?? "").isEmpty && (e.placeholder ?? "").isEmpty
+                    && (e.range ?? "").isEmpty
+                    && flagging[e.ref] == nil
+                    && TapTargetGeometry.isLeaf(e, in: snapshot.elements)
+            }
+        }
+    }
+
+    /// 畳んだ群の描画。見出し1行 +「ラベル[ref]」の索引(折り返し)。
+    /// **frame は落とす** —— 座標で撃ちたいなら expandBulk で全行に戻せる
+    static func bulkLines(id: String, group: [ElementInfo]) -> [String] {
+        let refs = group.map(\.ref).sorted()
+        // **range を書けるのは連番のときだけ**。飛び飛びの群で `[2-43]` と書くと、
+        // 間に挟まった別要素まで畳んだように読める(索引には全 ref が出るので情報は落ちない)
+        let contiguous = refs.count >= 2 && refs.last! - refs.first! == refs.count - 1
+        let span = contiguous ? "[\(refs.first!)-\(refs.last!)]" : "[\(refs.first ?? 0)…]"
+        // **逃げ道はツールごと名指しする**: `ft_scroll_to` の結果にもこの行は出るが、
+        // あちらは expandBulk を受け取らない。「どこで渡せるか」を書かないと空振りする
+        var lines = ["\(span) other id=\(id) ×\(group.count) collapsed"
+            + " (non-interactive leaves with the same id; frames omitted)."
+            + " Tap one by its ref — call ft_snapshot with expandBulk: true to list them in full:"]
+        var current = "   "
+        for e in group {
+            let label = e.label.map(FlowMatchMode.stripZeroWidthCharacters) ?? ""
+            let text = label.isEmpty
+                ? "(no label)[\(e.ref)]"
+                : "\(truncate(label, labelDisplayLimit))[\(e.ref)]"
+            if current.count + text.count + 1 > bulkIndexLineWidth {
+                lines.append(current)
+                current = "   "
+            }
+            current += " " + text
+        }
+        if !current.trimmingCharacters(in: .whitespaces).isEmpty { lines.append(current) }
+        return lines
+    }
+
+    /// 索引の折り返し幅。読み手はターミナル幅ではなくトークンで読むので、
+    /// 「1行が長すぎて grep しにくい」を避けるだけの値
+    static let bulkIndexLineWidth = 110
 
     static func renderElement(_ e: ElementInfo, idCount: Int? = nil) -> String {
         var parts: [String] = ["[\(e.ref)]", e.type]

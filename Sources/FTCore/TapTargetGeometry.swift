@@ -26,21 +26,37 @@ public enum TapTargetGeometry {
             && outer.y + outer.height >= inner.y + inner.height - 1
     }
 
+    /// 祖先を**近い順**に(preorder + depth から復元する)
+    public static func ancestors(of element: ElementInfo, in elements: [ElementInfo]) -> [ElementInfo] {
+        guard let index = elements.firstIndex(where: { $0.ref == element.ref }) else { return [] }
+        var depth = element.depth
+        var result: [ElementInfo] = []
+        for ancestor in elements[..<index].reversed() where ancestor.depth < depth {
+            result.append(ancestor)
+            depth = ancestor.depth
+        }
+        return result
+    }
+
     /// 自分・祖先・子孫の ref(preorder + depth から復元する)
     public static func lineage(of element: ElementInfo, in elements: [ElementInfo]) -> Set<Int> {
         var result: Set<Int> = [element.ref]
         guard let index = elements.firstIndex(where: { $0.ref == element.ref }) else { return result }
-        var depth = element.depth
-        for ancestor in elements[..<index].reversed() where ancestor.depth < depth {
-            result.insert(ancestor.ref)
-            depth = ancestor.depth
-        }
+        result.formUnion(ancestors(of: element, in: elements).map(\.ref))
         var i = elements.index(after: index)
         while i < elements.endIndex, elements[i].depth > element.depth {
             result.insert(elements[i].ref)
             i = elements.index(after: i)
         }
         return result
+    }
+
+    /// 木の並び(preorder + depth)で葉か。**bulk 集約の前提**: 子を持つ要素を1行に畳むと
+    /// 子の行だけが親を失って残る
+    public static func isLeaf(_ element: ElementInfo, in elements: [ElementInfo]) -> Bool {
+        guard let index = elements.firstIndex(where: { $0.ref == element.ref }) else { return true }
+        let next = elements.index(after: index)
+        return next >= elements.endIndex || elements[next].depth <= element.depth
     }
 
     /// ghost ではないが**別の物に当たったかもしれない**2形の注記。空文字なら心当たり無し。
@@ -88,6 +104,82 @@ public enum TapTargetGeometry {
         return children
             .filter { contains(element.frame, $0.frame) }
             .max { ($0.frame.width * $0.frame.height) < ($1.frame.width * $1.frame.height) }
+    }
+
+    /// 入れ子の別アクションとみなす面積比の上限。**0.25** は実測で決めた:
+    /// 行を丸ごと包み直すだけのラッパー(`#Maps.PlaceTableViewCell` の中の無名 button は 0.99)と、
+    /// 行の主ラベル(`#MultiTextView` は 0.31〜0.49 で、押しても行と同じ場所が開く)を外し、
+    /// **行の中に別の遷移先を持つ小さな帯**だけを残す値。実アプリのコーパス全数(18枚)に当てて
+    /// 発火は1件(`#PinnedItemSection` の中心が `#PinnedTile` に乗る = 真陽性)
+    public static let nestedActionAreaRatio = 0.25
+
+    /// **自分の子孫が中心を横取りしている**か。`occluder` は祖先と子孫を除外するので
+    /// (親子の重なりは正常な入れ子で、数えると何でも遮蔽になる)、この形を1つも捕まえない。
+    ///
+    /// 実測(2026-08-09・Apple マップの検索候補): `#Maps.PlaceTableViewCell` (20,138 362x155) の
+    /// 中心 (201,215) は、同じセルの中の `#FeaturedInMultipleGuidesContextLineItem`
+    /// (80,202 205x18) の内側にある。ref タップは**場所カードではなくガイド一覧を開き**、
+    /// 警告は一切出なかった(兄弟の重なりである `#FavoriteButton` × `#TransitDepartureRow` では
+    /// 出ていたので、差は「子孫かどうか」だけだった)。
+    ///
+    /// **対話的な親にだけ言う**: 非対話の容器が中身を外す形は `missesItsOwnContent` の担当で、
+    /// あちらは「中心がどの子にも乗らない」= ここと排他。両方に数えられることはない
+    public static func nestedActionCoveringCentre(_ element: ElementInfo,
+                                                  in elements: [ElementInfo]) -> ElementInfo? {
+        guard interactiveTypes.contains(element.type) else { return nil }
+        let area = element.frame.width * element.frame.height
+        guard area > 0 else { return nil }
+        let cx = element.frame.x + element.frame.width / 2
+        let cy = element.frame.y + element.frame.height / 2
+        return StepExecutor.descendants(of: element, in: elements)
+            .filter { child in
+                guard interactiveTypes.contains(child.type) else { return false }
+                let f = child.frame
+                guard f.width * f.height < area * nestedActionAreaRatio else { return false }
+                return f.x <= cx && cx <= f.x + f.width && f.y <= cy && cy <= f.y + f.height
+            }
+            .min { ($0.frame.width * $0.frame.height) < ($1.frame.width * $1.frame.height) }
+    }
+
+    /// **スクロール容器の外へ送り出された要素**。返すのはその容器(名指しに使う)。
+    ///
+    /// `StepExecutor.isOutsideContainer` とは**容器の採り方が違う**: あちらは申告が無い
+    /// Compose/Flutter のために「木の並びから容器を推測する」ので、推測が当たらない木では
+    /// nil に落ちる。ここは逆に **`scrollable` を申告している祖先だけ**を見る ——
+    /// 推測しないぶん取りこぼすが、当たったときは確実で、実アプリのコーパス全数で
+    /// タップ対象の誤検知が0件だった(2026-08-09)。
+    ///
+    /// 実測(Apple マップの場所カード): カードを送ると `#MUScrollableStackView` (0,72 402x802) の
+    /// **上へ抜けた行が frame ごと木に残る**(`#PlaceCollectionCell` (16,-169 171x217) 等)。
+    /// 一覧では可視の行と見分けが付かず、ref タップは "done" を返して何も起きない
+    public static func outsideDeclaredScroller(_ element: ElementInfo,
+                                               in elements: [ElementInfo]) -> ElementInfo? {
+        guard element.frame.width > 0, element.frame.height > 0,
+              let scroller = ancestors(of: element, in: elements)
+                  .first(where: { $0.scrollable == true }),
+              ScrollGeometry.intersection(element.frame, scroller.frame) == nil,
+              hasSiblingsInside(at: element.depth, inside: scroller, in: elements)
+        else { return nil }
+        return scroller
+    }
+
+    /// **祖先を depth から復元するのは、ブリッジが中間ノードを間引くと嘘になる**
+    /// (`clippingContainer` が同じ理由で「中に居る兄弟が2つ以上」を要求している)。
+    ///
+    /// 実測(2026-08-09・Google マップ Android の検索結果): スポンサーカードの本文
+    /// (`"5.0 星 (25)"` 等・depth 20〜22)は、カード容器が間引かれた結果、直前に並ぶ
+    /// **写真カルーセル `#recycler_view` (0,975 1080x352)・depth 19** の子孫に見える。
+    /// 本物の子は写真3枚(depth 24)だけで、本文は容器の外に落ちるため、素の判定では
+    /// **10件まとめて「スクロールで抜けた」**になっていた。
+    ///
+    /// そこで「その depth の兄弟が2つ以上、容器の中に居る」ことを条件にする ——
+    /// 間引きで繋がっただけの相手は、その depth の仲間が容器の中に1つも居ない
+    static func hasSiblingsInside(at depth: Int, inside scroller: ElementInfo,
+                                   in elements: [ElementInfo]) -> Bool {
+        StepExecutor.descendants(of: scroller, in: elements)
+            .filter { $0.depth == depth
+                && ScrollGeometry.intersection($0.frame, scroller.frame) != nil }
+            .count >= 2
     }
 
     /// **撃つ前に言える「たぶん何も起きない/別の物に当たる」**を1文にする。空 = 心当たり無し。

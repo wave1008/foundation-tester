@@ -702,7 +702,10 @@ final class MCPServer {
             + " The refs below are fresh\n" + scrollAreaNote + Self.ghostNote(after)
             + Self.keyboardCoverageNote(after) + Self.sliverNote(after)
             + (SnapshotRenderer.truncatedLabelNote(after) ?? "")
-            + SnapshotRenderer.render(after, flagging: Self.ghostFlags(after)))
+            // **ここは常に畳む**: ft_scroll_to の答えは「探した1つがどこに居るか」なので、
+            // 地図のピンが数十行並ぶ意味がない(戻したいときは ft_snapshot の expandBulk)
+            + SnapshotRenderer.render(after, flagging: Self.ghostFlags(after),
+                                      collapsingBulk: true))
     }
 
     /// 「session のアプリが今も前面か」。判定できないドライバでは黙る(嘘を足さない)
@@ -766,7 +769,15 @@ final class MCPServer {
     /// **叩けば RefGuard が止める**が、そこまで行かずに気付けるほうが往復が減る
     static func ghostRefs(_ snapshot: SnapshotResponse) -> [Int] {
         snapshot.elements
-            .filter { RefGuard.isUntappableGhost($0, in: snapshot.elements, screen: snapshot.screen) }
+            .filter {
+                RefGuard.isUntappableGhost($0, in: snapshot.elements, screen: snapshot.screen)
+                    // **申告されたスクロール容器の外**も同じ印に混ぜる(2026-08-09)。
+                    // `isUntappableGhost` の入口は容器の*推測*なので、申告のある UIKit/SwiftUI の
+                    // 木では1件も付かず、カードを送って上へ抜けた行が**可視の行と同じ形**で
+                    // 並んでいた。利用者から見て原因(そこには描かれていない)も対処
+                    // (ft_scroll_to で出してから撮り直す)も同じなので、印は割らない
+                    || RefGuard.outsideDeclaredScroller($0, in: snapshot.elements) != nil
+            }
             .map(\.ref)
     }
 
@@ -952,6 +963,28 @@ final class MCPServer {
         let more = ambiguous.count > 5 ? " (+\(ambiguous.count - 5) more)" : ""
         return "note: these labels match multiple elements, so a plain label selector cannot"
             + " pick one uniquely: \(listed)\(more).\n"
+    }
+
+    /// 座標ピンチの既定の半径 = 画面の短辺のこの割合。**画面相対**なのは、座標系が
+    /// iOS=pt(短辺 402)/ Android=px(短辺 1080)で桁が違うため —— 固定値にすると
+    /// 片方で指が開かず、もう片方で画面をはみ出す
+    static let pinchRadiusScreenRatio = 0.22
+    static let pinchRadiusFallback: Double = 100
+
+    /// (x,y) を中心にした正方形の対象領域。**画面が分かるなら内側へ収める** ——
+    /// 画面外へはみ出した指はタッチとして届かず、要求より小さいズームになる。
+    /// 収め方は**中心を動かさず半径を縮める**(中心を寄せるとズームの支点が変わり、
+    /// 「この地点を拡大したい」という指定そのものが崩れる)。縁ぎわの指定では
+    /// 指の開きが小さくなるぶん倍率が出にくい
+    static func pinchArea(x: Double, y: Double, radius: Double?, screen: FTRect?) -> FTRect {
+        var r = radius ?? screen.map { min($0.width, $0.height) * pinchRadiusScreenRatio }
+            ?? pinchRadiusFallback
+        if let screen, screen.width > 0, screen.height > 0 {
+            let room = [x - screen.x, screen.x + screen.width - x,
+                        y - screen.y, screen.y + screen.height - y].min() ?? r
+            r = max(1, min(r, room))
+        }
+        return FTRect(x: x - r, y: y - r, width: r * 2, height: r * 2)
     }
 
     /// フォーカス待ちの上限。**短い**のは、報告しないフレームワークで毎回これを丸ごと待つため
@@ -1261,7 +1294,9 @@ final class MCPServer {
                 + Self.unlabeledClickablesNote(snapshot) + Self.ambiguousLabelsNote(snapshot)
                 + Self.keyboardCoverageNote(snapshot) + Self.sliverNote(snapshot)
                 + (SnapshotRenderer.truncatedLabelNote(snapshot) ?? "")
-                + SnapshotRenderer.render(snapshot, flagging: Self.ghostFlags(snapshot)), args: args))
+                + SnapshotRenderer.render(snapshot, flagging: Self.ghostFlags(snapshot),
+                                          collapsingBulk: args["expandBulk"] as? Bool != true),
+                args: args))
 
         case "ft_tap":
             let d = try await driver(args)
@@ -1447,10 +1482,26 @@ final class MCPServer {
             let pinchDriver = try await driver(args)
             var frame: FTRect?
             var identifier: String?
+            var whole = false
+            var areaIgnored = false
             if let ref = args["ref"] as? Int {
                 let element = try await verifiedElement(ref, driver: pinchDriver, args: args)
                 frame = element.frame
                 identifier = element.identifier
+            } else if let x = args["x"] as? Double, let y = args["y"] as? Double {
+                // **地図・キャンバスには ref が無い**(2026-08-09 実測): Apple マップの場所カードを
+                // 半分出したまま ref 無しで撃つと、指が画面全体に開くのでシートが掴まれ、
+                // **地図は 1px も動かずシートが全画面に展開した**。逃げ道が無かったので、
+                // ft_tap / ft_press / ft_drag と同じく座標を受ける
+                frame = Self.pinchArea(x: x, y: y, radius: args["radius"] as? Double,
+                                       screen: lastSnapshots[Self.engineKey(args)]?.screen)
+                // **XCUITest は領域を受け取れない**(`PinchRequest.frame` を読むのは Android と
+                // in-app だけ。XCTest のピンチは XCUIElement にしか生えておらず、座標版が無い)。
+                // 黙って全画面へ退化させると、狙った場所を撃ったつもりで**手前のシートを掴む**
+                // —— この修正の動機そのものなので、退化したことを必ず言う
+                areaIgnored = engines[Self.engineKey(args)] == "xcuitest"
+            } else {
+                whole = true
             }
             try await pinchDriver.pinch(frame: frame, identifier: identifier, scale: scale,
                                         durationSeconds: args["durationSeconds"] as? Double ?? 0.5)
@@ -1459,7 +1510,18 @@ final class MCPServer {
                 // 小さくなることもあれば、慣性で大きくもなる(scale 2.0 の要求で累積 3.9 倍)
                 + " The actual zoom can differ from what you asked for in either direction"
                 + " — verify with ft_snapshot/ft_screenshot."
-                + iosEngineHint("Flutter", "pinch", args: args))
+                + (whole ? " The fingers spanned the whole screen, so anything on top of the area"
+                    + " you meant (a bottom sheet, a card) may have taken the gesture instead —"
+                    + " pass x/y to pinch a specific spot." : "")
+                + (areaIgnored ? " x/y was NOT honoured: the XCUITest engine can only pinch an"
+                    + " element (XCTest has no coordinate pinch), so the fingers spanned the whole"
+                    + " screen and anything drawn over that spot may have taken the gesture."
+                    + " Pass profile: naming an in-app/hybrid run profile to pinch a coordinate"
+                    + " area (this relaunches the app — re-navigate before retrying)." : "")
+                // **同じ逃げ道を2度書かない**(2026-08-08 に長文の苦情があった箇所)。
+                // 領域が無視されたときの文は engine も remedy も言い切っているので、
+                // 汎用の Flutter 助言はそこでは畳む
+                + (areaIgnored ? "" : iosEngineHint("Flutter", "pinch", args: args)))
 
         case "ft_press":
             let pressDriver = try await driver(args)
@@ -1793,6 +1855,10 @@ final class MCPServer {
             + "Use these refs for tap/type. With waitFor it polls for you instead of you calling this again", [
             "waitFor": ["type": "string", "description": "Wait until this selector is on screen. Same syntax as the DSL: #id, a label, .type, a||b"],
             "timeout": ["type": "number", "description": "Seconds to wait for waitFor (default 5, same as the DSL)"],
+            "expandBulk": ["type": "boolean", "description": "List every element of a large "
+                + "same-id group individually. By default 20+ non-interactive leaves sharing one "
+                + "id (map pins and the like) are folded into one line plus a label/ref index; "
+                + "turn this on when you need their frames"],
         ]),
         tool("ft_tap", "Tap an element (ref) or a coordinate (x,y). x/y match the ft_snapshot frames (iOS=pt / Android=px), not screenshot pixels. "
             + "A ref is re-checked against a fresh tree before the tap, so a ref that moved is retargeted and "
@@ -1863,10 +1929,17 @@ final class MCPServer {
             "toY": ["type": "number"],
             "durationSeconds": ["type": "number", "description": "Travel time in seconds (default 1.5)"],
         ], required: ["fromX", "fromY", "toX", "toY"]),
-        tool("ft_pinch", "Pinch to zoom. scale > 1 zooms in, 0 < scale < 1 zooms out. Without ref the whole "
-            + "screen is the target. The actual zoom can be smaller than requested (fingers stay inside the "
-            + "target). Pass profile: on iOS — without it Flutter apps do not zoom (see docs/commands.md).", [
-            "ref": ["type": "integer", "description": "Reference number from ft_snapshot (defaults to the whole screen)"],
+        tool("ft_pinch", "Pinch to zoom. scale > 1 zooms in, 0 < scale < 1 zooms out. Target it with ref, "
+            + "or with x/y on a map or canvas that has no element of its own — without either, the fingers "
+            + "span the whole screen, so a bottom sheet on top of it may take the gesture instead. "
+            + "The actual zoom can be smaller than requested (fingers stay inside the target). "
+            + "Pass profile: on iOS — without it Flutter apps do not zoom (see docs/commands.md).", [
+            "ref": ["type": "integer", "description": "Reference number from ft_snapshot"],
+            "x": ["type": "number", "description": "Centre of the pinch, iOS=pt / Android=px (same coordinate system as the snapshot frames). "
+                + "Android and the iOS in-app engine honour it; the iOS XCUITest engine cannot (XCTest has no coordinate pinch) and says so"],
+            "y": ["type": "number", "description": "Centre of the pinch, iOS=pt / Android=px"],
+            "radius": ["type": "number", "description": "Half the width of the pinched area around x/y "
+                + "(default: 22% of the screen's short side, clamped to stay on screen)"],
             "scale": ["type": "number", "description": "Zoom factor (default 2.0)"],
             "durationSeconds": ["type": "number", "description": "Gesture duration in seconds (default 0.5)"],
         ]),

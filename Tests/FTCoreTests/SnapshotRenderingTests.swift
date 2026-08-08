@@ -97,4 +97,104 @@ final class SnapshotRenderingTests: XCTestCase {
                             frame: FTRect(x: 0, y: 0, width: 10, height: 10), depth: 2)
         XCTAssertFalse(SnapshotRenderer.renderElement(e).contains("range="))
     }
+
+    // MARK: - 同一 id の大群を1行に畳む(2026-08-09。地図の POI 対策)
+
+    /// `other` の葉を `count` 個 + その後ろに普通の要素1つ
+    private func bulkSnapshot(count: Int, type: String = "other",
+                              scrollable: Bool? = nil) -> SnapshotResponse {
+        var elements: [ElementInfo] = []
+        for i in 0..<count {
+            elements.append(ElementInfo(ref: i + 1, type: type, identifier: "VKPointFeature",
+                                        label: "POI\(i)", value: nil, placeholder: nil,
+                                        enabled: true,
+                                        frame: FTRect(x: Double(i), y: 10, width: 30, height: 30),
+                                        depth: 3, scrollable: scrollable))
+        }
+        elements.append(ElementInfo(ref: count + 1, type: "button", identifier: "search",
+                                    label: "検索", value: nil, placeholder: nil, enabled: true,
+                                    frame: FTRect(x: 0, y: 500, width: 100, height: 40), depth: 3))
+        return SnapshotResponse(sessionBundleID: nil,
+                                screen: FTRect(x: 0, y: 0, width: 402, height: 874),
+                                elements: elements, truncatedCount: 0)
+    }
+
+    /// 畳んでも **ref では撃てる**(索引にラベルと ref が全件残る)のが条件。
+    /// 実測で `#VKPointFeature` の ref タップは場所カードを開くので、消してはいけない
+    func testBulkGroupCollapsesIntoOneLineWithARefIndex() {
+        let text = SnapshotRenderer.render(bulkSnapshot(count: 25), collapsingBulk: true)
+        XCTAssertTrue(text.contains("[1-25] other id=VKPointFeature ×25 collapsed"), text)
+        // **逃げ道はツール名まで書く**: この行は ft_scroll_to の結果にも出るが、
+        // あちらは expandBulk を受け取らない
+        XCTAssertTrue(text.contains("call ft_snapshot with expandBulk: true"), text)
+        XCTAssertTrue(text.contains("POI0[1]"), text)
+        XCTAssertTrue(text.contains("POI24[25]"), text)
+        // 畳んだ行の frame は出さない / 畳んでいない要素は従来どおり
+        XCTAssertFalse(text.contains("(0,10 30x30)"), text)
+        XCTAssertTrue(text.contains("[26] button \"検索\" id=search (0,500 100x40)"), text)
+    }
+
+    func testBulkGroupIsNotCollapsedByDefault() {
+        let text = SnapshotRenderer.render(bulkSnapshot(count: 25))
+        XCTAssertFalse(text.contains("collapsed"), text)
+        XCTAssertTrue(text.contains("[1] other \"POI0\" id=VKPointFeature ×25 (0,10 30x30)"), text)
+    }
+
+    /// 下限未満は畳まない(検索候補の `#TitleLabel ×10` のような**中身の一覧**を守る)
+    func testGroupBelowTheMinimumStaysExpanded() {
+        let text = SnapshotRenderer.render(bulkSnapshot(count: SnapshotRenderer.bulkGroupMinimum - 1),
+                                           collapsingBulk: true)
+        XCTAssertFalse(text.contains("collapsed"), text)
+    }
+
+    /// **件数を直に書く**: 上の相対テストは `bulkGroupMinimum` を参照しているので、
+    /// 下限を下げる変異と一緒に動いて素通しする(2026-08-09 の変異テストで実際に素通しした)。
+    /// 数個の同 id の飾りは1行ずつ出る、が守りたい契約
+    func testHandfulOfSameIdElementsStaysExpanded() {
+        let text = SnapshotRenderer.render(bulkSnapshot(count: 5), collapsingBulk: true)
+        XCTAssertFalse(text.contains("collapsed"), text)
+        XCTAssertTrue(text.contains("[1] other \"POI0\" id=VKPointFeature ×5 (0,10 30x30)"), text)
+    }
+
+    /// **`other` の葉だけ**。型が付いている一覧(staticText の行など)は中身なので畳まない
+    func testTypedGroupIsNotCollapsed() {
+        let text = SnapshotRenderer.render(bulkSnapshot(count: 25, type: "staticText"),
+                                           collapsingBulk: true)
+        XCTAssertFalse(text.contains("collapsed"), text)
+    }
+
+    /// スクロール容器は `scrollFrame:` の候補なので畳まない
+    func testScrollableGroupIsNotCollapsed() {
+        let text = SnapshotRenderer.render(bulkSnapshot(count: 25, scrollable: true),
+                                           collapsingBulk: true)
+        XCTAssertFalse(text.contains("collapsed"), text)
+    }
+
+    /// 印(⚠️scroll-leftover)が付いた要素を含む群は畳まない —— 印は行ごとに読ませるためにある
+    func testFlaggedGroupIsNotCollapsed() {
+        let text = SnapshotRenderer.render(bulkSnapshot(count: 25),
+                                           flagging: [7: "⚠️scroll-leftover"],
+                                           collapsingBulk: true)
+        XCTAssertFalse(text.contains("collapsed"), text)
+        XCTAssertTrue(text.contains("⚠️scroll-leftover"), text)
+    }
+
+    /// 子を持つ要素は畳まない(畳むと子の行だけが親を失って残る)
+    func testGroupWithChildrenIsNotCollapsed() {
+        var elements: [ElementInfo] = []
+        for i in 0..<25 {
+            elements.append(ElementInfo(ref: i * 2 + 1, type: "other", identifier: "Row",
+                                        label: nil, value: nil, placeholder: nil, enabled: true,
+                                        frame: FTRect(x: 0, y: Double(i) * 10, width: 30, height: 30),
+                                        depth: 3))
+            elements.append(ElementInfo(ref: i * 2 + 2, type: "staticText", identifier: "t\(i)",
+                                        label: "x", value: nil, placeholder: nil, enabled: true,
+                                        frame: FTRect(x: 0, y: Double(i) * 10, width: 30, height: 30),
+                                        depth: 4))
+        }
+        let snapshot = SnapshotResponse(sessionBundleID: nil,
+                                        screen: FTRect(x: 0, y: 0, width: 402, height: 874),
+                                        elements: elements, truncatedCount: 0)
+        XCTAssertFalse(SnapshotRenderer.render(snapshot, collapsingBulk: true).contains("collapsed"))
+    }
 }

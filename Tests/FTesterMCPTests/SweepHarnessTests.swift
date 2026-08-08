@@ -26,10 +26,17 @@ final class SweepHarnessTests: XCTestCase {
         var keyboard = 0
         /// sliver は容器の縁で細帯に切れたラベル付き要素(TapTargetGeometry.isClippedSliver)
         var sliver = 0
+        /// nested は自分の子孫に中心を横取りされた**対話要素**
+        /// (TapTargetGeometry.nestedActionCoveringCentre。2026-08-09 追加)
+        var nested = 0
+        /// scrolledOut は**申告された**スクロール容器の完全に外に居る要素
+        /// (TapTargetGeometry.outsideDeclaredScroller。ghost の推測版では拾えない形)
+        var scrolledOut = 0
         var description: String {
             "ghost=\(ghost) overlay=\(overlay) stacked=\(stacked) misses=\(misses)"
                 + " disabled=\(disabled) offscreen=\(offscreen) warnedTappable=\(warnedTappable)"
-                + " keyboard=\(keyboard) sliver=\(sliver)"
+                + " keyboard=\(keyboard) sliver=\(sliver) nested=\(nested)"
+                + " scrolledOut=\(scrolledOut)"
         }
     }
 
@@ -62,13 +69,23 @@ final class SweepHarnessTests: XCTestCase {
                                      warnedTappable: 3),
         "and-results": Counts(ghost: 0, overlay: 18, stacked: 0, misses: 2, disabled: 0,
                               warnedTappable: 2),
+        // nested 1 は検分済みの真陽性: `#PinnedItemSection`(横スクロールする clickable の帯)の
+        // 中心は、その中の `#PinnedTile` の上にある。帯を撃つと1枚のタイルが開く
         "ios-home": Counts(ghost: 0, overlay: 1, stacked: 0, misses: 0, disabled: 0,
-                           warnedTappable: 0),
+                           warnedTappable: 1, nested: 1),
         // 2026-08-08 採取(v58 = 間引きの bulk 拡張後)。東京駅カード + 地図 POI 67個の木。
         // overlay 17 の内訳: POI 同士の重なり14(駅構内の高密度で実描画どおり・非操作)/
         // カード見出し系3。misses 2 は見出し容器。すべて非操作なので warnedTappable 0
         "ios-maps_station": Counts(ghost: 0, overlay: 17, stacked: 0, misses: 2, disabled: 0,
                                    warnedTappable: 0),
+        // 2026-08-09 採取。**nested 検知の witness**: `#Maps.PlaceTableViewCell` (20,138 362x155) の
+        // 中心 (201,215) が、同じセルの中の `#FeaturedInMultipleGuidesContextLineItem`
+        // (80,202 205x18) の上にある。Simulator 上で ft_tap がガイド一覧を開いた実測の真陽性。
+        // overlay 2(無名 button ← #RichTextLabel / #MultiTextView)は iOS に z が無いことによる
+        // 兄弟重なりで、ios-maps_suggest_keyboard と同型の現状固定
+        "ios-maps_suggest_guides": Counts(ghost: 0, overlay: 2, stacked: 0, misses: 0, disabled: 0,
+                                          offscreen: 0, warnedTappable: 3, keyboard: 0, sliver: 0,
+                                          nested: 1, scrolledOut: 0),
         // 2026-08-08 採取。検索候補 + キーボード(keyboardFrame (0,583 402x233))。
         // keyboard 16 はキーボード下の候補行群(Simulator 上のプローブでタップが顔文字キーに化けた
         // witness と同じ画面・同じ形 = 真陽性)。overlay 11 は候補行の button ← MultiTextView
@@ -78,6 +95,15 @@ final class SweepHarnessTests: XCTestCase {
                                             keyboard: 16),
         "ios-place": Counts(ghost: 0, overlay: 3, stacked: 0, misses: 2, disabled: 0,
                             warnedTappable: 0),
+        // 2026-08-09 採取。**scrolledOut 検知の witness**: 場所カードを送ると
+        // `#MUScrollableStackView` (0,72 402x802) の上へ抜けたガイド欄が frame ごと木に残る。
+        // scrolledOut 3 は容器3枚(`#CuratedGuidesSection` / `#MUCuratedGuidesSectionView` /
+        // その collectionView)。中のセルは「自分の横カルーセルの中」に居るので印が付かず、
+        // 代わりに offscreen(中心が画面の外)で拾われる —— 両者は排他ではなく、重い方を先に言う。
+        // offscreen 13 と warnedTappable 6 は既存検知の素の結果で、全件が画面外の実座標
+        "ios-place_guides_scrolled": Counts(ghost: 0, overlay: 1, stacked: 0, misses: 3,
+                                            disabled: 0, offscreen: 13, warnedTappable: 6,
+                                            keyboard: 0, sliver: 0, nested: 0, scrolledOut: 3),
         "ios-profile": Counts(),
         "sut-cmp_controls": Counts(ghost: 0, overlay: 0, stacked: 0, misses: 0, disabled: 2,
                                    warnedTappable: 2),
@@ -125,8 +151,15 @@ final class SweepHarnessTests: XCTestCase {
             if disabled { c.disabled += 1 }
             let offscreen = !RefGuard.offscreenWarning(e, screen: snap.screen).isEmpty
             if offscreen { c.offscreen += 1 }
+            // **production の関数を通す**(disabled と同じ理由)。判定だけ自前で書くと、
+            // 警告の組み立て側を壊してもこのゲートが落ちない
+            let nested = RefGuard.nestedActionCoveringCentre(e, in: els) != nil
+            if nested { c.nested += 1 }
+            let scrolledOut = !RefGuard.scrolledOutWarning(e, in: els).isEmpty
+            if scrolledOut { c.scrolledOut += 1 }
             if RefGuard.interactiveTypes.contains(e.type),
-               ghost || overlay || misses || stacked.contains(e.ref) || disabled || offscreen {
+               ghost || overlay || misses || stacked.contains(e.ref) || disabled || offscreen
+                || nested || scrolledOut {
                 c.warnedTappable += 1
             }
             if RefGuard.interactiveTypes.contains(e.type),
@@ -163,7 +196,14 @@ final class SweepHarnessTests: XCTestCase {
 
     /// **雑音になっていないこと**: タップ対象のうち警告が付く割合の上限。
     /// 2026-08-07 の実測は実アプリで 0〜10%、自前 SUT の controls 画面だけ 18%
-    /// (契約上の無効ボタン2つ = 真陽性)
+    /// (契約上の無効ボタン2つ = 真陽性)。
+    ///
+    /// **上限を 30% にしたのは 2026-08-09**: `ios-place_guides_scrolled` は
+    /// タップ対象 21 のうち 6 = 28%。内訳はガイドのカルーセル(セル3 + その見出し3)が
+    /// **丸ごとカードの上へ送り出された**もので、6件とも中心が画面外の実座標 = 真陽性。
+    /// 「一画面の三分の一がスクロールで視界の外」という正当な状態が 20% を超えるので、
+    /// **検知の質ではなく画面の状態**で落ちていた。件数そのものの砦は
+    /// testDetectionCountsMatchTheBaseline 側で、こちらは粗い臭い取りに留める
     func testWarningDensityStaysLow() throws {
         let dir = Self.fixtureDirectory
         for file in try FileManager.default.contentsOfDirectory(atPath: dir.path)
@@ -173,7 +213,7 @@ final class SweepHarnessTests: XCTestCase {
             guard !tappable.isEmpty else { continue }
             let warned = Self.counts(snap).warnedTappable
             let percent = warned * 100 / tappable.count
-            XCTAssertLessThanOrEqual(percent, 20,
+            XCTAssertLessThanOrEqual(percent, 30,
                                      "\(file): タップ対象の \(percent)% に警告が付いている"
                                      + " —— 検知ではなく雑音になっていないか見ること")
         }
@@ -192,7 +232,8 @@ final class SweepHarnessTests: XCTestCase {
             print("BASELINE \"\(name)\": Counts(ghost: \(c.ghost), overlay: \(c.overlay),"
                 + " stacked: \(c.stacked), misses: \(c.misses), disabled: \(c.disabled),"
                 + " offscreen: \(c.offscreen), warnedTappable: \(c.warnedTappable),"
-                + " keyboard: \(c.keyboard), sliver: \(c.sliver)),")
+                + " keyboard: \(c.keyboard), sliver: \(c.sliver), nested: \(c.nested),"
+                + " scrolledOut: \(c.scrolledOut)),")
             let els = snap.elements
             for e in els {
                 let who = RefGuard.describe(e)
@@ -217,6 +258,12 @@ final class SweepHarnessTests: XCTestCase {
                 if RefGuard.isClippedSliver(e) {
                     let f = e.frame
                     print("   DETAIL \(name) sliver   \(who) \(Int(f.width))x\(Int(f.height))")
+                }
+                if let nested = RefGuard.nestedActionCoveringCentre(e, in: els) {
+                    print("   DETAIL \(name) nested   \(who) ← \(RefGuard.describe(nested))")
+                }
+                if let scroller = RefGuard.outsideDeclaredScroller(e, in: els) {
+                    print("   DETAIL \(name) scrolled \(who) outside \(RefGuard.describe(scroller))")
                 }
             }
         }
