@@ -128,6 +128,7 @@ class Tags {
   static const btnSessionInc = 'btn_session_inc';
   static const btnResetPersisted = 'btn_reset_persisted';
   static const txtPlatform = 'txt_platform';
+  static const txtLastDeeplink = 'txt_last_deeplink';
 
   // 自己修復。ラベルは不変で id だけ入れ替わる(schema トグル)のが検証の核。
   static const swHealSchema = 'sw_heal_schema';

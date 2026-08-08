@@ -40,7 +40,12 @@ final class CommandDispatchTests: XCTestCase {
             return foregroundMatches[index]
         }
         func foregroundAppID() async throws -> String? { foregroundAppIDValue }
-        func launch(bundleID: String) async throws {}
+        private(set) var launchedBundleIDs: [String] = []
+        private(set) var openURLCalls: [(url: String, bundleID: String?)] = []
+        func launch(bundleID: String) async throws { launchedBundleIDs.append(bundleID) }
+        func openURL(_ url: String, bundleID: String?) async throws {
+            openURLCalls.append((url, bundleID))
+        }
         func snapshot() async throws -> SnapshotResponse {
             snapshotCount += 1
             return SnapshotResponse(
@@ -789,6 +794,84 @@ final class CommandDispatchTests: XCTestCase {
         }
 
         XCTAssertNil(core.finalRecord.scenes.flatMap(\.steps)[0].screenshotData)
+    }
+
+    // MARK: - launchApp / openURL
+
+    /// url なしの launchApp は従来どおり launch(bundleID:) だけを呼び、openURL は一切呼ばないこと
+    /// (「url が nil のときの挙動は1バイトも変えない」契約)
+    func testLaunchAppWithoutURLDoesNotCallOpenURL() {
+        let driver = RecordingDriver()
+        let core = makeCore(driver: driver)
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        scenario {
+            scene(1, "s") {
+                action { launchApp() }
+            }
+        }
+
+        XCTAssertEqual(driver.launchedBundleIDs, ["com.example.app"])
+        XCTAssertTrue(driver.openURLCalls.isEmpty)
+        XCTAssertTrue(core.finalRecord.passed)
+    }
+
+    /// url ありの launchApp は launch → openURL の順で1ステップとして実行すること
+    func testLaunchAppWithURLLaunchesThenDeliversURL() {
+        let driver = RecordingDriver()
+        let core = makeCore(driver: driver)
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        scenario {
+            scene(1, "s") {
+                action { launchApp(url: "fte2e://screen/detail") }
+            }
+        }
+
+        XCTAssertEqual(driver.launchedBundleIDs, ["com.example.app"])
+        XCTAssertEqual(driver.openURLCalls.count, 1)
+        XCTAssertEqual(driver.openURLCalls.first?.url, "fte2e://screen/detail")
+        XCTAssertEqual(driver.openURLCalls.first?.bundleID, "com.example.app")
+        XCTAssertTrue(core.finalRecord.passed)
+    }
+
+    /// bundleID を明示したときは launch/openURL の両方がその bundleID を使うこと(既定 app とは別物)
+    func testLaunchAppWithBundleIDAndURLUsesGivenBundleForBoth() {
+        let driver = RecordingDriver()
+        let core = makeCore(driver: driver)
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        scenario {
+            scene(1, "s") {
+                action { launchApp("com.other.app", url: "fte2e://screen/detail") }
+            }
+        }
+
+        XCTAssertEqual(driver.launchedBundleIDs, ["com.other.app"])
+        XCTAssertEqual(driver.openURLCalls.first?.bundleID, "com.other.app")
+    }
+
+    /// openURL() 単独は core.appBundleID を宛先にドライバへ届くこと(launch は呼ばない)
+    func testOpenURLAloneForwardsAppBundleIDToDriver() {
+        let driver = RecordingDriver()
+        let core = makeCore(driver: driver)
+        FTRuntime.bootstrap(core: core, dslThread: Thread.current)
+        defer { FTRuntime.tearDown() }
+
+        scenario {
+            scene(1, "s") {
+                action { openURL("fte2e://screen/detail") }
+            }
+        }
+
+        XCTAssertTrue(driver.launchedBundleIDs.isEmpty)
+        XCTAssertEqual(driver.openURLCalls.count, 1)
+        XCTAssertEqual(driver.openURLCalls.first?.url, "fte2e://screen/detail")
+        XCTAssertEqual(driver.openURLCalls.first?.bundleID, "com.example.app")
+        XCTAssertTrue(core.finalRecord.passed)
     }
 
     // MARK: - removeApp

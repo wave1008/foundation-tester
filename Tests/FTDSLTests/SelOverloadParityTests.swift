@@ -14,6 +14,7 @@ final class SelOverloadParityTests: XCTestCase {
     private static let nonSelectorStringCommands: Set<String> = [
         "appIs",            // アプリ ID(ニックネーム機構は持たない)
         "clearAppData", "installApp", "launchApp", "removeApp", "restartApp",  // bundleID / パス
+        "openURL",          // ディープリンクの URL
         "tapAppIcon",       // アプリ表示名
         "screenshot",       // ファイル名
         "screenIs",         // 画面の説明文(FM の視覚照合)

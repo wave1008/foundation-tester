@@ -31,6 +31,12 @@ targets:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
+        # ディープリンク(全 SUT 共通契約。E2EAppCMP/docs/ui-contract.md §ディープリンク)。
+        # **ここが生成元**: iosApp/Info.plist は xcodegen が毎ビルド上書きするので直接書かない。
+        CFBundleURLTypes:
+          - CFBundleURLName: com.ftester.e2e
+            CFBundleURLSchemes:
+              - fte2ecmp
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.ftester.e2e

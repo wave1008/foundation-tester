@@ -67,6 +67,25 @@ struct AppShell: View {
                 TaggedButton(tag: Tags.tabAbout, label: "情報", fillWidth: true) { switchTab(.about) }
             }
         }
+        .onOpenURL { handleDeepLink($0) }
+    }
+
+    // launchApp(url:) の再起動直後・実行中の openURL のどちらも SwiftUI がここへ集約して配送する。
+    // 起動時リセット(@State の初期値 = ホームのルート)の後に適用される順序になる(契約 §ディープリンク)。
+    // 未知の URL は #txt_last_deeplink の記録だけ行い、ナビは変えない(既存のタブ/画面状態を壊さない)。
+    private func handleDeepLink(_ url: URL) {
+        DeepLinkState.shared.lastURL = url.absoluteString
+        guard url.scheme == "fte2eios", url.host == "screen" else { return }
+        switch url.path {
+        case "/selector":
+            tab = .home
+            homeChild = .selector
+        case "/lifecycle":
+            tab = .home
+            homeChild = .lifecycle
+        default:
+            break
+        }
     }
 
     @ViewBuilder private var content: some View {

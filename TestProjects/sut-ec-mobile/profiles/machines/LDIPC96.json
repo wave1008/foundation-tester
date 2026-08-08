@@ -53,6 +53,18 @@
         "simulator": "iPhone 17 Pro(iOS 27.0)-08",
         "os": "27.0",
         "udid": "257324AF-D10D-42DE-AD7D-ADB682E8365F"
+      },
+      {
+        "name": "iPhone 17 Pro(iOS 27.0)-09",
+        "simulator": "iPhone 17 Pro(iOS 27.0)-09",
+        "os": "27.0",
+        "udid": "2A7FBD43-4A72-44DA-AB95-EED23B1B3B6D"
+      },
+      {
+        "name": "iPhone 17 Pro(iOS 27.0)-10",
+        "simulator": "iPhone 17 Pro(iOS 27.0)-10",
+        "os": "27.0",
+        "udid": "AF99951F-FB48-4D6A-9BB2-BBCE8CFEEC8B"
       }
     ]
   },

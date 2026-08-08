@@ -218,6 +218,15 @@ public final class AppAttachDriver: AppDriver {
 
     public func screenshot() async throws -> Data { try await client.screenshot() }
     public func status() async throws -> StatusResponse { try await client.status() }
+    // simctl/devicectl 経由のホスト操作でセッション不要(isAppForeground と同じくそのまま使える)
+    public func openURL(_ url: String, bundleID: String?) async throws {
+        try await client.openURL(url, bundleID: bundleID)
+    }
+    /// **素通しが必須**: 既定実装(no-op)に落ちると、hybrid で WebViewDelegatingDriver がこの
+    /// インスタンス(XCUITest 接続=springboard を見られる側)へ回した同意ステップが握りつぶされる
+    public func acknowledgeOpenURLConsentIfPresent(bundleID: String) async {
+        await client.acknowledgeOpenURLConsentIfPresent(bundleID: bundleID)
+    }
 
     // ライフサイクル・install/uninstall はアプリ本体(primary=in-app)が担う。attach 用では no-op。
     public func install(packagePath: String) async throws {}

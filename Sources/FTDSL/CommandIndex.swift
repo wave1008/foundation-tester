@@ -270,8 +270,11 @@ public enum DSLCommandIndex {
               "Asserts the value is not empty. The target is the element grabbed last.", chainable: true),
 
         // MARK: app
-        .init("launchApp", "app", "launchApp(bundleID?)",
-              "Launches the app, or brings it to the front when already running."),
+        .init("launchApp", "app", "launchApp(bundleID?, url:?)",
+              "Terminates (if running) and launches the app fresh, starting at the entry screen."
+                  + " With url:, also delivers the URL right after launch."),
+        .init("openURL", "app", "openURL(url)",
+              "Delivers a URL (deep link) to the already-running app without restarting it."),
         .init("restartApp", "app", "restartApp(bundleID?)",
               "Terminates and launches again, resetting in-process state."),
         .init("terminateApp", "app", "terminateApp()",

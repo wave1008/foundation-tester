@@ -28,6 +28,12 @@ targets:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
+        # ディープリンク(全 SUT 共通契約。E2EAppCMP/docs/ui-contract.md §ディープリンク)。
+        # Universal Links は使わない(AASA 取得状態に依存するため)。
+        CFBundleURLTypes:
+          - CFBundleURLName: com.ftester.e2e.ios
+            CFBundleURLSchemes:
+              - fte2eios
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.ftester.e2e.ios

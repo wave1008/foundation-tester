@@ -51,6 +51,15 @@ public protocol AppDriver {
     /// 権限ダイアログを何度でも再現するためのもので、再インストールは伴わない。
     /// 実行前にアプリを終了する(起動中に消すとプロセスが持っている状態が書き戻る)
     func clearAppData(bundleID: String) async throws
+    /// アプリへ URL(ディープリンク)を配送する。**起動済みのアプリへ投げる**のが本来の用途。
+    /// bundleID は Android の intent 宛先指定と、iOS in-app の再注入起動にだけ使う
+    func openURL(_ url: String, bundleID: String?) async throws
+    /// openURL 直後に OS(iOS: SpringBoard)が出す初回確認アラートを、可能なら自動了承する
+    /// (ベストエフォート。同意は端末+アプリの組で永続するため以後の openURL では不要になる)。
+    /// springboard を見られない接続(in-app ブリッジ等)では何もしない。
+    /// **プロトコル要件として宣言すること**(install(packagePath:) と同じ理由。存在型越しの呼び出しは
+    /// 要件でなければ静的ディスパッチで既定実装に落ち、実装したドライバが無視される)
+    func acknowledgeOpenURLConsentIfPresent(bundleID: String) async
     /// 次の snapshot() 呼び出しでだけキーボード表示状態(SnapshotResponse.keyboardShown)を採る。
     /// StepExecutor が keyboardShown/keyboardNotShown アサートの直前に呼ぶ。既定は no-op
     /// (iOS はツリー走査中に常に判定できるため不要)。Android は dumpsys 呼び出しが固定費なので、
@@ -208,6 +217,14 @@ public extension AppDriver {
     func clearAppData(bundleID: String) async throws {
         throw DriverError.badResponse(status: 501, body: "This driver does not support clearing app data")
     }
+
+    func openURL(_ url: String, bundleID: String?) async throws {
+        throw DriverError.badResponse(status: 501, body: "This driver does not support opening a URL")
+    }
+
+    /// 既定は no-op: 実装を持つのは springboard の /session を張れる接続(BridgeClient=XCUITest
+    /// 接続)だけ。他のドライバは黙って通す(取りこぼしより誤爆を避ける側に倒す)
+    func acknowledgeOpenURLConsentIfPresent(bundleID: String) async {}
 
     func captureKeyboardStateOnNextSnapshot() {}
 

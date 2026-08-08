@@ -64,6 +64,41 @@ public final class InAppDriver: AppDriver {
         try await terminate()
         try client.clearAppDataOnSimulator(bundleID: bundleID, target: target)
     }
+    /// URL(ディープリンク)を配送する。**`simctl openurl` は環境変数を渡せない**ため、
+    /// アプリが死んでいる状態で撃つと dylib 未注入のまま起動しブリッジごと死ぬ(注入起動は
+    /// launch()/InAppLauncher.relaunch が唯一の経路)。/status で生死を probe し、
+    /// **接続拒否のときだけ** launch() 経由で注入起動してから配送する(生きていれば再起動せず warm 配送)。
+    /// 対象は bundleID 引数 → 直近 launch した lastBundleID の順。どちらも無ければ、死んでいた場合に
+    /// 何へ注入起動すればよいか分からないため明確なエラーで止める
+    public func openURL(_ url: String, bundleID: String?) async throws {
+        guard let target = bundleID ?? lastBundleID else {
+            throw DriverError.badResponse(status: 400,
+                body: "openURL needs a bundleID: none was given and no app has been launched yet on"
+                    + " this in-app engine, so there is nothing to relaunch into if the bridge is unreachable")
+        }
+        // **再起動するのは「接続を拒否された」= プロセスが居ないときだけ**。無応答(タイムアウト)は
+        // **サスペンド中の生存プロセス**でも起きる —— 背面に回った in-app アプリは TCP を受理して
+        // 何も返さない(docs/verification.md)。そこを死と読むと、`home()` の後の openURL が
+        // warm 配送のはずが毎回プロセス再起動になり、in-process の状態を黙って捨てる
+        // (同じシナリオが xcuitest エンジンとだけ挙動が食い違う)。サスペンドなら
+        // simctl openurl 自体が前面化して配送するので、こちらから起こす必要はない
+        do {
+            _ = try await client.status(timeout: 3)
+        } catch DriverError.bridgeConnectionRefused {
+            try await launch(bundleID: target)
+        } catch {
+            // 無応答・その他はそのまま配送を試みる
+        }
+        try await withCrashContext { try await client.openURL(url, bundleID: target) }
+    }
+
+    /// in-app ブリッジは自分の bundle 以外の /session を張れないので、この接続では実際には
+    /// 何も押せない(client 側が 409 で抜けて未記録のまま次の接続に委ねる)。**それでも転送する** ——
+    /// 既定の no-op のままにすると「試したのか、試せなかったのか」がコードから読めなくなる
+    public func acknowledgeOpenURLConsentIfPresent(bundleID: String) async {
+        await client.acknowledgeOpenURLConsentIfPresent(bundleID: bundleID)
+    }
+
     public func snapshot() async throws -> SnapshotResponse {
         try await normalizedSnapshot { try await self.client.snapshot() }
     }

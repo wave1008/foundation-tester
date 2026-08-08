@@ -39,12 +39,27 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     guard let appDelegate = UIApplication.shared.delegate as? AppDelegate else { return }
 
     let window = UIWindow(windowScene: windowScene)
+    // cold launch 経由のディープリンク(launchApp(url:))。UIScene 採用アプリでは
+    // didFinishLaunchingWithOptions の launchOptions に URL が乗らず、ここの
+    // connectionOptions.urlContexts に来る。RCTLinkingManager.getInitialURL() が読む
+    // UIApplicationLaunchOptionsURLKey へ詰め替えて渡す(契約 E2EAppCMP/docs/ui-contract.md §ディープリンク)。
+    var launchOptions: [AnyHashable: Any] = [:]
+    if let url = connectionOptions.urlContexts.first?.url {
+      launchOptions[UIApplication.LaunchOptionsKey.url] = url
+    }
     appDelegate.reactNativeFactory?.startReactNative(
       withModuleName: "FTE2ERN",
       in: window,
-      launchOptions: nil
+      launchOptions: launchOptions
     )
     self.window = window
+  }
+
+  // warm 経由(openURL: プロセス起動済みへの配送)。RCTLinkingManager が NSNotification を post し、
+  // JS の Linking 'url' イベントへ配送される。
+  func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
+    guard let url = URLContexts.first?.url else { return }
+    RCTLinkingManager.application(UIApplication.shared, open: url, options: [:])
   }
 }
 

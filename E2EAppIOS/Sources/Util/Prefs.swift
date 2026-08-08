@@ -42,3 +42,9 @@ final class SessionCounter: ObservableObject {
     static let shared = SessionCounter()
     @Published var value = 0
 }
+
+// ディープリンクで受け取った URL 全体。永続しない(プロセス内メモリのみ。契約 §ディープリンク)。
+final class DeepLinkState: ObservableObject {
+    static let shared = DeepLinkState()
+    @Published var lastURL = "-"
+}

@@ -1248,6 +1248,39 @@ iOS と同型の常駐ブリッジを追加した(`AndroidRunner/`、自作 inst
 - `ios { } / android { }`: 対象 OS のときだけ実行する。**中身が実行されなかったことは警告しない**
   (ブロックに何が書かれているかは実行しないと分からないため)
 
+### ディープリンク配送(`openURL`/`launchApp(url:)`。2026-08-09)
+
+- `openURL(url)` = 起動済みアプリへの warm 配送(**再起動しない**)。`launchApp(bundleID?, url:)` は
+  restartApp 相当の再起動 → 同じ配送を1コマンドにまとめたもの
+- **配送はホスト側の外部コマンドで行い、ブリッジを経由しない**(ブリッジ版を上げる必要が無い):
+  iOS シミュレータ = `xcrun simctl openurl` / iOS 実機 = `xcrun devicectl device process openURL`
+  (**未実行検証**)/ Android = `adb shell am start -W -a android.intent.action.VIEW -d '<url>' <package>`
+- **Android は URL をシングルクォートで包む**(`adb shell` の先はデバイス側シェルなので、
+  クォート無しだと URL 内の `&` でコマンドが切れる)。**package は必ず付ける**
+  (明示パッケージは解決先をそのアプリに固定し、App Links の検証状態に依存させない)
+- **`am start` の失敗判定は `Error:` の有無だけ**。`Warning: Activity not started, intent has
+  been delivered to currently running top-most instance.` は**成功**(singleTop アプリへの
+  warm 配送の通常応答)。ここを失敗扱いにすると Flutter/RN への配送が全滅する
+
+### openURL 後の SpringBoard 確認アラート自動了承(iOS。2026-08-09)
+
+- iOS 27 のシミュレータはカスタムスキームの `openurl` に対し「"<表示名>"で開きますか?」の
+  確認アラートを出すことがある(アプリが前面でも・スキーム登録が1アプリだけでも出る)。
+  **同意は端末+アプリの組で永続する**(以後は無警告で配送される)
+- **アラートはアプリスコープのスナップショットに1要素も現れない** —— `com.apple.springboard` へ
+  attach したときだけ木に出る(既存の springboard 参照 SystemUIDriver/fallbackDriver と同じ経路。
+  「type の受け皿にできない」制約とは別用途)。アプリ側から見ると「何も起きなかった」ようにしか
+  見えず、沈黙して失敗する
+- ftester の対処: `openURL` 直後に springboard へ attach → アラートを同定 → 確定ボタンを押す →
+  対象アプリへ戻す。**`(デバイス, bundleID)` ごとにプロセス内で1回だけ**試みる
+- **同定条件**(3つとも満たさなければ何も押さない): アラートの label が**表示名を引用符で
+  囲んだ形**(`"名前"`)を含む / ボタンが**ちょうど2つ** / 押すのは**ツリー順で最後**
+  (右側=確定)。**素の部分一致にしてはいけない** —— 表示名は互いの部分文字列になり得る
+  (`FT E2E` ⊂ `FT E2E RN`。iOS の4 SUT が同居する E2E シミュレータで実際に起き得る形)
+- **in-app エンジン単独では自動了承できない**(in-app ブリッジの `/session` は自分の bundle
+  以外を 409 で拒否するため springboard を見られない)。hybrid 構成では XCUITest 側の接続が
+  受け持つ。4 SUT の `ios-inapp` プロファイル全緑で hybrid 経路の動作を確認済み
+
 ### Shirates(Classic) 準拠の方針と承認済みの差分(2026-08-04 更新)
 
 **コマンド名・引数名・既定値・挙動は Shirates(Classic) をそのまま踏襲する**。独自の「改良」を

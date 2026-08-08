@@ -7,6 +7,8 @@
 - applicationId: `com.ftester.e2e.android`(Compose 版 `com.ftester.e2e` と共存できる)
 - `#txt_about_app` は `app=com.ftester.e2e.android`
 - シナリオ: `TestProjects/E2E-Android/scenarios/`
+- ディープリンク: `MainActivity` は `android:launchMode="singleTop"` + `onNewIntent`(`singleTask` は
+  タスクを畳んで既存シナリオの launch 挙動に影響し得るため避けた)。
 
 ## `textAllCaps` を必ず切る(2026-08-06)
 

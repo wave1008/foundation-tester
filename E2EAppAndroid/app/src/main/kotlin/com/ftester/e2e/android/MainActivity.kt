@@ -1,5 +1,7 @@
 package com.ftester.e2e.android
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.widget.Button
@@ -39,6 +41,30 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.tab_controls).setOnClickListener { switchTab(Tab.CONTROLS) }
         findViewById<Button>(R.id.tab_about).setOnClickListener { switchTab(Tab.ABOUT) }
 
+        // 起動時リセット(ホームのルート)を先に確定させてからディープリンクを適用する
+        // (E2EAppCMP/docs/ui-contract.md §ディープリンク)。
+        render()
+        handleDeepLink(intent)
+    }
+
+    // singleTop: 既に前面にいるプロセスへ届いたときは onCreate を経由せずここが呼ばれる。
+    // setIntent() を呼ばないと次回 getIntent() が古い intent を返す(標準の罠)。
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleDeepLink(intent)
+    }
+
+    private fun handleDeepLink(intent: Intent?) {
+        val uri = intent?.data ?: return
+        DeepLinkState.lastUrl = uri.toString()
+        val screen = routeDeepLink(uri)
+        if (screen != null) {
+            tab = Tab.HOME
+            homeChild = screen
+        }
+        // 未知の URL は render() だけ行い遷移しない(ライフサイクル画面が開いていれば
+        // #txt_last_deeplink の表示を更新するため)。
         render()
     }
 
@@ -79,6 +105,17 @@ class MainActivity : AppCompatActivity() {
             }
         }
         container.addView(view)
+    }
+
+    // 契約表(E2EAppCMP/docs/ui-contract.md §ディープリンク)の2行だけをルーティングする。
+    // クエリは見ない(uri.path はクエリを含まない)。未知の host/path は null = 遷移しない。
+    private fun routeDeepLink(uri: Uri): Screen? {
+        if (uri.scheme != "fte2eandroid" || uri.host != "screen") return null
+        return when (uri.path) {
+            "/selector" -> Screen.SELECTOR
+            "/lifecycle" -> Screen.LIFECYCLE
+            else -> null
+        }
     }
 
     private fun titleFor(): String = when (tab) {

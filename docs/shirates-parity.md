@@ -180,6 +180,7 @@ ftester の Swift DSL は **Shirates(Classic)に準拠**している(コマン�
 | `screenshot` | `screenshot(filename:?)` | ✅ 2026-08-03 **`filename` のみ**(他3引数は Shirates の auto-screenshot 機構の制御で、ftester は毎操作の自動撮影を持たない)。画像はレポートの該当ステップ直後に埋め込む。失敗時の証跡・MCP `ft_screenshot` とは別経路 |
 | — | `home()` / `back()` | 🟢 OS 差を吸収した1コマンド |
 | — | `clearAppData(bundleID?)` | 🟢 再インストール不要でアプリデータ**と権限**を消す。初回起動・オンボーディング・権限ダイアログのテストが書ける(iOS はシミュレータ専用。キーチェーン/Keystore の値は残る) |
+| — | `openURL(url)` / `launchApp(url:)` | 🟢 2026-08-08 ディープリンク配送。**アプリを再起動せず**今の画面の上に遷移を積む(warm)。Shirates に対応物は無い |
 
 ## 記述子・レポート・テストフロー
 

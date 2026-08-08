@@ -1949,15 +1949,30 @@ public struct FTElement {
 
 // MARK: - アプリ制御
 
-/// アプリを起動する(引数省略時は @TestClass の app)
-public func launchApp(_ bundleID: String? = nil,
+/// アプリを起動する(引数省略時は @TestClass の app)。url を渡すと「起動 → URL 配送」を
+/// 1ステップで行う(driver.openURL が再起動直後の warm な状態へそのまま届く)
+public func launchApp(_ bundleID: String? = nil, url: String? = nil,
                       file: StaticString = #filePath, line: UInt = #line) {
     let core = FTRuntime.requireCore(command: "launchApp")
     let bundle = bundleID ?? core.appBundleID
     let driver = core.driver
-    core.performCustom(description: "launch \(bundle)", file: file, line: line,
+    let description = url.map { "launch \(bundle) and open \($0)" } ?? "launch \(bundle)"
+    core.performCustom(description: description, file: file, line: line,
                        launchTiming: { driver.lastLaunchTiming }) {
         try await driver.launch(bundleID: bundle)
+        if let url {
+            try await driver.openURL(url, bundleID: bundle)
+        }
+    }
+}
+
+/// 起動済みのアプリへ URL(ディープリンク)を配送する。画面遷移を飛ばして目的の画面から
+/// 始めるためのもの
+public func openURL(_ url: String, file: StaticString = #filePath, line: UInt = #line) {
+    let core = FTRuntime.requireCore(command: "openURL")
+    let driver = core.driver
+    core.performCustom(description: "openURL \"\(url)\"", file: file, line: line) {
+        try await driver.openURL(url, bundleID: core.appBundleID)
     }
 }
 

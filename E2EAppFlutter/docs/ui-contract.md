@@ -24,6 +24,11 @@ Flutter の semantics ツリーは**支援技術が要求したときだけ**構
 「identifier だけのノード」と「label だけのノード」に割れる。`MergeSemantics` で
 1ノードに畳む(`lib/widgets.dart` の `tagged()`)。
 
+## ディープリンクの受け取り方式
+
+自前 `MethodChannel`(`com.ftester.e2e.flutter/deeplink`)を採用。標準の Flutter deep linking
+(`flutter/navigation` route push)は、本アプリが Navigator の名前付きルートでなく手動 State でタブ/画面を管理しているため不採用。
+
 ## Flutter 固有の罠(すべて実測で踏んだもの)
 
 ### A. `Slider` に `MergeSemantics` を被せると **iOS の a11y ツリーが丸ごと空になる**
