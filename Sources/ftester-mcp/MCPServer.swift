@@ -177,6 +177,15 @@ final class MCPServer {
                 if case .ios(let provisioned, _) = target { provisioned.physical ? "xcuitest" : provisioned.engine }
                 else { "android" }
             }()
+            // engine=xcuitest はブリッジが uiFramework を申告しないが、profile 経由なら
+            // 対象 bundleID が分かるのでバンドルのマーカーで判定して覚える(scroll_to の
+            // 空打ちゲート用。DSL の xcuitest 経路と同じ判定 = AppBundleInspector)
+            if case .ios(let provisioned, let iosApp) = target, !provisioned.physical,
+               engines[key] == "xcuitest", let bundleID = iosApp?.bundleID,
+               let hint = AppBundleInspector.detect(
+                   udid: provisioned.udid, bundleID: bundleID, physical: false) {
+                uiFrameworkHints[key] = hint
+            }
             // **profile 経由でも宛先を記録する**(2026-08-06)。ここが空だと ft_status が
             // 「どこに繋がっているか」を出せず、**同名のデバイスが並ぶフリートでどの1台か
             // 分からない** —— Android の status.device は全エミュレータで
@@ -605,18 +614,20 @@ final class MCPServer {
             scrollFrame: (args["scrollFrame"] as? String).map { FTSelector.parse($0).primary })
         // releasesScrollTouch は **iOS だけ true**(Android では 2pt のドラッグがクリックとして
         // 発火する。StepExecutor の宣言参照)。ここを取り違えると探索直後に行が勝手に選択される
-        // uiFramework ヒントは in-app/hybrid の自己申告(status)を engineKey ごとに1回だけ
-        // 取得して使い回す。Android は releasesScrollTouch=false で無関係・xcuitest はブリッジが
-        // 申告せず MCP は対象 bundleID も持たない(任意の前面アプリを駆動する)ためマーカー判定も
-        // できない → どちらも nil(**既知の残穴**: engine=xcuitest の RN アプリでは ft_scroll_to の
-        // 空打ちが残る。利用者の既定 hybrid では自己申告が効くので発生しない)
+        // uiFramework ヒント: xcuitest は profile 経由ならドライバ生成時にバンドルマーカーで
+        // 判定済み(uiFrameworkHints)。in-app/hybrid は自己申告(status)を engineKey ごとに
+        // 1回だけ取得して使い回す。Android は releasesScrollTouch=false で無関係。
+        // **残穴は profile 無しの xcuitest だけ**(任意の前面アプリを駆動するため対象 bundleID が
+        // 無くマーカー判定もできない → nil = 空打ちは従来どおり打たれる)
         let engineForKey = engines[Self.engineKey(args)]
         let isAndroid = engineForKey == "android" || scrollDriver is AndroidDriver
         let uiFrameworkHint: String?
-        if isAndroid || engineForKey == "xcuitest" {
+        if isAndroid {
             uiFrameworkHint = nil
         } else if let cached = uiFrameworkHints[Self.engineKey(args)] {
             uiFrameworkHint = cached
+        } else if engineForKey == "xcuitest" {
+            uiFrameworkHint = nil
         } else {
             uiFrameworkHint = (try? await scrollDriver.status())?.uiFramework
             if let hint = uiFrameworkHint { uiFrameworkHints[Self.engineKey(args)] = hint }

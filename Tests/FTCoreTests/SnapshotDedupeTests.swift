@@ -171,6 +171,40 @@ final class SnapshotDedupeTests: XCTestCase {
         XCTAssertFalse(SnapshotDedupe.isRedundant(candidate, alreadyEmitted: [earlier]))
     }
 
+    // MARK: - dropLabelTwinsInsideButtons(RN Android の内側 Text 双子。2026-08-08 実測)
+
+    /// RN の実測形: button と同ラベル・無 id・frame ごと内包される staticText は落ちる
+    func testLabelTwinInsideButtonIsDropped() {
+        let button = element(ref: 1, type: "button", id: "nav_selector", label: "セレクタ",
+                             x: 42, y: 379, w: 996, h: 126)
+        let twin = element(ref: 2, type: "staticText", label: "セレクタ",
+                           x: 456, y: 411, w: 167, h: 62)
+        let out = SnapshotDedupe.dropLabelTwinsInsideButtons([button, twin])
+        XCTAssertEqual(out.map(\.ref), [1])
+    }
+
+    /// ラベルが違う内包テキストは別物なので残す(View/XML のカスタム行等)
+    func testContainedTextWithDifferentLabelSurvives() {
+        let button = element(ref: 1, type: "button", label: "行を開く", x: 0, y: 0, w: 996, h: 126)
+        let detail = element(ref: 2, type: "staticText", label: "詳細", x: 40, y: 30, w: 100, h: 40)
+        XCTAssertEqual(SnapshotDedupe.dropLabelTwinsInsideButtons([button, detail]).count, 2)
+    }
+
+    /// id を持つテキストは指せる資産なので、同ラベル内包でも落とさない
+    func testContainedTextWithIdentifierSurvives() {
+        let button = element(ref: 1, type: "button", label: "送信", x: 0, y: 0, w: 200, h: 100)
+        let echo = element(ref: 2, type: "staticText", id: "txt_send", label: "送信",
+                           x: 20, y: 20, w: 80, h: 40)
+        XCTAssertEqual(SnapshotDedupe.dropLabelTwinsInsideButtons([button, echo]).count, 2)
+    }
+
+    /// button の枠外にある同ラベルテキストは残す(見出しとボタンの正当な同名)
+    func testSameLabelTextOutsideButtonSurvives() {
+        let button = element(ref: 1, type: "button", label: "設定", x: 0, y: 500, w: 200, h: 100)
+        let heading = element(ref: 2, type: "staticText", label: "設定", x: 0, y: 0, w: 200, h: 40)
+        XCTAssertEqual(SnapshotDedupe.dropLabelTwinsInsideButtons([button, heading]).count, 2)
+    }
+
     /// **匿名どうし**の同枠 scroll 双子は従来どおり畳む(広く残すと既存 SUT の序数と
     /// 間引き枠がずれる。ガードは id 持ち = 統合材料の形だけに絞る)
     func testIsRedundantStillDropsAnAnonymousScrollableTwin() {

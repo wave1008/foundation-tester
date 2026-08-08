@@ -59,9 +59,10 @@ export function InputScreen() {
         <TaggedButton testID={Tags.btnInputClear} label="入力クリア" fillWidth onPress={clearAll} />
       </View>
       <EchoText testID={Tags.echoMultiline}>{`multiline=${multiline.replace(/\n/g, ' ')}`}</EchoText>
+      {/* accessibilityLabel は付けない: iOS の RCTUITextView は明示ラベルと placeholder を
+          連結して「複数行 複数行」と報告する(2026-08-08 実測)。placeholder 単独に任せる */}
       <TextInput
         testID={Tags.fieldMultiline}
-        accessibilityLabel="複数行"
         placeholder="複数行"
         value={multiline}
         onChangeText={setMultiline}

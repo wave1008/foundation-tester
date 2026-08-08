@@ -90,7 +90,11 @@ public enum ExploreDriverResolver {
                 // **無言で落とさない**: 同名シミュレータが複数だと udid を引けず、エンジンだけが
                 // 静かに変わる(ジェスチャの効き方が変わって見える)。上の分岐と同じ扱い
                 logger(Self.unidentifiedSimulatorNote(port: port, repoRoot: repoRoot))
-                return Resolved(driver: BridgeClient(port: port, host: endpoint.host), engine: "xcuitest")
+                // 縮退でも SessionRecoveryDriver で包む(通常経路と同じ。素の BridgeClient だと
+                // スナップショット正規化=ラッパー統合が掛からず、同じ画面で挙動が割れる)
+                return Resolved(driver: SessionRecoveryDriver(
+                                    base: BridgeClient(port: port, host: endpoint.host)),
+                                engine: "xcuitest")
             }
             logger("port \(port) is an in-app bridge — using it (no XCUITest bridge for fallback:"
                 + " home/appSwitcher/drag and coordinate press are unavailable)")
@@ -99,7 +103,8 @@ public enum ExploreDriverResolver {
         case .hybrid(let inappPort, let xcuiPort, let bundleID):
             guard let repoRoot, let udid else {
                 logger(Self.unidentifiedSimulatorNote(port: inappPort, repoRoot: repoRoot))
-                return Resolved(driver: BridgeClient(port: xcuiPort, host: resolution.endpoint.host),
+                return Resolved(driver: SessionRecoveryDriver(
+                                    base: BridgeClient(port: xcuiPort, host: resolution.endpoint.host)),
                                 engine: "xcuitest")
             }
             logger("port \(inappPort) is an in-app bridge — driving it with the XCUITest bridge"

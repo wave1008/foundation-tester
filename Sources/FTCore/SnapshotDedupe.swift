@@ -79,4 +79,32 @@ public enum SnapshotDedupe {
         }
         return result.enumerated().compactMap { indicesToRemove.contains($0.offset) ? nil : $0.element }
     }
+
+    /// RN(Android)の Pressable は accessible でも子の Text が別ノードで出て、button と同ラベルの
+    /// staticText が並ぶ(2026-08-08 実測。ブリッジは a11y 非重要ビューも採るためアプリ側では隠せない)。
+    /// 素のラベルセレクタが曖昧になり `.staticText[n]` の序数も水増しされるので、
+    /// **直前の button に frame ごと内包される同ラベル・無 id の staticText** を落とす。
+    /// View/XML の Button はテキスト内蔵(子ノード無し)・Compose は単一ノードなので既存 SUT では発火しない。
+    public static func dropLabelTwinsInsideButtons(_ elements: [ElementInfo]) -> [ElementInfo] {
+        var buttons: [ElementInfo] = []
+        return elements.filter { element in
+            if element.type == "button" || element.type == "Button" {
+                buttons.append(element)
+                return true
+            }
+            guard element.type == "staticText" || element.type == "StaticText",
+                  element.identifier == nil, let label = element.label
+            else { return true }
+            let twin = buttons.contains { b in
+                b.label == label && contains(b.frame, element.frame)
+            }
+            return !twin
+        }
+    }
+
+    private static func contains(_ outer: FTRect, _ inner: FTRect) -> Bool {
+        inner.x >= outer.x - frameTolerance && inner.y >= outer.y - frameTolerance
+            && inner.x + inner.width <= outer.x + outer.width + frameTolerance
+            && inner.y + inner.height <= outer.y + outer.height + frameTolerance
+    }
 }
