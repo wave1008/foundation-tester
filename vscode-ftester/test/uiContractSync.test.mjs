@@ -20,6 +20,7 @@ const SUT_CONTRACTS = [
   "E2EAppIOS/docs/ui-contract.md",
   "E2EAppAndroid/docs/ui-contract.md",
   "E2EAppFlutter/docs/ui-contract.md",
+  "E2EAppRN/docs/ui-contract.md",
 ];
 
 const ID_PATTERN = /#[a-z][a-z0-9_]*/g;
