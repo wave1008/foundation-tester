@@ -27,6 +27,9 @@ final class DefaultImplementationForwardingTests: XCTestCase {
         // back / appSwitcher は systemDriver(hybrid では AppAttachDriver)が受けるため到達しない
         "SystemUIDriver.back": "springboard 参照専用。back は systemDriver が受ける",
         "SystemUIDriver.openAppSwitcher": "同上(appSwitcher も systemDriver が受ける)",
+        // openURL は hybrid では withFallback(primary=in-app → fallback=XCUITest)だけを通り、
+        // systemDriver 経路には乗らない。配送先アプリを持たないこのクラスへは到達しない
+        "SystemUIDriver.openURL": "springboard 参照専用。openURL は primary/fallback が受ける",
     ]
 
     /// オーバーロードがあり、名前だけでは検出できない操作の実シグネチャ

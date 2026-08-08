@@ -115,6 +115,51 @@ public final class AndroidDriver: AppDriver {
         persistState()
     }
 
+    /// URL(ディープリンク)を配送する。`am start -W` は遷移完了を待つ。package は bundleID が
+    /// 非 nil のときだけ付ける(付けないとチューザ/ブラウザへ流れず対象アプリへ直行する)。
+    /// 画面遷移を伴うため直前の ref は無効(launch と同じ理由: 次の snapshot 前に古い ref で
+    /// タップされると誤爆する)
+    public func openURL(_ url: String, bundleID: String?) async throws {
+        let result = try adb(try Self.amStartArgs(url: url, package: bundleID))
+        guard result.status == 0, !Self.amStartIndicatesFailure(output: result.output) else {
+            throw DriverError.badResponse(status: Int(result.status),
+                body: "failed to open the URL via am start: \(result.tail)")
+        }
+        refCenters = [:]
+        if let bundleID { currentPackage = bundleID }
+        persistState()
+    }
+
+    /// URL をデバイス側シェルへ渡すためにシングルクォートで包む。`adb shell` はクライアント側の
+    /// 複数引数を空白結合してからデバイス側シェルへ渡す(execve 直結ではない)ため、`&`/`?` 等の
+    /// シェル特殊文字を筒抜けにしないためにこちらで引用する。URL 自体にシングルクォートを含む場合は
+    /// 安全に引用できないため throw する(黙って壊れた URL を送らない)
+    static func quoteURLForDeviceShell(_ url: String) throws -> String {
+        guard !url.contains("'") else {
+            throw DriverError.badResponse(status: 400,
+                body: "cannot deliver a URL containing a single quote via adb shell"
+                    + " (it would break the quoting): \(url)")
+        }
+        return "'\(url)'"
+    }
+
+    /// `adb shell am start -W -a android.intent.action.VIEW -d '<url>' [<package>]` の引数列
+    static func amStartArgs(url: String, package: String?) throws -> [String] {
+        var args = ["shell", "am", "start", "-W", "-a", "android.intent.action.VIEW",
+                    "-d", try quoteURLForDeviceShell(url)]
+        if let package { args.append(package) }
+        return args
+    }
+
+    /// am start は失敗しても exit 0 で stdout に "Error:" を出すことがある(intent 解決失敗等)ので
+    /// 出力も見る。**判定材料は "Error:" だけ** —— `Warning: Activity not started, intent has been
+    /// delivered to currently running top-most instance.` は**成功**(既に前面にある同じ Activity の
+    /// onNewIntent へ配送済み = ディープリンクの warm 配送そのもの)で、singleTop の SUT では
+    /// これが通常の応答になる。ここを失敗にすると Flutter/RN の配送が全滅する(2026-08-08 に実測)
+    static func amStartIndicatesFailure(output: String) -> Bool {
+        output.contains("Error:")
+    }
+
     public func install(packagePath: String) async throws {
         let result = try adb(["install", "-r", packagePath])
         guard result.output.contains("Success") else {

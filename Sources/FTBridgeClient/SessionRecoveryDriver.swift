@@ -98,6 +98,13 @@ public final class SessionRecoveryDriver: AppDriver {
     public func uninstall(bundleID: String) async throws { try await base.uninstall(bundleID: bundleID) }
     // install と同じくセッション不要の host 側操作なので回復なしで素通し
     public func clearAppData(bundleID: String) async throws { try await base.clearAppData(bundleID: bundleID) }
+    // simctl/devicectl 経由で /session を経ないため 409(セッション消失)を踏まない。install と同じ扱い
+    public func openURL(_ url: String, bundleID: String?) async throws {
+        try await base.openURL(url, bundleID: bundleID)
+    }
+    public func acknowledgeOpenURLConsentIfPresent(bundleID: String) async {
+        await base.acknowledgeOpenURLConsentIfPresent(bundleID: bundleID)
+    }
     // /appstate はセッション不要の読み取りなので withRecovery を挟まず素通し(install と同じ扱い)
     public func isAppForeground(bundleID: String) async throws -> Bool {
         try await base.isAppForeground(bundleID: bundleID)

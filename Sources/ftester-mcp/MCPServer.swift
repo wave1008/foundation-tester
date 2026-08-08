@@ -1157,6 +1157,19 @@ final class MCPServer {
             launchedBundleIDs[Self.engineKey(args)] = bundleID
             return text("Launched: \(bundleID)")
 
+        case "ft_open_url":
+            guard let url = args["url"] as? String else { throw MCPError("url is required") }
+            let openURLDriver = try await driver(args)
+            let openURLBundleID = args["bundleId"] as? String ?? launchedBundleIDs[Self.engineKey(args)]
+            // installedState は撃たない: simctl openurl/devicectl openURL・am start は OS の URL
+            // ルーティングで、installedState が守っている XCUIApplication.launch() のランナー死
+            // (ft_launch のコメント参照)とは経路が別
+            try await openURLDriver.openURL(url, bundleID: openURLBundleID)
+            return text("Delivered \(url)"
+                + (openURLBundleID.map { " to \($0)" } ?? "") + "."
+                + " Delivery is asynchronous (the app has to receive and handle it) — if a"
+                + " ft_snapshot right after still shows the old screen, wait and snapshot again")
+
         case "ft_snapshot":
             let snapshotDriver = try await driver(args)
             var snapshot: SnapshotResponse
@@ -1685,6 +1698,14 @@ final class MCPServer {
             + "anything — that is how you read the home screen or a system dialog", [
             "bundleId": ["type": "string", "description": "bundle ID (iOS) / package name (Android)"],
         ], required: ["bundleId"]),
+        tool("ft_open_url", "Deliver a URL (deep link) to the app WITHOUT restarting it — unlike "
+            + "ft_launch, the app keeps running and whatever it navigates to is pushed on top of the "
+            + "current screen. Use this to jump into a specific screen of an already-running app; use "
+            + "ft_launch when you need it from the first screen instead", [
+            "url": ["type": "string", "description": "The URL/deep link to deliver"],
+            "bundleId": ["type": "string", "description": "bundle ID (iOS) / package name — the Android "
+                + "intent target. Defaults to the bundle ID of the last ft_launch"],
+        ], required: ["url"]),
         tool("ft_snapshot", "Get the element list of the current screen. Each line: [ref] Type \"label\" id=... (x,y WxH). "
             + "A line marked scroll is a scrolling container you can pass as scrollFrame. "
             + "Use these refs for tap/type. With waitFor it polls for you instead of you calling this again", [

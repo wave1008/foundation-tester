@@ -284,6 +284,27 @@ public final class WebViewDelegatingDriver: AppDriver {
     public func clearAppData(bundleID: String) async throws {
         try await primary.clearAppData(bundleID: bundleID)
     }
+    /// URL 配送は画面遷移を伴う起動系操作なので launch/activate と同じ扱い(primary=in-app 固定・
+    /// 委譲状態をリセット)。in-app 側がブリッジ死活の probe と注入起動フォールバックを自分で持つ。
+    ///
+    /// **初回確認アラートの同意だけは delegated(XCUITest attach)側でも試す**: primary(in-app)は
+    /// 自分の bundle 以外の /session を張れないため springboard を見られず、その同意ベストエフォートは
+    /// 必ず 409 で何もしないまま終わる(BridgeClient.acknowledgeOpenURLConsent 参照)。delegated は
+    /// XCUITest 接続なので springboard を見られる。二重に試しても
+    /// OpenURLConsentAttemptCache が (target, bundleID) 単位で防ぐので無駄打ちにはならない
+    public func openURL(_ url: String, bundleID: String?) async throws {
+        resetDelegation()
+        try await primary.openURL(url, bundleID: bundleID)
+        if let bundleID {
+            await delegated.acknowledgeOpenURLConsentIfPresent(bundleID: bundleID)
+        }
+    }
+    /// primary(in-app)は springboard を見られないので delegated(XCUITest attach)側も試す。
+    /// 実際の操作は BridgeClient 側が (デバイス, bundleID) ごとに1回だけ行う
+    public func acknowledgeOpenURLConsentIfPresent(bundleID: String) async {
+        await primary.acknowledgeOpenURLConsentIfPresent(bundleID: bundleID)
+        await delegated.acknowledgeOpenURLConsentIfPresent(bundleID: bundleID)
+    }
     public func status() async throws -> StatusResponse { try await primary.status() }
     // WebView 委譲モードと無関係な状態照会なので primary 固定(status() と同じ扱い)
     public func isAppForeground(bundleID: String) async throws -> Bool {

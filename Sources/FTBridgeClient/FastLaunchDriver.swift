@@ -62,6 +62,12 @@ public final class FastLaunchDriver: AppDriver {
     public func install(packagePath: String) async throws { try await base.install(packagePath: packagePath) }
     public func uninstall(bundleID: String) async throws { try await base.uninstall(bundleID: bundleID) }
     public func clearAppData(bundleID: String) async throws { try await base.clearAppData(bundleID: bundleID) }
+    public func openURL(_ url: String, bundleID: String?) async throws {
+        try await base.openURL(url, bundleID: bundleID)
+    }
+    public func acknowledgeOpenURLConsentIfPresent(bundleID: String) async {
+        await base.acknowledgeOpenURLConsentIfPresent(bundleID: bundleID)
+    }
     public func isAppForeground(bundleID: String) async throws -> Bool {
         try await base.isAppForeground(bundleID: bundleID)
     }

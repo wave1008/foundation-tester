@@ -74,6 +74,8 @@ public final class SystemUIDriver: AppDriver {
     public func launch(bundleID: String) async throws {}
     public func terminate() async throws {}
     public func clearAppData(bundleID: String) async throws {}
+    // openURL は既定の 501 のまま(このクラスの用途は springboard 参照でアプリを持たない。
+    // URL を配送すべき対象アプリは primary=in-app 側が持つので、そちらが受け持つ)
     // /appstate はセッション不要の読み取り。フォールバック用も実体は BridgeClient なのでそのまま使える
     public func isAppForeground(bundleID: String) async throws -> Bool {
         try await client.isAppForeground(bundleID: bundleID)

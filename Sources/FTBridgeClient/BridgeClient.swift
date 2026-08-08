@@ -269,6 +269,99 @@ public final class BridgeClient: AppDriver {
         }
     }
 
+    /// URL(ディープリンク)を配送する。**アプリは再起動しない**(warm 配送。terminate は撃たない)。
+    /// 宛先解決は install/uninstall と同じ `installTarget()`(実機は devicectl、シミュレータは
+    /// simctl)。`simulatorTarget()` は clearAppData 専用に「実機は非対応」で 501 を返す作りなので、
+    /// 実機の devicectl 経路が要るここには使えない。bundleID は Android 向けの引数だったが、
+    /// iOS シミュレータでも初回確認アラートの自動了承(下記)の対象アプリ特定に使う
+    /// (実機の devicectl 経路・bundleID なしの呼び出しでは同意ステップを行わない)
+    public func openURL(_ url: String, bundleID: String?) async throws {
+        if case .physical(let udid) = try await installTarget() {
+            let result = try Shell.run(
+                ["xcrun", "devicectl", "device", "process", "openURL", "--device", udid, url])
+            guard result.status == 0 else {
+                throw DriverError.badResponse(status: Int(result.status),
+                    body: "devicectl device process openURL failed: \(result.tail)")
+            }
+            return
+        }
+        let target = try await simctlTarget("openURL")
+        let result = try Shell.run(["xcrun", "simctl", "openurl", target, url])
+        guard result.status == 0 else {
+            throw DriverError.badResponse(status: Int(result.status),
+                body: "simctl openurl failed: \(result.tail)")
+        }
+        if let bundleID {
+            await acknowledgeOpenURLConsent(bundleID: bundleID, target: target)
+        }
+    }
+
+    /// **未同意の初回だけ** SpringBoard が出す「"<表示名>"で開きますか?」を自動了承する
+    /// (AppDriver.acknowledgeOpenURLConsentIfPresent の実装本体。ベストエフォート、失敗は無視する)。
+    ///
+    /// 実測(iOS 27 シミュレータ): 同意は端末+アプリの組で永続する ——
+    /// 一度「開く」を押すと以後の openURL は無警告で配送される。そのため
+    /// **(target, bundleID) ごとにプロセス内で1回だけ**試みる(OpenURLConsentAttemptCache)。
+    /// 判定は springboard へ実際に attach できてから初めて「試行済み」にする ——
+    /// **先に記録すると in-app 接続の 409 が「試したことにされ」、hybrid で本来なら XCUITest 側
+    /// (springboard を見られる)がまだ試していないのに機会を失う**(このメソッドは in-app/xcuitest
+    /// どちらの接続からも呼ばれ得る。WebViewDelegatingDriver.openURL 参照)。
+    /// 確認アラートの出現待ち(合計約 1.2s)。**同意済みの端末では毎回この分を空振りする**ので、
+    /// 伸ばすと初回 openURL の固定費がそのまま増える
+    private var consentAlertPollAttempts: Int { 4 }
+    private var consentAlertPollIntervalNanos: UInt64 { 400_000_000 }
+
+    func acknowledgeOpenURLConsent(bundleID: String, target: String) async {
+        let key = "\(target)#\(bundleID)"
+        guard !OpenURLConsentAttemptCache.shared.hasAttempted(key) else { return }
+        guard let displayName = Self.appDisplayName(bundleID: bundleID, target: target) else { return }
+        do {
+            // springboard 参照(SystemUIDriver と同じ非破壊な /session 切り替え)。
+            // in-app 接続は自分の bundle 以外の /session を 409 で拒否するため、
+            // ここで throw して抜ける = 「この接続では見られない」= 未記録のまま次に委ねる
+            try await launch(bundleID: "com.apple.springboard")
+        } catch {
+            return
+        }
+        // ここまで来た = springboard を見られる接続だと分かった。以後はこの接続でなくても試さない。
+        // **記録はアラートを探し終えてから**(先に記録して1回だけ撮ると、まだ描画されていない
+        // アラートを「無かった」と確定してしまい、以後この組では二度と試さない = モーダルが
+        // 立ったまま残り、しかもアプリスコープの木には出ないので run の残り全部が黙って失敗する)
+        defer { OpenURLConsentAttemptCache.shared.markAttempted(key) }
+        // 出るとしても配送直後の一瞬なので短く数回だけ待つ(既に同意済みなら毎回ここを空振りする。
+        // 待ち過ぎるとその分だけ全 run の初回 openURL が遅くなる)
+        for attempt in 0..<consentAlertPollAttempts {
+            if attempt > 0 { try? await Task.sleep(nanoseconds: consentAlertPollIntervalNanos) }
+            guard let tree = try? await snapshot() else { continue }
+            guard let ref = OpenURLConsent.confirmButtonRef(in: tree, appDisplayName: displayName)
+            else { continue }
+            try? await tap(ref: ref)   // 押せなくても致命的ではない(同意されないだけ)
+            break
+        }
+        // 対象アプリへ戻す(このステップが springboard へ張り替えたセッションを元に戻す)
+        try? await activate(bundleID: bundleID)
+    }
+
+    /// AppDriver 要件。外部(WebViewDelegatingDriver/AppAttachDriver)から呼ばれたときは
+    /// target をまだ持たないため、まず /status から解決する
+    public func acknowledgeOpenURLConsentIfPresent(bundleID: String) async {
+        guard physicalUDID == nil, let target = try? await simctlTarget("openURL") else { return }
+        await acknowledgeOpenURLConsent(bundleID: bundleID, target: target)
+    }
+
+    /// bundleID → 表示名(CFBundleDisplayName、無ければ CFBundleName)。アラート同定に使う
+    /// (ラベル文字列は端末ロケールで変わるため使えない)。取れなければ nil(呼び出し側は同意
+    /// ステップごと諦める)。`ftester api list-apps`(Sources/ftester/ApiListAppsCommand.swift)と
+    /// 同じ simctl listapps 経由だが、Sources/ftester からは呼べないためここに最小限だけ複製する
+    static func appDisplayName(bundleID: String, target: String) -> String? {
+        guard let result = try? Shell.run(["xcrun", "simctl", "listapps", target]), result.status == 0,
+              let data = result.output.data(using: .utf8),
+              let raw = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil),
+              let apps = raw as? [String: [String: Any]],
+              let info = apps[bundleID] else { return nil }
+        return (info["CFBundleDisplayName"] as? String) ?? (info["CFBundleName"] as? String)
+    }
+
     /// フォアグラウンドのアプリが bundleID と一致するか(POST /appstate。両ブリッジ HTTP 互換)
     public func isAppForeground(bundleID: String) async throws -> Bool {
         let res: AppStateResponse = try await post("/appstate", body: AppStateRequest(bundleID: bundleID),
