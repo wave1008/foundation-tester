@@ -2,10 +2,8 @@
 // JSON で stdout に出力する(ftester api list-apps)。stdout には結果1行の JSON だけを出す
 // (診断は stderr のみ。ApiListDevicesCommand.swift と同じ流儀)。
 //
-// iOS: `xcrun simctl listapps <デバイス名>` の出力(OpenStep形式 plist、トップレベルは
-// [bundleID: 情報dict])をそのまま PropertyListSerialization でパースする。ApplicationType が
-// "User" 以外は "system" 扱い。".xctrunner" で終わる id(XCUITestランナー自身)は一覧から除外する
-// (実機で毎回このエントリが混入するため)。
+// iOS のパース・UDID解決は Sources/FTBridgeClient/SimulatorAppCatalog.swift に委譲
+// (MCP の ft_list_apps も同じ実装を使う。片方だけ変えない)。
 
 import ArgumentParser
 import Foundation
@@ -38,54 +36,17 @@ struct ApiListApps: AsyncParsableCommand {
         print(String(data: data, encoding: .utf8)!)
     }
 
-    /// user が先、同じ type 内は表示名の小文字比較でソートする
     private static func iosApps(port: UInt16) async throws -> [ApiAppEntry] {
         let status = try await BridgeClient(port: port, timeoutSeconds: 10).status()
-        // 名前指定の simctl は同名デバイス(Shutdown の複製等)に当たると失敗するため、
-        // Booted かつ同名のデバイスの UDID に解決してから照会する。
-        let udid = try bootedSimulatorUDID(named: status.device)
-        let result = try Shell.run(["xcrun", "simctl", "listapps", udid])
-        guard result.status == 0 else {
-            throw ValidationError("simctl listapps failed: \(result.tail)")
-        }
-        guard let data = result.output.data(using: .utf8) else {
-            throw ValidationError("cannot read the simctl listapps output")
-        }
-        let raw: Any
+        let udid: String
+        let apps: [SimulatorAppCatalog.App]
         do {
-            raw = try PropertyListSerialization.propertyList(from: data, options: [], format: nil)
-        } catch {
-            throw ValidationError("cannot parse the simctl listapps output: \(error)")
+            udid = try SimulatorAppCatalog.bootedSimulatorUDID(named: status.device)
+            apps = try SimulatorAppCatalog.apps(udid: udid)
+        } catch let error as LocalizedError {
+            throw ValidationError(error.errorDescription ?? "\(error)")
         }
-        guard let apps = raw as? [String: [String: Any]] else {
-            throw ValidationError("unexpected simctl listapps output format")
-        }
-
-        let entries = apps.compactMap { id, info -> ApiAppEntry? in
-            guard !id.hasSuffix(".xctrunner") else { return nil }
-            let name = (info["CFBundleDisplayName"] as? String)
-                ?? (info["CFBundleName"] as? String) ?? id
-            let type = (info["ApplicationType"] as? String) == "User" ? "user" : "system"
-            return ApiAppEntry(id: id, name: name, type: type)
-        }
-        return entries.sorted { lhs, rhs in
-            if lhs.type != rhs.type { return lhs.type == "user" }
-            return lhs.name.lowercased() < rhs.name.lowercased()
-        }
-    }
-
-    /// ブリッジ /status のデバイス名 → Booted な同名シミュレータの UDID。同名 Booted が複数の
-    /// 場合は先頭を使う(SimulatorCatalog.devices() は起動中優先の安定ソート済み)。
-    private static func bootedSimulatorUDID(named name: String) throws -> String {
-        let matches = try SimulatorCatalog.devices().filter { $0.booted && $0.name == name }
-        guard let first = matches.first else {
-            throw ValidationError("no booted simulator found: \(name)")
-        }
-        if matches.count > 1 {
-            FileHandle.standardError.write(
-                Data("Multiple booted simulators share this name. Using \(first.udid): \(name)\n".utf8))
-        }
-        return first.udid
+        return apps.map { ApiAppEntry(id: $0.id, name: $0.name, type: $0.isUser ? "user" : "system") }
     }
 
     private static func androidApps(serial: String?) throws -> [ApiAppEntry] {
