@@ -1894,6 +1894,12 @@ YAML 時代の healedFlow 書き戻しに代わり、解決順を
   再利用ではない)。決定的なナビ状態リセットはアプリ側の責務で、ツールは状態リセットの注入
   (`SIMCTL_CHILD_FT_RESET` 等)を意図的に提供しない(ユーザー決定・2026-07-20)。
   シナリオ側は scene1 で対象タブをルートへ正規化して吸収する
+- **`launchApp` は全エンジンで常にプロセスを再起動する**(前面化ではない。Android は
+  ブリッジの force-stop+起動、xcuitest は FastLaunchDriver の terminate 込み launch)。
+  「起動済みならプロセス温存でエントリー画面へ」の warm 化は 2026-08-08 に実装・検証まで
+  行ったうえで**中止・破棄**した: Android は `am start --activity-clear-task` で成立するが、
+  **iOS には起動済みプロセスをエントリー画面へ戻す OS 機構が無く**、前面化(activate)だけでは
+  「起動直後の最初の画面」という契約を満たせない(片 OS のみの機能では意味が無いという判断)
 - **inapp は Compose Multiplatform(iOS)の swipe/scrollTo/press を駆動できない**
   (2026-07-22・`TestProjects/E2E-CMP` で切り分け確定)。同一アプリ・同一シナリオの両エンジン差分:
   - inapp: `tap`/`type` は通る。`swipe` 4方向・`scrollTo`・`press`(長押し)が**すべて無反応**
