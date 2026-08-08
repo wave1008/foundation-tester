@@ -211,6 +211,7 @@ let package = Package(
         // simstream(シミュレータ専用)・androidstream(静止画面でフレームが出ない)の実機向け代替
         .executableTarget(
             name: "ftester-devicepoll",
+            dependencies: ["FTCore"],
             linkerSettings: [
                 .linkedFramework("Foundation"), .linkedFramework("CoreGraphics"),
                 .linkedFramework("ImageIO"), .linkedFramework("UniformTypeIdentifiers"),
