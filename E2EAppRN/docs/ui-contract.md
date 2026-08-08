@@ -73,13 +73,26 @@ xcuitest は Modal の内容だけを見るが、**in-app は背景ツリーと�
 シナリオがダイアログ内要素を掴むときは背景の同名要素と衝突しないラベル/`#id`を使うこと
 (共通契約のダイアログ画面のタグはこの前提で設計済み)。
 
-### H. 【未解決フレーク】横 FlatList のスクロール探索が要素を飛び越すことがある(iOS xcuitest)
+### H. 【解決済み 2026-08-08】横 FlatList のスクロール探索の飛び越しフレーク(iOS xcuitest)
 
-シナリオ 07 S0090(`#carousel_tags` 内の `#tag_15` を方向継承で探索)が **5 回中 2 回**、
-「7 スワイプ動いた後に content no longer moved」で落ちた(2026-08-08 実測)。フリング 1 回の
-移動量がタグ数個ぶんあり、`removeClippedSubviews` の横 FlatList では目標を**飛び越して右端に
-到達**する形とみられる(縦の「飛び越し」witness と同族)。単発観測のため tool 側の対処は
-していない — 再発したら反復 10 周で頻度を採ってから判断する(docs/verification.md の規律)。
+シナリオ 07 S0090(`#carousel_tags` 内の `#tag_15` を方向継承で探索)が**8並列負荷下で
+4/10 失敗**していた(逐次では 0/2 = 負荷で顕在化する型)。機構は3段で、それぞれに
+ツール側のレバーを入れて **10/10 ×2周の全緑**まで確認した:
+
+1. フリングが目標を飛び越して右端到達 → 「2周連続不変」で端と判定 → **逆走査が横方向
+   未対応で即諦めていた**(`guard vertical else return nil`)→ 横ドラッグ経路を実装
+2. 見つけたが見切れ → 逆向き送りが scrollFrame 無し経路では**全幅フリング**になり
+   逆側へ再飛び越しして往復振動 → **必要距離だけの遅いドラッグ**(`clipRecoveryJump`)へ
+3. 端のバウンスで内容署名が毎周揺れ「2周連続不変」に到達せず **maxSwipes 弾切れ**
+   → 弾切れ時にも逆走査を1回試す(失敗経路限定 = 正常系のコストゼロ)
+
+成功時は `found by sweeping back after overshooting it(specify scrollFrame: #carousel_tags …)`
+の注記が出る。対象モードの成績は**修正前 4/10 → 修正後 0/30**。
+
+残存モード2種(どちらも修正前から存在・今日の変更起因ではない):
+- `scrollToLeftEdge` 直後の `#tag_01` 不在(全50標本中2回 ≈ 4%。左端シークの端判定が
+  仮想化のマウント遅延より先に立つ形とみられる。次に手を入れるならここ)
+- コールドラウンチ直後の tap 呑まれ(特定シミュレータ個体に紐づき、再起動で解消)
 
 ## 型語彙(実測表)
 
@@ -138,3 +151,18 @@ iOS は `main.jsbundle` をビルドフェーズで同梱、Android は `assembl
 
 **iOS 27 SDK の罠2つ**(上記 D・E)は `xcodebuild` を通すために必須の変更で、
 `scripts/build-ios.sh` 自体はシミュレータ向けに `ARCHS=arm64` 固定で叩くだけの単純なラッパー。
+
+## New Architecture regression の追跡
+
+RN の写像(testID→id・型・入力経路)は New Architecture(Fabric)でも維持されるのが公式の
+建前だが、**個別コンポーネントの regression が散発する**(例: facebook/react-native#38709 =
+TextInput の testID が本体でなく親ラッパーに付く / #43648 = Text/Switch の accessibilityLabel
+欠落)。この SUT は RN のバージョンを上げるたびに**検知器として**使う:
+
+1. `package.json` の react-native を上げ、`npm install` → `cd ios && pod install` → 両 OS 再ビルド
+2. `Scripts/e2e.sh --rn` と `--rn --ios --ios-inapp` を回す
+3. **専用の検知器**: `05_テキスト入力.swift` の S0050(`.型#id` 複合セレクタ = testID が
+   入力欄**本体**に付いていることを要求。#38709 型の退行で赤くなる)/ 04(型語彙)/
+   18(pressEnter 経路)/ 13(ラベル露出 = #43648 型)
+4. 割れたら本ファイルの型語彙表・罠を実測で更新し、必要なら shirates-parity の
+   「OS で挙動が割れるもの」へ追記する

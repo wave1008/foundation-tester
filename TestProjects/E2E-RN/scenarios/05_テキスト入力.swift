@@ -206,4 +206,28 @@ class テキスト入力が正しくechoされること {
             }
         }
     }
+
+    /// **RN New Architecture の regression 検知器**(E2EAppRN/docs/ui-contract.md §NewArch 追跡)。
+    /// facebook/react-native#38709 = New Arch で TextInput の testID が本体でなく親ラッパーに
+    /// 付く退行。`.型#id` は**同一要素**に型と id の両方を要求するので、id が親(other)へ
+    /// 移ると解決できなくなり、ここが赤くなる。RN のバージョン更新後は必ずこのシナリオを見る
+    @Test("TextInput の testID が入力欄本体に付いている(NewArch #38709 の検知器)")
+    func S0050() {
+        scenario {
+            scene(1, "型と id が同一要素で解決できる") {
+                condition {
+                    launchApp()
+                }.expectation {
+                    exist("#txt_home_marker", requireVisible: false)
+                }.action {
+                    tap("#nav_input")
+                }.expectation {
+                    exist(".textField#field_single")
+                    exist(".secureTextField#field_password")
+                    ios { exist(".textView#field_multiline") }
+                    android { exist(".textField#field_multiline") }
+                }
+            }
+        }
+    }
 }

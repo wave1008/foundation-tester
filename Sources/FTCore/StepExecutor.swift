@@ -880,23 +880,34 @@ public final class StepExecutor {
     /// 交差を取らないと、画面からはみ出した容器で**画面外の座標を撃つ**ことになる
     /// (WebView が画面より高いときに起き得た。2026-08-03 に scrollFrame 側と規則を揃えた)
     static func dragGesture(jump: Double, container rawContainer: FTRect,
-                            viewport: FTRect? = nil)
+                            viewport: FTRect? = nil, vertical: Bool = true)
         -> (fromX: Double, fromY: Double, toX: Double, toY: Double)? {
         let container = viewport.flatMap { ScrollGeometry.intersection(rawContainer, $0) }
             ?? rawContainer
-        let margin = container.height * 0.15
-        let usable = container.height - margin * 2
+        let extent = vertical ? container.height : container.width
+        let margin = extent * 0.15
+        let usable = extent - margin * 2
         guard usable > 100 else { return nil }
         // 0.9 掛け: フリング分の過走を抑える(過走しても次周回の再計算で戻るが、往復は遅い)
         let distance = min(abs(jump) * 0.9, usable)
         guard distance > 50 else { return nil }
-        let x = container.x + container.width / 2
-        if jump > 0 {   // 指を上へ
-            let fromY = container.y + container.height - margin
-            return (x, fromY, x, fromY - distance)
+        if vertical {
+            let x = container.x + container.width / 2
+            if jump > 0 {   // 指を上へ
+                let fromY = container.y + container.height - margin
+                return (x, fromY, x, fromY - distance)
+            }
+            let fromY = container.y + margin
+            return (x, fromY, x, fromY + distance)
         }
-        let fromY = container.y + margin
-        return (x, fromY, x, fromY + distance)
+        // 横: y は容器の中心線。jump > 0 = 指を左へ(縦の「+ = 上」と同じ「進む向き」規約)
+        let y = container.y + container.height / 2
+        if jump > 0 {
+            let fromX = container.x + container.width - margin
+            return (fromX, y, fromX - distance, y)
+        }
+        let fromX = container.x + margin
+        return (fromX, y, fromX + distance, y)
     }
 
     /// ヒント跳躍のドラッグ実行。ゆっくり終える(pressSeconds でフリングを抑えつつ、
@@ -923,13 +934,13 @@ public final class StepExecutor {
     /// まだ速く、189px のドラッグが慣性で 700px 走って**逆向きの飛び越し**になった
     /// (2026-08-06 に Emulator で観測)。指を離す直前の速度が閾値を下回るよう、
     /// **距離ぶんの時間を必ず取る**(reverseSweepDragSpeed px/s)
-    private func slowDrag(jump: Double, container: FTRect,
+    private func slowDrag(jump: Double, container: FTRect, vertical: Bool = true,
                           phase: inout PhaseAccumulator) async -> Bool {
         guard let g = Self.dragGesture(jump: jump, container: container,
-                                       viewport: container) else { return false }
+                                       viewport: container, vertical: vertical) else { return false }
         let clock = ContinuousClock()
         let start = clock.now
-        let distance = abs(g.toY - g.fromY)
+        let distance = vertical ? abs(g.toY - g.fromY) : abs(g.toX - g.fromX)
         let duration = min(max(distance / Self.reverseSweepDragSpeed, 0.6), 3.0)
         defer { phase.actionMs += Self.ms(clock.now - start) }
         do {
@@ -1046,12 +1057,25 @@ public final class StepExecutor {
                     // **行き過ぎた側なら逆へ送る**(recoveryDirection 参照)。探索方向のまま
                     // 送り続けると、既に通り過ぎた要素は遠ざかるだけで永久に可視域へ戻らない
                     var recovery = step
-                    recovery.direction = Self.recoveryDirection(for: element, container: viewport,
-                                                                searching: direction).rawValue
+                    let back = Self.recoveryDirection(for: element, container: viewport,
+                                                      searching: direction)
+                    recovery.direction = back.rawValue
+                    let path = scrollPath(step: recovery, intent: .search, in: snapshot)
+                    // **path が無い(= 全幅フリングになる)既定経路だけ**、必要距離の遅いドラッグで
+                    // 寄せる(clipRecoveryJump 参照。フリングは逆側へ再飛び越しして往復振動する)。
+                    // scrollFrame あり = path は元々容器基準の短い送りなので置き換えない
+                    // (置き換えると SwiftUI で +28% の実退行。2026-08-08 に 92s/72s の A/B で確定)。
+                    // ジャンプ量 40pt 未満は嘘 frame(クランプ)の兆候なので従来スワイプへ
+                    if path == nil,
+                       let jump = Self.clipRecoveryJump(for: element, viewport: viewport,
+                                                        finger: back),
+                       abs(jump) >= 40,
+                       await slowDrag(jump: jump, container: viewport,
+                                      vertical: back == .up || back == .down, phase: &phase) {
+                        continue
+                    }
                     let finger = FTSwipeDirection(rawValue: recovery.direction ?? "") ?? direction
-                    if try await swipeWithFallback(finger, intent: .search,
-                                                   path: scrollPath(step: recovery, intent: .search,
-                                                                    in: snapshot),
+                    if try await swipeWithFallback(finger, intent: .search, path: path,
                                                    phase: &phase) { viaXCUITest = true }
                     continue
                 }
@@ -1152,6 +1176,24 @@ public final class StepExecutor {
                 swipes += 1
                 previousSnapshot = snapshot
             }
+        }
+        // **弾切れでも逆走査を1回だけ試す**(2026-08-08 実測: 端のバウンスで内容署名が毎周
+        // 揺れ、「2周連続不変」の端判定に到達しないまま maxSwipes を使い切る形が RN の
+        // 横カルーセルで 2/10 残った。既に通り過ぎている公算が高い局面で、失敗経路限定なので
+        // 正常系のコストはゼロ。ゲートは stoppedUnmoving 側の逆走査と同じ)
+        if recoverOnMiss, step.containerInference ?? true,
+           let latest = previousSnapshot,
+           let container = (scrolledContainer ?? Self.overflowingContainer(in: latest))
+               .flatMap({ ScrollGeometry.intersection($0, latest.screen) }),
+           let recovered = try await reverseSweep(step: step, container: container,
+                                                  searching: direction, phase: &phase) {
+            var result = ScrollSearchResult(found: true, fallback: recovered,
+                                            viaXCUITest: viaXCUITest,
+                                            hintJumps: hintJumps, swipes: swipes)
+            result.reverseSweeps = 1
+            result.suggestedScrollFrame = ScrollFrameCandidates.selector(matching: container,
+                                                                         in: latest)
+            return result
         }
         return ScrollSearchResult(found: false, fallback: nil, viaXCUITest: viaXCUITest,
                                   hintJumps: hintJumps, swipes: swipes)
@@ -2358,12 +2400,15 @@ public final class StepExecutor {
         // slowDrag は距離ぶんの時間を必ず取るのでフリング閾値を下回る
         let vertical = back == .up || back == .down
         let extent = vertical ? container.height : container.width
-        let jump = (back == .up ? 1.0 : -1.0) * extent * Self.reverseSweepSpanRatio
-        guard vertical else { return nil }   // 横方向のドラッグ経路は未対応(縦の探索だけ救う)
+        // + = 進む向き(縦は指を上・横は指を左)。dragGesture の規約と対
+        let jump = (back == .up || back == .left ? 1.0 : -1.0)
+            * extent * Self.reverseSweepSpanRatio
+        // 横は 2026-08-08 まで未対応で即 nil だった(RN の横 FlatList がフリングで
+        // #tag_15 を飛び越して右端に着き、救済されず 4/10 で失敗した実測が動機)
 
         var previous: String?
         for _ in 0..<Self.reverseSweepMaxSwipes {
-            guard await slowDrag(jump: jump, container: container,
+            guard await slowDrag(jump: jump, container: container, vertical: vertical,
                                  phase: &phase) else { return nil }
             let snapshot = try await freshSnapshot(.afterOwnMove)
             if let (element, fallback) = Self.resolve(step: step, in: snapshot,
@@ -2437,6 +2482,26 @@ public final class StepExecutor {
     ///
     /// **`direction` は指の向き**(ブリッジへ渡る語彙)なので、内容を下へ戻すには指を下へ動かす。
     /// 中心が容器の内側にある間は探索方向のまま = 「まだ届いていない」ときの挙動は変わらない
+    /// 見切れ回収に必要な移動量(符号は dragGesture の規約: + = 指を上/左)。
+    /// 見切れていなければ nil。**全幅フリングで戻すと既定経路(scrollFrame 無し)では
+    /// 逆側へ飛び越して往復振動になり maxSwipes を使い切る**(2026-08-08 実測:
+    /// RN 横カルーセルで "after 10 scroll(s)")。量が分かっている局面なので距離で寄せる
+    static func clipRecoveryJump(for element: ElementInfo, viewport: FTRect,
+                                 finger back: FTSwipeDirection) -> Double? {
+        let f = element.frame
+        let pad = 24.0   // 縁ぴったりで止めない(クランプ座標の既知の罠を避ける)
+        let magnitude: Double
+        switch back {
+        case .up:    magnitude = (f.y + f.height) - (viewport.y + viewport.height)
+        case .down:  magnitude = viewport.y - f.y
+        case .left:  magnitude = (f.x + f.width) - (viewport.x + viewport.width)
+        case .right: magnitude = viewport.x - f.x
+        }
+        guard magnitude > 0 else { return nil }
+        let signed = (back == .up || back == .left) ? 1.0 : -1.0
+        return signed * (magnitude + pad)
+    }
+
     static func recoveryDirection(for element: ElementInfo, container: FTRect,
                                   searching finger: FTSwipeDirection) -> FTSwipeDirection {
         let frame = element.frame
