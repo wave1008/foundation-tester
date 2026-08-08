@@ -53,7 +53,9 @@ public final class AppAttachDriver: AppDriver {
     public func snapshot(bypassingCache: Bool) async throws -> SnapshotResponse {
         try await client.activate(bundleID: bundleID)
         attached = true
-        return try await client.snapshot(bypassingCache: bypassingCache)
+        var response = try await client.snapshot(bypassingCache: bypassingCache)
+        response.elements = SnapshotDedupe.wrapperScrollMerge(response.elements)
+        return response
     }
     public var supportsCacheBypass: Bool { client.supportsCacheBypass }
 

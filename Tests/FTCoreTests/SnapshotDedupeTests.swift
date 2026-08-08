@@ -10,10 +10,12 @@ final class SnapshotDedupeTests: XCTestCase {
 
     private func element(ref: Int, type: String = "Button", id: String? = nil,
                          label: String? = nil, value: String? = nil,
-                         x: Double, y: Double, w: Double = 100, h: Double = 40) -> ElementInfo {
+                         x: Double, y: Double, w: Double = 100, h: Double = 40,
+                         scrollable: Bool? = nil) -> ElementInfo {
         ElementInfo(ref: ref, type: type, identifier: id, label: label, value: value,
                     placeholder: nil, enabled: true,
-                    frame: FTRect(x: x, y: y, width: w, height: h), depth: 1)
+                    frame: FTRect(x: x, y: y, width: w, height: h), depth: 1,
+                    scrollable: scrollable)
     }
 
     /// UIKit の Switch。**幅が 2pt ずれる**ラッパと実体で、内側は id を持たない
@@ -73,5 +75,119 @@ final class SnapshotDedupeTests: XCTestCase {
         let off = element(ref: 1, type: "Switch", id: "sw", value: "0", x: 10, y: 10)
         let on = element(ref: 2, type: "Switch", id: "sw", value: "1", x: 10, y: 10)
         XCTAssertFalse(SnapshotDedupe.isRedundant(on, alreadyEmitted: [off]))
+    }
+
+    // MARK: - wrapperScrollMerge (RN のラッパー分離。2026-08-08 実測)
+
+    /// xcuitest 実測形: id 付きの Other + 匿名 scrollView。型が昇格して1要素に畳まれる
+    func testWrapperScrollMergeUpgradesTypeFromXCUITestShape() {
+        let a = element(ref: 1, type: "Other", id: "list_rows", x: 16, y: 251, w: 370, h: 431)
+        let b = element(ref: 2, type: "ScrollView", id: nil, x: 16, y: 251, w: 370, h: 431,
+                        scrollable: true)
+        let merged = SnapshotDedupe.wrapperScrollMerge([a, b])
+        XCTAssertEqual(merged.count, 1)
+        XCTAssertEqual(merged[0].identifier, "list_rows")
+        XCTAssertEqual(merged[0].scrollable, true)
+        XCTAssertEqual(merged[0].type, "scrollView")
+    }
+
+    /// in-app 実測形: 両方 Other。昇格する型が無いので type は変わらない
+    func testWrapperScrollMergeKeepsTypeFromInAppShape() {
+        let a = element(ref: 1, type: "Other", id: "list_rows", x: 16, y: 251, w: 370, h: 431)
+        let b = element(ref: 2, type: "Other", id: nil, x: 16, y: 251, w: 370, h: 431,
+                        scrollable: true)
+        let merged = SnapshotDedupe.wrapperScrollMerge([a, b])
+        XCTAssertEqual(merged.count, 1)
+        XCTAssertEqual(merged[0].identifier, "list_rows")
+        XCTAssertEqual(merged[0].scrollable, true)
+        XCTAssertEqual(merged[0].type, "other")
+    }
+
+    /// B にラベルがあると「別の情報を持つ要素」なので統合しない
+    func testWrapperScrollMergeSkipsWhenBHasALabel() {
+        let a = element(ref: 1, type: "Other", id: "list_rows", x: 16, y: 251, w: 370, h: 431)
+        let b = element(ref: 2, type: "Other", id: nil, label: "何か", x: 16, y: 251, w: 370, h: 431,
+                        scrollable: true)
+        let merged = SnapshotDedupe.wrapperScrollMerge([a, b])
+        XCTAssertEqual(merged.count, 2)
+    }
+
+    /// frame が許容(2pt)を超えてずれていると統合しない
+    func testWrapperScrollMergeSkipsWhenFrameDrifts() {
+        let a = element(ref: 1, type: "Other", id: "list_rows", x: 16, y: 251, w: 370, h: 431)
+        let b = element(ref: 2, type: "Other", id: nil, x: 16, y: 254.1, w: 370, h: 431,
+                        scrollable: true)
+        let merged = SnapshotDedupe.wrapperScrollMerge([a, b])
+        XCTAssertEqual(merged.count, 2)
+    }
+
+    /// A が既に scrollable なら A は候補から除外され、何も変わらない
+    func testWrapperScrollMergeNoOpWhenAAlreadyScrollable() {
+        let a = element(ref: 1, type: "Other", id: "list_rows", x: 16, y: 251, w: 370, h: 431,
+                        scrollable: true)
+        let b = element(ref: 2, type: "Other", id: nil, x: 16, y: 251, w: 370, h: 431,
+                        scrollable: true)
+        let merged = SnapshotDedupe.wrapperScrollMerge([a, b])
+        XCTAssertEqual(merged.count, 2)
+        XCTAssertEqual(merged[0].type, "other")
+        XCTAssertEqual(merged[0].frame, a.frame)
+    }
+
+    /// 前後に無関係な要素があっても順序は保たれる(A はその場でミューテート、B だけ穴が空く)
+    func testWrapperScrollMergePreservesOrder() {
+        let x = element(ref: 1, type: "Button", id: "btn_before", x: 0, y: 0)
+        let a = element(ref: 2, type: "Other", id: "list_rows", x: 16, y: 251, w: 370, h: 431)
+        let b = element(ref: 3, type: "Other", id: nil, x: 16, y: 251, w: 370, h: 431,
+                        scrollable: true)
+        let y = element(ref: 4, type: "Button", id: "btn_after", x: 0, y: 700)
+        let merged = SnapshotDedupe.wrapperScrollMerge([x, a, b, y])
+        XCTAssertEqual(merged.count, 3)
+        XCTAssertEqual(merged[0].identifier, "btn_before")
+        XCTAssertEqual(merged[1].identifier, "list_rows")
+        XCTAssertEqual(merged[1].scrollable, true)
+        XCTAssertEqual(merged[2].identifier, "btn_after")
+    }
+
+    /// **隣接していない**同枠一致は統合しない(全画面 ScrollView と同寸の id 付きオーバーレイが
+    /// 重なる形を誤結合しないため。RN のラッパー分離は常に隣接で出る)
+    func testWrapperScrollMergeSkipsWhenBIsNotAdjacent() {
+        let a = element(ref: 1, type: "Other", id: "list_rows", x: 16, y: 251, w: 370, h: 431)
+        let c = element(ref: 2, type: "Button", id: "btn_other", x: 0, y: 0)
+        let b = element(ref: 3, type: "Other", id: nil, x: 16, y: 251, w: 370, h: 431,
+                        scrollable: true)
+        let merged = SnapshotDedupe.wrapperScrollMerge([a, c, b])
+        XCTAssertEqual(merged.count, 3)
+        XCTAssertNotEqual(merged[0].scrollable, true)
+    }
+
+    // MARK: - isRedundant の scrollable ガード
+
+    /// earlier が **id 持ち**・candidate が同型同枠で scrollable なら畳まない
+    /// (wrapperScrollMerge の統合材料。畳むとスクロール可能性の情報が失われる)
+    func testIsRedundantKeepsAScrollableTwinOfANonScrollableIdentifiedEarlier() {
+        let earlier = element(ref: 1, type: "Other", id: "list_rows", x: 16, y: 251, w: 370, h: 431)
+        let candidate = element(ref: 2, type: "Other", x: 16, y: 251, w: 370, h: 431,
+                                scrollable: true)
+        XCTAssertFalse(SnapshotDedupe.isRedundant(candidate, alreadyEmitted: [earlier]))
+    }
+
+    /// **匿名どうし**の同枠 scroll 双子は従来どおり畳む(広く残すと既存 SUT の序数と
+    /// 間引き枠がずれる。ガードは id 持ち = 統合材料の形だけに絞る)
+    func testIsRedundantStillDropsAnAnonymousScrollableTwin() {
+        let earlier = element(ref: 1, type: "Other", x: 16, y: 251, w: 370, h: 431)
+        let candidate = element(ref: 2, type: "Other", x: 16, y: 251, w: 370, h: 431,
+                                scrollable: true)
+        XCTAssertTrue(SnapshotDedupe.isRedundant(candidate, alreadyEmitted: [earlier]))
+    }
+
+    // MARK: - RN のテキスト2重化(in-app のみ。回帰固定)
+
+    /// id 付き staticText + 同 frame・同ラベル・id 無しの匿名双子。既存ルールで落ちるはず
+    func testRNDuplicateTextTwinIsDropped() {
+        let first = element(ref: 1, type: "StaticText", id: "lbl_greeting", label: "こんにちは",
+                            x: 24, y: 120, w: 200, h: 24)
+        let second = element(ref: 2, type: "StaticText", id: nil, label: "こんにちは",
+                             x: 24, y: 120, w: 200, h: 24)
+        XCTAssertTrue(SnapshotDedupe.isRedundant(second, alreadyEmitted: [first]))
     }
 }

@@ -22,6 +22,7 @@ public final class InAppDriver: AppDriver {
     public func launch(bundleID: String) async throws {
         lastBundleID = bundleID
         lastLaunchTimingValue = nil   // 失敗時に前回成功分の内訳を出さないための明示リセット
+        uiFrameworkCache = nil        // 再注入先が変わり得るため判定も採り直す
         lastLaunchTimingValue = try await launcher.relaunch(bundleID: bundleID)
     }
 
@@ -64,12 +65,43 @@ public final class InAppDriver: AppDriver {
         try client.clearAppDataOnSimulator(bundleID: bundleID, target: target)
     }
     public func snapshot() async throws -> SnapshotResponse {
-        try await withCrashContext { try await client.snapshot() }
+        try await normalizedSnapshot { try await self.client.snapshot() }
     }
     /// bypassingCache 版の素通し(既定実装に任せるとフラグが落ちて最内へ届かない。
     /// SnapshotCacheBypassForwardingTests がラッパー全体でこれを守る)
     public func snapshot(bypassingCache: Bool) async throws -> SnapshotResponse {
-        try await withCrashContext { try await client.snapshot(bypassingCache: bypassingCache) }
+        try await normalizedSnapshot { try await self.client.snapshot(bypassingCache: bypassingCache) }
+    }
+
+    /// 初回 snapshot でだけ /status を叩いて uiFramework を確定し、以降は使い回す
+    /// (スナップショットのたびに /status を打ち直さない)。**成功だけをキャッシュする**:
+    /// 失敗を覚えると、コールドラウンチ直後の1回のタイムアウトで正規化が run 全体で無効のまま
+    /// 固定される。timeout を短く切るのは suspend 中のアプリが TCP を受けたまま応答しない
+    /// 既知の形(BridgeClient.status(timeout:) のコメント)で 45 秒待たないため
+    private var uiFrameworkCache: String?
+
+    private func cachedUIFramework() async -> String? {
+        if let cached = uiFrameworkCache { return cached }
+        let framework = (try? await client.status(timeout: 4))?.uiFramework
+        uiFrameworkCache = framework
+        return framework
+    }
+
+    /// RN 等 UIKit の in-app ツリーはラッパー分離(testID 付き容器 + 別ノードの実スクロール要素)と
+    /// テキスト2重化(id 付き + 同枠同ラベルの匿名ノード)を起こす(2026-08-08 実測)。
+    /// uiFramework=="uikit" のときだけ両方を畳む。compose/flutter は scrollable を申告できず
+    /// wrapperScrollMerge が実質発火しないとしても、既存 SUT の序数を動かさないため明示的に触らない
+    private func normalizedSnapshot(_ fetch: () async throws -> SnapshotResponse) async throws -> SnapshotResponse {
+        var response = try await withCrashContext(fetch)
+        guard await cachedUIFramework() == "uikit" else { return response }
+        let merged = SnapshotDedupe.wrapperScrollMerge(response.elements)
+        var emitted: [ElementInfo] = []
+        response.elements = merged.filter { element in
+            guard !SnapshotDedupe.isRedundant(element, alreadyEmitted: emitted) else { return false }
+            emitted.append(element)
+            return true
+        }
+        return response
     }
     public var supportsCacheBypass: Bool { client.supportsCacheBypass }
     public func tap(ref: Int) async throws { try await withCrashContext { try await client.tap(ref: ref) } }

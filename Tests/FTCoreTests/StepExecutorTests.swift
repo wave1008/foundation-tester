@@ -2141,6 +2141,45 @@ final class StepExecutorTests: XCTestCase {
                       "501 なら typeDriver へ回すこと: \(log.entries)")
     }
 
+    /// uiFramework=="uikit"(RN 含む)は探索終端の空打ちをスキップすること。
+    /// RN は Pressable の pressRetentionOffset(既定20pt)内に空打ちの終点が収まり onPress が
+    /// 成立してしまい、`scrollTo` しただけで行が選択される(2026-08-08 E2E-RN S0100 実測)。
+    /// shouldEmptyDrag のコメント参照
+    func testEmptyDragSkippedWhenUIFrameworkIsUIKit() async throws {
+        let log = CallLog()
+        let row = framed(ref: 1, id: "row_40", x: 16, y: 300, width: 370, height: 56)
+        // 1周目は静止確認で2枚撮ってからスワイプで見つける(既存 testEmptyDragFallsBack... と同じ台本)
+        let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[], [], [row]])
+        let executor = StepExecutor(driver: primary, releasesScrollTouch: true, uiFramework: "uikit")
+        let step = FlowStep(action: "scrollTo", locator: FlowLocator(id: "row_40"), maxSwipes: 2)
+
+        guard case .passed = await executor.execute(step).status else {
+            XCTFail("スワイプ後の snapshot で見つかるので pass のはず"); return
+        }
+        XCTAssertTrue(primary.dragCalls.isEmpty,
+                      "uiFramework=uikit では終端の空打ちを撃たないこと: \(primary.dragCalls)")
+    }
+
+    /// uiFramework が "compose"、または判定できず nil(不明)のときは**従来どおり**空打ちを撃つこと。
+    /// nil を skip 側へ倒すと、実機や AppBundleInspector が判定失敗した経路まで一括で挙動が変わる
+    func testEmptyDragStillFiresForComposeAndUnknownFramework() async throws {
+        let frameworks: [String?] = [nil, "compose"]
+        for framework in frameworks {
+            let log = CallLog()
+            let row = framed(ref: 1, id: "row_40", x: 16, y: 300, width: 370, height: 56)
+            let primary = FakeAppDriver(name: "primary", log: log, snapshotElements: [[], [], [row]])
+            let executor = StepExecutor(driver: primary, releasesScrollTouch: true, uiFramework: framework)
+            let step = FlowStep(action: "scrollTo", locator: FlowLocator(id: "row_40"), maxSwipes: 2)
+
+            guard case .passed = await executor.execute(step).status else {
+                XCTFail("スワイプ後の snapshot で見つかるので pass のはず (\(String(describing: framework)))")
+                continue
+            }
+            XCTAssertFalse(primary.dragCalls.isEmpty,
+                           "uiFramework=\(String(describing: framework)) では空打ちを撃つこと: \(primary.dragCalls)")
+        }
+    }
+
     /// drag のラッチは swipe に波及しないこと。in-app は drag だけ不可・swipe は
     /// contentOffset 経路で効くため、共有すると全 swipe が XCUITest 実スワイプ化して flake る
     func testDragFallbackDoesNotLatchSwipeToTypeDriver() async throws {

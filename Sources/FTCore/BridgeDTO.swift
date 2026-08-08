@@ -132,7 +132,14 @@ public enum BridgeAPI {
     /// scrollFrame 解決が退化する)。XCUITest ランナーの isEligible も id 無しのスクロール容器を
     /// 通すようになり、keyboardFrame の申告を追加。旧ランナー/dylib が再利用されると
     /// POI の多い画面で操作要素が切り詰められたまま・容器が落ちたままになる
-    public static let bridgeProtocolVersion = 58
+    /// 59: React Native 対応(2026-08-08)。in-app の tap 再試行が取り直した現在 frame で
+    /// 合成タッチする(RN のコールドラウンチ直後、stored frame が古く1要素上を叩いた実測。
+    /// 近距離 120pt 以内のみ)。WebViewDOMSnapshot の interop マーカーに RNCWebView を追加
+    /// (react-native-webview は DOM を読めるが合成タッチが届かない)。SnapshotDedupe の
+    /// isRedundant が「id 持ちの直後の匿名 scroll 双子」を残すようになった(XCUITest ランナー内
+    /// でも効く。ホスト側 wrapperScrollMerge の統合材料)。旧 dylib/ランナーが再利用されると
+    /// RN でタップの誤着弾・WebView 操作の空振り・#list_rows の scrollFrame 不成立が再発する
+    public static let bridgeProtocolVersion = 59
 
     /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
     /// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java の
