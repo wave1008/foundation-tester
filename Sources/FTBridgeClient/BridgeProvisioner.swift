@@ -259,11 +259,26 @@ public struct BridgeProvisioner {
         // 5. 共有ビルド(直列)。並列起動フェーズより前に必ず済ませる
         try await prepareSharedBuilds(plans: plans, log: safeLog)
 
-        // 6. 起動(デバイス単位で並列)
+        // 6. 起動(デバイス単位で並列。**in-app の新規起動を含むときだけ同時2台に絞る**)。
+        // 2026-08-08: フルスイート直後の in-app フェーズ開始(8台同時の terminate→launch+注入)で
+        // シミュレータの画面凍結クラスタが同日2回発生した(a11y は応答・描画とタップが停止。
+        // 凍結検出器がワーカー除外して完走はする)。Android で対照実験済みの「複数台同時描画」
+        // 凍結と同族とみて、一括デバイス起動と同じ「同時2台」に絞る(ユーザー決定の
+        // device-up ポリシーと同じ理屈)。再利用/adopt だけの供給は launch を伴わないので
+        // 従来どおり全並列 = xcuitest ランナー再利用時の供給時間は変わらない
+        let launchesInApp = plans.contains { plan in
+            plan.bridges.contains { bridge in
+                if case .launch = bridge.plan { return bridge.engine == "inapp" }
+                return false
+            }
+        }
+        let launchWidth = launchesInApp ? 2 : plans.count
         let outcomes = await withTaskGroup(
             of: (Int, Result<ProvisionedIOSDevice, Error>).self,
             returning: [Int: Result<ProvisionedIOSDevice, Error>].self) { group in
-            for plan in plans {
+            var pending = plans.makeIterator()
+            func addNext(_ group: inout TaskGroup<(Int, Result<ProvisionedIOSDevice, Error>)>) {
+                guard let plan = pending.next() else { return }
                 group.addTask {
                     do {
                         let device = try await self.executeDevice(
@@ -275,8 +290,12 @@ public struct BridgeProvisioner {
                     }
                 }
             }
+            for _ in 0..<max(1, launchWidth) { addNext(&group) }
             var results: [Int: Result<ProvisionedIOSDevice, Error>] = [:]
-            for await (index, result) in group { results[index] = result }
+            for await (index, result) in group {
+                results[index] = result
+                addNext(&group)
+            }
             return results
         }
 

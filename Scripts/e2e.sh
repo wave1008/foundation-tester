@@ -2,16 +2,17 @@
 #
 # ftester 自身の E2E を全 SUT で回す。
 #
-# SUT は UI フレームワークごとに4つある(どれも画面・#id・ラベルは同じ契約。
+# SUT は UI フレームワークごとに5つある(どれも画面・#id・ラベルは同じ契約。
 # 唯一の正は E2EAppCMP/docs/ui-contract.md、各 SUT の差分は <SUT>/docs/ui-contract.md):
 #   cmp            E2EAppCMP/      Compose Multiplatform   → TestProjects/E2E-CMP     (ios + android)
 #   ios-native     E2EAppIOS/      SwiftUI + UIKit         → TestProjects/E2E-iOS     (ios のみ)
 #   android-native E2EAppAndroid/  View/XML + 一部 Compose → TestProjects/E2E-Android (android のみ)
 #   flutter        E2EAppFlutter/  Flutter                 → TestProjects/E2E-Flutter (ios + android)
+#   rn             E2EAppRN/       React Native            → TestProjects/E2E-RN      (ios + android)
 #
 # 使い方:
 #   Scripts/e2e.sh                 # 全 SUT・全プロファイル(鮮度を見て必要なら SUT を再ビルド)
-#   Scripts/e2e.sh --cmp           # SUT を絞る(--ios-native / --android-native / --flutter も同様。併記可)
+#   Scripts/e2e.sh --cmp           # SUT を絞る(--ios-native / --android-native / --flutter / --rn も同様。併記可)
 #   Scripts/e2e.sh --ios           # OS を絞る(--android も同様)
 #   Scripts/e2e.sh --ios-inapp     # iOS を in-app エンジン(ios-inapp プロファイル)で回す。
 #                                   # 既定は ios-xcuitest だけなので、**利用者の既定エンジン
@@ -49,11 +50,11 @@ for arg in "$@"; do
     --android) RUN_IOS=0 ;;
     --ios-inapp) IOS_PROFILE="ios-inapp" ;;
     --record) RECORD=1 ;;
-    --cmp|--ios-native|--android-native|--flutter) SUTS="$SUTS ${arg#--}" ;;
+    --cmp|--ios-native|--android-native|--flutter|--rn) SUTS="$SUTS ${arg#--}" ;;
     *) echo "不明な引数: $arg" >&2; exit 2 ;;
   esac
 done
-[ -n "$SUTS" ] || SUTS="cmp ios-native android-native flutter"
+[ -n "$SUTS" ] || SUTS="cmp ios-native android-native flutter rn"
 
 [ -x "$FTESTER" ] || { echo "❌ $FTESTER がありません(swift build --product ftester)" >&2; exit 1; }
 if [ "$RECORD" = 1 ]; then
@@ -144,6 +145,18 @@ for sut in $SUTS; do
       fi
       [ "$RUN_IOS" = 1 ] && run_profile E2E-Flutter "$IOS_PROFILE"
       [ "$RUN_ANDROID" = 1 ] && run_profile E2E-Flutter android
+      ;;
+    rn)
+      APP="$ROOT/E2EAppRN"
+      # 監視対象に android/app や ios/ を丸ごと入れない(ビルド出力・Pods が混ざり毎回再ビルドになる)
+      if [ "$RUN_IOS" = 1 ] && needs_rebuild "$APP/dist/ios-simulator/FTE2ERN.app" "$APP/src" "$APP/App.tsx" "$APP/index.js" "$APP/ios/FTE2ERN"; then
+        echo "→ SUT rn(iOS)を再ビルドします..."; "$APP/scripts/build-ios.sh"
+      fi
+      if [ "$RUN_ANDROID" = 1 ] && needs_rebuild "$APP/dist/android/ft-e2e-rn-release.apk" "$APP/src" "$APP/App.tsx" "$APP/index.js" "$APP/android/app/src"; then
+        echo "→ SUT rn(Android)を再ビルドします..."; "$APP/scripts/build-android.sh"
+      fi
+      [ "$RUN_IOS" = 1 ] && run_profile E2E-RN "$IOS_PROFILE"
+      [ "$RUN_ANDROID" = 1 ] && run_profile E2E-RN android
       ;;
   esac
 done

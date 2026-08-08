@@ -255,6 +255,9 @@ public final class AndroidDriver: AppDriver {
     public func snapshot(bypassingCache: Bool) async throws -> SnapshotResponse {
         restoreStateIfNeeded()  // 別プロセス実行時に refCenters 等を引き継ぐ(persistState で消さないため)
         var snapshot = try await withBridge { try await $0.snapshot(bypassingCache: bypassingCache) }
+        // RN の button 内側 Text 双子を畳む(SnapshotDedupe の宣言コメント参照)。
+        // syncLocalState より前 = 下流(DSL/MCP)は正規化後の木だけを見る
+        snapshot.elements = SnapshotDedupe.dropLabelTwinsInsideButtons(snapshot.elements)
         syncLocalState(from: snapshot)
         // IME は別プロセスの window でアプリの a11y ツリーに出ないため、オンデバイスのブリッジでは
         // 判定できずホスト側で dumpsys を引いて補う(AndroidForegroundWindows.keyboardVisible)。
