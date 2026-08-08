@@ -91,8 +91,9 @@ E2E のシナリオは全て `@TestClass(app: "com.ftester.e2e")` で `platform:
 
 **launchApp を減らすため、同じ launch 文脈を共有できる軽量シナリオは1 @Test 内の連続 scene に
 統合してある**(2026-08-08。旧シナリオ境界は `tap("#tab_home")`+再遷移。scene タイトルの
-`S00x0:` 接頭辞が旧シナリオ ID)。重量級と検出器(01 の起動着地・07 の S0060/S0080/S0090/S0100/S0110・
-08 の S0020・10 の S0010/S0030・11/13/17/19/23)は独立のまま。**05/18(テキスト入力・Enter キー)は
+`S00x0:` 接頭辞が旧シナリオ ID)。重量級と検出器(01 の起動着地・05_スクロール の S0060/S0080/S0090/S0100/S0110・
+06_待機とタイムアウト の S0020・08_ライフサイクル の S0010/S0030・
+09_否定と個数と方向セレクタ・10_ID無し画面・11_イレギュラーハンドラ・13_WebView・16_飛び越し)は独立のまま。**03_テキスト入力・12_Enterキー は
 統合を見送った** —— E2EAppCMP は IME アクション発火後もフォーカス・キーボードを保持する
 (ui-contract.md「テキスト入力画面」)ため、境界で `#tab_home` を確実に叩ける決定的なキーボード
 消去手段が iOS 側に無い(Android の `hideKeyboard()` に相当するものが無い)。
@@ -101,17 +102,17 @@ E2E のシナリオは全て `@TestClass(app: "com.ftester.e2e")` で `platform:
 |---|---|
 | `01_起動と画面遷移.swift` | `launchApp` / タブ切替 / 下位画面遷移+`戻る` / タブ切替時にスタックが持ち越されないこと |
 | `02_セレクタ画面.swift` | `#id`・ラベル一致規則・`.Type[n]` 系・`\|\|` フォールバック・フィルタ OR・対称アサーション・型付きセレクタ(Sel)(旧 02/03/04/16.S0010/15.S0010 を統合) |
-| `05_テキスト入力.swift` | `type` と入力値 echo(単一行/パスワード/送信/クリア)・`clearInput`・キーボード表示検証(統合見送り。上記参照) |
-| `06_ジェスチャ.swift` | `tap` 連打 / `press` / `swipe` 4方向 / `swipePointToPoint` / ピンチ・ダブルタップ・斜めドラッグ(旧 22 を統合) |
-| `07_スクロール.swift` | `scrollTo`・非スクロール契約・`swipeElementToElement`・`notExist(scroll:)`・textContains/textMatches・Shirates 準拠スクロール・Sel 版のスコープ/状態フィルタ/スクロール別名族(旧 14.S0010/16.S0020/S0030/15.S0020/S0030 を統合。統合Bは壁時計対策で2 @Test)。S0060/S0080/S0090/S0100/S0110 は独立 |
-| `08_待機とタイムアウト.swift` | 暗黙待ちと `timeout:`・appIs/screenshot/waitForDisplay/verify・秒引数の小数指定(旧 21.S0010/20.S0020 を統合)。S0020 は独立 |
-| `09_条件分岐とダイアログ.swift` | ダイアログ操作・`ifCanSelect`・`back`(Android)・`repeatWhileCanSelect`・`waitForClose`(旧 14.S0020/21.S0060 を統合) |
-| `10_ライフサイクルとプラットフォーム分岐.swift` | `restartApp` のプロセス内/永続分離・`ios {}`/`android {}`・ブリッジの Slider value 供給(旧 24 を統合)。S0010/S0030 は独立 |
-| `11_否定と個数と方向セレクタ.swift` | `notExist` / `countIs` / `enabledIsTrue/False`・`checkIsON/OFF` / 相対セレクタ `:below`・`:above` / `group` / setUp・tearDown |
-| `13_ID無し画面.swift` | id の無い画面を相対セレクタ(`基準:rightSwitch` 等)だけで操作・検証 |
-| `18_Enterキー.swift` | `pressEnter()` と `type` の末尾改行(統合見送り。上記参照) |
-| `20_値の読み出しと小数タイムアウト.swift` | `exist` の戻り値から画面の値を読んで後段の期待値に使う(旧 S0020 は 08 へ移設) |
-| `21_新規コマンド.swift` | `flick` 8方向(旧 S0010 は 08 へ、旧 S0060 は 09 へ移設) |
+| `03_テキスト入力.swift` | `type` と入力値 echo(単一行/パスワード/送信/クリア)・`clearInput`・キーボード表示検証(統合見送り。上記参照) |
+| `04_ジェスチャ.swift` | `tap` 連打 / `press` / `swipe` 4方向 / `swipePointToPoint` / ピンチ・ダブルタップ・斜めドラッグ(旧 22 を統合) |
+| `05_スクロール.swift` | `scrollTo`・非スクロール契約・`swipeElementToElement`・`notExist(scroll:)`・textContains/textMatches・Shirates 準拠スクロール・Sel 版のスコープ/状態フィルタ/スクロール別名族(旧 14.S0010/16.S0020/S0030/15.S0020/S0030 を統合。統合Bは壁時計対策で2 @Test)。S0060/S0080/S0090/S0100/S0110 は独立 |
+| `06_待機とタイムアウト.swift` | 暗黙待ちと `timeout:`・appIs/screenshot/waitForDisplay/verify・秒引数の小数指定(旧 21.S0010/20.S0020 を統合)。S0020 は独立 |
+| `07_条件分岐とダイアログ.swift` | ダイアログ操作・`ifCanSelect`・`back`(Android)・`repeatWhileCanSelect`・`waitForClose`(旧 14.S0020/21.S0060 を統合) |
+| `08_ライフサイクルとプラットフォーム分岐.swift` | `restartApp` のプロセス内/永続分離・`ios {}`/`android {}`・ブリッジの Slider value 供給(旧 24 を統合)。S0010/S0030 は独立 |
+| `09_否定と個数と方向セレクタ.swift` | `notExist` / `countIs` / `enabledIsTrue/False`・`checkIsON/OFF` / 相対セレクタ `:below`・`:above` / `group` / setUp・tearDown |
+| `10_ID無し画面.swift` | id の無い画面を相対セレクタ(`基準:rightSwitch` 等)だけで操作・検証 |
+| `12_Enterキー.swift` | `pressEnter()` と `type` の末尾改行(統合見送り。上記参照) |
+| `14_値の読み出しと小数タイムアウト.swift` | `exist` の戻り値から画面の値を読んで後段の期待値に使う(旧 S0020 は 08 へ移設) |
+| `15_フリック.swift` | `flick` 8方向(旧 21_新規コマンド。S0010 は 08 へ、S0060 は 09 へ移設) |
 
 ## `_disabled/`(通常実行に含めない)
 

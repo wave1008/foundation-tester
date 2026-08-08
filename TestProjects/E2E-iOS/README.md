@@ -76,20 +76,21 @@ simctl terminate する(ログに「別アプリに注入された in-app ブリ
 
 **launchApp を減らすため、同じ launch 文脈を共有できる軽量シナリオは1 @Test 内の連続 scene に
 統合してある**(2026-08-08。旧シナリオ境界は `tap("#tab_home")`+再遷移。scene タイトルの
-`S00x0:` 接頭辞が旧シナリオ ID)。重量級と検出器(01 の起動着地・07 の S0060/S0080/S0090/S0100・
-08 の S0020・10 の S0010/S0030・17・19)は独立のまま。
+`S00x0:` 接頭辞が旧シナリオ ID)。重量級と検出器(01 の起動着地・05_スクロール の S0060/S0080/S0090/S0100・
+06_待機とタイムアウト の S0020・08_ライフサイクルとコントロール の S0010/S0030・
+10_イレギュラーハンドラ・11_WebView)は独立のまま。
 
 | ファイル | 検証する ftester 機能 |
 |---|---|
 | `01_起動と画面遷移.swift` | `launchApp` / タブ切替 / 下位画面遷移+`戻る` / タブ切替でスタックを持ち越さないこと |
 | `02_セレクタ画面.swift` | `#id`・ラベル一致規則・`.Type[n]` 系・`\|\|` フォールバック・フィルタ OR・対称アサーション(旧 02/03/04/16 を統合) |
-| `05_テキスト入力.swift` | `type` と入力値 echo・`.SecureTextField`・`clearInput`・キーボード表示検証・pressEnter/IME(旧 18 を統合) |
-| `06_ジェスチャ.swift` | `tap` 連打 / `press` / `swipe` 4方向 / `swipePointToPoint` / ピンチ・ダブルタップ・斜めドラッグ(旧 22 を統合) |
-| `07_スクロール.swift` | `scrollTo`・`swipeElementToElement`・`notExist(scroll:)`・scrollFrame・Shirates 準拠スクロール(旧 14.S0010/16.S0020/S0030 を統合)。S0060/S0080/S0090/S0100 は独立 |
-| `08_待機とタイムアウト.swift` | 暗黙待ちと `timeout:`・セレクタ拡張・appIs/screenshot/waitForDisplay/verify(旧 12/21.S0010 を統合) |
-| `09_条件分岐とダイアログ.swift` | ダイアログ操作・`ifCanSelect`・`repeatWhileCanSelect`・`waitForClose`(旧 14.S0020/21.S0060 を統合) |
-| `10_ライフサイクルとコントロール.swift` | `restartApp` のプロセス内/永続分離・コントロール状態・操作可否アサーション(旧 11 を統合)・`clearAppData` |
-| `13_ID無し画面.swift` / `17_イレギュラーハンドラ.swift` / `19_WebView.swift` / `21_新規コマンド.swift`(S0040) | 単独維持(リセット手段が無い画面・setUp ハンドラ・重量級) |
+| `03_テキスト入力.swift` | `type` と入力値 echo・`.SecureTextField`・`clearInput`・キーボード表示検証・pressEnter/IME(旧 18 を統合) |
+| `04_ジェスチャ.swift` | `tap` 連打 / `press` / `swipe` 4方向 / `swipePointToPoint` / ピンチ・ダブルタップ・斜めドラッグ(旧 22 を統合) |
+| `05_スクロール.swift` | `scrollTo`・`swipeElementToElement`・`notExist(scroll:)`・scrollFrame・Shirates 準拠スクロール(旧 14.S0010/16.S0020/S0030 を統合)。S0060/S0080/S0090/S0100 は独立 |
+| `06_待機とタイムアウト.swift` | 暗黙待ちと `timeout:`・セレクタ拡張・appIs/screenshot/waitForDisplay/verify(旧 12/21.S0010 を統合) |
+| `07_条件分岐とダイアログ.swift` | ダイアログ操作・`ifCanSelect`・`repeatWhileCanSelect`・`waitForClose`(旧 14.S0020/21.S0060 を統合) |
+| `08_ライフサイクルとコントロール.swift` | `restartApp` のプロセス内/永続分離・コントロール状態・操作可否アサーション(旧 11 を統合)・`clearAppData` |
+| `09_ID無し画面.swift` / `10_イレギュラーハンドラ.swift` / `11_WebView.swift` / `12_フリック.swift` | 単独維持(リセット手段が無い画面・setUp ハンドラ・重量級) |
 
 ## `_disabled/`(通常実行に含めない)
 
@@ -108,7 +109,7 @@ simctl terminate する(ログに「別アプリに注入された in-app ブリ
 
 - **ダイアログ見出しに id は付かない**。`exist("確認")` とラベルで引く。
   `.accessibilityIdentifier` を title にも message にも付けたが両方とも捨てられた(実測)
-- `04` の `.Button[6]` は実スナップショットで採取した値。序数は「見えている同型要素のツリー順」で
+- `02_セレクタ画面` の `.Button[6]` は実スナップショットで採取した値。序数は「見えている同型要素のツリー順」で
   スクロール位置と画面クロム(戻る・下部タブ)に依存する。レイアウトを変えたら採取し直す
 - テキスト入力画面はスクロールさせない。ソフトキーボードに覆われると `exist`/`textIs` の
   可視性判定が偽陽性(occlusion)で落ちる(Compose 版と同じ制約)
