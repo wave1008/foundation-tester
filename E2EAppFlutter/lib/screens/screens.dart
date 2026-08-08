@@ -182,6 +182,13 @@ class _LifecycleScreenState extends State<LifecycleScreen> {
         }),
         TaggedText(Tags.txtPlatform,
             'platform=${Theme.of(context).platform == TargetPlatform.iOS ? 'iOS' : 'Android'}'),
+        // ValueListenableBuilder で直接購読する(この画面は const で生成されるため、
+        // 親 AppShell の setState だけでは再 build されない。main.dart の DeepLinkState 参照)。
+        ValueListenableBuilder<String>(
+          valueListenable: DeepLinkState.lastUrl,
+          builder: (context, value, _) =>
+              TaggedText(Tags.txtLastDeeplink, 'deeplink=$value'),
+        ),
       ]);
 }
 

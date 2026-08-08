@@ -133,6 +133,7 @@ enum Tags {
     static let btnSessionInc = "btn_session_inc"
     static let btnResetPersisted = "btn_reset_persisted"
     static let txtPlatform = "txt_platform"
+    static let txtLastDeeplink = "txt_last_deeplink"
 
     // 自己修復。ラベルは不変で id だけ入れ替わる(schema トグル)のが検証の核。
     static let swHealSchema = "sw_heal_schema"

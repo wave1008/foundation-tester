@@ -71,6 +71,48 @@ tag 定数は `composeApp/src/commonMain/kotlin/com/ftester/e2e/Tags.kt` に集�
 
 タブ切替は各タブのルートへ着地する(スタックを持ち越さない)。
 
+## ディープリンク(全 SUT 共通契約・SUT ごとに固有の URL スキーム)
+
+**URL スキームは SUT ごとに固有のものを登録する**(iOS = `Info.plist` の `CFBundleURLTypes`、
+Android = `<intent-filter>` に `VIEW` + `DEFAULT` + `BROWSABLE` と `<data android:scheme="…"/>`)。
+**理由(実測)**: iOS は同一のカスタムスキームを複数アプリが登録していても解決先を1つしか選ばず、
+どれに届くかが端末ごとに揺れる。E2E のシミュレータには iOS の SUT が4つ同居するため、共通スキーム
+`fte2e` では 2026-08-09 の E2E で CMP 宛の `openURL` が別アプリへ解決される事故が起きた。
+Android は intent に package を明示するので影響しないが、**契約は全 SUT 共通なので iOS に合わせて
+固有化する**。**Universal Links / App Links(`https://`)は使わない** —— AASA / assetlinks.json の
+取得状態に左右され、シミュレータでは Safari へ流れることがある。カスタムスキームはデバイスの状態に
+依存しない。
+
+| SUT | アプリID | URL スキーム |
+|---|---|---|
+| `E2EAppCMP` | `com.ftester.e2e` | `fte2ecmp` |
+| `E2EAppIOS` | `com.ftester.e2e.ios` | `fte2eios` |
+| `E2EAppAndroid` | `com.ftester.e2e.android` | `fte2eandroid` |
+| `E2EAppFlutter` | `com.ftester.e2e.flutter` | `fte2eflutter` |
+| `E2EAppRN` | `com.ftester.e2e.rn` | `fte2ern` |
+
+パス部分は全 SUT 共通(以下は `E2EAppCMP` の `fte2ecmp` を例に示す。他 SUT は自分のスキームへ読み替える):
+
+| URL | 着地する画面 | 備考 |
+|---|---|---|
+| `fte2ecmp://screen/selector` | セレクタ画面 | ホームタブのスタックに積む(`#btn_back` でホームへ戻る) |
+| `fte2ecmp://screen/lifecycle` | ライフサイクル画面 | 同上 |
+| 上記に `?` 以降が付いた URL | 同じ画面 | クエリは解釈しない。URL 全体を `#txt_last_deeplink` に出す |
+| 上記以外の `fte2ecmp://…` | **遷移しない**(今の画面のまま) | 受け取ったことは `#txt_last_deeplink` に出る |
+
+- **受け取った URL は必ず `#txt_last_deeplink`(ライフサイクル画面)に丸ごと出す**。着地画面だけを
+  見ると「URL が届いたのか、たまたま同じ画面だったのか」を区別できない。
+- **起動時リセットの後に適用する**: プロセス起動では必ずホームタブのルートに戻り(§全体規約)、
+  ディープリンクの遷移はその後に積む。`launchApp(url:)` は再起動 → URL 配送の順で 1 ステップ。
+- **未知の URL でクラッシュしない・画面を変えない**。`openURL` が「届いたが遷移は起きない」ことを
+  検証できる唯一の材料。
+- 検証に使う URL には `&` を含める(例 `fte2ecmp://screen/lifecycle?tag=a&n=1`)。Android は
+  `adb shell` を経由するので**クォートが落ちると `&` でコマンドが切れる**。この URL がその回帰を落とす。
+- **CMP 実装メモ**: Android は `MainActivity` を `launchMode="singleTop"` にし `onNewIntent` で受ける
+  (`singleTask` はタスクを畳み既存シナリオの launch 挙動に影響し得るため不採用)。iOS は SwiftUI の
+  `.onOpenURL`(launch 時・起動済み着信の両方を1箇所でカバーする)。受け取った URL は
+  commonMain の `DeepLinkRouter`(object)へ集約し、Compose 側の `LaunchedEffect` が消費してナビゲーションへ反映する。
+
 ## ホームタブ / ルート(タイトル `ホーム`)
 
 | tag | 種別 | ラベル/テキスト | 備考 |
@@ -355,6 +397,7 @@ Switch/Checkbox/RadioButton は**ラベル Text 自体をタップ対象にし�
 | `#btn_session_inc` | Button | `セッション+1` | |
 | `#btn_reset_persisted` | Button | `永続カウンタをリセット` | `launch=1` に戻す(現プロセス分) |
 | `#txt_platform` | Text | `platform=<iOS\|Android>` | |
+| `#txt_last_deeplink` | Text | `deeplink=<受け取った URL 全体>` 初期 `deeplink=-` | プロセス内メモリのみ(永続しない)。§ディープリンク |
 
 `relaunchApp` の検証: 事前に `session` を上げ、relaunch 後に `session=0` かつ `launch` が +1 されている。
 

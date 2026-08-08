@@ -141,6 +141,7 @@ object Tags {
     const val BTN_SESSION_INC = "btn_session_inc"
     const val BTN_RESET_PERSISTED = "btn_reset_persisted"
     const val TXT_PLATFORM = "txt_platform"
+    const val TXT_LAST_DEEPLINK = "txt_last_deeplink"
 
     // 自己修復。ラベルは不変で id だけ入れ替わる(schema トグル)のが検証の核。
     const val SW_HEAL_SCHEMA = "sw_heal_schema"

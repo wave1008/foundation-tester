@@ -6,9 +6,10 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { StatusBar, useColorScheme } from 'react-native';
+import { Linking, StatusBar, useColorScheme } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { resolveDeepLinkScreen } from './src/deeplink';
 import { HomeChildScreen } from './src/navigation';
 import {
   bootstrapPersistedState,
@@ -82,12 +83,35 @@ function AppShell({ initialPersisted }: { initialPersisted: PersistedState }) {
   const [launchCount, setLaunchCount] = useState(initialPersisted.launchCount);
   const [autoDialog, setAutoDialog] = useState(initialPersisted.autoDialog);
   const [healSchemaV1, setHealSchemaV1] = useState(initialPersisted.healSchemaV1);
+  const [lastDeeplink, setLastDeeplink] = useState('-');
 
   // タブ切替は下位画面スタックを捨てて各タブのルートへ着地する(契約 §シェル)。
   const switchTab = (next: AppTab) => {
     setTab(next);
     setHomeChild(null);
   };
+
+  // 起動時リセット(上の useState 初期値 = ホームのルート)が確定した後にディープリンクを適用する
+  // (契約 E2EAppCMP/docs/ui-contract.md §ディープリンク)。getInitialURL は cold launch
+  // (launchApp(url:))、'url' イベントは warm(openURL)を担う。iOS/Android とも native 側の配線は
+  // ios/FTE2ERN/AppDelegate.swift・android/…/MainActivity.kt + AndroidManifest.xml。
+  useEffect(() => {
+    const applyDeepLink = (url: string) => {
+      setLastDeeplink(url);
+      const screen = resolveDeepLinkScreen(url);
+      if (screen !== null) {
+        setTab('home');
+        setHomeChild(screen);
+      }
+    };
+    Linking.getInitialURL().then(url => {
+      if (url) {
+        applyDeepLink(url);
+      }
+    });
+    const subscription = Linking.addEventListener('url', ({ url }) => applyDeepLink(url));
+    return () => subscription.remove();
+  }, []);
 
   const handleAutoDialogChange = (v: boolean) => {
     setAutoDialog(v);
@@ -142,6 +166,7 @@ function AppShell({ initialPersisted }: { initialPersisted: PersistedState }) {
           <LifecycleScreen
             launchCount={launchCount}
             sessionCount={sessionCount}
+            lastDeeplink={lastDeeplink}
             onSessionIncrement={() => setSessionCount(c => c + 1)}
             onResetLaunch={handleResetLaunch}
           />

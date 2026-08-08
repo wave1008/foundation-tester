@@ -10,10 +10,20 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTop"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- fte2eandroid:// ディープリンク(E2EAppCMP/docs/ui-contract.md §ディープリンク)。
+                 singleTop + onNewIntent(MainActivity.kt)で受ける。singleTask はタスクを畳んで
+                 既存シナリオの launch 挙動に影響し得るため避ける(依頼元の指定)。 -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="fte2eandroid" />
             </intent-filter>
         </activity>
     </application>

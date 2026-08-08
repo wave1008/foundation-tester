@@ -8,6 +8,17 @@ tag 定数は `src/tags.ts` に集約する(値は共通契約の表と byte 一
 - bundle id / applicationId: `com.ftester.e2e.rn`(他の SUT と共存できる)
 - `#txt_about_app` は `app=com.ftester.e2e.rn`
 - シナリオ: `TestProjects/E2E-RN/scenarios/`(**platform 未指定 = ios/android 両方で回す**)
+- ディープリンク: `MainActivity` は `android:launchMode="singleTop"` + `onNewIntent`(`singleTask` は
+  タスクを畳んで既存シナリオの launch 挙動に影響し得るため避けた。E2EAppAndroid と同じ判断)。
+  RN 標準 `Linking`(`getInitialURL()` + `addEventListener('url', …)`)をそのまま使う —
+  Android の 'url' イベントは `IntentModule` 自体は出さず、New Architecture の `ReactHost.onNewIntent`
+  が `onNewIntent` → `setIntent()` の配線だけで自動発行する(実測: node_modules 内 `ReactHostImpl.kt`)。
+  iOS は `scene(_:openURLContexts:)` から `RCTLinkingManager` へ単発配送する(`ios/FTE2ERN/AppDelegate.swift`)。
+  `launchApp(url:)` は launch 直後に openURL を撃つため実運用は常にこの経路
+  (connectionOptions.urlContexts 経由の getInitialURL は使われない)を通る。**JS 購読前の URL 到達を
+  警戒した再送リトライを一度入れたが、ホストの openURL 確認ダイアログ自動了承が真因を解消済みで
+  リトライは不要と実測確認済み(2026-08-09)** —— 再送を残すと `#btn_back` 後も遅延到達した再送が
+  `resolveDeepLinkScreen` を再適用し、ホームへ戻れなくなる(戻る操作を上書きする)実害があった。
 - 実測環境: RN 0.86.2・TypeScript・**New Architecture(Fabric)**・iPhone 17 Pro iOS 27.0 Simulator /
   Pixel 9 Android 15 Emulator(2026-08-08)。旧 Architecture(Paper/Bridge)は未検証
 

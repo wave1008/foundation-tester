@@ -4,4 +4,7 @@ local.properties
 dist/
 iosApp/build/
 iosApp/iosApp.xcodeproj/
+# xcodegen が project.yml の info.properties から毎ビルド上書きする生成物。
+# **直接編集しても次のビルドで消える** — 追加するキーは project.yml 側へ書く。
+iosApp/iosApp/Info.plist
 .DS_Store

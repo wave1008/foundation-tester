@@ -8,6 +8,7 @@ import com.ftester.e2e.Tags
 import com.ftester.e2e.ui.ScreenColumn
 import com.ftester.e2e.ui.TaggedButton
 import com.ftester.e2e.ui.TaggedText
+import com.ftester.e2e.util.DeepLinkRouter
 import com.ftester.e2e.util.LaunchCounter
 import com.ftester.e2e.util.platformName
 
@@ -28,5 +29,6 @@ fun LifecycleScreen() {
             LaunchCounter.reset()
         }
         TaggedText(Tags.TXT_PLATFORM, "platform=${platformName()}")
+        TaggedText(Tags.TXT_LAST_DEEPLINK, "deeplink=${DeepLinkRouter.lastUrl ?: "-"}")
     }
 }

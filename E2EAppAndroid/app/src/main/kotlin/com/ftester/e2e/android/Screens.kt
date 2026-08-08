@@ -109,9 +109,11 @@ fun buildLifecycleScreen(activity: Activity, parent: ViewGroup): View {
     val v = activity.inflate(R.layout.screen_lifecycle, parent)
     val launch = v.findViewById<TextView>(R.id.txt_launch_count)
     val session = v.findViewById<TextView>(R.id.txt_session_count)
+    val lastDeeplink = v.findViewById<TextView>(R.id.txt_last_deeplink)
     fun render() {
         launch.text = "launch=${LaunchCounter.value}"
         session.text = "session=${SessionCounter.value}"
+        lastDeeplink.text = "deeplink=${DeepLinkState.lastUrl}"
     }
     v.findViewById<Button>(R.id.btn_session_inc).setOnClickListener {
         SessionCounter.value += 1

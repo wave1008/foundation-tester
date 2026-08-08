@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -36,6 +37,8 @@ import com.ftester.e2e.screens.SelectorScreen
 import com.ftester.e2e.screens.WebViewScreen
 import com.ftester.e2e.ui.TaggedButton
 import com.ftester.e2e.ui.TaggedText
+import com.ftester.e2e.util.DeepLinkRouter
+import com.ftester.e2e.util.DeepLinkScreen
 import com.ftester.e2e.util.LaunchCounter
 import com.ftester.e2e.util.exposeTestTagsAsResourceId
 
@@ -78,6 +81,21 @@ fun App() {
     fun switchTab(next: Tab) {
         tab = next
         homeChild = null
+    }
+
+    // ディープリンクはホームタブのスタックに積む(契約 §ディープリンク)。token をキーにするのは
+    // 同じ URL が連続で届いても再ナビゲーションを取りこぼさないため(DeepLinkRouter 参照)。
+    LaunchedEffect(DeepLinkRouter.token) {
+        val screen = when (DeepLinkRouter.pendingScreen) {
+            DeepLinkScreen.SELECTOR -> Screen.SELECTOR
+            DeepLinkScreen.LIFECYCLE -> Screen.LIFECYCLE
+            null -> null
+        }
+        if (screen != null) {
+            tab = Tab.HOME
+            homeChild = screen
+        }
+        DeepLinkRouter.consumePending()
     }
 
     MaterialTheme {
