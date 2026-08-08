@@ -402,7 +402,7 @@ inconclusive はシナリオを中断しない。レポート・ログには ❓
 
 | コマンド | 説明 |
 |---|---|
-| `launchApp(bundleID?)` | 起動(省略時は `@TestClass(app:)` のアプリ)。起動済みなら前面化 |
+| `launchApp(bundleID?)` | 起動(省略時は `@TestClass(app:)` のアプリ)。**起動済みでも前面化ではなく、常にプロセスを終了してから起動し直す**(Android はブリッジが force-stop+起動、iOS は terminate 込み launch。エントリー画面から始まる) |
 | `restartApp(bundleID?)` | 終了してから起動(プロセス内状態のリセットに) |
 | `terminateApp()` | 終了 |
 | `installApp(path?)` | アプリをインストール。**実行はオーケストレータ(親プロセス)が行う**。パス省略時は実行プロファイルの `appPath` を親が解決する(明示引数 > プロファイル)。プロファイルにも `appPath` が無ければ明示エラー。iOS の in-app/hybrid エンジンでは simctl install で常駐ブリッジが道連れに終了するが、直後の `launchApp()` が再注入し直すので、続けて `launchApp()` を呼べば問題ない。オーケストレータ無しの単独実行(`ftester-scenarios run` を直接叩く等)では従来どおり明示引数が必須(省略時は明示エラー) |
