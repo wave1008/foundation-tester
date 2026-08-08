@@ -36,6 +36,8 @@ final class MCPServer {
     /// scroll_to の空打ちゲート用 uiFramework(engineKey ごと)。**成功だけ**記憶する —
     /// 失敗(nil)を覚えると、suspend 中の1回のタイムアウトで判定がセッション全体に固定される
     var uiFrameworkHints: [String: String] = [:]
+    /// 特定できたシミュレータの udid(engineKey ごと)。xcuitest のマーカー判定に使う
+    var udids: [String: String?] = [:]
     /// drivers と同じキーで**最後に ft_launch した bundleID**を覚える。
     ///
     /// **Android のブリッジは session を前面ウィンドウから採る**(`SnapshotBuilder` の
@@ -177,6 +179,7 @@ final class MCPServer {
                 if case .ios(let provisioned, _) = target { provisioned.physical ? "xcuitest" : provisioned.engine }
                 else { "android" }
             }()
+            if case .ios(let provisioned, _) = target { udids[key] = provisioned.udid }
             // engine=xcuitest はブリッジが uiFramework を申告しないが、profile 経由なら
             // 対象 bundleID が分かるのでバンドルのマーカーで判定して覚える(scroll_to の
             // 空打ちゲート用。DSL の xcuitest 経路と同じ判定 = AppBundleInspector)
@@ -213,6 +216,7 @@ final class MCPServer {
                 logger: { Self.logStderr($0) })
             created = resolved.driver
             engines[key] = resolved.engine
+            udids[key] = resolved.udid
             connections[key] = "port \(port)"
             // **稼働中のブリッジが古いままではないか**を1度だけ確かめる(2026-08-06 に踏んだ)。
             // profile 経由は BridgeProvisioner が版で再利用可否を決めるが、**この経路は
@@ -627,7 +631,17 @@ final class MCPServer {
         } else if let cached = uiFrameworkHints[Self.engineKey(args)] {
             uiFrameworkHint = cached
         } else if engineForKey == "xcuitest" {
-            uiFrameworkHint = nil
+            // profile 無しでも、resolver が udid を特定できていれば、attach 中のアプリ
+            // (status.sessionBundleID)のバンドルマーカーで判定できる(成功だけ記憶)
+            if let udid = udids[Self.engineKey(args)] ?? nil,
+               let bundleID = (try? await scrollDriver.status())?.sessionBundleID,
+               let hint = AppBundleInspector.detect(udid: udid, bundleID: bundleID,
+                                                    physical: false) {
+                uiFrameworkHints[Self.engineKey(args)] = hint
+                uiFrameworkHint = hint
+            } else {
+                uiFrameworkHint = nil
+            }
         } else {
             uiFrameworkHint = (try? await scrollDriver.status())?.uiFramework
             if let hint = uiFrameworkHint { uiFrameworkHints[Self.engineKey(args)] = hint }

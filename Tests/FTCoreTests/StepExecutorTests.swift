@@ -2567,6 +2567,48 @@ final class StepExecutorTests: XCTestCase {
         XCTAssertNil(StepExecutor.dragGesture(jump: 40, container: container))
     }
 
+    /// 見切れ回収の必要距離(符号は dragGesture 規約: + = 指を上/左)。
+    /// 全幅フリングの往復振動(RN 横カルーセルで maxSwipes 使い切り)を距離指定で置き換える根拠
+    func testClipRecoveryJumpPerEdge() {
+        let vp = FTRect(x: 16, y: 690, width: 370, height: 60)
+        func el(_ x: Double, _ y: Double, _ w: Double, _ h: Double) -> ElementInfo {
+            ElementInfo(ref: 1, type: "button", identifier: "tag", label: nil, value: nil,
+                        placeholder: nil, enabled: true,
+                        frame: FTRect(x: x, y: y, width: w, height: h), depth: 1)
+        }
+        // 右へはみ出し(右端 500 > 386)→ 指を左(+)・量 = 114 + 24
+        XCTAssertEqual(StepExecutor.clipRecoveryJump(for: el(380, 690, 120, 60), viewport: vp,
+                                                     finger: .left) ?? 0, 138, accuracy: 0.5)
+        // 左へはみ出し → 指を右(−)
+        XCTAssertEqual(StepExecutor.clipRecoveryJump(for: el(-40, 690, 120, 60), viewport: vp,
+                                                     finger: .right) ?? 0, -80, accuracy: 0.5)
+        // 下へはみ出し → 指を上(+)
+        XCTAssertEqual(StepExecutor.clipRecoveryJump(for: el(16, 740, 120, 56), viewport: vp,
+                                                     finger: .up) ?? 0, 70, accuracy: 0.5)
+        // 完全に見えている → nil(回収不要)
+        XCTAssertNil(StepExecutor.clipRecoveryJump(for: el(20, 692, 120, 56), viewport: vp,
+                                                   finger: .left))
+    }
+
+    /// 横方向のドラッグ(逆走査の横対応。2026-08-08: RN 横 FlatList の飛び越し救済が動機)。
+    /// jump > 0 = 指を左(縦の「+ = 上」と同じ「進む向き」規約)・y は容器の中心線
+    func testDragGestureHorizontalGeometry() {
+        let container = FTRect(x: 16, y: 690, width: 370, height: 60)
+        // 指を左へ: 右端マージンから左へ
+        let left = StepExecutor.dragGesture(jump: 200, container: container, vertical: false)
+        XCTAssertNotNil(left)
+        XCTAssertEqual(left!.fromY, 720)                              // y = 中心線
+        XCTAssertEqual(left!.toY, 720)
+        XCTAssertEqual(left!.fromX, 16 + 370 - 370 * 0.15, accuracy: 0.5)
+        XCTAssertEqual(left!.fromX - left!.toX, 180, accuracy: 0.5)   // 200 * 0.9
+        // 指を右へ: 左端マージンから右へ
+        let right = StepExecutor.dragGesture(jump: -200, container: container, vertical: false)
+        XCTAssertEqual(right!.toX - right!.fromX, 180, accuracy: 0.5)
+        // 幅が細い容器は nil(縦と同じ下限規則が幅に掛かる)
+        XCTAssertNil(StepExecutor.dragGesture(
+            jump: 200, container: FTRect(x: 0, y: 0, width: 120, height: 800), vertical: false))
+    }
+
     /// **容器は画面と交差させる**(scrollFrame 側と同じ規則)。交差を取らないと画面外の座標を撃つ
     func testDragGestureClipsTheContainerToTheViewport() {
         // 画面(高さ 2400)より下へはみ出した容器
