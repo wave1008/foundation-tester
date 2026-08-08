@@ -33,6 +33,9 @@ final class MCPServer {
     /// 撮り直して同じ要素を引き直すための起点(RefGuard 参照)。
     /// **ref はスナップショットごとに振り直される**ので、番号ではなく要素の同一性で照合する
     var lastSnapshots: [String: SnapshotResponse] = [:]
+    /// scroll_to の空打ちゲート用 uiFramework(engineKey ごと)。**成功だけ**記憶する —
+    /// 失敗(nil)を覚えると、suspend 中の1回のタイムアウトで判定がセッション全体に固定される
+    var uiFrameworkHints: [String: String] = [:]
     /// drivers と同じキーで**最後に ft_launch した bundleID**を覚える。
     ///
     /// **Android のブリッジは session を前面ウィンドウから採る**(`SnapshotBuilder` の
@@ -602,8 +605,25 @@ final class MCPServer {
             scrollFrame: (args["scrollFrame"] as? String).map { FTSelector.parse($0).primary })
         // releasesScrollTouch は **iOS だけ true**(Android では 2pt のドラッグがクリックとして
         // 発火する。StepExecutor の宣言参照)。ここを取り違えると探索直後に行が勝手に選択される
+        // uiFramework ヒントは in-app/hybrid の自己申告(status)を engineKey ごとに1回だけ
+        // 取得して使い回す。Android は releasesScrollTouch=false で無関係・xcuitest はブリッジが
+        // 申告せず MCP は対象 bundleID も持たない(任意の前面アプリを駆動する)ためマーカー判定も
+        // できない → どちらも nil(**既知の残穴**: engine=xcuitest の RN アプリでは ft_scroll_to の
+        // 空打ちが残る。利用者の既定 hybrid では自己申告が効くので発生しない)
+        let engineForKey = engines[Self.engineKey(args)]
+        let isAndroid = engineForKey == "android" || scrollDriver is AndroidDriver
+        let uiFrameworkHint: String?
+        if isAndroid || engineForKey == "xcuitest" {
+            uiFrameworkHint = nil
+        } else if let cached = uiFrameworkHints[Self.engineKey(args)] {
+            uiFrameworkHint = cached
+        } else {
+            uiFrameworkHint = (try? await scrollDriver.status())?.uiFramework
+            if let hint = uiFrameworkHint { uiFrameworkHints[Self.engineKey(args)] = hint }
+        }
         let executor = StepExecutor(driver: scrollDriver,
-                                    releasesScrollTouch: !(scrollDriver is AndroidDriver))
+                                    releasesScrollTouch: !isAndroid,
+                                    uiFramework: uiFrameworkHint)
         let outcome = await executor.execute(step)
         // **探索でツリーは必ず動く**ので、覚えている木を捨てて撮り直す(古い ref を残さない)
         let after = try await freshSnapshot(scrollDriver, args: args)

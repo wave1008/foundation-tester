@@ -383,6 +383,10 @@ final class FTInAppBridge {
         let sem = DispatchSemaphore(value: 0)
         var thrown: Error?
         var note: String?
+        // 取り直しで判明した現在 frame の中心。activate が不発でも合成タッチはこちらを使う
+        // (stored frame はコールドラウンチ直後のレイアウト確定を跨ぐと古く、RN で1要素ぶん
+        // 上のナビを叩いた実害。2026-08-08)
+        var freshTapPoint: CGPoint?
 
         func finish(_ window: UIWindow) {
             InAppSettle.waitOnMain { converged in
@@ -397,7 +401,7 @@ final class FTInAppBridge {
             // (hybrid の XCUITest フォールバックは springboard 参照でアプリ要素には効かない)。
             note = "activate 不発 → 合成タッチ(要素が反応しない場合は testTag 付与か engine=xcuitest を検討)"
             do {
-                let p = try self.resolvePoint(ref: ref, x: req.x, y: req.y)
+                let p = try freshTapPoint ?? self.resolvePoint(ref: ref, x: req.x, y: req.y)
                 FTSynthTap(window, p)
             } catch {
                 thrown = error
@@ -407,11 +411,20 @@ final class FTInAppBridge {
             finish(window)
         }
         func retry(_ remaining: Int, stale: NSObject, window: UIWindow) {
-            if let fresh = self.refreshedNode(matching: stale, ref: ref, window: window),
-               fresh.accessibilityActivate() {
-                note = "activate 不発 → 要素を取り直して再実行"
-                finish(window)
-                return
+            if let fresh = self.refreshedNode(matching: stale, ref: ref, window: window) {
+                // 現在 frame を使うのは**近距離の移動だけ**(コールドラウンチ直後のレイアウト確定
+                // = 実測 ~60pt)。id 一致は距離無制限なので、画面遷移後の同 id 要素へ飛ぶと
+                // ホストの遮蔽・安全判定が別画面の木に対して無効になる。遠距離は従来どおり
+                // stored frame へ落とす
+                if let orig = self.frames[ref],
+                   abs(fresh.frame.midX - orig.midX) + abs(fresh.frame.midY - orig.midY) <= 120 {
+                    freshTapPoint = CGPoint(x: fresh.frame.midX, y: fresh.frame.midY)
+                }
+                if fresh.node.accessibilityActivate() {
+                    note = "activate 不発 → 要素を取り直して再実行"
+                    finish(window)
+                    return
+                }
             }
             guard remaining > 1 else {
                 synthFallback(window)
@@ -452,25 +465,33 @@ final class FTInAppBridge {
 
     /// 不発だった保持ノードの代わりを、取り直したツリーから探す(id 一致 → 無 id なら frame+label 一致)。
     /// 不発ノードでも identifier/label プロパティは読める(参照は生きている)のでキーに使う。
-    /// **self.nodes/frames は更新しない** — この tap リクエスト内の座標解決は元の snapshot が前提のため
-    private func refreshedNode(matching stale: NSObject, ref: Int, window: UIWindow) -> NSObject? {
+    /// **self.nodes/frames は更新しない** — この tap リクエスト内の座標解決は元の snapshot が前提のため。
+    /// frame は取り直したツリーの現在値を返す(activate 不発時の合成タッチがこれを使う)
+    private func refreshedNode(matching stale: NSObject, ref: Int, window: UIWindow)
+        -> (node: NSObject, frame: CGRect)? {
         guard let originalFrame = frames[ref] else { return nil }
         let fresh = InAppSnapshot.capture(window: window)
         func distance(_ frame: FTRect) -> CGFloat {
             abs(frame.x - originalFrame.origin.x) + abs(frame.y - originalFrame.origin.y)
         }
+        func pack(_ element: ElementInfo) -> (node: NSObject, frame: CGRect)? {
+            fresh.nodes[element.ref].map {
+                ($0, CGRect(x: element.frame.x, y: element.frame.y,
+                            width: element.frame.width, height: element.frame.height))
+            }
+        }
         if let id = FTAccessibilityIdentifier(stale), !id.isEmpty {
             // 同 id が複数あるときだけ frame で近い方に絞る(通常 testTag は一意)
             let best = fresh.elements.filter { $0.identifier == id }
                 .min { distance($0.frame) < distance($1.frame) }
-            return best.flatMap { fresh.nodes[$0.ref] }
+            return best.flatMap { pack($0) }
         }
         // id 無しは frame(±2pt)と label の一致で同定する
         let label = stale.accessibilityLabel
         let candidate = fresh.elements.first {
             $0.label == label && distance($0.frame) <= 2
         }
-        return candidate.flatMap { fresh.nodes[$0.ref] }
+        return candidate.flatMap { pack($0) }
     }
 
     /// point を含む最小フレームの snapshot 要素を accessibilityActivate する(座標→要素解決)。

@@ -277,6 +277,22 @@ public final class StepExecutor {
     /// 行が選択される = 二重実行。2026-07-27 実測)。プラットフォームで分ける唯一の理由
     private let releasesScrollTouch: Bool
 
+    /// in-app ブリッジの自己申告(/status の uiFramework)、または engine=xcuitest では
+    /// `AppBundleInspector` がバンドルのマーカーから判定した値。"compose" / "flutter" / "uikit" / nil(不明)。
+    /// **空打ちの発火条件だけに使う**(shouldEmptyDrag)。他の判定には持ち込まない
+    private let uiFramework: String?
+
+    /// 空打ちを撃ってよいか。releasesScrollTouch(iOS)に加え、uiFramework が判明していれば
+    /// Compose/Flutter だけに絞る —— タッチ消費はそれらの自前描画スクロール容器に固有で、
+    /// UIKit 系(RN 含む)の容器は消費しない。**RN は逆に空打ちが害になる**: 横抜き4pt の終点が
+    /// Pressable の pressRetentionOffset(既定20pt)内に収まり onPress が成立し、`scrollTo` しただけで
+    /// 行が選択された(2026-08-08 E2E-RN S0100 実測: `selected=row_40`)。Android がタッチ消費を
+    /// 持たず releasesScrollTouch=false で対象外なのと同型の理由。
+    /// **nil(不明)は従来どおり打つ**(実機・判定失敗経路で挙動を変えないため)
+    private var shouldEmptyDrag: Bool {
+        releasesScrollTouch && (uiFramework == nil || uiFramework == "compose" || uiFramework == "flutter")
+    }
+
     /// **容器の推測に依存する補正**の既定(実行プロファイルの `containerInference`。既定 true)。
     /// ステップ側の指定(`FlowStep.containerInference`)があればそちらが勝ち、
     /// 環境変数 `FT_CONTAINER_INFERENCE=off` はどちらより上位の殺しスイッチ。
@@ -308,8 +324,10 @@ public final class StepExecutor {
                 occlusionGuard: Bool = false, occlusionInkThreshold: Double = 12,
                 occlusionGuardEnabled: Bool = true, screenIsEnabled: Bool = true,
                 releasesScrollTouch: Bool = false,
+                uiFramework: String? = nil,
                 containerInference: Bool = true) {
         self.releasesScrollTouch = releasesScrollTouch
+        self.uiFramework = uiFramework
         self.containerInference = containerInference
         self.driver = driver
         self.fallbackDriver = fallbackDriver
@@ -1624,7 +1642,7 @@ public final class StepExecutor {
         // 救済が走った 18 件のうち **4 件が失敗**、走らなかった 22 件は **0 件**(p≈0.03)。
         // しかも失敗時の対象は容器のど真ん中(y=519〜534 / 容器 230..692)で座標は正しい。
         // 探索終端と**同じ順序**で肩代わり → 静止 → 掴み直しを行う
-        if ghostSwipes > 0, releasesScrollTouch, let target = resolved?.0 {
+        if ghostSwipes > 0, shouldEmptyDrag, let target = resolved?.0 {
             let x = target.frame.centerX
             let y = min(target.frame.centerY,
                         snapshot.screen.y + snapshot.screen.height - Self.bottomUncoveredBand - 1)
@@ -2384,6 +2402,8 @@ public final class StepExecutor {
         //     `emptyDragEndX` に書いてある(縦に抜くと容器がスクロールとして消費し、
         //     直後のアサーションが壊れる / 矩形の中で離すとクリックとして成立してしまう)
         //  2. **静止待ち**: 空打ちでリストが微動するので、止まってから返す
+        //  **uikit はスキップ**(容器がタッチを消費しない。RN は横抜き4ptが pressRetentionOffset
+        //  20pt 内でクリック成立し scrollTo が行を選択した。2026-08-08 S0100 実測。shouldEmptyDrag 参照)
         // **触る点が他の要素に取られるなら打たない**。空打ちは手前の要素
         // (タブバー等)に届き、そのボタンが反応してしまう
         // (2026-07-27 実測: E2E-iOS の #txt_offscreen はタブバーの帯の中に出るため、
@@ -2398,7 +2418,7 @@ public final class StepExecutor {
         let y: Double = min(element.frame.y + element.frame.height / 2,
                             snapshot.screen.y + snapshot.screen.height
                                 - Self.bottomUncoveredBand - 1)
-        if releasesScrollTouch,
+        if shouldEmptyDrag,
            Self.emptyDragIsSafe(x: x, y: y, of: element,
                                 in: snapshot.elements, screen: snapshot.screen) {
             await emptyDrag(x: x, y: y,

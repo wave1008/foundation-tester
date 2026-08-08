@@ -37,7 +37,12 @@ public enum SnapshotDedupe {
             guard earlier.type == candidate.type,
                   candidate.identifier == nil || candidate.identifier == earlier.identifier,
                   candidate.label == nil || candidate.label == earlier.label,
-                  candidate.value == nil || candidate.value == earlier.value
+                  candidate.value == nil || candidate.value == earlier.value,
+                  // scrollable を足す candidate は、earlier が id 持ち(= wrapperScrollMerge が
+                  // 後で統合する RN のラッパー形)のときだけ残す。匿名どうしの同枠 scroll 双子は
+                  // 従来どおり畳む(広く残すと既存 SUT の序数と間引き枠がずれる)
+                  !(candidate.scrollable == true && earlier.scrollable != true
+                        && earlier.identifier != nil)
             else { return false }
             return nearlyEqual(earlier.frame, candidate.frame)
         }
@@ -47,5 +52,31 @@ public enum SnapshotDedupe {
         abs(a.x - b.x) <= frameTolerance && abs(a.y - b.y) <= frameTolerance
             && abs(a.width - b.width) <= frameTolerance
             && abs(a.height - b.height) <= frameTolerance
+    }
+
+    /// RN の ScrollView/FlatList は testID がラッパー(RCTScrollView)に付き、実際にスクロールする
+    /// 内側ノードは別要素として出る(2026-08-08 実測、iOS xcuitest/in-app 双方)。
+    /// id 付き非スクロール要素(A)と、**直後に続く**同じ frame の匿名スクロール要素(B)を1つに畳む。
+    /// 隣接(pre-order で B が A の次)を条件にするのは、離れた位置の同枠一致
+    /// (全画面 ScrollView に同寸の id 付きオーバーレイが重なる等)を誤結合しないため。
+    /// RN のラッパー分離は常にこの隣接形で出る(実測)。
+    public static func wrapperScrollMerge(_ elements: [ElementInfo]) -> [ElementInfo] {
+        var result = elements
+        var indicesToRemove = Set<Int>()
+        for aIndex in result.indices.dropLast() {
+            let a = result[aIndex]
+            guard a.identifier != nil, a.scrollable != true else { continue }
+            let bIndex = result.index(after: aIndex)
+            guard !indicesToRemove.contains(bIndex) else { continue }
+            let b = result[bIndex]
+            guard b.identifier == nil, b.label == nil, b.value == nil,
+                  b.scrollable == true, nearlyEqual(a.frame, b.frame) else { continue }
+            result[aIndex].scrollable = true
+            if result[aIndex].type == "other" && b.type != "other" {
+                result[aIndex].type = b.type
+            }
+            indicesToRemove.insert(bIndex)
+        }
+        return result.enumerated().compactMap { indicesToRemove.contains($0.offset) ? nil : $0.element }
     }
 }
