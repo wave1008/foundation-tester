@@ -432,6 +432,16 @@ WebDriverAgent と同じ原理を最小構成で自作する(iOS)。Android に�
   **番号は絞り込んだ後の並びに振る** —— 一覧を見て選ぶ道具なので、見えている番号と落ちる手が
   一致していなければ意味がない。範囲外の指定は**黙って無視せず**警告する(番号を1つ外しただけで
   別の手が落ちるので、効かなかったことに気付けないと誤った下書きを持ち帰る)
+- **宛先は入口で1つに畳む**(`MCPServer.foldingUDIDIntoPort`。2026-08-10)。`udid` は
+  `call(tool:args:)` で `port` へ解決してから配る。**機ごとの記憶は `engineKey` で引く**
+  (`lastSnapshots` / `launchedBundleIDs` / `uiFrameworkHints` / `connections` /
+  `pendingWarnings` / `udids` / `engines` の7つ)が、`engineKey` は生の引数しか見ないので、
+  畳まないと udid で指した機が全部 `port=nil` の同じキーへ落ちる。
+  実測した3症状(すべて同じ根): ft_status が `@ port …` を出さない / allowVersionSkew の
+  警告が出ない / 機A に Preferences・機B に Maps を launch した後、機A への ft_open_url が
+  com.apple.Maps へ配ると申告する(Android では intent の宛先なので実際に誤配送する)。
+  **新しい宛先の指し方を足すときは、ここで畳めているかを必ず見る** ——
+  ドライバのキャッシュだけ直しても記憶の側は揃わない
 - **版ズレは既定で拒否**(2026-08-09 に警告から格上げ)。MCP の出力はシナリオへ書く文字列を
   供給するためにあるので、**古いブリッジの出す古い注記から誤ったセレクタが書き込まれる**ほうが
   「セッションが止まる」より高くつく。ゲートは `driver(_:)` の1箇所(`enforceVersion`)なので

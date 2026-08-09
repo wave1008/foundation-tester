@@ -1615,14 +1615,47 @@ final class MCPServer {
     func call(tool: String, args: [String: Any]) async throws -> [[String: Any]] {
         let clock = ContinuousClock()
         let start = clock.now
+        // **udid は入口で port へ畳む**(2026-08-10)。`driver(_:)` は解決後のポートで
+        // ドライバを引くのに、`engineKey` は生の引数しか見ないので、udid で指した機は
+        // すべて port=nil の同じキーに落ちていた。engineKey が引く記憶は
+        // lastSnapshots / launchedBundleIDs / uiFrameworkHints / connections /
+        // pendingWarnings / udids / engines の7つで、**2台を udid で操作すると混ざる**
+        // (実測: 機A に Preferences・機B に Maps を launch した後、機A への
+        //  ft_open_url が com.apple.Maps へ配ると申告した。Android では intent の
+        //  宛先そのものなので、同じ機の中で別アプリへ実際に配送される)。
+        // 入口で畳めば 35 箇所の呼び出しを触らずに全部が揃う
+        let resolved: [String: Any]
         do {
-            return Self.withElapsed(try await dispatch(tool: tool, args: args),
-                                    since: start, clock: clock)
+            resolved = try await Self.foldingUDIDIntoPort(args)
         } catch {
             let hint = await connectionLostHint(error, args: args)
+            throw hint.isEmpty ? error : MCPError(error.localizedDescription + hint)
+        }
+        do {
+            return Self.withElapsed(try await dispatch(tool: tool, args: resolved),
+                                    since: start, clock: clock)
+        } catch {
+            let hint = await connectionLostHint(error, args: resolved)
             guard !hint.isEmpty else { throw error }
             throw MCPError(error.localizedDescription + hint)
         }
+    }
+
+    /// `udid` を解決して `port` として畳んだ引数。**udid が無いときは触らない**
+    /// (Android や profile 指定はブリッジ走査を1回も払わない)。
+    /// 解決と食い違い検査は `portForIOS` に委ねる = 宛先の決め方は1箇所のまま
+    static func foldingUDIDIntoPort(_ args: [String: Any]) async throws -> [String: Any] {
+        guard (args["udid"] as? String).flatMap({ $0.isEmpty ? nil : $0 }) != nil else { return args }
+        return injectingPort(args, port: try await portForIOS(args))
+    }
+
+    /// 解決したポートを引数へ載せる。**純粋関数**(走査を伴う解決と切り離してあるので、
+    /// 「載せ忘れ」の枝をテストで直接踏める)
+    static func injectingPort(_ args: [String: Any], port: UInt16?) -> [String: Any] {
+        guard let port else { return args }
+        var out = args
+        out["port"] = Int(port)
+        return out
     }
 
     /// **デバイス側に何秒かかったかを毎回返す**(2026-08-09)。読み手はこれが無いと、自分の
