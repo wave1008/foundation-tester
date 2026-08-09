@@ -25,6 +25,46 @@ public struct ScenarioRunItem: Identifiable, Sendable {
 }
 
 /// 並列ワーカー定義。platform が一致するシナリオだけをキューから消化する
+/// ワーカーを1本ずつ参加させる間隔(秒)。**0 で無効**。
+///
+/// なぜ要るか(2026-08-09): 各シナリオは `condition { launchApp() }` から始まるので、
+/// N 台のワーカーを同時に起こすと**最初の launch が N 本同時**に走る。ブリッジ供給側は
+/// 「in-app の新規起動は同時2台」に絞ってある(BridgeProvisioner)のに、その数秒後の
+/// 本番の launch は無制限、という非対称だった。実測では供給が 2 台ずつ進んだ直後に
+/// **10 台中 9 台が画面凍結**し、ワーカー 0 で 24/24 が実行不能になっている。
+///
+/// **1.5 秒の根拠は「シミュレータの launch がおおむね1〜3秒」**という観測だけで、
+/// 凍結率で較正した値ではない —— 効くかどうかは**まだ確かめていない**(凍結の観測は
+/// n=1 で、同じ run の別プロファイルは無事だった)。対照実験を安く回せるように
+/// `FT_WORKER_STAGGER_SEC` で差し替えられるようにしてある(`0` で従来どおり一斉起動)。
+///
+/// **間隔だけでは足りない**(2026-08-09 ユーザー指示)。時間は当て推量で、ホストが実際に
+/// 空いたことは見ていない —— 供給が長引いた run では飽和したまま次を起こす。もう一つの門
+/// (**直近の CPU 使用率が上限未満**)は `WorkerStartGate` にある。`seconds` を 0 にしても
+/// CPU の門は残る(こちらを外すのは `FT_WORKER_START_CPU_MAX` ではなく、上限を 100% に
+/// 保ったまま「飽和していなければ通る」既定に任せる)。
+///
+/// **定常のレーン数は変えない**ので、伸びるのは立ち上がりだけ(10 台なら約 13.5 秒)
+public enum WorkerStagger {
+    public static let defaultSeconds = 1.5
+
+    /// **最初に同時起動してよい台数**(2026-08-09 のユーザー決定)。ここを超えた分から
+    /// 1本ずつ間隔を空ける —— つまり 1本目と2本目は同時、3本目以降が待つ。
+    /// **2 は BridgeProvisioner の「in-app の新規起動は同時2台」と同じ値**で、
+    /// 供給と本番の launch で違う上限を持たないために揃えてある。
+    /// 10 台なら待つのは 8 本ぶん(既定 1.5s なら約 12 秒)
+    public static let simultaneousHead = 2
+
+    public static var seconds: Double {
+        guard let raw = ProcessInfo.processInfo.environment["FT_WORKER_STAGGER_SEC"] else {
+            return defaultSeconds
+        }
+        // 不正値は既定へ倒す(黙って 0 = 無効にすると、実験のつもりが対策を外した run になる)
+        guard let value = Double(raw), value >= 0, value.isFinite else { return defaultSeconds }
+        return value
+    }
+}
+
 public struct RunWorker {
     /// 表示・イベント上の識別子。形式は2系統ある:
     ///   プロファイル経路 = `makeLabel` の "<デバイス名>(<platform>:<serial|port>)"
@@ -663,16 +703,38 @@ public final class RunOrchestrator {
             } : nil
 
         failed += await withTaskGroup(of: Int.self, returning: Int.self) { group in
+            // **ワーカーは一斉に起こさない**(2026-08-09)。各シナリオは `condition { launchApp() }`
+            // から始まるので、N 本のワーカーを同時に積むと**最初の launch が N 本同時**に走る。
+            // ブリッジ供給側は「in-app の新規起動は同時2台」に絞ってあるのに、その数秒後の
+            // 本番の launch は無制限、という非対称だった(実測: 供給は 2 台ずつ進んでいたのに
+            // 直後に 9/10 台が画面凍結)。**定常のレーン数は変えない**ので、遅くなるのは
+            // 立ち上がりだけ(**先頭 2 本は同時**・3 本目から間隔と CPU の門を通る)。
+            // 判定は WorkerStartGate に置いてある(間隔だけでは「本当に空いたか」を見ていないため、
+            // **直近の CPU 使用率が上限未満**であることも要求する)。
+            // ここで await しても**既に積んだ子タスクは止まらない**(下の遅延参加のコメントと同じ)
+            let cpuSampler = CPUSampler(logFailure: { _ in })
+            // CPUSampler は**初回だけ必ず nil**(前回サンプルが無く差分が取れない)。ここで
+            // 1回捨てておくと、3本目が門に来た時点で既に有効な値が返る
+            _ = cpuSampler.sample()
+            let startGate = WorkerStartGate(
+                sampleCPU: { cpuSampler.sample() },
+                sleep: { try? await Task.sleep(for: .seconds($0)) })
+            func admit(_ worker: RunWorker, _ queue: ScenarioQueue) async {
+                await startGate.waitForTurn(log: { [continuation] message in
+                    continuation.yield(.workerLog(worker: worker.label, message: message))
+                })
+                group.addTask { await self.superviseWorker(worker, queue: queue) }
+            }
             for worker in workers {
                 guard let queue = queues[worker.platform] else { continue }
-                group.addTask { await self.superviseWorker(worker, queue: queue) }
+                await admit(worker, queue)
             }
             // 遅延参加(iOS ブリッジ供給待ち)。この await の間も上で積んだ初期ワーカーの子タスクは
             // 並行実行される(group スコープ内の await は子を止めない)ため、Android は先に走り出す。
             if let late = lateWorkers {
                 for worker in await late.provider() {
                     guard let queue = queues[worker.platform] else { continue }
-                    group.addTask { await self.superviseWorker(worker, queue: queue) }
+                    await admit(worker, queue)
                 }
             }
             var total = 0
