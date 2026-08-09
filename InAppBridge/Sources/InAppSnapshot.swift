@@ -16,6 +16,10 @@ enum InAppSnapshot {
         var frames: [Int: CGRect]
         var nodes: [Int: NSObject]
         var truncated: Int
+        /// 捨てた候補の内訳(SnapshotResponse.truncatedTiers)
+        var truncatedTiers: [String: Int] = [:]
+        /// 要素上限の外で送った bulk の件数(SnapshotResponse.bulkExemptCount)
+        var bulkExempt: Int = 0
     }
 
     /// 1パス目(collect)で拾った要素。ref はまだ未採番(0)
@@ -37,11 +41,17 @@ enum InAppSnapshot {
         collect(window, depth: 0, screen: screen, visited: &visited, gathered: &gathered)
 
         let keptIndices: [Int]
+        var truncatedTiers: [String: Int] = [:]
+        var bulkExempt = 0
         if gathered.count <= BridgeAPI.maxSnapshotElements {
             keptIndices = Array(gathered.indices)
         } else {
             let candidates = gathered.map { BridgeSnapshotThinning.Candidate(info: $0.info) }
             keptIndices = BridgeSnapshotThinning.indicesToKeep(candidates, max: BridgeAPI.maxSnapshotElements)
+            // **落とした本人しか内訳を知らない**(ホストへ届くのは残った側だけ)
+            truncatedTiers = BridgeSnapshotThinning.droppedByTier(candidates, kept: keptIndices)
+            // 上限の外で送った bulk の件数(61)。ホストが「超過は異常ではない」と言うために要る
+            bulkExempt = BridgeSnapshotThinning.bulkExemptCount(candidates)
         }
 
         var elements: [ElementInfo] = []
@@ -59,7 +69,8 @@ enum InAppSnapshot {
             screen: FTRect(x: screen.origin.x, y: screen.origin.y,
                            width: screen.width, height: screen.height),
             elements: elements, frames: frames, nodes: nodes,
-            truncated: gathered.count - keptIndices.count)
+            truncated: gathered.count - keptIndices.count,
+            truncatedTiers: truncatedTiers, bulkExempt: bulkExempt)
     }
 
     private static func collect(_ node: NSObject, depth: Int, screen: CGRect,

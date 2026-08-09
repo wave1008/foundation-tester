@@ -147,7 +147,10 @@ final class FTInAppBridge {
                 // (ホストは 501 を見て XCUITest へフォールバックする)
                 unsupportedActions: ["press"],
                 // 起動元の自己申告(InAppLauncher が SIMCTL_CHILD_FT_OWNER_REPO で注入)
-                ownerRepo: ProcessInfo.processInfo.environment["FT_OWNER_REPO"]))
+                ownerRepo: ProcessInfo.processInfo.environment["FT_OWNER_REPO"],
+                // 載っているシミュレータの UDID(H)。ホストが port ではなく udid で宛先を
+                // 指せるようにするための申告。実機には SIMULATOR_UDID が無いので nil
+                udid: ProcessInfo.processInfo.environment["SIMULATOR_UDID"]))
         }
     }
 
@@ -205,7 +208,9 @@ final class FTInAppBridge {
             keyboardShown: keyboardShown,
             keyboardFrame: keyboardWindowFrame.map {
                 FTRect(x: $0.origin.x, y: $0.origin.y, width: $0.width, height: $0.height)
-            }))
+            },
+            truncatedTiers: merged.truncatedTiers.isEmpty ? nil : merged.truncatedTiers,
+            bulkExemptCount: merged.bulkExempt > 0 ? merged.bulkExempt : nil))
     }
 
     /// keyboardWillChangeFrame の最新値(画面座標)。nil = 非表示または不明。
@@ -276,6 +281,11 @@ final class FTInAppBridge {
         /// "dom-interop" = DOM は読めたが interop(Compose/Flutter)配下 = 操作はホスト側
         /// (WebViewDelegatingDriver)が XCUITest 座標へ回す。DOM 自体が読めなければ nil
         var webViewPath: String?
+        /// 捨てた候補の内訳(SnapshotResponse.truncatedTiers)。ネイティブ1段目と
+        /// DOM マージ2段目の両方を合算する
+        var truncatedTiers: [String: Int] = [:]
+        /// 要素上限の外で送った bulk の件数(SnapshotResponse.bulkExemptCount)
+        var bulkExempt: Int = 0
     }
 
     /// WebView コンテナの**直後**に DOM 由来の要素を差し込み、ref を採番し直す
@@ -296,7 +306,8 @@ final class FTInAppBridge {
         guard !containers.isEmpty else {
             return MergedSnapshot(elements: base.elements, frames: base.frames,
                                   nodes: base.nodes, truncated: base.truncated, note: nil,
-                                  webViewPath: nil)
+                                  webViewPath: nil, truncatedTiers: base.truncatedTiers,
+                                  bulkExempt: base.bulkExempt)
         }
         let screen = CGRect(x: base.screen.x, y: base.screen.y,
                             width: base.screen.width, height: base.screen.height)
@@ -317,7 +328,8 @@ final class FTInAppBridge {
             // 読めなかった = ホスト側が XCUITest へ委譲する。経路は委譲した側が名乗る
             return MergedSnapshot(elements: base.elements, frames: base.frames,
                                   nodes: base.nodes, truncated: base.truncated, note: nil,
-                                  webViewPath: nil)
+                                  webViewPath: nil, truncatedTiers: base.truncatedTiers,
+                                  bulkExempt: base.bulkExempt)
         }
 
         // **先着順で切らない**(2026-08-08 実測: 密グリッドページで装飾セルが残り、送信・入力欄・
@@ -326,6 +338,14 @@ final class FTInAppBridge {
         let domElements = domByRef.mapValues(\.elements)
         let (kept, dropped) = BridgeSnapshotThinning.mergedSlots(
             base: base.elements, dom: domElements, max: BridgeAPI.maxSnapshotElements)
+        // 1段目(ネイティブ)と2段目(DOM マージ)は別々に捨てるので**両方を足す**
+        var truncatedTiers = base.truncatedTiers
+        if dropped > 0 {
+            for (key, count) in BridgeSnapshotThinning.mergedDroppedByTier(
+                base: base.elements, dom: domElements, max: BridgeAPI.maxSnapshotElements) {
+                truncatedTiers[key, default: 0] += count
+            }
+        }
         var elements: [ElementInfo] = []
         var frames: [Int: CGRect] = [:]
         var nodes: [Int: NSObject] = [:]
@@ -349,7 +369,8 @@ final class FTInAppBridge {
         }
         return MergedSnapshot(elements: elements, frames: frames, nodes: nodes,
                               truncated: base.truncated + dropped, note: note,
-                              webViewPath: anyInterop ? "dom-interop" : "dom")
+                              webViewPath: anyInterop ? "dom-interop" : "dom",
+                              truncatedTiers: truncatedTiers, bulkExempt: base.bulkExempt)
     }
 
     private func handleTap(_ body: Data) throws -> InAppHTTPServer.Response {

@@ -139,7 +139,22 @@ public enum BridgeAPI {
     /// isRedundant が「id 持ちの直後の匿名 scroll 双子」を残すようになった(XCUITest ランナー内
     /// でも効く。ホスト側 wrapperScrollMerge の統合材料)。旧 dylib/ランナーが再利用されると
     /// RN でタップの誤着弾・WebView 操作の空振り・#list_rows の scrollFrame 不成立が再発する
-    public static let bridgeProtocolVersion = 59
+    /// 60: 打ち切りの**内訳**を申告する(2026-08-09。SnapshotResponse.truncatedTiers)。
+    /// 件数だけでは「選べる物が消えたのか、飾りが消えただけか」をホストが区別できず、
+    /// 実測(Apple マップの経路プランナー: 候補 211 → 120、91 件脱落)でも間引きの方針が
+    /// 妥当かを議論できなかった。**iOS の2ブリッジだけが申告する**(Android の
+    /// SnapshotBuilder は tier3 を持たず語彙が揃わない)。旧ランナー/dylib が再利用されると
+    /// 内訳が出ないだけ = 件数は従来どおり出るので安全に縮退するが、
+    /// 「飾りだけ落ちた」のか「操作要素まで落ちた」のかは分からないままになる
+    /// 61: **bulk 群(同一 id ×20 以上の非操作の葉)を要素上限の勘定から外す**(2026-08-09。
+    /// BridgeSnapshotThinning.indicesToKeep / bulkExemptCeiling)。上限は「読み手が選ぶ対象」に
+    /// 使い切らせるためのものなのに、実測(Apple マップの経路手順)では `#VKPointFeature` が
+    /// 保持 119 件中 87 件 = 73% を占め、操作可能要素とラベル持ち要素をその分だけ押し出していた。
+    /// **捨てるのではなく予算から外す**ので ref タップ・SelectorInventory への記録・
+    /// expandBulk の展開は従来どおり(「大きな同一 id 群を先に捨てる」案は却下済み。
+    /// bulkGroupMinimum のコメント参照)。件数は `SnapshotResponse.bulkExemptCount` で申告する。
+    /// 旧ランナー/dylib が再利用されると、地図系の画面で操作要素が従来どおり押し出されたままになる
+    public static let bridgeProtocolVersion = 61
 
     /// 無通信 TTL の既定値(秒)。この時間リクエストが無いブリッジは自主終了する。
     /// 同期相手: AndroidRunner/src/com/example/ftbridge/BridgeInstrumentation.java の
@@ -180,7 +195,15 @@ public enum BridgeAPI {
 /// 容器そのものは indicesToKeep が tier に関係なく cap 免除する。
 public enum BridgeSnapshotThinning {
 
-    /// 同一 identifier の出現数がこの数以上なら bulk tier の対象候補
+    /// 同一 identifier の出現数がこの数以上なら bulk tier の対象候補。
+    ///
+    /// **「畳める群は枠も1つぶんにする」案は却下**(2026-08-09 に実装して撤回): 地図の POI が
+    /// 上限の 64% を占めるのは事実だが、**同じ述語はリストの行にも当たる**(同一 id ×20 以上の
+    /// 行は普通にある)。群の尾を先に落とすと、30 行のリストの 21 行目以降が
+    /// **無ラベル装飾より先に**消える —— tier2 → tier3 の順序はまさにそれを防ぐために
+    /// 選ばれている(下の「捨てる順序」参照)。地図 POI とリスト行を木から見分ける手掛かりは
+    /// 無く、祖先ベースの区別は 58 で一度失敗している。**代わりに MCP 側が
+    /// 「どの id 群が枠を食っているか」を打ち切り注記で名指しする**(MCPServer.truncationNote)
     public static let bulkGroupMinimum = 20
 
     /// 操作可能とみなす正規化型名(ElementInfo.normalizedType 後の綴り = ElementInfo.init が
@@ -201,12 +224,23 @@ public enum BridgeSnapshotThinning {
         }
     }
 
+    /// bulk 群を予算外で送るときの安全弁。木が壊れたアプリで応答が無制限に膨らむのを防ぐ
+    /// だけの値で、通常は当たらない(実測の最大は Apple マップの 87)
+    public static let bulkExemptCeiling = 400
+
     /// 超過時に残す候補の添字を、元の配列と同じ順序(preorder)で返す。max 以下ならそのまま全添字。
     /// **並べ替えない**: RefGuard.lineage が preorder+depth からツリーを復元し、ref の大小を
-    /// z-order の代理に使う
+    /// z-order の代理に使う。
+    ///
+    /// **bulk 群(tier3)は要素上限の勘定に入れない**(61。2026-08-09): 上限は「読み手が選ぶ
+    /// 対象」に使い切らせるためのもので、同一 id の飾りがその枠を食うのは上限の目的に反する。
+    /// 実測(Apple マップの経路手順)では `#VKPointFeature` が保持 119 件中 87 件 = 73% を占め、
+    /// 操作可能要素とラベル持ち要素がその分だけ押し出されていた。
+    /// **捨てるのではなく予算から外す**ので、ref タップも SelectorInventory への記録も
+    /// expandBulk の展開も従来どおり効く(捨てる案は却下済み。bulkGroupMinimum のコメント参照)。
+    /// 予算外にした分だけ `elements.count` は max を超え得る —— スクロール容器の cap 免除と同じ扱い
     public static func indicesToKeep(_ candidates: [Candidate], max: Int) -> [Int] {
         let n = candidates.count
-        guard n > max else { return Array(candidates.indices) }
 
         var identifierCounts: [String: Int] = [:]
         for candidate in candidates {
@@ -215,14 +249,29 @@ public enum BridgeSnapshotThinning {
         }
 
         var keep = [Bool](repeating: true, count: n)
-        var remaining = n
-        for currentTier in [2, 3, 1, 0] {
+        // ① bulk は予算外。天井を超えた分だけは落とす(内訳では "bulk" として申告される)
+        var exempt = [Bool](repeating: false, count: n)
+        var exemptCount = 0
+        for index in 0..<n where isBulk(candidates[index], identifierCounts: identifierCounts) {
+            if exemptCount < bulkExemptCeiling {
+                exempt[index] = true
+                exemptCount += 1
+            } else {
+                keep[index] = false
+            }
+        }
+
+        // ② 上限が掛かるのは bulk 以外だけ
+        var remaining = (0..<n).filter { keep[$0] && !exempt[$0] }.count
+        guard remaining > max else { return (0..<n).filter { keep[$0] } }
+        // tier3 は予算外になったので掃き出しの順序から外れる
+        for currentTier in [2, 1, 0] {
             guard remaining > max else { break }
             for index in stride(from: n - 1, through: 0, by: -1) {
                 guard remaining > max else { break }
                 // スクロール容器自身は tier に関係なく cap 免除(容器が落ちると scrollFrame
                 // 解決が退化する。数個しかないので実害なし)。max を僅かに超えて返ることを許容する
-                guard keep[index], candidates[index].info.scrollable != true,
+                guard keep[index], !exempt[index], candidates[index].info.scrollable != true,
                       tier(candidates[index], identifierCounts: identifierCounts) == currentTier
                 else { continue }
                 keep[index] = false
@@ -230,6 +279,18 @@ public enum BridgeSnapshotThinning {
             }
         }
         return (0..<n).filter { keep[$0] }
+    }
+
+    /// 予算外で送った bulk 要素の数(ホストが「上限の外で何件届いたか」を言うために使う)。
+    /// `indicesToKeep` と**同じ判定**で数える
+    public static func bulkExemptCount(_ candidates: [Candidate]) -> Int {
+        var identifierCounts: [String: Int] = [:]
+        for candidate in candidates {
+            guard let id = candidate.info.identifier, !id.isEmpty else { continue }
+            identifierCounts[id, default: 0] += 1
+        }
+        let bulk = candidates.filter { isBulk($0, identifierCounts: identifierCounts) }.count
+        return Swift.min(bulk, bulkExemptCeiling)
     }
 
     /// WebView DOM マージ用の間引き。ネイティブ(間引き済み)の直後に各 webView コンテナの
@@ -251,6 +312,24 @@ public enum BridgeSnapshotThinning {
 
     public static func mergedSlots(base: [ElementInfo], dom: [Int: [ElementInfo]],
                                    max: Int) -> (kept: [MergeSlot], dropped: Int) {
+        let (slots, candidates) = mergedCandidates(base: base, dom: dom)
+        let kept = indicesToKeep(candidates, max: max)
+        return (kept.map { slots[$0] }, slots.count - kept.count)
+    }
+
+    /// マージ側で捨てた分の内訳。**`mergedSlots` の戻り値は増やさない** —— 位置分解で
+    /// 受けている呼び出し側とテストを巻き込むだけで、得るものが無い。組み立ては
+    /// `mergedCandidates` に寄せてあるので二重定義にはならない。
+    /// 呼ぶのは `dropped > 0` のときだけ(捨てていないなら走らせる意味が無い)
+    public static func mergedDroppedByTier(base: [ElementInfo], dom: [Int: [ElementInfo]],
+                                           max: Int) -> [String: Int] {
+        let (_, candidates) = mergedCandidates(base: base, dom: dom)
+        return droppedByTier(candidates, kept: indicesToKeep(candidates, max: max))
+    }
+
+    /// ネイティブ(間引き済み)の直後に各 webView コンテナの DOM 要素を差し込んだ合算列
+    static func mergedCandidates(base: [ElementInfo],
+                                 dom: [Int: [ElementInfo]]) -> ([MergeSlot], [Candidate]) {
         var slots: [MergeSlot] = []
         var candidates: [Candidate] = []
         for (i, info) in base.enumerated() {
@@ -262,8 +341,39 @@ public enum BridgeSnapshotThinning {
                 candidates.append(Candidate(info: element))
             }
         }
-        let kept = indicesToKeep(candidates, max: max)
-        return (kept.map { slots[$0] }, slots.count - kept.count)
+        return (slots, candidates)
+    }
+
+    /// 捨てた候補の内訳(`SnapshotResponse.truncatedTiers`)。**間引きの方針を実データで
+    /// 議論するために要る** —— 件数だけでは「選べる物が消えたのか、飾りが消えただけか」を
+    /// 区別できない(2026-08-09。Apple マップの経路プランナーで 211 → 120 の 91 件脱落を
+    /// 観測したが、内訳が無く原因を断定できなかった)。
+    /// `kept` は indicesToKeep の戻り値(元配列の添字)
+    public static func droppedByTier(_ candidates: [Candidate], kept: [Int]) -> [String: Int] {
+        let keptSet = Set(kept)
+        guard candidates.count > keptSet.count else { return [:] }
+        var identifierCounts: [String: Int] = [:]
+        for candidate in candidates {
+            guard let id = candidate.info.identifier, !id.isEmpty else { continue }
+            identifierCounts[id, default: 0] += 1
+        }
+        var result: [String: Int] = [:]
+        for index in candidates.indices where !keptSet.contains(index) {
+            let key = tierKey(tier(candidates[index], identifierCounts: identifierCounts))
+            result[key, default: 0] += 1
+        }
+        return result
+    }
+
+    /// tier 番号 → `SnapshotResponse.truncatedTiers` のキー。**番号をそのまま外へ出さない**
+    /// (ホストが tier の並び順を知っている必要が生まれ、順序を変えた瞬間に嘘になる)
+    public static func tierKey(_ tier: Int) -> String {
+        switch tier {
+        case 0: return "operable"
+        case 1: return "labelled"
+        case 3: return "bulk"
+        default: return "decoration"
+        }
     }
 
     /// 0(高優先・最後まで残す) … 3(bulk・最初に捨てる)
@@ -314,6 +424,12 @@ public struct StatusResponse: Codable, Sendable {
     public var engine: String?
     /// BridgeAPI.bridgeProtocolVersion。旧ブリッジは返さない → nil 許容(=旧版扱い)。
     public var protocolVersion: Int?
+    /// このブリッジが載っているシミュレータの UDID(`SIMULATOR_UDID` 環境変数)。
+    /// **iOS のツールをポートではなく udid で指すために要る**(H。2026-08-09): ft_list_devices は
+    /// udid と port を両方出すのに、操作系が受けるのは port だけで、ホストは port から udid を
+    /// 確定できなかった。**実機とシミュレータ以外では nil**(実機のランナーにこの環境変数は無い)。
+    /// 追加 optional フィールドのみなので単独なら版を上げる必要は無いが、61 に相乗りさせている
+    public var udid: String?
     /// UIApplication.applicationState の文字列化("active"/"inactive"/"background")。
     /// inapp 専用診断(背面 suspend でハングしていないかの申告)。xcuitest ブリッジは返さない → nil 許容。
     public var applicationState: String?
@@ -350,7 +466,7 @@ public struct StatusResponse: Codable, Sendable {
                 uiFramework: String? = nil, bridgeVersionCode: Int? = nil,
                 fastInputAvailable: Bool? = nil, unsupportedActions: [String]? = nil,
                 ownerRepo: String? = nil, ownerPid: Int? = nil, idleSeconds: Double? = nil,
-                timingEnabled: Bool? = nil) {
+                timingEnabled: Bool? = nil, udid: String? = nil) {
         self.ready = ready
         self.device = device
         self.osVersion = osVersion
@@ -366,6 +482,7 @@ public struct StatusResponse: Codable, Sendable {
         self.ownerPid = ownerPid
         self.idleSeconds = idleSeconds
         self.timingEnabled = timingEnabled
+        self.udid = udid
     }
 }
 
@@ -531,11 +648,37 @@ public struct SnapshotResponse: Codable, Sendable {
     /// Android=UiAutomation.getWindows() の TYPE_INPUT_METHOD ウィンドウ bounds。
     /// 読み手はホストの遮蔽警告(TapTargetGeometry)。
     public var keyboardFrame: FTRect?
+    /// **何を捨てたか**の内訳(`BridgeSnapshotThinning.tierKey` の値 → 件数)。
+    /// `truncatedCount` は「何件落ちたか」しか言わないので、ホストは
+    /// 「選べる物が消えたのか、飾りが消えただけなのか」を区別できなかった ——
+    /// 実測(2026-08-09・Apple マップの経路プランナー): 候補 211 件中 91 件が落ちたが、
+    /// **内訳が分からないと間引きの方針が妥当かを議論できない**。
+    /// 落とした本人にしか分からないのでブリッジが申告する。
+    /// 追加 optional フィールドのみ = 旧ブリッジは返さず nil(件数だけ出す)で安全に縮退する
+    /// (webViewPath / TapRequest.fast と同じ方針)。**iOS の2ブリッジだけが申告する** ——
+    /// Android の SnapshotBuilder は tier3 を持たず、内訳の語彙が揃わない
+    public var truncatedTiers: [String: Int]?
+
+    /// **要素上限の外で送った bulk 要素の数**(61。`BridgeSnapshotThinning.bulkExemptCount`)。
+    /// これが非 0 なら「`elements.count` が上限を超えているのは異常ではない」ことを意味し、
+    /// ホストはそれを読み手へ言える。**申告が無い(nil)= 旧ブリッジ or Android** ——
+    /// Android の SnapshotBuilder は tier3 を持たないので常に nil で、従来動作に縮退する
+    public var bulkExemptCount: Int?
+
+    /// `truncatedTiers` を出すときの並びと表示名。**ホストの表示順を固定する**ため、
+    /// 辞書の列挙順に頼らない
+    public static let truncatedTierOrder: [(key: String, label: String)] = [
+        ("operable", "operable"),
+        ("labelled", "labelled"),
+        ("decoration", "unlabelled decorations"),
+        ("bulk", "repeated same-id elements"),
+    ]
 
     public init(sessionBundleID: String?, screen: FTRect, elements: [ElementInfo],
                 truncatedCount: Int, note: String? = nil, webViewPath: String? = nil,
                 offscreen: [ElementInfo]? = nil, keyboardShown: Bool? = nil,
-                keyboardFrame: FTRect? = nil) {
+                keyboardFrame: FTRect? = nil, truncatedTiers: [String: Int]? = nil,
+                bulkExemptCount: Int? = nil) {
         self.sessionBundleID = sessionBundleID
         self.screen = screen
         self.elements = elements
@@ -545,6 +688,8 @@ public struct SnapshotResponse: Codable, Sendable {
         self.offscreen = offscreen
         self.keyboardShown = keyboardShown
         self.keyboardFrame = keyboardFrame
+        self.truncatedTiers = truncatedTiers
+        self.bulkExemptCount = bulkExemptCount
     }
 }
 

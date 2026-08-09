@@ -112,7 +112,10 @@ final class BridgeRouter {
             // 起動元の自己申告(doctor の刈り取り判定が依存。BridgeDTO の各フィールド参照)
             ownerRepo: ProcessInfo.processInfo.environment["FT_OWNER_REPO"],
             ownerPid: Int(ProcessInfo.processInfo.processIdentifier),
-            idleSeconds: idleSecondsProvider.map { $0() }))
+            idleSeconds: idleSecondsProvider.map { $0() },
+            // 載っているシミュレータの UDID(H)。ホストが port ではなく udid で宛先を
+            // 指せるようにするための申告。実機には SIMULATOR_UDID が無いので nil
+            udid: ProcessInfo.processInfo.environment["SIMULATOR_UDID"]))
     }
 
     private func handleLaunch(_ body: Data) throws -> BridgeHTTPServer.Response {
@@ -154,6 +157,11 @@ final class BridgeRouter {
         let elements: [ElementInfo]
         let frames: [Int: CGRect]
         let truncated: Int
+        /// 捨てた候補の内訳(SnapshotResponse.truncatedTiers)。件数だけでは
+        /// 「選べる物が消えたのか、飾りが消えただけか」をホストが区別できない
+        var truncatedTiers: [String: Int] = [:]
+        /// 要素上限の外で送った bulk の件数(SnapshotResponse.bulkExemptCount)
+        var bulkExempt: Int = 0
         let screen: CGRect
         /// SnapshotResponse.keyboardShown/keyboardFrame 用。**Captured に載せる**: 整定ループは
         /// captureOnce を複数回まわして「返す1回」を選ぶので、インスタンス変数だと返却ツリーと
@@ -191,7 +199,9 @@ final class BridgeRouter {
             keyboardShown: cap.keyboardFrame != nil ? true : nil,
             keyboardFrame: cap.keyboardFrame.map {
                 FTRect(x: $0.origin.x, y: $0.origin.y, width: $0.width, height: $0.height)
-            }))
+            },
+            truncatedTiers: cap.truncatedTiers.isEmpty ? nil : cap.truncatedTiers,
+            bulkExemptCount: cap.bulkExempt > 0 ? cap.bulkExempt : nil))
     }
 
     /// フォーカス中要素の申告(clearInput 事後検証用。ElementInfo.focused 参照)。
@@ -279,12 +289,16 @@ final class BridgeRouter {
         var elements: [ElementInfo] = []
         var frames: [Int: CGRect] = [:]
         var truncated = 0
+        var truncatedTiers: [String: Int] = [:]
+        var bulkExempt = 0
         var keyboardFrame: CGRect?
         var offscreenHints: [ElementInfo] = []
         collect(root, depth: 0, screen: screen,
                 elements: &elements, frames: &frames, truncated: &truncated,
+                truncatedTiers: &truncatedTiers, bulkExempt: &bulkExempt,
                 keyboardFrame: &keyboardFrame, offscreenHints: &offscreenHints)
-        return Captured(elements: elements, frames: frames, truncated: truncated, screen: screen,
+        return Captured(elements: elements, frames: frames, truncated: truncated,
+                        truncatedTiers: truncatedTiers, bulkExempt: bulkExempt, screen: screen,
                         keyboardFrame: keyboardFrame, offscreen: offscreenHints)
     }
 
@@ -741,6 +755,8 @@ final class BridgeRouter {
     private func collect(_ node: XCUIElementSnapshot, depth: Int, screen: CGRect,
                          elements: inout [ElementInfo], frames: inout [Int: CGRect],
                          truncated: inout Int,
+                         truncatedTiers: inout [String: Int],
+                         bulkExempt: inout Int,
                          keyboardFrame: inout CGRect?,
                          offscreenHints: inout [ElementInfo],
                          insideWebView: Bool = false) {
@@ -766,6 +782,12 @@ final class BridgeRouter {
         } else {
             let candidates = deduped.map { BridgeSnapshotThinning.Candidate(info: $0.info) }
             keptIndices = BridgeSnapshotThinning.indicesToKeep(candidates, max: BridgeAPI.maxSnapshotElements)
+            // **落とした本人しか内訳を知らない**(ホストへ届くのは残った側だけ)
+            for (key, count) in BridgeSnapshotThinning.droppedByTier(candidates, kept: keptIndices) {
+                truncatedTiers[key, default: 0] += count
+            }
+            // 上限の外で送った bulk の件数(61)
+            bulkExempt += BridgeSnapshotThinning.bulkExemptCount(candidates)
         }
         truncated += deduped.count - keptIndices.count
 

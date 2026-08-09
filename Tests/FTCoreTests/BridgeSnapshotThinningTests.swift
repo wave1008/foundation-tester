@@ -29,19 +29,21 @@ final class BridgeSnapshotThinningTests: XCTestCase {
         XCTAssertEqual(BridgeSnapshotThinning.indicesToKeep(candidates, max: 10), [0, 1, 2, 3, 4])
     }
 
-    /// 装飾の大群(同一 id ×20以上・スクロール外・非操作)を最初に捨て、**中身が残る**。
-    /// 実測画面の縮尺(ピン90 + 中身30 を上限40へ)
-    func testBulkGroupIsDroppedBeforeContent() {
+    /// **bulk 群は上限の勘定に入らない**(61。2026-08-09)。実測画面の縮尺(ピン90 + 中身30 を
+    /// 上限40へ)で、**中身30件が1件も押し出されず、ピンも捨てられない**こと。
+    ///
+    /// 60 までは「ピンを先に捨てて中身を残す」形だった。上限は「読み手が選ぶ対象」に
+    /// 使い切らせるためのものなので、飾りは**捨てるのではなく予算の外へ出す**のが正しい ——
+    /// 捨てると ref タップも expandBulk の展開もできなくなる
+    func testBulkGroupDoesNotConsumeTheBudget() {
         var candidates = (0..<90).map { i in candidate("other", id: "VKPointFeature", label: "駅\(i)") }
         candidates += (0..<30).map { i in candidate("staticText", label: "詳細\(i)") }
 
         let kept = BridgeSnapshotThinning.indicesToKeep(candidates, max: 40)
 
-        XCTAssertEqual(kept.count, 40)
-        // 中身(添字 90..119)は全部残る
-        XCTAssertEqual(Array(kept.suffix(30)), Array(90..<120))
-        // 残ったピンは先頭寄りの10件
-        XCTAssertEqual(Array(kept.prefix(10)), Array(0..<10))
+        // 予算が掛かるのは bulk 以外の30件だけ = 上限40に収まるので1件も落ちない
+        XCTAssertEqual(kept, Array(0..<120))
+        XCTAssertEqual(BridgeSnapshotThinning.bulkExemptCount(candidates), 90)
     }
 
     /// **58 で祖先ベースの bulk 免除を撤去**(地図 POI がスクロール容器[地図]の中に居るため
@@ -51,12 +53,9 @@ final class BridgeSnapshotThinningTests: XCTestCase {
         var candidates = (0..<90).map { i in candidate("other", id: "row", label: "行\(i)") }
         candidates += (0..<30).map { i in candidate("staticText", label: "詳細\(i)") }
 
-        let kept = BridgeSnapshotThinning.indicesToKeep(candidates, max: 40)
-
-        XCTAssertEqual(kept.count, 40)
-        // bulk(添字 0..89)から先に落ち、詳細(添字90..119)は全部残る
-        XCTAssertEqual(Array(kept.suffix(30)), Array(90..<120))
-        XCTAssertEqual(Array(kept.prefix(10)), Array(0..<10))
+        // 61 以降は bulk として**予算外**になる(60 までは「最初に捨てる」だった)
+        XCTAssertEqual(BridgeSnapshotThinning.bulkExemptCount(candidates), 90)
+        XCTAssertEqual(BridgeSnapshotThinning.indicesToKeep(candidates, max: 40), Array(0..<120))
     }
 
     /// スクロール容器自身(info.scrollable == true)は同一 id が20件以上でも bulk(tier3)にならない
@@ -84,21 +83,21 @@ final class BridgeSnapshotThinningTests: XCTestCase {
         var candidates = (0..<21).map { i in candidate("other", id: "VKPointFeature", label: "駅\(i)") }
         candidates += (0..<5).map { i in candidate("button", label: "詳細\(i)") }
 
+        // 61: POI は予算外なので、ボタン5件が上限5に収まる限り**何も落ちない**
         let kept = BridgeSnapshotThinning.indicesToKeep(candidates, max: 5)
 
-        XCTAssertEqual(kept, Array(21..<26))
+        XCTAssertEqual(kept, Array(0..<26))
     }
 
-    /// POI 装飾群と隣り合うラベル付き同一id群が超過したとき、装飾(tier2)が先に落ちて
-    /// ラベル付き bulk 群(tier3)が残ることを固定する(旧順序は bulk を先に落としていた)
-    func testDecorativeTier2DropsBeforeALabeledBulkGroup() {
-        var candidates = (0..<21).map { i in candidate("other", id: "row", label: "行\(i)") } // tier3(bulk)
+    /// bulk 群が予算外になったので、**残りの5件は上限22に収まり1件も落ちない**(61)。
+    /// 60 までは「bulk 21件が枠を食い、装飾4件が落ちる」形だった —— 押し出しそのものが消えている
+    func testNothingIsDroppedWhenOnlyBulkExceedsTheCap() {
+        var candidates = (0..<21).map { i in candidate("other", id: "row", label: "行\(i)") } // bulk
         candidates += (0..<5).map { _ in candidate("other") } // tier2(ラベルもidも無い装飾)
 
         let kept = BridgeSnapshotThinning.indicesToKeep(candidates, max: 22)
 
-        // 装飾4件だけが落ち、ラベル付き bulk 群21件は無傷で残る
-        XCTAssertEqual(kept, Array(0..<22))
+        XCTAssertEqual(kept, Array(0..<26))
     }
 
     /// 操作可能な型は大群でも bulk にしない(タップ対象を先に捨てない)
@@ -131,30 +130,30 @@ final class BridgeSnapshotThinningTests: XCTestCase {
         XCTAssertEqual(kept, Array(0..<10))
     }
 
-    /// tier2 と tier3(bulk)を両方捨ててもまだ超過するなら tier1 → tier0 の順に落ちる。
-    /// この例は tier2(10)+tier3(20)=30 が必要な削減(35)に足りないため、両方全滅する点は
-    /// 捨てる順序(tier2 が先か tier3 が先か)に依らず結果が同じ
-    func testFallsThroughTiersWhenBulkIsNotEnough() {
-        var candidates = (0..<20).map { _ in candidate("other", id: "pin") }   // tier3
+    /// bulk が予算外になった後も、**残りの掃き出し順は tier2 → tier1 → tier0 のまま**(61)。
+    /// 予算の対象は 30 件(tier2 10 + tier1 10 + tier0 10)で上限 15 なので 15 件落とす:
+    /// tier2 を全部(10)+ tier1 の後ろから 5。tier0 は最後まで無傷で、bulk 20 は予算外なので全部残る
+    func testFallsThroughTiersAfterBulkIsExempt() {
+        var candidates = (0..<20).map { _ in candidate("other", id: "pin") }   // bulk(予算外)
         candidates += (0..<10).map { _ in candidate("other") }            // tier2
         candidates += (0..<10).map { _ in candidate("staticText", label: "t") }// tier1
         candidates += (0..<10).map { _ in candidate("button", label: "b") }    // tier0
 
-        // 50 → 15: tier2 10 と bulk 20 を全部捨て、足りない5件を tier1 の後ろから削る。
-        // tier0(操作可能)は最後まで無傷
         let kept = BridgeSnapshotThinning.indicesToKeep(candidates, max: 15)
 
-        XCTAssertEqual(kept, Array(30..<35) + Array(40..<50))
+        XCTAssertEqual(kept, Array(0..<20) + Array(30..<35) + Array(40..<50))
     }
 
     /// **並べ替えない**(返る添字は常に昇順)。RefGuard.lineage が preorder+depth で
     /// ツリーを復元し、ref の大小を z-order の代理に使うため
     func testKeepsPreorder() {
-        var candidates = (0..<30).map { _ in candidate("other", id: "pin") }   // 先頭が bulk
-        candidates += (0..<10).map { _ in candidate("button", label: "b") }    // 末尾が tier0
-        let kept = BridgeSnapshotThinning.indicesToKeep(candidates, max: 20)
-        // 捨てた場所が飛び飛びでも、返るのは元の並びのまま(先頭のピン10 → 末尾のボタン10)
-        XCTAssertEqual(kept, Array(0..<10) + Array(30..<40))
+        var candidates = (0..<30).map { _ in candidate("other", id: "pin") }   // 先頭が bulk(予算外)
+        candidates += (0..<10).map { _ in candidate("staticText", label: "t") } // 末尾が tier1
+        candidates += (0..<10).map { _ in candidate("button", label: "b") }     // さらに tier0
+        // 予算の対象は 20 件で上限 12 → tier1 の後ろから 8 件落ちる。
+        // 捨てた場所が飛び飛びでも、返るのは元の並びのまま
+        let kept = BridgeSnapshotThinning.indicesToKeep(candidates, max: 12)
+        XCTAssertEqual(kept, Array(0..<32) + Array(40..<50))
     }
 
     /// scrollable な容器自身は tier0(大群の一員でも先に捨てない)
@@ -163,6 +162,78 @@ final class BridgeSnapshotThinningTests: XCTestCase {
         candidates += (0..<30).map { _ in candidate("other", id: "pin") }
         let kept = BridgeSnapshotThinning.indicesToKeep(candidates, max: 5)
         XCTAssertTrue(kept.contains(0))
+    }
+
+    // MARK: - 捨てた分の内訳(SnapshotResponse.truncatedTiers)
+
+    /// **件数だけでは方針を議論できない**(2026-08-09)。実測(Apple マップの経路プランナー)で
+    /// 候補 211 → 120 の 91 件脱落を観測したが、「選べる物が消えたのか、飾りが消えただけか」が
+    /// 分からず原因を断定できなかった
+    func testDroppedByTierNamesWhatWasThrownAway() {
+        var candidates = (0..<30).map { _ in candidate("Other") }                    // tier2
+        candidates += (0..<25).map { _ in candidate("Other", id: "VKPointFeature") } // bulk(予算外)
+        candidates += (0..<10).map { _ in candidate("Button", label: "OK") }         // tier0
+        // 予算の対象は 40 件(tier2 30 + tier0 10)で上限 40 = **1件も落ちない**(61)。
+        // 60 までは bulk 25 が枠を食って装飾 25 が落ちていた
+        let kept = BridgeSnapshotThinning.indicesToKeep(candidates, max: 40)
+        XCTAssertTrue(BridgeSnapshotThinning.droppedByTier(candidates, kept: kept).isEmpty)
+
+        // 予算をさらに絞ると、落ちるのは従来どおり tier2 → tier1 → tier0 の順。
+        // **bulk は予算外なので内訳に出ない**
+        let deeper = BridgeSnapshotThinning.indicesToKeep(candidates, max: 20)
+        let deeperDropped = BridgeSnapshotThinning.droppedByTier(candidates, kept: deeper)
+        XCTAssertEqual(deeperDropped.values.reduce(0, +), candidates.count - deeper.count)
+        XCTAssertEqual(deeperDropped["decoration"], 20)
+        XCTAssertNil(deeperDropped["bulk"], "予算外の bulk が捨てられている: \(deeperDropped)")
+        XCTAssertNil(deeperDropped["operable"], "操作可能要素は最後まで残る: \(deeperDropped)")
+    }
+
+    /// **天井を超えた分だけは捨てる**(安全弁。木が壊れたアプリで応答が無制限に膨らむのを防ぐ)。
+    /// 捨てた分は内訳に "bulk" として出る = 黙って消えない
+    func testBulkAboveTheCeilingIsDroppedAndReported() {
+        let over = BridgeSnapshotThinning.bulkExemptCeiling + 30
+        let candidates = (0..<over).map { i in candidate("other", id: "pin", label: "p\(i)") }
+
+        let kept = BridgeSnapshotThinning.indicesToKeep(candidates, max: 10)
+
+        XCTAssertEqual(kept.count, BridgeSnapshotThinning.bulkExemptCeiling)
+        XCTAssertEqual(BridgeSnapshotThinning.bulkExemptCount(candidates),
+                       BridgeSnapshotThinning.bulkExemptCeiling)
+        XCTAssertEqual(BridgeSnapshotThinning.droppedByTier(candidates, kept: kept)["bulk"], 30)
+    }
+
+    /// **天井が安全弁として機能する範囲にあること**。件数を定数から計算するテストだけだと、
+    /// 天井を 100000 にする変異を素通しする(2026-08-09 の変異テストで実際に素通しした) ——
+    /// 「無制限に膨らむのを防ぐ」という目的が失われたことを、値そのもので見る
+    func testBulkCeilingStaysASafetyValve() {
+        XCTAssertGreaterThanOrEqual(BridgeSnapshotThinning.bulkExemptCeiling, 100,
+                                    "実測の最大(87)を下回ると、通常の地図画面で切り捨てが起きる")
+        XCTAssertLessThanOrEqual(BridgeSnapshotThinning.bulkExemptCeiling, 1000,
+                                 "安全弁として機能しない大きさ = 木が壊れたアプリで応答が膨らむ")
+    }
+
+    /// bulk の無い木では申告 0(「予算外で送った」と言わない)
+    func testNoBulkMeansNoExemption() {
+        let candidates = (0..<30).map { i in candidate("staticText", label: "t\(i)") }
+        XCTAssertEqual(BridgeSnapshotThinning.bulkExemptCount(candidates), 0)
+    }
+
+    /// 上限に収まっているなら内訳は空(空の辞書を申告して「打ち切った」と読ませない)
+    func testNothingDroppedGivesAnEmptyBreakdown() {
+        let candidates = (0..<10).map { _ in candidate("Other") }
+        let kept = BridgeSnapshotThinning.indicesToKeep(candidates, max: 120)
+        XCTAssertTrue(BridgeSnapshotThinning.droppedByTier(candidates, kept: kept).isEmpty)
+    }
+
+    /// キーは tier 番号ではなく語彙(番号を外へ出すと、並びを変えた瞬間にホストの表示が嘘になる)
+    func testTierKeysAreStableWords() {
+        XCTAssertEqual(BridgeSnapshotThinning.tierKey(0), "operable")
+        XCTAssertEqual(BridgeSnapshotThinning.tierKey(1), "labelled")
+        XCTAssertEqual(BridgeSnapshotThinning.tierKey(2), "decoration")
+        XCTAssertEqual(BridgeSnapshotThinning.tierKey(3), "bulk")
+        XCTAssertEqual(Set(SnapshotResponse.truncatedTierOrder.map(\.key)),
+                       ["operable", "labelled", "decoration", "bulk"],
+                       "ホストの表示順と語彙が食い違っている")
     }
 
     // MARK: - WebView DOM マージ(mergedSlots)
