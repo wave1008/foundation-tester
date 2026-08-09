@@ -2227,25 +2227,38 @@ final class MCPServer {
         let target = interactions.target(in: scope)
         let unresolved = scope.compactMap(\.unresolved)
         let steps = scope.compactMap(\.step)
+        // **解決できなかった手はその場に残す**(2026-08-10)。まとめて先頭へ出すと action の
+        // 並びからその手が消え、生成コードが実際の手順と食い違う(33 手の下書きで実際に起きた:
+        // チェックアウト→住所画面へ移る手が抜けたまま #btn_add_address を叩く形になった)
+        var notesBeforeStep: [Int: [String]] = [:]
+        // 一覧の番号(1 起点・刈り込み後)→ steps の位置。scenes: もこの対応で読む
+        var stepIndexForListing: [Int] = []
+        var resolved = 0
+        for (position, entry) in scope.enumerated() {
+            stepIndexForListing.append(resolved)
+            if let described = entry.unresolved {
+                notesBeforeStep[resolved, default: []].append(
+                    "TODO: no stable selector — \(described)"
+                        + " (step \(position + 1) of the exploration)")
+            } else if entry.step != nil {
+                resolved += 1
+            }
+        }
+        let sceneBreaks = ((args["scenes"] as? [Any])?.compactMap { $0 as? Int } ?? [])
+            .compactMap { number -> Int? in
+                guard number >= 1, number <= stepIndexForListing.count else { return nil }
+                return stepIndexForListing[number - 1]
+            }
         let flow = Flow(name: args["title"] as? String ?? "explored with ft_* (draft)",
                         app: target.app, platform: target.platform,
                         goal: nil, generatedBy: Self.draftGeneratedBy, steps: steps)
         let className = (args["className"] as? String).flatMap { $0.isEmpty ? nil : $0 }
             ?? "DraftedScenario"
-        var code = ScenarioCodeGen.render(flow: flow, className: className,
+        let code = ScenarioCodeGen.render(flow: flow, className: className,
                                           generatedBy: Self.draftGeneratedBy,
-                                          emptyExpectation: true)
-        if !unresolved.isEmpty {
-            // **本文の中へ入れる**: ヘッダのコメントだと、書き写すときに落ちる
-            let todos = unresolved.map {
-                "            // TODO: no stable selector — \($0)"
-            }.joined(separator: "\n")
-            code = code.replacingOccurrences(
-                of: "        scenario {",
-                with: "        // \(unresolved.count) step(s) below could not be written as a"
-                    + " selector and are listed here so the draft still matches what you did:\n"
-                    + todos + "\n        scenario {")
-        }
+                                          emptyExpectation: true,
+                                          notesBeforeStep: notesBeforeStep,
+                                          sceneBreaks: sceneBreaks)
         var header = "Draft for \(target.app.isEmpty ? "(unknown app)" : target.app)"
             + " from \(scope.count) recorded interaction(s)"
             + (unresolved.isEmpty ? "" : ", \(unresolved.count) of which have no stable selector")
@@ -2292,7 +2305,8 @@ final class MCPServer {
             "  \(index + 1). \(entry.summary.isEmpty ? "(unnamed step)" : entry.summary)"
         }
         return "Steps in this draft — re-run with drop: [n, …] to remove the dead ends,"
-            + " or lastN: <k> to keep only the last k:\n" + rows.joined(separator: "\n") + "\n"
+            + " lastN: <k> to keep only the last k, or scenes: [n, …] to cut it into scenes"
+            + " at those steps:\n" + rows.joined(separator: "\n") + "\n"
     }
 
     static let draftGeneratedBy = "ftester MCP exploration (ft_draft_scenario)"
@@ -2751,6 +2765,12 @@ final class MCPServer {
             "lastN": ["type": "integer", "description": "Keep only the last N recorded steps "
                 + "before applying drop. Use it when the useful part is at the end of a long "
                 + "exploration"],
+            "scenes": ["type": "array", "items": ["type": "integer"],
+                       "description": "Step numbers (as printed in the listing) that START a new "
+                        + "scene — e.g. [9, 13] gives scene 1 = steps 1-8, scene 2 = 9-12, "
+                        + "scene 3 = 13-end. Each scene gets its own empty expectation, so "
+                        + "dry-run asks what every one of them proves. Scene boundaries are never "
+                        + "guessed: they say what a scene is for, which the recording cannot know"],
             "title": ["type": "string", "description": "Text put in @Test(...)"],
         ], scope: .none),
         tool("ft_dsl_commands", "List the Swift DSL commands with their signatures — the source of truth for "
