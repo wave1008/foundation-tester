@@ -274,7 +274,7 @@ public enum TapTargetGeometry {
     public static let sliverLongDimension: Double = 30
 
     public static func isClippedSliver(_ element: ElementInfo) -> Bool {
-        let label = FlowMatchMode.stripZeroWidthCharacters(element.label ?? "")
+        let label = FlowMatchMode.normalizeInvisibleCharacters(element.label ?? "")
         guard label.count >= 2 else { return false }
         let w = element.frame.width
         let h = element.frame.height

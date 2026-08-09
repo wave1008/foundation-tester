@@ -13,7 +13,8 @@ public enum SnapshotRenderer {
     /// 外部フィードバック(2026-08-06)への対応で、ref をコピーする行そのものに出す。
     public static func render(_ snapshot: SnapshotResponse,
                               flagging: [Int: String] = [:],
-                              collapsingBulk: Bool = false) -> String {
+                              collapsingBulk: Bool = false,
+                              interactiveOnly: Bool = false) -> String {
         var lines: [String] = []
         let s = snapshot.screen
         lines.append("screen: \(Int(s.width))x\(Int(s.height))")
@@ -24,14 +25,28 @@ public enum SnapshotRenderer {
                 idCounts[id, default: 0] += 1
             }
         }
+        // **数えるのは描く前**: 畳んだ群の中で隠した分まで足すと二重に数える
+        let hidden = interactiveOnly
+            ? snapshot.elements.filter { !isSubstantive($0, flagging: flagging) }.count : 0
+        if hidden > 0 {
+            lines.append("(interactiveOnly: \(hidden) layout-only line(s) hidden —"
+                + " refs and frames of the rest are unchanged; call again without it for the"
+                + " full tree)")
+        }
         let bulk = collapsingBulk ? bulkGroups(snapshot, flagging: flagging) : [:]
+        // **畳むのは群の一部でありうる**(D-2)ので、判定は id ではなく ref 単位で持つ。
+        // 条件を外した仲間は自分の位置に個別行として残る
+        var foldedRefs: Set<Int> = []
+        for group in bulk.values { foldedRefs.formUnion(group.map(\.ref)) }
         var emitted: Set<String> = []
         for e in snapshot.elements {
-            if let id = e.identifier, let group = bulk[id] {
+            if let id = e.identifier, let group = bulk[id], foldedRefs.contains(e.ref) {
                 guard emitted.insert(id).inserted else { continue }
-                lines.append(contentsOf: bulkLines(id: id, group: group))
+                lines.append(contentsOf: bulkLines(id: id, group: group,
+                                                   totalWithSameID: idCounts[id] ?? group.count))
                 continue
             }
+            if interactiveOnly, !isSubstantive(e, flagging: flagging) { continue }
             let flag = flagging[e.ref].map { " \($0)" } ?? ""
             let idCount = e.identifier.flatMap { idCounts[$0] }.flatMap { $0 >= 2 ? $0 : nil }
             lines.append(renderElement(e, idCount: idCount) + flag)
@@ -42,6 +57,27 @@ public enum SnapshotRenderer {
         return lines.joined(separator: "\n")
     }
 
+    /// `interactiveOnly` で残す要素か。**「読み手が次の一手に使えるもの」だけ**を残す:
+    /// 操作できる型 / スクロール容器(`scrollFrame:` に渡せる) / 文字を持つもの(ラベル・値・
+    /// プレースホルダ)/ 警告の付いた行(印は行ごとに読ませるためにあるので絶対に隠さない)。
+    ///
+    /// **id だけを持つ要素は残さない** —— これが落としたい当人で、実測(Google マップ Android)
+    /// では `#navigation_bar_item_icon_container` `#fab_icon` `#TextStackView` のような
+    /// 子と同じ矩形のレイアウト容器が1画面 88 行のうち大半を占めていた。
+    /// id 付き容器を `scrollFrame:` やスコープ記法(`#container >> .clickable[n]`)で
+    /// 指したいときのために、**容器名は unlabeledClickablesNote と scroll 印が別途出す**。
+    ///
+    /// **隠すのは描画だけ**(ホスト側が覚える木は素のまま)。ref も frame も動かないので、
+    /// 隠れた行を ft_tap で撃つことは変わらずできる
+    static func isSubstantive(_ e: ElementInfo, flagging: [Int: String]) -> Bool {
+        if flagging[e.ref] != nil { return true }
+        if e.scrollable == true { return true }
+        if BridgeSnapshotThinning.operableTypes.contains(e.type) { return true }
+        if textInputTypes.contains(e.type) { return true }
+        let text = (e.label ?? "") + (e.value ?? "") + (e.placeholder ?? "")
+        return !FlowMatchMode.normalizeInvisibleCharacters(text).isEmpty
+    }
+
     /// 1行に畳む最小の群サイズ。**20** はブリッジ側の bulk tier(同一 id ×20 以上を
     /// 要素上限の後回しにする)と同じ値にしてある —— 片方だけ動かすと「間引きでは大量扱い
     /// なのに描画では個別」がねじれる。実アプリのコーパス18枚では地図の POI
@@ -49,11 +85,18 @@ public enum SnapshotRenderer {
     /// **中身の一覧**には1つも掛からない
     public static let bulkGroupMinimum = 20
 
-    /// 畳んでよい群か。**`other` の葉だけ**に限るのが要点:
+    /// 畳んでよい群の**畳める部分**を返す。**`other` の葉だけ**に限るのが要点:
     /// - `other` = ブリッジが「型が付かなかったもの」に使う型で、シナリオの対象になるのは
     ///   地図のピンのような座標付きの飾りだけ。`staticText` や `button` の一覧は中身なので畳まない
     /// - 葉に限るのは、子を持つ要素を畳むと**子の行だけが親を失って残る**ため
-    /// - 印(⚠️scroll-leftover 等)が付いた要素を含む群は畳まない —— 印は行ごとに読ませるためにある
+    /// - 印(⚠️scroll-leftover 等)が付いた要素は畳まない —— 印は行ごとに読ませるためにある
+    ///
+    /// **群まるごとの all-or-nothing にしない**(D-2。2026-08-09 に実機で確定): 条件を外した
+    /// 1件の巻き添えで群全体が個別列挙になっていた。実測(Apple マップの経路一覧)では
+    /// `#VKPointFeature` 158 件のうち **isLeaf が false なのは1件だけ**で、その1件は
+    /// 「preorder 上の次がたまたま深い別要素(`#UserLocationButton`)」というだけの理由だった。
+    /// それで 158 行が個別に出るのは、畳み込みの目的(読める量に収める)を丸ごと損なう。
+    /// **条件を満たす部分だけ畳み、外れた仲間は自分の位置に個別行として残す**。
     ///
     /// 畳んでも **ref では撃てる**(ラベルと ref の索引を必ず出す)。実測で
     /// `ft_tap` の対象になり得ることを確認しているので、消してはいけない
@@ -64,20 +107,30 @@ public enum SnapshotRenderer {
             guard let id = e.identifier, !id.isEmpty else { continue }
             byID[id, default: []].append(e)
         }
-        return byID.filter { _, group in
-            group.count >= bulkGroupMinimum && group.allSatisfy { e in
+        var folded: [String: [ElementInfo]] = [:]
+        for (id, group) in byID where group.count >= bulkGroupMinimum {
+            let qualifying = group.filter { e in
                 e.type == "other" && e.enabled && e.scrollable != true && e.checked != true
                     && (e.value ?? "").isEmpty && (e.placeholder ?? "").isEmpty
                     && (e.range ?? "").isEmpty
                     && flagging[e.ref] == nil
                     && TapTargetGeometry.isLeaf(e, in: snapshot.elements)
             }
+            // **畳める分が下限に届かないなら畳まない**(数件を畳んでも読む量は減らず、
+            // 「一部だけ畳まれた」形が読み手を混乱させるだけ)
+            guard qualifying.count >= bulkGroupMinimum else { continue }
+            folded[id] = qualifying
         }
+        return folded
     }
 
     /// 畳んだ群の描画。見出し1行 +「ラベル[ref]」の索引(折り返し)。
     /// **frame は落とす** —— 座標で撃ちたいなら expandBulk で全行に戻せる
-    static func bulkLines(id: String, group: [ElementInfo]) -> [String] {
+    /// `totalWithSameID` = 同じ id を持つ要素の総数。畳んだ数と食い違うときは
+    /// **別に出ていることを言う**(D-2 で群の一部だけを畳むようになったため。
+    /// 言わないと、読み手は同じ id が2箇所に出ている理由が分からない)
+    static func bulkLines(id: String, group: [ElementInfo],
+                          totalWithSameID: Int? = nil) -> [String] {
         let refs = group.map(\.ref).sorted()
         // **range を書けるのは連番のときだけ**。飛び飛びの群で `[2-43]` と書くと、
         // 間に挟まった別要素まで畳んだように読める(索引には全 ref が出るので情報は落ちない)
@@ -85,12 +138,17 @@ public enum SnapshotRenderer {
         let span = contiguous ? "[\(refs.first!)-\(refs.last!)]" : "[\(refs.first ?? 0)…]"
         // **逃げ道はツールごと名指しする**: `ft_scroll_to` の結果にもこの行は出るが、
         // あちらは expandBulk を受け取らない。「どこで渡せるか」を書かないと空振りする
+        let apart = (totalWithSameID ?? group.count) - group.count
+        let separately = apart > 0
+            ? " \(apart) more with this id are listed separately below (they are not plain leaves,"
+                + " or carry a warning), so this fold is not the whole group."
+            : ""
         var lines = ["\(span) other id=\(id) ×\(group.count) collapsed"
-            + " (non-interactive leaves with the same id; frames omitted)."
+            + " (non-interactive leaves with the same id; frames omitted).\(separately)"
             + " Tap one by its ref — call ft_snapshot with expandBulk: true to list them in full:"]
         var current = "   "
         for e in group {
-            let label = e.label.map(FlowMatchMode.stripZeroWidthCharacters) ?? ""
+            let label = e.label.map(FlowMatchMode.normalizeInvisibleCharacters) ?? ""
             let text = label.isEmpty
                 ? "(no label)[\(e.ref)]"
                 : "\(truncate(label, labelDisplayLimit))[\(e.ref)]"
@@ -110,9 +168,9 @@ public enum SnapshotRenderer {
 
     static func renderElement(_ e: ElementInfo, idCount: Int? = nil) -> String {
         var parts: [String] = ["[\(e.ref)]", e.type]
-        // ゼロ幅文字は画面にもスナップショットにも見えないので truncate の前に除去する
-        // (除去してからコピーした文字列は FlowMatchMode.matches の正規化と必ず一致する)
-        let label = e.label.map(FlowMatchMode.stripZeroWidthCharacters)
+        // 不可視文字は truncate の前に正規化する(ゼロ幅は除去・NBSP 等は通常空白へ)。
+        // **照合側と同じ1関数を通す**ので、ここから写した文字列は FlowMatchMode.matches と必ず一致する
+        let label = e.label.map(FlowMatchMode.normalizeInvisibleCharacters)
         if let label, !label.isEmpty {
             parts.append("\"\(truncate(label, labelDisplayLimit))\"")
         }
@@ -120,11 +178,11 @@ public enum SnapshotRenderer {
             let suffix = idCount.map { " ×\($0)" } ?? ""
             parts.append("id=\(id)\(suffix)")
         }
-        let value = e.value.map(FlowMatchMode.stripZeroWidthCharacters)
+        let value = e.value.map(FlowMatchMode.normalizeInvisibleCharacters)
         if let value, !value.isEmpty {
             parts.append("value=\"\(truncate(value, valueDisplayLimit))\"")
         }
-        let placeholder = e.placeholder.map(FlowMatchMode.stripZeroWidthCharacters)
+        let placeholder = e.placeholder.map(FlowMatchMode.normalizeInvisibleCharacters)
         if let placeholder, !placeholder.isEmpty, placeholder != label {
             parts.append("ph=\"\(truncate(placeholder, valueDisplayLimit))\"")
         }
@@ -175,7 +233,7 @@ public enum SnapshotRenderer {
     /// 末尾が語の途中で切れていても当たるので、そのまま `*…*` で包める)
     public static func truncatedLabelNote(_ snapshot: SnapshotResponse) -> String? {
         let longest = snapshot.elements
-            .compactMap { $0.label.map(FlowMatchMode.stripZeroWidthCharacters) }
+            .compactMap { $0.label.map(FlowMatchMode.normalizeInvisibleCharacters) }
             .filter { $0.count > labelDisplayLimit }
             .max(by: { $0.count < $1.count })
         guard let longest else { return nil }
@@ -194,7 +252,7 @@ public enum SnapshotRenderer {
         let prefix = String(bare.dropLast())
         guard !prefix.isEmpty else { return nil }
         let full = snapshot.elements
-            .compactMap { $0.label.map(FlowMatchMode.stripZeroWidthCharacters) }
+            .compactMap { $0.label.map(FlowMatchMode.normalizeInvisibleCharacters) }
             .first { $0.hasPrefix(prefix) && $0.count > prefix.count }
         guard full != nil else { return nil }
         let example = String(prefix.prefix(min(12, prefix.count)))

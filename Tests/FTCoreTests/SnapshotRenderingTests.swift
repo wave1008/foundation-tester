@@ -170,13 +170,16 @@ final class SnapshotRenderingTests: XCTestCase {
         XCTAssertFalse(text.contains("collapsed"), text)
     }
 
-    /// 印(⚠️scroll-leftover)が付いた要素を含む群は畳まない —— 印は行ごとに読ませるためにある
-    func testFlaggedGroupIsNotCollapsed() {
+    /// 印(⚠️scroll-leftover)が付いた要素は**その1件だけ**畳まない —— 印は行ごとに
+    /// 読ませるためにある。**群ごと畳むのをやめない**(2026-08-09 に all-or-nothing を撤回。
+    /// 実機では 158 件中1件の巻き添えで全部が個別列挙になっていた。PartialBulkCollapseTests)
+    func testFlaggedMemberIsExcludedButTheGroupStillCollapses() {
         let text = SnapshotRenderer.render(bulkSnapshot(count: 25),
                                            flagging: [7: "⚠️scroll-leftover"],
                                            collapsingBulk: true)
-        XCTAssertFalse(text.contains("collapsed"), text)
+        XCTAssertTrue(text.contains("id=VKPointFeature ×24 collapsed"), text)
         XCTAssertTrue(text.contains("⚠️scroll-leftover"), text)
+        XCTAssertTrue(text.contains("1 more with this id are listed separately below"), text)
     }
 
     /// 子を持つ要素は畳まない(畳むと子の行だけが親を失って残る)
@@ -196,5 +199,124 @@ final class SnapshotRenderingTests: XCTestCase {
                                         screen: FTRect(x: 0, y: 0, width: 402, height: 874),
                                         elements: elements, truncatedCount: 0)
         XCTAssertFalse(SnapshotRenderer.render(snapshot, collapsingBulk: true).contains("collapsed"))
+    }
+
+    // MARK: - interactiveOnly(レイアウト専用の行を隠す)
+
+    /// 実測(2026-08-09・Google マップ Android)の形を縮尺: 88 行のうち意味のある行は 10 行程度で、
+    /// 残りは子と同じ矩形のレイアウト容器だった
+    private func mixedSnapshot() -> SnapshotResponse {
+        let frame = FTRect(x: 0, y: 0, width: 100, height: 40)
+        let elements = [
+            ElementInfo(ref: 1, type: "button", identifier: "ok", label: "OK", value: nil,
+                        placeholder: nil, enabled: true, frame: frame, depth: 1),
+            ElementInfo(ref: 2, type: "staticText", identifier: nil, label: "本文", value: nil,
+                        placeholder: nil, enabled: true, frame: frame, depth: 2),
+            // id だけを持つレイアウト容器 = 隠したい当人
+            ElementInfo(ref: 3, type: "other", identifier: "icon_container", label: nil,
+                        value: nil, placeholder: nil, enabled: true, frame: frame, depth: 2),
+            ElementInfo(ref: 4, type: "other", identifier: nil, label: nil, value: nil,
+                        placeholder: nil, enabled: true, frame: frame, depth: 3),
+            ElementInfo(ref: 5, type: "other", identifier: "list", label: nil, value: nil,
+                        placeholder: nil, enabled: true, frame: frame, depth: 1, scrollable: true),
+        ]
+        return SnapshotResponse(sessionBundleID: "com.example.app",
+                                screen: FTRect(x: 0, y: 0, width: 402, height: 874),
+                                elements: elements, truncatedCount: 0)
+    }
+
+    func testInteractiveOnlyHidesLayoutContainers() {
+        let text = SnapshotRenderer.render(mixedSnapshot(), interactiveOnly: true)
+        XCTAssertFalse(text.contains("icon_container"), text)
+        XCTAssertTrue(text.contains("2 layout-only line(s) hidden"), text)
+    }
+
+    /// 操作できる型・文字を持つもの・スクロール容器は残す(`scrollFrame:` に渡せなくなるため)
+    func testInteractiveOnlyKeepsWhatTheReaderCanActuallyUse() {
+        let text = SnapshotRenderer.render(mixedSnapshot(), interactiveOnly: true)
+        XCTAssertTrue(text.contains("id=ok"), text)
+        XCTAssertTrue(text.contains("\"本文\""), text)
+        XCTAssertTrue(text.contains("id=list"), text)
+    }
+
+    /// **印の付いた行は隠さない** —— 印は行ごとに読ませるためにある
+    func testInteractiveOnlyNeverHidesAFlaggedRow() {
+        let text = SnapshotRenderer.render(mixedSnapshot(), flagging: [3: "⚠️scroll-leftover"],
+                                           interactiveOnly: true)
+        XCTAssertTrue(text.contains("icon_container"), text)
+        XCTAssertTrue(text.contains("⚠️scroll-leftover"), text)
+    }
+
+    /// 既定は従来どおり全行(隠す注記も出さない)
+    func testDefaultRenderStillListsEverything() {
+        let text = SnapshotRenderer.render(mixedSnapshot())
+        XCTAssertTrue(text.contains("icon_container"), text)
+        XCTAssertFalse(text.contains("layout-only"), text)
+    }
+}
+
+/// **群の中の1件で全滅しない**(D-2。2026-08-09 に実機で確定)。
+/// Apple マップの経路一覧では `#VKPointFeature` 158 件のうち `isLeaf` が false なのは
+/// **1件だけ**で、理由は「preorder 上の次がたまたま深い別要素だった」。それで 158 行が
+/// 個別に出るのは、畳み込みの目的(読める量に収める)を丸ごと損なう。
+final class PartialBulkCollapseTests: XCTestCase {
+
+    /// POI を n 件 + 末尾に「次がより深い」状況を作る要素を置く
+    private func snapshot(poi: Int, outlierIsDeepNext: Bool) -> SnapshotResponse {
+        var elements: [ElementInfo] = []
+        for i in 0..<poi {
+            elements.append(ElementInfo(ref: i + 1, type: "other", identifier: "VKPointFeature",
+                                        label: "POI\(i)", value: nil, placeholder: nil,
+                                        enabled: true,
+                                        frame: FTRect(x: Double(i), y: 10, width: 30, height: 30),
+                                        depth: 8))
+        }
+        if outlierIsDeepNext {
+            // 実機で観測した形: 群の直後に**より深い**別要素が来るので、最後の POI が葉でなくなる
+            elements.append(ElementInfo(ref: poi + 1, type: "button", identifier: "UserLocationButton",
+                                        label: "現在地", value: nil, placeholder: nil, enabled: true,
+                                        frame: FTRect(x: 0, y: 500, width: 40, height: 40),
+                                        depth: 10))
+        }
+        return SnapshotResponse(sessionBundleID: nil,
+                                screen: FTRect(x: 0, y: 0, width: 402, height: 874),
+                                elements: elements, truncatedCount: 0)
+    }
+
+    /// **1件だけ外れても残りは畳む**。外れた1件は自分の位置に個別行として残る
+    func testOneOutlierDoesNotDefeatTheWholeGroup() {
+        let text = SnapshotRenderer.render(snapshot(poi: 25, outlierIsDeepNext: true),
+                                           collapsingBulk: true)
+        XCTAssertTrue(text.contains("id=VKPointFeature ×24 collapsed"), text)
+        // 外れた1件(最後の POI)は個別行で残る = 手順から消えない
+        XCTAssertTrue(text.contains("[25] other \"POI24\""), text)
+        // **一部だけ畳んだことを言う**(同じ id が2箇所に出る理由を読み手に渡す)
+        XCTAssertTrue(text.contains("1 more with this id are listed separately below"), text)
+    }
+
+    /// 印の付いた要素も同じ扱い(印は行ごとに読ませるので畳まない・残りは畳む)
+    func testFlaggedMemberIsLeftOutButTheRestCollapse() {
+        let snap = snapshot(poi: 25, outlierIsDeepNext: false)
+        let text = SnapshotRenderer.render(snap, flagging: [7: "⚠️scroll-leftover"],
+                                           collapsingBulk: true)
+        XCTAssertTrue(text.contains("id=VKPointFeature ×24 collapsed"), text)
+        XCTAssertTrue(text.contains("⚠️scroll-leftover"), text)
+    }
+
+    /// **畳める分が下限に届かないなら畳まない**(数件を畳んでも読む量は減らない)
+    func testTooFewQualifyingMembersMeansNoFold() {
+        let snap = snapshot(poi: 25, outlierIsDeepNext: false)
+        var flags: [Int: String] = [:]
+        for ref in 1...10 { flags[ref] = "⚠️offscreen" }   // 残り15件 < 20
+        let text = SnapshotRenderer.render(snap, flagging: flags, collapsingBulk: true)
+        XCTAssertFalse(text.contains("collapsed"), text)
+    }
+
+    /// 全員が条件を満たすときは従来どおり(「別に出ている」とは言わない)
+    func testAllQualifyingStillFoldsAsBefore() {
+        let text = SnapshotRenderer.render(snapshot(poi: 25, outlierIsDeepNext: false),
+                                           collapsingBulk: true)
+        XCTAssertTrue(text.contains("id=VKPointFeature ×25 collapsed"), text)
+        XCTAssertFalse(text.contains("listed separately below"), text)
     }
 }
