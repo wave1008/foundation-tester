@@ -149,7 +149,13 @@
   無害・SwiftUI ではタブバーが反応し、E2E-iOS を回すまで 5/5 の回帰に気付けなかった)。
   **入力・キー・IME 系を触ったら `--ios-inapp` も回す**(既定の e2e.sh は iOS を xcuitest でしか
   回さないが、**利用者の既定エンジンは hybrid = in-app 優先**。実害: pressEnter のバグ2件が
-  既定スイートでは最後まで表面化しなかった)。詳細は docs/verification.md
+  既定スイートでは最後まで表面化しなかった)。詳細は docs/verification.md。
+  **この漏れは e2e.sh が検出する**(2026-08-10)—— in-app ブリッジの入力集合
+  (`BridgeSourceSet.inApp`)の digest を、`--ios-inapp` が**全部成功したときだけ**
+  `.ftester/inapp-e2e-verified` に記録し、既定スイートの開始時と終了時に食い違いを警告する
+  (`ftester api bridge-sources --set inapp --digest`。一覧は BridgeSourceSet が唯一の定義元)。
+  **落とさず警告だけ**(検知は警告から始める)。実害: in-app/xcuitest 両方のスナップショット生成を
+  変えた回の E2E 254 本が全部 engine=xcuitest で、in-app 側は1度も動かないまま緑になった
 - **e2e の実行範囲はリスクとコストで決める**(上のゲートは「最低限ここまでは回す」の下限で、
   常に全部回す意味ではない。フルスイートは10分超かかるので、**何も足さない実行はしない**):
 

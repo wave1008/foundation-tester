@@ -98,6 +98,18 @@ public enum BridgeSourceSet: String, CaseIterable, Sendable {
         return result
     }
 
+    /// 入力集合ぜんたいを表す1つの hex。**ファイル単位の指紋から組む**ので、
+    /// 中身・ファイルの増減のどちらでも動く。
+    /// 用途は「前にこの実装をデバイス上で確かめたのはどの状態か」を1行で覚えておくこと
+    /// (`Scripts/e2e.sh` が in-app 経路の検証漏れを検出するのに使う。
+    /// 既定スイートは iOS を xcuitest でしか回さないので、in-app は放っておくと
+    /// 何回変えても1度も動かないまま緑になる)
+    public func digest(repoRoot: URL) throws -> String {
+        let perFile = try fingerprints(repoRoot: repoRoot)
+        let joined = perFile.keys.sorted().map { "\($0):\(perFile[$0]!)" }.joined(separator: "\n")
+        return Self.hex(Data(joined.utf8))
+    }
+
     /// AndroidRunner/build.sh の `VERSION_CODE=<n>` を固定文字列へ潰す。他ファイルは素通し
     private static func normalize(_ data: Data, relativePath: String) -> Data {
         guard relativePath == "AndroidRunner/build.sh",

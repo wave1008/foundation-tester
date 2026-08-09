@@ -70,6 +70,26 @@ needs_rebuild() {  # $1 = 成果物パス, $2.. = 監視するソースディレ
   [ -n "$(find "$@" -type f -newer "$artifact" 2>/dev/null | head -1)" ]
 }
 
+# in-app ブリッジの入力が「最後に --ios-inapp を通した状態」から動いているか。
+# **既定スイートは iOS を xcuitest でしか回さない**のに、利用者の既定エンジンは hybrid
+# (in-app 優先)なので、放っておくと in-app 側は何回変えても1度も動かないまま緑になる
+# (2026-08-09 に実際に起きた: スナップショット生成を in-app/xcuitest 両方変えた回の
+# E2E 254 本が全部 engine=xcuitest だった)。
+# **警告だけで落とさない** —— 検知は警告から始める、が本リポジトリの方針。
+# 一覧の定義元は Sources/FTCore/BridgeSourceSet.swift(ここに二重に書かない)
+INAPP_MARKER="$ROOT/.ftester/inapp-e2e-verified"
+inapp_digest() { "$FTESTER" api bridge-sources --set inapp --digest 2>/dev/null; }
+INAPP_STALE=""
+if [ "$RUN_IOS" = 1 ] && [ "$IOS_PROFILE" != "ios-inapp" ]; then
+  CURRENT_DIGEST="$(inapp_digest)"
+  if [ -n "$CURRENT_DIGEST" ] && [ "$CURRENT_DIGEST" != "$(cat "$INAPP_MARKER" 2>/dev/null)" ]; then
+    INAPP_STALE=1
+    echo "⚠️ in-app ブリッジの入力が、最後に --ios-inapp を通した状態から変わっています。"
+    echo "   このスイートは iOS を xcuitest でしか回さないので、in-app 経路は検証されません。"
+    echo "   → Scripts/e2e.sh --ios-inapp を回してください(1 SUT だけでも可)"
+  fi
+fi
+
 FAILED=0
 run_profile() {  # $1 = プロジェクト名, $2 = プロファイル名
   echo ""
@@ -167,4 +187,19 @@ if [ "$FAILED" = 0 ]; then
 else
   echo "❌ E2E に失敗があります(レポート: TestProjects/*/reports/)"
 fi
+
+# **通した状態を覚えるのは全部成功したときだけ** —— 失敗したまま印を更新すると、
+# 次回から「検証済み」と言い張る装置になる
+if [ "$FAILED" = 0 ] && [ "$RUN_IOS" = 1 ] && [ "$IOS_PROFILE" = "ios-inapp" ]; then
+  mkdir -p "$(dirname "$INAPP_MARKER")"
+  inapp_digest > "$INAPP_MARKER"
+  echo "→ in-app 経路を検証済みとして記録しました($INAPP_MARKER)"
+fi
+# 最後にもう一度言う: 冒頭の1行は数分のログに流されて読まれない。
+# **`[ … ] && echo` の形にしない** —— 偽のとき終了ステータス 1 を残すので、
+# 直後の `exit "$FAILED"` を誰かが消した瞬間に「成功したのに失敗扱い」へ化ける
+if [ -n "$INAPP_STALE" ]; then
+  echo "⚠️ in-app 経路は未検証のままです(Scripts/e2e.sh --ios-inapp)"
+fi
+
 exit "$FAILED"
