@@ -877,7 +877,11 @@ final class MCPServer {
         var scrollStep = FlowStep(action: "scrollTo", locator: selector.primary)
         scrollStep.direction = direction.swipe.rawValue
         if args["scrollFrame"] != nil { scrollStep.note = "scrollFrame was used during exploration" }
-        interactions.record(InteractionLog.Entry(step: scrollStep, unresolved: nil))
+        // 一覧に**スワイプ方向を出さない**: `direction.swipe` は指の動き(下を読むなら up)で、
+        // 読み手が指定した意味方向とは逆になる。一覧は「どの手か」を見分けるためのものなので、
+        // 逆向きの語を出すと `drop:` の選択を誤らせる
+        interactions.record(InteractionLog.Entry(
+            step: scrollStep, unresolved: nil, summary: "scrollTo \"\(selectorText)\""))
         return text(switched + sheetNote + "scrolled to \"\(selectorText)\"\(landed)."
             + " The refs below are fresh\n" + scrollAreaNote + Self.ghostNote(after)
             + Self.truncationNote(after)
@@ -1150,6 +1154,9 @@ final class MCPServer {
             ? " — a plain label/#id selector cannot pick them, but the ones shown with"
                 + " \"= …\" sit inside a container that has an id, so a scenario can select them"
                 + " with that scoped selector. The rest can only be targeted by ref or coordinates."
+                + " Those scoped selectors are index-based: they break if the number of same-type"
+                + " siblings changes, so treat them as a last resort and prefer asking the app"
+                + " for an id."
             : " — they can only be targeted by ref or coordinates,"
                 + " so a scenario cannot select them with a stable selector."
         return "note: \(unlabeled.count) clickable element(s) have neither a label nor an id"
@@ -1167,6 +1174,29 @@ final class MCPServer {
     ///
     /// **一意性は「今撮った画面の中で」**。他の画面まで保証はできないので、そこは
     /// ft_dry_run(SelectorInventory の突き合わせ)と実行に委ねる
+    /// セレクタの壊れにくさ。**綴りからは判定しない**(2026-08-10)。
+    /// 位置で選ぶ式は必ずしも `[n]` を含まない —— `#容器 >> .clickable` は「容器の中の最初の
+    /// clickable」で、`[1]` を書いたのと同じ意味だが綴りに添字が出ない。
+    /// 綴りで見ると**この形だけが「安定」と誤って印無しになる**ので、
+    /// どの候補から採ったか(id/ラベル か スコープ記法 か)を持ち回る
+    enum Durability {
+        /// `#id` / 一意ラベル。木が変わっても指し続ける
+        case stable
+        /// `#container >> .type[n]`。同じ型の兄弟が1つ増減すると別要素を指す
+        case indexed
+
+        /// 一覧に添える印。安定側は無印(印が付くのは注意が要るものだけ、が読みやすい)
+        var mark: String { self == .indexed ? "~" : "" }
+
+        /// 1つだけ返すとき(ft_tap の戻り値)の但し書き
+        var caution: String {
+            self == .indexed
+                ? " — index-based, so it breaks if the number of same-type siblings changes;"
+                    + " prefer having the app expose an id"
+                : ""
+        }
+    }
+
     struct SelectorNaming {
         private let idCounts: [String: Int]
         private let labelCounts: [String: Int]
@@ -1189,27 +1219,48 @@ final class MCPServer {
         /// `>>` や `||` を含む等)は場合分けで潰しきれないので、DSL 本体で解決して
         /// **当人が返ることを確かめてから**返す
         func selector(for element: ElementInfo, in snapshot: SnapshotResponse) -> String? {
-            candidates(for: element, in: snapshot).first {
-                MCPServer.picksExactly(element, with: $0, in: snapshot)
-            }
+            graded(for: element, in: snapshot)?.selector
         }
 
-        /// 優先順に並べた候補(採否は selector(for:in:) が実際に引いて決める)
+        /// セレクタと**その耐久性**。「書ける」と「壊れにくい」は別物で、同じ一覧に混ぜると
+        /// 生成器は先頭を採るだけになる(2026-08-10)。`#id` と一意ラベルは木が変わっても
+        /// 指し続けるが、`#container >> .type[n]` の `[n]` は**同じ型の兄弟が1つ増減しただけで
+        /// 別要素を指す**ので、シナリオに書くと静かに壊れる
+        func graded(for element: ElementInfo,
+                    in snapshot: SnapshotResponse) -> (selector: String, durability: Durability)? {
+            for candidate in candidates(for: element, in: snapshot)
+            where MCPServer.picksExactly(element, with: candidate.selector, in: snapshot) {
+                // **勧める形と書かれる形を揃える**(2026-08-10): 下書きは locator を
+                // `FTSelector.serialize` で書き戻すので、`[1]` のような冗長な節はそこで落ちる。
+                // 勧めた文字列をそのまま出すと「注記は `.clickable[1]`、コードは `.clickable`」
+                // という食い違いになり、1箇所で決める意味が無くなる
+                let written = MCPServer.asWritten(candidate.selector)
+                let agreed = MCPServer.picksExactly(element, with: written, in: snapshot)
+                return (agreed ? written : candidate.selector, candidate.durability)
+            }
+            return nil
+        }
+
+        /// 優先順に並べた候補(採否は graded(for:in:) が実際に引いて決める)。
+        /// **耐久性は候補の出所で決める** —— 綴りを見ても分からない(Durability のコメント参照)
         private func candidates(for element: ElementInfo,
-                                in snapshot: SnapshotResponse) -> [String] {
-            var out: [String] = []
-            if let id = element.identifier, !id.isEmpty, idCounts[id] == 1 { out.append("#\(id)") }
+                                in snapshot: SnapshotResponse)
+            -> [(selector: String, durability: Durability)] {
+            var out: [(selector: String, durability: Durability)] = []
+            if let id = element.identifier, !id.isEmpty, idCounts[id] == 1 {
+                out.append(("#\(id)", .stable))
+            }
             // **切り詰め表示になるラベルは候補にしない**: 40字超は一覧に "…" 付きで出るので、
             // 読み手が写した完全一致は必ず外れる(SnapshotRenderer.truncatedLabelNote と同じ理由)
             let label = FlowMatchMode.normalizeInvisibleCharacters(element.label ?? "")
             if !label.isEmpty, labelCounts[label] == 1,
                label.count <= SnapshotRenderer.labelDisplayLimit {
                 // 素のラベルが記法と衝突する形(`#` や `.` 始まり)には `=` 逃がしがある
-                out.append(label)
-                out.append("=\(label)")
+                out.append((label, .stable))
+                out.append(("=\(label)", .stable))
             }
             if let scoped = MCPServer.scopedSelector(for: element, in: snapshot) {
-                out.append(scoped)
+                out.append((scoped, .indexed))
             }
             return out
         }
@@ -1371,10 +1422,14 @@ final class MCPServer {
         var lines: [String] = ["note: these labels match multiple elements, so a plain label"
             + " selector cannot pick one uniquely. Write one of these instead"
             + " (\"—\" = this element has no stable selector; use a labelled ancestor or"
-            + " a coordinate):"]
+            + " a coordinate. \"~\" = index-based, so it breaks if the number of same-type"
+            + " siblings changes — usable, but the weakest of the three):"]
         for (label, matches) in ambiguous.prefix(ambiguousLabelsShown) {
             let shown = matches.prefix(ambiguousMatchesShown).map { element -> String in
-                "[\(element.ref)] " + (naming.selector(for: element, in: snapshot) ?? "—")
+                guard let graded = naming.graded(for: element, in: snapshot) else {
+                    return "[\(element.ref)] —"
+                }
+                return "[\(element.ref)] \(graded.selector)\(graded.durability.mark)"
             }.joined(separator: " / ")
             let cut = matches.count > ambiguousMatchesShown
                 ? " (+\(matches.count - ambiguousMatchesShown) more matches not shown)" : ""
@@ -1702,7 +1757,7 @@ final class MCPServer {
             // 下書きの起点(F-3 の既定範囲は「直近の ft_launch 以降」)。@TestClass(app:) にも使う
             interactions.record(InteractionLog.Entry(
                 step: nil, unresolved: nil, isLaunch: true, bundleID: bundleID,
-                platform: Self.platformName(args)))
+                platform: Self.platformName(args), summary: "launch \(bundleID)"))
             return text("Launched: \(bundleID)")
 
         case "ft_open_url":
@@ -1715,7 +1770,8 @@ final class MCPServer {
             try await openURLDriver.openURL(url, bundleID: openURLBundleID)
             var openStep = FlowStep(action: "openURL")
             openStep.text = url
-            interactions.record(InteractionLog.Entry(step: openStep, unresolved: nil))
+            interactions.record(InteractionLog.Entry(step: openStep, unresolved: nil,
+                                                     summary: "openURL \"\(url)\""))
             return text("Delivered \(url)"
                 + (openURLBundleID.map { " to \($0)" } ?? "") + "."
                 + " Delivery is asynchronous (the app has to receive and handle it) — if a"
@@ -2118,11 +2174,22 @@ final class MCPServer {
     /// ft_dry_run の「アサーションの無い expectation ブロック」検出に埋めさせる。
     /// **セレクタを解決できなかった手は TODO で残す**(F-4) —— 消すと手順と食い違う
     func draftScenario(_ args: [String: Any]) -> String {
-        let scope = (args["all"] as? Bool == true)
+        let recorded = (args["all"] as? Bool == true)
             ? interactions.entries : interactions.sinceLastLaunch
-        guard !scope.isEmpty else {
+        guard !recorded.isEmpty else {
             return "No interactions recorded yet. Drive the app with ft_launch / ft_tap / ft_type"
                 + " / ft_scroll_to first — this tool turns that sequence into a scenario draft."
+        }
+        // **刈り込みは下書きの質そのもの**(2026-08-10): 記録は「やったこと」であって
+        // 「意図」ではないので、行き止まりのタップや試し打ちがそのまま載る。自動では
+        // 本筋と回り道を見分けられない(どちらも成功した操作)ので、**番号を見せて選ばせる**
+        let (scope, droppedCount, ignoredNumbers) = InteractionLog.prune(
+            recorded, lastN: args["lastN"] as? Int,
+            drop: (args["drop"] as? [Any])?.compactMap { $0 as? Int } ?? [])
+        guard !scope.isEmpty else {
+            return "Every recorded step was pruned away (\(recorded.count) recorded,"
+                + " \(droppedCount) dropped). Call ft_draft_scenario again with a smaller"
+                + " drop list — the numbering is 1-based over the steps shown in the listing."
         }
         let target = interactions.target(in: scope)
         let unresolved = scope.compactMap(\.unresolved)
@@ -2157,7 +2224,42 @@ final class MCPServer {
                 + " dropped from the log (it keeps the most recent"
                 + " \(InteractionLog.maximumEntries)).\n"
         }
-        return header + "\n" + code
+        if droppedCount > 0 {
+            header += "note: \(droppedCount) step(s) were pruned at your request.\n"
+        }
+        if !ignoredNumbers.isEmpty {
+            // **黙って無視しない**: 番号を1つ外しただけで別の手が落ちるので、
+            // 「効かなかった指定がある」ことに気付けないと誤った下書きを持ち帰る
+            header += "⚠️ drop \(ignoredNumbers.map(String.init).joined(separator: ", "))"
+                + " is out of range (1…\(recorded.count)) and was ignored.\n"
+        }
+        return header + Self.pruningListing(scope) + "\n" + code
+    }
+
+    /// 下書きに書かれる形。`FTSelector` を通して往復させ、**ScenarioCodeGen が出す綴りに揃える**
+    /// (あちらも `serialize` で書き戻すので、ここを通せば注記とコードが必ず一致する)
+    static func asWritten(_ selector: String) -> String {
+        let parsed = FTSelector.parse(selector)
+        let serialized = FTSelector.serialize(primary: parsed.primary, fallbacks: parsed.fallbacks)
+        return serialized.isEmpty ? selector : serialized
+    }
+
+    /// 下書きの行末に残す但し書き。安定なセレクタには**付けない** ——
+    /// 全行にコメントが付くと読み飛ばされ、本当に危ない行が埋もれる
+    static func indexedSelectorNote(_ durability: Durability) -> String? {
+        durability == .indexed
+            ? "index-based selector — breaks if the number of same-type siblings changes"
+            : nil
+    }
+
+    /// 下書きに入った手の番号付き一覧。**これを見て `drop:` を組む**ので、番号は
+    /// 刈り込み後の並び(次の呼び出しで同じ番号が同じ手を指す)
+    static func pruningListing(_ scope: [InteractionLog.Entry]) -> String {
+        let rows = scope.enumerated().map { index, entry -> String in
+            "  \(index + 1). \(entry.summary.isEmpty ? "(unnamed step)" : entry.summary)"
+        }
+        return "Steps in this draft — re-run with drop: [n, …] to remove the dead ends,"
+            + " or lastN: <k> to keep only the last k:\n" + rows.joined(separator: "\n") + "\n"
     }
 
     static let draftGeneratedBy = "ftester MCP exploration (ft_draft_scenario)"
@@ -2182,8 +2284,8 @@ final class MCPServer {
         guard let snapshot = lastSnapshots[Self.engineKey(args)],
               let element = snapshot.elements.first(where: { $0.ref == resolvedRef })
         else { return "" }
-        if let selector = Self.SelectorNaming(snapshot).selector(for: element, in: snapshot) {
-            return " (selector: \(selector))"
+        if let graded = Self.SelectorNaming(snapshot).graded(for: element, in: snapshot) {
+            return " (selector: \(graded.selector)\(graded.durability.caution))"
         }
         return " — no stable selector for this element, so a scenario cannot reproduce this"
             + " by selector; use a labelled ancestor, or have the app expose an id"
@@ -2204,11 +2306,14 @@ final class MCPServer {
                            text: String? = nil, direction: String? = nil,
                            coordinate: (x: Double, y: Double)? = nil) {
         var selector: String?
+        var durability: Durability = .stable
         var described = "\(action)"
         if let resolvedRef,
            let snapshot = lastSnapshots[Self.engineKey(args)],
            let element = snapshot.elements.first(where: { $0.ref == resolvedRef }) {
-            selector = Self.SelectorNaming(snapshot).selector(for: element, in: snapshot)
+            let graded = Self.SelectorNaming(snapshot).graded(for: element, in: snapshot)
+            selector = graded?.selector
+            durability = graded?.durability ?? .stable
             described = "\(action) ref \(resolvedRef) — \(RefGuard.describe(element))"
         } else if let coordinate {
             described = "\(action) at (\(coordinate.x), \(coordinate.y))"
@@ -2217,14 +2322,23 @@ final class MCPServer {
         let needsLocator = !["swipe", "type", "pressEnter", "back", "home", "appSwitcher"]
             .contains(action) || (resolvedRef != nil || coordinate != nil)
         if selector == nil, needsLocator, action != "swipe" {
-            interactions.record(InteractionLog.Entry(step: nil, unresolved: described))
+            interactions.record(InteractionLog.Entry(step: nil, unresolved: described,
+                                                     summary: "\(described) [no selector]"))
             return
         }
         var step = FlowStep(action: action)
         if let selector { step.locator = FTSelector.parse(selector).primary }
         step.text = text
         step.direction = direction
-        interactions.record(InteractionLog.Entry(step: step, unresolved: nil))
+        // **下書きの本文にも格付けを残す**(2026-08-10 の掃討): 注記と ft_tap の戻り値だけに
+        // 印を出しても、その場で読まれなければ意味が無い —— 添字付きのセレクタは
+        // シナリオに書かれた後で静かに壊れるので、コードの側に理由を残す
+        step.note = selector == nil ? nil : Self.indexedSelectorNote(durability)
+        let detail = [selector.map { "\"\($0)\"" }, text.map { "\"\($0)\"" }, direction]
+            .compactMap { $0 }.joined(separator: " ")
+        interactions.record(InteractionLog.Entry(
+            step: step, unresolved: nil,
+            summary: detail.isEmpty ? action : "\(action) \(detail)"))
     }
 
     /// 溜まっているプロファイル警告を先頭に付けて1度だけ吐き出す
@@ -2591,11 +2705,19 @@ final class MCPServer {
             + "server recommended at the time; a step that had no stable selector is kept as a TODO "
             + "comment so the draft still matches what you did. The expectation block comes back "
             + "EMPTY on purpose — assertions are never guessed, and ft_dry_run reports the empty "
-            + "block so it cannot be forgotten", [
+            + "block so it cannot be forgotten. The reply lists the steps it used, numbered — an "
+            + "exploration records dead ends and retries as faithfully as the real path, so read "
+            + "that listing and call again with drop:/lastN: to cut the detours", [
             "all": ["type": "boolean", "description": "Draft from every recorded interaction "
                 + "instead of only those since the last ft_launch (the default)"],
             "className": ["type": "string", "description": "Name of the generated class "
                 + "(default: DraftedScenario)"],
+            "drop": ["type": "array", "items": ["type": "integer"],
+                     "description": "Step numbers (1-based, as printed in the listing) to leave "
+                        + "out — use it to remove dead-end taps and retries. Applied after lastN"],
+            "lastN": ["type": "integer", "description": "Keep only the last N recorded steps "
+                + "before applying drop. Use it when the useful part is at the end of a long "
+                + "exploration"],
             "title": ["type": "string", "description": "Text put in @Test(...)"],
         ], scope: .none),
         tool("ft_dsl_commands", "List the Swift DSL commands with their signatures — the source of truth for "

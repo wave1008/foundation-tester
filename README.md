@@ -463,7 +463,7 @@ Android: `ftester-androidstream`)経由でほぼリアルタイムに更新す�
 | `ft_list_scenarios` / `ft_run_scenario` | シナリオ一覧 / 決定的実行(`project`・`profile`・`heal` オプション付き。自動ビルド込みで、コンパイルエラーはそのまま返る=エージェントが直せる) |
 | `ft_dry_run` | **デバイス不要**の検証(数秒)。セレクタの構文誤り・到達しない scene・アサーション0の expectation・**`ft_snapshot` で撮った画面に実在しない `#id`** をデバイス実行の前に落とす |
 | `ft_list_projects` | テストプロジェクトと実行プロファイルの一覧 |
-| `ft_draft_scenario` | **探索した操作列を Swift シナリオの下書きにして返す**(ファイルには書かない — 置き場所はスキルの仕事)。各手は「そのとき MCP が推奨したセレクタ」で書かれ、**セレクタを解決できなかった手は TODO コメントとして残る**(消すと下書きが実際の手順と食い違う)。既定の範囲は直近の `ft_launch` 以降(`all: true` で全体)。**expectation は空の骨格で出る** —— アサーションは推測で作らず、`ft_dry_run` の「アサーションの無い expectation」検出が作者に埋めさせる(dry-run がそこを指摘するのは意図した設計) |
+| `ft_draft_scenario` | **探索した操作列を Swift シナリオの下書きにして返す**(ファイルには書かない — 置き場所はスキルの仕事)。各手は「そのとき MCP が推奨したセレクタ」で書かれ、**セレクタを解決できなかった手は TODO コメントとして残る**(消すと下書きが実際の手順と食い違う)。既定の範囲は直近の `ft_launch` 以降(`all: true` で全体)。**expectation は空の骨格で出る** —— アサーションは推測で作らず、`ft_dry_run` の「アサーションの無い expectation」検出が作者に埋めさせる(dry-run がそこを指摘するのは意図した設計)。**応答は使った手を番号付きで並べる** —— 探索は行き止まりや撃ち直しも本筋と同じ忠実さで記録するので、その一覧を見て `drop: [n, …]`(番号は一覧のもの)や `lastN: k` で回り道を落としてから採用する |
 | `ft_list_devices` / `ft_list_apps` / `ft_logs` | 端末・アプリ・ログの棚卸し。**`ft_list_apps` の既定は user アプリだけ**なので、地図やブラウザのような**プリインストール(system)は出ない** —— `filter:`(id と表示名の部分一致・大小無視)を渡すと system も併せて探し、`includeSystem: true` なら全部を `[system]` 付きで並べる。表示名が出るのは iOS だけ(Android の `pm` は package 名しか返さない)。**`ft_list_devices` はブリッジの無い iOS 機に「no bridge — MCP からは操作不可」と書く**(動いているのに触れない機が行の見た目では分からなかった) |
 
 **実機(iPhone / Android 端末)**: 画面操作系(`ft_tap` / `ft_type` / `ft_swipe` / `ft_scroll_to` /

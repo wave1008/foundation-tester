@@ -95,8 +95,13 @@ final class MCPWritableSelectorTests: XCTestCase {
             element(3, type: "clickable", depth: 2),
         ])
         let naming = MCPServer.SelectorNaming(snap)
-        XCTAssertEqual(naming.selector(for: snap.elements[1], in: snap), "#tabs >> .clickable[1]")
+        // **1番目は添字を書かない**(2026-08-10): 下書きは locator を書き戻すので `[1]` は
+        // そこで落ちる。勧める側も落とした形にしておかないと、注記とコードで別の文字列になる。
+        // 意味は変わらない(添字なし = 最初の一致)ので、下の resolvedRef で当人が返ることを見る
+        XCTAssertEqual(naming.selector(for: snap.elements[1], in: snap), "#tabs >> .clickable")
         XCTAssertEqual(naming.selector(for: snap.elements[2], in: snap), "#tabs >> .clickable[2]")
+        XCTAssertEqual(resolvedRef("#tabs >> .clickable", in: snap), 2)
+        XCTAssertEqual(resolvedRef("#tabs >> .clickable[2]", in: snap), 3)
     }
 
     /// 書けないなら nil(黙って当たらないものを返さない)

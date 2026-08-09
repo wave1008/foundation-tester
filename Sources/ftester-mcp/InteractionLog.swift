@@ -28,6 +28,9 @@ struct InteractionLog {
         var bundleID: String?
         /// @TestClass(platform:) に使う
         var platform: String?
+        /// 刈り込みの一覧に出す1行。**記録時に作る** —— 生成時に組み直すと、番号付きで見せた
+        /// 説明と実際に落ちる手がズレる(選んで捨てる機能では致命的)
+        var summary: String = ""
     }
 
     private(set) var entries: [Entry] = []
@@ -55,6 +58,24 @@ struct InteractionLog {
     var sinceLastLaunch: [Entry] {
         guard let index = entries.lastIndex(where: \.isLaunch) else { return entries }
         return Array(entries[index...])
+    }
+
+    /// 刈り込み(F-8)。`lastN` で末尾だけに絞り、`drop` で 1 オリジンの番号を落とす。
+    /// **番号は絞り込んだ後の並びに対して振る** —— 一覧を見て選ぶ道具なので、
+    /// 見えている番号と落ちる手が一致していなければ意味がない。
+    /// 範囲外・重複した番号は黙って無視せず、呼び出し側が報告できるよう返す
+    static func prune(_ scope: [Entry], lastN: Int?,
+                      drop: [Int]) -> (kept: [Entry], dropped: Int, ignored: [Int]) {
+        var narrowed = scope
+        if let lastN, lastN > 0, lastN < narrowed.count {
+            narrowed = Array(narrowed.suffix(lastN))
+        }
+        let valid = Set(drop.filter { $0 >= 1 && $0 <= narrowed.count })
+        let ignored = Array(Set(drop).subtracting(valid)).sorted()
+        let kept = narrowed.enumerated()
+            .filter { !valid.contains($0.offset + 1) }
+            .map(\.element)
+        return (kept, valid.count, ignored)
     }
 
     /// 生成対象のアプリ/プラットフォーム。範囲内の launch から採り、無ければ全体の最後から
