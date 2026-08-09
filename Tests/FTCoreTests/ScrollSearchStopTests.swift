@@ -165,6 +165,49 @@ final class ScrollSearchStopTests: XCTestCase {
         XCTAssertFalse(message.contains("bottom sheet"), message)
     }
 
+    // MARK: - scrollFrame 未指定でもシートを見つける(2026-08-09)
+
+    private func snapshot(_ elements: [ElementInfo], height: Double = 874) -> SnapshotResponse {
+        SnapshotResponse(sessionBundleID: nil,
+                         screen: FTRect(x: 0, y: 0, width: 402, height: height),
+                         elements: elements, truncatedCount: 0)
+    }
+
+    private func scroller(_ ref: Int, y: Double, height: Double) -> ElementInfo {
+        ElementInfo(ref: ref, type: "scrollView", identifier: "list", label: nil, value: nil,
+                    placeholder: nil, enabled: true,
+                    frame: FTRect(x: 0, y: y, width: 402, height: height), depth: 2,
+                    scrollable: true)
+    }
+
+    /// **実測の形**(Apple マップの経路手順): 折りたたまれたトレイの中の
+    /// `#TransitDirectionsListView` は 189/874 = 22%。scrollFrame を渡していない1回目でも
+    /// 「シートを広げろ」に辿り着けること
+    func testPartialHeightSheetIsFoundWithoutAnExplicitScrollFrame() {
+        XCTAssertTrue(StepExecutor.partialHeightSheetExists(
+            in: snapshot([scroller(1, y: 676, height: 189)])))
+    }
+
+    /// 全画面リストは対象外(末尾到達で毎回シートを探しに行かせない)
+    func testFullHeightListIsNotASheet() {
+        XCTAssertFalse(StepExecutor.partialHeightSheetExists(
+            in: snapshot([scroller(1, y: 0, height: 800)])))
+    }
+
+    /// チップ行・横カルーセル(実測 5% 前後)も対象外 —— これを拾うと Android のほぼ全画面で鳴る
+    func testAThinCarouselIsNotASheet() {
+        XCTAssertFalse(StepExecutor.partialHeightSheetExists(
+            in: snapshot([scroller(1, y: 305, height: 126)], height: 2361)))
+    }
+
+    /// **申告のある容器だけ**を見る(推測まで混ぜると全画面リストでも鳴る)
+    func testUndeclaredContainerIsNotCountedAsASheet() {
+        let plain = ElementInfo(ref: 1, type: "other", identifier: "list", label: nil, value: nil,
+                                placeholder: nil, enabled: true,
+                                frame: FTRect(x: 0, y: 676, width: 402, height: 189), depth: 2)
+        XCTAssertFalse(StepExecutor.partialHeightSheetExists(in: snapshot([plain])))
+    }
+
     /// 打ち切られていない(上限まで振った/探索が続いている)ときはシートの話は出さない
     func testStillGoingMessageDoesNotMentionTheSheet() {
         let step = scrollTo("missing", maxSwipes: 8)

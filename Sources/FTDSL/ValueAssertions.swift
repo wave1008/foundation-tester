@@ -40,16 +40,30 @@ extension Optional where Wrapped == Any {
 
 public extension Optional where Wrapped == Any {
 
-    func thisIs(_ expected: Any?, file: StaticString = #filePath, line: UInt = #line) {
+    /// 掴んだ値と期待値の比較。**他のテキスト比較と同じ正規化を通す**(2026-08-09) ——
+    /// ここだけ素の `==` だったため、実データに紛れたゼロ幅1文字で落ちる一方、
+    /// 同じ文字列のセレクタは当たる、という経路ごとに答えの違う状態だった。
+    /// `strict: true` で一切正規化しない(textIs 等と同じ引数)
+    func thisIs(_ expected: Any?, strict: Bool = false,
+                file: StaticString = #filePath, line: UInt = #line) {
         let actual = stringValue
-        record("thisIs", "\"\(actual ?? "nil")\" == \"\(Self.text(expected))\"",
-               actual == Self.text(expected), file: file, line: line)
+        let expectedText = Self.text(expected)
+        let matched = FlowMatchMode.exact.matches(actual, expectedText,
+                                                  normalization: strict ? .strict : .text)
+        record("thisIs", "\"\(actual ?? "nil")\" == \"\(expectedText)\""
+               + (matched ? "" : StepExecutor.normalizationVerdict(
+                   actual: actual, expected: expectedText, assert: "textEquals")),
+               matched, file: file, line: line)
     }
 
-    func thisIsNot(_ expected: Any?, file: StaticString = #filePath, line: UInt = #line) {
+    func thisIsNot(_ expected: Any?, strict: Bool = false,
+                   file: StaticString = #filePath, line: UInt = #line) {
         let actual = stringValue
-        record("thisIsNot", "\"\(actual ?? "nil")\" != \"\(Self.text(expected))\"",
-               actual != Self.text(expected), file: file, line: line)
+        let expectedText = Self.text(expected)
+        let matched = FlowMatchMode.exact.matches(actual, expectedText,
+                                                  normalization: strict ? .strict : .text)
+        record("thisIsNot", "\"\(actual ?? "nil")\" != \"\(expectedText)\"",
+               !matched, file: file, line: line)
     }
 
     func thisIsTrue(file: StaticString = #filePath, line: UInt = #line) {

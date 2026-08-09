@@ -715,6 +715,11 @@ public final class StepExecutor {
                                   scrollFrameNote: String? = nil) -> String? {
         if result.settleCapped { noteCodesThisStep.insert(.settleCapped) }
         if result.scrollFrameMissing { noteCodesThisStep.insert(.scrollFrameMissing) }
+        // 文言側のシート展開ヒント(scrollNotFoundMessage)と**同じ条件**を機械可読で出す。
+        // 片方だけ変えない —— MCP はこのコードで自動展開へ分岐する
+        if result.stoppedUnmoving, result.containerIsPartialHeight {
+            noteCodesThisStep.insert(.sheetCollapsed)
+        }
         return Self.scrollSearchNote(result, scrollFrameNote: scrollFrameNote)
     }
 
@@ -1121,12 +1126,17 @@ public final class StepExecutor {
                             unmovedRounds = 0
                             continue
                         }
-                        // シート展開ヒントは**明示 scrollFrame が画面の大半を占めない**ときだけ
-                        // (全画面リストの末尾到達で毎回シートを探しに行かせないためのゲート。2026-08-08)
-                        let containerIsPartialHeight = step.scrollFrame != nil
-                            && snapshot.screen.height > 0
+                        // シート展開ヒントは**対象の容器が画面の大半を占めない**ときだけ
+                        // (全画面リストの末尾到達で毎回シートを探しに行かせないためのゲート。2026-08-08)。
+                        // **scrollFrame 未指定でも判定する**(2026-08-09): 半開きシートの中で
+                        // 止まる形は指定の有無に関係なく起きるのに、指定したときにしかヒントが
+                        // 出ていなかった —— 実測(Apple マップの経路手順)では、未指定の1回目が
+                        // 「動かなくなった」としか言わず、同じ画面で scrollFrame を渡した2回目に
+                        // だけ「シートを広げろ」が出て、そこで初めて解けた
+                        let containerIsPartialHeight = snapshot.screen.height > 0
                             && (scrollContainer(step: step, in: snapshot, vertical: vertical)
-                                .map { $0.height < snapshot.screen.height * 0.8 } ?? false)
+                                .map { $0.height < snapshot.screen.height * 0.8 }
+                                ?? Self.partialHeightSheetExists(in: snapshot))
                         var result = ScrollSearchResult(found: false, fallback: nil,
                                                         viaXCUITest: viaXCUITest,
                                                         hintJumps: hintJumps,
@@ -2857,6 +2867,25 @@ public final class StepExecutor {
     /// **子がはみ出している clip 領域**を探す —— はみ出しはスクロールで外へ出た子の姿で、
     /// 静止した木にも残る。iOS(Compose)は id 集合も frame も変わらないことがあり、
     /// `changedContentContainer` / `movedContentContainer` がどちらも nil になる
+    /// 半開きシートらしいスクロール容器が画面に居るか(`scrollFrame` 未指定のときの
+    /// シート展開ヒントのゲート)。**申告された容器だけ**を見る —— 推測まで混ぜると
+    /// 全画面リストの末尾到達でも鳴る。
+    ///
+    /// 高さの帯 15〜80% が要点: 上端はチップ行・横カルーセル(実測 5%前後)を落とし、
+    /// 下端は全画面リストを落とす。実測でヒントが要った容器は
+    /// `#TransitDirectionsListView`(189/874 = 22%)と `#directions_group_list`(871/2361 = 37%)
+    static let sheetHeightBand = (low: 0.15, high: 0.8)
+
+    static func partialHeightSheetExists(in snapshot: SnapshotResponse) -> Bool {
+        let height = snapshot.screen.height
+        guard height > 0 else { return false }
+        return snapshot.elements.contains {
+            $0.scrollable == true
+                && $0.frame.height > height * sheetHeightBand.low
+                && $0.frame.height < height * sheetHeightBand.high
+        }
+    }
+
     static func overflowingContainer(in snapshot: SnapshotResponse) -> FTRect? {
         var tally: [String: (rect: FTRect, count: Int)] = [:]
         for element in snapshot.elements {
@@ -3287,50 +3316,91 @@ public final class StepExecutor {
 
     /// 否定系アサート(`*Not` / `*IsEmpty` / `*IsNotEmpty`)の判定。
     /// **可視性は見ない**(見えていないことは画面照合できない)。text/value の別は呼び手が解決済み
+    /// 否定系・空判定の充足。**肯定系と同じ正規化を通す**(2026-08-09) ——
+    /// ここだけ素の比較のままだと、`textIs("x")` は通るのに `textIsNot("x")` も通る、という
+    /// 矛盾した組が作れてしまう(実データにゼロ幅が1文字あるだけで起きる)。
+    /// 空判定も同様: **ゼロ幅だけの文字列は「空」**(見た目が空だから)。
+    /// `strict: true` のときは一切正規化しない
     static func negativeAssertSatisfied(_ assert: String, actual: String?,
-                                        expected: String?) -> Bool {
-        let text = actual ?? ""
+                                        expected: String?,
+                                        normalization: TextNormalization = .text) -> Bool {
+        let text = normalization.apply(actual ?? "")
+        // 正規表現のパターンは書き換えない(肯定系と同じ規約)
+        let isRegex = assert == "textMatchesNot" || assert == "valueMatchesNot"
+        let want = isRegex ? (expected ?? "") : normalization.apply(expected ?? "")
         switch assert {
         case "textIsEmpty", "valueIsEmpty": return text.isEmpty
         case "textIsNotEmpty", "valueIsNotEmpty": return !text.isEmpty
         case "textStartsWithNot", "valueStartsWithNot":
-            return !text.hasPrefix(expected ?? "")
+            return !text.hasPrefix(want)
         case "textContainsNot", "valueContainsNot":
-            return !text.contains(expected ?? "")
+            return !text.contains(want)
         case "textEndsWithNot", "valueEndsWithNot":
-            return !text.hasSuffix(expected ?? "")
+            return !text.hasSuffix(want)
         case "textMatchesNot", "valueMatchesNot":
-            return text.range(of: expected ?? "", options: .regularExpression) == nil
+            return text.range(of: want, options: .regularExpression) == nil
         default:   // textNotEquals / valueNotEquals
-            return actual != expected
+            return actual == nil ? expected != nil : text != want
         }
     }
 
     /// アサート種別ごとの一致判定。戻り値は「画面上で実際に一致した文字列」(occlusion-guard 用)、
     /// 不一致なら nil。textMatches は**部分一致の正規表現**(^...$ を書けば全体一致になる)
-    static func matchedText(_ actual: String?, expected: String, assert: String) -> String? {
+    /// テキスト比較の判定。**正規化を通す**(2026-08-09): 以前は素の `==` / `contains` で、
+    /// 実データに紛れたゼロ幅1文字で `textIs` が落ちていた —— セレクタ側には正規化があるのに
+    /// アサーション側には無く、**同じ画面について経路ごとに答えが違う**状態だった。
+    ///
+    /// 既定は `.text`(見た目が完全に一致していれば同じ)。`strict: true` を明示したときだけ
+    /// `.strict`(一切正規化しない)。**返す文字列は正規化前の actual 由来**にする ——
+    /// occlusion-guard は画面と照合するので、実際に描かれている文字列でなければ意味が無い
+    public static func matchedText(_ actual: String?, expected: String, assert: String,
+                                   normalization: TextNormalization = .text) -> String? {
         guard let actual else { return nil }
-        switch assert {
-        case "textContains", "valueContains":
-            return actual.contains(expected) ? expected : nil
-        case "textStartsWith", "valueStartsWith":
-            return actual.hasPrefix(expected) ? expected : nil
-        case "textEndsWith", "valueEndsWith":
-            return actual.hasSuffix(expected) ? expected : nil
-        case "textMatchesDateFormat", "valueMatchesDateFormat":
-            // 日付書式(`yyyy/MM/dd` 等)。DateFormatter で往復できたら一致とみなす
+        // 日付書式だけは書式文字列であって「テキスト」ではないので正規化しない
+        if assert == "textMatchesDateFormat" || assert == "valueMatchesDateFormat" {
             let formatter = DateFormatter()
             formatter.locale = Locale(identifier: "en_US_POSIX")
             formatter.dateFormat = expected
             return formatter.date(from: actual) != nil ? actual : nil
-        case "textMatches", "valueMatches":
-            guard let range = actual.range(of: expected, options: .regularExpression) else {
-                return nil
-            }
-            return String(actual[range])
-        default:
-            return actual == expected ? expected : nil
         }
+        let a = normalization.apply(actual)
+        // 正規表現のパターンは書き換えない(FlowMatchMode.matches と同じ規約)
+        let e = (assert == "textMatches" || assert == "valueMatches")
+            ? expected : normalization.apply(expected)
+        switch assert {
+        case "textContains", "valueContains":
+            return a.contains(e) ? expected : nil
+        case "textStartsWith", "valueStartsWith":
+            return a.hasPrefix(e) ? expected : nil
+        case "textEndsWith", "valueEndsWith":
+            return a.hasSuffix(e) ? expected : nil
+        case "textMatches", "valueMatches":
+            guard let range = a.range(of: e, options: .regularExpression) else { return nil }
+            return String(a[range])
+        default:
+            return a == e ? expected : nil
+        }
+    }
+
+    /// 不一致で失敗するときに添える「**どちらの規則なら一致したか**」(2026-08-09 のユーザー指示)。
+    ///
+    /// 読み手の次の一手がこれで決まる:
+    ///   normal ○ / strict ×  → 差は不可視文字か空白の種類だけ。`strict: true` を外すか期待値を直す
+    ///   両方 ×               → 本当に違う文字列。期待値そのものを見直す
+    ///   normal × / strict ○  → 起こらない(normal は strict より緩い)。出たら正規化の実装が壊れている
+    public static func normalizationVerdict(actual: String?, expected: String,
+                                            assert: String) -> String {
+        let normal = matchedText(actual, expected: expected, assert: assert, normalization: .text)
+        let strict = matchedText(actual, expected: expected, assert: assert, normalization: .strict)
+        let mark = { (matched: String?) in matched != nil ? "matches" : "does not match" }
+        var verdict = " (normalized comparison: \(mark(normal))"
+            + " / strict comparison: \(mark(strict)))"
+        if normal != nil, strict == nil {
+            verdict += " — they differ only by characters that do not change how the text looks"
+                + " (invisible marks, or a non-breaking space); drop strict: true, or make the"
+                + " expected value match exactly"
+        }
+        return verdict
     }
 
     /// 解決できなかったロケータに「惜しい候補」を最大3件添える(失敗メッセージ用)。
@@ -3370,7 +3440,7 @@ public final class StepExecutor {
                 if let id = element.identifier, !id.isEmpty { parts.append("#\(id)") }
                 // 「代わりにこれを使え」と勧める文なので、**そのまま貼れる形**にする
                 // (ゼロ幅文字が残ると見た目が正しいのに一致しない)
-                if let label = element.label.map(FlowMatchMode.stripZeroWidthCharacters),
+                if let label = element.label.map(FlowMatchMode.normalizeInvisibleCharacters),
                    !label.isEmpty {
                     parts.append("\"\(SnapshotRenderer.truncate(label, 24))\"")
                 }

@@ -2671,6 +2671,35 @@ final class StepExecutorTests: XCTestCase {
                       "文言を出したのにコードを立てないと集計に乗らない")
     }
 
+    /// **シート展開の判定を機械可読でも出す**(2026-08-09): MCP はこのコードで
+    /// 「グラバーを引いて1度だけ再試行」へ分岐する。文言(scrollNotFoundMessage の
+    /// half-open bottom sheet)と**同じ条件**であること —— 片方だけ変わると、
+    /// 案内は出るのに自動展開が黙って効かなくなる
+    func testSheetCollapsedCodeFollowsTheSameConditionAsTheHint() {
+        let executor = StepExecutor(driver: FakeAppDriver(name: "primary", log: CallLog()))
+        var stopped = StepExecutor.ScrollSearchResult(found: false, fallback: nil,
+                                                      viaXCUITest: false, hintJumps: 0)
+        stopped.stoppedUnmoving = true
+        stopped.containerIsPartialHeight = true
+
+        _ = executor.recordedScrollSearchNote(stopped)
+
+        XCTAssertTrue(executor.noteCodesThisStep.contains(.sheetCollapsed))
+    }
+
+    /// 全画面リストの末尾到達では立てない(毎回シートを広げにいかせない)
+    func testSheetCollapsedCodeIsNotSetForAFullHeightContainer() {
+        let executor = StepExecutor(driver: FakeAppDriver(name: "primary", log: CallLog()))
+        var stopped = StepExecutor.ScrollSearchResult(found: false, fallback: nil,
+                                                      viaXCUITest: false, hintJumps: 0)
+        stopped.stoppedUnmoving = true
+        stopped.containerIsPartialHeight = false
+
+        _ = executor.recordedScrollSearchNote(stopped)
+
+        XCTAssertFalse(executor.noteCodesThisStep.contains(.sheetCollapsed))
+    }
+
     /// 打ち切っていないときは何も立てないこと(上の検証を「常に立てる」実装で通さないための対)
     func testScrollSearchNoteRecordsNothingWhenSettled() {
         let executor = StepExecutor(driver: FakeAppDriver(name: "primary", log: CallLog()))

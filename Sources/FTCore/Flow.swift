@@ -53,6 +53,10 @@ public struct FlowStep: Codable, Sendable {
     public var duration: Double?
     /// count アサーションの期待個数(DSL の countIs)。他のステップでは nil
     public var expectedCount: Int?
+    /// テキスト比較を**厳密に**行う(一切正規化しない)。DSL の `strict: true`(2026-08-09)。
+    /// 既定(nil / false)は「見た目が完全に一致していれば同じ」= 不可視文字を無視し、
+    /// 半角と全角は別物として扱う。**追加 optional のみ**なので旧レコードも decode できる
+    public var strictText: Bool?
     /// 探索時に FM が述べた意図(リプレイでは使わないがレビューの助けになる)
     public var note: String?
     /// [occlusion-guard] true のとき、この検証(exists/textEquals)がツリー一致で pass した直後に
@@ -160,12 +164,16 @@ public enum FlowMatchMode: String, Codable, Equatable, Sendable {
     case exact, startsWith, contains, endsWith, matches
 
     /// 実属性値がこの一致方法で expected を満たすか。nil の属性は常に不一致。
-    /// ゼロ幅文字(実データに紛れて画面にもスナップショットにも見えない)は比較前に
-    /// actual から常に、expected は `.matches`(正規表現。パターンを書き換えないため)以外で除去する
-    public func matches(_ actual: String?, _ expected: String) -> Bool {
+    ///
+    /// 正規化は `TextNormalization`。**既定は `.selector`**(この関数はセレクタのフィルタから
+    /// 呼ばれる = 「見つける」側なので寛容に寄せる)。テキストと期待値の比較は `.text` を渡す ——
+    /// あちらは「見た目が完全に一致していれば同じ」が基準で、規則が違う。
+    /// expected は `.matches`(正規表現)のときだけ素通し(パターンを書き換えないため)
+    public func matches(_ actual: String?, _ expected: String,
+                        normalization: TextNormalization = .selector) -> Bool {
         guard let actual else { return false }
-        let normalizedActual = Self.stripZeroWidthCharacters(actual)
-        let normalizedExpected = self == .matches ? expected : Self.stripZeroWidthCharacters(expected)
+        let normalizedActual = normalization.apply(actual)
+        let normalizedExpected = self == .matches ? expected : normalization.apply(expected)
         switch self {
         case .exact: return normalizedActual == normalizedExpected
         case .startsWith: return normalizedActual.hasPrefix(normalizedExpected)
@@ -177,20 +185,27 @@ public enum FlowMatchMode: String, Codable, Equatable, Sendable {
 
     /// U+200B/U+200C/U+200D/U+FEFF/U+2060。Google マップ等の実データが混入させる不可視文字で、
     /// 除去しないと目視では同一に見える文字列が完全一致に失敗する(SnapshotRenderer.renderElement も
-    /// 同じ集合を出力から除去し、コピーした文字列が必ず一致する状態を保つ)
+    /// `normalizeInvisibleCharacters` を通し、コピーした文字列が必ず一致する状態を保つ)
     public static let zeroWidthScalars: Set<Unicode.Scalar> = [
         "\u{200B}", "\u{200C}", "\u{200D}", "\u{FEFF}", "\u{2060}",
     ]
 
-    /// **走査は Character でなく Unicode スカラ単位**。Character は書記素クラスタなので
-    /// ZWJ(U+200D)は隣接文字と1つのクラスタに融合し、Character 比較では素通りする
-    public static func stripZeroWidthCharacters(_ s: String) -> String {
-        guard s.unicodeScalars.contains(where: { zeroWidthScalars.contains($0) }) else { return s }
-        var out = String.UnicodeScalarView()
-        for scalar in s.unicodeScalars where !zeroWidthScalars.contains(scalar) {
-            out.append(scalar)
-        }
-        return String(out)
+    /// **幅を持つ不可視空白**。ゼロ幅と違って**桁を食う**ので、除去すると `"A B"` が `"AB"` に
+    /// なって別の一致崩れを作る —— こちらは**通常空白(U+0020)へ正規化**する。
+    ///
+    /// 集合は実データで確認したものだけ(2026-08-09。Google マップ Android の路線ラベルが
+    /// `"\u{00A0} 埼京線"`)。**推測で足さない** —— 足すなら ft_snapshot で採った生ラベルの
+    /// スカラ列挙を根拠にすること。
+    /// **U+3000(全角スペース)は入れない**: 日本語ラベルでは有意な文字で、正規化すると
+    /// 別物を一致させる
+    public static let spaceLikeScalars: Set<Unicode.Scalar> = ["\u{00A0}"]
+
+    /// **描画のための正規化**(SnapshotRenderer が印字前に通す)。規則はテキスト比較側と同じ
+    /// `.text` —— 印字は「読み手が画面で見ているもの」を写すためのもので、
+    /// 見えない文字だけを落とし、見える差(全角と半角)は残すのが正しい。
+    /// 実体は `TextNormalization` に1つだけ置く(片方だけ変えられないように)
+    public static func normalizeInvisibleCharacters(_ s: String) -> String {
+        TextNormalization.text.apply(s)
     }
 
     /// セレクタ式のフィルタ名(属性名 + 一致方法)。exact は接尾辞なし。

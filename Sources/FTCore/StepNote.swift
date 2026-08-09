@@ -31,12 +31,20 @@ public enum StepNote: String, Sendable, Codable, CaseIterable {
     /// 退化してカードの「計画」ボタンを誤発火させた
     case scrollFrameMissing = "scroll-frame-missing"
 
+    /// 探索が「内容が動かない」で打ち切られ、そのときの容器が**画面高の80%未満**だった
+    /// = 半開きのボトムシートの中を探していた公算が高い(2026-08-09)。
+    /// 文言側の同じ判定(`StepExecutor.scrollNotFoundMessage` のシート展開ヒント)を
+    /// 機械可読にしたもので、**MCP はこのコードでシートを広げて1度だけ再試行する** ——
+    /// 文字列一致で分岐すると、文言を書き換えた瞬間に静かに効かなくなる(このファイル冒頭の理由)
+    case sheetCollapsed = "sheet-collapsed"
+
     /// 人間向けの文言(FTRuntime がステップ説明へ括弧書きで付ける)
     public var text: String {
         switch self {
         case .settleCapped: return "the screen did not settle (poll limit)"
         case .heldValue: return "from the grabbed value"
         case .scrollFrameMissing: return "the scrollFrame did not resolve, so the search stopped early"
+        case .sheetCollapsed: return "the list stopped moving inside a partially open sheet"
         }
     }
 }

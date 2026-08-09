@@ -286,7 +286,8 @@ extension StepExecutor {
                 lastScreen = snapshot.screen
                 // 一致したテキスト。occlusion-guard には**実際に一致した文字列**を渡す
                 // (textMatches の期待値は正規表現で、そのまま画面と照合しても意味がないため)
-                let matched = Self.matchedText(actual, expected: expected, assert: assert)
+                let matched = Self.matchedText(actual, expected: expected, assert: assert,
+                                               normalization: Self.textNormalization(for: step))
                 if let expectedForGuard = matched {
                     // ロケータを label 指定していて実 label と不一致=部分一致で掴んだ疑い
                     let loose = step.locator?.label != nil && element.label != step.locator?.label
@@ -330,6 +331,10 @@ extension StepExecutor {
         let relation = Self.textMismatchRelation(assert)
         return found
             ? .failed("\(subject) \(relation): expected \"\(expected)\", actual \"\(lastActual ?? "nil")\""
+                      // **どちらの規則なら一致したか**を必ず添える(2026-08-09 のユーザー指示)。
+                      // 「見えない差で落ちたのか、本当に違う文字列なのか」で次の一手が変わる
+                      + Self.normalizationVerdict(actual: lastActual, expected: expected,
+                                                  assert: assert)
                       + Self.coveringHint(element: lastElement, elements: lastElements,
                                           screen: lastScreen)
                       + tapDiagnosisHint(lastSnapshot?.elements)
@@ -337,6 +342,12 @@ extension StepExecutor {
             : .failed("element not found: \(step.locatorSummary)"
                       + tapDiagnosisHint(lastSnapshot?.elements)
                       + Self.webViewPathHint(lastSnapshot))
+    }
+
+    /// このステップで使う正規化。**既定は `.text`**(見た目が同じなら同じ)。
+    /// `strict: true` を明示したときだけ一切正規化しない
+    static func textNormalization(for step: FlowStep) -> TextNormalization {
+        step.strictText == true ? .strict : .text
     }
 
     /// executeAssertTextComparison の失敗文言用: 期待した関係のどれに反したかを表す語尾。
@@ -456,8 +467,9 @@ extension StepExecutor {
                 lastElement = element
                 lastElements = snapshot.elements
                 lastScreen = snapshot.screen
-                let satisfied = Self.negativeAssertSatisfied(assert, actual: actual,
-                                                              expected: step.expected)
+                let satisfied = Self.negativeAssertSatisfied(
+                    assert, actual: actual, expected: step.expected,
+                    normalization: Self.textNormalization(for: step))
                 if satisfied {
                     if let fallback { return .passedViaFallback(fallback) }
                     return .passed
