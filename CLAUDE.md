@@ -132,6 +132,14 @@
   `npm install` が lock を書き換えてクローンが dirty になり、**次の更新が pull ガードで止まる**
   (実害。`packageLockSync.test.mjs` が検出。既にズレたら `npm install --package-lock-only`)
 - Swift: `swift build --build-tests` / `swift test`。**合否は exit code で見る**(パイプすると grep 等の exit code に化けて失敗を握りつぶす実害)
+- **長時間ジョブ(E2E 等)の完了を「プロセスの生死」で待たない**(2026-08-09 の実害)。
+  `pgrep -f <文字列>` は自分自身こそ除外するが、**同じ文字列を含む他のシェルは拾う** ——
+  待機コマンド自身のコマンドラインにその文字列が載るので、待機を2つ以上同時に走らせると
+  **互いを「まだ実行中」と見て全員が止まらない**。実際 E2E の待機が3つ残り、次のスイートが
+  1本も起動しないまま「実行中」と表示され続けた(実験で機構を確認済み)。
+  **ジョブ自身が出す成果物で待つ**:
+  `nohup bash -c '<job> > log 2>&1; echo "exit=$?" > log.done' &` で起動し `log.done` を待つ。
+  併せて **起動を報告する前にログの実在を確かめる** —— 「開始しました」は観測ではなく期待になりやすい
 - 実行ファイル差し替えは `swift build --product <名>`。`--target` はリンクせず旧バイナリを実行する(事故実績)
 - **DSL コマンド・`StepExecutor`・ドライバ・ブリッジ(`InAppBridge`/`Runner`/`AndroidRunner`)・
   セレクタ/スナップショット/ヒール(`FTAgent`)を変えたら `Scripts/e2e.sh`**(ユニットテストはデバイス
